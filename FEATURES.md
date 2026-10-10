@@ -54,6 +54,7 @@ Last updated: 5 October 2026.
 - **Bounce light.** Lit surfaces pass some of their colour to nearby surfaces. A stronger version (called radiance cascades) is part of the Ultra quality preset.
 - **Auto exposure.** The picture adapts when the whole screen is very bright or very dark, like an eye or a camera does.
 - **Light in smoke.** Smoke near a fire, a lamp or a muzzle flash glows with that light.
+- **Effect layers.** Smoke, mist, splashes, dust and the other visual-only effects can each sit in their own layer between the battlefield and the background: units and the ground in front hide them, and they drift over cave walls and the sky behind them. One setting puts them all in front or all behind, and each has its own.
 
 ## 3. Shadows
 

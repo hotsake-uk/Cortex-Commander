@@ -2,6 +2,7 @@
 
 #include "glm/glm.hpp"
 
+#include <array>
 #include <string>
 
 namespace RTE {
@@ -260,6 +261,38 @@ namespace RTE {
 		float WaterFoamBrightness = 1.0F; //!< How bright froth is drawn.
 		float WaterFoamGlow = 0.45F; //!< How much light of its own froth carries, so it shows at night. 0: lit only by what lights the scene.
 		float SoftSmoke = 0.39F; //!< How much soft, billowing smoke the game's smoke sprites trail, so smoke hangs and rolls instead of being a cluster of sprites. 0 for none. Visual only.
+		/// The visual-only effects that can be drawn in the effects layer (c_EffectsDepth) instead of in front of everything.
+		enum EffectLayer {
+			LayerSmoke, //!< The game's smoke sprites, and the light smoke scatters.
+			LayerSoftSmoke, //!< The soft smoke they trail, and the smoke explosions leave.
+			LayerMist, //!< Spray mist off falling and splashing water.
+			LayerSplash, //!< The drops of splashes.
+			LayerFroth, //!< Froth on water.
+			LayerDust, //!< Dust puffs from blasts and hits on the ground.
+			LayerDebris, //!< Little chips thrown from blasts and hits.
+			LayerSparks, //!< Sparks from blasts and hits on hard ground.
+			LayerEmbers, //!< Embers off fires.
+			LayerFire, //!< The balls of fire of explosions.
+			EffectLayerCount
+		};
+		/// Where all of them go: each where its own setting says, all in front, or all behind.
+		enum EffectLayersMode { EffectLayersEach = 0, EffectLayersAllFront = 1, EffectLayersAllBehind = 2 };
+		/// The settings keys of the effects' own layer settings, in EffectLayer order.
+		static constexpr std::array<const char*, EffectLayerCount> EffectLayerKeys = {"LayerSmoke", "LayerSoftSmoke", "LayerMist", "LayerSplash", "LayerFroth", "LayerDust", "LayerDebris", "LayerSparks", "LayerEmbers", "LayerFire"};
+		int EffectLayers = EffectLayersEach; //!< EffectLayersMode: every effect in the layer its own setting picks, or all of them in front (as before) or all behind.
+		std::array<bool, EffectLayerCount> EffectBehind = {true, true, true, true, false, true, false, false, false, false}; //!< Per effect: drawn in the effects layer, behind units and the ground in front (over the back walls of caves and bunkers and the background beyond). Off: in front of everything.
+
+		/// Whether an effect is drawn behind units and the ground in front, going by EffectLayers and its own setting.
+		bool Behind(EffectLayer layer) const { return EffectLayers == EffectLayersAllBehind || (EffectLayers == EffectLayersEach && EffectBehind[layer]); }
+		/// Whether any effect is drawn behind.
+		bool AnyBehind() const {
+			for (int layer = 0; layer < EffectLayerCount; ++layer) {
+				if (Behind(static_cast<EffectLayer>(layer))) {
+					return true;
+				}
+			}
+			return false;
+		}
 		float WaterLightGlow = 0.01F; //!< How much the light of lamps, fires and blasts shows as a glow in water it passes through, in the light's own colour. 0: water is only lit like a surface.
 		bool WaterReflections = true; //!< Water mirrors what's above it, shows what's behind it bent by its ripples, and its rippled surface catches lamps and the sun. Off: water as it was, flat and tinted.
 		float WaterReflectionStrength = 0.5F; //!< How strongly water mirrors the scene above it, 0 for none.

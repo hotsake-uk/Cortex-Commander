@@ -2036,6 +2036,10 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	glm::vec2 origin(std::floor(screenOrigin.m_X), std::floor(screenOrigin.m_Y));
 	glm::vec2 gridWorldSize(static_cast<float>(m_GridWidth * m_CellSize), static_cast<float>(m_GridHeight * m_CellSize));
 
+	// What's in the effects layer (LightingSettings::Behind) is hidden wherever the scene's depth is nearer than it, halfway between it and what's drawn in front.
+	std::shared_ptr<DepthTexture> effectsLayerDepth = m_Settings.AnyBehind() ? playerScreen->GetDepthTexture().lock() : nullptr;
+	float effectsFrontDepth = ((2.0F * (c_EffectsDepth * 0.5F) - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth)) * 0.5F + 0.5F;
+
 	PerformanceMan::LogStages logStages(true);
 	logStages.Next("Lighting: building quads (CPU)");
 	// Build light and emissive quads from the glow effects. Lights first, emissives after, so each can be drawn as one range.
@@ -2049,6 +2053,12 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			glm::vec2 rotated(local.x * cosAngle - local.y * sinAngle, local.x * sinAngle + local.y * cosAngle);
 			glm::vec2 position = center + rotated;
 			m_QuadVertices.push_back({position.x, position.y, 0.0F, (corner.x + 1.0F) * 0.5F, (corner.y + 1.0F) * 0.5F, color.r, color.g, color.b, alpha, center.x, center.y, radius, 1.0F, 0.0F, -2.0F});
+		}
+	};
+	// Z on the last quad added marks it as in the effects layer (LightingSettings::Behind): the glow and particle shaders hide it where something in front is.
+	auto markLayer = [this](bool behind) {
+		for (size_t vertex = m_QuadVertices.size() - 4; vertex < m_QuadVertices.size(); ++vertex) {
+			m_QuadVertices[vertex].Z = behind ? 1.0F : 0.0F;
 		}
 	};
 	size_t lightCount = 0;
@@ -2226,6 +2236,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		for (const EffectsParticles::Spark& spark: sparks) {
 			float angle = std::atan2(spark.Direction.y, spark.Direction.x);
 			addQuad(spark.Position - spark.Direction * (spark.Length * 0.5F), glm::vec2(spark.Length * 0.5F + 0.5F, 0.6F), angle, glm::min(spark.Color, glm::vec3(1.0F)), 0.0F);
+			markLayer(spark.Behind);
 			emissiveTextures.push_back(whiteTexture);
 			emissiveHeat.push_back(0.0F);
 		}
@@ -2279,6 +2290,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		GLuint puffTexture = EffectsParticles::GetPuffTexture();
 		for (const EffectsParticles::Puff& ball: fire) {
 			addQuad(ball.Position, glm::vec2(ball.Size * 0.5F), 0.0F, glm::min(glm::vec3(ball.Color), glm::vec3(1.0F)), 0.0F);
+			markLayer(ball.Behind);
 			emissiveTextures.push_back(puffTexture);
 			emissiveHeat.push_back(1.0F);
 		}
@@ -2519,6 +2531,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			addQuad(puff.Position, glm::vec2(puff.Size * 0.5F * (varied && puff.Mirrored ? -1.0F : 1.0F), puff.Size * 0.5F), varied ? puff.Angle : 0.0F, glm::vec3(puff.Color), 0.0F);
 			for (size_t vertex = firstVertex; vertex < m_QuadVertices.size(); ++vertex) {
 				m_QuadVertices[vertex].A = puff.Color.a;
+				// Z marks what's in the effects layer, which is hidden where units and the ground in front are (LitParticle.frag).
+				m_QuadVertices[vertex].Z = puff.Behind ? 1.0F : 0.0F;
 			}
 		}
 	}
@@ -2673,6 +2687,11 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_EmissiveShader->SetVector2f("rteScreenSize", screenSize);
 		// The heat haze reads how hot each glow is from the buffer's alpha (the quads carry it in their vertex alpha, set before the upload).
 		m_EmissiveShader->SetBool("rteHeatAlpha", m_Settings.HazeFromHeat);
+		m_EmissiveShader->SetInt("rteSceneDepth", 3);
+		m_EmissiveShader->SetBool("rteEffectsLayer", effectsLayerDepth != nullptr);
+		m_EmissiveShader->SetFloat("rteEffectsFrontDepth", effectsFrontDepth);
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, effectsLayerDepth ? effectsLayerDepth->GetTextureId() : 0);
 		glActiveTexture(GL_TEXTURE0);
 		size_t runStart = 0;
 		for (size_t i = 1; i <= emissiveTextures.size(); ++i) {
@@ -2686,6 +2705,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		}
 		m_EmissiveShader->SetBool("rteUseAlpha", false);
 		m_EmissiveShader->SetBool("rteHeatAlpha", false);
+		m_EmissiveShader->SetBool("rteEffectsLayer", false);
 		glDisable(GL_BLEND);
 	}
 	if (flameCount > 0) {
@@ -2957,6 +2977,11 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_LitParticleShader->SetInt("rteTexture", 0);
 		m_LitParticleShader->SetInt("rteSkyLight", 1);
 		m_LitParticleShader->SetInt("rteDynamicLight", 2);
+		m_LitParticleShader->SetInt("rteSceneDepth", 3);
+		m_LitParticleShader->SetBool("rteEffectsLayer", effectsLayerDepth != nullptr);
+		m_LitParticleShader->SetFloat("rteEffectsFrontDepth", effectsFrontDepth);
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, effectsLayerDepth ? effectsLayerDepth->GetTextureId() : 0);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, EffectsParticles::GetPuffTexture());
 		glActiveTexture(GL_TEXTURE1);
@@ -3049,6 +3074,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_SmokeScatterShader->SetFloat("rteSunMapSlope", m_SunMapSlope);
 		m_SmokeScatterShader->SetFloat("rteSunMapStart", m_SunMapStart);
 		m_SmokeScatterShader->SetFloat("rteSunMapTexel", m_SunMapTexel);
+		m_SmokeScatterShader->SetInt("rteSceneDepth", 5);
+		m_SmokeScatterShader->SetBool("rteEffectsLayer", effectsLayerDepth && m_Settings.Behind(LightingSettings::LayerSmoke));
+		m_SmokeScatterShader->SetFloat("rteEffectsFrontDepth", effectsFrontDepth);
 		if (m_Settings.SmokeShading) {
 			// The output's alpha is how much of the scene behind still shows (the scene's own alpha is left as it is).
 			glBlendFuncSeparate(GL_ONE, GL_SRC_ALPHA, GL_ZERO, GL_ONE);
@@ -3063,6 +3091,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glBindTexture(GL_TEXTURE_2D, m_SkyLight[m_CurrentSkyLight].Texture);
 		glActiveTexture(GL_TEXTURE4);
 		glBindTexture(GL_TEXTURE_2D, m_SunMap.Texture);
+		glActiveTexture(GL_TEXTURE5);
+		glBindTexture(GL_TEXTURE_2D, effectsLayerDepth ? effectsLayerDepth->GetTextureId() : 0);
 		glActiveTexture(GL_TEXTURE0);
 		DrawFullscreen();
 		glBlendFunc(GL_ONE, GL_ONE);
