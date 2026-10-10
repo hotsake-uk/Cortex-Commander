@@ -70,8 +70,11 @@ namespace RTE {
 		static void SpawnEmber(const Vector& position);
 
 		/// Moves all particles on by however much simulation time passed since the last call, and adds queued spawns. Call once per frame.
-		/// @param amount Multiplier for how many particles spawn; 0 turns the system off.
-		static void Update(float amount);
+		/// @param sparks Multiplier for how many sparks spawn; 0 for none.
+		/// @param dust Multiplier for how many dust puffs spawn; 0 for none.
+		/// @param debris Multiplier for how many debris chips spawn; 0 for none.
+		/// Every other kind (embers, smoke, fire, spray, drops, froth) follows the largest of the three; all three 0 turns the system off.
+		static void Update(float sparks, float dust, float debris);
 
 		/// Draws the opaque debris chips into the scene (so they're lit like everything else). Call while drawing a camera's view.
 		/// Translucent dust is drawn later over the lit scene, see GetPuffs.

@@ -908,7 +908,8 @@ void FrameMan::Draw() {
 	}
 	{
 		PerformanceMan::LogScope logScope("Draw: visual particles update");
-		EffectsParticles::Update(g_PostProcessMan.GetLightingSettings().EffectsParticles);
+		const LightingSettings& effects = g_PostProcessMan.GetLightingSettings();
+		EffectsParticles::Update(effects.EffectsSparks, effects.EffectsDust, effects.EffectsDebris);
 		EffectsParticles::BeginFrame();
 	}
 
