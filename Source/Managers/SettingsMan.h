@@ -212,11 +212,12 @@ namespace RTE {
 		/// Whether actors pull themselves up onto ledges and over low obstacles they walk or jet into (see Actor::TryStartMantle).
 		bool MantlingEnabled() const { return m_EnableMantling; }
 
-		/// Whether the flesh and bone of the fallen settle into the terrain as Earth, keeping their colours (see Material::GetTerrainSettleMaterial).
-		bool BodiesSettleAsEarth() const { return m_BodiesSettleAsEarth; }
+		/// Whether everything that came off a unit and isn't flesh or bone (metal plating, gear, robot parts) settles into the terrain as Flesh Scraps,
+		/// keeping its colours, as the flesh does (see Material::GetTerrainSettleMaterial).
+		bool BodyGearSettlesAsScraps() const { return m_BodyGearSettlesAsScraps; }
 
-		/// Sets whether the flesh and bone of the fallen settle into the terrain as Earth. Remains already in the terrain stay as they settled.
-		void SetBodiesSettleAsEarth(bool enable) { m_BodiesSettleAsEarth = enable; }
+		/// Sets whether what came off a unit settles as Flesh Scraps. Remains already in the terrain stay as they settled.
+		void SetBodyGearSettlesAsScraps(bool enable) { m_BodyGearSettlesAsScraps = enable; }
 
 		/// Whether every scene is played without wrapping horizontally, with hard left and right edges, whatever its terrain says (see Scene::LoadData).
 		/// Takes effect when a scene is next loaded.
@@ -733,7 +734,7 @@ namespace RTE {
 		bool m_ShowOrderLabels; //!< Whether the order labels overlay is on (see ShowOrderLabels).
 		unsigned m_DebugChannels; //!< The debug text channels ticked in the settings, a bit per DebugChannel.
 		bool m_TraceAllUnits; //!< Whether the AI channels trace every unit (see TraceAllUnits).
-		bool m_BodiesSettleAsEarth; //!< Whether the flesh and bone of the fallen settle into the terrain as Earth (see BodiesSettleAsEarth).
+		bool m_BodyGearSettlesAsScraps; //!< Whether what came off a unit settles into the terrain as Flesh Scraps (see BodyGearSettlesAsScraps).
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
 		bool m_NoSceneWrap; //!< Whether every scene is played with hard left and right edges instead of wrapping.
 		float m_AISuppression; //!< How strongly fire pins units down and shakes them, 0 to 2 (see AISuppression).

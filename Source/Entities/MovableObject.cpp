@@ -83,6 +83,7 @@ void MovableObject::Clear() {
 	m_AlreadyHitBy.clear();
 	m_VelOscillations = 0;
 	m_ToSettle = false;
+	m_FromBody = false;
 	m_ToDelete = false;
 	m_HUDVisible = true;
 	m_IsTraveling = false;
@@ -253,6 +254,7 @@ int MovableObject::Create(const MovableObject& reference) {
 	m_pMOToNotHit = reference.m_pMOToNotHit;
 	m_MOIgnoreTimer = reference.m_MOIgnoreTimer;
 	m_MissionCritical = reference.m_MissionCritical;
+	m_FromBody = reference.m_FromBody;
 	m_CanBeSquished = reference.m_CanBeSquished;
 	m_HUDVisible = reference.m_HUDVisible;
 	m_PostEffectEnabled = reference.m_PostEffectEnabled;

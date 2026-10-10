@@ -152,11 +152,14 @@ namespace RTE {
 		unsigned char GetSettleMaterial() const { return (m_SettleMaterialIndex != 0) ? m_SettleMaterialIndex : m_Index; }
 
 		/// The material a particle or sprite of this is drawn into the terrain's material layer as when it settles: GetSettleMaterial, or this
-		/// material itself when the object has SettleMaterialDisabled. A body's material (see IsBody) settles as Earth instead while the
-		/// BodiesSettleAsEarth setting is on, so the remains of the fallen keep their colours but dig, burn and collapse like the ground.
+		/// material itself when the object has SettleMaterialDisabled. What came off a unit (see MovableObject::IsFromBody) that isn't flesh or bone
+		/// (see IsBody), its metal plating, gear and robot parts, settles as Flesh Scraps instead while the BodyGearSettlesAsScraps setting is on,
+		/// so the remains of the fallen keep their look but dig like the rest of them rather than leaving lumps of metal in the way. Liquids and
+		/// air are left as they are.
 		/// @param settleMaterialDisabled Whether the settling object keeps its own material rather than this one's SettleMaterial.
+		/// @param fromBody Whether the settling object came off a unit.
 		/// @return The material index to write into the terrain.
-		unsigned char GetTerrainSettleMaterial(bool settleMaterialDisabled = false) const;
+		unsigned char GetTerrainSettleMaterial(bool settleMaterialDisabled, bool fromBody) const;
 
 		/// Whether this is what bodies are made of: flesh and bone. Set with IsBody in INI; when it isn't, any material named Bone or with
 		/// Flesh in its name counts.

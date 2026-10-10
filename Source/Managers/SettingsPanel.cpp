@@ -730,8 +730,8 @@ void DebugMan::SettingsGUI() {
 			ImGui::TextDisabled("%d pieces moving, %d pixels fell", TerrainCollapse::GetFallingCount(), TerrainCollapse::GetCollapsedCount());
 		}
 		Toggle("Pieces of buildings fall too", TerrainCollapse::BuildingsFall(), [](bool on) { TerrainCollapse::SetBuildingsFall(on); });
-		Toggle("The fallen settle as earth", g_SettingsMan.BodiesSettleAsEarth(), [](bool on) { g_SettingsMan.SetBodiesSettleAsEarth(on); });
-		Tip("Flesh and bone from dead units that come to rest in the ground keep their colours but become earth: as hard to dig, falling and burning the way the ground around them does. Off: they settle as flesh scraps and ashes, as before.");
+		Toggle("Units' metal and gear settle as scraps", g_SettingsMan.BodyGearSettlesAsScraps(), [](bool on) { g_SettingsMan.SetBodyGearSettlesAsScraps(on); });
+		Tip("Armour plating, robot parts and the rest of what comes off a unit keep their look when they come to rest in the ground, but become the same soft scraps as the flesh, so the remains of the fallen never leave lumps of metal nobody can dig through. Flesh and bone settle as scraps and ashes either way. Off: everything settles as its own material.");
 		Heading("What falls");
 		Check("Floating masses stay up when chipped", &tuning.FloatingStays);
 		Tip("On: a mass that was already hanging in the air before a blast stays; cut in two, the bigger part stays and the smaller falls. Off: anything touching nothing falls.");

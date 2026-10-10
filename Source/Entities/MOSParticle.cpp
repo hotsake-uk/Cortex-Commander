@@ -250,7 +250,7 @@ void MOSParticle::Draw(BITMAP* targetBitmap, const Vector& targetPos, DrawMode m
 		int spriteY = drawPositions.at(i).GetFloorIntY();
 		switch (mode) {
 			case g_DrawMaterial:
-				draw_character_ex(targetBitmap, m_aSprite[m_Frame], spriteX, spriteY, GetMaterial()->GetTerrainSettleMaterial(m_SettleMaterialDisabled), -1);
+				draw_character_ex(targetBitmap, m_aSprite[m_Frame], spriteX, spriteY, GetMaterial()->GetTerrainSettleMaterial(m_SettleMaterialDisabled, m_FromBody), -1);
 				break;
 			case g_DrawWhite:
 				draw_character_ex(targetBitmap, m_aSprite[m_Frame], spriteX, spriteY, g_WhiteColor, -1);
