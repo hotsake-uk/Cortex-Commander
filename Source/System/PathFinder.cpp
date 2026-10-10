@@ -7,6 +7,7 @@
 
 #include "ConsoleMan.h"
 #include "Material.h"
+#include "TerrainTrees.h"
 #include "Scene.h"
 #include "SceneMan.h"
 #include "ThreadMan.h"
@@ -249,6 +250,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 
 int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathResult, float& totalCostResult, const PathAgent& agent, std::list<PathStepKind>* kinds) {
 	ZoneScoped;
+	SceneMan::TreesPassable treesPassable; // (As UpdateNodeCosts: the search's own looks at the ground go through trees.)
 
 	float jumpHeight = agent.JumpHeight;
 	float digStrength = agent.DigStrength;
@@ -1683,7 +1685,8 @@ float PathFinder::FallCost(const PathNode& to) const {
 }
 
 bool PathFinder::Open(const Material& material) const {
-	return material.GetIntegrity() <= c_OpenIntegrity;
+	// (Trees are walked through as grass is while units don't bump into them.)
+	return material.GetIntegrity() <= c_OpenIntegrity || TerrainTrees::ActorsPass(material.GetIndex());
 }
 
 PathLiquid PathFinder::LiquidOf(unsigned char id) const {
@@ -2424,12 +2427,13 @@ float PathFinder::WalkMaterialCost(const Material& material) const {
 }
 
 const Material* PathFinder::StrongestMaterialAlongLine(const Vector& start, const Vector& end, float stopAbove) const {
+	SceneMan::TreesPassable treesPassable; // (As UpdateNodeCosts.)
 	return g_SceneMan.CastMaxStrengthRayMaterial(start, end, 0, MaterialColorKeys::g_MaterialAir, m_LadderMaterial, stopAbove);
 }
 
 unsigned char PathFinder::TerrNav(int x, int y) const {
 	unsigned char id = g_SceneMan.GetTerrMatter(x, y);
-	return (m_LadderMaterial != 0 && id == m_LadderMaterial) ? static_cast<unsigned char>(MaterialColorKeys::g_MaterialAir) : id;
+	return ((m_LadderMaterial != 0 && id == m_LadderMaterial) || TerrainTrees::ActorsPass(id)) ? static_cast<unsigned char>(MaterialColorKeys::g_MaterialAir) : id;
 }
 
 void PathFinder::AddTeamAvoid(const Vector& place, double untilMS, double nowMS) {
@@ -2474,6 +2478,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	if (!node) {
 		return false;
 	}
+	SceneMan::TreesPassable treesPassable; // Trees are sampled as the air units walk through, while they don't bump into them.
 
 	std::array<const Material*, PathNode::c_MaxAdjacentNodeCount> oldMaterials = node->AdjacentNodeBlockingMaterials;
 	int oldFreeHeight = node->FreeHeight;

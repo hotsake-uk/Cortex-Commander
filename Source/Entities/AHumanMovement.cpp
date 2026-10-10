@@ -24,6 +24,7 @@
 #include "Activity.h"
 #include "PrimitiveMan.h"
 #include "FluidSim.h"
+#include "TerrainTrees.h"
 
 using namespace RTE;
 
@@ -42,7 +43,8 @@ namespace {
 	}
 
 	bool Solid(float x, float y) {
-		return g_SceneMan.GetTerrMatter(static_cast<int>(x), static_cast<int>(y)) != MaterialColorKeys::g_MaterialAir;
+		unsigned char id = g_SceneMan.GetTerrMatter(static_cast<int>(x), static_cast<int>(y));
+		return id != MaterialColorKeys::g_MaterialAir && !TerrainTrees::ActorsPass(id);
 	}
 
 	/// The Ladder material's index (the bunkers' rungs; see Materials.ini), 0 when there is none.
@@ -56,8 +58,11 @@ namespace {
 	}
 
 	/// Whether terrain of a material is something a walking body goes through as it comes, as the path grid has it (PathFinder::Open and
-	/// WalkMaterialCost): grass, foliage, ash, at an integrity of 5 or under; not a liquid.
+	/// WalkMaterialCost): grass, foliage, ash, at an integrity of 5 or under; not a liquid. Trees too, while units don't bump into them.
 	bool WalkedThrough(unsigned char id) {
+		if (TerrainTrees::ActorsPass(id)) {
+			return true;
+		}
 		const Material* material = g_SceneMan.GetMaterialFromID(id);
 		return material && material->GetIntegrity() <= 5.0F && material->GetBehaviour().Flows != 1;
 	}
@@ -66,7 +71,7 @@ namespace {
 	/// them or a floor under the feet, and the climb was refused or stopped in a flooded shaft.)
 	bool SolidNotLadder(float x, float y) {
 		unsigned char id = g_SceneMan.GetTerrMatter(static_cast<int>(x), static_cast<int>(y));
-		return id != MaterialColorKeys::g_MaterialAir && id != LadderMaterialID() && !FluidSim::IsLiquid(id);
+		return id != MaterialColorKeys::g_MaterialAir && id != LadderMaterialID() && !FluidSim::IsLiquid(id) && !TerrainTrees::ActorsPass(id);
 	}
 } // namespace
 

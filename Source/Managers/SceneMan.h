@@ -248,6 +248,16 @@ namespace RTE {
 			LiquidsPassable& operator=(const LiquidsPassable&) = delete;
 		};
 
+		/// While one of these is alive on a thread, GetTerrMatter on that thread reports trees as air while units and vehicles don't bump into
+		/// them (TerrainTrees::ActorsPass). Units' and vehicles' own updates and their AI run under it, so what they feel for as they move (floor,
+		/// walls, steps, ledges, what's in the way ahead) is the ground they meet, not the trees they walk through.
+		struct TreesPassable {
+			TreesPassable() { ++s_TreesPassableDepth; }
+			~TreesPassable() { --s_TreesPassableDepth; }
+			TreesPassable(const TreesPassable&) = delete;
+			TreesPassable& operator=(const TreesPassable&) = delete;
+		};
+
 		/// While one of these is alive on a thread, GetTerrMatter on that thread reports liquid in the terrain as air for as far into it as the liquid
 		/// lets a look (FluidSim::SightDepth) or a shot (FluidSim::ShotDepth) through, counted from the scope's start: so a ray cast under it sees, or
 		/// judges a shot, through water to what's in or beyond it, and stops at it past that depth. The look rays (CastMORay, CastFindMORay,
@@ -1154,6 +1164,7 @@ namespace RTE {
 
 		bool m_DrawRayCastVisualizations; //!< Whether to visibly draw RayCasts to the Scene debug Bitmap.
 		static thread_local int s_LiquidsPassableDepth; //!< How many LiquidsPassable scopes are alive on this thread.
+		static thread_local int s_TreesPassableDepth; //!< How many TreesPassable scopes are alive on this thread.
 		static thread_local LiquidsSeeThrough::State s_SeeThrough; //!< The innermost LiquidsSeeThrough scope alive on this thread, if any.
 		bool m_DrawPixelCheckVisualizations; //!< Whether to visibly draw pixel checks (GetTerrMatter and GetMOIDPixel) to the Scene debug Bitmap.
 
