@@ -1178,10 +1178,50 @@ namespace {
 				++shed;
 			}
 		}
-		if (shed > 0) {
-			Rebuild(body);
+		if (shed == 0) {
+			return false;
 		}
-		return shed > 0;
+		// Leaves left hanging on nothing but other loose leaves go too (shredded, or thrown while there's room), so the tree stays one piece rather than
+		// dropping a scatter of leafy scraps.
+		std::vector<unsigned char> held(body.Materials.size(), 0);
+		std::vector<int> stack;
+		for (int local = 0; local < static_cast<int>(body.Materials.size()); ++local) {
+			if (body.Materials[local] && !s_Flimsy[body.Materials[local]]) {
+				held[local] = 1;
+				stack.push_back(local);
+			}
+		}
+		while (!stack.empty()) {
+			int local = stack.back();
+			stack.pop_back();
+			int x = local % body.W;
+			int y = local / body.W;
+			for (int dy = -1; dy <= 1; ++dy) {
+				for (int dx = -1; dx <= 1; ++dx) {
+					int nx = x + dx;
+					int ny = y + dy;
+					if (nx < 0 || ny < 0 || nx >= body.W || ny >= body.H) {
+						continue;
+					}
+					int neighbour = ny * body.W + nx;
+					if (body.Materials[neighbour] && !held[neighbour]) {
+						held[neighbour] = 1;
+						stack.push_back(neighbour);
+					}
+				}
+			}
+		}
+		for (int local = 0; local < static_cast<int>(body.Materials.size()); ++local) {
+			if (body.Materials[local] && !held[local]) {
+				if (CanThrow(1)) {
+					glm::vec2 at(static_cast<float>(local % body.W) + 0.5F, static_cast<float>(local / body.W) + 0.5F);
+					ThrowDebris(body.Materials[local], body.Colors[local], ToWorld(body, at - body.Center, body.Pos, body.Angle), body.Vel * 0.5F + glm::vec2(Random01() - 0.5F, -Random01()) * 1.2F);
+				}
+				body.Materials[local] = 0;
+			}
+		}
+		Rebuild(body);
+		return true;
 	}
 
 	/// A body has stopped: it stays in the terrain as ordinary ground.
