@@ -26,6 +26,9 @@ uniform sampler2D rteSunMap; // 1 row: for each ray from the sun, the scene y of
 uniform float rteSunMapSlope;
 uniform float rteSunMapStart;
 uniform float rteSunMapTexel;
+uniform sampler2D rteSceneDepth; // The player screen's depth buffer.
+uniform bool rteEffectsLayer; // Smoke is in the effects layer (LightingSettings::LayerSmoke): it neither lights nor shades what's in front of it.
+uniform float rteEffectsFrontDepth; // Depth below which a pixel is in front of the effects layer: a unit or the ground in front.
 
 float Luminance(vec3 color) {
 	return dot(color, vec3(0.2126, 0.7152, 0.0722));
@@ -36,6 +39,9 @@ void main() {
 	vec4 smoke = texture(rteDensity, uv);
 	float density = rteShading ? smoke.a : smoke.r;
 	if (density <= 0.002) {
+		discard;
+	}
+	if (rteEffectsLayer && texture(rteSceneDepth, uv).r < rteEffectsFrontDepth) {
 		discard;
 	}
 	// Smoke this thick is opaque to the eye; scattering saturates rather than growing without bound.

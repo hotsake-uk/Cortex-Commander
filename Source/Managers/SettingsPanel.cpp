@@ -688,6 +688,33 @@ void DebugMan::SettingsGUI() {
 		}
 	};
 
+	auto effectLayers = [&]() {
+		Combo("All effects", &settings.EffectLayers, "Each its own layer\0All in front\0All behind\0");
+		Tip("Where the visual-only effects are drawn. Behind: in the effects layer, between the battlefield and the background, so units and the ground in front hide them while they still drift over the back walls of caves and bunkers and the sky. In front: over everything, as before. Each its own layer: as set for each one below.");
+		Heading("Each effect");
+		static constexpr const char* c_Labels[LightingSettings::EffectLayerCount] = {"Smoke", "Soft smoke", "Spray mist", "Splash drops", "Froth", "Dust", "Debris chips", "Sparks", "Embers", "Explosion fire"};
+		static constexpr const char* c_Tips[LightingSettings::EffectLayerCount] = {
+		    "The game's smoke sprites (smoke grenades, engines, guns, burning), and the light smoke scatters.",
+		    "The soft, billowing smoke the smoke sprites trail, and the smoke explosions leave behind.",
+		    "The pale spray off falling and splashing water.",
+		    "The drops a splash throws.",
+		    "The froth that sits on water where something splashed in. In front by default, since it lies on the water.",
+		    "Puffs of dust from blasts and from hits on soft ground.",
+		    "The little chips blasts and hits throw.",
+		    "Glowing sparks from blasts and from hits on hard ground.",
+		    "Embers lifting off fires.",
+		    "The balls of fire that swell and roll up from explosions."};
+		ImGui::BeginDisabled(settings.EffectLayers != LightingSettings::EffectLayersEach);
+		for (int layer = 0; layer < LightingSettings::EffectLayerCount; ++layer) {
+			int behind = settings.EffectBehind[layer] ? 1 : 0;
+			if (Combo(c_Labels[layer], &behind, "In front\0Behind\0")) {
+				settings.EffectBehind[layer] = behind != 0;
+			}
+			Tip(c_Tips[layer]);
+		}
+		ImGui::EndDisabled();
+	};
+
 	auto airAndWind = [&]() {
 		AirPressure::Tuning& tuning = AirPressure::GetTuning();
 		Toggle("Air and wind", AirPressure::IsOn(), [](bool on) { AirPressure::SetOn(on); });
@@ -1143,6 +1170,7 @@ void DebugMan::SettingsGUI() {
 	    {"Surfaces", surfaces},
 	    {"Water", water},
 	    {"Fire, smoke & blast", fireAndSmoke},
+	    {"Effect layers", effectLayers},
 	    {"Air & wind", airAndWind},
 	    {"Falling ground", fallingGround},
 	    {"Camera & image", cameraAndImage},

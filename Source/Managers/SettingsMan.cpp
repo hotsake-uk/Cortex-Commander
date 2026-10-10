@@ -471,6 +471,17 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("WaterFoamBrightness", { g_PostProcessMan.GetLightingSettings().WaterFoamBrightness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterFoamGlow", { g_PostProcessMan.GetLightingSettings().WaterFoamGlow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SoftSmoke", { g_PostProcessMan.GetLightingSettings().SoftSmoke = std::stof(reader.ReadPropValue()); });
+	MatchProperty("EffectLayers", { g_PostProcessMan.GetLightingSettings().EffectLayers = std::clamp(std::stoi(reader.ReadPropValue()), 0, 2); });
+	MatchProperty("LayerSmoke", { g_PostProcessMan.GetLightingSettings().EffectBehind[LightingSettings::LayerSmoke] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LayerSoftSmoke", { g_PostProcessMan.GetLightingSettings().EffectBehind[LightingSettings::LayerSoftSmoke] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LayerMist", { g_PostProcessMan.GetLightingSettings().EffectBehind[LightingSettings::LayerMist] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LayerSplash", { g_PostProcessMan.GetLightingSettings().EffectBehind[LightingSettings::LayerSplash] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LayerFroth", { g_PostProcessMan.GetLightingSettings().EffectBehind[LightingSettings::LayerFroth] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LayerDust", { g_PostProcessMan.GetLightingSettings().EffectBehind[LightingSettings::LayerDust] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LayerDebris", { g_PostProcessMan.GetLightingSettings().EffectBehind[LightingSettings::LayerDebris] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LayerSparks", { g_PostProcessMan.GetLightingSettings().EffectBehind[LightingSettings::LayerSparks] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LayerEmbers", { g_PostProcessMan.GetLightingSettings().EffectBehind[LightingSettings::LayerEmbers] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LayerFire", { g_PostProcessMan.GetLightingSettings().EffectBehind[LightingSettings::LayerFire] = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WaterLightGlow", { g_PostProcessMan.GetLightingSettings().WaterLightGlow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WaterReflections", { g_PostProcessMan.GetLightingSettings().WaterReflections = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WaterReflectionStrength", { g_PostProcessMan.GetLightingSettings().WaterReflectionStrength = std::stof(reader.ReadPropValue()); });
@@ -908,6 +919,10 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("WaterMirrorSurface", lighting.WaterMirrorSurface);
 	writer.NewPropertyWithValue("WaterSoftReflection", lighting.WaterSoftReflection);
 	writer.NewPropertyWithValue("SoftSmoke", lighting.SoftSmoke);
+	writer.NewPropertyWithValue("EffectLayers", lighting.EffectLayers);
+	for (int layer = 0; layer < LightingSettings::EffectLayerCount; ++layer) {
+		writer.NewPropertyWithValue(LightingSettings::EffectLayerKeys[layer], lighting.EffectBehind[layer]);
+	}
 	writer.NewPropertyWithValue("WaterMistSize", lighting.WaterMistSize);
 	writer.NewPropertyWithValue("WaterMistLife", lighting.WaterMistLife);
 	writer.NewPropertyWithValue("WaterMistOpacity", lighting.WaterMistOpacity);

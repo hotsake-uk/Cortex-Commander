@@ -10,6 +10,7 @@
 #include "Material.h"
 #include "Color.h"
 #include "Draw.h"
+#include "RenderMan.h"
 #include "Texture.h"
 #include "glad/gl.h"
 
@@ -37,6 +38,22 @@ namespace {
 		Droplet, //!< A drop of a splash: a pixel in the liquid's colour that flies, falls and is gone where it lands, in the liquid or on the ground. Nothing joins the liquid.
 		Froth //!< Froth on a liquid's surface where something splashed in or the level rose: a pale bubbly puff that sits on it, swells a little and fades over seconds.
 	};
+
+	/// Which of the effect layer settings (LightingSettings::EffectLayer) a kind of particle goes by.
+	LightingSettings::EffectLayer LayerOf(Kind kind) {
+		switch (kind) {
+			case Kind::Spark: return LightingSettings::LayerSparks;
+			case Kind::Debris: return LightingSettings::LayerDebris;
+			case Kind::Dust: return LightingSettings::LayerDust;
+			case Kind::Ember: return LightingSettings::LayerEmbers;
+			case Kind::Fire: return LightingSettings::LayerFire;
+			case Kind::Smoke: return LightingSettings::LayerSoftSmoke;
+			case Kind::Mist: return LightingSettings::LayerMist;
+			case Kind::Droplet: return LightingSettings::LayerSplash;
+			case Kind::Froth: return LightingSettings::LayerFroth;
+		}
+		return LightingSettings::LayerSoftSmoke;
+	}
 
 	struct Particle {
 		glm::vec2 Position; //!< Scene pixels.
@@ -572,6 +589,8 @@ void EffectsParticles::Update(float amount) {
 }
 
 void EffectsParticles::Draw(const Camera& camera) {
+	const LightingSettings& layers = g_PostProcessMan.GetLightingSettings();
+	float previousZOffset = g_RenderMan.GetCurrentZOffset();
 	// Two passes: a splash's under-layer first, so every other drop and chip is drawn over it.
 	for (bool underPass: {true, false}) {
 		for (const Particle& particle: s_Particles) {
@@ -586,12 +605,16 @@ void EffectsParticles::Draw(const Camera& camera) {
 			}
 			float size = particle.Type == Kind::Droplet ? std::clamp(std::round(particle.Size), 1.0F, 4.0F) : 1.0F;
 			float offset = std::floor((size - 1.0F) * 0.5F);
+			// In the effects layer the depth test puts it behind units and the ground in front, drawn before it.
+			g_RenderMan.SetCurrentZOffset(layers.Behind(LayerOf(particle.Type)) ? c_EffectsDepth : previousZOffset);
 			RTE::Draw::Rectangle(FloatRect(std::floor(particle.Position.x) - offset, std::floor(particle.Position.y) - offset, size, size), Color(particle.Color.r, particle.Color.g, particle.Color.b, alpha));
 		}
 	}
+	g_RenderMan.SetCurrentZOffset(previousZOffset);
 }
 
 void EffectsParticles::GetSparks(const glm::vec2& screenOrigin, int width, int height, std::vector<Spark>& sparks) {
+	const LightingSettings& layers = g_PostProcessMan.GetLightingSettings();
 	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
 	bool wraps = g_SceneMan.SceneWrapsX();
 	for (const Particle& particle: s_Particles) {
@@ -614,14 +637,15 @@ void EffectsParticles::GetSparks(const glm::vec2& screenOrigin, int width, int h
 		// Motion blurred streak: longer when fast.
 		if (particle.Type == Kind::Ember) {
 			float life = 1.0F - particle.Age / particle.Life;
-			sparks.push_back({position, glm::vec2(1.0F, 0.0F), 1.0F, glm::vec3(1.0F, 0.45F, 0.12F) * (0.3F + 0.7F * life)});
+			sparks.push_back({position, glm::vec2(1.0F, 0.0F), 1.0F, glm::vec3(1.0F, 0.45F, 0.12F) * (0.3F + 0.7F * life), layers.Behind(LightingSettings::LayerEmbers)});
 			continue;
 		}
-		sparks.push_back({position, direction, std::clamp(speed / 60.0F, 1.0F, 6.0F), SparkColor(particle)});
+		sparks.push_back({position, direction, std::clamp(speed / 60.0F, 1.0F, 6.0F), SparkColor(particle), layers.Behind(LightingSettings::LayerSparks)});
 	}
 }
 
 void EffectsParticles::GetPuffs(const glm::vec2& screenOrigin, int width, int height, std::vector<Puff>& puffs) {
+	const LightingSettings& layers = g_PostProcessMan.GetLightingSettings();
 	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
 	bool wraps = g_SceneMan.SceneWrapsX();
 	for (const Particle& particle: s_Particles) {
@@ -643,9 +667,11 @@ void EffectsParticles::GetPuffs(const glm::vec2& screenOrigin, int width, int he
 		float remaining = 1.0F - particle.Age / particle.Life;
 		// Smoke comes in slowly as its fire dies; dust is there at once.
 		float fadeIn = std::clamp(particle.Age * (particle.Type == Kind::Smoke ? 2.5F : 6.0F), 0.0F, 1.0F);
+		// In the effects layer, behind units and the ground in front, or in front of everything (LightingSettings::Behind).
+		bool behind = layers.Behind(LayerOf(particle.Type));
 		if (particle.Type == Kind::Mist) {
 			// A colour above 1 tells the particle shader this one keeps a little light of its own (see LitParticle.frag).
-			puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F + 1.0F, std::clamp(g_PostProcessMan.GetLightingSettings().WaterMistOpacity, 0.0F, 1.0F) * remaining * std::clamp(particle.Age * 12.0F, 0.0F, 1.0F)), particle.Angle, particle.Mirrored});
+			puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F + 1.0F, std::clamp(g_PostProcessMan.GetLightingSettings().WaterMistOpacity, 0.0F, 1.0F) * remaining * std::clamp(particle.Age * 12.0F, 0.0F, 1.0F)), particle.Angle, particle.Mirrored, behind});
 			continue;
 		}
 		if (particle.Type == Kind::Froth) {
@@ -654,11 +680,12 @@ void EffectsParticles::GetPuffs(const glm::vec2& screenOrigin, int width, int he
 			puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F + 1.0F, opacity), particle.Angle, particle.Mirrored});
 			continue;
 		}
-		puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F, (particle.Type == Kind::Smoke ? 0.55F : 0.4F) * remaining * fadeIn), particle.Angle, particle.Mirrored});
+		puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F, (particle.Type == Kind::Smoke ? 0.55F : 0.4F) * remaining * fadeIn), particle.Angle, particle.Mirrored, behind});
 	}
 }
 
 void EffectsParticles::GetFire(const glm::vec2& screenOrigin, int width, int height, std::vector<Puff>& fire) {
+	bool behind = g_PostProcessMan.GetLightingSettings().Behind(LightingSettings::LayerFire);
 	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
 	bool wraps = g_SceneMan.SceneWrapsX();
 	for (const Particle& particle: s_Particles) {
@@ -680,7 +707,7 @@ void EffectsParticles::GetFire(const glm::vec2& screenOrigin, int width, int hei
 		// White hot at first, through yellow and orange to a dull red as it burns out.
 		float burnt = std::clamp(particle.Age / particle.Life, 0.0F, 1.0F);
 		glm::vec3 color = burnt < 0.35F ? glm::mix(glm::vec3(1.0F, 0.95F, 0.75F), glm::vec3(1.0F, 0.7F, 0.2F), burnt / 0.35F) : glm::mix(glm::vec3(1.0F, 0.7F, 0.2F), glm::vec3(0.6F, 0.12F, 0.02F), (burnt - 0.35F) / 0.65F);
-		fire.push_back({position, size, glm::vec4(color * std::pow(1.0F - burnt, 0.8F), 1.0F)});
+		fire.push_back({position, size, glm::vec4(color * std::pow(1.0F - burnt, 0.8F), 1.0F), 0.0F, false, behind});
 	}
 }
 
