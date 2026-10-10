@@ -792,6 +792,13 @@ void DebugMan::SettingsGUI() {
 		Toggle("Pieces of buildings fall too", TerrainCollapse::BuildingsFall(), [](bool on) { TerrainCollapse::SetBuildingsFall(on); });
 		Toggle("Units and vehicles bump into trees", TerrainTrees::UnitsCollide(), [](bool on) { TerrainTrees::SetUnitsCollide(on); });
 		Tip("Off (as the game comes): units walk and vehicles drive through trees, and a tree coming down falls through them too. Trees still burn, stand until their trunks burn through, fall and land on the ground, and bullets, fire and liquids still meet them. On: trees are solid to units and vehicles like any ground, and a falling tree hits them.");
+		{
+			int strayPercent = TerrainTrees::StrayBulletPercent();
+			if (SliderI("Stray bullets that hit trees (%)", &strayPercent, 0, 100)) {
+				TerrainTrees::SetStrayBulletPercent(strayPercent);
+			}
+		}
+		Tip("Bullets go past trees. This is the chance that a bullet meeting a tree strikes it instead, now and then, and then it barely marks the tree. Rockets and the like clear a trunk but strike the leaves, so trees give cover from them. Fire and explosions work on trees as they always did.");
 		Toggle("Trees only meet the ground under them", TerrainCollapse::PassesTrees(), [](bool on) { TerrainCollapse::SetPassesTrees(on); });
 		Tip("On: rock and other ground falling from above goes through a standing tree (behind it, leaving the tree whole) rather than landing on it, and a falling tree goes through other trees. A tree that is cut or burnt through still falls over and lands on the ground. Off (as the game comes): trees are solid to falling pieces like any ground.");
 		Toggle("Units' metal and gear settle as scraps", g_SettingsMan.BodyGearSettlesAsScraps(), [](bool on) { g_SettingsMan.SetBodyGearSettlesAsScraps(on); });

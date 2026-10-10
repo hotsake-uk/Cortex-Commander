@@ -13,6 +13,10 @@
 #include "Actor.h"
 #include "SLTerrain.h"
 #include "FluidSim.h"
+#include "TerrainFire.h"
+#include "MOPixel.h"
+#include "MOSParticle.h"
+#include "AEmitter.h"
 #include "PieMenu.h"
 #include "Serializable.h"
 #include "System.h"
@@ -1434,4 +1438,28 @@ void MovableObject::AddHeatAt(const Vector& offset, float heat, float radius) {
 	} else if (coolest && coolest->Heat < heat) {
 		*coolest = {offset, std::min(heat, 1.0F), radius};
 	}
+}
+
+bool MovableObject::IsBullet() const {
+	return m_HitsMOs && (dynamic_cast<const MOPixel*>(this) || dynamic_cast<const MOSParticle*>(this)) && !TerrainFire::IsFireSource(this);
+}
+
+bool MovableObject::PassesTreeAsShot(unsigned char material) const {
+	if (!TerrainTrees::IsTreeMaterial(material) || m_IgnoreTerrain) {
+		return false;
+	}
+	const MovableObject* root = GetRootParent();
+	if (root->IsActor() || root->IsDevice()) {
+		return false;
+	}
+	if (root->IsBullet()) {
+		// A bullet goes past a tree, but some are strays that strike it. Which, is fixed for each bullet, by its number.
+		unsigned int roll = (static_cast<unsigned int>(root->m_UniqueID) * 2654435761u) >> 7;
+		return static_cast<int>(roll % 100) >= TerrainTrees::StrayBulletPercent();
+	}
+	// A rocket in flight clears a tree's trunk, so trees give cover from them, but its leaves stop it.
+	if (TerrainTrees::IsTrunk(material) && m_HitsMOs && dynamic_cast<const AEmitter*>(root) && root == this && root->m_Vel.MagnitudeIsGreaterThan(10.0F)) {
+		return true;
+	}
+	return false;
 }

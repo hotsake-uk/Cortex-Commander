@@ -15,6 +15,7 @@
 using namespace RTE;
 
 bool TerrainTrees::s_UnitsCollide = false;
+int TerrainTrees::s_StrayBulletPercent = 5;
 std::array<bool, 256> TerrainTrees::s_Tree{};
 std::array<bool, 256> TerrainTrees::s_Trunk{};
 std::array<bool, 256> TerrainTrees::s_ActorsPass{};
@@ -30,6 +31,7 @@ namespace {
 	long long s_LookedAtMS = -1; //!< Sim time of the last look; -1 for never.
 	const Scene* s_Scene = nullptr; //!< The scene the trees were found in.
 	unsigned int s_SceneGeneration = 0;
+	int s_SceneWidth = 0; //!< The width the owner keys were made with.
 } // namespace
 
 void TerrainTrees::SetUnitsCollide(bool collide) {
@@ -116,6 +118,14 @@ void TerrainTrees::FindTreesNear(const Vector& centre, float radius, std::vector
 	}
 }
 
+long TerrainTrees::OwnerIDAt(int x, int y) {
+	if (s_Owner.empty() || s_SceneWidth <= 0) {
+		return 0;
+	}
+	auto owner = s_Owner.find(y * s_SceneWidth + x);
+	return (owner != s_Owner.end() && owner->second >= 0 && owner->second < static_cast<int>(s_Found.size())) ? s_Found[owner->second].ID : 0;
+}
+
 const TerrainTrees::Tree* TerrainTrees::GetTree(long id) {
 	for (const Tree& tree: GetTrees()) {
 		if (tree.ID == id) {
@@ -138,6 +148,7 @@ void TerrainTrees::Survey() {
 	}
 	const int width = materials->w;
 	const int height = materials->h;
+	s_SceneWidth = width;
 	auto at = [materials](int x, int y) { return static_cast<int>(materials->line[y][x]); };
 
 	// First each trunk: tree trunk pixels standing together (diagonally too).

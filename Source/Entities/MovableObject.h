@@ -346,8 +346,15 @@ namespace RTE {
 				return false;
 			}
 			const MovableObject* root = GetRootParent();
-			return (root->m_PassMaterial != 0 && root->m_PassMaterial == material) || (TerrainTrees::ActorsPass(material) && root->IsActor());
+			return (root->m_PassMaterial != 0 && root->m_PassMaterial == material) || (TerrainTrees::ActorsPass(material) && root->IsActor()) || PassesTreeAsShot(material);
 		}
+
+		/// Whether this is a shot that goes past a tree material: a bullet (a small fast particle that hits MOs, not fire) past all of a tree but for
+		/// the odd stray one (TerrainTrees::StrayBulletPercent), and a launched rocket past its trunk but not its leaves.
+		bool PassesTreeAsShot(unsigned char material) const;
+
+		/// Whether this is a bullet or other small shot (not fire) that hits MOs.
+		bool IsBullet() const;
 
 		/// Sets whether this will collide with any Terrain
 		/// @param ignores Whether this can hit terrain.
