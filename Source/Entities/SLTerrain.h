@@ -13,6 +13,7 @@
 namespace RTE {
 
 	class MOPixel;
+	class MovableObject;
 	class TerrainFrosting;
 	class TerrainObject;
 	class TerrainDebris;
@@ -277,8 +278,9 @@ namespace RTE {
 		/// @param makeMOPs Whether to generate any MOPixels from the erased terrain pixels.
 		/// @param skipMOP How many pixels to skip making MOPixels from, between each that gets made. 0 means every pixel turns into an MOPixel.
 		/// @param maxMOPs The max number of MOPixels to make, if they are to be made.
+		/// @param eraser The object whose silhouette it is, or none. Terrain it passes through as air (a tree, for a unit while units don't bump into trees) is left alone.
 		/// @return A deque filled with the MOPixels of the terrain that are now dislodged. This will be empty if makeMOPs is false. Note that ownership of all the MOPixels in the deque IS transferred!
-		std::deque<MOPixel*> EraseSilhouette(BITMAP* sprite, const Vector& pos, const Vector& pivot, const Matrix& rotation, float scale, bool makeMOPs = true, int skipMOP = 2, int maxMOPs = 150);
+		std::deque<MOPixel*> EraseSilhouette(BITMAP* sprite, const Vector& pos, const Vector& pivot, const Matrix& rotation, float scale, bool makeMOPs = true, int skipMOP = 2, int maxMOPs = 150, const MovableObject* eraser = nullptr);
 
 		/// Returns the direction of the out-of-bounds "orbit" for this scene, where the brain must path to and where dropships/rockets come from.
 		/// @return The orbit direction, either Up, Down, Left or Right..
@@ -336,6 +338,7 @@ namespace RTE {
 		// Disallow the use of some implicit methods.
 		SLTerrain(const SLTerrain& reference) = delete;
 		SLTerrain& operator=(const SLTerrain& rhs) = delete;
+
 	private:
 		/// The changed-terrain map: one bit per c_ChangeTileSize square of the loaded scene, set by any thread that changes material, taken by the lighting.
 		struct ChangeTiles {

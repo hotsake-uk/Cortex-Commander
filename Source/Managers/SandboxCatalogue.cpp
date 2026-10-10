@@ -102,7 +102,13 @@ namespace SandboxDetail {
 			preset.Group = group;
 			preset.Modded = !g_PresetMan.IsModuleOfficial(preset.Module);
 			// The subcategory, from the groups the game files put the thing in.
-			if (preset.ClassName == "AHuman") {
+			if (object->IsInGroup("Actors - Livestock")) {
+				preset.Kind = "Farm animals";
+			} else if (object->IsInGroup("Actors - Civilians")) {
+				preset.Kind = "Civilians";
+			} else if (object->IsInGroup("Non-combatants")) {
+				preset.Kind = "Non-combatants";
+			} else if (preset.ClassName == "AHuman") {
 				preset.Kind = object->IsInGroup("Brains") ? "Brains" : "Infantry";
 			} else if (preset.ClassName == "ACrab") {
 				preset.Kind = object->IsInGroup("Turrets") ? "Turrets" : "Mecha";

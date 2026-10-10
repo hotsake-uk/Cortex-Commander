@@ -28,6 +28,8 @@ uniform sampler2D rteMaterialMap; // The terrain's material bitmap, a material i
 uniform bool rteMaterialMapOn; // Off where there's no map (a scene too big for one texture): liquids then go by palette colour alone, as before.
 uniform vec4 rteMaterialLooks[64]; // Each material's liquid look (RenderMan::SetMaterialLiquidLook), four materials to a vec4, 0 for none.
 uniform bool rteForegroundLayer; // Drawing the foreground layer, the one the material map is of (SceneMan::Draw): only its pixels can be a plant under a liquid.
+uniform int rteTreePass; // Drawing the foreground in two (SceneMan::Draw, trees behind units): 1 only trees' pixels, before the objects; 2 all but them, after; 0 all.
+uniform vec4 rteTreeMaterials[64]; // 1 for each material that is a tree's (TerrainTrees), four materials to a vec4.
 
 uniform bool rteLivingWorld;
 uniform float rteTime; // Seconds.
@@ -205,6 +207,17 @@ int MaterialLookAt(vec2 uv) {
 	return clamp(int(rteMaterialLooks[material >> 2][material & 3] + 0.5), 0, c_MaxLiquidLooks - 1);
 }
 
+// Whether the terrain pixel at a place in this layer's texture is a tree's (false with no material map).
+bool TreeAt(vec2 uv) {
+	ivec2 size = textureSize(rteTexture, 0);
+	if (!rteMaterialMapOn || textureSize(rteMaterialMap, 0) != size) {
+		return false;
+	}
+	ivec2 pixel = clamp(ivec2(floor(uv * vec2(size))), ivec2(0), size - 1);
+	int material = int(texelFetch(rteMaterialMap, pixel, 0).r * 255.0 + 0.5);
+	return rteTreeMaterials[material >> 2][material & 3] > 0.5;
+}
+
 // Whether the foreground pixel at a place is a plant under a liquid: a liquid that flows through grass and foliage keeps the plant's colour where it covers
 // one (FluidSim), so it's drawn with the liquid's look over the plant (see main).
 bool PlantUnderLiquidAt(vec2 uv) {
@@ -323,6 +336,7 @@ void main() {
 	vec2 uvDy = dFdy(textureUV);
 	float emissive = 0.0;
 	vec2 texel = 1.0 / vec2(textureSize(rteTexture, 0));
+	vec2 sourceUV = textureUV; // Where the colour drawn here comes from: a swaying leaf's own pixel.
 	if (rteIndexed) {
 		float colorIndex = texture(rteTexture, textureUV).r;
 		// (Not under a liquid, which holds plants still: a blade swaying away there would leave a hole in the water.)
@@ -340,6 +354,7 @@ void main() {
 				float sourceIndex = texture(rteTexture, textureUV - vec2(offset * texel.x, 0.0)).r;
 				if (IsVegetation(sourceIndex)) {
 					colorIndex = sourceIndex;
+					sourceUV = textureUV - vec2(offset * texel.x, 0.0);
 				} else if (IsVegetation(colorIndex)) {
 					// The blade moved away from here and nothing replaced it.
 					discard;
@@ -350,6 +365,10 @@ void main() {
 		emissive = texture(rteEmissivePalette, vec2(colorIndex, 0.0F)).r;
 	} else {
 		FragColor = texture(rteTexture, textureUV) * vertexColor;
+	}
+	// Trees behind units: the foreground drawn twice, its trees' pixels before the objects and the rest after.
+	if (rteTreePass != 0 && rteForegroundLayer && (rteTreePass == 1) != TreeAt(sourceUV)) {
+		discard;
 	}
 	if (FragColor.a == 0.0) {
 		if (rteIndexed && rteThinFlow > 0.0) {

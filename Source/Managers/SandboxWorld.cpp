@@ -1425,7 +1425,7 @@ namespace SandboxDetail {
 
 
 	/// The units random picks are made from: every faction's (turrets aside, as for FactionUnits), or one faction's (an index into
-	/// s_FactionModules, -1 for all), and with favouritesOnly only those marked as favourites in the unit or drop lists. With none of those
+	/// s_FactionModules, -1 for all, -2 for only the non-combatants: animals and civilians), and with favouritesOnly only those marked as favourites in the unit or drop lists. With none of those
 	/// marked, all of the faction's, rather than nothing at all.
 	std::vector<const Preset*> RandomUnitPool(bool favouritesOnly, int faction) {
 		std::vector<const Preset*> all;
@@ -1437,8 +1437,8 @@ namespace SandboxDetail {
 			}
 			const Entity* entity = g_PresetMan.GetEntityPreset(unit.ClassName, unit.PresetName, unit.ModuleID);
 			// (Nor vehicles, VH-1: nobody drives one placed or bought on its own.)
-			// (Nor animals and civilians, NC-1: a random squad is soldiers.)
-			if (!entity || entity->IsInGroup("Actors - Turrets") || entity->IsInGroup("Actors - Vehicles") || IsNonCombatantPreset(entity)) {
+			// (Nor animals and civilians, NC-1: a random squad is soldiers, unless it is asked for from the non-combatants alone.)
+			if (!entity || entity->IsInGroup("Actors - Turrets") || entity->IsInGroup("Actors - Vehicles") || IsNonCombatantPreset(entity) != (faction == -2)) {
 				continue;
 			}
 			all.push_back(&unit);

@@ -1179,8 +1179,12 @@ void Sandbox::DrawGUI() {
 					ImGui::SetItemTooltip("Which units are listed: all of them, only fighters, or only non-combatants (animals, civilians: units that never start a fight).");
 					TemperamentCombo("Temperament");
 					ImGui::SliderInt("Squad size", &s_SquadSize, 1, 10);
+					// An animal or a civilian has no kit to choose and takes no orders to fight (it is only one if the chosen unit is: random picks are soldiers unless asked for otherwise).
+					const Preset* chosenUnit = kind == Tool::Unit && !s_RandomUnits ? ChosenPreset(kind, ChoiceFor(kind)) : nullptr;
+					ImGui::BeginDisabled(chosenUnit && chosenUnit->NonCombatant);
 					LoadoutChooser();
 					UnitOrderCombo("Orders");
+					ImGui::EndDisabled();
 				} else if (kind == Tool::Item) {
 					ToolUI::Checkbox("Pull the pin (grenades)", &s_LitGrenade);
 				} else if (kind == Tool::Structure) {

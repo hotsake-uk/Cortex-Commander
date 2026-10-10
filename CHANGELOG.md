@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 <details><summary><b>Added</b></summary>
 
+- Sandbox Boom tab: blasts of force that shove and scatter without fire or blast damage (Force blast, Huge force blast, Implosion, Updraft, Gust right and left), and a Smoke bomb and Fireworks for show.
 - Spring lifetime (Sandbox, Paint > Springs): a spring can pour liquid that lasts only a set number of seconds (a slider for new springs, up to 120 s, and one on each placed spring; 0 is for ever). Each pixel it pours is gone that long after it was poured, wherever it has flowed to, so a spring can make a stream or a waterfall that doesn't fill up what it runs into. `FluidSim::Pour` takes an optional lifetime. Lifetimes are not kept in saved games.
 
 - Ropes (`Source/Managers/RopeSim.cpp`): rope, thread, chain, steel cable and bungee cord, each its own material with its own look, weight, strength, stretch, wind catch and fire behaviour. A rope is a line of points a few pixels apart that swings, sags, drapes over the ground, floats or sinks in liquid and blows in the wind. Where it's tied to the ground it holds until that ground is dug, burnt or blown away; tied to a unit or a thing it follows it and, once taut, holds it as the grapple gun's line holds its user, so units and crates hang and swing from it. Pulled harder than it holds, it snaps. Bullets cut it by how hard they hit against how tough it is (any bullet cuts thread, a rifle round cuts rope, a chain takes a blast right beside it), blasts throw it about and cut it close by, and fire runs along the kinds that burn (rope, thread, bungee) and burns through them; chain and steel cable don't burn.  
@@ -268,6 +269,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 </details>
 
 <details><summary><b>Fixed</b></summary>
+
+- Trees: units no longer cut holes in them. A unit jumping, jetting or knocked about inside a tree had its outline cut out of the terrain (the deep check that frees stuck bodies), which carved unit-shaped gaps through trunks; what an object passes through as air (trees for units, ladder rungs for a jetting soldier) is now left alone. Anything else that cuts a trunk this way makes the falling ground look again.  
+	A big tree cut through falls: its trunk and leaves no longer count towards the biggest piece that can fall (Collapse: Biggest piece), which large trees went over, so they stood floating on a cut trunk.  
+	Units are drawn in front of trees: the foreground's tree pixels are drawn before units and other moving things, the rest of the ground after (Settings, Falling ground: Units in front of trees, on as the game comes). Needs the lighting's terrain shader.  
+	Leaves break apart much more easily when a tree lands: Settings, Falling ground: Leaves break apart (x easier), 4 as the game comes; a clump of nothing but leaves comes apart that much more easily too.  
+	Scripts on units (Update, ThreadedUpdate, SyncedUpdate, mods' AI among them) see trees as air while units walk through trees, as the built-in AI and the path grids already did, so they don't take a tree for a wall.
 
 - Fixed a crash on launch that could occur depending on what Microsoft Visual C++ Redistributable the user has installed.
 
