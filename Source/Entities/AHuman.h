@@ -526,6 +526,11 @@ namespace RTE {
 		/// Updates this MovableObject. Supposed to be done every frame.
 		void Update() override;
 
+		/// Does the calculations necessary to detect whether this AHuman is at rest or not. A dead body propped up on its head, a shoulder
+		/// or its feet doesn't count as at rest (and so doesn't settle into the terrain) until it has toppled over to lie down, or has been
+		/// stuck for a while.
+		void RestDetection() override;
+
 		/// Draws this AHuman's current graphical representation to a
 		/// BITMAP of choice.
 		/// @param pTargetBitmap A pointer to a BITMAP to draw on.

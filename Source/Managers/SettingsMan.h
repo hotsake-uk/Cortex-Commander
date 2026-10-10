@@ -212,6 +212,12 @@ namespace RTE {
 		/// Whether actors pull themselves up onto ledges and over low obstacles they walk or jet into (see Actor::TryStartMantle).
 		bool MantlingEnabled() const { return m_EnableMantling; }
 
+		/// Whether the flesh and bone of the fallen settle into the terrain as Earth, keeping their colours (see Material::GetTerrainSettleMaterial).
+		bool BodiesSettleAsEarth() const { return m_BodiesSettleAsEarth; }
+
+		/// Sets whether the flesh and bone of the fallen settle into the terrain as Earth. Remains already in the terrain stay as they settled.
+		void SetBodiesSettleAsEarth(bool enable) { m_BodiesSettleAsEarth = enable; }
+
 		/// Whether every scene is played without wrapping horizontally, with hard left and right edges, whatever its terrain says (see Scene::LoadData).
 		/// Takes effect when a scene is next loaded.
 		bool NoSceneWrap() const { return m_NoSceneWrap; }
@@ -727,6 +733,7 @@ namespace RTE {
 		bool m_ShowOrderLabels; //!< Whether the order labels overlay is on (see ShowOrderLabels).
 		unsigned m_DebugChannels; //!< The debug text channels ticked in the settings, a bit per DebugChannel.
 		bool m_TraceAllUnits; //!< Whether the AI channels trace every unit (see TraceAllUnits).
+		bool m_BodiesSettleAsEarth; //!< Whether the flesh and bone of the fallen settle into the terrain as Earth (see BodiesSettleAsEarth).
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
 		bool m_NoSceneWrap; //!< Whether every scene is played with hard left and right edges instead of wrapping.
 		float m_AISuppression; //!< How strongly fire pins units down and shakes them, 0 to 2 (see AISuppression).

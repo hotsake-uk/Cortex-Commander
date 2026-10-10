@@ -226,6 +226,8 @@ namespace SandboxDetail {
 				return "Drag along the ground to put down rows of the game's own cacti, big and small.";
 			case Tool::Mushrooms:
 				return "Drag along the ground to put down the game's own red and yellow mushrooms, mostly small ones.";
+			case Tool::GrowGrass:
+				return "Brush over the ground to grow grass on top of it, a few pixels thick, as the game's own maps have on their topsoil. Grows only up into the air, and only where there's no grass yet.";
 			case Tool::Trees:
 				return "Drag along the ground to plant big trees: leafy, pine, tall and autumn ones, their trunks of tree trunk (wood without it) and their leaves of vegetation, so they burn and can be cut down.";
 			case Tool::TerrainOther:
@@ -265,6 +267,8 @@ namespace SandboxDetail {
 				return {Icon::Wall, IM_COL32(242, 182, 61, 255)};
 			case Tool::Extractor:
 				return {Icon::Wall, IM_COL32(120, 200, 230, 255)};
+			case Tool::Generator:
+				return {Icon::Bolt, IM_COL32(250, 230, 90, 255)};
 			case Tool::OrderMove:
 				return {Icon::Arrows, IM_COL32(242, 182, 61, 255)};
 			case Tool::GymStart:
@@ -367,6 +371,8 @@ namespace SandboxDetail {
 				return {Icon::Plant, IM_COL32(230, 90, 70, 255)};
 			case Tool::Trees:
 				return {Icon::Plant, IM_COL32(70, 140, 60, 255)};
+			case Tool::GrowGrass:
+				return {Icon::Plant, IM_COL32(140, 210, 80, 255)};
 			case Tool::BoulderRain:
 				return {Icon::Chunk, IM_COL32(150, 140, 130, 255)};
 			case Tool::Dig:
@@ -1476,9 +1482,9 @@ namespace SandboxDetail {
 		if (label.empty()) {
 			label = tool.Name;
 		}
-		if (tool.Kind == Tool::Barracks || tool.Kind == Tool::Extractor) {
+		if (tool.Kind == Tool::Barracks || tool.Kind == Tool::Extractor || tool.Kind == Tool::Generator) {
 			// The plot it will take, on the ground under the pointer.
-			const Colony::Type& type = Colony::GetType(tool.Kind == Tool::Barracks ? Colony::Kind::Barracks : Colony::Kind::Extractor);
+			const Colony::Type& type = Colony::GetType(tool.Kind == Tool::Barracks ? Colony::Kind::Barracks : tool.Kind == Tool::Extractor ? Colony::Kind::Extractor : Colony::Kind::Generator);
 			Vector ground = MouseScenePosition();
 			int sceneHeight = g_SceneMan.GetSceneHeight();
 			for (int tries = 0; tries < 600 && g_SceneMan.GetTerrMatter(ground.GetFloorIntX(), ground.GetFloorIntY()) != g_MaterialAir; ++tries) {
@@ -1490,6 +1496,11 @@ namespace SandboxDetail {
 			Vector corner = FromCamera(ground + Vector(-static_cast<float>(type.Width / 2), 1.0F - static_cast<float>(type.Height)));
 			ImVec2 topLeft(ViewOrigin().x + corner.m_X / scale, ViewOrigin().y + corner.m_Y / scale);
 			drawList->AddRect(topLeft, ImVec2(topLeft.x + static_cast<float>(type.Width) / scale, topLeft.y + static_cast<float>(type.Height) / scale), c_SideColors[s_Team], 0.0F, 0, 1.5F);
+			if (tool.Kind == Tool::Generator) {
+				// How far it reaches.
+				Vector middle = FromCamera(ground);
+				drawList->AddCircle(ImVec2(ViewOrigin().x + middle.m_X / scale, ViewOrigin().y + middle.m_Y / scale), Colony::PowerRange() / scale, (c_SideColors[s_Team] & ~IM_COL32_A_MASK) | IM_COL32(0, 0, 0, 120), 96, 1.0F);
+			}
 		} else if (tool.Kind == Tool::Structure) {
 			if (const Preset* preset = ChosenPreset(Tool::Structure, s_StructureChoice)) {
 				// The piece itself, see-through, exactly where a click will put it, with its outline.
@@ -2255,10 +2266,20 @@ namespace SandboxDetail {
 				continue;
 			}
 			std::string label = std::string(type.Name) + (building.What == Colony::Kind::Barracks ? "  " + std::to_string(building.Alive.size()) + "/" + std::to_string(building.KeepAlive) : "");
+			// Short of power, said in red after the name.
+			const char* power = building.NoPower ? (building.Power > 0.0F ? "  Low power" : "  No power") : "";
 			ImVec2 size = ImGui::CalcTextSize(label.c_str());
-			ImVec2 at(top.x - size.x * 0.5F, top.y - size.y - 6.0F);
-			drawList->AddRectFilled(ImVec2(at.x - 4.0F, at.y - 2.0F), ImVec2(at.x + size.x + 4.0F, at.y + size.y + 2.0F), IM_COL32(0, 0, 0, 140), 3.0F);
+			ImVec2 powerSize = ImGui::CalcTextSize(power);
+			ImVec2 at(top.x - (size.x + powerSize.x) * 0.5F, top.y - size.y - 6.0F);
+			drawList->AddRectFilled(ImVec2(at.x - 4.0F, at.y - 2.0F), ImVec2(at.x + size.x + powerSize.x + 4.0F, at.y + size.y + 2.0F), IM_COL32(0, 0, 0, 140), 3.0F);
 			drawList->AddText(at, c_SideColors[building.Team], label.c_str());
+			if (*power) {
+				drawList->AddText(ImVec2(at.x + size.x, at.y), IM_COL32(255, 90, 70, 255), power);
+			}
+			if (building.What == Colony::Kind::Generator && Colony::NeedsPower() && !building.Paused) {
+				// How far it reaches, faintly.
+				drawList->AddCircle(ToScreen(building.Ground), Colony::PowerRange() / scale, (c_SideColors[building.Team] & ~IM_COL32_A_MASK) | IM_COL32(0, 0, 0, 60), 96, 1.0F);
+			}
 			if (building.What == Colony::Kind::Barracks && building.Paid) {
 				float barWidth = std::max(static_cast<float>(type.Width) / scale * 0.6F, 30.0F);
 				ImVec2 barAt(top.x - barWidth * 0.5F, top.y - 3.0F);
@@ -2271,7 +2292,7 @@ namespace SandboxDetail {
 
 	/// The Colony tab of the sandbox window.
 	void ColonyTab() {
-		ImGui::TextWrapped("Buildings that work for a side. A barracks trains a unit, sends it out with its orders, and trains another whenever fewer than its number are alive. An extractor earns supply. They are built of concrete: wreck one and it stops.");
+		ImGui::TextWrapped("Buildings that work for a side. A barracks trains a unit, sends it out with its orders, and trains another whenever fewer than its number are alive. An extractor earns supply. A generator powers its side's buildings near it, when buildings need power. They are built of concrete: wreck one and it stops.");
 		ToolUI::Checkbox("Training is free", &Colony::Free());
 		ImGui::SetItemTooltip("Off: a barracks pays for each unit from the supply of its side, which grows slowly by itself and faster with extractors.");
 		if (!Colony::Free()) {
@@ -2284,10 +2305,21 @@ namespace SandboxDetail {
 				ImGui::PopID();
 			}
 		}
+		ToolUI::Checkbox("Buildings need power", &Colony::NeedsPower());
+		ImGui::SetItemTooltip("On: a barracks draws %.0f power while it trains, from its side's generators within %.0f pixels. Each generator gives %.0f.", Colony::TrainingPower(), Colony::PowerRange(), Colony::GeneratorPower());
+		if (Colony::NeedsPower()) {
+			int withoutPower = static_cast<int>(Colony::WithoutPower());
+			const char* choices[] = {"stops training", "trains slower"};
+			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.4F);
+			if (ImGui::Combo("Short of power, a barracks", &withoutPower, choices, 2)) {
+				Colony::WithoutPower() = static_cast<Colony::NoPower>(withoutPower);
+			}
+			ImGui::SetItemTooltip("Slower: it trains at the share of its power it gets, and at a quarter pace with none.");
+		}
 		ImGui::SeparatorText("Build");
-		ToolButtons({Tool::Barracks, Tool::Extractor});
+		ToolButtons({Tool::Barracks, Tool::Extractor, Tool::Generator});
 		Tool kind = CurrentTool().Kind;
-		if (kind == Tool::Barracks || kind == Tool::Extractor) {
+		if (kind == Tool::Barracks || kind == Tool::Extractor || kind == Tool::Generator) {
 			SideChooser();
 		}
 		if (kind == Tool::Barracks) {
@@ -2328,6 +2360,9 @@ namespace SandboxDetail {
 					ImGui::SliderInt("Keeps this many alive", &building.KeepAlive, 1, 20);
 					ImGui::Text("%d alive, %d trained in all. One takes %.0f s%s.", static_cast<int>(building.Alive.size()), building.Produced, Colony::TrainingSeconds(std::max(Sandbox::UnitCost(building.Unit), 20.0F)),
 					            Colony::Free() ? "" : (" and " + std::to_string(static_cast<int>(std::max(Sandbox::UnitCost(building.Unit), 20.0F))) + " supply").c_str());
+					if (Colony::NeedsPower()) {
+						ImGui::Text("Needs %.0f power while it trains%s.", Colony::TrainingPower(), building.NoPower ? (building.Power > 0.0F ? ", and is getting " + std::to_string(static_cast<int>(building.Power * 100.0F)) + "% of it" : ", and has none: build a generator near it").c_str() : "");
+					}
 				} else {
 					ImGui::TextDisabled("%s", type.Description);
 				}

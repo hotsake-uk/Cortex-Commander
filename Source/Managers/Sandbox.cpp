@@ -129,6 +129,20 @@ void Sandbox::SetAIPaused(bool paused) {
 	Controller::SetAIPaused(paused);
 }
 
+void Sandbox::SetColonyPower(bool needsPower, bool slowWithout) {
+	Colony::NeedsPower() = needsPower;
+	Colony::WithoutPower() = slowWithout ? Colony::NoPower::Slows : Colony::NoPower::Stops;
+}
+
+std::string Sandbox::ColonyStatus(int id) {
+	for (const Colony::Building& building: Colony::Buildings()) {
+		if (building.ID == id) {
+			return building.Status;
+		}
+	}
+	return "";
+}
+
 bool Sandbox::SetBuildMode(bool build) {
 	GameActivity* game = CurrentGame();
 	if (!game || !InGame()) {
@@ -916,6 +930,20 @@ void Sandbox::DrawGUI() {
 			ToolButtons({Tool::Remove, Tool::RallyPoint});
 			CommanderPanel();
 		}
+		// How this window is shown, at the top of it where it can be found: docked at the side, floating, or most of the screen.
+		{
+			int placement = static_cast<int>(g_DebugMan.GetSandboxPlacement());
+			static const char* const placementNames[] = {"Side panel", "Floating", "Large"};
+			static const char* const placementTips[] = {"Docked at the left of the screen; drag its edge to make it wider or narrower.", "A window to move and resize as you like.", "Nine tenths of the screen, in the middle of it."};
+			ImGui::TextDisabled("View");
+			for (int choice = 0; choice < 3; ++choice) {
+				ImGui::SameLine();
+				if (ToolUI::RadioButton(placementNames[choice], &placement, choice)) {
+					g_DebugMan.SetSandboxPlacement(static_cast<DebugMan::PanelPlacement>(placement));
+				}
+				ImGui::SetItemTooltip("%s", placementTips[choice]);
+			}
+		}
 		if (DrawTabRows()) {
 			if (IsGodMode() && SandboxTab("You")) {
 				s_CurrentTab = "You";
@@ -1249,7 +1277,7 @@ void Sandbox::DrawGUI() {
 				ImGui::SeparatorText("Loose things");
 				ToolButtons({Tool::LooseSand, Tool::LooseSnow, Tool::Gravel, Tool::GlassShards, Tool::Boulder, Tool::Slab});
 				ImGui::SeparatorText("Plants");
-				ToolButtons({Tool::Plants, Tool::Cacti, Tool::Mushrooms, Tool::Trees});
+				ToolButtons({Tool::Plants, Tool::Cacti, Tool::Mushrooms, Tool::Trees, Tool::GrowGrass});
 				ImGui::SliderFloat("Plant size", &s_PlantScale, 0.5F, 3.0F, "x%.1f");
 				ImGui::SetItemTooltip("How big the plants, cacti, mushrooms and trees are drawn. x1 is the game's own art; bigger keeps it blocky, as the pixel art is.");
 				ImGui::SliderInt("Plant spacing", &s_PlantSpacing, 2, 60, "%d px");

@@ -16,15 +16,22 @@ namespace {
 	constexpr Colony::Type c_Types[] = {
 	    {"Barracks", "Trains units for its side, one after another, and keeps a number of them alive.", 120, 72},
 	    {"Extractor", "Earns supply for its side.", 48, 60},
+	    {"Generator", "Powers its side's buildings in range, when buildings need power.", 56, 64},
 	};
 	constexpr float c_StartingSupply = 1500.0F;
 	constexpr float c_BaseIncome = 4.0F; //!< Supply a second for a side with any building.
 	constexpr float c_ExtractorIncome = 12.0F; //!< Supply a second from each extractor.
+	constexpr float c_GeneratorPower = 100.0F; //!< Power each generator gives: enough for two barracks training at once.
+	constexpr float c_TrainingPower = 50.0F; //!< Power a barracks draws while it trains.
+	constexpr float c_PowerRange = 500.0F; //!< How far a generator reaches, from ground to ground.
+	constexpr float c_UnpoweredPace = 0.25F; //!< With NoPower::Slows, how fast a barracks with no power trains, as a share of its full pace.
 	constexpr float c_WreckedShare = 0.45F; //!< With less than this much of it left, a building is a ruin.
 
 	std::vector<Colony::Building> s_Buildings;
 	std::array<float, 4> s_Supply = {c_StartingSupply, c_StartingSupply, c_StartingSupply, c_StartingSupply};
 	bool s_Free = true;
+	bool s_NeedsPower = false;
+	Colony::NoPower s_WithoutPower = Colony::NoPower::Stops;
 	int s_NextID = 1;
 
 	bool IsAir(int x, int y) { return g_SceneMan.GetTerrMatter(x, y) == g_MaterialAir; }
@@ -44,6 +51,40 @@ namespace {
 		}
 		return solid;
 	}
+
+	/// The generators of a side that reach a building and are running.
+	std::vector<Colony::Building*> GeneratorsFor(const Colony::Building& building) {
+		std::vector<Colony::Building*> generators;
+		for (Colony::Building& generator: s_Buildings) {
+			if (generator.What == Colony::Kind::Generator && generator.Team == building.Team && !generator.Paused && (generator.Ground - building.Ground).MagnitudeIsLessThan(c_PowerRange)) {
+				generators.push_back(&generator);
+			}
+		}
+		return generators;
+	}
+
+	/// Takes up to this much power for a building from its side's generators in range. Generator::Power holds what each has given out.
+	/// @return How much it got.
+	float DrawPower(const Colony::Building& building, float wanted) {
+		float got = 0.0F;
+		for (Colony::Building* generator: GeneratorsFor(building)) {
+			float take = std::min(wanted - got, c_GeneratorPower - generator->Power);
+			if (take > 0.0F) {
+				generator->Power += take;
+				got += take;
+			}
+		}
+		return got;
+	}
+
+	/// How much power a building could still get from its side's generators in range.
+	float SparePower(const Colony::Building& building) {
+		float spare = 0.0F;
+		for (const Colony::Building* generator: GeneratorsFor(building)) {
+			spare += std::max(c_GeneratorPower - generator->Power, 0.0F);
+		}
+		return spare;
+	}
 } // namespace
 
 const Colony::Type& Colony::GetType(Kind kind) { return c_Types[std::clamp(static_cast<int>(kind), 0, static_cast<int>(Kind::Count) - 1)]; }
@@ -53,6 +94,16 @@ std::vector<Colony::Building>& Colony::Buildings() { return s_Buildings; }
 float& Colony::Supply(int team) { return s_Supply[std::clamp(team, 0, 3)]; }
 
 bool& Colony::Free() { return s_Free; }
+
+bool& Colony::NeedsPower() { return s_NeedsPower; }
+
+Colony::NoPower& Colony::WithoutPower() { return s_WithoutPower; }
+
+float Colony::PowerRange() { return c_PowerRange; }
+
+float Colony::GeneratorPower() { return c_GeneratorPower; }
+
+float Colony::TrainingPower() { return c_TrainingPower; }
 
 float Colony::TrainingSeconds(float cost) { return std::clamp(cost / 40.0F, 4.0F, 30.0F); }
 
@@ -105,6 +156,11 @@ int Colony::Place(Kind kind, const Vector& place, int team, const std::string& u
 		Sandbox::FillBox(Vector(left, top), type.Width, 8, "Concrete");
 		Sandbox::FillBox(Vector(left, top), 8, type.Height, "Concrete");
 		Sandbox::FillBox(Vector(left + width - 8.0F, top), 8, 14, "Concrete");
+	} else if (kind == Kind::Generator) {
+		// A low hall with two stacks.
+		Sandbox::FillBox(Vector(left, building.Ground.m_Y - 30.0F), type.Width, 30, "Concrete");
+		Sandbox::FillBox(Vector(left + 8.0F, top), 8, type.Height - 30, "Concrete");
+		Sandbox::FillBox(Vector(left + width - 16.0F, top + 12.0F), 8, type.Height - 42, "Concrete");
 	} else {
 		// A squat block with a mast.
 		Sandbox::FillBox(Vector(left, building.Ground.m_Y - 26.0F), type.Width, 26, "Concrete");
@@ -121,7 +177,10 @@ void Colony::Update() {
 	bool checkWrecks = g_TimerMan.GetSimUpdateCount() % 30 == 0;
 	std::array<float, 4> income{};
 	std::array<bool, 4> hasBuilding{};
-	for (const Building& building: s_Buildings) {
+	for (Building& building: s_Buildings) {
+		if (building.What == Kind::Generator) {
+			building.Power = 0.0F; // Given out afresh each update, to the barracks in the order they were built.
+		}
 		hasBuilding[building.Team] = true;
 		if (building.What == Kind::Extractor && !building.Paused) {
 			income[building.Team] += c_ExtractorIncome;
@@ -143,6 +202,11 @@ void Colony::Update() {
 			building.Status = building.Paused ? "Stopped" : "Earning supply";
 			continue;
 		}
+		if (building.What == Kind::Generator) {
+			continue; // Its status is set once every barracks has drawn on it, below.
+		}
+		building.Power = 1.0F;
+		building.NoPower = false;
 		// (Dead too, not just gone: a body is a valid actor until it settles, and was counted alive meanwhile, so no replacement was made.)
 		building.Alive.erase(std::remove_if(building.Alive.begin(), building.Alive.end(), [](const std::pair<Actor*, long>& unit) {
 			                     return !g_MovableMan.IsActor(unit.first) || static_cast<long>(unit.first->GetUniqueID()) != unit.second || unit.first->IsDead() || unit.first->GetHealth() <= 0.0F;
@@ -161,6 +225,17 @@ void Colony::Update() {
 			continue;
 		}
 		float cost = std::max(Sandbox::UnitCost(building.Unit), 20.0F);
+		if (s_NeedsPower) {
+			// Without the power, it does not start (so pays nothing), or with Slows, goes on at what it gets, or a quarter pace with none.
+			if (s_WithoutPower == NoPower::Stops && SparePower(building) < c_TrainingPower) {
+				building.Power = 0.0F;
+				building.NoPower = true;
+				building.Status = "No power";
+				continue;
+			}
+			building.Power = DrawPower(building, c_TrainingPower) / c_TrainingPower;
+			building.NoPower = building.Power < 1.0F;
+		}
 		if (!building.Paid) {
 			if (!s_Free && s_Supply[building.Team] < cost) {
 				building.Status = "Waiting for supply";
@@ -172,8 +247,9 @@ void Colony::Update() {
 			building.Paid = true;
 			building.Progress = 0.0F;
 		}
-		building.Status = "Training " + building.Unit;
-		building.Progress += seconds / TrainingSeconds(cost);
+		building.Status = "Training " + building.Unit + (!building.NoPower ? "" : building.Power > 0.0F ? " on low power" : " slowly: no power");
+		float pace = building.NoPower ? std::max(building.Power, c_UnpoweredPace) : 1.0F;
+		building.Progress += pace * seconds / TrainingSeconds(cost);
 		if (building.Progress >= 1.0F) {
 			building.Progress = 0.0F;
 			building.Paid = false;
@@ -186,6 +262,11 @@ void Colony::Update() {
 				building.Status = "Can not make " + building.Unit;
 				building.Paused = true;
 			}
+		}
+	}
+	for (Building& generator: s_Buildings) {
+		if (generator.What == Kind::Generator) {
+			generator.Status = generator.Paused ? "Stopped" : !s_NeedsPower ? "Idle: buildings run without power" : "Giving " + std::to_string(static_cast<int>(generator.Power + 0.5F)) + " of " + std::to_string(static_cast<int>(c_GeneratorPower)) + " power";
 		}
 	}
 	for (int id: wrecked) {

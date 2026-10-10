@@ -190,7 +190,11 @@ namespace SandboxDetail {
 		Mushrooms,
 		Trees,
 		// Appended, so the tools before keep their numbers.
-		TreeTrunk //!< The base game's "Tree Trunk": wood, darker, like a tree's.
+		TreeTrunk, //!< The base game's "Tree Trunk": wood, darker, like a tree's.
+		// Appended, so the tools before keep their numbers.
+		Generator, //!< A colony generator: powers its side's buildings in range (Colony::NeedsPower).
+		// Appended, so the tools before keep their numbers.
+		GrowGrass //!< Grows a layer of grass up from the top of the ground under the brush, as the base game's maps have on their topsoil.
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -306,6 +310,8 @@ namespace SandboxDetail {
 	    {Tool::Methane, "Methane", 0.06F, true},
 	    {Tool::Steam, "Steam", 0.06F, true},
 	    {Tool::TreeTrunk, "Tree trunk", 0.03F, true},
+	    {Tool::Generator, "Generator", 0.0F, false},
+	    {Tool::GrowGrass, "Grow grass", 0.03F, true},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -333,6 +339,7 @@ namespace SandboxDetail {
 			case Tool::DenseEarth:
 			case Tool::GoldEarth:
 			case Tool::TerrainOther:
+			case Tool::GrowGrass:
 				return true;
 			default:
 				return false;
@@ -394,7 +401,7 @@ namespace SandboxDetail {
 	constexpr float c_GoldEarthShare = 0.06F;
 
 	/// The base game's ground materials offered under "More terrain..." (those a game doesn't have are left out).
-	constexpr const char* c_TerrainMaterials[] = {"Topsoil", "Earth", "Dense Earth", "Stone", "Bedrock", "Gold", "Red Earth", "Dense Red Earth", "Red Stone", "Lunar Earth", "Dense Lunar Earth", "Lunar Stone", "Snow", "Dense Snow", "Ice", "Sand", "Cave Floor", "Cave Ceiling", "Grass", "Vegetation", "Wood", "Tree Trunk", "Concrete", "Metal", "Scrap Metal", "Glass", "Sandbag", "Rubber"};
+	constexpr const char* c_TerrainMaterials[] = {"Topsoil", "Earth", "Dense Earth", "Stone", "Bedrock", "Gold", "Red Earth", "Dense Red Earth", "Red Stone", "Lunar Earth", "Dense Lunar Earth", "Lunar Stone", "Snow", "Dense Snow", "Ice", "Sand", "Cave Floor", "Cave Ceiling", "Grass", "Vegetation", "Wood", "Tree Trunk", "Charcoal", "Concrete", "Metal", "Scrap Metal", "Glass", "Sandbag", "Rubber"};
 
 	/// The Paint tab's tools (its brushes, loose things, springs and terrain): with one in hand the right button digs (see Sandbox::DrawGUI).
 	inline bool IsPaintTool(Tool kind) { return c_Tools[ToolIndex(kind)].UsesRadius; }
@@ -582,6 +589,8 @@ namespace SandboxDetail {
 
 	/// What the Battle tab says for a mode: the choices every mode shares, and those some use (each says which in its panel). The window keeps
 	/// its own copy (s_ModeSetup) and sends it to the sim in a Tool::BattleTeam stroke (Stroke::Mode) whenever it changes.
+	constexpr size_t c_MaxFlagSpots = 8; //!< Most flag positions one flag can have placed.
+
 	struct BattleModeSettings {
 		BattleMode Mode = BattleMode::Custom;
 		int TeamSize = 16; //!< Most units each team has alive at once.
@@ -590,8 +599,8 @@ namespace SandboxDetail {
 		std::array<bool, c_Sides> HasPoint{}; //!< Each team's point placed in its base (capture the flag: where its flag stands). Without, one is picked.
 		std::array<Vector, c_Sides> Points;
 		std::array<std::vector<Vector>, c_Sides> Goals; //!< One flag: each team's goal zone, drawn as a polygon, that it brings the flag into to score.
-		bool HasFlagSpot = false; //!< One flag: whether the neutral flag's place is set. Without, the game can't start.
-		Vector FlagSpot;
+		std::vector<Vector> FlagSpots; //!< One flag: the flag positions placed (up to c_MaxFlagSpots), which the flag comes in at in turn, the next after each score.
+		bool FlagByZones = false; //!< One flag: the flag comes in somewhere in one of the flag spawn zones (the mode's zones), picked at random, rather than at the positions placed.
 		bool ByShip = false; //!< Its units come in by ship over their base, rather than appearing in it.
 		bool MoveStuckPoint = true; //!< Capture the flag: a flag nobody can get to (buried, or cut off) moves somewhere else in its base.
 		int ScoreToWin = 3; //!< Capture the flag: captures that win. 0 plays on for good.
@@ -749,6 +758,7 @@ namespace SandboxDetail {
 	inline std::vector<Vector> s_ZoneDraft; //!< The corners of the spawn zone being drawn with the Battle tab's tool, in order.
 	inline int s_ToolBeforeBattle = -1; //!< The tool in hand before the card's defence point or drop line button took one, given back by PutDownBattleTool.
 	inline std::unordered_map<long, BattleDefender> s_BattleDefenders; //!< By unique ID.
+	inline bool s_DefendersMoved = false; //!< A defender's place moved (MoveDefender) since UpdateBattleDefenders last ran: it runs on the next update rather than at its half-second turn.
 	inline std::vector<BattleCraft> s_BattleCraft;
 
 	/// The Battle Director's mode as the sim runs it: the settings last sent from the window, and how the game is going.

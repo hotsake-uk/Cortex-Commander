@@ -1,4 +1,5 @@
 #include "EffectsParticles.h"
+#include "AirPressure.h"
 #include "Camera.h"
 #include "Constants.h"
 #include "PostProcessMan.h"
@@ -448,10 +449,46 @@ void EffectsParticles::Update(float amount) {
 		return;
 	}
 
-	float wind = g_PostProcessMan.GetLightingSettings().Wind;
+	// The air (SB-5) carries the light effects: the wind as Air & wind has it (off with it, scaled by its Wind strength), turning over
+	// behind ground upwind of them as the game's own smoke does, and a passing blast wave shoving them as it shoves smoke.
+	float windSpeed = AirPressure::GetWindSpeed();
+	float simUpdates = std::min(seconds / std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F), 4.0F);
+	bool blasts = AirPressure::GetActiveCells() > 0;
+	auto windAt = [windSpeed](const Particle& particle) {
+		if (windSpeed == 0.0F) {
+			return 0.0F;
+		}
+		return AirPressure::IsSheltered(Vector(particle.Position.x, particle.Position.y), windSpeed) ? windSpeed * -0.15F : windSpeed;
+	};
+	auto blastPush = [blasts, simUpdates](Particle& particle, float share) {
+		if (blasts) {
+			Vector push = AirPressure::GetPush(Vector(particle.Position.x, particle.Position.y));
+			particle.Velocity += glm::vec2(push.m_X, push.m_Y) * (c_PPM * share * simUpdates);
+		}
+	};
 	constexpr float gravity = 9.8F * c_PPM;
 	for (Particle& particle: s_Particles) {
 		particle.Age += seconds;
+		float wind = 0.0F;
+		switch (particle.Type) {
+			case Kind::Ember:
+			case Kind::Smoke:
+			case Kind::Dust:
+				wind = windAt(particle);
+				blastPush(particle, 1.0F);
+				break;
+			case Kind::Fire:
+			case Kind::Mist:
+				wind = windAt(particle);
+				blastPush(particle, 0.6F);
+				break;
+			case Kind::Froth:
+				wind = windAt(particle);
+				blastPush(particle, 0.2F);
+				break;
+			default:
+				break;
+		}
 		if (particle.Type == Kind::Ember) {
 			// Embers float up on the heat, wobble, and drift with the wind.
 			particle.Velocity += (glm::vec2(wind * 0.5F + std::sin(particle.Age * 7.0F + particle.Life * 13.0F) * 15.0F, -30.0F) - particle.Velocity) * std::min(1.0F, seconds * 1.5F);

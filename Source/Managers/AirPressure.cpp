@@ -270,10 +270,10 @@ void AirPressure::BlowSmoke(long long update) {
 			continue;
 		}
 		float share = 0.0F;
-		if (particle->GetGlobalAccScalar() < 0.0F) {
-			// Smoke: weightless air particles that float up (as SmokeGrid tells them).
-			const MOSParticle* smoke = dynamic_cast<const MOSParticle*>(particle);
-			share = smoke && smoke->GetAtom() && smoke->GetAtom()->GetMaterial()->GetIndex() == g_MaterialAir ? 1.0F : 0.0F;
+		if (particle->GetGlobalAccScalar() < 0.0F && !particle->HitsMOs()) {
+			// Smoke, steam and gas puffs: anything that floats up and hits nothing, whatever it is made of (explosion and flame smoke are
+			// "Air Blast" or other materials) and whether a sprite or a single pixel (smoke trails).
+			share = 1.0F;
 		} else if (particle->GetMass() < 0.02F && particle->GetMaterial() && FluidSim::IsLiquid(particle->GetMaterial()->GetIndex())) {
 			share = 0.3F;
 		}
@@ -305,6 +305,23 @@ void AirPressure::SetOn(bool on) {
 
 float AirPressure::GetWind() {
 	return s_On && s_Wind ? WeatherEffects::GetWind() * std::max(s_Tuning.WindStrength, 0.0F) : 0.0F;
+}
+
+float AirPressure::GetWindSpeed() {
+	return s_On && s_Wind ? g_PostProcessMan.GetLightingSettings().Wind * std::max(s_Tuning.WindStrength, 0.0F) : 0.0F;
+}
+
+Vector AirPressure::GetPush(const Vector& position) {
+	if (!s_On || !s_Enabled || s_Tuning.PushStrength <= 0.0F) {
+		return Vector();
+	}
+	Vector flow = GetFlow(position);
+	if (flow.MagnitudeIsLessThan(0.05F)) {
+		return Vector();
+	}
+	Vector change = flow * (c_Push * s_Tuning.PushStrength);
+	change.CapMagnitude(c_MaxPush);
+	return change;
 }
 
 bool AirPressure::IsSheltered(const Vector& position, float wind) {

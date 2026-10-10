@@ -1,5 +1,7 @@
 #include "Material.h"
 #include "Constants.h"
+#include "SceneMan.h"
+#include "SettingsMan.h"
 
 #include <algorithm>
 #include <string>
@@ -61,6 +63,29 @@ float Material::GetMetalness() const {
 	return m_Metalness;
 }
 
+bool Material::IsBody() const {
+	if (m_IsBody < 0) {
+		const std::string& name = GetPresetName();
+		m_IsBody = (name == "Bone" || name.find("Flesh") != std::string::npos) ? 1 : 0;
+	}
+	return m_IsBody != 0;
+}
+
+unsigned char Material::GetTerrainSettleMaterial(bool settleMaterialDisabled) const {
+	unsigned char settleMaterial = settleMaterialDisabled ? m_Index : GetSettleMaterial();
+	if (g_SettingsMan.BodiesSettleAsEarth() && IsBody()) {
+		// Earth by name, looked up once (it's Base.rte's, so its number doesn't change); 0 if there's none, and bodies settle as before.
+		static const unsigned char earthIndex = [] {
+			const Material* earth = g_SceneMan.GetMaterial("Earth");
+			return earth ? earth->GetIndex() : static_cast<unsigned char>(0);
+		}();
+		if (earthIndex != 0) {
+			return earthIndex;
+		}
+	}
+	return settleMaterial;
+}
+
 float Material::GetGloss() const {
 	if (m_Gloss < 0.0F) {
 		m_Gloss = GuessSurface(GetPresetName()).Gloss;
@@ -83,6 +108,7 @@ void Material::Clear() {
 	m_SettleMaterialIndex = 0;
 	m_SpawnMaterialIndex = 0;
 	m_IsScrap = false;
+	m_IsBody = -1;
 	m_Metalness = -1.0F;
 	m_Gloss = -1.0F;
 	m_Behaviour = MaterialBehaviour();
@@ -111,6 +137,7 @@ int Material::Create(const Material& reference) {
 	m_SettleMaterialIndex = reference.m_SettleMaterialIndex;
 	m_SpawnMaterialIndex = reference.m_SpawnMaterialIndex;
 	m_IsScrap = reference.m_IsScrap;
+	m_IsBody = reference.m_IsBody;
 	m_Metalness = reference.m_Metalness;
 	m_Gloss = reference.m_Gloss;
 	m_Behaviour = reference.m_Behaviour;
@@ -155,6 +182,7 @@ int Material::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("SettleMaterial", { reader >> m_SettleMaterialIndex; });
 	MatchForwards("SpawnMaterial") MatchProperty("TransformsInto", { reader >> m_SpawnMaterialIndex; });
 	MatchProperty("IsScrap", { reader >> m_IsScrap; });
+	MatchProperty("IsBody", { bool isBody = false; reader >> isBody; m_IsBody = isBody ? 1 : 0; });
 	MatchProperty("Metalness", {
 		reader >> m_Metalness;
 		m_Metalness = std::clamp(m_Metalness, 0.0F, 1.0F);
