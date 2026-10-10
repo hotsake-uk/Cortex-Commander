@@ -13,6 +13,7 @@
 #include "PresetMan.h"
 #include "Sandbox.h"
 #include "SceneMan.h"
+#include "SLTerrain.h"
 #include "TimerMan.h"
 
 #include "GUI.h"
@@ -31,10 +32,51 @@ ConcreteClassInfo(AVehicle, Actor, 20);
 namespace {
 	constexpr double c_BoardingDelayMS = 400.0; //!< After getting in or out, how long before the same key does the opposite.
 
-	/// Whether the ground at a point holds a wheel up: anything but air and liquid (a wheel sinks through water to the bottom).
+	/// Whether a terrain material is a plant: the base game's plants, cacti and mushrooms, and trees' leaves (not the grass on topsoil, which
+	/// is ground). A wheel rolls through plants, crushing them, rather than up over them as if they were rock.
+	bool IsPlant(int material) {
+		static std::array<signed char, 256> s_Plant{}; // 0 not looked at yet, 1 a plant, -1 not.
+		unsigned char id = static_cast<unsigned char>(material);
+		if (s_Plant[id] == 0) {
+			const std::string& name = g_SceneMan.GetMaterialFromID(id)->GetPresetName();
+			bool plant = name.find("Vegetation") != std::string::npos || name.find("Leaf") != std::string::npos || name.find("Leaves") != std::string::npos ||
+			             name.find("Foliage") != std::string::npos || name.find("Plant") != std::string::npos;
+			s_Plant[id] = plant ? 1 : -1;
+		}
+		return s_Plant[id] > 0;
+	}
+
+	/// Whether the ground at a point holds a wheel up: anything but air, liquid (a wheel sinks through water to the bottom) and plants.
 	bool HoldsWheel(const Vector& point) {
 		int material = g_SceneMan.GetTerrMatter(point.GetFloorIntX(), point.GetFloorIntY());
-		return material != g_MaterialAir && !FluidSim::IsLiquid(material);
+		return material != g_MaterialAir && !FluidSim::IsLiquid(material) && !IsPlant(material);
+	}
+
+	/// Crushes the plants under a wheel: every plant pixel inside its circle goes.
+	void CrushPlants(const Vector& centre, float radius) {
+		SLTerrain* terrain = g_SceneMan.GetTerrain();
+		if (!terrain) {
+			return;
+		}
+		int reach = static_cast<int>(std::ceil(radius));
+		int centreX = centre.GetFloorIntX();
+		int centreY = centre.GetFloorIntY();
+		for (int dy = -reach; dy <= reach; ++dy) {
+			for (int dx = -reach; dx <= reach; ++dx) {
+				if (static_cast<float>(dx * dx + dy * dy) > radius * radius) {
+					continue;
+				}
+				int x = centreX + dx;
+				int y = centreY + dy;
+				if (!g_SceneMan.WrapPosition(x, y) && !g_SceneMan.IsWithinBounds(x, y)) {
+					continue;
+				}
+				if (IsPlant(terrain->GetMaterialPixel(x, y))) {
+					terrain->SetMaterialPixel(x, y, g_MaterialAir);
+					terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
+				}
+			}
+		}
 	}
 
 	/// An angle brought into -pi to pi.
@@ -474,6 +516,10 @@ void AVehicle::UpdateWheels() {
 		}
 		wheel.Spin = Wrapped(wheel.Spin + wheel.SpinSpeed * deltaTime);
 		wheel.Part->SetParentOffset(wheel.Mount - Vector(0.0F, wheel.Compression));
+		// Rolling or landing on plants flattens them (a wheel standing still on one leaves it be, so a parked cart doesn't eat what it's in).
+		if (wheel.OnGround && (std::abs(wheel.SpinSpeed) > 0.5F || m_Vel.MagnitudeIsGreaterThan(1.0F))) {
+			CrushPlants(m_Pos + RotateOffset(wheel.Mount - Vector(0.0F, wheel.Compression)), radius + 1.0F);
+		}
 		wheel.Part->SetInheritedRotAngleOffset(wheel.Spin * GetFlipFactor());
 	}
 }
