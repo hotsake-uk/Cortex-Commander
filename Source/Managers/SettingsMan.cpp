@@ -619,6 +619,10 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("UnitSpeechEnemies", { bool on = true; reader >> on; UnitSpeech::SetShowsEnemies(on); });
 	MatchProperty("UnitSpeechOff", { UnitSpeech::SetTriggerOn(reader.ReadPropValue(), false); });
 	MatchProperty("UnitSpeechOn", { UnitSpeech::SetTriggerOn(reader.ReadPropValue(), true); });
+	MatchProperty("UnitSpeechTones1", { UnitSpeech::SetTeamTonesText(0, reader.ReadPropValue()); });
+	MatchProperty("UnitSpeechTones2", { UnitSpeech::SetTeamTonesText(1, reader.ReadPropValue()); });
+	MatchProperty("UnitSpeechTones3", { UnitSpeech::SetTeamTonesText(2, reader.ReadPropValue()); });
+	MatchProperty("UnitSpeechTones4", { UnitSpeech::SetTeamTonesText(3, reader.ReadPropValue()); });
 	MatchProperty("AISuppression", {
 		reader >> m_AISuppression;
 		m_AISuppression = std::clamp(m_AISuppression, 0.0F, 2.0F);
@@ -1047,6 +1051,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("UnitSpeech", UnitSpeech::IsEnabled());
 	writer.NewPropertyWithValue("UnitSpeechChance", UnitSpeech::GetChance());
 	writer.NewPropertyWithValue("UnitSpeechEnemies", UnitSpeech::ShowsEnemies());
+	for (int team = 0; team < 4; ++team) {
+		writer.NewPropertyWithValue("UnitSpeechTones" + std::to_string(team + 1), UnitSpeech::GetTeamTonesText(team));
+	}
 	if (forPreset) {
 		// The settings file only lists what is off, over everything on; a preset loads over what is set now, so it says what is on too.
 		for (const UnitSpeech::Trigger& trigger: UnitSpeech::GetTriggers()) {

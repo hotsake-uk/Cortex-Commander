@@ -35,6 +35,7 @@
 #include "ToolWidgets.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstring>
 #include <functional>
@@ -954,6 +955,32 @@ void DebugMan::SettingsGUI() {
 			Tip("How likely a unit is to say something when it does one of the things below. 100%: nearly every time (a unit still waits a few seconds before saying the same thing again, and a squad doesn't all say it at once).");
 			Toggle("Hear other sides' units", UnitSpeech::ShowsEnemies(), [](bool on) { UnitSpeech::SetShowsEnemies(on); });
 			Tip("Enemy units' lines too, where your side can see them. Off: only your own side's.");
+			// Each side's tones: what kind of lines its units say. None ticked is any.
+			{
+				static const std::array<const char*, 4> sideNames{"Red", "Green", "Blue", "Yellow"};
+				const std::vector<std::string> tones = UnitSpeech::GetTones();
+				for (int team = 0; team < 4; ++team) {
+					std::string anyLabel = std::string(sideNames[team]) + " side speaks: any tone##SpeechToneAny" + std::to_string(team);
+					Toggle(anyLabel.c_str(), UnitSpeech::TeamUsesAnyTone(team), [team](bool on) {
+						if (on) {
+							UnitSpeech::SetTeamAnyTone(team);
+						}
+					});
+					Tip("Its units say lines of every tone. Untick by picking one or more tones instead.");
+					for (const std::string& tone: tones) {
+						if (s_LastShown) {
+							ImGui::SameLine();
+						}
+						std::string label = tone + "##SpeechTone" + std::to_string(team) + tone;
+						const bool on = !UnitSpeech::TeamUsesAnyTone(team) && UnitSpeech::TeamUsesTone(team, tone);
+						Toggle(label.c_str(), on, [team, tone](bool set) { UnitSpeech::SetTeamTone(team, tone, set); });
+						std::string tip = std::string(sideNames[team]) + " side's units say " + tone + " lines" +
+						                  (tone == "Serious" ? ": by-the-book military talk (\"Contact front!\", \"Copy, moving.\")." : tone == "Funny" ? ": quips, sarcasm and gallows humour." : tone == "Casual" ? ": plain soldier talk." : ".") +
+						                  " Tick more than one to mix them.";
+						Tip(tip.c_str());
+					}
+				}
+			}
 			// The triggers under their groups (Speech.ini's Group), each group folding away with buttons to turn all of it on or off; a search
 			// lists the matching ones flat.
 			const std::vector<UnitSpeech::Trigger>& triggers = UnitSpeech::GetTriggers();

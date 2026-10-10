@@ -22,6 +22,7 @@
 #include <random>
 #include <map>
 #include <set>
+#include <sstream>
 #include <thread>
 
 using namespace RTE;
@@ -36,7 +37,41 @@ namespace {
 		std::string Name;
 		std::vector<std::vector<std::string>> Lines;
 		std::vector<std::string> UnitNames; //!< What its units are called (UnitName), none to use the default set's.
+		std::vector<std::vector<unsigned>> LineTones; //!< Each line's tones as bits (s_Tones), by trigger as Lines; 0 for a line of no tone, which fits any.
 	};
+
+	/// The tones lines come in, in the order first used; a line's tones are bits in this order. At most 32.
+	std::vector<std::string> s_Tones;
+	/// The tones each side's units speak in, by name (so a side can be set before Speech.ini is read); none for any.
+	std::array<std::set<std::string>, 4> s_TeamTones;
+	/// The same as bits, for the threaded AI to read: 0 for any.
+	std::array<std::atomic<unsigned>, 4> s_TeamToneBits{};
+
+	/// The bit of a tone, adding it to the list if it's new; 0 if there are already 32.
+	unsigned ToneBit(const std::string& tone) {
+		auto found = std::find(s_Tones.begin(), s_Tones.end(), tone);
+		if (found == s_Tones.end()) {
+			if (s_Tones.size() >= 32) {
+				return 0;
+			}
+			s_Tones.push_back(tone);
+			found = s_Tones.end() - 1;
+		}
+		return 1u << static_cast<unsigned>(found - s_Tones.begin());
+	}
+
+	void RebuildTeamToneBits() {
+		for (size_t team = 0; team < s_TeamTones.size(); ++team) {
+			unsigned bits = 0;
+			for (const std::string& tone: s_TeamTones[team]) {
+				if (auto found = std::find(s_Tones.begin(), s_Tones.end(), tone); found != s_Tones.end()) {
+					bits |= 1u << static_cast<unsigned>(found - s_Tones.begin());
+				}
+			}
+			// (Tones a side asked for that no Speech.ini has: it would never speak, so it takes any.)
+			s_TeamToneBits[team].store(s_TeamTones[team].empty() || bits == 0 ? 0u : bits, std::memory_order_relaxed);
+		}
+	}
 
 	/// The order a side works through a trigger's lines in: shuffled, each said once before any is said again, so a side doesn't repeat
 	/// itself while it has lines it hasn't said. By set, trigger and side.
@@ -99,6 +134,7 @@ namespace {
 		}
 		int set = 0;
 		int trigger = -1;
+		unsigned tone = 0; //!< The tones of the lines that follow (Tone), 0 for none.
 		int lineNumber = 0;
 		std::string line;
 		while (std::getline(file, line)) {
@@ -121,6 +157,7 @@ namespace {
 					set = static_cast<int>(s_Sets.size()) - 1;
 				}
 				trigger = -1;
+				tone = 0;
 				continue;
 			}
 			if (key == "UnitName") {
@@ -134,6 +171,7 @@ namespace {
 				continue;
 			}
 			if (key == "Trigger") {
+				tone = 0;
 				trigger = UnitSpeech::FindTrigger(value);
 				if (trigger < 0 && !value.empty()) {
 					UnitSpeech::Trigger added;
@@ -150,16 +188,32 @@ namespace {
 			}
 			UnitSpeech::Trigger& current = s_Triggers[trigger];
 			std::vector<std::vector<std::string>>& lines = s_Sets[set].Lines;
+			std::vector<std::vector<unsigned>>& lineTones = s_Sets[set].LineTones;
 			if (lines.size() <= static_cast<size_t>(trigger)) {
 				lines.resize(trigger + 1);
+			}
+			if (lineTones.size() <= static_cast<size_t>(trigger)) {
+				lineTones.resize(trigger + 1);
 			}
 			try {
 				if (key == "Line") {
 					if (!value.empty()) {
 						lines[trigger].push_back(value);
+						lineTones[trigger].resize(lines[trigger].size() - 1);
+						lineTones[trigger].push_back(tone);
+					}
+				} else if (key == "Tone") {
+					// "Tone = Serious, Casual": the lines after it, until the next Tone, are of those tones. "Any" or nothing: of none.
+					tone = 0;
+					std::stringstream names(value);
+					for (std::string name; std::getline(names, name, ',');) {
+						if (name = Trim(name); !name.empty() && name != "Any") {
+							tone |= ToneBit(name);
+						}
 					}
 				} else if (key == "ClearLines") {
 					lines[trigger].clear();
+					lineTones[trigger].clear();
 				} else if (key == "Name") {
 					current.Name = value;
 				} else if (key == "Description") {
@@ -218,6 +272,63 @@ std::vector<std::string> UnitSpeech::GetTriggersOff() {
 	return std::vector<std::string>(s_TriggersOff.begin(), s_TriggersOff.end());
 }
 
+std::vector<std::string> UnitSpeech::GetTones() {
+	EnsureLoaded();
+	return s_Tones;
+}
+
+std::string UnitSpeech::GetTeamTonesText(int team) {
+	if (team < 0 || team >= 4 || s_TeamTones[team].empty()) {
+		return "Any";
+	}
+	std::string text;
+	for (const std::string& tone: s_TeamTones[team]) {
+		text += (text.empty() ? "" : ", ") + tone;
+	}
+	return text;
+}
+
+void UnitSpeech::SetTeamTonesText(int team, const std::string& text) {
+	if (team < 0 || team >= 4) {
+		return;
+	}
+	s_TeamTones[team].clear();
+	std::stringstream names(text);
+	for (std::string name; std::getline(names, name, ',');) {
+		if (name = Trim(name); !name.empty() && name != "Any") {
+			s_TeamTones[team].insert(name);
+		}
+	}
+	RebuildTeamToneBits();
+}
+
+bool UnitSpeech::TeamUsesTone(int team, const std::string& tone) {
+	return team < 0 || team >= 4 || s_TeamTones[team].empty() || s_TeamTones[team].count(tone) > 0;
+}
+
+bool UnitSpeech::TeamUsesAnyTone(int team) {
+	return team < 0 || team >= 4 || s_TeamTones[team].empty();
+}
+
+void UnitSpeech::SetTeamTone(int team, const std::string& tone, bool on) {
+	if (team < 0 || team >= 4) {
+		return;
+	}
+	if (on) {
+		s_TeamTones[team].insert(tone);
+	} else {
+		s_TeamTones[team].erase(tone);
+	}
+	RebuildTeamToneBits();
+}
+
+void UnitSpeech::SetTeamAnyTone(int team) {
+	if (team >= 0 && team < 4) {
+		s_TeamTones[team].clear();
+		RebuildTeamToneBits();
+	}
+}
+
 const std::vector<UnitSpeech::Trigger>& UnitSpeech::GetTriggers() {
 	EnsureLoaded();
 	return s_Triggers;
@@ -260,6 +371,7 @@ void UnitSpeech::Reload() {
 void UnitSpeech::LoadAll() {
 	s_Triggers.clear();
 	s_Sets.clear();
+	s_Tones.clear();
 	{
 		std::scoped_lock lock(s_DeckMutex);
 		s_Decks.clear();
@@ -272,6 +384,7 @@ void UnitSpeech::LoadAll() {
 		}
 	}
 	RebuildTriggerOn();
+	RebuildTeamToneBits();
 }
 
 bool UnitSpeech::SayOrder(Actor& actor, const std::string& triggerKey) {
@@ -330,8 +443,18 @@ bool UnitSpeech::Say(Actor& actor, const std::string& triggerKey, bool answering
 		return false;
 	}
 	// A line that names someone, only with someone to name.
-	auto fits = [subject](const std::string& line) { return subject || line.find("{name}") == std::string::npos; };
-	if (std::none_of(lines->begin(), lines->end(), fits)) {
+	// A line that names someone, only with someone to name; and only in the tones the side speaks in (a line of no tone fits any).
+	const std::vector<unsigned>* tones = static_cast<size_t>(trigger) < s_Sets[lineSet].LineTones.size() ? &s_Sets[lineSet].LineTones[trigger] : nullptr;
+	const unsigned teamTones = actor.GetTeam() >= 0 && actor.GetTeam() < 4 ? s_TeamToneBits[actor.GetTeam()].load(std::memory_order_relaxed) : 0u;
+	auto fits = [&](int index) {
+		const unsigned lineTones = tones && static_cast<size_t>(index) < tones->size() ? (*tones)[index] : 0u;
+		return (subject || (*lines)[index].find("{name}") == std::string::npos) && (teamTones == 0 || lineTones == 0 || (lineTones & teamTones) != 0);
+	};
+	bool anyFits = false;
+	for (int index = 0; index < static_cast<int>(lines->size()) && !anyFits; ++index) {
+		anyFits = fits(index);
+	}
+	if (!anyFits) {
 		return false;
 	}
 	// A friend just said it: left to them. The side's slot is taken only by one who does say it.
@@ -352,7 +475,7 @@ bool UnitSpeech::Say(Actor& actor, const std::string& triggerKey, bool answering
 	{
 		std::scoped_lock lock(s_DeckMutex);
 		Deck& deck = s_Decks[(static_cast<long long>(lineSet) << 32) | (static_cast<long long>(trigger) << 8) | static_cast<long long>(team + 1)];
-		for (int tries = 0; tries <= count && pick < 0; ++tries) {
+		for (int tries = 0; tries <= count * 2 && pick < 0; ++tries) {
 			if (deck.Next >= deck.Order.size() || static_cast<int>(deck.Order.size()) != count) {
 				const int last = deck.Order.empty() || deck.Next == 0 ? -1 : deck.Order[deck.Next - 1];
 				deck.Order.resize(count);
@@ -367,7 +490,7 @@ bool UnitSpeech::Say(Actor& actor, const std::string& triggerKey, bool answering
 				deck.Next = 0;
 			}
 			int candidate = deck.Order[deck.Next++];
-			if (fits((*lines)[candidate])) {
+			if (fits(candidate)) {
 				pick = candidate;
 			}
 		}
