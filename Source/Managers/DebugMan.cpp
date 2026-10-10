@@ -305,6 +305,21 @@ void DebugMan::DrawToolWindowControls() {
 }
 
 void DebugMan::UpdateFreeze() {
+	// The pause hotkey keeps its own hold on the world, so the sandbox tools closing (which let go of theirs) leave it paused.
+	if (m_UserPause && !g_ActivityMan.IsInActivity()) {
+		m_UserPause = false;
+	}
+	g_TimerMan.PauseSim(m_UserPause, TimerMan::SimPauseUser);
+	if (m_UserPause) {
+		const char* text = "PAUSED  -  Pause: resume";
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		ImVec2 size = ImGui::CalcTextSize(text);
+		float scale = UsingPixelFont() ? 1.0F : 1.3F;
+		GameViewRect view = GetUncoveredView();
+		ImVec2 at(view.x + view.w - size.x * scale - 20.0F, view.y + 10.0F);
+		drawList->AddRectFilled(ImVec2(at.x - 10.0F, at.y - 4.0F), ImVec2(at.x + size.x * scale + 10.0F, at.y + size.y * scale + 4.0F), IM_COL32(0, 0, 0, 150), 4.0F);
+		drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize() * scale, at, IM_COL32(255, 210, 80, 255), text);
+	}
 	if (m_FreezeSim && g_ActivityMan.IsInActivity()) {
 		g_TimerMan.PauseSim(true, TimerMan::SimPauseDebugFreeze);
 		m_FrozeSim = true;
