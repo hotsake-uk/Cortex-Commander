@@ -417,6 +417,7 @@ namespace RTE {
 		float Embers = 1.3F; //!< Amount of embers rising from fire and other warm glows, 0 to disable.
 		float EffectsSparks = 1.5F; //!< Amount of visual sparks from explosions and hard impacts, 0 for none.
 		float EffectsDust = 1.5F; //!< Amount of visual dust from explosions and soft impacts, 0 for none.
+		float SparkLights = 1.0F; //!< Brightness of the glow and light of the game's own sparks (objects with SparkGlow), 0 for none. Sparks at 0 turns it off too.
 		float EffectsDebris = 1.5F; //!< Amount of visual debris chips from explosions and impacts, 0 for none. Embers, smoke, fire and spray follow the largest of the three.
 		bool SmokeShading = true; //!< Smoke takes its own colour, shadows itself (dark on the side away from a fire or the sun, lit on the near side) and has its top painted by the sun. Off: one pale tint lit evenly through, as before.
 		float SmokeShadingStrength = 1.0F; //!< How strongly, 0 to 1.

@@ -436,6 +436,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("EffectsSparks", { g_PostProcessMan.GetLightingSettings().EffectsSparks = std::stof(reader.ReadPropValue()); });
 	MatchProperty("EffectsDust", { g_PostProcessMan.GetLightingSettings().EffectsDust = std::stof(reader.ReadPropValue()); });
 	MatchProperty("EffectsDebris", { g_PostProcessMan.GetLightingSettings().EffectsDebris = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SparkLights", { g_PostProcessMan.GetLightingSettings().SparkLights = std::max(std::stof(reader.ReadPropValue()), 0.0F); });
 	MatchProperty("Embers", { g_PostProcessMan.GetLightingSettings().Embers = std::stof(reader.ReadPropValue()); });
 	MatchProperty("Headlamps", { g_PostProcessMan.GetLightingSettings().Headlamps = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("NightAffectsAI", { g_PostProcessMan.GetLightingSettings().NightAffectsAI = std::stoi(reader.ReadPropValue()) != 0; });
@@ -846,6 +847,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("EffectsSparks", lighting.EffectsSparks);
 	writer.NewPropertyWithValue("EffectsDust", lighting.EffectsDust);
 	writer.NewPropertyWithValue("EffectsDebris", lighting.EffectsDebris);
+	writer.NewPropertyWithValue("SparkLights", lighting.SparkLights);
 	writer.NewPropertyWithValue("SmokeScattering", lighting.SmokeScattering);
 	writer.NewPropertyWithValue("SmokeShading", lighting.SmokeShading);
 	writer.NewPropertyWithValue("SmokeShadingStrength", lighting.SmokeShadingStrength);
