@@ -1007,6 +1007,8 @@ void DebugMan::SettingsGUI() {
 			Tip("How likely a unit is to say something when it does one of the things below. 100%: nearly every time (a unit still waits a few seconds before saying the same thing again, and a squad doesn't all say it at once).");
 			Toggle("Hear other sides' units", UnitSpeech::ShowsEnemies(), [](bool on) { UnitSpeech::SetShowsEnemies(on); });
 			Tip("Enemy units' lines too, where your side can see them. Off: only your own side's.");
+			Toggle("Speech bubbles", UnitSpeech::ShowsBubbles(), [](bool on) { UnitSpeech::SetShowsBubbles(on); });
+			Tip("Lines in a dark box edged in the side's colour, with a tail pointing at the unit. Off: just the text over the unit's head.");
 			// Each side's tones: what kind of lines its units say. None ticked is any.
 			{
 				static const std::array<const char*, 4> sideNames{"Red", "Green", "Blue", "Yellow"};
