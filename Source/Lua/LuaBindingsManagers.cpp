@@ -455,6 +455,7 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SettingsMan) {
 	    .property("ShowSandboxSpotReach", &SettingsMan::ShowSandboxSpotReach, &SettingsMan::SetShowSandboxSpotReach)
 	    .property("ShowSandboxGroupBadges", &SettingsMan::ShowSandboxGroupBadges, &SettingsMan::SetShowSandboxGroupBadges)
 	    .property("SandboxOrderGlyphs", &SettingsMan::SandboxOrderGlyphs, &SettingsMan::SetSandboxOrderGlyphs)
+	    .property("SandboxSpawnStats", &SettingsMan::SandboxSpawnStats, &SettingsMan::SetSandboxSpawnStats)
 	    .property("ShowSandboxAttackPings", &SettingsMan::ShowSandboxAttackPings, &SettingsMan::SetShowSandboxAttackPings)
 	    .property("ShowSandboxMinimap", &SettingsMan::ShowSandboxMinimap, &SettingsMan::SetShowSandboxMinimap)
 	    .property("ShowLightsBySource", &SettingsMan::ShowLightsBySource, &SettingsMan::SetShowLightsBySource)

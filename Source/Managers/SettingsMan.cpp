@@ -157,6 +157,7 @@ void SettingsMan::Clear() {
 	m_SandboxSpotReach = false;
 	m_SandboxGroupBadges = true;
 	m_SandboxOrderGlyphs = 1;
+	m_SandboxSpawnStats = 1;
 	m_SandboxAttackPings = true;
 	m_SandboxMinimap = false;
 	m_LightsBySource = false;
@@ -711,6 +712,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SandboxSpotReach", { reader >> m_SandboxSpotReach; });
 	MatchProperty("SandboxGroupBadges", { reader >> m_SandboxGroupBadges; });
 	MatchProperty("SandboxOrderGlyphs", { int which = 1; reader >> which; SetSandboxOrderGlyphs(which); });
+	MatchProperty("SandboxSpawnStats", { int which = 1; reader >> which; SetSandboxSpawnStats(which); });
 	MatchProperty("SandboxAttackPings", { reader >> m_SandboxAttackPings; });
 	MatchProperty("SandboxMinimap", { reader >> m_SandboxMinimap; });
 	MatchProperty("LightsBySource", { reader >> m_LightsBySource; });
@@ -1172,6 +1174,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 		writer.NewPropertyWithValue("AutomaticGoldDeposit", m_AutomaticGoldDeposit);
 		writer.NewPropertyWithValue("SandboxGroupBadges", m_SandboxGroupBadges);
 		writer.NewPropertyWithValue("SandboxOrderGlyphs", m_SandboxOrderGlyphs);
+		writer.NewPropertyWithValue("SandboxSpawnStats", m_SandboxSpawnStats);
 		writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
 		writer.NewPropertyWithValue("SandboxMinimap", m_SandboxMinimap);
 		writer.NewPropertyWithValue("ScreenShakeStrength", g_CameraMan.m_ScreenShakeStrength);
@@ -1349,6 +1352,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("EnableCrabBombs", m_EnableCrabBombs);
 	writer.NewPropertyWithValue("SandboxGroupBadges", m_SandboxGroupBadges);
 	writer.NewPropertyWithValue("SandboxOrderGlyphs", m_SandboxOrderGlyphs);
+	writer.NewPropertyWithValue("SandboxSpawnStats", m_SandboxSpawnStats);
 	writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
 	writer.NewPropertyWithValue("SandboxMinimap", m_SandboxMinimap);
 	writer.NewPropertyWithValue("CrabBombThreshold", m_CrabBombThreshold);

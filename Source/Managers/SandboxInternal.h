@@ -535,6 +535,8 @@ namespace SandboxDetail {
 		int Height = 0;
 		float OffsetX = 0.0F;
 		float OffsetY = 0.0F;
+		std::string Stats; //!< What its game files say about it (cost, health, mass, fire rate...), a line each, for the Spawn tab's tooltip (SpawnStats).
+		std::string StatsShort; //!< The few that matter most, short enough to go under its picture on the tile, a line each.
 		mutable std::string PictureKey; //!< "ClassName/Module/PresetName", made the first time its picture is asked for (PictureOf), not each frame it is drawn.
 	};
 

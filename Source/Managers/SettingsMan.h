@@ -353,6 +353,12 @@ namespace RTE {
 		/// Sets SandboxOrderGlyphs; see there.
 		void SetSandboxOrderGlyphs(int which) { m_SandboxOrderGlyphs = std::clamp(which, 0, 2); }
 
+		/// How the sandbox's Spawn tab shows what units and items are like (cost, health, mass, fire rate...): 0 not at all, 1 in the tooltip of the one under the pointer, 2 on every tile as well.
+		int SandboxSpawnStats() const { return m_SandboxSpawnStats; }
+
+		/// Sets SandboxSpawnStats; see there.
+		void SetSandboxSpawnStats(int which) { m_SandboxSpawnStats = std::clamp(which, 0, 2); }
+
 		/// Whether the sandbox pings where units of the selection's side come under fire (RC-7).
 		bool ShowSandboxAttackPings() const { return m_SandboxAttackPings; }
 
@@ -717,6 +723,7 @@ namespace RTE {
 		bool m_SandboxSpotReach; //!< Whether move previews show each standing spot's reachability (see ShowSandboxSpotReach).
 		bool m_SandboxGroupBadges; //!< Whether control-group units show their group's number (see ShowSandboxGroupBadges).
 		int m_SandboxOrderGlyphs; //!< Which units show their order as a mark (see SandboxOrderGlyphs).
+		int m_SandboxSpawnStats; //!< How the Spawn tab shows units' and items' stats (see SandboxSpawnStats).
 		bool m_SandboxAttackPings; //!< Whether units coming under fire are pinged (see ShowSandboxAttackPings).
 		bool m_SandboxMinimap; //!< Whether the sandbox's map window is shown (see ShowSandboxMinimap).
 		bool m_LightsBySource; //!< Whether the lighting-by-source readout is on (see ShowLightsBySource).
