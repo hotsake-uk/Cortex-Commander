@@ -623,7 +623,7 @@ namespace RTE {
 		/// @param where Where.
 		/// @param push The impulse on this, Ns.
 		/// @param clash Whether it was another blade.
-		void BladeStruck(const Vector& where, const Vector& push, bool clash);
+		void BladeStruck(const Vector& where, const Vector& push, bool clash, bool metal = true);
 
 		/// Bounces shots off the blade that crossed it this sim update or will next.
 		void DeflectShots(const Vector& start, const Vector& end, MovableObject* holder);

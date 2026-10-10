@@ -91,6 +91,29 @@ namespace RTE {
 
 		/// Gets the keys of the triggers turned off, for Settings.ini.
 		static std::vector<std::string> GetTriggersOff();
+
+		/// Gets the tones lines come in ("Serious", "Casual", "Funny"; Speech.ini's "Tone = ..."), in the order first used.
+		static std::vector<std::string> GetTones();
+
+		/// Gets the tones a side's units speak in, as Settings.ini keeps them: "Any", or the tones' names separated by commas.
+		/// @param team The side, 0 to 3.
+		static std::string GetTeamTonesText(int team);
+
+		/// Sets the tones a side's units speak in from Settings.ini's text ("Any", or names separated by commas).
+		/// @param team The side, 0 to 3.
+		static void SetTeamTonesText(int team, const std::string& text);
+
+		/// Gets whether a side's units speak lines of a tone: true for every tone when the side takes any.
+		static bool TeamUsesTone(int team, const std::string& tone);
+
+		/// Gets whether a side's units take lines of any tone.
+		static bool TeamUsesAnyTone(int team);
+
+		/// Adds a tone to, or takes it from, those a side's units speak in. With none left, the side takes any.
+		static void SetTeamTone(int team, const std::string& tone, bool on);
+
+		/// Has a side take lines of any tone.
+		static void SetTeamAnyTone(int team);
 #pragma endregion
 
 #pragma region Lines

@@ -239,6 +239,8 @@ namespace SandboxDetail {
 				return "Drag out a box on the world: all the ground in it breaks loose and falls, rock, earth, sand, wood, buildings and all (not doors). Each piece lands as its material does: concrete and glass shatter, earth and stone crack, sand crumbles, wood splinters, metal bends. What only the box held up comes down too. A big box falls as rubble. Shift keeps it square, Escape drops it, Ctrl+Z puts it all back. Up to 800 px either way.";
 			case Tool::TerrainOther:
 				return "Paints the terrain chosen under \"More terrain...\": the base game's ground (topsoil, bedrock, red and lunar earth, snow, metal, ...).";
+			case Tool::Metal:
+				return "Paints the metal chosen under Metals: the bunkers' plating, or gold, silver, bronze, brass, copper and chrome, which catch the sun and lamplight in their own colour.";
 			default:
 				return nullptr;
 		}
@@ -324,8 +326,10 @@ namespace SandboxDetail {
 				return {Icon::Drop, IM_COL32(180, 235, 255, 255)};
 			case Tool::Blood:
 				return {Icon::Drop, IM_COL32(170, 20, 25, 255)};
-			case Tool::PourOther:
-				return {Icon::Grains, IM_COL32(200, 180, 150, 255)};
+			case Tool::PourOther: {
+				const Material* material = g_SceneMan.GetMaterial(s_OtherPourable);
+				return {material && FluidSim::IsLiquid(material->GetIndex()) ? Icon::Drop : Icon::Grains, s_OtherPourable.empty() ? IM_COL32(200, 180, 150, 255) : MaterialMarkColor(s_OtherPourable, 255)};
+			}
 			case Tool::WaterSpawner:
 				return {Icon::Down, IM_COL32(90, 170, 240, 255)};
 			case Tool::Smoke:
@@ -369,9 +373,16 @@ namespace SandboxDetail {
 			case Tool::GoldEarth:
 				return {Icon::Chunk, IM_COL32(230, 190, 60, 255)};
 			case Tool::TerrainOther:
-				return {Icon::Chunk, IM_COL32(200, 160, 120, 255)};
+				return {Icon::Chunk, MaterialMarkColor(s_OtherTerrain, 255)};
 			case Tool::CollapseArea:
 				return {Icon::Down, IM_COL32(242, 150, 60, 255)};
+			case Tool::Metal:
+				for (const PaintMetal& metal: c_PaintMetals) {
+					if (s_PaintMetal == metal.Material) {
+						return {Icon::Chunk, IM_COL32(metal.R, metal.G, metal.B, 255)};
+					}
+				}
+				return {Icon::Chunk, IM_COL32(175, 189, 199, 255)};
 			case Tool::Plants:
 				return {Icon::Plant, IM_COL32(110, 190, 80, 255)};
 			case Tool::Cacti:
@@ -647,9 +658,13 @@ namespace SandboxDetail {
 		const ImGuiStyle& style = ImGui::GetStyle();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		float pixel = ToolUI::Pixel() * 2.0F;
-		const int perRow = 4;
+		// About the size they are four to a row in the side panel, whatever the window's width: a wider window (the large view) fits more of them
+		// to a row rather than making them bigger. Never fewer than four to a row, as in a narrow panel.
 		float gap = style.ItemSpacing.x * 0.5F;
-		float width = std::floor((ImGui::GetContentRegionAvail().x - gap * static_cast<float>(perRow - 1)) / static_cast<float>(perRow));
+		float room = ImGui::GetContentRegionAvail().x;
+		float tile = ImGui::GetFontSize() * 6.5F;
+		const int perRow = std::max(4, static_cast<int>((room + gap) / (tile + gap)));
+		float width = std::floor((room - gap * static_cast<float>(perRow - 1)) / static_cast<float>(perRow));
 		float pad = pixel * 2.0F;
 		float height = pad + pixel * 12.0F + ImGui::GetTextLineHeight() * 2.0F + pad;
 		int column = 0;
@@ -689,6 +704,88 @@ namespace SandboxDetail {
 			ImVec2 nameSize = ImGui::CalcTextSize(name, nullptr, false, wrap);
 			ImGui::PushClipRect(at, to, true);
 			drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(std::floor(at.x + std::max((width - nameSize.x) * 0.5F, pad * 0.5F)), at.y + pad + pixel * 12.0F + ToolUI::Pixel()), ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : (unavailable ? ImGuiCol_TextDisabled : ImGuiCol_Text)), name, nullptr, wrap);
+			ImGui::PopClipRect();
+			ImGui::PopID();
+		}
+	}
+
+	void MetalButtons() {
+		const ImGuiStyle& style = ImGui::GetStyle();
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		float pixel = ToolUI::Pixel() * 2.0F;
+		const int perRow = 3;
+		float gap = style.ItemSpacing.x * 0.5F;
+		float width = std::floor((ImGui::GetContentRegionAvail().x - gap * static_cast<float>(perRow - 1)) / static_cast<float>(perRow));
+		float pad = pixel * 2.0F;
+		float height = pad + pixel * 12.0F + ImGui::GetTextLineHeight() + pad;
+		int toolIndex = ToolIndex(Tool::Metal);
+		int column = 0;
+		for (const PaintMetal& metal: c_PaintMetals) {
+			const Material* material = g_SceneMan.GetMaterial(metal.Material);
+			if (!material || material->GetIndex() == g_MaterialAir) {
+				continue;
+			}
+			if (column++ % perRow != 0) {
+				ImGui::SameLine(0.0F, gap);
+			}
+			ImGui::PushID(metal.Material);
+			ImVec2 at = ImGui::GetCursorScreenPos();
+			if (ImGui::InvisibleButton("##metal", ImVec2(width, height))) {
+				s_PaintMetal = metal.Material;
+				TookTool(toolIndex);
+			}
+			ImGui::SetItemTooltip("%s", metal.About);
+			bool hovered = ImGui::IsItemHovered();
+			bool selected = s_ToolIndex == toolIndex && s_PaintMetal == metal.Material;
+			ImVec2 to(at.x + width, at.y + height);
+			drawList->AddRectFilled(at, to, ImGui::GetColorU32(selected ? ImGuiCol_FrameBgActive : hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg));
+			drawList->AddRect(at, to, ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Border), 0.0F, 0, selected ? ToolUI::Pixel() * 2.0F : ToolUI::Pixel());
+			DrawIcon(drawList, Icon::Chunk, ImVec2(std::floor(at.x + (width - pixel * 12.0F) * 0.5F), at.y + pad), pixel, IM_COL32(metal.R, metal.G, metal.B, 255));
+			ImVec2 nameSize = ImGui::CalcTextSize(metal.Name);
+			ImGui::PushClipRect(at, to, true);
+			drawList->AddText(ImVec2(std::floor(at.x + std::max((width - nameSize.x) * 0.5F, pad * 0.5F)), at.y + pad + pixel * 12.0F + ToolUI::Pixel()), ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Text), metal.Name);
+			ImGui::PopClipRect();
+			ImGui::PopID();
+		}
+	}
+
+	void MaterialButtons(Tool kind, std::string& chosen, const std::vector<std::string>& names) {
+		// (Drawn as the metals' buttons are.)
+		const ImGuiStyle& style = ImGui::GetStyle();
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		float pixel = ToolUI::Pixel() * 2.0F;
+		const int perRow = 3;
+		float gap = style.ItemSpacing.x * 0.5F;
+		float width = std::floor((ImGui::GetContentRegionAvail().x - gap * static_cast<float>(perRow - 1)) / static_cast<float>(perRow));
+		float pad = pixel * 2.0F;
+		float height = pad + pixel * 12.0F + ImGui::GetTextLineHeight() + pad;
+		int toolIndex = ToolIndex(kind);
+		int column = 0;
+		for (const std::string& name: names) {
+			const Material* material = g_SceneMan.GetMaterial(name);
+			if (!material || material->GetIndex() == g_MaterialAir) {
+				continue;
+			}
+			if (column++ % perRow != 0) {
+				ImGui::SameLine(0.0F, gap);
+			}
+			ImGui::PushID(name.c_str());
+			ImVec2 at = ImGui::GetCursorScreenPos();
+			if (ImGui::InvisibleButton("##material", ImVec2(width, height))) {
+				chosen = name;
+				TookTool(toolIndex);
+			}
+			bool liquid = FluidSim::IsLiquid(material->GetIndex());
+			ImGui::SetItemTooltip(kind == Tool::TerrainOther ? "Paints %s, the base game's own." : (liquid ? "Pours %s." : "Pours %s, which falls and piles."), name.c_str());
+			bool hovered = ImGui::IsItemHovered();
+			bool selected = s_ToolIndex == toolIndex && chosen == name;
+			ImVec2 to(at.x + width, at.y + height);
+			drawList->AddRectFilled(at, to, ImGui::GetColorU32(selected ? ImGuiCol_FrameBgActive : hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg));
+			drawList->AddRect(at, to, ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Border), 0.0F, 0, selected ? ToolUI::Pixel() * 2.0F : ToolUI::Pixel());
+			DrawIcon(drawList, kind == Tool::TerrainOther ? Icon::Chunk : (liquid ? Icon::Drop : Icon::Grains), ImVec2(std::floor(at.x + (width - pixel * 12.0F) * 0.5F), at.y + pad), pixel, MaterialMarkColor(name, 255));
+			ImVec2 nameSize = ImGui::CalcTextSize(name.c_str());
+			ImGui::PushClipRect(at, to, true);
+			drawList->AddText(ImVec2(std::floor(at.x + std::max((width - nameSize.x) * 0.5F, pad * 0.5F)), at.y + pad + pixel * 12.0F + ToolUI::Pixel()), ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Text), name.c_str());
 			ImGui::PopClipRect();
 			ImGui::PopID();
 		}

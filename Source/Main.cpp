@@ -308,6 +308,8 @@ void PollSDLEvents() {
 	SDL_Event sdlEvent;
 	// Commands from a companion program on this computer (the Workbench), if the link was asked for.
 	ControlLink::Update();
+	// A setting changed on any page is written straight away, so it isn't lost if the game doesn't get to quit cleanly.
+	g_SettingsMan.SaveSettingsIfChanged();
 	while (SDL_PollEvent(&sdlEvent)) {
 		// Clicks, scrolls and typing aimed at a debug window shouldn't also reach the game (releases always do, so nothing gets stuck down).
 		const ImGuiIO& imGuiIO = ImGui::GetIO();
@@ -788,7 +790,7 @@ int main(int argc, char** argv) {
 	g_ThreadMan.GetPriorityThreadPool().wait_for_tasks();
 	g_ThreadMan.GetBackgroundThreadPool().wait_for_tasks();
 
-	// Keep what was changed in F6 and not saved since (the panel saves when it closes, but not when the game is quit with it open).
+	// Keep anything changed in the last second, before the every-second check saw it.
 	g_SettingsMan.UpdateSettingsFile();
 	DestroyManagers();
 

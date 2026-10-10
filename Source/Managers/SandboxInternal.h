@@ -198,6 +198,8 @@ namespace SandboxDetail {
 		// Appended, so the tools before keep their numbers.
 		Candles, //!< Puts candles on the ground (Tools/MakeCandleSprites.py): wax with a wick, which fire lights and which burn down (TerrainCandle).
 		// Appended, so the tools before keep their numbers.
+		Metal, //!< Paints the metal chosen under Metals (c_PaintMetals; Stroke::Material): the bunkers' plating, or a polished metal that shines.
+		// Appended, so the tools before keep their numbers.
 		CollapseArea //!< A box dragged out on the world (Position to Position2): all the ground in it breaks loose and falls (TerrainCollapse::DropArea).
 	};
 
@@ -210,7 +212,7 @@ namespace SandboxDetail {
 	};
 
 	/// What bunkers and the things the sandbox builds are made of, cleared with the buildings.
-	constexpr const char* c_BuildingMaterials[] = {"Concrete", "Metal", "Mega Metal", "Mangled Metal", "Door Metal", "Scrap Metal", "Glass", "Civilian Stuff", "Military Stuff", "Ladder"};
+	constexpr const char* c_BuildingMaterials[] = {"Concrete", "Metal", "Mega Metal", "Mangled Metal", "Door Metal", "Scrap Metal", "Glass", "Civilian Stuff", "Military Stuff", "Ladder", "Gold Plate", "Silver Plate", "Bronze Plate", "Brass Plate", "Copper Plate", "Chrome Plate"};
 
 	/// The Battle tab's tools that set something on a team's card, taken from it and put down with Enter (PutDownBattleTool).
 	constexpr bool IsBattleTool(Tool kind) { return kind == Tool::BattleDefendPoint || kind == Tool::BattleDropLine || kind == Tool::BattleSpawnZone || kind == Tool::BattleModePoint || kind == Tool::BattleModeBase || kind == Tool::BattleModeZone || kind == Tool::BattleModeGoal || kind == Tool::BattleModeFlag; }
@@ -317,6 +319,7 @@ namespace SandboxDetail {
 	    {Tool::Generator, "Generator", 0.0F, false},
 	    {Tool::GrowGrass, "Grow grass", 0.03F, true},
 	    {Tool::Candles, "Candles", 0.03F, true},
+	    {Tool::Metal, "Metal", 0.03F, true},
 	    {Tool::CollapseArea, "Make it fall", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
@@ -345,6 +348,7 @@ namespace SandboxDetail {
 			case Tool::DenseEarth:
 			case Tool::GoldEarth:
 			case Tool::TerrainOther:
+			case Tool::Metal:
 			case Tool::GrowGrass:
 				return true;
 			default:
@@ -405,6 +409,35 @@ namespace SandboxDetail {
 
 	/// How much of what the "Earth with gold" brush paints is gold.
 	constexpr float c_GoldEarthShare = 0.06F;
+
+	/// The metals offered under the Paint tab's Metals: the material painted, its button's name and colour, and what it is, for the tooltip.
+	struct PaintMetal {
+		const char* Material;
+		const char* Name;
+		unsigned char R, G, B;
+		const char* About;
+	};
+	constexpr PaintMetal c_PaintMetals[] = {
+	    {"Metal", "Steel", 175, 189, 199, "The bunkers' own metal: plated, bolted and as tough. Shines a little."},
+	    {"Mega Metal", "Heavy plate", 205, 215, 220, "The bunkers' toughest metal, as tread plate: half as strong again as steel, and glossier."},
+	    {"Scrap Metal", "Scrap", 150, 120, 100, "Rusted, battered plates: weak, and it breaks up like debris."},
+	    {"Gold Plate", "Gold", 240, 200, 60, "Polished gold plating: as strong as steel, and it glints gold in the sun and in lamplight. Not gold to dig for funds."},
+	    {"Silver Plate", "Silver", 200, 205, 210, "Polished silver plating: mirrors the sky and glints white."},
+	    {"Bronze Plate", "Bronze", 180, 110, 45, "Bronze plating: a warm, softer sheen."},
+	    {"Brass Plate", "Brass", 200, 185, 75, "Polished brass plating: glints a greenish gold."},
+	    {"Copper Plate", "Copper", 190, 95, 50, "Copper plating: glints a rosy orange."},
+	    {"Chrome Plate", "Chrome", 215, 230, 240, "Mirror-bright chrome: shows the sky above it and the dark ground below, and flashes in the light."}};
+
+	/// The textures metals the base game gives none are painted with in the sandbox, so a stroke of them looks like the bunkers' plating
+	/// rather than a flat colour (Tools/MakeMetalTextures.py). Their materials are left as they are, so the maps that use them don't change.
+	struct PaintTexture {
+		const char* Material;
+		const char* Path;
+	};
+	constexpr PaintTexture c_PaintTextures[] = {
+	    {"Metal", "Base.rte/Scenes/Textures/Metals/SteelPlate.png"},
+	    {"Mega Metal", "Base.rte/Scenes/Textures/Metals/TreadPlate.png"},
+	    {"Scrap Metal", "Base.rte/Scenes/Textures/Metals/ScrapPlate.png"}};
 
 	/// The base game's ground materials offered under "More terrain..." (those a game doesn't have are left out).
 	constexpr const char* c_TerrainMaterials[] = {"Topsoil", "Earth", "Dense Earth", "Stone", "Bedrock", "Gold", "Red Earth", "Dense Red Earth", "Red Stone", "Lunar Earth", "Dense Lunar Earth", "Lunar Stone", "Snow", "Dense Snow", "Ice", "Sand", "Cave Floor", "Cave Ceiling", "Grass", "Vegetation", "Wood", "Tree Trunk", "Charcoal", "Concrete", "Metal", "Scrap Metal", "Glass", "Sandbag", "Rubber"};
@@ -852,6 +885,7 @@ namespace SandboxDetail {
 	/// Whether the tool in hand is used by dragging out a shape on the world: the terrain brushes with Brush type Shape, and "Make it fall"'s box.
 	inline bool DragsShape(Tool kind) { return (IsTerrainBrush(kind) && s_ShapeFill) || kind == Tool::CollapseArea; }
 	inline BrushShape s_BrushShape = BrushShape::Circle; //!< How the terrain brushes paint and dig: circles, squares or a spray (Paint > Terrain).
+	inline std::string s_PaintMetal = "Metal"; //!< What the Metal tool paints, picked under Metals (a c_PaintMetals material).
 	inline std::string s_OtherTerrain = "Topsoil"; //!< What the "Other terrain" tool paints, picked under "More terrain...".
 	inline int s_UnitChoice = 0;
 	inline int s_BrainChoice = 0;
@@ -1946,6 +1980,14 @@ namespace SandboxDetail {
 	void DrawFavouriteMark(ImDrawList* drawList, ImVec2 from);
 	void DrawPinMark(ImDrawList* drawList, ImVec2 from, ImVec2 to);
 	void ToolButtons(std::initializer_list<Tool> tools);
+	/// The Paint tab's Metals: a button for each of c_PaintMetals the game has, each taking the Metal tool with that metal.
+	void MetalButtons();
+	/// A button for each of a list of materials, in its own colour, each taking a tool with that material (the Paint tab's other liquids
+	/// and powders, and its other terrain), as the other tools' buttons are.
+	/// @param kind The tool each button takes (Tool::PourOther or Tool::TerrainOther).
+	/// @param chosen What that tool uses, set by a click.
+	/// @param names The materials, by preset name.
+	void MaterialButtons(Tool kind, std::string& chosen, const std::vector<std::string>& names);
 	void SideChooser();
 	void UndoButton(); //!< Takes back the newest step of the shared paint and placing undo (Tool::UndoTerrain), as Ctrl+Z does.
 	void PresetList(Tool kind, const char* group = nullptr, float rows = 8.0F);

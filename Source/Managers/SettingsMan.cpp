@@ -8,6 +8,7 @@
 #include <cstring>
 #include "TextOverlay.h"
 #include "TerrainFire.h"
+#include "TerrainCandle.h"
 #include "WeatherLightning.h"
 #include "TerrainCollapse.h"
 #include "FluidSim.h"
@@ -35,6 +36,9 @@
 #include "System.h"
 
 #include <sstream>
+#include <fstream>
+#include <iomanip>
+#include <chrono>
 #include <filesystem>
 #include <cctype>
 #include <algorithm>
@@ -242,9 +246,38 @@ int SettingsMan::Initialize() {
 	return failureCode;
 }
 
+namespace {
+	/// The settings file's text for the settings as they are now.
+	std::string SettingsText() {
+		auto stream = std::make_unique<std::ostringstream>();
+		*stream << std::fixed << std::setprecision(6);
+		std::ostringstream* text = stream.get();
+		Writer settingsWriter(std::move(stream));
+		g_SettingsMan.Save(settingsWriter);
+		return text->str();
+	}
+}
+
 void SettingsMan::UpdateSettingsFile() const {
-	Writer settingsWriter(m_SettingsPath);
-	g_SettingsMan.Save(settingsWriter);
+	std::string text = SettingsText();
+	std::ofstream file(m_SettingsPath, std::ios::out | std::ios::trunc);
+	file << text;
+	file.close();
+	if (file) {
+		m_LastWrittenSettings = std::move(text);
+	}
+}
+
+void SettingsMan::SaveSettingsIfChanged() const {
+	static std::chrono::steady_clock::time_point s_LastLook;
+	std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+	if (now - s_LastLook < std::chrono::seconds(1)) {
+		return;
+	}
+	s_LastLook = now;
+	if (SettingsText() != m_LastWrittenSettings) {
+		UpdateSettingsFile();
+	}
 }
 
 int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) {
@@ -321,6 +354,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("TerrainCollapse", { TerrainCollapse::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("TerrainFire", { TerrainFire::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("EmberIgniteChance", { TerrainFire::SetEmberIgniteChance(std::stof(reader.ReadPropValue())); });
+	MatchProperty("CandleBurnMinutes", { TerrainCandle::SetBurnMinutes(std::stof(reader.ReadPropValue())); });
 	MatchProperty("ModernHUD", { ModernHUD::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("SmoothHUDText", { TextOverlay::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightingSettingsVersion", { s_ReadLightingSettingsVersion = std::stoi(reader.ReadPropValue()); });
@@ -425,7 +459,18 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SmokeScattering", { g_PostProcessMan.GetLightingSettings().SmokeScattering = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SmokeShading", { g_PostProcessMan.GetLightingSettings().SmokeShading = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("SmokeShadingStrength", { g_PostProcessMan.GetLightingSettings().SmokeShadingStrength = std::stof(reader.ReadPropValue()); });
-	MatchProperty("EffectsParticles", { g_PostProcessMan.GetLightingSettings().EffectsParticles = std::stof(reader.ReadPropValue()); });
+	MatchProperty("EffectsParticles", {
+		// The one setting sparks, dust and debris shared before they were split: carried over to all three.
+		float amount = std::stof(reader.ReadPropValue());
+		LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+		lighting.EffectsSparks = amount;
+		lighting.EffectsDust = amount;
+		lighting.EffectsDebris = amount;
+	});
+	MatchProperty("EffectsSparks", { g_PostProcessMan.GetLightingSettings().EffectsSparks = std::stof(reader.ReadPropValue()); });
+	MatchProperty("EffectsDust", { g_PostProcessMan.GetLightingSettings().EffectsDust = std::stof(reader.ReadPropValue()); });
+	MatchProperty("EffectsDebris", { g_PostProcessMan.GetLightingSettings().EffectsDebris = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SparkLights", { g_PostProcessMan.GetLightingSettings().SparkLights = std::max(std::stof(reader.ReadPropValue()), 0.0F); });
 	MatchProperty("Embers", { g_PostProcessMan.GetLightingSettings().Embers = std::stof(reader.ReadPropValue()); });
 	MatchProperty("Headlamps", { g_PostProcessMan.GetLightingSettings().Headlamps = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("NightAffectsAI", { g_PostProcessMan.GetLightingSettings().NightAffectsAI = std::stoi(reader.ReadPropValue()) != 0; });
@@ -619,6 +664,10 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("UnitSpeechEnemies", { bool on = true; reader >> on; UnitSpeech::SetShowsEnemies(on); });
 	MatchProperty("UnitSpeechOff", { UnitSpeech::SetTriggerOn(reader.ReadPropValue(), false); });
 	MatchProperty("UnitSpeechOn", { UnitSpeech::SetTriggerOn(reader.ReadPropValue(), true); });
+	MatchProperty("UnitSpeechTones1", { UnitSpeech::SetTeamTonesText(0, reader.ReadPropValue()); });
+	MatchProperty("UnitSpeechTones2", { UnitSpeech::SetTeamTonesText(1, reader.ReadPropValue()); });
+	MatchProperty("UnitSpeechTones3", { UnitSpeech::SetTeamTonesText(2, reader.ReadPropValue()); });
+	MatchProperty("UnitSpeechTones4", { UnitSpeech::SetTeamTonesText(3, reader.ReadPropValue()); });
 	MatchProperty("AISuppression", {
 		reader >> m_AISuppression;
 		m_AISuppression = std::clamp(m_AISuppression, 0.0F, 2.0F);
@@ -833,7 +882,10 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("FireFlameBrightness", lighting.FireFlameBrightness);
 	writer.NewPropertyWithValue("ShockwaveStrength", lighting.ShockwaveStrength);
 	writer.NewPropertyWithValue("Embers", lighting.Embers);
-	writer.NewPropertyWithValue("EffectsParticles", lighting.EffectsParticles);
+	writer.NewPropertyWithValue("EffectsSparks", lighting.EffectsSparks);
+	writer.NewPropertyWithValue("EffectsDust", lighting.EffectsDust);
+	writer.NewPropertyWithValue("EffectsDebris", lighting.EffectsDebris);
+	writer.NewPropertyWithValue("SparkLights", lighting.SparkLights);
 	writer.NewPropertyWithValue("SmokeScattering", lighting.SmokeScattering);
 	writer.NewPropertyWithValue("SmokeShading", lighting.SmokeShading);
 	writer.NewPropertyWithValue("SmokeShadingStrength", lighting.SmokeShadingStrength);
@@ -974,6 +1026,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("PostSaturation", lighting.Saturation);
 	writer.NewPropertyWithValue("TerrainFire", TerrainFire::IsEnabled());
 	writer.NewPropertyWithValue("EmberIgniteChance", TerrainFire::GetEmberIgniteChance());
+	writer.NewPropertyWithValue("CandleBurnMinutes", TerrainCandle::GetBurnMinutes());
 	writer.NewPropertyWithValue("TerrainCollapse", TerrainCollapse::IsEnabled());
 	writer.NewPropertyWithValue("FlowingLiquids", FluidSim::IsEnabled());
 	writer.NewPropertyWithValue("LoosePowders", FluidSim::PowdersEnabled());
@@ -1047,6 +1100,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("UnitSpeech", UnitSpeech::IsEnabled());
 	writer.NewPropertyWithValue("UnitSpeechChance", UnitSpeech::GetChance());
 	writer.NewPropertyWithValue("UnitSpeechEnemies", UnitSpeech::ShowsEnemies());
+	for (int team = 0; team < 4; ++team) {
+		writer.NewPropertyWithValue("UnitSpeechTones" + std::to_string(team + 1), UnitSpeech::GetTeamTonesText(team));
+	}
 	if (forPreset) {
 		// The settings file only lists what is off, over everything on; a preset loads over what is set now, so it says what is on too.
 		for (const UnitSpeech::Trigger& trigger: UnitSpeech::GetTriggers()) {

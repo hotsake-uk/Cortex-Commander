@@ -461,6 +461,10 @@ namespace RTE {
 		/// @param newValue Boolean indicating whether or not the effect can be obscured.
 		void SetEffectAlwaysShows(bool newValue) { m_EffectAlwaysShows = newValue; }
 
+		/// Gets whether this MovableObject's screen effect is a spark's glow, scaled by the Spark lights setting (LightingSettings::SparkLights).
+		/// @return Whether the screen effect is a spark's glow.
+		bool GetSparkGlow() const { return m_SparkGlow; }
+
 		/// Sets the current angular velocity of this MovableObject. Positive is
 		/// a counter clockwise rotation.
 		/// @param newRotVel The new angular velocity in radians per second.
@@ -1421,6 +1425,7 @@ namespace RTE {
 		int m_EffectStopStrength;
 		// The effect can't be obscured
 		bool m_EffectAlwaysShows;
+		bool m_SparkGlow; //!< The screen effect is a spark's glow: its strength, and so the light it casts, follows LightingSettings::SparkLights, and it's gone with EffectsSparks at 0.
 		Color m_LightColor; //!< Color of the light this casts, 0-255.
 		float m_LightRadius; //!< Radius of the light this casts, in pixels. 0 means no light.
 		float m_LightIntensity; //!< Brightness of the light this casts. 0 means no light.

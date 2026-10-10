@@ -24,6 +24,12 @@ namespace RTE {
 			float Lean; //!< How far the wind leans it over, -1..1.
 		};
 
+		/// Gets how long a candle burns, in minutes for one 20 pixels tall (a gameplay setting); 0 for unlimited: they burn on and never melt down.
+		static float GetBurnMinutes() { return s_BurnMinutes; }
+
+		/// Sets how long a candle burns, in minutes for one 20 pixels tall; 0 (or less) for unlimited.
+		static void SetBurnMinutes(float minutes) { s_BurnMinutes = minutes > 0.0F ? (minutes < 0.1F ? 0.1F : (minutes > 600.0F ? 600.0F : minutes)) : 0.0F; }
+
 		/// Sees which materials are candle wax and wicks, for the current scene. Called with TerrainFire's fuel table.
 		static void BuildTables();
 
@@ -64,5 +70,8 @@ namespace RTE {
 
 		/// Puts out every candle, e.g. when the scene changes.
 		static void Clear();
+
+	private:
+		static float s_BurnMinutes; //!< How long a candle 20 pixels tall burns, in minutes; 0 for unlimited.
 	};
 } // namespace RTE

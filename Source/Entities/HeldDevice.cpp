@@ -25,6 +25,18 @@
 
 using namespace RTE;
 
+namespace {
+	/// Whether a material rings like metal when a blade strikes it, so the strike sparks: metal and armour, not dirt, rock or wood.
+	bool IsMetalForBlades(const Material* material) {
+		if (!material) {
+			return false;
+		}
+		const std::string& name = material->GetPresetName();
+		return name.find("Metal") != std::string::npos || name.find("Steel") != std::string::npos || name.find("Iron") != std::string::npos || name == "Military Stuff";
+	}
+} // namespace
+
+
 ConcreteClassInfo(HeldDevice, Attachable, 50);
 
 HeldDevice::HeldDevice() {
@@ -835,6 +847,13 @@ void HeldDevice::PostUpdate() {
 		return;
 	}
 
+	// Only a blade in a living unit's hands cuts, clashes or strikes: one lying on the ground, or still in a dead unit's grip, is just a thing.
+	const Actor* wielder = dynamic_cast<const Actor*>(GetRootParent());
+	if (!m_Parent || !wielder || wielder->GetStatus() == Actor::DYING || wielder->GetStatus() == Actor::DEAD) {
+		m_BladePreviousValid = false;
+		return;
+	}
+
 	Vector start = GetBladeStartPos();
 	Vector end = GetBladeEndPos();
 	Vector bladeVec = g_SceneMan.ShortestDistance(start, end, g_SceneMan.SceneWrapsX());
@@ -946,6 +965,7 @@ void HeldDevice::PostUpdate() {
 	bool struckTerrain = false;
 	Vector terrainStrikePos;
 	Vector terrainStrikeVel;
+	bool terrainStrikeMetal = false;
 	for (int i = 0; i < samples; ++i) {
 		float along = static_cast<float>(i) / static_cast<float>(samples - 1);
 		Vector now = start + bladeVec * along;
@@ -975,6 +995,7 @@ void HeldDevice::PostUpdate() {
 					struckTerrain = true;
 					terrainStrikePos = now;
 					terrainStrikeVel = vel;
+					terrainStrikeMetal = IsMetalForBlades(material);
 				}
 			}
 		}
@@ -994,7 +1015,7 @@ void HeldDevice::PostUpdate() {
 	}
 	if (struckTerrain && m_BladeTerrainTimer.IsPastSimMS(90)) {
 		m_BladeTerrainTimer.Reset();
-		BladeStruck(terrainStrikePos, terrainStrikeVel * (-GetBladeMass() * 0.8F), false);
+		BladeStruck(terrainStrikePos, terrainStrikeVel * (-GetBladeMass() * 0.8F), false, terrainStrikeMetal);
 	}
 
 	if (BladeDeflects()) {
@@ -1064,8 +1085,11 @@ bool HeldDevice::CutWithBlade(MOID hitMOID, const Vector& hitPos, const Vector& 
 		EffectsParticles::Emit("Smoke", hitPos, Vector(0.0F, -1.0F), 0.5F, 1, 0);
 		g_PostProcessMan.RegisterLight(hitPos, glm::vec3(255.0F, 215.0F, 150.0F), 30.0F, 1.2F, LightSource::Objects);
 	} else {
-		// A physical blade gives up some of its speed to what it cuts into.
+		// A physical blade gives up some of its speed to what it cuts into, and strikes sparks off armour.
 		AddImpulseForce(relativeVel * (-GetBladeMass() * 0.35F));
+		if (IsMetalForBlades(hitMO->GetMaterial())) {
+			EffectsParticles::Emit("Sparks", hitPos, direction * -4.0F, 0.7F, 3, 0xFFE0A0);
+		}
 	}
 	if (m_BladeHitSound) {
 		m_BladeHitSound->Play(hitPos);
@@ -1088,18 +1112,21 @@ bool HeldDevice::CutWithBlade(MOID hitMOID, const Vector& hitPos, const Vector& 
 	return true;
 }
 
-void HeldDevice::BladeStruck(const Vector& where, const Vector& push, bool clash) {
+void HeldDevice::BladeStruck(const Vector& where, const Vector& push, bool clash, bool metal) {
 	if (clash) {
 		m_BladeClashTimer.Reset();
 	}
 	AddImpulseForce(push);
-	unsigned int sparkColor = m_BladeEnergy ? ColorToRGB(m_BladeColor) : 0xFFE0A0;
-	EffectsParticles::Emit("Sparks", where, push.GetNormalized() * 6.0F, 0.9F, clash ? 10 : 5, sparkColor);
-	if (m_BladeEnergy || clash) {
-		g_PostProcessMan.RegisterLight(where, m_BladeEnergy ? glm::vec3(255.0F, 240.0F, 215.0F) : glm::vec3(255.0F, 200.0F, 130.0F), clash ? 55.0F : 30.0F, clash ? 2.2F : 1.0F, LightSource::Objects);
-	}
-	if (m_BladeClashSound) {
-		m_BladeClashSound->Play(where);
+	// Steel on steel sparks and rings; steel on dirt or rock just stops. An energy blade flares on anything.
+	if (m_BladeEnergy || clash || metal) {
+		unsigned int sparkColor = m_BladeEnergy ? ColorToRGB(m_BladeColor) : 0xFFE0A0;
+		EffectsParticles::Emit("Sparks", where, push.GetNormalized() * 6.0F, 0.9F, clash ? 10 : 5, sparkColor);
+		if (m_BladeEnergy || clash) {
+			g_PostProcessMan.RegisterLight(where, m_BladeEnergy ? glm::vec3(255.0F, 240.0F, 215.0F) : glm::vec3(255.0F, 200.0F, 130.0F), clash ? 55.0F : 30.0F, clash ? 2.2F : 1.0F, LightSource::Objects);
+		}
+		if (m_BladeClashSound) {
+			m_BladeClashSound->Play(where);
+		}
 	}
 	// A swing that strikes something it can't go through stops there.
 	if (m_MeleeSwingPhase == MeleeSwingPhase::Strike || m_MeleeSwingPhase == MeleeSwingPhase::WindUp) {

@@ -2,6 +2,7 @@
 
 #include "AHuman.h"
 #include "ActivityMan.h"
+#include "Atom.h"
 #include "AtomGroup.h"
 #include "Attachable.h"
 #include "Controller.h"
@@ -77,6 +78,10 @@ void AVehicle::Clear() {
 	m_UpsideDownTimer.Reset();
 	m_BoarderInReach = nullptr;
 	m_Buoyancy = 0.8F;
+	m_BreakLandingSpeed = 0.0F;
+	m_BreakSunkFraction = 0.0F;
+	m_BreakNow = false;
+	m_SunkTimer.Reset();
 }
 
 int AVehicle::Create(const AVehicle& reference) {
@@ -104,6 +109,8 @@ int AVehicle::Create(const AVehicle& reference) {
 	m_BoardingReach = reference.m_BoardingReach;
 	m_NeedsDriver = reference.m_NeedsDriver;
 	m_Buoyancy = reference.m_Buoyancy;
+	m_BreakLandingSpeed = reference.m_BreakLandingSpeed;
+	m_BreakSunkFraction = reference.m_BreakSunkFraction;
 	if (reference.m_Driver) {
 		m_Driver = dynamic_cast<Actor*>(reference.m_Driver->Clone());
 	}
@@ -140,6 +147,8 @@ int AVehicle::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("BoardingReach", { reader >> m_BoardingReach; });
 	MatchProperty("NeedsDriver", { reader >> m_NeedsDriver; });
 	MatchProperty("Buoyancy", { reader >> m_Buoyancy; });
+	MatchProperty("BreakLandingSpeed", { reader >> m_BreakLandingSpeed; });
+	MatchProperty("BreakSunkFraction", { reader >> m_BreakSunkFraction; });
 
 	EndPropertyList;
 }
@@ -164,6 +173,8 @@ int AVehicle::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("BoardingReach", m_BoardingReach);
 	writer.NewPropertyWithValue("NeedsDriver", m_NeedsDriver);
 	writer.NewPropertyWithValue("Buoyancy", m_Buoyancy);
+	writer.NewPropertyWithValue("BreakLandingSpeed", m_BreakLandingSpeed);
+	writer.NewPropertyWithValue("BreakSunkFraction", m_BreakSunkFraction);
 
 	return 0;
 }
@@ -442,6 +453,10 @@ void AVehicle::UpdateWheels() {
 	// Without this a hard landing or a step drives the body down onto the ground, and a heavy one digs itself in to soft ground and sticks.
 	if (bottomedShare > 0.0F) {
 		float into = m_Vel.Dot(down);
+		// Too hard a landing (a long fall, a ram into a wall on its wheels): it breaks apart.
+		if (m_BreakLandingSpeed > 0.0F && into > m_BreakLandingSpeed) {
+			m_BreakNow = true;
+		}
 		if (into > 0.0F) {
 			m_Vel -= down * into * std::min(bottomedShare, 1.0F);
 		}
@@ -463,6 +478,19 @@ void AVehicle::UpdateWheels() {
 	}
 }
 
+float AVehicle::GetSunkFraction() const {
+	if (!m_pAtomGroup || m_pAtomGroup->GetAtomList().empty()) {
+		return 0.0F;
+	}
+	int sunk = 0;
+	for (const Atom* atom: m_pAtomGroup->GetAtomList()) {
+		if (HoldsWheel(m_Pos + RotateOffset(atom->GetOffset()))) {
+			++sunk;
+		}
+	}
+	return static_cast<float>(sunk) / static_cast<float>(m_pAtomGroup->GetAtomList().size());
+}
+
 void AVehicle::Update() {
 	ZoneScoped;
 
@@ -480,6 +508,20 @@ void AVehicle::Update() {
 
 	UpdateWheels();
 	UpdateBoarding();
+
+	// Sunk well into the ground (driven or dropped through it somehow): it breaks apart rather than lie stuck in it.
+	if (m_BreakSunkFraction > 0.0F && GetSunkFraction() > m_BreakSunkFraction) {
+		if (m_SunkTimer.IsPastSimMS(250)) {
+			m_BreakNow = true;
+		}
+	} else {
+		m_SunkTimer.Reset();
+	}
+	if (m_BreakNow && m_Status != DYING && m_Status != DEAD) {
+		m_BreakNow = false;
+		GibThis();
+		return;
+	}
 
 	// On its side or roof and still: the driver rocks it back over, after a moment.
 	float rotation = Wrapped(m_Rotation.GetRadAngle());

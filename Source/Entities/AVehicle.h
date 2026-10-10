@@ -77,6 +77,9 @@ namespace RTE {
 		/// Gets how hard the driver is driving it along, -1 (full to the left) to 1 (full to the right), from this update.
 		float GetThrottle() const { return m_Throttle; }
 
+		/// Gets how much of the body is inside the ground, 0 to 1: the share of its atoms in anything but air and liquid.
+		float GetSunkFraction() const;
+
 		/// Gets the top speed it drives at on the flat, in m/s.
 		float GetMaxSpeed() const { return m_MaxSpeed; }
 
@@ -153,6 +156,10 @@ namespace RTE {
 		Timer m_UpsideDownTimer; //!< How long it has lain on its side or roof, still: then the driver rocks it back over.
 		Actor* m_BoarderInReach; //!< A friendly player-controlled unit beside the seat this update, for the hint. Not owned.
 		float m_Buoyancy; //!< How hard liquid pushes it up against its weight, with its middle under (1 floats level; a boat's hull is VH-2).
+		float m_BreakLandingSpeed; //!< How fast it can come down on a bottomed-out spring before it breaks apart, in m/s. 0 never breaks it so.
+		float m_BreakSunkFraction; //!< How much of its body can be inside the ground before it breaks apart, 0 to 1. 0 never breaks it so.
+		bool m_BreakNow; //!< Whether something this update was enough to break it apart, which it does at the end of the update.
+		Timer m_SunkTimer; //!< How long it has been sunk past the limit: a moment's overlap (a wheel's step, a landing) doesn't break it.
 
 	private:
 		/// Works out each wheel's spring against the ground and pushes the body by them, drives and brakes the wheels on the ground, and turns them.

@@ -435,6 +435,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AVehicle) {
 	    .property("Throttle", &AVehicle::GetThrottle)
 	    .property("MaxSpeed", &AVehicle::GetMaxSpeed, &AVehicle::SetMaxSpeed)
 	    .property("WheelsOnGround", &AVehicle::GetWheelsOnGround)
+	    .property("SunkFraction", &AVehicle::GetSunkFraction)
 	    .property("SeatOffset", &AVehicle::GetSeatOffset)
 
 	    .def("TakeDriver", &AVehicle::TakeDriver)

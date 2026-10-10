@@ -346,6 +346,8 @@ function NativeHumanAI:Update(Owner)
 				FoundMO = ToACDropShip(FoundMO);
 			elseif FoundMO.ClassName == "ADoor" and FoundMO.Team ~= Activity.NOTEAM and Owner.AIMode ~= Actor.AIMODE_SENTRY and ToADoor(FoundMO).Door and ToADoor(FoundMO).Door:IsAttached() then
 				FoundMO = ToADoor(FoundMO);
+			elseif FoundMO.ClassName == "AVehicle" then	-- A cart or other vehicle (VH-1): shot to pieces like any enemy, driven or not.
+				FoundMO = ToAVehicle(FoundMO);
 			elseif FoundMO.ClassName == "Actor" then
 				FoundMO = ToActor(FoundMO);
 			else

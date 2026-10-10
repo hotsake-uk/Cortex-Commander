@@ -1214,6 +1214,8 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 					ClosestEnemy = ToAHuman(ClosestEnemy);
 				elseif ClosestEnemy.ClassName == "ACrab" then
 					ClosestEnemy = ToACrab(ClosestEnemy);
+				elseif ClosestEnemy.ClassName == "AVehicle" then
+					ClosestEnemy = ToAVehicle(ClosestEnemy);
 				else
 					ClosestEnemy = nil;
 				end
@@ -2089,6 +2091,8 @@ function HumanBehaviors.ThrowTarget(AI, Owner, Abort)
 									AI.Target = ToACDropShip(MO);
 								elseif MO.ClassName == "ADoor" then
 									AI.Target = ToADoor(MO);
+								elseif MO.ClassName == "AVehicle" then
+									AI.Target = ToAVehicle(MO);
 								elseif MO.ClassName == "Actor" then
 									AI.Target = ToActor(MO);
 								else

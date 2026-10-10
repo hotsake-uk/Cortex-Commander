@@ -25,6 +25,7 @@
 #include "SmokeGrid.h"
 #include "TerrainCollapse.h"
 #include "TerrainFire.h"
+#include "TerrainCandle.h"
 #include "WeatherLightning.h"
 #include "TextOverlay.h"
 #include "TimerMan.h"
@@ -35,6 +36,7 @@
 #include "ToolWidgets.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstring>
 #include <functional>
@@ -662,6 +664,12 @@ void DebugMan::SettingsGUI() {
 			TerrainFire::SetEmberIgniteChance(chance);
 		}
 		Tip("The chance each second that smouldering charcoal (what's left glowing of burnt wood) sets alight each grass, wood or oil pixel touching it. Charcoal never relights other charcoal. 0 for never.");
+		Toggle("Candles burn forever", TerrainCandle::GetBurnMinutes() <= 0.0F, [](bool on) { TerrainCandle::SetBurnMinutes(on ? 0.0F : 2.0F); });
+		Tip("Lit candles (Paint > Plants > Candles) keep burning and never melt down. Off, they burn down in the time below.");
+		if (float minutes = TerrainCandle::GetBurnMinutes(); minutes > 0.0F && Slider("Candle burn time", &minutes, 0.5F, 60.0F, "%.1f minutes", ImGuiSliderFlags_Logarithmic)) {
+			TerrainCandle::SetBurnMinutes(minutes);
+		}
+		Tip("How long a lit candle 20 pixels tall takes to burn down, whatever its width; a taller one takes longer. 2 minutes as it comes.");
 		Toggle("Units catch fire", ActorFire::IsEnabled(), [](bool on) { ActorFire::SetEnabled(on); });
 		Toggle("Smoke blocks sight", SmokeGrid::IsEnabled(), [](bool on) { SmokeGrid::SetEnabled(on); });
 		Toggle("Gas", GasGrid::IsEnabled(), [](bool on) { GasGrid::SetEnabled(on); });
@@ -689,7 +697,12 @@ void DebugMan::SettingsGUI() {
 			Slider("Flame height", &settings.FireFlameSize, 0.2F, 3.0F);
 			Slider("Flame brightness", &settings.FireFlameBrightness, 0.2F, 2.0F);
 		}
-		Slider("Sparks, dust and debris", &settings.EffectsParticles, 0.0F, 3.0F);
+		Slider("Sparks", &settings.EffectsSparks, 0.0F, 3.0F);
+		Slider("Spark lights", &settings.SparkLights, 0.0F, 2.0F);
+		Tip("How bright the glow and light of the game's own sparks are, off hits and blasts. 0: they fly without lighting anything. With Sparks at 0 they're off too.");
+		Slider("Dust", &settings.EffectsDust, 0.0F, 3.0F);
+		Slider("Debris", &settings.EffectsDebris, 0.0F, 3.0F);
+		Tip("Sparks: glowing streaks off explosions and hard hits. Dust: soft puffs off explosions and soft ground. Debris: little chips that bounce. Embers, explosion fire and smoke, and splash spray follow the highest of the three, and go only when all three are 0.");
 		if (Plain()) {
 			ImGui::TextDisabled("%d effects particles alive", EffectsParticles::GetCount());
 		}
@@ -954,6 +967,32 @@ void DebugMan::SettingsGUI() {
 			Tip("How likely a unit is to say something when it does one of the things below. 100%: nearly every time (a unit still waits a few seconds before saying the same thing again, and a squad doesn't all say it at once).");
 			Toggle("Hear other sides' units", UnitSpeech::ShowsEnemies(), [](bool on) { UnitSpeech::SetShowsEnemies(on); });
 			Tip("Enemy units' lines too, where your side can see them. Off: only your own side's.");
+			// Each side's tones: what kind of lines its units say. None ticked is any.
+			{
+				static const std::array<const char*, 4> sideNames{"Red", "Green", "Blue", "Yellow"};
+				const std::vector<std::string> tones = UnitSpeech::GetTones();
+				for (int team = 0; team < 4; ++team) {
+					std::string anyLabel = std::string(sideNames[team]) + " side speaks: any tone##SpeechToneAny" + std::to_string(team);
+					Toggle(anyLabel.c_str(), UnitSpeech::TeamUsesAnyTone(team), [team](bool on) {
+						if (on) {
+							UnitSpeech::SetTeamAnyTone(team);
+						}
+					});
+					Tip("Its units say lines of every tone. Untick by picking one or more tones instead.");
+					for (const std::string& tone: tones) {
+						if (s_LastShown) {
+							ImGui::SameLine();
+						}
+						std::string label = tone + "##SpeechTone" + std::to_string(team) + tone;
+						const bool on = !UnitSpeech::TeamUsesAnyTone(team) && UnitSpeech::TeamUsesTone(team, tone);
+						Toggle(label.c_str(), on, [team, tone](bool set) { UnitSpeech::SetTeamTone(team, tone, set); });
+						std::string tip = std::string(sideNames[team]) + " side's units say " + tone + " lines" +
+						                  (tone == "Serious" ? ": by-the-book military talk (\"Contact front!\", \"Copy, moving.\")." : tone == "Funny" ? ": quips, sarcasm and gallows humour." : tone == "Casual" ? ": plain soldier talk." : ".") +
+						                  " Tick more than one to mix them.";
+						Tip(tip.c_str());
+					}
+				}
+			}
 			// The triggers under their groups (Speech.ini's Group), each group folding away with buttons to turn all of it on or off; a search
 			// lists the matching ones flat.
 			const std::vector<UnitSpeech::Trigger>& triggers = UnitSpeech::GetTriggers();

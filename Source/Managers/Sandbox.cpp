@@ -2,6 +2,7 @@
 #include "ActorWater.h"
 #include "MenuMan.h"
 #include "Weather.h"
+#include "TerrainCandle.h"
 
 bool Sandbox::s_Open = false;
 
@@ -131,6 +132,10 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		if (std::getenv("CCCP_TEST_POINTER")) {
 			ChoiceFor(stroke.Kind) = stroke.Choice;
 		}
+	}
+	if (stroke.Kind == Tool::TerrainOther || stroke.Kind == Tool::Metal) {
+		// The material to paint is the preset name; none, the one chosen in the window.
+		stroke.Material = !presetName.empty() ? presetName : (stroke.Kind == Tool::Metal ? s_PaintMetal : s_OtherTerrain);
 	}
 	if (std::getenv("CCCP_TEST_POINTER")) {
 		// Test runs that show what the pointer does: what a script used stays in hand, for the side it used.
@@ -866,6 +871,8 @@ void Sandbox::DrawGUI() {
 				stroke.Fill = static_cast<int>(s_FillShape);
 				if (stroke.Kind == Tool::TerrainOther) {
 					stroke.Material = s_OtherTerrain;
+				} else if (stroke.Kind == Tool::Metal) {
+					stroke.Material = s_PaintMetal;
 				}
 				s_Queue.push_back(stroke);
 			}
@@ -1211,23 +1218,14 @@ void Sandbox::DrawGUI() {
 				s_CurrentTab = "Paint";
 				ImGui::SeparatorText("Elements");
 				ToolButtons({Tool::Fire, Tool::Water, Tool::Lava, Tool::Acid, Tool::Oil, Tool::Smoke, Tool::ToxicGas});
-				ToolButtons({Tool::Mud, Tool::Tar, Tool::Mercury, Tool::Fuel, Tool::Cryo, Tool::Blood, Tool::PourOther});
+				ToolButtons({Tool::Mud, Tool::Tar, Tool::Mercury, Tool::Fuel, Tool::Cryo, Tool::Blood});
 				{
-					// Every other pourable (rubble, ash, mods' liquids), for the "Other" tool.
+					// Every other pourable (rubble, ash, mods' liquids), a button each, for the "Other" tool. Those with buttons of their own above
+					// (and in Loose things) aren't repeated.
+					static const char* const c_HaveButtons[] = {"Water", "Lava", "Acid", "Oil", "Mud", "Tar", "Mercury", "Fuel", "Cryogenic Fluid", "Blood", "Sand", "Snow", "Gravel", "Glass Shards"};
 					std::vector<std::string> pourables = PourableNames();
-					if (s_OtherPourable.empty() && !pourables.empty()) {
-						s_OtherPourable = std::find(pourables.begin(), pourables.end(), "Earth Rubble") != pourables.end() ? "Earth Rubble" : pourables.front();
-					}
-					if (ImGui::BeginCombo("More...", s_OtherPourable.empty() ? "(nothing pourable)" : s_OtherPourable.c_str())) {
-						for (const std::string& name: pourables) {
-							if (ImGui::Selectable(name.c_str(), name == s_OtherPourable)) {
-								s_OtherPourable = name;
-								TookTool(ToolIndex(Tool::PourOther));
-							}
-						}
-						ImGui::EndCombo();
-					}
-					ImGui::SetItemTooltip("Every liquid and powder the game pours, mods' included. Picking one takes the Other tool.");
+					pourables.erase(std::remove_if(pourables.begin(), pourables.end(), [](const std::string& name) { return std::find(std::begin(c_HaveButtons), std::end(c_HaveButtons), name) != std::end(c_HaveButtons); }), pourables.end());
+					MaterialButtons(Tool::PourOther, s_OtherPourable, pourables);
 				}
 				ImGui::SliderFloat("Flow", &s_Flow, 0.1F, 1.0F, "%.2f");
 				ImGui::SetItemTooltip("How fast the liquid and loose-ground brushes pour while held. 1: as fast as they go.");
@@ -1318,26 +1316,41 @@ void Sandbox::DrawGUI() {
 				ImGui::SetItemTooltip("How big the plants, cacti, mushrooms, trees and candles are drawn. x1 is the game's own art; bigger keeps it blocky, as the pixel art is (candles go up in whole steps, x1, x2, x3).");
 				ImGui::SliderInt("Plant spacing", &s_PlantSpacing, 2, 60, "%d px");
 				ImGui::SetItemTooltip("How far apart the plants go along a stroke. Each is one of the game's own plant pictures, set into the ground under the pointer.");
+				{
+					// How long candles burn (the same setting as Settings > Fire and smoke).
+					bool forever = TerrainCandle::GetBurnMinutes() <= 0.0F;
+					if (ToolUI::Checkbox("Candles burn forever", &forever)) {
+						TerrainCandle::SetBurnMinutes(forever ? 0.0F : 2.0F);
+					}
+					ImGui::SetItemTooltip("Lit candles keep burning and never melt down. Off, they burn down in the Candle burn time.");
+					if (float minutes = TerrainCandle::GetBurnMinutes(); minutes > 0.0F) {
+						ImGui::SameLine();
+						ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.5F);
+						if (ImGui::SliderFloat("Candle burn time", &minutes, 0.5F, 60.0F, "%.1f min", ImGuiSliderFlags_Logarithmic)) {
+							TerrainCandle::SetBurnMinutes(minutes);
+						}
+						ImGui::SetItemTooltip("How long a lit candle 20 pixels tall takes to burn down, whatever its width; a taller one takes longer.");
+					}
+				}
 				ImGui::SeparatorText("Terrain");
 				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::TreeTrunk, Tool::Concrete});
-				ToolButtons({Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::TerrainOther, Tool::CollapseArea});
+				ToolButtons({Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::CollapseArea});
 				{
-					// The rest of the base game's ground, for the "Other terrain" tool.
-					if (ImGui::BeginCombo("More terrain...", s_OtherTerrain.c_str())) {
-						for (const char* name: c_TerrainMaterials) {
-							const Material* material = g_SceneMan.GetMaterial(name);
-							if (!material || material->GetIndex() == g_MaterialAir) {
-								continue;
-							}
-							if (ImGui::Selectable(name, s_OtherTerrain == name)) {
-								s_OtherTerrain = name;
-								TookTool(ToolIndex(Tool::TerrainOther));
-							}
+					// The rest of the base game's ground, a button each, for the "Other terrain" tool. Those with buttons of their own (above, and
+					// under Metals) aren't repeated.
+					static const char* const c_HaveButtons[] = {"Earth", "Dense Earth", "Stone", "Ice", "Sand", "Grass", "Wood", "Tree Trunk", "Concrete"};
+					std::vector<std::string> terrain;
+					for (const char* name: c_TerrainMaterials) {
+						bool own = std::find_if(std::begin(c_HaveButtons), std::end(c_HaveButtons), [name](const char* other) { return std::string(other) == name; }) != std::end(c_HaveButtons);
+						own = own || std::any_of(std::begin(c_PaintMetals), std::end(c_PaintMetals), [name](const PaintMetal& metal) { return std::string(metal.Material) == name; });
+						if (!own) {
+							terrain.emplace_back(name);
 						}
-						ImGui::EndCombo();
 					}
-					ImGui::SetItemTooltip("The base game's ground materials. Picking one takes the Other terrain tool.");
+					MaterialButtons(Tool::TerrainOther, s_OtherTerrain, terrain);
 				}
+				ImGui::SeparatorText("Metals");
+				MetalButtons();
 				ImGui::TextUnformatted("Brush type");
 				ImGui::SameLine();
 				if (ImGui::RadioButton("Brush", !s_ShapeFill)) {

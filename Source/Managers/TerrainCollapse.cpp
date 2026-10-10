@@ -88,7 +88,7 @@ namespace {
 			neck = 0;
 		} else if (has("Scrap") || has("Mangled") || has("Shards")) {
 			style = has("Shards") ? c_Crumble : c_Crack;
-		} else if (has("Metal") || has("Ladder") || has("Rubber") || has("Gold") || name == "Armoured Military Stuff") {
+		} else if (has("Metal") || has("Plate") || has("Ladder") || has("Rubber") || has("Gold") || name == "Armoured Military Stuff") {
 			style = c_Bend;
 		} else if (has("Concrete") || has("Glass") || has("Ice")) {
 			style = c_Shatter;
@@ -168,7 +168,7 @@ namespace {
 			if (name.find("Scrap") != std::string::npos || name.find("Mangled") != std::string::npos) {
 				continue;
 			}
-			for (const char* word: {"Concrete", "Metal", "Ladder", "Military", "Civilian", "Glass"}) {
+			for (const char* word: {"Concrete", "Metal", "Plate", "Ladder", "Military", "Civilian", "Glass"}) {
 				if (name.find(word) != std::string::npos) {
 					s_Structure[id] = true;
 					break;
