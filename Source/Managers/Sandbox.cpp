@@ -126,6 +126,8 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		s_Team = std::clamp(team, 0, c_Sides - 1);
 		if (c_Tools[toolIndex].UsesRadius) {
 			s_Radius = std::clamp(stroke.Radius, 1, c_MaxBrushRadius);
+		} else if (stroke.Kind == Tool::Unit) {
+			s_SquadSize = std::max(stroke.Count, 1);
 		}
 	}
 	s_Queue.push_back(stroke);

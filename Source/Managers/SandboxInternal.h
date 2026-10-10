@@ -1958,7 +1958,7 @@ namespace SandboxDetail {
 	void KeysPage();
 	void DrawCursor();
 	const PiecePicture& PictureOfFile(const std::string& path);
-	const PiecePicture& PictureOfBitmap(BITMAP* bitmap);
+	const PiecePicture& PictureOfBitmap(BITMAP* bitmap, bool repeat = false);
 	int DrawRing(const std::vector<RingItem>& items, int current, bool sticky = false);
 	void DrawSideRing();
 	ImVec2 ToScreen(const Vector& scenePosition);
