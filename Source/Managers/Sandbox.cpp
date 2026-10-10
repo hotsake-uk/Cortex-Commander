@@ -585,7 +585,14 @@ void Sandbox::DrawGUI() {
 					Apply(stroke);
 				}
 			}
-			if (s_StepsWanted > 0 || !s_Queue.empty() || s_PlayerEnterPending > 0) {
+			// Lights, glows and the like are put together by the sim update from the settings as they stand (the lamps' brightness and tint, fire and
+			// effect looks...), so a setting changed while the world stands still showed only once it ran again. A widget in use (a slider dragged, a
+			// box ticked, a button let go) lets an update through, a slow few a second while it is held, and one as it is let go.
+			static bool widgetWasActive = false;
+			const bool widgetActive = ImGui::GetActiveID() != 0;
+			const bool settingsTouched = (widgetActive && ImGui::GetFrameCount() % 6 == 0) || (widgetWasActive && !widgetActive);
+			widgetWasActive = widgetActive;
+			if (s_StepsWanted > 0 || !s_Queue.empty() || s_PlayerEnterPending > 0 || settingsTouched) {
 				g_TimerMan.StepSim(1);
 				s_StepsWanted = std::max(s_StepsWanted - 1, 0);
 			}
