@@ -35,6 +35,16 @@ using namespace RTE;
 
 ConcreteClassInfo(MOSRotating, MOSprite, 500);
 
+// Every wound bleeds as its definition says, most of them for a while and then they stop. As often as the bleed-out chance setting asks,
+// one keeps on bleeding instead, until the unit is patched up or bleeds out.
+static void RollWoundBleedOut(AEmitter* wound) {
+	float chance = g_SettingsMan.BleedOutChance();
+	if (chance <= 0.0F || wound->GetEmitDamage() <= 0.0F || wound->GetEmitCountLimit() <= 0 || RandomNum(0.0F, 100.0F) >= chance) {
+		return;
+	}
+	wound->SetEmitCountLimit(0);
+}
+
 BITMAP* MOSRotating::m_spTempBitmap16 = 0;
 BITMAP* MOSRotating::m_spTempBitmap32 = 0;
 BITMAP* MOSRotating::m_spTempBitmap64 = 0;
@@ -854,6 +864,7 @@ bool MOSRotating::ParticlePenetration(HitData& hd) {
 			pEntryWound->SetDamageMultiplier(damageMultiplier * hd.Body[HITOR]->WoundDamageMultiplier());
 			// Adjust position so that it looks like the hole is actually *on* the Hitee.
 			entryPos[dom] += increment[dom] * (pEntryWound->GetSpriteWidth() / 2);
+			RollWoundBleedOut(pEntryWound);
 			AddWoundExt(pEntryWound, entryPos + m_SpriteOffset, true, true, false);
 			pEntryWound = 0;
 		}
@@ -870,6 +881,7 @@ bool MOSRotating::ParticlePenetration(HitData& hd) {
 				pExitWound->SetInheritedRotAngleOffset(dir.GetAbsRadAngle());
 				float damageMultiplier = pExitWound->HasNoSetDamageMultiplier() ? 1.0F : pExitWound->GetDamageMultiplier();
 				pExitWound->SetDamageMultiplier(damageMultiplier * hd.Body[HITOR]->WoundDamageMultiplier());
+				RollWoundBleedOut(pExitWound);
 				AddWoundExt(pExitWound, exitPos + m_SpriteOffset, true, false, true);
 				pExitWound = 0;
 			}
@@ -1668,6 +1680,7 @@ Attachable* MOSRotating::RemoveAttachable(Attachable* attachable, bool addToMova
 			if (parentBreakWound) {
 				parentBreakWound->SetDrawnAfterParent(attachable->IsDrawnAfterParent());
 				parentBreakWound->SetInheritedRotAngleOffset((attachable->GetParentOffset() * m_Rotation).GetAbsRadAngle());
+				RollWoundBleedOut(parentBreakWound);
 				AddWound(parentBreakWound, attachable->GetParentOffset(), false);
 				parentBreakWound = nullptr;
 			}
@@ -1676,6 +1689,7 @@ Attachable* MOSRotating::RemoveAttachable(Attachable* attachable, bool addToMova
 			AEmitter* childBreakWound = dynamic_cast<AEmitter*>(attachable->GetBreakWound()->Clone());
 			if (childBreakWound) {
 				childBreakWound->SetInheritedRotAngleOffset(attachable->GetJointOffset().GetAbsRadAngle());
+				RollWoundBleedOut(childBreakWound);
 				attachable->AddWound(childBreakWound, attachable->GetJointOffset());
 				childBreakWound = nullptr;
 			}
