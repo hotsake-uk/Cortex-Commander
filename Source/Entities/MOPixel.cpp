@@ -271,7 +271,7 @@ void MOPixel::Draw(BITMAP* targetBitmap, const Vector& targetPos, DrawMode mode,
 
 	switch (mode) {
 		case g_DrawMaterial:
-			drawColor = m_Atom->GetMaterial()->GetSettleMaterial();
+			drawColor = m_Atom->GetMaterial()->GetTerrainSettleMaterial();
 			break;
 		default:
 			drawColor = m_Color.GetIndex();

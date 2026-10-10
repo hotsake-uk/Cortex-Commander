@@ -1776,7 +1776,7 @@ void MOSRotating::Draw(BITMAP* pTargetBitmap, const Vector& targetPos, DrawMode 
 		// TODO: Fix that MaterialAir and KeyColor don't work at all because they're drawing 0 to a field of 0's
 		// Draw the requested material silhouette on the material bitmap
 		if (mode == g_DrawMaterial) {
-			draw_character_ex(pTempBitmap, m_aSprite[m_Frame], 0, 0, m_SettleMaterialDisabled ? GetMaterial()->GetIndex() : GetMaterial()->GetSettleMaterial(), -1);
+			draw_character_ex(pTempBitmap, m_aSprite[m_Frame], 0, 0, GetMaterial()->GetTerrainSettleMaterial(m_SettleMaterialDisabled), -1);
 		} else if (mode == g_DrawWhite) {
 			draw_character_ex(pTempBitmap, m_aSprite[m_Frame], 0, 0, g_WhiteColor, -1);
 		} else if (mode == g_DrawDoor) {
