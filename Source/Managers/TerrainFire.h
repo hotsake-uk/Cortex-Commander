@@ -9,7 +9,7 @@ namespace RTE {
 	class Vector;
 	class Material;
 
-	/// Fire that spreads through flammable terrain (grass, vegetation, wood, oil) and burns it away or to ash.
+	/// Fire that spreads through flammable terrain (grass, vegetation, wood, oil) and burns it away or to ash; burnt wood leaves some charcoal, which smoulders on.
 	/// This is part of the simulation and deterministic: it updates in fixed sim steps with its own seeded random numbers,
 	/// and ignitions queued from (possibly parallel) collision code are sorted before they're applied.
 	class TerrainFire {
@@ -68,7 +68,8 @@ namespace RTE {
 		static void Update();
 
 		/// Gets the burning pixels visible in a screen area, relative to it, with a 0..1 heat each (in z).
-		static void GetBurning(const glm::vec2& screenOrigin, int width, int height, std::vector<glm::vec3>& burning);
+		/// @param embers Where to put the smouldering charcoal visible (glowing, no flame), likewise; left out of burning either way.
+		static void GetBurning(const glm::vec2& screenOrigin, int width, int height, std::vector<glm::vec3>& burning, std::vector<glm::vec3>* embers = nullptr);
 
 		/// Gets the current state as text, for saved games.
 		static std::string GetSaveState();

@@ -394,7 +394,7 @@ namespace SandboxDetail {
 	constexpr float c_GoldEarthShare = 0.06F;
 
 	/// The base game's ground materials offered under "More terrain..." (those a game doesn't have are left out).
-	constexpr const char* c_TerrainMaterials[] = {"Topsoil", "Earth", "Dense Earth", "Stone", "Bedrock", "Gold", "Red Earth", "Dense Red Earth", "Red Stone", "Lunar Earth", "Dense Lunar Earth", "Lunar Stone", "Snow", "Dense Snow", "Ice", "Sand", "Cave Floor", "Cave Ceiling", "Grass", "Vegetation", "Wood", "Tree Trunk", "Concrete", "Metal", "Scrap Metal", "Glass", "Sandbag", "Rubber"};
+	constexpr const char* c_TerrainMaterials[] = {"Topsoil", "Earth", "Dense Earth", "Stone", "Bedrock", "Gold", "Red Earth", "Dense Red Earth", "Red Stone", "Lunar Earth", "Dense Lunar Earth", "Lunar Stone", "Snow", "Dense Snow", "Ice", "Sand", "Cave Floor", "Cave Ceiling", "Grass", "Vegetation", "Wood", "Tree Trunk", "Charcoal", "Concrete", "Metal", "Scrap Metal", "Glass", "Sandbag", "Rubber"};
 
 	/// The Paint tab's tools (its brushes, loose things, springs and terrain): with one in hand the right button digs (see Sandbox::DrawGUI).
 	inline bool IsPaintTool(Tool kind) { return c_Tools[ToolIndex(kind)].UsesRadius; }
