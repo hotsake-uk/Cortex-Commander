@@ -133,6 +133,7 @@ def bob(im, box):
 # Bodies (facing right). '.' = transparent.
 
 CHICKEN = dict(
+	scale=1.3,  # drawn art -> game size (see scale_animal)
 	name="Chicken", prefix="Chicken",
 	legend={"W": "chick_white", "w": "chick_shade", "o": "chick_line", "R": "comb", "r": "comb_dark", "Y": "beak", "k": "eye"},
 	art=[
@@ -152,7 +153,8 @@ CHICKEN = dict(
 )
 
 PIG = dict(
-	name="Pig", prefix="Pig",
+	scale=1.5,  # drawn art -> game size (see scale_animal)
+	name="Pig", prefix="Pig", line="p",
 	legend={"L": "pig_light", "M": "pig_mid", "D": "pig_dark", "p": "pig_line", "S": "snout", "n": "nostril", "k": "eye", "t": "pig_line"},
 	art=[
 		"..............pp....",
@@ -174,6 +176,7 @@ PIG = dict(
 )
 
 SHEEP = dict(
+	scale=1.45,  # drawn art -> game size (see scale_animal)
 	name="Sheep", prefix="Sheep",
 	legend={"W": "wool", "w": "wool_shade", "o": "wool_line", "F": "sheep_face", "f": "sheep_face_hi", "k": "eye", "e": "eye_hi"},
 	art=[
@@ -197,6 +200,7 @@ SHEEP = dict(
 )
 
 GOAT = dict(
+	scale=1.45,  # drawn art -> game size (see scale_animal)
 	name="Goat", prefix="Goat",
 	legend={"L": "goat_light", "M": "goat_mid", "D": "goat_dark", "o": "goat_line", "h": "goat_horn", "b": "goat_beard", "k": "eye", "n": "goat_line"},
 	art=[
@@ -221,6 +225,7 @@ GOAT = dict(
 )
 
 COW = dict(
+	scale=1.5,  # drawn art -> game size (see scale_animal)
 	name="Cow", prefix="Cow",
 	legend={"W": "cow_white", "w": "cow_shade", "B": "cow_black", "b": "cow_black_hi", "o": "cow_line", "u": "udder",
 	        "n": "cow_nose", "h": "horn", "H": "horn_dark", "k": "eye", "t": "tail_hair"},
@@ -250,6 +255,7 @@ COW = dict(
 )
 
 BULL = dict(
+	scale=1.55,  # drawn art -> game size (see scale_animal)
 	name="Bull", prefix="Bull",
 	legend={"L": "bull_light", "M": "bull_mid", "D": "bull_dark", "o": "bull_line", "h": "horn", "H": "horn_dark",
 	        "r": "ring", "n": "bull_nose", "k": "eye", "t": "tail_hair"},
@@ -280,6 +286,66 @@ BULL = dict(
 )
 
 ANIMALS = [CHICKEN, PIG, SHEEP, GOAT, COW, BULL]
+
+
+def upscale_art(im, factor, line):
+	"""Scales paletted pixel art up by any factor while keeping it crisp: each colour's area is resampled smoothly and every
+	pixel takes the colour that covers most of it, then the outline colour (line) is redrawn one pixel wide around the shape,
+	so the outline stays as thin as the drawn one instead of growing with the scale."""
+	w, h = im.size
+	W, H = int(round(w * factor)), int(round(h * factor))
+	colours = sorted(set(im.getdata()))
+	cover = {}
+	for c in colours:
+		mask = Image.new("L", (w, h), 0)
+		mask.putdata([255 if v == c else 0 for v in im.getdata()])
+		# Padded so the edges resample like the middle.
+		padded = Image.new("L", (w + 2, h + 2), 0)
+		padded.paste(mask, (1, 1))
+		big = padded.resize((W + int(round(2 * factor)), H + int(round(2 * factor))), Image.BICUBIC)
+		off = int(round(factor))
+		cover[c] = big.crop((off, off, off + W, off + H)).load()
+	out = new_image(W, H)
+	px = out.load()
+	for y in range(H):
+		for x in range(W):
+			# (A fill colour beats the outline on a tie, so the outline doesn't thicken: it is redrawn below.)
+			best = max(colours, key=lambda c: (cover[c][x, y] - (40 if c == line else 0), c != line))
+			px[x, y] = best
+	# The outline: fill where the scaled outline was, then a one-pixel line round the shape and where it had inner lines.
+	solid = lambda x, y: 0 <= x < W and 0 <= y < H and px[x, y] != BACKGROUND
+	for y in range(H):
+		for x in range(W):
+			if px[x, y] == line:
+				near = [px[x + dx, y + dy] for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)) if solid(x + dx, y + dy) and px[x + dx, y + dy] != line]
+				if near:
+					px[x, y] = max(set(near), key=near.count)
+	edge = [(x, y) for y in range(H) for x in range(W) if px[x, y] != BACKGROUND and any(not solid(x + dx, y + dy) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))]
+	for x, y in edge:
+		px[x, y] = line
+	return out
+
+
+def scale_animal(animal):
+	"""Brings an animal from its drawn size to its size in game (animal["scale"]): its body art, the points on it (hips, the
+	head-bob box) and its legs. Drawn at 1, the animals stood well short of a soldier (about 36 px from head to feet)."""
+	f = animal.get("scale", 1)
+	art = from_ascii(animal["art"], animal["legend"])
+	line = COLOURS[animal["legend"][animal.get("line", "o")]]
+	animal["image"] = art if f == 1 else upscale_art(art, f, line)
+	sc = lambda v: int(round(v * f))
+	animal["hips"] = {k: (sc(x), sc(y)) for k, (x, y) in animal["hips"].items()}
+	x0, y0, x1, y1 = animal["bob_box"]
+	animal["bob_box"] = (sc(x0), sc(y0), min(animal["image"].width - 1, sc(x1 + 1) - 1), min(animal["image"].height - 1, sc(y1 + 1) - 1))
+	leg = animal["leg"]
+	leg["E"] = round(leg["E"] * f)
+	leg["C"] = leg["E"] / 2.0
+	if leg["thick"] > 1:
+		leg["thick"] = sc(leg["thick"])
+
+
+for _animal in ANIMALS:
+	scale_animal(_animal)
 
 
 ###############################################################################
@@ -341,7 +407,7 @@ def leg_files(animal, front, background):
 
 
 def body_frames(animal):
-	f0 = from_ascii(animal["art"], animal["legend"])
+	f0 = animal["image"]
 	f1 = bob(f0, animal["bob_box"])
 	return [f0, f1]
 
@@ -349,7 +415,7 @@ def body_frames(animal):
 def body_origin(animal):
 	"""The body's origin (its position and centre of rotation): horizontally centred, vertically halfway between the
 	sprite's middle and the hips, which keeps the pivot low over the legs so walking doesn't tip the animal over."""
-	w, h = len(animal["art"][0]), len(animal["art"])
+	w, h = animal["image"].size
 	hip_y = animal["hips"]["rear"][1]
 	return w // 2, (h // 2 + hip_y) // 2
 
@@ -995,7 +1061,7 @@ def animal_ini(animal):
 	stand_push = int(round(total_mass * 30, -1))
 	walk_push = int(round(total_mass * 30, -1))
 	dislodge_push = int(round(total_mass * 110, -1))
-	w, h = len(animal["art"][0]), len(animal["art"])
+	w, h = animal["image"].size
 	ox, oy = body_origin(animal)
 	small = spec["thick"] == 1
 	foot = "Livestock Foot Small" if small else "Livestock Foot Large"
@@ -1217,22 +1283,22 @@ def write_preview(path, scale=6):
 		d = os.path.join(CIVILIAN_DIR, name)
 		civ.append([Image.open(os.path.join(d, f)) for f in (name + "LegBGA004.png", name + "ArmBGA000.png", name + "TorsoA.png",
 		                                                     name + "HeadA.png", name + "LegFGA004.png", name + "ArmFGA000.png")])
-	row_h = 30
+	row_h = 50
 	width = sum(w + pad for rows, w in columns) + pad + 6
 	canvas = Image.new("RGB", (width, row_h * 3 + 24), (128, 128, 128))
 	x = pad
 	for rows, w in columns:
 		for r, (parts, ground, x0) in enumerate(rows):
-			gy = r * row_h + 27
+			gy = r * row_h + 47
 			top = gy - int(round(ground))
 			for p, px, py in parts:
 				paste_p(canvas, p, x - x0 + px, top + py)
 			for gx in range(x - 1, x + w + 1):
 				canvas.putpixel((gx, gy + 1), (96, 76, 56))
 		x += w + pad
-	# Soldier-height ruler (24 px) at the right edge of the first row.
-	for yy in range(24):
-		canvas.putpixel((width - 3, 27 - yy), (255, 255, 255) if yy % 2 == 0 else (40, 40, 40))
+	# Soldier-height ruler (36 px, a Soldier Light from head to feet) at the right edge of the first row.
+	for yy in range(36):
+		canvas.putpixel((width - 3, 47 - yy), (255, 255, 255) if yy % 2 == 0 else (40, 40, 40))
 	# Civilians: torso/head/limbs at roughly their Green Dummy offsets (origin = torso origin), legs rotated to stand.
 	cx, gy = pad + 8, row_h * 2 + 44
 	for leg_bg, arm_bg, torso, head, leg_fg, arm_fg in civ:
