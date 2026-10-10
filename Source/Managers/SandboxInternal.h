@@ -582,6 +582,8 @@ namespace SandboxDetail {
 
 	/// What the Battle tab says for a mode: the choices every mode shares, and those some use (each says which in its panel). The window keeps
 	/// its own copy (s_ModeSetup) and sends it to the sim in a Tool::BattleTeam stroke (Stroke::Mode) whenever it changes.
+	constexpr size_t c_MaxFlagSpots = 8; //!< Most flag positions one flag can have placed.
+
 	struct BattleModeSettings {
 		BattleMode Mode = BattleMode::Custom;
 		int TeamSize = 16; //!< Most units each team has alive at once.
@@ -590,8 +592,8 @@ namespace SandboxDetail {
 		std::array<bool, c_Sides> HasPoint{}; //!< Each team's point placed in its base (capture the flag: where its flag stands). Without, one is picked.
 		std::array<Vector, c_Sides> Points;
 		std::array<std::vector<Vector>, c_Sides> Goals; //!< One flag: each team's goal zone, drawn as a polygon, that it brings the flag into to score.
-		bool HasFlagSpot = false; //!< One flag: whether the neutral flag's place is set. Without, the game can't start.
-		Vector FlagSpot;
+		std::vector<Vector> FlagSpots; //!< One flag: the flag positions placed (up to c_MaxFlagSpots), which the flag comes in at in turn, the next after each score.
+		bool FlagByZones = false; //!< One flag: the flag comes in somewhere in one of the flag spawn zones (the mode's zones), picked at random, rather than at the positions placed.
 		bool ByShip = false; //!< Its units come in by ship over their base, rather than appearing in it.
 		bool MoveStuckPoint = true; //!< Capture the flag: a flag nobody can get to (buried, or cut off) moves somewhere else in its base.
 		int ScoreToWin = 3; //!< Capture the flag: captures that win. 0 plays on for good.
