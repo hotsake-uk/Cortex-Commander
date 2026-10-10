@@ -592,7 +592,106 @@ namespace SandboxDetail {
 		}
 	}
 
-	PlantRoll RollPlant() {
+	/// One kind of picture a plant brush puts down: a debris preset (and the one drawn over it), and how often it comes up at random.
+	struct PlantGroup {
+		const char* Preset;
+		const char* Leaves;
+		float Share;
+		const char* Name;
+	};
+
+	/// A plant brush's kinds of picture, as it puts them down at random: mostly small cacti and mushrooms, as the maps have them.
+	std::vector<PlantGroup> PlantGroups(Tool kind) {
+		switch (kind) {
+			case Tool::Cacti:
+				return {{"Small Cacti", nullptr, 0.7F, "Small cacti"}, {"Cacti", nullptr, 0.3F, "Cacti"}};
+			case Tool::Mushrooms:
+				return {{"Small Red Mushrooms", nullptr, 0.35F, "Small red"}, {"Small Yellow Mushrooms", nullptr, 0.35F, "Small yellow"}, {"Red Mushrooms", nullptr, 0.15F, "Red"}, {"Yellow Mushrooms", nullptr, 0.15F, "Yellow"}};
+			case Tool::Trees:
+				return {{"Sandbox Tree Trunks", "Sandbox Tree Leaves", 1.0F, "Trees"}};
+			case Tool::Candles:
+				// The wax, and its wick drawn over it (as a tree's leaves over its trunk).
+				return {{"Sandbox Candle Wax", "Sandbox Candle Wicks", 1.0F, "Candles"}};
+			default:
+				return {{"Plants", nullptr, 1.0F, "Plants"}};
+		}
+	}
+
+	std::vector<PlantPicture> PlantGallery(Tool kind) {
+		std::vector<PlantPicture> gallery;
+		for (const PlantGroup& group: PlantGroups(kind)) {
+			const TerrainDebris* debris = DebrisPreset(group.Preset);
+			if (!debris) {
+				continue;
+			}
+			const TerrainDebris* leaves = group.Leaves ? DebrisPreset(group.Leaves) : nullptr;
+			for (int i = 0; i < debris->GetPieceCount(); ++i) {
+				PlantPicture picture;
+				picture.Debris = debris;
+				picture.Piece = debris->GetPiece(i);
+				picture.LeafPiece = leaves && i < leaves->GetPieceCount() ? leaves->GetPiece(i) : nullptr;
+				picture.Leaves = picture.LeafPiece ? leaves : nullptr;
+				picture.Group = group.Name;
+				if (picture.Piece) {
+					gallery.push_back(picture);
+				}
+			}
+		}
+		return gallery;
+	}
+
+	int PlantEntryOf(Tool kind, const PlantRoll& roll, const std::vector<PlantPicture>& gallery) {
+		int count = static_cast<int>(gallery.size());
+		if (count == 0) {
+			return -1;
+		}
+		if (roll.Kind == kind && roll.Entry >= 0 && roll.Entry < count) {
+			return roll.Entry;
+		}
+		// One of the ones picked.
+		std::vector<int> chosen;
+		if (auto found = s_PlantPicks.find(kind); found != s_PlantPicks.end()) {
+			for (int entry: found->second.Chosen) {
+				if (entry >= 0 && entry < count) {
+					chosen.push_back(entry);
+				}
+			}
+		}
+		if (!chosen.empty()) {
+			return chosen[std::min(static_cast<int>(roll.Piece * static_cast<float>(chosen.size())), static_cast<int>(chosen.size()) - 1)];
+		}
+		// Any: a kind by its share, then one of its pictures.
+		struct Found {
+			float Share;
+			int First; //!< Its first picture's place in the gallery.
+			int Count;
+		};
+		std::vector<Found> groups;
+		float shares = 0.0F;
+		for (const PlantGroup& group: PlantGroups(kind)) {
+			const TerrainDebris* debris = DebrisPreset(group.Preset);
+			for (int i = 0; debris && i < count; ++i) {
+				if (gallery[i].Debris == debris) {
+					groups.push_back({group.Share, i, std::max(debris->GetPieceCount(), 1)});
+					shares += group.Share;
+					break;
+				}
+			}
+		}
+		if (groups.empty()) {
+			return -1;
+		}
+		float pick = roll.Variant * shares;
+		size_t which = 0;
+		while (which + 1 < groups.size() && pick >= groups[which].Share) {
+			pick -= groups[which].Share;
+			++which;
+		}
+		const Found& group = groups[which];
+		return std::min(group.First + static_cast<int>(roll.Piece * static_cast<float>(group.Count)) % group.Count, count - 1);
+	}
+
+	PlantRoll RollPlant(Tool kind) {
 		// Its own random numbers, so showing the next plant doesn't move the sandbox's own (Random01) along.
 		static unsigned int state = 0x9E3779B9u;
 		auto next = [] {
@@ -607,7 +706,65 @@ namespace SandboxDetail {
 		roll.Jitter = next();
 		roll.Depth = next();
 		roll.Mirror = next() < 0.5F;
+		roll.Kind = kind;
+		// The ones picked one after another: the next of them.
+		if (PlantPick& pick = s_PlantPicks[kind]; pick.InTurn && !pick.Chosen.empty()) {
+			int size = static_cast<int>(pick.Chosen.size());
+			pick.Turn = ((pick.Turn % size) + size) % size;
+			roll.Entry = pick.Chosen[pick.Turn];
+			pick.Turn = (pick.Turn + 1) % size;
+		}
 		return roll;
+	}
+
+	void StepNextPlant(Tool kind, int step) {
+		std::vector<PlantPicture> gallery = PlantGallery(kind);
+		int count = static_cast<int>(gallery.size());
+		if (count == 0) {
+			return;
+		}
+		if (s_NextPlant.Kind != kind) {
+			s_NextPlant = RollPlant(kind);
+		}
+		PlantPick& pick = s_PlantPicks[kind];
+		if (pick.Chosen.size() == 1) {
+			// Just the one picked: the pick itself moves on, so the brush keeps putting down the new one.
+			pick.Chosen[0] = ((pick.Chosen[0] + step) % count + count) % count;
+			s_NextPlant.Entry = pick.Chosen[0];
+			return;
+		}
+		// Through the ones picked (or all of them), in the gallery's order, from the one shown now.
+		std::vector<int> order;
+		for (int entry: pick.Chosen) {
+			if (entry >= 0 && entry < count) {
+				order.push_back(entry);
+			}
+		}
+		if (order.empty()) {
+			for (int i = 0; i < count; ++i) {
+				order.push_back(i);
+			}
+		}
+		std::sort(order.begin(), order.end());
+		int current = PlantEntryOf(kind, s_NextPlant, gallery);
+		int size = static_cast<int>(order.size());
+		int at = static_cast<int>(std::find(order.begin(), order.end(), current) - order.begin());
+		at = at >= size ? (step > 0 ? 0 : size - 1) : ((at + step) % size + size) % size;
+		s_NextPlant.Entry = order[at];
+		if (pick.InTurn && !pick.Chosen.empty()) {
+			// Carrying on in turn from it.
+			int inPicked = static_cast<int>(std::find(pick.Chosen.begin(), pick.Chosen.end(), order[at]) - pick.Chosen.begin());
+			pick.Turn = (inPicked + 1) % static_cast<int>(pick.Chosen.size());
+		}
+	}
+
+	void FlipNextPlant(Tool kind) {
+		PlantPick& pick = s_PlantPicks[kind];
+		if (pick.Facing != 0) {
+			pick.Facing = pick.Facing == 1 ? 2 : 1;
+		} else {
+			s_NextPlant.Mirror = !s_NextPlant.Mirror;
+		}
 	}
 
 	/// Works out where one of the game's own plant pictures (or one of the sandbox's trees or candles) goes on the ground at a point, as its
@@ -617,43 +774,22 @@ namespace SandboxDetail {
 	/// @return Whether there is ground for it there.
 	bool PlanPlant(const Vector& at, int radius, Tool kind, float scale, const PlantRoll& roll, PlantPlacement& out) {
 		scale = std::clamp(scale, 0.25F, 4.0F);
-		const TerrainDebris* debris = nullptr;
-		const TerrainDebris* leaves = nullptr;
-		switch (kind) {
-			case Tool::Cacti:
-				debris = DebrisPreset(roll.Variant < 0.7F ? "Small Cacti" : "Cacti");
-				break;
-			case Tool::Mushrooms: {
-				// Mostly small ones, as the maps have them.
-				static const char* const mushrooms[] = {"Small Red Mushrooms", "Small Yellow Mushrooms", "Red Mushrooms", "Yellow Mushrooms"};
-				float pick = roll.Variant;
-				debris = DebrisPreset(mushrooms[pick < 0.35F ? 0 : (pick < 0.7F ? 1 : (pick < 0.85F ? 2 : 3))]);
-				break;
-			}
-			case Tool::Trees:
-				debris = DebrisPreset("Sandbox Tree Trunks");
-				leaves = DebrisPreset("Sandbox Tree Leaves");
-				break;
-			case Tool::Candles:
-				// The wax, and its wick drawn over it (as a tree's leaves over its trunk). In whole steps of size, so a wick never comes out
-				// missing or two pixels wide on one side.
-				debris = DebrisPreset("Sandbox Candle Wax");
-				leaves = DebrisPreset("Sandbox Candle Wicks");
-				scale = std::max(std::round(scale), 1.0F);
-				break;
-			default:
-				debris = DebrisPreset("Plants");
-				break;
+		if (kind == Tool::Candles) {
+			// In whole steps of size, so a wick never comes out missing or two pixels wide on one side.
+			scale = std::max(std::round(scale), 1.0F);
 		}
-		if (!debris || !g_SceneMan.GetScene()) {
+		std::vector<PlantPicture> gallery = PlantGallery(kind);
+		int entry = PlantEntryOf(kind, roll, gallery);
+		if (entry < 0 || !g_SceneMan.GetScene()) {
 			return false;
 		}
-		int pieceIndex = static_cast<int>(roll.Piece * static_cast<float>(debris->GetPieceCount())) % debris->GetPieceCount();
-		BITMAP* piece = debris->GetPiece(pieceIndex);
-		BITMAP* leafPiece = leaves && pieceIndex < leaves->GetPieceCount() ? leaves->GetPiece(pieceIndex) : nullptr;
-		if (!piece) {
-			return false;
-		}
+		const TerrainDebris* debris = gallery[entry].Debris;
+		const TerrainDebris* leaves = gallery[entry].Leaves;
+		BITMAP* piece = gallery[entry].Piece;
+		BITMAP* leafPiece = gallery[entry].LeafPiece;
+		auto picked = s_PlantPicks.find(kind);
+		int facing = picked != s_PlantPicks.end() ? picked->second.Facing : 0;
+		bool mirror = facing == 0 ? roll.Mirror : facing == 2;
 		SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
 		int width = terrain->GetBitmap()->w;
 		int height = terrain->GetBitmap()->h;
@@ -703,7 +839,7 @@ namespace SandboxDetail {
 		out.GroundX = x;
 		out.GroundY = y;
 		out.Scale = scale;
-		out.Mirror = roll.Mirror;
+		out.Mirror = mirror;
 		return true;
 	}
 
@@ -2846,10 +2982,13 @@ namespace SandboxDetail {
 		stroke.Over = CurrentPaintOver();
 		stroke.Scale = IsPlantBrush(kind) ? s_PlantScale : 1.0F;
 		if (IsPlantBrush(kind)) {
-			// The plant the cursor showed; the next one is shown from now.
+			// The plant the cursor showed (rolled for this brush first, if it was another's); the next one is shown from now.
+			if (s_NextPlant.Kind != kind) {
+				s_NextPlant = RollPlant(kind);
+			}
 			stroke.HasPlantRoll = true;
 			stroke.Plant = s_NextPlant;
-			s_NextPlant = RollPlant();
+			s_NextPlant = RollPlant(kind);
 		}
 		stroke.HasView = true;
 		stroke.ViewMiddleX = g_CameraMan.GetOffset(0).m_X + static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F;

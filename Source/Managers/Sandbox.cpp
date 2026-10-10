@@ -725,6 +725,16 @@ void Sandbox::DrawGUI() {
 	if (IsGodMode() && InGame() && !s_Possessed && !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_U, false)) {
 		s_BarShown = !s_BarShown;
 	}
+	// E: the plant brush in hand's next picture (Shift: the one before), held down to run through them; F: the next one flipped. In the god
+	// view, so long as no text box has the keys.
+	if (InGame() && !s_Possessed && IsPlantBrush(CurrentTool().Kind) && !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt) {
+		if (ImGui::IsKeyPressed(ImGuiKey_E)) {
+			StepNextPlant(CurrentTool().Kind, io.KeyShift ? -1 : 1);
+		}
+		if (ImGui::IsKeyPressed(ImGuiKey_F, false)) {
+			FlipNextPlant(CurrentTool().Kind);
+		}
+	}
 	// Enter: done with the Battle tab's defence point, drop line or spawn zone tool, which goes back to the one in hand before (PutDownBattleTool). Not
 	// part way through a drag, so the line being drawn isn't lost.
 	// With a spawn zone part drawn, Enter closes it instead (three corners or more; fewer are dropped), and Backspace takes back its last
@@ -1427,6 +1437,9 @@ void Sandbox::DrawGUI() {
 				ImGui::SetItemTooltip("How big the plants, cacti, mushrooms, trees and candles are drawn. x1 is the game's own art; bigger keeps it blocky, as the pixel art is (candles go up in whole steps, x1, x2, x3).");
 				ImGui::SliderInt("Plant spacing", &s_PlantSpacing, 2, 60, "%d px");
 				ImGui::SetItemTooltip("How far apart the plants go along a stroke. Each is one of the game's own plant pictures, set into the ground under the pointer.");
+				if (IsPlantBrush(CurrentTool().Kind)) {
+					PlantPickPanel(CurrentTool().Kind);
+				}
 				{
 					// How long candles burn (the same setting as Settings > Fire and smoke).
 					bool forever = TerrainCandle::GetBurnMinutes() <= 0.0F;

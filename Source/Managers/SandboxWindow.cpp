@@ -1819,6 +1819,7 @@ namespace SandboxDetail {
 		};
 		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view (with a Paint tool in hand: dig)"}, {"Middle drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"U", "Hide or show the bar along the bottom"}, {"F9", "Commander view, outside the Sandbox game mode: your side from above, and back into your unit"}, {"Ctrl+Z", "Undo the last paint stroke or the last thing placed"}};
 		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it"}, {"Left drag", "Select units in a box"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click", "Every unit of that kind in view"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"X", "Dig to: tunnel to the point, in the ground or not (the units with a digger that cuts the way)"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends)"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}};
+		static const Key plants[] = {{"E / Shift+E", "With a plant, cactus, mushroom, tree or candle brush in hand: the next of its pictures, or the one before (just one picked in its gallery: that pick moves on)"}, {"F", "Flip the next one the other way"}};
 		auto table = [](const char* id, const Key* keys, size_t count) {
 			if (ImGui::BeginTable(id, 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
 				for (size_t i = 0; i < count; ++i) {
@@ -1836,6 +1837,8 @@ namespace SandboxDetail {
 		};
 		ImGui::SeparatorText("View");
 		table("##keysView", camera, std::size(camera));
+		ImGui::SeparatorText("Plant brushes");
+		table("##keysPlants", plants, std::size(plants));
 		ImGui::SeparatorText("Command tool");
 		ImGui::TextDisabled("Not while you play a unit: its keys are its own then.");
 		table("##keysCommand", command, std::size(command));
@@ -1844,6 +1847,149 @@ namespace SandboxDetail {
 			g_SettingsMan.SetShowSandboxGroupBadges(badges);
 		}
 		ImGui::SetItemTooltip("A unit kept in a control group (Ctrl+number) shows the group's number by its feet.");
+	}
+
+	void PlantPickPanel(Tool kind) {
+		std::vector<PlantPicture> gallery = PlantGallery(kind);
+		int count = static_cast<int>(gallery.size());
+		if (count == 0) {
+			return;
+		}
+		ImGuiIO& io = ImGui::GetIO();
+		PlantPick& pick = s_PlantPicks[kind];
+		pick.Chosen.erase(std::remove_if(pick.Chosen.begin(), pick.Chosen.end(), [count](int entry) { return entry < 0 || entry >= count; }), pick.Chosen.end());
+		if (s_NextPlant.Kind != kind) {
+			s_NextPlant = RollPlant(kind);
+		}
+		int picked = -1; // A picture clicked: from now on the next one put down.
+		bool changed = false;
+		ImGui::PushID("plantPick");
+		ImGui::AlignTextToFramePadding();
+		if (pick.Chosen.empty()) {
+			ImGui::Text("Any of its %d pictures, at random", count);
+		} else {
+			ImGui::Text("%d of its %d pictures picked", static_cast<int>(pick.Chosen.size()), count);
+			ImGui::SameLine();
+			if (ToolUI::Button("Any")) {
+				pick.Chosen.clear();
+				changed = true;
+			}
+			ImGui::SetItemTooltip("Back to any of them, at random.");
+		}
+		ImGui::BeginDisabled(pick.Chosen.size() < 2);
+		int order = pick.InTurn ? 1 : 0;
+		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.3F);
+		if (ImGui::Combo("##order", &order, "At random\0In turn\0")) {
+			pick.InTurn = order == 1;
+			pick.Turn = 0;
+			changed = true;
+		}
+		ImGui::SetItemTooltip("With more than one picked (Ctrl+click), whether the brush puts them down at random or one after another, in the order you picked them.");
+		ImGui::EndDisabled();
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.45F);
+		ImGui::Combo("Facing", &pick.Facing, "Either way\0As drawn\0Mirrored\0");
+		ImGui::SetItemTooltip("Which way they face: either way at random, as the art is drawn, or mirrored. F flips the next one.");
+		ImGui::TextDisabled("E: next picture, Shift+E: the one before, F: flip it");
+
+		// The gallery: every picture, grouped by kind, in square cells. A click picks just that one, Ctrl+click adds it to the ones picked
+		// (or takes it away). The next one to go down is outlined.
+		float pixel = ToolUI::Pixel();
+		float cell = 36.0F * pixel;
+		float gap = ImGui::GetStyle().ItemSpacing.x;
+		float width = ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ScrollbarSize - ImGui::GetStyle().WindowPadding.x * 2.0F;
+		int columns = std::max(1, static_cast<int>((width + gap) / (cell + gap)));
+		bool grouped = gallery.front().Group != gallery.back().Group;
+		float contentHeight = 0.0F;
+		for (int i = 0, inGroup = 0; i < count; ++i) {
+			bool newGroup = i == 0 || gallery[i].Group != gallery[i - 1].Group;
+			inGroup = newGroup ? 0 : inGroup + 1;
+			if (newGroup && grouped) {
+				contentHeight += ImGui::GetTextLineHeightWithSpacing();
+			}
+			if (inGroup % columns == 0) {
+				contentHeight += cell + ImGui::GetStyle().ItemSpacing.y;
+			}
+		}
+		float height = std::min(contentHeight, (cell + ImGui::GetStyle().ItemSpacing.y) * 4.5F) + ImGui::GetStyle().WindowPadding.y * 2.0F;
+		int next = PlantEntryOf(kind, s_NextPlant, gallery);
+		if (ImGui::BeginChild("##gallery", ImVec2(0.0F, height), ImGuiChildFlags_Borders)) {
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
+			int column = 0;
+			for (int i = 0; i < count; ++i) {
+				const PlantPicture& picture = gallery[i];
+				if (i == 0 || picture.Group != gallery[i - 1].Group) {
+					if (grouped) {
+						ImGui::TextDisabled("%s", picture.Group);
+					}
+					column = 0;
+				}
+				if (column > 0) {
+					ImGui::SameLine();
+				}
+				column = (column + 1) % columns;
+				ImGui::PushID(i);
+				ImVec2 at = ImGui::GetCursorScreenPos();
+				bool clicked = ImGui::InvisibleButton("##picture", ImVec2(cell, cell));
+				bool hovered = ImGui::IsItemHovered();
+				bool chosen = std::find(pick.Chosen.begin(), pick.Chosen.end(), i) != pick.Chosen.end();
+				ImVec2 end(at.x + cell, at.y + cell);
+				drawList->AddRectFilled(at, end, chosen ? IM_COL32(64, 104, 58, 255) : (hovered ? IM_COL32(72, 72, 72, 255) : IM_COL32(38, 38, 38, 255)));
+				// The picture as big as fits, in whole steps where it is drawn bigger so it keeps the look of the pixel art.
+				int pictureWidth = std::max(picture.Piece->w, picture.LeafPiece ? picture.LeafPiece->w : 0);
+				int pictureHeight = std::max(picture.Piece->h, picture.LeafPiece ? picture.LeafPiece->h : 0);
+				float room = cell - 4.0F * pixel;
+				float fit = std::min(room / static_cast<float>(std::max(pictureWidth, 1)), room / static_cast<float>(std::max(pictureHeight, 1)));
+				fit = fit >= 1.0F ? std::min(std::floor(fit), 4.0F * pixel) : fit;
+				ImVec2 corner(std::floor(at.x + (cell - static_cast<float>(pictureWidth) * fit) * 0.5F), std::floor(at.y + (cell - static_cast<float>(pictureHeight) * fit) * 0.5F));
+				bool mirror = pick.Facing == 2;
+				for (BITMAP* layer: {picture.Piece, picture.LeafPiece}) {
+					if (!layer) {
+						continue;
+					}
+					const PiecePicture& texture = PictureOfBitmap(layer);
+					if (texture.Texture != 0) {
+						drawList->AddImage(static_cast<ImTextureID>(texture.Texture), corner, ImVec2(corner.x + static_cast<float>(layer->w) * fit, corner.y + static_cast<float>(layer->h) * fit), ImVec2(mirror ? 1.0F : 0.0F, 0.0F), ImVec2(mirror ? 0.0F : 1.0F, 1.0F));
+					}
+				}
+				if (i == next) {
+					drawList->AddRect(at, end, IM_COL32(240, 200, 90, 255), 0.0F, 0, 2.0F * pixel);
+				} else if (chosen) {
+					drawList->AddRect(at, end, IM_COL32(120, 190, 100, 255), 0.0F, 0, pixel);
+				}
+				if (hovered) {
+					ImGui::SetTooltip("%s, %d of %d (%d x %d px)\nClick: just this one. Ctrl+click: add it to the ones picked, or take it away.", picture.Group, i + 1, count, pictureWidth, pictureHeight);
+				}
+				if (clicked) {
+					if (io.KeyCtrl) {
+						if (chosen) {
+							pick.Chosen.erase(std::find(pick.Chosen.begin(), pick.Chosen.end(), i));
+						} else {
+							pick.Chosen.push_back(i);
+							picked = i;
+						}
+					} else {
+						pick.Chosen = {i};
+						picked = i;
+					}
+					pick.Turn = 0;
+					changed = true;
+				}
+				ImGui::PopID();
+			}
+		}
+		ImGui::EndChild();
+		ImGui::PopID();
+		if (changed) {
+			s_NextPlant = RollPlant(kind);
+			if (picked >= 0) {
+				s_NextPlant.Entry = picked;
+				if (pick.InTurn && !pick.Chosen.empty()) {
+					int inPicked = static_cast<int>(std::find(pick.Chosen.begin(), pick.Chosen.end(), picked) - pick.Chosen.begin());
+					pick.Turn = (inPicked + 1) % static_cast<int>(pick.Chosen.size());
+				}
+			}
+		}
 	}
 
 	void DrawCursor() {
@@ -1900,6 +2046,9 @@ namespace SandboxDetail {
 			drawList->PushClipRect(ImVec2(view.x, view.y), ImVec2(view.x + view.w, view.y + view.h));
 			if (IsPlantBrush(tool.Kind)) {
 				// The very plant a click will put down (s_NextPlant), see-through, standing on the ground where it will go.
+				if (s_NextPlant.Kind != tool.Kind) {
+					s_NextPlant = RollPlant(tool.Kind);
+				}
 				PlantPlacement plan;
 				if (PlanPlant(MouseScenePosition(), s_Radius, tool.Kind, s_PlantScale, s_NextPlant, plan)) {
 					for (BITMAP* layer: {plan.Piece, plan.LeafPiece}) {
