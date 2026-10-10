@@ -2177,6 +2177,7 @@ struct ImGuiContext
     ImVector<ImGuiItemFlags>        ItemFlagsStack;             // Stack for PushItemFlag()/PopItemFlag() - inherited by Begin()
     ImVector<ImGuiGroupData>        GroupStack;                 // Stack for BeginGroup()/EndGroup() - not inherited by Begin()
     int                             WrapSameLineDepth;          // [Cortex] PushWrapSameLine() calls not yet popped.
+    int                             FlowItemsDepth;             // [Cortex] PushFlowItems() calls not yet popped.
     ImVector<ImGuiPopupData>        OpenPopupStack;             // Which popups are open (persistent)
     ImVector<ImGuiPopupData>        BeginPopupStack;            // Which level of BeginPopup() we are in (reset every frame)
     ImVector<ImGuiTreeNodeStackData>TreeNodeStack;              // Stack for TreeNode()
@@ -2449,6 +2450,9 @@ struct IMGUI_API ImGuiWindowTempData
     int                     WrapIndex;              // [Cortex] SameLine() calls so far this frame, for the widths kept in ImGuiWindow::WrapWidths.
     ImGuiID                 WrapPendingKey;         // [Cortex] The item after the last wrapping SameLine(), whose width is to be kept under this key.
     int                     WrapPendingGroupDepth;
+    int                     FlowIndex;              // [Cortex] Items laid out so far this frame inside PushFlowItems().
+    bool                    FlowApplied;            // [Cortex] The cursor was put on the line before by FlowAfterItem(); FlowNewLinePos is where it was.
+    ImVec2                  FlowNewLinePos;
     ImVec1                  Indent;                 // Indentation / start position from left of window (increased by TreePush/TreePop, etc.)
     ImVec1                  ColumnsOffset;          // Offset to the current column (if ColumnsCurrent > 0). FIXME: This and the above should be a stack to allow use cases like Tree->Column->Tree. Need revamp columns API.
     ImVec1                  GroupOffset;
@@ -3119,7 +3123,10 @@ namespace ImGui
 
     // Basic Helpers for widget code
     IMGUI_API void          ItemSize(const ImVec2& size, float text_baseline_y = -1.0f);
-    IMGUI_API void          WrapSameLineRecord(ImGuiWindow* window, float width);       // [Cortex]
+    IMGUI_API void          WrapSameLineRecord(ImGuiWindow* window, const ImVec2& size); // [Cortex]
+    IMGUI_API void          FlowAfterItem(ImGuiWindow* window, const ImVec2& size);      // [Cortex]
+    IMGUI_API void          FlowUndo(ImGuiWindow* window);                               // [Cortex]
+    IMGUI_API ImVec2        GetContentRegionAvailRaw();                                  // [Cortex] GetContentRegionAvail() without FlowUndo(), for the library's own widgets.
     IMGUI_API bool          WrapSameLineBreaks(ImGuiWindow* window, float spacing_w);   // [Cortex]
     inline void             ItemSize(const ImRect& bb, float text_baseline_y = -1.0f) { ItemSize(bb.GetSize(), text_baseline_y); } // FIXME: This is a misleading API since we expect CursorPos to be bb.Min.
     IMGUI_API bool          ItemAdd(const ImRect& bb, ImGuiID id, const ImRect* nav_bb = NULL, ImGuiItemFlags extra_flags = 0);

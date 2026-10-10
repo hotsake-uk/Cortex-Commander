@@ -445,7 +445,17 @@ void DebugMan::DrawImGui() {
 
 }
 
-bool DebugMan::BeginPanel(const char* name, bool* open, PanelSide side, PanelPlacement placement) {
+bool DebugMan::BeginPanel(const char* name, bool* open, PanelSide side, PanelPlacement placement, bool flow) {
+	// With flow: no slider or list wider than about 20 letters, and controls one line high side by side as long as they fit (popped in EndPanel), so a
+	// wide window (the large view) has rows of them rather than each stretched across it.
+	m_PanelFlow = false;
+	auto startBody = [this, flow]() {
+		if (flow) {
+			ImGui::PushItemWidth(std::min(ImGui::GetWindowWidth() * 0.65F, ImGui::GetFontSize() * 20.0F));
+			ImGui::PushFlowItems();
+			m_PanelFlow = true;
+		}
+	};
 	// Controls set side by side go onto the next line when they don't fit the panel's width (popped in EndPanel).
 	ImGui::PushWrapSameLine();
 	if (placement == PanelPlacement::Large) {
@@ -454,11 +464,15 @@ bool DebugMan::BeginPanel(const char* name, bool* open, PanelSide side, PanelPla
 		ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5F, io.DisplaySize.y * 0.5F), ImGuiCond_Always, ImVec2(0.5F, 0.5F));
 		ImGui::SetNextWindowSize(ImVec2(std::floor(io.DisplaySize.x * 0.9F), std::floor(io.DisplaySize.y * 0.9F)), ImGuiCond_Always);
 		m_PanelKind = 0;
-		return ImGui::Begin((std::string(name) + "Large").c_str(), open, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysVerticalScrollbar);
+		bool shown = ImGui::Begin((std::string(name) + "Large").c_str(), open, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysVerticalScrollbar);
+		startBody();
+		return shown;
 	}
 	if (!m_DockPanels || placement == PanelPlacement::Floating) {
 		m_PanelKind = 0;
-		return ImGui::Begin(name, open, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+		bool shown = ImGui::Begin(name, open, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+		startBody();
+		return shown;
 	}
 	ImGuiIO& io = ImGui::GetIO();
 	float width = GetPanelWidth(side);
@@ -483,6 +497,7 @@ bool DebugMan::BeginPanel(const char* name, bool* open, PanelSide side, PanelPla
 		m_PanelKind = 2;
 		// The scroll bar always there, so its coming and going doesn't change the width the controls wrap to (which would change the height, and the scroll bar...).
 		ImGui::BeginChild("##Body", ImVec2(0.0F, 0.0F), ImGuiChildFlags_None, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+		startBody();
 		return true;
 	}
 	m_PanelKind = 1;
@@ -519,6 +534,11 @@ void DebugMan::PanelEdgeHandle(PanelSide side) {
 
 void DebugMan::EndPanel() {
 	ImGui::PopWrapSameLine();
+	if (m_PanelFlow) {
+		ImGui::PopFlowItems();
+		ImGui::PopItemWidth();
+		m_PanelFlow = false;
+	}
 	if (m_PanelKind == 0) {
 		ImGui::End();
 		return;

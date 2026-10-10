@@ -334,7 +334,7 @@ bool    ImGui::BeginTableEx(const char* name, ImGuiID id, int columns_count, ImG
     // - always reserving the pooled ImGuiTable data ahead for a fully clipped table (minor IMHO). Also the 'outer_window_is_measuring_size' criteria may already be defeating this in some situations.
     // - always performing the GetOrAddByKey() O(log N) query in g.Tables.Map[].
     const bool use_child_window = (flags & (ImGuiTableFlags_ScrollX | ImGuiTableFlags_ScrollY)) != 0;
-    const ImVec2 avail_size = GetContentRegionAvail();
+    const ImVec2 avail_size = GetContentRegionAvailRaw();
     const ImVec2 actual_outer_size = ImTrunc(CalcItemSize(outer_size, ImMax(avail_size.x, 1.0f), use_child_window ? ImMax(avail_size.y, 1.0f) : 0.0f));
     const ImRect outer_rect(outer_window->DC.CursorPos, outer_window->DC.CursorPos + actual_outer_size);
     const bool outer_window_is_measuring_size = (outer_window->AutoFitFramesX > 0) || (outer_window->AutoFitFramesY > 0); // Doesn't apply to AlwaysAutoResize windows!
@@ -4188,7 +4188,7 @@ float ImGui::GetColumnWidth(int column_index)
     ImGuiWindow* window = g.CurrentWindow;
     ImGuiOldColumns* columns = window->DC.CurrentColumns;
     if (columns == NULL)
-        return GetContentRegionAvail().x;
+        return GetContentRegionAvailRaw().x;
 
     if (column_index < 0)
         column_index = columns->Current;
