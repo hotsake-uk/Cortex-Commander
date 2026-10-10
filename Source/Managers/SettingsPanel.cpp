@@ -24,6 +24,7 @@
 #include "SettingsMan.h"
 #include "SmokeGrid.h"
 #include "TerrainCollapse.h"
+#include "TerrainTrees.h"
 #include "TerrainFire.h"
 #include "TerrainCandle.h"
 #include "WeatherLightning.h"
@@ -789,6 +790,8 @@ void DebugMan::SettingsGUI() {
 			ImGui::TextDisabled("%d pieces moving, %d pixels fell", TerrainCollapse::GetFallingCount(), TerrainCollapse::GetCollapsedCount());
 		}
 		Toggle("Pieces of buildings fall too", TerrainCollapse::BuildingsFall(), [](bool on) { TerrainCollapse::SetBuildingsFall(on); });
+		Toggle("Units and vehicles bump into trees", TerrainTrees::UnitsCollide(), [](bool on) { TerrainTrees::SetUnitsCollide(on); });
+		Tip("Off (as the game comes): units walk and vehicles drive through trees, and a tree coming down falls through them too. Trees still burn, stand until their trunks burn through, fall and land on the ground, and bullets, fire and liquids still meet them. On: trees are solid to units and vehicles like any ground, and a falling tree hits them.");
 		Toggle("Units' metal and gear settle as scraps", g_SettingsMan.BodyGearSettlesAsScraps(), [](bool on) { g_SettingsMan.SetBodyGearSettlesAsScraps(on); });
 		Tip("Armour plating, robot parts and the rest of what comes off a unit keep their look when they come to rest in the ground, but become the same soft scraps as the flesh, so the remains of the fallen never leave lumps of metal nobody can dig through. Flesh and bone settle as scraps and ashes either way. Off: everything settles as its own material.");
 		Heading("What falls");

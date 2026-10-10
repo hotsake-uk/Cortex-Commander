@@ -1629,7 +1629,10 @@ void MovableMan::Update() {
 
 			g_PerformanceMan.StartPerformanceMeasurement(PerformanceMan::ActorsUpdate);
 			for (Actor* actor: m_Actors) {
-				actor->Update();
+				{
+					SceneMan::TreesPassable treesPassable; // What a unit feels for as it moves is the ground, not the trees it walks through.
+					actor->Update();
+				}
 
 				g_PerformanceMan.StartPerformanceMeasurement(PerformanceMan::ScriptsUpdate);
 				actor->UpdateScripts();
@@ -2041,6 +2044,7 @@ void MovableMan::UpdateControllers() {
 
 	g_PerformanceMan.StartPerformanceMeasurement(PerformanceMan::ActorsAI);
 	{
+		SceneMan::TreesPassable treesPassable; // The AI's look at the ground ahead sees through the trees units walk through.
 		for (Actor* actor: m_Actors) {
 			actor->GetController()->Update();
 		}
@@ -2059,6 +2063,7 @@ void MovableMan::UpdateControllers() {
 			                                                     RTEAssert(start + 1 == end, "Threaded script state being updated across multiple threads!");
 			                                                     LuaStateWrapper& luaState = luaStates[start];
 			                                                     g_LuaMan.SetThreadLuaStateOverride(&luaState);
+			                                                     SceneMan::TreesPassable treesPassable;
 			                                                     for (Actor* actor: m_Actors) {
 				                                                     if (actor->GetLuaState() == &luaState && actor->GetController()->ShouldUpdateAIThisFrame()) {
 					                                                     actor->RunScriptedFunctionInAppropriateScripts("ThreadedUpdateAI", false, true, {}, {}, {});
@@ -2081,8 +2086,11 @@ void MovableMan::PreControllerUpdate() {
 	ZoneScoped;
 
 	g_PerformanceMan.StartPerformanceMeasurement(PerformanceMan::ActorsUpdate);
-	for (Actor* actor: m_Actors) {
-		actor->PreControllerUpdate();
+	{
+		SceneMan::TreesPassable treesPassable; // (Units' movement: see Update.)
+		for (Actor* actor: m_Actors) {
+			actor->PreControllerUpdate();
+		}
 	}
 	g_PerformanceMan.StopPerformanceMeasurement(PerformanceMan::ActorsUpdate);
 

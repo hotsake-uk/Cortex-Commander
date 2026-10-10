@@ -5,6 +5,7 @@
 #include "GasGrid.h"
 #include "AirPressure.h"
 #include "TerrainCollapse.h"
+#include "TerrainTrees.h"
 #include "SmokeGrid.h"
 #include "TerrainFire.h"
 #include "ActorFire.h"
@@ -136,6 +137,9 @@ int SceneMan::LoadScene(Scene* pNewScene, bool placeObjects, bool placeUnits) {
 
 	m_pCurrentScene = pNewScene;
 	++m_SceneGeneration;
+	// Which materials are trees', before the path grids are worked out from the terrain (they walk through trees or go round them).
+	TerrainTrees::BuildTables();
+	TerrainTrees::Clear();
 	if (m_pCurrentScene->LoadData(placeObjects, true, placeUnits) < 0) {
 		g_ConsoleMan.PrintString("ERROR: Loading scene \'" + m_pCurrentScene->GetPresetName() + "\' failed! Has it been properly defined?");
 		return -1;
@@ -401,6 +405,7 @@ BITMAP* SceneMan::GetDebugBitmap() const {
 }
 
 thread_local int SceneMan::s_LiquidsPassableDepth = 0;
+thread_local int SceneMan::s_TreesPassableDepth = 0;
 thread_local SceneMan::LiquidsSeeThrough::State SceneMan::s_SeeThrough;
 
 unsigned char SceneMan::GetTerrMatter(int pixelX, int pixelY) {
@@ -429,6 +434,10 @@ unsigned char SceneMan::GetTerrMatter(int pixelX, int pixelY) {
 	int material = getpixel(pTMatBitmap, pixelX, pixelY);
 	// Bodies move through liquid, see LiquidsPassable.
 	if (s_LiquidsPassableDepth > 0 && material != g_MaterialAir && FluidSim::IsLiquid(material)) {
+		return g_MaterialAir;
+	}
+	// Units and vehicles go through trees, see TreesPassable.
+	if (s_TreesPassableDepth > 0 && TerrainTrees::ActorsPass(material)) {
 		return g_MaterialAir;
 	}
 	// Looks and the AI's shot checks go into liquid as far as it lets them, see LiquidsSeeThrough.
