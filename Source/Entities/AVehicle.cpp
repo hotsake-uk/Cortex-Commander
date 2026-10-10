@@ -15,6 +15,7 @@
 #include "PresetMan.h"
 #include "Sandbox.h"
 #include "SceneMan.h"
+#include "SettingsMan.h"
 #include "SLTerrain.h"
 #include "SoundContainer.h"
 #include "TimerMan.h"
@@ -151,6 +152,20 @@ void AVehicle::Clear() {
 	m_CrewThrowSpeed = 14.0F;
 	m_ThrowsCrewWhenFlipped = true;
 	m_LastVel.Reset();
+	m_DriverRider = false;
+	m_Recruits.clear();
+	m_RecruitRange = 300.0F;
+	m_RecruitTimer.Reset();
+	m_OrderedBoardTimer.Reset();
+	m_AIStuckTimer.Reset();
+	m_AIReverseTimer.Reset();
+	m_AIStuckCount = 0;
+	m_AIReversing = false;
+	m_AIHop = false;
+	m_AIWantsStop = false;
+	m_AIGaveUp = false;
+	m_AIGaveUpTimer.Reset();
+	m_AIOrderSerialSeen = 0;
 	m_Driver = nullptr;
 	m_Throttle = 0.0F;
 	m_Braking = false;
@@ -208,6 +223,8 @@ int AVehicle::Create(const AVehicle& reference) {
 	m_GunTurnSpeed = reference.m_GunTurnSpeed;
 	m_CrewThrowSpeed = reference.m_CrewThrowSpeed;
 	m_ThrowsCrewWhenFlipped = reference.m_ThrowsCrewWhenFlipped;
+	m_DriverRider = reference.m_DriverRider;
+	m_RecruitRange = reference.m_RecruitRange;
 	for (const Wheel& wheel: reference.m_Wheels) {
 		// (A bare strut whose wheel was shot off isn't copied.)
 		if (!wheel.Part) {
@@ -340,6 +357,7 @@ int AVehicle::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("GunTurnSpeed", { reader >> m_GunTurnSpeed; });
 	MatchProperty("CrewThrowSpeed", { reader >> m_CrewThrowSpeed; });
 	MatchProperty("ThrowsCrewWhenFlipped", { reader >> m_ThrowsCrewWhenFlipped; });
+	MatchProperty("AIRecruitRange", { reader >> m_RecruitRange; });
 	MatchProperty("Buoyancy", { reader >> m_Buoyancy; });
 	MatchProperty("BreakLandingSpeed", { reader >> m_BreakLandingSpeed; });
 	MatchProperty("BreakSunkFraction", { reader >> m_BreakSunkFraction; });
@@ -410,6 +428,7 @@ int AVehicle::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("GunTurnSpeed", m_GunTurnSpeed);
 	writer.NewPropertyWithValue("CrewThrowSpeed", m_CrewThrowSpeed);
 	writer.NewPropertyWithValue("ThrowsCrewWhenFlipped", m_ThrowsCrewWhenFlipped);
+	writer.NewPropertyWithValue("AIRecruitRange", m_RecruitRange);
 	writer.NewPropertyWithValue("Buoyancy", m_Buoyancy);
 	writer.NewPropertyWithValue("BreakLandingSpeed", m_BreakLandingSpeed);
 	writer.NewPropertyWithValue("BreakSunkFraction", m_BreakSunkFraction);
@@ -600,6 +619,17 @@ void AVehicle::SetSeatOccupant(int seat, Actor* unit) {
 	} else if (seat >= 1 && seat <= static_cast<int>(m_Seats.size())) {
 		m_Seats[seat - 1].Occupant = unit;
 	}
+	if (!unit) {
+		SetRider(seat, false);
+	}
+}
+
+void AVehicle::SetRider(int seat, bool rider) {
+	if (seat == 0) {
+		m_DriverRider = rider;
+	} else if (seat >= 1 && seat <= static_cast<int>(m_Seats.size())) {
+		m_Seats[seat - 1].Rider = rider;
+	}
 }
 
 int AVehicle::GetCrewCount() const {
@@ -756,8 +786,10 @@ bool AVehicle::ChangeSeat() {
 	for (int step = 1; step < GetSeatCount(); ++step) {
 		int to = (from + step) % GetSeatCount();
 		if (!GetSeatOccupant(to)) {
+			bool rider = IsRider(from);
 			SetSeatOccupant(to, GetSeatOccupant(from));
 			SetSeatOccupant(from, nullptr);
+			SetRider(to, rider);
 			m_PlayerSeat = to;
 			m_BoardingTimer.Reset();
 			PlaceCrew();
@@ -847,6 +879,269 @@ void AVehicle::UpdateBoarding() {
 			}
 		}
 		break;
+	}
+}
+
+void AVehicle::TakeOrdersFrom(const Actor* unit) {
+	ClearAIWaypoints();
+	Vector destination = unit->GetLastAIWaypoint();
+	if (g_SceneMan.ShortestDistance(m_Pos, destination).MagnitudeIsGreaterThan(40.0F)) {
+		AddAISceneWaypoint(destination);
+		SetAIMode(AIMODE_GOTO);
+	}
+	m_AIGaveUp = false;
+}
+
+bool AVehicle::CanDriveOnTo(float direction) const {
+	bool boat = HasHull() && m_Wheels.empty();
+	Vector probe = m_Pos + Vector(direction * (GetRadius() * 0.6F + 16.0F), 0.0F);
+	// From a little above, down: a wheeled vehicle wants ground within a drop it can take (deep water only if it floats); a boat wants
+	// water, not ground, ahead of its bow.
+	for (float down = -40.0F; down < 200.0F; down += 4.0F) {
+		Vector point(probe.m_X, probe.m_Y + down);
+		int material = g_SceneMan.GetTerrMatter(point.GetFloorIntX(), point.GetFloorIntY());
+		if (FluidSim::IsLiquid(material)) {
+			return boat || HasHull();
+		}
+		if (boat) {
+			if (material != g_MaterialAir && !IsPlant(material)) {
+				return false;
+			}
+		} else if (HoldsWheel(point)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+void AVehicle::GiveUpDriving() {
+	ClearAIWaypoints();
+	SetAIMode(AIMODE_SENTRY);
+	m_AIGaveUp = true;
+	m_AIGaveUpTimer.Reset();
+	m_AIOrderSerialSeen = GetAIOrderSerial();
+}
+
+void AVehicle::UpdateAIDriving() {
+	m_Throttle = 0.0F;
+	m_Braking = true;
+	m_AIHop = false;
+	if (Controller::IsAIPaused() || !g_SettingsMan.AIUsesVehicles()) {
+		return;
+	}
+	// A new order starts afresh.
+	if (GetAIOrderSerial() != m_AIOrderSerialSeen) {
+		m_AIOrderSerialSeen = GetAIOrderSerial();
+		m_AIStuckCount = 0;
+		m_AIReversing = false;
+		m_AIStuckTimer.Reset();
+		m_AIGaveUp = false;
+	}
+	if (m_AIMode != AIMODE_GOTO) {
+		return;
+	}
+	const MovableObject* following = g_MovableMan.ValidMO(GetMOMoveTarget()) ? GetMOMoveTarget() : nullptr;
+	Vector toTarget = g_SceneMan.ShortestDistance(m_Pos, following ? following->GetPos() : GetLastAIWaypoint());
+	float arrive = GetRadius() * 0.4F + 20.0F;
+	float speed = m_Vel.m_X;
+	if (m_AIWantsStop || std::abs(toTarget.m_X) < arrive) {
+		// There (or someone wants out): stop, and with nothing to follow, the order is done.
+		if (!m_AIWantsStop && !following && std::abs(speed) < 1.0F) {
+			ClearAIWaypoints();
+			SetAIMode(AIMODE_SENTRY);
+		}
+		m_AIStuckTimer.Reset();
+		return;
+	}
+	float direction = toTarget.m_X > 0.0F ? 1.0F : -1.0F;
+	if (m_AIReversing) {
+		m_Throttle = -direction;
+		m_Braking = false;
+		if (m_AIReverseTimer.IsPastSimMS(900)) {
+			m_AIReversing = false;
+			m_AIStuckTimer.Reset();
+		}
+		return;
+	}
+	// Braking in time to stop where it's going.
+	float stopping = speed * speed / (2.0F * std::max(m_BrakeStrength, 1.0F)) * c_PPM + arrive * 0.5F;
+	if (speed * direction > 0.5F && std::abs(toTarget.m_X) < stopping) {
+		return;
+	}
+	if (!CanDriveOnTo(direction)) {
+		// (Rolling slowly up to the edge isn't stuck: it has nowhere to go on to.)
+		if (std::abs(speed) < 0.5F) {
+			GiveUpDriving();
+		}
+		return;
+	}
+	m_Throttle = direction;
+	m_Braking = false;
+	// No headway for a while: back up a little and try again, or jump if it can; after a few goes, give up.
+	if (std::abs(speed) > 0.7F) {
+		m_AIStuckTimer.Reset();
+	} else if (m_AIStuckTimer.IsPastSimMS(2500)) {
+		m_AIStuckTimer.Reset();
+		if (++m_AIStuckCount > 4) {
+			GiveUpDriving();
+			return;
+		}
+		if (m_HopSpeed > 0.0F && m_AIStuckCount % 2 == 1) {
+			m_AIHop = true;
+		} else {
+			m_AIReversing = true;
+			m_AIReverseTimer.Reset();
+		}
+	}
+}
+
+void AVehicle::UpdateAIBoarding() {
+	if (!g_SettingsMan.AIUsesVehicles() || IsDead() || Controller::IsAIPaused()) {
+		m_Recruits.clear();
+		return;
+	}
+	// (A little further than a player's reach: the AI walks up to its middle and stops, not to a seat.)
+	auto inReach = [this](const Actor* unit) {
+		for (int seat = 0; seat < GetSeatCount(); ++seat) {
+			if (!g_SceneMan.ShortestDistance(m_Pos + RotateOffset(GetSeatOffsetOf(seat)), unit->GetPos()).MagnitudeIsGreaterThan(m_BoardingReach + 24.0F + unit->GetRadius() * 0.25F)) {
+				return true;
+			}
+		}
+		return false;
+	};
+
+	// Those called over get in once they're here, or are let go after a while if they haven't made it.
+	for (auto recruit = m_Recruits.begin(); recruit != m_Recruits.end();) {
+		Actor* unit = dynamic_cast<Actor*>(g_MovableMan.FindObjectByUniqueID(recruit->ID));
+		bool keep = unit && !unit->IsDead() && !unit->IsSetToDelete() && !unit->GetController()->IsPlayerControlled() && !recruit->Since.IsPastSimMS(25000) && GetFreeSeat() >= 0;
+		if (keep && inReach(unit)) {
+			unit->RemoveAIMOWaypoint(this);
+			int seat = GetFreeSeat();
+			if (TakeSeat(unit, seat)) {
+				SetRider(seat, true);
+				if (seat == 0) {
+					TakeOrdersFrom(GetSeatOccupant(0));
+				}
+			}
+			recruit = m_Recruits.erase(recruit);
+			continue;
+		}
+		if (!keep) {
+			if (unit) {
+				unit->RemoveAIMOWaypoint(this);
+			}
+			recruit = m_Recruits.erase(recruit);
+			continue;
+		}
+		++recruit;
+	}
+
+	// Units sent to it (to follow it, as a move order onto it gives) get in when they get here, and stay in.
+	if (m_OrderedBoardTimer.IsPastSimMS(250)) {
+		m_OrderedBoardTimer.Reset();
+		if (GetFreeSeat() >= 0) {
+			for (Actor* unit: g_MovableMan.GetActorList()) {
+				if (unit->GetMOMoveTarget() == this && !unit->GetController()->IsPlayerControlled() && CanCarry(unit) && inReach(unit) &&
+				    std::none_of(m_Recruits.begin(), m_Recruits.end(), [unit](const Recruit& recruit) { return recruit.ID == unit->GetUniqueID(); })) {
+					unit->RemoveAIMOWaypoint(this);
+					unit->ClearAIWaypoints();
+					unit->SetAIMode(AIMODE_SENTRY);
+					TakeSeat(unit, -1);
+					if (GetFreeSeat() < 0) {
+						break;
+					}
+				}
+			}
+		}
+	}
+
+	// Now and then, AI units near it going a long way its way are called over: the first to drive, then any going where it's going.
+	if (!m_RecruitTimer.IsPastSimMS(1000)) {
+		return;
+	}
+	m_RecruitTimer.Reset();
+	int room = 0;
+	for (int seat = 0; seat < GetSeatCount(); ++seat) {
+		room += GetSeatOccupant(seat) ? 0 : 1;
+	}
+	room -= static_cast<int>(m_Recruits.size());
+	if (room <= 0 || m_Controller.IsPlayerControlled() || (m_AIGaveUp && !m_AIGaveUpTimer.IsPastSimMS(10000))) {
+		return;
+	}
+	// A boat only takes riders while it is afloat.
+	if (HasHull() && m_Wheels.empty() && m_Submerged <= 0.0F) {
+		return;
+	}
+	bool driverComing = !m_Driver && !m_Recruits.empty();
+	// (Passengers only once someone drives, so it is known where it's going.)
+	if (driverComing) {
+		return;
+	}
+	Vector going = m_Driver ? GetLastAIWaypoint() : m_Pos;
+	bool goingSomewhere = m_Driver && m_AIMode == AIMODE_GOTO && g_SceneMan.ShortestDistance(m_Pos, going).MagnitudeIsGreaterThan(200.0F);
+	if (m_Driver && !goingSomewhere) {
+		return;
+	}
+	for (Actor* unit: g_MovableMan.GetActorList()) {
+		if (unit->GetController()->IsPlayerControlled() || unit->GetAIMode() != AIMODE_GOTO || !CanCarry(unit)) {
+			continue;
+		}
+		// (Not one already called over by a vehicle, or sent to one.)
+		const MovableObject* following = unit->GetMOMoveTarget();
+		if ((following && dynamic_cast<const AVehicle*>(following)) ||
+		    std::any_of(unit->GetWaypointList().begin(), unit->GetWaypointList().end(), [](const std::pair<Vector, const MovableObject*>& waypoint) { return waypoint.second && dynamic_cast<const AVehicle*>(waypoint.second); })) {
+			continue;
+		}
+		Vector toVehicle = g_SceneMan.ShortestDistance(unit->GetPos(), m_Pos);
+		if (toVehicle.MagnitudeIsGreaterThan(m_RecruitRange) || std::abs(toVehicle.m_Y) > 150.0F) {
+			continue;
+		}
+		// Going a long way, and the vehicle is no further from where it's going than it is (it isn't a walk back to get in).
+		Vector destination = unit->GetLastAIWaypoint();
+		float walk = g_SceneMan.ShortestDistance(unit->GetPos(), destination).GetMagnitude();
+		if (walk < 700.0F || g_SceneMan.ShortestDistance(m_Pos, destination).GetMagnitude() > walk + 100.0F) {
+			continue;
+		}
+		// With a driver, only going where it's going.
+		if (m_Driver && g_SceneMan.ShortestDistance(going, destination).GetMagnitude() > walk * 0.5F) {
+			continue;
+		}
+		unit->AddAIMOWaypointFirst(this);
+		m_Recruits.push_back({unit->GetUniqueID(), Timer()});
+		if (--room <= 0 || !m_Driver) {
+			break;
+		}
+	}
+}
+
+void AVehicle::UpdateAIUnloading() {
+	m_AIWantsStop = false;
+	// (Stopped for good with nowhere more to go: riders get out even short of where they're going, a cliff it can't climb, say.)
+	bool stopped = !m_Controller.IsPlayerControlled() && m_AIMode != AIMODE_GOTO;
+	for (int seat = 0; seat < GetSeatCount(); ++seat) {
+		Actor* unit = GetSeatOccupant(seat);
+		if (!unit || !IsRider(seat)) {
+			continue;
+		}
+		Vector toDestination = g_SceneMan.ShortestDistance(m_Pos, unit->GetLastAIWaypoint());
+		bool there = std::abs(toDestination.m_X) < 150.0F && std::abs(toDestination.m_Y) < 250.0F;
+		// The driver got out and the rider has further to go: they move over to the wheel and drive on.
+		if (seat != 0 && !m_Driver && !there && !m_AIGaveUp && !m_Controller.IsPlayerControlled() && g_SettingsMan.AIUsesVehicles()) {
+			SetSeatOccupant(0, unit);
+			m_Seats[seat - 1].Occupant = nullptr;
+			m_Seats[seat - 1].Rider = false;
+			m_DriverRider = true;
+			TakeOrdersFrom(unit);
+			continue;
+		}
+		if (there || m_AIGaveUp || stopped || (!m_Driver && seat != 0)) {
+			m_AIWantsStop = true;
+			if (m_Vel.MagnitudeIsLessThan(1.5F)) {
+				if (Actor* out = EjectSeat(seat, false)) {
+					out->ResumeAIWaypoints();
+				}
+			}
+		}
 	}
 }
 
@@ -1241,13 +1536,18 @@ void AVehicle::Update() {
 	bool right = steering && m_Controller.IsState(MOVE_RIGHT);
 	m_Throttle = left == right ? 0.0F : (right ? 1.0F : -1.0F);
 	m_Braking = steering && (m_Controller.IsState(MOVE_DOWN) || m_Controller.IsState(BODY_CROUCH));
+	// With no player in charge, its driver drives it where it was sent.
+	m_AIHop = false;
+	if (canDrive && !m_Controller.IsPlayerControlled()) {
+		UpdateAIDriving();
+	}
 	// Facing the way it's driven, as a unit turns to walk: only when slow, so it doesn't flip round while braking from speed.
 	if (m_Throttle != 0.0F && (m_Throttle > 0.0F) == m_HFlipped && m_Vel.MagnitudeIsLessThan(1.5F)) {
 		SetHFlipped(!m_HFlipped);
 	}
 
 	// Jumping: with at least half its wheels down, its springs throw it up off the ground, along the way it stands.
-	if (steering && m_HopSpeed > 0.0F && m_Controller.IsState(BODY_JUMPSTART) && m_HopTimer.IsPastSimMS(1000)) {
+	if (((steering && m_Controller.IsState(BODY_JUMPSTART)) || (canDrive && m_AIHop)) && m_HopSpeed > 0.0F && m_HopTimer.IsPastSimMS(1000)) {
 		if (std::vector<Attachable*> wheels = GetWheels(); !wheels.empty() && GetWheelsOnGround() * 2 >= static_cast<int>(wheels.size())) {
 			m_Vel += Vector(0.0F, -m_HopSpeed).GetRadRotatedCopy(m_Rotation.GetRadAngle());
 			m_HopTimer.Reset();
@@ -1264,6 +1564,8 @@ void AVehicle::Update() {
 	}
 	UpdateGun();
 	UpdateBoarding();
+	UpdateAIBoarding();
+	UpdateAIUnloading();
 
 	// Sunk well into the ground (driven or dropped through it somehow): it breaks apart rather than lie stuck in it.
 	if (m_BreakSunkFraction > 0.0F && GetSunkFraction() > m_BreakSunkFraction) {

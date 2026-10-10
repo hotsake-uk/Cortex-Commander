@@ -668,6 +668,18 @@ namespace RTE {
 		/// OWNERSHIP IS NOT TRANSFERRED!
 		void AddAIMOWaypoint(const MovableObject* pMOWaypoint);
 
+		/// Puts an MO at the front of this' waypoints, to go to before the rest (a vehicle that called it over to ride: AVehicle), keeping
+		/// the place it was on its way to after it, and asks for a route to it. OWNERSHIP IS NOT TRANSFERRED!
+		/// @param pMOWaypoint The MO to go to first.
+		void AddAIMOWaypointFirst(const MovableObject* pMOWaypoint);
+
+		/// Takes an MO out of this' waypoints and stops following it, and asks for a route on to the rest.
+		/// @param pMOWaypoint The MO to forget.
+		void RemoveAIMOWaypoint(const MovableObject* pMOWaypoint);
+
+		/// Asks for a new route on to this' waypoints from where it is now (out of a vehicle, say), going to them.
+		void ResumeAIWaypoints();
+
 		/// Removes all AI waypoints and clears the current path to the current
 		/// waypoint. The AI Actor will stop in its tracks.
 		void ClearAIWaypoints() {

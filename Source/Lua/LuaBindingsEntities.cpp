@@ -467,7 +467,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AVehicle) {
 	    .def("TakeSeat", &AVehicle::TakeSeat)
 	    .def("EjectSeat", &AVehicle::EjectSeat)
 	    .def("EjectCrew", &AVehicle::EjectCrew)
-	    .def("ChangeSeat", &AVehicle::ChangeSeat);
+	    .def("ChangeSeat", &AVehicle::ChangeSeat)
+	    .def("IsRider", &AVehicle::IsRider);
 }
 
 LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ADoor) {

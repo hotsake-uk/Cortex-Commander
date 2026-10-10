@@ -144,6 +144,7 @@ void SettingsMan::Clear() {
 	m_AISpawnDiggerType = 1;
 	m_AISteadyBeforeJet = true;
 	m_AIWaitForFuel = true;
+	m_AIUsesVehicles = true;
 	m_NavDebugOverlay = 0;
 	m_DebugTeam = 0;
 	m_UnitInspector = 0;
@@ -695,6 +696,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AISpawnDiggerType", { int type = 1; reader >> type; SetAISpawnDiggerType(type); });
 	MatchProperty("AISteadyBeforeJet", { reader >> m_AISteadyBeforeJet; });
 	MatchProperty("AIWaitForFuel", { reader >> m_AIWaitForFuel; });
+	MatchProperty("AIUsesVehicles", { reader >> m_AIUsesVehicles; });
 	MatchProperty("NavDebugOverlay", { int level = 0; reader >> level; SetNavDebugOverlay(level); });
 	MatchProperty("DebugTeam", { int team = 0; reader >> team; SetDebugTeam(team); });
 	MatchProperty("UnitInspector", { int which = 0; reader >> which; SetUnitInspector(which); });
@@ -1119,6 +1121,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AIRecklessness", m_AIRecklessness);
 	writer.NewPropertyWithValue("AISteadyBeforeJet", m_AISteadyBeforeJet);
 	writer.NewPropertyWithValue("AIWaitForFuel", m_AIWaitForFuel);
+	writer.NewPropertyWithValue("AIUsesVehicles", m_AIUsesVehicles);
 	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
 	writer.NewPropertyWithValue("ModernHUD", ModernHUD::IsEnabled());
 	writer.NewPropertyWithValue("ShowUnitTags", m_ShowUnitTags);
