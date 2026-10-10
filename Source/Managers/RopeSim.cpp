@@ -118,6 +118,8 @@ namespace {
 		std::vector<Node> Nodes;
 		std::vector<Link> Links; //!< Links[i] joins Nodes[i] and Nodes[i + 1].
 		std::vector<Anchor> Anchors;
+		float StrengthMult = 1.0F; //!< Scales what the kind holds before it snaps.
+		float AnchorKg = 0.0F; //!< How hard a tie can be pulled before it lets go, in kg; 0 never.
 		float StillSeconds = 0.0F; //!< How long it has lain still tied to nothing.
 	};
 
@@ -127,6 +129,8 @@ namespace {
 		int Id = 0;
 		int Type = 0;
 		float Slack = 0.0F;
+		float Strength = 1.0F;
+		float AnchorKg = 0.0F;
 		std::vector<Vector> Points;
 		Vector Position;
 		float Radius = 0.0F;
@@ -282,7 +286,7 @@ namespace {
 		return node;
 	}
 
-	int CreateRope(int id, int type, float slack, const Vector& at) {
+	int CreateRope(int id, int type, float slack, const Vector& at, float strength = 1.0F, float anchorKg = 0.0F) {
 		if (!g_SceneMan.GetScene() || static_cast<int>(s_Ropes.size()) >= c_MaxRopes || NodeCount() >= c_MaxNodes) {
 			return 0;
 		}
@@ -294,6 +298,8 @@ namespace {
 		rope.Type = std::clamp(type, 0, c_TypeCount - 1);
 		rope.Slack = std::clamp(slack, 0.0F, 1.0F);
 		rope.Points = 1;
+		rope.StrengthMult = std::clamp(strength, 0.05F, 1000.0F);
+		rope.AnchorKg = std::clamp(anchorKg, 0.0F, 1e6F);
 		Vector start = at;
 		g_SceneMan.WrapPosition(start);
 		rope.Nodes.push_back(MakeNode(ToGlm(start)));
@@ -441,7 +447,7 @@ namespace {
 		for (const Request& request: requests) {
 			switch (request.What) {
 				case Request::Kind::Create:
-					if (!request.Points.empty() && CreateRope(request.Id, request.Type, request.Slack, request.Points.front()) != 0) {
+					if (!request.Points.empty() && CreateRope(request.Id, request.Type, request.Slack, request.Points.front(), request.Strength, request.AnchorKg) != 0) {
 						for (size_t i = 1; i < request.Points.size(); ++i) {
 							AddRopePoint(request.Id, request.Points[i]);
 						}
@@ -470,7 +476,7 @@ namespace {
 		std::istringstream stream(state);
 		std::string word;
 		int version = 0;
-		if (!(stream >> word >> version) || word != "ropes" || version != 1) {
+		if (!(stream >> word >> version) || word != "ropes" || (version != 1 && version != 2)) {
 			return;
 		}
 		int ropes = 0;
@@ -480,6 +486,9 @@ namespace {
 			int nodes = 0;
 			int anchors = 0;
 			stream >> rope.Type >> rope.Slack >> rope.Points >> nodes;
+			if (version >= 2) {
+				stream >> rope.StrengthMult >> rope.AnchorKg;
+			}
 			if (!stream || nodes < 1 || nodes > c_MaxRopeNodes || rope.Type < 0 || rope.Type >= c_TypeCount) {
 				break;
 			}
@@ -764,6 +773,7 @@ namespace {
 	/// it is pulled harder than it holds.
 	void Pull(Rope& rope, float seconds, float gravity) {
 		const TypeData& type = TypeOf(rope);
+		const float holds = type.StrengthKg * rope.StrengthMult;
 		for (Link& link: rope.Links) {
 			link.Load = 0.0F;
 		}
@@ -866,7 +876,7 @@ namespace {
 					worstLink = stretchiestLink;
 				}
 				// The stretch's links show how hard it's pulled, on the debug overlay.
-				float share = std::clamp(load / type.StrengthKg, 0.0F, 1.0F);
+				float share = std::clamp(load / holds, 0.0F, 1.0F);
 				for (int link = first, count = 0; link >= 0 && link < static_cast<int>(rope.Links.size()) && count < c_MaxRopeNodes; link += direction, ++count) {
 					rope.Links[link].Load = std::max(rope.Links[link].Load, share);
 					int next = direction < 0 ? link : link + 1;
@@ -877,10 +887,15 @@ namespace {
 			}
 			// Smoothed over a few updates, so a single jolt's spike doesn't snap it but a real fall's does.
 			anchor.Tension += (tension - anchor.Tension) * 0.35F;
-			if (anchor.Tension > type.StrengthKg && worstLink >= 0) {
+			if (anchor.Tension > holds && worstLink >= 0) {
 				rope.Links[worstLink].Cut = true;
 				anchor.Tension = 0.0F;
 				EffectsParticles::SpawnImpact(ToVector(rope.Nodes[worstLink].Pos), Vector(), (type.Light[0] << 16) | (type.Light[1] << 8) | type.Light[2], type.Hardness);
+			} else if (rope.AnchorKg > 0.0F && anchor.Tension > rope.AnchorKg) {
+				// The tie gives way (pulled out of the ground, or off the unit) and the rope is left hanging from the rest.
+				EffectsParticles::SpawnImpact(ToVector(rope.Nodes[anchor.Node].Pos), Vector(), (type.Dark[0] << 16) | (type.Dark[1] << 8) | type.Dark[2], 0.2F);
+				DropAnchor(rope, static_cast<int>(index));
+				--index;
 			}
 		}
 	}
@@ -1109,8 +1124,8 @@ int RopeSim::FindType(const std::string& name) {
 	return -1;
 }
 
-int RopeSim::Create(int type, float slack, const Vector& position) {
-	return CreateRope(s_NextId++, type, slack, position);
+int RopeSim::Create(int type, float slack, const Vector& position, float strength, float anchorKg) {
+	return CreateRope(s_NextId++, type, slack, position, strength, anchorKg);
 }
 
 bool RopeSim::AddPoint(int rope, const Vector& position) {
@@ -1135,11 +1150,13 @@ int RopeSim::GetCount() {
 	return s_Count;
 }
 
-int RopeSim::QueueRope(int type, float slack, const std::vector<Vector>& points) {
+int RopeSim::QueueRope(int type, float slack, const std::vector<Vector>& points, float strength, float anchorKg) {
 	Request request{Request::Kind::Create};
 	request.Id = s_NextId++;
 	request.Type = type;
 	request.Slack = slack;
+	request.Strength = strength;
+	request.AnchorKg = anchorKg;
 	request.Points = points;
 	std::scoped_lock lock(s_RequestMutex);
 	s_Requests.push_back(request);
@@ -1412,9 +1429,9 @@ void RopeSim::GetDebug(std::vector<DebugLink>& links, std::vector<DebugAnchor>& 
 
 std::string RopeSim::GetSaveState() {
 	std::ostringstream stream;
-	stream << "ropes 1 " << s_Ropes.size();
+	stream << "ropes 2 " << s_Ropes.size();
 	for (const Rope& rope: s_Ropes) {
-		stream << ' ' << rope.Type << ' ' << rope.Slack << ' ' << rope.Points << ' ' << rope.Nodes.size();
+		stream << ' ' << rope.Type << ' ' << rope.Slack << ' ' << rope.Points << ' ' << rope.Nodes.size() << ' ' << rope.StrengthMult << ' ' << rope.AnchorKg;
 		for (const Node& node: rope.Nodes) {
 			stream << ' ' << node.Pos.x << ' ' << node.Pos.y << ' ' << (node.Gone ? 1 : 0);
 		}

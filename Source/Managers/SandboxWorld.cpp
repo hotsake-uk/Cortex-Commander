@@ -2505,7 +2505,7 @@ namespace SandboxDetail {
 					RopeSim::AddPoint(s_RopeDrawing, at);
 				} else {
 					int type = RopeSim::FindType(stroke.Material);
-					s_RopeDrawing = RopeSim::Create(type >= 0 ? type : s_RopeType, stroke.Rate, at);
+					s_RopeDrawing = RopeSim::Create(type >= 0 ? type : s_RopeType, stroke.Rate, at, stroke.RopeStrength, stroke.RopeAnchor);
 					if (s_RopeDrawing != 0) {
 						// A step of its own in the undo, which takes the whole rope away.
 						PushUndoStep();
@@ -2981,6 +2981,8 @@ namespace SandboxDetail {
 			// The next point of the rope being put down (or its first), of the kind and slack picked.
 			stroke.Material = RopeSim::GetType(s_RopeType).Name;
 			stroke.Rate = s_RopeSlack;
+			stroke.RopeStrength = s_RopeStrength;
+			stroke.RopeAnchor = s_RopeAnchor;
 			stroke.Choice = 0;
 			s_RopeDraft.push_back(position);
 		}

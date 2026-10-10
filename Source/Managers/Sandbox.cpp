@@ -159,6 +159,8 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		stroke.Choice = 0;
 		stroke.Material = RopeSim::FindType(presetName) >= 0 ? presetName : std::string(RopeSim::GetType(s_RopeType).Name);
 		stroke.Rate = s_RopeSlack;
+		stroke.RopeStrength = s_RopeStrength;
+		stroke.RopeAnchor = s_RopeAnchor;
 		s_Queue.push_back(stroke);
 		return true;
 	}
@@ -1489,6 +1491,10 @@ void Sandbox::DrawGUI() {
 						s_RopeSlack = static_cast<float>(slack) / 100.0F;
 					}
 					ImGui::SetItemTooltip("How much longer than the straight line between its points the rope is: 0 strung tight, 10%% hangs a little, 50%% droops well down.");
+					ImGui::SliderFloat("Rope strength", &s_RopeStrength, 0.1F, 100.0F, "x%.1f", ImGuiSliderFlags_Logarithmic);
+					ImGui::SetItemTooltip("How much more (or less) than the kind's own it holds before it snaps. Everything else about it stays: a rope can be made to hold a dropship and still burn and be cut by a bullet.");
+					ImGui::SliderFloat("Tie strength", &s_RopeAnchor, 0.0F, 5000.0F, s_RopeAnchor <= 0.0F ? "unbreakable" : "%.0f kg", ImGuiSliderFlags_Logarithmic);
+					ImGui::SetItemTooltip("How hard a tie can be pulled, in kg, before it lets go of the rope (pulled out of the ground or off the unit). Far left: the ties never fail, only the rope can.");
 				}
 				ImGui::SeparatorText("Terrain");
 				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::TreeTrunk, Tool::Concrete});

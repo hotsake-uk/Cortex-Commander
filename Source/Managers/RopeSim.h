@@ -59,8 +59,10 @@ namespace RTE {
 		/// (a loose end). Call from the simulation.
 		/// @param type The kind (GetType).
 		/// @param slack How much longer than the straight line between its points each stretch is, 0 to 1 (0.1 hangs a little).
+		/// @param strength A multiplier on what the kind holds before it snaps (1 as it is); it burns, cuts and weighs the same.
+		/// @param anchorKg How hard, in kg, a tie can be pulled before it lets go of the rope; 0 for ties that never fail.
 		/// @return Its id, or 0 if there's no scene or too many ropes.
-		static int Create(int type, float slack, const Vector& position);
+		static int Create(int type, float slack, const Vector& position, float strength = 1.0F, float anchorKg = 0.0F);
 
 		/// Carries a rope on to another point, tied to what is there as Create ties its first. Call from the simulation.
 		/// @return Whether there was such a rope to carry on (one burnt or cut through is carried on all the same).
@@ -80,7 +82,7 @@ namespace RTE {
 
 		/// Queues a rope from a script: put down through the points in order, as Create and AddPoint would. Thread safe; made on the next sim update.
 		/// @return The id it will have.
-		static int QueueRope(int type, float slack, const std::vector<Vector>& points);
+		static int QueueRope(int type, float slack, const std::vector<Vector>& points, float strength = 1.0F, float anchorKg = 0.0F);
 
 		/// Queues carrying a rope on to another point, as AddPoint. Thread safe.
 		static void QueueAddPoint(int rope, const Vector& position);
