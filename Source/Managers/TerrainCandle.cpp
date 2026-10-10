@@ -25,11 +25,14 @@
 
 using namespace RTE;
 
+float TerrainCandle::s_BurnMinutes = 2.0F;
+
 namespace {
 	constexpr size_t c_MaxLit = 512;
 	constexpr size_t c_MaxDrips = 1024;
 	constexpr int c_MaxWick = 24; //!< The most pixels a wick has (one drawn three times as big has nine).
-	constexpr float c_TicksPerRow = 110.0F; //!< Fire ticks (about 20 a second) a candle takes to burn down a row, however wide: each pixel of the row takes this over its width.
+	constexpr float c_TicksPerMinute = 1200.0F; //!< Fire ticks (about 20 a second) in a minute.
+	constexpr float c_BurnRows = 20.0F; //!< How tall a candle the burn time setting is for.
 	constexpr int c_RimLag = 2; //!< How many rows the middle burns down ahead of the rim: the dish under the wick.
 	constexpr int c_DripEvery = 3; //!< Fire ticks a running drip takes to go down a pixel.
 	constexpr int c_GrowTicks = 10; //!< Fire ticks a flame takes to grow to full when lit.
@@ -378,8 +381,13 @@ namespace {
 				++right;
 			}
 		}
+		// Burning down a row takes the same time however wide the candle is: each pixel of the row takes that over its width. Unlimited: it never melts.
+		if (TerrainCandle::GetBurnMinutes() <= 0.0F) {
+			return Outcome::Burning;
+		}
 		int across = right - left + 1;
-		int interval = std::clamp(static_cast<int>(c_TicksPerRow / static_cast<float>(across)), 4, 60);
+		float ticksPerRow = TerrainCandle::GetBurnMinutes() * c_TicksPerMinute / c_BurnRows;
+		int interval = std::clamp(static_cast<int>(ticksPerRow / static_cast<float>(across)), 4, 30000);
 		if (++candle.Melt >= interval) {
 			candle.Melt = 0;
 			MeltOne(ground, candle, wickBottom, left, right, changed);

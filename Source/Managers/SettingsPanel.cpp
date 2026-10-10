@@ -25,6 +25,7 @@
 #include "SmokeGrid.h"
 #include "TerrainCollapse.h"
 #include "TerrainFire.h"
+#include "TerrainCandle.h"
 #include "WeatherLightning.h"
 #include "TextOverlay.h"
 #include "TimerMan.h"
@@ -663,6 +664,12 @@ void DebugMan::SettingsGUI() {
 			TerrainFire::SetEmberIgniteChance(chance);
 		}
 		Tip("The chance each second that smouldering charcoal (what's left glowing of burnt wood) sets alight each grass, wood or oil pixel touching it. Charcoal never relights other charcoal. 0 for never.");
+		Toggle("Candles burn forever", TerrainCandle::GetBurnMinutes() <= 0.0F, [](bool on) { TerrainCandle::SetBurnMinutes(on ? 0.0F : 2.0F); });
+		Tip("Lit candles (Paint > Plants > Candles) keep burning and never melt down. Off, they burn down in the time below.");
+		if (float minutes = TerrainCandle::GetBurnMinutes(); minutes > 0.0F && Slider("Candle burn time", &minutes, 0.5F, 60.0F, "%.1f minutes", ImGuiSliderFlags_Logarithmic)) {
+			TerrainCandle::SetBurnMinutes(minutes);
+		}
+		Tip("How long a lit candle 20 pixels tall takes to burn down, whatever its width; a taller one takes longer. 2 minutes as it comes.");
 		Toggle("Units catch fire", ActorFire::IsEnabled(), [](bool on) { ActorFire::SetEnabled(on); });
 		Toggle("Smoke blocks sight", SmokeGrid::IsEnabled(), [](bool on) { SmokeGrid::SetEnabled(on); });
 		Toggle("Gas", GasGrid::IsEnabled(), [](bool on) { GasGrid::SetEnabled(on); });
