@@ -155,23 +155,19 @@ float ObjectSunShadow(vec2 from, bool fromSolid) {
 	return clamp(visibility, 0.0, 1.0);
 }
 
-// How much the terrain in front shades a pixel of the background scenery, 0 to 1. The scenery stands some way behind the battlefield, so the terrain's shadow falls on it
-// shifted away from the sun: look from the pixel towards the sun for terrain, in the light grid (so terrain just off the screen still casts). The further back the layer,
-// the longer the shadow reaches and the softer and fainter it is. Darkest right next to the terrain, fading towards the end of its reach.
+// How much the terrain in front shades a pixel of the background scenery, 0 to 1: a drop shadow. The scenery stands some way behind the battlefield, so the terrain's
+// silhouette falls on it shifted away from the sun (or moon): a pixel is in shadow where there's terrain that far towards the sun from it. Read from the light grid, so terrain
+// just off the screen still casts. The further back the layer, the further the shadow is thrown and the softer its edge.
 float BackgroundShadow(vec2 worldPos, float layerDistance) {
-	float reach = rteBackgroundShadowLength * mix(12.0, 40.0, layerDistance);
-	vec2 across = vec2(-rteSunDirection.y, rteSunDirection.x);
-	float shadow = 0.0;
-	for (int i = 1; i <= 8; ++i) {
-		float along = float(i) / 8.0;
-		float t = reach * along;
-		// The sun is a disc, not a point: the shadow's edge spreads with the distance from the terrain casting it.
-		vec2 spread = across * (1.0 + t * 0.15);
-		vec2 position = worldPos + rteSunDirection * t;
-		float cover = 0.5 * (texture(rteOccupancy, (position + spread) / rteGridWorldSize).r + texture(rteOccupancy, (position - spread) / rteGridWorldSize).r);
-		shadow = max(shadow, smoothstep(0.15, 0.65, cover) * (1.0 - 0.65 * along * along));
-	}
-	return shadow * mix(1.0, 0.6, layerDistance);
+	vec2 offset = rteSunDirection * rteBackgroundShadowLength * mix(10.0, 26.0, layerDistance);
+	float soft = 1.5 + 3.0 * layerDistance;
+	vec2 center = worldPos + offset;
+	float cover = 0.4 * texture(rteOccupancy, center / rteGridWorldSize).r;
+	cover += 0.15 * texture(rteOccupancy, (center + vec2(soft, 0.0)) / rteGridWorldSize).r;
+	cover += 0.15 * texture(rteOccupancy, (center - vec2(soft, 0.0)) / rteGridWorldSize).r;
+	cover += 0.15 * texture(rteOccupancy, (center + vec2(0.0, soft)) / rteGridWorldSize).r;
+	cover += 0.15 * texture(rteOccupancy, (center - vec2(0.0, soft)) / rteGridWorldSize).r;
+	return smoothstep(0.3, 0.7, cover) * mix(1.0, 0.7, layerDistance);
 }
 
 float CloudHash(vec2 p) {
