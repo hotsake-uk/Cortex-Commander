@@ -311,7 +311,9 @@ void PollSDLEvents() {
 		// Clicks, scrolls and typing aimed at a debug window shouldn't also reach the game (releases always do, so nothing gets stuck down).
 		const ImGuiIO& imGuiIO = ImGui::GetIO();
 		// Function keys (debug window toggles, quicksave and so on) always reach the game, so a focused debug window can still be closed with its key.
-		bool functionKey = (sdlEvent.type == SDL_EVENT_KEY_DOWN || sdlEvent.type == SDL_EVENT_KEY_UP) && sdlEvent.key.scancode >= SDL_SCANCODE_F1 && sdlEvent.key.scancode <= SDL_SCANCODE_F12;
+		// So does Tab, which puts the tool windows away and back: a floating or large sandbox window that had the keyboard took it for moving between its
+		// controls, so it only went away when docked at the side.
+		bool functionKey = (sdlEvent.type == SDL_EVENT_KEY_DOWN || sdlEvent.type == SDL_EVENT_KEY_UP) && ((sdlEvent.key.scancode >= SDL_SCANCODE_F1 && sdlEvent.key.scancode <= SDL_SCANCODE_F12) || sdlEvent.key.scancode == SDL_SCANCODE_TAB);
 		// In the game's own menus (the pause menu over a game) the menu has every click and key: the tool windows aren't drawn there, and
 		// what they wanted is from the last game frame. (A sandbox tool left in hand, or a tool window that had the keyboard, took the pause
 		// menu's clicks for the world under it, so it could only be used from a unit, T-14.)
@@ -356,7 +358,11 @@ void PollSDLEvents() {
 			default:
 				break;
 		}
-		ImGui_ImplSDL3_ProcessEvent(&sdlEvent);
+		// Tab (without Ctrl or Alt) is the game's, not for moving between a tool window's controls.
+		bool plainTab = (sdlEvent.type == SDL_EVENT_KEY_DOWN || sdlEvent.type == SDL_EVENT_KEY_UP) && sdlEvent.key.scancode == SDL_SCANCODE_TAB && !(sdlEvent.key.mod & (SDL_KMOD_ALT | SDL_KMOD_CTRL | SDL_KMOD_GUI));
+		if (!plainTab) {
+			ImGui_ImplSDL3_ProcessEvent(&sdlEvent);
+		}
 		// Debug window toggles work every frame, even while the simulation is frozen (photo mode) and input otherwise isn't processed.
 		// Tab in a game is the one key for all of them: every tool window away (in the Sandbox game mode, into your character: Shift+Tab puts it down where the
 		// mouse points), or all of them back. Alt+Tab and Ctrl+Tab are left alone.
