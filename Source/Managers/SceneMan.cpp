@@ -720,6 +720,11 @@ bool SceneMan::TryPenetrate(int posX,
 
 			for (int testY = posY - 1; testY > posY - m_ScrapCompactingHeight && testY >= 0; --testY) {
 				if ((testMaterialID = _getpixel(pMaterial, posX, testY)) != g_MaterialAir) {
+					// A tree stands in the open with no wall behind it, but on its own trunk, not as scrap: the column stops at it. (A step into the
+					// grass at a tree's foot took the trunk and leaves above it, all of a small tree.)
+					if (TerrainTrees::IsTreeMaterial(testMaterialID)) {
+						break;
+					}
 					sceneMat = GetMaterialFromID(testMaterialID);
 
 					if (sceneMat->IsScrap() || _getpixel(pBGColor, posX, testY) == g_MaskColor) {
