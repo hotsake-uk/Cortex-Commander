@@ -4,6 +4,7 @@
 #include "MovableMan.h"
 #include "TextOverlay.h"
 #include "EffectsParticles.h"
+#include "RopeSim.h"
 #include "SceneLighting.h"
 
 #include "SDL3/SDL_surface.h"
@@ -953,6 +954,7 @@ void FrameMan::Draw() {
 				g_SceneMan.Draw(camera);
 
 				EffectsParticles::Draw(camera);
+				RopeSim::Draw(camera);
 				g_PrimitiveMan.DrawPrimitives(playerScreen, camera);
 			}
 

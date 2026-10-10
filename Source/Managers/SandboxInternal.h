@@ -35,6 +35,7 @@
 #include "SoundContainer.h"
 #include "TDExplosive.h"
 #include "TerrainCollapse.h"
+#include "RopeSim.h"
 #include "ActorFire.h"
 #include "TerrainFire.h"
 #include "WeatherLightning.h"
@@ -200,7 +201,10 @@ namespace SandboxDetail {
 		// Appended, so the tools before keep their numbers.
 		Metal, //!< Paints the metal chosen under Metals (c_PaintMetals; Stroke::Material): the bunkers' plating, or a polished metal that shines.
 		// Appended, so the tools before keep their numbers.
-		CollapseArea //!< A box dragged out on the world (Position to Position2): all the ground in it breaks loose and falls (TerrainCollapse::DropArea).
+		CollapseArea, //!< A box dragged out on the world (Position to Position2): all the ground in it breaks loose and falls (TerrainCollapse::DropArea).
+		// Appended, so the tools before keep their numbers.
+		Rope, //!< Each click a point of a rope (RopeSim), tied to what is there; Choice 1 finishes it, 2 takes every rope away. Material: its kind; Rate: its slack.
+		RopeCut //!< A click cuts the ropes under the pointer.
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -321,6 +325,8 @@ namespace SandboxDetail {
 	    {Tool::Candles, "Candles", 0.03F, true},
 	    {Tool::Metal, "Metal", 0.03F, true},
 	    {Tool::CollapseArea, "Make it fall", 0.0F, false},
+	    {Tool::Rope, "Rope", 0.0F, false},
+	    {Tool::RopeCut, "Cut rope", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -881,6 +887,12 @@ namespace SandboxDetail {
 	inline bool s_ShapeFill = false; //!< Brush type Shape: the terrain brushes fill a shape dragged out on the world rather than painting where the pointer goes.
 	inline FillShape s_FillShape = FillShape::Square; //!< The shape they fill then.
 	inline bool s_ShapeDragging = false; //!< A shape being dragged out, from s_ShapeStart.
+	inline int s_RopeType = 0; //!< What the Rope tool puts down (RopeSim::GetType).
+	inline float s_RopeSlack = 0.1F; //!< How much longer than the straight line between its points the Rope tool's rope is.
+	inline std::vector<Vector> s_RopeDraft; //!< The window's: the points of the rope being put down, clicked so far (the line to the pointer is drawn from the last).
+	inline ImVec2 s_RopeRightStart; //!< Where the right button went down with the Rope tool in hand: let go about there, it finishes the rope.
+	inline bool s_RopeRightDown = false;
+	inline int s_RopeDrawing = 0; //!< The sim's: the rope its Rope clicks carry on, 0 for none (the next click starts one).
 	inline Vector s_ShapeStart;
 	constexpr int c_MaxDropSide = 800; //!< The biggest box "Make it fall" takes either way, in pixels.
 
@@ -1204,8 +1216,9 @@ namespace SandboxDetail {
 		int ColonyBuilding = -1; //!< The colony building a placing step built, or -1.
 		bool Sealed = false; //!< A placing step: the next stroke starts a step of its own, however soon it comes.
 		int Drop = 0; //!< A "Make it fall" step: the drop TerrainCollapse::DropArea gave, taken back with TerrainCollapse::TakeBackDrop.
+		int Rope = 0; //!< A rope put down (RopeSim), taken away again.
 
-		bool Empty() const { return Pixels.empty() && Placed.empty() && ColonyBuilding < 0 && Drop == 0; }
+		bool Empty() const { return Pixels.empty() && Placed.empty() && ColonyBuilding < 0 && Drop == 0 && Rope == 0; }
 	};
 
 	inline std::deque<PaintUndoStep> s_PaintUndo;
@@ -1374,7 +1387,7 @@ namespace SandboxDetail {
 
 	inline std::deque<std::string> s_StrokeLog; //!< The last tool uses applied, oldest first, for the stroke log (SettingsMan::ShowSandboxStrokeLog).
 
-	enum class Icon { Eye, Arrows, Target, Person, Cross, Flag, Jar, Gun, Wall, Down, Flame, Drop, Cloud, Grains, Chunk, Pick, Bomb, Rocket, Bolt, Star, Plant, Candle };
+	enum class Icon { Eye, Arrows, Target, Person, Cross, Flag, Jar, Gun, Wall, Down, Flame, Drop, Cloud, Grains, Chunk, Pick, Bomb, Rocket, Bolt, Star, Plant, Candle, Rope };
 
 	// Twelve by twelve pixels each: # in the tool's own colour, + a highlight.
 	constexpr const char* c_IconArt[] = {
@@ -1664,6 +1677,19 @@ namespace SandboxDetail {
 	    "....#####..."
 	    "....#####..."
 	    "..#########.",
+	    // Rope
+	    "..........##"
+	    ".........#+#"
+	    "........#+#."
+	    ".......#+#.."
+	    "......#+#..."
+	    ".....#+#...."
+	    "....#+#....."
+	    "...#+#......"
+	    "..#+#......."
+	    ".#+#........"
+	    "#+#........."
+	    "##..........",
 	};
 
 	struct ToolLook {

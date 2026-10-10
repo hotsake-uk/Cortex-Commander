@@ -13,6 +13,7 @@
 #include "TerrainCollapse.h"
 #include "TerrainFire.h"
 #include "TerrainCandle.h"
+#include "RopeSim.h"
 #include "WeatherEffects.h"
 #include "PathFinder.h"
 #include "Scene.h"
@@ -593,6 +594,30 @@ void DebugOverlays::DrawWorldSim() {
 				drawList->AddTriangleFilled(ImVec2(tip.x + head, tip.y), ImVec2(tip.x, tip.y - 6.0F), ImVec2(tip.x, tip.y + 6.0F), color);
 			}
 			std::snprintf(text, sizeof(text), "wind %+.2f   rain %.2f   snow %.2f   dust %.2f   sight x%.2f   walking x%.2f", wind, WeatherEffects::GetRain(), WeatherEffects::GetSnow(), WeatherEffects::GetDust(), WeatherEffects::GetSightMultiplier(), WeatherEffects::GetWalkSpeedMultiplier());
+			caption(text);
+			break;
+		}
+		case 6: {
+			// Ropes: each link by how hard it's pulled (green slack, red about to snap; orange alight), and where each is tied.
+			std::vector<RopeSim::DebugLink> links;
+			std::vector<RopeSim::DebugAnchor> anchors;
+			int nodes = 0;
+			int burning = 0;
+			RopeSim::GetDebug(links, anchors, nodes, burning);
+			float thickness = std::max(2.0F, 1.5F / perPixel);
+			for (const RopeSim::DebugLink& link: links) {
+				ImU32 color = link.Burning ? IM_COL32(255, 150, 40, 255) : IM_COL32(static_cast<int>(80.0F + 175.0F * link.Load), static_cast<int>(220.0F - 180.0F * link.Load), 60, 230);
+				drawList->AddLine(DebugDraw::ToScreen(Vector(link.A.x, link.A.y)), DebugDraw::ToScreen(Vector(link.B.x, link.B.y)), color, thickness);
+			}
+			for (const RopeSim::DebugAnchor& anchor: anchors) {
+				ImVec2 at = DebugDraw::ToScreen(Vector(anchor.Pos.x, anchor.Pos.y));
+				if (anchor.Kind == 0) {
+					drawList->AddRect(ImVec2(at.x - 4.0F, at.y - 4.0F), ImVec2(at.x + 4.0F, at.y + 4.0F), IM_COL32(255, 255, 255, 230), 0.0F, 0, 2.0F);
+				} else {
+					drawList->AddCircle(at, 5.0F, IM_COL32(110, 200, 255, 230), 12, 2.0F);
+				}
+			}
+			std::snprintf(text, sizeof(text), "ropes: %d, %d points, %d links, %d ties, %d points burning", RopeSim::GetCount(), nodes, static_cast<int>(links.size()), static_cast<int>(anchors.size()), burning);
 			caption(text);
 			break;
 		}

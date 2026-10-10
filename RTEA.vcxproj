@@ -862,6 +862,7 @@
     <ClInclude Include="Source\Managers\SceneMan.h" />
     <ClInclude Include="Source\Managers\TerrainFire.h" />
     <ClInclude Include="Source\Managers\TerrainCandle.h" />
+    <ClInclude Include="Source\Managers\RopeSim.h" />
     <ClInclude Include="Source\Managers\WeatherLightning.h" />
     <ClInclude Include="Source\Managers\TerrainCollapse.h" />
     <ClInclude Include="Source\Managers\TerrainTrees.h" />
@@ -1430,6 +1431,7 @@
     <ClCompile Include="Source\Managers\SceneMan.cpp" />
     <ClCompile Include="Source\Managers\TerrainFire.cpp" />
     <ClCompile Include="Source\Managers\TerrainCandle.cpp" />
+    <ClCompile Include="Source\Managers\RopeSim.cpp" />
     <ClCompile Include="Source\Managers\WeatherLightning.cpp" />
     <ClCompile Include="Source\Managers\TerrainCollapse.cpp" />
     <ClCompile Include="Source\Managers\TerrainTrees.cpp" />

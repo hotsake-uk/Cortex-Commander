@@ -730,6 +730,27 @@ namespace RTE {
 		/// @param energy How big a blast, as an explosion's gib energy (a grenade is a few thousand).
 		void AddAirBlast(const Vector& position, float energy) const;
 
+		/// Puts a rope from one point to another, tied at each end to what is there: a unit or a thing, else the ground, else nothing (a loose
+		/// end). Thread safe; made on the next sim update.
+		/// @param type What it's made of: "Rope", "Thread", "Chain", "Steel cable" or "Bungee cord" (any other name is rope).
+		/// @param from Where it starts, in scene coordinates.
+		/// @param to Where it goes to.
+		/// @param slack How much longer than the straight line it is, 0 to 1 (0.1 hangs a little).
+		/// @return Its id, for AddRopePoint and RemoveRope.
+		int AddRope(const std::string& type, const Vector& from, const Vector& to, float slack) const;
+
+		/// Carries a rope on to another point, tied there to what is there as AddRope ties its ends. Thread safe; made on the next sim update.
+		void AddRopePoint(int rope, const Vector& position) const;
+
+		/// Takes a rope away. Thread safe.
+		void RemoveRope(int rope) const;
+
+		/// Cuts every rope within a circle. Thread safe.
+		void CutRopes(const Vector& position, float radius) const;
+
+		/// Gets how many ropes there are.
+		int GetRopeCount() const;
+
 		/// Gets how many units are on fire.
 		int GetBurningUnitCount() const;
 

@@ -4,6 +4,7 @@
 #include "ThreatMemory.h"
 #include "GasGrid.h"
 #include "AirPressure.h"
+#include "RopeSim.h"
 #include "TerrainCollapse.h"
 #include "TerrainTrees.h"
 #include "SmokeGrid.h"
@@ -1549,6 +1550,26 @@ Vector SceneMan::GetAirFlow(const Vector& position) const {
 
 void SceneMan::AddAirBlast(const Vector& position, float energy) const {
 	AirPressure::Blast(position, energy);
+}
+
+int SceneMan::AddRope(const std::string& type, const Vector& from, const Vector& to, float slack) const {
+	return RopeSim::QueueRope(std::max(RopeSim::FindType(type), 0), slack, {from, to});
+}
+
+void SceneMan::AddRopePoint(int rope, const Vector& position) const {
+	RopeSim::QueueAddPoint(rope, position);
+}
+
+void SceneMan::RemoveRope(int rope) const {
+	RopeSim::QueueRemove(rope);
+}
+
+void SceneMan::CutRopes(const Vector& position, float radius) const {
+	RopeSim::QueueCut(position, radius);
+}
+
+int SceneMan::GetRopeCount() const {
+	return RopeSim::GetCount();
 }
 
 int SceneMan::GetBurningUnitCount() const {

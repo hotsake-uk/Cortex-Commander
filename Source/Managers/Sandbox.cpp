@@ -32,6 +32,14 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		s_Effects.clear();
 		return true;
 	}
+	if (toolName == "Finish rope" || toolName == "Remove ropes") {
+		// The rope a script is putting down a point at a time ("Rope") finished, or every rope taken away.
+		Stroke stroke;
+		stroke.Kind = Tool::Rope;
+		stroke.Choice = toolName == "Finish rope" ? 1 : 2;
+		s_Queue.push_back(stroke);
+		return true;
+	}
 	if (toolName == "Undo") {
 		// As Ctrl+Z: the newest paint stroke, placing click or drop taken back.
 		QueueSimChange(Tool::UndoTerrain);
@@ -132,6 +140,14 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		if (std::getenv("CCCP_TEST_POINTER")) {
 			ChoiceFor(stroke.Kind) = stroke.Choice;
 		}
+	}
+	if (stroke.Kind == Tool::Rope) {
+		// The next point of the rope being put down (or its first). The preset name is its kind ("Chain"); none, the one picked in the window.
+		stroke.Choice = 0;
+		stroke.Material = RopeSim::FindType(presetName) >= 0 ? presetName : std::string(RopeSim::GetType(s_RopeType).Name);
+		stroke.Rate = s_RopeSlack;
+		s_Queue.push_back(stroke);
+		return true;
 	}
 	if (stroke.Kind == Tool::TerrainOther || stroke.Kind == Tool::Metal) {
 		// The material to paint is the preset name; none, the one chosen in the window.
@@ -710,6 +726,31 @@ void Sandbox::DrawGUI() {
 	// Not while you play a unit: in the WASD layouts Ctrl is crouch, so crouching with Z down took back the last stroke.
 	if (InGame() && io.KeyCtrl && !io.WantTextInput && !s_Possessed && ImGui::IsKeyPressed(ImGuiKey_Z, false) && !s_PaintUndo.empty()) {
 		QueueSimChange(Tool::UndoTerrain);
+		// (A rope part put down is taken away whole, so the next click starts a new one.)
+		s_RopeDraft.clear();
+	}
+	// The rope being put down is finished with Enter or Escape, a right click (not a drag, which moves the view), or another tool taken up.
+	if (!s_RopeDraft.empty()) {
+		bool finish = !InGame() || CurrentTool().Kind != Tool::Rope;
+		if (!io.WantTextInput && (ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false) || ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
+			finish = true;
+		}
+		if (!io.WantCaptureMouse && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+			s_RopeRightDown = true;
+			s_RopeRightStart = io.MousePos;
+		}
+		if (s_RopeRightDown && !ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+			s_RopeRightDown = false;
+			finish = finish || std::abs(io.MousePos.x - s_RopeRightStart.x) + std::abs(io.MousePos.y - s_RopeRightStart.y) < 6.0F;
+		}
+		if (finish) {
+			Stroke stroke;
+			stroke.Kind = Tool::Rope;
+			stroke.Choice = 1;
+			s_Queue.push_back(stroke);
+			s_RopeDraft.clear();
+			s_RopeRightDown = false;
+		}
 	}
 	// Control groups: Ctrl and a number keeps the selection under it, the number alone brings it back, and the number again straight after
 	// looks at them (RC-6); Ctrl+A takes the whole side. With the command tool in hand, wherever the pointer is, so long as no text box has
@@ -805,6 +846,18 @@ void Sandbox::DrawGUI() {
 				s_DigTimer = c_Tools[ToolIndex(Tool::Dig)].Interval;
 				QueueStroke(Tool::Dig, position);
 			}
+		}
+		if (tool.Kind == Tool::Rope && !s_RopeDraft.empty()) {
+			// The rope's next stretch, from its last point to the pointer, in its colour, with how long it is.
+			const RopeSim::TypeInfo& type = RopeSim::GetType(s_RopeType);
+			ImDrawList* drawList = ImGui::GetForegroundDrawList();
+			ImVec2 from = ToScreen(s_RopeDraft.back());
+			ImU32 color = IM_COL32(type.R, type.G, type.B, 230);
+			drawList->AddLine(from, io.MousePos, color, 2.0F);
+			drawList->AddCircleFilled(from, 3.0F, color);
+			float length = g_SceneMan.ShortestDistance(s_RopeDraft.back(), position, g_SceneMan.SceneWrapsX()).GetMagnitude() * (1.0F + s_RopeSlack);
+			std::string label = std::to_string(static_cast<int>(length)) + " px    right click or Enter: done";
+			drawList->AddText(ImVec2(io.MousePos.x + 14.0F, io.MousePos.y + 10.0F), color, label.c_str());
 		}
 		DrawSideRing();
 		if (!s_RingOpen) {
@@ -1331,6 +1384,36 @@ void Sandbox::DrawGUI() {
 						}
 						ImGui::SetItemTooltip("How long a lit candle 20 pixels tall takes to burn down, whatever its width; a taller one takes longer.");
 					}
+				}
+				ImGui::SeparatorText("Ropes");
+				ToolButtons({Tool::Rope, Tool::RopeCut});
+				ImGui::SameLine();
+				ImGui::BeginDisabled(RopeSim::GetCount() == 0);
+				if (ToolUI::Button("Remove all ropes")) {
+					Stroke stroke;
+					stroke.Kind = Tool::Rope;
+					stroke.Choice = 2;
+					s_Queue.push_back(stroke);
+					s_RopeDraft.clear();
+				}
+				ImGui::EndDisabled();
+				for (int type = 0; type < RopeSim::GetTypeCount(); ++type) {
+					if (type % 3 != 0) {
+						ImGui::SameLine();
+					}
+					const RopeSim::TypeInfo& info = RopeSim::GetType(type);
+					if (ToolUI::RadioButton(info.Name, s_RopeType == type)) {
+						s_RopeType = type;
+						TookTool(ToolIndex(Tool::Rope));
+					}
+					ImGui::SetItemTooltip("%s", info.About);
+				}
+				{
+					int slack = static_cast<int>(std::round(s_RopeSlack * 100.0F));
+					if (ImGui::SliderInt("Rope slack", &slack, 0, 100, "%d%%")) {
+						s_RopeSlack = static_cast<float>(slack) / 100.0F;
+					}
+					ImGui::SetItemTooltip("How much longer than the straight line between its points the rope is: 0 strung tight, 10%% hangs a little, 50%% droops well down.");
 				}
 				ImGui::SeparatorText("Terrain");
 				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::TreeTrunk, Tool::Concrete});
