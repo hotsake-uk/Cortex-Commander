@@ -4396,7 +4396,7 @@ namespace SandboxDetail {
 	}
 
 	/// The sandbox's bar across the bottom of the picture, in the Sandbox game mode while you're above it all: along the bottom the main tools, the side,
-	/// the parts of the sandbox, the things you've pinned, and at the right the sides' units, the AI, the speed of time and undo; above them, the tools
+	/// the parts of the sandbox, the things you've pinned, and at the right, when the F6 setting shows it, the sides' units, the AI, the speed of time and undo; above them, the tools
 	/// and settings of the tool in hand. It is there whether the window is open or not.
 	void DrawBar() {
 		GameViewRect view = g_WindowMan.GetGameViewRect();
@@ -4605,109 +4605,113 @@ namespace SandboxDetail {
 				SavePinsFile();
 			}
 
-			// At the right: each side's units, the AI, the speed of time, undo.
-			ImGui::SameLine(0.0F, pixel * 10.0F);
-			{
-				float contentRight = windowRight - style.WindowPadding.x;
-				ImVec2 cursor = ImGui::GetCursorScreenPos();
-				if (cursor.x < contentRight - rightWidth) {
-					ImGui::SetCursorScreenPos(ImVec2(contentRight - rightWidth, cursor.y));
+			if (g_SettingsMan.ShowSandboxBarRight()) {
+				// At the right: each side's units, the AI, the speed of time, undo.
+				ImGui::SameLine(0.0F, pixel * 10.0F);
+				{
+					float contentRight = windowRight - style.WindowPadding.x;
+					ImVec2 cursor = ImGui::GetCursorScreenPos();
+					if (cursor.x < contentRight - rightWidth) {
+						ImGui::SetCursorScreenPos(ImVec2(contentRight - rightWidth, cursor.y));
+					}
 				}
-			}
-			const float rightStart = ImGui::GetCursorScreenPos().x;
-			for (int side = 0; side < c_Sides; ++side) {
-				if (side > 0) {
-					ImGui::SameLine();
-				}
-				int count = Sandbox::CountUnits(side);
-				std::string number = std::to_string(count);
-				std::string tip = std::string(c_SideNames[side]) + ": " + number + " fighting units (not brains or craft, but a craft's passengers).\nClick: select them all, with the Command tool. Double click: look at them too.";
-				ImGui::PushID(side + 700);
-				if (BarTile(
-				        "##count", c_SideNames[side], tip.c_str(), false, [&](ImDrawList* tileList, ImVec2 at, float room) {
-					        float inset = room * 0.08F;
-					        tileList->AddRectFilled(ImVec2(at.x + inset, at.y + inset), ImVec2(at.x + room - inset, at.y + room - inset), (c_SideColors[side] & 0x00FFFFFF) | ((count > 0 ? 110u : 50u) << IM_COL32_A_SHIFT));
-					        PictureText(tileList, at, room, count > 0 ? ToolTheme::Text : IM_COL32(200, 200, 200, 160), number.c_str());
-				        },
-				        c_SideColors[side]) == 1) {
-					s_Selected.clear();
-					for (Actor* actor: SandboxAccess::Actors()) {
-						if (IsSelectable(actor) && actor->GetTeam() == side) {
-							s_Selected.push_back(MakeRef(actor));
+				const float rightStart = ImGui::GetCursorScreenPos().x;
+				for (int side = 0; side < c_Sides; ++side) {
+					if (side > 0) {
+						ImGui::SameLine();
+					}
+					int count = Sandbox::CountUnits(side);
+					std::string number = std::to_string(count);
+					std::string tip = std::string(c_SideNames[side]) + ": " + number + " fighting units (not brains or craft, but a craft's passengers).\nClick: select them all, with the Command tool. Double click: look at them too.";
+					ImGui::PushID(side + 700);
+					if (BarTile(
+					        "##count", c_SideNames[side], tip.c_str(), false, [&](ImDrawList* tileList, ImVec2 at, float room) {
+						        float inset = room * 0.08F;
+						        tileList->AddRectFilled(ImVec2(at.x + inset, at.y + inset), ImVec2(at.x + room - inset, at.y + room - inset), (c_SideColors[side] & 0x00FFFFFF) | ((count > 0 ? 110u : 50u) << IM_COL32_A_SHIFT));
+						        PictureText(tileList, at, room, count > 0 ? ToolTheme::Text : IM_COL32(200, 200, 200, 160), number.c_str());
+					        },
+					        c_SideColors[side]) == 1) {
+						s_Selected.clear();
+						for (Actor* actor: SandboxAccess::Actors()) {
+							if (IsSelectable(actor) && actor->GetTeam() == side) {
+								s_Selected.push_back(MakeRef(actor));
+							}
+						}
+						s_ToolIndex = ToolIndex(Tool::Command);
+						s_CommandMode = CommandMode::Select;
+						s_PatrolDraft.clear();
+						if (ImGui::GetIO().MouseClickedLastCount[ImGuiMouseButton_Left] >= 2) {
+							LookAtUnits(s_Selected);
 						}
 					}
-					s_ToolIndex = ToolIndex(Tool::Command);
-					s_CommandMode = CommandMode::Select;
-					s_PatrolDraft.clear();
-					if (ImGui::GetIO().MouseClickedLastCount[ImGuiMouseButton_Left] >= 2) {
-						LookAtUnits(s_Selected);
+					ImGui::PopID();
+				}
+				BarDivider();
+				{
+					// The AI: running, or paused while things are set up.
+					bool aiPaused = Controller::IsAIPaused();
+					if (BarTile("##ai", aiPaused ? "AI paused" : "AI on", "Pause the AI: everyone stands still while you set things up, then let them loose.", aiPaused, [&](ImDrawList* tileList, ImVec2 at, float room) {
+						    if (aiPaused) {
+							    float bar = room * 0.18F;
+							    tileList->AddRectFilled(ImVec2(at.x + room * 0.25F, at.y + room * 0.2F), ImVec2(at.x + room * 0.25F + bar, at.y + room * 0.8F), IM_COL32(255, 210, 80, 255));
+							    tileList->AddRectFilled(ImVec2(at.x + room * 0.75F - bar, at.y + room * 0.2F), ImVec2(at.x + room * 0.75F, at.y + room * 0.8F), IM_COL32(255, 210, 80, 255));
+						    } else {
+							    tileList->AddTriangleFilled(ImVec2(at.x + room * 0.28F, at.y + room * 0.18F), ImVec2(at.x + room * 0.82F, at.y + room * 0.5F), ImVec2(at.x + room * 0.28F, at.y + room * 0.82F), IM_COL32(130, 220, 120, 255));
+						    }
+					    }) == 1) {
+						Controller::SetAIPaused(!aiPaused);
 					}
 				}
-				ImGui::PopID();
-			}
-			BarDivider();
-			{
-				// The AI: running, or paused while things are set up.
-				bool aiPaused = Controller::IsAIPaused();
-				if (BarTile("##ai", aiPaused ? "AI paused" : "AI on", "Pause the AI: everyone stands still while you set things up, then let them loose.", aiPaused, [&](ImDrawList* tileList, ImVec2 at, float room) {
-					    if (aiPaused) {
-						    float bar = room * 0.18F;
-						    tileList->AddRectFilled(ImVec2(at.x + room * 0.25F, at.y + room * 0.2F), ImVec2(at.x + room * 0.25F + bar, at.y + room * 0.8F), IM_COL32(255, 210, 80, 255));
-						    tileList->AddRectFilled(ImVec2(at.x + room * 0.75F - bar, at.y + room * 0.2F), ImVec2(at.x + room * 0.75F, at.y + room * 0.8F), IM_COL32(255, 210, 80, 255));
-					    } else {
-						    tileList->AddTriangleFilled(ImVec2(at.x + room * 0.28F, at.y + room * 0.18F), ImVec2(at.x + room * 0.82F, at.y + room * 0.5F), ImVec2(at.x + room * 0.28F, at.y + room * 0.82F), IM_COL32(130, 220, 120, 255));
-					    }
-				    }) == 1) {
-					Controller::SetAIPaused(!aiPaused);
-				}
-			}
-			ImGui::SameLine();
-			{
-				// How fast time runs: a click goes up through the speeds, a right click back to normal.
-				static const float speeds[] = {0.25F, 0.5F, 1.0F, 2.0F, 3.0F};
-				float timeScale = g_TimerMan.GetTimeScale();
-				char shown[16];
-				std::snprintf(shown, sizeof(shown), "%.3gx", timeScale);
-				int clicked = BarTile("##speed", "Speed", "How fast time runs. Click: faster (0.25x, 0.5x, 1x, 2x, 3x, and round again). Right click: back to 1x.\nThe World panel has a slider for any speed.", timeScale < 0.99F || timeScale > 1.01F, [&](ImDrawList* tileList, ImVec2 at, float room) { PictureText(tileList, at, room, ToolTheme::Text, shown); });
-				if (clicked == 1) {
-					float nextSpeed = speeds[0];
-					for (float speed: speeds) {
-						if (speed > timeScale + 0.01F) {
-							nextSpeed = speed;
-							break;
-						}
-					}
-					g_TimerMan.SetTimeScale(nextSpeed);
-				} else if (clicked == 2) {
-					g_TimerMan.SetTimeScale(1.0F);
-				}
-			}
-			if (s_PausedByMenus) {
-				// The world stands still while the window is open: a step at a time.
 				ImGui::SameLine();
-				if (BarTile("##step", "Step", "Lets the world move one update, a sixtieth of a second. Ctrl+click: a second's worth.", false, [&](ImDrawList* tileList, ImVec2 at, float room) {
-					    tileList->AddTriangleFilled(ImVec2(at.x + room * 0.2F, at.y + room * 0.2F), ImVec2(at.x + room * 0.62F, at.y + room * 0.5F), ImVec2(at.x + room * 0.2F, at.y + room * 0.8F), ToolTheme::Text);
-					    tileList->AddRectFilled(ImVec2(at.x + room * 0.66F, at.y + room * 0.2F), ImVec2(at.x + room * 0.8F, at.y + room * 0.8F), ToolTheme::Text);
-				    }) == 1) {
-					s_StepsWanted += ImGui::GetIO().KeyCtrl ? 60 : 1;
+				{
+					// How fast time runs: a click goes up through the speeds, a right click back to normal.
+					static const float speeds[] = {0.25F, 0.5F, 1.0F, 2.0F, 3.0F};
+					float timeScale = g_TimerMan.GetTimeScale();
+					char shown[16];
+					std::snprintf(shown, sizeof(shown), "%.3gx", timeScale);
+					int clicked = BarTile("##speed", "Speed", "How fast time runs. Click: faster (0.25x, 0.5x, 1x, 2x, 3x, and round again). Right click: back to 1x.\nThe World panel has a slider for any speed.", timeScale < 0.99F || timeScale > 1.01F, [&](ImDrawList* tileList, ImVec2 at, float room) { PictureText(tileList, at, room, ToolTheme::Text, shown); });
+					if (clicked == 1) {
+						float nextSpeed = speeds[0];
+						for (float speed: speeds) {
+							if (speed > timeScale + 0.01F) {
+								nextSpeed = speed;
+								break;
+							}
+						}
+						g_TimerMan.SetTimeScale(nextSpeed);
+					} else if (clicked == 2) {
+						g_TimerMan.SetTimeScale(1.0F);
+					}
 				}
-			}
-			ImGui::SameLine();
-			{
-				// Undo: the last paint stroke or thing placed.
-				bool canUndo = !s_PaintUndo.empty();
-				if (BarTile("##undo", "Undo", canUndo ? "Takes back the last brush stroke or the last thing placed (Ctrl+Z)." : "Nothing to undo: brush strokes and things placed can be taken back (Ctrl+Z).", false, [&](ImDrawList* tileList, ImVec2 at, float room) {
-					    ImU32 ink = canUndo ? ToolTheme::Text : IM_COL32(200, 200, 200, 80);
-					    float thick = std::max(pixel * 1.5F, 1.5F);
-					    ImVec2 points[] = {ImVec2(at.x + room * 0.78F, at.y + room * 0.82F), ImVec2(at.x + room * 0.78F, at.y + room * 0.38F), ImVec2(at.x + room * 0.36F, at.y + room * 0.38F)};
-					    tileList->AddPolyline(points, 3, ink, ImDrawFlags_None, thick);
-					    tileList->AddTriangleFilled(ImVec2(at.x + room * 0.12F, at.y + room * 0.38F), ImVec2(at.x + room * 0.4F, at.y + room * 0.16F), ImVec2(at.x + room * 0.4F, at.y + room * 0.6F), ink);
-				    }) == 1 &&
-				    canUndo) {
-					QueueSimChange(Tool::UndoTerrain);
+				if (s_PausedByMenus) {
+					// The world stands still while the window is open: a step at a time.
+					ImGui::SameLine();
+					if (BarTile("##step", "Step", "Lets the world move one update, a sixtieth of a second. Ctrl+click: a second's worth.", false, [&](ImDrawList* tileList, ImVec2 at, float room) {
+						    tileList->AddTriangleFilled(ImVec2(at.x + room * 0.2F, at.y + room * 0.2F), ImVec2(at.x + room * 0.62F, at.y + room * 0.5F), ImVec2(at.x + room * 0.2F, at.y + room * 0.8F), ToolTheme::Text);
+						    tileList->AddRectFilled(ImVec2(at.x + room * 0.66F, at.y + room * 0.2F), ImVec2(at.x + room * 0.8F, at.y + room * 0.8F), ToolTheme::Text);
+					    }) == 1) {
+						s_StepsWanted += ImGui::GetIO().KeyCtrl ? 60 : 1;
+					}
 				}
+				ImGui::SameLine();
+				{
+					// Undo: the last paint stroke or thing placed.
+					bool canUndo = !s_PaintUndo.empty();
+					if (BarTile("##undo", "Undo", canUndo ? "Takes back the last brush stroke or the last thing placed (Ctrl+Z)." : "Nothing to undo: brush strokes and things placed can be taken back (Ctrl+Z).", false, [&](ImDrawList* tileList, ImVec2 at, float room) {
+						    ImU32 ink = canUndo ? ToolTheme::Text : IM_COL32(200, 200, 200, 80);
+						    float thick = std::max(pixel * 1.5F, 1.5F);
+						    ImVec2 points[] = {ImVec2(at.x + room * 0.78F, at.y + room * 0.82F), ImVec2(at.x + room * 0.78F, at.y + room * 0.38F), ImVec2(at.x + room * 0.36F, at.y + room * 0.38F)};
+						    tileList->AddPolyline(points, 3, ink, ImDrawFlags_None, thick);
+						    tileList->AddTriangleFilled(ImVec2(at.x + room * 0.12F, at.y + room * 0.38F), ImVec2(at.x + room * 0.4F, at.y + room * 0.16F), ImVec2(at.x + room * 0.4F, at.y + room * 0.6F), ink);
+					    }) == 1 &&
+					    canUndo) {
+						QueueSimChange(Tool::UndoTerrain);
+					}
+				}
+				rightWidth = ImGui::GetItemRectMax().x - rightStart;
+			} else {
+				rightWidth = 0.0F;
 			}
-			rightWidth = ImGui::GetItemRectMax().x - rightStart;
 
 			// The backgrounds: the main strip full width; the shelf above it, as wide as what is on it.
 			drawList->ChannelsSetCurrent(0);
