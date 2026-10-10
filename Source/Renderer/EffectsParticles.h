@@ -22,6 +22,7 @@ namespace RTE {
 			glm::vec2 Direction; //!< Unit vector along the streak.
 			float Length; //!< Streak length in pixels.
 			glm::vec3 Color; //!< Linear-ish brightness, fed to the emissive buffer.
+			bool Behind = false; //!< Drawn in the effects layer, behind units and the ground in front (LightingSettings::Behind).
 		};
 
 		/// A translucent puff (dust) to draw lit over the scene, in screen space.
@@ -31,6 +32,7 @@ namespace RTE {
 			glm::vec4 Color; //!< RGB albedo 0..1 in gamma space, A opacity.
 			float Angle = 0.0F; //!< How its soft shape is turned, in radians.
 			bool Mirrored = false; //!< Whether its soft shape is mirrored.
+			bool Behind = false; //!< Drawn in the effects layer, behind units and the ground in front (LightingSettings::Behind).
 		};
 
 		/// Gets a color as 0xRRGGBB: its RGB if set, otherwise its palette index looked up in the palette. 0 if it has neither (index 0 is the mask color).

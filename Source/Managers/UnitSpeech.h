@@ -7,6 +7,7 @@ struct BITMAP;
 
 namespace RTE {
 	class Actor;
+	class Vector;
 
 	/// Unit speech (US-1): short lines a unit says over its head when its AI does something worth knowing ("Take cover!", "Reloading!",
 	/// "Got one!"), so a player can see what the units are up to. The triggers and their lines are data: Base.rte/Speech.ini, then each
@@ -22,11 +23,31 @@ namespace RTE {
 			std::string Key; //!< What scripts and Speech.ini call it ("TakeCover").
 			std::string Name; //!< What the settings call it ("Takes cover").
 			std::string Description; //!< The settings' tooltip.
+			std::string Group; //!< Which heading the settings list it under ("Combat", "Weather"); empty for "Other".
 			float Chance = 1.0F; //!< Times the chance in the settings (0.5 says it half as often).
 			int CooldownMS = 6000; //!< How long before the same unit says this again.
 			int TeamCooldownMS = 1500; //!< How long before anyone on the same side says this again, so a squad doesn't shout it in chorus.
 			bool Urgent = false; //!< Cuts in over a line still showing (a grenade), where others wait for it.
 			bool Order = false; //!< An answer to an order. Said by the commands themselves (SayOrder); the AI's own guess at an order (Say) is left out while one has just been answered.
+		};
+
+		/// What a unit last noticed about its surroundings and itself (UpdateWorld), to say something when it changes. Kept on the actor, in its State.
+		struct Senses {
+			bool Primed = false; //!< Looked once already: the first look only notes how things are, so nobody remarks on how a game started.
+			long long NextLookUpdate = 0; //!< The sim update it looks again.
+			int Liquid = 0; //!< The kind of liquid it is in (UnitSpeechWorld's), 0 for none.
+			long long LiquidSinceMS = 0; //!< Since when it's been in that liquid.
+			int Depth = 0; //!< How deep, as Actor::GetLiquidDepth.
+			float Air = 1.0F; //!< Air left, as Actor::GetAirLeft.
+			int Ground = 0; //!< The kind of ground it last stood on, 0 for none seen yet.
+			unsigned long long Flags = 0; //!< Conditions that held at the last look, by UnitSpeechWorld's bits.
+			int Arms = -1; //!< Arms and legs it had, -1 for not a body that has them.
+			int Legs = -1;
+			float FallStartY = 0.0F; //!< Where it began falling, while it falls.
+			float JetLeft = 1.0F; //!< Its jetpack's fuel left, as a share.
+			float Health = 0.0F; //!< Its health at the last look (vehicles).
+			long long CoveredSinceMS = 0; //!< Since when it has been under a roof thick enough to be underground, 0 for not.
+			long BodyID = 0; //!< The last body it remarked on, so it isn't remarked on again.
 		};
 
 		/// What a unit is saying, and what it said lately. Kept on the actor (Actor::GetSpeech); only that actor's own updates write it.
@@ -38,6 +59,7 @@ namespace RTE {
 			int Line = -1; //!< Which of the trigger's lines, so the next time picks another.
 			std::vector<long long> LastSaidMS; //!< When each trigger was last said by this unit, by trigger index.
 			long long OrderAnsweredMS = 0; //!< Sim time a command last asked this unit to answer an order (SayOrder), said or not.
+			Senses World; //!< What it last noticed around it (UpdateWorld).
 		};
 
 #pragma region Settings
@@ -104,6 +126,16 @@ namespace RTE {
 		/// @param text What it says.
 		/// @param durationMS How long it shows; 0 or less for as long as a line that long usually does.
 		static void SayText(Actor& actor, const std::string& text, int durationMS);
+
+		/// Has units remark on what happens to them and around them that their AI doesn't decide: wading into acid, catching fire, gas,
+		/// the weather, nightfall, falling rock, losing a limb, a cart, flags. Each unit looks a few times a second; a line comes when what it
+		/// sees changes (or, for the weather and the like, now and then while it lasts). Main thread, once per sim update, after the liquids
+		/// and gas have updated (UnitSpeechWorld.cpp). Reads the world, never changes it.
+		static void UpdateWorld();
+
+		/// Notes a lightning strike, for the units near it to remark on. Thread safe.
+		/// @param position Where it landed.
+		static void NoteLightning(const Vector& position);
 
 		/// Draws a speech bubble, in the game's own UI look (dark blue box, small game font) edged in the side's colour, with its tail at a point.
 		/// @param targetBitmap The 8-bit HUD bitmap to draw to.

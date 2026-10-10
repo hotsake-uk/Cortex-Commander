@@ -50,6 +50,7 @@ LuaBindingRegisterFunctionDefinitionForType(MiscLuaBindings, DrawDepth) {
 			luabind::value("Default", c_DefaultDrawDepth),
 			luabind::value("GUI", c_GuiDepth),
 			luabind::value("Primitive", c_PrimitiveDepth),
+			luabind::value("Effects", c_EffectsDepth),
 			luabind::value("TerrainBackground", c_TerrainBGDepth),
 			luabind::value("Background", c_BackgroundDepth)
 		];

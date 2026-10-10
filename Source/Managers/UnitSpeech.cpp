@@ -43,8 +43,8 @@ namespace {
 	std::atomic<bool> s_Loaded = false;
 	std::mutex s_LoadMutex;
 
-	/// When each side last said each trigger, so a squad doesn't say the same thing in chorus. Teams 0 to 3, the first 64 triggers.
-	constexpr int c_TeamTriggerSlots = 64;
+	/// When each side last said each trigger, so a squad doesn't say the same thing in chorus. Teams 0 to 3, the first 256 triggers.
+	constexpr int c_TeamTriggerSlots = 256;
 	std::array<std::array<std::atomic<long long>, c_TeamTriggerSlots>, 4> s_TeamLastSaidMS{};
 
 	/// Speech's own random numbers, one generator per thread: the threaded AI says things too, and the sim's stream must not move.
@@ -143,6 +143,8 @@ namespace {
 					current.Name = value;
 				} else if (key == "Description") {
 					current.Description = value;
+				} else if (key == "Group") {
+					current.Group = value;
 				} else if (key == "Chance") {
 					current.Chance = std::max(0.0F, std::stof(value));
 				} else if (key == "Cooldown") {

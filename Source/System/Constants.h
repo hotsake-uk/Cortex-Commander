@@ -150,6 +150,7 @@ namespace RTE {
 	static constexpr float c_GuiDepth = -100.0f;
 	static constexpr float c_PrimitiveDepth = -75.0f;
 	static constexpr float c_DefaultDrawDepth = 0.0f;
+	static constexpr float c_EffectsDepth = 20.0f; //!< The effects layer: behind units and the ground in front, over the terrain's back walls and the background, for the visual-only effects set to be drawn there (LightingSettings::Behind). Nearer than half of c_TerrainBGDepth, so the lighting still treats them as it does what's in front.
 	static constexpr float c_TerrainBGDepth = 50.0f;
 	static constexpr float c_BackgroundDepth = 100.0f;
 	static constexpr float c_BackgroundDepthRange = 85.0f; //!< Background layers are spread over this much depth beyond c_BackgroundDepth according to their parallax, nearest to furthest.

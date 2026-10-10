@@ -235,6 +235,8 @@ bool AVehicle::TakeDriver(Actor* unit) {
 	}
 	m_BoardingTimer.Reset();
 	PlaceDriver();
+	// (Said by the vehicle, where the driver now sits: the driver is out of the scene while it's in here.)
+	Say("BoardVehicle");
 	return true;
 }
 
@@ -274,6 +276,7 @@ Actor* AVehicle::EjectDriver() {
 		activity->SwitchToActor(driver, m_Controller.GetPlayer(), driver->GetTeam());
 	}
 	m_BoardingTimer.Reset();
+	driver->Say(IsDead() || m_Health <= 0.0F ? "BailOut" : "LeaveVehicle");
 	return driver;
 }
 
@@ -289,6 +292,7 @@ void AVehicle::GibThis(const Vector& impactImpulse, MovableObject* movableObject
 	if (Actor* driver = m_Driver ? EjectDriver() : nullptr) {
 		// Thrown clear of the wreck.
 		driver->SetVel(driver->GetVel() + impactImpulse / std::max(GetMass(), 1.0F) * 0.5F + Vector(0.0F, -4.0F));
+		driver->Say("BailOut");
 	}
 	Actor::GibThis(impactImpulse, movableObjectToIgnore);
 }

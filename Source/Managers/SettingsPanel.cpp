@@ -692,6 +692,33 @@ void DebugMan::SettingsGUI() {
 		}
 	};
 
+	auto effectLayers = [&]() {
+		Combo("All effects", &settings.EffectLayers, "Each its own layer\0All in front\0All behind\0");
+		Tip("Where the visual-only effects are drawn. Behind: in the effects layer, between the battlefield and the background, so units and the ground in front hide them while they still drift over the back walls of caves and bunkers and the sky. In front: over everything, as before. Each its own layer: as set for each one below.");
+		Heading("Each effect");
+		static constexpr const char* c_Labels[LightingSettings::EffectLayerCount] = {"Smoke", "Soft smoke", "Spray mist", "Splash drops", "Froth", "Dust", "Debris chips", "Sparks", "Embers", "Explosion fire"};
+		static constexpr const char* c_Tips[LightingSettings::EffectLayerCount] = {
+		    "The game's smoke sprites (smoke grenades, engines, guns, burning), and the light smoke scatters.",
+		    "The soft, billowing smoke the smoke sprites trail, and the smoke explosions leave behind.",
+		    "The pale spray off falling and splashing water.",
+		    "The drops a splash throws.",
+		    "The froth that sits on water where something splashed in. In front by default, since it lies on the water.",
+		    "Puffs of dust from blasts and from hits on soft ground.",
+		    "The little chips blasts and hits throw.",
+		    "Glowing sparks from blasts and from hits on hard ground.",
+		    "Embers lifting off fires.",
+		    "The balls of fire that swell and roll up from explosions."};
+		ImGui::BeginDisabled(settings.EffectLayers != LightingSettings::EffectLayersEach);
+		for (int layer = 0; layer < LightingSettings::EffectLayerCount; ++layer) {
+			int behind = settings.EffectBehind[layer] ? 1 : 0;
+			if (Combo(c_Labels[layer], &behind, "In front\0Behind\0")) {
+				settings.EffectBehind[layer] = behind != 0;
+			}
+			Tip(c_Tips[layer]);
+		}
+		ImGui::EndDisabled();
+	};
+
 	auto airAndWind = [&]() {
 		AirPressure::Tuning& tuning = AirPressure::GetTuning();
 		Toggle("Air and wind", AirPressure::IsOn(), [](bool on) { AirPressure::SetOn(on); });
@@ -914,15 +941,71 @@ void DebugMan::SettingsGUI() {
 			Tip("How likely a unit is to say something when it does one of the things below. 100%: nearly every time (a unit still waits a few seconds before saying the same thing again, and a squad doesn't all say it at once).");
 			Toggle("Hear other sides' units", UnitSpeech::ShowsEnemies(), [](bool on) { UnitSpeech::SetShowsEnemies(on); });
 			Tip("Enemy units' lines too, where your side can see them. Off: only your own side's.");
-			for (const UnitSpeech::Trigger& trigger: UnitSpeech::GetTriggers()) {
-				std::string label = "Speech: " + trigger.Name + "##Speech" + trigger.Key;
-				Toggle(label.c_str(), UnitSpeech::IsTriggerOn(trigger.Key), [&trigger](bool on) { UnitSpeech::SetTriggerOn(trigger.Key, on); });
-				std::string example = UnitSpeech::GetExampleLine(UnitSpeech::FindTrigger(trigger.Key));
-				std::string tip = trigger.Description.empty() ? trigger.Name : trigger.Description;
-				if (!example.empty()) {
-					tip += "\nFor example: \"" + example + "\"";
+			// The triggers under their groups (Speech.ini's Group), each group folding away with buttons to turn all of it on or off; a search
+			// lists the matching ones flat.
+			const std::vector<UnitSpeech::Trigger>& triggers = UnitSpeech::GetTriggers();
+			std::vector<std::string> groups;
+			for (const UnitSpeech::Trigger& trigger: triggers) {
+				const std::string group = trigger.Group.empty() ? "Other" : trigger.Group;
+				if (std::find(groups.begin(), groups.end(), group) == groups.end()) {
+					groups.push_back(group);
 				}
-				Tip(tip.c_str());
+			}
+			for (const std::string& group: groups) {
+				auto inGroup = [&group](const UnitSpeech::Trigger& trigger) { return (trigger.Group.empty() ? "Other" : trigger.Group) == group; };
+				bool open = true;
+				if (Plain()) {
+					int count = 0;
+					int on = 0;
+					for (const UnitSpeech::Trigger& trigger: triggers) {
+						if (inGroup(trigger)) {
+							++count;
+							on += UnitSpeech::IsTriggerOn(trigger.Key) ? 1 : 0;
+						}
+					}
+					std::string header = "Speech: " + group + " (" + std::to_string(on) + "/" + std::to_string(count) + " on)###SpeechGroup" + group;
+					open = ImGui::TreeNode(header.c_str());
+					if (open) {
+						std::string allOn = "All on##SpeechAllOn" + group;
+						std::string allOff = "All off##SpeechAllOff" + group;
+						bool setAll = false;
+						bool setTo = true;
+						if (ToolUI::Button(allOn.c_str())) {
+							setAll = true;
+						}
+						ImGui::SameLine();
+						if (ToolUI::Button(allOff.c_str())) {
+							setAll = true;
+							setTo = false;
+						}
+						if (setAll) {
+							for (const UnitSpeech::Trigger& trigger: triggers) {
+								if (inGroup(trigger)) {
+									UnitSpeech::SetTriggerOn(trigger.Key, setTo);
+								}
+							}
+						}
+					}
+				}
+				if (!open) {
+					continue;
+				}
+				for (const UnitSpeech::Trigger& trigger: triggers) {
+					if (!inGroup(trigger)) {
+						continue;
+					}
+					std::string label = "Speech: " + trigger.Name + "##Speech" + trigger.Key;
+					Toggle(label.c_str(), UnitSpeech::IsTriggerOn(trigger.Key), [&trigger](bool on) { UnitSpeech::SetTriggerOn(trigger.Key, on); });
+					std::string example = UnitSpeech::GetExampleLine(UnitSpeech::FindTrigger(trigger.Key));
+					std::string tip = trigger.Description.empty() ? trigger.Name : trigger.Description;
+					if (!example.empty()) {
+						tip += "\nFor example: \"" + example + "\"";
+					}
+					Tip(tip.c_str());
+				}
+				if (Plain()) {
+					ImGui::TreePop();
+				}
 			}
 			if (Plain() && ToolUI::Button("Reload speech lines")) {
 				UnitSpeech::Reload();
@@ -1147,6 +1230,7 @@ void DebugMan::SettingsGUI() {
 	    {"Surfaces", surfaces},
 	    {"Water", water},
 	    {"Fire, smoke & blast", fireAndSmoke},
+	    {"Effect layers", effectLayers},
 	    {"Air & wind", airAndWind},
 	    {"Falling ground", fallingGround},
 	    {"Camera & image", cameraAndImage},

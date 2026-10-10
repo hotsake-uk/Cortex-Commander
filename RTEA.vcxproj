@@ -1441,6 +1441,7 @@
     <ClCompile Include="Source\Managers\AirPressure.cpp" />
     <ClCompile Include="Source\Managers\ActorWater.cpp" />
     <ClCompile Include="Source\Managers\UnitSpeech.cpp" />
+    <ClCompile Include="Source\Managers\UnitSpeechWorld.cpp" />
     <ClCompile Include="Source\Managers\Sandbox.cpp" />
     <ClCompile Include="Source\Managers\SandboxCatalogue.cpp" />
     <ClCompile Include="Source\Managers\SandboxOrders.cpp" />
