@@ -2198,6 +2198,15 @@ int TerrainCollapse::GetFallingCount() {
 
 void TerrainCollapse::GetFallingPieces(std::vector<FallingPiece>& pieces) {
 	for (const Body& body: s_Bodies) {
-		pieces.push_back({body.Pos.x, body.Pos.y, body.Radius, body.Vel.x, body.Vel.y});
+		// (A tree: a good share of tree trunk, its leaves the rest. Every 7th pixel is enough to tell.)
+		int trunk = 0;
+		int solid = 0;
+		for (size_t i = 0; i < body.Materials.size(); i += 7) {
+			if (unsigned char material = body.Materials[i]; material != 0) {
+				++solid;
+				trunk += s_TreeTrunk[material] ? 1 : 0;
+			}
+		}
+		pieces.push_back({body.Pos.x, body.Pos.y, body.Radius, body.Vel.x, body.Vel.y, trunk * 5 > solid && trunk > 0});
 	}
 }

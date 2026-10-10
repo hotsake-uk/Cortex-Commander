@@ -101,14 +101,15 @@ namespace RTE {
 		/// Gets how many loose pieces are moving right now, for statistics.
 		static int GetFallingCount();
 
-		/// One loose piece, for the world simulation overlay.
+		/// One loose piece, for the world simulation overlay and unit speech.
 		struct FallingPiece {
 			float X, Y; //!< Its centre of mass, in the scene.
 			float Radius; //!< Its furthest pixel from that.
 			float VelX, VelY; //!< Pixels per update.
+			bool Tree = false; //!< Mostly tree trunk: a tree coming down.
 		};
 
-		/// Gets the loose pieces moving right now, for the world simulation overlay. Call from the main thread, between sim updates.
+		/// Gets the loose pieces moving right now, for the world simulation overlay and unit speech. Call from the main thread, between sim updates.
 		/// @param pieces Filled with them.
 		static void GetFallingPieces(std::vector<FallingPiece>& pieces);
 

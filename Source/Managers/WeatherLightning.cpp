@@ -16,6 +16,7 @@
 #include "ActorFire.h"
 #include "TerrainFire.h"
 #include "TimerMan.h"
+#include "UnitSpeech.h"
 #include "Vector.h"
 #include "WeatherEffects.h"
 
@@ -65,6 +66,7 @@ void WeatherLightning::Strike(const Vector& target, const std::function<float()>
 	while (g_SceneMan.GetTerrMatter(ground.GetFloorIntX(), ground.GetFloorIntY()) == g_MaterialAir && ground.m_Y < static_cast<float>(g_SceneMan.GetSceneHeight() - 1)) {
 		ground.m_Y += 1.0F;
 	}
+	UnitSpeech::NoteLightning(ground);
 	// From the open sky over the point, at most 480 px above the ground: up through the air from where it lands, not from the top of the
 	// view. (From the view, the bolt's particles, their number and places, went by where the camera was, so a storm ran differently
 	// in a replay; and zoomed in or underground the bolt started inside the earth.)

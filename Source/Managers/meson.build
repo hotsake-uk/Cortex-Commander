@@ -34,6 +34,7 @@ sources += files(
 'AirPressure.cpp',
 'ActorWater.cpp',
 'UnitSpeech.cpp',
+'UnitSpeechWorld.cpp',
 'Sandbox.cpp',
 'SandboxCatalogue.cpp',
 'SandboxOrders.cpp',
