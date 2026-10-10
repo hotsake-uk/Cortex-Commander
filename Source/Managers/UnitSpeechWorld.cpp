@@ -28,6 +28,7 @@
 #include <array>
 #include <cctype>
 #include <cmath>
+#include <cstring>
 #include <mutex>
 #include <sstream>
 #include <string>
@@ -110,6 +111,9 @@ namespace {
 		Drowning = 1ULL << 19,
 		Hot = 1ULL << 20,
 		Stuck = 1ULL << 21,
+		Sinking = 1ULL << 22,
+		BuriedBit = 1ULL << 23,
+		Jetting = 1ULL << 24,
 	};
 
 	std::array<unsigned char, 256> s_LiquidOf{};
@@ -243,11 +247,30 @@ namespace {
 		return g_SceneMan.ShortestDistance(from, to, g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY()).MagnitudeIsLessThan(range);
 	}
 
+	/// What a unit might say at one look, in the order it would rather say them, each with who it's about (if anyone).
+	struct Remarks {
+		std::vector<std::pair<const char*, const Actor*>> List;
+		void push_back(const char* trigger, const Actor* subject = nullptr) { List.emplace_back(trigger, subject); }
+		/// Says the first of them that is said.
+		void SayFirst(Actor& actor) const {
+			for (const auto& [trigger, subject]: List) {
+				if (actor.SayAbout(trigger, subject)) {
+					break;
+				}
+			}
+		}
+	};
+
+	/// What a friend close by says on seeing a unit go through one of these.
+	const std::array<std::pair<const char*, const char*>, 12> c_Witnessed{{{"Drowning", "FriendDrowning"}, {"CantSwim", "FriendDrowning"}, {"InAcid", "FriendInAcid"}, {"InLava", "FriendInLava"}, {"LostArm", "FriendLostArm"}, {"LostArms", "FriendLostArm"}, {"LostLeg", "FriendLostLegs"}, {"LostLegs", "FriendLostLegs"}, {"Falling", "FriendFalling"}, {"StuckFast", "FriendStuck"}, {"Buried", "FriendBuried"}, {"OnFire", "FriendOnFire"}}};
+
 	/// What every unit's look this update shares: built once, the first time a unit looks.
 	struct Shared {
 		bool Built = false;
 		std::vector<const Actor*> Bodies;
 		std::vector<const Actor*> BurningUnits;
+		std::vector<Actor*> Living; //!< Units that can speak, to witness what happens to their friends.
+		std::vector<const ACraft*> NewCraft; //!< Craft that came in in the last few seconds.
 		std::vector<TerrainCollapse::FallingPiece> Pieces;
 		std::vector<Strike> Strikes;
 		float Night = 0.0F;
@@ -258,9 +281,18 @@ namespace {
 
 		void Build(long long nowMS) {
 			Built = true;
-			for (const Actor* actor: g_MovableMan.GetActorList()) {
-				if (dynamic_cast<const ADoor*>(actor) || dynamic_cast<const ACraft*>(actor)) {
+			for (Actor* actor: g_MovableMan.GetActorList()) {
+				if (dynamic_cast<const ADoor*>(actor)) {
 					continue;
+				}
+				if (const ACraft* craft = dynamic_cast<const ACraft*>(actor)) {
+					if (craft->GetStatus() < Actor::DYING && craft->GetAge() < 6000) {
+						NewCraft.push_back(craft);
+					}
+					continue;
+				}
+				if (actor->GetStatus() < Actor::DYING && actor->GetTeam() >= 0 && !dynamic_cast<const AVehicle*>(actor)) {
+					Living.push_back(actor);
 				}
 				if (actor->GetStatus() >= Actor::DYING) {
 					Bodies.push_back(actor);
@@ -292,7 +324,7 @@ namespace {
 		UnitSpeech::Senses& senses = actor.GetSpeech().World;
 		const bool primed = senses.Primed;
 		senses.Primed = true;
-		std::vector<const char*> say;
+		Remarks say;
 		auto edge = [&senses, primed](Bit bit, bool now) {
 			const bool was = (senses.Flags & bit) != 0;
 			senses.Flags = now ? (senses.Flags | bit) : (senses.Flags & ~static_cast<unsigned long long>(bit));
@@ -326,11 +358,7 @@ namespace {
 				say.push_back("VehicleFast");
 			}
 			senses.Health = vehicle->GetHealth();
-			for (const char* trigger: say) {
-				if (actor.Say(trigger)) {
-					break;
-				}
-			}
+			say.SayFirst(actor);
 			return;
 		}
 
@@ -377,7 +405,11 @@ namespace {
 				}
 			}
 		}
-		if (primed && depth >= 3 && senses.Depth < 3 && air > 0.5F) {
+		// (Too heavy to float, in over its head in something it might have swum in: it sinks.)
+		const bool sinkable = liquid == Water || liquid == Oil || liquid == Blood || liquid == ToxicSludge || liquid == Fuel || liquid == OtherLiquid;
+		if (edge(Sinking, depth >= 2 && sinkable && !actor.IsFloater() && actor.GetVel().m_Y > 0.3F)) {
+			say.push_back("CantSwim");
+		} else if (primed && depth >= 3 && senses.Depth < 3 && air > 0.5F) {
 			say.push_back("GoesUnder");
 		}
 		// (Swimming in what can be swum in: not lava or acid, nor mud, tar, mercury or concrete, which a body floats on but doesn't swim.)
@@ -404,6 +436,29 @@ namespace {
 			}
 			senses.Arms = arms;
 			senses.Legs = legs;
+		}
+		// Buried: its head inside solid ground.
+		{
+			const unsigned char atHead = MatterAt(head);
+			const unsigned char atBody = MatterAt(position);
+			if (edge(BuriedBit, atHead != g_MaterialAir && atBody != g_MaterialAir && s_LiquidOf[atHead] == NoLiquid && s_LiquidOf[atBody] == NoLiquid)) {
+				say.push_back("Buried");
+			}
+		}
+		if (primed && actor.GetHealth() - senses.Health > actor.GetMaxHealth() * 0.15F) {
+			say.push_back("Healed");
+		}
+		senses.Health = actor.GetHealth();
+		if (human) {
+			const int items = human->GetInventorySize() + (human->GetEquippedItem() ? 1 : 0) + (human->GetEquippedBGItem() ? 1 : 0);
+			if (primed && senses.Items >= 0 && items > senses.Items) {
+				say.push_back("PickedUpItem");
+			}
+			senses.Items = items;
+			const AEJetpack* jetpack = human->GetJetpack();
+			if (edge(Jetting, jetpack && jetpack->IsEmitting() && actor.GetVel().m_Y < -1.0F && depth == 0 && !(senses.Flags & Falling))) {
+				say.push_back("Jetpacking");
+			}
 		}
 		if (depth == 0 && actor.GetVel().m_Y > 2.0F) {
 			if (!(senses.Flags & Falling) && senses.FallStartY == 0.0F) {
@@ -478,15 +533,15 @@ namespace {
 			if (edge(NearFire, TerrainFire::IsBurningNear(position, 70))) {
 				say.push_back("FireNearby");
 			}
-			bool friendBurning = false;
+			const Actor* friendBurning = nullptr;
 			for (const Actor* other: shared.BurningUnits) {
 				if (other != &actor && other->GetTeam() == team && Within(position, other->GetPos(), 160.0F)) {
-					friendBurning = true;
+					friendBurning = other;
 					break;
 				}
 			}
-			if (edge(FriendBurning, friendBurning)) {
-				say.push_back("FriendOnFire");
+			if (edge(FriendBurning, friendBurning != nullptr)) {
+				say.push_back("FriendOnFire", friendBurning);
 			}
 		}
 		if (edge(Hot, actor.GetHeat() > 0.6F && !burning)) {
@@ -556,7 +611,7 @@ namespace {
 			if (body->GetUniqueID() != senses.BodyID && Within(position, body->GetPos(), 50.0F)) {
 				senses.BodyID = body->GetUniqueID();
 				if (primed && body->GetTeam() >= 0) {
-					say.push_back(body->GetTeam() == team ? "FriendBody" : "EnemyBody");
+					say.push_back(body->GetTeam() == team ? "FriendBody" : "EnemyBody", body);
 				}
 				break;
 			}
@@ -580,6 +635,17 @@ namespace {
 			}
 			if (primed && building.What == Colony::Kind::Generator && Within(position, building.Ground, 90.0F)) {
 				say.push_back("Generator");
+			}
+		}
+
+		// A craft of its own side coming in close by.
+		for (const ACraft* craft: shared.NewCraft) {
+			if (craft->GetTeam() == team && craft->GetUniqueID() != senses.CraftID && Within(position, craft->GetPos(), 350.0F)) {
+				senses.CraftID = craft->GetUniqueID();
+				if (primed) {
+					say.push_back("FriendlyCraft");
+				}
+				break;
 			}
 		}
 
@@ -622,10 +688,29 @@ namespace {
 			}
 		}
 
-		for (const char* trigger: say) {
-			if (actor.Say(trigger)) {
-				break;
+		say.SayFirst(actor);
+
+		// A friend close by who sees the worst of it says something about it too ("{name}'s drowning!").
+		for (const auto& [trigger, subject]: say.List) {
+			const auto witnessed = std::find_if(c_Witnessed.begin(), c_Witnessed.end(), [trigger = trigger](const auto& entry) { return std::strcmp(entry.first, trigger) == 0; });
+			if (witnessed == c_Witnessed.end()) {
+				continue;
 			}
+			Actor* nearest = nullptr;
+			float nearestDistance = 220.0F;
+			for (Actor* other: shared.Living) {
+				if (other == &actor || other->GetTeam() != team) {
+					continue;
+				}
+				if (float distance = g_SceneMan.ShortestDistance(position, other->GetPos(), g_SceneMan.SceneWrapsX()).GetMagnitude(); distance < nearestDistance) {
+					nearest = other;
+					nearestDistance = distance;
+				}
+			}
+			if (nearest) {
+				nearest->SayAbout(witnessed->second, &actor);
+			}
+			break;
 		}
 	}
 } // namespace
