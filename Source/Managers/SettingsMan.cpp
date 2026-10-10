@@ -329,6 +329,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("ShelterMask", { g_PostProcessMan.GetLightingSettings().ShelterMask = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("ShelterSoftness", { g_PostProcessMan.GetLightingSettings().ShelterSoftness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SunShadowSoftness", { g_PostProcessMan.GetLightingSettings().SunShadowSoftness = std::stof(reader.ReadPropValue()); });
+	MatchProperty("BackgroundShadows", { g_PostProcessMan.GetLightingSettings().BackgroundShadows = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
+	MatchProperty("BackgroundShadowLength", { g_PostProcessMan.GetLightingSettings().BackgroundShadowLength = std::clamp(std::stof(reader.ReadPropValue()), 0.25F, 3.0F); });
 	MatchProperty("ContactShading", { g_PostProcessMan.GetLightingSettings().ContactShading = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingEnabled", { g_PostProcessMan.GetLightingSettings().Enabled = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("LightingAmbient", {
@@ -771,6 +773,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("SunShadowSoftness", lighting.SunShadowSoftness);
 	writer.NewPropertyWithValue("ShelterMask", lighting.ShelterMask);
 	writer.NewPropertyWithValue("ShelterSoftness", lighting.ShelterSoftness);
+	writer.NewPropertyWithValue("BackgroundShadows", lighting.BackgroundShadows);
+	writer.NewPropertyWithValue("BackgroundShadowLength", lighting.BackgroundShadowLength);
 	writer.NewPropertyWithValue("ContactShading", lighting.ContactShading);
 	writer.NewPropertyWithValue("LightingEmissiveIntensity", lighting.EmissiveIntensity);
 	writer.NewPropertyWithValue("LightingEdgeLighting", lighting.EdgeLighting);

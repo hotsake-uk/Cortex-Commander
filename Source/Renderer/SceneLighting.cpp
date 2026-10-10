@@ -1684,7 +1684,9 @@ void SceneLighting::Update() {
 	float sunArc = ((sunIsUp ? m_Settings.TimeOfDay : std::fmod(m_Settings.TimeOfDay + 12.0F, 24.0F)) - 12.0F) / 6.0F;
 	m_SunDirection = glm::normalize(glm::vec2(sunArc * 1.05F, -1.0F));
 	float overcast = WeatherOvercast();
-	m_SunShadowStrength = m_Settings.SunShadows * (1.0F - glm::smoothstep(0.8F, 1.0F, std::abs(sunArc))) * (sunIsUp ? 1.0F : 0.6F) * (1.0F - 0.8F * overcast);
+	float sunLight = (1.0F - glm::smoothstep(0.8F, 1.0F, std::abs(sunArc))) * (sunIsUp ? 1.0F : 0.6F) * (1.0F - 0.8F * overcast);
+	m_SunShadowStrength = m_Settings.SunShadows * sunLight;
+	m_BackgroundShadowStrength = std::clamp(m_Settings.BackgroundShadows, 0.0F, 1.0F) * sunLight;
 	m_SunArc = sunArc;
 	// The sun's disc sinks into the horizon haze at dawn and dusk, and weather hides it.
 	m_SunDiscStrength = sunIsUp ? m_Settings.SunDisc * (1.0F - glm::smoothstep(0.9F, 1.0F, std::abs(sunArc))) * (1.0F - overcast) : 0.0F;
@@ -2776,6 +2778,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetFloat("rteFogStrength", (m_Settings.Enabled && m_FogLive) ? std::clamp(m_Settings.FogVolume, 0.0F, 1.5F) : 0.0F);
 	m_CompositeShader->SetVector2f("rteSunDirection", m_SunDirection);
 	m_CompositeShader->SetFloat("rteSunShadows", m_Settings.Enabled ? m_SunShadowStrength : 0.0F);
+	m_CompositeShader->SetFloat("rteBackgroundShadows", m_Settings.Enabled ? m_BackgroundShadowStrength : 0.0F);
+	m_CompositeShader->SetFloat("rteBackgroundShadowLength", std::clamp(m_Settings.BackgroundShadowLength, 0.25F, 3.0F));
 	m_CompositeShader->SetVector3f("rteShadeTint", glm::vec3(0.5F, 0.56F, 0.72F));
 	m_CompositeShader->SetFloat("rteUnitShadows", unitShadows);
 	m_CompositeShader->SetFloat("rteContactShading", occluders ? m_Settings.ContactShading : 0.0F);
