@@ -7,6 +7,8 @@ for the buy menu (the body with its wheels on).
 The Moonhopper: a six-wheeled rock hopper on tall telescoping legs, made to show off the sprung wheels. Its body (an open roll-cage
 cab, an engine with a stack, shock towers and coil springs over the shocks), the leg each wheel hangs on, a fat knobbly tyre, and the icon.
 
+The rowing boat (VH-2): a clinker-built hull with a painted top strake, the oar that swings in its oarlock, and the icon.
+
 Run from the repository's root: python Tools/MakeVehicleSprites.py
 """
 
@@ -18,6 +20,7 @@ from PIL import Image
 
 OUT = Path("Data/Base.rte/Actors/Vehicles/WoodenCart")
 HOPPER_OUT = Path("Data/Base.rte/Actors/Vehicles/Moonhopper")
+BOAT_OUT = Path("Data/Base.rte/Actors/Vehicles/RowingBoat")
 PALETTE = Image.open("Data/Base.rte/palette.bmp").getpalette()[:768]
 
 # Palette ramps, dark to light.
@@ -382,6 +385,105 @@ def hopper_icon(body, strut, wheel):
     return img
 
 
+# The rowing boat's size (keep in step with RowingBoat.ini): the hull's picture and its middle in it, and the oar: how long it is above and
+# below the oarlock it swings in, and where the oarlock is on the hull.
+BOAT_W, BOAT_H = 72, 23
+BOAT_MID = (36, 12)
+OAR_ABOVE, OAR_BELOW = 6, 25
+OARLOCK = (38, 4)
+BOAT_BLUE = [191, 193, 207, 208, 216, 210, 213]
+
+
+def boat_top(x):
+    """The gunwale: the sheer rises to both ends."""
+    return round(4 - 4 * ((x - 34) / 36) ** 2)
+
+
+def boat_bottom(x):
+    """The keel: deepest a little aft of the middle, sweeping up to a sharp bow at the right and down to a square transom at the left."""
+    if x > 36:
+        return round(21 - 17 * ((x - 36) / 35) ** 3)
+    return round(21 - 7 * ((36 - x) / 35) ** 2)
+
+
+def boat_hull():
+    """A clinker-built rowing boat, facing right: four overlapping strakes following the sheer, the top one painted blue, a dark gunwale
+    rail, a stem at the bow, a transom at the stern and an iron oarlock."""
+    c = Canvas(BOAT_W, BOAT_H, 31)
+    for x in range(1, BOAT_W):
+        top, bottom = boat_top(x), boat_bottom(x)
+        for y in range(top, bottom + 1):
+            u = (y - top) / max(bottom - top, 1)
+            strake = min(int(u * 4), 3)
+            # The lower edge of each strake, where the next overlaps it, in shadow; the next's top edge just under it, catching the light.
+            below = min(int((y + 1 - top) / max(bottom - top, 1) * 4), 3)
+            above = min(int((y - 1 - top) / max(bottom - top, 1) * 4), 3)
+            edge = below != strake
+            lip = above != strake and y > top + 1
+            light = 0.62 - u * 0.3 + c.grain_at(300 + strake * 10 + (y - top) // 2, x) * 0.6
+            if edge:
+                light -= 0.35
+            if lip:
+                light += 0.15
+            if y == bottom:
+                light -= 0.3
+            if strake == 0 and y > top + 1:
+                c.put(x, y, shade(BOAT_BLUE, dither(x, y, light + 0.05, 0.04)))
+            else:
+                c.put(x, y, shade(WOOD, dither(x, y, light, 0.04)))
+        # The gunwale rail.
+        c.put(x, top, shade(WOOD, 0.75))
+        c.put(x, top + 1, shade(WOOD, 0.35))
+    # The stem at the bow and the transom at the stern, darker posts.
+    for x in range(BOAT_W - 3, BOAT_W):
+        for y in range(boat_top(x), boat_bottom(x) + 1):
+            c.put(x, y, shade(WOOD, 0.3 + (x - BOAT_W + 3) * 0.08))
+    for y in range(boat_top(1), boat_bottom(1) + 1):
+        c.put(1, y, shade(WOOD, 0.4))
+        c.put(2, y, shade(WOOD, 0.3))
+    # Copper rivets along the strakes.
+    for x in range(6, BOAT_W - 4, 6):
+        top, bottom = boat_top(x), boat_bottom(x)
+        for k in (1, 2, 3):
+            c.put(x, top + round((bottom - top) * k / 4) - 1, 33)
+    # The oarlock: an iron crutch on the gunwale.
+    ox, oy = OARLOCK
+    for x, y in ((ox - 1, oy - 2), (ox + 1, oy - 2), (ox - 1, oy - 1), (ox, oy - 1), (ox + 1, oy - 1), (ox, oy)):
+        c.put(x, y, IRON[6] if y < oy - 1 else IRON[3])
+    return c.image()
+
+
+def boat_oar():
+    """An oar, hanging straight down from where it swings in the oarlock: a handle above, a long shaft, and a flat blade at the bottom."""
+    height = OAR_ABOVE + 1 + OAR_BELOW
+    c = Canvas(5, height, 32)
+    for y in range(height):
+        below = y - OAR_ABOVE
+        if below < OAR_BELOW - 9:
+            for x, light in ((2, 0.7), (3, 0.4)):
+                c.put(x, y, shade(WOOD, dither(x, y, light + c.grain_at(400, y) * 0.5, 0.03)))
+        else:
+            width = 2 if below < OAR_BELOW - 7 else 4
+            for x in range(1 if width == 4 else 2, 1 + width if width == 4 else 4):
+                light = 0.68 - (x - 1) * 0.12 - (below - OAR_BELOW + 9) * 0.015
+                c.put(x, y, shade(BOAT_BLUE if below > OAR_BELOW - 4 else WOOD, dither(x, y, light, 0.03)))
+    return c.image()
+
+
+def boat_icon(hull, oar):
+    """The buy menu's picture: the hull with its oar resting in the oarlock."""
+    img = Image.new("P", (BOAT_W, BOAT_H + OAR_BELOW - BOAT_H + OARLOCK[1] + 2), 0)
+    img.putpalette(PALETTE)
+    img.paste(hull, (0, 0), hull.point(lambda i: 255 if i else 0, mode="1"))
+    img.paste(oar, (OARLOCK[0] - 2, OARLOCK[1] - OAR_ABOVE), oar.point(lambda i: 255 if i else 0, mode="1"))
+    return img
+
+
+def boat_hull_points():
+    """The hull points for the INI: along the keel, every 12 pixels, from the middle."""
+    return [(x - BOAT_MID[0], boat_bottom(x) - BOAT_MID[1]) for x in range(6, BOAT_W - 2, 12)]
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     body = cart_body()
@@ -400,6 +502,14 @@ def main():
     strut.save(HOPPER_OUT / "HopperLeg.png")
     wheel.save(HOPPER_OUT / "HopperWheel.png")
     hopper_icon(body, strut, wheel).save(HOPPER_OUT / "HopperIcon.png")
+
+    BOAT_OUT.mkdir(parents=True, exist_ok=True)
+    hull = boat_hull()
+    oar = boat_oar()
+    hull.save(BOAT_OUT / "RowingBoatHull.png")
+    oar.save(BOAT_OUT / "RowingBoatOar.png")
+    boat_icon(hull, oar).save(BOAT_OUT / "RowingBoatIcon.png")
+    print("Rowing boat hull points:", boat_hull_points())
 
 
 if __name__ == "__main__":

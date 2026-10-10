@@ -448,6 +448,9 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AVehicle) {
 	    .property("WheelsOnGround", &AVehicle::GetWheelsOnGround)
 	    .property("SunkFraction", &AVehicle::GetSunkFraction)
 	    .property("SeatOffset", &AVehicle::GetSeatOffset)
+	    .property("SubmergedFraction", &AVehicle::GetSubmergedFraction)
+	    .property("HasHull", &AVehicle::HasHull)
+	    .property("Oar", &AVehicle::GetOar)
 
 	    .def("TakeDriver", &AVehicle::TakeDriver)
 	    .def("EjectDriver", &AVehicle::EjectDriver);

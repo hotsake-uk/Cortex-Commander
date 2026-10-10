@@ -118,6 +118,19 @@ void AVehicle::Clear() {
 	m_NeedsDriver = true;
 	m_HopSpeed = 0.0F;
 	m_HopTimer.Reset();
+	m_HullPoints.clear();
+	m_HullDraft = 10.0F;
+	m_WaterThrust = 0.0F;
+	m_WaterMaxSpeed = 4.0F;
+	m_WaterDrag = 0.4F;
+	m_RowingStroke = 0.0F;
+	m_PropellerOffset.Reset();
+	m_HasPropeller = false;
+	m_Oar = nullptr;
+	m_OarSweep = 0.6F;
+	m_StrokePhase = 0.0F;
+	m_Submerged = 0.0F;
+	m_WakeTimer.Reset();
 	m_Driver = nullptr;
 	m_Throttle = 0.0F;
 	m_Braking = false;
@@ -141,8 +154,15 @@ int AVehicle::Create(const AVehicle& reference) {
 		}
 	}
 
+	if (reference.m_Oar) {
+		m_ReferenceHardcodedAttachableUniqueIDs.insert(reference.m_Oar->GetUniqueID());
+	}
+
 	Actor::Create(reference);
 
+	if (reference.m_Oar) {
+		SetOar(dynamic_cast<Attachable*>(reference.m_Oar->Clone()));
+	}
 	for (const Wheel& wheel: reference.m_Wheels) {
 		// (A bare strut whose wheel was shot off isn't copied.)
 		if (!wheel.Part) {
@@ -169,6 +189,15 @@ int AVehicle::Create(const AVehicle& reference) {
 	m_BoardingReach = reference.m_BoardingReach;
 	m_NeedsDriver = reference.m_NeedsDriver;
 	m_HopSpeed = reference.m_HopSpeed;
+	m_HullPoints = reference.m_HullPoints;
+	m_HullDraft = reference.m_HullDraft;
+	m_WaterThrust = reference.m_WaterThrust;
+	m_WaterMaxSpeed = reference.m_WaterMaxSpeed;
+	m_WaterDrag = reference.m_WaterDrag;
+	m_RowingStroke = reference.m_RowingStroke;
+	m_PropellerOffset = reference.m_PropellerOffset;
+	m_HasPropeller = reference.m_HasPropeller;
+	m_OarSweep = reference.m_OarSweep;
 	m_Buoyancy = reference.m_Buoyancy;
 	m_BreakLandingSpeed = reference.m_BreakLandingSpeed;
 	m_BreakSunkFraction = reference.m_BreakSunkFraction;
@@ -189,6 +218,9 @@ void AVehicle::Destroy(bool notInherited) {
 		if (wheel.Strut) {
 			m_HardcodedAttachableUniqueIDsAndRemovers.erase(wheel.Strut->GetUniqueID());
 		}
+	}
+	if (m_Oar) {
+		m_HardcodedAttachableUniqueIDsAndRemovers.erase(m_Oar->GetUniqueID());
 	}
 	if (!notInherited) {
 		Actor::Destroy();
@@ -214,6 +246,22 @@ int AVehicle::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("BoardingReach", { reader >> m_BoardingReach; });
 	MatchProperty("NeedsDriver", { reader >> m_NeedsDriver; });
 	MatchProperty("HopSpeed", { reader >> m_HopSpeed; });
+	MatchProperty("AddHullPoint", {
+		Vector point;
+		reader >> point;
+		AddHullPoint(point);
+	});
+	MatchProperty("HullDraft", { reader >> m_HullDraft; });
+	MatchProperty("WaterThrust", { reader >> m_WaterThrust; });
+	MatchProperty("WaterMaxSpeed", { reader >> m_WaterMaxSpeed; });
+	MatchProperty("WaterDrag", { reader >> m_WaterDrag; });
+	MatchProperty("RowingStroke", { reader >> m_RowingStroke; });
+	MatchProperty("PropellerOffset", {
+		reader >> m_PropellerOffset;
+		m_HasPropeller = true;
+	});
+	MatchProperty("Oar", { SetOar(dynamic_cast<Attachable*>(g_PresetMan.ReadReflectedPreset(reader))); });
+	MatchProperty("OarSweep", { reader >> m_OarSweep; });
 	MatchProperty("Buoyancy", { reader >> m_Buoyancy; });
 	MatchProperty("BreakLandingSpeed", { reader >> m_BreakLandingSpeed; });
 	MatchProperty("BreakSunkFraction", { reader >> m_BreakSunkFraction; });
@@ -248,6 +296,22 @@ int AVehicle::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("BoardingReach", m_BoardingReach);
 	writer.NewPropertyWithValue("NeedsDriver", m_NeedsDriver);
 	writer.NewPropertyWithValue("HopSpeed", m_HopSpeed);
+	for (const Vector& point: m_HullPoints) {
+		writer.NewPropertyWithValue("AddHullPoint", point);
+	}
+	writer.NewPropertyWithValue("HullDraft", m_HullDraft);
+	writer.NewPropertyWithValue("WaterThrust", m_WaterThrust);
+	writer.NewPropertyWithValue("WaterMaxSpeed", m_WaterMaxSpeed);
+	writer.NewPropertyWithValue("WaterDrag", m_WaterDrag);
+	writer.NewPropertyWithValue("RowingStroke", m_RowingStroke);
+	if (m_HasPropeller) {
+		writer.NewPropertyWithValue("PropellerOffset", m_PropellerOffset);
+	}
+	if (m_Oar) {
+		writer.NewProperty("Oar");
+		writer << m_Oar;
+	}
+	writer.NewPropertyWithValue("OarSweep", m_OarSweep);
 	writer.NewPropertyWithValue("Buoyancy", m_Buoyancy);
 	writer.NewPropertyWithValue("BreakLandingSpeed", m_BreakLandingSpeed);
 	writer.NewPropertyWithValue("BreakSunkFraction", m_BreakSunkFraction);
@@ -295,6 +359,28 @@ void AVehicle::AddStrut(Attachable* strut) {
 	strut->SetInheritsRotAngle(true);
 	strut->SetCollidesWithTerrainWhileAttached(false);
 	strut->SetDrawnAfterParent(false);
+}
+
+void AVehicle::SetOar(Attachable* newOar) {
+	if (m_Oar && m_Oar->IsAttached()) {
+		RemoveAndDeleteAttachable(m_Oar);
+	}
+	m_Oar = newOar;
+	if (!newOar) {
+		return;
+	}
+	AddAttachable(newOar);
+
+	m_HardcodedAttachableUniqueIDsAndRemovers.insert({newOar->GetUniqueID(), [](MOSRotating* parent, Attachable* attachable) {
+		                                                  AVehicle* vehicle = dynamic_cast<AVehicle*>(parent);
+		                                                  if (vehicle->m_Oar == attachable) {
+			                                                  vehicle->m_Oar = nullptr;
+		                                                  }
+	                                                  }});
+
+	// It swings about where it is fixed (UpdateHull); it goes into the water, not the ground.
+	newOar->SetInheritsRotAngle(true);
+	newOar->SetCollidesWithTerrainWhileAttached(false);
 }
 
 void AVehicle::RemoveWheel(const Attachable* wheel) {
@@ -561,7 +647,7 @@ void AVehicle::UpdateWheels() {
 
 	// In liquid (VH-2 gives boats hulls): dragged, and held up a little; a cart full of iron fittings sinks slowly.
 	int middleMaterial = g_SceneMan.GetTerrMatter(m_Pos.GetFloorIntX(), m_Pos.GetFloorIntY());
-	if (FluidSim::IsEnabled() && FluidSim::IsLiquid(middleMaterial)) {
+	if (m_HullPoints.empty() && FluidSim::IsEnabled() && FluidSim::IsLiquid(middleMaterial)) {
 		m_Vel *= std::max(1.0F - 2.0F * deltaTime, 0.0F);
 		m_AngularVel *= std::max(1.0F - 2.0F * deltaTime, 0.0F);
 		velocityChange.m_Y -= g_SceneMan.GetGlobalAcc().m_Y * m_Buoyancy * deltaTime;
@@ -614,6 +700,122 @@ void AVehicle::UpdateWheels() {
 	}
 }
 
+bool AVehicle::UpdateHull() {
+	m_Submerged = 0.0F;
+	float deltaTime = g_TimerMan.GetDeltaTimeSecs();
+	if (m_HullPoints.empty() || deltaTime <= 0.0F) {
+		return false;
+	}
+	float rotation = m_Rotation.GetRadAngle();
+	Vector along = Vector(1.0F, 0.0F).GetRadRotatedCopy(rotation);
+	float mass = std::max(GetMass(), 1.0F);
+	float inertia = m_pAtomGroup ? m_pAtomGroup->GetMomentOfInertia() : mass;
+	float gravity = g_SceneMan.GetGlobalAcc().m_Y;
+	float share = 1.0F / static_cast<float>(m_HullPoints.size());
+	int draft = std::max(static_cast<int>(m_HullDraft), 1);
+
+	/// How much of the column of the draft's height above a point is liquid, 0 to 1, and which liquid is at the top of it (0 if none).
+	auto depthAt = [draft](const Vector& point, int* liquidAtTop = nullptr) {
+		int x = point.GetFloorIntX();
+		int y = point.GetFloorIntY();
+		int depth = 0;
+		for (int up = 0; up < draft; ++up) {
+			int material = g_SceneMan.GetTerrMatter(x, y - up);
+			if (!FluidSim::IsLiquid(material)) {
+				// (Up through the hull's own space only: air or ground above ends the column.)
+				if (up > 0 || material == g_MaterialAir) {
+					break;
+				}
+				continue;
+			}
+			++depth;
+			if (liquidAtTop) {
+				*liquidAtTop = material;
+			}
+		}
+		return static_cast<float>(depth) / static_cast<float>(draft);
+	};
+
+	// Each point is held up by as much of its column as is under: a hull floats at its waterline, its ends lifted as they dip, so it rides level on
+	// the water and pitches with the waves.
+	Vector velocityChange;
+	float angularChange = 0.0F;
+	for (const Vector& point: m_HullPoints) {
+		Vector world = m_Pos + RotateOffset(point);
+		float depth = depthAt(world);
+		if (depth <= 0.0F) {
+			continue;
+		}
+		m_Submerged += depth * share;
+		Vector acceleration(0.0F, -gravity * m_Buoyancy * depth * share);
+		velocityChange += acceleration * deltaTime;
+		Vector arm = (world - m_Pos) * c_MPP;
+		angularChange += (arm.m_Y * acceleration.m_X - arm.m_X * acceleration.m_Y) * mass / inertia * deltaTime;
+	}
+	if (m_Submerged <= 0.0F) {
+		return false;
+	}
+	m_Vel += velocityChange;
+	m_AngularVel += angularChange;
+
+	// Water slows it: a little going along the way the hull points, a good deal more side on or bobbing up and down, and its rocking dies away.
+	// The keel keeps it the right way up, as a hull rights itself on the water.
+	float speedAlong = m_Vel.Dot(along);
+	Vector across = m_Vel - along * speedAlong;
+	speedAlong *= std::max(1.0F - m_WaterDrag * m_Submerged * deltaTime, 0.0F);
+	across *= std::max(1.0F - 3.0F * m_Submerged * deltaTime, 0.0F);
+	m_Vel = along * speedAlong + across;
+	m_AngularVel *= std::max(1.0F - 2.5F * m_Submerged * deltaTime, 0.0F);
+	m_AngularVel -= Wrapped(rotation) * 6.0F * m_Submerged * deltaTime;
+
+	// Driven along by the oars or the motor, if the blades or the propeller are in the water.
+	bool rowing = m_Throttle != 0.0F && m_WaterThrust > 0.0F;
+	Vector propeller = m_Pos + RotateOffset(m_PropellerOffset);
+	int liquid = 0;
+	bool pushing = rowing && (m_HasPropeller ? depthAt(propeller, &liquid) > 0.0F : true);
+	float power = 1.0F;
+	if (m_RowingStroke > 0.0F) {
+		// In strokes: the blades pull through the first half and come back through the air in the second.
+		float before = m_StrokePhase;
+		if (rowing || std::abs(Wrapped(m_StrokePhase)) > 0.2F) {
+			m_StrokePhase = Wrapped(m_StrokePhase + c_TwoPI * deltaTime * 1000.0F / m_RowingStroke);
+		}
+		power = std::max(std::sin(m_StrokePhase), 0.0F) * 1.6F;
+		// Each blade's dip leaves froth where it goes in.
+		if (pushing && before < 0.0F && m_StrokePhase >= 0.0F && m_Oar) {
+			Vector blade = m_Oar->GetPos() + Vector(0.0F, static_cast<float>(m_Oar->GetSpriteHeight()) * 0.4F).GetRadRotatedCopy(m_Oar->GetRotAngle());
+			FluidSim::Froth(blade, 6.0F, 2, 0);
+		}
+	}
+	if (pushing && std::abs(speedAlong) < m_WaterMaxSpeed) {
+		float push = std::min(m_WaterThrust * std::abs(m_Throttle) * power, (m_WaterMaxSpeed - std::abs(speedAlong)) / deltaTime);
+		m_Vel += along * push * (m_Throttle > 0.0F ? 1.0F : -1.0F) * deltaTime;
+		// A motor churns the water behind it.
+		if (m_RowingStroke <= 0.0F && m_WakeTimer.IsPastSimMS(120)) {
+			FluidSim::Froth(propeller, 8.0F, 2, 0);
+			m_WakeTimer.Reset();
+		}
+	} else if (m_Braking) {
+		m_Vel -= along * speedAlong * std::min(2.0F * deltaTime, 1.0F);
+	}
+	// Spray thrown off the bow going fast.
+	if (std::abs(speedAlong) > m_WaterMaxSpeed * 0.6F && m_WakeTimer.IsPastSimMS(250)) {
+		// (At the hull point farthest forward the way it is going.)
+		Vector bow = m_Pos;
+		float farthest = -1.0E6F;
+		for (const Vector& point: m_HullPoints) {
+			Vector world = RotateOffset(point);
+			if (float forward = world.Dot(along) * (speedAlong > 0.0F ? 1.0F : -1.0F); forward > farthest) {
+				farthest = forward;
+				bow = m_Pos + world;
+			}
+		}
+		FluidSim::VisualSplash(bow, 6.0F, std::abs(speedAlong) * 0.5F, 0);
+		m_WakeTimer.Reset();
+	}
+	return true;
+}
+
 float AVehicle::GetSunkFraction() const {
 	if (!m_pAtomGroup || m_pAtomGroup->GetAtomList().empty()) {
 		return 0.0F;
@@ -651,6 +853,12 @@ void AVehicle::Update() {
 	}
 
 	UpdateWheels();
+	UpdateHull();
+	if (m_Oar) {
+		// Back and forth with the stroke: the blade goes from forward to back as it pulls, and forward again through the air.
+		float swing = m_RowingStroke > 0.0F ? std::cos(m_StrokePhase) * m_OarSweep : 0.0F;
+		m_Oar->SetInheritedRotAngleOffset(swing * GetFlipFactor());
+	}
 	UpdateBoarding();
 
 	// Sunk well into the ground (driven or dropped through it somehow): it breaks apart rather than lie stuck in it.
