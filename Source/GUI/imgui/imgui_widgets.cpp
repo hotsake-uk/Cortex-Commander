@@ -6608,7 +6608,8 @@ bool ImGui::TreeNodeBehavior(ImGuiID id, ImGuiTreeNodeFlags flags, const char* l
     }
 
     ImVec2 text_pos(window->DC.CursorPos.x + text_offset_x, window->DC.CursorPos.y + text_offset_y);
-    ItemSize(ImVec2(text_width, frame_height), padding.y);
+    // [Cortex] A framed header (a collapsing header) takes its whole line, so items that flow (PushFlowItems) never join it on its row.
+    ItemSize(ImVec2(display_frame ? ImMax(text_width, window->WorkRect.Max.x - window->DC.CursorPos.x) : text_width, frame_height), padding.y);
 
     // For regular tree nodes, we arbitrary allow to click past 2 worth of ItemSpacing
     ImRect interact_bb = frame_bb;
