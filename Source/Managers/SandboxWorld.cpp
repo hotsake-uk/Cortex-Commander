@@ -4,6 +4,8 @@
 #include "GasGrid.h"
 #include "TerrainTrees.h"
 
+#include <unordered_set>
+
 namespace SandboxDetail {
 	void Detonate(const char* presetName, const Vector& position) {
 		if (MovableObject* object = CreateBaseObject("TDExplosive", presetName)) {
@@ -12,6 +14,124 @@ namespace SandboxDetail {
 			AddObject(object);
 			if (explosive) {
 				explosive->GibThis();
+			}
+		}
+	}
+
+	/// A blast of force with no blast in it: shoves whatever is loose near the point (units, things, debris, flying bits) and stirs up dust, but
+	/// sets nothing alight and harms nothing itself (a landing after a long throw still hurts, as any fall does).
+	/// @param radius How far it reaches. @param speed How hard it throws, in metres a second at its strongest. @param direction Along: which way.
+	void ForceBurst(const Vector& position, float radius, float speed, ForceShape shape, const Vector& direction) {
+		const bool wraps = g_SceneMan.SceneWrapsX();
+		Vector along = direction.GetMagnitude() > 0.01F ? direction / direction.GetMagnitude() : Vector(1.0F, 0.0F);
+		// How hard the push is at an offset from the point, 0 to 1, and which way it points.
+		auto push = [&](const Vector& offset, Vector& towards) {
+			float distance = offset.GetMagnitude();
+			Vector outward = distance > 0.5F ? offset / distance : Vector(0.0F, -1.0F);
+			switch (shape) {
+				case ForceShape::Out: {
+					if (distance >= radius) {
+						return 0.0F;
+					}
+					float falloff = 1.0F - distance / radius;
+					// Thrown up a little as well as out, so things lift off the ground rather than ploughing along it.
+					towards = outward + Vector(0.0F, -0.35F);
+					return falloff * (0.4F + 0.6F * falloff);
+				}
+				case ForceShape::In: {
+					if (distance >= radius) {
+						return 0.0F;
+					}
+					// Pulled in less as they close in on it, so they gather rather than fly through.
+					towards = outward * -1.0F;
+					return std::min(1.0F - distance / radius, distance / (radius * 0.35F));
+				}
+				case ForceShape::Up: {
+					// A column: narrow, reaching high above the point and a little below.
+					float across = std::abs(offset.m_X) / (radius * 0.45F);
+					float above = -offset.m_Y / (radius * 1.8F);
+					if (across >= 1.0F || above >= 1.0F || offset.m_Y > radius * 0.3F) {
+						return 0.0F;
+					}
+					towards = Vector(-offset.m_X * 0.004F, -1.0F);
+					return (1.0F - across) * (1.0F - std::max(0.0F, above) * 0.6F);
+				}
+				case ForceShape::Along: {
+					// A wide, flat gale: as far across the way it blows as the radius, a good deal less the other way.
+					float ahead = offset.Dot(along) / radius;
+					float side = std::abs(offset.m_X * along.m_Y - offset.m_Y * along.m_X) / (radius * 0.6F);
+					if (ahead < -0.2F || ahead >= 1.0F || side >= 1.0F) {
+						return 0.0F;
+					}
+					towards = along + Vector(0.0F, -0.12F);
+					return (1.0F - side) * (1.0F - std::max(0.0F, ahead) * 0.5F);
+				}
+			}
+			return 0.0F;
+		};
+		auto shove = [&](MovableObject* object, bool loose) {
+			if (!object || object->GetPinStrength() > 0.0F || dynamic_cast<ADoor*>(object)) {
+				return;
+			}
+			Vector towards;
+			float strength = push(g_SceneMan.ShortestDistance(position, object->GetPos(), wraps), towards);
+			if (strength <= 0.0F) {
+				return;
+			}
+			if (towards.GetMagnitude() > 0.01F) {
+				towards = towards / towards.GetMagnitude();
+			}
+			Vector change = towards * (speed * strength);
+			if (loose) {
+				// Bits and sparks in the air: thrown a little differently each, so a cloud of them blows apart rather than moving as one.
+				object->SetVel(object->GetVel() + change * (0.7F + 0.6F * Random01()));
+				return;
+			}
+			float mass = std::max(object->GetMass(), 0.01F);
+			object->AddImpulseForce(change * mass);
+			if (Actor* actor = dynamic_cast<Actor*>(object); actor && strength > 0.25F) {
+				actor->SetStatus(Actor::UNSTABLE);
+			}
+		};
+		std::unordered_set<MovableObject*> done;
+		for (Actor* actor: g_MovableMan.GetActorList()) {
+			if (done.insert(actor).second) {
+				shove(actor, false);
+			}
+		}
+		// Everything else with a body: dropped weapons and items, gibs, falling chunks of ground. Only the root of each, not the parts of a unit.
+		for (int id = 1; id < g_MovableMan.GetMOIDCount(); ++id) {
+			MovableObject* object = g_MovableMan.GetMOFromID(static_cast<MOID>(id));
+			if (object && object->GetRootParent() == object && done.insert(object).second) {
+				shove(object, false);
+			}
+		}
+		for (MovableObject* particle: g_MovableMan.GetParticleList()) {
+			if (done.insert(particle).second) {
+				shove(particle, true);
+			}
+		}
+		// What it looks like: the air rippling, and dust stirred up along the way it blows.
+		if (shape == ForceShape::Out) {
+			g_PostProcessMan.RegisterShockwave(position, radius * radius * 0.5F);
+		}
+		g_PostProcessMan.RegisterShimmer(position, radius * 0.6F, 1.0F);
+		for (int i = 0; i < 14; ++i) {
+			float angle = 6.2832F * (static_cast<float>(i) + Random01()) / 14.0F;
+			Vector ray(std::cos(angle), std::sin(angle));
+			switch (shape) {
+				case ForceShape::Out:
+					EffectsParticles::Emit("Dust", position + ray * (radius * 0.15F), ray * (speed * 0.3F), 0.4F, 3, 0);
+					break;
+				case ForceShape::In:
+					EffectsParticles::Emit("Dust", position + ray * (radius * 0.8F), ray * (-speed * 0.25F), 0.4F, 3, 0);
+					break;
+				case ForceShape::Up:
+					EffectsParticles::Emit("Dust", position + Vector((Random01() - 0.5F) * radius * 0.6F, Random01() * radius * 0.25F), Vector((Random01() - 0.5F) * 3.0F, -speed * 0.3F), 0.3F, 3, 0);
+					break;
+				case ForceShape::Along:
+					EffectsParticles::Emit("Dust", position + Vector((Random01() - 0.5F) * 20.0F, (Random01() - 0.5F) * radius * 0.7F), along * (speed * 0.35F), 0.3F, 3, 0);
+					break;
 			}
 		}
 	}
@@ -2043,6 +2163,42 @@ namespace SandboxDetail {
 				for (int i = 0; i < extra; ++i) {
 					float angle = 6.2832F * static_cast<float>(i) / static_cast<float>(extra);
 					Detonate(i % 2 == 0 ? "Standard Bomb" : "Frag Grenade", at + Vector(std::cos(angle), std::sin(angle)) * (static_cast<float>(crater) * 0.6F));
+				}
+				break;
+			}
+			case Tool::ForceBlast:
+				ForceBurst(at, 170.0F, 38.0F, ForceShape::Out);
+				break;
+			case Tool::HugeForceBlast:
+				ForceBurst(at, 420.0F, 65.0F, ForceShape::Out);
+				break;
+			case Tool::Implosion:
+				ForceBurst(at, 260.0F, 30.0F, ForceShape::In);
+				break;
+			case Tool::Updraft:
+				ForceBurst(at, 200.0F, 30.0F, ForceShape::Up);
+				break;
+			case Tool::GustRight:
+			case Tool::GustLeft: {
+				const float way = stroke.Kind == Tool::GustRight ? 1.0F : -1.0F;
+				ForceBurst(at + Vector(-30.0F * way, 0.0F), 380.0F, 34.0F, ForceShape::Along, Vector(way, 0.0F));
+				break;
+			}
+			case Tool::SmokeBomb:
+				// A thick cloud and no blast: smoke let out in a ball of cells (8 pixels a side), a puff of it thrown out as well.
+				for (int i = 0; i < 24; ++i) {
+					GasGrid::Add(at + Vector((Random01() - 0.5F) * 56.0F, (Random01() - 0.5F) * 40.0F), GasGrid::Smoke, 1.6F);
+				}
+				EffectsParticles::Emit("Smoke", at, Vector(0.0F, -2.0F), 1.0F, 18, 0);
+				break;
+			case Tool::Fireworks: {
+				// Bursts of coloured sparks in the air above the point, each lighting up the sky for a moment.
+				static constexpr unsigned int colours[] = {0xFF4040, 0xFFC040, 0x60E060, 0x50A0FF, 0xE070FF, 0xFFFFFF};
+				for (int i = 0; i < 5; ++i) {
+					Vector burst = at + Vector((Random01() - 0.5F) * 140.0F, -90.0F - Random01() * 130.0F);
+					unsigned int colour = colours[std::min(5, static_cast<int>(Random01() * 6.0F))];
+					EffectsParticles::Emit("Sparks", burst, Vector(0.0F, 0.0F), 1.0F, 70, colour);
+					g_PostProcessMan.RegisterLight(burst, glm::vec3(static_cast<float>((colour >> 16) & 0xFF), static_cast<float>((colour >> 8) & 0xFF), static_cast<float>(colour & 0xFF)), 150.0F, 1.4F, LightSource::Sandbox);
 				}
 				break;
 			}

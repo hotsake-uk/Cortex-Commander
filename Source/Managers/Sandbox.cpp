@@ -1486,6 +1486,10 @@ void Sandbox::DrawGUI() {
 				ToolButtons({Tool::Grenade, Tool::BigBomb, Tool::Napalm, Tool::Lightning});
 				ImGui::SeparatorText("Craters");
 				ToolButtons({Tool::Demolition, Tool::BunkerBuster, Tool::Meteor});
+				ImGui::SeparatorText("Force: shoves and scatters, burns and harms nothing");
+				ToolButtons({Tool::ForceBlast, Tool::HugeForceBlast, Tool::Implosion, Tool::Updraft, Tool::GustRight, Tool::GustLeft});
+				ImGui::SeparatorText("For show");
+				ToolButtons({Tool::SmokeBomb, Tool::Fireworks});
 				ImGui::SeparatorText("From the sky: click where it should land");
 				ToolButtons({Tool::RocketStrike, Tool::RocketBarrage, Tool::CarpetBomb, Tool::Artillery, Tool::NapalmRain, Tool::OrbitalBeam, Tool::BoulderRain});
 				ImGui::SeparatorText("Craft that don't make it: click where it comes down");

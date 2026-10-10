@@ -215,6 +215,22 @@ namespace SandboxDetail {
 				return "Falls and piles like sand, heavier.";
 			case Tool::GlassShards:
 				return "Falls and piles, and cuts units walking through it.";
+			case Tool::ForceBlast:
+				return "A burst of force: throws units, dropped things, debris and smoke out from the point, with no fire and no blast damage (a hard landing still hurts).";
+			case Tool::HugeForceBlast:
+				return "The same, far wider and harder. Clears a whole area.";
+			case Tool::Implosion:
+				return "The reverse: pulls everything loose around the point in towards it. No harm done.";
+			case Tool::Updraft:
+				return "A column of air that lifts units, things and debris up over the point.";
+			case Tool::GustRight:
+				return "A gale across the point to the right: blows units, things, debris and smoke along.";
+			case Tool::GustLeft:
+				return "A gale across the point to the left: blows units, things, debris and smoke along.";
+			case Tool::SmokeBomb:
+				return "A thick cloud of smoke and no blast (gas needs to be on in F6 for it to hang about).";
+			case Tool::Fireworks:
+				return "Bursts of coloured sparks in the air above the point. They light up the sky and harm nothing.";
 			case Tool::BuildTank:
 				return "An open concrete tank, filled with what the springs pour (Paint > Springs).";
 			case Tool::TreeTrunk:
@@ -433,6 +449,21 @@ namespace SandboxDetail {
 				return {Icon::Rocket, IM_COL32(120, 200, 230, 255)};
 			case Tool::Lightning:
 				return {Icon::Bolt, IM_COL32(255, 240, 120, 255)};
+			case Tool::ForceBlast:
+				return {Icon::Star, IM_COL32(160, 215, 255, 255)};
+			case Tool::HugeForceBlast:
+				return {Icon::Star, IM_COL32(110, 160, 255, 255)};
+			case Tool::Implosion:
+				return {Icon::Target, IM_COL32(190, 140, 255, 255)};
+			case Tool::Updraft:
+				return {Icon::Arrows, IM_COL32(160, 235, 220, 255)};
+			case Tool::GustRight:
+			case Tool::GustLeft:
+				return {Icon::Cloud, IM_COL32(200, 225, 240, 255)};
+			case Tool::SmokeBomb:
+				return {Icon::Cloud, IM_COL32(140, 140, 150, 255)};
+			case Tool::Fireworks:
+				return {Icon::Star, IM_COL32(255, 120, 200, 255)};
 			case Tool::OrbitalBeam:
 				return {Icon::Bolt, IM_COL32(120, 220, 255, 255)};
 			case Tool::Effect:

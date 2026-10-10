@@ -204,7 +204,16 @@ namespace SandboxDetail {
 		CollapseArea, //!< A box dragged out on the world (Position to Position2): all the ground in it breaks loose and falls (TerrainCollapse::DropArea).
 		// Appended, so the tools before keep their numbers.
 		Rope, //!< Each click a point of a rope (RopeSim), tied to what is there; Choice 1 finishes it, 2 takes every rope away. Material: its kind; Rate: its slack.
-		RopeCut //!< A click cuts the ropes under the pointer.
+		RopeCut, //!< A click cuts the ropes under the pointer.
+		// The Boom tab's blasts of force, which shove and scatter but burn and harm nothing: appended, so the tools before keep their numbers.
+		ForceBlast, //!< A burst that throws units, things, debris and smoke out from the point.
+		HugeForceBlast, //!< The same, wider and harder.
+		Implosion, //!< The reverse: everything near is pulled in to the point.
+		Updraft, //!< A column of air that lifts what is over the point.
+		GustRight, //!< A gale across the point, to the right.
+		GustLeft, //!< A gale across the point, to the left.
+		SmokeBomb, //!< A burst of thick smoke, with no blast.
+		Fireworks //!< Bursts of coloured sparks in the air above the point.
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -327,6 +336,14 @@ namespace SandboxDetail {
 	    {Tool::CollapseArea, "Make it fall", 0.0F, false},
 	    {Tool::Rope, "Rope", 0.0F, false},
 	    {Tool::RopeCut, "Cut rope", 0.0F, false},
+	    {Tool::ForceBlast, "Force blast", 0.0F, false},
+	    {Tool::HugeForceBlast, "Huge force blast", 0.0F, false},
+	    {Tool::Implosion, "Implosion", 0.0F, false},
+	    {Tool::Updraft, "Updraft", 0.0F, false},
+	    {Tool::GustRight, "Gust right", 0.0F, false},
+	    {Tool::GustLeft, "Gust left", 0.0F, false},
+	    {Tool::SmokeBomb, "Smoke bomb", 0.0F, false},
+	    {Tool::Fireworks, "Fireworks", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -1837,6 +1854,9 @@ namespace SandboxDetail {
 	void ReturnDefenders();
 	void ActivateSide(int team);
 	void Detonate(const char* presetName, const Vector& position);
+	/// How a ForceBurst pushes.
+	enum class ForceShape { Out, In, Up, Along };
+	void ForceBurst(const Vector& position, float radius, float speed, ForceShape shape, const Vector& direction = Vector());
 	void SpawnPuffs(const char* presetName, const Vector& position, int radius, int count);
 	int PaintedColor(const Material* material, int x, int y, int color, int speckleColor);
 	void RecordPaintPixel(const SLTerrain* terrain, int x, int y);
