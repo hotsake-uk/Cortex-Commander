@@ -424,6 +424,10 @@ namespace RTE {
 		/// @return The newly dislodged pixel, if one was found.
 		MOPixel* DislodgePixel(int posX, int posY);
 
+		/// Hands the ladder rungs knocked out of the terrain since the last call (by shots, blasts, orphaned pieces or scripts) to the terrain's
+		/// updated areas, for the path grids to take in. Main thread, before the grids are updated.
+		void FlushKnockedOutLadders();
+
 		/// Removes a pixel from the terrain and adds it to MovableMan.
 		/// @param posX The X coordinate of the terrain pixel.
 		/// @param posX The Y coordinate of the terrain pixel.

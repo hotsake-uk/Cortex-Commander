@@ -2455,6 +2455,10 @@ void Scene::UpdatePathFinding() {
 	// ground that isn't. A hundred a call, as it was, took seconds to take in one blast or one built wall.
 	constexpr int nodeUpdatesPerCall = 2000;
 	constexpr int maxUnupdatedMaterialAreas = 1000;
+	// Ladders shot away since the last call: a way up gone, for the grids to see (see SceneMan::FlushKnockedOutLadders).
+	if (this == g_SceneMan.GetScene()) {
+		g_SceneMan.FlushKnockedOutLadders();
+	}
 	PathFinder& noTeamPathFinder = GetPathFinder(Activity::Teams::NoTeam);
 	// Whether a team's grid skipped nodes while the team had no part in the scene and now has one (see m_TeamGridSkippedNodes).
 	auto teamGridBehind = [this]() {
