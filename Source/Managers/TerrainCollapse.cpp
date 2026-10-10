@@ -703,43 +703,177 @@ namespace {
 		return metresPerSecond / 3.0F * std::max(tuning.BreakStrength, 0.1F);
 	}
 
-	/// Cracks a body into pieces along lines through the point where it hit. The pieces become bodies of their own, or loose particles if they're tiny.
+	/// Breaks a body where it hit, each of its materials by its own style (MaterialBehaviour::BreakStyle): Shatter splits it into many jagged shards around the hit
+	/// with a spray of chips, Crack cuts it along a few lines, Crumble turns what's near the hit into loose grains, Splinter snaps it across its length into a few
+	/// long pieces, and Bend (metal) holds together. Leaves and grass go with the style of what carries them. The pieces become bodies of their own, or loose
+	/// particles if they're tiny.
 	void Break(Body& body, const glm::vec2& hitPoint, float violence) {
 		float c = std::cos(body.Angle);
 		float s = std::sin(body.Angle);
 		glm::vec2 offset = hitPoint - body.Pos;
 		glm::vec2 hitLocal(offset.x * c + offset.y * s + body.Center.x, -offset.x * s + offset.y * c + body.Center.y);
-		int cuts = 1 + (violence > 1.5F ? 1 : 0) + (body.Toughness < 60.0F ? 1 : 0);
+		// Leaves go with the style that carries the most of the piece.
+		int mainStyle = c_Crack;
+		for (int style = 0; style < c_StyleCount; ++style) {
+			if (body.StyleStrength[style] > body.StyleStrength[mainStyle]) {
+				mainStyle = style;
+			}
+		}
 		struct Cut {
 			glm::vec2 Through, Across;
 			float Wobble, Phase;
 		};
-		std::vector<Cut> lines;
+		auto sideOf = [](const std::vector<Cut>& lines, const glm::vec2& at) {
+			int side = 0;
+			for (size_t i = 0; i < lines.size(); ++i) {
+				glm::vec2 from = at - lines[i].Through;
+				float along = from.x * -lines[i].Across.y + from.y * lines[i].Across.x;
+				// A jagged line rather than a ruled one.
+				float distance = glm::dot(from, lines[i].Across) + lines[i].Wobble * std::sin(along * 0.45F + lines[i].Phase) + 0.6F * std::sin(along * 1.7F);
+				side |= (distance > 0.0F ? 1 : 0) << i;
+			}
+			return side;
+		};
+		// Crack: a few lines, the first from where it hit, the others nearer the middle.
+		std::vector<Cut> cracks;
+		int cuts = 1 + (violence > 1.5F ? 1 : 0) + (body.Toughness < 60.0F ? 1 : 0);
 		for (int i = 0; i < cuts; ++i) {
 			float angle = Random01() * 3.14159F;
-			// The first crack runs from where it hit; the others cross the body nearer its middle.
 			glm::vec2 through = i == 0 ? glm::mix(hitLocal, body.Center, 0.35F) : body.Center + glm::vec2(Random01() - 0.5F, Random01() - 0.5F) * body.Radius * 0.8F;
-			lines.push_back({through, glm::vec2(std::cos(angle), std::sin(angle)), 1.0F + Random01() * 2.5F, Random01() * 6.28F});
+			cracks.push_back({through, glm::vec2(std::cos(angle), std::sin(angle)), 1.0F + Random01() * 2.5F, Random01() * 6.28F});
 		}
+		// Splinter: across its long axis (the grain), through the middle nudged toward the hit; a second snap only for a huge hit.
+		std::vector<Cut> snaps;
+		{
+			double xx = 0.0;
+			double yy = 0.0;
+			double xy = 0.0;
+			for (int y = 0; y < body.H; ++y) {
+				for (int x = 0; x < body.W; ++x) {
+					if (body.Materials[static_cast<size_t>(y) * body.W + x]) {
+						double dx = static_cast<double>(x) + 0.5 - body.Center.x;
+						double dy = static_cast<double>(y) + 0.5 - body.Center.y;
+						xx += dx * dx;
+						yy += dy * dy;
+						xy += dx * dy;
+					}
+				}
+			}
+			float grain = 0.5F * static_cast<float>(std::atan2(2.0 * xy, xx - yy));
+			glm::vec2 along(std::cos(grain), std::sin(grain));
+			float hitAlong = glm::dot(hitLocal - body.Center, along);
+			int count = violence > 2.5F ? 2 : 1;
+			for (int i = 0; i < count; ++i) {
+				float at = i == 0 ? hitAlong * 0.35F : -hitAlong * 0.5F + (Random01() - 0.5F) * body.Radius * 0.4F;
+				// The cut runs across the grain, a little askew, with a ragged, splintery edge.
+				float skew = (Random01() - 0.5F) * 0.5F;
+				glm::vec2 across(std::cos(grain + skew), std::sin(grain + skew));
+				snaps.push_back({body.Center + along * at, across, 1.5F + Random01() * 1.5F, Random01() * 6.28F});
+			}
+		}
+		// Shatter: shards around seed points, most of them near the hit.
+		std::vector<glm::vec2> seeds;
+		std::vector<float> seedPhase;
+		int shards = std::clamp(static_cast<int>(3.0F + 2.0F * violence + static_cast<float>(body.PixelCount) / 400.0F), 4, 12);
+		for (int i = 0; i < shards; ++i) {
+			glm::vec2 seed = body.Center;
+			for (int attempt = 0; attempt < 30; ++attempt) {
+				glm::vec2 candidate(Random01() * static_cast<float>(body.W), Random01() * static_cast<float>(body.H));
+				int cx = std::clamp(static_cast<int>(candidate.x), 0, body.W - 1);
+				int cy = std::clamp(static_cast<int>(candidate.y), 0, body.H - 1);
+				if (!body.Materials[static_cast<size_t>(cy) * body.W + cx]) {
+					continue;
+				}
+				seed = candidate;
+				if (Random01() < std::exp(-glm::length(candidate - hitLocal) / std::max(body.Radius * 0.5F, 1.0F))) {
+					break;
+				}
+			}
+			seeds.push_back(seed);
+			seedPhase.push_back(Random01() * 6.28F);
+		}
+		// How far from the hit brittle material is powdered and loose ground falls apart into grains.
+		float chipRadius = 1.5F + std::min(violence, 4.0F);
+		float crumbleRadius = body.Radius * std::min(1.0F, 0.35F + 0.25F * violence) + 2.0F;
+		int debrisLeft = c_MaxDebrisPerUpdate - s_DebrisThisUpdate;
+		constexpr int c_Loose = -3; //!< A pixel thrown off as a loose particle.
 		std::vector<int> region(body.Materials.size(), -1);
 		for (int y = 0; y < body.H; ++y) {
 			for (int x = 0; x < body.W; ++x) {
 				int local = y * body.W + x;
-				if (!body.Materials[local]) {
+				int material = body.Materials[local];
+				if (!material) {
 					continue;
 				}
 				glm::vec2 at(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F);
-				int side = 0;
-				for (size_t i = 0; i < lines.size(); ++i) {
-					glm::vec2 from = at - lines[i].Through;
-					float along = from.x * -lines[i].Across.y + from.y * lines[i].Across.x;
-					// A jagged line rather than a ruled one.
-					float distance = glm::dot(from, lines[i].Across) + lines[i].Wobble * std::sin(along * 0.45F + lines[i].Phase) + 0.6F * std::sin(along * 1.7F);
-					side |= (distance > 0.0F ? 1 : 0) << i;
+				float fromHit = glm::length(at - hitLocal);
+				int style = s_Flimsy[material] ? mainStyle : s_Style[material];
+				int id = 0;
+				bool loose = false;
+				switch (style) {
+					case c_Shatter: {
+						size_t nearest = 0;
+						float best = 1.0e9F;
+						for (size_t i = 0; i < seeds.size(); ++i) {
+							// Jittered, so the shards have jagged edges.
+							float distance = glm::length(at - seeds[i]) + 1.5F * std::sin(at.x * 0.9F + seedPhase[i]) + 1.2F * std::sin(at.y * 1.3F - seedPhase[i]);
+							if (distance < best) {
+								best = distance;
+								nearest = i;
+							}
+						}
+						id = 0x100 + static_cast<int>(nearest);
+						loose = fromHit < chipRadius;
+						break;
+					}
+					case c_Crumble:
+						id = 0x200;
+						loose = fromHit < crumbleRadius;
+						break;
+					case c_Splinter:
+						id = 0x300 + sideOf(snaps, at);
+						break;
+					case c_Bend:
+						id = 0x400;
+						break;
+					default:
+						id = sideOf(cracks, at);
+						break;
 				}
-				region[local] = side;
+				if (loose && debrisLeft > 0) {
+					--debrisLeft;
+					region[local] = c_Loose;
+				} else {
+					region[local] = id;
+				}
 			}
 		}
+		// Splinters: a few chips of wood off the edges of each snap.
+		for (int local = 0; local < static_cast<int>(region.size()) && debrisLeft > 0; ++local) {
+			if (region[local] < 0x300 || region[local] >= 0x400) {
+				continue;
+			}
+			int x = local % body.W;
+			int y = local / body.W;
+			bool onBreak = (x > 0 && region[local - 1] >= 0 && region[local - 1] != region[local]) || (x + 1 < body.W && region[local + 1] >= 0 && region[local + 1] != region[local]) ||
+			               (y > 0 && region[local - body.W] >= 0 && region[local - body.W] != region[local]) || (y + 1 < body.H && region[local + body.W] >= 0 && region[local + body.W] != region[local]);
+			if (onBreak && Random01() < 0.35F) {
+				--debrisLeft;
+				region[local] = c_Loose;
+			}
+		}
+		for (int local = 0; local < static_cast<int>(region.size()); ++local) {
+			if (region[local] == c_Loose) {
+				glm::vec2 partOffset = glm::vec2(static_cast<float>(local % body.W) + 0.5F, static_cast<float>(local / body.W) + 0.5F) - body.Center;
+				glm::vec2 at = ToWorld(body, partOffset, body.Pos, body.Angle);
+				glm::vec2 arm = at - body.Pos;
+				// Grains spill at the piece's speed; chips fly up and out.
+				float spray = s_Style[body.Materials[local]] == c_Crumble ? 0.6F : 1.5F + 0.4F * std::min(violence, 3.0F);
+				ThrowDebris(body.Materials[local], body.Colors[local], at, body.Vel + body.Spin * glm::vec2(-arm.y, arm.x) + glm::vec2(Random01() - 0.5F, -Random01()) * spray);
+				region[local] = -2;
+			}
+		}
+		float burst = mainStyle == c_Shatter ? 0.25F + 0.2F * std::min(violence, 3.0F) : 0.25F;
 		// Each connected part of each side is a piece.
 		std::vector<int> stack;
 		std::vector<int> part;
@@ -808,15 +942,16 @@ namespace {
 			piece.Angle = body.Angle;
 			glm::vec2 arm = piece.Pos - body.Pos;
 			float armLength = glm::length(arm);
-			piece.Vel = body.Vel + body.Spin * glm::vec2(-arm.y, arm.x) + (armLength > 0.01F ? arm / armLength * 0.25F : glm::vec2(0.0F));
+			piece.Vel = body.Vel + body.Spin * glm::vec2(-arm.y, arm.x) + (armLength > 0.01F ? arm / armLength * burst : glm::vec2(0.0F));
 			piece.Spin = body.Spin + (Random01() - 0.5F) * 0.03F;
 			piece.Generation = body.Generation + 1;
 			piece.BreakCooldown = 12;
 			s_NewBodies.push_back(std::move(piece));
 		}
 		body.Done = true;
-		// A burst of dust where it broke (visual only).
-		ThrowDust(hitPoint, std::min(6 + body.PixelCount / 60, 40), body.Materials, body.Colors);
+		// A burst of dust where it broke (visual only): a cloud where something brittle shatters or loose ground falls apart.
+		int dust = 6 + body.PixelCount / 60;
+		ThrowDust(hitPoint, std::min(mainStyle == c_Shatter || mainStyle == c_Crumble ? dust * 2 : dust, mainStyle == c_Shatter || mainStyle == c_Crumble ? 60 : 40), body.Materials, body.Colors);
 	}
 
 	/// Brings a body up to date after pixels have been shot, dug or blasted off it: its outline (what it collides with), mass and centre are worked out again
@@ -913,6 +1048,77 @@ namespace {
 			s_NewBodies.push_back(std::move(piece));
 		}
 		body.Done = true;
+	}
+
+	/// Turns a point in the scene into a body's own bitmap.
+	glm::vec2 ToLocal(const Body& body, const glm::vec2& point) {
+		float c = std::cos(body.Angle);
+		float s = std::sin(body.Angle);
+		glm::vec2 offset = point - body.Pos;
+		return glm::vec2(offset.x * c + offset.y * s + body.Center.x, -offset.x * s + offset.y * c + body.Center.y);
+	}
+
+	/// Metal (Bend) hit harder than it takes doesn't break: it dents where it hit, a shallow round bite pushed in from its surface, deeper the harder the hit.
+	/// Call while the body is lifted out of the terrain. It may come apart if the dent goes right through a thin part.
+	void Dent(Body& body, const glm::vec2& hitPoint, float violence) {
+		glm::vec2 hitLocal = ToLocal(body, hitPoint);
+		glm::vec2 inward = body.Center - hitLocal;
+		float length = glm::length(inward);
+		inward = length > 0.01F ? inward / length : glm::vec2(0.0F, 1.0F);
+		float depth = std::clamp(violence, 1.0F, 4.0F);
+		float radius = 3.0F + depth * 1.5F;
+		glm::vec2 bite = hitLocal - inward * (radius - depth);
+		int removed = 0;
+		for (int y = std::max(0, static_cast<int>(bite.y - radius)); y <= std::min(body.H - 1, static_cast<int>(bite.y + radius)); ++y) {
+			for (int x = std::max(0, static_cast<int>(bite.x - radius)); x <= std::min(body.W - 1, static_cast<int>(bite.x + radius)); ++x) {
+				int local = y * body.W + x;
+				if (body.Materials[local] && glm::length(glm::vec2(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F) - bite) < radius) {
+					body.Materials[local] = 0;
+					++removed;
+				}
+			}
+		}
+		++body.Generation;
+		body.BreakCooldown = 20;
+		if (removed > 0) {
+			// A clank of dust and sparks of its colour (visual only).
+			ThrowDust(hitPoint, std::min(3 + removed / 4, 12), body.Materials, body.Colors);
+			Rebuild(body);
+		}
+	}
+
+	/// A piece with leaves (or grass) on it that lands hard sheds some: the harder the landing, the more, nearest where it hit first. The piece itself holds together.
+	/// Call while the body is lifted out of the terrain. Returns true if any came off.
+	bool ShedLeaves(Body& body, const glm::vec2& hitPoint, float hit, float breakSpeed) {
+		if (body.CarryingPixels >= body.PixelCount) {
+			return false;
+		}
+		// From a third of the way to breaking, up to most of them at the point of breaking.
+		float share = std::clamp((hit / std::max(breakSpeed, 0.1F) - 0.33F) * 0.9F, 0.0F, 0.6F);
+		if (share <= 0.0F) {
+			return false;
+		}
+		glm::vec2 hitLocal = ToLocal(body, hitPoint);
+		float reach = std::max(body.Radius, 1.0F);
+		int shed = 0;
+		for (int local = 0; local < static_cast<int>(body.Materials.size()) && s_DebrisThisUpdate < c_MaxDebrisPerUpdate; ++local) {
+			int material = body.Materials[local];
+			if (!material || !s_Flimsy[material]) {
+				continue;
+			}
+			glm::vec2 at(static_cast<float>(local % body.W) + 0.5F, static_cast<float>(local / body.W) + 0.5F);
+			float closeness = 1.0F - std::min(glm::length(at - hitLocal) / reach, 1.0F);
+			if (Random01() < share * (0.3F + closeness)) {
+				glm::vec2 world = ToWorld(body, at - body.Center, body.Pos, body.Angle);
+				ThrowDebris(material, body.Colors[local], world, body.Vel * 0.5F + glm::vec2(Random01() - 0.5F, -Random01()) * 1.2F);
+				body.Materials[local] = 0;
+				++shed;
+			}
+		}
+		if (shed > 0) {
+			Rebuild(body);
+		}
+		return shed > 0;
 	}
 
 	/// A body has stopped: it stays in the terrain as ordinary ground.
@@ -1270,9 +1476,24 @@ namespace {
 		if (hardestHit > 1.2F) {
 			ThrowDust(hardestPoint, std::min(static_cast<int>((3.0F + static_cast<float>(body.PixelCount) / 120.0F) * hardestHit * 0.5F), 30), body.Materials, body.Colors);
 		}
+		// A tree that lands hard loses leaves, whether or not its trunk breaks.
+		if (body.BreakCooldown == 0 && ShedLeaves(body, hardestPoint, hardestHit, breakSpeed)) {
+			body.BreakCooldown = 6;
+			if (body.Done) {
+				return;
+			}
+		}
 		if (hardestHit > breakSpeed && body.BreakCooldown == 0 && body.Generation < c_MaxGeneration && body.PixelCount >= c_MinBreakPixels) {
-			Break(body, hardestPoint, hardestHit / breakSpeed);
-			return;
+			// Metal through and through dents; anything else breaks, each material its own way.
+			if (body.StyleStrength[c_Bend] > 0.0F && body.StyleStrength[c_Bend] >= 0.999F * (body.StyleStrength[c_Shatter] + body.StyleStrength[c_Crack] + body.StyleStrength[c_Crumble] + body.StyleStrength[c_Splinter] + body.StyleStrength[c_Bend])) {
+				Dent(body, hardestPoint, hardestHit / breakSpeed);
+				if (body.Done) {
+					return;
+				}
+			} else {
+				Break(body, hardestPoint, hardestHit / breakSpeed);
+				return;
+			}
 		}
 
 		float movedBy = glm::length(body.Pos - startPos) + std::abs(body.Angle - startAngle) * body.Radius;
