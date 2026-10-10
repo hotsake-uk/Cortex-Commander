@@ -1367,7 +1367,7 @@ void Sandbox::DrawGUI() {
 					}
 					ImGui::EndCombo();
 				}
-				ImGui::SetItemTooltip("What new springs pour, and what the Boom tab's tank is filled with.");
+				ImGui::SetItemTooltip("What new springs pour, and what the tank is filled with.");
 				ImGui::SliderFloat("Spring rate", &s_SpringRate, 0.05F, 1.0F, "%.2f");
 				ImGui::SetItemTooltip("How much of the time new springs pour. 1: they keep the air around them full.");
 				ImGui::SliderFloat("Spring lifetime", &s_SpringLife, 0.0F, 120.0F, s_SpringLife <= 0.0F ? "for ever" : "%.0f s");
@@ -1529,10 +1529,6 @@ void Sandbox::DrawGUI() {
 				if (!s_Incoming.empty()) {
 					ImGui::TextDisabled("%d on the way", static_cast<int>(s_Incoming.size()));
 				}
-				ImGui::SeparatorText("Things to knock down");
-				ToolButtons({Tool::BuildBeam, Tool::BuildPillar, Tool::BuildRoom, Tool::BuildTower, Tool::BuildBridge, Tool::BuildIsland, Tool::BuildTank});
-				ImGui::SeparatorText("Medieval: wood burns, stone doesn't");
-				ToolButtons({Tool::BuildBonfire, Tool::BuildCottage, Tool::BuildWatchtower, Tool::BuildCastle});
 				EndSandboxTab();
 			}
 			if (SandboxTab("Effects")) {

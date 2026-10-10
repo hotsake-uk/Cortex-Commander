@@ -1337,7 +1337,7 @@ namespace SandboxDetail {
 		     "..BB.."
 		     "..BB.."
 		     "..BB.."},
-		    {"Campfire", "A campfire in the background, for looks only: flames, sparks, embers, smoke and a flickering light, burning until a blast or a shot puts it out. (The Bonfire on the Boom tab is the real, burnable one.)", 22, 12, 0.5F, 1.0F, 11, 3, {1.0F, 0.55F, 0.2F}, 190.0F, 2.0F, 0.4F, 0.0F, 0.0F,
+		    {"Campfire", "A campfire in the background, for looks only: flames, sparks, embers, smoke and a flickering light, burning until a blast or a shot puts it out.", 22, 12, 0.5F, 1.0F, 11, 3, {1.0F, 0.55F, 0.2F}, 190.0F, 2.0F, 0.4F, 0.0F, 0.0F,
 		     "..........y..........."
 		     ".........yoy...y......"
 		     "........yooyy.yoy....."
@@ -2088,10 +2088,6 @@ namespace SandboxDetail {
 					case Tool::BuildPillar:
 					case Tool::BuildRoom:
 					case Tool::BuildTower:
-					case Tool::BuildBonfire:
-					case Tool::BuildCottage:
-					case Tool::BuildWatchtower:
-					case Tool::BuildCastle:
 					case Tool::BuildBridge:
 					case Tool::BuildIsland:
 					case Tool::BuildTank:
@@ -2685,68 +2681,6 @@ namespace SandboxDetail {
 					}
 				}
 				break;
-			case Tool::BuildBonfire: {
-				// A pyramid of logs with gaps for the flames to climb: whole rows and, between them, rows of two piles, with a stake in the middle.
-				for (int row = 0; row < 7; ++row) {
-					int width = 64 - row * 8;
-					float top = -7.0F * static_cast<float>(row + 1);
-					if (row % 2 == 0) {
-						PaintBox(at + Vector(-static_cast<float>(width) * 0.5F, top), width, 6, "Wood");
-					} else {
-						PaintBox(at + Vector(-static_cast<float>(width) * 0.5F, top), width / 2 - 3, 6, "Wood");
-						PaintBox(at + Vector(3.0F, top), width / 2 - 3, 6, "Wood");
-					}
-				}
-				PaintBox(at + Vector(-2.0F, -62.0F), 4, 14, "Wood");
-				break;
-			}
-			case Tool::BuildCottage: {
-				// Side on: a stone footing, timber walls with a doorway on the left and a window on the right, a ceiling beam, a stepped pitched roof and a chimney.
-				PaintBox(at + Vector(-60.0F, -8.0F), 120, 8, "Stone");
-				PaintBox(at + Vector(-60.0F, -70.0F), 6, 24, "Wood");
-				PaintBox(at + Vector(-60.0F, -46.0F), 6, 2, "Wood");
-				PaintBox(at + Vector(54.0F, -70.0F), 6, 22, "Wood");
-				PaintBox(at + Vector(54.0F, -30.0F), 6, 22, "Wood");
-				PaintBox(at + Vector(-64.0F, -76.0F), 128, 6, "Wood");
-				for (int row = 0; row < 10; ++row) {
-					PaintBox(at + Vector(-64.0F + 6.0F * static_cast<float>(row), -82.0F - 6.0F * static_cast<float>(row)), 128 - 12 * row, 6, "Wood");
-				}
-				PaintBox(at + Vector(24.0F, -134.0F), 12, 56, "Stone");
-				PaintBox(at + Vector(-30.0F, -40.0F), 36, 4, "Wood");
-				break;
-			}
-			case Tool::BuildWatchtower: {
-				// A hollow stone shaft with a doorway at the foot, wooden floors to climb between, and a platform with battlements on top.
-				PaintBox(at + Vector(-22.0F, -170.0F), 8, 126, "Stone");
-				PaintBox(at + Vector(14.0F, -170.0F), 8, 170, "Stone");
-				PaintBox(at + Vector(-22.0F, -6.0F), 44, 6, "Stone");
-				for (int floor = 1; floor <= 3; ++floor) {
-					PaintBox(at + Vector(-14.0F, -42.0F * static_cast<float>(floor)), 28, 5, "Wood");
-				}
-				PaintBox(at + Vector(-30.0F, -176.0F), 60, 8, "Wood");
-				for (int merlon = 0; merlon < 4; ++merlon) {
-					PaintBox(at + Vector(-30.0F + 16.0F * static_cast<float>(merlon), -190.0F), 8, 14, "Stone");
-				}
-				break;
-			}
-			case Tool::BuildCastle: {
-				// Two towers with a wall between, an archway through it, and a wooden gate in the arch.
-				for (float side: {-1.0F, 1.0F}) {
-					float left = side < 0.0F ? -122.0F : 82.0F;
-					PaintBox(at + Vector(left, -130.0F), 40, 130, "Stone");
-					for (int merlon = 0; merlon < 3; ++merlon) {
-						PaintBox(at + Vector(left + 16.0F * static_cast<float>(merlon), -144.0F), 8, 14, "Stone");
-					}
-				}
-				PaintBox(at + Vector(-82.0F, -80.0F), 62, 80, "Stone");
-				PaintBox(at + Vector(20.0F, -80.0F), 62, 80, "Stone");
-				PaintBox(at + Vector(-20.0F, -80.0F), 40, 30, "Stone");
-				PaintBox(at + Vector(-17.0F, -50.0F), 34, 50, "Wood");
-				for (int merlon = 0; merlon < 9; ++merlon) {
-					PaintBox(at + Vector(-80.0F + 20.0F * static_cast<float>(merlon), -92.0F), 10, 12, "Stone");
-				}
-				break;
-			}
 			case Tool::BuildBridge:
 				PaintBox(at + Vector(-110.0F, -3.0F), 220, 6, "Wood");
 				for (float x = -100.0F; x <= 100.0F; x += 50.0F) {

@@ -239,14 +239,6 @@ namespace SandboxDetail {
 				return "A thick cloud of smoke and no blast (gas needs to be on in F6 for it to hang about).";
 			case Tool::Fireworks:
 				return "Bursts of coloured sparks in the air above the point. They light up the sky and harm nothing.";
-			case Tool::BuildBonfire:
-				return "A stack of logs, made of the Wood material: set it alight with fire, a flame, lightning or a blast and it burns down like any wood. Water puts it out.";
-			case Tool::BuildCottage:
-				return "A timber cottage on a stone footing, with a pitched wooden roof and a stone chimney. The wood burns.";
-			case Tool::BuildWatchtower:
-				return "A tall stone watchtower with wooden floors and a battlemented top. The floors burn and the stone doesn't.";
-			case Tool::BuildCastle:
-				return "A gatehouse: two stone towers and a wall between them, with a wooden gate that burns.";
 			case Tool::BuildTank:
 				return "An open concrete tank, filled with what the springs pour (Paint > Springs).";
 			case Tool::TreeTrunk:
@@ -496,14 +488,6 @@ namespace SandboxDetail {
 				return {Icon::Wall, IM_COL32(200, 200, 195, 255)};
 			case Tool::BuildIsland:
 				return {Icon::Chunk, IM_COL32(150, 100, 60, 255)};
-			case Tool::BuildBonfire:
-				return {Icon::Flame, IM_COL32(190, 120, 60, 255)};
-			case Tool::BuildCottage:
-				return {Icon::Wall, IM_COL32(170, 120, 70, 255)};
-			case Tool::BuildWatchtower:
-				return {Icon::Wall, IM_COL32(150, 150, 155, 255)};
-			case Tool::BuildCastle:
-				return {Icon::Wall, IM_COL32(135, 135, 140, 255)};
 			case Tool::BuildTank:
 				return {Icon::Drop, IM_COL32(90, 170, 240, 255)};
 			case Tool::BuildBridge:
@@ -3219,7 +3203,7 @@ namespace SandboxDetail {
 				case ClearKind::Buildings:
 					ImGui::TextUnformatted("Every door and bunker part, and the colony buildings.");
 					ToolUI::Checkbox("And what they're built of", &s_ClearBuildingMaterials);
-					ImGui::SetItemTooltip("Every pixel of concrete, metal, glass and bunker material on the map, the built things on the Boom tab included.");
+					ImGui::SetItemTooltip("Every pixel of concrete, metal, glass and bunker material on the map, the things built with the Build tab included.");
 					break;
 				case ClearKind::Units:
 					if (ImGui::BeginCombo("Whose", s_ClearSide < 0 ? "Every side" : c_SideNames[s_ClearSide])) {
