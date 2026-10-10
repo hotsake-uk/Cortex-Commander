@@ -898,7 +898,7 @@ namespace SandboxDetail {
 		bool InheritKit = false; //!< Whether the character also carries what a unit of its base class (Body) is spawned with, besides the kit.
 	};
 	inline PlayerSetup s_Player;
-	constexpr bool c_ShowColonyTab = false; //!< Whether the sandbox window offers the colony buildings.
+	constexpr bool c_ShowColonyTab = true; //!< Whether the sandbox window offers the colony buildings.
 	/// What the command tool does with a click on the world.
 	enum class CommandMode {
 		Move, //!< Each selected unit to its own spot round the point; a click on an enemy attacks it, a click on a friend selects it.
