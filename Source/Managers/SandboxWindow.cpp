@@ -1580,7 +1580,15 @@ namespace SandboxDetail {
 				formationFacing = across * scale > 12.0F ? 1 : (across * scale < -12.0F ? -1 : 0);
 			}
 			std::string formation = std::string(" in ") + c_FormationNames[static_cast<int>(s_Formation)] + (s_KeepPace ? ", kept together" : "") + (s_Dragging && io.KeyAlt ? "" : "  (Alt-drag: face a way)");
-			if (units.empty() || (underIsFriend && s_CommandMode == CommandMode::Move)) {
+			if (s_CommandMode == CommandMode::Select) {
+				const bool pickable = under && IsSelectable(under);
+				if (pickable) {
+					drawList->AddCircle(ToScreen(under->GetPos()), std::max(under->GetRadius() / scale, 8.0F) + pixel * 2.0F, IM_COL32(255, 255, 255, 200), 0, pixel);
+					label = "Select " + under->GetPresetName() + "  (Shift: add, double click: all of this kind)";
+				} else {
+					label = units.empty() ? "Click a unit or drag a box round several to select them" : count + " selected: pick an order (M, T, F, G, B...) or right click";
+				}
+			} else if (units.empty() || (underIsFriend && s_CommandMode == CommandMode::Move)) {
 				if (underIsUnit) {
 					drawList->AddCircle(ToScreen(under->GetPos()), std::max(under->GetRadius() / scale, 8.0F) + pixel * 2.0F, IM_COL32(255, 255, 255, 200), 0, pixel);
 					label = "Select " + under->GetPresetName() + "  (Shift: add, double click: all of this kind)";
@@ -1709,7 +1717,7 @@ namespace SandboxDetail {
 				label = "Move " + count + " here" + formation;
 			}
 			// With Shift held, the order is a further step of their plans (RC-3), not one for now.
-			if (io.KeyShift && !units.empty() && !(underIsFriend && s_CommandMode == CommandMode::Move) && !label.empty()) {
+			if (io.KeyShift && !units.empty() && s_CommandMode != CommandMode::Select && !(underIsFriend && s_CommandMode == CommandMode::Move) && !label.empty()) {
 				label = "Then: " + label + "  (added to the plan)";
 			}
 		}
@@ -2902,9 +2910,11 @@ namespace SandboxDetail {
 		} else if (tool.Kind == Tool::Command) {
 			start(tool.Name);
 			float rowStart = ImGui::GetCursorPosX();
-			// The mode of the clicks, in its colours.
-			for (int mode = 0; mode < static_cast<int>(std::size(c_CommandModeNames)); ++mode) {
-				if (mode > 0) {
+			// The mode of the clicks, in its colours: Select units first (it is last in CommandMode), then the orders.
+			const int modes = static_cast<int>(std::size(c_CommandModeNames));
+			for (int place = 0; place < modes; ++place) {
+				const int mode = (place + modes - 1) % modes;
+				if (place > 0) {
 					ImGui::SameLine();
 				}
 				ImGui::PushStyleColor(ImGuiCol_Text, c_CommandModeColors[mode]);
@@ -2915,7 +2925,11 @@ namespace SandboxDetail {
 				ImGui::PopStyleColor();
 				// (Its key, RC-6; all of them are on the Keys page.)
 				static const char* keys[] = {"M", "T", "G", "F", "B", "R", "X"};
-				ImGui::SetItemTooltip("Key: %s", keys[std::min<size_t>(static_cast<size_t>(mode), std::size(keys) - 1)]);
+				if (static_cast<CommandMode>(mode) == CommandMode::Select) {
+					ImGui::SetItemTooltip("Click a unit to select it, drag a box for several (Shift adds, double click all of a kind in view); a click on nothing\nselects nothing. The Command tool on the bar starts here, and a click on it here again deselects everyone.");
+				} else {
+					ImGui::SetItemTooltip("Key: %s", keys[std::min<size_t>(static_cast<size_t>(mode), std::size(keys) - 1)]);
+				}
 			}
 			// The patrol route being clicked out (RC-4): started as a loop or back and forth once it has two points.
 			if (s_CommandMode == CommandMode::Patrol) {
@@ -3261,6 +3275,14 @@ namespace SandboxDetail {
 					ImGui::SameLine();
 				}
 				if (BarTile("##main", c_Tools[index].Name, s_ToolIndex == index, [&](ImDrawList* drawList, ImVec2 at, float room) { DrawIcon(drawList, look.Art, at, room / 12.0F, look.Color); }) == 1) {
+					if (mainTools[i] == Tool::Command) {
+						// The Command tool always starts by selecting units; picked again while selecting, it lets them all go.
+						if (s_ToolIndex == index && s_CommandMode == CommandMode::Select) {
+							s_Selected.clear();
+						}
+						s_CommandMode = CommandMode::Select;
+						s_PatrolDraft.clear();
+					}
 					s_ToolIndex = index;
 				}
 				ImGui::PopID();

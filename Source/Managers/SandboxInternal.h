@@ -897,11 +897,13 @@ namespace SandboxDetail {
 		AttackMove, //!< Walk to the point, stopping to fight any enemy met on the way, then carry on to it (RC-2).
 		DefendAt, //!< Post the units round the point to hold it, facing the way the button was dragged (RC-4).
 		Patrol, //!< Each click a point of a patrol route; the command row starts it as a loop or back and forth (RC-4).
-		DigTo //!< Dig to the point, in the ground or not (RC-11): those with a digger that cuts the way are sent, to the point itself.
+		DigTo, //!< Dig to the point, in the ground or not (RC-11): those with a digger that cuts the way are sent, to the point itself.
+		Select //!< Clicks only pick units: one clicked (Shift adds, double click all of its kind in view), or none on a click on nothing. What
+		       //!< the Command tool starts in, from the bar. (Last, so the ring's slices keep their places; the command row shows it first.)
 	};
-	inline CommandMode s_CommandMode = CommandMode::Move;
-	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to"};
-	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255)};
+	inline CommandMode s_CommandMode = CommandMode::Select;
+	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Select units"};
+	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(230, 230, 230, 255)};
 
 	/// What a dig-to to the point under the cursor would come to for the selected units (RC-11; DigToPreview).
 	struct DigPreview {
