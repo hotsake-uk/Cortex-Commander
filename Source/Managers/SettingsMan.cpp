@@ -668,6 +668,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("UnitSpeechTones2", { UnitSpeech::SetTeamTonesText(1, reader.ReadPropValue()); });
 	MatchProperty("UnitSpeechTones3", { UnitSpeech::SetTeamTonesText(2, reader.ReadPropValue()); });
 	MatchProperty("UnitSpeechTones4", { UnitSpeech::SetTeamTonesText(3, reader.ReadPropValue()); });
+	MatchProperty("UnitSpeechToneMix", { UnitSpeech::SetToneWeightsText(reader.ReadPropValue()); });
 	MatchProperty("AISuppression", {
 		reader >> m_AISuppression;
 		m_AISuppression = std::clamp(m_AISuppression, 0.0F, 2.0F);
@@ -1103,6 +1104,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	for (int team = 0; team < 4; ++team) {
 		writer.NewPropertyWithValue("UnitSpeechTones" + std::to_string(team + 1), UnitSpeech::GetTeamTonesText(team));
 	}
+	writer.NewPropertyWithValue("UnitSpeechToneMix", UnitSpeech::GetToneWeightsText());
 	if (forPreset) {
 		// The settings file only lists what is off, over everything on; a preset loads over what is set now, so it says what is on too.
 		for (const UnitSpeech::Trigger& trigger: UnitSpeech::GetTriggers()) {
