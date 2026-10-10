@@ -934,7 +934,19 @@ void MOSRotating::GibThis(const Vector& impactImpulse, MovableObject* movableObj
 	m_ToDelete = true;
 }
 
+bool MOSRotating::ComesFromBody() const {
+	if (dynamic_cast<const HeldDevice*>(this)) {
+		return false;
+	}
+	if (m_FromBody) {
+		return true;
+	}
+	const MovableObject* root = GetRootParent();
+	return dynamic_cast<const Actor*>(root) && !dynamic_cast<const ACraft*>(root) && !dynamic_cast<const ADoor*>(root);
+}
+
 void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObject* movableObjectToIgnore) {
+	bool fromBody = ComesFromBody();
 	// Explosions push a refraction shockwave out, scaled by the energy of the gibs flying out (the same measure used for automatic screen shake).
 	float gibEnergy = 0.0F;
 	for (const Gib* gibSettingsObject: m_Gibs) {
@@ -1056,6 +1068,7 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 					gibParticleClone->SetIgnoresTeamHits(true);
 				}
 
+				gibParticleClone->SetFromBody(fromBody || gibParticleClone->IsFromBody());
 				g_MovableMan.AddParticle(gibParticleClone);
 			}
 		} else {
@@ -1114,6 +1127,7 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 					gibParticleClone->SetIgnoresTeamHits(true);
 				}
 
+				gibParticleClone->SetFromBody(fromBody || gibParticleClone->IsFromBody());
 				g_MovableMan.AddParticle(gibParticleClone);
 			}
 		}
@@ -1629,6 +1643,9 @@ Attachable* MOSRotating::RemoveAttachable(Attachable* attachable, bool addToMova
 	if (!m_Attachables.empty()) {
 		m_Attachables.remove(attachable);
 	}
+	if (!dynamic_cast<HeldDevice*>(attachable) && ComesFromBody()) {
+		attachable->SetFromBody();
+	}
 	attachable->SetParent(nullptr);
 	m_AttachableAndWoundMass -= attachable->GetMass();
 
@@ -1776,7 +1793,7 @@ void MOSRotating::Draw(BITMAP* pTargetBitmap, const Vector& targetPos, DrawMode 
 		// TODO: Fix that MaterialAir and KeyColor don't work at all because they're drawing 0 to a field of 0's
 		// Draw the requested material silhouette on the material bitmap
 		if (mode == g_DrawMaterial) {
-			draw_character_ex(pTempBitmap, m_aSprite[m_Frame], 0, 0, GetMaterial()->GetTerrainSettleMaterial(m_SettleMaterialDisabled), -1);
+			draw_character_ex(pTempBitmap, m_aSprite[m_Frame], 0, 0, GetMaterial()->GetTerrainSettleMaterial(m_SettleMaterialDisabled, ComesFromBody()), -1);
 		} else if (mode == g_DrawWhite) {
 			draw_character_ex(pTempBitmap, m_aSprite[m_Frame], 0, 0, g_WhiteColor, -1);
 		} else if (mode == g_DrawDoor) {

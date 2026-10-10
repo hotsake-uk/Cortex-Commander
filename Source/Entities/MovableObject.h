@@ -526,6 +526,12 @@ namespace RTE {
 		/// @param toSettle Whether to mark this MO for settling or not. (default: true)
 		void SetToSettle(bool toSettle = true) { m_ToSettle = toSettle; }
 
+		/// Whether this came off a unit: a limb, a piece of armour, a gib from one. Its solid material settles as Flesh Scraps (see Material::GetTerrainSettleMaterial).
+		bool IsFromBody() const { return m_FromBody; }
+
+		/// Sets whether this came off a unit.
+		void SetFromBody(bool fromBody = true) { m_FromBody = fromBody; }
+
 		/// Marks this MovableObject for deletion at the end of the MovableMan
 		/// update.
 		/// @param toDelete Whether to mark this MO for deletion or not. (default: true)
@@ -1367,6 +1373,7 @@ namespace RTE {
 		// Mark to have the MovableMan copy this the terrain layers at the end
 		// of update.
 		bool m_ToSettle;
+		bool m_FromBody; //!< Whether this came off a unit (see IsFromBody).
 		// Mark to delete at the end of MovableMan update
 		bool m_ToDelete;
 		// To draw this guy's HUD or not

@@ -2,6 +2,7 @@
 #include "Constants.h"
 #include "SceneMan.h"
 #include "SettingsMan.h"
+#include "FluidSim.h"
 
 #include <algorithm>
 #include <string>
@@ -71,16 +72,16 @@ bool Material::IsBody() const {
 	return m_IsBody != 0;
 }
 
-unsigned char Material::GetTerrainSettleMaterial(bool settleMaterialDisabled) const {
+unsigned char Material::GetTerrainSettleMaterial(bool settleMaterialDisabled, bool fromBody) const {
 	unsigned char settleMaterial = settleMaterialDisabled ? m_Index : GetSettleMaterial();
-	if (g_SettingsMan.BodiesSettleAsEarth() && IsBody()) {
-		// Earth by name, looked up once (it's Base.rte's, so its number doesn't change); 0 if there's none, and bodies settle as before.
-		static const unsigned char earthIndex = [] {
-			const Material* earth = g_SceneMan.GetMaterial("Earth");
-			return earth ? earth->GetIndex() : static_cast<unsigned char>(0);
+	if (fromBody && g_SettingsMan.BodyGearSettlesAsScraps() && m_Index != g_MaterialAir && !IsBody() && !FluidSim::IsLiquid(m_Index) && !FluidSim::IsLiquid(settleMaterial)) {
+		// Flesh Scraps by name, looked up once (it's Base.rte's, so its number doesn't change); 0 if there's none, and gear settles as before.
+		static const unsigned char scrapsIndex = [] {
+			const Material* scraps = g_SceneMan.GetMaterial("Flesh Scraps");
+			return scraps ? scraps->GetIndex() : static_cast<unsigned char>(0);
 		}();
-		if (earthIndex != 0) {
-			return earthIndex;
+		if (scrapsIndex != 0) {
+			return scrapsIndex;
 		}
 	}
 	return settleMaterial;

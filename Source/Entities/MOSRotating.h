@@ -540,6 +540,10 @@ namespace RTE {
 		/// @param movableObjectToIgnore A pointer to an MO which the Attachables should not be colliding with.
 		void CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObject* movableObjectToIgnore);
 
+		/// Whether this is, is attached to, or came off a unit (not a craft or a door), so what it leaves behind is marked IsFromBody. Held devices
+		/// aren't: a gun dropped by the fallen is still a gun.
+		bool ComesFromBody() const;
+
 		/// Removes all Attachables from this MOSR, deleting them or adding them to MovableMan as appropriate, and giving them randomized velocities based on their properties and this MOSRotating's gib blast strength.
 		/// @param impactImpulse The impulse (kg * m/s) of the impact that caused the gibbing to happen.
 		/// @param movableObjectToIgnore A pointer to an MO which the Attachables should not be colliding with.
