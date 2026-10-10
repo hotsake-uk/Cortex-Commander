@@ -2,6 +2,7 @@
 #include "ActorWater.h"
 #include "MenuMan.h"
 #include "Weather.h"
+#include "TerrainCandle.h"
 
 bool Sandbox::s_Open = false;
 
@@ -1290,6 +1291,22 @@ void Sandbox::DrawGUI() {
 				ImGui::SetItemTooltip("How big the plants, cacti, mushrooms, trees and candles are drawn. x1 is the game's own art; bigger keeps it blocky, as the pixel art is (candles go up in whole steps, x1, x2, x3).");
 				ImGui::SliderInt("Plant spacing", &s_PlantSpacing, 2, 60, "%d px");
 				ImGui::SetItemTooltip("How far apart the plants go along a stroke. Each is one of the game's own plant pictures, set into the ground under the pointer.");
+				{
+					// How long candles burn (the same setting as Settings > Fire and smoke).
+					bool forever = TerrainCandle::GetBurnMinutes() <= 0.0F;
+					if (ToolUI::Checkbox("Candles burn forever", &forever)) {
+						TerrainCandle::SetBurnMinutes(forever ? 0.0F : 2.0F);
+					}
+					ImGui::SetItemTooltip("Lit candles keep burning and never melt down. Off, they burn down in the Candle burn time.");
+					if (float minutes = TerrainCandle::GetBurnMinutes(); minutes > 0.0F) {
+						ImGui::SameLine();
+						ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.5F);
+						if (ImGui::SliderFloat("Candle burn time", &minutes, 0.5F, 60.0F, "%.1f min", ImGuiSliderFlags_Logarithmic)) {
+							TerrainCandle::SetBurnMinutes(minutes);
+						}
+						ImGui::SetItemTooltip("How long a lit candle 20 pixels tall takes to burn down, whatever its width; a taller one takes longer.");
+					}
+				}
 				ImGui::SeparatorText("Terrain");
 				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::TreeTrunk, Tool::Concrete});
 				ToolButtons({Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::TerrainOther});

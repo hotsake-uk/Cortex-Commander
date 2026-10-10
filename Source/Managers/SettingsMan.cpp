@@ -8,6 +8,7 @@
 #include <cstring>
 #include "TextOverlay.h"
 #include "TerrainFire.h"
+#include "TerrainCandle.h"
 #include "WeatherLightning.h"
 #include "TerrainCollapse.h"
 #include "FluidSim.h"
@@ -321,6 +322,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("TerrainCollapse", { TerrainCollapse::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("TerrainFire", { TerrainFire::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("EmberIgniteChance", { TerrainFire::SetEmberIgniteChance(std::stof(reader.ReadPropValue())); });
+	MatchProperty("CandleBurnMinutes", { TerrainCandle::SetBurnMinutes(std::stof(reader.ReadPropValue())); });
 	MatchProperty("ModernHUD", { ModernHUD::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("SmoothHUDText", { TextOverlay::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightingSettingsVersion", { s_ReadLightingSettingsVersion = std::stoi(reader.ReadPropValue()); });
@@ -974,6 +976,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("PostSaturation", lighting.Saturation);
 	writer.NewPropertyWithValue("TerrainFire", TerrainFire::IsEnabled());
 	writer.NewPropertyWithValue("EmberIgniteChance", TerrainFire::GetEmberIgniteChance());
+	writer.NewPropertyWithValue("CandleBurnMinutes", TerrainCandle::GetBurnMinutes());
 	writer.NewPropertyWithValue("TerrainCollapse", TerrainCollapse::IsEnabled());
 	writer.NewPropertyWithValue("FlowingLiquids", FluidSim::IsEnabled());
 	writer.NewPropertyWithValue("LoosePowders", FluidSim::PowdersEnabled());
