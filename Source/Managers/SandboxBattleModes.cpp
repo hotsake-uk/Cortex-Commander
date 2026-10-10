@@ -90,7 +90,7 @@ namespace SandboxDetail {
 			Actor* nearest = nullptr;
 			float nearestDistance = reach * reach;
 			for (Actor* actor: g_MovableMan.GetActorList()) {
-				if (actor == except || actor->GetTeam() != team || !IsCombatant(actor) || dynamic_cast<const ACraft*>(actor)) {
+				if (actor == except || actor->GetTeam() != team || !IsSoldier(actor) || dynamic_cast<const ACraft*>(actor)) {
 					continue;
 				}
 				if (float distance = g_SceneMan.ShortestDistance(actor->GetPos(), point, g_SceneMan.SceneWrapsX()).GetSqrMagnitude(); distance < nearestDistance) {
@@ -244,7 +244,7 @@ namespace SandboxDetail {
 		std::vector<Actor*> Fighters() {
 			std::vector<Actor*> fighters;
 			for (Actor* actor: SandboxAccess::Actors()) {
-				if (IsCombatant(actor) && !dynamic_cast<const ACraft*>(actor) && !actor->IsInGroup("Brains") && TeamIn(s_ModeRun.Settings, actor->GetTeam())) {
+				if (IsSoldier(actor) && !dynamic_cast<const ACraft*>(actor) && !actor->IsInGroup("Brains") && TeamIn(s_ModeRun.Settings, actor->GetTeam())) {
 					fighters.push_back(actor);
 				}
 			}
@@ -406,7 +406,7 @@ namespace SandboxDetail {
 			std::array<std::unordered_set<long>, c_Sides> seen;
 			for (Actor* actor: SandboxAccess::Actors()) {
 				const int team = actor->GetTeam();
-				if (team >= 0 && team < c_Sides && IsCombatant(actor) && !dynamic_cast<const ACraft*>(actor) && !actor->IsInGroup("Brains")) {
+				if (team >= 0 && team < c_Sides && IsSoldier(actor) && !dynamic_cast<const ACraft*>(actor) && !actor->IsInGroup("Brains")) {
 					seen[team].insert(actor->GetUniqueID());
 				}
 			}
@@ -930,7 +930,7 @@ namespace SandboxDetail {
 			const bool wraps = g_SceneMan.SceneWrapsX();
 			std::vector<Actor*> fighters;
 			for (Actor* actor: SandboxAccess::Actors()) {
-				if (IsCombatant(actor) && !dynamic_cast<const ACraft*>(actor) && !actor->IsInGroup("Brains") && TeamIn(settings, actor->GetTeam())) {
+				if (IsSoldier(actor) && !dynamic_cast<const ACraft*>(actor) && !actor->IsInGroup("Brains") && TeamIn(settings, actor->GetTeam())) {
 					fighters.push_back(actor);
 				}
 			}
@@ -941,7 +941,7 @@ namespace SandboxDetail {
 				Flag& flag = s_Flags[side];
 				if (flag.State == FlagState::Carried) {
 					Actor* carrier = GetRef(flag.Carrier);
-					if (!carrier || !IsCombatant(carrier)) {
+					if (!carrier || !IsSoldier(carrier)) {
 						// Down where its carrier fell (or was last seen), on the ground below: never lost off the map or down a pit with no
 						// bottom, but home.
 						Vector ground;
@@ -1052,7 +1052,7 @@ namespace SandboxDetail {
 					const Actor* nearestUnit = nullptr;
 					float nearestDistance = 0.0F;
 					for (Actor* actor: SandboxAccess::Actors()) {
-						if (!TeamIn(settings, actor->GetTeam()) || !IsCombatant(actor) || dynamic_cast<const ACraft*>(actor) || actor->IsInGroup("Brains")) {
+						if (!TeamIn(settings, actor->GetTeam()) || !IsSoldier(actor) || dynamic_cast<const ACraft*>(actor) || actor->IsInGroup("Brains")) {
 							continue;
 						}
 						float distance = g_SceneMan.ShortestDistance(actor->GetPos(), flag.Pos, g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
@@ -1076,7 +1076,7 @@ namespace SandboxDetail {
 				// nearest being a tank that can't climb, or a drone, was taken to mean nobody could get there.)
 				std::vector<std::pair<float, const Actor*>> enemies;
 				for (Actor* actor: SandboxAccess::Actors()) {
-					if (actor->GetTeam() == side || !TeamIn(settings, actor->GetTeam()) || !IsCombatant(actor) || dynamic_cast<const ACraft*>(actor) || actor->IsInGroup("Brains")) {
+					if (actor->GetTeam() == side || !TeamIn(settings, actor->GetTeam()) || !IsSoldier(actor) || dynamic_cast<const ACraft*>(actor) || actor->IsInGroup("Brains")) {
 						continue;
 					}
 					const float distance = g_SceneMan.ShortestDistance(actor->GetPos(), flag.Home, g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
@@ -1532,7 +1532,7 @@ namespace SandboxDetail {
 			Flag& flag = s_OneFlag;
 			if (flag.State == FlagState::Carried) {
 				Actor* carrier = GetRef(flag.Carrier);
-				if (!carrier || !IsCombatant(carrier)) {
+				if (!carrier || !IsSoldier(carrier)) {
 					Vector ground;
 					if (!FallTo(flag.Pos, ground)) {
 						OneFlagHome();

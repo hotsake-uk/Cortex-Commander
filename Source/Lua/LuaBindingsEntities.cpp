@@ -241,6 +241,12 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("OrderFailReason", &Actor::GetOrderFailReason, &Actor::SetOrderFailReason)
 	    .property("OrderFailText", &Actor::GetOrderFailText)
 	    .property("WeaponRule", &Actor::GetWeaponRule, &Actor::SetWeaponRule)
+	    .property("Temperament", &Actor::GetTemperament, &Actor::SetTemperament)
+	    .property("NonCombatant", &Actor::IsNonCombatant, &Actor::SetNonCombatant)
+	    .property("LastAttackerTeam", &Actor::GetLastAttackerTeam)
+	    .property("LastAttackerID", &Actor::GetLastAttackerID)
+	    .property("MSSinceHurt", &Actor::GetMSSinceHurt)
+	    .property("LastHurtFrom", &Actor::GetLastHurtFrom)
 	    .property("PaceLimit", &Actor::GetPaceLimit, &Actor::SetPaceLimit)
 	    .property("MovementRule", &Actor::GetMovementRule, &Actor::SetMovementRule)
 	    .property("DeploymentID", &Actor::GetDeploymentID)
@@ -374,6 +380,10 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .enum_("WeaponRule")[luabind::value("WEAPONS_AT_WILL", Actor::WeaponRule::WEAPONS_AT_WILL),
 	                         luabind::value("WEAPONS_RETURN_FIRE", Actor::WeaponRule::WEAPONS_RETURN_FIRE),
 	                         luabind::value("WEAPONS_HOLD", Actor::WeaponRule::WEAPONS_HOLD)]
+	    .enum_("Temperament")[luabind::value("TEMPERAMENT_FIGHTER", Actor::Temperament::TEMPERAMENT_FIGHTER),
+	                          luabind::value("TEMPERAMENT_DEFENSIVE", Actor::Temperament::TEMPERAMENT_DEFENSIVE),
+	                          luabind::value("TEMPERAMENT_SKITTISH", Actor::Temperament::TEMPERAMENT_SKITTISH),
+	                          luabind::value("TEMPERAMENT_PACIFIST", Actor::Temperament::TEMPERAMENT_PACIFIST)]
 	    .enum_("MovementRule")[luabind::value("MOVE_FOLLOW_ORDER", Actor::MovementRule::MOVE_FOLLOW_ORDER),
 	                           luabind::value("MOVE_ENGAGE", Actor::MovementRule::MOVE_ENGAGE),
 	                           luabind::value("MOVE_ONLY", Actor::MovementRule::MOVE_ONLY),

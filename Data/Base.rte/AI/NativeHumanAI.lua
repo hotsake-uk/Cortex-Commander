@@ -325,8 +325,12 @@ function NativeHumanAI:Update(Owner)
 		Owner:EquipShieldInBGArm(); -- try to equip a shield
 	end
 
-	-- look for targets
+	-- look for targets (only those its temperament lets it fight, NC-1; a target it may no longer have is dropped first)
+	SharedBehaviors.DropForbiddenTarget(self, Owner);
 	local FoundMO, HitPoint = self.SpotTargets(self, Owner, self.skill);
+	if FoundMO and not SharedBehaviors.MayTarget(self, Owner, FoundMO) then
+		FoundMO = nil;
+	end
 	if FoundMO then
 		--TODO: decide whether to attack based on the material strength of found MO
 		if self.Behavior ~= nil and self.Target and MovableMan:ValidMO(self.Target) and FoundMO.ID == self.Target.ID then	-- found the same target
@@ -719,6 +723,9 @@ function NativeHumanAI:Update(Owner)
 		end
 		SharedBehaviors.RetreatUpdate(self, Owner);
 	end
+	-- (Its nature, NC-1: a skittish unit runs from danger, and livestock left standing graze about.)
+	SharedBehaviors.FleeUpdate(self, Owner);
+	SharedBehaviors.GrazeUpdate(self, Owner);
 	SharedBehaviors.RememberUpdate(self, Owner);
 	SharedBehaviors.AdvertiseMedikit(self, Owner);
 	if not objective then

@@ -193,6 +193,7 @@ namespace {
 		Slice, //!< A slice of the wheel (Data), handed to the unit's PieMenu.
 		WeaponRule, //!< Sets the unit's weapons rule (Actor::WeaponRule).
 		MovementRule, //!< Sets the unit's movement rule (Actor::MovementRule).
+		TemperamentChoice, //!< Sets the unit's temperament (Actor::Temperament, NC-1).
 		FormationChoice, //!< Sets the group orders' formation.
 		KeepPace, //!< Keeping together off (0) or on (1).
 		Markers //!< The order markers overlay (SettingsMan::SandboxOrdersOverlay).
@@ -243,6 +244,12 @@ namespace {
 		menu.Choices(UnitAction::WeaponRule, {std::begin(c_WeaponRuleNames), std::end(c_WeaponRuleNames)}, actor->GetWeaponRule());
 		menu.Heading("Movement", ActionMenu::Kind::State);
 		menu.Choices(UnitAction::MovementRule, {std::begin(c_MovementRuleNames), std::end(c_MovementRuleNames)}, actor->GetMovementRule());
+		menu.Heading(actor->IsNonCombatant() ? "Temperament (non-combatant)" : "Temperament", ActionMenu::Kind::State);
+		std::vector<std::string> temperaments;
+		for (int i = 0; i < Actor::TEMPERAMENTCOUNT; ++i) {
+			temperaments.emplace_back(Actor::TemperamentName(i));
+		}
+		menu.Choices(UnitAction::TemperamentChoice, temperaments, actor->GetTemperament(), 2);
 		menu.Heading("Group orders", ActionMenu::Kind::Setting);
 		menu.Choices(UnitAction::FormationChoice, {std::begin(c_FormationNames), std::end(c_FormationNames)}, static_cast<int>(s_Formation));
 		menu.Choices(UnitAction::KeepPace, {"Free", "Keep together"}, s_KeepPace ? 1 : 0);
@@ -263,6 +270,11 @@ namespace {
 				break;
 			case UnitAction::MovementRule:
 				actor->SetMovementRule(cell.Value);
+				break;
+			case UnitAction::TemperamentChoice:
+				// (As when spawned with one: made skittish or a pacifist, it's a non-combatant; made a fighter or defensive, it isn't.)
+				actor->SetTemperament(cell.Value);
+				actor->SetNonCombatant(cell.Value >= Actor::TEMPERAMENT_SKITTISH);
 				break;
 			case UnitAction::FormationChoice:
 				s_Formation = static_cast<Formation>(cell.Value);

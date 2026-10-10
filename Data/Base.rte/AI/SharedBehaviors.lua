@@ -1915,11 +1915,231 @@ function SharedBehaviors.OrderKind(Owner)
 	return "guard";
 end
 
+-- Temperaments (NC-1). How long a unit that only fights back stays roused after the last time it was hurt, in sim ms.
+SharedBehaviors.ProvokedMS = 12000;
+
+-- Whether a Defensive unit is roused, and by whom: hurt by another side in the last ProvokedMS, or pinned by near misses (which carry no
+-- side). @return The side that hurt it, true for any side (near misses), or nil when it is calm.
+function SharedBehaviors.Provoked(AI, Owner)
+	if Owner.MSSinceHurt < SharedBehaviors.ProvokedMS and Owner.LastAttackerTeam ~= Activity.NOTEAM and Owner.LastAttackerTeam ~= Owner.Team then
+		return Owner.LastAttackerTeam;
+	end
+	if SharedBehaviors.Suppression(AI, Owner) > 0.2 then
+		return true;
+	end
+	return nil;
+end
+
+-- Whether a unit may take an enemy it has found as its target, by its temperament (NC-1): a Fighter any; a Defensive one only from the
+-- side that roused it (any, roused by near misses); a Skittish or Pacifist one none at all. Nobody targets a unit the AI is told to ignore.
+function SharedBehaviors.MayTarget(AI, Owner, MO)
+	if not MO then
+		return false;
+	end
+	if IsActor(MO) and ToActor(MO).IgnoredByAI then
+		return false;
+	end
+	local temperament = Owner.Temperament;
+	if temperament == Actor.TEMPERAMENT_FIGHTER then
+		return true;
+	elseif temperament == Actor.TEMPERAMENT_DEFENSIVE then
+		local by = SharedBehaviors.Provoked(AI, Owner);
+		return by == true or (by ~= nil and MO.Team == by);
+	end
+	return false;
+end
+
+-- Whether a unit never starts a fight (NC-1): Skittish or Pacifist.
+function SharedBehaviors.NeverFights(Owner)
+	local temperament = Owner.Temperament;
+	return temperament == Actor.TEMPERAMENT_SKITTISH or temperament == Actor.TEMPERAMENT_PACIFIST;
+end
+
+-- A target it may no longer have (NC-1): a Defensive unit calmed down, or a temperament changed. Dropped, with its fight; called once an
+-- update before targets are looked for. @return Whether it was dropped.
+local fightBehaviors = { ShootTarget = true, ThrowTarget = true, AttackTarget = true, ShootArea = true, PinArea = true };
+function SharedBehaviors.DropForbiddenTarget(AI, Owner)
+	if not AI.Target or SharedBehaviors.MayTarget(AI, Owner, AI.Target) then
+		return false;
+	end
+	AI.Target = nil;
+	AI.OldTargetPos = nil;
+	AI.UnseenTarget = nil;
+	AI.fire = false;
+	if AI.NextBehavior and fightBehaviors[AI.NextBehaviorName] then
+		AI.NextBehavior, AI.NextCleanup, AI.NextBehaviorName = nil, nil, nil;
+	end
+	if AI.Behavior and fightBehaviors[AI.BehaviorName] then
+		-- (Told to abort, as the AI's own switch does, so the coroutine isn't left hanging.)
+		coroutine.resume(AI.Behavior, AI, Owner, true);
+		if AI.BehaviorCleanup then
+			AI.BehaviorCleanup(AI);
+		end
+		AI.Behavior, AI.BehaviorName, AI.BehaviorCleanup = nil, nil, nil;
+	end
+	return true;
+end
+
+-- Running away (NC-1): a Skittish unit hurt, pinned by near misses, come on by a soldier of another side close by, or near a friend of
+-- its kind that is running, runs away from it about 15 m along the ground, waits a moment and goes back to what it was doing. It says
+-- on itself that it is running, and from where ("AIFleeing", "AIFleeFromX/Y"), so the herd runs with it. Called every update.
+function SharedBehaviors.FleeUpdate(AI, Owner)
+	if Owner.Temperament ~= Actor.TEMPERAMENT_SKITTISH or Owner:IsPlayerControlled() then
+		if AI.Flee then
+			Owner:RemoveNumberValue("AIFleeing");
+			AI.Flee = nil;
+		end
+		return false;
+	end
+	if AI.Flee then
+		if not Owner:NumberValueExists("AIFlee") or SharedBehaviors.OrderChangedSince(Owner, AI.Flee.Spot) then
+			-- (Another order given meanwhile: it stands.)
+			SharedBehaviors.Trace(Owner, "flee: called off by an order");
+			Owner:RemoveNumberValue("AIFlee");
+			Owner:RemoveNumberValue("AIFleeing");
+			AI.Flee = nil;
+			return false;
+		end
+		local there = SceneMan:ShortestDistance(Owner.Pos, AI.Flee.Spot, false):MagnitudeIsLessThan(Owner.Height + 20);
+		if there and not AI.Flee.There then
+			AI.Flee.There = true;
+			AI.Flee.Timer:Reset();
+			Owner:SetNumberValue("AIFleeing", 0);
+		end
+		-- (Hurt again or still shot at where it ran to: off again, further.)
+		local again = Owner.MSSinceHurt < 300 or SharedBehaviors.Suppression(AI, Owner) > 0.4;
+		if (AI.Flee.There and AI.Flee.Timer:IsPastSimMS(again and 0 or 4000)) or AI.Flee.Timer:IsPastSimMS(12000) then
+			SharedBehaviors.Trace(Owner, "flee: over");
+			Owner:RemoveNumberValue("AIFlee");
+			Owner:RemoveNumberValue("AIFleeing");
+			SharedBehaviors.RestoreOrder(AI, Owner, AI.Flee.Keep);
+			AI.Flee = nil;
+			AI.FleeRestTimer = Timer();
+		end
+		return AI.Flee ~= nil;
+	end
+	-- What to run from, checked twice a second: a blow, near misses (from where the alarm last was), a soldier of another side close by,
+	-- or a running friend of the same side close by (from where it ran from).
+	AI.FleeCheckTimer = AI.FleeCheckTimer or Timer();
+	local hurt = Owner.MSSinceHurt < 400;
+	if not hurt and not AI.FleeCheckTimer:IsPastSimMS(500) then
+		return false;
+	end
+	AI.FleeCheckTimer:Reset();
+	local From;
+	if hurt then
+		From = Owner.LastHurtFrom;
+	elseif SharedBehaviors.Suppression(AI, Owner) > 0.2 and AI.AlarmPos then
+		From = AI.AlarmPos;
+	else
+		local best = 130;
+		for Act in MovableMan.Actors do
+			if Act.ID ~= Owner.ID and Act.Status < Actor.DYING then
+				local dist = SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false).Magnitude;
+				if dist < best then
+					if Act.Team ~= Owner.Team and Act.ClassName ~= "ADoor" and not IsACraft(Act) and not Act.NonCombatant then
+						From, best = Act.Pos, dist;
+					elseif Act.Team == Owner.Team and dist < 160 and SharedBehaviors.PeerValue(Act, "AIFleeing") == 1 and SharedBehaviors.PeerValueExists(Act, "AIFleeFromX") then
+						From, best = Vector(SharedBehaviors.PeerValue(Act, "AIFleeFromX"), SharedBehaviors.PeerValue(Act, "AIFleeFromY")), dist;
+					end
+				end
+			end
+		end
+	end
+	if not From then
+		return false;
+	end
+	-- (A moment's rest between runs, unless hurt: a herd beside a soldier walked off and back for good.)
+	if not hurt and AI.FleeRestTimer and not AI.FleeRestTimer:IsPastSimMS(3000) then
+		return false;
+	end
+	local dx = SceneMan:ShortestDistance(From, Owner.Pos, false).X;
+	local dir = dx >= 0 and 1 or -1;
+	if math.abs(dx) < 2 then
+		dir = math.random() < 0.5 and -1 or 1;
+	end
+	local Spot;
+	for _, run in ipairs({300, 180, 90}) do
+		local Try = SceneMan:MovePointToGround(Owner.Pos + Vector(dir * run, -Owner.Height * 0.3), math.floor(Owner.Height * 0.2), 4);
+		if SceneMan:GetTerrMatter(Try.X, Try.Y) == rte.airID then
+			Spot = Try;
+			break;
+		end
+	end
+	if not Spot then
+		return false;
+	end
+	AI.Flee = { Keep = SharedBehaviors.RememberOrder(AI, Owner), Timer = Timer(), Spot = Spot, There = false };
+	Owner:SetNumberValue("AIFlee", 1);
+	Owner:SetNumberValue("AIFleeing", 1);
+	Owner:SetNumberValue("AIFleeFromX", From.X);
+	Owner:SetNumberValue("AIFleeFromY", From.Y);
+	Owner.OrderAttack = false;
+	AI.Target = nil;
+	Owner:ClearAIWaypoints();
+	Owner:AddAISceneWaypoint(Spot);
+	Owner.AIMode = Actor.AIMODE_GOTO;
+	SharedBehaviors.Trace(Owner, "flee: from " .. math.floor(From.X) .. "," .. math.floor(From.Y) .. " to " .. math.floor(Spot.X) .. "," .. math.floor(Spot.Y));
+	return true;
+end
+
+-- Grazing (NC-1): livestock left standing about (a sentry) wander a little round where they were left, a few seconds at a time, so a
+-- field of animals isn't a field of statues: up to 4.5 m either way, or 2.5 m when told to hold position.
+function SharedBehaviors.GrazeUpdate(AI, Owner)
+	if AI.Flee or not Owner:IsInGroup("Actors - Livestock") or Owner:IsPlayerControlled() or Owner.OrderAttack then
+		return;
+	end
+	if Owner.AIMode ~= Actor.AIMODE_SENTRY and not (Owner.AIMode == Actor.AIMODE_GOTO and AI.Grazing) then
+		AI.GrazeHome, AI.Grazing = nil, nil;
+		return;
+	end
+	AI.GrazeHome = AI.GrazeHome or Vector(Owner.Pos.X, Owner.Pos.Y);
+	AI.GrazeTimer = AI.GrazeTimer or Timer();
+	AI.GrazeWait = AI.GrazeWait or math.random(3000, 9000);
+	if Owner.AIMode == Actor.AIMODE_GOTO then
+		if AI.GrazeTimer:IsPastSimMS(8000) then
+			-- (Couldn't get there: stand where it is.)
+			Owner:ClearAIWaypoints();
+			Owner.AIMode = Actor.AIMODE_SENTRY;
+			AI.Grazing = nil;
+			AI.GrazeTimer:Reset();
+		end
+		return;
+	end
+	if AI.Grazing then
+		AI.Grazing = nil;
+		AI.GrazeTimer:Reset();
+	end
+	if not AI.GrazeTimer:IsPastSimMS(AI.GrazeWait) then
+		return;
+	end
+	AI.GrazeTimer:Reset();
+	AI.GrazeWait = math.random(3000, 9000);
+	local reach = Owner.OrderHold and 50 or 90;
+	local Spot = SceneMan:MovePointToGround(AI.GrazeHome + Vector(math.random(-reach, reach), -Owner.Height * 0.3), math.floor(Owner.Height * 0.2), 4);
+	if SceneMan:GetTerrMatter(Spot.X, Spot.Y) ~= rte.airID or SceneMan:ShortestDistance(Owner.Pos, Spot, false):MagnitudeIsLessThan(20) then
+		return;
+	end
+	AI.Grazing = true;
+	Owner:ClearAIWaypoints();
+	Owner:AddAISceneWaypoint(Spot);
+	Owner.AIMode = Actor.AIMODE_GOTO;
+end
+
 -- Whether the unit's weapons rule (RC-1) lets it pull the trigger now: always at will, never on hold fire, and on return fire only while
 -- it is being shot at, hurt or pinned down by near misses in the last four seconds. Call once an update (it keeps the health it last saw).
 function SharedBehaviors.MayFire(AI, Owner)
 	-- Ducked down behind low cover (AC-4): the gun is behind it too.
 	if AI.ducked then
+		return false;
+	end
+	-- Its nature first (NC-1): a unit that never fights never pulls the trigger, and one that only fights back does so only while provoked.
+	local temperament = Owner.Temperament;
+	if temperament == Actor.TEMPERAMENT_SKITTISH or temperament == Actor.TEMPERAMENT_PACIFIST then
+		AI.ruleLastHealth = Owner.Health;
+		return false;
+	elseif temperament == Actor.TEMPERAMENT_DEFENSIVE and not SharedBehaviors.Provoked(AI, Owner) then
+		AI.ruleLastHealth = Owner.Health;
 		return false;
 	end
 	local rule = Owner.WeaponRule;
@@ -1938,6 +2158,12 @@ end
 -- What MayFire last said, without its side effects (it keeps the health it last saw, and is called once an update): for starting a throw,
 -- which takes a second or two of the trigger held. (Grenades and smoke under the weapons rule too, AC-5.)
 function SharedBehaviors.RuleLetsFire(AI, Owner)
+	local temperament = Owner.Temperament;
+	if temperament == Actor.TEMPERAMENT_SKITTISH or temperament == Actor.TEMPERAMENT_PACIFIST then
+		return false;
+	elseif temperament == Actor.TEMPERAMENT_DEFENSIVE and not SharedBehaviors.Provoked(AI, Owner) then
+		return false;
+	end
 	local rule = Owner.WeaponRule;
 	if rule == Actor.WEAPONS_RETURN_FIRE then
 		return AI.UnderFireTimer ~= nil and not AI.UnderFireTimer:IsPastSimMS(4000);
@@ -4836,6 +5062,10 @@ function SharedBehaviors.CalculateThreatLevel(MO, Owner)
 		end
 	elseif MO.ClassName == "ADoor" then
 		priority = priority * 0.3;
+	end
+	-- Animals and civilians last (NC-1): shot when there's nobody else to shoot.
+	if IsActor(MO) and ToActor(MO).NonCombatant then
+		priority = priority - 2.0;
 	end
 
 	return priority - MO.Health / 500; -- prioritize damaged targets
