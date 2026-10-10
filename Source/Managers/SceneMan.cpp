@@ -38,6 +38,9 @@
 
 #include "tracy/Tracy.hpp"
 
+#include <mutex>
+#include <unordered_set>
+
 using namespace RTE;
 
 #define CLEANAIRINTERVAL 200000
@@ -47,6 +50,32 @@ std::vector<std::pair<int, BITMAP*>> SceneMan::m_IntermediateSettlingBitmaps;
 
 // Stored as a thread-local instead of in the class, because multithreaded Lua scripts will interfere otherwise
 thread_local Vector s_LastRayHitPos;
+
+namespace {
+	/// The size of a cell of knocked-out ladder rungs, in scene pixels (see NoteKnockedOut).
+	constexpr int c_KnockedOutCellSize = 16;
+	std::mutex s_KnockedOutMutex;
+	std::unordered_set<int64_t> s_KnockedOutLadderCells; //!< Cells (y in the high half, x in the low) with ladder rungs knocked out since the last flush.
+
+	/// A terrain pixel knocked out by a shot, a blast or a script: a ladder's rung is kept for the path grids (see SceneMan::FlushKnockedOutLadders).
+	/// The grids hear of terrain drawn in (a settled pixel, a placed object), but nothing of terrain knocked out, and a ladder shot away stayed a
+	/// way up in them: units were routed to its bare wall and stood there. Only the ladders: other ground knocked out only opens a way the
+	/// grid didn't know of, which the next look at the terrain finds, and a firefight's every chip in the dirt would keep the grids busy.
+	/// Safe from any thread (the collisions run in parallel).
+	void NoteKnockedOut(int x, int y, int materialID) {
+		static int s_Ladder = -1;
+		if (s_Ladder < 0) {
+			const Material* ladder = g_SceneMan.GetMaterial("Ladder");
+			s_Ladder = ladder ? ladder->GetIndex() : 0;
+		}
+		if (s_Ladder == 0 || materialID != s_Ladder) {
+			return;
+		}
+		int64_t cell = (static_cast<int64_t>(y / c_KnockedOutCellSize) << 32) | static_cast<uint32_t>(x / c_KnockedOutCellSize);
+		std::scoped_lock lock(s_KnockedOutMutex);
+		s_KnockedOutLadderCells.insert(cell);
+	}
+} // namespace
 
 SceneMan::SceneMan() {
 	m_pOrphanSearchBitmap = 0;
@@ -598,6 +627,7 @@ int SceneMan::RemoveOrphans(int posX, int posY,
 		// Liquid resting against the pixel that just went may now have somewhere to flow.
 		FluidSim::Disturb(Vector(static_cast<float>(posX), static_cast<float>(posY)), 2.0F);
 		TerrainCollapse::NoteDamage(posX, posY);
+		NoteKnockedOut(posX, posY, materialID);
 	}
 
 	int xoff[8] = {-1, 0, 1, -1, 1, -1, 0, 1};
@@ -689,6 +719,7 @@ bool SceneMan::TryPenetrate(int posX,
 			// Liquid resting against the pixel that just went may now have somewhere to flow.
 			FluidSim::Disturb(Vector(static_cast<float>(posX), static_cast<float>(posY)), 2.0F);
 			TerrainCollapse::NoteDamage(posX, posY);
+			NoteKnockedOut(posX, posY, materialID);
 		}
 		// TODO: Improve / tweak randomized pushing away of terrain")
 		// (Never liquid: past its first few pixels a shot through a pool erased about two in three of the rest with no drop to show for
@@ -699,6 +730,7 @@ bool SceneMan::TryPenetrate(int posX,
 			// Liquid resting against the pixel that just went may now have somewhere to flow.
 			FluidSim::Disturb(Vector(static_cast<float>(posX), static_cast<float>(posY)), 2.0F);
 			TerrainCollapse::NoteDamage(posX, posY);
+			NoteKnockedOut(posX, posY, materialID);
 		}
 
 		// Save the impulse force effects of the penetrating particle.
@@ -751,6 +783,7 @@ bool SceneMan::TryPenetrate(int posX,
 						}
 						_putpixel(pFGColor, posX, testY, g_MaskColor);
 						_putpixel(pMaterial, posX, testY, g_MaterialAir);
+						NoteKnockedOut(posX, testY, testMaterialID);
 					} else {
 						break;
 					}
@@ -804,6 +837,7 @@ MOPixel* SceneMan::DislodgePixel(int posX, int posY) {
 	// Liquid resting against the pixel that just went may now have somewhere to flow.
 	FluidSim::Disturb(Vector(static_cast<float>(posX), static_cast<float>(posY)), 2.0F);
 	TerrainCollapse::NoteDamage(posX, posY);
+	NoteKnockedOut(posX, posY, materialID);
 
 	return pixelMO;
 }
@@ -2955,6 +2989,25 @@ void SceneMan::ClearSeenPixels() {
 
 void SceneMan::ClearCurrentScene() {
 	m_pCurrentScene = nullptr;
+	std::scoped_lock lock(s_KnockedOutMutex);
+	s_KnockedOutLadderCells.clear();
+}
+
+void SceneMan::FlushKnockedOutLadders() {
+	std::unordered_set<int64_t> cells;
+	{
+		std::scoped_lock lock(s_KnockedOutMutex);
+		cells.swap(s_KnockedOutLadderCells);
+	}
+	SLTerrain* terrain = m_pCurrentScene ? m_pCurrentScene->GetTerrain() : nullptr;
+	if (!terrain) {
+		return;
+	}
+	for (int64_t cell: cells) {
+		float x = static_cast<float>(static_cast<int32_t>(cell & 0xFFFFFFFF) * c_KnockedOutCellSize);
+		float y = static_cast<float>(static_cast<int32_t>(cell >> 32) * c_KnockedOutCellSize);
+		terrain->AddUpdatedMaterialArea(Box(Vector(x, y), static_cast<float>(c_KnockedOutCellSize), static_cast<float>(c_KnockedOutCellSize)));
+	}
 }
 
 BITMAP* SceneMan::GetIntermediateBitmapForSettlingIntoTerrain(int moDiameter) const {

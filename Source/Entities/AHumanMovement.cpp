@@ -2514,7 +2514,15 @@ int AHuman::MoveAlongRoute() {
 				mover.standUpTimer.Reset();
 			}
 		}
-		mover.progressTimer.Reset();
+		// (Waiting at the ladder counts as getting on only while there is one to take: with its rungs shot away, a unit stood pressing up at
+		// the bare wall for good, its progress renewed each tick, and was never stuck enough to be given another way round.)
+		float bodyX = 0.0F;
+		float gripX = 0.0F;
+		int wallSide = 0;
+		bool material = false;
+		if (FindLadderNear(m_Pos, h * 0.3F, bodyX, gripX, wallSide, material, toPoint.m_Y < 0.0F ? -1 : 1)) {
+			mover.progressTimer.Reset();
+		}
 		return RouteMover::Moving;
 	}
 
