@@ -11,6 +11,8 @@ The rowing boat (VH-2): a clinker-built hull with a painted top strake, the oar 
 
 The motor boat (VH-2): a little white speedboat with an outboard motor on its transom, and the icon.
 
+The motor buggy (VH-5): a sand-painted dune buggy with a roll cage, a gun post and its engine behind, two knobbly wheels and the icon.
+
 Run from the repository's root: python Tools/MakeVehicleSprites.py
 """
 
@@ -24,6 +26,7 @@ OUT = Path("Data/Base.rte/Actors/Vehicles/WoodenCart")
 HOPPER_OUT = Path("Data/Base.rte/Actors/Vehicles/Moonhopper")
 BOAT_OUT = Path("Data/Base.rte/Actors/Vehicles/RowingBoat")
 MOTOR_OUT = Path("Data/Base.rte/Actors/Vehicles/MotorBoat")
+BUGGY_OUT = Path("Data/Base.rte/Actors/Vehicles/MotorBuggy")
 PALETTE = Image.open("Data/Base.rte/palette.bmp").getpalette()[:768]
 
 # Palette ramps, dark to light.
@@ -578,6 +581,113 @@ def motor_hull_points():
     return [(x - MOTOR_MID[0], motor_bottom(x) - MOTOR_MID[1]) for x in range(12, MOTOR_W - 4, 12)]
 
 
+# The motor buggy's size (keep in step with MotorBuggy.ini): the body's picture and its middle in it, where the gun post stands, and the
+# wheels: the rear one bigger, both on long-travel springs.
+BUG_W, BUG_H = 96, 34
+BUG_MID = (48, 20)
+BUG_POST = (24, 0)
+BUG_REAR_WHEEL, BUG_FRONT_WHEEL = 30, 26
+SAND = [104, 106, 108, 110, 111, 113, 115]
+
+
+def knobbly_wheel(size, rim, seed, knobs=16):
+    """A fat knobbly tyre: square tread blocks round the outside, a painted rim with bolts, and a chrome hub. Lit from the upper left."""
+    c = Canvas(size, size, seed)
+    mid = (size - 1) / 2
+    outer = mid + 0.4
+    tyre = size * 0.2
+    for y in range(size):
+        for x in range(size):
+            dx, dy = x - mid, y - mid
+            d = math.hypot(dx, dy)
+            angle = math.atan2(dy, dx)
+            lit = (-dx - dy) / max(d, 0.001) * 0.15
+            knob = (angle * knobs / (2 * math.pi)) % 1.0 < 0.5
+            if d > outer or (d > outer - 1.6 and not knob):
+                continue
+            if d > outer - tyre:
+                light = 0.45 + lit - (0.2 if d > outer - 1.6 else 0.0) - (0.15 if d < outer - tyre + 1.0 else 0.0)
+                c.put(x, y, shade(RUBBER, dither(x, y, light, 0.04)))
+            elif d > outer - tyre - 3.0:
+                light = 0.6 + lit * 1.5 - (0.25 if d > outer - tyre - 0.8 else 0.0)
+                c.put(x, y, shade(rim, dither(x, y, light, 0.03)))
+            elif d < 2.5:
+                c.put(x, y, shade(CHROME, 0.85 if d < 1.2 else 0.5))
+            else:
+                c.put(x, y, shade(IRON, dither(x, y, 0.35 + lit, 0.03)))
+    for k in range(5):
+        a = k * 2 * math.pi / 5
+        c.put(round(mid + math.cos(a) * 3.6), round(mid + math.sin(a) * 3.6), CHROME[7])
+    return c.image()
+
+
+def buggy_body():
+    """A dune buggy, facing right: a sand-painted tub on a tube chassis, an open roll cage, a gun post at the back of the cage, the engine
+    behind with its pipes curling up, shocks with coil springs over the wheels, a sloped nose with a lamp and a bash plate."""
+    c = Canvas(BUG_W, BUG_H, 51)
+    # The chassis rails and the bash plate under the nose.
+    line(c, 8, 27, 86, 27, IRON, 0.45, 3)
+    line(c, 84, 28, 93, 23, IRON, 0.5, 2)
+    # The shocks over the wheels, raked a little, with orange coil springs.
+    for top_x, bottom_x in ((22, 18), (76, 80)):
+        for y in range(8, 30):
+            x = round(top_x + (bottom_x - top_x) * (y - 8) / 22)
+            for dx in (-1, 0, 1):
+                c.put(x + dx, y, shade(IRON, 0.55 - abs(dx + 0.5) * 0.2))
+            if y % 3 == 0 and 10 < y < 28:
+                for dx in (-2, -1, 0, 1, 2):
+                    c.put(x + dx, y, shade(PAINT, 0.8 - abs(dx) * 0.1))
+    # The engine at the back: a dark block with fins, an air filter, and two chrome pipes curling up behind.
+    for y in range(12, 26):
+        for x in range(4, 22):
+            light = 0.38 - (y - 12) * 0.015 + (0.15 if y % 3 == 0 else 0.0) - (x - 4) * 0.005
+            c.put(x, y, shade(IRON, dither(x, y, light, 0.03)))
+    for y in range(8, 12):
+        for x in range(9, 17):
+            c.put(x, y, shade(CHROME, 0.7 - (y - 8) * 0.1))
+    for i, (x0, y0) in enumerate(((3, 22), (3, 18))):
+        line(c, x0, y0, 0, y0 - 4 - i * 2, CHROME, 0.6, 1)
+        line(c, 0, y0 - 4 - i * 2, 1, y0 - 12 - i * 2, CHROME, 0.6, 1)
+        c.put(1, y0 - 13 - i * 2, RUBBER[1])
+    # The tub, its nose sloping down to the bash plate.
+    panel(c, 22, 15, 70, 27, SAND, 0.6)
+    panel(c, 70, 18, 90, 27, SAND, 0.55, slope=lambda y: max(0, round((23 - y) * 2.5)))
+    for x in range(23, 88):
+        c.put(x, 21, SAND[1] if x % 2 else SAND[0])
+    for x in (26, 38, 50, 62, 74):
+        bolt(c, x, 24)
+    # A number on the door.
+    for x, y in ((44, 17), (45, 17), (46, 17), (46, 18), (45, 19), (44, 20)):
+        c.put(x, y, IRON[1])
+    # The roll cage over the tub, and the gun post at its back.
+    line(c, 30, 14, 34, 1, CHROME, 0.55, 2)
+    line(c, 66, 14, 60, 1, CHROME, 0.55, 2)
+    line(c, 34, 1, 60, 1, CHROME, 0.6, 2)
+    line(c, 35, 2, 65, 14, CHROME, 0.4, 1)
+    px, py = BUG_POST
+    line(c, px, py + 1, px + 2, py + 15, IRON, 0.5, 2)
+    for x in range(px - 2, px + 3):
+        c.put(x, py, IRON[5])
+    # The windscreen, a lamp on the nose.
+    for y in range(4, 15):
+        lean = (14 - y) // 3
+        c.put(64 - lean, y, shade(GLASS, 0.8 - (y - 4) * 0.04))
+    for x, y in ((86, 21), (87, 21), (86, 22), (87, 22)):
+        c.put(x, y, LAMP[1] if (x, y) == (86, 21) else LAMP[0])
+    return c.image()
+
+
+def buggy_icon(body, rear, front):
+    """The buy menu's picture: the body with its wheels on, as it sits on its springs."""
+    hub = BUG_MID[1] + 22 - 7
+    img = Image.new("P", (BUG_W, hub + BUG_REAR_WHEEL // 2 + 1), 0)
+    img.putpalette(PALETTE)
+    img.paste(body, (0, 0), body.point(lambda i: 255 if i else 0, mode="1"))
+    for wheel, x in ((rear, BUG_MID[0] - 30), (front, BUG_MID[0] + 32)):
+        img.paste(wheel, (x - wheel.width // 2, hub - wheel.height // 2), wheel.point(lambda i: 255 if i else 0, mode="1"))
+    return img
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     body = cart_body()
@@ -610,6 +720,15 @@ def main():
     hull.save(MOTOR_OUT / "MotorBoatHull.png")
     motor_icon(hull).save(MOTOR_OUT / "MotorBoatIcon.png")
     print("Motor boat hull points:", motor_hull_points())
+
+    BUGGY_OUT.mkdir(parents=True, exist_ok=True)
+    body = buggy_body()
+    rear = knobbly_wheel(BUG_REAR_WHEEL, SAND, 52)
+    front = knobbly_wheel(BUG_FRONT_WHEEL, SAND, 53, knobs=14)
+    body.save(BUGGY_OUT / "BuggyBody.png")
+    rear.save(BUGGY_OUT / "BuggyRearWheel.png")
+    front.save(BUGGY_OUT / "BuggyFrontWheel.png")
+    buggy_icon(body, rear, front).save(BUGGY_OUT / "BuggyIcon.png")
 
 
 if __name__ == "__main__":

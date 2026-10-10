@@ -2,6 +2,7 @@
 and raises its pitch with the engine's load.
 
 The outboard motor: a small two-stroke, a buzzy bark at each firing over a rattle and a little hiss, 50 firings a second at pitch 1.
+The motor buggy: a big V-twin, two firings close together then a gap (the potato-potato of an air-cooled twin), deeper and rougher.
 
 Run from the repository's root: python Tools/MakeVehicleSounds.py
 """
@@ -54,8 +55,37 @@ def two_stroke(firings_per_second, seconds, bark, seed):
     return smoothed
 
 
+def v_twin(cycles_per_second, seconds, bark, seed):
+    """An engine loop with two firings a cycle, the second hard on the first (at 40% of the way round) and a gap after: built as
+    two_stroke is, a whole number of cycles in the loop."""
+    rng = random.Random(seed)
+    count = round(cycles_per_second * seconds)
+    period = int(RATE / cycles_per_second)
+    samples = [0.0] * (period * count)
+    for k in range(count):
+        for offset, strength in ((0.0, 1.0), (0.4, 0.85)):
+            strength *= 0.85 + rng.uniform(0.0, 0.3)
+            start = k * period + int(offset * period)
+            for i in range(int(period * 0.6)):
+                t = i / RATE
+                ring = math.sin(2 * math.pi * bark * t) * math.exp(-t * 55) + math.sin(2 * math.pi * bark * 2.03 * t) * math.exp(-t * 90) * 0.4
+                thump = math.exp(-t * 200)
+                samples[(start + i) % len(samples)] += strength * (ring * 0.8 + thump * 0.8 + rng.uniform(-1.0, 1.0) * math.exp(-t * 120) * 0.3)
+    length = len(samples)
+    for i in range(length):
+        samples[i] += rng.uniform(-1.0, 1.0) * 0.05 + math.sin(2 * math.pi * cycles_per_second * i / RATE) * 0.15
+    smoothed = samples[:]
+    for _ in range(3):
+        previous = smoothed[-1]
+        for i in range(length):
+            previous = previous + (smoothed[i] - previous) * 0.35
+            smoothed[i] = previous
+    return smoothed
+
+
 def main():
     write_wav(Path("Data/Base.rte/Actors/Vehicles/MotorBoat/OutboardLoop.wav"), two_stroke(50, 1.0, 190, 7))
+    write_wav(Path("Data/Base.rte/Actors/Vehicles/MotorBuggy/BuggyEngineLoop.wav"), v_twin(16, 1.0, 95, 11))
 
 
 if __name__ == "__main__":
