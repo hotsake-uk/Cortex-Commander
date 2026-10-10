@@ -234,6 +234,8 @@ namespace SandboxDetail {
 				return "Drag along the ground to put down candles: tapers, pillars and stubs in white, ivory, red and beeswax. Set one alight with fire (the Fire brush, a flame, burning grass beside it) and it burns like a real one: a small steady flame that lights up round it, the wax melting down from the top and running down the sides, until it's burnt down. Water, a strong wind, a blast or rain in the open puts it out; light it again and it carries on.";
 			case Tool::TerrainOther:
 				return "Paints the terrain chosen under \"More terrain...\": the base game's ground (topsoil, bedrock, red and lunar earth, snow, metal, ...).";
+			case Tool::Metal:
+				return "Paints the metal chosen under Metals: the bunkers' plating, or gold, silver, bronze, brass, copper and chrome, which catch the sun and lamplight in their own colour.";
 			default:
 				return nullptr;
 		}
@@ -365,6 +367,13 @@ namespace SandboxDetail {
 				return {Icon::Chunk, IM_COL32(230, 190, 60, 255)};
 			case Tool::TerrainOther:
 				return {Icon::Chunk, IM_COL32(200, 160, 120, 255)};
+			case Tool::Metal:
+				for (const PaintMetal& metal: c_PaintMetals) {
+					if (s_PaintMetal == metal.Material) {
+						return {Icon::Chunk, IM_COL32(metal.R, metal.G, metal.B, 255)};
+					}
+				}
+				return {Icon::Chunk, IM_COL32(175, 189, 199, 255)};
 			case Tool::Plants:
 				return {Icon::Plant, IM_COL32(110, 190, 80, 255)};
 			case Tool::Cacti:
@@ -686,6 +695,46 @@ namespace SandboxDetail {
 			ImVec2 nameSize = ImGui::CalcTextSize(name, nullptr, false, wrap);
 			ImGui::PushClipRect(at, to, true);
 			drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(std::floor(at.x + std::max((width - nameSize.x) * 0.5F, pad * 0.5F)), at.y + pad + pixel * 12.0F + ToolUI::Pixel()), ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : (unavailable ? ImGuiCol_TextDisabled : ImGuiCol_Text)), name, nullptr, wrap);
+			ImGui::PopClipRect();
+			ImGui::PopID();
+		}
+	}
+
+	void MetalButtons() {
+		const ImGuiStyle& style = ImGui::GetStyle();
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		float pixel = ToolUI::Pixel() * 2.0F;
+		const int perRow = 3;
+		float gap = style.ItemSpacing.x * 0.5F;
+		float width = std::floor((ImGui::GetContentRegionAvail().x - gap * static_cast<float>(perRow - 1)) / static_cast<float>(perRow));
+		float pad = pixel * 2.0F;
+		float height = pad + pixel * 12.0F + ImGui::GetTextLineHeight() + pad;
+		int toolIndex = ToolIndex(Tool::Metal);
+		int column = 0;
+		for (const PaintMetal& metal: c_PaintMetals) {
+			const Material* material = g_SceneMan.GetMaterial(metal.Material);
+			if (!material || material->GetIndex() == g_MaterialAir) {
+				continue;
+			}
+			if (column++ % perRow != 0) {
+				ImGui::SameLine(0.0F, gap);
+			}
+			ImGui::PushID(metal.Material);
+			ImVec2 at = ImGui::GetCursorScreenPos();
+			if (ImGui::InvisibleButton("##metal", ImVec2(width, height))) {
+				s_PaintMetal = metal.Material;
+				TookTool(toolIndex);
+			}
+			ImGui::SetItemTooltip("%s", metal.About);
+			bool hovered = ImGui::IsItemHovered();
+			bool selected = s_ToolIndex == toolIndex && s_PaintMetal == metal.Material;
+			ImVec2 to(at.x + width, at.y + height);
+			drawList->AddRectFilled(at, to, ImGui::GetColorU32(selected ? ImGuiCol_FrameBgActive : hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg));
+			drawList->AddRect(at, to, ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Border), 0.0F, 0, selected ? ToolUI::Pixel() * 2.0F : ToolUI::Pixel());
+			DrawIcon(drawList, Icon::Chunk, ImVec2(std::floor(at.x + (width - pixel * 12.0F) * 0.5F), at.y + pad), pixel, IM_COL32(metal.R, metal.G, metal.B, 255));
+			ImVec2 nameSize = ImGui::CalcTextSize(metal.Name);
+			ImGui::PushClipRect(at, to, true);
+			drawList->AddText(ImVec2(std::floor(at.x + std::max((width - nameSize.x) * 0.5F, pad * 0.5F)), at.y + pad + pixel * 12.0F + ToolUI::Pixel()), ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Text), metal.Name);
 			ImGui::PopClipRect();
 			ImGui::PopID();
 		}
