@@ -751,6 +751,7 @@ namespace SandboxDetail {
 	inline std::vector<Vector> s_ZoneDraft; //!< The corners of the spawn zone being drawn with the Battle tab's tool, in order.
 	inline int s_ToolBeforeBattle = -1; //!< The tool in hand before the card's defence point or drop line button took one, given back by PutDownBattleTool.
 	inline std::unordered_map<long, BattleDefender> s_BattleDefenders; //!< By unique ID.
+	inline bool s_DefendersMoved = false; //!< A defender's place moved (MoveDefender) since UpdateBattleDefenders last ran: it runs on the next update rather than at its half-second turn.
 	inline std::vector<BattleCraft> s_BattleCraft;
 
 	/// The Battle Director's mode as the sim runs it: the settings last sent from the window, and how the game is going.
