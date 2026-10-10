@@ -653,18 +653,24 @@ namespace SandboxDetail {
 		drawList->AddTriangleFilled(ImVec2(to.x - size, from.y), ImVec2(to.x, from.y), ImVec2(to.x, from.y + size), IM_COL32(242, 182, 61, 255));
 	}
 
+	/// How many tiles go to a row, and how wide each is (into width): about the given size, whatever the window's width, so a wider window
+	/// (the large view) fits more of them to a row rather than making them bigger. Never fewer than the given count, as in a narrow panel.
+	int TileColumns(float tile, int fewest, float gap, float& width) {
+		float room = ImGui::GetContentRegionAvail().x;
+		const int perRow = std::max(fewest, static_cast<int>((room + gap) / (tile + gap)));
+		width = std::floor((room - gap * static_cast<float>(perRow - 1)) / static_cast<float>(perRow));
+		return perRow;
+	}
+
 	/// The tools to pick from, as a row of tiles: each its picture with its name under it, the one in hand lit up.
 	void ToolButtons(std::initializer_list<Tool> tools) {
 		const ImGuiStyle& style = ImGui::GetStyle();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		float pixel = ToolUI::Pixel() * 2.0F;
-		// About the size they are four to a row in the side panel, whatever the window's width: a wider window (the large view) fits more of them
-		// to a row rather than making them bigger. Never fewer than four to a row, as in a narrow panel.
+		// About the size they are four to a row in the side panel.
 		float gap = style.ItemSpacing.x * 0.5F;
-		float room = ImGui::GetContentRegionAvail().x;
-		float tile = ImGui::GetFontSize() * 6.5F;
-		const int perRow = std::max(4, static_cast<int>((room + gap) / (tile + gap)));
-		float width = std::floor((room - gap * static_cast<float>(perRow - 1)) / static_cast<float>(perRow));
+		float width = 0.0F;
+		const int perRow = TileColumns(ImGui::GetFontSize() * 6.5F, 4, gap, width);
 		float pad = pixel * 2.0F;
 		float height = pad + pixel * 12.0F + ImGui::GetTextLineHeight() * 2.0F + pad;
 		int column = 0;
@@ -713,9 +719,9 @@ namespace SandboxDetail {
 		const ImGuiStyle& style = ImGui::GetStyle();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		float pixel = ToolUI::Pixel() * 2.0F;
-		const int perRow = 3;
 		float gap = style.ItemSpacing.x * 0.5F;
-		float width = std::floor((ImGui::GetContentRegionAvail().x - gap * static_cast<float>(perRow - 1)) / static_cast<float>(perRow));
+		float width = 0.0F;
+		const int perRow = TileColumns(ImGui::GetFontSize() * 8.5F, 3, gap, width);
 		float pad = pixel * 2.0F;
 		float height = pad + pixel * 12.0F + ImGui::GetTextLineHeight() + pad;
 		int toolIndex = ToolIndex(Tool::Metal);
@@ -754,9 +760,9 @@ namespace SandboxDetail {
 		const ImGuiStyle& style = ImGui::GetStyle();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		float pixel = ToolUI::Pixel() * 2.0F;
-		const int perRow = 3;
 		float gap = style.ItemSpacing.x * 0.5F;
-		float width = std::floor((ImGui::GetContentRegionAvail().x - gap * static_cast<float>(perRow - 1)) / static_cast<float>(perRow));
+		float width = 0.0F;
+		const int perRow = TileColumns(ImGui::GetFontSize() * 8.5F, 3, gap, width);
 		float pad = pixel * 2.0F;
 		float height = pad + pixel * 12.0F + ImGui::GetTextLineHeight() + pad;
 		int toolIndex = ToolIndex(kind);
