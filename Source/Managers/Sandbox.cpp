@@ -129,6 +129,20 @@ void Sandbox::SetAIPaused(bool paused) {
 	Controller::SetAIPaused(paused);
 }
 
+void Sandbox::SetColonyPower(bool needsPower, bool slowWithout) {
+	Colony::NeedsPower() = needsPower;
+	Colony::WithoutPower() = slowWithout ? Colony::NoPower::Slows : Colony::NoPower::Stops;
+}
+
+std::string Sandbox::ColonyStatus(int id) {
+	for (const Colony::Building& building: Colony::Buildings()) {
+		if (building.ID == id) {
+			return building.Status;
+		}
+	}
+	return "";
+}
+
 bool Sandbox::SetBuildMode(bool build) {
 	GameActivity* game = CurrentGame();
 	if (!game || !InGame()) {
