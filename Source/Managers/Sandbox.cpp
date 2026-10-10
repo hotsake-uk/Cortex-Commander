@@ -682,6 +682,8 @@ void Sandbox::DrawGUI() {
 			BuildCatalogue();
 		}
 		DrawBar();
+	} else {
+		s_BarHeight = 0.0F;
 	}
 	if (!s_Open && !hiddenButAbove) {
 		// The selection's arrows come off while the window is away (they stayed on the units of a game with the window shut, till it was

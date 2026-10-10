@@ -157,6 +157,7 @@ void TerrainTrees::Survey() {
 	// First each trunk: tree trunk pixels standing together (diagonally too).
 	std::vector<int> open;
 	std::vector<int> pixels;
+	std::vector<char> rooted; // Per tree found: whether its trunk touches ground (anything solid but a tree). A branch drawn apart from the trunk doesn't.
 	for (int y = 0; y < height; ++y) {
 		for (int x = 0; x < width; ++x) {
 			int key = y * width + x;
@@ -168,6 +169,7 @@ void TerrainTrees::Survey() {
 			open.assign(1, key);
 			s_Owner.emplace(key, index);
 			std::unordered_map<int, int> materialCount;
+			bool touchesGround = false;
 			while (!open.empty()) {
 				int here = open.back();
 				open.pop_back();
@@ -179,7 +181,13 @@ void TerrainTrees::Survey() {
 					for (int dx = -1; dx <= 1; ++dx) {
 						int nx = hx + dx;
 						int ny = hy + dy;
-						if ((dx == 0 && dy == 0) || nx < 0 || ny < 0 || nx >= width || ny >= height || !s_Trunk[at(nx, ny)]) {
+						if ((dx == 0 && dy == 0) || nx < 0 || ny < 0 || nx >= width || ny >= height) {
+							continue;
+						}
+						if (int material = at(nx, ny); material != 0 && !s_Tree[material]) {
+							touchesGround = true;
+						}
+						if (!s_Trunk[at(nx, ny)]) {
 							continue;
 						}
 						if (s_Owner.emplace(ny * width + nx, index).second) {
@@ -223,6 +231,7 @@ void TerrainTrees::Survey() {
 			tree.TrunkPixels = static_cast<int>(pixels.size());
 			tree.TrunkMaterial = std::max_element(materialCount.begin(), materialCount.end(), [](const auto& a, const auto& b) { return a.second < b.second; })->first;
 			s_Found.push_back(tree);
+			rooted.push_back(touchesGround ? 1 : 0);
 		}
 	}
 
@@ -267,6 +276,89 @@ void TerrainTrees::Survey() {
 		front.swap(next);
 	}
 	std::erase_if(s_Owner, [](const auto& owner) { return owner.second < 0; });
+
+	// A branch drawn apart from its trunk, among the leaves (a big tree has several), is part of the tree its leaves touch, not a tree of its
+	// own: otherwise a tree's leaves hanging on such a branch counted as already hanging in the air, and stayed up when the trunk was cut.
+	// Each tree that doesn't stand in the ground joins one it touches, rooted ones first, until none is left to join.
+	if (s_Found.size() > 1) {
+		std::vector<int> parent(s_Found.size());
+		for (size_t i = 0; i < parent.size(); ++i) {
+			parent[i] = static_cast<int>(i);
+		}
+		auto find = [&parent](int i) {
+			while (parent[i] != i) {
+				parent[i] = parent[parent[i]];
+				i = parent[i];
+			}
+			return i;
+		};
+		std::vector<int> keys;
+		keys.reserve(s_Owner.size());
+		for (const auto& [key, index]: s_Owner) {
+			keys.push_back(key);
+		}
+		std::sort(keys.begin(), keys.end()); // (A fixed order, so the same terrain gives the same trees.)
+		for (bool changed = true; changed;) {
+			changed = false;
+			for (int key: keys) {
+				int a = find(s_Owner[key]);
+				int hx = key % width;
+				int hy = key / width;
+				for (int dy = -1; dy <= 1; ++dy) {
+					for (int dx = -1; dx <= 1; ++dx) {
+						int nx = hx + dx;
+						int ny = hy + dy;
+						if ((dx == 0 && dy == 0) || nx < 0 || ny < 0 || nx >= width || ny >= height) {
+							continue;
+						}
+						auto other = s_Owner.find(ny * width + nx);
+						if (other == s_Owner.end()) {
+							continue;
+						}
+						int b = find(other->second);
+						if (a == b || (rooted[a] && rooted[b])) {
+							continue;
+						}
+						// The one not in the ground joins the other (two loose ones: the later the earlier).
+						if (rooted[a] || (!rooted[b] && a < b)) {
+							parent[b] = a;
+						} else {
+							parent[a] = b;
+							a = b;
+						}
+						changed = true;
+					}
+				}
+			}
+		}
+		std::vector<int> newIndex(s_Found.size(), -1);
+		std::vector<Tree> merged;
+		for (size_t i = 0; i < s_Found.size(); ++i) {
+			if (find(static_cast<int>(i)) == static_cast<int>(i)) {
+				newIndex[i] = static_cast<int>(merged.size());
+				merged.push_back(s_Found[i]);
+			}
+		}
+		for (size_t i = 0; i < s_Found.size(); ++i) {
+			int root = find(static_cast<int>(i));
+			if (root == static_cast<int>(i)) {
+				continue;
+			}
+			Tree& into = merged[newIndex[root]];
+			const Tree& branch = s_Found[i];
+			into.Left = std::min(into.Left, branch.Left);
+			into.Top = std::min(into.Top, branch.Top);
+			into.Right = std::max(into.Right, branch.Right);
+			into.Bottom = std::max(into.Bottom, branch.Bottom);
+			into.TrunkPixels += branch.TrunkPixels;
+			into.LeafPixels += branch.LeafPixels;
+			newIndex[i] = newIndex[root];
+		}
+		for (auto& [key, index]: s_Owner) {
+			index = newIndex[index];
+		}
+		s_Found.swap(merged);
+	}
 
 	// A tree standing where one stood keeps its ID: its base within a few pixels, of the same wood.
 	for (Tree& tree: s_Found) {
