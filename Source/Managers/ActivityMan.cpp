@@ -1,6 +1,7 @@
 #include "ActivityMan.h"
 #include "TerrainFire.h"
 #include "TerrainCandle.h"
+#include "RopeSim.h"
 #include "FluidSim.h"
 #include "Activity.h"
 
@@ -170,6 +171,7 @@ bool ActivityMan::SaveCurrentGame(const std::string& fileName) {
 	// Fire still burning and liquid still flowing, so they carry on after loading. The terrain itself is saved in the scene layers.
 	writer->NewPropertyWithValue("TerrainFireState", TerrainFire::GetSaveState());
 	writer->NewPropertyWithValue("TerrainCandleState", TerrainCandle::GetSaveState());
+	writer->NewPropertyWithValue("RopeState", RopeSim::GetSaveState());
 	writer->NewPropertyWithValue("FlowingLiquidState", FluidSim::GetSaveState());
 
 	// Save a small little file with index info (activity and original scene name) so we can display info in the samegame menu without needing to decompress and read through the entire zip
@@ -392,6 +394,8 @@ bool ActivityMan::LoadAndLaunchGame(const std::string& fileName) {
 			TerrainFire::SetPendingLoadState(reader.ReadPropValue());
 		} else if (propName == "TerrainCandleState") {
 			TerrainCandle::SetPendingLoadState(reader.ReadPropValue());
+		} else if (propName == "RopeState") {
+			RopeSim::SetPendingLoadState(reader.ReadPropValue());
 		} else if (propName == "FlowingLiquidState") {
 			FluidSim::SetPendingLoadState(reader.ReadPropValue());
 		} else if (propName == "SandboxPins") {

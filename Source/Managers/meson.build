@@ -23,6 +23,7 @@ sources += files(
 'SceneMan.cpp',
 'TerrainFire.cpp',
 'TerrainCandle.cpp',
+'RopeSim.cpp',
 'WeatherLightning.cpp',
 'TerrainCollapse.cpp',
 'TerrainTrees.cpp',

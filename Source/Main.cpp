@@ -63,6 +63,7 @@
 #include "ActionMenu.h"
 #include "ActorFire.h"
 #include "ActorWater.h"
+#include "RopeSim.h"
 #include "UnitSpeech.h"
 #include "PostProcessMan.h"
 #include "SceneMan.h"
@@ -590,6 +591,8 @@ void RunGameLoop() {
 				GasGrid::Update();
 				logStages.Next("Sim: units in water");
 				ActorWater::Update();
+				logStages.Next("Sim: ropes");
+				RopeSim::Update();
 				logStages.Next("Sim: unit speech");
 				UnitSpeech::UpdateWorld();
 			}

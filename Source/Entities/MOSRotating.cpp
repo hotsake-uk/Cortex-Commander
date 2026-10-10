@@ -13,6 +13,7 @@
 #include "ACraft.h"
 #include "ADoor.h"
 #include "ActorWater.h"
+#include "RopeSim.h"
 #include "MOPixel.h"
 #include "MOSParticle.h"
 #include "AEmitter.h"
@@ -987,6 +988,8 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 		TerrainFire::QueueIgniteArea(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.3F, 8.0F, 50.0F));
 		TerrainCollapse::QueueCheck(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.6F + 12.0F, 24.0F, 110.0F));
 		TerrainCollapse::Blast(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.9F + 20.0F, 40.0F, 170.0F), gibEnergy);
+		// Ropes near it are thrown out, and cut close to it.
+		RopeSim::QueueBlast(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.9F + 20.0F, 40.0F, 170.0F), gibEnergy);
 		// And sends a wave of pressure through the air, down corridors and up through water (SB-5).
 		AirPressure::Blast(m_Pos, gibEnergy);
 		// Liquid and loose powder are woken, and a blast in or beside liquid throws it into the air: only where there is some (L-6). Most gibs are on dry land, and each queued splash
