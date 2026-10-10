@@ -124,6 +124,9 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		// Test runs that show what the pointer does: what a script used stays in hand, for the side it used.
 		s_ToolIndex = toolIndex;
 		s_Team = std::clamp(team, 0, c_Sides - 1);
+		if (c_Tools[toolIndex].UsesRadius) {
+			s_Radius = std::clamp(stroke.Radius, 1, c_MaxBrushRadius);
+		}
 	}
 	s_Queue.push_back(stroke);
 	return true;

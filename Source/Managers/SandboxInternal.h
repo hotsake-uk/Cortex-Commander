@@ -634,6 +634,16 @@ namespace SandboxDetail {
 	};
 
 	/// One queued action, with the settings it was made with.
+	/// The chances a plant brush's next plant is made from (which picture, mirrored or not, where in the ground), taken before it is put
+	/// down so the cursor can show that very plant (DrawCursor) and the stroke then puts down what was shown.
+	struct PlantRoll {
+		float Variant = 0.0F; //!< Which of the brush's debris presets (cacti big or small, which mushrooms), 0 to 1.
+		float Piece = 0.0F; //!< Which of the preset's pictures, 0 to 1.
+		float Jitter = 0.5F; //!< Where across, a little either side of the point, 0 to 1.
+		float Depth = 0.0F; //!< How deep into the ground, within the preset's depths, 0 to 1.
+		bool Mirror = false;
+	};
+
 	struct Stroke {
 		Tool Kind;
 		Vector Position;
@@ -657,6 +667,8 @@ namespace SandboxDetail {
 		std::string Material; //!< Springs, the tank and "Other": the liquid or powder poured, by preset name (taken at the click, not read in the sim).
 		float Rate = 1.0F; //!< Springs: how much of the time they pour, 0.05 to 1.
 		float Scale = 1.0F; //!< Plant brushes: how big the plant is drawn, 1 as the game's own art (s_PlantScale).
+		bool HasPlantRoll = false; //!< Plant brushes: whether Plant was taken at the click (the plant the cursor showed), else it is rolled in the sim.
+		PlantRoll Plant; //!< Plant brushes: the plant to put down, when HasPlantRoll.
 		BattleSettings Battle; //!< Tool::BattleTeam: the team's settings.
 		BattleModeSettings Mode; //!< Tool::BattleTeam with a BattleMode command: the mode's settings.
 		std::vector<int> Materials; //!< Tool::ClearMap: the material IDs to clear (liquids or ground).
@@ -1746,7 +1758,24 @@ namespace SandboxDetail {
 	void NotePaint(const Box& area, const char* kind, const char* material, bool toldCollapse, bool toldLiquid, bool changed);
 	void PaintTerrain(const Vector& center, int radius, const char* materialName, BrushShape shape = BrushShape::Circle, float goldShare = 0.0F);
 	void FillTerrainShape(const Stroke& stroke);
-	void PlacePlant(const Vector& at, int radius, Tool kind, float scale = 1.0F);
+	/// Where and how a plant brush's plant goes on the ground (PlanPlant): the pictures it is drawn from and its top left corner, in scene pixels.
+	struct PlantPlacement {
+		const TerrainDebris* Debris = nullptr;
+		const TerrainDebris* Leaves = nullptr; //!< Trees' leaves and candles' wicks, drawn over the piece, or none.
+		BITMAP* Piece = nullptr;
+		BITMAP* LeafPiece = nullptr;
+		int Left = 0;
+		int Upper = 0;
+		int GroundX = 0; //!< The last air over the ground it stands on.
+		int GroundY = 0;
+		float Scale = 1.0F; //!< How big it is drawn (candles in whole steps).
+		bool Mirror = false;
+	};
+	bool PlanPlant(const Vector& at, int radius, Tool kind, float scale, const PlantRoll& roll, PlantPlacement& out);
+	void PlacePlant(const Vector& at, int radius, Tool kind, float scale = 1.0F, const PlantRoll* roll = nullptr);
+	inline PlantRoll s_NextPlant; //!< The plant the plant brush in hand puts down next, shown under the cursor; rolled again as each is queued.
+	PlantRoll RollPlant();
+	const char* TerrainBrushMaterial(Tool kind);
 	void PaintBox(const Vector& topLeft, int boxWidth, int boxHeight, const char* materialName);
 	bool TakesSide(Tool kind);
 	void ClearBox(const Vector& topLeft, int boxWidth, int boxHeight);
@@ -1929,6 +1958,7 @@ namespace SandboxDetail {
 	void KeysPage();
 	void DrawCursor();
 	const PiecePicture& PictureOfFile(const std::string& path);
+	const PiecePicture& PictureOfBitmap(BITMAP* bitmap);
 	int DrawRing(const std::vector<RingItem>& items, int current, bool sticky = false);
 	void DrawSideRing();
 	ImVec2 ToScreen(const Vector& scenePosition);

@@ -1522,12 +1522,53 @@ namespace SandboxDetail {
 			}
 		} else {
 			float outline = tool.UsesRadius ? static_cast<float>(s_Radius) / scale : 6.0F;
-			if (IsTerrainBrush(tool.Kind) && s_BrushShape == BrushShape::Square) {
+			bool square = IsTerrainBrush(tool.Kind) && s_BrushShape == BrushShape::Square;
+			float half = std::max(outline, 3.0F);
+			GameViewRect view = g_WindowMan.GetGameViewRect();
+			drawList->PushClipRect(ImVec2(view.x, view.y), ImVec2(view.x + view.w, view.y + view.h));
+			if (IsPlantBrush(tool.Kind)) {
+				// The very plant a click will put down (s_NextPlant), see-through, standing on the ground where it will go.
+				PlantPlacement plan;
+				if (PlanPlant(MouseScenePosition(), s_Radius, tool.Kind, s_PlantScale, s_NextPlant, plan)) {
+					for (BITMAP* layer: {plan.Piece, plan.LeafPiece}) {
+						const PiecePicture& picture = layer ? PictureOfBitmap(layer) : PiecePicture();
+						if (picture.Texture == 0) {
+							continue;
+						}
+						Vector corner = FromCamera(Vector(static_cast<float>(plan.Left), static_cast<float>(plan.Upper)));
+						ImVec2 topLeft(ViewOrigin().x + corner.m_X / scale, ViewOrigin().y + corner.m_Y / scale);
+						ImVec2 bottomRight(topLeft.x + std::max(1.0F, static_cast<float>(picture.Width) * plan.Scale) / scale, topLeft.y + std::max(1.0F, static_cast<float>(picture.Height) * plan.Scale) / scale);
+						drawList->AddImage(static_cast<ImTextureID>(picture.Texture), topLeft, bottomRight, ImVec2(plan.Mirror ? 1.0F : 0.0F, 0.0F), ImVec2(plan.Mirror ? 0.0F : 1.0F, 1.0F), IM_COL32(255, 255, 255, 170));
+					}
+				}
+			} else if (tool.UsesRadius) {
+				// What the brush lays down, see-through, over just the area it covers: the material's own colour (dig darkens what it takes out).
+				ImU32 fill = LookOf(tool.Kind).Color;
+				if (const char* materialName = TerrainBrushMaterial(tool.Kind)) {
+					if (const Material* material = g_SceneMan.GetMaterial(materialName); material && material->GetIndex() != g_MaterialAir) {
+						Color color = material->GetColor();
+						fill = IM_COL32(color.GetR(), color.GetG(), color.GetB(), 255);
+					}
+				}
+				fill = tool.Kind == Tool::Dig ? IM_COL32(0, 0, 0, 120) : (fill & ~IM_COL32_A_MASK) | (static_cast<ImU32>(160) << IM_COL32_A_SHIFT);
+				if (square) {
+					drawList->AddRectFilled(ImVec2(io.MousePos.x - half, io.MousePos.y - half), ImVec2(io.MousePos.x + half, io.MousePos.y + half), fill);
+				} else if (IsTerrainBrush(tool.Kind) && s_BrushShape == BrushShape::Spray) {
+					// The spray: thin at the edge, thicker towards the middle, as it builds up.
+					ImU32 thin = (fill & ~IM_COL32_A_MASK) | (static_cast<ImU32>(55) << IM_COL32_A_SHIFT);
+					for (float share: {1.0F, 0.66F, 0.33F}) {
+						drawList->AddCircleFilled(io.MousePos, half * share, thin);
+					}
+				} else {
+					drawList->AddCircleFilled(io.MousePos, half, fill);
+				}
+			}
+			drawList->PopClipRect();
+			if (square) {
 				// The square brush: the square it paints.
-				float half = std::max(outline, 3.0F);
 				drawList->AddRect(ImVec2(io.MousePos.x - half, io.MousePos.y - half), ImVec2(io.MousePos.x + half, io.MousePos.y + half), white, 0.0F, 0, 1.5F);
 			} else {
-				drawList->AddCircle(io.MousePos, std::max(outline, 3.0F), tool.Kind == Tool::Unit || tool.Kind == Tool::Brain || tool.Kind == Tool::RallyPoint ? c_SideColors[s_Team] : white, 0, 1.5F);
+				drawList->AddCircle(io.MousePos, half, tool.Kind == Tool::Unit || tool.Kind == Tool::Brain || tool.Kind == Tool::RallyPoint ? c_SideColors[s_Team] : white, 0, 1.5F);
 			}
 		}
 		if (const Preset* preset = (tool.Kind == Tool::Unit || tool.Kind == Tool::Brain || tool.Kind == Tool::Item || tool.Kind == Tool::Structure) ? ChosenPreset(tool.Kind, ChoiceFor(tool.Kind)) : nullptr) {
@@ -1750,16 +1791,10 @@ namespace SandboxDetail {
 	}
 
 
-	/// A picture made from one of the game's own 8-bit image files, the first time it is asked for: the pie menu's icons and cursor.
-	const PiecePicture& PictureOfFile(const std::string& path) {
-		std::map<std::string, PiecePicture>& pictures = s_FilePictures;
-		if (auto found = pictures.find(path); found != pictures.end()) {
-			return found->second;
-		}
-		PiecePicture& picture = pictures[path];
-		BITMAP* bitmap = ContentFile(path.c_str()).GetAsBitmap();
+	/// Makes a picture's texture from an 8-bit bitmap, its mask colour see-through.
+	void MakePicture(PiecePicture& picture, BITMAP* bitmap) {
 		if (!bitmap || bitmap_color_depth(bitmap) != 8) {
-			return picture;
+			return;
 		}
 		picture.Width = bitmap->w;
 		picture.Height = bitmap->h;
@@ -1786,6 +1821,30 @@ namespace SandboxDetail {
 		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, picture.Width, picture.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
 		glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(boundBefore));
+	}
+
+	/// A picture made from one of the game's own 8-bit image files, the first time it is asked for: the pie menu's icons and cursor.
+	const PiecePicture& PictureOfFile(const std::string& path) {
+		std::map<std::string, PiecePicture>& pictures = s_FilePictures;
+		if (auto found = pictures.find(path); found != pictures.end()) {
+			return found->second;
+		}
+		PiecePicture& picture = pictures[path];
+		MakePicture(picture, ContentFile(path.c_str()).GetAsBitmap());
+		return picture;
+	}
+
+	/// A picture of one of the game's loaded bitmaps (a plant brush's pieces, for the cursor), the first time it is asked for. Kept with the
+	/// file pictures, by the bitmap's address: the presets' bitmaps last as long as the game's data.
+	const PiecePicture& PictureOfBitmap(BITMAP* bitmap) {
+		char key[40];
+		std::snprintf(key, sizeof(key), "bitmap:%p", static_cast<void*>(bitmap));
+		std::map<std::string, PiecePicture>& pictures = s_FilePictures;
+		if (auto found = pictures.find(key); found != pictures.end()) {
+			return found->second;
+		}
+		PiecePicture& picture = pictures[key];
+		MakePicture(picture, bitmap);
 		return picture;
 	}
 
