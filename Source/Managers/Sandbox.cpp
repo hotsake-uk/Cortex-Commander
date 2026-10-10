@@ -1725,6 +1725,8 @@ void Sandbox::OnActivityStarted() {
 	s_OrderMarks.clear();
 	s_FollowTarget = UnitRef();
 	ForgetBattle();
+	// (The setup saved to load with the map goes back in once it is loaded.)
+	BattlePresetsNewGame();
 	s_PendingOrders.clear();
 	s_Commander = false;
 	// (And clicks queued in the last game, not yet applied: they were applied to this one.)
@@ -1749,6 +1751,7 @@ void Sandbox::Update() {
 		s_Decor.clear();
 		return;
 	}
+	BattlePresetsUpdate();
 	ApplyPendingOrders();
 	s_StrokesApplied = strokes.size();
 	for (const Stroke& stroke: strokes) {
