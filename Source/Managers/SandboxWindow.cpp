@@ -3781,6 +3781,18 @@ namespace SandboxDetail {
 			ImGui::SetNextItemWidth(field * 0.8F);
 			ImGui::SliderInt("##plantSpacing", &s_PlantSpacing, 2, 60, "Apart %d px");
 			ImGui::SetItemTooltip("How far apart they go along a stroke.");
+			// Which of its pictures: a gallery of them all, in a window over the bar.
+			const PlantPick& pick = s_PlantPicks[kind];
+			std::string which = pick.Chosen.empty() ? std::string("Any, pick...") : std::to_string(pick.Chosen.size()) + " picked...";
+			next();
+			if (BarChip(which.c_str(), !pick.Chosen.empty(), ToolTheme::Text, nullptr, "Which of its pictures it puts down: any at random, or the ones you pick from a gallery of them all. E: the next one (Shift+E: back), F: flip it.") == 1) {
+				ImGui::OpenPopup("##plantPick");
+			}
+			ImGui::SetNextWindowSize(ImVec2(380.0F * ToolUI::Pixel(), 0.0F));
+			if (ImGui::BeginPopup("##plantPick")) {
+				PlantPickPanel(kind);
+				ImGui::EndPopup();
+			}
 			if (kind == Tool::Candles) {
 				bool forever = TerrainCandle::GetBurnMinutes() <= 0.0F;
 				next();
