@@ -340,8 +340,9 @@ namespace SandboxDetail {
 	/// Paints terrain material into the air, or digs it out when there's no material, over the pixels of a box (scene pixels, both ends
 	/// included, unwrapped) that inside says are in: the brushes' discs and the filled shapes.
 	/// @param goldShare How much of what is painted is gold instead, as in the base game's scenes' earth (0 for none).
+	/// @param over What painting may replace besides air (PaintOver): liquids and loose ground, solid terrain.
 	template <typename Inside>
-	void PaintArea(int left, int top, int right, int bottom, Inside inside, const char* materialName, float goldShare) {
+	void PaintArea(int left, int top, int right, int bottom, Inside inside, const char* materialName, float goldShare, int over) {
 		SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
 		int width = terrain->GetBitmap()->w;
 		int height = terrain->GetBitmap()->h;
@@ -395,8 +396,8 @@ namespace SandboxDetail {
 					continue;
 				}
 				int existing = terrain->GetMaterialPixel(x, y);
-				// Painting only fills air; digging removes anything but the indestructible edge of the world.
-				if (materialName ? existing != g_MaterialAir : (existing == g_MaterialAir || existing == g_MaterialOutOfBounds)) {
+				// Painting fills air, and with Paint over, liquids and loose ground and solid terrain too; digging removes anything but the indestructible edge of the world.
+				if (materialName ? !(existing == g_MaterialAir || (existing != material && existing != g_MaterialOutOfBounds && ((FluidSim::IsFlowing(existing) ? (over & PaintOver::Liquids) : (over & PaintOver::Terrain)) != 0))) : (existing == g_MaterialAir || existing == g_MaterialOutOfBounds)) {
 					continue;
 				}
 				RecordPaintPixel(terrain, x, y);
@@ -433,10 +434,10 @@ namespace SandboxDetail {
 		return shape != BrushShape::Spray || Random01() <= 0.03F + 0.22F * (1.0F - std::sqrt(static_cast<float>(distanceSquared)) / static_cast<float>(std::max(radius, 1)));
 	}
 
-	void PaintTerrain(const Vector& center, int radius, const char* materialName, BrushShape shape, float goldShare) {
+	void PaintTerrain(const Vector& center, int radius, const char* materialName, BrushShape shape, float goldShare, int over) {
 		int centerX = center.GetFloorIntX();
 		int centerY = center.GetFloorIntY();
-		PaintArea(centerX - radius, centerY - radius, centerX + radius, centerY + radius, [&](int x, int y) { return InBrush(centerX, centerY, radius, shape, x, y); }, materialName, goldShare);
+		PaintArea(centerX - radius, centerY - radius, centerX + radius, centerY + radius, [&](int x, int y) { return InBrush(centerX, centerY, radius, shape, x, y); }, materialName, goldShare, over);
 	}
 
 	/// Grows grass up into the air from the top of the ground, wherever a top is among the pixels of a box (scene pixels, both ends included,
@@ -551,7 +552,7 @@ namespace SandboxDetail {
 		int right = static_cast<int>(std::floor(std::max(start.m_X, end.m_X)));
 		int top = static_cast<int>(std::floor(std::min(start.m_Y, end.m_Y)));
 		int bottom = static_cast<int>(std::floor(std::max(start.m_Y, end.m_Y)));
-		PaintArea(left, top, right, bottom, [&](int x, int y) { return InFillShape(shape, start, end, x, y); }, materialName, goldShare);
+		PaintArea(left, top, right, bottom, [&](int x, int y) { return InFillShape(shape, start, end, x, y); }, materialName, goldShare, stroke.Over);
 	}
 
 	/// A base game terrain debris preset, by name.
@@ -2417,48 +2418,48 @@ namespace SandboxDetail {
 				}
 				break;
 			case Tool::Water:
-				FluidSim::Pour(at, radius * 0.5F, "Water");
+				FluidSim::Pour(at, radius * 0.5F, "Water", 0.0F, stroke.Over);
 				break;
 			case Tool::Lava:
-				FluidSim::Pour(at, radius * 0.5F, "Lava");
+				FluidSim::Pour(at, radius * 0.5F, "Lava", 0.0F, stroke.Over);
 				break;
 			case Tool::Acid:
-				FluidSim::Pour(at, radius * 0.5F, "Acid");
+				FluidSim::Pour(at, radius * 0.5F, "Acid", 0.0F, stroke.Over);
 				break;
 			case Tool::Oil:
-				FluidSim::Pour(at, radius * 0.5F, "Oil");
+				FluidSim::Pour(at, radius * 0.5F, "Oil", 0.0F, stroke.Over);
 				break;
 			case Tool::Mud:
-				FluidSim::Pour(at, radius * 0.5F, "Mud");
+				FluidSim::Pour(at, radius * 0.5F, "Mud", 0.0F, stroke.Over);
 				break;
 			case Tool::Tar:
-				FluidSim::Pour(at, radius * 0.5F, "Tar");
+				FluidSim::Pour(at, radius * 0.5F, "Tar", 0.0F, stroke.Over);
 				break;
 			case Tool::Mercury:
-				FluidSim::Pour(at, radius * 0.5F, "Mercury");
+				FluidSim::Pour(at, radius * 0.5F, "Mercury", 0.0F, stroke.Over);
 				break;
 			case Tool::Gravel:
-				FluidSim::Pour(at, radius * 0.5F, "Gravel");
+				FluidSim::Pour(at, radius * 0.5F, "Gravel", 0.0F, stroke.Over);
 				break;
 			case Tool::GlassShards:
-				FluidSim::Pour(at, radius * 0.5F, "Glass Shards");
+				FluidSim::Pour(at, radius * 0.5F, "Glass Shards", 0.0F, stroke.Over);
 				break;
 			case Tool::Fuel:
-				FluidSim::Pour(at, radius * 0.5F, "Fuel");
+				FluidSim::Pour(at, radius * 0.5F, "Fuel", 0.0F, stroke.Over);
 				break;
 			case Tool::Cryo:
-				FluidSim::Pour(at, radius * 0.5F, "Cryogenic Fluid");
+				FluidSim::Pour(at, radius * 0.5F, "Cryogenic Fluid", 0.0F, stroke.Over);
 				break;
 			case Tool::Blood:
 				// Blood only flows with the setting on (it stays where it fell otherwise), so the brush turns it on.
 				if (!FluidSim::BloodFlows()) {
 					FluidSim::SetBloodFlows(true);
 				}
-				FluidSim::Pour(at, radius * 0.5F, "Blood");
+				FluidSim::Pour(at, radius * 0.5F, "Blood", 0.0F, stroke.Over);
 				break;
 			case Tool::PourOther:
 				if (!stroke.Material.empty()) {
-					FluidSim::Pour(at, radius * 0.5F, stroke.Material.c_str());
+					FluidSim::Pour(at, radius * 0.5F, stroke.Material.c_str(), 0.0F, stroke.Over);
 				}
 				break;
 			case Tool::WaterSpawner:
@@ -2473,10 +2474,10 @@ namespace SandboxDetail {
 				}
 				break;
 			case Tool::LooseSand:
-				FluidSim::Pour(at, radius * 0.5F, "Sand");
+				FluidSim::Pour(at, radius * 0.5F, "Sand", 0.0F, stroke.Over);
 				break;
 			case Tool::LooseSnow:
-				FluidSim::Pour(at, radius * 0.5F, "Snow");
+				FluidSim::Pour(at, radius * 0.5F, "Snow", 0.0F, stroke.Over);
 				break;
 			case Tool::Boulder:
 				TerrainCollapse::SpawnChunk(at, radius * 1.5F + 4.0F, "Stone");
@@ -2505,38 +2506,38 @@ namespace SandboxDetail {
 				GasGrid::Add(at, GasGrid::Steam, 0.3F);
 				break;
 			case Tool::Dig:
-				PaintTerrain(at, stroke.Radius, nullptr, stroke.Shape);
+				PaintTerrain(at, stroke.Radius, nullptr, stroke.Shape, 0.0F, stroke.Over);
 				break;
 			case Tool::Earth:
-				PaintTerrain(at, stroke.Radius, "Earth", stroke.Shape);
+				PaintTerrain(at, stroke.Radius, "Earth", stroke.Shape, 0.0F, stroke.Over);
 				break;
 			case Tool::Sand:
-				PaintTerrain(at, stroke.Radius, "Sand", stroke.Shape);
+				PaintTerrain(at, stroke.Radius, "Sand", stroke.Shape, 0.0F, stroke.Over);
 				break;
 			case Tool::Ice:
-				PaintTerrain(at, stroke.Radius, "Ice", stroke.Shape);
+				PaintTerrain(at, stroke.Radius, "Ice", stroke.Shape, 0.0F, stroke.Over);
 				break;
 			case Tool::Grass:
-				PaintTerrain(at, stroke.Radius, "Grass", stroke.Shape);
+				PaintTerrain(at, stroke.Radius, "Grass", stroke.Shape, 0.0F, stroke.Over);
 				break;
 			case Tool::Wood:
-				PaintTerrain(at, stroke.Radius, "Wood", stroke.Shape);
+				PaintTerrain(at, stroke.Radius, "Wood", stroke.Shape, 0.0F, stroke.Over);
 				break;
 			case Tool::TreeTrunk:
-				PaintTerrain(at, stroke.Radius, "Tree Trunk", stroke.Shape);
+				PaintTerrain(at, stroke.Radius, "Tree Trunk", stroke.Shape, 0.0F, stroke.Over);
 				TerrainTrees::NoteChanged();
 				break;
 			case Tool::Concrete:
-				PaintTerrain(at, stroke.Radius, "Concrete", stroke.Shape);
+				PaintTerrain(at, stroke.Radius, "Concrete", stroke.Shape, 0.0F, stroke.Over);
 				break;
 			case Tool::Stone:
-				PaintTerrain(at, stroke.Radius, "Stone", stroke.Shape);
+				PaintTerrain(at, stroke.Radius, "Stone", stroke.Shape, 0.0F, stroke.Over);
 				break;
 			case Tool::DenseEarth:
-				PaintTerrain(at, stroke.Radius, "Dense Earth", stroke.Shape);
+				PaintTerrain(at, stroke.Radius, "Dense Earth", stroke.Shape, 0.0F, stroke.Over);
 				break;
 			case Tool::GoldEarth:
-				PaintTerrain(at, stroke.Radius, "Earth", stroke.Shape, c_GoldEarthShare);
+				PaintTerrain(at, stroke.Radius, "Earth", stroke.Shape, c_GoldEarthShare, stroke.Over);
 				break;
 			case Tool::Plants:
 			case Tool::Cacti:
@@ -2548,7 +2549,7 @@ namespace SandboxDetail {
 			case Tool::TerrainOther:
 			case Tool::Metal:
 				if (!stroke.Material.empty()) {
-					PaintTerrain(at, stroke.Radius, stroke.Material.c_str(), stroke.Shape);
+					PaintTerrain(at, stroke.Radius, stroke.Material.c_str(), stroke.Shape, 0.0F, stroke.Over);
 				}
 				break;
 			case Tool::GrowGrass: {
@@ -2841,6 +2842,7 @@ namespace SandboxDetail {
 			s_RopeDraft.push_back(position);
 		}
 		stroke.Shape = IsTerrainBrush(kind) ? s_BrushShape : BrushShape::Circle;
+		stroke.Over = CurrentPaintOver();
 		stroke.Scale = IsPlantBrush(kind) ? s_PlantScale : 1.0F;
 		if (IsPlantBrush(kind)) {
 			// The plant the cursor showed; the next one is shown from now.
