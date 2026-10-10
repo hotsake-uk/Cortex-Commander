@@ -335,6 +335,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("FallingGroundPassesTrees", { TerrainCollapse::SetPassesTrees(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("UnitsInFrontOfTrees", { TerrainTrees::SetDrawnBehindUnits(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("CollapseLeafBreakEase", { TerrainCollapse::GetTuning().LeafBreakEase = std::clamp(std::stof(reader.ReadPropValue()), 1.0F, 50.0F); });
+	MatchProperty("CollapseLeafLitter", { TerrainCollapse::GetTuning().LeafLitter = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("LightningStrikes", { WeatherLightning::SetStrikes(static_cast<WeatherLightning::Strikes>(std::clamp(std::stoi(reader.ReadPropValue()), 0, 2))); });
 	MatchProperty("AIThreatMemory", { ThreatMemory::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("Gas", { GasGrid::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
@@ -1062,6 +1063,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("CollapseCrumbleSpeed", TerrainCollapse::GetTuning().CrumbleSpeed);
 	writer.NewPropertyWithValue("CollapseSplinterSpeed", TerrainCollapse::GetTuning().SplinterSpeed);
 	writer.NewPropertyWithValue("CollapseLeafBreakEase", TerrainCollapse::GetTuning().LeafBreakEase);
+	writer.NewPropertyWithValue("CollapseLeafLitter", TerrainCollapse::GetTuning().LeafLitter);
 	writer.NewPropertyWithValue("CollapseBendSpeed", TerrainCollapse::GetTuning().BendSpeed);
 	writer.NewPropertyWithValue("CollapseScuffStrength", TerrainCollapse::GetTuning().ScuffStrength);
 	writer.NewPropertyWithValue("CollapseRestSeconds", TerrainCollapse::GetTuning().RestSeconds);
