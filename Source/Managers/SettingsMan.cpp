@@ -120,7 +120,7 @@ void SettingsMan::Clear() {
 
 	m_FlashOnBrainDamage = true;
 	m_BlipOnRevealUnseen = false;
-	m_UnheldItemsHUDDisplayRange = 25 * c_PPM;
+	m_UnheldItemsHUDDisplayRange = 0;
 	m_AlwaysDisplayUnheldItemsInStrategicMode = true;
 	m_SubPieMenuHoverOpenDelay = 1000;
 	m_ClassicPieWheel = false;
@@ -128,7 +128,7 @@ void SettingsMan::Clear() {
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
 	m_BodiesSettleAsEarth = true;
-	m_NoSceneWrap = false;
+	m_NoSceneWrap = true;
 	m_AISuppression = 1.0F;
 	m_AIDigWillingness = 1.0F;
 	m_AIThreatAvoidance = 1.0F;
@@ -169,7 +169,7 @@ void SettingsMan::Clear() {
 	m_ShowFPSAndVersion = true;
 	m_CrabBombThreshold = 42;
 	m_ShowEnemyHUD = true;
-	m_ShowUnitTags = true;
+	m_ShowUnitTags = false;
 	m_EnableSmartBuyMenuNavigation = true;
 	m_AutomaticGoldDeposit = true;
 
