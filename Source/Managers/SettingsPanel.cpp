@@ -835,6 +835,13 @@ void DebugMan::SettingsGUI() {
 		Tip("22 m/s is a drop of about 13 m: a felled or burnt-through tree lands whole. A tree's leaves don't make it weaker. Planks break at 0.8 of this.");
 		Slider("Leaves break apart (x easier)", &tuning.LeafBreakEase, 1.0F, 20.0F, "%.1fx");
 		Tip("How much more easily a falling tree's leaves (and grass) come off and break up when it lands than the piece itself breaks: at 4 a landing at a quarter of the speed strips as many, and a hard one nearly all of them. A clump of nothing but leaves comes apart this much more easily too. 1: as easily as the rest.");
+		{
+			int litterPercent = static_cast<int>(std::round(tuning.LeafLitter * 100.0F));
+			if (SliderI("Leaves left on the ground (%)", &litterPercent, 0, 100)) {
+				tuning.LeafLitter = static_cast<float>(litterPercent) / 100.0F;
+			}
+		}
+		Tip("Of the leaves (and grass) that come off a falling tree or break off a clump, how many are laid on the ground below as plant matter rather than thrown as loose bits, most of which vanish as they land. 100: all of them stay. 0: all are thrown, as before. Leaves thrown when too many are flying at once are laid down either way rather than lost.");
 		Slider("Metal (Bend, m/s)", &tuning.BendSpeed, 0.5F, 30.0F, "%.1f");
 		Tip("Metal never breaks from a landing. Above this, a long thin piece (a beam, a plate) folds at a crease, more the harder the hit and the thinner it is, and a chunky piece dents. Falling pieces move at most 27 m/s, so above that never.");
 		Heading("Hitting units");

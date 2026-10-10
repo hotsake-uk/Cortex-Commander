@@ -281,22 +281,26 @@ namespace {
 		bool Wet = false; //!< Whether it was in liquid last update.
 		bool Damaged = false; //!< Whether pixels have been taken off it since its mass and outline were worked out.
 		bool AllLeaves = false; //!< Whether it is nothing but leaves (and grass): it breaks up by the tuning's LeafBreakEase.
+		int Topple = 0; //!< A tree cut through, being tipped over (-1 to the left, 1 to the right) until it leans past its stump; 0 for none.
 		int Drop = 0; //!< The sandbox drop it came from (TerrainCollapse::DropArea), or 0. The pieces it breaks into keep it.
 		long Id = 0; //!< Given the first time something is tied to it (TerrainCollapse::FindPiece); 0 before.
 		std::vector<std::pair<long, long long>> Hurt; //!< Units it hurt lately: unique ID and sim update, so a piece grinding on a unit hurts it once per blow, not every update.
 	};
 
-	/// Whether a piece is a tree coming down: a good share of tree trunk, its leaves the rest. (Every 7th pixel is enough to tell.)
+	/// Whether a piece is a tree coming down: some tree trunk, and nearly all of it trunk and leaves. (Every 7th pixel is enough to tell.)
+	/// (A big leafy tree is mostly leaves: a fifth of trunk, as this asked before, left the biggest trees not counted as trees.)
 	bool IsTree(const Body& body) {
 		int trunk = 0;
+		int leaves = 0;
 		int solid = 0;
 		for (size_t i = 0; i < body.Materials.size(); i += 7) {
 			if (unsigned char material = body.Materials[i]; material != 0) {
 				++solid;
 				trunk += s_TreeTrunk[material] ? 1 : 0;
+				leaves += s_Leaves[material] ? 1 : 0;
 			}
 		}
-		return trunk * 5 > solid && trunk > 0;
+		return trunk > 0 && (trunk * 5 > solid || (trunk + leaves) * 5 >= solid * 4);
 	}
 
 	long s_NextPieceId = 1;
@@ -712,6 +716,53 @@ namespace {
 		g_MovableMan.AddParticle(pixel);
 	}
 
+	/// Lays a leaf on the ground under a point: straight down to the first solid ground (not liquid, not a piece still falling) and into the air
+	/// above it, as litter. Returns false if there's no ground under it near enough (or liquid first).
+	bool LayLitter(int material, int colorIndex, const glm::vec2& position) {
+		SLTerrain* terrain = g_SceneMan.GetScene() ? g_SceneMan.GetScene()->GetTerrain() : nullptr;
+		if (!terrain || colorIndex == ColorKeys::g_MaskColor) {
+			return false;
+		}
+		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
+		int x = static_cast<int>(std::floor(position.x));
+		int y = static_cast<int>(std::floor(position.y));
+		if (!WrapInWorld(x, y)) {
+			return false;
+		}
+		// From where it is, or from the first air above if it starts inside something.
+		for (int lift = 0; lift < 12 && materialBitmap->line[y][x] != g_MaterialAir; ++lift) {
+			if (--y < 0) {
+				return false;
+			}
+		}
+		if (materialBitmap->line[y][x] != g_MaterialAir) {
+			return false;
+		}
+		for (int drop = 0; drop < 400 && y + 1 < s_Height; ++drop, ++y) {
+			int below = materialBitmap->line[y + 1][x];
+			if (below == g_MaterialAir || (s_State[(y + 1) * s_Width + x] & c_Falling)) {
+				continue;
+			}
+			if (FluidSim::IsLiquid(below)) {
+				return false;
+			}
+			terrain->SetMaterialPixel(x, y, material);
+			terrain->SetFGColorPixel(x, y, colorIndex);
+			terrain->AddUpdatedMaterialArea(Box(Vector(static_cast<float>(x), static_cast<float>(y)), 1.0F, 1.0F));
+			return true;
+		}
+		return false;
+	}
+
+	/// A pixel coming off a piece: a leaf (or grass) is laid on the ground below as litter by the tuning's LeafLitter share, the rest thrown as a
+	/// loose particle (most of which are lost when they land in a heap). With force, a leaf there's no room to throw is laid down rather than lost.
+	void ShedPixel(int material, int colorIndex, const glm::vec2& position, const glm::vec2& velocity, bool force = false) {
+		if (s_Leaves[material] && (force || Random01() < TerrainCollapse::GetTuning().LeafLitter) && LayLitter(material, colorIndex, position)) {
+			return;
+		}
+		ThrowDebris(material, colorIndex, position, velocity);
+	}
+
 	/// A puff of dust and a few chips where a piece lands or breaks, in the colour of what it's made of. Visual only: no fire, no light, nothing that touches the simulation.
 	void ThrowDust(const glm::vec2& point, int amount, const std::vector<unsigned char>& materials, const std::vector<unsigned char>& colors) {
 		unsigned int rgb = 0;
@@ -739,7 +790,7 @@ namespace {
 				if (body.Materials[local]) {
 					glm::vec2 offset = glm::vec2(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F) - body.Center;
 					glm::vec2 at = ToWorld(body, offset, body.Pos, body.Angle);
-					ThrowDebris(body.Materials[local], body.Colors[local], at, body.Vel + glm::vec2(Random01() - 0.5F, Random01() - 0.5F));
+					ShedPixel(body.Materials[local], body.Colors[local], at, body.Vel + glm::vec2(Random01() - 0.5F, Random01() - 0.5F));
 				}
 			}
 		}
@@ -974,7 +1025,8 @@ namespace {
 			}
 			glm::vec2 partOffset = glm::vec2(static_cast<float>(local % body.W) + 0.5F, static_cast<float>(local / body.W) + 0.5F) - body.Center;
 			glm::vec2 at = ToWorld(body, partOffset, body.Pos, body.Angle);
-			if (PlaceGrain(terrain, body.Materials[local], body.Colors[local], static_cast<int>(std::floor(at.x)), static_cast<int>(std::floor(at.y)))) {
+			// (Leaves go down onto the ground below as litter, rather than staying where they were in the air.)
+			if (s_Leaves[body.Materials[local]] ? LayLitter(body.Materials[local], body.Colors[local], at) : PlaceGrain(terrain, body.Materials[local], body.Colors[local], static_cast<int>(std::floor(at.x)), static_cast<int>(std::floor(at.y)))) {
 				region[local] = -2;
 				++grains;
 			} else {
@@ -993,7 +1045,7 @@ namespace {
 				glm::vec2 arm = at - body.Pos;
 				// Grains spill at the piece's speed; chips fly up and out.
 				float spray = s_Style[body.Materials[local]] == c_Crumble ? 0.6F : 1.5F + 0.4F * std::min(violence, 3.0F);
-				ThrowDebris(body.Materials[local], body.Colors[local], at, body.Vel + body.Spin * glm::vec2(-arm.y, arm.x) + glm::vec2(Random01() - 0.5F, -Random01()) * spray);
+				ShedPixel(body.Materials[local], body.Colors[local], at, body.Vel + body.Spin * glm::vec2(-arm.y, arm.x) + glm::vec2(Random01() - 0.5F, -Random01()) * spray);
 				region[local] = -2;
 			}
 		}
@@ -1400,7 +1452,7 @@ namespace {
 			float closeness = 1.0F - std::min(glm::length(at - hitLocal) / reach, 1.0F);
 			if (Random01() < share * (0.3F + closeness)) {
 				glm::vec2 world = ToWorld(body, at - body.Center, body.Pos, body.Angle);
-				ThrowDebris(material, body.Colors[local], world, body.Vel * 0.5F + glm::vec2(Random01() - 0.5F, -Random01()) * 1.2F);
+				ShedPixel(material, body.Colors[local], world, body.Vel * 0.5F + glm::vec2(Random01() - 0.5F, -Random01()) * 1.2F);
 				body.Materials[local] = 0;
 				++shed;
 			}
@@ -1440,10 +1492,9 @@ namespace {
 		}
 		for (int local = 0; local < static_cast<int>(body.Materials.size()); ++local) {
 			if (body.Materials[local] && !held[local]) {
-				if (CanThrow(1)) {
-					glm::vec2 at(static_cast<float>(local % body.W) + 0.5F, static_cast<float>(local / body.W) + 0.5F);
-					ThrowDebris(body.Materials[local], body.Colors[local], ToWorld(body, at - body.Center, body.Pos, body.Angle), body.Vel * 0.5F + glm::vec2(Random01() - 0.5F, -Random01()) * 1.2F);
-				}
+				// (Laid on the ground rather than lost when there's no room to throw it.)
+				glm::vec2 at(static_cast<float>(local % body.W) + 0.5F, static_cast<float>(local / body.W) + 0.5F);
+				ShedPixel(body.Materials[local], body.Colors[local], ToWorld(body, at - body.Center, body.Pos, body.Angle), body.Vel * 0.5F + glm::vec2(Random01() - 0.5F, -Random01()) * 1.2F, !CanThrow(1));
 				body.Materials[local] = 0;
 			}
 		}
@@ -1513,6 +1564,14 @@ namespace {
 			return;
 		}
 		body.Vel.y += c_Gravity;
+		// A cut tree is pushed over until it leans well past its stump (about 30 degrees), as the last of the wood at the cut would tip it; then it falls on its own.
+		if (body.Topple != 0) {
+			if (std::abs(body.Angle) > 0.5F || body.Age > 300) {
+				body.Topple = 0;
+			} else if (body.Spin * static_cast<float>(body.Topple) < 0.02F) {
+				body.Spin += static_cast<float>(body.Topple) * 0.0008F;
+			}
+		}
 		// In liquid it sinks slowly instead of dropping.
 		int inLiquid = 0;
 		int touchedX = -1;
@@ -1849,7 +1908,7 @@ namespace {
 		// Lying on something and all but stopped. (How far it moved doesn't count: a piece rocking on the pixel grid is lifted clear and drops back for ever.)
 		bool calm = responses > 0 && glm::length(body.Vel) < 0.35F && std::abs(body.Spin) * body.Radius < 0.35F;
 		// A wobble sets the count back a little rather than to nothing, or a piece rocking on a point never comes to rest.
-		body.Still = calm ? body.Still + 1 : (movedBy > 2.0F ? 0 : std::max(body.Still - 4, 0));
+		body.Still = (calm && body.Topple == 0) ? body.Still + 1 : (movedBy > 2.0F || body.Topple != 0 ? 0 : std::max(body.Still - 4, 0));
 		Stamp(terrain, body);
 		// A piece that has lain still long enough becomes ordinary ground again. Until then it can still tip, roll or be knocked.
 		if (body.Still >= std::max(static_cast<int>(TerrainCollapse::GetTuning().RestSeconds * 60.0F), 5) || body.Age > c_MaxAge) {
@@ -1920,7 +1979,8 @@ namespace {
 			int x = key % width;
 			int y = key / width;
 			int material = materialBitmap->line[y][x];
-			if (s_TreeTrunk[material] || TerrainTrees::IsTreeMaterial(material)) {
+			// (With tree rules any leaves count: leaves reached then hang on a trunk, as a tree painted before trees had leaves of their own does.)
+			if (s_TreeTrunk[material] || TerrainTrees::IsTreeMaterial(material) || (treeRules && s_Leaves[material])) {
 				++treePixels;
 			}
 			if (static_cast<int>(piece.size()) - treePixels > TerrainCollapse::GetTuning().MaxPiecePixels || static_cast<int>(piece.size()) > c_MaxTreePiecePixels || s_Fixed[material]) {
@@ -2319,6 +2379,26 @@ namespace {
 			return;
 		}
 		body.Spin = (Random01() - 0.5F) * 0.006F;
+		// A tree cut through drops onto its own stump, and a thick one stood balanced there and set again as ground, as if it hadn't been cut:
+		// it's tipped over the way it leans (its centre of mass against the middle of its trunk's bottom), either way if it stands straight.
+		if (IsTree(body)) {
+			int bottomRow = -1;
+			float baseSum = 0.0F;
+			int baseCount = 0;
+			for (int y = body.H - 1; y >= 0 && bottomRow < 0; --y) {
+				for (int x = 0; x < body.W; ++x) {
+					if (unsigned char material = body.Materials[static_cast<size_t>(y) * body.W + x]; material != 0 && s_TreeTrunk[material]) {
+						bottomRow = y;
+						baseSum += static_cast<float>(x) + 0.5F;
+						++baseCount;
+					}
+				}
+			}
+			if (baseCount > 0) {
+				float lean = body.Center.x - baseSum / static_cast<float>(baseCount);
+				body.Topple = lean > 0.5F ? 1 : (lean < -0.5F ? -1 : (Random01() < 0.5F ? -1 : 1));
+			}
+		}
 		s_CollapsedCount += body.PixelCount;
 		s_Bodies.push_back(std::move(body));
 	}
