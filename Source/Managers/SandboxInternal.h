@@ -1872,6 +1872,7 @@ namespace SandboxDetail {
 
 	inline std::vector<Pin> s_Pins;
 
+	inline float s_BarHeight = 0.0F; //!< How tall the bar along the bottom was drawn last, 0 when it isn't there: what is shown at the foot of the picture goes above it.
 	inline bool s_BarShown = true; //!< Whether the bar along the bottom is up (U hides and shows it); up at the start of every game.
 
 	/// Things marked as favourites (Ctrl+click on a tile): a star on the tile, and a filter to list only them.
@@ -2249,39 +2250,41 @@ namespace SandboxDetail {
 	void SideStatus();
 	void TimeControls();
 	void BarDivider();
-	void BarPlate();
-	bool ContextRow();
+	bool ShelfRow();
 	void DrawBar();
 #pragma endregion
 
-	/// One tile of the bar: a small picture drawn by the caller, lit when it is the one in use, its name as a tooltip.
+	/// One tile of the bar: a small picture drawn by the caller, with its name under it when given (else the tile is only the picture). The one in use
+	/// sits in a dark well with a gold line along its foot and its name in gold; the one under the pointer lightens.
+	/// @param labelColor The colour of the name, 0 for the usual.
 	/// @return 1 if clicked, 2 if right-clicked, 0 otherwise.
-	template <typename DrawPicture> int BarTile(const char* id, const char* tip, bool selected, DrawPicture drawPicture) {
+	template <typename DrawPicture> int BarTile(const char* id, const char* label, const char* tip, bool selected, DrawPicture drawPicture, ImU32 labelColor = 0) {
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		float pixel = ToolUI::Pixel();
-		float dot = pixel * 1.5F; // One pixel of the picture.
-		float picture = dot * 12.0F;
-		float pad = pixel * 3.0F;
-		ImVec2 size(picture + pad * 2.0F, picture + pad * 2.0F);
+		float picture = std::floor(pixel * 1.5F * 12.0F);
+		float pad = pixel * 2.0F;
+		float labelWidth = label ? ImGui::CalcTextSize(label).x : 0.0F;
+		float width = std::floor(label ? std::max({picture + pad * 4.0F, labelWidth + pad * 4.0F, ImGui::GetFontSize() * 3.4F}) : picture + pad * 2.0F);
+		float height = std::floor(pad * 2.0F + picture + (label ? ImGui::GetFontSize() : 0.0F));
 		ImVec2 at = ImGui::GetCursorScreenPos();
-		int result = ImGui::InvisibleButton(id, size) ? 1 : 0;
+		int result = ImGui::InvisibleButton(id, ImVec2(width, height)) ? 1 : 0;
 		if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
 			result = 2;
 		}
 		bool hovered = ImGui::IsItemHovered();
-		ImVec2 to(at.x + size.x, at.y + size.y);
-		// A sunken socket; the one in use sits raised and gold-edged, the one under the pointer lightens.
-		ImU32 well = selected ? ToolTheme::Panel : hovered ? ToolTheme::WellHover : ToolTheme::Well;
-		drawList->AddRectFilled(at, to, well);
+		ImVec2 to(at.x + width, at.y + height);
 		if (selected) {
-			drawList->AddRect(at, to, ToolTheme::Gold, 0.0F, 0, pixel);
-			drawList->AddRectFilled(ImVec2(at.x + pixel, at.y + pixel), ImVec2(to.x - pixel, at.y + pixel * 2.0F), (ToolTheme::EdgeLight & 0x00FFFFFF) | (90u << IM_COL32_A_SHIFT));
-		} else {
-			drawList->AddRectFilled(at, ImVec2(to.x, at.y + pixel), ToolTheme::EdgeDark);
-			drawList->AddRectFilled(at, ImVec2(at.x + pixel, to.y), ToolTheme::EdgeDark);
-			drawList->AddRectFilled(ImVec2(at.x, to.y - pixel), to, (ToolTheme::Edge & 0x00FFFFFF) | (150u << IM_COL32_A_SHIFT));
+			drawList->AddRectFilled(at, to, (ToolTheme::Well & 0x00FFFFFF) | (200u << IM_COL32_A_SHIFT));
+			drawList->AddRectFilled(ImVec2(at.x, to.y - pixel * 2.0F), to, ToolTheme::Gold);
+		} else if (hovered) {
+			drawList->AddRectFilled(at, to, (ToolTheme::WellHover & 0x00FFFFFF) | (200u << IM_COL32_A_SHIFT));
 		}
-		drawPicture(drawList, ImVec2(at.x + pad, at.y + pad), picture);
+		drawPicture(drawList, ImVec2(std::floor(at.x + (width - picture) * 0.5F), at.y + pad), picture);
+		if (label) {
+			ImU32 ink = selected ? ToolTheme::Gold : labelColor != 0 ? labelColor
+			                                                         : (ToolTheme::Text & 0x00FFFFFF) | (215u << IM_COL32_A_SHIFT);
+			drawList->AddText(ImVec2(std::floor(at.x + (width - labelWidth) * 0.5F), at.y + pad + picture), ink, label);
+		}
 		if (hovered && tip && *tip) {
 			ImGui::SetTooltip("%s", tip);
 		}

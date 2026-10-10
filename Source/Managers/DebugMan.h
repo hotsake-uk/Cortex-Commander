@@ -123,7 +123,6 @@ namespace RTE {
 		float m_PanelWidth{25.833332F}; //!< Width of the docked panel at the left, in percent of the window's width.
 		float m_PanelWidthRight{20.15625F}; //!< Width of the docked panel at the right, in percent of the window's width.
 		int m_SandboxPlacement{0}; //!< How the sandbox's window is shown: a PanelPlacement.
-		float m_BarWidth{50.0F}; //!< Width of the sandbox bar along the bottom, in percent of the game's picture.
 		float m_ToolScale{0.7F}; //!< How big the tool windows' text and controls are, as a share of the size that follows the window's height.
 
 		/// Gets how much the tool windows are scaled: with the window's height (720 px = 1x), times the size the player chose.
@@ -174,7 +173,6 @@ namespace RTE {
 
 	public:
 		/// Gets how wide the sandbox bar is, as a share (0 to 1) of the game's picture. Its controls wrap onto more lines inside that.
-		float GetBarWidthShare() const { return m_BarWidth / 100.0F; }
 
 		/// Gets the part of the game's picture not covered by docked panels this frame, in window pixels: where things that must stay in sight (the sandbox bar, banners) go.
 		GameViewRect GetUncoveredView() const;

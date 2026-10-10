@@ -69,7 +69,7 @@ namespace {
 		for (const std::string& line: lines) {
 			width = std::max(width, ImGui::CalcTextSize(line.c_str()).x);
 		}
-		ImVec2 corner(std::floor(view.x + view.w - width - 12.0F), std::floor(view.y + view.h - lineHeight * static_cast<float>(lines.size()) - 12.0F));
+		ImVec2 corner(std::floor(view.x + view.w - width - 12.0F), std::floor(view.y + view.h - s_BarHeight - lineHeight * static_cast<float>(lines.size()) - 12.0F));
 		drawList->AddRectFilled(ImVec2(corner.x - 4.0F, corner.y - 4.0F), ImVec2(corner.x + width + 4.0F, corner.y + lineHeight * static_cast<float>(lines.size()) + 4.0F), IM_COL32(10, 12, 10, 190));
 		for (size_t i = 0; i < lines.size(); ++i) {
 			ImU32 color = i == 0 && g_TimerMan.IsSimPaused() ? IM_COL32(150, 210, 255, 255) : lines[i] == "AI paused" ? IM_COL32(255, 210, 80, 255) : IM_COL32(230, 230, 220, 255);
@@ -444,7 +444,7 @@ namespace {
 		for (const std::string& line: lines) {
 			width = std::max(width, ImGui::CalcTextSize(line.c_str()).x);
 		}
-		ImVec2 corner(std::floor(view.x + 12.0F), std::floor(view.y + view.h - lineHeight * static_cast<float>(lines.size()) - 12.0F));
+		ImVec2 corner(std::floor(view.x + 12.0F), std::floor(view.y + view.h - s_BarHeight - lineHeight * static_cast<float>(lines.size()) - 12.0F));
 		drawList->AddRectFilled(ImVec2(corner.x - 4.0F, corner.y - 4.0F), ImVec2(corner.x + width + 4.0F, corner.y + lineHeight * static_cast<float>(lines.size()) + 4.0F), IM_COL32(10, 12, 10, 190));
 		for (size_t i = 0; i < lines.size(); ++i) {
 			drawList->AddText(ImVec2(corner.x, corner.y + lineHeight * static_cast<float>(i)), IM_COL32(230, 230, 220, 255), lines[i].c_str());
