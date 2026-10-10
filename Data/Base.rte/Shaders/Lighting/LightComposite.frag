@@ -19,6 +19,8 @@ uniform vec2 rteSunDirection; // Unit vector towards the sun (or the moon at nig
 uniform float rteSunShadows; // How much shade darkens the sky light, 0 (no directional daylight) to 1.
 uniform vec3 rteShadeTint; // What sky light is multiplied by in full shade at full strength: darker and cooler.
 uniform float rteUnitShadows; // How dark the shadows of solid objects are, 0 (off) to 1.
+uniform float rteBackgroundShadows; // How dark the terrain's shadows on the background scenery behind it are, 0 (off) to 1, after time of day and weather.
+uniform float rteBackgroundShadowLength; // How far those shadows reach, 1 as usual.
 uniform float rteContactShading; // How much background walls darken right next to solid objects and terrain, 0 (off) to 1.
 uniform float rteMetals; // How strongly metallic surfaces mirror their surroundings and glint in the sun, 0 for none.
 uniform float rteBackgroundBlur; // How much the far background layers are softened, 0 for none.
@@ -151,6 +153,25 @@ float ObjectSunShadow(vec2 from, bool fromSolid) {
 		t += max(clearance * 0.95, 1.0);
 	}
 	return clamp(visibility, 0.0, 1.0);
+}
+
+// How much the terrain in front shades a pixel of the background scenery, 0 to 1. The scenery stands some way behind the battlefield, so the terrain's shadow falls on it
+// shifted away from the sun: look from the pixel towards the sun for terrain, in the light grid (so terrain just off the screen still casts). The further back the layer,
+// the longer the shadow reaches and the softer and fainter it is. Darkest right next to the terrain, fading towards the end of its reach.
+float BackgroundShadow(vec2 worldPos, float layerDistance) {
+	float reach = rteBackgroundShadowLength * mix(12.0, 40.0, layerDistance);
+	vec2 across = vec2(-rteSunDirection.y, rteSunDirection.x);
+	float shadow = 0.0;
+	for (int i = 1; i <= 8; ++i) {
+		float along = float(i) / 8.0;
+		float t = reach * along;
+		// The sun is a disc, not a point: the shadow's edge spreads with the distance from the terrain casting it.
+		vec2 spread = across * (1.0 + t * 0.15);
+		vec2 position = worldPos + rteSunDirection * t;
+		float cover = 0.5 * (texture(rteOccupancy, (position + spread) / rteGridWorldSize).r + texture(rteOccupancy, (position - spread) / rteGridWorldSize).r);
+		shadow = max(shadow, smoothstep(0.15, 0.65, cover) * (1.0 - 0.65 * along * along));
+	}
+	return shadow * mix(1.0, 0.6, layerDistance);
 }
 
 float CloudHash(vec2 p) {
@@ -360,6 +381,11 @@ void main() {
 		// Only layers that barely scroll (the sky itself) get stars, so they never show on mountains or nearer scenery.
 		// They also fade towards the horizon, where distant mountains usually are.
 		skyLayer = smoothstep(0.88, 0.95, distance);
+		if (rteBackgroundShadows > 0.0 && skyLayer < 1.0 && sceneDepth < 0.9999) {
+			// The terrain casts its shadow on the scenery behind it, so it stands out from the backdrop instead of looking pasted flat on it. Never on the sky itself.
+			float shadow = BackgroundShadow(rteScreenOrigin + gl_FragCoord.xy, distance) * rteBackgroundShadows * (1.0 - skyLayer);
+			light *= mix(vec3(1.0), rteShadeTint * 0.8, shadow);
+		}
 		nightSkyAmount = rteNightSky * smoothstep(0.88, 0.95, distance) * (1.0 - smoothstep(0.25, 0.48, screenUV.y)); // Player screens are drawn top down: UV y 0 is the top.
 	} else {
 		vec2 worldPos = rteScreenOrigin + gl_FragCoord.xy;
