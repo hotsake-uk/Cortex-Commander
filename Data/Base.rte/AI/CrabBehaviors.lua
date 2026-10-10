@@ -41,6 +41,8 @@ function CrabBehaviors.LookForTargets(AI, Owner)
 				FoundMO = ToACDropShip(FoundMO);
 			elseif FoundMO.ClassName == "ADoor" and FoundMO.Team ~= Activity.NOTEAM and Owner.AIMode ~= Actor.AIMODE_SENTRY and ToADoor(FoundMO).Door and ToADoor(FoundMO).Door:IsAttached() and SharedBehaviors.GetProjectileData(Owner).pen * 0.9 > ToADoor(FoundMO).Door.Material.StructuralIntegrity then
 				FoundMO = ToADoor(FoundMO);
+			elseif FoundMO.ClassName == "AVehicle" then	-- A cart or other vehicle (VH-1).
+				FoundMO = ToAVehicle(FoundMO);
 			elseif FoundMO.ClassName == "Actor" then
 				FoundMO = ToActor(FoundMO);
 			else
@@ -452,6 +454,8 @@ function CrabBehaviors.ShootTarget(AI, Owner, Abort)
 					ClosestEnemy = ToAHuman(ClosestEnemy);
 				elseif ClosestEnemy.ClassName == "ACrab" then
 					ClosestEnemy = ToACrab(ClosestEnemy);
+				elseif ClosestEnemy.ClassName == "AVehicle" then
+					ClosestEnemy = ToAVehicle(ClosestEnemy);
 				else
 					ClosestEnemy = nil;
 				end
