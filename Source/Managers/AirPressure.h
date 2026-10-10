@@ -44,6 +44,15 @@ namespace RTE {
 		/// Tuning::WindStrength, 0 while the air is off or the wind doesn't carry smoke.
 		static float GetWind();
 
+		/// Gets the wind the air carries drawn effects with (smoke and fire puffs, embers, spray, dust), in pixels a second, rightwards positive:
+		/// the weather's wind times Tuning::WindStrength, 0 while the air is off or the wind doesn't carry smoke.
+		static float GetWindSpeed();
+
+		/// Gets how much a passing blast wave changes a weightless thing's speed this update at a point, in metres a second, as PushObjects
+		/// pushes smoke: zero in still air or while blast waves are off.
+		/// @param position Where, in scene coordinates.
+		static Vector GetPush(const Vector& position);
+
 		/// Gets whether a point is in the lee of ground upwind of it, where the wind eddies instead of blowing through.
 		/// @param position Where, in scene coordinates.
 		/// @param wind The wind, as GetWind gives it: only its sign (which way is upwind) counts.
