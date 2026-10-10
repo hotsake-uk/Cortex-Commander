@@ -177,6 +177,7 @@ void SettingsMan::Clear() {
 	m_CrabBombThreshold = 42;
 	m_ShowEnemyHUD = true;
 	m_ShowUnitTags = false;
+	m_ShowCPUAimReticles = true;
 	m_EnableSmartBuyMenuNavigation = true;
 	m_AutomaticGoldDeposit = true;
 
@@ -737,6 +738,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CrabBombThreshold", { reader >> m_CrabBombThreshold; });
 	MatchProperty("ShowEnemyHUD", { reader >> m_ShowEnemyHUD; });
 	MatchProperty("ShowUnitTags", { reader >> m_ShowUnitTags; });
+	MatchProperty("ShowCPUAimReticles", { reader >> m_ShowCPUAimReticles; });
 	MatchProperty("SmartBuyMenuNavigation", { reader >> m_EnableSmartBuyMenuNavigation; });
 	MatchProperty("ScrapCompactingHeight", { reader >> g_SceneMan.m_ScrapCompactingHeight; });
 	MatchProperty("AutomaticGoldDeposit", { reader >> m_AutomaticGoldDeposit; });
@@ -1113,6 +1115,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
 	writer.NewPropertyWithValue("ModernHUD", ModernHUD::IsEnabled());
 	writer.NewPropertyWithValue("ShowUnitTags", m_ShowUnitTags);
+	writer.NewPropertyWithValue("ShowCPUAimReticles", m_ShowCPUAimReticles);
 	writer.NewPropertyWithValue("ClassicPieWheel", m_ClassicPieWheel);
 	writer.NewPropertyWithValue("SmoothHUDText", TextOverlay::IsEnabled());
 	writer.NewPropertyWithValue("FrameCap", g_WindowMan.GetFrameCap());
