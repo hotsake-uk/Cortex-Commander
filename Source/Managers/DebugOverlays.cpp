@@ -12,6 +12,7 @@
 #include "SmokeGrid.h"
 #include "TerrainCollapse.h"
 #include "TerrainFire.h"
+#include "TerrainCandle.h"
 #include "WeatherEffects.h"
 #include "PathFinder.h"
 #include "Scene.h"
@@ -524,7 +525,14 @@ void DebugOverlays::DrawWorldSim() {
 				ImVec2 at(origin.x + pixel.x / perPixel, origin.y + pixel.y / perPixel);
 				drawList->AddRectFilled(at, ImVec2(at.x + dot, at.y + dot), color);
 			}
-			std::snprintf(text, sizeof(text), "burning ground: %d pixels, %d in view", TerrainFire::GetCount(), static_cast<int>(burning.size()));
+			// Lit candles: a ring round each flame.
+			std::vector<TerrainCandle::Flame> candles;
+			TerrainCandle::GetFlames(glm::vec2(view.GetCorner().m_X, view.GetCorner().m_Y), static_cast<int>(view.GetWidth()), static_cast<int>(view.GetHeight()), candles);
+			for (const TerrainCandle::Flame& candle: candles) {
+				ImVec2 at(origin.x + candle.Tip.x / perPixel, origin.y + (candle.Tip.y - 2.5F * candle.Size) / perPixel);
+				drawList->AddCircle(at, 6.0F * candle.Size / perPixel + 3.0F, IM_COL32(255, 210, 120, 220), 12, 1.5F);
+			}
+			std::snprintf(text, sizeof(text), "burning ground: %d pixels, %d in view; candles lit: %d", TerrainFire::GetCount(), static_cast<int>(burning.size()), TerrainCandle::GetCount());
 			caption(text);
 			break;
 		}

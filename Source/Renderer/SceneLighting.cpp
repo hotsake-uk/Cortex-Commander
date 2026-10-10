@@ -4,6 +4,7 @@
 #include "PresetMan.h"
 #include "EffectsParticles.h"
 #include "TerrainFire.h"
+#include "TerrainCandle.h"
 #include "FluidSim.h"
 
 #include "PostProcessMan.h"
@@ -2364,6 +2365,58 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			emissiveHeat.push_back(0.0F);
 		}
 		m_ScreenWarmthTarget[screenIndex] = 1.0F - std::exp(-warmth / 150.0F);
+	}
+
+	// Candles' flames (TerrainCandle): small and steady, drawn a pixel at a time as the art is. A blue foot on the wick, a white-hot core edged in
+	// orange, a yellow then orange tip that stretches and shrinks a little and sways a pixel now and then; the wind leans it over. A soft glow round it.
+	{
+		std::vector<TerrainCandle::Flame> candles;
+		TerrainCandle::GetFlames(origin, width, height, candles);
+		GLuint whiteTexture = g_RenderMan.GetShapeTexture();
+		GLuint puffTexture = EffectsParticles::GetPuffTexture();
+		float time = PostProcessMan::GetEffectTime();
+		for (const TerrainCandle::Flame& candle: candles) {
+			// Drawn in pixels as big as the wick is wide, so a candle drawn bigger has a flame as big.
+			float size = candle.Size;
+			float strength = candle.Strength;
+			glm::vec2 world = candle.Tip + origin;
+			float seed = glm::dot(world, glm::vec2(12.9898F, 78.233F));
+			float noise = glm::fract(std::sin(seed + std::floor(time * 9.0F) * 1.7F) * 43758.5453F);
+			float sway = glm::fract(std::sin(seed * 1.3F + std::floor(time * 5.0F) * 2.3F) * 24634.6345F);
+			int tall = 4 + (noise > 0.55F ? 1 : 0) + (noise > 0.92F ? 1 : 0);
+			tall = std::max(1, static_cast<int>(std::round(static_cast<float>(tall) * strength)));
+			auto pixel = [&](int dx, int dy, glm::vec3 color, float heat) {
+				addQuad(candle.Tip + glm::vec2(static_cast<float>(dx), 0.5F - static_cast<float>(dy)) * size, glm::vec2(0.5F * size), 0.0F, glm::min(color * strength, glm::vec3(1.0F)), 0.0F);
+				emissiveTextures.push_back(whiteTexture);
+				emissiveHeat.push_back(heat);
+			};
+			// The glow round it first, under the flame.
+			addQuad(candle.Tip + glm::vec2(candle.Lean * 1.5F, -2.0F) * size, glm::vec2(4.5F, 6.0F) * size, 0.0F, glm::vec3(0.45F, 0.24F, 0.06F) * (0.3F * strength), 0.0F);
+			emissiveTextures.push_back(puffTexture);
+			emissiveHeat.push_back(0.0F);
+			// The wick's tip glows where it burns.
+			pixel(0, 0, glm::vec3(0.85F, 0.3F, 0.06F) * 0.8F, 0.0F);
+			for (int row = 1; row <= tall; ++row) {
+				int shift = static_cast<int>(std::round(candle.Lean * static_cast<float>(row - 1) * 0.6F));
+				if (row == tall && tall > 2) {
+					shift += sway > 0.85F ? 1 : (sway < 0.15F ? -1 : 0);
+				}
+				if (row == 1) {
+					pixel(shift, row, glm::vec3(0.3F, 0.4F, 1.0F) * 0.75F, 0.1F);
+				} else if (row == tall) {
+					pixel(shift, row, glm::vec3(1.0F, 0.5F, 0.12F) * 0.85F, 0.3F);
+				} else if (row == tall - 1) {
+					pixel(shift, row, glm::vec3(1.0F, 0.78F, 0.32F), 0.35F);
+				} else {
+					pixel(shift, row, glm::vec3(1.0F, 0.96F, 0.8F), 0.4F);
+					if (row <= 3) {
+						glm::vec3 edge = glm::vec3(1.0F, 0.55F, 0.14F) * (row == 2 ? 0.8F : 0.6F);
+						pixel(shift - 1, row, edge, 0.2F);
+						pixel(shift + 1, row, edge, 0.2F);
+					}
+				}
+			}
+		}
 	}
 
 	// Flame particles (Flame 1, Flame 2 and their copies, like the sandbox fire brush's): with the shader's flames they join the fire front's
