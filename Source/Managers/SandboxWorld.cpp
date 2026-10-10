@@ -1802,12 +1802,13 @@ namespace SandboxDetail {
 			return;
 		}
 		if (kind == Tool::BattleModeFlag) {
-			// The neutral flag (one flag) stands here from now on.
-			Vector at = position;
-			g_SceneMan.WrapPosition(at);
-			s_ModeSetup.FlagSpot = at;
-			s_ModeSetup.HasFlagSpot = true;
-			SendBattleMode();
+			// Another position the neutral flag (one flag) comes in at, after those placed already.
+			if (s_ModeSetup.FlagSpots.size() < c_MaxFlagSpots) {
+				Vector at = position;
+				g_SceneMan.WrapPosition(at);
+				s_ModeSetup.FlagSpots.push_back(at);
+				SendBattleMode();
+			}
 			return;
 		}
 		if (IsModeZoneTool(kind)) {
