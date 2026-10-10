@@ -282,12 +282,6 @@ void DebugMan::DrawToolWindowControls() {
 			}
 			ImGui::SetItemTooltip("How wide the panel at this side is, as a share of the window's width: type a number from 10 to 45 and press Enter, or drag the panel's inner edge.\nControls that don't fit on a line go onto the next.");
 		}
-		float barWidth = m_BarWidth;
-		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7.0F);
-		if (ImGui::InputFloat("Sandbox bar width (% of screen)", &barWidth, 5.0F, 10.0F, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
-			m_BarWidth = std::clamp(barWidth, 25.0F, 100.0F);
-		}
-		ImGui::SetItemTooltip("How wide the sandbox's bar along the bottom is, as a share of the game's picture: type a number from 25 to 100 and press Enter.\nControls that don't fit on a line go onto the next.");
 		static const char* const placements[] = {"Side panel", "Floating window", "Large window"};
 		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 9.0F);
 		ImGui::Combo("Sandbox window", &m_SandboxPlacement, placements, IM_ARRAYSIZE(placements));
