@@ -47,6 +47,19 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 	}
 	if (toolName == "Effect") {
 		// The preset name is the effect's name.
+		LoadCustomEffects();
+		for (size_t i = 0; i < s_CustomEffects.size(); ++i) {
+			if (presetName == s_CustomEffects[i].Name) {
+				Stroke placed;
+				placed.Kind = Tool::Effect;
+				placed.Position = position;
+				placed.Choice = static_cast<int>(EffectKind::Count) + static_cast<int>(i);
+				placed.Layers = s_CustomEffects[i].Layers;
+				placed.Material = s_CustomEffects[i].Name;
+				s_Queue.push_back(placed);
+				return true;
+			}
+		}
 		for (int i = 0; i < static_cast<int>(EffectKind::Count); ++i) {
 			if (presetName == c_Effects[i].Name) {
 				Stroke placed;
@@ -1188,7 +1201,22 @@ void Sandbox::DrawGUI() {
 				} else if (kind == Tool::Item) {
 					ToolUI::Checkbox("Pull the pin (grenades)", &s_LitGrenade);
 				} else if (kind == Tool::Structure) {
-					ToolUI::Checkbox("Snap to the bunker grid", &s_SnapToGrid);
+					ImGui::SeparatorText("Lights and fires: shine from the background");
+				{
+					int column = 0;
+					for (int i = 0; i < static_cast<int>(DecorKind::Count); ++i) {
+						if (column++ % 3 != 0) {
+							ImGui::SameLine();
+						}
+						if (ToolUI::RadioButton(DecorName(i), c_Tools[s_ToolIndex].Kind == Tool::Decor && s_DecorChoice == i)) {
+							s_DecorChoice = i;
+							TookTool(ToolIndex(Tool::Decor));
+						}
+						ImGui::SetItemTooltip("%s", DecorTip(i));
+					}
+				}
+				ImGui::Separator();
+				ToolUI::Checkbox("Snap to the bunker grid", &s_SnapToGrid);
 				}
 				UndoButton();
 				EndSandboxTab();
@@ -1503,6 +1531,8 @@ void Sandbox::DrawGUI() {
 				}
 				ImGui::SeparatorText("Things to knock down");
 				ToolButtons({Tool::BuildBeam, Tool::BuildPillar, Tool::BuildRoom, Tool::BuildTower, Tool::BuildBridge, Tool::BuildIsland, Tool::BuildTank});
+				ImGui::SeparatorText("Medieval: wood burns, stone doesn't");
+				ToolButtons({Tool::BuildBonfire, Tool::BuildCottage, Tool::BuildWatchtower, Tool::BuildCastle});
 				EndSandboxTab();
 			}
 			if (SandboxTab("Effects")) {
@@ -1530,6 +1560,7 @@ void Sandbox::DrawGUI() {
 				effectButtons({EffectKind::Campfire, EffectKind::WeldingArc, EffectKind::Portal, EffectKind::SparkFountain, EffectKind::FireJet, EffectKind::ToxicVent});
 				ImGui::SeparatorText("Particles and air");
 				effectButtons({EffectKind::EmberVent, EffectKind::SmokeStack, EffectKind::SmokePlume, EffectKind::MistVent, EffectKind::DustDevil, EffectKind::HeatShimmer, EffectKind::ShockwavePulse});
+				CustomEffectsUI();
 				ImGui::Separator();
 				ImGui::BeginDisabled(s_Effects.empty());
 				if (ToolUI::Button("Remove all effects")) {
@@ -1636,6 +1667,7 @@ void Sandbox::OnActivityStarted() {
 	s_WaterSpawners.clear();
 	s_Incoming.clear();
 	s_Effects.clear();
+	s_Decor.clear();
 	s_PaintUndo.clear();
 	// The same random stream from the start of every game, so the same inputs give the same game.
 	s_Random = c_RandomSeed;
@@ -1675,6 +1707,7 @@ void Sandbox::Update() {
 		s_Incoming.clear();
 		s_WaterSpawners.clear();
 		s_Effects.clear();
+		s_Decor.clear();
 		return;
 	}
 	ApplyPendingOrders();
@@ -1689,6 +1722,7 @@ void Sandbox::Update() {
 	UpdateMoveWatch();
 	UpdateIncoming();
 	UpdateEffects();
+	UpdateDecor();
 	for (WaterSpawner& spawner: s_WaterSpawners) {
 		if (!spawner.On) {
 			continue;

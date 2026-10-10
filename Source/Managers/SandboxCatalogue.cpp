@@ -252,6 +252,8 @@ namespace SandboxDetail {
 		switch (kind) {
 			case Tool::Effect:
 				return s_EffectChoice;
+			case Tool::Decor:
+				return s_DecorChoice;
 			case Tool::Brain:
 				return s_BrainChoice;
 			case Tool::Item:
