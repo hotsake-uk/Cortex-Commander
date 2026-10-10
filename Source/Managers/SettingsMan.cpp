@@ -36,6 +36,9 @@
 #include "System.h"
 
 #include <sstream>
+#include <fstream>
+#include <iomanip>
+#include <chrono>
 #include <filesystem>
 #include <cctype>
 #include <algorithm>
@@ -244,9 +247,38 @@ int SettingsMan::Initialize() {
 	return failureCode;
 }
 
+namespace {
+	/// The settings file's text for the settings as they are now.
+	std::string SettingsText() {
+		auto stream = std::make_unique<std::ostringstream>();
+		*stream << std::fixed << std::setprecision(6);
+		std::ostringstream* text = stream.get();
+		Writer settingsWriter(std::move(stream));
+		g_SettingsMan.Save(settingsWriter);
+		return text->str();
+	}
+}
+
 void SettingsMan::UpdateSettingsFile() const {
-	Writer settingsWriter(m_SettingsPath);
-	g_SettingsMan.Save(settingsWriter);
+	std::string text = SettingsText();
+	std::ofstream file(m_SettingsPath, std::ios::out | std::ios::trunc);
+	file << text;
+	file.close();
+	if (file) {
+		m_LastWrittenSettings = std::move(text);
+	}
+}
+
+void SettingsMan::SaveSettingsIfChanged() const {
+	static std::chrono::steady_clock::time_point s_LastLook;
+	std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+	if (now - s_LastLook < std::chrono::seconds(1)) {
+		return;
+	}
+	s_LastLook = now;
+	if (SettingsText() != m_LastWrittenSettings) {
+		UpdateSettingsFile();
+	}
 }
 
 int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) {
@@ -637,6 +669,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("UnitSpeechTones2", { UnitSpeech::SetTeamTonesText(1, reader.ReadPropValue()); });
 	MatchProperty("UnitSpeechTones3", { UnitSpeech::SetTeamTonesText(2, reader.ReadPropValue()); });
 	MatchProperty("UnitSpeechTones4", { UnitSpeech::SetTeamTonesText(3, reader.ReadPropValue()); });
+	MatchProperty("UnitSpeechToneMix", { UnitSpeech::SetToneWeightsText(reader.ReadPropValue()); });
 	MatchProperty("AISuppression", {
 		reader >> m_AISuppression;
 		m_AISuppression = std::clamp(m_AISuppression, 0.0F, 2.0F);
@@ -1074,6 +1107,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	for (int team = 0; team < 4; ++team) {
 		writer.NewPropertyWithValue("UnitSpeechTones" + std::to_string(team + 1), UnitSpeech::GetTeamTonesText(team));
 	}
+	writer.NewPropertyWithValue("UnitSpeechToneMix", UnitSpeech::GetToneWeightsText());
 	if (forPreset) {
 		// The settings file only lists what is off, over everything on; a preset loads over what is set now, so it says what is on too.
 		for (const UnitSpeech::Trigger& trigger: UnitSpeech::GetTriggers()) {

@@ -976,6 +976,23 @@ void DebugMan::SettingsGUI() {
 			{
 				static const std::array<const char*, 4> sideNames{"Red", "Green", "Blue", "Yellow"};
 				const std::vector<std::string> tones = UnitSpeech::GetTones();
+				// The mix of tones: how often each comes up against the others. A side shares it between the tones it speaks in.
+				int toneTotal = 0;
+				for (const std::string& tone: tones) {
+					toneTotal += UnitSpeech::GetToneWeight(tone);
+				}
+				for (const std::string& tone: tones) {
+					int weight = UnitSpeech::GetToneWeight(tone);
+					const int share = toneTotal > 0 ? (weight * 100 + toneTotal / 2) / toneTotal : 0;
+					std::string label = tone + " lines, share of the mix##SpeechToneMix" + tone;
+					std::string format = "%d (" + std::to_string(share) + "%% of lines)";
+					if (SliderI(label.c_str(), &weight, 0, 100, format.c_str())) {
+						UnitSpeech::SetToneWeight(tone, weight);
+					}
+					Tip("How often a unit says a line of this tone against the others: Funny 90 and Serious 10 is nine funny lines to one serious. "
+					    "A side that speaks only some tones (below) shares the whole mix between those, keeping their balance; a side of one tone always speaks it. "
+					    "Speech chance above still decides how often anything is said at all.");
+				}
 				for (int team = 0; team < 4; ++team) {
 					std::string anyLabel = std::string(sideNames[team]) + " side speaks: any tone##SpeechToneAny" + std::to_string(team);
 					Toggle(anyLabel.c_str(), UnitSpeech::TeamUsesAnyTone(team), [team](bool on) {
@@ -991,8 +1008,8 @@ void DebugMan::SettingsGUI() {
 						std::string label = tone + "##SpeechTone" + std::to_string(team) + tone;
 						const bool on = !UnitSpeech::TeamUsesAnyTone(team) && UnitSpeech::TeamUsesTone(team, tone);
 						Toggle(label.c_str(), on, [team, tone](bool set) { UnitSpeech::SetTeamTone(team, tone, set); });
-						std::string tip = std::string(sideNames[team]) + " side's units say " + tone + " lines" +
-						                  (tone == "Serious" ? ": by-the-book military talk (\"Contact front!\", \"Copy, moving.\")." : tone == "Funny" ? ": quips, sarcasm and gallows humour." : tone == "Casual" ? ": plain soldier talk." : ".") +
+						const std::string description = UnitSpeech::GetToneDescription(tone);
+						std::string tip = std::string(sideNames[team]) + " side's units say " + tone + " lines" + (description.empty() ? "." : ": " + description) +
 						                  " Tick more than one to mix them.";
 						Tip(tip.c_str());
 					}

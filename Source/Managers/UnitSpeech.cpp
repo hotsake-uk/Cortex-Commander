@@ -16,6 +16,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <mutex>
@@ -46,6 +47,22 @@ namespace {
 	std::array<std::set<std::string>, 4> s_TeamTones;
 	/// The same as bits, for the threaded AI to read: 0 for any.
 	std::array<std::atomic<unsigned>, 4> s_TeamToneBits{};
+	/// How often each tone is picked against the others, 0 to 100, by name (so it can be set before Speech.ini is read); unset is 100.
+	std::map<std::string, int> s_ToneWeights;
+	/// The weights Speech.ini files give tones (ToneWeight), for those the settings haven't set; unset is 100.
+	std::map<std::string, int> s_ToneDefaultWeights;
+	/// What each tone is like, for the settings' tooltips (ToneDescription).
+	std::map<std::string, std::string> s_ToneDescriptions;
+
+	int ToneWeightOf(const std::string& tone) {
+		if (auto weight = s_ToneWeights.find(tone); weight != s_ToneWeights.end()) {
+			return weight->second;
+		}
+		auto weight = s_ToneDefaultWeights.find(tone);
+		return weight == s_ToneDefaultWeights.end() ? 100 : weight->second;
+	}
+	/// The same by tone bit, for the threaded AI to read.
+	std::array<std::atomic<int>, 32> s_ToneWeightBits{};
 
 	/// The bit of a tone, adding it to the list if it's new; 0 if there are already 32.
 	unsigned ToneBit(const std::string& tone) {
@@ -70,6 +87,9 @@ namespace {
 			}
 			// (Tones a side asked for that no Speech.ini has: it would never speak, so it takes any.)
 			s_TeamToneBits[team].store(s_TeamTones[team].empty() || bits == 0 ? 0u : bits, std::memory_order_relaxed);
+		}
+		for (size_t bit = 0; bit < s_ToneWeightBits.size(); ++bit) {
+			s_ToneWeightBits[bit].store(bit < s_Tones.size() ? ToneWeightOf(s_Tones[bit]) : 100, std::memory_order_relaxed);
 		}
 	}
 
@@ -163,6 +183,22 @@ namespace {
 			if (key == "UnitName") {
 				if (!value.empty() && std::find(s_Sets[set].UnitNames.begin(), s_Sets[set].UnitNames.end(), value) == s_Sets[set].UnitNames.end()) {
 					s_Sets[set].UnitNames.push_back(value);
+				}
+				continue;
+			}
+			if (key == "ToneWeight" || key == "ToneDescription") {
+				// "ToneWeight = Imperial: 0": how often the tone comes up in the mix until a player sets it (0: only for a side that picks it).
+				// "ToneDescription = Imperial: ...": what it's like, for the settings. Either also adds the tone to the settings' list.
+				if (size_t colon = value.find(':'); colon != std::string::npos) {
+					if (std::string name = Trim(value.substr(0, colon)); !name.empty() && name != "Any") {
+						ToneBit(name);
+						std::string rest = Trim(value.substr(colon + 1));
+						if (key == "ToneDescription") {
+							s_ToneDescriptions[name] = rest;
+						} else {
+							s_ToneDefaultWeights[name] = std::clamp(std::atoi(rest.c_str()), 0, 100);
+						}
+					}
 				}
 				continue;
 			}
@@ -322,6 +358,41 @@ void UnitSpeech::SetTeamTone(int team, const std::string& tone, bool on) {
 	RebuildTeamToneBits();
 }
 
+int UnitSpeech::GetToneWeight(const std::string& tone) {
+	return ToneWeightOf(tone);
+}
+
+std::string UnitSpeech::GetToneDescription(const std::string& tone) {
+	auto description = s_ToneDescriptions.find(tone);
+	return description == s_ToneDescriptions.end() ? "" : description->second;
+}
+
+void UnitSpeech::SetToneWeight(const std::string& tone, int weight) {
+	s_ToneWeights[tone] = std::clamp(weight, 0, 100);
+	RebuildTeamToneBits();
+}
+
+std::string UnitSpeech::GetToneWeightsText() {
+	std::string text;
+	for (const auto& [tone, weight]: s_ToneWeights) {
+		text += (text.empty() ? "" : ", ") + tone + ":" + std::to_string(weight);
+	}
+	return text;
+}
+
+void UnitSpeech::SetToneWeightsText(const std::string& text) {
+	s_ToneWeights.clear();
+	std::stringstream entries(text);
+	for (std::string entry; std::getline(entries, entry, ',');) {
+		if (size_t colon = entry.find(':'); colon != std::string::npos) {
+			if (std::string tone = Trim(entry.substr(0, colon)); !tone.empty()) {
+				s_ToneWeights[tone] = std::clamp(std::atoi(Trim(entry.substr(colon + 1)).c_str()), 0, 100);
+			}
+		}
+	}
+	RebuildTeamToneBits();
+}
+
 void UnitSpeech::SetTeamAnyTone(int team) {
 	if (team >= 0 && team < 4) {
 		s_TeamTones[team].clear();
@@ -372,6 +443,8 @@ void UnitSpeech::LoadAll() {
 	s_Triggers.clear();
 	s_Sets.clear();
 	s_Tones.clear();
+	s_ToneDefaultWeights.clear();
+	s_ToneDescriptions.clear();
 	{
 		std::scoped_lock lock(s_DeckMutex);
 		s_Decks.clear();
@@ -381,6 +454,21 @@ void UnitSpeech::LoadAll() {
 	for (int module = 0; module < g_PresetMan.GetTotalModuleCount(); ++module) {
 		if (const DataModule* dataModule = g_PresetMan.GetDataModule(module)) {
 			ReadSpeechFile(g_PresetMan.GetFullModulePath(dataModule->GetFileName() + "/Speech.ini"));
+			// And any files in its Speech folder, by name: a mod can keep each tone or set of lines in a file of its own.
+			std::error_code error;
+			const std::string folder = g_PresetMan.GetFullModulePath(dataModule->GetFileName() + "/Speech");
+			if (std::filesystem::is_directory(folder, error)) {
+				std::vector<std::filesystem::path> files;
+				for (const std::filesystem::directory_entry& entry: std::filesystem::directory_iterator(folder, error)) {
+					if (entry.is_regular_file(error) && entry.path().extension() == ".ini") {
+						files.push_back(entry.path());
+					}
+				}
+				std::sort(files.begin(), files.end());
+				for (const std::filesystem::path& file: files) {
+					ReadSpeechFile(file.string());
+				}
+			}
 		}
 	}
 	RebuildTriggerOn();
@@ -442,17 +530,56 @@ bool UnitSpeech::Say(Actor& actor, const std::string& triggerKey, bool answering
 	if (!lines) {
 		return false;
 	}
-	// A line that names someone, only with someone to name.
 	// A line that names someone, only with someone to name; and only in the tones the side speaks in (a line of no tone fits any).
 	const std::vector<unsigned>* tones = static_cast<size_t>(trigger) < s_Sets[lineSet].LineTones.size() ? &s_Sets[lineSet].LineTones[trigger] : nullptr;
-	const unsigned teamTones = actor.GetTeam() >= 0 && actor.GetTeam() < 4 ? s_TeamToneBits[actor.GetTeam()].load(std::memory_order_relaxed) : 0u;
+	unsigned teamTones = actor.GetTeam() >= 0 && actor.GetTeam() < 4 ? s_TeamToneBits[actor.GetTeam()].load(std::memory_order_relaxed) : 0u;
 	auto fits = [&](int index) {
 		const unsigned lineTones = tones && static_cast<size_t>(index) < tones->size() ? (*tones)[index] : 0u;
 		return (subject || (*lines)[index].find("{name}") == std::string::npos) && (teamTones == 0 || lineTones == 0 || (lineTones & teamTones) != 0);
 	};
+	// One of the side's tones, by the settings' mix (Serious 10, Funny 90), out of those it has a line of here: so a side with only some
+	// tones ticked shares the whole mix between them. The line is then one of that tone, or of none.
+	unsigned toneOfLine = 0;
+	if (tones) {
+		unsigned available = 0;
+		for (int index = 0; index < static_cast<int>(lines->size()); ++index) {
+			if (fits(index) && static_cast<size_t>(index) < tones->size()) {
+				available |= (*tones)[index] & (teamTones == 0 ? ~0u : teamTones);
+			}
+		}
+		int total = 0;
+		int toneCount = 0;
+		for (unsigned bit = 0; bit < 32; ++bit) {
+			if (available & (1u << bit)) {
+				total += s_ToneWeightBits[bit].load(std::memory_order_relaxed);
+				++toneCount;
+			}
+		}
+		// (All of them at 0: any of them alike.)
+		int roll = total > 0 || toneCount > 0 ? std::uniform_int_distribution<int>(0, (total > 0 ? total : toneCount) - 1)(Random()) : -1;
+		for (unsigned bit = 0; bit < 32 && roll >= 0 && toneOfLine == 0; ++bit) {
+			if (available & (1u << bit)) {
+				roll -= total > 0 ? s_ToneWeightBits[bit].load(std::memory_order_relaxed) : 1;
+				if (roll < 0) {
+					toneOfLine = 1u << bit;
+				}
+			}
+		}
+	}
+	auto fitsTone = [&](int index) {
+		const unsigned lineTones = tones && static_cast<size_t>(index) < tones->size() ? (*tones)[index] : 0u;
+		return fits(index) && (toneOfLine == 0 || lineTones == 0 || (lineTones & toneOfLine) != 0);
+	};
 	bool anyFits = false;
 	for (int index = 0; index < static_cast<int>(lines->size()) && !anyFits; ++index) {
 		anyFits = fits(index);
+	}
+	// None in the side's tones (a mod's tone with no lines for this): any tone rather than nothing.
+	if (!anyFits && teamTones != 0) {
+		teamTones = 0;
+		for (int index = 0; index < static_cast<int>(lines->size()) && !anyFits; ++index) {
+			anyFits = fits(index);
+		}
 	}
 	if (!anyFits) {
 		return false;
@@ -490,7 +617,7 @@ bool UnitSpeech::Say(Actor& actor, const std::string& triggerKey, bool answering
 				deck.Next = 0;
 			}
 			int candidate = deck.Order[deck.Next++];
-			if (fits(candidate)) {
+			if (fitsTone(candidate)) {
 				pick = candidate;
 			}
 		}
