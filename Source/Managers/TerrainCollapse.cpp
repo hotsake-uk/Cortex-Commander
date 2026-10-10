@@ -63,6 +63,7 @@ namespace {
 	std::array<bool, 256> s_Fixed{}; //!< Materials that are never lifted out of the terrain: doors (drawn by their own objects) and the world's edge.
 	std::array<bool, 256> s_Structure{}; //!< Materials of buildings: concrete, metal and the like.
 	std::array<bool, 256> s_Flimsy{}; //!< Materials too weak to hold a falling piece up: grass, plants, ash. A piece goes through them and flattens them.
+	constexpr int c_MaxTreePiecePixels = 250000; //!< The biggest a tree coming down can be (trees aren't held to the tuning's MaxPiecePixels; see FindFloatingPiece).
 	std::array<bool, 256> s_Leaves{}; //!< Vegetation: the leaves of trees and the base game's plants.
 	std::array<bool, 256> s_TreeTrunk{}; //!< The wood of trees. A tree's leaves hang on its trunk, not on whatever ground or tree their tips brush against.
 	std::array<bool, 256> s_Loose{}; //!< Loose ground that a tree coming down goes through: sand, snow, rubble, gravel and the like.
@@ -72,7 +73,14 @@ namespace {
 	std::array<float, 256> s_Toughness{};
 	std::array<float, 256> s_Scuff{}; //!< How readily walking on a material knocks it loose, 0 to 1.
 	/// How a material breaks when a falling piece of it lands hard (MaterialBehaviour::BreakStyle). Each has its own threshold in the tuning.
-	enum BreakStyle : unsigned char { c_Shatter, c_Crack, c_Crumble, c_Splinter, c_Bend, c_StyleCount };
+	enum BreakStyle : unsigned char {
+		c_Shatter,
+		c_Crack,
+		c_Crumble,
+		c_Splinter,
+		c_Bend,
+		c_StyleCount
+	};
 	std::array<unsigned char, 256> s_Style{};
 	std::array<float, 256> s_ImpactStrength{}; //!< Multiplies its style's threshold.
 	std::array<int, 256> s_Neck{}; //!< How thin a neck of it snaps, in pixels; -1 for the tuning's NeckWidth.
@@ -272,6 +280,7 @@ namespace {
 		bool Done = false;
 		bool Wet = false; //!< Whether it was in liquid last update.
 		bool Damaged = false; //!< Whether pixels have been taken off it since its mass and outline were worked out.
+		bool AllLeaves = false; //!< Whether it is nothing but leaves (and grass): it breaks up by the tuning's LeafBreakEase.
 		int Drop = 0; //!< The sandbox drop it came from (TerrainCollapse::DropArea), or 0. The pieces it breaks into keep it.
 		long Id = 0; //!< Given the first time something is tied to it (TerrainCollapse::FindPiece); 0 before.
 		std::vector<std::pair<long, long long>> Hurt; //!< Units it hurt lately: unique ID and sim update, so a piece grinding on a unit hurts it once per blow, not every update.
@@ -359,6 +368,7 @@ namespace {
 		body.PixelCount = 0;
 		body.StyleStrength.fill(0.0F);
 		body.CarryingPixels = 0;
+		body.AllLeaves = true;
 		std::array<float, c_StyleCount> flimsyStrength{};
 		for (int y = 0; y < body.H; ++y) {
 			for (int x = 0; x < body.W; ++x) {
@@ -370,6 +380,7 @@ namespace {
 					centerY += (static_cast<double>(y) + 0.5) * density;
 					toughness += s_Toughness[material];
 					++body.PixelCount;
+					body.AllLeaves = body.AllLeaves && s_Leaves[material];
 					if (s_Flimsy[material]) {
 						flimsyStrength[s_Style[material]] += s_ImpactStrength[material];
 					} else {
@@ -784,6 +795,10 @@ namespace {
 		}
 		// Particle speeds are in metres a second: 20 pixels to the metre, 60 updates a second.
 		float metresPerSecond = sum / static_cast<float>(std::max(body.CarryingPixels, 1));
+		// A clump of leaves falling on its own (off a tree that shed it, or the canopy of one cut away) comes apart more easily still.
+		if (body.AllLeaves) {
+			metresPerSecond /= std::max(tuning.LeafBreakEase, 1.0F);
+		}
 		return metresPerSecond / 3.0F * std::max(tuning.BreakStrength, 0.1F);
 	}
 
@@ -1366,8 +1381,10 @@ namespace {
 		if (body.CarryingPixels >= body.PixelCount) {
 			return false;
 		}
-		// From a third of the way to breaking, up to most of them at the point of breaking.
-		float share = std::clamp((hit / std::max(breakSpeed, 0.1F) - 0.33F) * 0.9F, 0.0F, 0.6F);
+		// From a third of the way to breaking, up to most of them at the point of breaking. Leaves come off more easily than what carries them
+		// breaks, by the tuning's LeafBreakEase: at 4 a quarter of the landing speed sheds as many, and a hard landing strips nearly all of them.
+		float ease = std::max(TerrainCollapse::GetTuning().LeafBreakEase, 1.0F);
+		float share = std::clamp((hit * ease / std::max(breakSpeed, 0.1F) - 0.33F) * 0.9F, 0.0F, std::min(0.6F + 0.1F * (ease - 1.0F), 0.95F));
 		if (share <= 0.0F) {
 			return false;
 		}
@@ -1895,6 +1912,7 @@ namespace {
 		s_State[startKey] |= c_Seen;
 		bool floating = true;
 		int structurePixels = 0;
+		int treePixels = 0; // A tree's trunk and leaves don't count towards the biggest piece that falls: a big tree cut through comes down whole.
 		while (!s_Stack.empty() && floating) {
 			int key = s_Stack.back();
 			s_Stack.pop_back();
@@ -1902,7 +1920,10 @@ namespace {
 			int x = key % width;
 			int y = key / width;
 			int material = materialBitmap->line[y][x];
-			if (static_cast<int>(piece.size()) > TerrainCollapse::GetTuning().MaxPiecePixels || s_Fixed[material]) {
+			if (s_TreeTrunk[material] || TerrainTrees::IsTreeMaterial(material)) {
+				++treePixels;
+			}
+			if (static_cast<int>(piece.size()) - treePixels > TerrainCollapse::GetTuning().MaxPiecePixels || static_cast<int>(piece.size()) > c_MaxTreePiecePixels || s_Fixed[material]) {
 				floating = false;
 				break;
 			}

@@ -33,6 +33,16 @@ namespace RTE {
 		/// Sets whether units and vehicles bump into trees.
 		static void SetUnitsCollide(bool collide);
 
+		/// Gets whether units and everything else that moves are drawn in front of trees (a visual setting, saved; on as the game comes): a tree's
+		/// pixels are drawn before them, the rest of the ground after, so a unit walking through a tree is seen in front of its trunk and leaves.
+		static bool DrawnBehindUnits() { return s_DrawnBehindUnits; }
+
+		/// Sets whether units are drawn in front of trees.
+		static void SetDrawnBehindUnits(bool behind) { s_DrawnBehindUnits = behind; }
+
+		/// Gets each material's tree flag for the terrain shader, four materials to a vec4 (1 for a tree's material, trunk or leaves, 0 otherwise).
+		static const std::array<float, 256>& GetShaderFlags() { return s_ShaderFlags; }
+
 		/// Gets the chance, in percent, that a bullet (a small fast shot, not a rocket) that meets a tree strikes it, rather than passing by (a gameplay
 		/// setting, saved). A stray bullet that does strike a tree barely marks it. Rockets and the like pass the trunk but strike the leaves.
 		static int StrayBulletPercent() { return s_StrayBulletPercent; }
@@ -85,6 +95,8 @@ namespace RTE {
 
 	private:
 		static bool s_UnitsCollide; //!< Whether units and vehicles bump into trees.
+		static bool s_DrawnBehindUnits; //!< Whether trees are drawn behind units and other moving things.
+		static std::array<float, 256> s_ShaderFlags; //!< s_Tree as floats, for the terrain shader.
 		static int s_StrayBulletPercent; //!< The chance, in percent, that a bullet meeting a tree strikes it.
 		static std::array<bool, 256> s_Tree; //!< The materials that are trees'.
 		static std::array<bool, 256> s_Trunk; //!< The materials that are trees' trunks.

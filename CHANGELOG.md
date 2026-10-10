@@ -269,6 +269,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 <details><summary><b>Fixed</b></summary>
 
+- Trees: units no longer cut holes in them. A unit jumping, jetting or knocked about inside a tree had its outline cut out of the terrain (the deep check that frees stuck bodies), which carved unit-shaped gaps through trunks; what an object passes through as air (trees for units, ladder rungs for a jetting soldier) is now left alone. Anything else that cuts a trunk this way makes the falling ground look again.  
+	A big tree cut through falls: its trunk and leaves no longer count towards the biggest piece that can fall (Collapse: Biggest piece), which large trees went over, so they stood floating on a cut trunk.  
+	Units are drawn in front of trees: the foreground's tree pixels are drawn before units and other moving things, the rest of the ground after (Settings, Falling ground: Units in front of trees, on as the game comes). Needs the lighting's terrain shader.  
+	Leaves break apart much more easily when a tree lands: Settings, Falling ground: Leaves break apart (x easier), 4 as the game comes; a clump of nothing but leaves comes apart that much more easily too.  
+	Scripts on units (Update, ThreadedUpdate, SyncedUpdate, mods' AI among them) see trees as air while units walk through trees, as the built-in AI and the path grids already did, so they don't take a tree for a wall.
+
 - Fixed a crash on launch that could occur depending on what Microsoft Visual C++ Redistributable the user has installed.
 
 - Fixed an issue where palette index 255 was incorrectly showing as black.

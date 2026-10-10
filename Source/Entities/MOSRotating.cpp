@@ -1327,7 +1327,7 @@ void MOSRotating::EraseFromTerrain() {
 		pivot.m_X = m_pFlipBitmap->w + m_SpriteOffset.m_X;
 	}
 
-	std::deque<MOPixel*> pixels = g_SceneMan.GetTerrain()->EraseSilhouette(m_HFlipped ? m_pFlipBitmap : m_aSprite[m_Frame], m_Pos, pivot, m_Rotation, m_Scale, false);
+	std::deque<MOPixel*> pixels = g_SceneMan.GetTerrain()->EraseSilhouette(m_HFlipped ? m_pFlipBitmap : m_aSprite[m_Frame], m_Pos, pivot, m_Rotation, m_Scale, false, 2, 150, this);
 }
 
 bool MOSRotating::DeepCheck(bool makeMOPs, int skipMOP, int maxMOPs) {
@@ -1364,7 +1364,7 @@ bool MOSRotating::DeepCheck(bool makeMOPs, int skipMOP, int maxMOPs) {
 		{
 			// Particle generation
 			// Erase the silhouette and get all the pixels that were created as a result
-			std::deque<MOPixel*> pixels = g_SceneMan.GetTerrain()->EraseSilhouette(m_HFlipped ? m_pFlipBitmap : m_aSprite[m_Frame], m_Pos, pivot, m_Rotation, m_Scale, makeMOPs, skipMOP, maxMOPs);
+			std::deque<MOPixel*> pixels = g_SceneMan.GetTerrain()->EraseSilhouette(m_HFlipped ? m_pFlipBitmap : m_aSprite[m_Frame], m_Pos, pivot, m_Rotation, m_Scale, makeMOPs, skipMOP, maxMOPs, this);
 
 			for (std::deque<MOPixel*>::iterator itr = pixels.begin(); itr != pixels.end(); ++itr) {
 				tally += splashRatio;
@@ -1542,7 +1542,7 @@ void MOSRotating::Update() {
 
 	m_EntryWoundBurstSoundPlayedThisFrame = false;
 	m_ExitWoundBurstSoundPlayedThisFrame = false;
-	
+
 	for (auto woundItr = m_Wounds.begin(); woundItr != m_Wounds.end();) {
 		AEmitter* wound = *woundItr;
 		RTEAssert(wound && wound->IsAttachedTo(this), "Broken wound AEmitter in Update");
@@ -1876,9 +1876,9 @@ void MOSRotating::Draw(BITMAP* pTargetBitmap, const Vector& targetPos, DrawMode 
 				int spriteX = aDrawPos[i].GetFloorIntX() - (pTempBitmap->w / 2);
 				int spriteY = aDrawPos[i].GetFloorIntY() - (pTempBitmap->h / 2);
 				DrawTexturePro(m_aSprite[m_Frame],
-					{0.0f, 0.0f, -1.0f * m_aSprite[m_Frame]->w, static_cast<float>(m_aSprite[m_Frame]->h)},
-					{aDrawPos[i].m_X, aDrawPos[i].m_Y, static_cast<float>(m_aSprite[m_Frame]->w), static_cast<float>(m_aSprite[m_Frame]->h)},
-					{m_aSprite[m_Frame]->w + m_SpriteOffset.m_X , -m_SpriteOffset.m_Y}, m_Rotation.GetRadAngle(), {255, 255, 255, g_FrameMan.GetCurrentAlpha()});
+				               {0.0f, 0.0f, -1.0f * m_aSprite[m_Frame]->w, static_cast<float>(m_aSprite[m_Frame]->h)},
+				               {aDrawPos[i].m_X, aDrawPos[i].m_Y, static_cast<float>(m_aSprite[m_Frame]->w), static_cast<float>(m_aSprite[m_Frame]->h)},
+				               {m_aSprite[m_Frame]->w + m_SpriteOffset.m_X, -m_SpriteOffset.m_Y}, m_Rotation.GetRadAngle(), {255, 255, 255, g_FrameMan.GetCurrentAlpha()});
 				g_SceneMan.RegisterDrawing(pTargetBitmap, g_NoMOID, spriteX, spriteY, spriteX + pTempBitmap->w, spriteY + pTempBitmap->h);
 			}
 		} else {
@@ -1901,9 +1901,9 @@ void MOSRotating::Draw(BITMAP* pTargetBitmap, const Vector& targetPos, DrawMode 
 			// Do the passes loop in here so the intermediate drawing doesn't get done multiple times
 			for (int i = 0; i < passes; ++i) {
 				DrawTexturePro(m_aSprite[m_Frame],
-					{0.0f, 0.0f, static_cast<float>(m_aSprite[m_Frame]->w), static_cast<float>(m_aSprite[m_Frame]->h)},
-					{aDrawPos[i].m_X, aDrawPos[i].m_Y, static_cast<float>(m_aSprite[m_Frame]->w), static_cast<float>(m_aSprite[m_Frame]->h)},
-					-m_SpriteOffset, m_Rotation.GetRadAngle(), {255, 255, 255, g_FrameMan.GetCurrentAlpha()});
+				               {0.0f, 0.0f, static_cast<float>(m_aSprite[m_Frame]->w), static_cast<float>(m_aSprite[m_Frame]->h)},
+				               {aDrawPos[i].m_X, aDrawPos[i].m_Y, static_cast<float>(m_aSprite[m_Frame]->w), static_cast<float>(m_aSprite[m_Frame]->h)},
+				               -m_SpriteOffset, m_Rotation.GetRadAngle(), {255, 255, 255, g_FrameMan.GetCurrentAlpha()});
 				int spriteX = aDrawPos[i].GetFloorIntX() - (pTempBitmap->w / 2);
 				int spriteY = aDrawPos[i].GetFloorIntY() - (pTempBitmap->h / 2);
 				g_SceneMan.RegisterDrawing(pTargetBitmap, g_NoMOID, spriteX, spriteY, spriteX + pTempBitmap->w, spriteY + pTempBitmap->h);

@@ -10,6 +10,8 @@
 #include "SceneObject.h"
 #include "MOSprite.h"
 #include "MOPixel.h"
+#include "TerrainCollapse.h"
+#include "TerrainTrees.h"
 #include "Atom.h"
 #include "DataModule.h"
 #include "PresetMan.h"
@@ -806,7 +808,7 @@ void SLTerrain::CleanAirBox(const Box& box, bool wrapsX, bool wrapsY) {
 }
 
 // TODO: OPTIMIZE THIS, IT'S A TIME HOG. MAYBE JSUT STAMP THE OUTLINE AND SAMPLE SOME RANDOM PARTICLES?
-std::deque<MOPixel*> SLTerrain::EraseSilhouette(BITMAP* sprite, const Vector& pos, const Vector& pivot, const Matrix& rotation, float scale, bool makeMOPs, int skipMOP, int maxMOPs) {
+std::deque<MOPixel*> SLTerrain::EraseSilhouette(BITMAP* sprite, const Vector& pos, const Vector& pivot, const Matrix& rotation, float scale, bool makeMOPs, int skipMOP, int maxMOPs, const MovableObject* eraser) {
 	RTEAssert(sprite, "Null BITMAP passed to SLTerrain::EraseSilhouette");
 
 	int maxWidth = static_cast<int>(static_cast<float>(sprite->w + std::abs(pivot.GetFloorIntX() - (sprite->w / 2))) * scale);
@@ -862,6 +864,15 @@ std::deque<MOPixel*> SLTerrain::EraseSilhouette(BITMAP* sprite, const Vector& po
 			int colorPixel = getpixel(m_FGColorLayer->GetBitmap(), terrX, terrY);
 
 			if (getpixel(tempBitmap, testX, testY) != ColorKeys::g_MaskColor) {
+				// What the object passes through it doesn't cut out: a unit walking through a tree (or jumping, or knocked about in it) leaves the tree
+				// whole, rather than a hole of its shape through the trunk.
+				if (eraser && matPixel != MaterialColorKeys::g_MaterialAir && eraser->PassesMaterial(static_cast<unsigned char>(matPixel))) {
+					continue;
+				}
+				// Anything else cutting a tree's trunk can leave the tree standing on nothing: the falling ground looks.
+				if (TerrainTrees::IsTrunk(matPixel)) {
+					TerrainCollapse::NoteDamage(terrX, terrY);
+				}
 				// Only add PixelMO if we're not due to skip any.
 				if (makeMOPs && matPixel != MaterialColorKeys::g_MaterialAir && colorPixel != ColorKeys::g_MaskColor && ++skipCount > skipMOP && dislodgedMOPixels.size() < maxMOPs) {
 					skipCount = 0;
@@ -945,5 +956,5 @@ void SLTerrain::Draw(const Camera& camera) {
 		default:
 			RTEAbort("Invalid LayerType was set to draw in SLTerrain::Draw");
 			break;
-		}
+	}
 }
