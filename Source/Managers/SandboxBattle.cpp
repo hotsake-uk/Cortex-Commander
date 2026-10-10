@@ -598,7 +598,8 @@ namespace SandboxDetail {
 			if (choices.size() > 24) {
 				choices.resize(24);
 			}
-			const Order order = Defends(settings) ? Order::Hold : OrderOf(settings.Style);
+			const bool playerTeam = BattlePlayerCommands(side);
+			const Order order = playerTeam || Defends(settings) ? Order::Hold : OrderOf(settings.Style);
 			// What each costs as bought (with its loadout), and the cheapest. A wave's budget is at least the cheapest unit, and picks are made
 			// only from what still fits: a faction whose cheapest unit cost more than a wave may spend (heavy mechs, some mods) never filled one
 			// and was called broke before buying anything (review S7).
@@ -645,7 +646,7 @@ namespace SandboxDetail {
 				if (wave.empty()) {
 					// Nothing left it can afford (or nothing to buy at all).
 					team.Broke = !settings.EndlessMoney || priced.empty();
-				} else if (Defends(settings)) {
+				} else if (Defends(settings) && !playerTeam) {
 					for (Actor* unit: wave) {
 						DefendPlace(unit, settings);
 					}

@@ -1139,6 +1139,9 @@ namespace SandboxDetail {
 		/// the way, and is put back on its way the moment its AI takes it off (to fight, chase, fall back or flank); only within c_EngageReach
 		/// of whoever it's after does it go to fight them.
 		void SendRunner(Actor* unit, FlagRunner& runner, const Vector& to, Actor* target, const char* reason, long long now) {
+			if (BattlePlayerCommands(unit->GetTeam())) {
+				return;
+			}
 			const bool wraps = g_SceneMan.SceneWrapsX();
 			const bool fight = target && g_SceneMan.ShortestDistance(unit->GetPos(), to, wraps).MagnitudeIsLessThan(c_EngageReach);
 			const bool moved = !runner.HasSent || fight != runner.Fighting || !g_SceneMan.ShortestDistance(runner.Sent, to, wraps).MagnitudeIsLessThan(target ? 120.0F : 40.0F);
@@ -1186,7 +1189,7 @@ namespace SandboxDetail {
 		/// A unit that has just picked up an enemy's flag: straight for its own base with it, whatever it was doing, there and then. A guard
 		/// becomes a runner for it (its post kept, it went back there with the flag, and nothing sent it home).
 		void TakeFlagHome(Actor* unit, int flagSide, long long now) {
-			if (unit->IsPlayerControlled() || !TeamIn(s_ModeRun.Settings, unit->GetTeam())) {
+			if (unit->IsPlayerControlled() || BattlePlayerCommands(unit->GetTeam()) || !TeamIn(s_ModeRun.Settings, unit->GetTeam())) {
 				return;
 			}
 			s_BattleDefenders.erase(unit->GetUniqueID());
@@ -1508,7 +1511,7 @@ namespace SandboxDetail {
 
 		/// A unit that has just picked up the flag: straight for its team's goal with it, whatever it was doing.
 		void TakeFlagToGoal(Actor* unit, long long now) {
-			if (unit->IsPlayerControlled()) {
+			if (unit->IsPlayerControlled() || BattlePlayerCommands(unit->GetTeam())) {
 				return;
 			}
 			s_BattleDefenders.erase(unit->GetUniqueID());
@@ -2245,7 +2248,7 @@ namespace SandboxDetail {
 
 		/// Whether a team's units are split by a commander: ticked for it, in a mode that has objectives one after another.
 		bool HasCommander(const BattleModeSettings& settings, int side) {
-			return (settings.Mode == BattleMode::Assault || settings.Mode == BattleMode::KingOfTheHill) && side >= 0 && side < c_Sides && settings.Commander[side] && TeamIn(settings, side);
+			return !BattlePlayerCommands(side) && (settings.Mode == BattleMode::Assault || settings.Mode == BattleMode::KingOfTheHill) && side >= 0 && side < c_Sides && settings.Commander[side] && TeamIn(settings, side);
 		}
 
 		/// Where a mode's units hold one of its zones: as HillPost and ObjectivePost give the one in play.
@@ -2556,9 +2559,11 @@ namespace SandboxDetail {
 			vip.Pos = pick->GetPos();
 			pick->SetHighlighted(true);
 			s_Runners.erase(pick->GetUniqueID());
-			pick->SetOrderAttack(false);
-			const float radius = VipGuardRadius(settings, side);
-			MakeDefender(pick, PostAt(spot, radius * 0.5F, 60.0F, 60));
+			if (!BattlePlayerCommands(side)) {
+				pick->SetOrderAttack(false);
+				const float radius = VipGuardRadius(settings, side);
+				MakeDefender(pick, PostAt(spot, radius * 0.5F, 60.0F, 60));
+			}
 			Say(SideName(side) + " has a VIP");
 		}
 
@@ -3056,7 +3061,7 @@ namespace SandboxDetail {
 				Vector goal;
 				float near = 0.0F;
 				const long id = unit->GetUniqueID();
-				if (unit->IsPlayerControlled() || IsVip(unit) || !ObjectiveOf(unit, goal, near)) {
+				if (unit->IsPlayerControlled() || BattlePlayerCommands(unit->GetTeam()) || IsVip(unit) || !ObjectiveOf(unit, goal, near)) {
 					continue;
 				}
 				seen.insert(id);
@@ -3306,7 +3311,23 @@ namespace SandboxDetail {
 		return mode.TeamSettings ? mode.TeamSettings(s_ModeRun.Settings, side, card) : card;
 	}
 
+	bool BattlePlayerCommands(int side) {
+		return s_ModeRun.Running && side >= 0 && side < c_Sides && s_ModeRun.Settings.PlayerCommands[side] && TeamIn(s_ModeRun.Settings, side);
+	}
+
 	void ModeUnitsMade(int side, const std::vector<Actor*>& wave) {
+		if (BattlePlayerCommands(side)) {
+			// The player's team: on hold ground, standing where it came in, with no job from the mode. Nothing else (flag runs, hunts, defence
+			// posts, rushes) is set up for it, and the stuck-unit respawn leaves it be.
+			for (Actor* unit: wave) {
+				if (unit && !dynamic_cast<const ACraft*>(unit)) {
+					unit->SetOrderAttack(false);
+					unit->SetAIMode(Actor::AIMODE_SENTRY);
+					unit->SetMovementRule(Actor::MOVE_HOLD_GROUND);
+				}
+			}
+			return;
+		}
 		// Route variety: that share of the units each get a taste in routes of their own; the rest take the shortest way.
 		if (s_ModeRun.Running && s_ModeRun.Settings.RouteVariety > 0) {
 			for (Actor* unit: wave) {
@@ -3672,6 +3693,8 @@ namespace SandboxDetail {
 					}
 				}
 				ImGui::Indent();
+				changed |= ToolUI::Checkbox("You command this team", &setup.PlayerCommands[side]);
+				ImGui::SetItemTooltip("%s", "Its units come in on hold ground with no orders and no job from the mode, for you to command with the Command tool (select them, then right-click to send them). Everything else (spawning, respawns, scoring) is as for any team. Can be changed during the game: units already in keep what they were doing.");
 				if (setup.Mode == BattleMode::Assault || setup.Mode == BattleMode::KingOfTheHill) {
 					changed |= ToolUI::Checkbox("AI commander", &setup.Commander[side]);
 					ImGui::SetItemTooltip("%s", setup.Mode == BattleMode::Assault
