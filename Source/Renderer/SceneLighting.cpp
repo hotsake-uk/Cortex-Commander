@@ -1,5 +1,6 @@
 #include "SceneLighting.h"
 #include "Weather.h"
+#include "AirPressure.h"
 #include "PresetMan.h"
 #include "EffectsParticles.h"
 #include "TerrainFire.h"
@@ -2632,6 +2633,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_FireFlameShader->SetVector2f("rteScreenOrigin", origin);
 		m_FireFlameShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
 		m_FireFlameShader->SetBool("rteHeatAlpha", m_Settings.HazeFromHeat);
+		m_FireFlameShader->SetFloat("rteWind", AirPressure::GetWindSpeed());
 		DrawQuads(flameStart, flameCount);
 		glDisable(GL_BLEND);
 	}

@@ -712,7 +712,7 @@ void DebugMan::SettingsGUI() {
 		Tip("How readily a wave running up through water (or any liquid) throws it into the air at the surface. Higher: weaker waves throw it too. 0: never.");
 		Heading("Wind");
 		Toggle("Wind carries smoke", AirPressure::WindMovesSmoke(), [](bool on) { AirPressure::SetWindMovesSmoke(on); });
-		Tip("The weather's wind (Time & weather, Wind) carries smoke, fine spray and gas along, and they eddy in the lee of walls and ridges.");
+		Tip("The weather's wind (Time & weather, Wind) carries smoke of every kind (grenades, explosions, flames, smoke trails, soft smoke), steam, embers, dust, fine spray and gas along, and they eddy in the lee of walls and ridges. Off: none of them lean with the wind; the rain, snow, fog and clouds still do.");
 		Slider("Wind strength", &tuning.WindStrength, 0.0F, 5.0F, "%.2fx");
 		Tip("How hard the wind carries smoke, spray and gas, against how hard the weather's wind blows. 0: the wind moves nothing.");
 		Slider("Wind carries gas", &tuning.WindGas, 0.0F, 5.0F, "%.2fx");
