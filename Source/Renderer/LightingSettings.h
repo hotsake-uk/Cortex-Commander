@@ -280,7 +280,7 @@ namespace RTE {
 		/// The settings keys of the effects' own layer settings, in EffectLayer order.
 		static constexpr std::array<const char*, EffectLayerCount> EffectLayerKeys = {"LayerSmoke", "LayerSoftSmoke", "LayerMist", "LayerSplash", "LayerFroth", "LayerDust", "LayerDebris", "LayerSparks", "LayerEmbers", "LayerFire"};
 		int EffectLayers = EffectLayersEach; //!< EffectLayersMode: every effect in the layer its own setting picks, or all of them in front (as before) or all behind.
-		std::array<bool, EffectLayerCount> EffectBehind = {true, true, true, true, false, true, false, false, false, false}; //!< Per effect: drawn in the effects layer, behind units and the ground in front (over the back walls of caves and bunkers and the background beyond). Off: in front of everything.
+		std::array<bool, EffectLayerCount> EffectBehind = {true, true, true, true, true, true, false, false, false, false}; //!< Per effect: drawn in the effects layer, behind units and the ground in front (over the back walls of caves and bunkers and the background beyond). Off: in front of everything.
 
 		/// Whether an effect is drawn behind units and the ground in front, going by EffectLayers and its own setting.
 		bool Behind(EffectLayer layer) const { return EffectLayers == EffectLayersAllBehind || (EffectLayers == EffectLayersEach && EffectBehind[layer]); }
