@@ -25,6 +25,7 @@ sources += files(
 'TerrainCandle.cpp',
 'WeatherLightning.cpp',
 'TerrainCollapse.cpp',
+'TerrainTrees.cpp',
 'FluidSim.cpp',
 'ModernHUD.cpp',
 'ActionMenu.cpp',

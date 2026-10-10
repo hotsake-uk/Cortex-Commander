@@ -7,6 +7,7 @@
 #include "Attachable.h"
 #include "Controller.h"
 #include "FluidSim.h"
+#include "TerrainTrees.h"
 #include "FrameMan.h"
 #include "MovableMan.h"
 #include "PieSlice.h"
@@ -46,10 +47,11 @@ namespace {
 		return s_Plant[id] > 0;
 	}
 
-	/// Whether the ground at a point holds a wheel up: anything but air, liquid (a wheel sinks through water to the bottom) and plants.
+	/// Whether the ground at a point holds a wheel up: anything but air, liquid (a wheel sinks through water to the bottom), plants, and trees
+	/// while vehicles don't bump into them.
 	bool HoldsWheel(const Vector& point) {
 		int material = g_SceneMan.GetTerrMatter(point.GetFloorIntX(), point.GetFloorIntY());
-		return material != g_MaterialAir && !FluidSim::IsLiquid(material) && !IsPlant(material);
+		return material != g_MaterialAir && !FluidSim::IsLiquid(material) && !IsPlant(material) && !TerrainTrees::ActorsPass(material);
 	}
 
 	/// Crushes the plants under a wheel: every plant pixel inside its circle goes.

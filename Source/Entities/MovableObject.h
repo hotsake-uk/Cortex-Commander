@@ -13,6 +13,7 @@
 #include "Material.h"
 #include "glm/glm.hpp"
 #include "MovableMan.h"
+#include "TerrainTrees.h"
 
 #include <set>
 
@@ -338,13 +339,14 @@ namespace RTE {
 		/// flying on its jet passes the ladders' rungs (AHuman sets it), and meets them again once the jet has been out a moment.
 		unsigned char GetPassMaterial() const { return m_PassMaterial; }
 		void SetPassMaterial(unsigned char material) { m_PassMaterial = material; }
-		/// Whether a terrain material is one this object's body passes through just now (its root's pass material).
+		/// Whether a terrain material is one this object's body passes through just now: its root's pass material, or a tree's for a unit or
+		/// vehicle (and what it carries) while they don't bump into trees (TerrainTrees::ActorsPass).
 		bool PassesMaterial(unsigned char material) const {
 			if (material == 0) {
 				return false;
 			}
 			const MovableObject* root = GetRootParent();
-			return root->m_PassMaterial != 0 && root->m_PassMaterial == material;
+			return (root->m_PassMaterial != 0 && root->m_PassMaterial == material) || (TerrainTrees::ActorsPass(material) && root->IsActor());
 		}
 
 		/// Sets whether this will collide with any Terrain

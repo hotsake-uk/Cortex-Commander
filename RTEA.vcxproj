@@ -864,6 +864,7 @@
     <ClInclude Include="Source\Managers\TerrainCandle.h" />
     <ClInclude Include="Source\Managers\WeatherLightning.h" />
     <ClInclude Include="Source\Managers\TerrainCollapse.h" />
+    <ClInclude Include="Source\Managers\TerrainTrees.h" />
     <ClInclude Include="Source\Managers\FluidSim.h" />
     <ClInclude Include="Source\Managers\ModernHUD.h" />
     <ClInclude Include="Source\Managers\ActionMenu.h" />
@@ -1431,6 +1432,7 @@
     <ClCompile Include="Source\Managers\TerrainCandle.cpp" />
     <ClCompile Include="Source\Managers\WeatherLightning.cpp" />
     <ClCompile Include="Source\Managers\TerrainCollapse.cpp" />
+    <ClCompile Include="Source\Managers\TerrainTrees.cpp" />
     <ClCompile Include="Source\Managers\FluidSim.cpp" />
     <ClCompile Include="Source\Managers\ModernHUD.cpp" />
     <ClCompile Include="Source\Managers\ActionMenu.cpp" />

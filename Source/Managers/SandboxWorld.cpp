@@ -2,6 +2,7 @@
 
 #include "SandboxInternal.h"
 #include "GasGrid.h"
+#include "TerrainTrees.h"
 
 namespace SandboxDetail {
 	void Detonate(const char* presetName, const Vector& position) {
@@ -598,7 +599,17 @@ namespace SandboxDetail {
 		}
 		DrawPlantPicture(terrain, plan.Piece, plan.Left, plan.Upper, plan.Scale, plan.Mirror, material);
 		if (plan.LeafPiece) {
-			DrawPlantPicture(terrain, plan.LeafPiece, plan.Left, plan.Upper, plan.Scale, plan.Mirror, plan.Leaves->GetDebrisMaterial().GetIndex());
+			int leafMaterial = plan.Leaves->GetDebrisMaterial().GetIndex();
+			if (kind == Tool::Trees) {
+				// A tree's leaves in the tree leaves material where the game has it, so they're known for a tree's (TerrainTrees), not a bush.
+				if (const Material* leaves = g_SceneMan.GetMaterial("Tree Leaves"); leaves && leaves->GetIndex() != g_MaterialAir) {
+					leafMaterial = leaves->GetIndex();
+				}
+			}
+			DrawPlantPicture(terrain, plan.LeafPiece, plan.Left, plan.Upper, plan.Scale, plan.Mirror, leafMaterial);
+		}
+		if (kind == Tool::Trees) {
+			TerrainTrees::NoteChanged();
 		}
 		int scaledWidth = std::max(1, static_cast<int>(static_cast<float>(plan.Piece->w) * plan.Scale));
 		int scaledHeight = std::max(1, static_cast<int>(static_cast<float>(plan.Piece->h) * plan.Scale));
@@ -1804,6 +1815,7 @@ namespace SandboxDetail {
 				break;
 			case Tool::TreeTrunk:
 				PaintTerrain(at, stroke.Radius, "Tree Trunk", stroke.Shape);
+				TerrainTrees::NoteChanged();
 				break;
 			case Tool::Concrete:
 				PaintTerrain(at, stroke.Radius, "Concrete", stroke.Shape);

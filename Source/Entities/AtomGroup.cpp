@@ -1391,7 +1391,7 @@ bool AtomGroup::ResolveTerrainIntersection(Vector& position, unsigned char stron
 		atom->SetupPos(position + atomOffset);
 		atomPos = atom->GetCurrentPos();
 		hitMaterial = g_SceneMan.GetTerrain()->GetMaterialPixel(atomPos.GetFloorIntX(), atomPos.GetFloorIntY());
-		if (FluidSim::IsLiquid(hitMaterial)) {
+		if (FluidSim::IsLiquid(hitMaterial) || m_OwnerMOSR->PassesMaterial(static_cast<unsigned char>(hitMaterial))) {
 			hitMaterial = g_MaterialAir;
 		}
 		if (hitMaterial != g_MaterialAir && strengthThreshold > 0.0F && g_SceneMan.GetMaterialFromID(hitMaterial)->GetIntegrity() > strengthThreshold) {

@@ -1,4 +1,5 @@
 #include "TerrainCollapse.h"
+#include "TerrainTrees.h"
 #include "Actor.h"
 #include "Atom.h"
 #include "Constants.h"
@@ -92,7 +93,7 @@ namespace {
 		} else if (has("Concrete") || has("Glass") || has("Ice")) {
 			style = c_Shatter;
 			strength = has("Glass") ? 0.45F : (has("Ice") ? 0.7F : 1.0F);
-		} else if (behaviour.Powder > 0 || has("Sand") || has("Snow") || has("Topsoil") || has("Rubble") || has("Gravel") || has("Ash") || has("Charcoal") || has("Vegetation") || has("Grass")) {
+		} else if (behaviour.Powder > 0 || has("Sand") || has("Snow") || has("Topsoil") || has("Rubble") || has("Gravel") || has("Ash") || has("Charcoal") || has("Vegetation") || has("Leaves") || has("Grass")) {
 			style = c_Crumble;
 		} else if (has("Bedrock") || has("Cave Ceiling")) {
 			strength = 1.8F;
@@ -147,8 +148,8 @@ namespace {
 			s_Flimsy[id] = material->GetIntegrity() >= 0.0F && material->GetIntegrity() < 5.0F;
 			StockBreaking(*material, s_Style[id], s_ImpactStrength[id], s_Neck[id]);
 			const std::string& name = material->GetPresetName();
-			s_Leaves[id] = name == "Vegetation";
-			s_TreeTrunk[id] = name == "Tree Trunk";
+			s_Leaves[id] = name == "Vegetation" || TerrainTrees::IsLeaves(id);
+			s_TreeTrunk[id] = name == "Tree Trunk" || TerrainTrees::IsTrunk(id);
 			s_NoHold[id] = name == "Ashes" || name == "Charcoal";
 			if (name == "Ice") {
 				s_IceMaterial = id;
@@ -247,6 +248,20 @@ namespace {
 		bool Damaged = false; //!< Whether pixels have been taken off it since its mass and outline were worked out.
 		std::vector<std::pair<long, long long>> Hurt; //!< Units it hurt lately: unique ID and sim update, so a piece grinding on a unit hurts it once per blow, not every update.
 	};
+
+	/// Whether a piece is a tree coming down: a good share of tree trunk, its leaves the rest. (Every 7th pixel is enough to tell.)
+	bool IsTree(const Body& body) {
+		int trunk = 0;
+		int solid = 0;
+		for (size_t i = 0; i < body.Materials.size(); i += 7) {
+			if (unsigned char material = body.Materials[i]; material != 0) {
+				++solid;
+				trunk += s_TreeTrunk[material] ? 1 : 0;
+			}
+		}
+		return trunk * 5 > solid && trunk > 0;
+	}
+
 	std::vector<Body> s_Bodies;
 	std::vector<Body> s_NewBodies; //!< Pieces made while the bodies are being stepped; they join afterwards.
 
@@ -1711,6 +1726,10 @@ namespace {
 				float objectMass = std::max(object->GetMass(), 1.0F);
 				// Hurt by how fast the piece closes on the unit above the slowest speed that hurts, and by how heavy it is for the unit (up to the cap),
 				// as a share of the unit's full health so big and small units alike take the same share from the same blow.
+				// A tree coming down goes through units and vehicles as a standing one does, while they don't bump into trees.
+				if (object->IsActor() && !TerrainTrees::UnitsCollide() && IsTree(body)) {
+					continue;
+				}
 				if (Actor* actor = dynamic_cast<Actor*>(object); actor && tuning.HitDamage > 0.0F && body.PixelCount >= tuning.HitMinPixels && !actor->IsDead()) {
 					long id = actor->GetUniqueID();
 					bool hurtLately = std::any_of(body.Hurt.begin(), body.Hurt.end(), [id](const std::pair<long, long long>& hurt) { return hurt.first == id; });
@@ -2686,15 +2705,6 @@ int TerrainCollapse::GetFallingCount() {
 
 void TerrainCollapse::GetFallingPieces(std::vector<FallingPiece>& pieces) {
 	for (const Body& body: s_Bodies) {
-		// (A tree: a good share of tree trunk, its leaves the rest. Every 7th pixel is enough to tell.)
-		int trunk = 0;
-		int solid = 0;
-		for (size_t i = 0; i < body.Materials.size(); i += 7) {
-			if (unsigned char material = body.Materials[i]; material != 0) {
-				++solid;
-				trunk += s_TreeTrunk[material] ? 1 : 0;
-			}
-		}
-		pieces.push_back({body.Pos.x, body.Pos.y, body.Radius, body.Vel.x, body.Vel.y, trunk * 5 > solid && trunk > 0});
+		pieces.push_back({body.Pos.x, body.Pos.y, body.Radius, body.Vel.x, body.Vel.y, IsTree(body)});
 	}
 }
