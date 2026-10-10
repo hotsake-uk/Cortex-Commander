@@ -672,6 +672,10 @@ void DebugMan::SettingsGUI() {
 			TerrainCandle::SetBurnMinutes(minutes);
 		}
 		Tip("How long a lit candle 20 pixels tall takes to burn down, whatever its width; a taller one takes longer. 2 minutes as it comes.");
+		if (float reaction = RopeSim::GetReaction(); Slider("Ropes react to wind and blasts", &reaction, 0.0F, 3.0F, "%.2fx")) {
+			RopeSim::SetReaction(reaction);
+		}
+		Tip("How strongly ropes, threads, chains and cables blow about in the wind, ride the pressure of a passing blast wave and are thrown out from explosions. 1 as it comes, 0 they hang still.");
 		Toggle("Dropped ropes settle into the ground", RopeSim::GetSettleSeconds() > 0.0F, [](bool on) { RopeSim::SetSettleSeconds(on ? 5.0F : 0.0F); });
 		if (float settle = RopeSim::GetSettleSeconds(); settle > 0.0F && Slider("Rope settle time", &settle, 0.5F, 60.0F, "%.1f seconds", ImGuiSliderFlags_Logarithmic)) {
 			RopeSim::SetSettleSeconds(settle);

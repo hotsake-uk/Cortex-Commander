@@ -1495,6 +1495,12 @@ void Sandbox::DrawGUI() {
 					ImGui::SetItemTooltip("How much more (or less) than the kind's own it holds before it snaps. Everything else about it stays: a rope can be made to hold a dropship and still burn and be cut by a bullet.");
 					ImGui::SliderFloat("Tie strength", &s_RopeAnchor, 0.0F, 5000.0F, s_RopeAnchor <= 0.0F ? "unbreakable" : "%.0f kg", ImGuiSliderFlags_Logarithmic);
 					ImGui::SetItemTooltip("How hard a tie can be pulled, in kg, before it lets go of the rope (pulled out of the ground or off the unit). Far left: the ties never fail, only the rope can.");
+					ImGui::BeginDisabled(!RopeSettingsChanged());
+					if (ImGui::Button("Reset rope to default")) {
+						ResetRopeSettings();
+					}
+					ImGui::EndDisabled();
+					ImGui::SetItemTooltip("Puts slack, strength and tie strength back to the kind's own (slack 10%%, strength x1, ties unbreakable).");
 				}
 				ImGui::SeparatorText("Terrain");
 				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::TreeTrunk, Tool::Concrete});

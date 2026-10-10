@@ -1559,6 +1559,8 @@ Vector SceneMan::GetAirFlow(const Vector& position) const {
 
 void SceneMan::AddAirBlast(const Vector& position, float energy) const {
 	AirPressure::Blast(position, energy);
+	// Ropes near it are thrown out as by any blast.
+	RopeSim::QueueBlast(position, std::clamp(std::sqrt(std::max(energy, 0.0F)) * 0.9F + 20.0F, 40.0F, 170.0F), energy);
 }
 
 int SceneMan::AddRope(const std::string& type, const Vector& from, const Vector& to, float slack) const {

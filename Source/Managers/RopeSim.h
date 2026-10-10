@@ -46,6 +46,12 @@ namespace RTE {
 		/// Sets how long a rope tied to nothing lies still before it settles (0 never).
 		static void SetSettleSeconds(float seconds);
 
+		/// Gets how strongly ropes react to the wind, blast waves and explosions (1 as it is, 0 not at all).
+		static float GetReaction();
+
+		/// Sets how strongly ropes react to the wind, blast waves and explosions.
+		static void SetReaction(float reaction);
+
 		/// Gets how many kinds of rope there are.
 		static int GetTypeCount();
 

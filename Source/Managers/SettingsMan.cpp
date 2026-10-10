@@ -366,6 +366,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("TerrainCollapse", { TerrainCollapse::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("TerrainFire", { TerrainFire::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("EmberIgniteChance", { TerrainFire::SetEmberIgniteChance(std::stof(reader.ReadPropValue())); });
+	MatchProperty("RopeReaction", { RopeSim::SetReaction(std::stof(reader.ReadPropValue())); });
 	MatchProperty("RopeSettleSeconds", { RopeSim::SetSettleSeconds(std::stof(reader.ReadPropValue())); });
 	MatchProperty("CandleBurnMinutes", { TerrainCandle::SetBurnMinutes(std::stof(reader.ReadPropValue())); });
 	MatchProperty("ModernHUD", { ModernHUD::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
@@ -1044,6 +1045,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("PostSaturation", lighting.Saturation);
 	writer.NewPropertyWithValue("TerrainFire", TerrainFire::IsEnabled());
 	writer.NewPropertyWithValue("EmberIgniteChance", TerrainFire::GetEmberIgniteChance());
+	writer.NewPropertyWithValue("RopeReaction", RopeSim::GetReaction());
 	writer.NewPropertyWithValue("RopeSettleSeconds", RopeSim::GetSettleSeconds());
 	writer.NewPropertyWithValue("CandleBurnMinutes", TerrainCandle::GetBurnMinutes());
 	writer.NewPropertyWithValue("TerrainCollapse", TerrainCollapse::IsEnabled());
