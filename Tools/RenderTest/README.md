@@ -5,8 +5,10 @@ These tools are for checking rendering changes by eye, against fixed scenarios, 
 ## Setup
 
 0. Windows blocks PowerShell scripts by default. In the PowerShell window you'll use, run `Set-ExecutionPolicy -Scope Process Bypass` first; it lasts for that window only.
-1. Build the game with `Build.ps1` (Debug Release by default), then run it once so `Userdata\Settings.ini` exists, and close it.
-2. Run `Setup.ps1`. It installs `RenderTest.rte` into `Mods\` and writes scenario settings files to `Userdata\RenderTest\`. Each scenario is your `Settings.ini` with a few keys changed so the game starts straight into a known scene.
+1. Build the game with `Build.ps1` (Debug Release by default).
+2. Run `Setup.ps1`. It installs `RenderTest.rte` into `Mods\` and writes scenario settings files to `Userdata\RenderTest\`. Each scenario is the `releasezone2` preset (`Data\Presets\releasezone2.ini`, which the built-in defaults match) with the keys it depends on changed, so the game starts straight into a known scene. `-Base Userdata\Settings.ini` starts from your own settings instead. `Gym.ps1` takes the same `-Base`.
+
+A scenario or gym sets every key it relies on, debug views included (the wind scenarios turn on the weather overlay with `WorldSimOverlay = 5`, say), because the base only sets the look. Later keys in a settings file win over earlier ones, so on Linux a test's settings can be made with `cat Data/Presets/releasezone2.ini overrides.ini > test.ini`, or with `Tools/RenderTest/MakeTestSettings.sh`.
 
 ## Capturing
 

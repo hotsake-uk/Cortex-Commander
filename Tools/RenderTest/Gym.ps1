@@ -3,7 +3,8 @@ param(
 	[switch]$Run,            # Run every course of each map's gym and print the results, instead of opening the map to play in.
 	[int]$Wait = 90,         # -Run: seconds to allow each map's courses (a unit that can't make it gives up at 60).
 	[switch]$Trace,          # -Run: the movement script's AITRACE lines too (the first unit of each map is traced).
-	[string]$Exe = ""        # The game to run; the Final build if it is there, else the debug build.
+	[string]$Exe = "",       # The game to run; the Final build if it is there, else the debug build.
+	[string]$Base = ""       # The settings to start from; the releasezone2 preset (Data\Presets\releasezone2.ini) if not given.
 )
 # The AI gym, on its own: opens a map in the sandbox with the Gym tab up, where courses are made by clicking a start and a goal and run
 # with a timer (they are kept in Userdata\Gyms\<map>.txt). With -Run, the courses of every map named are run in the test harness, all the
@@ -18,8 +19,8 @@ Set-Location $repo
 # (From the command line, several maps come as one string with commas in it.)
 $Maps = @($Maps | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 if (-not $Exe) { $Exe = if (Test-Path (Join-Path $repo "Cortex Command.exe")) { "Cortex Command.exe" } else { "Cortex Command.debug.release.exe" } }
-$baseSettings = Join-Path $repo "Userdata\Settings.ini"
-if (-not (Test-Path $baseSettings)) { throw "Run the game once first so Userdata\Settings.ini exists." }
+$baseSettings = if ($Base) { if ([System.IO.Path]::IsPathRooted($Base)) { $Base } else { Join-Path $repo $Base } } else { Join-Path $repo "Data\Presets\releasezone2.ini" }
+if (-not (Test-Path $baseSettings)) { throw "The base settings file $baseSettings doesn't exist." }
 $modsDir = Join-Path $repo "Mods"
 Copy-Item -Recurse -Force (Join-Path $rt "RenderTest.rte") $modsDir
 New-Item -ItemType Directory -Force (Join-Path $repo "Userdata\RenderTest") | Out-Null
@@ -27,7 +28,8 @@ New-Item -ItemType Directory -Force (Join-Path $repo "Userdata\Gyms") | Out-Null
 New-Item -ItemType Directory -Force (Join-Path $rt "Output") | Out-Null
 
 function Write-GymSettings([string]$Map, [bool]$Harness) {
-	# The player's own settings, with the map, the sandbox and the gym's own settings put in.
+	# The base settings (the releasezone2 preset unless -Base says otherwise), with the map, the sandbox and the gym's own settings put in.
+	# A gym's settings must name everything its courses rely on, debug views included: the base only sets the look.
 	$overrides = [ordered]@{ LaunchIntoActivity = 1; SkipIntro = 1; DefaultActivityType = "GAScripted"; DefaultActivityName = "Sandbox"; DefaultSceneName = $Map; ShowAIPaths = 1 }
 	if ($Harness) { $overrides.ResolutionX = 960; $overrides.ResolutionY = 540; $overrides.ResolutionMultiplier = 1; $overrides.Fullscreen = 0 }
 	$gymSettings = Join-Path $repo "Userdata\Gyms\$Map.settings.txt"
