@@ -1683,8 +1683,10 @@ namespace SandboxDetail {
 				}
 			}
 		} else {
-			float outline = tool.UsesRadius ? static_cast<float>(s_Radius) / scale : 6.0F;
-			bool square = IsTerrainBrush(tool.Kind) && s_BrushShape == BrushShape::Square;
+			// Brush type Shape: the brush draws no stamp of its own, a drag marks out the shape (drawn as it is dragged), so the pointer is only the smallest cursor.
+			bool shapeFill = IsTerrainBrush(tool.Kind) && s_ShapeFill;
+			float outline = shapeFill ? 1.0F / scale : (tool.UsesRadius ? static_cast<float>(s_Radius) / scale : 6.0F);
+			bool square = IsTerrainBrush(tool.Kind) && s_BrushShape == BrushShape::Square && !shapeFill;
 			float half = std::max(outline, 3.0F);
 			GameViewRect view = g_WindowMan.GetGameViewRect();
 			drawList->PushClipRect(ImVec2(view.x, view.y), ImVec2(view.x + view.w, view.y + view.h));
@@ -1723,7 +1725,7 @@ namespace SandboxDetail {
 						}
 					}
 				}
-			} else if (tool.UsesRadius) {
+			} else if (tool.UsesRadius && !shapeFill) {
 				// What the brush lays down, see-through, over just the area it covers. Ground with a terrain texture shows that texture, lined up with
 				// the scene as the brush paints it (PaintedColor), so the preview is the very pixels a stroke puts there; other brushes show their
 				// colour (dig darkens what it takes out).
