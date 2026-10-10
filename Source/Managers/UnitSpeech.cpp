@@ -481,7 +481,8 @@ bool UnitSpeech::SayOrder(Actor& actor, const std::string& triggerKey) {
 }
 
 bool UnitSpeech::Say(Actor& actor, const std::string& triggerKey, bool answeringOrder, const Actor* subject) {
-	if (!s_Enabled || s_ChancePercent <= 0 || actor.GetStatus() >= Actor::DYING) {
+	// (Animals don't talk.)
+	if (!s_Enabled || s_ChancePercent <= 0 || actor.GetStatus() >= Actor::DYING || actor.IsAnimal()) {
 		return false;
 	}
 	EnsureLoaded();

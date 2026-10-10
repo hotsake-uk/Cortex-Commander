@@ -1799,7 +1799,8 @@ namespace SandboxDetail {
 	}
 
 	void GiveLoadout(Actor* actor, const Preset& unit, int loadout) {
-		if (loadout == 1) {
+		// (An animal goes unarmed, whatever the loadout.)
+		if (loadout == 1 || actor->IsAnimal()) {
 			return;
 		}
 		if (loadout >= 2) {
