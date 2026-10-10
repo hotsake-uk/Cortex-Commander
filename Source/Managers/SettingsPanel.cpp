@@ -882,6 +882,8 @@ void DebugMan::SettingsGUI() {
 			Tint("Outline colour", &settings.UnitOutlineColor.x);
 		}
 		Slider("Outline opacity", &settings.UnitOutlineOpacity, 0.0F, 1.0F);
+		Slider("Outline glow light", &settings.UnitOutlineGlow, 0.0F, 2.0F);
+		Tip("Each outlined unit gives off a soft light in its outline's colour (its side's, the colour above, or a flag carrier's pink), lighting the ground and units round it. Needs lighting on. 0 is off.");
 		Heading("HUD");
 		Toggle("Show FPS and version", g_SettingsMan.ShowFPSAndVersion(), [](bool on) { g_SettingsMan.SetShowFPSAndVersion(on); });
 		Tip("The frame rate and the game's version, small, in the top right of the window.");

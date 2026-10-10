@@ -50,6 +50,7 @@ namespace RTE {
 		Fire, //!< Burning ground and burning units.
 		Sandbox, //!< Effects put down in the sandbox.
 		Scripts, //!< Lua, through AddLight.
+		Outlines, //!< The glow of units' outlines (LightingSettings::UnitOutlineGlow).
 		Count
 	};
 

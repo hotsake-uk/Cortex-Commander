@@ -362,6 +362,7 @@ namespace RTE {
 		bool UnitOutlineTeamColor = true; //!< Each unit's stroke is its side's colour (red, green, blue, yellow; white for no side). Off: all are UnitOutlineColor.
 		glm::vec3 UnitOutlineColor = {1.0F, 1.0F, 1.0F}; //!< The stroke's colour when not by side, as shown on screen.
 		float UnitOutlineOpacity = 0.33F; //!< How solid the stroke is, 0 (unseen) to 1.
+		float UnitOutlineGlow = 0.0F; //!< How brightly each outlined unit lights what's round it, in its outline's colour (its side's, UnitOutlineColor, or a highlighted unit's pink), 0 to 2. Needs lighting on. 0: no light, as before.
 		bool HighlightUnits = false; //!< Set by the game, not saved: some unit is highlighted (Actor::SetHighlighted), so the outline pass runs for its bright, pulsing glow even with UnitOutline off.
 
 		bool PaletteAnimation = true; //!< Animated palette flags: glowing liquids (lava) breathe, and colours set in Base.rte/PaletteAnimation.ini or by scripts pulse or cycle. Off: the palette stands still, as before.

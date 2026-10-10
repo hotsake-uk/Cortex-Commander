@@ -1869,6 +1869,29 @@ void Actor::UpdateHeadlamp() {
 	}
 }
 
+void Actor::UpdateOutlineGlow() {
+	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+	if (lighting.UnitOutlineGlow <= 0.0F || !lighting.Enabled || m_Status == DEAD || m_Status == DYING || GetClassName() == "ADoor") {
+		return;
+	}
+	// The outline's own colour, as Tonemap.frag draws it: a highlighted unit's pink (a flag carrier, a VIP), pulsing with its stroke, else the side's or the set one.
+	glm::vec3 color;
+	float brightness = std::min(lighting.UnitOutlineGlow, 2.0F);
+	if (m_Highlighted) {
+		color = glm::vec3(0.9F, 0.55F, 0.72F);
+		brightness *= 0.7F + 0.3F * std::sin(PostProcessMan::GetEffectTime() * 6.0F);
+	} else if (lighting.UnitOutline && lighting.UnitOutlineOpacity > 0.0F) {
+		// The sides' colours as SceneLighting gives them to the outline, and white for no side.
+		static const glm::vec3 sideColors[5] = {{0.92F, 0.92F, 0.92F}, {1.0F, 0.41F, 0.33F}, {0.41F, 1.0F, 0.47F}, {0.43F, 0.65F, 1.0F}, {1.0F, 0.88F, 0.37F}};
+		color = lighting.UnitOutlineTeamColor ? sideColors[std::clamp(m_Team, -1, 3) + 1] : glm::clamp(lighting.UnitOutlineColor, glm::vec3(0.0F), glm::vec3(1.0F));
+	} else {
+		return;
+	}
+	// From the middle of the body, reaching a little past the unit so the ground and anyone beside it pick up the colour.
+	float reach = std::max(40.0F, GetHeight() * 1.5F);
+	g_PostProcessMan.RegisterLight(m_Pos, color * 255.0F, reach, brightness, LightSource::Outlines);
+}
+
 float Actor::GetNightSightScale() const {
 	const LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
 	// Blown dust hides things day or night.
@@ -2240,6 +2263,7 @@ void Actor::PostUpdate() {
 
 void Actor::Update() {
 	UpdateHeadlamp();
+	UpdateOutlineGlow();
 
 	ZoneScoped;
 

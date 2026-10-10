@@ -1301,6 +1301,9 @@ namespace RTE {
 		/// light for the frame. Render only. The two thresholds sit a little apart so a unit at the edge of the light doesn't flicker.
 		void UpdateHeadlamp();
 
+		/// Registers the light this unit's outline gives off, in the outline's colour, when LightingSettings::UnitOutlineGlow is up and the outline is drawn.
+		void UpdateOutlineGlow();
+
 		/// Asks for the route to the current goal again, from where this is now, the same check an order makes. The answer replaces the
 		/// route only when it says the goal is reachable from here (solved, and not only through ground or a door that can't be got through);
 		/// otherwise the route being followed is kept. For a unit in flight, whose route can fall behind it: checked often, a jet's
