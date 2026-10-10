@@ -64,6 +64,7 @@ namespace {
 	std::array<bool, 256> s_Structure{}; //!< Materials of buildings: concrete, metal and the like.
 	std::array<bool, 256> s_Flimsy{}; //!< Materials too weak to hold a falling piece up: grass, plants, ash. A piece goes through them and flattens them.
 	constexpr int c_MaxTreePiecePixels = 250000; //!< The biggest a tree coming down can be (trees aren't held to the tuning's MaxPiecePixels; see FindFloatingPiece).
+	constexpr int c_StrayLeafMargin = 6; //!< How far past a fallen tree's box its stray leaves are looked for (DropStrayLeaves).
 	std::array<bool, 256> s_Leaves{}; //!< Vegetation: the leaves of trees and the base game's plants.
 	std::array<bool, 256> s_TreeTrunk{}; //!< The wood of trees. A tree's leaves hang on its trunk, not on whatever ground or tree their tips brush against.
 	std::array<bool, 256> s_Loose{}; //!< Loose ground that a tree coming down goes through: sand, snow, rubble, gravel and the like.
@@ -2403,6 +2404,59 @@ namespace {
 		s_Bodies.push_back(std::move(body));
 	}
 
+	/// After a tree comes down: leaves where it stood that now hang on nothing come down too, as falling leaves and litter, rather than staying in the
+	/// air as specks. These are scraps of its crown that touched it only across a gap (so counted as already hanging in the air, which FloatingStays
+	/// keeps up), or that lay beyond the check. Leaves held by anything else (another tree, the ground, a wall) stay.
+	void DropStrayLeaves(SLTerrain* terrain, int left, int top, int right, int bottom) {
+		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
+		int width = materialBitmap->w;
+		int height = materialBitmap->h;
+		bool wrapX = g_SceneMan.SceneWrapsX();
+		std::vector<std::vector<int>> stray;
+		std::vector<int> piece;
+		s_Touched.clear();
+		for (int y = std::max(0, top - c_StrayLeafMargin); y <= std::min(height - 1, bottom + c_StrayLeafMargin); ++y) {
+			const unsigned char* materialRow = materialBitmap->line[y];
+			for (int rawX = left - c_StrayLeafMargin; rawX <= right + c_StrayLeafMargin; ++rawX) {
+				int x = wrapX ? (rawX % width + width) % width : rawX;
+				if (x < 0 || x >= width) {
+					continue;
+				}
+				int key = y * width + x;
+				if (!s_Leaves[materialRow[x]] || (s_State[key] & (c_Seen | c_Falling))) {
+					continue;
+				}
+				if (FindFloatingPiece(materialBitmap, key, width, height, wrapX, piece, false, false) && std::all_of(piece.begin(), piece.end(), [materialBitmap, width](int pieceKey) { return s_Leaves[materialBitmap->line[pieceKey / width][pieceKey % width]]; })) {
+					stray.push_back(piece);
+				}
+			}
+		}
+		for (int key: s_Touched) {
+			s_State[key] &= static_cast<unsigned char>(~(c_Seen | c_Supported));
+		}
+		s_Touched.clear();
+		for (const std::vector<int>& leaves: stray) {
+			// A big clump falls as a piece of its own, breaking up as leaves do where it lands; the specks shed as loose leaves.
+			if (static_cast<int>(leaves.size()) >= c_MinBreakPixels) {
+				LiftPiece(terrain, leaves);
+				continue;
+			}
+			for (int key: leaves) {
+				int x = key % width;
+				int y = key / width;
+				int material = materialBitmap->line[y][x];
+				int color = terrain->GetFGColorPixel(x, y);
+				terrain->SetMaterialPixel(x, y, g_MaterialAir);
+				terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
+				// (Laid on the ground rather than lost when there's no room to throw it.)
+				ShedPixel(material, color, glm::vec2(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F), glm::vec2((Random01() - 0.5F) * 0.6F, Random01() * 0.3F), !CanThrow(1));
+			}
+		}
+		if (!stray.empty()) {
+			terrain->AddUpdatedMaterialArea(Box(Vector(static_cast<float>(left - c_StrayLeafMargin), static_cast<float>(top - c_StrayLeafMargin)), static_cast<float>(right - left + 1 + c_StrayLeafMargin * 2), static_cast<float>(bottom - top + 1 + c_StrayLeafMargin * 2)));
+		}
+	}
+
 	void RunCheck(SLTerrain* terrain, const Check& check) {
 		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
 		int width = materialBitmap->w;
@@ -2470,6 +2524,7 @@ namespace {
 		s_Touched.clear();
 		// What was cut from the world falls. Of the parts of a mass that was already in the air, the biggest stays where it was and the rest fall:
 		// chip the corner off a floating island and only the chip falls; cut it in two and the smaller half does.
+		std::vector<std::array<int, 4>> fallenTrees; // Left, top, right, bottom of each tree that comes down, for its stray leaves.
 		for (size_t i = 0; i < loose.size(); ++i) {
 			bool falls = cameFrom[i] < 0;
 			for (size_t other = 0; !falls && other < loose.size(); ++other) {
@@ -2478,9 +2533,23 @@ namespace {
 			if (falls) {
 				// (What a drop's check lets fall is that drop's too, and taken back with it.)
 				s_LiftDrop = check.Drop;
+				size_t before = s_Bodies.size();
 				LiftPiece(terrain, loose[i]);
 				s_LiftDrop = 0;
+				if (s_Bodies.size() > before && IsTree(s_Bodies.back())) {
+					std::array<int, 4> box = {width, height, -1, -1};
+					for (int key: loose[i]) {
+						box[0] = std::min(box[0], key % width);
+						box[1] = std::min(box[1], key / width);
+						box[2] = std::max(box[2], key % width);
+						box[3] = std::max(box[3], key / width);
+					}
+					fallenTrees.push_back(box);
+				}
 			}
+		}
+		for (const std::array<int, 4>& box: fallenTrees) {
+			DropStrayLeaves(terrain, box[0], box[1], box[2], box[3]);
 		}
 	}
 
