@@ -22,7 +22,7 @@
 
 using namespace RTE;
 
-bool TextOverlay::s_Enabled = true;
+bool TextOverlay::s_Enabled = false;
 int TextOverlay::s_Suspended = 0;
 
 namespace {

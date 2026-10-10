@@ -18,8 +18,8 @@ namespace RTE {
 			float PushStrength = 1.0F; //!< How hard moving air pushes smoke, loose things and gibs.
 			float UnitPush = 1.0F; //!< How hard moving air pushes units, on top of PushStrength. 0: units are never pushed.
 			float LiquidThrow = 1.0F; //!< How readily a wave running up through liquid throws it into the air. 0: never.
-			float WindStrength = 1.0F; //!< How hard the weather's wind carries smoke and spray.
-			float WindGas = 1.0F; //!< How fast the weather's wind carries gas (SB-6) along. 0: the wind leaves gas be.
+			float WindStrength = 5.0F; //!< How hard the weather's wind carries smoke and spray.
+			float WindGas = 1.71F; //!< How fast the weather's wind carries gas (SB-6) along. 0: the wind leaves gas be.
 		};
 
 		/// Gets whether the air does anything at all: blast waves, wind on smoke and wind on gas (a gameplay setting, over the ones below).

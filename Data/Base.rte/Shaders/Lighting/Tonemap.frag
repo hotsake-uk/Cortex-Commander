@@ -135,13 +135,14 @@ void main() {
 				}
 			}
 			if (slot == 6) {
-				// A highlighted unit: a bright stroke hard against it, glowing out to the width and pulsing.
+				// A highlighted unit (a flag carrier, a VIP): a bright stroke hard against it, glowing out to the width and pulsing. A soft pink,
+				// a colour no team has (red, green, blue and yellow).
 				float distance = sqrt(nearest);
 				float stroke = 1.0 - smoothstep(1.5, 2.5, distance);
 				float glow = 1.0 - smoothstep(0.0, rteHighlightWidth, distance);
 				float pulse = 0.7 + 0.3 * sin(rteTime * 6.0);
-				vec3 hot = vec3(1.0, 0.95, 0.55);
-				outputColor = mix(outputColor, vec3(1.0, 1.0, 0.85), stroke);
+				vec3 hot = vec3(0.55, 0.22, 0.38);
+				outputColor = mix(outputColor, vec3(0.9, 0.55, 0.72), stroke);
 				outputColor = clamp(outputColor + hot * glow * glow * pulse * (1.0 - stroke), 0.0, 1.0);
 			} else if (slot > 0 && rteOutlineWidth > 0.0) {
 				float coverage = 1.0 - smoothstep(rteOutlineWidth, rteOutlineWidth + 1.0, sqrt(nearest));

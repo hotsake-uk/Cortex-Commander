@@ -1591,7 +1591,15 @@ namespace SandboxDetail {
 				formationFacing = across * scale > 12.0F ? 1 : (across * scale < -12.0F ? -1 : 0);
 			}
 			std::string formation = std::string(" in ") + c_FormationNames[static_cast<int>(s_Formation)] + (s_KeepPace ? ", kept together" : "") + (s_Dragging && io.KeyAlt ? "" : "  (Alt-drag: face a way)");
-			if (units.empty() || (underIsFriend && s_CommandMode == CommandMode::Move)) {
+			if (s_CommandMode == CommandMode::Select) {
+				const bool pickable = under && IsSelectable(under);
+				if (pickable) {
+					drawList->AddCircle(ToScreen(under->GetPos()), std::max(under->GetRadius() / scale, 8.0F) + pixel * 2.0F, IM_COL32(255, 255, 255, 200), 0, pixel);
+					label = "Select " + under->GetPresetName() + "  (Shift: add, double click: all of this kind)";
+				} else {
+					label = units.empty() ? "Click a unit or drag a box round several to select them" : count + " selected: pick an order (M, T, F, G, B...) or right click";
+				}
+			} else if (units.empty() || (underIsFriend && s_CommandMode == CommandMode::Move)) {
 				if (underIsUnit) {
 					drawList->AddCircle(ToScreen(under->GetPos()), std::max(under->GetRadius() / scale, 8.0F) + pixel * 2.0F, IM_COL32(255, 255, 255, 200), 0, pixel);
 					label = "Select " + under->GetPresetName() + "  (Shift: add, double click: all of this kind)";
@@ -1720,7 +1728,7 @@ namespace SandboxDetail {
 				label = "Move " + count + " here" + formation;
 			}
 			// With Shift held, the order is a further step of their plans (RC-3), not one for now.
-			if (io.KeyShift && !units.empty() && !(underIsFriend && s_CommandMode == CommandMode::Move) && !label.empty()) {
+			if (io.KeyShift && !units.empty() && s_CommandMode != CommandMode::Select && !(underIsFriend && s_CommandMode == CommandMode::Move) && !label.empty()) {
 				label = "Then: " + label + "  (added to the plan)";
 			}
 		}
@@ -2937,9 +2945,26 @@ namespace SandboxDetail {
 		} else if (tool.Kind == Tool::Command) {
 			start(tool.Name);
 			float rowStart = ImGui::GetCursorPosX();
-			// The mode of the clicks, in its colours.
-			for (int mode = 0; mode < static_cast<int>(std::size(c_CommandModeNames)); ++mode) {
-				if (mode > 0) {
+			// What is selected, by kind.
+			std::map<std::string, int> kinds;
+			int alive = 0;
+			for (const UnitRef& ref: s_Selected) {
+				if (const Actor* unit = GetRef(ref)) {
+					++kinds[unit->GetPresetName()];
+					++alive;
+				}
+			}
+			// With nothing selected there is nothing to order: the clicks select, and the orders show once some are (a script's
+			// command clicks still waiting keep their mode).
+			if (alive == 0 && s_CommandMode != CommandMode::Select && std::none_of(s_Queue.begin(), s_Queue.end(), [](const Stroke& queued) { return queued.Kind == Tool::Command; })) {
+				s_CommandMode = CommandMode::Select;
+				s_PatrolDraft.clear();
+			}
+			// The mode of the clicks, in its colours: Select units first (it is last in CommandMode), then the orders.
+			const int modes = alive == 0 ? 1 : static_cast<int>(std::size(c_CommandModeNames));
+			for (int place = 0; place < modes; ++place) {
+				const int mode = (place + static_cast<int>(std::size(c_CommandModeNames)) - 1) % static_cast<int>(std::size(c_CommandModeNames));
+				if (place > 0) {
 					ImGui::SameLine();
 				}
 				ImGui::PushStyleColor(ImGuiCol_Text, c_CommandModeColors[mode]);
@@ -2950,7 +2975,15 @@ namespace SandboxDetail {
 				ImGui::PopStyleColor();
 				// (Its key, RC-6; all of them are on the Keys page.)
 				static const char* keys[] = {"M", "T", "G", "F", "B", "R", "X"};
-				ImGui::SetItemTooltip("Key: %s", keys[std::min<size_t>(static_cast<size_t>(mode), std::size(keys) - 1)]);
+				if (static_cast<CommandMode>(mode) == CommandMode::Select) {
+					ImGui::SetItemTooltip("Click a unit to select it, drag a box for several (Shift adds, double click all of a kind in view); a click on nothing\nselects nothing. The Command tool on the bar starts here, and a click on it here again deselects everyone.");
+				} else {
+					ImGui::SetItemTooltip("Key: %s", keys[std::min<size_t>(static_cast<size_t>(mode), std::size(keys) - 1)]);
+				}
+			}
+			if (alive == 0) {
+				ImGui::SameLine();
+				ImGui::TextDisabled("Click a unit or drag a box round several; their orders show here then.");
 			}
 			// The patrol route being clicked out (RC-4): started as a loop or back and forth once it has two points.
 			if (s_CommandMode == CommandMode::Patrol) {
@@ -3045,15 +3078,6 @@ namespace SandboxDetail {
 			}
 			// A second row for the selected units, so the bar doesn't stretch across the picture: who they are, and what can be done
 			// with them and how they are set.
-			// What is selected, by kind.
-			std::map<std::string, int> kinds;
-			int alive = 0;
-			for (const UnitRef& ref: s_Selected) {
-				if (const Actor* unit = GetRef(ref)) {
-					++kinds[unit->GetPresetName()];
-					++alive;
-				}
-			}
 			std::string what = alive == 0 ? "Nothing selected" : std::to_string(alive) + " selected:";
 			for (const auto& [name, number]: kinds) {
 				what += " " + std::to_string(number) + " " + name + ",";
@@ -3063,92 +3087,95 @@ namespace SandboxDetail {
 			}
 			ImGui::SetCursorPosX(rowStart);
 			ImGui::TextDisabled("%s", what.c_str());
-			ImGui::SameLine();
-			ImGui::BeginDisabled(alive == 0);
-			if (ToolUI::SmallButton("Deselect")) {
-				s_Selected.clear();
-			}
-			ImGui::EndDisabled();
-			// Their plans (RC-3), if any have steps still to come: cleared, each carrying on with the step it is on.
-			ImGui::SameLine();
-			ImGui::BeginDisabled(PlanMarkers().empty());
-			if (ToolUI::SmallButton("Clear plans")) {
-				Stroke stroke;
-				stroke.Kind = Tool::OrderSelected;
-				stroke.Count = 120;
-				s_Queue.push_back(stroke);
-			}
-			ImGui::EndDisabled();
-			ImGui::SetItemTooltip("Shift with any order adds it to the selected units' plans: they carry out each when the one before is over\n(a move when they get there, an attack when the enemy is dead). Defend with Shift held ends the plan holding ground.\nA right click on a numbered marker drops that step.");
-			ImGui::SameLine();
-			ImGui::BeginDisabled(alive == 0);
-			if (ToolUI::SmallButton("Clear all orders")) {
-				Stroke stroke;
-				stroke.Kind = Tool::OrderSelected;
-				stroke.Count = 121;
-				s_Queue.push_back(stroke);
-			}
-			ImGui::SetItemTooltip("Every order the selected units have, forgotten: where they were going, what they were after, what they defend or guard,\ntheir plans and patrols, a battle mode's job for them. They stand where they are and fight back from there.\n(Cancel instead puts them back on their side's standing orders.)");
-			ImGui::EndDisabled();
-			// Handing them back (RC-9's commander, or anyone): to the battle, or else the side's orders.
-			ImGui::SameLine();
-			ImGui::BeginDisabled(alive == 0);
-			if (ToolUI::SmallButton("Follow team orders")) {
-				Stroke stroke;
-				stroke.Kind = Tool::OrderSelected;
-				stroke.Count = 122;
-				s_Queue.push_back(stroke);
-			}
-			ImGui::SetItemTooltip("Hand the selected units back: everything you told them forgotten, and they take up their team's orders again.\nIn a battle mode's game, its job for them (and its AI commander's, where the team has one); with the Battle Director\ndefending a place for their team, a post there; else the side's orders as set in the Orders list.");
-			ImGui::SameLine();
-			if (ToolUI::SmallButton("Focus on objective")) {
-				QueueOrder(Order::BattleObjective);
-			}
-			ImGui::SetItemTooltip("Send the selected units after their team's objective in the battle: an enemy flag, an enemy VIP, the hill or the\nobjective in play, or the place their Battle Director card defends; with none, they attack. (Key: O)");
-			// The Orders tab's list, for the selected units rather than a whole side: the same choice, kept in step with the tab.
-			ImGui::SameLine();
-			s_Order = std::clamp(s_Order, 0, c_OrderCount - 1);
-			ImGui::SetNextItemWidth(field * 0.9F);
-			ImGui::Combo("##selectedOrders", &s_Order, OrderName, nullptr, c_OrderCount);
-			ImGui::SetItemTooltip("Orders for the selected units, as the Orders tab gives a whole side.");
-			ImGui::SameLine();
-			const bool moveTo = static_cast<Order>(s_Order) == Order::MoveTo;
-			if (ToolUI::SmallButton(moveTo ? "Click where##giveSelected" : "Give orders##giveSelected")) {
-				if (moveTo) {
-					// (A move needs a place: the clicks are put to moving.)
-					s_CommandMode = CommandMode::Move;
-				} else {
-					QueueOrder(static_cast<Order>(s_Order));
+			// What can be done with them, once there are some.
+			if (alive > 0) {
+				ImGui::SameLine();
+				ImGui::BeginDisabled(alive == 0);
+				if (ToolUI::SmallButton("Deselect")) {
+					s_Selected.clear();
 				}
-			}
-			ImGui::SetItemTooltip(moveTo ? "Move to a place: click on the map where the selected units should go (the command tool's Move)." : "Give the selected units the order in the list.");
-			ImGui::EndDisabled();
-			ImGui::SameLine();
-			ImGui::BeginDisabled(alive == 0);
-			if (ToolUI::SmallButton("Follow")) {
-				s_FollowTarget = s_Selected.empty() ? UnitRef() : s_Selected.front();
-				s_FollowAction = false;
-			}
-			ImGui::EndDisabled();
-			// The engagement rules of what is selected (RC-1): the one they share, or "mixed"; a choice gives it to them all.
-			ImGui::BeginDisabled(alive == 0);
-			for (bool weapons: {true, false}) {
-				ImGui::SameLine(0.0F, pixel * 6.0F);
-				int rule = SelectedRule(weapons);
-				const char* const* names = weapons ? c_WeaponRuleNames : c_MovementRuleNames;
-				int ruleCount = weapons ? static_cast<int>(std::size(c_WeaponRuleNames)) : static_cast<int>(std::size(c_MovementRuleNames));
-				ImGui::SetNextItemWidth(field * 0.75F);
-				if (ImGui::BeginCombo(weapons ? "##weaponRule" : "##movementRule", rule == -1 ? "Mixed" : (rule < 0 ? (weapons ? "Weapons" : "Movement") : names[rule]))) {
-					for (int choice = 0; choice < ruleCount; ++choice) {
-						if (ImGui::Selectable(names[choice], choice == rule)) {
-							QueueRule(weapons, choice);
-						}
+				ImGui::EndDisabled();
+				// Their plans (RC-3), if any have steps still to come: cleared, each carrying on with the step it is on.
+				ImGui::SameLine();
+				ImGui::BeginDisabled(PlanMarkers().empty());
+				if (ToolUI::SmallButton("Clear plans")) {
+					Stroke stroke;
+					stroke.Kind = Tool::OrderSelected;
+					stroke.Count = 120;
+					s_Queue.push_back(stroke);
+				}
+				ImGui::EndDisabled();
+				ImGui::SetItemTooltip("Shift with any order adds it to the selected units' plans: they carry out each when the one before is over\n(a move when they get there, an attack when the enemy is dead). Defend with Shift held ends the plan holding ground.\nA right click on a numbered marker drops that step.");
+				ImGui::SameLine();
+				ImGui::BeginDisabled(alive == 0);
+				if (ToolUI::SmallButton("Clear all orders")) {
+					Stroke stroke;
+					stroke.Kind = Tool::OrderSelected;
+					stroke.Count = 121;
+					s_Queue.push_back(stroke);
+				}
+				ImGui::SetItemTooltip("Every order the selected units have, forgotten: where they were going, what they were after, what they defend or guard,\ntheir plans and patrols, a battle mode's job for them. They stand where they are and fight back from there.\n(Cancel instead puts them back on their side's standing orders.)");
+				ImGui::EndDisabled();
+				// Handing them back (RC-9's commander, or anyone): to the battle, or else the side's orders.
+				ImGui::SameLine();
+				ImGui::BeginDisabled(alive == 0);
+				if (ToolUI::SmallButton("Follow team orders")) {
+					Stroke stroke;
+					stroke.Kind = Tool::OrderSelected;
+					stroke.Count = 122;
+					s_Queue.push_back(stroke);
+				}
+				ImGui::SetItemTooltip("Hand the selected units back: everything you told them forgotten, and they take up their team's orders again.\nIn a battle mode's game, its job for them (and its AI commander's, where the team has one); with the Battle Director\ndefending a place for their team, a post there; else the side's orders as set in the Orders list.");
+				ImGui::SameLine();
+				if (ToolUI::SmallButton("Focus on objective")) {
+					QueueOrder(Order::BattleObjective);
+				}
+				ImGui::SetItemTooltip("Send the selected units after their team's objective in the battle: an enemy flag, an enemy VIP, the hill or the\nobjective in play, or the place their Battle Director card defends; with none, they attack. (Key: O)");
+				// The Orders tab's list, for the selected units rather than a whole side: the same choice, kept in step with the tab.
+				ImGui::SameLine();
+				s_Order = std::clamp(s_Order, 0, c_OrderCount - 1);
+				ImGui::SetNextItemWidth(field * 0.9F);
+				ImGui::Combo("##selectedOrders", &s_Order, OrderName, nullptr, c_OrderCount);
+				ImGui::SetItemTooltip("Orders for the selected units, as the Orders tab gives a whole side.");
+				ImGui::SameLine();
+				const bool moveTo = static_cast<Order>(s_Order) == Order::MoveTo;
+				if (ToolUI::SmallButton(moveTo ? "Click where##giveSelected" : "Give orders##giveSelected")) {
+					if (moveTo) {
+						// (A move needs a place: the clicks are put to moving.)
+						s_CommandMode = CommandMode::Move;
+					} else {
+						QueueOrder(static_cast<Order>(s_Order));
 					}
-					ImGui::EndCombo();
 				}
-				ImGui::SetItemTooltip("%s", weapons ? "What the selected units may shoot at.\nFire at will: any enemy they see. Return fire: only while they are being shot at. Hold fire: never; they aim, and open up the moment this changes.\nKept until changed." : "How the selected units move when they meet an enemy.\nAs ordered: a move keeps walking, an attack closes in, a post is held. Engage: stop and fight, closing in. Move only: keep going, firing on the way. Hold ground: fight from where they stand.\nEach new order goes back to As ordered.");
+				ImGui::SetItemTooltip(moveTo ? "Move to a place: click on the map where the selected units should go (the command tool's Move)." : "Give the selected units the order in the list.");
+				ImGui::EndDisabled();
+				ImGui::SameLine();
+				ImGui::BeginDisabled(alive == 0);
+				if (ToolUI::SmallButton("Follow")) {
+					s_FollowTarget = s_Selected.empty() ? UnitRef() : s_Selected.front();
+					s_FollowAction = false;
+				}
+				ImGui::EndDisabled();
+				// The engagement rules of what is selected (RC-1): the one they share, or "mixed"; a choice gives it to them all.
+				ImGui::BeginDisabled(alive == 0);
+				for (bool weapons: {true, false}) {
+					ImGui::SameLine(0.0F, pixel * 6.0F);
+					int rule = SelectedRule(weapons);
+					const char* const* names = weapons ? c_WeaponRuleNames : c_MovementRuleNames;
+					int ruleCount = weapons ? static_cast<int>(std::size(c_WeaponRuleNames)) : static_cast<int>(std::size(c_MovementRuleNames));
+					ImGui::SetNextItemWidth(field * 0.75F);
+					if (ImGui::BeginCombo(weapons ? "##weaponRule" : "##movementRule", rule == -1 ? "Mixed" : (rule < 0 ? (weapons ? "Weapons" : "Movement") : names[rule]))) {
+						for (int choice = 0; choice < ruleCount; ++choice) {
+							if (ImGui::Selectable(names[choice], choice == rule)) {
+								QueueRule(weapons, choice);
+							}
+						}
+						ImGui::EndCombo();
+					}
+					ImGui::SetItemTooltip("%s", weapons ? "What the selected units may shoot at.\nFire at will: any enemy they see. Return fire: only while they are being shot at. Hold fire: never; they aim, and open up the moment this changes.\nKept until changed." : "How the selected units move when they meet an enemy.\nAs ordered: a move keeps walking, an attack closes in, a post is held. Engage: stop and fight, closing in. Move only: keep going, firing on the way. Hold ground: fight from where they stand.\nEach new order goes back to As ordered.");
+				}
+				ImGui::EndDisabled();
 			}
-			ImGui::EndDisabled();
 			ImGui::SameLine(0.0F, pixel * 6.0F);
 			// Whose routes are drawn: the game's own AI path drawing, as the settings have it.
 			ImGui::TextDisabled("Routes");
@@ -3296,6 +3323,14 @@ namespace SandboxDetail {
 					ImGui::SameLine();
 				}
 				if (BarTile("##main", c_Tools[index].Name, s_ToolIndex == index, [&](ImDrawList* drawList, ImVec2 at, float room) { DrawIcon(drawList, look.Art, at, room / 12.0F, look.Color); }) == 1) {
+					if (mainTools[i] == Tool::Command) {
+						// The Command tool always starts by selecting units; picked again while selecting, it lets them all go.
+						if (s_ToolIndex == index && s_CommandMode == CommandMode::Select) {
+							s_Selected.clear();
+						}
+						s_CommandMode = CommandMode::Select;
+						s_PatrolDraft.clear();
+					}
 					s_ToolIndex = index;
 				}
 				ImGui::PopID();

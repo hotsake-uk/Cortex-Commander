@@ -24,7 +24,7 @@
 
 using namespace RTE;
 
-bool ModernHUD::s_Enabled = false;
+bool ModernHUD::s_Enabled = true;
 
 namespace {
 	/// A downscaled picture of the scene's terrain, rebuilt now and then.
