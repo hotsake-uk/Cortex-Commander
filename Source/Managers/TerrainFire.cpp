@@ -189,7 +189,7 @@ namespace {
 		return x >= 0 && y >= 0 && x < width && y < height;
 	}
 
-	/// Fire needs air: a pixel only catches if it touches air (or ash, which lets air through).
+	/// Fire needs air: a pixel only catches if it touches air (or ash or charcoal, which let air through: what's burnt doesn't smother what's left).
 	bool IsExposed(const SLTerrain* terrain, int x, int y, int width, int height) {
 		static constexpr int offsets[4][2] = {{0, -1}, {-1, 0}, {1, 0}, {0, 1}};
 		for (const auto& offset: offsets) {
@@ -199,7 +199,7 @@ namespace {
 				return true;
 			}
 			int material = terrain->GetMaterialPixel(nx, ny);
-			if (material == g_MaterialAir || material == s_AshMaterial) {
+			if (material == g_MaterialAir || material == s_AshMaterial || material == s_CharcoalMaterial) {
 				return true;
 			}
 		}
