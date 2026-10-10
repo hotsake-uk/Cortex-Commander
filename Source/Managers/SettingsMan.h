@@ -246,9 +246,9 @@ namespace RTE {
 		/// Gets the percentage, 0 to 100, of units that are handed a digger when they come into the scene without one.
 		float AISpawnDiggerChance() const { return m_AISpawnDiggerChance; }
 
-		/// Gets the percentage, 0 to 100, of wounds (hits, and limbs torn off) that start a unit bleeding out: losing health as the wound trickles.
-		/// A wound that doesn't still does its damage when it's made. 100, the default, is every wound that bleeds by its own definition.
-		float WoundBleedChance() const { return m_WoundBleedChance; }
+		/// Gets the percentage, 0 to 100, of wounds (hits, and limbs torn off) that keep bleeding until the unit bleeds out or is patched up,
+		/// rather than stopping when their own definition says. 0, the default, is every wound as it is defined.
+		float BleedOutChance() const { return m_BleedOutChance; }
 
 		/// Gets which digger those units are handed: 0 Light, 1 Medium, 2 Heavy, 3 a random one of the three.
 		int AISpawnDiggerType() const { return m_AISpawnDiggerType; }
@@ -490,8 +490,8 @@ namespace RTE {
 		void SetAIRecklessness(float recklessness) { m_AIRecklessness = std::clamp(recklessness, 0.0F, 1.0F); }
 		/// Sets the percentage of units handed a digger as they come into the scene; see AISpawnDiggerChance.
 		void SetAISpawnDiggerChance(float percent) { m_AISpawnDiggerChance = std::clamp(percent, 0.0F, 100.0F); }
-		/// Sets the percentage of wounds that start a unit bleeding out; see WoundBleedChance.
-		void SetWoundBleedChance(float percent) { m_WoundBleedChance = std::clamp(percent, 0.0F, 100.0F); }
+		/// Sets the percentage of wounds that keep bleeding; see BleedOutChance.
+		void SetBleedOutChance(float percent) { m_BleedOutChance = std::clamp(percent, 0.0F, 100.0F); }
 		/// Sets which digger those units are handed; see AISpawnDiggerType.
 		void SetAISpawnDiggerType(int type) { m_AISpawnDiggerType = std::clamp(type, 0, 3); }
 
@@ -752,7 +752,7 @@ namespace RTE {
 		float m_AIThreatAvoidance; //!< How much safe-route units keep clear of enemies, 0 to 2 (see AIThreatAvoidance).
 		float m_AIRecklessness; //!< How reckless AI units are on the move, 0 to 1 (see AIRecklessness).
 		float m_AISpawnDiggerChance; //!< Percentage of units handed a digger as they come into the scene, 0 to 100 (see AISpawnDiggerChance).
-		float m_WoundBleedChance; //!< Percentage of wounds that start a unit bleeding out, 0 to 100 (see WoundBleedChance).
+		float m_BleedOutChance; //!< Percentage of wounds that keep bleeding rather than stopping, 0 to 100 (see BleedOutChance).
 		int m_AISpawnDiggerType; //!< Which digger they're handed: 0 Light, 1 Medium, 2 Heavy, 3 random (see AISpawnDiggerType).
 		bool m_AISteadyBeforeJet; //!< Whether AI units steady themselves before they jet (see AISteadiesBeforeJet).
 		bool m_AIWaitForFuel; //!< Whether AI units wait for fuel before they jet (see AIWaitsForFuel).
