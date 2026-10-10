@@ -12,6 +12,7 @@
 #include "SLTerrain.h"
 #include "ACraft.h"
 #include "ADoor.h"
+#include "AVehicle.h"
 #include "ActorWater.h"
 #include "RopeSim.h"
 #include "MOPixel.h"
@@ -955,7 +956,7 @@ bool MOSRotating::ComesFromBody() const {
 		return true;
 	}
 	const MovableObject* root = GetRootParent();
-	return dynamic_cast<const Actor*>(root) && !dynamic_cast<const ACraft*>(root) && !dynamic_cast<const ADoor*>(root);
+	return dynamic_cast<const Actor*>(root) && !dynamic_cast<const ACraft*>(root) && !dynamic_cast<const ADoor*>(root) && !dynamic_cast<const AVehicle*>(root);
 }
 
 void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObject* movableObjectToIgnore) {

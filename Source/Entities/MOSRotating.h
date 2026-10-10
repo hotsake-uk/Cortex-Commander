@@ -540,7 +540,7 @@ namespace RTE {
 		/// @param movableObjectToIgnore A pointer to an MO which the Attachables should not be colliding with.
 		void CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObject* movableObjectToIgnore);
 
-		/// Whether this is, is attached to, or came off a unit (not a craft or a door), so what it leaves behind is marked IsFromBody. Held devices
+		/// Whether this is, is attached to, or came off a unit (not a craft, a door or a vehicle: a wooden cart's planks aren't flesh), so what it leaves behind is marked IsFromBody. Held devices
 		/// aren't: a gun dropped by the fallen is still a gun.
 		bool ComesFromBody() const;
 
