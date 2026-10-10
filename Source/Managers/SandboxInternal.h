@@ -215,10 +215,6 @@ namespace SandboxDetail {
 		SmokeBomb, //!< A burst of thick smoke, with no blast.
 		Fireworks, //!< Bursts of coloured sparks in the air above the point.
 		// Appended, so the tools before keep their numbers.
-		BuildBonfire, //!< A pile of logs (the Wood material): it burns when fire reaches it.
-		BuildCottage, //!< A medieval timber cottage on a stone footing, with a pitched wooden roof.
-		BuildWatchtower, //!< A medieval stone watchtower with wooden floors and a battlemented top.
-		BuildCastle, //!< A medieval gatehouse: two stone towers and a wall with a wooden gate.
 		Decor //!< A light or fire put in the background (Choice a DecorKind): it shines until a blast or a shot destroys it, and nothing collides with it.
 	};
 
@@ -350,10 +346,6 @@ namespace SandboxDetail {
 	    {Tool::GustLeft, "Gust left", 0.0F, false},
 	    {Tool::SmokeBomb, "Smoke bomb", 0.0F, false},
 	    {Tool::Fireworks, "Fireworks", 0.0F, false},
-	    {Tool::BuildBonfire, "Bonfire", 0.0F, false},
-	    {Tool::BuildCottage, "Medieval cottage", 0.0F, false},
-	    {Tool::BuildWatchtower, "Medieval watchtower", 0.0F, false},
-	    {Tool::BuildCastle, "Castle gatehouse", 0.0F, false},
 	    {Tool::Decor, "Background light", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));

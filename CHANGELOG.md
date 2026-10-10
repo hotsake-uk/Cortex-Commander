@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 <details><summary><b>Added</b></summary>
 
+- Sandbox background lights and fires (Build tab > Lights and fires): wall lamp, ceiling lamp, lantern, strip light, warning light, candle, candelabra, wall torch and campfire. They are painted into the background so nothing collides with them, shine for ever (the candles, torch and campfire flicker, smoke and throw embers), and a blast or a shot destroys them.
+- Sandbox Effects tab, Make your own: build effects from layers (light, spotlight, sparks, embers, smoke, dust, mist, debris, gas, flames, heat shimmer, shockwave pulses, lightning strikes and a force field), each with its own size, rate, speed, spread, direction, turning, brightness, flicker, pulse, colour and offset. Start from a template; copy, rename or delete them. They are kept in Userdata/SandboxEffects.txt and listed beside the built-in effects.
+- The Medieval buildings' lamps now flicker like candles.
 - Sandbox Boom tab: blasts of force that shove and scatter without fire or blast damage (Force blast, Huge force blast, Implosion, Updraft, Gust right and left), and a Smoke bomb and Fireworks for show.
 - Spring lifetime (Sandbox, Paint > Springs): a spring can pour liquid that lasts only a set number of seconds (a slider for new springs, up to 120 s, and one on each placed spring; 0 is for ever). Each pixel it pours is gone that long after it was poured, wherever it has flowed to, so a spring can make a stream or a waterfall that doesn't fill up what it runs into. `FluidSim::Pour` takes an optional lifetime. Lifetimes are not kept in saved games.
 
