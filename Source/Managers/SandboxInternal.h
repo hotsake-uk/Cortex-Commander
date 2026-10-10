@@ -712,6 +712,7 @@ namespace SandboxDetail {
 		bool JetpackOnly = false; //!< With Random: only units with a jetpack.
 		std::string Material; //!< Springs, the tank and "Other": the liquid or powder poured, by preset name (taken at the click, not read in the sim).
 		float Rate = 1.0F; //!< Springs: how much of the time they pour, 0.05 to 1.
+		float Life = 0.0F; //!< Springs: how many seconds what they pour lasts, 0 for ever.
 		float Scale = 1.0F; //!< Plant brushes: how big the plant is drawn, 1 as the game's own art (s_PlantScale).
 		bool HasPlantRoll = false; //!< Plant brushes: whether Plant was taken at the click (the plant the cursor showed), else it is rolled in the sim.
 		PlantRoll Plant; //!< Plant brushes: the plant to put down, when HasPlantRoll.
@@ -1330,6 +1331,7 @@ namespace SandboxDetail {
 		int Radius = 3; //!< How wide the pour is: air within this many pixels of the place is kept full of water.
 		std::string Liquid = "Water"; //!< What it pours, by preset name: any liquid or powder FluidSim pours.
 		float Rate = 1.0F; //!< How much of the time it pours, 0.05 to 1 (1 every update).
+		float Life = 0.0F; //!< How many seconds what it pours lasts before it is gone wherever it has flowed to, 0 for ever: a stream or waterfall that doesn't fill up what it runs into.
 		float Due = 0.0F; //!< Rate summed since its last pour: it pours when this reaches 1.
 		bool On = true; //!< Off, it stays where it is and pours nothing until turned on again.
 	};
@@ -1337,6 +1339,7 @@ namespace SandboxDetail {
 	inline std::vector<WaterSpawner> s_WaterSpawners;
 	inline std::string s_SpringLiquid = "Water"; //!< What new springs and the tank pour (Paint > Springs).
 	inline float s_SpringRate = 1.0F; //!< How much of the time new springs pour.
+	inline float s_SpringLife = 0.0F; //!< How many seconds what new springs pour lasts, 0 for ever.
 	inline std::string s_OtherPourable; //!< The liquid or powder the "Other" tool pours, picked under "More...".
 	inline float s_Flow = 1.0F; //!< How fast the pouring tools pour while held, 0.1 to 1 (they pour every 0.03 s at 1).
 

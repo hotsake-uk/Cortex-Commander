@@ -158,7 +158,7 @@ namespace {
 			drawList->AddCircle(at, std::max(static_cast<float>(spawner.Radius) / scale, 4.0F), color, 0, 2.0F);
 			// (A filled dot in what it pours, so a row of springs reads as water here, lava there.)
 			drawList->AddCircleFilled(at, 3.0F, MaterialMarkColor(spawner.Liquid, spawner.On ? 255 : 110));
-			std::string text = spawner.Liquid + " " + std::to_string(spawner.Radius) + " px" + (spawner.On ? "" : " (off)");
+			std::string text = spawner.Liquid + " " + std::to_string(spawner.Radius) + " px" + (spawner.Life > 0.0F ? ", lasts " + std::to_string(static_cast<int>(spawner.Life)) + " s" : std::string()) + (spawner.On ? "" : " (off)");
 			if (hovered) {
 				text += "  (Delete: remove)";
 				if (removeKey && removeEffect < 0) {

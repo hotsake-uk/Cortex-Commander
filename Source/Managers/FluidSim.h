@@ -82,7 +82,9 @@ namespace RTE {
 		/// @param position Centre, in scene coordinates.
 		/// @param radius Radius in pixels.
 		/// @param liquidName "Water", "Lava", "Acid" or "Oil", or a powder: "Sand", "Snow", "Earth Rubble" or "Ashes".
-		static void Pour(const Vector& position, float radius, const char* liquidName);
+		/// @param lifeSeconds How long the pixels poured last, in seconds: each is gone that long after it was poured, wherever it has flowed to by then (a spring that
+		/// makes a stream or a waterfall that never fills what it runs into). 0 (the default): for ever. Not kept in saved games.
+		static void Pour(const Vector& position, float radius, const char* liquidName, float lifeSeconds = 0.0F);
 
 		/// Wakes liquid around a disturbance (explosion, collapse) so it starts flowing again. Thread safe.
 		static void Disturb(const Vector& position, float radius);
