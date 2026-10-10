@@ -697,6 +697,8 @@ void DebugMan::SettingsGUI() {
 			ImGui::TextDisabled("(%d cells of blast waves)", AirPressure::GetActiveCells());
 		}
 		ImGui::BeginDisabled(!AirPressure::IsOn());
+		Slider("Overall strength and speed", &tuning.Overall, 0.0F, 5.0F, "%.2fx");
+		Tip("Over everything below at once: how hard blasts push and throw water, how hard the wind carries smoke, effects and gas, how far the flames bend, and how fast blast waves travel. 2: twice as strong and twice as fast. 0: the air does nothing. The sliders below set each part against this.");
 		Heading("Blast waves");
 		Toggle("Blast waves", AirPressure::IsEnabled(), [](bool on) { AirPressure::SetEnabled(on); });
 		Tip("An explosion sends a wave of air out that bounces off walls: it carries far down a corridor and fades fast in the open, pushes smoke, loose things and (a little) units, and throws up the water in a flooded room.");

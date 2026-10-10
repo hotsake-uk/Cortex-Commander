@@ -201,7 +201,7 @@ namespace {
 
 	/// Where the wave runs up through liquid to its surface, it throws the liquid there into the air.
 	void ThrowLiquid(long long update) {
-		float readily = AirPressure::GetTuning().LiquidThrow;
+		float readily = AirPressure::GetTuning().LiquidThrow * AirPressure::GetOverall();
 		if (readily <= 0.0F) {
 			return;
 		}
@@ -225,7 +225,7 @@ namespace {
 
 /// The moving air pushes what is in it: a weightless thing (smoke) as fast as the air, a heavy one (a unit) hardly at all.
 void AirPressure::PushObjects() {
-	float strength = s_Tuning.PushStrength;
+	float strength = s_Tuning.PushStrength * GetOverall();
 	if (strength <= 0.0F) {
 		return;
 	}
@@ -304,22 +304,22 @@ void AirPressure::SetOn(bool on) {
 }
 
 float AirPressure::GetWind() {
-	return s_On && s_Wind ? WeatherEffects::GetWind() * std::max(s_Tuning.WindStrength, 0.0F) : 0.0F;
+	return s_On && s_Wind ? WeatherEffects::GetWind() * std::max(s_Tuning.WindStrength, 0.0F) * GetOverall() : 0.0F;
 }
 
 float AirPressure::GetWindSpeed() {
-	return s_On && s_Wind ? g_PostProcessMan.GetLightingSettings().Wind * std::max(s_Tuning.WindStrength, 0.0F) : 0.0F;
+	return s_On && s_Wind ? g_PostProcessMan.GetLightingSettings().Wind * std::max(s_Tuning.WindStrength, 0.0F) * GetOverall() : 0.0F;
 }
 
 Vector AirPressure::GetPush(const Vector& position) {
-	if (!s_On || !s_Enabled || s_Tuning.PushStrength <= 0.0F) {
+	if (!s_On || !s_Enabled || s_Tuning.PushStrength <= 0.0F || GetOverall() <= 0.0F) {
 		return Vector();
 	}
 	Vector flow = GetFlow(position);
 	if (flow.MagnitudeIsLessThan(0.05F)) {
 		return Vector();
 	}
-	Vector change = flow * (c_Push * s_Tuning.PushStrength);
+	Vector change = flow * (c_Push * s_Tuning.PushStrength * GetOverall());
 	change.CapMagnitude(c_MaxPush);
 	return change;
 }
@@ -358,7 +358,7 @@ void AirPressure::SetEnabled(bool enabled) {
 }
 
 void AirPressure::Blast(const Vector& position, float energy) {
-	if (!s_On || !s_Enabled || !std::isfinite(energy) || energy <= 0.0F || s_Tuning.BlastStrength <= 0.0F) {
+	if (!s_On || !s_Enabled || !std::isfinite(energy) || energy <= 0.0F || s_Tuning.BlastStrength <= 0.0F || GetOverall() <= 0.0F) {
 		return;
 	}
 	std::scoped_lock lock(s_QueueMutex);
@@ -461,7 +461,7 @@ void AirPressure::Update() {
 		}
 		int x = cell % s_GridWidth;
 		int y = cell / s_GridWidth;
-		float pressure = std::clamp(std::sqrt(blast.Energy) * 0.15F, 2.0F, 40.0F) * s_Tuning.BlastStrength;
+		float pressure = std::clamp(std::sqrt(blast.Energy) * 0.15F, 2.0F, 40.0F) * s_Tuning.BlastStrength * GetOverall();
 		// The blast's own cell and the four around it; one buried in the ground (all solid) puts its pressure into what is open beside it.
 		for (int dy = -1; dy <= 1; ++dy) {
 			for (int dx = -1; dx <= 1; ++dx) {
@@ -479,7 +479,9 @@ void AirPressure::Update() {
 	}
 	WorkOutOpenness(materialBitmap);
 	float loudest = 0.0F;
-	for (int i = 0; i < c_Substeps; ++i) {
+	// Overall also sets how fast the waves travel: more steps of the wave each update (never fewer than one, nor so many it costs too much).
+	int substeps = std::clamp(static_cast<int>(std::lround(static_cast<float>(c_Substeps) * GetOverall())), 1, 8);
+	for (int i = 0; i < substeps; ++i) {
 		loudest = Step();
 	}
 	if (loudest < c_Quiet) {

@@ -13,6 +13,7 @@ namespace RTE {
 	public:
 		/// How strongly the air does each thing it does. Every value is a multiplier on how it comes, 1.
 		struct Tuning {
+			float Overall = 1.0F; //!< Over all the rest: how strong the air is and how fast its waves travel. 2 twice as strong and fast, 0.5 half; 0 the air does nothing.
 			float BlastStrength = 1.0F; //!< How much pressure a blast puts into the air: 2 twice as much, 0.5 half.
 			float BlastReach = 1.0F; //!< How far a wave carries before it dies away: 2 about twice as far, 0.5 half.
 			float PushStrength = 1.0F; //!< How hard moving air pushes smoke, loose things and gibs.
@@ -30,6 +31,9 @@ namespace RTE {
 
 		/// Gets how strongly the air does each thing it does, to read or change.
 		static Tuning& GetTuning() { return s_Tuning; }
+
+		/// Gets Tuning::Overall, never below 0.
+		static float GetOverall() { return s_Tuning.Overall > 0.0F ? s_Tuning.Overall : 0.0F; }
 
 		/// Gets whether blasts travel as waves of pressure through the air (a gameplay setting, while IsOn).
 		static bool IsEnabled() { return s_Enabled; }

@@ -299,6 +299,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("Gas", { GasGrid::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("GasShown", { GasGrid::SetShown(std::stof(reader.ReadPropValue())); });
 	MatchProperty("AirAndWind", { AirPressure::SetOn(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("AirOverall", { AirPressure::GetTuning().Overall = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
 	MatchProperty("AirBlastStrength", { AirPressure::GetTuning().BlastStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
 	MatchProperty("AirBlastReach", { AirPressure::GetTuning().BlastReach = std::clamp(std::stof(reader.ReadPropValue()), 0.25F, 3.0F); });
 	MatchProperty("AirPushStrength", { AirPressure::GetTuning().PushStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
@@ -987,6 +988,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("Gas", GasGrid::IsEnabled());
 	writer.NewPropertyWithValue("GasShown", GasGrid::GetShown());
 	writer.NewPropertyWithValue("AirAndWind", AirPressure::IsOn());
+	writer.NewPropertyWithValue("AirOverall", AirPressure::GetTuning().Overall);
 	writer.NewPropertyWithValue("AirBlastStrength", AirPressure::GetTuning().BlastStrength);
 	writer.NewPropertyWithValue("AirBlastReach", AirPressure::GetTuning().BlastReach);
 	writer.NewPropertyWithValue("AirPushStrength", AirPressure::GetTuning().PushStrength);
