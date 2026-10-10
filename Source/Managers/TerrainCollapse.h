@@ -89,6 +89,22 @@ namespace RTE {
 		/// @param materialName The material's name, e.g. "Stone".
 		static void SpawnChunk(const Vector& position, float radius, const char* materialName);
 
+		/// Breaks all the ground in a box loose (the sandbox's "Make it fall"): every piece of terrain inside it, whatever it is made of, is cut
+		/// out along the box's edges and falls like any loose piece, cracking, crumbling, splintering or bending as it lands by its materials.
+		/// A big box is cut into rough chunks first. What was held up only by the ground taken is checked afterwards and falls too.
+		/// Doors and the world's edge stay. Thread safe; applied on the next sim step.
+		/// @param left The box, in scene pixels, inclusive.
+		/// @param top The box, in scene pixels, inclusive.
+		/// @param right The box, in scene pixels, inclusive.
+		/// @param bottom The box, in scene pixels, inclusive.
+		/// @return A number for this drop, for TakeBackDrop; 0 if collapsing terrain is off (nothing falls then).
+		static int DropArea(int left, int top, int right, int bottom);
+
+		/// Takes a drop back, for an undo: its pieces still falling are lifted out of the terrain and gone, and those that came to rest are taken
+		/// out of the ground where they lie, if nothing has changed them since. The ground where they were is the caller's to put back. Main thread only.
+		/// @param drop The number DropArea gave.
+		static void TakeBackDrop(int drop);
+
 		/// Runs due checks. Call once per sim update, from the main thread.
 		static void Update();
 

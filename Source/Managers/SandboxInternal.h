@@ -198,7 +198,9 @@ namespace SandboxDetail {
 		// Appended, so the tools before keep their numbers.
 		Candles, //!< Puts candles on the ground (Tools/MakeCandleSprites.py): wax with a wick, which fire lights and which burn down (TerrainCandle).
 		// Appended, so the tools before keep their numbers.
-		Metal //!< Paints the metal chosen under Metals (c_PaintMetals; Stroke::Material): the bunkers' plating, or a polished metal that shines.
+		Metal, //!< Paints the metal chosen under Metals (c_PaintMetals; Stroke::Material): the bunkers' plating, or a polished metal that shines.
+		// Appended, so the tools before keep their numbers.
+		CollapseArea //!< A box dragged out on the world (Position to Position2): all the ground in it breaks loose and falls (TerrainCollapse::DropArea).
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -318,6 +320,7 @@ namespace SandboxDetail {
 	    {Tool::GrowGrass, "Grow grass", 0.03F, true},
 	    {Tool::Candles, "Candles", 0.03F, true},
 	    {Tool::Metal, "Metal", 0.03F, true},
+	    {Tool::CollapseArea, "Make it fall", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -877,6 +880,10 @@ namespace SandboxDetail {
 	inline FillShape s_FillShape = FillShape::Square; //!< The shape they fill then.
 	inline bool s_ShapeDragging = false; //!< A shape being dragged out, from s_ShapeStart.
 	inline Vector s_ShapeStart;
+	constexpr int c_MaxDropSide = 800; //!< The biggest box "Make it fall" takes either way, in pixels.
+
+	/// Whether the tool in hand is used by dragging out a shape on the world: the terrain brushes with Brush type Shape, and "Make it fall"'s box.
+	inline bool DragsShape(Tool kind) { return (IsTerrainBrush(kind) && s_ShapeFill) || kind == Tool::CollapseArea; }
 	inline BrushShape s_BrushShape = BrushShape::Circle; //!< How the terrain brushes paint and dig: circles, squares or a spray (Paint > Terrain).
 	inline std::string s_PaintMetal = "Metal"; //!< What the Metal tool paints, picked under Metals (a c_PaintMetals material).
 	inline std::string s_OtherTerrain = "Topsoil"; //!< What the "Other terrain" tool paints, picked under "More terrain...".
@@ -1194,8 +1201,9 @@ namespace SandboxDetail {
 		std::vector<long> Placed; //!< The unique IDs of what a placing step made.
 		int ColonyBuilding = -1; //!< The colony building a placing step built, or -1.
 		bool Sealed = false; //!< A placing step: the next stroke starts a step of its own, however soon it comes.
+		int Drop = 0; //!< A "Make it fall" step: the drop TerrainCollapse::DropArea gave, taken back with TerrainCollapse::TakeBackDrop.
 
-		bool Empty() const { return Pixels.empty() && Placed.empty() && ColonyBuilding < 0; }
+		bool Empty() const { return Pixels.empty() && Placed.empty() && ColonyBuilding < 0 && Drop == 0; }
 	};
 
 	inline std::deque<PaintUndoStep> s_PaintUndo;
@@ -1974,6 +1982,12 @@ namespace SandboxDetail {
 	void ToolButtons(std::initializer_list<Tool> tools);
 	/// The Paint tab's Metals: a button for each of c_PaintMetals the game has, each taking the Metal tool with that metal.
 	void MetalButtons();
+	/// A button for each of a list of materials, in its own colour, each taking a tool with that material (the Paint tab's other liquids
+	/// and powders, and its other terrain), as the other tools' buttons are.
+	/// @param kind The tool each button takes (Tool::PourOther or Tool::TerrainOther).
+	/// @param chosen What that tool uses, set by a click.
+	/// @param names The materials, by preset name.
+	void MaterialButtons(Tool kind, std::string& chosen, const std::vector<std::string>& names);
 	void SideChooser();
 	void UndoButton(); //!< Takes back the newest step of the shared paint and placing undo (Tool::UndoTerrain), as Ctrl+Z does.
 	void PresetList(Tool kind, const char* group = nullptr, float rows = 8.0F);

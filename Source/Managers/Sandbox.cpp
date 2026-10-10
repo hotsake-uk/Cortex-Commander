@@ -32,6 +32,11 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		s_Effects.clear();
 		return true;
 	}
+	if (toolName == "Undo") {
+		// As Ctrl+Z: the newest paint stroke, placing click or drop taken back.
+		QueueSimChange(Tool::UndoTerrain);
+		return true;
+	}
 	if (toolName == "Effect") {
 		// The preset name is the effect's name.
 		for (int i = 0; i < static_cast<int>(EffectKind::Count); ++i) {
@@ -78,6 +83,13 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		return false;
 	}
 	stroke.Kind = c_Tools[toolIndex].Kind;
+	if (stroke.Kind == Tool::CollapseArea) {
+		// A box of half-size count around the point, as "Select".
+		stroke.Position = position - Vector(static_cast<float>(count), static_cast<float>(count));
+		stroke.Position2 = position + Vector(static_cast<float>(count), static_cast<float>(count));
+		s_Queue.push_back(stroke);
+		return true;
+	}
 	if (stroke.Kind == Tool::Command && s_CommandMode == CommandMode::Select) {
 		// (A script's command clicks are orders, as they were before the tool started out selecting: a move, or an attack on an enemy.)
 		s_CommandMode = CommandMode::Move;
@@ -759,8 +771,8 @@ void Sandbox::DrawGUI() {
 				s_DragStart = io.MousePos;
 				s_DoubleClick = false;
 			}
-		} else if (IsTerrainBrush(tool.Kind) && s_ShapeFill) {
-			// Brush type Shape: a drag marks out the shape, filled when the button is let go (below).
+		} else if (DragsShape(tool.Kind)) {
+			// Brush type Shape: a drag marks out the shape, filled when the button is let go (below). "Make it fall" drags its box the same way.
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 				s_ShapeDragging = true;
 				s_ShapeStart = position;
@@ -804,13 +816,19 @@ void Sandbox::DrawGUI() {
 	if (s_ShapeDragging) {
 		// The shape being dragged out with a terrain brush (Brush type Shape), drawn as it will be filled; Shift keeps it as wide as it
 		// is tall, Escape drops it.
-		if (!InGame() || !IsTerrainBrush(CurrentTool().Kind) || !s_ShapeFill || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+		if (!InGame() || !DragsShape(CurrentTool().Kind) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
 			s_ShapeDragging = false;
 		} else {
+			bool dropBox = CurrentTool().Kind == Tool::CollapseArea;
 			Vector end = s_ShapeStart + g_SceneMan.ShortestDistance(s_ShapeStart, MouseScenePosition(), g_SceneMan.SceneWrapsX());
 			if (io.KeyShift) {
 				float side = std::max(std::abs(end.m_X - s_ShapeStart.m_X), std::abs(end.m_Y - s_ShapeStart.m_Y));
 				end = s_ShapeStart + Vector(end.m_X >= s_ShapeStart.m_X ? side : -side, end.m_Y >= s_ShapeStart.m_Y ? side : -side);
+			}
+			if (dropBox) {
+				// (No bigger than c_MaxDropSide either way.)
+				constexpr float c_Most = static_cast<float>(c_MaxDropSide - 1);
+				end = s_ShapeStart + Vector(std::clamp(end.m_X - s_ShapeStart.m_X, -c_Most, c_Most), std::clamp(end.m_Y - s_ShapeStart.m_Y, -c_Most, c_Most));
 			}
 			ImDrawList* drawList = ImGui::GetForegroundDrawList();
 			ImU32 outline = IM_COL32(255, 255, 255, 220);
@@ -819,7 +837,15 @@ void Sandbox::DrawGUI() {
 			float top = std::min(s_ShapeStart.m_Y, end.m_Y);
 			float bottom = std::max(s_ShapeStart.m_Y, end.m_Y) + 1.0F;
 			float middleX = (left + right) * 0.5F;
-			if (s_FillShape == FillShape::Circle) {
+			if (dropBox) {
+				// The box whose ground will fall: shaded, edged in warning orange, with its size.
+				ImVec2 topLeft = ToScreen(Vector(left, top));
+				ImVec2 bottomRight = ToScreen(Vector(right, bottom));
+				drawList->AddRectFilled(topLeft, bottomRight, IM_COL32(242, 150, 60, 50));
+				drawList->AddRect(topLeft, bottomRight, IM_COL32(242, 150, 60, 235), 0.0F, 0, 2.0F);
+				std::string size = std::to_string(static_cast<int>(right - left)) + " x " + std::to_string(static_cast<int>(bottom - top));
+				drawList->AddText(ImVec2(topLeft.x + 4.0F, topLeft.y - ImGui::GetTextLineHeight() - 2.0F), IM_COL32(242, 150, 60, 235), size.c_str());
+			} else if (s_FillShape == FillShape::Circle) {
 				constexpr int c_Points = 48;
 				ImVec2 points[c_Points];
 				for (int i = 0; i < c_Points; ++i) {
@@ -1192,23 +1218,14 @@ void Sandbox::DrawGUI() {
 				s_CurrentTab = "Paint";
 				ImGui::SeparatorText("Elements");
 				ToolButtons({Tool::Fire, Tool::Water, Tool::Lava, Tool::Acid, Tool::Oil, Tool::Smoke, Tool::ToxicGas});
-				ToolButtons({Tool::Mud, Tool::Tar, Tool::Mercury, Tool::Fuel, Tool::Cryo, Tool::Blood, Tool::PourOther});
+				ToolButtons({Tool::Mud, Tool::Tar, Tool::Mercury, Tool::Fuel, Tool::Cryo, Tool::Blood});
 				{
-					// Every other pourable (rubble, ash, mods' liquids), for the "Other" tool.
+					// Every other pourable (rubble, ash, mods' liquids), a button each, for the "Other" tool. Those with buttons of their own above
+					// (and in Loose things) aren't repeated.
+					static const char* const c_HaveButtons[] = {"Water", "Lava", "Acid", "Oil", "Mud", "Tar", "Mercury", "Fuel", "Cryogenic Fluid", "Blood", "Sand", "Snow", "Gravel", "Glass Shards"};
 					std::vector<std::string> pourables = PourableNames();
-					if (s_OtherPourable.empty() && !pourables.empty()) {
-						s_OtherPourable = std::find(pourables.begin(), pourables.end(), "Earth Rubble") != pourables.end() ? "Earth Rubble" : pourables.front();
-					}
-					if (ImGui::BeginCombo("More...", s_OtherPourable.empty() ? "(nothing pourable)" : s_OtherPourable.c_str())) {
-						for (const std::string& name: pourables) {
-							if (ImGui::Selectable(name.c_str(), name == s_OtherPourable)) {
-								s_OtherPourable = name;
-								TookTool(ToolIndex(Tool::PourOther));
-							}
-						}
-						ImGui::EndCombo();
-					}
-					ImGui::SetItemTooltip("Every liquid and powder the game pours, mods' included. Picking one takes the Other tool.");
+					pourables.erase(std::remove_if(pourables.begin(), pourables.end(), [](const std::string& name) { return std::find(std::begin(c_HaveButtons), std::end(c_HaveButtons), name) != std::end(c_HaveButtons); }), pourables.end());
+					MaterialButtons(Tool::PourOther, s_OtherPourable, pourables);
 				}
 				ImGui::SliderFloat("Flow", &s_Flow, 0.1F, 1.0F, "%.2f");
 				ImGui::SetItemTooltip("How fast the liquid and loose-ground brushes pour while held. 1: as fast as they go.");
@@ -1317,23 +1334,20 @@ void Sandbox::DrawGUI() {
 				}
 				ImGui::SeparatorText("Terrain");
 				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::TreeTrunk, Tool::Concrete});
-				ToolButtons({Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::TerrainOther});
+				ToolButtons({Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::CollapseArea});
 				{
-					// The rest of the base game's ground, for the "Other terrain" tool.
-					if (ImGui::BeginCombo("More terrain...", s_OtherTerrain.c_str())) {
-						for (const char* name: c_TerrainMaterials) {
-							const Material* material = g_SceneMan.GetMaterial(name);
-							if (!material || material->GetIndex() == g_MaterialAir) {
-								continue;
-							}
-							if (ImGui::Selectable(name, s_OtherTerrain == name)) {
-								s_OtherTerrain = name;
-								TookTool(ToolIndex(Tool::TerrainOther));
-							}
+					// The rest of the base game's ground, a button each, for the "Other terrain" tool. Those with buttons of their own (above, and
+					// under Metals) aren't repeated.
+					static const char* const c_HaveButtons[] = {"Earth", "Dense Earth", "Stone", "Ice", "Sand", "Grass", "Wood", "Tree Trunk", "Concrete"};
+					std::vector<std::string> terrain;
+					for (const char* name: c_TerrainMaterials) {
+						bool own = std::find_if(std::begin(c_HaveButtons), std::end(c_HaveButtons), [name](const char* other) { return std::string(other) == name; }) != std::end(c_HaveButtons);
+						own = own || std::any_of(std::begin(c_PaintMetals), std::end(c_PaintMetals), [name](const PaintMetal& metal) { return std::string(metal.Material) == name; });
+						if (!own) {
+							terrain.emplace_back(name);
 						}
-						ImGui::EndCombo();
 					}
-					ImGui::SetItemTooltip("The base game's ground materials. Picking one takes the Other terrain tool.");
+					MaterialButtons(Tool::TerrainOther, s_OtherTerrain, terrain);
 				}
 				ImGui::SeparatorText("Metals");
 				MetalButtons();

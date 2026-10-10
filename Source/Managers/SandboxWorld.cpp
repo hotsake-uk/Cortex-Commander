@@ -169,6 +169,10 @@ namespace SandboxDetail {
 		if (step.ColonyBuilding >= 0) {
 			Colony::Remove(step.ColonyBuilding);
 		}
+		if (step.Drop != 0) {
+			// "Make it fall": its pieces gone from wherever they are, and the ground back where it was.
+			TerrainCollapse::TakeBackDrop(step.Drop);
+		}
 		if (!step.Pixels.empty()) {
 			SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
 			Box area(Vector(static_cast<float>(step.Left), static_cast<float>(step.Top)), static_cast<float>(step.Right - step.Left + 1), static_cast<float>(step.Bottom - step.Top + 1));
@@ -1663,6 +1667,22 @@ namespace SandboxDetail {
 			case Tool::UndoTerrain:
 				UndoPaint();
 				break;
+			case Tool::CollapseArea: {
+				Vector end = stroke.Position + g_SceneMan.ShortestDistance(stroke.Position, stroke.Position2, g_SceneMan.SceneWrapsX());
+				int left = static_cast<int>(std::floor(std::min(stroke.Position.m_X, end.m_X)));
+				int top = static_cast<int>(std::floor(std::min(stroke.Position.m_Y, end.m_Y)));
+				int right = std::min(static_cast<int>(std::floor(std::max(stroke.Position.m_X, end.m_X))), left + c_MaxDropSide - 1);
+				int bottom = std::min(static_cast<int>(std::floor(std::max(stroke.Position.m_Y, end.m_Y))), top + c_MaxDropSide - 1);
+				if (int drop = TerrainCollapse::DropArea(left, top, right, bottom); drop != 0) {
+					// A step of its own in the undo, which takes the drop back.
+					PushUndoStep();
+					s_PaintUndo.back().Drop = drop;
+					s_PaintUndo.back().Sealed = true;
+					TrimUndo();
+				}
+				NotePaint(Box(Vector(static_cast<float>(left), static_cast<float>(top)), static_cast<float>(right - left + 1), static_cast<float>(bottom - top + 1)), "fall", "", true, true, true);
+				break;
+			}
 			case Tool::ClearMap:
 				ClearMap(stroke);
 				break;
