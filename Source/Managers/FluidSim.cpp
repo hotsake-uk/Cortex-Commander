@@ -338,7 +338,14 @@ namespace {
 	struct PourRequest {
 		int X, Y, Radius;
 		std::string Name;
+		float Life = 0.0F; //!< Seconds the pixels poured last, 0 for ever.
 	};
+	/// A pixel poured with a lifetime (FluidSim::Pour): the sim update it goes at, and what it is, so one that has since been replaced is left alone. Moved with the pixel as it flows.
+	struct LifeTag {
+		long long Expires = 0;
+		int Material = 0;
+	};
+	std::unordered_map<int, LifeTag> s_LifeTags; //!< By pixel key.
 	std::vector<PourRequest> s_Pours;
 	std::vector<std::pair<glm::ivec2, int>> s_Disturbances;
 	struct SplashRequest {
@@ -1067,9 +1074,9 @@ void FluidSim::SetBloodFlows(bool enabled) {
 	}
 }
 
-void FluidSim::Pour(const Vector& position, float radius, const char* liquidName) {
+void FluidSim::Pour(const Vector& position, float radius, const char* liquidName, float lifeSeconds) {
 	std::scoped_lock lock(s_QueueMutex);
-	s_Pours.push_back({position.GetFloorIntX(), position.GetFloorIntY(), std::max(1, static_cast<int>(radius)), liquidName ? liquidName : "Water"});
+	s_Pours.push_back({position.GetFloorIntX(), position.GetFloorIntY(), std::max(1, static_cast<int>(radius)), liquidName ? liquidName : "Water", std::max(lifeSeconds, 0.0F)});
 }
 
 void FluidSim::OnParticleSettled(const MovableObject* particle) {
@@ -1368,6 +1375,7 @@ void FluidSim::Update() {
 	Scene* scene = g_SceneMan.GetScene();
 	SLTerrain* terrain = scene ? scene->GetTerrain() : nullptr;
 	if (!terrain || !s_Enabled) {
+		s_LifeTags.clear();
 		std::scoped_lock lock(s_QueueMutex);
 		s_Pours.clear();
 		s_Disturbances.clear();
@@ -1490,6 +1498,8 @@ void FluidSim::Update() {
 			}
 		}
 	}
+	const long long pourUpdate = g_TimerMan.GetSimUpdateCount();
+	const float pourSeconds = std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F);
 	std::sort(pours.begin(), pours.end(), [](const PourRequest& a, const PourRequest& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Radius < b.Radius); });
 	for (const PourRequest& pour: pours) {
 		// (Looked up in the table built with the kinds, not by comparing every material's name per pour: L-6.)
@@ -1507,7 +1517,31 @@ void FluidSim::Update() {
 				if (dx * dx + dy * dy <= pour.Radius * pour.Radius && InWorld(x, y, width, height) && terrain->GetMaterialPixel(x, y) == g_MaterialAir) {
 					ChangePixel(terrain, x, y, material, s_PourColor[material]);
 					Activate(x, y, width, height, terrain);
+					if (pour.Life > 0.0F) {
+						s_LifeTags[y * width + x] = {pourUpdate + static_cast<long long>(pour.Life / pourSeconds), material};
+					}
 				}
+			}
+		}
+	}
+	if (!s_LifeTags.empty() && pourUpdate % 8 == 0) {
+		// Pixels poured with a lifetime that has run out go, as they are: where they have flowed to, whatever has happened to them.
+		std::vector<int> expired;
+		for (const auto& [tagKey, tag]: s_LifeTags) {
+			if (tag.Expires <= pourUpdate) {
+				expired.push_back(tagKey);
+			}
+		}
+		std::sort(expired.begin(), expired.end());
+		for (int expiredKey: expired) {
+			int material = s_LifeTags[expiredKey].Material;
+			s_LifeTags.erase(expiredKey);
+			int x = expiredKey % width;
+			int y = expiredKey / width;
+			if (terrain->GetMaterialPixel(x, y) == material) {
+				Uncover(terrain, x, y, width);
+				s_Active.Remove(expiredKey);
+				ActivateAround(x, y, width, height, terrain);
 			}
 		}
 	}
@@ -1910,6 +1944,7 @@ void FluidSim::Update() {
 				TerrainFire::Extinguish(x, y);
 			}
 			Uncover(terrain, x, y, width);
+			s_LifeTags.erase(key);
 			s_Active.Remove(key);
 			ActivateAround(x, y, width, height, terrain);
 			continue;
@@ -1954,6 +1989,19 @@ void FluidSim::Update() {
 				ChangePixel(terrain, x, y, leftMaterial, ShownColor(key, leftOwnColor));
 			} else {
 				Uncover(terrain, x, y, width);
+			}
+			if (!s_LifeTags.empty()) {
+				// A pixel a spring poured with a lifetime takes it along as it flows; one it displaces takes its place's. (What was at the target is no longer there.)
+				auto fromTag = s_LifeTags.extract(key);
+				auto toTag = s_LifeTags.extract(target);
+				if (!fromTag.empty()) {
+					fromTag.key() = target;
+					s_LifeTags.insert(std::move(fromTag));
+				}
+				if (displaces && !toTag.empty()) {
+					toTag.key() = key;
+					s_LifeTags.insert(std::move(toTag));
+				}
 			}
 			// Burning fuel (oil) takes its fire with it, so a lit slick that flows keeps burning and a burning stream runs downhill (M-3). Only
 			// while something burns: a map lookup or two a move.
@@ -2050,6 +2098,7 @@ void FluidSim::Clear() {
 	s_SolidChanged.Reset();
 	s_LiquidRested.Reset();
 	s_Waiting.clear();
+	s_LifeTags.clear();
 	s_SweepCursor = 0;
 	std::scoped_lock lock(s_QueueMutex);
 	s_Pours.clear();

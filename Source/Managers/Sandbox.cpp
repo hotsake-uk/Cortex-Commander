@@ -1338,6 +1338,8 @@ void Sandbox::DrawGUI() {
 				ImGui::SetItemTooltip("What new springs pour, and what the Boom tab's tank is filled with.");
 				ImGui::SliderFloat("Spring rate", &s_SpringRate, 0.05F, 1.0F, "%.2f");
 				ImGui::SetItemTooltip("How much of the time new springs pour. 1: they keep the air around them full.");
+				ImGui::SliderFloat("Spring lifetime", &s_SpringLife, 0.0F, 120.0F, s_SpringLife <= 0.0F ? "for ever" : "%.0f s");
+				ImGui::SetItemTooltip("How long what a new spring pours lasts. Each bit of liquid is gone that many seconds after it was poured, wherever it has flowed to by then, so a spring can make a stream or a waterfall that never fills up what it runs into. For ever: it stays, and the pool builds up.");
 				// Each spring: what it pours, on or off, removed (as the overlay's Delete does, from the ImGui frame).
 				int removeSpring = -1;
 				for (size_t i = 0; i < s_WaterSpawners.size(); ++i) {
@@ -1358,6 +1360,10 @@ void Sandbox::DrawGUI() {
 					ImGui::SameLine();
 					ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.4F);
 					ImGui::SliderFloat("##rate", &spring.Rate, 0.05F, 1.0F, "rate %.2f");
+					ImGui::SameLine();
+					ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6F);
+					ImGui::SliderFloat("##life", &spring.Life, 0.0F, 120.0F, spring.Life <= 0.0F ? "life: for ever" : "life %.0f s");
+					ImGui::SetItemTooltip("How many seconds what it pours lasts: gone that long after it was poured, wherever it has flowed to. For ever: it stays.");
 					ImGui::SameLine();
 					if (ToolUI::Button("x")) {
 						removeSpring = static_cast<int>(i);
@@ -1682,7 +1688,7 @@ void Sandbox::Update() {
 		spawner.Due += std::clamp(spawner.Rate, 0.05F, 1.0F);
 		if (spawner.Due >= 1.0F) {
 			spawner.Due -= 1.0F;
-			FluidSim::Pour(spawner.Position, static_cast<float>(spawner.Radius), spawner.Liquid.c_str());
+			FluidSim::Pour(spawner.Position, static_cast<float>(spawner.Radius), spawner.Liquid.c_str(), spawner.Life);
 		}
 	}
 	// With the AI paused, the sandbox's own passes wait too: they walked defenders home once a second, and the battle kept dropping waves,

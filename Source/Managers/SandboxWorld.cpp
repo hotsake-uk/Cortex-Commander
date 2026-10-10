@@ -1826,6 +1826,7 @@ namespace SandboxDetail {
 					spring.Radius = std::max(1, stroke.Radius / 2);
 					spring.Liquid = stroke.Material.empty() ? "Water" : stroke.Material;
 					spring.Rate = std::clamp(stroke.Rate, 0.05F, 1.0F);
+					spring.Life = std::max(stroke.Life, 0.0F);
 					s_WaterSpawners.push_back(spring);
 				}
 				break;
@@ -2125,6 +2126,7 @@ namespace SandboxDetail {
 		if (kind == Tool::WaterSpawner || kind == Tool::BuildTank) {
 			stroke.Material = s_SpringLiquid;
 			stroke.Rate = s_SpringRate;
+			stroke.Life = s_SpringLife;
 		} else if (kind == Tool::PourOther) {
 			stroke.Material = s_OtherPourable;
 		} else if (kind == Tool::TerrainOther) {
