@@ -80,6 +80,7 @@ namespace {
 	constexpr int c_MaxNodes = 40000; //!< All the ropes' points together.
 	constexpr int c_MaxRopeNodes = 4000; //!< One rope's.
 	constexpr int c_Iterations = 20; //!< Passes of the length constraints each update.
+	constexpr float c_SettleRoom = 6.0F; //!< How far, in pixels, a rope tied to nothing may move about and still count as staying where it is.
 	constexpr float c_HashCell = 16.0F; //!< The grid bullets and flames are tested against the links in.
 
 	struct Node {
@@ -120,7 +121,9 @@ namespace {
 		std::vector<Anchor> Anchors;
 		float StrengthMult = 1.0F; //!< Scales what the kind holds before it snaps.
 		float AnchorKg = 0.0F; //!< How hard a tie can be pulled before it lets go, in kg; 0 never.
-		float StillSeconds = 0.0F; //!< How long it has lain still tied to nothing.
+		float StillSeconds = 0.0F; //!< How long it has stayed inside the area it was in, tied to nothing.
+		glm::vec2 AreaMin{0.0F, 0.0F}; //!< The area it is being watched to stay in: its box when the watch began, grown by c_SettleRoom.
+		glm::vec2 AreaMax{0.0F, 0.0F};
 	};
 
 	/// A change asked for from a script or another thread, made at the next update in the order asked.
@@ -574,7 +577,8 @@ namespace {
 			rope.StillSeconds = 0.0F;
 			return false;
 		}
-		float fastest = 0.0F;
+		glm::vec2 low(1e9F, 1e9F);
+		glm::vec2 high(-1e9F, -1e9F);
 		for (const Node& node: rope.Nodes) {
 			if (node.Gone) {
 				continue;
@@ -584,10 +588,15 @@ namespace {
 				rope.StillSeconds = 0.0F;
 				return false;
 			}
-			fastest = std::max(fastest, glm::length(node.Pos - node.Prev));
+			low = glm::min(low, node.Pos);
+			high = glm::max(high, node.Pos);
 		}
-		if (fastest > 0.4F) {
-			rope.StillSeconds = 0.0F;
+		// It settles once it has stayed within an area for the time, however much it sways about inside it: the area is where it was
+		// when the watch began, and a rope that leaves it starts the watch over from where it is.
+		if (rope.StillSeconds <= 0.0F || low.x < rope.AreaMin.x || low.y < rope.AreaMin.y || high.x > rope.AreaMax.x || high.y > rope.AreaMax.y) {
+			rope.AreaMin = low - glm::vec2(c_SettleRoom);
+			rope.AreaMax = high + glm::vec2(c_SettleRoom);
+			rope.StillSeconds = 1e-4F;
 			return false;
 		}
 		rope.StillSeconds += seconds;
