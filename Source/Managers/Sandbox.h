@@ -136,6 +136,14 @@ namespace RTE {
 		/// @param paused Whether to pause.
 		static void SetAIPaused(bool paused);
 
+		/// Sets whether colony buildings need power, and what a barracks does short of it (Lua: SandboxColonyPower), as the Colony tab's settings.
+		/// @param needsPower Whether buildings need power from generators. @param slowWithout Short of power, a barracks trains slower instead of stopping.
+		static void SetColonyPower(bool needsPower, bool slowWithout);
+
+		/// Gets what a colony building is doing, as the Colony tab shows it (Lua: SandboxColonyStatus).
+		/// @param id The building's ID, from the order they were built in, starting at 1. @return Its status, or "" if there is no such building.
+		static std::string ColonyStatus(int id);
+
 		/// Makes a unit with its faction's usual weapons and puts it in the world, for things that produce units (Colony's barracks).
 		/// @param presetName The unit. @param team The side. @param position Where. @param order Its orders, as for Do.
 		/// @return The unit, or nothing if there is no such unit.
