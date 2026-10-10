@@ -667,7 +667,7 @@ namespace SandboxDetail {
 		const ImGuiStyle& style = ImGui::GetStyle();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		float pixel = ToolUI::Pixel() * 2.0F;
-		// About the size they are four to a row in the side panel.
+		// About the size they are four to a row in the side panel; the metal and material tiles are the same size.
 		float gap = style.ItemSpacing.x * 0.5F;
 		float width = 0.0F;
 		const int perRow = TileColumns(ImGui::GetFontSize() * 6.5F, 4, gap, width);
@@ -721,9 +721,9 @@ namespace SandboxDetail {
 		float pixel = ToolUI::Pixel() * 2.0F;
 		float gap = style.ItemSpacing.x * 0.5F;
 		float width = 0.0F;
-		const int perRow = TileColumns(ImGui::GetFontSize() * 8.5F, 3, gap, width);
+		const int perRow = TileColumns(ImGui::GetFontSize() * 6.5F, 4, gap, width);
 		float pad = pixel * 2.0F;
-		float height = pad + pixel * 12.0F + ImGui::GetTextLineHeight() + pad;
+		float height = pad + pixel * 12.0F + ImGui::GetTextLineHeight() * 2.0F + pad;
 		int toolIndex = ToolIndex(Tool::Metal);
 		int column = 0;
 		for (const PaintMetal& metal: c_PaintMetals) {
@@ -747,9 +747,10 @@ namespace SandboxDetail {
 			drawList->AddRectFilled(at, to, ImGui::GetColorU32(selected ? ImGuiCol_FrameBgActive : hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg));
 			drawList->AddRect(at, to, ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Border), 0.0F, 0, selected ? ToolUI::Pixel() * 2.0F : ToolUI::Pixel());
 			DrawIcon(drawList, Icon::Chunk, ImVec2(std::floor(at.x + (width - pixel * 12.0F) * 0.5F), at.y + pad), pixel, IM_COL32(metal.R, metal.G, metal.B, 255));
-			ImVec2 nameSize = ImGui::CalcTextSize(metal.Name);
+			float wrap = width - pad;
+			ImVec2 nameSize = ImGui::CalcTextSize(metal.Name, nullptr, false, wrap);
 			ImGui::PushClipRect(at, to, true);
-			drawList->AddText(ImVec2(std::floor(at.x + std::max((width - nameSize.x) * 0.5F, pad * 0.5F)), at.y + pad + pixel * 12.0F + ToolUI::Pixel()), ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Text), metal.Name);
+			drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(std::floor(at.x + std::max((width - nameSize.x) * 0.5F, pad * 0.5F)), at.y + pad + pixel * 12.0F + ToolUI::Pixel()), ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Text), metal.Name, nullptr, wrap);
 			ImGui::PopClipRect();
 			ImGui::PopID();
 		}
@@ -762,9 +763,9 @@ namespace SandboxDetail {
 		float pixel = ToolUI::Pixel() * 2.0F;
 		float gap = style.ItemSpacing.x * 0.5F;
 		float width = 0.0F;
-		const int perRow = TileColumns(ImGui::GetFontSize() * 8.5F, 3, gap, width);
+		const int perRow = TileColumns(ImGui::GetFontSize() * 6.5F, 4, gap, width);
 		float pad = pixel * 2.0F;
-		float height = pad + pixel * 12.0F + ImGui::GetTextLineHeight() + pad;
+		float height = pad + pixel * 12.0F + ImGui::GetTextLineHeight() * 2.0F + pad;
 		int toolIndex = ToolIndex(kind);
 		int column = 0;
 		for (const std::string& name: names) {
@@ -789,9 +790,10 @@ namespace SandboxDetail {
 			drawList->AddRectFilled(at, to, ImGui::GetColorU32(selected ? ImGuiCol_FrameBgActive : hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg));
 			drawList->AddRect(at, to, ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Border), 0.0F, 0, selected ? ToolUI::Pixel() * 2.0F : ToolUI::Pixel());
 			DrawIcon(drawList, kind == Tool::TerrainOther ? Icon::Chunk : (liquid ? Icon::Drop : Icon::Grains), ImVec2(std::floor(at.x + (width - pixel * 12.0F) * 0.5F), at.y + pad), pixel, MaterialMarkColor(name, 255));
-			ImVec2 nameSize = ImGui::CalcTextSize(name.c_str());
+			float wrap = width - pad;
+			ImVec2 nameSize = ImGui::CalcTextSize(name.c_str(), nullptr, false, wrap);
 			ImGui::PushClipRect(at, to, true);
-			drawList->AddText(ImVec2(std::floor(at.x + std::max((width - nameSize.x) * 0.5F, pad * 0.5F)), at.y + pad + pixel * 12.0F + ToolUI::Pixel()), ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Text), name.c_str());
+			drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(std::floor(at.x + std::max((width - nameSize.x) * 0.5F, pad * 0.5F)), at.y + pad + pixel * 12.0F + ToolUI::Pixel()), ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Text), name.c_str(), nullptr, wrap);
 			ImGui::PopClipRect();
 			ImGui::PopID();
 		}
