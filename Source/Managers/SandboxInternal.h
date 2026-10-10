@@ -1020,6 +1020,14 @@ namespace SandboxDetail {
 	inline float s_RopeSlack = 0.1F; //!< How much longer than the straight line between its points the Rope tool's rope is.
 	inline float s_RopeStrength = 1.0F; //!< How much more (or less) than its kind's own the Rope tool's rope holds before it snaps.
 	inline float s_RopeAnchor = 0.0F; //!< How hard, in kg, a tie of the Rope tool's rope can be pulled before it lets go; 0 never.
+	/// Whether the Rope tool's slack, strength or tie strength differ from a kind's own.
+	inline bool RopeSettingsChanged() { return std::abs(s_RopeSlack - 0.1F) > 1e-4F || s_RopeStrength != 1.0F || s_RopeAnchor != 0.0F; }
+	/// Puts the Rope tool's slack, strength and tie strength back to a kind's own.
+	inline void ResetRopeSettings() {
+		s_RopeSlack = 0.1F;
+		s_RopeStrength = 1.0F;
+		s_RopeAnchor = 0.0F;
+	}
 	inline std::vector<Vector> s_RopeDraft; //!< The window's: the points of the rope being put down, clicked so far (the line to the pointer is drawn from the last).
 	inline ImVec2 s_RopeRightStart; //!< Where the right button went down with the Rope tool in hand: let go about there, it finishes the rope.
 	inline bool s_RopeRightDown = false;

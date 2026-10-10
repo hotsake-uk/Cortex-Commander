@@ -151,6 +151,7 @@ namespace {
 	std::array<unsigned char, 256> s_Hot{}; //!< Lava: sets what burns alight.
 	std::array<unsigned char, 256> s_Douses{}; //!< Puts fire out.
 	bool s_TablesBuilt = false;
+	float s_Reaction = 1.0F; //!< How strongly ropes react to wind, blast waves and explosions.
 	float s_SettleSeconds = 5.0F; //!< How long a rope tied to nothing lies still before it becomes terrain; 0 never.
 
 	float Random01() {
@@ -399,7 +400,7 @@ namespace {
 	}
 
 	void Blast(const glm::vec2& at, float reach, float energy) {
-		float push = std::clamp(std::sqrt(std::max(energy, 0.0F)) * 0.05F, 1.0F, 12.0F);
+		float push = std::clamp(std::sqrt(std::max(energy, 0.0F)) * 0.05F, 1.0F, 12.0F) * s_Reaction;
 		for (Rope& rope: s_Ropes) {
 			const TypeData& type = TypeOf(rope);
 			for (size_t i = 0; i < rope.Nodes.size(); ++i) {
@@ -653,15 +654,15 @@ namespace {
 				if (node.Burn > 0.0F && s_Douses[material]) {
 					node.Burn = 0.0F;
 				}
-			} else if (wind != 0.0F) {
+			} else if (wind != 0.0F && s_Reaction > 0.0F) {
 				if ((update + static_cast<long long>(i)) % 4 == 0) {
 					node.Sheltered = AirPressure::IsSheltered(ToVector(node.Pos), wind);
 				}
 				if (!node.Sheltered) {
 					// Carried along at the wind's speed, and turning over in it a little.
 					float speedX = velocity.x / std::max(seconds, 1e-4F);
-					accel.x += (wind - speedX) * type.WindCatch;
-					accel.y += std::sin(node.Pos.x * 0.03F + node.Pos.y * 0.05F + time) * std::abs(wind) * 0.15F * type.WindCatch;
+					accel.x += (wind - speedX) * type.WindCatch * s_Reaction;
+					accel.y += std::sin(node.Pos.x * 0.03F + node.Pos.y * 0.05F + time) * std::abs(wind) * 0.15F * type.WindCatch * s_Reaction;
 				}
 			}
 			if (s_Hot[material]) {
@@ -670,7 +671,7 @@ namespace {
 			node.Prev = node.Pos;
 			node.Pos += velocity + accel * seconds * seconds;
 			if (glm::vec2 push = ToGlm(AirPressure::GetPush(ToVector(node.Pos))); push.x != 0.0F || push.y != 0.0F) {
-				node.Pos += push * c_PPM * seconds * std::clamp(type.WindCatch, 0.2F, 1.0F);
+				node.Pos += push * c_PPM * seconds * std::clamp(type.WindCatch, 0.2F, 1.0F) * s_Reaction;
 			}
 		}
 	}
@@ -1098,6 +1099,14 @@ namespace {
 	}
 } // namespace
 
+float RopeSim::GetReaction() {
+	return s_Reaction;
+}
+
+void RopeSim::SetReaction(float reaction) {
+	s_Reaction = std::clamp(reaction, 0.0F, 5.0F);
+}
+
 float RopeSim::GetSettleSeconds() {
 	return s_SettleSeconds;
 }
@@ -1241,7 +1250,8 @@ void RopeSim::Update() {
 	Vector globalAcc = g_SceneMan.GetGlobalAcc();
 	glm::vec2 gravity = ToGlm(globalAcc) * c_PPM;
 	float gravityMagnitude = globalAcc.GetMagnitude();
-	float wind = AirPressure::GetWindSpeed();
+	// The weather's wind as the air gives it, whether or not it is set to carry smoke: ropes blow about in it all the same.
+	float wind = AirPressure::IsOn() ? AirPressure::GetNaturalWind() * std::max(AirPressure::GetTuning().WindStrength, 0.0F) * AirPressure::GetOverall() : 0.0F;
 	long long update = g_TimerMan.GetSimUpdateCount();
 	bool checkGround = update % 8 == 0;
 	int lights = 0;

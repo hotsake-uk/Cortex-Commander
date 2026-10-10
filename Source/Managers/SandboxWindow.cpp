@@ -3833,6 +3833,13 @@ namespace SandboxDetail {
 				ImGui::SetNextItemWidth(field * 0.8F);
 				ImGui::SliderFloat("##ropeAnchor", &s_RopeAnchor, 0.0F, 5000.0F, s_RopeAnchor <= 0.0F ? "Ties unbreakable" : "Ties fail at %.0f kg", ImGuiSliderFlags_Logarithmic);
 				ImGui::SetItemTooltip("How hard a tie can be pulled, in kg, before it lets go of the rope (pulled out of the ground or off the unit). Far left: the ties never fail, only the rope can.");
+				next();
+				ImGui::BeginDisabled(!RopeSettingsChanged());
+				if (BarChip("Reset to default", false) == 1) {
+					ResetRopeSettings();
+				}
+				ImGui::EndDisabled();
+				ImGui::SetItemTooltip("Puts slack, strength and tie strength back to the kind's own (slack 10%%, strength x1, ties unbreakable).");
 			}
 			wide();
 			ImGui::BeginDisabled(RopeSim::GetCount() == 0);
