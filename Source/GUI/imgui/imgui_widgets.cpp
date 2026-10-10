@@ -1674,6 +1674,7 @@ void ImGui::SeparatorTextEx(ImGuiID id, const char* label, const char* label_end
     const ImRect bb(pos, ImVec2(window->WorkRect.Max.x, pos.y + min_size.y));
     const float text_baseline_y = ImTrunc((bb.GetHeight() - label_size.y) * style.SeparatorTextAlign.y + 0.99999f); //ImMax(padding.y, ImFloor((style.SeparatorTextSize - label_size.y) * 0.5f));
     ItemSize(min_size, text_baseline_y);
+    FlowUndo(window); // [Cortex] Nothing flows onto a heading's line after it.
     if (!ItemAdd(bb, id))
         return;
 
@@ -6610,6 +6611,7 @@ bool ImGui::TreeNodeBehavior(ImGuiID id, ImGuiTreeNodeFlags flags, const char* l
     ImVec2 text_pos(window->DC.CursorPos.x + text_offset_x, window->DC.CursorPos.y + text_offset_y);
     // [Cortex] A framed header (a collapsing header) takes its whole line, so items that flow (PushFlowItems) never join it on its row.
     ItemSize(ImVec2(display_frame ? ImMax(text_width, window->WorkRect.Max.x - window->DC.CursorPos.x) : text_width, frame_height), padding.y);
+    FlowUndo(window); // [Cortex] A tree node is a heading: nothing flows onto its line.
 
     // For regular tree nodes, we arbitrary allow to click past 2 worth of ItemSpacing
     ImRect interact_bb = frame_bb;
