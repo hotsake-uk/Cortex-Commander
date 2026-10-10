@@ -66,6 +66,9 @@ namespace SandboxDetail {
 		if (faction >= 0 && faction < static_cast<int>(s_FactionNames.size())) {
 			return "Random " + s_FactionNames[faction];
 		}
+		if (faction == -2) {
+			return "Random non-combatants";
+		}
 		return "Random units";
 	}
 
@@ -74,9 +77,9 @@ namespace SandboxDetail {
 		if (faction >= static_cast<int>(s_FactionNames.size())) {
 			faction = -1;
 		}
-		std::string shown = favouritesOnly ? "Favourites" : faction >= 0 ? s_FactionNames[faction] : "All factions";
+		std::string shown = favouritesOnly ? "Favourites" : faction >= 0 ? s_FactionNames[faction] : faction == -2 ? "Animals and civilians" : "All factions";
 		if (ImGui::BeginCombo(label, shown.c_str(), ImGuiComboFlags_HeightLarge)) {
-			if (ImGui::Selectable("All factions", !favouritesOnly && faction < 0)) {
+			if (ImGui::Selectable("All factions", !favouritesOnly && faction == -1)) {
 				favouritesOnly = false;
 				faction = -1;
 				changed = true;
@@ -84,6 +87,11 @@ namespace SandboxDetail {
 			if (ImGui::Selectable("Favourites", favouritesOnly)) {
 				favouritesOnly = true;
 				faction = -1;
+				changed = true;
+			}
+			if (ImGui::Selectable("Animals and civilians", !favouritesOnly && faction == -2)) {
+				favouritesOnly = false;
+				faction = -2;
 				changed = true;
 			}
 			ImGui::Separator();
@@ -96,7 +104,7 @@ namespace SandboxDetail {
 			}
 			ImGui::EndCombo();
 		}
-		ImGui::SetItemTooltip("Where random units come from: every faction, only the units marked as favourites (Ctrl+click on a tile; with none marked, every unit), or one faction.");
+		ImGui::SetItemTooltip("Where random units come from: every faction (soldiers only), only the units marked as favourites (Ctrl+click on a tile; with none marked, every unit), only the animals and civilians (non-combatants), or one faction.");
 		return changed;
 	}
 
