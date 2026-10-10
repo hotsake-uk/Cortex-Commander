@@ -1096,8 +1096,20 @@ namespace SandboxDetail {
 		if (g_SettingsMan.DebugChannelOn(SettingsMan::DebugChannel::Sandbox)) {
 			g_ConsoleMan.PrintString("SANDBOX: command at " + std::to_string(static_cast<int>(position.m_X)) + "," + std::to_string(static_cast<int>(position.m_Y)) + " selected " + std::to_string(s_Selected.size()) + " target " + (target ? target->GetPresetName() : std::string("none")) + " mode " + std::to_string(static_cast<int>(s_CommandMode)));
 		}
+		const bool selecting = s_CommandMode == CommandMode::Select;
+		if (selecting && target && IsSelectable(target) && !s_Selected.empty() && target->GetTeam() != SelectionTeam() && modifier != 1) {
+			// Selecting: a unit of another side starts a new selection (Shift can't mix sides in one).
+			s_Selected.clear();
+		}
 		bool friendly = target && IsSelectable(target) && (s_Selected.empty() || target->GetTeam() == SelectionTeam());
 		bool selected = target && std::any_of(s_Selected.begin(), s_Selected.end(), [target](const UnitRef& ref) { return RefersTo(ref, target); });
+		if (selecting && !friendly) {
+			// Selecting, a click on nothing to select lets the selection go (Shift keeps it).
+			if (modifier == 0) {
+				s_Selected.clear();
+			}
+			return;
+		}
 		if (s_CommandMode == CommandMode::Guard) {
 			// Follow the friend clicked, or (RC-10) your side's brain; or stand guard by a craft, a crate or a colony building. With nothing
 			// there, nothing happens.
@@ -1159,7 +1171,7 @@ namespace SandboxDetail {
 			return;
 		}
 		// Move: a friend is picked up into the selection, an enemy attacked, the ground gone to.
-		if (friendly && (modifier != 0 || !selected || s_Selected.size() == 1)) {
+		if (friendly && (selecting || modifier != 0 || !selected || s_Selected.size() == 1)) {
 			if (modifier == 2) {
 				// Every unit of that kind in sight.
 				GameViewRect view = g_WindowMan.GetGameViewRect();

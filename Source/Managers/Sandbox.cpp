@@ -77,6 +77,10 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		return false;
 	}
 	stroke.Kind = c_Tools[toolIndex].Kind;
+	if (stroke.Kind == Tool::Command && s_CommandMode == CommandMode::Select) {
+		// (A script's command clicks are orders, as they were before the tool started out selecting: a move, or an attack on an enemy.)
+		s_CommandMode = CommandMode::Move;
+	}
 	if (stroke.Kind == Tool::None) {
 		// "Look around" from a script: put the free camera on the point, and stop following anything.
 		s_FreeCamera = true;
@@ -427,6 +431,7 @@ void Sandbox::ToggleCommander() {
 		s_FreeCameraStarted = false;
 		s_FollowTarget = UnitRef();
 		s_ToolIndex = ToolIndex(Tool::Command);
+		s_CommandMode = CommandMode::Select;
 		s_Open = true;
 		return;
 	}
