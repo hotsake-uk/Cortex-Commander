@@ -877,6 +877,44 @@ void Actor::AddAIMOWaypoint(const MovableObject* pMOWaypoint) {
 	}
 }
 
+void Actor::AddAIMOWaypointFirst(const MovableObject* pMOWaypoint) {
+	if (!g_MovableMan.ValidMO(pMOWaypoint)) {
+		return;
+	}
+	// (The place it was on its way to was taken off the list when its route there was asked for: it goes back on, after this.)
+	if (g_MovableMan.ValidMO(m_pMOMoveTarget)) {
+		m_Waypoints.emplace_front(m_pMOMoveTarget->GetPos(), m_pMOMoveTarget);
+	} else if (m_HasMovePathGoal) {
+		m_Waypoints.emplace_front(m_MovePathGoal, nullptr);
+	}
+	m_Waypoints.emplace_front(pMOWaypoint->GetPos(), pMOWaypoint);
+	m_pMOMoveTarget = nullptr;
+	ClearMovePath();
+	m_UpdateMovePath = true;
+	++m_AIOrderSerial;
+}
+
+void Actor::RemoveAIMOWaypoint(const MovableObject* pMOWaypoint) {
+	bool changed = m_pMOMoveTarget == pMOWaypoint;
+	if (changed) {
+		m_pMOMoveTarget = nullptr;
+	}
+	size_t before = m_Waypoints.size();
+	std::erase_if(m_Waypoints, [pMOWaypoint](const std::pair<Vector, const MovableObject*>& waypoint) { return waypoint.second == pMOWaypoint; });
+	if (changed || m_Waypoints.size() != before) {
+		ResumeAIWaypoints();
+	}
+}
+
+void Actor::ResumeAIWaypoints() {
+	ClearMovePath();
+	m_UpdateMovePath = true;
+	if (!m_Waypoints.empty() && m_AIMode != AIMODE_GOTO) {
+		m_AIMode = AIMODE_GOTO;
+	}
+	++m_AIOrderSerial;
+}
+
 void Actor::AlarmPoint(const Vector& alarmPoint) {
 	if (m_AlarmSound && m_AlarmTimer.IsPastSimTimeLimit()) {
 		m_AlarmSound->Play(alarmPoint);

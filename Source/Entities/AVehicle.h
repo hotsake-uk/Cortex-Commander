@@ -273,6 +273,7 @@ namespace RTE {
 		struct Seat {
 			Vector Offset; //!< Where its unit sits (their middle), from the body's middle upright and facing right.
 			bool Gunner = false; //!< Whether it mans the turret.
+			bool Rider = false; //!< Whether its unit got in by itself to ride somewhere, and gets out when it is near there.
 			Actor* Occupant = nullptr; //!< Who sits in it, out of the scene while they're in here. Owned.
 		};
 		std::vector<Seat> m_Seats; //!< The seats besides the driver's: seat 1 on.
@@ -285,6 +286,26 @@ namespace RTE {
 		float m_CrewThrowSpeed; //!< How hard a knock (a change in speed in one update, m/s) throws everyone out. 0 never does.
 		bool m_ThrowsCrewWhenFlipped; //!< Whether everyone falls out when it rolls onto its roof (an open vehicle; a closed one keeps them in).
 		Vector m_LastVel; //!< Its velocity at the end of the last update, to tell a crash by.
+
+		bool m_DriverRider; //!< Whether the driver got in by itself to ride somewhere (see Seat::Rider).
+		/// A unit called over to ride in it, on its way.
+		struct Recruit {
+			long ID = 0; //!< Its unique ID.
+			Timer Since; //!< Since it was called: it is let go after a while if it hasn't got here.
+		};
+		std::vector<Recruit> m_Recruits; //!< The units called over to ride in it.
+		float m_RecruitRange; //!< How far off an AI unit can be called over to ride, in pixels.
+		Timer m_RecruitTimer; //!< Since it last looked round for units to call over.
+		Timer m_OrderedBoardTimer; //!< Since it last looked for units sent to it to get in.
+		Timer m_AIStuckTimer; //!< How long the AI driver has made no headway.
+		Timer m_AIReverseTimer; //!< How long the AI driver has backed up for, to get unstuck.
+		int m_AIStuckCount; //!< How many times running the AI driver has got stuck on the way: it gives up after a few.
+		bool m_AIReversing; //!< Whether the AI driver is backing up to get unstuck.
+		bool m_AIHop; //!< Whether the AI driver jumps this update, to get unstuck.
+		bool m_AIWantsStop; //!< Whether someone wants to get out, so the AI driver stops.
+		bool m_AIGaveUp; //!< Whether the AI driver gave up on the way (stuck, a drop, the shore): its riders get out and walk.
+		Timer m_AIGaveUpTimer; //!< Since it gave up: it doesn't call riders over again for a while.
+		unsigned int m_AIOrderSerialSeen; //!< The order serial its AI driver last started on: a new order starts afresh.
 		float m_Throttle; //!< How hard it is being driven this update, -1 to 1.
 		bool m_Braking; //!< Whether the brake is on this update.
 		Timer m_BoardingTimer; //!< Since the driver last got in or out, so the key that did it doesn't do the opposite straight after.
@@ -327,6 +348,32 @@ namespace RTE {
 		/// Aims and fires the gun: the player's aim from the gunner's seat (or the driver's, with no gunner's seat), else the gunner looks for
 		/// the nearest enemy in sight and range in front of it, swings the gun round to it and fires.
 		void UpdateGun();
+
+		/// Gets whether a seat's unit got in by itself to ride somewhere.
+		bool IsRider(int seat) const { return seat == 0 ? m_DriverRider : seat >= 1 && seat <= static_cast<int>(m_Seats.size()) && m_Seats[seat - 1].Rider; }
+
+		/// Sets whether a seat's unit got in by itself to ride somewhere.
+		void SetRider(int seat, bool rider);
+
+		/// Drives it with no player in charge: towards where it was sent, braking to stop there, backing up or jumping when stuck, and stopping
+		/// at a drop, deep water (or the shore, for a boat) or when someone wants to get out.
+		void UpdateAIDriving();
+
+		/// Gets whether there's ground (or water, for a boat) to drive onto just ahead, the way it is going.
+		/// @param direction 1 to the right, -1 to the left.
+		bool CanDriveOnTo(float direction) const;
+
+		/// Gives up on the way it was sent: stops, and lets its riders out to walk.
+		void GiveUpDriving();
+
+		/// Lets in the AI units sent to it or called over that have got here; calls over AI units near it going a long way its way.
+		void UpdateAIBoarding();
+
+		/// Lets out riders near where they're going (or all of them, when it gave up), and moves a rider to the wheel if the driver left.
+		void UpdateAIUnloading();
+
+		/// Takes its orders from a unit: it is sent to where that unit was going.
+		void TakeOrdersFrom(const Actor* unit);
 
 		/// Finds what a gunner would shoot at: the nearest enemy unit in range and in sight, that the gun can swing to.
 		/// @return Its unique ID, or 0 if there is none.
