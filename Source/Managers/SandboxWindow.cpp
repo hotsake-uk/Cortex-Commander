@@ -815,6 +815,9 @@ namespace SandboxDetail {
 			if (right >= left) {
 				cropX = left;
 				cropY = top;
+				// From the unit's position to the picture's corner, for drawing it where a unit put there stands (DrawCursor).
+				picture.OffsetX = static_cast<float>(left - room / 2);
+				picture.OffsetY = static_cast<float>(top - room / 2);
 				cropWidth = right - left + 1;
 				cropHeight = bottom - top + 1;
 				layers = {portrait.get()};
@@ -1541,19 +1544,77 @@ namespace SandboxDetail {
 						drawList->AddImage(static_cast<ImTextureID>(picture.Texture), topLeft, bottomRight, ImVec2(plan.Mirror ? 1.0F : 0.0F, 0.0F), ImVec2(plan.Mirror ? 0.0F : 1.0F, 1.0F), IM_COL32(255, 255, 255, 170));
 					}
 				}
+			} else if ((tool.Kind == Tool::Unit && !s_RandomUnits) || tool.Kind == Tool::Brain) {
+				// The units a click puts down, see-through, where they will stand (SpawnUnits): the squad spread out sideways from the point,
+				// facing the middle of the view.
+				if (const Preset* preset = ChosenPreset(tool.Kind, ChoiceFor(tool.Kind))) {
+					const PiecePicture& picture = PictureOf(*preset);
+					if (picture.Texture != 0) {
+						Vector mouse = MouseScenePosition();
+						Vector viewMiddle(g_CameraMan.GetOffset(0).m_X + static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, mouse.m_Y);
+						bool flipped = g_SceneMan.ShortestDistance(mouse, viewMiddle, g_SceneMan.SceneWrapsX()).m_X < 0.0F;
+						int count = tool.Kind == Tool::Brain ? 1 : std::max(s_SquadSize, 1);
+						for (int i = 0; i < count; ++i) {
+							float spread = (static_cast<float>(i) - static_cast<float>(count - 1) * 0.5F) * 16.0F;
+							// Mirrored about the unit's position when it faces left, as the game draws it.
+							float left = flipped ? -picture.OffsetX - static_cast<float>(picture.Width) + 1.0F : picture.OffsetX;
+							ImVec2 topLeft = ToScreen(mouse + Vector(spread + left, picture.OffsetY));
+							ImVec2 bottomRight(topLeft.x + static_cast<float>(picture.Width) / scale, topLeft.y + static_cast<float>(picture.Height) / scale);
+							drawList->AddImage(static_cast<ImTextureID>(picture.Texture), topLeft, bottomRight, ImVec2(flipped ? 1.0F : 0.0F, 0.0F), ImVec2(flipped ? 0.0F : 1.0F, 1.0F), IM_COL32(255, 255, 255, 150));
+						}
+					}
+				}
 			} else if (tool.UsesRadius) {
-				// What the brush lays down, see-through, over just the area it covers: the material's own colour (dig darkens what it takes out).
+				// What the brush lays down, see-through, over just the area it covers. Ground with a terrain texture shows that texture, lined up with
+				// the scene as the brush paints it (PaintedColor), so the preview is the very pixels a stroke puts there; other brushes show their
+				// colour (dig darkens what it takes out).
 				ImU32 fill = LookOf(tool.Kind).Color;
+				BITMAP* texture = nullptr;
 				if (const char* materialName = TerrainBrushMaterial(tool.Kind)) {
 					if (const Material* material = g_SceneMan.GetMaterial(materialName); material && material->GetIndex() != g_MaterialAir) {
 						Color color = material->GetColor();
 						fill = IM_COL32(color.GetR(), color.GetG(), color.GetB(), 255);
+						texture = material->GetFGTexture();
 					}
 				}
 				fill = tool.Kind == Tool::Dig ? IM_COL32(0, 0, 0, 120) : (fill & ~IM_COL32_A_MASK) | (static_cast<ImU32>(160) << IM_COL32_A_SHIFT);
-				if (square) {
+				bool spray = IsTerrainBrush(tool.Kind) && s_BrushShape == BrushShape::Spray;
+				const PiecePicture* tiled = texture && tool.Kind != Tool::Dig ? &PictureOfBitmap(texture, true) : nullptr;
+				if (tiled && tiled->Texture != 0) {
+					// The scene pixels the brush covers (PaintTerrain: the center's pixel, the radius either way), and the texture's place over them.
+					Vector mouse = MouseScenePosition();
+					int radius = std::max(s_Radius, 1);
+					int left = mouse.GetFloorIntX() - radius;
+					int top = mouse.GetFloorIntY() - radius;
+					int side = radius * 2 + 1;
+					if (g_SceneMan.SceneWrapsX() && g_SceneMan.GetSceneWidth() > 0) {
+						left = ((left % g_SceneMan.GetSceneWidth()) + g_SceneMan.GetSceneWidth()) % g_SceneMan.GetSceneWidth();
+					}
+					float u = static_cast<float>(((left % tiled->Width) + tiled->Width) % tiled->Width) / static_cast<float>(tiled->Width);
+					float v = static_cast<float>(((top % tiled->Height) + tiled->Height) % tiled->Height) / static_cast<float>(tiled->Height);
+					ImVec2 uvMin(u, v);
+					ImVec2 uvMax(u + static_cast<float>(side) / static_cast<float>(tiled->Width), v + static_cast<float>(side) / static_cast<float>(tiled->Height));
+					ImVec2 middle = ToScreen(Vector(static_cast<float>(mouse.GetFloorIntX()) + 0.5F, static_cast<float>(mouse.GetFloorIntY()) + 0.5F));
+					float reach = static_cast<float>(side) * 0.5F / scale;
+					ImVec2 topLeft(middle.x - reach, middle.y - reach);
+					ImVec2 bottomRight(middle.x + reach, middle.y + reach);
+					auto textureID = static_cast<ImTextureID>(tiled->Texture);
+					if (square) {
+						drawList->AddImage(textureID, topLeft, bottomRight, uvMin, uvMax, IM_COL32(255, 255, 255, 190));
+					} else if (spray) {
+						// The spray: thin at the edge, thicker towards the middle, as it builds up.
+						for (float share: {1.0F, 0.66F, 0.33F}) {
+							float shrink = reach * (1.0F - share);
+							float uShrink = (uvMax.x - uvMin.x) * (1.0F - share) * 0.5F;
+							float vShrink = (uvMax.y - uvMin.y) * (1.0F - share) * 0.5F;
+							drawList->AddImageRounded(textureID, ImVec2(topLeft.x + shrink, topLeft.y + shrink), ImVec2(bottomRight.x - shrink, bottomRight.y - shrink), ImVec2(uvMin.x + uShrink, uvMin.y + vShrink), ImVec2(uvMax.x - uShrink, uvMax.y - vShrink), IM_COL32(255, 255, 255, 70), reach * share);
+						}
+					} else {
+						drawList->AddImageRounded(textureID, topLeft, bottomRight, uvMin, uvMax, IM_COL32(255, 255, 255, 190), reach);
+					}
+				} else if (square) {
 					drawList->AddRectFilled(ImVec2(io.MousePos.x - half, io.MousePos.y - half), ImVec2(io.MousePos.x + half, io.MousePos.y + half), fill);
-				} else if (IsTerrainBrush(tool.Kind) && s_BrushShape == BrushShape::Spray) {
+				} else if (spray) {
 					// The spray: thin at the edge, thicker towards the middle, as it builds up.
 					ImU32 thin = (fill & ~IM_COL32_A_MASK) | (static_cast<ImU32>(55) << IM_COL32_A_SHIFT);
 					for (float share: {1.0F, 0.66F, 0.33F}) {
@@ -1834,17 +1895,26 @@ namespace SandboxDetail {
 		return picture;
 	}
 
-	/// A picture of one of the game's loaded bitmaps (a plant brush's pieces, for the cursor), the first time it is asked for. Kept with the
-	/// file pictures, by the bitmap's address: the presets' bitmaps last as long as the game's data.
-	const PiecePicture& PictureOfBitmap(BITMAP* bitmap) {
-		char key[40];
-		std::snprintf(key, sizeof(key), "bitmap:%p", static_cast<void*>(bitmap));
+	/// A picture of one of the game's loaded bitmaps (a plant brush's pieces, a material's terrain texture), the first time it is asked for.
+	/// Kept with the file pictures, by the bitmap's address: the presets' bitmaps last as long as the game's data.
+	/// @param repeat Whether it tiles when drawn past its edges (a terrain texture laid over the scene), rather than stopping at them.
+	const PiecePicture& PictureOfBitmap(BITMAP* bitmap, bool repeat) {
+		char key[48];
+		std::snprintf(key, sizeof(key), "bitmap:%p%s", static_cast<void*>(bitmap), repeat ? ":tiled" : "");
 		std::map<std::string, PiecePicture>& pictures = s_FilePictures;
 		if (auto found = pictures.find(key); found != pictures.end()) {
 			return found->second;
 		}
 		PiecePicture& picture = pictures[key];
 		MakePicture(picture, bitmap);
+		if (repeat && picture.Texture != 0) {
+			GLint boundBefore = 0;
+			glGetIntegerv(GL_TEXTURE_BINDING_2D, &boundBefore);
+			glBindTexture(GL_TEXTURE_2D, picture.Texture);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+			glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(boundBefore));
+		}
 		return picture;
 	}
 
