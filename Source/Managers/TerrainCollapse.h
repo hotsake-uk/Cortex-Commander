@@ -78,6 +78,14 @@ namespace RTE {
 		/// Sets whether pieces of buildings fall.
 		static void SetBuildingsFall(bool fall) { s_BuildingsFall = fall; }
 
+		/// Gets whether falling pieces go through trees (a gameplay setting): rock coming down from above falls through a standing tree rather
+		/// than landing on it, and a falling tree goes through other trees; a tree coming down still lands on the ground. Off (as the game comes)
+		/// trees are solid to falling pieces like any ground.
+		static bool PassesTrees() { return s_PassesTrees; }
+
+		/// Sets whether falling pieces go through trees.
+		static void SetPassesTrees(bool passes) { s_PassesTrees = passes; }
+
 		/// Queues a check for floating terrain around a crater. Thread safe.
 		/// @param position Centre of the crater, in scene coordinates.
 		/// @param radius How far around it to look.
@@ -132,6 +140,7 @@ namespace RTE {
 	private:
 		static bool s_Enabled; //!< Whether collapsing terrain is on.
 		static bool s_BuildingsFall; //!< Whether pieces of buildings fall too.
+		static bool s_PassesTrees; //!< Whether falling pieces go through trees.
 		static Tuning s_Tuning; //!< What falls and how.
 	};
 } // namespace RTE

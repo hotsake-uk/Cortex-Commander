@@ -31,6 +31,7 @@ using namespace RTE;
 
 bool TerrainCollapse::s_Enabled = true;
 bool TerrainCollapse::s_BuildingsFall = true;
+bool TerrainCollapse::s_PassesTrees = false;
 TerrainCollapse::Tuning TerrainCollapse::s_Tuning;
 
 namespace {
@@ -334,13 +335,13 @@ namespace {
 		return x >= 0 && y >= 0 && x < s_Width && y < s_Height;
 	}
 
-	/// Whether a falling piece would hit something at a point: solid ground, not liquid.
+	/// Whether a falling piece would hit something at a point: solid ground, not liquid, and not a tree while pieces go through trees.
 	bool SolidAt(const BITMAP* materialBitmap, int x, int y) {
 		if (!WrapInWorld(x, y)) {
 			return false;
 		}
 		int material = materialBitmap->line[y][x];
-		return material != g_MaterialAir && !s_Flimsy[material] && !FluidSim::IsLiquid(material);
+		return material != g_MaterialAir && !s_Flimsy[material] && !FluidSim::IsLiquid(material) && !(TerrainCollapse::PassesTrees() && TerrainTrees::IsTreeMaterial(material));
 	}
 
 	/// Works out a body's mass, centre, inertia and outline from its bitmap. Returns false if nothing is left of it.
@@ -589,8 +590,9 @@ namespace {
 					continue;
 				}
 				int existing = materialBitmap->line[wy][wx];
-				// Liquid is pushed aside (below); grass and the like is flattened; anything else solid is left as it is.
-				if (existing != g_MaterialAir && !FluidSim::IsLiquid(existing) && !s_Flimsy[existing]) {
+				// Liquid is pushed aside (below); grass and the like is flattened; anything else solid is left as it is. A tree a piece goes
+				// through is left as it is too, leaves and all: the piece goes behind it.
+				if (existing != g_MaterialAir && !FluidSim::IsLiquid(existing) && (!s_Flimsy[existing] || (TerrainCollapse::PassesTrees() && TerrainTrees::IsTreeMaterial(existing)))) {
 					continue;
 				}
 				if (FluidSim::IsLiquid(existing)) {
