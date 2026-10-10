@@ -116,6 +116,8 @@ void AVehicle::Clear() {
 	m_ExitOffset.SetXY(20.0F, -10.0F);
 	m_BoardingReach = 24.0F;
 	m_NeedsDriver = true;
+	m_HopSpeed = 0.0F;
+	m_HopTimer.Reset();
 	m_Driver = nullptr;
 	m_Throttle = 0.0F;
 	m_Braking = false;
@@ -131,15 +133,28 @@ void AVehicle::Clear() {
 
 int AVehicle::Create(const AVehicle& reference) {
 	for (const Wheel& wheel: reference.m_Wheels) {
-		m_ReferenceHardcodedAttachableUniqueIDs.insert(wheel.Part->GetUniqueID());
+		if (wheel.Part) {
+			m_ReferenceHardcodedAttachableUniqueIDs.insert(wheel.Part->GetUniqueID());
+		}
+		if (wheel.Strut) {
+			m_ReferenceHardcodedAttachableUniqueIDs.insert(wheel.Strut->GetUniqueID());
+		}
 	}
 
 	Actor::Create(reference);
 
 	for (const Wheel& wheel: reference.m_Wheels) {
+		// (A bare strut whose wheel was shot off isn't copied.)
+		if (!wheel.Part) {
+			continue;
+		}
 		AddWheel(dynamic_cast<Attachable*>(wheel.Part->Clone()));
 		m_Wheels.back().Mount = wheel.Mount;
 		m_Wheels.back().Part->SetParentOffset(wheel.Mount);
+		if (wheel.Strut) {
+			AddStrut(dynamic_cast<Attachable*>(wheel.Strut->Clone()));
+			m_Wheels.back().Strut->SetParentOffset(wheel.Mount);
+		}
 	}
 	m_SuspensionTravel = reference.m_SuspensionTravel;
 	m_SuspensionStiffness = reference.m_SuspensionStiffness;
@@ -153,6 +168,7 @@ int AVehicle::Create(const AVehicle& reference) {
 	m_ExitOffset = reference.m_ExitOffset;
 	m_BoardingReach = reference.m_BoardingReach;
 	m_NeedsDriver = reference.m_NeedsDriver;
+	m_HopSpeed = reference.m_HopSpeed;
 	m_Buoyancy = reference.m_Buoyancy;
 	m_BreakLandingSpeed = reference.m_BreakLandingSpeed;
 	m_BreakSunkFraction = reference.m_BreakSunkFraction;
@@ -167,7 +183,12 @@ void AVehicle::Destroy(bool notInherited) {
 	delete m_Driver;
 	m_Driver = nullptr;
 	for (const Wheel& wheel: m_Wheels) {
-		m_HardcodedAttachableUniqueIDsAndRemovers.erase(wheel.Part->GetUniqueID());
+		if (wheel.Part) {
+			m_HardcodedAttachableUniqueIDsAndRemovers.erase(wheel.Part->GetUniqueID());
+		}
+		if (wheel.Strut) {
+			m_HardcodedAttachableUniqueIDsAndRemovers.erase(wheel.Strut->GetUniqueID());
+		}
 	}
 	if (!notInherited) {
 		Actor::Destroy();
@@ -179,6 +200,7 @@ int AVehicle::ReadProperty(const std::string_view& propName, Reader& reader) {
 	StartPropertyList(return Actor::ReadProperty(propName, reader));
 
 	MatchProperty("AddWheel", { AddWheel(dynamic_cast<Attachable*>(g_PresetMan.ReadReflectedPreset(reader))); });
+	MatchProperty("AddStrut", { AddStrut(dynamic_cast<Attachable*>(g_PresetMan.ReadReflectedPreset(reader))); });
 	MatchProperty("SuspensionTravel", { reader >> m_SuspensionTravel; });
 	MatchProperty("SuspensionStiffness", { reader >> m_SuspensionStiffness; });
 	MatchProperty("SuspensionDamping", { reader >> m_SuspensionDamping; });
@@ -191,6 +213,7 @@ int AVehicle::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("ExitOffset", { reader >> m_ExitOffset; });
 	MatchProperty("BoardingReach", { reader >> m_BoardingReach; });
 	MatchProperty("NeedsDriver", { reader >> m_NeedsDriver; });
+	MatchProperty("HopSpeed", { reader >> m_HopSpeed; });
 	MatchProperty("Buoyancy", { reader >> m_Buoyancy; });
 	MatchProperty("BreakLandingSpeed", { reader >> m_BreakLandingSpeed; });
 	MatchProperty("BreakSunkFraction", { reader >> m_BreakSunkFraction; });
@@ -202,8 +225,15 @@ int AVehicle::Save(Writer& writer) const {
 	Actor::Save(writer);
 
 	for (const Wheel& wheel: m_Wheels) {
+		if (!wheel.Part) {
+			continue;
+		}
 		writer.NewProperty("AddWheel");
 		writer << wheel.Part;
+		if (wheel.Strut) {
+			writer.NewProperty("AddStrut");
+			writer << wheel.Strut;
+		}
 	}
 	writer.NewPropertyWithValue("SuspensionTravel", m_SuspensionTravel);
 	writer.NewPropertyWithValue("SuspensionStiffness", m_SuspensionStiffness);
@@ -217,6 +247,7 @@ int AVehicle::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("ExitOffset", m_ExitOffset);
 	writer.NewPropertyWithValue("BoardingReach", m_BoardingReach);
 	writer.NewPropertyWithValue("NeedsDriver", m_NeedsDriver);
+	writer.NewPropertyWithValue("HopSpeed", m_HopSpeed);
 	writer.NewPropertyWithValue("Buoyancy", m_Buoyancy);
 	writer.NewPropertyWithValue("BreakLandingSpeed", m_BreakLandingSpeed);
 	writer.NewPropertyWithValue("BreakSunkFraction", m_BreakSunkFraction);
@@ -243,14 +274,55 @@ void AVehicle::AddWheel(Attachable* wheel) {
 	wheel->SetCollidesWithTerrainWhileAttached(false);
 }
 
+void AVehicle::AddStrut(Attachable* strut) {
+	if (!strut) {
+		return;
+	}
+	if (m_Wheels.empty() || m_Wheels.back().Strut) {
+		// (A strut goes with the wheel before it: one without a wheel of its own has nothing to hang from.)
+		delete strut;
+		return;
+	}
+	strut->SetParentOffset(m_Wheels.back().Mount);
+	m_Wheels.back().Strut = strut;
+	AddAttachable(strut);
+
+	m_HardcodedAttachableUniqueIDsAndRemovers.insert({strut->GetUniqueID(), [](MOSRotating* parent, Attachable* attachable) {
+		                                                  dynamic_cast<AVehicle*>(parent)->RemoveStrut(attachable);
+	                                                  }});
+
+	// Behind the body, so its top slides up out of sight into it as the spring is pushed in; the body's atoms meet the ground, not the strut's.
+	strut->SetInheritsRotAngle(true);
+	strut->SetCollidesWithTerrainWhileAttached(false);
+	strut->SetDrawnAfterParent(false);
+}
+
 void AVehicle::RemoveWheel(const Attachable* wheel) {
-	std::erase_if(m_Wheels, [wheel](const Wheel& each) { return each.Part == wheel; });
+	std::erase_if(m_Wheels, [wheel](const Wheel& each) { return each.Part == wheel && !each.Strut; });
+	for (Wheel& each: m_Wheels) {
+		if (each.Part == wheel) {
+			// (Its strut stays on, a bare leg: kept in the list so it still rides with the spring, hanging all the way out.)
+			each.Part = nullptr;
+			each.OnGround = false;
+		}
+	}
+}
+
+void AVehicle::RemoveStrut(const Attachable* strut) {
+	for (Wheel& each: m_Wheels) {
+		if (each.Strut == strut) {
+			each.Strut = nullptr;
+		}
+	}
+	std::erase_if(m_Wheels, [](const Wheel& each) { return !each.Part && !each.Strut; });
 }
 
 std::vector<Attachable*> AVehicle::GetWheels() const {
 	std::vector<Attachable*> wheels;
 	for (const Wheel& wheel: m_Wheels) {
-		wheels.push_back(wheel.Part);
+		if (wheel.Part) {
+			wheels.push_back(wheel.Part);
+		}
 	}
 	return wheels;
 }
@@ -415,9 +487,13 @@ void AVehicle::UpdateWheels() {
 	int onGround = 0;
 	float bottomedOut = 0.0F; //!< How far the deepest bottomed-out wheel is into the ground, in pixels.
 	float bottomedShare = 0.0F; //!< How much of the cart's weight is on wheels that have bottomed out.
-	float share = m_Wheels.empty() ? 0.0F : 1.0F / static_cast<float>(m_Wheels.size());
+	int wheelCount = static_cast<int>(std::count_if(m_Wheels.begin(), m_Wheels.end(), [](const Wheel& wheel) { return wheel.Part != nullptr; }));
+	float share = wheelCount == 0 ? 0.0F : 1.0F / static_cast<float>(wheelCount);
 
 	for (Wheel& wheel: m_Wheels) {
+		if (!wheel.Part) {
+			continue;
+		}
 		float radius = std::max(static_cast<float>(wheel.Part->GetSpriteWidth()) * 0.5F, 1.0F);
 		Vector top = m_Pos + RotateOffset(wheel.Mount) - down * m_SuspensionTravel;
 		// Three looks down from the top of the spring's travel, across the wheel's width: how far down its middle can come before its rim
@@ -511,6 +587,14 @@ void AVehicle::UpdateWheels() {
 	// The wheels ride up on their springs and turn as far as they've rolled.
 	speedAlong = m_Vel.Dot(along);
 	for (Wheel& wheel: m_Wheels) {
+		if (!wheel.Part) {
+			// A bare strut: its wheel shot off, it hangs all the way out.
+			wheel.Compression = std::max(wheel.Compression - m_SuspensionTravel * 8.0F * deltaTime, 0.0F);
+			if (wheel.Strut) {
+				wheel.Strut->SetParentOffset(wheel.Mount - Vector(0.0F, wheel.Compression));
+			}
+			continue;
+		}
 		float radius = std::max(static_cast<float>(wheel.Part->GetSpriteWidth()) * 0.5F, 1.0F);
 		if (wheel.OnGround) {
 			wheel.SpinSpeed = -speedAlong * c_PPM / radius;
@@ -519,6 +603,9 @@ void AVehicle::UpdateWheels() {
 		}
 		wheel.Spin = Wrapped(wheel.Spin + wheel.SpinSpeed * deltaTime);
 		wheel.Part->SetParentOffset(wheel.Mount - Vector(0.0F, wheel.Compression));
+		if (wheel.Strut) {
+			wheel.Strut->SetParentOffset(wheel.Mount - Vector(0.0F, wheel.Compression));
+		}
 		// Rolling or landing on plants flattens them (a wheel standing still on one leaves it be, so a parked cart doesn't eat what it's in).
 		if (wheel.OnGround && (std::abs(wheel.SpinSpeed) > 0.5F || m_Vel.MagnitudeIsGreaterThan(1.0F))) {
 			CrushPlants(m_Pos + RotateOffset(wheel.Mount - Vector(0.0F, wheel.Compression)), radius + 1.0F);
@@ -553,6 +640,14 @@ void AVehicle::Update() {
 	// Facing the way it's driven, as a unit turns to walk: only when slow, so it doesn't flip round while braking from speed.
 	if (m_Throttle != 0.0F && (m_Throttle > 0.0F) == m_HFlipped && m_Vel.MagnitudeIsLessThan(1.5F)) {
 		SetHFlipped(!m_HFlipped);
+	}
+
+	// Jumping: with at least half its wheels down, its springs throw it up off the ground, along the way it stands.
+	if (canDrive && m_HopSpeed > 0.0F && m_Controller.IsState(BODY_JUMPSTART) && m_HopTimer.IsPastSimMS(1000)) {
+		if (std::vector<Attachable*> wheels = GetWheels(); !wheels.empty() && GetWheelsOnGround() * 2 >= static_cast<int>(wheels.size())) {
+			m_Vel += Vector(0.0F, -m_HopSpeed).GetRadRotatedCopy(m_Rotation.GetRadAngle());
+			m_HopTimer.Reset();
+		}
 	}
 
 	UpdateWheels();
@@ -617,7 +712,7 @@ void AVehicle::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int which
 	if (m_BoarderInReach && activity->ScreenOfPlayer(m_BoarderInReach->GetController()->GetPlayer()) == whichScreen) {
 		hint = "Pick up: get in";
 	} else if (m_Driver && m_Controller.IsPlayerControlled() && activity->ScreenOfPlayer(m_Controller.GetPlayer()) == whichScreen && !m_BoardingTimer.IsPastSimMS(4000)) {
-		hint = "Pick up: get out";
+		hint = m_HopSpeed > 0.0F ? "Pick up: get out   Jump: hop" : "Pick up: get out";
 	}
 	if (hint) {
 		Vector drawPos = m_Pos - targetPos;
