@@ -689,6 +689,7 @@ namespace SandboxDetail {
 
 		std::array<Flag, c_Sides> s_Flags;
 		std::unordered_map<long, FlagRunner> s_Runners; //!< By unique ID.
+		bool s_RunnersDue = false; //!< A flag was picked up, dropped or put back (SetCarrier) or moved: the runners are sent again on this update, not at their half-second turn.
 
 		constexpr float c_FlagReach = 50.0F; //!< How near a unit's middle has to come to a flag to pick it up (or bring it home, or capture with it).
 
@@ -754,6 +755,7 @@ namespace SandboxDetail {
 				old->SetRouteThreatAvoidance(0.0F);
 			}
 			flag.Carrier = MakeRef(carrier);
+			s_RunnersDue = true;
 			if (carrier) {
 				carrier->SetHighlighted(true);
 				carrier->SetNumberValue("SandboxObjective", 1.0);
@@ -861,6 +863,7 @@ namespace SandboxDetail {
 				const bool placedElsewhere = settings.HasPoint[side] && !g_SceneMan.ShortestDistance(flag.Home, settings.Points[side], g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(1.0F);
 				if (placedElsewhere) {
 					flag.Home = FlagHome(settings, side);
+					s_RunnersDue = true;
 					if (flag.State == FlagState::Home) {
 						SendHome(side);
 					}
@@ -1249,7 +1252,10 @@ namespace SandboxDetail {
 			if (!s_ModeRun.Over && now % 300 == 150) {
 				UpdateStuckFlags();
 			}
-			if (!s_ModeRun.Over && now % 30 == 15) {
+			// (At once when a flag changed hands or places: on the half-second turn alone, everyone else kept on for the old one for up to half
+			// a second.)
+			if (!s_ModeRun.Over && (now % 30 == 15 || s_RunnersDue)) {
+				s_RunnersDue = false;
 				UpdateRunners(now);
 			}
 		}
@@ -1575,7 +1581,8 @@ namespace SandboxDetail {
 			if (now % 6 == 0) {
 				UpdateOneFlag(now);
 			}
-			if (!s_ModeRun.Over && now % 30 == 15) {
+			if (!s_ModeRun.Over && (now % 30 == 15 || s_RunnersDue)) {
+				s_RunnersDue = false;
 				UpdateOneFlagRunners(now);
 			}
 		}
