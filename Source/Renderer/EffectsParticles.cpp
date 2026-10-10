@@ -705,7 +705,7 @@ void EffectsParticles::GetPuffs(const glm::vec2& screenOrigin, int width, int he
 		if (particle.Type == Kind::Froth) {
 			// Like spray, it keeps a little light of its own (a colour above 1); in quickly, out slowly.
 			float opacity = std::clamp(g_PostProcessMan.GetLightingSettings().SplashFrothOpacity, 0.0F, 1.0F) * std::sqrt(std::max(remaining, 0.0F)) * std::clamp(particle.Age * 8.0F, 0.0F, 1.0F);
-			puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F + 1.0F, opacity), particle.Angle, particle.Mirrored});
+			puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F + 1.0F, opacity), particle.Angle, particle.Mirrored, behind});
 			continue;
 		}
 		puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F, (particle.Type == Kind::Smoke ? 0.55F : 0.4F) * remaining * fadeIn), particle.Angle, particle.Mirrored, behind});
