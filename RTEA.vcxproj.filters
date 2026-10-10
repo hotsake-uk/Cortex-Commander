@@ -235,6 +235,9 @@
     <ClInclude Include="Source\Managers\TerrainCandle.h">
       <Filter>Managers</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Managers\RopeSim.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Managers\WeatherLightning.h">
       <Filter>Managers</Filter>
     </ClInclude>
@@ -929,6 +932,9 @@
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\TerrainCandle.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\RopeSim.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\WeatherLightning.cpp">
