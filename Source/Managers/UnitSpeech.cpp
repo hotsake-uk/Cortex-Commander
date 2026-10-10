@@ -31,6 +31,7 @@ using namespace RTE;
 bool UnitSpeech::s_Enabled = true;
 int UnitSpeech::s_ChancePercent = 76;
 bool UnitSpeech::s_ShowEnemies = true;
+bool UnitSpeech::s_ShowBubbles = true;
 
 namespace {
 	/// One set of lines: the default one, or a faction's or unit type's (an actor's SpeechSet). Lines by trigger index.
@@ -703,6 +704,13 @@ void UnitSpeech::DrawBubble(BITMAP* targetBitmap, int x, int y, const State& sta
 	}
 	left += shift;
 	right += shift;
+
+	if (!s_ShowBubbles) {
+		// Bare text, where the bubble's text would be (its dark edge keeps it readable on any ground).
+		AllegroBitmap bitmapInt(targetBitmap);
+		font->DrawAligned(&bitmapInt, x + shift, top + padY, state.Text, GUIFont::Centre);
+		return;
+	}
 
 	// The game's menu panels: dark blue, with a light edge (here the side's colour), the corners cut.
 	static const int fill = makecol8(12, 20, 39);

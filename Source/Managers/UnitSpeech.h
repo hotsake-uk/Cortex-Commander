@@ -83,6 +83,12 @@ namespace RTE {
 		/// Sets whether the other sides' units are heard too.
 		static void SetShowsEnemies(bool show) { s_ShowEnemies = show; }
 
+		/// Gets whether lines are drawn in a bubble, or as bare text over the unit.
+		static bool ShowsBubbles() { return s_ShowBubbles; }
+
+		/// Sets whether lines are drawn in a bubble, or as bare text over the unit.
+		static void SetShowsBubbles(bool show) { s_ShowBubbles = show; }
+
 		/// Gets whether a trigger is on, by its key. A key no Speech.ini defines reads as on.
 		static bool IsTriggerOn(const std::string& key);
 
@@ -202,6 +208,7 @@ namespace RTE {
 		static bool s_Enabled; //!< Whether units say anything at all.
 		static int s_ChancePercent; //!< The chance a trigger is said, 0 to 100.
 		static bool s_ShowEnemies; //!< Whether the other sides' units are heard too.
+		static bool s_ShowBubbles; //!< Whether lines are drawn in a bubble (off: bare text).
 
 		/// Say, from a command answering an order or not, about someone or not.
 		static bool Say(Actor& actor, const std::string& triggerKey, bool answeringOrder, const Actor* subject);
