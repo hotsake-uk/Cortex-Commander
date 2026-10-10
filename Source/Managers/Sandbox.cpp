@@ -31,6 +31,11 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		s_Effects.clear();
 		return true;
 	}
+	if (toolName == "Undo") {
+		// As Ctrl+Z: the newest paint stroke, placing click or drop taken back.
+		QueueSimChange(Tool::UndoTerrain);
+		return true;
+	}
 	if (toolName == "Effect") {
 		// The preset name is the effect's name.
 		for (int i = 0; i < static_cast<int>(EffectKind::Count); ++i) {
@@ -77,6 +82,13 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		return false;
 	}
 	stroke.Kind = c_Tools[toolIndex].Kind;
+	if (stroke.Kind == Tool::CollapseArea) {
+		// A box of half-size count around the point, as "Select".
+		stroke.Position = position - Vector(static_cast<float>(count), static_cast<float>(count));
+		stroke.Position2 = position + Vector(static_cast<float>(count), static_cast<float>(count));
+		s_Queue.push_back(stroke);
+		return true;
+	}
 	if (stroke.Kind == Tool::Command && s_CommandMode == CommandMode::Select) {
 		// (A script's command clicks are orders, as they were before the tool started out selecting: a move, or an attack on an enemy.)
 		s_CommandMode = CommandMode::Move;
@@ -754,8 +766,8 @@ void Sandbox::DrawGUI() {
 				s_DragStart = io.MousePos;
 				s_DoubleClick = false;
 			}
-		} else if (IsTerrainBrush(tool.Kind) && s_ShapeFill) {
-			// Brush type Shape: a drag marks out the shape, filled when the button is let go (below).
+		} else if (DragsShape(tool.Kind)) {
+			// Brush type Shape: a drag marks out the shape, filled when the button is let go (below). "Make it fall" drags its box the same way.
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 				s_ShapeDragging = true;
 				s_ShapeStart = position;
@@ -799,13 +811,19 @@ void Sandbox::DrawGUI() {
 	if (s_ShapeDragging) {
 		// The shape being dragged out with a terrain brush (Brush type Shape), drawn as it will be filled; Shift keeps it as wide as it
 		// is tall, Escape drops it.
-		if (!InGame() || !IsTerrainBrush(CurrentTool().Kind) || !s_ShapeFill || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+		if (!InGame() || !DragsShape(CurrentTool().Kind) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
 			s_ShapeDragging = false;
 		} else {
+			bool dropBox = CurrentTool().Kind == Tool::CollapseArea;
 			Vector end = s_ShapeStart + g_SceneMan.ShortestDistance(s_ShapeStart, MouseScenePosition(), g_SceneMan.SceneWrapsX());
 			if (io.KeyShift) {
 				float side = std::max(std::abs(end.m_X - s_ShapeStart.m_X), std::abs(end.m_Y - s_ShapeStart.m_Y));
 				end = s_ShapeStart + Vector(end.m_X >= s_ShapeStart.m_X ? side : -side, end.m_Y >= s_ShapeStart.m_Y ? side : -side);
+			}
+			if (dropBox) {
+				// (No bigger than c_MaxDropSide either way.)
+				constexpr float c_Most = static_cast<float>(c_MaxDropSide - 1);
+				end = s_ShapeStart + Vector(std::clamp(end.m_X - s_ShapeStart.m_X, -c_Most, c_Most), std::clamp(end.m_Y - s_ShapeStart.m_Y, -c_Most, c_Most));
 			}
 			ImDrawList* drawList = ImGui::GetForegroundDrawList();
 			ImU32 outline = IM_COL32(255, 255, 255, 220);
@@ -814,7 +832,15 @@ void Sandbox::DrawGUI() {
 			float top = std::min(s_ShapeStart.m_Y, end.m_Y);
 			float bottom = std::max(s_ShapeStart.m_Y, end.m_Y) + 1.0F;
 			float middleX = (left + right) * 0.5F;
-			if (s_FillShape == FillShape::Circle) {
+			if (dropBox) {
+				// The box whose ground will fall: shaded, edged in warning orange, with its size.
+				ImVec2 topLeft = ToScreen(Vector(left, top));
+				ImVec2 bottomRight = ToScreen(Vector(right, bottom));
+				drawList->AddRectFilled(topLeft, bottomRight, IM_COL32(242, 150, 60, 50));
+				drawList->AddRect(topLeft, bottomRight, IM_COL32(242, 150, 60, 235), 0.0F, 0, 2.0F);
+				std::string size = std::to_string(static_cast<int>(right - left)) + " x " + std::to_string(static_cast<int>(bottom - top));
+				drawList->AddText(ImVec2(topLeft.x + 4.0F, topLeft.y - ImGui::GetTextLineHeight() - 2.0F), IM_COL32(242, 150, 60, 235), size.c_str());
+			} else if (s_FillShape == FillShape::Circle) {
 				constexpr int c_Points = 48;
 				ImVec2 points[c_Points];
 				for (int i = 0; i < c_Points; ++i) {
@@ -1294,7 +1320,7 @@ void Sandbox::DrawGUI() {
 				ImGui::SetItemTooltip("How far apart the plants go along a stroke. Each is one of the game's own plant pictures, set into the ground under the pointer.");
 				ImGui::SeparatorText("Terrain");
 				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::TreeTrunk, Tool::Concrete});
-				ToolButtons({Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::TerrainOther});
+				ToolButtons({Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::TerrainOther, Tool::CollapseArea});
 				{
 					// The rest of the base game's ground, for the "Other terrain" tool.
 					if (ImGui::BeginCombo("More terrain...", s_OtherTerrain.c_str())) {

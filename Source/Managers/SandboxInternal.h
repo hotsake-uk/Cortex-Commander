@@ -196,7 +196,9 @@ namespace SandboxDetail {
 		// Appended, so the tools before keep their numbers.
 		GrowGrass, //!< Grows a layer of grass up from the top of the ground under the brush, as the base game's maps have on their topsoil.
 		// Appended, so the tools before keep their numbers.
-		Candles //!< Puts candles on the ground (Tools/MakeCandleSprites.py): wax with a wick, which fire lights and which burn down (TerrainCandle).
+		Candles, //!< Puts candles on the ground (Tools/MakeCandleSprites.py): wax with a wick, which fire lights and which burn down (TerrainCandle).
+		// Appended, so the tools before keep their numbers.
+		CollapseArea //!< A box dragged out on the world (Position to Position2): all the ground in it breaks loose and falls (TerrainCollapse::DropArea).
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -315,6 +317,7 @@ namespace SandboxDetail {
 	    {Tool::Generator, "Generator", 0.0F, false},
 	    {Tool::GrowGrass, "Grow grass", 0.03F, true},
 	    {Tool::Candles, "Candles", 0.03F, true},
+	    {Tool::CollapseArea, "Make it fall", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -844,6 +847,10 @@ namespace SandboxDetail {
 	inline FillShape s_FillShape = FillShape::Square; //!< The shape they fill then.
 	inline bool s_ShapeDragging = false; //!< A shape being dragged out, from s_ShapeStart.
 	inline Vector s_ShapeStart;
+	constexpr int c_MaxDropSide = 800; //!< The biggest box "Make it fall" takes either way, in pixels.
+
+	/// Whether the tool in hand is used by dragging out a shape on the world: the terrain brushes with Brush type Shape, and "Make it fall"'s box.
+	inline bool DragsShape(Tool kind) { return (IsTerrainBrush(kind) && s_ShapeFill) || kind == Tool::CollapseArea; }
 	inline BrushShape s_BrushShape = BrushShape::Circle; //!< How the terrain brushes paint and dig: circles, squares or a spray (Paint > Terrain).
 	inline std::string s_OtherTerrain = "Topsoil"; //!< What the "Other terrain" tool paints, picked under "More terrain...".
 	inline int s_UnitChoice = 0;
@@ -1160,8 +1167,9 @@ namespace SandboxDetail {
 		std::vector<long> Placed; //!< The unique IDs of what a placing step made.
 		int ColonyBuilding = -1; //!< The colony building a placing step built, or -1.
 		bool Sealed = false; //!< A placing step: the next stroke starts a step of its own, however soon it comes.
+		int Drop = 0; //!< A "Make it fall" step: the drop TerrainCollapse::DropArea gave, taken back with TerrainCollapse::TakeBackDrop.
 
-		bool Empty() const { return Pixels.empty() && Placed.empty() && ColonyBuilding < 0; }
+		bool Empty() const { return Pixels.empty() && Placed.empty() && ColonyBuilding < 0 && Drop == 0; }
 	};
 
 	inline std::deque<PaintUndoStep> s_PaintUndo;

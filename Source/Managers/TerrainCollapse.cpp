@@ -44,6 +44,7 @@ namespace {
 		int Radius;
 		long long DueUpdate; //!< Sim update count when the check runs.
 		std::shared_ptr<Before> Was; //!< Null if nothing is known of how things were.
+		int Drop = 0; //!< The check after a sandbox drop (TerrainCollapse::DropArea): what it lets fall belongs to that drop, for its undo.
 	};
 
 	constexpr int c_MinBodyPixels = 6; //!< Pieces smaller than this fall as loose particles.
@@ -201,6 +202,26 @@ namespace {
 		std::string Material;
 	};
 	std::vector<ChunkRequest> s_ChunkRequests;
+	/// A box of ground to break loose, from the sandbox (TerrainCollapse::DropArea).
+	struct DropRequest {
+		int Left, Top, Right, Bottom;
+		int Drop;
+	};
+	std::vector<DropRequest> s_DropRequests;
+	int s_NextDrop = 1;
+	/// What a drop took and where it went, so it can be taken back (TerrainCollapse::TakeBackDrop).
+	struct DropRecord {
+		struct Pixel {
+			int Key;
+			unsigned char Material;
+			unsigned char Color;
+		};
+		std::vector<Pixel> Original; //!< Every pixel its pieces were lifted from, as it was.
+		std::vector<std::pair<int, unsigned char>> Rested; //!< Where its pieces came to rest, and of what.
+	};
+	std::map<int, DropRecord> s_Drops; //!< By drop number: the newest c_MaxDrops (the sandbox's undo keeps 20 steps).
+	constexpr size_t c_MaxDrops = 20;
+	int s_LiftDrop = 0; //!< While a drop's pieces are lifted (LiftPiece): the drop they belong to.
 	std::mutex s_QueueMutex;
 	const void* s_Scene = nullptr;
 	unsigned int s_SceneGeneration = 0; //!< SceneMan's count of scene loads when this scene was taken up: the same scene restarted, or a new one at the old one's address, still counts as new (as in FluidSim).
@@ -245,6 +266,7 @@ namespace {
 		bool Done = false;
 		bool Wet = false; //!< Whether it was in liquid last update.
 		bool Damaged = false; //!< Whether pixels have been taken off it since its mass and outline were worked out.
+		int Drop = 0; //!< The sandbox drop it came from (TerrainCollapse::DropArea), or 0. The pieces it breaks into keep it.
 		std::vector<std::pair<long, long long>> Hurt; //!< Units it hurt lately: unique ID and sim update, so a piece grinding on a unit hurts it once per blow, not every update.
 	};
 	std::vector<Body> s_Bodies;
@@ -256,6 +278,7 @@ namespace {
 		glm::vec2 Center{0.0F};
 		float Radius = 0.0F;
 		long long When = 0; //!< Sim update when it came to rest.
+		int Drop = 0; //!< The sandbox drop it came from, or 0.
 	};
 	std::vector<Rested> s_Rested;
 	constexpr size_t c_MaxRested = 64;
@@ -1009,6 +1032,7 @@ namespace {
 			piece.Spin = body.Spin + (Random01() - 0.5F) * 0.03F;
 			piece.Generation = body.Generation + 1;
 			piece.BreakCooldown = 12;
+			piece.Drop = body.Drop;
 			s_NewBodies.push_back(std::move(piece));
 		}
 		body.Done = true;
@@ -1107,6 +1131,7 @@ namespace {
 			piece.Spin = body.Spin;
 			piece.Generation = body.Generation;
 			piece.BreakCooldown = body.BreakCooldown;
+			piece.Drop = body.Drop;
 			piece.Age = body.Age;
 			s_NewBodies.push_back(std::move(piece));
 		}
@@ -1273,6 +1298,7 @@ namespace {
 		bent.Spin = body.Spin * 0.75F;
 		bent.Generation = body.Generation + 1;
 		bent.BreakCooldown = 20;
+		bent.Drop = body.Drop;
 		bent.Age = body.Age;
 		bent.Wet = body.Wet;
 		bent.Hurt = std::move(body.Hurt);
@@ -1390,6 +1416,11 @@ namespace {
 		for (const auto& [key, local]: body.Stamped) {
 			s_State[key] &= static_cast<unsigned char>(~c_Falling);
 		}
+		if (auto drop = body.Drop ? s_Drops.find(body.Drop) : s_Drops.end(); drop != s_Drops.end()) {
+			for (const auto& [key, local]: body.Stamped) {
+				drop->second.Rested.emplace_back(key, body.Materials[local]);
+			}
+		}
 		if (body.Stamped.size() >= 10 && body.Stamped.size() <= 8000) {
 			Rested rested;
 			rested.Keys.reserve(body.Stamped.size());
@@ -1399,6 +1430,7 @@ namespace {
 			rested.Center = body.Pos;
 			rested.Radius = body.Radius;
 			rested.When = g_TimerMan.GetSimUpdateCount();
+			rested.Drop = body.Drop;
 			if (s_Rested.size() >= c_MaxRested) {
 				s_Rested.erase(s_Rested.begin());
 			}
@@ -2198,6 +2230,10 @@ namespace {
 		body.H = maxY - minY + 1;
 		body.Materials.assign(static_cast<size_t>(body.W) * body.H, 0);
 		body.Colors.assign(static_cast<size_t>(body.W) * body.H, 0);
+		auto drop = s_LiftDrop ? s_Drops.find(s_LiftDrop) : s_Drops.end();
+		if (drop != s_Drops.end()) {
+			body.Drop = s_LiftDrop;
+		}
 		for (int pieceKey: piece) {
 			int px = pieceKey % width;
 			int py = pieceKey / width;
@@ -2206,6 +2242,9 @@ namespace {
 			body.Colors[local] = static_cast<unsigned char>(terrain->GetFGColorPixel(px, py));
 			body.Stamped.emplace_back(pieceKey, local);
 			s_State[pieceKey] |= c_Falling;
+			if (drop != s_Drops.end()) {
+				drop->second.Original.push_back({pieceKey, body.Materials[local], body.Colors[local]});
+			}
 		}
 		if (!FinishBody(body, glm::vec2(static_cast<float>(minX), static_cast<float>(minY)))) {
 			return;
@@ -2287,7 +2326,10 @@ namespace {
 				falls = other != i && cameFrom[other] == cameFrom[i] && (loose[other].size() > loose[i].size() || (loose[other].size() == loose[i].size() && other < i));
 			}
 			if (falls) {
+				// (What a drop's check lets fall is that drop's too, and taken back with it.)
+				s_LiftDrop = check.Drop;
 				LiftPiece(terrain, loose[i]);
+				s_LiftDrop = 0;
 			}
 		}
 	}
@@ -2356,6 +2398,124 @@ namespace {
 		body.Spin = (Random01() - 0.5F) * 0.05F;
 		Stamp(terrain, body);
 		s_Bodies.push_back(std::move(body));
+	}
+
+	/// Breaks all the ground in a box loose (TerrainCollapse::DropArea). Inside the box the ground comes away in pieces, each joined up on
+	/// its own; a big box is cut into rough chunks about c_DropChunk pixels across first (round random points, as rock cracks), so it falls
+	/// and tumbles as rubble rather than as one huge slab. Then what was held up only by what was taken is checked, as after a dig.
+	void DropBox(SLTerrain* terrain, const DropRequest& request, long long now) {
+		constexpr int c_DropChunk = 110;
+		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
+		int left = request.Left;
+		int right = request.Right;
+		int top = std::max(request.Top, 0);
+		int bottom = std::min(request.Bottom, s_Height - 1);
+		if (!s_WrapX) {
+			left = std::max(left, 0);
+			right = std::min(right, s_Width - 1);
+		}
+		right = std::min(right, left + s_Width - 1);
+		if (right < left || bottom < top) {
+			return;
+		}
+		int boxWidth = right - left + 1;
+		int boxHeight = bottom - top + 1;
+		while (s_Drops.size() >= c_MaxDrops) {
+			s_Drops.erase(s_Drops.begin());
+		}
+		s_Drops[request.Drop];
+		// How things are round it first, so the check afterwards lets fall only what taking the box cuts loose.
+		int middleX = left + boxWidth / 2;
+		WrapInWorld(middleX, top);
+		int reach = std::min(static_cast<int>(std::hypot(static_cast<float>(boxWidth), static_cast<float>(boxHeight)) * 0.5F) + 40, 600);
+		Check after{middleX, top + boxHeight / 2, reach, 0, LookBefore(terrain, {middleX, top + boxHeight / 2, reach, now, nullptr}), request.Drop};
+
+		// Which chunk each pixel of the box falls in (-1 for no ground): one for a small box, else the nearest of a jittered grid of points.
+		bool chunked = boxWidth * boxHeight > TerrainCollapse::GetTuning().MaxPiecePixels;
+		int gridWidth = (boxWidth + c_DropChunk - 1) / c_DropChunk;
+		int gridHeight = (boxHeight + c_DropChunk - 1) / c_DropChunk;
+		std::vector<glm::vec2> seeds;
+		if (chunked) {
+			seeds.reserve(static_cast<size_t>(gridWidth) * gridHeight);
+			for (int gy = 0; gy < gridHeight; ++gy) {
+				for (int gx = 0; gx < gridWidth; ++gx) {
+					seeds.emplace_back((static_cast<float>(gx) + 0.15F + Random01() * 0.7F) * c_DropChunk, (static_cast<float>(gy) + 0.15F + Random01() * 0.7F) * c_DropChunk);
+				}
+			}
+		}
+		std::vector<int> chunk(static_cast<size_t>(boxWidth) * boxHeight, -1);
+		auto keyOf = [&](int bx, int by) {
+			int x = left + bx;
+			int y = top + by;
+			WrapInWorld(x, y);
+			return y * s_Width + x;
+		};
+		for (int by = 0; by < boxHeight; ++by) {
+			for (int bx = 0; bx < boxWidth; ++bx) {
+				int key = keyOf(bx, by);
+				int material = materialBitmap->line[key / s_Width][key % s_Width];
+				if (material == g_MaterialAir || FluidSim::IsLiquid(material) || s_Fixed[material] || (s_State[key] & c_Falling)) {
+					continue;
+				}
+				int nearest = 0;
+				if (chunked) {
+					float best = 1e9F;
+					int gx = bx / c_DropChunk;
+					int gy = by / c_DropChunk;
+					for (int ny = std::max(gy - 1, 0); ny <= std::min(gy + 1, gridHeight - 1); ++ny) {
+						for (int nx = std::max(gx - 1, 0); nx <= std::min(gx + 1, gridWidth - 1); ++nx) {
+							glm::vec2 offset = seeds[static_cast<size_t>(ny) * gridWidth + nx] - glm::vec2(static_cast<float>(bx) + 0.5F, static_cast<float>(by) + 0.5F);
+							if (float distance = glm::dot(offset, offset); distance < best) {
+								best = distance;
+								nearest = ny * gridWidth + nx;
+							}
+						}
+					}
+				}
+				chunk[static_cast<size_t>(by) * boxWidth + bx] = nearest;
+			}
+		}
+		// Each joined-up piece of a chunk is lifted out on its own, the box's own edges cutting it from the ground round it.
+		std::vector<int> stack;
+		std::vector<int> piece;
+		s_LiftDrop = request.Drop;
+		for (int start = 0; start < static_cast<int>(chunk.size()); ++start) {
+			if (chunk[start] < 0) {
+				continue;
+			}
+			int id = chunk[start];
+			chunk[start] = -1;
+			stack.assign(1, start);
+			piece.clear();
+			while (!stack.empty()) {
+				int local = stack.back();
+				stack.pop_back();
+				int bx = local % boxWidth;
+				int by = local / boxWidth;
+				piece.push_back(keyOf(bx, by));
+				for (int dy = -1; dy <= 1; ++dy) {
+					for (int dx = -1; dx <= 1; ++dx) {
+						int nx = bx + dx;
+						int ny = by + dy;
+						if (nx < 0 || ny < 0 || nx >= boxWidth || ny >= boxHeight) {
+							continue;
+						}
+						int neighbour = ny * boxWidth + nx;
+						if (chunk[neighbour] == id) {
+							chunk[neighbour] = -1;
+							stack.push_back(neighbour);
+						}
+					}
+				}
+			}
+			LiftPiece(terrain, piece);
+		}
+		s_LiftDrop = 0;
+		FluidSim::Disturb(Vector(static_cast<float>(left + boxWidth / 2), static_cast<float>(top + boxHeight / 2)), static_cast<float>(reach));
+		after.DueUpdate = now + 20;
+		s_Scheduled.push_back(after);
+		after.DueUpdate = now + 60;
+		s_Scheduled.push_back(after);
 	}
 
 	/// A step on loose ground: the few surface pixels just ahead of the foot (in the way the unit is going) come loose and are pushed along, so a run down a sand slope slumps it a little.
@@ -2463,6 +2623,78 @@ void TerrainCollapse::SpawnChunk(const Vector& position, float radius, const cha
 	s_ChunkRequests.push_back({static_cast<int>(position.m_X), static_cast<int>(position.m_Y), static_cast<int>(radius), materialName ? materialName : "Stone"});
 }
 
+int TerrainCollapse::DropArea(int left, int top, int right, int bottom) {
+	if (!s_Enabled) {
+		return 0;
+	}
+	std::scoped_lock lock(s_QueueMutex);
+	int drop = s_NextDrop++;
+	s_DropRequests.push_back({std::min(left, right), std::min(top, bottom), std::max(left, right), std::max(top, bottom), drop});
+	return drop;
+}
+
+void TerrainCollapse::TakeBackDrop(int drop) {
+	{
+		std::scoped_lock lock(s_QueueMutex);
+		s_DropRequests.erase(std::remove_if(s_DropRequests.begin(), s_DropRequests.end(), [drop](const DropRequest& request) { return request.Drop == drop; }), s_DropRequests.end());
+	}
+	auto found = s_Drops.find(drop);
+	if (found == s_Drops.end()) {
+		return;
+	}
+	DropRecord record = std::move(found->second);
+	s_Drops.erase(found);
+	Scene* scene = g_SceneMan.GetScene();
+	SLTerrain* terrain = scene ? scene->GetTerrain() : nullptr;
+	if (!terrain || scene != s_Scene || s_State.size() != static_cast<size_t>(s_Width) * static_cast<size_t>(s_Height)) {
+		return;
+	}
+	const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
+	int minX = s_Width;
+	int minY = s_Height;
+	int maxX = -1;
+	int maxY = -1;
+	auto grow = [&](int key) {
+		minX = std::min(minX, key % s_Width);
+		maxX = std::max(maxX, key % s_Width);
+		minY = std::min(minY, key / s_Width);
+		maxY = std::max(maxY, key / s_Width);
+	};
+	// Its pieces still falling are lifted out and gone.
+	for (Body& body: s_Bodies) {
+		if (body.Drop == drop && !body.Done) {
+			for (const auto& [key, local]: body.Stamped) {
+				grow(key);
+			}
+			Unstamp(terrain, body);
+			body.Done = true;
+		}
+	}
+	s_Bodies.erase(std::remove_if(s_Bodies.begin(), s_Bodies.end(), [](const Body& body) { return body.Done; }), s_Bodies.end());
+	// Those that came to rest are taken out of the ground where they lie, where it's still what they left.
+	for (const auto& [key, material]: record.Rested) {
+		if (materialBitmap->line[key / s_Width][key % s_Width] == material && !(s_State[key] & c_Falling)) {
+			terrain->SetMaterialPixel(key % s_Width, key / s_Width, g_MaterialAir);
+			terrain->SetFGColorPixel(key % s_Width, key / s_Width, ColorKeys::g_MaskColor);
+			grow(key);
+		}
+	}
+	s_Rested.erase(std::remove_if(s_Rested.begin(), s_Rested.end(), [drop](const Rested& rested) { return rested.Drop == drop; }), s_Rested.end());
+	// And the ground is put back where it was (not over a piece of another fall passing through).
+	for (const DropRecord::Pixel& pixel: record.Original) {
+		if (!(s_State[pixel.Key] & c_Falling)) {
+			terrain->SetMaterialPixel(pixel.Key % s_Width, pixel.Key / s_Width, pixel.Material);
+			terrain->SetFGColorPixel(pixel.Key % s_Width, pixel.Key / s_Width, pixel.Color);
+			grow(pixel.Key);
+		}
+	}
+	if (maxX >= minX) {
+		Box area(Vector(static_cast<float>(minX), static_cast<float>(minY)), static_cast<float>(maxX - minX + 1), static_cast<float>(maxY - minY + 1));
+		terrain->AddUpdatedMaterialArea(area);
+		FluidSim::Disturb(area.GetCenter(), std::max(area.GetWidth(), area.GetHeight()) * 0.5F + 4.0F);
+	}
+}
+
 void TerrainCollapse::Update() {
 	if (g_SceneMan.GetScene() != s_Scene || g_SceneMan.GetSceneGeneration() != s_SceneGeneration) {
 		Clear();
@@ -2496,6 +2728,7 @@ void TerrainCollapse::Update() {
 	long long now = g_TimerMan.GetSimUpdateCount();
 	std::vector<ChunkRequest> chunks;
 	std::vector<Footfall> footfalls;
+	std::vector<DropRequest> drops;
 	std::vector<Check> pending;
 	{
 		std::scoped_lock lock(s_QueueMutex);
@@ -2505,6 +2738,7 @@ void TerrainCollapse::Update() {
 		pending.swap(s_Pending);
 		chunks.swap(s_ChunkRequests);
 		footfalls.swap(s_Footfalls);
+		drops.swap(s_DropRequests);
 	}
 	for (const Check& check: pending) {
 		// The blast was this update or the last and its crater is only now being dug, so this is how things were before it.
@@ -2514,6 +2748,9 @@ void TerrainCollapse::Update() {
 	}
 	for (const ChunkRequest& request: chunks) {
 		MakeChunk(terrain, request);
+	}
+	for (const DropRequest& request: drops) {
+		DropBox(terrain, request, now);
 	}
 	// Steps on loose ground, in a fixed order, a few an update.
 	std::sort(footfalls.begin(), footfalls.end(), [](const Footfall& a, const Footfall& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Direction < b.Direction); });
@@ -2573,6 +2810,7 @@ void TerrainCollapse::Update() {
 					size_t before = s_Bodies.size();
 					LiftPiece(terrain, piece);
 					if (s_Bodies.size() > before) {
+						s_Bodies.back().Drop = s_Drops.count(rested.Drop) ? rested.Drop : 0;
 						throwBody(s_Bodies.back());
 					}
 				}
@@ -2674,6 +2912,8 @@ void TerrainCollapse::Clear() {
 	s_Scheduled.clear();
 	s_ChunkRequests.clear();
 	s_Footfalls.clear();
+	s_DropRequests.clear();
+	s_Drops.clear();
 }
 
 int TerrainCollapse::GetCollapsedCount() {

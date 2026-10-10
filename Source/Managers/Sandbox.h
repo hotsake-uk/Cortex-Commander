@@ -71,7 +71,8 @@ namespace RTE {
 		static void OnActivityStarted();
 
 		/// Uses a sandbox tool from a script, as if clicked at a point (Lua: SandboxDo). Applied in the next sim update.
-		/// @param toolName The tool's name as shown in the window ("Units", "Brain", "Item", "Structure", "Fire", "Water", "Lightning", "Rally point", "Take control", "Remove"...) or "Orders" to order a whole side.
+		/// @param toolName The tool's name as shown in the window ("Units", "Brain", "Item", "Structure", "Fire", "Water", "Lightning", "Rally point", "Take control", "Remove"...), "Orders" to order a whole side,
+		/// or "Undo" to take back the newest paint stroke, placing click or drop (as Ctrl+Z). "Make it fall" and "Select" take a box of half-size count round the point.
 		/// @param position Where to use it.
 		/// @param team The side: 0 Red, 1 Green, 2 Blue, 3 Yellow (the game's team colours).
 		/// @param order For units and "Orders": 0 hold, 1 attack nearest enemy, 2 hunt brains, 3 patrol, 4 go to rally point, 5 do nothing, 6 dig for gold.

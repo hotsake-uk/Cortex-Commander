@@ -166,6 +166,9 @@ namespace SandboxDetail {
 		if (PoursLiquid(kind) && !FluidSim::IsEnabled()) {
 			return "Flowing liquids are off (World > Simulations, or F6 > Water): nothing is poured.";
 		}
+		if (kind == Tool::CollapseArea && !TerrainCollapse::IsEnabled()) {
+			return "Collapsing terrain is off (F6 > Falling ground): nothing falls.";
+		}
 		if (PoursPowder(kind) && !FluidSim::PowdersEnabled()) {
 			return "Loose ground is off (World > Simulations, or F6 > Water): sand, snow, gravel and glass aren't poured.";
 		}
@@ -232,6 +235,8 @@ namespace SandboxDetail {
 				return "Drag along the ground to plant big trees: leafy, pine, tall and autumn ones, their trunks of tree trunk (wood without it) and their leaves of vegetation, so they burn and can be cut down.";
 			case Tool::Candles:
 				return "Drag along the ground to put down candles: tapers, pillars and stubs in white, ivory, red and beeswax. Set one alight with fire (the Fire brush, a flame, burning grass beside it) and it burns like a real one: a small steady flame that lights up round it, the wax melting down from the top and running down the sides, until it's burnt down. Water, a strong wind, a blast or rain in the open puts it out; light it again and it carries on.";
+			case Tool::CollapseArea:
+				return "Drag out a box on the world: all the ground in it breaks loose and falls, rock, earth, sand, wood, buildings and all (not doors). Each piece lands as its material does: concrete and glass shatter, earth and stone crack, sand crumbles, wood splinters, metal bends. What only the box held up comes down too. A big box falls as rubble. Shift keeps it square, Escape drops it, Ctrl+Z puts it all back. Up to 800 px either way.";
 			case Tool::TerrainOther:
 				return "Paints the terrain chosen under \"More terrain...\": the base game's ground (topsoil, bedrock, red and lunar earth, snow, metal, ...).";
 			default:
@@ -365,6 +370,8 @@ namespace SandboxDetail {
 				return {Icon::Chunk, IM_COL32(230, 190, 60, 255)};
 			case Tool::TerrainOther:
 				return {Icon::Chunk, IM_COL32(200, 160, 120, 255)};
+			case Tool::CollapseArea:
+				return {Icon::Down, IM_COL32(242, 150, 60, 255)};
 			case Tool::Plants:
 				return {Icon::Plant, IM_COL32(110, 190, 80, 255)};
 			case Tool::Cacti:
