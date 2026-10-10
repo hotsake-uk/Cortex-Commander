@@ -11,6 +11,7 @@
 #include "PresetMan.h"
 #include "SceneMan.h"
 #include "SLTerrain.h"
+#include "TerrainCollapse.h"
 #include "Scene.h"
 #include "TimerMan.h"
 #include "Vector.h"
@@ -536,6 +537,10 @@ void TerrainFire::Update() {
 		bool ash = !charcoal && (s_FuelTable[burntMaterial] != Fuel::None ? s_FuelProps[burntMaterial].LeavesAsh : c_Fuels[static_cast<int>(pixel.Kind)].LeavesAsh) && s_AshMaterial > 0;
 		terrain->SetMaterialPixel(pixel.X, pixel.Y, charcoal ? s_CharcoalMaterial : (ash ? s_AshMaterial : g_MaterialAir));
 		terrain->SetFGColorPixel(pixel.X, pixel.Y, charcoal ? s_CharcoalColor : (ash ? s_AshColor : ColorKeys::g_MaskColor));
+		// Wood burning through (a tree's trunk, a beam) can leave what it held up hanging in the air: let it fall, as if it had been cut.
+		if (const Material* burnt = g_SceneMan.GetMaterialFromID(burntMaterial); burnt && burnt->GetIntegrity() >= 5.0F) {
+			TerrainCollapse::NoteDamage(pixel.X, pixel.Y);
+		}
 		minX = std::min(minX, pixel.X);
 		minY = std::min(minY, pixel.Y);
 		maxX = std::max(maxX, pixel.X);
