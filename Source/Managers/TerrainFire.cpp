@@ -12,6 +12,7 @@
 #include "SceneMan.h"
 #include "SLTerrain.h"
 #include "TerrainCollapse.h"
+#include "TerrainCandle.h"
 #include "Scene.h"
 #include "TimerMan.h"
 #include "Vector.h"
@@ -172,6 +173,7 @@ namespace {
 			s_FuelProps[id] = fuel;
 			s_BlastChance[id] = s_FuelTable[id] != Fuel::None && behaviour.BurnBlast > 0.0F ? std::min(behaviour.BurnBlast, 1.0F) : 0.0F;
 		}
+		TerrainCandle::BuildTables();
 		s_FuelTableBuilt = true;
 	}
 
@@ -216,6 +218,11 @@ namespace {
 			return;
 		}
 		unsigned char material = static_cast<unsigned char>(terrain->GetMaterialPixel(x, y));
+		// A candle's wick doesn't burn away: it lights the candle, which burns on by itself.
+		if (TerrainCandle::IsWick(material)) {
+			TerrainCandle::Light(x, y);
+			return;
+		}
 		Fuel kind = s_FuelTable[material];
 		if (kind == Fuel::None || !IsExposed(terrain, x, y, width, height)) {
 			return;
@@ -245,7 +252,7 @@ namespace {
 } // namespace
 
 bool TerrainFire::IsFlammable(int materialID) {
-	return s_FuelTableBuilt && materialID > 0 && materialID < 256 && s_FuelTable[materialID] != Fuel::None;
+	return s_FuelTableBuilt && materialID > 0 && materialID < 256 && (s_FuelTable[materialID] != Fuel::None || TerrainCandle::IsWick(materialID));
 }
 
 bool TerrainFire::FlammabilityKnown() {
@@ -379,6 +386,7 @@ void TerrainFire::Update() {
 		s_SceneGeneration = g_SceneMan.GetSceneGeneration();
 		s_Random = 0x2545F491u;
 		s_FuelTableBuilt = false;
+		TerrainCandle::StartScene();
 		if (!s_PendingLoadState.empty() && s_Scene) {
 			// Restore a saved game's fire: "x y ticksLeft totalTicks kind" per burning pixel, then the random state.
 			std::istringstream stream(s_PendingLoadState);
@@ -409,13 +417,16 @@ void TerrainFire::Update() {
 		s_AreaQueue.clear();
 		s_DouseQueue.clear();
 		s_Burning.clear();
+		TerrainCandle::Clear();
 		return;
 	}
 	if (!s_FuelTableBuilt) {
 		BuildFuelTable();
 	}
 	long long simUpdate = g_TimerMan.GetSimUpdateCount();
-	if (s_LastTickUpdate >= 0 && simUpdate - s_LastTickUpdate < c_TickInterval) {
+	bool tick = s_LastTickUpdate < 0 || simUpdate - s_LastTickUpdate >= c_TickInterval;
+	TerrainCandle::Update(tick);
+	if (!tick) {
 		RegisterLights();
 		return;
 	}
@@ -444,6 +455,8 @@ void TerrainFire::Update() {
 		int reach = static_cast<int>(radius);
 		int centerX = static_cast<int>(std::floor(center.x));
 		int centerY = static_cast<int>(std::floor(center.y));
+		// (Candles' wicks are a pixel wide, so the step of two below would miss half of them.)
+		TerrainCandle::LightInArea(centerX, centerY, reach, 0.6F);
 		for (int dy = -reach; dy <= reach; dy += 2) {
 			for (int dx = -reach; dx <= reach; dx += 2) {
 				if (dx * dx + dy * dy <= reach * reach && Random01(s_Random) < 0.35F) {
@@ -455,6 +468,7 @@ void TerrainFire::Update() {
 	// Water last, so it wins over anything set alight at the same time.
 	std::sort(douses.begin(), douses.end(), [](const glm::ivec3& a, const glm::ivec3& b) { return a.y != b.y ? a.y < b.y : (a.x != b.x ? a.x < b.x : a.z < b.z); });
 	for (const glm::ivec3& douse: douses) {
+		TerrainCandle::Douse(douse.x, douse.y, douse.z);
 		if (s_Burning.empty()) {
 			break;
 		}
@@ -750,6 +764,7 @@ void TerrainFire::SetPendingLoadState(const std::string& state) {
 }
 
 void TerrainFire::Clear() {
+	TerrainCandle::Clear();
 	s_Burning.clear();
 	s_Blasts.clear();
 	s_LastBlastMS = -1.0e9;

@@ -455,6 +455,13 @@ namespace SandboxDetail {
 				debris = DebrisPreset("Sandbox Tree Trunks");
 				leaves = DebrisPreset("Sandbox Tree Leaves");
 				break;
+			case Tool::Candles:
+				// The wax, and its wick drawn over it (as a tree's leaves over its trunk). In whole steps of size, so a wick never comes out
+				// missing or two pixels wide on one side.
+				debris = DebrisPreset("Sandbox Candle Wax");
+				leaves = DebrisPreset("Sandbox Candle Wicks");
+				scale = std::max(std::round(scale), 1.0F);
+				break;
 			default:
 				debris = DebrisPreset("Plants");
 				break;
@@ -500,6 +507,9 @@ namespace SandboxDetail {
 		if (kind == Tool::Trees) {
 			// y is the last air above the ground; the tree's roots go into it.
 			upper = y + 1 + static_cast<int>(static_cast<float>(c_TreeRootDepth) * scale) - scaledHeight;
+		} else if (kind == Tool::Candles) {
+			// Standing on the ground, its foot a row into it so it stands firm.
+			upper = y + 1 + static_cast<int>(scale) - scaledHeight;
 		} else {
 			// The piece's middle goes the debris's depth into the ground, as ScatterOnTerrain puts it.
 			int minDepth = debris->GetMinDepth();
@@ -1302,6 +1312,7 @@ namespace SandboxDetail {
 					case Tool::Cacti:
 					case Tool::Mushrooms:
 					case Tool::Trees:
+					case Tool::Candles:
 					case Tool::BuildBeam:
 					case Tool::BuildPillar:
 					case Tool::BuildRoom:
@@ -1706,6 +1717,7 @@ namespace SandboxDetail {
 			case Tool::Cacti:
 			case Tool::Mushrooms:
 			case Tool::Trees:
+			case Tool::Candles:
 				PlacePlant(at, stroke.Radius, stroke.Kind, stroke.Scale);
 				break;
 			case Tool::TerrainOther:

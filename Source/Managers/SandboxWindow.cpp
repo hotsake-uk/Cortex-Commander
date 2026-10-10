@@ -230,6 +230,8 @@ namespace SandboxDetail {
 				return "Brush over the ground to grow grass on top of it, a few pixels thick, as the game's own maps have on their topsoil. Grows only up into the air, and only where there's no grass yet.";
 			case Tool::Trees:
 				return "Drag along the ground to plant big trees: leafy, pine, tall and autumn ones, their trunks of tree trunk (wood without it) and their leaves of vegetation, so they burn and can be cut down.";
+			case Tool::Candles:
+				return "Drag along the ground to put down candles: tapers, pillars and stubs in white, ivory, red and beeswax. Set one alight with fire (the Fire brush, a flame, burning grass beside it) and it burns like a real one: a small steady flame that lights up round it, the wax melting down from the top and running down the sides, until it's burnt down. Water, a strong wind, a blast or rain in the open puts it out; light it again and it carries on.";
 			case Tool::TerrainOther:
 				return "Paints the terrain chosen under \"More terrain...\": the base game's ground (topsoil, bedrock, red and lunar earth, snow, metal, ...).";
 			default:
@@ -373,6 +375,8 @@ namespace SandboxDetail {
 				return {Icon::Plant, IM_COL32(70, 140, 60, 255)};
 			case Tool::GrowGrass:
 				return {Icon::Plant, IM_COL32(140, 210, 80, 255)};
+			case Tool::Candles:
+				return {Icon::Candle, IM_COL32(232, 226, 205, 255)};
 			case Tool::BoulderRain:
 				return {Icon::Chunk, IM_COL32(150, 140, 130, 255)};
 			case Tool::Dig:

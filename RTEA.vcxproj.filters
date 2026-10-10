@@ -229,6 +229,9 @@
     <ClInclude Include="Source\Managers\TerrainFire.h">
       <Filter>Managers</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Managers\TerrainCandle.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Managers\WeatherLightning.h">
       <Filter>Managers</Filter>
     </ClInclude>
@@ -914,6 +917,9 @@
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\TerrainFire.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\TerrainCandle.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\WeatherLightning.cpp">
