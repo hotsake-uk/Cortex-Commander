@@ -152,6 +152,10 @@ void AVehicle::Clear() {
 	m_CrewThrowSpeed = 14.0F;
 	m_ThrowsCrewWhenFlipped = true;
 	m_LastVel.Reset();
+	m_Tracks = nullptr;
+	m_TrackFrameLength = 2.0F;
+	m_TrackTravel = 0.0F;
+	m_DrawsCrew = true;
 	m_DriverRider = false;
 	m_Recruits.clear();
 	m_RecruitRange = 300.0F;
@@ -199,6 +203,9 @@ int AVehicle::Create(const AVehicle& reference) {
 	if (reference.m_Turret) {
 		m_ReferenceHardcodedAttachableUniqueIDs.insert(reference.m_Turret->GetUniqueID());
 	}
+	if (reference.m_Tracks) {
+		m_ReferenceHardcodedAttachableUniqueIDs.insert(reference.m_Tracks->GetUniqueID());
+	}
 
 	Actor::Create(reference);
 
@@ -238,6 +245,11 @@ int AVehicle::Create(const AVehicle& reference) {
 			m_Wheels.back().Strut->SetParentOffset(wheel.Mount);
 		}
 	}
+	if (reference.m_Tracks) {
+		SetTracks(dynamic_cast<Attachable*>(reference.m_Tracks->Clone()));
+	}
+	m_TrackFrameLength = reference.m_TrackFrameLength;
+	m_DrawsCrew = reference.m_DrawsCrew;
 	m_SuspensionTravel = reference.m_SuspensionTravel;
 	m_SuspensionStiffness = reference.m_SuspensionStiffness;
 	m_SuspensionDamping = reference.m_SuspensionDamping;
@@ -280,6 +292,9 @@ void AVehicle::Destroy(bool notInherited) {
 	}
 	if (m_Turret) {
 		m_HardcodedAttachableUniqueIDsAndRemovers.erase(m_Turret->GetUniqueID());
+	}
+	if (m_Tracks) {
+		m_HardcodedAttachableUniqueIDsAndRemovers.erase(m_Tracks->GetUniqueID());
 	}
 	for (const Wheel& wheel: m_Wheels) {
 		if (wheel.Part) {
@@ -358,6 +373,9 @@ int AVehicle::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("CrewThrowSpeed", { reader >> m_CrewThrowSpeed; });
 	MatchProperty("ThrowsCrewWhenFlipped", { reader >> m_ThrowsCrewWhenFlipped; });
 	MatchProperty("AIRecruitRange", { reader >> m_RecruitRange; });
+	MatchProperty("Tracks", { SetTracks(dynamic_cast<Attachable*>(g_PresetMan.ReadReflectedPreset(reader))); });
+	MatchProperty("TrackFrameLength", { reader >> m_TrackFrameLength; });
+	MatchProperty("DrawsCrew", { reader >> m_DrawsCrew; });
 	MatchProperty("Buoyancy", { reader >> m_Buoyancy; });
 	MatchProperty("BreakLandingSpeed", { reader >> m_BreakLandingSpeed; });
 	MatchProperty("BreakSunkFraction", { reader >> m_BreakSunkFraction; });
@@ -429,6 +447,12 @@ int AVehicle::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("CrewThrowSpeed", m_CrewThrowSpeed);
 	writer.NewPropertyWithValue("ThrowsCrewWhenFlipped", m_ThrowsCrewWhenFlipped);
 	writer.NewPropertyWithValue("AIRecruitRange", m_RecruitRange);
+	if (m_Tracks) {
+		writer.NewProperty("Tracks");
+		writer << m_Tracks;
+	}
+	writer.NewPropertyWithValue("TrackFrameLength", m_TrackFrameLength);
+	writer.NewPropertyWithValue("DrawsCrew", m_DrawsCrew);
 	writer.NewPropertyWithValue("Buoyancy", m_Buoyancy);
 	writer.NewPropertyWithValue("BreakLandingSpeed", m_BreakLandingSpeed);
 	writer.NewPropertyWithValue("BreakSunkFraction", m_BreakSunkFraction);
@@ -541,6 +565,28 @@ void AVehicle::SetTurret(Turret* newTurret) {
 
 	newTurret->SetInheritsRotAngle(true);
 	newTurret->SetCollidesWithTerrainWhileAttached(false);
+}
+
+void AVehicle::SetTracks(Attachable* newTracks) {
+	if (m_Tracks && m_Tracks->IsAttached()) {
+		RemoveAndDeleteAttachable(m_Tracks);
+	}
+	m_Tracks = newTracks;
+	if (!newTracks) {
+		return;
+	}
+	AddAttachable(newTracks);
+
+	m_HardcodedAttachableUniqueIDsAndRemovers.insert({newTracks->GetUniqueID(), [](MOSRotating* parent, Attachable* attachable) {
+		                                                  AVehicle* vehicle = dynamic_cast<AVehicle*>(parent);
+		                                                  if (vehicle->m_Tracks == attachable) {
+			                                                  vehicle->m_Tracks = nullptr;
+		                                                  }
+	                                                  }});
+
+	// The wheels hold it up; the belt is only for the eye.
+	newTracks->SetInheritsRotAngle(true);
+	newTracks->SetCollidesWithTerrainWhileAttached(false);
 }
 
 void AVehicle::UpdateEngine(bool canDrive) {
@@ -1359,6 +1405,16 @@ void AVehicle::UpdateWheels() {
 
 	// The wheels ride up on their springs and turn as far as they've rolled.
 	speedAlong = m_Vel.Dot(along);
+	if (m_Tracks && m_Tracks->GetFrameCount() > 1) {
+		// (Run round the way they run driving forward, which is the way it faces: mirrored with it.)
+		if (onGround > 0) {
+			m_TrackTravel += speedAlong * GetFlipFactor() * c_PPM * deltaTime;
+		}
+		int frames = static_cast<int>(m_Tracks->GetFrameCount());
+		int frame = static_cast<int>(std::floor(m_TrackTravel / std::max(m_TrackFrameLength, 0.1F)));
+		m_TrackTravel = std::fmod(m_TrackTravel, static_cast<float>(frames) * std::max(m_TrackFrameLength, 0.1F));
+		m_Tracks->SetFrame(static_cast<unsigned int>(((frame % frames) + frames) % frames));
+	}
 	for (Wheel& wheel: m_Wheels) {
 		if (!wheel.Part) {
 			// A bare strut: its wheel shot off, it hangs all the way out.
@@ -1608,7 +1664,7 @@ void AVehicle::Update() {
 
 void AVehicle::Draw(BITMAP* pTargetBitmap, const Vector& targetPos, DrawMode mode, bool onlyPhysical) const {
 	// Everyone in it first, so the body's near side hides their legs: sat in it, not stood on it.
-	if (mode == g_DrawColor || mode == g_DrawWhite || mode == g_DrawTrans || mode == g_DrawAlpha) {
+	if (m_DrawsCrew && (mode == g_DrawColor || mode == g_DrawWhite || mode == g_DrawTrans || mode == g_DrawAlpha)) {
 		for (int seat = 0; seat < GetSeatCount(); ++seat) {
 			if (const Actor* unit = GetSeatOccupant(seat)) {
 				unit->Draw(pTargetBitmap, targetPos, mode, onlyPhysical);
@@ -1619,7 +1675,7 @@ void AVehicle::Draw(BITMAP* pTargetBitmap, const Vector& targetPos, DrawMode mod
 }
 
 void AVehicle::Draw(const Camera& camera) const {
-	for (int seat = 0; seat < GetSeatCount(); ++seat) {
+	for (int seat = 0; seat < GetSeatCount() && m_DrawsCrew; ++seat) {
 		if (const Actor* unit = GetSeatOccupant(seat)) {
 			unit->Draw(camera);
 		}

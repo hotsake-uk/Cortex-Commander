@@ -13,6 +13,8 @@ The motor boat (VH-2): a little white speedboat with an outboard motor on its tr
 
 The motor buggy (VH-5): a sand-painted dune buggy with a roll cage, a gun post and its engine behind, two knobbly wheels and the icon.
 
+The tank (VH-5): an olive hull with skirts, a track belt in four frames that run round, road wheels, a turret, its gun, and the icon.
+
 Run from the repository's root: python Tools/MakeVehicleSprites.py
 """
 
@@ -27,6 +29,7 @@ HOPPER_OUT = Path("Data/Base.rte/Actors/Vehicles/Moonhopper")
 BOAT_OUT = Path("Data/Base.rte/Actors/Vehicles/RowingBoat")
 MOTOR_OUT = Path("Data/Base.rte/Actors/Vehicles/MotorBoat")
 BUGGY_OUT = Path("Data/Base.rte/Actors/Vehicles/MotorBuggy")
+TANK_OUT = Path("Data/Base.rte/Actors/Vehicles/Tank")
 PALETTE = Image.open("Data/Base.rte/palette.bmp").getpalette()[:768]
 
 # Palette ramps, dark to light.
@@ -688,6 +691,193 @@ def buggy_icon(body, rear, front):
     return img
 
 
+# The tank's size (keep in step with Tank.ini): the hull's picture and its middle, the track belt's picture (and how its ends wrap round),
+# the road wheels, the turret and the barrel.
+TANK_W, TANK_H = 116, 26
+TANK_MID = (58, 15)
+TRACK_H = 23
+TRACK_MID = (58, 11)
+TRACK_ENDS = (11, 105)  # The middles of the sprocket at the back and the idler at the front, along the belt's picture.
+TRACK_R_OUT, TRACK_R_IN = 10.6, 8.2
+TRACK_FRAMES = 4
+ROAD_WHEEL = 18  # The picture's size: the wheel is 14 across in the middle of it, the rest the belt's thickness under it.
+TURRET_W, TURRET_H = 46, 16
+TURRET_MID = (22, 10)
+BARREL_W, BARREL_H = 46, 7
+BARREL_PIVOT = (3, 3)
+OLIVE = [139, 141, 125, 123, 126, 128, 129, 130]
+
+
+def tank_hull():
+    """A tank's hull, facing right: a sloped glacis at the front, a rear plate, a deck with an engine grille, and skirt plates bolted along
+    over the top of the track."""
+    c = Canvas(TANK_W, TANK_H, 61)
+    for y in range(3, 22):
+        # The glacis slopes back from the nose; the rear plate leans in a little.
+        left = 6 + max(0, (8 - y) // 2)
+        right = 112 - max(0, (12 - y)) if y < 12 else 112 - max(0, (y - 16))
+        for x in range(left, right + 1):
+            light = 0.62 - (y - 3) * 0.018 - (x - left) * 0.0015
+            if y == 3 or x == right:
+                light += 0.18
+            if x == left:
+                light -= 0.25
+            c.put(x, y, shade(OLIVE, dither(x, y, light, 0.04)))
+    # A shadow line along the deck's edge, and the engine grille at the back of the deck.
+    for x in range(8, 108):
+        c.put(x, 9, OLIVE[1])
+    for x in range(12, 30):
+        for y in (5, 7):
+            c.put(x, y, OLIVE[0] if x % 2 else OLIVE[2])
+    # The skirts: plates down to the top of the track, bolted, each a little apart.
+    for start in range(8, 106, 20):
+        for x in range(start, min(start + 19, 108)):
+            for y in range(13, 19):
+                light = 0.5 - (y - 13) * 0.05 + (0.15 if y == 13 else 0.0) - (0.2 if x == start else 0.0)
+                c.put(x, y, shade(OLIVE, dither(x, y, light, 0.04)))
+        bolt(c, start + 2, 14)
+        bolt(c, min(start + 16, 105), 14)
+    # A lamp and a tow hook at the front, a jerrycan rack at the back.
+    c.put(108, 6, LAMP[1])
+    c.put(109, 6, LAMP[0])
+    for y in range(17, 20):
+        c.put(111, y, IRON[2])
+    for y in range(6, 12):
+        for x in range(3, 7):
+            c.put(x, y, shade(OLIVE, 0.3 + (0.2 if y == 6 else 0.0)))
+    # A white star on the side.
+    for x, y in ((60, 10), (59, 11), (60, 11), (61, 11), (58, 12), (60, 12), (62, 12), (60, 13)):
+        c.put(x, y, WHITE[5])
+    return c.image()
+
+
+def track_frame(frame):
+    """One frame of the belt: a loop of links round the sprocket and the idler, its grousers sticking out. Frame by frame the links run
+    round a pixel at a time (clockwise, as the top runs forward when it drives forward), so four frames are a link's length."""
+    c = Canvas(TANK_W, TRACK_H, 62)
+    rear, front = TRACK_ENDS
+    cy = TRACK_MID[1]
+    straight = front - rear
+    for y in range(TRACK_H):
+        for x in range(TANK_W):
+            # How far round the belt this is (clockwise from the top of the sprocket) and how far from its middle line.
+            if rear <= x <= front:
+                d = abs(y - cy)
+                s = (x - rear) if y < cy else (straight + math.pi * TRACK_R_OUT + (front - x))
+            else:
+                ex = rear if x < rear else front
+                d = math.hypot(x - ex, y - cy)
+                angle = math.atan2(y - cy, x - ex)
+                if x > front:
+                    s = straight + (angle + math.pi / 2) * TRACK_R_OUT
+                else:
+                    s = 2 * straight + math.pi * TRACK_R_OUT + ((angle - math.pi / 2) % (2 * math.pi)) * TRACK_R_OUT
+            phase = (s - frame) % 4
+            if TRACK_R_IN <= d <= TRACK_R_OUT:
+                light = 0.5 - (0.25 if phase < 1 else 0.0) + (0.12 if d < TRACK_R_IN + 0.8 else 0.0)
+                c.put(x, y, shade(IRON, dither(x, y, light, 0.03)))
+            elif TRACK_R_OUT < d <= TRACK_R_OUT + 1.2 and phase < 2:
+                c.put(x, y, IRON[1])
+    # The sprocket and the idler inside the ends.
+    for ex, teeth in ((rear, True), (front, False)):
+        for y in range(TRACK_H):
+            for x in range(ex - 8, ex + 9):
+                d = math.hypot(x - ex, y - cy)
+                if d < 6.5:
+                    angle = math.atan2(y - cy, x - ex) - frame * (math.pi / 2) / 6.5 * 1.0
+                    spoke = teeth and (angle * 6 / (2 * math.pi)) % 1.0 < 0.35
+                    light = 0.55 - d * 0.04 + (0.15 if spoke else 0.0)
+                    c.put(x, y, shade(IRON, light) if d > 1.5 else CHROME[6])
+    return c.image()
+
+
+def road_wheel():
+    """A road wheel 14 across, rubber-tyred with a dished steel middle, in the middle of a picture as wide as it plus the belt under it."""
+    c = Canvas(ROAD_WHEEL, ROAD_WHEEL, 63)
+    mid = (ROAD_WHEEL - 1) / 2
+    for y in range(ROAD_WHEEL):
+        for x in range(ROAD_WHEEL):
+            dx, dy = x - mid, y - mid
+            d = math.hypot(dx, dy)
+            lit = (-dx - dy) / max(d, 0.001) * 0.15
+            if d > 7.2:
+                continue
+            if d > 5.6:
+                c.put(x, y, shade(RUBBER, dither(x, y, 0.45 + lit, 0.03)))
+            elif d > 1.8:
+                c.put(x, y, shade(OLIVE, dither(x, y, 0.5 + lit * 1.5 - (0.2 if d > 4.8 else 0.0), 0.03)))
+            else:
+                c.put(x, y, CHROME[5])
+    for k in range(6):
+        a = k * math.pi / 3
+        c.put(round(mid + math.cos(a) * 3.4), round(mid + math.sin(a) * 3.4), IRON[2])
+    return c.image()
+
+
+def tank_turret():
+    """The turret, facing right: a low cast dome, a hatch with a periscope on top, and the mantlet the barrel comes out of at the front."""
+    c = Canvas(TURRET_W, TURRET_H, 64)
+    mx, my = TURRET_MID
+    for y in range(2, TURRET_H):
+        for x in range(TURRET_W):
+            # A flattened dome: an ellipse cut off flat at the bottom, leaning forward.
+            u = (x - mx - 2) / 21.0
+            v = (y - my - 2) / 9.0
+            if u * u + v * v > 1.0 or y > 14:
+                continue
+            light = 0.62 - (y - 2) * 0.03 - u * 0.12 + (0.15 if u * u + v * v > 0.85 and y < my else 0.0)
+            c.put(x, y, shade(OLIVE, dither(x, y, light, 0.04)))
+    # The mantlet at the front.
+    for y in range(6, 13):
+        for x in range(37, 42):
+            c.put(x, y, shade(OLIVE, 0.4 - (x - 37) * 0.03 + (0.15 if y == 6 else 0.0)))
+    # The hatch and periscope.
+    for x in range(10, 20):
+        c.put(x, 2, OLIVE[6])
+        c.put(x, 3, OLIVE[3])
+    for y in range(0, 3):
+        c.put(23, y, IRON[3])
+        c.put(24, y, IRON[5])
+    for x in (8, 30):
+        bolt(c, x, 8)
+    return c.image()
+
+
+def tank_barrel():
+    """The gun: a long barrel from its trunnion (the pivot, where it turns in the mantlet) to a muzzle brake."""
+    c = Canvas(BARREL_W, BARREL_H, 65)
+    py = BARREL_PIVOT[1]
+    for x in range(0, BARREL_W):
+        thick = 2 if x < 38 else 3
+        if x < 8:
+            thick = 3
+        for dy in range(-thick + 1, thick):
+            light = 0.55 - dy * 0.12 - (0.1 if x > 38 and x % 3 == 0 else 0.0)
+            c.put(x, py + dy, shade(OLIVE if x < 38 else IRON, dither(x, py + dy, light, 0.03)))
+    c.put(BARREL_W - 1, py, IRON[0])
+    return c.image()
+
+
+def tank_icon(hull, track, wheel, turret, barrel):
+    """The buy menu's picture: the hull on its tracks with the turret on top and the gun level."""
+    top = 9
+    img = Image.new("P", (TANK_W + 4, TANK_H + top + 16), 0)
+    img.putpalette(PALETTE)
+
+    def paste(picture, x, y):
+        img.paste(picture, (x, y), picture.point(lambda i: 255 if i else 0, mode="1"))
+
+    paste(hull, 0, top)
+    hub = top + TANK_MID[1] + 13
+    for wx in (-38, -23, -8, 7, 22, 37):
+        paste(wheel, TANK_MID[0] + wx - ROAD_WHEEL // 2, hub - ROAD_WHEEL // 2)
+    paste(track, 0, top + TANK_MID[1] + 12 - TRACK_MID[1])
+    tx, ty = TANK_MID[0] - 6, top + TANK_MID[1] - 16
+    paste(barrel, tx + 14 - BARREL_PIVOT[0], ty - 2 - BARREL_PIVOT[1])
+    paste(turret, tx - TURRET_MID[0], ty - TURRET_MID[1])
+    return img
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     body = cart_body()
@@ -729,6 +919,20 @@ def main():
     rear.save(BUGGY_OUT / "BuggyRearWheel.png")
     front.save(BUGGY_OUT / "BuggyFrontWheel.png")
     buggy_icon(body, rear, front).save(BUGGY_OUT / "BuggyIcon.png")
+
+    TANK_OUT.mkdir(parents=True, exist_ok=True)
+    hull = tank_hull()
+    tracks = [track_frame(frame) for frame in range(TRACK_FRAMES)]
+    wheel = road_wheel()
+    turret = tank_turret()
+    barrel = tank_barrel()
+    hull.save(TANK_OUT / "TankHull.png")
+    for frame, track in enumerate(tracks):
+        track.save(TANK_OUT / f"TankTrack{frame:03d}.png")
+    wheel.save(TANK_OUT / "TankRoadWheel.png")
+    turret.save(TANK_OUT / "TankTurret.png")
+    barrel.save(TANK_OUT / "TankBarrel.png")
+    tank_icon(hull, tracks[0], wheel, turret, barrel).save(TANK_OUT / "TankIcon.png")
 
 
 if __name__ == "__main__":
