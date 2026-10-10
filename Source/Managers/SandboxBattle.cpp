@@ -85,14 +85,83 @@ namespace SandboxDetail {
 
 		/// Gives a unit just bought its post in the place its team defends: somewhere on the ground inside the radius. It walks there once its
 		/// ship has let it out, and from then on UpdateBattleDefenders sends it after enemies near the place and back again.
-		/// A post somewhere on the ground inside a defended place's radius.
-		Vector PostIn(const BattleSettings& settings) {
-			float radius = static_cast<float>(std::max(settings.DefendRadius, 1));
-			Vector around = settings.DefendPos + Vector((Random01() * 2.0F - 1.0F) * radius * 0.6F, 0.0F);
+		/// The running mode's own zone (a hill, an assault objective) a place is the middle of, or nullptr.
+		const std::vector<Vector>* ModeZoneAt(const Vector& centre) {
+			if (!s_ModeRun.Running) {
+				return nullptr;
+			}
+			const bool wraps = g_SceneMan.SceneWrapsX();
+			for (const std::vector<Vector>& zone: s_ModeRun.Settings.Zones) {
+				if (zone.size() < 3) {
+					continue;
+				}
+				Vector middle;
+				for (const Vector& corner: zone) {
+					middle += corner;
+				}
+				middle *= 1.0F / static_cast<float>(zone.size());
+				g_SceneMan.WrapPosition(middle);
+				if (g_SceneMan.ShortestDistance(middle, centre, wraps).MagnitudeIsLessThan(2.0F)) {
+					return &zone;
+				}
+			}
+			return nullptr;
+		}
+
+		/// Whether a place (not yet wrapped) is in the ground.
+		bool GroundAt(Vector at) {
+			g_SceneMan.WrapPosition(at);
+			return g_SceneMan.GetTerrMatter(at.GetFloorIntX(), at.GetFloorIntY()) != g_MaterialAir;
+		}
+
+		/// Where a unit's feet go on a floor inside a zone, with headroom above them in it too (so its middle, which is what counts as in
+		/// the zone, is): a place picked at random inside it, up out of the ground and down onto the floor. False with none found.
+		bool FloorInZone(const std::vector<Vector>& zone, float headroom, Vector& feet) {
+			float left = zone[0].m_X, right = zone[0].m_X, top = zone[0].m_Y, bottom = zone[0].m_Y;
+			for (const Vector& corner: zone) {
+				left = std::min(left, corner.m_X);
+				right = std::max(right, corner.m_X);
+				top = std::min(top, corner.m_Y);
+				bottom = std::max(bottom, corner.m_Y);
+			}
+			const Vector step(0.0F, 2.0F);
+			for (int tries = 0; tries < 60; ++tries) {
+				Vector at(left + Random01() * (right - left), top + Random01() * (bottom - top));
+				if (!IsInZone(zone, at)) {
+					continue;
+				}
+				while (IsInZone(zone, at) && GroundAt(at)) {
+					at -= step;
+				}
+				while (IsInZone(zone, at + step) && !GroundAt(at + step)) {
+					at += step;
+				}
+				// (No floor under it inside the zone, or no room above it: the zone's bottom edge in the air, or a floor up against its top.)
+				if (!IsInZone(zone, at) || !GroundAt(at + step) || !IsInZone(zone, at - Vector(0.0F, headroom))) {
+					continue;
+				}
+				g_SceneMan.WrapPosition(at);
+				feet = at;
+				return true;
+			}
+			return false;
+		}
+
+		/// A post somewhere on the ground inside a defended place's radius. For a mode's own zone, on a floor inside the zone: from its
+		/// middle straight down, an objective drawn round an upper storey (with a gap in its floor there) had its units stand on the storey
+		/// below, out of it, thinking they were taking it.
+		Vector PostAround(const Vector& centre, float radius) {
+			Vector feet;
+			if (const std::vector<Vector>* zone = ModeZoneAt(centre); zone && (FloorInZone(*zone, 24.0F, feet) || FloorInZone(*zone, 0.0F, feet))) {
+				return feet;
+			}
+			Vector around = centre + Vector((Random01() * 2.0F - 1.0F) * radius * 0.6F, 0.0F);
 			g_SceneMan.WrapPosition(around);
 			std::vector<Vector> spots = StandingSpots(around, 1);
-			return spots.empty() ? settings.DefendPos : spots.front();
+			return spots.empty() ? centre : spots.front();
 		}
+
+		Vector PostIn(const BattleSettings& settings) { return PostAround(settings.DefendPos, static_cast<float>(std::max(settings.DefendRadius, 1))); }
 
 		/// The place, radius and chase distance a defender goes by: its team card's as they are now, so a change on the card reaches the
 		/// units already in (they kept what the card said when they were bought: chase distance lowered, they still chased as far as before).
@@ -370,10 +439,7 @@ namespace SandboxDetail {
 		if (atIt) {
 			defender.Post = centre;
 		} else {
-			Vector around = centre + Vector((Random01() * 2.0F - 1.0F) * defender.Radius * 0.6F, 0.0F);
-			g_SceneMan.WrapPosition(around);
-			std::vector<Vector> spots = StandingSpots(around, 1);
-			defender.Post = spots.empty() ? centre : spots.front();
+			defender.Post = PostAround(centre, defender.Radius);
 		}
 	}
 
