@@ -240,7 +240,7 @@ namespace SandboxDetail {
 			case Tool::TerrainOther:
 				return "Paints the terrain chosen under \"More terrain...\": the base game's ground (topsoil, bedrock, red and lunar earth, snow, metal, ...).";
 			case Tool::Rope:
-				return "Click to put down a rope of the kind picked under Ropes: each click is a point it's tied at, to the unit or thing clicked, else the ground there; a click in the air leaves it loose there. Right click, Enter or Escape finishes it. It swings and sags, is pulled taut by what's tied to it, and can be cut by bullets and blasts or burnt (the kinds that burn). Ctrl+Z takes the whole rope away.";
+				return "Click to put down a rope of the kind picked under Ropes: each click is a point it's tied at, to the unit, thing or loose falling piece of ground clicked (which it then follows and pulls on), else the ground there; a click in the air leaves it loose there. Right click, Enter or Escape finishes it. It swings and sags, is pulled taut by what's tied to it, and can be cut by bullets and blasts or burnt (the kinds that burn). Ctrl+Z takes the whole rope away.";
 			case Tool::RopeCut:
 				return "Click on a rope to cut it there.";
 			case Tool::Metal:
