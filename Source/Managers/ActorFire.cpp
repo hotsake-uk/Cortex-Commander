@@ -1,6 +1,7 @@
 #include "EffectsParticles.h"
 #include "ActorFire.h"
 #include "ADoor.h"
+#include "AVehicle.h"
 #include "Actor.h"
 #include "Material.h"
 #include "MovableMan.h"
@@ -62,8 +63,17 @@ namespace {
 		return material && material->GetPresetName().find("Flesh") != std::string::npos;
 	}
 
+	/// A wooden vehicle (the Wooden Cart) burns too: longer than a person, and it breaks apart when it has burnt through.
+	bool MadeOfWood(const Actor* actor) {
+		if (!dynamic_cast<const AVehicle*>(actor) || actor->GetMetalness() >= 0.2F) {
+			return false;
+		}
+		const Material* material = actor->GetMaterial();
+		return material && material->GetPresetName().find("Wood") != std::string::npos;
+	}
+
 	bool CanBurn(const Actor* actor) {
-		return actor && !actor->IsDead() && !dynamic_cast<const ADoor*>(actor) && actor->GetHealth() > 0.0F && MadeOfFlesh(actor);
+		return actor && !actor->IsDead() && !dynamic_cast<const ADoor*>(actor) && actor->GetHealth() > 0.0F && (MadeOfFlesh(actor) || MadeOfWood(actor));
 	}
 
 	std::vector<Burner>::iterator FindBurner(const MovableObject* object) {
@@ -98,7 +108,9 @@ namespace {
 			existing->TicksLeft = std::max(existing->TicksLeft, 60);
 			return;
 		}
-		s_Burners.push_back({actor, actor->GetUniqueID(), 100 + static_cast<int>(Random01() * 80.0F), 0});
+		// Wood burns a good while longer than a person (who rolls, beats it out, runs): about 20 to 30 seconds.
+		int ticks = MadeOfWood(actor) ? 400 + static_cast<int>(Random01() * 200.0F) : 100 + static_cast<int>(Random01() * 80.0F);
+		s_Burners.push_back({actor, actor->GetUniqueID(), ticks, 0});
 		actor->SetNumberValue(c_OnFireTag, 1.0);
 	}
 
@@ -259,8 +271,24 @@ void ActorFire::Update() {
 			continue;
 		}
 
-		actor->SetHealth(actor->GetHealth() - 0.25F);
 		float radius = actor->GetRadius();
+		if (MadeOfWood(actor)) {
+			// A burning cart chars through in about 15 seconds and falls apart, its driver thrown out (AVehicle::GibThis).
+			actor->SetHealth(actor->GetHealth() - 0.35F);
+			if (actor->GetHealth() <= 0.0F) {
+				PutOut(s_Burners.begin() + static_cast<long>(i), false);
+				actor->GibThis();
+				continue;
+			}
+			// More flames, along its length: it's a big thing burning.
+			if (MovableObject* flame = CreateEffect("MOSParticle", "Body Flame")) {
+				flame->SetPos(position + Vector((Random01() - 0.5F) * radius * 1.6F, (Random01() - 0.7F) * radius * 0.5F));
+				flame->SetVel(actor->GetVel() * 0.5F + Vector((Random01() - 0.5F) * 1.0F, -1.0F - Random01()));
+				g_MovableMan.AddParticle(flame);
+			}
+		} else {
+			actor->SetHealth(actor->GetHealth() - 0.25F);
+		}
 		// Flames licking off the body.
 		if (MovableObject* flame = CreateEffect("MOSParticle", "Body Flame")) {
 			flame->SetPos(position + Vector((Random01() - 0.5F) * radius, (Random01() - 0.6F) * radius));
