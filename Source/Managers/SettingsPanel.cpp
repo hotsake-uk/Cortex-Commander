@@ -928,6 +928,11 @@ void DebugMan::SettingsGUI() {
 		Tip("Units, players' included, pull themselves up onto a ledge or over a low obstacle they walk or jet into, rather than needing the jetpack to get the height exactly right.");
 		Toggle("No map wrapping", g_SettingsMan.NoSceneWrap(), [](bool on) { g_SettingsMan.SetNoSceneWrap(on); });
 		Tip("Every map has hard left and right edges and one copy of the world, instead of looping round. Takes effect when the next map loads.");
+		float bleedChance = g_SettingsMan.WoundBleedChance();
+		if (Slider("Wounds that bleed", &bleedChance, 0.0F, 100.0F, "%.0f%%")) {
+			g_SettingsMan.SetWoundBleedChance(bleedChance);
+		}
+		Tip("The chance a wound starts a unit bleeding out, slowly losing health as it trickles, players' units and every other. Hits and limbs torn off still do their damage when they land; a wound that doesn't bleed spurts once and stops. 100 is every wound that bleeds, as before. 0: units never bleed out.");
 		Heading("Unit outlines");
 		Check("Outline units", &settings.UnitOutline);
 		Tip("A stroke round each unit and what it holds, so they stand out. It goes over the sky, the background and other objects, never over terrain.");

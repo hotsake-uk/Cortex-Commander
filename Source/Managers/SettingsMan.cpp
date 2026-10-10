@@ -135,6 +135,7 @@ void SettingsMan::Clear() {
 	m_AIThreatAvoidance = 1.0F;
 	m_AIRecklessness = 0.5F;
 	m_AISpawnDiggerChance = 0.0F;
+	m_WoundBleedChance = 100.0F;
 	m_AISpawnDiggerType = 1;
 	m_AISteadyBeforeJet = true;
 	m_AIWaitForFuel = true;
@@ -644,6 +645,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AIThreatAvoidance", { float scale = 1.0F; reader >> scale; SetAIThreatAvoidance(scale); });
 	MatchProperty("AIRecklessness", { float recklessness = 0.5F; reader >> recklessness; SetAIRecklessness(recklessness); });
 	MatchProperty("AISpawnDiggerChance", { float percent = 0.0F; reader >> percent; SetAISpawnDiggerChance(percent); });
+	MatchProperty("WoundBleedChance", { float percent = 100.0F; reader >> percent; SetWoundBleedChance(percent); });
 	MatchProperty("AISpawnDiggerType", { int type = 1; reader >> type; SetAISpawnDiggerType(type); });
 	MatchProperty("AISteadyBeforeJet", { reader >> m_AISteadyBeforeJet; });
 	MatchProperty("AIWaitForFuel", { reader >> m_AIWaitForFuel; });
@@ -1056,6 +1058,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AIThreatAvoidance", m_AIThreatAvoidance);
 	writer.NewPropertyWithValue("AISpawnDiggerChance", m_AISpawnDiggerChance);
 	writer.NewPropertyWithValue("AISpawnDiggerType", m_AISpawnDiggerType);
+	writer.NewPropertyWithValue("WoundBleedChance", m_WoundBleedChance);
 	writer.NewPropertyWithValue("AIRecklessness", m_AIRecklessness);
 	writer.NewPropertyWithValue("AISteadyBeforeJet", m_AISteadyBeforeJet);
 	writer.NewPropertyWithValue("AIWaitForFuel", m_AIWaitForFuel);
