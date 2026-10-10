@@ -25,7 +25,7 @@ namespace RTE {
 		float SlideChance = -1.0F; //!< For a powder: the chance a step of sliding down a slope.
 		float Scuffs = -1.0F; //!< For loose ground: how readily a unit walking or running on it knocks surface pixels loose and shoves them along (TerrainCollapse), 0 to 1. 0 or unset: not at all. Sand 1.
 		int Sticky = -1; //!< For a powder: 1 to slide only off a drop two deep, so it stands steeper (snow).
-		std::string Burns; //!< "Grass", "Wood" or "Oil" for how it burns (TerrainFire), "None" for not at all.
+		std::string Burns; //!< "Grass", "Wood", "Oil" or "Ember" (smoulders, glowing: charcoal) for how it burns (TerrainFire), "None" for not at all.
 		int BurnMinTicks = -1; //!< How long a pixel of it burns, in fire ticks (a twentieth of a second), at the least and the most.
 		int BurnMaxTicks = -1;
 		float BurnSpread = -1.0F; //!< The chance a fire tick of setting each flammable neighbour alight.

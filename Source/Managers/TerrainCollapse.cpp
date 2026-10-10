@@ -62,7 +62,7 @@ namespace {
 	std::array<bool, 256> s_Flimsy{}; //!< Materials too weak to hold a falling piece up: grass, plants, ash. A piece goes through them and flattens them.
 	std::array<bool, 256> s_Leaves{}; //!< Vegetation: the leaves of trees and the base game's plants.
 	std::array<bool, 256> s_TreeTrunk{}; //!< The wood of trees. A tree's leaves hang on its trunk, not on whatever ground or tree their tips brush against.
-	std::array<bool, 256> s_NoHold{}; //!< Ash: loose powder that neither holds anything up nor joins anything into one piece.
+	std::array<bool, 256> s_NoHold{}; //!< Ash and charcoal: loose powder that neither holds anything up nor joins anything into one piece.
 	std::array<float, 256> s_Density{};
 	std::array<float, 256> s_Toughness{};
 	std::array<float, 256> s_Scuff{}; //!< How readily walking on a material knocks it loose, 0 to 1.
@@ -95,7 +95,7 @@ namespace {
 			const std::string& name = material->GetPresetName();
 			s_Leaves[id] = name == "Vegetation";
 			s_TreeTrunk[id] = name == "Tree Trunk";
-			s_NoHold[id] = name == "Ashes";
+			s_NoHold[id] = name == "Ashes" || name == "Charcoal";
 			if (name == "Ice") {
 				s_IceMaterial = id;
 			} else if (name == "Water") {
@@ -1277,7 +1277,7 @@ namespace {
 					int neighbour = ny * width + nx;
 					unsigned char state = s_State[neighbour];
 					int neighbourMaterial = materialBitmap->line[ny][nx];
-					// Liquid and ash hold nothing up.
+					// Liquid, ash and charcoal hold nothing up.
 					if (neighbourMaterial == g_MaterialAir || FluidSim::IsLiquid(neighbourMaterial) || s_NoHold[neighbourMaterial] || !Joins(material, neighbourMaterial, treeRules)) {
 						continue;
 					}

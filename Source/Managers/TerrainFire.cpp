@@ -37,7 +37,8 @@ namespace {
 		None,
 		Grass, //!< Grass, vegetation, leaves: flares up and burns away quickly.
 		Wood, //!< Wood, cloth, rubber: burns slowly from the surface in, leaving ash.
-		Oil //!< Burns fast and hot, spreads eagerly.
+		Oil, //!< Burns fast and hot, spreads eagerly.
+		Ember //!< Charcoal: smoulders a long while, glowing, with no flame, and sets nothing alight.
 	};
 
 	struct FuelProperties {
@@ -51,8 +52,10 @@ namespace {
 	    {25, 50, 0.25F, false}, // Grass
 	    {30, 70, 0.3F, true}, // Wood (it was 0.07, then 0.12: a lit plank crept a pixel or two a second along its top, a thin line of fire that looked like nothing was burning)
 	    {20, 40, 0.5F, false}, // Oil
+	    {200, 500, 0.0F, false}, // Ember (stays charcoal when it goes out)
 	};
 
+	constexpr float c_CharcoalShare = 0.3F; //!< Share of burnt-out wood that's left as charcoal (smouldering), the rest ash as before.
 	constexpr float c_BurnOutCatch = 0.4F; //!< Chance a pixel burning out sets each flammable neighbour alight: the heat it leaves eats into what was behind it.
 	constexpr int c_TickInterval = 3; //!< Sim updates per fire tick (about 20 per second).
 	constexpr size_t c_MaxBurning = 6000;
@@ -72,6 +75,8 @@ namespace {
 	bool s_FuelTableBuilt = false;
 	int s_AshMaterial = -1;
 	int s_AshColor = 0;
+	int s_CharcoalMaterial = -1;
+	int s_CharcoalColor = 0;
 
 	std::map<int, BurningPixel> s_Burning; //!< Keyed by y * width + x, so iteration order is deterministic.
 	std::vector<std::pair<int, int>> s_IgniteQueue;
@@ -119,6 +124,7 @@ namespace {
 		s_BlastChance.fill(0.0F);
 		s_DousingTable.fill(false);
 		s_AshMaterial = -1;
+		s_CharcoalMaterial = -1;
 		for (int id = 1; id < 256; ++id) {
 			const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
 			if (!material || material->GetIndex() != id) {
@@ -138,6 +144,12 @@ namespace {
 				Color ashColor = material->GetColor();
 				ashColor.RecalculateIndex();
 				s_AshColor = ashColor.GetIndex();
+			} else if (Contains(name, "Charcoal")) {
+				s_CharcoalMaterial = id;
+				Color charcoalColor = material->GetColor();
+				charcoalColor.RecalculateIndex();
+				s_CharcoalColor = charcoalColor.GetIndex();
+				s_FuelTable[id] = Fuel::Ember;
 			} else if (Contains(name, "Oil")) {
 				s_FuelTable[id] = Fuel::Oil;
 			} else if (Contains(name, "Grass") || Contains(name, "Vegetation") || Contains(name, "Leaf") || Contains(name, "Leaves") || Contains(name, "Hay") || Contains(name, "Straw") || Contains(name, "Plant")) {
@@ -147,7 +159,7 @@ namespace {
 			}
 			if (!behaviour.Burns.empty()) {
 				const std::string& burns = behaviour.Burns;
-				s_FuelTable[id] = burns == "Grass" ? Fuel::Grass : (burns == "Wood" ? Fuel::Wood : (burns == "Oil" ? Fuel::Oil : Fuel::None));
+				s_FuelTable[id] = burns == "Grass" ? Fuel::Grass : (burns == "Wood" ? Fuel::Wood : (burns == "Oil" ? Fuel::Oil : (burns == "Ember" ? Fuel::Ember : Fuel::None)));
 			}
 			FuelProperties fuel = c_Fuels[static_cast<int>(s_FuelTable[id])];
 			if (s_FuelTable[id] != Fuel::None) {
@@ -177,7 +189,7 @@ namespace {
 		return x >= 0 && y >= 0 && x < width && y < height;
 	}
 
-	/// Fire needs air: a pixel only catches if it touches air (or ash, which lets air through).
+	/// Fire needs air: a pixel only catches if it touches air (or ash or charcoal, which let air through: what's burnt doesn't smother what's left).
 	bool IsExposed(const SLTerrain* terrain, int x, int y, int width, int height) {
 		static constexpr int offsets[4][2] = {{0, -1}, {-1, 0}, {1, 0}, {0, 1}};
 		for (const auto& offset: offsets) {
@@ -187,7 +199,7 @@ namespace {
 				return true;
 			}
 			int material = terrain->GetMaterialPixel(nx, ny);
-			if (material == g_MaterialAir || material == s_AshMaterial) {
+			if (material == g_MaterialAir || material == s_AshMaterial || material == s_CharcoalMaterial) {
 				return true;
 			}
 		}
@@ -289,8 +301,11 @@ bool TerrainFire::IsBurningNear(const Vector& position, int radius) {
 		for (int dx = -radius; dx <= radius; ++dx) {
 			int x = centerX + dx;
 			int y = centerY + dy;
-			if (WrapPixel(x, y, width, height) && s_Burning.count(y * width + x)) {
-				return true;
+			// (Smouldering charcoal is no fire to stand back from or catch from.)
+			if (WrapPixel(x, y, width, height)) {
+				if (auto found = s_Burning.find(y * width + x); found != s_Burning.end() && found->second.Kind != Fuel::Ember) {
+					return true;
+				}
 			}
 		}
 	}
@@ -379,7 +394,7 @@ void TerrainFire::Update() {
 			int totalTicks = 0;
 			int kind = 0;
 			while (loadedWidth > 0 && stream >> x >> y >> ticksLeft >> totalTicks >> kind) {
-				if (kind > 0 && kind <= static_cast<int>(Fuel::Oil) && s_Burning.size() < c_MaxBurning) {
+				if (kind > 0 && kind <= static_cast<int>(Fuel::Ember) && s_Burning.size() < c_MaxBurning) {
 					s_Burning.emplace(y * loadedWidth + x, BurningPixel{x, y, static_cast<short>(ticksLeft), static_cast<short>(totalTicks), static_cast<Fuel>(kind)});
 				}
 			}
@@ -484,12 +499,13 @@ void TerrainFire::Update() {
 			continue;
 		}
 		const FuelProperties& fuel = s_FuelProps[burningMaterial];
-		for (int i = 0; i < 4; ++i) {
+		bool smouldering = s_FuelTable[burningMaterial] == Fuel::Ember;
+		for (int i = 0; i < 4 && !smouldering; ++i) {
 			if (Random01(s_Random) < fuel.Spread * directionScale[i] * damping) {
 				spreadTo.emplace_back(pixel.X + neighbours[i][0], pixel.Y + neighbours[i][1]);
 			}
 		}
-		if (emberChance > 0.0F && Random01(s_Random) < emberChance) {
+		if (!smouldering && emberChance > 0.0F && Random01(s_Random) < emberChance) {
 			int distance = 3 + static_cast<int>(Random01(s_Random) * 9.0F);
 			spreadTo.emplace_back(pixel.X + (wind > 0.0F ? distance : -distance), pixel.Y - static_cast<int>(Random01(s_Random) * 5.0F));
 		}
@@ -505,7 +521,7 @@ void TerrainFire::Update() {
 		s_Burning.erase(key);
 	}
 
-	// Burnt out pixels become air or ash.
+	// Burnt out pixels become air or ash, and some of burnt wood charcoal, which smoulders on. Smouldering charcoal going out stays charcoal.
 	int minX = width;
 	int minY = height;
 	int maxX = -1;
@@ -513,9 +529,14 @@ void TerrainFire::Update() {
 	for (int key: burntOut) {
 		const BurningPixel pixel = s_Burning[key];
 		unsigned char burntMaterial = static_cast<unsigned char>(terrain->GetMaterialPixel(pixel.X, pixel.Y));
-		bool ash = (s_FuelTable[burntMaterial] != Fuel::None ? s_FuelProps[burntMaterial].LeavesAsh : c_Fuels[static_cast<int>(pixel.Kind)].LeavesAsh) && s_AshMaterial > 0;
-		terrain->SetMaterialPixel(pixel.X, pixel.Y, ash ? s_AshMaterial : g_MaterialAir);
-		terrain->SetFGColorPixel(pixel.X, pixel.Y, ash ? s_AshColor : ColorKeys::g_MaskColor);
+		if (s_FuelTable[burntMaterial] == Fuel::Ember) {
+			s_Burning.erase(key);
+			continue;
+		}
+		bool charcoal = s_FuelTable[burntMaterial] == Fuel::Wood && s_CharcoalMaterial > 0 && Random01(s_Random) < c_CharcoalShare;
+		bool ash = !charcoal && (s_FuelTable[burntMaterial] != Fuel::None ? s_FuelProps[burntMaterial].LeavesAsh : c_Fuels[static_cast<int>(pixel.Kind)].LeavesAsh) && s_AshMaterial > 0;
+		terrain->SetMaterialPixel(pixel.X, pixel.Y, charcoal ? s_CharcoalMaterial : (ash ? s_AshMaterial : g_MaterialAir));
+		terrain->SetFGColorPixel(pixel.X, pixel.Y, charcoal ? s_CharcoalColor : (ash ? s_AshColor : ColorKeys::g_MaskColor));
 		// Wood burning through (a tree's trunk, a beam) can leave what it held up hanging in the air: let it fall, as if it had been cut.
 		if (const Material* burnt = g_SceneMan.GetMaterialFromID(burntMaterial); burnt && burnt->GetIntegrity() >= 5.0F) {
 			TerrainCollapse::NoteDamage(pixel.X, pixel.Y);
@@ -525,6 +546,11 @@ void TerrainFire::Update() {
 		maxX = std::max(maxX, pixel.X);
 		maxY = std::max(maxY, pixel.Y);
 		s_Burning.erase(key);
+		if (charcoal) {
+			const FuelProperties& ember = s_FuelProps[s_CharcoalMaterial];
+			short ticks = static_cast<short>(ember.MinTicks + static_cast<int>(Random01(s_Random) * static_cast<float>(ember.MaxTicks - ember.MinTicks + 1)));
+			s_Burning.emplace(key, BurningPixel{pixel.X, pixel.Y, ticks, ticks, Fuel::Ember});
+		}
 		// Fire needs air (IsExposed), so a block of wood only ever burnt its outer skin: the pixels behind came into the air as the skin burnt out,
 		// but by then nothing beside them was burning. The heat a pixel leaves as it goes sets what's behind it going, so wood burns in and through.
 		for (const auto& neighbour: neighbours) {
@@ -544,7 +570,15 @@ void TerrainFire::Update() {
 	// Group burning pixels into cells for flames, smoke and light. std::map keeps this ordered and deterministic.
 	constexpr int cellSize = 24;
 	std::map<int, std::pair<glm::ivec2, int>> cells;
+	std::map<int, std::pair<glm::ivec2, int>> emberCells; //!< Smouldering charcoal: no flames or smoke, only a faint glow.
 	for (const auto& [key, pixel]: s_Burning) {
+		if (pixel.Kind == Fuel::Ember) {
+			auto& cell = emberCells[(pixel.Y / cellSize) * ((width + cellSize - 1) / cellSize) + pixel.X / cellSize];
+			if (cell.second++ == 0) {
+				cell.first = glm::ivec2(pixel.X, pixel.Y);
+			}
+			continue;
+		}
 		int cellKey = (pixel.Y / cellSize) * ((width + cellSize - 1) / cellSize) + pixel.X / cellSize;
 		auto& cell = cells[cellKey];
 		if (cell.second == 0) {
@@ -585,6 +619,12 @@ void TerrainFire::Update() {
 		// Light (render only, so it may flicker with its own random numbers).
 		if (s_Lights.size() < 48 && count >= 2) {
 			s_Lights.push_back({glm::vec2(static_cast<float>(position.x), static_cast<float>(position.y - 4)), std::min(40.0F + static_cast<float>(count) * 2.0F, 130.0F), std::min(0.6F + static_cast<float>(count) * 0.05F, 1.6F)});
+		}
+	}
+	// Smouldering charcoal only glows, faintly.
+	for (const auto& [cellKey, cell]: emberCells) {
+		if (s_Lights.size() < 64 && cell.second >= 3) {
+			s_Lights.push_back({glm::vec2(static_cast<float>(cell.first.x), static_cast<float>(cell.first.y)), std::min(16.0F + static_cast<float>(cell.second) * 0.5F, 40.0F), std::min(0.15F + static_cast<float>(cell.second) * 0.01F, 0.45F)});
 		}
 	}
 	// Fuel blasts set off this tick (TryIgnite): one at the first of them, at most one every quarter second of sim time, the rest just burn.
@@ -656,7 +696,7 @@ void TerrainFire::Extinguish(int x, int y) {
 	}
 }
 
-void TerrainFire::GetBurning(const glm::vec2& screenOrigin, int width, int height, std::vector<glm::vec3>& burning) {
+void TerrainFire::GetBurning(const glm::vec2& screenOrigin, int width, int height, std::vector<glm::vec3>& burning, std::vector<glm::vec3>* embers) {
 	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
 	bool wraps = g_SceneMan.SceneWrapsX();
 	for (const auto& [key, pixel]: s_Burning) {
@@ -672,7 +712,11 @@ void TerrainFire::GetBurning(const glm::vec2& screenOrigin, int width, int heigh
 			continue;
 		}
 		float heat = static_cast<float>(pixel.TicksLeft) / static_cast<float>(std::max<short>(pixel.TotalTicks, 1));
-		burning.emplace_back(position, heat);
+		if (pixel.Kind != Fuel::Ember) {
+			burning.emplace_back(position, heat);
+		} else if (embers) {
+			embers->emplace_back(position, heat);
+		}
 	}
 }
 
