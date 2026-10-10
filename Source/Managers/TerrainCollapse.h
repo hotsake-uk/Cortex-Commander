@@ -66,6 +66,15 @@ namespace RTE {
 		/// @param radius How far around it to look.
 		static void BeginChange(const Vector& position, float radius);
 
+		/// Tells the system terrain has just been placed by hand (the sandbox's brushes, shapes and build boxes), so it stays where it is put even if it hangs in the air.
+		/// Checks already under way near it took their picture of what hung in the air before it was there; this adds it to them, so it isn't mistaken for ground cut loose.
+		/// A later blast or dig that cuts it away from what holds it still lets it fall. Main thread only.
+		/// @param left The box placed into, in scene pixels, inclusive.
+		/// @param top The box placed into, in scene pixels, inclusive.
+		/// @param right The box placed into, in scene pixels, inclusive.
+		/// @param bottom The box placed into, in scene pixels, inclusive.
+		static void NoteBuilt(int left, int top, int right, int bottom);
+
 		/// Gets whether collapsing terrain is on (a gameplay setting).
 		static bool IsEnabled() { return s_Enabled; }
 

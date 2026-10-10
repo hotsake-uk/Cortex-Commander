@@ -289,6 +289,10 @@ namespace SandboxDetail {
 			terrain->AddUpdatedMaterialArea(area);
 			// Liquid around the change may flow into it, and dug-out ground may be left hanging.
 			FluidSim::Disturb(center, reach + 2.0F);
+			if (materialName) {
+				// Painted ground stays where it's put, hanging or not, whatever digging or blasting is being checked nearby.
+				TerrainCollapse::NoteBuilt(left, top, right, bottom);
+			}
 		}
 		NotePaint(area, materialName ? "paint" : "dig", materialName, !materialName, changed, changed);
 	}
@@ -368,6 +372,7 @@ namespace SandboxDetail {
 		if (changed) {
 			terrain->AddUpdatedMaterialArea(area);
 			FluidSim::Disturb(area.GetCenter(), std::max(area.GetWidth(), area.GetHeight()) * 0.5F + 2.0F);
+			TerrainCollapse::NoteBuilt(left, top - c_MaxThickness, right, bottom);
 		}
 		NotePaint(area, "paint", "Grass", false, changed, changed);
 	}
@@ -696,6 +701,7 @@ namespace SandboxDetail {
 			}
 		}
 		terrain->AddUpdatedMaterialArea(Box(topLeft, static_cast<float>(boxWidth), static_cast<float>(boxHeight)));
+		TerrainCollapse::NoteBuilt(topLeft.GetFloorIntX(), topLeft.GetFloorIntY(), topLeft.GetFloorIntX() + boxWidth - 1, topLeft.GetFloorIntY() + boxHeight - 1);
 		// Liquid round it takes the new shape (as PaintTerrain's): a box built into a stream was dry, the water left standing where it had been.
 		FluidSim::Disturb(topLeft + Vector(static_cast<float>(boxWidth) * 0.5F, static_cast<float>(boxHeight) * 0.5F), static_cast<float>(std::max(boxWidth, boxHeight)) * 0.75F + 2.0F);
 		NotePaint(Box(topLeft, static_cast<float>(boxWidth), static_cast<float>(boxHeight)), "fill box", materialName, false, true, true);

@@ -2664,6 +2664,44 @@ void TerrainCollapse::BeginChange(const Vector& position, float radius) {
 	s_Pending.push_back(check);
 }
 
+void TerrainCollapse::NoteBuilt(int left, int top, int right, int bottom) {
+	Scene* scene = g_SceneMan.GetScene();
+	SLTerrain* terrain = scene ? scene->GetTerrain() : nullptr;
+	if (!s_Enabled || !terrain || scene != s_Scene || !s_TablesBuilt || s_State.size() != static_cast<size_t>(terrain->GetMaterialBitmap()->w) * static_cast<size_t>(terrain->GetMaterialBitmap()->h)) {
+		return;
+	}
+	int centerX = (left + right) / 2;
+	int centerY = (top + bottom) / 2;
+	int reach = std::max(right - left, bottom - top) / 2 + 2;
+	// Checks whose picture of the ground could include this place: near enough that they look here.
+	std::vector<std::shared_ptr<Before>> pictures;
+	auto consider = [&](int x, int y, int radius, const std::shared_ptr<Before>& was) {
+		if (was && std::abs(x - centerX) <= radius + reach && std::abs(y - centerY) <= radius + reach && std::find(pictures.begin(), pictures.end(), was) == pictures.end()) {
+			pictures.push_back(was);
+		}
+	};
+	for (const auto& watch: s_Watches) {
+		consider(watch.first.second * c_WatchCell + c_WatchCell / 2, watch.first.first * c_WatchCell + c_WatchCell / 2, c_WatchRadius, watch.second.Was);
+	}
+	for (const Check& check: s_Scheduled) {
+		consider(check.X, check.Y, check.Radius, check.Was);
+	}
+	{
+		std::scoped_lock lock(s_QueueMutex);
+		for (const Check& check: s_Pending) {
+			consider(check.X, check.Y, check.Radius, check.Was);
+		}
+	}
+	if (pictures.empty()) {
+		return;
+	}
+	std::shared_ptr<Before> built = LookBefore(terrain, {centerX, centerY, reach, 0, nullptr});
+	for (const std::shared_ptr<Before>& was: pictures) {
+		was->Floating.insert(was->Floating.end(), built->Floating.begin(), built->Floating.end());
+		was->Hanging.insert(was->Hanging.end(), built->Hanging.begin(), built->Hanging.end());
+	}
+}
+
 void TerrainCollapse::SpawnChunk(const Vector& position, float radius, const char* materialName) {
 	if (!s_Enabled) {
 		return;
