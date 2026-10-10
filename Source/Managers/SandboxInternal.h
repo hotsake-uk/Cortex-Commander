@@ -685,6 +685,8 @@ namespace SandboxDetail {
 		int HoldToWin = 120; //!< King of the hill: seconds holding the hill that win.
 		int HillMoveSeconds = 0; //!< King of the hill, with more than one hill: seconds before the hill moves on to the next. 0: it stays put.
 		bool MajorityScores = false; //!< King of the hill: a hill with more than one team on it scores for the team with the most there, not for none.
+		int HillsToWin = 0; //!< King of the hill: hills a team has to take to win, each taken by holding it HoldToWin seconds, after which the next
+		                    //!< comes into play. 0: the seconds held, all told, win instead.
 		int Attacker = 0; //!< Assault: the side that attacks; the rest defend.
 		int CaptureSeconds = 15; //!< Assault: seconds attackers stand in an objective with no defender in it to take it.
 		int TimeLimit = 300; //!< Assault: seconds the attackers have; each objective taken adds BonusSeconds.
