@@ -128,14 +128,21 @@ namespace {
 		for (size_t i = 0; i < s_Effects.size(); ++i) {
 			const PlacedEffect& effect = s_Effects[i];
 			ImVec2 at = ToScreen(effect.Position);
+			const bool made = effect.Kind == EffectKind::Count;
 			int kind = std::clamp(static_cast<int>(effect.Kind), 0, static_cast<int>(EffectKind::Count) - 1);
+			float reach = made ? 0.0F : lightReach[kind];
+			for (const EffectLayer& layer: effect.Layers) {
+				if (layer.Kind == LayerKind::Light || layer.Kind == LayerKind::Spotlight) {
+					reach = std::max(reach, layer.Size);
+				}
+			}
 			bool hovered = pointedAt(at);
 			ImU32 color = hovered ? IM_COL32(255, 255, 255, 255) : IM_COL32(200, 160, 255, 230);
-			if (lightReach[kind] > 0.0F) {
-				drawList->AddCircle(at, lightReach[kind] / scale, IM_COL32(200, 160, 255, 90), 48, 1.0F);
+			if (reach > 0.0F) {
+				drawList->AddCircle(at, reach / scale, IM_COL32(200, 160, 255, 90), 48, 1.0F);
 			}
 			drawList->AddRect(ImVec2(at.x - 5.0F, at.y - 5.0F), ImVec2(at.x + 5.0F, at.y + 5.0F), color, 0.0F, 0, 2.0F);
-			std::string text = std::to_string(i + 1) + " " + c_Effects[kind].Name;
+			std::string text = std::to_string(i + 1) + " " + (made ? effect.Name : std::string(c_Effects[kind].Name));
 			if (effect.Kind == EffectKind::StormCell) {
 				char wait[32];
 				std::snprintf(wait, sizeof(wait), "  next flash %.1fs", static_cast<float>(std::max(effect.Wait, 0)) / 60.0F);

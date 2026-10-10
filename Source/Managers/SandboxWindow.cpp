@@ -66,6 +66,9 @@ namespace SandboxDetail {
 		if (faction >= 0 && faction < static_cast<int>(s_FactionNames.size())) {
 			return "Random " + s_FactionNames[faction];
 		}
+		if (faction == -2) {
+			return "Random non-combatants";
+		}
 		return "Random units";
 	}
 
@@ -74,9 +77,9 @@ namespace SandboxDetail {
 		if (faction >= static_cast<int>(s_FactionNames.size())) {
 			faction = -1;
 		}
-		std::string shown = favouritesOnly ? "Favourites" : faction >= 0 ? s_FactionNames[faction] : "All factions";
+		std::string shown = favouritesOnly ? "Favourites" : faction >= 0 ? s_FactionNames[faction] : faction == -2 ? "Animals and civilians" : "All factions";
 		if (ImGui::BeginCombo(label, shown.c_str(), ImGuiComboFlags_HeightLarge)) {
-			if (ImGui::Selectable("All factions", !favouritesOnly && faction < 0)) {
+			if (ImGui::Selectable("All factions", !favouritesOnly && faction == -1)) {
 				favouritesOnly = false;
 				faction = -1;
 				changed = true;
@@ -84,6 +87,11 @@ namespace SandboxDetail {
 			if (ImGui::Selectable("Favourites", favouritesOnly)) {
 				favouritesOnly = true;
 				faction = -1;
+				changed = true;
+			}
+			if (ImGui::Selectable("Animals and civilians", !favouritesOnly && faction == -2)) {
+				favouritesOnly = false;
+				faction = -2;
 				changed = true;
 			}
 			ImGui::Separator();
@@ -96,7 +104,7 @@ namespace SandboxDetail {
 			}
 			ImGui::EndCombo();
 		}
-		ImGui::SetItemTooltip("Where random units come from: every faction, only the units marked as favourites (Ctrl+click on a tile; with none marked, every unit), or one faction.");
+		ImGui::SetItemTooltip("Where random units come from: every faction (soldiers only), only the units marked as favourites (Ctrl+click on a tile; with none marked, every unit), only the animals and civilians (non-combatants), or one faction.");
 		return changed;
 	}
 
@@ -215,6 +223,22 @@ namespace SandboxDetail {
 				return "Falls and piles like sand, heavier.";
 			case Tool::GlassShards:
 				return "Falls and piles, and cuts units walking through it.";
+			case Tool::ForceBlast:
+				return "A burst of force: throws units, dropped things, debris and smoke out from the point, with no fire and no blast damage (a hard landing still hurts).";
+			case Tool::HugeForceBlast:
+				return "The same, far wider and harder. Clears a whole area.";
+			case Tool::Implosion:
+				return "The reverse: pulls everything loose around the point in towards it. No harm done.";
+			case Tool::Updraft:
+				return "A column of air that lifts units, things and debris up over the point.";
+			case Tool::GustRight:
+				return "A gale across the point to the right: blows units, things, debris and smoke along.";
+			case Tool::GustLeft:
+				return "A gale across the point to the left: blows units, things, debris and smoke along.";
+			case Tool::SmokeBomb:
+				return "A thick cloud of smoke and no blast (gas needs to be on in F6 for it to hang about).";
+			case Tool::Fireworks:
+				return "Bursts of coloured sparks in the air above the point. They light up the sky and harm nothing.";
 			case Tool::BuildTank:
 				return "An open concrete tank, filled with what the springs pour (Paint > Springs).";
 			case Tool::TreeTrunk:
@@ -433,6 +457,23 @@ namespace SandboxDetail {
 				return {Icon::Rocket, IM_COL32(120, 200, 230, 255)};
 			case Tool::Lightning:
 				return {Icon::Bolt, IM_COL32(255, 240, 120, 255)};
+			case Tool::Decor:
+				return {Icon::Candle, IM_COL32(255, 200, 120, 255)};
+			case Tool::ForceBlast:
+				return {Icon::Star, IM_COL32(160, 215, 255, 255)};
+			case Tool::HugeForceBlast:
+				return {Icon::Star, IM_COL32(110, 160, 255, 255)};
+			case Tool::Implosion:
+				return {Icon::Target, IM_COL32(190, 140, 255, 255)};
+			case Tool::Updraft:
+				return {Icon::Arrows, IM_COL32(160, 235, 220, 255)};
+			case Tool::GustRight:
+			case Tool::GustLeft:
+				return {Icon::Cloud, IM_COL32(200, 225, 240, 255)};
+			case Tool::SmokeBomb:
+				return {Icon::Cloud, IM_COL32(140, 140, 150, 255)};
+			case Tool::Fireworks:
+				return {Icon::Star, IM_COL32(255, 120, 200, 255)};
 			case Tool::OrbitalBeam:
 				return {Icon::Bolt, IM_COL32(120, 220, 255, 255)};
 			case Tool::Effect:
@@ -673,6 +714,173 @@ namespace SandboxDetail {
 	}
 
 	/// The tools to pick from, as a row of tiles: each its picture with its name under it, the one in hand lit up.
+	/// The Effects tab's maker: the effects you have made, and the controls of the one picked, layer by layer. Changes are kept in Userdata/SandboxEffects.txt as soon as no control is being dragged.
+	void CustomEffectsUI() {
+		LoadCustomEffects();
+		const int builtIn = static_cast<int>(EffectKind::Count);
+		ImGui::SeparatorText("Make your own");
+		ImGui::TextWrapped("An effect is a stack of layers (lights, sparks, smoke, gas, forces...) that all run at once. Start from one below, change its layers, and click in the world to put it down. What you make is kept for next time.");
+		static int startFrom = 0;
+		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 11.0F);
+		if (ImGui::BeginCombo("##start", EffectTemplateName(startFrom))) {
+			for (int i = 0; i < c_EffectTemplateCount; ++i) {
+				if (ImGui::Selectable(EffectTemplateName(i), i == startFrom)) {
+					startFrom = i;
+				}
+			}
+			ImGui::EndCombo();
+		}
+		ImGui::SameLine();
+		if (ToolUI::Button("Make a new effect")) {
+			s_CustomEffects.push_back(EffectTemplate(startFrom));
+			s_EffectChoice = builtIn + static_cast<int>(s_CustomEffects.size()) - 1;
+			TookTool(ToolIndex(Tool::Effect));
+			s_CustomEffectsDirty = true;
+		}
+		ImGui::SetItemTooltip("Adds an effect made of a few layers to start from. Pick it, then click in the world.");
+		if (s_CustomEffects.empty()) {
+			ImGui::TextDisabled("None made yet.");
+		}
+		int column = 0;
+		for (size_t i = 0; i < s_CustomEffects.size(); ++i) {
+			if (column++ % 3 != 0) {
+				ImGui::SameLine();
+			}
+			const int choice = builtIn + static_cast<int>(i);
+			ImGui::PushID(static_cast<int>(i) + 5000);
+			if (ToolUI::RadioButton(s_CustomEffects[i].Name.c_str(), c_Tools[s_ToolIndex].Kind == Tool::Effect && s_EffectChoice == choice)) {
+				s_EffectChoice = choice;
+				TookTool(ToolIndex(Tool::Effect));
+			}
+			ImGui::PopID();
+		}
+		const int selected = s_EffectChoice - builtIn;
+		if (selected >= 0 && selected < static_cast<int>(s_CustomEffects.size())) {
+			CustomEffect& effect = s_CustomEffects[static_cast<size_t>(selected)];
+			ImGui::Separator();
+			char name[64];
+			std::snprintf(name, sizeof(name), "%s", effect.Name.c_str());
+			ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0F);
+			if (ImGui::InputText("Name", name, sizeof(name))) {
+				effect.Name = name;
+				s_CustomEffectsDirty = true;
+			}
+			ImGui::SameLine();
+			if (ToolUI::SmallButton("Copy")) {
+				CustomEffect copy = effect;
+				copy.Name += " copy";
+				s_CustomEffects.push_back(copy);
+				s_EffectChoice = builtIn + static_cast<int>(s_CustomEffects.size()) - 1;
+				s_CustomEffectsDirty = true;
+				return;
+			}
+			ImGui::SameLine();
+			if (ToolUI::SmallButton("Delete")) {
+				s_CustomEffects.erase(s_CustomEffects.begin() + selected);
+				s_EffectChoice = 0;
+				s_CustomEffectsDirty = true;
+				return;
+			}
+			ImGui::SetItemTooltip("Deletes this effect from the list (those already put down in the world carry on).");
+			int removeLayer = -1;
+			for (size_t li = 0; li < effect.Layers.size(); ++li) {
+				EffectLayer& layer = effect.Layers[li];
+				const LayerInfo& info = c_Layers[static_cast<int>(layer.Kind)];
+				ImGui::PushID(static_cast<int>(li));
+				const bool open = ImGui::CollapsingHeader((std::string(info.Name) + "###layer").c_str(), ImGuiTreeNodeFlags_DefaultOpen);
+				ImGui::SameLine(ImGui::GetContentRegionAvail().x - ImGui::GetFontSize() * 0.5F);
+				if (ToolUI::SmallButton("x")) {
+					removeLayer = static_cast<int>(li);
+				}
+				ImGui::SetItemTooltip("Takes this layer out.");
+				if (open) {
+					bool changed = false;
+					const bool emits = (info.Uses & LcRate) != 0 && (info.Uses & LcSpeed) != 0 && layer.Kind != LayerKind::Flames;
+					const bool isLight = layer.Kind == LayerKind::Light || layer.Kind == LayerKind::Spotlight;
+					if (info.Uses & LcSize) {
+						const char* label = isLight || layer.Kind == LayerKind::Shimmer || layer.Kind == LayerKind::Force || layer.Kind == LayerKind::Shockwave ? "Reach (px)" : "Width (px)";
+						changed |= ImGui::SliderFloat("Size", &layer.Size, 1.0F, 600.0F, (std::string(label) + " %.0f").c_str(), ImGuiSliderFlags_Logarithmic);
+					}
+					if (info.Uses & LcRate) {
+						const char* label = layer.Kind == LayerKind::Shockwave ? "Pulses a second %.1f" : (layer.Kind == LayerKind::Lightning ? "Strikes a second %.2f" : "A second %.1f");
+						changed |= ImGui::SliderFloat("Rate", &layer.Rate, layer.Kind == LayerKind::Lightning ? 0.02F : 0.1F, layer.Kind == LayerKind::Shockwave || layer.Kind == LayerKind::Lightning ? 4.0F : 300.0F, label, ImGuiSliderFlags_Logarithmic);
+					}
+					if (info.Uses & LcSpeed) {
+						changed |= ImGui::SliderFloat(layer.Kind == LayerKind::Force ? "Strength" : "Speed", &layer.Speed, 0.0F, 30.0F, "%.1f");
+					}
+					if (info.Uses & LcSpread) {
+						changed |= ImGui::SliderFloat(layer.Kind == LayerKind::Spotlight ? "Beam width" : "Spread", &layer.Spread, 0.0F, 1.0F, "%.2f");
+					}
+					if (info.Uses & LcAngle) {
+						changed |= ImGui::SliderFloat("Direction", &layer.Angle, 0.0F, 360.0F, "%.0f deg (0 up, 90 right)");
+					}
+					if (info.Uses & LcSpin) {
+						changed |= ImGui::SliderFloat("Turns", &layer.Spin, -360.0F, 360.0F, "%.0f deg a second");
+					}
+					if (info.Uses & LcIntensity) {
+						changed |= ImGui::SliderFloat(isLight ? "Brightness" : "Amount", &layer.Intensity, 0.0F, 6.0F, "%.2f");
+					}
+					if (info.Uses & LcFlicker) {
+						changed |= ImGui::SliderFloat("Flicker", &layer.Flicker, 0.0F, 1.0F, "%.2f");
+					}
+					if (info.Uses & LcPulse) {
+						changed |= ImGui::SliderFloat("Pulse", &layer.Pulse, 0.0F, 8.0F, "%.2f a second");
+					}
+					if (info.Uses & LcOption) {
+						const char* gases[] = {"Smoke", "Toxic gas", "Methane", "Steam"};
+						const char* forces[] = {"Blows along its direction", "Pushes out", "Pulls in", "Lifts"};
+						const bool gas = layer.Kind == LayerKind::Gas;
+						layer.Option = std::clamp(layer.Option, 0, 3);
+						changed |= ImGui::Combo(gas ? "Gas" : "Force", &layer.Option, gas ? gases : forces, 4);
+					}
+					if (info.Uses & LcColour) {
+						if (emits) {
+							changed |= ImGui::Checkbox("Own colour", &layer.OwnColour);
+						}
+						if (isLight || layer.OwnColour) {
+							changed |= ImGui::ColorEdit3("Colour", layer.Colour, ImGuiColorEditFlags_NoInputs);
+						}
+					}
+					if (info.Uses & LcOffset) {
+						changed |= ImGui::SliderFloat("Across", &layer.OffsetX, -300.0F, 300.0F, "%.0f px");
+						changed |= ImGui::SliderFloat("Up/down", &layer.OffsetY, -300.0F, 300.0F, "%.0f px");
+					}
+					if (changed) {
+						s_CustomEffectsDirty = true;
+					}
+				}
+				ImGui::PopID();
+			}
+			if (removeLayer >= 0) {
+				effect.Layers.erase(effect.Layers.begin() + removeLayer);
+				s_CustomEffectsDirty = true;
+			}
+			static int newLayer = 0;
+			ImGui::SetNextItemWidth(ImGui::GetFontSize() * 11.0F);
+			if (ImGui::BeginCombo("##layerkind", c_Layers[newLayer].Name)) {
+				for (int i = 0; i < static_cast<int>(LayerKind::Count); ++i) {
+					if (ImGui::Selectable(c_Layers[i].Name, i == newLayer)) {
+						newLayer = i;
+					}
+					ImGui::SetItemTooltip("%s", c_Layers[i].Tip);
+				}
+				ImGui::EndCombo();
+			}
+			ImGui::SameLine();
+			if (ToolUI::Button("Add layer") && effect.Layers.size() < 24) {
+				EffectLayer layer;
+				layer.Kind = static_cast<LayerKind>(newLayer);
+				effect.Layers.push_back(layer);
+				s_CustomEffectsDirty = true;
+			}
+			ImGui::SetItemTooltip("%s", c_Layers[newLayer].Tip);
+		}
+		// Written once no control is being dragged, not on every step of a slider.
+		if (s_CustomEffectsDirty && !ImGui::IsAnyItemActive()) {
+			SaveCustomEffects();
+		}
+	}
+
 	void ToolButtons(std::initializer_list<Tool> tools) {
 		const ImGuiStyle& style = ImGui::GetStyle();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -2995,7 +3203,7 @@ namespace SandboxDetail {
 				case ClearKind::Buildings:
 					ImGui::TextUnformatted("Every door and bunker part, and the colony buildings.");
 					ToolUI::Checkbox("And what they're built of", &s_ClearBuildingMaterials);
-					ImGui::SetItemTooltip("Every pixel of concrete, metal, glass and bunker material on the map, the built things on the Boom tab included.");
+					ImGui::SetItemTooltip("Every pixel of concrete, metal, glass and bunker material on the map, the things built with the Build tab included.");
 					break;
 				case ClearKind::Units:
 					if (ImGui::BeginCombo("Whose", s_ClearSide < 0 ? "Every side" : c_SideNames[s_ClearSide])) {
@@ -3221,10 +3429,32 @@ namespace SandboxDetail {
 		} else if (tool.Kind == Tool::Effect) {
 			start(tool.Name);
 			ImGui::SetNextItemWidth(field * 1.4F);
-			if (ImGui::BeginCombo("##effect", c_Effects[std::clamp(s_EffectChoice, 0, static_cast<int>(EffectKind::Count) - 1)].Name)) {
-				for (int i = 0; i < static_cast<int>(EffectKind::Count); ++i) {
+			LoadCustomEffects();
+			const int builtInEffects = static_cast<int>(EffectKind::Count);
+			s_EffectChoice = std::clamp(s_EffectChoice, 0, builtInEffects + static_cast<int>(s_CustomEffects.size()) - 1);
+			const char* shownEffect = s_EffectChoice < builtInEffects ? c_Effects[s_EffectChoice].Name : s_CustomEffects[static_cast<size_t>(s_EffectChoice - builtInEffects)].Name.c_str();
+			if (ImGui::BeginCombo("##effect", shownEffect)) {
+				for (int i = 0; i < builtInEffects; ++i) {
 					if (ImGui::Selectable(c_Effects[i].Name, i == s_EffectChoice)) {
 						s_EffectChoice = i;
+					}
+				}
+				for (size_t i = 0; i < s_CustomEffects.size(); ++i) {
+					ImGui::PushID(static_cast<int>(i) + 7000);
+					if (ImGui::Selectable(s_CustomEffects[i].Name.c_str(), builtInEffects + static_cast<int>(i) == s_EffectChoice)) {
+						s_EffectChoice = builtInEffects + static_cast<int>(i);
+					}
+					ImGui::PopID();
+				}
+				ImGui::EndCombo();
+			}
+		} else if (tool.Kind == Tool::Decor) {
+			start(tool.Name);
+			ImGui::SetNextItemWidth(field * 1.4F);
+			if (ImGui::BeginCombo("##decor", DecorName(s_DecorChoice))) {
+				for (int i = 0; i < static_cast<int>(DecorKind::Count); ++i) {
+					if (ImGui::Selectable(DecorName(i), i == s_DecorChoice)) {
+						s_DecorChoice = i;
 					}
 				}
 				ImGui::EndCombo();

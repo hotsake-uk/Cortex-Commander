@@ -1,4 +1,5 @@
 #include "SceneLighting.h"
+#include "TerrainTrees.h"
 #include "Weather.h"
 #include "AirPressure.h"
 #include "PresetMan.h"
@@ -984,6 +985,7 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 	m_TerrainShader->SetInt("rteFlowField", 7);
 	m_TerrainShader->SetFloat("rteFlowSurface", (m_Settings.Enabled && m_Settings.WaterFlowSurface && FluidSim::IsEnabled()) ? std::clamp(m_Settings.WaterFlowStrength, 0.0F, 1.0F) : 0.0F);
 	m_TerrainShader->SetInt("rteWorldGrid", 6);
+	m_TerrainShader->SetInt("rteTreePass", 0); // (SceneMan::Draw gives each foreground draw its own.)
 	// What each terrain pixel is made of, so only pixels of a liquid's material are drawn as it, not terrain that happens to share its palette colour.
 	{
 		SLTerrain* terrain = g_SceneMan.GetTerrain();
@@ -994,6 +996,11 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 		int32_t location = m_TerrainShader->GetUniformLocation("rteMaterialLooks[0]");
 		if (location >= 0) {
 			glUniform4fv(location, 64, g_RenderMan.GetMaterialLiquidLooks().data());
+		}
+		// Which materials are trees', for drawing trees behind units (SceneMan::Draw).
+		location = m_TerrainShader->GetUniformLocation("rteTreeMaterials[0]");
+		if (location >= 0) {
+			glUniform4fv(location, 64, TerrainTrees::GetShaderFlags().data());
 		}
 	}
 	m_TerrainShader->SetFloat("rteRelief", m_Settings.Enabled ? m_Settings.Relief : 0.0F);
@@ -2085,7 +2092,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			++m_DebugLightCounts.Dropped;
 			return;
 		}
-		++(glow ? m_DebugLightCounts.Glows : coneCos >= -1.0F ? m_DebugLightCounts.Cones : m_DebugLightCounts.Lights);
+		++(glow ? m_DebugLightCounts.Glows : coneCos >= -1.0F ? m_DebugLightCounts.Cones
+		                                                      : m_DebugLightCounts.Lights);
 		m_DebugLightCounts.ReachSquared += radius * radius;
 	};
 	if (m_Settings.Enabled) {

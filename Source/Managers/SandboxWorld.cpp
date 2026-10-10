@@ -4,6 +4,10 @@
 #include "GasGrid.h"
 #include "TerrainTrees.h"
 
+#include <fstream>
+#include <sstream>
+#include <unordered_set>
+
 namespace SandboxDetail {
 	void Detonate(const char* presetName, const Vector& position) {
 		if (MovableObject* object = CreateBaseObject("TDExplosive", presetName)) {
@@ -12,6 +16,127 @@ namespace SandboxDetail {
 			AddObject(object);
 			if (explosive) {
 				explosive->GibThis();
+			}
+		}
+	}
+
+	/// A blast of force with no blast in it: shoves whatever is loose near the point (units, things, debris, flying bits) and stirs up dust, but
+	/// sets nothing alight and harms nothing itself (a landing after a long throw still hurts, as any fall does).
+	/// @param radius How far it reaches. @param speed How hard it throws, in metres a second at its strongest. @param direction Along: which way.
+	void ForceBurst(const Vector& position, float radius, float speed, ForceShape shape, const Vector& direction, bool show) {
+		const bool wraps = g_SceneMan.SceneWrapsX();
+		Vector along = direction.GetMagnitude() > 0.01F ? direction / direction.GetMagnitude() : Vector(1.0F, 0.0F);
+		// How hard the push is at an offset from the point, 0 to 1, and which way it points.
+		auto push = [&](const Vector& offset, Vector& towards) {
+			float distance = offset.GetMagnitude();
+			Vector outward = distance > 0.5F ? offset / distance : Vector(0.0F, -1.0F);
+			switch (shape) {
+				case ForceShape::Out: {
+					if (distance >= radius) {
+						return 0.0F;
+					}
+					float falloff = 1.0F - distance / radius;
+					// Thrown up a little as well as out, so things lift off the ground rather than ploughing along it.
+					towards = outward + Vector(0.0F, -0.35F);
+					return falloff * (0.4F + 0.6F * falloff);
+				}
+				case ForceShape::In: {
+					if (distance >= radius) {
+						return 0.0F;
+					}
+					// Pulled in less as they close in on it, so they gather rather than fly through.
+					towards = outward * -1.0F;
+					return std::min(1.0F - distance / radius, distance / (radius * 0.35F));
+				}
+				case ForceShape::Up: {
+					// A column: narrow, reaching high above the point and a little below.
+					float across = std::abs(offset.m_X) / (radius * 0.45F);
+					float above = -offset.m_Y / (radius * 1.8F);
+					if (across >= 1.0F || above >= 1.0F || offset.m_Y > radius * 0.3F) {
+						return 0.0F;
+					}
+					towards = Vector(-offset.m_X * 0.004F, -1.0F);
+					return (1.0F - across) * (1.0F - std::max(0.0F, above) * 0.6F);
+				}
+				case ForceShape::Along: {
+					// A wide, flat gale: as far across the way it blows as the radius, a good deal less the other way.
+					float ahead = offset.Dot(along) / radius;
+					float side = std::abs(offset.m_X * along.m_Y - offset.m_Y * along.m_X) / (radius * 0.6F);
+					if (ahead < -0.2F || ahead >= 1.0F || side >= 1.0F) {
+						return 0.0F;
+					}
+					towards = along + Vector(0.0F, -0.12F);
+					return (1.0F - side) * (1.0F - std::max(0.0F, ahead) * 0.5F);
+				}
+			}
+			return 0.0F;
+		};
+		auto shove = [&](MovableObject* object, bool loose) {
+			if (!object || object->GetPinStrength() > 0.0F || dynamic_cast<ADoor*>(object)) {
+				return;
+			}
+			Vector towards;
+			float strength = push(g_SceneMan.ShortestDistance(position, object->GetPos(), wraps), towards);
+			if (strength <= 0.0F) {
+				return;
+			}
+			if (towards.GetMagnitude() > 0.01F) {
+				towards = towards / towards.GetMagnitude();
+			}
+			Vector change = towards * (speed * strength);
+			if (loose) {
+				// Bits and sparks in the air: thrown a little differently each, so a cloud of them blows apart rather than moving as one.
+				object->SetVel(object->GetVel() + change * (0.7F + 0.6F * Random01()));
+				return;
+			}
+			float mass = std::max(object->GetMass(), 0.01F);
+			object->AddImpulseForce(change * mass);
+			if (Actor* actor = dynamic_cast<Actor*>(object); actor && strength > 0.25F) {
+				actor->SetStatus(Actor::UNSTABLE);
+			}
+		};
+		std::unordered_set<MovableObject*> done;
+		for (Actor* actor: g_MovableMan.GetActorList()) {
+			if (done.insert(actor).second) {
+				shove(actor, false);
+			}
+		}
+		// Everything else with a body: dropped weapons and items, gibs, falling chunks of ground. Only the root of each, not the parts of a unit.
+		for (int id = 1; id < g_MovableMan.GetMOIDCount(); ++id) {
+			MovableObject* object = g_MovableMan.GetMOFromID(static_cast<MOID>(id));
+			if (object && object->GetRootParent() == object && done.insert(object).second) {
+				shove(object, false);
+			}
+		}
+		for (MovableObject* particle: g_MovableMan.GetParticleList()) {
+			if (done.insert(particle).second) {
+				shove(particle, true);
+			}
+		}
+		// What it looks like: the air rippling, and dust stirred up along the way it blows.
+		if (!show) {
+			return;
+		}
+		if (shape == ForceShape::Out) {
+			g_PostProcessMan.RegisterShockwave(position, radius * radius * 0.5F);
+		}
+		g_PostProcessMan.RegisterShimmer(position, radius * 0.6F, 1.0F);
+		for (int i = 0; i < 14; ++i) {
+			float angle = 6.2832F * (static_cast<float>(i) + Random01()) / 14.0F;
+			Vector ray(std::cos(angle), std::sin(angle));
+			switch (shape) {
+				case ForceShape::Out:
+					EffectsParticles::Emit("Dust", position + ray * (radius * 0.15F), ray * (speed * 0.3F), 0.4F, 3, 0);
+					break;
+				case ForceShape::In:
+					EffectsParticles::Emit("Dust", position + ray * (radius * 0.8F), ray * (-speed * 0.25F), 0.4F, 3, 0);
+					break;
+				case ForceShape::Up:
+					EffectsParticles::Emit("Dust", position + Vector((Random01() - 0.5F) * radius * 0.6F, Random01() * radius * 0.25F), Vector((Random01() - 0.5F) * 3.0F, -speed * 0.3F), 0.3F, 3, 0);
+					break;
+				case ForceShape::Along:
+					EffectsParticles::Emit("Dust", position + Vector((Random01() - 0.5F) * 20.0F, (Random01() - 0.5F) * radius * 0.7F), along * (speed * 0.35F), 0.3F, 3, 0);
+					break;
 			}
 		}
 	}
@@ -215,8 +340,9 @@ namespace SandboxDetail {
 	/// Paints terrain material into the air, or digs it out when there's no material, over the pixels of a box (scene pixels, both ends
 	/// included, unwrapped) that inside says are in: the brushes' discs and the filled shapes.
 	/// @param goldShare How much of what is painted is gold instead, as in the base game's scenes' earth (0 for none).
+	/// @param over What painting may replace besides air (PaintOver): liquids and loose ground, solid terrain.
 	template <typename Inside>
-	void PaintArea(int left, int top, int right, int bottom, Inside inside, const char* materialName, float goldShare) {
+	void PaintArea(int left, int top, int right, int bottom, Inside inside, const char* materialName, float goldShare, int over) {
 		SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
 		int width = terrain->GetBitmap()->w;
 		int height = terrain->GetBitmap()->h;
@@ -270,8 +396,8 @@ namespace SandboxDetail {
 					continue;
 				}
 				int existing = terrain->GetMaterialPixel(x, y);
-				// Painting only fills air; digging removes anything but the indestructible edge of the world.
-				if (materialName ? existing != g_MaterialAir : (existing == g_MaterialAir || existing == g_MaterialOutOfBounds)) {
+				// Painting fills air, and with Paint over, liquids and loose ground and solid terrain too; digging removes anything but the indestructible edge of the world.
+				if (materialName ? !(existing == g_MaterialAir || (existing != material && existing != g_MaterialOutOfBounds && ((FluidSim::IsFlowing(existing) ? (over & PaintOver::Liquids) : (over & PaintOver::Terrain)) != 0))) : (existing == g_MaterialAir || existing == g_MaterialOutOfBounds)) {
 					continue;
 				}
 				RecordPaintPixel(terrain, x, y);
@@ -308,10 +434,10 @@ namespace SandboxDetail {
 		return shape != BrushShape::Spray || Random01() <= 0.03F + 0.22F * (1.0F - std::sqrt(static_cast<float>(distanceSquared)) / static_cast<float>(std::max(radius, 1)));
 	}
 
-	void PaintTerrain(const Vector& center, int radius, const char* materialName, BrushShape shape, float goldShare) {
+	void PaintTerrain(const Vector& center, int radius, const char* materialName, BrushShape shape, float goldShare, int over) {
 		int centerX = center.GetFloorIntX();
 		int centerY = center.GetFloorIntY();
-		PaintArea(centerX - radius, centerY - radius, centerX + radius, centerY + radius, [&](int x, int y) { return InBrush(centerX, centerY, radius, shape, x, y); }, materialName, goldShare);
+		PaintArea(centerX - radius, centerY - radius, centerX + radius, centerY + radius, [&](int x, int y) { return InBrush(centerX, centerY, radius, shape, x, y); }, materialName, goldShare, over);
 	}
 
 	/// Grows grass up into the air from the top of the ground, wherever a top is among the pixels of a box (scene pixels, both ends included,
@@ -426,7 +552,7 @@ namespace SandboxDetail {
 		int right = static_cast<int>(std::floor(std::max(start.m_X, end.m_X)));
 		int top = static_cast<int>(std::floor(std::min(start.m_Y, end.m_Y)));
 		int bottom = static_cast<int>(std::floor(std::max(start.m_Y, end.m_Y)));
-		PaintArea(left, top, right, bottom, [&](int x, int y) { return InFillShape(shape, start, end, x, y); }, materialName, goldShare);
+		PaintArea(left, top, right, bottom, [&](int x, int y) { return InFillShape(shape, start, end, x, y); }, materialName, goldShare, stroke.Over);
 	}
 
 	/// A base game terrain debris preset, by name.
@@ -880,6 +1006,519 @@ namespace SandboxDetail {
 
 	/// Runs the effects that have been put down, once per sim update. They are lights registered afresh each update and visual particles, so removing one leaves nothing behind
 	/// (but for smoke, gas and fire already let out, which are real).
+	// ---- Effects made in the Effects tab ----
+
+	const char* EffectTemplateName(int index) {
+		static const char* const names[c_EffectTemplateCount] = {"One light", "Campfire", "Magic orb", "Steam vent", "Spark fountain", "Wind tunnel", "Disco spotlights"};
+		return names[std::clamp(index, 0, c_EffectTemplateCount - 1)];
+	}
+
+	CustomEffect EffectTemplate(int index) {
+		CustomEffect effect;
+		effect.Name = "New effect";
+		auto add = [&effect](LayerKind kind, auto&& tweak) {
+			EffectLayer layer;
+			layer.Kind = kind;
+			tweak(layer);
+			effect.Layers.push_back(layer);
+		};
+		auto colour = [](EffectLayer& layer, float r, float g, float b) {
+			layer.Colour[0] = r;
+			layer.Colour[1] = g;
+			layer.Colour[2] = b;
+		};
+		switch (index) {
+			case 1:
+				add(LayerKind::Light, [&](EffectLayer& l) { l.Size = 170.0F; l.Intensity = 1.8F; l.Flicker = 0.35F; colour(l, 1.0F, 0.6F, 0.25F); });
+				add(LayerKind::Embers, [&](EffectLayer& l) { l.Size = 10.0F; l.Rate = 20.0F; l.Speed = 1.5F; l.Spread = 0.7F; });
+				add(LayerKind::Sparks, [&](EffectLayer& l) { l.Size = 6.0F; l.Rate = 6.0F; l.Speed = 5.0F; l.Spread = 0.6F; });
+				add(LayerKind::Smoke, [&](EffectLayer& l) { l.Size = 8.0F; l.Rate = 1.5F; l.Speed = 2.0F; l.Spread = 0.3F; l.OffsetY = -10.0F; });
+				add(LayerKind::Shimmer, [&](EffectLayer& l) { l.Size = 30.0F; l.Intensity = 0.5F; l.OffsetY = -14.0F; });
+				effect.Name = "My campfire";
+				break;
+			case 2:
+				add(LayerKind::Light, [&](EffectLayer& l) { l.Size = 140.0F; l.Intensity = 2.2F; l.Pulse = 0.6F; colour(l, 0.6F, 0.35F, 1.0F); });
+				add(LayerKind::Sparks, [&](EffectLayer& l) { l.Size = 8.0F; l.Rate = 25.0F; l.Speed = 2.5F; l.Spread = 1.0F; l.OwnColour = true; colour(l, 0.7F, 0.45F, 1.0F); });
+				add(LayerKind::Shimmer, [&](EffectLayer& l) { l.Size = 70.0F; l.Intensity = 0.8F; });
+				effect.Name = "My magic orb";
+				break;
+			case 3:
+				add(LayerKind::Gas, [&](EffectLayer& l) { l.Size = 8.0F; l.Rate = 8.0F; l.Option = 3; });
+				add(LayerKind::Mist, [&](EffectLayer& l) { l.Size = 8.0F; l.Rate = 25.0F; l.Speed = 4.0F; l.Spread = 0.35F; });
+				effect.Name = "My steam vent";
+				break;
+			case 4:
+				add(LayerKind::Sparks, [&](EffectLayer& l) { l.Size = 4.0F; l.Rate = 70.0F; l.Speed = 9.0F; l.Spread = 0.18F; l.Spin = 25.0F; });
+				add(LayerKind::Light, [&](EffectLayer& l) { l.Size = 90.0F; l.Intensity = 1.2F; l.Flicker = 0.3F; colour(l, 1.0F, 0.65F, 0.3F); });
+				effect.Name = "My spark fountain";
+				break;
+			case 5:
+				add(LayerKind::Force, [&](EffectLayer& l) { l.Size = 300.0F; l.Speed = 12.0F; l.Angle = 90.0F; });
+				add(LayerKind::Dust, [&](EffectLayer& l) { l.Size = 60.0F; l.Rate = 30.0F; l.Speed = 6.0F; l.Angle = 90.0F; l.Spread = 0.3F; l.OffsetX = -60.0F; });
+				effect.Name = "My wind tunnel";
+				break;
+			case 6:
+				add(LayerKind::Spotlight, [&](EffectLayer& l) { l.Size = 380.0F; l.Spread = 0.1F; l.Angle = 180.0F; l.Spin = 70.0F; l.Intensity = 3.0F; colour(l, 1.0F, 0.2F, 0.8F); });
+				add(LayerKind::Spotlight, [&](EffectLayer& l) { l.Size = 380.0F; l.Spread = 0.1F; l.Angle = 180.0F; l.Spin = -50.0F; l.Intensity = 3.0F; colour(l, 0.2F, 0.6F, 1.0F); });
+				add(LayerKind::Light, [&](EffectLayer& l) { l.Size = 40.0F; l.Intensity = 1.5F; colour(l, 1.0F, 1.0F, 1.0F); });
+				effect.Name = "My disco";
+				break;
+			default:
+				add(LayerKind::Light, [&](EffectLayer&) {});
+				break;
+		}
+		return effect;
+	}
+
+	void RunEffectLayers(PlacedEffect& effect, const Vector& at, float phase) {
+		effect.Due.resize(effect.Layers.size(), 0.0F);
+		++effect.Wait;
+		for (size_t i = 0; i < effect.Layers.size(); ++i) {
+			const EffectLayer& layer = effect.Layers[i];
+			const Vector where = at + Vector(layer.OffsetX, layer.OffsetY);
+			const float angle = (layer.Angle + layer.Spin * phase) * 0.0174533F;
+			const Vector direction(std::sin(angle), -std::cos(angle));
+			float brightness = layer.Intensity * (1.0F - layer.Flicker * Random01());
+			if (layer.Pulse > 0.0F) {
+				brightness *= 0.5F + 0.5F * std::sin(phase * layer.Pulse * 6.2832F);
+			}
+			const glm::vec3 colour(layer.Colour[0] * 255.0F, layer.Colour[1] * 255.0F, layer.Colour[2] * 255.0F);
+			const unsigned int rgb = layer.OwnColour ? ((static_cast<unsigned int>(std::clamp(layer.Colour[0], 0.0F, 1.0F) * 255.0F) << 16) | (static_cast<unsigned int>(std::clamp(layer.Colour[1], 0.0F, 1.0F) * 255.0F) << 8) | static_cast<unsigned int>(std::clamp(layer.Colour[2], 0.0F, 1.0F) * 255.0F)) : 0U;
+			// How many of a thing are owed this update, at the layer's rate a second.
+			int owed = 0;
+			if (c_Layers[static_cast<int>(layer.Kind)].Uses & LcRate) {
+				effect.Due[i] = std::min(effect.Due[i] + std::max(layer.Rate, 0.0F) / 60.0F, 8.0F);
+				owed = static_cast<int>(effect.Due[i]);
+				effect.Due[i] -= static_cast<float>(owed);
+			}
+			auto jitter = [&]() { return where + Vector((Random01() - 0.5F) * layer.Size, (Random01() - 0.5F) * layer.Size); };
+			switch (layer.Kind) {
+				case LayerKind::Light:
+					g_PostProcessMan.RegisterLight(where, colour, std::max(layer.Size, 4.0F), brightness, LightSource::Sandbox);
+					break;
+				case LayerKind::Spotlight:
+					g_PostProcessMan.RegisterConeLight(where, direction, 4.0F + layer.Spread * 56.0F, colour, std::max(layer.Size, 4.0F), brightness, LightSource::Sandbox);
+					break;
+				case LayerKind::Sparks:
+				case LayerKind::Embers:
+				case LayerKind::Smoke:
+				case LayerKind::Dust:
+				case LayerKind::Mist:
+				case LayerKind::Debris: {
+					static const char* const names[] = {"", "", "Sparks", "Embers", "Smoke", "Dust", "Mist", "Debris"};
+					for (int n = 0; n < owed; ++n) {
+						EffectsParticles::Emit(names[static_cast<int>(layer.Kind)], jitter(), direction * layer.Speed, layer.Spread, 1, rgb);
+					}
+					break;
+				}
+				case LayerKind::Gas:
+					for (int n = 0; n < owed; ++n) {
+						GasGrid::Add(jitter(), static_cast<GasGrid::Kind>(std::clamp(layer.Option, 0, static_cast<int>(GasGrid::KindCount) - 1)), 0.4F * layer.Intensity);
+					}
+					break;
+				case LayerKind::Flames:
+					for (int n = 0; n < owed; ++n) {
+						if (MovableObject* flame = CreateBaseObject("MOSParticle", "Flame Hurt Short")) {
+							flame->SetPos(jitter());
+							flame->SetVel(direction * layer.Speed + Vector((Random01() - 0.5F) * 2.0F, (Random01() - 0.5F) * 2.0F) * (layer.Spread * layer.Speed * 0.5F));
+							g_MovableMan.AddParticle(flame);
+						}
+					}
+					break;
+				case LayerKind::Shimmer:
+					g_PostProcessMan.RegisterShimmer(where, std::max(layer.Size, 4.0F), layer.Intensity);
+					break;
+				case LayerKind::Shockwave:
+					if (owed > 0) {
+						float reach = std::max(layer.Size, 60.0F) / 2.2F;
+						g_PostProcessMan.RegisterShockwave(where, std::max(reach * reach * layer.Intensity, 2100.0F));
+					}
+					break;
+				case LayerKind::Lightning:
+					for (int n = 0; n < owed; ++n) {
+						StrikeLightning(where + Vector((Random01() - 0.5F) * layer.Size, 0.0F));
+					}
+					break;
+				case LayerKind::Force:
+					if (effect.Wait % 2 == 0) {
+						const float push = layer.Speed * layer.Intensity * 0.04F;
+						switch (layer.Option) {
+							case 1:
+								ForceBurst(where, layer.Size, push, ForceShape::Out, Vector(), false);
+								break;
+							case 2:
+								ForceBurst(where, layer.Size, push, ForceShape::In, Vector(), false);
+								break;
+							case 3:
+								ForceBurst(where, layer.Size, push, ForceShape::Up, Vector(), false);
+								break;
+							default:
+								ForceBurst(where, layer.Size, push, ForceShape::Along, direction, false);
+								break;
+						}
+					}
+					break;
+				default:
+					break;
+			}
+		}
+	}
+
+	void LoadCustomEffects() {
+		if (s_CustomEffectsLoaded) {
+			return;
+		}
+		s_CustomEffectsLoaded = true;
+		s_CustomEffects.clear();
+		std::ifstream file(c_CustomEffectsFile);
+		std::string line;
+		while (std::getline(file, line)) {
+			while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) {
+				line.pop_back();
+			}
+			if (line.rfind("effect=", 0) == 0) {
+				s_CustomEffects.push_back({line.substr(7), {}});
+			} else if (line.rfind("layer=", 0) == 0 && !s_CustomEffects.empty()) {
+				std::istringstream fields(line.substr(6));
+				std::string field;
+				std::vector<float> values;
+				while (std::getline(fields, field, '|')) {
+					values.push_back(static_cast<float>(std::atof(field.c_str())));
+				}
+				if (values.size() >= 17 && s_CustomEffects.back().Layers.size() < 24) {
+					EffectLayer layer;
+					layer.Kind = static_cast<LayerKind>(std::clamp(static_cast<int>(values[0]), 0, static_cast<int>(LayerKind::Count) - 1));
+					layer.Size = values[1];
+					layer.Rate = values[2];
+					layer.Speed = values[3];
+					layer.Spread = values[4];
+					layer.Angle = values[5];
+					layer.Spin = values[6];
+					layer.Intensity = values[7];
+					layer.Flicker = values[8];
+					layer.Pulse = values[9];
+					layer.Option = static_cast<int>(values[10]);
+					layer.OwnColour = values[11] != 0.0F;
+					layer.Colour[0] = values[12];
+					layer.Colour[1] = values[13];
+					layer.Colour[2] = values[14];
+					layer.OffsetX = values[15];
+					layer.OffsetY = values[16];
+					s_CustomEffects.back().Layers.push_back(layer);
+				}
+			}
+		}
+	}
+
+	void SaveCustomEffects() {
+		s_CustomEffectsDirty = false;
+		std::ofstream file(c_CustomEffectsFile, std::ios::trunc);
+		if (!file) {
+			return;
+		}
+		for (const CustomEffect& effect: s_CustomEffects) {
+			std::string name = effect.Name;
+			for (char& c: name) {
+				if (c == '|' || c == '\n' || c == '\r') {
+					c = ' ';
+				}
+			}
+			file << "effect=" << name << '\n';
+			for (const EffectLayer& l: effect.Layers) {
+				file << "layer=" << static_cast<int>(l.Kind) << '|' << l.Size << '|' << l.Rate << '|' << l.Speed << '|' << l.Spread << '|' << l.Angle << '|' << l.Spin << '|' << l.Intensity << '|' << l.Flicker << '|' << l.Pulse << '|' << l.Option << '|' << (l.OwnColour ? 1 : 0) << '|' << l.Colour[0] << '|' << l.Colour[1] << '|' << l.Colour[2] << '|' << l.OffsetX << '|' << l.OffsetY << '\n';
+			}
+		}
+	}
+
+	// ---- Background lights and fires ----
+
+	namespace {
+		struct DecorLook {
+			const char* Name;
+			const char* Tip;
+			int Width;
+			int Height;
+			float OriginX; //!< Where the point clicked is in the picture, as a fraction across and down.
+			float OriginY;
+			int LightX; //!< Where its light is, in the picture's pixels.
+			int LightY;
+			float Colour[3];
+			float Radius;
+			float Intensity;
+			float Flicker;
+			float Pulse;
+			float Cone; //!< Half-angle of a beam shining straight down, 0 for a round light.
+			const char* Art;
+		};
+
+		// In each picture . is clear and every other letter a colour (see DecorColour).
+		const DecorLook c_DecorLooks[static_cast<int>(DecorKind::Count)] = {
+		    {"Wall lamp", "A lamp on a bracket, in the background: it shines warm until a blast or a shot destroys it. Nothing collides with it.", 8, 10, 0.5F, 0.5F, 4, 4, {1.0F, 0.84F, 0.55F}, 150.0F, 1.5F, 0.03F, 0.0F, 0.0F,
+		     "..kkkk.."
+		     ".kggggk."
+		     "kgwwwwgk"
+		     "kgwyywgk"
+		     "kgwyywgk"
+		     "kgwwwwgk"
+		     ".kggggk."
+		     "..kkkk.."
+		     "...kk..."
+		     "...kk..."},
+		    {"Ceiling lamp", "A shaded lamp hanging on a cord, throwing its light down in a cone.", 10, 12, 0.5F, 0.0F, 5, 11, {1.0F, 0.92F, 0.75F}, 210.0F, 1.7F, 0.02F, 0.0F, 62.0F,
+		     "....kk...."
+		     "....kk...."
+		     "....kk...."
+		     "....kk...."
+		     "...gggg..."
+		     "..gggggg.."
+		     ".gggggggg."
+		     "gggggggggg"
+		     ".wwwwwwww."
+		     "..wyyyyw.."
+		     "...wyyw..."
+		     "....ww...."},
+		    {"Lantern", "A caged lantern with a flickering flame, in the background.", 8, 9, 0.5F, 0.5F, 4, 4, {1.0F, 0.67F, 0.27F}, 130.0F, 1.5F, 0.25F, 0.0F, 0.0F,
+		     "..kkkk.."
+		     ".k....k."
+		     "kkkkkkkk"
+		     "kowwwwok"
+		     "kowyywok"
+		     "kowyywok"
+		     "kowwwwok"
+		     "kkkkkkkk"
+		     ".k....k."},
+		    {"Strip light", "A long tube light, shining down in a wide cone.", 24, 3, 0.5F, 0.5F, 12, 2, {0.75F, 0.88F, 1.0F}, 190.0F, 1.6F, 0.02F, 0.0F, 70.0F,
+		     "gggggggggggggggggggggggg"
+		     "gWWWWWWWWWWWWWWWWWWWWWWg"
+		     "gggggggggggggggggggggggg"},
+		    {"Warning light", "A red lamp that pulses, in the background.", 6, 6, 0.5F, 0.5F, 3, 3, {1.0F, 0.16F, 0.12F}, 140.0F, 2.0F, 0.0F, 1.2F, 0.0F,
+		     "..kk.."
+		     ".kRRk."
+		     "kRWRRk"
+		     "kRRRRk"
+		     ".kRRk."
+		     "..kk.."},
+		    {"Candle", "A candle that burns without ever burning down, in the background. A blast or a shot puts it out for good.", 3, 9, 0.5F, 1.0F, 1, 0, {1.0F, 0.71F, 0.37F}, 62.0F, 1.0F, 0.3F, 0.0F, 0.0F,
+		     ".y."
+		     ".o."
+		     ".n."
+		     "ccc"
+		     "ccc"
+		     "ccc"
+		     "ccc"
+		     "ccc"
+		     "ccc"},
+		    {"Candelabra", "Three candles on a stand that never burn down, in the background.", 13, 12, 0.5F, 1.0F, 6, 0, {1.0F, 0.71F, 0.37F}, 105.0F, 1.7F, 0.3F, 0.0F, 0.0F,
+		     ".y....y....y."
+		     ".o....o....o."
+		     ".c....c....c."
+		     ".c....c....c."
+		     ".kkkkkkkkkkk."
+		     "..k...k...k.."
+		     "..kkkkkkkkk.."
+		     ".....k.k....."
+		     "......k......"
+		     "......k......"
+		     ".....kkk....."
+		     "....kkkkk...."},
+		    {"Wall torch", "A torch on the wall, burning for ever: embers, sparks and smoke, and a flickering light.", 6, 16, 0.5F, 0.6F, 3, 2, {1.0F, 0.59F, 0.24F}, 170.0F, 1.8F, 0.45F, 0.0F, 0.0F,
+		     "..yy.."
+		     ".yoyo."
+		     ".oyyo."
+		     "..oo.."
+		     ".kggk."
+		     ".kggk."
+		     "..kk.."
+		     "..bb.."
+		     "..bb.."
+		     "..bb.."
+		     "..bb.."
+		     "..bb.."
+		     "..bb.."
+		     "..BB.."
+		     "..BB.."
+		     "..BB.."},
+		    {"Campfire", "A campfire in the background, for looks only: flames, sparks, embers, smoke and a flickering light, burning until a blast or a shot puts it out.", 22, 12, 0.5F, 1.0F, 11, 3, {1.0F, 0.55F, 0.2F}, 190.0F, 2.0F, 0.4F, 0.0F, 0.0F,
+		     "..........y..........."
+		     ".........yoy...y......"
+		     "........yooyy.yoy....."
+		     ".......yooyyyyooy....."
+		     ".......ooryyyyroo....."
+		     "......ooorryyrrooo...."
+		     ".....bbooorrrroobb...."
+		     "..bbbBBbbooorbbBBbbb.."
+		     ".bBBbbbbbBBbbbbbbbBBb."
+		     "..ssbBBBBbBBBBBBbbss.."
+		     ".ssssssssssssssssssss."
+		     "..ssss.ssss.sss.ssss.."},
+		};
+
+		/// The colour of a letter in a picture, as a palette index (made once).
+		int DecorColour(char letter) {
+			static const std::array<int, 128> indices = [] {
+				std::array<int, 128> made;
+				made.fill(-1);
+				struct Entry {
+					char Letter;
+					int R, G, B;
+				};
+				for (const Entry& entry: {Entry{'k', 58, 58, 64}, Entry{'g', 122, 122, 130}, Entry{'w', 255, 226, 150}, Entry{'y', 255, 244, 180}, Entry{'o', 255, 150, 50}, Entry{'r', 220, 70, 40}, Entry{'R', 230, 50, 45}, Entry{'W', 245, 245, 240}, Entry{'b', 112, 74, 42}, Entry{'B', 72, 46, 28}, Entry{'c', 236, 228, 205}, Entry{'n', 50, 40, 35}, Entry{'s', 92, 90, 88}}) {
+					Color color;
+					color.SetRGB(entry.R, entry.G, entry.B);
+					color.RecalculateIndex();
+					made[static_cast<size_t>(entry.Letter)] = color.GetIndex();
+				}
+				return made;
+			}();
+			return letter > 0 && letter < 128 ? indices[static_cast<size_t>(letter)] : -1;
+		}
+	} // namespace
+
+	const char* DecorName(int kind) {
+		return c_DecorLooks[std::clamp(kind, 0, static_cast<int>(DecorKind::Count) - 1)].Name;
+	}
+
+	const char* DecorTip(int kind) {
+		return c_DecorLooks[std::clamp(kind, 0, static_cast<int>(DecorKind::Count) - 1)].Tip;
+	}
+
+	void PlaceDecor(DecorKind kind, const Vector& position) {
+		SLTerrain* terrain = g_SceneMan.GetScene() ? g_SceneMan.GetScene()->GetTerrain() : nullptr;
+		if (!terrain || s_Decor.size() >= 300) {
+			return;
+		}
+		const DecorLook& look = c_DecorLooks[static_cast<int>(kind)];
+		PlacedDecor decor;
+		decor.Kind = kind;
+		decor.Seed = Random01();
+		decor.Width = look.Width;
+		decor.Height = look.Height;
+		decor.Left = position.GetFloorIntX() - static_cast<int>(static_cast<float>(look.Width) * look.OriginX);
+		decor.Top = position.GetFloorIntY() - static_cast<int>(static_cast<float>(look.Height) * look.OriginY);
+		const int sceneWidth = terrain->GetBitmap()->w;
+		const int sceneHeight = terrain->GetBitmap()->h;
+		BITMAP* background = terrain->GetBGColorBitmap();
+		decor.Behind.assign(static_cast<size_t>(look.Width * look.Height), -1);
+		for (int y = 0; y < look.Height; ++y) {
+			for (int x = 0; x < look.Width; ++x) {
+				int color = DecorColour(look.Art[y * look.Width + x]);
+				int worldX = decor.Left + x;
+				int worldY = decor.Top + y;
+				if (g_SceneMan.SceneWrapsX()) {
+					worldX = ((worldX % sceneWidth) + sceneWidth) % sceneWidth;
+				}
+				if (color < 0 || worldX < 0 || worldY < 0 || worldX >= sceneWidth || worldY >= sceneHeight) {
+					continue;
+				}
+				decor.Behind[static_cast<size_t>(y * look.Width + x)] = _getpixel(background, worldX, worldY);
+				terrain->SetBGColorPixel(worldX, worldY, color);
+			}
+		}
+		decor.Position = Vector(static_cast<float>(decor.Left + look.LightX) + 0.5F, static_cast<float>(decor.Top + look.LightY) + 0.5F);
+		// The light is one of the scenery's lamps, so blasts and shots put it out; not hung on anything solid, so nothing but those does.
+		TerrainLight light;
+		light.m_Pos = decor.Position;
+		light.m_Color.SetRGB(static_cast<int>(look.Colour[0] * 255.0F), static_cast<int>(look.Colour[1] * 255.0F), static_cast<int>(look.Colour[2] * 255.0F));
+		light.m_Radius = look.Radius;
+		light.m_Intensity = look.Intensity;
+		light.m_Flicker = look.Flicker;
+		light.m_Pulse = look.Pulse;
+		light.m_ConeAngle = look.Cone;
+		light.m_ConeDirection = 90.0F;
+		light.m_Anchored = 0;
+		light.m_AnchorSolid = 0;
+		terrain->QueueLight(light);
+		s_Decor.push_back(std::move(decor));
+	}
+
+	void UpdateDecor() {
+		if (s_Decor.empty()) {
+			return;
+		}
+		SLTerrain* terrain = g_SceneMan.GetScene() ? g_SceneMan.GetScene()->GetTerrain() : nullptr;
+		if (!terrain) {
+			s_Decor.clear();
+			return;
+		}
+		const long long update = g_TimerMan.GetSimUpdateCount();
+		const std::vector<TerrainLight>& lights = terrain->GetLights();
+		const int sceneWidth = terrain->GetBitmap()->w;
+		const int sceneHeight = terrain->GetBitmap()->h;
+		for (size_t i = 0; i < s_Decor.size();) {
+			PlacedDecor& decor = s_Decor[i];
+			++decor.Age;
+			bool alive = true;
+			if (decor.Age > 20 && (update + static_cast<long long>(decor.Seed * 997.0F)) % 15 == 0) {
+				alive = false;
+				for (const TerrainLight& light: lights) {
+					if (std::abs(light.m_Pos.m_X - decor.Position.m_X) < 3.0F && std::abs(light.m_Pos.m_Y - decor.Position.m_Y) < 3.0F) {
+						alive = true;
+						break;
+					}
+				}
+			}
+			if (!alive) {
+				// Put out: the picture goes, with a puff of smoke.
+				for (int y = 0; y < decor.Height; ++y) {
+					for (int x = 0; x < decor.Width; ++x) {
+						int before = decor.Behind[static_cast<size_t>(y * decor.Width + x)];
+						int worldX = decor.Left + x;
+						int worldY = decor.Top + y;
+						if (g_SceneMan.SceneWrapsX()) {
+							worldX = ((worldX % sceneWidth) + sceneWidth) % sceneWidth;
+						}
+						if (before >= 0 && worldX >= 0 && worldY >= 0 && worldX < sceneWidth && worldY < sceneHeight) {
+							terrain->SetBGColorPixel(worldX, worldY, before);
+						}
+					}
+				}
+				EffectsParticles::Emit("Smoke", decor.Position, Vector(0.0F, -1.5F), 0.5F, 4, 0);
+				s_Decor.erase(s_Decor.begin() + static_cast<std::ptrdiff_t>(i));
+				continue;
+			}
+			const Vector& at = decor.Position;
+			auto every = [&](int updates) { return (update + static_cast<long long>(decor.Seed * 997.0F)) % updates == 0; };
+			switch (decor.Kind) {
+				case DecorKind::Candle:
+					if (every(170)) {
+						EffectsParticles::Emit("Smoke", at + Vector(0.0F, -3.0F), Vector(0.0F, -1.2F), 0.2F, 1, 0);
+					}
+					break;
+				case DecorKind::Candelabra:
+					if (every(110)) {
+						EffectsParticles::Emit("Smoke", at + Vector((static_cast<float>(update / 110 % 3) - 1.0F) * 5.0F, -3.0F), Vector(0.0F, -1.2F), 0.2F, 1, 0);
+					}
+					break;
+				case DecorKind::Torch:
+					if (every(4)) {
+						EffectsParticles::Emit("Embers", at + Vector((Random01() - 0.5F) * 3.0F, -3.0F), Vector(0.0F, -1.8F), 0.6F, 1, 0);
+					}
+					if (every(11)) {
+						EffectsParticles::Emit("Smoke", at + Vector(0.0F, -5.0F), Vector(0.0F, -2.0F), 0.3F, 1, 0);
+					}
+					if (every(31)) {
+						EffectsParticles::Emit("Sparks", at, Vector((Random01() - 0.5F) * 2.0F, -4.0F), 0.6F, 1, 0);
+					}
+					break;
+				case DecorKind::Campfire:
+					g_PostProcessMan.RegisterShimmer(at + Vector(0.0F, -12.0F), 24.0F, 0.5F);
+					if (every(3)) {
+						EffectsParticles::Emit("Embers", at + Vector((Random01() - 0.5F) * 10.0F, -2.0F), Vector(0.0F, -1.5F), 0.7F, 1, 0);
+					}
+					if (every(10)) {
+						EffectsParticles::Emit("Sparks", at, Vector((Random01() - 0.5F) * 2.0F, -5.0F), 0.6F, 2, 0);
+					}
+					if (every(45)) {
+						EffectsParticles::Emit("Smoke", at + Vector(0.0F, -8.0F), Vector(0.0F, -2.0F), 0.3F, 1, 0);
+					}
+					break;
+				default:
+					break;
+			}
+			++i;
+		}
+	}
+
 	void UpdateEffects() {
 		if (s_Effects.empty()) {
 			return;
@@ -890,6 +1529,10 @@ namespace SandboxDetail {
 			const Vector& at = effect.Position;
 			float phase = time + effect.Seed * 20.0F;
 			auto every = [&](int updates) { return (update + static_cast<long long>(effect.Seed * 997.0F)) % updates == 0; };
+			if (effect.Kind == EffectKind::Count) {
+				RunEffectLayers(effect, at, phase);
+				continue;
+			}
 			switch (effect.Kind) {
 				case EffectKind::NuclearGlow:
 					g_PostProcessMan.RegisterLight(at, glm::vec3(80.0F, 255.0F, 60.0F), 320.0F, 2.2F + 0.7F * std::sin(phase * 1.7F), LightSource::Sandbox);
@@ -1305,7 +1948,7 @@ namespace SandboxDetail {
 
 
 	/// The units random picks are made from: every faction's (turrets aside, as for FactionUnits), or one faction's (an index into
-	/// s_FactionModules, -1 for all), and with favouritesOnly only those marked as favourites in the unit or drop lists. With none of those
+	/// s_FactionModules, -1 for all, -2 for only the non-combatants: animals and civilians), and with favouritesOnly only those marked as favourites in the unit or drop lists. With none of those
 	/// marked, all of the faction's, rather than nothing at all.
 	std::vector<const Preset*> RandomUnitPool(bool favouritesOnly, int faction) {
 		std::vector<const Preset*> all;
@@ -1317,8 +1960,8 @@ namespace SandboxDetail {
 			}
 			const Entity* entity = g_PresetMan.GetEntityPreset(unit.ClassName, unit.PresetName, unit.ModuleID);
 			// (Nor vehicles, VH-1: nobody drives one placed or bought on its own.)
-			// (Nor animals and civilians, NC-1: a random squad is soldiers.)
-			if (!entity || entity->IsInGroup("Actors - Turrets") || entity->IsInGroup("Actors - Vehicles") || IsNonCombatantPreset(entity)) {
+			// (Nor animals and civilians, NC-1: a random squad is soldiers, unless it is asked for from the non-combatants alone.)
+			if (!entity || entity->IsInGroup("Actors - Turrets") || entity->IsInGroup("Actors - Vehicles") || IsNonCombatantPreset(entity) != (faction == -2)) {
 				continue;
 			}
 			all.push_back(&unit);
@@ -1775,48 +2418,48 @@ namespace SandboxDetail {
 				}
 				break;
 			case Tool::Water:
-				FluidSim::Pour(at, radius * 0.5F, "Water");
+				FluidSim::Pour(at, radius * 0.5F, "Water", 0.0F, stroke.Over);
 				break;
 			case Tool::Lava:
-				FluidSim::Pour(at, radius * 0.5F, "Lava");
+				FluidSim::Pour(at, radius * 0.5F, "Lava", 0.0F, stroke.Over);
 				break;
 			case Tool::Acid:
-				FluidSim::Pour(at, radius * 0.5F, "Acid");
+				FluidSim::Pour(at, radius * 0.5F, "Acid", 0.0F, stroke.Over);
 				break;
 			case Tool::Oil:
-				FluidSim::Pour(at, radius * 0.5F, "Oil");
+				FluidSim::Pour(at, radius * 0.5F, "Oil", 0.0F, stroke.Over);
 				break;
 			case Tool::Mud:
-				FluidSim::Pour(at, radius * 0.5F, "Mud");
+				FluidSim::Pour(at, radius * 0.5F, "Mud", 0.0F, stroke.Over);
 				break;
 			case Tool::Tar:
-				FluidSim::Pour(at, radius * 0.5F, "Tar");
+				FluidSim::Pour(at, radius * 0.5F, "Tar", 0.0F, stroke.Over);
 				break;
 			case Tool::Mercury:
-				FluidSim::Pour(at, radius * 0.5F, "Mercury");
+				FluidSim::Pour(at, radius * 0.5F, "Mercury", 0.0F, stroke.Over);
 				break;
 			case Tool::Gravel:
-				FluidSim::Pour(at, radius * 0.5F, "Gravel");
+				FluidSim::Pour(at, radius * 0.5F, "Gravel", 0.0F, stroke.Over);
 				break;
 			case Tool::GlassShards:
-				FluidSim::Pour(at, radius * 0.5F, "Glass Shards");
+				FluidSim::Pour(at, radius * 0.5F, "Glass Shards", 0.0F, stroke.Over);
 				break;
 			case Tool::Fuel:
-				FluidSim::Pour(at, radius * 0.5F, "Fuel");
+				FluidSim::Pour(at, radius * 0.5F, "Fuel", 0.0F, stroke.Over);
 				break;
 			case Tool::Cryo:
-				FluidSim::Pour(at, radius * 0.5F, "Cryogenic Fluid");
+				FluidSim::Pour(at, radius * 0.5F, "Cryogenic Fluid", 0.0F, stroke.Over);
 				break;
 			case Tool::Blood:
 				// Blood only flows with the setting on (it stays where it fell otherwise), so the brush turns it on.
 				if (!FluidSim::BloodFlows()) {
 					FluidSim::SetBloodFlows(true);
 				}
-				FluidSim::Pour(at, radius * 0.5F, "Blood");
+				FluidSim::Pour(at, radius * 0.5F, "Blood", 0.0F, stroke.Over);
 				break;
 			case Tool::PourOther:
 				if (!stroke.Material.empty()) {
-					FluidSim::Pour(at, radius * 0.5F, stroke.Material.c_str());
+					FluidSim::Pour(at, radius * 0.5F, stroke.Material.c_str(), 0.0F, stroke.Over);
 				}
 				break;
 			case Tool::WaterSpawner:
@@ -1831,10 +2474,10 @@ namespace SandboxDetail {
 				}
 				break;
 			case Tool::LooseSand:
-				FluidSim::Pour(at, radius * 0.5F, "Sand");
+				FluidSim::Pour(at, radius * 0.5F, "Sand", 0.0F, stroke.Over);
 				break;
 			case Tool::LooseSnow:
-				FluidSim::Pour(at, radius * 0.5F, "Snow");
+				FluidSim::Pour(at, radius * 0.5F, "Snow", 0.0F, stroke.Over);
 				break;
 			case Tool::Boulder:
 				TerrainCollapse::SpawnChunk(at, radius * 1.5F + 4.0F, "Stone");
@@ -1863,38 +2506,38 @@ namespace SandboxDetail {
 				GasGrid::Add(at, GasGrid::Steam, 0.3F);
 				break;
 			case Tool::Dig:
-				PaintTerrain(at, stroke.Radius, nullptr, stroke.Shape);
+				PaintTerrain(at, stroke.Radius, nullptr, stroke.Shape, 0.0F, stroke.Over);
 				break;
 			case Tool::Earth:
-				PaintTerrain(at, stroke.Radius, "Earth", stroke.Shape);
+				PaintTerrain(at, stroke.Radius, "Earth", stroke.Shape, 0.0F, stroke.Over);
 				break;
 			case Tool::Sand:
-				PaintTerrain(at, stroke.Radius, "Sand", stroke.Shape);
+				PaintTerrain(at, stroke.Radius, "Sand", stroke.Shape, 0.0F, stroke.Over);
 				break;
 			case Tool::Ice:
-				PaintTerrain(at, stroke.Radius, "Ice", stroke.Shape);
+				PaintTerrain(at, stroke.Radius, "Ice", stroke.Shape, 0.0F, stroke.Over);
 				break;
 			case Tool::Grass:
-				PaintTerrain(at, stroke.Radius, "Grass", stroke.Shape);
+				PaintTerrain(at, stroke.Radius, "Grass", stroke.Shape, 0.0F, stroke.Over);
 				break;
 			case Tool::Wood:
-				PaintTerrain(at, stroke.Radius, "Wood", stroke.Shape);
+				PaintTerrain(at, stroke.Radius, "Wood", stroke.Shape, 0.0F, stroke.Over);
 				break;
 			case Tool::TreeTrunk:
-				PaintTerrain(at, stroke.Radius, "Tree Trunk", stroke.Shape);
+				PaintTerrain(at, stroke.Radius, "Tree Trunk", stroke.Shape, 0.0F, stroke.Over);
 				TerrainTrees::NoteChanged();
 				break;
 			case Tool::Concrete:
-				PaintTerrain(at, stroke.Radius, "Concrete", stroke.Shape);
+				PaintTerrain(at, stroke.Radius, "Concrete", stroke.Shape, 0.0F, stroke.Over);
 				break;
 			case Tool::Stone:
-				PaintTerrain(at, stroke.Radius, "Stone", stroke.Shape);
+				PaintTerrain(at, stroke.Radius, "Stone", stroke.Shape, 0.0F, stroke.Over);
 				break;
 			case Tool::DenseEarth:
-				PaintTerrain(at, stroke.Radius, "Dense Earth", stroke.Shape);
+				PaintTerrain(at, stroke.Radius, "Dense Earth", stroke.Shape, 0.0F, stroke.Over);
 				break;
 			case Tool::GoldEarth:
-				PaintTerrain(at, stroke.Radius, "Earth", stroke.Shape, c_GoldEarthShare);
+				PaintTerrain(at, stroke.Radius, "Earth", stroke.Shape, c_GoldEarthShare, stroke.Over);
 				break;
 			case Tool::Plants:
 			case Tool::Cacti:
@@ -1906,7 +2549,7 @@ namespace SandboxDetail {
 			case Tool::TerrainOther:
 			case Tool::Metal:
 				if (!stroke.Material.empty()) {
-					PaintTerrain(at, stroke.Radius, stroke.Material.c_str(), stroke.Shape);
+					PaintTerrain(at, stroke.Radius, stroke.Material.c_str(), stroke.Shape, 0.0F, stroke.Over);
 				}
 				break;
 			case Tool::GrowGrass: {
@@ -1970,8 +2613,21 @@ namespace SandboxDetail {
 			}
 			case Tool::Effect:
 				if (s_Effects.size() < 120) {
-					s_Effects.push_back({static_cast<EffectKind>(std::clamp(stroke.Choice, 0, static_cast<int>(EffectKind::Count) - 1)), at, Random01(), 0.0F, 0});
+					if (stroke.Choice >= static_cast<int>(EffectKind::Count)) {
+						// One made in the Effects tab: put down as it was when clicked.
+						if (!stroke.Layers.empty()) {
+							PlacedEffect made{EffectKind::Count, at, Random01(), 0.0F, 0};
+							made.Name = stroke.Material;
+							made.Layers = stroke.Layers;
+							s_Effects.push_back(std::move(made));
+						}
+					} else {
+						s_Effects.push_back({static_cast<EffectKind>(std::max(stroke.Choice, 0)), at, Random01(), 0.0F, 0});
+					}
 				}
+				break;
+			case Tool::Decor:
+				PlaceDecor(static_cast<DecorKind>(std::clamp(stroke.Choice, 0, static_cast<int>(DecorKind::Count) - 1)), at);
 				break;
 			case Tool::CrashRocket:
 				Launch(0, at + Vector(Random01() < 0.5F ? -260.0F : 260.0F, -620.0F), at, 7.5F, "Rocket MK2", 24, "ACRocket", stroke.Team);
@@ -2046,6 +2702,42 @@ namespace SandboxDetail {
 				}
 				break;
 			}
+			case Tool::ForceBlast:
+				ForceBurst(at, 170.0F, 38.0F, ForceShape::Out);
+				break;
+			case Tool::HugeForceBlast:
+				ForceBurst(at, 420.0F, 65.0F, ForceShape::Out);
+				break;
+			case Tool::Implosion:
+				ForceBurst(at, 260.0F, 30.0F, ForceShape::In);
+				break;
+			case Tool::Updraft:
+				ForceBurst(at, 200.0F, 30.0F, ForceShape::Up);
+				break;
+			case Tool::GustRight:
+			case Tool::GustLeft: {
+				const float way = stroke.Kind == Tool::GustRight ? 1.0F : -1.0F;
+				ForceBurst(at + Vector(-30.0F * way, 0.0F), 380.0F, 34.0F, ForceShape::Along, Vector(way, 0.0F));
+				break;
+			}
+			case Tool::SmokeBomb:
+				// A thick cloud and no blast: smoke let out in a ball of cells (8 pixels a side), a puff of it thrown out as well.
+				for (int i = 0; i < 24; ++i) {
+					GasGrid::Add(at + Vector((Random01() - 0.5F) * 56.0F, (Random01() - 0.5F) * 40.0F), GasGrid::Smoke, 1.6F);
+				}
+				EffectsParticles::Emit("Smoke", at, Vector(0.0F, -2.0F), 1.0F, 18, 0);
+				break;
+			case Tool::Fireworks: {
+				// Bursts of coloured sparks in the air above the point, each lighting up the sky for a moment.
+				static constexpr unsigned int colours[] = {0xFF4040, 0xFFC040, 0x60E060, 0x50A0FF, 0xE070FF, 0xFFFFFF};
+				for (int i = 0; i < 5; ++i) {
+					Vector burst = at + Vector((Random01() - 0.5F) * 140.0F, -90.0F - Random01() * 130.0F);
+					unsigned int colour = colours[std::min(5, static_cast<int>(Random01() * 6.0F))];
+					EffectsParticles::Emit("Sparks", burst, Vector(0.0F, 0.0F), 1.0F, 70, colour);
+					g_PostProcessMan.RegisterLight(burst, glm::vec3(static_cast<float>((colour >> 16) & 0xFF), static_cast<float>((colour >> 8) & 0xFF), static_cast<float>(colour & 0xFF)), 150.0F, 1.4F, LightSource::Sandbox);
+				}
+				break;
+			}
 			case Tool::BigBomb:
 				Detonate("Standard Bomb", at);
 				break;
@@ -2107,6 +2799,15 @@ namespace SandboxDetail {
 		stroke.Position = position;
 		stroke.Radius = s_Radius;
 		stroke.Choice = ChoiceFor(kind);
+		if (kind == Tool::Effect && stroke.Choice >= static_cast<int>(EffectKind::Count)) {
+			// An effect made in the Effects tab: its layers are taken now, so editing it later doesn't change what was put down.
+			LoadCustomEffects();
+			size_t made = static_cast<size_t>(stroke.Choice - static_cast<int>(EffectKind::Count));
+			if (made < s_CustomEffects.size()) {
+				stroke.Layers = s_CustomEffects[made].Layers;
+				stroke.Material = s_CustomEffects[made].Name;
+			}
+		}
 		stroke.Team = s_Team;
 		stroke.Orders = static_cast<Order>(s_Order);
 		stroke.Loadout = s_Loadout;
@@ -2141,6 +2842,7 @@ namespace SandboxDetail {
 			s_RopeDraft.push_back(position);
 		}
 		stroke.Shape = IsTerrainBrush(kind) ? s_BrushShape : BrushShape::Circle;
+		stroke.Over = CurrentPaintOver();
 		stroke.Scale = IsPlantBrush(kind) ? s_PlantScale : 1.0F;
 		if (IsPlantBrush(kind)) {
 			// The plant the cursor showed; the next one is shown from now.

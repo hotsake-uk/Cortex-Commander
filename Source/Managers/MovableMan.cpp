@@ -1,4 +1,6 @@
 #include "MovableMan.h"
+
+#include <optional>
 #include "ConsoleMan.h"
 #include <unordered_set>
 #include "FluidSim.h"
@@ -33,10 +35,19 @@
 
 using namespace RTE;
 
+namespace {
+	/// Whether an object's scripts are a unit's or vehicle's (or of what it carries): trees are air to them while units walk through trees, as
+	/// they are to its own movement and the AI (SceneMan::TreesPassable), so a script's look at the ground ahead doesn't take a tree for a wall.
+	bool UnitsScript(const MovableObject* mo) {
+		const MovableObject* root = mo->GetRootParent();
+		return root && root->IsActor();
+	}
+} // namespace
+
 AlarmEvent::AlarmEvent(const Vector& pos, int team, float range) :
-	m_ScenePos(pos),
-	m_Team((Activity::Teams)team),
-	m_Range(range * g_FrameMan.GetPlayerScreenWidth() * 0.51F) {}
+    m_ScenePos(pos),
+    m_Team((Activity::Teams)team),
+    m_Range(range * g_FrameMan.GetPlayerScreenWidth() * 0.51F) {}
 
 const std::string MovableMan::c_ClassName = "MovableMan";
 
@@ -1572,6 +1583,10 @@ void MovableMan::Update() {
 		g_LuaMan.SetThreadLuaStateOverride(&g_LuaMan.GetMasterScriptState());
 		for (MovableObject* mo: g_LuaMan.GetMasterScriptState().GetRegisteredMOs()) {
 			if (mo && ValidMO(mo->GetRootParent())) {
+				std::optional<SceneMan::TreesPassable> treesPassable;
+				if (UnitsScript(mo)) {
+					treesPassable.emplace();
+				}
 				mo->RunScriptedFunctionInAppropriateScripts(threadedUpdate, false, false, {}, {}, {});
 			}
 		}
@@ -1586,6 +1601,10 @@ void MovableMan::Update() {
 
 			                                                     for (MovableObject* mo: luaState.GetRegisteredMOs()) {
 				                                                     if (mo && ValidMO(mo->GetRootParent())) {
+					                                                     std::optional<SceneMan::TreesPassable> treesPassable;
+					                                                     if (UnitsScript(mo)) {
+						                                                     treesPassable.emplace();
+					                                                     }
 					                                                     mo->RunScriptedFunctionInAppropriateScripts(threadedUpdate, false, false, {}, {}, {});
 				                                                     }
 			                                                     }
@@ -1603,6 +1622,10 @@ void MovableMan::Update() {
 		g_LuaMan.SetThreadLuaStateOverride(&g_LuaMan.GetMasterScriptState());
 		for (MovableObject* mo: g_LuaMan.GetMasterScriptState().GetRegisteredMOs()) {
 			if (mo && ValidMO(mo->GetRootParent())) {
+				std::optional<SceneMan::TreesPassable> treesPassable;
+				if (UnitsScript(mo)) {
+					treesPassable.emplace();
+				}
 				mo->RunScriptedFunctionInAppropriateScripts(syncedUpdate, false, false, {}, {}, {});
 			}
 		}
@@ -1613,6 +1636,10 @@ void MovableMan::Update() {
 
 			for (MovableObject* mo: luaState.GetRegisteredMOs()) {
 				if (mo && mo->HasRequestedSyncedUpdate()) {
+					std::optional<SceneMan::TreesPassable> treesPassable;
+					if (UnitsScript(mo)) {
+						treesPassable.emplace();
+					}
 					mo->RunScriptedFunctionInAppropriateScripts(syncedUpdate, false, false, {}, {}, {});
 					mo->ResetRequestedSyncedUpdateFlag();
 				}
@@ -1635,7 +1662,10 @@ void MovableMan::Update() {
 				}
 
 				g_PerformanceMan.StartPerformanceMeasurement(PerformanceMan::ScriptsUpdate);
-				actor->UpdateScripts();
+				{
+					SceneMan::TreesPassable treesPassable; // (A unit's own scripts, mods' AI among them, see the ground as it does: see UnitsScript.)
+					actor->UpdateScripts();
+				}
 				g_PerformanceMan.StopPerformanceMeasurement(PerformanceMan::ScriptsUpdate);
 
 				actor->ApplyImpulses();

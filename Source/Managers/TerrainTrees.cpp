@@ -15,6 +15,8 @@
 using namespace RTE;
 
 bool TerrainTrees::s_UnitsCollide = false;
+bool TerrainTrees::s_DrawnBehindUnits = true;
+std::array<float, 256> TerrainTrees::s_ShaderFlags{};
 int TerrainTrees::s_StrayBulletPercent = 5;
 std::array<bool, 256> TerrainTrees::s_Tree{};
 std::array<bool, 256> TerrainTrees::s_Trunk{};
@@ -63,6 +65,7 @@ void TerrainTrees::BuildTables() {
 	}
 	for (int id = 0; id < 256; ++id) {
 		s_ActorsPass[id] = !s_UnitsCollide && s_Tree[id];
+		s_ShaderFlags[id] = s_Tree[id] ? 1.0F : 0.0F;
 	}
 }
 

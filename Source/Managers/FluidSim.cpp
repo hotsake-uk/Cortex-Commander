@@ -339,6 +339,7 @@ namespace {
 		int X, Y, Radius;
 		std::string Name;
 		float Life = 0.0F; //!< Seconds the pixels poured last, 0 for ever.
+		int Over = 0; //!< What it may pour over besides air: 1 liquids and loose ground, 2 solid terrain.
 	};
 	/// A pixel poured with a lifetime (FluidSim::Pour): the sim update it goes at, and what it is, so one that has since been replaced is left alone. Moved with the pixel as it flows.
 	struct LifeTag {
@@ -832,6 +833,17 @@ namespace {
 	bool BlocksPassage(int material) { return material != g_MaterialAir && (material <= 0 || material >= 256 || s_Kinds[material] == Liquid::None || s_Kinds[material] == Liquid::Powder); }
 
 	/// Sets a terrain pixel's material and colour, noting it for the pathfinder when that changes whether it can be passed.
+	/// Whether a pour of a material may go into a pixel: air, and with Pour's over flags, the liquids and loose ground (1) and the solid terrain (2) already there.
+	bool PourCanReplace(int existing, int material, int over) {
+		if (existing == g_MaterialAir) {
+			return true;
+		}
+		if (existing == material || existing == g_MaterialOutOfBounds || existing < 0 || existing > 255) {
+			return false;
+		}
+		return (s_Kinds[existing] != Liquid::None ? (over & 1) : (over & 2)) != 0;
+	}
+
 	void ChangePixel(SLTerrain* terrain, int x, int y, int material, int color) {
 		if (int was = terrain->GetMaterialPixel(x, y); BlocksPassage(was) != BlocksPassage(material)) {
 			// (Liquid running through grass changes it pixel by pixel all the way: told with where liquid settled, once a second, not every update.)
@@ -1035,6 +1047,10 @@ bool FluidSim::IsLiquid(int materialID) {
 	return s_TablesBuilt && materialID > 0 && materialID < 256 && s_Kinds[materialID] != Liquid::None && s_Kinds[materialID] != Liquid::Powder;
 }
 
+bool FluidSim::IsFlowing(int materialID) {
+	return s_TablesBuilt && materialID > 0 && materialID < 256 && s_Kinds[materialID] != Liquid::None;
+}
+
 bool FluidSim::LetsLiquidsThrough(int materialID) {
 	return s_TablesBuilt && materialID > 0 && materialID < 256 && s_LetsLiquidsThrough[materialID];
 }
@@ -1074,9 +1090,9 @@ void FluidSim::SetBloodFlows(bool enabled) {
 	}
 }
 
-void FluidSim::Pour(const Vector& position, float radius, const char* liquidName, float lifeSeconds) {
+void FluidSim::Pour(const Vector& position, float radius, const char* liquidName, float lifeSeconds, int over) {
 	std::scoped_lock lock(s_QueueMutex);
-	s_Pours.push_back({position.GetFloorIntX(), position.GetFloorIntY(), std::max(1, static_cast<int>(radius)), liquidName ? liquidName : "Water", std::max(lifeSeconds, 0.0F)});
+	s_Pours.push_back({position.GetFloorIntX(), position.GetFloorIntY(), std::max(1, static_cast<int>(radius)), liquidName ? liquidName : "Water", std::max(lifeSeconds, 0.0F), over});
 }
 
 void FluidSim::OnParticleSettled(const MovableObject* particle) {
@@ -1514,7 +1530,7 @@ void FluidSim::Update() {
 			for (int dx = -pour.Radius; dx <= pour.Radius; ++dx) {
 				int x = pourX + dx;
 				int y = pour.Y + dy;
-				if (dx * dx + dy * dy <= pour.Radius * pour.Radius && InWorld(x, y, width, height) && terrain->GetMaterialPixel(x, y) == g_MaterialAir) {
+				if (dx * dx + dy * dy <= pour.Radius * pour.Radius && InWorld(x, y, width, height) && PourCanReplace(terrain->GetMaterialPixel(x, y), material, pour.Over)) {
 					ChangePixel(terrain, x, y, material, s_PourColor[material]);
 					Activate(x, y, width, height, terrain);
 					if (pour.Life > 0.0F) {
