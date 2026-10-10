@@ -190,7 +190,9 @@ namespace SandboxDetail {
 		Mushrooms,
 		Trees,
 		// Appended, so the tools before keep their numbers.
-		TreeTrunk //!< The base game's "Tree Trunk": wood, darker, like a tree's.
+		TreeTrunk, //!< The base game's "Tree Trunk": wood, darker, like a tree's.
+		// Appended, so the tools before keep their numbers.
+		Generator //!< A colony generator: powers its side's buildings in range (Colony::NeedsPower).
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -306,6 +308,7 @@ namespace SandboxDetail {
 	    {Tool::Methane, "Methane", 0.06F, true},
 	    {Tool::Steam, "Steam", 0.06F, true},
 	    {Tool::TreeTrunk, "Tree trunk", 0.03F, true},
+	    {Tool::Generator, "Generator", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 

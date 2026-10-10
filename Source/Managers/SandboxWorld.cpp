@@ -501,7 +501,7 @@ namespace SandboxDetail {
 
 	/// Whether what a tool makes belongs to a side, so the side is shown with it and the ring of sides is offered.
 	bool TakesSide(Tool kind) {
-		return kind == Tool::Unit || kind == Tool::Drop || kind == Tool::Brain || kind == Tool::RallyPoint || kind == Tool::Structure || kind == Tool::Barracks || kind == Tool::Extractor || kind == Tool::OrderMove;
+		return kind == Tool::Unit || kind == Tool::Drop || kind == Tool::Brain || kind == Tool::RallyPoint || kind == Tool::Structure || kind == Tool::Barracks || kind == Tool::Extractor || kind == Tool::Generator || kind == Tool::OrderMove;
 	}
 
 	/// Clears a box of the terrain to air.
@@ -1246,6 +1246,7 @@ namespace SandboxDetail {
 					case Tool::Structure:
 					case Tool::Barracks:
 					case Tool::Extractor:
+					case Tool::Generator:
 						s_RecordPaint = true;
 						[[fallthrough]];
 					case Tool::Unit:
@@ -1302,6 +1303,12 @@ namespace SandboxDetail {
 			case Tool::Extractor:
 				ActivateSide(stroke.Team);
 				if (int built = Colony::Place(Colony::Kind::Extractor, at, stroke.Team, "", 0, 1); !s_PaintUndo.empty()) {
+					s_PaintUndo.back().ColonyBuilding = built;
+				}
+				break;
+			case Tool::Generator:
+				ActivateSide(stroke.Team);
+				if (int built = Colony::Place(Colony::Kind::Generator, at, stroke.Team, "", 0, 1); !s_PaintUndo.empty()) {
 					s_PaintUndo.back().ColonyBuilding = built;
 				}
 				break;

@@ -121,6 +121,8 @@ void LuaStateWrapper::Initialize() {
 	                         luabind::def("SandboxAutoBattleRandom", &Sandbox::SetAutoBattleRandom),
 	                         luabind::def("SandboxStartAutoBattle", &Sandbox::StartAutoBattle),
 	                         luabind::def("SandboxPauseAI", &Sandbox::SetAIPaused),
+	                         luabind::def("SandboxColonyPower", &Sandbox::SetColonyPower),
+	                         luabind::def("SandboxColonyStatus", &Sandbox::ColonyStatus),
 	                         luabind::def("SandboxTogglePlay", &Sandbox::TogglePlay),
 	                         luabind::def("SandboxSetPins", &Sandbox::SetPins),
 	                         luabind::def("EmitVisualParticles", &EffectsParticles::Emit),
