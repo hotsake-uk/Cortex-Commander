@@ -65,6 +65,8 @@ namespace {
 	std::array<bool, 256> s_Flimsy{}; //!< Materials too weak to hold a falling piece up: grass, plants, ash. A piece goes through them and flattens them.
 	std::array<bool, 256> s_Leaves{}; //!< Vegetation: the leaves of trees and the base game's plants.
 	std::array<bool, 256> s_TreeTrunk{}; //!< The wood of trees. A tree's leaves hang on its trunk, not on whatever ground or tree their tips brush against.
+	std::array<bool, 256> s_Loose{}; //!< Loose ground that a tree coming down goes through: sand, snow, rubble, gravel and the like.
+	bool s_ProperGroundOnly = false; //!< Set while a tree coming down is stepped: it meets proper ground only, not plants, liquid or loose ground.
 	std::array<bool, 256> s_NoHold{}; //!< Ash and charcoal: loose powder that neither holds anything up nor joins anything into one piece.
 	std::array<float, 256> s_Density{};
 	std::array<float, 256> s_Toughness{};
@@ -131,6 +133,7 @@ namespace {
 		s_Leaves.fill(false);
 		s_TreeTrunk.fill(false);
 		s_NoHold.fill(false);
+		s_Loose.fill(false);
 		s_IceMaterial = 0;
 		s_WaterMaterial = 0;
 		s_Density.fill(1.0F);
@@ -153,6 +156,7 @@ namespace {
 			s_Leaves[id] = name == "Vegetation" || TerrainTrees::IsLeaves(id);
 			s_TreeTrunk[id] = name == "Tree Trunk" || TerrainTrees::IsTrunk(id);
 			s_NoHold[id] = name == "Ashes" || name == "Charcoal";
+			s_Loose[id] = material->GetBehaviour().Powder > 0 || name.find("Sand") != std::string::npos || name.find("Snow") != std::string::npos || name.find("Rubble") != std::string::npos || name.find("Gravel") != std::string::npos;
 			if (name == "Ice") {
 				s_IceMaterial = id;
 			} else if (name == "Water") {
@@ -341,7 +345,7 @@ namespace {
 			return false;
 		}
 		int material = materialBitmap->line[y][x];
-		return material != g_MaterialAir && !s_Flimsy[material] && !FluidSim::IsLiquid(material) && !(TerrainCollapse::PassesTrees() && TerrainTrees::IsTreeMaterial(material));
+		return material != g_MaterialAir && !s_Flimsy[material] && !FluidSim::IsLiquid(material) && !(s_ProperGroundOnly && s_Loose[material]) && !(TerrainCollapse::PassesTrees() && TerrainTrees::IsTreeMaterial(material));
 	}
 
 	/// Works out a body's mass, centre, inertia and outline from its bitmap. Returns false if nothing is left of it.
@@ -1462,6 +1466,12 @@ namespace {
 
 	/// Moves a body for one update.
 	void StepBody(SLTerrain* terrain, Body& body) {
+		// A tree coming down meets proper ground only: plants, liquid and loose ground such as sand don't hold it or stop it. Once it has landed
+		// and been stamped back into the terrain it is ground like any other.
+		struct ProperGroundScope {
+			explicit ProperGroundScope(bool on) { s_ProperGroundOnly = on; }
+			~ProperGroundScope() { s_ProperGroundOnly = false; }
+		} properGroundScope(IsTree(body));
 		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
 		Unstamp(terrain, body);
 		++body.Age;
@@ -1846,11 +1856,25 @@ namespace {
 
 	/// Whether two touching pixels' materials make one piece. With tree rules, leaves join only leaves and tree trunk: a tree hangs on its own trunk,
 	/// so one whose trunk is cut falls with its leaves, even where they brush the ground or a wall.
-	bool Joins(int material, int other, bool treeRules) {
-		if (!treeRules || s_Leaves[material] == s_Leaves[other]) {
+	bool Joins(int material, int other, bool treeRules, int x, int y, int otherX, int otherY) {
+		if (!treeRules) {
 			return true;
 		}
-		return s_TreeTrunk[s_Leaves[material] ? other : material];
+		if (s_Leaves[material] != s_Leaves[other]) {
+			if (!s_TreeTrunk[s_Leaves[material] ? other : material]) {
+				return false;
+			}
+		}
+		// Two trees' leaves that touch don't make them one: each tree hangs on its own trunk, so one whose trunk is cut comes down whole, whatever
+		// its leaves rest against. (Pixels belonging to no tree found, such as scraps, join as they did.)
+		if (s_Leaves[material] || s_Leaves[other] || (s_TreeTrunk[material] && s_TreeTrunk[other])) {
+			long a = TerrainTrees::OwnerIDAt(x, y);
+			long b = TerrainTrees::OwnerIDAt(otherX, otherY);
+			if (a != 0 && b != 0 && a != b) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/// Whether a pixel can start a search for loose pieces. The search is done twice: first from everything but leaves, with tree rules, which finds
@@ -1902,7 +1926,7 @@ namespace {
 					unsigned char state = s_State[neighbour];
 					int neighbourMaterial = materialBitmap->line[ny][nx];
 					// Liquid, ash and charcoal hold nothing up.
-					if (neighbourMaterial == g_MaterialAir || FluidSim::IsLiquid(neighbourMaterial) || s_NoHold[neighbourMaterial] || !Joins(material, neighbourMaterial, treeRules)) {
+					if (neighbourMaterial == g_MaterialAir || FluidSim::IsLiquid(neighbourMaterial) || s_NoHold[neighbourMaterial] || !Joins(material, neighbourMaterial, treeRules, x, y, nx, ny)) {
 						continue;
 					}
 					if (state & c_Supported) {
@@ -2195,6 +2219,7 @@ namespace {
 	/// Notes how things are around a point before a blast digs its crater: which masses already hang in the air, and which pieces already hang by a thin neck.
 	std::shared_ptr<Before> LookBefore(SLTerrain* terrain, const Check& check) {
 		auto was = std::make_shared<Before>();
+		TerrainTrees::GetTrees(); // Which tree each pixel is part of, as it stands before the change (see Joins).
 		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
 		std::vector<int> piece;
 		s_Touched.clear();
@@ -2305,6 +2330,7 @@ namespace {
 		}
 
 		// Everything loose around the point, and for each, which mass that was already hanging in the air it came from (-1 for none: it was part of the world).
+		TerrainTrees::GetTrees(); // (Stale by up to a second, which is as wanted: the trees as they stood before a cut.)
 		std::vector<std::vector<int>> loose;
 		std::vector<int> cameFrom;
 		std::vector<int> piece;

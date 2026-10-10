@@ -33,6 +33,13 @@ namespace RTE {
 		/// Sets whether units and vehicles bump into trees.
 		static void SetUnitsCollide(bool collide);
 
+		/// Gets the chance, in percent, that a bullet (a small fast shot, not a rocket) that meets a tree strikes it, rather than passing by (a gameplay
+		/// setting, saved). A stray bullet that does strike a tree barely marks it. Rockets and the like pass the trunk but strike the leaves.
+		static int StrayBulletPercent() { return s_StrayBulletPercent; }
+
+		/// Sets the chance, in percent, that a bullet meeting a tree strikes it.
+		static void SetStrayBulletPercent(int percent) { s_StrayBulletPercent = percent < 0 ? 0 : (percent > 100 ? 100 : percent); }
+
 		/// Gets whether a terrain material is a tree's: its trunk or its leaves. Cheap; safe from any thread.
 		static bool IsTreeMaterial(int materialID) { return s_Tree[static_cast<unsigned char>(materialID)]; }
 
@@ -64,6 +71,9 @@ namespace RTE {
 		/// @param found Filled with them.
 		static void FindTreesNear(const Vector& centre, float radius, std::vector<const Tree*>& found);
 
+		/// Gets the ID of the tree a pixel belongs to, as last found (it doesn't look again), or 0 if it is none's. Cheap enough to ask per pixel.
+		static long OwnerIDAt(int x, int y);
+
 		/// Gets a tree by its ID, or none if it's gone. Call from the main thread.
 		static const Tree* GetTree(long id);
 
@@ -75,6 +85,7 @@ namespace RTE {
 
 	private:
 		static bool s_UnitsCollide; //!< Whether units and vehicles bump into trees.
+		static int s_StrayBulletPercent; //!< The chance, in percent, that a bullet meeting a tree strikes it.
 		static std::array<bool, 256> s_Tree; //!< The materials that are trees'.
 		static std::array<bool, 256> s_Trunk; //!< The materials that are trees' trunks.
 		static std::array<bool, 256> s_ActorsPass; //!< The materials units' and vehicles' bodies go through as air: s_Tree while they don't collide.
