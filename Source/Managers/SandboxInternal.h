@@ -831,6 +831,8 @@ namespace SandboxDetail {
 		bool JetpackOnly = false; //!< With Random: only units with a jetpack.
 		std::vector<EffectLayer> Layers; //!< Tool::Effect with a made effect (Choice from EffectKind::Count): its layers, taken at the click.
 		std::string Material; //!< Springs, the tank and "Other": the liquid or powder poured, by preset name (taken at the click, not read in the sim).
+		float RopeStrength = 1.0F; //!< Rope: the multiplier on what the kind holds (s_RopeStrength).
+		float RopeAnchor = 0.0F; //!< Rope: how hard, in kg, a tie can be pulled before it lets go, 0 never (s_RopeAnchor).
 		float Rate = 1.0F; //!< Springs: how much of the time they pour, 0.05 to 1.
 		float Life = 0.0F; //!< Springs: how many seconds what they pour lasts, 0 for ever.
 		float Scale = 1.0F; //!< Plant brushes: how big the plant is drawn, 1 as the game's own art (s_PlantScale).
@@ -1016,6 +1018,8 @@ namespace SandboxDetail {
 	inline bool s_ShapeDragging = false; //!< A shape being dragged out, from s_ShapeStart.
 	inline int s_RopeType = 0; //!< What the Rope tool puts down (RopeSim::GetType).
 	inline float s_RopeSlack = 0.1F; //!< How much longer than the straight line between its points the Rope tool's rope is.
+	inline float s_RopeStrength = 1.0F; //!< How much more (or less) than its kind's own the Rope tool's rope holds before it snaps.
+	inline float s_RopeAnchor = 0.0F; //!< How hard, in kg, a tie of the Rope tool's rope can be pulled before it lets go; 0 never.
 	inline std::vector<Vector> s_RopeDraft; //!< The window's: the points of the rope being put down, clicked so far (the line to the pointer is drawn from the last).
 	inline ImVec2 s_RopeRightStart; //!< Where the right button went down with the Rope tool in hand: let go about there, it finishes the rope.
 	inline bool s_RopeRightDown = false;

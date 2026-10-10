@@ -3825,6 +3825,14 @@ namespace SandboxDetail {
 					s_RopeSlack = static_cast<float>(slack) / 100.0F;
 				}
 				ImGui::SetItemTooltip("How much longer than the straight line between its points: 0 strung tight, 50%% droops well down.\nEach click puts down a point, tied to what is there; a right click finishes the rope.");
+				next();
+				ImGui::SetNextItemWidth(field * 0.8F);
+				ImGui::SliderFloat("##ropeStrength", &s_RopeStrength, 0.1F, 100.0F, "Strength x%.1f", ImGuiSliderFlags_Logarithmic);
+				ImGui::SetItemTooltip("How much more (or less) than the kind's own it holds before it snaps. Everything else about it stays: a rope can be made to hold a dropship and still burn and be cut by a bullet.");
+				next();
+				ImGui::SetNextItemWidth(field * 0.8F);
+				ImGui::SliderFloat("##ropeAnchor", &s_RopeAnchor, 0.0F, 5000.0F, s_RopeAnchor <= 0.0F ? "Ties unbreakable" : "Ties fail at %.0f kg", ImGuiSliderFlags_Logarithmic);
+				ImGui::SetItemTooltip("How hard a tie can be pulled, in kg, before it lets go of the rope (pulled out of the ground or off the unit). Far left: the ties never fail, only the rope can.");
 			}
 			wide();
 			ImGui::BeginDisabled(RopeSim::GetCount() == 0);
