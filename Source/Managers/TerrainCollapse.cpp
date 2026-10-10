@@ -66,6 +66,56 @@ namespace {
 	std::array<float, 256> s_Density{};
 	std::array<float, 256> s_Toughness{};
 	std::array<float, 256> s_Scuff{}; //!< How readily walking on a material knocks it loose, 0 to 1.
+	/// How a material breaks when a falling piece of it lands hard (MaterialBehaviour::BreakStyle). Each has its own threshold in the tuning.
+	enum BreakStyle : unsigned char { c_Shatter, c_Crack, c_Crumble, c_Splinter, c_Bend, c_StyleCount };
+	std::array<unsigned char, 256> s_Style{};
+	std::array<float, 256> s_ImpactStrength{}; //!< Multiplies its style's threshold.
+	std::array<int, 256> s_Neck{}; //!< How thin a neck of it snaps, in pixels; -1 for the tuning's NeckWidth.
+
+	/// A material's break style and strength from its ini, or else the stock rule by name, so old mods' materials behave sensibly.
+	void StockBreaking(const Material& material, unsigned char& style, float& strength, int& neck) {
+		const MaterialBehaviour& behaviour = material.GetBehaviour();
+		const std::string& name = material.GetPresetName();
+		auto has = [&name](const char* word) { return name.find(word) != std::string::npos; };
+		style = c_Crack;
+		strength = 1.0F;
+		neck = -1;
+		if (has("Wood") || has("Tree Trunk") || has("Timber")) {
+			style = c_Splinter;
+			strength = has("Tree Trunk") ? 1.0F : 0.8F;
+			// Wood holds by a sliver: a burning trunk stands until it's burnt right through.
+			neck = 0;
+		} else if (has("Scrap") || has("Mangled") || has("Shards")) {
+			style = has("Shards") ? c_Crumble : c_Crack;
+		} else if (has("Metal") || has("Ladder") || has("Rubber") || has("Gold") || name == "Armoured Military Stuff") {
+			style = c_Bend;
+		} else if (has("Concrete") || has("Glass") || has("Ice")) {
+			style = c_Shatter;
+			strength = has("Glass") ? 0.45F : (has("Ice") ? 0.7F : 1.0F);
+		} else if (behaviour.Powder > 0 || has("Sand") || has("Snow") || has("Topsoil") || has("Rubble") || has("Gravel") || has("Ash") || has("Charcoal") || has("Vegetation") || has("Grass")) {
+			style = c_Crumble;
+		} else if (has("Bedrock") || has("Cave Ceiling")) {
+			strength = 1.8F;
+		} else if (has("Stone")) {
+			strength = has("Lunar") ? 1.0F : 1.2F;
+		} else if (has("Dense")) {
+			strength = 1.1F;
+		} else if (has("Earth")) {
+			strength = 0.9F;
+		}
+		static const std::pair<const char*, BreakStyle> names[] = {{"Shatter", c_Shatter}, {"Crack", c_Crack}, {"Crumble", c_Crumble}, {"Splinter", c_Splinter}, {"Bend", c_Bend}};
+		for (const auto& [styleName, value]: names) {
+			if (behaviour.BreakStyle == styleName) {
+				style = value;
+			}
+		}
+		if (behaviour.ImpactStrength >= 0.0F) {
+			strength = behaviour.ImpactStrength;
+		}
+		if (behaviour.NeckWidth >= 0) {
+			neck = behaviour.NeckWidth;
+		}
+	}
 	int s_IceMaterial = 0;
 	int s_WaterMaterial = 0;
 	int s_WaterColor = 0;
@@ -83,6 +133,9 @@ namespace {
 		s_Density.fill(1.0F);
 		s_Toughness.fill(60.0F);
 		s_Scuff.fill(0.0F);
+		s_Style.fill(c_Crack);
+		s_ImpactStrength.fill(1.0F);
+		s_Neck.fill(-1);
 		for (int id = 1; id < 256; ++id) {
 			const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
 			if (!material || material->GetIndex() != id) {
@@ -92,6 +145,7 @@ namespace {
 			s_Toughness[id] = std::clamp(material->GetIntegrity(), 1.0F, 600.0F);
 			s_Scuff[id] = std::clamp(material->GetBehaviour().Scuffs, 0.0F, 1.0F);
 			s_Flimsy[id] = material->GetIntegrity() >= 0.0F && material->GetIntegrity() < 5.0F;
+			StockBreaking(*material, s_Style[id], s_ImpactStrength[id], s_Neck[id]);
 			const std::string& name = material->GetPresetName();
 			s_Leaves[id] = name == "Vegetation";
 			s_TreeTrunk[id] = name == "Tree Trunk";
@@ -175,6 +229,8 @@ namespace {
 		float Inertia = 1.0F;
 		float Radius = 1.0F; //!< Furthest pixel from the centre of mass.
 		float Toughness = 60.0F; //!< Average strength of its materials.
+		std::array<float, c_StyleCount> StyleStrength{}; //!< Its carrying pixels' ImpactStrength summed, by break style: with the tuning's thresholds, how hard a landing breaks it.
+		int CarryingPixels = 0; //!< Its pixels that count for how hard it is to break: all but leaves, grass and ash, unless it's nothing else.
 		int PixelCount = 0;
 		glm::vec2 Pos{0.0F}; //!< Of the centre of mass, in the scene.
 		glm::vec2 Vel{0.0F}; //!< Pixels per update.
@@ -256,6 +312,9 @@ namespace {
 		double centerY = 0.0;
 		double toughness = 0.0;
 		body.PixelCount = 0;
+		body.StyleStrength.fill(0.0F);
+		body.CarryingPixels = 0;
+		std::array<float, c_StyleCount> flimsyStrength{};
 		for (int y = 0; y < body.H; ++y) {
 			for (int x = 0; x < body.W; ++x) {
 				int material = body.Materials[static_cast<size_t>(y) * body.W + x];
@@ -266,6 +325,12 @@ namespace {
 					centerY += (static_cast<double>(y) + 0.5) * density;
 					toughness += s_Toughness[material];
 					++body.PixelCount;
+					if (s_Flimsy[material]) {
+						flimsyStrength[s_Style[material]] += s_ImpactStrength[material];
+					} else {
+						body.StyleStrength[s_Style[material]] += s_ImpactStrength[material];
+						++body.CarryingPixels;
+					}
 				}
 			}
 		}
@@ -275,6 +340,11 @@ namespace {
 		body.Mass = static_cast<float>(mass);
 		body.Center = glm::vec2(static_cast<float>(centerX / mass), static_cast<float>(centerY / mass));
 		body.Toughness = static_cast<float>(toughness / body.PixelCount);
+		// Leaves on a trunk don't make it weaker; a piece of nothing but leaves goes by them.
+		if (body.CarryingPixels == 0) {
+			body.StyleStrength = flimsyStrength;
+			body.CarryingPixels = body.PixelCount;
+		}
 		double inertia = 0.0;
 		float radius = 1.0F;
 		std::vector<glm::vec2> edge;
@@ -618,6 +688,19 @@ namespace {
 			return fallbackLength > 0.001F ? fallback / fallbackLength : glm::vec2(0.0F, -1.0F);
 		}
 		return sum / length;
+	}
+
+	/// How hard a landing breaks a body, in pixels per update: its carrying materials' style thresholds, each scaled by the material's ImpactStrength, averaged by pixel count.
+	float BreakSpeed(const Body& body) {
+		const TerrainCollapse::Tuning& tuning = TerrainCollapse::GetTuning();
+		const float thresholds[c_StyleCount] = {tuning.ShatterSpeed, tuning.CrackSpeed, tuning.CrumbleSpeed, tuning.SplinterSpeed, tuning.BendSpeed};
+		float sum = 0.0F;
+		for (int style = 0; style < c_StyleCount; ++style) {
+			sum += body.StyleStrength[style] * std::max(thresholds[style], 0.0F);
+		}
+		// Particle speeds are in metres a second: 20 pixels to the metre, 60 updates a second.
+		float metresPerSecond = sum / static_cast<float>(std::max(body.CarryingPixels, 1));
+		return metresPerSecond / 3.0F * std::max(tuning.BreakStrength, 0.1F);
 	}
 
 	/// Cracks a body into pieces along lines through the point where it hit. The pieces become bodies of their own, or loose particles if they're tiny.
@@ -1182,7 +1265,7 @@ namespace {
 		}
 
 		// Hit harder than its material can take: it cracks.
-		float breakSpeed = (1.6F + body.Toughness / 45.0F) * std::max(TerrainCollapse::GetTuning().BreakStrength, 0.1F);
+		float breakSpeed = BreakSpeed(body);
 		// A thud of dust where it lands (visual only).
 		if (hardestHit > 1.2F) {
 			ThrowDust(hardestPoint, std::min(static_cast<int>((3.0F + static_cast<float>(body.PixelCount) / 120.0F) * hardestHit * 0.5F), 30), body.Materials, body.Colors);
@@ -1360,16 +1443,24 @@ namespace {
 		};
 		static std::vector<unsigned char> solid;
 		static std::vector<unsigned char> pared;
+		static std::vector<unsigned char> pareBy; //!< How far each pixel is pared, by its material's own neck width (MaterialBehaviour::NeckWidth): 0 for wood, which holds by a sliver.
 		static std::vector<int> owner;
 		static std::vector<int> depth;
 		static std::vector<int> queue;
 		size_t cells = static_cast<size_t>(side) * side;
 		solid.assign(cells, 0);
 		pared.assign(cells, 0);
+		pareBy.assign(cells, static_cast<unsigned char>(pare));
 		owner.assign(cells, -1);
 		for (int wy = 0; wy < side; ++wy) {
 			for (int wx = 0; wx < side; ++wx) {
-				solid[static_cast<size_t>(wy) * side + wx] = solidAt(left + wx, top + wy) ? 1 : 0;
+				size_t cell = static_cast<size_t>(wy) * side + wx;
+				solid[cell] = solidAt(left + wx, top + wy) ? 1 : 0;
+				if (int x = left + wx, y = top + wy; solid[cell] && WrapInWorld(x, y) && y < s_Height) {
+					if (int neck = s_Neck[materialBitmap->line[y][x]]; neck >= 0 && neck < neckWidth) {
+						pareBy[cell] = static_cast<unsigned char>((neck + 1) / 2);
+					}
+				}
 			}
 		}
 		// Rows of solid first, then columns of those: a pixel is kept if everything within the paring distance of it is solid. Beyond the window counts as solid.
@@ -1378,7 +1469,8 @@ namespace {
 		for (int wy = 0; wy < side; ++wy) {
 			for (int wx = 0; wx < side; ++wx) {
 				bool all = true;
-				for (int d = -pare; d <= pare && all; ++d) {
+				int by = pareBy[static_cast<size_t>(wy) * side + wx];
+				for (int d = -by; d <= by && all; ++d) {
 					int x = wx + d;
 					all = x < 0 || x >= side || solid[static_cast<size_t>(wy) * side + x];
 				}
@@ -1388,7 +1480,8 @@ namespace {
 		for (int wy = 0; wy < side; ++wy) {
 			for (int wx = 0; wx < side; ++wx) {
 				bool all = true;
-				for (int d = -pare; d <= pare && all; ++d) {
+				int by = pareBy[static_cast<size_t>(wy) * side + wx];
+				for (int d = -by; d <= by && all; ++d) {
 					int y = wy + d;
 					all = y < 0 || y >= side || rows[static_cast<size_t>(y) * side + wx];
 				}

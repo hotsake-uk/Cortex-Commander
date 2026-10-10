@@ -25,6 +25,11 @@ namespace RTE {
 		float SlideChance = -1.0F; //!< For a powder: the chance a step of sliding down a slope.
 		float Scuffs = -1.0F; //!< For loose ground: how readily a unit walking or running on it knocks surface pixels loose and shoves them along (TerrainCollapse), 0 to 1. 0 or unset: not at all. Sand 1.
 		int Sticky = -1; //!< For a powder: 1 to slide only off a drop two deep, so it stands steeper (snow).
+		std::string BreakStyle; //!< How a falling piece of it breaks when it lands hard (TerrainCollapse): "Shatter" (concrete, glass), "Crack" (earth, stone), "Crumble" (sand, snow),
+		                        //!< "Splinter" (wood: lands whole unless the hit is huge) or "Bend" (metal: doesn't break). Each style's threshold is a setting (F6, Falling ground).
+		float ImpactStrength = -1.0F; //!< How hard a landing it takes to break, as a multiple of its style's threshold: 2 takes twice as hard a hit, 0.5 half.
+		int NeckWidth = -1; //!< A piece held on by a neck of it no wider than this many pixels snaps off and falls (TerrainCollapse). 0: it holds until cut right through (wood).
+		                    //!< Unset: the Falling ground setting.
 		std::string Burns; //!< "Grass", "Wood" or "Oil" for how it burns (TerrainFire), "None" for not at all.
 		int BurnMinTicks = -1; //!< How long a pixel of it burns, in fire ticks (a twentieth of a second), at the least and the most.
 		int BurnMaxTicks = -1;
