@@ -60,6 +60,9 @@ namespace {
 	std::array<bool, 256> s_Fixed{}; //!< Materials that are never lifted out of the terrain: doors (drawn by their own objects) and the world's edge.
 	std::array<bool, 256> s_Structure{}; //!< Materials of buildings: concrete, metal and the like.
 	std::array<bool, 256> s_Flimsy{}; //!< Materials too weak to hold a falling piece up: grass, plants, ash. A piece goes through them and flattens them.
+	std::array<bool, 256> s_Leaves{}; //!< Vegetation: the leaves of trees and the base game's plants.
+	std::array<bool, 256> s_TreeTrunk{}; //!< The wood of trees. A tree's leaves hang on its trunk, not on whatever ground or tree their tips brush against.
+	std::array<bool, 256> s_NoHold{}; //!< Ash: loose powder that neither holds anything up nor joins anything into one piece.
 	std::array<float, 256> s_Density{};
 	std::array<float, 256> s_Toughness{};
 	std::array<float, 256> s_Scuff{}; //!< How readily walking on a material knocks it loose, 0 to 1.
@@ -72,6 +75,9 @@ namespace {
 		s_Fixed.fill(false);
 		s_Structure.fill(false);
 		s_Flimsy.fill(false);
+		s_Leaves.fill(false);
+		s_TreeTrunk.fill(false);
+		s_NoHold.fill(false);
 		s_IceMaterial = 0;
 		s_WaterMaterial = 0;
 		s_Density.fill(1.0F);
@@ -87,6 +93,9 @@ namespace {
 			s_Scuff[id] = std::clamp(material->GetBehaviour().Scuffs, 0.0F, 1.0F);
 			s_Flimsy[id] = material->GetIntegrity() >= 0.0F && material->GetIntegrity() < 5.0F;
 			const std::string& name = material->GetPresetName();
+			s_Leaves[id] = name == "Vegetation";
+			s_TreeTrunk[id] = name == "Tree Trunk";
+			s_NoHold[id] = name == "Ashes";
 			if (name == "Ice") {
 				s_IceMaterial = id;
 			} else if (name == "Water") {
@@ -1211,8 +1220,23 @@ namespace {
 		s_Bodies.erase(std::remove_if(s_Bodies.begin(), s_Bodies.end(), [](const Body& body) { return body.Done; }), s_Bodies.end());
 	}
 
+	/// Whether two touching pixels' materials make one piece. With tree rules, leaves join only leaves and tree trunk: a tree hangs on its own trunk,
+	/// so one whose trunk is cut falls with its leaves, even where they brush the ground or a wall.
+	bool Joins(int material, int other, bool treeRules) {
+		if (!treeRules || s_Leaves[material] == s_Leaves[other]) {
+			return true;
+		}
+		return s_TreeTrunk[s_Leaves[material] ? other : material];
+	}
+
+	/// Whether a pixel can start a search for loose pieces. The search is done twice: first from everything but leaves, with tree rules, which finds
+	/// trees as pieces (trunk and leaves); then from the leaves not yet reached, without, so plants and leaves on no trunk hold on by anything they touch.
+	bool StartsSearch(int material, bool treeRules) {
+		return material != g_MaterialAir && !FluidSim::IsLiquid(material) && !s_NoHold[material] && !(treeRules && s_Leaves[material]);
+	}
+
 	/// Flood fills the solid piece containing a pixel. Returns true if it's a floating piece that should fall, filling its pixels.
-	bool FindFloatingPiece(const BITMAP* materialBitmap, int startKey, int width, int height, bool wrapX, std::vector<int>& piece, bool keepFittings = true) {
+	bool FindFloatingPiece(const BITMAP* materialBitmap, int startKey, int width, int height, bool wrapX, std::vector<int>& piece, bool keepFittings = true, bool treeRules = false) {
 		piece.clear();
 		s_Stack.clear();
 		s_FillSeen.clear();
@@ -1252,14 +1276,18 @@ namespace {
 					}
 					int neighbour = ny * width + nx;
 					unsigned char state = s_State[neighbour];
+					int neighbourMaterial = materialBitmap->line[ny][nx];
+					// Liquid and ash hold nothing up.
+					if (neighbourMaterial == g_MaterialAir || FluidSim::IsLiquid(neighbourMaterial) || s_NoHold[neighbourMaterial] || !Joins(material, neighbourMaterial, treeRules)) {
+						continue;
+					}
 					if (state & c_Supported) {
 						// Joined to a piece already found to be held up.
 						floating = false;
 						continue;
 					}
-					int neighbourMaterial = materialBitmap->line[ny][nx];
-					// Liquid holds nothing up, and a piece that's already falling isn't support either.
-					if ((state & (c_Seen | c_Falling)) || neighbourMaterial == g_MaterialAir || FluidSim::IsLiquid(neighbourMaterial)) {
+					// A piece that's already falling isn't support either.
+					if (state & (c_Seen | c_Falling)) {
 						continue;
 					}
 					s_State[neighbour] |= c_Seen;
@@ -1536,20 +1564,21 @@ namespace {
 		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
 		std::vector<int> piece;
 		s_Touched.clear();
-		for (int y = std::max(0, check.Y - check.Radius); y <= std::min(s_Height - 1, check.Y + check.Radius); ++y) {
-			for (int rawX = check.X - check.Radius; rawX <= check.X + check.Radius; ++rawX) {
-				int x = rawX;
-				if (!WrapInWorld(x, y)) {
-					continue;
-				}
-				int key = y * s_Width + x;
-				int material = materialBitmap->line[y][x];
-				if (material == g_MaterialAir || FluidSim::IsLiquid(material) || (s_State[key] & (c_Seen | c_Falling))) {
-					continue;
-				}
-				if (FindFloatingPiece(materialBitmap, key, s_Width, s_Height, s_WrapX, piece, false)) {
-					std::sort(piece.begin(), piece.end());
-					was->Floating.push_back(piece);
+		for (bool treeRules: {true, false}) {
+			for (int y = std::max(0, check.Y - check.Radius); y <= std::min(s_Height - 1, check.Y + check.Radius); ++y) {
+				for (int rawX = check.X - check.Radius; rawX <= check.X + check.Radius; ++rawX) {
+					int x = rawX;
+					if (!WrapInWorld(x, y)) {
+						continue;
+					}
+					int key = y * s_Width + x;
+					if (!StartsSearch(materialBitmap->line[y][x], treeRules) || (s_State[key] & (c_Seen | c_Falling))) {
+						continue;
+					}
+					if (FindFloatingPiece(materialBitmap, key, s_Width, s_Height, s_WrapX, piece, false, treeRules)) {
+						std::sort(piece.begin(), piece.end());
+						was->Floating.push_back(piece);
+					}
 				}
 			}
 		}
@@ -1639,28 +1668,30 @@ namespace {
 		std::vector<int> cameFrom;
 		std::vector<int> piece;
 		s_Touched.clear();
-		for (int y = std::max(0, check.Y - check.Radius); y <= std::min(height - 1, check.Y + check.Radius); ++y) {
-			const unsigned char* materialRow = materialBitmap->line[y];
-			for (int rawX = check.X - check.Radius; rawX <= check.X + check.Radius; ++rawX) {
-				int x = wrapX ? (rawX % width + width) % width : rawX;
-				if (x < 0 || x >= width) {
-					continue;
-				}
-				int key = y * width + x;
-				if (materialRow[x] == g_MaterialAir || FluidSim::IsLiquid(materialRow[x]) || (s_State[key] & (c_Seen | c_Falling))) {
-					continue;
-				}
-				if (!FindFloatingPiece(materialBitmap, key, width, height, wrapX, piece, !(tuning.FloatingStays && check.Was))) {
-					continue;
-				}
-				int origin = -1;
-				for (size_t i = 0; tuning.FloatingStays && check.Was && i < check.Was->Floating.size() && origin < 0; ++i) {
-					if (ShareIn(piece, check.Was->Floating[i]) > 0.5F) {
-						origin = static_cast<int>(i);
+		for (bool treeRules: {true, false}) {
+			for (int y = std::max(0, check.Y - check.Radius); y <= std::min(height - 1, check.Y + check.Radius); ++y) {
+				const unsigned char* materialRow = materialBitmap->line[y];
+				for (int rawX = check.X - check.Radius; rawX <= check.X + check.Radius; ++rawX) {
+					int x = wrapX ? (rawX % width + width) % width : rawX;
+					if (x < 0 || x >= width) {
+						continue;
 					}
+					int key = y * width + x;
+					if (!StartsSearch(materialRow[x], treeRules) || (s_State[key] & (c_Seen | c_Falling))) {
+						continue;
+					}
+					if (!FindFloatingPiece(materialBitmap, key, width, height, wrapX, piece, !(tuning.FloatingStays && check.Was), treeRules)) {
+						continue;
+					}
+					int origin = -1;
+					for (size_t i = 0; tuning.FloatingStays && check.Was && i < check.Was->Floating.size() && origin < 0; ++i) {
+						if (ShareIn(piece, check.Was->Floating[i]) > 0.5F) {
+							origin = static_cast<int>(i);
+						}
+					}
+					loose.push_back(piece);
+					cameFrom.push_back(origin);
 				}
-				loose.push_back(piece);
-				cameFrom.push_back(origin);
 			}
 		}
 		for (int key: s_Touched) {
