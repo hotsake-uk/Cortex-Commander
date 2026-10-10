@@ -34,6 +34,13 @@
 
 using namespace RTE;
 
+namespace {
+	/// How far from lying flat (in radians) a dead body may rest before it's tipped on over and kept from settling.
+	constexpr float c_DeadLyingTolerance = 0.7F;
+	/// How long after dying a body is tipped and kept from settling while not lying down, before it's left where it is (wedged in a gap).
+	constexpr double c_DeadToppleGiveUpMS = 6000.0;
+} // namespace
+
 ConcreteClassInfo(AHuman, Actor, 20);
 
 AHuman::AHuman() {
@@ -3041,6 +3048,19 @@ void AHuman::Update() {
 		} else {
 			m_Status = DEAD;
 		}
+	} else if (m_Status == DEAD && !m_DeathTmr.IsPastSimMS(c_DeadToppleGiveUpMS)) {
+		// A body keeps falling until it lies down: one propped on its head or a shoulder with its legs in the air, or still on its feet, is
+		// tipped on over by its own weight towards whichever side it leans to, rather than freezing there as an obstacle. Only while it rests
+		// on something; in the air it tumbles freely.
+		float wrapped = NormalizeAngleBetweenNegativePIAndPI(rot);
+		float lean = std::sin(wrapped);
+		float rotTarget = lean > 0.05F ? c_HalfPI : (lean < -0.05F ? -c_HalfPI : (m_AngularVel != 0.0F ? std::copysign(c_HalfPI, m_AngularVel) : (m_HFlipped ? c_HalfPI : -c_HalfPI)));
+		float rotDiff = rotTarget - wrapped;
+		if (std::abs(rotDiff) > c_DeadLyingTolerance && !g_SceneMan.OverAltitude(m_Pos, static_cast<int>(m_SpriteRadius) + 4, 3)) {
+			// Strongest balanced on end, where nothing else would tip it.
+			float push = (rotDiff > 0.0F ? 1.0F : -1.0F) * (4.0F + 6.0F * std::abs(std::cos(wrapped)));
+			m_AngularVel += push * g_TimerMan.GetDeltaTimeSecs();
+		}
 	}
 	m_Rotation.SetRadAngle(rot);
 
@@ -3066,6 +3086,20 @@ void AHuman::Update() {
 	// Misc.
 
 	//    m_DeepCheck = true/*m_Status == DEAD*/;
+}
+
+void AHuman::RestDetection() {
+	Actor::RestDetection();
+
+	if (m_Status == DEAD && !m_DeathTmr.IsPastSimMS(c_DeadToppleGiveUpMS)) {
+		float rotDiff = c_HalfPI - std::abs(NormalizeAngleBetweenNegativePIAndPI(m_Rotation.GetRadAngle()));
+		if (std::abs(rotDiff) > c_DeadLyingTolerance) {
+			m_AngOscillations = 0;
+			m_VelOscillations = 0;
+			m_RestTimer.Reset();
+			m_ToSettle = false;
+		}
+	}
 }
 
 void AHuman::DrawThrowingReticle(BITMAP* targetBitmap, const Vector& targetPos, float progressScalar) const {

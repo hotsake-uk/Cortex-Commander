@@ -2296,7 +2296,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	const bool firePixels = !fireShader || m_Settings.FireStyle != LightingSettings::FireShaderOnly;
 	{
 		std::vector<glm::vec3> burning;
-		TerrainFire::GetBurning(origin, width, height, burning);
+		std::vector<glm::vec3> embers;
+		TerrainFire::GetBurning(origin, width, height, burning, &embers);
 		GLuint whiteTexture = g_RenderMan.GetShapeTexture();
 		float time = PostProcessMan::GetEffectTime();
 		// How much fire burns around the middle of the screen, where the player's unit usually is, for the grade to warm by (LightingSettings::EventLooks).
@@ -2338,6 +2339,17 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			if (noise > 0.995F) {
 				EffectsParticles::SpawnEmber(Vector(position.x + origin.x, position.y + origin.y - 2.0F));
 			}
+		}
+		// Smouldering charcoal: each pixel glows, deep red to orange, pulsing slowly and dimming as it goes out. No flame.
+		for (const glm::vec3& ember: embers) {
+			glm::vec2 position(ember.x, ember.y);
+			float noise = glm::fract(std::sin(glm::dot(position + origin, glm::vec2(12.9898F, 78.233F))) * 43758.5453F);
+			float pulse = 0.5F + 0.5F * std::sin(time * 2.5F + noise * 6.2832F);
+			float glow = (0.35F + 0.65F * ember.z) * (0.55F + 0.45F * pulse);
+			glm::vec3 color = glm::mix(glm::vec3(0.55F, 0.06F, 0.01F), glm::vec3(1.0F, 0.45F, 0.08F), std::clamp(ember.z * 0.6F + pulse * 0.4F, 0.0F, 1.0F)) * glow;
+			addQuad(position + glm::vec2(0.5F), glm::vec2(0.5F), 0.0F, glm::min(color, glm::vec3(1.0F)), 0.0F);
+			emissiveTextures.push_back(whiteTexture);
+			emissiveHeat.push_back(0.0F);
 		}
 		m_ScreenWarmthTarget[screenIndex] = 1.0F - std::exp(-warmth / 150.0F);
 	}

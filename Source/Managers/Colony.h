@@ -11,6 +11,7 @@ namespace RTE {
 
 	/// The beginnings of colony management: buildings that stand in the world, belong to a side and do something for it over time.
 	/// So far a barracks trains units and an extractor earns supply. Each side has a stock of supply that training spends (unless everything is free).
+	/// With power turned on, a barracks also needs power while it trains, from its side's generators in range; short of it, it stops (or slows, as set).
 	/// A building is made of real terrain, so it can be shot, dug and blown apart; with too much of it gone it stops being a building.
 	/// This holds the buildings and runs them; the sandbox (Sandbox.cpp) places them and draws their controls.
 	class Colony {
@@ -19,6 +20,7 @@ namespace RTE {
 		enum class Kind {
 			Barracks,
 			Extractor,
+			Generator,
 			Count
 		};
 
@@ -28,6 +30,12 @@ namespace RTE {
 			const char* Description;
 			int Width; //!< The plot it stands on, in pixels.
 			int Height;
+		};
+
+		/// What a barracks does without enough power to train.
+		enum class NoPower {
+			Stops, //!< Short of all it needs, it waits, showing "No power".
+			Slows //!< It trains at the share of its power it gets, and at a quarter pace with none.
 		};
 
 		/// One building in the world.
@@ -45,6 +53,8 @@ namespace RTE {
 			int Produced = 0; //!< Units trained so far.
 			int SolidAtStart = 0; //!< How much of it there was when built, to tell when it is wrecked.
 			std::vector<std::pair<Actor*, long>> Alive; //!< Barracks: its units still alive, with their unique IDs.
+			float Power = 1.0F; //!< Barracks: the share of the power it needs that it got this update, 0 to 1. Generator: how much of its power is drawn.
+			bool NoPower = false; //!< Barracks: it wants to train and has not the power to.
 			std::string Status; //!< What it is doing, for showing.
 		};
 
@@ -71,6 +81,21 @@ namespace RTE {
 
 		/// Gets whether training costs nothing, to show and change. It does by default.
 		static bool& Free();
+
+		/// Gets whether buildings need power, to show and change. They do not by default.
+		static bool& NeedsPower();
+
+		/// Gets what a barracks does without power, to show and change.
+		static NoPower& WithoutPower();
+
+		/// Gets how far from a generator, in pixels, a building takes power from it.
+		static float PowerRange();
+
+		/// Gets how much power a generator gives.
+		static float GeneratorPower();
+
+		/// Gets how much power a barracks draws while it trains.
+		static float TrainingPower();
 
 		/// Gets how many seconds a unit that costs this much takes to train.
 		static float TrainingSeconds(float cost);

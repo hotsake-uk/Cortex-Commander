@@ -362,6 +362,9 @@ namespace SandboxDetail {
 		}
 		defender.Center = centre;
 		defender.IdleSince = -1;
+		// (Sent there on the next update, not at the defenders' next half-second turn: the hill moving or an objective falling had them
+		// carry on to the old one for up to half a second.)
+		s_DefendersMoved = true;
 		if (atIt) {
 			defender.Post = centre;
 		} else {
@@ -550,7 +553,8 @@ namespace SandboxDetail {
 			}
 			return;
 		}
-		if (now % 30 == 0) {
+		if (now % 30 == 0 || s_DefendersMoved) {
+			s_DefendersMoved = false;
 			UpdateBattleDefenders();
 		}
 		for (int side = 0; side < c_Sides; ++side) {

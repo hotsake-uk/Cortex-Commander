@@ -337,6 +337,10 @@ namespace {
 				}
 				std::snprintf(text, sizeof(text), "; %s %.0f%%; %d of %d alive (%d dead or dying, not yet gone); %d trained", building.Paid ? "training" : "waiting to pay", building.Progress * 100.0F, static_cast<int>(building.Alive.size()), building.KeepAlive, dying, building.Produced);
 				line += text;
+				if (Colony::NeedsPower()) {
+					std::snprintf(text, sizeof(text), "; power %.0f%%", building.Power * 100.0F);
+					line += text;
+				}
 			}
 			lines.emplace_back(line, building.Team >= 0 && building.Team < c_Sides ? c_SideColors[building.Team] : plain);
 		}
