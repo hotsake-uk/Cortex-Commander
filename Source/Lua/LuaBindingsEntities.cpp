@@ -236,6 +236,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("OrderHold", &Actor::GetOrderHold, &Actor::SetOrderHold)
 	    .property("OrderPostFacing", &Actor::GetOrderPostFacing, &Actor::SetOrderPostFacing)
 	    .property("OrderKind", &Actor::GetOrderKind, &Actor::SetOrderKind)
+	    .property("OrderDirect", &Actor::GetOrderDirect, &Actor::SetOrderDirect)
 	    .property("OrderHasDigTarget", &Actor::GetOrderHasDigTarget)
 	    .property("OrderDigTarget", &Actor::GetOrderDigTarget, &Actor::SetOrderDigTarget)
 	    .property("OrderFailReason", &Actor::GetOrderFailReason, &Actor::SetOrderFailReason)
