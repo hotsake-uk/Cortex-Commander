@@ -2365,13 +2365,13 @@ int GameActivity::OtherTeam(int team) {
 }
 
 bool GameActivity::OneOrNoneTeamsLeft() {
-	// See if only one team remains with any brains
+	// See if only one team remains with any brains (not counting the ones that run colony buildings)
 	int brainTeamCount = 0;
 	int brainTeam = Teams::NoTeam;
 	for (int t = Teams::TeamOne; t < Teams::MaxTeamCount; ++t) {
 		if (!m_TeamActive[t])
 			continue;
-		if (g_MovableMan.GetFirstBrainActor(t)) {
+		if (g_MovableMan.HasGameBrain(t)) {
 			brainTeamCount++;
 			brainTeam = t;
 		}
@@ -2394,7 +2394,7 @@ int GameActivity::WhichTeamLeft() {
 	for (int t = Teams::TeamOne; t < Teams::MaxTeamCount; ++t) {
 		if (!m_TeamActive[t])
 			continue;
-		if (g_MovableMan.GetFirstBrainActor(t)) {
+		if (g_MovableMan.HasGameBrain(t)) {
 			brainTeamCount++;
 			brainTeam = t;
 		}
@@ -2411,7 +2411,7 @@ bool GameActivity::NoTeamLeft() {
 	for (int t = Teams::TeamOne; t < Teams::MaxTeamCount; ++t) {
 		if (!m_TeamActive[t])
 			continue;
-		if (g_MovableMan.GetFirstBrainActor(t))
+		if (g_MovableMan.HasGameBrain(t))
 			return false;
 	}
 	return true;
