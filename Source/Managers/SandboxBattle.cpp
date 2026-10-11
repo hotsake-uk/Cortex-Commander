@@ -1193,7 +1193,7 @@ namespace SandboxDetail {
 	/// it its units chase, fainter), each team's drop line, and its spawn zones.
 	void DrawBattleMarks() {
 		Tool kind = CurrentTool().Kind;
-		if (!(Sandbox::IsOpen() && s_CurrentTab == "Battle") && !IsBattleTool(kind)) {
+		if (!BattleSetupShowing() && !IsBattleTool(kind)) {
 			return;
 		}
 		if (s_ModeSetup.Mode != BattleMode::Custom) {

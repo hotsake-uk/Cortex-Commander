@@ -51,6 +51,7 @@ sources += files(
 'SandboxDebug.cpp',
 'SandboxMinimap.cpp',
 'Colony.cpp',
+'CommanderBar.cpp',
 'ControlLink.cpp',
 'SettingsMan.cpp',
 'ThreadMan.cpp',

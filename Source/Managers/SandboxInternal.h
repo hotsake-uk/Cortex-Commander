@@ -1119,6 +1119,10 @@ namespace SandboxDetail {
 		bool InheritKit = false; //!< Whether the character also carries what a unit of its base class (Body) is spawned with, besides the kit.
 	};
 	inline PlayerSetup s_Player;
+
+	/// Whether there is a character of your own to step into: ticked on the You tab, and only in the Sandbox game mode itself (Battle Command
+	/// has none: you command a team from above, and take over its units with the Control tool).
+	inline bool HasCharacter() { return s_Player.EnterOnClose && !Sandbox::IsBattleCommand(); }
 	constexpr bool c_ShowColonyTab = true; //!< Whether the sandbox window offers the colony buildings.
 	/// What the command tool does with a click on the world.
 	enum class CommandMode {
@@ -2220,7 +2224,8 @@ namespace SandboxDetail {
 	void DrawBattleMode();
 	/// What a battle mode's tool in hand is for, in the mode chosen, by the pointer (as "Red flag", "Hill"); empty for the tool's own name.
 	std::string BattleToolLabel(Tool kind);
-	bool BattleModeChooser();
+	/// @param withCustom Whether custom (the Battle Director's cards) is one of the choices. Battle Command plays the modes only.
+	bool BattleModeChooser(bool withCustom = true);
 	void LogStroke(const Stroke& stroke);
 	void Apply(const Stroke& stroke);
 	void QueueStroke(Tool kind, const Vector& position);
@@ -2310,6 +2315,37 @@ namespace SandboxDetail {
 	void BarDivider();
 	bool ShelfRow();
 	void DrawBar();
+	void PictureText(ImDrawList* drawList, ImVec2 at, float room, ImU32 color, const char* text);
+#pragma endregion
+
+#pragma region Battle Command (CommanderBar.cpp)
+	/// While Battle Command is in development, F11 swaps its Commander Toolbar for the sandbox's own bar (and back), so the sandbox's tools can be
+	/// tried out in it. Off, the Commander Toolbar is the only bar.
+	constexpr bool c_CommanderBarSwitch = true;
+	inline bool s_CommanderBar = true; //!< Battle Command: the Commander Toolbar along the bottom (true), or the sandbox's bar (F11, c_CommanderBarSwitch).
+	inline bool s_BattlePanelOpen = false; //!< Battle Command: the battle panel (setting the battle up, starting and stopping it) is open.
+
+	/// The side you command in Battle Command with the Commander Toolbar up: the team ticked "You command this team" in the battle (the first
+	/// such), else Red. -1 in any other game, or with the sandbox's bar up instead (F11), when every side is yours as in the sandbox.
+	int CommandedTeam();
+
+	/// The side whose units alone can be selected and commanded: yours in commander mode (RC-9) and in Battle Command; -1 for every side.
+	int OnlySide();
+
+	/// Whether the battle is being set up on screen: the sandbox's Battle tab showing, or Battle Command's battle panel open. Its spawn zones,
+	/// drop lines and defence points are drawn on the map then.
+	bool BattleSetupShowing();
+
+	/// Battle Command: keeps the battle's commanded team one of the teams in it (Red if none is ticked), every frame. Call from the ImGui frame.
+	void KeepCommandedTeam();
+
+	/// The Commander Toolbar along the bottom of the picture in Battle Command: the command tools, the battle panel, your side and its units,
+	/// the speed of time and the pause. Above it, the command row (formations, rules, groups) while the Command tool is in hand.
+	void DrawCommanderBar();
+
+	/// Battle Command's battle panel: the battle's mode, teams, spawn zones and objectives, started and stopped. What the sandbox's Battle tab
+	/// is in the Sandbox game mode, which Battle Command doesn't offer.
+	void DrawCommanderPanel();
 #pragma endregion
 
 	/// One tile of the bar: a small picture drawn by the caller, with its name under it when given (else the tile is only the picture). The one in use

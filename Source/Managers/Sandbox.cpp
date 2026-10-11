@@ -286,7 +286,7 @@ void Sandbox::OnToolsClosed(bool atPointer) {
 	}
 	// With a tool in hand, or no character, the tools are only hidden: you stay above, the tool goes on working on the world, and P steps into the character.
 	// With nothing in hand ("Look around") putting the tools away is stepping into the character, as is Shift+Tab whatever is in hand.
-	if (!s_Player.EnterOnClose || (CurrentTool().Kind != Tool::None && !atPointer)) {
+	if (!HasCharacter() || (CurrentTool().Kind != Tool::None && !atPointer)) {
 		s_PlayHintSeconds = 8.0F;
 		return;
 	}
@@ -315,7 +315,10 @@ void Sandbox::TogglePlay(bool atPointer) {
 		s_PlayHintSeconds = 8.0F;
 		return;
 	}
-	if (!s_Player.EnterOnClose) {
+	if (!HasCharacter()) {
+		if (IsBattleCommand()) {
+			return;
+		}
 		g_ConsoleMan.PrintString("SANDBOX: There is no character to play. Tick \"Have a character of my own\" in the sandbox's You tab.");
 		return;
 	}
@@ -453,7 +456,22 @@ bool Sandbox::WantsWorldPaused() {
 
 bool Sandbox::IsGodMode() {
 	const Activity* activity = g_ActivityMan.GetActivity();
-	return activity && InGame() && activity->GetPresetName() == "Sandbox";
+	return activity && InGame() && (activity->GetPresetName() == "Sandbox" || activity->GetPresetName() == "Battle Command");
+}
+
+bool Sandbox::IsBattleCommand() {
+	const Activity* activity = g_ActivityMan.GetActivity();
+	return activity && InGame() && activity->GetPresetName() == "Battle Command";
+}
+
+void Sandbox::ToggleCommanderBar() {
+	if (c_CommanderBarSwitch && IsBattleCommand()) {
+		s_CommanderBar = !s_CommanderBar;
+		// (Units of another side picked while the sandbox's bar was up aren't yours to command under the Commander Toolbar.)
+		if (int side = OnlySide(); side >= 0) {
+			s_Selected.erase(std::remove_if(s_Selected.begin(), s_Selected.end(), [side](const UnitRef& ref) { const Actor* unit = GetRef(ref); return !unit || unit->GetTeam() != side; }), s_Selected.end());
+		}
+	}
 }
 
 bool Sandbox::WantsWheelZoom() {
@@ -532,7 +550,10 @@ void Sandbox::DrawGUI() {
 			s_GodViewPending = false;
 			s_GodViewSetUp = true;
 			// Automated test runs set CCCP_HIDE_PANELS, so the window (wherever the player last left it) doesn't cover what they capture.
-			s_Open = std::getenv("CCCP_HIDE_PANELS") == nullptr;
+			// Battle Command opens on its own battle panel instead, with the Commander Toolbar: the sandbox's window is only for development there.
+			s_Open = std::getenv("CCCP_HIDE_PANELS") == nullptr && !IsBattleCommand();
+			s_BattlePanelOpen = IsBattleCommand() && std::getenv("CCCP_HIDE_PANELS") == nullptr;
+			s_CommanderBar = true;
 			s_FreeCamera = true;
 			s_FreeCameraStarted = false;
 			s_CameraWarmupFrames = 30;
@@ -545,7 +566,8 @@ void Sandbox::DrawGUI() {
 			s_RallySet.fill(false);
 			s_Selected.clear();
 			s_FollowTarget = UnitRef();
-			s_ToolIndex = ToolIndex(Tool::Unit);
+			s_ToolIndex = ToolIndex(IsBattleCommand() ? Tool::Command : Tool::Unit);
+			s_CommandMode = CommandMode::Select;
 		}
 	} else {
 		if (s_GodViewSetUp) {
@@ -619,14 +641,17 @@ void Sandbox::DrawGUI() {
 		drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize() * scale, at, (color & 0x00FFFFFF) | (static_cast<ImU32>(255.0F * alpha) << 24), text);
 	};
 	if (s_PausedByMenus && InGame()) {
-		banner("WORLD PAUSED  -  Tab: play", 8.0F, IM_COL32(150, 210, 255, 255), 1.0F);
+		banner(IsBattleCommand() ? "WORLD PAUSED  -  F7: carry on" : "WORLD PAUSED  -  Tab: play", 8.0F, IM_COL32(150, 210, 255, 255), 1.0F);
 	}
 	if (IsGodMode() && (s_Possessed || !s_Open) && s_PlayHintSeconds > 0.0F && !g_DebugMan.IsPhotoModeHidingHUD()) {
 		// A reminder of the keys, for a few seconds after stepping in.
 		s_PlayHintSeconds -= ImGui::GetIO().DeltaTime;
-		std::string hint = "Tab: sandbox tools";
+		std::string hint = IsBattleCommand() ? (c_CommanderBarSwitch ? "Tab: back above    F7: sandbox window    F11: sandbox bar" : "Tab: back above") : "Tab: sandbox tools";
 		if (!s_Possessed) {
-			if (s_Player.EnterOnClose) {
+			if (IsBattleCommand()) {
+				hint = c_CommanderBarSwitch ? "F7: sandbox window    F11: sandbox bar" : "";
+			}
+			if (HasCharacter()) {
 				hint += "    P: play";
 			}
 			if (CurrentTool().Kind != Tool::None) {
@@ -685,9 +710,19 @@ void Sandbox::DrawGUI() {
 		if (!s_CatalogueBuilt) {
 			BuildCatalogue();
 		}
-		DrawBar();
+		if (IsBattleCommand() && s_CommanderBar) {
+			DrawCommanderBar();
+		} else {
+			DrawBar();
+		}
 	} else {
 		s_BarHeight = 0.0F;
+	}
+	if (IsBattleCommand() && InGame()) {
+		KeepCommandedTeam();
+		if (s_BattlePanelOpen && !s_Possessed && !g_DebugMan.IsPhotoModeHidingHUD()) {
+			DrawCommanderPanel();
+		}
 	}
 	if (!s_Open && !hiddenButAbove) {
 		// The selection's arrows come off while the window is away (they stayed on the units of a game with the window shut, till it was
@@ -1800,7 +1835,9 @@ void Sandbox::Update() {
 			g_ConsoleMan.PrintString("SANDBOX: The unit you were controlling is gone; back to the god view.");
 			s_Possessed = nullptr;
 			s_Flying = false;
-			g_DebugMan.OpenTools();
+			if (!IsBattleCommand()) {
+				g_DebugMan.OpenTools();
+			}
 			s_FreeCameraStarted = false;
 		} else if (s_Possessed && game && s_PlayerEnterPending == 0) {
 			// The unit the game says you control is the one you control. Its own next/previous actor keys stay live while you're in a unit,
@@ -1820,7 +1857,9 @@ void Sandbox::Update() {
 					// (Not to be had back: to the god view, as when it dies.)
 					StopFlying();
 					s_Possessed = nullptr;
-					g_DebugMan.OpenTools();
+					if (!IsBattleCommand()) {
+						g_DebugMan.OpenTools();
+					}
 					s_FreeCameraStarted = false;
 				}
 			}

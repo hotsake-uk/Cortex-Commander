@@ -540,7 +540,9 @@ namespace SandboxDetail {
 
 	std::vector<const char*> VisibleTabs() {
 		std::vector<const char*> tabs;
-		if (Sandbox::IsGodMode()) {
+		// (Battle Command has no character of your own, no gym and no Battle tab: its battle is set up on its own panel.)
+		const bool sandboxGame = Sandbox::IsGodMode() && !Sandbox::IsBattleCommand();
+		if (sandboxGame) {
 			tabs.push_back("You");
 		}
 		tabs.push_back("Spawn");
@@ -549,8 +551,10 @@ namespace SandboxDetail {
 		}
 		tabs.push_back("Build");
 		tabs.push_back("Orders");
-		tabs.push_back("Battle");
-		if (Sandbox::IsGodMode()) {
+		if (!Sandbox::IsBattleCommand()) {
+			tabs.push_back("Battle");
+		}
+		if (sandboxGame) {
 			tabs.push_back("Gym");
 		}
 		for (const char* name: {"Paint", "Boom", "Effects", "World", "Keys"}) {
@@ -1442,7 +1446,7 @@ namespace SandboxDetail {
 				byID[static_cast<long>(actor->GetUniqueID())] = actor;
 			}
 			for (Actor* unit: SandboxAccess::Actors()) {
-				if (!IsCombatant(unit) || unit->IsPlayerControlled() || (s_Commander && unit->GetTeam() != s_CommanderTeam)) {
+				if (!IsCombatant(unit) || unit->IsPlayerControlled() || (OnlySide() >= 0 && unit->GetTeam() != OnlySide())) {
 					continue;
 				}
 				bool isSelected = selected(unit);
@@ -4496,7 +4500,7 @@ namespace SandboxDetail {
 			}
 
 			// The main strip. Into your character.
-			if (s_Player.EnterOnClose) {
+			if (HasCharacter()) {
 				if (BarTile("##play", "Play", "Play: step into your own character (P). Shift+P puts it down where the mouse points first.", false, [&](ImDrawList* tileList, ImVec2 at, float room) { DrawIcon(tileList, Icon::Person, at, room / 12.0F, IM_COL32(130, 220, 120, 255)); }) == 1) {
 					Sandbox::TogglePlay(false);
 				}
@@ -4547,7 +4551,7 @@ namespace SandboxDetail {
 			const BarShelf* inHand = ShelfOf(CurrentTool().Kind);
 			for (size_t i = 0; i < std::size(parts); ++i) {
 				const Part& part = parts[i];
-				if (std::string(part.Name) == "You" && !Sandbox::IsGodMode()) {
+				if ((std::string(part.Name) == "You" && (!Sandbox::IsGodMode() || Sandbox::IsBattleCommand())) || (std::string(part.Name) == "Battle" && Sandbox::IsBattleCommand())) {
 					continue;
 				}
 				const BarShelf* firstShelf = nullptr;

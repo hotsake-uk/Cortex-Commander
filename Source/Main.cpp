@@ -372,7 +372,12 @@ void PollSDLEvents() {
 		// mouse points), or all of them back. Alt+Tab and Ctrl+Tab are left alone.
 		if (sdlEvent.type == SDL_EVENT_KEY_DOWN && !sdlEvent.key.repeat && sdlEvent.key.scancode == SDL_SCANCODE_TAB && !(sdlEvent.key.mod & (SDL_KMOD_ALT | SDL_KMOD_CTRL | SDL_KMOD_GUI)) &&
 		    g_ActivityMan.IsInActivity() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled()) {
-			g_DebugMan.ToggleTools((sdlEvent.key.mod & SDL_KMOD_SHIFT) != 0);
+			// (Battle Command: from a unit you took over, back above it all. Its tool windows are F7 and F11, while it's in development.)
+			if (Sandbox::IsBattleCommand()) {
+				Sandbox::TogglePlay(false);
+			} else {
+				g_DebugMan.ToggleTools((sdlEvent.key.mod & SDL_KMOD_SHIFT) != 0);
+			}
 		}
 		// P in the Sandbox game mode: into your character, or back above. Shift+P puts the character down where the mouse points first.
 		if (sdlEvent.type == SDL_EVENT_KEY_DOWN && !sdlEvent.key.repeat && sdlEvent.key.scancode == SDL_SCANCODE_P && !(sdlEvent.key.mod & (SDL_KMOD_ALT | SDL_KMOD_CTRL | SDL_KMOD_GUI)) &&
@@ -389,7 +394,7 @@ void PollSDLEvents() {
 				g_DebugMan.ToggleWorldDebug();
 			} else if (sdlEvent.key.scancode == SDL_SCANCODE_F7) {
 				// In the Sandbox game mode F7 is the same switch as Tab: the god view with its tools, or your character.
-				if (Sandbox::IsGodMode()) {
+				if (Sandbox::IsGodMode() && !Sandbox::IsBattleCommand()) {
 					g_DebugMan.ToggleTools();
 				} else {
 					Sandbox::Toggle();
@@ -399,6 +404,9 @@ void PollSDLEvents() {
 			} else if (sdlEvent.key.scancode == SDL_SCANCODE_F9 && !Sandbox::IsGodMode() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled()) {
 				// Commander view (RC-9): your side from above in any other game, and back into your unit.
 				Sandbox::ToggleCommander();
+			} else if (sdlEvent.key.scancode == SDL_SCANCODE_F11 && Sandbox::IsBattleCommand() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled()) {
+				// Battle Command, while it's in development: the Commander Toolbar or the sandbox's bar.
+				Sandbox::ToggleCommanderBar();
 			}
 		}
 		if (sdlEvent.type >= SDL_EVENT_WINDOW_FIRST && sdlEvent.type <= SDL_EVENT_WINDOW_LAST) {

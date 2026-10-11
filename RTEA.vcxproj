@@ -1459,6 +1459,7 @@
     <ClCompile Include="Source\Managers\SandboxBattleModes.cpp" />
     <ClCompile Include="Source\Managers\SandboxDebug.cpp" />
     <ClCompile Include="Source\Managers\Colony.cpp" />
+    <ClCompile Include="Source\Managers\CommanderBar.cpp" />
     <ClCompile Include="Source\Managers\ControlLink.cpp" />
     <ClCompile Include="Source\Managers\SettingsMan.cpp" />
     <ClCompile Include="Source\Managers\TimerMan.cpp" />
