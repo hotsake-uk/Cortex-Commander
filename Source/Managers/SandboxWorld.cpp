@@ -3015,6 +3015,8 @@ namespace SandboxDetail {
 			case Tool::BattleModeZone:
 			case Tool::BattleModeGoal:
 			case Tool::BattleModeFlag:
+			case Tool::BattlePickupSpot:
+			case Tool::BattlePickupZone:
 				ApplyBattleStroke(stroke);
 				break;
 			case Tool::ClearEffects:
@@ -3401,6 +3403,11 @@ namespace SandboxDetail {
 			s_ModeSetup.Points[team] = at;
 			s_ModeSetup.HasPoint[team] = true;
 			SendBattleMode();
+			return;
+		}
+		if (kind == Tool::BattlePickupSpot) {
+			// Another place the battle's pickups can come in at.
+			PickupSpotPlaced(position);
 			return;
 		}
 		if (kind == Tool::BattleModeFlag) {

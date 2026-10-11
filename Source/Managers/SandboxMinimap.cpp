@@ -144,6 +144,9 @@ namespace SandboxDetail {
 				}
 			}
 
+			// The battle's pickups lying on the map.
+			DrawBattlePickupsOnMap(drawList, toMap);
+
 			// Pings: units of the selection's side under fire (RC-7) in red, and where the fighting is in yellow.
 			double time = ImGui::GetTime();
 			float pulse = static_cast<float>(std::fmod(time, 1.0));

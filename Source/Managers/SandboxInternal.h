@@ -68,6 +68,7 @@
 #include <climits>
 #include <unordered_set>
 #include <memory>
+#include <functional>
 #include <numeric>
 #include <string>
 #include <vector>
@@ -222,7 +223,10 @@ namespace SandboxDetail {
 		PowerTarget, //!< Battle Command: a click is where the commander power waiting for one (s_PendingPower) is used.
 		BattleRally, //!< Battle Command: a click marks your team's rally point, where its new units and reinforcements make for once they're in.
 		// Appended, so the tools before keep their numbers.
-		Vehicle //!< Puts down the vehicle chosen in the Spawn tab's Vehicles list (s_Vehicles): a cart, a boat, a tank, a ship, a dropship. Nobody in it.
+		Vehicle, //!< Puts down the vehicle chosen in the Spawn tab's Vehicles list (s_Vehicles): a cart, a boat, a tank, a ship, a dropship. Nobody in it.
+		// The battle's pickups (BattlePickups.cpp): appended, so the tools before keep their numbers.
+		BattlePickupSpot, //!< The Battle tab's Pickups: a click puts down another place pickups can come in at.
+		BattlePickupZone //!< The Battle tab's Pickups: each click puts down a corner of a zone pickups can come in anywhere in.
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -237,10 +241,10 @@ namespace SandboxDetail {
 	constexpr const char* c_BuildingMaterials[] = {"Concrete", "Metal", "Mega Metal", "Mangled Metal", "Door Metal", "Scrap Metal", "Glass", "Civilian Stuff", "Military Stuff", "Ladder", "Gold Plate", "Silver Plate", "Bronze Plate", "Brass Plate", "Copper Plate", "Chrome Plate"};
 
 	/// The Battle tab's tools that set something on a team's card, taken from it and put down with Enter (PutDownBattleTool).
-	constexpr bool IsBattleTool(Tool kind) { return kind == Tool::BattleDefendPoint || kind == Tool::BattleDropLine || kind == Tool::BattleSpawnZone || kind == Tool::BattleModePoint || kind == Tool::BattleModeBase || kind == Tool::BattleModeZone || kind == Tool::BattleModeGoal || kind == Tool::BattleModeFlag; }
+	constexpr bool IsBattleTool(Tool kind) { return kind == Tool::BattleDefendPoint || kind == Tool::BattleDropLine || kind == Tool::BattleSpawnZone || kind == Tool::BattleModePoint || kind == Tool::BattleModeBase || kind == Tool::BattleModeZone || kind == Tool::BattleModeGoal || kind == Tool::BattleModeFlag || kind == Tool::BattlePickupSpot || kind == Tool::BattlePickupZone; }
 
 	/// The Battle Director's mode tools that draw a polygon a corner at a click (closed on its first corner, or Enter).
-	constexpr bool IsModeZoneTool(Tool kind) { return kind == Tool::BattleModeBase || kind == Tool::BattleModeZone || kind == Tool::BattleModeGoal; }
+	constexpr bool IsModeZoneTool(Tool kind) { return kind == Tool::BattleModeBase || kind == Tool::BattleModeZone || kind == Tool::BattleModeGoal || kind == Tool::BattlePickupZone; }
 
 	struct ToolInfo {
 		Tool Kind;
@@ -358,6 +362,8 @@ namespace SandboxDetail {
 	    {Tool::PowerTarget, "Commander power", 0.0F, false},
 	    {Tool::BattleRally, "Rally point", 0.0F, false},
 	    {Tool::Vehicle, "Vehicles", 0.0F, false},
+	    {Tool::BattlePickupSpot, "Pickup spot", 0.0F, false},
+	    {Tool::BattlePickupZone, "Pickup zone", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -694,6 +700,10 @@ namespace SandboxDetail {
 	/// What the Battle tab says for a mode: the choices every mode shares, and those some use (each says which in its panel). The window keeps
 	/// its own copy (s_ModeSetup) and sends it to the sim in a Tool::BattleTeam stroke (Stroke::Mode) whenever it changes.
 	constexpr size_t c_MaxFlagSpots = 8; //!< Most flag positions one flag can have placed.
+	constexpr size_t c_MaxPickupSpots = 8; //!< Most places pickups can come in at, placed.
+	constexpr size_t c_MaxPickupZones = 8; //!< Most pickup zones drawn.
+	/// Where a battle's pickups come in (BattleModeSettings::PickupPlaces), as bits: any of them ticked, each pickup at one of them picked at random.
+	enum PickupPlace { PickupAnywhere = 1, PickupAtSpots = 2, PickupInZones = 4 };
 
 	/// What a team you command has its units do as they come in (SpawnOrders.cpp): the order a spawn order gives each new unit.
 	enum class SpawnOrderKind {
@@ -792,6 +802,15 @@ namespace SandboxDetail {
 		std::array<SpawnOrder, c_Sides> SpawnOrders; //!< Every mode: what each team the player commands has its new units do (its reinforcements too), unless they come in
 		                                             //!< in a spawn zone with its own order.
 		std::array<std::vector<SpawnOrder>, c_Sides> ZoneSpawnOrders; //!< And each of its spawn zones' own, by the zone's place in SpawnZones (none past the end: the team's).
+		bool Pickups = false; //!< Every mode: powerups (an energy shield, a stim, a spell scroll...) come in on the map now and then, for the first unit
+		                      //!< to reach each to take into its inventory (BattlePickups.cpp).
+		int PickupEvery = 45; //!< Seconds, about, between one pickup coming in and the next.
+		int PickupMost = 3; //!< Most pickups on the map at once.
+		int PickupLasts = 90; //!< Seconds a pickup nobody takes lies before it goes. 0: till it's taken.
+		int PickupKinds = 0x7F; //!< Which kinds come in (bits by c_PickupKinds).
+		int PickupPlaces = PickupAnywhere; //!< Where they come in (PickupPlace bits).
+		std::vector<Vector> PickupSpots; //!< The places placed (up to c_MaxPickupSpots).
+		std::vector<std::vector<Vector>> PickupZones; //!< The pickup zones drawn (up to c_MaxPickupZones).
 	};
 
 	/// One queued action, with the settings it was made with.
@@ -2413,6 +2432,24 @@ namespace SandboxDetail {
 	/// The Battle tab's setups saved for the map, to save, load, delete, or mark to load with the map.
 	void BattlePresetsPanel();
 
+	/// One of the Battle tab's setups saved with a map (SandboxBattlePresets.cpp), as kept in Userdata/BattlePresets/<map>.txt.
+	struct SavedBattle {
+		std::string Name;
+		bool WithMap = false; //!< Set up again whenever the map starts.
+		bool Linked = false; //!< One of the map's linked battles, played in the list's order.
+		std::array<BattleSettings, c_Sides> Cards;
+		BattleModeSettings Mode;
+	};
+
+	/// The setups saved with a map, read from its file, in their order there. None if it has none.
+	std::vector<SavedBattle> ReadSavedBattles(const std::string& scene);
+
+	/// The next game started (the map browser's Play): the setup of this name goes in once its map is there, in place of the one marked to
+	/// load with the map. With none, nothing does, not even that one.
+	/// @param name The setup's name. Empty to leave it to the one marked to load with the map.
+	/// @param none Load no setup at all.
+	void LoadBattleOnStart(const std::string& name, bool none);
+
 	/// Linked battles (SandboxBattlePresets.cpp): which of them is on, and once it's won, the button to the next. Call inside an ImGui window.
 	/// True when a battle was started from it.
 	bool LinkedBattleControls();
@@ -2499,6 +2536,26 @@ namespace SandboxDetail {
 	void BattleEditPanel();
 	/// What a battle mode's tool in hand is for, in the mode chosen, by the pointer (as "Red flag", "Hill"); empty for the tool's own name.
 	std::string BattleToolLabel(Tool kind);
+	// The battle's pickups (BattlePickups.cpp).
+	void BattlePickupsPanel(BattleModeSettings& setup, bool running, bool& changed);
+	std::string BattlePickupToolLabel(Tool kind);
+	void PickupSpotPlaced(const Vector& position);
+	void PickupZoneDrawn(const std::vector<Vector>& zone);
+	void ApplyPickupStroke(const Stroke& stroke);
+	void StartBattlePickups();
+	void StopBattlePickups();
+	void UpdateBattlePickups(bool aiPaused);
+	void DrawBattlePickups();
+	void DrawBattlePickupsOnMap(ImDrawList* drawList, const std::function<ImVec2(const Vector&)>& toMap);
+	// What BattlePickups.cpp borrows from the battle modes (SandboxBattleModes.cpp).
+	bool BattleTeamIn(int side);
+	std::vector<Actor*> BattleFighters();
+	bool BattleUnitBusy(const Actor* unit);
+	float BattleGapToZone(const std::vector<Vector>& zone, const Vector& at);
+	std::vector<std::vector<Vector>> BattleSpawnZonesOf(const BattleModeSettings& settings, int side);
+	float BattlePulse(float speed);
+	void DrawBattleBeacon(ImDrawList* drawList, ImVec2 foot, ImU32 color, float strength);
+	void DrawBattleTag(ImDrawList* drawList, ImVec2 over, const std::string& text, ImU32 color);
 	/// @param withCustom Whether custom (the Battle Director's cards) is one of the choices. Battle Command plays the modes only.
 	bool BattleModeChooser(bool withCustom = true);
 	void LogStroke(const Stroke& stroke);
