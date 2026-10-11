@@ -328,6 +328,10 @@ namespace RTE {
 		/// Updates this MovableObject. Supposed to be done every frame.
 		void Update() override;
 
+		/// Updates only the wounds, on this and on its attachables all the way down, so they bleed and their damage builds up to be
+		/// collected (see Attachable::CollectDamage). For something kept out of the scene that can still be hurt: a vehicle's crew in their seats.
+		void UpdateWounds();
+
 		/// Stores the current state as the previous render state, for this and all attachables and wounds. See MovableObject::StoreRenderPreviousState.
 		void StoreRenderPreviousState() override;
 

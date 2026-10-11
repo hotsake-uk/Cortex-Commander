@@ -1,6 +1,7 @@
 // The player's own character and taking control of a unit.
 
 #include "SandboxInternal.h"
+#include "AVehicle.h"
 #include "BuyMenuGUI.h"
 
 namespace SandboxDetail {
@@ -153,6 +154,15 @@ namespace SandboxDetail {
 		}
 		if (!actor) {
 			s_Flying = false;
+			// Sat in a vehicle's open seat, where shots can reach it: still kept from harm, if it is to be.
+			if (const AVehicle* vehicle = dynamic_cast<const AVehicle*>(GetRef(s_PlayerVehicle)); vehicle && s_Player.Unkillable) {
+				if (Actor* rider = vehicle->GetControlSeat() >= 0 ? vehicle->GetSeatOccupant(vehicle->GetControlSeat()) : nullptr) {
+					rider->SetHealth(rider->GetMaxHealth());
+					if (int wounds = rider->GetWoundCount(); wounds > 0) {
+						rider->RemoveWounds(wounds);
+					}
+				}
+			}
 			return;
 		}
 		bool playing = s_Possessed == actor;
