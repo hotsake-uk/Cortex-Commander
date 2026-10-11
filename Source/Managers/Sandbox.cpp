@@ -483,13 +483,34 @@ bool Sandbox::IsBattleCommand() {
 }
 
 void Sandbox::ToggleCommanderBar() {
-	if (c_CommanderBarSwitch && IsBattleCommand()) {
+	if (IsGodMode() && (c_CommanderBarSwitch || !IsBattleCommand())) {
 		s_CommanderBar = !s_CommanderBar;
+		// (A sandbox tool in hand, a paint brush say, isn't on the Commander Toolbar: the Command tool is taken up instead.)
+		const Tool inHand = CurrentTool().Kind;
+		if (s_CommanderBar && inHand != Tool::Command && inHand != Tool::Follow && inHand != Tool::Possess && !IsBattleTool(inHand)) {
+			s_ToolIndex = ToolIndex(Tool::Command);
+		}
 		// (Units of another side picked while the sandbox's bar was up aren't yours to command under the Commander Toolbar.)
 		if (int side = OnlySide(); side >= 0) {
 			s_Selected.erase(std::remove_if(s_Selected.begin(), s_Selected.end(), [side](const UnitRef& ref) { const Actor* unit = GetRef(ref); return !unit || unit->GetTeam() != side; }), s_Selected.end());
 		}
 	}
+}
+
+namespace {
+	/// The Commander Toolbar key from the settings, F11 if it names no key.
+	SDL_Scancode CommanderBarScancode() {
+		SDL_Scancode key = SDL_GetScancodeFromName(g_SettingsMan.CommanderBarKey().c_str());
+		return key == SDL_SCANCODE_UNKNOWN ? SDL_SCANCODE_F11 : key;
+	}
+} // namespace
+
+bool Sandbox::IsCommanderBarKey(int scancode) {
+	return scancode == CommanderBarScancode();
+}
+
+std::string Sandbox::CommanderBarKeyName() {
+	return SDL_GetScancodeName(CommanderBarScancode());
 }
 
 bool Sandbox::WantsWheelZoom() {
@@ -581,7 +602,7 @@ void Sandbox::DrawGUI() {
 			// Battle Command opens on its own battle panel instead, with the Commander Toolbar: the sandbox's window is only for development there.
 			s_Open = std::getenv("CCCP_HIDE_PANELS") == nullptr && !IsBattleCommand();
 			s_BattlePanelOpen = IsBattleCommand() && std::getenv("CCCP_HIDE_PANELS") == nullptr;
-			s_CommanderBar = true;
+			s_CommanderBar = IsBattleCommand();
 			s_FreeCamera = true;
 			s_FreeCameraStarted = false;
 			s_CameraWarmupFrames = 30;
@@ -674,10 +695,13 @@ void Sandbox::DrawGUI() {
 	if (IsGodMode() && (s_Possessed || !s_Open) && s_PlayHintSeconds > 0.0F && !g_DebugMan.IsPhotoModeHidingHUD()) {
 		// A reminder of the keys, for a few seconds after stepping in.
 		s_PlayHintSeconds -= ImGui::GetIO().DeltaTime;
-		std::string hint = IsBattleCommand() ? (c_CommanderBarSwitch ? "Tab: back above    F7: sandbox window    F11: sandbox bar" : "Tab: back above") : "Tab: sandbox tools";
+		const std::string barKey = "    " + CommanderBarKeyName() + (s_CommanderBar ? ": sandbox bar" : ": Commander Toolbar");
+		std::string hint = IsBattleCommand() ? (c_CommanderBarSwitch ? "Tab: back above    F7: sandbox window" + barKey : "Tab: back above") : "Tab: sandbox tools";
 		if (!s_Possessed) {
 			if (IsBattleCommand()) {
-				hint = c_CommanderBarSwitch ? "F7: sandbox window    F11: sandbox bar" : "";
+				hint = c_CommanderBarSwitch ? "F7: sandbox window" + barKey : "";
+			} else {
+				hint += barKey;
 			}
 			if (HasCharacter()) {
 				hint += "    P: play";
@@ -742,7 +766,7 @@ void Sandbox::DrawGUI() {
 		if (!s_CatalogueBuilt) {
 			BuildCatalogue();
 		}
-		if (IsBattleCommand() && s_CommanderBar) {
+		if (s_CommanderBar) {
 			DrawCommanderBar();
 		} else {
 			DrawBar();
@@ -752,6 +776,11 @@ void Sandbox::DrawGUI() {
 	}
 	if (IsBattleCommand() && InGame()) {
 		KeepCommandedTeam();
+		// Till the battle is started the panel stays open: it's the only way to start one, and with it shut there was nothing to do.
+		static const bool hidePanelsForTests = std::getenv("CCCP_HIDE_PANELS") != nullptr;
+		if (!s_ModeRun.Running && !hidePanelsForTests) {
+			s_BattlePanelOpen = true;
+		}
 		if (s_BattlePanelOpen && !s_Possessed && !g_DebugMan.IsPhotoModeHidingHUD()) {
 			DrawCommanderPanel();
 		}

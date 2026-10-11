@@ -447,6 +447,13 @@ namespace RTE {
 		/// Sets whether units in a sandbox control group show the group's number by them.
 		void SetShowSandboxGroupBadges(bool show) { m_SandboxGroupBadges = show; }
 
+		/// The key that swaps the bar along the bottom between the sandbox's bar and the Commander Toolbar, in the Sandbox game mode and Battle
+		/// Command: an SDL key name ("F11").
+		const std::string& CommanderBarKey() const { return m_CommanderBarKey; }
+
+		/// Sets the key that swaps the sandbox's bar and the Commander Toolbar (an SDL key name).
+		void SetCommanderBarKey(const std::string& key) { m_CommanderBarKey = key; }
+
 		/// Which units in the sandbox show their order as a mark over them (RC-7): 0 none, 1 the selected ones, 2 all.
 		int SandboxOrderGlyphs() const { return m_SandboxOrderGlyphs; }
 
@@ -860,6 +867,7 @@ namespace RTE {
 		bool m_SandboxStrokeLog; //!< Whether the sandbox's stroke log is on (see ShowSandboxStrokeLog).
 		bool m_SandboxSpotReach; //!< Whether move previews show each standing spot's reachability (see ShowSandboxSpotReach).
 		bool m_SandboxGroupBadges; //!< Whether control-group units show their group's number (see ShowSandboxGroupBadges).
+		std::string m_CommanderBarKey; //!< The key that swaps the sandbox's bar and the Commander Toolbar (see CommanderBarKey).
 		int m_SandboxOrderGlyphs; //!< Which units show their order as a mark (see SandboxOrderGlyphs).
 		int m_SandboxSpawnStats; //!< How the Spawn tab shows units' and items' stats (see SandboxSpawnStats).
 		bool m_SandboxAttackPings; //!< Whether units coming under fire are pinged (see ShowSandboxAttackPings).

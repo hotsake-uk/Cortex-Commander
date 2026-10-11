@@ -5,8 +5,12 @@
 
 namespace SandboxDetail {
 	int CommandedTeam() {
-		if (!Sandbox::IsBattleCommand() || !s_CommanderBar) {
+		if (!Sandbox::IsGodMode() || !s_CommanderBar) {
 			return -1;
+		}
+		// (The Sandbox game mode with the Commander Toolbar swapped in: the side picked in the sandbox.)
+		if (!Sandbox::IsBattleCommand()) {
+			return std::clamp(s_Team, 0, c_Sides - 1);
 		}
 		if (int seat = HotSeatSide(); seat >= 0) {
 			return seat;
@@ -149,8 +153,16 @@ namespace SandboxDetail {
 			{
 				const bool running = s_ModeRun.Running;
 				std::string tip = running ? "Battle: the game on now, its teams and their scores; start it again or stop it." : "Battle: pick the mode, draw the teams' spawn zones and objectives, choose your team, and start.";
-				if (BarTile("##battle", "Battle", tip.c_str(), s_BattlePanelOpen, [&](ImDrawList* tileList, ImVec2 at, float room) { DrawIcon(tileList, Icon::Flag, at, room / 12.0F, IM_COL32(242, 182, 61, 255)); }) == 1) {
-					s_BattlePanelOpen = !s_BattlePanelOpen;
+				// (In the Sandbox game mode the battle is set up on the sandbox window's Battle tab.)
+				if (BarTile("##battle", "Battle", tip.c_str(), BattleSetupShowing(), [&](ImDrawList* tileList, ImVec2 at, float room) { DrawIcon(tileList, Icon::Flag, at, room / 12.0F, IM_COL32(242, 182, 61, 255)); }) == 1) {
+					if (Sandbox::IsBattleCommand()) {
+						// (Before the battle is started the panel stays open.)
+						if (running) {
+							s_BattlePanelOpen = !s_BattlePanelOpen;
+						}
+					} else {
+						ToggleWindowTab("Battle");
+					}
 				}
 			}
 			BarDivider();
@@ -158,7 +170,7 @@ namespace SandboxDetail {
 			{
 				int count = Sandbox::CountUnits(side);
 				std::string number = std::to_string(count);
-				std::string tip = std::string("You command ") + c_SideNames[side] + ": " + number + " fighting units in.\nClick: select them all. Double click: look at them too.\nWhich team is yours is set on the battle panel.";
+				std::string tip = std::string("You command ") + c_SideNames[side] + ": " + number + " fighting units in.\nClick: select them all. Double click: look at them too.\n" + (Sandbox::IsBattleCommand() ? "Which team is yours is set on the battle panel." : "Which team is yours is the side picked in the sandbox.");
 				if (BarTile(
 				        "##yours", c_SideNames[side], tip.c_str(), false, [&](ImDrawList* tileList, ImVec2 at, float room) {
 					        float inset = room * 0.08F;
@@ -254,7 +266,8 @@ namespace SandboxDetail {
 		GameViewRect view = g_WindowMan.GetGameViewRect();
 		ImGui::SetNextWindowSize(ImVec2(430.0F, std::max(200.0F, view.h - s_BarHeight - 80.0F)), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowPos(ImVec2(view.x + 15.0F, view.y + 40.0F), ImGuiCond_FirstUseEver);
-		if (ImGui::Begin("Battle###CommanderPanel", &s_BattlePanelOpen, ImGuiWindowFlags_NoFocusOnAppearing)) {
+		// No close button till the battle is started: the panel is the only way to start it.
+		if (ImGui::Begin("Battle###CommanderPanel", s_ModeRun.Running ? &s_BattlePanelOpen : nullptr, ImGuiWindowFlags_NoFocusOnAppearing)) {
 			if (!s_ModeRun.Running) {
 				ImGui::TextWrapped("Pick a mode, tick the teams in it and draw each one's spawn zone, then tick \"You command this team\" on yours and start. Your team's units are yours alone to order; the rest fight as the mode has them.");
 			}
@@ -263,7 +276,7 @@ namespace SandboxDetail {
 			if (ToolUI::Checkbox("Fog of war", &s_ModeSetup.FogOfWar)) {
 				SendBattleMode();
 			}
-			ImGui::SetItemTooltip("You see only the enemies your team's units can see: those in sight of one of them, not behind the ground. Where one was last seen\nis marked, fading, on the map and the minimap. Scouts and jetpack spotters up high see furthest. Can be changed during the game.\nThe sandbox's bar (F11) sees everything.");
+			ImGui::SetItemTooltip("%s", ("You see only the enemies your team's units can see: those in sight of one of them, not behind the ground. Where one was last seen\nis marked, fading, on the map and the minimap. Scouts and jetpack spotters up high see furthest. Can be changed during the game.\nThe sandbox's bar (" + Sandbox::CommanderBarKeyName() + ") sees everything.").c_str());
 			if (ToolUI::Checkbox("Your brain on the field", &s_ModeSetup.FieldBrain)) {
 				SendBattleMode();
 			}

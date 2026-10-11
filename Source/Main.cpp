@@ -411,8 +411,8 @@ void PollSDLEvents() {
 			} else if (sdlEvent.key.scancode == SDL_SCANCODE_F9 && !Sandbox::IsGodMode() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled()) {
 				// Commander view (RC-9): your side from above in any other game, and back into your unit.
 				Sandbox::ToggleCommander();
-			} else if (sdlEvent.key.scancode == SDL_SCANCODE_F11 && Sandbox::IsBattleCommand() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled()) {
-				// Battle Command, while it's in development: the Commander Toolbar or the sandbox's bar.
+			} else if (Sandbox::IsCommanderBarKey(sdlEvent.key.scancode) && Sandbox::IsGodMode() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled() && !ImGui::GetIO().WantTextInput) {
+				// The Sandbox game mode, and Battle Command while it's in development: the Commander Toolbar or the sandbox's bar (F11 unless rebound).
 				Sandbox::ToggleCommanderBar();
 			}
 		}

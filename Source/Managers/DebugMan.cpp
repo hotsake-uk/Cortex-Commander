@@ -38,6 +38,7 @@
 #include "TimerMan.h"
 #include "UInputMan.h"
 #include "ActivityMan.h"
+#include "AudioMan.h"
 #include "FrameMan.h"
 #include "Scene.h"
 #include "tracy/TracyOpenGL.hpp"
@@ -346,6 +347,18 @@ void DebugMan::UpdateFreeze() {
 		m_UserPause = false;
 	}
 	g_TimerMan.PauseSim(m_UserPause, TimerMan::SimPauseUser);
+	// The world's sounds are held with it, as the pause menu holds them: left playing, a looping sound (a jetpack, an engine, a fire) went round and
+	// round over the still world with nothing to stop it. (Every frame while held: leaving the pause menu lets the sounds go.)
+	if (m_UserPause) {
+		g_AudioMan.PauseIngameSounds(true);
+		m_UserPausedSounds = true;
+	} else if (m_UserPausedSounds) {
+		m_UserPausedSounds = false;
+		// Not if the pause menu is up: it holds them too, and lets them go as it closes.
+		if (const Activity* activity = g_ActivityMan.GetActivity(); activity && !activity->IsPaused()) {
+			g_AudioMan.PauseIngameSounds(false);
+		}
+	}
 	if (m_UserPause) {
 		const char* text = "PAUSED  -  Pause: resume";
 		ImDrawList* drawList = ImGui::GetForegroundDrawList();
