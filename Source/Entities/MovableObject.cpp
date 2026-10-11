@@ -96,6 +96,7 @@ void MovableObject::Clear() {
 	m_FunctionsAndScripts.clear();
 	m_StringValueMap.clear();
 	m_NumberValueMap.clear();
+	m_NumberValuesChanged = true;
 	m_ObjectValueMap.clear();
 	m_ThreadedLuaState = nullptr;
 	m_ForceIntoMasterLuaState = g_SettingsMan.EnableLuaDebugging();
@@ -325,6 +326,7 @@ int MovableObject::Create(const MovableObject& reference) {
 
 	m_StringValueMap = reference.m_StringValueMap;
 	m_NumberValueMap = reference.m_NumberValueMap;
+	m_NumberValuesChanged = true;
 	m_ObjectValueMap = reference.m_ObjectValueMap;
 
 	m_UniqueID = MovableObject::GetNextUniqueID();
@@ -1259,6 +1261,7 @@ void MovableObject::SetEncodedStringValue(const std::string& key, const std::str
 
 void MovableObject::SetNumberValue(const std::string& key, double value) {
 	m_NumberValueMap[key] = value;
+	m_NumberValuesChanged = true;
 }
 
 void MovableObject::SetObjectValue(const std::string& key, Entity* value) {
@@ -1271,6 +1274,7 @@ void MovableObject::RemoveStringValue(const std::string& key) {
 
 void MovableObject::RemoveNumberValue(const std::string& key) {
 	m_NumberValueMap.erase(key);
+	m_NumberValuesChanged = true;
 }
 
 void MovableObject::RemoveObjectValue(const std::string& key) {

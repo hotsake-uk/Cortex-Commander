@@ -3162,10 +3162,8 @@ void AHuman::Draw(BITMAP* pTargetBitmap, const Vector& targetPos, DrawMode mode,
 void AHuman::Draw(const Camera& camera) const {
 	Actor::Draw(camera);
 
-	if (m_FlashWhiteTimer.IsPastRealTimeLimit()) {
-		g_RenderMan.PushUniform(std::make_shared<BoolValue>(g_RenderMan.GetCurrentShader()->GetUniformLocation("rteReplaceColor"), 1));
-		g_RenderMan.PushUniform(std::make_shared<Vector4fValue>(g_RenderMan.GetCurrentShader()->GetColorUniform(), glm::vec4(1.0f)));
-	}
+	// (A white-flash uniform push here and its clear below were dropped: the batch's current uniforms they went into are read by nothing,
+	// and the lookups cost a glGetUniformLocation and two allocations for every humanoid every frame.)
 
 	// Note: For some reason the ordering of the attachables list can get messed up. The most important thing here is that the FGArm is on top of everything else.
 	if (m_pHead && m_pHead->IsDrawnAfterParent()) {
@@ -3181,11 +3179,6 @@ void AHuman::Draw(const Camera& camera) const {
 		if (HeldDevice* heldDevice = m_pFGArm->GetHeldDevice(); heldDevice && !dynamic_cast<ThrownDevice*>(heldDevice) && !heldDevice->IsReloading() && !heldDevice->IsShield()) {
 			m_pBGArm->DrawHand(camera);
 		}
-	}
-
-	if (m_FlashWhiteTimer.IsPastRealTimeLimit()) {
-		g_RenderMan.ClearUniforms();
-		g_RenderMan.PushUniform(std::make_shared<BoolValue>(g_RenderMan.GetCurrentShader()->GetUniformLocation("rteReplaceColor"), 1));
 	}
 
 	if (g_SettingsMan.DrawHandAndFootGroupVisualizations()) {
@@ -3563,13 +3556,14 @@ void AHuman::LearnFlight() {
 	}
 	float dt = g_TimerMan.GetDeltaTimeSecs();
 	float radius = std::max(GetRadius() * 0.5F, 10.0F);
-	// Nothing touching the body: no terrain anywhere round it a little past its middle's reach.
+	bool free = m_pJetpack->IsEmitting() && m_Status != INACTIVE && !m_Mantling;
+	// Nothing touching the body: no terrain anywhere round it a little past its middle's reach. (Only looked for when it would count.)
 	bool touching = false;
-	for (int i = 0; i < 8 && !touching; ++i) {
+	for (int i = 0; free && i < 8 && !touching; ++i) {
 		Vector probe = m_Pos + Vector(radius + 4.0F, 0.0F).RadRotate(static_cast<float>(i) * c_QuarterPI);
 		touching = g_SceneMan.GetTerrMatter(probe.GetFloorIntX(), probe.GetFloorIntY()) != MaterialColorKeys::g_MaterialAir;
 	}
-	bool free = m_pJetpack->IsEmitting() && !touching && m_Status != INACTIVE && !m_Mantling;
+	free = free && !touching;
 	if (free && m_JetPrevFree && dt > 0.0F) {
 		// The push the jet gave over the last frame: the change of speed, less gravity's part of it.
 		Vector accel = (m_Vel - m_JetPrevVel) / dt - g_SceneMan.GetGlobalAcc();
