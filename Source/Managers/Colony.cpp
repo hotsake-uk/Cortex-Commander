@@ -151,7 +151,7 @@ namespace {
 	float DrawPower(const Colony::Building& building, float wanted) {
 		float got = 0.0F;
 		for (Colony::Building* generator: GeneratorsFor(building)) {
-			float take = std::min(wanted - got, c_GeneratorPower - generator->Power);
+			float take = std::min(wanted - got, Colony::GeneratorPower(*generator) - generator->Power);
 			if (take > 0.0F) {
 				generator->Power += take;
 				got += take;
@@ -164,7 +164,7 @@ namespace {
 	float SparePower(const Colony::Building& building) {
 		float spare = 0.0F;
 		for (const Colony::Building* generator: GeneratorsFor(building)) {
-			spare += std::max(c_GeneratorPower - generator->Power, 0.0F);
+			spare += std::max(Colony::GeneratorPower(*generator) - generator->Power, 0.0F);
 		}
 		return spare;
 	}
@@ -315,7 +315,12 @@ namespace {
 	}
 
 	/// What a worker cuts with, as it cuts.
-	const Cutting& CuttingOf(const Colony::Building& building) { return building.Looks == Colony::Style::SciFi ? c_SawCutting : c_AxeCutting; }
+	/// How a building's staff cut, faster as it is upgraded.
+	Cutting CuttingOf(const Colony::Building& building) {
+		Cutting cutting = building.Looks == Colony::Style::SciFi ? c_SawCutting : c_AxeCutting;
+		cutting.EveryMS = static_cast<long long>(static_cast<float>(cutting.EveryMS) / Colony::LevelPace(building));
+		return cutting;
+	}
 
 	/// Puts something a worker has in its hands (by name), out of its inventory if need be.
 	void Hold(Actor* unit, const char* presetName) {
@@ -745,7 +750,7 @@ namespace {
 					worker.Doing = Colony::Job::Idle;
 					return;
 				}
-				const Cutting& cutting = CuttingOf(building);
+				Cutting cutting = CuttingOf(building);
 				if (Swinging(worker) && now - worker.HitMS >= cutting.EveryMS) {
 					worker.HitMS = now;
 					if (ChopBand(worker, cutting.Pixels)) {
@@ -789,7 +794,7 @@ namespace {
 			case Colony::Job::Buck: {
 				Hold(unit, Colony::GetLook(building.What, building.Looks).Tool);
 				Cut(unit, worker.Aim);
-				const Cutting& cutting = CuttingOf(building);
+				Cutting cutting = CuttingOf(building);
 				if (Swinging(worker) && now - worker.HitMS >= cutting.EveryMS) {
 					worker.HitMS = now;
 					int cut = Buck(worker, cutting.Pixels);
@@ -921,7 +926,8 @@ namespace {
 		                     }),
 		                     building.Staff.end());
 		bool running = !building.Paused && !building.Disabled();
-		if (running && static_cast<int>(building.Staff.size()) < building.KeepAlive && now >= building.HireMS) {
+		// (One more for each level it is upgraded.)
+		if (running && static_cast<int>(building.Staff.size()) < building.KeepAlive + building.Level - 1 && now >= building.HireMS) {
 			// A new one, at the door, a second after the last.
 			if (Actor* unit = Sandbox::SpawnWorker(looks.Worker, looks.WorkerModule, building.Team, Door(building) + Vector(0.0F, -20.0F))) {
 				Colony::Worker worker;
@@ -1007,6 +1013,58 @@ float Colony::PowerRange() { return c_PowerRange; }
 
 float Colony::GeneratorPower() { return c_GeneratorPower; }
 
+float Colony::GeneratorPower(const Building& generator) { return c_GeneratorPower * LevelPace(generator); }
+
+float Colony::ExtractorIncome(const Building& extractor) { return c_ExtractorIncome * LevelPace(extractor); }
+
+float Colony::LevelPace(const Building& building) { return 1.0F + 0.4F * static_cast<float>(std::clamp(building.Level, 1, c_MaxLevel) - 1); }
+
+bool Colony::UpgradeCost(const Building& building, float& supply, int& wood) {
+	supply = 0.0F;
+	wood = 0;
+	if (building.Level >= c_MaxLevel) {
+		return false;
+	}
+	supply = s_Free ? 0.0F : (building.Level == 1 ? 100.0F : 250.0F);
+	wood = building.Level == 1 ? 10 : 25;
+	return true;
+}
+
+std::string Colony::Upgrade(int id) {
+	for (Building& building: s_Buildings) {
+		if (building.ID != id) {
+			continue;
+		}
+		float supply = 0.0F;
+		int wood = 0;
+		if (!UpgradeCost(building, supply, wood)) {
+			return "It is at its top level";
+		}
+		if (s_Wood[building.Team] < wood) {
+			return "Not enough wood: it needs " + std::to_string(wood);
+		}
+		if (s_Supply[building.Team] < supply) {
+			return "Not enough supply: it needs " + std::to_string(static_cast<int>(supply));
+		}
+		s_Wood[building.Team] -= wood;
+		s_Supply[building.Team] -= supply;
+		++building.Level;
+		if (building.What == Kind::Woodcutter) {
+			building.WorkRadius *= 1.25F; // (Its staff go further for trees.)
+		}
+		return "";
+	}
+	return "It is gone";
+}
+
+void Colony::TrainNow(int id, int count) {
+	for (Building& building: s_Buildings) {
+		if (building.ID == id && building.What == Kind::Barracks) {
+			building.Queued = std::clamp(building.Queued + count, 0, 99);
+		}
+	}
+}
+
 float Colony::TrainingPower() { return c_TrainingPower; }
 
 float Colony::TrainingSeconds(float cost) { return std::clamp(cost / 40.0F, 4.0F, 30.0F); }
@@ -1018,7 +1076,7 @@ float Colony::SupplyPerMinute(int team) {
 		if (building.Team == team) {
 			any = true;
 			if (building.What == Kind::Extractor && !building.Paused && !building.Disabled()) {
-				income += c_ExtractorIncome;
+				income += c_ExtractorIncome * LevelPace(building);
 			}
 		}
 	}
@@ -1172,7 +1230,7 @@ void Colony::Update() {
 		}
 		hasBuilding[building.Team] = true;
 		if (building.What == Kind::Extractor && !building.Paused && !building.Disabled()) {
-			income[building.Team] += c_ExtractorIncome;
+			income[building.Team] += c_ExtractorIncome * LevelPace(building);
 		}
 	}
 	for (int team = 0; team < 4; ++team) {
@@ -1219,7 +1277,7 @@ void Colony::Update() {
 			building.Status = "No unit chosen";
 			continue;
 		}
-		if (!building.Paid && static_cast<int>(building.Alive.size()) >= building.KeepAlive) {
+		if (!building.Paid && static_cast<int>(building.Alive.size()) >= building.KeepAlive && building.Queued <= 0) {
 			building.Status = "All its units are alive";
 			continue;
 		}
@@ -1245,10 +1303,11 @@ void Colony::Update() {
 			}
 			building.Paid = true;
 			building.Progress = 0.0F;
+			building.ForQueue = static_cast<int>(building.Alive.size()) >= building.KeepAlive;
 		}
 		building.Status = "Training " + building.Unit + (!building.NoPower ? "" : building.Power > 0.0F ? " on low power" : " slowly: no power");
 		float pace = building.NoPower ? std::max(building.Power, c_UnpoweredPace) : 1.0F;
-		building.Progress += pace * seconds / TrainingSeconds(cost);
+		building.Progress += pace * LevelPace(building) * seconds / TrainingSeconds(cost);
 		if (building.Progress >= 1.0F) {
 			building.Progress = 0.0F;
 			building.Paid = false;
@@ -1257,6 +1316,16 @@ void Colony::Update() {
 			if (Actor* unit = Sandbox::SpawnUnit(building.Unit, building.Team, door, building.Orders)) {
 				building.Alive.emplace_back(unit, static_cast<long>(unit->GetUniqueID()));
 				++building.Produced;
+				if (building.ForQueue) {
+					building.Queued = std::max(building.Queued - 1, 0);
+					building.ForQueue = false;
+				}
+				if (building.HasRally) {
+					// Off to its rally point, to wait there.
+					unit->ClearAIWaypoints();
+					unit->AddAISceneWaypoint(building.Rally);
+					unit->SetAIMode(Actor::AIMODE_GOTO);
+				}
 			} else {
 				building.Status = "Can not make " + building.Unit;
 				building.Paused = true;
@@ -1265,7 +1334,7 @@ void Colony::Update() {
 	}
 	for (Building& generator: s_Buildings) {
 		if (generator.What == Kind::Generator && !generator.Disabled()) {
-			generator.Status = generator.Paused ? "Stopped" : !s_NeedsPower ? "Idle: buildings run without power" : "Giving " + std::to_string(static_cast<int>(generator.Power + 0.5F)) + " of " + std::to_string(static_cast<int>(c_GeneratorPower)) + " power";
+			generator.Status = generator.Paused ? "Stopped" : !s_NeedsPower ? "Idle: buildings run without power" : "Giving " + std::to_string(static_cast<int>(generator.Power + 0.5F)) + " of " + std::to_string(static_cast<int>(GeneratorPower(generator))) + " power";
 		}
 	}
 	for (int id: wrecked) {

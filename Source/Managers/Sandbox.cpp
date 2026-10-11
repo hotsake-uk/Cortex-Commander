@@ -871,6 +871,9 @@ void Sandbox::DrawGUI() {
 		DrawColony();
 	}
 	if (InGame() && !g_DebugMan.IsPhotoModeHidingHUD()) {
+		DrawBuildingPanel();
+	}
+	if (InGame() && !g_DebugMan.IsPhotoModeHidingHUD()) {
 		// A Battle Director mode's game: its flags and score, with the window open or not.
 		DrawBattleMode();
 		DrawBattleEdit();
