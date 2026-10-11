@@ -809,6 +809,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AILadderTeamStalls", { int stalls = 2; reader >> stalls; SetAILadderTeamStalls(stalls); });
 	MatchProperty("AIGrabsLaddersOnPurpose", { reader >> m_AIGrabsLaddersOnPurpose; });
 	MatchProperty("AIGrabsLaddersMidJet", { reader >> m_AIGrabsLaddersMidJet; });
+	MatchProperty("AIMantlesOnPurpose", { reader >> m_AIMantlesOnPurpose; });
+	MatchProperty("AICatchesLedgesMidAir", { reader >> m_AICatchesLedgesMidAir; });
 	MatchProperty("RiskyOrdersFlyPastLadders", { reader >> m_RiskyOrdersFlyPastLadders; });
 	MatchProperty("AISpawnDiggerChance", { float percent = 0.0F; reader >> percent; SetAISpawnDiggerChance(percent); });
 	MatchProperty("BleedOutChance", { float percent = 0.0F; reader >> percent; SetBleedOutChance(percent); });
@@ -831,7 +833,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DirectCaution", { reader >> m_DirectOrders.Caution; m_DirectOrders.Caution = std::clamp(m_DirectOrders.Caution, 0.0F, 1.0F); });
 	MatchProperty("DirectFlightCost", { reader >> m_DirectOrders.FlightCostScale; m_DirectOrders.FlightCostScale = std::clamp(m_DirectOrders.FlightCostScale, 0.2F, 1.0F); });
 	MatchProperty("DirectFuelShare", { reader >> m_DirectOrders.FuelShare; m_DirectOrders.FuelShare = std::clamp(m_DirectOrders.FuelShare, 0.1F, 1.2F); });
-	MatchProperty("DirectSteady", { reader >> m_DirectOrders.Steady; });
+	MatchProperty("DirectRecklessSteadyCut", { reader >> m_DirectOrders.RecklessSteadyCut; m_DirectOrders.RecklessSteadyCut = std::clamp(m_DirectOrders.RecklessSteadyCut, 0.0F, 1.0F); });
+	MatchProperty("DirectSteady", { bool unused; reader >> unused; }); // (The older "still steady" switch, off by default: its saved value is not carried over, so risky orders steady again.)
 	MatchProperty("DirectFlightSpeed", { reader >> m_DirectOrders.FlightSpeed; m_DirectOrders.FlightSpeed = std::clamp(m_DirectOrders.FlightSpeed, 1.0F, 3.0F); });
 	MatchProperty("DirectSafeLandings", { reader >> m_DirectOrders.SafeLandings; });
 	MatchProperty("DirectTouchdown", { reader >> m_DirectOrders.Touchdown; m_DirectOrders.Touchdown = std::clamp(m_DirectOrders.Touchdown, 3.0F, 15.0F); });
@@ -1326,6 +1329,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AILadderTeamStalls", m_AILadderTeamStalls);
 	writer.NewPropertyWithValue("AIGrabsLaddersOnPurpose", m_AIGrabsLaddersOnPurpose);
 	writer.NewPropertyWithValue("AIGrabsLaddersMidJet", m_AIGrabsLaddersMidJet);
+	writer.NewPropertyWithValue("AIMantlesOnPurpose", m_AIMantlesOnPurpose);
+	writer.NewPropertyWithValue("AICatchesLedgesMidAir", m_AICatchesLedgesMidAir);
 	writer.NewPropertyWithValue("RiskyOrdersFlyPastLadders", m_RiskyOrdersFlyPastLadders);
 	writer.NewPropertyWithValue("AISteadyBeforeJet", m_AISteadyBeforeJet);
 	writer.NewPropertyWithValue("AIWaitForFuel", m_AIWaitForFuel);
@@ -1343,7 +1348,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("DirectCaution", m_DirectOrders.Caution);
 	writer.NewPropertyWithValue("DirectFlightCost", m_DirectOrders.FlightCostScale);
 	writer.NewPropertyWithValue("DirectFuelShare", m_DirectOrders.FuelShare);
-	writer.NewPropertyWithValue("DirectSteady", m_DirectOrders.Steady);
+	writer.NewPropertyWithValue("DirectRecklessSteadyCut", m_DirectOrders.RecklessSteadyCut);
 	writer.NewPropertyWithValue("DirectFlightSpeed", m_DirectOrders.FlightSpeed);
 	writer.NewPropertyWithValue("DirectTouchdown", m_DirectOrders.Touchdown);
 	writer.NewPropertyWithValue("DirectSafeLandings", m_DirectOrders.SafeLandings);

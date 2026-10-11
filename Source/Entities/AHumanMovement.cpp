@@ -104,6 +104,18 @@ void AHuman::GrabLadder() {
 	m_AIGrabLadderSimMS = g_TimerMan.GetSimTimeMS();
 }
 
+void AHuman::WantMantle() {
+	m_AIMantleSimMS = g_TimerMan.GetSimTimeMS();
+}
+
+bool AHuman::MantleWanted() const {
+	if (m_Controller.GetInputMode() != Controller::CIM_AI || !g_SettingsMan.AIMantlesOnPurpose()) {
+		return true;
+	}
+	// (Set by the follower each tick it wants the mantle; good for a quarter second, so an AI tick that skips a frame doesn't drop it.)
+	return m_AIMantleSimMS >= 0.0 && g_TimerMan.GetSimTimeMS() - m_AIMantleSimMS < 250.0;
+}
+
 bool AHuman::LadderHoldWanted() const {
 	if (m_Controller.GetInputMode() != Controller::CIM_AI || !g_SettingsMan.AIGrabsLaddersOnPurpose()) {
 		return true;
@@ -1766,7 +1778,7 @@ void AHuman::GetDebugState(std::vector<DebugStateField>& fields) const {
 	number("progressMs", mover.progressTimer.GetElapsedSimTimeMS());
 	number("stuckLevel", mover.stuckLevel);
 	{
-		const char* const remedyNames[] = {"crouch", "back off", "leap", "hop", "lie down", "stand up"};
+		const char* const remedyNames[] = {"crouch", "back off", "leap", "hop", "lie down", "stand up", "mantle"};
 		fields.push_back({"stuckRemedy", mover.remedy >= 0 && mover.remedy < static_cast<int>(StuckRemedy::Count) ? remedyNames[mover.remedy] : "none", true});
 	}
 	number("impossibleAnswers", mover.impossibleAnswers);
@@ -2580,6 +2592,11 @@ int AHuman::MoveAlongRoute() {
 				return RouteMover::Moving;
 			}
 		} else {
+			// Near the landing, about its height: the mantle asked for, so a body coming in at the lip pulls itself up onto it (AI mantles are
+			// only on purpose; see WantMantle).
+			if (std::abs(to.m_X) < h * 1.5F && std::abs(feetY - flight.floorY) < h * 0.7F) {
+				WantMantle();
+			}
 			// Up a shaft: to the point over its mouth first, straight up its middle, and only then for the landing; a landing off to one side
 			// is stepped across onto (below).
 			// Over the top of a full-risk flight's two legs (the apex): on for the landing, no step across.
@@ -2782,6 +2799,15 @@ int AHuman::MoveAlongRoute() {
 	const bool fullRisk = standardJet && !IsDiggingTo() && !m_MovePath.empty() && (m_StandingOrder.Direct >= g_SettingsMan.DirectOrders().StraightFlightRisk || skyOnly);
 	if (!fullRisk) {
 		mover.straightHold = false;
+		mover.straightSteadying = false;
+	}
+	// Steadied first, as any take-off is: standing, still and upright, for a third of a second before the jet is lit, less by the Battle
+	// Behavior's RecklessSteadyCut in the order's share. (Lit mid-stride, the step's speed went into the flight and full-risk take-offs
+	// failed over and over.)
+	const float straightSteadyMS = 300.0F * (1.0F - g_SettingsMan.DirectOrders().RecklessSteadyCut * std::clamp(m_StandingOrder.Direct, 0.0F, 1.0F));
+	const bool straightSteady = fullRisk && g_SettingsMan.AISteadiesBeforeJet() && straightSteadyMS > 1.0F;
+	if (fullRisk && (airborne || m_Status != STABLE || std::abs(m_Vel.m_X) > 0.4F || std::abs(m_Vel.m_Y) > 0.5F || std::abs(m_AngularVel) > 0.6F || std::abs(std::abs(GetRotAngle()) - std::abs(m_RotAngleTargets[STAND])) > 0.2F)) {
+		mover.straightStillTimer.Reset();
 	}
 	if (fullRisk && mover.straightCheckTimer.IsPastSimMS(400)) {
 		mover.straightCheckTimer.Reset();
@@ -2901,7 +2927,20 @@ int AHuman::MoveAlongRoute() {
 						MoverTrace("full risk; waiting for fuel to fly for " + std::to_string(static_cast<int>(goal.m_X)) + "," + std::to_string(static_cast<int>(goalFloorY)));
 					}
 				}
+			} else if (straightSteady && !airborne && !mover.straightStillTimer.IsPastSimMS(static_cast<double>(straightSteadyMS)) && !(mover.straightSteadying && mover.straightSettleTimer.IsPastSimMS(1500))) {
+				// Coming to a stand first (a second and a half at most, as for the route's take-offs): held still here, looked at again next time.
+				if (!mover.straightSteadying) {
+					mover.straightSteadying = true;
+					mover.straightSettleTimer.Reset();
+				}
+				mover.straightHold = true;
+				mover.straightHoldTimer.Reset();
+				if (mover.traceTimer.IsPastSimMS(1000)) {
+					mover.traceTimer.Reset();
+					MoverTrace("full risk; steadying before take-off");
+				}
 			} else {
+				mover.straightSteadying = false;
 				mover.straightHoldTimer.Reset();
 				mover.straightTried = true;
 				mover.straightGoal = goal;
@@ -2932,6 +2971,7 @@ int AHuman::MoveAlongRoute() {
 			}
 		} else {
 			mover.straightHold = false;
+			mover.straightSteadying = false;
 			mover.straightHoldTimer.Reset();
 		}
 	}
@@ -3038,6 +3078,7 @@ int AHuman::MoveAlongRoute() {
 	// when the way on is blocked and there is room up and over). No jet. While pulling, the pull has the body. ----
 	if (kind == PathStepKind::Mantle && std::abs(toPoint.m_X) > 3.0F) {
 		if (!IsMantling()) {
+			WantMantle();
 			ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
 		} else {
 			mover.progressTimer.Reset();
@@ -3484,7 +3525,7 @@ int AHuman::MoveAlongRoute() {
 		// and upright for up to most of a second, by how far the landing is past three bodies off. A small error at take-off is a big one
 		// at the end of a long flight, and long flights were the ones missed and flown again.
 		float flightLength = toLanding.GetMagnitude();
-		float settleMS = std::clamp((flightLength - h * 3.0F) / h * 150.0F, 0.0F, 900.0F) * caution * (directTuning.Steady ? 1.0F : 1.0F - direct);
+		float settleMS = std::clamp((flightLength - h * 3.0F) / h * 150.0F, 0.0F, 900.0F) * caution * (1.0F - directTuning.RecklessSteadyCut * direct);
 		// (Upright against its own standing pose, which leans for some bodies: measured against straight up, a soldier whose stance leans
 		// more than the tolerance never counted as settled, and stood at the foot of the ledge for good.)
 		float uprightError = std::abs(std::abs(GetRotAngle()) - std::abs(m_RotAngleTargets[STAND]));
@@ -3494,7 +3535,7 @@ int AHuman::MoveAlongRoute() {
 		}
 		// (Never more than a second and a half of it, whatever the body does: the wait resets the stuck handling, and unbounded, a unit that
 		// never quite settled stood at its take-off with nothing to move it on.)
-		bool wantsSettle = canTakeOff && !hop && (direct < 1.0F || directTuning.Steady) && g_SettingsMan.AISteadiesBeforeJet() && (!still || m_Status != STABLE || !mover.steadyTimer.IsPastSimMS(static_cast<double>(settleMS)));
+		bool wantsSettle = canTakeOff && !hop && (direct < 1.0F || directTuning.RecklessSteadyCut < 1.0F) && g_SettingsMan.AISteadiesBeforeJet() && (!still || m_Status != STABLE || !mover.steadyTimer.IsPastSimMS(static_cast<double>(settleMS)));
 		if (wantsSettle && !mover.settling) {
 			mover.settling = true;
 			mover.settleWaitTimer.Reset();
@@ -3862,6 +3903,9 @@ int AHuman::MoveAlongRoute() {
 				leapOver = sensed.distance <= bodyHalf + 8.0F;
 			} else if (sensed.rise > mantle + 2.0F && canHop) {
 				lowObstacle = true;
+			} else if (sensed.rise <= mantle + 2.0F) {
+				// (Within the mantle's reach: asked for, as the pull over is meant here.)
+				WantMantle();
 			}
 		}
 	}
@@ -3871,8 +3915,8 @@ int AHuman::MoveAlongRoute() {
 	// to stand), none twice in one stuck spell, one that failed at this spot lately left out, and one that worked here tried first. (As
 	// unconditional moves, 8.0's back-offs read as pacing and its lying down as lying down at random, and a jetless unit had nothing.)
 	const float direction = toPoint.m_X < 0.0F ? -1.0F : 1.0F;
-	const char* const remedyNames[] = {"crouch", "back off", "leap", "hop", "lie down", "stand up"};
-	static constexpr int remedyWindowMS[] = {1000, 1000, 800, 1200, 1500, 800};
+	const char* const remedyNames[] = {"crouch", "back off", "leap", "hop", "lie down", "stand up", "mantle"};
+	static constexpr int remedyWindowMS[] = {1000, 1000, 800, 1200, 1500, 800, 1200};
 	if (!stuck || mover.fuelWaiting) {
 		if (mover.remedy >= 0 && !mover.fuelWaiting) {
 			RememberStuckRemedy(mover.remedySpot, mover.remedy, true);
@@ -3896,6 +3940,8 @@ int AHuman::MoveAlongRoute() {
 			const float crawlRoom = std::max(8.0F, h * 0.2F);
 			allowed[static_cast<int>(StuckRemedy::Prone)] = !prone && !steep && m_ProneState == NOTPRONE && !g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, floorY - crawlRoom), heading, 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
 			allowed[static_cast<int>(StuckRemedy::Stand)] = m_ProneState == PRONE && !noRoomHere && !noRoomAhead;
+			// (A mantle on purpose: with mantles only on purpose, a unit pressed against a ledge it could pull itself over had to be told to.)
+			allowed[static_cast<int>(StuckRemedy::Mantle)] = !prone && m_ProneState == NOTPRONE && g_SettingsMan.MantlingEnabled() && !IsMantling() && (m_pFGArm || m_pBGArm);
 			mover.remedy = PickStuckRemedy(m_Pos, allowed, mover.remedyTried);
 			if (mover.remedy >= 0) {
 				mover.remedyTried |= 1U << mover.remedy;
@@ -3928,6 +3974,12 @@ int AHuman::MoveAlongRoute() {
 				break;
 			case StuckRemedy::Stand:
 				ctrl.SetState(BODY_PRONE, false);
+				break;
+			case StuckRemedy::Mantle:
+				WantMantle();
+				ctrl.SetState(BODY_CROUCH, false);
+				ctrl.SetState(direction < 0.0F ? MOVE_RIGHT : MOVE_LEFT, false);
+				ctrl.SetState(direction < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
 				break;
 			default:
 				break;
