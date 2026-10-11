@@ -50,6 +50,10 @@ HeldDevice::~HeldDevice() {
 void HeldDevice::Clear() {
 	m_HeldDeviceType = WEAPON;
 	m_Activated = false;
+	m_DrawnWhenHeld = true;
+	m_CastStanceOffset.Reset();
+	m_CastPoseTime = 400.0F;
+	m_CastPoseHeld = false;
 	m_HotkeyActivated.fill(false);
 	m_ActivationTimer.Reset();
 	for (Timer timer : m_HotkeyActivationTimer) {
@@ -184,6 +188,9 @@ int HeldDevice::Create(const HeldDevice& reference) {
 	m_HeldDeviceType = reference.m_HeldDeviceType;
 
 	m_Activated = reference.m_Activated;
+	m_DrawnWhenHeld = reference.m_DrawnWhenHeld;
+	m_CastStanceOffset = reference.m_CastStanceOffset;
+	m_CastPoseTime = reference.m_CastPoseTime;
 	m_HotkeyActivated = reference.m_HotkeyActivated;
 	m_ActivationTimer = reference.m_ActivationTimer;
 	m_HotkeyActivationTimer = reference.m_HotkeyActivationTimer;
@@ -249,6 +256,9 @@ int HeldDevice::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("DualWieldable", { reader >> m_DualWieldable; });
 	MatchProperty("StanceOffset", { reader >> m_StanceOffset; });
 	MatchProperty("SharpStanceOffset", { reader >> m_SharpStanceOffset; });
+	MatchProperty("DrawnWhenHeld", { reader >> m_DrawnWhenHeld; });
+	MatchProperty("CastStanceOffset", { reader >> m_CastStanceOffset; });
+	MatchProperty("CastPoseTime", { SetCastPoseTime(std::stof(reader.ReadPropValue())); });
 	MatchProperty("Supportable", { reader >> m_Supportable; });
 	MatchProperty("SupportOffset", { reader >> m_SupportOffset; });
 	MatchProperty("UseSupportOffsetWhileReloading", { reader >> m_UseSupportOffsetWhileReloading; });
@@ -356,6 +366,13 @@ int HeldDevice::Save(Writer& writer) const {
 	writer << m_StanceOffset;
 	writer.NewProperty("SharpStanceOffset");
 	writer << m_SharpStanceOffset;
+	if (!m_DrawnWhenHeld) {
+		writer.NewPropertyWithValue("DrawnWhenHeld", m_DrawnWhenHeld);
+	}
+	if (!m_CastStanceOffset.IsZero()) {
+		writer.NewPropertyWithValue("CastStanceOffset", m_CastStanceOffset);
+		writer.NewPropertyWithValue("CastPoseTime", m_CastPoseTime);
+	}
 	writer.NewPropertyWithValue("Supportable", m_Supportable);
 	writer.NewProperty("SupportOffset");
 	writer << m_SupportOffset;
@@ -422,6 +439,9 @@ void HeldDevice::Destroy(bool notInherited) {
 }
 
 Vector HeldDevice::GetStanceOffset() const {
+	if (IsInCastPose()) {
+		return m_CastStanceOffset.GetXFlipped(m_HFlipped);
+	}
 	if (m_SharpAim > 0) {
 		float rotAngleScalar = std::abs(std::sin(GetRootParent()->GetRotAngle()));
 		// Deviate the vertical axis towards regular StanceOffset based on the user's rotation so that sharp aiming doesn't look awkward when prone
@@ -528,8 +548,11 @@ void HeldDevice::Update() {
 	if (!m_Parent && m_PinStrength <= 0 && m_RestTimer.IsPastSimMS(20000) && m_CanBeSquished && m_pAtomGroup->RatioInTerrain() > 0.9)
 		GibThis();
 
-	if (m_Activated)
+	if (m_Activated) {
 		m_RestTimer.Reset();
+		m_CastPoseTimer.Reset();
+		m_CastPoseHeld = true;
+	}
 
 	////////////////////////////////////////
 	// Animate the sprite, if applicable
@@ -572,6 +595,9 @@ void HeldDevice::Draw(BITMAP* pTargetBitmap,
                       const Vector& targetPos,
                       DrawMode mode,
                       bool onlyPhysical) const {
+	if (!m_DrawnWhenHeld && IsBeingHeld()) {
+		return;
+	}
 	Attachable::Draw(pTargetBitmap, targetPos, mode, onlyPhysical);
 	/*
 	    // Draw suporting hand if applicable.
@@ -597,6 +623,13 @@ void HeldDevice::Draw(BITMAP* pTargetBitmap,
 	    }
 	#endif
 	*/
+}
+
+void HeldDevice::Draw(const Camera& camera) const {
+	if (!m_DrawnWhenHeld && IsBeingHeld()) {
+		return;
+	}
+	Attachable::Draw(camera);
 }
 
 void HeldDevice::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScreen, bool playerControlled) {
