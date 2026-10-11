@@ -1259,6 +1259,9 @@ namespace SandboxDetail {
 			case CommandMode::Pen:
 				// (A pen's corners are clicked out, then the command row pens them.)
 				return;
+			case CommandMode::Dropoff:
+				DropoffSelected(point, shift);
+				return;
 			default: {
 				bool attackMove = s_CommandMode == CommandMode::AttackMove;
 				if (shift) {
@@ -1581,6 +1584,10 @@ namespace SandboxDetail {
 		if (s_CommandMode == CommandMode::Pen) {
 			return;
 		}
+		if (s_CommandMode == CommandMode::Dropoff) {
+			DropoffSelected(position, modifier == 1);
+			return;
+		}
 		if (s_CommandMode == CommandMode::AttackMove) {
 			if (modifier == 1) {
 				PlanStepFor(UnitsToMove(0, true), PlanKind::AttackMove, position, nullptr);
@@ -1784,6 +1791,139 @@ namespace SandboxDetail {
 		});
 	}
 
+	bool SelectionOnlyVehicles() {
+		return !s_Selected.empty() && std::all_of(s_Selected.begin(), s_Selected.end(), [](const UnitRef& ref) {
+			const Actor* unit = GetRef(ref);
+			return !unit || dynamic_cast<const AVehicle*>(unit) || dynamic_cast<const ACShip*>(unit);
+		}) && SelectionHasVehicle();
+	}
+
+	bool ModeFitsVehicles(CommandMode mode) {
+		switch (mode) {
+			case CommandMode::Select:
+			case CommandMode::Command:
+			case CommandMode::Move:
+			case CommandMode::Attack:
+			case CommandMode::AttackMove:
+			case CommandMode::Guard:
+			case CommandMode::DefendAt:
+			case CommandMode::Patrol:
+			case CommandMode::Suppress:
+			case CommandMode::Dropoff:
+				return true;
+			default:
+				return false;
+		}
+	}
+
+	void DropoffSelected(const Vector& point, bool shift) {
+		std::vector<Actor*> units = UnitsToMove(0, true);
+		std::vector<Actor*> vehicles;
+		std::erase_if(units, [&vehicles](Actor* unit) {
+			if (dynamic_cast<const AVehicle*>(unit) || dynamic_cast<const ACShip*>(unit)) {
+				vehicles.push_back(unit);
+				return true;
+			}
+			return false;
+		});
+		// (Any on foot selected with them just go there.)
+		if (!units.empty()) {
+			if (shift) {
+				PlanStepFor(units, PlanKind::Move, point, nullptr);
+			} else {
+				MoveUnitsTo(units, point);
+			}
+		}
+		if (shift) {
+			PlanStepFor(vehicles, PlanKind::Dropoff, point, nullptr);
+		} else {
+			// A vehicle's width apart along the ground there, as a move spreads them.
+			float along = 0.0F;
+			for (const Actor* vehicle: vehicles) {
+				along += vehicle->GetRadius() * 2.0F;
+			}
+			float at = -along * 0.5F;
+			for (Actor* vehicle: vehicles) {
+				at += vehicle->GetRadius();
+				Vector spot = point + Vector(at, 0.0F);
+				at += vehicle->GetRadius();
+				g_SceneMan.WrapPosition(spot);
+				StartDropoff(vehicle, spot);
+				AnswerOrder(vehicle, "OrderMove");
+			}
+		}
+		MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::Dropoff)]);
+	}
+
+	void StartDropoff(Actor* vehicle, const Vector& place) {
+		if (!vehicle || vehicle->IsPlayerControlled()) {
+			return;
+		}
+		// (A vehicle just over the ground there, as for a move; a ship to hover over it, then down.)
+		SendUnit(vehicle, dynamic_cast<const ACShip*>(vehicle) ? place : place + Vector(0.0F, -4.0F), nullptr, false, "drop off");
+		// (After the send, which drops any drop-off it had.)
+		Dropoff& dropoff = s_Dropoffs[vehicle->GetUniqueID()];
+		dropoff.Unit = MakeRef(vehicle);
+		dropoff.Place = place;
+		dropoff.Stage = 0;
+		dropoff.Since = g_TimerMan.GetSimUpdateCount();
+	}
+
+	void UpdateDropoffs() {
+		if (s_Dropoffs.empty() || g_TimerMan.GetSimUpdateCount() % 10 != 6) {
+			return;
+		}
+		const float perSecond = 1.0F / std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F);
+		std::erase_if(s_Dropoffs, [perSecond](auto& entry) {
+			Dropoff& dropoff = entry.second;
+			Actor* unit = GetRef(dropoff.Unit);
+			if (!unit || unit->IsDead() || unit->GetStatus() == Actor::DYING || unit->IsPlayerControlled()) {
+				return true;
+			}
+			const float seconds = static_cast<float>(g_TimerMan.GetSimUpdateCount() - dropoff.Since) / perSecond;
+			if (seconds < 0.5F) {
+				return false;
+			}
+			// A vehicle: once there (or stopped short for good), its passengers get out and it holds there, the driver at the wheel.
+			if (AVehicle* car = dynamic_cast<AVehicle*>(unit)) {
+				if (car->GetAIMode() == Actor::AIMODE_GOTO || car->GetWaypointsSize() > 0 || s_MoveWatch.count(car->GetUniqueID())) {
+					return false;
+				}
+				EveryoneOut(car, true);
+				return true;
+			}
+			ACShip* ship = dynamic_cast<ACShip*>(unit);
+			if (!ship) {
+				return true;
+			}
+			if (dropoff.Stage == 0) {
+				if (ship->GetAIMode() == Actor::AIMODE_GOTO) {
+					return false;
+				}
+				// Over the place (or stopped short of it for good): nobody aboard but the pilot, and it is just a move; else it comes down
+				// where it is to let them out.
+				if (ship->GetCrewCount() <= (ship->HasPilot() ? 1 : 0)) {
+					return true;
+				}
+				const Vector ground = g_SceneMan.MovePointToGround(Vector(ship->GetPos().m_X, dropoff.Place.m_Y), 0, 4);
+				if (ship->FlyTo(ground - Vector(0.0F, ship->GetRadius() * 0.3F))) {
+					dropoff.Stage = 1;
+					dropoff.Since = g_TimerMan.GetSimUpdateCount();
+				}
+				return false;
+			}
+			// Coming down: once down (or as near as it gets), they get out, and it climbs back up to hover there for orders.
+			const bool down = ship->GetAltitude(1000, 4) < ship->GetRadius() * 0.9F && ship->GetVel().MagnitudeIsLessThan(3.0F);
+			if (!down && seconds < 10.0F) {
+				return false;
+			}
+			const Vector place = ship->GetPos();
+			EveryoneOut(ship, true);
+			ship->FlyRouteTo(place);
+			return true;
+		});
+	}
+
 	CommandTarget CommandTargetAt(const Vector& point) {
 		CommandTarget target;
 		if (UnitsToMove(0, true).empty()) {
@@ -1918,6 +2058,7 @@ namespace SandboxDetail {
 	void DropPlan(const Actor* unit) {
 		if (!s_FollowingPlan && unit) {
 			s_Plans.erase(unit->GetUniqueID());
+			s_Dropoffs.erase(unit->GetUniqueID());
 		}
 	}
 
@@ -1957,6 +2098,9 @@ namespace SandboxDetail {
 			case PlanKind::Suppress:
 				SuppressUnit(unit, step.Place, step.Radius);
 				break;
+			case PlanKind::Dropoff:
+				StartDropoff(unit, step.Place);
+				break;
 		}
 		s_FollowingPlan = false;
 		plan.Current = step;
@@ -1985,6 +2129,8 @@ namespace SandboxDetail {
 				return false;
 			case PlanKind::Wait:
 				return g_TimerMan.GetSimUpdateCount() - plan.Started >= plan.Current.Updates;
+			case PlanKind::Dropoff:
+				return !s_Dropoffs.count(unit->GetUniqueID());
 		}
 		return false;
 	}
@@ -2070,7 +2216,7 @@ namespace SandboxDetail {
 			if (!plan.Running && plan.Steps.empty()) {
 				StartPlanStep(unit, plan, step);
 				// (Given now, it's answered as the order it is; the step's own sending is a plan's, which doesn't answer.)
-				const char* const answers[] = {"OrderMove", "OrderAttackMove", "OrderAttack", "OrderGuard", "OrderDefend", nullptr, "OrderSuppress"};
+				const char* const answers[] = {"OrderMove", "OrderAttackMove", "OrderAttack", "OrderGuard", "OrderDefend", nullptr, "OrderSuppress", "OrderMove"};
 				int kindIndex = static_cast<int>(step.Kind);
 				AnswerOrder(unit, kindIndex >= 0 && kindIndex < static_cast<int>(std::size(answers)) ? answers[kindIndex] : nullptr);
 			} else {

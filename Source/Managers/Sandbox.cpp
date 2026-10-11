@@ -530,7 +530,7 @@ void Sandbox::SetCharacterSetup(const std::string& setup) {
 std::string Sandbox::GetVehicleSetup() {
 	const VehicleTuning& tuning = s_VehicleTuning;
 	std::ostringstream setup;
-	setup << (tuning.Modified ? 1 : 0) << (tuning.Crewed ? 1 : 0) << "|" << tuning.Power << ";" << tuning.TopSpeed << ";" << tuning.Grip << ";" << tuning.Brakes << ";" << tuning.Jump << ";" << tuning.WaterPower << ";" << tuning.WaterSpeed;
+	setup << (tuning.Modified ? 1 : 0) << (tuning.Crewed ? 1 : 0) << "|" << tuning.Power << ";" << tuning.TopSpeed << ";" << tuning.Grip << ";" << tuning.Brakes << ";" << tuning.Jump << ";" << tuning.WaterPower << ";" << tuning.WaterSpeed << "|" << tuning.Driver << "|" << tuning.Crew;
 	return setup.str();
 }
 
@@ -543,7 +543,13 @@ void Sandbox::SetVehicleSetup(const std::string& setup) {
 	tuning.Modified = setup[0] == '1';
 	tuning.Crewed = setup[1] == '1';
 	float* values[] = {&tuning.Power, &tuning.TopSpeed, &tuning.Grip, &tuning.Brakes, &tuning.Jump, &tuning.WaterPower, &tuning.WaterSpeed};
-	std::istringstream numbers(setup.substr(bar + 1));
+	// (Then the driver and crew picks, each after a bar: not there in settings saved before they could be picked.)
+	std::istringstream fields(setup.substr(bar + 1));
+	std::string field;
+	std::getline(fields, field, '|');
+	std::getline(fields, tuning.Driver, '|');
+	std::getline(fields, tuning.Crew, '|');
+	std::istringstream numbers(field);
 	std::string number;
 	for (float* value: values) {
 		if (!std::getline(numbers, number, ';')) {
@@ -1037,15 +1043,15 @@ void Sandbox::DrawGUI() {
 		if (!io.KeyCtrl && !io.KeyAlt) {
 			CommandHotkeys();
 		}
-		if (io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_X, false)) {
+		if (io.KeyCtrl && !io.KeyAlt && !SelectionOnlyVehicles() && ImGui::IsKeyPressed(ImGuiKey_X, false)) {
 			// Breach: the clicks to come dig through to the point, then attack.
 			s_CommandMode = CommandMode::Breach;
 		}
-		if (io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_B, false)) {
+		if (io.KeyCtrl && !io.KeyAlt && !SelectionOnlyVehicles() && ImGui::IsKeyPressed(ImGuiKey_B, false)) {
 			// Build: the clicks to come put up the piece picked.
 			s_CommandMode = CommandMode::Build;
 		}
-		if (io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_L, false)) {
+		if (io.KeyCtrl && !io.KeyAlt && !SelectionOnlyVehicles() && ImGui::IsKeyPressed(ImGuiKey_L, false)) {
 			// Airlift: the click to come is where they're flown.
 			s_CommandMode = CommandMode::Airlift;
 		}
@@ -2229,6 +2235,7 @@ void Sandbox::Update() {
 	}
 	ClosePaintUndoStep(false);
 	UpdatePlans();
+	UpdateDropoffs();
 	UpdateBreaches();
 	UpdateBuilds();
 	UpdateAirlifts();

@@ -1098,6 +1098,66 @@ namespace SandboxDetail {
 	}
 
 
+	/// A pick of who crews a vehicle (VehicleTuning::Driver or Crew): the unit picked in the Units list, random units (as the Units list's
+	/// random settings say), or any unit that can sit, listed by faction, with a search. @param which 0 the driver, 1 the crew (each its own search).
+	void CrewPickCombo(const char* label, std::string& pick, int which) {
+		static char filters[2][64] = {};
+		char* filter = filters[which];
+		if (ImGui::BeginCombo(label, CrewPickName(pick).c_str(), ImGuiComboFlags_HeightLarge)) {
+			const Preset* listed = ChosenPreset(Tool::Unit, ChoiceFor(Tool::Unit));
+			std::string fromList = "Units list pick (" + (s_RandomUnits ? RandomSourceName(s_RandomFavourites, s_RandomFaction) : listed ? listed->PresetName : std::string("none")) + ")";
+			if (ImGui::Selectable(fromList.c_str(), pick.empty())) {
+				pick.clear();
+			}
+			if (ImGui::Selectable(RandomSourceName(s_RandomFavourites, s_RandomFaction).c_str(), pick == "*")) {
+				pick = "*";
+			}
+			ImGui::SetItemTooltip("Each one picked at random, from where the Units list's random units come from (Random units, favourites or a faction).");
+			ImGui::Separator();
+			if (ImGui::IsWindowAppearing()) {
+				ImGui::SetKeyboardFocusHere();
+			}
+			ImGui::SetNextItemWidth(-1.0F);
+			ImGui::InputTextWithHint("##crewFilter", "Search...", filter, 64);
+			// Every unit that can sit, under its faction (module), the factions in the order the Units list has them.
+			const std::vector<Preset>& units = ListFor(Tool::Unit);
+			std::vector<std::string> modules;
+			for (const Preset& unit: units) {
+				if (std::find(modules.begin(), modules.end(), unit.Module) == modules.end()) {
+					modules.push_back(unit.Module);
+				}
+			}
+			for (const std::string& module: modules) {
+				bool headed = false;
+				for (const Preset& unit: units) {
+					if (unit.Module != module || !ContainsIgnoringCase(unit.Label, filter) || !CanCrew(&unit)) {
+						continue;
+					}
+					if (!headed) {
+						ImGui::SeparatorText(module.c_str());
+						headed = true;
+					}
+					std::string key = CrewPickKey(unit);
+					ImGui::PushID(key.c_str());
+					if (ImGui::Selectable(unit.Label.c_str(), pick == key)) {
+						pick = key;
+					}
+					ImGui::PopID();
+				}
+			}
+			ImGui::EndCombo();
+		}
+	}
+
+	/// The vehicle crew's two picks, the driver and the rest, and a note on what goes in.
+	void CrewPicks() {
+		VehicleTuning& tuning = s_VehicleTuning;
+		CrewPickCombo("Driver", tuning.Driver, 0);
+		ImGui::SetItemTooltip("Who drives or flies it: the seat it is driven from. They lead the rest as a squad when they get out.");
+		CrewPickCombo("Crew", tuning.Crew, 1);
+		ImGui::SetItemTooltip("Who takes every other seat: gunners and passengers.");
+	}
+
 	void VehicleOptions() {
 		VehicleTuning& tuning = s_VehicleTuning;
 		const Preset* preset = ChosenPreset(Tool::Vehicle, ChoiceFor(Tool::Vehicle));
@@ -1112,10 +1172,9 @@ namespace SandboxDetail {
 		ImGui::SameLine();
 		ToolUI::RadioButton("Full crew", &crew, 1);
 		tuning.Crewed = crew == 1;
-		ImGui::SetItemTooltip("Every seat filled with the unit picked in the Units list (or random units, if Random units is ticked there), with the loadout, orders and temperament below. The driver leads: when they get out the rest follow it as a squad.");
+		ImGui::SetItemTooltip("Every seat filled: the driver and the rest of the crew picked below, with the loadout, orders and temperament below. The driver leads: when they get out the rest follow it as a squad.");
 		if (tuning.Crewed) {
-			const Preset* unit = s_RandomUnits ? nullptr : ChosenPreset(Tool::Unit, ChoiceFor(Tool::Unit));
-			ImGui::TextDisabled("Crewed by: %s", s_RandomUnits ? "random units" : unit ? unit->PresetName.c_str() : "(pick a unit in the Units list)");
+			CrewPicks();
 			LoadoutChooser();
 			UnitOrderCombo("Orders");
 			TemperamentCombo("Temperament");
@@ -1181,10 +1240,12 @@ namespace SandboxDetail {
 			ImGui::Text("Climbs slopes up to about %.0f degrees (as it comes: %.0f).", climb(vehicle->GetAcceleration() * tuning.Power, vehicle->GetGrip() * tuning.Grip), climb(vehicle->GetAcceleration(), vehicle->GetGrip()));
 		}
 		if (ToolUI::Button("Reset to x1")) {
-			const bool crewed = tuning.Crewed;
-			tuning = VehicleTuning();
-			tuning.Modified = true;
-			tuning.Crewed = crewed;
+			VehicleTuning reset;
+			reset.Modified = true;
+			reset.Crewed = tuning.Crewed;
+			reset.Driver = tuning.Driver;
+			reset.Crew = tuning.Crew;
+			tuning = reset;
 		}
 	}
 
@@ -1881,6 +1942,10 @@ namespace SandboxDetail {
 		const ImGuiIO& io = ImGui::GetIO();
 		auto pressed = [](ImGuiKey key) { return ImGui::IsKeyPressed(key, false); };
 		auto mode = [](CommandMode to) {
+			// (Only vehicles and flying ships selected: what they can't do isn't on the bar, and its key does nothing.)
+			if (SelectionOnlyVehicles() && !ModeFitsVehicles(to)) {
+				return;
+			}
 			s_CommandMode = to;
 			if (to == CommandMode::Patrol) {
 				s_PatrolDraft.clear();
@@ -2514,6 +2579,22 @@ namespace SandboxDetail {
 				const int team = builder ? builder->GetTeam() : -1;
 				const bool afford = !paid || (team >= 0 && team < c_Sides && s_CommandPoints[team].Points >= static_cast<float>(piece.Cost));
 				label = !builder ? std::string("Build: none of the selected units carries a Constructor") : std::string("Build ") + piece.Name + " here" + (paid ? " for " + std::to_string(piece.Cost) + " points" + (afford ? "" : " (not enough)") : std::string()) + ": " + builder->GetPresetName() + " builds it, " + std::to_string(piece.Seconds) + " s";
+			} else if (mode == CommandMode::Dropoff) {
+				// Drop off: where the vehicles stop and their passengers get out.
+				const ImU32 color = c_CommandModeColors[static_cast<int>(CommandMode::Dropoff)];
+				crosshair(g_SceneMan.MovePointToGround(point, 0.0F, 4), color, pixel * 6.0F);
+				int vehicles = 0;
+				int passengers = 0;
+				for (const Actor* unit: units) {
+					if (const AVehicle* car = dynamic_cast<const AVehicle*>(unit)) {
+						++vehicles;
+						passengers += std::max(car->GetCrewCount() - 1, 0);
+					} else if (const ACShip* ship = dynamic_cast<const ACShip*>(unit)) {
+						++vehicles;
+						passengers += std::max(ship->GetCrewCount() - (ship->HasPilot() ? 1 : 0), 0);
+					}
+				}
+				label = "Drop off here: " + std::to_string(vehicles) + (vehicles == 1 ? " vehicle, " : " vehicles, ") + std::to_string(passengers) + (passengers == 1 ? " passenger gets out" : " passengers get out");
 			} else if (mode == CommandMode::Patrol) {
 				label = s_PatrolDraft.empty() ? "Click the first point of the patrol route" : "Click point " + std::to_string(s_PatrolDraft.size() + 1) + " of the route, or start it on the command row";
 			} else if (mode == CommandMode::Pen) {
@@ -2836,6 +2917,8 @@ namespace SandboxDetail {
 				return "Wait";
 			case PlanKind::Suppress:
 				return "Suppress";
+			case PlanKind::Dropoff:
+				return "Drop off";
 			default:
 				return "Move";
 		}
@@ -2854,6 +2937,8 @@ namespace SandboxDetail {
 				return IM_COL32(242, 182, 61, 255);
 			case PlanKind::Suppress:
 				return c_CommandModeColors[static_cast<int>(CommandMode::Suppress)];
+			case PlanKind::Dropoff:
+				return c_CommandModeColors[static_cast<int>(CommandMode::Dropoff)];
 			default:
 				return c_CommandModeColors[static_cast<int>(CommandMode::Move)];
 		}
@@ -4450,8 +4535,23 @@ namespace SandboxDetail {
 					s_VehicleTuning.Modified = !s_VehicleTuning.Modified;
 				}
 				next();
-				if (BarChip("Full crew", s_VehicleTuning.Crewed, ToolTheme::Text, nullptr, "On: every seat filled with the unit picked in the Units list, a squad behind the driver. Off: empty.") == 1) {
+				if (BarChip("Full crew", s_VehicleTuning.Crewed, ToolTheme::Text, nullptr, "On: every seat filled with the driver and crew picked (the chip after this), a squad behind the driver. Off: empty.") == 1) {
 					s_VehicleTuning.Crewed = !s_VehicleTuning.Crewed;
+				}
+				if (s_VehicleTuning.Crewed) {
+					// Who crews it, on a chip: the driver, and the rest if they differ. Clicked, both picks in a window over the bar.
+					std::string driver = CrewPickName(s_VehicleTuning.Driver);
+					std::string crew = CrewPickName(s_VehicleTuning.Crew);
+					std::string who = (s_VehicleTuning.Driver == s_VehicleTuning.Crew ? driver : driver + " + " + crew) + "...##crewPick";
+					next();
+					if (BarChip(who.c_str(), false, ToolTheme::Text, nullptr, "Who crews it: the driver, then the rest of the crew if they differ. Click to pick.") == 1) {
+						ImGui::OpenPopup("##crewPickPopup");
+					}
+					ImGui::SetNextWindowSize(ImVec2(320.0F * ToolUI::Pixel(), 0.0F));
+					if (ImGui::BeginPopup("##crewPickPopup")) {
+						CrewPicks();
+						ImGui::EndPopup();
+					}
 				}
 			}
 			if (kind == Tool::Item) {
@@ -4715,6 +4815,13 @@ namespace SandboxDetail {
 			s_PatrolDraft.clear();
 			s_PenDraft.clear();
 		}
+		// Only vehicles and flying ships selected: just the orders they can carry out are on the bar, and a mode they can't is let go.
+		const bool onlyVehicles = SelectionOnlyVehicles();
+		if (onlyVehicles && !ModeFitsVehicles(s_CommandMode)) {
+			s_CommandMode = CommandMode::Command;
+			s_PatrolDraft.clear();
+			s_PenDraft.clear();
+		}
 
 		// The first row: what a click does.
 		BarLine line;
@@ -4739,6 +4846,9 @@ namespace SandboxDetail {
 			// (Setting a spawn order, they place it with none selected.)
 			ImGui::BeginDisabled(alive == 0 && !s_SpawnOrderArmed);
 			for (int mode = 0; mode < select; ++mode) {
+				if (onlyVehicles && !ModeFitsVehicles(static_cast<CommandMode>(mode))) {
+					continue;
+				}
 				line.Next(pixel * 2.0F);
 				ImGui::PushID(mode + 300);
 				if (BarChip(c_CommandModeNames[mode], current == mode, c_CommandModeColors[mode], keys[mode], tips[mode]) == 1) {
@@ -4749,6 +4859,15 @@ namespace SandboxDetail {
 				}
 				ImGui::PopID();
 			}
+			// A vehicle or flying ship among them: drop its passengers off at a place.
+			if (SelectionHasVehicle()) {
+				line.Next(pixel * 2.0F);
+				const int dropoff = static_cast<int>(CommandMode::Dropoff);
+				if (BarChip(c_CommandModeNames[dropoff], current == dropoff, c_CommandModeColors[dropoff], nullptr, "Drive or fly the selected vehicles and ships to the place clicked and let their passengers out there. The driver or\npilot stays at the controls and holds there for orders (a ship comes down to let them out, then climbs back up).\nShift adds it to their plans.") == 1) {
+					s_CommandMode = CommandMode::Dropoff;
+				}
+			}
+			if (!onlyVehicles) {
 			line.Next(pixel * 2.0F);
 			const int breach = static_cast<int>(CommandMode::Breach);
 			if (BarChip(c_CommandModeNames[breach], current == breach, c_CommandModeColors[breach], "Ctrl+X", "Dig through to the place clicked, then attack: the units with a digger tunnel there and the rest follow them in.\nOnce one is through, they all go for the nearest enemy there (or fight their way to the place if there's none).") == 1) {
@@ -4763,6 +4882,7 @@ namespace SandboxDetail {
 			const int airlift = static_cast<int>(CommandMode::Airlift);
 			if (BarChip(c_CommandModeNames[airlift], current == airlift, c_CommandModeColors[airlift], "Ctrl+L", ("Fly the selected units to the place clicked: a gunship for each six of them comes down by them, they get in, and it flies\nthem there and lets them out." + (Sandbox::IsBattleCommand() ? " Each ship costs " + std::to_string(c_AirliftCost) + " reinforcement points." : std::string())).c_str()) == 1) {
 				s_CommandMode = CommandMode::Airlift;
+			}
 			}
 			// (Only with animals among them: the pen is theirs.)
 			if (SelectedAnimalOrder() != -2) {
