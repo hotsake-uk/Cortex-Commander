@@ -181,6 +181,8 @@ namespace SandboxDetail {
 			standing.HasDigTarget = false;
 			// How urgent, by its clicks (s_DirectOrder): cautious to the shortest way there whatever it takes. One the standing orders resend keeps it.
 			standing.Direct = s_DirectOrder;
+			standing.SkyGoal = s_SkyOrder;
+			standing.SkyPoint = waypoint;
 		}
 		standing.FailReason = Actor::ORDERFAIL_NONE;
 		standing.FailMaterial = 0;
@@ -617,7 +619,66 @@ namespace SandboxDetail {
 	}
 
 	/// Sends units to stand round a point, each to its own spot, the nearest unit to the nearest spot.
+	bool IsSkyPoint(const Vector& point) {
+		Vector at = point;
+		g_SceneMan.WrapPosition(at);
+		for (int down = 0; down <= 120; down += 4) {
+			if (g_SceneMan.GetTerrMatter(static_cast<int>(at.m_X), static_cast<int>(at.m_Y) + down) != MaterialColorKeys::g_MaterialAir) {
+				return false;
+			}
+		}
+		return at.m_Y > 0.0F;
+	}
+
+	void JetpackHereSelected(const Vector& point, bool shift, int facing) {
+		struct SkyScope {
+			SkyScope() { s_SkyOrder = true; }
+			~SkyScope() { s_SkyOrder = false; }
+		} skyScope;
+		// (Not a step of a plan: plans go to places on the ground.)
+		(void)shift;
+		MoveUnitsTo(UnitsToMove(0, true), point, false, facing);
+		MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::JetpackHere)]);
+	}
+
 	void MoveUnitsTo(std::vector<Actor*> units, const Vector& point, bool attackMove, int facing) {
+		// A point in the air (Jetpack here, or a move or attack-move clicked in open air): the units with a jet fly to it, spread along it
+		// a little apart, and hover there; the rest go to the ground under it as any move does.
+		if (s_SkyOrder || (s_ClickOrder && IsSkyPoint(point))) {
+			std::vector<Actor*> flyers;
+			std::vector<Actor*> walkers;
+			for (Actor* unit: units) {
+				const AHuman* human = dynamic_cast<const AHuman*>(unit);
+				const AEJetpack* jet = human ? human->GetJetpack() : nullptr;
+				(jet && jet->IsAttached() && jet->GetJetpackType() == AEJetpack::JetpackType::Standard ? flyers : walkers).push_back(unit);
+			}
+			if (!flyers.empty()) {
+				struct SkyScope {
+					bool Was = s_SkyOrder;
+					SkyScope() { s_SkyOrder = true; }
+					~SkyScope() { s_SkyOrder = Was; }
+				} skyScope;
+				for (size_t i = 0; i < flyers.size(); ++i) {
+					Vector spot = point + Vector((static_cast<float>(i) - static_cast<float>(flyers.size() - 1) * 0.5F) * 28.0F, 0.0F);
+					g_SceneMan.WrapPosition(spot);
+					SendUnit(flyers[i], spot, nullptr, false, attackMove ? "attack-move" : "move");
+					flyers[i]->GetStandingOrder().PostFacing = facing;
+				}
+			}
+			if (walkers.empty()) {
+				return;
+			}
+			// (To the ground under it: well clear of the sky test, so this is a ground move. Nothing under it at all: they stay.)
+			const Vector ground = g_SceneMan.MovePointToGround(point, 20, 3);
+			if (IsSkyPoint(ground)) {
+				return;
+			}
+			bool wasSky = s_SkyOrder;
+			s_SkyOrder = false;
+			MoveUnitsTo(walkers, ground, attackMove, facing);
+			s_SkyOrder = wasSky;
+			return;
+		}
 		std::vector<Vector> spots = FormationSpots(units, point, static_cast<int>(units.size()) * 2, facing);
 		if (spots.empty()) {
 			return;
@@ -984,6 +1045,9 @@ namespace SandboxDetail {
 			case CommandMode::Suppress:
 				SuppressSelected(point);
 				return;
+			case CommandMode::JetpackHere:
+				JetpackHereSelected(point, shift);
+				return;
 			case CommandMode::DigTo:
 				DigUnitsTo(units, point);
 				MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::DigTo)]);
@@ -1280,6 +1344,10 @@ namespace SandboxDetail {
 			SuppressSelected(position);
 			return;
 		}
+		if (s_CommandMode == CommandMode::JetpackHere) {
+			JetpackHereSelected(position, modifier == 1);
+			return;
+		}
 		if (s_CommandMode == CommandMode::DigTo) {
 			// Dig to the point, in the ground or not (RC-11): each unit checked with its own digger first, and only those that can are sent.
 			DigUnitsTo(UnitsToMove(0, true), position);
@@ -1426,13 +1494,12 @@ namespace SandboxDetail {
 	}
 
 	void FlySelectedTo(const Vector& point, bool shift) {
-		// (Jetpack here, when it's in, takes this over: a point in the sky kept as it is, flown to by those with a jetpack.)
-		std::vector<Actor*> units = UnitsToMove(0, true);
-		if (shift) {
-			PlanStepFor(units, PlanKind::Move, point, nullptr);
-		} else {
-			MoveUnitsTo(units, point);
+		// As Jetpack here: the point in the sky kept as it is, flown to by those with a jetpack. (A plan's step goes to the ground, as plans do.)
+		if (!shift) {
+			JetpackHereSelected(point, false);
+			return;
 		}
+		PlanStepFor(UnitsToMove(0, true), PlanKind::Move, point, nullptr);
 		MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::Move)]);
 	}
 

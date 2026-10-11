@@ -185,6 +185,67 @@ void AHuman::UpdateAIMotor() {
 		}
 	}
 
+	// A sky order (Jetpack here, or a move clicked in open air; StandingOrder::SkyGoal): with a clear line to the point in the air, the jet
+	// lit and flown to it, wherever the route was taking the legs, and held there in a hover till the tank runs low (a fifth of it left),
+	// when the order comes down to the ground under it, the fall braked below as any is. With no line to it the route walks under it first.
+	// Given up on after 20 s without getting there. (Here, every frame, not in the route-follower: once there the script counts it arrived.)
+	const bool skyJet = m_pJetpack && m_pJetpack->IsAttached() && m_pJetpack->GetJetpackType() == AEJetpack::JetpackType::Standard;
+	if (m_StandingOrder.SkyGoal && skyJet && !m_Ladder.active && m_Status == STABLE) {
+		RouteMover& mover = m_Mover;
+		const Vector sky = m_StandingOrder.SkyPoint;
+		const Vector toSky = Towards(m_Pos, sky);
+		if (mover.skyCheckTimer.IsPastSimMS(250)) {
+			mover.skyCheckTimer.Reset();
+			Vector obstacle;
+			Vector free;
+			mover.skyClear = true;
+			for (float dy: {-h * 0.3F, feet * 0.5F}) {
+				if (g_SceneMan.CastObstacleRay(m_Pos + Vector(0.0F, dy), toSky, obstacle, free, m_MOID, IgnoresWhichTeam(), 0, 3) >= 0.0F) {
+					mover.skyClear = false;
+				}
+			}
+		}
+		const float tank = m_pJetpack->GetJetTimeTotal();
+		if (toSky.MagnitudeIsLessThan(h * 0.6F) && !mover.skyHovering) {
+			mover.skyHovering = true;
+			MoverTrace("jetpack here: hovering");
+		}
+		const char* ended = nullptr;
+		if (mover.skyHovering && m_pJetpack->GetJetTimeLeft() < tank * 0.2F) {
+			ended = "tank low; coming down";
+		} else if (mover.skyFlying && !mover.skyHovering && mover.skyTimer.IsPastSimMS(20000)) {
+			ended = "never got there; coming down";
+		}
+		if (ended) {
+			MoverTrace(std::string("jetpack here: ") + ended);
+			m_StandingOrder.SkyGoal = false;
+			mover.skyFlying = false;
+			mover.skyHovering = false;
+		} else if (mover.skyHovering || (mover.skyClear && (mover.skyFlying || m_pJetpack->GetJetTimeLeft() > JetRelightFuel() + tank * 0.3F))) {
+			if (!mover.skyFlying) {
+				mover.skyFlying = true;
+				mover.skyTimer.Reset();
+				MoverTrace("jetpack here: flying for " + std::to_string(static_cast<int>(sky.m_X)) + "," + std::to_string(static_cast<int>(sky.m_Y)));
+			}
+			mover.flight = RouteMover::Flight();
+			mover.progressTimer.Reset();
+			mover.pilotedFallTick = g_TimerMan.GetSimUpdateCount();
+			Vector command = PilotFlight(sky, -1.0F);
+			ctrl.SetState(MOVE_LEFT, false);
+			ctrl.SetState(MOVE_RIGHT, false);
+			ctrl.SetState(BODY_JUMPSTART, FloorUnder(m_Pos, h * 0.8F) >= 0.0F && toSky.m_Y < -h * 0.3F);
+			ctrl.SetState(BODY_JUMP, command.m_Y > 0.5F);
+			ctrl.SetAnalogMove(Vector(command.m_X, -1.0F));
+			if (mover.skyHovering && m_StandingOrder.PostFacing != 0) {
+				m_HFlipped = m_StandingOrder.PostFacing < 0;
+			}
+			return;
+		}
+	} else if (!m_StandingOrder.SkyGoal) {
+		m_Mover.skyFlying = false;
+		m_Mover.skyHovering = false;
+	}
+
 	// A fall braked, off a route's flight (the pilot brakes those): falling with the floor coming up inside the jet's stop, the jet lit
 	// straight up, leant against any drift. (The script did this, and lit the jet over the pilot's head on the route's flights too.)
 	// Not while the route-follower is flying the fall itself (in the air with no flight, PilotFlight for the point, since the last AI update
