@@ -10,6 +10,9 @@
     <Filter Include="System\MicroPather">
       <UniqueIdentifier>{d7921341-db26-4b59-b590-1cd922940032}</UniqueIdentifier>
     </Filter>
+    <Filter Include="System\RSynth">
+      <UniqueIdentifier>{5b2f6c1e-8a43-4d0e-9c71-3e6a2f8d4b19}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Managers">
       <UniqueIdentifier>{777a2010-7ae7-41e7-8d10-1a3d2e6b3001}</UniqueIdentifier>
     </Filter>
@@ -103,6 +106,18 @@
     <ClInclude Include="Source\System\MicroPather\micropather.h">
       <Filter>System\MicroPather</Filter>
     </ClInclude>
+    <ClInclude Include="Source\System\RSynth\darray.h">
+      <Filter>System\RSynth</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\System\RSynth\klatt.h">
+      <Filter>System\RSynth</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\System\RSynth\resonator.h">
+      <Filter>System\RSynth</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\System\RSynth\tts.h">
+      <Filter>System\RSynth</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Renderer\LightingSettings.h">
       <Filter>Renderer</Filter>
     </ClInclude>
@@ -191,6 +206,9 @@
       <Filter>Managers</Filter>
     </ClInclude>
     <ClInclude Include="Source\Managers\UnitSpeech.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Managers\UnitSpeechVoice.h">
       <Filter>Managers</Filter>
     </ClInclude>
     <ClInclude Include="Source\Managers\ActorFire.h">
@@ -371,6 +389,9 @@
       <Filter>Entities</Filter>
     </ClInclude>
     <ClInclude Include="Source\Entities\ADoor.h">
+      <Filter>Entities</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Entities\AMover.h">
       <Filter>Entities</Filter>
     </ClInclude>
     <ClInclude Include="Source\Entities\AVehicle.h">
@@ -823,6 +844,18 @@
     <ClCompile Include="Source\System\MicroPather\micropather.cpp">
       <Filter>System\MicroPather</Filter>
     </ClCompile>
+    <ClCompile Include="Source\System\RSynth\darray.cpp">
+      <Filter>System\RSynth</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\System\RSynth\klatt.cpp">
+      <Filter>System\RSynth</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\System\RSynth\resonator.cpp">
+      <Filter>System\RSynth</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\System\RSynth\tts.cpp">
+      <Filter>System\RSynth</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Managers\SettingsPanel.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
@@ -962,6 +995,9 @@
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\UnitSpeechWorld.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\UnitSpeechVoice.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\ActorFire.cpp">
@@ -1142,6 +1178,9 @@
       <Filter>Entities</Filter>
     </ClCompile>
     <ClCompile Include="Source\Entities\ADoor.cpp">
+      <Filter>Entities</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Entities\AMover.cpp">
       <Filter>Entities</Filter>
     </ClCompile>
     <ClCompile Include="Source\Entities\AVehicle.cpp">

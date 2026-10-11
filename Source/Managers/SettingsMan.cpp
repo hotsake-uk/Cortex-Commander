@@ -1,6 +1,7 @@
 #include "ControlLink.h"
 #include "Actor.h"
 #include "SettingsMan.h"
+#include "SDL3/SDL_keyboard.h"
 #include "Weather.h"
 #include <algorithm>
 #include <cctype>
@@ -23,6 +24,7 @@
 #include "ActorFire.h"
 #include "ActorWater.h"
 #include "UnitSpeech.h"
+#include "UnitSpeechVoice.h"
 #include "ModernHUD.h"
 #include "ToolWidgets.h"
 #include "ConsoleMan.h"
@@ -132,6 +134,7 @@ void SettingsMan::Clear() {
 	m_AlwaysDisplayUnheldItemsInStrategicMode = true;
 	m_SubPieMenuHoverOpenDelay = 1000;
 	m_ClassicPieWheel = false;
+	m_PauseAIKey = "Ctrl+P";
 	m_EndlessMetaGameMode = false;
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
@@ -142,6 +145,7 @@ void SettingsMan::Clear() {
 	m_AIDigWillingness = 1.0F;
 	m_AIThreatAvoidance = 1.0F;
 	m_AIRecklessness = 0.5F;
+	m_AILadderGiveUpSeconds = 1.5F;
 	m_AISpawnDiggerChance = 0.0F;
 	m_BleedOutChance = 0.0F;
 	m_WeaponTerrainDamage = 1.0F;
@@ -289,6 +293,29 @@ void SettingsMan::UpdateSettingsFile() const {
 	if (file) {
 		m_LastWrittenSettings = std::move(text);
 	}
+}
+
+std::string SettingsMan::KeyComboName(int scancode, unsigned int modifiers) {
+	SDL_Scancode key = static_cast<SDL_Scancode>(scancode);
+	if (key == SDL_SCANCODE_UNKNOWN || (key >= SDL_SCANCODE_LCTRL && key <= SDL_SCANCODE_RGUI)) {
+		return std::string();
+	}
+	std::string name;
+	if (modifiers & SDL_KMOD_CTRL) {
+		name += "Ctrl+";
+	}
+	if (modifiers & SDL_KMOD_ALT) {
+		name += "Alt+";
+	}
+	if (modifiers & SDL_KMOD_SHIFT) {
+		name += "Shift+";
+	}
+	return name + SDL_GetScancodeName(key);
+}
+
+bool SettingsMan::IsPauseAIKey(int scancode, unsigned int modifiers) const {
+	// The GUI (Windows) key is left out of the name, so a combo held with it isn't this key.
+	return !m_PauseAIKey.empty() && !(modifiers & SDL_KMOD_GUI) && KeyComboName(scancode, modifiers) == m_PauseAIKey;
 }
 
 void SettingsMan::SaveSettingsIfChanged() const {
@@ -687,6 +714,14 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SoundVolume", { g_AudioMan.SetSoundsVolume(std::stof(reader.ReadPropValue()) / 100.0F); });
 	MatchProperty("MuteSounds", { reader >> g_AudioMan.m_MuteSounds; });
 	MatchProperty("MuteAudioOnFocusLoss", { reader >> g_AudioMan.m_MuteAudioOnFocusLoss; });
+	MatchProperty("SoundMixWeaponsVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_WEAPONS, std::stof(reader.ReadPropValue()) / 100.0F); });
+	MatchProperty("SoundMixExplosionsVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_EXPLOSIONS, std::stof(reader.ReadPropValue()) / 100.0F); });
+	MatchProperty("SoundMixImpactsVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_IMPACTS, std::stof(reader.ReadPropValue()) / 100.0F); });
+	MatchProperty("SoundMixFootstepsVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_FOOTSTEPS, std::stof(reader.ReadPropValue()) / 100.0F); });
+	MatchProperty("SoundMixVoicesVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_VOICES, std::stof(reader.ReadPropValue()) / 100.0F); });
+	MatchProperty("SoundMixEnginesVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_ENGINES, std::stof(reader.ReadPropValue()) / 100.0F); });
+	MatchProperty("SoundMixWorldVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_WORLD, std::stof(reader.ReadPropValue()) / 100.0F); });
+	MatchProperty("SoundMixUIVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_UI, std::stof(reader.ReadPropValue()) / 100.0F); });
 	MatchProperty("SoundPanningEffectStrength", {
 		reader >> g_AudioMan.m_SoundPanningEffectStrength;
 
@@ -706,6 +741,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AlwaysDisplayUnheldItemsInStrategicMode", { reader >> m_AlwaysDisplayUnheldItemsInStrategicMode; });
 	MatchProperty("SubPieMenuHoverOpenDelay", { reader >> m_SubPieMenuHoverOpenDelay; });
 	MatchProperty("ClassicPieWheel", { reader >> m_ClassicPieWheel; });
+	MatchProperty("PauseAIKey", { m_PauseAIKey = reader.ReadPropValue(); });
 	MatchProperty("EndlessMetaGameMode", { reader >> m_EndlessMetaGameMode; });
 	MatchProperty("EndlessMode", { reader >> m_EndlessMetaGameMode; }); // Legacy name, kept for old Settings.ini files.
 	MatchProperty("EnableCrabBombs", { reader >> m_EnableCrabBombs; });
@@ -722,6 +758,11 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("UnitSpeechChance", { int percent = 40; reader >> percent; UnitSpeech::SetChance(percent); });
 	MatchProperty("UnitSpeechEnemies", { bool on = true; reader >> on; UnitSpeech::SetShowsEnemies(on); });
 	MatchProperty("UnitSpeechBubbles", { bool on = true; reader >> on; UnitSpeech::SetShowsBubbles(on); });
+	MatchProperty("UnitSpeechVoices", { bool on = true; reader >> on; UnitSpeechVoice::SetEnabled(on); });
+	MatchProperty("UnitSpeechVoiceVolume", { int percent = 70; reader >> percent; UnitSpeechVoice::SetVolume(percent); });
+	MatchProperty("UnitSpeechVoiceRadio", { int percent = 75; reader >> percent; UnitSpeechVoice::SetRadio(percent); });
+	MatchProperty("UnitSpeechVoiceEnemies", { bool on = true; reader >> on; UnitSpeechVoice::SetHearsEnemies(on); });
+	MatchProperty("UnitSpeechVoiceWords", { bool on = true; reader >> on; UnitSpeechVoice::SetSpeaksWords(on); });
 	MatchProperty("UnitSpeechOff", { UnitSpeech::SetTriggerOn(reader.ReadPropValue(), false); });
 	MatchProperty("UnitSpeechOn", { UnitSpeech::SetTriggerOn(reader.ReadPropValue(), true); });
 	MatchProperty("UnitSpeechTones1", { UnitSpeech::SetTeamTonesText(0, reader.ReadPropValue()); });
@@ -736,6 +777,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AIDigWillingness", { float scale = 1.0F; reader >> scale; SetAIDigWillingness(scale); });
 	MatchProperty("AIThreatAvoidance", { float scale = 1.0F; reader >> scale; SetAIThreatAvoidance(scale); });
 	MatchProperty("AIRecklessness", { float recklessness = 0.5F; reader >> recklessness; SetAIRecklessness(recklessness); });
+	MatchProperty("AILadderGiveUpSeconds", { float seconds = 1.5F; reader >> seconds; SetAILadderGiveUpSeconds(seconds); });
 	MatchProperty("AISpawnDiggerChance", { float percent = 0.0F; reader >> percent; SetAISpawnDiggerChance(percent); });
 	MatchProperty("BleedOutChance", { float percent = 0.0F; reader >> percent; SetBleedOutChance(percent); });
 	MatchProperty("WeaponTerrainDamage", { float scale = 1.0F; reader >> scale; SetWeaponTerrainDamage(scale); });
@@ -1227,6 +1269,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("BleedOutChance", m_BleedOutChance);
 	writer.NewPropertyWithValue("WeaponTerrainDamage", m_WeaponTerrainDamage);
 	writer.NewPropertyWithValue("AIRecklessness", m_AIRecklessness);
+	writer.NewPropertyWithValue("AILadderGiveUpSeconds", m_AILadderGiveUpSeconds);
 	writer.NewPropertyWithValue("AISteadyBeforeJet", m_AISteadyBeforeJet);
 	writer.NewPropertyWithValue("AIWaitForFuel", m_AIWaitForFuel);
 	writer.NewPropertyWithValue("AIEnemyBuysReinforcements", m_AIEnemyBuysReinforcements);
@@ -1274,12 +1317,18 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("ShowCPUAimReticles", m_ShowCPUAimReticles);
 	writer.NewPropertyWithValue("ShowAlarmExclamation", m_ShowAlarmExclamation);
 	writer.NewPropertyWithValue("ClassicPieWheel", m_ClassicPieWheel);
+	writer.NewPropertyWithValue("PauseAIKey", m_PauseAIKey);
 	writer.NewPropertyWithValue("SmoothHUDText", TextOverlay::IsEnabled());
 	writer.NewPropertyWithValue("FrameCap", g_WindowMan.GetFrameCap());
 	writer.NewPropertyWithValue("UnitSpeech", UnitSpeech::IsEnabled());
 	writer.NewPropertyWithValue("UnitSpeechChance", UnitSpeech::GetChance());
 	writer.NewPropertyWithValue("UnitSpeechEnemies", UnitSpeech::ShowsEnemies());
 	writer.NewPropertyWithValue("UnitSpeechBubbles", UnitSpeech::ShowsBubbles());
+	writer.NewPropertyWithValue("UnitSpeechVoices", UnitSpeechVoice::IsEnabled());
+	writer.NewPropertyWithValue("UnitSpeechVoiceVolume", UnitSpeechVoice::GetVolume());
+	writer.NewPropertyWithValue("UnitSpeechVoiceRadio", UnitSpeechVoice::GetRadio());
+	writer.NewPropertyWithValue("UnitSpeechVoiceEnemies", UnitSpeechVoice::HearsEnemies());
+	writer.NewPropertyWithValue("UnitSpeechVoiceWords", UnitSpeechVoice::SpeaksWords());
 	for (int team = 0; team < 4; ++team) {
 		writer.NewPropertyWithValue("UnitSpeechTones" + std::to_string(team + 1), UnitSpeech::GetTeamTonesText(team));
 	}
@@ -1503,6 +1552,9 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("SoundVolume", g_AudioMan.m_SoundsVolume * 100);
 	writer.NewPropertyWithValue("MuteSounds", g_AudioMan.m_MuteSounds);
 	writer.NewPropertyWithValue("MuteAudioOnFocusLoss", g_AudioMan.m_MuteAudioOnFocusLoss);
+	for (int category = 0; category < AudioMan::MIX_CATEGORY_COUNT; ++category) {
+		writer.NewPropertyWithValue("SoundMix" + AudioMan::c_SoundMixCategoryNames[category] + "Volume", g_AudioMan.m_SoundMixVolumes[category] * 100);
+	}
 	writer.NewPropertyWithValue("SoundPanningEffectStrength", g_AudioMan.m_SoundPanningEffectStrength);
 
 	//////////////////////////////////////////////////

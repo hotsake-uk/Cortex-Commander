@@ -94,9 +94,9 @@ int PEmitter::ReadProperty(const std::string_view& propName, Reader& reader) {
 		reader >> *emission;
 		m_EmissionList.push_back(emission);
 	});
-	MatchProperty("EmissionSound", { reader >> m_EmissionSound; });
-	MatchProperty("BurstSound", { reader >> m_BurstSound; });
-	MatchProperty("EndSound", { reader >> m_EndSound; });
+	MatchProperty("EmissionSound", { reader >> m_EmissionSound; m_EmissionSound.SetDefaultMixCategory(AudioMan::MIX_ENGINES); });
+	MatchProperty("BurstSound", { reader >> m_BurstSound; m_BurstSound.SetDefaultMixCategory(AudioMan::MIX_ENGINES); });
+	MatchProperty("EndSound", { reader >> m_EndSound; m_EndSound.SetDefaultMixCategory(AudioMan::MIX_ENGINES); });
 	MatchProperty("EmissionEnabled", { reader >> m_EmitEnabled; });
 	MatchProperty("EmissionCount", { reader >> m_EmitCount; });
 	MatchProperty("EmissionCountLimit", { reader >> m_EmitCountLimit; });

@@ -56,6 +56,15 @@ namespace SandboxDetail {
 		s_PendingPower = -1;
 	}
 
+	void StartPowerCooldowns() {
+		const long long now = g_TimerMan.GetSimUpdateCount();
+		for (auto& side: s_ReadyAt) {
+			for (int power = 0; power < c_PowerCount; ++power) {
+				side[power] = now + static_cast<long long>(c_CommanderPowers[power].Cooldown * UpdatesPerSecond());
+			}
+		}
+	}
+
 	void ApplyPower(const Stroke& stroke) {
 		if (BattlePlayerCommands(stroke.Team)) {
 			UsePowerAs(stroke.Team, stroke.Choice, stroke.Position);
@@ -64,6 +73,10 @@ namespace SandboxDetail {
 
 	float PowerSecondsLeft(int side, int power) { return side >= 0 && side < c_Sides && power >= 0 && power < c_PowerCount ? SecondsLeft(side, power) : 0.0F; }
 
+	bool StrikeOnSpawn(int side, int power, const Vector& at) {
+		return (power == static_cast<int>(CommanderPower::Artillery) || power == static_cast<int>(CommanderPower::Orbital)) && InEnemySpawnZone(side, at, c_CommanderPowers[power].Radius);
+	}
+
 	bool UsePowerAs(int side, int power, const Vector& where) {
 		if (side < 0 || side >= c_Sides || power < 0 || power >= c_PowerCount || SecondsLeft(side, power) > 0.0F) {
 			return false;
@@ -71,6 +84,10 @@ namespace SandboxDetail {
 		const CommanderPowerInfo& info = c_CommanderPowers[power];
 		Vector at = where;
 		g_SceneMan.WrapPosition(at);
+		if (StrikeOnSpawn(side, power, at)) {
+			// (Not spent: strikes can't be called on an enemy's spawn zone.)
+			return false;
+		}
 		const long long now = g_TimerMan.GetSimUpdateCount();
 		switch (static_cast<CommanderPower>(power)) {
 			case CommanderPower::Artillery:
@@ -141,6 +158,11 @@ namespace SandboxDetail {
 	}
 
 	void PowerTargetClicked(const Vector& position) {
+		if (s_PendingPower >= 0 && StrikeOnSpawn(CommandedTeam(), s_PendingPower, position)) {
+			// (Still picking a place: a strike can't go on an enemy spawn zone.)
+			Note("Strikes can't be called on or above an enemy spawn zone");
+			return;
+		}
 		if (s_PendingPower >= 0) {
 			UsePower(s_PendingPower);
 			s_Queue.back().Position = position;
@@ -166,7 +188,8 @@ namespace SandboxDetail {
 			char seconds[16];
 			std::snprintf(seconds, sizeof(seconds), "%.0f", std::ceil(left));
 			char tip[400];
-			std::snprintf(tip, sizeof(tip), "%s: %s\nThen %.0f seconds before it can be used again.%s%s", info.Name, info.Tip, info.Cooldown, info.Radius > 0.0F ? "\nClick, then click on the map where." : "",
+			std::snprintf(tip, sizeof(tip), "%s: %s\nThen %.0f seconds before it can be used again.%s%s%s", info.Name, info.Tip, info.Cooldown, info.Radius > 0.0F ? "\nClick, then click on the map where." : "",
+			              power <= static_cast<int>(CommanderPower::Orbital) ? "\nNot on or above an enemy spawn zone." : "",
 			              !running ? "\nOnce the battle is on." : (fogless ? "\nOnly with fog of war on." : (left > 0.0F ? "\nCooling down." : "")));
 			if (power > 0) {
 				ImGui::SameLine();
@@ -200,8 +223,10 @@ namespace SandboxDetail {
 		const float radius = info.Radius / ScenePixelsPerWindowPixel();
 		const ImVec2 at = ImGui::GetIO().MousePos;
 		ImDrawList* drawList = ImGui::GetBackgroundDrawList();
-		drawList->AddCircleFilled(at, radius, IM_COL32(239, 106, 91, 40), 48);
-		drawList->AddCircle(at, radius, IM_COL32(239, 106, 91, 200), 48, 2.0F);
-		drawList->AddText(ImVec2(at.x + radius + 6.0F, at.y - ImGui::GetFontSize() * 0.5F), IM_COL32(239, 160, 100, 230), info.Name);
+		// (Greyed over an enemy spawn zone, where a strike can't be called.)
+		const bool barred = StrikeOnSpawn(CommandedTeam(), s_PendingPower, MouseScenePosition());
+		drawList->AddCircleFilled(at, radius, barred ? IM_COL32(150, 150, 150, 40) : IM_COL32(239, 106, 91, 40), 48);
+		drawList->AddCircle(at, radius, barred ? IM_COL32(150, 150, 150, 200) : IM_COL32(239, 106, 91, 200), 48, 2.0F);
+		drawList->AddText(ImVec2(at.x + radius + 6.0F, at.y - ImGui::GetFontSize() * 0.5F), barred ? IM_COL32(200, 200, 200, 230) : IM_COL32(239, 160, 100, 230), barred ? "Not over a spawn zone" : info.Name);
 	}
 } // namespace SandboxDetail
