@@ -310,6 +310,10 @@ namespace RTE {
 		/// Whether armed AI units with nothing to fight go and pick up a loose gun clearly better than theirs, or a grenade when they have nothing to throw.
 		bool AIScavengesBetterWeapons() const { return m_AIScavengesBetterWeapons; }
 
+		/// Whether AI units call a lift or moving platform (AMover) to the stop they wait at, and on to the stop they ride to (LM-11). Off, they
+		/// still ride lifts that shuttle, waiting for the deck's own round, and leave alone the ones that only come when called.
+		bool AIUnitsCallLifts() const { return m_AIUnitsCallLifts; }
+
 		/// Whether AI units wait at a take-off for the fuel the flight needs (on, as designed), or go with what is in the tank.
 		bool AIWaitsForFuel() const { return m_AIWaitForFuel; }
 		/// Battle Command: whether an enemy team's AI commander spends its points on reinforcements, as you do.
@@ -619,6 +623,8 @@ namespace RTE {
 		void SetAICoverLiesFlat(bool on) { m_AICoverLiesFlat = on; }
 		void SetAIBreaksWhenShaken(bool on) { m_AIBreaksWhenShaken = on; }
 		void SetAIScavengesBetterWeapons(bool on) { m_AIScavengesBetterWeapons = on; }
+		/// Sets whether AI units call lifts; see AIUnitsCallLifts.
+		void SetAIUnitsCallLifts(bool on) { m_AIUnitsCallLifts = on; }
 
 		/// Sets whether AI units wait for fuel before they jet.
 		void SetAIWaitsForFuel(bool wait) { m_AIWaitForFuel = wait; }
@@ -910,6 +916,7 @@ namespace RTE {
 		bool m_AICoverLiesFlat; //!< See AICoverLiesFlat.
 		bool m_AIBreaksWhenShaken; //!< See AIBreaksWhenShaken.
 		bool m_AIScavengesBetterWeapons; //!< See AIScavengesBetterWeapons.
+		bool m_AIUnitsCallLifts; //!< See AIUnitsCallLifts.
 		bool m_AIWaitForFuel; //!< Whether AI units wait for fuel before they jet (see AIWaitsForFuel).
 		bool m_AIEnemyBuysReinforcements; //!< See AIEnemyBuysReinforcements.
 		bool m_AIEnemyUsesPowers; //!< See AIEnemyUsesPowers.

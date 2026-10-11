@@ -39,7 +39,8 @@ namespace RTE {
 		Scramble, //!< Up a rough slope of about seventy degrees on legs and arms, crouched: three nodes of height for one of width (see UpdateNodeCosts).
 		Swim, //!< Along the surface of liquid too deep to wade, swum by a searcher that floats (PathAgent::Floats).
 		Wade, //!< Through liquid, walked: shallow enough to wade, or along the bottom of deep water for a searcher that sinks.
-		StepOver //!< Over something low on the floor (a kerb, a sandbag, a body) to a floor level with this one, one or two nodes along, with room to stand over it: stepped, leapt or pulled over at a walk (LM-5).
+		StepOver, //!< Over something low on the floor (a kerb, a sandbag, a body) to a floor level with this one, one or two nodes along, with room to stand over it: stepped, leapt or pulled over at a walk (LM-5).
+		Lift //!< Ridden on a lift's or moving platform's deck from one of its stops to another (LM-11; see LiftTable): the step's start is where the deck is boarded, its end where it is left.
 	};
 
 	/// What liquid fills a node's column under its surface (see PathNode::Liquid). Told by the material's name, the four FluidSim pours.
@@ -79,6 +80,22 @@ namespace RTE {
 		}
 	};
 
+	/// Every lift and moving platform (AMover) as it was when last published (MovableMan::PublishLifts): where a unit stands on its deck at each
+	/// stop, and how long a ride takes. A route search reads it to ride them (LM-11): a step from each stop to each other, priced by the ride
+	/// and the wait, and on and off the deck from the floor beside each stop. Built whole on the main thread and never changed after, as the
+	/// ThreatField is, so a search holds its own copy of the pointer (PathAgent::Lifts) and reads it on its worker thread.
+	struct LiftTable {
+		struct Lift {
+			long UniqueID = 0; //!< The mover's unique ID, for the route-follower to find it by.
+			std::vector<Vector> Stops; //!< Where a unit stands on the deck at each stop: the middle of the deck's top, in scene coordinates.
+			float DeckHalfWidth = 0.0F; //!< Half the deck's width, in pixels.
+			float Speed = 60.0F; //!< The deck's speed, in pixels per second.
+			float StopWaitMS = 3000.0F; //!< How long the deck stands at each stop.
+			bool OnCall = false; //!< Whether it waits until called rather than shuttling.
+		};
+		std::vector<Lift> Lifts;
+	};
+
 	/// The searcher, as far as the path grid cares: what it can jump, dig and breach, and how big it is.
 	struct PathAgent {
 		float JumpHeight = FLT_MAX; //!< How high it can get on a jump or a tank of jet fuel, in metres. FLT_MAX for anything that flies.
@@ -114,6 +131,8 @@ namespace RTE {
 		bool StraightFlight = false; //!< On a full-risk order (Actor::StandingOrder::Direct at SettingsMan::DirectOrderTuning::StraightFlightRisk): the route is one jet flight from start to goal, straight or up and over, when the air is open and StraightFlightReach of a tank flies it.
 		float StraightFlightReach = 0.95F; //!< How much of a full tank that flight may need (SettingsMan::DirectOrderTuning::FlightReach): over 1 is the risk of coming down short, accepted.
 		float LineWeight = 0.0F; //!< What each node off the straight line from start to goal costs it, in nodes walked (LineCost): over 0 on a risky order, which digs straight or keeps near the line.
+		std::shared_ptr<const LiftTable> Lifts; //!< The lifts it rides (MovableMan::GetPublishedLifts; LM-11), for a humanoid. None for no lift steps.
+		bool CallsLifts = true; //!< Whether it calls a lift to its stop rather than waiting for the lift's own round (SettingsMan::AIUnitsCallLifts): the wait is priced by it.
 		unsigned RouteSeed = 0; //!< Its own taste in routes (Actor::GetRouteSeed): each part of the map costs it a little more or less, by the seed, so units with different seeds go different ways where the ways are near enough alike. 0 for none: the shortest.
 	};
 
@@ -610,6 +629,12 @@ namespace RTE {
 
 		/// The cost factor for walking between two nodes by the head room: 1 standing, 2 crawling, 1000 for no way through.
 		float HeadRoomFactor(const PathNode& from, const PathNode& to) const;
+
+		/// Works out this thread's searcher's lift steps (LM-11) from the lift table it was given: a ride from each stop's node to each other's,
+		/// and steps on and off the deck from the floor beside each stop. Called by ApplyAgent.
+		/// @param lifts The table, or none for no lift steps.
+		/// @param callsLifts Whether the searcher calls a lift to it (PathAgent::CallsLifts), for the wait.
+		void BuildLiftLinks(const LiftTable* lifts, bool callsLifts);
 
 		/// What a step from one node to the next is.
 		PathStepKind StepKindBetween(const PathNode* from, const PathNode* to) const;

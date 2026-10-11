@@ -325,6 +325,13 @@ namespace RTE {
 		/// @return 0 while moving, 1 arrived at the last waypoint, 2 when there is no route to it.
 		int MoveAlongRoute();
 
+		/// The route-follower's part for a lift step (LM-11; PathStepKind::Lift): held clear of the deck's place at the stop it boards at until
+		/// the deck stands there (calling it, when AI units call lifts), on, stood on the deck until it stands at the stop it is left at (sent
+		/// there, likewise), and off. Given up on, and the ride avoided for a while, when the deck doesn't come or the ride doesn't end.
+		/// @param airborne Whether the unit has no floor under it.
+		/// @return Whether the lift has the unit this tick (the rest of the follower is skipped).
+		bool FollowLift(bool airborne);
+
 		/// Adds the route-follower's state to the unit's debug state: what it's doing (walk, fuel wait, flight, refuel, shaft, step), its progress and stuck timers, stuck level, fuel wait, impossible answers and the flight's landing.
 		void GetDebugState(std::vector<DebugStateField>& fields) const override;
 
@@ -917,6 +924,13 @@ namespace RTE {
 			Timer doorIgnoreTimer;
 			long doorWaitID = 0;
 			long doorIgnoreID = 0;
+			long liftID = 0; //!< The lift (AMover) the route boards or rides next (LM-11; see FollowLift), 0 for none.
+			int liftBoard = -1; //!< The stop it is boarded at.
+			int liftLeave = -1; //!< The stop it is left at.
+			bool liftRiding = false; //!< On the deck, riding.
+			Timer liftTimer; //!< Since the wait for the deck, or the ride, began.
+			Timer liftCallTimer; //!< Since the deck was last called.
+			Timer liftOffTimer; //!< While riding, since the unit was last on the deck.
 			Timer proneHoldTimer;
 			bool crouching = false; //!< The walk is ducking under something low (see MoveAlongRoute's walk): kept up 400 ms after the room returns.
 			Timer crouchHoldTimer;

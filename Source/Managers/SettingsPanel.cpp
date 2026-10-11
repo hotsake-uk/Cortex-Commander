@@ -1301,6 +1301,8 @@ void DebugMan::SettingsGUI() {
 		Tip("A unit whose nerve has gone (losses, wounds and fire wear it down) breaks and falls back, whatever its health, until it steadies or is rallied; in Battle Command yours show a \"!\" over them. Off: suppression still makes them duck and crawl, but nobody runs.");
 		Toggle("Units pick up better weapons", g_SettingsMan.AIScavengesBetterWeapons(), [](bool on) { g_SettingsMan.SetAIScavengesBetterWeapons(on); });
 		Tip("An armed unit with nothing to fight looks round every so often for a loose gun lying near that's clearly better than its best (worth a third more), or a grenade when it has nothing to throw, and goes to pick it up, then carries on. Not one told to hold its position, nor one following a squad. Units with no gun at all look for one whatever this is.");
+		Toggle("Units call lifts", g_SettingsMan.AIUnitsCallLifts(), [](bool on) { g_SettingsMan.SetAIUnitsCallLifts(on); });
+		Tip("AI soldiers route by lifts and moving platforms. On: a unit waiting at a stop calls the deck to it, and a rider sends it on to the stop it wants; the deck then goes back to its own round. Off: they wait for a shuttling deck to come round on its own, and leave alone lifts that only come when called.");
 		{
 			float dig = g_SettingsMan.AIDigWillingness();
 			if (Slider("AI digging", &dig, 0.0F, 2.0F, "%.2fx")) {

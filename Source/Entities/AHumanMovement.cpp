@@ -7,6 +7,7 @@
 #include "AHuman.h"
 #include "ActorWater.h"
 #include "ADoor.h"
+#include "AMover.h"
 #include "ACraft.h"
 #include "ACrab.h"
 #include "SoundContainer.h"
@@ -1381,6 +1382,192 @@ void AHuman::PopRoutePoint() {
 	}
 }
 
+bool AHuman::FollowLift(bool airborne) {
+	RouteMover& mover = m_Mover;
+	Controller& ctrl = m_Controller;
+	const float nodeSize = static_cast<float>(g_SettingsMan.GetPathFinderGridNodeSize());
+	auto forget = [&mover]() {
+		mover.liftID = 0;
+		mover.liftBoard = -1;
+		mover.liftLeave = -1;
+		mover.liftRiding = false;
+	};
+	auto liftOf = [](long id) -> AMover* {
+		return id != 0 ? dynamic_cast<AMover*>(g_MovableMan.FindObjectByUniqueID(id)) : nullptr;
+	};
+
+	// The ride in the route: the point it boards at and the one it leaves at. The step's start is the point before the Lift step: the route's
+	// front when the ride is the next step, the point just passed when the front is the ride's end.
+	Vector boardPoint;
+	Vector leavePoint;
+	bool riding = false; // Whether the front of the route is the ride's end.
+	bool inRoute = false;
+	if (!m_MovePathKinds.empty() && m_MovePathKinds.front() == PathStepKind::Lift && !m_MovePath.empty()) {
+		boardPoint = m_PrevPathTarget;
+		leavePoint = m_MovePath.front();
+		riding = true;
+		inRoute = true;
+	} else if (m_MovePath.size() >= 2 && m_MovePathKinds.size() >= 2 && *std::next(m_MovePathKinds.begin()) == PathStepKind::Lift) {
+		boardPoint = m_MovePath.front();
+		leavePoint = *std::next(m_MovePath.begin());
+		inRoute = true;
+	}
+
+	if (!inRoute) {
+		// A new route while riding (the old one refreshed part way up the shaft): stood on the deck until it stands at a stop, where the new
+		// route has its own way on from.
+		AMover* lift = liftOf(mover.liftID);
+		if (mover.liftRiding && lift && lift->IsRiding(this) && lift->GetCurrentStop() < 0) {
+			mover.progressTimer.Reset();
+			return true;
+		}
+		forget();
+		return false;
+	}
+
+	// Which lift, and which of its stops: the route's points there are a half node over where a unit stands on the deck.
+	AMover* lift = liftOf(mover.liftID);
+	auto stopAt = [nodeSize](const AMover* candidate, const Vector& point) {
+		for (int stop = 0; stop < candidate->GetStopCount(); ++stop) {
+			if (Towards(candidate->GetStopStandingPos(stop) - Vector(0.0F, nodeSize * 0.5F), point).MagnitudeIsLessThan(nodeSize * 0.5F)) {
+				return stop;
+			}
+		}
+		return -1;
+	};
+	if (!lift || stopAt(lift, boardPoint) != mover.liftBoard || stopAt(lift, leavePoint) != mover.liftLeave) {
+		forget();
+		for (Actor* actor: g_MovableMan.GetActorList()) {
+			AMover* candidate = dynamic_cast<AMover*>(actor);
+			if (!candidate || !candidate->GetDeck()) {
+				continue;
+			}
+			int board = stopAt(candidate, boardPoint);
+			int leave = stopAt(candidate, leavePoint);
+			if (board >= 0 && leave >= 0 && board != leave) {
+				lift = candidate;
+				mover.liftID = candidate->GetUniqueID();
+				mover.liftBoard = board;
+				mover.liftLeave = leave;
+				mover.liftTimer.Reset();
+				mover.liftCallTimer.Reset();
+				mover.liftOffTimer.Reset();
+				break;
+			}
+		}
+		if (mover.liftID == 0) {
+			// The lift is gone (destroyed, or its stops moved): a route another way.
+			MoverTrace("lift on the route is gone; new route");
+			AvoidPathLink(boardPoint, leavePoint, 30000.0F);
+			RefreshRoute();
+			return true;
+		}
+	}
+	if (!lift->GetDeck()) {
+		MoverTrace("lift's deck is gone; new route");
+		AvoidPathLink(boardPoint, leavePoint, 30000.0F);
+		forget();
+		RefreshRoute();
+		return true;
+	}
+	mover.progressTimer.Reset();
+	const bool callsLifts = g_SettingsMan.AIUnitsCallLifts();
+	const float deckHalf = lift->GetDeckHalfWidth();
+	const float bodyHalf = std::clamp(static_cast<float>(GetSpriteWidth()) * 0.5F + 2.0F, 6.0F, 16.0F);
+	auto giveUp = [&](const std::string& why) {
+		MoverTrace(why);
+		AvoidPathLink(boardPoint, leavePoint, 30000.0F);
+		forget();
+		RefreshRoute();
+	};
+
+	// ---- On the deck: stood there until it stands at the stop the route leaves it at, then off. ----
+	if (lift->IsRiding(this)) {
+		if (!riding) {
+			PopRoutePoint(); // On board: the front is now the ride's end.
+		}
+		if (!mover.liftRiding) {
+			mover.liftRiding = true;
+			mover.liftTimer.Reset();
+			mover.liftCallTimer.Reset();
+		}
+		mover.liftOffTimer.Reset();
+		if (lift->GetCurrentStop() == mover.liftLeave) {
+			MoverTrace("lift at the stop; stepping off");
+			PopRoutePoint();
+			forget();
+			return false;
+		}
+		if (mover.liftTimer.IsPastSimMS(45000)) {
+			giveUp("lift ride didn't end; new route");
+			return true;
+		}
+		// Sent on to its stop when it stands with nowhere else to go (a call already waiting goes first: the units at other stops in turn).
+		if (callsLifts && !lift->IsMoving() && lift->GetTargetStop() == lift->GetCurrentStop() && mover.liftCallTimer.IsPastSimMS(250)) {
+			mover.liftCallTimer.Reset();
+			lift->CallTo(mover.liftLeave);
+		}
+		// Kept on the deck, well in from its ends.
+		float dx = Towards(m_Pos, lift->GetDeckStandingPos()).m_X;
+		float room = std::max(0.0F, deckHalf - bodyHalf - 2.0F);
+		if (std::abs(dx) > room) {
+			ctrl.SetState(dx < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+		}
+		return true;
+	}
+
+	// ---- Off the deck. ----
+	if (mover.liftRiding) {
+		// Was riding and isn't: knocked or jumped off, or the deck went from under it. A moment's grace (a bump on the deck), then a route from
+		// wherever it is.
+		if (mover.liftOffTimer.IsPastSimMS(1000)) {
+			MoverTrace("off the lift's deck mid-ride; new route");
+			forget();
+			RefreshRoute();
+		}
+		return true;
+	}
+	if (airborne) {
+		// A hop on the way onto the deck, or a fall: hands off, but not for long.
+		if (mover.liftOffTimer.IsPastSimMS(1500)) {
+			forget();
+			RefreshRoute();
+		}
+		return true;
+	}
+	mover.liftOffTimer.Reset();
+
+	if (mover.liftTimer.IsPastSimMS(25000)) {
+		giveUp("lift didn't come; new route");
+		return true;
+	}
+	const Vector boardDeck = lift->GetStopStandingPos(mover.liftBoard);
+	const float dxDeck = Towards(m_Pos, boardDeck).m_X;
+	const float clear = deckHalf + bodyHalf + 6.0F; // How far from the deck's middle a unit waits, clear of its ends.
+	const bool deckHere = lift->GetCurrentStop() == mover.liftBoard;
+	// On when the deck stands at the stop and won't be gone before the unit is on it (or it is already at its end).
+	if (deckHere && (lift->GetDepartureMS() > 1500.0F || std::abs(dxDeck) < clear)) {
+		if (std::abs(dxDeck) > 4.0F) {
+			ctrl.SetState(dxDeck < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+		}
+		return true;
+	}
+	// Held clear of the deck's place at the stop, on the side the unit came from (not in its way, nor over the shaft), and the deck called.
+	const float dxHold = dxDeck + (dxDeck > 0.0F ? -clear : clear);
+	if (std::abs(dxHold) > 6.0F) {
+		ctrl.SetState(dxHold < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+	}
+	if (callsLifts && lift->GetTargetStop() != mover.liftBoard && !lift->IsMoving() && lift->GetTargetStop() == lift->GetCurrentStop() && mover.liftCallTimer.IsPastSimMS(500)) {
+		// (Riders first: they send it on when it stands. After a while, called whoever rides it.)
+		if (!lift->HasRiders() || mover.liftTimer.IsPastSimMS(8000)) {
+			mover.liftCallTimer.Reset();
+			MoverTrace("calling the lift");
+			lift->CallTo(mover.liftBoard);
+		}
+	}
+	return true;
+}
+
 void AHuman::MoverTrace(const std::string& text) const {
 	if (IsAITraced()) {
 		g_ConsoleMan.PrintString("AITRACE mover: " + text + " at " + std::to_string(m_Pos.GetFloorIntX()) + "," + std::to_string(m_Pos.GetFloorIntY()));
@@ -1845,6 +2032,11 @@ int AHuman::MoveAlongRoute() {
 			mover.arrivedTick = tick;
 		return RouteMover::Arrived;
 		}
+	}
+
+	// A lift's ride: the lift has the unit while it waits for the deck, rides it and steps off.
+	if (!mover.flight.active && FollowLift(airborne)) {
+		return RouteMover::Moving;
 	}
 
 	// Points passed are dropped: within reach, or behind with the next in plain sight (the points are 24 px apart, and waiting to stand on

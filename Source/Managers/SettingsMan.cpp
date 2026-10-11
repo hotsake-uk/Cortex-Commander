@@ -159,6 +159,7 @@ void SettingsMan::Clear() {
 	m_AICoverLiesFlat = true;
 	m_AIBreaksWhenShaken = true;
 	m_AIScavengesBetterWeapons = true;
+	m_AIUnitsCallLifts = true;
 	m_DeadCrewFallOut = true;
 	m_DirectOrders = DirectOrderTuning();
 	m_NavDebugOverlay = 0;
@@ -785,6 +786,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AICoverLiesFlat", { reader >> m_AICoverLiesFlat; });
 	MatchProperty("AIBreaksWhenShaken", { reader >> m_AIBreaksWhenShaken; });
 	MatchProperty("AIScavengesBetterWeapons", { reader >> m_AIScavengesBetterWeapons; });
+	MatchProperty("AIUnitsCallLifts", { reader >> m_AIUnitsCallLifts; });
 	MatchProperty("DeadCrewFallOut", { reader >> m_DeadCrewFallOut; });
 	MatchProperty("DirectCaution", { reader >> m_DirectOrders.Caution; m_DirectOrders.Caution = std::clamp(m_DirectOrders.Caution, 0.0F, 1.0F); });
 	MatchProperty("DirectFlightCost", { reader >> m_DirectOrders.FlightCostScale; m_DirectOrders.FlightCostScale = std::clamp(m_DirectOrders.FlightCostScale, 0.2F, 1.0F); });
@@ -1272,6 +1274,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AICoverLiesFlat", m_AICoverLiesFlat);
 	writer.NewPropertyWithValue("AIBreaksWhenShaken", m_AIBreaksWhenShaken);
 	writer.NewPropertyWithValue("AIScavengesBetterWeapons", m_AIScavengesBetterWeapons);
+	writer.NewPropertyWithValue("AIUnitsCallLifts", m_AIUnitsCallLifts);
 	writer.NewPropertyWithValue("DeadCrewFallOut", m_DeadCrewFallOut);
 	writer.NewPropertyWithValue("DirectCaution", m_DirectOrders.Caution);
 	writer.NewPropertyWithValue("DirectFlightCost", m_DirectOrders.FlightCostScale);
