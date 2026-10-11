@@ -1978,6 +1978,18 @@ void AHuman::UpdateCrouching() {
 			g_SceneMan.CastStrengthRay(hitPosStart, Vector(0.0F, -desiredCrouchHeadRoom - startBelow), 1.0F, hitPos, 0, g_MaterialGrass);
 			g_SceneMan.CastStrengthRay(hitPosPredictedStart, Vector(0.0F, -desiredCrouchHeadRoom - startBelow), 1.0F, hitPosPredicted, 0, g_MaterialGrass);
 
+			// Nor for a ladder's rungs, which the body passes: ducked under, a unit by a bunker ladder crouched as it walked past.
+			static const Material* s_Ladder = g_SceneMan.GetMaterial("Ladder");
+			if (s_Ladder) {
+				const unsigned char rung = static_cast<unsigned char>(s_Ladder->GetIndex());
+				if (g_SceneMan.GetTerrMatter(static_cast<int>(hitPos.m_X), static_cast<int>(hitPos.m_Y)) == rung) {
+					hitPos.m_Y = 0.0F;
+				}
+				if (g_SceneMan.GetTerrMatter(static_cast<int>(hitPosPredicted.m_X), static_cast<int>(hitPosPredicted.m_Y)) == rung) {
+					hitPosPredicted.m_Y = 0.0F;
+				}
+			}
+
 			// Don't do it if we're already hitting, we're probably in a weird spot
 			if (hitPosStart.m_Y - hitPos.m_Y <= 2.0F) {
 				hitPos.m_Y = 0.0F;
