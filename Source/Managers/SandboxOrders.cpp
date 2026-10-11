@@ -1678,9 +1678,12 @@ namespace SandboxDetail {
 		if (!car || !failed || !car->IsCommanded() || car->GetCrewStaysIn() || car->GetCrewCount() == 0) {
 			return false;
 		}
-		// Sent to attack (or attack-move): it stays where it stopped, its gun on what it can see (and the "no route" marker says why).
+		// Sent to attack (or attack-move), or to suppress a place: it stays where it stopped, its gun on what it can see or the place (and the
+		// "no route" marker says why).
 		const int kind = car->GetStandingOrder().Kind;
-		if (kind == Actor::ORDER_ATTACK || kind == Actor::ORDER_ATTACKMOVE) {
+		Vector suppressCentre;
+		float suppressRadius = 0.0F;
+		if (kind == Actor::ORDER_ATTACK || kind == Actor::ORDER_ATTACKMOVE || car->GetSuppressZone(suppressCentre, suppressRadius)) {
 			return false;
 		}
 		const int facing = car->GetStandingOrder().PostFacing;
@@ -2091,6 +2094,28 @@ namespace SandboxDetail {
 		g_SceneMan.WrapPosition(centre);
 		HoldUnit(unit);
 		unit->SetMovementRule(Actor::MOVE_HOLD_GROUND);
+		// A vehicle or flying ship has no AI of its own to fire into the place (the units' is HumanBehaviors.SuppressZone): its gunners do
+		// (AVehicle::UpdateGun, ACShip::UpdateGuns), from where it stands. Out of their range it goes in range first, a ship to hover off to
+		// the side, where its side guns bear (they don't fire straight down), and a vehicle to the edge of its range, its crew kept aboard.
+		AVehicle* car = dynamic_cast<AVehicle*>(unit);
+		ACShip* ship = car ? nullptr : dynamic_cast<ACShip*>(unit);
+		if (car || ship) {
+			const float range = car ? car->GetGunRange() : ship->GetGunRange();
+			const float across = g_SceneMan.ShortestDistance(centre, unit->GetPos(), g_SceneMan.SceneWrapsX()).m_X;
+			const float side = across >= 0.0F ? 1.0F : -1.0F;
+			if (ship && (std::abs(across) > range * 0.8F || std::abs(across) < range * 0.25F)) {
+				Vector spot = centre + Vector(side * range * 0.5F, 0.0F);
+				g_SceneMan.WrapPosition(spot);
+				ship->FlyRouteTo(spot);
+			} else if (car && std::abs(across) > range * 0.8F) {
+				Vector spot = centre + Vector(side * range * 0.6F, -4.0F);
+				g_SceneMan.WrapPosition(spot);
+				SendUnit(car, spot, nullptr, false, "suppress");
+			}
+			if (car && car->CanBeDriven()) {
+				car->SetCommanded(true);
+			}
+		}
 		unit->SetNumberValue("SandboxSuppressX", centre.m_X);
 		unit->SetNumberValue("SandboxSuppressY", centre.m_Y);
 		unit->SetNumberValue("SandboxSuppressR", static_cast<double>(std::max(radius, 10)));

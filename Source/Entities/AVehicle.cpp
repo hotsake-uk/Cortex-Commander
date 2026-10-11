@@ -890,6 +890,12 @@ void AVehicle::FaceForCommander() {
 			facing = toTarget.m_X > 0.0F ? 1 : -1;
 		}
 	}
+	// (Ordered to suppress a place: it faces the place, its gun only swinging in front.)
+	Vector suppressCentre;
+	float suppressRadius = 0.0F;
+	if (facing == 0 && GetSuppressZone(suppressCentre, suppressRadius)) {
+		facing = g_SceneMan.ShortestDistance(m_Pos, suppressCentre).m_X > 0.0F ? 1 : -1;
+	}
 	if (facing == 0) {
 		facing = m_StandingOrder.PostFacing;
 	}
@@ -1286,6 +1292,26 @@ void AVehicle::UpdateGun() {
 				Vector toTarget = g_SceneMan.ShortestDistance(m_Turret->GetPos(), target->GetPos() - Vector(0.0F, target->GetHeight() * 0.1F));
 				wanted = std::atan2(-toTarget.m_Y, std::max(toTarget.m_X * GetFlipFactor(), 0.0F));
 				onIt = true;
+			}
+		}
+		Vector suppressCentre;
+		float suppressRadius = 0.0F;
+		if (!onIt && GetSuppressZone(suppressCentre, suppressRadius)) {
+			// Ordered to suppress a place, with nobody in sight to shoot: it fires into it, about it at random, when the place is in range in
+			// front of it. No line of sight is wanted: the fire is to keep heads down there.
+			if (m_SuppressTimer.IsPastSimMS(500)) {
+				m_SuppressTimer.Reset();
+				m_SuppressPoint = suppressCentre + Vector(RandomNum(-1.0F, 1.0F) * suppressRadius, RandomNum(-0.5F, 0.5F) * suppressRadius);
+			}
+			Vector pivot = lobs ? GetReleasePoint() : m_Turret->GetPos();
+			Vector toPoint = g_SceneMan.ShortestDistance(pivot, m_SuppressPoint);
+			if (toPoint.m_X * GetFlipFactor() > 0.0F && toPoint.MagnitudeIsLessThan(m_GunRange)) {
+				if (lobs) {
+					onIt = std::abs(toPoint.m_X) >= 120.0F && LobAngleTo(toPoint, wanted);
+				} else {
+					wanted = std::atan2(-toPoint.m_Y, std::abs(toPoint.m_X));
+					onIt = std::abs(Wrapped(wanted - rotationFacing)) <= m_AimRange;
+				}
 			}
 		}
 		if (onIt) {

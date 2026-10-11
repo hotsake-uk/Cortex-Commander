@@ -130,6 +130,9 @@ namespace RTE {
 
 		/// Gets the points of the route FlyRouteTo sent it along that it has still to fly to, the next first.
 		const std::deque<Vector>& GetRoute() const { return m_Route; }
+
+		/// Gets how far its gunners look for something to shoot, in pixels.
+		float GetGunRange() const { return m_GunRange; }
 #pragma endregion
 
 #pragma region Override Methods
@@ -179,6 +182,8 @@ namespace RTE {
 			float AimAngle = 0.0F; //!< Radians above level, the way the gun faces.
 			long TargetID = 0; //!< The unique ID of what its AI gunner is shooting at, or 0.
 			Timer TargetTimer; //!< Since its gunner last looked round for something to shoot.
+			Vector SuppressPoint; //!< Where in the place it was ordered to suppress its gunner is firing at, with nobody to shoot.
+			Timer SuppressTimer; //!< Since its gunner last picked a point in that place.
 		};
 
 		CrewSeats m_Crew; //!< Its seats, the pilot's (seat 0) and the rest, and who sits in them.
