@@ -759,8 +759,13 @@ void Sandbox::DrawGUI() {
 		// (Also while you play a unit: the enemy's strikes coming in, and the squad following you with its keys.)
 		DrawEnemyStrikes();
 		DrawSquad();
-		if (s_Possessed && !ImGui::GetIO().WantTextInput && !ImGui::GetIO().KeyCtrl && !ImGui::GetIO().KeyAlt) {
-			SquadKeys();
+		DrawAlerts();
+		if (!ImGui::GetIO().WantTextInput && !ImGui::GetIO().KeyCtrl && !ImGui::GetIO().KeyAlt) {
+			if (s_Possessed) {
+				SquadKeys();
+			} else if (ImGui::IsKeyPressed(ImGuiKey_Space, false)) {
+				JumpToLatestAlert();
+			}
 		}
 	}
 	if (!s_Open && !hiddenButAbove) {

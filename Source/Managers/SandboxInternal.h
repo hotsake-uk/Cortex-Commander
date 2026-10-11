@@ -2644,6 +2644,9 @@ namespace SandboxDetail {
 	/// A unit called in from a reinforcement card marked with the card's name: its kind in the report.
 	void TagCardUnit(Actor* unit, int card);
 
+	/// A unit's kind on record (Rifleman, Heavy, Crab...): empty for one not on record.
+	std::string ReportUnitKind(long id);
+
 	/// Whether a Battle Command battle has ended with its report to show.
 	bool BattleReportReady();
 	void OpenBattleReport();
@@ -2684,6 +2687,28 @@ namespace SandboxDetail {
 
 	/// A mark over each of the squad, and what it's doing with the keys at the top of the view. Call from the ImGui frame.
 	void DrawSquad();
+#pragma endregion
+
+#pragma region Alerts and kill feed (BattleAlerts.cpp)
+	/// The alerts and the kill feed emptied. At a mode's start and a new game.
+	void ForgetAlerts();
+
+	/// Something in a Battle Command battle that needs your eye, listed at the top left for a while for you to click and look at. One of the
+	/// same kind this recent and near is counted in with it rather than listed again.
+	void AddAlert(const std::string& kind, const std::string& text, const Vector& at, ImU32 color);
+
+	/// A unit fallen (UpdateReinforcements' count), with the unit nearest it of another team (0 for none): listed in the kill feed, and one of
+	/// yours an alert.
+	void NoteKillFeed(long killerID, long victimID, int victimTeam, const Vector& where);
+
+	/// Your units under attack noticed. Call once per sim update, from UpdateBattle.
+	void UpdateAlerts();
+
+	/// The view moved to the latest alert (Space).
+	void JumpToLatestAlert();
+
+	/// The alerts, top left, and the kill feed, top right. Call from the ImGui frame.
+	void DrawAlerts();
 #pragma endregion
 
 #pragma region Fog of war (BattleFog.cpp)

@@ -88,6 +88,7 @@ namespace SandboxDetail {
 		ForgetVeterans();
 		ForgetBattleReport();
 		ForgetEnemyCommander();
+		ForgetAlerts();
 	}
 
 	void UpdateReinforcements() {
@@ -154,6 +155,7 @@ namespace SandboxDetail {
 				}
 			}
 			NoteReportKill(killerID, id);
+			NoteKillFeed(killerID, id, seen.Team, seen.Pos);
 			NoteVeteranKill(killerID, id);
 			if (killer >= 0 && Earns(killer)) {
 				CommandPoints& points = s_CommandPoints[killer];
