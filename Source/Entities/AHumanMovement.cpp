@@ -3719,6 +3719,22 @@ int AHuman::MoveAlongRoute() {
 	float floorY = floorHere >= 0.0F ? std::min(floorHere, m_Pos.m_Y + feet) : m_Pos.m_Y + feet;
 	float topHeadY = std::min(m_Pos.m_Y - 4.0F, floorY - standing);
 	Vector heading = toPoint.GetNormalized() * (h * 0.5F);
+	// The head's way half a body on: along the floor (to the same height over the floor there, up or down a slope), not at the route's
+	// point. (Aimed at the point, which is a node's middle and often a little over the body's, the ray rose as it went and met the ceiling
+	// of an ordinary corridor or the underside of a ledge well over the head, and units crouched or lay down where they had room to stand.)
+	auto headWay = [&](float fromY, float height) {
+		const float dir = toPoint.m_X < 0.0F ? -1.0F : 1.0F;
+		const float aheadX = m_Pos.m_X + dir * h * 0.5F;
+		const float floorAhead = FloorUnder(Vector(aheadX, fromY + 2.0F), height + h * 0.3F);
+		float toY = fromY;
+		if (floorAhead >= 0.0F && std::abs(floorAhead - floorY) < h * 0.25F) {
+			toY = std::min(fromY + (floorAhead - floorY), floorAhead - 4.0F);
+		}
+		return Vector(dir * h * 0.5F, toY - fromY);
+	};
+	if (std::abs(toPoint.m_X) > 3.0F) {
+		heading = headWay(topHeadY, standing);
+	}
 	Vector hit;
 	bool noRoomHere = g_SceneMan.CastStrengthRay(m_Pos, Vector(0.0F, topHeadY - m_Pos.m_Y), 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
 	// (Nor over the head: a ladder's rungs are no ceiling. Counted as one, a unit walking past or under a bunker ladder crouched for it.)
@@ -3758,7 +3774,7 @@ int AHuman::MoveAlongRoute() {
 		if (!roomHere && g_SceneMan.GetTerrMatter(static_cast<int>(hit.m_X), static_cast<int>(hit.m_Y)) == LadderMaterialID()) {
 			roomHere = true;
 		}
-		bool roomAhead = !g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, topCrouchedY), heading, 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
+		bool roomAhead = !g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, topCrouchedY), std::abs(toPoint.m_X) > 3.0F ? headWay(topCrouchedY, crouched) : heading, 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
 		if (!roomAhead && g_SceneMan.GetTerrMatter(static_cast<int>(hit.m_X), static_cast<int>(hit.m_Y)) == LadderMaterialID()) {
 			roomAhead = true;
 		}
