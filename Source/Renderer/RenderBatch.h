@@ -19,6 +19,8 @@ namespace RTE {
 		GLuint m_VertexBuffer{0};
 		GLuint m_IndexBuffer{0};
 		int m_BufferElements{c_DefaultBatchVAOElements};
+		size_t m_VertexBufferBytes{0}; //!< How big the GL vertex buffer's store is, so it needn't be asked every upload.
+		size_t m_IndexBufferBytes{0}; //!< How big the GL index buffer's store is.
 		~VertexBuffer();
 		VertexBuffer();
 		VertexBuffer(int bufferSize);

@@ -333,8 +333,8 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	if (endNode) {
 		s_ThreatGoal = endNode->Pos;
 		s_ThreatGoalSet = true;
-		// A direct dig-to keeps to the straight line from here to there (LineCost).
-		if (s_LineWeight > 0.0F && agent.DigGoal && startNode) {
+		// A direct order keeps to the straight line from here to there (LineCost): a dig-to tunnels along it, a move keeps near it.
+		if (s_LineWeight > 0.0F && startNode) {
 			s_LineFrom = startNode->Pos;
 			s_LineTo = endNode->Pos;
 			s_LineSet = true;
@@ -354,7 +354,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 		auto open = [this, &head](const Vector& from, const Vector& to) { return LineOpen(from, to) && LineOpen(from + head, to + head); };
 		if (way.MagnitudeIsGreaterThan(static_cast<float>(m_NodeDimension) * 1.5F)) {
 			std::vector<Vector> route;
-			if (fuelFor(-way.m_Y, std::abs(way.m_X)) <= s_JetTimeMS * 0.95F && open(start, start + way)) {
+			if (fuelFor(-way.m_Y, std::abs(way.m_X)) <= s_JetTimeMS * agent.StraightFlightReach && open(start, start + way)) {
 				route = {start, end};
 			} else {
 				const float topY = std::min(start.m_Y, landing.m_Y);
@@ -363,7 +363,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 				for (const std::pair<float, float>& at: tries) {
 					Vector top = start + way * at.first;
 					top.m_Y = topY - body * at.second;
-					if (top.m_Y < 0.0F || fuelFor(start.m_Y - top.m_Y, std::abs(way.m_X)) > s_JetTimeMS * 0.95F) {
+					if (top.m_Y < 0.0F || fuelFor(start.m_Y - top.m_Y, std::abs(way.m_X)) > s_JetTimeMS * agent.StraightFlightReach) {
 						continue;
 					}
 					g_SceneMan.WrapPosition(top);

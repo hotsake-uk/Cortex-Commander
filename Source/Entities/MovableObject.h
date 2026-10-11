@@ -554,6 +554,13 @@ namespace RTE {
 		/// Sets whether this came off a unit.
 		void SetFromBody(bool fromBody = true) { m_FromBody = fromBody; }
 
+		/// Whether this is a gib chunk: a solid piece (a plain MOSRotating) thrown out when something gibbed, which the gib chunk settings
+		/// (SettingsMan::GibChunks) apply to. Set as it's made in MOSRotating::CreateGibsWhenGibbing, never copied to a clone.
+		bool IsGibChunk() const { return m_GibChunk; }
+
+		/// Marks this as a gib chunk (see IsGibChunk).
+		void SetGibChunk(bool gibChunk = true) { m_GibChunk = gibChunk; }
+
 		/// Marks this MovableObject for deletion at the end of the MovableMan
 		/// update.
 		/// @param toDelete Whether to mark this MO for deletion or not. (default: true)
@@ -1121,7 +1128,13 @@ namespace RTE {
 
 		/// Copies the live number values to the published ones (GetPublishedNumberValue). On the main thread only, while no script runs: once
 		/// a frame for every unit, before the AI updates (MovableMan::Update).
-		void PublishNumberValues() { m_PublishedNumberValueMap = m_NumberValueMap; }
+		void PublishNumberValues() {
+			// (Copied only when they changed since: every writer of the live map marks it.)
+			if (m_NumberValuesChanged) {
+				m_PublishedNumberValueMap = m_NumberValueMap;
+				m_NumberValuesChanged = false;
+			}
+		}
 
 		/// Checks whether the entity value associated with the specified key exists.
 		/// @param key The key to check.
@@ -1396,6 +1409,7 @@ namespace RTE {
 		// of update.
 		bool m_ToSettle;
 		bool m_FromBody; //!< Whether this came off a unit (see IsFromBody).
+		bool m_GibChunk; //!< Whether this is a solid piece thrown out by a gibbing (see IsGibChunk).
 		// Mark to delete at the end of MovableMan update
 		bool m_ToDelete;
 		// To draw this guy's HUD or not
@@ -1422,6 +1436,7 @@ namespace RTE {
 		std::unordered_map<std::string, std::string> m_StringValueMap; //<! Map to store any generic strings available from script
 		std::unordered_map<std::string, double> m_NumberValueMap; //<! Map to store any generic numbers available from script
 		std::unordered_map<std::string, double> m_PublishedNumberValueMap; //!< The number values as last published, for other units' scripts to read (see GetPublishedNumberValue).
+		bool m_NumberValuesChanged = true; //!< Whether the number values changed since they were last published (see PublishNumberValues).
 		std::unordered_map<std::string, Entity*> m_ObjectValueMap; //<! Map to store any generic object pointers available from script
 		static std::string ms_EmptyString;
 

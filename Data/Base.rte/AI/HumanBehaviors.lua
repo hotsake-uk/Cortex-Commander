@@ -640,10 +640,12 @@ function HumanBehaviors.GoldDig(AI, Owner, Abort)
 	if Owner.EquippedItem and (Owner.FirearmNeedsReload or Owner.FirearmIsEmpty) and Owner.EquippedItem:HasObjectInGroup("Weapons") then
 		Owner:ReloadFirearms();
 
+		-- (Not for ever: a spell with no energy coming back, MG-3, never stops being "empty".)
+		local ReloadWait = Timer();
 		repeat
 			local _ai, _ownr, _abrt = coroutine.yield(); -- wait until next frame
 			if _abrt then return true end
-		until not Owner.FirearmIsEmpty
+		until not Owner.FirearmIsEmpty or ReloadWait:IsPastSimMS(6000)
 	end
 
 	-- select a digger
@@ -1845,6 +1847,92 @@ function HumanBehaviors.UseTheWorld(AI, Owner)
 	end
 end
 
+-- Spells (MG-3). A spell is fired like any other weapon by the shooting rules; the engine counts one its holder can't pay for as empty, so a unit
+-- out of energy takes out its other weapon the way it would for an empty gun. On top of that, while the AI casts spells (Magic & spells):
+-- a unit with a push spell it can pay for pushes a live grenade near it back the way it came, and a unit fighting with something else goes
+-- back to its spell once its energy is mostly back (60%), looked at twice a second.
+function HumanBehaviors.SpellUpdate(AI, Owner)
+	AI.spellCast = false;
+	if not SceneMan.MagicAICasting or not Owner:HasObjectInGroup("Spells") then
+		AI.Deflect = nil;
+		return;
+	end
+
+	-- A grenade being pushed away: the push spell out, aimed at it a moment, then cast once; afterwards the weapon it had before.
+	local D = AI.Deflect;
+	if D then
+		local Held = Owner.EquippedItem;
+		if D.Timer:IsPastSimMS(700) or not MovableMan:ValidMO(D.Grenade) or D.Grenade.ID ~= D.Grenade.RootID then
+			AI.Deflect = nil;
+			if D.Before and not (Held and Held.PresetName == D.Before) then
+				Owner:EquipNamedDevice(D.Before, true);
+			end
+			return;
+		end
+		if not (Held and Held:HasObjectInGroup("Spells - Push")) then
+			if D.cast or not Owner:EquipLoadedFirearmInGroup("Spells - Push", "None", true) then
+				AI.Deflect = nil;
+			end
+			return;
+		end
+		AI.deviceState = AHuman.AIMING;
+		AI.fire = false;
+		AI.Ctrl.AnalogAim = SceneMan:ShortestDistance(Owner.EyePos, D.Grenade.Pos, false).Normalized;
+		-- (Two tenths of a second to bring the hand round, a tenth with the trigger held: the push casts on the first frame of it.)
+		if D.Timer:IsPastSimMS(200) and not D.Timer:IsPastSimMS(300) then
+			AI.spellCast = true;
+			D.cast = true;
+		end
+		return;
+	end
+
+	AI.SpellTimer = AI.SpellTimer or Timer();
+	if not AI.SpellTimer:IsPastSimMS(150) then
+		return;
+	end
+	AI.SpellTimer:Reset();
+
+	-- A live grenade near, coming its way or lying at its feet: pushed back if a push spell can be paid for.
+	local Push;
+	for Item in Owner.Inventory do
+		if IsHDFirearm(Item) and Item:HasObjectInGroup("Spells - Push") and ToHDFirearm(Item):GetAffordableRoundsFor(Owner) > 0 then
+			Push = ToHDFirearm(Item);
+			break;
+		end
+	end
+	local Held = Owner.EquippedItem;
+	if not Push and Held and IsHDFirearm(Held) and Held:HasObjectInGroup("Spells - Push") and ToHDFirearm(Held).AffordableRounds > 0 then
+		Push = ToHDFirearm(Held);
+	end
+	if Push and not Owner:IsPlayerControlled() and not AI.flying then
+		local reach = (Push:NumberValueExists("PushRange") and Push:GetNumberValue("PushRange") or 150) * 0.8;
+		for Item in MovableMan.Items do
+			if IsThrownDevice(Item) and Item.ID == Item.RootID and Item:HasObjectInGroup("Bombs") then
+				local Grenade = ToThrownDevice(Item);
+				local Away = SceneMan:ShortestDistance(Owner.Pos, Grenade.Pos, false);
+				if Away:MagnitudeIsLessThan(reach) and (Grenade:IsActivated() or Grenade.Vel.Largest > 4)
+					and (Away.X * Grenade.Vel.X + Away.Y * Grenade.Vel.Y < 0 or (Away:MagnitudeIsLessThan(50) and Grenade.Vel.Largest < 4)) and SharedBehaviors.CanSee(Owner.EyePos, Grenade.Pos) then
+					AI.Deflect = { Grenade = Grenade, Timer = Timer(), Before = Held and Held.PresetName or nil };
+					SharedBehaviors.Trace(Owner, "spell: pushing a grenade back");
+					return;
+				end
+			end
+		end
+	end
+
+	-- Back to the spell once the energy has mostly come back.
+	if AI.Target and Held and not Held:HasObjectInGroup("Spells") and Owner.MaxEnergy > 0 and Owner.Energy >= Owner.MaxEnergy * 0.6
+		and not (IsHDFirearm(Held) and ToHDFirearm(Held):IsReloading()) then
+		AI.SpellBackTimer = AI.SpellBackTimer or Timer();
+		if AI.SpellBackTimer:IsPastSimMS(500) then
+			AI.SpellBackTimer:Reset();
+			if Owner:EquipLoadedFirearmInGroup("Spells", "None", true) then
+				SharedBehaviors.Trace(Owner, "spell: energy back, spell out again");
+			end
+		end
+	end
+end
+
 -- Shot from somewhere it can't see (AC-10): the hit's alarm point, a body's height back along the shot (Actor::ParticlePenetration), says
 -- which way the shooter is. The unit gets out of the line into cover on that side (full cover if there is some, else low, crouched on the way), looking
 -- that way as it goes, and once there aims along it for a while (PinArea); NativeHumanAI's hit-flank waits until it has got there. A unit
@@ -2584,8 +2672,13 @@ function HumanBehaviors.MedicUpdate(AI, Owner)
 	if AI.MedicLookTimer and not AI.MedicLookTimer:IsPastSimMS(1000) then
 		return false;
 	end
-	AI.MedicLookTimer = AI.MedicLookTimer or Timer();
-	AI.MedicLookTimer:Reset();
+	if AI.MedicLookTimer then
+		AI.MedicLookTimer:Reset();
+	else
+		-- (The next look a little sooner by the unit's unique ID, so medics made together don't look together; see SharedBehaviors.StaggerMS.)
+		AI.MedicLookTimer = Timer();
+		AI.MedicLookTimer.ElapsedSimTimeMS = SharedBehaviors.StaggerMS(Owner, 1000);
+	end
 	if not Owner:HasObject("Medikit") or Owner.OrderHold or Owner.OrderHasPost or SharedBehaviors.OrderKind(Owner) == "defend"
 		or Owner:NumberValueExists("AIRetreat") or Owner:NumberValueExists("AIFlank") then
 		return false;

@@ -209,7 +209,19 @@ namespace {
 	/// an update, so a crash that chips fifty squares at once doesn't do all fifty in the update already paying for the gibs. First worn, first looked at.
 	std::deque<std::pair<int, int>> s_WatchesWaiting;
 	std::map<std::pair<int, int>, long long> s_WatchWaitingDamage; //!< The waiting squares, with when each last lost a pixel.
-	std::vector<int> s_Damage; //!< Pixels knocked out since the last update, x and y by turns. Filled from (possibly parallel) collision code.
+	struct DamageNote {
+		int X, Y;
+		float Force; //!< The hit's impulse, or negative for wear that always counts.
+	};
+	std::vector<DamageNote> s_Damage; //!< Pixels knocked out since the last update. Filled from (possibly parallel) collision code. A pixel in the same square as the one before it is folded into it (forces added).
+	int s_DamageNoted = 0; //!< How many pixels were noted into s_Damage since it was last taken, folded ones included: at most 20000 an update, as before they were folded.
+	/// Hits too weak to start a square being watched (Tuning::CheckMinForce), added up by square (row, column), with when the last came. Gone after c_ForceBuildupUpdates without one.
+	struct ForceBuildup {
+		float Sum = 0.0F;
+		long long Last = 0;
+	};
+	std::map<std::pair<int, int>, ForceBuildup> s_ForceBuildup;
+	constexpr long long c_ForceBuildupUpdates = 120;
 	std::mutex s_DamageMutex;
 	std::vector<Check> s_Scheduled;
 	struct ChunkRequest {
@@ -2097,47 +2109,83 @@ namespace {
 		static std::vector<int> depth;
 		static std::vector<int> queue;
 		size_t cells = static_cast<size_t>(side) * side;
-		solid.assign(cells, 0);
-		pared.assign(cells, 0);
-		pareBy.assign(cells, static_cast<unsigned char>(pare));
+		// (Every cell of these is written below, so they are only sized here.)
+		solid.resize(cells);
+		pared.resize(cells);
+		pareBy.resize(cells);
 		owner.assign(cells, -1);
+		// A row at a time, as solidAt has it: below the world is solid, above it and off its sides (on a scene that doesn't wrap) isn't. x is wrapped once per row.
 		for (int wy = 0; wy < side; ++wy) {
+			size_t rowStart = static_cast<size_t>(wy) * side;
+			int y = top + wy;
+			if (y >= s_Height || y < 0) {
+				std::fill_n(solid.begin() + static_cast<std::ptrdiff_t>(rowStart), side, static_cast<unsigned char>(y >= s_Height ? 1 : 0));
+				std::fill_n(pareBy.begin() + static_cast<std::ptrdiff_t>(rowStart), side, static_cast<unsigned char>(pare));
+				continue;
+			}
+			const unsigned char* materialRow = materialBitmap->line[y];
+			size_t stateRow = static_cast<size_t>(y) * s_Width;
+			int x = left;
+			if (s_WrapX) {
+				x = ((x % s_Width) + s_Width) % s_Width;
+			}
 			for (int wx = 0; wx < side; ++wx) {
-				size_t cell = static_cast<size_t>(wy) * side + wx;
-				solid[cell] = solidAt(left + wx, top + wy) ? 1 : 0;
-				if (int x = left + wx, y = top + wy; solid[cell] && WrapInWorld(x, y) && y < s_Height) {
-					if (int neck = s_Neck[materialBitmap->line[y][x]]; neck >= 0 && neck < neckWidth) {
-						pareBy[cell] = static_cast<unsigned char>((neck + 1) / 2);
+				bool isSolid = false;
+				unsigned char by = static_cast<unsigned char>(pare);
+				if (x >= 0 && x < s_Width) {
+					int material = materialRow[x];
+					isSolid = material != g_MaterialAir && !s_Flimsy[material] && !FluidSim::IsLiquid(material) && !(s_State[stateRow + x] & c_Falling);
+					if (int neck = s_Neck[material]; isSolid && neck >= 0 && neck < neckWidth) {
+						by = static_cast<unsigned char>((neck + 1) / 2);
 					}
+				}
+				solid[rowStart + wx] = isSolid ? 1 : 0;
+				pareBy[rowStart + wx] = by;
+				if (++x >= s_Width && s_WrapX) {
+					x = 0;
 				}
 			}
 		}
 		// Rows of solid first, then columns of those: a pixel is kept if everything within the paring distance of it is solid. Beyond the window counts as solid.
+		// Done with running counts of the cells that aren't (how many before each cell of its row, or above it in its column), so each cell is a subtraction, however far it's pared.
 		static std::vector<unsigned char> rows;
-		rows.assign(cells, 0);
+		static std::vector<int> rowGaps; //!< For the current row: how many of its first i cells aren't solid.
+		static std::vector<int> columnGaps; //!< For each column: how many of its first i cells aren't kept by the row pass. Row i of side, a row per i.
+		rows.resize(cells);
+		rowGaps.resize(static_cast<size_t>(side) + 1);
 		for (int wy = 0; wy < side; ++wy) {
+			size_t rowStart = static_cast<size_t>(wy) * side;
+			rowGaps[0] = 0;
 			for (int wx = 0; wx < side; ++wx) {
-				bool all = true;
-				int by = pareBy[static_cast<size_t>(wy) * side + wx];
-				for (int d = -by; d <= by && all; ++d) {
-					int x = wx + d;
-					all = x < 0 || x >= side || solid[static_cast<size_t>(wy) * side + x];
-				}
-				rows[static_cast<size_t>(wy) * side + wx] = all ? 1 : 0;
+				rowGaps[wx + 1] = rowGaps[wx] + (solid[rowStart + wx] ? 0 : 1);
+			}
+			for (int wx = 0; wx < side; ++wx) {
+				int by = pareBy[rowStart + wx];
+				int from = std::max(wx - by, 0);
+				int to = std::min(wx + by, side - 1);
+				rows[rowStart + wx] = rowGaps[to + 1] - rowGaps[from] == 0 ? 1 : 0;
+			}
+		}
+		columnGaps.resize(static_cast<size_t>(side + 1) * side);
+		std::fill_n(columnGaps.begin(), side, 0);
+		for (int wy = 0; wy < side; ++wy) {
+			size_t rowStart = static_cast<size_t>(wy) * side;
+			for (int wx = 0; wx < side; ++wx) {
+				columnGaps[rowStart + side + wx] = columnGaps[rowStart + wx] + (rows[rowStart + wx] ? 0 : 1);
 			}
 		}
 		for (int wy = 0; wy < side; ++wy) {
+			size_t rowStart = static_cast<size_t>(wy) * side;
 			for (int wx = 0; wx < side; ++wx) {
-				bool all = true;
-				int by = pareBy[static_cast<size_t>(wy) * side + wx];
-				for (int d = -by; d <= by && all; ++d) {
-					int y = wy + d;
-					all = y < 0 || y >= side || rows[static_cast<size_t>(y) * side + wx];
-				}
-				pared[static_cast<size_t>(wy) * side + wx] = all ? 1 : 0;
+				int by = pareBy[rowStart + wx];
+				int from = std::max(wy - by, 0);
+				int to = std::min(wy + by, side - 1);
+				pared[rowStart + wx] = columnGaps[static_cast<size_t>(to + 1) * side + wx] - columnGaps[static_cast<size_t>(from) * side + wx] == 0 ? 1 : 0;
 			}
 		}
 		static constexpr int steps4[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+		static std::vector<unsigned char> seen; //!< Cells reached by the search beyond a neck (below).
+		bool seenReady = false;
 		int lumps = 0;
 		for (int start = 0; start < static_cast<int>(cells); ++start) {
 			if (!pared[start] || owner[start] >= 0) {
@@ -2257,8 +2305,11 @@ namespace {
 			bool anchored = false;
 			{
 				static std::vector<int> beyond;
-				static std::vector<unsigned char> seen;
-				seen.assign(cells, 0);
+				// Cleared once per window, then after each search only where it went (every cell marked is in beyond).
+				if (!seenReady) {
+					seen.assign(cells, 0);
+					seenReady = true;
+				}
 				beyond.clear();
 				for (int key: piece.Cut) {
 					int wx = ((key % s_Width) - left) % s_Width;
@@ -2290,6 +2341,9 @@ namespace {
 						seen[neighbour] = 1;
 						beyond.push_back(neighbour);
 					}
+				}
+				for (int cell: beyond) {
+					seen[cell] = 0;
 				}
 			}
 			if (!anchored) {
@@ -2808,14 +2862,21 @@ void TerrainCollapse::Blast(const Vector& position, float reach, float energy) {
 	}
 }
 
-void TerrainCollapse::NoteDamage(int x, int y) {
+void TerrainCollapse::NoteDamage(int x, int y, float force) {
 	if (!s_Enabled || x < 0 || y < 0) {
 		return;
 	}
 	std::scoped_lock lock(s_DamageMutex);
-	if (s_Damage.size() < 40000) {
-		s_Damage.push_back(x);
-		s_Damage.push_back(y);
+	if (s_DamageNoted < 20000) {
+		++s_DamageNoted;
+		// Only the square a pixel is in matters (see Update), so one in the same square as the last one noted is folded into it: its force added
+		// (weak hits there add up anyway), and wear that always counts makes the note always count. (It still counts towards the cap.)
+		if (!s_Damage.empty() && s_Damage.back().X / c_WatchCell == x / c_WatchCell && s_Damage.back().Y / c_WatchCell == y / c_WatchCell) {
+			DamageNote& last = s_Damage.back();
+			last.Force = (last.Force < 0.0F || force < 0.0F) ? -1.0F : last.Force + force;
+			return;
+		}
+		s_Damage.push_back({x, y, force});
 	}
 }
 
@@ -3077,21 +3138,39 @@ void TerrainCollapse::Update() {
 	}
 	// Ground being dug or shot away: start watching the squares it's happening in, and check the ones being watched.
 	{
-		std::vector<int> damage;
+		std::vector<DamageNote> damage;
 		{
 			std::scoped_lock lock(s_DamageMutex);
 			damage.swap(s_Damage);
+			s_DamageNoted = 0;
 		}
-		for (size_t i = 0; i + 1 < damage.size(); i += 2) {
-			std::pair<int, int> square(damage[i + 1] / c_WatchCell, damage[i] / c_WatchCell);
+		float minForce = std::max(s_Tuning.CheckMinForce, 0.0F);
+		for (const DamageNote& note: damage) {
+			std::pair<int, int> square(note.Y / c_WatchCell, note.X / c_WatchCell);
 			if (auto found = s_Watches.find(square); found != s_Watches.end()) {
 				found->second.LastDamage = now;
 			} else if (auto waiting = s_WatchWaitingDamage.find(square); waiting != s_WatchWaitingDamage.end()) {
 				waiting->second = now;
 			} else {
+				// A square not yet watched starts being watched only for a hard enough hit, or for weaker ones on it adding up to one.
+				if (note.Force >= 0.0F && note.Force < minForce) {
+					ForceBuildup& buildup = s_ForceBuildup[square];
+					if (now - buildup.Last > c_ForceBuildupUpdates) {
+						buildup.Sum = 0.0F;
+					}
+					buildup.Sum += note.Force;
+					buildup.Last = now;
+					if (buildup.Sum < minForce) {
+						continue;
+					}
+				}
+				s_ForceBuildup.erase(square);
 				s_WatchWaitingDamage.emplace(square, now);
 				s_WatchesWaiting.push_back(square);
 			}
+		}
+		for (auto buildup = s_ForceBuildup.begin(); buildup != s_ForceBuildup.end();) {
+			buildup = now - buildup->second.Last > c_ForceBuildupUpdates ? s_ForceBuildup.erase(buildup) : std::next(buildup);
 		}
 		// A few new squares an update, more when many are waiting so the wait stays short.
 		constexpr int c_NewWatchesPerUpdate = 4;
@@ -3158,11 +3237,13 @@ void TerrainCollapse::Clear() {
 	s_Watches.clear();
 	s_WatchesWaiting.clear();
 	s_WatchWaitingDamage.clear();
+	s_ForceBuildup.clear();
 	s_Rested.clear();
 	s_Blasts.clear();
 	{
 		std::scoped_lock damageLock(s_DamageMutex);
 		s_Damage.clear();
+		s_DamageNoted = 0;
 	}
 	std::scoped_lock lock(s_QueueMutex);
 	s_Pending.clear();

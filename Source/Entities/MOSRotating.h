@@ -125,6 +125,19 @@ namespace RTE {
 		/// @return A const reference to the current AtomGroup.
 		AtomGroup* GetAtomGroup() { return m_pAtomGroup; }
 
+		/// Makes this MOSRotating's AtomGroup again from its sprite, with the given pixels between the collision points round its outline (the Resolution an AtomGroup is
+		/// read with), keeping its material and depth. For a new gib chunk, before it's added to MovableMan (the gib chunk collision spacing setting).
+		/// @param spacing The pixels between collision points, over 0.
+		void RespaceAtoms(int spacing);
+
+		/// Looks just under this MOSRotating's lowest point for another object holding it up off the ground: a body, a unit or another piece.
+		/// @return The root of what is under it, or nullptr if nothing is.
+		const MovableObject* GetMOUnderneath() const;
+
+		/// Whether a gib chunk may settle where it lies, off the ground: on a body or another piece with the gib chunks settle on bodies setting on, never on a unit still alive.
+		/// @param under What holds it up (see GetMOUnderneath).
+		static bool ChunkMaySettleOn(const MovableObject* under);
+
 		/// Gets the main Material  of this MOSRotating.
 		/// @return The the Material of this MOSRotating.
 		Material const* GetMaterial() const override;
@@ -327,6 +340,10 @@ namespace RTE {
 
 		/// Updates this MovableObject. Supposed to be done every frame.
 		void Update() override;
+
+		/// Updates only the wounds, on this and on its attachables all the way down, so they bleed and their damage builds up to be
+		/// collected (see Attachable::CollectDamage). For something kept out of the scene that can still be hurt: a vehicle's crew in their seats.
+		void UpdateWounds();
 
 		/// Stores the current state as the previous render state, for this and all attachables and wounds. See MovableObject::StoreRenderPreviousState.
 		void StoreRenderPreviousState() override;

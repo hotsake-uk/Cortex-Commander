@@ -12,7 +12,8 @@ namespace RTE {
 	/// The beginnings of colony management: buildings that stand in the world, belong to a side and do something for it over time.
 	/// So far a barracks trains units and an extractor earns supply. Each side has a stock of supply that training spends (unless everything is free).
 	/// With power turned on, a barracks also needs power while it trains, from its side's generators in range; short of it, it stops (or slows, as set).
-	/// A building is made of real terrain, so it can be shot, dug and blown apart; with too much of it gone it stops being a building.
+	/// A building is made of real terrain, so it can be shot, dug, burnt and blown apart; with too much of it gone it stops being a building.
+	/// Each kind is one of the medieval buildings (Medieval.rte/Scenes/Buildings), stamped on a levelled stone footing; without that module it is a concrete block.
 	/// Each building is run by a brain in a chamber at its back. Kill the brain and the building is disabled: it stands, but does nothing until
 	/// another brain of its side is put in its plot. These brains only run buildings: they are never a player's brain, so losing one does not end the game.
 	/// This holds the buildings and runs them; the sandbox (Sandbox.cpp) places them and draws their controls.
@@ -30,8 +31,9 @@ namespace RTE {
 		struct Type {
 			const char* Name;
 			const char* Description;
-			int Width; //!< The plot it stands on, in pixels.
+			int Width; //!< The plot it stands on, in pixels: the size of its building.
 			int Height;
+			const char* Building; //!< The TerrainObject in Medieval.rte it is built as.
 		};
 
 		/// What a barracks does without enough power to train.

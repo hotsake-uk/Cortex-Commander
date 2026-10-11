@@ -67,28 +67,31 @@ void SpatialPartitionGrid::Add(const IntRect& rect, const MovableObject& mo) {
 	// We handle wrapping in GetCellIdForCellCoords, so make sure we've not already been passed wrapped data...
 	RTEAssert(topLeftCellX <= bottomRightCellX && topLeftCellY <= bottomRightCellY, "Invalidly wrapped rect passed to spatial partitioning grid!");
 
+	// The teams' lists this goes in, worked out once rather than per cell.
+	std::array<int, Activity::MaxTeamCount + 1> teamLists;
+	int teamListCount = 0;
 	for (int team = Activity::NoTeam; team < Activity::MaxTeamCount; ++team) {
 		bool teamActive = team == Activity::NoTeam || activity->TeamActive(team);
 		bool ignoresThisTeam = team != Activity::NoTeam && rootParentMo.IgnoresTeamHits() && team == rootParentMo.GetTeam();
 		if (!teamActive || ignoresThisTeam) {
 			continue;
 		}
-
-		for (int x = topLeftCellX; x <= bottomRightCellX; x++) {
-			for (int y = topLeftCellY; y <= bottomRightCellY; y++) {
-				int cellId = GetCellIdForCellCoords(x, y);
-
-				m_Cells[team + 1][cellId].push_back(mo.GetID());
-				if (mo.GetsHitByMOs()) {
-					m_PhysicsCells[team + 1][cellId].push_back(mo.GetID());
-				}
-			}
-		}
+		teamLists[teamListCount++] = team + 1;
 	}
 
+	const MOID moid = mo.GetID();
+	const bool getsHitByMOs = mo.GetsHitByMOs();
+	// Each cell's Id (two divisions, for the wrap) is worked out once for all the teams. Every list still gets this object's entries in the same order.
 	for (int x = topLeftCellX; x <= bottomRightCellX; x++) {
 		for (int y = topLeftCellY; y <= bottomRightCellY; y++) {
-			m_UsedCellIds.insert(GetCellIdForCellCoords(x, y));
+			int cellId = GetCellIdForCellCoords(x, y);
+			for (int i = 0; i < teamListCount; ++i) {
+				m_Cells[teamLists[i]][cellId].push_back(moid);
+				if (getsHitByMOs) {
+					m_PhysicsCells[teamLists[i]][cellId].push_back(moid);
+				}
+			}
+			m_UsedCellIds.insert(cellId);
 		}
 	}
 }

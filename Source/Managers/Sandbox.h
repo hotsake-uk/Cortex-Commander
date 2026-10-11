@@ -41,6 +41,10 @@ namespace RTE {
 		/// Whether the sandbox holds the world still (god mode with its window open and "pause in menus" on), photo mode or not.
 		static bool WantsWorldPaused();
 
+		/// Esc with the Command tool in hand in another click mode: goes back to Command mode, and true so the game doesn't pause on it too.
+		/// In Command mode (or with anything else in hand), false: Esc pauses as ever.
+		static bool TakeEscape();
+
 		/// Gets whether clicks on the world go to the sandbox instead of the game: the window is open, a tool is picked and the mouse isn't over a debug window.
 		static bool CapturesWorldClicks();
 
