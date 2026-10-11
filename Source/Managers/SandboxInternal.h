@@ -663,6 +663,7 @@ namespace SandboxDetail {
 		VipHunt,
 		OneFlag,
 		CaptureTheShip,
+		WaveDefence,
 		Count
 	};
 
@@ -733,6 +734,11 @@ namespace SandboxDetail {
 		int Tickets = 60; //!< Last team standing: units each team gets in all, its first ones counted.
 		int KillsToWin = 5; //!< VIP hunt: enemy VIPs a team has to bring down to win.
 		int VipRespawnSeconds = 20; //!< VIP hunt: seconds before a fallen VIP's team has a new one.
+		int Defender = 0; //!< Wave defence: the side that holds the defence zone (the mode's first zone); the rest attack in waves.
+		int Waves = 10; //!< Wave defence: waves the defenders have to beat to win. 0: endless.
+		int FirstWave = 6; //!< Wave defence: attackers the first wave brings in all, shared between the attacking teams.
+		int WaveGrowth = 3; //!< Wave defence: how many more each wave brings than the one before.
+		int WaveBreak = 20; //!< Wave defence: seconds between a wave beaten and the next (and before the first).
 		std::array<bool, c_Sides> Commander = {true, true, true, true}; //!< Every mode but custom: each team an AI commander leads (UpdateCommanders),
 		                                                               //!< as a player would: splitting its units between objectives, sending some
 		                                                               //!< after a flag or to a VIP, picking who to go for. Not a team you command.

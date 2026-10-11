@@ -2691,6 +2691,255 @@ namespace SandboxDetail {
 
 		std::string AssaultStatus(int side) { return std::string(side == AttackerOf(s_ModeRun.Settings) ? "attacking, " : "defending, ") + std::to_string(Sandbox::CountUnits(side)) + " in"; }
 
+		// ---- Wave defence ----
+
+		int s_Wave = 0; //!< The wave in play (from 1), or the one coming after a break.
+		long long s_WaveBreakUntil = 0; //!< While between waves: the sim update the next comes in on. 0 while one is on.
+		std::array<int, c_Sides> s_WaveSentBefore{}; //!< Each attacking team's units sent before the wave in play.
+		float s_Overrun = 0.0F; //!< Seconds attackers have stood in the defence zone with no defender there.
+		bool s_ZoneContested = false;
+
+		int DefenderOf(const BattleModeSettings& settings) { return std::clamp(settings.Defender, 0, c_Sides - 1); }
+
+		/// How many units a wave brings in all, shared between the attacking teams.
+		int WaveSize(const BattleModeSettings& settings, int wave) { return std::clamp(settings.FirstWave + (std::max(wave, 1) - 1) * settings.WaveGrowth, 1, 500); }
+
+		int AttackingTeams(const BattleModeSettings& settings) {
+			int teams = 0;
+			for (int side = 0; side < c_Sides; ++side) {
+				teams += side != DefenderOf(settings) && TeamIn(settings, side) ? 1 : 0;
+			}
+			return std::max(teams, 1);
+		}
+
+		/// An attacking team's share of the wave in play.
+		int WaveShare(int side) {
+			const int teams = AttackingTeams(s_ModeRun.Settings);
+			return (WaveSize(s_ModeRun.Settings, s_Wave) + teams - 1) / teams;
+		}
+
+		int WaveSentNow(int side) { return std::max(s_BattleTeams[side].Sent - s_WaveSentBefore[side], 0); }
+
+		/// Where both sides fight: the defence zone.
+		BattleSettings DefencePost() {
+			const std::vector<Vector>& zone = s_ModeRun.Settings.Zones.front();
+			const float radius = GuardRadius(zone);
+			return PostAt(ZoneMiddle(zone), radius, radius + 300.0F, 0);
+		}
+
+		bool WavesReady(const BattleModeSettings& setup, std::string& why) {
+			if (!setup.Plays[DefenderOf(setup)]) {
+				why = std::string("Tick ") + c_SideNames[DefenderOf(setup)] + ", the defenders, or pick others to defend.";
+				return false;
+			}
+			return true;
+		}
+
+		void BreakBeforeWave(long long now) {
+			s_WaveBreakUntil = now + std::max(1LL, static_cast<long long>(static_cast<float>(std::max(s_ModeRun.Settings.WaveBreak, 1)) * UpdatesPerSecond()));
+		}
+
+		void WavesStart() {
+			// A break first, to dig in.
+			s_Wave = 1;
+			s_Overrun = 0.0F;
+			s_ZoneContested = false;
+			s_WaveSentBefore.fill(0);
+			BreakBeforeWave(g_TimerMan.GetSimUpdateCount());
+			s_ModeRun.Score.fill(0);
+		}
+
+		void WavesSettingsChanged() {}
+
+		void WavesUnitsMade(int side, const std::vector<Actor*>& wave) {
+			if (!s_ModeRun.Settings.Zones.empty()) {
+				SendToDefend(wave, DefencePost());
+			}
+		}
+
+		/// The attackers' units come in only while a wave is on, as many as their share of it.
+		int WavesRoom(int side, int room) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			if (side == DefenderOf(settings) || !TeamIn(settings, side)) {
+				return room;
+			}
+			if (s_WaveBreakUntil > 0 || s_ModeRun.Over) {
+				return 0;
+			}
+			return std::min(room, std::max(WaveShare(side) - WaveSentNow(side), 0));
+		}
+
+		/// Whether the wave in play is beaten: every attacking team has sent its share (or can't pay for more) and has none left in.
+		bool WaveBeaten() {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			for (int side = 0; side < c_Sides; ++side) {
+				if (side == DefenderOf(settings) || !TeamIn(settings, side)) {
+					continue;
+				}
+				const bool allSent = WaveSentNow(side) >= WaveShare(side) || s_BattleTeams[side].Broke;
+				if (!allSent || Sandbox::CountUnits(side) > 0) {
+					return false;
+				}
+			}
+			return true;
+		}
+
+		/// Every six updates: the next wave in after its break, a wave beaten (the defenders win after the last), and the defence zone overrun
+		/// when attackers stand in it with no defender there long enough.
+		void WavesUpdate(bool aiPaused) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			if (aiPaused) {
+				s_WaveBreakUntil += s_WaveBreakUntil > 0 ? 1 : 0;
+				return;
+			}
+			const long long now = g_TimerMan.GetSimUpdateCount();
+			if (s_ModeRun.Over || settings.Zones.empty() || now % 6 != 0) {
+				return;
+			}
+			const int defender = DefenderOf(settings);
+			const Vector middle = ZoneMiddle(settings.Zones.front());
+			if (s_WaveBreakUntil > 0) {
+				if (now < s_WaveBreakUntil) {
+					return;
+				}
+				s_WaveBreakUntil = 0;
+				for (int side = 0; side < c_Sides; ++side) {
+					s_WaveSentBefore[side] = s_BattleTeams[side].Sent;
+					// (Bought afresh each wave: a team that ran short last time has another go.)
+					s_BattleTeams[side].Broke = false;
+					// (And the wave's first lot all at once, not a few at a time.)
+					s_BattleTeams[side].FillFirst = s_BattleTeams[side].Running && side != defender;
+					s_BattleTeams[side].NextWave = now;
+					s_BattleTeams[side].NextZoneWave = now;
+				}
+				const std::string name = "Wave " + std::to_string(s_Wave) + (settings.Waves > 0 ? " of " + std::to_string(settings.Waves) : std::string());
+				Say(name + " incoming: " + std::to_string(WaveSize(settings, s_Wave)) + " attackers");
+				AddAlert("wave", name + " incoming!", middle, IM_COL32(255, 120, 80, 255));
+				UnitSays(middle, defender, 2000.0F, nullptr, "WaveIncoming");
+				return;
+			}
+			if (WaveBeaten()) {
+				s_ModeRun.Score[defender] = s_Wave;
+				if (settings.Waves > 0 && s_Wave >= settings.Waves) {
+					UnitSays(middle, defender, 2000.0F, nullptr, "WaveCleared");
+					EndGame(defender, SideName(defender) + " held off every wave!");
+					return;
+				}
+				Say("Wave " + std::to_string(s_Wave) + " beaten. The next in " + std::to_string(std::max(settings.WaveBreak, 1)) + " s");
+				AddAlert("wave", "Wave " + std::to_string(s_Wave) + " beaten", middle, IM_COL32(120, 220, 120, 255));
+				UnitSays(middle, defender, 2000.0F, nullptr, "WaveCleared");
+				++s_Wave;
+				BreakBeforeWave(now);
+				s_Overrun = 0.0F;
+				return;
+			}
+			// The defence zone: taken by attackers standing in it with no defender there.
+			std::array<int, c_Sides> in = CountIn(settings.Zones.front(), Fighters());
+			int attackers = 0;
+			int attacker = -1;
+			for (int side = 0; side < c_Sides; ++side) {
+				if (side != defender && TeamIn(settings, side) && in[side] > 0) {
+					attackers += in[side];
+					attacker = attacker < 0 ? side : -2;
+				}
+			}
+			const float step = 6.0F / UpdatesPerSecond();
+			const bool wasContested = s_ZoneContested;
+			s_ZoneContested = attackers > 0 && in[defender] > 0;
+			if (s_ZoneContested && !wasContested) {
+				AddAlert("wave", "The enemy is in the defence zone!", middle, IM_COL32(255, 150, 40, 255));
+			}
+			if (attackers > 0 && in[defender] == 0) {
+				s_Overrun += step;
+			} else if (attackers == 0) {
+				s_Overrun = std::max(s_Overrun - step * 0.5F, 0.0F);
+			}
+			if (s_Overrun >= static_cast<float>(std::max(settings.CaptureSeconds, 1))) {
+				EndGame(attacker >= 0 ? attacker : -1, "The defence zone is overrun on wave " + std::to_string(s_Wave) + "!");
+			}
+		}
+
+		void WavesPanel(BattleModeSettings& setup, bool& changed) {
+			changed |= ImGui::Combo("Defenders", &setup.Defender, c_SideNames, c_Sides);
+			ImGui::SetItemTooltip("The team that holds the defence zone. Every other team ticked attacks in waves.");
+			changed |= ImGui::SliderInt("Waves", &setup.Waves, 0, 50, setup.Waves > 0 ? "%d" : "endless");
+			ImGui::SetItemTooltip("Waves the defenders have to beat to win. Endless: they go on till the zone falls or you stop it.");
+			changed |= ImGui::SliderInt("First wave", &setup.FirstWave, 1, 60, "%d attackers");
+			ImGui::SetItemTooltip("How many attackers the first wave brings in all, shared between the attacking teams. No more of them are in at once than their team size.");
+			changed |= ImGui::SliderInt("More each wave", &setup.WaveGrowth, 0, 20, "+%d");
+			ImGui::SetItemTooltip("How many more attackers each wave brings than the one before.");
+			changed |= ImGui::SliderInt("Break between waves", &setup.WaveBreak, 5, 120, "%d s");
+			ImGui::SetItemTooltip("Seconds between one wave being beaten and the next coming in; the first comes in this long after the start.");
+			changed |= ImGui::SliderInt("Seconds to overrun", &setup.CaptureSeconds, 3, 120, "%d s");
+			ImGui::SetItemTooltip("How long attackers have to stand in the defence zone, with no defender in it, to overrun it and win. Fought over, the count holds; left, it slips back.");
+		}
+
+		void WavesDraw(bool running) {
+			ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+			const BattleModeSettings& settings = running ? s_ModeRun.Settings : s_ModeSetup;
+			const int defender = DefenderOf(settings);
+			DrawBases(drawList, settings);
+			if (settings.Zones.empty()) {
+				return;
+			}
+			const std::vector<Vector>& zone = settings.Zones.front();
+			if (!running) {
+				DrawModeZone(drawList, zone, c_SideColors[defender], 30, 200, 2.0F, "DEFENCE ZONE");
+				return;
+			}
+			const float pulse = Pulse();
+			const ImU32 color = s_ZoneContested ? IM_COL32(255, 150, 40, 255) : (s_Overrun > 0.0F ? IM_COL32(255, 80, 60, 255) : c_SideColors[defender]);
+			DrawModeZone(drawList, zone, color, static_cast<int>(30.0F + 30.0F * pulse), 220, 2.0F + 2.0F * pulse, s_ZoneContested ? "DEFENCE ZONE: CONTESTED" : "DEFENCE ZONE");
+			if (s_Overrun > 0.0F) {
+				const float taken = std::clamp(s_Overrun / static_cast<float>(std::max(settings.CaptureSeconds, 1)), 0.0F, 1.0F);
+				ImVec2 middle = ToScreen(ZoneMiddle(zone));
+				ImVec2 from(middle.x - 40.0F, middle.y + 12.0F);
+				drawList->AddRectFilled(from, ImVec2(from.x + 80.0F, from.y + 6.0F), IM_COL32(0, 0, 0, 160), 2.0F);
+				drawList->AddRectFilled(from, ImVec2(from.x + 80.0F * taken, from.y + 6.0F), IM_COL32(255, 80, 60, 255), 2.0F);
+			}
+			std::string line = "WAVE DEFENCE    wave " + std::to_string(s_Wave) + (settings.Waves > 0 ? " of " + std::to_string(settings.Waves) : std::string());
+			if (s_ModeRun.Over) {
+			} else if (s_WaveBreakUntil > 0) {
+				line += "    next wave in " + Clock(static_cast<float>(s_WaveBreakUntil - g_TimerMan.GetSimUpdateCount()) / UpdatesPerSecond());
+			} else {
+				int toCome = 0;
+				int in = 0;
+				for (int side = 0; side < c_Sides; ++side) {
+					if (side != defender && TeamIn(settings, side)) {
+						toCome += s_BattleTeams[side].Broke ? 0 : std::max(WaveShare(side) - WaveSentNow(side), 0);
+						in += Sandbox::CountUnits(side);
+					}
+				}
+				line += "    " + std::to_string(in + toCome) + " attackers left";
+				if (s_Overrun > 0.0F) {
+					line += "    OVERRUN " + std::to_string(static_cast<int>(100.0F * s_Overrun / static_cast<float>(std::max(settings.CaptureSeconds, 1)))) + "%";
+				}
+			}
+			DrawScore(line);
+		}
+
+		void WavesObjectives(const BattleModeSettings& settings, bool running, std::vector<BattleObjective>& out) {
+			if (settings.Zones.empty() || settings.Zones.front().size() < 3) {
+				return;
+			}
+			const int defender = DefenderOf(settings);
+			BattleObjective zone{.Name = "Defence zone", .Pos = ZoneMiddle(settings.Zones.front()), .Zone = settings.Zones.front(), .Look = ObjectiveLook::Glow};
+			zone.Live = !running || !s_ModeRun.Over;
+			if (running) {
+				zone.Color = s_ZoneContested ? IM_COL32(255, 150, 40, 255) : c_SideColors[defender];
+				zone.Defenders = Bit(defender);
+				zone.Attackers = TeamsIn(settings) & ~Bit(defender);
+			}
+			out.push_back(zone);
+		}
+
+		std::string WavesStatus(int side) {
+			if (side == DefenderOf(s_ModeRun.Settings)) {
+				return "defending, " + std::to_string(s_ModeRun.Score[side]) + " waves beaten, " + std::to_string(Sandbox::CountUnits(side)) + " in";
+			}
+			return "attacking, " + std::to_string(Sandbox::CountUnits(side)) + " in";
+		}
+
 		// ---- Team commanders ----
 
 		/// What a team's AI commander is doing (UpdateCommanders). On assault and king of the hill it splits its units between the objective in
@@ -3574,6 +3823,22 @@ namespace SandboxDetail {
 		     .Draw = ShipDraw,
 		     .Status = ShipStatus,
 		     .Objectives = ShipObjectives},
+		    {.Name = "Wave defence",
+		     .Blurb = "One team holds a defence zone, drawn on the map, against waves of attackers from every other team, each wave bigger than the last, "
+		              "with a break between them to dig in. The defenders win by beating the waves set; the attackers win by standing in the zone with no "
+		              "defender there long enough.",
+		     .ZoneName = "defence zone",
+		     .MinZones = 1,
+		     .Ready = WavesReady,
+		     .Start = WavesStart,
+		     .SettingsChanged = WavesSettingsChanged,
+		     .UnitsMade = WavesUnitsMade,
+		     .Room = WavesRoom,
+		     .Update = WavesUpdate,
+		     .Panel = WavesPanel,
+		     .Draw = WavesDraw,
+		     .Status = WavesStatus,
+		     .Objectives = WavesObjectives},
 		};
 		static_assert(std::size(c_Modes) == static_cast<size_t>(BattleMode::Count), "c_Modes must describe each BattleMode.");
 
