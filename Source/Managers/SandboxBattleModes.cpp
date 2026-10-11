@@ -514,6 +514,9 @@ namespace SandboxDetail {
 			DrawTag(drawList, ImVec2(tip.x - way.x * 22.0F, tip.y - way.y * 22.0F + 6.0F), label, color);
 		}
 
+		int s_HoveredModeZone = -1; //!< The mode zone whose row is hovered in the Battle tab's list, lit up on the map.
+		int s_HoveredModeZoneFrame = -10; //!< The ImGui frame it was last hovered on.
+
 		// ---- Objectives lit up (any mode's, the same way) ----
 
 		/// What the terrain in a zone looks like to light it up, worked out now and then (it changes as it's dug and blown up): the line along the
@@ -3691,9 +3694,10 @@ namespace SandboxDetail {
 					deleted = i;
 				}
 				ImGui::EndGroup();
-				if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) && setup.Zones[i].size() >= 3) {
-					std::vector<ImVec2> corners = ZoneOnScreen(setup.Zones[i], std::max(ScenePixelsPerWindowPixel(), 0.01F));
-					ImGui::GetForegroundDrawList()->AddPolyline(corners.data(), static_cast<int>(corners.size()), IM_COL32(255, 220, 80, 255), ImDrawFlags_Closed, 3.0F);
+				// (By the row's rect: hovering its Delete button counts, which IsItemHovered on the group doesn't.)
+				if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) && ImGui::IsMouseHoveringRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax())) {
+					s_HoveredModeZone = i;
+					s_HoveredModeZoneFrame = ImGui::GetFrameCount();
 				}
 				ImGui::PopID();
 			}
@@ -3915,6 +3919,14 @@ namespace SandboxDetail {
 		} else if ((Sandbox::IsOpen() && s_CurrentTab == "Battle") || held == Tool::BattleModePoint || held == Tool::BattleModeFlag || IsModeZoneTool(held)) {
 			DrawObjectives();
 			mode.Draw(false);
+		}
+		// (The mode zone hovered in the Battle tab's list, this frame or the last, outlined over the rest.)
+		const std::vector<std::vector<Vector>>& zones = s_ModeSetup.Zones;
+		if (ImGui::GetFrameCount() - s_HoveredModeZoneFrame <= 1 && s_HoveredModeZone >= 0 && s_HoveredModeZone < static_cast<int>(zones.size()) && zones[s_HoveredModeZone].size() >= 3) {
+			std::vector<ImVec2> corners = ZoneOnScreen(zones[s_HoveredModeZone], std::max(ScenePixelsPerWindowPixel(), 0.01F));
+			ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+			drawList->AddConcavePolyFilled(corners.data(), static_cast<int>(corners.size()), IM_COL32(255, 220, 80, 50));
+			drawList->AddPolyline(corners.data(), static_cast<int>(corners.size()), IM_COL32(255, 220, 80, 255), ImDrawFlags_Closed, 3.0F);
 		}
 		if (IsModeZoneTool(held)) {
 			DrawZoneDraft(ImGui::GetBackgroundDrawList(), std::max(ScenePixelsPerWindowPixel(), 0.01F));
