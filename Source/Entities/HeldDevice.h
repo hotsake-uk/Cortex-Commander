@@ -113,6 +113,29 @@ namespace RTE {
 		/// @param newValue New value.
 		void SetStanceOffset(Vector newValue) { m_StanceOffset = newValue; }
 
+		/// Gets whether this is drawn while a unit holds it (DrawnWhenHeld). A spell's book or scroll isn't: it is seen only where it lies dropped,
+		/// and the caster's empty hand takes the spell's pose (CastStanceOffset).
+		bool IsDrawnWhenHeld() const { return m_DrawnWhenHeld; }
+
+		/// Sets whether this is drawn while a unit holds it.
+		void SetDrawnWhenHeld(bool drawn) { m_DrawnWhenHeld = drawn; }
+
+		/// Gets where the holding hand goes while this is being used (cast), relative to the shoulder as StanceOffset is; zero for no pose of its own
+		/// (the usual stance). A spell's pose: a push thrusts the palm out at arm's length, a call on the sky raises the hand overhead.
+		Vector GetCastStanceOffset() const { return m_CastStanceOffset; }
+
+		/// Sets where the holding hand goes while this is being used. Zero for no pose of its own.
+		void SetCastStanceOffset(const Vector& offset) { m_CastStanceOffset = offset; }
+
+		/// Gets how long, in milliseconds, the hand holds the cast pose after the trigger is let go, so a single quick cast is seen.
+		float GetCastPoseTime() const { return m_CastPoseTime; }
+
+		/// Sets how long the hand holds the cast pose after the trigger is let go.
+		void SetCastPoseTime(float ms) { m_CastPoseTime = std::max(ms, 0.0F); }
+
+		/// Gets whether the hand is in the cast pose now: the device is in use, or was within CastPoseTime, and has a CastStanceOffset.
+		bool IsInCastPose() const { return !m_CastStanceOffset.IsZero() && (m_Activated || (m_CastPoseHeld && !m_CastPoseTimer.IsPastSimMS(static_cast<double>(m_CastPoseTime)))); }
+
 		/// Sets the current position offset of this HeldDevice's joint relative
 		/// from the parent Actor's position, if attached.
 		/// @param New value.
@@ -445,6 +468,9 @@ namespace RTE {
 		/// @param onlyPhysical Whether to not draw any extra 'ghost' items of this MovableObject, (default: false)
 		/// indicator arrows or hovering HUD text and so on.
 		void Draw(BITMAP* pTargetBitmap, const Vector& targetPos = Vector(), DrawMode mode = g_DrawColor, bool onlyPhysical = false) const override;
+
+		/// Draws this with the renderer, unless it is held and not drawn when held (DrawnWhenHeld).
+		void Draw(const Camera& camera) const override;
 		using Attachable::Draw;
 
 		/// Draws this' current graphical HUD overlay representation to a
@@ -491,6 +517,11 @@ namespace RTE {
 		std::array<bool, HELDDEVICEHOTKEYTYPECOUNT> m_HotkeyActivated;
 		// Timer for timing how long a feature has been activated.
 		Timer m_ActivationTimer;
+		bool m_DrawnWhenHeld; //!< See IsDrawnWhenHeld.
+		Vector m_CastStanceOffset; //!< See GetCastStanceOffset.
+		float m_CastPoseTime; //!< See GetCastPoseTime.
+		bool m_CastPoseHeld; //!< Whether it has been used since it was made, so the cast pose timer means something.
+		Timer m_CastPoseTimer; //!< Since it was last in use.
 		// An array that holds activation timers for the various hotkey actions of this HeldDevice.
 		std::array<Timer, HELDDEVICEHOTKEYTYPECOUNT> m_HotkeyActivationTimer;
 		// Can be weilded well with one hand or not
