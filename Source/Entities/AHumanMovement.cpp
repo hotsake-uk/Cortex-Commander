@@ -2995,7 +2995,8 @@ int AHuman::MoveAlongRoute() {
 	}
 	// Running on a long, level, open stretch: the point two bodies or more away and no higher, head room to stand, no door near, and
 	// floor the whole way (a run off an edge or into a door is no way to arrive). The script used to roll a die for the run key.
-	if (!prone && !crouch && std::abs(toPoint.m_X) > h * 2.0F && std::abs(toPoint.m_Y) < h * 0.25F && !noRoomAhead && !DoorAhead(point)) {
+	// (Never on a cautious order, StandingOrder::Direct under 0: it walks.)
+	if (!prone && !crouch && m_StandingOrder.Direct >= 0.0F && std::abs(toPoint.m_X) > h * 2.0F && std::abs(toPoint.m_Y) < h * 0.25F && !noRoomAhead && !DoorAhead(point)) {
 		bool floorAllTheWay = true;
 		float stepDirection = toPoint.m_X > 0.0F ? 1.0F : -1.0F;
 		for (float ahead = 12.0F; ahead <= h * 1.5F && floorAllTheWay; ahead += 12.0F) {
