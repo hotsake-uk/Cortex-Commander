@@ -634,6 +634,9 @@ void Sandbox::DrawGUI() {
 	// main menu (the menu loop draws the debug GUI too) after leaving a Sandbox game, until another game was started.
 	if (g_MenuMan.GetIsInMenuScreen()) {
 		UnmarkSelection();
+		for (int screenId = 0; screenId < c_MaxScreenCount; ++screenId) {
+			g_CameraMan.SetBottomOverscroll(0.0F, screenId);
+		}
 		return;
 	}
 	if (GameActivity* game = CurrentGame(); s_Open && game && game->IsFreeBuildMode()) {
