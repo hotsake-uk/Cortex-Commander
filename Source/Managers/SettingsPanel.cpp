@@ -852,6 +852,10 @@ void DebugMan::SettingsGUI() {
 		Tip("On: a mass that was already hanging in the air before a blast stays; cut in two, the bigger part stays and the smaller falls. Off: anything touching nothing falls.");
 		SliderI("Thin neck that snaps (pixels)", &tuning.NeckWidth, 0, 16);
 		Tip("A piece left joined to the rest by a neck no wider than this breaks off and falls. 0: only pieces cut right through fall. Wood always holds until it's cut or burnt right through, so a burning tree stands (a material's own NeckWidth in its ini).");
+		SliderI("Thin neck that snaps, thin pieces (pixels)", &tuning.ThinNeckWidth, 0, 16);
+		Tip("A second look for necks, for thin pieces: the look above pares every piece by half its width first, so a ledge thinner than about that never shows up there. This one finds a thin ledge held on by a neck no wider than this. 0: off.");
+		SliderI("Longest overhang that holds (pixels)", &tuning.OverhangLength, 0, 400);
+		Tip("Ground sticking out further than this from what holds it up (ground beneath it all the way down, bedrock, buildings) breaks off where it's that far out: a ledge dug or shot this long, or the middle of a cave roof dug twice this wide. 20 pixels is a metre. Overhangs already that long (the scenery) stay until they're cut further. 0: off.");
 		SliderI("Biggest piece that can fall (pixels)", &tuning.MaxPiecePixels, 500, 200000, "%d", ImGuiSliderFlags_Logarithmic);
 		Tip("Anything bigger counts as the world and never falls. 30,000 is about a 170 by 170 block. A tree's trunk and leaves don't count, so a big tree cut through still comes down whole.");
 		SliderI("Smallest loose bit of building that falls", &tuning.MinFittingPixels, 0, 2000);
