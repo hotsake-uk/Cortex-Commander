@@ -179,6 +179,15 @@ namespace RTE {
 		/// Gets the autopilot's hover height over the ground, in pixels.
 		float AutopilotHoverHeight() const { return m_Autopilot.hoverAlt; }
 
+		/// Gets where the autopilot is flying it on a go-to (AutopilotGoTo). @param goal Set to the place. @return Whether it is going anywhere.
+		bool AutopilotGoal(Vector& goal) const {
+			if (m_AIMode != AIMODE_GOTO || !m_Autopilot.hasWaypoint) {
+				return false;
+			}
+			goal = m_Autopilot.waypoint;
+			return true;
+		}
+
 		/// Protected member variable and method declarations
 	protected:
 		// Member variables

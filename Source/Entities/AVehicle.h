@@ -261,6 +261,9 @@ namespace RTE {
 		/// Sets whether the player commands it as one unit (see IsCommanded).
 		void SetCommanded(bool commanded) { m_Commanded = commanded; }
 
+		/// Gets how far its gunner looks for something to shoot, in pixels.
+		float GetGunRange() const { return m_GunRange; }
+
 		/// Gets whether its AI driver gave up on the way it was last sent (stuck, a drop, no way on), until it is sent somewhere again.
 		bool HasGivenUpDriving() const { return m_AIGaveUp; }
 
@@ -411,6 +414,8 @@ namespace RTE {
 		bool m_AIGaveUp; //!< Whether the AI driver gave up on the way (stuck, a drop, the shore): its riders get out and walk.
 		bool m_Commanded; //!< Whether the player commands it as one unit (see IsCommanded).
 		int m_AIRoutesAsked; //!< How many times running the AI driver has asked for a new route because it got stuck on the one it had.
+		Vector m_SuppressPoint; //!< Where in the place it was ordered to suppress its gunner is firing at, with nobody to shoot.
+		Timer m_SuppressTimer; //!< Since its gunner last picked a point in that place.
 		Timer m_AIFaceTimer; //!< Since the AI driver of a commanded vehicle last looked round to face an enemy, standing still.
 		Timer m_AIGaveUpTimer; //!< Since it gave up: it doesn't call riders over again for a while.
 		unsigned int m_AIOrderSerialSeen; //!< The order serial its AI driver last started on: a new order starts afresh.

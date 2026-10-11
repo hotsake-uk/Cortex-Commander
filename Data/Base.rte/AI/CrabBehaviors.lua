@@ -37,6 +37,8 @@ function CrabBehaviors.LookForTargets(AI, Owner)
 				FoundMO = ToACrab(FoundMO);
 			elseif FoundMO.ClassName == "ACRocket" then
 				FoundMO = ToACRocket(FoundMO);
+			elseif FoundMO.ClassName == "ACShip" then	-- A gunship or flying transport.
+				FoundMO = ToACShip(FoundMO);
 			elseif FoundMO.ClassName == "ACDropShip" then
 				FoundMO = ToACDropShip(FoundMO);
 			elseif FoundMO.ClassName == "ADoor" and FoundMO.Team ~= Activity.NOTEAM and Owner.AIMode ~= Actor.AIMODE_SENTRY and ToADoor(FoundMO).Door and ToADoor(FoundMO).Door:IsAttached() and SharedBehaviors.GetProjectileData(Owner).pen * 0.9 > ToADoor(FoundMO).Door.Material.StructuralIntegrity then
@@ -456,6 +458,8 @@ function CrabBehaviors.ShootTarget(AI, Owner, Abort)
 					ClosestEnemy = ToACrab(ClosestEnemy);
 				elseif ClosestEnemy.ClassName == "AVehicle" then
 					ClosestEnemy = ToAVehicle(ClosestEnemy);
+				elseif ClosestEnemy.ClassName == "ACShip" then
+					ClosestEnemy = ToACShip(ClosestEnemy);
 				else
 					ClosestEnemy = nil;
 				end

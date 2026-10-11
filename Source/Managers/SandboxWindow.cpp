@@ -1604,6 +1604,9 @@ namespace SandboxDetail {
 					if (unit->GetWaypointsSize() > 0) {
 						goal = unit->GetLastAIWaypoint();
 						hasGoal = true;
+					} else if (const ACShip* ship = dynamic_cast<const ACShip*>(unit)) {
+						// (A flying ship goes by its autopilot, with no waypoints.)
+						hasGoal = ship->GetFlightGoal(goal);
 					}
 				} else if (unit->GetOrderHold()) {
 					hold = true;

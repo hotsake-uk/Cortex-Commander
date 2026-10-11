@@ -595,6 +595,19 @@ namespace RTE {
 		/// @return The standing order of this.
 		const StandingOrder& GetStandingOrder() const { return m_StandingOrder; }
 
+		/// Gets the place this unit was ordered to suppress (the sandbox's Suppress order, kept as the number values SandboxSuppressX, Y and R),
+		/// if it has one: a vehicle's or ship's gunners with no enemy to shoot at fire into it.
+		/// @param centre Where the middle of the place is put. @param radius Where how wide it is is put, in pixels.
+		/// @return Whether it has such an order.
+		bool GetSuppressZone(Vector& centre, float& radius) const {
+			if (!NumberValueExists("SandboxSuppressX")) {
+				return false;
+			}
+			centre.SetXY(static_cast<float>(GetNumberValue("SandboxSuppressX")), static_cast<float>(GetNumberValue("SandboxSuppressY")));
+			radius = static_cast<float>(GetNumberValue("SandboxSuppressR"));
+			return true;
+		}
+
 		/// Forgets every part of this' standing order.
 		void ClearStandingOrder() { m_StandingOrder = StandingOrder(); }
 

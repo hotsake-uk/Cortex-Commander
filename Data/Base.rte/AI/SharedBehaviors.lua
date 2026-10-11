@@ -1091,7 +1091,7 @@ function SharedBehaviors.SquadTactics(AI, Owner)
 	end
 end
 
--- An actor as its own class, for the scripts that read its class's members (legs, doors): AHuman, ACrab, ACRocket, ACDropShip, ADoor, AVehicle, or Actor.
+-- An actor as its own class, for the scripts that read its class's members (legs, doors): AHuman, ACrab, ACRocket, ACShip, ACDropShip, ADoor, AVehicle, or Actor.
 function SharedBehaviors.ToActorClass(MO)
 	if MO.ClassName == "AHuman" then
 		return ToAHuman(MO);
@@ -1099,6 +1099,8 @@ function SharedBehaviors.ToActorClass(MO)
 		return ToACrab(MO);
 	elseif MO.ClassName == "ACRocket" then
 		return ToACRocket(MO);
+	elseif MO.ClassName == "ACShip" then
+		return ToACShip(MO);
 	elseif MO.ClassName == "ACDropShip" then
 		return ToACDropShip(MO);
 	elseif MO.ClassName == "ADoor" then
