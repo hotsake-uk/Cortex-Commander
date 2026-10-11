@@ -29,6 +29,7 @@ namespace RTE {
 			bool Gunner = false; //!< Whether it mans a gun.
 			bool Rider = false; //!< Whether its unit got in by itself to ride somewhere, and gets out when it is near there.
 			Actor* Occupant = nullptr; //!< Who sits in it, out of the scene while they're in here. Owned.
+			long TargetID = 0; //!< The enemy its passenger shoots at out of it (PassengersCanFire), or 0.
 		};
 
 		/// Makes an empty set of seats: the one seat 0, at the host's middle.
@@ -80,6 +81,13 @@ namespace RTE {
 
 		/// Sets whether the crew is drawn in their seats, where shots can reach them, or hidden inside.
 		void SetDrawsCrew(bool drawsCrew) { m_DrawsCrew = drawsCrew; }
+
+		/// Gets whether units in its passenger seats shoot out of it with the guns they hold (when PassengersFireFromVehicles is on in the
+		/// settings too). Never the one in seat 0, who drives or flies it, nor gunners, who man its guns.
+		bool PassengersCanFire() const { return m_PassengersCanFire; }
+
+		/// Sets whether units in its passenger seats shoot out of it (see PassengersCanFire).
+		void SetPassengersCanFire(bool canFire) { m_PassengersCanFire = canFire; }
 #pragma endregion
 
 #pragma region Seats
@@ -206,6 +214,11 @@ namespace RTE {
 		/// Puts everyone in it at their seats, as the host lies now, so they are drawn there; the dead slumped forward in theirs.
 		void PlaceCrew() const;
 
+		/// Lets the units in its passenger seats shoot out of it (PassengersCanFire), as it lies now (call after PlaceCrew): the player's own
+		/// unit where the player aims, with the fire key; the others at the nearest enemy in front of them they can see. What they fire goes
+		/// through the host and everyone sat in it.
+		void UpdatePassengerFire();
+
 		/// Draws the crew in open seats (call before drawing the host, so its near side hides their legs).
 		void Draw(BITMAP* targetBitmap, const Vector& targetPos, DrawMode mode, bool onlyPhysical) const;
 		void Draw(const Camera& camera) const;
@@ -231,10 +244,16 @@ namespace RTE {
 		Vector m_ExitOffset; //!< Where units get out, from the host's middle, upright and facing right.
 		float m_BoardingReach; //!< How close to a seat a unit has to be to get in.
 		bool m_DrawsCrew; //!< Whether the crew is drawn in their seats, or hidden inside.
+		bool m_PassengersCanFire; //!< Whether units in its passenger seats shoot out of it (see PassengersCanFire).
+		Timer m_PassengerTargetTimer; //!< Since its passengers last looked round for enemies to shoot at.
 		Vector m_LastVel; //!< The host's velocity at the end of its last update.
 		Timer m_BoardingTimer; //!< Since someone last got in or out.
 		Actor* m_BoarderInReach; //!< A friendly player-controlled unit beside a seat in the last UpdateBoarding. Not owned.
 		bool m_BoarderPushes; //!< Whether that unit would push the host back over rather than get in.
+
+		/// Finds the enemy a passenger would shoot at out of it: the nearest alive in front of them, within their sight and aim, with nothing
+		/// solid between. @param unit The passenger. @return Its unique ID, or 0 if there is none.
+		long FindPassengerTarget(const Actor* unit) const;
 
 		/// Tips a body slumped in a seat out of it, into the scene beside the host (or flung, from a crash or a wreck).
 		void TipOutSlumped(size_t index, bool thrown);

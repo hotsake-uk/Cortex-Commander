@@ -1549,6 +1549,66 @@ bool AHuman::FirearmIsSemiAuto() const {
 	return false;
 }
 
+void AHuman::UpdateFiringFromSeat(float aimAngle, bool fire, bool reload, bool repeat, MovableObject* vehicle) {
+	if (!m_pFGArm) {
+		return;
+	}
+	m_AimAngle = std::clamp(aimAngle, -m_AimRange, m_AimRange);
+	float adjustedAimAngle = m_AimAngle * GetFlipFactor();
+	m_pFGArm->SetRotAngle(adjustedAimAngle);
+	if (m_pBGArm) {
+		m_pBGArm->SetRotAngle(adjustedAimAngle);
+	}
+	HDFirearm* gun = dynamic_cast<HDFirearm*>(GetEquippedItem());
+	if (gun) {
+		if (reload && !gun->IsFull()) {
+			ReloadFirearms();
+		} else if (gun->IsEmpty()) {
+			ReloadFirearms(true);
+		}
+		if (fire && !gun->IsReloading()) {
+			if (gun->IsFullAuto()) {
+				gun->Activate();
+			} else if (m_TriggerPulled && repeat) {
+				// Let go for this update, to pull again on the next.
+				gun->Deactivate();
+				m_TriggerPulled = false;
+			} else if (!m_TriggerPulled) {
+				gun->Activate();
+			}
+		} else {
+			gun->Deactivate();
+			m_TriggerPulled = false;
+		}
+		// Held in both hands where it can be, as on foot.
+		if (m_pBGArm && !GetEquippedBGItem() && gun->IsSupportable() && !gun->IsReloading()) {
+			m_pBGArm->SetHeldDeviceThisArmIsTryingToSupport(gun);
+			gun->SetSupported(true);
+		} else {
+			gun->SetSupported(false);
+		}
+		gun->SetFiredFromInside(vehicle);
+	}
+	// (The arms run their hands to the aim and the gun in hand on with them: it fires, cycles and reloads there.)
+	m_pFGArm->Update();
+	if (m_pBGArm) {
+		m_pBGArm->Update();
+	}
+	if (gun) {
+		gun->SetFiredFromInside(nullptr);
+		if (gun->FiredOnce()) {
+			m_TriggerPulled = true;
+		}
+		// Nothing out of the scene ever spends the kick, so it isn't kept to pile up.
+		gun->ClearImpulseForces();
+	}
+	m_pFGArm->ClearImpulseForces();
+	if (m_pBGArm) {
+		m_pBGArm->ClearImpulseForces();
+	}
+	ClearImpulseForces();
+}
+
 void AHuman::ReloadFirearms(bool onlyReloadEmptyFirearms) {
 	for (Arm* arm: {m_pFGArm, m_pBGArm}) {
 		if (arm) {
