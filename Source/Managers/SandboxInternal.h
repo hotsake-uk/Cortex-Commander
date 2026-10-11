@@ -950,7 +950,8 @@ namespace SandboxDetail {
 	/// and empty or with every seat filled. Saved with the sandbox settings (Sandbox::GetVehicleSetup).
 	struct VehicleTuning {
 		bool Modified = false; //!< Whether the multipliers below are used. Off: the vehicle as its preset has it.
-		bool Crewed = false; //!< Whether every seat is filled with new units (Driver and Crew), a squad behind the driver.
+		bool Crewed = false; //!< Whether it is put down with new units in it (Driver, and Crew unless DriverOnly), a squad behind the driver.
+		bool DriverOnly = false; //!< With Crewed: only the driver's seat filled (With driver), rather than every seat (Full crew).
 		std::string Driver; //!< With Crewed: who drives (seat 0). "" the unit picked in the Units list (or random ones, as it says), "*" random units, else a unit by CrewPickKey.
 		std::string Crew; //!< With Crewed: who takes the other seats (gunners and passengers), as Driver.
 		float Power = 1.0F; //!< Times its Acceleration: how hard it speeds up, and so how steep a hill it drives up.
