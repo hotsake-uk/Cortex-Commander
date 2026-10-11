@@ -213,6 +213,8 @@ namespace SandboxDetail {
 				trigger = "OrderDig";
 			} else if (why == "breach") {
 				trigger = "OrderBreach";
+			} else if (why == "build") {
+				trigger = "OrderBuild";
 			}
 			AnswerOrder(unit, trigger);
 		}
@@ -1057,6 +1059,9 @@ namespace SandboxDetail {
 			case CommandMode::Breach:
 				BreachSelected(units, point);
 				return;
+			case CommandMode::Build:
+				BuildSelected(units, point);
+				return;
 			default: {
 				bool attackMove = s_CommandMode == CommandMode::AttackMove;
 				if (shift) {
@@ -1361,6 +1366,10 @@ namespace SandboxDetail {
 		}
 		if (s_CommandMode == CommandMode::Breach) {
 			BreachSelected(UnitsToMove(0, true), position);
+			return;
+		}
+		if (s_CommandMode == CommandMode::Build) {
+			BuildSelected(UnitsToMove(0, true), position);
 			return;
 		}
 		if (s_CommandMode == CommandMode::AttackMove) {

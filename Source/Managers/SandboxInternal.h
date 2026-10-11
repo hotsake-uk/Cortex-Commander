@@ -1175,12 +1175,14 @@ namespace SandboxDetail {
 		Command, //!< The order fits what's under the pointer (CommandTargetAt): with nothing selected, as Select; else a friend is selected, an enemy
 		        //!< attacked, a battle objective gone for, open air flown to, anything else moved to. What the Command tool starts in, and what
 		        //!< a one-off order's mode goes back to once it's placed (and Esc). (After Select, so the ring's slices keep their places.)
-		Breach //!< Dig through to the point, then attack (SandboxBreach.cpp): the diggers tunnel there, the rest follow them in, and once
-		       //!< through they all go for the nearest enemy there. (Last, so the ring's slices keep their places.)
+		Breach, //!< Dig through to the point, then attack (SandboxBreach.cpp): the diggers tunnel there, the rest follow them in, and once
+		        //!< through they all go for the nearest enemy there. (After Command, so the ring's slices keep their places.)
+		Build //!< Build the piece picked (s_BuildPiece) at the point (SandboxBuild.cpp): the nearest selected unit with a Constructor walks
+		      //!< there and puts it up. In Battle Command it costs reinforcement points.
 	};
 	inline CommandMode s_CommandMode = CommandMode::Command;
-	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Jetpack here", "Select units", "Command", "Breach"};
-	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(140, 230, 255, 255), IM_COL32(230, 230, 230, 255), IM_COL32(255, 214, 120, 255), IM_COL32(235, 110, 55, 255)};
+	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Jetpack here", "Select units", "Command", "Breach", "Build"};
+	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(140, 230, 255, 255), IM_COL32(230, 230, 230, 255), IM_COL32(255, 214, 120, 255), IM_COL32(235, 110, 55, 255), IM_COL32(120, 210, 190, 255)};
 	/// A mode whose order is given once and then goes back to Command (s_BackToCommandAt): not Select, Command or Patrol (clicked out point by point).
 	inline bool OneOffMode(CommandMode mode) { return mode != CommandMode::Select && mode != CommandMode::Command && mode != CommandMode::Patrol; }
 	inline double s_BackToCommandAt = -1.0; //!< When (ImGui time) the one-off mode in hand goes back to Command: once a double click can no longer follow.
@@ -2672,6 +2674,41 @@ namespace SandboxDetail {
 	/// What a unit has lost of its kit given back (the Supply power): its best gun if it has none, and its grenades up to what it came with.
 	/// How many items it was given.
 	int RearmUnit(AHuman* human);
+#pragma endregion
+
+#pragma region Engineer builds (SandboxBuild.cpp)
+	/// A piece the Build order puts up: its name, its cost in reinforcement points (Battle Command only), how long it takes to build, and
+	/// its size for the outline (scene pixels, standing on the point).
+	struct BuildPiece {
+		const char* Name;
+		int Cost;
+		int Seconds;
+		float Width;
+		float Height;
+		const char* Tip;
+	};
+	constexpr BuildPiece c_BuildPieces[] = {
+	    {"Sandbags", 40, 3, 60.0F, 16.0F, "A low wall of sandbags to crouch behind."},
+	    {"Concrete wall", 80, 5, 12.0F, 64.0F, "A head-high concrete wall."},
+	    {"Bunker", 200, 10, 112.0F, 64.0F, "A concrete roof on two walls, open low on both sides to shoot and get in through."},
+	    {"Turret", 250, 8, 24.0F, 24.0F, "A turret of your team's that shoots at enemies in range."}};
+	inline int s_BuildPiece = 0; //!< The piece the Build order puts up (c_BuildPieces).
+
+	/// The building sites forgotten. When out of a game.
+	void ForgetBuilds();
+
+	/// The nearest of the units to the point carrying a Constructor and not building already; nullptr for none.
+	Actor* BuilderFor(const std::vector<Actor*>& units, const Vector& point);
+
+	/// The Build order: the nearest of the units carrying a Constructor sent to put up the piece picked at the point, paid for now in Battle
+	/// Command (and paid back if it isn't built).
+	void BuildSelected(const std::vector<Actor*>& units, const Vector& point);
+
+	/// The builders watched: one at its site builds, and when done the piece goes up. Call once per sim update.
+	void UpdateBuilds();
+
+	/// Each site's outline and how far on it is. Call from the ImGui frame, with the order marks.
+	void DrawBuilds(ImDrawList* drawList);
 #pragma endregion
 
 #pragma region Breach (SandboxBreach.cpp)

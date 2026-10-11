@@ -903,6 +903,10 @@ void Sandbox::DrawGUI() {
 			// Breach: the clicks to come dig through to the point, then attack.
 			s_CommandMode = CommandMode::Breach;
 		}
+		if (io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_B, false)) {
+			// Build: the clicks to come put up the piece picked.
+			s_CommandMode = CommandMode::Build;
+		}
 		if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_A, false)) {
 			// Everyone on the selection's side.
 			int team = SelectionTeam();
@@ -1914,6 +1918,7 @@ void Sandbox::Update() {
 		s_Possessed = nullptr;
 		s_Plans.clear();
 		ForgetBreaches();
+		ForgetBuilds();
 		s_GuardPosts.clear();
 		s_Commander = false;
 		s_Paced.clear();
@@ -1934,6 +1939,7 @@ void Sandbox::Update() {
 	ClosePaintUndoStep(false);
 	UpdatePlans();
 	UpdateBreaches();
+	UpdateBuilds();
 	UpdateCommander();
 	UpdatePace();
 	UpdateMoveWatch();
