@@ -193,6 +193,18 @@ namespace RTE {
 		/// Sets ClassicPieWheel; see there.
 		void SetClassicPieWheel(bool classic) { m_ClassicPieWheel = classic; }
 
+		/// Gets whether a click of the right button opens the unit menu and leaves it up till you click away (true), rather than it being up
+		/// only while the button is held (false).
+		bool UnitMenuClickToOpen() const { return m_UnitMenuClickToOpen; }
+
+		/// Sets UnitMenuClickToOpen; see there.
+		void SetUnitMenuClickToOpen(bool click) { m_UnitMenuClickToOpen = click; }
+
+		/// Gets how fast time runs while the unit menu is up, 0.05 to 1 (1: as fast as ever).
+		float UnitMenuTimeScale() const { return m_UnitMenuTimeScale; }
+
+		/// Sets UnitMenuTimeScale; see there.
+		void SetUnitMenuTimeScale(float scale) { m_UnitMenuTimeScale = std::clamp(scale, 0.05F, 1.0F); }
 		/// Gets the key that pauses and resumes the AI in any game, as written: modifiers then SDL's name for the key, e.g. "Ctrl+P". Empty for none.
 		const std::string& GetPauseAIKey() const { return m_PauseAIKey; }
 
@@ -883,6 +895,8 @@ namespace RTE {
 		bool m_AlwaysDisplayUnheldItemsInStrategicMode; //!< Whether or not devices on Scene should always show their pick-up HUD when when the player is in strategic mode.
 		int m_SubPieMenuHoverOpenDelay; //!< The number of MS a PieSlice with a sub-PieMenu needs to be hovered over for the sub-PieMenu to open.
 		bool m_ClassicPieWheel; //!< Whether a unit's right-click menu is the classic pie wheel rather than the action menu (see ClassicPieWheel).
+		bool m_UnitMenuClickToOpen; //!< Whether a click opens the unit menu and leaves it up (see UnitMenuClickToOpen).
+		float m_UnitMenuTimeScale; //!< How fast time runs while the unit menu is up (see UnitMenuTimeScale).
 		std::string m_PauseAIKey; //!< The key that pauses and resumes the AI (see GetPauseAIKey).
 		bool m_TakingKey = false; //!< Whether the settings panel is waiting for a key to bind (see IsTakingKey).
 		bool m_EndlessMetaGameMode; //!< Endless MetaGame mode.

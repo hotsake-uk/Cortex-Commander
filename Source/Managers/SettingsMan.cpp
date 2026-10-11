@@ -134,6 +134,8 @@ void SettingsMan::Clear() {
 	m_AlwaysDisplayUnheldItemsInStrategicMode = true;
 	m_SubPieMenuHoverOpenDelay = 1000;
 	m_ClassicPieWheel = false;
+	m_UnitMenuClickToOpen = true;
+	m_UnitMenuTimeScale = 0.25F;
 	m_PauseAIKey = "Ctrl+P";
 	m_EndlessMetaGameMode = false;
 	m_EnableCrabBombs = false;
@@ -742,6 +744,12 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AlwaysDisplayUnheldItemsInStrategicMode", { reader >> m_AlwaysDisplayUnheldItemsInStrategicMode; });
 	MatchProperty("SubPieMenuHoverOpenDelay", { reader >> m_SubPieMenuHoverOpenDelay; });
 	MatchProperty("ClassicPieWheel", { reader >> m_ClassicPieWheel; });
+	MatchProperty("UnitMenuClickToOpen", { reader >> m_UnitMenuClickToOpen; });
+	MatchProperty("UnitMenuTimeScale", {
+		float scale;
+		reader >> scale;
+		SetUnitMenuTimeScale(scale);
+	});
 	MatchProperty("PauseAIKey", { m_PauseAIKey = reader.ReadPropValue(); });
 	MatchProperty("EndlessMetaGameMode", { reader >> m_EndlessMetaGameMode; });
 	MatchProperty("EndlessMode", { reader >> m_EndlessMetaGameMode; }); // Legacy name, kept for old Settings.ini files.
@@ -1326,6 +1334,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("ShowCPUAimReticles", m_ShowCPUAimReticles);
 	writer.NewPropertyWithValue("ShowAlarmExclamation", m_ShowAlarmExclamation);
 	writer.NewPropertyWithValue("ClassicPieWheel", m_ClassicPieWheel);
+	writer.NewPropertyWithValue("UnitMenuClickToOpen", m_UnitMenuClickToOpen);
+	writer.NewPropertyWithValue("UnitMenuTimeScale", m_UnitMenuTimeScale);
 	writer.NewPropertyWithValue("PauseAIKey", m_PauseAIKey);
 	writer.NewPropertyWithValue("SmoothHUDText", TextOverlay::IsEnabled());
 	writer.NewPropertyWithValue("FrameCap", g_WindowMan.GetFrameCap());
