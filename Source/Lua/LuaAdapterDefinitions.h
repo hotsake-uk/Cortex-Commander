@@ -36,6 +36,7 @@
 
 #include "Entity.h"
 #include "ACDropShip.h"
+#include "ACShip.h"
 #include "ACrab.h"
 #include "ACraft.h"
 #include "ACRocket.h"
@@ -121,6 +122,7 @@ namespace RTE {
 		LuaEntityCreateFunctionsDeclarationsForType(ACrab);
 		LuaEntityCreateFunctionsDeclarationsForType(ACraft);
 		LuaEntityCreateFunctionsDeclarationsForType(ACDropShip);
+		LuaEntityCreateFunctionsDeclarationsForType(ACShip);
 		LuaEntityCreateFunctionsDeclarationsForType(ACRocket);
 		LuaEntityCreateFunctionsDeclarationsForType(MOSParticle);
 		LuaEntityCreateFunctionsDeclarationsForType(MOSRotating);
@@ -161,6 +163,7 @@ namespace RTE {
 		LuaEntityCloneFunctionDeclarationForType(ACrab);
 		LuaEntityCloneFunctionDeclarationForType(ACraft);
 		LuaEntityCloneFunctionDeclarationForType(ACDropShip);
+		LuaEntityCloneFunctionDeclarationForType(ACShip);
 		LuaEntityCloneFunctionDeclarationForType(ACRocket);
 		LuaEntityCloneFunctionDeclarationForType(MOSParticle);
 		LuaEntityCloneFunctionDeclarationForType(MOSRotating);
@@ -206,6 +209,7 @@ namespace RTE {
 		LuaEntityCastFunctionsDeclarationsForType(ACrab);
 		LuaEntityCastFunctionsDeclarationsForType(ACraft);
 		LuaEntityCastFunctionsDeclarationsForType(ACDropShip);
+		LuaEntityCastFunctionsDeclarationsForType(ACShip);
 		LuaEntityCastFunctionsDeclarationsForType(ACRocket);
 		LuaEntityCastFunctionsDeclarationsForType(MOSParticle);
 		LuaEntityCastFunctionsDeclarationsForType(MOSRotating);

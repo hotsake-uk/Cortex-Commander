@@ -174,7 +174,7 @@ namespace SandboxDetail {
 		BattleModeBase, //!< The Battle Director's modes: each click puts down a corner of another of the team's spawn zones (s_BattleEditTeam).
 		BattleModeZone, //!< The Battle Director's modes: each click puts down a corner of one of the mode's own zones (a hill, an objective).
 		BattleModeGoal, //!< The Battle Director's modes: each click puts down a corner of the team's goal zone (s_BattleEditTeam), as one flag's.
-		BattleModeFlag, //!< The Battle Director's modes: a click sets where the one neutral flag stands (one flag).
+		BattleModeFlag, //!< The Battle Director's modes: a click sets where the one neutral flag stands (one flag), or where the ship comes in (capture the ship).
 		ClearMap, //!< Clears one kind of thing off the whole map (Count a ClearKind): the World tab's Clear. Appended, so the tools before keep their numbers.
 		// More terrain to paint, from the base game's materials: appended, so the tools before keep their numbers.
 		Stone,
@@ -662,6 +662,7 @@ namespace SandboxDetail {
 		LastTeamStanding,
 		VipHunt,
 		OneFlag,
+		CaptureTheShip,
 		Count
 	};
 
@@ -704,7 +705,7 @@ namespace SandboxDetail {
 		std::array<bool, c_Sides> HasPoint{}; //!< Each team's point placed in its base (capture the flag: where its flag stands). Without, one is picked.
 		std::array<Vector, c_Sides> Points;
 		std::array<std::vector<Vector>, c_Sides> Goals; //!< One flag: each team's goal zone, drawn as a polygon, that it brings the flag into to score.
-		std::vector<Vector> FlagSpots; //!< One flag: the flag positions placed (up to c_MaxFlagSpots), which the flag comes in at in turn, the next after each score.
+		std::vector<Vector> FlagSpots; //!< One flag (and capture the ship, its ship positions): the flag positions placed (up to c_MaxFlagSpots), which the flag comes in at in turn, the next after each score.
 		bool FlagByZones = false; //!< One flag: the flag comes in somewhere in one of the flag spawn zones (the mode's zones), picked at random, rather than at the positions placed.
 		bool ByShip = false; //!< Its units come in by ship over their base, rather than appearing in it.
 		bool MoveStuckPoint = true; //!< Capture the flag: a flag nobody can get to (buried, or cut off) moves somewhere else in its base.
