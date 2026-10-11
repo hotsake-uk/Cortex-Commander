@@ -37,6 +37,13 @@ void MainMenuGUI::Clear() {
 	m_MenuScreenChange = false;
 	m_MetaGameNoticeShown = false;
 	m_SandboxCurrentMapName.clear();
+	m_SandboxPickedSize.clear();
+	m_SandboxMapsPanel = nullptr;
+	m_SandboxSizePanel = nullptr;
+	m_SandboxThemePanel = nullptr;
+	m_SandboxThemeLabel = nullptr;
+	m_SandboxThemeButtons.clear();
+	m_SandboxThemeBackButton = nullptr;
 
 	m_ResumeButtonBlinkTimer.Reset();
 	m_CreditsScrollTimer.Reset();
@@ -150,6 +157,49 @@ void MainMenuGUI::CreateSandboxScreen() {
 	m_MainMenuButtons[MenuButton::SandboxEmptyButton] = dynamic_cast<GUIButton*>(m_SubMenuScreenGUIControlManager->GetControl("ButtonSandboxEmpty"));
 	m_MainMenuButtons[MenuButton::SandboxCurrentMapButton] = dynamic_cast<GUIButton*>(m_SubMenuScreenGUIControlManager->GetControl("ButtonSandboxCurrentMap"));
 	m_MainMenuButtons[MenuButton::SandboxMapSelectButton] = dynamic_cast<GUIButton*>(m_SubMenuScreenGUIControlManager->GetControl("ButtonSandboxMapSelect"));
+	m_MainMenuButtons[MenuButton::SandboxSmallButton] = dynamic_cast<GUIButton*>(m_SubMenuScreenGUIControlManager->GetControl("ButtonSandboxSmall"));
+	m_MainMenuButtons[MenuButton::SandboxMediumButton] = dynamic_cast<GUIButton*>(m_SubMenuScreenGUIControlManager->GetControl("ButtonSandboxMedium"));
+	m_MainMenuButtons[MenuButton::SandboxLargeButton] = dynamic_cast<GUIButton*>(m_SubMenuScreenGUIControlManager->GetControl("ButtonSandboxLarge"));
+	m_MainMenuButtons[MenuButton::SandboxExtraLargeButton] = dynamic_cast<GUIButton*>(m_SubMenuScreenGUIControlManager->GetControl("ButtonSandboxExtraLarge"));
+
+	m_SandboxMapsPanel = dynamic_cast<GUICollectionBox*>(m_SubMenuScreenGUIControlManager->GetControl("SandboxPanel"));
+	m_SandboxSizePanel = dynamic_cast<GUICollectionBox*>(m_SubMenuScreenGUIControlManager->GetControl("SandboxSizePanel"));
+	m_SandboxThemePanel = dynamic_cast<GUICollectionBox*>(m_SubMenuScreenGUIControlManager->GetControl("SandboxThemePanel"));
+	m_SandboxThemeLabel = dynamic_cast<GUILabel*>(m_SubMenuScreenGUIControlManager->GetControl("LabelSandboxTheme"));
+	// The theme buttons come from the sandbox map presets, which aren't loaded yet when the menus are made: they're added the first time the screen shows.
+}
+
+void MainMenuGUI::CreateSandboxThemeButtons() {
+	const std::string prefix = "Sandbox Small - ";
+	std::list<Entity*> scenePresets;
+	g_PresetMan.GetAllOfType(scenePresets, "Scene");
+	std::vector<std::string> themes;
+	for (const Entity* scenePreset: scenePresets) {
+		const std::string& name = scenePreset->GetPresetName();
+		if (name.size() > prefix.size() && name.starts_with(prefix)) {
+			themes.emplace_back(name.substr(prefix.size()));
+		}
+	}
+
+	// Two columns, in the order the themes are defined, then Back in the next free place.
+	const int columnWidth = 192;
+	const int rowHeight = 24;
+	const int top = 22;
+	auto placeOf = [&](int index) { return std::make_pair(4 + (index % 2) * (columnWidth + 8), top + (index / 2) * rowHeight); };
+	for (size_t index = 0; index < themes.size(); ++index) {
+		auto [x, y] = placeOf(static_cast<int>(index));
+		GUIButton* button = dynamic_cast<GUIButton*>(m_SubMenuScreenGUIControlManager->AddControl("ButtonSandboxTheme" + std::to_string(index), "BUTTON", m_SandboxThemePanel, x, y, columnWidth, 20));
+		if (button) {
+			button->SetText(themes[index]);
+			m_SandboxThemeButtons.emplace_back(button, themes[index]);
+		}
+	}
+	auto [backX, backY] = placeOf(static_cast<int>(themes.size()));
+	m_SandboxThemeBackButton = dynamic_cast<GUIButton*>(m_SubMenuScreenGUIControlManager->AddControl("ButtonSandboxThemeBack", "BUTTON", m_SandboxThemePanel, backX, backY, columnWidth, 20));
+	if (m_SandboxThemeBackButton) {
+		m_SandboxThemeBackButton->SetText("Back to Sizes");
+	}
+	m_SandboxThemePanel->Resize(m_SandboxThemePanel->GetWidth(), backY + rowHeight + 2);
 }
 
 void MainMenuGUI::CreateCreditsScreen() {
@@ -261,7 +311,10 @@ void MainMenuGUI::ShowSandboxScreen() {
 	m_MainMenuScreens[MenuScreen::SandboxScreen]->GUIPanel::AddChild(m_MainMenuButtons[MenuButton::BackToMainButton]);
 
 	m_MainMenuButtons[MenuButton::BackToMainButton]->SetVisible(true);
-	m_MainMenuButtons[MenuButton::BackToMainButton]->SetPositionRel((m_MainMenuScreens[MenuScreen::SandboxScreen]->GetWidth() - m_MainMenuButtons[MenuButton::BackToMainButton]->GetWidth()) / 2, 95);
+	if (!m_SandboxThemeBackButton) {
+		CreateSandboxThemeButtons();
+	}
+	ShowSandboxPanels("");
 
 	// "Current map" is the map of the game in progress (or last played), if it's a real map that can be loaded again, else the Sandbox game mode's own map.
 	m_SandboxCurrentMapName.clear();
@@ -280,6 +333,20 @@ void MainMenuGUI::ShowSandboxScreen() {
 	m_MainMenuButtons[MenuButton::SandboxCurrentMapButton]->SetText("Current Map: " + m_SandboxCurrentMapName);
 
 	m_MenuScreenChange = false;
+}
+
+void MainMenuGUI::ShowSandboxPanels(const std::string& pickedSize) {
+	m_SandboxPickedSize = pickedSize;
+	bool pickingTheme = !pickedSize.empty();
+	m_SandboxMapsPanel->SetVisible(!pickingTheme);
+	m_SandboxSizePanel->SetVisible(!pickingTheme);
+	m_SandboxThemePanel->SetVisible(pickingTheme);
+	if (pickingTheme) {
+		m_SandboxThemeLabel->SetText(pickedSize + " Sandbox: Pick a Theme");
+	}
+	int panelsBottom = pickingTheme ? m_SandboxThemePanel->GetHeight() : std::max(m_SandboxMapsPanel->GetHeight(), m_SandboxSizePanel->GetHeight());
+	GUIButton* backToMain = m_MainMenuButtons[MenuButton::BackToMainButton];
+	backToMain->SetPositionRel((m_MainMenuScreens[MenuScreen::SandboxScreen]->GetWidth() - backToMain->GetWidth()) / 2, panelsBottom + 6);
 }
 
 void MainMenuGUI::ShowCreditsScreen() {
@@ -525,6 +592,34 @@ void MainMenuGUI::HandleSandboxScreenInputEvents(const GUIControl* guiEventContr
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SandboxMapSelectButton]) {
 		m_UpdateResult = MainMenuUpdateResult::SandboxScenarioStarted;
 		SetActiveMenuScreen(MenuScreen::MainScreen, false);
+	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SandboxSmallButton]) {
+		ShowSandboxPanels("Small");
+		g_GUISound.ButtonPressSound()->Play();
+	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SandboxMediumButton]) {
+		ShowSandboxPanels("Medium");
+		g_GUISound.ButtonPressSound()->Play();
+	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SandboxLargeButton]) {
+		ShowSandboxPanels("Large");
+		g_GUISound.ButtonPressSound()->Play();
+	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SandboxExtraLargeButton]) {
+		ShowSandboxPanels("Extra Large");
+		g_GUISound.ButtonPressSound()->Play();
+	} else if (m_SandboxThemeBackButton && guiEventControl == m_SandboxThemeBackButton) {
+		ShowSandboxPanels("");
+		g_GUISound.BackButtonPressSound()->Play();
+	} else {
+		// A theme: the sandbox map of the picked size in it, straight into the game.
+		for (const auto& [themeButton, theme]: m_SandboxThemeButtons) {
+			if (guiEventControl == themeButton && !m_SandboxPickedSize.empty()) {
+				if (g_ActivityMan.SetStartSandboxActivity("Sandbox " + m_SandboxPickedSize + " - " + theme)) {
+					ShowSandboxPanels("");
+					m_UpdateResult = MainMenuUpdateResult::ActivityStarted;
+					SetActiveMenuScreen(MenuScreen::MainScreen, false);
+					g_GUISound.ExitMenuSound()->Play();
+				}
+				break;
+			}
+		}
 	}
 }
 
