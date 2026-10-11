@@ -4781,6 +4781,31 @@ namespace SandboxDetail {
 		return true;
 	}
 
+	bool InEnemySpawnZone(int side, const Vector& at, float radius) {
+		const BattleModeSettings& settings = s_ModeRun.Settings;
+		if (!s_ModeRun.Running) {
+			return false;
+		}
+		for (int other = 0; other < c_Sides; ++other) {
+			if (other == side || !TeamIn(settings, other)) {
+				continue;
+			}
+			if (InZones(settings, other, at)) {
+				return true;
+			}
+			// (And the edge of the circle round it, so a strike can't be put just outside the zone to splash in.)
+			for (int step = 0; step < 16 && radius > 0.0F; ++step) {
+				const float angle = static_cast<float>(step) * c_TwoPI / 16.0F;
+				Vector edge = at + Vector(std::cos(angle) * radius, std::sin(angle) * radius);
+				g_SceneMan.WrapPosition(edge);
+				if (InZones(settings, other, edge)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
 	void ModeUnitsMade(int side, const std::vector<Actor*>& wave) {
 		if (BattlePlayerCommands(side)) {
 			// The player's team: on hold ground, standing where it came in (or, with a rally point set, making for it and holding there), with
