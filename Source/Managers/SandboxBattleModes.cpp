@@ -2940,6 +2940,407 @@ namespace SandboxDetail {
 			return "attacking, " + std::to_string(Sandbox::CountUnits(side)) + " in";
 		}
 
+		// ---- Escort ----
+
+		UnitRef s_EscortVip; //!< The unit the escorting team takes to the destination.
+		bool s_EscortHasVip = false;
+		Vector s_EscortCentre; //!< Where its escorts were last posted round it.
+		long long s_ModeDeadline = 0; //!< Escort and extraction: the sim update the time runs out on; 0 for no limit.
+
+		int EscortSideOf(const BattleModeSettings& settings) { return std::clamp(settings.EscortSide, 0, c_Sides - 1); }
+
+		/// The only team against a side, for naming the winners; -1 with more than one.
+		int OnlyEnemyOf(const BattleModeSettings& settings, int side) {
+			int enemy = -1;
+			for (int other = 0; other < c_Sides; ++other) {
+				if (other != side && TeamIn(settings, other)) {
+					if (enemy >= 0) {
+						return -1;
+					}
+					enemy = other;
+				}
+			}
+			return enemy;
+		}
+
+		void StartDeadline() {
+			const int limit = s_ModeRun.Settings.TimeLimit;
+			s_ModeDeadline = limit > 0 ? g_TimerMan.GetSimUpdateCount() + static_cast<long long>(static_cast<float>(limit) * UpdatesPerSecond()) : 0;
+		}
+
+		Actor* LiveEscortVip() {
+			Actor* unit = GetRef(s_EscortVip);
+			return unit && IsCombatant(unit) ? unit : nullptr;
+		}
+
+		bool EscortReady(const BattleModeSettings& setup, std::string& why) {
+			if (!setup.Plays[EscortSideOf(setup)]) {
+				why = std::string("Tick ") + c_SideNames[EscortSideOf(setup)] + ", the escort, or pick another team to escort.";
+				return false;
+			}
+			return true;
+		}
+
+		void EscortStart() {
+			if (Actor* unit = GetRef(s_EscortVip)) {
+				unit->SetHighlighted(false);
+			}
+			s_EscortVip = UnitRef();
+			s_EscortHasVip = false;
+			StartDeadline();
+		}
+
+		/// The escort's units guard the VIP (or their base, till it has one); everyone else hunts it.
+		void EscortUnitsMade(int side, const std::vector<Actor*>& wave) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			if (side == EscortSideOf(settings)) {
+				const Actor* vip = LiveEscortVip();
+				const Vector at = vip ? vip->GetPos() : ZoneMiddle(WidestZone(ZonesOf(settings, side)));
+				SendToDefend(wave, PostAt(at, 120.0F, 400.0F, 20));
+			} else {
+				MakeHunters(side, wave);
+			}
+		}
+
+		Actor* EscortPrey(const FlagRunner&, const Actor* unit, const std::vector<Actor*>& fighters) {
+			Actor* vip = LiveEscortVip();
+			return vip && vip->GetTeam() != unit->GetTeam() ? vip : NearestEnemy(unit, fighters);
+		}
+
+		/// The escort's unit nearest the middle of its base made the VIP: it glows, and (on an AI team) sets off for the destination.
+		void PickEscortVip(int side) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			const Vector base = ZoneMiddle(WidestZone(ZonesOf(settings, side)));
+			Actor* pick = nullptr;
+			float nearest = 0.0F;
+			for (Actor* fighter: Fighters()) {
+				if (fighter->GetTeam() != side || fighter->IsPlayerControlled()) {
+					continue;
+				}
+				const float distance = g_SceneMan.ShortestDistance(fighter->GetPos(), base, g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
+				if (!pick || distance < nearest) {
+					pick = fighter;
+					nearest = distance;
+				}
+			}
+			if (!pick) {
+				return;
+			}
+			s_EscortVip = MakeRef(pick);
+			s_EscortHasVip = true;
+			s_EscortCentre = pick->GetPos();
+			pick->SetHighlighted(true);
+			s_Runners.erase(pick->GetUniqueID());
+			s_BattleDefenders.erase(pick->GetUniqueID());
+			if (!BattlePlayerCommands(side)) {
+				pick->SetOrderAttack(false);
+				pick->ClearAIWaypoints();
+				pick->AddAISceneWaypoint(ZoneMiddle(settings.Zones.front()));
+				pick->SetAIMode(Actor::AIMODE_GOTO);
+			}
+			pick->Say("EscortMoving");
+			Say(SideName(side) + " has its VIP: get it to the destination!");
+			if (side == CommandedTeam()) {
+				AddAlert("escort", "Your VIP is ready: get it to the destination", pick->GetPos(), c_SideColors[side]);
+			}
+		}
+
+		/// Every six updates: the VIP picked, kept going and its escorts kept round it; it reaching the destination wins, its fall or the
+		/// time running out loses.
+		void EscortUpdate(bool aiPaused) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			if (aiPaused) {
+				s_ModeDeadline += s_ModeDeadline > 0 ? 1 : 0;
+				return;
+			}
+			const long long now = g_TimerMan.GetSimUpdateCount();
+			if (s_ModeRun.Over || settings.Zones.empty()) {
+				return;
+			}
+			const int side = EscortSideOf(settings);
+			const int enemy = OnlyEnemyOf(settings, side);
+			g_PostProcessMan.GetLightingSettings().HighlightUnits = LiveEscortVip() != nullptr;
+			if (now % 30 == 15) {
+				UpdateHunters(now, EscortPrey, "escort: after their VIP");
+			}
+			if (now % 6 != 0) {
+				return;
+			}
+			Actor* vip = LiveEscortVip();
+			if (!s_EscortHasVip) {
+				PickEscortVip(side);
+				return;
+			}
+			if (!vip) {
+				UnitSays(s_EscortCentre, side, 1500.0F, nullptr, "EscortVipDown");
+				EndGame(enemy, SideName(side) + "'s VIP is down!" + (enemy >= 0 ? " " + SideName(enemy) + " wins." : std::string()));
+				return;
+			}
+			if (IsInZone(settings.Zones.front(), vip->GetPos())) {
+				++s_ModeRun.Score[side];
+				UnitSays(vip->GetPos(), side, 800.0F, nullptr, "EscortArrived");
+				EndGame(side, SideName(side) + " got its VIP through!");
+				return;
+			}
+			if (!BattlePlayerCommands(side) && !vip->IsPlayerControlled() && now % 180 == 0 && (vip->GetAIMode() != Actor::AIMODE_GOTO || vip->GetWaypointsSize() == 0)) {
+				// (Back on its way after a fight or a stop.)
+				vip->ClearAIWaypoints();
+				vip->AddAISceneWaypoint(ZoneMiddle(settings.Zones.front()));
+				vip->SetAIMode(Actor::AIMODE_GOTO);
+			}
+			if (DistanceBetween(vip->GetPos(), s_EscortCentre) > 80.0F) {
+				s_EscortCentre = vip->GetPos();
+				RecentreDefenders(side, s_EscortCentre, false, 120.0F);
+			}
+			if (s_ModeDeadline > 0 && now >= s_ModeDeadline) {
+				EndGame(enemy, "Time's up: " + SideName(side) + "'s VIP didn't make it!");
+			}
+		}
+
+		void EscortPanel(BattleModeSettings& setup, bool& changed) {
+			changed |= ImGui::Combo("Escort", &setup.EscortSide, c_SideNames, c_Sides);
+			ImGui::SetItemTooltip("The team that takes its VIP to the destination. Every other team ticked tries to stop it.");
+			changed |= ImGui::SliderInt("Time limit", &setup.TimeLimit, 0, 1800, setup.TimeLimit > 0 ? "%d s" : "none");
+			ImGui::SetItemTooltip("Seconds the escort has to get its VIP there, or the other side wins. 0: no limit.");
+		}
+
+		/// A crown over a unit's head, in a colour, with a label.
+		void DrawCrown(ImDrawList* drawList, const Actor* unit, ImU32 color, const char* label) {
+			ImVec2 top = ToScreen(OverHeadPos(unit) - Vector(0.0F, 10.0F));
+			const float bob = 2.0F * Pulse(3.0F);
+			ImVec2 crown[5] = {ImVec2(top.x - 9.0F, top.y - bob), ImVec2(top.x - 9.0F, top.y - 10.0F - bob), ImVec2(top.x - 3.0F, top.y - 5.0F - bob), ImVec2(top.x + 3.0F, top.y - 12.0F - bob), ImVec2(top.x + 9.0F, top.y - 10.0F - bob)};
+			drawList->AddConvexPolyFilled(crown, 5, color);
+			drawList->AddRectFilled(ImVec2(top.x - 9.0F, top.y - 2.0F - bob), ImVec2(top.x + 9.0F, top.y + 2.0F - bob), color);
+			drawList->AddText(ImVec2(top.x - 10.0F, top.y - 28.0F - bob), IM_COL32(255, 255, 255, 230), label);
+		}
+
+		void EscortDraw(bool running) {
+			ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+			const BattleModeSettings& settings = running ? s_ModeRun.Settings : s_ModeSetup;
+			const int side = EscortSideOf(settings);
+			DrawBases(drawList, settings);
+			if (!settings.Zones.empty()) {
+				DrawModeZone(drawList, settings.Zones.front(), c_SideColors[side], running ? static_cast<int>(25.0F + 25.0F * Pulse()) : 30, 200, 2.0F, "DESTINATION");
+			}
+			if (!running) {
+				return;
+			}
+			const Actor* vip = LiveEscortVip();
+			if (vip) {
+				DrawCrown(drawList, vip, c_SideColors[side], "VIP");
+			}
+			std::string line = "ESCORT    " + SideName(side) + " escorting";
+			if (vip && !settings.Zones.empty()) {
+				line += "    VIP " + std::to_string(static_cast<int>(DistanceBetween(vip->GetPos(), ZoneMiddle(settings.Zones.front())) / 20.0F)) + " m from the destination";
+			}
+			if (s_ModeDeadline > 0 && !s_ModeRun.Over) {
+				line += "    " + Clock(static_cast<float>(s_ModeDeadline - g_TimerMan.GetSimUpdateCount()) / UpdatesPerSecond()) + " left";
+			}
+			DrawScore(line);
+		}
+
+		void EscortObjectives(const BattleModeSettings& settings, bool running, std::vector<BattleObjective>& out) {
+			const int side = EscortSideOf(settings);
+			const unsigned others = TeamsIn(settings) & ~Bit(side);
+			if (!settings.Zones.empty() && settings.Zones.front().size() >= 3) {
+				out.push_back({.Name = "Destination", .Pos = ZoneMiddle(settings.Zones.front()), .Zone = settings.Zones.front(), .Color = c_SideColors[side], .Look = ObjectiveLook::Outline, .Attackers = Bit(side), .Defenders = others});
+			}
+			if (const Actor* vip = running ? LiveEscortVip() : nullptr) {
+				out.push_back({.Name = "VIP", .Pos = vip->GetPos(), .Radius = 80.0F, .Color = c_SideColors[side], .Look = ObjectiveLook::Marker, .Attackers = others, .Defenders = Bit(side)});
+			}
+		}
+
+		std::string EscortStatus(int side) {
+			if (side == EscortSideOf(s_ModeRun.Settings)) {
+				return std::string(LiveEscortVip() ? "escorting the VIP, " : "no VIP yet, ") + std::to_string(Sandbox::CountUnits(side)) + " in";
+			}
+			return "after the VIP, " + std::to_string(Sandbox::CountUnits(side)) + " in";
+		}
+
+		// ---- Extraction ----
+
+		std::unordered_map<long, float> s_InExtraction; //!< Seconds each of the extracting team's units has stood in the zone, by unique ID.
+
+		int ExtractSideOf(const BattleModeSettings& settings) { return std::clamp(settings.ExtractSide, 0, c_Sides - 1); }
+
+		int ExtractTicketsLeft() {
+			const int side = ExtractSideOf(s_ModeRun.Settings);
+			return std::max(s_ModeRun.Settings.Tickets - s_BattleTeams[side].Sent, 0);
+		}
+
+		bool ExtractReady(const BattleModeSettings& setup, std::string& why) {
+			if (!setup.Plays[ExtractSideOf(setup)]) {
+				why = std::string("Tick ") + c_SideNames[ExtractSideOf(setup)] + ", the team getting out, or pick another.";
+				return false;
+			}
+			return true;
+		}
+
+		void ExtractStart() {
+			s_InExtraction.clear();
+			StartDeadline();
+		}
+
+		/// The extracting team's units make for the zone; the rest hold it against them, half of them hunting.
+		void ExtractUnitsMade(int side, const std::vector<Actor*>& wave) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			if (settings.Zones.empty()) {
+				return;
+			}
+			const std::vector<Vector>& zone = settings.Zones.front();
+			const float radius = GuardRadius(zone);
+			if (side == ExtractSideOf(settings)) {
+				SendToDefend(wave, PostAt(ZoneMiddle(zone), radius * 0.5F, radius + 150.0F, 0));
+				return;
+			}
+			std::vector<Actor*> guards;
+			std::vector<Actor*> hunters;
+			for (Actor* unit: wave) {
+				(Random01() < 0.5F ? guards : hunters).push_back(unit);
+			}
+			SendToDefend(guards, PostAt(ZoneMiddle(zone), radius + 100.0F, radius + 400.0F, 30));
+			MakeHunters(side, hunters);
+		}
+
+		/// No more units than the extracting team has tickets left for.
+		int ExtractRoom(int side, int room) { return side == ExtractSideOf(s_ModeRun.Settings) ? std::min(room, ExtractTicketsLeft()) : room; }
+
+		Actor* ExtractPrey(const FlagRunner&, const Actor* unit, const std::vector<Actor*>& fighters) {
+			// After the extracting team's unit nearest the zone.
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			if (settings.Zones.empty()) {
+				return NearestEnemy(unit, fighters);
+			}
+			const Vector middle = ZoneMiddle(settings.Zones.front());
+			Actor* best = nullptr;
+			float bestDistance = 0.0F;
+			for (Actor* fighter: fighters) {
+				if (fighter->GetTeam() != ExtractSideOf(settings)) {
+					continue;
+				}
+				const float distance = DistanceBetween(fighter->GetPos(), middle);
+				if (!best || distance < bestDistance) {
+					best = fighter;
+					bestDistance = distance;
+				}
+			}
+			return best && best->GetTeam() != unit->GetTeam() ? best : NearestEnemy(unit, fighters);
+		}
+
+		/// Every six updates: the extracting team's units that have stood in the zone long enough are lifted out and counted; it wins on enough
+		/// out, and loses once it has nobody left to send or the time runs out.
+		void ExtractUpdate(bool aiPaused) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			if (aiPaused) {
+				s_ModeDeadline += s_ModeDeadline > 0 ? 1 : 0;
+				return;
+			}
+			const long long now = g_TimerMan.GetSimUpdateCount();
+			if (s_ModeRun.Over || settings.Zones.empty()) {
+				return;
+			}
+			const int side = ExtractSideOf(settings);
+			const int enemy = OnlyEnemyOf(settings, side);
+			if (now % 30 == 15) {
+				UpdateHunters(now, ExtractPrey, "extraction: stopping them getting out");
+			}
+			if (now % 6 != 0) {
+				return;
+			}
+			const std::vector<Vector>& zone = settings.Zones.front();
+			const float step = 6.0F / UpdatesPerSecond();
+			std::unordered_map<long, float> stillIn;
+			for (Actor* fighter: Fighters()) {
+				if (fighter->GetTeam() != side || !IsInZone(zone, fighter->GetPos())) {
+					continue;
+				}
+				const long id = fighter->GetUniqueID();
+				const float seconds = (s_InExtraction.contains(id) ? s_InExtraction[id] : 0.0F) + step;
+				if (seconds < static_cast<float>(std::max(settings.ExtractSeconds, 1))) {
+					stillIn[id] = seconds;
+					continue;
+				}
+				// Out: lifted away.
+				++s_ModeRun.Score[side];
+				UnitSays(fighter->GetPos(), side, 600.0F, fighter, "Extracted");
+				if (fighter->IsPlayerControlled()) {
+					// (You were playing it: back to commanding.)
+					fighter->SetControllerMode(Controller::CIM_AI);
+				}
+				fighter->SetToDelete(true);
+				if (s_ModeRun.Score[side] >= std::max(settings.ExtractToWin, 1)) {
+					EndGame(side, SideName(side) + " got " + std::to_string(s_ModeRun.Score[side]) + " out!");
+					return;
+				}
+				Say(SideName(side) + ": " + std::to_string(s_ModeRun.Score[side]) + " of " + std::to_string(settings.ExtractToWin) + " out");
+			}
+			s_InExtraction = std::move(stillIn);
+			if (ExtractTicketsLeft() == 0 && Sandbox::CountUnits(side) == 0 && now % 60 == 0) {
+				EndGame(enemy, SideName(side) + " has nobody left to get out!");
+				return;
+			}
+			if (s_ModeDeadline > 0 && now >= s_ModeDeadline) {
+				EndGame(enemy, "Time's up: " + SideName(side) + " got " + std::to_string(s_ModeRun.Score[side]) + " of " + std::to_string(settings.ExtractToWin) + " out");
+			}
+		}
+
+		void ExtractPanel(BattleModeSettings& setup, bool& changed) {
+			changed |= ImGui::Combo("Getting out", &setup.ExtractSide, c_SideNames, c_Sides);
+			ImGui::SetItemTooltip("The team that has to get its units to the extraction zone. Every other team ticked tries to stop it.");
+			changed |= ImGui::SliderInt("Out to win", &setup.ExtractToWin, 1, 100, "%d units");
+			ImGui::SetItemTooltip("How many of its units it has to get out to win.");
+			changed |= ImGui::SliderInt("Seconds in the zone", &setup.ExtractSeconds, 1, 30, "%d s");
+			ImGui::SetItemTooltip("How long a unit has to stand in the extraction zone to be lifted out.");
+			changed |= ImGui::SliderInt("Units in all", &setup.Tickets, 5, 500, "%d units");
+			ImGui::SetItemTooltip("Units the team getting out has in all, the first lot counted. Once they're spent and none are left in, it loses.");
+			changed |= ImGui::SliderInt("Time limit", &setup.TimeLimit, 0, 1800, setup.TimeLimit > 0 ? "%d s" : "none");
+			ImGui::SetItemTooltip("Seconds the team has to get them out, or the other side wins. 0: no limit.");
+		}
+
+		void ExtractDraw(bool running) {
+			ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+			const BattleModeSettings& settings = running ? s_ModeRun.Settings : s_ModeSetup;
+			const int side = ExtractSideOf(settings);
+			DrawBases(drawList, settings);
+			if (!settings.Zones.empty()) {
+				DrawModeZone(drawList, settings.Zones.front(), c_SideColors[side], running ? static_cast<int>(25.0F + 25.0F * Pulse()) : 30, 200, 2.0F, "EXTRACTION");
+			}
+			if (!running) {
+				return;
+			}
+			// A bar over each unit of the team being lifted out: how near it is.
+			for (Actor* fighter: Fighters()) {
+				auto in = s_InExtraction.find(fighter->GetUniqueID());
+				if (in == s_InExtraction.end()) {
+					continue;
+				}
+				const float share = std::clamp(in->second / static_cast<float>(std::max(settings.ExtractSeconds, 1)), 0.0F, 1.0F);
+				ImVec2 top = ToScreen(OverHeadPos(fighter) - Vector(0.0F, 6.0F));
+				drawList->AddRectFilled(ImVec2(top.x - 12.0F, top.y), ImVec2(top.x + 12.0F, top.y + 4.0F), IM_COL32(0, 0, 0, 160), 2.0F);
+				drawList->AddRectFilled(ImVec2(top.x - 12.0F, top.y), ImVec2(top.x - 12.0F + 24.0F * share, top.y + 4.0F), c_SideColors[side], 2.0F);
+			}
+			std::string line = "EXTRACTION    " + SideName(side) + " " + std::to_string(s_ModeRun.Score[side]) + " of " + std::to_string(settings.ExtractToWin) + " out    " + std::to_string(ExtractTicketsLeft() + Sandbox::CountUnits(side)) + " left";
+			if (s_ModeDeadline > 0 && !s_ModeRun.Over) {
+				line += "    " + Clock(static_cast<float>(s_ModeDeadline - g_TimerMan.GetSimUpdateCount()) / UpdatesPerSecond()) + " left";
+			}
+			DrawScore(line);
+		}
+
+		void ExtractObjectives(const BattleModeSettings& settings, bool running, std::vector<BattleObjective>& out) {
+			if (settings.Zones.empty() || settings.Zones.front().size() < 3) {
+				return;
+			}
+			const int side = ExtractSideOf(settings);
+			out.push_back({.Name = "Extraction", .Pos = ZoneMiddle(settings.Zones.front()), .Zone = settings.Zones.front(), .Color = c_SideColors[side], .Look = ObjectiveLook::Glow, .Attackers = Bit(side), .Defenders = TeamsIn(settings) & ~Bit(side)});
+		}
+
+		std::string ExtractStatus(int side) {
+			if (side == ExtractSideOf(s_ModeRun.Settings)) {
+				return std::to_string(s_ModeRun.Score[side]) + " out, " + std::to_string(ExtractTicketsLeft()) + " to come, " + std::to_string(Sandbox::CountUnits(side)) + " in";
+			}
+			return "stopping them, " + std::to_string(Sandbox::CountUnits(side)) + " in";
+		}
+
 		// ---- Team commanders ----
 
 		/// What a team's AI commander is doing (UpdateCommanders). On assault and king of the hill it splits its units between the objective in
@@ -3686,6 +4087,9 @@ namespace SandboxDetail {
 			ClearCarriers();
 			SetCarrier(s_OneFlag, nullptr);
 			ClearVips();
+			if (Actor* vip = GetRef(s_EscortVip)) {
+				vip->SetHighlighted(false);
+			}
 		}
 
 		/// One of the Battle Director's modes: what it is called and asks for, and its rules. Any of the rules can be left out.
@@ -3839,6 +4243,35 @@ namespace SandboxDetail {
 		     .Draw = WavesDraw,
 		     .Status = WavesStatus,
 		     .Objectives = WavesObjectives},
+		    {.Name = "Escort",
+		     .Blurb = "One team takes its VIP, one of its units, from its base to a destination drawn on the map, the rest of the team guarding it on "
+		              "the way. Every other team hunts the VIP. The escort wins when the VIP is inside the destination; the others win if it falls, "
+		              "or if time runs out first.",
+		     .ZoneName = "destination",
+		     .MinZones = 1,
+		     .Ready = EscortReady,
+		     .Start = EscortStart,
+		     .UnitsMade = EscortUnitsMade,
+		     .Update = EscortUpdate,
+		     .Panel = EscortPanel,
+		     .Draw = EscortDraw,
+		     .Status = EscortStatus,
+		     .Objectives = EscortObjectives},
+		    {.Name = "Extraction",
+		     .Blurb = "One team has to get its units out through an extraction zone drawn on the map: a unit that stands in it for a few seconds is "
+		              "lifted out. Every other team holds the zone against them and hunts them down. Get enough out to win; run out of units, or out "
+		              "of time, and lose.",
+		     .ZoneName = "extraction zone",
+		     .MinZones = 1,
+		     .Ready = ExtractReady,
+		     .Start = ExtractStart,
+		     .UnitsMade = ExtractUnitsMade,
+		     .Room = ExtractRoom,
+		     .Update = ExtractUpdate,
+		     .Panel = ExtractPanel,
+		     .Draw = ExtractDraw,
+		     .Status = ExtractStatus,
+		     .Objectives = ExtractObjectives},
 		};
 		static_assert(std::size(c_Modes) == static_cast<size_t>(BattleMode::Count), "c_Modes must describe each BattleMode.");
 
