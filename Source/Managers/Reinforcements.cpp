@@ -91,6 +91,7 @@ namespace SandboxDetail {
 		ForgetAlerts();
 		ForgetLoadouts();
 		ForgetFieldBrain();
+		ForgetArmy();
 	}
 
 	void UpdateReinforcements() {
@@ -247,6 +248,20 @@ namespace SandboxDetail {
 		}
 		s_CostCache[key] = cost;
 		return cost;
+	}
+
+	Actor* MakeArmyUnit(int card, int side) {
+		if (side < 0 || side >= c_Sides) {
+			return nullptr;
+		}
+		card = std::clamp(card, 0, c_ReinforcementCardCount - 1);
+		Actor* unit = MakeCardUnit(card, ReinforcementModule(s_BattleTeams[side].Settings.Factions));
+		if (unit) {
+			TagCardUnit(unit, card);
+			unit->SetTeam(side);
+			unit->SetControllerMode(Controller::CIM_AI);
+		}
+		return unit;
 	}
 
 	namespace {
