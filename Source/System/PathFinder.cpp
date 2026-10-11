@@ -1189,8 +1189,11 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 			const PathNode* oneRight = Open(*oneUp->RightMaterial) ? oneUp->Right : nullptr;
 			const PathNode* twoLeft = (twoUp && Open(*twoUp->LeftMaterial)) ? twoUp->Left : nullptr;
 			const PathNode* twoRight = (twoUp && Open(*twoUp->RightMaterial)) ? twoUp->Right : nullptr;
+			// (Only a foot the hands reach from this floor, about a standing body's height over it: a ladder ending higher up was routed
+			// to, and the unit under it took hold of the air below its foot and climbed nothing.)
+			const float floorY = node->Surface >= 0.0F ? node->Surface : node->Pos.m_Y + static_cast<float>(m_NodeDimension) * 0.5F;
 			for (const PathNode* target: std::array<const PathNode*, 6>{oneUp, oneLeft, oneRight, twoUp, twoLeft, twoRight}) {
-				if (target && target->m_Navigable && target->Ladder) {
+				if (target && target->m_Navigable && target->Ladder && target->LadderBottom >= floorY - s_StandHeight) {
 					link(target, target == oneUp ? 2.0F : (target == twoUp ? 4.5F : 3.5F));
 				}
 			}
@@ -2534,6 +2537,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	int oldClearLeft = node->ClearLeft;
 	int oldClearRight = node->ClearRight;
 	bool oldLadder = node->Ladder;
+	float oldLadderBottom = node->LadderBottom;
 	bool oldStairsUpRight = node->StairsUpRight;
 	bool oldGrounded = node->Grounded;
 	bool oldStairsUpLeft = node->StairsUpLeft;
@@ -2665,6 +2669,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		// route up a ladder runs where the body climbs. (Only the Ladder material: a background ladder is no material at all, and the
 		// nodes are measured on many threads, where the scene's particles can't be looked at.)
 		node->Ladder = false;
+		node->LadderBottom = -1.0F;
 		if (m_LadderMaterial != 0) {
 			int stripLeft = INT_MAX;
 			int stripRight = INT_MIN;
@@ -2681,6 +2686,18 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 			}
 			if (stripLeft != INT_MAX && stripRight - stripLeft <= nodeSize) {
 				node->Ladder = true;
+				// (Its lowest pixel in the cell, for the reach up to it from a floor: see AdjacentCost.)
+				node->LadderBottom = static_cast<float>(centreY - 8);
+				for (int y = centreY + std::max(8, nodeSize / 2); y > centreY - 8; --y) {
+					bool found = false;
+					for (int sx = stripLeft; sx <= stripRight && !found; ++sx) {
+						found = g_SceneMan.GetTerrMatter(sx, y) == m_LadderMaterial;
+					}
+					if (found) {
+						node->LadderBottom = static_cast<float>(y);
+						break;
+					}
+				}
 				int mid = (stripLeft + stripRight) / 2;
 				auto wall = [&](int wx) {
 					unsigned char id = TerrNav(wx, centreY);
@@ -2916,7 +2933,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	}
 
 	// Stairs appearing or going count as a change.
-	if (node->StairsUpRight != oldStairsUpRight || node->StairsUpLeft != oldStairsUpLeft || node->ScrambleUpRight != oldScrambleUpRight || node->ScrambleUpLeft != oldScrambleUpLeft || node->Grounded != oldGrounded || node->StepOverRise != oldStepOverRise || node->StepOverRoom != oldStepOverRoom || node->StepOverRiseLeft != oldStepOverRiseLeft || node->StepOverRoomLeft != oldStepOverRoomLeft || node->Ladder != oldLadder) {
+	if (node->StairsUpRight != oldStairsUpRight || node->StairsUpLeft != oldStairsUpLeft || node->ScrambleUpRight != oldScrambleUpRight || node->ScrambleUpLeft != oldScrambleUpLeft || node->Grounded != oldGrounded || node->StepOverRise != oldStepOverRise || node->StepOverRoom != oldStepOverRoom || node->StepOverRiseLeft != oldStepOverRiseLeft || node->StepOverRoomLeft != oldStepOverRoomLeft || node->Ladder != oldLadder || node->LadderBottom != oldLadderBottom) {
 		return true;
 	}
 
@@ -3040,6 +3057,7 @@ bool PathFinder::CopyNodeSamples(const PathFinder& from, const std::vector<int>&
 		    PathNode& node = m_NodeGrid[nodeId];
 		    node.Anchor = source.Anchor;
 		    node.Ladder = source.Ladder;
+		    node.LadderBottom = source.LadderBottom;
 		    node.Surface = source.Surface;
 		    node.FreeHeight = source.FreeHeight;
 		    node.ClearLeft = source.ClearLeft;

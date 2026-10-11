@@ -409,11 +409,24 @@ bool AHuman::FindLadderNear(const Vector& at, float reachX, float& bodyX, float&
 }
 
 void AHuman::LadderRungs(float fromY, float toY, std::vector<float>& rungs) const {
+	LadderRungsAt(m_Ladder.gripX, m_Ladder.material, fromY, toY, rungs);
+}
+
+void AHuman::LadderRungsAt(float gripX, bool material, float fromY, float toY, std::vector<float>& rungs) const {
 	rungs.clear();
-	if (!m_Ladder.material) {
-		// (A background ladder's rungs are drawn every 8 px.)
+	if (!material) {
+		// (A background ladder's rungs are drawn every 8 px, only on its pieces: a node is the middle of a 24 px piece. Drawn the whole way
+		// from the head to the feet whatever was there, a ladder whose foot was over the head was climbed through the air under it, and one
+		// climbed past its top went on up into the air over it.)
 		for (float y = std::floor(fromY / 8.0F) * 8.0F + 4.0F; y <= toY; y += 8.0F) {
-			if (y >= fromY) {
+			if (y < fromY) {
+				continue;
+			}
+			bool onPiece = std::any_of(s_LadderNodes.begin(), s_LadderNodes.end(), [&](const Vector& node) {
+				Vector off = Towards(Vector(gripX, y), node);
+				return std::abs(off.m_X) <= 12.0F && std::abs(off.m_Y) <= 12.0F;
+			});
+			if (onPiece) {
 				rungs.push_back(y);
 			}
 		}
@@ -421,7 +434,7 @@ void AHuman::LadderRungs(float fromY, float toY, std::vector<float>& rungs) cons
 	}
 	// The rows with rung at the rungs' outer ends: each run of them one rung, at its middle.
 	const unsigned char ladder = LadderMaterialID();
-	const int x = static_cast<int>(m_Ladder.gripX);
+	const int x = static_cast<int>(gripX);
 	bool inRung = false;
 	int runStart = 0;
 	for (int y = static_cast<int>(fromY); y <= static_cast<int>(toY) + 1; ++y) {
@@ -434,6 +447,23 @@ void AHuman::LadderRungs(float fromY, float toY, std::vector<float>& rungs) cons
 			rungs.push_back(static_cast<float>(runStart + y - 1) * 0.5F);
 		}
 	}
+}
+
+float AHuman::HandReachTopY() const {
+	float top = std::numeric_limits<float>::max();
+	for (const Arm* arm: {m_pFGArm, m_pBGArm}) {
+		if (arm && arm->GetMaxLength() > 0.0F) {
+			top = std::min(top, arm->GetJointPos().m_Y - arm->GetMaxLength());
+		}
+	}
+	return (top < std::numeric_limits<float>::max() ? top : m_Pos.m_Y - m_CharHeight * 0.25F) - 4.0F;
+}
+
+bool AHuman::LadderRungInReach(float gripX, bool material) const {
+	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : m_CharHeight * 0.2F;
+	std::vector<float> rungs;
+	LadderRungsAt(gripX, material, HandReachTopY(), m_Pos.m_Y + feet + m_CharHeight * 0.5F, rungs);
+	return !rungs.empty();
 }
 
 void AHuman::LetGoOfLadder(const Vector& velocity) {
@@ -501,15 +531,20 @@ void AHuman::UpdateLadderInput() {
 		refused("too far across (" + std::to_string(static_cast<int>(bodyX)) + ")");
 		return;
 	}
+	std::vector<float> rungs;
+	LadderRungsAt(gripX, material, m_Pos.m_Y - h * 0.95F, m_Pos.m_Y + feet + h * 0.5F, rungs);
+	// (Nor one whose foot is out of a hand's reach overhead: the ladder is found up to about a body over the head, and taken from under
+	// its foot, the climb hung the body in the air there and climbed it up nothing to the rungs, or held it pressed under a ceiling beside
+	// them. Up there it is a jump or the jet's.)
+	if (!LadderRungInReach(gripX, material)) {
+		refused("out of reach overhead (lowest rung " + std::to_string(rungs.empty() ? 0 : static_cast<int>(rungs.back())) + ", reach " + std::to_string(static_cast<int>(HandReachTopY())) + ")");
+		return;
+	}
 	ladder = LadderClimb();
 	ladder.material = material;
 	ladder.bodyX = bodyX;
 	ladder.gripX = gripX;
 	ladder.wallSide = wallSide;
-	std::vector<float> rungs;
-	ladder.active = true;
-	LadderRungs(m_Pos.m_Y - h * 0.95F, m_Pos.m_Y + feet + h * 0.5F, rungs);
-	ladder.active = false;
 	// Up wants rungs above the chest; down wants rungs under the feet (taking hold from the top of it).
 	bool rungsAbove = std::any_of(rungs.begin(), rungs.end(), [&](float y) { return y < m_Pos.m_Y - h * 0.15F; });
 	bool rungsBelow = std::any_of(rungs.begin(), rungs.end(), [&](float y) { return y > m_Pos.m_Y + feet + 2.0F; });
@@ -2520,7 +2555,8 @@ int AHuman::MoveAlongRoute() {
 		float gripX = 0.0F;
 		int wallSide = 0;
 		bool material = false;
-		if (FindLadderNear(m_Pos, h * 0.3F, bodyX, gripX, wallSide, material, toPoint.m_Y < 0.0F ? -1 : 1)) {
+		// (Nor while the one there is out of reach overhead: the climb won't take it, and a unit pressing up under it would wait for good.)
+		if (FindLadderNear(m_Pos, h * 0.3F, bodyX, gripX, wallSide, material, toPoint.m_Y < 0.0F ? -1 : 1) && LadderRungInReach(gripX, material)) {
 			mover.progressTimer.Reset();
 		}
 		return RouteMover::Moving;
