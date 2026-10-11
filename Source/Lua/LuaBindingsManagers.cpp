@@ -31,6 +31,8 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, AudioMan) {
 	    .property("SoundsVolume", &AudioMan::GetSoundsVolume, &AudioMan::SetSoundsVolume)
 
 	    .def("StopAll", &AudioMan::StopAll)
+	    .def("GetSoundMixVolume", &AudioMan::GetSoundMixVolume)
+	    .def("SetSoundMixVolume", &AudioMan::SetSoundMixVolume)
 	    .def("GetGlobalPitch", &AudioMan::GetGlobalPitch)
 	    .def("IsMusicPlaying", &AudioMan::IsMusicPlaying)
 	    .def("SetMusicPitch", &AudioMan::SetMusicPitch)

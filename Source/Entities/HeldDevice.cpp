@@ -356,26 +356,31 @@ int HeldDevice::ReadProperty(const std::string_view& propName, Reader& reader) {
 		delete m_BladeHitSound;
 		m_BladeHitSound = new SoundContainer;
 		reader >> m_BladeHitSound;
+		m_BladeHitSound->SetDefaultMixCategory(AudioMan::MIX_IMPACTS);
 	});
 	MatchProperty("BladeClashSound", {
 		delete m_BladeClashSound;
 		m_BladeClashSound = new SoundContainer;
 		reader >> m_BladeClashSound;
+		m_BladeClashSound->SetDefaultMixCategory(AudioMan::MIX_IMPACTS);
 	});
 	MatchProperty("BladeSwingSound", {
 		delete m_BladeSwingSound;
 		m_BladeSwingSound = new SoundContainer;
 		reader >> m_BladeSwingSound;
+		m_BladeSwingSound->SetDefaultMixCategory(AudioMan::MIX_IMPACTS);
 	});
 	MatchProperty("BladeHumSound", {
 		delete m_BladeHumSound;
 		m_BladeHumSound = new SoundContainer;
 		reader >> m_BladeHumSound;
+		m_BladeHumSound->SetDefaultMixCategory(AudioMan::MIX_IMPACTS);
 	});
 	MatchProperty("BladeIgniteSound", {
 		delete m_BladeIgniteSound;
 		m_BladeIgniteSound = new SoundContainer;
 		reader >> m_BladeIgniteSound;
+		m_BladeIgniteSound->SetDefaultMixCategory(AudioMan::MIX_IMPACTS);
 	});
 	MatchProperty("MeleeSwingArc", { reader >> m_MeleeSwingArc; });
 	MatchProperty("MeleeSwingTime", { reader >> m_MeleeSwingTime; });
@@ -418,6 +423,7 @@ int HeldDevice::ReadProperty(const std::string_view& propName, Reader& reader) {
 		delete m_StickSound;
 		m_StickSound = new SoundContainer;
 		reader >> m_StickSound;
+		m_StickSound->SetDefaultMixCategory(AudioMan::MIX_IMPACTS);
 	});
 	MatchProperty("SpecialBehaviour_Activated", { reader >> m_Activated; });
 	MatchProperty("SpecialBehaviour_ActivationTimerElapsedSimTimeMS", {

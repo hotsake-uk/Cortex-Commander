@@ -36,6 +36,7 @@
 #include "WindowMan.h"
 
 #include "imgui/imgui.h"
+#include "SDL3/SDL_keyboard.h"
 #include "ToolWidgets.h"
 
 #include <algorithm>
@@ -114,6 +115,56 @@ namespace {
 
 	/// Whether the things that aren't settings (headings, buttons, readouts) are shown: not in a search, unless it is for the whole category.
 	bool Plain() { return !s_Searching || s_CategoryMatches; }
+
+	/// The key that pauses and resumes the AI: shown, and changed by clicking and pressing the new one (Escape keeps the old, Backspace leaves none).
+	void PauseAIKey() {
+		static bool s_Taking = false;
+		static bool s_Armed = false; //!< Every key let go since the click, so a key still held from before isn't taken.
+		static int s_LastFrame = -1;
+		// Waiting stops when the control wasn't there last frame (the panel closed, another page or a search).
+		if (s_LastFrame != ImGui::GetFrameCount() - 1) {
+			s_Taking = false;
+		}
+		s_LastFrame = ImGui::GetFrameCount();
+		if (!Shown("Pause AI key")) {
+			s_Taking = false;
+			g_SettingsMan.SetTakingKey(false);
+			return;
+		}
+		const std::string& key = g_SettingsMan.GetPauseAIKey();
+		std::string label = s_Taking ? std::string("Press a key...") : (key.empty() ? std::string("None") : key);
+		if (ImGui::Button((label + "##PauseAIKey").c_str(), ImVec2(ImGui::GetFontSize() * 9.0F, 0.0F))) {
+			s_Taking = !s_Taking;
+			s_Armed = false;
+		}
+		ImGui::SameLine();
+		ImGui::TextUnformatted("Pause AI key");
+		Tip("Click, then press the key (with Ctrl, Alt or Shift if wanted) that pauses and resumes the AI in any game. Escape, or a second click, keeps the key there was; Backspace leaves none.");
+		if (s_Taking) {
+			int count = 0;
+			const bool* keys = SDL_GetKeyboardState(&count);
+			int pressed = SDL_SCANCODE_UNKNOWN;
+			for (int i = SDL_SCANCODE_A; i < count && i < SDL_SCANCODE_COUNT; ++i) {
+				if (keys[i] && !(i >= SDL_SCANCODE_LCTRL && i <= SDL_SCANCODE_RGUI)) {
+					pressed = i;
+					break;
+				}
+			}
+			if (!s_Armed) {
+				s_Armed = pressed == SDL_SCANCODE_UNKNOWN;
+			} else if (pressed == SDL_SCANCODE_ESCAPE) {
+				s_Taking = false;
+			} else if (pressed == SDL_SCANCODE_BACKSPACE) {
+				g_SettingsMan.SetPauseAIKey(std::string());
+				s_Taking = false;
+			} else if (pressed != SDL_SCANCODE_UNKNOWN) {
+				g_SettingsMan.SetPauseAIKey(SettingsMan::KeyComboName(pressed, SDL_GetModState()));
+				s_Taking = false;
+			}
+		}
+		// The key press is seen by the game before this panel takes it, so this keeps that press from also pausing the AI.
+		g_SettingsMan.SetTakingKey(s_Taking);
+	}
 
 	void Heading(const char* text) {
 		if (Plain()) {
@@ -1233,6 +1284,8 @@ void DebugMan::SettingsGUI() {
 	// How the AI behaves: what it notices, how fire and losses get to it, and how many chances it takes getting about.
 	auto aiBehaviour = [&]() {
 		Toggle("Pause AI", Controller::IsAIPaused(), [](bool on) { Controller::SetAIPaused(on); });
+		Tip("The AI stops thinking and acting, while the world and the players carry on. The key below does the same in any game.");
+		PauseAIKey();
 		Check("Night, light and noise affect AI", &settings.NightAffectsAI);
 		Tip("Stealth. At night the AI sees less far, a unit in the dark or under a roof is harder to spot, and one under a lamp or wearing a lit headlamp is easier. The AI also hears footsteps: running is loud, walking quieter and crawling quietest, and metal floors ring. Sneak past sentries by keeping to the shadows and walking.");
 		Toggle("AI remembers and shares sightings", ThreatMemory::IsEnabled(), [](bool on) { ThreatMemory::SetEnabled(on); });

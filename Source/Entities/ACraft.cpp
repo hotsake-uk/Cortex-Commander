@@ -269,14 +269,17 @@ int ACraft::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("HatchOpenSound", {
 		m_HatchOpenSound = new SoundContainer;
 		reader >> m_HatchOpenSound;
+		m_HatchOpenSound->SetDefaultMixCategory(AudioMan::MIX_ENGINES);
 	});
 	MatchProperty("HatchCloseSound", {
 		m_HatchCloseSound = new SoundContainer;
 		reader >> m_HatchCloseSound;
+		m_HatchCloseSound->SetDefaultMixCategory(AudioMan::MIX_ENGINES);
 	});
 	MatchProperty("CrashSound", {
 		m_CrashSound = new SoundContainer;
 		reader >> m_CrashSound;
+		m_CrashSound->SetDefaultMixCategory(AudioMan::MIX_ENGINES);
 	});
 	MatchProperty("AddExit",
 	              {
@@ -616,7 +619,7 @@ void ACraft::GibThis(const Vector& impactImpulse, MovableObject* movableObjectTo
 		if (crabCount >= g_SettingsMan.GetCrabBombThreshold()) {
 			for (int moid = 1; moid < g_MovableMan.GetMOIDCount() - 1; moid++) {
 				Actor* actor = dynamic_cast<Actor*>(g_MovableMan.GetMOFromID(moid));
-				if (actor && actor != this && actor->GetClassName() != "ADoor" && !actor->IsInGroup("Brains")) {
+				if (actor && actor != this && actor->GetClassName() != "ADoor" && actor->GetClassName() != "AMover" && !actor->IsInGroup("Brains")) {
 					actor->GibThis();
 				}
 			}

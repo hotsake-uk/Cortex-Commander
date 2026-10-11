@@ -681,7 +681,12 @@ namespace RTE {
 
 		/// Sets this AHuman's stride sound. Ownership IS transferred!
 		/// @param newSound The new SoundContainer for this AHuman's stride sound.
-		void SetStrideSound(SoundContainer* newSound) { m_StrideSound = newSound; }
+		void SetStrideSound(SoundContainer* newSound) {
+			m_StrideSound = newSound;
+			if (m_StrideSound) {
+				m_StrideSound->SetDefaultMixCategory(AudioMan::MIX_FOOTSTEPS);
+			}
+		}
 
 		/// Protected member variable and method declarations
 	protected:
