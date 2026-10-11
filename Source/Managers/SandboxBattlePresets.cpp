@@ -93,6 +93,7 @@ namespace SandboxDetail {
 			visit("KillsToWin", mode.KillsToWin);
 			visit("VipRespawnSeconds", mode.VipRespawnSeconds);
 			visit("Commander", mode.Commander);
+			visit("CommanderLevel", mode.CommanderLevel);
 			visit("CommanderReserve", mode.CommanderReserve);
 			visit("CommanderFallBack", mode.CommanderFallBack);
 			visit("PlayerCommands", mode.PlayerCommands);
