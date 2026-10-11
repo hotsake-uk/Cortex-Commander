@@ -1165,8 +1165,11 @@ namespace SandboxDetail {
 		/// Sends a runner or hunter to a place, after someone (target) or not. Like a defender making for its zone, it moves on, shooting on
 		/// the way, and is put back on its way the moment its AI takes it off (to fight, chase, fall back or flank); only within c_EngageReach
 		/// of whoever it's after does it go to fight them.
+		bool SquadHolds(const Actor* unit);
+
 		void SendRunner(Actor* unit, FlagRunner& runner, const Vector& to, Actor* target, const char* reason, long long now) {
-			if (BattlePlayerCommands(unit->GetTeam())) {
+			// (Nor one of a commander's squads following its leader, or a leader waiting for its stragglers: Commander squads.)
+			if (BattlePlayerCommands(unit->GetTeam()) || SquadHolds(unit)) {
 				return;
 			}
 			const bool wraps = g_SceneMan.SceneWrapsX();
@@ -3411,19 +3414,367 @@ namespace SandboxDetail {
 			return std::clamp(share, 0, 90);
 		}
 
+		// ---- Commander squads ----
+
+		/// A squad a team's AI commander has made of its runners or hunters: the leader is sent as the mode (or the commander's job) says, and
+		/// the rest follow it as the game's own squads do (AIMODE_SQUAD, the leader their MO waypoint, as the Guard order and squad follows me
+		/// set), so they keep together, fight on the move with it and fire where it fires. Not its defenders: they keep to their posts.
+		struct AISquad {
+			int Team = 0;
+			int Number = 0; //!< For the squad links overlay (DrawAISquads).
+			UnitRef Leader;
+			std::vector<UnitRef> Followers;
+			long long WaitSince = -1; //!< Hard: the sim update the leader stopped for its stragglers, -1 while it isn't waiting.
+		};
+		std::vector<AISquad> s_AISquads;
+		std::unordered_set<long> s_SquadHeld; //!< By unique ID: the followers, and leaders waiting for stragglers: not sent by the mode (SquadHolds).
+		int s_NextSquadNumber = 1;
+
+		constexpr int c_MaxSquad = 6; //!< The most in a squad, however big the team.
+		constexpr float c_SquadJoinReach = 600.0F; //!< How near a squad's leader a unit has to be to join it, or two units to make one.
+		constexpr float c_SquadMergeReach = 400.0F; //!< How near two squads' leaders have to be to merge.
+		constexpr float c_StragglerReach = 300.0F; //!< Hard: a follower further than this from its leader is straggling, and the leader waits.
+		constexpr float c_GatheredReach = 150.0F; //!< Hard: the leader goes on once all its followers are this near.
+		constexpr float c_StragglerWaitSeconds = 6.0F; //!< Hard: the longest a leader waits for them.
+
+		/// Whether a team's commander puts its runners and hunters in squads: on normal and hard, with squads ticked, and not on capture the
+		/// ship (its units board the ship one by one).
+		bool UsesSquads(int side) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			return HasCommander(settings, side) && settings.CommanderSquads && CommanderLevel() > 0 && settings.Mode != BattleMode::CaptureTheShip && !s_ModeRun.Over;
+		}
+
+		/// How big a team's squads are, from how many runners and hunters it has: two squads while it has twelve or fewer (two of two of four,
+		/// two of three of six, two of four of eight), more after that, none bigger than six; two or three make a squad of two.
+		int SquadSize(int units) {
+			if (units < 2) {
+				return 1;
+			}
+			if (units <= 3) {
+				return 2;
+			}
+			const int squads = std::max(2, (units + c_MaxSquad - 1) / c_MaxSquad);
+			return std::min((units + squads - 1) / squads, c_MaxSquad);
+		}
+
+		/// Whether the mode leaves a unit be, as one of a commander's squads: a follower, or a leader waiting for its stragglers. A flag carrier
+		/// never is: it goes home with the flag.
+		bool SquadHolds(const Actor* unit) { return s_SquadHeld.count(unit->GetUniqueID()) && CarriedBy(unit) < 0 && !RefersTo(s_OneFlag.Carrier, unit); }
+
+		/// The squad a unit leads, or nullptr.
+		const AISquad* SquadLedBy(const Actor* unit) {
+			auto found = std::find_if(s_AISquads.begin(), s_AISquads.end(), [unit](const AISquad& squad) { return RefersTo(squad.Leader, unit); });
+			return found == s_AISquads.end() ? nullptr : &*found;
+		}
+
+		/// Whether a unit follows the leader of one of the commanders' squads.
+		bool IsSquadFollower(const Actor* unit) {
+			return std::any_of(s_AISquads.begin(), s_AISquads.end(), [unit](const AISquad& squad) {
+				return std::any_of(squad.Followers.begin(), squad.Followers.end(), [unit](const UnitRef& ref) { return RefersTo(ref, unit); });
+			});
+		}
+
+		/// A unit fit to be in one of its team's squads: a runner or hunter of that team, out in the world, in the fight and left to the AI.
+		bool SquadFit(Actor* unit, int side) {
+			if (!unit || unit->GetTeam() != side || unit->IsPlayerControlled() || !IsCombatant(unit) || dynamic_cast<const ACraft*>(unit)) {
+				return false;
+			}
+			auto runner = s_Runners.find(unit->GetUniqueID());
+			return runner != s_Runners.end() && runner->second.Team == side && runner->second.Seen;
+		}
+
+		/// The one of a squad that leads it: whoever carries a flag, else the toughest (most health, then the higher rank, then the heavier).
+		bool LeadsBefore(const Actor* a, const Actor* b) {
+			const bool carriesA = CarriedBy(a) >= 0 || RefersTo(s_OneFlag.Carrier, a);
+			const bool carriesB = CarriedBy(b) >= 0 || RefersTo(s_OneFlag.Carrier, b);
+			if (carriesA != carriesB) {
+				return carriesA;
+			}
+			if (a->GetMaxHealth() != b->GetMaxHealth()) {
+				return a->GetMaxHealth() > b->GetMaxHealth();
+			}
+			if (a->GetVeterancy() != b->GetVeterancy()) {
+				return a->GetVeterancy() > b->GetVeterancy();
+			}
+			return a->GetMass() > b->GetMass();
+		}
+
+		/// A unit set to follow its squad's leader, unless it already is.
+		void FollowLeader(Actor* unit, Actor* leader) {
+			if (unit->GetAIMode() == Actor::AIMODE_SQUAD && FollowedBy(unit) == leader) {
+				return;
+			}
+			// (Not HoldUnit: that lets it go from the mode's game, and it stays a runner, to be sent again if the squad lets it go.)
+			CancelRetreatAndFlank(unit);
+			unit->ClearStandingOrder();
+			unit->SetPaceLimit(0.0F);
+			unit->ClearAIWaypoints();
+			unit->SetAIMode(Actor::AIMODE_SQUAD);
+			unit->AddAIMOWaypoint(leader);
+			unit->SetMovePathToUpdate();
+		}
+
+		/// A unit let go from a squad (or made its leader): the mode sends it again on its next turn.
+		void SendAgain(const Actor* unit) {
+			if (auto runner = s_Runners.find(unit->GetUniqueID()); runner != s_Runners.end()) {
+				runner->second.HasSent = false;
+			}
+		}
+
+		/// Lets a squad go: its units back to being sent one by one.
+		void Disband(AISquad& squad) {
+			if (Actor* leader = GetRef(squad.Leader)) {
+				SendAgain(leader);
+			}
+			for (const UnitRef& ref: squad.Followers) {
+				if (Actor* unit = GetRef(ref)) {
+					SendAgain(unit);
+				}
+			}
+			squad.Followers.clear();
+			squad.Leader = MakeRef(nullptr);
+		}
+
+		/// A team's squads seen to: those gone or taken off dropped, a new leader for one whose leader went, the too-big trimmed to size,
+		/// those left on their own put in the nearest squad with room, or made into new ones, and small squads near each other merged.
+		void UpdateTeamSquads(int side, std::unordered_set<long>& held) {
+			const bool wraps = g_SceneMan.SceneWrapsX();
+			auto distance = [wraps](const Actor* a, const Actor* b) { return g_SceneMan.ShortestDistance(a->GetPos(), b->GetPos(), wraps).GetMagnitude(); };
+			std::vector<Actor*> fit;
+			for (Actor* actor: SandboxAccess::Actors()) {
+				if (SquadFit(actor, side)) {
+					fit.push_back(actor);
+				}
+			}
+			const int size = SquadSize(static_cast<int>(fit.size()));
+			std::unordered_set<long> inSquad;
+			for (AISquad& squad: s_AISquads) {
+				if (squad.Team != side) {
+					continue;
+				}
+				std::vector<Actor*> members;
+				if (Actor* leader = GetRef(squad.Leader); leader && SquadFit(leader, side)) {
+					members.push_back(leader);
+				}
+				for (const UnitRef& ref: squad.Followers) {
+					if (Actor* unit = GetRef(ref); unit && SquadFit(unit, side)) {
+						members.push_back(unit);
+					}
+				}
+				// (Its leader first: the one it had, if still there and nobody has a better claim, a flag carrier above all.)
+				std::stable_sort(members.begin(), members.end(), [&squad](const Actor* a, const Actor* b) {
+					const bool carriesA = CarriedBy(a) >= 0 || RefersTo(s_OneFlag.Carrier, a);
+					const bool carriesB = CarriedBy(b) >= 0 || RefersTo(s_OneFlag.Carrier, b);
+					if (carriesA != carriesB) {
+						return carriesA;
+					}
+					return RefersTo(squad.Leader, a) && !RefersTo(squad.Leader, b);
+				});
+				if (members.size() > 1 && !RefersTo(squad.Leader, members.front())) {
+					std::sort(members.begin(), members.end(), LeadsBefore);
+				}
+				// Too big for the team as it is now: the furthest from the leader leave it.
+				if (static_cast<int>(members.size()) > size) {
+					Actor* leader = members.front();
+					std::sort(members.begin() + 1, members.end(), [&](const Actor* a, const Actor* b) { return distance(a, leader) < distance(b, leader); });
+					for (auto unit = members.begin() + size; unit != members.end(); ++unit) {
+						SendAgain(*unit);
+					}
+					members.resize(size);
+				}
+				if (members.size() < 2) {
+					Disband(squad);
+					continue;
+				}
+				if (!RefersTo(squad.Leader, members.front())) {
+					squad.Leader = MakeRef(members.front());
+					squad.WaitSince = -1;
+					SendAgain(members.front());
+				}
+				squad.Followers.clear();
+				for (auto unit = members.begin() + 1; unit != members.end(); ++unit) {
+					squad.Followers.push_back(MakeRef(*unit));
+				}
+				for (Actor* unit: members) {
+					inSquad.insert(unit->GetUniqueID());
+				}
+			}
+			std::erase_if(s_AISquads, [](const AISquad& squad) { return !GetRef(squad.Leader); });
+
+			// Small squads with the same quarry near each other made one.
+			for (AISquad& squad: s_AISquads) {
+				Actor* leader = GetRef(squad.Leader);
+				if (squad.Team != side || !leader) {
+					continue;
+				}
+				for (AISquad& other: s_AISquads) {
+					Actor* otherLeader = GetRef(other.Leader);
+					if (&other == &squad || other.Team != side || !otherLeader || squad.Followers.size() + other.Followers.size() + 2 > static_cast<size_t>(size)) {
+						continue;
+					}
+					if (s_Runners[leader->GetUniqueID()].Target != s_Runners[otherLeader->GetUniqueID()].Target || distance(leader, otherLeader) > c_SquadMergeReach) {
+						continue;
+					}
+					squad.Followers.push_back(other.Leader);
+					squad.Followers.insert(squad.Followers.end(), other.Followers.begin(), other.Followers.end());
+					other.Followers.clear();
+					other.Leader = MakeRef(nullptr);
+				}
+			}
+			std::erase_if(s_AISquads, [](const AISquad& squad) { return !GetRef(squad.Leader); });
+
+			// Those on their own: into the nearest squad with room after the same team, or made into new squads with others near them.
+			if (size >= 2) {
+				std::vector<Actor*> loose;
+				for (Actor* unit: fit) {
+					if (!inSquad.count(unit->GetUniqueID())) {
+						loose.push_back(unit);
+					}
+				}
+				for (auto unit = loose.begin(); unit != loose.end();) {
+					AISquad* best = nullptr;
+					float bestDistance = c_SquadJoinReach;
+					const int target = s_Runners[(*unit)->GetUniqueID()].Target;
+					for (AISquad& squad: s_AISquads) {
+						Actor* leader = GetRef(squad.Leader);
+						if (squad.Team != side || !leader || static_cast<int>(squad.Followers.size()) + 1 >= size || s_Runners[leader->GetUniqueID()].Target != target) {
+							continue;
+						}
+						if (const float apart = distance(*unit, leader); apart < bestDistance) {
+							best = &squad;
+							bestDistance = apart;
+						}
+					}
+					if (best) {
+						best->Followers.push_back(MakeRef(*unit));
+						unit = loose.erase(unit);
+					} else {
+						++unit;
+					}
+				}
+				while (loose.size() >= 2) {
+					Actor* first = loose.front();
+					const int target = s_Runners[first->GetUniqueID()].Target;
+					std::vector<Actor*> group = {first};
+					std::vector<std::pair<float, Actor*>> near;
+					for (auto other = loose.begin() + 1; other != loose.end(); ++other) {
+						if (const float apart = distance(first, *other); apart < c_SquadJoinReach && s_Runners[(*other)->GetUniqueID()].Target == target) {
+							near.emplace_back(apart, *other);
+						}
+					}
+					std::sort(near.begin(), near.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+					for (const auto& [apart, other]: near) {
+						if (static_cast<int>(group.size()) >= size) {
+							break;
+						}
+						group.push_back(other);
+					}
+					std::erase_if(loose, [&group](const Actor* unit) { return std::find(group.begin(), group.end(), unit) != group.end(); });
+					if (group.size() < 2) {
+						continue;
+					}
+					std::sort(group.begin(), group.end(), LeadsBefore);
+					AISquad squad;
+					squad.Team = side;
+					squad.Number = s_NextSquadNumber++;
+					squad.Leader = MakeRef(group.front());
+					for (auto unit = group.begin() + 1; unit != group.end(); ++unit) {
+						squad.Followers.push_back(MakeRef(*unit));
+					}
+					s_AISquads.push_back(std::move(squad));
+				}
+			}
+
+			// Each follower after its leader; on hard, a leader whose followers have fallen behind waits for them, for a while, unless it's
+			// fighting.
+			const long long now = g_TimerMan.GetSimUpdateCount();
+			for (AISquad& squad: s_AISquads) {
+				Actor* leader = GetRef(squad.Leader);
+				if (squad.Team != side || !leader) {
+					continue;
+				}
+				float furthest = 0.0F;
+				for (const UnitRef& ref: squad.Followers) {
+					if (Actor* unit = GetRef(ref)) {
+						FollowLeader(unit, leader);
+						held.insert(unit->GetUniqueID());
+						furthest = std::max(furthest, distance(unit, leader));
+					}
+				}
+				const FlagRunner& runner = s_Runners[leader->GetUniqueID()];
+				const bool carrying = CarriedBy(leader) >= 0 || RefersTo(s_OneFlag.Carrier, leader);
+				if (CommanderLevel() < 2 || runner.Fighting || carrying) {
+					if (squad.WaitSince >= 0) {
+						squad.WaitSince = -1;
+						SendAgain(leader);
+					}
+					continue;
+				}
+				if (squad.WaitSince < 0 && furthest > c_StragglerReach) {
+					squad.WaitSince = now;
+					leader->ClearAIWaypoints();
+					leader->SetAIMode(Actor::AIMODE_SENTRY);
+				} else if (squad.WaitSince >= 0 && (furthest < c_GatheredReach || now - squad.WaitSince > static_cast<long long>(c_StragglerWaitSeconds * UpdatesPerSecond()))) {
+					squad.WaitSince = -1;
+					SendAgain(leader);
+				}
+				if (squad.WaitSince >= 0) {
+					held.insert(leader->GetUniqueID());
+				}
+			}
+		}
+
+		/// Every half second: each team's commander's squads seen to (UpdateTeamSquads), or let go for a team that doesn't use them.
+		void UpdateAISquads(bool aiPaused) {
+			if (aiPaused || g_TimerMan.GetSimUpdateCount() % 30 != 25) {
+				return;
+			}
+			std::unordered_set<long> held;
+			for (int side = 0; side < c_Sides; ++side) {
+				if (UsesSquads(side)) {
+					UpdateTeamSquads(side, held);
+				} else {
+					for (AISquad& squad: s_AISquads) {
+						if (squad.Team == side) {
+							Disband(squad);
+						}
+					}
+					std::erase_if(s_AISquads, [side](const AISquad& squad) { return squad.Team == side; });
+				}
+			}
+			s_SquadHeld.swap(held);
+		}
+
+		void ForgetAISquads() {
+			s_AISquads.clear();
+			s_SquadHeld.clear();
+			s_NextSquadNumber = 1;
+		}
+
+		/// A team's squads, for its commander's row on the Battle tab.
+		int SquadCount(int side) {
+			return static_cast<int>(std::count_if(s_AISquads.begin(), s_AISquads.end(), [side](const AISquad& squad) { return squad.Team == side && GetRef(squad.Leader); }));
+		}
+
 		/// Takes a team's commander's jobs off its units: the mode sends them as it would again.
 		void ForgetJobs(int side) {
 			std::erase_if(s_Jobs, [side](const auto& entry) { return entry.second.Team == side; });
 		}
 
 		/// Puts the share (in percent, one at least) of a team's runners or hunters nearest a place on a job, each new to it saying so; the rest
-		/// keep to the mode's. How many it put on it.
+		/// keep to the mode's. Its squads go whole: the nearest of them (and of those on their own) till the share is made up, the job given
+		/// to the leader to go on and to the rest too, for whichever leads it next. How many it put on it.
 		int GiveJobs(int side, const Vector& near, int share, const CommanderJob& job, const std::unordered_map<long, const char*>& had) {
 			const bool wraps = g_SceneMan.SceneWrapsX();
 			std::vector<std::pair<float, Actor*>> units;
+			int total = 0;
 			for (Actor* actor: SandboxAccess::Actors()) {
 				auto runner = s_Runners.find(actor->GetUniqueID());
 				if (runner == s_Runners.end() || runner->second.Team != side || actor->GetTeam() != side || actor->IsPlayerControlled() || !IsCombatant(actor) || CarriedBy(actor) >= 0 || RefersTo(s_OneFlag.Carrier, actor)) {
+					continue;
+				}
+				++total;
+				if (IsSquadFollower(actor)) {
 					continue;
 				}
 				units.emplace_back(g_SceneMan.ShortestDistance(actor->GetPos(), near, wraps).GetSqrMagnitude(), actor);
@@ -3432,16 +3783,28 @@ namespace SandboxDetail {
 				return 0;
 			}
 			std::sort(units.begin(), units.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
-			const int count = std::clamp(static_cast<int>(std::lround(static_cast<float>(units.size()) * static_cast<float>(share) / 100.0F)), 1, static_cast<int>(units.size()));
-			for (int i = 0; i < count; ++i) {
-				Actor* unit = units[i].second;
+			const int count = std::clamp(static_cast<int>(std::lround(static_cast<float>(total) * static_cast<float>(share) / 100.0F)), 1, total);
+			int given = 0;
+			for (const auto& [apart, unit]: units) {
+				if (given >= count) {
+					break;
+				}
 				const long id = static_cast<long>(unit->GetUniqueID());
 				s_Jobs[id] = job;
+				++given;
 				if (auto before = had.find(id); before == had.end() || before->second != job.Reason) {
 					unit->Say(job.Trigger);
 				}
+				if (const AISquad* squad = SquadLedBy(unit)) {
+					for (const UnitRef& ref: squad->Followers) {
+						if (const Actor* follower = GetRef(ref)) {
+							s_Jobs[static_cast<long>(follower->GetUniqueID())] = job;
+							++given;
+						}
+					}
+				}
 			}
-			return count;
+			return given;
 		}
 
 		/// The enemy last team standing's commander has its hunters go for: the one nearest them, all told, that has fewest of its own about
@@ -3737,7 +4100,9 @@ namespace SandboxDetail {
 			}
 			const Commander& commander = s_Commanders[side];
 			if (settings.Mode != BattleMode::Assault && settings.Mode != BattleMode::KingOfTheHill) {
-				return commander.Doing ? "; commander: " + std::to_string(commander.OnJob) + " " + commander.Doing : "; commander: watching";
+				const int squads = SquadCount(side);
+				const std::string inSquads = squads > 0 ? ", " + std::to_string(squads) + (squads == 1 ? " squad" : " squads") : "";
+				return (commander.Doing ? "; commander: " + std::to_string(commander.OnJob) + " " + commander.Doing : "; commander: watching") + inSquads;
 			}
 			if (commander.Objective < 0) {
 				return "";
@@ -3758,6 +4123,10 @@ namespace SandboxDetail {
 			ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0F);
 			changed |= ImGui::Combo("Difficulty", &setup.CommanderLevel, "Easy\0Normal\0Hard\0");
 			ImGui::SetItemTooltip("How well the AI commanders play. Easy looks at the battle every 3 s and sends few units when something calls for it; normal every second; hard twice a second, sending the most, and shifting more of its team onto guard while ahead or onto the attack while behind. Point values don't change.");
+			if (setup.Mode != BattleMode::Assault && setup.Mode != BattleMode::KingOfTheHill && setup.Mode != BattleMode::CaptureTheShip) {
+				changed |= ImGui::Checkbox("Squads", &setup.CommanderSquads);
+				ImGui::SetItemTooltip("Teams with a commander, on normal and hard: its attackers (not its guards) go in squads, which follow a leader, keep together and fire where it fires. Squads grow with the team: two of two in four, two of three in six, two of four in eight, up to six in a squad. On hard a leader waits for those who fall behind. On easy they go one by one.");
+			}
 			if (setup.Mode != BattleMode::Assault && setup.Mode != BattleMode::KingOfTheHill) {
 				return;
 			}
@@ -4578,6 +4947,30 @@ namespace SandboxDetail {
 		}
 	} // namespace
 
+	void DrawAISquads() {
+		if (!s_ModeRun.Running || s_AISquads.empty() || !g_SettingsMan.ShowSquadLinks() || g_DebugMan.IsPhotoModeHidingHUD()) {
+			return;
+		}
+		ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+		for (const AISquad& squad: s_AISquads) {
+			const Actor* leader = GetRef(squad.Leader);
+			if (!leader) {
+				continue;
+			}
+			const ImU32 color = c_SideColors[std::clamp(squad.Team, 0, c_Sides - 1)];
+			const ImVec2 at = ToScreen(OverHeadPos(leader) - Vector(0.0F, 34.0F));
+			for (const UnitRef& ref: squad.Followers) {
+				if (const Actor* unit = GetRef(ref)) {
+					drawList->AddLine(ToScreen(leader->GetPos()), ToScreen(unit->GetPos()), (color & 0x00FFFFFF) | 0x80000000, 1.0F);
+				}
+			}
+			const std::string label = "Squad " + std::to_string(squad.Number) + (squad.WaitSince >= 0 ? " (waiting)" : "");
+			const ImVec2 size = ImGui::CalcTextSize(label.c_str());
+			drawList->AddRectFilled(ImVec2(at.x - size.x * 0.5F - 3.0F, at.y - 1.0F), ImVec2(at.x + size.x * 0.5F + 3.0F, at.y + size.y + 1.0F), IM_COL32(0, 0, 0, 150), 3.0F);
+			drawList->AddText(ImVec2(at.x - size.x * 0.5F, at.y), color, label.c_str());
+		}
+	}
+
 	std::vector<BattleObjective> BattleObjectives() {
 		const bool running = s_ModeRun.Running;
 		const BattleModeSettings& settings = running ? s_ModeRun.Settings : s_ModeSetup;
@@ -4734,6 +5127,7 @@ namespace SandboxDetail {
 			ClearHighlights();
 			s_Runners.clear();
 		s_Jobs.clear();
+			ForgetAISquads();
 			StartRespawns();
 			s_Stuck.clear();
 			s_Rushers.clear();
@@ -4982,6 +5376,7 @@ namespace SandboxDetail {
 			mode.Update(aiPaused);
 		}
 		UpdateCommanders(aiPaused);
+		UpdateAISquads(aiPaused);
 		UpdateSpawnOrders(aiPaused);
 		UpdateStuck(aiPaused);
 		UpdateRushers(aiPaused);
@@ -5018,6 +5413,7 @@ namespace SandboxDetail {
 		s_ModeRun.Settings.Mode = chosen;
 		s_Runners.clear();
 		s_Jobs.clear();
+		ForgetAISquads();
 		s_Flags = {};
 		s_OneFlag = Flag();
 		s_Ship = MakeRef(nullptr);
