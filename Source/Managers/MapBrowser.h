@@ -25,6 +25,7 @@ namespace RTE {
 			std::string Scene; //!< The map.
 			std::string Battle; //!< The saved battle picked to set up on it. Empty with NoBattle for none, or for the one marked to load with the map.
 			bool NoBattle = false; //!< No saved battle: the map as it is.
+			bool OpenDepot = false; //!< Find more maps on the Depot was pressed.
 		};
 
 		/// Opens the browser, every filter as it was left except the saved battles one, which is on for Battle and off for Sandbox.

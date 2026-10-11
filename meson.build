@@ -190,6 +190,7 @@ if host_machine.system() in ['linux','darwin']
     dependency('liblz4'),
     dependency('libpng'),
     dependency('tbb'),
+    dependency('libcurl'),
     dependency('gl')
   ]
   preprocessor_flags+=['-DSYSTEM_MINIZIP']

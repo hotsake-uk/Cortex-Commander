@@ -11,6 +11,7 @@
 
 #include "Scene.h"
 #include "MapBrowser.h"
+#include "DepotBrowser.h"
 
 #include "GameVersion.h"
 
@@ -46,6 +47,8 @@ void MainMenuGUI::Clear() {
 	m_SandboxThemeButtons.clear();
 	m_SandboxThemeBackButton = nullptr;
 	m_MapBrowserBackScreen = MenuScreen::MainScreen;
+	m_MapBrowserForBattle = false;
+	m_DepotBackScreen = MenuScreen::MainScreen;
 
 	m_ResumeButtonBlinkTimer.Reset();
 	m_CreditsScrollTimer.Reset();
@@ -114,6 +117,7 @@ void MainMenuGUI::CreateMainScreen() {
 	m_MainMenuButtons[MenuButton::SaveOrLoadGameButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonSaveOrLoadGame"));
 	m_MainMenuButtons[MenuButton::SettingsButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToOptions"));
 	m_MainMenuButtons[MenuButton::ModManagerButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToModManager"));
+	m_MainMenuButtons[MenuButton::DepotButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToDepot"));
 	m_MainMenuButtons[MenuButton::EditorsButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToEditor"));
 	m_MainMenuButtons[MenuButton::CreditsButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToCreds"));
 	m_MainMenuButtons[MenuButton::QuitButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonQuit"));
@@ -252,6 +256,8 @@ void MainMenuGUI::SetActiveMenuScreen(MenuScreen screenToShow, bool playButtonPr
 	if (screenToShow != m_ActiveMenuScreen) {
 		if (m_ActiveMenuScreen == MenuScreen::MapBrowserScreen) {
 			MapBrowser::Close();
+		} else if (m_ActiveMenuScreen == MenuScreen::DepotScreen) {
+			DepotBrowser::Close();
 		}
 		HideAllScreens();
 		m_ActiveMenuScreen = screenToShow;
@@ -271,7 +277,7 @@ void MainMenuGUI::SetActiveMenuScreen(MenuScreen screenToShow, bool playButtonPr
 void MainMenuGUI::ShowMainScreen() {
 	m_VersionLabel->SetVisible(true);
 
-	m_MainMenuScreens[MenuScreen::MainScreen]->Resize(300, 216);
+	m_MainMenuScreens[MenuScreen::MainScreen]->Resize(300, 236);
 	m_MainMenuScreens[MenuScreen::MainScreen]->SetVisible(true);
 
 	m_MainMenuButtons[MenuButton::BackToMainButton]->SetVisible(false);
@@ -385,7 +391,7 @@ void MainMenuGUI::ShowAndBlinkResumeButton() {
 	if (!m_MainMenuButtons[MenuButton::ResumeButton]->GetVisible()) {
 		m_ResumeButtonBlinkTimer.Reset();
 		if (g_ActivityMan.GetActivity() && (g_ActivityMan.GetActivity()->GetActivityState() == Activity::Running || g_ActivityMan.GetActivity()->GetActivityState() == Activity::Editing)) {
-			m_MainMenuScreens[MenuScreen::MainScreen]->Resize(300, 240);
+			m_MainMenuScreens[MenuScreen::MainScreen]->Resize(300, 260);
 			m_MainMenuButtons[MenuButton::ResumeButton]->SetVisible(true);
 		}
 	} else {
@@ -458,6 +464,10 @@ MainMenuGUI::MainMenuUpdateResult MainMenuGUI::Update() {
 			m_MenuScreenChange = false;
 			HandleMapBrowserChoice();
 			break;
+		case MenuScreen::DepotScreen:
+			m_MenuScreenChange = false;
+			HandleDepotBack();
+			break;
 		case MenuScreen::CreditsScreen:
 			if (m_MenuScreenChange) {
 				ShowCreditsScreen();
@@ -480,8 +490,8 @@ MainMenuGUI::MainMenuUpdateResult MainMenuGUI::Update() {
 }
 
 void MainMenuGUI::HandleBackNavigation(bool backButtonPressed) {
-	// (The map browser has Esc for its own Back.)
-	if (m_ActiveMenuScreen == MenuScreen::MapBrowserScreen) {
+	// (The map browser and the Depot screen have Esc for their own Back.)
+	if (m_ActiveMenuScreen == MenuScreen::MapBrowserScreen || m_ActiveMenuScreen == MenuScreen::DepotScreen) {
 		return;
 	}
 	if ((!m_ActiveDialogBox || m_ActiveDialogBox == m_MainMenuScreens[MenuScreen::QuitScreen]) && (backButtonPressed || g_UInputMan.KeyPressed(SDLK_ESCAPE))) {
@@ -569,6 +579,8 @@ void MainMenuGUI::HandleMainScreenInputEvents(const GUIControl* guiEventControl)
 		SetActiveMenuScreen(MenuScreen::EditorScreen);
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::ModManagerButton]) {
 		SetActiveMenuScreen(MenuScreen::ModManagerScreen);
+	} else if (guiEventControl == m_MainMenuButtons[MenuButton::DepotButton]) {
+		OpenDepot("", MenuScreen::MainScreen);
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::CreditsButton]) {
 		SetActiveMenuScreen(MenuScreen::CreditsScreen);
 		m_UpdateResult = MainMenuUpdateResult::EnterCreditsScreen;
@@ -592,19 +604,42 @@ void MainMenuGUI::HandleMetaGameNoticeScreenInputEvents(const GUIControl* guiEve
 
 void MainMenuGUI::OpenMapBrowser(bool battle) {
 	m_MapBrowserBackScreen = battle ? MenuScreen::MainScreen : MenuScreen::SandboxScreen;
+	m_MapBrowserForBattle = battle;
 	SetActiveMenuScreen(MenuScreen::MapBrowserScreen);
 	MapBrowser::Open(battle ? MapBrowser::Purpose::Battle : MapBrowser::Purpose::Sandbox);
 }
 
 void MainMenuGUI::HandleMapBrowserChoice() {
 	MapBrowser::Choice choice = MapBrowser::TakeChoice();
-	if (choice.Back || !MapBrowser::IsOpen()) {
+	if (choice.OpenDepot) {
+		OpenDepot("map", MenuScreen::MapBrowserScreen);
+		g_GUISound.ButtonPressSound()->Play();
+	} else if (choice.Back || !MapBrowser::IsOpen()) {
 		SetActiveMenuScreen(m_MapBrowserBackScreen, false);
 		g_GUISound.BackButtonPressSound()->Play();
 	} else if (choice.Play && MapBrowser::SetStartChoice(choice)) {
 		m_UpdateResult = MainMenuUpdateResult::ActivityStarted;
 		SetActiveMenuScreen(MenuScreen::MainScreen, false);
 		g_GUISound.ExitMenuSound()->Play();
+	}
+}
+
+void MainMenuGUI::OpenDepot(const std::string& kind, MenuScreen backScreen) {
+	m_DepotBackScreen = backScreen;
+	SetActiveMenuScreen(MenuScreen::DepotScreen);
+	DepotBrowser::Open(kind);
+}
+
+void MainMenuGUI::HandleDepotBack() {
+	if (DepotBrowser::TakeBack() || !DepotBrowser::IsOpen()) {
+		if (m_DepotBackScreen == MenuScreen::MapBrowserScreen) {
+			// Back to the map browser, listing maps afresh.
+			SetActiveMenuScreen(MenuScreen::MapBrowserScreen, false);
+			MapBrowser::Open(m_MapBrowserForBattle ? MapBrowser::Purpose::Battle : MapBrowser::Purpose::Sandbox);
+		} else {
+			SetActiveMenuScreen(m_DepotBackScreen, false);
+		}
+		g_GUISound.BackButtonPressSound()->Play();
 	}
 }
 
@@ -731,7 +766,7 @@ void MainMenuGUI::Draw() {
 		m_ActiveDialogBox->Draw(m_ActiveGUIControlManager->GetScreen());
 	}
 	// (The map browser draws its own pointer, over its window.)
-	if (m_ActiveMenuScreen != MenuScreen::MapBrowserScreen) {
+	if (m_ActiveMenuScreen != MenuScreen::MapBrowserScreen && m_ActiveMenuScreen != MenuScreen::DepotScreen) {
 		m_ActiveGUIControlManager->DrawMouse();
 	}
 }
