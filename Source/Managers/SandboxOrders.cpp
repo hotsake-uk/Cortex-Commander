@@ -214,11 +214,22 @@ namespace SandboxDetail {
 		}
 	}
 
-	/// A unit answers an order the player gave it (unit speech, US-2): one of the trigger's lines over its head, on the speech settings'
-	/// chance. Not the unit the player is in, which is the player.
+	/// A unit answers an order the player gave it (unit speech, US-2): one of the trigger's lines over its head. Not the unit the player is in,
+	/// which is the player. A group ordered together answers with exactly one voice: the first of them that has a line says it, whatever the
+	/// speech settings' chance, and the rest stay quiet (a command's units are all ordered within the same sim update, on the same side).
 	void AnswerOrder(Actor* unit, const char* trigger) {
-		if (unit && trigger && !unit->IsPlayerControlled()) {
-			unit->SayOrder(trigger);
+		if (!unit || !trigger || unit->IsPlayerControlled()) {
+			return;
+		}
+		static long long s_AnsweredUpdate = -1;
+		static int s_AnsweredTeam = -1;
+		const long long update = g_TimerMan.GetSimUpdateCount();
+		if (update == s_AnsweredUpdate && unit->GetTeam() == s_AnsweredTeam) {
+			return;
+		}
+		if (unit->SayOrder(trigger, true)) {
+			s_AnsweredUpdate = update;
+			s_AnsweredTeam = unit->GetTeam();
 		}
 	}
 
