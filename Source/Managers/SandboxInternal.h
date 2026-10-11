@@ -756,6 +756,8 @@ namespace SandboxDetail {
 		                                                               //!< after a flag or to a VIP, picking who to go for. Not a team you command.
 		int CommanderLevel = 1; //!< How hard the commanders play: 0 easy, 1 normal, 2 hard (how often they look, and how much they send).
 		int CommanderReserve = 30; //!< Its share of each such team's units, in percent, held on the next objective while the one in play is safe.
+		bool CommanderSquads = true; //!< Normal and hard: each such team's runners and hunters go in squads, following a leader (Commander squads,
+		                             //!< SandboxBattleModes.cpp). Not its defenders, nor on assault, king of the hill or capture the ship.
 		int CommanderFallBack = 60; //!< Assault defenders: how far the attackers' taking of the objective in play has got, in percent, when everyone
 		                            //!< falls back to the next one.
 		bool FogOfWar = false; //!< Battle Command: you see only the enemies your team's units can see (BattleFog.cpp).
@@ -2824,6 +2826,10 @@ namespace SandboxDetail {
 
 	/// A mark over each of the squad, and what it's doing with the keys at the top of the view. Call from the ImGui frame.
 	void DrawSquad();
+
+	/// With the squad links overlay on: the number of each of the AI commanders' squads over its leader, and a line to each of its
+	/// followers. Call from the ImGui frame.
+	void DrawAISquads();
 #pragma endregion
 
 #pragma region Your brain on the field (BattleFieldBrain.cpp)

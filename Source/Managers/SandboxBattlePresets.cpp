@@ -114,6 +114,7 @@ namespace SandboxDetail {
 			visit("CommanderLevel", mode.CommanderLevel);
 			visit("CommanderReserve", mode.CommanderReserve);
 			visit("CommanderFallBack", mode.CommanderFallBack);
+			visit("CommanderSquads", mode.CommanderSquads);
 			visit("PlayerCommands", mode.PlayerCommands);
 			visit("FogOfWar", mode.FogOfWar);
 			visit("FieldBrain", mode.FieldBrain);

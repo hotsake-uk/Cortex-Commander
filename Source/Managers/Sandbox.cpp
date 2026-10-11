@@ -812,6 +812,7 @@ void Sandbox::DrawGUI() {
 		// (Also while you play a unit: the enemy's strikes coming in, and the squad following you with its keys.)
 		DrawEnemyStrikes();
 		DrawSquad();
+		DrawAISquads();
 		DrawAlerts();
 		DrawHotSeat();
 		if (!ImGui::GetIO().WantTextInput && !ImGui::GetIO().KeyCtrl && !ImGui::GetIO().KeyAlt) {
