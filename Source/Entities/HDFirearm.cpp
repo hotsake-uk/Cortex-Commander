@@ -12,6 +12,9 @@
 #include "ThrownDevice.h"
 #include "MOPixel.h"
 #include "Actor.h"
+#include "MagicEffects.h"
+#include "TimerMan.h"
+#include <limits>
 #include "Scene.h"
 
 using namespace RTE;
@@ -48,6 +51,9 @@ void HDFirearm::Clear() {
 	m_DoneReloading = false;
 	m_BaseReloadTime = 0;
 	m_FullAuto = false;
+	m_EnergyCost = 0.0F;
+	m_UsesOwnCharge = false;
+	m_Charge = m_MaxCharge = m_ChargeRegen = 0.0F;
 	m_FireIgnoresThis = true;
 	m_Reloadable = true;
 	m_DualReloadable = false;
@@ -144,6 +150,11 @@ int HDFirearm::Create(const HDFirearm& reference) {
 	m_LastFireTmr = reference.m_LastFireTmr;
 	m_ReloadTmr = reference.m_ReloadTmr;
 	m_FullAuto = reference.m_FullAuto;
+	m_EnergyCost = reference.m_EnergyCost;
+	m_UsesOwnCharge = reference.m_UsesOwnCharge;
+	m_Charge = reference.m_Charge;
+	m_MaxCharge = reference.m_MaxCharge;
+	m_ChargeRegen = reference.m_ChargeRegen;
 	m_FireIgnoresThis = reference.m_FireIgnoresThis;
 	m_Reloadable = reference.m_Reloadable;
 	m_DualReloadable = reference.m_DualReloadable;
@@ -215,6 +226,20 @@ int HDFirearm::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("DeactivationDelay", { reader >> m_DeactivationDelay; });
 	MatchForwards("BaseReloadTime") MatchProperty("ReloadTime", { reader >> m_BaseReloadTime; });
 	MatchProperty("FullAuto", { reader >> m_FullAuto; });
+	MatchProperty("EnergyCost", { reader >> m_EnergyCost; });
+	MatchProperty("UsesOwnCharge", { reader >> m_UsesOwnCharge; });
+	MatchProperty("Charge", {
+		reader >> m_Charge;
+		m_MaxCharge = std::max(m_MaxCharge, m_Charge);
+	});
+	MatchProperty("MaxCharge", {
+		// Starts full unless it was given less.
+		bool full = m_Charge >= m_MaxCharge;
+		reader >> m_MaxCharge;
+		m_MaxCharge = std::max(m_MaxCharge, 0.0F);
+		m_Charge = full ? m_MaxCharge : std::min(m_Charge, m_MaxCharge);
+	});
+	MatchProperty("ChargeRegen", { reader >> m_ChargeRegen; });
 	MatchProperty("FireIgnoresThis", { reader >> m_FireIgnoresThis; });
 	MatchProperty("Reloadable", { reader >> m_Reloadable; });
 	MatchProperty("DualReloadable", { reader >> m_DualReloadable; });
@@ -289,6 +314,20 @@ int HDFirearm::Save(Writer& writer) const {
 	writer << m_BaseReloadTime;
 	writer.NewProperty("FullAuto");
 	writer << m_FullAuto;
+	if (m_EnergyCost > 0.0F) {
+		writer.NewProperty("EnergyCost");
+		writer << m_EnergyCost;
+	}
+	if (m_UsesOwnCharge || m_MaxCharge > 0.0F) {
+		writer.NewProperty("UsesOwnCharge");
+		writer << m_UsesOwnCharge;
+		writer.NewProperty("MaxCharge");
+		writer << m_MaxCharge;
+		writer.NewProperty("Charge");
+		writer << m_Charge;
+		writer.NewProperty("ChargeRegen");
+		writer << m_ChargeRegen;
+	}
 	writer.NewProperty("FireIgnoresThis");
 	writer << m_FireIgnoresThis;
 	writer.NewProperty("Reloadable");
@@ -656,8 +695,26 @@ bool HDFirearm::IsEmpty() const {
 	return true;
 }
 
+int HDFirearm::GetAffordableRounds() const {
+	if (m_EnergyCost <= 0.0F || !MagicEffects::CastingCostsEnergy()) {
+		return std::numeric_limits<int>::max();
+	}
+	float pool = 0.0F;
+	if (m_UsesOwnCharge) {
+		pool = m_Charge;
+	} else if (const Actor* holder = dynamic_cast<const Actor*>(GetRootParent())) {
+		pool = holder->GetEnergy();
+	}
+	return static_cast<int>(pool / m_EnergyCost + 0.0001F);
+}
+
 void HDFirearm::Update() {
 	HeldDevice::Update();
+
+	// Its own charge comes back by itself, held or not.
+	if (m_MaxCharge > 0.0F && m_Charge < m_MaxCharge) {
+		m_Charge = std::min(m_Charge + m_ChargeRegen * MagicEffects::GetTuning().EnergyRegen * g_TimerMan.GetDeltaTimeSecs(), m_MaxCharge);
+	}
 
 	if (m_PreFireSound && m_PreFireSound->IsBeingPlayed()) {
 		m_PreFireSound->SetPosition(m_Pos);
@@ -706,6 +763,25 @@ void HDFirearm::Update() {
 			} else {
 				// TODO: Confirm that the delays work properly in semi-auto!
 				roundsFired = !m_FiredOnce && (m_LastFireTmr.GetElapsedSimTimeMS() - m_ActivationDelay - m_DeactivationDelay) > msPerRound ? 1 : 0;
+			}
+
+			// Rounds that cost energy only fly while it can be paid for (MG-2); with too little, a spell fizzles with its empty sound.
+			if (roundsFired >= 1 && m_EnergyCost > 0.0F && MagicEffects::CastingCostsEnergy()) {
+				int affordable = std::min(roundsFired, GetAffordableRounds());
+				if (affordable > 0) {
+					float cost = m_EnergyCost * static_cast<float>(affordable);
+					if (m_UsesOwnCharge) {
+						m_Charge = std::max(m_Charge - cost, 0.0F);
+					} else if (pActor) {
+						pActor->SetEnergy(pActor->GetEnergy() - cost);
+					}
+				} else if (!m_AlreadyClicked) {
+					if (m_EmptySound) {
+						m_EmptySound->Play(m_Pos);
+					}
+					m_AlreadyClicked = true;
+				}
+				roundsFired = affordable;
 			}
 
 			if (roundsFired >= 1) {

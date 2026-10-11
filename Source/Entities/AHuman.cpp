@@ -1,4 +1,5 @@
 #include "AHuman.h"
+#include "MagicEffects.h"
 #include "TerrainCollapse.h"
 #include "ConsoleMan.h"
 #include "SmokeGrid.h"
@@ -35,6 +36,19 @@
 using namespace RTE;
 
 namespace {
+	/// What the HUD shows for a firearm's ammo: the rounds in its magazine, or for a spell that costs energy (MG-2) how many casts are left.
+	std::string AmmoText(const HDFirearm* firearm) {
+		int rounds = firearm->GetRoundInMagCount();
+		if (firearm->GetEnergyCost() > 0.0F && MagicEffects::CastingCostsEnergy()) {
+			int casts = firearm->GetAffordableRounds();
+			if (rounds >= 0) {
+				casts = std::min(casts, rounds);
+			}
+			return std::to_string(casts) + (casts == 1 ? " cast" : " casts");
+		}
+		return rounds < 0 ? "Infinite" : std::to_string(rounds);
+	}
+
 	/// How far from lying flat (in radians) a dead body may rest before it's tipped on over and kept from settling.
 	constexpr float c_DeadLyingTolerance = 0.7F;
 	/// How long after dying a body is tipped and kept from settling while not lying down, before it's left where it is (wedged in a gap).
@@ -3319,7 +3333,7 @@ void AHuman::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichSc
 						rectfill(pTargetBitmap, drawPos.GetFloorIntX() + 1, drawPos.GetFloorIntY() + m_HUDStack + 13, drawPos.GetFloorIntX() + 29, drawPos.GetFloorIntY() + m_HUDStack + 14, 245);
 						rectfill(pTargetBitmap, drawPos.GetFloorIntX(), drawPos.GetFloorIntY() + m_HUDStack + 12, drawPos.GetFloorIntX() + static_cast<int>(28.0F * fgHeldFirearm->GetReloadProgress() + 0.5F), drawPos.GetFloorIntY() + m_HUDStack + 13, barColorIndex);
 					} else {
-						fgWeaponString = fgHeldFirearm->GetRoundInMagCount() < 0 ? "Infinite" : std::to_string(fgHeldFirearm->GetRoundInMagCount());
+						fgWeaponString = AmmoText(fgHeldFirearm);
 					}
 				}
 
@@ -3349,7 +3363,7 @@ void AHuman::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichSc
 						rectfill(pTargetBitmap, drawPos.GetFloorIntX() + 1 + totalTextWidth, drawPos.GetFloorIntY() + m_HUDStack + 13, drawPos.GetFloorIntX() + 29 + totalTextWidth, drawPos.GetFloorIntY() + m_HUDStack + 14, 245);
 						rectfill(pTargetBitmap, drawPos.GetFloorIntX() + totalTextWidth, drawPos.GetFloorIntY() + m_HUDStack + 12, drawPos.GetFloorIntX() + static_cast<int>(28.0F * bgHeldFirearm->GetReloadProgress() + 0.5F) + totalTextWidth, drawPos.GetFloorIntY() + m_HUDStack + 13, barColorIndex);
 					} else {
-						bgWeaponString = bgHeldFirearm->GetRoundInMagCount() < 0 ? "Infinite" : std::to_string(bgHeldFirearm->GetRoundInMagCount());
+						bgWeaponString = AmmoText(bgHeldFirearm);
 					}
 				}
 				pSymbolFont->DrawAligned(&allegroBitmap, drawPos.GetFloorIntX() - pSymbolFont->CalculateWidth(str) - 3, drawPos.GetFloorIntY() + m_HUDStack, str, GUIFont::Left);
