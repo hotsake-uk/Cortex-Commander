@@ -120,6 +120,8 @@ namespace SandboxDetail {
 				preset.Kind = object->IsInGroup("Turrets") ? "Turrets" : "Mecha";
 			} else if (preset.ClassName == "AVehicle") {
 				preset.Kind = "Vehicles";
+			} else if (preset.ClassName == "ACShip") {
+				preset.Kind = "Flying ships";
 			} else if (preset.ClassName == "HDFirearm") {
 				preset.Kind = object->IsInGroup("Spells") ? "Spells" : object->IsInGroup("Tools - Diggers") ? "Diggers" : (object->IsInGroup("Tools") ? "Tools" : (object->IsInGroup("Weapons - Secondary") ? "Secondary weapons" : (object->IsInGroup("Weapons - Explosive") ? "Explosive weapons" : "Primary weapons")));
 			} else if (preset.ClassName == "TDExplosive") {
@@ -172,7 +174,7 @@ namespace SandboxDetail {
 		s_Structures.clear();
 		s_Armouries.clear();
 		s_Weapons.clear();
-		for (const char* type: {"AHuman", "ACrab", "AVehicle"}) {
+		for (const char* type: {"AHuman", "ACrab", "AVehicle", "ACShip"}) {
 			std::list<Entity*> entities;
 			g_PresetMan.GetAllOfType(entities, type);
 			AddPresets(s_Units, entities, true, true);

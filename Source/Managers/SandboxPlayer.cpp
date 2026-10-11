@@ -2,6 +2,7 @@
 
 #include "SandboxInternal.h"
 #include "AVehicle.h"
+#include "ACShip.h"
 #include "BuyMenuGUI.h"
 
 namespace SandboxDetail {
@@ -155,8 +156,12 @@ namespace SandboxDetail {
 		if (!actor) {
 			s_Flying = false;
 			// Sat in a vehicle's open seat, where shots can reach it: still kept from harm, if it is to be.
-			if (const AVehicle* vehicle = dynamic_cast<const AVehicle*>(GetRef(s_PlayerVehicle)); vehicle && s_Player.Unkillable) {
-				if (Actor* rider = vehicle->GetControlSeat() >= 0 ? vehicle->GetSeatOccupant(vehicle->GetControlSeat()) : nullptr) {
+			const Actor* ridden = GetRef(s_PlayerVehicle);
+			const AVehicle* vehicle = dynamic_cast<const AVehicle*>(ridden);
+			const ACShip* ship = dynamic_cast<const ACShip*>(ridden);
+			if ((vehicle || ship) && s_Player.Unkillable) {
+				int seat = vehicle ? vehicle->GetControlSeat() : ship->GetControlSeat();
+				if (Actor* rider = seat >= 0 ? (vehicle ? vehicle->GetSeatOccupant(seat) : ship->GetSeatOccupant(seat)) : nullptr) {
 					rider->SetHealth(rider->GetMaxHealth());
 					if (int wounds = rider->GetWoundCount(); wounds > 0) {
 						rider->RemoveWounds(wounds);

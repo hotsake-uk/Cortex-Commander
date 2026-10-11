@@ -3,6 +3,7 @@
 // Director as it buys and sends units (SandboxBattle.cpp). Capture the flag, king of the hill, assault, last team standing and VIP hunt.
 
 #include "SandboxInternal.h"
+#include "ACShip.h"
 
 #include <deque>
 #include <functional>
@@ -1853,6 +1854,353 @@ namespace SandboxDetail {
 
 		std::string OneFlagStatus(int side) { return std::to_string(s_ModeRun.Score[side]) + " goals, " + std::to_string(Sandbox::CountUnits(side)) + " in"; }
 
+		// ---- Capture the ship ----
+
+		UnitRef s_Ship; //!< The ship every team is after, while it's in the world.
+		int s_ShipPlace = -1; //!< The ship position it last came in at; -1 for none yet.
+		long long s_ShipGoneAt = -1; //!< The sim update the ship was lost on (shot down, or flown off the map), -1 while it's about.
+		Vector s_ShipSentTo; //!< Where the ship was last flown to by its AI crew (FlyTo).
+		long s_ShipSentFor = 0; //!< The unique ID of the ship it was flown there for.
+
+		constexpr const char* c_ShipPreset = "Gunship";
+		constexpr float c_ShipBoardReach = 300.0F; //!< How near a unit has to be to a ship on the ground (or nearly) to be sent to get in.
+		constexpr float c_ShipCruise = 160.0F; //!< How high over the ground a crew flies the ship to its landing zone, before setting it down.
+
+		ACShip* LiveShip() { return dynamic_cast<ACShip*>(GetRef(s_Ship)); }
+
+		/// The team that has the ship, by whoever is in it; -1 while nobody is.
+		int ShipHolder() {
+			const ACShip* ship = LiveShip();
+			return ship && ship->GetCrewCount() > 0 ? ship->GetTeam() : -1;
+		}
+
+		/// Whether the ship is down, or as good as: low enough over the ground and slow enough for units to get in, or to land it.
+		bool ShipDown(ACShip* ship) { return ship->GetAltitude(1000, 4) < ship->GetRadius() * 0.9F && ship->GetVel().MagnitudeIsLessThan(3.0F); }
+
+		bool ShipReady(const BattleModeSettings& setup, std::string& why) {
+			if (setup.FlagSpots.empty()) {
+				why = "Place a ship position or more on the map.";
+				return false;
+			}
+			if (!g_PresetMan.GetEntityPreset("ACShip", c_ShipPreset, "Base.rte")) {
+				why = std::string("The ") + c_ShipPreset + " isn't loaded.";
+				return false;
+			}
+			for (int side = 0; side < c_Sides; ++side) {
+				if (setup.Plays[side] && setup.Goals[side].size() < 3) {
+					why = std::string(c_SideNames[side]) + " has no landing zone drawn yet.";
+					return false;
+				}
+			}
+			return true;
+		}
+
+		/// A new ship, empty, at the next of the ship positions placed (the first at the start): it sets itself down there, for anyone to take.
+		void ShipIn() {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			s_ShipGoneAt = -1;
+			s_Ship = MakeRef(nullptr);
+			s_RunnersDue = true;
+			if (settings.FlagSpots.empty()) {
+				return;
+			}
+			s_ShipPlace = (s_ShipPlace + 1) % static_cast<int>(settings.FlagSpots.size());
+			ACShip* ship = dynamic_cast<ACShip*>(CreateBaseObject("ACShip", c_ShipPreset));
+			if (!ship) {
+				return;
+			}
+			Vector at = Grounded(settings.FlagSpots[s_ShipPlace]) - Vector(0.0F, ship->GetRadius() * 0.6F);
+			g_SceneMan.WrapPosition(at);
+			ship->SetPos(at);
+			ship->SetTeam(Activity::NoTeam);
+			ship->SetAIMode(Actor::AIMODE_SENTRY);
+			AddObject(ship);
+			s_Ship = MakeRef(ship);
+		}
+
+		/// The ship out of the world (its crew let out first), for the game stopping or starting afresh.
+		void ShipOut() {
+			if (ACShip* ship = LiveShip()) {
+				ship->EjectCrew(false);
+				ship->SetToDelete(true);
+			}
+			s_Ship = MakeRef(nullptr);
+		}
+
+		void ShipStart() {
+			s_Runners.clear();
+			s_Jobs.clear();
+			ShipOut();
+			s_ShipPlace = -1;
+			s_ShipSentFor = 0;
+			ShipIn();
+		}
+
+		/// The ship positions changed while the game is on: with the ship gone or nobody in it, it starts over at the first of them.
+		void ShipSettingsChanged() {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			const bool still = s_ShipPlace >= 0 && s_ShipPlace < static_cast<int>(settings.FlagSpots.size());
+			if (!still && ShipHolder() < 0) {
+				ShipOut();
+				s_ShipPlace = -1;
+				ShipIn();
+			}
+		}
+
+		void ShipUnitsMade(int side, const std::vector<Actor*>& wave) { OneFlagUnitsMade(side, wave); }
+
+		/// New units appear on the side of their zone nearest the ship.
+		Vector ShipSpawnSpot(int side, const std::vector<Vector>& zone, const Actor* unit) {
+			const ACShip* ship = LiveShip();
+			const Vector near = ship ? ship->GetPos() : (s_ModeRun.Settings.FlagSpots.empty() ? zone.front() : s_ModeRun.Settings.FlagSpots[std::max(s_ShipPlace, 0)]);
+			return SpreadSpot(zone, unit ? unit->GetHeight() : 0.0F, [&near](const Vector& spot) { return DistanceBetween(spot, near); });
+		}
+
+		/// Flies the ship to its crew's landing zone, if an AI flies it: high over the ground to above the zone, then down into it.
+		void FlyShipHome(ACShip* ship, long long now) {
+			const int team = ship->GetTeam();
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			if (!ship->HasPilot() || ship->IsPlayerControlled() || BattlePlayerCommands(team) || !TeamIn(settings, team) || settings.Goals[team].size() < 3) {
+				return;
+			}
+			const bool wraps = g_SceneMan.SceneWrapsX();
+			const Vector goal = GoalSpot(settings, team);
+			const float across = std::abs(g_SceneMan.ShortestDistance(ship->GetPos(), goal, wraps).m_X);
+			Vector to = goal - Vector(0.0F, ship->GetRadius() * 0.3F);
+			if (across > 60.0F) {
+				to.m_Y = std::min(goal.m_Y, Grounded(ship->GetPos()).m_Y) - c_ShipCruise;
+				to.m_Y = std::max(to.m_Y, ship->GetRadius() * 1.5F);
+			}
+			// (Again when it's somewhere else to go, or it stopped short: its go-to ends in a hold where it was.)
+			const bool moved = s_ShipSentFor != ship->GetUniqueID() || !g_SceneMan.ShortestDistance(s_ShipSentTo, to, wraps).MagnitudeIsLessThan(40.0F);
+			const bool stopped = ship->GetAIMode() != Actor::AIMODE_GOTO && !g_SceneMan.ShortestDistance(ship->GetPos(), to, wraps).MagnitudeIsLessThan(30.0F);
+			if ((moved || stopped) && ship->FlyTo(to)) {
+				s_ShipSentTo = to;
+				s_ShipSentFor = ship->GetUniqueID();
+			}
+		}
+
+		/// The ship shot down or flown off and a new one brought in, landed in a crew's own zone for a score, and the game won.
+		void UpdateShip(long long now) {
+			BattleModeSettings& settings = s_ModeRun.Settings;
+			ACShip* ship = LiveShip();
+			if (!ship || ship->IsDead() || ship->GetStatus() == Actor::DYING) {
+				if (s_ShipGoneAt < 0) {
+					s_ShipGoneAt = now;
+					s_RunnersDue = true;
+					Say("The ship is down: a new one in " + std::to_string(std::max(settings.ReturnSeconds, 1)) + " s");
+				} else if (static_cast<float>(now - s_ShipGoneAt) > static_cast<float>(std::max(settings.ReturnSeconds, 1)) * UpdatesPerSecond()) {
+					ShipIn();
+					Say("A new ship is in");
+				}
+				return;
+			}
+			const int team = ShipHolder();
+			if (team < 0) {
+				return;
+			}
+			const Vector pos = ship->GetPos();
+			if (TeamIn(settings, team) && settings.Goals[team].size() >= 3 && (IsInZone(settings.Goals[team], pos) || IsInZone(settings.Goals[team], Grounded(pos))) && ShipDown(ship)) {
+				// Landed in its crew's own zone: a score, and the next ship comes in at the next position.
+				if (Actor* pilot = ship->GetPilot()) {
+					pilot->Say("FlagCaptured");
+				}
+				++s_ModeRun.Score[team];
+				ShipOut();
+				ShipIn();
+				if (settings.ScoreToWin > 0 && s_ModeRun.Score[team] >= settings.ScoreToWin) {
+					EndGame(team, SideName(team) + " wins, " + std::to_string(s_ModeRun.Score[team]) + " landings");
+					return;
+				}
+				Say(SideName(team) + " landed the ship");
+				return;
+			}
+			FlyShipHome(ship, now);
+		}
+
+		/// Each unit, every half second: with nobody in the ship, everyone goes for it, and those near it while it's down get in. With a
+		/// team in it, its team-mates near it get in while there's room, the rest go with it (or wait at their landing zone), and every other
+		/// team goes after it to shoot it down or take it back.
+		void UpdateShipRunners(long long now) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			const bool wraps = g_SceneMan.SceneWrapsX();
+			std::unordered_map<long, Actor*> byID;
+			for (Actor* actor: SandboxAccess::Actors()) {
+				byID[actor->GetUniqueID()] = actor;
+			}
+			// (Units let out of the ship, or new to the game some other way, are runners too.)
+			for (Actor* fighter: Fighters()) {
+				if (!fighter->IsPlayerControlled() && !s_Runners.count(fighter->GetUniqueID())) {
+					FlagRunner& runner = s_Runners[fighter->GetUniqueID()];
+					runner.Team = fighter->GetTeam();
+					runner.Target = runner.Team;
+					runner.Made = now;
+				}
+			}
+			ACShip* ship = LiveShip();
+			const int holder = ShipHolder();
+			const bool down = ship && ShipDown(ship);
+			const Vector under = ship ? Grounded(ship->GetPos()) : Vector();
+			const Vector waitAt = settings.FlagSpots.empty() ? Vector() : Grounded(settings.FlagSpots[(std::max(s_ShipPlace, 0) + 1) % static_cast<int>(settings.FlagSpots.size())]);
+			const long long riding = static_cast<long long>(60.0F * UpdatesPerSecond());
+			for (auto entry = s_Runners.begin(); entry != s_Runners.end();) {
+				FlagRunner& runner = entry->second;
+				auto found = byID.find(entry->first);
+				Actor* unit = found == byID.end() ? nullptr : found->second;
+				if (!unit) {
+					entry = runner.Seen || now - runner.Made > riding ? s_Runners.erase(entry) : std::next(entry);
+					continue;
+				}
+				runner.Seen = true;
+				if (!IsCombatant(unit)) {
+					entry = s_Runners.erase(entry);
+					continue;
+				}
+				if (unit->IsPlayerControlled() || !TeamIn(settings, runner.Team) || BattlePlayerCommands(runner.Team)) {
+					++entry;
+					continue;
+				}
+				const bool boardable = ship && down && ship->CanTakeIn(unit) && ship->GetFreeSeat() >= 0;
+				if (DoJob(unit, runner, now)) {
+					// (On its commander's job.)
+				} else if (boardable && g_SceneMan.ShortestDistance(unit->GetPos(), ship->GetPos(), wraps).MagnitudeIsLessThan(c_ShipBoardReach)) {
+					// Near it: sent onto it, to get in when it gets there (the ship lets in those sent to it).
+					if (unit->GetMOMoveTarget() != ship) {
+						SendUnit(unit, ship->GetPos(), ship, false, "ship: getting in", false, true);
+						runner.HasSent = false;
+					}
+				} else if (!ship) {
+					SendRunner(unit, runner, waitAt, nullptr, "ship: waiting for the next", now);
+				} else if (holder < 0) {
+					SendRunner(unit, runner, under, nullptr, "ship: going for it", now);
+				} else if (holder == runner.Team) {
+					SendRunner(unit, runner, Escorts(unit) ? under : GoalSpot(settings, runner.Team), nullptr, Escorts(unit) ? "ship: going with it" : "ship: holding our landing zone", now);
+				} else {
+					SendRunner(unit, runner, under, ship, "ship: after it", now);
+				}
+				++entry;
+			}
+		}
+
+		void ShipUpdate(bool aiPaused) {
+			const long long now = g_TimerMan.GetSimUpdateCount();
+			if (aiPaused) {
+				if (s_ShipGoneAt >= 0) {
+					++s_ShipGoneAt;
+				}
+				return;
+			}
+			if (s_ModeRun.Over) {
+				return;
+			}
+			if (now % 6 == 0) {
+				UpdateShip(now);
+			}
+			if (!s_ModeRun.Over && (now % 30 == 15 || s_RunnersDue)) {
+				s_RunnersDue = false;
+				UpdateShipRunners(now);
+			}
+		}
+
+		void ShipPanel(BattleModeSettings& setup, bool& changed) {
+			const bool running = s_ModeRun.Running && s_ModeRun.Settings.Mode == setup.Mode;
+			ImGui::SeparatorText("Where the ship comes in");
+			ImGui::PushID("shipspots");
+			const bool placing = CurrentTool().Kind == Tool::BattleModeFlag;
+			ImGui::BeginDisabled(running || (!placing && setup.FlagSpots.size() >= c_MaxFlagSpots));
+			if (ToolUI::Button(placing ? "Done (Enter)" : "Place a ship position")) {
+				if (placing) {
+					PutDownBattleTool();
+				} else {
+					TakeBattleTool(Tool::BattleModeFlag, s_BattleEditTeam);
+				}
+			}
+			ImGui::SetItemTooltip("%s", placing ? "Click on the map for each position, in the order the ship comes in at them; Enter (or this) when done." : ("Then click on the ground where the ship comes in: each click another position, the next ship coming in at the next. Up to " + std::to_string(c_MaxFlagSpots) + ".").c_str());
+			ImGui::EndDisabled();
+			ImGui::SameLine();
+			ImGui::BeginDisabled(running || setup.FlagSpots.empty());
+			if (ToolUI::Button("Take back the last")) {
+				setup.FlagSpots.pop_back();
+				changed = true;
+			}
+			ImGui::SameLine();
+			if (ToolUI::Button("Clear")) {
+				setup.FlagSpots.clear();
+				changed = true;
+			}
+			ImGui::EndDisabled();
+			if (running) {
+				ImGui::SetItemTooltip("Stop the game to change them.");
+			}
+			ImGui::SameLine();
+			if (setup.FlagSpots.empty()) {
+				ImGui::TextColored(ImVec4(1.0F, 0.6F, 0.4F, 1.0F), "none yet");
+			} else {
+				ImGui::TextDisabled("%d placed", static_cast<int>(setup.FlagSpots.size()));
+			}
+			ImGui::PopID();
+			changed |= ImGui::SliderInt("Landings to win", &setup.ScoreToWin, 0, 10, setup.ScoreToWin > 0 ? "%d" : "play on");
+			ImGui::SetItemTooltip("The first team to land the ship in its own landing zone this many times wins, and the battle stops. 0: it goes on till you stop it.");
+			changed |= ImGui::SliderInt("Go with the ship", &setup.EscortPercent, 0, 100, "%d%% follow it");
+			ImGui::SetItemTooltip("The share of a ship's team-mates on the ground that follow it as it flies. The rest wait in their landing zone to hold it.");
+			changed |= ImGui::SliderInt("New ship after", &setup.ReturnSeconds, 5, 180, "%d s");
+			ImGui::SetItemTooltip("How long after the ship is shot down (or flown off the map) the next comes in.");
+		}
+
+		void ShipDraw(bool running) {
+			ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+			const BattleModeSettings& settings = running ? s_ModeRun.Settings : s_ModeSetup;
+			DrawBases(drawList, settings);
+			for (int side = 0; side < c_Sides; ++side) {
+				if (settings.Plays[side]) {
+					DrawModeZone(drawList, settings.Goals[side], c_SideColors[side], 70, 255, 3.0F, SideName(side) + " landing zone");
+				}
+			}
+			const ImU32 color = c_NeutralColor;
+			const bool numbered = settings.FlagSpots.size() > 1;
+			for (int i = 0; i < static_cast<int>(settings.FlagSpots.size()); ++i) {
+				const ImVec2 foot = ToScreen(settings.FlagSpots[i]);
+				drawList->AddCircle(ImVec2(foot.x, foot.y - 8.0F), 12.0F, (color & 0x00FFFFFF) | ((running ? 70u : 230u) << 24), 24, running ? 1.5F : 2.5F);
+				DrawTag(drawList, ImVec2(foot.x + 6.0F, foot.y - 34.0F), numbered ? "SHIP " + std::to_string(i + 1) : std::string("SHIP"), (color & 0x00FFFFFF) | ((running ? 120u : 255u) << 24));
+			}
+			if (!running) {
+				return;
+			}
+			if (ACShip* ship = LiveShip()) {
+				const int holder = ShipHolder();
+				const ImU32 tint = holder >= 0 ? c_SideColors[std::clamp(holder, 0, c_Sides - 1)] : color;
+				const ImVec2 top = ToScreen(ship->GetPos() - Vector(0.0F, ship->GetRadius() * 0.5F));
+				const float bob = 3.0F * Pulse(4.0F);
+				DrawBeacon(drawList, ImVec2(top.x, top.y - 4.0F), tint, 0.9F);
+				DrawTag(drawList, ImVec2(top.x, top.y - 20.0F - bob), holder >= 0 ? SideName(holder) + " HAS THE SHIP" : std::string("THE SHIP: get in"), tint);
+				DrawOffScreen(drawList, top, holder >= 0 ? "The ship (" + SideName(holder) + ")" : std::string("The ship"), tint);
+			} else if (s_ShipGoneAt >= 0) {
+				const float left = static_cast<float>(std::max(settings.ReturnSeconds, 1)) - static_cast<float>(g_TimerMan.GetSimUpdateCount() - s_ShipGoneAt) / UpdatesPerSecond();
+				if (!settings.FlagSpots.empty()) {
+					const ImVec2 foot = ToScreen(settings.FlagSpots[(std::max(s_ShipPlace, 0) + 1) % static_cast<int>(settings.FlagSpots.size())]);
+					DrawTag(drawList, ImVec2(foot.x + 6.0F, foot.y - 50.0F), "NEXT SHIP in " + std::to_string(std::max(static_cast<int>(std::ceil(left)), 0)) + " s", color);
+				}
+			}
+			DrawScore(Scores("CAPTURE THE SHIP", "") + (settings.ScoreToWin > 0 ? "    (first to " + std::to_string(settings.ScoreToWin) + ")" : ""));
+		}
+
+		void ShipObjectives(const BattleModeSettings& settings, bool running, std::vector<BattleObjective>& out) {
+			const unsigned teams = TeamsIn(settings);
+			const int holder = running ? ShipHolder() : -1;
+			const ACShip* ship = running ? LiveShip() : nullptr;
+			if (ship || (!running && !settings.FlagSpots.empty())) {
+				out.push_back({.Name = "The ship", .Pos = ship ? ship->GetPos() : settings.FlagSpots.front(), .Radius = c_FlagReach, .Color = c_NeutralColor, .Look = ObjectiveLook::Marker, .Attackers = teams & ~Bit(holder), .Defenders = Bit(holder)});
+			}
+			for (int side = 0; side < c_Sides; ++side) {
+				if (!TeamIn(settings, side) || settings.Goals[side].size() < 3) {
+					continue;
+				}
+				out.push_back({.Name = SideName(side) + " landing zone", .Pos = ZoneMiddle(settings.Goals[side]), .Zone = settings.Goals[side], .Color = c_SideColors[side], .Look = ObjectiveLook::Outline, .Attackers = holder == side ? Bit(side) : 0u});
+			}
+		}
+
+		std::string ShipStatus(int side) { return std::to_string(s_ModeRun.Score[side]) + " landings, " + std::to_string(Sandbox::CountUnits(side)) + " in"; }
+
 		// ---- Hunters (last team standing's units, and VIP hunt's) ----
 
 		/// What a hunter goes after, of the fighters in the game: nullptr to leave it be.
@@ -2520,6 +2868,18 @@ namespace SandboxDetail {
 						job.To = GoalSpot(settings, theirs);
 						near = job.To;
 						call = "block their goal!";
+					}
+					break;
+				}
+				case BattleMode::CaptureTheShip: {
+					const int theirs = ShipHolder();
+					if (theirs >= 0 && theirs != side && TeamIn(settings, theirs) && settings.Goals[theirs].size() >= 3) {
+						job.Reason = "commander: blocking their landing zone";
+						job.Doing = "blocking their landing zone";
+						job.Trigger = "CommanderBlockGoal";
+						job.To = GoalSpot(settings, theirs);
+						near = job.To;
+						call = "block their landing zone!";
 					}
 					break;
 				}
@@ -3191,6 +3551,23 @@ namespace SandboxDetail {
 		     .Draw = OneFlagDraw,
 		     .Status = OneFlagStatus,
 		     .Objectives = OneFlagObjectives},
+		    {.Name = "Capture the ship",
+		     .Blurb = "One ship, a Gunship, and every team after it. Place its positions on the map: it comes in at the first, empty, and anyone can get in "
+		              "and take it for their side. Each team has spawn zones and a landing zone drawn on the map: fly the ship down into your own landing "
+		              "zone to score, and the next ship comes in at the next position. Its pilot flies it home while its gunners shoot; the rest of its team "
+		              "follow it or hold their landing zone, and every other team goes after it, to shoot it down or shoot its crew out of their seats and "
+		              "take it. A ship with nobody at the controls sets itself down. One shot down is replaced after the seconds set.",
+		     .Goals = true,
+		     .Ready = ShipReady,
+		     .Start = ShipStart,
+		     .SettingsChanged = ShipSettingsChanged,
+		     .UnitsMade = ShipUnitsMade,
+		     .SpawnSpot = ShipSpawnSpot,
+		     .Update = ShipUpdate,
+		     .Panel = ShipPanel,
+		     .Draw = ShipDraw,
+		     .Status = ShipStatus,
+		     .Objectives = ShipObjectives},
 		};
 		static_assert(std::size(c_Modes) == static_cast<size_t>(BattleMode::Count), "c_Modes must describe each BattleMode.");
 
@@ -3857,6 +4234,8 @@ namespace SandboxDetail {
 		s_Jobs.clear();
 		s_Flags = {};
 		s_OneFlag = Flag();
+		s_Ship = MakeRef(nullptr);
+		s_ShipGoneAt = -1;
 		s_Stuck.clear();
 		s_Rushers.clear();
 	}
@@ -4150,6 +4529,9 @@ namespace SandboxDetail {
 						case BattleMode::OneFlag:
 							tip = "While an enemy has the flag, a commander sends some of this team to stand in that enemy's goal, rather than everyone chasing the carrier.";
 							break;
+						case BattleMode::CaptureTheShip:
+							tip = "While an enemy has the ship, a commander sends some of this team to stand in that enemy's landing zone, rather than everyone chasing the ship.";
+							break;
 						case BattleMode::VipHunt:
 							tip = "With an enemy near this team's VIP, or the VIP badly hurt, a commander pulls some of its hunters back to protect it; and keeps more bodyguards while the team is ahead, fewer while it's behind.";
 							break;
@@ -4207,6 +4589,9 @@ namespace SandboxDetail {
 			case Tool::BattleModeGoal:
 				return team + " goal zone";
 			case Tool::BattleModeFlag:
+				if (s_ModeSetup.Mode == BattleMode::CaptureTheShip) {
+					return s_ModeSetup.FlagSpots.size() < c_MaxFlagSpots ? "Ship position " + std::to_string(s_ModeSetup.FlagSpots.size() + 1) : std::string("All ship positions placed");
+				}
 				return s_ModeSetup.FlagSpots.size() < c_MaxFlagSpots ? "Flag position " + std::to_string(s_ModeSetup.FlagSpots.size() + 1) : std::string("All flag positions placed");
 			case Tool::BattleModePoint:
 				return mode.PointName ? team + " " + mode.PointName : std::string();
@@ -4429,7 +4814,7 @@ namespace SandboxDetail {
 				case EditKind::Point:
 					return setUp && mode.PointName && s_ModeSetup.Plays[ref.Side] && PointOf(ref);
 				case EditKind::FlagSpot:
-					return setUp && s_ModeSetup.Mode == BattleMode::OneFlag && !s_ModeSetup.FlagByZones && PointOf(ref);
+					return setUp && ((s_ModeSetup.Mode == BattleMode::OneFlag && !s_ModeSetup.FlagByZones) || s_ModeSetup.Mode == BattleMode::CaptureTheShip) && PointOf(ref);
 				default:
 					return false;
 			}
@@ -4671,7 +5056,7 @@ namespace SandboxDetail {
 					}
 				}
 			}
-			if (settings.Mode == BattleMode::OneFlag && !settings.FlagByZones) {
+			if ((settings.Mode == BattleMode::OneFlag && !settings.FlagByZones) || settings.Mode == BattleMode::CaptureTheShip) {
 				for (const Vector& spot: settings.FlagSpots) {
 					away.push_back({spot});
 				}
