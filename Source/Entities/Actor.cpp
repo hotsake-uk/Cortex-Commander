@@ -40,6 +40,7 @@
 #include "tracy/Tracy.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <sstream>
 
 using namespace RTE;
@@ -2718,7 +2719,7 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 	}
 
 	// Draw the alarm exclamation mark if we are alarmed!
-	if (m_AlarmTimer.GetSimTimeLimitProgress() < 0.25) {
+	if (g_SettingsMan.ShowAlarmExclamation() && m_AlarmTimer.GetSimTimeLimitProgress() < 0.25) {
 		draw_sprite(pTargetBitmap, m_apAlarmExclamation[m_AgeTimer.AlternateSim(100)], cpuPos.m_X - 3, EaseOut(drawPos.m_Y + m_HUDStack - 10, drawPos.m_Y + m_HUDStack - 25, m_AlarmTimer.GetSimTimeLimitProgress() / 0.25f));
 	}
 
