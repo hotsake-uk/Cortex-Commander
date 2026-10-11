@@ -180,6 +180,7 @@ namespace RTE {
 		/// jetted into the wall, or strafed to line up.) The search, the grid and the costs keep to Pos.
 		Vector Anchor;
 		bool Ladder = false; //!< Rungs of the Ladder material in or beside this cell: a way up and down for a climber (the anchor is where its body climbs).
+		float LadderBottom = -1.0F; //!< For a Ladder node, the lowest Ladder pixel of its strip in the cell (its foot, when the ladder ends here): how far up a climber on the floor below has to reach for it.
 
 		bool m_Navigable = true; //!< Whether this node can be navigated through.
 
