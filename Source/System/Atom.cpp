@@ -39,7 +39,18 @@ namespace {
 		}
 		// Weapon fire (anything that hits units) strikes terrain as hard as the Weapon damage to terrain setting says.
 		float terrainDamage = (owner && owner->HitsMOs() && !owner->IsJetpackExhaust()) ? RTE::g_SettingsMan.WeaponTerrainDamage() : 1.0F;
-		return RTE::g_SceneMan.TryPenetrate(x, y, terrainDamage == 1.0F ? impulse : impulse * terrainDamage, velocity, retardation, airRatio, numPenetrations, orphansRadius, orphansMaxArea, orphansRate);
+		const RTE::Vector struck = terrainDamage == 1.0F ? impulse : impulse * terrainDamage;
+		// A drop of liquid landing in a pool of a liquid softer than water (blood: StructuralIntegrity 0.1) knocks a pixel of it loose only as hard
+		// as it would one of water (integrity 1). As soft as blood, a drop falling back from a pixel or two up knocked another loose, which fell
+		// back and knocked another: a pool of blood being poured into churned with a thousand or more drops at a time.
+		if (owner && owner->GetMaterial() && RTE::FluidSim::IsLiquid(owner->GetMaterial()->GetIndex()) && struck.GetSqrMagnitude() < 1.0F) {
+			if (unsigned char hitID = RTE::g_SceneMan.GetTerrMatter(x, y); RTE::FluidSim::IsLiquid(hitID)) {
+				if (const RTE::Material* hitMaterial = RTE::g_SceneMan.GetMaterialFromID(hitID); hitMaterial && hitMaterial->GetIntegrity() < 1.0F) {
+					return false;
+				}
+			}
+		}
+		return RTE::g_SceneMan.TryPenetrate(x, y, struck, velocity, retardation, airRatio, numPenetrations, orphansRadius, orphansMaxArea, orphansRate);
 	}
 } // namespace
 
