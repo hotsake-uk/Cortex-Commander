@@ -1661,12 +1661,18 @@ void MovableMan::Update() {
 					actor->Update();
 				}
 
-				g_PerformanceMan.StartPerformanceMeasurement(PerformanceMan::ScriptsUpdate);
+				// Only objects with scripts of their own are timed: for the rest, the timer (and the perf log's lock and lookup) would cost more than the call.
+				const bool timeScripts = actor->HasAnyScripts();
+				if (timeScripts) {
+					g_PerformanceMan.StartPerformanceMeasurement(PerformanceMan::ScriptsUpdate);
+				}
 				{
 					SceneMan::TreesPassable treesPassable; // (A unit's own scripts, mods' AI among them, see the ground as it does: see UnitsScript.)
 					actor->UpdateScripts();
 				}
-				g_PerformanceMan.StopPerformanceMeasurement(PerformanceMan::ScriptsUpdate);
+				if (timeScripts) {
+					g_PerformanceMan.StopPerformanceMeasurement(PerformanceMan::ScriptsUpdate);
+				}
 
 				actor->ApplyImpulses();
 			}
@@ -1681,9 +1687,15 @@ void MovableMan::Update() {
 			for (iIt = m_Items.begin(); iIt != m_Items.end(); ++iIt, ++count) {
 				(*iIt)->Update();
 
-				g_PerformanceMan.StartPerformanceMeasurement(PerformanceMan::ScriptsUpdate);
+				// (Timed only with scripts of its own, as for units.)
+				const bool timeScripts = (*iIt)->HasAnyScripts();
+				if (timeScripts) {
+					g_PerformanceMan.StartPerformanceMeasurement(PerformanceMan::ScriptsUpdate);
+				}
 				(*iIt)->UpdateScripts();
-				g_PerformanceMan.StopPerformanceMeasurement(PerformanceMan::ScriptsUpdate);
+				if (timeScripts) {
+					g_PerformanceMan.StopPerformanceMeasurement(PerformanceMan::ScriptsUpdate);
+				}
 
 				(*iIt)->ApplyImpulses();
 				if (count <= itemLimit) {
@@ -1699,9 +1711,15 @@ void MovableMan::Update() {
 			for (MovableObject* particle: m_Particles) {
 				particle->Update();
 
-				g_PerformanceMan.StartPerformanceMeasurement(PerformanceMan::ScriptsUpdate);
+				// (Timed only with scripts of its own, as for units.)
+				const bool timeScripts = particle->HasAnyScripts();
+				if (timeScripts) {
+					g_PerformanceMan.StartPerformanceMeasurement(PerformanceMan::ScriptsUpdate);
+				}
 				particle->UpdateScripts();
-				g_PerformanceMan.StopPerformanceMeasurement(PerformanceMan::ScriptsUpdate);
+				if (timeScripts) {
+					g_PerformanceMan.StopPerformanceMeasurement(PerformanceMan::ScriptsUpdate);
+				}
 
 				particle->ApplyImpulses();
 				particle->RestDetection();
@@ -1988,7 +2006,7 @@ void MovableMan::Update() {
 
 	// Sort team rosters if necessary
 	for (int team = Activity::TeamOne; team < Activity::MaxTeamCount; ++team) {
-		if (m_SortTeamRoster[Activity::TeamOne]) {
+		if (m_SortTeamRoster[team]) {
 			m_ActorRoster[team].sort(MOXPosComparison());
 		}
 	}
@@ -2244,8 +2262,10 @@ void MovableMan::CompleteQueuedMOIDDrawings() {
 		m_MOIDIndexNextReady = false;
 		// What was taken out of the scene while it was built has no place in it (see ForgetMOIDsOf).
 		if (!m_MOIDsForgottenWhileBuilding.empty()) {
+			// Sorted for a binary search per entry, rather than a scan of the whole list per entry.
+			std::sort(m_MOIDsForgottenWhileBuilding.begin(), m_MOIDsForgottenWhileBuilding.end(), std::less<const MovableObject*>());
 			for (MovableObject*& entry: m_MOIDIndex) {
-				if (entry && std::find(m_MOIDsForgottenWhileBuilding.begin(), m_MOIDsForgottenWhileBuilding.end(), entry) != m_MOIDsForgottenWhileBuilding.end()) {
+				if (entry && std::binary_search(m_MOIDsForgottenWhileBuilding.begin(), m_MOIDsForgottenWhileBuilding.end(), static_cast<const MovableObject*>(entry), std::less<const MovableObject*>())) {
 					entry = nullptr;
 				}
 			}

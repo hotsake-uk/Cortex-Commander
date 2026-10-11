@@ -1087,7 +1087,7 @@ namespace RTE {
 		/// right. @param reach How far ahead to look at most. @return The unit, or nullptr.
 		Actor* UnitAhead(float direction, float reach) const;
 		bool InDoorSweep() const;
-		float FlightFuelNeeded(const Vector& landing, float landingFloorY) const;
+		float FlightFuelNeeded(const Vector& landing, float landingFloorY, bool capped = true) const; // (Capped at most of the tank unless told not to.)
 		/// The jet's push at a given fuel left, in px/s^2: the push now (as learned in flight) scaled by the throttle, which follows the tank.
 		float JetAccelAtFuel(float fuel) const;
 		/// The least fuel the jet lights on from rest, in ms (the engine's 250 ms at the throttle, and the pack's own minimum ratio).

@@ -943,13 +943,13 @@ void SLTerrain::Draw(const Camera& camera) {
 		case LayerType::ForegroundLayer:
 			// The terrain shader reads the materials on screen (GetMaterialTextureId): bring them up to date first. Only what changed is uploaded.
 			if (m_MainStreamTexture && m_MainBitmapOwned) {
-				UpdateTargetRegion(camera.GetViewport());
+				UpdateTargetRegionForView(camera.GetViewport());
 			}
 			m_FGColorLayer->Draw(camera);
 			break;
 		case LayerType::BackgroundLayer:
 			if (m_MainStreamTexture && m_MainBitmapOwned) {
-				UpdateTargetRegion(camera.GetViewport());
+				UpdateTargetRegionForView(camera.GetViewport());
 			}
 			m_BGColorLayer->Draw(camera);
 			break;

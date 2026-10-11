@@ -834,6 +834,7 @@ namespace SandboxDetail {
 		int Clicks = 0; //!< Tool::Command: how many clicks in a row placed it, 0 for not by a click: one makes the order cautious, two or more normal (s_DirectOrder).
 		bool HasRisk = false; //!< Tool::Command: placed by a double click dragged, so Risk says how urgent it is, not Clicks.
 		float Risk = 0.0F; //!< With HasRisk, how far the drag went toward the full risk distance, 0 (normal) to 1 (fully direct).
+		int OrderMode = -1; //!< Tool::Command: the CommandMode in hand when it was placed (the mode can go back to Command before it's given), -1 for the one in hand then.
 		long UnitID = 0; //!< Dropping a step of a plan: whose (and Choice which step).
 		std::vector<Vector> Points; //!< A patrol route's points (RC-4).
 		Vector Position2; //!< Selection box: the other corner.
@@ -1151,12 +1152,29 @@ namespace SandboxDetail {
 		Patrol, //!< Each click a point of a patrol route; the command row starts it as a loop or back and forth (RC-4).
 		DigTo, //!< Dig to the point, in the ground or not (RC-11): those with a digger that cuts the way are sent, to the point itself.
 		Suppress, //!< Fire into a zone round the point and keep firing: no target needed, whatever else is in sight; they walk in range first.
-		Select //!< Clicks only pick units: one clicked (Shift adds, double click all of its kind in view), or none on a click on nothing. What
-		       //!< the Command tool starts in, from the bar. (Last, so the ring's slices keep their places; the command row shows it first.)
+		Select, //!< Clicks only pick units: one clicked (Shift adds, double click all of its kind in view), or none on a click on nothing.
+		Command //!< The order fits what's under the pointer (CommandTargetAt): with nothing selected, as Select; else a friend is selected, an enemy
+		        //!< attacked, a battle objective gone for, open air flown to, anything else moved to. What the Command tool starts in, and what
+		        //!< a one-off order's mode goes back to once it's placed (and Esc). (After Select, so the ring's slices keep their places.)
 	};
-	inline CommandMode s_CommandMode = CommandMode::Select;
-	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Select units"};
-	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(230, 230, 230, 255)};
+	inline CommandMode s_CommandMode = CommandMode::Command;
+	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Select units", "Command"};
+	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(230, 230, 230, 255), IM_COL32(255, 214, 120, 255)};
+	/// A mode whose order is given once and then goes back to Command (s_BackToCommandAt): not Select, Command or Patrol (clicked out point by point).
+	inline bool OneOffMode(CommandMode mode) { return mode != CommandMode::Select && mode != CommandMode::Command && mode != CommandMode::Patrol; }
+	inline double s_BackToCommandAt = -1.0; //!< When (ImGui time) the one-off mode in hand goes back to Command: once a double click can no longer follow.
+	inline CommandMode s_BackToCommandFrom = CommandMode::Command; //!< The one-off mode that was in hand then: only that goes back.
+	/// What a click in Command mode comes to at a point (CommandTargetAt).
+	struct CommandTarget {
+		enum Kind {
+			Select, //!< Nothing selected, so the click selects (as Select mode).
+			Move, //!< As Move mode: a friend under it is selected, an enemy attacked, else moved to.
+			Objective, //!< A battle objective of the mode on now: gone for, or held if the selection's team defends it.
+			Air //!< Open air, nowhere near the ground: flown to.
+		} What = Select;
+		BattleObjective Goal; //!< With Objective: which.
+		bool Defend = false; //!< With Objective: the selection's team holds it rather than goes for it.
+	};
 
 	/// What a dig-to to the point under the cursor would come to for the selected units (RC-11; DigToPreview).
 	struct DigPreview {
@@ -2161,6 +2179,16 @@ namespace SandboxDetail {
 	void UpdateMoveWatch();
 	void ReissueNoRoute(const Vector& destination);
 	void MapOrder(const Vector& point, bool shift);
+	/// What a Command mode click at a point would do for the selected units (CommandTarget), as the pointer shows and the click gives.
+	CommandTarget CommandTargetAt(const Vector& point);
+	/// A click of the command tool's has placed an order in the mode in hand: a one-off mode goes back to Command (OneOffMode), once a second click
+	/// of a double click can no longer follow.
+	void BackToCommandAfterOrder(bool shift);
+	/// Sends the selected units for a battle objective (Command mode): into a zone, or round a place their team holds, as a defend zone the
+	/// size of the objective; to a place they go for (an enemy flag), as an attack-move. With shift, steps of their plans.
+	void ObjectiveSelected(const CommandTarget& target, bool shift);
+	/// Sends the selected units to a point in open air (Command mode). Until the Jetpack here order is in, as a move to the ground under it.
+	void FlySelectedTo(const Vector& point, bool shift);
 	bool HiddenFromCommander(const Actor* actor);
 	MovableObject* GuardableObjectAt(const Vector& position, int team);
 	const Colony::Building* BuildingAt(const Vector& position);
@@ -2221,7 +2249,7 @@ namespace SandboxDetail {
 	void MakeDefender(Actor* unit, const BattleSettings& settings);
 	void RecentreDefenders(int team, const Vector& centre, bool atIt, float radius = -1.0F);
 	void MoveDefender(BattleDefender& defender, const Vector& centre, bool atIt, float radius = -1.0F);
-	void CommandDefender(Actor* unit, const Vector& centre, const Vector& post);
+	void CommandDefender(Actor* unit, const Vector& centre, const Vector& post, float radius = -1.0F);
 	void MoveCommandedZone(Actor* unit, const Vector& centre, const Vector& post);
 	void DrawDefendZone(ImDrawList* drawList, const Vector& centre, float radius, float chase, ImU32 color);
 	void DrawCommandedZones(ImDrawList* drawList);
