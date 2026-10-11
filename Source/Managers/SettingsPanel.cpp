@@ -1248,8 +1248,8 @@ void DebugMan::SettingsGUI() {
 			ImGui::TextWrapped("How you place an RTS order (move, attack-move, defend, dig to) says how urgent it is. One click: cautious, walking round jumps and waiting for fuel. A double click: a normal order. A double click held and dragged: riskier the further you drag, up to fully direct (the shortest way there whatever it takes) at the full risk distance; the way you drag is the way they face when they get there. The Direct settings say how hard a full drag pushes it, the Cautious ones how careful one click is.");
 		}
 		{
-			Slider("Full risk drag distance", &direct.RiskDragPixels, 100.0F, 800.0F, "%.0f px");
-			Tip("How far on screen a double click is dragged for a fully direct order. A shorter drag takes that share of the way from a normal order to a fully direct one. 300 px is normal.");
+			Slider("Full risk drag distance", &direct.RiskDragPixels, 200.0F, 1200.0F, "%.0f px");
+			Tip("How far on screen a double click is dragged for a fully direct order, a suicide mission. Risk rises slowly and then steeply: half the distance is about 35%, four fifths about 70%. 600 px is normal.");
 			float straight = direct.StraightFlightRisk * 100.0F;
 			if (Slider("Straight flight from", &straight, 50.0F, 100.0F, "%.0f%% risk")) {
 				direct.StraightFlightRisk = straight / 100.0F;
@@ -1294,6 +1294,8 @@ void DebugMan::SettingsGUI() {
 			Tip("What tunnelling a node costs on a direct dig-to, as a share of a normal unit's price. Lower digs through rather than walking round; 2% (normal) tunnels straight through anything its digger cuts. A normal dig-to is 25%.");
 			Slider("Dig straightness", &direct.LineWeight, 0.0F, 1.0F, "%.2f");
 			Tip("How hard a direct dig-to keeps to the straight line from where it starts to the point, rather than any route as short: the cost of each node off the line, in nodes walked. 0 doesn't care; 0.1 is normal.");
+			Slider("Route straightness", &direct.MoveLineWeight, 0.0F, 2.0F, "%.2f");
+			Tip("How hard a risky move or attack keeps to the straight line to the target, at full risk (less the lower the risk): what each step off the line costs, in steps walked. 0 routes as usual; 0.6 is normal.");
 			Check("Ignore enemies on the route", &direct.IgnoreEnemies);
 			Tip("Whether their routes take no notice of enemies on the way (normal), even for a unit a game mode wants kept safe.");
 			Check("Groups keep together", &direct.KeepPace);

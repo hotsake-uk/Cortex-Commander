@@ -1037,11 +1037,13 @@ void Sandbox::DrawGUI() {
 		bool riskDrag = CurrentTool().Kind == Tool::Command && s_ClickCount >= 2 && s_CommandMode != CommandMode::Select && s_CommandMode != CommandMode::Patrol;
 		float riskPixels = std::max(1.0F, g_SettingsMan.DirectOrders().RiskDragPixels);
 		float dragLength = std::sqrt((now.x - s_DragStart.x) * (now.x - s_DragStart.x) + (now.y - s_DragStart.y) * (now.y - s_DragStart.y));
-		float risk = std::clamp(dragLength / riskPixels, 0.0F, 1.0F);
+		// (On a curve: slow at first and steep at the end, so a long drag is about 70% and full risk, a suicide mission, takes the whole of it.)
+		float risk = std::pow(std::clamp(dragLength / riskPixels, 0.0F, 1.0F), 1.6F);
+		const bool suicide = risk >= g_SettingsMan.DirectOrders().StraightFlightRisk;
 		bool riskDragging = riskDrag && std::abs(now.x - s_DragStart.x) + std::abs(now.y - s_DragStart.y) > 8.0F;
 		if (riskDragging) {
 			ImDrawList* draw = ImGui::GetForegroundDrawList();
-			ImU32 color = IM_COL32(static_cast<int>(90.0F + 165.0F * risk), static_cast<int>(200.0F - 150.0F * risk), static_cast<int>(255.0F - 205.0F * risk), 230);
+			ImU32 color = suicide ? IM_COL32(255, 40, 40, 255) : IM_COL32(static_cast<int>(90.0F + 165.0F * risk), static_cast<int>(200.0F - 150.0F * risk), static_cast<int>(255.0F - 205.0F * risk), 230);
 			draw->AddCircle(s_DragStart, riskPixels, IM_COL32(255, 255, 255, 60), 64, 1.0F);
 			draw->AddLine(s_DragStart, now, color, 2.0F + 3.0F * risk);
 			if (dragLength > 1.0F) {
@@ -1050,7 +1052,7 @@ void Sandbox::DrawGUI() {
 				draw->AddTriangleFilled(ImVec2(now.x + dir.x * 10.0F, now.y + dir.y * 10.0F), ImVec2(now.x + normal.x * 6.0F, now.y + normal.y * 6.0F), ImVec2(now.x - normal.x * 6.0F, now.y - normal.y * 6.0F), color);
 			}
 			char label[32];
-			std::snprintf(label, sizeof(label), "Risk %d%%", static_cast<int>(std::round(risk * 100.0F)));
+			std::snprintf(label, sizeof(label), suicide ? "Suicide %d%%" : "Risk %d%%", static_cast<int>(std::round(risk * 100.0F)));
 			draw->AddText(ImVec2(now.x + 14.0F, now.y - 22.0F), color, label);
 		} else if (dropLine) {
 			ImGui::GetForegroundDrawList()->AddLine(s_DragStart, now, c_SideColors[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)], 3.0F);

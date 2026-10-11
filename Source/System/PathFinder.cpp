@@ -333,8 +333,8 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	if (endNode) {
 		s_ThreatGoal = endNode->Pos;
 		s_ThreatGoalSet = true;
-		// A direct dig-to keeps to the straight line from here to there (LineCost).
-		if (s_LineWeight > 0.0F && agent.DigGoal && startNode) {
+		// A direct order keeps to the straight line from here to there (LineCost): a dig-to tunnels along it, a move keeps near it.
+		if (s_LineWeight > 0.0F && startNode) {
 			s_LineFrom = startNode->Pos;
 			s_LineTo = endNode->Pos;
 			s_LineSet = true;
