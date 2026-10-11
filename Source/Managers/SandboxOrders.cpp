@@ -1484,22 +1484,31 @@ namespace SandboxDetail {
 		}
 		// A zone (a hill, an assault objective), or a place they hold (their own flag): held as a defend zone the objective's size, each unit at
 		// a post on the ground in it, going after enemies that come in.
-		const float radius = std::max(objective.Radius, 60.0F);
 		if (shift) {
 			PlanStepFor(units, PlanKind::Move, objective.Pos, nullptr);
 			PlanStepFor(units, PlanKind::Defend, objective.Pos, nullptr);
 		} else {
-			std::vector<Vector> spots = StandingSpots(objective.Pos, static_cast<int>(units.size()));
-			for (size_t i = 0; i < units.size(); ++i) {
-				Vector spot = objective.Zone.empty() ? (spots.empty() ? objective.Pos : spots[std::min(i, spots.size() - 1)]) : SpotInZone(objective.Zone, units[i]->GetHeight());
-				// (Just over the ground under the spot, as for a move: see MoveUnitsTo.)
-				SendUnit(units[i], spot + Vector(0.0F, -4.0F), nullptr, false, target.Defend ? "hold objective" : "take objective");
-				units[i]->SetOrderPost(spot);
-				units[i]->SetOrderPostFacing(0);
-				CommandDefender(units[i], objective.Pos, spot, radius);
-			}
+			ObjectiveUnits(units, objective, target.Defend);
 		}
 		MarkOrder(objective.Pos, color);
+	}
+
+	void ObjectiveUnits(const std::vector<Actor*>& units, const BattleObjective& objective, bool defend) {
+		if (objective.Zone.empty() && !defend) {
+			// A place to go for: there, fighting on the way (as ObjectiveSelected).
+			MoveUnitsTo(units, objective.Pos, true);
+			return;
+		}
+		const float radius = std::max(objective.Radius, 60.0F);
+		std::vector<Vector> spots = StandingSpots(objective.Pos, static_cast<int>(units.size()));
+		for (size_t i = 0; i < units.size(); ++i) {
+			Vector spot = objective.Zone.empty() ? (spots.empty() ? objective.Pos : spots[std::min(i, spots.size() - 1)]) : SpotInZone(objective.Zone, units[i]->GetHeight());
+			// (Just over the ground under the spot, as for a move: see MoveUnitsTo.)
+			SendUnit(units[i], spot + Vector(0.0F, -4.0F), nullptr, false, defend ? "hold objective" : "take objective");
+			units[i]->SetOrderPost(spot);
+			units[i]->SetOrderPostFacing(0);
+			CommandDefender(units[i], objective.Pos, spot, radius);
+		}
 	}
 
 	void FlySelectedTo(const Vector& point, bool shift) {
@@ -1722,21 +1731,25 @@ namespace SandboxDetail {
 			PlanStepFor(units, PlanKind::Move, point, nullptr);
 			PlanStepFor(units, PlanKind::Defend, point, nullptr, facing);
 		} else {
-			std::vector<Vector> spots = StandingSpots(point, static_cast<int>(units.size()));
-			std::sort(units.begin(), units.end(), [&point](Actor* a, Actor* b) {
-				return g_SceneMan.ShortestDistance(point, a->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude() < g_SceneMan.ShortestDistance(point, b->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
-			});
-			for (size_t i = 0; i < units.size(); ++i) {
-				Vector spot = spots.empty() ? point : spots[std::min(i, spots.size() - 1)];
-				// (Just over the ground under the spot, as for a move: see MoveUnitsTo.) Going there it's a move (OrderKind); there, a defend.
-				SendUnit(units[i], spot + Vector(0.0F, -4.0F), nullptr, false, "defend at");
-				units[i]->SetOrderPost(spot);
-				units[i]->SetOrderPostFacing(facing);
-				// The place is a defend zone, as a Battle Director team's is: the radius and chase distance on the command row.
-				CommandDefender(units[i], point, spot);
-			}
+			DefendUnitsAt(units, point, facing);
 		}
 		MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)]);
+	}
+
+	void DefendUnitsAt(std::vector<Actor*> units, const Vector& point, int facing) {
+		std::vector<Vector> spots = StandingSpots(point, static_cast<int>(units.size()));
+		std::sort(units.begin(), units.end(), [&point](Actor* a, Actor* b) {
+			return g_SceneMan.ShortestDistance(point, a->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude() < g_SceneMan.ShortestDistance(point, b->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
+		});
+		for (size_t i = 0; i < units.size(); ++i) {
+			Vector spot = spots.empty() ? point : spots[std::min(i, spots.size() - 1)];
+			// (Just over the ground under the spot, as for a move: see MoveUnitsTo.) Going there it's a move (OrderKind); there, a defend.
+			SendUnit(units[i], spot + Vector(0.0F, -4.0F), nullptr, false, "defend at");
+			units[i]->SetOrderPost(spot);
+			units[i]->SetOrderPostFacing(facing);
+			// The place is a defend zone, as a Battle Director team's is: the radius and chase distance on the command row.
+			CommandDefender(units[i], point, spot);
+		}
 	}
 
 	/// Orders the selected units to suppress a place: each holds ground and fires into a zone of the radius on the command row round the
@@ -1785,7 +1798,13 @@ namespace SandboxDetail {
 	/// as a loop or back and forth. Each unit has its own spot at each point, as a move gives it. A patrol is a plan that never runs out, so
 	/// any other order ends it.
 	void PatrolSelected(const std::vector<Vector>& points, bool backAndForth) {
-		std::vector<Actor*> units = UnitsToMove(0, true);
+		PatrolUnits(UnitsToMove(0, true), points, backAndForth);
+		for (const Vector& point: points) {
+			MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::Patrol)]);
+		}
+	}
+
+	void PatrolUnits(std::vector<Actor*> units, const std::vector<Vector>& points, bool backAndForth) {
 		if (points.empty() || units.empty()) {
 			return;
 		}
@@ -1817,9 +1836,6 @@ namespace SandboxDetail {
 			plan.Steps.pop_front();
 			StartPlanStep(unit, plan, step);
 			AnswerOrder(unit, "OrderPatrol");
-		}
-		for (const Vector& point: points) {
-			MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::Patrol)]);
 		}
 	}
 

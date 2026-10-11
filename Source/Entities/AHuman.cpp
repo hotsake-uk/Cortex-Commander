@@ -1720,6 +1720,55 @@ void AHuman::ResetAllTimers() {
 
 void AHuman::OnNewMovePath() {
 	Actor::OnNewMovePath();
+	// A sky order's route (Jetpack here, or a move clicked in open air: StandingOrder::SkyGoal) is the search's to the ground under the
+	// point, walked there and then straight up, however far round that was. It is cut at the first place along it with a clear line to
+	// the point, from where the jet flies the rest (UpdateAIMotor's sky block), and the point itself put on the end: from the unit itself
+	// if it already has the line, so the route is the one leg, straight there through the air.
+	const bool skyJet = m_pJetpack && m_pJetpack->IsAttached() && m_pJetpack->GetJetpackType() == AEJetpack::JetpackType::Standard;
+	if (!m_StandingOrder.SkyGoal || !skyJet || !m_HasMovePathGoal || m_MovePath.empty()) {
+		return;
+	}
+	const Vector sky = m_StandingOrder.SkyPoint;
+	if (!g_SceneMan.ShortestDistance(m_MovePathGoal, sky, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(4.0F)) {
+		return;
+	}
+	const float h = m_CharHeight;
+	auto seesSky = [this, &sky, h](const Vector& body) {
+		Vector obstacle;
+		Vector free;
+		for (float dy: {-h * 0.3F, h * 0.1F}) {
+			const Vector from = body + Vector(0.0F, dy);
+			if (g_SceneMan.CastObstacleRay(from, g_SceneMan.ShortestDistance(from, sky, g_SceneMan.SceneWrapsX()), obstacle, free, m_MOID, IgnoresWhichTeam(), 0, 3) >= 0.0F) {
+				return false;
+			}
+		}
+		return true;
+	};
+	// (The route's points are a fifth of a height over the floor; the body stands with its middle about half a height over that.)
+	size_t keep = 0;
+	bool found = seesSky(m_Pos);
+	if (!found) {
+		for (const Vector& point: m_MovePath) {
+			++keep;
+			if (seesSky(point - Vector(0.0F, h * 0.3F))) {
+				found = true;
+				break;
+			}
+		}
+	}
+	if (!found) {
+		return;
+	}
+	m_MovePath.resize(keep);
+	if (m_MovePathKinds.size() > keep) {
+		m_MovePathKinds.resize(keep);
+	}
+	while (m_MovePathKinds.size() < keep) {
+		m_MovePathKinds.push_back(PathStepKind::Walk);
+	}
+	m_MovePath.push_back(sky);
+	m_MovePathKinds.push_back(PathStepKind::Jump);
+	MoverTrace("jetpack here: route cut to " + std::to_string(keep) + " points, then straight to the point");
 }
 
 void AHuman::CorrectCorners() {
