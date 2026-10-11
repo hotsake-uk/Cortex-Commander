@@ -1199,12 +1199,34 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 			adjCost.state = const_cast<PathNode*>(to);
 			adjacentList->push_back(adjCost);
 		};
+		// On a risky order, whose flights cost less (PathAgent::FlightCostScale under 1), the climb costs more by as much: it jets where
+		// others climb. (Priced as ever, a reckless unit with a short jet still went up every ladder on the way, at a careful unit's pace.)
+		const float climbScale = s_FlightCostScale < 1.0F ? 1.0F / std::max(s_FlightCostScale, 0.2F) : 1.0F;
+		// The way up the ladder's line where the body climbs (the anchor), up to the head's height at the node above: open, the rungs
+		// aside. (The step's own material is the weakest of a few lines across the cell, so a shaft choked over the ladder with a gap
+		// beside it read as open, and the climber, whose head goes up the ladder's line, was routed up it and hung under the blockage.)
+		auto climbOpen = [&](const PathNode* from, const PathNode* to) {
+			const float topY = to->Pos.m_Y - s_StandHeight * 0.62F;
+			for (float dx: {-4.0F, 0.0F, 4.0F}) {
+				const int x = static_cast<int>(from->Anchor.m_X + dx);
+				for (float y = from->Pos.m_Y - s_StandHeight * 0.5F; y >= topY; y -= 2.0F) {
+					unsigned char id = TerrNav(x, static_cast<int>(y));
+					if (id != MaterialColorKeys::g_MaterialAir && LiquidOf(id) == PathLiquid::None) {
+						const Material* material = g_SceneMan.GetMaterialFromID(id);
+						if (material && !Open(*material)) {
+							return false;
+						}
+					}
+				}
+			}
+			return true;
+		};
 		if (node->Ladder) {
-			if (node->Up && node->Up->m_Navigable && Open(*node->UpMaterial) && (node->Up->Ladder || standsAt(node->Up))) {
-				link(node->Up, 2.0F);
+			if (node->Up && node->Up->m_Navigable && Open(*node->UpMaterial) && (node->Up->Ladder || standsAt(node->Up)) && climbOpen(node, node->Up)) {
+				link(node->Up, 2.0F * climbScale);
 			}
 			if (node->Down && node->Down->m_Navigable && Open(*node->DownMaterial) && (node->Down->Ladder || standsAt(node->Down))) {
-				link(node->Down, 1.2F);
+				link(node->Down, 1.2F * climbScale);
 			}
 			// (Off the side and over the top only where the way between is open: a ladder stands against a wall, and offered through it,
 			// the floor on the wall's far side was a step away, and units walked into the wall behind the ladder.)
@@ -1238,7 +1260,7 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 			const float floorY = node->Surface >= 0.0F ? node->Surface : node->Pos.m_Y + static_cast<float>(m_NodeDimension) * 0.5F;
 			for (const PathNode* target: std::array<const PathNode*, 6>{oneUp, oneLeft, oneRight, twoUp, twoLeft, twoRight}) {
 				if (target && target->m_Navigable && target->Ladder && target->LadderBottom >= floorY - s_StandHeight) {
-					link(target, target == oneUp ? 2.0F : (target == twoUp ? 4.5F : 3.5F));
+					link(target, (target == oneUp ? 2.0F : (target == twoUp ? 4.5F : 3.5F)) * climbScale);
 				}
 			}
 		}
