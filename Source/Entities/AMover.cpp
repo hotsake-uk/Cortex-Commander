@@ -224,6 +224,41 @@ Vector AMover::GetDeckStandingPos() const {
 	return Vector(box.GetCorner().m_X + box.GetWidth() * 0.5F, box.GetCorner().m_Y);
 }
 
+void AMover::SetStops(const std::vector<Vector>& stops) {
+	if (m_DeckMaterialDrawn) {
+		EraseDeckMaterial(true);
+	}
+	m_Stops = stops;
+	m_DeckOffset = m_Stops.empty() ? Vector() : m_Stops.front();
+	m_StopIndex = 0;
+	m_TargetStop = 0;
+	m_Direction = 1;
+	m_Moving = false;
+	m_CalledStop = -1;
+	m_StopTimer.Reset();
+	m_PauseMS = m_StopWait;
+	if (m_Deck) {
+		m_Deck->SetParentOffset(m_DeckOffset);
+	}
+}
+
+void AMover::AddStop(const Vector& stop) {
+	std::vector<Vector> stops = m_Stops;
+	stops.push_back(stop);
+	if (stops.size() == 1) {
+		SetStops(stops);
+	} else {
+		m_Stops = stops;
+	}
+}
+
+Vector AMover::GetStandingOffset() const {
+	if (!m_Deck) {
+		return Vector();
+	}
+	return Vector(m_Deck->GetSpriteOffset().m_X + static_cast<float>(m_Deck->GetSpriteWidth()) * 0.5F, m_Deck->GetSpriteOffset().m_Y) - m_Deck->GetJointOffset();
+}
+
 bool AMover::GetDeckMaterialBox(Box& box) const {
 	if (!m_Deck || !m_DeckMaterialDrawn) {
 		return false;

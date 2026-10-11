@@ -540,7 +540,10 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AMover) {
 	    .def("IsMoving", &AMover::IsMoving)
 	    .def("GetStopStandingPos", &AMover::GetStopStandingPos)
 	    .def("GetDeckStandingPos", &AMover::GetDeckStandingPos)
-	    .def("CallTo", &AMover::CallTo);
+	    .def("CallTo", &AMover::CallTo)
+	    .def("ClearStops", &AMover::ClearStops)
+	    .def("AddStop", &AMover::AddStop)
+	    .def("GetStandingOffset", &AMover::GetStandingOffset);
 }
 
 LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AEmitter) {

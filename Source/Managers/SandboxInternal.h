@@ -1124,6 +1124,8 @@ namespace SandboxDetail {
 	inline bool s_RopeRightDown = false;
 	inline int s_RopeDrawing = 0; //!< The sim's: the rope its Rope clicks carry on, 0 for none (the next click starts one).
 	inline Vector s_ShapeStart;
+	inline bool s_LineDragging = false; //!< A line being dragged out on the world, from s_LineStart: a lift's or moving platform's track (DragsTrack).
+	inline Vector s_LineStart;
 	constexpr int c_MaxDropSide = 800; //!< The biggest box "Make it fall" takes either way, in pixels.
 
 	/// Whether the tool in hand is used by dragging out a shape on the world: the terrain brushes with Brush type Shape, and "Make it fall"'s box.
@@ -2232,6 +2234,21 @@ namespace SandboxDetail {
 	Vector StructureCorner(const Preset& preset, const Vector& center, bool snap);
 	Vector StructurePosition(const Preset& preset, const Vector& click, bool snap);
 	void PlaceStructure(const Stroke& stroke);
+	/// Whether the tool in hand puts down the Build piece picked by dragging a line: a lift or moving platform (an AMover), dragged from where
+	/// its deck is first stood on to where it runs to.
+	bool DragsTrack(Tool kind);
+	/// How wide the deck of a lift or moving platform piece is, in pixels (0 for a piece that isn't one), for the drag's preview.
+	float TrackDeckWidth(const Preset& preset);
+	/// How many stops a lift or moving platform piece has (spread evenly along its dragged track), at least 2.
+	int TrackStopCount(const Preset& preset);
+	/// A point of a line dragged on the world, on the bunker grid when snapping: across to the nearest 12 px, up and down to the nearest
+	/// 24 px (the floors bunker pieces line up on).
+	Vector SnapLinePoint(const Vector& point, bool snap);
+	/// Where a line dragged from a start toward the pointer ends: straight up or down, or straight across, whichever it is nearer, unless free
+	/// (Shift held); on the bunker grid when snapping; no longer than c_MaxLineDrag.
+	Vector LineDragEnd(const Vector& start, const Vector& pointer, bool free, bool snap);
+	constexpr float c_MaxLineDrag = 2400.0F; //!< The longest line a drag puts down (a lift's track), in pixels.
+	constexpr float c_MinLineDrag = 24.0F; //!< A drag shorter than this is a click.
 	void TakeControl(const Vector& position);
 	void StopFlying();
 	void ReleaseControl();

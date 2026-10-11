@@ -31,6 +31,7 @@
 #include "AEmitter.h"
 #include "AEJetpack.h"
 #include "ADoor.h"
+#include "AMover.h"
 #include "AHuman.h"
 #include "ACrab.h"
 #include "Turret.h"
@@ -1278,6 +1279,15 @@ void Scene::SaveSceneObject(Writer& writer, const SceneObject* sceneObjectToSave
 		}
 		if (saveFullData) {
 			writer.NewPropertyWithValue("AngularVel", moSpriteToSave->GetAngularVel());
+		}
+	}
+
+	// A lift's stops may be its own (dragged out in the sandbox), not its preset's.
+	if (const AMover* moverToSave = dynamic_cast<const AMover*>(sceneObjectToSave)) {
+		writer.NewPropertyWithValue("ClearStops", true);
+		for (const Vector& stop: moverToSave->GetStops()) {
+			writer.NewProperty("AddStop");
+			writer << stop;
 		}
 	}
 
