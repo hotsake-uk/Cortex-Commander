@@ -993,6 +993,8 @@ void DebugMan::SettingsGUI() {
 		Tip("Each unit's team icon and health number. In the Sandbox game mode every side's are shown; in other games, other sides' only where your side has seen and with \"Show enemy HUD\" (Options, Gameplay) on. Units of no side (training dummies) and those a mod hides never have them.");
 		Toggle("CPU units' aim reticles", g_SettingsMan.ShowCPUAimReticles(), [](bool on) { g_SettingsMan.SetShowCPUAimReticles(on); });
 		Tip("The yellow dots along the sights of a weapon a CPU-controlled unit is aiming, and of a turret's. Off: only your own units' are drawn. Your own aim is always shown.");
+		Toggle("Alert mark over units", g_SettingsMan.ShowAlarmExclamation(), [](bool on) { g_SettingsMan.SetShowAlarmExclamation(on); });
+		Tip("The exclamation mark that pops up over a unit's head when it is alerted to an enemy or a noise.");
 		Toggle("Classic pie wheel", g_SettingsMan.ClassicPieWheel(), [](bool on) { g_SettingsMan.SetClassicPieWheel(on); });
 		Tip("The old wheels on right click, for a unit you play and for the sandbox's command tool, instead of the action menu: a list above the pointer with every order and the weapons and movement rules on one layer. (A gamepad, and players after the first, always get the unit's wheel.)");
 		Toggle("Smooth HUD text", TextOverlay::IsEnabled(), [](bool on) { TextOverlay::SetEnabled(on); });
