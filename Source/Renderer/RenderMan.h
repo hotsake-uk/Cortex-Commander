@@ -14,6 +14,15 @@
 
 namespace RTE {
 	class DrawCall;
+
+	/// The parts of a sprite drawn in its side's colour (MOSprite's TeamColorIndex and TeamColorMapFile), for one draw.
+	struct SpriteTeamColor {
+		bool Active = false; //!< Whether anything is recoloured.
+		glm::vec3 Rgb{0.0F}; //!< The colour, 0 to 1.
+		std::array<float, 8> Indices{-1.0F, -1.0F, -1.0F, -1.0F, -1.0F, -1.0F, -1.0F, -1.0F}; //!< Palette indices recoloured wherever they're drawn, -1 for none.
+		GLuint Map = 0; //!< GL texture of the frame's mask, or 0.
+	};
+
 	class RenderMan: public Singleton<RenderMan> {
 	public:
 		/// Constructor
@@ -82,12 +91,13 @@ namespace RTE {
 		/// Goes back to the shader that was drawing before BeginObjectShader. Does nothing if no object shader is on.
 		void EndObjectShader();
 
-		/// Draws what follows with a sprite's authored normal and emissive maps (MOSprite's NormalMapFile and EmissiveMapFile), until EndObjectMaps. Call after BeginObjectShader, if any,
-		/// so the maps go to the shader that draws. The maps are bound on texture units 12 and 13.
+		/// Draws what follows with a sprite's authored normal and emissive maps (MOSprite's NormalMapFile and EmissiveMapFile) and its team colour, until EndObjectMaps.
+		/// Call after BeginObjectShader, if any, so the maps go to the shader that draws. The maps are bound on texture units 12, 13 and 14.
 		/// @param normalMap GL texture of the frame's normal map, or 0. @param emissiveMap Of its emissive map, or 0.
 		/// @param spriteUV Where the frame sits in its GL texture (xy corner, zw size, in UV), which differs from the maps when it's in the sprite atlas.
 		/// @param strength The player's strength for authored maps, 0 to 1.
-		void BeginObjectMaps(GLuint normalMap, GLuint emissiveMap, const glm::vec4& spriteUV, float strength);
+		/// @param teamColor The parts drawn in the side's colour, if any.
+		void BeginObjectMaps(GLuint normalMap, GLuint emissiveMap, const glm::vec4& spriteUV, float strength, const SpriteTeamColor& teamColor = {});
 
 		/// Stops drawing with a sprite's maps. Does nothing if none are on.
 		void EndObjectMaps() { m_ActiveBatch->m_ObjectMapUniforms.clear(); }

@@ -91,6 +91,51 @@ namespace RTE {
 		/// Ownership is NOT transferred!
 		BITMAP* GetSpriteFrame(unsigned int whichFrame = 0) const { return (whichFrame < m_FrameCount) ? m_aSprite[whichFrame] : 0; }
 
+#pragma region Team Colour
+		/// How many palette indices one sprite can mark for its side's colour (TeamColorIndex), as the sprite shader takes them.
+		static constexpr int c_MaxTeamColorIndices = 8;
+
+		/// Gets whether this sprite's marked parts (TeamColorIndex, TeamColorMapFile) are recoloured.
+		/// @return Whether this sprite's marked parts are recoloured.
+		bool IsTeamColored() const { return m_TeamColored; }
+
+		/// Sets whether this sprite's marked parts (TeamColorIndex, TeamColorMapFile) are recoloured. Off draws them as painted.
+		/// @param teamColored Whether to recolour them.
+		void SetTeamColored(bool teamColored) { m_TeamColored = teamColored; }
+
+		/// Gets the colour the marked parts take when the team colour setting is off or the object has no side.
+		/// @return The default colour. Black if none was given (HasTeamColorDefault).
+		Color GetTeamColorDefault() const { return m_TeamColorDefault; }
+
+		/// Sets the colour the marked parts take when the team colour setting is off or the object has no side.
+		/// @param color The default colour.
+		void SetTeamColorDefault(const Color& color) {
+			m_TeamColorDefault = color;
+			m_HasTeamColorDefault = true;
+		}
+
+		/// Gets whether a default colour was given for the marked parts.
+		/// @return Whether a default colour was given.
+		bool HasTeamColorDefault() const { return m_HasTeamColorDefault; }
+
+		/// Forgets the default colour, so the marked parts keep their painted colour when there's no side colour to use.
+		void ClearTeamColorDefault() {
+			m_HasTeamColorDefault = false;
+			m_TeamColorDefault.Reset();
+		}
+
+		/// Marks a palette index as drawn in the side's colour wherever this sprite uses it. Up to c_MaxTeamColorIndices; more are ignored.
+		/// @param index The palette index, 1 to 255.
+		void AddTeamColorIndex(int index);
+
+		/// Unmarks every palette index marked with AddTeamColorIndex or TeamColorIndex.
+		void ClearTeamColorIndices() { m_TeamColorIndices.clear(); }
+
+		/// Gets the palette indices drawn in the side's colour.
+		/// @return The marked palette indices.
+		const std::vector<int>& GetTeamColorIndices() const { return m_TeamColorIndices; }
+#pragma endregion
+
 		/// Gets the color index of the pixel at position (X, Y) in the sprite bitmap
 		/// @param x X coordinate on the bitmap of the pixel to get.
 		/// @param y Y coordinate on the bitmap of the pixel to get.
@@ -372,7 +417,14 @@ namespace RTE {
 		std::vector<std::shared_ptr<BitmapTexture>> m_NormalMaps; //!< Loaded from m_NormalMapFile, true colour.
 		std::vector<std::shared_ptr<BitmapTexture>> m_EmissiveMaps; //!< Loaded from m_EmissiveMapFile, true colour.
 
-		/// Hands the current frame's authored maps, if it has any, to the draws that follow, until RestoreRenderBlendMode. Call after ApplyRenderBlendMode.
+		ContentFile m_TeamColorMapFile; //!< Masks of the parts drawn in the side's colour, frame for frame with the sprite (TeamColorMapFile). Empty for none.
+		std::vector<std::shared_ptr<BitmapTexture>> m_TeamColorMaps; //!< Loaded from m_TeamColorMapFile, true colour.
+		std::vector<int> m_TeamColorIndices; //!< Palette indices drawn in the side's colour wherever the sprite uses them (TeamColorIndex), up to c_MaxTeamColorIndices.
+		bool m_TeamColored; //!< Whether the parts marked by m_TeamColorIndices and m_TeamColorMaps are recoloured at all.
+		bool m_HasTeamColorDefault; //!< Whether m_TeamColorDefault was given. Without it, the marked parts keep their painted colour when there's no side colour to use.
+		Color m_TeamColorDefault; //!< The marked parts' colour when the team colour setting is off or the object has no side.
+
+		/// Hands the current frame's authored maps and team colour, if it has any, to the draws that follow, until RestoreRenderBlendMode. Call after ApplyRenderBlendMode.
 		void ApplySpriteMaps() const;
 		ContentFile m_IconFile; //!< The file containing the GUI icon.
 		BITMAP* m_GraphicalIcon; //!< The GUI representation of this MOSprite as a BITMAP.

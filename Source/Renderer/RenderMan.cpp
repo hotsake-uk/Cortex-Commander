@@ -224,12 +224,13 @@ namespace {
 	/// A sprite's authored maps for one draw: binds them on their units and says they're there, and says they're gone again after the draw, since the next draws share the program.
 	class SpriteMapsValue : public UniformValueType {
 	public:
-		SpriteMapsValue(const Shader::SpriteMapUniforms& uniforms, GLuint normalMap, GLuint emissiveMap, const glm::vec4& spriteUV, float strength) :
-		    UniformValueType(uniforms.HasNormalMap), m_Uniforms(uniforms), m_NormalMap(normalMap), m_EmissiveMap(emissiveMap), m_SpriteUV(spriteUV), m_Strength(strength) {}
+		SpriteMapsValue(const Shader::SpriteMapUniforms& uniforms, GLuint normalMap, GLuint emissiveMap, const glm::vec4& spriteUV, float strength, const SpriteTeamColor& teamColor) :
+		    UniformValueType(uniforms.HasNormalMap), m_Uniforms(uniforms), m_NormalMap(normalMap), m_EmissiveMap(emissiveMap), m_SpriteUV(spriteUV), m_Strength(strength), m_TeamColor(teamColor) {}
 
 		void Enable() override {
 			static constexpr GLint c_NormalUnit = 12;
 			static constexpr GLint c_EmissiveUnit = 13;
+			static constexpr GLint c_TeamColorUnit = 14;
 			if (m_NormalMap && m_Uniforms.NormalMap >= 0) {
 				glActiveTexture(GL_TEXTURE0 + c_NormalUnit);
 				glBindTexture(GL_TEXTURE_2D, m_NormalMap);
@@ -242,6 +243,16 @@ namespace {
 				glUniform1i(m_Uniforms.EmissiveMap, c_EmissiveUnit);
 				glUniform1i(m_Uniforms.HasEmissiveMap, 1);
 			}
+			if (m_TeamColor.Active) {
+				if (m_TeamColor.Map && m_Uniforms.TeamColorMap >= 0) {
+					glActiveTexture(GL_TEXTURE0 + c_TeamColorUnit);
+					glBindTexture(GL_TEXTURE_2D, m_TeamColor.Map);
+					glUniform1i(m_Uniforms.TeamColorMap, c_TeamColorUnit);
+					glUniform1i(m_Uniforms.HasTeamColorMap, 1);
+				}
+				glUniform4f(m_Uniforms.TeamColor, m_TeamColor.Rgb.r, m_TeamColor.Rgb.g, m_TeamColor.Rgb.b, 1.0F);
+				glUniform4fv(m_Uniforms.TeamColorIndices, 2, m_TeamColor.Indices.data());
+			}
 			// Draw call textures are bound to unit 1, which the batch expects to find active.
 			glActiveTexture(GL_TEXTURE1);
 			glUniform4f(m_Uniforms.UVRect, m_SpriteUV.x, m_SpriteUV.y, m_SpriteUV.z, m_SpriteUV.w);
@@ -251,6 +262,8 @@ namespace {
 		void Reset() override {
 			glUniform1i(m_Uniforms.HasNormalMap, 0);
 			glUniform1i(m_Uniforms.HasEmissiveMap, 0);
+			glUniform1i(m_Uniforms.HasTeamColorMap, 0);
+			glUniform4f(m_Uniforms.TeamColor, 0.0F, 0.0F, 0.0F, 0.0F);
 		}
 
 	private:
@@ -259,18 +272,19 @@ namespace {
 		GLuint m_EmissiveMap;
 		glm::vec4 m_SpriteUV;
 		float m_Strength;
+		SpriteTeamColor m_TeamColor;
 	};
 } // namespace
 
-void RenderMan::BeginObjectMaps(GLuint normalMap, GLuint emissiveMap, const glm::vec4& spriteUV, float strength) {
+void RenderMan::BeginObjectMaps(GLuint normalMap, GLuint emissiveMap, const glm::vec4& spriteUV, float strength, const SpriteTeamColor& teamColor) {
 	m_ActiveBatch->m_ObjectMapUniforms.clear();
 	const Shader* shader = m_ActiveBatch->m_CurrentShader;
-	if (!shader || (!normalMap && !emissiveMap)) {
+	if (!shader || (!normalMap && !emissiveMap && !teamColor.Active)) {
 		return;
 	}
 	const Shader::SpriteMapUniforms& uniforms = shader->GetSpriteMapUniforms();
-	if ((normalMap && uniforms.HasNormalMap >= 0) || (emissiveMap && uniforms.HasEmissiveMap >= 0)) {
-		m_ActiveBatch->m_ObjectMapUniforms.push_back(std::make_shared<SpriteMapsValue>(uniforms, normalMap, emissiveMap, spriteUV, strength));
+	if ((normalMap && uniforms.HasNormalMap >= 0) || (emissiveMap && uniforms.HasEmissiveMap >= 0) || (teamColor.Active && uniforms.TeamColor >= 0)) {
+		m_ActiveBatch->m_ObjectMapUniforms.push_back(std::make_shared<SpriteMapsValue>(uniforms, normalMap, emissiveMap, spriteUV, strength, teamColor));
 	}
 }
 

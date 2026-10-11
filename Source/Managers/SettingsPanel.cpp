@@ -1090,6 +1090,14 @@ void DebugMan::SettingsGUI() {
 			g_SettingsMan.SetBleedOutChance(bleedOut);
 		}
 		Tip("Every wound bleeds, and most stop after a while. This is the chance one keeps on bleeding instead, so the unit, players' and every other, keeps losing health until it's patched up or bleeds out. 0 is as before: wounds stop when they always did. 100: every wound keeps bleeding.");
+		float bleedTime = g_SettingsMan.WoundBleedTime();
+		if (Slider("Wound bleed time", &bleedTime, 0.1F, 10.0F, "%.2fx", ImGuiSliderFlags_Logarithmic)) {
+			g_SettingsMan.SetWoundBleedTime(bleedTime);
+		}
+		Tip("How long a wound bleeds before it stops, as a multiple of normal, for the unit, players' and every other. Longer bleeds out more health: 2x bleeds twice as long and takes twice the health, 0.5x half. A plain flesh wound bleeds for about half a minute at 1x. Wounds kept bleeding by the setting above never stop either way. Takes effect on new wounds. 1x is normal.");
+		if (Plain() && ToolUI::Button("Normal bleed time")) {
+			g_SettingsMan.SetWoundBleedTime(1.0F);
+		}
 		Toggle("Crew killed in a vehicle fall out", g_SettingsMan.DeadCrewFallOut(), [](bool on) { g_SettingsMan.SetDeadCrewFallOut(on); });
 		Tip("Riders in an open vehicle (the cart, boats, buggy and Moonhopper) can be shot in their seats. On: someone killed there falls out of the vehicle. Off: the body slumps in its seat until the vehicle is wrecked or thrown over, or someone climbs into that seat. Your own unit falls out either way. Tank crews sit inside, out of reach.");
 		float terrainDamage = g_SettingsMan.WeaponTerrainDamage();
@@ -1135,6 +1143,8 @@ void DebugMan::SettingsGUI() {
 				}
 			}
 		}
+		Check("Team colour on units", &settings.UnitTeamColorParts);
+		Tip("Parts of units that mods mark for it (a bandanna, a helmet stripe) are drawn in their side's colour: red, green, blue or yellow. Unticked, they take the mod's own default colour, or stay as painted.");
 		Heading("Unit outlines");
 		Check("Outline units", &settings.UnitOutline);
 		Tip("A stroke round each unit and what it holds, so they stand out. It goes over the sky, the background and other objects, never over terrain.");

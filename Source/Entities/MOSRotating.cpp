@@ -37,14 +37,21 @@ using namespace RTE;
 
 ConcreteClassInfo(MOSRotating, MOSprite, 500);
 
-// Every wound bleeds as its definition says, most of them for a while and then they stop. As often as the bleed-out chance setting asks,
-// one keeps on bleeding instead, until the unit is patched up or bleeds out.
+// Every wound bleeds as its definition says, most of them for a while and then they stop. The bleed time setting stretches or shortens
+// that while, and as often as the bleed-out chance setting asks, one keeps on bleeding instead, until the unit is patched up or bleeds out.
 static void RollWoundBleedOut(AEmitter* wound) {
-	float chance = g_SettingsMan.BleedOutChance();
-	if (chance <= 0.0F || wound->GetEmitDamage() <= 0.0F || wound->GetEmitCountLimit() <= 0 || RandomNum(0.0F, 100.0F) >= chance) {
+	if (wound->GetEmitDamage() <= 0.0F || wound->GetEmitCountLimit() <= 0) {
 		return;
 	}
-	wound->SetEmitCountLimit(0);
+	float chance = g_SettingsMan.BleedOutChance();
+	if (chance > 0.0F && RandomNum(0.0F, 100.0F) < chance) {
+		wound->SetEmitCountLimit(0);
+		return;
+	}
+	float bleedTime = g_SettingsMan.WoundBleedTime();
+	if (bleedTime != 1.0F) {
+		wound->SetEmitCountLimit(std::max(1L, std::lround(static_cast<float>(wound->GetEmitCountLimit()) * bleedTime)));
+	}
 }
 
 BITMAP* MOSRotating::m_spTempBitmap16 = 0;
