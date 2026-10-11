@@ -33,6 +33,7 @@
 #include "TextOverlay.h"
 #include "TimerMan.h"
 #include "UnitSpeech.h"
+#include "UnitSpeechVoice.h"
 #include "WindowMan.h"
 
 #include "imgui/imgui.h"
@@ -1112,6 +1113,24 @@ void DebugMan::SettingsGUI() {
 			Tip("Enemy units' lines too, where your side can see them. Off: only your own side's.");
 			Toggle("Speech bubbles", UnitSpeech::ShowsBubbles(), [](bool on) { UnitSpeech::SetShowsBubbles(on); });
 			Tip("Lines in a dark box edged in the side's colour, with a tail pointing at the unit. Off: just the text over the unit's head.");
+			Toggle("Speech sounds", UnitSpeechVoice::IsEnabled(), [](bool on) { UnitSpeechVoice::SetEnabled(on); });
+			Tip("A voice for each line a unit on your screen says, made in the game from the line's words: most units babble in a voice of their own, robots speak the words, all over a radio. What each kind of unit sounds like is in Base.rte/Voices.ini, and mods can add their own.");
+			if (UnitSpeechVoice::IsEnabled()) {
+				int volume = UnitSpeechVoice::GetVolume();
+				if (SliderI("Speech volume", &volume, 0, 100, "%d%%")) {
+					UnitSpeechVoice::SetVolume(volume);
+				}
+				Tip("How loud the voices are, under the sound effects' volume (Options, Audio).");
+				int radio = UnitSpeechVoice::GetRadio();
+				if (SliderI("Radio effect", &radio, 0, 100, "%d%%")) {
+					UnitSpeechVoice::SetRadio(radio);
+				}
+				Tip("How much the voices sound like they come over a field radio: band-limited and crackly, with a squelch as each line starts and ends, and a roger beep after Serious lines. 0%: clean voices.");
+				Toggle("Hear other sides' voices", UnitSpeechVoice::HearsEnemies(), [](bool on) { UnitSpeechVoice::SetHearsEnemies(on); });
+				Tip("Enemy units' lines make a sound too, a little quieter, where their lines show (\"Hear other sides' units\" above, and seen by your side). Off: only your own side's.");
+				Toggle("Robots speak words", UnitSpeechVoice::SpeaksWords(), [](bool on) { UnitSpeechVoice::SetSpeaksWords(on); });
+				Tip("Robots (Dummy, Imperatus, drones and walkers) say the actual words in a synthesised voice. Off: they babble like everyone else, in their own machine voice.");
+			}
 			// Each side's tones: what kind of lines its units say. None ticked is any.
 			{
 				static const std::array<const char*, 4> sideNames{"Red", "Green", "Blue", "Yellow"};
@@ -1225,7 +1244,7 @@ void DebugMan::SettingsGUI() {
 				UnitSpeech::Reload();
 			}
 			if (Plain()) {
-				ImGui::SetItemTooltip("Reads every Speech.ini again, for trying out lines without restarting.");
+				ImGui::SetItemTooltip("Reads every Speech.ini and Voices.ini again, for trying out lines and voices without restarting.");
 			}
 		}
 	};

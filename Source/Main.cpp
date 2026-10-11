@@ -66,6 +66,7 @@
 #include "ActorWater.h"
 #include "RopeSim.h"
 #include "UnitSpeech.h"
+#include "UnitSpeechVoice.h"
 #include "PostProcessMan.h"
 #include "SceneMan.h"
 #include "MetaMan.h"
@@ -611,6 +612,8 @@ void RunGameLoop() {
 				RopeSim::Update();
 				logStages.Next("Sim: unit speech");
 				UnitSpeech::UpdateWorld();
+				logStages.Next("Sim: unit speech voices");
+				UnitSpeechVoice::Update();
 			}
 
 			// CCCP_TIME_SCALE: the simulation run faster than real time (3 for three times), for test runs; set once the game is going.

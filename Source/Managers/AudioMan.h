@@ -104,6 +104,12 @@ namespace RTE {
 		/// @return The audio management system object used by AudioMan for playing audio.
 		FMOD::System* GetAudioSystem() const { return m_AudioSystem; }
 
+		/// Gets the FMOD ChannelGroup unit speech voices play in (UnitSpeechVoice), made the first time it's asked for: a group of its own inside the
+		/// sound effects' one, so voices follow the sounds' volume, mute, pause and time scale, while the updates of sound effect channels (which
+		/// belong to SoundContainers) leave them be.
+		/// @return The group, or none with audio off.
+		FMOD::ChannelGroup* GetUnitSpeechChannelGroup();
+
 		/// Reports whether audio is enabled.
 		/// @return Whether audio is enabled.
 		bool IsAudioEnabled() const { return m_AudioEnabled; }
@@ -326,6 +332,7 @@ namespace RTE {
 		FMOD::ChannelGroup* m_SFXChannelGroup; //!< The FMOD ChannelGroup for diegetic gameplay sounds.
 		FMOD::ChannelGroup* m_UIChannelGroup; //!< The FMOD ChannelGroup for UI sounds.
 		FMOD::ChannelGroup* m_MusicChannelGroup; //!< The FMOD ChannelGroup for music.
+		FMOD::ChannelGroup* m_UnitSpeechChannelGroup; //!< The FMOD ChannelGroup for unit speech voices, inside the SFX one (GetUnitSpeechChannelGroup); none until asked for.
 
 		bool m_AudioEnabled; //!< Bool to tell whether audio is enabled or not.
 		std::vector<std::unique_ptr<const Vector>> m_CurrentActivityHumanPlayerPositions; //!< The stored positions of each human player in the current activity. Only filled when there's an activity running.

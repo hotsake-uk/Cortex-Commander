@@ -24,6 +24,7 @@ AudioMan::~AudioMan() {
 
 void AudioMan::Clear() {
 	m_AudioEnabled = false;
+	m_UnitSpeechChannelGroup = nullptr;
 	m_CurrentActivityHumanPlayerPositions.clear();
 	m_SoundChannelMinimumAudibleDistances.clear();
 
@@ -134,6 +135,24 @@ void AudioMan::Destroy() {
 		m_AudioSystem->release();
 		Clear();
 	}
+}
+
+FMOD::ChannelGroup* AudioMan::GetUnitSpeechChannelGroup() {
+	if (!m_AudioEnabled) {
+		return nullptr;
+	}
+	if (!m_UnitSpeechChannelGroup) {
+		FMOD_RESULT result = m_AudioSystem->createChannelGroup("UnitSpeech", &m_UnitSpeechChannelGroup);
+		result = (result == FMOD_OK) ? m_SFXChannelGroup->addGroup(m_UnitSpeechChannelGroup) : result;
+		if (result != FMOD_OK) {
+			g_ConsoleMan.PrintString("ERROR: Could not make the unit speech channel group: " + std::string(FMOD_ErrorString(result)));
+			if (m_UnitSpeechChannelGroup) {
+				m_UnitSpeechChannelGroup->release();
+			}
+			m_UnitSpeechChannelGroup = nullptr;
+		}
+	}
+	return m_UnitSpeechChannelGroup;
 }
 
 void AudioMan::Update() {
