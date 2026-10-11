@@ -81,6 +81,7 @@ namespace SandboxDetail {
 		s_LastFunds.fill(-1.0F);
 		s_PendingCard = -1;
 		s_HasLandingSpot = false;
+		ForgetPowers();
 	}
 
 	void UpdateReinforcements() {

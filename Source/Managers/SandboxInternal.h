@@ -217,7 +217,8 @@ namespace SandboxDetail {
 		// Appended, so the tools before keep their numbers.
 		Decor, //!< A light or fire put in the background (Choice a DecorKind): it shines until a blast or a shot destroys it, and nothing collides with it.
 		// Appended, so the tools before keep their numbers.
-		LandingSpot //!< Battle Command: a click marks where your reinforcements land (s_LandingSpot), and calls in the one waiting for it.
+		LandingSpot, //!< Battle Command: a click marks where your reinforcements land (s_LandingSpot), and calls in the one waiting for it.
+		PowerTarget //!< Battle Command: a click is where the commander power waiting for one (s_PendingPower) is used.
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -350,6 +351,7 @@ namespace SandboxDetail {
 	    {Tool::Fireworks, "Fireworks", 0.0F, false},
 	    {Tool::Decor, "Background light", 0.0F, false},
 	    {Tool::LandingSpot, "Landing spot", 0.0F, false},
+	    {Tool::PowerTarget, "Commander power", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -643,6 +645,7 @@ namespace SandboxDetail {
 		BattleModeSet, //!< No team's settings: the mode's (Stroke::Mode) only.
 		BattleModeStart, //!< The mode's settings, and its game started afresh, every team in it set up by it (BattleModeInfo::TeamSettings).
 		BattleModeStop, //!< The mode's game stopped, and every team with it.
+		BattlePower, //!< Battle Command: a commander power used by the team you command (Choice the CommanderPower, Position where).
 		BattleReinforce //!< Battle Command: reinforcements bought for the team you command (Choice the card, Radius how many, Craft, Position where they land).
 	};
 
@@ -2416,6 +2419,50 @@ namespace SandboxDetail {
 
 	/// Battle Command: the landing spot marked on the map. Call from the ImGui frame.
 	void DrawLandingSpot();
+#pragma endregion
+
+#pragma region Commander powers (CommanderPowers.cpp)
+	/// What the team you command can call on besides reinforcements, each with a cooldown.
+	enum class CommanderPower {
+		Artillery, //!< Shells lobbed in on a point.
+		Orbital, //!< A beam from orbit: bores down through anything under the point.
+		Smoke, //!< A thick cloud of smoke at the point.
+		Supply, //!< Your units round the point patched up (wounds closed, health back) and their guns reloaded.
+		Scan, //!< The fog of war lifted everywhere for a while.
+		Evac, //!< Your units round the point pulled out, half what they were worth back in points.
+		Count
+	};
+	struct CommanderPowerInfo {
+		const char* Name;
+		const char* Tip;
+		float Cooldown; //!< Seconds before it can be used again.
+		float Radius; //!< Pixels round the point it works in, 0 for no point.
+	};
+	constexpr CommanderPowerInfo c_CommanderPowers[static_cast<int>(CommanderPower::Count)] = {
+	    {"Artillery", "Five shells lobbed in on the point from far off.", 60.0F, 60.0F},
+	    {"Orbital", "A beam straight down from orbit: bores a shaft through whatever is under the point and sets it alight.", 150.0F, 20.0F},
+	    {"Smoke", "A thick cloud of smoke at the point, to cover a move.", 30.0F, 40.0F},
+	    {"Supply", "Your units round the point are patched up (wounds closed, health back) and their guns reloaded.", 90.0F, 150.0F},
+	    {"Scan", "Lifts the fog of war everywhere for 10 seconds.", 90.0F, 0.0F},
+	    {"Evac", "Your units round the point are pulled out of the battle, and half what they were worth comes back in points.", 120.0F, 120.0F},
+	};
+	inline int s_PendingPower = -1; //!< A power picked on the Commander Toolbar, waiting for a click on the map (Tool::PowerTarget).
+	inline long long s_ScanUntil = -1; //!< The sim update the Scan power's lifting of the fog of war lasts till.
+
+	/// Every team's powers ready again. At a mode's start and a new game.
+	void ForgetPowers();
+
+	/// A power used (Tool::BattleTeam, BattlePower), in the sim: if it's ready, done, and its cooldown started.
+	void ApplyPower(const Stroke& stroke);
+
+	/// The Commander Toolbar's powers group: a tile each, greyed with the seconds left while it cools down.
+	void PowerTiles();
+
+	/// A click on the world with the power target tool: the power waiting for one is used there.
+	void PowerTargetClicked(const Vector& position);
+
+	/// The circle a power waiting for a target will hit, under the pointer. Call from the ImGui frame.
+	void DrawPowerTarget();
 #pragma endregion
 
 #pragma region Fog of war (BattleFog.cpp)
