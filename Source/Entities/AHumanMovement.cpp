@@ -269,7 +269,8 @@ void AHuman::UpdateAIMotor() {
 			Vector free;
 			mover.skyClear = true;
 			for (float dy: {-h * 0.3F, feet * 0.5F}) {
-				if (g_SceneMan.CastObstacleRay(m_Pos + Vector(0.0F, dy), toSky, obstacle, free, m_MOID, IgnoresWhichTeam(), 0, 3) >= 0.0F) {
+				// (Past units of its own team, which move and are flown past: counted, a group sent up together mostly waited on each other.)
+				if (g_SceneMan.CastObstacleRay(m_Pos + Vector(0.0F, dy), toSky, obstacle, free, m_MOID, m_Team, 0, 3) >= 0.0F) {
 					mover.skyClear = false;
 				}
 			}
@@ -1213,7 +1214,9 @@ float AHuman::FlightFuelNeeded(const Vector& landing, float landingFloorY, bool 
 	return m_pJetpack && capped ? std::min(needed, m_pJetpack->GetJetTimeTotal() * 0.98F) : needed;
 }
 
-// Whether the way to a landing is open air for a flight: up at the unit's column to over the landing's floor, then across.
+// Whether the way to a landing is open air for a flight: up at the unit's column to over the landing's floor, then across. Units of its own
+// team are no obstacle (they move, and a body flies past them): counted as walls, a group sent together saw each other in the way, and
+// whether a unit took off depended on where its friends stood.
 bool AHuman::FlightWayClear(const Vector& landing, float landingFloorY) const {
 	float h = m_CharHeight;
 	float cruiseY = std::min(m_Pos.m_Y, landingFloorY - 12.0F - h * 0.5F);
@@ -1223,13 +1226,14 @@ bool AHuman::FlightWayClear(const Vector& landing, float landingFloorY) const {
 	Vector free;
 	// (Through a ladder's rungs, which a flying body passes: taken for a wall, a shaft with a ladder up its side was never open to fly.)
 	const unsigned char rungs = LadderMaterialID();
+	const int ignoreTeam = m_Team;
 	for (float dx: {-h * 0.15F, h * 0.15F}) {
-		if (up.m_Y < -2.0F && g_SceneMan.CastObstacleRay(m_Pos + Vector(dx, -h * 0.3F), up, obstacle, free, m_MOID, IgnoresWhichTeam(), rungs, 3) >= 0.0F) {
+		if (up.m_Y < -2.0F && g_SceneMan.CastObstacleRay(m_Pos + Vector(dx, -h * 0.3F), up, obstacle, free, m_MOID, ignoreTeam, rungs, 3) >= 0.0F) {
 			return false;
 		}
 	}
 	for (float dy: {-h * 0.35F, h * 0.35F}) {
-		if (g_SceneMan.CastObstacleRay(Vector(m_Pos.m_X, cruiseY + dy), over, obstacle, free, m_MOID, IgnoresWhichTeam(), rungs, 3) >= 0.0F) {
+		if (g_SceneMan.CastObstacleRay(Vector(m_Pos.m_X, cruiseY + dy), over, obstacle, free, m_MOID, ignoreTeam, rungs, 3) >= 0.0F) {
 			return false;
 		}
 	}
@@ -2815,10 +2819,13 @@ int AHuman::MoveAlongRoute() {
 		// Open from one place to another for the body: at its middle and its knees. (A ladder's rungs are no obstacle: a flying body passes
 		// them, see LearnFlight. Counted as walls, any line across a ladder or up a laddered shaft was shut, no full-risk flight was found
 		// in a bunker, and the unit followed the route up the ladder instead.)
+		// (Units of its own team are no obstacle here: they move, and a body flies past them. Counted, a group sent together saw each other
+		// in every line, and the first one up blocked the head room of those under it; only one took off, and the rest walked the route
+		// and hopped at each other.)
 		auto legOpen = [&](const Vector& from, const Vector& to) {
 			const Vector way = Towards(from, to);
 			for (float dy: {-h * 0.3F, feet * 0.5F}) {
-				if (g_SceneMan.CastObstacleRay(from + Vector(0.0F, dy), way, obstacle, free, m_MOID, IgnoresWhichTeam(), LadderMaterialID(), 3) >= 0.0F) {
+				if (g_SceneMan.CastObstacleRay(from + Vector(0.0F, dy), way, obstacle, free, m_MOID, m_Team, LadderMaterialID(), 3) >= 0.0F) {
 					return false;
 				}
 			}
@@ -2827,7 +2834,7 @@ int AHuman::MoveAlongRoute() {
 		// A ceiling right over the head (within about a body): no take-off from here; the route walks out from under it.
 		bool headClear = true;
 		for (float dx: {-h * 0.15F, 0.0F, h * 0.15F}) {
-			if (g_SceneMan.CastObstacleRay(m_Pos + Vector(dx, -h * 0.3F), Vector(0.0F, -h * 0.9F), obstacle, free, m_MOID, IgnoresWhichTeam(), LadderMaterialID(), 3) >= 0.0F) {
+			if (g_SceneMan.CastObstacleRay(m_Pos + Vector(dx, -h * 0.3F), Vector(0.0F, -h * 0.9F), obstacle, free, m_MOID, m_Team, LadderMaterialID(), 3) >= 0.0F) {
 				headClear = false;
 			}
 		}
