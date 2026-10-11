@@ -859,6 +859,9 @@
     <ClCompile Include="Source\Managers\CommanderBar.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Managers\SpawnOrders.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Managers\Reinforcements.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
