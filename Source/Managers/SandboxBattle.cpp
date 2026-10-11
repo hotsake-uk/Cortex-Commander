@@ -152,8 +152,13 @@ namespace SandboxDetail {
 		/// below, out of it, thinking they were taking it.
 		Vector PostAround(const Vector& centre, float radius) {
 			Vector feet;
-			if (const std::vector<Vector>* zone = ModeZoneAt(centre); zone && (FloorInZone(*zone, 24.0F, feet) || FloorInZone(*zone, 0.0F, feet))) {
-				return feet;
+			if (const std::vector<Vector>* zone = ModeZoneAt(centre)) {
+				if (FloorInZone(*zone, 24.0F, feet) || FloorInZone(*zone, 0.0F, feet)) {
+					return feet;
+				}
+				// No floor in it at all (drawn in the open air): a place in it, in the air, that those with a jet fly to and hold
+				// (FlyIfOffTheGround). On the ground under it, as before, they stood out of it, below, and never took it.
+				return SpotInZone(*zone, 24.0F);
 			}
 			Vector around = centre + Vector((Random01() * 2.0F - 1.0F) * radius * 0.6F, 0.0F);
 			g_SceneMan.WrapPosition(around);
@@ -208,6 +213,7 @@ namespace SandboxDetail {
 			unit->AddAISceneWaypoint(post);
 			unit->SetAIMode(Actor::AIMODE_GOTO);
 			unit->SetOrderPost(post);
+			FlyIfOffTheGround(unit, post);
 			BattleDefender& defender = s_BattleDefenders[unit->GetUniqueID()];
 			defender.Team = unit->GetTeam();
 			defender.Center = settings.DefendPos;
@@ -597,7 +603,8 @@ namespace SandboxDetail {
 					defender.ChasingID = static_cast<long>(enemy->GetUniqueID());
 					SendUnit(unit, enemy->GetPos(), enemy, true, "defending: after an enemy", false, true);
 				}
-			} else if (defender.ChasingID != 0 || !HeadingForPost(unit, defender)) {
+			} else if (defender.ChasingID != 0 || !HeadingForPost(unit, defender) || FlyAgainFor(unit, defender.Post)) {
+				// (A post up in the air the unit came down from, its tank run out: flown to again once the tank has filled.)
 				defender.ChasingID = 0;
 				SendUnit(unit, defender.Post, nullptr, false, "defending: back to its post", false, true);
 				unit->SetOrderPost(defender.Post);
