@@ -16,6 +16,8 @@ namespace RTE {
 			float PushStrength = 1.0F; //!< How hard a push or pull shoves what it reaches.
 			float UnitPush = 1.0F; //!< How hard it shoves units, on top of PushStrength. 0: units are never pushed.
 			float AirGust = 1.0F; //!< How hard the gust a push sets blowing is. 0: no gust.
+			bool SpellEnergy = true; //!< Whether casting spends the caster's energy (or the spell's own charge). Off: every spell is free.
+			float EnergyRegen = 1.0F; //!< How fast energy and spell charge come back, a multiplier on each unit's and spell's own rate.
 		};
 
 		/// Gets whether magic and tool effects do anything at all (a gameplay setting). Off, a push does nothing; what a spell sprays still flies.
@@ -26,6 +28,9 @@ namespace RTE {
 
 		/// Gets how strongly the effects work, to read or change.
 		static Tuning& GetTuning() { return s_Tuning; }
+
+		/// Gets whether casting costs energy right now: magic is on and spells use energy.
+		static bool CastingCostsEnergy() { return s_On && s_Tuning.SpellEnergy; }
 
 		/// Shoves everything in a cone away from a point: units, items, gibs and particles, harder the closer and the lighter they are, and not
 		/// through solid ground. Also starts a gust of air the same way (AirPressure::Gust). A negative power pulls toward the point instead.

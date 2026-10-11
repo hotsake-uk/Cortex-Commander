@@ -210,6 +210,44 @@ namespace RTE {
 		/// @param newValue New max health value.
 		void SetMaxHealth(int newValue) { m_MaxHealth = newValue; }
 
+		/// Gets this Actor's energy, what its spells spend when cast (MG-2). 0 to its max energy.
+		/// @return How much energy it has.
+		float GetEnergy() const { return m_Energy; }
+
+		/// Sets this Actor's energy, kept between 0 and its max energy.
+		/// @param newValue The new energy.
+		void SetEnergy(float newValue) { m_Energy = std::clamp(newValue, 0.0F, m_MaxEnergy); }
+
+		/// Gets the most energy this Actor can have. 0: it has no energy, and spells that need it don't cast for it.
+		/// @return Its max energy.
+		float GetMaxEnergy() const { return m_MaxEnergy; }
+
+		/// Sets the most energy this Actor can have. Its energy is cut to it if it had more.
+		/// @param newValue The new max energy.
+		void SetMaxEnergy(float newValue) {
+			m_MaxEnergy = std::max(newValue, 0.0F);
+			m_Energy = std::min(m_Energy, m_MaxEnergy);
+		}
+
+		/// Gets how much energy this Actor gets back a second.
+		/// @return Its energy regen, per second.
+		float GetEnergyRegen() const { return m_EnergyRegen; }
+
+		/// Sets how much energy this Actor gets back a second.
+		/// @param newValue The new energy regen, per second.
+		void SetEnergyRegen(float newValue) { m_EnergyRegen = newValue; }
+
+		/// Spends some of this Actor's energy, if it has enough.
+		/// @param amount How much to spend.
+		/// @return Whether it had enough and it was spent; nothing is spent if not.
+		bool SpendEnergy(float amount) {
+			if (amount > m_Energy) {
+				return false;
+			}
+			m_Energy -= amount;
+			return true;
+		}
+
 		/// Gets the distance between the actor and the view point when not
 		/// sharp aiming.
 		/// @return A const int describing how far this actor aims/looks by default.
@@ -1462,6 +1500,9 @@ namespace RTE {
 		float m_MaxHealth;
 		// The health of the previous frame, so we can track damage
 		float m_PrevHealth;
+		float m_Energy; //!< What spells spend when cast (MG-2).
+		float m_MaxEnergy; //!< The most energy it can have. 0: none.
+		float m_EnergyRegen; //!< How much energy comes back a second.
 		// Not owned by this!
 		const Icon* m_pTeamIcon;
 		// Not owned by this!
