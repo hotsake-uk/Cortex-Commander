@@ -182,6 +182,13 @@ namespace RTE {
 
 		bool m_IgnoreAutoScale; //!< Whether auto-scaling settings are ignored and the read-in scale factor is used instead.
 
+		bool m_UseParallaxFactor; //!< Whether this layer is placed by ParallaxFactor instead of ScrollRatio (set by reading ParallaxFactor).
+		Vector m_ParallaxFactor; //!< How far this layer moves on screen for each pixel the camera moves, 0 (fixed on screen, infinitely far) to 1 (moves with the terrain). Y is unused when m_ParallaxFitHeight.
+		bool m_ParallaxFitHeight; //!< Whether the layer's height is spread over the whole scene height: its top shows at the top of the scene and its bottom at the bottom. Otherwise its bottom sits at the bottom of the screen when the camera is at the bottom of the scene.
+
+		/// Places a ParallaxFactor layer for this frame, from the view position in m_Offset. See m_ParallaxFactor and m_ParallaxFitHeight.
+		void UpdateParallaxOffset();
+
 		/// Clears all the member variables of this SLBackground, effectively resetting the members of this abstraction level only.
 		void Clear();
 

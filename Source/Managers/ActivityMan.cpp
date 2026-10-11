@@ -444,7 +444,8 @@ bool ActivityMan::SetStartSandboxActivity(const std::string& sceneName) {
 		return false;
 	}
 	std::string sceneToLoad = !sceneName.empty() ? sceneName : (sandbox->GetSceneName().empty() ? "Ketanot Hills" : sandbox->GetSceneName());
-	if (g_SceneMan.SetSceneToLoad(sceneToLoad) < 0) {
+	// The sandbox never starts with the map's own units: only its terrain, bunkers and doors. The player spawns every unit.
+	if (g_SceneMan.SetSceneToLoad(sceneToLoad, true, false) < 0) {
 		delete sandbox;
 		return false;
 	}

@@ -114,14 +114,17 @@ int AEmitter::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("EmissionSound", {
 		m_EmissionSound = new SoundContainer;
 		reader >> m_EmissionSound;
+		m_EmissionSound->SetDefaultMixCategory(AudioMan::MIX_ENGINES);
 	});
 	MatchProperty("BurstSound", {
 		m_BurstSound = new SoundContainer;
 		reader >> m_BurstSound;
+		m_BurstSound->SetDefaultMixCategory(AudioMan::MIX_ENGINES);
 	});
 	MatchProperty("EndSound", {
 		m_EndSound = new SoundContainer;
 		reader >> m_EndSound;
+		m_EndSound->SetDefaultMixCategory(AudioMan::MIX_ENGINES);
 	});
 	MatchProperty("EmissionEnabled", { reader >> m_EmitEnabled; });
 	MatchProperty("EmissionCount", { reader >> m_EmitCount; });

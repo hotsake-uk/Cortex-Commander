@@ -1,5 +1,9 @@
 #pragma once
 
+#include "AudioMan.h"
+
+#include <array>
+
 namespace RTE {
 
 	class GUIControlManager;
@@ -7,6 +11,7 @@ namespace RTE {
 	class GUILabel;
 	class GUISlider;
 	class GUICheckbox;
+	class GUIButton;
 	class GUIEvent;
 
 	/// Handling for audio settings through the game settings user interface.
@@ -44,6 +49,9 @@ namespace RTE {
 		GUISlider* m_SoundVolumeSlider;
 		GUICheckbox* m_SoundMuteCheckbox;
 		GUICheckbox* m_MuteOnFocusLossCheckbox;
+		std::array<GUISlider*, AudioMan::MIX_CATEGORY_COUNT> m_SoundMixSliders;
+		std::array<GUILabel*, AudioMan::MIX_CATEGORY_COUNT> m_SoundMixValueLabels;
+		GUIButton* m_ResetSoundMixButton;
 
 #pragma region Audio Settings Handling
 		/// Updates the position of the master volume slider and volume value label, based on what the AudioMan is currently set to.
@@ -54,6 +62,10 @@ namespace RTE {
 
 		/// Updates the position of the sound volume slider and volume value label, based on what the AudioMan is currently set to.
 		void UpdateSoundVolumeControls();
+
+		/// Updates the position of a sound mix category slider and its value label, based on what the AudioMan is currently set to.
+		/// @param category The SoundMixCategory to update the controls of.
+		void UpdateSoundMixControls(AudioMan::SoundMixCategory category);
 #pragma endregion
 
 		// Disallow the use of some implicit methods.

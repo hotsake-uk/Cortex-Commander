@@ -9,6 +9,9 @@
 #include "fmod/fmod.hpp"
 #include "fmod/fmod_errors.h"
 
+#include <array>
+#include <functional>
+
 #define g_AudioMan AudioMan::Instance()
 
 namespace RTE {
@@ -27,6 +30,23 @@ namespace RTE {
 			PRIORITY_NORMAL = 128,
 			PRIORITY_LOW = 256
 		};
+
+		/// Sound mixer categories. Each one is its own FMOD ChannelGroup with its own volume slider in the audio settings.
+		enum SoundMixCategory {
+			MIX_AUTO = -1, // Not set; the category is picked from the slot the sound is loaded into, falling back to MIX_WORLD.
+			MIX_WEAPONS = 0,
+			MIX_EXPLOSIONS,
+			MIX_IMPACTS,
+			MIX_FOOTSTEPS,
+			MIX_VOICES,
+			MIX_ENGINES,
+			MIX_WORLD,
+			MIX_UI,
+			MIX_CATEGORY_COUNT
+		};
+
+		static const std::array<std::string, MIX_CATEGORY_COUNT> c_SoundMixCategoryNames; //!< INI/settings names of each SoundMixCategory, e.g. "Weapons".
+		static const std::array<std::string, MIX_CATEGORY_COUNT> c_SoundMixCategoryDisplayNames; //!< Human readable names of each SoundMixCategory, for the settings menu.
 
 		/// Music event states for sending music data from the server to clients during multiplayer games.
 		enum NetworkMusicState {
@@ -105,8 +125,8 @@ namespace RTE {
 		FMOD::System* GetAudioSystem() const { return m_AudioSystem; }
 
 		/// Gets the FMOD ChannelGroup unit speech voices play in (UnitSpeechVoice), made the first time it's asked for: a group of its own inside the
-		/// sound effects' one, so voices follow the sounds' volume, mute, pause and time scale, while the updates of sound effect channels (which
-		/// belong to SoundContainers) leave them be.
+		/// mixer's Voices one, so voices follow the Voices slider and the sounds' volume, mute, pause and time scale, while the updates of sound
+		/// effect channels (ForEachSFXChannel, which only walks the mixer groups' own channels, all of them SoundContainers') leave them be.
 		/// @return The group, or none with audio off.
 		FMOD::ChannelGroup* GetUnitSpeechChannelGroup();
 
@@ -230,7 +250,6 @@ namespace RTE {
 		void SetSoundsMuted(bool muteOrUnmute = true) {
 			m_MuteSounds = muteOrUnmute;
 			if (m_AudioEnabled) {
-				// TODO: We may or may not wanna separate this out and add a UI sound slider
 				m_SFXChannelGroup->setMute(m_MuteSounds);
 				m_UIChannelGroup->setMute(m_MuteSounds);
 			}
@@ -249,6 +268,29 @@ namespace RTE {
 				m_UIChannelGroup->setVolume(m_SoundsVolume);
 			}
 		}
+
+		/// Gets the mixer volume of a sound category.
+		/// @param category The SoundMixCategory to get the volume of.
+		/// @return The category's volume scalar, 0.0-1.0.
+		float GetSoundMixVolume(SoundMixCategory category) const { return (category >= 0 && category < MIX_CATEGORY_COUNT) ? m_SoundMixVolumes[category] : 1.0F; }
+
+		/// Sets the mixer volume of a sound category. Affects sounds already playing in that category.
+		/// @param category The SoundMixCategory to set the volume of.
+		/// @param volume The desired volume scalar, 0.0-1.0.
+		void SetSoundMixVolume(SoundMixCategory category, float volume = 1.0F) {
+			if (category < 0 || category >= MIX_CATEGORY_COUNT) {
+				return;
+			}
+			m_SoundMixVolumes[category] = std::clamp(volume, 0.0F, 1.0F);
+			if (m_AudioEnabled) {
+				m_SoundMixChannelGroups[category]->setVolume(m_SoundMixVolumes[category]);
+			}
+		}
+
+		/// Gets the SoundMixCategory matching a name, as used in INI and settings files. Case-insensitive.
+		/// @param name The category name, e.g. "Weapons".
+		/// @return The matching SoundMixCategory, or MIX_AUTO if none matches.
+		static SoundMixCategory GetSoundMixCategoryFromName(const std::string& name);
 #pragma endregion
 
 #pragma region Global Playback and Handling
@@ -332,7 +374,9 @@ namespace RTE {
 		FMOD::ChannelGroup* m_SFXChannelGroup; //!< The FMOD ChannelGroup for diegetic gameplay sounds.
 		FMOD::ChannelGroup* m_UIChannelGroup; //!< The FMOD ChannelGroup for UI sounds.
 		FMOD::ChannelGroup* m_MusicChannelGroup; //!< The FMOD ChannelGroup for music.
-		FMOD::ChannelGroup* m_UnitSpeechChannelGroup; //!< The FMOD ChannelGroup for unit speech voices, inside the SFX one (GetUnitSpeechChannelGroup); none until asked for.
+		std::array<FMOD::ChannelGroup*, MIX_CATEGORY_COUNT> m_SoundMixChannelGroups; //!< One FMOD ChannelGroup per SoundMixCategory. All are children of the SFX group, except the UI one which is a child of the UI group.
+		std::array<float, MIX_CATEGORY_COUNT> m_SoundMixVolumes; //!< The mixer volume of each SoundMixCategory, 0.0-1.0.
+		FMOD::ChannelGroup* m_UnitSpeechChannelGroup; //!< The FMOD ChannelGroup for unit speech voices, inside the mixer's Voices one (GetUnitSpeechChannelGroup); none until asked for.
 
 		bool m_AudioEnabled; //!< Bool to tell whether audio is enabled or not.
 		std::vector<std::unique_ptr<const Vector>> m_CurrentActivityHumanPlayerPositions; //!< The stored positions of each human player in the current activity. Only filled when there's an activity running.
@@ -417,6 +461,11 @@ namespace RTE {
 #pragma region 3D Effect Handling
 		/// Updates 3D effects calculations for all sound channels whose SoundContainers isn't immobile.
 		void Update3DEffectsForSFXChannels();
+
+		/// Calls a function on every channel playing in the SFX group, including the channels in its sound mix category child groups.
+		/// @param channelFunction The function to call on each channel. Its second argument is the channel's index within its group, for error messages.
+		/// @param errorContext What is being done, for error messages.
+		void ForEachSFXChannel(const std::function<void(FMOD::Channel*, int)>& channelFunction, const std::string& errorContext);
 
 		/// Sets or updates the position of the given sound channel so it handles scene wrapping correctly. Also handles volume attenuation and minimum audible distance.
 		/// @param soundChannel The channel whose position should be set or updated.

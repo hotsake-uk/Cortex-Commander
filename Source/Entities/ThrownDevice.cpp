@@ -58,7 +58,7 @@ int ThrownDevice::Create(const ThrownDevice& reference) {
 int ThrownDevice::ReadProperty(const std::string_view& propName, Reader& reader) {
 	StartPropertyList(return HeldDevice::ReadProperty(propName, reader));
 
-	MatchProperty("ActivationSound", { reader >> *m_ActivationSound; });
+	MatchProperty("ActivationSound", { reader >> *m_ActivationSound; m_ActivationSound->SetDefaultMixCategory(AudioMan::MIX_WEAPONS); });
 	MatchProperty("StartThrowOffset", { reader >> m_StartThrowOffset; });
 	MatchProperty("EndThrowOffset", { reader >> m_EndThrowOffset; });
 	MatchProperty("MinThrowVel", { reader >> m_MinThrowVel; });

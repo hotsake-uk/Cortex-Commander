@@ -22,6 +22,19 @@ AudioMan::~AudioMan() {
 	Destroy();
 }
 
+const std::array<std::string, AudioMan::MIX_CATEGORY_COUNT> AudioMan::c_SoundMixCategoryNames = {"Weapons", "Explosions", "Impacts", "Footsteps", "Voices", "Engines", "World", "UI"};
+const std::array<std::string, AudioMan::MIX_CATEGORY_COUNT> AudioMan::c_SoundMixCategoryDisplayNames = {"Weapons", "Explosions", "Impacts & Melee", "Footsteps", "Voices", "Engines", "World & Other", "UI"};
+
+AudioMan::SoundMixCategory AudioMan::GetSoundMixCategoryFromName(const std::string& name) {
+	for (int category = 0; category < MIX_CATEGORY_COUNT; ++category) {
+		const std::string& categoryName = c_SoundMixCategoryNames[category];
+		if (categoryName.size() == name.size() && std::equal(name.begin(), name.end(), categoryName.begin(), [](char a, char b) { return std::tolower(a) == std::tolower(b); })) {
+			return static_cast<SoundMixCategory>(category);
+		}
+	}
+	return MIX_AUTO;
+}
+
 void AudioMan::Clear() {
 	m_AudioEnabled = false;
 	m_UnitSpeechChannelGroup = nullptr;
@@ -36,6 +49,8 @@ void AudioMan::Clear() {
 	m_MusicVolume = 1.0F;
 	m_SoundsVolume = 1.0F;
 	m_GlobalPitch = 1.0F;
+	m_SoundMixChannelGroups.fill(nullptr);
+	m_SoundMixVolumes.fill(1.0F);
 
 	m_SoundPanningEffectStrength = 0.5F;
 
@@ -105,6 +120,13 @@ bool AudioMan::Initialize() {
 	audioSystemSetupResult = (audioSystemSetupResult == FMOD_OK) ? m_MasterChannelGroup->addGroup(m_UIChannelGroup) : audioSystemSetupResult;
 	audioSystemSetupResult = (audioSystemSetupResult == FMOD_OK) ? m_MasterChannelGroup->addGroup(m_MusicChannelGroup) : audioSystemSetupResult;
 
+	// Sound mixer category groups, so each category's volume can be set on its own and changes apply to sounds already playing.
+	for (int category = 0; category < MIX_CATEGORY_COUNT; ++category) {
+		audioSystemSetupResult = (audioSystemSetupResult == FMOD_OK) ? m_AudioSystem->createChannelGroup(("Mix " + c_SoundMixCategoryNames[category]).c_str(), &m_SoundMixChannelGroups[category]) : audioSystemSetupResult;
+		FMOD::ChannelGroup* parentGroup = (category == MIX_UI) ? m_UIChannelGroup : m_SFXChannelGroup;
+		audioSystemSetupResult = (audioSystemSetupResult == FMOD_OK) ? parentGroup->addGroup(m_SoundMixChannelGroups[category]) : audioSystemSetupResult;
+	}
+
 	m_AudioEnabled = audioSystemSetupResult == FMOD_OK;
 
 	if (!m_AudioEnabled) {
@@ -125,6 +147,9 @@ bool AudioMan::Initialize() {
 	SetSoundsVolume(m_SoundsVolume);
 	SetMusicVolume(m_MusicVolume);
 	SetMasterVolume(m_MasterVolume);
+	for (int category = 0; category < MIX_CATEGORY_COUNT; ++category) {
+		SetSoundMixVolume(static_cast<SoundMixCategory>(category), m_SoundMixVolumes[category]);
+	}
 
 	return true;
 }
@@ -143,7 +168,7 @@ FMOD::ChannelGroup* AudioMan::GetUnitSpeechChannelGroup() {
 	}
 	if (!m_UnitSpeechChannelGroup) {
 		FMOD_RESULT result = m_AudioSystem->createChannelGroup("UnitSpeech", &m_UnitSpeechChannelGroup);
-		result = (result == FMOD_OK) ? m_SFXChannelGroup->addGroup(m_UnitSpeechChannelGroup) : result;
+		result = (result == FMOD_OK) ? m_SoundMixChannelGroups[MIX_VOICES]->addGroup(m_UnitSpeechChannelGroup) : result;
 		if (result != FMOD_OK) {
 			g_ConsoleMan.PrintString("ERROR: Could not make the unit speech channel group: " + std::string(FMOD_ErrorString(result)));
 			if (m_UnitSpeechChannelGroup) {
@@ -260,22 +285,36 @@ bool AudioMan::SetMusicPitch(float pitch) {
 
 void AudioMan::FinishIngameLoopingSounds() {
 	if (m_AudioEnabled) {
-		int numberOfPlayingChannels;
-		FMOD::Channel* soundChannel;
+		ForEachSFXChannel([](FMOD::Channel* soundChannel, int) { soundChannel->setLoopCount(0); }, "finishing all looping sounds");
+	}
+}
 
-		FMOD_RESULT result = m_SFXChannelGroup->getNumChannels(&numberOfPlayingChannels);
-		if (result != FMOD_OK) {
-			g_ConsoleMan.PrintString("ERROR: Failed to get the number of playing SFX sound channels when finishing all looping sounds: " + std::string(FMOD_ErrorString(result)));
-			return;
+void AudioMan::ForEachSFXChannel(const std::function<void(FMOD::Channel*, int)>& channelFunction, const std::string& errorContext) {
+	std::array<FMOD::ChannelGroup*, MIX_CATEGORY_COUNT> groupsToIterate;
+	int groupCount = 0;
+	groupsToIterate[groupCount++] = m_SFXChannelGroup;
+	for (int category = 0; category < MIX_CATEGORY_COUNT; ++category) {
+		if (category != MIX_UI && m_SoundMixChannelGroups[category]) {
+			groupsToIterate[groupCount++] = m_SoundMixChannelGroups[category];
 		}
+	}
 
+	for (int groupIndex = 0; groupIndex < groupCount; ++groupIndex) {
+		FMOD::ChannelGroup* channelGroup = groupsToIterate[groupIndex];
+		int numberOfPlayingChannels;
+		FMOD_RESULT result = channelGroup->getNumChannels(&numberOfPlayingChannels);
+		if (result != FMOD_OK) {
+			g_ConsoleMan.PrintString("ERROR: Failed to get the number of playing SFX sound channels when " + errorContext + ": " + std::string(FMOD_ErrorString(result)));
+			continue;
+		}
 		for (int i = 0; i < numberOfPlayingChannels; i++) {
-			result = m_SFXChannelGroup->getChannel(i, &soundChannel);
+			FMOD::Channel* soundChannel;
+			result = channelGroup->getChannel(i, &soundChannel);
 			if (result != FMOD_OK) {
-				g_ConsoleMan.PrintString("ERROR: Failed to get SFX sound channel when finishing all looping sounds: " + std::string(FMOD_ErrorString(result)));
-				return;
+				g_ConsoleMan.PrintString("ERROR: Failed to get SFX sound channel when " + errorContext + ": " + std::string(FMOD_ErrorString(result)));
+				break;
 			}
-			soundChannel->setLoopCount(0);
+			channelFunction(soundChannel, i);
 		}
 	}
 }
@@ -395,11 +434,13 @@ bool AudioMan::PlaySoundContainer(SoundContainer* soundContainer, int player) {
 
 	switch (soundContainer->GetBusRouting()) {
 		case SoundContainer::UI:
-			channelGroupToPlayIn = m_UIChannelGroup;
+			channelGroupToPlayIn = m_SoundMixChannelGroups[MIX_UI];
 			break;
-		case SoundContainer::SFX:
-			channelGroupToPlayIn = m_SFXChannelGroup;
+		case SoundContainer::SFX: {
+			SoundMixCategory mixCategory = soundContainer->GetMixCategory();
+			channelGroupToPlayIn = m_SoundMixChannelGroups[(mixCategory == MIX_AUTO) ? MIX_WORLD : mixCategory];
 			break;
+		}
 		case SoundContainer::MUSIC:
 			channelGroupToPlayIn = m_MusicChannelGroup;
 			break;
@@ -669,19 +710,9 @@ void AudioMan::SetPausedSoundContainerPlayingChannels(SoundContainer* soundConta
 }
 
 void AudioMan::Update3DEffectsForSFXChannels() {
-	int numberOfPlayingChannels;
-	FMOD::Channel* soundChannel;
-
-	FMOD_RESULT result = m_SFXChannelGroup->getNumChannels(&numberOfPlayingChannels);
-	if (result != FMOD_OK) {
-		g_ConsoleMan.PrintString("ERROR: Failed to get the number of playing channels when updating calculated sound effects for all playing channels: " + std::string(FMOD_ErrorString(result)));
-		return;
-	}
-
-	for (int i = 0; i < numberOfPlayingChannels; i++) {
-		result = m_SFXChannelGroup->getChannel(i, &soundChannel);
+	ForEachSFXChannel([this](FMOD::Channel* soundChannel, int i) {
 		FMOD_MODE mode;
-		result = (result == FMOD_OK) ? soundChannel->getMode(&mode) : result;
+		FMOD_RESULT result = soundChannel->getMode(&mode);
 		if (result == FMOD_OK && (mode & FMOD_2D) == 0) {
 			FMOD_VECTOR channelPosition;
 			result = result == FMOD_OK ? soundChannel->get3DAttributes(&channelPosition, nullptr) : result;
@@ -708,9 +739,8 @@ void AudioMan::Update3DEffectsForSFXChannels() {
 
 		if (result != FMOD_OK) {
 			g_ConsoleMan.PrintString("ERROR: An error occurred updating calculated sound effects for playing channel with index " + std::to_string(i) + ": " + std::string(FMOD_ErrorString(result)));
-			continue;
 		}
-	}
+	}, "updating calculated sound effects for all playing channels");
 }
 
 FMOD_RESULT AudioMan::UpdatePositionalEffectsForSoundChannel(FMOD::Channel* soundChannel, const FMOD_VECTOR* positionOverride) const {

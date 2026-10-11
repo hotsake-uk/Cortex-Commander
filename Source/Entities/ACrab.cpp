@@ -331,6 +331,7 @@ int ACrab::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("StrideSound", {
 		m_StrideSound = new SoundContainer;
 		reader >> m_StrideSound;
+		m_StrideSound->SetDefaultMixCategory(AudioMan::MIX_FOOTSTEPS);
 	});
 	MatchForwards("LStandLimbPath") MatchProperty("LeftStandLimbPath", { reader >> m_Paths[LEFTSIDE][FGROUND][STAND]; });
 	MatchForwards("LWalkLimbPath") MatchProperty("LeftWalkLimbPath", { reader >> m_Paths[LEFTSIDE][FGROUND][WALK]; });
