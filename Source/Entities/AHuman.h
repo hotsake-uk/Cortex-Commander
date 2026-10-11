@@ -943,6 +943,8 @@ namespace RTE {
 			Vector straightGoal; //!< The goal it was begun for: not tried again for a few seconds (straightTimer), so a flight that failed isn't begun again and again.
 			Timer straightTimer;
 			Timer straightCheckTimer; //!< Since the follower last looked for a full-risk flight.
+			bool straightHold = false; //!< A full-risk flight was found but the tank is short of it: standing for the fuel (straightHoldTimer since the wait began).
+			Timer straightHoldTimer;
 			bool ladderStalled = false; //!< A ladder climb stopped rising lately, at ladderStallSpot: that ladder isn't climbed again from there for a while (ladderStallTimer).
 			Vector ladderStallSpot;
 			Timer ladderStallTimer;
