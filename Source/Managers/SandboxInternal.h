@@ -2276,6 +2276,12 @@ namespace SandboxDetail {
 
 	/// Whether a team is one the player commands in the mode's game that is on: its units get no orders from the mode or the Battle Director.
 	bool BattlePlayerCommands(int side);
+	/// Whether a team is led by an AI commander in the mode's game that is on (never one the player commands).
+	bool BattleHasCommander(int side);
+	/// How hard the AI commanders play: 0 easy, 1 normal, 2 hard.
+	int BattleCommanderLevel();
+	/// Where a team in the mode's game that is on comes in: the middle of its widest spawn zone, else its point. False for a team not in it.
+	bool BattleTeamBase(int side, Vector& at);
 	Vector ModeSpawnSpot(int side, const std::vector<Vector>& zone, const Actor* unit);
 	int ModeRoom(int side, int room);
 	void UpdateBattleMode(bool aiPaused);
@@ -2462,6 +2468,10 @@ namespace SandboxDetail {
 	/// A call for reinforcements (Tool::BattleTeam, BattleReinforce), in the sim: bought from the team's points and sent in by ship.
 	void ApplyReinforcement(const Stroke& stroke);
 
+	/// A team's reinforcements bought from its points and sent in by ship over a point: a card's units, so many, by a craft (of c_Crafts).
+	/// False, with nothing spent, when it can't pay or its faction has no such unit.
+	bool CallReinforcements(int side, int card, int count, int craft, const Vector& at);
+
 	/// What a card's unit costs, as bought, for a side's faction. 0 if its faction has no such unit. Kept once worked out.
 	float ReinforcementCost(int card, int side);
 
@@ -2510,6 +2520,12 @@ namespace SandboxDetail {
 
 	/// A power used (Tool::BattleTeam, BattlePower), in the sim: if it's ready, done, and its cooldown started.
 	void ApplyPower(const Stroke& stroke);
+
+	/// A team's power used at a point, if it's ready: done, and its cooldown started. False if it wasn't used.
+	bool UsePowerAs(int side, int power, const Vector& at);
+
+	/// Seconds before a team's power can be used again, 0 if it can now.
+	float PowerSecondsLeft(int side, int power);
 
 	/// The Commander Toolbar's powers group: a tile each, greyed with the seconds left while it cools down.
 	void PowerTiles();
@@ -2586,6 +2602,18 @@ namespace SandboxDetail {
 
 	/// A mark over each of your units that is breaking. Call from the ImGui frame.
 	void DrawMorale();
+#pragma endregion
+
+#pragma region Enemy commander (BattleEnemy.cpp)
+	/// The enemy's commanders' strikes still coming, and when each was due, forgotten. At a mode's start and a new game.
+	void ForgetEnemyCommander();
+
+	/// Each enemy team led by an AI commander in a Battle Command battle buys reinforcements and uses powers, as you do. Call once per sim
+	/// update, from UpdateBattle.
+	void UpdateEnemyCommander(bool aiPaused);
+
+	/// Where the enemy's strikes are coming down, marked till they land. Call from the ImGui frame.
+	void DrawEnemyStrikes();
 #pragma endregion
 
 #pragma region Fog of war (BattleFog.cpp)

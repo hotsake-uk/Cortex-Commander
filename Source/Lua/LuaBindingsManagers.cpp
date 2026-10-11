@@ -454,6 +454,8 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SettingsMan) {
 	    .property("PrintDebugInfo", &SettingsMan::PrintDebugInfo, &SettingsMan::SetPrintDebugInfo)
 	    .property("RecommendedMOIDCount", &SettingsMan::RecommendedMOIDCount)
 	    .property("AIUpdateInterval", &SettingsMan::GetAIUpdateInterval, &SettingsMan::SetAIUpdateInterval)
+	    .property("AIEnemyBuysReinforcements", &SettingsMan::AIEnemyBuysReinforcements, &SettingsMan::SetAIEnemyBuysReinforcements)
+	    .property("AIEnemyUsesPowers", &SettingsMan::AIEnemyUsesPowers, &SettingsMan::SetAIEnemyUsesPowers)
 	    .property("AIThreatAvoidance", &SettingsMan::AIThreatAvoidance, &SettingsMan::SetAIThreatAvoidance)
 	    .property("AICoverDigs", &SettingsMan::AICoverDigs, &SettingsMan::SetAICoverDigs)
 	    .property("AICoverFallsBack", &SettingsMan::AICoverFallsBack, &SettingsMan::SetAICoverFallsBack)

@@ -3682,6 +3682,19 @@ namespace SandboxDetail {
 		return s_ModeRun.Running && side >= 0 && side < c_Sides && s_ModeRun.Settings.PlayerCommands[side] && TeamIn(s_ModeRun.Settings, side);
 	}
 
+	bool BattleHasCommander(int side) { return s_ModeRun.Running && HasCommander(s_ModeRun.Settings, side); }
+
+	int BattleCommanderLevel() { return CommanderLevel(); }
+
+	bool BattleTeamBase(int side, Vector& at) {
+		const BattleModeSettings& settings = s_ModeRun.Settings;
+		if (!s_ModeRun.Running || side < 0 || side >= c_Sides || !TeamIn(settings, side)) {
+			return false;
+		}
+		at = HasZones(settings, side) ? ZoneMiddle(WidestZone(ZonesOf(settings, side))) : settings.Points[side];
+		return true;
+	}
+
 	void ModeUnitsMade(int side, const std::vector<Actor*>& wave) {
 		if (BattlePlayerCommands(side)) {
 			// The player's team: on hold ground, standing where it came in, with no job from the mode. Nothing else (flag runs, hunts, defence

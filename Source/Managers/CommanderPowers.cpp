@@ -57,13 +57,19 @@ namespace SandboxDetail {
 	}
 
 	void ApplyPower(const Stroke& stroke) {
-		const int side = stroke.Team;
-		const int power = stroke.Choice;
-		if (side < 0 || side >= c_Sides || power < 0 || power >= c_PowerCount || !BattlePlayerCommands(side) || SecondsLeft(side, power) > 0.0F) {
-			return;
+		if (BattlePlayerCommands(stroke.Team)) {
+			UsePowerAs(stroke.Team, stroke.Choice, stroke.Position);
+		}
+	}
+
+	float PowerSecondsLeft(int side, int power) { return side >= 0 && side < c_Sides && power >= 0 && power < c_PowerCount ? SecondsLeft(side, power) : 0.0F; }
+
+	bool UsePowerAs(int side, int power, const Vector& where) {
+		if (side < 0 || side >= c_Sides || power < 0 || power >= c_PowerCount || SecondsLeft(side, power) > 0.0F) {
+			return false;
 		}
 		const CommanderPowerInfo& info = c_CommanderPowers[power];
-		Vector at = stroke.Position;
+		Vector at = where;
 		g_SceneMan.WrapPosition(at);
 		const long long now = g_TimerMan.GetSimUpdateCount();
 		switch (static_cast<CommanderPower>(power)) {
@@ -99,7 +105,7 @@ namespace SandboxDetail {
 				if (units.empty()) {
 					// (Nobody there: the power isn't spent.)
 					Note("Nobody of yours there to pull out");
-					return;
+					return false;
 				}
 				float refund = 0.0F;
 				for (Actor* unit: units) {
@@ -125,9 +131,10 @@ namespace SandboxDetail {
 				break;
 			}
 			default:
-				return;
+				return false;
 		}
 		s_ReadyAt[side][power] = now + static_cast<long long>(info.Cooldown * UpdatesPerSecond());
+		return true;
 	}
 
 	void PowerTargetClicked(const Vector& position) {
