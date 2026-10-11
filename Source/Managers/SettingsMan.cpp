@@ -786,6 +786,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("VehicleToughness", { float toughness = 1.0F; reader >> toughness; SetToughness(ToughnessKind::Vehicles, toughness); });
 	MatchProperty("CraftToughness", { float toughness = 1.0F; reader >> toughness; SetToughness(ToughnessKind::Craft, toughness); });
 	MatchProperty("AnimalToughness", { float toughness = 1.0F; reader >> toughness; SetToughness(ToughnessKind::Animals, toughness); });
+	MatchProperty("CreatureToughness", { float toughness = 1.0F; reader >> toughness; SetToughness(ToughnessKind::Creatures, toughness); });
 	MatchProperty("AISuppression", {
 		reader >> m_AISuppression;
 		m_AISuppression = std::clamp(m_AISuppression, 0.0F, 2.0F);
@@ -1290,6 +1291,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("VehicleToughness", Toughness(ToughnessKind::Vehicles));
 	writer.NewPropertyWithValue("CraftToughness", Toughness(ToughnessKind::Craft));
 	writer.NewPropertyWithValue("AnimalToughness", Toughness(ToughnessKind::Animals));
+	writer.NewPropertyWithValue("CreatureToughness", Toughness(ToughnessKind::Creatures));
 	writer.NewPropertyWithValue("AISuppression", m_AISuppression);
 	writer.NewPropertyWithValue("AIDigWillingness", m_AIDigWillingness);
 	writer.NewPropertyWithValue("AIThreatAvoidance", m_AIThreatAvoidance);

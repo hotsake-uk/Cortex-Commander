@@ -1113,6 +1113,7 @@ void DebugMan::SettingsGUI() {
 			    {"Vehicle toughness", SettingsMan::ToughnessKind::Vehicles, "How tough ground vehicles are: wheeled vehicles, tanks, dreadnoughts and turrets. Crew keep their own unit toughness."},
 			    {"Flying craft toughness", SettingsMan::ToughnessKind::Craft, "How tough flying craft are: drop ships, rockets and flying ships. Crew keep their own unit toughness."},
 			    {"Animal toughness", SettingsMan::ToughnessKind::Animals, "How tough animals are: livestock and wildlife such as crabs."},
+			    {"Creature toughness", SettingsMan::ToughnessKind::Creatures, "How tough creatures are: monsters such as hounds."},
 			};
 			for (const ToughnessSlider& slider: sliders) {
 				float toughness = g_SettingsMan.Toughness(slider.Kind);

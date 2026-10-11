@@ -73,7 +73,7 @@ namespace {
 	}
 
 	bool CanBurn(const Actor* actor) {
-		return actor && !actor->IsDead() && !dynamic_cast<const ADoor*>(actor) && actor->GetHealth() > 0.0F && (MadeOfFlesh(actor) || MadeOfWood(actor));
+		return actor && !actor->IsDead() && !dynamic_cast<const ADoor*>(actor) && actor->GetHealth() > 0.0F && !actor->IsFireProof() && (MadeOfFlesh(actor) || MadeOfWood(actor));
 	}
 
 	std::vector<Burner>::iterator FindBurner(const MovableObject* object) {

@@ -281,6 +281,7 @@ namespace RTE {
 			Vehicles, //!< Ground vehicles: wheeled vehicles and the crab-legged bodies that aren't animals (tanks, dreadnoughts, turrets).
 			Craft, //!< Flying craft: drop ships, rockets and flying ships.
 			Animals, //!< Livestock and wildlife (Actor::IsAnimal).
+			Creatures, //!< Monsters (Actor::IsCreature, CR-1).
 			Count
 		};
 

@@ -686,6 +686,18 @@ namespace RTE {
 		/// and carries no weapons, so it has none to drop.
 		bool IsAnimal() const;
 
+		/// Whether this is a creature (CR-1): a monster in the "Actors - Creatures" group. A fighter by nature, armed only with what it was born
+		/// with (natural weapons, the "Weapons - Natural" group), and silent in unit speech.
+		bool IsCreature() const;
+
+		/// Whether this is a beast of any kind: an animal or a creature (CR-1). Beasts say nothing in unit speech, are spawned with no loadout
+		/// and pick up no weapons but natural ones.
+		bool IsBeast() const { return IsAnimal() || IsCreature(); }
+
+		/// Whether this wild creature is everyone's enemy (CR-1): a creature that fights, on no team. Units of every side see and fight it, as
+		/// it does them. A creature on a team is an ordinary enemy of the other teams.
+		bool IsHostileToAll() const { return m_Team == Activity::NoTeam && IsCreature() && !IsNonCombatant() && m_Temperament != TEMPERAMENT_SKITTISH && m_Temperament != TEMPERAMENT_PACIFIST; }
+
 		/// Which of the toughness settings this actor follows (a SettingsMan::ToughnessKind), or -1 for none (doors, lifts).
 		int GetToughnessKind() const;
 
@@ -854,6 +866,9 @@ namespace RTE {
 
 		/// The searcher this actor is to the path grid: what it can jump, dig and breach, and how big it is.
 		virtual PathAgent GetPathAgent() const;
+
+		/// Puts what this actor's movement profile declares (CR-2) over what the route search worked out for it. Each GetPathAgent calls it last.
+		void ApplyMovementProfile(PathAgent& agent) const;
 
 		/// Where this actor's own route searches start from (see UpdateMovePath): the ground under it when that is near, else where it is.
 		/// A search from anywhere else (its centre, half a body over the ground) can answer differently from the one its AI will make.
@@ -1078,7 +1093,7 @@ namespace RTE {
 		/// IsInventoryEmpty().
 		virtual void DropAllInventory();
 
-		/// Deletes the weapons, tools and other held devices in an animal's inventory (see IsAnimal), so it has none to drop. Does nothing to other actors.
+		/// Deletes the weapons, tools and other held devices in a beast's inventory (see IsBeast), so it has none to drop. Does nothing to other actors.
 		void DiscardAnimalWeapons();
 
 		/// Converts all of the Gold carried by this Actor into MovableObjects and ejects them into the Scene.
@@ -1221,6 +1236,27 @@ namespace RTE {
 		/// ImpulseDamageThreshold (Update's travel damage starts there), as a height in gravity, never under a storey (96 px, what a hatch
 		/// drops). @return The height, in pixels; FLT_MAX in no gravity or with no threshold.
 		float GetMaxSafeFallHeight() const;
+
+		/// The movement profile set on the preset (CR-2): what its body can do, declared rather than worked out from its parts. Each field
+		/// left at its default (below zero) keeps what the route search works out (see GetPathAgent).
+		struct MovementProfile {
+			float BodyWidth = -1.0F; //!< Its width, in pixels, for the gaps it is routed through (up to 96).
+			float BodyHeight = -1.0F; //!< Its height standing, in pixels, for the head room it needs (up to 96).
+			float SafeFall = -1.0F; //!< The highest drop it lands from unhurt, in pixels (see GetMaxSafeFallHeight).
+			int Swims = -1; //!< 0 never swims (walks the bottom), 1 swims along the surface, 2 swims under water and never drowns.
+			float BreathSeconds = -1.0F; //!< How long it holds its breath under liquid, in seconds; 0 for something that doesn't breathe.
+			int FireProof = -1; //!< 1 for a body fire doesn't catch on, and that is routed through lava.
+		};
+
+		/// Gets this actor's movement profile (CR-2).
+		const MovementProfile& GetMovementProfile() const { return m_MovementProfile; }
+
+		/// Gets how long this holds its breath under liquid, in seconds: as set in its movement profile, else 12 for a body of flesh and
+		/// FLT_MAX for anything else (ActorWater). @return The seconds, FLT_MAX for something that doesn't breathe.
+		float GetBreathSeconds() const;
+
+		/// Gets whether fire doesn't catch on this (its movement profile's FireProof).
+		bool IsFireProof() const { return m_MovementProfile.FireProof > 0; }
 
 		/// Gets how deep this is in liquid (ActorWater): 0 dry, 1 feet in, 2 body in, 3 head under.
 		int GetLiquidDepth() const;
@@ -1745,6 +1781,7 @@ namespace RTE {
 		int m_WeaponRule; //!< What this may shoot at (see WeaponRule).
 		int m_Temperament; //!< What this is like by nature (see Temperament).
 		int m_NonCombatant; //!< 1 or 0 as set on the preset, -1 to follow the temperament (see IsNonCombatant).
+		MovementProfile m_MovementProfile; //!< What its body can do, as the preset declares it (CR-2).
 		mutable int m_ToughnessKind; //!< Which toughness setting this follows (see GetToughnessKind), -2 until it is first worked out.
 		float m_ToughnessHealth; //!< The health as ApplyToughness last left it, NaN before it is first called.
 		int m_LastAttackerTeam; //!< The side that last hurt this, Activity::NoTeam for none (see GetLastAttackerTeam). Not saved.
