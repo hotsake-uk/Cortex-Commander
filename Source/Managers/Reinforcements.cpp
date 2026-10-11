@@ -82,6 +82,7 @@ namespace SandboxDetail {
 		s_PendingCard = -1;
 		s_HasLandingSpot = false;
 		ForgetPowers();
+		ForgetVeterans();
 	}
 
 	void UpdateReinforcements() {
@@ -134,6 +135,7 @@ namespace SandboxDetail {
 				continue;
 			}
 			int killer = -1;
+			long killerID = 0;
 			float nearest = c_KillReach * c_KillReach;
 			for (const Actor* fighter: fighters) {
 				if (fighter->GetTeam() == seen.Team) {
@@ -142,9 +144,11 @@ namespace SandboxDetail {
 				float distance = g_SceneMan.ShortestDistance(fighter->GetPos(), seen.Pos, g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
 				if (distance < nearest) {
 					killer = fighter->GetTeam();
+					killerID = static_cast<long>(fighter->GetUniqueID());
 					nearest = distance;
 				}
 			}
+			NoteVeteranKill(killerID, id);
 			if (killer >= 0 && BattlePlayerCommands(killer)) {
 				CommandPoints& points = s_CommandPoints[killer];
 				float earned = seen.Value * c_KillShare;
