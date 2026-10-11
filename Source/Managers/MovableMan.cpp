@@ -1,4 +1,5 @@
 #include "MovableMan.h"
+#include "Colony.h"
 
 #include <optional>
 #include "ConsoleMan.h"
@@ -642,6 +643,18 @@ Actor* MovableMan::GetClosestBrainActor(int team, const Vector& scenePoint) cons
 	return pClosestBrain;
 }
 
+bool MovableMan::HasGameBrain(int team) const {
+	if (team < Activity::TeamOne || team >= Activity::MaxTeamCount) {
+		return false;
+	}
+	for (const Actor* actor: m_ActorRoster[team]) {
+		if (actor->HasObjectInGroup("Brains") && !actor->IsInGroup(Colony::c_BrainGroup)) {
+			return true;
+		}
+	}
+	return false;
+}
+
 Actor* MovableMan::GetClosestOtherBrainActor(int notOfTeam, const Vector& scenePoint) const {
 	if (notOfTeam < Activity::TeamOne || notOfTeam >= Activity::MaxTeamCount || m_Actors.empty())
 		return 0;
@@ -670,7 +683,8 @@ Actor* MovableMan::GetUnassignedBrain(int team) const {
 		return 0;
 
 	for (std::list<Actor*>::const_iterator aIt = m_ActorRoster[team].begin(); aIt != m_ActorRoster[team].end(); ++aIt) {
-		if ((*aIt)->HasObjectInGroup("Brains") && !g_ActivityMan.GetActivity()->IsAssignedBrain(*aIt))
+		// (Not the brain that runs a colony building: that is only ever the building's.)
+		if ((*aIt)->HasObjectInGroup("Brains") && !(*aIt)->IsInGroup(Colony::c_BrainGroup) && !g_ActivityMan.GetActivity()->IsAssignedBrain(*aIt))
 			return *aIt;
 	}
 
@@ -679,7 +693,7 @@ Actor* MovableMan::GetUnassignedBrain(int team) const {
 	for (std::deque<Actor*>::const_iterator aaIt = m_AddedActors.begin(); aaIt != m_AddedActors.end(); ++aaIt) {
 		int actorTeam = (*aaIt)->GetTeam();
 		// Accept no-team brains too - ACTUALLY, DON'T
-		if ((actorTeam == team /* || actorTeam == Activity::NoTeam*/) && (*aaIt)->HasObjectInGroup("Brains") && !g_ActivityMan.GetActivity()->IsAssignedBrain(*aaIt))
+		if ((actorTeam == team /* || actorTeam == Activity::NoTeam*/) && (*aaIt)->HasObjectInGroup("Brains") && !(*aaIt)->IsInGroup(Colony::c_BrainGroup) && !g_ActivityMan.GetActivity()->IsAssignedBrain(*aaIt))
 			return *aaIt;
 	}
 
@@ -1708,6 +1722,9 @@ void MovableMan::Update() {
 			ZoneScopedN("Particles Update");
 
 			g_PerformanceMan.StartPerformanceMeasurement(PerformanceMan::ParticlesUpdate);
+			// The most gib chunks loose at once (the gib chunk setting, 0 for no limit): the chunks still loose are gathered as they update.
+			const int maxLooseChunks = g_SettingsMan.GibChunks().MaxLoose;
+			std::vector<MovableObject*> looseChunks;
 			for (MovableObject* particle: m_Particles) {
 				particle->Update();
 
@@ -1726,6 +1743,32 @@ void MovableMan::Update() {
 				// Copy particles that are at rest to the terrain and mark them for deletion.
 				if (particle->IsAtRest()) {
 					particle->SetToSettle(true);
+				}
+				if (maxLooseChunks > 0 && particle->IsGibChunk() && !particle->ToSettle() && !particle->ToDelete()) {
+					looseChunks.push_back(particle);
+				}
+			}
+			// Past the most, the oldest that have slowed down settle into the ground where they lie, as dropped items past the most kept do. One lying on a
+			// body or another piece settles there with the gib chunks settle on bodies setting on, and is otherwise removed; one in the air waits until it lands.
+			// With settling off they are only removed.
+			if (maxLooseChunks > 0 && looseChunks.size() > static_cast<size_t>(maxLooseChunks)) {
+				const size_t excess = looseChunks.size() - static_cast<size_t>(maxLooseChunks);
+				std::nth_element(looseChunks.begin(), looseChunks.begin() + excess, looseChunks.end(), [](const MovableObject* first, const MovableObject* second) { return first->GetAge() > second->GetAge(); });
+				for (size_t i = 0; i < excess; ++i) {
+					MOSRotating* chunk = static_cast<MOSRotating*>(looseChunks[i]);
+					if (!chunk->GetVel().MagnitudeIsLessThan(4.0F)) {
+						continue;
+					}
+					const bool onGround = !g_SceneMan.OverAltitude(chunk->GetPos(), static_cast<int>(chunk->GetIndividualRadius()) + 4, 3);
+					const MovableObject* under = onGround ? nullptr : chunk->GetMOUnderneath();
+					if (!onGround && !under) {
+						continue;
+					}
+					if (m_SettlingEnabled && (onGround || MOSRotating::ChunkMaySettleOn(under))) {
+						chunk->SetToSettle(true);
+					} else {
+						chunk->SetToDelete(true);
+					}
 				}
 			}
 			g_PerformanceMan.StopPerformanceMeasurement(PerformanceMan::ParticlesUpdate);

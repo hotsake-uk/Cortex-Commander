@@ -222,6 +222,7 @@ namespace {
 			TerrainCollapse::GetTuning() = TerrainCollapse::Tuning();
 			AirPressure::GetTuning() = AirPressure::Tuning();
 			MagicEffects::GetTuning() = MagicEffects::Tuning();
+			g_SettingsMan.GibChunks() = SettingsMan::GibChunkTuning();
 			s_PresetMessage = "Everything is back to how the game comes.";
 		}
 		ImGui::SetItemTooltip("Puts every setting here back to how the game comes.");
@@ -816,6 +817,8 @@ void DebugMan::SettingsGUI() {
 		Slider("Energy regen", &tuning.EnergyRegen, 0.0F, 5.0F, "%.2fx");
 		Tip("How fast energy and a spell's own charge come back. 0: they never come back.");
 		ImGui::EndDisabled();
+		Toggle("AI casts spells", tuning.AICasting, [&tuning](bool on) { tuning.AICasting = on; });
+		Tip("AI units use their spells of their own accord: a unit with a push spell pushes a grenade landing near it back the way it came, and a unit that ran out of energy and took out its other weapon goes back to its spell once its energy has mostly come back. Off: the AI fires a spell only like any other weapon it happens to hold.");
 		ImGui::EndDisabled();
 		if (Plain() && ToolUI::Button("Usual magic")) {
 			tuning = MagicEffects::Tuning();
@@ -853,6 +856,8 @@ void DebugMan::SettingsGUI() {
 		Tip("Anything bigger counts as the world and never falls. 30,000 is about a 170 by 170 block. A tree's trunk and leaves don't count, so a big tree cut through still comes down whole.");
 		SliderI("Smallest loose bit of building that falls", &tuning.MinFittingPixels, 0, 2000);
 		Tip("Smaller loose bits of building material stay put: lamps, signs and consoles are drawn hanging in mid-air.");
+		Slider("Force to trigger a collapse check", &tuning.CheckMinForce, 0.0F, 2000.0F, "%.0f", ImGuiSliderFlags_Logarithmic);
+		Tip("How hard a bullet, thrown object or unit has to hit the ground (its impulse, in the same units as a material's strength: earth 70, concrete 1000) to start the ground around being checked for pieces cut loose. Weaker hits on the same patch add up over a couple of seconds, so steady fire still brings a ledge down. Weapon damage to terrain counts. Explosions, digging and fire always start a check. 0: every hit that knocks out terrain does.");
 		Heading("How it falls");
 		Slider("How hard explosions throw loose pieces", &tuning.BlastPush, 0.0F, 3.0F);
 		Tip("0: explosions don't move loose pieces at all. Higher: pieces still moving are thrown harder, and more of the pieces lying at rest near a blast are picked up and thrown.");
@@ -896,6 +901,38 @@ void DebugMan::SettingsGUI() {
 		Tip("How hard falling pieces shove the units and loose objects they hit. Units knocked flying into the ground take the usual impact damage on top.");
 		if (Plain() && ToolUI::Button("Usual falling")) {
 			tuning = TerrainCollapse::Tuning();
+		}
+	};
+
+	// The solid pieces a body, wreck or crate breaks into when it gibs. Each tumbles about and costs many times what a drop of blood does to move,
+	// so in a big battle hundreds of them can slow the game down. As they come, everything is as the game has always been.
+	auto gibs = [&]() {
+		SettingsMan::GibChunkTuning& chunks = g_SettingsMan.GibChunks();
+		if (Plain()) {
+			int loose = 0;
+			for (const MovableObject* particle: g_MovableMan.GetParticleList()) {
+				loose += particle->IsGibChunk() ? 1 : 0;
+			}
+			ImGui::TextDisabled("%d gib chunks loose", loose);
+		}
+		SliderI("Gib chunks per gib (%)", &chunks.CountPercent, 0, 200, "%d%%");
+		Tip("How many of the solid pieces (bits of plating, flesh, bone and metal) come out when a body, wreck or crate breaks apart, against what each says: at 50 about half. Blood, flecks and sparks are unchanged, and so are the parts that were attached to it (limbs, heads, guns). 100: all of them, as the game comes.");
+		SliderI("Most loose gib chunks", &chunks.MaxLoose, 0, 2000, chunks.MaxLoose > 0 ? "%d" : "No limit");
+		Tip("With more pieces than this about, the oldest that have slowed down settle into the ground where they lie, as dropped items past the most kept do. One lying on a body or a unit is removed instead (or settles there, with Gib chunks settle on bodies ticked and the body dead); one still in the air waits until it lands. No limit: they settle only when they come to rest, as the game comes.");
+		SliderI("Gib chunk settle time", &chunks.SettleMS, -1, 5000, chunks.SettleMS >= 0 ? "%d ms" : "As each piece says");
+		Tip("How long a piece has to lie still before it settles into the ground and stops costing anything. Lower: they settle sooner. As each piece says: its own RestThreshold (half a second for most), as the game comes. A piece made never to settle still never does.");
+		SliderI("Gib chunk bounces per update", &chunks.MaxBounces, 1, 10);
+		Tip("The most times a piece can hit something in one update before it stops moving for that update. Pieces wedged among bodies hit something over and over; fewer is cheaper but they may jitter or slip into each other. 10, as for everything else, as the game comes.");
+		SliderI("Gib chunk collision spacing", &chunks.AtomSpacing, 0, 16, chunks.AtomSpacing > 0 ? "%d px" : "As each piece says");
+		Tip("The pixels between the points round a piece's outline that it collides with, for pieces made from now on. Higher: fewer points, cheaper, but they may sink a little into the ground and each other. As each piece says: its own AtomGroup Resolution (8 for the game's own), as the game comes.");
+		Check("Gib chunks settle on bodies", &chunks.SettleOnBodies);
+		Tip("A piece lying still on a dead body or on other pieces, rather than on the ground, settles there too, instead of jostling on it until the body is gone. Never on a unit still alive. Off, as the game comes: only on the ground.");
+		g_SettingsMan.ClampGibChunks();
+		if (Plain()) {
+			if (ToolUI::Button("Reset to defaults")) {
+				chunks = SettingsMan::GibChunkTuning();
+			}
+			ImGui::SetItemTooltip("Puts every Gibs setting back to how the game comes, which is how gibs always behaved.");
 		}
 	};
 
@@ -995,6 +1032,8 @@ void DebugMan::SettingsGUI() {
 			g_SettingsMan.SetBleedOutChance(bleedOut);
 		}
 		Tip("Every wound bleeds, and most stop after a while. This is the chance one keeps on bleeding instead, so the unit, players' and every other, keeps losing health until it's patched up or bleeds out. 0 is as before: wounds stop when they always did. 100: every wound keeps bleeding.");
+		Toggle("Crew killed in a vehicle fall out", g_SettingsMan.DeadCrewFallOut(), [](bool on) { g_SettingsMan.SetDeadCrewFallOut(on); });
+		Tip("Riders in an open vehicle (the cart, boats, buggy and Moonhopper) can be shot in their seats. On: someone killed there falls out of the vehicle. Off: the body slumps in its seat until the vehicle is wrecked or thrown over, or someone climbs into that seat. Your own unit falls out either way. Tank crews sit inside, out of reach.");
 		float terrainDamage = g_SettingsMan.WeaponTerrainDamage();
 		if (Slider("Weapon damage to terrain", &terrainDamage, 0.1F, 20.0F, "%.2fx", ImGuiSliderFlags_Logarithmic)) {
 			g_SettingsMan.SetWeaponTerrainDamage(terrainDamage);
@@ -1199,6 +1238,8 @@ void DebugMan::SettingsGUI() {
 			}
 			Tip("How much fire pins AI units down: shots cracking past and blasts nearby make them duck, crawl, run for cover and shoot worse, and losses, wounds and fire shake their nerve until they pull back. 0 turns it off; machines never feel it, and Unfair AI ignores it.");
 		}
+		Toggle("Units break when shaken", g_SettingsMan.AIBreaksWhenShaken(), [](bool on) { g_SettingsMan.SetAIBreaksWhenShaken(on); });
+		Tip("A unit whose nerve has gone (losses, wounds and fire wear it down) breaks and falls back, whatever its health, until it steadies or is rallied; in Battle Command yours show a \"!\" over them. Off: suppression still makes them duck and crawl, but nobody runs.");
 		{
 			float dig = g_SettingsMan.AIDigWillingness();
 			if (Slider("AI digging", &dig, 0.0F, 2.0F, "%.2fx")) {
@@ -1238,6 +1279,13 @@ void DebugMan::SettingsGUI() {
 		Tip("AI units wait at a take-off until the tank holds what the flight needs. Off: they go with what's in the tank, and may come down short.");
 		Toggle("AI units use vehicles", g_SettingsMan.AIUsesVehicles(), [](bool on) { g_SettingsMan.SetAIUsesVehicles(on); });
 		Tip("An AI unit sent a long way walks to a friendly vehicle near it that is going its way, gets in and rides (or drives it) there, then gets out and walks the rest. A vehicle with an AI driver drives itself to the place it is sent, and units sent to a vehicle get in. Off: they walk, and AI drivers sit still.");
+		Heading("Take cover order");
+		Toggle("Dig a foxhole when there's no cover", g_SettingsMan.AICoverDigs(), [](bool on) { g_SettingsMan.SetAICoverDigs(on); });
+		Tip("Told to take cover with nothing to get behind within about 150 px, a unit carrying a digger on soft ground (sand, soil, earth) digs itself a foxhole where it stands and crouches in it. Off: it doesn't dig, and falls back or lies flat instead.");
+		Toggle("Fall back when exposed", g_SettingsMan.AICoverFallsBack(), [](bool on) { g_SettingsMan.SetAICoverFallsBack(on); });
+		Tip("Told to take cover with nothing to get behind and no foxhole dug, a unit falls back 200 px away from the enemy if one is within 250 px or it is pinned down. Off: it stays where it is.");
+		Toggle("Lie flat when exposed", g_SettingsMan.AICoverLiesFlat(), [](bool on) { g_SettingsMan.SetAICoverLiesFlat(on); });
+		Tip("Told to take cover with nothing to get behind, a unit that doesn't dig in lies flat where it ends up. Off: it crouches.");
 	};
 
 	// How units behave on a cautious or a direct order: an RTS order placed with one click is cautious, two normal, and a double click held
@@ -1248,8 +1296,8 @@ void DebugMan::SettingsGUI() {
 			ImGui::TextWrapped("How you place an RTS order (move, attack-move, defend, dig to) says how urgent it is. One click: cautious, walking round jumps and waiting for fuel. A double click: a normal order. A double click held and dragged: riskier the further you drag, up to fully direct (the shortest way there whatever it takes) at the full risk distance; the way you drag is the way they face when they get there. The Direct settings say how hard a full drag pushes it, the Cautious ones how careful one click is.");
 		}
 		{
-			Slider("Full risk drag distance", &direct.RiskDragPixels, 100.0F, 800.0F, "%.0f px");
-			Tip("How far on screen a double click is dragged for a fully direct order. A shorter drag takes that share of the way from a normal order to a fully direct one. 300 px is normal.");
+			Slider("Full risk drag distance", &direct.RiskDragPixels, 200.0F, 1200.0F, "%.0f px");
+			Tip("How far on screen a double click is dragged for a fully direct order, a suicide mission. Risk rises slowly and then steeply: half the distance is about 35%, four fifths about 70%. 600 px is normal.");
 			float straight = direct.StraightFlightRisk * 100.0F;
 			if (Slider("Straight flight from", &straight, 50.0F, 100.0F, "%.0f%% risk")) {
 				direct.StraightFlightRisk = straight / 100.0F;
@@ -1282,6 +1330,8 @@ void DebugMan::SettingsGUI() {
 			Tip("How fast they fly, up, across and down, as a multiple of a normal unit's limits. Faster gets there sooner but overshoots and tumbles more. 1.5x is normal for a direct order.");
 			Slider("Landing speed", &direct.Touchdown, 3.0F, 15.0F, "%.1f m/s");
 			Tip("How fast they let themselves come down onto the floor before braking: harder landings save time and fuel but bounce and stumble more. A normal unit lands at 5 m/s; 7 is normal for a direct order.");
+			Check("Safe landings", &direct.SafeLandings);
+			Tip("Risky orders never land harder than the unit takes without being hurt, whatever the landing speed above says. Off: they land as hard as set, and a heavy unit may hurt itself on arrival. On is normal.");
 		}
 		Heading("Direct: route");
 		{
@@ -1292,6 +1342,8 @@ void DebugMan::SettingsGUI() {
 			Tip("What tunnelling a node costs on a direct dig-to, as a share of a normal unit's price. Lower digs through rather than walking round; 2% (normal) tunnels straight through anything its digger cuts. A normal dig-to is 25%.");
 			Slider("Dig straightness", &direct.LineWeight, 0.0F, 1.0F, "%.2f");
 			Tip("How hard a direct dig-to keeps to the straight line from where it starts to the point, rather than any route as short: the cost of each node off the line, in nodes walked. 0 doesn't care; 0.1 is normal.");
+			Slider("Route straightness", &direct.MoveLineWeight, 0.0F, 2.0F, "%.2f");
+			Tip("How hard a risky move or attack keeps to the straight line to the target, at full risk (less the lower the risk): what each step off the line costs, in steps walked. 0 routes as usual; 0.6 is normal.");
 			Check("Ignore enemies on the route", &direct.IgnoreEnemies);
 			Tip("Whether their routes take no notice of enemies on the way (normal), even for a unit a game mode wants kept safe.");
 			Check("Groups keep together", &direct.KeepPace);
@@ -1490,6 +1542,7 @@ void DebugMan::SettingsGUI() {
 	    {"Effect layers", effectLayers},
 	    {"Air & wind", airAndWind},
 	    {"Falling ground", fallingGround},
+	    {"Gibs", gibs},
 	    {"Magic & spells", magic},
 	    {"Camera & image", cameraAndImage},
 	    {"Game & HUD", gameAndHUD},

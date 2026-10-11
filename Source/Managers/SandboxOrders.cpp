@@ -181,6 +181,8 @@ namespace SandboxDetail {
 			standing.HasDigTarget = false;
 			// How urgent, by its clicks (s_DirectOrder): cautious to the shortest way there whatever it takes. One the standing orders resend keeps it.
 			standing.Direct = s_DirectOrder;
+			standing.SkyGoal = s_SkyOrder;
+			standing.SkyPoint = waypoint;
 		}
 		standing.FailReason = Actor::ORDERFAIL_NONE;
 		standing.FailMaterial = 0;
@@ -617,7 +619,66 @@ namespace SandboxDetail {
 	}
 
 	/// Sends units to stand round a point, each to its own spot, the nearest unit to the nearest spot.
+	bool IsSkyPoint(const Vector& point) {
+		Vector at = point;
+		g_SceneMan.WrapPosition(at);
+		for (int down = 0; down <= 120; down += 4) {
+			if (g_SceneMan.GetTerrMatter(static_cast<int>(at.m_X), static_cast<int>(at.m_Y) + down) != MaterialColorKeys::g_MaterialAir) {
+				return false;
+			}
+		}
+		return at.m_Y > 0.0F;
+	}
+
+	void JetpackHereSelected(const Vector& point, bool shift, int facing) {
+		struct SkyScope {
+			SkyScope() { s_SkyOrder = true; }
+			~SkyScope() { s_SkyOrder = false; }
+		} skyScope;
+		// (Not a step of a plan: plans go to places on the ground.)
+		(void)shift;
+		MoveUnitsTo(UnitsToMove(0, true), point, false, facing);
+		MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::JetpackHere)]);
+	}
+
 	void MoveUnitsTo(std::vector<Actor*> units, const Vector& point, bool attackMove, int facing) {
+		// A point in the air (Jetpack here, or a move or attack-move clicked in open air): the units with a jet fly to it, spread along it
+		// a little apart, and hover there; the rest go to the ground under it as any move does.
+		if (s_SkyOrder || (s_ClickOrder && IsSkyPoint(point))) {
+			std::vector<Actor*> flyers;
+			std::vector<Actor*> walkers;
+			for (Actor* unit: units) {
+				const AHuman* human = dynamic_cast<const AHuman*>(unit);
+				const AEJetpack* jet = human ? human->GetJetpack() : nullptr;
+				(jet && jet->IsAttached() && jet->GetJetpackType() == AEJetpack::JetpackType::Standard ? flyers : walkers).push_back(unit);
+			}
+			if (!flyers.empty()) {
+				struct SkyScope {
+					bool Was = s_SkyOrder;
+					SkyScope() { s_SkyOrder = true; }
+					~SkyScope() { s_SkyOrder = Was; }
+				} skyScope;
+				for (size_t i = 0; i < flyers.size(); ++i) {
+					Vector spot = point + Vector((static_cast<float>(i) - static_cast<float>(flyers.size() - 1) * 0.5F) * 28.0F, 0.0F);
+					g_SceneMan.WrapPosition(spot);
+					SendUnit(flyers[i], spot, nullptr, false, attackMove ? "attack-move" : "move");
+					flyers[i]->GetStandingOrder().PostFacing = facing;
+				}
+			}
+			if (walkers.empty()) {
+				return;
+			}
+			// (To the ground under it: well clear of the sky test, so this is a ground move. Nothing under it at all: they stay.)
+			const Vector ground = g_SceneMan.MovePointToGround(point, 20, 3);
+			if (IsSkyPoint(ground)) {
+				return;
+			}
+			bool wasSky = s_SkyOrder;
+			s_SkyOrder = false;
+			MoveUnitsTo(walkers, ground, attackMove, facing);
+			s_SkyOrder = wasSky;
+			return;
+		}
 		std::vector<Vector> spots = FormationSpots(units, point, static_cast<int>(units.size()) * 2, facing);
 		if (spots.empty()) {
 			return;
@@ -908,6 +969,39 @@ namespace SandboxDetail {
 			return;
 		}
 		int team = SelectionTeam();
+		if (s_CommandMode == CommandMode::Command) {
+			// As a click on the world would, but with the map's rough aim: an enemy close by the place attacked, or the objective or air
+			// there; else a move.
+			Actor* enemy = nullptr;
+			float nearest = 24.0F * 24.0F;
+			for (Actor* actor: SandboxAccess::Actors()) {
+				if (!IsCombatant(actor) || actor->IsIgnoredByAI() || actor->GetTeam() == team || HiddenFromCommander(actor)) {
+					continue;
+				}
+				if (float distance = g_SceneMan.ShortestDistance(point, actor->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude(); distance < nearest) {
+					nearest = distance;
+					enemy = actor;
+				}
+			}
+			const CommandTarget at = CommandTargetAt(point);
+			if (enemy) {
+				if (shift) {
+					PlanStepFor(units, PlanKind::Attack, enemy->GetPos(), enemy);
+				} else {
+					for (Actor* unit: units) {
+						SendUnit(unit, enemy->GetPos(), enemy, true, "attack (map)", true);
+					}
+				}
+				MarkOrder(enemy->GetPos(), c_CommandModeColors[static_cast<int>(CommandMode::Attack)]);
+				return;
+			} else if (at.What == CommandTarget::Objective) {
+				ObjectiveSelected(at, shift);
+				return;
+			} else if (at.What == CommandTarget::Air) {
+				FlySelectedTo(point, shift);
+				return;
+			}
+		}
 		switch (s_CommandMode) {
 			case CommandMode::Attack:
 				if (Actor* enemy = EnemyNear(point, team)) {
@@ -950,6 +1044,9 @@ namespace SandboxDetail {
 				return;
 			case CommandMode::Suppress:
 				SuppressSelected(point);
+				return;
+			case CommandMode::JetpackHere:
+				JetpackHereSelected(point, shift);
 				return;
 			case CommandMode::DigTo:
 				DigUnitsTo(units, point);
@@ -1148,12 +1245,34 @@ namespace SandboxDetail {
 		return s_Team;
 	}
 
+	void BackToCommandAfterOrder(bool shift) {
+		// (Not with Shift: steps of a plan are clicked out one after another in the same mode.)
+		if (!shift && OneOffMode(s_CommandMode) && !s_Selected.empty()) {
+			s_BackToCommandAt = ImGui::GetTime() + ImGui::GetIO().MouseDoubleClickTime;
+			s_BackToCommandFrom = s_CommandMode;
+		}
+	}
+
 	void MarkOrder(const Vector& at, ImU32 color) { s_OrderMarks.push_back({at, 1.0F, color, s_DirectOrder}); }
 
 
 	/// A click on the world with the command tool, as the mode says. Count: 0 a plain click, 1 with Shift held (add to the selection), 2 a double click
 	/// (select every unit of that kind in sight).
 	void CommandSelected(const Vector& position, int modifier) {
+		if (s_CommandMode == CommandMode::Command) {
+			// Command mode: the order fits what's at the point. Selecting, and a friend, enemy or the ground, go as Select or Move would.
+			const CommandTarget at = CommandTargetAt(position);
+			if (at.What == CommandTarget::Objective) {
+				ObjectiveSelected(at, modifier == 1);
+			} else if (at.What == CommandTarget::Air) {
+				FlySelectedTo(position, modifier == 1);
+			} else {
+				s_CommandMode = at.What == CommandTarget::Select ? CommandMode::Select : CommandMode::Move;
+				CommandSelected(position, modifier);
+				s_CommandMode = CommandMode::Command;
+			}
+			return;
+		}
 		Actor* target = dynamic_cast<Actor*>(ObjectUnder(position, true));
 		if (HiddenFromCommander(target)) {
 			// (What your side can't see isn't there to click on, RC-9.)
@@ -1225,6 +1344,10 @@ namespace SandboxDetail {
 			SuppressSelected(position);
 			return;
 		}
+		if (s_CommandMode == CommandMode::JetpackHere) {
+			JetpackHereSelected(position, modifier == 1);
+			return;
+		}
 		if (s_CommandMode == CommandMode::DigTo) {
 			// Dig to the point, in the ground or not (RC-11): each unit checked with its own digger first, and only those that can are sent.
 			DigUnitsTo(UnitsToMove(0, true), position);
@@ -1288,6 +1411,96 @@ namespace SandboxDetail {
 			MoveUnitsTo(UnitsToMove(0, true), position);
 			MarkOrder(position, IM_COL32(110, 180, 250, 255));
 		}
+	}
+
+	CommandTarget CommandTargetAt(const Vector& point) {
+		CommandTarget target;
+		if (UnitsToMove(0, true).empty()) {
+			return target;
+		}
+		target.What = CommandTarget::Move;
+		// A unit under the pointer comes first, friend or enemy: Move mode's selecting or attacking.
+		if (const Actor* under = dynamic_cast<Actor*>(ObjectUnder(point, true)); under && !HiddenFromCommander(under) && (IsSelectable(under) || IsCombatant(under))) {
+			return target;
+		}
+		const int team = SelectionTeam();
+		if (s_ModeRun.Running && !s_ModeRun.Over) {
+			// A battle objective the selection's team goes for or holds: in its zone, or near its place (nearer than its whole radius, so a
+			// move just past a flag stays a move).
+			const bool wraps = g_SceneMan.SceneWrapsX();
+			float best = -1.0F;
+			for (const BattleObjective& objective: BattleObjectives()) {
+				if (!objective.Live || !objective.Shown || (!objective.AttackedBy(team) && !objective.DefendedBy(team))) {
+					continue;
+				}
+				const float distance = g_SceneMan.ShortestDistance(point, objective.Pos, wraps).GetMagnitude();
+				const bool on = objective.Zone.empty() ? distance <= std::clamp(objective.Radius, 16.0F, 40.0F) : IsInZone(objective.Zone, point);
+				if (on && (best < 0.0F || distance < best)) {
+					best = distance;
+					target.What = CommandTarget::Objective;
+					target.Goal = objective;
+					target.Defend = !objective.AttackedBy(team);
+				}
+			}
+			if (target.What == CommandTarget::Objective) {
+				return target;
+			}
+		}
+		// Open air: nothing but air at the point and for a good way round it, and no ground for a unit's height or more below.
+		auto air = [](const Vector& at) {
+			Vector spot = at;
+			g_SceneMan.WrapPosition(spot);
+			return g_SceneMan.GetTerrMatter(static_cast<int>(spot.m_X), static_cast<int>(spot.m_Y)) == g_MaterialAir;
+		};
+		if (air(point) && g_SceneMan.CastNotMaterialRay(point, Vector(0.0F, 70.0F), g_MaterialAir, 2) < 0.0F && g_SceneMan.CastNotMaterialRay(point, Vector(0.0F, -30.0F), g_MaterialAir, 2) < 0.0F &&
+		    g_SceneMan.CastNotMaterialRay(point, Vector(30.0F, 0.0F), g_MaterialAir, 2) < 0.0F && g_SceneMan.CastNotMaterialRay(point, Vector(-30.0F, 0.0F), g_MaterialAir, 2) < 0.0F) {
+			target.What = CommandTarget::Air;
+		}
+		return target;
+	}
+
+	void ObjectiveSelected(const CommandTarget& target, bool shift) {
+		const BattleObjective& objective = target.Goal;
+		std::vector<Actor*> units = UnitsToMove(0, true);
+		const ImU32 color = c_CommandModeColors[static_cast<int>(target.Defend ? CommandMode::DefendAt : CommandMode::AttackMove)];
+		if (objective.Zone.empty() && !target.Defend) {
+			// A place to go for (an enemy flag, a VIP's spot): there, fighting on the way.
+			if (shift) {
+				PlanStepFor(units, PlanKind::AttackMove, objective.Pos, nullptr);
+			} else {
+				MoveUnitsTo(units, objective.Pos, true);
+			}
+			MarkOrder(objective.Pos, color);
+			return;
+		}
+		// A zone (a hill, an assault objective), or a place they hold (their own flag): held as a defend zone the objective's size, each unit at
+		// a post on the ground in it, going after enemies that come in.
+		const float radius = std::max(objective.Radius, 60.0F);
+		if (shift) {
+			PlanStepFor(units, PlanKind::Move, objective.Pos, nullptr);
+			PlanStepFor(units, PlanKind::Defend, objective.Pos, nullptr);
+		} else {
+			std::vector<Vector> spots = StandingSpots(objective.Pos, static_cast<int>(units.size()));
+			for (size_t i = 0; i < units.size(); ++i) {
+				Vector spot = objective.Zone.empty() ? (spots.empty() ? objective.Pos : spots[std::min(i, spots.size() - 1)]) : SpotInZone(objective.Zone, units[i]->GetHeight());
+				// (Just over the ground under the spot, as for a move: see MoveUnitsTo.)
+				SendUnit(units[i], spot + Vector(0.0F, -4.0F), nullptr, false, target.Defend ? "hold objective" : "take objective");
+				units[i]->SetOrderPost(spot);
+				units[i]->SetOrderPostFacing(0);
+				CommandDefender(units[i], objective.Pos, spot, radius);
+			}
+		}
+		MarkOrder(objective.Pos, color);
+	}
+
+	void FlySelectedTo(const Vector& point, bool shift) {
+		// As Jetpack here: the point in the sky kept as it is, flown to by those with a jetpack. (A plan's step goes to the ground, as plans do.)
+		if (!shift) {
+			JetpackHereSelected(point, false);
+			return;
+		}
+		PlanStepFor(UnitsToMove(0, true), PlanKind::Move, point, nullptr);
+		MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::Move)]);
 	}
 
 	/// The nearest enemy of a side to a point, within 400 px: what Attack goes for at a click near it. Null for none.
@@ -1554,6 +1767,9 @@ namespace SandboxDetail {
 			unit->RemoveNumberValue("SandboxSuppressY");
 			unit->RemoveNumberValue("SandboxSuppressR");
 		}
+		if (unit && unit->NumberValueExists("SandboxCover")) {
+			unit->RemoveNumberValue("SandboxCover");
+		}
 	}
 
 	/// Sends the selected units on a patrol (RC-4): round the points in order, fighting what they meet and pausing at each, then round again,
@@ -1600,7 +1816,7 @@ namespace SandboxDetail {
 
 	/// The command ring's choices for the selected units, about a point: 0 move there, 1 attack the enemy nearest it, 2 cancel, 3 defend where they
 	/// are; 13 defend as the last step of their plans, 20 clear their plans (RC-3), 21 clear all their orders, 22 hand them
-	/// back to their team's orders.
+	/// back to their team's orders, 30 take cover.
 	void OrderSelectedUnits(int choice, const Vector& point) {
 		std::vector<Actor*> units = UnitsToMove(0, true);
 		if (choice == 0) {
@@ -1660,6 +1876,19 @@ namespace SandboxDetail {
 				}
 				AnswerOrder(unit, "OrderCancel");
 				MarkOrder(unit->GetPos(), IM_COL32(180, 140, 240, 255));
+			}
+		} else if (choice == 30) {
+			// Take cover: each finds cover from the nearest enemy close by and gets down behind it, or digs in, or falls back, holding there
+			// (the AI does it, told by a number value on the unit: SharedBehaviors.CoverOrderUpdate). Any other order, a hold or a cancel
+			// takes it off (ClearSuppress).
+			const double order = static_cast<double>(g_TimerMan.GetSimUpdateCount() + 1);
+			for (Actor* unit: units) {
+				HoldUnit(unit);
+				unit->SetMovementRule(Actor::MOVE_HOLD_GROUND);
+				unit->SetNumberValue("SandboxCover", order);
+				s_SendNotes[unit->GetUniqueID()] = {"take cover", false, g_TimerMan.GetSimUpdateCount()};
+				AnswerOrder(unit, "OrderTakeCover");
+				MarkOrder(unit->GetPos(), c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)]);
 			}
 		} else if (choice == 20) {
 			// The plans of the units picked, cleared (they carry on with the step they're on).

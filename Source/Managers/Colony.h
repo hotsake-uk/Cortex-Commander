@@ -12,7 +12,10 @@ namespace RTE {
 	/// The beginnings of colony management: buildings that stand in the world, belong to a side and do something for it over time.
 	/// So far a barracks trains units and an extractor earns supply. Each side has a stock of supply that training spends (unless everything is free).
 	/// With power turned on, a barracks also needs power while it trains, from its side's generators in range; short of it, it stops (or slows, as set).
-	/// A building is made of real terrain, so it can be shot, dug and blown apart; with too much of it gone it stops being a building.
+	/// A building is made of real terrain, so it can be shot, dug, burnt and blown apart; with too much of it gone it stops being a building.
+	/// Each kind is one of the medieval buildings (Medieval.rte/Scenes/Buildings), stamped on a levelled stone footing; without that module it is a concrete block.
+	/// Each building is run by a brain in a chamber at its back. Kill the brain and the building is disabled: it stands, but does nothing until
+	/// another brain of its side is put in its plot. These brains only run buildings: they are never a player's brain, so losing one does not end the game.
 	/// This holds the buildings and runs them; the sandbox (Sandbox.cpp) places them and draws their controls.
 	class Colony {
 
@@ -28,8 +31,9 @@ namespace RTE {
 		struct Type {
 			const char* Name;
 			const char* Description;
-			int Width; //!< The plot it stands on, in pixels.
+			int Width; //!< The plot it stands on, in pixels: the size of its building.
 			int Height;
+			const char* Building; //!< The TerrainObject in Medieval.rte it is built as.
 		};
 
 		/// What a barracks does without enough power to train.
@@ -55,8 +59,16 @@ namespace RTE {
 			std::vector<std::pair<Actor*, long>> Alive; //!< Barracks: its units still alive, with their unique IDs.
 			float Power = 1.0F; //!< Barracks: the share of the power it needs that it got this update, 0 to 1. Generator: how much of its power is drawn.
 			bool NoPower = false; //!< Barracks: it wants to train and has not the power to.
+			Actor* Brain = nullptr; //!< The brain that runs it, or nothing once that brain is dead.
+			long BrainID = -1; //!< The unique ID of its brain, or -1 if it was never given one (and so runs without).
 			std::string Status; //!< What it is doing, for showing.
+
+			/// Whether it has lost its brain, and does nothing until it gets another.
+			bool Disabled() const { return Brain == nullptr && BrainID != -1; }
 		};
+
+		/// The group every building's brain is put in, so the game never takes it for a player's brain.
+		static constexpr const char* c_BrainGroup = "Building Brains";
 
 		/// Gets what buildings of a kind have in common.
 		static const Type& GetType(Kind kind);

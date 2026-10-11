@@ -554,6 +554,13 @@ namespace RTE {
 		/// Sets whether this came off a unit.
 		void SetFromBody(bool fromBody = true) { m_FromBody = fromBody; }
 
+		/// Whether this is a gib chunk: a solid piece (a plain MOSRotating) thrown out when something gibbed, which the gib chunk settings
+		/// (SettingsMan::GibChunks) apply to. Set as it's made in MOSRotating::CreateGibsWhenGibbing, never copied to a clone.
+		bool IsGibChunk() const { return m_GibChunk; }
+
+		/// Marks this as a gib chunk (see IsGibChunk).
+		void SetGibChunk(bool gibChunk = true) { m_GibChunk = gibChunk; }
+
 		/// Marks this MovableObject for deletion at the end of the MovableMan
 		/// update.
 		/// @param toDelete Whether to mark this MO for deletion or not. (default: true)
@@ -1402,6 +1409,7 @@ namespace RTE {
 		// of update.
 		bool m_ToSettle;
 		bool m_FromBody; //!< Whether this came off a unit (see IsFromBody).
+		bool m_GibChunk; //!< Whether this is a solid piece thrown out by a gibbing (see IsGibChunk).
 		// Mark to delete at the end of MovableMan update
 		bool m_ToDelete;
 		// To draw this guy's HUD or not

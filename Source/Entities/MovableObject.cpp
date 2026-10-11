@@ -88,6 +88,7 @@ void MovableObject::Clear() {
 	m_VelOscillations = 0;
 	m_ToSettle = false;
 	m_FromBody = false;
+	m_GibChunk = false;
 	m_ToDelete = false;
 	m_HUDVisible = true;
 	m_IsTraveling = false;

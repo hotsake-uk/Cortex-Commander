@@ -19,6 +19,7 @@ namespace RTE {
 			int NeckWidth = 15; //!< A piece held on by a neck of ground no wider than this many pixels snaps off. 0 turns this off.
 			int MaxPiecePixels = 16755; //!< A connected piece bigger than this counts as the world itself and never falls.
 			int MinFittingPixels = 184; //!< Loose bits of a building smaller than this stay where they are (lamps, signs and consoles are drawn hanging in mid-air).
+			float CheckMinForce = 0.0F; //!< How hard (impulse, kg * m/s, as a material's StructuralIntegrity) a hit knocking terrain out has to be to start the ground around it being checked for collapse. Weaker hits on the same patch add up over a couple of seconds. 0: every hit counts. Explosions, digging and fire always count.
 			float BreakStrength = 0.67F; //!< How hard a landing pieces take before cracking: 2 is twice as tough, 0.5 half.
 			/// How fast in m/s a piece has to land to break, by its materials' BreakStyle (each material's ImpactStrength scales its style's).
 			/// A piece of several materials goes by the ones that carry it: leaves, grass and ash don't count. Pieces move at most 27 m/s, so above that never.
@@ -53,7 +54,8 @@ namespace RTE {
 		/// Where that goes on, the ground around is watched, and what gets cut loose falls. Thread safe.
 		/// @param x The pixel, in scene coordinates.
 		/// @param y The pixel, in scene coordinates.
-		static void NoteDamage(int x, int y);
+		/// @param force How hard the hit that knocked it out was (its impulse, kg * m/s), held against Tuning::CheckMinForce. Negative for wear that always counts (digging, fire).
+		static void NoteDamage(int x, int y, float force = -1.0F);
 
 		/// Tells the system a unit's foot came down at a point, so loose ground under it (a material with Scuffs) is knocked loose and shoved the way the unit travels. Thread safe.
 		/// @param x The foot, in scene coordinates.

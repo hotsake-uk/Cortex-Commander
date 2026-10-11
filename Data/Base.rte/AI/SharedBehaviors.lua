@@ -441,6 +441,140 @@ function SharedBehaviors.SuppressUpdate(AI, Owner)
 	return true;
 end
 
+-- The nearest enemy unit to a place, within reach, or nil: what a take-cover order takes cover from.
+function SharedBehaviors.NearestEnemy(Owner, reach)
+	local Nearest, best = nil, reach;
+	for Act in MovableMan.Actors do
+		if Act.Team ~= Owner.Team and Act.Team >= 0 and Act.Health > 0 and (IsAHuman(Act) or IsACrab(Act)) then
+			local d = SceneMan:ShortestDistance(Owner.Pos, Act.Pos, SceneMan.SceneWrapsX).Magnitude;
+			if d < best then
+				Nearest, best = Act, d;
+			end
+		end
+	end
+	return Nearest, best;
+end
+
+-- Whether the ground under a unit is soft enough to dig a foxhole in by hand (sand, soil, earth; not rock, concrete or metal).
+function SharedBehaviors.SoftGroundUnder(Owner)
+	local Ground = SceneMan:MovePointToGround(Owner.Pos, 0, 4);
+	local id = SceneMan:GetTerrMatter(Ground.X, Ground.Y + 3);
+	if id == rte.airID then
+		return false;
+	end
+	local Mat = SceneMan:GetMaterialFromID(id);
+	return Mat ~= nil and Mat.StructuralIntegrity <= 100;
+end
+
+-- What a take-cover order comes to for a unit, worked out once when it's given: cover from the nearest enemy within 600 px, sought within
+-- 150 px; with none, a foxhole dug where it stands (a unit with a digger, on soft ground), else a fall back away from the enemy (it close, or
+-- the unit pinned down), else lying flat where it is; each of those can be turned off (AI behaviour: Take cover order). With no enemy
+-- about, it crouches where it is.
+function SharedBehaviors.PlanCoverOrder(AI, Owner, id)
+	local Plan = { id = id, Timer = Timer(), There = false, stance = SharedBehaviors.CROUCHED };
+	local Enemy, enemyDist = SharedBehaviors.NearestEnemy(Owner, 600);
+	if not Enemy then
+		SharedBehaviors.Trace(Owner, "take cover: no enemy about, crouching");
+		return Plan;
+	end
+	Plan.From = Vector(Enemy.Pos.X, Enemy.Pos.Y);
+	local Spot, coverKind = SharedBehaviors.FindCover(Owner, Plan.From, 150, true);
+	if Spot then
+		Plan.Spot = Spot;
+		Plan.ms = 4000;
+		Plan.stance = coverKind == "low" and SharedBehaviors.CROUCHED or AHuman.NOTPRONE;
+		SharedBehaviors.Trace(Owner, "take cover: " .. (coverKind or "?") .. " cover, " .. math.floor(SceneMan:ShortestDistance(Owner.Pos, Spot, false).X) .. " px over");
+		return Plan;
+	end
+	if SharedBehaviors.CoverAt(Owner, SceneMan:MovePointToGround(Owner.Pos, 0, 4), Plan.From) then
+		-- Already behind something: stay down here.
+		SharedBehaviors.Trace(Owner, "take cover: already in cover");
+		return Plan;
+	end
+	if SettingsMan.AICoverDigs and Owner:HasObjectInGroup("Tools - Diggers") and SharedBehaviors.SoftGroundUnder(Owner) then
+		Plan.Dig = true;
+		Plan.stance = SharedBehaviors.CROUCHED;
+		SharedBehaviors.Trace(Owner, "take cover: digging in");
+		return Plan;
+	end
+	local suppression = SharedBehaviors.Suppression(AI, Owner);
+	local flat = SettingsMan.AICoverLiesFlat and AHuman.PRONE or SharedBehaviors.CROUCHED;
+	if SettingsMan.AICoverFallsBack and (enemyDist < 250 or suppression > 0.5) then
+		-- Too hot to lie here: back away from the enemy, to cover there if there is any, else 200 px.
+		local away = SceneMan:ShortestDistance(Plan.From, Owner.Pos, SceneMan.SceneWrapsX).X >= 0 and 1 or -1;
+		local Back = SceneMan:MovePointToGround(Owner.Pos + Vector(away * 200, -Owner.Height), math.floor(Owner.Height * 0.2), 4);
+		Plan.FallBack = Back;
+		Plan.stance = flat;
+		SharedBehaviors.Trace(Owner, "take cover: none near, falling back");
+		return Plan;
+	end
+	Plan.stance = flat;
+	SharedBehaviors.Trace(Owner, "take cover: none near, " .. (flat == AHuman.PRONE and "lying flat" or "crouching"));
+	return Plan;
+end
+
+-- A foxhole dug where a unit stands: a pit as wide as two of it and half as deep as it is tall, so it can crouch in it below the ground.
+function SharedBehaviors.DigFoxhole(Owner)
+	local Ground = SceneMan:MovePointToGround(Owner.Pos, 0, 4);
+	local half = math.max(Owner.Radius, 10);
+	local depth = math.floor(Owner.Height * 0.5);
+	SceneMan:DislodgePixelBox(Vector(Ground.X - half, Ground.Y - 2), Vector(Ground.X + half, Ground.Y + depth), true);
+end
+
+-- Every update of a unit under a take-cover order (the sandbox's Take cover): it goes to its cover (or falls back), digs in if that's the
+-- plan, and stays down there, fighting from where it is. @return Whether the unit is under the order.
+function SharedBehaviors.CoverOrderUpdate(AI, Owner)
+	if not Owner:NumberValueExists("SandboxCover") then
+		if AI.CoverOrder then
+			AI.CoverOrder = nil;
+			SharedBehaviors.Stance(AI, Owner, AHuman.NOTPRONE, 100);
+		end
+		return false;
+	end
+	local id = Owner:GetNumberValue("SandboxCover");
+	if not AI.CoverOrder or AI.CoverOrder.id ~= id then
+		AI.CoverOrder = SharedBehaviors.PlanCoverOrder(AI, Owner, id);
+		if AI.CoverOrder.FallBack then
+			Owner:Say("FallingBack");
+			Owner:ClearAIWaypoints();
+			Owner:AddAISceneWaypoint(AI.CoverOrder.FallBack);
+			Owner.AIMode = Actor.AIMODE_GOTO;
+		end
+	end
+	local Plan = AI.CoverOrder;
+	AI.Cover = nil;
+	AI.closingIn = false;
+	if not Plan.There then
+		if Plan.Spot then
+			local dx = SceneMan:ShortestDistance(Owner.Pos, Plan.Spot, SceneMan.SceneWrapsX).X;
+			if math.abs(dx) > 6 and not Plan.Timer:IsPastSimMS(Plan.ms) then
+				SharedBehaviors.StepTo(AI, Owner, Plan.Spot, Plan.ms - Plan.Timer.ElapsedSimTimeMS);
+				SharedBehaviors.Stance(AI, Owner, AHuman.NOTPRONE, 200);
+				return true;
+			end
+		elseif Plan.FallBack then
+			local d = SceneMan:ShortestDistance(Owner.Pos, Plan.FallBack, SceneMan.SceneWrapsX).Magnitude;
+			if d > 20 and not Plan.Timer:IsPastSimMS(8000) then
+				return true;
+			end
+			Owner:ClearAIWaypoints();
+		end
+		Plan.There = true;
+		if Plan.Dig then
+			SharedBehaviors.DigFoxhole(Owner);
+			Owner:Say("DiggingIn");
+		end
+		Owner.AIMode = Actor.AIMODE_SENTRY;
+		AI.SentryPos = Vector(Owner.Pos.X, Owner.Pos.Y);
+		if Plan.From then
+			AI.SentryFacing = SceneMan:ShortestDistance(Owner.Pos, Plan.From, SceneMan.SceneWrapsX).X < 0;
+		end
+	end
+	AI.lateralMoveState = Actor.LAT_STILL;
+	SharedBehaviors.Stance(AI, Owner, Plan.stance, 600);
+	return true;
+end
+
 -- sharp aim at an area where we expect the enemy to be
 function SharedBehaviors.PinArea(AI, Owner, Abort)
 	if AI.OldTargetPos then
@@ -690,8 +824,12 @@ function SharedBehaviors.Suppression(AI, Owner)
 	return Owner.Suppression, Owner.Morale;
 end
 
--- Whether a unit's nerve has gone (morale under 0.3): it pulls back whatever its health (see RetreatUpdate).
+-- Whether a unit's nerve has gone (morale under 0.3): it pulls back whatever its health (see RetreatUpdate). Never with "Units break
+-- when shaken" off.
 function SharedBehaviors.Shaken(AI, Owner)
+	if not SettingsMan.AIBreaksWhenShaken then
+		return false; -- (Turned off: AI behaviour, Units break when shaken.)
+	end
 	local _, morale = SharedBehaviors.Suppression(AI, Owner);
 	return morale < 0.3;
 end

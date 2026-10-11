@@ -54,10 +54,14 @@ function ThreadedUpdate(self)
 					actor = ToAHuman(actor);
 					local throwProgress = controller:IsState(Controller.WEAPON_FIRE) and actor.ThrowProgress or actor.SharpAimProgress;
 					local maxVel = self.projectileVelMax or (actor.FGArm.ThrowStrength + math.abs(actor.AngularVel * 0.5))/math.sqrt(math.abs(self.Mass) + 1);
-					local minVel = self.projectileVelMin or maxVel * 0.2;
-					--The following offset is as found in the source code (TODO: utilize EndThrowOffset properly instead)
-					guideParPos = actor.Pos + actor.Vel * rte.PxTravelledPerFrame + Vector((actor.FGArm.ParentOffset.X + actor.FGArm.MaxLength) * actor.FlipFactor, actor.FGArm.ParentOffset.Y - actor.FGArm.MaxLength * 0.5):RadRotate(actor:GetAimAngle(false) * actor.FlipFactor);
-					guideParVel = Vector(minVel + (maxVel - minVel) * throwProgress, 0):RadRotate(actor:GetAimAngle(true));
+					local minVel = self.projectileVelMin or maxVel * 0.5;
+					-- Where and how the engine lets go: the hand at the front of the swing, with all of the thrower's speed.
+					if actor.GetThrowReleasePos then
+						guideParPos = actor:GetThrowReleasePos(self, actor:GetAimAngle(false)) + actor.Vel * rte.PxTravelledPerFrame;
+					else
+						guideParPos = actor.Pos + actor.Vel * rte.PxTravelledPerFrame + Vector((actor.FGArm.ParentOffset.X + actor.FGArm.MaxLength) * actor.FlipFactor, actor.FGArm.ParentOffset.Y - actor.FGArm.MaxLength * 0.5):RadRotate(actor:GetAimAngle(false) * actor.FlipFactor);
+					end
+					guideParVel = Vector(minVel + (maxVel - minVel) * throwProgress, 0):RadRotate(actor:GetAimAngle(true)) + actor.Vel;
 				elseif not self.isThrownDevice then
 					guideParPos = self.MuzzlePos;
 					guideParVel = Vector(self.projectileVel, 0):RadRotate(actor:GetAimAngle(true));
