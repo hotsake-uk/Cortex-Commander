@@ -136,6 +136,7 @@ void SettingsMan::Clear() {
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
 	m_BodyGearSettlesAsScraps = true;
+	m_GibChunks = GibChunkTuning();
 	m_NoSceneWrap = true;
 	m_AISuppression = 1.0F;
 	m_AIDigWillingness = 1.0F;
@@ -695,6 +696,12 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("EnableCrabBombs", { reader >> m_EnableCrabBombs; });
 	MatchProperty("EnableMantling", { reader >> m_EnableMantling; });
 	MatchProperty("BodyGearSettlesAsScraps", { reader >> m_BodyGearSettlesAsScraps; });
+	MatchProperty("GibChunkPercent", { reader >> m_GibChunks.CountPercent; ClampGibChunks(); });
+	MatchProperty("MaxLooseGibChunks", { reader >> m_GibChunks.MaxLoose; ClampGibChunks(); });
+	MatchProperty("GibChunkSettleMS", { reader >> m_GibChunks.SettleMS; ClampGibChunks(); });
+	MatchProperty("GibChunkBounces", { reader >> m_GibChunks.MaxBounces; ClampGibChunks(); });
+	MatchProperty("GibChunkAtomSpacing", { reader >> m_GibChunks.AtomSpacing; ClampGibChunks(); });
+	MatchProperty("GibChunksSettleOnBodies", { reader >> m_GibChunks.SettleOnBodies; });
 	MatchProperty("NoSceneWrap", { reader >> m_NoSceneWrap; });
 	MatchProperty("UnitSpeech", { bool on = true; reader >> on; UnitSpeech::SetEnabled(on); });
 	MatchProperty("UnitSpeechChance", { int percent = 40; reader >> percent; UnitSpeech::SetChance(percent); });
@@ -859,6 +866,14 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	});
 
 	EndPropertyList;
+}
+
+void SettingsMan::ClampGibChunks() {
+	m_GibChunks.CountPercent = std::clamp(m_GibChunks.CountPercent, 0, 200);
+	m_GibChunks.MaxLoose = std::clamp(m_GibChunks.MaxLoose, 0, 5000);
+	m_GibChunks.SettleMS = std::clamp(m_GibChunks.SettleMS, -1, 10000);
+	m_GibChunks.MaxBounces = std::clamp(m_GibChunks.MaxBounces, 1, 10);
+	m_GibChunks.AtomSpacing = std::clamp(m_GibChunks.AtomSpacing, 0, 16);
 }
 
 void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting, bool forPreset) const {
@@ -1164,6 +1179,12 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	// The rest of the settings panel: the AI, the HUD and speech, the overlays, and the tool windows' own layout.
 	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
 	writer.NewPropertyWithValue("BodyGearSettlesAsScraps", m_BodyGearSettlesAsScraps);
+	writer.NewPropertyWithValue("GibChunkPercent", m_GibChunks.CountPercent);
+	writer.NewPropertyWithValue("MaxLooseGibChunks", m_GibChunks.MaxLoose);
+	writer.NewPropertyWithValue("GibChunkSettleMS", m_GibChunks.SettleMS);
+	writer.NewPropertyWithValue("GibChunkBounces", m_GibChunks.MaxBounces);
+	writer.NewPropertyWithValue("GibChunkAtomSpacing", m_GibChunks.AtomSpacing);
+	writer.NewPropertyWithValue("GibChunksSettleOnBodies", m_GibChunks.SettleOnBodies);
 	writer.NewPropertyWithValue("NoSceneWrap", m_NoSceneWrap);
 	writer.NewPropertyWithValue("AISuppression", m_AISuppression);
 	writer.NewPropertyWithValue("AIDigWillingness", m_AIDigWillingness);

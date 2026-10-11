@@ -222,6 +222,7 @@ namespace {
 			TerrainCollapse::GetTuning() = TerrainCollapse::Tuning();
 			AirPressure::GetTuning() = AirPressure::Tuning();
 			MagicEffects::GetTuning() = MagicEffects::Tuning();
+			g_SettingsMan.GibChunks() = SettingsMan::GibChunkTuning();
 			s_PresetMessage = "Everything is back to how the game comes.";
 		}
 		ImGui::SetItemTooltip("Puts every setting here back to how the game comes.");
@@ -899,6 +900,38 @@ void DebugMan::SettingsGUI() {
 		}
 	};
 
+	// The solid pieces a body, wreck or crate breaks into when it gibs. Each tumbles about and costs many times what a drop of blood does to move,
+	// so in a big battle hundreds of them can slow the game down. As they come, everything is as the game has always been.
+	auto gibs = [&]() {
+		SettingsMan::GibChunkTuning& chunks = g_SettingsMan.GibChunks();
+		if (Plain()) {
+			int loose = 0;
+			for (const MovableObject* particle: g_MovableMan.GetParticleList()) {
+				loose += particle->IsGibChunk() ? 1 : 0;
+			}
+			ImGui::TextDisabled("%d gib chunks loose", loose);
+		}
+		SliderI("Gib chunks per gib (%)", &chunks.CountPercent, 0, 200, "%d%%");
+		Tip("How many of the solid pieces (bits of plating, flesh, bone and metal) come out when a body, wreck or crate breaks apart, against what each says: at 50 about half. Blood, flecks and sparks are unchanged, and so are the parts that were attached to it (limbs, heads, guns). 100: all of them, as the game comes.");
+		SliderI("Most loose gib chunks", &chunks.MaxLoose, 0, 2000, chunks.MaxLoose > 0 ? "%d" : "No limit");
+		Tip("With more pieces than this about, the oldest that have slowed down settle into the ground where they lie, as dropped items past the most kept do. One lying on a body or a unit is removed instead (or settles there, with Gib chunks settle on bodies ticked and the body dead); one still in the air waits until it lands. No limit: they settle only when they come to rest, as the game comes.");
+		SliderI("Gib chunk settle time", &chunks.SettleMS, -1, 5000, chunks.SettleMS >= 0 ? "%d ms" : "As each piece says");
+		Tip("How long a piece has to lie still before it settles into the ground and stops costing anything. Lower: they settle sooner. As each piece says: its own RestThreshold (half a second for most), as the game comes. A piece made never to settle still never does.");
+		SliderI("Gib chunk bounces per update", &chunks.MaxBounces, 1, 10);
+		Tip("The most times a piece can hit something in one update before it stops moving for that update. Pieces wedged among bodies hit something over and over; fewer is cheaper but they may jitter or slip into each other. 10, as for everything else, as the game comes.");
+		SliderI("Gib chunk collision spacing", &chunks.AtomSpacing, 0, 16, chunks.AtomSpacing > 0 ? "%d px" : "As each piece says");
+		Tip("The pixels between the points round a piece's outline that it collides with, for pieces made from now on. Higher: fewer points, cheaper, but they may sink a little into the ground and each other. As each piece says: its own AtomGroup Resolution (8 for the game's own), as the game comes.");
+		Check("Gib chunks settle on bodies", &chunks.SettleOnBodies);
+		Tip("A piece lying still on a dead body or on other pieces, rather than on the ground, settles there too, instead of jostling on it until the body is gone. Never on a unit still alive. Off, as the game comes: only on the ground.");
+		g_SettingsMan.ClampGibChunks();
+		if (Plain()) {
+			if (ToolUI::Button("Reset to defaults")) {
+				chunks = SettingsMan::GibChunkTuning();
+			}
+			ImGui::SetItemTooltip("Puts every Gibs setting back to how the game comes, which is how gibs always behaved.");
+		}
+	};
+
 	auto cameraAndImage = [&]() {
 		if (Plain()) {
 			ImGui::TextUnformatted("Looks:");
@@ -1490,6 +1523,7 @@ void DebugMan::SettingsGUI() {
 	    {"Effect layers", effectLayers},
 	    {"Air & wind", airAndWind},
 	    {"Falling ground", fallingGround},
+	    {"Gibs", gibs},
 	    {"Magic & spells", magic},
 	    {"Camera & image", cameraAndImage},
 	    {"Game & HUD", gameAndHUD},

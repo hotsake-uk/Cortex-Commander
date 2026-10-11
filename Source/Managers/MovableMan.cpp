@@ -1708,6 +1708,9 @@ void MovableMan::Update() {
 			ZoneScopedN("Particles Update");
 
 			g_PerformanceMan.StartPerformanceMeasurement(PerformanceMan::ParticlesUpdate);
+			// The most gib chunks loose at once (the gib chunk setting, 0 for no limit): the chunks still loose are gathered as they update.
+			const int maxLooseChunks = g_SettingsMan.GibChunks().MaxLoose;
+			std::vector<MovableObject*> looseChunks;
 			for (MovableObject* particle: m_Particles) {
 				particle->Update();
 
@@ -1726,6 +1729,32 @@ void MovableMan::Update() {
 				// Copy particles that are at rest to the terrain and mark them for deletion.
 				if (particle->IsAtRest()) {
 					particle->SetToSettle(true);
+				}
+				if (maxLooseChunks > 0 && particle->IsGibChunk() && !particle->ToSettle() && !particle->ToDelete()) {
+					looseChunks.push_back(particle);
+				}
+			}
+			// Past the most, the oldest that have slowed down settle into the ground where they lie, as dropped items past the most kept do. One lying on a
+			// body or another piece settles there with the gib chunks settle on bodies setting on, and is otherwise removed; one in the air waits until it lands.
+			// With settling off they are only removed.
+			if (maxLooseChunks > 0 && looseChunks.size() > static_cast<size_t>(maxLooseChunks)) {
+				const size_t excess = looseChunks.size() - static_cast<size_t>(maxLooseChunks);
+				std::nth_element(looseChunks.begin(), looseChunks.begin() + excess, looseChunks.end(), [](const MovableObject* first, const MovableObject* second) { return first->GetAge() > second->GetAge(); });
+				for (size_t i = 0; i < excess; ++i) {
+					MOSRotating* chunk = static_cast<MOSRotating*>(looseChunks[i]);
+					if (!chunk->GetVel().MagnitudeIsLessThan(4.0F)) {
+						continue;
+					}
+					const bool onGround = !g_SceneMan.OverAltitude(chunk->GetPos(), static_cast<int>(chunk->GetIndividualRadius()) + 4, 3);
+					const MovableObject* under = onGround ? nullptr : chunk->GetMOUnderneath();
+					if (!onGround && !under) {
+						continue;
+					}
+					if (m_SettlingEnabled && (onGround || MOSRotating::ChunkMaySettleOn(under))) {
+						chunk->SetToSettle(true);
+					} else {
+						chunk->SetToDelete(true);
+					}
 				}
 			}
 			g_PerformanceMan.StopPerformanceMeasurement(PerformanceMan::ParticlesUpdate);
