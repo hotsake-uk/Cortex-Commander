@@ -187,6 +187,20 @@ bool TerrainObject::IsOnScenePoint(Vector& scenePoint) const {
 	return false;
 }
 
+void TerrainObject::UseBitmaps(BITMAP* fgColor, BITMAP* bgColor, BITMAP* material) {
+	// The files go too, so nothing written out of this claims the preset's look.
+	m_FGColorFile.Reset();
+	m_FGColorBitmap = fgColor;
+	m_BGColorFile.Reset();
+	m_BGColorBitmap = bgColor;
+	m_MaterialFile.Reset();
+	m_MaterialBitmap = material;
+	m_BitmapOffset.Reset();
+	m_OffsetDefined = true;
+	m_ChildObjects.clear();
+	m_Lights.clear();
+}
+
 bool TerrainObject::PlaceOnTerrain(SLTerrain* terrain) {
 	if (!terrain) {
 		return false;

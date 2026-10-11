@@ -1129,7 +1129,7 @@ namespace SandboxDetail {
 	inline bool s_RopeRightDown = false;
 	inline int s_RopeDrawing = 0; //!< The sim's: the rope its Rope clicks carry on, 0 for none (the next click starts one).
 	inline Vector s_ShapeStart;
-	inline bool s_LineDragging = false; //!< A line being dragged out on the world, from s_LineStart: a lift's or moving platform's track (DragsTrack).
+	inline bool s_LineDragging = false; //!< A line being dragged out on the world, from s_LineStart: a lift's or moving platform's track (DragsTrack) or a bunker run (DragsRun).
 	inline Vector s_LineStart;
 	constexpr int c_MaxDropSide = 800; //!< The biggest box "Make it fall" takes either way, in pixels.
 
@@ -2263,11 +2263,45 @@ namespace SandboxDetail {
 	/// A point of a line dragged on the world, on the bunker grid when snapping: across to the nearest 12 px, up and down to the nearest
 	/// 24 px (the floors bunker pieces line up on).
 	Vector SnapLinePoint(const Vector& point, bool snap);
-	/// Where a line dragged from a start toward the pointer ends: straight up or down, or straight across, whichever it is nearer, unless free
+	/// Which way a line dragged without Shift is kept straight: up or down or across, whichever it is nearer, or only the one way.
+	enum class LineLock { Nearer, Across, UpDown };
+	/// Where a line dragged from a start toward the pointer ends: straight up or down, or straight across (as lock says), unless free
 	/// (Shift held); on the bunker grid when snapping; no longer than c_MaxLineDrag.
-	Vector LineDragEnd(const Vector& start, const Vector& pointer, bool free, bool snap);
+	Vector LineDragEnd(const Vector& start, const Vector& pointer, bool free, bool snap, LineLock lock = LineLock::Nearer);
 	constexpr float c_MaxLineDrag = 2400.0F; //!< The longest line a drag puts down (a lift's track), in pixels.
 	constexpr float c_MinLineDrag = 24.0F; //!< A drag shorter than this is a click.
+	/// One piece of a bunker run (see LayOutRun): which piece, and where along the run it starts and how long it is, in pixels.
+	struct RunTile {
+		const Preset* Piece = nullptr;
+		float Start = 0.0F;
+		float Length = 0.0F;
+	};
+	/// A run of bunker pieces dragged out from one end to the other: a tunnel, a wall, a floor, a ladder... laid end to end, its first piece where a
+	/// click at the start would have put it. Dragged at an angle (Shift), it is slanted by shearing: each column of a run across (each row of one
+	/// up and down) moved along by Slope pixels for every pixel along, so the pixels stay upright, as the game's own sloped tunnels are drawn.
+	struct RunLayout {
+		std::vector<RunTile> Tiles; //!< From the left end of a run across, the top end of one up and down.
+		bool UpDown = false; //!< Laid up and down, not across.
+		Vector Corner; //!< The top left corner of the first tile, before it is slanted.
+		float Slope = 0.0F; //!< The slant: how far across (up and down) the run moves for every pixel it goes along, 0 for straight.
+		float Pivot = 0.0F; //!< How far along the run its slant is measured from: the middle of its first tile, where the drag started.
+		float Thickness = 0.0F; //!< How thick the run is, its thickest tile across the way it runs.
+		float Length() const { return Tiles.empty() ? 0.0F : Tiles.back().Start + Tiles.back().Length; }
+		/// How far the run is moved across the way it runs at a place along it.
+		float Offset(float along) const { return Slope * (along - Pivot); }
+		/// Where a point of the run is in the scene, from how far along it is and how far across from its unslanted edge.
+		Vector At(float along, float across) const { return UpDown ? Corner + Vector(across + Offset(along), along) : Corner + Vector(along, across + Offset(along)); }
+	};
+	/// Whether the Build piece picked can be dragged out into a run of itself (a tunnel, a wall, a floor, a ladder...).
+	bool DragsRun(Tool kind);
+	/// Whether the tool in hand is used by dragging a line on the world: a lift's track or a bunker run.
+	inline bool DragsLine(Tool kind) { return DragsTrack(kind) || DragsRun(kind); }
+	/// Which way a bunker run's drag is kept straight without Shift: the way its piece runs, or the nearer way for a piece with a partner that
+	/// runs the other way (a tunnel's is the shaft).
+	LineLock RunLock(const Preset& preset);
+	/// The run a drag from start to end makes with a piece: whole pieces, as many as fit the drag, the piece's partner if dragged more the other
+	/// way, its end pieces at the ends (a bridge's), and slanted to the end when it doesn't run straight (only for pieces that can be).
+	RunLayout LayOutRun(const Preset& preset, const Vector& start, const Vector& end, bool snap);
 	void TakeControl(const Vector& position);
 	void StopFlying();
 	void ReleaseControl();
