@@ -307,6 +307,12 @@ namespace RTE {
 		/// @param energy Energy released, as computed for gib screen shake.
 		void RegisterShockwave(const Vector& pos, float energy);
 
+		/// Registers an explosion shockwave from Lua (a spell's blast). See RegisterShockwave: nothing under 2000 energy shows.
+		void AddShockwave(const Vector& pos, float energy) { RegisterShockwave(pos, energy); }
+
+		/// Registers a scorch mark from Lua (a fireball or a lightning strike). See RegisterScorchMark: nothing under 2000 energy shows.
+		void AddScorchMark(const Vector& pos, float energy) { RegisterScorchMark(pos, energy); }
+
 		/// Registers a shimmer for the current frame: the scene behind is bent in a wobbling ring, as around an energy shield or a cloaked unit. Call every update to keep it up.
 		/// @param pos Scene position of its centre.
 		/// @param radius How far out it reaches, in pixels.
