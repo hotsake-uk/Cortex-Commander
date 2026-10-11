@@ -452,6 +452,8 @@ void DebugMan::DrawImGui() {
 		g_PerformanceMan.ImGui();
 	}
 
+	ToolGlow::Windows();
+
 }
 
 bool DebugMan::BeginPanel(const char* name, bool* open, PanelSide side, PanelPlacement placement, bool flow) {

@@ -23,6 +23,7 @@
 #include "ActorWater.h"
 #include "UnitSpeech.h"
 #include "ModernHUD.h"
+#include "ToolWidgets.h"
 #include "ConsoleMan.h"
 #include "CameraMan.h"
 #include "MovableMan.h"
@@ -373,6 +374,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("RopeSettleSeconds", { RopeSim::SetSettleSeconds(std::stof(reader.ReadPropValue())); });
 	MatchProperty("CandleBurnMinutes", { TerrainCandle::SetBurnMinutes(std::stof(reader.ReadPropValue())); });
 	MatchProperty("ModernHUD", { ModernHUD::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("UIGlow", { ToolGlow::Strength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 2.0F); });
 	MatchProperty("SmoothHUDText", { TextOverlay::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightingSettingsVersion", { s_ReadLightingSettingsVersion = std::stoi(reader.ReadPropValue()); });
 	MatchProperty("GraphicsQuality", {
@@ -1154,6 +1156,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("DirectDoubleClickShare", m_DirectOrders.DoubleClickShare);
 	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
 	writer.NewPropertyWithValue("ModernHUD", ModernHUD::IsEnabled());
+	writer.NewPropertyWithValue("UIGlow", ToolGlow::Strength);
 	writer.NewPropertyWithValue("ShowUnitTags", m_ShowUnitTags);
 	writer.NewPropertyWithValue("ShowCPUAimReticles", m_ShowCPUAimReticles);
 	writer.NewPropertyWithValue("ShowAlarmExclamation", m_ShowAlarmExclamation);

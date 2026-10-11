@@ -924,6 +924,7 @@ namespace SandboxDetail {
 			ImVec2 to(at.x + width, at.y + height);
 			drawList->AddRectFilled(at, to, ImGui::GetColorU32(selected ? ImGuiCol_FrameBgActive : hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg));
 			drawList->AddRect(at, to, ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Border), 0.0F, 0, selected ? ToolUI::Pixel() * 2.0F : ToolUI::Pixel());
+			ToolUI::TileGlow(drawList, at, to, selected, hovered);
 			ToolLook look = LookOf(kind);
 			if (unavailable) {
 				look.Color = (look.Color & 0x00FFFFFF) | (static_cast<ImU32>(90) << IM_COL32_A_SHIFT);
@@ -973,6 +974,7 @@ namespace SandboxDetail {
 			ImVec2 to(at.x + width, at.y + height);
 			drawList->AddRectFilled(at, to, ImGui::GetColorU32(selected ? ImGuiCol_FrameBgActive : hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg));
 			drawList->AddRect(at, to, ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Border), 0.0F, 0, selected ? ToolUI::Pixel() * 2.0F : ToolUI::Pixel());
+			ToolUI::TileGlow(drawList, at, to, selected, hovered);
 			DrawIcon(drawList, Icon::Chunk, ImVec2(std::floor(at.x + (width - pixel * 12.0F) * 0.5F), at.y + pad), pixel, IM_COL32(metal.R, metal.G, metal.B, 255));
 			float wrap = width - pad;
 			ImVec2 nameSize = ImGui::CalcTextSize(metal.Name, nullptr, false, wrap);
@@ -1016,6 +1018,7 @@ namespace SandboxDetail {
 			ImVec2 to(at.x + width, at.y + height);
 			drawList->AddRectFilled(at, to, ImGui::GetColorU32(selected ? ImGuiCol_FrameBgActive : hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg));
 			drawList->AddRect(at, to, ImGui::GetColorU32(selected ? ImGuiCol_SliderGrab : ImGuiCol_Border), 0.0F, 0, selected ? ToolUI::Pixel() * 2.0F : ToolUI::Pixel());
+			ToolUI::TileGlow(drawList, at, to, selected, hovered);
 			DrawIcon(drawList, kind == Tool::TerrainOther ? Icon::Chunk : (liquid ? Icon::Drop : Icon::Grains), ImVec2(std::floor(at.x + (width - pixel * 12.0F) * 0.5F), at.y + pad), pixel, MaterialMarkColor(name, 255));
 			float wrap = width - pad;
 			ImVec2 nameSize = ImGui::CalcTextSize(name.c_str(), nullptr, false, wrap);

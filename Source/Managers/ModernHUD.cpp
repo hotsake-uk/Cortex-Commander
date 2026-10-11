@@ -15,6 +15,7 @@
 #include "Scene.h"
 #include "TimerMan.h"
 #include "imgui/imgui.h"
+#include "ToolWidgets.h"
 #include "glad/gl.h"
 
 #include <algorithm>
@@ -127,15 +128,27 @@ namespace {
 		s_Minimap.BuiltAtUpdate = now;
 	}
 
+	/// A bar in the manner of the settings panel: a navy well with the skin's periwinkle edge, square, its fill lit from inside and glowing in its own colour.
+	/// Nearly empty, it breathes, so it is noticed.
 	void DrawBar(ImDrawList* drawList, ImVec2 position, ImVec2 size, float fraction, ImU32 color, const char* label) {
+		using namespace ToolTheme;
 		fraction = std::clamp(fraction, 0.0F, 1.0F);
-		drawList->AddRectFilled(position, ImVec2(position.x + size.x, position.y + size.y), IM_COL32(10, 12, 18, 190), 4.0F);
+		float pixel = std::max(1.0F, std::floor(size.y / 10.0F));
+		ImVec2 end(position.x + size.x, position.y + size.y);
+		drawList->AddRectFilled(position, end, ToolGlow::WithAlpha(Well, 0.85F));
 		if (fraction > 0.0F) {
-			drawList->AddRectFilled(ImVec2(position.x + 2.0F, position.y + 2.0F), ImVec2(position.x + 2.0F + (size.x - 4.0F) * fraction, position.y + size.y - 2.0F), color, 3.0F);
+			ImVec2 fillFrom(position.x + pixel * 2.0F, position.y + pixel * 2.0F);
+			ImVec2 fillTo(fillFrom.x + (size.x - pixel * 4.0F) * fraction, end.y - pixel * 2.0F);
+			float breath = fraction < 0.25F ? 0.6F + 0.4F * ToolGlow::Pulse(5.0F) : 1.0F;
+			ToolGlow::Rect(drawList, fillFrom, fillTo, color, pixel * 4.0F, 0.55F * breath);
+			drawList->AddRectFilled(fillFrom, fillTo, color);
+			// A light streak along the top of the fill, as of glass lit from behind.
+			drawList->AddRectFilledMultiColor(fillFrom, ImVec2(fillTo.x, fillFrom.y + (fillTo.y - fillFrom.y) * 0.45F), IM_COL32(255, 255, 255, 70), IM_COL32(255, 255, 255, 70), IM_COL32(255, 255, 255, 0), IM_COL32(255, 255, 255, 0));
 		}
-		drawList->AddRect(position, ImVec2(position.x + size.x, position.y + size.y), IM_COL32(255, 255, 255, 60), 4.0F);
+		drawList->AddRect(position, end, Edge, 0.0F, 0, pixel);
+		drawList->AddRectFilled(ImVec2(position.x + pixel, position.y + pixel), ImVec2(end.x - pixel, position.y + pixel * 2.0F), ToolGlow::WithAlpha(EdgeDark, 0.8F));
 		ImVec2 textSize = ImGui::CalcTextSize(label);
-		ImVec2 textPosition(position.x + (size.x - textSize.x) * 0.5F, position.y + (size.y - textSize.y) * 0.5F);
+		ImVec2 textPosition(std::floor(position.x + (size.x - textSize.x) * 0.5F), std::floor(position.y + (size.y - textSize.y) * 0.5F));
 		// Dark outline so the label reads over any bar color.
 		for (int dy = -1; dy <= 1; ++dy) {
 			for (int dx = -1; dx <= 1; ++dx) {
@@ -177,7 +190,8 @@ void ModernHUD::Draw() {
 		mapHeight = std::min(mapHeight, 160.0F * scale);
 		ImVec2 topLeft(viewOrigin.x + viewSize.x - mapWidth - margin, viewOrigin.y + margin + 24.0F * scale);
 		ImVec2 bottomRight(topLeft.x + mapWidth, topLeft.y + mapHeight);
-		drawList->AddRectFilled(ImVec2(topLeft.x - 3.0F, topLeft.y - 3.0F), ImVec2(bottomRight.x + 3.0F, bottomRight.y + 3.0F), IM_COL32(0, 0, 0, 150), 5.0F);
+		ToolGlow::Rect(drawList, ImVec2(topLeft.x - 3.0F, topLeft.y - 3.0F), ImVec2(bottomRight.x + 3.0F, bottomRight.y + 3.0F), ToolTheme::Edge, 8.0F * scale, 0.6F);
+		drawList->AddRectFilled(ImVec2(topLeft.x - 3.0F, topLeft.y - 3.0F), ImVec2(bottomRight.x + 3.0F, bottomRight.y + 3.0F), ToolGlow::WithAlpha(ToolTheme::Well, 0.8F));
 		drawList->AddImage(static_cast<ImTextureID>(s_Minimap.Texture), topLeft, bottomRight);
 		float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
 		float sceneHeight = static_cast<float>(g_SceneMan.GetSceneHeight());
@@ -202,7 +216,7 @@ void ModernHUD::Draw() {
 			drawList->AddCircleFilled(point, radius + 1.0F, IM_COL32(0, 0, 0, 200));
 			drawList->AddCircleFilled(point, radius, actor == controlled ? IM_COL32(255, 255, 255, 255) : TeamColor(actor->GetTeam()));
 		}
-		drawList->AddRect(ImVec2(topLeft.x - 3.0F, topLeft.y - 3.0F), ImVec2(bottomRight.x + 3.0F, bottomRight.y + 3.0F), IM_COL32(255, 255, 255, 50), 5.0F);
+		drawList->AddRect(ImVec2(topLeft.x - 3.0F, topLeft.y - 3.0F), ImVec2(bottomRight.x + 3.0F, bottomRight.y + 3.0F), ToolTheme::Edge, 0.0F, 0, std::max(1.0F, std::floor(2.0F * scale)));
 	}
 
 	// Controlled unit: name, health and ammo, bottom left.
@@ -211,7 +225,8 @@ void ModernHUD::Draw() {
 		float barWidth = 230.0F * scale;
 		float barHeight = 20.0F * scale;
 		ImVec2 base(viewOrigin.x + margin, viewOrigin.y + viewSize.y - margin - barHeight * 2.0F - 30.0F * scale);
-		drawList->AddText(ImVec2(base.x + 2.0F, base.y), IM_COL32(255, 255, 255, 220), controlled->GetPresetName().c_str());
+		// The unit's name in the gold of the menu lettering, glowing.
+		ToolGlow::GlowingText(drawList, ImVec2(base.x + 2.0F, base.y), ToolTheme::Gold, ToolTheme::Gold, controlled->GetPresetName().c_str(), nullptr, 2.0F * scale, 0.8F);
 		base.y += 20.0F * scale;
 		float health = controlled->GetHealth();
 		float maxHealth = std::max(1.0F, controlled->GetMaxHealth());
@@ -341,6 +356,7 @@ void ModernHUD::Draw() {
 		ImVec2 textSize = ImGui::CalcTextSize(entry.Text.c_str());
 		drawList->AddRectFilled(ImVec2(feedPosition.x - 4.0F, feedPosition.y - 2.0F), ImVec2(feedPosition.x + textSize.x + 14.0F, feedPosition.y + textSize.y + 2.0F), IM_COL32(0, 0, 0, alpha / 2), 3.0F);
 		ImU32 teamColor = (TeamColor(entry.Team) & 0x00FFFFFF) | (static_cast<ImU32>(alpha) << 24);
+		ToolGlow::Rect(drawList, ImVec2(feedPosition.x - 4.0F, feedPosition.y - 2.0F), ImVec2(feedPosition.x, feedPosition.y + textSize.y + 2.0F), teamColor, 6.0F * scale, 0.6F);
 		drawList->AddRectFilled(ImVec2(feedPosition.x - 4.0F, feedPosition.y - 2.0F), ImVec2(feedPosition.x, feedPosition.y + textSize.y + 2.0F), teamColor);
 		drawList->AddText(ImVec2(feedPosition.x + 6.0F, feedPosition.y), IM_COL32(255, 255, 255, alpha), entry.Text.c_str());
 		feedPosition.y += textSize.y + 6.0F;
