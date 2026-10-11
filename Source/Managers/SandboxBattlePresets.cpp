@@ -118,6 +118,8 @@ namespace SandboxDetail {
 			visit("FogOfWar", mode.FogOfWar);
 			visit("FieldBrain", mode.FieldBrain);
 			visit("FieldBrainRange", mode.FieldBrainRange);
+			visit("HotSeat", mode.HotSeat);
+			visit("TurnSeconds", mode.TurnSeconds);
 			visit("PickArmy", mode.PickArmy);
 			visit("ArmyPoints", mode.ArmyPoints);
 			visit("Army", mode.Army);

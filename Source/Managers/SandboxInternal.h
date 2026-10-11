@@ -757,6 +757,9 @@ namespace SandboxDetail {
 		bool FieldBrain = false; //!< Battle Command: your brain is on the field at your base; if it dies you lose, and orders only reach your
 		                         //!< units within FieldBrainRange of it (BattleFieldBrain.cpp).
 		int FieldBrainRange = 900; //!< Its command range, in pixels.
+		bool HotSeat = false; //!< Battle Command: two players on one screen, each commanding one of the teams ticked "You command this team" in
+		                      //!< turn (BattleHotSeat.cpp).
+		int TurnSeconds = 30; //!< Hot-seat: seconds of the battle each turn.
 		bool PickArmy = false; //!< Battle Command: the team you command fields the army picked (Army) within ArmyPoints: its units, the first and
 		                       //!< those after one falls, come from that roster till it's used up (BattleArmy.cpp).
 		int ArmyPoints = 3000; //!< What the whole army may cost.
@@ -2751,6 +2754,14 @@ namespace SandboxDetail {
 
 	/// The brain's command range, a mark over it, and a mark on the selected units out of range. Call from the ImGui frame, with the order marks.
 	void DrawFieldBrain(ImDrawList* drawList);
+#pragma endregion
+
+#pragma region Hot-seat (BattleHotSeat.cpp)
+	/// The team whose turn it is in a hot-seat game, or -1 with none on.
+	int HotSeatSide();
+
+	/// A hot-seat game's turns: the cover between them and the turn's clock. Call from the ImGui frame, after the other windows.
+	void DrawHotSeat();
 #pragma endregion
 
 #pragma region Pick your army (BattleArmy.cpp)

@@ -760,6 +760,7 @@ void Sandbox::DrawGUI() {
 		DrawEnemyStrikes();
 		DrawSquad();
 		DrawAlerts();
+		DrawHotSeat();
 		if (!ImGui::GetIO().WantTextInput && !ImGui::GetIO().KeyCtrl && !ImGui::GetIO().KeyAlt) {
 			if (s_Possessed) {
 				SquadKeys();
