@@ -12,6 +12,7 @@
 #include <fstream>
 #include <map>
 #include <mutex>
+#include <string_view>
 
 #include "DebugMan.h"
 #include "imgui/imgui.h"
@@ -34,7 +35,7 @@ namespace {
 	constexpr const char* c_LogCounterNames[PerformanceMan::PerfCounterCount] = {"Sim: total", "Sim: actors AI", "Sim: actors travel", "Sim: actors update", "Sim: particles travel", "Sim: particles update", "Sim: activity update", "Sim: Lua scripts (inside the others)"};
 
 	std::mutex s_LogMutex;
-	std::map<std::string, LogEntry> s_LogEntries; //!< Totals since the last block was written.
+	std::map<std::string, LogEntry, std::less<>> s_LogEntries; //!< Totals since the last block was written. (Looked up by the name as given, see AddLogTime.)
 	std::string s_LogPath;
 	uint64_t s_LogStart = 0;
 	uint64_t s_LogBlockStart = 0;
@@ -111,7 +112,12 @@ void PerformanceMan::AddLogTime(const char* name, uint64_t microseconds) {
 		return;
 	}
 	std::lock_guard<std::mutex> lock(s_LogMutex);
-	LogEntry& entry = s_LogEntries[name];
+	// Found by the name as given, so a call makes no string once its entry is there: the hottest callers time every part of every unit.
+	auto found = s_LogEntries.find(std::string_view(name));
+	if (found == s_LogEntries.end()) {
+		found = s_LogEntries.emplace(name, LogEntry()).first;
+	}
+	LogEntry& entry = found->second;
 	entry.Total += microseconds;
 	++entry.Calls;
 	entry.Worst = std::max(entry.Worst, microseconds);
