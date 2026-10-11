@@ -584,7 +584,7 @@ void DebugMan::CloseTools() {
 void DebugMan::OpenTools() {
 	// The first time: the sandbox at one side, the world and the look of it at the other.
 	unsigned open = m_RememberedTools != 0 ? m_RememberedTools : (ToolSandbox | ToolWorld | ToolGraphics);
-	if (Sandbox::IsGodMode()) {
+	if (Sandbox::IsGodMode() && !Sandbox::IsBattleCommand()) {
 		open |= ToolSandbox;
 	}
 	Sandbox::SetOpen((open & ToolSandbox) != 0);

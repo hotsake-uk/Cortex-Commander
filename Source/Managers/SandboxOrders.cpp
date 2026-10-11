@@ -71,8 +71,8 @@ namespace SandboxDetail {
 	/// Whether a unit can be selected and commanded: a combatant on a side, not a brain, not a craft (a ship is ordered by its own AI; sent off
 	/// with the squad, a dropship delivering hovered with its passengers inside).
 	bool IsSelectable(const Actor* actor) {
-		// (In commander mode, RC-9, only your own side's.)
-		return IsCombatant(actor) && !actor->IsInGroup("Brains") && !dynamic_cast<const ACraft*>(actor) && (!s_Commander || actor->GetTeam() == s_CommanderTeam);
+		// (In commander mode, RC-9, and Battle Command, only your own side's.)
+		return IsCombatant(actor) && !actor->IsInGroup("Brains") && !dynamic_cast<const ACraft*>(actor) && (OnlySide() < 0 || actor->GetTeam() == OnlySide());
 	}
 
 	/// Whether an actor is hidden from you in commander mode (RC-9): another side's, where your side can't see. Orders can't be aimed at it.

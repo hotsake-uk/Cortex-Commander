@@ -3531,17 +3531,19 @@ namespace SandboxDetail {
 	}
 
 	/// The mode list at the top of the Battle tab. Whether a mode (not the cards) is chosen.
-	bool BattleModeChooser() {
-		int mode = static_cast<int>(s_ModeSetup.Mode);
+	bool BattleModeChooser(bool withCustom) {
+		// (Without custom, the list starts at the first mode proper: its index in the list is one less than the mode's.)
+		const int first = withCustom ? 0 : 1;
+		int mode = std::max(static_cast<int>(s_ModeSetup.Mode) - first, 0);
 		const char* names[static_cast<int>(BattleMode::Count)];
-		for (int i = 0; i < static_cast<int>(BattleMode::Count); ++i) {
-			names[i] = c_Modes[i].Name;
+		for (int i = first; i < static_cast<int>(BattleMode::Count); ++i) {
+			names[i - first] = c_Modes[i].Name;
 		}
-		if (ImGui::Combo("Mode", &mode, names, static_cast<int>(BattleMode::Count))) {
+		if (ImGui::Combo("Mode", &mode, names, static_cast<int>(BattleMode::Count) - first)) {
 			if (IsBattleTool(CurrentTool().Kind)) {
 				PutDownBattleTool();
 			}
-			s_ModeSetup.Mode = static_cast<BattleMode>(mode);
+			s_ModeSetup.Mode = static_cast<BattleMode>(mode + first);
 			SendBattleMode();
 		}
 		ImGui::SetItemTooltip("Custom: set each team up on its card. Or a preset game, where you only pick how many a side and draw each team's spawn zones.");
@@ -3920,7 +3922,7 @@ namespace SandboxDetail {
 		if (s_ModeRun.Running && s_ModeRun.Settings.Mode == s_ModeSetup.Mode) {
 			DrawObjectives();
 			mode.Draw(true);
-		} else if ((Sandbox::IsOpen() && s_CurrentTab == "Battle") || held == Tool::BattleModePoint || held == Tool::BattleModeFlag || IsModeZoneTool(held)) {
+		} else if (BattleSetupShowing() || held == Tool::BattleModePoint || held == Tool::BattleModeFlag || IsModeZoneTool(held)) {
 			DrawObjectives();
 			mode.Draw(false);
 		}

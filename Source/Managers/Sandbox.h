@@ -27,8 +27,16 @@ namespace RTE {
 		/// @param atPointer Put the character down where the mouse points instead of where it stands.
 		static void OnToolsClosed(bool atPointer);
 
-		/// Gets whether the current game is the Sandbox game mode.
+		/// Gets whether the current game is the Sandbox game mode, or Battle Command, which is built on it: a free camera over the world, the
+		/// sandbox's command tool, every unit run by the AI unless you take control of it.
 		static bool IsGodMode();
+
+		/// Gets whether the current game is Battle Command, the RTS game mode: a battle mode's game in which you command one team from above,
+		/// with the Commander Toolbar. The sandbox's window (F7) is there too while it's in development, without its Battle tab.
+		static bool IsBattleCommand();
+
+		/// Battle Command, while it's in development (F11): swaps the Commander Toolbar along the bottom for the sandbox's own bar, and back.
+		static void ToggleCommanderBar();
 
 		/// Whether the sandbox holds the world still (god mode with its window open and "pause in menus" on), photo mode or not.
 		static bool WantsWorldPaused();
