@@ -237,6 +237,9 @@ function NativeHumanAI:Update(Owner)
 	-- A suppress order (the sandbox's Suppress): fire into its zone, whatever else is in sight (see SharedBehaviors.SuppressUpdate).
 	local suppressing = SharedBehaviors.SuppressUpdate(self, Owner);
 
+	-- A take-cover order (the sandbox's Take cover): into cover and down there (see SharedBehaviors.CoverOrderUpdate).
+	SharedBehaviors.CoverOrderUpdate(self, Owner);
+
 	-- Running the objective (carrying a flag home): nothing else it was doing is kept (see SharedBehaviors.OnObjective).
 	local objective = SharedBehaviors.OnObjective(Owner);
 	if objective then
@@ -642,6 +645,15 @@ function NativeHumanAI:Update(Owner)
 					self.BehaviorCleanup = nil;
 				end
 
+				-- Fetch back what it threw, once there's no one to fight.
+				if not self.NextBehavior and not self.PickupHD and not objective and not self.Target and self.ThrownIDs and next(self.ThrownIDs)
+				and (not self.RetrieveTimer or self.RetrieveTimer:IsPastSimMS(3000)) then
+					self.RetrieveTimer = self.RetrieveTimer or Timer();
+					self.RetrieveTimer:Reset();
+					self.NextBehavior = coroutine.create(HumanBehaviors.RetrieveThrown);
+					self.NextBehaviorName = "RetrieveThrown";
+				end
+
 				if not self.NextBehavior and not self.PickupHD and not objective and self.PickUpTimer:IsPastSimMS(10000) then
 					self.PickUpTimer:Reset();
 
@@ -729,6 +741,7 @@ function NativeHumanAI:Update(Owner)
 		SharedBehaviors.FlankUpdate(self, Owner);
 		HumanBehaviors.ShotFromUnseen(self, Owner, hit and AlarmPoint);
 		HumanBehaviors.UseTheWorld(self, Owner);
+		HumanBehaviors.SpellUpdate(self, Owner);
 		-- (A unit shot from out of sight flanks only once it has reached the cover it went for, if any.)
 		local reachingCover = self.Cover and self.Cover.Why == "shot" and not self.Cover.There;
 		if not self.Flank and not self.Target and self.OldTargetPos and self.HitTimer and not self.HitTimer:IsPastSimMS(3000) and not reachingCover then
@@ -767,9 +780,9 @@ function NativeHumanAI:Update(Owner)
 	-- digger never fired, and a unit routed through ground stood at its face with the digger out.)
 	local routeDig = self.engineMover == true and Owner.DiggingRoute == true;
 	if self.squadShoot then
-		self.Ctrl:SetState(Controller.WEAPON_FIRE, (mayFire and (self.fire or self.squadShoot)) or routeDig);
+		self.Ctrl:SetState(Controller.WEAPON_FIRE, (mayFire and (self.fire or self.squadShoot)) or self.spellCast or routeDig);
 	else
-		self.Ctrl:SetState(Controller.WEAPON_FIRE, (mayFire and self.fire) or self.useMedikit or self.medicHeal or self.douse or routeDig);
+		self.Ctrl:SetState(Controller.WEAPON_FIRE, (mayFire and self.fire) or self.useMedikit or self.medicHeal or self.douse or self.spellCast or routeDig);
 	end
 
 	if self.deviceState == AHuman.AIMING then
@@ -1005,6 +1018,12 @@ function NativeHumanAI:CreateAttackBehavior(Owner)
 	-- favor grenades as the initiator to a sneak attack
 	elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and Owner.AIMode ~= Actor.AIMODE_SENTRY and self.Target.HFlipped == Owner.HFlipped and Owner:EquipDeviceInGroup("Bombs - Grenades", true)
 	and dist:MagnitudeIsGreaterThan(100) and dist:MagnitudeIsLessThan(ToThrownDevice(Owner.EquippedItem):GetCalculatedMaxThrowVelIncludingArmThrowStrength() * GetPPM()) and (self.Target.Pos.Y + 20) > Owner.Pos.Y then
+		self.NextBehavior = coroutine.create(HumanBehaviors.ThrowTarget);
+		self.NextBehaviorName = "ThrowTarget";
+	-- A javelin, throwing axe or knives at a target a few strides off, before closing in.
+	elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and dist:MagnitudeIsGreaterThan(80) and Owner:HasObjectInGroup("Weapons - Thrown") and math.random() < 0.75
+	and Owner:EquipDeviceInGroup("Weapons - Thrown", true) and IsThrownDevice(Owner.EquippedItem)
+	and dist:MagnitudeIsLessThan(math.min(ToThrownDevice(Owner.EquippedItem):GetCalculatedMaxThrowVelIncludingArmThrowStrength() * GetPPM() * 0.9, 400)) then
 		self.NextBehavior = coroutine.create(HumanBehaviors.ThrowTarget);
 		self.NextBehaviorName = "ThrowTarget";
 	elseif Owner:EquipFirearm(true) then

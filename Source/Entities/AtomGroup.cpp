@@ -6,6 +6,7 @@
 #include "MOSRotating.h"
 #include "LimbPath.h"
 #include "ConsoleMan.h"
+#include "SettingsMan.h"
 
 #include "Draw.h"
 
@@ -358,6 +359,8 @@ float AtomGroup::Travel(Vector& position, Vector& velocity, Matrix& rotation, fl
 	bool hitsMOs = m_OwnerMOSR->m_HitsMOs;
 	bool hitStep = false;
 	bool halted = false;
+	// The most hits taken before it stops for this update: 10, or fewer for a gib chunk as the gib chunk bounces setting asks.
+	const int maxHits = m_OwnerMOSR->IsGibChunk() ? g_SettingsMan.GibChunks().MaxBounces : 10;
 
 	// TODO: Look into pre-hit stuff and how it can be used to improve collision.
 	// Vector preHitPos;
@@ -732,7 +735,7 @@ float AtomGroup::Travel(Vector& position, Vector& velocity, Matrix& rotation, fl
 			timeLeft -= timeLeft * (segProgress * segRatio);
 		}
 
-		if (hitCount > 10) {
+		if (hitCount > maxHits) {
 			// RTEAbort("AtomGroup travel resulted in more than 1000 segments!!");
 			break;
 		}

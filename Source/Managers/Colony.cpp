@@ -1,10 +1,13 @@
 #include "Colony.h"
 
+#include "ActivityMan.h"
 #include "Actor.h"
 #include "Constants.h"
 #include "MovableMan.h"
+#include "PresetMan.h"
 #include "Sandbox.h"
 #include "SceneMan.h"
+#include "TerrainObject.h"
 #include "TimerMan.h"
 
 #include <algorithm>
@@ -14,9 +17,9 @@ using namespace RTE;
 
 namespace {
 	constexpr Colony::Type c_Types[] = {
-	    {"Barracks", "Trains units for its side, one after another, and keeps a number of them alive.", 120, 72},
-	    {"Extractor", "Earns supply for its side.", 48, 60},
-	    {"Generator", "Powers its side's buildings in range, when buildings need power.", 56, 64},
+	    {"Barracks", "A longhouse that trains units for its side, one after another, and keeps a number of them alive.", 240, 132, "Longhouse"},
+	    {"Extractor", "A woodcutter's hut that earns supply for its side.", 108, 108, "Woodcutter's Hut"},
+	    {"Generator", "A round hut that powers its side's buildings in range, when buildings need power.", 92, 120, "Round Hut"},
 	};
 	constexpr float c_StartingSupply = 1500.0F;
 	constexpr float c_BaseIncome = 4.0F; //!< Supply a second for a side with any building.
@@ -25,6 +28,9 @@ namespace {
 	constexpr float c_TrainingPower = 50.0F; //!< Power a barracks draws while it trains.
 	constexpr float c_PowerRange = 500.0F; //!< How far a generator reaches, from ground to ground.
 	constexpr float c_UnpoweredPace = 0.25F; //!< With NoPower::Slows, how fast a barracks with no power trains, as a share of its full pace.
+	constexpr const char* c_Brain = "Brain Case"; //!< The brain put in each building.
+	constexpr int c_BrainRoomWidth = 20; //!< The chamber at the back of a building its brain sits in.
+	constexpr int c_BrainRoomHeight = 20;
 	constexpr float c_WreckedShare = 0.45F; //!< With less than this much of it left, a building is a ruin.
 
 	std::vector<Colony::Building> s_Buildings;
@@ -56,7 +62,7 @@ namespace {
 	std::vector<Colony::Building*> GeneratorsFor(const Colony::Building& building) {
 		std::vector<Colony::Building*> generators;
 		for (Colony::Building& generator: s_Buildings) {
-			if (generator.What == Colony::Kind::Generator && generator.Team == building.Team && !generator.Paused && (generator.Ground - building.Ground).MagnitudeIsLessThan(c_PowerRange)) {
+			if (generator.What == Colony::Kind::Generator && generator.Team == building.Team && !generator.Paused && !generator.Disabled() && (generator.Ground - building.Ground).MagnitudeIsLessThan(c_PowerRange)) {
 				generators.push_back(&generator);
 			}
 		}
@@ -84,6 +90,39 @@ namespace {
 			spare += std::max(c_GeneratorPower - generator->Power, 0.0F);
 		}
 		return spare;
+	}
+
+	/// Whether a building's brain is still alive.
+	bool BrainAlive(const Colony::Building& building) {
+		const Actor* brain = building.Brain;
+		return brain && g_MovableMan.IsActor(brain) && static_cast<long>(brain->GetUniqueID()) == building.BrainID && !brain->IsDead() && brain->GetHealth() > 0.0F;
+	}
+
+	/// Makes a brain the one that runs a building.
+	void GiveBrain(Colony::Building& building, Actor* brain) {
+		brain->AddToGroup(Colony::c_BrainGroup);
+		building.Brain = brain;
+		building.BrainID = static_cast<long>(brain->GetUniqueID());
+	}
+
+	/// A brain of a building's side, standing in its plot, that runs no other building and is no player's brain, to take over the building. Nothing if there is none.
+	Actor* BrainInPlot(const Colony::Building& building) {
+		const Colony::Type& type = Colony::GetType(building.What);
+		Vector middle = building.Ground - Vector(0.0F, static_cast<float>(type.Height / 2));
+		Actor* brain = g_MovableMan.GetClosestBrainActor(building.Team, middle);
+		if (!brain || brain->IsDead() || (g_ActivityMan.GetActivity() && g_ActivityMan.GetActivity()->IsAssignedBrain(brain))) {
+			return nullptr;
+		}
+		Vector offset = g_SceneMan.ShortestDistance(middle, brain->GetPos(), g_SceneMan.SceneWrapsX());
+		if (std::abs(offset.m_X) > static_cast<float>(type.Width / 2) || std::abs(offset.m_Y) > static_cast<float>(type.Height / 2)) {
+			return nullptr;
+		}
+		for (const Colony::Building& other: s_Buildings) {
+			if (other.Brain == brain) {
+				return nullptr;
+			}
+		}
+		return brain;
 	}
 } // namespace
 
@@ -149,25 +188,40 @@ int Colony::Place(Kind kind, const Vector& place, int team, const std::string& u
 	float width = static_cast<float>(type.Width);
 	// The plot is cleared, and what is under it made level, so it stands the same on a slope as on the flat.
 	Sandbox::FillBox(Vector(left, top), type.Width, type.Height, "");
-	Sandbox::FillBox(Vector(left, building.Ground.m_Y), type.Width, 14, "Concrete");
-	if (kind == Kind::Barracks) {
-		// A floor, a roof, a solid wall at the back and a doorway at the front.
-		Sandbox::FillBox(Vector(left, building.Ground.m_Y - 8.0F), type.Width, 8, "Concrete");
-		Sandbox::FillBox(Vector(left, top), type.Width, 8, "Concrete");
-		Sandbox::FillBox(Vector(left, top), 8, type.Height, "Concrete");
-		Sandbox::FillBox(Vector(left + width - 8.0F, top), 8, 14, "Concrete");
-	} else if (kind == Kind::Generator) {
-		// A low hall with two stacks.
-		Sandbox::FillBox(Vector(left, building.Ground.m_Y - 30.0F), type.Width, 30, "Concrete");
-		Sandbox::FillBox(Vector(left + 8.0F, top), 8, type.Height - 30, "Concrete");
-		Sandbox::FillBox(Vector(left + width - 16.0F, top + 12.0F), 8, type.Height - 42, "Concrete");
+	const TerrainObject* preset = dynamic_cast<const TerrainObject*>(g_PresetMan.GetEntityPreset("TerrainObject", type.Building, "Medieval.rte"));
+	if (TerrainObject* piece = preset ? dynamic_cast<TerrainObject*>(preset->Clone()) : nullptr) {
+		// The building's floor is the bottom of its picture, so it sits on a stone footing with its middle over the place.
+		Sandbox::FillBox(Vector(left, building.Ground.m_Y), type.Width, 14, "Stone");
+		// Where the ground falls away under the plot (a cliff edge, a dip), the footing goes on down to it, so the building is not left overhanging.
+		int groundY = building.Ground.GetFloorIntY() + 14;
+		for (int column = 0; column < type.Width; ++column) {
+			int columnX = static_cast<int>(left) + column;
+			int depth = 0;
+			while (depth < 120 && groundY + depth < sceneHeight - 1 && IsAir(columnX, groundY + depth)) {
+				++depth;
+			}
+			if (depth > 0 && depth < 120) {
+				Sandbox::FillBox(Vector(static_cast<float>(columnX), static_cast<float>(groundY)), 1, depth, "Stone");
+			}
+		}
+		piece->SetPos(Vector(left, top) - piece->GetBitmapOffset());
+		piece->SetTeam(building.Team);
+		g_SceneMan.AddSceneObject(piece);
 	} else {
-		// A squat block with a mast.
-		Sandbox::FillBox(Vector(left, building.Ground.m_Y - 26.0F), type.Width, 26, "Concrete");
-		Sandbox::FillBox(Vector(building.Ground.m_X - 3.0F, top), 6, type.Height - 26, "Concrete");
-		Sandbox::FillBox(Vector(building.Ground.m_X - 10.0F, top), 20, 5, "Concrete");
+		// Without Medieval.rte: a block of concrete in its shape.
+		Sandbox::FillBox(Vector(left, building.Ground.m_Y), type.Width, 14, "Concrete");
+		Sandbox::FillBox(Vector(left, building.Ground.m_Y - 8.0F), type.Width, 8, "Concrete");
+		Sandbox::FillBox(Vector(left, top + type.Height / 3), type.Width, 8, "Concrete");
+		Sandbox::FillBox(Vector(left, top + type.Height / 3), 8, type.Height - type.Height / 3, "Concrete");
+		Sandbox::FillBox(Vector(left + width - 8.0F, top + type.Height / 3), 8, 14, "Concrete");
 	}
+	// Its brain, in a chamber cut at the back on the floor, so it has to be broken into to be reached. (The doorway is at the front, the right.)
+	float roomLeft = left + 10.0F;
+	Sandbox::FillBox(Vector(roomLeft, building.Ground.m_Y - static_cast<float>(c_BrainRoomHeight)), c_BrainRoomWidth, c_BrainRoomHeight, "");
 	building.SolidAtStart = std::max(CountSolid(building), 1);
+	if (Actor* brain = Sandbox::SpawnBrain(c_Brain, building.Team, Vector(roomLeft + static_cast<float>(c_BrainRoomWidth / 2), building.Ground.m_Y - 9.0F))) {
+		GiveBrain(building, brain);
+	}
 	s_Buildings.push_back(building);
 	return building.ID;
 }
@@ -178,11 +232,22 @@ void Colony::Update() {
 	std::array<float, 4> income{};
 	std::array<bool, 4> hasBuilding{};
 	for (Building& building: s_Buildings) {
+		if (building.Brain && !BrainAlive(building)) {
+			building.Brain = nullptr;
+		}
+		// A disabled building is run again by a brain of its side put in its plot.
+		if (building.Disabled() && checkWrecks) {
+			if (Actor* brain = BrainInPlot(building)) {
+				GiveBrain(building, brain);
+			}
+		}
+	}
+	for (Building& building: s_Buildings) {
 		if (building.What == Kind::Generator) {
 			building.Power = 0.0F; // Given out afresh each update, to the barracks in the order they were built.
 		}
 		hasBuilding[building.Team] = true;
-		if (building.What == Kind::Extractor && !building.Paused) {
+		if (building.What == Kind::Extractor && !building.Paused && !building.Disabled()) {
 			income[building.Team] += c_ExtractorIncome;
 		}
 	}
@@ -196,6 +261,15 @@ void Colony::Update() {
 	for (Building& building: s_Buildings) {
 		if (checkWrecks && static_cast<float>(CountSolid(building)) < static_cast<float>(building.SolidAtStart) * c_WreckedShare) {
 			wrecked.push_back(building.ID);
+			continue;
+		}
+		if (building.Disabled()) {
+			// (A unit part trained stays as far on as it was, and goes on once the building has a brain again.)
+			building.Status = "Disabled: brain destroyed";
+			if (building.What != Kind::Generator) {
+				building.Power = 0.0F;
+				building.NoPower = false;
+			}
 			continue;
 		}
 		if (building.What == Kind::Extractor) {
@@ -265,7 +339,7 @@ void Colony::Update() {
 		}
 	}
 	for (Building& generator: s_Buildings) {
-		if (generator.What == Kind::Generator) {
+		if (generator.What == Kind::Generator && !generator.Disabled()) {
 			generator.Status = generator.Paused ? "Stopped" : !s_NeedsPower ? "Idle: buildings run without power" : "Giving " + std::to_string(static_cast<int>(generator.Power + 0.5F)) + " of " + std::to_string(static_cast<int>(c_GeneratorPower)) + " power";
 		}
 	}

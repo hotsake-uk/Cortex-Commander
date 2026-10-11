@@ -185,6 +185,65 @@ void AHuman::UpdateAIMotor() {
 		}
 	}
 
+	// A sky order (Jetpack here, or a move clicked in open air; StandingOrder::SkyGoal): with a clear line to the point in the air, the jet
+	// lit and flown to it, wherever the route was taking the legs, and held there in a hover till the tank is all but empty, when the order
+	// comes down to the ground under it, the fall braked below as any is. With no line to it the route walks under it first. Flown for till
+	// it gets there or the tank runs out the same way, however long that takes: the only fuel kept back is what braking the drop from where
+	// it is takes (SkyReserve). (Here, every frame, not in the route-follower: once there the script counts it arrived.)
+	const bool skyJet = m_pJetpack && m_pJetpack->IsAttached() && m_pJetpack->GetJetpackType() == AEJetpack::JetpackType::Standard;
+	if (m_StandingOrder.SkyGoal && skyJet && !m_Ladder.active && m_Status == STABLE) {
+		RouteMover& mover = m_Mover;
+		const Vector sky = m_StandingOrder.SkyPoint;
+		const Vector toSky = Towards(m_Pos, sky);
+		if (mover.skyCheckTimer.IsPastSimMS(250)) {
+			mover.skyCheckTimer.Reset();
+			Vector obstacle;
+			Vector free;
+			mover.skyClear = true;
+			for (float dy: {-h * 0.3F, feet * 0.5F}) {
+				if (g_SceneMan.CastObstacleRay(m_Pos + Vector(0.0F, dy), toSky, obstacle, free, m_MOID, IgnoresWhichTeam(), 0, 3) >= 0.0F) {
+					mover.skyClear = false;
+				}
+			}
+		}
+		const float tank = m_pJetpack->GetJetTimeTotal();
+		if (toSky.MagnitudeIsLessThan(h * 0.6F) && !mover.skyHovering) {
+			mover.skyHovering = true;
+			MoverTrace("jetpack here: hovering");
+		}
+		const char* ended = nullptr;
+		if ((mover.skyHovering || mover.skyFlying) && m_pJetpack->GetJetTimeLeft() <= SkyReserve()) {
+			ended = mover.skyHovering ? "tank empty; coming down" : "tank empty short of it; coming down";
+		}
+		if (ended) {
+			MoverTrace(std::string("jetpack here: ") + ended);
+			m_StandingOrder.SkyGoal = false;
+			mover.skyFlying = false;
+			mover.skyHovering = false;
+		} else if (mover.skyHovering || (mover.skyClear && (mover.skyFlying || m_pJetpack->GetJetTimeLeft() > JetRelightFuel() + tank * 0.3F))) {
+			if (!mover.skyFlying) {
+				mover.skyFlying = true;
+				MoverTrace("jetpack here: flying for " + std::to_string(static_cast<int>(sky.m_X)) + "," + std::to_string(static_cast<int>(sky.m_Y)));
+			}
+			mover.flight = RouteMover::Flight();
+			mover.progressTimer.Reset();
+			mover.pilotedFallTick = g_TimerMan.GetSimUpdateCount();
+			Vector command = PilotFlight(sky, -1.0F);
+			ctrl.SetState(MOVE_LEFT, false);
+			ctrl.SetState(MOVE_RIGHT, false);
+			ctrl.SetState(BODY_JUMPSTART, FloorUnder(m_Pos, h * 0.8F) >= 0.0F && toSky.m_Y < -h * 0.3F);
+			ctrl.SetState(BODY_JUMP, command.m_Y > 0.5F);
+			ctrl.SetAnalogMove(Vector(command.m_X, -1.0F));
+			if (mover.skyHovering && m_StandingOrder.PostFacing != 0) {
+				m_HFlipped = m_StandingOrder.PostFacing < 0;
+			}
+			return;
+		}
+	} else if (!m_StandingOrder.SkyGoal) {
+		m_Mover.skyFlying = false;
+		m_Mover.skyHovering = false;
+	}
+
 	// A fall braked, off a route's flight (the pilot brakes those): falling with the floor coming up inside the jet's stop, the jet lit
 	// straight up, leant against any drift. (The script did this, and lit the jet over the pilot's head on the route's flights too.)
 	// Not while the route-follower is flying the fall itself (in the air with no flight, PilotFlight for the point, since the last AI update
@@ -932,6 +991,24 @@ float AHuman::JetAccelAtFuel(float fuel) const {
 	return accelNow / factorNow * factor;
 }
 
+// The fuel a sky order's hover keeps back (UpdateAIMotor): what braking the drop from here to the floor below takes. Dropped from a height
+// h with the jet's net push a lit for the last of it, the body is braked from v, v^2 = 2gh * a / (a + g), in v / a; with the relight's
+// own cost and a third more for the pilot's late start. Nothing under it at all: as from 600 px.
+float AHuman::SkyReserve() const {
+	if (!m_pJetpack) {
+		return 0.0F;
+	}
+	const float floorY = FloorUnder(m_Pos, 2000.0F);
+	const float drop = std::max(0.0F, (floorY >= 0.0F ? floorY : m_Pos.m_Y + 600.0F) - m_Pos.m_Y);
+	const float gravity = std::max(0.01F, g_SceneMan.GetGlobalAcc().m_Y * c_PPM);
+	const float push = JetAccelAtFuel(JetRelightFuel()) - gravity;
+	if (push <= 1.0F) {
+		return JetRelightFuel();
+	}
+	const float speed = std::sqrt(2.0F * gravity * drop * push / (push + gravity));
+	return JetRelightFuel() + speed / push * 1000.0F * 1.3F;
+}
+
 float AHuman::JetRelightFuel() const {
 	if (!m_pJetpack) {
 		return 0.0F;
@@ -1036,13 +1113,13 @@ float AHuman::ClimbFuelPerPixel() const {
 
 // The fuel a flight takes, in ms: the climb on this unit's jet with a reserve for the top (450 ms for a landing off to one side, which
 // is hovered across to, 300 for straight up), or the burst for one that doesn't climb, and the crossing lit about half the time.
-float AHuman::FlightFuelNeeded(const Vector& landing, float landingFloorY) const {
+float AHuman::FlightFuelNeeded(const Vector& landing, float landingFloorY, bool capped) const {
 	Vector to = Towards(m_Pos, landing);
 	float feetY = m_Pos.m_Y + (m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : m_CharHeight * 0.2F);
 	float rise = feetY - landingFloorY + 12.0F;
 	float climb = rise > 16.0F ? ClimbFuelNeeded(rise, std::abs(to.m_X) >= 10.0F ? 450.0F : 300.0F) : 200.0F;
 	float needed = climb + std::abs(to.m_X) / (5.0F * c_PPM) * 0.5F * 1000.0F * 1.2F;
-	return m_pJetpack ? std::min(needed, m_pJetpack->GetJetTimeTotal() * 0.98F) : needed;
+	return m_pJetpack && capped ? std::min(needed, m_pJetpack->GetJetTimeTotal() * 0.98F) : needed;
 }
 
 // Whether the way to a landing is open air for a flight: up at the unit's column to over the landing's floor, then across.
@@ -1752,6 +1829,17 @@ int AHuman::MoveAlongRoute() {
 		// (A dig-to's target is in the ground, RC-11, and the body stands on the floor of its tunnel: the target at its feet or over its head
 		// is as near as it gets, so within half a height is there.)
 		const float reach = IsDiggingTo() && Solid(goal.m_X, goal.m_Y) ? std::max(h * 0.45F, m_MoveProximityLimit * 1.5F) : std::min(h * 0.4F, m_MoveProximityLimit * 1.5F);
+		// (A sky order's goal is the point in the air, not the ground under it: walked to the ground there, the unit waits for its tank to
+		// lift it the rest of the way, UpdateAIMotor's sky block, rather than calling it there. With no clear line up from there it never will:
+		// the sky order is dropped and the ground under it is the end of the move.)
+		const bool skyJet = m_pJetpack && m_pJetpack->IsAttached() && m_pJetpack->GetJetpackType() == AEJetpack::JetpackType::Standard;
+		if (m_StandingOrder.SkyGoal && skyJet && toGoal.MagnitudeIsLessThan(reach) && !airborne) {
+			if (mover.skyClear) {
+				return RouteMover::Moving;
+			}
+			MoverTrace("jetpack here: no clear line up from under it; staying on the ground");
+			m_StandingOrder.SkyGoal = false;
+		}
 		if (toGoal.MagnitudeIsLessThan(reach) && !airborne && m_Vel.MagnitudeIsLessThan(2.0F)) {
 			MoverTrace("arrived");
 			mover.arrivedTick = tick;
@@ -2339,6 +2427,8 @@ int AHuman::MoveAlongRoute() {
 	if (standardJet && !IsDiggingTo() && !m_MovePath.empty() && m_StandingOrder.Direct >= g_SettingsMan.DirectOrders().StraightFlightRisk && mover.straightCheckTimer.IsPastSimMS(400)) {
 		mover.straightCheckTimer.Reset();
 		const float tank = m_pJetpack->GetJetTimeTotal();
+		// The risk accepted: a flight needing more than the tank holds is still flown, the more so the riskier the order (FlightReach).
+		const float reach = tank * g_SettingsMan.DirectOrders().FlightReach(m_StandingOrder.Direct);
 		Vector obstacle;
 		Vector free;
 		// Open from one place to another for the body: at its middle and its knees.
@@ -2351,11 +2441,23 @@ int AHuman::MoveAlongRoute() {
 			}
 			return true;
 		};
-		// The route's points to try, the furthest first: its last and then every fourth back from it, eight at most.
+		// The places to try, the nearest the goal first: the goal, then floor short of it on this side (a landing zone as near it as a flight
+		// gets, since the risk is accepted), then the route's points back from its end, every fourth, eight at most.
 		std::vector<std::pair<Vector, int>> points;
 		{
 			std::vector<Vector> all(m_MovePath.begin(), m_MovePath.end());
-			for (int k = static_cast<int>(all.size()) - 1; k >= 0 && points.size() < 8; k -= 4) {
+			const int last = static_cast<int>(all.size());
+			points.emplace_back(all.back(), last);
+			const float side = Towards(all.back(), m_Pos).m_X >= 0.0F ? 1.0F : -1.0F;
+			for (float back: {1.0F, 2.0F, 3.5F}) {
+				Vector shortOf = all.back() + Vector(side * h * back, -h * 0.5F);
+				g_SceneMan.WrapPosition(shortOf);
+				float floorY = FloorUnder(shortOf, h * 1.5F);
+				if (floorY >= 0.0F) {
+					points.emplace_back(Vector(shortOf.m_X, floorY - feet), last - 1); // (The goal kept on the route, to be gone on to from there.)
+				}
+			}
+			for (int k = last - 5; k >= 0 && points.size() < 12; k -= 4) {
 				points.emplace_back(all[k], k + 1);
 			}
 		}
@@ -2375,7 +2477,7 @@ int AHuman::MoveAlongRoute() {
 				continue;
 			}
 			const Vector landingCentre(place.m_X, floorY - feet - 4.0F);
-			if (FlightFuelNeeded(place, floorY) <= tank * 0.95F && (legOpen(m_Pos, landingCentre) || FlightWayClear(place, floorY))) {
+			if (FlightFuelNeeded(place, floorY, false) <= reach && (legOpen(m_Pos, landingCentre) || FlightWayClear(place, floorY))) {
 				found = true;
 			} else {
 				// Up and over: a point over the way, the lowest that both legs are open to and one tank flies.
@@ -2386,7 +2488,7 @@ int AHuman::MoveAlongRoute() {
 					Vector top = m_Pos + across * at.first;
 					top.m_Y = topY - h * at.second;
 					g_SceneMan.WrapPosition(top);
-					if (top.m_Y < 0.0F || FlightFuelNeeded(place, top.m_Y + feet) > tank * 0.95F) {
+					if (top.m_Y < 0.0F || FlightFuelNeeded(place, top.m_Y + feet, false) > reach) {
 						continue;
 					}
 					if (legOpen(m_Pos, top) && legOpen(top, landingCentre)) {
@@ -2405,7 +2507,7 @@ int AHuman::MoveAlongRoute() {
 			}
 		}
 		if (found) {
-			const float needed = FlightFuelNeeded(goal, viaApex ? apex.m_Y + feet : goalFloorY);
+			const float needed = std::min(FlightFuelNeeded(goal, viaApex ? apex.m_Y + feet : goalFloorY), tank * 0.95F);
 			const float want = std::min(needed * g_SettingsMan.DirectOrders().FuelShare, tank * 0.95F);
 			if (m_pJetpack->GetJetTimeLeft() >= std::max(want, JetRelightFuel())) {
 				mover.straightTried = true;

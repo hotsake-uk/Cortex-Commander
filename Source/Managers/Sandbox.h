@@ -41,6 +41,10 @@ namespace RTE {
 		/// Whether the sandbox holds the world still (god mode with its window open and "pause in menus" on), photo mode or not.
 		static bool WantsWorldPaused();
 
+		/// Esc with the Command tool in hand in another click mode: goes back to Command mode, and true so the game doesn't pause on it too.
+		/// In Command mode (or with anything else in hand), false: Esc pauses as ever.
+		static bool TakeEscape();
+
 		/// Gets whether clicks on the world go to the sandbox instead of the game: the window is open, a tool is picked and the mouse isn't over a debug window.
 		static bool CapturesWorldClicks();
 
@@ -157,6 +161,11 @@ namespace RTE {
 		/// @param presetName The unit. @param team The side. @param position Where. @param order Its orders, as for Do.
 		/// @return The unit, or nothing if there is no such unit.
 		static Actor* SpawnUnit(const std::string& presetName, int team, const Vector& position, int order);
+
+		/// Makes a brain and puts it in the world, holding where it is, for the brains that run colony buildings.
+		/// @param presetName The brain (an Actor in the Brains group). @param team The side. @param position Where.
+		/// @return The brain, or nothing if there is no such brain.
+		static Actor* SpawnBrain(const std::string& presetName, int team, const Vector& position);
 
 		/// Gets what a unit costs, without weapons. 0 if there is no such unit.
 		static float UnitCost(const std::string& presetName);

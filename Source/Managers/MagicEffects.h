@@ -18,6 +18,7 @@ namespace RTE {
 			float AirGust = 1.0F; //!< How hard the gust a push sets blowing is. 0: no gust.
 			bool SpellEnergy = true; //!< Whether casting spends the caster's energy (or the spell's own charge). Off: every spell is free.
 			float EnergyRegen = 1.0F; //!< How fast energy and spell charge come back, a multiplier on each unit's and spell's own rate.
+			bool AICasting = true; //!< Whether the AI casts spells of its own accord (MG-3): pushing back grenades, and going back to its spell once its energy has come back.
 		};
 
 		/// Gets whether magic and tool effects do anything at all (a gameplay setting). Off, a push does nothing; what a spell sprays still flies.
