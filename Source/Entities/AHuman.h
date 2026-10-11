@@ -400,6 +400,22 @@ namespace RTE {
 		/// @return The throw chargeup progress, as a scalar from 0 to 1.
 		float GetThrowProgress() const { return m_ThrowPrepTime > 0 ? static_cast<float>(std::min(m_ThrowTmr.GetElapsedSimTimeMS() / static_cast<double>(m_ThrowPrepTime), 1.0)) : 1.0F; }
 
+		/// Gets where a throw at an aim angle lets go of what it throws: the throwing hand at the front of the swing (the device's EndThrowOffset
+		/// from the shoulder, or out at arm's length and up), short of any ground in the way so it never starts inside or beyond a wall.
+		/// @param device The device being thrown, for its EndThrowOffset and size; nullptr for the arm's own reach.
+		/// @param aimAngle The aim angle, as AimAngle (not flipped).
+		/// @return The scene position the throw lets go at.
+		Vector GetThrowReleasePos(const HeldDevice* device, float aimAngle) const;
+
+		/// Lets go of a thrown device at the front of the throwing swing: out of the hand at the release point, at the charged strength, with the
+		/// thrower's own velocity and a forward spin.
+		/// @param device The device in the FG hand being thrown.
+		/// @param adjustedAimAngle The aim angle, flipped for facing.
+		void ReleaseThrow(HeldDevice* device, float adjustedAimAngle);
+
+		/// After a throw, brings another of what was thrown to hand if there is one in the inventory, else the next item.
+		void EquipAfterThrow();
+
 		/// Unequips whatever is in the FG arm and puts it into the inventory.
 		/// @return Whether there was anything to unequip.
 		bool UnequipFGArm();
@@ -752,6 +768,10 @@ namespace RTE {
 		Timer m_ThrowTmr;
 		// The duration it takes this AHuman to fully charge a throw.
 		long m_ThrowPrepTime;
+		float m_ThrowReleaseProgress; //!< How charged the throw under way was when the button was let go: the swing then lets go at that strength.
+		std::string m_LastThrownModule; //!< The data module of the last thing thrown, so another the same comes to hand.
+		std::string m_LastThrownPreset; //!< The preset name of the last thing thrown, so another the same comes to hand.
+		static constexpr double c_ThrowSwingTime = 80.0; //!< The longest the arm takes to swing through a throw before letting go, in sim ms.
 		Timer m_SharpAimRevertTimer; //!< For timing the transition from sharp aim back to regular aim.
 		float m_FGArmFlailScalar; //!< The rate at which this AHuman's FG Arm follows the the bodily rotation. Best to keep this at 0 so it doesn't complicate aiming.
 		float m_BGArmFlailScalar; //!< The rate at which this AHuman's BG Arm follows the the bodily rotation. Set to a negative value for a "counterweight" effect.

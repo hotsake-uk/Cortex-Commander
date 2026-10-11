@@ -185,19 +185,39 @@ end
 -- whether it takes full strength; or nil where no arc gets there.
 function HumanBehaviors.PlanThrow(Grenade, AimPoint, TargetVel, overCover)
 	local maxVel = Grenade:GetCalculatedMaxThrowVelIncludingArmThrowStrength();
-	local minVel = Grenade.MinThrowVel;
+	local minVel = Grenade.GetCalculatedMinThrowVel and Grenade:GetCalculatedMinThrowVel() or Grenade.MinThrowVel;
 	if minVel == 0 then
-		minVel = maxVel * 0.2;
+		minVel = maxVel * 0.5;
 	end
-	local Start = Grenade.MuzzlePos;
+	-- Where the throw lets go: the hand at the front of the swing for that aim, not the grenade in hand now.
+	local Owner = ToAHuman(Grenade:GetRootParent());
+	local Muzzle = Grenade.MuzzlePos;
+	local function startFor(angle)
+		if Owner and Owner.GetThrowReleasePos then
+			local aimAngle = Owner.HFlipped and (math.pi - angle) or angle;
+			return Owner:GetThrowReleasePos(Grenade, aimAngle);
+		end
+		return Muzzle;
+	end
+	-- The grenade also leaves with all of the thrower's speed: seen from the thrower, the target moves by the difference.
+	local RelVel = TargetVel and Vector(TargetVel.X, TargetVel.Y) or Vector();
+	if Owner then
+		RelVel = RelVel - Owner.Vel;
+	end
 	local arcs = overCover and {true, false} or {false, true};
 	for _, high in ipairs(arcs) do
 		for _, speed in ipairs({(maxVel + minVel) * 0.5, maxVel}) do
+			local Start = Muzzle;
 			local angle, seconds = HumanBehaviors.GrenadeArc(Start, AimPoint, speed, high);
-			-- Led onto a runner: where it will be when the grenade gets there (twice over, as the flight time changes with the point).
-			if angle and TargetVel and TargetVel.Magnitude > 1 then
+			if angle then
+				Start = startFor(angle);
+				angle, seconds = HumanBehaviors.GrenadeArc(Start, AimPoint, speed, high);
+			end
+			-- Led onto a runner (or off our own running): where it will be when the grenade gets there (twice over, as the flight time
+			-- changes with the point).
+			if angle and RelVel.Magnitude > 1 then
 				for _ = 1, 2 do
-					local Lead = AimPoint + TargetVel * GetPPM() * seconds * 0.8;
+					local Lead = AimPoint + RelVel * GetPPM() * seconds * 0.8;
 					local leadAngle, leadSeconds = HumanBehaviors.GrenadeArc(Start, Lead, speed, high);
 					if not leadAngle then
 						break;

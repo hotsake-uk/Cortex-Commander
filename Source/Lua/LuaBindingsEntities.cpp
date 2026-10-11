@@ -601,6 +601,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AHuman) {
 	    .property("ProneState", &AHuman::GetProneState, &AHuman::SetProneState)
 	    .property("ThrowPrepTime", &AHuman::GetThrowPrepTime, &AHuman::SetThrowPrepTime)
 	    .property("ThrowProgress", &AHuman::GetThrowProgress)
+	    .def("GetThrowReleasePos", &AHuman::GetThrowReleasePos)
 	    .property("EquippedItem", &AHuman::GetEquippedItem)
 	    .property("EquippedBGItem", &AHuman::GetEquippedBGItem)
 	    .property("EquippedMass", &AHuman::GetEquippedMass)
@@ -1636,7 +1637,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ThrownDevice) {
 	    .property("TriggerDelay", &ThrownDevice::GetTriggerDelay)
 	    .property("ActivatesWhenReleased", &ThrownDevice::ActivatesWhenReleased)
 
-	    .def("GetCalculatedMaxThrowVelIncludingArmThrowStrength", &ThrownDevice::GetCalculatedMaxThrowVelIncludingArmThrowStrength);
+	    .def("GetCalculatedMaxThrowVelIncludingArmThrowStrength", &ThrownDevice::GetCalculatedMaxThrowVelIncludingArmThrowStrength)
+	    .def("GetCalculatedMinThrowVel", &ThrownDevice::GetCalculatedMinThrowVel);
 }
 
 LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Turret) {
