@@ -57,7 +57,7 @@ namespace RTE {
 		/// @param playerScreen The render target holding the unlit scene for this player screen.
 		/// @param screenOrigin Scene position of the player screen's top left pixel.
 		/// @param screenEffects Glow effects visible on this screen, with positions relative to the screen.
-		void LightPlayerScreen(int screenIndex, RenderTarget* playerScreen, const Vector& screenOrigin, const std::list<PostEffect>& screenEffects, const std::vector<SceneLight>& screenLights, const std::vector<ScreenShockwave>& screenShockwaves);
+		void LightPlayerScreen(int screenIndex, RenderTarget* playerScreen, const Vector& screenOrigin, const std::vector<PostEffect>& screenEffects, const std::vector<SceneLight>& screenLights, const std::vector<ScreenShockwave>& screenShockwaves);
 
 		/// Forces the world light grid to be rebuilt from scratch, e.g. after the scene's terrain changed wholesale.
 		void InvalidateWorld() { m_WorldScene = nullptr; }
@@ -341,6 +341,7 @@ namespace RTE {
 		std::vector<QuadVertex> m_QuadVertices;
 
 		std::unordered_map<const BitmapTexture*, GlowInfo> m_GlowInfoCache;
+		std::unordered_map<uint64_t, size_t> m_MergedLightAt; //!< LightPlayerScreen's index of merged lights by cell and reach, kept so it isn't allocated every screen.
 
 		void LoadShaders();
 		void CreateGeometry();

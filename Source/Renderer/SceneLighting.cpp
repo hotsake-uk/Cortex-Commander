@@ -2022,7 +2022,7 @@ void SceneLighting::DrawFullscreen() const {
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
-void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScreen, const Vector& screenOrigin, const std::list<PostEffect>& screenEffects, const std::vector<SceneLight>& screenLights, const std::vector<ScreenShockwave>& screenShockwaves) {
+void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScreen, const Vector& screenOrigin, const std::vector<PostEffect>& screenEffects, const std::vector<SceneLight>& screenLights, const std::vector<ScreenShockwave>& screenShockwaves) {
 	screenIndex = std::clamp(screenIndex, 0, c_MaxScreens - 1);
 	ZoneScoped;
 	TracyGpuZone("Scene Lighting");
@@ -2127,7 +2127,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		std::vector<SceneLight> mergedLights;
 		mergedLights.reserve(screenLights.size());
 		{
-			std::unordered_map<uint64_t, size_t> mergedAt;
+			// Kept from screen to screen and only cleared, so it isn't allocated anew each time. Only looked up, never walked, so what it held before can't matter.
+			std::unordered_map<uint64_t, size_t>& mergedAt = m_MergedLightAt;
+			mergedAt.clear();
 			mergedAt.reserve(screenLights.size());
 			for (const SceneLight& light: screenLights) {
 				// Steady scenery lamps come from the lamp cache instead.

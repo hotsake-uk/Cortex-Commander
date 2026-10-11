@@ -947,7 +947,7 @@ void PostProcessMan::RegisterPostEffectScaledLight(const Vector& effectPos, std:
 	}
 }
 
-bool PostProcessMan::GetPostScreenEffectsWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::list<PostEffect>& effectsList, int team) {
+bool PostProcessMan::GetPostScreenEffectsWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<PostEffect>& effectsList, int team) {
 	bool found = false;
 
 	// Do the first unwrapped rect
@@ -1030,42 +1030,42 @@ bool PostProcessMan::GetGlowAreasWrapped(const Vector& boxPos, int boxWidth, int
 	return foundAny;
 }
 
-bool PostProcessMan::GetPostScreenEffects(Vector boxPos, int boxWidth, int boxHeight, std::list<PostEffect>& effectsList, int team) {
+bool PostProcessMan::GetPostScreenEffects(Vector boxPos, int boxWidth, int boxHeight, std::vector<PostEffect>& effectsList, int team) {
 	bool found = false;
-	bool unseen = false;
 	Vector postEffectPosRelativeToBox;
 
 	if (g_SceneMan.GetScene()) {
 		for (PostEffect& scenePostEffect: m_PostSceneEffects) {
-			if (team != Activity::NoTeam) {
-				unseen = g_SceneMan.IsUnseen(scenePostEffect.m_Pos.GetFloorIntX(), scenePostEffect.m_Pos.GetFloorIntY(), team);
+			// The cheap box test first: most effects are off this screen, and the unseen test reads the fog of war bitmap.
+			if (!WithinBox(scenePostEffect.m_Pos, boxPos, static_cast<float>(boxWidth), static_cast<float>(boxHeight))) {
+				continue;
 			}
-
-			if (WithinBox(scenePostEffect.m_Pos, boxPos, static_cast<float>(boxWidth), static_cast<float>(boxHeight)) && !unseen) {
-				found = true;
-				postEffectPosRelativeToBox = scenePostEffect.m_Pos - boxPos;
-				effectsList.push_back(PostEffect(postEffectPosRelativeToBox, scenePostEffect.m_Bitmap, scenePostEffect.m_BitmapHash, scenePostEffect.m_Strength, scenePostEffect.m_Angle, scenePostEffect.m_NoLight, scenePostEffect.m_LightScale, scenePostEffect.m_LightReach));
+			if (team != Activity::NoTeam && g_SceneMan.IsUnseen(scenePostEffect.m_Pos.GetFloorIntX(), scenePostEffect.m_Pos.GetFloorIntY(), team)) {
+				continue;
 			}
+			found = true;
+			postEffectPosRelativeToBox = scenePostEffect.m_Pos - boxPos;
+			effectsList.push_back(PostEffect(postEffectPosRelativeToBox, scenePostEffect.m_Bitmap, scenePostEffect.m_BitmapHash, scenePostEffect.m_Strength, scenePostEffect.m_Angle, scenePostEffect.m_NoLight, scenePostEffect.m_LightScale, scenePostEffect.m_LightReach));
 		}
 	}
 	return found;
 }
 
-bool PostProcessMan::GetPostScreenEffects(int left, int top, int right, int bottom, std::list<PostEffect>& effectsList, int team) {
+bool PostProcessMan::GetPostScreenEffects(int left, int top, int right, int bottom, std::vector<PostEffect>& effectsList, int team) {
 	bool found = false;
-	bool unseen = false;
 	Vector postEffectPosRelativeToBox;
 
 	for (PostEffect& scenePostEffect: m_PostSceneEffects) {
-		if (team != Activity::NoTeam) {
-			unseen = g_SceneMan.IsUnseen(scenePostEffect.m_Pos.GetFloorIntX(), scenePostEffect.m_Pos.GetFloorIntY(), team);
+		// The cheap box test first: most effects are off this screen, and the unseen test reads the fog of war bitmap.
+		if (!WithinBox(scenePostEffect.m_Pos, static_cast<float>(left), static_cast<float>(top), static_cast<float>(right), static_cast<float>(bottom))) {
+			continue;
 		}
-
-		if (WithinBox(scenePostEffect.m_Pos, static_cast<float>(left), static_cast<float>(top), static_cast<float>(right), static_cast<float>(bottom)) && !unseen) {
-			found = true;
-			postEffectPosRelativeToBox = Vector(scenePostEffect.m_Pos.m_X - static_cast<float>(left), scenePostEffect.m_Pos.m_Y - static_cast<float>(top));
-			effectsList.push_back(PostEffect(postEffectPosRelativeToBox, scenePostEffect.m_Bitmap, scenePostEffect.m_BitmapHash, scenePostEffect.m_Strength, scenePostEffect.m_Angle, scenePostEffect.m_NoLight, scenePostEffect.m_LightScale, scenePostEffect.m_LightReach));
+		if (team != Activity::NoTeam && g_SceneMan.IsUnseen(scenePostEffect.m_Pos.GetFloorIntX(), scenePostEffect.m_Pos.GetFloorIntY(), team)) {
+			continue;
 		}
+		found = true;
+		postEffectPosRelativeToBox = Vector(scenePostEffect.m_Pos.m_X - static_cast<float>(left), scenePostEffect.m_Pos.m_Y - static_cast<float>(top));
+		effectsList.push_back(PostEffect(postEffectPosRelativeToBox, scenePostEffect.m_Bitmap, scenePostEffect.m_BitmapHash, scenePostEffect.m_Strength, scenePostEffect.m_Angle, scenePostEffect.m_NoLight, scenePostEffect.m_LightScale, scenePostEffect.m_LightReach));
 	}
 	return found;
 }
