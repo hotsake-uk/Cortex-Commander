@@ -539,13 +539,22 @@ namespace SandboxDetail {
 		}
 	}
 
-	/// Fills a shape dragged out with a terrain brush (Brush type Shape) with its material, or digs it out with Dig, in one go.
+	/// Fills a shape dragged out with a terrain brush (Brush type Shape) with its material, or digs it out with Dig, in one go. A line is
+	/// stroke.Radius wide.
 	void FillTerrainShape(const Stroke& stroke) {
+		FillShape shape = static_cast<FillShape>(std::clamp(stroke.Fill, 0, c_FillShapeCount - 1));
+		const Vector& start = stroke.Position;
+		const Vector& end = stroke.Position2;
+		const float width = static_cast<float>(std::clamp(stroke.Radius, 1, c_MaxLineWidth));
+		// The box round it: a line's, out by half its width each way.
+		const float margin = shape == FillShape::Line ? std::ceil(std::max(width * 0.5F, 0.75F)) : 0.0F;
+		int left = static_cast<int>(std::floor(std::min(start.m_X, end.m_X) - margin));
+		int right = static_cast<int>(std::floor(std::max(start.m_X, end.m_X) + margin));
+		int top = static_cast<int>(std::floor(std::min(start.m_Y, end.m_Y) - margin));
+		int bottom = static_cast<int>(std::floor(std::max(start.m_Y, end.m_Y) + margin));
+		auto inside = [&](int x, int y) { return shape == FillShape::Line ? InLineShape(start, end, width, x, y) : InFillShape(shape, start, end, x, y); };
 		if (stroke.Kind == Tool::GrowGrass) {
-			FillShape shape = static_cast<FillShape>(std::clamp(stroke.Fill, 0, 2));
-			const Vector& start = stroke.Position;
-			const Vector& end = stroke.Position2;
-			GrowGrassArea(static_cast<int>(std::floor(std::min(start.m_X, end.m_X))), static_cast<int>(std::floor(std::min(start.m_Y, end.m_Y))), static_cast<int>(std::floor(std::max(start.m_X, end.m_X))), static_cast<int>(std::floor(std::max(start.m_Y, end.m_Y))), [&](int x, int y) { return InFillShape(shape, start, end, x, y); });
+			GrowGrassArea(left, top, right, bottom, inside);
 			return;
 		}
 		float goldShare = 0.0F;
@@ -553,14 +562,7 @@ namespace SandboxDetail {
 		if ((stroke.Kind == Tool::TerrainOther || stroke.Kind == Tool::Metal) && stroke.Material.empty()) {
 			return;
 		}
-		FillShape shape = static_cast<FillShape>(std::clamp(stroke.Fill, 0, 2));
-		const Vector& start = stroke.Position;
-		const Vector& end = stroke.Position2;
-		int left = static_cast<int>(std::floor(std::min(start.m_X, end.m_X)));
-		int right = static_cast<int>(std::floor(std::max(start.m_X, end.m_X)));
-		int top = static_cast<int>(std::floor(std::min(start.m_Y, end.m_Y)));
-		int bottom = static_cast<int>(std::floor(std::max(start.m_Y, end.m_Y)));
-		PaintArea(left, top, right, bottom, [&](int x, int y) { return InFillShape(shape, start, end, x, y); }, materialName, goldShare, stroke.Over);
+		PaintArea(left, top, right, bottom, inside, materialName, goldShare, stroke.Over);
 	}
 
 	/// A base game terrain debris preset, by name.
@@ -2220,13 +2222,29 @@ namespace SandboxDetail {
 		return snap ? Vector(std::round(point.m_X / 12.0F) * 12.0F, std::round(point.m_Y / 24.0F) * 24.0F) : point;
 	}
 
-	Vector LineDragEnd(const Vector& start, const Vector& pointer, bool free, bool snap, LineLock lock) {
+	Vector LineDragEnd(const Vector& start, const Vector& pointer, bool eightWays, bool snap, LineLock lock) {
 		Vector along = g_SceneMan.ShortestDistance(start, pointer, g_SceneMan.SceneWrapsX());
-		if (!free) {
-			if (lock == LineLock::Across || (lock == LineLock::Nearer && std::abs(along.m_X) > std::abs(along.m_Y))) {
-				along.m_Y = 0.0F;
+		if (eightWays) {
+			// The nearest of the 8 ways (0 across, 2 down, 4 back, 6 up, the odd ones slanted); a way the lock rules out gives way to the
+			// nearer slant beside it.
+			float angle = std::atan2(along.m_Y, along.m_X);
+			float steps = angle / (c_PI / 4.0F);
+			int way = (static_cast<int>(std::lround(steps)) % 8 + 8) % 8;
+			bool upDown = way == 2 || way == 6;
+			bool across = way == 0 || way == 4;
+			if ((lock == LineLock::Across && upDown) || (lock == LineLock::UpDown && across)) {
+				way = (way + (steps >= std::round(steps) ? 1 : 7)) % 8;
+			}
+			float length = along.GetMagnitude();
+			if (way % 2 == 0) {
+				float wayAngle = static_cast<float>(way) * (c_PI / 4.0F);
+				along = Vector(std::round(std::cos(wayAngle)), std::round(std::sin(wayAngle))) * length;
 			} else {
-				along.m_X = 0.0F;
+				// Slanted: as far across as down, the pointer's own distance along it.
+				float wayAngle = static_cast<float>(way) * (c_PI / 4.0F);
+				float reach = (along.m_X * std::cos(wayAngle) + along.m_Y * std::sin(wayAngle)) * 0.70710678F;
+				reach = std::max(reach, 0.0F);
+				along = Vector(std::cos(wayAngle) >= 0.0F ? reach : -reach, std::sin(wayAngle) >= 0.0F ? reach : -reach);
 			}
 		}
 		if (along.MagnitudeIsGreaterThan(c_MaxLineDrag)) {
@@ -2234,9 +2252,19 @@ namespace SandboxDetail {
 		}
 		Vector end = start + along;
 		if (snap) {
-			// Snapped, but still straight: only the way it runs moves to the grid.
+			// Snapped, but still the way it runs: straight, only that way moves to the grid; slanted at 45, across moves to the grid and
+			// down follows it.
 			Vector snapped = SnapLinePoint(end, true);
-			end = free ? snapped : (along.m_X == 0.0F ? Vector(start.m_X, snapped.m_Y) : Vector(snapped.m_X, start.m_Y));
+			if (!eightWays) {
+				end = snapped;
+			} else if (along.m_X == 0.0F) {
+				end = Vector(start.m_X, snapped.m_Y);
+			} else if (along.m_Y == 0.0F) {
+				end = Vector(snapped.m_X, start.m_Y);
+			} else {
+				float across = snapped.m_X - start.m_X;
+				end = Vector(snapped.m_X, start.m_Y + (along.m_Y >= 0.0F ? std::abs(across) : -std::abs(across)));
+			}
 		}
 		return end;
 	}
@@ -2995,6 +3023,8 @@ namespace SandboxDetail {
 			case Tool::BattleModeZone:
 			case Tool::BattleModeGoal:
 			case Tool::BattleModeFlag:
+			case Tool::BattlePickupSpot:
+			case Tool::BattlePickupZone:
 				ApplyBattleStroke(stroke);
 				break;
 			case Tool::ClearEffects:
@@ -3381,6 +3411,11 @@ namespace SandboxDetail {
 			s_ModeSetup.Points[team] = at;
 			s_ModeSetup.HasPoint[team] = true;
 			SendBattleMode();
+			return;
+		}
+		if (kind == Tool::BattlePickupSpot) {
+			// Another place the battle's pickups can come in at.
+			PickupSpotPlaced(position);
 			return;
 		}
 		if (kind == Tool::BattleModeFlag) {

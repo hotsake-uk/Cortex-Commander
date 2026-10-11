@@ -354,6 +354,15 @@ namespace RTE {
 		/// Whether the body is climbing a ladder, hand over hand (see UpdateLadder).
 		bool IsClimbingLadder() const { return m_Ladder.active; }
 
+		/// The AI's grab-ladder control: an AI unit takes hold of a ladder (with up or down pressed at it, as a player does) only while this
+		/// was asked for in the last quarter second, and then even with its jet lit. Without it, an AI unit pressing up or down by a ladder
+		/// never takes hold. Its route-follower asks for it where the route climbs a ladder.
+		void GrabLadder();
+
+		/// Whether this unit would take hold of a ladder now: always for a player, for an AI unit only with GrabLadder asked for lately. (The
+		/// background ladders' scripts ask too, so they hold only who means to climb.)
+		bool LadderHoldWanted() const;
+
 		/// How high a leap on the legs lifts this (the body's centre, in pixels): set in the preset (LegJumpHeight), or by default a little
 		/// over half the standing body's height, which every humanoid has, mods' included.
 		/// @return The leap's height.
@@ -1088,6 +1097,7 @@ namespace RTE {
 			Timer stallTimer;
 		};
 		LadderClimb m_Ladder;
+		double m_AIGrabLadderSimMS = -1.0; //!< When the AI's grab-ladder control was last asked for (see GrabLadder).
 		struct TacticalMove {
 			bool active = false;
 			Vector place;
@@ -1123,9 +1133,11 @@ namespace RTE {
 		float HandReachTopY() const;
 		/// Whether the ladder taken at gripX has a rung a hand reaches, from the hand's reach down past the feet (not only one far overhead).
 		bool LadderRungInReach(float gripX, bool material) const;
-		/// Notes that a unit of this team got stuck climbing the ladder taken at ladderX, at height y. @return Whether one of the team was stuck on
-		/// the same ladder in the last minute (the second time, the team is told to avoid it).
+		/// Notes that a unit of this team got stuck climbing the ladder taken at ladderX, at height y. @return Whether units of the team have now
+		/// been stuck on the same ladder within a minute as often as SettingsMan::AILadderTeamStalls asks (then the team is told to avoid it).
 		bool NoteLadderStall(float ladderX, float y) const;
+		/// Whether the route's next step or the one after is up or down a ladder (PathStepKind::Ladder).
+		bool RouteClimbsLadderNext() const;
 		/// Before the jet: taking hold of a ladder (up or down pressed at one), and letting go (a side key, or the jet's key alone).
 		void UpdateLadderInput();
 		/// The body along the ladder, each frame: the climb's pace with the pull of each hand, the top and the bottom.

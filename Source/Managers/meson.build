@@ -70,6 +70,7 @@ sources += files(
 'SandboxBuild.cpp',
 'SandboxAirlift.cpp',
 'BattleSupply.cpp',
+'BattlePickups.cpp',
 'BattleFieldBrain.cpp',
 'BattleHotSeat.cpp',
 'BattleArmy.cpp',

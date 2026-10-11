@@ -316,6 +316,17 @@ namespace RTE {
 		/// How long, in seconds, an AI unit climbing a ladder that has stopped rising waits before letting go and finding another way (the rungs
 		/// shot away above, the ladder ending short, the way up it blocked). 1.5 s as the game comes.
 		float AILadderGiveUpSeconds() const { return m_AILadderGiveUpSeconds; }
+		/// How many times units of a team must get stuck on the same ladder within a minute before the whole team avoids it, 1 to 5 (2 as the game
+		/// comes). Fewer, the unit stuck avoids it alone.
+		int AILadderTeamStalls() const { return m_AILadderTeamStalls; }
+		/// Whether AI units take hold of a ladder only when they mean to climb it (AHuman::GrabLadder), on as the game comes. Off: as a player
+		/// does, whenever up or down is pressed at one.
+		bool AIGrabsLaddersOnPurpose() const { return m_AIGrabsLaddersOnPurpose; }
+		/// Whether an AI unit meaning to climb a ladder can take hold of it with its jetpack lit (cutting the jet), on as the game comes.
+		bool AIGrabsLaddersMidJet() const { return m_AIGrabsLaddersMidJet; }
+		/// Whether risky orders fly past ladders a careful route climbs: they jet up a background ladder's shaft when the tank makes it, and the
+		/// route search prices a ladder climb dearer as their flights are cheaper. On as the game comes.
+		bool RiskyOrdersFlyPastLadders() const { return m_RiskyOrdersFlyPastLadders; }
 
 		/// Gets the percentage, 0 to 100, of units that are handed a digger when they come into the scene without one.
 		float AISpawnDiggerChance() const { return m_AISpawnDiggerChance; }
@@ -646,6 +657,12 @@ namespace RTE {
 		/// Sets how reckless AI units are on the move, 0 to 1 (0.5 as designed).
 		void SetAIRecklessness(float recklessness) { m_AIRecklessness = std::clamp(recklessness, 0.0F, 1.0F); }
 		void SetAILadderGiveUpSeconds(float seconds) { m_AILadderGiveUpSeconds = std::clamp(seconds, 0.5F, 10.0F); }
+		void SetAILadderTeamStalls(int stalls) { m_AILadderTeamStalls = std::clamp(stalls, 1, 5); }
+		void SetAIGrabsLaddersOnPurpose(bool on) { m_AIGrabsLaddersOnPurpose = on; }
+		void SetAIGrabsLaddersMidJet(bool on) { m_AIGrabsLaddersMidJet = on; }
+		void SetRiskyOrdersFlyPastLadders(bool on) { m_RiskyOrdersFlyPastLadders = on; }
+		/// Puts the Movement category's ladder settings back as the game comes.
+		void ResetLadderSettings() { m_AILadderGiveUpSeconds = 1.5F; m_AILadderTeamStalls = 2; m_AIGrabsLaddersOnPurpose = true; m_AIGrabsLaddersMidJet = true; m_RiskyOrdersFlyPastLadders = true; }
 		/// Sets the percentage of units handed a digger as they come into the scene; see AISpawnDiggerChance.
 		void SetAISpawnDiggerChance(float percent) { m_AISpawnDiggerChance = std::clamp(percent, 0.0F, 100.0F); }
 		/// Sets the percentage of wounds that keep bleeding; see BleedOutChance.
@@ -949,6 +966,10 @@ namespace RTE {
 		float m_AIThreatAvoidance; //!< How much safe-route units keep clear of enemies, 0 to 2 (see AIThreatAvoidance).
 		float m_AIRecklessness; //!< How reckless AI units are on the move, 0 to 1 (see AIRecklessness).
 		float m_AILadderGiveUpSeconds; //!< See AILadderGiveUpSeconds.
+		int m_AILadderTeamStalls; //!< See AILadderTeamStalls.
+		bool m_AIGrabsLaddersOnPurpose; //!< See AIGrabsLaddersOnPurpose.
+		bool m_AIGrabsLaddersMidJet; //!< See AIGrabsLaddersMidJet.
+		bool m_RiskyOrdersFlyPastLadders; //!< See RiskyOrdersFlyPastLadders.
 		float m_AISpawnDiggerChance; //!< Percentage of units handed a digger as they come into the scene, 0 to 100 (see AISpawnDiggerChance).
 		float m_BleedOutChance; //!< Percentage of wounds that keep bleeding rather than stopping, 0 to 100 (see BleedOutChance).
 		float m_WeaponTerrainDamage; //!< Multiple of the force weapon fire strikes terrain with, 0.1 to 20 (see WeaponTerrainDamage).

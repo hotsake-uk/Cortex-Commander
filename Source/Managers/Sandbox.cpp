@@ -815,6 +815,7 @@ void Sandbox::DrawGUI() {
 		// (Also while you play a unit: the enemy's strikes coming in, and the squad following you with its keys.)
 		DrawEnemyStrikes();
 		DrawSquad();
+		DrawAISquads();
 		DrawAlerts();
 		DrawHotSeat();
 		if (!ImGui::GetIO().WantTextInput && !ImGui::GetIO().KeyCtrl && !ImGui::GetIO().KeyAlt) {
@@ -1036,8 +1037,9 @@ void Sandbox::DrawGUI() {
 			}
 		} else if (DragsShape(tool.Kind)) {
 			// Brush type Shape: a drag marks out the shape, filled when the button is let go (below). "Make it fall" drags its box the same way.
-			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+			if (!s_ShapeDragging && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 				s_ShapeDragging = true;
+				s_ShapeDigging = false;
 				s_ShapeStart = position;
 			}
 		} else if (tool.Interval <= 0.0F) {
@@ -1061,8 +1063,15 @@ void Sandbox::DrawGUI() {
 			}
 		}
 		// With a Paint tool in hand the right button always digs, whatever material or brush is picked (the middle button and WASD move
-		// the view). Not while you play a unit: the right button is its own then.
-		if (IsPaintTool(tool.Kind) && !s_Possessed && ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+		// the view). Not while you play a unit: the right button is its own then. With a terrain brush and Brush type Shape, a right drag
+		// marks out the shape to dig, dug out when the button is let go (below).
+		if (IsPaintTool(tool.Kind) && !s_Possessed && IsTerrainBrush(tool.Kind) && DragsShape(tool.Kind)) {
+			if (!s_ShapeDragging && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+				s_ShapeDragging = true;
+				s_ShapeDigging = true;
+				s_ShapeStart = position;
+			}
+		} else if (IsPaintTool(tool.Kind) && !s_Possessed && ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
 			s_DigTimer -= io.DeltaTime;
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) || s_DigTimer <= 0.0F) {
 				s_DigTimer = c_Tools[ToolIndex(Tool::Dig)].Interval;
@@ -1091,14 +1100,15 @@ void Sandbox::DrawGUI() {
 		s_RingOpen = false;
 	}
 	if (s_LineDragging) {
-		// A lift's or moving platform's track being dragged out: straight up and down or across (Shift: any way), drawn as its deck at each
+		// A lift's or moving platform's track being dragged out: any way (Shift: the nearest of the 8 ways), drawn as its deck at each
 		// stop and the line between; Escape drops it. Let go, it is put down; a drag too short to be a track is a click.
 		const Preset* preset = ChosenPreset(Tool::Structure, s_StructureChoice);
 		if (!InGame() || !DragsLine(CurrentTool().Kind) || !preset || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
 			s_LineDragging = false;
 		} else if (DragsRun(CurrentTool().Kind)) {
-			// A bunker run being dragged out: straight the way it runs (a piece with a partner, either way), Shift any way, slanted to it. Its
-			// pieces are drawn see-through where they will go, each slanted as it will be; let go, it is put down.
+			// A bunker run being dragged out: any way, slanted to it (Shift: the nearest of the 8 ways, never straight across for a piece that
+			// only runs up and down, or the other way round). Its pieces are drawn see-through where they will go, each slanted as it will be;
+			// let go, it is put down.
 			Vector end = LineDragEnd(s_LineStart, MouseScenePosition(), io.KeyShift, false, RunLock(*preset));
 			bool run = (end - s_LineStart).MagnitudeIsGreaterThan(c_MinLineDrag);
 			if (run) {
@@ -1123,7 +1133,7 @@ void Sandbox::DrawGUI() {
 				}
 				drawList->PopClipRect();
 				const int pieces = static_cast<int>(layout.Tiles.size());
-				std::string label = std::to_string(pieces) + (pieces == 1 ? " piece" : " pieces") + (io.KeyShift ? "" : "    Shift: any angle");
+				std::string label = std::to_string(pieces) + (pieces == 1 ? " piece" : " pieces") + (io.KeyShift ? "" : "    Shift: 8 ways");
 				drawList->AddText(ImVec2(io.MousePos.x + 14.0F, io.MousePos.y + 10.0F), outline, label.c_str());
 			}
 			if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
@@ -1147,7 +1157,7 @@ void Sandbox::DrawGUI() {
 					Vector stand = s_LineStart + along * (static_cast<float>(i) / static_cast<float>(stops - 1));
 					drawList->AddRect(ToScreen(stand - Vector(half, 0.0F)), ToScreen(stand + Vector(half, 8.0F)), color, 0.0F, 0, 1.5F);
 				}
-				std::string label = std::to_string(static_cast<int>(along.GetMagnitude())) + " px" + (io.KeyShift ? "" : "    Shift: any way");
+				std::string label = std::to_string(static_cast<int>(along.GetMagnitude())) + " px" + (io.KeyShift ? "" : "    Shift: 8 ways");
 				drawList->AddText(ImVec2(io.MousePos.x + 14.0F, io.MousePos.y + 10.0F), color, label.c_str());
 			}
 			if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
@@ -1160,14 +1170,17 @@ void Sandbox::DrawGUI() {
 		}
 	}
 	if (s_ShapeDragging) {
-		// The shape being dragged out with a terrain brush (Brush type Shape), drawn as it will be filled; Shift keeps it as wide as it
-		// is tall, Escape drops it.
-		if (!InGame() || !DragsShape(CurrentTool().Kind) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+		// The shape being dragged out with a terrain brush (Brush type Shape), drawn as it will be filled (dug, with the right button: in
+		// orange); Shift keeps it as wide as it is tall (a line: to the 8 ways), Escape drops it.
+		if (!InGame() || !DragsShape(CurrentTool().Kind) || (s_ShapeDigging && (s_Possessed || !IsTerrainBrush(CurrentTool().Kind))) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
 			s_ShapeDragging = false;
 		} else {
 			bool dropBox = CurrentTool().Kind == Tool::CollapseArea;
+			bool line = !dropBox && s_FillShape == FillShape::Line;
 			Vector end = s_ShapeStart + g_SceneMan.ShortestDistance(s_ShapeStart, MouseScenePosition(), g_SceneMan.SceneWrapsX());
-			if (io.KeyShift) {
+			if (line) {
+				end = LineDragEnd(s_ShapeStart, MouseScenePosition(), io.KeyShift, false);
+			} else if (io.KeyShift) {
 				float side = std::max(std::abs(end.m_X - s_ShapeStart.m_X), std::abs(end.m_Y - s_ShapeStart.m_Y));
 				end = s_ShapeStart + Vector(end.m_X >= s_ShapeStart.m_X ? side : -side, end.m_Y >= s_ShapeStart.m_Y ? side : -side);
 			}
@@ -1177,7 +1190,7 @@ void Sandbox::DrawGUI() {
 				end = s_ShapeStart + Vector(std::clamp(end.m_X - s_ShapeStart.m_X, -c_Most, c_Most), std::clamp(end.m_Y - s_ShapeStart.m_Y, -c_Most, c_Most));
 			}
 			ImDrawList* drawList = ImGui::GetForegroundDrawList();
-			ImU32 outline = IM_COL32(255, 255, 255, 220);
+			ImU32 outline = s_ShapeDigging ? IM_COL32(242, 150, 60, 235) : IM_COL32(255, 255, 255, 220);
 			float left = std::min(s_ShapeStart.m_X, end.m_X);
 			float right = std::max(s_ShapeStart.m_X, end.m_X) + 1.0F;
 			float top = std::min(s_ShapeStart.m_Y, end.m_Y);
@@ -1191,6 +1204,24 @@ void Sandbox::DrawGUI() {
 				drawList->AddRect(topLeft, bottomRight, IM_COL32(242, 150, 60, 235), 0.0F, 0, 2.0F);
 				std::string size = std::to_string(static_cast<int>(right - left)) + " x " + std::to_string(static_cast<int>(bottom - top));
 				drawList->AddText(ImVec2(topLeft.x + 4.0F, topLeft.y - ImGui::GetTextLineHeight() - 2.0F), IM_COL32(242, 150, 60, 235), size.c_str());
+			} else if (line) {
+				// The line as wide as it will be, its ends rounded, with how long it is and at what angle.
+				Vector along = end - s_ShapeStart;
+				float length = along.GetMagnitude();
+				float half = std::max(static_cast<float>(s_LineWidth) * 0.5F, 0.75F);
+				float heading = length > 0.0F ? std::atan2(along.m_Y, along.m_X) : 0.0F;
+				constexpr int c_CapPoints = 16;
+				ImVec2 points[c_CapPoints * 2];
+				for (int i = 0; i < c_CapPoints; ++i) {
+					// Round the far end from one side to the other, then back round the near end.
+					float turn = heading - c_HalfPI + c_PI * static_cast<float>(i) / static_cast<float>(c_CapPoints - 1);
+					points[i] = ToScreen(end + Vector(std::cos(turn), std::sin(turn)) * half);
+					points[c_CapPoints + i] = ToScreen(s_ShapeStart - Vector(std::cos(turn), std::sin(turn)) * half);
+				}
+				drawList->AddPolyline(points, c_CapPoints * 2, outline, ImDrawFlags_Closed, 1.5F);
+				int degrees = (static_cast<int>(std::lround(-heading * 180.0F / c_PI)) + 360) % 360;
+				std::string label = std::to_string(static_cast<int>(length)) + " px  " + std::to_string(degrees) + " deg  " + std::to_string(s_LineWidth) + " wide" + (io.KeyShift ? "" : "    Shift: 8 ways");
+				drawList->AddText(ImVec2(io.MousePos.x + 14.0F, io.MousePos.y + 10.0F), outline, label.c_str());
 			} else if (s_FillShape == FillShape::Circle) {
 				constexpr int c_Points = 48;
 				ImVec2 points[c_Points];
@@ -1208,13 +1239,14 @@ void Sandbox::DrawGUI() {
 			} else {
 				drawList->AddRect(ToScreen(Vector(left, top)), ToScreen(Vector(right, bottom)), outline, 0.0F, 0, 1.5F);
 			}
-			if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+			if (!ImGui::IsMouseDown(s_ShapeDigging ? ImGuiMouseButton_Right : ImGuiMouseButton_Left)) {
 				s_ShapeDragging = false;
 				Stroke stroke;
-				stroke.Kind = CurrentTool().Kind;
+				stroke.Kind = s_ShapeDigging ? Tool::Dig : CurrentTool().Kind;
 				stroke.Position = s_ShapeStart;
 				stroke.Position2 = end;
 				stroke.Fill = static_cast<int>(s_FillShape);
+				stroke.Radius = s_LineWidth;
 				stroke.Over = CurrentPaintOver();
 				if (stroke.Kind == Tool::TerrainOther) {
 					stroke.Material = s_OtherTerrain;
@@ -1617,10 +1649,10 @@ void Sandbox::DrawGUI() {
 				ToolUI::Checkbox("Snap to the bunker grid", &s_SnapToGrid);
 				ImGui::SetItemTooltip("On: pieces line up with each other on the 24 pixel grid bunkers are built on. Off: they go exactly where the pointer is.");
 				if (DragsTrack(Tool::Structure)) {
-					ImGui::TextWrapped("A lift or moving platform: drag from where its deck starts to where it runs to (straight up, down or across; Shift for any way). A click puts it down as it comes.");
+					ImGui::TextWrapped("A lift or moving platform: drag from where its deck starts to where it runs to (any way; Shift keeps it to the 8 ways, straight or at 45 degrees). A click puts it down as it comes.");
 				}
 				if (DragsRun(Tool::Structure)) {
-					ImGui::TextWrapped("Drag to lay a run of this piece end to end (Shift for any angle, slanted to it). A click puts down one.");
+					ImGui::TextWrapped("Drag to lay a run of this piece end to end, slanted to it (Shift keeps it to the 8 ways, straight or at 45 degrees). A click puts down one.");
 				}
 				ImGui::TextDisabled("Doors and turrets belong to:");
 				SideChooser();
@@ -1879,7 +1911,7 @@ void Sandbox::DrawGUI() {
 				if (ImGui::RadioButton("Shape", s_ShapeFill)) {
 					s_ShapeFill = true;
 				}
-				ImGui::SetItemTooltip("Shape: click and drag out a circle, triangle or square on the world, and the terrain brush in hand fills it (Dig digs it out). Shift keeps it as wide as tall; Escape drops it.");
+				ImGui::SetItemTooltip("Shape: click and drag out a circle, triangle, square or line on the world, and the terrain brush in hand fills it (Dig digs it out; with any brush, a right drag digs the shape out). Shift keeps it as wide as tall (a line: to the 8 ways, straight or at 45 degrees); Escape drops it.");
 				if (s_ShapeFill) {
 					int fill = static_cast<int>(s_FillShape);
 					ImGui::TextUnformatted("Shape");
@@ -1889,7 +1921,12 @@ void Sandbox::DrawGUI() {
 					ImGui::RadioButton("Triangle##fill", &fill, 1);
 					ImGui::SameLine();
 					ImGui::RadioButton("Square##fill", &fill, 2);
+					ImGui::SameLine();
+					ImGui::RadioButton("Line##fill", &fill, 3);
 					s_FillShape = static_cast<FillShape>(fill);
+					if (s_FillShape == FillShape::Line) {
+						ImGui::SliderInt("Line width", &s_LineWidth, 1, c_MaxLineWidth, "%d px", ImGuiSliderFlags_Logarithmic);
+					}
 				}
 				ImGui::SliderInt("Brush size", &s_Radius, 1, c_MaxBrushRadius, "%d", ImGuiSliderFlags_Logarithmic);
 				int shape = static_cast<int>(s_BrushShape);
