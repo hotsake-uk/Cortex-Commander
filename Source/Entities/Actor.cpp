@@ -470,7 +470,11 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 		reader >> m_StandingOrder.DigTarget;
 		m_StandingOrder.HasDigTarget = true;
 	});
-	MatchProperty("OrderDirect", { reader >> m_StandingOrder.Direct; });
+	MatchProperty("OrderDirect", {
+		float direct = 0.0F;
+		reader >> direct;
+		SetOrderDirect(direct);
+	});
 	MatchProperty("OrderFailReason", {
 		int reason = 0;
 		reader >> reason;
@@ -623,7 +627,7 @@ int Actor::Save(Writer& writer) const {
 	if (m_StandingOrder.HasDigTarget) {
 		writer.NewPropertyWithValue("OrderDigTarget", m_StandingOrder.DigTarget);
 	}
-	if (m_StandingOrder.Direct) {
+	if (m_StandingOrder.Direct > 0.0F) {
 		writer.NewPropertyWithValue("OrderDirect", m_StandingOrder.Direct);
 	}
 	if (m_StandingOrder.FailReason != ORDERFAIL_NONE) {
@@ -1518,21 +1522,25 @@ PathAgent Actor::GetPathAgent() const {
 		agent.DigGoal = true;
 		agent.DigCostScale = PathAgent::c_DigToCostScale;
 	}
-	// A triple-clicked order (StandingOrder::Direct): the shortest way, whatever it takes. No shying from hard flights, long drops or
-	// enemies, and no taste of its own in routes; and a dig-to digs as near a straight line as the ground it can cut allows.
-	// (As tuned in the Battle Behavior settings, SettingsMan::DirectOrders.)
-	if (m_StandingOrder.Direct) {
+	// A double- or triple-clicked order (StandingOrder::Direct): the shortest way, whatever it takes. No shying from hard flights, long
+	// drops or enemies, and no taste of its own in routes; and a dig-to digs as near a straight line as the ground it can cut allows. As
+	// tuned in the Battle Behavior settings (SettingsMan::DirectOrders), in the order's share of it: all of it triple-clicked, part of the
+	// way from a plain order's for a double click.
+	if (const float share = m_StandingOrder.Direct; share > 0.0F) {
 		const SettingsMan::DirectOrderTuning& direct = g_SettingsMan.DirectOrders();
-		agent.Caution = std::min(agent.Caution, direct.Caution);
-		agent.FlightCostScale = direct.FlightCostScale;
+		auto toward = [share](float from, float to) { return from + (to - from) * share; };
+		agent.Caution = toward(agent.Caution, std::min(agent.Caution, direct.Caution));
+		agent.FlightCostScale = toward(1.0F, direct.FlightCostScale);
 		if (direct.IgnoreEnemies) {
-			agent.ThreatWeight = 0.0F;
-			agent.Threats.reset();
+			agent.ThreatWeight *= 1.0F - share;
+			if (agent.ThreatWeight <= 0.0F) {
+				agent.Threats.reset();
+			}
 		}
 		agent.RouteSeed = 0;
 		if (agent.DigGoal) {
-			agent.DigCostScale = std::min(agent.DigCostScale, direct.DigCostScale);
-			agent.LineWeight = direct.LineWeight;
+			agent.DigCostScale = toward(agent.DigCostScale, std::min(agent.DigCostScale, direct.DigCostScale));
+			agent.LineWeight = direct.LineWeight * share;
 		}
 	}
 	for (const std::pair<Vector, double>& avoid: m_AvoidPoints) {
@@ -3007,7 +3015,9 @@ void Actor::GetDebugState(std::vector<DebugStateField>& fields) const {
 	if (order.Kind != ORDER_NONE) {
 		fields.push_back({"orderKind", order.Kind >= 0 && order.Kind < static_cast<int>(std::size(orderKindNames)) ? orderKindNames[order.Kind] : std::to_string(order.Kind), true});
 	}
-	flag("orderDirect", order.Direct);
+	if (order.Direct > 0.0F) {
+		fields.push_back({"orderDirect", std::to_string(static_cast<int>(order.Direct * 100.0F + 0.5F)) + "%", true});
+	}
 	if (order.HasDigTarget) {
 		number("orderDigX", std::floor(order.DigTarget.m_X));
 		number("orderDigY", std::floor(order.DigTarget.m_Y));
