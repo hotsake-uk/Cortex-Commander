@@ -1282,6 +1282,8 @@ void DebugMan::SettingsGUI() {
 			Tip("How fast they fly, up, across and down, as a multiple of a normal unit's limits. Faster gets there sooner but overshoots and tumbles more. 1.5x is normal for a direct order.");
 			Slider("Landing speed", &direct.Touchdown, 3.0F, 15.0F, "%.1f m/s");
 			Tip("How fast they let themselves come down onto the floor before braking: harder landings save time and fuel but bounce and stumble more. A normal unit lands at 5 m/s; 7 is normal for a direct order.");
+			Check("Safe landings", &direct.SafeLandings);
+			Tip("Risky orders never land harder than the unit takes without being hurt, whatever the landing speed above says. Off: they land as hard as set, and a heavy unit may hurt itself on arrival. On is normal.");
 		}
 		Heading("Direct: route");
 		{

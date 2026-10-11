@@ -277,6 +277,7 @@ namespace RTE {
 			bool Steady = false; //!< Whether they still steady themselves before a take-off.
 			float FlightSpeed = 1.5F; //!< How fast they fly, as a multiple of the usual speed limits up, across and down.
 			float Touchdown = 7.0F; //!< How fast they let themselves come down onto the floor, m/s (5 is the usual).
+			bool SafeLandings = true; //!< Whether that landing is held under the speed the body is hurt at (AHuman::PilotFlight).
 			float DigCostScale = 0.02F; //!< What a node dug costs them on a dig-to, as a share of the usual (PathAgent::DigCostScale): lower tunnels straighter.
 			float LineWeight = 0.1F; //!< On a dig-to, what each node off the straight line costs them, in nodes walked (PathFinder::LineCost).
 			bool IgnoreEnemies = true; //!< Whether their routes take no notice of enemies on the way.

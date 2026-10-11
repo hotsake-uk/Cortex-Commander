@@ -726,6 +726,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DirectFuelShare", { reader >> m_DirectOrders.FuelShare; m_DirectOrders.FuelShare = std::clamp(m_DirectOrders.FuelShare, 0.1F, 1.2F); });
 	MatchProperty("DirectSteady", { reader >> m_DirectOrders.Steady; });
 	MatchProperty("DirectFlightSpeed", { reader >> m_DirectOrders.FlightSpeed; m_DirectOrders.FlightSpeed = std::clamp(m_DirectOrders.FlightSpeed, 1.0F, 3.0F); });
+	MatchProperty("DirectSafeLandings", { reader >> m_DirectOrders.SafeLandings; });
 	MatchProperty("DirectTouchdown", { reader >> m_DirectOrders.Touchdown; m_DirectOrders.Touchdown = std::clamp(m_DirectOrders.Touchdown, 3.0F, 15.0F); });
 	MatchProperty("DirectDigCost", { reader >> m_DirectOrders.DigCostScale; m_DirectOrders.DigCostScale = std::clamp(m_DirectOrders.DigCostScale, 0.01F, 1.0F); });
 	MatchProperty("DirectLineWeight", { reader >> m_DirectOrders.LineWeight; m_DirectOrders.LineWeight = std::clamp(m_DirectOrders.LineWeight, 0.0F, 1.0F); });
@@ -1182,6 +1183,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("DirectSteady", m_DirectOrders.Steady);
 	writer.NewPropertyWithValue("DirectFlightSpeed", m_DirectOrders.FlightSpeed);
 	writer.NewPropertyWithValue("DirectTouchdown", m_DirectOrders.Touchdown);
+	writer.NewPropertyWithValue("DirectSafeLandings", m_DirectOrders.SafeLandings);
 	writer.NewPropertyWithValue("DirectDigCost", m_DirectOrders.DigCostScale);
 	writer.NewPropertyWithValue("DirectLineWeight", m_DirectOrders.LineWeight);
 	writer.NewPropertyWithValue("DirectIgnoreEnemies", m_DirectOrders.IgnoreEnemies);
