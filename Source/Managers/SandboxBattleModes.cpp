@@ -13,8 +13,11 @@ namespace SandboxDetail {
 		/// Sim updates in a second of game time.
 		float UpdatesPerSecond() { return 1.0F / std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F); }
 
+		/// A team's size: the most of its units alive at once.
+		int SizeOf(const BattleModeSettings& settings, int side) { return side >= 0 && side < c_Sides ? settings.TeamSize[side] : settings.TeamSize[0]; }
+
 		/// Units that come at a time to a team of so many: a quarter of it, from 1 to 10.
-		int PerWave(const BattleModeSettings& settings) { return std::clamp((settings.TeamSize + 3) / 4, 1, 10); }
+		int PerWave(const BattleModeSettings& settings, int side) { return std::clamp((SizeOf(settings, side) + 3) / 4, 1, 10); }
 
 		/// A team's spawn zones that are drawn (closed, with three corners or more).
 		std::vector<std::vector<Vector>> ZonesOf(const BattleModeSettings& settings, int side) {
@@ -131,9 +134,9 @@ namespace SandboxDetail {
 			team.Active = TeamIn(settings, side);
 			team.Style = BattleStyle::Attack;
 			team.EndlessMoney = true;
-			team.UnitLimit = std::clamp(settings.TeamSize, 1, 200);
-			team.WaveSize = PerWave(settings);
-			team.ZoneUnits = PerWave(settings);
+			team.UnitLimit = std::clamp(SizeOf(settings, side), 1, 200);
+			team.WaveSize = PerWave(settings, side);
+			team.ZoneUnits = PerWave(settings, side);
 			// (Looked at every second, or every few for ships: how many come is held to those whose respawn time is up, ModeRoom.)
 			team.ZoneEverySeconds = 1;
 			team.EverySeconds = 5;
@@ -147,7 +150,7 @@ namespace SandboxDetail {
 				float left = 0.0F;
 				float right = 0.0F;
 				BaseSpan(base, left, right);
-				team.ShipsPerBurst = std::clamp(settings.TeamSize / 15 + 1, 1, 4);
+				team.ShipsPerBurst = std::clamp(SizeOf(settings, side) / 15 + 1, 1, 4);
 				team.Invincible = true;
 				team.DropOnLine = true;
 				team.HasLine = true;
@@ -370,13 +373,13 @@ namespace SandboxDetail {
 		std::array<std::unordered_set<long>, c_Sides> s_Alive; //!< The unique IDs of each team's units last seen alive.
 		std::array<std::deque<long long>, c_Sides> s_FellAt; //!< When each team's fallen units fell, the oldest first, till they are replaced.
 		std::array<int, c_Sides> s_Released{}; //!< Units each team may have sent so far: its team size, and one for each fallen unit whose time is up.
-		int s_SizeReleased = 0; //!< The team size s_Released was given for.
+		std::array<int, c_Sides> s_SizeReleased{}; //!< The team size each team's s_Released was given for.
 
 		void StartRespawns() {
 			for (int side = 0; side < c_Sides; ++side) {
 				s_Alive[side].clear();
 				s_FellAt[side].clear();
-				s_Released[side] = s_ModeRun.Settings.TeamSize;
+				s_Released[side] = s_ModeRun.Settings.TeamSize[side];
 			}
 			s_SizeReleased = s_ModeRun.Settings.TeamSize;
 		}
@@ -393,12 +396,12 @@ namespace SandboxDetail {
 				return;
 			}
 			const long long now = g_TimerMan.GetSimUpdateCount();
-			if (s_SizeReleased != s_ModeRun.Settings.TeamSize) {
-				// (The team size changed during the game: more room at once, or less as units fall.)
-				for (int& released: s_Released) {
-					released += std::max(s_ModeRun.Settings.TeamSize - s_SizeReleased, 0);
+			for (int side = 0; side < c_Sides; ++side) {
+				if (s_SizeReleased[side] != s_ModeRun.Settings.TeamSize[side]) {
+					// (The team's size changed during the game: more room at once, or less as units fall.)
+					s_Released[side] += std::max(s_ModeRun.Settings.TeamSize[side] - s_SizeReleased[side], 0);
+					s_SizeReleased[side] = s_ModeRun.Settings.TeamSize[side];
 				}
-				s_SizeReleased = s_ModeRun.Settings.TeamSize;
 			}
 			if (now % 30 != 0) {
 				return;
@@ -428,7 +431,7 @@ namespace SandboxDetail {
 		/// Respawns a team has left (units it may send beyond its first team size), or -1 for no limit.
 		int RespawnsLeft(int side) {
 			const int most = s_ModeRun.Settings.MaxRespawns;
-			return most > 0 ? std::max(most - std::max(s_BattleTeams[side].Sent - s_ModeRun.Settings.TeamSize, 0), 0) : -1;
+			return most > 0 ? std::max(most - std::max(s_BattleTeams[side].Sent - s_ModeRun.Settings.TeamSize[side], 0), 0) : -1;
 		}
 
 		/// With a limit on respawns, every second: a team with none left and no units in is out, and the last team left in wins.
@@ -3480,7 +3483,7 @@ namespace SandboxDetail {
 		// Only as many as have been given back by the respawn time, of those fallen, and the respawns left (if they're limited).
 		room = std::min(room, s_Released[side] - s_BattleTeams[side].Sent);
 		if (const int respawns = RespawnsLeft(side); respawns >= 0) {
-			room = std::min(room, std::max(s_ModeRun.Settings.TeamSize - s_BattleTeams[side].Sent, 0) + respawns);
+			room = std::min(room, std::max(s_ModeRun.Settings.TeamSize[side] - s_BattleTeams[side].Sent, 0) + respawns);
 		}
 		const BattleModeInfo& mode = ModeOf(s_ModeRun.Settings.Mode);
 		return mode.Room ? mode.Room(side, room) : room;
@@ -3594,8 +3597,6 @@ namespace SandboxDetail {
 			ImGui::TextColored(ImVec4(1.0F, 0.6F, 0.4F, 1.0F), "%s", why.c_str());
 		}
 
-		changed |= ImGui::SliderInt("Team size", &setup.TeamSize, 2, 100, "%d alive at most");
-		ImGui::SetItemTooltip("Most units each team has alive at once.");
 		changed |= ImGui::SliderInt("Respawn after", &setup.RespawnSeconds, 0, 60, setup.RespawnSeconds > 0 ? "%d s" : "at once");
 		ImGui::SetItemTooltip("Seconds after one of a team's units falls before another comes in its place.");
 		changed |= ImGui::SliderInt("Most respawns", &setup.MaxRespawns, 0, 500, setup.MaxRespawns > 0 ? "%d a team" : "no limit");
@@ -3809,6 +3810,9 @@ namespace SandboxDetail {
 					SendBattleSettings(side);
 				}
 				ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0F);
+				changed |= ImGui::SliderInt("Team size##size", &setup.TeamSize[side], 2, 100, "%d alive at most");
+				ImGui::SetItemTooltip("Most of this team's units alive at once. Can be changed during the game.");
+				ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0F);
 				changed |= ImGui::SliderInt("Rush the objective##rush", &setup.RushPercent[side], 0, 100, setup.RushPercent[side] > 0 ? "%d%% of its units" : "none");
 				ImGui::SetItemTooltip("The share of this team's units that make a beeline for the objective: on the way they keep moving, shooting as they go, and don't take cover, flank, fall back or stop to fight. Once there they fight as the rest do. Guards (of their own flag or VIP) never rush.");
 				ImGui::Unindent();
@@ -3941,7 +3945,7 @@ void Sandbox::StartBattleMode(int mode, int teamSize, bool byShip) {
 	}
 	BattleModeSettings settings = s_ModeRun.Settings;
 	settings.Mode = static_cast<BattleMode>(std::clamp(mode, 0, static_cast<int>(BattleMode::Count) - 1));
-	settings.TeamSize = std::clamp(teamSize, 2, 100);
+	settings.TeamSize.fill(std::clamp(teamSize, 2, 100));
 	settings.ByShip = byShip;
 	for (int side = 0; side < c_Sides; ++side) {
 		settings.Plays[side] = HasZones(settings, side);

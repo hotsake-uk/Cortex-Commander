@@ -60,7 +60,7 @@ namespace SandboxDetail {
 		/// Every field of the mode panel, as VisitCard.
 		template <typename Visitor> void VisitMode(BattleModeSettings& mode, Visitor& visit) {
 			visit("Mode", mode.Mode);
-			visit("TeamSize", mode.TeamSize);
+			visit("TeamSizes", mode.TeamSize);
 			visit("Plays", mode.Plays);
 			visit("SpawnZones", mode.SpawnZones);
 			visit("HasPoint", mode.HasPoint);
@@ -235,6 +235,12 @@ namespace SandboxDetail {
 				preset.Cards[side].Craft = std::clamp(preset.Cards[side].Craft, 0, static_cast<int>(std::size(c_Crafts)) - 1);
 			}
 			Loader load{lines, "Mode."};
+			// (Saved before each team had its own size: the one size, for every team.)
+			if (auto size = lines.find("Mode.TeamSize"); size != lines.end()) {
+				int teamSize = preset.Mode.TeamSize[0];
+				FromText(size->second, teamSize);
+				preset.Mode.TeamSize.fill(teamSize);
+			}
 			VisitMode(preset.Mode, load);
 			preset.Mode.Attacker = std::clamp(preset.Mode.Attacker, 0, c_Sides - 1);
 			if (preset.Mode.FlagSpots.size() > c_MaxFlagSpots) {
