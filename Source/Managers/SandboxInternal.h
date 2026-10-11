@@ -966,6 +966,34 @@ namespace SandboxDetail {
 	constexpr float c_VehicleTuneMin = 0.25F; //!< The least a vehicle tuning multiplier goes down to.
 	constexpr float c_VehicleTuneMax = 5.0F; //!< The most a vehicle tuning multiplier goes up to.
 
+	/// A unit of your own design (the Loadout Builder): a unit preset and exactly what it carries. Kept in c_LoadoutsFile, by name.
+	struct CustomLoadout {
+		std::string Name;
+		std::string Body; //!< The unit preset it is made as.
+		std::vector<std::string> Items; //!< What it carries, by item preset name, in order: the first is what it holds.
+		int Temperament = -1; //!< Actor::Temperament it is given, -1 for the unit's own.
+		bool FactionKit = false; //!< A squad's plain unit: armed as the Spawn tab's "Faction default" arms it, not with Items.
+	};
+
+	/// One line of a squad: a plain unit (with its faction's guns) or one of your loadouts, and how many of it.
+	struct SquadSlot {
+		std::string Name; //!< The unit preset's name, or the loadout's (Custom).
+		bool Custom = false;
+		int Count = 1;
+	};
+
+	/// A squad of your own design (the Squad Builder). Its first unit leads; the rest follow it.
+	struct CustomSquad {
+		std::string Name;
+		std::vector<SquadSlot> Slots;
+	};
+
+	/// What the Spawn tab's units are made as besides the picture picked: nothing else, one of your loadouts, or one of your squads.
+	struct CustomPick {
+		enum Kinds { None, Loadout, Squad } Kind = None;
+		std::string Name;
+	};
+
 	struct Stroke {
 		Tool Kind;
 		Vector Position;
@@ -1012,6 +1040,10 @@ namespace SandboxDetail {
 		bool DriverRandom = false; //!< Tool::Vehicle with Vehicle.Crewed: the driver a random unit, from FavouritesOnly and RandomFaction.
 		int CrewChoice = -1; //!< Tool::Vehicle with Vehicle.Crewed: the rest of the crew, as DriverChoice (Vehicle.Crew).
 		bool CrewRandom = false; //!< Tool::Vehicle with Vehicle.Crewed: the rest of the crew random units, as DriverRandom.
+		std::vector<CustomLoadout> Customs; //!< Units and drops: each unit to make, from one of your loadouts or squads (a squad laid out a unit each), taken at the click. Empty for the unit picked.
+		std::string SquadName; //!< With Customs from a squad: its name. They are spawned as that squad (FormSquad).
+		std::vector<CustomLoadout> DriverCustom; //!< Tool::Vehicle with Vehicle.Crewed: the driver is one of your loadouts (one entry), taken at the click.
+		std::vector<CustomLoadout> CrewCustom; //!< As DriverCustom, for the rest of the crew.
 	};
 
 	struct CraftChoice {
@@ -2273,7 +2305,7 @@ namespace SandboxDetail {
 	/// Gives a spawned unit a temperament (Actor::Temperament), unless it is -1 (each one's own).
 	void ApplyTemperament(Actor* actor, int temperament);
 	/// The Spawn tab's temperament choice for spawned units (s_SpawnTemperament).
-	void TemperamentCombo(const char* label);
+	void TemperamentCombo(const char* label, int* temperament = nullptr); //!< @param temperament What it sets; the Spawn tab's (s_SpawnTemperament) if null.
 	bool IsSelectable(const Actor* actor);
 	MovableObject* ObjectUnder(const Vector& position, bool actorsOnly);
 	void SendUnit(Actor* unit, const Vector& waypoint, Actor* target, bool attack, const char* reason, bool lock = false, bool resend = false);
@@ -2365,6 +2397,8 @@ namespace SandboxDetail {
 	void StrikeLightning(const Vector& target);
 	void GiveLoadout(Actor* actor, const Preset& unit, int loadout);
 	Actor* CreateUnit(const Preset& preset, int team, int loadout, Order order);
+	/// A unit not yet in the world set up to follow an order once it is (CreateUnit's orders): what a craft's passengers are given.
+	void ReadyOrder(Actor* actor, int team, Order order);
 	float DropUnits(std::vector<Actor*>& units, int team, float x, int craft, bool invincible = false);
 	void KeepCraftWhole(ACraft* ship);
 	void SpawnUnits(const Stroke& stroke, bool brain);
@@ -2738,14 +2772,17 @@ namespace SandboxDetail {
 	void SideChooser();
 	void UndoButton(); //!< Takes back the newest step of the shared paint and placing undo (Tool::UndoTerrain), as Ctrl+Z does.
 	void PresetList(Tool kind, const char* group = nullptr, float rows = 8.0F);
-	void LoadoutChooser(const char* label = "Loadout");
+	/// @param mine Whether your loadouts and squads (s_SpawnPick) are offered too: the Spawn tab's units and drops.
+	void LoadoutChooser(const char* label = "Loadout", bool mine = false);
 	void ForgetPictures();
 	void PaletteColor(int index, unsigned char* rgb);
 	const PiecePicture& PictureOf(const Preset& preset);
 	bool ChoiceCombo(const char* label, std::string& chosen, const std::vector<std::string>& values);
 	/// The picture browser of a list, as on the Spawn tab. @param pickInto If given, a click sets this to the preset name picked (and that
 	/// one is shown as chosen) instead of taking up the tool, with search and filters of its own.
-	void PictureGrid(Tool kind, const char* group, std::string* pickInto = nullptr);
+	/// @param rows With pickInto, how many rows of tiles tall it is (0 for a few, below 0 the rest of the window); else it fills the rest of the window. @param pickerSlot With
+	/// pickInto, which picker's search and filters it keeps (0 the You tab's base class; others for the Loadouts window's own).
+	void PictureGrid(Tool kind, const char* group, std::string* pickInto = nullptr, float rows = 0.0F, int pickerSlot = 0);
 
 	/// The Spawn tab's vehicle options: Default or Modified, the tuning sliders (with the vehicle chosen's own values beside them) and the crew.
 	void VehicleOptions();
@@ -3034,6 +3071,53 @@ namespace SandboxDetail {
 
 	/// Where the enemy's strikes are coming down, marked till they land. Call from the ImGui frame.
 	void DrawEnemyStrikes();
+#pragma endregion
+
+#pragma region Loadout and Squad Builders (SandboxLoadouts.cpp)
+	constexpr const char* c_LoadoutsFile = "Userdata/SandboxLoadouts.txt";
+	inline std::vector<CustomLoadout> s_CustomLoadouts;
+	inline std::vector<CustomSquad> s_CustomSquads;
+	inline CustomPick s_SpawnPick; //!< What the Spawn tab's Units and Drop squad make instead of the unit picked, if anything.
+	inline bool s_LoadoutWindowOpen = false; //!< The Loadouts window (the Loadout and Squad Builders) is open.
+
+	/// Your loadouts and squads read from c_LoadoutsFile, the first time they're wanted.
+	void LoadLoadoutsFile();
+	void SaveLoadoutsFile();
+	const CustomLoadout* FindCustomLoadout(const std::string& name);
+	const CustomSquad* FindCustomSquad(const std::string& name);
+
+	/// What a unit carries when spawned with its faction's kit, as item preset names: its own inventory, then the first of its faction's
+	/// primaries, secondaries and grenades (the Coalition's for factions without guns). Where the Loadout Builder starts a unit from.
+	std::vector<std::string> DefaultKitOf(const Preset& unit);
+
+	/// The units a pick makes, one entry each: a loadout once, a squad laid out slot by slot. Empty for none, or one no longer there.
+	std::vector<CustomLoadout> UnitsOfPick(const CustomPick& pick);
+
+	/// A unit made as a loadout says, on a side, run by the AI: not yet in the world, with no orders. Null if its unit isn't in this game.
+	Actor* MakeCustomUnit(const CustomLoadout& loadout, int team);
+
+	/// Notes units just made as one of your squads: the first leads, with the order given; the others follow it once they're in the world
+	/// (out of a craft that brought them), and a new leader is picked if it falls. They are drawn as a squad and selected together.
+	void FormSquad(const std::vector<Actor*>& members, const std::string& name, int team, Order order);
+
+	/// The squad a unit is in, as its members (leader first), or none. For selecting one picks up all of them.
+	std::vector<Actor*> SquadMatesOf(const Actor* unit);
+
+	/// Keeps your squads together: followers joined to the leader once out in the world, a new leader for a fallen one. Each sim update.
+	void UpdatePlayerSquads();
+
+	/// Each of your squads' name over its leader, with a line to each member. Call from the ImGui frame.
+	void DrawPlayerSquads();
+
+	/// The squads forgotten, on a new scene.
+	void ForgetPlayerSquads();
+
+	/// Your loadouts and squads to choose from, for inside a combo: Selectables that set pick. @param squads Whether squads are offered too.
+	/// @return Whether one was picked.
+	bool CustomPickItems(CustomPick& pick, bool squads);
+
+	/// The Loadouts window: the Loadout Builder and the Squad Builder. Call from the ImGui frame.
+	void LoadoutWindow();
 #pragma endregion
 
 #pragma region Squad follows me (BattleSquad.cpp)

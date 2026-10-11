@@ -1079,21 +1079,35 @@ namespace SandboxDetail {
 		}
 	}
 
-	void LoadoutChooser(const char* label) {
-		const char* current = s_Loadout == 0 ? "Faction default" : (s_Loadout == 1 ? "Unarmed" : (s_Loadout - 2 < static_cast<int>(s_Weapons.size()) ? s_Weapons[s_Loadout - 2]->Label.c_str() : "?"));
-		if (ImGui::BeginCombo(label, current)) {
-			if (ImGui::Selectable("Faction default", s_Loadout == 0)) {
-				s_Loadout = 0;
+	void LoadoutChooser(const char* label, bool mine) {
+		const bool custom = mine && s_SpawnPick.Kind != CustomPick::None && !s_RandomUnits;
+		std::string customName = custom ? s_SpawnPick.Name + (s_SpawnPick.Kind == CustomPick::Squad ? " (my squad)" : " (my loadout)") : std::string();
+		const char* current = custom ? customName.c_str() : s_Loadout == 0 ? "Faction default" : (s_Loadout == 1 ? "Unarmed" : (s_Loadout - 2 < static_cast<int>(s_Weapons.size()) ? s_Weapons[s_Loadout - 2]->Label.c_str() : "?"));
+		if (ImGui::BeginCombo(label, current, ImGuiComboFlags_HeightLarge)) {
+			if (mine && CustomPickItems(s_SpawnPick, true)) {
+				s_RandomUnits = false;
 			}
-			if (ImGui::Selectable("Unarmed", s_Loadout == 1)) {
+			if (mine) {
+				ImGui::SeparatorText("The unit picked, carrying");
+			}
+			if (ImGui::Selectable("Faction default", !custom && s_Loadout == 0)) {
+				s_Loadout = 0;
+				s_SpawnPick = CustomPick();
+			}
+			if (ImGui::Selectable("Unarmed", !custom && s_Loadout == 1)) {
 				s_Loadout = 1;
+				s_SpawnPick = CustomPick();
 			}
 			for (int i = 0; i < static_cast<int>(s_Weapons.size()); ++i) {
-				if (ImGui::Selectable(s_Weapons[i]->Label.c_str(), s_Loadout == i + 2)) {
+				if (ImGui::Selectable(s_Weapons[i]->Label.c_str(), !custom && s_Loadout == i + 2)) {
 					s_Loadout = i + 2;
+					s_SpawnPick = CustomPick();
 				}
 			}
 			ImGui::EndCombo();
+		}
+		if (custom) {
+			ImGui::SetItemTooltip(s_SpawnPick.Kind == CustomPick::Squad ? "One of your squads: a click puts the whole squad down, the first unit leading, the rest following it." : "One of your loadouts: its own unit carrying its own kit, in place of the unit picked above.");
 		}
 	}
 
@@ -1113,6 +1127,25 @@ namespace SandboxDetail {
 				pick = "*";
 			}
 			ImGui::SetItemTooltip("Each one picked at random, from where the Units list's random units come from (Random units, favourites or a faction).");
+			// Your loadouts whose unit can sit.
+			LoadLoadoutsFile();
+			bool loadoutsHeaded = false;
+			for (const CustomLoadout& loadout: s_CustomLoadouts) {
+				if (!CanCrew(FindPreset(s_Units, loadout.Body))) {
+					continue;
+				}
+				if (!loadoutsHeaded) {
+					ImGui::SeparatorText("My loadouts");
+					loadoutsHeaded = true;
+				}
+				std::string key = "@" + loadout.Name;
+				ImGui::PushID(key.c_str());
+				if (ImGui::Selectable(loadout.Name.c_str(), pick == key)) {
+					pick = key;
+				}
+				ImGui::SetItemTooltip("%s carrying its own kit (the loadout below is not used for it)", loadout.Body.c_str());
+				ImGui::PopID();
+			}
 			ImGui::Separator();
 			if (ImGui::IsWindowAppearing()) {
 				ImGui::SetKeyboardFocusHere();
@@ -1406,12 +1439,12 @@ namespace SandboxDetail {
 		return false;
 	}
 
-	void PictureGrid(Tool kind, const char* group, std::string* pickInto) {
+	void PictureGrid(Tool kind, const char* group, std::string* pickInto, float rows, int pickerSlot) {
 		LoadFavouritesFile();
 		const std::vector<Preset>& list = ListFor(kind);
 		int& choice = ChoiceFor(kind);
-		// A picker keeps its search and filters apart from the tool's, under the character's tool.
-		Tool filterKey = pickInto ? Tool::PlayCharacter : kind;
+		// A picker keeps its search and filters apart from the tool's, under the character's tool (or, for another picker, a key past every tool).
+		Tool filterKey = pickInto ? (pickerSlot > 0 ? static_cast<Tool>(10000 + pickerSlot) : Tool::PlayCharacter) : kind;
 		char* filter = FilterFor(filterKey, true);
 		// How the tiles show what each thing is like: not at all, in the tooltip, or on the tile too. One setting for every list.
 		const char* statsModes[] = {"Stats: off", "Stats: on hover", "Stats: always"};
@@ -1473,7 +1506,7 @@ namespace SandboxDetail {
 		constexpr int c_TileStatLines = 3;
 		float labelHeight = ImGui::GetTextLineHeight() * (statsMode == 2 ? 2.0F + static_cast<float>(c_TileStatLines) : 2.0F);
 		// A picker sits among other settings, so it keeps to a few rows rather than filling the rest of the window.
-		float height = pickInto ? (cell + labelHeight + style.ItemSpacing.y) * 2.6F : std::max(ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() * 6.5F, cell * 2.5F);
+		float height = pickInto && rows < 0.0F ? std::max(ImGui::GetContentRegionAvail().y, cell * 1.5F) : pickInto ? (cell + labelHeight + style.ItemSpacing.y) * (rows > 0.0F ? rows : 2.6F) : std::max(ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() * 6.5F, cell * 2.5F);
 		ImGui::BeginChild("##pictures", ImVec2(-1.0F, height), ImGuiChildFlags_Borders);
 		int columns = std::max(1, static_cast<int>((ImGui::GetContentRegionAvail().x + style.ItemSpacing.x) / (cell + style.ItemSpacing.x)));
 		int shown = 0;
@@ -1563,6 +1596,10 @@ namespace SandboxDetail {
 			} else if (picked) {
 				choice = i;
 				TookTool(ToolIndex(kind));
+				if (kind == Tool::Unit || kind == Tool::Drop) {
+					// (This unit, then, not one of your loadouts or squads.)
+					s_SpawnPick = CustomPick();
+				}
 			}
 			if (ImGui::IsItemClicked(ImGuiMouseButton_Right) && Sandbox::IsGodMode() && !pickInto) {
 				TogglePin(kind, preset.PresetName);
@@ -2312,21 +2349,39 @@ namespace SandboxDetail {
 			} else if ((tool.Kind == Tool::Unit && !s_RandomUnits) || tool.Kind == Tool::Brain || tool.Kind == Tool::Vehicle) {
 				// The units a click puts down, see-through, where they will stand (SpawnUnits): the squad spread out sideways from the point,
 				// facing the middle of the view.
-				if (const Preset* preset = ChosenPreset(tool.Kind, ChoiceFor(tool.Kind))) {
-					const PiecePicture& picture = PictureOf(*preset);
-					if (picture.Texture != 0) {
-						Vector mouse = MouseScenePosition();
-						Vector viewMiddle(g_CameraMan.GetOffset(0).m_X + static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, mouse.m_Y);
-						bool flipped = g_SceneMan.ShortestDistance(mouse, viewMiddle, g_SceneMan.SceneWrapsX()).m_X < 0.0F;
-						int count = tool.Kind == Tool::Unit ? std::max(s_SquadSize, 1) : 1;
-						for (int i = 0; i < count; ++i) {
-							float spread = (static_cast<float>(i) - static_cast<float>(count - 1) * 0.5F) * 16.0F;
-							// Mirrored about the unit's position when it faces left, as the game draws it.
-							float left = flipped ? -picture.OffsetX - static_cast<float>(picture.Width) + 1.0F : picture.OffsetX;
-							ImVec2 topLeft = ToScreen(mouse + Vector(spread + left, picture.OffsetY));
-							ImVec2 bottomRight(topLeft.x + static_cast<float>(picture.Width) / scale, topLeft.y + static_cast<float>(picture.Height) / scale);
-							drawList->AddImage(static_cast<ImTextureID>(picture.Texture), topLeft, bottomRight, ImVec2(flipped ? 1.0F : 0.0F, 0.0F), ImVec2(flipped ? 0.0F : 1.0F, 1.0F), IM_COL32(255, 255, 255, 150));
+				// (One of your loadouts or squads: each its own unit.)
+				std::vector<const Preset*> bodies;
+				if (tool.Kind == Tool::Unit && s_SpawnPick.Kind != CustomPick::None) {
+					for (const CustomLoadout& unit: UnitsOfPick(s_SpawnPick)) {
+						const Preset* body = FindPreset(s_Units, unit.Body);
+						bodies.push_back(body ? body : FindPreset(s_Brains, unit.Body));
+					}
+					if (s_SpawnPick.Kind == CustomPick::Loadout && !bodies.empty()) {
+						bodies.assign(static_cast<size_t>(std::max(s_SquadSize, 1)), bodies.front());
+					}
+				}
+				if (bodies.empty()) {
+					bodies.assign(tool.Kind == Tool::Unit ? static_cast<size_t>(std::max(s_SquadSize, 1)) : 1, ChosenPreset(tool.Kind, ChoiceFor(tool.Kind)));
+				}
+				{
+					Vector mouse = MouseScenePosition();
+					Vector viewMiddle(g_CameraMan.GetOffset(0).m_X + static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, mouse.m_Y);
+					bool flipped = g_SceneMan.ShortestDistance(mouse, viewMiddle, g_SceneMan.SceneWrapsX()).m_X < 0.0F;
+					int count = static_cast<int>(bodies.size());
+					for (int i = 0; i < count; ++i) {
+						if (!bodies[i]) {
+							continue;
 						}
+						const PiecePicture& picture = PictureOf(*bodies[i]);
+						if (picture.Texture == 0) {
+							continue;
+						}
+						float spread = (static_cast<float>(i) - static_cast<float>(count - 1) * 0.5F) * 16.0F;
+						// Mirrored about the unit's position when it faces left, as the game draws it.
+						float left = flipped ? -picture.OffsetX - static_cast<float>(picture.Width) + 1.0F : picture.OffsetX;
+						ImVec2 topLeft = ToScreen(mouse + Vector(spread + left, picture.OffsetY));
+						ImVec2 bottomRight(topLeft.x + static_cast<float>(picture.Width) / scale, topLeft.y + static_cast<float>(picture.Height) / scale);
+						drawList->AddImage(static_cast<ImTextureID>(picture.Texture), topLeft, bottomRight, ImVec2(flipped ? 1.0F : 0.0F, 0.0F), ImVec2(flipped ? 0.0F : 1.0F, 1.0F), IM_COL32(255, 255, 255, 150));
 					}
 				}
 			} else if (tool.UsesRadius && !shapeFill) {
@@ -4526,8 +4581,8 @@ namespace SandboxDetail {
 			std::string randomName = RandomSourceName(s_RandomFavourites, s_RandomFaction);
 			wide();
 			ImGui::AlignTextToFramePadding();
-			ImGui::TextUnformatted(s_RandomUnits ? randomName.c_str() : preset ? preset->PresetName.c_str()
-			                                                                   : "(pick one in the Spawn panel)");
+			ImGui::TextUnformatted(s_RandomUnits ? randomName.c_str() : s_SpawnPick.Kind != CustomPick::None ? s_SpawnPick.Name.c_str() : preset ? preset->PresetName.c_str()
+			                                                                                                                       : "(pick one in the Spawn panel)");
 			next();
 			if (BarChip("Random", s_RandomUnits, ToolTheme::Text, nullptr, "Each unit is picked at random (from what the Spawn panel says), not the one chosen.") == 1) {
 				s_RandomUnits = !s_RandomUnits;
@@ -4540,7 +4595,7 @@ namespace SandboxDetail {
 			UnitOrderCombo("##orders");
 			next();
 			ImGui::SetNextItemWidth(field);
-			LoadoutChooser("##loadout");
+			LoadoutChooser("##loadout", true);
 			next();
 			ImGui::SetNextItemWidth(field);
 			TemperamentCombo("##temperament");
@@ -5479,6 +5534,11 @@ namespace SandboxDetail {
 					}
 				}
 				ImGui::PopID();
+			}
+			// The Loadouts window: units and squads of your own design.
+			ImGui::SameLine();
+			if (BarTile("##loadouts", "Loadouts", s_LoadoutWindowOpen ? "Loadouts: design units (a unit and what it carries) and squads of them\nClick: put the window away" : "Loadouts: design units (a unit and what it carries) and squads of them\nClick: open the window", s_LoadoutWindowOpen, [&](ImDrawList* tileList, ImVec2 at, float room) { DrawIcon(tileList, Icon::Gun, at, room / 12.0F, IM_COL32(200, 205, 215, 255)); }) == 1) {
+				s_LoadoutWindowOpen = !s_LoadoutWindowOpen;
 			}
 			// What you've pinned.
 			if (!s_Pins.empty()) {

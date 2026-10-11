@@ -339,6 +339,9 @@ namespace SandboxDetail {
 		if (pick == "*") {
 			return RandomSourceName(s_RandomFavourites, s_RandomFaction);
 		}
+		if (pick.size() > 1 && pick.front() == '@') {
+			return pick.substr(1) + (FindCustomLoadout(pick.substr(1)) ? " (my loadout)" : " (not there)");
+		}
 		if (!pick.empty()) {
 			for (const Preset& unit: ListFor(Tool::Unit)) {
 				if (CrewPickKey(unit) == pick) {
