@@ -1208,15 +1208,17 @@ namespace SandboxDetail {
 		        //!< a one-off order's mode goes back to once it's placed (and Esc). (After Select, so the ring's slices keep their places.)
 		Breach, //!< Dig through to the point, then attack (SandboxBreach.cpp): the diggers tunnel there, the rest follow them in, and once
 		        //!< through they all go for the nearest enemy there. (After Command, so the ring's slices keep their places.)
-		Build //!< Build the piece picked (s_BuildPiece) at the point (SandboxBuild.cpp): the nearest selected unit with a Constructor walks
-		      //!< there and puts it up. In Battle Command it costs reinforcement points.
+		Build, //!< Build the piece picked (s_BuildPiece) at the point (SandboxBuild.cpp): the nearest selected unit with a Constructor walks
+		       //!< there and puts it up. In Battle Command it costs reinforcement points.
+		Airlift //!< Fly the selected units to the point (SandboxAirlift.cpp): a gunship comes down by them, they get in, and it flies them
+		        //!< there and lets them out. In Battle Command each ship costs reinforcement points.
 	};
 	inline CommandMode s_CommandMode = CommandMode::Command;
 	inline bool s_SpawnOrderArmed = false; //!< The next order placed sets the spawn order of your team (or of s_SpawnOrderZone) instead (TakeSpawnOrder).
 	inline double s_SpawnOrderDoneAt = -1.0; //!< When (ImGui time) setting it is over, once placed: after a second click of a double click can follow.
 	inline int s_SpawnOrderZone = -1; //!< Which of your team's spawn zones it is for, -1 for the team's own.
-	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Jetpack here", "Select units", "Command", "Breach", "Build"};
-	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(140, 230, 255, 255), IM_COL32(230, 230, 230, 255), IM_COL32(255, 214, 120, 255), IM_COL32(235, 110, 55, 255), IM_COL32(120, 210, 190, 255)};
+	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Jetpack here", "Select units", "Command", "Breach", "Build", "Airlift"};
+	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(140, 230, 255, 255), IM_COL32(230, 230, 230, 255), IM_COL32(255, 214, 120, 255), IM_COL32(235, 110, 55, 255), IM_COL32(120, 210, 190, 255), IM_COL32(170, 190, 255, 255)};
 	/// A mode whose order is given once and then goes back to Command (s_BackToCommandAt): not Select, Command or Patrol (clicked out point by point).
 	inline bool OneOffMode(CommandMode mode) { return mode != CommandMode::Select && mode != CommandMode::Command && mode != CommandMode::Patrol; }
 	inline double s_BackToCommandAt = -1.0; //!< When (ImGui time) the one-off mode in hand goes back to Command: once a double click can no longer follow.
@@ -2733,6 +2735,26 @@ namespace SandboxDetail {
 	/// What a unit has lost of its kit given back (the Supply power): its best gun if it has none, and its grenades up to what it came with.
 	/// How many items it was given.
 	int RearmUnit(AHuman* human);
+#pragma endregion
+
+#pragma region Airlift (SandboxAirlift.cpp)
+	constexpr int c_AirliftCost = 120; //!< Reinforcement points a ship, in Battle Command.
+
+	/// The airlifts under way forgotten. When out of a game.
+	void ForgetAirlifts();
+
+	/// How many ships an airlift of so many units takes: one for each six, at most three (those past eighteen stay).
+	int AirliftShipsFor(size_t units);
+
+	/// The Airlift order: a gunship of their team for each six of the units comes down by them, they get in, and it flies them to the point
+	/// and lets them out. Paid for now in Battle Command.
+	void AirliftSelected(const std::vector<Actor*>& units, const Vector& point);
+
+	/// The airlifts' ships watched through landing, boarding, flying and letting out. Call once per sim update.
+	void UpdateAirlifts();
+
+	/// Each airlift's ship, the way to where it's going and what it's doing. Call from the ImGui frame, with the order marks.
+	void DrawAirlifts(ImDrawList* drawList);
 #pragma endregion
 
 #pragma region Engineer builds (SandboxBuild.cpp)
