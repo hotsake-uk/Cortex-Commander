@@ -164,8 +164,19 @@ namespace SandboxDetail {
 				standing.Direct = s_DirectOrder;
 				standing.TargetID = attack && target && lock ? static_cast<long>(target->GetUniqueID()) : 0;
 			}
+			// After an enemy, it fights it from off to one side (ACShip::UpdateCombat), not from over it, where its side guns can't bear. Sent
+			// anywhere else, it drops that enemy (a standing orders resend, the way back to a post, leaves the fight to it).
+			bool going = false;
+			if (attack && target && target->GetTeam() != ship->GetTeam()) {
+				going = ship->EngageTarget(target);
+			} else {
+				if (!resend) {
+					ship->Disengage();
+				}
+				going = ship->FlyRouteTo(target ? target->GetPos() : waypoint);
+			}
 			// (Nobody at the controls of one that needs a pilot: it can't go, and says so where it was sent.)
-			if (!ship->FlyRouteTo(target ? target->GetPos() : waypoint) && !resend && ship->GetSeatOccupant(0) == nullptr) {
+			if (!going && !resend && ship->GetSeatOccupant(0) == nullptr) {
 				AddNoRoute(ship, target ? target->GetPos() : waypoint, "no pilot", false);
 			}
 			return;
@@ -312,6 +323,9 @@ namespace SandboxDetail {
 
 	/// Holds a unit where it is, forgetting every order it had.
 	void HoldUnit(Actor* unit) {
+		if (ACShip* ship = dynamic_cast<ACShip*>(unit)) {
+			ship->Disengage();
+		}
 		DropPlan(unit);
 		ClearSuppress(unit);
 		CancelErrands(unit);
@@ -434,6 +448,10 @@ namespace SandboxDetail {
 	void ReturnDefenders() {
 		for (Actor* actor: SandboxAccess::Actors()) {
 			if (!actor->GetOrderHasPost() || actor->IsPlayerControlled() || !IsCombatant(actor)) {
+				continue;
+			}
+			// (A ship fighting from its post keeps within its reach by itself, and goes back over it when the fight is over.)
+			if (const ACShip* fighting = dynamic_cast<const ACShip*>(actor); fighting && fighting->IsManoeuvring()) {
 				continue;
 			}
 			Vector post = actor->GetOrderPost();

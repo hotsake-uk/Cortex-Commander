@@ -417,6 +417,14 @@ namespace RTE {
 		Vector m_SuppressPoint; //!< Where in the place it was ordered to suppress its gunner is firing at, with nobody to shoot.
 		Timer m_SuppressTimer; //!< Since its gunner last picked a point in that place.
 		Timer m_AIFaceTimer; //!< Since the AI driver of a commanded vehicle last looked round to face an enemy, standing still.
+		bool m_AIManoeuvring; //!< Whether the AI driver is moving about a fight (UpdateAIManoeuvre), to m_AIManoeuvreX.
+		float m_AIManoeuvreX; //!< Where across it is moving to.
+		bool m_AIKeepFacing; //!< Whether it keeps facing the way it faces this update, backing off rather than turning round.
+		float m_AICombatHealth; //!< Its health when last looked at, to tell when it is hit.
+		Timer m_AIManoeuvreTimer; //!< Since it started moving about the fight.
+		Timer m_AIHitTimer; //!< Since it was last hit.
+		Timer m_AIJinkTimer; //!< Since it last moved for being hit.
+		Timer m_AINoShotTimer; //!< Since its gun last had the enemy it was sent after in its sights.
 		Timer m_AIGaveUpTimer; //!< Since it gave up: it doesn't call riders over again for a while.
 		unsigned int m_AIOrderSerialSeen; //!< The order serial its AI driver last started on: a new order starts afresh.
 		float m_Throttle; //!< How hard it is being driven this update, -1 to 1.
@@ -475,6 +483,13 @@ namespace RTE {
 		/// Turns a commanded vehicle standing still round to an enemy behind it within its gun's range (the gun only swings in front), or, with
 		/// none, to the way its post faces (a defend's facing).
 		void FaceForCommander();
+
+		/// A commanded vehicle in a fight, as a ship does (ACShip::UpdateCombat), by its order's risk (Actor::StandingOrder::Direct): sent
+		/// after an enemy, it backs away from one too close, or over it, to where its gun can bear; in position and hit, it backs off to
+		/// the edge of its range on a cautious order, or shuffles along on a normal one (never on a full-risk one); and holding a post, hit
+		/// while its gunner has someone, it shuffles about the post. Each move is a short drive along the ground, facing the enemy.
+		/// @param enemy The enemy it was sent after, or null. @return Whether it is driving for the fight this update.
+		bool UpdateAIManoeuvre(const Actor* enemy);
 
 		/// Gets whether a commanded vehicle sent after an enemy is near enough to it, with its gun in sight of it, to stop and fire from where it is.
 		/// @param target What it was sent after.
