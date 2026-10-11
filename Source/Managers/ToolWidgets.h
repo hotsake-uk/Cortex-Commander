@@ -30,7 +30,7 @@ namespace RTE {
 	/// Soft light round the tool windows and their controls, in the manner of the game's own glows: a halo fading out from an edge, or from behind lettering.
 	namespace ToolGlow {
 		/// How strong every glow is (the UI glow setting): 0 turns them off, 1 is the usual, 2 twice as bright.
-		inline float Strength = 1.0F;
+		inline float Strength = 0.5F;
 
 		inline ImU32 WithAlpha(ImU32 color, float alpha) {
 			return (color & ~IM_COL32_A_MASK) | (static_cast<ImU32>(std::clamp(alpha, 0.0F, 1.0F) * 255.0F + 0.5F) << IM_COL32_A_SHIFT);
@@ -111,13 +111,69 @@ namespace RTE {
 				}
 				ImVec2 to(window->Pos.x + window->Size.x, window->Pos.y + window->Size.y);
 				if (window->RootWindow == focused) {
-					Rect(drawList, window->Pos, to, ToolTheme::Gold, pixel * 8.0F, 0.45F + 0.2F * Pulse(1.6F));
+					Rect(drawList, window->Pos, to, ToolTheme::Gold, pixel * 6.0F, 0.35F + 0.1F * Pulse(1.6F));
 				} else {
-					Rect(drawList, window->Pos, to, ToolTheme::Edge, pixel * 6.0F, 0.5F);
+					Rect(drawList, window->Pos, to, ToolTheme::Edge, pixel * 5.0F, 0.35F);
 				}
 			}
 		}
 	} // namespace ToolGlow
+
+	/// Light falling on the tool windows, as the game's lamps fall on the world: each panel lit from above (bright at the top, shaded towards the
+	/// bottom, its top edge catching the light) and a soft warm lamp where the pointer is over it. Drawn on each window under what its child areas
+	/// hold, so the lettering and controls sit in the light rather than under it.
+	namespace ToolLight {
+		/// How strong the light is (the UI lighting setting): 0 turns it off, 1 is the usual, 2 twice as bright.
+		inline float Strength = 1.0F;
+
+		/// A round light fading from its middle to nothing at its reach, built up from rings so it is soft.
+		inline void Lamp(ImDrawList* drawList, ImVec2 at, float reach, ImU32 color, float strength) {
+			float amount = strength * Strength * ToolGlow::AlphaOf(color);
+			if (amount <= 0.004F || reach < 2.0F) {
+				return;
+			}
+			constexpr int rings = 10;
+			for (int ring = rings; ring >= 1; --ring) {
+				float along = static_cast<float>(ring) / static_cast<float>(rings);
+				drawList->AddCircleFilled(at, reach * along, ToolGlow::WithAlpha(color, amount / static_cast<float>(rings)), 40);
+			}
+		}
+
+		/// Lights every tool window open this frame. Called once a frame, after the last window is made.
+		inline void Windows() {
+			if (Strength <= 0.0F) {
+				return;
+			}
+			ImGuiContext& context = *GImGui;
+			ImGuiWindow* hovered = context.HoveredWindow ? context.HoveredWindow->RootWindow : nullptr;
+			ImVec2 mouse = ImGui::GetMousePos();
+			float amount = std::min(Strength, 2.0F);
+			for (ImGuiWindow* window: context.Windows) {
+				if (!window->Active || window->Hidden || (window->Flags & (ImGuiWindowFlags_ChildWindow | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_Tooltip))) {
+					continue;
+				}
+				ImDrawList* drawList = window->DrawList;
+				ImVec2 from = window->Pos;
+				ImVec2 to(from.x + window->Size.x, from.y + window->Size.y);
+				float height = to.y - from.y;
+				float pixel = std::max(1.0F, std::floor(window->FontRefSize / 10.0F));
+				drawList->PushClipRect(from, to, false);
+				// Lit from above: a sheen down the top, a shade up from the bottom, and the top edge catching the light.
+				ImU32 sheen = ToolGlow::WithAlpha(IM_COL32(255, 244, 220, 255), 0.14F * amount);
+				ImU32 none = ToolGlow::WithAlpha(IM_COL32(255, 244, 220, 255), 0.0F);
+				drawList->AddRectFilledMultiColor(from, ImVec2(to.x, from.y + height * 0.4F), sheen, sheen, none, none);
+				ImU32 shade = ToolGlow::WithAlpha(IM_COL32(0, 0, 10, 255), 0.22F * amount);
+				ImU32 clear = ToolGlow::WithAlpha(IM_COL32(0, 0, 10, 255), 0.0F);
+				drawList->AddRectFilledMultiColor(ImVec2(from.x, to.y - height * 0.35F), to, clear, clear, shade, shade);
+				drawList->AddRectFilled(from, ImVec2(to.x, from.y + pixel), ToolGlow::WithAlpha(ToolTheme::EdgeLight, 0.55F * std::min(amount, 1.0F)));
+				// A lamp where the pointer is.
+				if (window == hovered && mouse.x >= from.x && mouse.x < to.x && mouse.y >= from.y && mouse.y < to.y) {
+					Lamp(drawList, mouse, std::max(window->FontRefSize, 10.0F) * 14.0F, IM_COL32(255, 236, 190, 255), 0.16F);
+				}
+				drawList->PopClipRect();
+			}
+		}
+	} // namespace ToolLight
 
 	/// The controls of the tool windows (the Sandbox, the settings panel), drawn in the manner of the game's own menus: square, hard-edged, a pixel at a time.
 	/// Each stands in for the ImGui control of the same name and is used the same way.
@@ -144,7 +200,12 @@ namespace RTE {
 			if (pressed) {
 				ToolGlow::Fill(drawList, from, to, ToolTheme::Gold, 0.5F * alpha);
 			} else if (ImGui::IsItemHovered()) {
-				ToolGlow::Rect(drawList, from, to, ToolTheme::Gold, pixel * 4.0F, (0.55F + 0.25F * ToolGlow::Pulse(3.0F)) * alpha);
+				// Pointed at, it catches the light: its face brightens from the top and its top edge shines.
+				ImU32 lit = ToolGlow::WithAlpha(IM_COL32(255, 244, 220, 255), 0.2F * ToolLight::Strength * alpha);
+				ImU32 unlit = ToolGlow::WithAlpha(IM_COL32(255, 244, 220, 255), 0.0F);
+				drawList->AddRectFilledMultiColor(from, to, lit, lit, unlit, unlit);
+				drawList->AddRectFilled(from, ImVec2(to.x, from.y + pixel), ToolGlow::WithAlpha(ToolTheme::EdgeLight, std::min(1.0F, 0.9F * alpha)));
+				ToolGlow::Rect(drawList, from, to, ToolTheme::Gold, pixel * 3.0F, 0.35F * alpha);
 			}
 		}
 

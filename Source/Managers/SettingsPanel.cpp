@@ -996,8 +996,10 @@ void DebugMan::SettingsGUI() {
 		Toggle("Show FPS and version", g_SettingsMan.ShowFPSAndVersion(), [](bool on) { g_SettingsMan.SetShowFPSAndVersion(on); });
 		Tip("The frame rate and the game's version, small, in the top right of the window.");
 		Toggle("Modern HUD", ModernHUD::IsEnabled(), [](bool on) { ModernHUD::SetEnabled(on); });
+		Slider("UI lighting", &ToolLight::Strength, 0.0F, 2.0F);
+		Tip("Light on the tool windows, as the game's lamps light the world: each panel lit from above, a warm lamp where the pointer is, and buttons catching the light when pointed at. 0 turns it off.");
 		Slider("UI glow", &ToolGlow::Strength, 0.0F, 2.0F);
-		Tip("The soft light of the menus and HUD: the halo round the tool windows (gold round the one in use), round what the pointer is on, behind headings and the page shown, and round the modern HUD's bars, minimap and action menu. 0 turns it all off.");
+		Tip("The soft halo round the tool windows (gold round the one in use), round what the pointer is on, behind headings and the page shown, and round the modern HUD's bars, minimap and action menu. 0 turns it off.");
 		Toggle("Side and health beside units", g_SettingsMan.ShowUnitTags(), [](bool on) { g_SettingsMan.SetShowUnitTags(on); });
 		Tip("Each unit's team icon and health number. In the Sandbox game mode every side's are shown; in other games, other sides' only where your side has seen and with \"Show enemy HUD\" (Options, Gameplay) on. Units of no side (training dummies) and those a mod hides never have them.");
 		Toggle("CPU units' aim reticles", g_SettingsMan.ShowCPUAimReticles(), [](bool on) { g_SettingsMan.SetShowCPUAimReticles(on); });

@@ -452,6 +452,7 @@ void DebugMan::DrawImGui() {
 		g_PerformanceMan.ImGui();
 	}
 
+	ToolLight::Windows();
 	ToolGlow::Windows();
 
 }
