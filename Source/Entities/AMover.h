@@ -64,6 +64,24 @@ namespace RTE {
 		/// Whether the deck is travelling.
 		bool IsMoving() const { return m_Moving; }
 
+		/// The deck's stops, as its offsets from this' position.
+		const std::vector<Vector>& GetStops() const { return m_Stops; }
+
+		/// Replaces the deck's stops, and puts the deck at the first. Fewer than two leave the deck standing.
+		/// @param stops The stops, as the deck's offsets from this' position.
+		void SetStops(const std::vector<Vector>& stops);
+
+		/// Drops all the deck's stops (for Lua, before AddStop).
+		void ClearStops() { SetStops({}); }
+
+		/// Adds a stop after the others (for Lua). The first one added puts the deck there.
+		/// @param stop The stop, as the deck's offset from this' position.
+		void AddStop(const Vector& stop);
+
+		/// From a stop (the deck's offset from this' position) to where a unit stands on the deck there, relative to this' position: the middle
+		/// of the deck's top. Lets a stop be worked out from where the deck should be stood on (the sandbox's drag to place).
+		Vector GetStandingOffset() const;
+
 		/// Where a unit stands on the deck at a stop: the middle of the deck's top, in scene coordinates. A zero vector for a stop that isn't one.
 		/// @param stop The stop's index.
 		Vector GetStopStandingPos(int stop) const;

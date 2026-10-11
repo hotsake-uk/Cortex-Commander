@@ -4,6 +4,7 @@
 #include "ModernHUD.h"
 #include "GasGrid.h"
 #include "TerrainTrees.h"
+#include "AMover.h"
 
 #include <fstream>
 #include <sstream>
@@ -2196,6 +2197,82 @@ namespace SandboxDetail {
 		return snap ? Vector(std::round(click.m_X / 12.0F) * 12.0F, std::round(click.m_Y / 12.0F) * 12.0F) : click;
 	}
 
+	bool DragsTrack(Tool kind) {
+		if (kind != Tool::Structure) {
+			return false;
+		}
+		const Preset* preset = ChosenPreset(Tool::Structure, s_StructureChoice);
+		return preset && preset->ClassName == "AMover";
+	}
+
+	float TrackDeckWidth(const Preset& preset) {
+		const AMover* mover = dynamic_cast<const AMover*>(g_PresetMan.GetEntityPreset(preset.ClassName, preset.PresetName, preset.ModuleID));
+		return mover && mover->GetDeck() ? static_cast<float>(mover->GetDeck()->GetSpriteWidth()) : 0.0F;
+	}
+
+	int TrackStopCount(const Preset& preset) {
+		const AMover* mover = dynamic_cast<const AMover*>(g_PresetMan.GetEntityPreset(preset.ClassName, preset.PresetName, preset.ModuleID));
+		return mover ? std::max(mover->GetStopCount(), 2) : 2;
+	}
+
+	Vector SnapLinePoint(const Vector& point, bool snap) {
+		return snap ? Vector(std::round(point.m_X / 12.0F) * 12.0F, std::round(point.m_Y / 24.0F) * 24.0F) : point;
+	}
+
+	Vector LineDragEnd(const Vector& start, const Vector& pointer, bool free, bool snap) {
+		Vector along = g_SceneMan.ShortestDistance(start, pointer, g_SceneMan.SceneWrapsX());
+		if (!free) {
+			if (std::abs(along.m_X) > std::abs(along.m_Y)) {
+				along.m_Y = 0.0F;
+			} else {
+				along.m_X = 0.0F;
+			}
+		}
+		if (along.MagnitudeIsGreaterThan(c_MaxLineDrag)) {
+			along.SetMagnitude(c_MaxLineDrag);
+		}
+		Vector end = start + along;
+		if (snap) {
+			// Snapped, but still straight: only the way it runs moves to the grid.
+			Vector snapped = SnapLinePoint(end, true);
+			end = free ? snapped : (along.m_X == 0.0F ? Vector(start.m_X, snapped.m_Y) : Vector(snapped.m_X, start.m_Y));
+		}
+		return end;
+	}
+
+	/// A lift or moving platform dragged out (stroke.Position to stroke.Position2, where its deck is stood on at each end): its stops along the
+	/// line, as many as its preset has and evenly spaced, and its motor where the preset keeps it, above the top stop of a lift, left of the
+	/// leftmost stop of a platform.
+	void LayOutTrack(AMover& mover, const Stroke& stroke) {
+		Vector start = stroke.Position;
+		Vector end = start + g_SceneMan.ShortestDistance(start, stroke.Position2, g_SceneMan.SceneWrapsX());
+		const int count = std::max(mover.GetStopCount(), 2);
+		std::vector<Vector> standing;
+		for (int i = 0; i < count; ++i) {
+			standing.push_back(start + (end - start) * (static_cast<float>(i) / static_cast<float>(count - 1)));
+		}
+		const Vector along = end - start;
+		const bool sideways = std::abs(along.m_X) > std::abs(along.m_Y);
+		Vector anchor = standing.front();
+		for (const Vector& point: standing) {
+			if (sideways ? point.m_X < anchor.m_X : point.m_Y < anchor.m_Y) {
+				anchor = point;
+			}
+		}
+		// The preset's clearance: its first stop's offset from the motor (48 px below on the lifts, 64 px across on the platform).
+		Vector clearance = mover.GetStops().empty() ? Vector() : mover.GetStops().front();
+		Vector gap = sideways ? Vector(std::max(std::abs(clearance.m_X), 48.0F), 0.0F) : Vector(0.0F, std::max(std::abs(clearance.m_Y), 48.0F));
+		const Vector standingOffset = mover.GetStandingOffset();
+		Vector motor = anchor - standingOffset - gap;
+		g_SceneMan.WrapPosition(motor);
+		std::vector<Vector> stops;
+		for (const Vector& point: standing) {
+			stops.push_back(g_SceneMan.ShortestDistance(motor, point, g_SceneMan.SceneWrapsX()) - standingOffset);
+		}
+		mover.SetPos(motor);
+		mover.SetStops(stops);
+	}
+
 	void PlaceStructure(const Stroke& stroke) {
 		const Preset* preset = ChosenPreset(Tool::Structure, stroke.Choice);
 		const Entity* entity = preset ? g_PresetMan.GetEntityPreset(preset->ClassName, preset->PresetName, preset->ModuleID) : nullptr;
@@ -2205,6 +2282,9 @@ namespace SandboxDetail {
 		}
 		// The same place the preview showed it.
 		object->SetPos(StructurePosition(*preset, stroke.Position, stroke.Count > 0));
+		if (AMover* mover = dynamic_cast<AMover*>(object); mover && !stroke.Position2.IsZero()) {
+			LayOutTrack(*mover, stroke);
+		}
 		if (!dynamic_cast<TerrainObject*>(object)) {
 			// Doors and other moving bunker parts belong to a side, and open for it.
 			object->SetTeam(stroke.Team);

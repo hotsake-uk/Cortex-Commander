@@ -1007,6 +1007,13 @@ void Sandbox::DrawGUI() {
 				s_DoubleClick = false;
 				s_ClickCount = 0;
 			}
+		} else if (DragsTrack(tool.Kind)) {
+			// A lift or moving platform: a drag from where its deck is first stood on to where it runs to lays its track (below); a click
+			// puts the piece down as it comes.
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+				s_LineDragging = true;
+				s_LineStart = SnapLinePoint(position, s_SnapToGrid);
+			}
 		} else if (DragsShape(tool.Kind)) {
 			// Brush type Shape: a drag marks out the shape, filled when the button is let go (below). "Make it fall" drags its box the same way.
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
@@ -1062,6 +1069,38 @@ void Sandbox::DrawGUI() {
 		}
 	} else {
 		s_RingOpen = false;
+	}
+	if (s_LineDragging) {
+		// A lift's or moving platform's track being dragged out: straight up and down or across (Shift: any way), drawn as its deck at each
+		// stop and the line between; Escape drops it. Let go, it is put down; a drag too short to be a track is a click.
+		const Preset* preset = ChosenPreset(Tool::Structure, s_StructureChoice);
+		if (!InGame() || !DragsTrack(CurrentTool().Kind) || !preset || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+			s_LineDragging = false;
+		} else {
+			Vector end = LineDragEnd(s_LineStart, MouseScenePosition(), io.KeyShift, s_SnapToGrid);
+			Vector along = end - s_LineStart;
+			bool track = along.MagnitudeIsGreaterThan(c_MinLineDrag);
+			ImDrawList* drawList = ImGui::GetForegroundDrawList();
+			ImU32 color = IM_COL32(255, 220, 120, 230);
+			if (track) {
+				drawList->AddLine(ToScreen(s_LineStart), ToScreen(end), color, 1.5F);
+				const int stops = TrackStopCount(*preset);
+				const float half = TrackDeckWidth(*preset) * 0.5F;
+				for (int i = 0; i < stops; ++i) {
+					Vector stand = s_LineStart + along * (static_cast<float>(i) / static_cast<float>(stops - 1));
+					drawList->AddRect(ToScreen(stand - Vector(half, 0.0F)), ToScreen(stand + Vector(half, 8.0F)), color, 0.0F, 0, 1.5F);
+				}
+				std::string label = std::to_string(static_cast<int>(along.GetMagnitude())) + " px" + (io.KeyShift ? "" : "    Shift: any way");
+				drawList->AddText(ImVec2(io.MousePos.x + 14.0F, io.MousePos.y + 10.0F), color, label.c_str());
+			}
+			if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+				s_LineDragging = false;
+				QueueStroke(Tool::Structure, s_LineStart);
+				if (track && !s_Queue.empty()) {
+					s_Queue.back().Position2 = end;
+				}
+			}
+		}
 	}
 	if (s_ShapeDragging) {
 		// The shape being dragged out with a terrain brush (Brush type Shape), drawn as it will be filled; Shift keeps it as wide as it
@@ -1499,6 +1538,9 @@ void Sandbox::DrawGUI() {
 				PictureGrid(Tool::Structure, s_StructureGroup < groupCount ? c_StructureGroups[s_StructureGroup] : nullptr);
 				ToolUI::Checkbox("Snap to the bunker grid", &s_SnapToGrid);
 				ImGui::SetItemTooltip("On: pieces line up with each other on the 24 pixel grid bunkers are built on. Off: they go exactly where the pointer is.");
+				if (DragsTrack(Tool::Structure)) {
+					ImGui::TextWrapped("A lift or moving platform: drag from where its deck starts to where it runs to (straight up, down or across; Shift for any way). A click puts it down as it comes.");
+				}
 				ImGui::TextDisabled("Doors and turrets belong to:");
 				SideChooser();
 				UndoButton();
