@@ -744,6 +744,9 @@ void Sandbox::DrawGUI() {
 	if (InGame()) {
 		DrawRallyPoints();
 		DrawBattleMarks();
+		if (IsBattleCommand()) {
+			DrawLandingSpot();
+		}
 	}
 
 	ImGuiIO& io = ImGui::GetIO();
@@ -876,6 +879,11 @@ void Sandbox::DrawGUI() {
 				s_Dragging = true;
 				s_DragStart = io.MousePos;
 				s_DoubleClick = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+			}
+		} else if (tool.Kind == Tool::LandingSpot) {
+			// Battle Command: where reinforcements come down.
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+				LandingSpotClicked(position);
 			}
 		} else if (tool.Kind == Tool::BattleDropLine) {
 			// Drag along where the team's ships are to come in.

@@ -281,6 +281,8 @@ namespace SandboxDetail {
 				return {Icon::Eye, IM_COL32(232, 224, 190, 255)};
 			case Tool::Command:
 				return {Icon::Arrows, IM_COL32(232, 224, 190, 255)};
+			case Tool::LandingSpot:
+				return {Icon::Down, IM_COL32(242, 182, 61, 255)};
 			case Tool::Follow:
 				return {Icon::Target, IM_COL32(232, 224, 190, 255)};
 			case Tool::Possess:
