@@ -188,6 +188,7 @@ void SettingsMan::Clear() {
 	m_SandboxSpawnStats = 1;
 	m_SandboxAttackPings = true;
 	m_SandboxMinimap = false;
+	m_ArmyOverview = false;
 	m_LightsBySource = false;
 	m_SandboxCharacterState = false;
 	m_SandboxAutoBattle = false;
@@ -890,6 +891,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SandboxSpawnStats", { int which = 1; reader >> which; SetSandboxSpawnStats(which); });
 	MatchProperty("SandboxAttackPings", { reader >> m_SandboxAttackPings; });
 	MatchProperty("SandboxMinimap", { reader >> m_SandboxMinimap; });
+	MatchProperty("ArmyOverview", { reader >> m_ArmyOverview; });
 	MatchProperty("LightsBySource", { reader >> m_LightsBySource; });
 	MatchProperty("SandboxCharacterState", { reader >> m_SandboxCharacterState; });
 	MatchProperty("SandboxAutoBattle", { reader >> m_SandboxAutoBattle; });
@@ -1468,6 +1470,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 		writer.NewPropertyWithValue("SandboxSpawnStats", m_SandboxSpawnStats);
 		writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
 		writer.NewPropertyWithValue("SandboxMinimap", m_SandboxMinimap);
+		writer.NewPropertyWithValue("ArmyOverview", m_ArmyOverview);
 		writer.NewPropertyWithValue("SandboxBarRight", m_SandboxBarRight);
 		writer.NewPropertyWithValue("ScreenShakeStrength", g_CameraMan.m_ScreenShakeStrength);
 
@@ -1653,6 +1656,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("SandboxSpawnStats", m_SandboxSpawnStats);
 	writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
 	writer.NewPropertyWithValue("SandboxMinimap", m_SandboxMinimap);
+	writer.NewPropertyWithValue("ArmyOverview", m_ArmyOverview);
 	writer.NewPropertyWithValue("CrabBombThreshold", m_CrabBombThreshold);
 	writer.NewPropertyWithValue("ShowEnemyHUD", m_ShowEnemyHUD);
 	writer.NewPropertyWithValue("SmartBuyMenuNavigation", m_EnableSmartBuyMenuNavigation);

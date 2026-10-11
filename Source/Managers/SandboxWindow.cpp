@@ -2,6 +2,7 @@
 
 #include "SandboxInternal.h"
 #include "ActionMenu.h"
+#include "ModernHUD.h"
 #include "AVehicle.h"
 #include "GUISound.h"
 #include "TerrainCandle.h"
@@ -1955,16 +1956,21 @@ namespace SandboxDetail {
 		return (mode == Actor::AIMODE_SENTRY || mode == Actor::AIMODE_NONE) && !unit->GetOrderHasPost() && !unit->GetOrderHold();
 	}
 
-	/// The next (or previous) idle unit of the selection's side after the one last gone to, by unique ID, selected and looked at; with Shift
-	/// added to the selection instead.
-	void CycleIdle(bool forward, bool add) {
-		int team = SelectionTeam();
+	/// The idle units of a side (RC-6): its fighting units on no order, not its ships.
+	std::vector<Actor*> IdleUnits(int team) {
 		std::vector<Actor*> idle;
 		for (Actor* actor: SandboxAccess::Actors()) {
 			if (actor->GetTeam() == team && IsSoldier(actor) && !dynamic_cast<const ACraft*>(actor) && IsIdle(actor)) {
 				idle.push_back(actor);
 			}
 		}
+		return idle;
+	}
+
+	/// The next (or previous) idle unit of the selection's side after the one last gone to, by unique ID, selected and looked at; with Shift
+	/// added to the selection instead.
+	void CycleIdle(bool forward, bool add) {
+		std::vector<Actor*> idle = IdleUnits(SelectionTeam());
 		if (idle.empty()) {
 			MarkOrder(MouseScenePosition(), IM_COL32(150, 150, 140, 255));
 			return;
@@ -1988,8 +1994,24 @@ namespace SandboxDetail {
 		LookAtUnits({MakeRef(next)});
 	}
 
-	/// Every unit in the view of the kinds already selected (RC-6), as a double click on one does for its kind.
-	void SelectKindsInView() {
+	void SelectAllIdle(bool add) {
+		std::vector<Actor*> idle = IdleUnits(SelectionTeam());
+		if (idle.empty()) {
+			// (None: the grey mark at the pointer, as the idle keys give.)
+			MarkOrder(MouseScenePosition(), IM_COL32(150, 150, 140, 255));
+			return;
+		}
+		if (!add) {
+			s_Selected.clear();
+		}
+		for (Actor* unit: idle) {
+			if (std::none_of(s_Selected.begin(), s_Selected.end(), [unit](const UnitRef& ref) { return RefersTo(ref, unit); })) {
+				s_Selected.push_back(MakeRef(unit));
+			}
+		}
+	}
+
+	void SelectSameKinds(bool wholeMap) {
 		std::unordered_set<std::string> kinds;
 		int team = SelectionTeam();
 		for (const UnitRef& ref: s_Selected) {
@@ -2004,10 +2026,171 @@ namespace SandboxDetail {
 		float scale = ScenePixelsPerWindowPixel();
 		for (Actor* actor: SandboxAccess::Actors()) {
 			Vector onScreen = FromCamera(actor->GetPos());
-			if (IsSelectable(actor) && actor->GetTeam() == team && kinds.count(actor->GetPresetName()) && onScreen.m_X >= 0.0F && onScreen.m_Y >= 0.0F && onScreen.m_X <= view.w * scale && onScreen.m_Y <= view.h * scale &&
+			const bool inView = wholeMap || (onScreen.m_X >= 0.0F && onScreen.m_Y >= 0.0F && onScreen.m_X <= view.w * scale && onScreen.m_Y <= view.h * scale);
+			if (IsSelectable(actor) && actor->GetTeam() == team && kinds.count(actor->GetPresetName()) && inView &&
 			    std::none_of(s_Selected.begin(), s_Selected.end(), [actor](const UnitRef& ref) { return RefersTo(ref, actor); })) {
 				s_Selected.push_back(MakeRef(actor));
 			}
+		}
+	}
+
+	namespace {
+		constexpr const char* c_BookmarksFile = "Userdata/CameraBookmarks.txt"; //!< The camera bookmarks (B-10): a line each, the map's name, the number, x and y, between tabs.
+		std::map<std::pair<std::string, int>, Vector> s_Bookmarks; //!< By map name and number (1 to 4): the middle of the view kept.
+		bool s_BookmarksRead = false;
+
+		/// The camera bookmarks, read from their file the first time.
+		std::map<std::pair<std::string, int>, Vector>& Bookmarks() {
+			if (!s_BookmarksRead) {
+				s_BookmarksRead = true;
+				std::ifstream file(c_BookmarksFile);
+				std::string line;
+				while (std::getline(file, line)) {
+					if (!line.empty() && line.back() == '\r') {
+						line.pop_back();
+					}
+					// (Read from the end, the map's name being whatever is before the last three tabs.)
+					size_t yAt = line.rfind('\t');
+					size_t xAt = yAt == std::string::npos || yAt == 0 ? std::string::npos : line.rfind('\t', yAt - 1);
+					size_t numberAt = xAt == std::string::npos || xAt == 0 ? std::string::npos : line.rfind('\t', xAt - 1);
+					if (numberAt == std::string::npos || numberAt == 0) {
+						continue;
+					}
+					int number = std::atoi(line.substr(numberAt + 1, xAt - numberAt - 1).c_str());
+					if (number >= 1 && number <= 4) {
+						s_Bookmarks[{line.substr(0, numberAt), number}] = Vector(static_cast<float>(std::atof(line.substr(xAt + 1, yAt - xAt - 1).c_str())), static_cast<float>(std::atof(line.substr(yAt + 1).c_str())));
+					}
+				}
+			}
+			return s_Bookmarks;
+		}
+
+		/// Keeps every map's camera bookmarks in their file.
+		void WriteBookmarks() {
+			std::error_code error;
+			std::filesystem::create_directories(std::filesystem::path(c_BookmarksFile).parent_path(), error);
+			std::ofstream file(c_BookmarksFile, std::ios::trunc);
+			for (const auto& [key, at]: Bookmarks()) {
+				file << key.first << '\t' << key.second << '\t' << static_cast<int>(at.m_X) << '\t' << static_cast<int>(at.m_Y) << '\n';
+			}
+		}
+	} // namespace
+
+	void CameraBookmarkKeys() {
+		const ImGuiIO& io = ImGui::GetIO();
+		const Scene* scene = g_SceneMan.GetScene();
+		if (!io.KeyCtrl || io.KeyShift == io.KeyAlt || io.WantTextInput || s_Possessed || !scene) {
+			return;
+		}
+		const bool keep = io.KeyShift;
+		for (int number = 1; number <= 4; ++number) {
+			if (!ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_0 + number), false)) {
+				continue;
+			}
+			const std::pair<std::string, int> key(scene->GetPresetName(), number);
+			const std::string name = std::to_string(number);
+			if (keep) {
+				// The middle of the view as it is now.
+				Bookmarks()[key] = s_FreeCamera ? s_CameraCenter : g_CameraMan.GetOffset(0) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, static_cast<float>(g_FrameMan.GetPlayerScreenHeight()) * 0.5F);
+				WriteBookmarks();
+				ModernHUD::AddFeedLine("View " + name + " kept (Ctrl+Alt+" + name + " to come back)", SelectionTeam());
+			} else if (auto found = Bookmarks().find(key); found != Bookmarks().end()) {
+				s_FreeCamera = true;
+				s_FollowTarget = UnitRef();
+				s_FollowAction = false;
+				s_CameraCenter = found->second;
+				ModernHUD::AddFeedLine("Back to view " + name, SelectionTeam());
+			} else {
+				ModernHUD::AddFeedLine("No view " + name + " kept on this map yet (Ctrl+Shift+" + name + " keeps one)", SelectionTeam());
+			}
+		}
+	}
+
+	void DrawArmyOverview() {
+		if (!g_SettingsMan.ShowArmyOverview() || !InGame() || !g_SceneMan.GetScene()) {
+			return;
+		}
+		// Your side: the one you command with the Commander Toolbar up, else the selection's.
+		const int side = std::clamp(CommandedTeam() >= 0 ? CommandedTeam() : SelectionTeam(), 0, c_Sides - 1);
+		struct Kind {
+			int Count = 0;
+			float Health = 0.0F; //!< The health shares added up, to be averaged.
+			int Idle = 0;
+		};
+		std::map<std::string, Kind> kinds;
+		int total = 0;
+		for (Actor* actor: SandboxAccess::Actors()) {
+			if (!IsSelectable(actor) || actor->GetTeam() != side) {
+				continue;
+			}
+			Kind& kind = kinds[actor->GetPresetName()];
+			++kind.Count;
+			kind.Health += std::clamp(actor->GetHealth() / std::max(actor->GetMaxHealth(), 1.0F), 0.0F, 1.0F);
+			kind.Idle += IsIdle(actor) ? 1 : 0;
+			++total;
+		}
+		GameViewRect view = g_WindowMan.GetGameViewRect();
+		ImGui::SetNextWindowPos(ImVec2(view.x + view.w - 300.0F, view.y + 48.0F), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(285.0F, 220.0F), ImGuiCond_FirstUseEver);
+		bool open = true;
+		if (ImGui::Begin("Army###ArmyOverview", &open, ImGuiWindowFlags_NoFocusOnAppearing)) {
+			ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(c_SideColors[side]), "%s", c_SideNames[side]);
+			ImGui::SameLine();
+			ImGui::TextDisabled("%d %s, %d kinds", total, total == 1 ? "unit" : "units", static_cast<int>(kinds.size()));
+			if (kinds.empty()) {
+				ImGui::TextDisabled("No units on this side.");
+			} else if (ImGui::BeginTable("##army", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+				ImGui::TableSetupColumn("Kind", ImGuiTableColumnFlags_WidthStretch);
+				ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed);
+				ImGui::TableSetupColumn("Health", ImGuiTableColumnFlags_WidthFixed);
+				ImGui::TableSetupColumn("Idle", ImGuiTableColumnFlags_WidthFixed);
+				ImGui::TableHeadersRow();
+				std::string picked;
+				bool look = false;
+				for (const auto& [name, kind]: kinds) {
+					ImGui::TableNextRow();
+					ImGui::TableNextColumn();
+					ImGui::PushID(name.c_str());
+					if (ImGui::Selectable(name.c_str(), false, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowDoubleClick)) {
+						picked = name;
+						look = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+					}
+					ImGui::SetItemTooltip("Click: select every %s of the side, all over the map. Double click: look at them too.", name.c_str());
+					ImGui::PopID();
+					ImGui::TableNextColumn();
+					ImGui::Text("%d", kind.Count);
+					ImGui::TableNextColumn();
+					const int health = static_cast<int>(std::round(100.0F * kind.Health / static_cast<float>(kind.Count)));
+					// (Green when well, through amber, to red when badly hurt.)
+					const ImVec4 healthColor = health >= 70 ? ImVec4(0.55F, 0.85F, 0.45F, 1.0F) : (health >= 35 ? ImVec4(0.95F, 0.75F, 0.3F, 1.0F) : ImVec4(0.95F, 0.4F, 0.35F, 1.0F));
+					ImGui::TextColored(healthColor, "%d%%", health);
+					ImGui::TableNextColumn();
+					if (kind.Idle > 0) {
+						ImGui::Text("%d", kind.Idle);
+					} else {
+						ImGui::TextDisabled("0");
+					}
+				}
+				ImGui::EndTable();
+				if (!picked.empty()) {
+					s_Selected.clear();
+					for (Actor* actor: SandboxAccess::Actors()) {
+						if (IsSelectable(actor) && actor->GetTeam() == side && actor->GetPresetName() == picked) {
+							s_Selected.push_back(MakeRef(actor));
+						}
+					}
+					s_ToolIndex = ToolIndex(Tool::Command);
+					s_CommandMode = CommandMode::Command;
+					s_PatrolDraft.clear();
+					if (look) {
+						LookAtUnits(s_Selected);
+					}
+				}
+			}
+		}
+		ImGui::End();
+		if (!open) {
+			g_SettingsMan.SetShowArmyOverview(false);
 		}
 	}
 
@@ -2084,7 +2267,7 @@ namespace SandboxDetail {
 			CycleIdle(false, io.KeyShift);
 		}
 		if (pressed(ImGuiKey_Q)) {
-			SelectKindsInView();
+			SelectSameKinds(false);
 		}
 		if (pressed(ImGuiKey_N)) {
 			g_SettingsMan.SetShowSandboxMinimap(!g_SettingsMan.ShowSandboxMinimap());
@@ -2117,8 +2300,8 @@ namespace SandboxDetail {
 			const char* Keys;
 			const char* What;
 		};
-		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view (with a Paint tool in hand: dig)"}, {"Middle drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"U", "Hide or show the bar along the bottom"}, {"Commander Toolbar key", "Swap the bar along the bottom for Battle Command's Commander Toolbar, and back (the key is picked below)"}, {"F9", "Commander view, outside the Sandbox game mode: your side from above, and back into your unit"}, {"Ctrl+Z", "Undo the last paint stroke or the last thing placed"}, {"Ctrl+P", "Pause the AI, or let it go again (in any game; the key can be changed in the AI settings)"}};
-		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it. In Command mode the order fits what's under the pointer: an enemy attacked, an objective taken or held, open air flown to, else a move"}, {"Esc", "Back to Command mode, the mode other orders return to once placed (in Command mode: pause)"}, {"Left drag", "Select units in a box"}, {"Double click and drag", "Order with risk: normal at the click, fully direct at the full risk distance; they face the way dragged"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click a unit", "Every unit of that kind in view"}, {"Clicks to order", "How urgent the order is: 1 cautious (walks round jumps, waits for fuel), 2 normal; drag the second click for risk up to the shortest way whatever it takes (a dig-to tunnels straight, moves take fast, reckless jet jumps); tuned in Battle Behavior settings"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"X", "Dig to: tunnel to the point, in the ground or not (the units with a digger that cuts the way)"}, {"Ctrl+X", "Breach: the diggers tunnel to the point and the rest follow them in; once through, they all attack"}, {"Ctrl+B", "Build: a selected unit with a Constructor puts up the piece picked on the command row (sandbags, a wall, a bunker, a turret)"}, {"Ctrl+L", "Airlift: a gunship comes down by the selected units, flies them to the place clicked and lets them out"}, {"J", "Jetpack here: fly to the point in the air and hover there (a move or attack-move clicked in open air flies there too)"}, {"Z", "Suppress: fire into a zone round the point and keep firing, whatever else is in sight"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends). With nothing selected, O pauses"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}};
+		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view (with a Paint tool in hand: dig)"}, {"Middle drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"U", "Hide or show the bar along the bottom"}, {"Commander Toolbar key", "Swap the bar along the bottom for Battle Command's Commander Toolbar, and back (the key is picked below)"}, {"F9", "Commander view, outside the Sandbox game mode: your side from above, and back into your unit"}, {"Ctrl+Z", "Undo the last paint stroke or the last thing placed"}, {"Ctrl+P", "Pause the AI, or let it go again (in any game; the key can be changed in the AI settings)"}, {"- / =", "The game a step slower or faster, through the speed tile's speeds (Shift with either: back to 1x)"}, {"Ctrl+Shift+1 to 4", "Keep the view as bookmark 1 to 4, for this map (kept between games)"}, {"Ctrl+Alt+1 to 4", "Back to view bookmark 1 to 4"}};
+		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it. In Command mode the order fits what's under the pointer: an enemy attacked, an objective taken or held, open air flown to, else a move"}, {"Esc", "Back to Command mode, the mode other orders return to once placed (in Command mode: pause)"}, {"Left drag", "Select units in a box"}, {"Double click and drag", "Order with risk: normal at the click, fully direct at the full risk distance; they face the way dragged"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click a unit", "Every unit of that kind in view"}, {"Ctrl+double click a unit", "Every unit of that kind on the whole map"}, {"Clicks to order", "How urgent the order is: 1 cautious (walks round jumps, waits for fuel), 2 normal; drag the second click for risk up to the shortest way whatever it takes (a dig-to tunnels straight, moves take fast, reckless jet jumps); tuned in Battle Behavior settings"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"X", "Dig to: tunnel to the point, in the ground or not (the units with a digger that cuts the way)"}, {"Ctrl+X", "Breach: the diggers tunnel to the point and the rest follow them in; once through, they all attack"}, {"Ctrl+B", "Build: a selected unit with a Constructor puts up the piece picked on the command row (sandbags, a wall, a bunker, a turret)"}, {"Ctrl+L", "Airlift: a gunship comes down by the selected units, flies them to the place clicked and lets them out"}, {"J", "Jetpack here: fly to the point in the air and hover there (a move or attack-move clicked in open air flies there too)"}, {"Z", "Suppress: fire into a zone round the point and keep firing, whatever else is in sight"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends). With nothing selected, O pauses"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Ctrl+.", "Every idle unit of the side at once (Shift: add them)"}, {"Q", "Every unit in view of the kinds selected"}, {"Ctrl+Q", "Every unit on the whole map of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Shift+number", "Add the selection to the group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}, {"Alt+1 to Alt+5", "Commander Toolbar: call in that reinforcement card, in the toolbar's order (any tool in hand)"}, {"Alt+Shift+1 to Alt+Shift+7", "Commander Toolbar: use that commander power, in the toolbar's order (any tool in hand)"}};
 		static const Key plants[] = {{"E / Shift+E", "With a plant, cactus, mushroom, tree or candle brush in hand: the next of its pictures, or the one before (just one picked in its gallery: that pick moves on)"}, {"F", "Flip the next one the other way"}};
 		auto table = [](const char* id, const Key* keys, size_t count) {
 			if (ImGui::BeginTable(id, 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
@@ -5451,6 +5634,11 @@ namespace SandboxDetail {
 		if (BarChip("Map", map, ToolTheme::Text, "N", "The whole scene small, with every unit. Click: look there. Drag: select. Right click: order there.") == 1) {
 			g_SettingsMan.SetShowSandboxMinimap(!map);
 		}
+		line.Next();
+		bool army = g_SettingsMan.ShowArmyOverview();
+		if (BarChip("Army", army, ToolTheme::Text, nullptr, "The Army overview: the side's units by kind, with how many, their average health and how many are idle.\nClick a kind there to select them all; double click to look at them too.") == 1) {
+			g_SettingsMan.SetShowArmyOverview(!army);
+		}
 
 		// The second row: the selection.
 		line = BarLine();
@@ -5505,14 +5693,21 @@ namespace SandboxDetail {
 			}
 		}
 		line.Next();
-		int idleClick = BarChip("Idle", false, ToolTheme::Text, ".", "The next idle unit of the side, selected and looked at (right click: the one before). Shift adds it to the selection.");
-		if (idleClick != 0) {
-			CycleIdle(idleClick == 1, ImGui::GetIO().KeyShift);
+		{
+			// (With how many there are; the label's ### keeps the chip the same one as the number changes.)
+			const int idleCount = static_cast<int>(IdleUnits(SelectionTeam()).size());
+			const std::string idleLabel = "Idle " + std::to_string(idleCount) + "###idle";
+			int idleClick = BarChip(idleLabel.c_str(), false, ToolTheme::Text, ".", "How many units of the side are idle: on no order, going nowhere.\nClick: the next one, selected and looked at (right click: the one before). Shift adds it to the selection.\nCtrl+click (or Ctrl+.): every idle unit at once.");
+			if (idleClick == 1 && ImGui::GetIO().KeyCtrl) {
+				SelectAllIdle(ImGui::GetIO().KeyShift);
+			} else if (idleClick != 0) {
+				CycleIdle(idleClick == 1, ImGui::GetIO().KeyShift);
+			}
 		}
 		line.Next();
 		ImGui::BeginDisabled(alive == 0);
-		if (BarChip("Same kind", false, ToolTheme::Text, "Q", "Every unit in view of the kinds selected.") == 1) {
-			SelectKindsInView();
+		if (BarChip("Same kind", false, ToolTheme::Text, "Q", "Every unit in view of the kinds selected.\nCtrl+click (or Ctrl+Q): on the whole map, not only in view.") == 1) {
+			SelectSameKinds(ImGui::GetIO().KeyCtrl);
 		}
 		line.Next();
 		if (BarChip("Deselect", false) == 1) {
@@ -5541,10 +5736,16 @@ namespace SandboxDetail {
 				line.Next(pixel * 2.0F);
 				std::string label = std::to_string(group) + ":" + std::to_string(members);
 				ImGui::PushID(group + 320);
-				int clicked = BarChip(label.c_str(), false, ToolTheme::Text, nullptr, "Click (or its number): bring the group back; twice quickly, look at it.\nCtrl+click: keep the selection under this number instead. Right click: forget the group.");
+				int clicked = BarChip(label.c_str(), false, ToolTheme::Text, nullptr, "Click (or its number): bring the group back; twice quickly, look at it.\nCtrl+click: keep the selection under this number instead. Shift+click (or Shift and its number): add the selection to it.\nRight click: forget the group.");
 				if (clicked == 1) {
 					if (ImGui::GetIO().KeyCtrl) {
 						s_Groups[group] = s_Selected;
+					} else if (ImGui::GetIO().KeyShift) {
+						for (const UnitRef& ref: s_Selected) {
+							if (std::none_of(s_Groups[group].begin(), s_Groups[group].end(), [&ref](const UnitRef& member) { return member.ID == ref.ID; })) {
+								s_Groups[group].push_back(ref);
+							}
+						}
 					} else {
 						s_Selected = s_Groups[group];
 						if (ImGui::GetIO().MouseClickedLastCount[ImGuiMouseButton_Left] >= 2) {

@@ -357,15 +357,22 @@ namespace SandboxDetail {
 			char costText[16];
 			std::snprintf(costText, sizeof(costText), "%.0f", cost);
 			std::string tip = std::string(c_ReinforcementCards[card].Name) + (s_CallSize > 1 ? " x" + std::to_string(s_CallSize) : std::string()) + ": " + (exists ? std::string(costText) + " points" : std::string("not in this faction")) + "\n" + c_ReinforcementCards[card].Tip +
-			                  "\n\nClick: call in over the landing spot (marked first, if there isn't one). Right click: mark a new spot for this one." + (running ? "" : "\nOnce the battle is on.");
+			                  "\n\nClick: call in over the landing spot (marked first, if there isn't one). Right click: mark a new spot for this one.\nKey: Alt+" + std::to_string(card + 1) + ", as a click." + (running ? "" : "\nOnce the battle is on.");
 			ImGui::SameLine();
 			ImGui::PushID(card + 800);
 			const bool waiting = s_PendingCard == card;
+			const std::string key = std::to_string(card + 1);
 			int clicked = BarTile("##card", c_ReinforcementCards[card].Name, tip.c_str(), waiting, [&](ImDrawList* tileList, ImVec2 at, float room) {
 				DrawIcon(tileList, icons[card], at, room / 12.0F, affordable ? IM_COL32(232, 224, 190, 255) : IM_COL32(150, 150, 150, 110));
 				tileList->AddText(ImVec2(at.x + pixel, at.y + room - ImGui::GetFontSize()), affordable ? IM_COL32(255, 220, 120, 255) : IM_COL32(200, 120, 100, 200), costText);
+				// Its key (Alt and this number), faintly in the top corner.
+				tileList->AddText(ImVec2(at.x + room - ImGui::CalcTextSize(key.c_str()).x, at.y), IM_COL32(220, 220, 220, 130), key.c_str());
 			},
 			                      affordable ? 0 : IM_COL32(160, 160, 160, 160));
+			// Alt and the card's number: as a click (B-1).
+			if (clicked == 0 && ToolbarKeyPressed(card + 1, false)) {
+				clicked = 1;
+			}
 			if (clicked != 0 && affordable) {
 				if (clicked == 1 && s_HasLandingSpot) {
 					CallIn(card);
