@@ -54,6 +54,10 @@ void HDFirearm::Clear() {
 	m_BaseReloadTime = 0;
 	m_FullAuto = false;
 	m_EnergyCost = 0.0F;
+	m_ScrollCasts = -1;
+	m_ScrollPullCounted = false;
+	m_ScrollPullTimer.Reset();
+	m_ScrollReturnID = 0;
 	m_UsesOwnCharge = false;
 	m_Charge = m_MaxCharge = m_ChargeRegen = 0.0F;
 	m_FireIgnoresThis = true;
@@ -153,6 +157,9 @@ int HDFirearm::Create(const HDFirearm& reference) {
 	m_ReloadTmr = reference.m_ReloadTmr;
 	m_FullAuto = reference.m_FullAuto;
 	m_EnergyCost = reference.m_EnergyCost;
+	m_ScrollCasts = reference.m_ScrollCasts;
+	m_ScrollPullCounted = false;
+	m_ScrollReturnID = reference.m_ScrollReturnID;
 	m_UsesOwnCharge = reference.m_UsesOwnCharge;
 	m_Charge = reference.m_Charge;
 	m_MaxCharge = reference.m_MaxCharge;
@@ -237,6 +244,7 @@ int HDFirearm::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchForwards("BaseReloadTime") MatchProperty("ReloadTime", { reader >> m_BaseReloadTime; });
 	MatchProperty("FullAuto", { reader >> m_FullAuto; });
 	MatchProperty("EnergyCost", { reader >> m_EnergyCost; });
+	MatchProperty("ScrollCasts", { reader >> m_ScrollCasts; });
 	MatchProperty("UsesOwnCharge", { reader >> m_UsesOwnCharge; });
 	MatchProperty("Charge", {
 		reader >> m_Charge;
@@ -327,6 +335,9 @@ int HDFirearm::Save(Writer& writer) const {
 	if (m_EnergyCost > 0.0F) {
 		writer.NewProperty("EnergyCost");
 		writer << m_EnergyCost;
+	}
+	if (m_ScrollCasts >= 0) {
+		writer.NewPropertyWithValue("ScrollCasts", m_ScrollCasts);
 	}
 	if (m_UsesOwnCharge || m_MaxCharge > 0.0F) {
 		writer.NewProperty("UsesOwnCharge");
@@ -757,10 +768,20 @@ void HDFirearm::Update() {
 	m_DoneReloading = false;
 	bool playedRoundFireSound = false;
 
+	if (!m_Activated) {
+		m_ScrollPullCounted = false;
+	}
+	// (Its holder overcharged by a powerup: the magazine is left as full as it was.)
+	const int roundsBefore = m_pMagazine && pActor && pActor->IsOvercharged() ? m_pMagazine->GetRoundCount() : -1;
+
 	if (m_pMagazine && !m_pMagazine->IsEmpty()) {
 		if (m_Activated && !(m_PreFireSound && m_PreFireSound->IsBeingPlayed())) {
 
 			double msPerRound = GetMSPerRound();
+			// (Its holder overcharged by a powerup: twice as fast.)
+			if (pActor && pActor->IsOvercharged()) {
+				msPerRound *= 0.5;
+			}
 			if (m_FullAuto) {
 				// First round should fly as soon as activated and the delays are taken into account
 				if (!m_FiredOnce && (m_LastFireTmr.GetElapsedSimTimeMS() - m_DeactivationDelay - m_ActivationDelay) > msPerRound) {
@@ -796,6 +817,21 @@ void HDFirearm::Update() {
 					m_AlreadyClicked = true;
 				}
 				roundsFired = affordable;
+			}
+
+			// A spell from a scroll: each pull of the trigger is a cast, and a held one stops after c_ScrollCastHoldMS; none once they're used up.
+			if (m_ScrollCasts >= 0) {
+				if (!m_ScrollPullCounted && roundsFired >= 1) {
+					if (m_ScrollCasts > 0) {
+						--m_ScrollCasts;
+						m_ScrollPullCounted = true;
+						m_ScrollPullTimer.Reset();
+					} else {
+						roundsFired = 0;
+					}
+				} else if (m_ScrollPullCounted && m_ScrollPullTimer.IsPastSimMS(c_ScrollCastHoldMS)) {
+					roundsFired = 0;
+				}
 			}
 
 			if (roundsFired >= 1) {
@@ -937,6 +973,9 @@ void HDFirearm::Update() {
 				delete pRound;
 			}
 			pRound = 0;
+			if (roundsBefore > 0) {
+				m_pMagazine->SetRoundCount(roundsBefore);
+			}
 
 			if (m_FireFrame) {
 				RunScriptedFunctionInAppropriateScripts("OnFire", false, false);

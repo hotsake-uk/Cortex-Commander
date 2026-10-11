@@ -9,6 +9,8 @@
 #include "ToolWidgets.h"
 #include "AVehicle.h"
 #include "Arm.h"
+#include "HDFirearm.h"
+#include "HeldDevice.h"
 #include "TimerMan.h"
 
 #include <cfloat>
@@ -203,6 +205,7 @@ namespace {
 	enum UnitAction {
 		Slice, //!< A slice of the wheel (Data), handed to the unit's PieMenu.
 		Item, //!< An item the unit carries (Data): taken in hand.
+		Powerup, //!< A powerup the unit carries (Data): used (Actor::UsePowerup).
 		Handbrake, //!< A vehicle's handbrake off (0) or on (1).
 		WeaponRule, //!< Sets the unit's weapons rule (Actor::WeaponRule).
 		MovementRule, //!< Sets the unit's movement rule (Actor::MovementRule).
@@ -284,7 +287,13 @@ namespace {
 			}
 		}
 		for (const MovableObject* item: *inventory) {
-			labels.push_back(item->GetPresetName());
+			// (Powerups are under Quick actions.)
+			if (const HeldDevice* device = dynamic_cast<const HeldDevice*>(item); device && device->IsPowerup()) {
+				continue;
+			}
+			const HDFirearm* scrollSpell = dynamic_cast<const HDFirearm*>(item);
+			const int casts = scrollSpell ? scrollSpell->GetScrollCasts() : -1;
+			labels.push_back(casts >= 0 ? item->GetPresetName() + " (" + std::to_string(casts) + (casts == 1 ? " cast)" : " casts)") : item->GetPresetName());
 			// (Only a unit with a hand to hold it takes an item in hand; others' inventories are shown, greyed.)
 			enabled.push_back(human && human->GetFGArm() && dynamic_cast<const HeldDevice*>(item));
 			data.push_back(item);
@@ -301,8 +310,52 @@ namespace {
 		}
 	}
 
+	/// The powerups the unit carries, each used when picked: how many uses it has left, or while what it gives is running, the seconds left.
+	void AddQuickActions(ActionMenu::MenuLayout& menu, const Actor* actor) {
+		std::vector<std::string> labels;
+		std::vector<bool> enabled;
+		std::vector<const void*> data;
+		for (const MovableObject* item: *actor->GetInventory()) {
+			const HeldDevice* device = dynamic_cast<const HeldDevice*>(item);
+			if (!device || !device->IsPowerup()) {
+				continue;
+			}
+			const PowerupInfo& info = device->GetPowerup();
+			const bool usable = actor->CanUsePowerup(device);
+			std::string label = device->GetPresetName();
+			if (!info.Spell.empty()) {
+				const int casts = std::max(info.Casts, 1);
+				label += " (" + std::to_string(casts) + (casts == 1 ? " cast)" : " casts)");
+			} else {
+				// (What it gives that is running: the longest left.)
+				float running = 0.0F;
+				const float seconds[] = {info.Shield, info.Stim, info.Overcharge, info.Cloak};
+				for (int effect = 0; effect < static_cast<int>(Actor::PowerupEffect::Count); ++effect) {
+					if (seconds[effect] > 0.0F) {
+						running = std::max(running, actor->GetPowerupSecondsLeft(static_cast<Actor::PowerupEffect>(effect)));
+					}
+				}
+				if (!usable && running > 0.0F) {
+					label += ": " + std::to_string(static_cast<int>(std::ceil(running))) + "s";
+				} else {
+					const int uses = device->GetPowerupUsesLeft();
+					label += " (" + std::to_string(uses) + (uses == 1 ? " use)" : " uses)");
+				}
+			}
+			labels.push_back(label);
+			enabled.push_back(usable);
+			data.push_back(item);
+		}
+		if (labels.empty()) {
+			return;
+		}
+		menu.Heading("Quick actions", ActionMenu::Kind::Command);
+		menu.Choices(UnitAction::Powerup, labels, -1, 2, enabled, data);
+	}
+
 	void LayoutUnitMenu(const Actor* actor, const PieMenu* pieMenu) {
 		ActionMenu::MenuLayout menu(s_Scale);
+		AddQuickActions(menu, actor);
 		AddInventory(menu, actor, pieMenu);
 
 		// What it can do: the wheel's other slices, and a vehicle's handbrake.
@@ -376,7 +429,7 @@ namespace {
 	}
 
 	/// Carries out a pick on the unit's menu.
-	/// @return Whether it was a slice, which ends the menu.
+	/// @return Whether it was a slice or a powerup used, which ends the menu.
 	bool PickOnUnitMenu(const ActionMenu::Cell& cell, Actor* actor, PieMenu* pieMenu) {
 		if (!cell.Enabled && cell.Action != UnitAction::Slice) {
 			g_GUISound.HoverDisabledSound()->Play();
@@ -391,6 +444,14 @@ namespace {
 				if (cell.Data) {
 					TakeInHand(actor, static_cast<const MovableObject*>(cell.Data));
 				}
+				return false;
+			case UnitAction::Powerup:
+				// (Used, the menu goes, as after a slice: back to the fight.)
+				if (cell.Data && actor->UsePowerup(const_cast<MovableObject*>(static_cast<const MovableObject*>(cell.Data)))) {
+					g_GUISound.ItemChangeSound()->Play();
+					return true;
+				}
+				g_GUISound.UserErrorSound()->Play();
 				return false;
 			case UnitAction::Handbrake:
 				if (AVehicle* vehicle = dynamic_cast<AVehicle*>(actor)) {
