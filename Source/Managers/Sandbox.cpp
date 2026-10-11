@@ -909,6 +909,10 @@ void Sandbox::DrawGUI() {
 			// Build: the clicks to come put up the piece picked.
 			s_CommandMode = CommandMode::Build;
 		}
+		if (io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_L, false)) {
+			// Airlift: the click to come is where they're flown.
+			s_CommandMode = CommandMode::Airlift;
+		}
 		if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_A, false)) {
 			// Everyone on the selection's side.
 			int team = SelectionTeam();
@@ -1928,6 +1932,7 @@ void Sandbox::Update() {
 		s_Plans.clear();
 		ForgetBreaches();
 		ForgetBuilds();
+		ForgetAirlifts();
 		s_GuardPosts.clear();
 		s_Commander = false;
 		s_Paced.clear();
@@ -1949,6 +1954,7 @@ void Sandbox::Update() {
 	UpdatePlans();
 	UpdateBreaches();
 	UpdateBuilds();
+	UpdateAirlifts();
 	UpdateCommander();
 	UpdatePace();
 	UpdateMoveWatch();

@@ -901,6 +901,9 @@
     <ClCompile Include="Source\Managers\SandboxBuild.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Managers\SandboxAirlift.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Managers\BattleSupply.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
@@ -908,6 +911,9 @@
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\BattleHotSeat.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\BattleArmy.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\Sandbox.cpp">

@@ -293,6 +293,7 @@ namespace SandboxDetail {
 					ImGui::TextColored(ImVec4(1.0F, 0.75F, 0.3F, 1.0F), "Tick \"You command this team\" on a second team.");
 				}
 			}
+			ArmyPanel();
 			if (BattleReportReady()) {
 				if (ToolUI::Button("After-battle report", ImVec2(-1.0F, 0.0F))) {
 					OpenBattleReport();

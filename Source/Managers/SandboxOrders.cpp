@@ -1062,6 +1062,9 @@ namespace SandboxDetail {
 			case CommandMode::Build:
 				BuildSelected(units, point);
 				return;
+			case CommandMode::Airlift:
+				AirliftSelected(units, point);
+				return;
 			default: {
 				bool attackMove = s_CommandMode == CommandMode::AttackMove;
 				if (shift) {
@@ -1370,6 +1373,10 @@ namespace SandboxDetail {
 		}
 		if (s_CommandMode == CommandMode::Build) {
 			BuildSelected(UnitsToMove(0, true), position);
+			return;
+		}
+		if (s_CommandMode == CommandMode::Airlift) {
+			AirliftSelected(UnitsToMove(0, true), position);
 			return;
 		}
 		if (s_CommandMode == CommandMode::AttackMove) {
