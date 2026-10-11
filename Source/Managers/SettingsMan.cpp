@@ -366,6 +366,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("MagicPushStrength", { MagicEffects::GetTuning().PushStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
 	MatchProperty("MagicUnitPush", { MagicEffects::GetTuning().UnitPush = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
 	MatchProperty("MagicAirGust", { MagicEffects::GetTuning().AirGust = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
+	MatchProperty("MagicSpellEnergy", { MagicEffects::GetTuning().SpellEnergy = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("MagicEnergyRegen", { MagicEffects::GetTuning().EnergyRegen = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
 	MatchProperty("WaterFreezes", { FluidSim::SetFreezingEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("BloodFlows", { FluidSim::SetBloodFlows(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LiquidsDrainBottom", { FluidSim::SetDrainsBottom(std::stoi(reader.ReadPropValue()) != 0); });
@@ -1141,6 +1143,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("MagicPushStrength", MagicEffects::GetTuning().PushStrength);
 	writer.NewPropertyWithValue("MagicUnitPush", MagicEffects::GetTuning().UnitPush);
 	writer.NewPropertyWithValue("MagicAirGust", MagicEffects::GetTuning().AirGust);
+	writer.NewPropertyWithValue("MagicSpellEnergy", MagicEffects::GetTuning().SpellEnergy);
+	writer.NewPropertyWithValue("MagicEnergyRegen", MagicEffects::GetTuning().EnergyRegen);
 	writer.NewPropertyWithValue("BurningUnits", ActorFire::IsEnabled());
 	writer.NewPropertyWithValue("SwimmingAndDrowning", ActorWater::IsEnabled());
 	writer.NewPropertyWithValue("LightPropagationSteps", lighting.PropagationIterationsPerFrame);
