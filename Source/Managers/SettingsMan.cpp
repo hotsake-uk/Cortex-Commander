@@ -173,6 +173,7 @@ void SettingsMan::Clear() {
 	m_SandboxStrokeLog = false;
 	m_SandboxSpotReach = false;
 	m_SandboxGroupBadges = true;
+	m_CommanderBarKey = "F11";
 	m_SandboxOrderGlyphs = 1;
 	m_SandboxSpawnStats = 1;
 	m_SandboxAttackPings = true;
@@ -461,6 +462,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CustomWeather", { g_PostProcessMan.GetLightingSettings().CustomWeather = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WeatherGlow", { g_PostProcessMan.GetLightingSettings().WeatherGlow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WeatherIntensity", { g_PostProcessMan.GetLightingSettings().WeatherIntensity = std::stof(reader.ReadPropValue()); });
+	MatchProperty("WeatherSpeed", { g_PostProcessMan.GetLightingSettings().WeatherSpeed = std::stof(reader.ReadPropValue()); });
 	MatchProperty("Wind", { g_PostProcessMan.GetLightingSettings().Wind = std::stof(reader.ReadPropValue()); });
 	MatchProperty("TimeOfDay", { g_PostProcessMan.GetLightingSettings().TimeOfDay = std::stof(reader.ReadPropValue()); });
 	MatchProperty("DayLengthMinutes", { g_PostProcessMan.GetLightingSettings().DayLengthMinutes = std::stof(reader.ReadPropValue()); });
@@ -800,6 +802,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SandboxStrokeLog", { reader >> m_SandboxStrokeLog; });
 	MatchProperty("SandboxSpotReach", { reader >> m_SandboxSpotReach; });
 	MatchProperty("SandboxGroupBadges", { reader >> m_SandboxGroupBadges; });
+	MatchProperty("CommanderBarKey", { m_CommanderBarKey = reader.ReadPropValue(); });
 	MatchProperty("SandboxOrderGlyphs", { int which = 1; reader >> which; SetSandboxOrderGlyphs(which); });
 	MatchProperty("SandboxSpawnStats", { int which = 1; reader >> which; SetSandboxSpawnStats(which); });
 	MatchProperty("SandboxAttackPings", { reader >> m_SandboxAttackPings; });
@@ -936,6 +939,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("CustomWeather", lighting.CustomWeather);
 	writer.NewPropertyWithValue("WeatherGlow", lighting.WeatherGlow);
 	writer.NewPropertyWithValue("WeatherIntensity", lighting.WeatherIntensity);
+	writer.NewPropertyWithValue("WeatherSpeed", lighting.WeatherSpeed);
 	writer.NewPropertyWithValue("Wind", lighting.Wind);
 	writer.NewPropertyWithValue("TimeOfDay", lighting.TimeOfDay);
 	writer.NewPropertyWithValue("DayLengthMinutes", lighting.DayLengthMinutes);
@@ -1341,6 +1345,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 		writer.NewPropertyWithValue("SmartBuyMenuNavigation", m_EnableSmartBuyMenuNavigation);
 		writer.NewPropertyWithValue("AutomaticGoldDeposit", m_AutomaticGoldDeposit);
 		writer.NewPropertyWithValue("SandboxGroupBadges", m_SandboxGroupBadges);
+		writer.NewPropertyWithValue("CommanderBarKey", m_CommanderBarKey);
 		writer.NewPropertyWithValue("SandboxOrderGlyphs", m_SandboxOrderGlyphs);
 		writer.NewPropertyWithValue("SandboxSpawnStats", m_SandboxSpawnStats);
 		writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
@@ -1520,6 +1525,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("EndlessMetaGameMode", m_EndlessMetaGameMode);
 	writer.NewPropertyWithValue("EnableCrabBombs", m_EnableCrabBombs);
 	writer.NewPropertyWithValue("SandboxGroupBadges", m_SandboxGroupBadges);
+	writer.NewPropertyWithValue("CommanderBarKey", m_CommanderBarKey);
 	writer.NewPropertyWithValue("SandboxOrderGlyphs", m_SandboxOrderGlyphs);
 	writer.NewPropertyWithValue("SandboxSpawnStats", m_SandboxSpawnStats);
 	writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
