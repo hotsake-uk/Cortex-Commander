@@ -188,6 +188,13 @@ namespace SandboxDetail {
 			standing.Direct = s_DirectOrder;
 			standing.SkyGoal = s_SkyOrder;
 			standing.SkyPoint = waypoint;
+		} else if (target) {
+			standing.SkyGoal = false;
+		} else if (!standing.SkyGoal || !g_SceneMan.ShortestDistance(standing.SkyPoint, waypoint, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(4.0F)) {
+			// One the battle sends on (a mode's runners and defenders, all resent) to a place up in the air, an objective drawn or put there,
+			// flies to it, as Jetpack here does, rather than walking to the ground under it and stopping there. Sent anywhere else, it goes
+			// on the ground: a flight to an earlier place isn't carried on to the new one. (A sky order resent to its own point keeps it.)
+			FlyIfOffTheGround(unit, waypoint);
 		}
 		standing.FailReason = Actor::ORDERFAIL_NONE;
 		standing.FailMaterial = 0;
@@ -639,6 +646,47 @@ namespace SandboxDetail {
 		return at.m_Y > 0.0F;
 	}
 
+	bool OffTheGround(const Actor* unit, const Vector& point) {
+		Vector at = point;
+		g_SceneMan.WrapPosition(at);
+		if (at.m_Y <= 0.0F) {
+			return false;
+		}
+		// (Most of its height: a post on a floor, its feet there, or the middle of one standing on it, has ground well inside that.)
+		const int depth = static_cast<int>(std::max(30.0F, (unit ? unit->GetHeight() : 0.0F) * 0.8F));
+		for (int down = 0; down <= depth; down += 3) {
+			if (g_SceneMan.GetTerrMatter(static_cast<int>(at.m_X), static_cast<int>(at.m_Y) + down) != MaterialColorKeys::g_MaterialAir) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	namespace {
+		bool HasSkyJet(const Actor* unit) {
+			const AHuman* human = dynamic_cast<const AHuman*>(unit);
+			const AEJetpack* jet = human ? human->GetJetpack() : nullptr;
+			return jet && jet->IsAttached() && jet->GetJetpackType() == AEJetpack::JetpackType::Standard;
+		}
+	} // namespace
+
+	bool FlyIfOffTheGround(Actor* unit, const Vector& point) {
+		if (!unit) {
+			return false;
+		}
+		Actor::StandingOrder& standing = unit->GetStandingOrder();
+		standing.SkyGoal = HasSkyJet(unit) && OffTheGround(unit, point);
+		standing.SkyPoint = point;
+		return standing.SkyGoal;
+	}
+
+	bool FlyAgainFor(const Actor* unit, const Vector& point) {
+		if (!unit || unit->GetStandingOrder().SkyGoal || !HasSkyJet(unit) || !OffTheGround(unit, point)) {
+			return false;
+		}
+		return !g_SceneMan.ShortestDistance(unit->GetPos(), point, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(unit->GetHeight() * 0.6F);
+	}
+
 	void JetpackHereSelected(const Vector& point, bool shift, int facing) {
 		struct SkyScope {
 			SkyScope() { s_SkyOrder = true; }
@@ -1069,7 +1117,7 @@ namespace SandboxDetail {
 				DefendAtSelected(point, point, shift);
 				return;
 			case CommandMode::Suppress:
-				SuppressSelected(point);
+				SuppressSelected(point, shift);
 				return;
 			case CommandMode::JetpackHere:
 				JetpackHereSelected(point, shift);
@@ -1376,7 +1424,8 @@ namespace SandboxDetail {
 			return;
 		}
 		if (s_CommandMode == CommandMode::Suppress) {
-			SuppressSelected(position);
+			// Shift: suppressing there is the last step of the plan (RC-3).
+			SuppressSelected(position, modifier == 1);
 			return;
 		}
 		if (s_CommandMode == CommandMode::JetpackHere) {
@@ -1543,6 +1592,8 @@ namespace SandboxDetail {
 			Vector spot = objective.Zone.empty() ? (spots.empty() ? objective.Pos : spots[std::min(i, spots.size() - 1)]) : SpotInZone(objective.Zone, units[i]->GetHeight());
 			// (Just over the ground under the spot, as for a move: see MoveUnitsTo.)
 			SendUnit(units[i], spot + Vector(0.0F, -4.0F), nullptr, false, defend ? "hold objective" : "take objective");
+			// (A zone drawn in the air, with no floor in it: its spot is in the air, flown to by those with a jet.)
+			FlyIfOffTheGround(units[i], spot + Vector(0.0F, -4.0F));
 			units[i]->SetOrderPost(spot);
 			units[i]->SetOrderPostFacing(0);
 			CommandDefender(units[i], objective.Pos, spot, radius);
@@ -1616,6 +1667,9 @@ namespace SandboxDetail {
 			case PlanKind::Wait:
 				// (It stays where the step before left it: nothing to give.)
 				break;
+			case PlanKind::Suppress:
+				SuppressUnit(unit, step.Place, step.Radius);
+				break;
 		}
 		s_FollowingPlan = false;
 		plan.Current = step;
@@ -1638,6 +1692,7 @@ namespace SandboxDetail {
 			case PlanKind::Guard:
 				return !target || target->IsDead();
 			case PlanKind::Defend:
+			case PlanKind::Suppress:
 				return false;
 			case PlanKind::Wait:
 				return g_TimerMan.GetSimUpdateCount() - plan.Started >= plan.Current.Updates;
@@ -1667,6 +1722,7 @@ namespace SandboxDetail {
 			step.Kind = kind;
 			step.Target = MakeRef(target);
 			step.Facing = facing;
+			step.Radius = s_SuppressRadius;
 			if (toPlace) {
 				step.Place = spots.empty() ? place : spots[std::min(i, spots.size() - 1)];
 			} else if (kind == PlanKind::Defend) {
@@ -1685,7 +1741,7 @@ namespace SandboxDetail {
 			if (!plan.Running && plan.Steps.empty()) {
 				StartPlanStep(unit, plan, step);
 				// (Given now, it's answered as the order it is; the step's own sending is a plan's, which doesn't answer.)
-				const char* const answers[] = {"OrderMove", "OrderAttackMove", "OrderAttack", "OrderGuard", "OrderDefend", nullptr};
+				const char* const answers[] = {"OrderMove", "OrderAttackMove", "OrderAttack", "OrderGuard", "OrderDefend", nullptr, "OrderSuppress"};
 				int kindIndex = static_cast<int>(step.Kind);
 				AnswerOrder(unit, kindIndex >= 0 && kindIndex < static_cast<int>(std::size(answers)) ? answers[kindIndex] : nullptr);
 			} else {
@@ -1794,20 +1850,30 @@ namespace SandboxDetail {
 	/// point, aiming about it at random, for as long as it has the order. They need no target, and take no notice of what else is in sight;
 	/// one out of range walks in till it is in, then stands. The AI does the firing (HumanBehaviors.SuppressZone), told the zone by number
 	/// values on the unit; any other order, a hold or a cancel takes them off (ClearSuppress).
-	void SuppressSelected(const Vector& point) {
+	void SuppressSelected(const Vector& point, bool shift) {
 		std::vector<Actor*> units = UnitsToMove(0, true);
-		Vector centre = point;
-		g_SceneMan.WrapPosition(centre);
-		for (Actor* unit: units) {
-			HoldUnit(unit);
-			unit->SetMovementRule(Actor::MOVE_HOLD_GROUND);
-			unit->SetNumberValue("SandboxSuppressX", centre.m_X);
-			unit->SetNumberValue("SandboxSuppressY", centre.m_Y);
-			unit->SetNumberValue("SandboxSuppressR", static_cast<double>(std::max(s_SuppressRadius, 10)));
-			s_SendNotes[unit->GetUniqueID()] = {"suppress", false, g_TimerMan.GetSimUpdateCount()};
-			AnswerOrder(unit, "OrderSuppress");
+		if (shift) {
+			// Shift: firing into the place from where the plan leaves them, as its last step (a suppress, like a defend, is never done).
+			PlanStepFor(units, PlanKind::Suppress, point, nullptr);
+		} else {
+			for (Actor* unit: units) {
+				SuppressUnit(unit, point, s_SuppressRadius);
+				AnswerOrder(unit, "OrderSuppress");
+			}
 		}
 		MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::Suppress)]);
+	}
+
+	/// Sets one unit to hold ground and fire into a place: what a Suppress order, or a plan's suppress step, gives it.
+	void SuppressUnit(Actor* unit, const Vector& point, int radius) {
+		Vector centre = point;
+		g_SceneMan.WrapPosition(centre);
+		HoldUnit(unit);
+		unit->SetMovementRule(Actor::MOVE_HOLD_GROUND);
+		unit->SetNumberValue("SandboxSuppressX", centre.m_X);
+		unit->SetNumberValue("SandboxSuppressY", centre.m_Y);
+		unit->SetNumberValue("SandboxSuppressR", static_cast<double>(std::max(radius, 10)));
+		s_SendNotes[unit->GetUniqueID()] = {"suppress", false, g_TimerMan.GetSimUpdateCount()};
 	}
 
 	/// Whether a unit is suppressing a place, and where and how wide.

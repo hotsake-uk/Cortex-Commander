@@ -1179,7 +1179,9 @@ namespace SandboxDetail {
 			// (And again every few seconds while it goes after someone, as they move.)
 			const bool stale = target && now - runner.SentAt > static_cast<long long>(4.0F * UpdatesPerSecond());
 			const bool strayed = !fight && runner.HasSent && now - runner.SentAt > static_cast<long long>(0.4F * UpdatesPerSecond()) && Strayed(unit, runner);
-			if (!moved && !stopped && !stale && !strayed) {
+			// (Or come down short of a place up in the air, its tank run out: sent to fly there again, which it does once the tank has filled.)
+			const bool landed = !fight && runner.HasSent && FlyAgainFor(unit, to);
+			if (!moved && !stopped && !stale && !strayed && !landed) {
 				return;
 			}
 			runner.Sent = to;
@@ -1444,7 +1446,13 @@ namespace SandboxDetail {
 		constexpr ImU32 c_NeutralColor = IM_COL32(245, 245, 245, 255);
 
 		/// Where a team takes the flag to score: its goal zone's middle, on the ground.
-		Vector GoalSpot(const BattleModeSettings& settings, int side) { return Grounded(ZoneMiddle(settings.Goals[side])); }
+		/// Where a team's units make for in its goal: the ground under its middle, or for a goal drawn in the air with no ground under its
+		/// middle inside it, a place in it, flown to by those with a jet (FlyIfOffTheGround) rather than stood under.
+		Vector GoalSpot(const BattleModeSettings& settings, int side) {
+			const std::vector<Vector>& goal = settings.Goals[side];
+			const Vector ground = Grounded(ZoneMiddle(goal));
+			return goal.size() < 3 || IsInZone(goal, ground - Vector(0.0F, 12.0F)) ? ground : SpotInZone(goal, 24.0F);
+		}
 
 		int s_FlagPlace = -1; //!< Where the flag last came in: the index of its flag position, or of its flag spawn zone (FlagByZones); -1 for none yet.
 
@@ -3029,7 +3037,7 @@ namespace SandboxDetail {
 			s_EscortVip = MakeRef(pick);
 			s_EscortHasVip = true;
 			s_EscortCentre = pick->GetPos();
-			pick->SetHighlighted(true);
+			pick->SetHighlighted(true, true);
 			s_Runners.erase(pick->GetUniqueID());
 			s_BattleDefenders.erase(pick->GetUniqueID());
 			if (!BattlePlayerCommands(side)) {
@@ -3037,6 +3045,7 @@ namespace SandboxDetail {
 				pick->ClearAIWaypoints();
 				pick->AddAISceneWaypoint(ZoneMiddle(settings.Zones.front()));
 				pick->SetAIMode(Actor::AIMODE_GOTO);
+				FlyIfOffTheGround(pick, ZoneMiddle(settings.Zones.front()));
 			}
 			pick->Say("EscortMoving");
 			Say(SideName(side) + " has its VIP: get it to the destination!");
@@ -3082,11 +3091,12 @@ namespace SandboxDetail {
 				EndGame(side, SideName(side) + " got its VIP through!");
 				return;
 			}
-			if (!BattlePlayerCommands(side) && !vip->IsPlayerControlled() && now % 180 == 0 && (vip->GetAIMode() != Actor::AIMODE_GOTO || vip->GetWaypointsSize() == 0)) {
-				// (Back on its way after a fight or a stop.)
+			if (!BattlePlayerCommands(side) && !vip->IsPlayerControlled() && now % 180 == 0 && (vip->GetAIMode() != Actor::AIMODE_GOTO || vip->GetWaypointsSize() == 0 || FlyAgainFor(vip, ZoneMiddle(settings.Zones.front())))) {
+				// (Back on its way after a fight or a stop, or after coming down short of a destination up in the air.)
 				vip->ClearAIWaypoints();
 				vip->AddAISceneWaypoint(ZoneMiddle(settings.Zones.front()));
 				vip->SetAIMode(Actor::AIMODE_GOTO);
+				FlyIfOffTheGround(vip, ZoneMiddle(settings.Zones.front()));
 			}
 			if (DistanceBetween(vip->GetPos(), s_EscortCentre) > 80.0F) {
 				s_EscortCentre = vip->GetPos();
@@ -3935,7 +3945,7 @@ namespace SandboxDetail {
 			vip.Unit = MakeRef(pick);
 			vip.Has = true;
 			vip.Pos = pick->GetPos();
-			pick->SetHighlighted(true);
+			pick->SetHighlighted(true, true);
 			s_Runners.erase(pick->GetUniqueID());
 			if (!BattlePlayerCommands(side)) {
 				pick->SetOrderAttack(false);
