@@ -43,6 +43,10 @@ void SLBackground::Clear() {
 	m_ZOrder = c_BackgroundDepth;
 
 	m_IgnoreAutoScale = false;
+
+	m_UseParallaxFactor = false;
+	m_ParallaxFactor.Reset();
+	m_ParallaxFitHeight = false;
 }
 
 int SLBackground::Create() {
@@ -99,6 +103,10 @@ int SLBackground::Create(const SLBackground& reference) {
 
 	m_IgnoreAutoScale = reference.m_IgnoreAutoScale;
 
+	m_UseParallaxFactor = reference.m_UseParallaxFactor;
+	m_ParallaxFactor = reference.m_ParallaxFactor;
+	m_ParallaxFitHeight = reference.m_ParallaxFitHeight;
+
 	return 0;
 }
 
@@ -129,6 +137,11 @@ int SLBackground::ReadProperty(const std::string_view& propName, Reader& reader)
 	MatchProperty("CanAutoScrollY", { reader >> m_CanAutoScrollY; });
 	MatchProperty("AutoScrollStepInterval", { reader >> m_AutoScrollStepInterval; });
 	MatchProperty("AutoScrollStep", { reader >> m_AutoScrollStep; });
+	MatchProperty("ParallaxFactor", {
+		reader >> m_ParallaxFactor;
+		m_UseParallaxFactor = true;
+	});
+	MatchProperty("ParallaxFitHeight", { reader >> m_ParallaxFitHeight; });
 
 	EndPropertyList;
 }
@@ -148,6 +161,10 @@ int SLBackground::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("CanAutoScrollY", m_CanAutoScrollY);
 	writer.NewPropertyWithValue("AutoScrollStepInterval", m_AutoScrollStepInterval);
 	writer.NewPropertyWithValue("AutoScrollStep", m_AutoScrollStep);
+	if (m_UseParallaxFactor) {
+		writer.NewPropertyWithValue("ParallaxFactor", m_ParallaxFactor);
+		writer.NewPropertyWithValue("ParallaxFitHeight", m_ParallaxFitHeight);
+	}
 
 	return 0;
 }
@@ -204,6 +221,11 @@ void SLBackground::Update() {
 	m_MainBitmap = m_Bitmaps.at(m_Frame);
 	m_StaticTexture = m_Textures.at(m_Frame);
 
+	if (m_UseParallaxFactor) {
+		UpdateParallaxOffset();
+		return;
+	}
+
 	// Layers that scroll slower are further away. Place them deeper so the lighting can haze them by distance. Draw order is unaffected, since further layers are drawn first anyway.
 	m_ZOrder = c_BackgroundDepth + (1.0F - std::clamp(std::abs(m_ScrollRatio.GetX()), 0.0F, 1.0F)) * c_BackgroundDepthRange;
 
@@ -228,6 +250,32 @@ void SLBackground::Update() {
 	}
 	if (m_WrapY) {
 		m_Offset.m_Y = std::fmod(m_Offset.m_Y, m_ScaledDimensions.m_Y);
+	}
+}
+
+void SLBackground::UpdateParallaxOffset() {
+	// m_Offset holds the scene position of the top left of the (unzoomed) view. The layer's place follows from it directly, with no dependence on the scroll ratio rules above.
+	float factorX = std::clamp(m_ParallaxFactor.GetX(), 0.0F, 1.0F);
+	float factorY = std::clamp(m_ParallaxFactor.GetY(), 0.0F, 1.0F);
+	float layerHeight = m_ScaledDimensions.GetY();
+	float screenHeight = static_cast<float>(g_FrameMan.GetUnzoomedPlayerScreenHeight());
+	float cameraTravelY = std::max(0.0F, static_cast<float>(g_SceneMan.GetSceneHeight()) - screenHeight);
+	float viewTop = m_Offset.GetY();
+
+	m_ZOrder = c_BackgroundDepth + (1.0F - factorX) * c_BackgroundDepthRange;
+
+	// On screen the layer moves factorX of the camera's movement, so in the scene it sits at the camera's position times (1 - factorX).
+	m_Offset.m_X = std::floor(m_Offset.GetX() * (1.0F - factorX));
+	if (m_WrapX && m_ScaledDimensions.GetX() > 0.0F) {
+		m_Offset.m_X = std::fmod(m_Offset.m_X, m_ScaledDimensions.GetX());
+	}
+	if (m_ParallaxFitHeight) {
+		// Top of the layer at the top of the screen with the camera at the top of the scene, bottom at the bottom with the camera at the bottom.
+		factorY = cameraTravelY > 0.0F ? std::max(0.0F, layerHeight - screenHeight) / cameraTravelY : 0.0F;
+		m_Offset.m_Y = std::floor(viewTop * (1.0F - factorY));
+	} else {
+		// Bottom of the layer at the bottom of the screen with the camera at the bottom of the scene, sinking factorY of every pixel the camera rises.
+		m_Offset.m_Y = std::floor(viewTop + screenHeight + (cameraTravelY - viewTop) * factorY - layerHeight);
 	}
 }
 

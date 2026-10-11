@@ -6,6 +6,7 @@
 #include "GUILabel.h"
 #include "GUISlider.h"
 #include "GUICheckbox.h"
+#include "GUIButton.h"
 
 using namespace RTE;
 
@@ -31,9 +32,19 @@ SettingsAudioGUI::SettingsAudioGUI(GUIControlManager* parentControlManager) :
 	m_MuteOnFocusLossCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxMuteAudioOnFocusLoss"));
 	m_MuteOnFocusLossCheckbox->SetCheck(g_AudioMan.GetMuteAudioOnFocusLoss());
 
+	for (int category = 0; category < AudioMan::MIX_CATEGORY_COUNT; ++category) {
+		const std::string& categoryName = AudioMan::c_SoundMixCategoryNames[category];
+		m_SoundMixSliders[category] = dynamic_cast<GUISlider*>(m_GUIControlManager->GetControl("SliderMix" + categoryName));
+		m_SoundMixValueLabels[category] = dynamic_cast<GUILabel*>(m_GUIControlManager->GetControl("LabelMixValue" + categoryName));
+	}
+	m_ResetSoundMixButton = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonResetSoundMix"));
+
 	UpdateMasterVolumeControls();
 	UpdateMusicVolumeControls();
 	UpdateSoundVolumeControls();
+	for (int category = 0; category < AudioMan::MIX_CATEGORY_COUNT; ++category) {
+		UpdateSoundMixControls(static_cast<AudioMan::SoundMixCategory>(category));
+	}
 }
 
 void SettingsAudioGUI::SetEnabled(bool enable) const {
@@ -59,8 +70,32 @@ void SettingsAudioGUI::UpdateSoundVolumeControls() {
 	m_SoundVolumeSlider->SetValue(soundVolume);
 }
 
+void SettingsAudioGUI::UpdateSoundMixControls(AudioMan::SoundMixCategory category) {
+	if (!m_SoundMixSliders[category] || !m_SoundMixValueLabels[category]) {
+		return;
+	}
+	int mixVolume = static_cast<int>(std::round(g_AudioMan.GetSoundMixVolume(category) * 100));
+	m_SoundMixValueLabels[category]->SetText(std::to_string(mixVolume));
+	m_SoundMixSliders[category]->SetValue(mixVolume);
+}
+
 void SettingsAudioGUI::HandleInputEvents(GUIEvent& guiEvent) {
 	if (guiEvent.GetType() == GUIEvent::Notification) {
+		if (m_ResetSoundMixButton && guiEvent.GetControl() == m_ResetSoundMixButton && guiEvent.GetMsg() == GUIButton::Pushed) {
+			for (int category = 0; category < AudioMan::MIX_CATEGORY_COUNT; ++category) {
+				g_AudioMan.SetSoundMixVolume(static_cast<AudioMan::SoundMixCategory>(category), 1.0F);
+				UpdateSoundMixControls(static_cast<AudioMan::SoundMixCategory>(category));
+			}
+			g_GUISound.ButtonPressSound()->Play();
+			return;
+		}
+		for (int category = 0; category < AudioMan::MIX_CATEGORY_COUNT; ++category) {
+			if (m_SoundMixSliders[category] && guiEvent.GetControl() == m_SoundMixSliders[category]) {
+				g_AudioMan.SetSoundMixVolume(static_cast<AudioMan::SoundMixCategory>(category), static_cast<float>(m_SoundMixSliders[category]->GetValue()) / 100.0F);
+				UpdateSoundMixControls(static_cast<AudioMan::SoundMixCategory>(category));
+				return;
+			}
+		}
 		if (guiEvent.GetControl() == m_MasterVolumeSlider) {
 			float newMasterVolume = static_cast<float>(m_MasterVolumeSlider->GetValue()) / 100.0F;
 			if (newMasterVolume != g_AudioMan.GetSoundsVolume() && !g_GUISound.TestSound()->IsBeingPlayed()) {

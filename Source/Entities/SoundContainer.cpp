@@ -38,6 +38,7 @@ void SoundContainer::Clear() {
 	m_SoundOverlapMode = SoundOverlapMode::OVERLAP;
 
 	m_BusRouting = BusRouting::SFX;
+	m_MixCategory = AudioMan::MIX_AUTO;
 	m_Immobile = false;
 	m_AttenuationStartDistance = c_DefaultAttenuationStartDistance;
 	m_CustomPanValue = 0.0f;
@@ -68,6 +69,7 @@ int SoundContainer::Create(const SoundContainer& reference) {
 	m_SoundOverlapMode = reference.m_SoundOverlapMode;
 
 	m_BusRouting = reference.m_BusRouting;
+	m_MixCategory = reference.m_MixCategory;
 	m_Immobile = reference.m_Immobile;
 	m_AttenuationStartDistance = reference.m_AttenuationStartDistance;
 	m_CustomPanValue = reference.m_CustomPanValue;
@@ -133,6 +135,14 @@ int SoundContainer::ReadProperty(const std::string_view& propName, Reader& reade
 			}
 		}
 	});
+	MatchProperty("MixCategory", {
+		std::string mixCategoryString = reader.ReadPropValue();
+		AudioMan::SoundMixCategory mixCategory = AudioMan::GetSoundMixCategoryFromName(mixCategoryString);
+		if (mixCategory == AudioMan::MIX_AUTO && mixCategoryString != "Auto") {
+			reader.ReportError("Tried to use non-existent sound mix category " + mixCategoryString + ". Valid categories are Weapons, Explosions, Impacts, Footsteps, Voices, Engines, World and UI.");
+		}
+		m_MixCategory = mixCategory;
+	});
 	MatchProperty("Immobile", { reader >> m_Immobile; });
 	MatchProperty("AttenuationStartDistance", { reader >> m_AttenuationStartDistance; });
 	MatchProperty("CustomPanValue", {
@@ -179,6 +189,10 @@ int SoundContainer::Save(Writer& writer) const {
 	}
 	writer.NewProperty("BusRouting");
 	writer << m_BusRouting;
+	if (m_MixCategory != AudioMan::MIX_AUTO) {
+		writer.NewProperty("MixCategory");
+		writer << AudioMan::c_SoundMixCategoryNames[m_MixCategory];
+	}
 	writer.NewProperty("Immobile");
 	writer << m_Immobile;
 	writer.NewProperty("AttenuationStartDistance");

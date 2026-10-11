@@ -654,6 +654,18 @@ bool ACDropShip::AutopilotGoTo(const Vector& spot) {
 	return true;
 }
 
+bool ACDropShip::AutopilotHoverOver(const Vector& spot) {
+	if (!m_Autopilot.begun) {
+		return false;
+	}
+	Vector to = spot;
+	g_SceneMan.WrapPosition(to);
+	// (From just above the place, so a click on the ground's surface finds that ground, not what is under it.)
+	float hover = AutopilotGroundBelow(Vector(to.m_X, to.m_Y - 10.0F), m_Autopilot.hoverAlt);
+	to.m_Y = std::max(std::min(to.m_Y, hover), GetRadius());
+	return AutopilotGoTo(to);
+}
+
 void ACDropShip::UpdateAutopilot() {
 	DropShipAutopilot& ai = m_Autopilot;
 	Controller& ctrl = m_Controller;

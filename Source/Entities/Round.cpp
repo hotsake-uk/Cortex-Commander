@@ -85,7 +85,7 @@ int Round::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("LifeVariation", { reader >> m_LifeVariation; });
 	MatchProperty("Shell", { m_Shell = dynamic_cast<const MovableObject*>(g_PresetMan.GetEntityPreset(reader)); });
 	MatchProperty("ShellVelocity", { reader >> m_ShellVel; });
-	MatchProperty("FireSound", { reader >> m_FireSound; });
+	MatchProperty("FireSound", { reader >> m_FireSound; m_FireSound.SetDefaultMixCategory(AudioMan::MIX_WEAPONS); });
 	MatchProperty("AILifeTime", { reader >> m_AILifeTime; });
 	MatchProperty("AIFireVel", { reader >> m_AIFireVel; });
 	MatchProperty("AIPenetration", { reader >> m_AIPenetration; });

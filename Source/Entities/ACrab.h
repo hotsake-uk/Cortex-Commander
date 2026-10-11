@@ -251,7 +251,12 @@ namespace RTE {
 
 		/// Sets this ACrab's stride sound. Ownership IS transferred!
 		/// @param newSound The new SoundContainer for this ACrab's stride sound.
-		void SetStrideSound(SoundContainer* newSound) { m_StrideSound = newSound; }
+		void SetStrideSound(SoundContainer* newSound) {
+			m_StrideSound = newSound;
+			if (m_StrideSound) {
+				m_StrideSound->SetDefaultMixCategory(AudioMan::MIX_FOOTSTEPS);
+			}
+		}
 
 		/// Gets the upper limit of this ACrab's aim range.
 		/// @return The upper limit of this ACrab's aim range.

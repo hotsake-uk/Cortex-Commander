@@ -33,9 +33,11 @@
 #include "TextOverlay.h"
 #include "TimerMan.h"
 #include "UnitSpeech.h"
+#include "UnitSpeechVoice.h"
 #include "WindowMan.h"
 
 #include "imgui/imgui.h"
+#include "SDL3/SDL_keyboard.h"
 #include "ToolWidgets.h"
 
 #include <algorithm>
@@ -114,6 +116,56 @@ namespace {
 
 	/// Whether the things that aren't settings (headings, buttons, readouts) are shown: not in a search, unless it is for the whole category.
 	bool Plain() { return !s_Searching || s_CategoryMatches; }
+
+	/// The key that pauses and resumes the AI: shown, and changed by clicking and pressing the new one (Escape keeps the old, Backspace leaves none).
+	void PauseAIKey() {
+		static bool s_Taking = false;
+		static bool s_Armed = false; //!< Every key let go since the click, so a key still held from before isn't taken.
+		static int s_LastFrame = -1;
+		// Waiting stops when the control wasn't there last frame (the panel closed, another page or a search).
+		if (s_LastFrame != ImGui::GetFrameCount() - 1) {
+			s_Taking = false;
+		}
+		s_LastFrame = ImGui::GetFrameCount();
+		if (!Shown("Pause AI key")) {
+			s_Taking = false;
+			g_SettingsMan.SetTakingKey(false);
+			return;
+		}
+		const std::string& key = g_SettingsMan.GetPauseAIKey();
+		std::string label = s_Taking ? std::string("Press a key...") : (key.empty() ? std::string("None") : key);
+		if (ImGui::Button((label + "##PauseAIKey").c_str(), ImVec2(ImGui::GetFontSize() * 9.0F, 0.0F))) {
+			s_Taking = !s_Taking;
+			s_Armed = false;
+		}
+		ImGui::SameLine();
+		ImGui::TextUnformatted("Pause AI key");
+		Tip("Click, then press the key (with Ctrl, Alt or Shift if wanted) that pauses and resumes the AI in any game. Escape, or a second click, keeps the key there was; Backspace leaves none.");
+		if (s_Taking) {
+			int count = 0;
+			const bool* keys = SDL_GetKeyboardState(&count);
+			int pressed = SDL_SCANCODE_UNKNOWN;
+			for (int i = SDL_SCANCODE_A; i < count && i < SDL_SCANCODE_COUNT; ++i) {
+				if (keys[i] && !(i >= SDL_SCANCODE_LCTRL && i <= SDL_SCANCODE_RGUI)) {
+					pressed = i;
+					break;
+				}
+			}
+			if (!s_Armed) {
+				s_Armed = pressed == SDL_SCANCODE_UNKNOWN;
+			} else if (pressed == SDL_SCANCODE_ESCAPE) {
+				s_Taking = false;
+			} else if (pressed == SDL_SCANCODE_BACKSPACE) {
+				g_SettingsMan.SetPauseAIKey(std::string());
+				s_Taking = false;
+			} else if (pressed != SDL_SCANCODE_UNKNOWN) {
+				g_SettingsMan.SetPauseAIKey(SettingsMan::KeyComboName(pressed, SDL_GetModState()));
+				s_Taking = false;
+			}
+		}
+		// The key press is seen by the game before this panel takes it, so this keeps that press from also pausing the AI.
+		g_SettingsMan.SetTakingKey(s_Taking);
+	}
 
 	void Heading(const char* text) {
 		if (Plain()) {
@@ -1112,6 +1164,24 @@ void DebugMan::SettingsGUI() {
 			Tip("Enemy units' lines too, where your side can see them. Off: only your own side's.");
 			Toggle("Speech bubbles", UnitSpeech::ShowsBubbles(), [](bool on) { UnitSpeech::SetShowsBubbles(on); });
 			Tip("Lines in a dark box edged in the side's colour, with a tail pointing at the unit. Off: just the text over the unit's head.");
+			Toggle("Speech sounds", UnitSpeechVoice::IsEnabled(), [](bool on) { UnitSpeechVoice::SetEnabled(on); });
+			Tip("A voice for each line a unit on your screen says, made in the game from the line's words: most units babble in a voice of their own, robots speak the words, all over a radio. What each kind of unit sounds like is in Base.rte/Voices.ini, and mods can add their own.");
+			if (UnitSpeechVoice::IsEnabled()) {
+				int volume = UnitSpeechVoice::GetVolume();
+				if (SliderI("Speech volume", &volume, 0, 100, "%d%%")) {
+					UnitSpeechVoice::SetVolume(volume);
+				}
+				Tip("How loud the speech voices are, against units' other sounds. They also follow the sound mixer's Voices slider (Options, Audio), with pain and death cries.");
+				int radio = UnitSpeechVoice::GetRadio();
+				if (SliderI("Radio effect", &radio, 0, 100, "%d%%")) {
+					UnitSpeechVoice::SetRadio(radio);
+				}
+				Tip("How much the voices sound like they come over a field radio: band-limited and crackly, with a squelch as each line starts and ends, and a roger beep after Serious lines. 0%: clean voices.");
+				Toggle("Hear other sides' voices", UnitSpeechVoice::HearsEnemies(), [](bool on) { UnitSpeechVoice::SetHearsEnemies(on); });
+				Tip("Enemy units' lines make a sound too, a little quieter, where their lines show (\"Hear other sides' units\" above, and seen by your side). Off: only your own side's.");
+				Toggle("Robots speak words", UnitSpeechVoice::SpeaksWords(), [](bool on) { UnitSpeechVoice::SetSpeaksWords(on); });
+				Tip("Robots (Dummy, Imperatus, drones and walkers) say the actual words in a synthesised voice. Off: they babble like everyone else, in their own machine voice.");
+			}
 			// Each side's tones: what kind of lines its units say. None ticked is any.
 			{
 				static const std::array<const char*, 4> sideNames{"Red", "Green", "Blue", "Yellow"};
@@ -1225,7 +1295,7 @@ void DebugMan::SettingsGUI() {
 				UnitSpeech::Reload();
 			}
 			if (Plain()) {
-				ImGui::SetItemTooltip("Reads every Speech.ini again, for trying out lines without restarting.");
+				ImGui::SetItemTooltip("Reads every Speech.ini and Voices.ini again, for trying out lines and voices without restarting.");
 			}
 		}
 	};
@@ -1233,6 +1303,8 @@ void DebugMan::SettingsGUI() {
 	// How the AI behaves: what it notices, how fire and losses get to it, and how many chances it takes getting about.
 	auto aiBehaviour = [&]() {
 		Toggle("Pause AI", Controller::IsAIPaused(), [](bool on) { Controller::SetAIPaused(on); });
+		Tip("The AI stops thinking and acting, while the world and the players carry on. The key below does the same in any game.");
+		PauseAIKey();
 		Check("Night, light and noise affect AI", &settings.NightAffectsAI);
 		Tip("Stealth. At night the AI sees less far, a unit in the dark or under a roof is harder to spot, and one under a lamp or wearing a lit headlamp is easier. The AI also hears footsteps: running is loud, walking quieter and crawling quietest, and metal floors ring. Sneak past sentries by keeping to the shadows and walking.");
 		Toggle("AI remembers and shares sightings", ThreatMemory::IsEnabled(), [](bool on) { ThreatMemory::SetEnabled(on); });
@@ -1288,6 +1360,13 @@ void DebugMan::SettingsGUI() {
 				g_SettingsMan.SetAIRecklessness(recklessness / 100.0F);
 			}
 			Tip("How many chances AI units take getting about. Lower: they steady themselves longer before a jetpack jump, wait for a little more fuel, and pick routes round hard jumps and long drops. Higher: quicker, riskier take-offs and routes, and more missed jumps. 50% is the designed behaviour.");
+		}
+		{
+			float ladderGiveUp = g_SettingsMan.AILadderGiveUpSeconds();
+			if (Slider("Give up on a stuck ladder after", &ladderGiveUp, 0.5F, 10.0F, "%.1f s")) {
+				g_SettingsMan.SetAILadderGiveUpSeconds(ladderGiveUp);
+			}
+			Tip("An AI unit climbing a ladder that stops going up (rungs shot away above, the ladder ending short, the way up blocked) lets go after this long and finds another way. The second time any unit of a team gets stuck on the same ladder, the whole team avoids it for a while. 1.5 s is normal.");
 		}
 		Toggle("AI steadies before jetpacking", g_SettingsMan.AISteadiesBeforeJet(), [](bool on) { g_SettingsMan.SetAISteadiesBeforeJet(on); });
 		Tip("AI units come to a stand, still and upright, before a jetpack climb or jump, so the flight starts true. Off: they take off mid-stride, quicker but more often off line.");

@@ -1314,7 +1314,12 @@ namespace RTE {
 
 		/// Sets this Actor's body hit sound. Ownership IS transferred!
 		/// @param newSound The new SoundContainer for this Actor's body hit sound.
-		void SetBodyHitSound(SoundContainer* newSound) { m_BodyHitSound = newSound; }
+		void SetBodyHitSound(SoundContainer* newSound) {
+			m_BodyHitSound = newSound;
+			if (m_BodyHitSound) {
+				m_BodyHitSound->SetDefaultMixCategory(AudioMan::MIX_IMPACTS);
+			}
+		}
 
 		/// Gets this Actor's alarm sound. Ownership is NOT transferred!
 		/// @return The SoundContainer for this Actor's alarm sound.
@@ -1322,7 +1327,12 @@ namespace RTE {
 
 		/// Sets this Actor's alarm sound. Ownership IS transferred!
 		/// @param newSound The new SoundContainer for this Actor's alarm sound.
-		void SetAlarmSound(SoundContainer* newSound) { m_AlarmSound = newSound; }
+		void SetAlarmSound(SoundContainer* newSound) {
+			m_AlarmSound = newSound;
+			if (m_AlarmSound) {
+				m_AlarmSound->SetDefaultMixCategory(AudioMan::MIX_VOICES);
+			}
+		}
 
 		/// Gets this Actor's pain sound. Ownership is NOT transferred!
 		/// @return The SoundContainer for this Actor's pain sound.
@@ -1330,7 +1340,12 @@ namespace RTE {
 
 		/// Sets this Actor's pain sound. Ownership IS transferred!
 		/// @param newSound The new SoundContainer for this Actor's pain sound.
-		void SetPainSound(SoundContainer* newSound) { m_PainSound = newSound; }
+		void SetPainSound(SoundContainer* newSound) {
+			m_PainSound = newSound;
+			if (m_PainSound) {
+				m_PainSound->SetDefaultMixCategory(AudioMan::MIX_VOICES);
+			}
+		}
 
 		/// Gets this Actor's death sound. Ownership is NOT transferred!
 		/// @return The SoundContainer for this Actor's death sound.
@@ -1338,7 +1353,12 @@ namespace RTE {
 
 		/// Sets this Actor's death sound. Ownership IS transferred!
 		/// @param newSound The new SoundContainer for this Actor's death sound.
-		void SetDeathSound(SoundContainer* newSound) { m_DeathSound = newSound; }
+		void SetDeathSound(SoundContainer* newSound) {
+			m_DeathSound = newSound;
+			if (m_DeathSound) {
+				m_DeathSound->SetDefaultMixCategory(AudioMan::MIX_VOICES);
+			}
+		}
 
 		/// Gets this Actor's device switch sound. Ownership is NOT transferred!
 		/// @return The SoundContainer for this Actor's device switch sound.
@@ -1346,7 +1366,12 @@ namespace RTE {
 
 		/// Sets this Actor's device switch sound. Ownership IS transferred!
 		/// @param newSound The new SoundContainer for this Actor's device switch sound.
-		void SetDeviceSwitchSound(SoundContainer* newSound) { m_DeviceSwitchSound = newSound; }
+		void SetDeviceSwitchSound(SoundContainer* newSound) {
+			m_DeviceSwitchSound = newSound;
+			if (m_DeviceSwitchSound) {
+				m_DeviceSwitchSound->SetDefaultMixCategory(AudioMan::MIX_WEAPONS);
+			}
+		}
 
 		/// Gets the X and Y thresholds for how fast the actor can travel before losing stability.
 		/// @return A Vector with the X and Y thresholds for how fast the actor can travel before losing stability.
@@ -1455,9 +1480,10 @@ namespace RTE {
 		/// Marks a place where this failed a jump: for so long, routes through it cost more for this (see PathAgent::Avoid).
 		/// @param place The place, a point of the route the jump was to.
 		/// @param milliseconds For how long, in sim time.
-		void AvoidPathPoint(const Vector& place, float milliseconds);
-		/// A flight failed: from that take-off for that landing is dearer for a while, for this unit and (for half as long) its team.
-		void AvoidPathLink(const Vector& from, const Vector& to, float milliseconds);
+		/// @param team Whether its team pays for the place too (for half as long).
+		void AvoidPathPoint(const Vector& place, float milliseconds, bool team = true);
+		/// A flight failed: from that take-off for that landing is dearer for a while, for this unit and (for half as long, unless team is false) its team.
+		void AvoidPathLink(const Vector& from, const Vector& to, float milliseconds, bool team = true);
 		/// Whether this unit's AI decisions are written to the console log (LogConsole.txt, saved when the game closes): every unit when
 		/// tracing all units is ticked (or CCCP_AI_LOG is "all"), else the units being inspected (IsDebugInspected: pinned, selected in the sandbox, or given the AITrace value as the gyms' runners are).
 		/// Which lines go is up to the debug channels (SettingsMan::DebugChannel), ticked in the settings or switched on by CCCP_AI_LOG.
