@@ -376,22 +376,27 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("BodyHitSound", {
 		m_BodyHitSound = new SoundContainer;
 		reader >> m_BodyHitSound;
+		m_BodyHitSound->SetDefaultMixCategory(AudioMan::MIX_IMPACTS);
 	});
 	MatchProperty("AlarmSound", {
 		m_AlarmSound = new SoundContainer;
 		reader >> m_AlarmSound;
+		m_AlarmSound->SetDefaultMixCategory(AudioMan::MIX_VOICES);
 	});
 	MatchProperty("PainSound", {
 		m_PainSound = new SoundContainer;
 		reader >> m_PainSound;
+		m_PainSound->SetDefaultMixCategory(AudioMan::MIX_VOICES);
 	});
 	MatchProperty("DeathSound", {
 		m_DeathSound = new SoundContainer;
 		reader >> m_DeathSound;
+		m_DeathSound->SetDefaultMixCategory(AudioMan::MIX_VOICES);
 	});
 	MatchProperty("DeviceSwitchSound", {
 		m_DeviceSwitchSound = new SoundContainer;
 		reader >> m_DeviceSwitchSound;
+		m_DeviceSwitchSound->SetDefaultMixCategory(AudioMan::MIX_WEAPONS);
 	});
 	MatchProperty("Status", { reader >> m_Status; });
 	MatchProperty("DeploymentID", { reader >> m_DeploymentID; });

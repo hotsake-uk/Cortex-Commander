@@ -269,14 +269,17 @@ int ACraft::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("HatchOpenSound", {
 		m_HatchOpenSound = new SoundContainer;
 		reader >> m_HatchOpenSound;
+		m_HatchOpenSound->SetDefaultMixCategory(AudioMan::MIX_ENGINES);
 	});
 	MatchProperty("HatchCloseSound", {
 		m_HatchCloseSound = new SoundContainer;
 		reader >> m_HatchCloseSound;
+		m_HatchCloseSound->SetDefaultMixCategory(AudioMan::MIX_ENGINES);
 	});
 	MatchProperty("CrashSound", {
 		m_CrashSound = new SoundContainer;
 		reader >> m_CrashSound;
+		m_CrashSound->SetDefaultMixCategory(AudioMan::MIX_ENGINES);
 	});
 	MatchProperty("AddExit",
 	              {
