@@ -672,7 +672,7 @@ void ACRocket::UpdateAutopilot() {
 		ai.lzPos.m_X = m_Pos.m_X;
 	}
 
-	auto isCraft = [](const MovableObject* mo) { return mo && (mo->GetClassName() == "ACDropShip" || mo->GetClassName() == "ACRocket"); };
+	auto isCraft = [](const MovableObject* mo) { return mo && (mo->GetClassName() == "ACDropShip" || mo->GetClassName() == "ACShip" || mo->GetClassName() == "ACRocket"); };
 
 	// The delivery.
 	if (ai.deliveryState == FALL) {

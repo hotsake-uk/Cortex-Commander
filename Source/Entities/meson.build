@@ -7,6 +7,8 @@ sources += files(
 'Actor.cpp',
 'ADoor.cpp',
 'AVehicle.cpp',
+'ACShip.cpp',
+'CrewSeats.cpp',
 'ADSensor.cpp',
 'AEJetpack.cpp',
 'AEmitter.cpp',

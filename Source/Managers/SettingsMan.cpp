@@ -150,6 +150,7 @@ void SettingsMan::Clear() {
 	m_AIWaitForFuel = true;
 	m_AIEnemyBuysReinforcements = true;
 	m_AIEnemyUsesPowers = true;
+	m_AISquadFollowsYou = true;
 	m_AIUsesVehicles = true;
 	m_AICoverDigs = true;
 	m_AICoverFallsBack = true;
@@ -329,6 +330,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("FlowingLiquids", { FluidSim::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("CollapseFloatingStays", { TerrainCollapse::GetTuning().FloatingStays = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("CollapseNeckWidth", { TerrainCollapse::GetTuning().NeckWidth = std::clamp(std::stoi(reader.ReadPropValue()), 0, 16); });
+	MatchProperty("CollapseThinNeckWidth", { TerrainCollapse::GetTuning().ThinNeckWidth = std::clamp(std::stoi(reader.ReadPropValue()), 0, 16); });
+	MatchProperty("CollapseOverhangLength", { TerrainCollapse::GetTuning().OverhangLength = std::clamp(std::stoi(reader.ReadPropValue()), 0, 400); });
 	MatchProperty("CollapseMaxPiece", { TerrainCollapse::GetTuning().MaxPiecePixels = std::clamp(std::stoi(reader.ReadPropValue()), 500, 200000); });
 	MatchProperty("CollapseCheckMinForce", { TerrainCollapse::GetTuning().CheckMinForce = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 10000.0F); });
 	MatchProperty("CollapseMinFitting", { TerrainCollapse::GetTuning().MinFittingPixels = std::clamp(std::stoi(reader.ReadPropValue()), 0, 5000); });
@@ -738,6 +741,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AIWaitForFuel", { reader >> m_AIWaitForFuel; });
 	MatchProperty("AIEnemyBuysReinforcements", { reader >> m_AIEnemyBuysReinforcements; });
 	MatchProperty("AIEnemyUsesPowers", { reader >> m_AIEnemyUsesPowers; });
+	MatchProperty("AISquadFollowsYou", { reader >> m_AISquadFollowsYou; });
 	MatchProperty("AIUsesVehicles", { reader >> m_AIUsesVehicles; });
 	MatchProperty("AICoverDigs", { reader >> m_AICoverDigs; });
 	MatchProperty("AICoverFallsBack", { reader >> m_AICoverFallsBack; });
@@ -1147,6 +1151,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("UnitsInFrontOfTrees", TerrainTrees::DrawnBehindUnits());
 	writer.NewPropertyWithValue("CollapseFloatingStays", TerrainCollapse::GetTuning().FloatingStays);
 	writer.NewPropertyWithValue("CollapseNeckWidth", TerrainCollapse::GetTuning().NeckWidth);
+	writer.NewPropertyWithValue("CollapseThinNeckWidth", TerrainCollapse::GetTuning().ThinNeckWidth);
+	writer.NewPropertyWithValue("CollapseOverhangLength", TerrainCollapse::GetTuning().OverhangLength);
 	writer.NewPropertyWithValue("CollapseMaxPiece", TerrainCollapse::GetTuning().MaxPiecePixels);
 	writer.NewPropertyWithValue("CollapseMinFitting", TerrainCollapse::GetTuning().MinFittingPixels);
 	writer.NewPropertyWithValue("CollapseCheckMinForce", TerrainCollapse::GetTuning().CheckMinForce);
@@ -1219,6 +1225,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AIWaitForFuel", m_AIWaitForFuel);
 	writer.NewPropertyWithValue("AIEnemyBuysReinforcements", m_AIEnemyBuysReinforcements);
 	writer.NewPropertyWithValue("AIEnemyUsesPowers", m_AIEnemyUsesPowers);
+	writer.NewPropertyWithValue("AISquadFollowsYou", m_AISquadFollowsYou);
 	writer.NewPropertyWithValue("AIUsesVehicles", m_AIUsesVehicles);
 	writer.NewPropertyWithValue("AICoverDigs", m_AICoverDigs);
 	writer.NewPropertyWithValue("AICoverFallsBack", m_AICoverFallsBack);

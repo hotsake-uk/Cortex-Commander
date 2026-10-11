@@ -932,6 +932,8 @@
     <ClInclude Include="Source\Entities\Actor.h" />
     <ClInclude Include="Source\Entities\ADoor.h" />
     <ClInclude Include="Source\Entities\AVehicle.h" />
+    <ClInclude Include="Source\Entities\ACShip.h" />
+    <ClInclude Include="Source\Entities\CrewSeats.h" />
     <ClInclude Include="Source\Entities\AEmitter.h" />
     <ClInclude Include="Source\Entities\AHuman.h" />
     <ClInclude Include="Source\Entities\Arm.h" />
@@ -1462,6 +1464,7 @@
     <ClCompile Include="Source\Managers\SandboxDebug.cpp" />
     <ClCompile Include="Source\Managers\Colony.cpp" />
     <ClCompile Include="Source\Managers\CommanderBar.cpp" />
+    <ClCompile Include="Source\Managers\SpawnOrders.cpp" />
     <ClCompile Include="Source\Managers\Reinforcements.cpp" />
     <ClCompile Include="Source\Managers\BattleFog.cpp" />
     <ClCompile Include="Source\Managers\CommanderPowers.cpp" />
@@ -1469,6 +1472,9 @@
     <ClCompile Include="Source\Managers\BattleReport.cpp" />
     <ClCompile Include="Source\Managers\BattleMorale.cpp" />
     <ClCompile Include="Source\Managers\BattleEnemy.cpp" />
+    <ClCompile Include="Source\Managers\BattleSquad.cpp" />
+    <ClCompile Include="Source\Managers\BattleAlerts.cpp" />
+    <ClCompile Include="Source\Managers\SandboxBreach.cpp" />
     <ClCompile Include="Source\Managers\ControlLink.cpp" />
     <ClCompile Include="Source\Managers\SettingsMan.cpp" />
     <ClCompile Include="Source\Managers\TimerMan.cpp" />
@@ -1515,6 +1521,8 @@
     <ClCompile Include="Source\Entities\Actor.cpp" />
     <ClCompile Include="Source\Entities\ADoor.cpp" />
     <ClCompile Include="Source\Entities\AVehicle.cpp" />
+    <ClCompile Include="Source\Entities\ACShip.cpp" />
+    <ClCompile Include="Source\Entities\CrewSeats.cpp" />
     <ClCompile Include="Source\Entities\AEmitter.cpp" />
     <ClCompile Include="Source\Entities\AHuman.cpp" />
     <ClCompile Include="Source\Entities\AHumanMovement.cpp" />

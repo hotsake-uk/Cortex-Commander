@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Actor.h"
+#include "CrewSeats.h"
 
 namespace RTE {
 
@@ -98,53 +99,53 @@ namespace RTE {
 		int GetWheelsOnGround() const;
 
 		/// Gets the unit driving this, if any. Ownership is NOT transferred!
-		Actor* GetDriver() const { return m_Driver; }
+		Actor* GetDriver() const { return m_Crew.GetOccupant(0); }
 
 		/// Gets whether a unit is in the driver's seat.
-		bool HasDriver() const { return m_Driver != nullptr; }
+		bool HasDriver() const { return m_Crew.GetOccupant(0) != nullptr; }
 
 		/// Gets how many seats it has: the driver's (seat 0) and any others (1 on), passengers' and gunners'.
-		int GetSeatCount() const { return 1 + static_cast<int>(m_Seats.size()); }
+		int GetSeatCount() const { return m_Crew.GetSeatCount(); }
 
 		/// Gets who sits in a seat. Ownership is NOT transferred!
 		/// @param seat The seat: 0 the driver's, 1 on the others.
 		/// @return The unit in it, or nullptr if it is empty or there is no such seat.
-		Actor* GetSeatOccupant(int seat) const;
+		Actor* GetSeatOccupant(int seat) const { return m_Crew.GetOccupant(seat); }
 
 		/// Gets whether a seat mans the turret.
 		/// @param seat The seat: 0 the driver's, 1 on the others.
-		bool IsGunnerSeat(int seat) const { return seat >= 1 && seat <= static_cast<int>(m_Seats.size()) && m_Seats[seat - 1].Gunner; }
+		bool IsGunnerSeat(int seat) const { return m_Crew.IsGunnerSeat(seat); }
 
 		/// Gets how many units are in it, driver included.
-		int GetCrewCount() const;
+		int GetCrewCount() const { return m_Crew.GetCrewCount(); }
 
 		/// Gets the seat a unit getting in would take: the driver's if free, then a gunner's, then a passenger's.
 		/// @return The seat, or -1 if they are all taken.
-		int GetFreeSeat() const;
+		int GetFreeSeat() const { return m_Crew.GetFreeSeat(); }
 
 		/// Gets the seat of the unit the player in charge of this sits in: the one they got in as, or the driver's.
 		/// @return The seat, or -1 with nobody in it for them.
-		int GetControlSeat() const;
+		int GetControlSeat() const { return m_Crew.GetControlSeat(); }
 
 		/// Puts a unit in a seat, taking it out of the scene, as TakeDriver does.
 		/// @param unit The unit getting in.
 		/// @param seat The seat, or -1 for the one GetFreeSeat gives.
 		/// @return Whether it got in.
-		bool TakeSeat(Actor* unit, int seat);
+		bool TakeSeat(Actor* unit, int seat) { return m_Crew.TakeSeat(unit, seat); }
 
 		/// Lets the unit in a seat out beside this, back into the scene; the player goes with them if they were in charge from that seat.
 		/// @param seat The seat: 0 the driver's, 1 on the others.
 		/// @param thrown Whether they are thrown out (a crash, a roll, a wreck): flung clear with the speed it had, and put out above it if there's no room beside.
 		/// @return The unit that got out, or nullptr if the seat was empty or there was no room to get out.
-		Actor* EjectSeat(int seat, bool thrown);
+		Actor* EjectSeat(int seat, bool thrown) { return m_Crew.LetOut(seat, thrown); }
 
 		/// Lets everyone in it out, or throws them out.
 		/// @param thrown Whether they are thrown out (see EjectSeat).
-		void EjectCrew(bool thrown);
+		void EjectCrew(bool thrown) { m_Crew.EjectCrew(thrown); }
 
 		/// Moves the unit the player is in charge of to the next empty seat, as the Change Seat pie slice does.
 		/// @return Whether they moved.
-		bool ChangeSeat();
+		bool ChangeSeat() { return m_Crew.ChangeSeat(); }
 
 		/// Sets the tracks: a belt round the wheels whose picture's frames step along as it drives, so the links run round (a tank's). Ownership IS transferred!
 		/// @param newTracks The tracks to set. nullptr removes them.
@@ -154,7 +155,7 @@ namespace RTE {
 		Attachable* GetTracks() const { return m_Tracks; }
 
 		/// Gets whether the crew is drawn in their seats (an open vehicle) or hidden inside (a closed one, a tank).
-		bool DrawsCrew() const { return m_DrawsCrew; }
+		bool DrawsCrew() const { return m_Crew.DrawsCrew(); }
 
 		/// Gets the turret its gun is on, if it has one. Ownership is NOT transferred!
 		Turret* GetTurret() const { return m_Turret; }
@@ -178,7 +179,7 @@ namespace RTE {
 		/// and on this one's team; a copy of it is kept (as a craft keeps who goes in) and it is deleted.
 		/// @param unit The unit getting in.
 		/// @return Whether it got in: not when the seat is taken, it is dead, or not a unit that sits (only humanoids drive).
-		bool TakeDriver(Actor* unit);
+		bool TakeDriver(Actor* unit) { return !HasDriver() && TakeSeat(unit, 0); }
 
 		/// Lets the driver out beside this, back into the scene, and hands the player back to it if this was theirs.
 		/// @return The unit that got out, or nullptr if nobody was driving or there was no room to get out.
@@ -203,7 +204,7 @@ namespace RTE {
 		void SetHopSpeed(float newSpeed) { m_HopSpeed = newSpeed; }
 
 		/// Gets where the driver sits, from the middle of the body when upright and facing right.
-		const Vector& GetSeatOffset() const { return m_SeatOffset; }
+		const Vector& GetSeatOffset() const { return m_Crew.GetMainSeatOffset(); }
 #pragma endregion
 
 #pragma region Override Methods
@@ -269,9 +270,6 @@ namespace RTE {
 		float m_RollingResistance; //!< How much rolling on its own slows it, in m/s each second (low: it rolls down slopes).
 		float m_MaxSpeed; //!< The top speed it is driven at on the flat, in m/s.
 		float m_Grip; //!< How much of its weight on the wheels it can push or brake with before they slip, 0 to about 1.
-		Vector m_SeatOffset; //!< Where the driver sits, from the body's middle, upright and facing right (their middle, for drawing them).
-		Vector m_ExitOffset; //!< Where the driver gets out, from the body's middle, upright and facing right (mirrored to whichever side is clear).
-		float m_BoardingReach; //!< How close to the seat a unit has to be to get in.
 		bool m_NeedsDriver; //!< Whether it only drives with someone in the seat (a cart does; a drone vehicle wouldn't).
 		float m_HopSpeed; //!< How fast it jumps up off its springs when the driver jumps, in m/s. 0 can't.
 
@@ -296,22 +294,7 @@ namespace RTE {
 		float m_EngineLoad; //!< How hard the engine is working, 0 to 1, eased towards the throttle.
 		Timer m_HopTimer; //!< Since it last jumped, so it can't bounce itself up a cliff.
 
-		Actor* m_Driver; //!< The unit in the driver's seat, out of the scene while it's in here. Owned.
-
-		/// A seat besides the driver's: a passenger's, or a gunner's that mans the turret.
-		struct Seat {
-			Vector Offset; //!< Where its unit sits (their middle), from the body's middle upright and facing right.
-			bool Gunner = false; //!< Whether it mans the turret.
-			bool Rider = false; //!< Whether its unit got in by itself to ride somewhere, and gets out when it is near there.
-			Actor* Occupant = nullptr; //!< Who sits in it, out of the scene while they're in here. Owned.
-		};
-		std::vector<Seat> m_Seats; //!< The seats besides the driver's: seat 1 on.
-		struct SlumpedBody {
-			Actor* Body = nullptr; //!< Someone killed in a seat, left slumped in it (DeadCrewFallOut off). Owned.
-			int Seat = 0; //!< The seat they slump in, which is free for someone to take (they tip the body out getting in).
-		};
-		std::vector<SlumpedBody> m_Slumped; //!< The dead slumped in its seats, out of the scene like the crew.
-		int m_PlayerSeat; //!< The seat the unit of the player in charge got in to, or -1. (The driver's if they took charge another way.)
+		CrewSeats m_Crew; //!< Its seats, the driver's (seat 0) and the rest, and who sits in them.
 		Turret* m_Turret; //!< The turret its gun is on, if it has one. Owned by this, as an attachable.
 		float m_GunRange; //!< How far a gunner looks for something to shoot, in pixels.
 		float m_GunTurnSpeed; //!< How fast a gunner swings the gun round, in radians a second.
@@ -319,7 +302,6 @@ namespace RTE {
 		Timer m_GunTargetTimer; //!< Since the gunner last looked round for something to shoot.
 		float m_CrewThrowSpeed; //!< How hard a knock (a change in speed in one update, m/s) throws everyone out. 0 never does.
 		bool m_ThrowsCrewWhenFlipped; //!< Whether everyone falls out when it rolls onto its roof (an open vehicle; a closed one keeps them in).
-		Vector m_LastVel; //!< Its velocity at the end of the last update, to tell a crash by.
 		Attachable* m_Tracks; //!< The tracks, whose frames step along as it drives. Owned by this, as an attachable.
 		Attachable* m_ThrowingArm; //!< A catapult's throwing arm, if it has one. Owned by this, as an attachable.
 		float m_ArmLength; //!< How far the arm's bucket is from where it turns, in pixels (its picture lies back from there, the way it faces).
@@ -338,9 +320,7 @@ namespace RTE {
 		int m_AIThrows; //!< How many an AI crew has thrown, to vary what it loads.
 		float m_TrackFrameLength; //!< How far it drives for the tracks to step on a frame, in pixels.
 		float m_TrackTravel; //!< How far the tracks have run round, in pixels, the way they run driving forward.
-		bool m_DrawsCrew; //!< Whether the crew is drawn in their seats, or hidden inside.
 
-		bool m_DriverRider; //!< Whether the driver got in by itself to ride somewhere (see Seat::Rider).
 		/// A unit called over to ride in it, on its way.
 		struct Recruit {
 			long ID = 0; //!< Its unique ID.
@@ -361,10 +341,7 @@ namespace RTE {
 		unsigned int m_AIOrderSerialSeen; //!< The order serial its AI driver last started on: a new order starts afresh.
 		float m_Throttle; //!< How hard it is being driven this update, -1 to 1.
 		bool m_Braking; //!< Whether the brake is on this update.
-		Timer m_BoardingTimer; //!< Since the driver last got in or out, so the key that did it doesn't do the opposite straight after.
 		Timer m_UpsideDownTimer; //!< How long it has lain on its side or roof, still: then the driver rocks it back over.
-		Actor* m_BoarderInReach; //!< A friendly player-controlled unit beside the seat this update, for the hint. Not owned.
-		bool m_BoarderPushes; //!< Whether that unit would push it back over (it lies on its side or roof) rather than get in.
 		float m_Buoyancy; //!< How hard liquid pushes it up against its weight, with its middle under (1 floats level; a boat's hull is VH-2).
 		float m_BreakLandingSpeed; //!< How fast it can come down on a bottomed-out spring before it breaks apart, in m/s. 0 never breaks it so.
 		float m_BreakSunkFraction; //!< How much of its body can be inside the ground before it breaks apart, 0 to 1. 0 never breaks it so.
@@ -383,50 +360,27 @@ namespace RTE {
 		/// @param canDrive Whether it can be driven this update (someone in the seat, or it drives itself, and not wrecked).
 		void UpdateEngine(bool canDrive);
 
-		/// Lets a friendly unit beside the seat that asks to get in, get in; lets the driver out when they ask.
+		/// Lets a friendly unit beside the seat that asks to get in, get in (or push it back over, on its side or roof); lets the driver out when they ask.
 		void UpdateBoarding();
 
-		/// Puts everyone in it at their seats, as the body lies now, so they are drawn there; the dead slumped forward in theirs.
-		void PlaceCrew() const;
-
-		/// Lets the unit in a seat out, as EjectSeat does.
-		/// @param seat The seat: 0 the driver's, 1 on the others.
-		/// @param thrown Whether they are thrown out (see EjectSeat).
-		/// @param fallen Whether it's a body falling out of its seat: out beside it, or on top if there's no room, whatever is there.
-		/// @return The unit that got out, or nullptr if the seat was empty or there was no room to get out.
-		Actor* LetOut(int seat, bool thrown, bool fallen);
-
-		/// Tips a body slumped in a seat out of it, into the scene beside it (or flung, from a crash or a wreck).
-		/// @param index Which of m_Slumped.
-		/// @param thrown Whether it is flung out with the speed the vehicle had.
-		void TipOutSlumped(size_t index, bool thrown);
-
-		/// Tips out every body slumped in its seats.
-		/// @param thrown Whether they are flung out (see TipOutSlumped).
-		void TipOutAllSlumped(bool thrown);
-
-		/// Lets the crew in its open seats bleed from their wounds and take the damage they've been dealt there, and sees to those who die
-		/// of it: they fall out (DeadCrewFallOut), or slump in their seats. Anyone blown apart in their seat is gone from it.
-		void UpdateSeatedCrew();
-
 		/// Sets who sits in a seat, without taking anyone in or letting them out.
-		void SetSeatOccupant(int seat, Actor* unit);
+		void SetSeatOccupant(int seat, Actor* unit) { m_Crew.SetOccupant(seat, unit); }
 
 		/// Gets where a seat is, from the body's middle, upright and facing right.
-		const Vector& GetSeatOffsetOf(int seat) const { return seat >= 1 && seat <= static_cast<int>(m_Seats.size()) ? m_Seats[seat - 1].Offset : m_SeatOffset; }
+		const Vector& GetSeatOffsetOf(int seat) const { return m_Crew.GetSeatOffset(seat); }
 
 		/// Whether a unit could get in at all: alive, a humanoid on this one's side, not a side's brain.
-		bool CanCarry(const Actor* unit) const;
+		bool CanCarry(const Actor* unit) const { return m_Crew.CanCarry(unit); }
 
 		/// Aims and fires the gun: the player's aim from the gunner's seat (or the driver's, with no gunner's seat), else the gunner looks for
 		/// the nearest enemy in sight and range in front of it, swings the gun round to it and fires.
 		void UpdateGun();
 
 		/// Gets whether a seat's unit got in by itself to ride somewhere.
-		bool IsRider(int seat) const { return seat == 0 ? m_DriverRider : seat >= 1 && seat <= static_cast<int>(m_Seats.size()) && m_Seats[seat - 1].Rider; }
+		bool IsRider(int seat) const { return m_Crew.IsRider(seat); }
 
 		/// Sets whether a seat's unit got in by itself to ride somewhere.
-		void SetRider(int seat, bool rider);
+		void SetRider(int seat, bool rider) { m_Crew.SetRider(seat, rider); }
 
 		/// Drives it with no player in charge: towards where it was sent, braking to stop there, backing up or jumping when stuck, and stopping
 		/// at a drop, deep water (or the shore, for a boat) or when someone wants to get out.

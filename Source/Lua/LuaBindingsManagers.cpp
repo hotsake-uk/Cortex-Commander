@@ -459,6 +459,7 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SettingsMan) {
 	    .property("AIUpdateInterval", &SettingsMan::GetAIUpdateInterval, &SettingsMan::SetAIUpdateInterval)
 	    .property("AIEnemyBuysReinforcements", &SettingsMan::AIEnemyBuysReinforcements, &SettingsMan::SetAIEnemyBuysReinforcements)
 	    .property("AIEnemyUsesPowers", &SettingsMan::AIEnemyUsesPowers, &SettingsMan::SetAIEnemyUsesPowers)
+	    .property("AISquadFollowsYou", &SettingsMan::AISquadFollowsYou, &SettingsMan::SetAISquadFollowsYou)
 	    .property("AIThreatAvoidance", &SettingsMan::AIThreatAvoidance, &SettingsMan::SetAIThreatAvoidance)
 	    .property("AICoverDigs", &SettingsMan::AICoverDigs, &SettingsMan::SetAICoverDigs)
 	    .property("AICoverFallsBack", &SettingsMan::AICoverFallsBack, &SettingsMan::SetAICoverFallsBack)

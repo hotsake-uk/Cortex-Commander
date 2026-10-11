@@ -124,7 +124,9 @@ namespace SandboxDetail {
 			}
 			// (A rocket for one or two; a dropship carries more.)
 			const int craft = count == 1 && std::size(c_Crafts) > 1 ? 1 : 0;
-			CallReinforcements(side, card, count, craft, base);
+			if (CallReinforcements(side, card, count, craft, base)) {
+				AddAlert("reinforce", std::string("Enemy ") + c_ReinforcementCards[card].Name + (count > 1 ? "s" : "") + " inbound", base, IM_COL32(200, 200, 200, 255));
+			}
 		}
 
 		// ---- Powers ----
@@ -150,6 +152,7 @@ namespace SandboxDetail {
 			const long long now = g_TimerMan.GetSimUpdateCount();
 			s_Strikes.push_back({side, power, at, now + Updates(c_WarnSeconds[level])});
 			Note(std::string("Incoming ") + c_SideNames[side] + " " + (power == static_cast<int>(CommanderPower::Orbital) ? "orbital strike" : "artillery") + ": get clear of the marker!");
+			AddAlert("strike", power == static_cast<int>(CommanderPower::Orbital) ? "Orbital strike incoming" : "Artillery incoming", at, IM_COL32(239, 60, 50, 255));
 			const float reach = c_CommanderPowers[power].Radius + c_ArtillerySpread + 100.0F;
 			for (Actor* actor: SandboxAccess::Actors()) {
 				if (actor->GetTeam() != side && IsCombatant(actor) && Distance(actor->GetPos(), at) < reach) {
