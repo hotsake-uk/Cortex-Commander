@@ -1801,6 +1801,14 @@ namespace SandboxDetail {
 			stroke.Count = 100 + (ImGui::IsKeyPressed(ImGuiKey_H, false) ? (io.KeyShift ? 13 : 3) : 2);
 			s_Queue.push_back(stroke);
 		}
+		if (!s_Selected.empty() && pressed(ImGuiKey_I) && !io.KeyCtrl) {
+			// Take cover, as the command row's.
+			Stroke stroke;
+			stroke.Kind = Tool::OrderSelected;
+			stroke.Position = MouseScenePosition();
+			stroke.Count = 130;
+			s_Queue.push_back(stroke);
+		}
 		if (!s_Selected.empty() && pressed(ImGuiKey_O)) {
 			// Focus on objective: their team's job in the battle, as the ring's slice.
 			QueueOrder(Order::BattleObjective);
@@ -4411,6 +4419,10 @@ namespace SandboxDetail {
 		line.Next();
 		if (BarChip("Hold here", false, c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)], "H", "Defend where they stand: fight from there, moving as little as can be.") == 1) {
 			orderSelected(103);
+		}
+		line.Next();
+		if (BarChip("Take cover", false, c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)], "I", "Each finds cover from the nearest enemy close by (within about 150 px), gets down behind it and holds there.\nWith none: a unit with a digger digs a foxhole where it stands; one without falls back if the enemy is close or it is\npinned down, else lies flat where it is.") == 1) {
+			orderSelected(130);
 		}
 		line.Next();
 		if (BarChip("Objective", false, c_CommandModeColors[static_cast<int>(CommandMode::AttackMove)], "O", "After their team's objective in the battle: an enemy flag, an enemy VIP, the hill or the objective in play, or the place\ntheir Battle Director card defends; with none, they attack.") == 1) {

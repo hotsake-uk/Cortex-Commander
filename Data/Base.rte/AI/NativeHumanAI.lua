@@ -237,6 +237,9 @@ function NativeHumanAI:Update(Owner)
 	-- A suppress order (the sandbox's Suppress): fire into its zone, whatever else is in sight (see SharedBehaviors.SuppressUpdate).
 	local suppressing = SharedBehaviors.SuppressUpdate(self, Owner);
 
+	-- A take-cover order (the sandbox's Take cover): into cover and down there (see SharedBehaviors.CoverOrderUpdate).
+	SharedBehaviors.CoverOrderUpdate(self, Owner);
+
 	-- Running the objective (carrying a flag home): nothing else it was doing is kept (see SharedBehaviors.OnObjective).
 	local objective = SharedBehaviors.OnObjective(Owner);
 	if objective then
