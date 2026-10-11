@@ -2815,16 +2815,20 @@ int AHuman::MoveAlongRoute() {
 		// whatever the tank says, on a timer of its own, since standing still here is not being stuck.)
 		// (The AI movement settings: a careful unit waits for a little more than the flight takes and settles longer, a reckless one less;
 		// with the fuel wait off it goes on a tenth of what it needs, with the steadying off it takes off mid-stride.)
-		// (On a double- or triple-clicked order, StandingOrder::Direct, as reckless as the Battle Behavior settings say, in the order's
-		// share: triple-clicked as tuned, off as soon as the tank has a little over half what the flight takes, and never steadied first.)
-		const float direct = m_StandingOrder.Direct;
+		// (On a risky or direct order, StandingOrder::Direct over 0, as reckless as the Battle Behavior settings say, in the order's share:
+		// fully direct as tuned, off as soon as the tank has a little over half what the flight takes, and never steadied first. On a
+		// cautious one, under 0, as careful as they say: waits for more fuel and steadies longer.)
+		const float direct = std::max(m_StandingOrder.Direct, 0.0F);
+		const float care = std::max(-m_StandingOrder.Direct, 0.0F);
 		const SettingsMan::DirectOrderTuning& directTuning = g_SettingsMan.DirectOrders();
-		const float caution = g_SettingsMan.AIMoveCaution() + (std::min(g_SettingsMan.AIMoveCaution(), directTuning.Caution) - g_SettingsMan.AIMoveCaution()) * direct;
+		const float baseCaution = g_SettingsMan.AIMoveCaution();
+		const float caution = baseCaution + (std::min(baseCaution, directTuning.Caution) - baseCaution) * direct + (std::max(baseCaution, directTuning.CautiousCaution) - baseCaution) * care;
 		float needed = std::min(FlightFuelNeeded(landing, landingFloorY) * std::clamp(0.8F + caution * 0.2F, 0.9F, 1.2F), m_pJetpack->GetJetTimeTotal() * 0.85F);
 		if (!g_SettingsMan.AIWaitsForFuel()) {
 			needed *= 0.1F;
-		} else if (direct > 0.0F) {
-			needed *= 1.0F + (directTuning.FuelShare - 1.0F) * direct;
+		} else {
+			needed *= 1.0F + (directTuning.FuelShare - 1.0F) * direct + (directTuning.CautiousFuelShare - 1.0F) * care;
+			needed = std::min(needed, m_pJetpack->GetJetTimeTotal() * 0.95F); // (A cautious one's more than the flight is never more than a tank holds.)
 		}
 		if (canTakeOff && !mover.fuelWaiting) {
 			mover.fuelWaiting = true;
@@ -3027,7 +3031,8 @@ int AHuman::MoveAlongRoute() {
 	}
 	// Running on a long, level, open stretch: the point two bodies or more away and no higher, head room to stand, no door near, and
 	// floor the whole way (a run off an edge or into a door is no way to arrive). The script used to roll a die for the run key.
-	if (!prone && !crouch && std::abs(toPoint.m_X) > h * 2.0F && std::abs(toPoint.m_Y) < h * 0.25F && !noRoomAhead && !DoorAhead(point)) {
+	// (Never on a cautious order, StandingOrder::Direct under 0: it walks.)
+	if (!prone && !crouch && m_StandingOrder.Direct >= 0.0F && std::abs(toPoint.m_X) > h * 2.0F && std::abs(toPoint.m_Y) < h * 0.25F && !noRoomAhead && !DoorAhead(point)) {
 		bool floorAllTheWay = true;
 		float stepDirection = toPoint.m_X > 0.0F ? 1.0F : -1.0F;
 		for (float ahead = 12.0F; ahead <= h * 1.5F && floorAllTheWay; ahead += 12.0F) {

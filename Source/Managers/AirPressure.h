@@ -83,6 +83,16 @@ namespace RTE {
 		/// @param energy How big a blast: the energy of the explosion that made it, as MOSRotating's gib energy.
 		static void Blast(const Vector& position, float energy);
 
+		/// Starts a gust: the air in a cone in front of a point set moving one way, as by a fan, a jet or a spell's push. Like a blast it then travels
+		/// as a wave, carrying smoke, spray and loose things along and bouncing off walls. Does nothing while the air or blast waves are off. Thread
+		/// safe; applied on the next sim step.
+		/// @param position Where it starts, in scene coordinates.
+		/// @param direction Which way it blows; only its direction counts.
+		/// @param strength How hard, as the air's own movement: about 1 a breath, 10 a gale that flings smoke at full speed.
+		/// @param length How far it reaches in pixels.
+		/// @param spread How wide the cone is, in degrees, 0 to 360 (360 blows out every way, like a blast).
+		static void Gust(const Vector& position, const Vector& direction, float strength, float length, float spread);
+
 		/// Gets how the air moves at a point because of blasts, in metres a second per update of push, 0 where it is still.
 		/// @param position Where, in scene coordinates.
 		static Vector GetFlow(const Vector& position);

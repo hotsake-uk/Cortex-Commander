@@ -118,6 +118,7 @@ void Actor::Clear() {
 	m_PainThreshold = 15.0F;
 	m_CanRevealUnseen = true;
 	m_HiddenByFog = false;
+	m_Veterancy = 0;
 	m_CharHeight = 0;
 	m_HolsterOffset.Reset();
 	m_ReloadOffset.Reset();
@@ -627,7 +628,7 @@ int Actor::Save(Writer& writer) const {
 	if (m_StandingOrder.HasDigTarget) {
 		writer.NewPropertyWithValue("OrderDigTarget", m_StandingOrder.DigTarget);
 	}
-	if (m_StandingOrder.Direct > 0.0F) {
+	if (m_StandingOrder.Direct != 0.0F) {
 		writer.NewPropertyWithValue("OrderDirect", m_StandingOrder.Direct);
 	}
 	if (m_StandingOrder.FailReason != ORDERFAIL_NONE) {
@@ -1526,6 +1527,18 @@ PathAgent Actor::GetPathAgent() const {
 	// drops or enemies, and no taste of its own in routes; and a dig-to digs as near a straight line as the ground it can cut allows. As
 	// tuned in the Battle Behavior settings (SettingsMan::DirectOrders), in the order's share of it: all of it triple-clicked, part of the
 	// way from a plain order's for a double click.
+	// A single-clicked one the other way (Direct under 0): as careful as the cautious tuning, in its share.
+	if (const float care = -m_StandingOrder.Direct; care > 0.0F) {
+		const SettingsMan::DirectOrderTuning& cautious = g_SettingsMan.DirectOrders();
+		auto toward = [care](float from, float to) { return from + (to - from) * care; };
+		agent.Caution = toward(agent.Caution, std::max(agent.Caution, cautious.CautiousCaution));
+		agent.FlightCostScale = toward(1.0F, cautious.CautiousFlightCostScale);
+		if (float avoid = cautious.CautiousEnemyAvoidance * care * g_SettingsMan.AIThreatAvoidance(); avoid > agent.ThreatWeight) {
+			agent.ThreatWeight = avoid;
+			agent.Threats = g_MovableMan.GetPublishedThreats();
+			agent.ThreatTeam = m_Team;
+		}
+	}
 	if (const float share = m_StandingOrder.Direct; share > 0.0F) {
 		const SettingsMan::DirectOrderTuning& direct = g_SettingsMan.DirectOrders();
 		auto toward = [share](float from, float to) { return from + (to - from) * share; };
@@ -2267,14 +2280,17 @@ void Actor::AddSuppression(float amount) {
 	if (amount <= 0.0F || m_Status == DYING || m_Status == DEAD || !FeelsFire()) {
 		return;
 	}
-	m_Suppression = std::clamp(m_Suppression + amount * g_SettingsMan.AISuppression(), 0.0F, 1.0F);
+	// (A veteran's nerve is steadier: 15% less a rank.)
+	const float nerve = 1.0F - 0.15F * static_cast<float>(m_Veterancy);
+	m_Suppression = std::clamp(m_Suppression + amount * nerve * g_SettingsMan.AISuppression(), 0.0F, 1.0F);
 }
 
 void Actor::ChangeMorale(float change) {
 	if (m_Status == DYING || m_Status == DEAD || !FeelsFire()) {
 		return;
 	}
-	m_Morale = std::clamp(m_Morale + (change < 0.0F ? change * g_SettingsMan.AISuppression() : change), 0.0F, 1.0F);
+	const float nerve = 1.0F - 0.15F * static_cast<float>(m_Veterancy);
+	m_Morale = std::clamp(m_Morale + (change < 0.0F ? change * nerve * g_SettingsMan.AISuppression() : change), 0.0F, 1.0F);
 }
 
 void Actor::ShotPassing(const MovableObject& shot) {
@@ -3015,8 +3031,8 @@ void Actor::GetDebugState(std::vector<DebugStateField>& fields) const {
 	if (order.Kind != ORDER_NONE) {
 		fields.push_back({"orderKind", order.Kind >= 0 && order.Kind < static_cast<int>(std::size(orderKindNames)) ? orderKindNames[order.Kind] : std::to_string(order.Kind), true});
 	}
-	if (order.Direct > 0.0F) {
-		fields.push_back({"orderDirect", std::to_string(static_cast<int>(order.Direct * 100.0F + 0.5F)) + "%", true});
+	if (order.Direct != 0.0F) {
+		fields.push_back({"orderDirect", std::to_string(static_cast<int>(std::round(order.Direct * 100.0F))) + "%", true});
 	}
 	if (order.HasDigTarget) {
 		number("orderDigX", std::floor(order.DigTarget.m_X));

@@ -904,6 +904,9 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 		elseif AI.overwatch then
 			-- Bounding overwatch (AC-6): this half of the squad holds and watches while the other moves.
 			holding = true;
+		elseif SharedBehaviors.CornerCheck(AI, Owner) then
+			-- A cautious order (one click): stopped short of a corner it can't see round, looking round it.
+			holding = true;
 		end
 		AI.lateralMoveState = Actor.LAT_STILL;
 		AI.jump = false;
@@ -983,6 +986,91 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 			return true;
 		end
 	end
+end
+
+-- How careful the unit's order is, 0 to 1: a cautious order (an RTS order placed with one click, Actor.OrderDirect under 0) is over 0.
+-- 0 on a build that hasn't got OrderDirect, or where it is a flag (asked without the error a missing member is).
+function SharedBehaviors.OrderCare(Owner)
+	local ok, direct = pcall(function() return Owner.OrderDirect; end);
+	if ok and type(direct) == "number" and direct < 0 then
+		return math.min(-direct, 1);
+	end
+	return 0;
+end
+
+-- A cautious order's look round corners (one click, SharedBehaviors.OrderCare): walking where it can't see, a unit stops a step short of
+-- the corner its route goes round (or a door, or a crest it can't see over), crouches and aims along the way round it for a second or so,
+-- then goes on. Each corner is looked round once; nothing is when there is an enemy to fight, or in the air.
+-- @return Whether it is stopped looking round one now (the move behaviour holds it there while it is).
+function SharedBehaviors.CornerCheck(AI, Owner)
+	local care = SharedBehaviors.OrderCare(Owner);
+	if care <= 0 or AI.Target or AI.UnseenTarget or Owner.ClassName ~= "AHuman" or Owner.FlyingRoute or AI.flying or Owner.AIMode ~= Actor.AIMODE_GOTO then
+		AI.Corner = nil;
+		return false;
+	end
+	AI.CornersChecked = AI.CornersChecked or {};
+	if AI.Corner then
+		if AI.Corner.Timer:IsPastSimMS(AI.Corner.For) then
+			table.insert(AI.CornersChecked, { Pos = AI.Corner.Pos, Timer = Timer() });
+			AI.Corner = nil;
+			AI.CornerScanTimer:Reset();
+			return false;
+		end
+		AI.deviceState = AHuman.AIMING;
+		AI.Ctrl.AnalogAim = AI.Corner.Look;
+		SharedBehaviors.Stance(AI, Owner, SharedBehaviors.CROUCHED, 300);
+		return true;
+	end
+	AI.CornerScanTimer = AI.CornerScanTimer or Timer();
+	if not AI.CornerScanTimer:IsPastSimMS(250) then
+		return false;
+	end
+	AI.CornerScanTimer:Reset();
+	-- (A corner looked round is not looked round again for a while.)
+	for i = #AI.CornersChecked, 1, -1 do
+		if AI.CornersChecked[i].Timer:IsPastSimMS(20000) then
+			table.remove(AI.CornersChecked, i);
+		end
+	end
+	-- Along the route for a body and a half or so: the first point it can't see from its eyes (at chest height over the point), and the last
+	-- one it could before it, which is the corner.
+	local Eye = Owner.EyePos;
+	local chest = SharedBehaviors.HeadAbovePos(Owner) * 0.5;
+	local reach = Owner.Height * 1.6;
+	local walked = 0;
+	local Prev = Vector(Owner.Pos.X, Owner.Pos.Y);
+	local Corner = nil;
+	for Point in Owner.MovePath do
+		walked = walked + SceneMan:ShortestDistance(Prev, Point, false).Magnitude;
+		if walked > reach then
+			break;
+		end
+		local Look = SceneMan:ShortestDistance(Eye, Point + Vector(0, -chest), false);
+		if SceneMan:CastObstacleRay(Eye, Look, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 4) >= 0 then
+			local At = Corner or Vector(Owner.Pos.X, Owner.Pos.Y);
+			if SceneMan:ShortestDistance(Owner.Pos, At, false):MagnitudeIsGreaterThan(Owner.Height * 0.5) then
+				return false; -- (Not there yet: walked on to a step short of it.)
+			end
+			for _, Checked in ipairs(AI.CornersChecked) do
+				if SceneMan:ShortestDistance(Checked.Pos, At, false):MagnitudeIsLessThan(Owner.Height * 0.8) then
+					return false;
+				end
+			end
+			local Way = SceneMan:ShortestDistance(At, Point, false);
+			if Way:MagnitudeIsLessThan(1) then
+				Way = Look;
+			end
+			AI.Corner = { Pos = At, Look = Way.Normalized, Timer = Timer(), For = RangeRand(700, 1300) * (0.5 + care * 0.5) };
+			SharedBehaviors.Trace(Owner, "cautious: looking round a corner");
+			AI.deviceState = AHuman.AIMING;
+			AI.Ctrl.AnalogAim = AI.Corner.Look;
+			SharedBehaviors.Stance(AI, Owner, SharedBehaviors.CROUCHED, 300);
+			return true;
+		end
+		Corner = Vector(Point.X, Point.Y);
+		Prev = Point;
+	end
+	return false;
 end
 
 -- The navigation debug overlay's level (SettingsMan.NavDebugOverlay), or 0 on a build that hasn't got it: the scripts are read by whatever

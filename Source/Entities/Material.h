@@ -45,6 +45,7 @@ namespace RTE {
 		float DryChance = -1.0F; //!< The chance, each time the terrain's sweep passes a still surface pixel of it (every few seconds), that it dries.
 		int Chills = -1; //!< 1 if it freezes what it touches that freezes (water to ice), and frosts bodies in it (cryogenic fluid).
 		float Evaporates = -1.0F; //!< The chance a step that a pixel of it at the surface boils off into mist (cryogenic fluid: gone in seconds).
+		float FadeAfter = -1.0F; //!< For a liquid, how many seconds a drop of it lasts once it has landed and joined the liquid, wherever it has flowed to by then (a spell's acid: 10). Unset or 0: for ever.
 		int LiquidsPassThrough = -1; //!< 1 if liquids flow through it as if it weren't there (grass, foliage; the stock rule goes by plant names), unless the liquid's PassThrough says otherwise.
 		std::string PassThrough; //!< For a liquid, what it does to what it flows through (LiquidsPassThrough): "Keep" (unset) leaves it there for when the liquid has gone,
 		                         //!< "Destroy" does away with it (acid eats it, lava burns it), "Collide" stops at it as at anything solid.

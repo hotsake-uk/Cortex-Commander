@@ -2356,11 +2356,12 @@ namespace SandboxDetail {
 				SelectInBox(stroke.Position, stroke.Position2);
 				break;
 			case Tool::Command: {
-				// A double- or triple-clicked order (s_DirectOrder): every unit it sends goes the shortest way, whatever it takes, partly or fully.
+				// How urgent the order is, by its clicks (s_DirectOrder): one cautious, two normal, three risky, four the shortest way whatever it
+				// takes. (Not placed by a click: normal.)
 				struct DirectScope {
 					explicit DirectScope(float direct) { s_DirectOrder = direct; }
 					~DirectScope() { s_DirectOrder = 0.0F; }
-				} directScope(stroke.Clicks >= 3 ? 1.0F : (stroke.Clicks == 2 ? g_SettingsMan.DirectOrders().DoubleClickShare : 0.0F));
+				} directScope(stroke.Clicks >= 4 ? 1.0F : (stroke.Clicks == 3 ? g_SettingsMan.DirectOrders().RiskyClickShare : (stroke.Clicks == 1 ? -1.0F : 0.0F)));
 				if (stroke.Count == 10 || stroke.Count == 11) {
 					// Defend at (RC-4): the point, the way dragged to face, and 11 with Shift.
 					DefendAtSelected(at, stroke.Position2, stroke.Count == 11);

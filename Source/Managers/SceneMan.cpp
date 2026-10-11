@@ -4,6 +4,7 @@
 #include "ThreatMemory.h"
 #include "GasGrid.h"
 #include "AirPressure.h"
+#include "MagicEffects.h"
 #include "RopeSim.h"
 #include "TerrainCollapse.h"
 #include "TerrainTrees.h"
@@ -1585,6 +1586,14 @@ void SceneMan::AddGas(const Vector& position, int kind, float amount) const {
 
 float SceneMan::GetGas(const Vector& position, int kind) const {
 	return kind >= 0 && kind < GasGrid::KindCount ? GasGrid::Get(position, static_cast<GasGrid::Kind>(kind)) : 0.0F;
+}
+
+void SceneMan::AddAirGust(const Vector& position, const Vector& direction, float strength, float length, float spread) const {
+	AirPressure::Gust(position, direction, strength, length, spread);
+}
+
+void SceneMan::MagicPush(const Vector& origin, const Vector& direction, float power, float range, float spread, const MovableObject* caster) const {
+	MagicEffects::Push(origin, direction, power, range, spread, caster);
 }
 
 Vector SceneMan::GetAirFlow(const Vector& position) const {
