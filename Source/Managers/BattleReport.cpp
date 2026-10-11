@@ -11,7 +11,7 @@ namespace SandboxDetail {
 		constexpr const char* c_OtherKind = "Other";
 		constexpr float c_SampleSeconds = 5.0F;
 		constexpr long long c_HoldEvery = 30; //!< Sim updates between looks at who is on each objective.
-		constexpr const char* c_ModeNames[] = {"Custom", "Capture the flag", "King of the hill", "Assault", "Last team standing", "VIP hunt", "One flag", "Capture the ship"};
+		constexpr const char* c_ModeNames[] = {"Custom", "Capture the flag", "King of the hill", "Assault", "Last team standing", "VIP hunt", "One flag", "Capture the ship", "Wave defence", "Escort", "Extraction"};
 		static_assert(std::size(c_ModeNames) == static_cast<size_t>(BattleMode::Count), "A name for each mode.");
 
 		/// One unit's record in the battle.
@@ -488,6 +488,9 @@ namespace SandboxDetail {
 			DrawScoreChart();
 
 			ImGui::Spacing();
+			if (LinkedBattleControls()) {
+				s_ReportOpen = false;
+			}
 			const float half = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5F;
 			if (ToolUI::Button("Play again", ImVec2(half, 0.0F))) {
 				s_ReportOpen = false;

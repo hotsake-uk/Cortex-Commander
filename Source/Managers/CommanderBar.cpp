@@ -294,6 +294,7 @@ namespace SandboxDetail {
 				}
 			}
 			ArmyPanel();
+			LinkedBattleControls();
 			if (BattleReportReady()) {
 				if (ToolUI::Button("After-battle report", ImVec2(-1.0F, 0.0F))) {
 					OpenBattleReport();

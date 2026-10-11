@@ -2691,6 +2691,656 @@ namespace SandboxDetail {
 
 		std::string AssaultStatus(int side) { return std::string(side == AttackerOf(s_ModeRun.Settings) ? "attacking, " : "defending, ") + std::to_string(Sandbox::CountUnits(side)) + " in"; }
 
+		// ---- Wave defence ----
+
+		int s_Wave = 0; //!< The wave in play (from 1), or the one coming after a break.
+		long long s_WaveBreakUntil = 0; //!< While between waves: the sim update the next comes in on. 0 while one is on.
+		std::array<int, c_Sides> s_WaveSentBefore{}; //!< Each attacking team's units sent before the wave in play.
+		float s_Overrun = 0.0F; //!< Seconds attackers have stood in the defence zone with no defender there.
+		bool s_ZoneContested = false;
+
+		int DefenderOf(const BattleModeSettings& settings) { return std::clamp(settings.Defender, 0, c_Sides - 1); }
+
+		/// How many units a wave brings in all, shared between the attacking teams.
+		int WaveSize(const BattleModeSettings& settings, int wave) { return std::clamp(settings.FirstWave + (std::max(wave, 1) - 1) * settings.WaveGrowth, 1, 500); }
+
+		int AttackingTeams(const BattleModeSettings& settings) {
+			int teams = 0;
+			for (int side = 0; side < c_Sides; ++side) {
+				teams += side != DefenderOf(settings) && TeamIn(settings, side) ? 1 : 0;
+			}
+			return std::max(teams, 1);
+		}
+
+		/// An attacking team's share of the wave in play.
+		int WaveShare(int side) {
+			const int teams = AttackingTeams(s_ModeRun.Settings);
+			return (WaveSize(s_ModeRun.Settings, s_Wave) + teams - 1) / teams;
+		}
+
+		int WaveSentNow(int side) { return std::max(s_BattleTeams[side].Sent - s_WaveSentBefore[side], 0); }
+
+		/// Where both sides fight: the defence zone.
+		BattleSettings DefencePost() {
+			const std::vector<Vector>& zone = s_ModeRun.Settings.Zones.front();
+			const float radius = GuardRadius(zone);
+			return PostAt(ZoneMiddle(zone), radius, radius + 300.0F, 0);
+		}
+
+		bool WavesReady(const BattleModeSettings& setup, std::string& why) {
+			if (!setup.Plays[DefenderOf(setup)]) {
+				why = std::string("Tick ") + c_SideNames[DefenderOf(setup)] + ", the defenders, or pick others to defend.";
+				return false;
+			}
+			return true;
+		}
+
+		void BreakBeforeWave(long long now) {
+			s_WaveBreakUntil = now + std::max(1LL, static_cast<long long>(static_cast<float>(std::max(s_ModeRun.Settings.WaveBreak, 1)) * UpdatesPerSecond()));
+		}
+
+		void WavesStart() {
+			// A break first, to dig in.
+			s_Wave = 1;
+			s_Overrun = 0.0F;
+			s_ZoneContested = false;
+			s_WaveSentBefore.fill(0);
+			BreakBeforeWave(g_TimerMan.GetSimUpdateCount());
+			s_ModeRun.Score.fill(0);
+		}
+
+		void WavesSettingsChanged() {}
+
+		void WavesUnitsMade(int side, const std::vector<Actor*>& wave) {
+			if (!s_ModeRun.Settings.Zones.empty()) {
+				SendToDefend(wave, DefencePost());
+			}
+		}
+
+		/// The attackers' units come in only while a wave is on, as many as their share of it.
+		int WavesRoom(int side, int room) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			if (side == DefenderOf(settings) || !TeamIn(settings, side)) {
+				return room;
+			}
+			if (s_WaveBreakUntil > 0 || s_ModeRun.Over) {
+				return 0;
+			}
+			return std::min(room, std::max(WaveShare(side) - WaveSentNow(side), 0));
+		}
+
+		/// Whether the wave in play is beaten: every attacking team has sent its share (or can't pay for more) and has none left in.
+		bool WaveBeaten() {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			for (int side = 0; side < c_Sides; ++side) {
+				if (side == DefenderOf(settings) || !TeamIn(settings, side)) {
+					continue;
+				}
+				const bool allSent = WaveSentNow(side) >= WaveShare(side) || s_BattleTeams[side].Broke;
+				if (!allSent || Sandbox::CountUnits(side) > 0) {
+					return false;
+				}
+			}
+			return true;
+		}
+
+		/// Every six updates: the next wave in after its break, a wave beaten (the defenders win after the last), and the defence zone overrun
+		/// when attackers stand in it with no defender there long enough.
+		void WavesUpdate(bool aiPaused) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			if (aiPaused) {
+				s_WaveBreakUntil += s_WaveBreakUntil > 0 ? 1 : 0;
+				return;
+			}
+			const long long now = g_TimerMan.GetSimUpdateCount();
+			if (s_ModeRun.Over || settings.Zones.empty() || now % 6 != 0) {
+				return;
+			}
+			const int defender = DefenderOf(settings);
+			const Vector middle = ZoneMiddle(settings.Zones.front());
+			if (s_WaveBreakUntil > 0) {
+				if (now < s_WaveBreakUntil) {
+					return;
+				}
+				s_WaveBreakUntil = 0;
+				for (int side = 0; side < c_Sides; ++side) {
+					s_WaveSentBefore[side] = s_BattleTeams[side].Sent;
+					// (Bought afresh each wave: a team that ran short last time has another go.)
+					s_BattleTeams[side].Broke = false;
+					// (And the wave's first lot all at once, not a few at a time.)
+					s_BattleTeams[side].FillFirst = s_BattleTeams[side].Running && side != defender;
+					s_BattleTeams[side].NextWave = now;
+					s_BattleTeams[side].NextZoneWave = now;
+				}
+				const std::string name = "Wave " + std::to_string(s_Wave) + (settings.Waves > 0 ? " of " + std::to_string(settings.Waves) : std::string());
+				Say(name + " incoming: " + std::to_string(WaveSize(settings, s_Wave)) + " attackers");
+				AddAlert("wave", name + " incoming!", middle, IM_COL32(255, 120, 80, 255));
+				UnitSays(middle, defender, 2000.0F, nullptr, "WaveIncoming");
+				return;
+			}
+			if (WaveBeaten()) {
+				s_ModeRun.Score[defender] = s_Wave;
+				if (settings.Waves > 0 && s_Wave >= settings.Waves) {
+					UnitSays(middle, defender, 2000.0F, nullptr, "WaveCleared");
+					EndGame(defender, SideName(defender) + " held off every wave!");
+					return;
+				}
+				Say("Wave " + std::to_string(s_Wave) + " beaten. The next in " + std::to_string(std::max(settings.WaveBreak, 1)) + " s");
+				AddAlert("wave", "Wave " + std::to_string(s_Wave) + " beaten", middle, IM_COL32(120, 220, 120, 255));
+				UnitSays(middle, defender, 2000.0F, nullptr, "WaveCleared");
+				++s_Wave;
+				BreakBeforeWave(now);
+				s_Overrun = 0.0F;
+				return;
+			}
+			// The defence zone: taken by attackers standing in it with no defender there.
+			std::array<int, c_Sides> in = CountIn(settings.Zones.front(), Fighters());
+			int attackers = 0;
+			int attacker = -1;
+			for (int side = 0; side < c_Sides; ++side) {
+				if (side != defender && TeamIn(settings, side) && in[side] > 0) {
+					attackers += in[side];
+					attacker = attacker < 0 ? side : -2;
+				}
+			}
+			const float step = 6.0F / UpdatesPerSecond();
+			const bool wasContested = s_ZoneContested;
+			s_ZoneContested = attackers > 0 && in[defender] > 0;
+			if (s_ZoneContested && !wasContested) {
+				AddAlert("wave", "The enemy is in the defence zone!", middle, IM_COL32(255, 150, 40, 255));
+			}
+			if (attackers > 0 && in[defender] == 0) {
+				s_Overrun += step;
+			} else if (attackers == 0) {
+				s_Overrun = std::max(s_Overrun - step * 0.5F, 0.0F);
+			}
+			if (s_Overrun >= static_cast<float>(std::max(settings.CaptureSeconds, 1))) {
+				EndGame(attacker >= 0 ? attacker : -1, "The defence zone is overrun on wave " + std::to_string(s_Wave) + "!");
+			}
+		}
+
+		void WavesPanel(BattleModeSettings& setup, bool& changed) {
+			changed |= ImGui::Combo("Defenders", &setup.Defender, c_SideNames, c_Sides);
+			ImGui::SetItemTooltip("The team that holds the defence zone. Every other team ticked attacks in waves.");
+			changed |= ImGui::SliderInt("Waves", &setup.Waves, 0, 50, setup.Waves > 0 ? "%d" : "endless");
+			ImGui::SetItemTooltip("Waves the defenders have to beat to win. Endless: they go on till the zone falls or you stop it.");
+			changed |= ImGui::SliderInt("First wave", &setup.FirstWave, 1, 60, "%d attackers");
+			ImGui::SetItemTooltip("How many attackers the first wave brings in all, shared between the attacking teams. No more of them are in at once than their team size.");
+			changed |= ImGui::SliderInt("More each wave", &setup.WaveGrowth, 0, 20, "+%d");
+			ImGui::SetItemTooltip("How many more attackers each wave brings than the one before.");
+			changed |= ImGui::SliderInt("Break between waves", &setup.WaveBreak, 5, 120, "%d s");
+			ImGui::SetItemTooltip("Seconds between one wave being beaten and the next coming in; the first comes in this long after the start.");
+			changed |= ImGui::SliderInt("Seconds to overrun", &setup.CaptureSeconds, 3, 120, "%d s");
+			ImGui::SetItemTooltip("How long attackers have to stand in the defence zone, with no defender in it, to overrun it and win. Fought over, the count holds; left, it slips back.");
+		}
+
+		void WavesDraw(bool running) {
+			ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+			const BattleModeSettings& settings = running ? s_ModeRun.Settings : s_ModeSetup;
+			const int defender = DefenderOf(settings);
+			DrawBases(drawList, settings);
+			if (settings.Zones.empty()) {
+				return;
+			}
+			const std::vector<Vector>& zone = settings.Zones.front();
+			if (!running) {
+				DrawModeZone(drawList, zone, c_SideColors[defender], 30, 200, 2.0F, "DEFENCE ZONE");
+				return;
+			}
+			const float pulse = Pulse();
+			const ImU32 color = s_ZoneContested ? IM_COL32(255, 150, 40, 255) : (s_Overrun > 0.0F ? IM_COL32(255, 80, 60, 255) : c_SideColors[defender]);
+			DrawModeZone(drawList, zone, color, static_cast<int>(30.0F + 30.0F * pulse), 220, 2.0F + 2.0F * pulse, s_ZoneContested ? "DEFENCE ZONE: CONTESTED" : "DEFENCE ZONE");
+			if (s_Overrun > 0.0F) {
+				const float taken = std::clamp(s_Overrun / static_cast<float>(std::max(settings.CaptureSeconds, 1)), 0.0F, 1.0F);
+				ImVec2 middle = ToScreen(ZoneMiddle(zone));
+				ImVec2 from(middle.x - 40.0F, middle.y + 12.0F);
+				drawList->AddRectFilled(from, ImVec2(from.x + 80.0F, from.y + 6.0F), IM_COL32(0, 0, 0, 160), 2.0F);
+				drawList->AddRectFilled(from, ImVec2(from.x + 80.0F * taken, from.y + 6.0F), IM_COL32(255, 80, 60, 255), 2.0F);
+			}
+			std::string line = "WAVE DEFENCE    wave " + std::to_string(s_Wave) + (settings.Waves > 0 ? " of " + std::to_string(settings.Waves) : std::string());
+			if (s_ModeRun.Over) {
+			} else if (s_WaveBreakUntil > 0) {
+				line += "    next wave in " + Clock(static_cast<float>(s_WaveBreakUntil - g_TimerMan.GetSimUpdateCount()) / UpdatesPerSecond());
+			} else {
+				int toCome = 0;
+				int in = 0;
+				for (int side = 0; side < c_Sides; ++side) {
+					if (side != defender && TeamIn(settings, side)) {
+						toCome += s_BattleTeams[side].Broke ? 0 : std::max(WaveShare(side) - WaveSentNow(side), 0);
+						in += Sandbox::CountUnits(side);
+					}
+				}
+				line += "    " + std::to_string(in + toCome) + " attackers left";
+				if (s_Overrun > 0.0F) {
+					line += "    OVERRUN " + std::to_string(static_cast<int>(100.0F * s_Overrun / static_cast<float>(std::max(settings.CaptureSeconds, 1)))) + "%";
+				}
+			}
+			DrawScore(line);
+		}
+
+		void WavesObjectives(const BattleModeSettings& settings, bool running, std::vector<BattleObjective>& out) {
+			if (settings.Zones.empty() || settings.Zones.front().size() < 3) {
+				return;
+			}
+			const int defender = DefenderOf(settings);
+			BattleObjective zone{.Name = "Defence zone", .Pos = ZoneMiddle(settings.Zones.front()), .Zone = settings.Zones.front(), .Look = ObjectiveLook::Glow};
+			zone.Live = !running || !s_ModeRun.Over;
+			if (running) {
+				zone.Color = s_ZoneContested ? IM_COL32(255, 150, 40, 255) : c_SideColors[defender];
+				zone.Defenders = Bit(defender);
+				zone.Attackers = TeamsIn(settings) & ~Bit(defender);
+			}
+			out.push_back(zone);
+		}
+
+		std::string WavesStatus(int side) {
+			if (side == DefenderOf(s_ModeRun.Settings)) {
+				return "defending, " + std::to_string(s_ModeRun.Score[side]) + " waves beaten, " + std::to_string(Sandbox::CountUnits(side)) + " in";
+			}
+			return "attacking, " + std::to_string(Sandbox::CountUnits(side)) + " in";
+		}
+
+		// ---- Escort ----
+
+		UnitRef s_EscortVip; //!< The unit the escorting team takes to the destination.
+		bool s_EscortHasVip = false;
+		Vector s_EscortCentre; //!< Where its escorts were last posted round it.
+		long long s_ModeDeadline = 0; //!< Escort and extraction: the sim update the time runs out on; 0 for no limit.
+
+		int EscortSideOf(const BattleModeSettings& settings) { return std::clamp(settings.EscortSide, 0, c_Sides - 1); }
+
+		/// The only team against a side, for naming the winners; -1 with more than one.
+		int OnlyEnemyOf(const BattleModeSettings& settings, int side) {
+			int enemy = -1;
+			for (int other = 0; other < c_Sides; ++other) {
+				if (other != side && TeamIn(settings, other)) {
+					if (enemy >= 0) {
+						return -1;
+					}
+					enemy = other;
+				}
+			}
+			return enemy;
+		}
+
+		void StartDeadline() {
+			const int limit = s_ModeRun.Settings.TimeLimit;
+			s_ModeDeadline = limit > 0 ? g_TimerMan.GetSimUpdateCount() + static_cast<long long>(static_cast<float>(limit) * UpdatesPerSecond()) : 0;
+		}
+
+		Actor* LiveEscortVip() {
+			Actor* unit = GetRef(s_EscortVip);
+			return unit && IsCombatant(unit) ? unit : nullptr;
+		}
+
+		bool EscortReady(const BattleModeSettings& setup, std::string& why) {
+			if (!setup.Plays[EscortSideOf(setup)]) {
+				why = std::string("Tick ") + c_SideNames[EscortSideOf(setup)] + ", the escort, or pick another team to escort.";
+				return false;
+			}
+			return true;
+		}
+
+		void EscortStart() {
+			if (Actor* unit = GetRef(s_EscortVip)) {
+				unit->SetHighlighted(false);
+			}
+			s_EscortVip = UnitRef();
+			s_EscortHasVip = false;
+			StartDeadline();
+		}
+
+		/// The escort's units guard the VIP (or their base, till it has one); everyone else hunts it.
+		void EscortUnitsMade(int side, const std::vector<Actor*>& wave) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			if (side == EscortSideOf(settings)) {
+				const Actor* vip = LiveEscortVip();
+				const Vector at = vip ? vip->GetPos() : ZoneMiddle(WidestZone(ZonesOf(settings, side)));
+				SendToDefend(wave, PostAt(at, 120.0F, 400.0F, 20));
+			} else {
+				MakeHunters(side, wave);
+			}
+		}
+
+		Actor* EscortPrey(const FlagRunner&, const Actor* unit, const std::vector<Actor*>& fighters) {
+			Actor* vip = LiveEscortVip();
+			return vip && vip->GetTeam() != unit->GetTeam() ? vip : NearestEnemy(unit, fighters);
+		}
+
+		/// The escort's unit nearest the middle of its base made the VIP: it glows, and (on an AI team) sets off for the destination.
+		void PickEscortVip(int side) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			const Vector base = ZoneMiddle(WidestZone(ZonesOf(settings, side)));
+			Actor* pick = nullptr;
+			float nearest = 0.0F;
+			for (Actor* fighter: Fighters()) {
+				if (fighter->GetTeam() != side || fighter->IsPlayerControlled()) {
+					continue;
+				}
+				const float distance = g_SceneMan.ShortestDistance(fighter->GetPos(), base, g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
+				if (!pick || distance < nearest) {
+					pick = fighter;
+					nearest = distance;
+				}
+			}
+			if (!pick) {
+				return;
+			}
+			s_EscortVip = MakeRef(pick);
+			s_EscortHasVip = true;
+			s_EscortCentre = pick->GetPos();
+			pick->SetHighlighted(true);
+			s_Runners.erase(pick->GetUniqueID());
+			s_BattleDefenders.erase(pick->GetUniqueID());
+			if (!BattlePlayerCommands(side)) {
+				pick->SetOrderAttack(false);
+				pick->ClearAIWaypoints();
+				pick->AddAISceneWaypoint(ZoneMiddle(settings.Zones.front()));
+				pick->SetAIMode(Actor::AIMODE_GOTO);
+			}
+			pick->Say("EscortMoving");
+			Say(SideName(side) + " has its VIP: get it to the destination!");
+			if (side == CommandedTeam()) {
+				AddAlert("escort", "Your VIP is ready: get it to the destination", pick->GetPos(), c_SideColors[side]);
+			}
+		}
+
+		/// Every six updates: the VIP picked, kept going and its escorts kept round it; it reaching the destination wins, its fall or the
+		/// time running out loses.
+		void EscortUpdate(bool aiPaused) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			if (aiPaused) {
+				s_ModeDeadline += s_ModeDeadline > 0 ? 1 : 0;
+				return;
+			}
+			const long long now = g_TimerMan.GetSimUpdateCount();
+			if (s_ModeRun.Over || settings.Zones.empty()) {
+				return;
+			}
+			const int side = EscortSideOf(settings);
+			const int enemy = OnlyEnemyOf(settings, side);
+			g_PostProcessMan.GetLightingSettings().HighlightUnits = LiveEscortVip() != nullptr;
+			if (now % 30 == 15) {
+				UpdateHunters(now, EscortPrey, "escort: after their VIP");
+			}
+			if (now % 6 != 0) {
+				return;
+			}
+			Actor* vip = LiveEscortVip();
+			if (!s_EscortHasVip) {
+				PickEscortVip(side);
+				return;
+			}
+			if (!vip) {
+				UnitSays(s_EscortCentre, side, 1500.0F, nullptr, "EscortVipDown");
+				EndGame(enemy, SideName(side) + "'s VIP is down!" + (enemy >= 0 ? " " + SideName(enemy) + " wins." : std::string()));
+				return;
+			}
+			if (IsInZone(settings.Zones.front(), vip->GetPos())) {
+				++s_ModeRun.Score[side];
+				UnitSays(vip->GetPos(), side, 800.0F, nullptr, "EscortArrived");
+				EndGame(side, SideName(side) + " got its VIP through!");
+				return;
+			}
+			if (!BattlePlayerCommands(side) && !vip->IsPlayerControlled() && now % 180 == 0 && (vip->GetAIMode() != Actor::AIMODE_GOTO || vip->GetWaypointsSize() == 0)) {
+				// (Back on its way after a fight or a stop.)
+				vip->ClearAIWaypoints();
+				vip->AddAISceneWaypoint(ZoneMiddle(settings.Zones.front()));
+				vip->SetAIMode(Actor::AIMODE_GOTO);
+			}
+			if (DistanceBetween(vip->GetPos(), s_EscortCentre) > 80.0F) {
+				s_EscortCentre = vip->GetPos();
+				RecentreDefenders(side, s_EscortCentre, false, 120.0F);
+			}
+			if (s_ModeDeadline > 0 && now >= s_ModeDeadline) {
+				EndGame(enemy, "Time's up: " + SideName(side) + "'s VIP didn't make it!");
+			}
+		}
+
+		void EscortPanel(BattleModeSettings& setup, bool& changed) {
+			changed |= ImGui::Combo("Escort", &setup.EscortSide, c_SideNames, c_Sides);
+			ImGui::SetItemTooltip("The team that takes its VIP to the destination. Every other team ticked tries to stop it.");
+			changed |= ImGui::SliderInt("Time limit", &setup.TimeLimit, 0, 1800, setup.TimeLimit > 0 ? "%d s" : "none");
+			ImGui::SetItemTooltip("Seconds the escort has to get its VIP there, or the other side wins. 0: no limit.");
+		}
+
+		/// A crown over a unit's head, in a colour, with a label.
+		void DrawCrown(ImDrawList* drawList, const Actor* unit, ImU32 color, const char* label) {
+			ImVec2 top = ToScreen(OverHeadPos(unit) - Vector(0.0F, 10.0F));
+			const float bob = 2.0F * Pulse(3.0F);
+			ImVec2 crown[5] = {ImVec2(top.x - 9.0F, top.y - bob), ImVec2(top.x - 9.0F, top.y - 10.0F - bob), ImVec2(top.x - 3.0F, top.y - 5.0F - bob), ImVec2(top.x + 3.0F, top.y - 12.0F - bob), ImVec2(top.x + 9.0F, top.y - 10.0F - bob)};
+			drawList->AddConvexPolyFilled(crown, 5, color);
+			drawList->AddRectFilled(ImVec2(top.x - 9.0F, top.y - 2.0F - bob), ImVec2(top.x + 9.0F, top.y + 2.0F - bob), color);
+			drawList->AddText(ImVec2(top.x - 10.0F, top.y - 28.0F - bob), IM_COL32(255, 255, 255, 230), label);
+		}
+
+		void EscortDraw(bool running) {
+			ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+			const BattleModeSettings& settings = running ? s_ModeRun.Settings : s_ModeSetup;
+			const int side = EscortSideOf(settings);
+			DrawBases(drawList, settings);
+			if (!settings.Zones.empty()) {
+				DrawModeZone(drawList, settings.Zones.front(), c_SideColors[side], running ? static_cast<int>(25.0F + 25.0F * Pulse()) : 30, 200, 2.0F, "DESTINATION");
+			}
+			if (!running) {
+				return;
+			}
+			const Actor* vip = LiveEscortVip();
+			if (vip) {
+				DrawCrown(drawList, vip, c_SideColors[side], "VIP");
+			}
+			std::string line = "ESCORT    " + SideName(side) + " escorting";
+			if (vip && !settings.Zones.empty()) {
+				line += "    VIP " + std::to_string(static_cast<int>(DistanceBetween(vip->GetPos(), ZoneMiddle(settings.Zones.front())) / 20.0F)) + " m from the destination";
+			}
+			if (s_ModeDeadline > 0 && !s_ModeRun.Over) {
+				line += "    " + Clock(static_cast<float>(s_ModeDeadline - g_TimerMan.GetSimUpdateCount()) / UpdatesPerSecond()) + " left";
+			}
+			DrawScore(line);
+		}
+
+		void EscortObjectives(const BattleModeSettings& settings, bool running, std::vector<BattleObjective>& out) {
+			const int side = EscortSideOf(settings);
+			const unsigned others = TeamsIn(settings) & ~Bit(side);
+			if (!settings.Zones.empty() && settings.Zones.front().size() >= 3) {
+				out.push_back({.Name = "Destination", .Pos = ZoneMiddle(settings.Zones.front()), .Zone = settings.Zones.front(), .Color = c_SideColors[side], .Look = ObjectiveLook::Outline, .Attackers = Bit(side), .Defenders = others});
+			}
+			if (const Actor* vip = running ? LiveEscortVip() : nullptr) {
+				out.push_back({.Name = "VIP", .Pos = vip->GetPos(), .Radius = 80.0F, .Color = c_SideColors[side], .Look = ObjectiveLook::Marker, .Attackers = others, .Defenders = Bit(side)});
+			}
+		}
+
+		std::string EscortStatus(int side) {
+			if (side == EscortSideOf(s_ModeRun.Settings)) {
+				return std::string(LiveEscortVip() ? "escorting the VIP, " : "no VIP yet, ") + std::to_string(Sandbox::CountUnits(side)) + " in";
+			}
+			return "after the VIP, " + std::to_string(Sandbox::CountUnits(side)) + " in";
+		}
+
+		// ---- Extraction ----
+
+		std::unordered_map<long, float> s_InExtraction; //!< Seconds each of the extracting team's units has stood in the zone, by unique ID.
+
+		int ExtractSideOf(const BattleModeSettings& settings) { return std::clamp(settings.ExtractSide, 0, c_Sides - 1); }
+
+		int ExtractTicketsLeft() {
+			const int side = ExtractSideOf(s_ModeRun.Settings);
+			return std::max(s_ModeRun.Settings.Tickets - s_BattleTeams[side].Sent, 0);
+		}
+
+		bool ExtractReady(const BattleModeSettings& setup, std::string& why) {
+			if (!setup.Plays[ExtractSideOf(setup)]) {
+				why = std::string("Tick ") + c_SideNames[ExtractSideOf(setup)] + ", the team getting out, or pick another.";
+				return false;
+			}
+			return true;
+		}
+
+		void ExtractStart() {
+			s_InExtraction.clear();
+			StartDeadline();
+		}
+
+		/// The extracting team's units make for the zone; the rest hold it against them, half of them hunting.
+		void ExtractUnitsMade(int side, const std::vector<Actor*>& wave) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			if (settings.Zones.empty()) {
+				return;
+			}
+			const std::vector<Vector>& zone = settings.Zones.front();
+			const float radius = GuardRadius(zone);
+			if (side == ExtractSideOf(settings)) {
+				SendToDefend(wave, PostAt(ZoneMiddle(zone), radius * 0.5F, radius + 150.0F, 0));
+				return;
+			}
+			std::vector<Actor*> guards;
+			std::vector<Actor*> hunters;
+			for (Actor* unit: wave) {
+				(Random01() < 0.5F ? guards : hunters).push_back(unit);
+			}
+			SendToDefend(guards, PostAt(ZoneMiddle(zone), radius + 100.0F, radius + 400.0F, 30));
+			MakeHunters(side, hunters);
+		}
+
+		/// No more units than the extracting team has tickets left for.
+		int ExtractRoom(int side, int room) { return side == ExtractSideOf(s_ModeRun.Settings) ? std::min(room, ExtractTicketsLeft()) : room; }
+
+		Actor* ExtractPrey(const FlagRunner&, const Actor* unit, const std::vector<Actor*>& fighters) {
+			// After the extracting team's unit nearest the zone.
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			if (settings.Zones.empty()) {
+				return NearestEnemy(unit, fighters);
+			}
+			const Vector middle = ZoneMiddle(settings.Zones.front());
+			Actor* best = nullptr;
+			float bestDistance = 0.0F;
+			for (Actor* fighter: fighters) {
+				if (fighter->GetTeam() != ExtractSideOf(settings)) {
+					continue;
+				}
+				const float distance = DistanceBetween(fighter->GetPos(), middle);
+				if (!best || distance < bestDistance) {
+					best = fighter;
+					bestDistance = distance;
+				}
+			}
+			return best && best->GetTeam() != unit->GetTeam() ? best : NearestEnemy(unit, fighters);
+		}
+
+		/// Every six updates: the extracting team's units that have stood in the zone long enough are lifted out and counted; it wins on enough
+		/// out, and loses once it has nobody left to send or the time runs out.
+		void ExtractUpdate(bool aiPaused) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			if (aiPaused) {
+				s_ModeDeadline += s_ModeDeadline > 0 ? 1 : 0;
+				return;
+			}
+			const long long now = g_TimerMan.GetSimUpdateCount();
+			if (s_ModeRun.Over || settings.Zones.empty()) {
+				return;
+			}
+			const int side = ExtractSideOf(settings);
+			const int enemy = OnlyEnemyOf(settings, side);
+			if (now % 30 == 15) {
+				UpdateHunters(now, ExtractPrey, "extraction: stopping them getting out");
+			}
+			if (now % 6 != 0) {
+				return;
+			}
+			const std::vector<Vector>& zone = settings.Zones.front();
+			const float step = 6.0F / UpdatesPerSecond();
+			std::unordered_map<long, float> stillIn;
+			for (Actor* fighter: Fighters()) {
+				if (fighter->GetTeam() != side || !IsInZone(zone, fighter->GetPos())) {
+					continue;
+				}
+				const long id = fighter->GetUniqueID();
+				const float seconds = (s_InExtraction.contains(id) ? s_InExtraction[id] : 0.0F) + step;
+				if (seconds < static_cast<float>(std::max(settings.ExtractSeconds, 1))) {
+					stillIn[id] = seconds;
+					continue;
+				}
+				// Out: lifted away.
+				++s_ModeRun.Score[side];
+				UnitSays(fighter->GetPos(), side, 600.0F, fighter, "Extracted");
+				if (fighter->IsPlayerControlled()) {
+					// (You were playing it: back to commanding.)
+					fighter->SetControllerMode(Controller::CIM_AI);
+				}
+				fighter->SetToDelete(true);
+				if (s_ModeRun.Score[side] >= std::max(settings.ExtractToWin, 1)) {
+					EndGame(side, SideName(side) + " got " + std::to_string(s_ModeRun.Score[side]) + " out!");
+					return;
+				}
+				Say(SideName(side) + ": " + std::to_string(s_ModeRun.Score[side]) + " of " + std::to_string(settings.ExtractToWin) + " out");
+			}
+			s_InExtraction = std::move(stillIn);
+			if (ExtractTicketsLeft() == 0 && Sandbox::CountUnits(side) == 0 && now % 60 == 0) {
+				EndGame(enemy, SideName(side) + " has nobody left to get out!");
+				return;
+			}
+			if (s_ModeDeadline > 0 && now >= s_ModeDeadline) {
+				EndGame(enemy, "Time's up: " + SideName(side) + " got " + std::to_string(s_ModeRun.Score[side]) + " of " + std::to_string(settings.ExtractToWin) + " out");
+			}
+		}
+
+		void ExtractPanel(BattleModeSettings& setup, bool& changed) {
+			changed |= ImGui::Combo("Getting out", &setup.ExtractSide, c_SideNames, c_Sides);
+			ImGui::SetItemTooltip("The team that has to get its units to the extraction zone. Every other team ticked tries to stop it.");
+			changed |= ImGui::SliderInt("Out to win", &setup.ExtractToWin, 1, 100, "%d units");
+			ImGui::SetItemTooltip("How many of its units it has to get out to win.");
+			changed |= ImGui::SliderInt("Seconds in the zone", &setup.ExtractSeconds, 1, 30, "%d s");
+			ImGui::SetItemTooltip("How long a unit has to stand in the extraction zone to be lifted out.");
+			changed |= ImGui::SliderInt("Units in all", &setup.Tickets, 5, 500, "%d units");
+			ImGui::SetItemTooltip("Units the team getting out has in all, the first lot counted. Once they're spent and none are left in, it loses.");
+			changed |= ImGui::SliderInt("Time limit", &setup.TimeLimit, 0, 1800, setup.TimeLimit > 0 ? "%d s" : "none");
+			ImGui::SetItemTooltip("Seconds the team has to get them out, or the other side wins. 0: no limit.");
+		}
+
+		void ExtractDraw(bool running) {
+			ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+			const BattleModeSettings& settings = running ? s_ModeRun.Settings : s_ModeSetup;
+			const int side = ExtractSideOf(settings);
+			DrawBases(drawList, settings);
+			if (!settings.Zones.empty()) {
+				DrawModeZone(drawList, settings.Zones.front(), c_SideColors[side], running ? static_cast<int>(25.0F + 25.0F * Pulse()) : 30, 200, 2.0F, "EXTRACTION");
+			}
+			if (!running) {
+				return;
+			}
+			// A bar over each unit of the team being lifted out: how near it is.
+			for (Actor* fighter: Fighters()) {
+				auto in = s_InExtraction.find(fighter->GetUniqueID());
+				if (in == s_InExtraction.end()) {
+					continue;
+				}
+				const float share = std::clamp(in->second / static_cast<float>(std::max(settings.ExtractSeconds, 1)), 0.0F, 1.0F);
+				ImVec2 top = ToScreen(OverHeadPos(fighter) - Vector(0.0F, 6.0F));
+				drawList->AddRectFilled(ImVec2(top.x - 12.0F, top.y), ImVec2(top.x + 12.0F, top.y + 4.0F), IM_COL32(0, 0, 0, 160), 2.0F);
+				drawList->AddRectFilled(ImVec2(top.x - 12.0F, top.y), ImVec2(top.x - 12.0F + 24.0F * share, top.y + 4.0F), c_SideColors[side], 2.0F);
+			}
+			std::string line = "EXTRACTION    " + SideName(side) + " " + std::to_string(s_ModeRun.Score[side]) + " of " + std::to_string(settings.ExtractToWin) + " out    " + std::to_string(ExtractTicketsLeft() + Sandbox::CountUnits(side)) + " left";
+			if (s_ModeDeadline > 0 && !s_ModeRun.Over) {
+				line += "    " + Clock(static_cast<float>(s_ModeDeadline - g_TimerMan.GetSimUpdateCount()) / UpdatesPerSecond()) + " left";
+			}
+			DrawScore(line);
+		}
+
+		void ExtractObjectives(const BattleModeSettings& settings, bool running, std::vector<BattleObjective>& out) {
+			if (settings.Zones.empty() || settings.Zones.front().size() < 3) {
+				return;
+			}
+			const int side = ExtractSideOf(settings);
+			out.push_back({.Name = "Extraction", .Pos = ZoneMiddle(settings.Zones.front()), .Zone = settings.Zones.front(), .Color = c_SideColors[side], .Look = ObjectiveLook::Glow, .Attackers = Bit(side), .Defenders = TeamsIn(settings) & ~Bit(side)});
+		}
+
+		std::string ExtractStatus(int side) {
+			if (side == ExtractSideOf(s_ModeRun.Settings)) {
+				return std::to_string(s_ModeRun.Score[side]) + " out, " + std::to_string(ExtractTicketsLeft()) + " to come, " + std::to_string(Sandbox::CountUnits(side)) + " in";
+			}
+			return "stopping them, " + std::to_string(Sandbox::CountUnits(side)) + " in";
+		}
+
 		// ---- Team commanders ----
 
 		/// What a team's AI commander is doing (UpdateCommanders). On assault and king of the hill it splits its units between the objective in
@@ -3437,6 +4087,9 @@ namespace SandboxDetail {
 			ClearCarriers();
 			SetCarrier(s_OneFlag, nullptr);
 			ClearVips();
+			if (Actor* vip = GetRef(s_EscortVip)) {
+				vip->SetHighlighted(false);
+			}
 		}
 
 		/// One of the Battle Director's modes: what it is called and asks for, and its rules. Any of the rules can be left out.
@@ -3574,6 +4227,51 @@ namespace SandboxDetail {
 		     .Draw = ShipDraw,
 		     .Status = ShipStatus,
 		     .Objectives = ShipObjectives},
+		    {.Name = "Wave defence",
+		     .Blurb = "One team holds a defence zone, drawn on the map, against waves of attackers from every other team, each wave bigger than the last, "
+		              "with a break between them to dig in. The defenders win by beating the waves set; the attackers win by standing in the zone with no "
+		              "defender there long enough.",
+		     .ZoneName = "defence zone",
+		     .MinZones = 1,
+		     .Ready = WavesReady,
+		     .Start = WavesStart,
+		     .SettingsChanged = WavesSettingsChanged,
+		     .UnitsMade = WavesUnitsMade,
+		     .Room = WavesRoom,
+		     .Update = WavesUpdate,
+		     .Panel = WavesPanel,
+		     .Draw = WavesDraw,
+		     .Status = WavesStatus,
+		     .Objectives = WavesObjectives},
+		    {.Name = "Escort",
+		     .Blurb = "One team takes its VIP, one of its units, from its base to a destination drawn on the map, the rest of the team guarding it on "
+		              "the way. Every other team hunts the VIP. The escort wins when the VIP is inside the destination; the others win if it falls, "
+		              "or if time runs out first.",
+		     .ZoneName = "destination",
+		     .MinZones = 1,
+		     .Ready = EscortReady,
+		     .Start = EscortStart,
+		     .UnitsMade = EscortUnitsMade,
+		     .Update = EscortUpdate,
+		     .Panel = EscortPanel,
+		     .Draw = EscortDraw,
+		     .Status = EscortStatus,
+		     .Objectives = EscortObjectives},
+		    {.Name = "Extraction",
+		     .Blurb = "One team has to get its units out through an extraction zone drawn on the map: a unit that stands in it for a few seconds is "
+		              "lifted out. Every other team holds the zone against them and hunts them down. Get enough out to win; run out of units, or out "
+		              "of time, and lose.",
+		     .ZoneName = "extraction zone",
+		     .MinZones = 1,
+		     .Ready = ExtractReady,
+		     .Start = ExtractStart,
+		     .UnitsMade = ExtractUnitsMade,
+		     .Room = ExtractRoom,
+		     .Update = ExtractUpdate,
+		     .Panel = ExtractPanel,
+		     .Draw = ExtractDraw,
+		     .Status = ExtractStatus,
+		     .Objectives = ExtractObjectives},
 		};
 		static_assert(std::size(c_Modes) == static_cast<size_t>(BattleMode::Count), "c_Modes must describe each BattleMode.");
 
