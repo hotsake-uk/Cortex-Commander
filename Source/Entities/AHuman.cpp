@@ -39,6 +39,10 @@ namespace {
 	/// What the HUD shows for a firearm's ammo: the rounds in its magazine, or for a spell that costs energy (MG-2) how many casts are left.
 	std::string AmmoText(const HDFirearm* firearm) {
 		int rounds = firearm->GetRoundInMagCount();
+		// (A spell from a scroll: the casts the scroll gave it.)
+		if (int casts = firearm->GetScrollCasts(); casts >= 0) {
+			return std::to_string(casts) + (casts == 1 ? " cast" : " casts");
+		}
 		if (firearm->GetEnergyCost() > 0.0F && MagicEffects::CastingCostsEnergy()) {
 			int casts = firearm->GetAffordableRounds();
 			if (rounds >= 0) {
@@ -1954,6 +1958,10 @@ void AHuman::UpdateLimbPathSpeed() {
 		travelSpeedMultiplier *= WeatherEffects::GetWalkSpeedMultiplier();
 		// Wading is slower still
 		travelSpeedMultiplier *= ActorWater::GetWalkSpeedMultiplier(this);
+		// A powerup's stim: faster.
+		if (IsStimmed()) {
+			travelSpeedMultiplier *= c_StimSpeedMultiplier;
+		}
 		// Kept to a group's pace (RC-5): no faster than the slowest of those sent with it.
 		if (m_PaceLimit > 0.0F) {
 			const float fullSpeed = std::max(m_Paths[FGROUND][pathState].GetTravelSpeed(), m_Paths[BGROUND][pathState].GetTravelSpeed()) * 0.5F * travelSpeedMultiplier;

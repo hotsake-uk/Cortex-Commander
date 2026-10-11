@@ -5,6 +5,7 @@ sources += files(
 'ACRocket.cpp',
 'Activity.cpp',
 'Actor.cpp',
+'ActorPowerups.cpp',
 'ADoor.cpp',
 'AMover.cpp',
 'AVehicle.cpp',

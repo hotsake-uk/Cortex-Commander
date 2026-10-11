@@ -83,6 +83,8 @@ void HeldDevice::Clear() {
 	m_IsExplosiveWeapon = false;
 	m_GetsHitByMOsWhenHeld = false;
 	m_VisualRecoilMultiplier = 1.0F;
+	m_Powerup = PowerupInfo();
+	m_PowerupUsesLeft = 1;
 
 	m_BladeStart.Reset();
 	m_BladeEnd.Reset();
@@ -244,6 +246,8 @@ int HeldDevice::Create(const HeldDevice& reference) {
 	m_IsExplosiveWeapon = reference.m_IsExplosiveWeapon;
 	m_GetsHitByMOsWhenHeld = reference.m_GetsHitByMOsWhenHeld;
 	m_VisualRecoilMultiplier = reference.m_VisualRecoilMultiplier;
+	m_Powerup = reference.m_Powerup;
+	m_PowerupUsesLeft = reference.m_PowerupUsesLeft;
 
 	m_BladeStart = reference.m_BladeStart;
 	m_BladeEnd = reference.m_BladeEnd;
@@ -333,6 +337,25 @@ int HeldDevice::ReadProperty(const std::string_view& propName, Reader& reader) {
 		m_BladeHiltGap = std::max(m_BladeHiltGap, 0.0F);
 	});
 	MatchProperty("BladeEnergy", { reader >> m_BladeEnergy; });
+	MatchProperty("PowerupShield", { reader >> m_Powerup.Shield; });
+	MatchProperty("PowerupStim", { reader >> m_Powerup.Stim; });
+	MatchProperty("PowerupOvercharge", { reader >> m_Powerup.Overcharge; });
+	MatchProperty("PowerupCloak", { reader >> m_Powerup.Cloak; });
+	MatchProperty("PowerupHeal", { reader >> m_Powerup.Heal; });
+	MatchProperty("PowerupSpell", { reader >> m_Powerup.Spell; });
+	MatchProperty("PowerupCasts", {
+		reader >> m_Powerup.Casts;
+		m_Powerup.Casts = std::max(m_Powerup.Casts, 1);
+	});
+	MatchProperty("PowerupUses", {
+		reader >> m_Powerup.Uses;
+		m_Powerup.Uses = std::max(m_Powerup.Uses, 1);
+		m_PowerupUsesLeft = m_Powerup.Uses;
+	});
+	MatchProperty("PowerupUsesLeft", {
+		reader >> m_PowerupUsesLeft;
+		m_PowerupUsesLeft = std::max(m_PowerupUsesLeft, 0);
+	});
 	MatchProperty("BladeColor", { reader >> m_BladeColor; });
 	MatchProperty("BladeWidth", { reader >> m_BladeWidth; });
 	MatchProperty("BladeBrightness", { reader >> m_BladeBrightness; });
@@ -470,6 +493,19 @@ int HeldDevice::Save(Writer& writer) const {
 	writer << m_GetsHitByMOsWhenHeld;
 	writer.NewProperty("VisualRecoilMultiplier");
 	writer << m_VisualRecoilMultiplier;
+	if (IsPowerup()) {
+		writer.NewPropertyWithValue("PowerupShield", m_Powerup.Shield);
+		writer.NewPropertyWithValue("PowerupStim", m_Powerup.Stim);
+		writer.NewPropertyWithValue("PowerupOvercharge", m_Powerup.Overcharge);
+		writer.NewPropertyWithValue("PowerupCloak", m_Powerup.Cloak);
+		writer.NewPropertyWithValue("PowerupHeal", m_Powerup.Heal);
+		if (!m_Powerup.Spell.empty()) {
+			writer.NewPropertyWithValue("PowerupSpell", m_Powerup.Spell);
+			writer.NewPropertyWithValue("PowerupCasts", m_Powerup.Casts);
+		}
+		writer.NewPropertyWithValue("PowerupUses", m_Powerup.Uses);
+		writer.NewPropertyWithValue("PowerupUsesLeft", m_PowerupUsesLeft);
+	}
 	if (HasBlade()) {
 		writer.NewPropertyWithValue("BladeStart", m_BladeStart);
 		writer.NewPropertyWithValue("BladeEnd", m_BladeEnd);

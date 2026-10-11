@@ -2576,6 +2576,7 @@ void Actor::Update() {
 	MOSRotating::Update();
 
 	m_PieMenu->Update();
+	UpdatePowerups();
 
 	// Update the viewpoint to be at least what the position is
 	m_ViewPoint = m_Pos;
@@ -2823,6 +2824,10 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 	if (viewingTeam != m_Team && viewingTeam != Activity::NoTeam && !Sandbox::IsGodMode() && (!g_SettingsMan.ShowEnemyHUD() || g_SceneMan.IsUnseen(m_Pos.GetFloorIntX(), m_Pos.GetFloorIntY(), viewingTeam))) {
 		return;
 	}
+	// (Nor an enemy's while a powerup cloaks it: its tags would give it away.)
+	if (IsCloaked() && viewingTeam != m_Team && viewingTeam != Activity::NoTeam) {
+		return;
+	}
 
 	// Draw stat info HUD
 	char str[64];
@@ -2849,6 +2854,7 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 	if (!m_HUDVisible) {
 		return;
 	}
+	DrawPowerupsHUD(pTargetBitmap, drawPos);
 
 	// Draw the selection arrow, if controlled and under the arrow's time limit
 	if (m_Controller.IsPlayerControlled() && m_NewControlTmr.GetElapsedSimTimeMS() < ARROWTIME) {

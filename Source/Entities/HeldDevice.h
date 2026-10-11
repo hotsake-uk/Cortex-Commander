@@ -26,6 +26,22 @@ namespace RTE {
 		HELDDEVICEHOTKEYTYPECOUNT
 	};
 
+	/// What a powerup item does when a unit uses it (Actor::UsePowerup, the unit menu's Quick actions): seconds of each timed effect, an
+	/// instant heal, or casts of a spell (a spell scroll). Each use does all of what it gives at once; Uses is how many times it can be used.
+	struct PowerupInfo {
+		float Shield = 0.0F; //!< Seconds of an energy shield: bullets and shrapnel bounce off a bubble round the unit, harmlessly.
+		float Stim = 0.0F; //!< Seconds of faster running, with the jetpack's fuel kept topped up.
+		float Overcharge = 0.0F; //!< Seconds of its guns firing twice as fast and using no ammo.
+		float Cloak = 0.0F; //!< Seconds unseen by the AI, and faint to look at.
+		bool Heal = false; //!< Wounds closed and health back, at once.
+		std::string Spell; //!< A spell scroll: the spell (an HDFirearm preset) it puts in the unit's hand, with Casts casts that cost no energy.
+		int Casts = 0;
+		int Uses = 1;
+
+		/// Whether this makes its item a powerup at all.
+		bool IsSet() const { return Shield > 0.0F || Stim > 0.0F || Overcharge > 0.0F || Cloak > 0.0F || Heal || !Spell.empty(); }
+	};
+
 	/// An articulated device that can be weilded by an Actor.
 	/// 01/31/2007 Made concrete so Shields can be jsut HeldDevice:s
 	class HeldDevice : public Attachable {
@@ -273,6 +289,14 @@ namespace RTE {
 		/// Indicates whether this is a dual wieldable weapon or not.
 		/// @return Dual wieldable or not.
 		bool IsDualWieldable() const { return m_DualWieldable; }
+
+		/// Whether this is a powerup: an item a unit uses from its inventory (Actor::UsePowerup) rather than holds.
+		bool IsPowerup() const { return m_Powerup.IsSet(); }
+		/// What this powerup does when used.
+		const PowerupInfo& GetPowerup() const { return m_Powerup; }
+		/// How many more times this powerup can be used.
+		int GetPowerupUsesLeft() const { return m_PowerupUsesLeft; }
+		void SetPowerupUsesLeft(int uses) { m_PowerupUsesLeft = std::max(uses, 0); }
 
 		/// Sets whether this is a dual wieldable weapon or not.
 		/// @param isDualWieldable Dual wieldable or not.
@@ -597,6 +621,8 @@ namespace RTE {
 		static Entity::ClassInfo m_sClass;
 		// Indicates what kind of held device this is, see the HeldDeviceType enum
 		int m_HeldDeviceType;
+		PowerupInfo m_Powerup; //!< What this does when used as a powerup (see IsPowerup).
+		int m_PowerupUsesLeft; //!< How many more times this powerup can be used.
 		// Is this HeldDevice that are currently activated?
 		bool m_Activated;
 		// An array that holds activation states for the various hotkey actions of this HeldDevice.

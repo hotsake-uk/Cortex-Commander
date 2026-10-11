@@ -109,7 +109,9 @@ namespace SandboxDetail {
 			preset.Group = group;
 			preset.Modded = !g_PresetMan.IsModuleOfficial(preset.Module);
 			// The subcategory, from the groups the game files put the thing in.
-			if (object->IsInGroup("Actors - Livestock")) {
+			if (const HeldDevice* device = dynamic_cast<const HeldDevice*>(object); device && device->IsPowerup()) {
+				preset.Kind = "Powerups";
+			} else if (object->IsInGroup("Actors - Livestock")) {
 				preset.Kind = "Farm animals";
 			} else if (object->IsInGroup("Actors - Civilians")) {
 				preset.Kind = "Civilians";
