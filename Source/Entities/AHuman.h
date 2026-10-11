@@ -363,6 +363,15 @@ namespace RTE {
 		/// background ladders' scripts ask too, so they hold only who means to climb.)
 		bool LadderHoldWanted() const;
 
+		/// The AI's mantle control: an AI unit pulls itself up onto a ledge or over an obstacle, or catches a ledge in the air, only while this
+		/// was asked for in the last quarter second (with the setting AIMantlesOnPurpose on). Without it, an AI unit pressing into a ledge
+		/// walks into it. Its route-follower asks for it where the route goes up onto a ledge or over something, at a flight's landing, and as
+		/// a stuck remedy.
+		void WantMantle();
+
+		/// Whether this unit would mantle or catch a ledge now: always for a player, for an AI unit only with WantMantle asked for lately.
+		bool MantleWanted() const;
+
 		/// How high a leap on the legs lifts this (the body's centre, in pixels): set in the preset (LegJumpHeight), or by default a little
 		/// over half the standing body's height, which every humanoid has, mods' included.
 		/// @return The leap's height.
@@ -956,6 +965,9 @@ namespace RTE {
 			Timer straightCheckTimer; //!< Since the follower last looked for a full-risk flight.
 			bool straightHold = false; //!< A full-risk flight was found but the tank is short of it: standing for the fuel (straightHoldTimer since the wait began).
 			Timer straightHoldTimer;
+			bool straightSteadying = false; //!< A full-risk flight was found and fuelled, and the body is coming to a stand before it is flown (straightSettleTimer since that began).
+			Timer straightSettleTimer;
+			Timer straightStillTimer; //!< Since the body was last moving or unsteady, on a full-risk order.
 			bool ladderStalled = false; //!< A ladder climb stopped rising lately, at ladderStallSpot: that ladder isn't climbed again from there for a while (ladderStallTimer).
 			Vector ladderStallSpot;
 			Timer ladderStallTimer;
@@ -1043,6 +1055,7 @@ namespace RTE {
 			Hop, //!< A hop with the jet.
 			Prone, //!< Lie down and crawl.
 			Stand, //!< Stand up from lying down.
+			Mantle, //!< Press into what is ahead with the mantle asked for (WantMantle): pulled up onto it or over it when there is room.
 			Count
 		};
 		/// What a remedy did at a spot: kept across routes and orders (the route-follower's own state starts again with each), so a remedy
@@ -1099,6 +1112,7 @@ namespace RTE {
 			Timer stallTimer;
 		};
 		LadderClimb m_Ladder;
+		double m_AIMantleSimMS = -1.0; //!< When the AI's mantle control was last asked for (see WantMantle).
 		double m_AIGrabLadderSimMS = -1.0; //!< When the AI's grab-ladder control was last asked for (see GrabLadder).
 		struct TacticalMove {
 			bool active = false;

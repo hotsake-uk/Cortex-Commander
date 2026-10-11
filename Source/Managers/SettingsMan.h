@@ -325,6 +325,10 @@ namespace RTE {
 		bool AIGrabsLaddersOnPurpose() const { return m_AIGrabsLaddersOnPurpose; }
 		/// Whether an AI unit meaning to climb a ladder can take hold of it with its jetpack lit (cutting the jet), on as the game comes.
 		bool AIGrabsLaddersMidJet() const { return m_AIGrabsLaddersMidJet; }
+		/// Whether AI units pull themselves up onto ledges and over obstacles, or catch ledges in the air, only when they mean to (AHuman::WantMantle).
+		bool AIMantlesOnPurpose() const { return m_AIMantlesOnPurpose; }
+		/// Whether an AI unit whose flight comes up short beside its landing catches the landing's lip in the air.
+		bool AICatchesLedgesMidAir() const { return m_AICatchesLedgesMidAir; }
 		/// Whether risky orders fly past ladders a careful route climbs: they jet up a background ladder's shaft when the tank makes it, and the
 		/// route search prices a ladder climb dearer as their flights are cheaper. On as the game comes.
 		bool RiskyOrdersFlyPastLadders() const { return m_RiskyOrdersFlyPastLadders; }
@@ -384,7 +388,7 @@ namespace RTE {
 			float Caution = 0.1F; //!< The most route caution they have (PathAgent::Caution): 1 is a normal unit's, lower shies less from hard flights and long drops.
 			float FlightCostScale = 0.5F; //!< What a jet flight's time, take-off and fuel cost them as a share of the usual (PathAgent::FlightCostScale): lower jumps more where others walk.
 			float FuelShare = 0.6F; //!< The share of a flight's fuel they wait for at a take-off before going (with the fuel wait on).
-			bool Steady = false; //!< Whether they still steady themselves before a take-off.
+			float RecklessSteadyCut = 0.0F; //!< How much risk cuts the steadying before a take-off short, 0 to 1: the steady is this share shorter at full risk, in the order's share of it (1: none at all at full risk). 0: they come to a stand as any unit does, then go. (Skipped, a risky order's take-offs mid-stride often failed, and it never got off the ground properly.)
 			float FlightSpeed = 1.5F; //!< How fast they fly, as a multiple of the usual speed limits up, across and down.
 			float Touchdown = 7.0F; //!< How fast they let themselves come down onto the floor, m/s (5 is the usual).
 			bool SafeLandings = true; //!< Whether that landing is held under the speed the body is hurt at (AHuman::PilotFlight).
@@ -671,6 +675,8 @@ namespace RTE {
 		void SetAILadderTeamStalls(int stalls) { m_AILadderTeamStalls = std::clamp(stalls, 1, 5); }
 		void SetAIGrabsLaddersOnPurpose(bool on) { m_AIGrabsLaddersOnPurpose = on; }
 		void SetAIGrabsLaddersMidJet(bool on) { m_AIGrabsLaddersMidJet = on; }
+		void SetAIMantlesOnPurpose(bool on) { m_AIMantlesOnPurpose = on; }
+		void SetAICatchesLedgesMidAir(bool on) { m_AICatchesLedgesMidAir = on; }
 		void SetRiskyOrdersFlyPastLadders(bool on) { m_RiskyOrdersFlyPastLadders = on; }
 		/// Puts the Movement category's ladder settings back as the game comes.
 		void ResetLadderSettings() { m_AILadderGiveUpSeconds = 1.5F; m_AILadderTeamStalls = 2; m_AIGrabsLaddersOnPurpose = true; m_AIGrabsLaddersMidJet = true; m_RiskyOrdersFlyPastLadders = true; }
@@ -982,6 +988,8 @@ namespace RTE {
 		int m_AILadderTeamStalls; //!< See AILadderTeamStalls.
 		bool m_AIGrabsLaddersOnPurpose; //!< See AIGrabsLaddersOnPurpose.
 		bool m_AIGrabsLaddersMidJet; //!< See AIGrabsLaddersMidJet.
+		bool m_AIMantlesOnPurpose = true; //!< See AIMantlesOnPurpose.
+		bool m_AICatchesLedgesMidAir = true; //!< See AICatchesLedgesMidAir.
 		bool m_RiskyOrdersFlyPastLadders; //!< See RiskyOrdersFlyPastLadders.
 		float m_AISpawnDiggerChance; //!< Percentage of units handed a digger as they come into the scene, 0 to 100 (see AISpawnDiggerChance).
 		float m_BleedOutChance; //!< Percentage of wounds that keep bleeding rather than stopping, 0 to 100 (see BleedOutChance).
