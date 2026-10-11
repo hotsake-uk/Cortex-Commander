@@ -1434,6 +1434,11 @@ void DebugMan::SettingsGUI() {
 		Tip("AI units come to a stand, still and upright, before a jetpack climb or jump, so the flight starts true. Off: they take off mid-stride, quicker but more often off line.");
 		Toggle("AI waits for fuel before jetpacking", g_SettingsMan.AIWaitsForFuel(), [](bool on) { g_SettingsMan.SetAIWaitsForFuel(on); });
 		Tip("AI units wait at a take-off until the tank holds what the flight needs. Off: they go with what's in the tank, and may come down short.");
+		Heading("Ledges");
+		Toggle("AI mantles only on purpose", g_SettingsMan.AIMantlesOnPurpose(), [](bool on) { g_SettingsMan.SetAIMantlesOnPurpose(on); });
+		Tip("AI units pull themselves up onto a ledge or over an obstacle, or catch a ledge in the air, only when they mean to: where their route goes up onto it or over it, at a flight's landing, or to get unstuck. Off: they mantle whenever they press into a ledge they can pull themselves over, as a player does. Players always mantle as before.");
+		Toggle("AI catches ledges mid-air", g_SettingsMan.AICatchesLedgesMidAir(), [](bool on) { g_SettingsMan.SetAICatchesLedgesMidAir(on); });
+		Tip("An AI unit whose jetpack gives out just short of its landing grabs the landing's lip and pulls itself up. Off: it falls and tries again.");
 		Heading("Ladders");
 		Toggle("AI grabs ladders only on purpose", g_SettingsMan.AIGrabsLaddersOnPurpose(), [](bool on) { g_SettingsMan.SetAIGrabsLaddersOnPurpose(on); });
 		Tip("AI units take hold of a ladder only when their route climbs it, so they don't catch on ladders they are only passing. Bunker ladders follow the same rule. Off: they grab any ladder they press up or down at, as a player does. Players always climb as before.");
