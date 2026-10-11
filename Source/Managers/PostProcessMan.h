@@ -33,10 +33,12 @@ namespace RTE {
 		int m_Strength = 128; //!< Scalar float for how hard to blend it in, 0 - 255.
 		Vector m_Pos; //!< Post effect position. Can be relative to the scene, or to the screen, depending on context.
 		bool m_NoLight = false; //!< The glow is drawn but casts no light on the scene (aiming dots, when their light is turned off).
+		float m_LightScale = 1.0F; //!< Multiplier for the brightness of the light the glow casts, not the glow itself (a jetpack's, by LightingSettings::JetpackLightBrightness).
+		float m_LightReach = 1.0F; //!< Multiplier for how far that light reaches.
 
 		/// Constructor method used to instantiate a PostEffect object in system memory.
-		PostEffect(const Vector& pos, std::shared_ptr<BitmapTexture> bitmap, size_t bitmapHash, int strength, float angle, bool noLight = false) :
-		    m_Bitmap(bitmap), m_BitmapHash(bitmapHash), m_Angle(angle), m_Strength(strength), m_Pos(pos), m_NoLight(noLight) {}
+		PostEffect(const Vector& pos, std::shared_ptr<BitmapTexture> bitmap, size_t bitmapHash, int strength, float angle, bool noLight = false, float lightScale = 1.0F, float lightReach = 1.0F) :
+		    m_Bitmap(bitmap), m_BitmapHash(bitmapHash), m_Angle(angle), m_Strength(strength), m_Pos(pos), m_NoLight(noLight), m_LightScale(lightScale), m_LightReach(lightReach) {}
 	};
 
 	/// What registered a scene light, for the lighting-by-source readout (SettingsMan::ShowLightsBySource).
@@ -51,6 +53,7 @@ namespace RTE {
 		Sandbox, //!< Effects put down in the sandbox.
 		Scripts, //!< Lua, through AddLight.
 		Outlines, //!< The glow of units' outlines (LightingSettings::UnitOutlineGlow).
+		Jetpacks, //!< The glow at a firing jetpack's nozzle (and its flames lit as tracers).
 		Count
 	};
 
@@ -159,6 +162,12 @@ namespace RTE {
 		/// @param strength The intensity level this effect should have when blended in post. 0 - 255.
 		/// @param angle The angle this effect should be rotated at in radians.
 		void RegisterPostEffect(const Vector& effectPos, std::shared_ptr<BitmapTexture> effect, size_t hash, int strength = 255, float angle = 0);
+
+		/// Registers a post effect like RegisterPostEffect, with the light it casts on the scene scaled apart from the glow itself (a jetpack's flames and flash,
+		/// by LightingSettings::JetpackLightBrightness and JetpackLightReach). A separate name, not an overload, so the Lua binding of RegisterPostEffect stays as it is.
+		/// @param lightScale Multiplier for the brightness of the light it casts.
+		/// @param lightReach Multiplier for how far that light reaches.
+		void RegisterPostEffectScaledLight(const Vector& effectPos, std::shared_ptr<BitmapTexture> effect, size_t hash, int strength, float angle, float lightScale, float lightReach);
 
 		/// Gets all screen effects that are located within a box in the scene.
 		/// Their coordinates will be returned relative to the upper left corner of the box passed in here. Wrapping of the box will be taken care of.

@@ -2107,8 +2107,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 				continue;
 			}
 			const GlowInfo& glow = GetGlowInfo(effect.m_Bitmap.get());
-			float radius = std::max(24.0F, glow.Size * 0.5F * m_Settings.GlowLightRadiusScale);
-			glm::vec3 color = styled(glm::mix(glow.LightColor, glm::vec3(1.0F), 0.25F) * (static_cast<float>(effect.m_Strength) / 255.0F) * m_Settings.GlowLightIntensity);
+			float radius = std::max(24.0F, glow.Size * 0.5F * m_Settings.GlowLightRadiusScale) * effect.m_LightReach;
+			glm::vec3 color = styled(glm::mix(glow.LightColor, glm::vec3(1.0F), 0.25F) * (static_cast<float>(effect.m_Strength) / 255.0F) * m_Settings.GlowLightIntensity * effect.m_LightScale);
 			glm::vec2 center(effect.m_Pos.m_X, effect.m_Pos.m_Y);
 			size_t firstVertex = m_QuadVertices.size();
 			addQuad(center, glm::vec2(radius), 0.0F, color, radius);

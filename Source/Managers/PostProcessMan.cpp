@@ -941,6 +941,12 @@ void PostProcessMan::RegisterPostEffect(const Vector& effectPos, std::shared_ptr
 	}
 }
 
+void PostProcessMan::RegisterPostEffectScaledLight(const Vector& effectPos, std::shared_ptr<BitmapTexture> effect, size_t hash, int strength, float angle, float lightScale, float lightReach) {
+	if (effect && g_TimerMan.SimUpdatesSinceDrawn() >= 0) {
+		m_PostSceneEffects.push_back(PostEffect(effectPos, effect, hash, strength, angle, lightScale <= 0.0F, lightScale, lightReach));
+	}
+}
+
 bool PostProcessMan::GetPostScreenEffectsWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::list<PostEffect>& effectsList, int team) {
 	bool found = false;
 
@@ -1038,7 +1044,7 @@ bool PostProcessMan::GetPostScreenEffects(Vector boxPos, int boxWidth, int boxHe
 			if (WithinBox(scenePostEffect.m_Pos, boxPos, static_cast<float>(boxWidth), static_cast<float>(boxHeight)) && !unseen) {
 				found = true;
 				postEffectPosRelativeToBox = scenePostEffect.m_Pos - boxPos;
-				effectsList.push_back(PostEffect(postEffectPosRelativeToBox, scenePostEffect.m_Bitmap, scenePostEffect.m_BitmapHash, scenePostEffect.m_Strength, scenePostEffect.m_Angle, scenePostEffect.m_NoLight));
+				effectsList.push_back(PostEffect(postEffectPosRelativeToBox, scenePostEffect.m_Bitmap, scenePostEffect.m_BitmapHash, scenePostEffect.m_Strength, scenePostEffect.m_Angle, scenePostEffect.m_NoLight, scenePostEffect.m_LightScale, scenePostEffect.m_LightReach));
 			}
 		}
 	}
@@ -1058,7 +1064,7 @@ bool PostProcessMan::GetPostScreenEffects(int left, int top, int right, int bott
 		if (WithinBox(scenePostEffect.m_Pos, static_cast<float>(left), static_cast<float>(top), static_cast<float>(right), static_cast<float>(bottom)) && !unseen) {
 			found = true;
 			postEffectPosRelativeToBox = Vector(scenePostEffect.m_Pos.m_X - static_cast<float>(left), scenePostEffect.m_Pos.m_Y - static_cast<float>(top));
-			effectsList.push_back(PostEffect(postEffectPosRelativeToBox, scenePostEffect.m_Bitmap, scenePostEffect.m_BitmapHash, scenePostEffect.m_Strength, scenePostEffect.m_Angle, scenePostEffect.m_NoLight));
+			effectsList.push_back(PostEffect(postEffectPosRelativeToBox, scenePostEffect.m_Bitmap, scenePostEffect.m_BitmapHash, scenePostEffect.m_Strength, scenePostEffect.m_Angle, scenePostEffect.m_NoLight, scenePostEffect.m_LightScale, scenePostEffect.m_LightReach));
 		}
 	}
 	return found;

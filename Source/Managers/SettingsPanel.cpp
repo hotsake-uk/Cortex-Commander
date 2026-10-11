@@ -513,6 +513,10 @@ void DebugMan::SettingsGUI() {
 		Slider("Blade light reach", &settings.SaberLightReach, 0.2F, 3.0F);
 		Slider("Blade glow in the air", &settings.SaberAirGlow, 0.0F, 4.0F);
 		Tip("The soft glow of a blade's light in the air around it.");
+		Heading("Jetpacks");
+		Slider("Jetpack light brightness", &settings.JetpackLightBrightness, 0.0F, 4.0F);
+		Tip("How much light jetpacks give off while they fire: the glow at the nozzle, and the light of their flames, flashes and glowing exhaust. 0: jets still show but light nothing.");
+		Slider("Jetpack light reach", &settings.JetpackLightReach, 0.2F, 3.0F);
 	};
 
 	auto surfaces = [&]() {

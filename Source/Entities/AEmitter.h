@@ -56,6 +56,10 @@ namespace RTE {
 		/// @return Whether this emitter was emitting last frame.
 		bool WasEmitting() const { return m_WasEmitting; }
 
+		/// Whether this is a jetpack (AEJetpack): what it emits, and its flash, light the scene by the Jetpack light settings.
+		/// @return Whether this is a jetpack.
+		virtual bool IsJetpack() const { return false; }
+
 		/// Reset the timers of all emissions so they will start/stop at the
 		/// correct relative offsets from now.
 		void ResetEmissionTimers();
