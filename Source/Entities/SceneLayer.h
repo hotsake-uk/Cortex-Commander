@@ -281,6 +281,12 @@ namespace RTE {
 		/// @param targetBox The region to update (will be wrapped if neccessary)
 		void UpdateTargetRegion(const Box& targetBox);
 
+		/// UpdateTargetRegion for a camera's view, done once per view between RenderMan::BeginFrame calls. The terrain's layers are drawn in up to three
+		/// passes per camera with only objects drawn between them, which don't write to the terrain, so a second diff of the same view finds nothing new.
+		/// Layers that track drawings re-upload every time, as before.
+		/// @param viewport The camera's view.
+		void UpdateTargetRegionForView(const Box& viewport);
+
 		/// Performs tiled drawing of this SceneLayer's bitmap to the screen in cases where the target bitmap is larger in some dimension.
 		/// @param targetBitmap The bitmap to draw to.
 		/// @param targetBox The box on the target bitmap to limit drawing to, with the corner of box being where the scroll position lines up.
@@ -289,6 +295,11 @@ namespace RTE {
 
 		/// Where a tile lands on a zoomed view, for layers drawn as if the view weren't zoomed (see m_ZoomDrawScale).
 		FloatRect ZoomedDrawRect(float x, float y, float width, float height) const;
+
+		unsigned long long m_ViewSyncedFrame = 0; //!< The RenderMan::GetBeginFrameCount at the last UpdateTargetRegionForView, 0 for none.
+		Box m_ViewSyncedBox; //!< The view it brought up to date.
+		const BITMAP* m_ViewSyncedBitmap = nullptr; //!< The bitmap it brought up to date.
+		const BigTexture* m_ViewSyncedTexture = nullptr; //!< The texture it brought up to date.
 
 		mutable float m_ZoomDrawScale = 1.0F; //!< When not 1, the layer is laid out for m_ZoomDrawBox (the unzoomed screen around the view's centre) and scaled by this about its centre to fill the zoomed view. Far backgrounds use it so they don't zoom with the camera.
 		mutable Box m_ZoomDrawBox; //!< The box the layer is laid out for when m_ZoomDrawScale isn't 1.
