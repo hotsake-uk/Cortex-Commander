@@ -84,6 +84,10 @@ namespace RTE {
 		/// @return The max throw vel to use.
 		float GetCalculatedMaxThrowVelIncludingArmThrowStrength();
 
+		/// Gets the slowest this goes when thrown (a quick flick, not charged at all): MinThrowVel if set, else half the full-strength throw.
+		/// @return The minimum throw velocity, in m/s.
+		float GetCalculatedMinThrowVel() { return m_MinThrowVel > 0 ? m_MinThrowVel : GetCalculatedMaxThrowVelIncludingArmThrowStrength() * 0.5F; }
+
 		/// Gets the time from this being activated to its going off (its fuse), in milliseconds; 0 for none.
 		/// @return The trigger delay, in ms.
 		long GetTriggerDelay() const { return m_TriggerDelay; }

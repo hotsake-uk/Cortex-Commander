@@ -259,6 +259,11 @@ namespace RTE {
 		/// 0 if there are no brains of that team. OWNERSHIP IS NOT TRANSFERRED!
 		Actor* GetFirstBrainActor(int team) const { return GetClosestBrainActor(team, Vector()); }
 
+		/// Gets whether a team has a brain that keeps it in the game: any brain but the ones that run colony buildings (Colony.h).
+		/// @param team Which team.
+		/// @return Whether it has one.
+		bool HasGameBrain(int team) const;
+
 		/// Get a pointer to the brain actor NOT of a specific team that is closest
 		/// to a scene point. OWNERSHIP IS NOT TRANSFERRED!
 		/// @param notOfTeam Which team to NOT get the brain for. 0 means first team, 1 means 2nd.

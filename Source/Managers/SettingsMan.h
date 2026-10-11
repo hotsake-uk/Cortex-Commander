@@ -281,6 +281,12 @@ namespace RTE {
 
 		/// Whether AI units stand still and upright before a jetpack climb or jump (on, as designed), or take off mid-stride.
 		bool AISteadiesBeforeJet() const { return m_AISteadyBeforeJet; }
+		/// Take cover with no cover near: whether a unit carrying a digger digs a foxhole where it stands.
+		bool AICoverDigs() const { return m_AICoverDigs; }
+		/// Take cover with no cover near: whether a unit falls back away from the enemy when it is close or the unit is pinned down.
+		bool AICoverFallsBack() const { return m_AICoverFallsBack; }
+		/// Take cover with no cover near: whether a unit lies flat where it is (else it crouches).
+		bool AICoverLiesFlat() const { return m_AICoverLiesFlat; }
 		/// Whether a unit whose nerve has gone (morale under 0.3) breaks and falls back, whatever its health.
 		bool AIBreaksWhenShaken() const { return m_AIBreaksWhenShaken; }
 
@@ -579,6 +585,9 @@ namespace RTE {
 
 		/// Sets whether AI units steady themselves before they jet.
 		void SetAISteadiesBeforeJet(bool steady) { m_AISteadyBeforeJet = steady; }
+		void SetAICoverDigs(bool on) { m_AICoverDigs = on; }
+		void SetAICoverFallsBack(bool on) { m_AICoverFallsBack = on; }
+		void SetAICoverLiesFlat(bool on) { m_AICoverLiesFlat = on; }
 		void SetAIBreaksWhenShaken(bool on) { m_AIBreaksWhenShaken = on; }
 
 		/// Sets whether AI units wait for fuel before they jet.
@@ -862,6 +871,9 @@ namespace RTE {
 		float m_WeaponTerrainDamage; //!< Multiple of the force weapon fire strikes terrain with, 0.1 to 20 (see WeaponTerrainDamage).
 		int m_AISpawnDiggerType; //!< Which digger they're handed: 0 Light, 1 Medium, 2 Heavy, 3 random (see AISpawnDiggerType).
 		bool m_AISteadyBeforeJet; //!< Whether AI units steady themselves before they jet (see AISteadiesBeforeJet).
+		bool m_AICoverDigs; //!< See AICoverDigs.
+		bool m_AICoverFallsBack; //!< See AICoverFallsBack.
+		bool m_AICoverLiesFlat; //!< See AICoverLiesFlat.
 		bool m_AIBreaksWhenShaken; //!< See AIBreaksWhenShaken.
 		bool m_AIWaitForFuel; //!< Whether AI units wait for fuel before they jet (see AIWaitsForFuel).
 		bool m_AIEnemyBuysReinforcements; //!< See AIEnemyBuysReinforcements.

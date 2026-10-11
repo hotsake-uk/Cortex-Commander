@@ -601,6 +601,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AHuman) {
 	    .property("ProneState", &AHuman::GetProneState, &AHuman::SetProneState)
 	    .property("ThrowPrepTime", &AHuman::GetThrowPrepTime, &AHuman::SetThrowPrepTime)
 	    .property("ThrowProgress", &AHuman::GetThrowProgress)
+	    .def("GetThrowReleasePos", &AHuman::GetThrowReleasePos)
 	    .property("EquippedItem", &AHuman::GetEquippedItem)
 	    .property("EquippedBGItem", &AHuman::GetEquippedBGItem)
 	    .property("EquippedMass", &AHuman::GetEquippedMass)
@@ -909,8 +910,20 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, HeldDevice) {
 	    .property("IsSwinging", &HeldDevice::IsSwinging)
 	    .property("BladeJustClashed", &HeldDevice::BladeJustClashed)
 	    .property("TimeSinceBladeHit", &HeldDevice::GetTimeSinceBladeHit)
+	    .property("Throwable", &HeldDevice::IsThrowable, &HeldDevice::SetThrowable)
+	    .property("ThrowSpin", &HeldDevice::GetThrowSpin, &HeldDevice::SetThrowSpin)
+	    .property("ThrowSpinSpeed", &HeldDevice::GetThrowSpinSpeed, &HeldDevice::SetThrowSpinSpeed)
+	    .property("StickBy", &HeldDevice::GetStickBy, &HeldDevice::SetStickBy)
+	    .property("StickSpeed", &HeldDevice::GetStickSpeed, &HeldDevice::SetStickSpeed)
+	    .property("StickDepth", &HeldDevice::GetStickDepth, &HeldDevice::SetStickDepth)
+	    .property("PinsBodies", &HeldDevice::GetPinsBodies, &HeldDevice::SetPinsBodies)
+	    .property("IsInThrownFlight", &HeldDevice::IsInThrownFlight)
+	    .property("IsStuck", &HeldDevice::IsStuck)
+	    .property("StuckIn", &HeldDevice::GetStuckIn)
+	    .property("Thrower", &HeldDevice::GetThrower)
 
 	    .def("StartMeleeSwing", &HeldDevice::StartMeleeSwing)
+	    .def("Unstick", &HeldDevice::Unstick)
 	    .def("IsBeingHeld", &HeldDevice::IsBeingHeld)
 	    .def("IsWeapon", &HeldDevice::IsWeapon)
 	    .def("IsTool", &HeldDevice::IsTool)
@@ -1637,7 +1650,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ThrownDevice) {
 	    .property("TriggerDelay", &ThrownDevice::GetTriggerDelay)
 	    .property("ActivatesWhenReleased", &ThrownDevice::ActivatesWhenReleased)
 
-	    .def("GetCalculatedMaxThrowVelIncludingArmThrowStrength", &ThrownDevice::GetCalculatedMaxThrowVelIncludingArmThrowStrength);
+	    .def("GetCalculatedMaxThrowVelIncludingArmThrowStrength", &ThrownDevice::GetCalculatedMaxThrowVelIncludingArmThrowStrength)
+	    .def("GetCalculatedMinThrowVel", &ThrownDevice::GetCalculatedMinThrowVel);
 }
 
 LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Turret) {
