@@ -2664,8 +2664,16 @@ int AHuman::MoveAlongRoute() {
 	// furthest point of the route one flight reaches, the goal itself when it can, whatever the route's walk would do. Straight there
 	// when the air between is open, or up to a point over the way and down onto it (two straight legs, a triangle) when something is in
 	// the way of the straight line; a long way on a few such flights, not the route's every step. Short of the fuel the tuning's tolerance
-	// asks for, the route is followed as usual. (Looked for every 400 ms, not every frame: it casts a few hundred rays.) ----
-	if (standardJet && !IsDiggingTo() && !m_MovePath.empty() && m_StandingOrder.Direct >= g_SettingsMan.DirectOrders().StraightFlightRisk && mover.straightCheckTimer.IsPastSimMS(400)) {
+	// asks for, it stands and waits for it, as Jetpack here flies whatever the route says: the route is only walked with a ceiling right
+	// over the head (out from under it), or no flight to be found. (Looked for every 400 ms, not every frame: it casts a few hundred rays.)
+	// (The goal itself is flown for however far it is, as Jetpack here is: a tank short, the flight comes down, refuels on the way down
+	// and goes on. Held to what one tank flies, a far goal was never tried, the route's points back from it rarely had a clear line, and a
+	// full-risk move walked and climbed the route like any other; so did one short of fuel, which walked the route till the next look.) ----
+	const bool fullRisk = standardJet && !IsDiggingTo() && !m_MovePath.empty() && m_StandingOrder.Direct >= g_SettingsMan.DirectOrders().StraightFlightRisk;
+	if (!fullRisk) {
+		mover.straightHold = false;
+	}
+	if (fullRisk && mover.straightCheckTimer.IsPastSimMS(400)) {
 		mover.straightCheckTimer.Reset();
 		const float tank = m_pJetpack->GetJetTimeTotal();
 		// The risk accepted: a flight needing more than the tank holds is still flown, the more so the riskier the order (FlightReach).
@@ -2684,10 +2692,17 @@ int AHuman::MoveAlongRoute() {
 			}
 			return true;
 		};
+		// A ceiling right over the head (within about a body): no take-off from here; the route walks out from under it.
+		bool headClear = true;
+		for (float dx: {-h * 0.15F, 0.0F, h * 0.15F}) {
+			if (g_SceneMan.CastObstacleRay(m_Pos + Vector(dx, -h * 0.3F), Vector(0.0F, -h * 0.9F), obstacle, free, m_MOID, IgnoresWhichTeam(), LadderMaterialID(), 3) >= 0.0F) {
+				headClear = false;
+			}
+		}
 		// The places to try, the nearest the goal first: the goal, then floor short of it on this side (a landing zone as near it as a flight
 		// gets, since the risk is accepted), then the route's points back from its end, every fourth, eight at most.
 		std::vector<std::pair<Vector, int>> points;
-		{
+		if (headClear) {
 			std::vector<Vector> all(m_MovePath.begin(), m_MovePath.end());
 			const int last = static_cast<int>(all.size());
 			points.emplace_back(all.back(), last);
@@ -2716,11 +2731,13 @@ int AHuman::MoveAlongRoute() {
 			if (floorY < 0.0F || Towards(m_Pos, place).MagnitudeIsLessThan(h * 1.5F)) {
 				continue;
 			}
-			if (mover.straightTried && Towards(mover.straightGoal, place).MagnitudeIsLessThan(h) && !mover.straightTimer.IsPastSimMS(8000)) {
+			if (mover.straightTried && Towards(mover.straightGoal, place).MagnitudeIsLessThan(h) && !mover.straightTimer.IsPastSimMS(3000)) {
 				continue;
 			}
+			// (The goal itself on any tank, as above; the places short of it on what the risk lets one tank fly.)
+			const float placeReach = &candidate == &points.front() ? std::numeric_limits<float>::max() : reach;
 			const Vector landingCentre(place.m_X, floorY - feet - 4.0F);
-			if (FlightFuelNeeded(place, floorY, false) <= reach && (legOpen(m_Pos, landingCentre) || FlightWayClear(place, floorY))) {
+			if (FlightFuelNeeded(place, floorY, false) <= placeReach && (legOpen(m_Pos, landingCentre) || FlightWayClear(place, floorY))) {
 				found = true;
 			} else {
 				// Up and over: a point over the way, the lowest that both legs are open to and one tank flies.
@@ -2731,7 +2748,7 @@ int AHuman::MoveAlongRoute() {
 					Vector top = m_Pos + across * at.first;
 					top.m_Y = topY - h * at.second;
 					g_SceneMan.WrapPosition(top);
-					if (top.m_Y < 0.0F || FlightFuelNeeded(place, top.m_Y + feet, false) > reach) {
+					if (top.m_Y < 0.0F || FlightFuelNeeded(place, top.m_Y + feet, false) > placeReach) {
 						continue;
 					}
 					if (legOpen(m_Pos, top) && legOpen(top, landingCentre)) {
@@ -2752,7 +2769,21 @@ int AHuman::MoveAlongRoute() {
 		if (found) {
 			const float needed = std::min(FlightFuelNeeded(goal, viaApex ? apex.m_Y + feet : goalFloorY), tank * 0.95F);
 			const float want = std::min(needed * g_SettingsMan.DirectOrders().FuelShare, tank * 0.95F);
-			if (m_pJetpack->GetJetTimeLeft() >= std::max(want, JetRelightFuel())) {
+			mover.straightHold = false;
+			if (m_pJetpack->GetJetTimeLeft() < std::max(want, JetRelightFuel())) {
+				// Short of it: stood still for the tank to fill (ten seconds at most, then the route for a while), not walked off along the route.
+				if (!mover.straightHoldTimer.IsPastSimMS(10000) || mover.straightHoldTimer.IsPastSimMS(20000)) {
+					if (mover.straightHoldTimer.IsPastSimMS(20000)) {
+						mover.straightHoldTimer.Reset();
+					}
+					mover.straightHold = true;
+					if (mover.traceTimer.IsPastSimMS(1000)) {
+						mover.traceTimer.Reset();
+						MoverTrace("full risk; waiting for fuel to fly for " + std::to_string(static_cast<int>(goal.m_X)) + "," + std::to_string(static_cast<int>(goalFloorY)));
+					}
+				}
+			} else {
+				mover.straightHoldTimer.Reset();
 				mover.straightTried = true;
 				mover.straightGoal = goal;
 				mover.straightTimer.Reset();
@@ -2780,7 +2811,14 @@ int AHuman::MoveAlongRoute() {
 				ctrl.SetAnalogMove(Vector(command.m_X, -1.0F));
 				return RouteMover::Moving;
 			}
+		} else {
+			mover.straightHold = false;
+			mover.straightHoldTimer.Reset();
 		}
+	}
+	if (fullRisk && mover.straightHold) {
+		mover.progressTimer.Reset();
+		return RouteMover::Moving;
 	}
 
 	// ---- No legs (both shot off): the route is flown in short hops, point to point along it, not walked. With no legs the walk's keys
