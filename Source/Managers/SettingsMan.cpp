@@ -721,6 +721,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DirectLineWeight", { reader >> m_DirectOrders.LineWeight; m_DirectOrders.LineWeight = std::clamp(m_DirectOrders.LineWeight, 0.0F, 1.0F); });
 	MatchProperty("DirectIgnoreEnemies", { reader >> m_DirectOrders.IgnoreEnemies; });
 	MatchProperty("DirectKeepPace", { reader >> m_DirectOrders.KeepPace; });
+	MatchProperty("DirectStraightFlightRisk", { reader >> m_DirectOrders.StraightFlightRisk; m_DirectOrders.StraightFlightRisk = std::clamp(m_DirectOrders.StraightFlightRisk, 0.5F, 1.0F); });
 	MatchProperty("DirectRiskDragPixels", { reader >> m_DirectOrders.RiskDragPixels; m_DirectOrders.RiskDragPixels = std::clamp(m_DirectOrders.RiskDragPixels, 100.0F, 800.0F); });
 	MatchProperty("DirectRiskyClickShare", { float unused; reader >> unused; }); // (The three click tier's strength, before the risk drag took its place.)
 	MatchProperty("DirectDoubleClickShare", { float unused; reader >> unused; }); // (Its older name.)
@@ -1176,6 +1177,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("DirectIgnoreEnemies", m_DirectOrders.IgnoreEnemies);
 	writer.NewPropertyWithValue("DirectKeepPace", m_DirectOrders.KeepPace);
 	writer.NewPropertyWithValue("DirectRiskDragPixels", m_DirectOrders.RiskDragPixels);
+	writer.NewPropertyWithValue("DirectStraightFlightRisk", m_DirectOrders.StraightFlightRisk);
 	writer.NewPropertyWithValue("CautiousCaution", m_DirectOrders.CautiousCaution);
 	writer.NewPropertyWithValue("CautiousFlightCost", m_DirectOrders.CautiousFlightCostScale);
 	writer.NewPropertyWithValue("CautiousFuelShare", m_DirectOrders.CautiousFuelShare);

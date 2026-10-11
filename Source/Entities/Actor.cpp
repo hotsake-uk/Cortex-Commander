@@ -1576,6 +1576,8 @@ PathAgent Actor::GetPathAgent() const {
 			}
 		}
 		agent.RouteSeed = 0;
+		// From the straight-flight risk up (a full drag as tuned): straight there on the jet when the way is open (PathFinder::CalculatePath).
+		agent.StraightFlight = share >= direct.StraightFlightRisk;
 		if (agent.DigGoal) {
 			agent.DigCostScale = toward(agent.DigCostScale, std::min(agent.DigCostScale, direct.DigCostScale));
 			agent.LineWeight = direct.LineWeight * share;

@@ -281,6 +281,7 @@ namespace RTE {
 			float LineWeight = 0.1F; //!< On a dig-to, what each node off the straight line costs them, in nodes walked (PathFinder::LineCost).
 			bool IgnoreEnemies = true; //!< Whether their routes take no notice of enemies on the way.
 			bool KeepPace = false; //!< Whether a group sent together is still kept to its slowest walker's pace (s_KeepPace on the command row).
+			float StraightFlightRisk = 0.9F; //!< From how much risk (0.5 to 1) a unit with a jet flies straight at the goal when the air between is open and a tank flies it, rather than taking the route.
 			float RiskDragPixels = 300.0F; //!< How far on screen a double click is dragged for a fully direct order, 100 to 800 pixels: a shorter drag gets that share of the direct tuning.
 			float CautiousCaution = 2.0F; //!< The least route caution a cautious (single-clicked) order has (PathAgent::Caution): over 1 shies more from hard flights and long drops.
 			float CautiousFlightCostScale = 3.0F; //!< What a jet flight costs a cautious order, as a share of the usual (PathAgent::FlightCostScale): over 1 walks round where others jump.
