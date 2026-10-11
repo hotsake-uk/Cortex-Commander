@@ -13,6 +13,7 @@
 #include "MovableMan.h"
 #include "PieSlice.h"
 #include "PresetMan.h"
+#include "PrimitiveMan.h"
 #include "Sandbox.h"
 #include "SceneMan.h"
 #include "SettingsMan.h"
@@ -155,6 +156,20 @@ void AVehicle::Clear() {
 	m_Tracks = nullptr;
 	m_TrackFrameLength = 2.0F;
 	m_TrackTravel = 0.0F;
+	m_ThrowingArm = nullptr;
+	m_ArmLength = 30.0F;
+	m_ArmThrowAngle = 1.9F;
+	m_LaunchSpeed = 25.0F;
+	m_LaunchReloadTime = 4000.0F;
+	m_MinLaunchAngle = 0.25F;
+	m_MaxLaunchAngle = 1.3F;
+	m_LaunchAmmo.clear();
+	m_LaunchAmmoIndex = 0;
+	m_LaunchPhase = LaunchPhase::Loaded;
+	m_LaunchTimer.Reset();
+	m_Released = false;
+	m_AmmoSwitchTimer.Reset();
+	m_AIThrows = 0;
 	m_DrawsCrew = true;
 	m_DriverRider = false;
 	m_Recruits.clear();
@@ -206,6 +221,9 @@ int AVehicle::Create(const AVehicle& reference) {
 	if (reference.m_Tracks) {
 		m_ReferenceHardcodedAttachableUniqueIDs.insert(reference.m_Tracks->GetUniqueID());
 	}
+	if (reference.m_ThrowingArm) {
+		m_ReferenceHardcodedAttachableUniqueIDs.insert(reference.m_ThrowingArm->GetUniqueID());
+	}
 
 	Actor::Create(reference);
 
@@ -249,6 +267,19 @@ int AVehicle::Create(const AVehicle& reference) {
 		SetTracks(dynamic_cast<Attachable*>(reference.m_Tracks->Clone()));
 	}
 	m_TrackFrameLength = reference.m_TrackFrameLength;
+	if (reference.m_ThrowingArm) {
+		SetThrowingArm(dynamic_cast<Attachable*>(reference.m_ThrowingArm->Clone()));
+	}
+	m_ArmLength = reference.m_ArmLength;
+	m_ArmThrowAngle = reference.m_ArmThrowAngle;
+	m_LaunchSpeed = reference.m_LaunchSpeed;
+	m_LaunchReloadTime = reference.m_LaunchReloadTime;
+	m_MinLaunchAngle = reference.m_MinLaunchAngle;
+	m_MaxLaunchAngle = reference.m_MaxLaunchAngle;
+	for (const MovableObject* ammo: reference.m_LaunchAmmo) {
+		m_LaunchAmmo.push_back(dynamic_cast<MovableObject*>(ammo->Clone()));
+	}
+	m_LaunchAmmoIndex = reference.m_LaunchAmmoIndex;
 	m_DrawsCrew = reference.m_DrawsCrew;
 	m_SuspensionTravel = reference.m_SuspensionTravel;
 	m_SuspensionStiffness = reference.m_SuspensionStiffness;
@@ -300,6 +331,13 @@ void AVehicle::Destroy(bool notInherited) {
 	if (m_Tracks) {
 		m_HardcodedAttachableUniqueIDsAndRemovers.erase(m_Tracks->GetUniqueID());
 	}
+	if (m_ThrowingArm) {
+		m_HardcodedAttachableUniqueIDsAndRemovers.erase(m_ThrowingArm->GetUniqueID());
+	}
+	for (MovableObject* ammo: m_LaunchAmmo) {
+		delete ammo;
+	}
+	m_LaunchAmmo.clear();
 	for (const Wheel& wheel: m_Wheels) {
 		if (wheel.Part) {
 			m_HardcodedAttachableUniqueIDsAndRemovers.erase(wheel.Part->GetUniqueID());
@@ -380,6 +418,18 @@ int AVehicle::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("Tracks", { SetTracks(dynamic_cast<Attachable*>(g_PresetMan.ReadReflectedPreset(reader))); });
 	MatchProperty("TrackFrameLength", { reader >> m_TrackFrameLength; });
 	MatchProperty("DrawsCrew", { reader >> m_DrawsCrew; });
+	MatchProperty("ThrowingArm", { SetThrowingArm(dynamic_cast<Attachable*>(g_PresetMan.ReadReflectedPreset(reader))); });
+	MatchProperty("ArmLength", { reader >> m_ArmLength; });
+	MatchProperty("ArmThrowAngle", { reader >> m_ArmThrowAngle; });
+	MatchProperty("LaunchSpeed", { reader >> m_LaunchSpeed; });
+	MatchProperty("LaunchReloadTime", { reader >> m_LaunchReloadTime; });
+	MatchProperty("MinLaunchAngle", { reader >> m_MinLaunchAngle; });
+	MatchProperty("MaxLaunchAngle", { reader >> m_MaxLaunchAngle; });
+	MatchProperty("AddLaunchAmmo", {
+		if (MovableObject* ammo = dynamic_cast<MovableObject*>(g_PresetMan.ReadReflectedPreset(reader))) {
+			m_LaunchAmmo.push_back(ammo);
+		}
+	});
 	MatchProperty("Buoyancy", { reader >> m_Buoyancy; });
 	MatchProperty("BreakLandingSpeed", { reader >> m_BreakLandingSpeed; });
 	MatchProperty("BreakSunkFraction", { reader >> m_BreakSunkFraction; });
@@ -457,6 +507,20 @@ int AVehicle::Save(Writer& writer) const {
 	}
 	writer.NewPropertyWithValue("TrackFrameLength", m_TrackFrameLength);
 	writer.NewPropertyWithValue("DrawsCrew", m_DrawsCrew);
+	if (m_ThrowingArm) {
+		writer.NewProperty("ThrowingArm");
+		writer << m_ThrowingArm;
+	}
+	writer.NewPropertyWithValue("ArmLength", m_ArmLength);
+	writer.NewPropertyWithValue("ArmThrowAngle", m_ArmThrowAngle);
+	writer.NewPropertyWithValue("LaunchSpeed", m_LaunchSpeed);
+	writer.NewPropertyWithValue("LaunchReloadTime", m_LaunchReloadTime);
+	writer.NewPropertyWithValue("MinLaunchAngle", m_MinLaunchAngle);
+	writer.NewPropertyWithValue("MaxLaunchAngle", m_MaxLaunchAngle);
+	for (const MovableObject* ammo: m_LaunchAmmo) {
+		writer.NewProperty("AddLaunchAmmo");
+		writer << ammo;
+	}
 	writer.NewPropertyWithValue("Buoyancy", m_Buoyancy);
 	writer.NewPropertyWithValue("BreakLandingSpeed", m_BreakLandingSpeed);
 	writer.NewPropertyWithValue("BreakSunkFraction", m_BreakSunkFraction);
@@ -591,6 +655,32 @@ void AVehicle::SetTracks(Attachable* newTracks) {
 	// The wheels hold it up; the belt is only for the eye.
 	newTracks->SetInheritsRotAngle(true);
 	newTracks->SetCollidesWithTerrainWhileAttached(false);
+}
+
+void AVehicle::SetThrowingArm(Attachable* newArm) {
+	if (m_ThrowingArm && m_ThrowingArm->IsAttached()) {
+		RemoveAndDeleteAttachable(m_ThrowingArm);
+	}
+	m_ThrowingArm = newArm;
+	if (!newArm) {
+		return;
+	}
+	AddAttachable(newArm);
+
+	m_HardcodedAttachableUniqueIDsAndRemovers.insert({newArm->GetUniqueID(), [](MOSRotating* parent, Attachable* attachable) {
+		                                                  AVehicle* vehicle = dynamic_cast<AVehicle*>(parent);
+		                                                  if (vehicle->m_ThrowingArm == attachable) {
+			                                                  vehicle->m_ThrowingArm = nullptr;
+		                                                  }
+	                                                  }});
+
+	// It swings about where it is fixed (UpdateThrowingArm), over the frame, not into the ground.
+	newArm->SetInheritsRotAngle(true);
+	newArm->SetCollidesWithTerrainWhileAttached(false);
+}
+
+std::string AVehicle::GetLaunchAmmoName() const {
+	return m_LaunchAmmo.empty() ? std::string() : m_LaunchAmmo[std::clamp(m_LaunchAmmoIndex, 0, static_cast<int>(m_LaunchAmmo.size()) - 1)]->GetPresetName();
 }
 
 void AVehicle::UpdateEngine(bool canDrive) {
@@ -1302,10 +1392,12 @@ void AVehicle::UpdateAIUnloading() {
 }
 
 long AVehicle::FindGunTarget() const {
-	if (!m_Turret) {
+	if (!m_Turret && !m_ThrowingArm) {
 		return 0;
 	}
-	Vector pivot = m_Turret->GetPos();
+	// A catapult lobs: it reaches over walls to what its crew knows is there, but not what its arc can't reach, nor right under it.
+	bool lobs = !m_Turret;
+	Vector pivot = lobs ? GetReleasePoint() : m_Turret->GetPos();
 	float rotationFacing = Wrapped(m_Rotation.GetRadAngle()) * GetFlipFactor();
 	long best = 0;
 	float bestDistance = m_GunRange;
@@ -1319,13 +1411,20 @@ long AVehicle::FindGunTarget() const {
 		if (distance >= bestDistance || toTarget.m_X * GetFlipFactor() <= 0.0F) {
 			continue;
 		}
-		float angle = std::atan2(-toTarget.m_Y, std::abs(toTarget.m_X));
-		if (std::abs(Wrapped(angle - rotationFacing)) > m_AimRange) {
-			continue;
-		}
-		Vector blocked;
-		if (g_SceneMan.CastStrengthRay(pivot, toTarget, 5.0F, blocked, 3)) {
-			continue;
+		if (lobs) {
+			float angle = 0.0F;
+			if (std::abs(toTarget.m_X) < 120.0F || !LobAngleTo(toTarget, angle)) {
+				continue;
+			}
+		} else {
+			float angle = std::atan2(-toTarget.m_Y, std::abs(toTarget.m_X));
+			if (std::abs(Wrapped(angle - rotationFacing)) > m_AimRange) {
+				continue;
+			}
+			Vector blocked;
+			if (g_SceneMan.CastStrengthRay(pivot, toTarget, 5.0F, blocked, 3)) {
+				continue;
+			}
 		}
 		best = actor->GetUniqueID();
 		bestDistance = distance;
@@ -1334,9 +1433,10 @@ long AVehicle::FindGunTarget() const {
 }
 
 void AVehicle::UpdateGun() {
-	if (!m_Turret) {
+	if (!m_Turret && !m_ThrowingArm) {
 		return;
 	}
+	bool lobs = !m_Turret;
 	float deltaTime = g_TimerMan.GetDeltaTimeSecs();
 	// The seat that mans it: the first gunner's, or the driver's with none.
 	int gunnerSeat = 0;
@@ -1348,10 +1448,17 @@ void AVehicle::UpdateGun() {
 	}
 	bool manned = GetSeatOccupant(gunnerSeat) && m_Status != DYING && m_Status != DEAD;
 	float rotationFacing = Wrapped(m_Rotation.GetRadAngle()) * GetFlipFactor();
+	// A gun swings either side of level; a catapult throws between its lowest and highest angles.
+	float lowest = lobs ? rotationFacing + m_MinLaunchAngle : rotationFacing - m_AimRange;
+	float highest = lobs ? rotationFacing + m_MaxLaunchAngle : rotationFacing + m_AimRange;
 	bool fire = false;
-	if (manned && m_Controller.IsPlayerControlled() && GetControlSeat() == gunnerSeat) {
+	bool playerAims = manned && m_Controller.IsPlayerControlled() && GetControlSeat() == gunnerSeat;
+	if (playerAims) {
 		// The player aims it, as a unit aims its gun: the aim keys swing it, the mouse or stick points it.
 		float speed = m_Controller.IsState(AIM_SHARP) ? 0.6F : 1.8F;
+		if (lobs) {
+			speed *= 0.5F;
+		}
 		if (m_Controller.IsState(AIM_UP)) {
 			m_AimAngle += speed * deltaTime;
 		} else if (m_Controller.IsState(AIM_DOWN)) {
@@ -1362,6 +1469,17 @@ void AVehicle::UpdateGun() {
 			m_AimAngle = std::atan2(-analogAim.m_Y, std::max(analogAim.m_X * GetFlipFactor(), 0.0F));
 		}
 		fire = m_Controller.IsState(WEAPON_FIRE);
+		// A catapult's load is changed as a unit changes what it holds, before it is wound.
+		if (lobs && m_LaunchAmmo.size() > 1 && m_LaunchPhase == LaunchPhase::Loaded && m_AmmoSwitchTimer.IsPastSimMS(250)) {
+			int count = static_cast<int>(m_LaunchAmmo.size());
+			if (m_Controller.IsState(WEAPON_CHANGE_NEXT)) {
+				m_LaunchAmmoIndex = (m_LaunchAmmoIndex + 1) % count;
+				m_AmmoSwitchTimer.Reset();
+			} else if (m_Controller.IsState(WEAPON_CHANGE_PREV)) {
+				m_LaunchAmmoIndex = (m_LaunchAmmoIndex + count - 1) % count;
+				m_AmmoSwitchTimer.Reset();
+			}
+		}
 		m_GunTargetID = 0;
 	} else if (manned) {
 		// A gunner looks round now and then for the nearest enemy in sight, swings round to it and fires once it is on it.
@@ -1370,12 +1488,26 @@ void AVehicle::UpdateGun() {
 			m_GunTargetTimer.Reset();
 		}
 		const Actor* target = m_GunTargetID ? dynamic_cast<const Actor*>(g_MovableMan.FindObjectByUniqueID(m_GunTargetID)) : nullptr;
+		float wanted = m_AimAngle;
+		bool onIt = false;
 		if (target && !target->IsDead()) {
-			Vector toTarget = g_SceneMan.ShortestDistance(m_Turret->GetPos(), target->GetPos() - Vector(0.0F, target->GetHeight() * 0.1F));
-			float wanted = std::atan2(-toTarget.m_Y, std::max(toTarget.m_X * GetFlipFactor(), 0.0F));
+			if (lobs) {
+				// A catapult crew works out the lob that lands on it.
+				onIt = LobAngleTo(g_SceneMan.ShortestDistance(GetReleasePoint(), target->GetPos()), wanted);
+			} else {
+				Vector toTarget = g_SceneMan.ShortestDistance(m_Turret->GetPos(), target->GetPos() - Vector(0.0F, target->GetHeight() * 0.1F));
+				wanted = std::atan2(-toTarget.m_Y, std::max(toTarget.m_X * GetFlipFactor(), 0.0F));
+				onIt = true;
+			}
+		}
+		if (onIt) {
 			float turn = std::clamp(Wrapped(wanted - m_AimAngle), -m_GunTurnSpeed * deltaTime, m_GunTurnSpeed * deltaTime);
 			m_AimAngle += turn;
-			fire = std::abs(Wrapped(wanted - m_AimAngle)) < 0.1F;
+			fire = std::abs(Wrapped(wanted - m_AimAngle)) < (lobs ? 0.02F : 0.1F);
+			// Mostly boulders, and every third throw a flaming pot (the second kind it carries).
+			if (lobs && fire && m_LaunchPhase == LaunchPhase::Loaded && m_LaunchAmmo.size() > 1) {
+				m_LaunchAmmoIndex = m_AIThrows % 3 == 2 ? 1 : 0;
+			}
 		} else {
 			m_GunTargetID = 0;
 		}
@@ -1385,7 +1517,14 @@ void AVehicle::UpdateGun() {
 		m_AimAngle += std::clamp(rotationFacing - m_AimAngle, -deltaTime, deltaTime);
 		m_GunTargetID = 0;
 	}
-	m_AimAngle = std::clamp(m_AimAngle, rotationFacing - m_AimRange, rotationFacing + m_AimRange);
+	m_AimAngle = std::clamp(m_AimAngle, lowest, highest);
+	if (lobs) {
+		UpdateThrowingArm(fire && manned);
+		if (playerAims) {
+			DrawLaunchArc();
+		}
+		return;
+	}
 	m_Turret->SetMountedDeviceRotationOffset((m_AimAngle * GetFlipFactor()) - m_Rotation.GetRadAngle());
 	for (HeldDevice* device: m_Turret->GetMountedDevices()) {
 		if (fire) {
@@ -1395,6 +1534,138 @@ void AVehicle::UpdateGun() {
 			}
 		} else {
 			device->Deactivate();
+		}
+	}
+}
+
+void AVehicle::UpdateThrowingArm(bool fire) {
+	// How long each part of a throw takes: wound back, swung over, then let back down and loaded for the rest of the reload.
+	constexpr float windTime = 450.0F;
+	constexpr float throwTime = 220.0F;
+	constexpr float lowerTime = 900.0F;
+	constexpr float releaseAt = 0.7F;
+	float swing = 0.0F;
+	switch (m_LaunchPhase) {
+		case LaunchPhase::Loaded:
+			if (fire && !m_LaunchAmmo.empty()) {
+				m_LaunchPhase = LaunchPhase::Winding;
+				m_LaunchTimer.Reset();
+			}
+			break;
+		case LaunchPhase::Winding: {
+			// Drawn a little further back as the rope is wound tight.
+			float progress = std::min(static_cast<float>(m_LaunchTimer.GetElapsedSimTimeMS()) / windTime, 1.0F);
+			swing = 0.12F * progress;
+			if (progress >= 1.0F) {
+				m_LaunchPhase = LaunchPhase::Throwing;
+				m_LaunchTimer.Reset();
+				m_Released = false;
+			}
+			break;
+		}
+		case LaunchPhase::Throwing: {
+			// Over it goes, quick at first: the load flies from the bucket most of the way round.
+			float progress = std::min(static_cast<float>(m_LaunchTimer.GetElapsedSimTimeMS()) / throwTime, 1.0F);
+			float eased = 1.0F - (1.0F - progress) * (1.0F - progress);
+			swing = 0.12F - (m_ArmThrowAngle + 0.12F) * eased;
+			if (!m_Released && eased >= releaseAt && !m_LaunchAmmo.empty()) {
+				m_Released = true;
+				const MovableObject* preset = m_LaunchAmmo[std::clamp(m_LaunchAmmoIndex, 0, static_cast<int>(m_LaunchAmmo.size()) - 1)];
+				if (MovableObject* load = dynamic_cast<MovableObject*>(preset->Clone())) {
+					load->SetPos(GetReleasePoint());
+					load->SetVel(GetLaunchVelocity(m_AimAngle));
+					load->SetAngularVel(RandomNum(-4.0F, 4.0F));
+					load->SetTeam(m_Team);
+					load->SetWhichMOToNotHit(this, 0.5F);
+					g_MovableMan.AddMO(load);
+				}
+				// (The arm slams into its stop and the frame bucks.)
+				m_Vel += Vector(-1.0F * GetFlipFactor(), -0.5F);
+				if (!m_Controller.IsPlayerControlled()) {
+					++m_AIThrows;
+				}
+			}
+			if (progress >= 1.0F) {
+				m_LaunchPhase = LaunchPhase::Reloading;
+				m_LaunchTimer.Reset();
+			}
+			break;
+		}
+		case LaunchPhase::Reloading: {
+			// Let back down to rest, then loaded again by the end of the reload.
+			float progress = std::min(static_cast<float>(m_LaunchTimer.GetElapsedSimTimeMS()) / lowerTime, 1.0F);
+			swing = -m_ArmThrowAngle * (1.0F - progress);
+			if (m_LaunchTimer.IsPastSimMS(std::max(m_LaunchReloadTime - windTime - throwTime, lowerTime))) {
+				m_LaunchPhase = LaunchPhase::Loaded;
+			}
+			break;
+		}
+	}
+	m_ThrowingArm->SetInheritedRotAngleOffset(swing * GetFlipFactor());
+}
+
+bool AVehicle::LobAngleTo(const Vector& toTarget, float& angle) const {
+	float x = toTarget.m_X * GetFlipFactor() * c_MPP;
+	float y = -toTarget.m_Y * c_MPP;
+	if (x <= 0.0F) {
+		return false;
+	}
+	float v2 = m_LaunchSpeed * m_LaunchSpeed;
+	float g = GetLaunchGravity();
+	float discriminant = v2 * v2 - g * (g * x * x + 2.0F * y * v2);
+	if (discriminant < 0.0F) {
+		return false;
+	}
+	float rotationFacing = Wrapped(m_Rotation.GetRadAngle()) * GetFlipFactor();
+	for (float sign: {1.0F, -1.0F}) {
+		float lob = std::atan((v2 + sign * std::sqrt(discriminant)) / (g * x));
+		if (lob - rotationFacing >= m_MinLaunchAngle && lob - rotationFacing <= m_MaxLaunchAngle) {
+			angle = lob;
+			return true;
+		}
+	}
+	return false;
+}
+
+Vector AVehicle::GetReleasePoint() const {
+	if (!m_ThrowingArm) {
+		return m_Pos;
+	}
+	float armRotation = m_Rotation.GetRadAngle() - m_ArmThrowAngle * 0.7F * GetFlipFactor();
+	return m_ThrowingArm->GetPos() + Vector(-m_ArmLength * GetFlipFactor(), 0.0F).GetRadRotatedCopy(armRotation);
+}
+
+Vector AVehicle::GetLaunchVelocity(float angle) const {
+	return Vector(std::cos(angle) * GetFlipFactor(), -std::sin(angle)) * m_LaunchSpeed;
+}
+
+float AVehicle::GetLaunchGravity() const {
+	float scalar = m_LaunchAmmo.empty() ? 1.0F : m_LaunchAmmo[std::clamp(m_LaunchAmmoIndex, 0, static_cast<int>(m_LaunchAmmo.size()) - 1)]->GetGlobalAccScalar();
+	return std::max(g_SceneMan.GetGlobalAcc().m_Y * scalar, 0.1F);
+}
+
+void AVehicle::DrawLaunchArc() const {
+	// Where it would fly, a dot a tenth of a second apart, to where it first meets the ground.
+	static const unsigned char arcColor = static_cast<unsigned char>(Color(250, 220, 70).GetIndex());
+	int player = m_Controller.GetPlayer();
+	Vector position = GetReleasePoint();
+	Vector velocity = GetLaunchVelocity(m_AimAngle);
+	float gravity = GetLaunchGravity();
+	constexpr float step = 0.025F;
+	for (int i = 1; i <= 400; ++i) {
+		velocity.m_Y += gravity * step;
+		position += velocity * step * c_PPM;
+		if (position.m_Y > static_cast<float>(g_SceneMan.GetSceneHeight())) {
+			break;
+		}
+		Vector wrapped = position;
+		g_SceneMan.WrapPosition(wrapped);
+		if (g_SceneMan.GetTerrMatter(wrapped.GetFloorIntX(), wrapped.GetFloorIntY()) != g_MaterialAir) {
+			g_PrimitiveMan.DrawCircleFillPrimitive(player, wrapped, 3, arcColor);
+			break;
+		}
+		if (i % 4 == 0) {
+			g_PrimitiveMan.DrawCircleFillPrimitive(player, wrapped, 1, arcColor);
 		}
 	}
 }
@@ -1854,6 +2125,17 @@ void AVehicle::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int which
 		} else {
 			hint = "Passenger   Pick up: get out";
 		}
+	}
+	// A catapult's crew is told what is loaded, or that it is being loaded.
+	std::string loadLine;
+	if (m_ThrowingArm && !m_LaunchAmmo.empty() && GetControlSeat() >= 0 && m_Controller.IsPlayerControlled() && activity->ScreenOfPlayer(m_Controller.GetPlayer()) == whichScreen) {
+		loadLine = m_LaunchPhase == LaunchPhase::Loaded ? "Loaded: " + GetLaunchAmmoName() + (m_LaunchAmmo.size() > 1 ? "   (Next/Prev. Device to change)" : "") : std::string("Winding and loading...");
+		Vector drawPos = m_Pos - targetPos;
+		if (!targetPos.IsZero()) {
+			drawPos += g_SceneMan.GetWrapToScreen(drawPos, pTargetBitmap->w, pTargetBitmap->h);
+		}
+		AllegroBitmap bitmap(pTargetBitmap);
+		font->DrawAligned(&bitmap, drawPos.GetFloorIntX(), drawPos.GetFloorIntY() - static_cast<int>(m_CharHeight * 0.5F) - 26, loadLine, GUIFont::Centre);
 	}
 	if (hint) {
 		Vector drawPos = m_Pos - targetPos;
