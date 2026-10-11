@@ -1519,8 +1519,11 @@ void DebugMan::SettingsGUI() {
 				direct.Caution = 1.0F - risk / 100.0F;
 			}
 			Tip("How little hard jumps and long drops put them off a route: 0% weighs them as a normal unit does, 100% not at all. 90% is normal for a direct order.");
-			Check("Steady before take-off", &direct.Steady);
-			Tip("Whether they still come to a stand, still and upright, before a jet climb or jump. Off (normal for a direct order): they take off mid-stride.");
+			float steadyCut = direct.RecklessSteadyCut * 100.0F;
+			if (Slider("Recklessness cuts steadying", &steadyCut, 0.0F, 100.0F, "%.0f%%")) {
+				direct.RecklessSteadyCut = steadyCut / 100.0F;
+			}
+			Tip("How much shorter the riskier the order makes their coming to a stand (still and upright) before a jet climb or jump, at full risk: 100% none at all, 50% half as long. 0% (normal): they steady as any unit does, then go straight for it.");
 		}
 		Heading("Direct: flying");
 		{

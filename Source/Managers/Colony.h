@@ -116,6 +116,7 @@ namespace RTE {
 			int ID = 0;
 			Kind What = Kind::Barracks;
 			Style Looks = Style::Fantasy;
+			bool Lite = false; //!< Just its core: a small box with its brain in, for a building of your own round it. It does all the full building does.
 			int Team = 0;
 			Vector Ground; //!< The middle of its plot, at ground level.
 			std::string Unit; //!< Barracks: the unit it trains.
@@ -140,10 +141,18 @@ namespace RTE {
 
 			/// Whether it has lost its brain, and does nothing until it gets another.
 			bool Disabled() const { return Brain == nullptr && BrainID != -1; }
+
+			/// The plot it stands on, in pixels: its kind's, or the lite box's.
+			int Width() const;
+			int Height() const;
 		};
 
 		/// The group every building's brain is put in, so the game never takes it for a player's brain.
 		static constexpr const char* c_BrainGroup = "Building Brains";
+
+		/// The size of a lite building's box, in pixels: walls round its brain's chamber.
+		static constexpr int c_LiteWidth = 44;
+		static constexpr int c_LiteHeight = 32;
 
 		/// The item a log is (Base.rte), cut from a tree and carried home as wood.
 		static constexpr const char* c_Log = "Log";
@@ -161,8 +170,9 @@ namespace RTE {
 		/// @param kind What to build. @param place Where: it is put on the ground below. @param team The side it belongs to.
 		/// @param unit Barracks: the unit to train. @param orders Barracks: the orders its units get. @param keepAlive Barracks: how many of its units it keeps alive; woodcutter: how many staff.
 		/// @param style How it looks.
+		/// @param lite Whether it is just its core, a small box with its brain in, put exactly at the place (in the air, or carved into the ground), not on the ground below.
 		/// @return The ID of the building, or -1 if it could not be built.
-		static int Place(Kind kind, const Vector& place, int team, const std::string& unit, int orders, int keepAlive, Style style = Style::Fantasy);
+		static int Place(Kind kind, const Vector& place, int team, const std::string& unit, int orders, int keepAlive, Style style = Style::Fantasy, bool lite = false);
 
 		/// Takes a building out of the list. What it was built of stays standing, and so do its staff (who stop working).
 		static void Remove(int id);

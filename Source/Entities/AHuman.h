@@ -965,6 +965,9 @@ namespace RTE {
 			Timer straightCheckTimer; //!< Since the follower last looked for a full-risk flight.
 			bool straightHold = false; //!< A full-risk flight was found but the tank is short of it: standing for the fuel (straightHoldTimer since the wait began).
 			Timer straightHoldTimer;
+			bool straightSteadying = false; //!< A full-risk flight was found and fuelled, and the body is coming to a stand before it is flown (straightSettleTimer since that began).
+			Timer straightSettleTimer;
+			Timer straightStillTimer; //!< Since the body was last moving or unsteady, on a full-risk order.
 			bool ladderStalled = false; //!< A ladder climb stopped rising lately, at ladderStallSpot: that ladder isn't climbed again from there for a while (ladderStallTimer).
 			Vector ladderStallSpot;
 			Timer ladderStallTimer;

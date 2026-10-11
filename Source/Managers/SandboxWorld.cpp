@@ -1984,12 +1984,17 @@ namespace SandboxDetail {
 		GiveLoadout(actor, preset, loadout);
 		actor->SetTeam(team);
 		actor->SetControllerMode(Controller::CIM_AI);
+		ReadyOrder(actor, team, order);
+		return actor;
+	}
+
+	void ReadyOrder(Actor* actor, int team, Order order) {
 		if (order == Order::BattleObjective) {
 			// Its team's job in the battle, taken up once its ship lets it out (a flag to go for, a hill, the place its card defends); with
 			// none, as Attack.
 			actor->SetAIMode(Actor::AIMODE_SENTRY);
 			if (JoinBattleObjective(actor)) {
-				return actor;
+				return;
 			}
 			order = Order::Attack;
 		}
@@ -2022,7 +2027,6 @@ namespace SandboxDetail {
 				actor->SetAIMode(Actor::AIMODE_SENTRY);
 				break;
 		}
-		return actor;
 	}
 
 	/// Sends units in by dropship or rocket, which comes down from the sky over a point, unloads and leaves. Returns what the units cost.
@@ -2058,7 +2062,38 @@ namespace SandboxDetail {
 		return cost;
 	}
 
+	/// Units made from your loadouts or a squad of yours (Stroke::Customs), spread sideways from the click as a squad of one unit is.
+	static void SpawnCustomUnits(const Stroke& stroke) {
+		ActivateSide(stroke.Team);
+		std::vector<Actor*> made;
+		const int count = static_cast<int>(stroke.Customs.size());
+		for (int i = 0; i < count; ++i) {
+			const CustomLoadout& loadout = stroke.Customs[i];
+			Actor* actor = MakeCustomUnit(loadout, stroke.Team);
+			if (!actor) {
+				continue;
+			}
+			if (loadout.Temperament < 0) {
+				ApplyTemperament(actor, stroke.Temperament);
+			}
+			float spread = (static_cast<float>(i) - static_cast<float>(count - 1) * 0.5F) * 16.0F;
+			actor->SetPos(stroke.Position + Vector(spread, 0.0F));
+			actor->SetHFlipped(stroke.HasView && g_SceneMan.ShortestDistance(stroke.Position, Vector(stroke.ViewMiddleX, stroke.Position.m_Y), g_SceneMan.SceneWrapsX()).m_X < 0.0F);
+			NotePlaced(actor);
+			g_MovableMan.AddActor(actor);
+			GiveOrder(actor, stroke.Orders);
+			made.push_back(actor);
+		}
+		if (!stroke.SquadName.empty()) {
+			FormSquad(made, stroke.SquadName, stroke.Team, stroke.Orders);
+		}
+	}
+
 	void SpawnUnits(const Stroke& stroke, bool brain) {
+		if (!brain && !stroke.Customs.empty()) {
+			SpawnCustomUnits(stroke);
+			return;
+		}
 		// Random (units only): each one picked on its own from the pool, the squad spread as for a chosen unit.
 		bool random = stroke.Random && !brain;
 		std::vector<const Preset*> pool = random ? RandomUnitPool(stroke.FavouritesOnly, stroke.RandomFaction) : std::vector<const Preset*>();
@@ -2127,6 +2162,25 @@ namespace SandboxDetail {
 	}
 
 	void DropSquad(const Stroke& stroke) {
+		if (!stroke.Customs.empty()) {
+			// Your loadouts or a squad of yours, each ready for its orders once out of the craft.
+			std::vector<Actor*> units;
+			for (const CustomLoadout& loadout: stroke.Customs) {
+				if (Actor* unit = MakeCustomUnit(loadout, stroke.Team)) {
+					if (loadout.Temperament < 0) {
+						ApplyTemperament(unit, stroke.Temperament);
+					}
+					ReadyOrder(unit, stroke.Team, stroke.Orders);
+					NotePlaced(unit);
+					units.push_back(unit);
+				}
+			}
+			if (!stroke.SquadName.empty()) {
+				FormSquad(units, stroke.SquadName, stroke.Team, stroke.Orders);
+			}
+			DropUnits(units, stroke.Team, stroke.Position.m_X, stroke.Craft);
+			return;
+		}
 		// Random: each unit picked on its own from every faction's units, or from the favourites.
 		std::vector<const Preset*> pool = stroke.Random ? RandomUnitPool(stroke.FavouritesOnly, stroke.RandomFaction) : std::vector<const Preset*>();
 		if (stroke.JetpackOnly) {
@@ -2199,14 +2253,29 @@ namespace SandboxDetail {
 		const int seats = stroke.Vehicle.DriverOnly ? 1 : (car ? car->GetSeatCount() : ship->GetSeatCount());
 		int seated = 0;
 		for (int seat = 0; seat < seats; ++seat) {
-			const CrewSource& from = seat == 0 ? driver : crew;
-			const Preset* preset = from.Chosen ? from.Chosen : RandomPick(from.Pool);
-			Actor* unit = preset ? dynamic_cast<Actor*>(CreateObject(preset->ClassName, preset->PresetName, preset->ModuleID)) : nullptr;
-			if (!unit) {
-				break;
+			// One of your loadouts, if picked for the seat (and one that can sit).
+			const std::vector<CustomLoadout>& custom = seat == 0 ? stroke.DriverCustom : stroke.CrewCustom;
+			Actor* unit = nullptr;
+			if (!custom.empty()) {
+				unit = MakeCustomUnit(custom.front(), stroke.Team);
+				if (unit && !dynamic_cast<AHuman*>(unit)) {
+					delete unit;
+					unit = nullptr;
+				}
+				if (unit && custom.front().Temperament < 0) {
+					ApplyTemperament(unit, stroke.Temperament);
+				}
 			}
-			GiveLoadout(unit, *preset, stroke.Loadout);
-			ApplyTemperament(unit, stroke.Temperament);
+			if (!unit) {
+				const CrewSource& from = seat == 0 ? driver : crew;
+				const Preset* preset = from.Chosen ? from.Chosen : RandomPick(from.Pool);
+				unit = preset ? dynamic_cast<Actor*>(CreateObject(preset->ClassName, preset->PresetName, preset->ModuleID)) : nullptr;
+				if (!unit) {
+					break;
+				}
+				GiveLoadout(unit, *preset, stroke.Loadout);
+				ApplyTemperament(unit, stroke.Temperament);
+			}
 			unit->SetTeam(stroke.Team);
 			unit->SetPos(vehicle->GetPos());
 			unit->SetControllerMode(Controller::CIM_AI);
@@ -2791,7 +2860,7 @@ namespace SandboxDetail {
 				if (const Preset* unit = ChosenPreset(Tool::Unit, stroke.Choice)) {
 					ActivateSide(stroke.Team);
 					// ("Move to a place" has no place for trainees: they hold where they come out instead.)
-					int built = Colony::Place(Colony::Kind::Barracks, at, stroke.Team, unit->PresetName, static_cast<int>(UnitOrder(static_cast<int>(stroke.Orders))), stroke.Count, static_cast<Colony::Style>(stroke.Style));
+					int built = Colony::Place(Colony::Kind::Barracks, at, stroke.Team, unit->PresetName, static_cast<int>(UnitOrder(static_cast<int>(stroke.Orders))), stroke.Count, static_cast<Colony::Style>(stroke.Style), stroke.Lite);
 					if (!s_PaintUndo.empty()) {
 						s_PaintUndo.back().ColonyBuilding = built;
 					}
@@ -2801,7 +2870,7 @@ namespace SandboxDetail {
 			case Tool::Generator:
 			case Tool::Woodcutter:
 				ActivateSide(stroke.Team);
-				if (int built = Colony::Place(ColonyKindOf(stroke.Kind), at, stroke.Team, "", 0, stroke.Kind == Tool::Woodcutter ? stroke.Count : 1, static_cast<Colony::Style>(stroke.Style)); !s_PaintUndo.empty()) {
+				if (int built = Colony::Place(ColonyKindOf(stroke.Kind), at, stroke.Team, "", 0, stroke.Kind == Tool::Woodcutter ? stroke.Count : 1, static_cast<Colony::Style>(stroke.Style), stroke.Lite); !s_PaintUndo.empty()) {
 					s_PaintUndo.back().ColonyBuilding = built;
 				}
 				break;
@@ -3538,6 +3607,7 @@ namespace SandboxDetail {
 			stroke.Count = s_ColonyStaff;
 		}
 		stroke.Style = IsColonyTool(kind) ? static_cast<int>(s_ColonyStyle) : 0;
+		stroke.Lite = IsColonyTool(kind) && s_ColonyLite;
 		stroke.LitGrenade = s_LitGrenade;
 		stroke.Craft = s_Craft;
 		stroke.Random = (kind == Tool::Drop || kind == Tool::Unit) && s_RandomUnits;
@@ -3545,10 +3615,28 @@ namespace SandboxDetail {
 		stroke.RandomFaction = s_RandomFaction;
 		stroke.JetpackOnly = s_JetpackOnly;
 		stroke.Temperament = (kind == Tool::Drop || kind == Tool::Unit) ? s_SpawnTemperament : -1;
+		if ((kind == Tool::Drop || kind == Tool::Unit) && !s_RandomUnits && s_SpawnPick.Kind != CustomPick::None) {
+			// One of your loadouts (as many as the squad size) or one of your squads, taken now so editing it later doesn't change what was put down.
+			std::vector<CustomLoadout> units = UnitsOfPick(s_SpawnPick);
+			if (s_SpawnPick.Kind == CustomPick::Squad) {
+				stroke.SquadName = s_SpawnPick.Name;
+				stroke.Customs = std::move(units);
+			} else if (!units.empty()) {
+				stroke.Customs.assign(static_cast<size_t>(std::max(s_SquadSize, 1)), units.front());
+			}
+		}
 		if (kind == Tool::Vehicle) {
 			stroke.Vehicle = s_VehicleTuning;
 			ResolveCrewPick(s_VehicleTuning.Driver, stroke.DriverChoice, stroke.DriverRandom);
 			ResolveCrewPick(s_VehicleTuning.Crew, stroke.CrewChoice, stroke.CrewRandom);
+			// ("@name": one of your loadouts, taken now so editing it later doesn't change what was put down.)
+			for (auto [pick, into]: {std::pair{&s_VehicleTuning.Driver, &stroke.DriverCustom}, std::pair{&s_VehicleTuning.Crew, &stroke.CrewCustom}}) {
+				if (pick->size() > 1 && pick->front() == '@') {
+					if (const CustomLoadout* loadout = FindCustomLoadout(pick->substr(1))) {
+						into->push_back(*loadout);
+					}
+				}
+			}
 			stroke.Temperament = s_VehicleTuning.Crewed ? s_SpawnTemperament : -1;
 		}
 		if (kind == Tool::WaterSpawner || kind == Tool::BuildTank) {

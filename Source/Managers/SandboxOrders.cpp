@@ -46,21 +46,22 @@ namespace SandboxDetail {
 		}
 	}
 
-	void TemperamentCombo(const char* label) {
+	void TemperamentCombo(const char* label, int* temperament) {
+		int& chosen = temperament ? *temperament : s_SpawnTemperament;
 		static const char* const tips[] = {
 		    "Fights as its orders and weapons rule say.",
 		    "Fights only back: at the side that hurt it, for a while after.",
 		    "Never fights: runs from whatever hurts or shoots at it, then goes back to what it was doing. A non-combatant.",
 		    "Never fights, and doesn't run either: it carries on with what it was doing. A non-combatant."};
-		const char* current = s_SpawnTemperament < 0 ? "Own temperament" : Actor::TemperamentName(s_SpawnTemperament);
+		const char* current = chosen < 0 ? "Own temperament" : Actor::TemperamentName(chosen);
 		if (ImGui::BeginCombo(label, current)) {
-			if (ImGui::Selectable("Own temperament", s_SpawnTemperament < 0)) {
-				s_SpawnTemperament = -1;
+			if (ImGui::Selectable("Own temperament", chosen < 0)) {
+				chosen = -1;
 			}
 			ImGui::SetItemTooltip("Each unit as its game files make it: soldiers fight, animals run.");
 			for (int i = 0; i < Actor::TEMPERAMENTCOUNT; ++i) {
-				if (ImGui::Selectable(Actor::TemperamentName(i), s_SpawnTemperament == i)) {
-					s_SpawnTemperament = i;
+				if (ImGui::Selectable(Actor::TemperamentName(i), chosen == i)) {
+					chosen = i;
 				}
 				ImGui::SetItemTooltip("%s", tips[i]);
 			}
@@ -1306,9 +1307,8 @@ namespace SandboxDetail {
 	/// The colony building whose plot a point is on (RC-10), if any.
 	const Colony::Building* BuildingAt(const Vector& position) {
 		for (const Colony::Building& building: Colony::Buildings()) {
-			const Colony::Type& type = Colony::GetType(building.What);
 			Vector off = g_SceneMan.ShortestDistance(building.Ground, position, g_SceneMan.SceneWrapsX());
-			if (std::abs(off.m_X) <= static_cast<float>(type.Width) * 0.5F && off.m_Y <= 4.0F && off.m_Y >= -static_cast<float>(type.Height) - 8.0F) {
+			if (std::abs(off.m_X) <= static_cast<float>(building.Width()) * 0.5F && off.m_Y <= 4.0F && off.m_Y >= -static_cast<float>(building.Height()) - 8.0F) {
 				return &building;
 			}
 		}
@@ -1628,6 +1628,12 @@ namespace SandboxDetail {
 			} else {
 				s_Selected.clear();
 				s_Selected.push_back(MakeRef(target));
+				// One of your squads (the Squad Builder's) is picked up whole; Shift+click adds or takes out one unit on its own.
+				for (Actor* mate: SquadMatesOf(target)) {
+					if (mate != target && IsSelectable(mate)) {
+						s_Selected.push_back(MakeRef(mate));
+					}
+				}
 			}
 			return;
 		}
