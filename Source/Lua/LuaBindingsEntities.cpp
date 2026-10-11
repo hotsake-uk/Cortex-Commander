@@ -526,6 +526,23 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ADoor) {
 	                        luabind::value("STOPPED", ADoor::DoorState::STOPPED)];
 }
 
+LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AMover) {
+	return ConcreteTypeLuaClassDefinition(AMover, Actor)
+
+	    .property("Deck", &AMover::GetDeck, &LuaAdaptersPropertyOwnershipSafetyFaker::AMoverSetDeck)
+	    .property("Speed", &AMover::GetSpeed, &AMover::SetSpeed)
+	    .property("StopWait", &AMover::GetStopWait, &AMover::SetStopWait)
+	    .property("OnCall", &AMover::GetOnCall, &AMover::SetOnCall)
+	    .property("StopCount", &AMover::GetStopCount)
+	    .property("CurrentStop", &AMover::GetCurrentStop)
+	    .property("TargetStop", &AMover::GetTargetStop)
+
+	    .def("IsMoving", &AMover::IsMoving)
+	    .def("GetStopStandingPos", &AMover::GetStopStandingPos)
+	    .def("GetDeckStandingPos", &AMover::GetDeckStandingPos)
+	    .def("CallTo", &AMover::CallTo);
+}
+
 LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AEmitter) {
 	return ConcreteTypeLuaClassDefinition(AEmitter, Attachable)
 

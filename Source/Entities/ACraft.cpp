@@ -619,7 +619,7 @@ void ACraft::GibThis(const Vector& impactImpulse, MovableObject* movableObjectTo
 		if (crabCount >= g_SettingsMan.GetCrabBombThreshold()) {
 			for (int moid = 1; moid < g_MovableMan.GetMOIDCount() - 1; moid++) {
 				Actor* actor = dynamic_cast<Actor*>(g_MovableMan.GetMOFromID(moid));
-				if (actor && actor != this && actor->GetClassName() != "ADoor" && !actor->IsInGroup("Brains")) {
+				if (actor && actor != this && actor->GetClassName() != "ADoor" && actor->GetClassName() != "AMover" && !actor->IsInGroup("Brains")) {
 					actor->GibThis();
 				}
 			}
