@@ -251,7 +251,7 @@ namespace SandboxDetail {
 
 		/// Whether a unit can take a pickup: one of a team in the game, that fights and can carry it (a crab can't read a scroll).
 		bool CanTake(const Actor* unit, const Pickup& pickup) {
-			if (!IsCombatant(unit) || unit->IsAnimal() || !BattleTeamIn(unit->GetTeam())) {
+			if (!IsCombatant(unit) || unit->IsBeast() || !BattleTeamIn(unit->GetTeam())) {
 				return false;
 			}
 			return c_PickupKinds[pickup.Kind].Preset || dynamic_cast<const AHuman*>(unit);

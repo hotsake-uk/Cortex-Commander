@@ -303,7 +303,7 @@ namespace {
 					}
 					continue;
 				}
-				if (actor->GetStatus() < Actor::DYING && actor->GetTeam() >= 0 && !dynamic_cast<const AVehicle*>(actor) && !actor->IsAnimal()) {
+				if (actor->GetStatus() < Actor::DYING && actor->GetTeam() >= 0 && !dynamic_cast<const AVehicle*>(actor) && !actor->IsBeast()) {
 					Living.push_back(actor);
 				}
 				if (actor->GetStatus() >= Actor::DYING) {
@@ -777,8 +777,8 @@ void UnitSpeech::UpdateWorld() {
 			continue;
 		}
 		senses.NextLookUpdate = update + c_LookEvery;
-		// (Nor an animal: it has nothing to say at all.)
-		if (actor->IsAnimal()) {
+		// (Nor a beast: it has nothing to say at all.)
+		if (actor->IsBeast()) {
 			continue;
 		}
 		if (!shared.Built) {

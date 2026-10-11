@@ -2,6 +2,7 @@ require("Constants")
 require("AI/CrabBehaviors");
 require("AI/SharedBehaviors");
 require("AI/AnimalBehaviors");
+require("AI/CreatureBehaviors");
 require("AI/UnitSpeech");
 
 NativeCrabAI = {};
@@ -28,6 +29,9 @@ function NativeCrabAI:Create(Owner)
 
 	Members.AlarmTimer = Timer();
 	Members.AlarmTimer:SetSimTimeLimitMS(500);
+
+	-- A creature (CR-1) runs its prey down and bites it, rather than shooting from where it stands (CreatureBehaviors).
+	Members.isCreature = CreatureBehaviors.IsCreature(Owner);
 
 	-- check if this team is controlled by a human
 	if ActivityMan:GetActivity():IsHumanTeam(Owner.Team) then
@@ -148,7 +152,8 @@ function NativeCrabAI:Update(Owner)
 
 	-- check if the AI mode has changed or if we need a new behavior
 	-- (Or told to go somewhere while the behaviour left over from arriving is still running: see NativeHumanAI.)
-	local newOrder = (Owner.AIMode == Actor.AIMODE_GOTO or Owner.AIMode == Actor.AIMODE_SQUAD) and self.BehaviorName ~= "GoToWpt" and self.NextBehaviorName ~= "GoToWpt" and self.BehaviorName ~= "GoToRoute" and self.NextBehaviorName ~= "GoToRoute" and (Owner:GetWaypointListSize() > 0 or Owner.MOMoveTarget);
+	-- (Nor a creature's hunt: the move it was on takes up again once the hunt is over, CR-1.)
+	local newOrder = (Owner.AIMode == Actor.AIMODE_GOTO or Owner.AIMode == Actor.AIMODE_SQUAD) and self.BehaviorName ~= "HuntTarget" and self.BehaviorName ~= "GoToWpt" and self.NextBehaviorName ~= "GoToWpt" and self.BehaviorName ~= "GoToRoute" and self.NextBehaviorName ~= "GoToRoute" and (Owner:GetWaypointListSize() > 0 or Owner.MOMoveTarget);
 	-- (And any order given since this AI's own last update: see NativeHumanAI.)
 	local ordered = self.orderSerial ~= nil and Owner.AIOrderSerial ~= self.orderSerial;
 	if Owner.AIMode ~= self.lastAIMode or not self.Behavior or newOrder or ordered then
@@ -348,7 +353,12 @@ function NativeCrabAI:Update(Owner)
 		if not self.Flank and not self.Target and self.OldTargetPos and self.HitTimer and not self.HitTimer:IsPastSimMS(3000) then
 			SharedBehaviors.StartFlank(self, Owner, self.OldTargetPos, 500);
 		end
-		SharedBehaviors.RetreatUpdate(self, Owner);
+		-- (A creature never falls back to be patched up; it hunts with its pack instead, CR-1.)
+		if self.isCreature then
+			CreatureBehaviors.PackUpdate(self, Owner);
+		else
+			SharedBehaviors.RetreatUpdate(self, Owner);
+		end
 		-- (Its nature, NC-1: a skittish animal runs from danger, and livestock left to themselves graze, drink, rest and keep with the herd.)
 		SharedBehaviors.FleeUpdate(self, Owner);
 		SharedBehaviors.GrazeUpdate(self, Owner);
@@ -480,6 +490,21 @@ function NativeCrabAI:CreateSentryBehavior(Owner)
 end
 
 function NativeCrabAI:CreateAttackBehavior(Owner)
+	-- A creature (CR-1): after its prey and biting it, unless it may not go after a target out of reach.
+	if self.isCreature then
+		if not self.Target or not CreatureBehaviors.WillHunt(self, Owner, self.Target) then
+			return;
+		end
+		self.NextBehavior = coroutine.create(CreatureBehaviors.HuntTarget);
+		self.NextBehaviorName = "HuntTarget";
+		-- (The target stays: a hunt is cleaned up as the next one, for a new prey, takes over.)
+		self.NextCleanup = function(AI)
+			AI.fire = false;
+			AI.deviceState = ACrab.STILL;
+			AI.lateralMoveState = Actor.LAT_STILL;
+		end
+		return;
+	end
 	if Owner.FirearmIsReady then
 		self.NextBehavior = coroutine.create(CrabBehaviors.ShootTarget);
 		self.NextBehaviorName = "ShootTarget";
