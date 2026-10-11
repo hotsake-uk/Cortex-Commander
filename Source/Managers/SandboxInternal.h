@@ -1307,6 +1307,10 @@ namespace SandboxDetail {
 	inline bool s_SnapToGrid = true;
 	inline bool s_FreeCamera = false;
 	inline bool s_SlowMotion = false;
+	constexpr float c_EarthGravity = 20.0F; //!< The game's stock gravity (Scene GlobalAcceleration), m/s/s down, which the World tab's gravity calls Earth's.
+	constexpr float c_MoonGravity = 0.165F; //!< The Moon's gravity, as a share of Earth's.
+	inline Vector s_MapGravity; //!< The map's own gravity, as it was when the game started (the World tab's "Map's own" puts it back).
+	inline bool s_MapGravityKnown = false; //!< Whether s_MapGravity has been taken for the game under way: taken on its first sandbox update.
 	inline bool s_FreeCameraStarted = false;
 	inline int s_CameraWarmupFrames = 0; //!< Frames to leave the camera alone at the start of a game, while the game mode points it somewhere sensible.
 	inline Vector s_CameraCenter;

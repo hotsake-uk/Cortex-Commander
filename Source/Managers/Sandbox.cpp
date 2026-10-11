@@ -3,6 +3,7 @@
 #include "MenuMan.h"
 #include "Weather.h"
 #include "TerrainCandle.h"
+#include "ZeroGravity.h"
 
 bool Sandbox::s_Open = false;
 
@@ -2204,6 +2205,41 @@ void Sandbox::DrawGUI() {
 				if (ToolUI::Checkbox("Slow motion", &s_SlowMotion)) {
 					g_TimerMan.SetTimeScale(s_SlowMotion ? 0.25F : 1.0F);
 				}
+				// The map's gravity (Scene GlobalAcceleration, which scripts can set too), its pull down as a share of Earth's. Everything reads it as it
+				// goes, so under a twentieth of Earth's the zero gravity ways (ZeroGravity: units flying on their jets, liquids hanging, nothing
+				// falling) take over at once, and go again as it comes back. Its pull sideways, if the map has one, is left as it is.
+				ImGui::SeparatorText("Gravity");
+				if (Scene* scene = g_SceneMan.GetScene()) {
+					Vector gravity = scene->GetGlobalAcc();
+					float earths = gravity.m_Y / c_EarthGravity;
+					ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.55F);
+					if (ImGui::SliderFloat("##gravity", &earths, 0.0F, 3.0F, "x%.2f Earth")) {
+						scene->SetGlobalAcc(Vector(gravity.m_X, earths * c_EarthGravity));
+					}
+					ImGui::SetItemTooltip("How hard everything is pulled down: units, things, shots, liquids, sand and falling ground. x1 is the game's own (20 m/s/s, as most maps have).\nUnder x0.05 there is no gravity to speak of: units fly on their jetpacks or push off what they touch, and liquids float (Settings > Zero G says how).\nCtrl+click to type a value outside the slider's.");
+					ImGui::SameLine();
+					ImGui::TextDisabled("%.1f m/s/s", gravity.m_Y);
+					ImGui::SetItemTooltip("The pull down in the game's own units, metres per second per second.");
+					for (const auto& [name, share, tip]: {std::tuple<const char*, float, const char*>{"Earth", 1.0F, "The game's own gravity, x1 (20 m/s/s)."}, {"Moon", c_MoonGravity, "About a sixth of Earth's: units jump high and fall slowly."}, {"Zero", 0.0F, "No gravity at all: as in space. Units fly on their jetpacks, liquids float, nothing falls."}}) {
+						if (share != 1.0F) {
+							ImGui::SameLine();
+						}
+						if (ToolUI::Button(name)) {
+							scene->SetGlobalAcc(Vector(gravity.m_X, share * c_EarthGravity));
+						}
+						ImGui::SetItemTooltip("%s", tip);
+					}
+					ImGui::SameLine();
+					ImGui::BeginDisabled(!s_MapGravityKnown || gravity == s_MapGravity);
+					if (ToolUI::Button("Map's own")) {
+						scene->SetGlobalAcc(s_MapGravity);
+					}
+					ImGui::EndDisabled();
+					ImGui::SetItemTooltip("Back to the gravity this map had when the game started (x%.2f Earth).", s_MapGravity.m_Y / c_EarthGravity);
+					if (ZeroGravity::UnitsWeightless()) {
+						ImGui::TextColored(ImVec4(0.6F, 0.82F, 1.0F, 1.0F), "Zero gravity: units fly, liquids float.");
+					}
+				}
 				// The world simulations the Paint tools need, here as well as in F6, so a brush that does nothing says why and can be fixed on the spot.
 				ImGui::SeparatorText("Simulations");
 				{
@@ -2262,6 +2298,8 @@ void Sandbox::OnActivityStarted() {
 	s_Effects.clear();
 	s_Decor.clear();
 	s_PaintUndo.clear();
+	// (The new map's own gravity is taken on the first update, once its scene is loaded.)
+	s_MapGravityKnown = false;
 	// The same random stream from the start of every game, so the same inputs give the same game.
 	s_Random = c_RandomSeed;
 	// And none of the last game's units, orders or battle: in any game, not only a Sandbox one. (Reset only when the god view opened, an
@@ -2307,6 +2345,11 @@ void Sandbox::Update() {
 		s_Effects.clear();
 		s_Decor.clear();
 		return;
+	}
+	if (!s_MapGravityKnown && g_SceneMan.GetScene()) {
+		// The map's own gravity, for the World tab to put back (after the game's own start-up, which may set it).
+		s_MapGravity = g_SceneMan.GetScene()->GetGlobalAcc();
+		s_MapGravityKnown = true;
 	}
 	BattlePresetsUpdate();
 	ApplyPendingOrders();
