@@ -1177,6 +1177,9 @@
     <ClCompile Include="Source\Entities\Actor.cpp">
       <Filter>Entities</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Entities\ActorPowerups.cpp">
+      <Filter>Entities</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Entities\ADoor.cpp">
       <Filter>Entities</Filter>
     </ClCompile>

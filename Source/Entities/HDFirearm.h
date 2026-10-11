@@ -9,6 +9,8 @@
 
 namespace RTE {
 
+	constexpr double c_ScrollCastHoldMS = 3000.0; //!< How long one cast of a spell from a scroll lasts, held (Dragon's Breath, say).
+
 	class Magazine;
 	class Actor;
 
@@ -479,6 +481,17 @@ namespace RTE {
 		/// @param newValue The new cost. 0: free.
 		void SetEnergyCost(float newValue) { m_EnergyCost = std::max(newValue, 0.0F); }
 
+		/// Gets how many casts a spell from a spell scroll (a powerup, Actor::UsePowerup) has left, or -1 for a spell or gun that isn't one.
+		/// A cast is a pull of the trigger: held, it lasts up to c_ScrollCastHoldMS.
+		int GetScrollCasts() const { return m_ScrollCasts; }
+		/// Sets the casts it has left; -1 for no limit.
+		void SetScrollCasts(int casts) { m_ScrollCasts = casts; }
+		/// Whether this was a scroll's spell and its last cast is done: its holder lets it go and takes back what it held before (ScrollReturnID).
+		bool IsScrollSpent() const { return m_ScrollCasts == 0 && !m_ScrollPullCounted; }
+		/// The unique ID of the item its holder held before the scroll put this spell in its hand, to take back once it is spent. 0 for none.
+		long GetScrollReturnID() const { return m_ScrollReturnID; }
+		void SetScrollReturnID(long uniqueID) { m_ScrollReturnID = uniqueID; }
+
 		/// Gets whether this pays for its rounds from its own charge instead of its holder's energy.
 		/// @return Whether it uses its own charge.
 		bool GetUsesOwnCharge() const { return m_UsesOwnCharge; }
@@ -637,6 +650,10 @@ namespace RTE {
 		// Whether this HDFirearm is full or semi-auto.
 		bool m_FullAuto;
 		float m_EnergyCost; //!< The energy each round costs (MG-2). 0: free.
+		int m_ScrollCasts; //!< A spell scroll's casts left (see GetScrollCasts), -1 for none.
+		bool m_ScrollPullCounted; //!< The trigger pull now going on has been counted as a cast.
+		Timer m_ScrollPullTimer; //!< How long the counted pull has been held.
+		long m_ScrollReturnID; //!< See GetScrollReturnID.
 		bool m_UsesOwnCharge; //!< Whether rounds are paid from m_Charge instead of the holder's energy.
 		float m_Charge; //!< This device's own charge.
 		float m_MaxCharge; //!< The most charge it can have.

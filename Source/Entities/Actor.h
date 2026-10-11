@@ -37,6 +37,8 @@ namespace RTE {
 
 #define AILINEDOTSPACING 16
 
+	constexpr float c_StimSpeedMultiplier = 1.5F; //!< How much faster a unit stimmed by a powerup runs (Actor::IsStimmed).
+
 	/// A sprite movable object that is autonomous.
 	class Actor : public MOSRotating {
 		friend struct EntityLuaBindings;
@@ -160,11 +162,41 @@ namespace RTE {
 		/// @return Whether or not this Actor can be controlled by human players.
 		bool IsPlayerControllable() const { return m_PlayerControllable; }
 
-		/// Gets whether units run by the AI take no notice of this Actor: they don't see it as an enemy and don't pick it as a target.
-		bool IsIgnoredByAI() const { return m_IgnoredByAI; }
+		/// Gets whether units run by the AI take no notice of this Actor: they don't see it as an enemy and don't pick it as a target. So while
+		/// a powerup cloaks it, too.
+		bool IsIgnoredByAI() const { return m_IgnoredByAI || IsCloaked(); }
 
 		/// Sets whether units run by the AI take no notice of this Actor. For a player walking about a battle as a bystander.
 		void SetIgnoredByAI(bool ignored) { m_IgnoredByAI = ignored; }
+
+#pragma region Powerups (ActorPowerups.cpp)
+		/// The timed effects a powerup gives (see PowerupInfo).
+		enum class PowerupEffect {
+			Shield,
+			Stim,
+			Overcharge,
+			Cloak,
+			Count
+		};
+
+		/// Seconds an effect a powerup gave this has left, 0 if it isn't running.
+		float GetPowerupSecondsLeft(PowerupEffect effect) const;
+		/// Bullets and shrapnel bounce off a bubble round it, harmlessly.
+		bool IsShielded() const { return GetPowerupSecondsLeft(PowerupEffect::Shield) > 0.0F; }
+		/// Runs faster, its jetpack's fuel kept topped up.
+		bool IsStimmed() const { return GetPowerupSecondsLeft(PowerupEffect::Stim) > 0.0F; }
+		/// Its guns fire twice as fast and use no ammo.
+		bool IsOvercharged() const { return GetPowerupSecondsLeft(PowerupEffect::Overcharge) > 0.0F; }
+		/// Unseen by the AI (IsIgnoredByAI), and faint to look at.
+		bool IsCloaked() const { return GetPowerupSecondsLeft(PowerupEffect::Cloak) > 0.0F; }
+
+		/// Whether it can use a powerup it carries now: not while every effect it gives is still running, and a spell scroll needs a hand.
+		bool CanUsePowerup(const HeldDevice* item) const;
+		/// Uses a powerup it carries in its inventory: starts its effects (or puts a scroll's spell in its hand), and the item is used up with
+		/// its last use. The unit menu's Quick actions, Lua, and units run by the AI (UpdatePowerups) use this.
+		/// @return Whether it was used.
+		bool UsePowerup(MovableObject* item);
+#pragma endregion
 
 		/// Gets whether this Actor is drawn with a bright glowing outline, whatever the unit outline settings (see LightingSettings::HighlightUnits).
 		bool IsHighlighted() const { return m_Highlighted; }
@@ -1528,6 +1560,16 @@ namespace RTE {
 		Controller m_Controller;
 		bool m_PlayerControllable; //!< Whether or not this Actor can be controlled by human players.
 		bool m_IgnoredByAI = false; //!< Whether units run by the AI take no notice of this Actor. Not copied or saved: it is set on the one Actor while it lives.
+		std::array<long long, static_cast<int>(PowerupEffect::Count)> m_PowerupUntil{}; //!< The sim time, ms, each powerup effect lasts until. Not copied or saved, as m_IgnoredByAI.
+		float m_OpacityBeforeCloak = -1.0F; //!< How opaque it was drawn before a cloak made it faint, to put back after; below 0 while not cloaked.
+		long m_PowerupReturnID = 0; //!< The unique ID of what it held before a scroll's spell, now spent and going: taken back in hand once it's gone.
+		long long m_NextPowerupThought = 0; //!< Units run by the AI: the sim time, ms, it next looks at whether to use a powerup it carries.
+
+		/// Runs the powerup effects on it (the shield's deflecting, the cloak's fading, a spent scroll put away), and has a unit run by the AI
+		/// use a powerup it carries when it's in the thick of it. Each Update.
+		void UpdatePowerups();
+		/// The effects running on it, over its head. From DrawHUD.
+		void DrawPowerupsHUD(BITMAP* targetBitmap, const Vector& drawPos);
 		bool m_Highlighted = false; //!< Drawn with a bright glowing outline. Not copied or saved, as m_IgnoredByAI.
 		unsigned m_RouteSeed = 0; //!< Its own taste in routes (see GetRouteSeed). Not copied or saved, as m_IgnoredByAI.
 		float m_RouteThreatAvoidance = 0.0F; //!< How much its routes keep clear of enemies, for a game mode that wants it safe (see GetRouteThreatAvoidance). Not copied or saved, as m_IgnoredByAI.
