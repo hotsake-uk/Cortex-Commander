@@ -91,6 +91,7 @@ void ACShip::Clear() {
 	m_HasHoldPoint = false;
 	m_FlightTarget.Reset();
 	m_FlightFloor = FLT_MAX;
+	m_SteerTrim.Reset();
 	m_FlownTimer.Reset();
 }
 
@@ -408,7 +409,8 @@ void ACShip::UpdateCombat() {
 	};
 	Vector suppressCentre;
 	float suppressRadius = 0.0F;
-	const bool holding = m_AIMode == AIMODE_SENTRY || m_AIMode == AIMODE_STAY || (m_AIMode == AIMODE_GOTO && m_HasCombatSpot);
+	// (Sent somewhere on a plain move, it stays where it was sent: its guns fight from there, it doesn't fly off after what they're on.)
+	const bool holding = (m_AIMode == AIMODE_SENTRY || m_AIMode == AIMODE_STAY || (m_AIMode == AIMODE_GOTO && m_HasCombatSpot)) && m_StandingOrder.Kind != ORDER_MOVE;
 	const Actor* target = enemyByID(m_EngageID);
 	if (!target) {
 		m_EngageID = 0;
@@ -763,6 +765,10 @@ void ACShip::SteerTo(const Vector& target, bool stop) {
 		aim.m_Y = floor;
 		toAim = g_SceneMan.ShortestDistance(m_Pos, aim, wraps);
 	}
+	// (A new place, or not stopping at it: what it built up against drift starts again.)
+	if (!stop || g_SceneMan.ShortestDistance(m_FlightTarget, aim, wraps).MagnitudeIsGreaterThan(20.0F)) {
+		m_SteerTrim.Reset();
+	}
 	m_FlightTarget = aim;
 	m_FlightFloor = floor;
 
@@ -783,8 +789,16 @@ void ACShip::SteerTo(const Vector& target, bool stop) {
 	float wantY = down < 0.0F ? -std::min(climbSpeed, std::abs(down) * 1.2F) : std::min({climbSpeed * 0.7F, std::sqrt(2.0F * gravity * 0.5F * down), down * 1.2F});
 
 	// The stick: up or down is a speed to hold (the drop ship's throttle, its range 7.5 m/s), across a tilt toward the speed wanted.
-	const float stickX = std::clamp((wantX - m_Vel.m_X) * 0.35F, -1.0F, 1.0F);
-	const float stickY = std::clamp((wantY + 0.5F * (wantY - m_Vel.m_Y)) / 7.5F, -1.0F, 1.0F);
+	// Near the place, what's left off it builds up on the stick, so the drop ship's hover trim (made for an empty one), a load, a lean or the
+	// stick's dead zone don't leave it held off to one side or hanging high or low of it.
+	if (stop && toAim.MagnitudeIsLessThan(std::max(radius * 3.0F, 120.0F))) {
+		const float deltaTime = g_TimerMan.GetDeltaTimeSecs();
+		m_SteerTrim += Vector(toAim.m_X, toAim.m_Y) * (deltaTime / c_PPM);
+		m_SteerTrim.m_X = std::clamp(m_SteerTrim.m_X, -3.0F, 3.0F);
+		m_SteerTrim.m_Y = std::clamp(m_SteerTrim.m_Y, -3.0F, 3.0F);
+	}
+	const float stickX = std::clamp((wantX - m_Vel.m_X) * 0.35F + m_SteerTrim.m_X * 0.15F, -1.0F, 1.0F);
+	const float stickY = std::clamp((wantY + 0.5F * (wantY - m_Vel.m_Y)) / 7.5F + m_SteerTrim.m_Y * 0.12F, -1.0F, 1.0F);
 	m_Controller.SetState(MOVE_UP, false);
 	m_Controller.SetState(MOVE_DOWN, false);
 	m_Controller.SetAnalogMove(Vector(stickX, stickY));

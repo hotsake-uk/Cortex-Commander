@@ -255,6 +255,7 @@ namespace RTE {
 		bool m_HasHoldPoint; //!< Whether it has a place to hold at yet.
 		Vector m_FlightTarget; //!< Where the controller is steering it just now (GetFlightTarget).
 		float m_FlightFloor; //!< The lowest it may fly just now for the ground ahead (GetFlightFloor).
+		Vector m_SteerTrim; //!< What the controller has built up, near a place it stops at, against whatever drifts it off (its trim, its load, a lean): the off, in metre seconds.
 		Timer m_FlownTimer; //!< Since its flight controller last ran: a gap means a player flew it.
 
 		/// Its flight controller, each AI update: what it is to do by its AI mode (hold where it was told or let go, fly to its go-to's place,
