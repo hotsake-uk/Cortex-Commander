@@ -135,6 +135,13 @@ namespace RTE {
 		/// autopilot hasn't started yet. @param spot The place. @return Whether it was sent.
 		bool FlyRouteTo(const Vector& spot);
 
+		/// Gets how far over the ground its middle keeps when sent down low: its body and a little more.
+		float LowClearance() const;
+
+		/// Gets the place it flies to when sent to a spot: the spot itself, raised only as far as it must be to clear the ground under it.
+		/// @param spot The spot. @param extraAltitude How much higher than that to keep.
+		Vector LowPoint(const Vector& spot, float extraAltitude = 0.0F);
+
 		/// Gets the points of the route FlyRouteTo sent it along that it has still to fly to, the next first.
 		const std::deque<Vector>& GetRoute() const { return m_Route; }
 
