@@ -1947,8 +1947,8 @@ namespace SandboxDetail {
 	}
 
 	void GiveLoadout(Actor* actor, const Preset& unit, int loadout) {
-		// (An animal goes unarmed, whatever the loadout.)
-		if (loadout == 1 || actor->IsAnimal()) {
+		// (A beast goes armed only with what it was born with, whatever the loadout.)
+		if (loadout == 1 || actor->IsBeast()) {
 			return;
 		}
 		if (loadout >= 2) {
@@ -2110,7 +2110,8 @@ namespace SandboxDetail {
 			const Entity* entity = g_PresetMan.GetEntityPreset(unit.ClassName, unit.PresetName, unit.ModuleID);
 			// (Nor vehicles, VH-1: nobody drives one placed or bought on its own.)
 			// (Nor animals and civilians, NC-1: a random squad is soldiers, unless it is asked for from the non-combatants alone.)
-			if (!entity || entity->IsInGroup("Actors - Turrets") || entity->IsInGroup("Actors - Vehicles") || IsNonCombatantPreset(entity) != (faction == -2)) {
+			// (Nor creatures, CR-1: a monster is spawned as itself.)
+			if (!entity || entity->IsInGroup("Actors - Turrets") || entity->IsInGroup("Actors - Vehicles") || entity->IsInGroup("Actors - Creatures") || IsNonCombatantPreset(entity) != (faction == -2)) {
 				continue;
 			}
 			all.push_back(&unit);

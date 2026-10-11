@@ -28,7 +28,6 @@ namespace {
 	constexpr const char* c_DepthTag = "LiquidDepth"; //!< Number value on units in liquid: 1 feet in, 2 body in, 3 head under.
 	constexpr const char* c_AirTag = "AirLeft"; //!< Number value on units holding their breath, seconds of air left.
 	constexpr const char* c_StickTag = "LiquidStick"; //!< Number value on units in a sticky liquid (tar, mud): its stickiness, 0 to 1.
-	constexpr float c_AirSeconds = 12.0F; //!< How long a unit can hold its breath.
 
 	const void* s_Scene = nullptr;
 	unsigned int s_SceneGeneration = 0; //!< SceneMan's count of scene loads when this scene was taken up (L-1: not the address alone).
@@ -161,9 +160,9 @@ namespace {
 	}
 
 	/// Flesh and blood units breathe; robots, drones and brains in jars don't.
+	/// Whether a body holds its breath under liquid, and drowns (Actor::GetBreathSeconds): flesh does, unless its movement profile says not (CR-2).
 	bool Breathes(const Actor* actor) {
-		const Material* material = actor->GetMaterial();
-		return material && material->GetPresetName().find("Flesh") != std::string::npos;
+		return actor->GetBreathSeconds() != FLT_MAX;
 	}
 } // namespace
 
@@ -219,7 +218,7 @@ void ActorWater::Update() {
 			// Catching its breath: air comes back three times as fast as it went.
 			if (actor->NumberValueExists(c_AirTag)) {
 				float air = static_cast<float>(actor->GetNumberValue(c_AirTag)) + deltaTime * 3.0F;
-				if (air >= c_AirSeconds) {
+				if (air >= actor->GetBreathSeconds()) {
 					actor->RemoveNumberValue(c_AirTag);
 				} else {
 					actor->SetNumberValue(c_AirTag, air);
@@ -288,16 +287,17 @@ void ActorWater::Update() {
 
 		// (Not in a liquid a body can breathe in: none of the stock ones.)
 		if (alive && Breathes(actor) && !(depth == 3 && s_Breathable[static_cast<unsigned char>(MaterialAt(head))])) {
-			float air = actor->NumberValueExists(c_AirTag) ? static_cast<float>(actor->GetNumberValue(c_AirTag)) : c_AirSeconds;
+			const float airSeconds = actor->GetBreathSeconds();
+			float air = actor->NumberValueExists(c_AirTag) ? static_cast<float>(actor->GetNumberValue(c_AirTag)) : airSeconds;
 			if (depth == 3) {
 				air = std::max(air - deltaTime, 0.0F);
 				actor->SetNumberValue(c_AirTag, air);
 				if (air <= 0.0F) {
 					actor->SetHealth(actor->GetHealth() - 12.0F * deltaTime);
 				}
-			} else if (air < c_AirSeconds) {
+			} else if (air < airSeconds) {
 				air += deltaTime * 3.0F;
-				if (air >= c_AirSeconds) {
+				if (air >= airSeconds) {
 					actor->RemoveNumberValue(c_AirTag);
 				} else {
 					actor->SetNumberValue(c_AirTag, air);
@@ -319,7 +319,7 @@ float ActorWater::GetWalkSpeedMultiplier(const Actor* actor) {
 }
 
 float ActorWater::GetBreathSeconds(const Actor* actor) {
-	return actor && Breathes(actor) ? c_AirSeconds : FLT_MAX;
+	return actor ? actor->GetBreathSeconds() : FLT_MAX;
 }
 
 float ActorWater::GetBuoyancy(const Actor* actor) {
@@ -328,5 +328,5 @@ float ActorWater::GetBuoyancy(const Actor* actor) {
 }
 
 float ActorWater::GetAir(const Actor* actor) {
-	return actor && actor->NumberValueExists(c_AirTag) ? std::clamp(static_cast<float>(actor->GetNumberValue(c_AirTag)) / c_AirSeconds, 0.0F, 1.0F) : 1.0F;
+	return actor && actor->NumberValueExists(c_AirTag) && Breathes(actor) ? std::clamp(static_cast<float>(actor->GetNumberValue(c_AirTag)) / actor->GetBreathSeconds(), 0.0F, 1.0F) : 1.0F;
 }

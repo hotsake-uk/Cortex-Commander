@@ -2347,7 +2347,7 @@ end
 
 -- A target it may no longer have (NC-1): a Defensive unit calmed down, or a temperament changed. Dropped, with its fight; called once an
 -- update before targets are looked for. @return Whether it was dropped.
-local fightBehaviors = { ShootTarget = true, ThrowTarget = true, AttackTarget = true, ShootArea = true, PinArea = true };
+local fightBehaviors = { ShootTarget = true, ThrowTarget = true, AttackTarget = true, ShootArea = true, PinArea = true, HuntTarget = true };
 function SharedBehaviors.DropForbiddenTarget(AI, Owner)
 	if not AI.Target or SharedBehaviors.MayTarget(AI, Owner, AI.Target) then
 		return false;

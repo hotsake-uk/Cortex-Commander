@@ -96,7 +96,8 @@ namespace SandboxDetail {
 	void AddPresets(std::vector<Preset>& list, const std::list<Entity*>& entities, bool buyableOnly, bool skipBrains, const char* group) {
 		for (const Entity* entity: entities) {
 			const SceneObject* object = dynamic_cast<const SceneObject*>(entity);
-			if (!object || (buyableOnly && !object->IsBuyable()) || (skipBrains && object->IsInGroup("Brains"))) {
+			// (Nor a creature's natural weapons, CR-1: jaws and claws are no use to anyone without the creature.)
+			if (!object || (buyableOnly && !object->IsBuyable()) || (skipBrains && object->IsInGroup("Brains")) || object->IsInGroup("Weapons - Natural")) {
 				continue;
 			}
 			Preset preset;
@@ -111,6 +112,8 @@ namespace SandboxDetail {
 			// The subcategory, from the groups the game files put the thing in.
 			if (const HeldDevice* device = dynamic_cast<const HeldDevice*>(object); device && device->IsPowerup()) {
 				preset.Kind = "Powerups";
+			} else if (object->IsInGroup("Actors - Creatures")) {
+				preset.Kind = "Creatures";
 			} else if (object->IsInGroup("Actors - Livestock")) {
 				preset.Kind = "Farm animals";
 			} else if (object->IsInGroup("Actors - Civilians")) {

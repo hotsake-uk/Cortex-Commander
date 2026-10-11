@@ -142,6 +142,7 @@ void Actor::Clear() {
 	m_WeaponRule = WEAPONS_AT_WILL;
 	m_Temperament = TEMPERAMENT_FIGHTER;
 	m_NonCombatant = -1;
+	m_MovementProfile = MovementProfile();
 	m_ToughnessKind = -2;
 	m_ToughnessHealth = std::numeric_limits<float>::quiet_NaN();
 	m_LastAttackerTeam = Activity::NoTeam;
@@ -349,6 +350,7 @@ int Actor::Create(const Actor& reference) {
 	m_WeaponRule = reference.m_WeaponRule;
 	m_Temperament = reference.m_Temperament;
 	m_NonCombatant = reference.m_NonCombatant;
+	m_MovementProfile = reference.m_MovementProfile;
 	m_Waypoints = reference.m_Waypoints;
 	m_DrawWaypoints = reference.m_DrawWaypoints;
 	m_MoveTarget = reference.m_MoveTarget;
@@ -550,6 +552,30 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("Organic", { reader >> m_Organic; });
 	MatchProperty("Mechanical", { reader >> m_Mechanical; });
 	MatchProperty("AIBaseDigStrength", { reader >> m_AIBaseDigStrength; });
+	// The movement profile (CR-2): what the body can do, declared on the preset.
+	MatchProperty("BodyWidth", { reader >> m_MovementProfile.BodyWidth; });
+	MatchProperty("BodyHeight", { reader >> m_MovementProfile.BodyHeight; });
+	MatchProperty("SafeFallHeight", { reader >> m_MovementProfile.SafeFall; });
+	MatchProperty("Swims", {
+		std::string value;
+		reader >> value;
+		std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		if (value == "never" || value == "0") {
+			m_MovementProfile.Swims = 0;
+		} else if (value == "surface" || value == "1") {
+			m_MovementProfile.Swims = 1;
+		} else if (value == "underwater" || value == "2") {
+			m_MovementProfile.Swims = 2;
+		} else {
+			reader.ReportError("Unknown Swims \"" + value + "\": use Never, Surface or Underwater.");
+		}
+	});
+	MatchProperty("BreathSeconds", { reader >> m_MovementProfile.BreathSeconds; });
+	MatchProperty("FireProof", {
+		bool fireProof = false;
+		reader >> fireProof;
+		m_MovementProfile.FireProof = fireProof ? 1 : 0;
+	});
 
 	EndPropertyList;
 }
@@ -691,6 +717,25 @@ int Actor::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("Organic", m_Organic);
 	writer.NewPropertyWithValue("Mechanical", m_Mechanical);
 	writer.NewPropertyWithValue("AIBaseDigStrength", m_AIBaseDigStrength);
+	if (m_MovementProfile.BodyWidth >= 0.0F) {
+		writer.NewPropertyWithValue("BodyWidth", m_MovementProfile.BodyWidth);
+	}
+	if (m_MovementProfile.BodyHeight >= 0.0F) {
+		writer.NewPropertyWithValue("BodyHeight", m_MovementProfile.BodyHeight);
+	}
+	if (m_MovementProfile.SafeFall >= 0.0F) {
+		writer.NewPropertyWithValue("SafeFallHeight", m_MovementProfile.SafeFall);
+	}
+	if (m_MovementProfile.Swims >= 0) {
+		static const char* const c_SwimNames[] = {"Never", "Surface", "Underwater"};
+		writer.NewPropertyWithValue("Swims", std::string(c_SwimNames[std::clamp(m_MovementProfile.Swims, 0, 2)]));
+	}
+	if (m_MovementProfile.BreathSeconds >= 0.0F) {
+		writer.NewPropertyWithValue("BreathSeconds", m_MovementProfile.BreathSeconds);
+	}
+	if (m_MovementProfile.FireProof >= 0) {
+		writer.NewPropertyWithValue("FireProof", m_MovementProfile.FireProof != 0);
+	}
 
 	return 0;
 }
@@ -1063,10 +1108,16 @@ bool Actor::IsAnimal() const {
 	return IsInGroup("Actors - Livestock") || IsInGroup("Actors - Wildlife") || IsInGroup("Animals");
 }
 
+bool Actor::IsCreature() const {
+	return IsInGroup("Actors - Creatures");
+}
+
 int Actor::GetToughnessKind() const {
 	if (m_ToughnessKind == -2) {
 		using Kind = SettingsMan::ToughnessKind;
-		if (IsAnimal()) {
+		if (IsCreature()) {
+			m_ToughnessKind = static_cast<int>(Kind::Creatures);
+		} else if (IsAnimal()) {
 			m_ToughnessKind = static_cast<int>(Kind::Animals);
 		} else if (dynamic_cast<const ACraft*>(this)) {
 			m_ToughnessKind = static_cast<int>(Kind::Craft);
@@ -1103,8 +1154,8 @@ void Actor::ApplyToughness() {
 }
 
 void Actor::AddInventoryItem(MovableObject* pItemToAdd) {
-	// An animal carries no weapons (nor tools, shields or grenades).
-	if (dynamic_cast<HeldDevice*>(pItemToAdd) && IsAnimal()) {
+	// A beast carries no weapons (nor tools, shields or grenades), but what it was born with (CR-1).
+	if (dynamic_cast<HeldDevice*>(pItemToAdd) && IsBeast() && !pItemToAdd->IsInGroup("Weapons - Natural")) {
 		delete pItemToAdd;
 		return;
 	}
@@ -1112,10 +1163,10 @@ void Actor::AddInventoryItem(MovableObject* pItemToAdd) {
 }
 
 void Actor::DiscardAnimalWeapons() {
-	if (!IsAnimal()) {
+	if (!IsBeast()) {
 		return;
 	}
-	// Whatever an animal came by some other way (its preset, a script), it doesn't leave lying around.
+	// Whatever a beast came by some other way (its preset, a script), it doesn't leave lying around: its natural weapons least of all.
 	for (auto itr = m_Inventory.begin(); itr != m_Inventory.end();) {
 		if (dynamic_cast<HeldDevice*>(*itr)) {
 			delete *itr;
@@ -1522,6 +1573,9 @@ float Actor::EstimateDigStrength() const {
 }
 
 float Actor::GetMaxSafeFallHeight() const {
+	if (m_MovementProfile.SafeFall >= 0.0F) {
+		return m_MovementProfile.SafeFall;
+	}
 	float gravity = g_SceneMan.GetGlobalAcc().m_Y;
 	if (gravity <= 0.01F || m_TravelImpulseDamage <= 0.0F) {
 		return FLT_MAX;
@@ -1530,6 +1584,38 @@ float Actor::GetMaxSafeFallHeight() const {
 	// is the threshold over the mass; the height that speed is reached from is v^2 / 2g.
 	float speed = m_TravelImpulseDamage / std::max(GetMass(), 1.0F);
 	return std::max(speed * speed / (2.0F * gravity) * c_PPM, 96.0F);
+}
+
+float Actor::GetBreathSeconds() const {
+	if (m_MovementProfile.BreathSeconds >= 0.0F) {
+		return m_MovementProfile.BreathSeconds > 0.0F ? m_MovementProfile.BreathSeconds : FLT_MAX;
+	}
+	// (A body of flesh breathes, as ActorWater has always had it; machines and the rest don't.)
+	const Material* material = GetMaterial();
+	return material && material->GetPresetName().find("Flesh") != std::string::npos ? 12.0F : FLT_MAX;
+}
+
+void Actor::ApplyMovementProfile(PathAgent& agent) const {
+	const MovementProfile& profile = m_MovementProfile;
+	// Big bodies (CR-2): as wide and as tall as the grid measures round a node (two nodes either side, PathNode::c_ClearanceReach up).
+	if (profile.BodyWidth >= 0.0F) {
+		agent.HalfWidth = std::clamp(profile.BodyWidth * 0.5F, 4.0F, 48.0F);
+	}
+	if (profile.BodyHeight >= 0.0F) {
+		agent.StandHeight = std::clamp(profile.BodyHeight, 8.0F, static_cast<float>(PathNode::c_ClearanceReach));
+		// (Crawls and ducks under nothing lower: a beast is as tall as it is.)
+		agent.CrawlHeight = agent.StandHeight;
+		agent.CrouchHeight = 0.0F;
+	}
+	if (profile.Swims >= 0 && ActorWater::IsEnabled() && FluidSim::IsEnabled()) {
+		agent.Floats = profile.Swims == 1;
+		if (profile.Swims == 2) {
+			agent.BreathSeconds = FLT_MAX;
+		}
+	}
+	if (profile.FireProof > 0) {
+		agent.CrossesLava = true;
+	}
 }
 
 int Actor::GetLiquidDepth() const {
@@ -1664,6 +1750,7 @@ PathAgent Actor::GetPathAgent() const {
 		scene->GetPathFinder(static_cast<Activity::Teams>(m_Team)).GetTeamAvoid(agent.Avoid, g_TimerMan.GetSimTimeMS());
 		scene->GetPathFinder(static_cast<Activity::Teams>(m_Team)).GetTeamAvoidLinks(agent.AvoidLinks, g_TimerMan.GetSimTimeMS());
 	}
+	ApplyMovementProfile(agent);
 	return agent;
 }
 
@@ -2234,7 +2321,7 @@ std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range,
 	// in ThreadedUpdate already walk the same list, as MovableMan.Actors; new actors are queued and joined in MovableMan::Update's serial part.)
 	const bool wraps = g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY();
 	for (Actor* actor: g_MovableMan.GetActorList()) {
-		if (!actor || actor == this || actor->GetTeam() == m_Team || actor->GetTeam() == Activity::NoTeam || actor->IsIgnoredByAI() || actor->GetStatus() == DEAD || actor->GetStatus() == DYING) {
+		if (!actor || actor == this || actor->GetTeam() == m_Team || (actor->GetTeam() == Activity::NoTeam && !actor->IsHostileToAll()) || actor->IsIgnoredByAI() || actor->GetStatus() == DEAD || actor->GetStatus() == DYING) {
 			continue;
 		}
 		Vector toTarget = g_SceneMan.ShortestDistance(eyes, actor->GetPos(), wraps);
@@ -2368,7 +2455,7 @@ Vector Actor::HearFootsteps() const {
 	float loudest = 0.0F;
 	Vector heard;
 	for (const Actor* actor: g_MovableMan.GetActorList()) {
-		if (!actor || actor == this || actor->GetTeam() == m_Team || actor->GetTeam() == Activity::NoTeam || actor->IsIgnoredByAI()) {
+		if (!actor || actor == this || actor->GetTeam() == m_Team || (actor->GetTeam() == Activity::NoTeam && !actor->IsHostileToAll()) || actor->IsIgnoredByAI()) {
 			continue;
 		}
 		Vector toActor = g_SceneMan.ShortestDistance(ears, actor->GetPos(), wraps);
