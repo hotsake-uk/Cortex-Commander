@@ -69,6 +69,13 @@ namespace RTE {
 		/// Sets the current rotational offset of the mounted HeldDevice from the rest of the Turret.
 		/// @param newOffsetAngle The new offset angle in radians, relative from the rest of the Turret.
 		void SetMountedDeviceRotationOffset(float newOffsetAngle) { m_MountedDeviceRotationOffset = newOffsetAngle; }
+
+		/// Draws what the player manning this Turret needs to see: a reticle out along each mounted gun, and its rounds left or reload bar, as a unit's HUD shows them.
+		/// @param pTargetBitmap A pointer to a BITMAP to draw on.
+		/// @param targetPos The absolute position of the target bitmap's upper left corner in the Scene.
+		/// @param drawPos Where on the target bitmap the rounds line is drawn from (the vehicle's HUD position).
+		/// @param hudStack The vehicle's HUD stack offset, moved up past the rounds line when one is drawn.
+		void DrawGunnerHUD(BITMAP* pTargetBitmap, const Vector& targetPos, const Vector& drawPos, int& hudStack) const;
 #pragma endregion
 
 #pragma region Override Methods
