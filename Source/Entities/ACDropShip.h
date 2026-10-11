@@ -168,6 +168,17 @@ namespace RTE {
 		/// that is higher up in the open air. False if it hasn't started yet.
 		bool AutopilotHoverOver(const Vector& spot);
 
+		/// Gets where hovering over a place puts it, as AutopilotHoverOver sends it: at its hover height (and the extra) over the ground there,
+		/// or at the place itself if that is higher up in the open air. Nothing is sent.
+		/// @param spot The place. @param extraAltitude How much higher than its hover height, in pixels.
+		Vector AutopilotHoverPoint(const Vector& spot, float extraAltitude = 0.0F);
+
+		/// Gets whether the autopilot has started (someone has flown it): until then nothing can be sent anywhere by it.
+		bool AutopilotStarted() const { return m_Autopilot.begun; }
+
+		/// Gets the autopilot's hover height over the ground, in pixels.
+		float AutopilotHoverHeight() const { return m_Autopilot.hoverAlt; }
+
 		/// Protected member variable and method declarations
 	protected:
 		// Member variables
