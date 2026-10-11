@@ -412,12 +412,14 @@ namespace SandboxDetail {
 		Spray //!< A soft spray: scattered pixels over the circle, thickest in the middle, building up while held.
 	};
 
-	/// The shapes the terrain brushes fill with Brush type Shape (s_ShapeFill): dragged out as a box, filled in one go.
+	/// The shapes the terrain brushes fill with Brush type Shape (s_ShapeFill): dragged out as a box (or a line), filled in one go.
 	enum class FillShape {
 		Circle, //!< The circle (or oval) in the box.
 		Triangle, //!< Its point at the side of the box the drag began, its base along the other.
-		Square //!< The whole box.
+		Square, //!< The whole box.
+		Line //!< A line from where the drag began to where it ends, s_LineWidth wide, its ends rounded (see InLineShape).
 	};
+	constexpr int c_FillShapeCount = 4;
 
 	/// Whether a pixel is in a filled shape dragged out from start to end (scene pixels, end not wrapped round from start).
 	inline bool InFillShape(FillShape shape, const Vector& start, const Vector& end, int x, int y) {
@@ -448,6 +450,21 @@ namespace SandboxDetail {
 			default:
 				return true;
 		}
+	}
+
+	/// Whether a pixel is in a line dragged from start to end (scene pixels, end not wrapped round from start), width pixels wide with
+	/// rounded ends: its middle no further than half the width from the line. (A line 1 px wide still joins up on the slant.)
+	inline bool InLineShape(const Vector& start, const Vector& end, float width, int x, int y) {
+		float px = static_cast<float>(x) + 0.5F - start.m_X;
+		float py = static_cast<float>(y) + 0.5F - start.m_Y;
+		float dx = end.m_X - start.m_X;
+		float dy = end.m_Y - start.m_Y;
+		float lengthSquared = dx * dx + dy * dy;
+		float t = lengthSquared > 0.0F ? std::clamp((px * dx + py * dy) / lengthSquared, 0.0F, 1.0F) : 0.0F;
+		float ox = px - dx * t;
+		float oy = py - dy * t;
+		float half = std::max(width * 0.5F, 0.75F);
+		return ox * ox + oy * oy <= half * half;
 	}
 
 	/// How much of what the "Earth with gold" brush paints is gold.
@@ -1139,7 +1156,10 @@ namespace SandboxDetail {
 	inline float s_LastPlantX = 0.0F; //!< Where across the plant brush last put a plant, for the spacing.
 	inline bool s_ShapeFill = false; //!< Brush type Shape: the terrain brushes fill a shape dragged out on the world rather than painting where the pointer goes.
 	inline FillShape s_FillShape = FillShape::Square; //!< The shape they fill then.
+	inline int s_LineWidth = 8; //!< How wide the Line shape is, in pixels.
+	constexpr int c_MaxLineWidth = 120; //!< The widest the Line shape goes.
 	inline bool s_ShapeDragging = false; //!< A shape being dragged out, from s_ShapeStart.
+	inline bool s_ShapeDigging = false; //!< The shape being dragged out with the right button: dug out when let go, whatever brush is in hand.
 	inline int s_RopeType = 0; //!< What the Rope tool puts down (RopeSim::GetType).
 	inline float s_RopeSlack = 0.1F; //!< How much longer than the straight line between its points the Rope tool's rope is.
 	inline float s_RopeStrength = 1.0F; //!< How much more (or less) than its kind's own the Rope tool's rope holds before it snaps.
@@ -2293,11 +2313,11 @@ namespace SandboxDetail {
 	/// A point of a line dragged on the world, on the bunker grid when snapping: across to the nearest 12 px, up and down to the nearest
 	/// 24 px (the floors bunker pieces line up on).
 	Vector SnapLinePoint(const Vector& point, bool snap);
-	/// Which way a line dragged without Shift is kept straight: up or down or across, whichever it is nearer, or only the one way.
+	/// Which ways a line dragged with Shift may go: any of the 8, or never straight up and down (Across) or straight across (UpDown).
 	enum class LineLock { Nearer, Across, UpDown };
-	/// Where a line dragged from a start toward the pointer ends: straight up or down, or straight across (as lock says), unless free
-	/// (Shift held); on the bunker grid when snapping; no longer than c_MaxLineDrag.
-	Vector LineDragEnd(const Vector& start, const Vector& pointer, bool free, bool snap, LineLock lock = LineLock::Nearer);
+	/// Where a line dragged from a start toward the pointer ends: any way, or with Shift (eightWays) the nearest of the 8 ways, every 45
+	/// degrees, that lock allows; on the bunker grid when snapping (a slanted line kept at 45); no longer than c_MaxLineDrag.
+	Vector LineDragEnd(const Vector& start, const Vector& pointer, bool eightWays, bool snap, LineLock lock = LineLock::Nearer);
 	constexpr float c_MaxLineDrag = 2400.0F; //!< The longest line a drag puts down (a lift's track), in pixels.
 	constexpr float c_MinLineDrag = 24.0F; //!< A drag shorter than this is a click.
 	/// One piece of a bunker run (see LayOutRun): which piece, and where along the run it starts and how long it is, in pixels.
