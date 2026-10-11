@@ -972,6 +972,59 @@ function HumanBehaviors.WeaponSearch(AI, Owner, Abort)
 end
 
 
+-- Fetching back what it threw (javelins, throwing axes and knives, and blades): the nearest it can see lying or stuck within reach, then
+-- back to where it was going.
+function HumanBehaviors.RetrieveThrown(AI, Owner, Abort)
+	local maxDistance = AI.isPlayerOwned and 160 or 300;
+	local Nearest, nearestDistance;
+	for id, _ in pairs(AI.ThrownIDs or {}) do
+		local Found = MovableMan:FindObjectByUniqueID(id);
+		if not Found or not MovableMan:ValidMO(Found) or not IsHeldDevice(Found) or Found.ID ~= Found.RootID then
+			AI.ThrownIDs[id] = nil; -- gone, or someone has it
+		else
+			local Device = ToHeldDevice(Found);
+			local distance = SceneMan:ShortestDistance(Owner.Pos, Device.Pos, SceneMan.SceneWrapsX).Magnitude;
+			if distance > maxDistance * 2 then
+				AI.ThrownIDs[id] = nil; -- too far to go back for
+			elseif distance < maxDistance and (Device.IsStuck or Device.Vel.Largest < 3) and Device:IsPickupableBy(Owner) and not SceneMan:IsUnseen(Device.Pos.X, Device.Pos.Y, Owner.Team) then
+				if not nearestDistance or distance < nearestDistance then
+					Nearest, nearestDistance = Device, distance;
+				end
+			end
+		end
+	end
+	if not Nearest then
+		return true;
+	end
+
+	AI.PickupHD = Nearest;
+	local prevMoveTarget, prevSceneWaypoint;
+	if Owner.MOMoveTarget and MovableMan:ValidMO(Owner.MOMoveTarget) then
+		prevMoveTarget = Owner.MOMoveTarget;
+		Owner.MOMoveTarget = nil;
+	else
+		prevSceneWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.Height/5, 4);
+	end
+	Owner:ClearAIWaypoints();
+	Owner:AddAIMOWaypoint(AI.PickupHD);
+	if prevMoveTarget then
+		Owner:AddAIMOWaypoint(prevMoveTarget);
+	elseif prevSceneWaypoint then
+		Owner:AddAISceneWaypoint(prevSceneWaypoint);
+	end
+	if Owner.AIMode == Actor.AIMODE_SENTRY then
+		AI.SentryFacing = Owner.HFlipped;
+	end
+	Owner:UpdateMovePath();
+	while Owner.IsWaitingOnNewMovePath do
+		local _ai, _ownr, _abrt = coroutine.yield();
+		if _abrt then return true end
+	end
+	SharedBehaviors.Trace(Owner, "fetching back a thrown weapon");
+	AI:CreateGoToBehavior(Owner);
+	return true;
+end
+
 -- find a tool to pick up
 function HumanBehaviors.ToolSearch(AI, Owner, Abort)
 	local maxSearchDistance;
@@ -2037,6 +2090,12 @@ function HumanBehaviors.ThrowTarget(AI, Owner, Abort)
 					AI.fire = true;
 				else
 					AI.fire = false;
+					-- A thrown weapon (a javelin, an axe, a knife) is worth fetching back once the fight is over.
+					local Thrown = Owner.EquippedItem;
+					if Thrown and Thrown:HasObjectInGroup("Weapons - Thrown") then
+						AI.ThrownIDs = AI.ThrownIDs or {};
+						AI.ThrownIDs[Thrown.UniqueID] = true;
+					end
 				end
 			else	-- no grenades left, continue attack
 				if not (Owner.AIMode == Actor.AIMODE_SENTRY or Owner.AIMode == Actor.AIMODE_SQUAD) then

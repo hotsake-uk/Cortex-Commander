@@ -458,6 +458,92 @@ namespace RTE {
 		void PostUpdate() override;
 #pragma endregion
 
+#pragma region Throwing
+		/// How a thrown weapon turns in flight (ThrowSpin).
+		enum class ThrowSpinMode : unsigned char {
+			Spinning, //!< Wheels end over end at ThrowSpinSpeed, the way a thrown sword, knife or axe goes.
+			PointFirst, //!< Turns nose-first onto the line it flies, like a javelin or spear.
+			Tumbling //!< Turns over at random, for odd-shaped things.
+		};
+
+		/// What has to lead for a thrown weapon to stick in (StickBy).
+		enum class StickMode : unsigned char {
+			Point, //!< The tip, moving along the blade: a knife, sword, javelin.
+			Edge //!< The head, moving across the blade: an axe.
+		};
+
+		/// Gets whether a unit can throw this (with its auxiliary weapon key, or by firing for a ThrownDevice). Unset, anything with a blade is.
+		bool IsThrowable() const { return m_ThrowableSet >= 0 ? m_Throwable : HasBlade(); }
+
+		/// Sets whether a unit can throw this.
+		void SetThrowable(bool throwable) {
+			m_Throwable = throwable;
+			m_ThrowableSet = 1;
+		}
+
+		/// Gets how this turns when thrown, as a ThrowSpinMode number. Unset, a one-handed blade spins and a two-handed one goes point first.
+		int GetThrowSpin() const { return static_cast<int>(m_ThrowSpinSet >= 0 ? m_ThrowSpin : (m_OneHanded ? ThrowSpinMode::Spinning : ThrowSpinMode::PointFirst)); }
+
+		/// Sets how this turns when thrown.
+		void SetThrowSpin(int spin) {
+			m_ThrowSpin = static_cast<ThrowSpinMode>(std::clamp(spin, 0, 2));
+			m_ThrowSpinSet = 1;
+		}
+
+		/// Gets how fast a spinning throw turns, in radians per second.
+		float GetThrowSpinSpeed() const { return m_ThrowSpinSpeed; }
+
+		/// Sets how fast a spinning throw turns.
+		void SetThrowSpinSpeed(float speed) { m_ThrowSpinSpeed = std::max(speed, 0.0F); }
+
+		/// Gets what has to lead for this to stick in, as a StickMode number.
+		int GetStickBy() const { return static_cast<int>(m_StickBy); }
+
+		/// Sets what has to lead for this to stick in.
+		void SetStickBy(int stickBy) { m_StickBy = static_cast<StickMode>(std::clamp(stickBy, 0, 1)); }
+
+		/// Gets the least speed the tip or edge must strike at for this to stick in, m/s.
+		float GetStickSpeed() const { return m_StickSpeed; }
+
+		/// Sets the least speed this sticks in at.
+		void SetStickSpeed(float speed) { m_StickSpeed = std::max(speed, 0.0F); }
+
+		/// Gets how deep this goes in when it sticks at full strength, in pixels. Unset, a third of the blade.
+		float GetStickDepth() const { return m_StickDepth >= 0.0F ? m_StickDepth : (m_BladeEnd - m_BladeStart).GetMagnitude() * 0.33F; }
+
+		/// Sets how deep this goes in.
+		void SetStickDepth(float depth) { m_StickDepth = depth; }
+
+		/// Gets whether a hard enough hit goes right through someone and pins them to a wall behind. Unset, a point-first throw does.
+		bool GetPinsBodies() const { return m_PinsBodiesSet >= 0 ? m_PinsBodies : GetThrowSpin() == static_cast<int>(ThrowSpinMode::PointFirst); }
+
+		/// Sets whether this pins bodies to walls.
+		void SetPinsBodies(bool pins) {
+			m_PinsBodies = pins;
+			m_PinsBodiesSet = 1;
+		}
+
+		/// Sends this off as a thrown weapon: called once it has left the hand with its throw velocity. It turns as ThrowSpin says, cuts with
+		/// its blade on the way, credited to the thrower, and sticks in what it strikes well enough.
+		/// @param thrower What threw it. Ownership is NOT transferred.
+		void StartThrownFlight(MovableObject* thrower);
+
+		/// Gets whether this is flying, thrown.
+		bool IsInThrownFlight() const { return m_ThrowState == ThrowState::Flying; }
+
+		/// Gets whether this is stuck in the ground, a wall, a unit or a thing.
+		bool IsStuck() const { return m_ThrowState == ThrowState::StuckInTerrain || m_ThrowState == ThrowState::StuckInMO || m_ThrowState == ThrowState::Pinning; }
+
+		/// Gets what this is stuck in, if it's stuck in a unit or a thing (in a body it pins to a wall, the body); nullptr in the ground or not stuck.
+		MovableObject* GetStuckIn() const;
+
+		/// Gets what threw this, while it flies or is stuck; nullptr otherwise or once that's gone.
+		MovableObject* GetThrower() const;
+
+		/// Pulls this out of whatever it's stuck in, leaving it loose.
+		void Unstick();
+#pragma endregion
+
 		void Update() override;
 
 		/// Draws this HeldDevice's current graphical representation to a
@@ -620,6 +706,69 @@ namespace RTE {
 		Timer m_BladeClashTimer; //!< Since the blade last clashed with another.
 		Timer m_BladeHitTimer; //!< Since the blade last cut something.
 		Timer m_BladeTerrainTimer; //!< Since the blade last bounced off or melted terrain, for the effects' pace.
+
+		/// Where a thrown weapon is (see StartThrownFlight).
+		enum class ThrowState : unsigned char {
+			None, //!< Not thrown: held, carried or just lying about.
+			Flying, //!< In the air after a throw.
+			StuckInTerrain, //!< Stuck in the ground or a wall.
+			StuckInMO, //!< Stuck in a unit, a limb, a shield or a thing, and moving with it.
+			Pinning //!< Stuck in a wall through a body it holds there.
+		};
+
+		bool m_Throwable; //!< See IsThrowable.
+		int m_ThrowableSet; //!< -1 until Throwable is read, so the default can follow HasBlade.
+		ThrowSpinMode m_ThrowSpin; //!< See GetThrowSpin.
+		int m_ThrowSpinSet; //!< -1 until ThrowSpin is read.
+		float m_ThrowSpinSpeed; //!< See GetThrowSpinSpeed.
+		StickMode m_StickBy; //!< See GetStickBy.
+		float m_StickSpeed; //!< See GetStickSpeed.
+		float m_StickDepth; //!< See GetStickDepth. Below 0 until set.
+		bool m_PinsBodies; //!< See GetPinsBodies.
+		int m_PinsBodiesSet; //!< -1 until PinsBodies is read.
+		SoundContainer* m_StickSound; //!< Played where this sticks in. The blade hit sound when none.
+		ThrowState m_ThrowState; //!< See ThrowState.
+		long m_ThrowerID; //!< The unique ID of what threw this.
+		long m_StuckInID; //!< The unique ID of what this is stuck in (StuckInMO), or the body it pins (Pinning).
+		Vector m_StuckLocal; //!< Where this is on what it's stuck in or pins, unflipped and unrotated from its position.
+		float m_StuckRelAngle; //!< This' angle on what it's stuck in, for facing right.
+		bool m_StuckFlipRel; //!< Whether this faces the other way to what it's stuck in.
+		Vector m_StuckAnchor; //!< Where this is fixed in the scene (StuckInTerrain, Pinning).
+		float m_StuckAngle; //!< This' angle fixed in the scene, for the quiver.
+		bool m_PinCheck; //!< Whether this went through someone hard enough to pin them, and is looking for a wall behind.
+		bool m_HitsMOsBeforeThrow; //!< HitsMOs before the throw: in flight only the blade meets units, so hits are judged as cuts or sticks.
+		Timer m_ThrowStateTimer; //!< Since the throw state last changed.
+		Timer m_ThrowSlowTimer; //!< Since a flying throw was last moving fast, to end the flight once it has settled.
+		std::array<Vector, 6> m_ThrowTrail; //!< The tip's last few places in flight, for the faint streak behind a spinning blade.
+		int m_ThrowTrailCount; //!< How many of m_ThrowTrail are filled.
+
+		/// Turns, sticks and follows for a thrown weapon this sim update, before the blade's sweep.
+		void UpdateThrown();
+
+		/// Sticks this in the ground or a wall if its tip or edge is about to strike soft enough ground fast enough, the right way on.
+		/// @return Whether it stuck.
+		bool TryStickInTerrain();
+
+		/// Sticks this into what it struck, tip in where it struck.
+		/// @param hitMO What it struck.
+		/// @param hitPos Where.
+		/// @param direction Which way it was going, normalized.
+		/// @param speed How fast, m/s.
+		void StickInMO(MovableObject* hitMO, const Vector& hitPos, const Vector& direction, float speed);
+
+		/// Judges a flying blade's hit on a unit or thing: a cut, and a stick if the tip or edge led fast enough, else a glancing bounce.
+		/// @param hitMOID What it went through.
+		/// @param hitPos Where.
+		/// @param bladeVel The blade's velocity there, m/s.
+		/// @param along How far along the blade the hit was, 0 at its base to 1 at the tip.
+		/// @param holder What it's credited to (the thrower, or this).
+		void HandleThrownHit(MOID hitMOID, const Vector& hitPos, const Vector& bladeVel, float along, MovableObject* holder);
+
+		/// Gets whether a motion leads with the part that sticks: the tip moving along the blade, or the head moving across it.
+		bool LeadsWithStickingPart(const Vector& motion, const Vector& bladeDirection) const;
+
+		/// Ends the thrown state: back to an ordinary item, unpinned.
+		void EndThrowState();
 
 		/// Sets this' parent, and when it's let go of (dropped, or put away), puts an energy blade out and stops its hum, and ends a swing.
 		/// @param newParent The new parent, nullptr for none. Ownership is NOT transferred!
