@@ -6,6 +6,7 @@
 #include "TerrainTrees.h"
 #include "AMover.h"
 
+#include <cstring>
 #include <fstream>
 #include <sstream>
 #include <unordered_set>
@@ -2198,10 +2199,10 @@ namespace SandboxDetail {
 		return snap ? Vector(std::round(point.m_X / 12.0F) * 12.0F, std::round(point.m_Y / 24.0F) * 24.0F) : point;
 	}
 
-	Vector LineDragEnd(const Vector& start, const Vector& pointer, bool free, bool snap) {
+	Vector LineDragEnd(const Vector& start, const Vector& pointer, bool free, bool snap, LineLock lock) {
 		Vector along = g_SceneMan.ShortestDistance(start, pointer, g_SceneMan.SceneWrapsX());
 		if (!free) {
-			if (std::abs(along.m_X) > std::abs(along.m_Y)) {
+			if (lock == LineLock::Across || (lock == LineLock::Nearer && std::abs(along.m_X) > std::abs(along.m_Y))) {
 				along.m_Y = 0.0F;
 			} else {
 				along.m_X = 0.0F;
@@ -2252,11 +2253,305 @@ namespace SandboxDetail {
 		mover.SetStops(stops);
 	}
 
+	/// A bunker piece that can be dragged out into a run of itself: which way it runs, the piece that takes over when it is dragged more the
+	/// other way (a tunnel's shaft), the pieces that go at its ends (a bridge's), and whether it can be slanted (not a piece with things of
+	/// its own placed with it, as a background ladder's rungs).
+	struct RunPiece {
+		const char* Name;
+		bool UpDown;
+		const char* Partner = nullptr;
+		const char* First = nullptr;
+		const char* Last = nullptr;
+		bool Slants = true;
+	};
+
+	/// Matched by name in whichever module the piece picked is from (the Browncoats have their own walls, floors and ceilings).
+	constexpr RunPiece c_RunPieces[] = {
+	    // Tunnels and shafts, walls and steel, each the other's partner.
+	    {"Tunnel A", false, "Shaft A"},
+	    {"Tunnel B", false, "Shaft B"},
+	    {"Shaft A", true, "Tunnel A"},
+	    {"Shaft B", true, "Tunnel B"},
+	    {"Horizontal Wall", false, "Vertical Wall"},
+	    {"Vertical Wall", true, "Horizontal Wall"},
+	    {"Steel Reinforcing Horizontal", false, "Steel Reinforcing Vertical"},
+	    {"Steel Reinforcing Vertical", true, "Steel Reinforcing Horizontal"},
+	    // Floors, ceilings, platforms and fills across.
+	    {"Floor A", false},
+	    {"Floor B", false},
+	    {"Floor C", false},
+	    {"Floor D", false},
+	    {"Ceiling A", false},
+	    {"Ceiling B", false},
+	    {"Ceiling C", false},
+	    {"Ceiling D", false},
+	    {"Concrete Platform", false},
+	    {"Metal Platform", false, nullptr, "Left Metal Platform", "Right Metal Platform"},
+	    {"Left Metal Platform", false, nullptr, "Left Metal Platform", "Right Metal Platform"},
+	    {"Right Metal Platform", false, nullptr, "Left Metal Platform", "Right Metal Platform"},
+	    {"Metal Bridge Middle A", false, nullptr, "Metal Bridge Left A", "Metal Bridge Right A"},
+	    {"Metal Bridge Left A", false, nullptr, "Metal Bridge Left A", "Metal Bridge Right A"},
+	    {"Metal Bridge Right A", false, nullptr, "Metal Bridge Left A", "Metal Bridge Right A"},
+	    {"Rubberized Platform A", false},
+	    {"Rubberized Platform B", false},
+	    {"Thin Platform A", false},
+	    {"Thin Platform B", false},
+	    {"Horizontal Grate Floor", false},
+	    {"Fill 4X16", false},
+	    {"8x2 Concrete Fill", false},
+	    {"8x Guardrail", false},
+	    {"4x1 Beam 1", false},
+	    {"4x1 Beam 2", false},
+	    {"4x1 Beam 3", false},
+	    {"Plank Floor", false},
+	    {"Palisade", false},
+	    {"Timber Room", false},
+	    {"Timber Room Wide", false},
+	    {"Stone Room", false},
+	    // Walls, ladders and the chain up and down.
+	    {"Wall Left A", true},
+	    {"Wall Left B", true},
+	    {"Wall Left C", true},
+	    {"Wall Left D", true},
+	    {"Wall Right A", true},
+	    {"Wall Right B", true},
+	    {"Wall Right C", true},
+	    {"Wall Right D", true},
+	    {"Left Ballistic Wall", true},
+	    {"Right Ballistic Wall", true},
+	    {"Horizontal Grate Wall", true},
+	    {"Left Ladder", true},
+	    {"Right Ladder", true},
+	    {"Background Ladder", true, nullptr, nullptr, nullptr, false},
+	    {"Humongous CHONK Megachain", true},
+	};
+
+	const RunPiece* RunPieceOf(const Preset& preset) {
+		if (preset.ClassName != "TerrainObject") {
+			return nullptr;
+		}
+		for (const RunPiece& piece: c_RunPieces) {
+			if (preset.PresetName == piece.Name) {
+				return &piece;
+			}
+		}
+		return nullptr;
+	}
+
+	/// A Build piece by name, from the same module as another (nullptr for none, or none of that name there).
+	const Preset* StructureNamed(const char* name, int moduleID) {
+		if (!name) {
+			return nullptr;
+		}
+		for (const Preset& preset: ListFor(Tool::Structure)) {
+			if (preset.ModuleID == moduleID && preset.PresetName == name) {
+				return &preset;
+			}
+		}
+		return nullptr;
+	}
+
+	bool DragsRun(Tool kind) {
+		if (kind != Tool::Structure) {
+			return false;
+		}
+		const Preset* preset = ChosenPreset(Tool::Structure, s_StructureChoice);
+		return preset && preset->Width > 0 && RunPieceOf(*preset);
+	}
+
+	LineLock RunLock(const Preset& preset) {
+		const RunPiece* piece = RunPieceOf(preset);
+		if (!piece || (piece->Partner && StructureNamed(piece->Partner, preset.ModuleID))) {
+			return LineLock::Nearer;
+		}
+		return piece->UpDown ? LineLock::UpDown : LineLock::Across;
+	}
+
+	RunLayout LayOutRun(const Preset& chosen, const Vector& start, const Vector& end, bool snap) {
+		RunLayout layout;
+		const RunPiece* piece = RunPieceOf(chosen);
+		if (!piece || chosen.Width <= 0) {
+			return layout;
+		}
+		Vector along = g_SceneMan.ShortestDistance(start, end, g_SceneMan.SceneWrapsX());
+		const Preset* middle = &chosen;
+		layout.UpDown = piece->UpDown;
+		// Dragged more the other way: the partner, if it has one.
+		if (std::abs(piece->UpDown ? along.m_X : along.m_Y) > std::abs(piece->UpDown ? along.m_Y : along.m_X)) {
+			if (const Preset* partner = StructureNamed(piece->Partner, chosen.ModuleID); partner && partner->Width > 0) {
+				middle = partner;
+				layout.UpDown = !layout.UpDown;
+				piece = RunPieceOf(*partner);
+			}
+		}
+		if (piece->First) {
+			// A piece of a run with ends is laid as its middle (listed first of them).
+			for (const RunPiece& family: c_RunPieces) {
+				if (family.First && std::strcmp(family.First, piece->First) == 0) {
+					if (const Preset* found = StructureNamed(family.Name, chosen.ModuleID); found && found->Width > 0) {
+						middle = found;
+					}
+					break;
+				}
+			}
+		}
+		auto lengthOf = [&layout](const Preset& tile) { return static_cast<float>(layout.UpDown ? tile.Height : tile.Width); };
+		auto thicknessOf = [&layout](const Preset& tile) { return static_cast<float>(layout.UpDown ? tile.Width : tile.Height); };
+		const float step = lengthOf(*middle);
+		if (step <= 0.0F) {
+			return layout;
+		}
+		float main = layout.UpDown ? along.m_Y : along.m_X;
+		float cross = piece->Slants ? (layout.UpDown ? along.m_X : along.m_Y) : 0.0F;
+		if (snap) {
+			cross = std::round(cross / 12.0F) * 12.0F;
+		}
+		const int count = std::max(1, static_cast<int>(std::round(std::abs(main) / step)) + 1);
+		const Preset* first = count > 1 ? StructureNamed(piece->First, middle->ModuleID) : nullptr;
+		const Preset* last = count > 1 ? StructureNamed(piece->Last, middle->ModuleID) : nullptr;
+		float at = 0.0F;
+		for (int i = 0; i < count; ++i) {
+			const Preset* tile = (i == 0 && first) ? first : ((i == count - 1 && last) ? last : middle);
+			layout.Tiles.push_back({tile, at, lengthOf(*tile)});
+			layout.Thickness = std::max(layout.Thickness, thicknessOf(*tile));
+			at += lengthOf(*tile);
+		}
+		// The first piece where a click at the start puts it; dragged back, the run is laid from the far end, so its end pieces stay the right way round.
+		Vector firstCorner = StructureCorner(*middle, start, snap);
+		const float firstMiddle = layout.Tiles.front().Length * 0.5F;
+		const float lastMiddle = layout.Length() - layout.Tiles.back().Length * 0.5F;
+		const float span = lastMiddle - firstMiddle;
+		if (main < 0.0F) {
+			if (layout.UpDown) {
+				firstCorner.m_Y -= span;
+				firstCorner.m_X += cross;
+			} else {
+				firstCorner.m_X -= span;
+				firstCorner.m_Y += cross;
+			}
+			cross = -cross;
+		}
+		layout.Corner = firstCorner;
+		layout.Pivot = firstMiddle;
+		layout.Slope = span > 0.0F ? cross / span : 0.0F;
+		return layout;
+	}
+
+	/// A run slanted (LayOutRun) built as one piece: each of its pieces' layers copied in, a column at a time across (a row up and down), each
+	/// moved by the slant, and its pieces' lamps with them; put down as one. Undone as one, with the rest of its click.
+	void PlaceSlantedRun(const RunLayout& layout) {
+		const Preset* firstPreset = layout.Tiles.front().Piece;
+		const TerrainObject* pattern = dynamic_cast<const TerrainObject*>(g_PresetMan.GetEntityPreset(firstPreset->ClassName, firstPreset->PresetName, firstPreset->ModuleID));
+		if (!pattern) {
+			return;
+		}
+		std::vector<const TerrainObject*> pieces;
+		for (const RunTile& tile: layout.Tiles) {
+			pieces.push_back(dynamic_cast<const TerrainObject*>(g_PresetMan.GetEntityPreset(tile.Piece->ClassName, tile.Piece->PresetName, tile.Piece->ModuleID)));
+			if (!pieces.back()) {
+				return;
+			}
+		}
+		const int length = static_cast<int>(std::ceil(layout.Length()));
+		auto offsetAt = [&layout](int along) { return static_cast<int>(std::round(layout.Offset(static_cast<float>(along)))); };
+		const int lowest = std::min(offsetAt(0), offsetAt(length - 1));
+		const int highest = std::max(offsetAt(0), offsetAt(length - 1));
+		const int thickness = static_cast<int>(std::ceil(layout.Thickness)) + highest - lowest;
+		const int width = layout.UpDown ? thickness : length;
+		const int height = layout.UpDown ? length : thickness;
+		// Each layer, if any of the pieces has it, as deep as theirs (the game's are 8 bit).
+		auto makeLayer = [&](BITMAP* (TerrainObject::*layerOf)() const) -> BITMAP* {
+			int depth = 0;
+			for (const TerrainObject* piece: pieces) {
+				if (BITMAP* source = (piece->*layerOf)()) {
+					depth = bitmap_color_depth(source);
+					break;
+				}
+			}
+			if (depth == 0) {
+				return nullptr;
+			}
+			BITMAP* layer = create_bitmap_ex(depth, width, height);
+			clear_to_color(layer, bitmap_mask_color(layer));
+			for (size_t i = 0; i < pieces.size(); ++i) {
+				BITMAP* source = (pieces[i]->*layerOf)();
+				if (!source) {
+					continue;
+				}
+				const int start = static_cast<int>(layout.Tiles[i].Start);
+				const int run = layout.UpDown ? source->h : source->w;
+				for (int step = 0; step < run && start + step < length; ++step) {
+					const int moved = offsetAt(start + step) - lowest;
+					if (layout.UpDown) {
+						blit(source, layer, 0, step, moved, start + step, source->w, 1);
+					} else {
+						blit(source, layer, step, 0, start + step, moved, 1, source->h);
+					}
+				}
+			}
+			return layer;
+		};
+		BITMAP* fgColor = makeLayer(&TerrainObject::GetFGColorBitmap);
+		BITMAP* bgColor = makeLayer(&TerrainObject::GetBGColorBitmap);
+		BITMAP* material = makeLayer(&TerrainObject::GetMaterialBitmap);
+		TerrainObject* run = dynamic_cast<TerrainObject*>(pattern->Clone());
+		run->UseBitmaps(fgColor, bgColor, material);
+		for (size_t i = 0; i < pieces.size(); ++i) {
+			// Each piece's lamps where they are on it, moved with its slant.
+			for (const TerrainLight& light: pieces[i]->GetLights()) {
+				TerrainLight placed = light;
+				const float along = layout.Tiles[i].Start + (layout.UpDown ? light.m_Pos.m_Y : light.m_Pos.m_X);
+				const float moved = static_cast<float>(offsetAt(static_cast<int>(along)) - lowest);
+				placed.m_Pos = layout.UpDown ? Vector(light.m_Pos.m_X + moved, along) : Vector(along, light.m_Pos.m_Y + moved);
+				run->AddLight(placed);
+			}
+		}
+		Vector corner = layout.UpDown ? layout.Corner + Vector(static_cast<float>(lowest), 0.0F) : layout.Corner + Vector(0.0F, static_cast<float>(lowest));
+		g_SceneMan.WrapPosition(corner);
+		run->SetPos(corner);
+		RecordTerrainObjectArea(*run);
+		g_SceneMan.AddSceneObject(run);
+		for (BITMAP* layer: {fgColor, bgColor, material}) {
+			if (layer) {
+				destroy_bitmap(layer);
+			}
+		}
+	}
+
+	/// A run dragged out (stroke.Position to stroke.Position2): straight, its pieces each put down as a click puts one; slanted, built as one.
+	void PlaceRun(const Preset& preset, const Stroke& stroke) {
+		RunLayout layout = LayOutRun(preset, stroke.Position, stroke.Position2, stroke.Count > 0);
+		if (layout.Tiles.empty()) {
+			return;
+		}
+		if (layout.Slope != 0.0F) {
+			PlaceSlantedRun(layout);
+			return;
+		}
+		for (const RunTile& tile: layout.Tiles) {
+			const Entity* entity = g_PresetMan.GetEntityPreset(tile.Piece->ClassName, tile.Piece->PresetName, tile.Piece->ModuleID);
+			TerrainObject* object = entity ? dynamic_cast<TerrainObject*>(entity->Clone()) : nullptr;
+			if (!object) {
+				continue;
+			}
+			Vector position = layout.At(tile.Start, 0.0F) - Vector(tile.Piece->OffsetX, tile.Piece->OffsetY);
+			g_SceneMan.WrapPosition(position);
+			object->SetPos(position);
+			RecordTerrainObjectArea(*object);
+			g_SceneMan.AddSceneObject(object);
+		}
+	}
+
 	void PlaceStructure(const Stroke& stroke) {
 		const Preset* preset = ChosenPreset(Tool::Structure, stroke.Choice);
 		const Entity* entity = preset ? g_PresetMan.GetEntityPreset(preset->ClassName, preset->PresetName, preset->ModuleID) : nullptr;
 		SceneObject* object = entity ? dynamic_cast<SceneObject*>(entity->Clone()) : nullptr;
 		if (!object) {
+			return;
+		}
+		if (dynamic_cast<TerrainObject*>(object) && RunPieceOf(*preset) && !stroke.Position2.IsZero()) {
+			delete object;
+			PlaceRun(*preset, stroke);
 			return;
 		}
 		// The same place the preview showed it.

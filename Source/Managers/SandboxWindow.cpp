@@ -2083,9 +2083,9 @@ namespace SandboxDetail {
 			}
 		} else if (tool.Kind == Tool::Structure) {
 			if (const Preset* preset = ChosenPreset(Tool::Structure, s_StructureChoice)) {
-				// The piece itself, see-through, exactly where a click will put it, with its outline.
+				// The piece itself, see-through, exactly where a click will put it, with its outline (not while a run of it is dragged, drawn as that).
 				const PiecePicture& picture = PictureOf(*preset);
-				if (picture.Width > 0) {
+				if (picture.Width > 0 && !(s_LineDragging && DragsRun(tool.Kind))) {
 					Vector corner = FromCamera(StructurePosition(*preset, MouseScenePosition(), s_SnapToGrid) + Vector(picture.OffsetX, picture.OffsetY));
 					ImVec2 topLeft(ViewOrigin().x + corner.m_X / scale, ViewOrigin().y + corner.m_Y / scale);
 					ImVec2 bottomRight(topLeft.x + static_cast<float>(picture.Width) / scale, topLeft.y + static_cast<float>(picture.Height) / scale);
