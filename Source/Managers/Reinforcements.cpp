@@ -26,6 +26,8 @@ namespace SandboxDetail {
 		std::array<int, c_Sides> s_LastScore{};
 		std::array<float, c_Sides> s_LastFunds = {-1.0F, -1.0F, -1.0F, -1.0F};
 		std::unordered_map<long long, float> s_CostCache; //!< By module and card.
+		std::array<float, c_Sides> s_CarryPoints{}; //!< Points carried into the next battle (CarryIntoNextBattle).
+		bool s_Carrying = false;
 
 		void Note(const std::string& note) {
 			s_ModeRun.Note = note;
@@ -74,18 +76,38 @@ namespace SandboxDetail {
 		}
 	} // namespace
 
-	void ForgetReinforcements() {
-		for (CommandPoints& points: s_CommandPoints) {
-			points = CommandPoints();
-			points.Points = c_StartPoints;
+	void CarryIntoNextBattle() {
+		for (int side = 0; side < c_Sides; ++side) {
+			s_CarryPoints[side] = BattlePlayerCommands(side) ? std::max(s_CommandPoints[side].Points, 0.0F) : 0.0F;
 		}
+		s_Carrying = true;
+	}
+
+	void ForgetReinforcements() {
+		const bool carrying = s_Carrying;
+		s_Carrying = false;
+		for (int side = 0; side < c_Sides; ++side) {
+			CommandPoints& points = s_CommandPoints[side];
+			points = CommandPoints();
+			points.Points = c_StartPoints + (carrying ? s_CarryPoints[side] : 0.0F);
+		}
+		s_CarryPoints.fill(0.0F);
 		s_Seen.clear();
 		s_LastScore.fill(0);
 		s_LastFunds.fill(-1.0F);
 		s_PendingCard = -1;
 		s_HasLandingSpot = false;
 		ForgetPowers();
-		ForgetVeterans();
+		if (!carrying) {
+			ForgetVeterans();
+		} else {
+			// On into the next linked battle: one of your survivors says so.
+			for (Actor* actor: SandboxAccess::Actors()) {
+				if (BattlePlayerCommands(actor->GetTeam()) && IsSoldier(actor) && !actor->IsPlayerControlled() && actor->Say("NextBattle")) {
+					break;
+				}
+			}
+		}
 		ForgetBattleReport();
 		ForgetEnemyCommander();
 		ForgetAlerts();

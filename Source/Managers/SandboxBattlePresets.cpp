@@ -10,6 +10,7 @@ namespace SandboxDetail {
 		struct BattlePreset {
 			std::string Name;
 			bool WithMap = false; //!< Set up again whenever the map starts.
+			bool Linked = false; //!< One of the map's linked battles, played in the list's order.
 			std::array<BattleSettings, c_Sides> Cards;
 			BattleModeSettings Mode;
 		};
@@ -20,6 +21,14 @@ namespace SandboxDetail {
 		bool s_PresetPending = false; //!< A game has started: its map's setup marked "with map" goes in on the next update.
 		char s_PresetName[64] = "";
 		std::string s_PresetNote; //!< What the last save or load did, shown under the list.
+
+		/// Linked battles: the setups being played in turn, by name, and which is on.
+		struct LinkedRun {
+			bool On = false;
+			std::vector<std::string> Names;
+			int At = 0;
+		};
+		LinkedRun s_Linked;
 
 		/// A team's factions, saved by module name (a module's ID depends on which mods are loaded).
 		struct FactionList {
@@ -277,6 +286,8 @@ namespace SandboxDetail {
 			preset.Name = name;
 			auto withMap = lines.find("WithMap");
 			preset.WithMap = withMap != lines.end() && withMap->second == "1";
+			auto linked = lines.find("Linked");
+			preset.Linked = linked != lines.end() && linked->second == "1";
 			for (int side = 0; side < c_Sides; ++side) {
 				Loader load{lines, "Team" + std::to_string(side) + "."};
 				VisitCard(preset.Cards[side], load);
@@ -344,6 +355,7 @@ namespace SandboxDetail {
 			for (BattlePreset& preset: s_Presets) {
 				file << "\n[" << preset.Name << "]\n";
 				file << "WithMap = " << ToText(preset.WithMap) << '\n';
+				file << "Linked = " << ToText(preset.Linked) << '\n';
 				for (int side = 0; side < c_Sides; ++side) {
 					Saver save{file, "Team" + std::to_string(side) + "."};
 					VisitCard(preset.Cards[side], save);
@@ -367,6 +379,39 @@ namespace SandboxDetail {
 			SendBattleMode();
 		}
 
+		/// Plays a linked battle: its setup on the Battle tab, and its game started. With carry, your team's points and survivors (and their
+		/// ranks) go on into it.
+		bool PlayLinked(int at, bool carry) {
+			if (at < 0 || at >= static_cast<int>(s_Linked.Names.size())) {
+				return false;
+			}
+			auto preset = std::find_if(s_Presets.begin(), s_Presets.end(), [&](const BattlePreset& each) { return each.Name == s_Linked.Names[at]; });
+			if (preset == s_Presets.end()) {
+				s_PresetNote = "Linked battle \"" + s_Linked.Names[at] + "\" is no longer saved: the linked battles end here.";
+				s_Linked.On = false;
+				return false;
+			}
+			s_Linked.At = at;
+			if (carry) {
+				CarryIntoNextBattle();
+			}
+			UsePreset(*preset);
+			SendBattleMode(BattleModeStart);
+			s_PresetNote = "Linked battle " + std::to_string(at + 1) + " of " + std::to_string(s_Linked.Names.size()) + ": \"" + preset->Name + "\".";
+			return true;
+		}
+
+		void StartLinked() {
+			s_Linked = LinkedRun();
+			for (const BattlePreset& preset: s_Presets) {
+				if (preset.Linked) {
+					s_Linked.Names.push_back(preset.Name);
+				}
+			}
+			s_Linked.On = !s_Linked.Names.empty();
+			PlayLinked(0, false);
+		}
+
 		/// A name fit for a "[Name]" line.
 		std::string CleanName(const char* typed) {
 			std::string name = Trim(typed);
@@ -377,6 +422,40 @@ namespace SandboxDetail {
 
 	void BattlePresetsNewGame() {
 		s_PresetPending = true;
+		s_Linked = LinkedRun();
+	}
+
+	bool LinkedBattleControls() {
+		if (!s_Linked.On || s_Linked.Names.empty()) {
+			return false;
+		}
+		const int count = static_cast<int>(s_Linked.Names.size());
+		const int at = std::clamp(s_Linked.At, 0, count - 1);
+		ImGui::TextColored(ImVec4(0.6F, 0.85F, 1.0F, 1.0F), "Linked battles: %d of %d, \"%s\"", at + 1, count, s_Linked.Names[at].c_str());
+		if (!s_ModeRun.Running || !s_ModeRun.Over) {
+			return false;
+		}
+		const int yours = CommandedTeam();
+		const bool won = yours < 0 || s_ModeRun.Winner == yours;
+		if (!won) {
+			ImGui::TextColored(ImVec4(1.0F, 0.5F, 0.4F, 1.0F), "Lost: the linked battles end here.");
+			if (ToolUI::Button("Start the linked battles over", ImVec2(-1.0F, 0.0F))) {
+				StartLinked();
+				return true;
+			}
+			return false;
+		}
+		if (at + 1 >= count) {
+			ImGui::TextColored(ImVec4(0.5F, 1.0F, 0.5F, 1.0F), "Every linked battle won!");
+			return false;
+		}
+		const std::string label = "Next battle: " + s_Linked.Names[at + 1];
+		const bool clicked = ToolUI::Button(label.c_str(), ImVec2(-1.0F, 0.0F));
+		if (clicked) {
+			PlayLinked(at + 1, true);
+		}
+		ImGui::SetItemTooltip("On to the next linked battle. Your points left over and your units still standing (with their ranks) go on into it, and count towards your team's size there.");
+		return clicked;
 	}
 
 	void BattlePresetsUpdate() {
@@ -445,6 +524,9 @@ namespace SandboxDetail {
 			}
 			ImGui::SetItemTooltip("Set this up whenever the map starts: after a reset, or in a new game.");
 			ImGui::SameLine();
+			changed |= ToolUI::Checkbox("Linked", &preset.Linked);
+			ImGui::SetItemTooltip("One of this map's linked battles: played one after another, in this list's order, with your points left over and your survivors\ngoing on from each won battle into the next.");
+			ImGui::SameLine();
 			if (ImGui::SmallButton("Load")) {
 				UsePreset(preset);
 				s_PresetNote = "\"" + preset.Name + "\" loaded.";
@@ -466,6 +548,14 @@ namespace SandboxDetail {
 			ImGui::SameLine();
 			ImGui::TextUnformatted(preset.Name.c_str());
 			ImGui::PopID();
+		}
+		const int linked = static_cast<int>(std::count_if(s_Presets.begin(), s_Presets.end(), [](const BattlePreset& preset) { return preset.Linked; }));
+		if (linked > 0) {
+			const std::string label = "Play the linked battles (" + std::to_string(linked) + ")";
+			if (ToolUI::Button(label.c_str(), ImVec2(-1.0F, 0.0F))) {
+				StartLinked();
+			}
+			ImGui::SetItemTooltip("Starts the first linked setup. Win it and the next can be started from the battle panel or the after-battle report, your points left over\nand your units still standing going on into it. Lose and the run ends.");
 		}
 		if (remove >= 0) {
 			s_PresetNote = "\"" + s_Presets[remove].Name + "\" deleted.";

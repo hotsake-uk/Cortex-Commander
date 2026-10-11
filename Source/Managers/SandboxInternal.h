@@ -2288,6 +2288,10 @@ namespace SandboxDetail {
 	void BattlePresetsUpdate();
 	/// The Battle tab's setups saved for the map, to save, load, delete, or mark to load with the map.
 	void BattlePresetsPanel();
+
+	/// Linked battles (SandboxBattlePresets.cpp): which of them is on, and once it's won, the button to the next. Call inside an ImGui window.
+	/// True when a battle was started from it.
+	bool LinkedBattleControls();
 	void DrawBattleMarks();
 	void TakeBattleTool(Tool kind, int team);
 	bool AddZoneCorner(std::vector<Vector>& draft, BattleSettings& settings, const Vector& position, float closeWithin);
@@ -2544,6 +2548,9 @@ namespace SandboxDetail {
 
 	/// What a card's unit costs, as bought, for a side's faction. 0 if its faction has no such unit. Kept once worked out.
 	float ReinforcementCost(int card, int side);
+
+	/// The next battle's start (a linked battle) keeps the points the teams you command have left now, and their units' ranks.
+	void CarryIntoNextBattle();
 
 	/// The Commander Toolbar's reinforcements group: the points, the cards, the landing spot, the craft and how many at a time.
 	void ReinforcementTiles();
