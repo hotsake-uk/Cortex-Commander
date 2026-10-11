@@ -110,10 +110,8 @@ namespace RTE {
 		bool DigGoal = false; //!< Whether the goal is a place to dig to (RC-11): a goal inside the ground is the node it is in, not the open node next to it, so the route ends in the ground.
 		float DigCostScale = 1.0F; //!< What a node dug through costs it, as a share of the usual price (DigNodeCost): under 1 tunnels where going round would be shorter for a move.
 		static constexpr float c_DigToCostScale = 0.25F; //!< DigCostScale on a dig-to order (RC-11): a node dug costs about one or two walked, so a dig-to tunnels through a hill rather than walking four times as far round it.
-		bool Direct = false; //!< On a triple-clicked order (Actor::StandingOrder::Direct): the shortest way whatever it takes. Jet flights cost it about half (c_DirectFlightCostScale), and a dig-to keeps to the straight line (LineCost).
-		static constexpr float c_DirectCaution = 0.1F; //!< The most Caution a searcher on a direct order has: hard flights and long drops cost it next to nothing over their time.
-		static constexpr float c_DirectDigCostScale = 0.02F; //!< DigCostScale on a direct dig-to: a node dug costs it less than one walked, so it tunnels the straight way and goes round only what its digger can't cut.
-		static constexpr float c_DirectFlightCostScale = 0.5F; //!< What a jet flight's time, take-off and fuel cost a searcher on a direct order, as a share of the usual: it jumps where others walk.
+		float FlightCostScale = 1.0F; //!< What a jet flight's time, take-off and fuel cost it, as a share of the usual: under 1 on a direct order (Actor::StandingOrder::Direct), which jumps where others walk.
+		float LineWeight = 0.0F; //!< On a dig-to, what each node off the straight line from start to goal costs it, in nodes walked (LineCost): over 0 on a direct order, which digs straight.
 		unsigned RouteSeed = 0; //!< Its own taste in routes (Actor::GetRouteSeed): each part of the map costs it a little more or less, by the seed, so units with different seeds go different ways where the ways are near enough alike. 0 for none: the shortest.
 	};
 
@@ -725,7 +723,7 @@ namespace RTE {
 		/// each 8 by 8 block of nodes, so a route takes or leaves whole stretches, not single cells.
 		float VarietyCost(const PathNode& node) const;
 
-		/// What a step into a node costs a direct dig-to (PathAgent::Direct with DigGoal) for being off the straight line from the search's start to
+		/// What a step into a node costs a direct dig-to (PathAgent::LineWeight with DigGoal) for being off the straight line from the search's start to
 		/// its goal: a little, by how far off, so of the many routes of eight-way steps that are all as short, the one along the line is taken.
 		/// @param node The node stepped into.
 		/// @return The cost, 0 when there's no line to keep to.
