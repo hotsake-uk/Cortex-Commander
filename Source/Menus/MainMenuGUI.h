@@ -7,6 +7,7 @@
 #include "ModManagerGUI.h"
 
 #include <array>
+#include <vector>
 
 namespace RTE {
 
@@ -101,6 +102,10 @@ namespace RTE {
 			SandboxEmptyButton,
 			SandboxCurrentMapButton,
 			SandboxMapSelectButton,
+			SandboxSmallButton,
+			SandboxMediumButton,
+			SandboxLargeButton,
+			SandboxExtraLargeButton,
 			ButtonCount
 		};
 
@@ -116,6 +121,13 @@ namespace RTE {
 		bool m_MenuScreenChange; //!< Whether the active menu screen was changed and a different one needs to be shown.
 		bool m_MetaGameNoticeShown; //!< Whether the MetaGame notice and tutorial offer have been shown to the player.
 		std::string m_SandboxCurrentMapName; //!< The map the sandbox screen's "Current map" button starts on: the map of the game in progress, else the Sandbox game mode's own.
+		std::string m_SandboxPickedSize; //!< The size of new sandbox map picked on the sandbox screen ("Small" to "Extra Large"), while its theme is being picked; empty otherwise.
+		GUICollectionBox* m_SandboxMapsPanel; //!< The sandbox screen's panel of existing maps.
+		GUICollectionBox* m_SandboxSizePanel; //!< The sandbox screen's panel of new sandbox map sizes.
+		GUICollectionBox* m_SandboxThemePanel; //!< The panel that replaces those two once a size is picked, with a button per theme.
+		GUILabel* m_SandboxThemeLabel; //!< The theme panel's title, naming the size picked.
+		std::vector<std::pair<GUIButton*, std::string>> m_SandboxThemeButtons; //!< The theme panel's buttons and the theme each starts.
+		GUIButton* m_SandboxThemeBackButton; //!< The theme panel's button back to the sizes.
 
 		Timer m_ResumeButtonBlinkTimer; //!< Activity resume button blink timer.
 		Timer m_CreditsScrollTimer; //!< Credits scrolling timer.
@@ -150,6 +162,13 @@ namespace RTE {
 
 		/// Creates all the elements that compose the sandbox start menu screen.
 		void CreateSandboxScreen();
+
+		/// Adds a button to the sandbox theme panel for every theme the sandbox maps come in, taken from the Small maps ("Sandbox Small - <theme>").
+		void CreateSandboxThemeButtons();
+
+		/// Shows the sandbox screen's maps and sizes, or its themes for a picked size.
+		/// @param pickedSize The size picked ("Small" to "Extra Large"), or empty for the maps and sizes.
+		void ShowSandboxPanels(const std::string& pickedSize);
 
 		/// Creates all the elements that compose the credits menu screen.
 		void CreateCreditsScreen();

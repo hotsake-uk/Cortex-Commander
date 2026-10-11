@@ -527,6 +527,23 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ADoor) {
 	                        luabind::value("STOPPED", ADoor::DoorState::STOPPED)];
 }
 
+LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AMover) {
+	return ConcreteTypeLuaClassDefinition(AMover, Actor)
+
+	    .property("Deck", &AMover::GetDeck, &LuaAdaptersPropertyOwnershipSafetyFaker::AMoverSetDeck)
+	    .property("Speed", &AMover::GetSpeed, &AMover::SetSpeed)
+	    .property("StopWait", &AMover::GetStopWait, &AMover::SetStopWait)
+	    .property("OnCall", &AMover::GetOnCall, &AMover::SetOnCall)
+	    .property("StopCount", &AMover::GetStopCount)
+	    .property("CurrentStop", &AMover::GetCurrentStop)
+	    .property("TargetStop", &AMover::GetTargetStop)
+
+	    .def("IsMoving", &AMover::IsMoving)
+	    .def("GetStopStandingPos", &AMover::GetStopStandingPos)
+	    .def("GetDeckStandingPos", &AMover::GetDeckStandingPos)
+	    .def("CallTo", &AMover::CallTo);
+}
+
 LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AEmitter) {
 	return ConcreteTypeLuaClassDefinition(AEmitter, Attachable)
 
@@ -1590,6 +1607,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, SoundContainer) {
 
 	    .property("SoundOverlapMode", &SoundContainer::GetSoundOverlapMode, &SoundContainer::SetSoundOverlapMode)
 	    .property("BusRouting", &SoundContainer::GetBusRouting, &SoundContainer::SetBusRouting)
+	    .property("MixCategory", &SoundContainer::GetMixCategory, &SoundContainer::SetMixCategory)
 	    .property("Immobile", &SoundContainer::IsImmobile, &SoundContainer::SetImmobile)
 	    .property("AttenuationStartDistance", &SoundContainer::GetAttenuationStartDistance, &SoundContainer::SetAttenuationStartDistance)
 	    .property("CustomPanValue", &SoundContainer::GetCustomPanValue, &SoundContainer::SetCustomPanValue)
@@ -1621,6 +1639,16 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, SoundContainer) {
 	    .enum_("BusRouting")[luabind::value("SFX", SoundContainer::BusRouting::SFX),
 	                         luabind::value("UI", SoundContainer::BusRouting::UI),
 	                         luabind::value("MUSIC", SoundContainer::BusRouting::MUSIC)]
+
+	    .enum_("MixCategory")[luabind::value("MIX_AUTO", AudioMan::MIX_AUTO),
+	                          luabind::value("MIX_WEAPONS", AudioMan::MIX_WEAPONS),
+	                          luabind::value("MIX_EXPLOSIONS", AudioMan::MIX_EXPLOSIONS),
+	                          luabind::value("MIX_IMPACTS", AudioMan::MIX_IMPACTS),
+	                          luabind::value("MIX_FOOTSTEPS", AudioMan::MIX_FOOTSTEPS),
+	                          luabind::value("MIX_VOICES", AudioMan::MIX_VOICES),
+	                          luabind::value("MIX_ENGINES", AudioMan::MIX_ENGINES),
+	                          luabind::value("MIX_WORLD", AudioMan::MIX_WORLD),
+	                          luabind::value("MIX_UI", AudioMan::MIX_UI)]
 
 	    .enum_("SoundOverlapMode")[luabind::value("OVERLAP", SoundContainer::SoundOverlapMode::OVERLAP),
 	                               luabind::value("RESTART", SoundContainer::SoundOverlapMode::RESTART),

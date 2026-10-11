@@ -140,7 +140,7 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		stroke.Random = true;
 		stroke.FavouritesOnly = presetName == "Random favourites";
 		stroke.RandomFaction = randomFaction;
-	} else if (stroke.Kind == Tool::Unit || stroke.Kind == Tool::Drop || stroke.Kind == Tool::Brain || stroke.Kind == Tool::Item || stroke.Kind == Tool::Structure || stroke.Kind == Tool::Barracks) {
+	} else if (stroke.Kind == Tool::Unit || stroke.Kind == Tool::Vehicle || stroke.Kind == Tool::Drop || stroke.Kind == Tool::Brain || stroke.Kind == Tool::Item || stroke.Kind == Tool::Structure || stroke.Kind == Tool::Barracks) {
 		const std::vector<Preset>& list = ListFor(stroke.Kind);
 		auto found = std::find_if(list.begin(), list.end(), [&presetName](const Preset& preset) { return preset.PresetName == presetName; });
 		if (found == list.end()) {
@@ -247,7 +247,11 @@ Actor* Sandbox::SpawnUnit(const std::string& presetName, int team, const Vector&
 	if (!s_CatalogueBuilt) {
 		BuildCatalogue();
 	}
+	// (Vehicles are listed apart from the units, VH: a script puts one down by name all the same.)
 	const Preset* preset = FindPreset(s_Units, presetName);
+	if (!preset) {
+		preset = FindPreset(s_Vehicles, presetName);
+	}
 	Actor* actor = preset ? CreateUnit(*preset, team, 0, UnitOrder(order)) : nullptr;
 	if (!actor) {
 		return nullptr;
@@ -282,6 +286,9 @@ float Sandbox::UnitCost(const std::string& presetName) {
 		BuildCatalogue();
 	}
 	const Preset* preset = FindPreset(s_Units, presetName);
+	if (!preset) {
+		preset = FindPreset(s_Vehicles, presetName);
+	}
 	const SceneObject* object = preset ? dynamic_cast<const SceneObject*>(g_PresetMan.GetEntityPreset(preset->ClassName, preset->PresetName, preset->ModuleID)) : nullptr;
 	return object ? object->GetGoldValue(preset->ModuleID, 1.0F, 1.0F) : 0.0F;
 }
@@ -736,8 +743,10 @@ void Sandbox::DrawGUI() {
 		}
 	}
 	if (Controller::IsAIPaused() && InGame()) {
-		// A reminder that nobody will move until it's resumed.
-		const char* banner = "AI PAUSED";
+		// A reminder that nobody will move until it's resumed, with the key that resumes it.
+		const std::string& key = g_SettingsMan.GetPauseAIKey();
+		std::string bannerText = key.empty() ? std::string("AI PAUSED") : "AI PAUSED (" + key + ")";
+		const char* banner = bannerText.c_str();
 		ImDrawList* drawList = ImGui::GetForegroundDrawList();
 		ImVec2 size = ImGui::CalcTextSize(banner);
 		float scale = g_DebugMan.UsingPixelFont() ? 2.0F : 1.6F;
@@ -772,6 +781,11 @@ void Sandbox::DrawGUI() {
 	}
 	if (IsBattleCommand() && InGame()) {
 		KeepCommandedTeam();
+		// Till the battle is started the panel stays open: it's the only way to start one, and with it shut there was nothing to do.
+		static const bool hidePanelsForTests = std::getenv("CCCP_HIDE_PANELS") != nullptr;
+		if (!s_ModeRun.Running && !hidePanelsForTests) {
+			s_BattlePanelOpen = true;
+		}
 		if (s_BattlePanelOpen && !s_Possessed && !g_DebugMan.IsPhotoModeHidingHUD()) {
 			DrawCommanderPanel();
 		}
@@ -1396,15 +1410,15 @@ void Sandbox::DrawGUI() {
 			}
 			if (SandboxTab("Spawn")) {
 				s_CurrentTab = "Spawn";
-				ToolButtons({Tool::Unit, Tool::Drop, Tool::Brain, Tool::Item});
+				ToolButtons({Tool::Unit, Tool::Vehicle, Tool::Drop, Tool::Brain, Tool::Item});
 				if (CurrentTool().Kind == Tool::Structure) {
 					s_ToolIndex = ToolIndex(Tool::Unit);
 				}
 				Tool kind = CurrentTool().Kind;
-				if (kind == Tool::Unit || kind == Tool::Drop || kind == Tool::Brain || kind == Tool::Item) {
+				if (kind == Tool::Unit || kind == Tool::Vehicle || kind == Tool::Drop || kind == Tool::Brain || kind == Tool::Item) {
 					PictureGrid(kind, nullptr);
 				}
-				if (kind == Tool::Unit || kind == Tool::Drop || kind == Tool::Brain || kind == Tool::Structure || kind == Tool::RallyPoint) {
+				if (kind == Tool::Unit || kind == Tool::Vehicle || kind == Tool::Drop || kind == Tool::Brain || kind == Tool::Structure || kind == Tool::RallyPoint) {
 					SideChooser();
 				}
 				if (kind == Tool::Drop) {

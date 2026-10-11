@@ -300,6 +300,10 @@ namespace RTE {
 		/// @return The particles.
 		const std::deque<MovableObject*>& GetParticleList() const { return m_Particles; }
 
+		/// Gets the list of items (devices lying loose, not held) currently in the scene.
+		/// @return The item list.
+		const std::deque<MovableObject*>& GetItemList() const { return m_Items; }
+
 		/// Gets the number of particles (MOPixel:s) currently held.
 		/// @return The number of particles.
 		long GetParticleCount() const { return m_Particles.size(); }

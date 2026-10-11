@@ -972,7 +972,7 @@ namespace SandboxDetail {
 
 	/// Whether what a tool makes belongs to a side, so the side is shown with it and the ring of sides is offered.
 	bool TakesSide(Tool kind) {
-		return kind == Tool::Unit || kind == Tool::Drop || kind == Tool::Brain || kind == Tool::RallyPoint || kind == Tool::Structure || kind == Tool::Barracks || kind == Tool::Extractor || kind == Tool::Generator || kind == Tool::OrderMove;
+		return kind == Tool::Unit || kind == Tool::Vehicle || kind == Tool::Drop || kind == Tool::Brain || kind == Tool::RallyPoint || kind == Tool::Structure || kind == Tool::Barracks || kind == Tool::Extractor || kind == Tool::Generator || kind == Tool::OrderMove;
 	}
 
 	/// Clears a box of the terrain to air.
@@ -2143,6 +2143,27 @@ namespace SandboxDetail {
 		DropUnits(units, stroke.Team, stroke.Position.m_X, stroke.Craft);
 	}
 
+	/// The vehicle chosen in the Spawn tab's Vehicles list, empty, for the side: facing the middle of the view, as a unit put down is.
+	void SpawnVehicle(const Stroke& stroke) {
+		const Preset* preset = ChosenPreset(Tool::Vehicle, stroke.Choice);
+		Actor* vehicle = preset ? dynamic_cast<Actor*>(CreateObject(preset->ClassName, preset->PresetName, preset->ModuleID)) : nullptr;
+		if (!vehicle) {
+			return;
+		}
+		ActivateSide(stroke.Team);
+		vehicle->SetPos(stroke.Position);
+		vehicle->SetTeam(stroke.Team);
+		vehicle->SetControllerMode(Controller::CIM_AI);
+		vehicle->SetHFlipped(stroke.HasView && g_SceneMan.ShortestDistance(stroke.Position, Vector(stroke.ViewMiddleX, stroke.Position.m_Y), g_SceneMan.SceneWrapsX()).m_X < 0.0F);
+		// A dropship or rocket stays where it was put, rather than delivering nothing and going back up at once.
+		if (dynamic_cast<ACraft*>(vehicle) && preset->ClassName != "ACShip") {
+			vehicle->SetAIMode(Actor::AIMODE_STAY);
+		}
+		NotePlaced(vehicle);
+		g_MovableMan.AddActor(vehicle);
+		GiveOrder(vehicle, Order::Hold);
+	}
+
 	void SpawnItem(const Stroke& stroke) {
 		const Preset* preset = ChosenPreset(Tool::Item, stroke.Choice);
 		MovableObject* item = preset ? CreateObject(preset->ClassName, preset->PresetName, preset->ModuleID) : nullptr;
@@ -2246,6 +2267,7 @@ namespace SandboxDetail {
 						s_RecordPaint = true;
 						[[fallthrough]];
 					case Tool::Unit:
+					case Tool::Vehicle:
 					case Tool::Brain:
 					case Tool::Item:
 					case Tool::Drop:
@@ -2346,6 +2368,9 @@ namespace SandboxDetail {
 				break;
 			case Tool::Brain:
 				SpawnUnits(stroke, true);
+				break;
+			case Tool::Vehicle:
+				SpawnVehicle(stroke);
 				break;
 			case Tool::Item:
 				SpawnItem(stroke);

@@ -98,6 +98,28 @@ void AHuman::RefreshLadderNodes() {
 	}
 }
 
+bool AHuman::NoteLadderStall(float ladderX, float y) const {
+	// (Per team, kept a minute; the AI's threads move several units at once.)
+	struct Stall {
+		int team;
+		Vector at;
+		double when;
+	};
+	static std::mutex s_Mutex;
+	static std::vector<Stall> s_Stalls;
+	const double now = g_TimerMan.GetSimTimeMS();
+	const Vector at(ladderX, y);
+	std::lock_guard<std::mutex> lock(s_Mutex);
+	std::erase_if(s_Stalls, [now](const Stall& stall) { return now - stall.when > 60000.0 || now < stall.when; });
+	// The same ladder: its line within a few pixels across, and the stall within a couple of bodies up or down of the one before.
+	bool again = std::any_of(s_Stalls.begin(), s_Stalls.end(), [&](const Stall& stall) {
+		Vector off = Towards(stall.at, at);
+		return stall.team == m_Team && std::abs(off.m_X) < 12.0F && std::abs(off.m_Y) < m_CharHeight * 2.0F;
+	});
+	s_Stalls.push_back({m_Team, at, now});
+	return again;
+}
+
 std::optional<Vector> AHuman::LadderNear(const Vector& point, float reachX, float reachY) {
 	// (Called from the AI's threads, several units at once: read only, refreshed by RefreshLadderNodes while none of them runs.)
 	std::optional<Vector> best;
@@ -625,6 +647,8 @@ void AHuman::UpdateLadderInput() {
 	}
 	ladder.active = true;
 	ladder.pos = m_Pos;
+	ladder.bestY = m_Pos.m_Y;
+	ladder.stallTimer.Reset();
 	ladder.startTimer.Reset();
 	ladder.lostTimer.Reset();
 	if (jump) {
@@ -1130,13 +1154,15 @@ bool AHuman::FlightWayClear(const Vector& landing, float landingFloorY) const {
 	Vector over = Towards(Vector(m_Pos.m_X, cruiseY), Vector(landing.m_X, cruiseY));
 	Vector obstacle;
 	Vector free;
+	// (Through a ladder's rungs, which a flying body passes: taken for a wall, a shaft with a ladder up its side was never open to fly.)
+	const unsigned char rungs = LadderMaterialID();
 	for (float dx: {-h * 0.15F, h * 0.15F}) {
-		if (up.m_Y < -2.0F && g_SceneMan.CastObstacleRay(m_Pos + Vector(dx, -h * 0.3F), up, obstacle, free, m_MOID, IgnoresWhichTeam(), 0, 3) >= 0.0F) {
+		if (up.m_Y < -2.0F && g_SceneMan.CastObstacleRay(m_Pos + Vector(dx, -h * 0.3F), up, obstacle, free, m_MOID, IgnoresWhichTeam(), rungs, 3) >= 0.0F) {
 			return false;
 		}
 	}
 	for (float dy: {-h * 0.35F, h * 0.35F}) {
-		if (g_SceneMan.CastObstacleRay(Vector(m_Pos.m_X, cruiseY + dy), over, obstacle, free, m_MOID, IgnoresWhichTeam(), 0, 3) >= 0.0F) {
+		if (g_SceneMan.CastObstacleRay(Vector(m_Pos.m_X, cruiseY + dy), over, obstacle, free, m_MOID, IgnoresWhichTeam(), rungs, 3) >= 0.0F) {
 			return false;
 		}
 	}
@@ -2039,6 +2065,29 @@ int AHuman::MoveAlongRoute() {
 		if (!m_MovePath.empty()) {
 			Vector to = Towards(m_Pos, m_MovePath.front());
 			if (to.m_Y < -6.0F) {
+				// A climb that stops rising for a second and a half with the point still above (rungs shot away over the hands, the ladder
+				// ending short, the way up it blocked): let go, the place above made dearer for a while, and a route from here. (The climb
+				// took hold wherever the ladder's foot was in reach, whatever was further up, and the unit hung under the gap pressing up
+				// until the pinned check, eight seconds on, and was routed straight back up the same ladder after.)
+				if (m_Ladder.pos.m_Y < m_Ladder.bestY - 2.0F) {
+					m_Ladder.bestY = m_Ladder.pos.m_Y;
+					m_Ladder.stallTimer.Reset();
+				} else if (m_Ladder.stallTimer.IsPastSimMS(static_cast<double>(g_SettingsMan.AILadderGiveUpSeconds()) * 1000.0)) {
+					// (Its team pays for the place too only the second time a unit of it is stuck on this ladder within a minute: once may be
+					// the unit's own bad luck, a body in the way or a climb begun badly.)
+					const bool again = NoteLadderStall(m_Ladder.gripX, m_Pos.m_Y);
+					MoverTrace(std::string("the ladder goes no higher; letting go for another way") + (again ? " (again here: the team avoids it)" : ""));
+					mover.ladderStalled = true;
+					mover.ladderStallSpot = m_Pos;
+					mover.ladderStallTimer.Reset();
+					AvoidPathPoint(m_Pos + Vector(0.0F, -h * 0.5F), 20000.0F, again);
+					AvoidPathLink(m_Pos, m_MovePath.front(), 20000.0F, again);
+					LetGoOfLadder(Vector(static_cast<float>(-m_Ladder.wallSide) * 1.5F, 0.0F));
+					mover.bestGap = -1.0F;
+					mover.progressTimer.Reset();
+					RefreshRoute();
+					return RouteMover::Moving;
+				}
 				ctrl.SetState(MOVE_UP, true);
 			} else if (to.m_Y > 6.0F) {
 				ctrl.SetState(MOVE_DOWN, true);
@@ -2431,11 +2480,13 @@ int AHuman::MoveAlongRoute() {
 		const float reach = tank * g_SettingsMan.DirectOrders().FlightReach(m_StandingOrder.Direct);
 		Vector obstacle;
 		Vector free;
-		// Open from one place to another for the body: at its middle and its knees.
+		// Open from one place to another for the body: at its middle and its knees. (A ladder's rungs are no obstacle: a flying body passes
+		// them, see LearnFlight. Counted as walls, any line across a ladder or up a laddered shaft was shut, no full-risk flight was found
+		// in a bunker, and the unit followed the route up the ladder instead.)
 		auto legOpen = [&](const Vector& from, const Vector& to) {
 			const Vector way = Towards(from, to);
 			for (float dy: {-h * 0.3F, feet * 0.5F}) {
-				if (g_SceneMan.CastObstacleRay(from + Vector(0.0F, dy), way, obstacle, free, m_MOID, IgnoresWhichTeam(), 0, 3) >= 0.0F) {
+				if (g_SceneMan.CastObstacleRay(from + Vector(0.0F, dy), way, obstacle, free, m_MOID, IgnoresWhichTeam(), LadderMaterialID(), 3) >= 0.0F) {
 					return false;
 				}
 			}
@@ -2875,7 +2926,28 @@ int AHuman::MoveAlongRoute() {
 	if (flightAhead && !CanWalkTo(landing, landingFloorY)) {
 		Vector toLanding = Towards(m_Pos, landing);
 		// A ladder here and the way up along it: climbed, no jet (the ladder's script moves the unit up while it aims up and presses up).
-		if (ladder && above > h * 0.3F) {
+		// Only a ladder whose pieces go on unbroken to the landing's height: one with a piece shot away or ending short, taken from its foot,
+		// held the unit pressing up under the gap for good (its progress renewed here each tick, so it was never stuck enough to be given
+		// another way). Nor on a risky order (StandingOrder::Direct over 0) whose tank flies it: it jets where others climb.
+		// Nor again here for a while once a climb of it stopped rising (ladderStallSpot).
+		bool climbLadder = ladder && above > h * 0.3F;
+		if (climbLadder) {
+			for (float y = ladder->m_Y - 24.0F; y > landingFloorY + 12.0F && climbLadder; y -= 24.0F) {
+				std::optional<Vector> piece = LadderNear(Vector(ladder->m_X, y), 6.0F, 13.0F);
+				climbLadder = piece.has_value();
+			}
+			if (!climbLadder && mover.traceTimer.IsPastSimMS(1000)) {
+				mover.traceTimer.Reset();
+				MoverTrace("background ladder broken or short of the landing; flying");
+			}
+		}
+		if (climbLadder && m_StandingOrder.Direct > 0.0F && m_pJetpack->GetJetTimeTotal() * 0.95F >= FlightFuelNeeded(landing, landingFloorY, false)) {
+			climbLadder = false;
+		}
+		if (climbLadder && mover.ladderStalled && !mover.ladderStallTimer.IsPastSimMS(20000) && std::abs(Towards(mover.ladderStallSpot, *ladder).m_X) < h * 0.4F) {
+			climbLadder = false;
+		}
+		if (climbLadder) {
 			ctrl.SetState(MOVE_UP, true);
 			SetAimAngle(c_HalfPI);
 			mover.progressTimer.Reset();

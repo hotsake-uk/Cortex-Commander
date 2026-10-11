@@ -376,22 +376,27 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("BodyHitSound", {
 		m_BodyHitSound = new SoundContainer;
 		reader >> m_BodyHitSound;
+		m_BodyHitSound->SetDefaultMixCategory(AudioMan::MIX_IMPACTS);
 	});
 	MatchProperty("AlarmSound", {
 		m_AlarmSound = new SoundContainer;
 		reader >> m_AlarmSound;
+		m_AlarmSound->SetDefaultMixCategory(AudioMan::MIX_VOICES);
 	});
 	MatchProperty("PainSound", {
 		m_PainSound = new SoundContainer;
 		reader >> m_PainSound;
+		m_PainSound->SetDefaultMixCategory(AudioMan::MIX_VOICES);
 	});
 	MatchProperty("DeathSound", {
 		m_DeathSound = new SoundContainer;
 		reader >> m_DeathSound;
+		m_DeathSound->SetDefaultMixCategory(AudioMan::MIX_VOICES);
 	});
 	MatchProperty("DeviceSwitchSound", {
 		m_DeviceSwitchSound = new SoundContainer;
 		reader >> m_DeviceSwitchSound;
+		m_DeviceSwitchSound->SetDefaultMixCategory(AudioMan::MIX_WEAPONS);
 	});
 	MatchProperty("Status", { reader >> m_Status; });
 	MatchProperty("DeploymentID", { reader >> m_DeploymentID; });
@@ -1669,12 +1674,12 @@ void Actor::OnNewMovePath() {
 	}
 }
 
-void Actor::AvoidPathPoint(const Vector& place, float milliseconds) {
+void Actor::AvoidPathPoint(const Vector& place, float milliseconds, bool team) {
 	double now = g_TimerMan.GetSimTimeMS();
 	std::erase_if(m_AvoidPoints, [now](const std::pair<Vector, double>& avoid) { return avoid.second <= now; });
 	m_AvoidPoints.emplace_back(place, now + static_cast<double>(milliseconds));
 	// And for the whole team, for half as long: the next unit to come that way pays for the place too, rather than finding out the same way.
-	if (Scene* scene = g_SceneMan.GetScene(); scene && m_Team >= Activity::TeamOne && m_Team < Activity::MaxTeamCount) {
+	if (Scene* scene = g_SceneMan.GetScene(); team && scene && m_Team >= Activity::TeamOne && m_Team < Activity::MaxTeamCount) {
 		scene->GetPathFinder(static_cast<Activity::Teams>(m_Team)).AddTeamAvoid(place, now + static_cast<double>(milliseconds) * 0.5, now);
 	}
 }
@@ -1683,11 +1688,11 @@ bool Actor::IsAITraced(SettingsMan::DebugChannel channel) const {
 	return g_SettingsMan.DebugChannelOn(channel) && (g_SettingsMan.TraceAllUnits() || IsDebugInspected());
 }
 
-void Actor::AvoidPathLink(const Vector& from, const Vector& to, float milliseconds) {
+void Actor::AvoidPathLink(const Vector& from, const Vector& to, float milliseconds, bool team) {
 	double now = g_TimerMan.GetSimTimeMS();
 	std::erase_if(m_AvoidLinks, [now](const FailedLink& link) { return link.until <= now; });
 	m_AvoidLinks.push_back({from, to, now + static_cast<double>(milliseconds)});
-	if (Scene* scene = g_SceneMan.GetScene(); scene && m_Team >= Activity::TeamOne && m_Team < Activity::MaxTeamCount) {
+	if (Scene* scene = g_SceneMan.GetScene(); team && scene && m_Team >= Activity::TeamOne && m_Team < Activity::MaxTeamCount) {
 		scene->GetPathFinder(static_cast<Activity::Teams>(m_Team)).AddTeamAvoidLink(from, to, now + static_cast<double>(milliseconds) * 0.5, now);
 	}
 }
@@ -2096,7 +2101,7 @@ void Actor::UpdateHeadlamp() {
 
 void Actor::UpdateOutlineGlow() {
 	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
-	if (lighting.UnitOutlineGlow <= 0.0F || !lighting.Enabled || m_Status == DEAD || m_Status == DYING || GetClassName() == "ADoor") {
+	if (lighting.UnitOutlineGlow <= 0.0F || !lighting.Enabled || m_Status == DEAD || m_Status == DYING || GetClassName() == "ADoor" || GetClassName() == "AMover") {
 		return;
 	}
 	// The outline's own colour, as Tonemap.frag draws it: a highlighted unit's pink (a flag carrier, a VIP), pulsing with its stroke, else the side's or the set one.

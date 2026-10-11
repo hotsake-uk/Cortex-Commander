@@ -7,6 +7,7 @@
 /// Inclusions of header files
 #include "MOSprite.h"
 #include "Gib.h"
+#include "SoundContainer.h"
 
 #include <unordered_set>
 
@@ -528,7 +529,12 @@ namespace RTE {
 
 		/// Sets this MOSRotating's gib sound. Ownership IS transferred!
 		/// @param newSound The new SoundContainer for this MOSRotating's gib sound.
-		void SetGibSound(SoundContainer* newSound) { m_GibSound = newSound; }
+		void SetGibSound(SoundContainer* newSound) {
+			m_GibSound = newSound;
+			if (m_GibSound) {
+				m_GibSound->SetDefaultMixCategory(AudioMan::MIX_EXPLOSIONS);
+			}
+		}
 
 		/// Ensures all attachables and wounds are positioned and rotated correctly. Must be run when this MOSRotating is added to MovableMan to avoid issues with Attachables spawning in at (0, 0).
 		virtual void CorrectAttachableAndWoundPositionsAndRotations() const;

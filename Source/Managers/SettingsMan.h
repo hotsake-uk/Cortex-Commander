@@ -205,6 +205,23 @@ namespace RTE {
 
 		/// Sets UnitMenuTimeScale; see there.
 		void SetUnitMenuTimeScale(float scale) { m_UnitMenuTimeScale = std::clamp(scale, 0.05F, 1.0F); }
+		/// Gets the key that pauses and resumes the AI in any game, as written: modifiers then SDL's name for the key, e.g. "Ctrl+P". Empty for none.
+		const std::string& GetPauseAIKey() const { return m_PauseAIKey; }
+
+		/// Sets the key that pauses and resumes the AI; see GetPauseAIKey.
+		void SetPauseAIKey(const std::string& key) { m_PauseAIKey = key; }
+
+		/// Whether a key press (an SDL_Scancode with the SDL_Keymod held) is the key that pauses and resumes the AI. Left and right modifiers count alike.
+		bool IsPauseAIKey(int scancode, unsigned int modifiers) const;
+
+		/// The name for a key press as GetPauseAIKey writes it, e.g. "Ctrl+Shift+F10". Empty for a modifier on its own.
+		static std::string KeyComboName(int scancode, unsigned int modifiers);
+
+		/// Whether the settings panel is waiting for a key to bind, so the keys pressed for it do nothing else. Not saved.
+		bool IsTakingKey() const { return m_TakingKey; }
+
+		/// Sets IsTakingKey; see there.
+		void SetTakingKey(bool taking) { m_TakingKey = taking; }
 
 		/// Whether red and white flashes appear when brain is damaged.
 		/// @return Whether red and white flashes appear when brain is damaged.
@@ -273,6 +290,9 @@ namespace RTE {
 		/// How reckless AI units are on the move, 0 (careful) to 1 (reckless); 0.5 is as designed. It scales how long a unit steadies itself
 		/// before it jets, how much fuel it waits for, and how much the route search shies from hard jumps and long drops (see AIMoveCaution).
 		float AIRecklessness() const { return m_AIRecklessness; }
+		/// How long, in seconds, an AI unit climbing a ladder that has stopped rising waits before letting go and finding another way (the rungs
+		/// shot away above, the ladder ending short, the way up it blocked). 1.5 s as the game comes.
+		float AILadderGiveUpSeconds() const { return m_AILadderGiveUpSeconds; }
 
 		/// Gets the percentage, 0 to 100, of units that are handed a digger when they come into the scene without one.
 		float AISpawnDiggerChance() const { return m_AISpawnDiggerChance; }
@@ -598,6 +618,7 @@ namespace RTE {
 		void SetAIThreatAvoidance(float scale) { m_AIThreatAvoidance = std::clamp(scale, 0.0F, 2.0F); }
 		/// Sets how reckless AI units are on the move, 0 to 1 (0.5 as designed).
 		void SetAIRecklessness(float recklessness) { m_AIRecklessness = std::clamp(recklessness, 0.0F, 1.0F); }
+		void SetAILadderGiveUpSeconds(float seconds) { m_AILadderGiveUpSeconds = std::clamp(seconds, 0.5F, 10.0F); }
 		/// Sets the percentage of units handed a digger as they come into the scene; see AISpawnDiggerChance.
 		void SetAISpawnDiggerChance(float percent) { m_AISpawnDiggerChance = std::clamp(percent, 0.0F, 100.0F); }
 		/// Sets the percentage of wounds that keep bleeding; see BleedOutChance.
@@ -853,6 +874,8 @@ namespace RTE {
 		bool m_ClassicPieWheel; //!< Whether a unit's right-click menu is the classic pie wheel rather than the action menu (see ClassicPieWheel).
 		bool m_UnitMenuClickToOpen; //!< Whether a click opens the unit menu and leaves it up (see UnitMenuClickToOpen).
 		float m_UnitMenuTimeScale; //!< How fast time runs while the unit menu is up (see UnitMenuTimeScale).
+		std::string m_PauseAIKey; //!< The key that pauses and resumes the AI (see GetPauseAIKey).
+		bool m_TakingKey = false; //!< Whether the settings panel is waiting for a key to bind (see IsTakingKey).
 		bool m_EndlessMetaGameMode; //!< Endless MetaGame mode.
 		bool m_ShowFPSAndVersion; //!< Whether the frame rate and version are shown in the top right (see ShowFPSAndVersion).
 		int m_NavDebugOverlay; //!< What the navigation debug overlay shows (see NavDebugOverlay).
@@ -895,6 +918,7 @@ namespace RTE {
 		float m_AIDigWillingness; //!< How readily units with a digger tunnel rather than go round, 0 to 2 (see AIDigWillingness).
 		float m_AIThreatAvoidance; //!< How much safe-route units keep clear of enemies, 0 to 2 (see AIThreatAvoidance).
 		float m_AIRecklessness; //!< How reckless AI units are on the move, 0 to 1 (see AIRecklessness).
+		float m_AILadderGiveUpSeconds; //!< See AILadderGiveUpSeconds.
 		float m_AISpawnDiggerChance; //!< Percentage of units handed a digger as they come into the scene, 0 to 100 (see AISpawnDiggerChance).
 		float m_BleedOutChance; //!< Percentage of wounds that keep bleeding rather than stopping, 0 to 100 (see BleedOutChance).
 		float m_WeaponTerrainDamage; //!< Multiple of the force weapon fire strikes terrain with, 0.1 to 20 (see WeaponTerrainDamage).

@@ -38,6 +38,7 @@
 #include "MenuMan.h"
 #include "ConsoleMan.h"
 #include "SettingsMan.h"
+#include "Controller.h"
 #include <chrono>
 #include <string>
 #include <utility>
@@ -66,6 +67,7 @@
 #include "ActorWater.h"
 #include "RopeSim.h"
 #include "UnitSpeech.h"
+#include "UnitSpeechVoice.h"
 #include "PostProcessMan.h"
 #include "SceneMan.h"
 #include "MetaMan.h"
@@ -385,6 +387,11 @@ void PollSDLEvents() {
 		    Sandbox::IsGodMode() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled()) {
 			Sandbox::TogglePlay((sdlEvent.key.mod & SDL_KMOD_SHIFT) != 0);
 		}
+		// The pause AI key (Ctrl+P unless changed in the AI settings): the AI stops thinking and acting while the world and the player carry on, until pressed again.
+		if (sdlEvent.type == SDL_EVENT_KEY_DOWN && !sdlEvent.key.repeat && g_ActivityMan.IsInActivity() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled() &&
+		    !ImGui::GetIO().WantTextInput && !g_SettingsMan.IsTakingKey() && g_SettingsMan.IsPauseAIKey(sdlEvent.key.scancode, sdlEvent.key.mod)) {
+			Controller::SetAIPaused(!Controller::IsAIPaused());
+		}
 		// Pause/Break, or O on keyboards without one: holds the world still until pressed again, with the sandbox tools open or closed.
 		if (sdlEvent.type == SDL_EVENT_KEY_DOWN && !sdlEvent.key.repeat && g_ActivityMan.IsInActivity() && !g_MenuMan.GetIsInMenuScreen() &&
 		    (sdlEvent.key.scancode == SDL_SCANCODE_PAUSE || (sdlEvent.key.scancode == SDL_SCANCODE_O && !(sdlEvent.key.mod & (SDL_KMOD_ALT | SDL_KMOD_CTRL | SDL_KMOD_GUI)) && !g_ConsoleMan.IsEnabled() && !ImGui::GetIO().WantTextInput))) {
@@ -611,6 +618,8 @@ void RunGameLoop() {
 				RopeSim::Update();
 				logStages.Next("Sim: unit speech");
 				UnitSpeech::UpdateWorld();
+				logStages.Next("Sim: unit speech voices");
+				UnitSpeechVoice::Update();
 			}
 
 			// CCCP_TIME_SCALE: the simulation run faster than real time (3 for three times), for test runs; set once the game is going.

@@ -344,7 +344,12 @@ namespace RTE {
 
 		/// Sets this AEmitter's emission sound. Ownership IS transferred!
 		/// @param newSound The new SoundContainer for this AEmitter's emission sound.
-		void SetEmissionSound(SoundContainer* newSound) { m_EmissionSound = newSound; }
+		void SetEmissionSound(SoundContainer* newSound) {
+			m_EmissionSound = newSound;
+			if (m_EmissionSound) {
+				m_EmissionSound->SetDefaultMixCategory(AudioMan::MIX_ENGINES);
+			}
+		}
 
 		/// Gets this AEmitter's burst sound. Ownership is NOT transferred!
 		/// @return The SoundContainer for this AEmitter's burst sound.
@@ -352,7 +357,12 @@ namespace RTE {
 
 		/// Sets this AEmitter's burst sound. Ownership IS transferred!
 		/// @param newSound The new SoundContainer for this AEmitter's burst sound.
-		void SetBurstSound(SoundContainer* newSound) { m_BurstSound = newSound; }
+		void SetBurstSound(SoundContainer* newSound) {
+			m_BurstSound = newSound;
+			if (m_BurstSound) {
+				m_BurstSound->SetDefaultMixCategory(AudioMan::MIX_ENGINES);
+			}
+		}
 
 		/// Gets this AEmitter's end sound. Ownership is NOT transferred!
 		/// @return The SoundContainer for this AEmitter's end sound.
@@ -360,7 +370,12 @@ namespace RTE {
 
 		/// Sets this AEmitter's end sound. Ownership IS transferred!
 		/// @param newSound The new SoundContainer for this AEmitter's end sound.
-		void SetEndSound(SoundContainer* newSound) { m_EndSound = newSound; }
+		void SetEndSound(SoundContainer* newSound) {
+			m_EndSound = newSound;
+			if (m_EndSound) {
+				m_EndSound->SetDefaultMixCategory(AudioMan::MIX_ENGINES);
+			}
+		}
 
 		/// Returns whether this emitter just started emitting this frame.
 		/// @return Whether this emitter just started emitting this frame.

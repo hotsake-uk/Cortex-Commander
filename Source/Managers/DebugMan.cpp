@@ -484,6 +484,7 @@ void DebugMan::DrawImGui() {
 	// The atmosphere saved is still the player's own, as "Keep for next time" leaves it, so a scene's weather isn't written.
 	static bool settingsWereOpen = false;
 	if (settingsWereOpen && !m_ShowWorldDebug) {
+		g_SettingsMan.SetTakingKey(false);
 		g_SettingsMan.UpdateSettingsFile();
 	}
 	settingsWereOpen = m_ShowWorldDebug;
