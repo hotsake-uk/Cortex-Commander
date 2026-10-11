@@ -2,6 +2,7 @@ require("Constants")
 require("AI/HumanBehaviors");
 require("AI/SharedBehaviors");
 require("AI/AnimalBehaviors");
+require("AI/CreatureBehaviors");
 require("AI/WorkerBehaviors");
 require("AI/UnitSpeech");
 
@@ -71,6 +72,9 @@ function NativeHumanAI:Create(Owner)
 	else
 		Members.SpotTargets = HumanBehaviors.LookForTargets;
 	end
+
+	-- A creature on two legs (CR-7, a Flame Fiend): it goes after its prey and uses what it was born with on it (CreatureBehaviors).
+	Members.isCreature = CreatureBehaviors.IsCreature(Owner);
 
 	-- check if this team is controlled by a human
 	if ActivityMan:GetActivity():IsHumanTeam(Owner.Team) then
@@ -759,7 +763,12 @@ function NativeHumanAI:Update(Owner)
 		if not self.Flank and not self.Target and self.OldTargetPos and self.HitTimer and not self.HitTimer:IsPastSimMS(3000) and not reachingCover then
 			SharedBehaviors.StartFlank(self, Owner, self.OldTargetPos, 500);
 		end
-		SharedBehaviors.RetreatUpdate(self, Owner);
+		-- (A creature never falls back to be patched up; it hunts with its pack instead, CR-1.)
+		if self.isCreature then
+			CreatureBehaviors.PackUpdate(self, Owner);
+		else
+			SharedBehaviors.RetreatUpdate(self, Owner);
+		end
 	end
 	-- (Its nature, NC-1: a skittish unit runs from danger, and livestock left standing graze about.)
 	SharedBehaviors.FleeUpdate(self, Owner);
@@ -1022,7 +1031,34 @@ function NativeHumanAI:CreateAttackBehavior(Owner)
 		self.Target = nil;
 		return;
 	end
-		
+
+	-- A creature (CR-7): after its prey with what it was born with, or at it from where it stands when it may not go after it. It never
+	-- looks for a weapon, nor throws or digs.
+	if self.isCreature then
+		if not Owner:EquipFirearm(true) then
+			self.Target = nil;
+			return;
+		end
+		if IsActor(self.Target) and not IsADoor(self.Target) and CreatureBehaviors.MayChase(self, Owner) then
+			self.NextBehavior = coroutine.create(CreatureBehaviors.ChargeTarget);
+			self.NextBehaviorName = "ChargeTarget";
+		else
+			self.NextBehavior = coroutine.create(HumanBehaviors.ShootTarget);
+			self.NextBehaviorName = "ShootTarget";
+		end
+		self.NextCleanup = function(AI)
+			AI.fire = false;
+			AI.canHitTarget = false;
+			AI.closingIn = false;
+			AI.ShotBlockedTimer = nil;
+			AI.deviceState = AHuman.STILL;
+			AI.proneState = AHuman.NOTPRONE;
+			HumanBehaviors.StopRangeStep(AI, Owner);
+			AI.TargetLostTimer:SetSimTimeLimitMS(2000);
+		end
+		return;
+	end
+
 	local dist = SceneMan:ShortestDistance(Owner.Pos, self.Target.Pos, false);
 	if IsADoor(self.Target) and Owner.AIMode ~= Actor.AIMODE_SQUAD then
 		--TODO: Include other explosive weapons with varying effective ranges!
