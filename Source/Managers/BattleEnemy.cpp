@@ -179,11 +179,11 @@ namespace SandboxDetail {
 			int left = level == 2 ? 2 : 1;
 			Vector at;
 			// Strikes on your units bunched up.
-			if (left > 0 && level >= 1 && Ready(side, CommanderPower::Orbital) && StrikePoint(ours, theirs, c_CommanderPowers[static_cast<int>(CommanderPower::Orbital)].Radius + 40.0F, c_BunchedUp[level] + 1, at)) {
+			if (left > 0 && level >= 1 && Ready(side, CommanderPower::Orbital) && StrikePoint(ours, theirs, c_CommanderPowers[static_cast<int>(CommanderPower::Orbital)].Radius + 40.0F, c_BunchedUp[level] + 1, at) && !StrikeOnSpawn(side, static_cast<int>(CommanderPower::Orbital), at)) {
 				CallStrike(side, static_cast<int>(CommanderPower::Orbital), at, level);
 				--left;
 			}
-			if (left > 0 && Ready(side, CommanderPower::Artillery) && StrikePoint(ours, theirs, c_CommanderPowers[static_cast<int>(CommanderPower::Artillery)].Radius + c_ArtillerySpread, c_BunchedUp[level], at)) {
+			if (left > 0 && Ready(side, CommanderPower::Artillery) && StrikePoint(ours, theirs, c_CommanderPowers[static_cast<int>(CommanderPower::Artillery)].Radius + c_ArtillerySpread, c_BunchedUp[level], at) && !StrikeOnSpawn(side, static_cast<int>(CommanderPower::Artillery), at)) {
 				CallStrike(side, static_cast<int>(CommanderPower::Artillery), at, level);
 				--left;
 			}

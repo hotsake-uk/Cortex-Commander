@@ -9,6 +9,7 @@
 #include "Sandbox.h"
 #include "ACrab.h"
 #include "ACraft.h"
+#include "ACShip.h"
 #include "ADoor.h"
 #include "AHuman.h"
 #include "ActivityMan.h"
@@ -219,7 +220,9 @@ namespace SandboxDetail {
 		// Appended, so the tools before keep their numbers.
 		LandingSpot, //!< Battle Command: a click marks where your reinforcements land (s_LandingSpot), and calls in the one waiting for it.
 		PowerTarget, //!< Battle Command: a click is where the commander power waiting for one (s_PendingPower) is used.
-		BattleRally //!< Battle Command: a click marks your team's rally point, where its new units and reinforcements make for once they're in.
+		BattleRally, //!< Battle Command: a click marks your team's rally point, where its new units and reinforcements make for once they're in.
+		// Appended, so the tools before keep their numbers.
+		Vehicle //!< Puts down the vehicle chosen in the Spawn tab's Vehicles list (s_Vehicles): a cart, a boat, a tank, a ship, a dropship. Nobody in it.
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -354,6 +357,7 @@ namespace SandboxDetail {
 	    {Tool::LandingSpot, "Landing spot", 0.0F, false},
 	    {Tool::PowerTarget, "Commander power", 0.0F, false},
 	    {Tool::BattleRally, "Rally point", 0.0F, false},
+	    {Tool::Vehicle, "Vehicles", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -586,6 +590,7 @@ namespace SandboxDetail {
 	constexpr const char* c_StructureGroups[] = {"Bunker Modules", "Bunker Systems", "Bunker Lights", "Bunker Backgrounds", "Bunker Bits", "Bunker Clutter", "Bunker Odds & Ends", "Terrain Objects"};
 	inline int s_StructureGroup = 0; //!< Which of them the Build tab is listing; one past the last for all.
 	inline std::vector<Preset> s_Units;
+	inline std::vector<Preset> s_Vehicles; //!< What is driven or flown (carts, boats, tanks, flying ships, dropships, rockets), listed apart from the units under the Spawn tab's Vehicles.
 	inline std::vector<Preset> s_Brains;
 	inline std::vector<Preset> s_Items;
 	inline std::vector<Preset> s_Structures;
@@ -1142,6 +1147,7 @@ namespace SandboxDetail {
 	inline std::string s_PaintMetal = "Metal"; //!< What the Metal tool paints, picked under Metals (a c_PaintMetals material).
 	inline std::string s_OtherTerrain = "Topsoil"; //!< What the "Other terrain" tool paints, picked under "More terrain...".
 	inline int s_UnitChoice = 0;
+	inline int s_VehicleChoice = 0;
 	inline int s_BrainChoice = 0;
 	inline int s_ItemChoice = 0;
 	inline int s_StructureChoice = 0;
@@ -1689,7 +1695,7 @@ namespace SandboxDetail {
 
 	inline std::deque<std::string> s_StrokeLog; //!< The last tool uses applied, oldest first, for the stroke log (SettingsMan::ShowSandboxStrokeLog).
 
-	enum class Icon { Eye, Arrows, Target, Person, Cross, Flag, Jar, Gun, Wall, Down, Flame, Drop, Cloud, Grains, Chunk, Pick, Bomb, Rocket, Bolt, Star, Plant, Candle, Rope };
+	enum class Icon { Eye, Arrows, Target, Person, Cross, Flag, Jar, Gun, Wall, Down, Flame, Drop, Cloud, Grains, Chunk, Pick, Bomb, Rocket, Bolt, Star, Plant, Candle, Rope, Wheels };
 
 	// Twelve by twelve pixels each: # in the tool's own colour, + a highlight.
 	constexpr const char* c_IconArt[] = {
@@ -1992,6 +1998,19 @@ namespace SandboxDetail {
 	    ".#+#........"
 	    "#+#........."
 	    "##..........",
+	    // Wheels
+	    "............"
+	    "............"
+	    "....####...."
+	    "...#+..#...."
+	    ".##########."
+	    "#++#######+#"
+	    "############"
+	    ".##########."
+	    "..##....##.."
+	    ".#++#..#++#."
+	    ".####..####."
+	    "..##....##..",
 	};
 
 	struct ToolLook {
@@ -2393,6 +2412,8 @@ namespace SandboxDetail {
 	int BattleCommanderLevel();
 	/// Where a team in the mode's game that is on comes in: the middle of its widest spawn zone, else its point. False for a team not in it.
 	bool BattleTeamBase(int side, Vector& at);
+	/// Whether a circle at a point would reach into, or be in the sky above, a spawn zone of a team (in the mode's game that is on) other than a side's.
+	bool InEnemySpawnZone(int side, const Vector& at, float radius);
 	/// The mode's game ended: won by a side (or -1, no one), with how it ended said.
 	void EndBattleGame(int winner, const std::string& result);
 	Vector ModeSpawnSpot(int side, const std::vector<Vector>& zone, const Actor* unit);
@@ -2643,6 +2664,9 @@ namespace SandboxDetail {
 	/// Every team's powers ready again. At a mode's start and a new game.
 	void ForgetPowers();
 
+	/// Every team's powers start their full cooldown, so none can be used the moment a battle starts.
+	void StartPowerCooldowns();
+
 	/// A power used (Tool::BattleTeam, BattlePower), in the sim: if it's ready, done, and its cooldown started.
 	void ApplyPower(const Stroke& stroke);
 
@@ -2651,6 +2675,9 @@ namespace SandboxDetail {
 
 	/// Seconds before a team's power can be used again, 0 if it can now.
 	float PowerSecondsLeft(int side, int power);
+
+	/// Whether a team's strike (artillery or orbital) at a point would be on or above an enemy spawn zone, where it can't be called.
+	bool StrikeOnSpawn(int side, int power, const Vector& at);
 
 	/// The Commander Toolbar's powers group: a tile each, greyed with the seconds left while it cools down.
 	void PowerTiles();

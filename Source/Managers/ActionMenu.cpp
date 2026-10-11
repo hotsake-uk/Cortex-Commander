@@ -7,6 +7,9 @@
 #include "SettingsMan.h"
 #include "UInputMan.h"
 #include "ToolWidgets.h"
+#include "AVehicle.h"
+#include "Arm.h"
+#include "TimerMan.h"
 
 #include <cfloat>
 
@@ -199,36 +202,53 @@ namespace {
 	/// What a cell of the unit's menu does when picked.
 	enum UnitAction {
 		Slice, //!< A slice of the wheel (Data), handed to the unit's PieMenu.
+		Item, //!< An item the unit carries (Data): taken in hand.
+		Handbrake, //!< A vehicle's handbrake off (0) or on (1).
 		WeaponRule, //!< Sets the unit's weapons rule (Actor::WeaponRule).
 		MovementRule, //!< Sets the unit's movement rule (Actor::MovementRule).
-		TemperamentChoice, //!< Sets the unit's temperament (Actor::Temperament, NC-1).
-		FormationChoice, //!< Sets the group orders' formation.
-		KeepPace, //!< Keeping together off (0) or on (1).
-		Markers //!< The order markers overlay (SettingsMan::SandboxOrdersOverlay).
+		TemperamentChoice //!< Sets the unit's temperament (Actor::Temperament, NC-1).
 	};
 
-	bool s_Open = false; //!< Whether the unit's menu is up (the right button held on a unit whose wheel it stands in for).
-	bool s_Spent = false; //!< A slice was picked: the menu is gone till the button is let go and held again.
+	bool s_Open = false; //!< Whether the unit's menu is up.
+	bool s_Spent = false; //!< A slice was picked while the button is held: the menu is gone till the button is let go and held again.
+	bool s_LetGo = false; //!< The right button was let go with the menu left up (UnitMenuClickToOpen): it is put away by a click.
+	bool s_Moved = false; //!< The pointer has moved since the menu opened, so letting go of the button over a row picks it.
+	bool s_WaitForLetGo = false; //!< The menu was put away with the right button down: it doesn't open again till the button is let go.
 	const Actor* s_Actor = nullptr; //!< The unit it was opened on. Not owned.
 	ImVec2 s_Anchor; //!< Where it opened, in window pixels: the unit's aim point then. The menu sits above it.
 	ImVec2 s_Pointer; //!< The menu's own pointer, in window pixels, moved by the mouse.
 	int s_Hover = -1; //!< The cell under the pointer, or -1.
 	float s_Scale = 1.0F; //!< Sizes are for a 720 px high picture, times this.
+	float s_TimeScaleBefore = 1.0F; //!< How fast time ran before the menu slowed it.
+	float s_TimeScaleSet = -1.0F; //!< The speed the menu slowed time to, or -1 if it didn't.
 	ActionMenu::MenuLayout s_Menu(1.0F); //!< The menu as last laid out (by Update, for the picks; Draw draws it).
 
-	/// The label a slice has on the wheel: its description, which the wheel shows over it, or else its preset name.
 	std::string SliceLabel(const PieSlice* slice) {
 		const std::string& description = slice->GetDescription();
 		return description.empty() ? slice->GetPresetName() : description;
 	}
 
-	/// The slices of a menu that have no sub-menu, two to a row.
-	void AddSlices(ActionMenu::MenuLayout& menu, const std::vector<PieSlice*>& slices) {
+	/// Whether a slice is about what the unit carries, so it goes under Inventory rather than Actions.
+	bool IsInventorySlice(const PieSlice* slice) {
+		switch (slice->GetType()) {
+			case PieSliceType::Pickup:
+			case PieSliceType::Drop:
+			case PieSliceType::NextItem:
+			case PieSliceType::PreviousItem:
+			case PieSliceType::Reload:
+			case PieSliceType::FullInventory:
+				return true;
+			default:
+				return false;
+		}
+	}
+
+	void AddSlices(ActionMenu::MenuLayout& menu, const std::vector<PieSlice*>& slices, bool inventory) {
 		std::vector<std::string> labels;
 		std::vector<bool> enabled;
 		std::vector<const void*> data;
 		for (const PieSlice* slice: slices) {
-			if (!slice->GetSubPieMenu()) {
+			if (!slice->GetSubPieMenu() && IsInventorySlice(slice) == inventory) {
 				labels.push_back(SliceLabel(slice));
 				enabled.push_back(slice->IsEnabled());
 				data.push_back(slice);
@@ -237,42 +257,146 @@ namespace {
 		menu.Choices(UnitAction::Slice, labels, -1, 2, enabled, data);
 	}
 
-	/// Lays out the unit's menu above where it opened.
+	/// The unit's inventory: what it has in hand (lit) and what it carries, each taken in hand when picked. Then the wheel's inventory slices.
+	void AddInventory(ActionMenu::MenuLayout& menu, const Actor* actor, const PieMenu* pieMenu) {
+		const AHuman* human = dynamic_cast<const AHuman*>(actor);
+		const std::deque<MovableObject*>* inventory = actor->GetInventory();
+		bool hasSlices = std::any_of(pieMenu->GetPieSlices().begin(), pieMenu->GetPieSlices().end(), [](const PieSlice* slice) { return !slice->GetSubPieMenu() && IsInventorySlice(slice); });
+		if (!human && inventory->empty() && !hasSlices) {
+			return;
+		}
+		menu.Heading("Inventory", ActionMenu::Kind::State);
+		std::vector<std::string> labels;
+		std::vector<bool> enabled;
+		std::vector<const void*> data;
+		int chosen = -1;
+		if (human) {
+			if (const HeldDevice* inHand = human->GetEquippedItem()) {
+				chosen = 0;
+				labels.push_back(inHand->GetPresetName());
+				enabled.push_back(true);
+				data.push_back(nullptr);
+			}
+			if (const HeldDevice* offHand = human->GetEquippedBGItem()) {
+				labels.push_back(offHand->GetPresetName() + " (off hand)");
+				enabled.push_back(true);
+				data.push_back(nullptr);
+			}
+		}
+		for (const MovableObject* item: *inventory) {
+			labels.push_back(item->GetPresetName());
+			// (Only a unit with a hand to hold it takes an item in hand; others' inventories are shown, greyed.)
+			enabled.push_back(human && human->GetFGArm() && dynamic_cast<const HeldDevice*>(item));
+			data.push_back(item);
+		}
+		if (labels.empty()) {
+			labels.emplace_back("Nothing carried");
+			enabled.push_back(false);
+			data.push_back(nullptr);
+		}
+		menu.Choices(UnitAction::Item, labels, chosen, 2, enabled, data);
+		if (hasSlices) {
+			menu.SwitchKind(ActionMenu::Kind::Command);
+			AddSlices(menu, pieMenu->GetPieSlices(), true);
+		}
+	}
+
 	void LayoutUnitMenu(const Actor* actor, const PieMenu* pieMenu) {
 		ActionMenu::MenuLayout menu(s_Scale);
-		menu.Heading("Orders", ActionMenu::Kind::Command);
-		AddSlices(menu, pieMenu->GetPieSlices());
+		AddInventory(menu, actor, pieMenu);
+
+		// What it can do: the wheel's other slices, and a vehicle's handbrake.
+		const AVehicle* vehicle = dynamic_cast<const AVehicle*>(actor);
+		bool hasActions = std::any_of(pieMenu->GetPieSlices().begin(), pieMenu->GetPieSlices().end(), [](const PieSlice* slice) { return !slice->GetSubPieMenu() && !IsInventorySlice(slice); });
+		if (vehicle && !vehicle->GetWheels().empty()) {
+			menu.Heading("Handbrake", ActionMenu::Kind::State);
+			menu.Choices(UnitAction::Handbrake, {"Off", "On"}, vehicle->IsHandbrakeOn() ? 1 : 0);
+		}
+		if (hasActions) {
+			menu.Heading("Actions", ActionMenu::Kind::Command);
+			AddSlices(menu, pieMenu->GetPieSlices(), false);
+		}
 		for (const PieSlice* slice: pieMenu->GetPieSlices()) {
 			if (const PieMenu* subPieMenu = slice->GetSubPieMenu(); subPieMenu && !subPieMenu->GetPieSlices().empty()) {
 				menu.Heading(SliceLabel(slice), ActionMenu::Kind::Command);
-				AddSlices(menu, subPieMenu->GetPieSlices());
+				std::vector<std::string> labels;
+				std::vector<bool> enabled;
+				std::vector<const void*> data;
+				for (const PieSlice* subSlice: subPieMenu->GetPieSlices()) {
+					if (!subSlice->GetSubPieMenu()) {
+						labels.push_back(SliceLabel(subSlice));
+						enabled.push_back(subSlice->IsEnabled());
+						data.push_back(subSlice);
+					}
+				}
+				menu.Choices(UnitAction::Slice, labels, -1, 2, enabled, data);
 			}
 		}
+
 		menu.Heading("Weapons", ActionMenu::Kind::State);
 		menu.Choices(UnitAction::WeaponRule, {std::begin(c_WeaponRuleNames), std::end(c_WeaponRuleNames)}, actor->GetWeaponRule());
 		menu.Heading("Movement", ActionMenu::Kind::State);
 		menu.Choices(UnitAction::MovementRule, {std::begin(c_MovementRuleNames), std::end(c_MovementRuleNames)}, actor->GetMovementRule());
-		menu.Heading(actor->IsNonCombatant() ? "Temperament (non-combatant)" : "Temperament", ActionMenu::Kind::State);
-		std::vector<std::string> temperaments;
-		for (int i = 0; i < Actor::TEMPERAMENTCOUNT; ++i) {
-			temperaments.emplace_back(Actor::TemperamentName(i));
+		// (Not a vehicle's: it is how a unit behaves, and a vehicle's crew have their own.)
+		if (!vehicle) {
+			menu.Heading(actor->IsNonCombatant() ? "Temperament (non-combatant)" : "Temperament", ActionMenu::Kind::State);
+			std::vector<std::string> temperaments;
+			for (int i = 0; i < Actor::TEMPERAMENTCOUNT; ++i) {
+				temperaments.emplace_back(Actor::TemperamentName(i));
+			}
+			menu.Choices(UnitAction::TemperamentChoice, temperaments, actor->GetTemperament(), 2);
 		}
-		menu.Choices(UnitAction::TemperamentChoice, temperaments, actor->GetTemperament(), 2);
-		menu.Heading("Group orders", ActionMenu::Kind::Setting);
-		menu.Choices(UnitAction::FormationChoice, {std::begin(c_FormationNames), std::end(c_FormationNames)}, static_cast<int>(s_Formation));
-		menu.Choices(UnitAction::KeepPace, {"Free", "Keep together"}, s_KeepPace ? 1 : 0);
-		menu.Heading("Order markers", ActionMenu::Kind::Setting);
-		menu.Choices(UnitAction::Markers, {"Off", "Selected", "All"}, g_SettingsMan.SandboxOrdersOverlay());
 		menu.PlaceAbove(s_Anchor);
 		s_Menu = std::move(menu);
 	}
 
-	/// Carries out a pick on the unit's menu. @return Whether it was a slice (which ends the menu till the button is held again).
+	/// Takes an item the unit carries in its hand, putting what it held in its place in the inventory, as the full inventory screen does: a
+	/// two-handed item also puts the off hand's away.
+	void TakeInHand(Actor* actor, const MovableObject* item) {
+		AHuman* human = dynamic_cast<AHuman*>(actor);
+		Arm* arm = human ? human->GetFGArm() : nullptr;
+		const std::deque<MovableObject*>* inventory = actor->GetInventory();
+		auto found = std::find(inventory->begin(), inventory->end(), item);
+		const HeldDevice* incoming = found != inventory->end() ? dynamic_cast<const HeldDevice*>(*found) : nullptr;
+		if (!arm || !incoming) {
+			g_GUISound.UserErrorSound()->Play();
+			return;
+		}
+		bool twoHanded = !incoming->IsDualWieldable() && !incoming->HasObjectInGroup("Shields");
+		int index = static_cast<int>(found - inventory->begin());
+		arm->SetHeldDevice(dynamic_cast<HeldDevice*>(actor->SetInventoryItemAtIndex(arm->RemoveAttachable(arm->GetHeldDevice()), index)));
+		arm->SetHandPos(actor->GetPos() + actor->GetHolsterOffset().GetXFlipped(actor->IsHFlipped()));
+		if (Arm* offArm = human->GetBGArm(); twoHanded && offArm && offArm->GetHeldDevice()) {
+			actor->AddInventoryItem(offArm->RemoveAttachable(offArm->GetHeldDevice()));
+			offArm->SetHandPos(actor->GetPos() + actor->GetHolsterOffset().GetXFlipped(actor->IsHFlipped()));
+		}
+		if (SoundContainer* sound = actor->GetDeviceSwitchSound()) {
+			sound->Play(actor->GetPos(), Players::PlayerOne);
+		}
+	}
+
+	/// Carries out a pick on the unit's menu.
+	/// @return Whether it was a slice, which ends the menu.
 	bool PickOnUnitMenu(const ActionMenu::Cell& cell, Actor* actor, PieMenu* pieMenu) {
+		if (!cell.Enabled && cell.Action != UnitAction::Slice) {
+			g_GUISound.HoverDisabledSound()->Play();
+			return false;
+		}
 		switch (cell.Action) {
 			case UnitAction::Slice:
 				pieMenu->QueueSliceActivation(static_cast<const PieSlice*>(cell.Data)); // (Its sound, picked or greyed out, is the PieMenu's.)
 				return true;
+			case UnitAction::Item:
+				// (What is in hand already is only shown.)
+				if (cell.Data) {
+					TakeInHand(actor, static_cast<const MovableObject*>(cell.Data));
+				}
+				return false;
+			case UnitAction::Handbrake:
+				if (AVehicle* vehicle = dynamic_cast<AVehicle*>(actor)) {
+					vehicle->SetHandbrake(cell.Value != 0);
+				}
+				break;
 			case UnitAction::WeaponRule:
 				actor->SetWeaponRule(cell.Value);
 				break;
@@ -284,15 +408,6 @@ namespace {
 				actor->SetTemperament(cell.Value);
 				actor->SetNonCombatant(cell.Value >= Actor::TEMPERAMENT_SKITTISH);
 				break;
-			case UnitAction::FormationChoice:
-				s_Formation = static_cast<Formation>(cell.Value);
-				break;
-			case UnitAction::KeepPace:
-				s_KeepPace = cell.Value != 0;
-				break;
-			case UnitAction::Markers:
-				g_SettingsMan.SetSandboxOrdersOverlay(cell.Value);
-				break;
 			default:
 				return false;
 		}
@@ -300,6 +415,23 @@ namespace {
 			g_GUISound.SelectionChangeSound()->Play();
 		}
 		return false;
+	}
+
+	/// Puts the menu away, and time back to the speed it had (unless something else has changed it since).
+	void CloseUnitMenu() {
+		if (s_TimeScaleSet > 0.0F && std::abs(g_TimerMan.GetTimeScale() - s_TimeScaleSet) < 0.001F) {
+			g_TimerMan.SetTimeScale(s_TimeScaleBefore);
+		}
+		s_TimeScaleSet = -1.0F;
+		s_Open = false;
+		s_LetGo = false;
+		Controller::SetUnitMenuHeldOpen(false);
+	}
+
+	/// The pointer as drawn: where the last update left it, plus the mouse moved since (time slowed, updates come less often than frames).
+	ImVec2 DrawnPointer() {
+		Vector motion = g_UInputMan.GetMouseMovement(Players::PlayerOne);
+		return ImVec2(std::clamp(s_Pointer.x + motion.m_X, s_Menu.Min.x, s_Menu.Max.x), std::clamp(s_Pointer.y + motion.m_Y, s_Menu.Min.y, std::max(s_Menu.Max.y, s_Anchor.y)));
 	}
 } // namespace
 
@@ -311,23 +443,34 @@ void ActionMenu::Update() {
 	}
 	PieMenu* pieMenu = actor ? actor->GetPieMenu() : nullptr;
 	bool held = g_UInputMan.ElementHeld(Players::PlayerOne, InputElements::INPUT_PIEMENU_ANALOG);
+	bool pressed = g_UInputMan.ElementPressed(Players::PlayerOne, InputElements::INPUT_PIEMENU_ANALOG);
 	bool released = g_UInputMan.ElementReleased(Players::PlayerOne, InputElements::INPUT_PIEMENU_ANALOG);
-	bool usable = pieMenu && pieMenu->IsReplacedByActionMenu() && pieMenu->IsEnabled() && !Controller::IsRightClickMenuBlocked();
+	bool usable = pieMenu && pieMenu->IsReplacedByActionMenu() && pieMenu->IsEnabled();
+	if (!held && !pressed) {
+		s_WaitForLetGo = false;
+	}
 
 	if (!s_Open) {
-		if (!held || !usable) {
+		if (!held || !usable || s_WaitForLetGo) {
 			return;
 		}
-		// Opened: over the unit's aim point, with the pointer on it.
+		// Opened: over the unit's aim point, with the pointer on it, and time slowed as the setting says.
 		s_Open = true;
 		s_Spent = false;
+		s_LetGo = false;
+		s_Moved = false;
 		s_Actor = actor;
 		s_Anchor = DebugDraw::ToScreen(actor->GetViewPoint());
 		s_Pointer = s_Anchor;
 		s_Hover = -1;
-	} else if (actor != s_Actor || !pieMenu || (!usable && !released)) {
+		s_TimeScaleBefore = g_TimerMan.GetTimeScale();
+		if (float slowed = g_SettingsMan.UnitMenuTimeScale(); slowed < 0.999F && slowed < s_TimeScaleBefore) {
+			s_TimeScaleSet = slowed;
+			g_TimerMan.SetTimeScale(slowed);
+		}
+	} else if (actor != s_Actor || !pieMenu || !pieMenu->IsReplacedByActionMenu() || (!usable && !released)) {
 		// Another unit, the unit gone, or the wheel shut by something else (a view of the activity's own, the setting changed).
-		s_Open = false;
+		CloseUnitMenu();
 		return;
 	}
 
@@ -336,6 +479,7 @@ void ActionMenu::Update() {
 
 	// The pointer, moved by the mouse (which the game keeps for aiming), kept to the panel and the spot it opened on.
 	Vector motion = g_UInputMan.GetMouseMovement(Players::PlayerOne);
+	s_Moved = s_Moved || motion.m_X != 0.0F || motion.m_Y != 0.0F;
 	s_Pointer.x = std::clamp(s_Pointer.x + motion.m_X, s_Menu.Min.x, s_Menu.Max.x);
 	s_Pointer.y = std::clamp(s_Pointer.y + motion.m_Y, s_Menu.Min.y, std::max(s_Menu.Max.y, s_Anchor.y));
 	int hover = CellAt(s_Menu.Cells, s_Pointer);
@@ -344,15 +488,36 @@ void ActionMenu::Update() {
 	}
 	s_Hover = hover;
 
-	// A left click picks and leaves the menu up for more (a slice ends it); letting go of the right button picks what it is over and ends it.
-	// (Choosing a setting is the same whether clicked or let go on, so a click then a let-go on it does no harm.)
-	if (!s_Spent && s_Hover >= 0 && (released || g_UInputMan.MouseButtonPressed(MouseButtons::MOUSE_LEFT, Players::PlayerOne))) {
+	if (s_LetGo) {
+		// Left up after a click (UnitMenuClickToOpen): a left click on a row picks it (a slice ends it), anywhere else puts it away, and so does
+		// the right button again.
+		if (pressed) {
+			s_WaitForLetGo = true;
+			CloseUnitMenu();
+		} else if (g_UInputMan.MouseButtonPressed(MouseButtons::MOUSE_LEFT, Players::PlayerOne)) {
+			bool onPanel = s_Pointer.x >= s_Menu.Min.x && s_Pointer.x < s_Menu.Max.x && s_Pointer.y >= s_Menu.Min.y && s_Pointer.y < s_Menu.Max.y;
+			if (s_Hover >= 0 ? PickOnUnitMenu(s_Menu.Cells[s_Hover], actor, pieMenu) : !onPanel) {
+				CloseUnitMenu();
+			}
+		}
+		return;
+	}
+
+	// Held: a left click picks and leaves the menu up for more (a slice ends it); letting go of the right button over a row the pointer was
+	// moved to picks it. (Choosing a setting is the same whether clicked or let go on, so a click then a let-go on it does no harm.)
+	if (!s_Spent && s_Hover >= 0 && ((released && s_Moved) || g_UInputMan.MouseButtonPressed(MouseButtons::MOUSE_LEFT, Players::PlayerOne))) {
 		if (PickOnUnitMenu(s_Menu.Cells[s_Hover], actor, pieMenu)) {
 			s_Spent = true;
 		}
 	}
 	if (released) {
-		s_Open = false;
+		// Let go: it goes, unless it opens on a click and nothing was picked by letting go (then it stays up, the wheel kept open under it).
+		if (g_SettingsMan.UnitMenuClickToOpen() && !s_Spent && !(s_Moved && s_Hover >= 0)) {
+			s_LetGo = true;
+			Controller::SetUnitMenuHeldOpen(true);
+		} else {
+			CloseUnitMenu();
+		}
 	}
 }
 
@@ -360,11 +525,11 @@ void ActionMenu::Draw() {
 	if (!s_Open || s_Spent || s_Menu.Cells.empty() || !g_MovableMan.IsActor(const_cast<Actor*>(s_Actor))) {
 		return;
 	}
-	DrawMenu(s_Menu, s_Hover, s_Scale);
+	ImVec2 tip = DrawnPointer();
+	DrawMenu(s_Menu, CellAt(s_Menu.Cells, tip), s_Scale);
 	// The pointer: a small gold arrow with a dark rim.
 	ImDrawList* drawList = ImGui::GetForegroundDrawList();
 	float size = 12.0F * s_Scale;
-	ImVec2 tip = s_Pointer;
 	ImVec2 left(tip.x, tip.y + size);
 	ImVec2 right(tip.x + size * 0.7F, tip.y + size * 0.7F);
 	drawList->AddTriangleFilled(tip, left, right, IM_COL32(242, 182, 61, 255));

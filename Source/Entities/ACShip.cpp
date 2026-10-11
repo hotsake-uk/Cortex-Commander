@@ -178,6 +178,11 @@ void ACShip::UpdateAutopilot() {
 		}
 		return;
 	}
+	// A ship stays in the fight: with nothing (more) to deliver it holds where it is rather than flying home as a drop ship does. Only an
+	// order to go home (RETURN) sends it off.
+	if (m_AIMode == AIMODE_DELIVER && IsInventoryEmpty()) {
+		SetAIMode(AIMODE_STAY);
+	}
 	ACDropShip::UpdateAutopilot();
 }
 

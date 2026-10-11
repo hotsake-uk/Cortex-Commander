@@ -59,6 +59,8 @@ namespace RTE {
 			int DurationMS = 0; //!< How long it shows.
 			int Trigger = -1; //!< The trigger it was said for, -1 for a line a script gave.
 			int Line = -1; //!< Which of the trigger's lines, so the next time picks another.
+			unsigned Tones = 0; //!< The line's tones as bits, in GetTones' order (Speech.ini's Tone); 0 for none, or a line a script gave.
+			long long VoicedMS = 0; //!< The StartMS of the last line given a voice (UnitSpeechVoice), so each line is voiced once.
 			std::vector<long long> LastSaidMS; //!< When each trigger was last said by this unit, by trigger index.
 			long long OrderAnsweredMS = 0; //!< Sim time a command last asked this unit to answer an order (SayOrder), said or not.
 			Senses World; //!< What it last noticed around it (UpdateWorld).

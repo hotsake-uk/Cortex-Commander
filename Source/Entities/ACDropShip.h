@@ -164,6 +164,10 @@ namespace RTE {
 		/// Sends the autopilot straight to a place to hold still at it, as a go-to whose last point it is: false if it hasn't started yet.
 		bool AutopilotGoTo(const Vector& spot);
 
+		/// Sends the autopilot to hover over a place, as AutopilotGoTo: at its hover height over the ground there, or at the place itself if
+		/// that is higher up in the open air. False if it hasn't started yet.
+		bool AutopilotHoverOver(const Vector& spot);
+
 		/// Protected member variable and method declarations
 	protected:
 		// Member variables

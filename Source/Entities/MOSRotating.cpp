@@ -481,7 +481,7 @@ void MOSRotating::AddWoundExt(AEmitter* woundToAdd, const Vector& parentOffsetTo
 		if (const Material* struck = GetMaterial(); struck && struck->GetMetalness() + std::max(m_Metalness, 0.0F) > 0.25F) {
 			AddHeatAt(parentOffsetToSet, 0.55F, 5.0F);
 		}
-		if (checkGibWoundLimit && m_GibWoundLimit > 0 && m_Wounds.size() + 1 >= m_GibWoundLimit) {
+		if (checkGibWoundLimit && m_GibWoundLimit > 0 && static_cast<float>(m_Wounds.size() + 1) >= ToughenedGibLimit(static_cast<float>(m_GibWoundLimit))) {
 			// Find and detach an attachable near the new wound before gibbing the object itself. TODO: Perhaps move this to Actor, since it's more relevant there?
 			if (Attachable* attachableToDetach = GetNearestDetachableAttachableToOffset(parentOffsetToSet); attachableToDetach && m_DetachAttachablesBeforeGibbingFromWounds) {
 				RemoveAttachable(attachableToDetach, true, true);
@@ -1290,7 +1290,7 @@ void MOSRotating::ApplyImpulses() {
 	averagedImpulseForceOffset /= static_cast<float>(m_ImpulseForces.size());
 
 	if (m_GibImpulseLimit > 0) {
-		float impulseLimit = m_GibImpulseLimit;
+		float impulseLimit = ToughenedGibLimit(m_GibImpulseLimit);
 		if (m_WoundCountAffectsImpulseLimitRatio != 0 && m_GibWoundLimit > 0) {
 			impulseLimit *= 1.0F - (static_cast<float>(m_Wounds.size()) / static_cast<float>(m_GibWoundLimit)) * m_WoundCountAffectsImpulseLimitRatio;
 		}
@@ -1559,7 +1559,7 @@ void MOSRotating::PostTravel() {
 
 	// Check if travel hits created enough impulse forces to gib this
 	if (m_GibImpulseLimit > 0) {
-		float impulseLimit = m_GibImpulseLimit;
+		float impulseLimit = ToughenedGibLimit(m_GibImpulseLimit);
 		if (m_WoundCountAffectsImpulseLimitRatio != 0 && m_GibWoundLimit > 0) {
 			impulseLimit *= 1.0F - (static_cast<float>(m_Wounds.size()) / static_cast<float>(m_GibWoundLimit)) * m_WoundCountAffectsImpulseLimitRatio;
 		}

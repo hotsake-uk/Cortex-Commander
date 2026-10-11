@@ -272,6 +272,13 @@ namespace RTE {
 		/// @return A pointer to this MovableObject.
 		virtual const MovableObject* GetRootParent() const { return this; }
 
+		/// How many times harder than its preset this is to blow apart or knock pieces off: its wounds, blows and joints all hold that much
+		/// more (see SettingsMan::Toughness). Infinite when it can't be blown apart at all.
+		virtual float GibToughness() const { return 1.0F; }
+
+		/// A gib limit (wounds, impulse or joint strength) made tougher by GibToughness. A limit of 0 or less, meaning none, is left as it is.
+		float ToughenedGibLimit(float limit) const { return limit > 0.0F ? limit * GibToughness() : limit; }
+
 		/// Gets the altitide of this' pos (or appropriate low point) over the
 		/// terrain, in pixels.
 		/// @param max The max altitude you care to check for. 0 Means check the whole scene's height. (default: 0)
