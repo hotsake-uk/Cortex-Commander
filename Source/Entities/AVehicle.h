@@ -119,6 +119,9 @@ namespace RTE {
 		/// Gets how many units are in it, driver included.
 		int GetCrewCount() const { return m_Crew.GetCrewCount(); }
 
+		/// Whether a unit could get in at all: alive, a humanoid on this one's side, not a side's brain.
+		bool CanCarry(const Actor* unit) const { return m_Crew.CanCarry(unit); }
+
 		/// Gets the seat a unit getting in would take: the driver's if free, then a gunner's, then a passenger's.
 		/// @return The seat, or -1 if they are all taken.
 		int GetFreeSeat() const { return m_Crew.GetFreeSeat(); }
@@ -421,9 +424,6 @@ namespace RTE {
 
 		/// Gets where a seat is, from the body's middle, upright and facing right.
 		const Vector& GetSeatOffsetOf(int seat) const { return m_Crew.GetSeatOffset(seat); }
-
-		/// Whether a unit could get in at all: alive, a humanoid on this one's side, not a side's brain.
-		bool CanCarry(const Actor* unit) const { return m_Crew.CanCarry(unit); }
 
 		/// Aims and fires the gun: the player's aim from the gunner's seat (or the driver's, with no gunner's seat), else the gunner looks for
 		/// the nearest enemy in sight and range in front of it, swings the gun round to it and fires.
