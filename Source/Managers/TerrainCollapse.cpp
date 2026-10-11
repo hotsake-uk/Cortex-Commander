@@ -3236,6 +3236,7 @@ void TerrainCollapse::NoteBuilt(int left, int top, int right, int bottom) {
 	for (const std::shared_ptr<Before>& was: pictures) {
 		was->Floating.insert(was->Floating.end(), built->Floating.begin(), built->Floating.end());
 		was->Hanging.insert(was->Hanging.end(), built->Hanging.begin(), built->Hanging.end());
+		was->Overhangs.insert(was->Overhangs.end(), built->Overhangs.begin(), built->Overhangs.end());
 	}
 }
 

@@ -1109,6 +1109,9 @@ int Colony::Place(Kind kind, const Vector& place, int team, const std::string& u
 		Sandbox::FillBox(Vector(left, top + type.Height / 3), 8, type.Height - type.Height / 3, "Concrete");
 		Sandbox::FillBox(Vector(left + width - 8.0F, top + type.Height / 3), 8, 14, "Concrete");
 	}
+	// It stands as built, however its roof spans or its walls join: the check clearing the plot started took its picture of what hung in the
+	// air before the building was there, and would otherwise take its roof and thin walls for ground just cut loose. Damage later still brings it down.
+	TerrainCollapse::NoteBuilt(static_cast<int>(left), static_cast<int>(top), static_cast<int>(left) + type.Width - 1, building.Ground.GetFloorIntY() + 13);
 	// Its brain, in a chamber cut at the back on the floor, so it has to be broken into to be reached. (The doorway is at the front, the right.)
 	Vector room = BrainRoom(building);
 	Sandbox::FillBox(Vector(room.m_X, room.m_Y - static_cast<float>(c_BrainRoomHeight)), c_BrainRoomWidth, c_BrainRoomHeight, "");
