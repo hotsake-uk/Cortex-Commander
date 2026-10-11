@@ -530,7 +530,7 @@ void Sandbox::SetCharacterSetup(const std::string& setup) {
 std::string Sandbox::GetVehicleSetup() {
 	const VehicleTuning& tuning = s_VehicleTuning;
 	std::ostringstream setup;
-	setup << (tuning.Modified ? 1 : 0) << (tuning.Crewed ? 1 : 0) << "|" << tuning.Power << ";" << tuning.TopSpeed << ";" << tuning.Grip << ";" << tuning.Brakes << ";" << tuning.Jump << ";" << tuning.WaterPower << ";" << tuning.WaterSpeed << "|" << tuning.Driver << "|" << tuning.Crew;
+	setup << (tuning.Modified ? 1 : 0) << (!tuning.Crewed ? 0 : (tuning.DriverOnly ? 2 : 1)) << "|" << tuning.Power << ";" << tuning.TopSpeed << ";" << tuning.Grip << ";" << tuning.Brakes << ";" << tuning.Jump << ";" << tuning.WaterPower << ";" << tuning.WaterSpeed << "|" << tuning.Driver << "|" << tuning.Crew;
 	return setup.str();
 }
 
@@ -541,7 +541,9 @@ void Sandbox::SetVehicleSetup(const std::string& setup) {
 	}
 	VehicleTuning tuning;
 	tuning.Modified = setup[0] == '1';
-	tuning.Crewed = setup[1] == '1';
+	// (Crew: 0 empty, 1 full, 2 with a driver only.)
+	tuning.Crewed = setup[1] == '1' || setup[1] == '2';
+	tuning.DriverOnly = setup[1] == '2';
 	float* values[] = {&tuning.Power, &tuning.TopSpeed, &tuning.Grip, &tuning.Brakes, &tuning.Jump, &tuning.WaterPower, &tuning.WaterSpeed};
 	// (Then the driver and crew picks, each after a bar: not there in settings saved before they could be picked.)
 	std::istringstream fields(setup.substr(bar + 1));

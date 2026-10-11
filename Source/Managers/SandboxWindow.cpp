@@ -1149,13 +1149,25 @@ namespace SandboxDetail {
 		}
 	}
 
-	/// The vehicle crew's two picks, the driver and the rest, and a note on what goes in.
+	/// The vehicle crew's picks: the driver, and with a full crew the rest.
 	void CrewPicks() {
 		VehicleTuning& tuning = s_VehicleTuning;
 		CrewPickCombo("Driver", tuning.Driver, 0);
-		ImGui::SetItemTooltip("Who drives or flies it: the seat it is driven from. They lead the rest as a squad when they get out.");
-		CrewPickCombo("Crew", tuning.Crew, 1);
-		ImGui::SetItemTooltip("Who takes every other seat: gunners and passengers.");
+		ImGui::SetItemTooltip("Who drives or flies it: the seat it is driven from. With a full crew, they lead the rest as a squad when they get out.");
+		if (!tuning.DriverOnly) {
+			CrewPickCombo("Crew", tuning.Crew, 1);
+			ImGui::SetItemTooltip("Who takes every other seat: gunners and passengers.");
+		}
+	}
+
+	/// How a vehicle is crewed when put down, as the Crew choice has it: 0 empty, 1 with a driver, 2 with every seat filled.
+	int CrewingOf(const VehicleTuning& tuning) {
+		return !tuning.Crewed ? 0 : (tuning.DriverOnly ? 1 : 2);
+	}
+
+	void SetCrewing(VehicleTuning& tuning, int crewing) {
+		tuning.Crewed = crewing > 0;
+		tuning.DriverOnly = crewing == 1;
 	}
 
 	void VehicleOptions() {
@@ -1167,12 +1179,15 @@ namespace SandboxDetail {
 
 		ImGui::SeparatorText("Crew");
 		ImGui::BeginDisabled(!seats && preset);
-		int crew = tuning.Crewed ? 1 : 0;
+		int crew = CrewingOf(tuning);
 		ToolUI::RadioButton("Empty", &crew, 0);
 		ImGui::SameLine();
-		ToolUI::RadioButton("Full crew", &crew, 1);
-		tuning.Crewed = crew == 1;
-		ImGui::SetItemTooltip("Every seat filled: the driver and the rest of the crew picked below, with the loadout, orders and temperament below. The driver leads: when they get out the rest follow it as a squad.");
+		ToolUI::RadioButton("With driver", &crew, 1);
+		ImGui::SetItemTooltip("Only the driver's seat filled, with the driver picked below.");
+		ImGui::SameLine();
+		ToolUI::RadioButton("Full crew", &crew, 2);
+		ImGui::SetItemTooltip("Every seat filled: the driver and the rest of the crew picked below. The driver leads: when they get out the rest follow it as a squad.");
+		SetCrewing(tuning, crew);
 		if (tuning.Crewed) {
 			CrewPicks();
 			LoadoutChooser();
@@ -1243,6 +1258,7 @@ namespace SandboxDetail {
 			VehicleTuning reset;
 			reset.Modified = true;
 			reset.Crewed = tuning.Crewed;
+			reset.DriverOnly = tuning.DriverOnly;
 			reset.Driver = tuning.Driver;
 			reset.Crew = tuning.Crew;
 			tuning = reset;
@@ -4543,17 +4559,23 @@ namespace SandboxDetail {
 				if (BarChip("Modified", s_VehicleTuning.Modified, ToolTheme::Text, nullptr, "On: put down with the driving tuned on the Spawn tab (power, top speed, grip...). Off: as it comes.") == 1) {
 					s_VehicleTuning.Modified = !s_VehicleTuning.Modified;
 				}
-				next();
-				if (BarChip("Full crew", s_VehicleTuning.Crewed, ToolTheme::Text, nullptr, "On: every seat filled with the driver and crew picked (the chip after this), a squad behind the driver. Off: empty.") == 1) {
-					s_VehicleTuning.Crewed = !s_VehicleTuning.Crewed;
+				// Empty, with a driver, or a full crew: one chip each, the one in use lit.
+				const int crewing = CrewingOf(s_VehicleTuning);
+				const char* crewChips[] = {"Empty", "With driver", "Full crew"};
+				const char* crewTips[] = {"Put down with nobody in it.", "Put down with the driver picked (the chip after these) in the driver's seat.", "Every seat filled with the driver and crew picked (the chip after these), a squad behind the driver."};
+				for (int i = 0; i < 3; ++i) {
+					next();
+					if (BarChip(crewChips[i], crewing == i, ToolTheme::Text, nullptr, crewTips[i]) == 1) {
+						SetCrewing(s_VehicleTuning, i);
+					}
 				}
 				if (s_VehicleTuning.Crewed) {
-					// Who crews it, on a chip: the driver, and the rest if they differ. Clicked, both picks in a window over the bar.
+					// Who crews it, on a chip: the driver, and with a full crew the rest if they differ. Clicked, the picks in a window over the bar.
 					std::string driver = CrewPickName(s_VehicleTuning.Driver);
 					std::string crew = CrewPickName(s_VehicleTuning.Crew);
-					std::string who = (s_VehicleTuning.Driver == s_VehicleTuning.Crew ? driver : driver + " + " + crew) + "...##crewPick";
+					std::string who = (s_VehicleTuning.DriverOnly || s_VehicleTuning.Driver == s_VehicleTuning.Crew ? driver : driver + " + " + crew) + "...##crewPick";
 					next();
-					if (BarChip(who.c_str(), false, ToolTheme::Text, nullptr, "Who crews it: the driver, then the rest of the crew if they differ. Click to pick.") == 1) {
+					if (BarChip(who.c_str(), false, ToolTheme::Text, nullptr, "Who crews it: the driver, then (with a full crew) the rest if they differ. Click to pick.") == 1) {
 						ImGui::OpenPopup("##crewPickPopup");
 					}
 					ImGui::SetNextWindowSize(ImVec2(320.0F * ToolUI::Pixel(), 0.0F));
