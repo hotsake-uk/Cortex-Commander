@@ -100,6 +100,7 @@ namespace {
 	std::array<float, 256> s_DryChance{}; //!< The chance a sweep pass of a still surface pixel of it drying.
 	std::array<bool, 256> s_Chills{}; //!< Freezes what it touches that freezes (cryogenic fluid).
 	std::array<float, 256> s_Evaporates{}; //!< The chance a step of a surface pixel of it boiling off into mist.
+	std::array<float, 256> s_FadeAfter{}; //!< How many seconds a drop of it lasts once it has landed (MaterialBehaviour::FadeAfter), 0 for ever.
 	std::array<int, 256> s_SightDepth{}; //!< How many pixels of a liquid a look sees through (MaterialBehaviour::SightDepth).
 	std::array<int, 256> s_ShotDepth{}; //!< How many pixels of a liquid a shot goes on through (MaterialBehaviour::ShotDepth).
 	std::array<float, 256> s_ShotDrag{}; //!< A shot's speed is multiplied by this for each pixel of the liquid: half by the end of its shot depth.
@@ -121,6 +122,7 @@ namespace {
 	int s_BloodMaterial = 0; //!< The Blood liquid, which settled blood becomes when it flows (FluidSim::BloodFlows), 0 if the scene has none.
 	int s_WaterMaterial = 0; //!< The material blood drops are made of (water, drawn red).
 	std::vector<glm::ivec2> s_BloodSettled; //!< Where blood drops settled since the last update, to become flowing blood.
+	std::vector<glm::ivec2> s_FadingSettled; //!< Where drops of a liquid that fades (MaterialBehaviour::FadeAfter) settled since the last update, to be given their lifetime.
 	std::array<int, 256> s_ColorOfMaterial{}; //!< Palette index each material is drawn with, for pixels changed into it.
 	std::array<bool, 256> s_Soft{}; //!< Soft enough for acid to eat (integrity under 100).
 	std::unordered_map<std::string, int> s_PourableByName; //!< Each liquid and powder by its preset name, for Pour.
@@ -415,6 +417,7 @@ namespace {
 		s_DryChance.fill(0.0F);
 		s_Chills.fill(false);
 		s_Evaporates.fill(0.0F);
+		s_FadeAfter.fill(0.0F);
 		s_SightDepth.fill(0);
 		s_ShotDepth.fill(0);
 		s_ShotDrag.fill(1.0F);
@@ -497,6 +500,7 @@ namespace {
 			s_DriesTo[id] = turnsInto(behaviour.DriesTo, nullptr);
 			s_Chills[id] = behaviour.Chills == 1;
 			s_Evaporates[id] = behaviour.Evaporates > 0.0F ? std::min(behaviour.Evaporates, 1.0F) : 0.0F;
+			s_FadeAfter[id] = behaviour.FadeAfter > 0.0F ? behaviour.FadeAfter : 0.0F;
 			// How far looks and shots go into it: set, or stock, clear water's for any liquid but oil (murky) and lava (molten rock).
 			s_SightDepth[id] = std::max(0, behaviour.SightDepth >= 0 ? behaviour.SightDepth : (kind == Liquid::Lava ? 0 : (kind == Liquid::Oil ? 6 : 200)));
 			s_ShotDepth[id] = std::max(0, behaviour.ShotDepth >= 0 ? behaviour.ShotDepth : (kind == Liquid::Lava ? 10 : (kind == Liquid::Oil ? 30 : 60)));
@@ -1128,6 +1132,9 @@ void FluidSim::OnParticleSettled(const MovableObject* particle) {
 	if (pixel && pixel->GetColor().GetIndex() == s_PourColor[material]) {
 		std::scoped_lock lock(s_QueueMutex);
 		s_Disturbances.emplace_back(glm::ivec2(position.GetFloorIntX(), position.GetFloorIntY()), 1);
+		if (s_FadeAfter[material] > 0.0F && s_FadingSettled.size() < 8192) {
+			s_FadingSettled.emplace_back(position.GetFloorIntX(), position.GetFloorIntY());
+		}
 	}
 }
 
@@ -1396,6 +1403,7 @@ void FluidSim::Update() {
 		s_Pours.clear();
 		s_Disturbances.clear();
 		s_BloodSettled.clear();
+		s_FadingSettled.clear();
 		s_Kept.clear();
 		s_Active.Clear();
 		return;
@@ -1416,10 +1424,12 @@ void FluidSim::Update() {
 	std::vector<std::pair<glm::ivec2, int>> disturbances;
 	std::vector<SplashRequest> splashRequests;
 	std::vector<glm::ivec2> bloodSettled;
+	std::vector<glm::ivec2> fadingSettled;
 	std::vector<KeptLiquid> kept;
 	{
 		std::scoped_lock lock(s_QueueMutex);
 		kept.swap(s_Kept);
+		fadingSettled.swap(s_FadingSettled);
 		pours.swap(s_Pours);
 		disturbances.swap(s_Disturbances);
 		splashRequests.swap(s_Splashes);
@@ -1537,6 +1547,27 @@ void FluidSim::Update() {
 						s_LifeTags[y * width + x] = {pourUpdate + static_cast<long long>(pour.Life / pourSeconds), material};
 					}
 				}
+			}
+		}
+	}
+	// A drop of a liquid that fades that landed is tagged with its lifetime like a poured pixel, so it goes that long after, wherever it has flowed
+	// to. (The drop became the pixel it settled at; one already swept along by the time this runs is looked for beside it.)
+	std::sort(fadingSettled.begin(), fadingSettled.end(), [](const glm::ivec2& a, const glm::ivec2& b) { return a.y != b.y ? a.y < b.y : a.x < b.x; });
+	for (glm::ivec2 spot: fadingSettled) {
+		int spotX = s_WrapsX ? ((spot.x % width) + width) % width : spot.x;
+		// The spot itself first, then the eight around it.
+		static constexpr int c_Around[9][2] = {{0, 0}, {0, 1}, {-1, 0}, {1, 0}, {0, -1}, {-1, 1}, {1, 1}, {-1, -1}, {1, -1}};
+		for (const auto& offset: c_Around) {
+			int x = spotX + offset[0];
+			int y = spot.y + offset[1];
+			if (!InWorld(x, y, width, height)) {
+				continue;
+			}
+			int key = y * width + x;
+			int material = terrain->GetMaterialPixel(x, y);
+			if (material > 0 && material < 256 && s_FadeAfter[material] > 0.0F && s_LifeTags.find(key) == s_LifeTags.end()) {
+				s_LifeTags[key] = {pourUpdate + static_cast<long long>(s_FadeAfter[material] / pourSeconds), material};
+				break;
 			}
 		}
 	}
@@ -2121,6 +2152,7 @@ void FluidSim::Clear() {
 	s_Disturbances.clear();
 	s_Splashes.clear();
 	s_BloodSettled.clear();
+	s_FadingSettled.clear();
 	s_Kept.clear();
 }
 

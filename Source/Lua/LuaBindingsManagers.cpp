@@ -373,6 +373,8 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SceneMan) {
 	    .def("GetGas", &SceneMan::GetGas)
 	    .def("GetAirFlow", &SceneMan::GetAirFlow)
 	    .def("AddAirBlast", &SceneMan::AddAirBlast)
+	    .def("AddAirGust", &SceneMan::AddAirGust)
+	    .def("MagicPush", &SceneMan::MagicPush)
 	    .def("AddRope", &SceneMan::AddRope)
 	    .def("AddRopePoint", &SceneMan::AddRopePoint)
 	    .def("RemoveRope", &SceneMan::RemoveRope)
