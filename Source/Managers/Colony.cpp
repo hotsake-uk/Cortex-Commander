@@ -10,6 +10,7 @@
 #include "MovableMan.h"
 #include "PresetMan.h"
 #include "Sandbox.h"
+#include "Scene.h"
 #include "SceneMan.h"
 #include "SLTerrain.h"
 #include "TerrainCollapse.h"
