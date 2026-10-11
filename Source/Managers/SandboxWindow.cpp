@@ -1799,7 +1799,7 @@ namespace SandboxDetail {
 			stroke.Count = 100 + (ImGui::IsKeyPressed(ImGuiKey_H, false) ? (io.KeyShift ? 13 : 3) : 2);
 			s_Queue.push_back(stroke);
 		}
-		if (!s_Selected.empty() && pressed(ImGuiKey_J)) {
+		if (!s_Selected.empty() && pressed(ImGuiKey_I) && !io.KeyCtrl) {
 			// Take cover, as the command row's.
 			Stroke stroke;
 			stroke.Kind = Tool::OrderSelected;
@@ -4376,7 +4376,7 @@ namespace SandboxDetail {
 			orderSelected(103);
 		}
 		line.Next();
-		if (BarChip("Take cover", false, c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)], "J", "Each finds cover from the nearest enemy close by (within about 150 px), gets down behind it and holds there.\nWith none: a unit with a digger digs a foxhole where it stands; one without falls back if the enemy is close or it is\npinned down, else lies flat where it is.") == 1) {
+		if (BarChip("Take cover", false, c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)], "I", "Each finds cover from the nearest enemy close by (within about 150 px), gets down behind it and holds there.\nWith none: a unit with a digger digs a foxhole where it stands; one without falls back if the enemy is close or it is\npinned down, else lies flat where it is.") == 1) {
 			orderSelected(130);
 		}
 		line.Next();
