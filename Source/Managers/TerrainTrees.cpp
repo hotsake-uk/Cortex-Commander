@@ -9,6 +9,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <execution>
+#include <numeric>
 #include <string>
 
 using namespace RTE;
@@ -169,13 +171,34 @@ void TerrainTrees::Survey() {
 	}
 	auto at = [materials](int x, int y) { return static_cast<int>(materials->line[y][x]); };
 
+	// Where each row has trunk at all, from its first trunk pixel to its last, found for all the rows at once: going over the whole scene is
+	// most of a survey's time, and the trunks are only looked for within these (nothing here changes the terrain, so there are none outside).
+	std::vector<int> rows(static_cast<size_t>(height));
+	std::iota(rows.begin(), rows.end(), 0);
+	std::vector<std::pair<int, int>> trunkSpans(static_cast<size_t>(height), {0, -1});
+	std::for_each(std::execution::par, rows.begin(), rows.end(), [materials, width, &trunkSpans](int y) {
+		const unsigned char* row = materials->line[y];
+		int first = 0;
+		while (first < width && !s_Trunk[row[first]]) {
+			++first;
+		}
+		if (first == width) {
+			return;
+		}
+		int last = width - 1;
+		while (!s_Trunk[row[last]]) {
+			--last;
+		}
+		trunkSpans[y] = {first, last};
+	});
+
 	// First each trunk: tree trunk pixels standing together (diagonally too).
 	std::vector<int> open;
 	std::vector<int> pixels;
 	std::vector<char> rooted; // Per tree found: whether its trunk touches ground (anything solid but a tree). A branch drawn apart from the trunk doesn't.
 	for (int y = 0; y < height; ++y) {
 		const unsigned char* row = materials->line[y];
-		for (int x = 0; x < width; ++x) {
+		for (int x = trunkSpans[y].first; x <= trunkSpans[y].second; ++x) {
 			int key = y * width + x;
 			if (!s_Trunk[row[x]] || s_Owner[key] != c_NoTree) {
 				continue;
