@@ -504,6 +504,7 @@ namespace RTE {
 			Vector DigTarget; //!< That place, exactly as given: it may be inside the ground.
 			int FailReason = ORDERFAIL_NONE; //!< Why the order stopped short (OrderFailReason), ORDERFAIL_NONE while it hasn't.
 			int FailMaterial = 0; //!< The material in the way for ORDERFAIL_TOOHARD, 0 for none known.
+			bool Direct = false; //!< Triple-clicked when given: the shortest way there whatever it takes (GetPathAgent): a dig-to tunnels in a straight line round only what it can't cut, a move takes the hard, fast jet flights a careful route walks round.
 		};
 
 		/// Gets this' standing order, to read or change.
@@ -554,6 +555,8 @@ namespace RTE {
 		int GetOrderFailReason() const { return m_StandingOrder.FailReason; }
 		void SetOrderFailReason(int reason) { m_StandingOrder.FailReason = std::clamp(reason, 0, static_cast<int>(ORDERFAILREASONCOUNT) - 1); }
 		int GetOrderFailMaterial() const { return m_StandingOrder.FailMaterial; }
+		bool GetOrderDirect() const { return m_StandingOrder.Direct; }
+		void SetOrderDirect(bool direct) { m_StandingOrder.Direct = direct; }
 
 		/// Marks the standing order failed (RC-7): why, and the material in the way when that is the reason.
 		/// @param reason An OrderFailReason.
@@ -891,6 +894,12 @@ namespace RTE {
 		/// Sets whether this actor can reveal unseen areas by looking.
 		/// @param newCanRevealUnseen Whether this actor can reveal unseen areas.
 		void SetCanRevealUnseen(bool newCanRevealUnseen) { m_CanRevealUnseen = newCanRevealUnseen; }
+
+		/// Gets whether this actor is hidden from the player by a battle's fog of war (Battle Command): it, its HUD and its speech aren't drawn.
+		bool IsHiddenByFog() const { return m_HiddenByFog; }
+
+		/// Sets whether this actor is hidden from the player by a battle's fog of war. Set by the sandbox each update while the fog is on.
+		void SetHiddenByFog(bool hidden) { m_HiddenByFog = hidden; }
 
 		/// Sets this' PainThreshold value above which it will play PainSound
 		/// @param newPainThreshold Desired PainThreshold value
@@ -1521,6 +1530,7 @@ namespace RTE {
 		float m_PainThreshold;
 		// Whether or not this actor can reveal unseen areas by looking
 		bool m_CanRevealUnseen;
+		bool m_HiddenByFog; //!< Hidden from the player by a battle's fog of war: not drawn (SetHiddenByFog).
 		// About How tall is the Actor, in pixels?
 		float m_CharHeight;
 		// Speed at which the m_AimAngle will change, in radians/s.

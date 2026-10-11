@@ -122,7 +122,7 @@ namespace SandboxDetail {
 				if (dynamic_cast<const ADoor*>(actor) || actor->IsDead()) {
 					continue;
 				}
-				if (!Sandbox::IsGodMode() && viewerTeam >= 0 && actor->GetTeam() != viewerTeam && g_SceneMan.IsUnseen(actor->GetPos().GetFloorIntX(), actor->GetPos().GetFloorIntY(), viewerTeam)) {
+				if (actor->IsHiddenByFog() || (!Sandbox::IsGodMode() && viewerTeam >= 0 && actor->GetTeam() != viewerTeam && g_SceneMan.IsUnseen(actor->GetPos().GetFloorIntX(), actor->GetPos().GetFloorIntY(), viewerTeam))) {
 					continue;
 				}
 				ImVec2 at = toMap(actor->GetPos());
@@ -132,6 +132,15 @@ namespace SandboxDetail {
 				drawList->AddCircleFilled(at, radius, color);
 				if (std::any_of(s_Selected.begin(), s_Selected.end(), [actor](const UnitRef& ref) { return RefersTo(ref, actor); })) {
 					drawList->AddCircle(at, radius + 3.0F, IM_COL32(255, 255, 255, 220), 0, 1.0F);
+				}
+			}
+
+			// Battle Command's fog of war: where enemies were last seen, hollow and fading.
+			for (const FogGhost& ghost: s_FogGhosts) {
+				const float age = FogGhostAge(ghost);
+				if (age < 1.0F) {
+					ImU32 color = ghost.Team >= 0 && ghost.Team < c_Sides ? c_SideColors[ghost.Team] : IM_COL32(200, 200, 200, 255);
+					drawList->AddCircle(toMap(ghost.Pos), ghost.Brain ? 3.5F : 2.2F, (color & 0x00FFFFFF) | (static_cast<ImU32>(200.0F * (1.0F - age)) << IM_COL32_A_SHIFT), 0, 1.0F);
 				}
 			}
 
@@ -200,6 +209,7 @@ namespace SandboxDetail {
 					stroke.Kind = Tool::Command;
 					stroke.Position = point;
 					stroke.Count = io.KeyShift ? 42 : 41;
+					stroke.Direct = ImGui::GetMouseClickedCount(ImGuiMouseButton_Right) >= 3;
 					s_Queue.push_back(stroke);
 				}
 			}
