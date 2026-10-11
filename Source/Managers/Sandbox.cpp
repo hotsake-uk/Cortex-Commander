@@ -78,6 +78,23 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 	stroke.Orders = UnitOrder(order);
 	stroke.Count = std::max(count, 1);
 	stroke.Radius = std::max(count, 1);
+	if (toolName == "Loadout" || toolName == "Squad") {
+		// One of your loadouts (count of them) or one of your squads, by name (the preset name), put down as the Unit tool does.
+		CustomPick pick{toolName == "Squad" ? CustomPick::Squad : CustomPick::Loadout, presetName};
+		std::vector<CustomLoadout> units = UnitsOfPick(pick);
+		if (units.empty()) {
+			return false;
+		}
+		stroke.Kind = Tool::Unit;
+		if (pick.Kind == CustomPick::Squad) {
+			stroke.SquadName = presetName;
+			stroke.Customs = std::move(units);
+		} else {
+			stroke.Customs.assign(static_cast<size_t>(stroke.Count), units.front());
+		}
+		s_Queue.push_back(stroke);
+		return true;
+	}
 	if (ContainsIgnoringCase(toolName, "Orders") && toolName.size() == 6) {
 		stroke.Kind = Tool::OrderSide;
 		s_Queue.push_back(stroke);
@@ -1499,7 +1516,11 @@ void Sandbox::DrawGUI() {
 	}
 	if (InGame()) {
 		DrawSelection();
+		DrawPlayerSquads();
 		DrawMinimap();
+		if (!s_Possessed) {
+			LoadoutWindow();
+		}
 	}
 
 	if (hiddenButAbove) {
@@ -1625,6 +1646,37 @@ void Sandbox::DrawGUI() {
 				if (ToolUI::Button("Usual kit")) {
 					s_Player.Kit = PlayerSetup().Kit;
 				}
+				// Your loadouts (the Loadouts window): one taken as the character, or the character kept as one.
+				ImGui::SameLine();
+				ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.55F);
+				if (ImGui::BeginCombo("##fromLoadout", "From my loadouts...", ImGuiComboFlags_HeightLarge)) {
+					CustomPick pick;
+					if (CustomPickItems(pick, false) && pick.Kind == CustomPick::Loadout) {
+						if (const CustomLoadout* loadout = FindCustomLoadout(pick.Name)) {
+							s_Player.Body = loadout->Body;
+							s_Player.Kit = loadout->Items;
+							s_Player.InheritKit = false;
+						}
+					}
+					ImGui::EndCombo();
+				}
+				ImGui::SetItemTooltip("Makes your character one of your loadouts: its unit, carrying its kit.");
+				ImGui::SameLine();
+				if (ToolUI::Button("Save as a loadout")) {
+					LoadLoadoutsFile();
+					CustomLoadout loadout;
+					loadout.Body = s_Player.Body;
+					loadout.Items = s_Player.Kit;
+					std::string name = "My character";
+					for (int number = 2; FindCustomLoadout(name); ++number) {
+						name = "My character " + std::to_string(number);
+					}
+					loadout.Name = name;
+					s_CustomLoadouts.push_back(loadout);
+					SaveLoadoutsFile();
+					g_ConsoleMan.PrintString("SANDBOX: Saved your character as the loadout \"" + name + "\" (the Loadouts window has it).");
+				}
+				ImGui::SetItemTooltip("Keeps this base class and kit as one of your loadouts, to spawn or put in squads from the Loadouts window.");
 				ImGui::TextDisabled("A new base class or kit is used the next time the character is made.");
 				ImGui::BeginDisabled(!exists);
 				if (ToolUI::Button("Make it again now")) {
@@ -1675,11 +1727,17 @@ void Sandbox::DrawGUI() {
 					ImGui::Combo("##shown", &s_UnitsShown, "All units\0Fighters only\0Non-combatants only\0");
 					ImGui::SetItemTooltip("Which units are listed: all of them, only fighters, or only non-combatants (animals, civilians: units that never start a fight).");
 					TemperamentCombo("Temperament");
+					const bool squadPicked = !s_RandomUnits && s_SpawnPick.Kind == CustomPick::Squad;
+					ImGui::BeginDisabled(squadPicked);
 					ImGui::SliderInt("Squad size", &s_SquadSize, 1, 10);
+					ImGui::EndDisabled();
+					if (squadPicked) {
+						ImGui::SetItemTooltip("Your squad says how many.");
+					}
 					// An animal or a civilian has no kit to choose and takes no orders to fight (it is only one if the chosen unit is: random picks are soldiers unless asked for otherwise).
-					const Preset* chosenUnit = kind == Tool::Unit && !s_RandomUnits ? ChosenPreset(kind, ChoiceFor(kind)) : nullptr;
+					const Preset* chosenUnit = kind == Tool::Unit && !s_RandomUnits && s_SpawnPick.Kind == CustomPick::None ? ChosenPreset(kind, ChoiceFor(kind)) : nullptr;
 					ImGui::BeginDisabled(chosenUnit && chosenUnit->NonCombatant);
-					LoadoutChooser();
+					LoadoutChooser("Loadout", true);
 					UnitOrderCombo("Orders");
 					ImGui::EndDisabled();
 				} else if (kind == Tool::Vehicle) {
@@ -2310,6 +2368,7 @@ void Sandbox::Update() {
 			}
 		}
 		UpdatePlayer();
+		UpdatePlayerSquads();
 		if (game) {
 			for (int team = 0; team < c_Sides; ++team) {
 				if (game->GetTeamFunds(team) < 500000.0F) {
