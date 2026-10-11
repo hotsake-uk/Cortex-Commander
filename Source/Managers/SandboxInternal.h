@@ -831,7 +831,9 @@ namespace SandboxDetail {
 		int Loadout = 0; //!< 0 faction default, 1 unarmed, 2+ a weapon from s_Weapons.
 		int Count = 1;
 		bool LitGrenade = false;
-		int Clicks = 0; //!< Tool::Command: how many clicks in a row placed it, 0 for not by a click: one makes the order cautious, two normal, three risky, four fully direct (s_DirectOrder).
+		int Clicks = 0; //!< Tool::Command: how many clicks in a row placed it, 0 for not by a click: one makes the order cautious, two or more normal (s_DirectOrder).
+		bool HasRisk = false; //!< Tool::Command: placed by a double click dragged, so Risk says how urgent it is, not Clicks.
+		float Risk = 0.0F; //!< With HasRisk, how far the drag went toward the full risk distance, 0 (normal) to 1 (fully direct).
 		long UnitID = 0; //!< Dropping a step of a plan: whose (and Choice which step).
 		std::vector<Vector> Points; //!< A patrol route's points (RC-4).
 		Vector Position2; //!< Selection box: the other corner.
@@ -946,8 +948,8 @@ namespace SandboxDetail {
 	inline bool s_Dragging = false;
 	inline bool s_DoubleClick = false; //!< The drag or click under way began with a double click.
 	inline int s_ClickCount = 0; //!< How many clicks in a row the drag or click under way began with: how urgent its order is (s_DirectOrder).
-	/// While an order placed by clicks is given (a command stroke's Clicks), how urgent it is: -1 one click (cautious), 0 two (normal, and any
-	/// order not placed by a click), 1 four (fully direct), three between (SettingsMan::DirectOrderTuning::RiskyClickShare). Every unit sent
+	/// While an order placed by clicks is given (a command stroke's Clicks or Risk), how urgent it is: -1 one click (cautious), 0 two (normal, and
+	/// any order not placed by a click), and a double click dragged 0 to 1 by how far (SettingsMan::DirectOrderTuning::RiskDragPixels). Every unit sent
 	/// (SendUnit) takes that share of the Battle Behavior tuning (Actor::StandingOrder::Direct), and one over 0 isn't held to the group's pace.
 	/// Set round the stroke, so every kind of order placed by a click (move, attack-move, dig to, defend, a map order) is made so the same way.
 	inline float s_DirectOrder = 0.0F;

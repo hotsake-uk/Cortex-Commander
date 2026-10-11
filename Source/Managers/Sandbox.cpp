@@ -1029,7 +1029,27 @@ void Sandbox::DrawGUI() {
 		bool defendAt = s_CommandMode == CommandMode::DefendAt && CurrentTool().Kind == Tool::Command;
 		bool facingMove = (s_CommandMode == CommandMode::Move || s_CommandMode == CommandMode::AttackMove) && io.KeyAlt && CurrentTool().Kind == Tool::Command;
 		bool dropLine = CurrentTool().Kind == Tool::BattleDropLine;
-		if (dropLine) {
+		// A double click held and dragged sets how much risk the order takes, from normal at the click to full at the risk distance, and the
+		// way dragged is the way they face when they get there. It takes over from the box, the facing arrow and the patrol clicks.
+		bool riskDrag = CurrentTool().Kind == Tool::Command && s_ClickCount >= 2 && s_CommandMode != CommandMode::Select && s_CommandMode != CommandMode::Patrol;
+		float riskPixels = std::max(1.0F, g_SettingsMan.DirectOrders().RiskDragPixels);
+		float dragLength = std::sqrt((now.x - s_DragStart.x) * (now.x - s_DragStart.x) + (now.y - s_DragStart.y) * (now.y - s_DragStart.y));
+		float risk = std::clamp(dragLength / riskPixels, 0.0F, 1.0F);
+		bool riskDragging = riskDrag && std::abs(now.x - s_DragStart.x) + std::abs(now.y - s_DragStart.y) > 8.0F;
+		if (riskDragging) {
+			ImDrawList* draw = ImGui::GetForegroundDrawList();
+			ImU32 color = IM_COL32(static_cast<int>(90.0F + 165.0F * risk), static_cast<int>(200.0F - 150.0F * risk), static_cast<int>(255.0F - 205.0F * risk), 230);
+			draw->AddCircle(s_DragStart, riskPixels, IM_COL32(255, 255, 255, 60), 64, 1.0F);
+			draw->AddLine(s_DragStart, now, color, 2.0F + 3.0F * risk);
+			if (dragLength > 1.0F) {
+				ImVec2 dir((now.x - s_DragStart.x) / dragLength, (now.y - s_DragStart.y) / dragLength);
+				ImVec2 normal(-dir.y, dir.x);
+				draw->AddTriangleFilled(ImVec2(now.x + dir.x * 10.0F, now.y + dir.y * 10.0F), ImVec2(now.x + normal.x * 6.0F, now.y + normal.y * 6.0F), ImVec2(now.x - normal.x * 6.0F, now.y - normal.y * 6.0F), color);
+			}
+			char label[32];
+			std::snprintf(label, sizeof(label), "Risk %d%%", static_cast<int>(std::round(risk * 100.0F)));
+			draw->AddText(ImVec2(now.x + 14.0F, now.y - 22.0F), color, label);
+		} else if (dropLine) {
 			ImGui::GetForegroundDrawList()->AddLine(s_DragStart, now, c_SideColors[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)], 3.0F);
 		} else if (defendAt || facingMove) {
 			ImU32 color = c_CommandModeColors[static_cast<int>(s_CommandMode)];
@@ -1058,6 +1078,20 @@ void Sandbox::DrawGUI() {
 				setup.DropOnLine = true;
 				SendBattleSettings(s_BattleEditTeam);
 				give = false;
+			} else if (riskDrag && dragged) {
+				stroke.Kind = Tool::Command;
+				stroke.Position = start;
+				g_SceneMan.WrapPosition(stroke.Position);
+				stroke.Position2 = end;
+				stroke.HasRisk = true;
+				stroke.Risk = risk;
+				if (s_CommandMode == CommandMode::DefendAt) {
+					stroke.Count = io.KeyShift ? 11 : 10;
+				} else if (s_CommandMode == CommandMode::Move || s_CommandMode == CommandMode::AttackMove) {
+					stroke.Count = io.KeyShift ? 31 : 30;
+				} else {
+					stroke.Count = io.KeyShift ? 1 : 0;
+				}
 			} else if (defendAt) {
 				stroke.Kind = Tool::Command;
 				stroke.Position = start;
@@ -1086,8 +1120,7 @@ void Sandbox::DrawGUI() {
 				stroke.Count = io.KeyShift ? 1 : (s_DoubleClick ? 2 : 0);
 			}
 			if (give) {
-				// (How many clicks placed the order says how urgent it is: one cautious, two normal, three risky, four the shortest way there
-				// whatever it takes.)
+				// (One click places the order cautiously and two normally; a double click dragged carries its own risk.)
 				stroke.Clicks = stroke.Kind == Tool::Command ? s_ClickCount : 0;
 				s_Queue.push_back(stroke);
 			}

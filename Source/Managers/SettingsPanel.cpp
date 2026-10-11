@@ -1215,21 +1215,18 @@ void DebugMan::SettingsGUI() {
 		Tip("An AI unit sent a long way walks to a friendly vehicle near it that is going its way, gets in and rides (or drives it) there, then gets out and walks the rest. A vehicle with an AI driver drives itself to the place it is sent, and units sent to a vehicle get in. Off: they walk, and AI drivers sit still.");
 	};
 
-	// How units behave on a cautious or a direct order: an RTS order placed with one click is cautious, two normal, three risky, and four
-	// fully direct, which sends them the shortest way whatever it takes.
+	// How units behave on a cautious or a direct order: an RTS order placed with one click is cautious, two normal, and a double click held
+	// and dragged goes from normal to fully direct (the shortest way whatever it takes) the further it is dragged.
 	auto battleBehavior = [&]() {
 		SettingsMan::DirectOrderTuning& direct = g_SettingsMan.DirectOrders();
 		if (Plain()) {
-			ImGui::TextWrapped("How many times you click when you place an RTS order (move, attack-move, defend, dig to) says how urgent it is. One click: cautious, walking round jumps and waiting for fuel. Two: a normal order. Three: riskier. Four: fully direct, the shortest way there whatever it takes. The Direct settings say how hard four clicks push it, the Cautious ones how careful one click is.");
+			ImGui::TextWrapped("How you place an RTS order (move, attack-move, defend, dig to) says how urgent it is. One click: cautious, walking round jumps and waiting for fuel. A double click: a normal order. A double click held and dragged: riskier the further you drag, up to fully direct (the shortest way there whatever it takes) at the full risk distance; the way you drag is the way they face when they get there. The Direct settings say how hard a full drag pushes it, the Cautious ones how careful one click is.");
 		}
 		{
-			float share = direct.RiskyClickShare * 100.0F;
-			if (Slider("Three click strength", &share, 0.0F, 100.0F, "%.0f%% of four clicks")) {
-				direct.RiskyClickShare = share / 100.0F;
-			}
-			Tip("How far an order placed with three clicks goes toward a fully direct one: every Direct setting is taken this share of the way from a normal order's. 0% makes three clicks a normal order; 50% is normal.");
+			Slider("Full risk drag distance", &direct.RiskDragPixels, 100.0F, 800.0F, "%.0f px");
+			Tip("How far on screen a double click is dragged for a fully direct order. A shorter drag takes that share of the way from a normal order to a fully direct one. 300 px is normal.");
 		}
-		Heading("Direct (four clicks): jetpack");
+		Heading("Direct (full drag): jetpack");
 		{
 			float preference = 1.0F / std::max(direct.FlightCostScale, 0.01F);
 			if (Slider("Jetpack preference", &preference, 1.0F, 5.0F, "%.1fx")) {
