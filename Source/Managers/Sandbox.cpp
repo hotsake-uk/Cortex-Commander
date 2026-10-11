@@ -899,6 +899,10 @@ void Sandbox::DrawGUI() {
 		if (!io.KeyCtrl && !io.KeyAlt) {
 			CommandHotkeys();
 		}
+		if (io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_X, false)) {
+			// Breach: the clicks to come dig through to the point, then attack.
+			s_CommandMode = CommandMode::Breach;
+		}
 		if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_A, false)) {
 			// Everyone on the selection's side.
 			int team = SelectionTeam();
@@ -1909,6 +1913,7 @@ void Sandbox::Update() {
 	if (!InGame()) {
 		s_Possessed = nullptr;
 		s_Plans.clear();
+		ForgetBreaches();
 		s_GuardPosts.clear();
 		s_Commander = false;
 		s_Paced.clear();
@@ -1928,6 +1933,7 @@ void Sandbox::Update() {
 	}
 	ClosePaintUndoStep(false);
 	UpdatePlans();
+	UpdateBreaches();
 	UpdateCommander();
 	UpdatePace();
 	UpdateMoveWatch();

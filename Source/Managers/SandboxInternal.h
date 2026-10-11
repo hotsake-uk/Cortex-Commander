@@ -1169,13 +1169,15 @@ namespace SandboxDetail {
 		Suppress, //!< Fire into a zone round the point and keep firing: no target needed, whatever else is in sight; they walk in range first.
 		JetpackHere, //!< Fly to the point clicked, in the air, not on the ground under it, and hover there till the tank runs low (Actor::StandingOrder::SkyGoal).
 		Select, //!< Clicks only pick units: one clicked (Shift adds, double click all of its kind in view), or none on a click on nothing.
-		Command //!< The order fits what's under the pointer (CommandTargetAt): with nothing selected, as Select; else a friend is selected, an enemy
+		Command, //!< The order fits what's under the pointer (CommandTargetAt): with nothing selected, as Select; else a friend is selected, an enemy
 		        //!< attacked, a battle objective gone for, open air flown to, anything else moved to. What the Command tool starts in, and what
 		        //!< a one-off order's mode goes back to once it's placed (and Esc). (After Select, so the ring's slices keep their places.)
+		Breach //!< Dig through to the point, then attack (SandboxBreach.cpp): the diggers tunnel there, the rest follow them in, and once
+		       //!< through they all go for the nearest enemy there. (Last, so the ring's slices keep their places.)
 	};
 	inline CommandMode s_CommandMode = CommandMode::Command;
-	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Jetpack here", "Select units", "Command"};
-	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(140, 230, 255, 255), IM_COL32(230, 230, 230, 255), IM_COL32(255, 214, 120, 255)};
+	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Jetpack here", "Select units", "Command", "Breach"};
+	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(140, 230, 255, 255), IM_COL32(230, 230, 230, 255), IM_COL32(255, 214, 120, 255), IM_COL32(235, 110, 55, 255)};
 	/// A mode whose order is given once and then goes back to Command (s_BackToCommandAt): not Select, Command or Patrol (clicked out point by point).
 	inline bool OneOffMode(CommandMode mode) { return mode != CommandMode::Select && mode != CommandMode::Command && mode != CommandMode::Patrol; }
 	inline double s_BackToCommandAt = -1.0; //!< When (ImGui time) the one-off mode in hand goes back to Command: once a double click can no longer follow.
@@ -2634,6 +2636,21 @@ namespace SandboxDetail {
 
 	/// A mark over each of the squad, and what it's doing with the keys at the top of the view. Call from the ImGui frame.
 	void DrawSquad();
+#pragma endregion
+
+#pragma region Breach (SandboxBreach.cpp)
+	/// The breaches under way forgotten. When out of a game.
+	void ForgetBreaches();
+
+	/// The units sent to breach to a point: those with a digger that cuts the way dig there, the rest follow the nearest of them, and once a
+	/// digger is through they all attack. If none can dig there, nobody goes, and the no-route markers say why.
+	void BreachSelected(const std::vector<Actor*>& units, const Vector& point);
+
+	/// Each breach watched for a digger getting through (then everyone attacks), or none left to. Call once per sim update.
+	void UpdateBreaches();
+
+	/// A marker at each breach's point, with the diggers' lines to it. Call from the ImGui frame, with the order marks.
+	void DrawBreaches(ImDrawList* drawList);
 #pragma endregion
 
 #pragma region Alerts and kill feed (BattleAlerts.cpp)

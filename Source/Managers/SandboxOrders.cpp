@@ -211,6 +211,8 @@ namespace SandboxDetail {
 				trigger = "OrderDefend";
 			} else if (why == "dig to") {
 				trigger = "OrderDig";
+			} else if (why == "breach") {
+				trigger = "OrderBreach";
 			}
 			AnswerOrder(unit, trigger);
 		}
@@ -1052,6 +1054,9 @@ namespace SandboxDetail {
 				DigUnitsTo(units, point);
 				MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::DigTo)]);
 				return;
+			case CommandMode::Breach:
+				BreachSelected(units, point);
+				return;
 			default: {
 				bool attackMove = s_CommandMode == CommandMode::AttackMove;
 				if (shift) {
@@ -1352,6 +1357,10 @@ namespace SandboxDetail {
 			// Dig to the point, in the ground or not (RC-11): each unit checked with its own digger first, and only those that can are sent.
 			DigUnitsTo(UnitsToMove(0, true), position);
 			MarkOrder(position, c_CommandModeColors[static_cast<int>(CommandMode::DigTo)]);
+			return;
+		}
+		if (s_CommandMode == CommandMode::Breach) {
+			BreachSelected(UnitsToMove(0, true), position);
 			return;
 		}
 		if (s_CommandMode == CommandMode::AttackMove) {

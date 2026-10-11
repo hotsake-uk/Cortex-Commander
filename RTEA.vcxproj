@@ -1471,6 +1471,7 @@
     <ClCompile Include="Source\Managers\BattleEnemy.cpp" />
     <ClCompile Include="Source\Managers\BattleSquad.cpp" />
     <ClCompile Include="Source\Managers\BattleAlerts.cpp" />
+    <ClCompile Include="Source\Managers\SandboxBreach.cpp" />
     <ClCompile Include="Source\Managers\ControlLink.cpp" />
     <ClCompile Include="Source\Managers\SettingsMan.cpp" />
     <ClCompile Include="Source\Managers\TimerMan.cpp" />
