@@ -686,8 +686,12 @@ function SharedBehaviors.Suppression(AI, Owner)
 	return Owner.Suppression, Owner.Morale;
 end
 
--- Whether a unit's nerve has gone (morale under 0.3): it pulls back whatever its health (see RetreatUpdate).
+-- Whether a unit's nerve has gone (morale under 0.3): it pulls back whatever its health (see RetreatUpdate). Never with "Units break
+-- when shaken" off.
 function SharedBehaviors.Shaken(AI, Owner)
+	if not SettingsMan.AIBreaksWhenShaken then
+		return false; -- (Turned off: AI behaviour, Units break when shaken.)
+	end
 	local _, morale = SharedBehaviors.Suppression(AI, Owner);
 	return morale < 0.3;
 end

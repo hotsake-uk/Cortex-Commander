@@ -2482,6 +2482,7 @@ namespace SandboxDetail {
 		Supply, //!< Your units round the point patched up (wounds closed, health back) and their guns reloaded.
 		Scan, //!< The fog of war lifted everywhere for a while.
 		Evac, //!< Your units round the point pulled out, half what they were worth back in points.
+		Rally, //!< Your shaken units round the point steadied: their nerve back, so they stop falling back.
 		Count
 	};
 	struct CommanderPowerInfo {
@@ -2497,6 +2498,7 @@ namespace SandboxDetail {
 	    {"Supply", "Your units round the point are patched up (wounds closed, health back) and their guns reloaded.", 90.0F, 150.0F},
 	    {"Scan", "Lifts the fog of war everywhere for 10 seconds.", 90.0F, 0.0F},
 	    {"Evac", "Your units round the point are pulled out of the battle, and half what they were worth comes back in points.", 120.0F, 120.0F},
+	    {"Rally", "Your units round the point find their nerve again: those breaking stop falling back and fight on.", 45.0F, 250.0F},
 	};
 	inline int s_PendingPower = -1; //!< A power picked on the Commander Toolbar, waiting for a click on the map (Tool::PowerTarget).
 	inline long long s_ScanUntil = -1; //!< The sim update the Scan power's lifting of the fog of war lasts till.
@@ -2518,6 +2520,13 @@ namespace SandboxDetail {
 #pragma endregion
 
 #pragma region Veterancy (Veterancy.cpp)
+	/// Where marks over a unit go: just over the top of what its own HUD drew above its head last frame (health, team, weapon), or, with
+	/// that not drawn, just over its head.
+	inline Vector OverHeadPos(const Actor* actor) {
+		const float stack = actor->GetAboveHUDPos().m_Y - actor->GetPos().m_Y - 6.0F;
+		return actor->GetPos() + Vector(0.0F, std::min(stack, -actor->GetHeight() * 0.5F) - 2.0F);
+	}
+
 	/// A unit's record in a Battle Command battle: the name it's given, its kills, when it came in and the rank they've earned it.
 	struct Veteran {
 		int Team = -1;
@@ -2565,6 +2574,16 @@ namespace SandboxDetail {
 
 	/// The report window, over the paused world, once the battle has ended. Call from the ImGui frame.
 	void DrawBattleReport();
+#pragma endregion
+
+#pragma region Morale (BattleMorale.cpp)
+	constexpr float c_ShakenMorale = 0.3F; //!< Under this a unit's nerve has gone and its AI pulls it back (SharedBehaviors.Shaken).
+
+	/// Your units breaking (shaken) noticed, and said when several near each other do at once. Call once per sim update, from UpdateBattle.
+	void UpdateMorale();
+
+	/// A mark over each of your units that is breaking. Call from the ImGui frame.
+	void DrawMorale();
 #pragma endregion
 
 #pragma region Fog of war (BattleFog.cpp)

@@ -263,6 +263,8 @@ namespace RTE {
 
 		/// Whether AI units stand still and upright before a jetpack climb or jump (on, as designed), or take off mid-stride.
 		bool AISteadiesBeforeJet() const { return m_AISteadyBeforeJet; }
+		/// Whether a unit whose nerve has gone (morale under 0.3) breaks and falls back, whatever its health.
+		bool AIBreaksWhenShaken() const { return m_AIBreaksWhenShaken; }
 
 		/// Whether AI units wait at a take-off for the fuel the flight needs (on, as designed), or go with what is in the tank.
 		bool AIWaitsForFuel() const { return m_AIWaitForFuel; }
@@ -555,6 +557,7 @@ namespace RTE {
 
 		/// Sets whether AI units steady themselves before they jet.
 		void SetAISteadiesBeforeJet(bool steady) { m_AISteadyBeforeJet = steady; }
+		void SetAIBreaksWhenShaken(bool on) { m_AIBreaksWhenShaken = on; }
 
 		/// Sets whether AI units wait for fuel before they jet.
 		void SetAIWaitsForFuel(bool wait) { m_AIWaitForFuel = wait; }
@@ -834,6 +837,7 @@ namespace RTE {
 		float m_WeaponTerrainDamage; //!< Multiple of the force weapon fire strikes terrain with, 0.1 to 20 (see WeaponTerrainDamage).
 		int m_AISpawnDiggerType; //!< Which digger they're handed: 0 Light, 1 Medium, 2 Heavy, 3 random (see AISpawnDiggerType).
 		bool m_AISteadyBeforeJet; //!< Whether AI units steady themselves before they jet (see AISteadiesBeforeJet).
+		bool m_AIBreaksWhenShaken; //!< See AIBreaksWhenShaken.
 		bool m_AIWaitForFuel; //!< Whether AI units wait for fuel before they jet (see AIWaitsForFuel).
 		bool m_AIUsesVehicles; //!< Whether AI units use vehicles (see AIUsesVehicles).
 		bool m_DeadCrewFallOut; //!< Whether crew killed in a vehicle fall out of it (see DeadCrewFallOut).

@@ -8,6 +8,7 @@ namespace SandboxDetail {
 		constexpr int c_PowerCount = static_cast<int>(CommanderPower::Count);
 		constexpr float c_ScanSeconds = 10.0F;
 		constexpr float c_EvacRefund = 0.5F;
+		constexpr float c_RallyMorale = 0.8F; //!< The nerve Rally brings a unit back up to.
 
 		/// The sim update each side's powers are ready again on.
 		std::array<std::array<long long, c_PowerCount>, c_Sides> s_ReadyAt{};
@@ -84,6 +85,7 @@ namespace SandboxDetail {
 					if (AHuman* human = dynamic_cast<AHuman*>(unit)) {
 						human->ReloadFirearms();
 					}
+					unit->Say("Resupplied");
 				}
 				Note(std::string(c_SideNames[side]) + ": supplies to " + std::to_string(units.size()) + (units.size() == 1 ? " unit" : " units"));
 				break;
@@ -109,6 +111,19 @@ namespace SandboxDetail {
 				Note(std::string(c_SideNames[side]) + ": " + std::to_string(units.size()) + (units.size() == 1 ? " unit" : " units") + " pulled out");
 				break;
 			}
+			case CommanderPower::Rally: {
+				std::vector<Actor*> units = UnitsAround(side, at, info.Radius);
+				int steadied = 0;
+				for (Actor* unit: units) {
+					if (unit->GetMorale() < c_RallyMorale) {
+						unit->ChangeMorale(c_RallyMorale - unit->GetMorale());
+						unit->Say("Rallied");
+						++steadied;
+					}
+				}
+				Note(std::string(c_SideNames[side]) + (steadied > 0 ? " rallies " + std::to_string(steadied) + (steadied == 1 ? " unit" : " units") : std::string(" rallies, but nobody there was shaken")));
+				break;
+			}
 			default:
 				return;
 		}
@@ -131,7 +146,7 @@ namespace SandboxDetail {
 		if (CurrentTool().Kind != Tool::PowerTarget) {
 			s_PendingPower = -1;
 		}
-		static const Icon icons[] = {Icon::Bomb, Icon::Bolt, Icon::Cloud, Icon::Cross, Icon::Eye, Icon::Rocket};
+		static const Icon icons[] = {Icon::Bomb, Icon::Bolt, Icon::Cloud, Icon::Cross, Icon::Eye, Icon::Rocket, Icon::Flag};
 		static_assert(std::size(icons) == c_PowerCount, "An icon for each power.");
 		for (int power = 0; power < c_PowerCount; ++power) {
 			const CommanderPowerInfo& info = c_CommanderPowers[power];
