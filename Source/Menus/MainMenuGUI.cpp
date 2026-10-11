@@ -99,6 +99,7 @@ void MainMenuGUI::CreateMainScreen() {
 	m_MainMenuButtons[MenuButton::MetaGameButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToMetaGame"));
 	m_MainMenuButtons[MenuButton::ScenarioButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToSkirmish"));
 	m_MainMenuButtons[MenuButton::SandboxButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToSandbox"));
+	m_MainMenuButtons[MenuButton::BattleCommandButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToBattleCommand"));
 	m_MainMenuButtons[MenuButton::SaveOrLoadGameButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonSaveOrLoadGame"));
 	m_MainMenuButtons[MenuButton::SettingsButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToOptions"));
 	m_MainMenuButtons[MenuButton::ModManagerButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToModManager"));
@@ -213,7 +214,7 @@ void MainMenuGUI::SetActiveMenuScreen(MenuScreen screenToShow, bool playButtonPr
 void MainMenuGUI::ShowMainScreen() {
 	m_VersionLabel->SetVisible(true);
 
-	m_MainMenuScreens[MenuScreen::MainScreen]->Resize(300, 196);
+	m_MainMenuScreens[MenuScreen::MainScreen]->Resize(300, 216);
 	m_MainMenuScreens[MenuScreen::MainScreen]->SetVisible(true);
 
 	m_MainMenuButtons[MenuButton::BackToMainButton]->SetVisible(false);
@@ -310,7 +311,7 @@ void MainMenuGUI::ShowAndBlinkResumeButton() {
 	if (!m_MainMenuButtons[MenuButton::ResumeButton]->GetVisible()) {
 		m_ResumeButtonBlinkTimer.Reset();
 		if (g_ActivityMan.GetActivity() && (g_ActivityMan.GetActivity()->GetActivityState() == Activity::Running || g_ActivityMan.GetActivity()->GetActivityState() == Activity::Editing)) {
-			m_MainMenuScreens[MenuScreen::MainScreen]->Resize(300, 220);
+			m_MainMenuScreens[MenuScreen::MainScreen]->Resize(300, 240);
 			m_MainMenuButtons[MenuButton::ResumeButton]->SetVisible(true);
 		}
 	} else {
@@ -475,6 +476,9 @@ void MainMenuGUI::HandleMainScreenInputEvents(const GUIControl* guiEventControl)
 		m_UpdateResult = MainMenuUpdateResult::ScenarioStarted;
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SandboxButton]) {
 		SetActiveMenuScreen(MenuScreen::SandboxScreen);
+	} else if (guiEventControl == m_MainMenuButtons[MenuButton::BattleCommandButton]) {
+		// The scenario chooser with Battle Command picked: a map to play it on, then in.
+		m_UpdateResult = MainMenuUpdateResult::BattleCommandScenarioStarted;
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SaveOrLoadGameButton]) {
 		SetActiveMenuScreen(MenuScreen::SaveOrLoadGameScreen);
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SettingsButton]) {
