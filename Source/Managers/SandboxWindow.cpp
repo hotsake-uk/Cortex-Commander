@@ -3889,19 +3889,32 @@ namespace SandboxDetail {
 				s_ShapeFill = false;
 			}
 			next();
-			if (BarChip("Shape", s_ShapeFill, ToolTheme::Text, nullptr, "Click and drag out a circle, triangle or square on the world, and it is filled in one go (Dig digs it out).\nShift keeps it as wide as tall; Escape drops it.") == 1) {
+			if (BarChip("Shape", s_ShapeFill, ToolTheme::Text, nullptr, "Click and drag out a circle, triangle, square or line on the world, and it is filled in one go (Dig digs it out; with any of them, a right drag digs the shape out).\nShift keeps it as wide as tall (a line: to the 8 ways, straight or at 45 degrees); Escape drops it.") == 1) {
 				s_ShapeFill = true;
 			}
 		}
 		if (terrainBrush && s_ShapeFill) {
-			static const char* const fills[] = {"Circle", "Triangle", "Square"};
-			for (int i = 0; i < 3; ++i) {
+			static const char* const fills[c_FillShapeCount] = {"Circle", "Triangle", "Square", "Line"};
+			for (int i = 0; i < c_FillShapeCount; ++i) {
 				i == 0 ? wide() : next();
 				ImGui::PushID(i + 40);
-				if (BarChip(fills[i], static_cast<int>(s_FillShape) == i) == 1) {
+				if (BarChip(fills[i], static_cast<int>(s_FillShape) == i, ToolTheme::Text, nullptr, i == 3 ? "Drag a line of it, as wide as Width, its ends rounded. Shift keeps it to the 8 ways, straight or at 45 degrees." : nullptr) == 1) {
 					s_FillShape = static_cast<FillShape>(i);
 				}
 				ImGui::PopID();
+			}
+			if (s_FillShape == FillShape::Line) {
+				wide();
+				ImGui::SetNextItemWidth(field);
+				ImGui::SliderInt("##lineWidth", &s_LineWidth, 1, c_MaxLineWidth, "Width %d px", ImGuiSliderFlags_Logarithmic);
+				for (const auto& [label, size]: {std::pair<const char*, int>{"S", 4}, {"M", 8}, {"L", 24}, {"XL", 60}}) {
+					next();
+					ImGui::PushID(size + 60);
+					if (BarChip(label, s_LineWidth == size) == 1) {
+						s_LineWidth = size;
+					}
+					ImGui::PopID();
+				}
 			}
 		} else if (tool.UsesRadius) {
 			wide();
