@@ -384,7 +384,7 @@ namespace RTE {
 			float Caution = 0.1F; //!< The most route caution they have (PathAgent::Caution): 1 is a normal unit's, lower shies less from hard flights and long drops.
 			float FlightCostScale = 0.5F; //!< What a jet flight's time, take-off and fuel cost them as a share of the usual (PathAgent::FlightCostScale): lower jumps more where others walk.
 			float FuelShare = 0.6F; //!< The share of a flight's fuel they wait for at a take-off before going (with the fuel wait on).
-			bool RecklessSkipsSteady = false; //!< Whether risk cuts the steadying before a take-off short (none at all at full risk). Off: they come to a stand as any unit does, then go. (Skipped, a risky order's take-offs mid-stride often failed, and it never got off the ground properly.)
+			float RecklessSteadyCut = 0.0F; //!< How much risk cuts the steadying before a take-off short, 0 to 1: the steady is this share shorter at full risk, in the order's share of it (1: none at all at full risk). 0: they come to a stand as any unit does, then go. (Skipped, a risky order's take-offs mid-stride often failed, and it never got off the ground properly.)
 			float FlightSpeed = 1.5F; //!< How fast they fly, as a multiple of the usual speed limits up, across and down.
 			float Touchdown = 7.0F; //!< How fast they let themselves come down onto the floor, m/s (5 is the usual).
 			bool SafeLandings = true; //!< Whether that landing is held under the speed the body is hurt at (AHuman::PilotFlight).

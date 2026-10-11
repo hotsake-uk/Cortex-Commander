@@ -2780,9 +2780,11 @@ int AHuman::MoveAlongRoute() {
 		mover.straightHold = false;
 		mover.straightSteadying = false;
 	}
-	// Steadied first, as any take-off is (unless the Battle Behavior's RecklessSkipsSteady): standing, still and upright, for a third of a
-	// second before the jet is lit. (Lit mid-stride, the step's speed went into the flight and full-risk take-offs failed over and over.)
-	const bool straightSteady = fullRisk && g_SettingsMan.AISteadiesBeforeJet() && !g_SettingsMan.DirectOrders().RecklessSkipsSteady;
+	// Steadied first, as any take-off is: standing, still and upright, for a third of a second before the jet is lit, less by the Battle
+	// Behavior's RecklessSteadyCut in the order's share. (Lit mid-stride, the step's speed went into the flight and full-risk take-offs
+	// failed over and over.)
+	const float straightSteadyMS = 300.0F * (1.0F - g_SettingsMan.DirectOrders().RecklessSteadyCut * std::clamp(m_StandingOrder.Direct, 0.0F, 1.0F));
+	const bool straightSteady = fullRisk && g_SettingsMan.AISteadiesBeforeJet() && straightSteadyMS > 1.0F;
 	if (fullRisk && (airborne || m_Status != STABLE || std::abs(m_Vel.m_X) > 0.4F || std::abs(m_Vel.m_Y) > 0.5F || std::abs(m_AngularVel) > 0.6F || std::abs(std::abs(GetRotAngle()) - std::abs(m_RotAngleTargets[STAND])) > 0.2F)) {
 		mover.straightStillTimer.Reset();
 	}
@@ -2901,7 +2903,7 @@ int AHuman::MoveAlongRoute() {
 						MoverTrace("full risk; waiting for fuel to fly for " + std::to_string(static_cast<int>(goal.m_X)) + "," + std::to_string(static_cast<int>(goalFloorY)));
 					}
 				}
-			} else if (straightSteady && !airborne && !mover.straightStillTimer.IsPastSimMS(300) && !(mover.straightSteadying && mover.straightSettleTimer.IsPastSimMS(1500))) {
+			} else if (straightSteady && !airborne && !mover.straightStillTimer.IsPastSimMS(static_cast<double>(straightSteadyMS)) && !(mover.straightSteadying && mover.straightSettleTimer.IsPastSimMS(1500))) {
 				// Coming to a stand first (a second and a half at most, as for the route's take-offs): held still here, looked at again next time.
 				if (!mover.straightSteadying) {
 					mover.straightSteadying = true;
@@ -3498,7 +3500,7 @@ int AHuman::MoveAlongRoute() {
 		// and upright for up to most of a second, by how far the landing is past three bodies off. A small error at take-off is a big one
 		// at the end of a long flight, and long flights were the ones missed and flown again.
 		float flightLength = toLanding.GetMagnitude();
-		float settleMS = std::clamp((flightLength - h * 3.0F) / h * 150.0F, 0.0F, 900.0F) * caution * (directTuning.RecklessSkipsSteady ? 1.0F - direct : 1.0F);
+		float settleMS = std::clamp((flightLength - h * 3.0F) / h * 150.0F, 0.0F, 900.0F) * caution * (1.0F - directTuning.RecklessSteadyCut * direct);
 		// (Upright against its own standing pose, which leans for some bodies: measured against straight up, a soldier whose stance leans
 		// more than the tolerance never counted as settled, and stood at the foot of the ledge for good.)
 		float uprightError = std::abs(std::abs(GetRotAngle()) - std::abs(m_RotAngleTargets[STAND]));
@@ -3508,7 +3510,7 @@ int AHuman::MoveAlongRoute() {
 		}
 		// (Never more than a second and a half of it, whatever the body does: the wait resets the stuck handling, and unbounded, a unit that
 		// never quite settled stood at its take-off with nothing to move it on.)
-		bool wantsSettle = canTakeOff && !hop && (direct < 1.0F || !directTuning.RecklessSkipsSteady) && g_SettingsMan.AISteadiesBeforeJet() && (!still || m_Status != STABLE || !mover.steadyTimer.IsPastSimMS(static_cast<double>(settleMS)));
+		bool wantsSettle = canTakeOff && !hop && (direct < 1.0F || directTuning.RecklessSteadyCut < 1.0F) && g_SettingsMan.AISteadiesBeforeJet() && (!still || m_Status != STABLE || !mover.steadyTimer.IsPastSimMS(static_cast<double>(settleMS)));
 		if (wantsSettle && !mover.settling) {
 			mover.settling = true;
 			mover.settleWaitTimer.Reset();
