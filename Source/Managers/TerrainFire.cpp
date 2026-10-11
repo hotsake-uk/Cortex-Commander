@@ -306,15 +306,46 @@ bool TerrainFire::IsBurningNear(const Vector& position, int radius) {
 	int height = terrain->GetBitmap()->h;
 	int centerX = position.GetFloorIntX();
 	int centerY = position.GetFloorIntY();
+	bool wrapX = g_SceneMan.SceneWrapsX();
+	bool wrapY = g_SceneMan.SceneWrapsY();
+	// Any pixel burning with keys from one to another (a stretch of a row): one search of the map rather than a look-up per pixel.
+	// (Smouldering charcoal is no fire to stand back from or catch from.)
+	auto burningIn = [](int fromKey, int toKey) {
+		for (auto found = s_Burning.lower_bound(fromKey); found != s_Burning.end() && found->first <= toKey; ++found) {
+			if (found->second.Kind != Fuel::Ember) {
+				return true;
+			}
+		}
+		return false;
+	};
+	int left = centerX - radius;
+	int right = centerX + radius;
 	for (int dy = -radius; dy <= radius; ++dy) {
-		for (int dx = -radius; dx <= radius; ++dx) {
-			int x = centerX + dx;
-			int y = centerY + dy;
-			// (Smouldering charcoal is no fire to stand back from or catch from.)
-			if (WrapPixel(x, y, width, height)) {
-				if (auto found = s_Burning.find(y * width + x); found != s_Burning.end() && found->second.Kind != Fuel::Ember) {
-					return true;
-				}
+		int y = centerY + dy;
+		if (wrapY) {
+			y = ((y % height) + height) % height;
+		}
+		if (y < 0 || y >= height) {
+			continue;
+		}
+		int rowKey = y * width;
+		if (!wrapX) {
+			int from = std::max(left, 0);
+			int to = std::min(right, width - 1);
+			if (from <= to && burningIn(rowKey + from, rowKey + to)) {
+				return true;
+			}
+		} else if (right - left + 1 >= width) {
+			// The whole row.
+			if (burningIn(rowKey, rowKey + width - 1)) {
+				return true;
+			}
+		} else {
+			// Split in two where it crosses the seam.
+			int from = ((left % width) + width) % width;
+			int to = from + (right - left);
+			if (to < width ? burningIn(rowKey + from, rowKey + to) : (burningIn(rowKey + from, rowKey + width - 1) || burningIn(rowKey, rowKey + to - width))) {
+				return true;
 			}
 		}
 	}

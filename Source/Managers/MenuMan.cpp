@@ -178,6 +178,10 @@ bool MenuMan::UpdateMainMenu() const {
 			m_ScenarioMenu->SetActivityToSelect("Sandbox");
 			m_TitleScreen->SetTitleTransitionState(TitleScreen::TitleTransition::MainMenuToScenario);
 			break;
+		case MainMenuGUI::MainMenuUpdateResult::BattleCommandScenarioStarted:
+			m_ScenarioMenu->SetActivityToSelect("Battle Command");
+			m_TitleScreen->SetTitleTransitionState(TitleScreen::TitleTransition::MainMenuToScenario);
+			break;
 		case MainMenuGUI::MainMenuUpdateResult::EnterCreditsScreen:
 			m_TitleScreen->SetTitleTransitionState(TitleScreen::TitleTransition::MainMenuToCredits);
 			break;

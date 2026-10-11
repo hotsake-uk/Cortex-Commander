@@ -177,7 +177,7 @@ namespace RTE {
 		/// @param effectsList The list to add the screen effects that fall within the box to. The coordinates of the effects returned here will be relative to the boxPos passed in above.
 		/// @param team The team whose unseen layer should obscure the screen effects here.
 		/// @return Whether any active post effects were found in that box.
-		bool GetPostScreenEffectsWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::list<PostEffect>& effectsList, int team = -1);
+		bool GetPostScreenEffectsWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<PostEffect>& effectsList, int team = -1);
 
 		/// Gets a temporary bitmap of specified size to rotate post effects in.
 		/// @param bitmapSize Size of bitmap to get.
@@ -644,7 +644,7 @@ namespace RTE {
 		/// @param effectsList The list to add the screen effects that fall within the box to. The coordinates of the effects returned here will be relative to the boxPos passed in above.
 		/// @param team The team whose unseen area should block the glows.
 		/// @return Whether any active post effects were found in that box.
-		bool GetPostScreenEffects(Vector boxPos, int boxWidth, int boxHeight, std::list<PostEffect>& effectsList, int team = -1);
+		bool GetPostScreenEffects(Vector boxPos, int boxWidth, int boxHeight, std::vector<PostEffect>& effectsList, int team = -1);
 
 		/// Gets all screen effects that are located within a box in the scene. Their coordinates will be returned relative to the upper left corner of the box passed in here.
 		/// @param left Position of box left plane (X start).
@@ -654,7 +654,7 @@ namespace RTE {
 		/// @param effectsList The list to add the screen effects that fall within the box to. The coordinates of the effects returned here will be relative to the boxPos passed in above.
 		/// @param team The team whose unseen area should block the glows.
 		/// @return Whether any active post effects were found in that box.
-		bool GetPostScreenEffects(int left, int top, int right, int bottom, std::list<PostEffect>& effectsList, int team = -1);
+		bool GetPostScreenEffects(int left, int top, int right, int bottom, std::vector<PostEffect>& effectsList, int team = -1);
 #pragma endregion
 
 #pragma region Post Pixel Glow Handling

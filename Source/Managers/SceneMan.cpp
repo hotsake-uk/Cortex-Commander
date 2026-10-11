@@ -462,7 +462,12 @@ unsigned char SceneMan::GetTerrMatter(int pixelX, int pixelY) {
 	if (pixelY < 0)
 		return g_MaterialAir;
 
-	int material = getpixel(pTMatBitmap, pixelX, pixelY);
+	// The material layer is an 8-bit memory bitmap and the bounds are checked above, so read it directly rather than through the bitmap's vtable.
+	int material = _getpixel(pTMatBitmap, pixelX, pixelY);
+	// Air stays air under every scope below, and most reads are of air, so skip the per-thread scope checks for it.
+	if (material == g_MaterialAir) {
+		return g_MaterialAir;
+	}
 	// Bodies move through liquid, see LiquidsPassable.
 	if (s_LiquidsPassableDepth > 0 && material != g_MaterialAir && FluidSim::IsLiquid(material)) {
 		return g_MaterialAir;
@@ -509,18 +514,24 @@ Vector SceneMan::GetGlobalAcc() const {
 	return m_pCurrentScene->GetGlobalAcc();
 }
 
-void SceneMan::RegisterDrawing(const BITMAP* bitmap, int moid, int left, int top, int right, int bottom) {
+void SceneMan::RegisterDrawing(const BITMAP* bitmap, int moid, int left, int top, int right, int bottom, const MovableObject* mo) {
 	if (m_pMOColorLayer && m_pMOColorLayer->GetBitmap() == bitmap) {
 		m_pMOColorLayer->RegisterDrawing(left, top, right, bottom);
-	} else if (const MovableObject* mo = g_MovableMan.GetMOFromID(moid)) {
+	} else if (mo) {
+		// The MOID pass hands over the object itself, under the ID it was just given: the table of objects by ID is being rebuilt meanwhile, so a lookup would find last update's.
+		if (moid != g_NoMOID && moid != 0) {
+			IntRect rect(left, top, right, bottom);
+			m_MOIDsGrid.Add(rect, *mo);
+		}
+	} else if (const MovableObject* foundMO = g_MovableMan.GetMOFromID(moid)) {
 		IntRect rect(left, top, right, bottom);
-		m_MOIDsGrid.Add(rect, *mo);
+		m_MOIDsGrid.Add(rect, *foundMO);
 	}
 }
 
-void SceneMan::RegisterDrawing(const BITMAP* bitmap, int moid, const Vector& center, float radius) {
+void SceneMan::RegisterDrawing(const BITMAP* bitmap, int moid, const Vector& center, float radius, const MovableObject* mo) {
 	if (radius != 0.0F) {
-		RegisterDrawing(bitmap, moid, static_cast<int>(std::floor(center.m_X - radius)), static_cast<int>(std::floor(center.m_Y - radius)), static_cast<int>(std::floor(center.m_X + radius)), static_cast<int>(std::floor(center.m_Y + radius)));
+		RegisterDrawing(bitmap, moid, static_cast<int>(std::floor(center.m_X - radius)), static_cast<int>(std::floor(center.m_Y - radius)), static_cast<int>(std::floor(center.m_X + radius)), static_cast<int>(std::floor(center.m_Y + radius)), mo);
 	}
 }
 
@@ -780,7 +791,7 @@ bool SceneMan::TryPenetrate(int posX,
 								g_MovableMan.AddParticle(pixelMO);
 								pixelMO = 0;
 							}
-							RemoveOrphans(posX + testY % 2 ? -1 : 1, testY, removeOrphansRadius + 5, removeOrphansMaxArea + 10, true);
+							RemoveOrphans(posX + (testY % 2 ? -1 : 1), testY, removeOrphansRadius + 5, removeOrphansMaxArea + 10, true);
 						}
 						_putpixel(pFGColor, posX, testY, g_MaskColor);
 						_putpixel(pMaterial, posX, testY, g_MaterialAir);
@@ -1590,6 +1601,10 @@ float SceneMan::GetGas(const Vector& position, int kind) const {
 
 void SceneMan::AddAirGust(const Vector& position, const Vector& direction, float strength, float length, float spread) const {
 	AirPressure::Gust(position, direction, strength, length, spread);
+}
+
+bool SceneMan::MagicAICasting() const {
+	return MagicEffects::IsOn() && MagicEffects::GetTuning().AICasting;
 }
 
 void SceneMan::MagicPush(const Vector& origin, const Vector& direction, float power, float range, float spread, const MovableObject* caster) const {

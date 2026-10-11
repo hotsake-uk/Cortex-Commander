@@ -286,6 +286,7 @@ void RenderMan::EndObjectShader() {
 
 void RenderMan::BeginFrame(const Camera* camera) {
 	ZoneScoped;
+	++m_BeginFrameCount;
 	m_ActiveBatch->m_CurrentCamera = camera ? camera : &m_DefaultCamera;
 	m_ActiveBatch->m_CurrentShader = m_DefaultShader.get();
 	m_ActiveBatch->m_CurrentBlendMode = Blend::ALPHA;

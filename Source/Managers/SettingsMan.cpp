@@ -24,6 +24,7 @@
 #include "ActorWater.h"
 #include "UnitSpeech.h"
 #include "ModernHUD.h"
+#include "ToolWidgets.h"
 #include "ConsoleMan.h"
 #include "CameraMan.h"
 #include "MovableMan.h"
@@ -368,6 +369,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("MagicUnitPush", { MagicEffects::GetTuning().UnitPush = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
 	MatchProperty("MagicAirGust", { MagicEffects::GetTuning().AirGust = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
 	MatchProperty("MagicSpellEnergy", { MagicEffects::GetTuning().SpellEnergy = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("MagicAICasting", { MagicEffects::GetTuning().AICasting = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("MagicEnergyRegen", { MagicEffects::GetTuning().EnergyRegen = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
 	MatchProperty("WaterFreezes", { FluidSim::SetFreezingEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("BloodFlows", { FluidSim::SetBloodFlows(std::stoi(reader.ReadPropValue()) != 0); });
@@ -382,6 +384,15 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("RopeSettleSeconds", { RopeSim::SetSettleSeconds(std::stof(reader.ReadPropValue())); });
 	MatchProperty("CandleBurnMinutes", { TerrainCandle::SetBurnMinutes(std::stof(reader.ReadPropValue())); });
 	MatchProperty("ModernHUD", { ModernHUD::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("UILight", { ToolLight::Strength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 2.0F); });
+	MatchProperty("UILightOwn", { ToolLight::Mode = std::stoi(reader.ReadPropValue()) != 0 ? ToolLight::Source::OwnLight : ToolLight::Source::FollowGame; });
+	MatchProperty("UILightAngle", { ToolLight::OwnAngle = std::clamp(std::stof(reader.ReadPropValue()), -90.0F, 90.0F); });
+	MatchProperty("UILightHeight", { ToolLight::OwnHeight = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
+	MatchProperty("UILightBrightness", { ToolLight::OwnBrightness = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
+	MatchProperty("UILightRed", { ToolLight::OwnColor[0] = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
+	MatchProperty("UILightGreen", { ToolLight::OwnColor[1] = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
+	MatchProperty("UILightBlue", { ToolLight::OwnColor[2] = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
+	MatchProperty("UINearbyLights", { ToolLight::NearbyLights = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("SmoothHUDText", { TextOverlay::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightingSettingsVersion", { s_ReadLightingSettingsVersion = std::stoi(reader.ReadPropValue()); });
 	MatchProperty("GraphicsQuality", {
@@ -717,13 +728,16 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DirectFuelShare", { reader >> m_DirectOrders.FuelShare; m_DirectOrders.FuelShare = std::clamp(m_DirectOrders.FuelShare, 0.1F, 1.2F); });
 	MatchProperty("DirectSteady", { reader >> m_DirectOrders.Steady; });
 	MatchProperty("DirectFlightSpeed", { reader >> m_DirectOrders.FlightSpeed; m_DirectOrders.FlightSpeed = std::clamp(m_DirectOrders.FlightSpeed, 1.0F, 3.0F); });
+	MatchProperty("DirectSafeLandings", { reader >> m_DirectOrders.SafeLandings; });
 	MatchProperty("DirectTouchdown", { reader >> m_DirectOrders.Touchdown; m_DirectOrders.Touchdown = std::clamp(m_DirectOrders.Touchdown, 3.0F, 15.0F); });
 	MatchProperty("DirectDigCost", { reader >> m_DirectOrders.DigCostScale; m_DirectOrders.DigCostScale = std::clamp(m_DirectOrders.DigCostScale, 0.01F, 1.0F); });
+	MatchProperty("DirectMoveLineWeight", { reader >> m_DirectOrders.MoveLineWeight; m_DirectOrders.MoveLineWeight = std::clamp(m_DirectOrders.MoveLineWeight, 0.0F, 2.0F); });
 	MatchProperty("DirectLineWeight", { reader >> m_DirectOrders.LineWeight; m_DirectOrders.LineWeight = std::clamp(m_DirectOrders.LineWeight, 0.0F, 1.0F); });
 	MatchProperty("DirectIgnoreEnemies", { reader >> m_DirectOrders.IgnoreEnemies; });
 	MatchProperty("DirectKeepPace", { reader >> m_DirectOrders.KeepPace; });
 	MatchProperty("DirectStraightFlightRisk", { reader >> m_DirectOrders.StraightFlightRisk; m_DirectOrders.StraightFlightRisk = std::clamp(m_DirectOrders.StraightFlightRisk, 0.5F, 1.0F); });
-	MatchProperty("DirectRiskDragPixels", { reader >> m_DirectOrders.RiskDragPixels; m_DirectOrders.RiskDragPixels = std::clamp(m_DirectOrders.RiskDragPixels, 100.0F, 800.0F); });
+	MatchProperty("DirectFullRiskDrag", { reader >> m_DirectOrders.RiskDragPixels; m_DirectOrders.RiskDragPixels = std::clamp(m_DirectOrders.RiskDragPixels, 200.0F, 1200.0F); });
+	MatchProperty("DirectRiskDragPixels", { float unused; reader >> unused; }); // (The straight 300 px drag's, before the curve: its saved value is not carried over.)
 	MatchProperty("DirectRiskyClickShare", { float unused; reader >> unused; }); // (The three click tier's strength, before the risk drag took its place.)
 	MatchProperty("DirectDoubleClickShare", { float unused; reader >> unused; }); // (Its older name.)
 	MatchProperty("CautiousCaution", { reader >> m_DirectOrders.CautiousCaution; m_DirectOrders.CautiousCaution = std::clamp(m_DirectOrders.CautiousCaution, 1.0F, 4.0F); });
@@ -1148,6 +1162,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("MagicAirGust", MagicEffects::GetTuning().AirGust);
 	writer.NewPropertyWithValue("MagicSpellEnergy", MagicEffects::GetTuning().SpellEnergy);
 	writer.NewPropertyWithValue("MagicEnergyRegen", MagicEffects::GetTuning().EnergyRegen);
+	writer.NewPropertyWithValue("MagicAICasting", MagicEffects::GetTuning().AICasting);
 	writer.NewPropertyWithValue("BurningUnits", ActorFire::IsEnabled());
 	writer.NewPropertyWithValue("SwimmingAndDrowning", ActorWater::IsEnabled());
 	writer.NewPropertyWithValue("LightPropagationSteps", lighting.PropagationIterationsPerFrame);
@@ -1174,11 +1189,13 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("DirectSteady", m_DirectOrders.Steady);
 	writer.NewPropertyWithValue("DirectFlightSpeed", m_DirectOrders.FlightSpeed);
 	writer.NewPropertyWithValue("DirectTouchdown", m_DirectOrders.Touchdown);
+	writer.NewPropertyWithValue("DirectSafeLandings", m_DirectOrders.SafeLandings);
 	writer.NewPropertyWithValue("DirectDigCost", m_DirectOrders.DigCostScale);
 	writer.NewPropertyWithValue("DirectLineWeight", m_DirectOrders.LineWeight);
+	writer.NewPropertyWithValue("DirectMoveLineWeight", m_DirectOrders.MoveLineWeight);
 	writer.NewPropertyWithValue("DirectIgnoreEnemies", m_DirectOrders.IgnoreEnemies);
 	writer.NewPropertyWithValue("DirectKeepPace", m_DirectOrders.KeepPace);
-	writer.NewPropertyWithValue("DirectRiskDragPixels", m_DirectOrders.RiskDragPixels);
+	writer.NewPropertyWithValue("DirectFullRiskDrag", m_DirectOrders.RiskDragPixels);
 	writer.NewPropertyWithValue("DirectStraightFlightRisk", m_DirectOrders.StraightFlightRisk);
 	writer.NewPropertyWithValue("CautiousCaution", m_DirectOrders.CautiousCaution);
 	writer.NewPropertyWithValue("CautiousFlightCost", m_DirectOrders.CautiousFlightCostScale);
@@ -1188,6 +1205,15 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("CautiousEnemyAvoidance", m_DirectOrders.CautiousEnemyAvoidance);
 	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
 	writer.NewPropertyWithValue("ModernHUD", ModernHUD::IsEnabled());
+	writer.NewPropertyWithValue("UILight", ToolLight::Strength);
+	writer.NewPropertyWithValue("UILightOwn", ToolLight::Mode == ToolLight::Source::OwnLight);
+	writer.NewPropertyWithValue("UILightAngle", ToolLight::OwnAngle);
+	writer.NewPropertyWithValue("UILightHeight", ToolLight::OwnHeight);
+	writer.NewPropertyWithValue("UILightBrightness", ToolLight::OwnBrightness);
+	writer.NewPropertyWithValue("UILightRed", ToolLight::OwnColor[0]);
+	writer.NewPropertyWithValue("UILightGreen", ToolLight::OwnColor[1]);
+	writer.NewPropertyWithValue("UILightBlue", ToolLight::OwnColor[2]);
+	writer.NewPropertyWithValue("UINearbyLights", ToolLight::NearbyLights);
 	writer.NewPropertyWithValue("ShowUnitTags", m_ShowUnitTags);
 	writer.NewPropertyWithValue("ShowCPUAimReticles", m_ShowCPUAimReticles);
 	writer.NewPropertyWithValue("ShowAlarmExclamation", m_ShowAlarmExclamation);

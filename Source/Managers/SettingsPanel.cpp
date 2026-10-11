@@ -816,6 +816,8 @@ void DebugMan::SettingsGUI() {
 		Slider("Energy regen", &tuning.EnergyRegen, 0.0F, 5.0F, "%.2fx");
 		Tip("How fast energy and a spell's own charge come back. 0: they never come back.");
 		ImGui::EndDisabled();
+		Toggle("AI casts spells", tuning.AICasting, [&tuning](bool on) { tuning.AICasting = on; });
+		Tip("AI units use their spells of their own accord: a unit with a push spell pushes a grenade landing near it back the way it came, and a unit that ran out of energy and took out its other weapon goes back to its spell once its energy has mostly come back. Off: the AI fires a spell only like any other weapon it happens to hold.");
 		ImGui::EndDisabled();
 		if (Plain() && ToolUI::Button("Usual magic")) {
 			tuning = MagicEffects::Tuning();
@@ -1024,6 +1026,25 @@ void DebugMan::SettingsGUI() {
 		Toggle("Show FPS and version", g_SettingsMan.ShowFPSAndVersion(), [](bool on) { g_SettingsMan.SetShowFPSAndVersion(on); });
 		Tip("The frame rate and the game's version, small, in the top right of the window.");
 		Toggle("Modern HUD", ModernHUD::IsEnabled(), [](bool on) { ModernHUD::SetEnabled(on); });
+		Slider("UI lighting", &ToolLight::Strength, 0.0F, 2.0F);
+		Tip("The menus and HUD lit as if they were in the world: the light brightens the side of each panel facing it, shades the far side, catches the edges towards it and casts the panel's shadow away from it. They are never dimmed past reading. 0 turns it off.");
+		{
+			int source = static_cast<int>(ToolLight::Mode);
+			if (Combo("UI light", &source, "Follow the game\0Its own light\0")) {
+				ToolLight::Mode = static_cast<ToolLight::Source>(source);
+			}
+			Tip("Follow the game: the game's sun by day and moon by night, moving with the time of day, in the sky's colour of the hour (gold at dawn and dusk), with lightning flashing on the panels. Out of a game, a steady light from the top left. Its own light: a light just for the menus and HUD, set below, that the game's time of day and weather don't touch.");
+		}
+		if (ToolLight::Mode == ToolLight::Source::OwnLight) {
+			Slider("UI light angle", &ToolLight::OwnAngle, -90.0F, 90.0F, "%.0f");
+			Tip("Where the UI's own light comes from, in degrees from straight above: negative from the left, positive from the right.");
+			Slider("UI light height", &ToolLight::OwnHeight, 0.0F, 1.0F);
+			Tip("How high the UI's own light stands: low throws long shadows, high short ones.");
+			Slider("UI light brightness", &ToolLight::OwnBrightness, 0.0F, 1.0F);
+			Tint("UI light colour", ToolLight::OwnColor);
+		}
+		Check("UI lit by nearby lamps and fires (may crash)", &ToolLight::NearbyLights);
+		Tip("Lamps, fires, blasts and muzzle flashes in the world under a panel light it warmly too. WARNING: this reads the lights the AI's sight uses while the game may be changing them, so it may crash the game. Off unless you want to try it.");
 		Toggle("Side and health beside units", g_SettingsMan.ShowUnitTags(), [](bool on) { g_SettingsMan.SetShowUnitTags(on); });
 		Tip("Each unit's team icon and health number. In the Sandbox game mode every side's are shown; in other games, other sides' only where your side has seen and with \"Show enemy HUD\" (Options, Gameplay) on. Units of no side (training dummies) and those a mod hides never have them.");
 		Toggle("CPU units' aim reticles", g_SettingsMan.ShowCPUAimReticles(), [](bool on) { g_SettingsMan.SetShowCPUAimReticles(on); });
@@ -1231,13 +1252,13 @@ void DebugMan::SettingsGUI() {
 			ImGui::TextWrapped("How you place an RTS order (move, attack-move, defend, dig to) says how urgent it is. One click: cautious, walking round jumps and waiting for fuel. A double click: a normal order. A double click held and dragged: riskier the further you drag, up to fully direct (the shortest way there whatever it takes) at the full risk distance; the way you drag is the way they face when they get there. The Direct settings say how hard a full drag pushes it, the Cautious ones how careful one click is.");
 		}
 		{
-			Slider("Full risk drag distance", &direct.RiskDragPixels, 100.0F, 800.0F, "%.0f px");
-			Tip("How far on screen a double click is dragged for a fully direct order. A shorter drag takes that share of the way from a normal order to a fully direct one. 300 px is normal.");
+			Slider("Full risk drag distance", &direct.RiskDragPixels, 200.0F, 1200.0F, "%.0f px");
+			Tip("How far on screen a double click is dragged for a fully direct order, a suicide mission. Risk rises slowly and then steeply: half the distance is about 35%, four fifths about 70%. 600 px is normal.");
 			float straight = direct.StraightFlightRisk * 100.0F;
 			if (Slider("Straight flight from", &straight, 50.0F, 100.0F, "%.0f%% risk")) {
 				direct.StraightFlightRisk = straight / 100.0F;
 			}
-			Tip("From this much risk, a unit with a jetpack lights it and flies straight at the place it was sent, when the air between is open and one tank gets it there, instead of taking the route. 90% is normal.");
+			Tip("From this much risk, a unit with a jetpack lights it and flies at the place it was sent, straight or up and over what is in the way, a long way off on a few such flights, instead of taking the route. 90% is normal.");
 		}
 		Heading("Direct (full drag): jetpack");
 		{
@@ -1265,6 +1286,8 @@ void DebugMan::SettingsGUI() {
 			Tip("How fast they fly, up, across and down, as a multiple of a normal unit's limits. Faster gets there sooner but overshoots and tumbles more. 1.5x is normal for a direct order.");
 			Slider("Landing speed", &direct.Touchdown, 3.0F, 15.0F, "%.1f m/s");
 			Tip("How fast they let themselves come down onto the floor before braking: harder landings save time and fuel but bounce and stumble more. A normal unit lands at 5 m/s; 7 is normal for a direct order.");
+			Check("Safe landings", &direct.SafeLandings);
+			Tip("Risky orders never land harder than the unit takes without being hurt, whatever the landing speed above says. Off: they land as hard as set, and a heavy unit may hurt itself on arrival. On is normal.");
 		}
 		Heading("Direct: route");
 		{
@@ -1275,6 +1298,8 @@ void DebugMan::SettingsGUI() {
 			Tip("What tunnelling a node costs on a direct dig-to, as a share of a normal unit's price. Lower digs through rather than walking round; 2% (normal) tunnels straight through anything its digger cuts. A normal dig-to is 25%.");
 			Slider("Dig straightness", &direct.LineWeight, 0.0F, 1.0F, "%.2f");
 			Tip("How hard a direct dig-to keeps to the straight line from where it starts to the point, rather than any route as short: the cost of each node off the line, in nodes walked. 0 doesn't care; 0.1 is normal.");
+			Slider("Route straightness", &direct.MoveLineWeight, 0.0F, 2.0F, "%.2f");
+			Tip("How hard a risky move or attack keeps to the straight line to the target, at full risk (less the lower the risk): what each step off the line costs, in steps walked. 0 routes as usual; 0.6 is normal.");
 			Check("Ignore enemies on the route", &direct.IgnoreEnemies);
 			Tip("Whether their routes take no notice of enemies on the way (normal), even for a unit a game mode wants kept safe.");
 			Check("Groups keep together", &direct.KeepPace);
