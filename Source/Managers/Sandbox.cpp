@@ -1254,7 +1254,9 @@ void Sandbox::DrawGUI() {
 		bool dropLine = CurrentTool().Kind == Tool::BattleDropLine;
 		// A double click held and dragged sets how much risk the order takes, from normal at the click to full at the risk distance, and the
 		// way dragged is the way they face when they get there. It takes over from the box, the facing arrow and the patrol clicks.
-		bool riskDrag = commandTool && s_ClickCount >= 2 && s_CommandMode != CommandMode::Select && s_CommandMode != CommandMode::Patrol && !(s_CommandMode == CommandMode::Command && commandAt == CommandTarget::Select);
+		bool riskDrag = commandTool && s_ClickCount >= 2 && s_CommandMode != CommandMode::Select && s_CommandMode != CommandMode::Patrol && s_CommandMode != CommandMode::Pen && !(s_CommandMode == CommandMode::Command && commandAt == CommandTarget::Select);
+		// Pen animals: a box dragged out is the pen (a click is a corner of one).
+		bool penBox = commandTool && s_CommandMode == CommandMode::Pen;
 		float riskPixels = std::max(1.0F, g_SettingsMan.DirectOrders().RiskDragPixels);
 		float dragLength = std::sqrt((now.x - s_DragStart.x) * (now.x - s_DragStart.x) + (now.y - s_DragStart.y) * (now.y - s_DragStart.y));
 		// (On a curve: slow at first and steep at the end, so a long drag is about 70% and full risk, a suicide mission, takes the whole of it.)
@@ -1276,6 +1278,8 @@ void Sandbox::DrawGUI() {
 			draw->AddText(ImVec2(now.x + 14.0F, now.y - 22.0F), color, label);
 		} else if (dropLine) {
 			ImGui::GetForegroundDrawList()->AddLine(s_DragStart, now, c_SideColors[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)], 3.0F);
+		} else if (penBox) {
+			ImGui::GetForegroundDrawList()->AddRect(ImVec2(std::min(s_DragStart.x, now.x), std::min(s_DragStart.y, now.y)), ImVec2(std::max(s_DragStart.x, now.x), std::max(s_DragStart.y, now.y)), c_CommandModeColors[static_cast<int>(CommandMode::Pen)], 0.0F, 0, 2.0F);
 		} else if (defendAt || facingMove) {
 			ImU32 color = c_CommandModeColors[static_cast<int>(s_CommandMode)];
 			ImGui::GetForegroundDrawList()->AddLine(s_DragStart, now, color, 2.0F);
@@ -1334,6 +1338,23 @@ void Sandbox::DrawGUI() {
 				g_SceneMan.WrapPosition(end);
 				s_PatrolDraft.push_back(end);
 				give = false;
+			} else if (penBox && !dragged) {
+				// A corner of the pen being clicked out; the command row pens them.
+				g_SceneMan.WrapPosition(end);
+				s_PenDraft.push_back(end);
+				give = false;
+			} else if (penBox) {
+				// A box dragged out: the pen, at once.
+				Vector topLeft(std::min(start.m_X, end.m_X), std::min(start.m_Y, end.m_Y));
+				Vector bottomRight(std::max(start.m_X, end.m_X), std::max(start.m_Y, end.m_Y));
+				stroke.Kind = Tool::Command;
+				stroke.Count = 50;
+				stroke.Points = {topLeft, Vector(bottomRight.m_X, topLeft.m_Y), bottomRight, Vector(topLeft.m_X, bottomRight.m_Y)};
+				for (Vector& corner: stroke.Points) {
+					g_SceneMan.WrapPosition(corner);
+				}
+				stroke.Position = stroke.Points.front();
+				s_PenDraft.clear();
 			} else if (dragged) {
 				stroke.Kind = Tool::Select;
 				stroke.Position = start;

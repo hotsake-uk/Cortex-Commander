@@ -1135,6 +1135,9 @@ namespace SandboxDetail {
 			case CommandMode::Airlift:
 				AirliftSelected(units, point);
 				return;
+			case CommandMode::Pen:
+				// (A pen's corners are clicked out, then the command row pens them.)
+				return;
 			default: {
 				bool attackMove = s_CommandMode == CommandMode::AttackMove;
 				if (shift) {
@@ -1448,6 +1451,9 @@ namespace SandboxDetail {
 		}
 		if (s_CommandMode == CommandMode::Airlift) {
 			AirliftSelected(UnitsToMove(0, true), position);
+			return;
+		}
+		if (s_CommandMode == CommandMode::Pen) {
 			return;
 		}
 		if (s_CommandMode == CommandMode::AttackMove) {
@@ -1941,6 +1947,97 @@ namespace SandboxDetail {
 			StartPlanStep(unit, plan, step);
 			AnswerOrder(unit, "OrderPatrol");
 		}
+	}
+
+	bool IsAnimal(const Actor* actor) {
+		return actor && actor->IsInGroup("Actors - Livestock");
+	}
+
+	namespace {
+		/// Takes an animal's pen off it.
+		void ForgetPen(Actor* animal) {
+			if (animal->NumberValueExists("AnimalPenCount")) {
+				int count = static_cast<int>(animal->GetNumberValue("AnimalPenCount"));
+				for (int i = 1; i <= count; ++i) {
+					animal->RemoveNumberValue("AnimalPenX" + std::to_string(i));
+					animal->RemoveNumberValue("AnimalPenY" + std::to_string(i));
+				}
+			}
+			animal->RemoveNumberValue("AnimalPenCount");
+			animal->RemoveNumberValue("AnimalPenStamp");
+		}
+
+		/// The selected animals that take orders now: not one a player is playing.
+		std::vector<Actor*> SelectedAnimals() {
+			std::vector<Actor*> animals;
+			for (Actor* unit: UnitsToMove(0, true)) {
+				if (IsAnimal(unit) && !unit->IsPlayerControlled()) {
+					animals.push_back(unit);
+				}
+			}
+			return animals;
+		}
+	} // namespace
+
+	void PenSelected(const std::vector<Vector>& points) {
+		if (points.size() < 3) {
+			return;
+		}
+		static int stamp = 0;
+		++stamp;
+		const ImU32 color = c_CommandModeColors[static_cast<int>(CommandMode::Pen)];
+		for (Actor* animal: SelectedAnimals()) {
+			HoldUnit(animal);
+			ForgetPen(animal);
+			animal->SetNumberValue("AnimalOrder", 1);
+			animal->SetNumberValue("AnimalPenCount", static_cast<double>(points.size()));
+			for (size_t i = 0; i < points.size(); ++i) {
+				animal->SetNumberValue("AnimalPenX" + std::to_string(i + 1), points[i].m_X);
+				animal->SetNumberValue("AnimalPenY" + std::to_string(i + 1), points[i].m_Y);
+			}
+			animal->SetNumberValue("AnimalPenStamp", stamp);
+		}
+		for (const Vector& point: points) {
+			MarkOrder(point, color);
+		}
+	}
+
+	void AnimalOrderSelected(int order) {
+		for (Actor* animal: SelectedAnimals()) {
+			HoldUnit(animal);
+			ForgetPen(animal);
+			animal->SetNumberValue("AnimalOrder", order == 2 ? 2 : 0);
+			MarkOrder(animal->GetPos(), c_CommandModeColors[static_cast<int>(CommandMode::Pen)]);
+		}
+	}
+
+	int SelectedAnimalOrder() {
+		int order = -2;
+		for (const UnitRef& ref: s_Selected) {
+			const Actor* unit = GetRef(ref);
+			if (!IsAnimal(unit)) {
+				continue;
+			}
+			int its = unit->NumberValueExists("AnimalOrder") ? static_cast<int>(unit->GetNumberValue("AnimalOrder")) : 0;
+			if (order == -2) {
+				order = its;
+			} else if (order != its) {
+				return -1;
+			}
+		}
+		return order;
+	}
+
+	bool PenOf(const Actor* animal, std::vector<Vector>& corners) {
+		corners.clear();
+		if (!IsAnimal(animal) || !animal->NumberValueExists("AnimalPenCount") || !animal->NumberValueExists("AnimalOrder") || static_cast<int>(animal->GetNumberValue("AnimalOrder")) != 1) {
+			return false;
+		}
+		int count = static_cast<int>(animal->GetNumberValue("AnimalPenCount"));
+		for (int i = 1; i <= count; ++i) {
+			corners.emplace_back(static_cast<float>(animal->GetNumberValue("AnimalPenX" + std::to_string(i))), static_cast<float>(animal->GetNumberValue("AnimalPenY" + std::to_string(i))));
+		}
+		return corners.size() >= 3;
 	}
 
 	/// The command ring's choices for the selected units, about a point: 0 move there, 1 attack the enemy nearest it, 2 cancel, 3 defend where they

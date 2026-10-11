@@ -253,6 +253,9 @@
     <ClInclude Include="Source\Managers\TerrainTrees.h">
       <Filter>Managers</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Managers\TerrainGrazing.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Managers\TerrainFire.h">
       <Filter>Managers</Filter>
     </ClInclude>
@@ -1037,6 +1040,9 @@
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\TerrainTrees.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\TerrainGrazing.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\TerrainFire.cpp">

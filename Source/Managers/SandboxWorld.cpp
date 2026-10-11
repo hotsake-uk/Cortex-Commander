@@ -2815,6 +2815,9 @@ namespace SandboxDetail {
 				} else if (stroke.Count == 20 || stroke.Count == 21) {
 					// A patrol route (RC-4): 20 a loop, 21 back and forth.
 					PatrolSelected(stroke.Points, stroke.Count == 21);
+				} else if (stroke.Count == 50) {
+					// A pen for the selected animals: its corners.
+					PenSelected(stroke.Points);
 				} else if (stroke.Count == 41 || stroke.Count == 42) {
 					// A right click on the map (RC-8): the mode's order at the place, 42 with Shift.
 					MapOrder(at, stroke.Count == 42);
@@ -2857,6 +2860,11 @@ namespace SandboxDetail {
 							}
 						}
 					}
+					break;
+				}
+				if (stroke.Count == 150 || stroke.Count == 152) {
+					// An animal order: 150 roam free, 152 stay.
+					AnimalOrderSelected(stroke.Count - 150);
 					break;
 				}
 				if (stroke.Count >= 100) {

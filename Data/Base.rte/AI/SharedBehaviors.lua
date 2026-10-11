@@ -2473,47 +2473,9 @@ function SharedBehaviors.FleeUpdate(AI, Owner)
 	return true;
 end
 
--- Grazing (NC-1): livestock left standing about (a sentry) wander a little round where they were left, a few seconds at a time, so a
--- field of animals isn't a field of statues: up to 4.5 m either way, or 2.5 m when told to hold position.
+-- Livestock left to themselves (NC-1): eating, drinking, resting, wandering and keeping with the herd, by their animal orders (AnimalBehaviors.lua).
 function SharedBehaviors.GrazeUpdate(AI, Owner)
-	if AI.Flee or not Owner:IsInGroup("Actors - Livestock") or Owner:IsPlayerControlled() or Owner.OrderAttack then
-		return;
-	end
-	if Owner.AIMode ~= Actor.AIMODE_SENTRY and not (Owner.AIMode == Actor.AIMODE_GOTO and AI.Grazing) then
-		AI.GrazeHome, AI.Grazing = nil, nil;
-		return;
-	end
-	AI.GrazeHome = AI.GrazeHome or Vector(Owner.Pos.X, Owner.Pos.Y);
-	AI.GrazeTimer = AI.GrazeTimer or Timer();
-	AI.GrazeWait = AI.GrazeWait or math.random(3000, 9000);
-	if Owner.AIMode == Actor.AIMODE_GOTO then
-		if AI.GrazeTimer:IsPastSimMS(8000) then
-			-- (Couldn't get there: stand where it is.)
-			Owner:ClearAIWaypoints();
-			Owner.AIMode = Actor.AIMODE_SENTRY;
-			AI.Grazing = nil;
-			AI.GrazeTimer:Reset();
-		end
-		return;
-	end
-	if AI.Grazing then
-		AI.Grazing = nil;
-		AI.GrazeTimer:Reset();
-	end
-	if not AI.GrazeTimer:IsPastSimMS(AI.GrazeWait) then
-		return;
-	end
-	AI.GrazeTimer:Reset();
-	AI.GrazeWait = math.random(3000, 9000);
-	local reach = Owner.OrderHold and 50 or 90;
-	local Spot = SceneMan:MovePointToGround(AI.GrazeHome + Vector(math.random(-reach, reach), -Owner.Height * 0.3), math.floor(Owner.Height * 0.2), 4);
-	if SceneMan:GetTerrMatter(Spot.X, Spot.Y) ~= rte.airID or SceneMan:ShortestDistance(Owner.Pos, Spot, false):MagnitudeIsLessThan(20) then
-		return;
-	end
-	AI.Grazing = true;
-	Owner:ClearAIWaypoints();
-	Owner:AddAISceneWaypoint(Spot);
-	Owner.AIMode = Actor.AIMODE_GOTO;
+	AnimalBehaviors.Update(AI, Owner);
 end
 
 -- Whether the unit's weapons rule (RC-1) lets it pull the trigger now: always at will, never on hold fire, and on return fire only while

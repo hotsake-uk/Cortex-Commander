@@ -2412,6 +2412,8 @@ namespace SandboxDetail {
 				label = !builder ? std::string("Build: none of the selected units carries a Constructor") : std::string("Build ") + piece.Name + " here" + (paid ? " for " + std::to_string(piece.Cost) + " points" + (afford ? "" : " (not enough)") : std::string()) + ": " + builder->GetPresetName() + " builds it, " + std::to_string(piece.Seconds) + " s";
 			} else if (mode == CommandMode::Patrol) {
 				label = s_PatrolDraft.empty() ? "Click the first point of the patrol route" : "Click point " + std::to_string(s_PatrolDraft.size() + 1) + " of the route, or start it on the command row";
+			} else if (mode == CommandMode::Pen) {
+				label = s_PenDraft.empty() ? "Click the first corner of the pen, or drag a box for it" : (s_PenDraft.size() < 3 ? "Click corner " + std::to_string(s_PenDraft.size() + 1) + " of the pen" : "Click corner " + std::to_string(s_PenDraft.size() + 1) + " of the pen, or pen them on the command row");
 			} else if (mode == CommandMode::Guard) {
 				ImU32 green = IM_COL32(120, 220, 120, 255);
 				auto guardRing = [&](const Vector& where, float sceneRadius) {
@@ -2764,7 +2766,7 @@ namespace SandboxDetail {
 		}
 		lastFrame = frame;
 
-		enum MenuAction { ClickMode, Now, AIMode, Weapons, Movement, FormationPick, KeepPacePick, MarkersPick };
+		enum MenuAction { ClickMode, Now, AIMode, Weapons, Movement, FormationPick, KeepPacePick, MarkersPick, AnimalPick };
 		float scale = std::clamp(g_WindowMan.GetGameViewRect().h / 720.0F, 0.9F, 2.2F);
 		ActionMenu::MenuLayout menu(scale);
 		// In three parts, each drawn its own way (ActionMenu::Kind): what is done to the selected units now, how they are set now, and your own
@@ -2774,6 +2776,11 @@ namespace SandboxDetail {
 		menu.Choices(Now, {"Defend here", "Cancel orders", "Deselect", "Focus on objective", "Follow team orders"}, -1);
 		menu.Heading("AI mode", Kind::State);
 		menu.Choices(AIMode, {"Sentry", "Hunt brains", "Dig for gold", "Rally point", "Do nothing"}, SelectedAIMode(), 3);
+		// (With animals among them: their own orders. Penned and Follow pick the mode to click out the pen, or the unit to follow, with.)
+		if (const int animals = SelectedAnimalOrder(); animals != -2) {
+			menu.Heading("Animals", Kind::State);
+			menu.Choices(AnimalPick, {"Roam free", "Penned...", "Stay", "Follow..."}, animals >= 0 ? animals : -1);
+		}
 		menu.Heading("Weapons", Kind::State);
 		menu.Choices(Weapons, {std::begin(c_WeaponRuleNames), std::end(c_WeaponRuleNames)}, SelectedRule(true));
 		menu.Heading("Movement", Kind::State);
@@ -2799,11 +2806,24 @@ namespace SandboxDetail {
 		// @return Whether the menu stays up: true for a setting.
 		auto pick = [&](const ActionMenu::Cell& cell) {
 			switch (cell.Action) {
+				case AnimalPick:
+					if (cell.Value == 1 || cell.Value == 3) {
+						s_CommandMode = cell.Value == 1 ? CommandMode::Pen : CommandMode::Guard;
+						s_PenDraft.clear();
+					} else {
+						Stroke stroke;
+						stroke.Kind = Tool::OrderSelected;
+						stroke.Count = 150 + cell.Value;
+						s_Queue.push_back(stroke);
+					}
+					g_GUISound.SlicePickedSound()->Play();
+					return false;
 				case ClickMode:
 					s_CommandMode = static_cast<CommandMode>(cell.Value);
 					if (s_CommandMode == CommandMode::Patrol) {
 						s_PatrolDraft.clear(); // (A route of points clicked out, RC-4.)
 					}
+					s_PenDraft.clear();
 					g_GUISound.SlicePickedSound()->Play();
 					return false;
 				case Now:
@@ -3239,6 +3259,44 @@ namespace SandboxDetail {
 				from = at;
 			}
 			drawList->AddLine(from, ImGui::GetIO().MousePos, (color & 0x00FFFFFF) | (110u << IM_COL32_A_SHIFT), 1.5F);
+		}
+		// The pens of the selected animals, each drawn once, and the one being clicked out: its corners joined up, on to the pointer and back
+		// round to the first.
+		{
+			const ImU32 penColor = c_CommandModeColors[static_cast<int>(CommandMode::Pen)];
+			std::vector<double> drawn;
+			std::vector<Vector> corners;
+			for (const UnitRef& ref: s_Selected) {
+				const Actor* unit = GetRef(ref);
+				if (!PenOf(unit, corners)) {
+					continue;
+				}
+				double stamp = unit->NumberValueExists("AnimalPenStamp") ? unit->GetNumberValue("AnimalPenStamp") : 0.0;
+				if (std::find(drawn.begin(), drawn.end(), stamp) != drawn.end()) {
+					continue;
+				}
+				drawn.push_back(stamp);
+				std::vector<ImVec2> outline;
+				for (const Vector& corner: corners) {
+					outline.push_back(ToScreen(corner));
+				}
+				drawList->AddPolyline(outline.data(), static_cast<int>(outline.size()), (penColor & 0x00FFFFFF) | (200u << IM_COL32_A_SHIFT), ImDrawFlags_Closed, 2.0F);
+			}
+			if (!s_PenDraft.empty() && s_CommandMode == CommandMode::Pen && CurrentTool().Kind == Tool::Command) {
+				ImVec2 from = ToScreen(s_PenDraft.front());
+				const ImVec2 first = from;
+				for (size_t i = 0; i < s_PenDraft.size(); ++i) {
+					ImVec2 at = ToScreen(s_PenDraft[i]);
+					if (i > 0) {
+						drawList->AddLine(from, at, penColor, 2.0F);
+					}
+					drawList->AddCircleFilled(at, 5.0F, penColor);
+					from = at;
+				}
+				const ImU32 faint = (penColor & 0x00FFFFFF) | (110u << IM_COL32_A_SHIFT);
+				drawList->AddLine(from, ImGui::GetIO().MousePos, faint, 1.5F);
+				drawList->AddLine(ImGui::GetIO().MousePos, first, faint, 1.0F);
+			}
 		}
 		// The plans of the selected units (RC-3), drawn whenever they're selected (no overlay needed): a line from each unit through the
 		// step it is on and those still to come; the step under way ringed and named "now", each queued step a numbered marker in its
@@ -4332,6 +4390,7 @@ namespace SandboxDetail {
 		if (alive == 0 && !s_SpawnOrderArmed && s_CommandMode != CommandMode::Select && s_CommandMode != CommandMode::Command && std::none_of(s_Queue.begin(), s_Queue.end(), [](const Stroke& queued) { return queued.Kind == Tool::Command; })) {
 			s_CommandMode = CommandMode::Command;
 			s_PatrolDraft.clear();
+			s_PenDraft.clear();
 		}
 
 		// The first row: what a click does.
@@ -4381,6 +4440,15 @@ namespace SandboxDetail {
 			const int airlift = static_cast<int>(CommandMode::Airlift);
 			if (BarChip(c_CommandModeNames[airlift], current == airlift, c_CommandModeColors[airlift], "Ctrl+L", ("Fly the selected units to the place clicked: a gunship for each six of them comes down by them, they get in, and it flies\nthem there and lets them out." + (Sandbox::IsBattleCommand() ? " Each ship costs " + std::to_string(c_AirliftCost) + " reinforcement points." : std::string())).c_str()) == 1) {
 				s_CommandMode = CommandMode::Airlift;
+			}
+			// (Only with animals among them: the pen is theirs.)
+			if (SelectedAnimalOrder() != -2) {
+				line.Next(pixel * 2.0F);
+				const int pen = static_cast<int>(CommandMode::Pen);
+				if (BarChip(c_CommandModeNames[pen], current == pen, c_CommandModeColors[pen], nullptr, "Pen the selected animals: click out the corners of the pen, or drag a box. They roam, graze, drink and rest inside it,\nand go back in if they get out (a chicken that flaps out over a low wall is loose). Any other order lets them out.") == 1) {
+					s_CommandMode = CommandMode::Pen;
+					s_PenDraft.clear();
+				}
 			}
 			ImGui::EndDisabled();
 		}
@@ -4432,6 +4500,30 @@ namespace SandboxDetail {
 			ImGui::SetNextItemWidth(field * 0.8F);
 			ImGui::SliderInt("##suppressRadius", &s_SuppressRadius, 20, 400, "Zone %d px");
 			ImGui::SetItemTooltip("How far round the place the fire lands: they aim at random points inside it.");
+		} else if (s_CommandMode == CommandMode::Pen) {
+			line.Divide();
+			line.Next();
+			ImGui::AlignTextToFramePadding();
+			ImGui::TextDisabled("%d corners", static_cast<int>(s_PenDraft.size()));
+			line.Next();
+			ImGui::BeginDisabled(s_PenDraft.size() < 3 || SelectedAnimalOrder() == -2);
+			if (BarChip("Pen them", false, c_CommandModeColors[static_cast<int>(CommandMode::Pen)], nullptr, "Pen the selected animals inside the corners clicked out.") == 1) {
+				Stroke stroke;
+				stroke.Kind = Tool::Command;
+				stroke.Count = 50;
+				stroke.Position = s_PenDraft.front();
+				stroke.Points = s_PenDraft;
+				stroke.OrderMode = static_cast<int>(CommandMode::Pen);
+				s_Queue.push_back(stroke);
+				s_PenDraft.clear();
+			}
+			ImGui::EndDisabled();
+			line.Next();
+			ImGui::BeginDisabled(s_PenDraft.empty());
+			if (BarChip("Clear pen", false) == 1) {
+				s_PenDraft.clear();
+			}
+			ImGui::EndDisabled();
 		} else if (s_CommandMode == CommandMode::Patrol) {
 			line.Divide();
 			line.Next();
@@ -4461,6 +4553,26 @@ namespace SandboxDetail {
 				s_PatrolDraft.clear();
 			}
 			ImGui::EndDisabled();
+		}
+		// The selected animals' own orders: roam free or stay (Pen animals, above, pens them; Guard has them follow a unit).
+		if (const int animals = SelectedAnimalOrder(); animals != -2) {
+			line.Divide();
+			line.Next();
+			ImGui::AlignTextToFramePadding();
+			ImGui::TextColored(ToolTheme::Vec(ToolTheme::Gold), "Animals");
+			static const char* const animalTips[] = {"Let the selected animals roam free: they wander and graze round where they are, moving on to where the food is,\nand keep with their herd.", "Have the selected animals stay where they are: they graze what they can reach, and lie down when tired."};
+			for (int choice = 0; choice < 2; ++choice) {
+				const int order = choice == 0 ? 0 : 2;
+				line.Next(pixel * 2.0F);
+				ImGui::PushID(order + 520);
+				if (BarChip(choice == 0 ? "Roam free" : "Stay", animals == order, c_CommandModeColors[static_cast<int>(CommandMode::Pen)], nullptr, animalTips[choice]) == 1) {
+					Stroke stroke;
+					stroke.Kind = Tool::OrderSelected;
+					stroke.Count = 150 + order;
+					s_Queue.push_back(stroke);
+				}
+				ImGui::PopID();
+			}
 		}
 		SpawnOrderRow(line);
 		// What is drawn of the orders, the routes and the groups, kept in the settings.
