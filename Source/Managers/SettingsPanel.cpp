@@ -810,6 +810,12 @@ void DebugMan::SettingsGUI() {
 		Tip("How hard it shoves units, on top of the push above. A hard enough shove knocks a unit off its feet. 0: units are never pushed.");
 		Slider("Gust of air", &tuning.AirGust, 0.0F, 5.0F, "%.2fx");
 		Tip("How hard the air a push sets blowing is, carrying smoke, spray and gas with it (needs Air & wind and Blast waves on). 0: no gust.");
+		Toggle("Spells use energy", tuning.SpellEnergy, [&tuning](bool on) { tuning.SpellEnergy = on; });
+		Tip("Casting a spell spends the caster's energy (the blue bar under its health), or the spell's own charge if it has one; with too little the spell doesn't cast. Off: every spell is free.");
+		ImGui::BeginDisabled(!tuning.SpellEnergy);
+		Slider("Energy regen", &tuning.EnergyRegen, 0.0F, 5.0F, "%.2fx");
+		Tip("How fast energy and a spell's own charge come back. 0: they never come back.");
+		ImGui::EndDisabled();
 		ImGui::EndDisabled();
 		if (Plain() && ToolUI::Button("Usual magic")) {
 			tuning = MagicEffects::Tuning();
@@ -1244,6 +1250,11 @@ void DebugMan::SettingsGUI() {
 		{
 			Slider("Full risk drag distance", &direct.RiskDragPixels, 100.0F, 800.0F, "%.0f px");
 			Tip("How far on screen a double click is dragged for a fully direct order. A shorter drag takes that share of the way from a normal order to a fully direct one. 300 px is normal.");
+			float straight = direct.StraightFlightRisk * 100.0F;
+			if (Slider("Straight flight from", &straight, 50.0F, 100.0F, "%.0f%% risk")) {
+				direct.StraightFlightRisk = straight / 100.0F;
+			}
+			Tip("From this much risk, a unit with a jetpack lights it and flies at the place it was sent, straight or up and over what is in the way, a long way off on a few such flights, instead of taking the route. 90% is normal.");
 		}
 		Heading("Direct (full drag): jetpack");
 		{

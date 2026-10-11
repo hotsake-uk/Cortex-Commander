@@ -2158,6 +2158,12 @@ int AHuman::MoveAlongRoute() {
 		} else {
 			// Up a shaft: to the point over its mouth first, straight up its middle, and only then for the landing; a landing off to one side
 			// is stepped across onto (below).
+			// Over the top of a full-risk flight's two legs (the apex): on for the landing, no step across.
+			if (flight.via && flight.apex && (m_Pos.m_Y <= flight.viaPoint.m_Y + h * 0.3F || std::abs(Towards(m_Pos, flight.viaPoint).m_X) < h * 0.5F)) {
+				flight.via = false;
+				flight.apex = false;
+				MoverTrace("over the top; for the landing");
+			}
 			if (flight.via && m_Pos.m_Y <= flight.viaPoint.m_Y + 8.0F) {
 				flight.via = false;
 				flight.step = std::abs(Towards(flight.viaPoint, flight.landing).m_X) >= 10.0F;
@@ -2319,6 +2325,113 @@ int AHuman::MoveAlongRoute() {
 	// A door of ours in the way: closed, waited for short of it, on its sensor; given up on after 2 s (walked into) for 5 s.
 	if (holdForDoor(point, false)) {
 		return RouteMover::Moving;
+	}
+
+	// ---- A full-risk order (StandingOrder::Direct at or over the Battle Behavior's StraightFlightRisk): the jet lit and flown at the
+	// furthest point of the route one flight reaches, the goal itself when it can, whatever the route's walk would do. Straight there
+	// when the air between is open, or up to a point over the way and down onto it (two straight legs, a triangle) when something is in
+	// the way of the straight line; a long way on a few such flights, not the route's every step. Short of the fuel the tuning's tolerance
+	// asks for, the route is followed as usual. (Looked for every 400 ms, not every frame: it casts a few hundred rays.) ----
+	if (standardJet && !IsDiggingTo() && !m_MovePath.empty() && m_StandingOrder.Direct >= g_SettingsMan.DirectOrders().StraightFlightRisk && mover.straightCheckTimer.IsPastSimMS(400)) {
+		mover.straightCheckTimer.Reset();
+		const float tank = m_pJetpack->GetJetTimeTotal();
+		Vector obstacle;
+		Vector free;
+		// Open from one place to another for the body: at its middle and its knees.
+		auto legOpen = [&](const Vector& from, const Vector& to) {
+			const Vector way = Towards(from, to);
+			for (float dy: {-h * 0.3F, feet * 0.5F}) {
+				if (g_SceneMan.CastObstacleRay(from + Vector(0.0F, dy), way, obstacle, free, m_MOID, IgnoresWhichTeam(), 0, 3) >= 0.0F) {
+					return false;
+				}
+			}
+			return true;
+		};
+		// The route's points to try, the furthest first: its last and then every fourth back from it, eight at most.
+		std::vector<std::pair<Vector, int>> points;
+		{
+			std::vector<Vector> all(m_MovePath.begin(), m_MovePath.end());
+			for (int k = static_cast<int>(all.size()) - 1; k >= 0 && points.size() < 8; k -= 4) {
+				points.emplace_back(all[k], k + 1);
+			}
+		}
+		bool found = false;
+		Vector goal;
+		float goalFloorY = 0.0F;
+		int goalPoints = 0;
+		bool viaApex = false;
+		Vector apex;
+		for (const std::pair<Vector, int>& candidate: points) {
+			const Vector& place = candidate.first;
+			const float floorY = FloorUnder(place, h * 0.8F);
+			if (floorY < 0.0F || Towards(m_Pos, place).MagnitudeIsLessThan(h * 1.5F)) {
+				continue;
+			}
+			if (mover.straightTried && Towards(mover.straightGoal, place).MagnitudeIsLessThan(h) && !mover.straightTimer.IsPastSimMS(8000)) {
+				continue;
+			}
+			const Vector landingCentre(place.m_X, floorY - feet - 4.0F);
+			if (FlightFuelNeeded(place, floorY) <= tank * 0.95F && (legOpen(m_Pos, landingCentre) || FlightWayClear(place, floorY))) {
+				found = true;
+			} else {
+				// Up and over: a point over the way, the lowest that both legs are open to and one tank flies.
+				const Vector across = Towards(m_Pos, landingCentre);
+				const float topY = std::min(m_Pos.m_Y, landingCentre.m_Y);
+				const std::pair<float, float> tries[] = {{0.5F, 1.0F}, {0.5F, 2.0F}, {0.35F, 2.0F}, {0.65F, 2.0F}, {0.5F, 3.5F}};
+				for (const std::pair<float, float>& at: tries) {
+					Vector top = m_Pos + across * at.first;
+					top.m_Y = topY - h * at.second;
+					g_SceneMan.WrapPosition(top);
+					if (top.m_Y < 0.0F || FlightFuelNeeded(place, top.m_Y + feet) > tank * 0.95F) {
+						continue;
+					}
+					if (legOpen(m_Pos, top) && legOpen(top, landingCentre)) {
+						found = true;
+						viaApex = true;
+						apex = top;
+						break;
+					}
+				}
+			}
+			if (found) {
+				goal = place;
+				goalFloorY = floorY;
+				goalPoints = candidate.second;
+				break;
+			}
+		}
+		if (found) {
+			const float needed = FlightFuelNeeded(goal, viaApex ? apex.m_Y + feet : goalFloorY);
+			const float want = std::min(needed * g_SettingsMan.DirectOrders().FuelShare, tank * 0.95F);
+			if (m_pJetpack->GetJetTimeLeft() >= std::max(want, JetRelightFuel())) {
+				mover.straightTried = true;
+				mover.straightGoal = goal;
+				mover.straightTimer.Reset();
+				mover.fuelWaiting = false;
+				mover.flight = RouteMover::Flight();
+				mover.flight.active = true;
+				mover.settling = false;
+				mover.flight.landing = goal;
+				mover.flight.floorY = goalFloorY;
+				mover.flight.pointsToLanding = goalPoints;
+				mover.flight.via = viaApex;
+				mover.flight.apex = viaApex;
+				mover.flight.viaPoint = apex;
+				mover.flight.timer.Reset();
+				mover.flight.totalTimer.Reset();
+				mover.flight.riseTimer.Reset();
+				mover.flight.startY = m_Pos.m_Y;
+				mover.flight.bestY = m_Pos.m_Y;
+				mover.flight.takeOff = m_Pos;
+				mover.progressTimer.Reset();
+				MoverTrace(std::string("full risk; ") + (viaApex ? "up and over" : "straight") + " for " + std::to_string(static_cast<int>(goal.m_X)) + "," + std::to_string(static_cast<int>(goalFloorY)));
+				Vector command = viaApex ? PilotFlight(apex, -1.0F) : PilotFlight(goal, goalFloorY);
+				ctrl.SetState(BODY_JUMPSTART, true);
+				ctrl.SetState(BODY_JUMP, true);
+				ctrl.SetAnalogMove(Vector(command.m_X, -1.0F));
+				return RouteMover::Moving;
+			}
+		}
 	}
 
 	// ---- No legs (both shot off): the route is flown in short hops, point to point along it, not walked. With no legs the walk's keys

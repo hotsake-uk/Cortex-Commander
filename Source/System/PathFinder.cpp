@@ -340,6 +340,50 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 			s_LineSet = true;
 		}
 	}
+	// A full-risk order (PathAgent::StraightFlight): one flight from here to there, straight when the air between is open for the body, or
+	// up to a point over the way and down (two straight legs) when something is in the straight line's way, when the jet's tank flies it
+	// (reckoned as CollectFlightLinks does); not the walk and hops the search would find.
+	if (agent.StraightFlight && !agent.DigGoal && startNode && endNode && endNode->m_Navigable && jumpHeight < FLT_MAX && s_JetTimeMS > 0.0F && endNode->Surface >= 0.0F) {
+		const Vector landing(end.m_X, endNode->Surface - s_StandHeight * 0.5F);
+		const Vector way = g_SceneMan.ShortestDistance(start, landing);
+		const Vector head(0.0F, -s_StandHeight * 0.4F);
+		auto fuelFor = [this](float rise, float across) {
+			float climbFuel = rise > 4.0F ? (rise + 12.0F) * s_JetClimbMSPerPx + (across >= 10.0F ? 450.0F : 300.0F) : 0.0F;
+			return 200.0F + climbFuel + across / (5.0F * c_PPM) * 0.5F * 1000.0F * 1.2F;
+		};
+		auto open = [this, &head](const Vector& from, const Vector& to) { return LineOpen(from, to) && LineOpen(from + head, to + head); };
+		if (way.MagnitudeIsGreaterThan(static_cast<float>(m_NodeDimension) * 1.5F)) {
+			std::vector<Vector> route;
+			if (fuelFor(-way.m_Y, std::abs(way.m_X)) <= s_JetTimeMS * 0.95F && open(start, start + way)) {
+				route = {start, end};
+			} else {
+				const float topY = std::min(start.m_Y, landing.m_Y);
+				const float body = s_StandHeight * 2.2F; // (About the CharHeight the follower's own tries are in.)
+				const std::pair<float, float> tries[] = {{0.5F, 1.0F}, {0.5F, 2.0F}, {0.35F, 2.0F}, {0.65F, 2.0F}, {0.5F, 3.5F}};
+				for (const std::pair<float, float>& at: tries) {
+					Vector top = start + way * at.first;
+					top.m_Y = topY - body * at.second;
+					if (top.m_Y < 0.0F || fuelFor(start.m_Y - top.m_Y, std::abs(way.m_X)) > s_JetTimeMS * 0.95F) {
+						continue;
+					}
+					g_SceneMan.WrapPosition(top);
+					if (open(start, start + g_SceneMan.ShortestDistance(start, top)) && open(top, top + g_SceneMan.ShortestDistance(top, landing))) {
+						route = {start, top, end};
+						break;
+					}
+				}
+			}
+			if (!route.empty()) {
+				pathResult.assign(route.begin(), route.end());
+				if (kinds) {
+					kinds->assign(route.size() - 1, PathStepKind::Jump);
+				}
+				totalCostResult = way.GetMagnitude() / static_cast<float>(m_NodeDimension);
+				return MicroPather::SOLVED;
+			}
+		}
+	}
+
 	// If end node is invalid, there's no path
 	if (startNode && endNode && endNode->m_Navigable) {
 		auto solveStart = std::chrono::steady_clock::now();

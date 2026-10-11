@@ -111,6 +111,7 @@ namespace RTE {
 		float DigCostScale = 1.0F; //!< What a node dug through costs it, as a share of the usual price (DigNodeCost): under 1 tunnels where going round would be shorter for a move.
 		static constexpr float c_DigToCostScale = 0.25F; //!< DigCostScale on a dig-to order (RC-11): a node dug costs about one or two walked, so a dig-to tunnels through a hill rather than walking four times as far round it.
 		float FlightCostScale = 1.0F; //!< What a jet flight's time, take-off and fuel cost it, as a share of the usual: under 1 on a direct order (Actor::StandingOrder::Direct), which jumps where others walk.
+		bool StraightFlight = false; //!< On a full-risk order (Actor::StandingOrder::Direct at SettingsMan::DirectOrderTuning::StraightFlightRisk): the route is one straight jet flight from start to goal when the air between is open and one tank flies it.
 		float LineWeight = 0.0F; //!< On a dig-to, what each node off the straight line from start to goal costs it, in nodes walked (LineCost): over 0 on a direct order, which digs straight.
 		unsigned RouteSeed = 0; //!< Its own taste in routes (Actor::GetRouteSeed): each part of the map costs it a little more or less, by the seed, so units with different seeds go different ways where the ways are near enough alike. 0 for none: the shortest.
 	};

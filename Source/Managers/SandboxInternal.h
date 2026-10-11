@@ -2496,6 +2496,28 @@ namespace SandboxDetail {
 	std::string VeteranTitle(long id);
 #pragma endregion
 
+#pragma region After-battle report (BattleReport.cpp)
+	/// The battle's record forgotten, and a new one started if a Battle Command battle has just started. At a mode's start and a new game.
+	void ForgetBattleReport();
+
+	/// A unit fallen (UpdateReinforcements' count), with the unit nearest it of another team (0 for none) credited with the kill.
+	void NoteReportKill(long killerID, long victimID);
+
+	/// Every unit in a Battle Command battle kept on record, with the scores and the objectives' holders; the report opened when it ends. Call
+	/// once per sim update, from UpdateBattle.
+	void UpdateBattleReport();
+
+	/// A unit called in from a reinforcement card marked with the card's name: its kind in the report.
+	void TagCardUnit(Actor* unit, int card);
+
+	/// Whether a Battle Command battle has ended with its report to show.
+	bool BattleReportReady();
+	void OpenBattleReport();
+
+	/// The report window, over the paused world, once the battle has ended. Call from the ImGui frame.
+	void DrawBattleReport();
+#pragma endregion
+
 #pragma region Fog of war (BattleFog.cpp)
 	/// Where an enemy was last seen, once your units lost sight of it: shown fading on the map and the minimap.
 	struct FogGhost {
