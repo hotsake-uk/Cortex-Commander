@@ -199,6 +199,9 @@
     <ClInclude Include="Source\Managers\Sandbox.h">
       <Filter>Managers</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Managers\MapBrowser.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Managers\SandboxInternal.h">
       <Filter>Managers</Filter>
     </ClInclude>
@@ -962,6 +965,9 @@
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\SandboxMinimap.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\SandboxMapBrowser.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\SandboxWorld.cpp">

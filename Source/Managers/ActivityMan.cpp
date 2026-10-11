@@ -436,11 +436,11 @@ void ActivityMan::SetStartTutorialActivity() {
 	g_SceneMan.SetSceneToLoad("Tutorial Bunker");
 }
 
-bool ActivityMan::SetStartSandboxActivity(const std::string& sceneName) {
-	const Entity* preset = g_PresetMan.GetEntityPreset("GAScripted", "Sandbox");
+bool ActivityMan::SetStartSandboxActivity(const std::string& sceneName, const std::string& activityName) {
+	const Entity* preset = g_PresetMan.GetEntityPreset("GAScripted", activityName);
 	Activity* sandbox = preset ? dynamic_cast<Activity*>(preset->Clone()) : nullptr;
 	if (!sandbox) {
-		g_ConsoleMan.PrintString("ERROR: The Sandbox game mode isn't defined, so it can't be started.");
+		g_ConsoleMan.PrintString("ERROR: The " + activityName + " game mode isn't defined, so it can't be started.");
 		return false;
 	}
 	std::string sceneToLoad = !sceneName.empty() ? sceneName : (sandbox->GetSceneName().empty() ? "Ketanot Hills" : sandbox->GetSceneName());

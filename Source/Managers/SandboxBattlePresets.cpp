@@ -6,14 +6,7 @@
 
 namespace SandboxDetail {
 	namespace {
-		/// One saved setup.
-		struct BattlePreset {
-			std::string Name;
-			bool WithMap = false; //!< Set up again whenever the map starts.
-			bool Linked = false; //!< One of the map's linked battles, played in the list's order.
-			std::array<BattleSettings, c_Sides> Cards;
-			BattleModeSettings Mode;
-		};
+		using BattlePreset = SavedBattle;
 
 		std::vector<BattlePreset> s_Presets; //!< The setups saved for s_PresetsScene.
 		std::string s_PresetsScene; //!< The map they were read for ("" before any was).
@@ -21,6 +14,8 @@ namespace SandboxDetail {
 		bool s_PresetPending = false; //!< A game has started: its map's setup marked "with map" goes in on the next update.
 		char s_PresetName[64] = "";
 		std::string s_PresetNote; //!< What the last save or load did, shown under the list.
+		std::string s_PresetOnStart; //!< The setup the map browser picked to go in when the next game starts, in place of the one with the map.
+		bool s_NoPresetOnStart = false; //!< The map browser picked no setup for the next game: none goes in.
 
 		/// Linked battles: the setups being played in turn, by name, and which is on.
 		struct LinkedRun {
@@ -336,19 +331,9 @@ namespace SandboxDetail {
 			return preset;
 		}
 
-		/// Reads the setups saved for the map now in play, unless they were read for it already.
-		void ReadPresets() {
-			std::string scene = SceneName();
-			if (s_PresetsRead && scene == s_PresetsScene) {
-				return;
-			}
-			s_PresetsRead = true;
-			s_PresetsScene = scene;
-			s_Presets.clear();
-			s_PresetNote.clear();
-			if (scene.empty()) {
-				return;
-			}
+		/// Reads the setups saved for a map from its file.
+		std::vector<BattlePreset> ReadPresetsFile(const std::string& scene) {
+			std::vector<BattlePreset> presets;
 			std::ifstream file(PresetsFile(scene));
 			std::string line;
 			std::string name;
@@ -356,7 +341,7 @@ namespace SandboxDetail {
 			bool inPreset = false;
 			auto finish = [&]() {
 				if (inPreset) {
-					s_Presets.push_back(ReadPreset(name, lines));
+					presets.push_back(ReadPreset(name, lines));
 				}
 				lines.clear();
 			};
@@ -371,6 +356,23 @@ namespace SandboxDetail {
 				}
 			}
 			finish();
+			return presets;
+		}
+
+		/// Reads the setups saved for the map now in play, unless they were read for it already.
+		void ReadPresets() {
+			std::string scene = SceneName();
+			if (s_PresetsRead && scene == s_PresetsScene) {
+				return;
+			}
+			s_PresetsRead = true;
+			s_PresetsScene = scene;
+			s_Presets.clear();
+			s_PresetNote.clear();
+			if (scene.empty()) {
+				return;
+			}
+			s_Presets = ReadPresetsFile(scene);
 		}
 
 		void WritePresets() {
@@ -448,6 +450,15 @@ namespace SandboxDetail {
 		}
 	} // namespace
 
+	std::vector<SavedBattle> ReadSavedBattles(const std::string& scene) {
+		return scene.empty() ? std::vector<SavedBattle>() : ReadPresetsFile(scene);
+	}
+
+	void LoadBattleOnStart(const std::string& name, bool none) {
+		s_PresetOnStart = none ? std::string() : name;
+		s_NoPresetOnStart = none;
+	}
+
 	void BattlePresetsNewGame() {
 		s_PresetPending = true;
 		s_Linked = LinkedRun();
@@ -492,7 +503,14 @@ namespace SandboxDetail {
 		}
 		s_PresetPending = false;
 		ReadPresets();
-		auto withMap = std::find_if(s_Presets.begin(), s_Presets.end(), [](const BattlePreset& preset) { return preset.WithMap; });
+		// The map browser's pick, if it made one, for this game only.
+		std::string picked = s_PresetOnStart;
+		bool none = s_NoPresetOnStart;
+		LoadBattleOnStart("", false);
+		if (none) {
+			return;
+		}
+		auto withMap = std::find_if(s_Presets.begin(), s_Presets.end(), [&picked](const BattlePreset& preset) { return picked.empty() ? preset.WithMap : preset.Name == picked; });
 		if (withMap != s_Presets.end()) {
 			UsePreset(*withMap);
 			g_ConsoleMan.PrintString("SANDBOX: Battle setup \"" + withMap->Name + "\" loaded with the map.");

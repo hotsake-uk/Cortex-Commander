@@ -1415,7 +1415,8 @@ namespace SandboxDetail {
 		Attack, //!< Go after the enemy until it is dead.
 		Guard, //!< Stay with the friend; done only if the friend is gone.
 		Defend, //!< Hold ground where it stands; never done, so it ends a plan.
-		Wait //!< Stay a while where it is (a patrol's pause at each point, RC-4).
+		Wait, //!< Stay a while where it is (a patrol's pause at each point, RC-4).
+		Suppress //!< Fire into a place from where the step before leaves it; never done, so it ends a plan, as a defend does.
 	};
 
 	/// One step of a unit's plan: a shift-clicked order to carry out after the ones before it.
@@ -1425,6 +1426,7 @@ namespace SandboxDetail {
 		UnitRef Target; //!< The enemy to attack or the friend to guard.
 		int Facing = 0; //!< A defend's way to face: -1 left, 1 right, 0 either (RC-4).
 		int Updates = 0; //!< A wait's length, in sim updates.
+		int Radius = 0; //!< A suppress's spread round its place, px (the Suppress radius when it was queued).
 	};
 
 	/// A unit's plan (RC-3): the step under way and the ones still to come, worked through one at a time. Any order given without Shift drops it.
@@ -2382,7 +2384,8 @@ namespace SandboxDetail {
 	void CommandSelected(const Vector& position, int modifier);
 	void PlanStepFor(std::vector<Actor*> units, PlanKind kind, const Vector& place, Actor* target, int facing = 0);
 	void DefendAtSelected(const Vector& point, const Vector& facingPoint, bool shift);
-	void SuppressSelected(const Vector& point);
+	void SuppressSelected(const Vector& point, bool shift = false);
+	void SuppressUnit(Actor* unit, const Vector& point, int radius);
 	bool SuppressZoneOf(const Actor* unit, Vector& centre, float& radius);
 	void ClearSuppress(Actor* unit);
 	void PatrolSelected(const std::vector<Vector>& points, bool backAndForth);
@@ -2408,6 +2411,24 @@ namespace SandboxDetail {
 	void BattlePresetsUpdate();
 	/// The Battle tab's setups saved for the map, to save, load, delete, or mark to load with the map.
 	void BattlePresetsPanel();
+
+	/// One of the Battle tab's setups saved with a map (SandboxBattlePresets.cpp), as kept in Userdata/BattlePresets/<map>.txt.
+	struct SavedBattle {
+		std::string Name;
+		bool WithMap = false; //!< Set up again whenever the map starts.
+		bool Linked = false; //!< One of the map's linked battles, played in the list's order.
+		std::array<BattleSettings, c_Sides> Cards;
+		BattleModeSettings Mode;
+	};
+
+	/// The setups saved with a map, read from its file, in their order there. None if it has none.
+	std::vector<SavedBattle> ReadSavedBattles(const std::string& scene);
+
+	/// The next game started (the map browser's Play): the setup of this name goes in once its map is there, in place of the one marked to
+	/// load with the map. With none, nothing does, not even that one.
+	/// @param name The setup's name. Empty to leave it to the one marked to load with the map.
+	/// @param none Load no setup at all.
+	void LoadBattleOnStart(const std::string& name, bool none);
 
 	/// Linked battles (SandboxBattlePresets.cpp): which of them is on, and once it's won, the button to the next. Call inside an ImGui window.
 	/// True when a battle was started from it.

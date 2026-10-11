@@ -28,8 +28,6 @@ namespace RTE {
 			NoEvent,
 			MetaGameStarted,
 			ScenarioStarted,
-			SandboxScenarioStarted,
-			BattleCommandScenarioStarted,
 			EnterCreditsScreen,
 			BackToMainFromCredits,
 			ActivityStarted,
@@ -71,6 +69,7 @@ namespace RTE {
 			ModManagerScreen,
 			EditorScreen,
 			SandboxScreen,
+			MapBrowserScreen,
 			CreditsScreen,
 			QuitScreen,
 			ScreenCount
@@ -128,6 +127,7 @@ namespace RTE {
 		GUILabel* m_SandboxThemeLabel; //!< The theme panel's title, naming the size picked.
 		std::vector<std::pair<GUIButton*, std::string>> m_SandboxThemeButtons; //!< The theme panel's buttons and the theme each starts.
 		GUIButton* m_SandboxThemeBackButton; //!< The theme panel's button back to the sizes.
+		MenuScreen m_MapBrowserBackScreen; //!< The screen the map browser goes back to: the sandbox screen it was opened from, or the main screen.
 
 		Timer m_ResumeButtonBlinkTimer; //!< Activity resume button blink timer.
 		Timer m_CreditsScrollTimer; //!< Credits scrolling timer.
@@ -236,6 +236,13 @@ namespace RTE {
 		/// Handles the player interaction with the sandbox start menu screen GUI elements.
 		/// @param guiEventControl Pointer to the GUI element that the player interacted with.
 		void HandleSandboxScreenInputEvents(const GUIControl* guiEventControl);
+
+		/// Opens the map browser in place of the menu, for a map to play the Sandbox or Battle Command on.
+		/// @param battle Whether it's for Battle Command: it goes back to the main screen, rather than the sandbox screen.
+		void OpenMapBrowser(bool battle);
+
+		/// Acts on what was done in the map browser: back to where it was opened from, or the game picked started.
+		void HandleMapBrowserChoice();
 
 		/// Handles the player interaction with the quit screen GUI elements.
 		/// @param guiEventControl Pointer to the GUI element that the player interacted with.

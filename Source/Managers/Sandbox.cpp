@@ -636,6 +636,7 @@ void Sandbox::DrawGUI() {
 		UnmarkSelection();
 		for (int screenId = 0; screenId < c_MaxScreenCount; ++screenId) {
 			g_CameraMan.SetBottomOverscroll(0.0F, screenId);
+			g_CameraMan.SetSideOverscroll(0.0F, screenId);
 		}
 		return;
 	}
@@ -794,6 +795,8 @@ void Sandbox::DrawGUI() {
 			// Split above and below, only the lower screens reach down to the bar.
 			bool alongBottom = screenId < screenCount && (!hSplit || screenId >= screenCount / 2);
 			g_CameraMan.SetBottomOverscroll(alongBottom ? overscroll : 0.0F, screenId);
+			// The same amount past the left and right edges, so the corners and edges of the map can be brought out from under the panels too.
+			g_CameraMan.SetSideOverscroll(screenId < screenCount ? overscroll : 0.0F, screenId);
 		}
 	}
 	if (IsBattleCommand() && InGame()) {
