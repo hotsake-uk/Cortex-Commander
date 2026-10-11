@@ -407,6 +407,12 @@ namespace RTE {
 		/// @return The scene position the throw lets go at.
 		Vector GetThrowReleasePos(const HeldDevice* device, float aimAngle) const;
 
+		/// Runs a throw for this sim update: winds up while the throw key is held, swings through when it's let go, and lets go at the front.
+		/// @param device The device in the FG hand being thrown.
+		/// @param throwHeld Whether the throw key is held: fire for a ThrownDevice, the auxiliary weapon key for a melee weapon.
+		/// @param adjustedAimAngle The aim angle, flipped for facing.
+		void UpdateThrow(HeldDevice* device, bool throwHeld, float adjustedAimAngle);
+
 		/// Lets go of a thrown device at the front of the throwing swing: out of the hand at the release point, at the charged strength, with the
 		/// thrower's own velocity and a forward spin.
 		/// @param device The device in the FG hand being thrown.
@@ -768,6 +774,7 @@ namespace RTE {
 		Timer m_ThrowTmr;
 		// The duration it takes this AHuman to fully charge a throw.
 		long m_ThrowPrepTime;
+		long m_ThrowingDeviceID; //!< The unique ID of the device the throw under way is of, so a different one equipped mid-throw isn't thrown.
 		float m_ThrowReleaseProgress; //!< How charged the throw under way was when the button was let go: the swing then lets go at that strength.
 		std::string m_LastThrownModule; //!< The data module of the last thing thrown, so another the same comes to hand.
 		std::string m_LastThrownPreset; //!< The preset name of the last thing thrown, so another the same comes to hand.
