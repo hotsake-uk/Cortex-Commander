@@ -143,6 +143,8 @@ namespace SandboxDetail {
 		if (ACShip* ship = dynamic_cast<ACShip*>(unit)) {
 			Actor::StandingOrder& standing = ship->GetStandingOrder();
 			if (!resend) {
+				// (A new order ends a suppress, as for any unit: its zone and ring go.)
+				ClearSuppress(ship);
 				standing.Kind = OrderKindFor(reason);
 				standing.Direct = s_DirectOrder;
 				standing.TargetID = attack && target && lock ? static_cast<long>(target->GetUniqueID()) : 0;
@@ -332,6 +334,10 @@ namespace SandboxDetail {
 	}
 
 	void GiveOrder(Actor* actor, Order order) {
+		// (A flying ship takes none of these, but any of them still ends its suppress, as for a unit.)
+		if (actor && dynamic_cast<const ACShip*>(actor)) {
+			ClearSuppress(actor);
+		}
 		if (!actor || dynamic_cast<ADoor*>(actor) || dynamic_cast<const ACraft*>(actor) || actor->IsInGroup("Brains")) {
 			return;
 		}
