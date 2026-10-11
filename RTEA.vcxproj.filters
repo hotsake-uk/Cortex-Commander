@@ -250,6 +250,9 @@
     <ClInclude Include="Source\Managers\TerrainCollapse.h">
       <Filter>Managers</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Managers\ZeroGravity.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Managers\TerrainTrees.h">
       <Filter>Managers</Filter>
     </ClInclude>
@@ -1040,6 +1043,9 @@
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\TerrainCollapse.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\ZeroGravity.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\TerrainTrees.cpp">

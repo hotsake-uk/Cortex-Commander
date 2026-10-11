@@ -26,6 +26,7 @@ sources += files(
 'RopeSim.cpp',
 'WeatherLightning.cpp',
 'TerrainCollapse.cpp',
+'ZeroGravity.cpp',
 'TerrainTrees.cpp',
 'TerrainGrazing.cpp',
 'FluidSim.cpp',

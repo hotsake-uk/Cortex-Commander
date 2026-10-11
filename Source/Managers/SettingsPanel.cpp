@@ -25,6 +25,7 @@
 #include "SettingsMan.h"
 #include "SmokeGrid.h"
 #include "TerrainCollapse.h"
+#include "ZeroGravity.h"
 #include "TerrainTrees.h"
 #include "TerrainFire.h"
 #include "RopeSim.h"
@@ -274,6 +275,7 @@ namespace {
 			TerrainCollapse::GetTuning() = TerrainCollapse::Tuning();
 			AirPressure::GetTuning() = AirPressure::Tuning();
 			MagicEffects::GetTuning() = MagicEffects::Tuning();
+			ZeroGravity::ResetSettings();
 			g_SettingsMan.GibChunks() = SettingsMan::GibChunkTuning();
 			s_PresetMessage = "Everything is back to how the game comes.";
 		}
@@ -1689,6 +1691,39 @@ void DebugMan::SettingsGUI() {
 		}
 	};
 
+	// Zero gravity: maps with next to none (in space), and the no gravity zones maps draw (ZeroGravity).
+	auto zeroG = [&]() {
+		if (Plain()) {
+			ImGui::TextDisabled(ZeroGravity::SceneWeightless() ? "This map has no gravity." : "This map has gravity.");
+		}
+		Toggle("Falling ground follows gravity", ZeroGravity::TerrainFollowsGravity(), [](bool on) { ZeroGravity::SetTerrainFollowsGravity(on); });
+		Tip("Collapsing ground and sand go by the map's own gravity: with none, ground blasted or dug free stays where it is, pieces thrown loose drift, slow and hang where they stop, and sand doesn't pour; with low or sideways gravity, pieces fall that way and that hard. Off: they fall straight down at normal gravity on every map, as they used to.");
+		Toggle("Liquids float", ZeroGravity::LiquidsFloat(), [](bool on) { ZeroGravity::SetLiquidsFloat(on); });
+		Tip("Where there's no gravity, water, lava, acid and the rest hang where they are instead of pouring down. Drops thrown off by splashes and explosions drift until they hit something. Off: liquids flow down as on any map.");
+		Toggle("No gravity zones count", ZeroGravity::CountZones(), [](bool on) { ZeroGravity::SetCountZones(on); });
+		Tip("A map's no gravity zones (the NoGravityArea its lift tubes and scripts set up) count as no gravity for falling ground, sand and liquids, as well as a map with no gravity anywhere. Units and objects are moved in those zones by the lifts themselves. Off: only the map's own gravity counts.");
+		Toggle("Jetpacks push any way", ZeroGravity::JetpackAnyDirection(), [](bool on) { ZeroGravity::SetJetpackAnyDirection(on); });
+		Tip("With no gravity a jetpack pushes whichever way you want to go, instead of only up: the move keys or stick (crouch for down), or with only the jet held, the way you aim. AI units steer it the same way. Off: jetpacks push up as on any map.");
+		Toggle("AI flies in zero gravity", ZeroGravity::AIFlies(), [](bool on) { ZeroGravity::SetAIFlies(on); });
+		Tip("With no gravity AI units fly their routes: straight for each point they can see, on the jetpack steered whichever way it has to push, braking to stop where they're going, and holding still there. No walking, landing or bracing for falls, and waypoints in the air stay in the air. Off: they move as they would with gravity (and mostly get nowhere).");
+		ImGui::BeginDisabled(!ZeroGravity::AIFlies());
+		Toggle("Push off without a jetpack", ZeroGravity::PushOff(), [](bool on) { ZeroGravity::SetPushOff(on); });
+		Tip("AI units with no jetpack, or an empty one, push off whatever they're touching towards where they're going, and grab hold when they get there. Off: they stay where they are.");
+		{
+			float speed = ZeroGravity::FlySpeed();
+			if (Slider("Flying speed (m/s)", &speed, 1.0F, 20.0F, "%.1f")) {
+				ZeroGravity::SetFlySpeed(speed);
+			}
+			Tip("How fast AI units fly between points in zero gravity, before braking for the last one.");
+			float push = ZeroGravity::PushSpeed();
+			if (Slider("Push-off speed (m/s)", &push, 1.0F, 15.0F, "%.1f")) {
+				ZeroGravity::SetPushSpeed(push);
+			}
+			Tip("How hard a push-off sends a unit (gentler when the point is close).");
+		}
+		ImGui::EndDisabled();
+	};
+
 	// The sandbox's own overlays: its orders, tools and effects, drawn over the game whether or not its window is open.
 	auto sandboxDebug = [&]() {
 		{
@@ -1733,6 +1768,7 @@ void DebugMan::SettingsGUI() {
 	    {"Effect layers", effectLayers},
 	    {"Air & wind", airAndWind},
 	    {"Falling ground", fallingGround},
+	    {"Zero G Settings", zeroG},
 	    {"Gibs", gibs},
 	    {"Magic & spells", magic},
 	    {"Camera & image", cameraAndImage},

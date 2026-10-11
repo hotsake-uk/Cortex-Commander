@@ -20,6 +20,7 @@
 #include "PresetMan.h"
 #include "Scene.h"
 #include "SettingsMan.h"
+#include "ZeroGravity.h"
 #include "PostProcessMan.h"
 #include "PieMenu.h"
 
@@ -1096,6 +1097,11 @@ float AHuman::EstimateBreachStrength() const {
 
 PathAgent AHuman::GetPathAgent() const {
 	PathAgent agent = Actor::GetPathAgent();
+	// Zero gravity (the Zero G Settings' AI flying): open space is a way to anywhere, on the jet or by pushing off what it touches
+	// (MoveAlongRouteWeightless), as for a flier.
+	if (ZeroGravity::AIFlies() && ZeroGravity::UnitsWeightless() && (ZeroGravity::PushOff() || (m_pJetpack && m_pJetpack->GetJetpackType() == AEJetpack::JetpackType::Standard && ZeroGravity::JetpackAnyDirection()))) {
+		agent.JumpHeight = FLT_MAX;
+	}
 	// The standing body: the feet are a fifth of the height under Pos and the top of the head about a quarter over it, so a Soldier Light
 	// (height 100) stands 44 px tall and a 48 px tunnel, the bunker modules' corridor, is walked upright. The movement script measures its
 	// head room by the same fraction (SharedBehaviors.StandingHeight), so the grid and the script agree about every corridor.

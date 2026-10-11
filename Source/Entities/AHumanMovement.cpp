@@ -20,6 +20,7 @@
 #include "MovableMan.h"
 #include "SceneMan.h"
 #include "SettingsMan.h"
+#include "ZeroGravity.h"
 #include "Scene.h"
 #include "PresetMan.h"
 #include "Activity.h"
@@ -178,6 +179,12 @@ void AHuman::TacticalMoveTo(const Vector& place, float milliseconds) {
 
 void AHuman::UpdateAIMotor() {
 	if (m_Controller.GetInputMode() != Controller::CIM_AI || m_Status == DYING || m_Status == DEAD) {
+		return;
+	}
+	// Zero gravity: no stance to stand in, no fall to brake, no sky to hover in (MoveAlongRouteWeightless flies it). A unit with nowhere to go
+	// that's drifting brakes on its jet, so it stays where it was put rather than floating off.
+	if (ZeroGravity::AIFlies() && ZeroGravity::UnitsWeightless()) {
+		HoldStillWeightless(m_pJetpack);
 		return;
 	}
 	Controller& ctrl = m_Controller;
@@ -2012,8 +2019,10 @@ int AHuman::MoveAlongRoute() {
 		mover.progressTimer.Reset();
 		return RouteMover::Moving;
 	}
-	// Knocked over, or getting up: no keys (the legs' walking while down was the flailing), and not stuck for it.
-	if (m_Status != STABLE || m_GettingUp) {
+	// Knocked over, or getting up: no keys (the legs' walking while down was the flailing), and not stuck for it. (In zero gravity there's no
+	// getting up: it flies on as it is.)
+	const bool weightless = ZeroGravity::AIFlies() && ZeroGravity::UnitsWeightless();
+	if ((m_Status != STABLE || m_GettingUp) && !weightless) {
 		mover.progressTimer.Reset();
 		return RouteMover::Moving;
 	}
@@ -2060,6 +2069,9 @@ int AHuman::MoveAlongRoute() {
 	}
 	mover.impossibleAnswers = 0;
 	mover.impossibleSeen = m_ImpossiblePaths;
+	if (weightless) {
+		return MoveAlongRouteWeightless();
+	}
 
 	// Arrived: the route walked out and the last waypoint, on its floor, within reach.
 	if (m_MovePath.empty() && !mover.flight.active) {
@@ -3942,4 +3954,20 @@ int AHuman::MoveAlongRoute() {
 	}
 	// Walking off an edge onto the point below: the walk is the drop; the brake comes in the air.
 	return RouteMover::Moving;
+}
+
+int AHuman::MoveAlongRouteWeightless() {
+	// The keys for walking, crawling and leaping are let go (in the air they only flail the limbs), and a flight of the ground's follower is
+	// dropped; the jet is pressed by FlyRouteWeightless when it is wanted.
+	if (m_Mover.flight.active) {
+		m_Mover.flight = RouteMover::Flight();
+	}
+	for (ControlState state: {MOVE_LEFT, MOVE_RIGHT, MOVE_UP, MOVE_DOWN, MOVE_FAST, BODY_JUMPSTART, BODY_JUMP, BODY_LEAP, BODY_PRONE, BODY_CROUCH}) {
+		m_Controller.SetState(state, false);
+	}
+	int result = FlyRouteWeightless(m_pJetpack, m_pJetpack ? JetAccelNow() / c_PPM : 0.0F);
+	if (result == RouteMover::Arrived) {
+		m_Mover.arrivedTick = g_TimerMan.GetSimUpdateCount();
+	}
+	return result;
 }

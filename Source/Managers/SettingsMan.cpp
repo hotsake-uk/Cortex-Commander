@@ -13,6 +13,7 @@
 #include "TerrainCandle.h"
 #include "WeatherLightning.h"
 #include "TerrainCollapse.h"
+#include "ZeroGravity.h"
 #include "TerrainTrees.h"
 #include "FluidSim.h"
 #include "ThreatMemory.h"
@@ -388,6 +389,14 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("TreeStrayBulletPercent", { TerrainTrees::SetStrayBulletPercent(std::stoi(reader.ReadPropValue())); });
 	MatchProperty("UnitsBumpIntoTrees", { TerrainTrees::SetUnitsCollide(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("FallingGroundPassesTrees", { TerrainCollapse::SetPassesTrees(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("ZeroGTerrainFollowsGravity", { ZeroGravity::SetTerrainFollowsGravity(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("ZeroGLiquidsFloat", { ZeroGravity::SetLiquidsFloat(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("ZeroGCountZones", { ZeroGravity::SetCountZones(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("ZeroGJetpackAnyDirection", { ZeroGravity::SetJetpackAnyDirection(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("ZeroGAIFlies", { ZeroGravity::SetAIFlies(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("ZeroGPushOff", { ZeroGravity::SetPushOff(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("ZeroGFlySpeed", { ZeroGravity::SetFlySpeed(std::clamp(std::stof(reader.ReadPropValue()), 1.0F, 20.0F)); });
+	MatchProperty("ZeroGPushSpeed", { ZeroGravity::SetPushSpeed(std::clamp(std::stof(reader.ReadPropValue()), 1.0F, 15.0F)); });
 	MatchProperty("UnitsInFrontOfTrees", { TerrainTrees::SetDrawnBehindUnits(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("CollapseLeafBreakEase", { TerrainCollapse::GetTuning().LeafBreakEase = std::clamp(std::stof(reader.ReadPropValue()), 1.0F, 50.0F); });
 	MatchProperty("CollapseLeafLitter", { TerrainCollapse::GetTuning().LeafLitter = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
@@ -1226,6 +1235,14 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("UnitsBumpIntoTrees", TerrainTrees::UnitsCollide());
 	writer.NewPropertyWithValue("TreeStrayBulletPercent", TerrainTrees::StrayBulletPercent());
 	writer.NewPropertyWithValue("FallingGroundPassesTrees", TerrainCollapse::PassesTrees());
+	writer.NewPropertyWithValue("ZeroGTerrainFollowsGravity", ZeroGravity::TerrainFollowsGravity());
+	writer.NewPropertyWithValue("ZeroGLiquidsFloat", ZeroGravity::LiquidsFloat());
+	writer.NewPropertyWithValue("ZeroGCountZones", ZeroGravity::CountZones());
+	writer.NewPropertyWithValue("ZeroGJetpackAnyDirection", ZeroGravity::JetpackAnyDirection());
+	writer.NewPropertyWithValue("ZeroGAIFlies", ZeroGravity::AIFlies());
+	writer.NewPropertyWithValue("ZeroGPushOff", ZeroGravity::PushOff());
+	writer.NewPropertyWithValue("ZeroGFlySpeed", ZeroGravity::FlySpeed());
+	writer.NewPropertyWithValue("ZeroGPushSpeed", ZeroGravity::PushSpeed());
 	writer.NewPropertyWithValue("UnitsInFrontOfTrees", TerrainTrees::DrawnBehindUnits());
 	writer.NewPropertyWithValue("CollapseFloatingStays", TerrainCollapse::GetTuning().FloatingStays);
 	writer.NewPropertyWithValue("CollapseNeckWidth", TerrainCollapse::GetTuning().NeckWidth);

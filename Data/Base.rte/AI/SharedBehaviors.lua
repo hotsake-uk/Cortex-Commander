@@ -760,6 +760,12 @@ function SharedBehaviors.EngineMotor(Owner)
 	return HasMember(HasTacticalMove, Owner, GetTacticalMove);
 end
 
+-- Whether the map has next to no gravity (under a twentieth of the stock 20 m/s/s, as the engine's ZeroGravity reckons it): nothing falls, so
+-- nothing is braked against a fall or landed from one.
+function SharedBehaviors.Weightless()
+	return SceneMan.GlobalAcc.Magnitude < 1;
+end
+
 -- Whether the engine's scan (Actor.ScanForEnemies) is there, for a build without it (an older exe), where the scripts look with one
 -- random ray a tick as they did.
 local HasScan = MemberCache();

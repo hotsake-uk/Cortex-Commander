@@ -6,7 +6,9 @@
 #include "Emission.h"
 #include "MOPixel.h"
 #include "PostProcessMan.h"
+#include "SettingsMan.h"
 #include "TimerMan.h"
+#include "ZeroGravity.h"
 
 using namespace RTE;
 
@@ -30,6 +32,8 @@ void AEJetpack::Clear() {
 	m_JetAngleRange = 0.16F;
 	m_CanAdjustAngleWhileFiring = true;
 	m_AdjustsThrottleForWeight = true;
+	m_Steer.Reset();
+	m_SteerTick = -1;
 }
 
 int AEJetpack::Create() {
@@ -230,7 +234,30 @@ void AEJetpack::UpdateBurstState(Actor& parentActor) {
 
 	// If pie menu is on, keep the angle to what it was before.
 	bool canAdjustAngle = !controller.IsState(PIE_MENU_ACTIVE) && (m_CanAdjustAngleWhileFiring || !IsEmitting());
-	if (canAdjustAngle) {
+	if (!controller.IsState(PIE_MENU_ACTIVE) && ZeroGravity::JetpackAnyDirection() && ZeroGravity::UnitsWeightless()) {
+		// Zero gravity: nothing to lift against, so the jet pushes whichever way the unit wants to go (turned while lit too, whatever the
+		// jetpack's CanAdjustAngleWhileFiring: with no gravity a jet that can't turn can't stop). The AI's steer (SetSteer) while it lasts;
+		// else the analog stick; else the keys (left or right, crouch for down); else, with just the jet held, the way the unit aims.
+		Vector direction;
+		const long long now = g_TimerMan.GetSimUpdateCount();
+		const float analogDeadzone = 0.1F;
+		if (m_SteerTick >= 0 && now - m_SteerTick <= static_cast<long long>(std::max(1, g_SettingsMan.GetAIUpdateInterval())) * 2 + 1 && !m_Steer.IsZero()) {
+			direction = m_Steer;
+		} else if (controller.GetAnalogMove().MagnitudeIsGreaterThan(analogDeadzone)) {
+			direction = controller.GetAnalogMove();
+		} else {
+			direction.SetXY((controller.IsState(MOVE_RIGHT) ? 1.0F : 0.0F) - (controller.IsState(MOVE_LEFT) ? 1.0F : 0.0F), controller.IsState(BODY_CROUCH) ? 1.0F : 0.0F);
+			if (direction.IsZero()) {
+				direction = Vector(1.0F, 0.0F).RadRotate(parentActor.GetAimAngle(true));
+			}
+		}
+		// The exhaust goes the other way, set in the nozzle's own frame (AEmitter turns it by the body's rotation and facing).
+		Vector exhaust = UnRotateOffset(-direction.GetNormalized());
+		if (m_HFlipped) {
+			exhaust.m_X = -exhaust.m_X;
+		}
+		SetEmitAngle(exhaust.GetAbsRadAngle());
+	} else if (canAdjustAngle) {
 		// Direct the jetpack nozzle according to either analog stick input or aim angle.
 		float maxAngle = c_HalfPI * m_JetAngleRange;
 		const float analogDeadzone = 0.1F;
@@ -248,6 +275,11 @@ void AEJetpack::UpdateBurstState(Actor& parentActor) {
 			SetEmitAngle(jetAngle * flip - c_HalfPI);
 		}
 	}
+}
+
+void AEJetpack::SetSteer(const Vector& direction) {
+	m_Steer = direction;
+	m_SteerTick = g_TimerMan.GetSimUpdateCount();
 }
 
 void AEJetpack::Burst(Actor& parentActor, float fuelUseMultiplier) {

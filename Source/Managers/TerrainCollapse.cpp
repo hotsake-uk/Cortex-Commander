@@ -14,6 +14,7 @@
 #include "Vector.h"
 #include "EffectsParticles.h"
 #include "FluidSim.h"
+#include "ZeroGravity.h"
 
 #include "glm/glm.hpp"
 #include "PostProcessMan.h"
@@ -68,9 +69,15 @@ namespace {
 
 	/// Looks up the scene's gravity and no gravity area for this update.
 	void ReadGravity(Scene* scene) {
+		if (!ZeroGravity::TerrainFollowsGravity()) {
+			// (Zero G Settings: falling ground off the map's gravity, as it was, falls straight down at the stock gravity everywhere.)
+			s_SceneGravity = glm::vec2(0.0F, c_Gravity);
+			s_NoGravityArea = nullptr;
+			return;
+		}
 		Vector acc = scene->GetGlobalAcc();
 		s_SceneGravity = glm::vec2(acc.GetX(), acc.GetY()) * (c_Gravity / c_StockGravity);
-		s_NoGravityArea = scene->GetArea("NoGravityArea");
+		s_NoGravityArea = ZeroGravity::CountZones() ? scene->GetArea("NoGravityArea") : nullptr;
 	}
 
 	/// The gravity at a place, in pixels per update per update.
