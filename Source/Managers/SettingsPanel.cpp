@@ -12,6 +12,7 @@
 #include "ThreatMemory.h"
 #include "GasGrid.h"
 #include "AirPressure.h"
+#include "MagicEffects.h"
 #include "FrameMan.h"
 #include "ModernHUD.h"
 #include "PostProcessMan.h"
@@ -220,6 +221,7 @@ namespace {
 			g_PostProcessMan.GetLightingSettings() = LightingSettings();
 			TerrainCollapse::GetTuning() = TerrainCollapse::Tuning();
 			AirPressure::GetTuning() = AirPressure::Tuning();
+			MagicEffects::GetTuning() = MagicEffects::Tuning();
 			s_PresetMessage = "Everything is back to how the game comes.";
 		}
 		ImGui::SetItemTooltip("Puts every setting here back to how the game comes.");
@@ -793,6 +795,23 @@ void DebugMan::SettingsGUI() {
 		}
 	};
 
+	auto magic = [&]() {
+		MagicEffects::Tuning& tuning = MagicEffects::GetTuning();
+		Toggle("Magic and tool effects", MagicEffects::IsOn(), [](bool on) { MagicEffects::SetOn(on); });
+		Tip("What spells, tools and scripts cast: a telekinetic push or pull shoves units, items and loose bits in a cone and sets the air blowing with it. Off: a push does nothing. (What a spell sprays, like its acid, still flies and fades as its material says.)");
+		ImGui::BeginDisabled(!MagicEffects::IsOn());
+		Slider("Push strength", &tuning.PushStrength, 0.0F, 5.0F, "%.2fx");
+		Tip("How hard a push or pull shoves everything it reaches. 0: it shoves nothing.");
+		Slider("Push on units", &tuning.UnitPush, 0.0F, 5.0F, "%.2fx");
+		Tip("How hard it shoves units, on top of the push above. A hard enough shove knocks a unit off its feet. 0: units are never pushed.");
+		Slider("Gust of air", &tuning.AirGust, 0.0F, 5.0F, "%.2fx");
+		Tip("How hard the air a push sets blowing is, carrying smoke, spray and gas with it (needs Air & wind and Blast waves on). 0: no gust.");
+		ImGui::EndDisabled();
+		if (Plain() && ToolUI::Button("Usual magic")) {
+			tuning = MagicEffects::Tuning();
+		}
+	};
+
 	auto fallingGround = [&]() {
 		TerrainCollapse::Tuning& tuning = TerrainCollapse::GetTuning();
 		Toggle("Collapsing terrain", TerrainCollapse::IsEnabled(), [](bool on) { TerrainCollapse::SetEnabled(on); });
@@ -1348,6 +1367,7 @@ void DebugMan::SettingsGUI() {
 	    {"Effect layers", effectLayers},
 	    {"Air & wind", airAndWind},
 	    {"Falling ground", fallingGround},
+	    {"Magic & spells", magic},
 	    {"Camera & image", cameraAndImage},
 	    {"Game & HUD", gameAndHUD},
 	    {"AI behaviour", aiBehaviour},

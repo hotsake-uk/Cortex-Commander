@@ -876,6 +876,7 @@
     <ClInclude Include="Source\Managers\ThreatMemory.h" />
     <ClInclude Include="Source\Managers\GasGrid.h" />
     <ClInclude Include="Source\Managers\AirPressure.h" />
+    <ClInclude Include="Source\Managers\MagicEffects.h" />
     <ClInclude Include="Source\Managers\ActorWater.h" />
     <ClInclude Include="Source\Managers\UnitSpeech.h" />
     <ClInclude Include="Source\Managers\ControlLink.h" />
@@ -1443,6 +1444,7 @@
     <ClCompile Include="Source\Managers\ThreatMemory.cpp" />
     <ClCompile Include="Source\Managers\GasGrid.cpp" />
     <ClCompile Include="Source\Managers\AirPressure.cpp" />
+    <ClCompile Include="Source\Managers\MagicEffects.cpp" />
     <ClCompile Include="Source\Managers\ActorWater.cpp" />
     <ClCompile Include="Source\Managers\UnitSpeech.cpp" />
     <ClCompile Include="Source\Managers\UnitSpeechWorld.cpp" />

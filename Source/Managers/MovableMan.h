@@ -66,6 +66,7 @@ namespace RTE {
 		friend class ActorWater;
 		friend class GasGrid;
 		friend class AirPressure;
+		friend class MagicEffects;
 
 		/// Public member variable, method and friend function declarations
 	public:
