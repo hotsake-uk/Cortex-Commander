@@ -1,6 +1,7 @@
 require("Constants")
 require("AI/CrabBehaviors");
 require("AI/SharedBehaviors");
+require("AI/AnimalBehaviors");
 require("AI/UnitSpeech");
 
 NativeCrabAI = {};
@@ -348,7 +349,7 @@ function NativeCrabAI:Update(Owner)
 			SharedBehaviors.StartFlank(self, Owner, self.OldTargetPos, 500);
 		end
 		SharedBehaviors.RetreatUpdate(self, Owner);
-		-- (Its nature, NC-1: a skittish animal runs from danger, and livestock left standing graze about.)
+		-- (Its nature, NC-1: a skittish animal runs from danger, and livestock left to themselves graze, drink, rest and keep with the herd.)
 		SharedBehaviors.FleeUpdate(self, Owner);
 		SharedBehaviors.GrazeUpdate(self, Owner);
 		SharedBehaviors.RememberUpdate(self, Owner);

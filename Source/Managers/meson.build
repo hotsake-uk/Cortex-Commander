@@ -27,6 +27,7 @@ sources += files(
 'WeatherLightning.cpp',
 'TerrainCollapse.cpp',
 'TerrainTrees.cpp',
+'TerrainGrazing.cpp',
 'FluidSim.cpp',
 'ModernHUD.cpp',
 'ActionMenu.cpp',

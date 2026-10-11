@@ -146,6 +146,11 @@ namespace RTE {
 		/// @return Whether it got in.
 		bool TakeSeat(Actor* unit, int seat, bool anyTeam = false);
 
+		/// Puts a unit just made, not in the scene (a vehicle spawned with its crew), straight in a seat, as TakeSeat does but with no copy
+		/// kept: nobody is deleted or told, and no death reported. @param unit The unit. Ownership IS transferred if it went in.
+		/// @param seat The seat, or -1 for the one GetFreeSeat gives. @return Whether it went in: a free seat, and a unit that could get in.
+		bool SeatNew(Actor* unit, int seat);
+
 		/// Lets the unit in a seat out beside the host, back into the scene; the player goes with them if they were in charge from that seat.
 		/// @param seat The seat. @param thrown Whether they are thrown out (a crash, a roll, a wreck): flung clear with the speed it had, and
 		/// put out above it if there's no room beside. @param fallen Whether it's a body falling out of its seat: out whatever is there.

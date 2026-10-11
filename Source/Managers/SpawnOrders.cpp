@@ -250,7 +250,8 @@ namespace SandboxDetail {
 	}
 
 	bool TakeSpawnOrder(const Stroke& stroke) {
-		if (!s_SpawnOrderArmed || stroke.Kind != Tool::Command || stroke.Count == 40 || stroke.Count == 41 || stroke.Count == 42) {
+		// (Not a pen: that is for the animals selected, not a side's spawn order.)
+		if (!s_SpawnOrderArmed || stroke.Kind != Tool::Command || stroke.Count == 40 || stroke.Count == 41 || stroke.Count == 42 || stroke.Count == 50) {
 			return false;
 		}
 		const int side = SpawnOrderSide();

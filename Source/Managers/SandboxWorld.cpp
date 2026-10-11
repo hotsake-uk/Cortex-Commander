@@ -5,6 +5,7 @@
 #include "GasGrid.h"
 #include "TerrainTrees.h"
 #include "AMover.h"
+#include "AVehicle.h"
 
 #include <cstring>
 #include <fstream>
@@ -2147,7 +2148,63 @@ namespace SandboxDetail {
 		DropUnits(units, stroke.Team, stroke.Position.m_X, stroke.Craft);
 	}
 
-	/// The vehicle chosen in the Spawn tab's Vehicles list, empty, for the side: facing the middle of the view, as a unit put down is.
+	/// A vehicle's driving tuned as the Spawn tab's Modified sliders say: each a multiplier on the vehicle's own value.
+	void TuneVehicle(AVehicle* vehicle, const VehicleTuning& tuning) {
+		if (!vehicle || !tuning.Modified) {
+			return;
+		}
+		auto times = [](float value, float multiplier) { return value * std::clamp(multiplier, c_VehicleTuneMin, c_VehicleTuneMax); };
+		vehicle->SetAcceleration(times(vehicle->GetAcceleration(), tuning.Power));
+		vehicle->SetMaxSpeed(times(vehicle->GetMaxSpeed(), tuning.TopSpeed));
+		vehicle->SetGrip(times(vehicle->GetGrip(), tuning.Grip));
+		vehicle->SetBrakeStrength(times(vehicle->GetBrakeStrength(), tuning.Brakes));
+		vehicle->SetHopSpeed(times(vehicle->GetHopSpeed(), tuning.Jump));
+		vehicle->SetWaterThrust(times(vehicle->GetWaterThrust(), tuning.WaterPower));
+		vehicle->SetWaterMaxSpeed(times(vehicle->GetWaterMaxSpeed(), tuning.WaterSpeed));
+	}
+
+	/// Fills every seat of a vehicle or flying ship just made with new units: the unit picked in the Units list, or random ones as the Spawn
+	/// tab says, with the loadout and temperament in hand. Only humanoids sit, so a pick that can't (a crab, a turret) is crewed by random
+	/// soldiers instead. @return How many went in.
+	int CrewVehicle(Actor* vehicle, const Stroke& stroke) {
+		AVehicle* car = dynamic_cast<AVehicle*>(vehicle);
+		ACShip* ship = car ? nullptr : dynamic_cast<ACShip*>(vehicle);
+		if (!car && !ship) {
+			return 0;
+		}
+		const int seats = car ? car->GetSeatCount() : ship->GetSeatCount();
+		std::vector<const Preset*> pool = stroke.Random ? RandomUnitPool(stroke.FavouritesOnly, stroke.RandomFaction) : std::vector<const Preset*>();
+		const Preset* chosen = stroke.Random ? nullptr : ChosenPreset(Tool::Unit, stroke.CrewChoice);
+		const Entity* chosenEntity = chosen ? g_PresetMan.GetEntityPreset(chosen->ClassName, chosen->PresetName, chosen->ModuleID) : nullptr;
+		if (!stroke.Random && (!chosenEntity || !dynamic_cast<const AHuman*>(chosenEntity) || chosenEntity->IsInGroup("Brains"))) {
+			chosen = nullptr;
+			pool = RandomUnitPool(false, -1);
+		}
+		// (Only humanoids sit.)
+		pool.erase(std::remove_if(pool.begin(), pool.end(), [](const Preset* preset) { return preset->ClassName != "AHuman"; }), pool.end());
+		int seated = 0;
+		for (int seat = 0; seat < seats; ++seat) {
+			const Preset* preset = chosen ? chosen : RandomPick(pool);
+			Actor* unit = preset ? dynamic_cast<Actor*>(CreateObject(preset->ClassName, preset->PresetName, preset->ModuleID)) : nullptr;
+			if (!unit) {
+				break;
+			}
+			GiveLoadout(unit, *preset, stroke.Loadout);
+			ApplyTemperament(unit, stroke.Temperament);
+			unit->SetTeam(stroke.Team);
+			unit->SetPos(vehicle->GetPos());
+			unit->SetControllerMode(Controller::CIM_AI);
+			if (car ? car->SeatNewCrew(unit, seat) : ship->SeatNewCrew(unit, seat)) {
+				++seated;
+			} else {
+				delete unit;
+			}
+		}
+		return seated;
+	}
+
+	/// The vehicle chosen in the Spawn tab's Vehicles list for the side: facing the middle of the view, as a unit put down is. As it comes or
+	/// tuned (Modified), and empty, or crewed: then it takes the orders in hand, its driver leading the rest as a squad when they get out.
 	void SpawnVehicle(const Stroke& stroke) {
 		const Preset* preset = ChosenPreset(Tool::Vehicle, stroke.Choice);
 		Actor* vehicle = preset ? dynamic_cast<Actor*>(CreateObject(preset->ClassName, preset->PresetName, preset->ModuleID)) : nullptr;
@@ -2159,13 +2216,15 @@ namespace SandboxDetail {
 		vehicle->SetTeam(stroke.Team);
 		vehicle->SetControllerMode(Controller::CIM_AI);
 		vehicle->SetHFlipped(stroke.HasView && g_SceneMan.ShortestDistance(stroke.Position, Vector(stroke.ViewMiddleX, stroke.Position.m_Y), g_SceneMan.SceneWrapsX()).m_X < 0.0F);
+		TuneVehicle(dynamic_cast<AVehicle*>(vehicle), stroke.Vehicle);
 		// A dropship or rocket stays where it was put, rather than delivering nothing and going back up at once.
 		if (dynamic_cast<ACraft*>(vehicle) && preset->ClassName != "ACShip") {
 			vehicle->SetAIMode(Actor::AIMODE_STAY);
 		}
+		const bool crewed = stroke.Vehicle.Crewed && CrewVehicle(vehicle, stroke) > 0;
 		NotePlaced(vehicle);
 		g_MovableMan.AddActor(vehicle);
-		GiveOrder(vehicle, Order::Hold);
+		GiveOrder(vehicle, crewed ? stroke.Orders : Order::Hold);
 	}
 
 	void SpawnItem(const Stroke& stroke) {
@@ -2843,6 +2902,9 @@ namespace SandboxDetail {
 				} else if (stroke.Count == 20 || stroke.Count == 21) {
 					// A patrol route (RC-4): 20 a loop, 21 back and forth.
 					PatrolSelected(stroke.Points, stroke.Count == 21);
+				} else if (stroke.Count == 50) {
+					// A pen for the selected animals: its corners.
+					PenSelected(stroke.Points);
 				} else if (stroke.Count == 41 || stroke.Count == 42) {
 					// A right click on the map (RC-8): the mode's order at the place, 42 with Shift.
 					MapOrder(at, stroke.Count == 42);
@@ -2885,6 +2947,11 @@ namespace SandboxDetail {
 							}
 						}
 					}
+					break;
+				}
+				if (stroke.Count == 150 || stroke.Count == 152) {
+					// An animal order: 150 roam free, 152 stay.
+					AnimalOrderSelected(stroke.Count - 150);
 					break;
 				}
 				if (stroke.Count >= 100) {
@@ -3462,6 +3529,12 @@ namespace SandboxDetail {
 		stroke.RandomFaction = s_RandomFaction;
 		stroke.JetpackOnly = s_JetpackOnly;
 		stroke.Temperament = (kind == Tool::Drop || kind == Tool::Unit) ? s_SpawnTemperament : -1;
+		if (kind == Tool::Vehicle) {
+			stroke.Vehicle = s_VehicleTuning;
+			stroke.CrewChoice = ChoiceFor(Tool::Unit);
+			stroke.Random = s_VehicleTuning.Crewed && s_RandomUnits;
+			stroke.Temperament = s_VehicleTuning.Crewed ? s_SpawnTemperament : -1;
+		}
 		if (kind == Tool::WaterSpawner || kind == Tool::BuildTank) {
 			stroke.Material = s_SpringLiquid;
 			stroke.Rate = s_SpringRate;

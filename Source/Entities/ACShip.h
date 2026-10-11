@@ -99,6 +99,11 @@ namespace RTE {
 		/// Lets everyone in its seats out, or throws them out.
 		void EjectCrew(bool thrown) { m_Crew.EjectCrew(thrown); }
 
+		/// Puts a unit just made, not in the scene (a ship spawned with its crew), straight in a seat: nobody is copied, deleted or told.
+		/// @param unit The unit. Ownership IS transferred if it went in. @param seat The seat, or -1 for the one GetFreeSeat gives.
+		/// @return Whether it went in.
+		bool SeatNewCrew(Actor* unit, int seat = -1) { return m_Crew.SeatNew(unit, seat); }
+
 		/// Moves the unit the player is in charge of to the next empty seat, as the Change Seat pie slice does.
 		bool ChangeSeat() { return m_Crew.ChangeSeat(); }
 

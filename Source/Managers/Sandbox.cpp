@@ -475,6 +475,33 @@ void Sandbox::SetCharacterSetup(const std::string& setup) {
 	}
 }
 
+std::string Sandbox::GetVehicleSetup() {
+	const VehicleTuning& tuning = s_VehicleTuning;
+	std::ostringstream setup;
+	setup << (tuning.Modified ? 1 : 0) << (tuning.Crewed ? 1 : 0) << "|" << tuning.Power << ";" << tuning.TopSpeed << ";" << tuning.Grip << ";" << tuning.Brakes << ";" << tuning.Jump << ";" << tuning.WaterPower << ";" << tuning.WaterSpeed;
+	return setup.str();
+}
+
+void Sandbox::SetVehicleSetup(const std::string& setup) {
+	size_t bar = setup.find('|');
+	if (bar == std::string::npos || bar < 2) {
+		return;
+	}
+	VehicleTuning tuning;
+	tuning.Modified = setup[0] == '1';
+	tuning.Crewed = setup[1] == '1';
+	float* values[] = {&tuning.Power, &tuning.TopSpeed, &tuning.Grip, &tuning.Brakes, &tuning.Jump, &tuning.WaterPower, &tuning.WaterSpeed};
+	std::istringstream numbers(setup.substr(bar + 1));
+	std::string number;
+	for (float* value: values) {
+		if (!std::getline(numbers, number, ';')) {
+			break;
+		}
+		*value = std::clamp(static_cast<float>(std::atof(number.c_str())), c_VehicleTuneMin, c_VehicleTuneMax);
+	}
+	s_VehicleTuning = tuning;
+}
+
 bool Sandbox::WantsWorldPaused() {
 	return IsGodMode() && s_Open && s_PauseInMenus && g_TimerMan.GetSimUpdateCount() > s_GodStartUpdate + 90;
 }
@@ -1286,7 +1313,9 @@ void Sandbox::DrawGUI() {
 		bool dropLine = CurrentTool().Kind == Tool::BattleDropLine;
 		// A double click held and dragged sets how much risk the order takes, from normal at the click to full at the risk distance, and the
 		// way dragged is the way they face when they get there. It takes over from the box, the facing arrow and the patrol clicks.
-		bool riskDrag = commandTool && s_ClickCount >= 2 && s_CommandMode != CommandMode::Select && s_CommandMode != CommandMode::Patrol && !(s_CommandMode == CommandMode::Command && commandAt == CommandTarget::Select);
+		bool riskDrag = commandTool && s_ClickCount >= 2 && s_CommandMode != CommandMode::Select && s_CommandMode != CommandMode::Patrol && s_CommandMode != CommandMode::Pen && !(s_CommandMode == CommandMode::Command && commandAt == CommandTarget::Select);
+		// Pen animals: a box dragged out is the pen (a click is a corner of one).
+		bool penBox = commandTool && s_CommandMode == CommandMode::Pen;
 		float riskPixels = std::max(1.0F, g_SettingsMan.DirectOrders().RiskDragPixels);
 		float dragLength = std::sqrt((now.x - s_DragStart.x) * (now.x - s_DragStart.x) + (now.y - s_DragStart.y) * (now.y - s_DragStart.y));
 		// (On a curve: slow at first and steep at the end, so a long drag is about 70% and full risk, a suicide mission, takes the whole of it.)
@@ -1308,6 +1337,8 @@ void Sandbox::DrawGUI() {
 			draw->AddText(ImVec2(now.x + 14.0F, now.y - 22.0F), color, label);
 		} else if (dropLine) {
 			ImGui::GetForegroundDrawList()->AddLine(s_DragStart, now, c_SideColors[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)], 3.0F);
+		} else if (penBox) {
+			ImGui::GetForegroundDrawList()->AddRect(ImVec2(std::min(s_DragStart.x, now.x), std::min(s_DragStart.y, now.y)), ImVec2(std::max(s_DragStart.x, now.x), std::max(s_DragStart.y, now.y)), c_CommandModeColors[static_cast<int>(CommandMode::Pen)], 0.0F, 0, 2.0F);
 		} else if (defendAt || facingMove) {
 			ImU32 color = c_CommandModeColors[static_cast<int>(s_CommandMode)];
 			ImGui::GetForegroundDrawList()->AddLine(s_DragStart, now, color, 2.0F);
@@ -1366,6 +1397,23 @@ void Sandbox::DrawGUI() {
 				g_SceneMan.WrapPosition(end);
 				s_PatrolDraft.push_back(end);
 				give = false;
+			} else if (penBox && !dragged) {
+				// A corner of the pen being clicked out; the command row pens them.
+				g_SceneMan.WrapPosition(end);
+				s_PenDraft.push_back(end);
+				give = false;
+			} else if (penBox) {
+				// A box dragged out: the pen, at once.
+				Vector topLeft(std::min(start.m_X, end.m_X), std::min(start.m_Y, end.m_Y));
+				Vector bottomRight(std::max(start.m_X, end.m_X), std::max(start.m_Y, end.m_Y));
+				stroke.Kind = Tool::Command;
+				stroke.Count = 50;
+				stroke.Points = {topLeft, Vector(bottomRight.m_X, topLeft.m_Y), bottomRight, Vector(topLeft.m_X, bottomRight.m_Y)};
+				for (Vector& corner: stroke.Points) {
+					g_SceneMan.WrapPosition(corner);
+				}
+				stroke.Position = stroke.Points.front();
+				s_PenDraft.clear();
 			} else if (dragged) {
 				stroke.Kind = Tool::Select;
 				stroke.Position = start;
@@ -1576,6 +1624,8 @@ void Sandbox::DrawGUI() {
 					LoadoutChooser();
 					UnitOrderCombo("Orders");
 					ImGui::EndDisabled();
+				} else if (kind == Tool::Vehicle) {
+					VehicleOptions();
 				} else if (kind == Tool::Item) {
 					ToolUI::Checkbox("Pull the pin (grenades)", &s_LitGrenade);
 				} else if (kind == Tool::Structure) {

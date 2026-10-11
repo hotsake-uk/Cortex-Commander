@@ -53,6 +53,7 @@
 #include "FrameMan.h"
 #include "DebugMan.h"
 #include "TerrainFire.h"
+#include "TerrainGrazing.h"
 #include "WeatherLightning.h"
 #include "TerrainCollapse.h"
 #include "FluidSim.h"
@@ -600,6 +601,8 @@ void RunGameLoop() {
 				WeatherLightning::Update();
 				logStages.Next("Sim: terrain fire");
 				TerrainFire::Update();
+				logStages.Next("Sim: grazing");
+				TerrainGrazing::Update();
 				logStages.Next("Sim: burning units");
 				ActorFire::Update();
 				logStages.Next("Sim: terrain collapse");

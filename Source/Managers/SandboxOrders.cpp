@@ -1,6 +1,7 @@
 // Orders to units: sending, holding and standing orders, selection and group moves.
 
 #include "SandboxInternal.h"
+#include "AVehicle.h"
 
 namespace SandboxDetail {
 	MovableObject* CreateObject(const std::string& className, const std::string& presetName, int moduleID) {
@@ -211,7 +212,7 @@ namespace SandboxDetail {
 		if (!resend && !s_FollowingPlan) {
 			std::string_view why = reason ? reason : "";
 			const char* trigger = nullptr;
-			if (why == "move" || why == "to the rally point" || why == "sent again (no route)") {
+			if (why == "move" || why == "to the rally point" || why == "sent again (no route)" || why == "get in") {
 				trigger = s_MoveAnswer ? s_MoveAnswer : "OrderMove";
 			} else if (why == "attack-move") {
 				trigger = "OrderAttackMove";
@@ -1135,6 +1136,9 @@ namespace SandboxDetail {
 			case CommandMode::Airlift:
 				AirliftSelected(units, point);
 				return;
+			case CommandMode::Pen:
+				// (A pen's corners are clicked out, then the command row pens them.)
+				return;
 			default: {
 				bool attackMove = s_CommandMode == CommandMode::AttackMove;
 				if (shift) {
@@ -1347,6 +1351,9 @@ namespace SandboxDetail {
 			const CommandTarget at = CommandTargetAt(position);
 			if (at.What == CommandTarget::Objective) {
 				ObjectiveSelected(at, modifier == 1);
+			} else if (at.What == CommandTarget::GetIn && modifier != 1) {
+				// (Shift: the vehicle is added to the selection, as any friend is.)
+				GetInVehicle(UnitsToMove(0, true), at.Vehicle);
 			} else if (at.What == CommandTarget::Air) {
 				FlySelectedTo(position, modifier == 1);
 			} else {
@@ -1450,6 +1457,9 @@ namespace SandboxDetail {
 			AirliftSelected(UnitsToMove(0, true), position);
 			return;
 		}
+		if (s_CommandMode == CommandMode::Pen) {
+			return;
+		}
 		if (s_CommandMode == CommandMode::AttackMove) {
 			if (modifier == 1) {
 				PlanStepFor(UnitsToMove(0, true), PlanKind::AttackMove, position, nullptr);
@@ -1509,14 +1519,130 @@ namespace SandboxDetail {
 		}
 	}
 
+	int FreeSeatsOf(const Actor* vehicle) {
+		int seats = 0;
+		int taken = 0;
+		if (const AVehicle* car = dynamic_cast<const AVehicle*>(vehicle)) {
+			seats = car->GetSeatCount();
+			taken = car->GetCrewCount();
+		} else if (const ACShip* ship = dynamic_cast<const ACShip*>(vehicle)) {
+			seats = ship->GetSeatCount();
+			taken = ship->GetCrewCount();
+		}
+		return vehicle && !vehicle->IsDead() ? std::max(seats - taken, 0) : 0;
+	}
+
+	bool CanBoard(const Actor* vehicle, const Actor* unit) {
+		if (!vehicle || !unit || unit == vehicle || unit->IsPlayerControlled()) {
+			return false;
+		}
+		if (const AVehicle* car = dynamic_cast<const AVehicle*>(vehicle)) {
+			return car->CanCarry(unit);
+		}
+		const ACShip* ship = dynamic_cast<const ACShip*>(vehicle);
+		return ship && unit->GetTeam() == ship->GetTeam() && ship->CanTakeIn(unit);
+	}
+
+	void GetInVehicle(const std::vector<Actor*>& units, Actor* vehicle) {
+		if (!vehicle) {
+			return;
+		}
+		// The nearest first, as many as there are seats free; the rest that could have sat stand guard by it.
+		std::vector<Actor*> boarders;
+		for (Actor* unit: units) {
+			if (CanBoard(vehicle, unit)) {
+				boarders.push_back(unit);
+			}
+		}
+		const bool wraps = g_SceneMan.SceneWrapsX();
+		std::sort(boarders.begin(), boarders.end(), [vehicle, wraps](const Actor* a, const Actor* b) {
+			return g_SceneMan.ShortestDistance(a->GetPos(), vehicle->GetPos(), wraps).GetSqrMagnitude() < g_SceneMan.ShortestDistance(b->GetPos(), vehicle->GetPos(), wraps).GetSqrMagnitude();
+		});
+		const size_t seats = static_cast<size_t>(FreeSeatsOf(vehicle));
+		std::vector<Actor*> guards;
+		for (size_t i = 0; i < boarders.size(); ++i) {
+			if (i < seats) {
+				// Sent after the vehicle: it takes in whoever it was sent after once they reach it (AVehicle and ACShip's ordered boarding).
+				SendUnit(boarders[i], vehicle->GetPos(), vehicle, false, "get in");
+			} else {
+				guards.push_back(boarders[i]);
+			}
+		}
+		GuardObject(guards, vehicle, nullptr);
+		MarkOrder(vehicle->GetPos(), c_CommandModeColors[static_cast<int>(CommandMode::Guard)]);
+	}
+
+	void EveryoneOut(Actor* vehicle) {
+		AVehicle* car = dynamic_cast<AVehicle*>(vehicle);
+		ACShip* ship = car ? nullptr : dynamic_cast<ACShip*>(vehicle);
+		if (!car && !ship) {
+			return;
+		}
+		// Told to get out, they get out: staying in was until told otherwise.
+		if (car) {
+			car->SetCrewStaysIn(false);
+		}
+		std::vector<Actor*> out;
+		const int seats = car ? car->GetSeatCount() : ship->GetSeatCount();
+		for (int seat = 0; seat < seats; ++seat) {
+			if (Actor* unit = car ? car->EjectSeat(seat, false) : ship->EjectSeat(seat, false)) {
+				out.push_back(unit);
+			}
+		}
+		if (out.empty()) {
+			return;
+		}
+		// A squad behind whoever got out first (the driver, if there was one): the rest follow it as Guard followers do.
+		Actor* leader = out.front();
+		if (!leader->IsPlayerControlled()) {
+			HoldUnit(leader);
+		}
+		for (size_t i = 1; i < out.size(); ++i) {
+			if (!out[i]->IsPlayerControlled()) {
+				GuardUnit(out[i], leader);
+			}
+		}
+		MarkOrder(vehicle->GetPos(), c_CommandModeColors[static_cast<int>(CommandMode::Guard)]);
+	}
+
+	int SelectedStayIn() {
+		int found = -2;
+		for (const UnitRef& ref: s_Selected) {
+			if (const AVehicle* car = dynamic_cast<const AVehicle*>(GetRef(ref))) {
+				const int stays = car->GetCrewStaysIn() ? 1 : 0;
+				found = found == -2 ? stays : (found == stays ? found : -1);
+			}
+		}
+		return found;
+	}
+
+	bool SelectionHasVehicle() {
+		return std::any_of(s_Selected.begin(), s_Selected.end(), [](const UnitRef& ref) {
+			const Actor* unit = GetRef(ref);
+			return dynamic_cast<const AVehicle*>(unit) || dynamic_cast<const ACShip*>(unit);
+		});
+	}
+
 	CommandTarget CommandTargetAt(const Vector& point) {
 		CommandTarget target;
 		if (UnitsToMove(0, true).empty()) {
 			return target;
 		}
 		target.What = CommandTarget::Move;
-		// A unit under the pointer comes first, friend or enemy: Move mode's selecting or attacking.
+		// A unit under the pointer comes first, friend or enemy: Move mode's selecting or attacking. A friendly vehicle or flying ship with a
+		// free seat, though, with units on foot selected that could sit in it, is got into.
 		if (const Actor* under = dynamic_cast<Actor*>(ObjectUnder(point, true)); under && !HiddenFromCommander(under) && (IsSelectable(under) || IsCombatant(under))) {
+			if (Actor* vehicle = const_cast<Actor*>(dynamic_cast<const Actor*>(under->GetRootParent())); vehicle && vehicle->GetTeam() == SelectionTeam() && FreeSeatsOf(vehicle) > 0) {
+				int boarders = 0;
+				for (const Actor* unit: UnitsToMove(0, true)) {
+					boarders += CanBoard(vehicle, unit) ? 1 : 0;
+				}
+				if (boarders > 0) {
+					target.What = CommandTarget::GetIn;
+					target.Vehicle = vehicle;
+					target.Boarders = std::min(boarders, FreeSeatsOf(vehicle));
+				}
+			}
 			return target;
 		}
 		const int team = SelectionTeam();
@@ -1943,9 +2069,100 @@ namespace SandboxDetail {
 		}
 	}
 
+	bool IsAnimal(const Actor* actor) {
+		return actor && actor->IsInGroup("Actors - Livestock");
+	}
+
+	namespace {
+		/// Takes an animal's pen off it.
+		void ForgetPen(Actor* animal) {
+			if (animal->NumberValueExists("AnimalPenCount")) {
+				int count = static_cast<int>(animal->GetNumberValue("AnimalPenCount"));
+				for (int i = 1; i <= count; ++i) {
+					animal->RemoveNumberValue("AnimalPenX" + std::to_string(i));
+					animal->RemoveNumberValue("AnimalPenY" + std::to_string(i));
+				}
+			}
+			animal->RemoveNumberValue("AnimalPenCount");
+			animal->RemoveNumberValue("AnimalPenStamp");
+		}
+
+		/// The selected animals that take orders now: not one a player is playing.
+		std::vector<Actor*> SelectedAnimals() {
+			std::vector<Actor*> animals;
+			for (Actor* unit: UnitsToMove(0, true)) {
+				if (IsAnimal(unit) && !unit->IsPlayerControlled()) {
+					animals.push_back(unit);
+				}
+			}
+			return animals;
+		}
+	} // namespace
+
+	void PenSelected(const std::vector<Vector>& points) {
+		if (points.size() < 3) {
+			return;
+		}
+		static int stamp = 0;
+		++stamp;
+		const ImU32 color = c_CommandModeColors[static_cast<int>(CommandMode::Pen)];
+		for (Actor* animal: SelectedAnimals()) {
+			HoldUnit(animal);
+			ForgetPen(animal);
+			animal->SetNumberValue("AnimalOrder", 1);
+			animal->SetNumberValue("AnimalPenCount", static_cast<double>(points.size()));
+			for (size_t i = 0; i < points.size(); ++i) {
+				animal->SetNumberValue("AnimalPenX" + std::to_string(i + 1), points[i].m_X);
+				animal->SetNumberValue("AnimalPenY" + std::to_string(i + 1), points[i].m_Y);
+			}
+			animal->SetNumberValue("AnimalPenStamp", stamp);
+		}
+		for (const Vector& point: points) {
+			MarkOrder(point, color);
+		}
+	}
+
+	void AnimalOrderSelected(int order) {
+		for (Actor* animal: SelectedAnimals()) {
+			HoldUnit(animal);
+			ForgetPen(animal);
+			animal->SetNumberValue("AnimalOrder", order == 2 ? 2 : 0);
+			MarkOrder(animal->GetPos(), c_CommandModeColors[static_cast<int>(CommandMode::Pen)]);
+		}
+	}
+
+	int SelectedAnimalOrder() {
+		int order = -2;
+		for (const UnitRef& ref: s_Selected) {
+			const Actor* unit = GetRef(ref);
+			if (!IsAnimal(unit)) {
+				continue;
+			}
+			int its = unit->NumberValueExists("AnimalOrder") ? static_cast<int>(unit->GetNumberValue("AnimalOrder")) : 0;
+			if (order == -2) {
+				order = its;
+			} else if (order != its) {
+				return -1;
+			}
+		}
+		return order;
+	}
+
+	bool PenOf(const Actor* animal, std::vector<Vector>& corners) {
+		corners.clear();
+		if (!IsAnimal(animal) || !animal->NumberValueExists("AnimalPenCount") || !animal->NumberValueExists("AnimalOrder") || static_cast<int>(animal->GetNumberValue("AnimalOrder")) != 1) {
+			return false;
+		}
+		int count = static_cast<int>(animal->GetNumberValue("AnimalPenCount"));
+		for (int i = 1; i <= count; ++i) {
+			corners.emplace_back(static_cast<float>(animal->GetNumberValue("AnimalPenX" + std::to_string(i))), static_cast<float>(animal->GetNumberValue("AnimalPenY" + std::to_string(i))));
+		}
+		return corners.size() >= 3;
+	}
+
 	/// The command ring's choices for the selected units, about a point: 0 move there, 1 attack the enemy nearest it, 2 cancel, 3 defend where they
 	/// are; 13 defend as the last step of their plans, 20 clear their plans (RC-3), 21 clear all their orders, 22 hand them
-	/// back to their team's orders, 30 take cover.
+	/// back to their team's orders, 30 take cover; 40 their vehicles' crews stay in, 41 free to get out, 42 everyone out.
 	void OrderSelectedUnits(int choice, const Vector& point) {
 		std::vector<Actor*> units = UnitsToMove(0, true);
 		if (choice == 0) {
@@ -2018,6 +2235,25 @@ namespace SandboxDetail {
 				s_SendNotes[unit->GetUniqueID()] = {"take cover", false, g_TimerMan.GetSimUpdateCount()};
 				AnswerOrder(unit, "OrderTakeCover");
 				MarkOrder(unit->GetPos(), c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)]);
+			}
+		} else if (choice == 40 || choice == 41) {
+			// Stay in vehicle (40), or free to get out again (41): the selected vehicles' crews, riders included, keep their seats.
+			for (const UnitRef& ref: s_Selected) {
+				if (AVehicle* car = dynamic_cast<AVehicle*>(GetRef(ref))) {
+					car->SetCrewStaysIn(choice == 40);
+					MarkOrder(car->GetPos(), c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)]);
+				}
+			}
+		} else if (choice == 42) {
+			// Everyone out of the selected vehicles and flying ships, each crew a squad behind its driver.
+			std::vector<Actor*> vehicles;
+			for (const UnitRef& ref: s_Selected) {
+				if (Actor* unit = GetRef(ref); dynamic_cast<AVehicle*>(unit) || dynamic_cast<ACShip*>(unit)) {
+					vehicles.push_back(unit);
+				}
+			}
+			for (Actor* vehicle: vehicles) {
+				EveryoneOut(vehicle);
 			}
 		} else if (choice == 20) {
 			// The plans of the units picked, cleared (they carry on with the step they're on).

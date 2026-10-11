@@ -1,6 +1,7 @@
 require("Constants")
 require("AI/HumanBehaviors");
 require("AI/SharedBehaviors");
+require("AI/AnimalBehaviors");
 require("AI/UnitSpeech");
 
 NativeHumanAI = {};

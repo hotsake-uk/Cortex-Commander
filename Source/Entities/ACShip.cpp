@@ -476,6 +476,22 @@ void ACShip::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichSc
 	if (!activity || !font || !m_HUDVisible) {
 		return;
 	}
+	// The reticle and rounds of the gun the player mans: the first gunner's seat mans the first gun, and so on, as UpdateGuns has it.
+	if (int seat = GetControlSeat(); seat >= 0 && IsGunnerSeat(seat) && m_Controller.IsPlayerControlled() && !m_Controller.IsState(PIE_MENU_ACTIVE) && activity->ScreenOfPlayer(m_Controller.GetPlayer()) == whichScreen) {
+		int gunIndex = 0;
+		for (const Attachable* attachable: m_Attachables) {
+			if (const Turret* turret = dynamic_cast<const Turret*>(attachable)) {
+				if (m_Crew.GetSeatOfGun(gunIndex++) == seat) {
+					Vector drawPos = m_Pos - targetPos;
+					if (!targetPos.IsZero()) {
+						drawPos += g_SceneMan.GetWrapToScreen(drawPos, pTargetBitmap->w, pTargetBitmap->h);
+					}
+					turret->DrawGunnerHUD(pTargetBitmap, targetPos, drawPos, m_HUDStack);
+					break;
+				}
+			}
+		}
+	}
 	const char* hint = nullptr;
 	if (Actor* boarder = m_Crew.GetBoarderInReach(); boarder && activity->ScreenOfPlayer(boarder->GetController()->GetPlayer()) == whichScreen) {
 		hint = boarder->GetTeam() != m_Team ? "Pick up: take it" : "Pick up: get in";

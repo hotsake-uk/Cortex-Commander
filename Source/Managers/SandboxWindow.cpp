@@ -2,6 +2,7 @@
 
 #include "SandboxInternal.h"
 #include "ActionMenu.h"
+#include "AVehicle.h"
 #include "GUISound.h"
 #include "TerrainCandle.h"
 
@@ -1095,6 +1096,95 @@ namespace SandboxDetail {
 	}
 
 
+	void VehicleOptions() {
+		VehicleTuning& tuning = s_VehicleTuning;
+		const Preset* preset = ChosenPreset(Tool::Vehicle, ChoiceFor(Tool::Vehicle));
+		const Entity* entity = preset ? g_PresetMan.GetEntityPreset(preset->ClassName, preset->PresetName, preset->ModuleID) : nullptr;
+		const AVehicle* vehicle = dynamic_cast<const AVehicle*>(entity);
+		const bool seats = vehicle || dynamic_cast<const ACShip*>(entity);
+
+		ImGui::SeparatorText("Crew");
+		ImGui::BeginDisabled(!seats && preset);
+		int crew = tuning.Crewed ? 1 : 0;
+		ToolUI::RadioButton("Empty", &crew, 0);
+		ImGui::SameLine();
+		ToolUI::RadioButton("Full crew", &crew, 1);
+		tuning.Crewed = crew == 1;
+		ImGui::SetItemTooltip("Every seat filled with the unit picked in the Units list (or random units, if Random units is ticked there), with the loadout, orders and temperament below. The driver leads: when they get out the rest follow it as a squad.");
+		if (tuning.Crewed) {
+			const Preset* unit = s_RandomUnits ? nullptr : ChosenPreset(Tool::Unit, ChoiceFor(Tool::Unit));
+			ImGui::TextDisabled("Crewed by: %s", s_RandomUnits ? "random units" : unit ? unit->PresetName.c_str() : "(pick a unit in the Units list)");
+			LoadoutChooser();
+			UnitOrderCombo("Orders");
+			TemperamentCombo("Temperament");
+		}
+		ImGui::EndDisabled();
+		if (preset && !seats) {
+			ImGui::TextDisabled("This one has no seats (a dropship or rocket).");
+		}
+
+		ImGui::SeparatorText("Driving");
+		int mode = tuning.Modified ? 1 : 0;
+		ToolUI::RadioButton("Default settings", &mode, 0);
+		ImGui::SetItemTooltip("Put down as the vehicle comes.");
+		ImGui::SameLine();
+		ToolUI::RadioButton("Modified", &mode, 1);
+		ImGui::SetItemTooltip("Put down with the driving tuned by the sliders: each is times the vehicle's own value. Vehicles already out stay as they are.");
+		tuning.Modified = mode == 1;
+		if (!tuning.Modified) {
+			return;
+		}
+		if (preset && !vehicle) {
+			ImGui::TextDisabled("Only land vehicles and boats can be tuned: this one is put down as it comes.");
+			return;
+		}
+		// One slider: the multiplier, and what it comes to for the vehicle chosen.
+		auto slider = [](const char* label, float& multiplier, float own, const char* unit, const char* tip) {
+			ImGui::PushID(label);
+			std::string shown = "x%.2f";
+			if (own > 0.0F) {
+				char value[48];
+				std::snprintf(value, sizeof(value), "  (%.1f %s)", own * multiplier, unit);
+				shown += value;
+			}
+			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.62F);
+			ImGui::SliderFloat(label, &multiplier, c_VehicleTuneMin, c_VehicleTuneMax, shown.c_str(), ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
+			ImGui::SetItemTooltip("%s Right-click to set it back to x1.", tip);
+			if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+				multiplier = 1.0F;
+			}
+			ImGui::PopID();
+		};
+		const bool boat = vehicle && vehicle->GetWaterThrust() > 0.0F;
+		const bool wheels = !vehicle || !vehicle->GetWheels().empty();
+		if (wheels) {
+			slider("Power", tuning.Power, vehicle ? vehicle->GetAcceleration() : 0.0F, "m/s2", "How hard it speeds up: more power drives it up steeper hills.");
+			slider("Top speed", tuning.TopSpeed, vehicle ? vehicle->GetMaxSpeed() : 0.0F, "m/s", "How fast it goes on the flat.");
+			slider("Grip", tuning.Grip, vehicle ? vehicle->GetGrip() : 0.0F, "", "How much of its weight the wheels push with before they slip: on a steep hill, power is no use without the grip to put it down.");
+			slider("Brakes", tuning.Brakes, vehicle ? vehicle->GetBrakeStrength() : 0.0F, "m/s2", "How hard it slows with the brake on.");
+			if (!vehicle || vehicle->GetHopSpeed() > 0.0F) {
+				slider("Jump", tuning.Jump, vehicle ? vehicle->GetHopSpeed() : 0.0F, "m/s", "How high it jumps off its springs when the driver jumps.");
+			}
+		}
+		if (!vehicle || boat) {
+			slider("Water power", tuning.WaterPower, vehicle ? vehicle->GetWaterThrust() : 0.0F, "m/s2", "How hard it speeds up in water.");
+			slider("Water top speed", tuning.WaterSpeed, vehicle ? vehicle->GetWaterMaxSpeed() : 0.0F, "m/s", "How fast it goes in water.");
+		}
+		if (vehicle && wheels) {
+			// As AVehicle::GetClimbAngle, with the sliders' values.
+			float gravity = std::max(std::abs(g_SceneMan.GetGlobalAcc().m_Y), 0.01F);
+			auto climb = [gravity](float acceleration, float grip) {
+				return std::min(std::asin(std::clamp(acceleration / gravity, 0.0F, 1.0F)), std::atan(std::max(grip, 0.0F))) * 180.0F / c_PI;
+			};
+			ImGui::Text("Climbs slopes up to about %.0f degrees (as it comes: %.0f).", climb(vehicle->GetAcceleration() * tuning.Power, vehicle->GetGrip() * tuning.Grip), climb(vehicle->GetAcceleration(), vehicle->GetGrip()));
+		}
+		if (ToolUI::Button("Reset to x1")) {
+			const bool crewed = tuning.Crewed;
+			tuning = VehicleTuning();
+			tuning.Modified = true;
+			tuning.Crewed = crewed;
+		}
+	}
 
 	/// Frees every picture's texture, for when the sandbox is left: they're made again as they're next needed.
 	void ForgetPictures() {
@@ -2416,6 +2506,8 @@ namespace SandboxDetail {
 				label = !builder ? std::string("Build: none of the selected units carries a Constructor") : std::string("Build ") + piece.Name + " here" + (paid ? " for " + std::to_string(piece.Cost) + " points" + (afford ? "" : " (not enough)") : std::string()) + ": " + builder->GetPresetName() + " builds it, " + std::to_string(piece.Seconds) + " s";
 			} else if (mode == CommandMode::Patrol) {
 				label = s_PatrolDraft.empty() ? "Click the first point of the patrol route" : "Click point " + std::to_string(s_PatrolDraft.size() + 1) + " of the route, or start it on the command row";
+			} else if (mode == CommandMode::Pen) {
+				label = s_PenDraft.empty() ? "Click the first corner of the pen, or drag a box for it" : (s_PenDraft.size() < 3 ? "Click corner " + std::to_string(s_PenDraft.size() + 1) + " of the pen" : "Click corner " + std::to_string(s_PenDraft.size() + 1) + " of the pen, or pen them on the command row");
 			} else if (mode == CommandMode::Guard) {
 				ImU32 green = IM_COL32(120, 220, 120, 255);
 				auto guardRing = [&](const Vector& where, float sceneRadius) {
@@ -2449,6 +2541,12 @@ namespace SandboxDetail {
 				} else {
 					label = "Guard: point at a friendly unit, your brain or craft, a crate or a colony building for " + count + " to stay with";
 				}
+			} else if (mode == CommandMode::Command && commandAt.What == CommandTarget::GetIn && commandAt.Vehicle) {
+				// A vehicle to get into: lit round, and how many will sit in it.
+				ImU32 green = c_CommandModeColors[static_cast<int>(CommandMode::Guard)];
+				drawList->AddCircle(ToScreen(commandAt.Vehicle->GetPos()), std::max(commandAt.Vehicle->GetRadius() / scale, 12.0F), green, 0, pixel * 2.0F);
+				const int free = FreeSeatsOf(commandAt.Vehicle);
+				label = "Get in the " + commandAt.Vehicle->GetPresetName() + ": " + std::to_string(commandAt.Boarders) + " of " + count + " (" + std::to_string(free) + (free == 1 ? " seat free)" : " seats free)");
 			} else if (mode == CommandMode::Command && commandAt.What == CommandTarget::Objective) {
 				// A battle objective: lit round in the order's colour, and where each will stand to hold it.
 				const BattleObjective& objective = commandAt.Goal;
@@ -2768,7 +2866,7 @@ namespace SandboxDetail {
 		}
 		lastFrame = frame;
 
-		enum MenuAction { ClickMode, Now, AIMode, Weapons, Movement, FormationPick, KeepPacePick, MarkersPick };
+		enum MenuAction { ClickMode, Now, AIMode, Weapons, Movement, FormationPick, KeepPacePick, MarkersPick, VehicleCrew, AnimalPick };
 		float scale = std::clamp(g_WindowMan.GetGameViewRect().h / 720.0F, 0.9F, 2.2F);
 		ActionMenu::MenuLayout menu(scale);
 		// In three parts, each drawn its own way (ActionMenu::Kind): what is done to the selected units now, how they are set now, and your own
@@ -2776,8 +2874,19 @@ namespace SandboxDetail {
 		using Kind = ActionMenu::Kind;
 		menu.Heading("Selected units", Kind::Command);
 		menu.Choices(Now, {"Defend here", "Cancel orders", "Deselect", "Focus on objective", "Follow team orders"}, -1);
+		if (SelectionHasVehicle()) {
+			// The selected vehicles' crews: kept in their seats, or let out. (Stay in shows what they have: lit when they all stay in.)
+			const int stayIn = SelectedStayIn();
+			menu.Heading("Vehicles", Kind::Command);
+			menu.Choices(VehicleCrew, {"Stay in vehicle", "Free to get out", "Everyone out"}, stayIn == 1 ? 0 : (stayIn == 0 ? 1 : -1));
+		}
 		menu.Heading("AI mode", Kind::State);
 		menu.Choices(AIMode, {"Sentry", "Hunt brains", "Dig for gold", "Rally point", "Do nothing"}, SelectedAIMode(), 3);
+		// (With animals among them: their own orders. Penned and Follow pick the mode to click out the pen, or the unit to follow, with.)
+		if (const int animals = SelectedAnimalOrder(); animals != -2) {
+			menu.Heading("Animals", Kind::State);
+			menu.Choices(AnimalPick, {"Roam free", "Penned...", "Stay", "Follow..."}, animals >= 0 ? animals : -1);
+		}
 		menu.Heading("Weapons", Kind::State);
 		menu.Choices(Weapons, {std::begin(c_WeaponRuleNames), std::end(c_WeaponRuleNames)}, SelectedRule(true));
 		menu.Heading("Movement", Kind::State);
@@ -2803,11 +2912,24 @@ namespace SandboxDetail {
 		// @return Whether the menu stays up: true for a setting.
 		auto pick = [&](const ActionMenu::Cell& cell) {
 			switch (cell.Action) {
+				case AnimalPick:
+					if (cell.Value == 1 || cell.Value == 3) {
+						s_CommandMode = cell.Value == 1 ? CommandMode::Pen : CommandMode::Guard;
+						s_PenDraft.clear();
+					} else {
+						Stroke stroke;
+						stroke.Kind = Tool::OrderSelected;
+						stroke.Count = 150 + cell.Value;
+						s_Queue.push_back(stroke);
+					}
+					g_GUISound.SlicePickedSound()->Play();
+					return false;
 				case ClickMode:
 					s_CommandMode = static_cast<CommandMode>(cell.Value);
 					if (s_CommandMode == CommandMode::Patrol) {
 						s_PatrolDraft.clear(); // (A route of points clicked out, RC-4.)
 					}
+					s_PenDraft.clear();
 					g_GUISound.SlicePickedSound()->Play();
 					return false;
 				case Now:
@@ -2830,6 +2952,15 @@ namespace SandboxDetail {
 					}
 					g_GUISound.SlicePickedSound()->Play();
 					return false;
+				case VehicleCrew: {
+					Stroke stroke;
+					stroke.Kind = Tool::OrderSelected;
+					stroke.Position = s_RingScenePoint;
+					stroke.Count = 140 + std::clamp(cell.Value, 0, 2);
+					s_Queue.push_back(stroke);
+					g_GUISound.SlicePickedSound()->Play();
+					return false;
+				}
 				case AIMode: {
 					static const Order orders[] = {Order::Hold, Order::HuntBrains, Order::DigGold, Order::Rally, Order::Idle};
 					Stroke stroke;
@@ -3243,6 +3374,44 @@ namespace SandboxDetail {
 				from = at;
 			}
 			drawList->AddLine(from, ImGui::GetIO().MousePos, (color & 0x00FFFFFF) | (110u << IM_COL32_A_SHIFT), 1.5F);
+		}
+		// The pens of the selected animals, each drawn once, and the one being clicked out: its corners joined up, on to the pointer and back
+		// round to the first.
+		{
+			const ImU32 penColor = c_CommandModeColors[static_cast<int>(CommandMode::Pen)];
+			std::vector<double> drawn;
+			std::vector<Vector> corners;
+			for (const UnitRef& ref: s_Selected) {
+				const Actor* unit = GetRef(ref);
+				if (!PenOf(unit, corners)) {
+					continue;
+				}
+				double stamp = unit->NumberValueExists("AnimalPenStamp") ? unit->GetNumberValue("AnimalPenStamp") : 0.0;
+				if (std::find(drawn.begin(), drawn.end(), stamp) != drawn.end()) {
+					continue;
+				}
+				drawn.push_back(stamp);
+				std::vector<ImVec2> outline;
+				for (const Vector& corner: corners) {
+					outline.push_back(ToScreen(corner));
+				}
+				drawList->AddPolyline(outline.data(), static_cast<int>(outline.size()), (penColor & 0x00FFFFFF) | (200u << IM_COL32_A_SHIFT), ImDrawFlags_Closed, 2.0F);
+			}
+			if (!s_PenDraft.empty() && s_CommandMode == CommandMode::Pen && CurrentTool().Kind == Tool::Command) {
+				ImVec2 from = ToScreen(s_PenDraft.front());
+				const ImVec2 first = from;
+				for (size_t i = 0; i < s_PenDraft.size(); ++i) {
+					ImVec2 at = ToScreen(s_PenDraft[i]);
+					if (i > 0) {
+						drawList->AddLine(from, at, penColor, 2.0F);
+					}
+					drawList->AddCircleFilled(at, 5.0F, penColor);
+					from = at;
+				}
+				const ImU32 faint = (penColor & 0x00FFFFFF) | (110u << IM_COL32_A_SHIFT);
+				drawList->AddLine(from, ImGui::GetIO().MousePos, faint, 1.5F);
+				drawList->AddLine(ImGui::GetIO().MousePos, first, faint, 1.0F);
+			}
 		}
 		// The plans of the selected units (RC-3), drawn whenever they're selected (no overlay needed): a line from each unit through the
 		// step it is on and those still to come; the step under way ringed and named "now", each queued step a numbered marker in its
@@ -4101,6 +4270,16 @@ namespace SandboxDetail {
 			wide();
 			ImGui::AlignTextToFramePadding();
 			ImGui::TextUnformatted(preset ? preset->PresetName.c_str() : "(pick one in the Spawn panel)");
+			if (kind == Tool::Vehicle) {
+				next();
+				if (BarChip("Modified", s_VehicleTuning.Modified, ToolTheme::Text, nullptr, "On: put down with the driving tuned on the Spawn tab (power, top speed, grip...). Off: as it comes.") == 1) {
+					s_VehicleTuning.Modified = !s_VehicleTuning.Modified;
+				}
+				next();
+				if (BarChip("Full crew", s_VehicleTuning.Crewed, ToolTheme::Text, nullptr, "On: every seat filled with the unit picked in the Units list, a squad behind the driver. Off: empty.") == 1) {
+					s_VehicleTuning.Crewed = !s_VehicleTuning.Crewed;
+				}
+			}
 			if (kind == Tool::Item) {
 				next();
 				if (BarChip("Pull the pin", s_LitGrenade, ToolTheme::Text, nullptr, "Grenades are put down live.") == 1) {
@@ -4349,6 +4528,7 @@ namespace SandboxDetail {
 		if (alive == 0 && !s_SpawnOrderArmed && s_CommandMode != CommandMode::Select && s_CommandMode != CommandMode::Command && std::none_of(s_Queue.begin(), s_Queue.end(), [](const Stroke& queued) { return queued.Kind == Tool::Command; })) {
 			s_CommandMode = CommandMode::Command;
 			s_PatrolDraft.clear();
+			s_PenDraft.clear();
 		}
 
 		// The first row: what a click does.
@@ -4398,6 +4578,15 @@ namespace SandboxDetail {
 			const int airlift = static_cast<int>(CommandMode::Airlift);
 			if (BarChip(c_CommandModeNames[airlift], current == airlift, c_CommandModeColors[airlift], "Ctrl+L", ("Fly the selected units to the place clicked: a gunship for each six of them comes down by them, they get in, and it flies\nthem there and lets them out." + (Sandbox::IsBattleCommand() ? " Each ship costs " + std::to_string(c_AirliftCost) + " reinforcement points." : std::string())).c_str()) == 1) {
 				s_CommandMode = CommandMode::Airlift;
+			}
+			// (Only with animals among them: the pen is theirs.)
+			if (SelectedAnimalOrder() != -2) {
+				line.Next(pixel * 2.0F);
+				const int pen = static_cast<int>(CommandMode::Pen);
+				if (BarChip(c_CommandModeNames[pen], current == pen, c_CommandModeColors[pen], nullptr, "Pen the selected animals: click out the corners of the pen, or drag a box. They roam, graze, drink and rest inside it,\nand go back in if they get out (a chicken that flaps out over a low wall is loose). Any other order lets them out.") == 1) {
+					s_CommandMode = CommandMode::Pen;
+					s_PenDraft.clear();
+				}
 			}
 			ImGui::EndDisabled();
 		}
@@ -4449,6 +4638,30 @@ namespace SandboxDetail {
 			ImGui::SetNextItemWidth(field * 0.8F);
 			ImGui::SliderInt("##suppressRadius", &s_SuppressRadius, 20, 400, "Zone %d px");
 			ImGui::SetItemTooltip("How far round the place the fire lands: they aim at random points inside it.");
+		} else if (s_CommandMode == CommandMode::Pen) {
+			line.Divide();
+			line.Next();
+			ImGui::AlignTextToFramePadding();
+			ImGui::TextDisabled("%d corners", static_cast<int>(s_PenDraft.size()));
+			line.Next();
+			ImGui::BeginDisabled(s_PenDraft.size() < 3 || SelectedAnimalOrder() == -2);
+			if (BarChip("Pen them", false, c_CommandModeColors[static_cast<int>(CommandMode::Pen)], nullptr, "Pen the selected animals inside the corners clicked out.") == 1) {
+				Stroke stroke;
+				stroke.Kind = Tool::Command;
+				stroke.Count = 50;
+				stroke.Position = s_PenDraft.front();
+				stroke.Points = s_PenDraft;
+				stroke.OrderMode = static_cast<int>(CommandMode::Pen);
+				s_Queue.push_back(stroke);
+				s_PenDraft.clear();
+			}
+			ImGui::EndDisabled();
+			line.Next();
+			ImGui::BeginDisabled(s_PenDraft.empty());
+			if (BarChip("Clear pen", false) == 1) {
+				s_PenDraft.clear();
+			}
+			ImGui::EndDisabled();
 		} else if (s_CommandMode == CommandMode::Patrol) {
 			line.Divide();
 			line.Next();
@@ -4478,6 +4691,26 @@ namespace SandboxDetail {
 				s_PatrolDraft.clear();
 			}
 			ImGui::EndDisabled();
+		}
+		// The selected animals' own orders: roam free or stay (Pen animals, above, pens them; Guard has them follow a unit).
+		if (const int animals = SelectedAnimalOrder(); animals != -2) {
+			line.Divide();
+			line.Next();
+			ImGui::AlignTextToFramePadding();
+			ImGui::TextColored(ToolTheme::Vec(ToolTheme::Gold), "Animals");
+			static const char* const animalTips[] = {"Let the selected animals roam free: they wander and graze round where they are, moving on to where the food is,\nand keep with their herd.", "Have the selected animals stay where they are: they graze what they can reach, and lie down when tired."};
+			for (int choice = 0; choice < 2; ++choice) {
+				const int order = choice == 0 ? 0 : 2;
+				line.Next(pixel * 2.0F);
+				ImGui::PushID(order + 520);
+				if (BarChip(choice == 0 ? "Roam free" : "Stay", animals == order, c_CommandModeColors[static_cast<int>(CommandMode::Pen)], nullptr, animalTips[choice]) == 1) {
+					Stroke stroke;
+					stroke.Kind = Tool::OrderSelected;
+					stroke.Count = 150 + order;
+					s_Queue.push_back(stroke);
+				}
+				ImGui::PopID();
+			}
 		}
 		SpawnOrderRow(line);
 		// What is drawn of the orders, the routes and the groups, kept in the settings.
