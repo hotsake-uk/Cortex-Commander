@@ -337,6 +337,10 @@ namespace SandboxDetail {
 				return {Icon::Wall, IM_COL32(120, 220, 160, 255)};
 			case Tool::BattleModeFlag:
 				return {Icon::Flag, IM_COL32(240, 240, 240, 255)};
+			case Tool::BattlePickupSpot:
+				return {Icon::Target, IM_COL32(120, 230, 90, 255)};
+			case Tool::BattlePickupZone:
+				return {Icon::Wall, IM_COL32(120, 230, 90, 255)};
 			case Tool::Fire:
 				return {Icon::Flame, IM_COL32(255, 140, 40, 255)};
 			case Tool::Napalm:
