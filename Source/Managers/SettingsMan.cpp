@@ -594,6 +594,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("TracerLightRandomness", { g_PostProcessMan.GetLightingSettings().TracerLightRandomness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SaberLightBrightness", { g_PostProcessMan.GetLightingSettings().SaberLightBrightness = std::max(std::stof(reader.ReadPropValue()), 0.0F); });
 	MatchProperty("SaberLightReach", { g_PostProcessMan.GetLightingSettings().SaberLightReach = std::max(std::stof(reader.ReadPropValue()), 0.0F); });
+	MatchProperty("JetpackLightBrightness", { g_PostProcessMan.GetLightingSettings().JetpackLightBrightness = std::max(std::stof(reader.ReadPropValue()), 0.0F); });
+	MatchProperty("JetpackLightReach", { g_PostProcessMan.GetLightingSettings().JetpackLightReach = std::max(std::stof(reader.ReadPropValue()), 0.0F); });
 	MatchProperty("SaberAirGlow", { g_PostProcessMan.GetLightingSettings().SaberAirGlow = std::max(std::stof(reader.ReadPropValue()), 0.0F); });
 	MatchProperty("TracerLightReach", { g_PostProcessMan.GetLightingSettings().TracerLightReach = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightSaturation", { g_PostProcessMan.GetLightingSettings().LightSaturation = std::stof(reader.ReadPropValue()); });
@@ -1013,6 +1015,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("TracerLightRandomness", lighting.TracerLightRandomness);
 	writer.NewPropertyWithValue("SaberLightBrightness", lighting.SaberLightBrightness);
 	writer.NewPropertyWithValue("SaberLightReach", lighting.SaberLightReach);
+	writer.NewPropertyWithValue("JetpackLightBrightness", lighting.JetpackLightBrightness);
+	writer.NewPropertyWithValue("JetpackLightReach", lighting.JetpackLightReach);
 	writer.NewPropertyWithValue("SaberAirGlow", lighting.SaberAirGlow);
 	writer.NewPropertyWithValue("LightSaturation", lighting.LightSaturation);
 	writer.NewPropertyWithValue("LightTint", WriteVec3(lighting.LightTint));

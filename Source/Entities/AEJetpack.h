@@ -49,6 +49,13 @@ namespace RTE {
 		}
 #pragma endregion
 
+		/// Updates this AEJetpack as an AEmitter, then lights the scene at its nozzle while it fires (LightingSettings::JetpackLightBrightness and JetpackLightReach).
+		void Update() override;
+
+		/// Whether this is a jetpack: it is.
+		/// @return True.
+		bool IsJetpack() const override { return true; }
+
 		/// Updates this AEJetpack from our parent actor.
 		void UpdateBurstState(Actor& parentActor);
 

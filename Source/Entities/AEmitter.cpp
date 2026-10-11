@@ -508,6 +508,9 @@ void AEmitter::Update() {
 					}
 					pParticle->SetTeam(m_Team);
 					pParticle->SetIgnoresTeamHits(true);
+					if (IsJetpack()) {
+						pParticle->SetJetpackExhaust(true);
+					}
 
 					// Add to accumulative recoil impulse generated, F = m * a
 					// If enabled, that is
@@ -581,7 +584,14 @@ void AEmitter::Update() {
 		emitPos.RadRotate(m_HFlipped ? c_PI + m_Rotation.GetRadAngle() - m_EmitAngle.GetRadAngle() : m_Rotation.GetRadAngle() + m_EmitAngle.GetRadAngle());
 		emitPos = m_Pos + RotateOffset(m_EmissionOffset) + emitPos;
 		if (m_EffectAlwaysShows || !g_SceneMan.ObscuredPoint(emitPos)) {
-			g_PostProcessMan.RegisterPostEffect(emitPos, m_pFlash->GetScreenEffect(), m_pFlash->GetScreenEffectHash(), RandomNum(m_pFlash->GetEffectStopStrength(), m_pFlash->GetEffectStartStrength()) * std::clamp(m_FlashScale, 0.0F, 1.0F), m_pFlash->GetEffectRotAngle());
+			int strength = static_cast<int>(RandomNum(m_pFlash->GetEffectStopStrength(), m_pFlash->GetEffectStartStrength()) * std::clamp(m_FlashScale, 0.0F, 1.0F));
+			if (IsJetpack()) {
+				// A jetpack's flash lights the scene by the Jetpack light settings.
+				const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+				g_PostProcessMan.RegisterPostEffectScaledLight(emitPos, m_pFlash->GetScreenEffect(), m_pFlash->GetScreenEffectHash(), strength, m_pFlash->GetEffectRotAngle(), lighting.JetpackLightBrightness, lighting.JetpackLightReach);
+			} else {
+				g_PostProcessMan.RegisterPostEffect(emitPos, m_pFlash->GetScreenEffect(), m_pFlash->GetScreenEffectHash(), strength, m_pFlash->GetEffectRotAngle());
+			}
 		}
 	}
 }
