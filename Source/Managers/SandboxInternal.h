@@ -950,7 +950,9 @@ namespace SandboxDetail {
 	/// and empty or with every seat filled. Saved with the sandbox settings (Sandbox::GetVehicleSetup).
 	struct VehicleTuning {
 		bool Modified = false; //!< Whether the multipliers below are used. Off: the vehicle as its preset has it.
-		bool Crewed = false; //!< Whether every seat is filled with the unit picked in the Units list (or random ones), a squad behind the driver.
+		bool Crewed = false; //!< Whether every seat is filled with new units (Driver and Crew), a squad behind the driver.
+		std::string Driver; //!< With Crewed: who drives (seat 0). "" the unit picked in the Units list (or random ones, as it says), "*" random units, else a unit by CrewPickKey.
+		std::string Crew; //!< With Crewed: who takes the other seats (gunners and passengers), as Driver.
 		float Power = 1.0F; //!< Times its Acceleration: how hard it speeds up, and so how steep a hill it drives up.
 		float TopSpeed = 1.0F; //!< Times its MaxSpeed.
 		float Grip = 1.0F; //!< Times its Grip: how much of its weight it can push with before the wheels slip.
@@ -1005,7 +1007,10 @@ namespace SandboxDetail {
 		int Temperament = -1; //!< Units and drops: the temperament they are given (Actor::Temperament, NC-1), -1 for each one's own.
 		int Style = 0; //!< Colony buildings: how they look (Colony::Style), taken at the click.
 		VehicleTuning Vehicle; //!< Tool::Vehicle: how it is tuned and crewed (s_VehicleTuning), taken at the click.
-		int CrewChoice = 0; //!< Tool::Vehicle with Vehicle.Crewed: the unit picked in the Units list for the crew (s_UnitChoice).
+		int DriverChoice = -1; //!< Tool::Vehicle with Vehicle.Crewed: the driver, an index into the Units list (Vehicle.Driver resolved at the click, ResolveCrewPick).
+		bool DriverRandom = false; //!< Tool::Vehicle with Vehicle.Crewed: the driver a random unit, from FavouritesOnly and RandomFaction.
+		int CrewChoice = -1; //!< Tool::Vehicle with Vehicle.Crewed: the rest of the crew, as DriverChoice (Vehicle.Crew).
+		bool CrewRandom = false; //!< Tool::Vehicle with Vehicle.Crewed: the rest of the crew random units, as DriverRandom.
 	};
 
 	struct CraftChoice {
@@ -1331,15 +1336,17 @@ namespace SandboxDetail {
 		       //!< there and puts it up. In Battle Command it costs reinforcement points.
 		Airlift, //!< Fly the selected units to the point (SandboxAirlift.cpp): a gunship comes down by them, they get in, and it flies them
 		         //!< there and lets them out. In Battle Command each ship costs reinforcement points.
-		Pen //!< Pen the selected animals (the livestock among them): each click a corner of the pen, or a box dragged out; the command row
-		    //!< pens them (PenSelected). They live inside it from then on (AnimalBehaviors.lua). (Last, so the ring's slices keep their places.)
+		Pen, //!< Pen the selected animals (the livestock among them): each click a corner of the pen, or a box dragged out; the command row
+		    //!< pens them (PenSelected). They live inside it from then on (AnimalBehaviors.lua). (After Command, so the ring's slices keep their places.)
+		Dropoff //!< The selected vehicles and flying ships go to the point and let their passengers out there, the driver or pilot staying at
+		        //!< the controls and holding there for orders (DropoffSelected). (Last, so the ring's slices keep their places.)
 	};
 	inline CommandMode s_CommandMode = CommandMode::Command;
 	inline bool s_SpawnOrderArmed = false; //!< The next order placed sets the spawn order of your team (or of s_SpawnOrderZone) instead (TakeSpawnOrder).
 	inline double s_SpawnOrderDoneAt = -1.0; //!< When (ImGui time) setting it is over, once placed: after a second click of a double click can follow.
 	inline int s_SpawnOrderZone = -1; //!< Which of your team's spawn zones it is for, -1 for the team's own.
-	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Jetpack here", "Select units", "Command", "Breach", "Build", "Airlift", "Pen animals"};
-	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(140, 230, 255, 255), IM_COL32(230, 230, 230, 255), IM_COL32(255, 214, 120, 255), IM_COL32(235, 110, 55, 255), IM_COL32(120, 210, 190, 255), IM_COL32(170, 190, 255, 255), IM_COL32(205, 175, 115, 255)};
+	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Jetpack here", "Select units", "Command", "Breach", "Build", "Airlift", "Pen animals", "Drop off"};
+	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(140, 230, 255, 255), IM_COL32(230, 230, 230, 255), IM_COL32(255, 214, 120, 255), IM_COL32(235, 110, 55, 255), IM_COL32(120, 210, 190, 255), IM_COL32(170, 190, 255, 255), IM_COL32(205, 175, 115, 255), IM_COL32(150, 225, 140, 255)};
 	/// A mode whose order is given once and then goes back to Command (s_BackToCommandAt): not Select, Command, Patrol or Pen (clicked out point by point).
 	inline bool OneOffMode(CommandMode mode) { return mode != CommandMode::Select && mode != CommandMode::Command && mode != CommandMode::Patrol && mode != CommandMode::Pen; }
 	inline double s_BackToCommandAt = -1.0; //!< When (ImGui time) the one-off mode in hand goes back to Command: once a double click can no longer follow.
@@ -1488,7 +1495,8 @@ namespace SandboxDetail {
 		Guard, //!< Stay with the friend; done only if the friend is gone.
 		Defend, //!< Hold ground where it stands; never done, so it ends a plan.
 		Wait, //!< Stay a while where it is (a patrol's pause at each point, RC-4).
-		Suppress //!< Fire into a place from where the step before leaves it; never done, so it ends a plan, as a defend does.
+		Suppress, //!< Fire into a place from where the step before leaves it; never done, so it ends a plan, as a defend does.
+		Dropoff //!< A vehicle or flying ship goes to the place and lets its passengers out there (StartDropoff); done once they are out.
 	};
 
 	/// One step of a unit's plan: a shift-clicked order to carry out after the ones before it.
@@ -1514,6 +1522,15 @@ namespace SandboxDetail {
 	};
 
 	inline std::map<long, Plan> s_Plans; //!< Units' plans by unique ID (a map, so they're stepped in a fixed order).
+
+	/// A vehicle or flying ship on its way to let its passengers out (Dropoff).
+	struct Dropoff {
+		UnitRef Unit;
+		Vector Place; //!< Where they get out.
+		int Stage = 0; //!< 0 on the way; 1 (a ship) coming down to set them down.
+		long long Since = 0; //!< The sim update it got to that stage.
+	};
+	inline std::map<long, Dropoff> s_Dropoffs; //!< Drop-offs under way, by the vehicle's unique ID. Any other order given it drops its own (DropPlan).
 	inline const char* s_MoveAnswer = nullptr; //!< While a group move is sent: the trigger its units answer with in place of a plain move's (unit speech).
 	inline bool s_FollowingPlan = false; //!< Set while a plan's step is being given, so giving it doesn't drop the plan.
 
@@ -2228,6 +2245,15 @@ namespace SandboxDetail {
 	const std::vector<Preset>& ListFor(Tool kind);
 	int& ChoiceFor(Tool kind);
 	const Preset* ChosenPreset(Tool kind, int choice);
+	/// Whether a unit from the Units list can sit in a vehicle's seat: a humanoid, and not a brain.
+	bool CanCrew(const Preset* unit);
+	/// The text a unit is kept by as a vehicle's crew pick (VehicleTuning::Driver and Crew): its module and preset name.
+	std::string CrewPickKey(const Preset& unit);
+	/// Works out a vehicle's crew pick (VehicleTuning::Driver or Crew) as the Spawn tab stands: the unit picked in the Units list (or random, as it
+	/// says), random units, or the one named, by its index in the Units list. One no longer loaded is taken as the Units list pick.
+	void ResolveCrewPick(const std::string& pick, int& choice, bool& random);
+	/// A vehicle's crew pick as words, for the Spawn tab: "Units list pick", the random units or the unit's name.
+	std::string CrewPickName(const std::string& pick);
 	MovableObject* CreateObject(const std::string& className, const std::string& presetName, int moduleID);
 	MovableObject* CreateBaseObject(const char* className, const char* presetName);
 	void AddObject(MovableObject* object);
@@ -2503,6 +2529,18 @@ namespace SandboxDetail {
 	int SelectedStayIn();
 	/// Whether a vehicle or flying ship is among the selected units.
 	bool SelectionHasVehicle();
+	/// Whether everyone selected (and alive) is a vehicle or flying ship: then the command bar shows only the orders they can carry out.
+	bool SelectionOnlyVehicles();
+	/// Whether vehicles and flying ships can carry out an order mode: no digging, jetpacks, breaching, building, airlifts or pens.
+	bool ModeFitsVehicles(CommandMode mode);
+	/// The selected vehicles and flying ships go to the point and let their passengers out there (Shift: as a step of their plans).
+	void DropoffSelected(const Vector& point, bool shift);
+	/// Sends one vehicle or flying ship to let its passengers out at a place: it drives or flies there by the usual route and risk; there,
+	/// a ship comes down near the ground; its passengers get out as a squad and hold there, and it holds there for orders (a ship back up at
+	/// its hover height). Nobody to let out: just the move.
+	void StartDropoff(Actor* vehicle, const Vector& place);
+	/// Moves the drop-offs under way along. Once a sim update.
+	void UpdateDropoffs();
 	int SelectedRule(bool weapons);
 	int SelectedAIMode();
 	void QueueRule(bool weapons, int rule);

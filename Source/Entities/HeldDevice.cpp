@@ -852,6 +852,7 @@ namespace {
 	struct BladeSweep {
 		HeldDevice* Device;
 		long RootID;
+		int Team; //!< The side of the unit wielding or throwing it, Activity::NoTeam if none.
 		Vector Start, End, PreviousStart, PreviousEnd;
 	};
 	std::vector<BladeSweep> s_BladeSweeps; //!< The blades swept so far this sim update.
@@ -1044,6 +1045,8 @@ void HeldDevice::PostUpdate() {
 	MovableObject* thrower = flying ? GetThrower() : nullptr;
 	MovableObject* holder = flying ? (thrower ? thrower : this) : GetRootParent();
 	long rootID = flying ? m_UniqueID : holder->GetUniqueID();
+	// The side it fights for: a teammate's blade passes through this one, and a held blade passes through teammates, without a spark or a knock.
+	int bladeTeam = holder->GetTeam();
 	bool attacking = flying || m_MeleeSwingPhase == MeleeSwingPhase::Strike || m_Activated;
 	float deltaSecs = std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F);
 
@@ -1074,7 +1077,7 @@ void HeldDevice::PostUpdate() {
 		s_BladeSweepsUpdate = g_TimerMan.GetSimUpdateCount();
 	}
 	for (const BladeSweep& other: s_BladeSweeps) {
-		if (other.RootID == rootID || other.Device == this) {
+		if (other.RootID == rootID || other.Device == this || (bladeTeam != Activity::NoTeam && other.Team == bladeTeam)) {
 			continue;
 		}
 		// In this blade's frame of reference, from its base now.
@@ -1118,14 +1121,14 @@ void HeldDevice::PostUpdate() {
 		BladeStruck(where, push, true);
 		other.Device->BladeStruck(where, push * -1.0F, true);
 	}
-	s_BladeSweeps.push_back({this, rootID, start, start + bladeVec, previousStart, previousStart + previousBladeVec});
+	s_BladeSweeps.push_back({this, rootID, bladeTeam, start, start + bladeVec, previousStart, previousStart + previousBladeVec});
 
 	// Cut what the blade went through, each thing once, where the blade was moving fastest through it.
 	std::vector<MOID> ignoreMOIDs = {holder->GetRootID()};
 	if (flying) {
 		ignoreMOIDs.push_back(GetRootID());
 	}
-	int ignoreTeam = flying ? (m_IgnoresTeamHits ? m_Team : Activity::NoTeam) : (holder->IgnoresTeamHits() ? holder->GetTeam() : Activity::NoTeam);
+	int ignoreTeam = flying ? (m_IgnoresTeamHits ? m_Team : Activity::NoTeam) : bladeTeam;
 	int samples = std::clamp(static_cast<int>(std::ceil(bladeVec.GetMagnitude() / 3.0F)) + 1, 2, 40);
 	struct BladeHit {
 		MOID ID;
@@ -1137,6 +1140,10 @@ void HeldDevice::PostUpdate() {
 	auto addHit = [&](MOID id, const Vector& pos, const Vector& vel, float along) {
 		MovableObject* hitMO = g_MovableMan.GetMOFromID(id);
 		if (!hitMO) {
+			return;
+		}
+		// A held blade doesn't cut or spark off its own side, even a unit that doesn't ignore its team's hits. A thrown one still can, like a stray shot.
+		if (!flying && bladeTeam != Activity::NoTeam && hitMO->GetRootParent()->GetTeam() == bladeTeam) {
 			return;
 		}
 		MOID root = hitMO->GetRootID();
@@ -1270,7 +1277,8 @@ bool HeldDevice::CutWithBlade(MOID hitMOID, const Vector& hitPos, const Vector& 
 	cut->SetToGetHitByMOs(false);
 	cut->SetWhichMOToNotHit(holder, -1.0F);
 	cut->SetTeam(holder->GetTeam());
-	cut->SetIgnoresTeamHits(holder->IgnoresTeamHits());
+	// A held blade's cut passes through teammates beside the one it's cutting; a thrown blade's is friendly fire like any shot's.
+	cut->SetIgnoresTeamHits(m_ThrowState != ThrowState::Flying || holder->IgnoresTeamHits());
 	cut->SetGlobalAccScalar(0.0F);
 	g_MovableMan.AddParticle(cut);
 

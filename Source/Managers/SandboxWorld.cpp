@@ -2164,28 +2164,42 @@ namespace SandboxDetail {
 		vehicle->SetWaterMaxSpeed(times(vehicle->GetWaterMaxSpeed(), tuning.WaterSpeed));
 	}
 
-	/// Fills every seat of a vehicle or flying ship just made with new units: the unit picked in the Units list, or random ones as the Spawn
-	/// tab says, with the loadout and temperament in hand. Only humanoids sit, so a pick that can't (a crab, a turret) is crewed by random
-	/// soldiers instead. @return How many went in.
+	/// Fills every seat of a vehicle or flying ship just made with new units: the driver's seat with the driver picked on the Spawn tab, the rest
+	/// with the crew picked (each the unit picked in the Units list, a unit of its own, or random ones), with the loadout and temperament in hand.
+	/// Only humanoids sit, so a pick that can't (a crab, a turret) is crewed by random soldiers instead. @return How many went in.
 	int CrewVehicle(Actor* vehicle, const Stroke& stroke) {
 		AVehicle* car = dynamic_cast<AVehicle*>(vehicle);
 		ACShip* ship = car ? nullptr : dynamic_cast<ACShip*>(vehicle);
 		if (!car && !ship) {
 			return 0;
 		}
+		// Who a seat is filled from: the one unit picked, or a pool to pick from at random.
+		struct CrewSource {
+			const Preset* Chosen = nullptr;
+			std::vector<const Preset*> Pool;
+		};
+		auto sourceOf = [&stroke](int choice, bool random) {
+			CrewSource source;
+			if (random) {
+				source.Pool = RandomUnitPool(stroke.FavouritesOnly, stroke.RandomFaction);
+			} else {
+				source.Chosen = ChosenPreset(Tool::Unit, choice);
+				if (!CanCrew(source.Chosen)) {
+					source.Chosen = nullptr;
+					source.Pool = RandomUnitPool(false, -1);
+				}
+			}
+			// (Only humanoids sit.)
+			std::erase_if(source.Pool, [](const Preset* preset) { return preset->ClassName != "AHuman"; });
+			return source;
+		};
+		const CrewSource driver = sourceOf(stroke.DriverChoice, stroke.DriverRandom);
+		const CrewSource crew = sourceOf(stroke.CrewChoice, stroke.CrewRandom);
 		const int seats = car ? car->GetSeatCount() : ship->GetSeatCount();
-		std::vector<const Preset*> pool = stroke.Random ? RandomUnitPool(stroke.FavouritesOnly, stroke.RandomFaction) : std::vector<const Preset*>();
-		const Preset* chosen = stroke.Random ? nullptr : ChosenPreset(Tool::Unit, stroke.CrewChoice);
-		const Entity* chosenEntity = chosen ? g_PresetMan.GetEntityPreset(chosen->ClassName, chosen->PresetName, chosen->ModuleID) : nullptr;
-		if (!stroke.Random && (!chosenEntity || !dynamic_cast<const AHuman*>(chosenEntity) || chosenEntity->IsInGroup("Brains"))) {
-			chosen = nullptr;
-			pool = RandomUnitPool(false, -1);
-		}
-		// (Only humanoids sit.)
-		pool.erase(std::remove_if(pool.begin(), pool.end(), [](const Preset* preset) { return preset->ClassName != "AHuman"; }), pool.end());
 		int seated = 0;
 		for (int seat = 0; seat < seats; ++seat) {
-			const Preset* preset = chosen ? chosen : RandomPick(pool);
+			const CrewSource& from = seat == 0 ? driver : crew;
+			const Preset* preset = from.Chosen ? from.Chosen : RandomPick(from.Pool);
 			Actor* unit = preset ? dynamic_cast<Actor*>(CreateObject(preset->ClassName, preset->PresetName, preset->ModuleID)) : nullptr;
 			if (!unit) {
 				break;
@@ -3532,8 +3546,8 @@ namespace SandboxDetail {
 		stroke.Temperament = (kind == Tool::Drop || kind == Tool::Unit) ? s_SpawnTemperament : -1;
 		if (kind == Tool::Vehicle) {
 			stroke.Vehicle = s_VehicleTuning;
-			stroke.CrewChoice = ChoiceFor(Tool::Unit);
-			stroke.Random = s_VehicleTuning.Crewed && s_RandomUnits;
+			ResolveCrewPick(s_VehicleTuning.Driver, stroke.DriverChoice, stroke.DriverRandom);
+			ResolveCrewPick(s_VehicleTuning.Crew, stroke.CrewChoice, stroke.CrewRandom);
 			stroke.Temperament = s_VehicleTuning.Crewed ? s_SpawnTemperament : -1;
 		}
 		if (kind == Tool::WaterSpawner || kind == Tool::BuildTank) {
