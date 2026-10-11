@@ -475,6 +475,33 @@ void Sandbox::SetCharacterSetup(const std::string& setup) {
 	}
 }
 
+std::string Sandbox::GetVehicleSetup() {
+	const VehicleTuning& tuning = s_VehicleTuning;
+	std::ostringstream setup;
+	setup << (tuning.Modified ? 1 : 0) << (tuning.Crewed ? 1 : 0) << "|" << tuning.Power << ";" << tuning.TopSpeed << ";" << tuning.Grip << ";" << tuning.Brakes << ";" << tuning.Jump << ";" << tuning.WaterPower << ";" << tuning.WaterSpeed;
+	return setup.str();
+}
+
+void Sandbox::SetVehicleSetup(const std::string& setup) {
+	size_t bar = setup.find('|');
+	if (bar == std::string::npos || bar < 2) {
+		return;
+	}
+	VehicleTuning tuning;
+	tuning.Modified = setup[0] == '1';
+	tuning.Crewed = setup[1] == '1';
+	float* values[] = {&tuning.Power, &tuning.TopSpeed, &tuning.Grip, &tuning.Brakes, &tuning.Jump, &tuning.WaterPower, &tuning.WaterSpeed};
+	std::istringstream numbers(setup.substr(bar + 1));
+	std::string number;
+	for (float* value: values) {
+		if (!std::getline(numbers, number, ';')) {
+			break;
+		}
+		*value = std::clamp(static_cast<float>(std::atof(number.c_str())), c_VehicleTuneMin, c_VehicleTuneMax);
+	}
+	s_VehicleTuning = tuning;
+}
+
 bool Sandbox::WantsWorldPaused() {
 	return IsGodMode() && s_Open && s_PauseInMenus && g_TimerMan.GetSimUpdateCount() > s_GodStartUpdate + 90;
 }
@@ -1597,6 +1624,8 @@ void Sandbox::DrawGUI() {
 					LoadoutChooser();
 					UnitOrderCombo("Orders");
 					ImGui::EndDisabled();
+				} else if (kind == Tool::Vehicle) {
+					VehicleOptions();
 				} else if (kind == Tool::Item) {
 					ToolUI::Checkbox("Pull the pin (grenades)", &s_LitGrenade);
 				} else if (kind == Tool::Structure) {
