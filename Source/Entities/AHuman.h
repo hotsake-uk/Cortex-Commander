@@ -1126,6 +1126,8 @@ namespace RTE {
 		/// Notes that a unit of this team got stuck climbing the ladder taken at ladderX, at height y. @return Whether one of the team was stuck on
 		/// the same ladder in the last minute (the second time, the team is told to avoid it).
 		bool NoteLadderStall(float ladderX, float y) const;
+		/// Whether the route's next step or the one after is up or down a ladder (PathStepKind::Ladder).
+		bool RouteClimbsLadderNext() const;
 		/// Before the jet: taking hold of a ladder (up or down pressed at one), and letting go (a side key, or the jet's key alone).
 		void UpdateLadderInput();
 		/// The body along the ladder, each frame: the climb's pace with the pull of each hand, the top and the bottom.
