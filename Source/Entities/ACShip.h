@@ -68,6 +68,13 @@ namespace RTE {
 		/// Gets whether it is sat on the ground with its engines off, waiting for a pilot.
 		bool IsParked() const { return m_Parked; }
 
+		/// Gets whether its engines are shut off where it has landed (a Land order, as a vehicle's handbrake): it stays down till sent anywhere
+		/// or flown.
+		bool IsEnginesOff() const { return m_EnginesOff; }
+
+		/// Shuts its engines off where it is (once landed), or starts them again. Sending it anywhere, or a player flying it, starts them.
+		void SetEnginesOff(bool off) { m_EnginesOff = off; }
+
 		/// Gets how many seats it has: the pilot's (seat 0) and any others (1 on), passengers' and gunners'.
 		int GetSeatCount() const { return m_Crew.GetSeatCount(); }
 
@@ -153,6 +160,16 @@ namespace RTE {
 
 		/// Gets how far its gunners look for something to shoot, in pixels.
 		float GetGunRange() const { return m_GunRange; }
+
+		/// Gets where its flight controller is steering it just now (UpdateFlight): the place it is flying to or holding at, raised over the
+		/// ground ahead and moved off to keep clear of other craft. For the debug overlay.
+		const Vector& GetFlightTarget() const { return m_FlightTarget; }
+
+		/// Gets the lowest it may fly just now for the ground ahead (a scene height: the larger, the lower), FLT_MAX for no limit. For the debug overlay.
+		float GetFlightFloor() const { return m_FlightFloor; }
+
+		/// Gets the place it holds at while not going anywhere: where it was told to go, or where it was let go of, at that height.
+		const Vector& GetHoldPoint() const { return m_HoldPoint; }
 #pragma endregion
 
 #pragma region Override Methods
@@ -160,9 +177,10 @@ namespace RTE {
 		/// is high (as much as the grid tells) over the ground the route follows. The order's risk and the route caution as any unit's.
 		PathAgent GetPathAgent() const override;
 
-		/// The drop ship's autopilot, while it can fly, taking it along the route FlyRouteTo sent it on a point at a time. With nobody at the
-		/// controls of a ship that needs a pilot, it does nothing (the ship sets itself down) and any delivery it was on is dropped for holding
-		/// still, so a pilot getting in later doesn't take it off home.
+		/// The ship's own flight (not the drop ship's autopilot): while it can fly, it is taken along the route FlyRouteTo sent it on a point at a
+		/// time by its flight controller (UpdateFlight), which holds the height it is given. With nobody at the controls of a ship that needs a
+		/// pilot, it does nothing (the ship sets itself down) and any delivery it was on is dropped for holding still, so a pilot getting in later
+		/// doesn't take it off home.
 		void UpdateAutopilot() override;
 
 		/// Gets how far the autopilot steers off its place to keep clear of other craft (UpdateCraftAvoidance).
@@ -219,6 +237,7 @@ namespace RTE {
 		float m_GunAimRange; //!< How far a gun swings up or down from level, in radians.
 		std::vector<GunState> m_Guns; //!< Its manned guns' aim, by turret.
 		bool m_Parked; //!< Whether it is sat on the ground with its engines off (nobody at the controls of a ship that needs a pilot).
+		bool m_EnginesOff; //!< Whether its engines are shut off where it landed (IsEnginesOff).
 		Timer m_TouchdownTimer; //!< How long it has been down and still while setting itself down.
 		Timer m_OrderedBoardTimer; //!< Since it last looked for units sent to it to get in.
 		std::deque<Vector> m_Route; //!< The points of the route FlyRouteTo sent it along still to fly to, the one it is flying to first.
@@ -229,6 +248,33 @@ namespace RTE {
 		/// steer off its place to pass them: the higher of two ships climbs over, the other holds back and gives way to the side; one that isn't
 		/// a ship flown by the autopilot (a drop ship, a rocket, one a player flies) is passed by both. Not read until the autopilot steers.
 		void UpdateCraftAvoidance();
+
+		float m_FlightSpeed; //!< Its top speed across, in m/s (FlightSpeed).
+		float m_ClimbSpeed; //!< Its top speed up, in m/s (ClimbSpeed); down is a little slower. At most the drop ship's throttle range, 7.5.
+		Vector m_HoldPoint; //!< Where it holds while not going anywhere (GetHoldPoint).
+		bool m_HasHoldPoint; //!< Whether it has a place to hold at yet.
+		Vector m_FlightTarget; //!< Where the controller is steering it just now (GetFlightTarget).
+		float m_FlightFloor; //!< The lowest it may fly just now for the ground ahead (GetFlightFloor).
+		Timer m_FlownTimer; //!< Since its flight controller last ran: a gap means a player flew it.
+
+		/// Its flight controller, each AI update: what it is to do by its AI mode (hold where it was told or let go, fly to its go-to's place,
+		/// deliver its hold's cargo, go home), then SteerTo there.
+		void UpdateFlight();
+
+		/// Steers it toward a place: a speed wanted across and up or down, by how far off it is (braking to stop there, or flying on through it
+		/// to the next point of a route), turned into the drop ship's stick (an up or down speed, and a sideways tilt). The place is raised to
+		/// keep clear of the ground ahead along the way it goes, so it climbs over a rise rather than flying into it, and slows across till it
+		/// has; though not near the place itself, so it can come down onto the ground there.
+		/// @param target The place, its middle there. @param stop Whether to stop there (else it is a point of a route flown through).
+		void SteerTo(const Vector& target, bool stop);
+
+		/// The top of the ground at a point of the scene: the first air going up from it if it is in the ground, FLT_MAX if it is in the open air
+		/// (nothing to keep over there).
+		float GroundTopAt(float x, float y) const;
+
+		/// Plans a route through the air from one place to another (FlyRouteTo): the straight line, raised over the ground along it to keep
+		/// clear of it, cut to as few points as have open air between. False if that won't do (a cave, an overhang): a route round is needed.
+		bool AirRoute(const Vector& from, const Vector& to, std::deque<Vector>& route) const;
 
 		long m_EngageID; //!< The unique ID of the enemy an attack order sent it after (EngageTarget), 0 for none.
 		long m_CombatTargetID; //!< The unique ID of the enemy its firing position (m_CombatSpot) is for.
