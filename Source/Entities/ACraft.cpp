@@ -727,6 +727,8 @@ void ACraft::Update() {
 		}		
 	}
 	
+	// The hull damage above comes off at the craft's toughness before it is checked.
+	ApplyToughness();
 	if (m_Status == DEAD) {
 		if (m_ScuttleOnDeath || m_AIMode == AIMODE_SCUTTLE) {
 			GibThis();

@@ -275,6 +275,29 @@ namespace RTE {
 		/// Takes effect when a scene is next loaded.
 		bool NoSceneWrap() const { return m_NoSceneWrap; }
 
+		/// The kinds of actor that each have their own toughness (see Toughness).
+		enum class ToughnessKind {
+			Units, //!< Units on foot.
+			Vehicles, //!< Ground vehicles: wheeled vehicles and the crab-legged bodies that aren't animals (tanks, dreadnoughts, turrets).
+			Craft, //!< Flying craft: drop ships, rockets and flying ships.
+			Animals, //!< Livestock and wildlife (Actor::IsAnimal).
+			Count
+		};
+
+		static constexpr float c_ToughnessMin = 0.1F; //!< The least a toughness can be: ten times the damage.
+		static constexpr float c_ToughnessMax = 10.0F; //!< The most a toughness can be before it is invincible.
+		static constexpr float c_ToughnessInvincible = 20.0F; //!< The toughness that means invincible, past c_ToughnessMax.
+
+		/// How tough one kind of actor is: 1 as designed, 2 takes half the damage and needs twice the wounds and hits to be blown apart, 0.5
+		/// the other way round, and c_ToughnessInvincible takes no damage and is never blown apart (Actor::ApplyToughness, GibToughness).
+		float Toughness(ToughnessKind kind) const { return m_Toughness[static_cast<int>(kind)]; }
+
+		/// Whether one kind of actor is set to be invincible.
+		bool IsInvincible(ToughnessKind kind) const { return Toughness(kind) >= c_ToughnessInvincible; }
+
+		/// Sets how tough one kind of actor is, c_ToughnessMin to c_ToughnessMax, and anything past that is invincible.
+		void SetToughness(ToughnessKind kind, float toughness) { m_Toughness[static_cast<int>(kind)] = toughness > c_ToughnessMax ? c_ToughnessInvincible : std::max(toughness, c_ToughnessMin); }
+
 		/// How strongly fire pins units down and shakes them (Actor::GetSuppression and GetMorale): 0 for not at all, 1 as designed, 2 double.
 		float AISuppression() const { return m_AISuppression; }
 
@@ -914,6 +937,7 @@ namespace RTE {
 		GibChunkTuning m_GibChunks; //!< How gib chunks come out, move and settle (see GibChunks).
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
 		bool m_NoSceneWrap; //!< Whether every scene is played with hard left and right edges instead of wrapping.
+		float m_Toughness[static_cast<int>(ToughnessKind::Count)]; //!< How tough each kind of actor is (see Toughness).
 		float m_AISuppression; //!< How strongly fire pins units down and shakes them, 0 to 2 (see AISuppression).
 		float m_AIDigWillingness; //!< How readily units with a digger tunnel rather than go round, 0 to 2 (see AIDigWillingness).
 		float m_AIThreatAvoidance; //!< How much safe-route units keep clear of enemies, 0 to 2 (see AIThreatAvoidance).

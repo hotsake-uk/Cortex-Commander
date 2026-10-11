@@ -16,6 +16,8 @@
 #include "GameActivity.h"
 #include "ACrab.h"
 #include "ACraft.h"
+#include "AHuman.h"
+#include "AVehicle.h"
 #include "ADoor.h"
 #include "AtomGroup.h"
 #include "Controller.h"
@@ -41,6 +43,7 @@
 #include "tracy/Tracy.hpp"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <cstring>
 #include <sstream>
 
@@ -139,6 +142,8 @@ void Actor::Clear() {
 	m_WeaponRule = WEAPONS_AT_WILL;
 	m_Temperament = TEMPERAMENT_FIGHTER;
 	m_NonCombatant = -1;
+	m_ToughnessKind = -2;
+	m_ToughnessHealth = std::numeric_limits<float>::quiet_NaN();
 	m_LastAttackerTeam = Activity::NoTeam;
 	m_LastAttackerID = 0;
 	m_HurtTimer.Reset();
@@ -1055,6 +1060,45 @@ MovableObject* Actor::SetInventoryItemAtIndex(MovableObject* newInventoryItem, i
 
 bool Actor::IsAnimal() const {
 	return IsInGroup("Actors - Livestock") || IsInGroup("Actors - Wildlife") || IsInGroup("Animals");
+}
+
+int Actor::GetToughnessKind() const {
+	if (m_ToughnessKind == -2) {
+		using Kind = SettingsMan::ToughnessKind;
+		if (IsAnimal()) {
+			m_ToughnessKind = static_cast<int>(Kind::Animals);
+		} else if (dynamic_cast<const ACraft*>(this)) {
+			m_ToughnessKind = static_cast<int>(Kind::Craft);
+		} else if (dynamic_cast<const ACrab*>(this) || dynamic_cast<const AVehicle*>(this)) {
+			m_ToughnessKind = static_cast<int>(Kind::Vehicles);
+		} else if (dynamic_cast<const AHuman*>(this)) {
+			m_ToughnessKind = static_cast<int>(Kind::Units);
+		} else {
+			m_ToughnessKind = -1;
+		}
+	}
+	return m_ToughnessKind;
+}
+
+float Actor::GetToughness() const {
+	int kind = GetToughnessKind();
+	return kind < 0 ? 1.0F : g_SettingsMan.Toughness(static_cast<SettingsMan::ToughnessKind>(kind));
+}
+
+float Actor::GibToughness() const {
+	float toughness = GetToughness();
+	return toughness >= SettingsMan::c_ToughnessInvincible ? std::numeric_limits<float>::infinity() : toughness;
+}
+
+void Actor::ApplyToughness() {
+	if (m_Health < m_ToughnessHealth && m_Status != DYING && m_Status != DEAD) {
+		float toughness = GetToughness();
+		if (toughness != 1.0F) {
+			float lost = m_ToughnessHealth - m_Health;
+			m_Health = m_ToughnessHealth - (toughness >= SettingsMan::c_ToughnessInvincible ? 0.0F : lost / toughness);
+		}
+	}
+	m_ToughnessHealth = m_Health;
 }
 
 void Actor::AddInventoryItem(MovableObject* pItemToAdd) {
@@ -2653,6 +2697,7 @@ void Actor::Update() {
 	////////////////////////////////
 	// Death logic
 
+	ApplyToughness();
 	if (m_Status != DYING && m_Status != DEAD && m_Health <= 0) {
 		if (m_DeathSound) {
 			m_DeathSound->Play(m_Pos);
@@ -2754,6 +2799,7 @@ void Actor::UpdateWhileSeated() {
 		m_Health -= attachable->CollectDamage();
 	}
 	m_Health = std::min(m_Health, m_MaxHealth);
+	ApplyToughness();
 }
 
 void Actor::FullUpdate() {

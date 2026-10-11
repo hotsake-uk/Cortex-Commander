@@ -37,6 +37,11 @@ on:
         type: string
         required: false
         default: "11.1"
+      linux_only:
+        description: "Build Linux only (skip macOS and Windows)"
+        type: boolean
+        required: false
+        default: false
 
   # Triggers the workflow when called by a top-level workflow
   workflow_call:
@@ -64,6 +69,10 @@ on:
         type: string
         required: false
         default: "11.1"
+      linux_only:
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   build-linux:
@@ -148,6 +157,7 @@ jobs:
           if-no-files-found: error
 
   build-macos:
+    if: ${{ !inputs.linux_only }}
     runs-on: ubuntu-latest
     name: MacOS Build
 
@@ -247,6 +257,7 @@ jobs:
           if-no-files-found: error
 
   build-windows:
+    if: ${{ !inputs.linux_only }}
     runs-on: windows-latest
     name: Windows Build
 
