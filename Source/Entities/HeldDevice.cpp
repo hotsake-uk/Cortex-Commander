@@ -23,6 +23,9 @@
 #include "EffectsParticles.h"
 #include "SoundContainer.h"
 
+#include <algorithm>
+#include <deque>
+
 using namespace RTE;
 
 namespace {
@@ -123,6 +126,30 @@ void HeldDevice::Clear() {
 	m_BladeHitTimer.Reset();
 	m_BladeHitTimer.SetElapsedSimTimeMS(10000.0);
 	m_BladeTerrainTimer.Reset();
+	m_Throwable = false;
+	m_ThrowableSet = -1;
+	m_ThrowSpin = ThrowSpinMode::Spinning;
+	m_ThrowSpinSet = -1;
+	m_ThrowSpinSpeed = 14.0F;
+	m_StickBy = StickMode::Point;
+	m_StickSpeed = 8.0F;
+	m_StickDepth = -1.0F;
+	m_PinsBodies = false;
+	m_PinsBodiesSet = -1;
+	m_StickSound = nullptr;
+	m_ThrowState = ThrowState::None;
+	m_ThrowerID = 0;
+	m_StuckInID = 0;
+	m_StuckLocal.Reset();
+	m_StuckRelAngle = 0.0F;
+	m_StuckFlipRel = false;
+	m_StuckAnchor.Reset();
+	m_StuckAngle = 0.0F;
+	m_PinCheck = false;
+	m_HitsMOsBeforeThrow = false;
+	m_ThrowStateTimer.Reset();
+	m_ThrowSlowTimer.Reset();
+	m_ThrowTrailCount = 0;
 
 	// NOTE: This special override of a parent class member variable avoids needing an extra variable to avoid overwriting INI values.
 	m_CollidesWithTerrainWhileAttached = false;
@@ -244,6 +271,17 @@ int HeldDevice::Create(const HeldDevice& reference) {
 	m_MeleeSwingArc = reference.m_MeleeSwingArc;
 	m_MeleeSwingTime = reference.m_MeleeSwingTime;
 	m_MeleeRecoverTime = reference.m_MeleeRecoverTime;
+	m_Throwable = reference.m_Throwable;
+	m_ThrowableSet = reference.m_ThrowableSet;
+	m_ThrowSpin = reference.m_ThrowSpin;
+	m_ThrowSpinSet = reference.m_ThrowSpinSet;
+	m_ThrowSpinSpeed = reference.m_ThrowSpinSpeed;
+	m_StickBy = reference.m_StickBy;
+	m_StickSpeed = reference.m_StickSpeed;
+	m_StickDepth = reference.m_StickDepth;
+	m_PinsBodies = reference.m_PinsBodies;
+	m_PinsBodiesSet = reference.m_PinsBodiesSet;
+	m_StickSound = reference.m_StickSound ? dynamic_cast<SoundContainer*>(reference.m_StickSound->Clone()) : nullptr;
 
 	return 0;
 }
@@ -342,6 +380,45 @@ int HeldDevice::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("MeleeSwingArc", { reader >> m_MeleeSwingArc; });
 	MatchProperty("MeleeSwingTime", { reader >> m_MeleeSwingTime; });
 	MatchProperty("MeleeRecoverTime", { reader >> m_MeleeRecoverTime; });
+	MatchProperty("Throwable", {
+		reader >> m_Throwable;
+		m_ThrowableSet = 1;
+	});
+	MatchProperty("ThrowSpin", {
+		std::string spin = reader.ReadPropValue();
+		if (spin == "Spinning" || spin == "0") {
+			m_ThrowSpin = ThrowSpinMode::Spinning;
+		} else if (spin == "PointFirst" || spin == "1") {
+			m_ThrowSpin = ThrowSpinMode::PointFirst;
+		} else if (spin == "Tumbling" || spin == "2") {
+			m_ThrowSpin = ThrowSpinMode::Tumbling;
+		} else {
+			reader.ReportError("ThrowSpin must be Spinning, PointFirst or Tumbling.");
+		}
+		m_ThrowSpinSet = 1;
+	});
+	MatchProperty("ThrowSpinSpeed", { reader >> m_ThrowSpinSpeed; });
+	MatchProperty("StickBy", {
+		std::string stickBy = reader.ReadPropValue();
+		if (stickBy == "Point" || stickBy == "0") {
+			m_StickBy = StickMode::Point;
+		} else if (stickBy == "Edge" || stickBy == "1") {
+			m_StickBy = StickMode::Edge;
+		} else {
+			reader.ReportError("StickBy must be Point or Edge.");
+		}
+	});
+	MatchProperty("StickSpeed", { reader >> m_StickSpeed; });
+	MatchProperty("StickDepth", { reader >> m_StickDepth; });
+	MatchProperty("PinsBodies", {
+		reader >> m_PinsBodies;
+		m_PinsBodiesSet = 1;
+	});
+	MatchProperty("StickSound", {
+		delete m_StickSound;
+		m_StickSound = new SoundContainer;
+		reader >> m_StickSound;
+	});
 	MatchProperty("SpecialBehaviour_Activated", { reader >> m_Activated; });
 	MatchProperty("SpecialBehaviour_ActivationTimerElapsedSimTimeMS", {
 		double elapsedSimTimeMS;
@@ -421,12 +498,34 @@ int HeldDevice::Save(Writer& writer) const {
 		writer.NewPropertyWithValue("MeleeSwingTime", m_MeleeSwingTime);
 		writer.NewPropertyWithValue("MeleeRecoverTime", m_MeleeRecoverTime);
 	}
+	if (m_ThrowableSet >= 0) {
+		writer.NewPropertyWithValue("Throwable", m_Throwable);
+	}
+	if (IsThrowable()) {
+		if (m_ThrowSpinSet >= 0) {
+			static const char* spinNames[] = {"Spinning", "PointFirst", "Tumbling"};
+			writer.NewPropertyWithValue("ThrowSpin", std::string(spinNames[static_cast<int>(m_ThrowSpin)]));
+		}
+		writer.NewPropertyWithValue("ThrowSpinSpeed", m_ThrowSpinSpeed);
+		writer.NewPropertyWithValue("StickBy", std::string(m_StickBy == StickMode::Edge ? "Edge" : "Point"));
+		writer.NewPropertyWithValue("StickSpeed", m_StickSpeed);
+		if (m_StickDepth >= 0.0F) {
+			writer.NewPropertyWithValue("StickDepth", m_StickDepth);
+		}
+		if (m_PinsBodiesSet >= 0) {
+			writer.NewPropertyWithValue("PinsBodies", m_PinsBodies);
+		}
+		if (m_StickSound) {
+			writer.NewProperty("StickSound");
+			writer << m_StickSound;
+		}
+	}
 
 	return 0;
 }
 
 void HeldDevice::Destroy(bool notInherited) {
-	for (SoundContainer* sound: {m_BladeHitSound, m_BladeClashSound, m_BladeSwingSound, m_BladeHumSound, m_BladeIgniteSound}) {
+	for (SoundContainer* sound: {m_BladeHitSound, m_BladeClashSound, m_BladeSwingSound, m_BladeHumSound, m_BladeIgniteSound, m_StickSound}) {
 		if (sound) {
 			sound->Stop();
 			delete sound;
@@ -776,6 +875,10 @@ namespace {
 
 void HeldDevice::SetParent(MOSRotating* newParent) {
 	Attachable::SetParent(newParent);
+	if (newParent && m_ThrowState != ThrowState::None) {
+		// Picked up: pulled out of whatever it was stuck in.
+		EndThrowState();
+	}
 	if (!newParent) {
 		if (m_BladeHumSound) {
 			m_BladeHumSound->Stop();
@@ -848,7 +951,7 @@ void HeldDevice::UpdateMeleeSwingAndBlade() {
 	if (!HasBlade()) {
 		return;
 	}
-	bool wantLit = m_BladeLit && (!m_BladeEnergy || m_Parent);
+	bool wantLit = m_BladeLit && (!m_BladeEnergy || m_Parent || m_ThrowState != ThrowState::None);
 	float wasExtension = m_BladeExtension;
 	if (GetBladeIgniteTime() <= 0.0F) {
 		m_BladeExtension = wantLit ? 1.0F : 0.0F;
@@ -875,14 +978,19 @@ void HeldDevice::UpdateMeleeSwingAndBlade() {
 void HeldDevice::PostUpdate() {
 	Attachable::PostUpdate();
 
+	if (m_ThrowState != ThrowState::None && !m_Parent) {
+		UpdateThrown();
+	}
+
 	if (!HasBlade() || m_BladeExtension <= 0.0F) {
 		m_BladePreviousValid = false;
 		return;
 	}
 
-	// Only a blade in a living unit's hands cuts, clashes or strikes: one lying on the ground, or still in a dead unit's grip, is just a thing.
+	// Only a blade in a living unit's hands, or flying thrown, cuts, clashes or strikes: one lying on the ground, or still in a dead unit's grip, is just a thing.
+	bool flying = m_ThrowState == ThrowState::Flying && !m_Parent;
 	const Actor* wielder = dynamic_cast<const Actor*>(GetRootParent());
-	if (!m_Parent || !wielder || wielder->GetStatus() == Actor::DYING || wielder->GetStatus() == Actor::DEAD) {
+	if (!flying && (!m_Parent || !wielder || wielder->GetStatus() == Actor::DYING || wielder->GetStatus() == Actor::DEAD)) {
 		m_BladePreviousValid = false;
 		return;
 	}
@@ -890,9 +998,11 @@ void HeldDevice::PostUpdate() {
 	Vector start = GetBladeStartPos();
 	Vector end = GetBladeEndPos();
 	Vector bladeVec = g_SceneMan.ShortestDistance(start, end, g_SceneMan.SceneWrapsX());
-	MovableObject* holder = GetRootParent();
-	long rootID = holder->GetUniqueID();
-	bool attacking = m_MeleeSwingPhase == MeleeSwingPhase::Strike || m_Activated;
+	// A thrown blade's cuts are its thrower's; it sweeps as itself, so the first sweep after leaving the hand doesn't reach back to it.
+	MovableObject* thrower = flying ? GetThrower() : nullptr;
+	MovableObject* holder = flying ? (thrower ? thrower : this) : GetRootParent();
+	long rootID = flying ? m_UniqueID : holder->GetUniqueID();
+	bool attacking = flying || m_MeleeSwingPhase == MeleeSwingPhase::Strike || m_Activated;
 	float deltaSecs = std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F);
 
 	if (m_BladeEnergy) {
@@ -970,15 +1080,19 @@ void HeldDevice::PostUpdate() {
 
 	// Cut what the blade went through, each thing once, where the blade was moving fastest through it.
 	std::vector<MOID> ignoreMOIDs = {holder->GetRootID()};
-	int ignoreTeam = holder->IgnoresTeamHits() ? holder->GetTeam() : Activity::NoTeam;
+	if (flying) {
+		ignoreMOIDs.push_back(GetRootID());
+	}
+	int ignoreTeam = flying ? (m_IgnoresTeamHits ? m_Team : Activity::NoTeam) : (holder->IgnoresTeamHits() ? holder->GetTeam() : Activity::NoTeam);
 	int samples = std::clamp(static_cast<int>(std::ceil(bladeVec.GetMagnitude() / 3.0F)) + 1, 2, 40);
 	struct BladeHit {
 		MOID ID;
 		Vector Pos;
 		Vector Vel;
+		float Along;
 	};
 	std::vector<BladeHit> hits;
-	auto addHit = [&](MOID id, const Vector& pos, const Vector& vel) {
+	auto addHit = [&](MOID id, const Vector& pos, const Vector& vel, float along) {
 		MovableObject* hitMO = g_MovableMan.GetMOFromID(id);
 		if (!hitMO) {
 			return;
@@ -987,12 +1101,12 @@ void HeldDevice::PostUpdate() {
 		for (BladeHit& hit: hits) {
 			if (g_MovableMan.GetMOFromID(hit.ID) && g_MovableMan.GetMOFromID(hit.ID)->GetRootID() == root) {
 				if (vel.GetSqrMagnitude() > hit.Vel.GetSqrMagnitude()) {
-					hit = {id, pos, vel};
+					hit = {id, pos, vel, along};
 				}
 				return;
 			}
 		}
-		hits.push_back({id, pos, vel});
+		hits.push_back({id, pos, vel, along});
 	};
 	int terrainBites = 0;
 	bool struckTerrain = false;
@@ -1007,7 +1121,7 @@ void HeldDevice::PostUpdate() {
 		Vector vel = move / (c_PPM * deltaSecs);
 		if (move.MagnitudeIsGreaterThan(0.5F)) {
 			if (MOID hitID = g_SceneMan.CastMORay(before, move, ignoreMOIDs, ignoreTeam, 0, true, 0); hitID != g_NoMOID) {
-				addHit(hitID, g_SceneMan.GetLastRayHitPos(), vel);
+				addHit(hitID, g_SceneMan.GetLastRayHitPos(), vel, along);
 			}
 		}
 
@@ -1036,7 +1150,7 @@ void HeldDevice::PostUpdate() {
 	if (m_BladeEnergy) {
 		// An energy blade burns what's held against it, even still.
 		if (MOID hitID = g_SceneMan.CastMORay(start, bladeVec, ignoreMOIDs, ignoreTeam, 0, true, 0); hitID != g_NoMOID) {
-			addHit(hitID, g_SceneMan.GetLastRayHitPos(), Vector());
+			addHit(hitID, g_SceneMan.GetLastRayHitPos(), Vector(), 0.5F);
 		}
 		if (terrainBites > 0 && m_BladeTerrainTimer.IsPastSimMS(70)) {
 			m_BladeTerrainTimer.Reset();
@@ -1044,11 +1158,19 @@ void HeldDevice::PostUpdate() {
 		}
 	}
 	for (const BladeHit& hit: hits) {
-		CutWithBlade(hit.ID, hit.Pos, hit.Vel, holder, attacking);
+		if (flying) {
+			HandleThrownHit(hit.ID, hit.Pos, hit.Vel, hit.Along, holder);
+		} else {
+			CutWithBlade(hit.ID, hit.Pos, hit.Vel, holder, attacking);
+		}
+		if (m_ThrowState != ThrowState::Flying && flying) {
+			break; // Stuck in the first it struck.
+		}
 	}
 	if (struckTerrain && m_BladeTerrainTimer.IsPastSimMS(90)) {
 		m_BladeTerrainTimer.Reset();
-		BladeStruck(terrainStrikePos, terrainStrikeVel * (-GetBladeMass() * 0.8F), false, terrainStrikeMetal);
+		// A thrown blade has already bounced off the ground as a body does; this is just the ring and the sparks.
+		BladeStruck(terrainStrikePos, terrainStrikeVel * (-GetBladeMass() * (flying ? 0.05F : 0.8F)), false, terrainStrikeMetal);
 	}
 
 	if (BladeDeflects()) {
@@ -1205,5 +1327,410 @@ void HeldDevice::DeflectShots(const Vector& start, const Vector& end, MovableObj
 		if (m_BladeClashSound) {
 			m_BladeClashSound->Play(crossing);
 		}
+	}
+}
+
+namespace {
+	std::deque<long> s_ThrownWeapons; //!< The unique IDs of thrown weapons lying loose or stuck, oldest first, so the oldest go once there are too many.
+	constexpr size_t c_MaxThrownWeapons = 40; //!< How many thrown weapons may lie about before the oldest go.
+	constexpr float c_PinSpeed = 16.0F; //!< How fast, m/s, a point-first throw has to strike someone to go through and pin them to a wall.
+	constexpr float c_StickToughness = 0.6F; //!< Ground of up to sharpness x speed x this structural integrity takes a thrown blade.
+
+	/// The signed angle, radians, that turns one direction onto another (anticlockwise on screen positive, like RadRotate and rotations).
+	float AngleBetween(const Vector& from, const Vector& to) {
+		float angle = to.GetAbsRadAngle() - from.GetAbsRadAngle();
+		while (angle > c_PI) {
+			angle -= c_TwoPI;
+		}
+		while (angle < -c_PI) {
+			angle += c_TwoPI;
+		}
+		return angle;
+	}
+} // namespace
+
+MovableObject* HeldDevice::GetThrower() const {
+	if (m_ThrowState == ThrowState::None || m_ThrowerID == 0) {
+		return nullptr;
+	}
+	MovableObject* thrower = g_MovableMan.FindObjectByUniqueID(m_ThrowerID);
+	return thrower && !thrower->IsSetToDelete() ? thrower : nullptr;
+}
+
+MovableObject* HeldDevice::GetStuckIn() const {
+	if ((m_ThrowState != ThrowState::StuckInMO && m_ThrowState != ThrowState::Pinning) || m_StuckInID == 0) {
+		return nullptr;
+	}
+	MovableObject* host = g_MovableMan.FindObjectByUniqueID(m_StuckInID);
+	return host && !host->IsSetToDelete() ? host : nullptr;
+}
+
+void HeldDevice::StartThrownFlight(MovableObject* thrower) {
+	if (m_Parent) {
+		return;
+	}
+	if (m_ThrowState == ThrowState::None) {
+		m_HitsMOsBeforeThrow = m_HitsMOs;
+	}
+	m_ThrowState = ThrowState::Flying;
+	m_ThrowerID = thrower ? thrower->GetUniqueID() : 0;
+	if (GetClassName() != "TDExplosive") {
+		// Not in use once it's left the hand: a unit can pick it up again (and the AI looks for ones that aren't).
+		Deactivate();
+	}
+	m_StuckInID = 0;
+	m_PinCheck = false;
+	m_PinStrength = 0.0F;
+	// In flight only the blade meets units and things, so each hit is judged as a cut, a stick or a glance.
+	m_HitsMOs = !HasBlade() && m_HitsMOsBeforeThrow;
+	m_ThrowStateTimer.Reset();
+	m_ThrowSlowTimer.Reset();
+	m_ThrowTrailCount = 0;
+	m_BladePreviousValid = false;
+	m_BladeLastCut.clear();
+	if (m_BladeEnergy && m_BladeLit) {
+		// A thrown lightsaber stays lit.
+		m_BladeExtension = 1.0F;
+	}
+
+	float flipFactor = m_HFlipped ? -1.0F : 1.0F;
+	Vector bladeDirection = (m_BladeEnd - m_BladeStart).GetXFlipped(m_HFlipped);
+	switch (static_cast<ThrowSpinMode>(GetThrowSpin())) {
+		case ThrowSpinMode::PointFirst:
+			// Laid along the way it goes, and kept there in flight.
+			if (!bladeDirection.IsZero() && !m_Vel.IsZero()) {
+				SetRotAngle(AngleBetween(bladeDirection, m_Vel));
+			}
+			m_AngularVel = 0.0F;
+			break;
+		case ThrowSpinMode::Tumbling:
+			m_AngularVel = RandomNum(0.4F, 1.0F) * m_ThrowSpinSpeed * (RandomNum() < 0.5F ? -1.0F : 1.0F);
+			break;
+		default:
+			// End over end, the top going forward: clockwise facing right. Steadily, so it wheels along a clean arc.
+			m_AngularVel = -m_ThrowSpinSpeed * flipFactor * RandomNum(0.9F, 1.1F);
+			break;
+	}
+
+	// Too many lying about: the oldest go.
+	if (std::find(s_ThrownWeapons.begin(), s_ThrownWeapons.end(), m_UniqueID) == s_ThrownWeapons.end()) {
+		s_ThrownWeapons.push_back(m_UniqueID);
+	}
+	while (s_ThrownWeapons.size() > c_MaxThrownWeapons) {
+		long oldestID = s_ThrownWeapons.front();
+		s_ThrownWeapons.pop_front();
+		if (oldestID == m_UniqueID) {
+			s_ThrownWeapons.push_back(oldestID);
+			continue;
+		}
+		if (MovableObject* oldest = g_MovableMan.FindObjectByUniqueID(oldestID); oldest && !oldest->IsSetToDelete()) {
+			HeldDevice* oldestDevice = dynamic_cast<HeldDevice*>(oldest);
+			if (oldestDevice && !oldestDevice->GetParent() && oldestDevice->m_ThrowState != ThrowState::None) {
+				oldestDevice->SetToDelete(true);
+			}
+		}
+	}
+}
+
+void HeldDevice::EndThrowState() {
+	if (m_ThrowState == ThrowState::None) {
+		return;
+	}
+	MovableObject* host = m_ThrowState == ThrowState::StuckInMO ? GetStuckIn() : nullptr;
+	m_ThrowState = ThrowState::None;
+	m_PinStrength = 0.0F;
+	m_PinCheck = false;
+	m_HitsMOs = m_HitsMOsBeforeThrow;
+	m_ThrowerID = 0;
+	m_StuckInID = 0;
+	m_ThrowTrailCount = 0;
+	m_ThrowStateTimer.Reset();
+	if (std::deque<long>::iterator found = std::find(s_ThrownWeapons.begin(), s_ThrownWeapons.end(), m_UniqueID); found != s_ThrownWeapons.end()) {
+		s_ThrownWeapons.erase(found);
+	}
+	// Pulled out of someone still alive: it tears the wound open again.
+	if (const Actor* hostActor = host ? dynamic_cast<const Actor*>(host->GetRootParent()) : nullptr; hostActor && hostActor->GetStatus() != Actor::DEAD && hostActor->GetStatus() != Actor::DYING && host->GetID() != g_NoMOID) {
+		Vector out = g_SceneMan.ShortestDistance(host->GetPos(), m_Pos, g_SceneMan.SceneWrapsX());
+		Vector pull = out.IsZero() ? Vector(0.0F, -6.0F) : out.GetNormalized() * -6.0F;
+		static unsigned char s_PullMaterial = g_SceneMan.GetMaterial("Bullet Metal") ? g_SceneMan.GetMaterial("Bullet Metal")->GetIndex() : g_MaterialAir;
+		MOPixel* tear = new MOPixel(Color(200, 200, 200), std::max(GetBladeMass() * 0.3F, 0.3F), m_Pos - pull * 0.5F, host->GetVel() + pull, new Atom(Vector(), s_PullMaterial, nullptr, Color(200, 200, 200), 0), 40);
+		tear->SetSharpness(GetBladeSharpness());
+		tear->SetToHitMOs(true);
+		tear->SetToGetHitByMOs(false);
+		tear->SetGlobalAccScalar(0.0F);
+		g_MovableMan.AddParticle(tear);
+	}
+}
+
+void HeldDevice::Unstick() {
+	if (!IsStuck()) {
+		return;
+	}
+	m_PinStrength = 0.0F;
+	m_ThrowState = ThrowState::Flying;
+	m_StuckInID = 0;
+	m_PinCheck = false;
+	m_ThrowStateTimer.Reset();
+	m_ThrowSlowTimer.Reset();
+	m_BladePreviousValid = false;
+}
+
+bool HeldDevice::LeadsWithStickingPart(const Vector& motion, const Vector& bladeDirection) const {
+	if (motion.IsZero() || bladeDirection.IsZero()) {
+		return false;
+	}
+	float alignment = motion.GetNormalized().Dot(bladeDirection.GetNormalized());
+	return m_StickBy == StickMode::Point ? alignment > 0.7F : std::abs(alignment) < 0.55F;
+}
+
+bool HeldDevice::TryStickInTerrain() {
+	if (!HasBlade()) {
+		return false;
+	}
+	float deltaSecs = std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F);
+	// Where the tip is now, and where it will be after this update's travel.
+	Vector tipNow = m_Pos + RotateOffset(m_BladeEnd);
+	Matrix nextRotation(m_Rotation.GetRadAngle() + m_AngularVel * deltaSecs);
+	Vector tipNext = m_Pos + m_Vel * (c_PPM * deltaSecs) + m_BladeEnd.GetXFlipped(m_HFlipped) * nextRotation;
+	Vector move = g_SceneMan.ShortestDistance(tipNow, tipNext, g_SceneMan.SceneWrapsX());
+	float speed = move.GetMagnitude() / (c_PPM * deltaSecs);
+	if (speed < m_StickSpeed) {
+		return false;
+	}
+	Vector bladeDirection = RotateOffset(m_BladeEnd - m_BladeStart);
+	if (!LeadsWithStickingPart(move, bladeDirection)) {
+		return false;
+	}
+	Vector hitPos;
+	if (!g_SceneMan.CastStrengthRay(tipNow, move + move.GetNormalized() * 3.0F, 10.0F, hitPos, 0, g_MaterialAir)) {
+		return false;
+	}
+	const Material* material = g_SceneMan.GetMaterialFromID(g_SceneMan.GetTerrMatter(static_cast<int>(hitPos.m_X), static_cast<int>(hitPos.m_Y)));
+	float bite = GetBladeSharpness() * speed * c_StickToughness;
+	if (!material || IsMetalForBlades(material) || material->GetIntegrity() > bite) {
+		// Too hard: it glances off as it lands.
+		return false;
+	}
+
+	// In at the angle it was at as it struck, deeper the softer the ground.
+	float fraction = std::clamp(g_SceneMan.ShortestDistance(tipNow, hitPos, g_SceneMan.SceneWrapsX()).GetMagnitude() / std::max(move.GetMagnitude(), 0.001F), 0.0F, 1.0F);
+	SetRotAngle(m_Rotation.GetRadAngle() + m_AngularVel * deltaSecs * fraction);
+	Vector direction = m_StickBy == StickMode::Point ? RotateOffset(m_BladeEnd - m_BladeStart).GetNormalized() : move.GetNormalized();
+	float depth = GetStickDepth() * std::clamp(bite / std::max(material->GetIntegrity(), 1.0F) * 0.5F, 0.35F, 1.0F);
+	SetPos(hitPos + direction * depth - RotateOffset(m_BladeEnd));
+
+	m_ThrowState = ThrowState::StuckInTerrain;
+	m_StuckAnchor = m_Pos;
+	m_StuckAngle = m_Rotation.GetRadAngle();
+	m_Vel.Reset();
+	m_AngularVel = 0.0F;
+	m_PinStrength = 1000.0F;
+	m_ThrowStateTimer.Reset();
+	m_ThrowTrailCount = 0;
+	if (SoundContainer* sound = m_StickSound ? m_StickSound : m_BladeHitSound) {
+		sound->Play(hitPos);
+	}
+	EffectsParticles::Emit("Dust", hitPos, direction * -3.0F + Vector(0.0F, -1.0F), 0.8F, 4, ColorToRGB(material->GetColor()));
+	return true;
+}
+
+void HeldDevice::StickInMO(MovableObject* hitMO, const Vector& hitPos, const Vector& direction, float speed) {
+	MOSprite* host = dynamic_cast<MOSprite*>(hitMO);
+	if (!host || !HasBlade()) {
+		return;
+	}
+	bool throughAndPin = GetPinsBodies() && speed >= c_PinSpeed && dynamic_cast<const Actor*>(host->GetRootParent());
+	float depth = GetStickDepth() * std::clamp(speed / std::max(m_StickSpeed * 2.0F, 1.0F), 0.5F, 1.4F);
+	if (throughAndPin) {
+		// Right through: the point comes out the other side.
+		depth += host->GetRadius() * 0.8F;
+	}
+	if (m_StickBy == StickMode::Point) {
+		// Laid along the line it came in on.
+		SetRotAngle(m_Rotation.GetRadAngle() + AngleBetween(RotateOffset(m_BladeEnd - m_BladeStart), direction));
+	}
+	SetPos(hitPos + direction * depth - RotateOffset(m_BladeEnd));
+
+	m_ThrowState = ThrowState::StuckInMO;
+	m_StuckInID = host->GetUniqueID();
+	m_StuckLocal = host->UnRotateOffset(g_SceneMan.ShortestDistance(host->GetPos(), m_Pos, g_SceneMan.SceneWrapsX()));
+	m_StuckRelAngle = (m_Rotation.GetRadAngle() - host->GetRotAngle()) * host->GetFlipFactor();
+	m_StuckFlipRel = m_HFlipped != host->IsHFlipped();
+	m_Vel = host->GetVel();
+	m_AngularVel = 0.0F;
+	m_PinStrength = 1000.0F;
+	m_PinCheck = throughAndPin;
+	m_ThrowStateTimer.Reset();
+	m_ThrowTrailCount = 0;
+	if (throughAndPin) {
+		// Driven back by it: a body caught by a javelin goes with it.
+		host->GetRootParent()->AddImpulseForce(direction * speed * GetMass() * 3.0F);
+	}
+	if (m_StickSound) {
+		m_StickSound->Play(hitPos);
+	}
+}
+
+void HeldDevice::HandleThrownHit(MOID hitMOID, const Vector& hitPos, const Vector& bladeVel, float along, MovableObject* holder) {
+	MovableObject* hitMO = g_MovableMan.GetMOFromID(hitMOID);
+	if (!hitMO) {
+		return;
+	}
+	Vector relativeVel = bladeVel - hitMO->GetVel();
+	float speed = relativeVel.GetMagnitude();
+	Vector bladeDirection = RotateOffset(m_BladeEnd - m_BladeStart);
+	bool sticks = along >= 0.6F && speed >= m_StickSpeed && LeadsWithStickingPart(relativeVel, bladeDirection);
+	if (!CutWithBlade(hitMOID, hitPos, bladeVel, holder, true)) {
+		return;
+	}
+	// Whatever part hits, it carries its momentum into what it hits.
+	hitMO->GetRootParent()->AddImpulseForce(relativeVel * GetMass() * (sticks ? 0.6F : 0.35F));
+	if (sticks) {
+		StickInMO(hitMO, hitPos, relativeVel.GetNormalized(), speed);
+		return;
+	}
+	// Flat or slow: it glances off and drops, turning over.
+	ClearImpulseForces();
+	m_Vel = hitMO->GetVel() + relativeVel * -0.2F + Vector(0.0F, -1.5F);
+	m_AngularVel = m_AngularVel * -0.5F + RandomNormalNum() * 3.0F;
+	if (m_BladeClashSound && IsMetalForBlades(hitMO->GetMaterial())) {
+		m_BladeClashSound->Play(hitPos);
+	}
+}
+
+void HeldDevice::UpdateThrown() {
+	float elapsed = static_cast<float>(m_ThrowStateTimer.GetElapsedSimTimeMS());
+	switch (m_ThrowState) {
+		case ThrowState::Flying: {
+			if (m_PinStrength > 0.0F) {
+				m_PinStrength = 0.0F;
+			}
+			float speed = m_Vel.GetMagnitude();
+			if (static_cast<ThrowSpinMode>(GetThrowSpin()) == ThrowSpinMode::PointFirst && speed > 4.0F && HasBlade()) {
+				// Weathervanes nose-first along its path.
+				float turn = AngleBetween(RotateOffset(m_BladeEnd - m_BladeStart), m_Vel);
+				SetRotAngle(m_Rotation.GetRadAngle() + turn * std::min(g_TimerMan.GetDeltaTimeSecs() * 12.0F, 1.0F));
+				m_AngularVel = 0.0F;
+			}
+			if (TryStickInTerrain()) {
+				break;
+			}
+			if (speed > 8.0F && HasBlade() && static_cast<ThrowSpinMode>(GetThrowSpin()) != ThrowSpinMode::PointFirst && m_BladeExtension > 0.0F) {
+				// A faint streak where the tip has been, so the arc reads.
+				Vector tip = m_Pos + RotateOffset(m_BladeEnd);
+				for (int i = std::min(m_ThrowTrailCount, static_cast<int>(m_ThrowTrail.size()) - 1); i > 0; --i) {
+					m_ThrowTrail[i] = m_ThrowTrail[i - 1];
+				}
+				m_ThrowTrail[0] = tip;
+				m_ThrowTrailCount = std::min(m_ThrowTrailCount + 1, static_cast<int>(m_ThrowTrail.size()));
+				glm::vec3 trailColor = m_BladeEnergy ? glm::vec3(m_BladeColor.GetR(), m_BladeColor.GetG(), m_BladeColor.GetB()) : glm::vec3(225.0F, 230.0F, 240.0F);
+				for (int i = 0; i + 1 < m_ThrowTrailCount; ++i) {
+					float fade = 1.0F - static_cast<float>(i) / static_cast<float>(m_ThrowTrail.size());
+					g_PostProcessMan.RegisterEnergyBeam(m_ThrowTrail[i + 1], m_ThrowTrail[i], trailColor, 0.7F, (m_BladeEnergy ? 0.6F : 0.18F) * fade, 0.0F);
+				}
+			} else {
+				m_ThrowTrailCount = 0;
+			}
+			if (speed > 2.0F) {
+				m_ThrowSlowTimer.Reset();
+			} else if (m_ThrowSlowTimer.IsPastSimMS(400)) {
+				// Come to rest: just a dropped weapon now, to be picked up.
+				EndThrowState();
+			}
+			break;
+		}
+		case ThrowState::StuckInTerrain: {
+			if (m_PinStrength <= 0.0F) {
+				// Knocked loose by a blast or a hard knock.
+				Unstick();
+				break;
+			}
+			// Quivers as it goes in.
+			float quiver = elapsed < 500.0F ? 0.07F * std::sin(elapsed * 0.075F) * std::exp(-elapsed / 140.0F) : 0.0F;
+			SetPos(m_StuckAnchor);
+			SetRotAngle(m_StuckAngle + quiver);
+			m_Vel.Reset();
+			m_AngularVel = 0.0F;
+			break;
+		}
+		case ThrowState::StuckInMO: {
+			MOSprite* host = dynamic_cast<MOSprite*>(GetStuckIn());
+			if (!host) {
+				// What it was in is gone (gibbed): it falls out.
+				Unstick();
+				break;
+			}
+			SetHFlipped(host->IsHFlipped() != m_StuckFlipRel);
+			SetRotAngle(host->GetRotAngle() + m_StuckRelAngle * host->GetFlipFactor());
+			SetPos(host->GetPos() + host->RotateOffset(m_StuckLocal));
+			m_Vel = host->GetVel();
+			m_AngularVel = 0.0F;
+			MovableObject* hostRoot = host->GetRootParent();
+			// Not something its host walks into, and its weight is the host's to carry.
+			hostRoot->SetWhichMOToNotHit(this, 0.1F);
+			hostRoot->AddForce(g_SceneMan.GetGlobalAcc() * (GetMass() * m_GlobalAccScalar));
+
+			if (m_PinCheck) {
+				if (elapsed > 600.0F) {
+					m_PinCheck = false;
+					break;
+				}
+				// Gone through someone: a wall just behind takes the point, and holds them there.
+				Vector tip = m_Pos + RotateOffset(m_BladeEnd);
+				Vector forward = RotateOffset(m_BladeEnd - m_BladeStart).GetNormalized();
+				Vector wallPos;
+				if (g_SceneMan.CastStrengthRay(tip, forward * 6.0F, 10.0F, wallPos, 0, g_MaterialAir)) {
+					const Material* material = g_SceneMan.GetMaterialFromID(g_SceneMan.GetTerrMatter(static_cast<int>(wallPos.m_X), static_cast<int>(wallPos.m_Y)));
+					if (material && !IsMetalForBlades(material) && material->GetIntegrity() <= GetBladeSharpness() * c_PinSpeed * c_StickToughness * 1.5F) {
+						Vector shift = g_SceneMan.ShortestDistance(tip, wallPos, g_SceneMan.SceneWrapsX()) + forward * std::min(GetStickDepth(), 6.0F);
+						SetPos(m_Pos + shift);
+						hostRoot->SetPos(hostRoot->GetPos() + shift);
+						m_ThrowState = ThrowState::Pinning;
+						m_StuckInID = hostRoot->GetUniqueID();
+						if (MOSprite* rootSprite = dynamic_cast<MOSprite*>(hostRoot)) {
+							m_StuckLocal = rootSprite->UnRotateOffset(g_SceneMan.ShortestDistance(hostRoot->GetPos(), m_Pos, g_SceneMan.SceneWrapsX()));
+						} else {
+							m_StuckLocal = g_SceneMan.ShortestDistance(hostRoot->GetPos(), m_Pos, g_SceneMan.SceneWrapsX());
+						}
+						m_StuckAnchor = m_Pos;
+						m_StuckAngle = m_Rotation.GetRadAngle();
+						m_PinCheck = false;
+						m_ThrowStateTimer.Reset();
+						if (SoundContainer* sound = m_StickSound ? m_StickSound : m_BladeHitSound) {
+							sound->Play(wallPos);
+						}
+						EffectsParticles::Emit("Dust", wallPos, forward * -3.0F, 0.8F, 4, ColorToRGB(material->GetColor()));
+					}
+				}
+			}
+			break;
+		}
+		case ThrowState::Pinning: {
+			if (m_PinStrength <= 0.0F) {
+				Unstick();
+				break;
+			}
+			SetPos(m_StuckAnchor);
+			SetRotAngle(m_StuckAngle);
+			m_Vel.Reset();
+			m_AngularVel = 0.0F;
+			MovableObject* body = GetStuckIn();
+			const Actor* bodyAsActor = dynamic_cast<const Actor*>(body);
+			// Someone still alive tears free after a moment; the dead hang there till it's pulled out.
+			if (!body || (bodyAsActor && bodyAsActor->GetStatus() != Actor::DEAD && bodyAsActor->GetStatus() != Actor::DYING && elapsed > 1500.0F)) {
+				m_ThrowState = ThrowState::StuckInTerrain;
+				m_StuckInID = 0;
+				m_ThrowStateTimer.SetElapsedSimTimeMS(1000.0);
+				break;
+			}
+			MOSprite* bodySprite = dynamic_cast<MOSprite*>(body);
+			body->SetPos(m_StuckAnchor - (bodySprite ? bodySprite->RotateOffset(m_StuckLocal) : m_StuckLocal));
+			body->SetVel(Vector());
+			body->SetAngularVel(body->GetAngularVel() * 0.8F);
+			body->SetWhichMOToNotHit(this, 0.1F);
+			break;
+		}
+		default:
+			break;
 	}
 }

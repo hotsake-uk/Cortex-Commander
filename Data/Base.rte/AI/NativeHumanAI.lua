@@ -645,6 +645,15 @@ function NativeHumanAI:Update(Owner)
 					self.BehaviorCleanup = nil;
 				end
 
+				-- Fetch back what it threw, once there's no one to fight.
+				if not self.NextBehavior and not self.PickupHD and not objective and not self.Target and self.ThrownIDs and next(self.ThrownIDs)
+				and (not self.RetrieveTimer or self.RetrieveTimer:IsPastSimMS(3000)) then
+					self.RetrieveTimer = self.RetrieveTimer or Timer();
+					self.RetrieveTimer:Reset();
+					self.NextBehavior = coroutine.create(HumanBehaviors.RetrieveThrown);
+					self.NextBehaviorName = "RetrieveThrown";
+				end
+
 				if not self.NextBehavior and not self.PickupHD and not objective and self.PickUpTimer:IsPastSimMS(10000) then
 					self.PickUpTimer:Reset();
 
@@ -1009,6 +1018,12 @@ function NativeHumanAI:CreateAttackBehavior(Owner)
 	-- favor grenades as the initiator to a sneak attack
 	elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and Owner.AIMode ~= Actor.AIMODE_SENTRY and self.Target.HFlipped == Owner.HFlipped and Owner:EquipDeviceInGroup("Bombs - Grenades", true)
 	and dist:MagnitudeIsGreaterThan(100) and dist:MagnitudeIsLessThan(ToThrownDevice(Owner.EquippedItem):GetCalculatedMaxThrowVelIncludingArmThrowStrength() * GetPPM()) and (self.Target.Pos.Y + 20) > Owner.Pos.Y then
+		self.NextBehavior = coroutine.create(HumanBehaviors.ThrowTarget);
+		self.NextBehaviorName = "ThrowTarget";
+	-- A javelin, throwing axe or knives at a target a few strides off, before closing in.
+	elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and dist:MagnitudeIsGreaterThan(80) and Owner:HasObjectInGroup("Weapons - Thrown") and math.random() < 0.75
+	and Owner:EquipDeviceInGroup("Weapons - Thrown", true) and IsThrownDevice(Owner.EquippedItem)
+	and dist:MagnitudeIsLessThan(math.min(ToThrownDevice(Owner.EquippedItem):GetCalculatedMaxThrowVelIncludingArmThrowStrength() * GetPPM() * 0.9, 400)) then
 		self.NextBehavior = coroutine.create(HumanBehaviors.ThrowTarget);
 		self.NextBehaviorName = "ThrowTarget";
 	elseif Owner:EquipFirearm(true) then

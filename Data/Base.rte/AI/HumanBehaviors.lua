@@ -185,19 +185,39 @@ end
 -- whether it takes full strength; or nil where no arc gets there.
 function HumanBehaviors.PlanThrow(Grenade, AimPoint, TargetVel, overCover)
 	local maxVel = Grenade:GetCalculatedMaxThrowVelIncludingArmThrowStrength();
-	local minVel = Grenade.MinThrowVel;
+	local minVel = Grenade.GetCalculatedMinThrowVel and Grenade:GetCalculatedMinThrowVel() or Grenade.MinThrowVel;
 	if minVel == 0 then
-		minVel = maxVel * 0.2;
+		minVel = maxVel * 0.5;
 	end
-	local Start = Grenade.MuzzlePos;
+	-- Where the throw lets go: the hand at the front of the swing for that aim, not the grenade in hand now.
+	local Owner = ToAHuman(Grenade:GetRootParent());
+	local Muzzle = Grenade.MuzzlePos;
+	local function startFor(angle)
+		if Owner and Owner.GetThrowReleasePos then
+			local aimAngle = Owner.HFlipped and (math.pi - angle) or angle;
+			return Owner:GetThrowReleasePos(Grenade, aimAngle);
+		end
+		return Muzzle;
+	end
+	-- The grenade also leaves with all of the thrower's speed: seen from the thrower, the target moves by the difference.
+	local RelVel = TargetVel and Vector(TargetVel.X, TargetVel.Y) or Vector();
+	if Owner then
+		RelVel = RelVel - Owner.Vel;
+	end
 	local arcs = overCover and {true, false} or {false, true};
 	for _, high in ipairs(arcs) do
 		for _, speed in ipairs({(maxVel + minVel) * 0.5, maxVel}) do
+			local Start = Muzzle;
 			local angle, seconds = HumanBehaviors.GrenadeArc(Start, AimPoint, speed, high);
-			-- Led onto a runner: where it will be when the grenade gets there (twice over, as the flight time changes with the point).
-			if angle and TargetVel and TargetVel.Magnitude > 1 then
+			if angle then
+				Start = startFor(angle);
+				angle, seconds = HumanBehaviors.GrenadeArc(Start, AimPoint, speed, high);
+			end
+			-- Led onto a runner (or off our own running): where it will be when the grenade gets there (twice over, as the flight time
+			-- changes with the point).
+			if angle and RelVel.Magnitude > 1 then
 				for _ = 1, 2 do
-					local Lead = AimPoint + TargetVel * GetPPM() * seconds * 0.8;
+					local Lead = AimPoint + RelVel * GetPPM() * seconds * 0.8;
 					local leadAngle, leadSeconds = HumanBehaviors.GrenadeArc(Start, Lead, speed, high);
 					if not leadAngle then
 						break;
@@ -953,6 +973,59 @@ function HumanBehaviors.WeaponSearch(AI, Owner, Abort)
 	return true;
 end
 
+
+-- Fetching back what it threw (javelins, throwing axes and knives, and blades): the nearest it can see lying or stuck within reach, then
+-- back to where it was going.
+function HumanBehaviors.RetrieveThrown(AI, Owner, Abort)
+	local maxDistance = AI.isPlayerOwned and 160 or 300;
+	local Nearest, nearestDistance;
+	for id, _ in pairs(AI.ThrownIDs or {}) do
+		local Found = MovableMan:FindObjectByUniqueID(id);
+		if not Found or not MovableMan:ValidMO(Found) or not IsHeldDevice(Found) or Found.ID ~= Found.RootID then
+			AI.ThrownIDs[id] = nil; -- gone, or someone has it
+		else
+			local Device = ToHeldDevice(Found);
+			local distance = SceneMan:ShortestDistance(Owner.Pos, Device.Pos, SceneMan.SceneWrapsX).Magnitude;
+			if distance > maxDistance * 2 then
+				AI.ThrownIDs[id] = nil; -- too far to go back for
+			elseif distance < maxDistance and (Device.IsStuck or Device.Vel.Largest < 3) and Device:IsPickupableBy(Owner) and not SceneMan:IsUnseen(Device.Pos.X, Device.Pos.Y, Owner.Team) then
+				if not nearestDistance or distance < nearestDistance then
+					Nearest, nearestDistance = Device, distance;
+				end
+			end
+		end
+	end
+	if not Nearest then
+		return true;
+	end
+
+	AI.PickupHD = Nearest;
+	local prevMoveTarget, prevSceneWaypoint;
+	if Owner.MOMoveTarget and MovableMan:ValidMO(Owner.MOMoveTarget) then
+		prevMoveTarget = Owner.MOMoveTarget;
+		Owner.MOMoveTarget = nil;
+	else
+		prevSceneWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.Height/5, 4);
+	end
+	Owner:ClearAIWaypoints();
+	Owner:AddAIMOWaypoint(AI.PickupHD);
+	if prevMoveTarget then
+		Owner:AddAIMOWaypoint(prevMoveTarget);
+	elseif prevSceneWaypoint then
+		Owner:AddAISceneWaypoint(prevSceneWaypoint);
+	end
+	if Owner.AIMode == Actor.AIMODE_SENTRY then
+		AI.SentryFacing = Owner.HFlipped;
+	end
+	Owner:UpdateMovePath();
+	while Owner.IsWaitingOnNewMovePath do
+		local _ai, _ownr, _abrt = coroutine.yield();
+		if _abrt then return true end
+	end
+	SharedBehaviors.Trace(Owner, "fetching back a thrown weapon");
+	AI:CreateGoToBehavior(Owner);
+	return true;
+end
 
 -- find a tool to pick up
 function HumanBehaviors.ToolSearch(AI, Owner, Abort)
@@ -2105,6 +2178,12 @@ function HumanBehaviors.ThrowTarget(AI, Owner, Abort)
 					AI.fire = true;
 				else
 					AI.fire = false;
+					-- A thrown weapon (a javelin, an axe, a knife) is worth fetching back once the fight is over.
+					local Thrown = Owner.EquippedItem;
+					if Thrown and Thrown:HasObjectInGroup("Weapons - Thrown") then
+						AI.ThrownIDs = AI.ThrownIDs or {};
+						AI.ThrownIDs[Thrown.UniqueID] = true;
+					end
 				end
 			else	-- no grenades left, continue attack
 				if not (Owner.AIMode == Actor.AIMODE_SENTRY or Owner.AIMode == Actor.AIMODE_SQUAD) then
