@@ -1603,6 +1603,10 @@ void SceneMan::AddAirGust(const Vector& position, const Vector& direction, float
 	AirPressure::Gust(position, direction, strength, length, spread);
 }
 
+bool SceneMan::MagicAICasting() const {
+	return MagicEffects::IsOn() && MagicEffects::GetTuning().AICasting;
+}
+
 void SceneMan::MagicPush(const Vector& origin, const Vector& direction, float power, float range, float spread, const MovableObject* caster) const {
 	MagicEffects::Push(origin, direction, power, range, spread, caster);
 }

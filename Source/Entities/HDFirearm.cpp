@@ -696,14 +696,18 @@ bool HDFirearm::IsEmpty() const {
 }
 
 int HDFirearm::GetAffordableRounds() const {
+	return GetAffordableRoundsFor(dynamic_cast<const Actor*>(GetRootParent()));
+}
+
+int HDFirearm::GetAffordableRoundsFor(const Actor* payer) const {
 	if (m_EnergyCost <= 0.0F || !MagicEffects::CastingCostsEnergy()) {
 		return std::numeric_limits<int>::max();
 	}
 	float pool = 0.0F;
 	if (m_UsesOwnCharge) {
 		pool = m_Charge;
-	} else if (const Actor* holder = dynamic_cast<const Actor*>(GetRootParent())) {
-		pool = holder->GetEnergy();
+	} else if (payer) {
+		pool = payer->GetEnergy();
 	}
 	return static_cast<int>(pool / m_EnergyCost + 0.0001F);
 }

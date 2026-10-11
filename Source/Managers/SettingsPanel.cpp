@@ -816,6 +816,8 @@ void DebugMan::SettingsGUI() {
 		Slider("Energy regen", &tuning.EnergyRegen, 0.0F, 5.0F, "%.2fx");
 		Tip("How fast energy and a spell's own charge come back. 0: they never come back.");
 		ImGui::EndDisabled();
+		Toggle("AI casts spells", tuning.AICasting, [&tuning](bool on) { tuning.AICasting = on; });
+		Tip("AI units use their spells of their own accord: a unit with a push spell pushes a grenade landing near it back the way it came, and a unit that ran out of energy and took out its other weapon goes back to its spell once its energy has mostly come back. Off: the AI fires a spell only like any other weapon it happens to hold.");
 		ImGui::EndDisabled();
 		if (Plain() && ToolUI::Button("Usual magic")) {
 			tuning = MagicEffects::Tuning();
