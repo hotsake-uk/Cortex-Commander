@@ -366,6 +366,8 @@ function NativeHumanAI:Update(Owner)
 				FoundMO = ToACrab(FoundMO);
 			elseif FoundMO.ClassName == "ACRocket" then
 				FoundMO = ToACRocket(FoundMO);
+			elseif FoundMO.ClassName == "ACShip" then	-- A gunship or flying transport: a target like any craft.
+				FoundMO = ToACShip(FoundMO);
 			elseif FoundMO.ClassName == "ACDropShip" then
 				FoundMO = ToACDropShip(FoundMO);
 			elseif FoundMO.ClassName == "ADoor" and FoundMO.Team ~= Activity.NOTEAM and Owner.AIMode ~= Actor.AIMODE_SENTRY and ToADoor(FoundMO).Door and ToADoor(FoundMO).Door:IsAttached() then

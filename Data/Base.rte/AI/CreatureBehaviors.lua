@@ -32,6 +32,8 @@ local function AsActor(MO)
 		return ToACrab(MO);
 	elseif MO.ClassName == "AVehicle" then
 		return ToAVehicle(MO);
+	elseif MO.ClassName == "ACShip" then
+		return ToACShip(MO);
 	elseif MO.ClassName == "ACDropShip" then
 		return ToACDropShip(MO);
 	elseif MO.ClassName == "ACRocket" then
