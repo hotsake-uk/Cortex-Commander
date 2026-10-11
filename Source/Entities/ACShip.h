@@ -106,6 +106,10 @@ namespace RTE {
 		/// steering an AI crew's ship. Nothing happens while it can't fly or its autopilot hasn't started yet (nobody has flown it).
 		/// @param spot Where its middle goes. @return Whether it was sent.
 		bool FlyTo(const Vector& spot);
+
+		/// Sends it to hover over a place, as a move order does: at its hover height over the ground there, or at the place if that is in the
+		/// open air higher up. Nothing happens while it can't fly or its autopilot hasn't started yet. @return Whether it was sent.
+		bool HoverOver(const Vector& spot) { return CanFly() && AutopilotHoverOver(spot); }
 #pragma endregion
 
 #pragma region Override Methods

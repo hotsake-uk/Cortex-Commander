@@ -9,6 +9,7 @@
 #include "Sandbox.h"
 #include "ACrab.h"
 #include "ACraft.h"
+#include "ACShip.h"
 #include "ADoor.h"
 #include "AHuman.h"
 #include "ActivityMan.h"

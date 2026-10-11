@@ -69,10 +69,11 @@ namespace SandboxDetail {
 	}
 
 	/// Whether a unit can be selected and commanded: a combatant on a side, not a brain, not a craft (a ship is ordered by its own AI; sent off
-	/// with the squad, a dropship delivering hovered with its passengers inside).
+	/// with the squad, a dropship delivering hovered with its passengers inside). A flying ship (ACShip) is, though: sent somewhere, it flies
+	/// there and hovers (SendUnit).
 	bool IsSelectable(const Actor* actor) {
 		// (In commander mode, RC-9, and Battle Command, only your own side's.)
-		return IsCombatant(actor) && !actor->IsInGroup("Brains") && !dynamic_cast<const ACraft*>(actor) && (OnlySide() < 0 || actor->GetTeam() == OnlySide());
+		return IsCombatant(actor) && !actor->IsInGroup("Brains") && (!dynamic_cast<const ACraft*>(actor) || dynamic_cast<const ACShip*>(actor)) && (OnlySide() < 0 || actor->GetTeam() == OnlySide());
 	}
 
 	/// Whether an actor is hidden from you in commander mode (RC-9): another side's, where your side can't see. Orders can't be aimed at it.
@@ -136,7 +137,11 @@ namespace SandboxDetail {
 	/// @param resend Whether the standing orders are sending it again.
 	void SendUnit(Actor* unit, const Vector& waypoint, Actor* target, bool attack, const char* reason, bool lock, bool resend) {
 		// (Never a craft: set to GOTO, a dropship delivering stopped its unload, which only runs in STAY or DELIVER, and hovered with the
-		// squad inside.)
+		// squad inside. But a flying ship flies to hover over the place, or over whoever it's sent after, its guns on them.)
+		if (ACShip* ship = dynamic_cast<ACShip*>(unit)) {
+			ship->HoverOver(target ? target->GetPos() : waypoint);
+			return;
+		}
 		if (dynamic_cast<const ACraft*>(unit)) {
 			return;
 		}
@@ -608,7 +613,7 @@ namespace SandboxDetail {
 		std::vector<Actor*> units;
 		if (selectedOnly) {
 			for (const UnitRef& ref: s_Selected) {
-				if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled() && !dynamic_cast<const ACraft*>(unit)) {
+				if (Actor* unit = GetRef(ref); unit && !unit->IsPlayerControlled() && (!dynamic_cast<const ACraft*>(unit) || dynamic_cast<const ACShip*>(unit))) {
 					units.push_back(unit);
 				}
 			}
@@ -646,6 +651,23 @@ namespace SandboxDetail {
 	}
 
 	void MoveUnitsTo(std::vector<Actor*> units, const Vector& point, bool attackMove, int facing) {
+		// Flying ships (ACShip) fly to hover over it, a ship's width apart, and are left out of the moves on foot below.
+		std::vector<Actor*> ships;
+		std::erase_if(units, [&ships](Actor* unit) {
+			if (dynamic_cast<const ACShip*>(unit)) {
+				ships.push_back(unit);
+				return true;
+			}
+			return false;
+		});
+		for (size_t i = 0; i < ships.size(); ++i) {
+			Vector spot = point + Vector((static_cast<float>(i) - static_cast<float>(ships.size() - 1) * 0.5F) * ships[i]->GetRadius() * 2.0F, 0.0F);
+			g_SceneMan.WrapPosition(spot);
+			SendUnit(ships[i], spot, nullptr, false, attackMove ? "attack-move" : "move");
+		}
+		if (units.empty()) {
+			return;
+		}
 		// A point in the air (Jetpack here, or a move or attack-move clicked in open air): the units with a jet fly to it, spread along it
 		// a little apart, and hover there; the rest go to the ground under it as any move does.
 		if (s_SkyOrder || (s_ClickOrder && IsSkyPoint(point))) {
