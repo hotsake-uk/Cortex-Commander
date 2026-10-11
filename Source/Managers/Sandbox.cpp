@@ -723,6 +723,9 @@ void Sandbox::DrawGUI() {
 		if (s_BattlePanelOpen && !s_Possessed && !g_DebugMan.IsPhotoModeHidingHUD()) {
 			DrawCommanderPanel();
 		}
+		if (!g_DebugMan.IsPhotoModeHidingHUD()) {
+			DrawBattleReport();
+		}
 	}
 	if (!s_Open && !hiddenButAbove) {
 		// The selection's arrows come off while the window is away (they stayed on the units of a game with the window shut, till it was

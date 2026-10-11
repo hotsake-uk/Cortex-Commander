@@ -83,6 +83,7 @@ namespace SandboxDetail {
 		s_HasLandingSpot = false;
 		ForgetPowers();
 		ForgetVeterans();
+		ForgetBattleReport();
 	}
 
 	void UpdateReinforcements() {
@@ -148,6 +149,7 @@ namespace SandboxDetail {
 					nearest = distance;
 				}
 			}
+			NoteReportKill(killerID, id);
 			NoteVeteranKill(killerID, id);
 			if (killer >= 0 && BattlePlayerCommands(killer)) {
 				CommandPoints& points = s_CommandPoints[killer];
@@ -184,6 +186,7 @@ namespace SandboxDetail {
 				break;
 			}
 			cost += unit->GetTotalValue(unit->GetModuleID(), 1.0F);
+			TagCardUnit(unit, card);
 			unit->SetTeam(side);
 			unit->SetControllerMode(Controller::CIM_AI);
 			units.push_back(unit);
