@@ -145,6 +145,12 @@ void Actor::Clear() {
 	m_Temperament = TEMPERAMENT_FIGHTER;
 	m_NonCombatant = -1;
 	m_MovementProfile = MovementProfile();
+	m_FireAuraRadius = 0.0F;
+	m_WaterWeakness = 0.0F;
+	m_VenomUntil = 0;
+	m_VenomDamagePerSecond = 0.0F;
+	m_VenomSlowTo = 1.0F;
+	m_SnareUntil = 0;
 	m_ToughnessKind = -2;
 	m_ToughnessHealth = std::numeric_limits<float>::quiet_NaN();
 	m_LastAttackerTeam = Activity::NoTeam;
@@ -353,6 +359,8 @@ int Actor::Create(const Actor& reference) {
 	m_Temperament = reference.m_Temperament;
 	m_NonCombatant = reference.m_NonCombatant;
 	m_MovementProfile = reference.m_MovementProfile;
+	m_FireAuraRadius = reference.m_FireAuraRadius;
+	m_WaterWeakness = reference.m_WaterWeakness;
 	m_Waypoints = reference.m_Waypoints;
 	m_DrawWaypoints = reference.m_DrawWaypoints;
 	m_MoveTarget = reference.m_MoveTarget;
@@ -578,6 +586,9 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 		reader >> fireProof;
 		m_MovementProfile.FireProof = fireProof ? 1 : 0;
 	});
+	// Elements (CR-7): what it sets alight round it, and what water does to it.
+	MatchProperty("FireAuraRadius", { reader >> m_FireAuraRadius; });
+	MatchProperty("WaterWeakness", { reader >> m_WaterWeakness; });
 
 	EndPropertyList;
 }
@@ -737,6 +748,12 @@ int Actor::Save(Writer& writer) const {
 	}
 	if (m_MovementProfile.FireProof >= 0) {
 		writer.NewPropertyWithValue("FireProof", m_MovementProfile.FireProof != 0);
+	}
+	if (m_FireAuraRadius > 0.0F) {
+		writer.NewPropertyWithValue("FireAuraRadius", m_FireAuraRadius);
+	}
+	if (m_WaterWeakness > 0.0F) {
+		writer.NewPropertyWithValue("WaterWeakness", m_WaterWeakness);
 	}
 
 	return 0;
@@ -2684,6 +2701,7 @@ void Actor::Update() {
 
 	m_PieMenu->Update();
 	UpdatePowerups();
+	UpdateAfflictions();
 
 	// Update the viewpoint to be at least what the position is
 	m_ViewPoint = m_Pos;

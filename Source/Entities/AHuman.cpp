@@ -1979,6 +1979,8 @@ void AHuman::UpdateLimbPathSpeed() {
 		if (IsStimmed()) {
 			travelSpeedMultiplier *= c_StimSpeedMultiplier;
 		}
+		// A creature's venom slows it; its web all but stops it (CR-6).
+		travelSpeedMultiplier *= GetAfflictionSpeedMultiplier();
 		// Kept to a group's pace (RC-5): no faster than the slowest of those sent with it.
 		if (m_PaceLimit > 0.0F) {
 			const float fullSpeed = std::max(m_Paths[FGROUND][pathState].GetTravelSpeed(), m_Paths[BGROUND][pathState].GetTravelSpeed()) * 0.5F * travelSpeedMultiplier;
