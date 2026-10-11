@@ -899,7 +899,7 @@ void Sandbox::DrawGUI() {
 				s_Dragging = true;
 				s_DragStart = io.MousePos;
 				s_DoubleClick = false;
-				s_ClickCount = 1;
+				s_ClickCount = 0;
 			}
 		} else if (DragsShape(tool.Kind)) {
 			// Brush type Shape: a drag marks out the shape, filled when the button is let go (below). "Make it fall" drags its box the same way.
@@ -1085,8 +1085,9 @@ void Sandbox::DrawGUI() {
 				stroke.Count = io.KeyShift ? 1 : (s_DoubleClick ? 2 : 0);
 			}
 			if (give) {
-				// (A double or triple click makes the order a direct one: the shortest way there, whatever it takes.)
-				stroke.Clicks = stroke.Kind == Tool::Command ? s_ClickCount : 1;
+				// (How many clicks placed the order says how urgent it is: one cautious, two normal, three risky, four the shortest way there
+				// whatever it takes.)
+				stroke.Clicks = stroke.Kind == Tool::Command ? s_ClickCount : 0;
 				s_Queue.push_back(stroke);
 			}
 		}

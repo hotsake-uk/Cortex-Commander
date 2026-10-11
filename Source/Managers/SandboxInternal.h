@@ -831,7 +831,7 @@ namespace SandboxDetail {
 		int Loadout = 0; //!< 0 faction default, 1 unarmed, 2+ a weapon from s_Weapons.
 		int Count = 1;
 		bool LitGrenade = false;
-		int Clicks = 1; //!< Tool::Command: how many clicks in a row placed it. A double click makes the order partly direct, a triple fully (s_DirectOrder).
+		int Clicks = 0; //!< Tool::Command: how many clicks in a row placed it, 0 for not by a click: one makes the order cautious, two normal, three risky, four fully direct (s_DirectOrder).
 		long UnitID = 0; //!< Dropping a step of a plan: whose (and Choice which step).
 		std::vector<Vector> Points; //!< A patrol route's points (RC-4).
 		Vector Position2; //!< Selection box: the other corner.
@@ -945,11 +945,11 @@ namespace SandboxDetail {
 	inline bool s_ActionSpotValid = false;
 	inline bool s_Dragging = false;
 	inline bool s_DoubleClick = false; //!< The drag or click under way began with a double click.
-	inline int s_ClickCount = 1; //!< How many clicks in a row the drag or click under way began with: a double or triple click makes its order direct (s_DirectOrder).
-	/// While an order the player double- or triple-clicked is given (a command stroke's Clicks), how direct it is: 0 a plain click, 1 a triple
-	/// click, a double click between (SettingsMan::DirectOrderTuning::DoubleClickShare). Every unit sent (SendUnit) takes that share of the
-	/// Battle Behavior tuning (Actor::StandingOrder::Direct), and isn't held to the group's pace. Set round the stroke, so every kind of order
-	/// placed by a click (move, attack-move, dig to, defend, a map order) is made direct the same way.
+	inline int s_ClickCount = 0; //!< How many clicks in a row the drag or click under way began with: how urgent its order is (s_DirectOrder).
+	/// While an order placed by clicks is given (a command stroke's Clicks), how urgent it is: -1 one click (cautious), 0 two (normal, and any
+	/// order not placed by a click), 1 four (fully direct), three between (SettingsMan::DirectOrderTuning::RiskyClickShare). Every unit sent
+	/// (SendUnit) takes that share of the Battle Behavior tuning (Actor::StandingOrder::Direct), and one over 0 isn't held to the group's pace.
+	/// Set round the stroke, so every kind of order placed by a click (move, attack-move, dig to, defend, a map order) is made so the same way.
 	inline float s_DirectOrder = 0.0F;
 	inline ImVec2 s_DragStart;
 	inline std::array<BattleTeam, c_Sides> s_BattleTeams; //!< The Battle Director's teams, as the sim runs them.
@@ -1194,7 +1194,7 @@ namespace SandboxDetail {
 		Vector Position;
 		float Life; //!< Seconds left.
 		ImU32 Color;
-		float Direct = 0.0F; //!< How direct the order was (s_DirectOrder): over 0, drawn with a second, wider ring, wider the more direct.
+		float Direct = 0.0F; //!< How urgent the order was (s_DirectOrder): over 0 drawn with a second, wider ring, wider the more direct; under 0 (cautious) with a small inner one.
 	};
 	inline std::vector<OrderMark> s_OrderMarks;
 	// The gym's start and goal being made (see the Gym region).

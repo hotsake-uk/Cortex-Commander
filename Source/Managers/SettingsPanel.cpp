@@ -1188,20 +1188,21 @@ void DebugMan::SettingsGUI() {
 		Tip("An AI unit sent a long way walks to a friendly vehicle near it that is going its way, gets in and rides (or drives it) there, then gets out and walks the rest. A vehicle with an AI driver drives itself to the place it is sent, and units sent to a vehicle get in. Off: they walk, and AI drivers sit still.");
 	};
 
-	// How units behave on a direct order: an RTS order placed with a triple click, which sends them the shortest way whatever it takes.
+	// How units behave on a cautious or a direct order: an RTS order placed with one click is cautious, two normal, three risky, and four
+	// fully direct, which sends them the shortest way whatever it takes.
 	auto battleBehavior = [&]() {
 		SettingsMan::DirectOrderTuning& direct = g_SettingsMan.DirectOrders();
 		if (Plain()) {
-			ImGui::TextWrapped("Click when you place an RTS order (move, attack-move, defend, dig to) for a normal order. Double-click for a riskier, more direct one, and triple-click for a fully direct one: the units go the shortest way there, whatever it takes. These set how hard a triple-clicked order pushes it.");
+			ImGui::TextWrapped("How many times you click when you place an RTS order (move, attack-move, defend, dig to) says how urgent it is. One click: cautious, walking round jumps and waiting for fuel. Two: a normal order. Three: riskier. Four: fully direct, the shortest way there whatever it takes. The Direct settings say how hard four clicks push it, the Cautious ones how careful one click is.");
 		}
 		{
-			float share = direct.DoubleClickShare * 100.0F;
-			if (Slider("Double click strength", &share, 0.0F, 100.0F, "%.0f%% of a triple click")) {
-				direct.DoubleClickShare = share / 100.0F;
+			float share = direct.RiskyClickShare * 100.0F;
+			if (Slider("Three click strength", &share, 0.0F, 100.0F, "%.0f%% of four clicks")) {
+				direct.RiskyClickShare = share / 100.0F;
 			}
-			Tip("How far a double-clicked order goes toward a triple-clicked one: every setting below is taken this share of the way from a normal order's. 0% makes a double click a normal order; 50% is normal.");
+			Tip("How far an order placed with three clicks goes toward a fully direct one: every Direct setting is taken this share of the way from a normal order's. 0% makes three clicks a normal order; 50% is normal.");
 		}
-		Heading("Jetpack");
+		Heading("Direct (four clicks): jetpack");
 		{
 			float preference = 1.0F / std::max(direct.FlightCostScale, 0.01F);
 			if (Slider("Jetpack preference", &preference, 1.0F, 5.0F, "%.1fx")) {
@@ -1221,14 +1222,14 @@ void DebugMan::SettingsGUI() {
 			Check("Steady before take-off", &direct.Steady);
 			Tip("Whether they still come to a stand, still and upright, before a jet climb or jump. Off (normal for a direct order): they take off mid-stride.");
 		}
-		Heading("Flying");
+		Heading("Direct: flying");
 		{
 			Slider("Flight speed", &direct.FlightSpeed, 1.0F, 3.0F, "%.2fx");
 			Tip("How fast they fly, up, across and down, as a multiple of a normal unit's limits. Faster gets there sooner but overshoots and tumbles more. 1.5x is normal for a direct order.");
 			Slider("Landing speed", &direct.Touchdown, 3.0F, 15.0F, "%.1f m/s");
 			Tip("How fast they let themselves come down onto the floor before braking: harder landings save time and fuel but bounce and stumble more. A normal unit lands at 5 m/s; 7 is normal for a direct order.");
 		}
-		Heading("Route");
+		Heading("Direct: route");
 		{
 			float dig = direct.DigCostScale * 100.0F;
 			if (Slider("Dig cost on a dig-to", &dig, 1.0F, 100.0F, "%.0f%%", ImGuiSliderFlags_Logarithmic)) {
@@ -1242,12 +1243,30 @@ void DebugMan::SettingsGUI() {
 			Check("Groups keep together", &direct.KeepPace);
 			Tip("Whether a group sent with a direct order still walks at its slowest member's pace when \"keep together\" is on. Off (normal): each goes as fast as it can.");
 		}
+		Heading("Cautious (one click)");
+		{
+			Slider("Jetpack reluctance", &direct.CautiousFlightCostScale, 1.0F, 5.0F, "%.1fx");
+			Tip("How much less readily they jump than walk round: a jet flight costs them this many times more than it does a normal unit when the route is picked. 1x routes as usual; 3x is normal for a cautious order.");
+			Slider("Caution", &direct.CautiousCaution, 1.0F, 4.0F, "%.1fx");
+			Tip("How much hard jumps and long drops put them off a route, and how long they steady themselves before a take-off, as a multiple of a normal unit's. 2x is normal for a cautious order.");
+			float fuel = direct.CautiousFuelShare * 100.0F;
+			if (Slider("Fuel kept in hand", &fuel, 100.0F, 150.0F, "%.0f%% of the flight")) {
+				direct.CautiousFuelShare = fuel / 100.0F;
+			}
+			Tip("How much of the fuel a flight needs they wait for at the take-off, never more than the tank holds. 120% is normal for a cautious order.");
+			Slider("Cautious flight speed", &direct.CautiousFlightSpeed, 0.4F, 1.0F, "%.2fx");
+			Tip("How fast they fly, as a multiple of a normal unit's limits. 0.75x is normal for a cautious order.");
+			Slider("Cautious landing speed", &direct.CautiousTouchdown, 2.0F, 5.0F, "%.1f m/s");
+			Tip("How fast they let themselves come down onto the floor. A normal unit lands at 5 m/s; 3.5 is normal for a cautious order.");
+			Slider("Keep clear of enemies", &direct.CautiousEnemyAvoidance, 0.0F, 2.0F, "%.2fx");
+			Tip("How much their routes keep clear of enemies seen on the way, as the Safe routes in game modes setting has it for a flag carrier (and scaled by that setting). 0 takes no notice; 1x is normal.");
+		}
 		if (Plain()) {
 			ImGui::Spacing();
 			if (ToolUI::Button("Reset to normal")) {
 				direct = SettingsMan::DirectOrderTuning();
 			}
-			ImGui::SetItemTooltip("Puts every Battle Behavior setting back to the tuning direct orders were made with.");
+			ImGui::SetItemTooltip("Puts every Battle Behavior setting back to the tuning cautious and direct orders were made with.");
 		}
 	};
 
