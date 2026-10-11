@@ -43,6 +43,8 @@ function NativeCrabAI:Create(Owner)
 
 	-- set shooting skill
 	Members.aimSpeed, Members.aimSkill, Members.skill = SharedBehaviors.GetTeamShootingSkill(Owner.Team);
+	-- Veterancy (Battle Command): the aim each rank sharpens, from these (Update).
+	Members.baseAimSpeed, Members.baseAimSkill, Members.veteranRank = Members.aimSpeed, Members.aimSkill, 0;
 
 	-- the native AI assume the jetpack cannot be destroyed
 	if Owner.Jetpack then
@@ -59,6 +61,14 @@ function NativeCrabAI:Create(Owner)
 end
 
 function NativeCrabAI:Update(Owner)
+	-- Veterancy (Battle Command): each rank aims 15% better and quicker.
+	local rank = Owner:NumberValueExists("VeteranRank") and Owner:GetNumberValue("VeteranRank") or 0;
+	if rank ~= self.veteranRank and self.baseAimSkill then
+		self.veteranRank = rank;
+		self.aimSkill = self.baseAimSkill * (1 - 0.15 * rank);
+		self.aimSpeed = self.baseAimSpeed * (1 - 0.15 * rank);
+	end
+
 	self.Ctrl = Owner:GetController();
 
 	-- Our jetpack might have thrust balancing enabled, so update for our current mass

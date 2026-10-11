@@ -734,6 +734,26 @@ namespace RTE {
 		/// @param energy How big a blast, as an explosion's gib energy (a grenade is a few thousand).
 		void AddAirBlast(const Vector& position, float energy) const;
 
+		/// Sets the air in a cone in front of a point blowing one way, as a fan, a jet or a spell's push does (MG-1); it then travels on as a wave.
+		/// Does nothing while the air or blast waves are off. Thread safe; applied on the next sim update.
+		/// @param position Where it starts, in scene coordinates.
+		/// @param direction Which way it blows; only its direction counts.
+		/// @param strength How hard: about 1 a breath, 10 a gale that flings smoke at full speed.
+		/// @param length How far it reaches, in pixels.
+		/// @param spread How wide the cone is, in degrees (360 every way).
+		void AddAirGust(const Vector& position, const Vector& direction, float strength, float length, float spread) const;
+
+		/// Shoves units, items and particles in a cone away from a point, and sets the air there blowing the same way (MG-1, a telekinetic push).
+		/// The closer and lighter, the harder; solid ground shields what is behind it. Does nothing with Magic & spells off.
+		/// @param origin Where it comes from, in scene coordinates.
+		/// @param direction Which way it pushes; only its direction counts.
+		/// @param power The speed it gives a weightless thing at the origin, in metres a second; negative pulls toward the origin instead.
+		/// @param range How far it reaches, in pixels.
+		/// @param spread How wide the cone is, in degrees (360 every way, a shockwave).
+		/// @param caster What cast it, left alone with whatever it holds. May be nil.
+		/// Applied at the next sim update.
+		void MagicPush(const Vector& origin, const Vector& direction, float power, float range, float spread, const MovableObject* caster) const;
+
 		/// Puts a rope from one point to another, tied at each end to what is there: a unit or a thing, else the ground, else nothing (a loose
 		/// end). Thread safe; made on the next sim update.
 		/// @param type What it's made of: "Rope", "Thread", "Chain", "Steel cable" or "Bungee cord" (any other name is rope).
