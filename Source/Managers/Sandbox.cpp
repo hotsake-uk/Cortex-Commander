@@ -111,9 +111,9 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		s_Queue.push_back(stroke);
 		return true;
 	}
-	if (stroke.Kind == Tool::Command && s_CommandMode == CommandMode::Select) {
+	if (stroke.Kind == Tool::Command && (s_CommandMode == CommandMode::Select || s_CommandMode == CommandMode::Command)) {
 		// (A script's command clicks are orders, as they were before the tool started out selecting: a move, or an attack on an enemy.)
-		s_CommandMode = CommandMode::Move;
+		stroke.OrderMode = static_cast<int>(CommandMode::Move);
 	}
 	if (stroke.Kind == Tool::None) {
 		// "Look around" from a script: put the free camera on the point, and stop following anything.
@@ -503,7 +503,7 @@ void Sandbox::ToggleCommander() {
 		s_FreeCameraStarted = false;
 		s_FollowTarget = UnitRef();
 		s_ToolIndex = ToolIndex(Tool::Command);
-		s_CommandMode = CommandMode::Select;
+		s_CommandMode = CommandMode::Command;
 		s_Open = true;
 		return;
 	}
@@ -533,6 +533,16 @@ bool Sandbox::IsLookingAround() {
 	static const bool testRun = std::getenv("CCCP_HIDE_PANELS") != nullptr;
 	const GameActivity* game = CurrentGame();
 	return IsGodMode() && game && !s_Possessed && s_PlayerEnterPending == 0 && !game->IsFreeBuildMode() && (!testRun || s_Open);
+}
+
+bool Sandbox::TakeEscape() {
+	if (!IsGodMode() || s_Possessed || !(s_Open || IsLookingAround()) || CurrentTool().Kind != Tool::Command || s_CommandMode == CommandMode::Command || ImGui::GetIO().WantTextInput) {
+		return false;
+	}
+	s_CommandMode = CommandMode::Command;
+	s_PatrolDraft.clear();
+	s_BackToCommandAt = -1.0;
+	return true;
 }
 
 bool Sandbox::CapturesWorldClicks() {
@@ -567,7 +577,7 @@ void Sandbox::DrawGUI() {
 			s_Selected.clear();
 			s_FollowTarget = UnitRef();
 			s_ToolIndex = ToolIndex(IsBattleCommand() ? Tool::Command : Tool::Unit);
-			s_CommandMode = CommandMode::Select;
+			s_CommandMode = CommandMode::Command;
 		}
 	} else {
 		if (s_GodViewSetUp) {
@@ -1025,16 +1035,32 @@ void Sandbox::DrawGUI() {
 			}
 		}
 	}
+	// A one-off order's mode back to Command once it's placed, when no second click of a double click can follow.
+	if (s_BackToCommandAt >= 0.0 && !s_Dragging && ImGui::GetTime() >= s_BackToCommandAt) {
+		if (s_CommandMode == s_BackToCommandFrom) {
+			s_CommandMode = CommandMode::Command;
+		}
+		s_BackToCommandAt = -1.0;
+	}
 	if (s_Dragging) {
 		ImVec2 now = io.MousePos;
 		// Defend at (RC-4), and a move or attack-move with Alt held (RC-5), drag the way to face, drawn as an arrow; anything else drags a box
 		// to select.
 		bool defendAt = s_CommandMode == CommandMode::DefendAt && CurrentTool().Kind == Tool::Command;
-		bool facingMove = (s_CommandMode == CommandMode::Move || s_CommandMode == CommandMode::AttackMove) && io.KeyAlt && CurrentTool().Kind == Tool::Command;
+		// (Command mode is as Move where it would move, at the place the drag began; as Select with nothing selected.)
+		const bool commandTool = CurrentTool().Kind == Tool::Command;
+		CommandTarget::Kind commandAt = CommandTarget::Select;
+		if (commandTool && s_CommandMode == CommandMode::Command) {
+			Vector start = g_CameraMan.GetOffset(0) + Vector(s_DragStart.x - ViewOrigin().x, s_DragStart.y - ViewOrigin().y) * ScenePixelsPerWindowPixel();
+			g_SceneMan.WrapPosition(start);
+			commandAt = CommandTargetAt(start).What;
+		}
+		const bool commandMove = s_CommandMode == CommandMode::Command && commandAt == CommandTarget::Move;
+		bool facingMove = (s_CommandMode == CommandMode::Move || s_CommandMode == CommandMode::AttackMove || commandMove) && io.KeyAlt && commandTool;
 		bool dropLine = CurrentTool().Kind == Tool::BattleDropLine;
 		// A double click held and dragged sets how much risk the order takes, from normal at the click to full at the risk distance, and the
 		// way dragged is the way they face when they get there. It takes over from the box, the facing arrow and the patrol clicks.
-		bool riskDrag = CurrentTool().Kind == Tool::Command && s_ClickCount >= 2 && s_CommandMode != CommandMode::Select && s_CommandMode != CommandMode::Patrol;
+		bool riskDrag = commandTool && s_ClickCount >= 2 && s_CommandMode != CommandMode::Select && s_CommandMode != CommandMode::Patrol && !(s_CommandMode == CommandMode::Command && commandAt == CommandTarget::Select);
 		float riskPixels = std::max(1.0F, g_SettingsMan.DirectOrders().RiskDragPixels);
 		float dragLength = std::sqrt((now.x - s_DragStart.x) * (now.x - s_DragStart.x) + (now.y - s_DragStart.y) * (now.y - s_DragStart.y));
 		float risk = std::clamp(dragLength / riskPixels, 0.0F, 1.0F);
@@ -1090,7 +1116,7 @@ void Sandbox::DrawGUI() {
 				stroke.Risk = risk;
 				if (s_CommandMode == CommandMode::DefendAt) {
 					stroke.Count = io.KeyShift ? 11 : 10;
-				} else if (s_CommandMode == CommandMode::Move || s_CommandMode == CommandMode::AttackMove) {
+				} else if (s_CommandMode == CommandMode::Move || s_CommandMode == CommandMode::AttackMove || commandMove) {
 					stroke.Count = io.KeyShift ? 31 : 30;
 				} else {
 					stroke.Count = io.KeyShift ? 1 : 0;
@@ -1125,6 +1151,11 @@ void Sandbox::DrawGUI() {
 			if (give) {
 				// (One click places the order cautiously and two normally; a double click dragged carries its own risk.)
 				stroke.Clicks = stroke.Kind == Tool::Command ? s_ClickCount : 0;
+				if (stroke.Kind == Tool::Command) {
+					// Command mode gives a move facing the way dragged as Move does (FacingMoveSelected).
+					stroke.OrderMode = static_cast<int>(commandMove && stroke.Count >= 30 ? CommandMode::Move : s_CommandMode);
+					BackToCommandAfterOrder(io.KeyShift);
+				}
 				s_Queue.push_back(stroke);
 			}
 		}
