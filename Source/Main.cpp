@@ -334,6 +334,10 @@ void PollSDLEvents() {
 			ImGui_ImplSDL3_ProcessEvent(&sdlEvent);
 			continue;
 		}
+		// Ctrl + mouse wheel with a sandbox brush in hand over the world: the brush's size, not the zoom.
+		if (sdlEvent.type == SDL_EVENT_MOUSE_WHEEL && sdlEvent.wheel.y != 0.0F && g_ActivityMan.IsInActivity() && !inMenus && (SDL_GetModState() & SDL_KMOD_CTRL) && Sandbox::TakeBrushWheel(sdlEvent.wheel.y > 0.0F)) {
+			continue;
+		}
 		// Camera zoom: Ctrl + mouse wheel in any game, or the wheel alone in the sandbox's god view (where it isn't needed for switching weapons).
 		if (sdlEvent.type == SDL_EVENT_MOUSE_WHEEL && sdlEvent.wheel.y != 0.0F && g_ActivityMan.IsInActivity() && !inMenus && ((SDL_GetModState() & SDL_KMOD_CTRL) || Sandbox::WantsWheelZoom())) {
 			g_FrameMan.StepCameraZoom(sdlEvent.wheel.y > 0.0F);

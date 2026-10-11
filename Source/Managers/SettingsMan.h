@@ -534,6 +534,12 @@ namespace RTE {
 		/// Sets SandboxSpawnStats; see there.
 		void SetSandboxSpawnStats(int which) { m_SandboxSpawnStats = std::clamp(which, 0, 2); }
 
+		/// How the sandbox's picture lists (the Spawn tab's and the Build tab's) are sorted: 0 by name, 1 by cost, 2 by health, 3 by mass (the most first).
+		int SandboxSpawnSort() const { return m_SandboxSpawnSort; }
+
+		/// Sets SandboxSpawnSort; see there.
+		void SetSandboxSpawnSort(int which) { m_SandboxSpawnSort = std::clamp(which, 0, 3); }
+
 		/// Whether the sandbox pings where units of the selection's side come under fire (RC-7).
 		bool ShowSandboxAttackPings() const { return m_SandboxAttackPings; }
 
@@ -953,6 +959,7 @@ namespace RTE {
 		std::string m_CommanderBarKey; //!< The key that swaps the sandbox's bar and the Commander Toolbar (see CommanderBarKey).
 		int m_SandboxOrderGlyphs; //!< Which units show their order as a mark (see SandboxOrderGlyphs).
 		int m_SandboxSpawnStats; //!< How the Spawn tab shows units' and items' stats (see SandboxSpawnStats).
+		int m_SandboxSpawnSort; //!< How the sandbox's picture lists are sorted (see SandboxSpawnSort).
 		bool m_SandboxAttackPings; //!< Whether units coming under fire are pinged (see ShowSandboxAttackPings).
 		bool m_SandboxMinimap; //!< Whether the sandbox's map window is shown (see ShowSandboxMinimap).
 		bool m_LightsBySource; //!< Whether the lighting-by-source readout is on (see ShowLightsBySource).

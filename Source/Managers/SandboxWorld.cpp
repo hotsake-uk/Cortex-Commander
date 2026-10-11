@@ -200,16 +200,35 @@ namespace SandboxDetail {
 		}
 	}
 
-	/// Lets the oldest steps of the undo history go, to keep it to c_PaintUndoSteps steps and c_PaintUndoPixels pixels.
-	void TrimUndo() {
+	/// How many pixels a step of the history holds, for c_PaintUndoPixels.
+	size_t StepPixels(const PaintUndoStep& step) {
+		return step.Pixels.size() + step.Background.size();
+	}
+
+	/// Lets the oldest steps of the undo history go, to keep it to c_PaintUndoSteps steps and c_PaintUndoPixels pixels (the redo's steps
+	/// count towards the pixels too, and go first).
+	void TrimHistory() {
 		size_t pixelsKept = 0;
-		for (const PaintUndoStep& kept: s_PaintUndo) {
-			pixelsKept += kept.Pixels.size() + kept.Background.size();
+		for (const std::deque<PaintUndoStep>* history: {&s_PaintUndo, &s_PaintRedo}) {
+			for (const PaintUndoStep& kept: *history) {
+				pixelsKept += StepPixels(kept);
+			}
+		}
+		while (!s_PaintRedo.empty() && (s_PaintRedo.size() > c_PaintUndoSteps || pixelsKept > c_PaintUndoPixels)) {
+			pixelsKept -= StepPixels(s_PaintRedo.front());
+			s_PaintRedo.pop_front();
 		}
 		while (s_PaintUndo.size() > 1 && (s_PaintUndo.size() > c_PaintUndoSteps || pixelsKept > c_PaintUndoPixels)) {
-			pixelsKept -= s_PaintUndo.front().Pixels.size() + s_PaintUndo.front().Background.size();
+			pixelsKept -= StepPixels(s_PaintUndo.front());
 			s_PaintUndo.pop_front();
 		}
+	}
+
+	/// A new step went on the undo history: something new was done, so what the undo took back can't be made again on top of it (the redo
+	/// is forgotten), and the oldest steps go past the limits.
+	void TrimUndo() {
+		s_PaintRedo.clear();
+		TrimHistory();
 	}
 
 	/// Starts a new step of the undo history.
@@ -274,17 +293,62 @@ namespace SandboxDetail {
 		}
 	}
 
-	/// Takes back the newest step of the undo history. A paint step's ground is put back as any change to the terrain is made: the
-	/// pathfinder and the lighting told, hanging ground and liquid round it woken. A placing step's units, craft and things are taken away
-	/// (not your character, nor the unit you are in, nor a thing a unit has picked up since), and its colony building forgotten.
-	void UndoPaint() {
-		while (!s_PaintUndo.empty() && s_PaintUndo.back().Empty()) {
-			s_PaintUndo.pop_back();
-		}
-		if (s_PaintUndo.empty() || !g_SceneMan.GetScene()) {
+	void RecordPaintBox(int left, int top, int right, int bottom) {
+		SLTerrain* terrain = g_SceneMan.GetScene() ? g_SceneMan.GetScene()->GetTerrain() : nullptr;
+		if (!terrain || !s_RecordPaint) {
 			return;
 		}
-		const PaintUndoStep& step = s_PaintUndo.back();
+		top = std::max(top, 0);
+		bottom = std::min(bottom, terrain->GetHeight() - 1);
+		if (!g_SceneMan.SceneWrapsX()) {
+			left = std::max(left, 0);
+			right = std::min(right, terrain->GetWidth() - 1);
+		} else {
+			right = std::min(right, left + terrain->GetWidth() - 1);
+		}
+		for (int x = left; x <= right; ++x) {
+			int column = x;
+			int row = 0;
+			g_SceneMan.WrapPosition(column, row);
+			for (int y = top; y <= bottom; ++y) {
+				RecordPaintPixel(terrain, column, y);
+			}
+		}
+	}
+
+	/// Keeps the ground where what is let go at a point will come to rest, for the undo: poured liquid or loose ground, or a boulder. A box
+	/// as wide as it may spread, from just above the point down to a little below the first solid ground under it (or the most it is kept for).
+	/// @param at The point. @param reach How far it spreads either way. @param above How far above the point it starts.
+	void RecordFallArea(const Vector& at, int reach, int above) {
+		SLTerrain* terrain = g_SceneMan.GetScene() ? g_SceneMan.GetScene()->GetTerrain() : nullptr;
+		if (!terrain || !s_RecordPaint) {
+			return;
+		}
+		// Down the middle to the first solid ground (not liquid, loose ground, or plants that let it through), then a little further for what digs in.
+		constexpr int c_MostFall = 600;
+		const int x = at.GetFloorIntX();
+		const int top = at.GetFloorIntY() - above;
+		int bottom = at.GetFloorIntY();
+		for (; bottom < at.GetFloorIntY() + c_MostFall && bottom < terrain->GetHeight(); ++bottom) {
+			const int material = g_SceneMan.GetTerrMatter(x, bottom);
+			if (material != g_MaterialAir && !FluidSim::IsFlowing(material) && !FluidSim::LetsLiquidsThrough(material)) {
+				break;
+			}
+		}
+		// (At least as far below the point as above it, for what is painted over solid ground.)
+		RecordPaintBox(x - reach, top, x + reach, std::max(bottom, at.GetFloorIntY() + above) + 8);
+	}
+
+	/// Puts the world back as a step of the history holds it, and makes the step that changes it back again: the redo of an undo, or the
+	/// undo of a redo. A paint step's ground is put back as any change to the terrain is made: the pathfinder and the lighting told, hanging
+	/// ground and liquid round it woken. What a step placed is taken away (not your character, nor the unit you are in, nor a thing a unit
+	/// has picked up since), what it took away put back, its springs put back or taken away, and its colony building forgotten.
+	/// @return The step that changes it back, empty if the step can't be made again (it had a colony building, a drop or a rope in it).
+	PaintUndoStep TakeBackStep(PaintUndoStep& step) {
+		PaintUndoStep back;
+		back.Sealed = true;
+		back.LastUpdate = g_TimerMan.GetSimUpdateCount();
+		const bool remade = step.ColonyBuilding < 0 && step.Drop == 0 && step.Rope == 0;
 		for (long id: step.Placed) {
 			MovableObject* object = g_MovableMan.FindObjectByUniqueID(id);
 			if (!object || object->IsSetToDelete() || object->GetRootParent() != object) {
@@ -293,7 +357,34 @@ namespace SandboxDetail {
 			if (object == s_Possessed || object == GetRef(s_PlayerUnit)) {
 				continue;
 			}
+			// (A copy as it is now, for the redo to put back.)
+			if (MovableObject* copy = remade ? dynamic_cast<MovableObject*>(object->Clone()) : nullptr) {
+				back.Removed.emplace_back(copy);
+			}
 			object->SetToDelete(true);
+		}
+		for (std::unique_ptr<MovableObject>& removed: step.Removed) {
+			if (!removed) {
+				continue;
+			}
+			MovableObject* object = removed.release();
+			back.Placed.push_back(object->GetUniqueID());
+			AddObject(object);
+		}
+		step.Removed.clear();
+		for (const WaterSpawner& spring: step.SpringsAdded) {
+			// The spring it put down, if it's still there (one taken away since, with its x, is gone already).
+			auto found = std::find_if(s_WaterSpawners.begin(), s_WaterSpawners.end(), [&spring](const WaterSpawner& placed) { return placed.Position == spring.Position && placed.Liquid == spring.Liquid && placed.Radius == spring.Radius; });
+			if (found != s_WaterSpawners.end()) {
+				back.SpringsRemoved.push_back(*found);
+				s_WaterSpawners.erase(found);
+			}
+		}
+		for (const WaterSpawner& spring: step.SpringsRemoved) {
+			if (s_WaterSpawners.size() < 64) {
+				s_WaterSpawners.push_back(spring);
+				back.SpringsAdded.push_back(spring);
+			}
 		}
 		if (step.ColonyBuilding >= 0) {
 			Colony::Remove(step.ColonyBuilding);
@@ -316,17 +407,75 @@ namespace SandboxDetail {
 			float reach = static_cast<float>(std::max(area.GetWidth(), area.GetHeight())) * 0.75F;
 			// (Undoing a paint takes ground away, which can leave what is over it hanging, as a dig does.)
 			TerrainCollapse::BeginChange(center, reach + 30.0F);
+			// Each pixel as it is now kept for the step back, in the order they are put back, so it puts them back the other way round.
+			back.Pixels.reserve(step.Pixels.size());
 			for (auto pixel = step.Pixels.rbegin(); pixel != step.Pixels.rend(); ++pixel) {
+				back.Pixels.push_back({pixel->X, pixel->Y, static_cast<unsigned char>(terrain->GetMaterialPixel(pixel->X, pixel->Y)), static_cast<unsigned char>(terrain->GetFGColorPixel(pixel->X, pixel->Y))});
 				terrain->SetMaterialPixel(pixel->X, pixel->Y, pixel->Material);
 				terrain->SetFGColorPixel(pixel->X, pixel->Y, pixel->Color);
 			}
+			back.Background.reserve(step.Background.size());
 			for (const UndoBackgroundPixel& pixel: step.Background) {
+				back.Background.push_back({pixel.X, pixel.Y, static_cast<unsigned char>(terrain->GetBGColorPixel(pixel.X, pixel.Y))});
 				terrain->SetBGColorPixel(pixel.X, pixel.Y, pixel.Color);
 			}
+			back.Left = step.Left;
+			back.Top = step.Top;
+			back.Right = step.Right;
+			back.Bottom = step.Bottom;
 			terrain->AddUpdatedMaterialArea(area);
 			FluidSim::Disturb(center, reach + 2.0F);
 		}
+		if (!remade) {
+			return PaintUndoStep();
+		}
+		return back;
+	}
+
+	/// Takes back the newest step of the undo history (TakeBackStep), and keeps what it changed for the redo.
+	void UndoPaint() {
+		while (!s_PaintUndo.empty() && s_PaintUndo.back().Empty()) {
+			s_PaintUndo.pop_back();
+		}
+		if (s_PaintUndo.empty() || !g_SceneMan.GetScene()) {
+			return;
+		}
+		if (const long long poured = s_PaintUndo.back().PouredAt; poured >= 0 && g_TimerMan.GetSimUpdateCount() < poured + 2) {
+			// What it poured is still on its way in (FluidSim and TerrainCollapse take it at their next update, after this one): taken back
+			// now, it would land after. The undo waits for it, an update or two. (With the world held still, the waiting undo lets them through.)
+			QueueSimChange(Tool::UndoTerrain);
+			return;
+		}
+		ClosePaintUndoStep(true);
+		PaintUndoStep redo = TakeBackStep(s_PaintUndo.back());
 		s_PaintUndo.pop_back();
+		// (The step under it is done with: a stroke straight after starts a step of its own rather than joining it.)
+		if (!s_PaintUndo.empty()) {
+			s_PaintUndo.back().Sealed = true;
+		}
+		if (redo.Empty()) {
+			s_PaintRedo.clear();
+		} else {
+			s_PaintRedo.push_back(std::move(redo));
+			TrimHistory();
+		}
+	}
+
+	/// Makes again the newest step the undo took back, and puts it back on the undo history.
+	void RedoPaint() {
+		while (!s_PaintRedo.empty() && s_PaintRedo.back().Empty()) {
+			s_PaintRedo.pop_back();
+		}
+		if (s_PaintRedo.empty() || !g_SceneMan.GetScene()) {
+			return;
+		}
+		ClosePaintUndoStep(true);
+		PaintUndoStep undo = TakeBackStep(s_PaintRedo.back());
+		s_PaintRedo.pop_back();
+		if (!undo.Empty()) {
+			s_PaintUndo.push_back(std::move(undo));
+			TrimHistory();
+		}
 	}
 
 
@@ -2809,6 +2958,46 @@ namespace SandboxDetail {
 					case Tool::BuildTank:
 						s_RecordPaint = true;
 						break;
+					// What is poured, and boulders: the ground where it will come to rest is kept as it is first (RecordFallArea, below), as a
+					// stroke of its own. Not while its simulation is off, when it pours nothing.
+					case Tool::Water:
+					case Tool::Lava:
+					case Tool::Acid:
+					case Tool::Oil:
+					case Tool::Mud:
+					case Tool::Tar:
+					case Tool::Mercury:
+					case Tool::Fuel:
+					case Tool::Cryo:
+					case Tool::Blood:
+					case Tool::PourOther:
+					case Tool::LooseSand:
+					case Tool::LooseSnow:
+					case Tool::Gravel:
+					case Tool::GlassShards:
+					case Tool::Boulder:
+					case Tool::Slab:
+						s_RecordPaint = ToolUnavailableReason(kind) == nullptr;
+						break;
+					// A blast at the point, a click of its own: the ground round it kept as it is first (RecordPaintBox, below).
+					case Tool::Grenade:
+					case Tool::BigBomb:
+					case Tool::Napalm:
+					case Tool::Demolition:
+					case Tool::BunkerBuster:
+					case Tool::Meteor:
+					case Tool::OrbitalBeam:
+						s_RecordPaint = true;
+						s_RecordPlaced = true;
+						PushUndoStep();
+						break;
+					// A Remove click keeps a copy of what it takes; a spring click, the springs it puts down or takes away.
+					case Tool::Remove:
+					case Tool::WaterSpawner:
+					case Tool::ClearWaterSpawners:
+						s_RecordPlaced = true;
+						PushUndoStep();
+						break;
 					// A placing click is a step of its own: what it makes, and the ground a bunker piece or building draws over.
 					case Tool::Structure:
 					case Tool::Barracks:
@@ -2845,6 +3034,50 @@ namespace SandboxDetail {
 				s_RecordPlaced = false;
 			}
 		} recordingPaint(stroke.Kind);
+		if (s_RecordPaint) {
+			// What lands over the next moments, its ground kept before it does: a pour where it may spread and pool, a boulder where it may
+			// land, a blast's crater and what it throws about.
+			bool letGo = true;
+			if (stroke.Kind == Tool::BuildTank) {
+				// (Its walls are kept as they are painted; the water it is filled with, here.)
+				RecordPaintBox(at.GetFloorIntX() - 72, at.GetFloorIntY() - 50, at.GetFloorIntX() + 72, at.GetFloorIntY() + 48);
+			} else if (PoursLiquid(stroke.Kind)) {
+				const int pour = std::max(static_cast<int>(radius * 0.5F), 1);
+				RecordFallArea(at, pour * 2 + 32, pour + 2);
+			} else if (stroke.Kind == Tool::Boulder || stroke.Kind == Tool::Slab) {
+				const int boulder = static_cast<int>(radius * 1.5F) + 4;
+				RecordFallArea(at, boulder * 2 + 16, boulder + 2);
+			} else {
+				letGo = false;
+				int blast = 0;
+				switch (stroke.Kind) {
+					case Tool::Grenade:
+						blast = 40;
+						break;
+					case Tool::BigBomb:
+					case Tool::Napalm:
+						blast = 70;
+						break;
+					case Tool::Demolition:
+						blast = 34 * 2 + 50;
+						break;
+					case Tool::BunkerBuster:
+						blast = 62 * 2 + 50;
+						break;
+					case Tool::Meteor:
+						blast = 100 * 2 + 50;
+						break;
+					default:
+						break;
+				}
+				if (blast > 0) {
+					RecordPaintBox(at.GetFloorIntX() - blast, at.GetFloorIntY() - blast, at.GetFloorIntX() + blast, at.GetFloorIntY() + blast);
+				}
+			}
+			if (letGo && !s_PaintUndo.empty()) {
+				s_PaintUndo.back().PouredAt = g_TimerMan.GetSimUpdateCount();
+			}
+		}
 		if (stroke.Fill >= 0 && IsTerrainBrush(stroke.Kind)) {
 			FillTerrainShape(stroke);
 			return;
@@ -2900,6 +3133,12 @@ namespace SandboxDetail {
 					if (s_Player.Unkillable && object->GetRootParent() == GetRef(s_PlayerUnit)) {
 						g_ConsoleMan.PrintString("SANDBOX: Your character can't be removed while it can't be hurt; turn that off first, or use Remove it on the You tab.");
 						break;
+					}
+					// A copy kept for the undo to put back (not your character, nor the unit you are in: a copy would be neither).
+					if (object->GetRootParent() == object && object != s_Possessed && object != GetRef(s_PlayerUnit) && !s_PaintUndo.empty()) {
+						if (MovableObject* copy = dynamic_cast<MovableObject*>(object->Clone())) {
+							s_PaintUndo.back().Removed.emplace_back(copy);
+						}
 					}
 					object->SetToDelete(true);
 				}
@@ -3093,7 +3332,12 @@ namespace SandboxDetail {
 				GymRemoveUnits();
 				break;
 			case Tool::ClearWaterSpawners:
-				// All of them, or only those that pour the material named.
+				// All of them, or only those that pour the material named (kept for the undo).
+				for (const WaterSpawner& spring: s_WaterSpawners) {
+					if ((stroke.Material.empty() || spring.Liquid == stroke.Material) && !s_PaintUndo.empty()) {
+						s_PaintUndo.back().SpringsRemoved.push_back(spring);
+					}
+				}
 				if (stroke.Material.empty()) {
 					s_WaterSpawners.clear();
 				} else {
@@ -3102,6 +3346,9 @@ namespace SandboxDetail {
 				break;
 			case Tool::UndoTerrain:
 				UndoPaint();
+				break;
+			case Tool::RedoTerrain:
+				RedoPaint();
 				break;
 			case Tool::CollapseArea: {
 				Vector end = stroke.Position + g_SceneMan.ShortestDistance(stroke.Position, stroke.Position2, g_SceneMan.SceneWrapsX());
@@ -3256,6 +3503,9 @@ namespace SandboxDetail {
 					spring.Rate = std::clamp(stroke.Rate, 0.05F, 1.0F);
 					spring.Life = std::max(stroke.Life, 0.0F);
 					s_WaterSpawners.push_back(spring);
+					if (!s_PaintUndo.empty()) {
+						s_PaintUndo.back().SpringsAdded.push_back(spring);
+					}
 				}
 				break;
 			case Tool::LooseSand:
@@ -3390,6 +3640,8 @@ namespace SandboxDetail {
 					depth += 6;
 					PaintTerrain(point, 6, nullptr);
 					if (depth % 72 == 6) {
+						// (Its blasts' ground kept for the undo, as the shaft is by PaintTerrain.)
+						RecordPaintBox(point.GetFloorIntX() - 40, point.GetFloorIntY() - 40, point.GetFloorIntX() + 40, point.GetFloorIntY() + 40);
 						Detonate("Frag Grenade", point);
 						TerrainFire::QueueIgniteArea(point, 14.0F);
 					}
@@ -3675,6 +3927,17 @@ namespace SandboxDetail {
 		}
 		stroke.HasView = true;
 		stroke.ViewMiddleX = g_CameraMan.GetOffset(0).m_X + static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F;
+		// Noted for the Recent row over its list, with what it was used with (not random units, nor your loadouts and squads: they aren't in the list).
+		if (kind == Tool::Effect) {
+			NoteRecent(kind, stroke.Choice < static_cast<int>(EffectKind::Count) ? std::string(c_Effects[std::max(stroke.Choice, 0)].Name) : stroke.Material);
+		} else if (RecentList(kind) == kind) {
+			const Preset* preset = ChosenPreset(kind, stroke.Choice);
+			if (preset && !stroke.Random && stroke.Customs.empty()) {
+				NoteRecent(kind, preset->PresetName);
+			}
+		} else {
+			NoteRecent(kind, kind == Tool::PourOther || kind == Tool::TerrainOther || kind == Tool::Metal ? stroke.Material : std::string());
+		}
 		s_Queue.push_back(stroke);
 	}
 } // namespace SandboxDetail

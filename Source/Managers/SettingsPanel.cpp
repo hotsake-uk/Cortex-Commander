@@ -1762,7 +1762,7 @@ void DebugMan::SettingsGUI() {
 		Toggle("Stroke log", g_SettingsMan.ShowSandboxStrokeLog(), [](bool on) { g_SettingsMan.SetShowSandboxStrokeLog(on); });
 		Tip("The last 20 sandbox tool uses as they are applied, in the top right: the sim update, the tool, where, the side, the orders, and the choice and count. With the Sandbox lines ticked under Debug text in the console, each also goes to the console.");
 		Toggle("Bottom bar's counts, AI, speed and undo", g_SettingsMan.ShowSandboxBarRight(), [](bool on) { g_SettingsMan.SetShowSandboxBarRight(on); });
-		Tip("The right-hand end of the sandbox's bottom bar: each side's unit count, the AI on/paused button, the speed of time, the step (while the window is open) and undo. Off, the bar is shorter; undo is still Ctrl+Z.");
+		Tip("The right-hand end of the sandbox's bottom bar: each side's unit count, the AI on/paused button, the speed of time, the step (while the window is open), undo and redo. Off, the bar is shorter; undo is still Ctrl+Z, redo Ctrl+Y.");
 	};
 
 	const std::pair<const char*, std::function<void()>> categories[] = {
