@@ -74,6 +74,8 @@ namespace SandboxDetail {
 
 	void ForgetBreaches() { s_Breaches.clear(); }
 
+	void LeaveBreaches(const Actor* unit) { TakeOut(unit); }
+
 	void BreachSelected(const std::vector<Actor*>& units, const Vector& point) {
 		std::vector<Actor*> sent;
 		for (Actor* unit: units) {
