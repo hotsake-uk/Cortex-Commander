@@ -586,6 +586,16 @@ namespace SandboxDetail {
 		unit->RemoveNumberValue(c_MedicTag);
 	}
 
+	/// Calls off the Lua AI's own errands that put the order they interrupted back when they end: checking where an enemy was seen, and a
+	/// non-combatant's run from danger. Taken off by an order the player gives, as a fall-back is (CancelRetreatAndFlank): the AI's own
+	/// check for a new order goes by where its waypoints lead, and missed one to near the same place, or one whose waypoint was already
+	/// walked into its route, so the old order came back over the new one when the errand ended.
+	inline void CancelErrands(Actor* unit) {
+		unit->RemoveNumberValue("AIInvestigate");
+		unit->RemoveNumberValue("AIFlee");
+		unit->RemoveNumberValue("AIFleeing");
+	}
+
 	/// A preset the sandbox can spawn.
 	/// How high, in metres, a unit's jetpack has to lift it to count as flying, for "Jetpacks only". Jetpacks that only fake a hop (as
 	/// many mods' units have, from before units could leap) lift a couple of metres; ones that fly lift well over ten.
@@ -2411,6 +2421,7 @@ namespace SandboxDetail {
 	void MoveUnitsTo(std::vector<Actor*> units, const Vector& point, bool attackMove = false, int facing = 0);
 	void FacingMoveSelected(const Vector& point, const Vector& facingPoint, bool shift);
 	void AddNoRoute(Actor* unit, const Vector& destination, const std::string& reason = std::string(), bool dig = false);
+	void ForgetNoRoutes(const Actor* unit);
 	int OrderKindFor(const char* reason);
 	std::vector<DigPlan> DigPlansFor(const std::vector<Actor*>& units, const Vector& point);
 	int DigFailReason(const DigPlan& plan);
@@ -3102,6 +3113,9 @@ namespace SandboxDetail {
 #pragma region Breach (SandboxBreach.cpp)
 	/// The breaches under way forgotten. When out of a game.
 	void ForgetBreaches();
+	/// Takes a unit out of any breach it is digging or following in: given another order that keeps it in squad mode (a guard), it was
+	/// still taken for a follower and put back behind a digger.
+	void LeaveBreaches(const Actor* unit);
 
 	/// The units sent to breach to a point: those with a digger that cuts the way dig there, the rest follow the nearest of them, and once a
 	/// digger is through they all attack. If none can dig there, nobody goes, and the no-route markers say why.

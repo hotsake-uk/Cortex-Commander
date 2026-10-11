@@ -198,6 +198,8 @@ namespace SandboxDetail {
 		Actor::StandingOrder& standing = unit->GetStandingOrder();
 		if (!resend) {
 			ClearSuppress(unit);
+			CancelErrands(unit);
+			ForgetNoRoutes(unit);
 		}
 		standing.Attack = false;
 		standing.HasPost = false;
@@ -312,6 +314,8 @@ namespace SandboxDetail {
 	void HoldUnit(Actor* unit) {
 		DropPlan(unit);
 		ClearSuppress(unit);
+		CancelErrands(unit);
+		ForgetNoRoutes(unit);
 		s_MoveWatch.erase(unit->GetUniqueID());
 		s_GuardPosts.erase(unit->GetUniqueID());
 		s_BattleDefenders.erase(unit->GetUniqueID());
@@ -361,6 +365,8 @@ namespace SandboxDetail {
 			return;
 		}
 		CancelRetreatAndFlank(actor);
+		CancelErrands(actor);
+		ForgetNoRoutes(actor);
 		DropPlan(actor);
 		ClearSuppress(actor);
 		s_MoveWatch.erase(actor->GetUniqueID());
@@ -1055,6 +1061,18 @@ namespace SandboxDetail {
 		}
 	}
 
+	/// Takes a unit off the "no route" markers of its earlier orders (RC-7), as a new order does: the marker no longer says what it is doing,
+	/// and a click on it sent the unit back there over the new order. Not a marker it was put on this update (the new order's own).
+	void ForgetNoRoutes(const Actor* unit) {
+		const long long now = g_TimerMan.GetSimUpdateCount();
+		for (NoRoute& marker: s_NoRoutes) {
+			if (marker.At != now) {
+				std::erase_if(marker.Units, [unit](const UnitRef& ref) { return RefersTo(ref, unit); });
+			}
+		}
+		std::erase_if(s_NoRoutes, [](const NoRoute& marker) { return marker.Units.empty(); });
+	}
+
 	/// Each unit sent somewhere (RC-7): forgotten once it gets there, and marked "no route" if it has stopped going (on no route, with
 	/// nothing left to walk) well short of it a second or more after the order. Old markers fade.
 	void UpdateMoveWatch() {
@@ -1397,6 +1415,7 @@ namespace SandboxDetail {
 			along = next;
 		}
 		HoldUnit(unit);
+		LeaveBreaches(unit);
 		unit->SetAIMode(Actor::AIMODE_SQUAD);
 		unit->AddAIMOWaypoint(leader);
 		unit->SetMovePathToUpdate();
@@ -1936,7 +1955,9 @@ namespace SandboxDetail {
 		switch (plan.Current.Kind) {
 			case PlanKind::Move:
 			case PlanKind::AttackMove:
-				return unit->GetAIMode() != Actor::AIMODE_GOTO && unit->GetWaypointsSize() == 0;
+				// (And the move watch has let it go: there, or stopped short for good, RC-7. A unit that drops out of GOTO for a moment on
+				// the way, a fight or a fall-back, isn't done: taken for done, it was sent on to the next step from wherever it was.)
+				return unit->GetAIMode() != Actor::AIMODE_GOTO && unit->GetWaypointsSize() == 0 && !s_MoveWatch.count(unit->GetUniqueID());
 			case PlanKind::Attack:
 			case PlanKind::Guard:
 				return !target || target->IsDead();
@@ -1954,6 +1975,41 @@ namespace SandboxDetail {
 	/// defend holds where the step before leaves the unit.
 	void PlanStepFor(std::vector<Actor*> units, PlanKind kind, const Vector& place, Actor* target, int facing) {
 		bool toPlace = kind == PlanKind::Move || kind == PlanKind::AttackMove;
+		const auto busy = [](Actor* unit) {
+			// (A move still watched is under way too, whatever its mode this moment: see PlanStepDone.)
+			return unit->GetAIMode() == Actor::AIMODE_GOTO || unit->GetAIMode() == Actor::AIMODE_SQUAD || s_MoveWatch.count(unit->GetUniqueID()) ||
+			       std::any_of(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); });
+		};
+		if (toPlace) {
+			// Those on foot with nothing under way and nothing queued go now, as the plain move or attack-move it is (formation, spots they
+			// can get to, kept together): the step that starts a plan is carried out as if nothing followed it. Their plans start from it.
+			std::vector<Actor*> now;
+			std::erase_if(units, [&now, &busy](Actor* unit) {
+				if (unit->IsPlayerControlled() || dynamic_cast<const AVehicle*>(unit) || dynamic_cast<const ACShip*>(unit)) {
+					return false;
+				}
+				auto plan = s_Plans.find(unit->GetUniqueID());
+				if ((plan != s_Plans.end() && (plan->second.Running || !plan->second.Steps.empty())) || busy(unit)) {
+					return false;
+				}
+				now.push_back(unit);
+				return true;
+			});
+			if (!now.empty()) {
+				MoveUnitsTo(now, place, kind == PlanKind::AttackMove, facing);
+				for (Actor* unit: now) {
+					Plan& plan = s_Plans[unit->GetUniqueID()];
+					plan.Unit = MakeRef(unit);
+					plan.Running = true;
+					plan.Current = PlanStep();
+					plan.Current.Kind = kind;
+					plan.Current.Facing = facing;
+					auto order = std::find_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); });
+					plan.Current.Place = order != s_PendingOrders.end() ? order->Waypoint : place;
+					plan.Started = g_TimerMan.GetSimUpdateCount();
+				}
+			}
+		}
 		std::vector<Vector> spots = toPlace ? StandingSpots(place, static_cast<int>(units.size())) : std::vector<Vector>();
 		if (toPlace) {
 			std::sort(units.begin(), units.end(), [&place](Actor* a, Actor* b) {
@@ -1979,12 +2035,12 @@ namespace SandboxDetail {
 			} else {
 				step.Place = target ? target->GetPos() : place;
 			}
-			bool busy = unit->GetAIMode() == Actor::AIMODE_GOTO || unit->GetAIMode() == Actor::AIMODE_SQUAD || std::any_of(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); });
-			if (!plan.Running && plan.Steps.empty() && busy) {
-				// What it is doing now is the plan's first step, done when it gets there.
+			if (!plan.Running && plan.Steps.empty() && busy(unit)) {
+				// What it is doing now is the plan's first step, done when it gets there: left as it is, as if nothing followed it.
 				plan.Running = true;
 				plan.Current = PlanStep();
-				plan.Current.Place = unit->GetLastAIWaypoint();
+				auto watch = s_MoveWatch.find(unit->GetUniqueID());
+				plan.Current.Place = watch != s_MoveWatch.end() ? watch->second.Destination : unit->GetLastAIWaypoint();
 				// (A flying ship's place is its autopilot's, not a waypoint: without this the step under way was drawn where it was when the
 				// step was queued, behind it as it flew on.)
 				if (const ACShip* ship = dynamic_cast<const ACShip*>(unit)) {
