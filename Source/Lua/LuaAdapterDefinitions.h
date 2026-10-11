@@ -42,6 +42,7 @@
 #include "ACRocket.h"
 #include "Actor.h"
 #include "ADoor.h"
+#include "AMover.h"
 #include "AVehicle.h"
 #include "AEmitter.h"
 #include "AEJetpack.h"
@@ -117,6 +118,7 @@ namespace RTE {
 		LuaEntityCreateFunctionsDeclarationsForType(Turret);
 		LuaEntityCreateFunctionsDeclarationsForType(Actor);
 		LuaEntityCreateFunctionsDeclarationsForType(ADoor);
+		LuaEntityCreateFunctionsDeclarationsForType(AMover);
 		LuaEntityCreateFunctionsDeclarationsForType(AVehicle);
 		LuaEntityCreateFunctionsDeclarationsForType(AHuman);
 		LuaEntityCreateFunctionsDeclarationsForType(ACrab);
@@ -158,6 +160,7 @@ namespace RTE {
 		LuaEntityCloneFunctionDeclarationForType(Turret);
 		LuaEntityCloneFunctionDeclarationForType(Actor);
 		LuaEntityCloneFunctionDeclarationForType(ADoor);
+		LuaEntityCloneFunctionDeclarationForType(AMover);
 		LuaEntityCloneFunctionDeclarationForType(AVehicle);
 		LuaEntityCloneFunctionDeclarationForType(AHuman);
 		LuaEntityCloneFunctionDeclarationForType(ACrab);
@@ -204,6 +207,7 @@ namespace RTE {
 		LuaEntityCastFunctionsDeclarationsForType(Turret);
 		LuaEntityCastFunctionsDeclarationsForType(Actor);
 		LuaEntityCastFunctionsDeclarationsForType(ADoor);
+		LuaEntityCastFunctionsDeclarationsForType(AMover);
 		LuaEntityCastFunctionsDeclarationsForType(AVehicle);
 		LuaEntityCastFunctionsDeclarationsForType(AHuman);
 		LuaEntityCastFunctionsDeclarationsForType(ACrab);
@@ -246,6 +250,7 @@ namespace RTE {
 		LuaPropertyOwnershipSafetyFakerFunctionDeclaration(AEmitter, SoundContainer, SetBurstSound);
 		LuaPropertyOwnershipSafetyFakerFunctionDeclaration(AEmitter, SoundContainer, SetEndSound);
 		LuaPropertyOwnershipSafetyFakerFunctionDeclaration(ADoor, Attachable, SetDoor);
+		LuaPropertyOwnershipSafetyFakerFunctionDeclaration(AMover, Attachable, SetDeck);
 		LuaPropertyOwnershipSafetyFakerFunctionDeclaration(Arm, HeldDevice, SetHeldDevice);
 		LuaPropertyOwnershipSafetyFakerFunctionDeclaration(Leg, Attachable, SetFoot);
 		LuaPropertyOwnershipSafetyFakerFunctionDeclaration(Actor, PieMenu, SetPieMenu);

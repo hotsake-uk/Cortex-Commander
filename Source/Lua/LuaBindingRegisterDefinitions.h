@@ -56,6 +56,7 @@ namespace RTE {
 	PER_LUA_BINDING(ACraft) \
 	PER_LUA_BINDING(AHuman) \
 	PER_LUA_BINDING(ADoor) \
+	PER_LUA_BINDING(AMover) \
 	PER_LUA_BINDING(AVehicle) \
 	/* MOSRotating-Derived */ \
 	PER_LUA_BINDING(Actor) \
@@ -219,6 +220,7 @@ namespace RTE {
 		LuaBindingRegisterFunctionDeclarationForType(Actor);
 		LuaBindingRegisterFunctionDeclarationForType(ActorSighting);
 		LuaBindingRegisterFunctionDeclarationForType(ADoor);
+		LuaBindingRegisterFunctionDeclarationForType(AMover);
 		LuaBindingRegisterFunctionDeclarationForType(AVehicle);
 		LuaBindingRegisterFunctionDeclarationForType(AEmitter);
 		LuaBindingRegisterFunctionDeclarationForType(AEJetpack);

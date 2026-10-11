@@ -312,7 +312,12 @@ namespace RTE {
 
 		/// Sets this ACraft's hatch opening sound. Ownership IS transferred!
 		/// @param newSound The new SoundContainer for this ACraft's hatch opening sound.
-		void SetHatchOpenSound(SoundContainer* newSound) { m_HatchOpenSound = newSound; }
+		void SetHatchOpenSound(SoundContainer* newSound) {
+			m_HatchOpenSound = newSound;
+			if (m_HatchOpenSound) {
+				m_HatchOpenSound->SetDefaultMixCategory(AudioMan::MIX_ENGINES);
+			}
+		}
 
 		/// Gets this ACraft's hatch closing sound. Ownership is NOT transferred!
 		/// @return The SoundContainer for this ACraft's hatch closing sound.
@@ -320,7 +325,12 @@ namespace RTE {
 
 		/// Sets this ACraft's hatch closing sound. Ownership IS transferred!
 		/// @param newSound The new SoundContainer for this ACraft's hatch closing sound.
-		void SetHatchCloseSound(SoundContainer* newSound) { m_HatchCloseSound = newSound; }
+		void SetHatchCloseSound(SoundContainer* newSound) {
+			m_HatchCloseSound = newSound;
+			if (m_HatchCloseSound) {
+				m_HatchCloseSound->SetDefaultMixCategory(AudioMan::MIX_ENGINES);
+			}
+		}
 
 		/// Gets this ACraft's crash sound. Ownership is NOT transferred!
 		/// @return The SoundContainer for this ACraft's crash sound.
@@ -328,7 +338,12 @@ namespace RTE {
 
 		/// Sets this ACraft's crash sound. Ownership IS transferred!
 		/// @param newSound The new SoundContainer for this ACraft's crash sound.
-		void SetCrashSound(SoundContainer* newSound) { m_CrashSound = newSound; }
+		void SetCrashSound(SoundContainer* newSound) {
+			m_CrashSound = newSound;
+			if (m_CrashSound) {
+				m_CrashSound->SetDefaultMixCategory(AudioMan::MIX_ENGINES);
+			}
+		}
 
 		/// Protected member variable and method declarations
 	protected:
