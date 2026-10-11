@@ -100,6 +100,8 @@ namespace SandboxDetail {
 			visit("FogOfWar", mode.FogOfWar);
 			visit("FieldBrain", mode.FieldBrain);
 			visit("FieldBrainRange", mode.FieldBrainRange);
+			visit("HotSeat", mode.HotSeat);
+			visit("TurnSeconds", mode.TurnSeconds);
 			visit("MovingSpawns", mode.MovingSpawns);
 			visit("SpawnOrders", mode.SpawnOrders);
 			visit("ZoneSpawnOrders", mode.ZoneSpawnOrders);

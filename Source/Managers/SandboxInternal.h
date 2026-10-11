@@ -744,6 +744,9 @@ namespace SandboxDetail {
 		bool FieldBrain = false; //!< Battle Command: your brain is on the field at your base; if it dies you lose, and orders only reach your
 		                         //!< units within FieldBrainRange of it (BattleFieldBrain.cpp).
 		int FieldBrainRange = 900; //!< Its command range, in pixels.
+		bool HotSeat = false; //!< Battle Command: two players on one screen, each commanding one of the teams ticked "You command this team" in
+		                      //!< turn (BattleHotSeat.cpp).
+		int TurnSeconds = 30; //!< Hot-seat: seconds of the battle each turn.
 		bool MovingSpawns = false; //!< Every mode: during the game, the player can move the spawn zones of a team they command, behind the spawn line (BattleEditMouse). Chosen before it starts.
 		std::array<bool, c_Sides> PlayerCommands{}; //!< Every mode: each team the player commands. Its units come in on hold ground with no orders (or its spawn order) and
 		                                            //!< no job from the mode, for the player to command (as in an RTS); the rest of the mode (spawns, scoring) is as for any team.
@@ -2721,6 +2724,14 @@ namespace SandboxDetail {
 
 	/// The brain's command range, a mark over it, and a mark on the selected units out of range. Call from the ImGui frame, with the order marks.
 	void DrawFieldBrain(ImDrawList* drawList);
+#pragma endregion
+
+#pragma region Hot-seat (BattleHotSeat.cpp)
+	/// The team whose turn it is in a hot-seat game, or -1 with none on.
+	int HotSeatSide();
+
+	/// A hot-seat game's turns: the cover between them and the turn's clock. Call from the ImGui frame, after the other windows.
+	void DrawHotSeat();
 #pragma endregion
 
 #pragma region Re-arming (BattleSupply.cpp)

@@ -67,6 +67,7 @@ sources += files(
 'SandboxBuild.cpp',
 'BattleSupply.cpp',
 'BattleFieldBrain.cpp',
+'BattleHotSeat.cpp',
 'ControlLink.cpp',
 'SettingsMan.cpp',
 'ThreadMan.cpp',

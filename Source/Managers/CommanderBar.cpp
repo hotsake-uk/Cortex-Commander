@@ -8,6 +8,9 @@ namespace SandboxDetail {
 		if (!Sandbox::IsBattleCommand() || !s_CommanderBar) {
 			return -1;
 		}
+		if (int seat = HotSeatSide(); seat >= 0) {
+			return seat;
+		}
 		const BattleModeSettings& settings = s_ModeRun.Running ? s_ModeRun.Settings : s_ModeSetup;
 		for (int side = 0; side < c_Sides; ++side) {
 			if (settings.PlayerCommands[side] && settings.Plays[side]) {
@@ -33,7 +36,8 @@ namespace SandboxDetail {
 			setup.Mode = BattleMode::CaptureTheFlag;
 			changed = true;
 		}
-		// You command one team, always one in the battle: ticking another moves you to it, and with none ticked it's the first one in.
+		// You command one team, always one in the battle: ticking another moves you to it, and with none ticked it's the first one in. (Two
+		// with hot-seat: one for each player.)
 		static int yours = -1;
 		int ticked = 0;
 		int firstIn = -1;
@@ -43,7 +47,7 @@ namespace SandboxDetail {
 				firstIn = side;
 			}
 		}
-		if (ticked > 1 && yours >= 0 && yours < c_Sides && setup.PlayerCommands[yours]) {
+		if (ticked > (setup.HotSeat ? 2 : 1) && yours >= 0 && yours < c_Sides && setup.PlayerCommands[yours]) {
 			setup.PlayerCommands[yours] = false;
 			changed = true;
 		}
@@ -270,6 +274,24 @@ namespace SandboxDetail {
 					SendBattleMode();
 				}
 				ImGui::SetItemTooltip("How far from your brain your orders reach.");
+			}
+			if (ToolUI::Checkbox("Two players (hot-seat)", &s_ModeSetup.HotSeat)) {
+				SendBattleMode();
+			}
+			ImGui::SetItemTooltip("Two players on one screen. Tick \"You command this team\" on two teams: each player gets the battle in turn, live, commanding only\ntheir own team (and with fog of war, seeing only what it sees). Between turns the game pauses and the screen is covered for the hand-over.");
+			if (s_ModeSetup.HotSeat) {
+				ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0F);
+				if (ImGui::SliderInt("Turn", &s_ModeSetup.TurnSeconds, 5, 180, "%d s")) {
+					SendBattleMode();
+				}
+				ImGui::SetItemTooltip("Seconds of the battle each player gets a turn. Pausing doesn't use them up.");
+				int commanded = 0;
+				for (int side = 0; side < c_Sides; ++side) {
+					commanded += s_ModeSetup.PlayerCommands[side] && s_ModeSetup.Plays[side] ? 1 : 0;
+				}
+				if (commanded < 2) {
+					ImGui::TextColored(ImVec4(1.0F, 0.75F, 0.3F, 1.0F), "Tick \"You command this team\" on a second team.");
+				}
 			}
 			if (BattleReportReady()) {
 				if (ToolUI::Button("After-battle report", ImVec2(-1.0F, 0.0F))) {
