@@ -1235,7 +1235,7 @@ void DebugMan::SettingsGUI() {
 			if (Slider("Straight flight from", &straight, 50.0F, 100.0F, "%.0f%% risk")) {
 				direct.StraightFlightRisk = straight / 100.0F;
 			}
-			Tip("From this much risk, a unit with a jetpack lights it and flies straight at the place it was sent, when the air between is open and one tank gets it there, instead of taking the route. 90% is normal.");
+			Tip("From this much risk, a unit with a jetpack lights it and flies at the place it was sent, straight or up and over what is in the way, a long way off on a few such flights, instead of taking the route. 90% is normal.");
 		}
 		Heading("Direct (full drag): jetpack");
 		{
