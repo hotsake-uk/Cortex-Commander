@@ -33,6 +33,7 @@
 #include "ActorWater.h"
 #include "Controller.h"
 #include "Sandbox.h"
+#include "MapBrowser.h"
 #include "ModernHUD.h"
 #include "ActionMenu.h"
 #include "TimerMan.h"
@@ -490,6 +491,7 @@ void DebugMan::DrawImGui() {
 	settingsWereOpen = m_ShowWorldDebug;
 
 	Sandbox::DrawGUI();
+	MapBrowser::DrawGUI();
 	UpdateFreeze();
 
 	if (m_ShowPhotoMode) {

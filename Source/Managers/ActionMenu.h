@@ -10,14 +10,16 @@ namespace RTE {
 	/// The action menu (RC-12): what holding right click opens in place of a wheel. A list above the pointer, on one layer, in the sandbox and
 	/// settings style: headings across a panel, and under each its choices side by side, the one in use lit in gold.
 	///
-	/// On a unit the player is playing it stands in for the pie wheel as the unit menu: its inventory (what it has in hand, lit, and what it
-	/// carries, taken in hand when picked, with the wheel's inventory slices), its actions (a vehicle's handbrake, the wheel's other slices,
-	/// its sub-menus' slices under their own headings) and its rules (weapons: fire at will, return fire, hold fire; movement: as ordered,
-	/// engage, move only, hold ground; temperament). With the "Unit menu opens on a click" setting a right click leaves it up till a click away
-	/// from it or another right click; otherwise it is up while the button is held. Time runs at the "Time while the unit menu is up" speed.
-	/// Moving the mouse moves the menu's own pointer (the game keeps the mouse for aiming); a left click picks, and so does letting go of the
-	/// right button over a row the pointer was moved to. A slice picked is handed to the unit's PieMenu (PieMenu::QueueSliceActivation),
-	/// which carries it out on its next update just as a pick on the wheel.
+	/// On a unit the player is playing it stands in for the pie wheel as the unit menu: a square ring of boxes round the unit, which sits in an
+	/// empty square in the middle and is followed as it moves. The boxes nearest the unit are what it does (its quick actions, a vehicle's
+	/// handbrake, the wheel's slices and its sub-menus'), then what it carries (in hand, lit, then the rest, taken in hand when picked, with
+	/// the wheel's inventory slices), and furthest out its rules (weapons, movement, temperament: one box each, going on to the next choice when
+	/// picked). Each box has the slice's icon or the item's picture beside its label, and the one under the pointer is named in full over
+	/// the ring. With the "Unit menu opens on a click" setting a right click leaves it up till a click off the boxes or another right click;
+	/// otherwise it is up while the button is held. Time runs at the "Time while the unit menu is up" speed. Moving the mouse moves the
+	/// menu's own pointer (the game keeps the mouse for aiming); a left click picks, and so does letting go of the right button over a box
+	/// the pointer was moved to. A slice picked is handed to the unit's PieMenu (PieMenu::QueueSliceActivation), which carries it out on its
+	/// next update just as a pick on the wheel.
 	/// The wheel comes back with the "Classic pie wheel" setting; a gamepad, and players after the first, always have it (see
 	/// PieMenu::IsReplacedByActionMenu). The sandbox's command ring is laid out and drawn with the same pieces (MenuLayout, DrawMenu).
 	class ActionMenu {
@@ -41,6 +43,7 @@ namespace RTE {
 			bool Chosen = false; //!< The choice in use, lit in gold.
 			bool Enabled = true; //!< False for one shown greyed out.
 			Kind Section = Kind::Command; //!< The kind of section it is in (a heading: the kind it starts).
+			const void* Picture = nullptr; //!< A BITMAP (8-bit, the game's palette) drawn at its left: the unit menu's slice icons and item sprites. Not owned.
 		};
 
 		/// Lays out a list menu: headings across the panel, and rows of cells side by side under them. Fixed sizes, no text measured, so it
