@@ -173,6 +173,7 @@ void SettingsMan::Clear() {
 	m_SandboxStrokeLog = false;
 	m_SandboxSpotReach = false;
 	m_SandboxGroupBadges = true;
+	m_CommanderBarKey = "F11";
 	m_SandboxOrderGlyphs = 1;
 	m_SandboxSpawnStats = 1;
 	m_SandboxAttackPings = true;
@@ -800,6 +801,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SandboxStrokeLog", { reader >> m_SandboxStrokeLog; });
 	MatchProperty("SandboxSpotReach", { reader >> m_SandboxSpotReach; });
 	MatchProperty("SandboxGroupBadges", { reader >> m_SandboxGroupBadges; });
+	MatchProperty("CommanderBarKey", { m_CommanderBarKey = reader.ReadPropValue(); });
 	MatchProperty("SandboxOrderGlyphs", { int which = 1; reader >> which; SetSandboxOrderGlyphs(which); });
 	MatchProperty("SandboxSpawnStats", { int which = 1; reader >> which; SetSandboxSpawnStats(which); });
 	MatchProperty("SandboxAttackPings", { reader >> m_SandboxAttackPings; });
@@ -1341,6 +1343,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 		writer.NewPropertyWithValue("SmartBuyMenuNavigation", m_EnableSmartBuyMenuNavigation);
 		writer.NewPropertyWithValue("AutomaticGoldDeposit", m_AutomaticGoldDeposit);
 		writer.NewPropertyWithValue("SandboxGroupBadges", m_SandboxGroupBadges);
+		writer.NewPropertyWithValue("CommanderBarKey", m_CommanderBarKey);
 		writer.NewPropertyWithValue("SandboxOrderGlyphs", m_SandboxOrderGlyphs);
 		writer.NewPropertyWithValue("SandboxSpawnStats", m_SandboxSpawnStats);
 		writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
@@ -1520,6 +1523,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("EndlessMetaGameMode", m_EndlessMetaGameMode);
 	writer.NewPropertyWithValue("EnableCrabBombs", m_EnableCrabBombs);
 	writer.NewPropertyWithValue("SandboxGroupBadges", m_SandboxGroupBadges);
+	writer.NewPropertyWithValue("CommanderBarKey", m_CommanderBarKey);
 	writer.NewPropertyWithValue("SandboxOrderGlyphs", m_SandboxOrderGlyphs);
 	writer.NewPropertyWithValue("SandboxSpawnStats", m_SandboxSpawnStats);
 	writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);

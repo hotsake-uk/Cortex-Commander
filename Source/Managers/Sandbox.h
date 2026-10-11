@@ -35,8 +35,15 @@ namespace RTE {
 		/// with the Commander Toolbar. The sandbox's window (F7) is there too while it's in development, without its Battle tab.
 		static bool IsBattleCommand();
 
-		/// Battle Command, while it's in development (F11): swaps the Commander Toolbar along the bottom for the sandbox's own bar, and back.
+		/// The Sandbox game mode, and Battle Command while it's in development (the Commander Toolbar key, F11 unless rebound): swaps the
+		/// sandbox's own bar along the bottom for Battle Command's Commander Toolbar, and back.
 		static void ToggleCommanderBar();
+
+		/// Whether a key (an SDL scancode) is the one set to swap the sandbox's bar and the Commander Toolbar (CommanderBarKey in the settings).
+		static bool IsCommanderBarKey(int scancode);
+
+		/// The name of the key that swaps the sandbox's bar and the Commander Toolbar, as the hints show it ("F11").
+		static std::string CommanderBarKeyName();
 
 		/// Whether the sandbox holds the world still (god mode with its window open and "pause in menus" on), photo mode or not.
 		static bool WantsWorldPaused();
