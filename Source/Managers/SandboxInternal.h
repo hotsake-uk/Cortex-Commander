@@ -1308,6 +1308,7 @@ namespace SandboxDetail {
 		bool EnterOnClose = true; //!< There is a character at all: putting the tools away puts you in it. Off, you only ever look around.
 		bool Neutral = false; //!< On no side as far as the AI goes: its units take no notice of the character.
 		bool InheritKit = false; //!< Whether the character also carries what a unit of its base class (Body) is spawned with, besides the kit.
+		bool RemoveOnLeave = true; //!< Leaving play mode takes the character away (P makes a new one). Off, it stays where you left it.
 	};
 	inline PlayerSetup s_Player;
 
