@@ -61,6 +61,9 @@ namespace SandboxDetail {
 			}
 		}
 
+		/// Whether a team earns points: one you command, or (Battle Command) an enemy team whose AI commander spends them.
+		bool Earns(int side) { return BattlePlayerCommands(side) || (Sandbox::IsBattleCommand() && BattleHasCommander(side) && g_SettingsMan.AIEnemyBuysReinforcements()); }
+
 		bool AnyCommanded() {
 			for (int side = 0; side < c_Sides; ++side) {
 				if (BattlePlayerCommands(side)) {
@@ -84,6 +87,7 @@ namespace SandboxDetail {
 		ForgetPowers();
 		ForgetVeterans();
 		ForgetBattleReport();
+		ForgetEnemyCommander();
 	}
 
 	void UpdateReinforcements() {
@@ -100,7 +104,7 @@ namespace SandboxDetail {
 			const int score = s_ModeRun.Score[side];
 			const int scored = score - s_LastScore[side];
 			s_LastScore[side] = score;
-			if (!BattlePlayerCommands(side)) {
+			if (!Earns(side)) {
 				s_LastFunds[side] = -1.0F;
 				continue;
 			}
@@ -110,8 +114,8 @@ namespace SandboxDetail {
 				points.Points += earned;
 				points.FromObjectives += earned;
 			}
-			// Gold dug goes into the team's funds.
-			if (game) {
+			// Gold dug goes into the team's funds. (Only yours: an AI team's funds are the game's to top up.)
+			if (game && BattlePlayerCommands(side)) {
 				float funds = game->GetTeamFunds(side);
 				if (s_LastFunds[side] >= 0.0F && funds > s_LastFunds[side] && funds - s_LastFunds[side] < c_MostGoldAtOnce) {
 					float gold = funds - s_LastFunds[side];
@@ -151,7 +155,7 @@ namespace SandboxDetail {
 			}
 			NoteReportKill(killerID, id);
 			NoteVeteranKill(killerID, id);
-			if (killer >= 0 && BattlePlayerCommands(killer)) {
+			if (killer >= 0 && Earns(killer)) {
 				CommandPoints& points = s_CommandPoints[killer];
 				float earned = seen.Value * c_KillShare;
 				points.Points += earned;
@@ -175,8 +179,16 @@ namespace SandboxDetail {
 		if (side < 0 || side >= c_Sides || !BattlePlayerCommands(side)) {
 			return;
 		}
-		const int card = std::clamp(stroke.Choice, 0, c_ReinforcementCardCount - 1);
-		const int count = std::clamp(stroke.Radius, 1, 5);
+		CallReinforcements(side, stroke.Choice, stroke.Radius, stroke.Craft, stroke.Position);
+	}
+
+	bool CallReinforcements(int side, int card, int count, int craft, const Vector& where) {
+		if (side < 0 || side >= c_Sides) {
+			return false;
+		}
+		card = std::clamp(card, 0, c_ReinforcementCardCount - 1);
+		count = std::clamp(count, 1, 5);
+		craft = std::clamp(craft, 0, static_cast<int>(std::size(c_Crafts)) - 1);
 		const int moduleID = ReinforcementModule(s_BattleTeams[side].Settings.Factions);
 		std::vector<Actor*> units;
 		float cost = 0.0F;
@@ -196,20 +208,23 @@ namespace SandboxDetail {
 			for (Actor* unit: units) {
 				delete unit;
 			}
-			Note(units.empty() ? std::string("No ") + c_ReinforcementCards[card].Name + " to be had for " + c_SideNames[side] : std::string("Not enough points for that"));
-			return;
+			if (BattlePlayerCommands(side)) {
+				Note(units.empty() ? std::string("No ") + c_ReinforcementCards[card].Name + " to be had for " + c_SideNames[side] : std::string("Not enough points for that"));
+			}
+			return false;
 		}
-		// Yours to command once out: no job from the mode, holding where they land.
+		// Yours to command once out: no job from the mode, holding where they land. (An AI team's: the mode's job, as its own waves get.)
 		ModeUnitsMade(side, units);
-		Vector at = stroke.Position;
+		Vector at = where;
 		g_SceneMan.WrapPosition(at);
-		const float paid = DropUnits(units, side, at.m_X, stroke.Craft, false);
+		const float paid = DropUnits(units, side, at.m_X, craft, false);
 		if (paid > 0.0F) {
 			points.Points -= paid;
 			points.Spent += paid;
 			points.Called += count;
-			Note(std::string(c_SideNames[side]) + ": " + (count > 1 ? std::to_string(count) + " " + c_ReinforcementCards[card].Name + "s" : std::string("a ") + c_ReinforcementCards[card].Name) + " on the way by " + c_Crafts[std::clamp(stroke.Craft, 0, static_cast<int>(std::size(c_Crafts)) - 1)].Label);
+			Note(std::string(c_SideNames[side]) + ": " + (count > 1 ? std::to_string(count) + " " + c_ReinforcementCards[card].Name + "s" : std::string("a ") + c_ReinforcementCards[card].Name) + " on the way by " + c_Crafts[craft].Label);
 		}
+		return paid > 0.0F;
 	}
 
 	float ReinforcementCost(int card, int side) {

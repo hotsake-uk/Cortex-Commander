@@ -783,6 +783,7 @@ void Sandbox::DrawGUI() {
 			DrawPowerTarget();
 			DrawVeterans();
 			DrawMorale();
+			DrawEnemyStrikes();
 		}
 	}
 

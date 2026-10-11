@@ -59,6 +59,7 @@ sources += files(
 'Veterancy.cpp',
 'BattleReport.cpp',
 'BattleMorale.cpp',
+'BattleEnemy.cpp',
 'ControlLink.cpp',
 'SettingsMan.cpp',
 'ThreadMan.cpp',

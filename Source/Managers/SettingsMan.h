@@ -292,6 +292,10 @@ namespace RTE {
 
 		/// Whether AI units wait at a take-off for the fuel the flight needs (on, as designed), or go with what is in the tank.
 		bool AIWaitsForFuel() const { return m_AIWaitForFuel; }
+		/// Battle Command: whether an enemy team's AI commander spends its points on reinforcements, as you do.
+		bool AIEnemyBuysReinforcements() const { return m_AIEnemyBuysReinforcements; }
+		/// Battle Command: whether an enemy team's AI commander uses commander powers, as you do.
+		bool AIEnemyUsesPowers() const { return m_AIEnemyUsesPowers; }
 
 		/// How units behave on a cautious or a direct order (an RTS order placed with one click, or three or four, Actor::StandingOrder::Direct):
 		/// the "Battle Behavior" settings. Each
@@ -588,6 +592,8 @@ namespace RTE {
 
 		/// Sets whether AI units wait for fuel before they jet.
 		void SetAIWaitsForFuel(bool wait) { m_AIWaitForFuel = wait; }
+		void SetAIEnemyBuysReinforcements(bool on) { m_AIEnemyBuysReinforcements = on; }
+		void SetAIEnemyUsesPowers(bool on) { m_AIEnemyUsesPowers = on; }
 
 		/// Sets whether AI units use vehicles.
 		void SetAIUsesVehicles(bool use) { m_AIUsesVehicles = use; }
@@ -870,6 +876,8 @@ namespace RTE {
 		bool m_AICoverLiesFlat; //!< See AICoverLiesFlat.
 		bool m_AIBreaksWhenShaken; //!< See AIBreaksWhenShaken.
 		bool m_AIWaitForFuel; //!< Whether AI units wait for fuel before they jet (see AIWaitsForFuel).
+		bool m_AIEnemyBuysReinforcements; //!< See AIEnemyBuysReinforcements.
+		bool m_AIEnemyUsesPowers; //!< See AIEnemyUsesPowers.
 		bool m_AIUsesVehicles; //!< Whether AI units use vehicles (see AIUsesVehicles).
 		bool m_DeadCrewFallOut; //!< Whether crew killed in a vehicle fall out of it (see DeadCrewFallOut).
 		DirectOrderTuning m_DirectOrders; //!< How units behave on a direct order (see DirectOrders).

@@ -148,6 +148,8 @@ void SettingsMan::Clear() {
 	m_AISpawnDiggerType = 1;
 	m_AISteadyBeforeJet = true;
 	m_AIWaitForFuel = true;
+	m_AIEnemyBuysReinforcements = true;
+	m_AIEnemyUsesPowers = true;
 	m_AIUsesVehicles = true;
 	m_AICoverDigs = true;
 	m_AICoverFallsBack = true;
@@ -734,6 +736,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AISpawnDiggerType", { int type = 1; reader >> type; SetAISpawnDiggerType(type); });
 	MatchProperty("AISteadyBeforeJet", { reader >> m_AISteadyBeforeJet; });
 	MatchProperty("AIWaitForFuel", { reader >> m_AIWaitForFuel; });
+	MatchProperty("AIEnemyBuysReinforcements", { reader >> m_AIEnemyBuysReinforcements; });
+	MatchProperty("AIEnemyUsesPowers", { reader >> m_AIEnemyUsesPowers; });
 	MatchProperty("AIUsesVehicles", { reader >> m_AIUsesVehicles; });
 	MatchProperty("AICoverDigs", { reader >> m_AICoverDigs; });
 	MatchProperty("AICoverFallsBack", { reader >> m_AICoverFallsBack; });
@@ -1213,6 +1217,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AIRecklessness", m_AIRecklessness);
 	writer.NewPropertyWithValue("AISteadyBeforeJet", m_AISteadyBeforeJet);
 	writer.NewPropertyWithValue("AIWaitForFuel", m_AIWaitForFuel);
+	writer.NewPropertyWithValue("AIEnemyBuysReinforcements", m_AIEnemyBuysReinforcements);
+	writer.NewPropertyWithValue("AIEnemyUsesPowers", m_AIEnemyUsesPowers);
 	writer.NewPropertyWithValue("AIUsesVehicles", m_AIUsesVehicles);
 	writer.NewPropertyWithValue("AICoverDigs", m_AICoverDigs);
 	writer.NewPropertyWithValue("AICoverFallsBack", m_AICoverFallsBack);

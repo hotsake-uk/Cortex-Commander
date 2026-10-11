@@ -1254,6 +1254,11 @@ void DebugMan::SettingsGUI() {
 			}
 			Tip("How much a unit that a game mode wants kept safe weighs the enemies along a route when picking one: a capture the flag carrier taking an enemy flag home. At 1 a way past a crowd of enemies loses to a longer one past none: twenty in the way are worth walking most of a large map round, while a lone sentry is only skirted when going round is short. Places they are sent to are reached however many enemies are there. Every other unit takes the shortest way. 0 turns it off.");
 		}
+		Heading("Enemy commander (Battle Command)");
+		Toggle("Enemy buys reinforcements", g_SettingsMan.AIEnemyBuysReinforcements(), [](bool on) { g_SettingsMan.SetAIEnemyBuysReinforcements(on); });
+		Tip("An enemy team with an AI commander earns points as you do (kills, objectives) and spends them on the same reinforcement cards at the same prices, landing them by its base. How well it picks follows the commanders' difficulty on the battle panel. Off: it sends only the mode's own waves.");
+		Toggle("Enemy uses powers", g_SettingsMan.AIEnemyUsesPowers(), [](bool on) { g_SettingsMan.SetAIEnemyUsesPowers(on); });
+		Tip("An enemy team with an AI commander uses the same commander powers as you, on the same cooldowns: strikes on your units bunched up, supplies and rallies for its own. Its artillery and orbital strikes are marked where they'll land a few seconds before they hit, so you can scatter. Off: it uses none.");
 		{
 			float spawnDiggers = g_SettingsMan.AISpawnDiggerChance();
 			if (Slider("Units spawn with a digger", &spawnDiggers, 0.0F, 100.0F, "%.0f%%")) {
