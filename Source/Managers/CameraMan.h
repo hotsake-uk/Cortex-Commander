@@ -95,6 +95,16 @@ namespace RTE {
 		/// @param screenId Which screen.
 		void SetBottomOverscroll(float overscroll, int screenId = 0) { m_Screens[screenId].BottomOverscroll = std::max(0.0F, overscroll); }
 
+		/// Gets how far past the left and right edges of a non-wrapping scene a specific screen may scroll.
+		/// @param screenId Which screen.
+		/// @return The extra scroll allowed past each side edge, in scene pixels.
+		float GetSideOverscroll(int screenId = 0) const { return m_Screens[screenId].SideOverscroll; }
+
+		/// Sets how far past the left and right edges of a non-wrapping scene a specific screen may scroll, so what is at the very edge can be brought out from under the panels and bars.
+		/// @param overscroll The extra scroll allowed past each side edge, in scene pixels.
+		/// @param screenId Which screen.
+		void SetSideOverscroll(float overscroll, int screenId = 0) { m_Screens[screenId].SideOverscroll = std::max(0.0F, overscroll); }
+
 		/// Gets the currently set scroll target, i.e. where the center of the specific screen is trying to line up with.
 		/// @param screenId Which screen to get the target for.
 		/// @return Current target vector in Scene coordinates.
@@ -233,6 +243,7 @@ namespace RTE {
 
 			Vector ScreenOcclusion; //!< The amount a screen is occluded or covered by GUI, etc.
 			float BottomOverscroll = 0; //!< How far past the bottom of a non-wrapping scene the view may go, so a bar along the foot of the screen doesn't cover the bottom of the map.
+			float SideOverscroll = 0; //!< How far past the left and right edges of a non-wrapping scene the view may go.
 
 			float ScreenShakeMagnitude = 0; //!< The magnitude of screen shake that is currently being applied.
 			float ScreenShakeTime = 0; //!< Real seconds of shaking so far, driving the shake's smooth noise.
