@@ -176,8 +176,9 @@ namespace RTE {
 		/// left out, so the unit doesn't answer twice.
 		/// @param actor Who answers.
 		/// @param triggerKey The trigger, as Speech.ini names it.
+		/// @param force Says it whatever the chance, the cooldown and a line still showing (still not with speech off, or no lines for it).
 		/// @return Whether a line was said.
-		static bool SayOrder(Actor& actor, const std::string& triggerKey);
+		static bool SayOrder(Actor& actor, const std::string& triggerKey, bool force = false);
 
 		/// Has an actor say the given words, whatever the chance and the triggers (unit speech must be on). For scripts.
 		/// @param actor Who says it.
@@ -211,7 +212,7 @@ namespace RTE {
 		static bool s_ShowBubbles; //!< Whether lines are drawn in a bubble (off: bare text).
 
 		/// Say, from a command answering an order or not, about someone or not.
-		static bool Say(Actor& actor, const std::string& triggerKey, bool answeringOrder, const Actor* subject);
+		static bool Say(Actor& actor, const std::string& triggerKey, bool answeringOrder, const Actor* subject, bool force = false);
 
 		/// Reads the Speech.ini files if they haven't been yet. Safe from any thread.
 		static void EnsureLoaded();
