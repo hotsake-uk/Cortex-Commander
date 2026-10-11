@@ -149,7 +149,8 @@ namespace SandboxDetail {
 			{
 				const bool running = s_ModeRun.Running;
 				std::string tip = running ? "Battle: the game on now, its teams and their scores; start it again or stop it." : "Battle: pick the mode, draw the teams' spawn zones and objectives, choose your team, and start.";
-				if (BarTile("##battle", "Battle", tip.c_str(), s_BattlePanelOpen, [&](ImDrawList* tileList, ImVec2 at, float room) { DrawIcon(tileList, Icon::Flag, at, room / 12.0F, IM_COL32(242, 182, 61, 255)); }) == 1) {
+				if (BarTile("##battle", "Battle", tip.c_str(), s_BattlePanelOpen, [&](ImDrawList* tileList, ImVec2 at, float room) { DrawIcon(tileList, Icon::Flag, at, room / 12.0F, IM_COL32(242, 182, 61, 255)); }) == 1 && running) {
+					// (Before the battle is started the panel stays open.)
 					s_BattlePanelOpen = !s_BattlePanelOpen;
 				}
 			}
@@ -254,7 +255,8 @@ namespace SandboxDetail {
 		GameViewRect view = g_WindowMan.GetGameViewRect();
 		ImGui::SetNextWindowSize(ImVec2(430.0F, std::max(200.0F, view.h - s_BarHeight - 80.0F)), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowPos(ImVec2(view.x + 15.0F, view.y + 40.0F), ImGuiCond_FirstUseEver);
-		if (ImGui::Begin("Battle###CommanderPanel", &s_BattlePanelOpen, ImGuiWindowFlags_NoFocusOnAppearing)) {
+		// No close button till the battle is started: the panel is the only way to start it.
+		if (ImGui::Begin("Battle###CommanderPanel", s_ModeRun.Running ? &s_BattlePanelOpen : nullptr, ImGuiWindowFlags_NoFocusOnAppearing)) {
 			if (!s_ModeRun.Running) {
 				ImGui::TextWrapped("Pick a mode, tick the teams in it and draw each one's spawn zone, then tick \"You command this team\" on yours and start. Your team's units are yours alone to order; the rest fight as the mode has them.");
 			}
