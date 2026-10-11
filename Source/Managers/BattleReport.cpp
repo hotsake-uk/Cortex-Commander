@@ -356,6 +356,11 @@ namespace SandboxDetail {
 		}
 	}
 
+	std::string ReportUnitKind(long id) {
+		auto unit = s_Report.Units.find(id);
+		return unit == s_Report.Units.end() ? std::string() : unit->second.Kind;
+	}
+
 	void NoteReportKill(long killerID, long victimID) {
 		if (!s_Report.Recording) {
 			return;

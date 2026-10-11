@@ -1464,6 +1464,7 @@
     <ClCompile Include="Source\Managers\SandboxDebug.cpp" />
     <ClCompile Include="Source\Managers\Colony.cpp" />
     <ClCompile Include="Source\Managers\CommanderBar.cpp" />
+    <ClCompile Include="Source\Managers\SpawnOrders.cpp" />
     <ClCompile Include="Source\Managers\Reinforcements.cpp" />
     <ClCompile Include="Source\Managers\BattleFog.cpp" />
     <ClCompile Include="Source\Managers\CommanderPowers.cpp" />
@@ -1471,6 +1472,9 @@
     <ClCompile Include="Source\Managers\BattleReport.cpp" />
     <ClCompile Include="Source\Managers\BattleMorale.cpp" />
     <ClCompile Include="Source\Managers\BattleEnemy.cpp" />
+    <ClCompile Include="Source\Managers\BattleSquad.cpp" />
+    <ClCompile Include="Source\Managers\BattleAlerts.cpp" />
+    <ClCompile Include="Source\Managers\SandboxBreach.cpp" />
     <ClCompile Include="Source\Managers\ControlLink.cpp" />
     <ClCompile Include="Source\Managers\SettingsMan.cpp" />
     <ClCompile Include="Source\Managers\TimerMan.cpp" />

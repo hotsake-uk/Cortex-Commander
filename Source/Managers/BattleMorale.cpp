@@ -63,6 +63,7 @@ namespace SandboxDetail {
 					s_SaidAt[static_cast<long>(other->GetUniqueID())] = now;
 				}
 				Note(std::to_string(together.size()) + " of your units are breaking: Rally them!");
+				AddAlert("breaking", std::to_string(together.size()) + " units breaking: Rally them", actor->GetPos(), IM_COL32(240, 170, 60, 255));
 				break;
 			}
 		}
