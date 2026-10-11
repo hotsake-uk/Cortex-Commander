@@ -317,6 +317,20 @@ namespace RTE {
 		/// How long, in seconds, an AI unit climbing a ladder that has stopped rising waits before letting go and finding another way (the rungs
 		/// shot away above, the ladder ending short, the way up it blocked). 1.5 s as the game comes.
 		float AILadderGiveUpSeconds() const { return m_AILadderGiveUpSeconds; }
+		/// How much what a unit carries (its inventory, the guns in its hands and its gold) weighs, as a multiple of the items' own mass,
+		/// 0 to 5; 1 as the game comes (Actor::GetMass).
+		float CarriedWeightMultiplier() const { return m_CarriedWeightMultiplier; }
+		/// How hard every unit's limbs push along their paths walking, crawling and climbing, and how high a leap of the legs goes, 0.25 to 3;
+		/// 1 as the game comes.
+		float LegStrength() const { return m_LegStrength; }
+		/// Whether jetpacks raise their thrust for a unit's load, burning fuel faster: 0 as each jetpack says (AdjustsThrottleForWeight),
+		/// 1 always, 2 never.
+		int JetpackWeightCompensation() const { return m_JetpackWeightCompensation; }
+		/// How much a load slows a unit's walk and lowers its leap, 0 to 1 (0 as the game comes): this share of its speed is lost once what it
+		/// carries weighs as much as its own body, less below that (Actor::GetOverloadSpeedMultiplier).
+		float OverloadSlowdown() const { return m_OverloadSlowdown; }
+		/// How much fuel every jetpack's tank holds, as a multiple of its own JumpTime, 0.25 to 5; 1 as the game comes.
+		float JetpackFuelMultiplier() const { return m_JetpackFuelMultiplier; }
 		/// How many times units of a team must get stuck on the same ladder within a minute before the whole team avoids it, 1 to 5 (2 as the game
 		/// comes). Fewer, the unit stuck avoids it alone.
 		int AILadderTeamStalls() const { return m_AILadderTeamStalls; }
@@ -684,6 +698,13 @@ namespace RTE {
 		void SetAIMantlesOnPurpose(bool on) { m_AIMantlesOnPurpose = on; }
 		void SetAICatchesLedgesMidAir(bool on) { m_AICatchesLedgesMidAir = on; }
 		void SetRiskyOrdersFlyPastLadders(bool on) { m_RiskyOrdersFlyPastLadders = on; }
+		void SetCarriedWeightMultiplier(float multiplier) { m_CarriedWeightMultiplier = std::clamp(multiplier, 0.0F, 5.0F); }
+		void SetLegStrength(float strength) { m_LegStrength = std::clamp(strength, 0.25F, 3.0F); }
+		void SetJetpackWeightCompensation(int mode) { m_JetpackWeightCompensation = std::clamp(mode, 0, 2); }
+		void SetOverloadSlowdown(float slowdown) { m_OverloadSlowdown = std::clamp(slowdown, 0.0F, 1.0F); }
+		void SetJetpackFuelMultiplier(float multiplier) { m_JetpackFuelMultiplier = std::clamp(multiplier, 0.25F, 5.0F); }
+		/// Puts the Movement category's carry weight settings back as the game comes.
+		void ResetCarryWeightSettings() { m_CarriedWeightMultiplier = 1.0F; m_LegStrength = 1.0F; m_JetpackWeightCompensation = 0; m_OverloadSlowdown = 0.0F; m_JetpackFuelMultiplier = 1.0F; }
 		/// Puts the Movement category's ladder settings back as the game comes.
 		void ResetLadderSettings() { m_AILadderGiveUpSeconds = 1.5F; m_AILadderTeamStalls = 2; m_AIGrabsLaddersOnPurpose = true; m_AIGrabsLaddersMidJet = true; m_RiskyOrdersFlyPastLadders = true; }
 		/// Sets the percentage of units handed a digger as they come into the scene; see AISpawnDiggerChance.
@@ -992,6 +1013,11 @@ namespace RTE {
 		float m_AIThreatAvoidance; //!< How much safe-route units keep clear of enemies, 0 to 2 (see AIThreatAvoidance).
 		float m_AIRecklessness; //!< How reckless AI units are on the move, 0 to 1 (see AIRecklessness).
 		float m_AILadderGiveUpSeconds; //!< See AILadderGiveUpSeconds.
+		float m_CarriedWeightMultiplier = 1.0F; //!< See CarriedWeightMultiplier.
+		float m_LegStrength = 1.0F; //!< See LegStrength.
+		int m_JetpackWeightCompensation = 0; //!< See JetpackWeightCompensation.
+		float m_OverloadSlowdown = 0.0F; //!< See OverloadSlowdown.
+		float m_JetpackFuelMultiplier = 1.0F; //!< See JetpackFuelMultiplier.
 		int m_AILadderTeamStalls; //!< See AILadderTeamStalls.
 		bool m_AIGrabsLaddersOnPurpose; //!< See AIGrabsLaddersOnPurpose.
 		bool m_AIGrabsLaddersMidJet; //!< See AIGrabsLaddersMidJet.

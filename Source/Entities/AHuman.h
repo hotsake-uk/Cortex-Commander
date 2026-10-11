@@ -473,6 +473,10 @@ namespace RTE {
 		/// @return The mass of this AHuman's equipped devices.
 		float GetEquippedMass() const;
 
+		/// Gets the mass of the items in this AHuman's hands, for the Carry weight settings.
+		/// @return The equipped mass in Kilograms (kg).
+		float GetHeldMass() const override { return GetEquippedMass(); }
+
 		/// Indicates whether the currently held HDFirearm's is ready for use, and has
 		/// ammo etc.
 		/// @return Whether a currently HDFirearm (if any) is ready for use.

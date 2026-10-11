@@ -1465,6 +1465,41 @@ void DebugMan::SettingsGUI() {
 			}
 			ImGui::SetItemTooltip("Puts the ladder settings back as the game comes.");
 		}
+		Heading("Carry weight");
+		{
+			float carried = g_SettingsMan.CarriedWeightMultiplier();
+			if (Slider("Carried weight", &carried, 0.0F, 5.0F, "%.2fx")) {
+				g_SettingsMan.SetCarriedWeightMultiplier(carried);
+			}
+			Tip("How much what a unit carries weighs: its inventory, the guns in its hands and its gold, as a multiple of their own mass. Heavier units get less from each step, fall harder and need more jetpack. 0x: carried things weigh nothing. 1x is normal.");
+			float legs = g_SettingsMan.LegStrength();
+			if (Slider("Leg strength", &legs, 0.25F, 3.0F, "%.2fx")) {
+				g_SettingsMan.SetLegStrength(legs);
+			}
+			Tip("How hard every unit's limbs push walking, crawling and climbing, and how high a leap of the legs goes. Weaker legs struggle more with weight, slopes and steps. 1x is normal.");
+			float slowdown = g_SettingsMan.OverloadSlowdown() * 100.0F;
+			if (Slider("Overload slowdown", &slowdown, 0.0F, 100.0F, "%.0f%%")) {
+				g_SettingsMan.SetOverloadSlowdown(slowdown / 100.0F);
+			}
+			Tip("A straight cut to the walk speed and leap height of a loaded unit, on top of the physics: this much once what it carries (at the Carried weight above) weighs as much as its own body, less for a lighter load. A tenth of the speed is always kept. 0% is normal.");
+			int compensation = g_SettingsMan.JetpackWeightCompensation();
+			if (Combo("Jetpacks make up for weight", &compensation, "As each jetpack says\0Always\0Never\0")) {
+				g_SettingsMan.SetJetpackWeightCompensation(compensation);
+			}
+			Tip("Whether a jetpack raises its thrust for the unit's load. Always: loaded units fly as well as light ones but burn fuel faster. Never: loaded units fly lower and slower on the usual fuel. As each jetpack says is normal (most do make up for it).");
+			float fuel = g_SettingsMan.JetpackFuelMultiplier();
+			if (Slider("Jetpack fuel", &fuel, 0.25F, 5.0F, "%.2fx")) {
+				g_SettingsMan.SetJetpackFuelMultiplier(fuel);
+			}
+			Tip("How much fuel every jetpack holds, as a multiple of its own. More lets units fly longer; a fuller tank also takes longer to refill. 1x is normal.");
+		}
+		if (Plain()) {
+			ImGui::Spacing();
+			if (ToolUI::Button("Reset carry weight to normal")) {
+				g_SettingsMan.ResetCarryWeightSettings();
+			}
+			ImGui::SetItemTooltip("Puts the carry weight settings back as the game comes.");
+		}
 	};
 
 	// How units behave on a cautious or a direct order: an RTS order placed with one click is cautious, two normal, and a double click held
