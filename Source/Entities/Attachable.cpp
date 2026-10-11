@@ -222,6 +222,8 @@ bool Attachable::TransferJointImpulses(Vector& jointImpulses, float jointStiffne
 	if (gibImpulseLimitValueToUse > 0) {
 		gibImpulseLimitValueToUse = std::max(gibImpulseLimitValueToUse, jointStrengthValueToUse);
 	}
+	jointStrengthValueToUse = ToughenedGibLimit(jointStrengthValueToUse);
+	gibImpulseLimitValueToUse = ToughenedGibLimit(gibImpulseLimitValueToUse);
 
 	Vector totalImpulseForce;
 	for (const auto& [impulseForce, impulseForceOffset]: m_ImpulseForces) {

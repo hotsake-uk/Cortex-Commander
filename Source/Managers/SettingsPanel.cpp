@@ -33,6 +33,7 @@
 #include "TextOverlay.h"
 #include "TimerMan.h"
 #include "UnitSpeech.h"
+#include "UnitSpeechVoice.h"
 #include "WindowMan.h"
 
 #include "imgui/imgui.h"
@@ -1099,6 +1100,40 @@ void DebugMan::SettingsGUI() {
 		if (Plain() && ToolUI::Button("Normal terrain damage")) {
 			g_SettingsMan.SetWeaponTerrainDamage(1.0F);
 		}
+		Heading("Unit toughness");
+		{
+			struct ToughnessSlider {
+				const char* Label;
+				SettingsMan::ToughnessKind Kind;
+				const char* Tip;
+			};
+			static constexpr const char* c_ToughnessHow = " Higher takes less damage from everything (shots, bleeding, fire, drowning, falls, crushing) and takes that many more wounds and harder blows before it is blown apart or loses a limb or head; lower the other way round. 2x takes half the damage, 0.5x double. All the way up is Invincible: no damage, and never blown apart. Healing is unchanged. 1x is normal.";
+			const ToughnessSlider sliders[] = {
+			    {"Unit toughness", SettingsMan::ToughnessKind::Units, "How tough units on foot are, players' and brains' included, on every side."},
+			    {"Vehicle toughness", SettingsMan::ToughnessKind::Vehicles, "How tough ground vehicles are: wheeled vehicles, tanks, dreadnoughts and turrets. Crew keep their own unit toughness."},
+			    {"Flying craft toughness", SettingsMan::ToughnessKind::Craft, "How tough flying craft are: drop ships, rockets and flying ships. Crew keep their own unit toughness."},
+			    {"Animal toughness", SettingsMan::ToughnessKind::Animals, "How tough animals are: livestock and wildlife such as crabs."},
+			};
+			for (const ToughnessSlider& slider: sliders) {
+				float toughness = g_SettingsMan.Toughness(slider.Kind);
+				const char* format = g_SettingsMan.IsInvincible(slider.Kind) ? "Invincible" : "%.2fx";
+				if (Slider(slider.Label, &toughness, SettingsMan::c_ToughnessMin, SettingsMan::c_ToughnessInvincible, format, ImGuiSliderFlags_Logarithmic)) {
+					g_SettingsMan.SetToughness(slider.Kind, toughness);
+				}
+				Tip((std::string(slider.Tip) + c_ToughnessHow).c_str());
+				if (s_LastShown) {
+					ImGui::PushID(slider.Label);
+					ImGui::SameLine();
+					ImGui::BeginDisabled(toughness == 1.0F);
+					if (ToolUI::Button("Reset")) {
+						g_SettingsMan.SetToughness(slider.Kind, 1.0F);
+					}
+					ImGui::SetItemTooltip("Back to 1x, as the game comes.");
+					ImGui::EndDisabled();
+					ImGui::PopID();
+				}
+			}
+		}
 		Heading("Unit outlines");
 		Check("Outline units", &settings.UnitOutline);
 		Tip("A stroke round each unit and what it holds, so they stand out. It goes over the sky, the background and other objects, never over terrain.");
@@ -1144,7 +1179,13 @@ void DebugMan::SettingsGUI() {
 		Toggle("Alert mark over units", g_SettingsMan.ShowAlarmExclamation(), [](bool on) { g_SettingsMan.SetShowAlarmExclamation(on); });
 		Tip("The exclamation mark that pops up over a unit's head when it is alerted to an enemy or a noise.");
 		Toggle("Classic pie wheel", g_SettingsMan.ClassicPieWheel(), [](bool on) { g_SettingsMan.SetClassicPieWheel(on); });
-		Tip("The old wheels on right click, for a unit you play and for the sandbox's command tool, instead of the action menu: a list above the pointer with every order and the weapons and movement rules on one layer. (A gamepad, and players after the first, always get the unit's wheel.)");
+		Tip("The old wheels on right click, for a unit you play and for the sandbox's command tool, instead of the unit menu and the action menu: lists above the pointer with every order and the weapons and movement rules on one layer. (A gamepad, and players after the first, always get the unit's wheel.)");
+		Toggle("Unit menu opens on a click", g_SettingsMan.UnitMenuClickToOpen(), [](bool on) { g_SettingsMan.SetUnitMenuClickToOpen(on); });
+		Tip("On: a right click opens the menu of the unit you play (its inventory, what it can do, its rules) and it stays up till you click away from it or right click again. Off: it is up only while you hold the right button, and letting go over a row picks it. (Holding, moving onto a row and letting go picks it either way.)");
+		if (float scale = g_SettingsMan.UnitMenuTimeScale(); Slider("Time while the unit menu is up", &scale, 0.05F, 1.0F, "%.2fx")) {
+			g_SettingsMan.SetUnitMenuTimeScale(scale);
+		}
+		Tip("How fast time runs while the menu of the unit you play is up: 1x as ever, lower slows the world down so you can choose. Back to the speed it was when the menu goes.");
 		Toggle("Smooth HUD text", TextOverlay::IsEnabled(), [](bool on) { TextOverlay::SetEnabled(on); });
 		int frameCap = g_WindowMan.GetFrameCap();
 		if (SliderI("Frame cap (0 = none)", &frameCap, 0, 360)) {
@@ -1163,6 +1204,24 @@ void DebugMan::SettingsGUI() {
 			Tip("Enemy units' lines too, where your side can see them. Off: only your own side's.");
 			Toggle("Speech bubbles", UnitSpeech::ShowsBubbles(), [](bool on) { UnitSpeech::SetShowsBubbles(on); });
 			Tip("Lines in a dark box edged in the side's colour, with a tail pointing at the unit. Off: just the text over the unit's head.");
+			Toggle("Speech sounds", UnitSpeechVoice::IsEnabled(), [](bool on) { UnitSpeechVoice::SetEnabled(on); });
+			Tip("A voice for each line a unit on your screen says, made in the game from the line's words: most units babble in a voice of their own, robots speak the words, all over a radio. What each kind of unit sounds like is in Base.rte/Voices.ini, and mods can add their own.");
+			if (UnitSpeechVoice::IsEnabled()) {
+				int volume = UnitSpeechVoice::GetVolume();
+				if (SliderI("Speech volume", &volume, 0, 100, "%d%%")) {
+					UnitSpeechVoice::SetVolume(volume);
+				}
+				Tip("How loud the speech voices are, against units' other sounds. They also follow the sound mixer's Voices slider (Options, Audio), with pain and death cries.");
+				int radio = UnitSpeechVoice::GetRadio();
+				if (SliderI("Radio effect", &radio, 0, 100, "%d%%")) {
+					UnitSpeechVoice::SetRadio(radio);
+				}
+				Tip("How much the voices sound like they come over a field radio: band-limited and crackly, with a squelch as each line starts and ends, and a roger beep after Serious lines. 0%: clean voices.");
+				Toggle("Hear other sides' voices", UnitSpeechVoice::HearsEnemies(), [](bool on) { UnitSpeechVoice::SetHearsEnemies(on); });
+				Tip("Enemy units' lines make a sound too, a little quieter, where their lines show (\"Hear other sides' units\" above, and seen by your side). Off: only your own side's.");
+				Toggle("Robots speak words", UnitSpeechVoice::SpeaksWords(), [](bool on) { UnitSpeechVoice::SetSpeaksWords(on); });
+				Tip("Robots (Dummy, Imperatus, drones and walkers) say the actual words in a synthesised voice. Off: they babble like everyone else, in their own machine voice.");
+			}
 			// Each side's tones: what kind of lines its units say. None ticked is any.
 			{
 				static const std::array<const char*, 4> sideNames{"Red", "Green", "Blue", "Yellow"};
@@ -1276,7 +1335,7 @@ void DebugMan::SettingsGUI() {
 				UnitSpeech::Reload();
 			}
 			if (Plain()) {
-				ImGui::SetItemTooltip("Reads every Speech.ini again, for trying out lines without restarting.");
+				ImGui::SetItemTooltip("Reads every Speech.ini and Voices.ini again, for trying out lines and voices without restarting.");
 			}
 		}
 	};
@@ -1343,6 +1402,13 @@ void DebugMan::SettingsGUI() {
 				g_SettingsMan.SetAIRecklessness(recklessness / 100.0F);
 			}
 			Tip("How many chances AI units take getting about. Lower: they steady themselves longer before a jetpack jump, wait for a little more fuel, and pick routes round hard jumps and long drops. Higher: quicker, riskier take-offs and routes, and more missed jumps. 50% is the designed behaviour.");
+		}
+		{
+			float ladderGiveUp = g_SettingsMan.AILadderGiveUpSeconds();
+			if (Slider("Give up on a stuck ladder after", &ladderGiveUp, 0.5F, 10.0F, "%.1f s")) {
+				g_SettingsMan.SetAILadderGiveUpSeconds(ladderGiveUp);
+			}
+			Tip("An AI unit climbing a ladder that stops going up (rungs shot away above, the ladder ending short, the way up blocked) lets go after this long and finds another way. The second time any unit of a team gets stuck on the same ladder, the whole team avoids it for a while. 1.5 s is normal.");
 		}
 		Toggle("AI steadies before jetpacking", g_SettingsMan.AISteadiesBeforeJet(), [](bool on) { g_SettingsMan.SetAISteadiesBeforeJet(on); });
 		Tip("AI units come to a stand, still and upright, before a jetpack climb or jump, so the flight starts true. Off: they take off mid-stride, quicker but more often off line.");
