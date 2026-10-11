@@ -22,6 +22,7 @@ namespace RTE {
 
 	class AtomGroup;
 	class HeldDevice;
+	class AEJetpack;
 	class Actor;
 	struct PathRequest;
 	enum class PieSliceType : int;
@@ -1570,6 +1571,19 @@ namespace RTE {
 		/// @param milliseconds For how long, in sim time.
 		/// @param team Whether its team pays for the place too (for half as long).
 		void AvoidPathPoint(const Vector& place, float milliseconds, bool team = true);
+
+		/// The route-follower in zero gravity (ZeroGravity::UnitsWeightless, with the Zero G Settings' AI flying on), for any unit: straight for
+		/// the farthest of the next points in a clear line, on the jet steered whichever way it has to push (AEJetpack::SetSteer), braking to
+		/// stop at the last; with no jet or an empty tank, pushing off whatever it touches towards the point. Nothing is walked or landed on.
+		/// The caller lets go of its walking keys first.
+		/// @param jetpack The unit's jetpack, or null.
+		/// @param jetAccel The jet's push at full burn, m/s/s.
+		/// @return 0 while moving, 1 arrived at the last waypoint.
+		int FlyRouteWeightless(AEJetpack* jetpack, float jetAccel);
+
+		/// In zero gravity, a unit under AI with nowhere to go that's drifting brakes on its jet, so it stays where it was put.
+		/// @param jetpack The unit's jetpack, or null.
+		void HoldStillWeightless(AEJetpack* jetpack);
 		/// A flight failed: from that take-off for that landing is dearer for a while, for this unit and (for half as long, unless team is false) its team.
 		void AvoidPathLink(const Vector& from, const Vector& to, float milliseconds, bool team = true);
 		/// Whether this unit's AI decisions are written to the console log (LogConsole.txt, saved when the game closes): every unit when
@@ -1811,6 +1825,15 @@ namespace RTE {
 		std::list<Vector> m_MovePath;
 		// What each step of that path is, kept alongside it.
 		std::list<PathStepKind> m_MovePathKinds;
+		/// The zero gravity route-follower's state (FlyRouteWeightless).
+		struct ZeroGMover {
+			bool jet = false; //!< Whether the jet is being held lit.
+			Timer pushTimer; //!< Since the unit last pushed off what it touched.
+			Timer progressTimer; //!< Since it last got nearer the point.
+			float bestGap = -1.0F;
+			Vector target; //!< The point it is going for, to tell when that changes.
+		};
+		ZeroGMover m_ZeroGMover;
 		std::vector<ActorSighting> m_Sightings; //!< What the last ScanForEnemies saw.
 		float m_Suppression = 0.0F; //!< How pinned down by fire, 0 to 1 (see GetSuppression).
 		float m_Morale = 1.0F; //!< How steady its nerve is, 0 to 1 (see GetMorale).

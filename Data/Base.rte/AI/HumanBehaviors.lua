@@ -135,6 +135,9 @@ function HumanBehaviors.GetGrenadeAngle(AimPoint, TargetVel, StartPos, muzVel)
 		Dist = Dist / GetPPM(); -- convert from pixels to meters
 		local velSqr = math.pow(muzVel, 2);
 		local gravity = SceneMan.GlobalAcc.Y * 0.67; -- underestimate gravity
+		if math.abs(gravity) < 0.1 then
+			return Dist.AbsRadAngle; -- no gravity: straight at it
+		end
 		local root = math.sqrt(velSqr*velSqr - gravity*(gravity*Dist.X*Dist.X+2*-Dist.Y*velSqr));
 
 		if root ~= root then
@@ -152,6 +155,17 @@ end
 function HumanBehaviors.GrenadeArc(StartPos, AimPoint, speed, high)
 	local Dist = SceneMan:ShortestDistance(StartPos, AimPoint, false) / GetPPM();
 	local gravity = SceneMan.GlobalAcc.Y * 0.67;
+	if math.abs(gravity) < 0.1 then
+		-- No gravity: thrown straight at it, and there's no lob.
+		if high or speed <= 0 or Dist.Magnitude < 0.1 then
+			return nil;
+		end
+		local seconds = Dist.Magnitude / speed;
+		if seconds > 6 then
+			return nil;
+		end
+		return Dist.AbsRadAngle, seconds;
+	end
 	local velSqr = speed * speed;
 	local disc = velSqr * velSqr - gravity * (gravity * Dist.X * Dist.X + 2 * -Dist.Y * velSqr);
 	if disc < 0 or math.abs(Dist.X) < 0.1 or speed <= 0 then

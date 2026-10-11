@@ -40,6 +40,8 @@
 #include "AllegroBitmap.h"
 
 #include "Sandbox.h"
+#include "AEJetpack.h"
+#include "ZeroGravity.h"
 #include "tracy/Tracy.hpp"
 #include <algorithm>
 #include <cmath>
@@ -3367,4 +3369,157 @@ std::string Actor::DescribeDebugState(bool json) const {
 		}
 	}
 	return json ? out + "}" : out;
+}
+
+int Actor::FlyRouteWeightless(AEJetpack* jetpack, float jetAccel) {
+	ZeroGMover& mover = m_ZeroGMover;
+	Controller& ctrl = m_Controller;
+	const float h = std::max(m_CharHeight, 20.0F);
+	const float ppm = c_PPM;
+	auto towards = [](const Vector& from, const Vector& to) { return g_SceneMan.ShortestDistance(from, to, g_SceneMan.SceneWrapsX()); };
+	auto popPoint = [this]() {
+		m_PrevPathTarget = m_MovePath.front();
+		m_MovePath.pop_front();
+		if (!m_MovePathKinds.empty()) {
+			m_MovePathKinds.pop_front();
+		}
+	};
+	if (m_MovePath.empty()) {
+		return 0;
+	}
+	const float reach = std::max(m_MoveProximityLimit, h * 0.25F);
+	const float halfWidth = std::max(6.0F, static_cast<float>(GetSpriteWidth()) * 0.5F);
+	// A clear line for the body: no ground along it, nor half a body either side of it.
+	auto clearLine = [&](const Vector& from, const Vector& to) {
+		Vector along = towards(from, to);
+		float length = along.GetMagnitude();
+		if (length < 1.0F) {
+			return true;
+		}
+		Vector step = along / length;
+		Vector side = Vector(-step.m_Y, step.m_X) * halfWidth;
+		for (float t = 0.0F; t <= length; t += 4.0F) {
+			Vector point = from + step * t;
+			for (const Vector& probe: {point, point + side, point - side}) {
+				if (g_SceneMan.GetTerrMatter(probe.GetFloorIntX(), probe.GetFloorIntY()) != MaterialColorKeys::g_MaterialAir) {
+					return false;
+				}
+			}
+		}
+		return true;
+	};
+	// Points reached are dropped, and the farthest of the next few in a clear line is gone straight for.
+	while (m_MovePath.size() > 1 && towards(m_Pos, m_MovePath.front()).MagnitudeIsLessThan(reach)) {
+		popPoint();
+	}
+	{
+		int skip = 0;
+		int looked = 0;
+		for (auto point = std::next(m_MovePath.begin()); point != m_MovePath.end() && looked < 8; ++point, ++looked) {
+			if (!clearLine(m_Pos, *point)) {
+				break;
+			}
+			skip = looked + 1;
+		}
+		for (; skip > 0; --skip) {
+			popPoint();
+		}
+	}
+	const Vector target = m_MovePath.front();
+	const bool last = m_MovePath.size() == 1;
+	const Vector toTarget = towards(m_Pos, target);
+	const float distance = toTarget.GetMagnitude();
+	const bool following = g_MovableMan.ValidMO(m_pMOMoveTarget);
+	if (target != mover.target) {
+		mover.target = target;
+		mover.bestGap = -1.0F;
+		mover.progressTimer.Reset();
+	}
+
+	// Arrived: at the last point and all but still.
+	if (last && distance < std::max(reach, h * 0.4F) && m_Vel.MagnitudeIsLessThan(2.0F)) {
+		if (!m_Waypoints.empty() && m_HasMovePathGoal && !following) {
+			m_MovePath.clear();
+			m_MovePathKinds.clear();
+			m_HasMovePathGoal = false;
+			mover.bestGap = -1.0F;
+			mover.progressTimer.Reset();
+			return 0;
+		}
+		if (m_Waypoints.empty() && !following) {
+			return 1;
+		}
+	}
+
+	// The speed wanted: towards the point at the Zero G Settings' speed, and at the last one no faster than the jet can stop in the room left
+	// (on half its push, as the tank and the body's turning take some); points passed on the way are gone through at half speed.
+	const bool standardJet = jetpack && jetpack->IsAttached() && jetpack->GetJetpackType() == AEJetpack::JetpackType::Standard && ZeroGravity::JetpackAnyDirection();
+	const bool fuelled = standardJet && !jetpack->IsOutOfFuel() && (jetpack->IsEmitting() || jetpack->GetJetTimeLeft() > 300.0F || jetpack->IsFullyFueled());
+	const float cruise = std::max(ZeroGravity::FlySpeed(), 0.5F);
+	const float brake = standardJet ? std::max(jetAccel * 0.5F, 1.0F) : 1.0F;
+	const float room = std::max(0.0F, distance - reach * 0.5F) / ppm;
+	const float passSpeed = last ? 0.0F : cruise * 0.5F;
+	const float wantSpeed = std::min(cruise, std::sqrt(passSpeed * passSpeed + 2.0F * brake * room));
+	const Vector wantVel = distance > 0.5F ? toTarget / distance * wantSpeed : Vector();
+	const Vector change = wantVel - m_Vel;
+
+	if (fuelled) {
+		// Lit while the speed is well off what's wanted, out once it's near (a person holds the jet or lets it be, rather than flicking it).
+		mover.jet = mover.jet ? change.MagnitudeIsGreaterThan(0.4F) : change.MagnitudeIsGreaterThan(1.2F);
+		if (mover.jet) {
+			jetpack->SetSteer(change);
+			ctrl.SetState(BODY_JUMP, true);
+		}
+	} else {
+		mover.jet = false;
+		if (ZeroGravity::PushOff()) {
+			// No jet to fly on: pushed off whatever the body touches, towards the point, as hard as the Zero G Settings say (gentler near it),
+			// and held on to it there at the end.
+			const float radius = std::max(GetRadius() * 0.5F, 10.0F);
+			bool touching = false;
+			for (int i = 0; i < 8 && !touching; ++i) {
+				Vector probe = m_Pos + Vector(radius + 4.0F, 0.0F).RadRotate(static_cast<float>(i) * c_QuarterPI);
+				touching = g_SceneMan.GetTerrMatter(probe.GetFloorIntX(), probe.GetFloorIntY()) != MaterialColorKeys::g_MaterialAir;
+			}
+			if (touching && last && distance < std::max(reach, h * 0.4F)) {
+				m_Vel *= 0.5F;
+				m_AngularVel *= 0.5F;
+			} else if (touching && mover.pushTimer.IsPastSimMS(500) && change.MagnitudeIsGreaterThan(1.0F) && distance > 0.5F) {
+				float push = std::clamp(distance / ppm * 1.2F, 1.0F, std::max(ZeroGravity::PushSpeed(), 1.0F));
+				m_Vel = toTarget / distance * push;
+				m_AngularVel *= 0.3F;
+				mover.pushTimer.Reset();
+			}
+		}
+	}
+
+	// No nearer the point for six seconds: that point is avoided for a while and a new route asked for.
+	if (mover.bestGap < 0.0F || distance < mover.bestGap - 4.0F) {
+		mover.bestGap = distance;
+		mover.progressTimer.Reset();
+	} else if (mover.progressTimer.IsPastSimMS(6000)) {
+		AvoidPathPoint(target, 20000.0F);
+		mover.bestGap = -1.0F;
+		mover.progressTimer.Reset();
+		Vector goal = m_HasMovePathGoal ? m_MovePathGoal : GetLastAIWaypoint();
+		bool hadGoal = m_HasMovePathGoal || !m_MovePath.empty();
+		m_MovePath.clear();
+		m_MovePathKinds.clear();
+		if (hadGoal) {
+			m_MovePathGoal = goal;
+			m_HasMovePathGoal = true;
+			m_MoveTarget = goal;
+		}
+		UpdateMovePath();
+	}
+	return 0;
+}
+
+void Actor::HoldStillWeightless(AEJetpack* jetpack) {
+	const bool somewhere = !m_Waypoints.empty() || !m_MovePath.empty() || m_HasMovePathGoal || g_MovableMan.ValidMO(m_pMOMoveTarget);
+	const bool jet = jetpack && jetpack->IsAttached() && jetpack->GetJetpackType() == AEJetpack::JetpackType::Standard && ZeroGravity::JetpackAnyDirection() && !jetpack->IsOutOfFuel();
+	if (!somewhere && jet && m_Status != INACTIVE && m_Vel.MagnitudeIsGreaterThan(jetpack->IsEmitting() ? 0.3F : 1.5F)) {
+		jetpack->SetSteer(-m_Vel);
+		m_Controller.SetState(BODY_JUMP, true);
+	}
 }

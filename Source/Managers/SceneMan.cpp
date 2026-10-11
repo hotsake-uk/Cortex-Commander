@@ -1,4 +1,5 @@
 #include "SceneMan.h"
+#include "ZeroGravity.h"
 #include "EffectsParticles.h"
 #include "FluidSim.h"
 #include "ThreatMemory.h"
@@ -2491,7 +2492,8 @@ bool SceneMan::IsPointInNoGravArea(const Vector& point) const {
 }
 
 Vector SceneMan::MovePointToGround(const Vector& from, int heightAboveGround, int accuracy, int maxDistance) {
-	if (IsPointInNoGravArea(from)) {
+	// (Nor in zero gravity, with the Zero G Settings' AI flying: a point in the air is where a unit flies to, not over the floor under it.)
+	if (IsPointInNoGravArea(from) || (ZeroGravity::AIFlies() && ZeroGravity::UnitsWeightless())) {
 		return from;
 	}
 

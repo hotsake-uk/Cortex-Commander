@@ -1188,6 +1188,11 @@ namespace RTE {
 		/// Whether a vertical line is open from one height up to another (terrain only: a door across it opens as we come).
 		bool ColumnOpen(float x, float fromY, float toY) const;
 		void PopRoutePoint();
+
+		/// The route-follower in zero gravity (ZeroGravity::UnitsWeightless, with the Zero G Settings' AI flying on): the walking keys let go
+		/// and Actor::FlyRouteWeightless flies it.
+		/// @return As MoveAlongRoute.
+		int MoveAlongRouteWeightless();
 		/// Drops the route but keeps the place it was for, and asks for a new one to it. (ClearMovePath forgets the goal too, and set the
 		/// target to the unit's own place: every refresh told the unit it had arrived.)
 		void RefreshRoute();

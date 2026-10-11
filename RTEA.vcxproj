@@ -869,6 +869,7 @@
     <ClInclude Include="Source\Managers\RopeSim.h" />
     <ClInclude Include="Source\Managers\WeatherLightning.h" />
     <ClInclude Include="Source\Managers\TerrainCollapse.h" />
+    <ClInclude Include="Source\Managers\ZeroGravity.h" />
     <ClInclude Include="Source\Managers\TerrainTrees.h" />
     <ClInclude Include="Source\Managers\TerrainGrazing.h" />
     <ClInclude Include="Source\Managers\FluidSim.h" />
@@ -1493,6 +1494,7 @@
     <ClCompile Include="Source\Managers\RopeSim.cpp" />
     <ClCompile Include="Source\Managers\WeatherLightning.cpp" />
     <ClCompile Include="Source\Managers\TerrainCollapse.cpp" />
+    <ClCompile Include="Source\Managers\ZeroGravity.cpp" />
     <ClCompile Include="Source\Managers\TerrainTrees.cpp" />
     <ClCompile Include="Source\Managers\TerrainGrazing.cpp" />
     <ClCompile Include="Source\Managers\FluidSim.cpp" />

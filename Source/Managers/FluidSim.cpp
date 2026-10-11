@@ -16,6 +16,7 @@
 #include "GasGrid.h"
 #include "TimerMan.h"
 #include "WeatherEffects.h"
+#include "ZeroGravity.h"
 #include "Vector.h"
 #include "RenderMan.h"
 
@@ -1635,11 +1636,13 @@ void FluidSim::Update() {
 			}
 		}
 	}
-	// Sand and the like come down under the scene's gravity: in a scene with next to none (in space), or in its no gravity area, it stays where it is.
-	// (Scene GlobalAcceleration, which Lua can change; liquids still flow as before.)
-	Scene::Area* noGravityArea = scene->GetArea("NoGravityArea");
-	const bool powdersWeightless = scene->GetGlobalAcc().GetMagnitude() < 1.0F; // (Under a twentieth of the stock 20 m/s/s.)
-	auto powderWeightlessAt = [&](int x, int y) { return powdersWeightless || (noGravityArea && noGravityArea->IsInside(Vector(static_cast<float>(x), static_cast<float>(y)))); };
+	// Sand and the like, and liquids, come down under the scene's gravity: in a scene with next to none (in space), or in its no gravity
+	// area, they hang where they are (Zero G Settings: falling ground follows gravity, liquids float, no gravity zones count).
+	const bool sceneWeightless = ZeroGravity::SceneWeightless();
+	Scene::Area* noGravityArea = ZeroGravity::CountZones() ? scene->GetArea("NoGravityArea") : nullptr;
+	const bool powdersFloat = ZeroGravity::TerrainFollowsGravity();
+	const bool liquidsFloat = ZeroGravity::LiquidsFloat();
+	auto weightlessAt = [&](int x, int y) { return sceneWeightless || (noGravityArea && noGravityArea->IsInside(Vector(static_cast<float>(x), static_cast<float>(y)))); };
 	std::vector<int> settled;
 	std::vector<glm::ivec2> hurtSpots;
 	int levelSearches = 0;
@@ -1732,7 +1735,7 @@ void FluidSim::Update() {
 		// (Air, grass and foliage it flows through, or a lighter liquid it changes places with: Passable.)
 		// (Or off the map through an edge it drains or falls out of: Drains. A move there takes it away.)
 		const bool isPowder = kind == Liquid::Powder;
-		if (isPowder && powderWeightlessAt(x, y)) {
+		if ((isPowder ? powdersFloat : liquidsFloat) && weightlessAt(x, y)) {
 			s_Active.Remove(key);
 			continue;
 		}

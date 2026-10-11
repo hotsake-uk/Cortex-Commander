@@ -135,6 +135,11 @@ namespace RTE {
 		/// @param newValue The new value for whether this jetpack adjusts it's throttle to balance for extra weight.
 		void SetAdjustsThrottleForWeight(bool newValue) { m_AdjustsThrottleForWeight = newValue; }
 
+		/// Steers the jet, for this AI tick and the frames until the next, in zero gravity with the jetpack pushing any way (Zero G Settings):
+		/// the way the unit is to be pushed, in place of the controls'. Elsewhere it does nothing.
+		/// @param direction The way to be pushed (any length but zero).
+		void SetSteer(const Vector& direction);
+
 	protected:
 		static Entity::ClassInfo m_sClass;
 
@@ -147,6 +152,8 @@ namespace RTE {
 		float m_JetAngleRange; //!< Ratio at which the jetpack angle follows aim angle
 		bool m_CanAdjustAngleWhileFiring; //!< Whether or not the angle of the thrust can change while firing, or if it can only be adjusted while the jetpack is off
 		bool m_AdjustsThrottleForWeight; //!< Whether or not the jetpack throttle auto-adjusts for weight, at the cost of fuel usage.
+		Vector m_Steer; //!< The way the AI last steered the jet in zero gravity (SetSteer), and the sim update it did.
+		long long m_SteerTick;
 
 	private:
 		/// The logic to run when bursting.

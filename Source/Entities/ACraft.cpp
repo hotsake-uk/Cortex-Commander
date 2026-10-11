@@ -526,8 +526,8 @@ void ACraft::DropAllInventory() {
 			exitVelNorm.SetMagnitude(1.0);
 			gravityNorm = g_SceneMan.GetGlobalAcc();
 			gravityNorm.SetMagnitude(1.0);
-			// Make the gravity boost be proportional to counteract gravity
-			antiGravBoost = 1.0 + 1.0 * exitVelNorm.Dot(-gravityNorm);
+			// Make the gravity boost be proportional to counteract gravity (none in zero gravity, where the unit vector of no gravity pointed right)
+			antiGravBoost = g_SceneMan.GetGlobalAcc().IsZero() ? 1.0 : 1.0 + 1.0 * exitVelNorm.Dot(-gravityNorm);
 			if (antiGravBoost < 1.0)
 				antiGravBoost = 1.0;
 

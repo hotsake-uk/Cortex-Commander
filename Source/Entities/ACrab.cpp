@@ -14,6 +14,7 @@
 #include "HDFirearm.h"
 #include "Scene.h"
 #include "SettingsMan.h"
+#include "ZeroGravity.h"
 #include "PresetMan.h"
 #include "FrameMan.h"
 #include "UInputMan.h"
@@ -796,6 +797,10 @@ PathAgent ACrab::GetPathAgent() const {
 	// Gaps and lips it leaps on its legs (LM-8).
 	agent.LeapHeight = GetLegJumpHeight();
 	agent.LeapSpeed = m_LegJumpSpeed;
+	// Zero gravity (the Zero G Settings' AI flying): open space is a way to anywhere, on the jet or by pushing off (FlyRouteWeightless).
+	if (ZeroGravity::AIFlies() && ZeroGravity::UnitsWeightless() && (ZeroGravity::PushOff() || (m_pJetpack && m_pJetpack->GetJetpackType() == AEJetpack::JetpackType::Standard && ZeroGravity::JetpackAnyDirection()))) {
+		agent.JumpHeight = FLT_MAX;
+	}
 	ApplyMovementProfile(agent);
 	return agent;
 }
@@ -854,6 +859,12 @@ float ACrab::EstimateJumpHeight() const {
 		return 0.0F;
 	}
 
+	// With no gravity to stop the climb (zero gravity, or gravity pulling up) it never comes down: it can reach anywhere, as AHuman's says.
+	// (Simulated, the loop below never ended.)
+	if (g_SceneMan.GetGlobalAcc().m_Y <= 0.01F) {
+		return FLT_MAX;
+	}
+
 	float totalMass = GetMass();
 	float fuelTime = m_pJetpack->GetJetTimeTotal();
 	float fuelUseMultiplier = m_pJetpack->GetThrottleFactor();
@@ -900,6 +911,10 @@ void ACrab::PreControllerUpdate() {
 		}
 	}
 
+	// Zero gravity: a crab under AI with nowhere to go that's drifting brakes on its jet.
+	if (m_Controller.GetInputMode() == Controller::CIM_AI && m_Status != DYING && m_Status != DEAD && ZeroGravity::AIFlies() && ZeroGravity::UnitsWeightless()) {
+		HoldStillWeightless(m_pJetpack);
+	}
 	UpdateLeap();
 	if (m_pJetpack && m_pJetpack->IsAttached()) {
 		m_pJetpack->UpdateBurstState(*this);
@@ -1669,7 +1684,9 @@ int ACrab::MoveAlongRoute() {
 	if (m_Waypoints.empty() && m_MovePath.empty() && !m_HasMovePathGoal && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
 		return 1;
 	}
-	if (m_Status != STABLE) {
+	// (In zero gravity there's no getting up: it flies on as it is.)
+	const bool weightless = ZeroGravity::AIFlies() && ZeroGravity::UnitsWeightless();
+	if (m_Status != STABLE && !weightless) {
 		mover.progressTimer.Reset();
 		return 0;
 	}
@@ -1709,6 +1726,17 @@ int ACrab::MoveAlongRoute() {
 	}
 	mover.impossibleAnswers = 0;
 	mover.impossibleSeen = m_ImpossiblePaths;
+	if (weightless) {
+		// Zero gravity: the walking keys let go, and flown (Actor::FlyRouteWeightless), on the jet's push as it's modelled.
+		for (ControlState state: {MOVE_LEFT, MOVE_RIGHT, MOVE_UP, MOVE_DOWN, MOVE_FAST, BODY_JUMPSTART, BODY_JUMP, BODY_LEAP, BODY_CROUCH}) {
+			m_Controller.SetState(state, false);
+		}
+		float jetAccel = 0.0F;
+		if (m_pJetpack) {
+			jetAccel = m_pJetpack->EstimateImpulse(false) / std::max(GetMass(), 0.1F) / std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F);
+		}
+		return FlyRouteWeightless(m_pJetpack, jetAccel);
+	}
 
 	// On the ground: floor under its middle or either side of its body (a crab is wide).
 	float floorHere = CrabFloorUnder(m_Pos, h * 0.9F);
