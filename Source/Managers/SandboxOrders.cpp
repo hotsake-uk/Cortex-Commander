@@ -143,8 +143,9 @@ namespace SandboxDetail {
 		if (ACShip* ship = dynamic_cast<ACShip*>(unit)) {
 			Actor::StandingOrder& standing = ship->GetStandingOrder();
 			if (!resend) {
-				// (A new order ends a suppress, as for any unit: its zone and ring go.)
+				// (A new order ends a suppress, as for any unit: its zone and ring go; and its plan, RC-3.)
 				ClearSuppress(ship);
+				DropPlan(ship);
 				standing.Kind = OrderKindFor(reason);
 				standing.Direct = s_DirectOrder;
 				standing.TargetID = attack && target && lock ? static_cast<long>(target->GetUniqueID()) : 0;
@@ -1966,6 +1967,11 @@ namespace SandboxDetail {
 				plan.Running = true;
 				plan.Current = PlanStep();
 				plan.Current.Place = unit->GetLastAIWaypoint();
+				// (A flying ship's place is its autopilot's, not a waypoint: without this the step under way was drawn where it was when the
+				// step was queued, behind it as it flew on.)
+				if (const ACShip* ship = dynamic_cast<const ACShip*>(unit)) {
+					ship->GetFlightGoal(plan.Current.Place);
+				}
 				plan.Started = g_TimerMan.GetSimUpdateCount();
 			}
 			if (!plan.Running && plan.Steps.empty()) {

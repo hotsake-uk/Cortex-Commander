@@ -131,6 +131,15 @@ namespace RTE {
 		/// Gets the points of the route FlyRouteTo sent it along that it has still to fly to, the next first.
 		const std::deque<Vector>& GetRoute() const { return m_Route; }
 
+		/// Gets where it is flying to on a go-to: the end of its route, else the autopilot's place. @param goal Set to the place. @return Whether it is going anywhere.
+		bool GetFlightGoal(Vector& goal) const {
+			if (m_AIMode == AIMODE_GOTO && !m_Route.empty()) {
+				goal = m_Route.back();
+				return true;
+			}
+			return AutopilotGoal(goal);
+		}
+
 		/// Gets how far its gunners look for something to shoot, in pixels.
 		float GetGunRange() const { return m_GunRange; }
 #pragma endregion
