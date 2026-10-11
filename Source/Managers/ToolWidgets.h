@@ -141,6 +141,11 @@ namespace RTE {
 				if (!window->Active || window->Hidden || (window->Flags & (ImGuiWindowFlags_ChildWindow | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_Tooltip))) {
 					continue;
 				}
+				// ImGui's own "Debug##Default" window is active all frame and only dropped at its end if nothing wrote to it: unwritten, it is a 400 x 400
+				// empty window at 60, 60, and lit here it showed as a dim square on every screen.
+				if (window->IsFallbackWindow && !window->WriteAccessed) {
+					continue;
+				}
 				// A window with nothing drawn (a see-through background and no contents) has nothing to light, and would cast a shadow and show a dim square.
 				if (window->DrawList->VtxBuffer.Size == 0) {
 					continue;
