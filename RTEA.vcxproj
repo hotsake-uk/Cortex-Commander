@@ -886,6 +886,7 @@
     <ClInclude Include="Source\Managers\UnitSpeechVoice.h" />
     <ClInclude Include="Source\Managers\ControlLink.h" />
     <ClInclude Include="Source\Managers\Sandbox.h" />
+    <ClInclude Include="Source\Managers\MapBrowser.h" />
     <ClInclude Include="Source\Managers\SandboxInternal.h" />
     <ClInclude Include="Source\Managers\Colony.h" />
     <ClInclude Include="Source\Managers\WeatherEffects.h" />
@@ -1509,6 +1510,7 @@
     <ClCompile Include="Source\Managers\SandboxCatalogue.cpp" />
     <ClCompile Include="Source\Managers\SandboxOrders.cpp" />
     <ClCompile Include="Source\Managers\SandboxMinimap.cpp" />
+    <ClCompile Include="Source\Managers\SandboxMapBrowser.cpp" />
     <ClCompile Include="Source\Managers\SandboxWorld.cpp" />
     <ClCompile Include="Source\Managers\SandboxPlayer.cpp" />
     <ClCompile Include="Source\Managers\SandboxWindow.cpp" />

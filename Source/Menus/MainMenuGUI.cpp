@@ -10,6 +10,7 @@
 #include "PresetMan.h"
 
 #include "Scene.h"
+#include "MapBrowser.h"
 
 #include "GameVersion.h"
 
@@ -44,6 +45,7 @@ void MainMenuGUI::Clear() {
 	m_SandboxThemeLabel = nullptr;
 	m_SandboxThemeButtons.clear();
 	m_SandboxThemeBackButton = nullptr;
+	m_MapBrowserBackScreen = MenuScreen::MainScreen;
 
 	m_ResumeButtonBlinkTimer.Reset();
 	m_CreditsScrollTimer.Reset();
@@ -65,6 +67,8 @@ void MainMenuGUI::Clear() {
 }
 
 void MainMenuGUI::Create(AllegroScreen* guiScreen, GUIInputWrapper* guiInput) {
+	// (Made again when the resolution changes, on the main screen or settings: not the map browser.)
+	MapBrowser::Close();
 	m_MainMenuScreenGUIControlManager = std::make_unique<GUIControlManager>();
 	RTEAssert(m_MainMenuScreenGUIControlManager->Create(guiScreen, guiInput, "Base.rte/GUIs/Skins/Menus", "MainMenuScreenSkin.ini"), "Failed to create GUI Control Manager and load it from Base.rte/GUIs/Skins/Menus/MainMenuScreenSkin.ini");
 	m_MainMenuScreenGUIControlManager->Load("Base.rte/GUIs/MainMenuGUI.ini");
@@ -246,6 +250,9 @@ void MainMenuGUI::HideAllScreens() {
 
 void MainMenuGUI::SetActiveMenuScreen(MenuScreen screenToShow, bool playButtonPressSound) {
 	if (screenToShow != m_ActiveMenuScreen) {
+		if (m_ActiveMenuScreen == MenuScreen::MapBrowserScreen) {
+			MapBrowser::Close();
+		}
 		HideAllScreens();
 		m_ActiveMenuScreen = screenToShow;
 		m_ActiveGUIControlManager = (m_ActiveMenuScreen == MenuScreen::MainScreen) ? m_MainMenuScreenGUIControlManager.get() : m_SubMenuScreenGUIControlManager.get();
@@ -447,6 +454,10 @@ MainMenuGUI::MainMenuUpdateResult MainMenuGUI::Update() {
 			}
 			backToMainMenu = HandleInputEvents();
 			break;
+		case MenuScreen::MapBrowserScreen:
+			m_MenuScreenChange = false;
+			HandleMapBrowserChoice();
+			break;
 		case MenuScreen::CreditsScreen:
 			if (m_MenuScreenChange) {
 				ShowCreditsScreen();
@@ -469,6 +480,10 @@ MainMenuGUI::MainMenuUpdateResult MainMenuGUI::Update() {
 }
 
 void MainMenuGUI::HandleBackNavigation(bool backButtonPressed) {
+	// (The map browser has Esc for its own Back.)
+	if (m_ActiveMenuScreen == MenuScreen::MapBrowserScreen) {
+		return;
+	}
 	if ((!m_ActiveDialogBox || m_ActiveDialogBox == m_MainMenuScreens[MenuScreen::QuitScreen]) && (backButtonPressed || g_UInputMan.KeyPressed(SDLK_ESCAPE))) {
 		if (m_ActiveMenuScreen != MenuScreen::MainScreen) {
 			if (m_ActiveMenuScreen == MenuScreen::SettingsScreen || m_ActiveMenuScreen == MenuScreen::ModManagerScreen) {
@@ -544,8 +559,8 @@ void MainMenuGUI::HandleMainScreenInputEvents(const GUIControl* guiEventControl)
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SandboxButton]) {
 		SetActiveMenuScreen(MenuScreen::SandboxScreen);
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::BattleCommandButton]) {
-		// The scenario chooser with Battle Command picked: a map to play it on, then in.
-		m_UpdateResult = MainMenuUpdateResult::BattleCommandScenarioStarted;
+		// The map browser, for a map to play Battle Command on (and a battle saved on it), then in.
+		OpenMapBrowser(true);
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SaveOrLoadGameButton]) {
 		SetActiveMenuScreen(MenuScreen::SaveOrLoadGameScreen);
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SettingsButton]) {
@@ -575,8 +590,26 @@ void MainMenuGUI::HandleMetaGameNoticeScreenInputEvents(const GUIControl* guiEve
 	}
 }
 
+void MainMenuGUI::OpenMapBrowser(bool battle) {
+	m_MapBrowserBackScreen = battle ? MenuScreen::MainScreen : MenuScreen::SandboxScreen;
+	SetActiveMenuScreen(MenuScreen::MapBrowserScreen);
+	MapBrowser::Open(battle ? MapBrowser::Purpose::Battle : MapBrowser::Purpose::Sandbox);
+}
+
+void MainMenuGUI::HandleMapBrowserChoice() {
+	MapBrowser::Choice choice = MapBrowser::TakeChoice();
+	if (choice.Back || !MapBrowser::IsOpen()) {
+		SetActiveMenuScreen(m_MapBrowserBackScreen, false);
+		g_GUISound.BackButtonPressSound()->Play();
+	} else if (choice.Play && MapBrowser::SetStartChoice(choice)) {
+		m_UpdateResult = MainMenuUpdateResult::ActivityStarted;
+		SetActiveMenuScreen(MenuScreen::MainScreen, false);
+		g_GUISound.ExitMenuSound()->Play();
+	}
+}
+
 void MainMenuGUI::HandleSandboxScreenInputEvents(const GUIControl* guiEventControl) {
-	// Empty and Current map go straight into the game with no setup screen; Map select is the scenario chooser with Sandbox picked.
+	// Empty and Current map go straight into the game with no setup screen; Map select is the map browser.
 	if (guiEventControl == m_MainMenuButtons[MenuButton::SandboxEmptyButton]) {
 		if (g_ActivityMan.SetStartSandboxActivity("Empty Sandbox")) {
 			m_UpdateResult = MainMenuUpdateResult::ActivityStarted;
@@ -590,8 +623,7 @@ void MainMenuGUI::HandleSandboxScreenInputEvents(const GUIControl* guiEventContr
 			g_GUISound.ExitMenuSound()->Play();
 		}
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SandboxMapSelectButton]) {
-		m_UpdateResult = MainMenuUpdateResult::SandboxScenarioStarted;
-		SetActiveMenuScreen(MenuScreen::MainScreen, false);
+		OpenMapBrowser(false);
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SandboxSmallButton]) {
 		ShowSandboxPanels("Small");
 		g_GUISound.ButtonPressSound()->Play();
@@ -698,5 +730,8 @@ void MainMenuGUI::Draw() {
 		// Whatever this box may be at this point it's already been drawn by the owning GUIControlManager, but we need to draw it again on top of the overlay so it's not affected by it.
 		m_ActiveDialogBox->Draw(m_ActiveGUIControlManager->GetScreen());
 	}
-	m_ActiveGUIControlManager->DrawMouse();
+	// (The map browser draws its own pointer, over its window.)
+	if (m_ActiveMenuScreen != MenuScreen::MapBrowserScreen) {
+		m_ActiveGUIControlManager->DrawMouse();
+	}
 }

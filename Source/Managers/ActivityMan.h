@@ -158,10 +158,11 @@ namespace RTE {
 		/// Loads the "Tutorial Mission" Scene and starts the Tutorial Activity.
 		void SetStartTutorialActivity();
 
-		/// Sets the Sandbox game mode as the Activity to start, with every side's AI at its hardest.
-		/// @param sceneName The map to play on. Empty for the map the Sandbox game mode names.
-		/// @return Whether the Sandbox game mode and the map exist to be started.
-		bool SetStartSandboxActivity(const std::string& sceneName = "");
+		/// Sets the Sandbox game mode (or Battle Command, which is built on it) as the Activity to start, with every side's AI at its hardest.
+		/// @param sceneName The map to play on. Empty for the map the game mode names.
+		/// @param activityName The game mode: "Sandbox" or "Battle Command".
+		/// @return Whether the game mode and the map exist to be started.
+		bool SetStartSandboxActivity(const std::string& sceneName = "", const std::string& activityName = "Sandbox");
 
 		/// Loads "Editor Scene" and starts the given editor Activity.
 		/// @param editorToLaunch The editor name to put into effect next time ResetActivity is called.
