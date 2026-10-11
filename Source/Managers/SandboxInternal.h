@@ -1338,15 +1338,17 @@ namespace SandboxDetail {
 		         //!< there and lets them out. In Battle Command each ship costs reinforcement points.
 		Pen, //!< Pen the selected animals (the livestock among them): each click a corner of the pen, or a box dragged out; the command row
 		    //!< pens them (PenSelected). They live inside it from then on (AnimalBehaviors.lua). (After Command, so the ring's slices keep their places.)
-		Dropoff //!< The selected vehicles and flying ships go to the point and let their passengers out there, the driver or pilot staying at
-		        //!< the controls and holding there for orders (DropoffSelected). (Last, so the ring's slices keep their places.)
+		Dropoff, //!< The selected vehicles and flying ships go to the point and let their passengers out there, the driver or pilot staying at
+		        //!< the controls and holding there for orders (DropoffSelected). (After Pen, so the ring's slices keep their places.)
+		Land //!< The selected flying ships fly to the point and set down on the ground there, their passengers getting out, and stay down
+		     //!< till given another order (LandSelected). (Last, so the ring's slices keep their places.)
 	};
 	inline CommandMode s_CommandMode = CommandMode::Command;
 	inline bool s_SpawnOrderArmed = false; //!< The next order placed sets the spawn order of your team (or of s_SpawnOrderZone) instead (TakeSpawnOrder).
 	inline double s_SpawnOrderDoneAt = -1.0; //!< When (ImGui time) setting it is over, once placed: after a second click of a double click can follow.
 	inline int s_SpawnOrderZone = -1; //!< Which of your team's spawn zones it is for, -1 for the team's own.
-	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Jetpack here", "Select units", "Command", "Breach", "Build", "Airlift", "Pen animals", "Drop off"};
-	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(140, 230, 255, 255), IM_COL32(230, 230, 230, 255), IM_COL32(255, 214, 120, 255), IM_COL32(235, 110, 55, 255), IM_COL32(120, 210, 190, 255), IM_COL32(170, 190, 255, 255), IM_COL32(205, 175, 115, 255), IM_COL32(150, 225, 140, 255)};
+	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Jetpack here", "Select units", "Command", "Breach", "Build", "Airlift", "Pen animals", "Drop off", "Land"};
+	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(140, 230, 255, 255), IM_COL32(230, 230, 230, 255), IM_COL32(255, 214, 120, 255), IM_COL32(235, 110, 55, 255), IM_COL32(120, 210, 190, 255), IM_COL32(170, 190, 255, 255), IM_COL32(205, 175, 115, 255), IM_COL32(150, 225, 140, 255), IM_COL32(190, 170, 140, 255)};
 	/// A mode whose order is given once and then goes back to Command (s_BackToCommandAt): not Select, Command, Patrol or Pen (clicked out point by point).
 	inline bool OneOffMode(CommandMode mode) { return mode != CommandMode::Select && mode != CommandMode::Command && mode != CommandMode::Patrol && mode != CommandMode::Pen; }
 	inline double s_BackToCommandAt = -1.0; //!< When (ImGui time) the one-off mode in hand goes back to Command: once a double click can no longer follow.
@@ -1496,7 +1498,8 @@ namespace SandboxDetail {
 		Defend, //!< Hold ground where it stands; never done, so it ends a plan.
 		Wait, //!< Stay a while where it is (a patrol's pause at each point, RC-4).
 		Suppress, //!< Fire into a place from where the step before leaves it; never done, so it ends a plan, as a defend does.
-		Dropoff //!< A vehicle or flying ship goes to the place and lets its passengers out there (StartDropoff); done once they are out.
+		Dropoff, //!< A vehicle or flying ship goes to the place and lets its passengers out there (StartDropoff); done once they are out.
+		Land //!< A flying ship sets down at the place, its passengers getting out (StartDropoff, staying down); done once it is down.
 	};
 
 	/// One step of a unit's plan: a shift-clicked order to carry out after the ones before it.
@@ -1529,6 +1532,7 @@ namespace SandboxDetail {
 		Vector Place; //!< Where they get out.
 		int Stage = 0; //!< 0 on the way; 1 (a ship) coming down to set them down.
 		long long Since = 0; //!< The sim update it got to that stage.
+		bool StayDown = false; //!< A ship's Land order: it stays down once its passengers are out, rather than climbing back up.
 	};
 	inline std::map<long, Dropoff> s_Dropoffs; //!< Drop-offs under way, by the vehicle's unique ID. Any other order given it drops its own (DropPlan).
 	inline const char* s_MoveAnswer = nullptr; //!< While a group move is sent: the trigger its units answer with in place of a plain move's (unit speech).
@@ -2538,7 +2542,13 @@ namespace SandboxDetail {
 	/// Sends one vehicle or flying ship to let its passengers out at a place: it drives or flies there by the usual route and risk; there,
 	/// a ship comes down near the ground; its passengers get out as a squad and hold there, and it holds there for orders (a ship back up at
 	/// its hover height). Nobody to let out: just the move.
-	void StartDropoff(Actor* vehicle, const Vector& place);
+	/// @param stayDown A ship's Land order: it sets down there whether or not it carries anyone, and stays down.
+	void StartDropoff(Actor* vehicle, const Vector& place, bool stayDown = false);
+	/// The selected flying ships set down at the point, their passengers getting out, and stay down (Shift: as a step of their plans).
+	/// Anyone else selected goes there.
+	void LandSelected(const Vector& point, bool shift);
+	/// Whether a flying ship is among those selected.
+	bool SelectionHasShip();
 	/// Moves the drop-offs under way along. Once a sim update.
 	void UpdateDropoffs();
 	int SelectedRule(bool weapons);

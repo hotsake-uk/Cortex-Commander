@@ -1262,6 +1262,9 @@ namespace SandboxDetail {
 			case CommandMode::Dropoff:
 				DropoffSelected(point, shift);
 				return;
+			case CommandMode::Land:
+				LandSelected(point, shift);
+				return;
 			default: {
 				bool attackMove = s_CommandMode == CommandMode::AttackMove;
 				if (shift) {
@@ -1588,6 +1591,10 @@ namespace SandboxDetail {
 			DropoffSelected(position, modifier == 1);
 			return;
 		}
+		if (s_CommandMode == CommandMode::Land) {
+			LandSelected(position, modifier == 1);
+			return;
+		}
 		if (s_CommandMode == CommandMode::AttackMove) {
 			if (modifier == 1) {
 				PlanStepFor(UnitsToMove(0, true), PlanKind::AttackMove, position, nullptr);
@@ -1810,6 +1817,7 @@ namespace SandboxDetail {
 			case CommandMode::Patrol:
 			case CommandMode::Suppress:
 			case CommandMode::Dropoff:
+			case CommandMode::Land:
 				return true;
 			default:
 				return false;
@@ -1855,7 +1863,43 @@ namespace SandboxDetail {
 		MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::Dropoff)]);
 	}
 
-	void StartDropoff(Actor* vehicle, const Vector& place) {
+	bool SelectionHasShip() {
+		return std::any_of(s_Selected.begin(), s_Selected.end(), [](const UnitRef& ref) { return dynamic_cast<const ACShip*>(GetRef(ref)) != nullptr; });
+	}
+
+	void LandSelected(const Vector& point, bool shift) {
+		std::vector<Actor*> units = UnitsToMove(0, true);
+		std::vector<Actor*> ships;
+		std::erase_if(units, [&ships](Actor* unit) {
+			if (dynamic_cast<const ACShip*>(unit)) {
+				ships.push_back(unit);
+				return true;
+			}
+			return false;
+		});
+		// (Anyone else selected with them just goes there.)
+		if (!units.empty()) {
+			if (shift) {
+				PlanStepFor(units, PlanKind::Move, point, nullptr);
+			} else {
+				MoveUnitsTo(units, point);
+			}
+		}
+		if (shift) {
+			PlanStepFor(ships, PlanKind::Land, point, nullptr);
+		} else {
+			// A ship's width apart, as a move spreads them.
+			for (size_t i = 0; i < ships.size(); ++i) {
+				Vector spot = point + Vector((static_cast<float>(i) - static_cast<float>(ships.size() - 1) * 0.5F) * ships[i]->GetRadius() * 2.2F, 0.0F);
+				g_SceneMan.WrapPosition(spot);
+				StartDropoff(ships[i], spot, true);
+				AnswerOrder(ships[i], "OrderMove");
+			}
+		}
+		MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::Land)]);
+	}
+
+	void StartDropoff(Actor* vehicle, const Vector& place, bool stayDown) {
 		if (!vehicle || vehicle->IsPlayerControlled()) {
 			return;
 		}
@@ -1867,6 +1911,7 @@ namespace SandboxDetail {
 		dropoff.Place = place;
 		dropoff.Stage = 0;
 		dropoff.Since = g_TimerMan.GetSimUpdateCount();
+		dropoff.StayDown = stayDown && dynamic_cast<const ACShip*>(vehicle);
 	}
 
 	void UpdateDropoffs() {
@@ -1902,7 +1947,7 @@ namespace SandboxDetail {
 				}
 				// Over the place (or stopped short of it for good): nobody aboard but the pilot, and it is just a move; else it comes down
 				// where it is to let them out.
-				if (ship->GetCrewCount() <= (ship->HasPilot() ? 1 : 0)) {
+				if (!dropoff.StayDown && ship->GetCrewCount() <= (ship->HasPilot() ? 1 : 0)) {
 					return true;
 				}
 				const Vector ground = g_SceneMan.MovePointToGround(Vector(ship->GetPos().m_X, dropoff.Place.m_Y), 0, 4);
@@ -1917,9 +1962,12 @@ namespace SandboxDetail {
 			if (!down && seconds < 10.0F) {
 				return false;
 			}
+			// (Landed for good: it stays down, holding where it sat down, till another order.)
 			const Vector place = ship->GetPos();
 			EveryoneOut(ship, true);
-			ship->FlyRouteTo(place);
+			if (!dropoff.StayDown) {
+				ship->FlyRouteTo(place);
+			}
 			return true;
 		});
 	}
@@ -2099,7 +2147,8 @@ namespace SandboxDetail {
 				SuppressUnit(unit, step.Place, step.Radius);
 				break;
 			case PlanKind::Dropoff:
-				StartDropoff(unit, step.Place);
+			case PlanKind::Land:
+				StartDropoff(unit, step.Place, step.Kind == PlanKind::Land);
 				break;
 		}
 		s_FollowingPlan = false;
@@ -2130,6 +2179,7 @@ namespace SandboxDetail {
 			case PlanKind::Wait:
 				return g_TimerMan.GetSimUpdateCount() - plan.Started >= plan.Current.Updates;
 			case PlanKind::Dropoff:
+			case PlanKind::Land:
 				return !s_Dropoffs.count(unit->GetUniqueID());
 		}
 		return false;
@@ -2216,7 +2266,7 @@ namespace SandboxDetail {
 			if (!plan.Running && plan.Steps.empty()) {
 				StartPlanStep(unit, plan, step);
 				// (Given now, it's answered as the order it is; the step's own sending is a plan's, which doesn't answer.)
-				const char* const answers[] = {"OrderMove", "OrderAttackMove", "OrderAttack", "OrderGuard", "OrderDefend", nullptr, "OrderSuppress", "OrderMove"};
+				const char* const answers[] = {"OrderMove", "OrderAttackMove", "OrderAttack", "OrderGuard", "OrderDefend", nullptr, "OrderSuppress", "OrderMove", "OrderMove"};
 				int kindIndex = static_cast<int>(step.Kind);
 				AnswerOrder(unit, kindIndex >= 0 && kindIndex < static_cast<int>(std::size(answers)) ? answers[kindIndex] : nullptr);
 			} else {

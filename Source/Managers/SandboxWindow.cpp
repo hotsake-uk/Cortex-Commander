@@ -2595,6 +2595,11 @@ namespace SandboxDetail {
 					}
 				}
 				label = "Drop off here: " + std::to_string(vehicles) + (vehicles == 1 ? " vehicle, " : " vehicles, ") + std::to_string(passengers) + (passengers == 1 ? " passenger gets out" : " passengers get out");
+			} else if (mode == CommandMode::Land) {
+				const ImU32 color = c_CommandModeColors[static_cast<int>(CommandMode::Land)];
+				crosshair(g_SceneMan.MovePointToGround(point, 0.0F, 4), color, pixel * 6.0F);
+				const int ships = static_cast<int>(std::count_if(units.begin(), units.end(), [](const Actor* unit) { return dynamic_cast<const ACShip*>(unit) != nullptr; }));
+				label = "Land here: " + std::to_string(ships) + (ships == 1 ? " ship sets down" : " ships set down");
 			} else if (mode == CommandMode::Patrol) {
 				label = s_PatrolDraft.empty() ? "Click the first point of the patrol route" : "Click point " + std::to_string(s_PatrolDraft.size() + 1) + " of the route, or start it on the command row";
 			} else if (mode == CommandMode::Pen) {
@@ -2919,6 +2924,8 @@ namespace SandboxDetail {
 				return "Suppress";
 			case PlanKind::Dropoff:
 				return "Drop off";
+			case PlanKind::Land:
+				return "Land";
 			default:
 				return "Move";
 		}
@@ -2939,6 +2946,8 @@ namespace SandboxDetail {
 				return c_CommandModeColors[static_cast<int>(CommandMode::Suppress)];
 			case PlanKind::Dropoff:
 				return c_CommandModeColors[static_cast<int>(CommandMode::Dropoff)];
+			case PlanKind::Land:
+				return c_CommandModeColors[static_cast<int>(CommandMode::Land)];
 			default:
 				return c_CommandModeColors[static_cast<int>(CommandMode::Move)];
 		}
@@ -4865,6 +4874,14 @@ namespace SandboxDetail {
 				const int dropoff = static_cast<int>(CommandMode::Dropoff);
 				if (BarChip(c_CommandModeNames[dropoff], current == dropoff, c_CommandModeColors[dropoff], nullptr, "Drive or fly the selected vehicles and ships to the place clicked and let their passengers out there. The driver or\npilot stays at the controls and holds there for orders (a ship comes down to let them out, then climbs back up).\nShift adds it to their plans.") == 1) {
 					s_CommandMode = CommandMode::Dropoff;
+				}
+			}
+			// A flying ship among them: set it down at a place.
+			if (SelectionHasShip()) {
+				line.Next(pixel * 2.0F);
+				const int land = static_cast<int>(CommandMode::Land);
+				if (BarChip(c_CommandModeNames[land], current == land, c_CommandModeColors[land], nullptr, "Fly the selected ships to the place clicked and set them down on the ground there. Their passengers get out,\nand they stay down till given another order. Shift adds it to their plans.") == 1) {
+					s_CommandMode = CommandMode::Land;
 				}
 			}
 			if (!onlyVehicles) {

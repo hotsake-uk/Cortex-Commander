@@ -3,6 +3,7 @@
 #include "DebugDraw.h"
 #include "DebugMan.h"
 #include "Actor.h"
+#include "ACShip.h"
 #include "MovableMan.h"
 #include "PostProcessMan.h"
 #include "SceneLighting.h"
@@ -179,6 +180,28 @@ void DebugOverlays::DrawCombatOverlay() {
 			drawList->AddQuadFilled(ImVec2(to.x, to.y - 6.0F), ImVec2(to.x + 6.0F, to.y), ImVec2(to.x, to.y + 6.0F), ImVec2(to.x - 6.0F, to.y), IM_COL32(240, 150, 50, 220));
 			drawList->AddLine(at, to, IM_COL32(240, 150, 50, 120), thick);
 			drawList->AddText(ImVec2(to.x + 9.0F, to.y - ImGui::GetTextLineHeight() * 0.5F), IM_COL32(240, 150, 50, 255), ("flank" + seconds(actor, "AI_FlankMs")).c_str());
+		}
+		if (const ACShip* ship = dynamic_cast<const ACShip*>(actor); ship && ship->CanFly()) {
+			// A flying ship's flight: its route still to fly, where the controller steers it now, and the lowest it may fly for the ground ahead.
+			const ImU32 routeColor = IM_COL32(110, 200, 255, 200);
+			ImVec2 from = at;
+			for (const Vector& point: ship->GetRoute()) {
+				ImVec2 to = DebugDraw::ToScreen(point);
+				drawList->AddLine(from, to, routeColor, thick);
+				drawList->AddCircleFilled(to, 3.0F, routeColor);
+				from = to;
+			}
+			ImVec2 steer = DebugDraw::ToScreen(ship->GetFlightTarget());
+			drawList->AddLine(ImVec2(steer.x - 6.0F, steer.y), ImVec2(steer.x + 6.0F, steer.y), IM_COL32(255, 255, 255, 230), thick);
+			drawList->AddLine(ImVec2(steer.x, steer.y - 6.0F), ImVec2(steer.x, steer.y + 6.0F), IM_COL32(255, 255, 255, 230), thick);
+			ImVec2 hold = DebugDraw::ToScreen(ship->GetHoldPoint());
+			drawList->AddCircle(hold, 7.0F, IM_COL32(242, 182, 61, 200), 12, thick);
+			if (ship->GetFlightFloor() < 1.0e8F) {
+				float floorY = DebugDraw::ToScreen(Vector(ship->GetPos().m_X, ship->GetFlightFloor())).y;
+				float half = ship->GetRadius() * 1.5F / perPixel;
+				drawList->AddLine(ImVec2(at.x - half, floorY), ImVec2(at.x + half, floorY), IM_COL32(235, 70, 60, 200), thick);
+				drawList->AddText(ImVec2(at.x + half + 3.0F, floorY - ImGui::GetTextLineHeight()), IM_COL32(235, 70, 60, 255), "floor");
+			}
 		}
 		if (auto [has, where] = spot(actor, "AI_Retreat"); has) {
 			ImVec2 to = DebugDraw::ToScreen(where);

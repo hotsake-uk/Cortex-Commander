@@ -225,8 +225,7 @@ namespace RTE {
 
 		float m_HoverHeightModifier; //!< The modifier for the height at which this ACDropShip should hover above terrain when releasing its cargo. Used in cpp and Lua AI.
 
-		/// Private member variable and method declarations
-	private:
+		// (The autopilot's state and helpers, protected so a flying ship (ACShip), which flies by its own controller, can keep and read it.)
 		/// The script's RegulatorPID (Base.rte/AI/PID.lua): the input leaked through a filter, ticked once per sim update since the last.
 		struct AutopilotPID {
 			float p = 0.0F;
@@ -269,6 +268,7 @@ namespace RTE {
 		/// What is in the way of travel: 0 nothing, 1 something that isn't a craft, 2 another craft.
 		int AutopilotObstacleAhead();
 
+	private:
 		/// Clears all the member variables of this ACDropShip, effectively
 		/// resetting the members of this abstraction level only.
 		void Clear();
