@@ -220,7 +220,9 @@ namespace SandboxDetail {
 		// Appended, so the tools before keep their numbers.
 		LandingSpot, //!< Battle Command: a click marks where your reinforcements land (s_LandingSpot), and calls in the one waiting for it.
 		PowerTarget, //!< Battle Command: a click is where the commander power waiting for one (s_PendingPower) is used.
-		BattleRally //!< Battle Command: a click marks your team's rally point, where its new units and reinforcements make for once they're in.
+		BattleRally, //!< Battle Command: a click marks your team's rally point, where its new units and reinforcements make for once they're in.
+		// Appended, so the tools before keep their numbers.
+		Vehicle //!< Puts down the vehicle chosen in the Spawn tab's Vehicles list (s_Vehicles): a cart, a boat, a tank, a ship, a dropship. Nobody in it.
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -355,6 +357,7 @@ namespace SandboxDetail {
 	    {Tool::LandingSpot, "Landing spot", 0.0F, false},
 	    {Tool::PowerTarget, "Commander power", 0.0F, false},
 	    {Tool::BattleRally, "Rally point", 0.0F, false},
+	    {Tool::Vehicle, "Vehicles", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -587,6 +590,7 @@ namespace SandboxDetail {
 	constexpr const char* c_StructureGroups[] = {"Bunker Modules", "Bunker Systems", "Bunker Lights", "Bunker Backgrounds", "Bunker Bits", "Bunker Clutter", "Bunker Odds & Ends", "Terrain Objects"};
 	inline int s_StructureGroup = 0; //!< Which of them the Build tab is listing; one past the last for all.
 	inline std::vector<Preset> s_Units;
+	inline std::vector<Preset> s_Vehicles; //!< What is driven or flown (carts, boats, tanks, flying ships, dropships, rockets), listed apart from the units under the Spawn tab's Vehicles.
 	inline std::vector<Preset> s_Brains;
 	inline std::vector<Preset> s_Items;
 	inline std::vector<Preset> s_Structures;
@@ -1141,6 +1145,7 @@ namespace SandboxDetail {
 	inline std::string s_PaintMetal = "Metal"; //!< What the Metal tool paints, picked under Metals (a c_PaintMetals material).
 	inline std::string s_OtherTerrain = "Topsoil"; //!< What the "Other terrain" tool paints, picked under "More terrain...".
 	inline int s_UnitChoice = 0;
+	inline int s_VehicleChoice = 0;
 	inline int s_BrainChoice = 0;
 	inline int s_ItemChoice = 0;
 	inline int s_StructureChoice = 0;
@@ -1688,7 +1693,7 @@ namespace SandboxDetail {
 
 	inline std::deque<std::string> s_StrokeLog; //!< The last tool uses applied, oldest first, for the stroke log (SettingsMan::ShowSandboxStrokeLog).
 
-	enum class Icon { Eye, Arrows, Target, Person, Cross, Flag, Jar, Gun, Wall, Down, Flame, Drop, Cloud, Grains, Chunk, Pick, Bomb, Rocket, Bolt, Star, Plant, Candle, Rope };
+	enum class Icon { Eye, Arrows, Target, Person, Cross, Flag, Jar, Gun, Wall, Down, Flame, Drop, Cloud, Grains, Chunk, Pick, Bomb, Rocket, Bolt, Star, Plant, Candle, Rope, Wheels };
 
 	// Twelve by twelve pixels each: # in the tool's own colour, + a highlight.
 	constexpr const char* c_IconArt[] = {
@@ -1991,6 +1996,19 @@ namespace SandboxDetail {
 	    ".#+#........"
 	    "#+#........."
 	    "##..........",
+	    // Wheels
+	    "............"
+	    "............"
+	    "....####...."
+	    "...#+..#...."
+	    ".##########."
+	    "#++#######+#"
+	    "############"
+	    ".##########."
+	    "..##....##.."
+	    ".#++#..#++#."
+	    ".####..####."
+	    "..##....##..",
 	};
 
 	struct ToolLook {
