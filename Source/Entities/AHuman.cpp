@@ -850,7 +850,12 @@ bool AHuman::EquipLoadedFirearmInGroup(const std::string& group, const std::stri
 		return false;
 	}
 
-	if (HeldDevice* heldDevice = m_pFGArm->GetHeldDevice(); heldDevice && !heldDevice->NeedsReloading() && heldDevice->IsInGroup(group) && !heldDevice->IsInGroup(excludeGroup)) {
+	// (A spell its holder can't pay for isn't loaded, MG-3.)
+	auto affordable = [this](const MovableObject* device) {
+		const HDFirearm* firearm = dynamic_cast<const HDFirearm*>(device);
+		return !firearm || firearm->GetAffordableRoundsFor(this) > 0;
+	};
+	if (HeldDevice* heldDevice = m_pFGArm->GetHeldDevice(); heldDevice && !heldDevice->NeedsReloading() && affordable(heldDevice) && heldDevice->IsInGroup(group) && !heldDevice->IsInGroup(excludeGroup)) {
 		return true;
 	}
 
@@ -858,7 +863,7 @@ bool AHuman::EquipLoadedFirearmInGroup(const std::string& group, const std::stri
 	for (std::deque<MovableObject*>::iterator itr = m_Inventory.begin(); itr != m_Inventory.end(); ++itr) {
 		HDFirearm* pFirearm = dynamic_cast<HDFirearm*>(*itr);
 		// Found proper device to equip, so make the switch!
-		if (pFirearm && !pFirearm->NeedsReloading() && pFirearm->IsInGroup(group) && !pFirearm->IsInGroup(excludeGroup)) {
+		if (pFirearm && !pFirearm->NeedsReloading() && affordable(pFirearm) && pFirearm->IsInGroup(group) && !pFirearm->IsInGroup(excludeGroup)) {
 			if (doEquip) {
 				// The next code may cause reallocation, so we can't just use the same pointer.
 				// Store how far into the inventory the device is, memory wise.
@@ -1343,7 +1348,8 @@ bool AHuman::FirearmIsReady() const {
 	// Check if the currently held device is already the desired type
 	if (m_pFGArm && m_pFGArm->IsAttached()) {
 		const HDFirearm* pWeapon = dynamic_cast<HDFirearm*>(m_pFGArm->GetHeldDevice());
-		if (pWeapon && pWeapon->GetRoundInMagCount() != 0)
+		// (A spell its holder can't pay for is no more ready than an empty gun, MG-3.)
+		if (pWeapon && pWeapon->GetRoundInMagCount() != 0 && pWeapon->GetAffordableRounds() > 0)
 			return true;
 	}
 
@@ -1364,7 +1370,7 @@ bool AHuman::ThrowableIsReady() const {
 bool AHuman::FirearmIsEmpty() const {
 	if (m_pFGArm && m_pFGArm->IsAttached()) {
 		const HDFirearm* pWeapon = dynamic_cast<HDFirearm*>(m_pFGArm->GetHeldDevice());
-		if (pWeapon && pWeapon->GetRoundInMagCount() == 0)
+		if (pWeapon && (pWeapon->GetRoundInMagCount() == 0 || pWeapon->GetAffordableRounds() <= 0))
 			return true;
 	}
 

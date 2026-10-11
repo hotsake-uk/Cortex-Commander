@@ -10,6 +10,7 @@
 namespace RTE {
 
 	class Magazine;
+	class Actor;
 
 	/// A firearm device that fires projectile MO's and discharges shell MO's.
 	class HDFirearm : public HeldDevice {
@@ -476,6 +477,12 @@ namespace RTE {
 		/// Gets how many rounds this could pay for right now, from its own charge or its holder's energy. Many if it costs nothing.
 		/// @return How many rounds it can afford.
 		int GetAffordableRounds() const;
+
+		/// Gets how many rounds this could pay for right now if the given unit held it: from its own charge, or that unit's energy. For a
+		/// device in a unit's inventory (which isn't attached to it).
+		/// @param payer The unit whose energy would pay. May be null (then only its own charge can).
+		/// @return How many rounds it can afford.
+		int GetAffordableRoundsFor(const Actor* payer) const;
 
 		/// Updates this MovableObject. Supposed to be done every frame.
 		void Update() override;
