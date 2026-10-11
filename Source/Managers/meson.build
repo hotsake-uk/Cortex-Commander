@@ -63,6 +63,7 @@ sources += files(
 'BattleEnemy.cpp',
 'BattleSquad.cpp',
 'BattleAlerts.cpp',
+'SandboxBreach.cpp',
 'ControlLink.cpp',
 'SettingsMan.cpp',
 'ThreadMan.cpp',
