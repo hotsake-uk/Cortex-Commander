@@ -29,6 +29,12 @@ void MOSprite::Clear() {
 	m_EmissiveMapFile.Reset();
 	m_NormalMaps.clear();
 	m_EmissiveMaps.clear();
+	m_TeamColorMapFile.Reset();
+	m_TeamColorMaps.clear();
+	m_TeamColorIndices.clear();
+	m_TeamColored = true;
+	m_HasTeamColorDefault = false;
+	m_TeamColorDefault.Reset();
 	m_IconFile.Reset();
 	m_GraphicalIcon = nullptr;
 	m_FrameCount = 1;
@@ -69,6 +75,8 @@ int MOSprite::Create() {
 	m_NormalMapFile.GetAsAnimation(m_NormalMaps, m_FrameCount, COLORCONV_8_TO_32);
 	m_EmissiveMaps.clear();
 	m_EmissiveMapFile.GetAsAnimation(m_EmissiveMaps, m_FrameCount, COLORCONV_8_TO_32);
+	m_TeamColorMaps.clear();
+	m_TeamColorMapFile.GetAsAnimation(m_TeamColorMaps, m_FrameCount, COLORCONV_8_TO_32);
 	// A map is read pixel for pixel against its frame, so one of another size would put its bumps and glows in the wrong places: it's left out, with a word in the console.
 	auto checkMaps = [this](std::vector<std::shared_ptr<BitmapTexture>>& maps, const ContentFile& file, const char* kind) {
 		for (size_t frame = 0; frame < maps.size(); ++frame) {
@@ -83,6 +91,7 @@ int MOSprite::Create() {
 	};
 	checkMaps(m_NormalMaps, m_NormalMapFile, "NormalMapFile");
 	checkMaps(m_EmissiveMaps, m_EmissiveMapFile, "EmissiveMapFile");
+	checkMaps(m_TeamColorMaps, m_TeamColorMapFile, "TeamColorMapFile");
 
 	if (!m_aSprite.empty() && m_aSprite[0]) {
 		// Set default sprite offset
@@ -149,6 +158,12 @@ int MOSprite::Create(const MOSprite& reference) {
 	m_EmissiveMapFile = reference.m_EmissiveMapFile;
 	m_NormalMaps = reference.m_NormalMaps;
 	m_EmissiveMaps = reference.m_EmissiveMaps;
+	m_TeamColorMapFile = reference.m_TeamColorMapFile;
+	m_TeamColorMaps = reference.m_TeamColorMaps;
+	m_TeamColorIndices = reference.m_TeamColorIndices;
+	m_TeamColored = reference.m_TeamColored;
+	m_HasTeamColorDefault = reference.m_HasTeamColorDefault;
+	m_TeamColorDefault = reference.m_TeamColorDefault;
 	m_SpriteOffset = reference.m_SpriteOffset;
 	m_SpriteAnimMode = reference.m_SpriteAnimMode;
 	m_SpriteAnimDuration = reference.m_SpriteAnimDuration;
@@ -179,6 +194,17 @@ int MOSprite::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("SpriteFile", { reader >> m_SpriteFile; });
 	MatchProperty("NormalMapFile", { reader >> m_NormalMapFile; });
 	MatchProperty("EmissiveMapFile", { reader >> m_EmissiveMapFile; });
+	MatchProperty("TeamColorMapFile", { reader >> m_TeamColorMapFile; });
+	MatchProperty("TeamColorIndex", {
+		int index;
+		reader >> index;
+		AddTeamColorIndex(index);
+	});
+	MatchProperty("TeamColored", { reader >> m_TeamColored; });
+	MatchProperty("TeamColorDefault", {
+		reader >> m_TeamColorDefault;
+		m_HasTeamColorDefault = true;
+	});
 	MatchProperty("IconFile", {
 		reader >> m_IconFile;
 		m_GraphicalIcon = m_IconFile.GetAsBitmap();
@@ -637,18 +663,60 @@ void MOSprite::Draw(const Camera& camera) const {
 	RestoreRenderBlendMode();
 }
 
+void MOSprite::AddTeamColorIndex(int index) {
+	if (index <= 0 || index > 255) {
+		g_ConsoleMan.PrintString("WARNING: " + GetPresetName() + ": TeamColorIndex " + std::to_string(index) + " isn't a palette color (1 to 255); it's left out.");
+		return;
+	}
+	if (std::find(m_TeamColorIndices.begin(), m_TeamColorIndices.end(), index) != m_TeamColorIndices.end()) {
+		return;
+	}
+	if (m_TeamColorIndices.size() >= static_cast<size_t>(c_MaxTeamColorIndices)) {
+		g_ConsoleMan.PrintString("WARNING: " + GetPresetName() + ": more than " + std::to_string(c_MaxTeamColorIndices) + " TeamColorIndex values; " + std::to_string(index) + " is left out.");
+		return;
+	}
+	m_TeamColorIndices.push_back(index);
+}
+
 void MOSprite::ApplySpriteMaps() const {
-	if (m_NormalMaps.empty() && m_EmissiveMaps.empty()) {
+	if (m_Frame >= m_Sprites.size() || !m_Sprites[m_Frame]) {
 		return;
 	}
 	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
-	if (!lighting.SpriteMaps || lighting.SpriteMapStrength <= 0.0F || m_Frame >= m_Sprites.size() || !m_Sprites[m_Frame]) {
+	GLuint normalMap = 0;
+	GLuint emissiveMap = 0;
+	if (lighting.SpriteMaps && lighting.SpriteMapStrength > 0.0F) {
+		normalMap = m_Frame < m_NormalMaps.size() && m_NormalMaps[m_Frame] ? m_NormalMaps[m_Frame]->GetTextureId() : 0;
+		emissiveMap = m_Frame < m_EmissiveMaps.size() && m_EmissiveMaps[m_Frame] ? m_EmissiveMaps[m_Frame]->GetTextureId() : 0;
+	}
+
+	// The marked parts take the side's colour of whatever they're on (a helmet or a held gun its unit's), the colours the unit outlines use.
+	// With the setting off, or no side, they take the modder's default colour, if one was given, and are left as painted if not.
+	SpriteTeamColor teamColor;
+	GLuint teamColorMap = m_TeamColored && m_Frame < m_TeamColorMaps.size() && m_TeamColorMaps[m_Frame] ? m_TeamColorMaps[m_Frame]->GetTextureId() : 0;
+	if (m_TeamColored && (teamColorMap || !m_TeamColorIndices.empty())) {
+		static const glm::vec3 c_SideColors[4] = {{1.0F, 0.41F, 0.33F}, {0.41F, 1.0F, 0.47F}, {0.43F, 0.65F, 1.0F}, {1.0F, 0.88F, 0.37F}};
+		int team = GetRootParent()->GetTeam();
+		if (lighting.UnitTeamColorParts && team >= 0 && team < 4) {
+			teamColor.Active = true;
+			teamColor.Rgb = c_SideColors[team];
+		} else if (m_HasTeamColorDefault) {
+			teamColor.Active = true;
+			teamColor.Rgb = glm::vec3(m_TeamColorDefault.GetR(), m_TeamColorDefault.GetG(), m_TeamColorDefault.GetB()) / 255.0F;
+		}
+		if (teamColor.Active) {
+			teamColor.Map = teamColorMap;
+			for (size_t i = 0; i < m_TeamColorIndices.size() && i < teamColor.Indices.size(); ++i) {
+				teamColor.Indices[i] = static_cast<float>(m_TeamColorIndices[i]);
+			}
+		}
+	}
+
+	if (!normalMap && !emissiveMap && !teamColor.Active) {
 		return;
 	}
-	GLuint normalMap = m_Frame < m_NormalMaps.size() && m_NormalMaps[m_Frame] ? m_NormalMaps[m_Frame]->GetTextureId() : 0;
-	GLuint emissiveMap = m_Frame < m_EmissiveMaps.size() && m_EmissiveMaps[m_Frame] ? m_EmissiveMaps[m_Frame]->GetTextureId() : 0;
 	const FloatRect& spriteUV = m_Sprites[m_Frame]->GetUVRect();
-	g_RenderMan.BeginObjectMaps(normalMap, emissiveMap, glm::vec4(spriteUV.x, spriteUV.y, spriteUV.w, spriteUV.h), std::min(lighting.SpriteMapStrength, 1.0F));
+	g_RenderMan.BeginObjectMaps(normalMap, emissiveMap, glm::vec4(spriteUV.x, spriteUV.y, spriteUV.w, spriteUV.h), std::min(lighting.SpriteMapStrength, 1.0F), teamColor);
 }
 
 void MOSprite::StoreRenderPreviousState() {

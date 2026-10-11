@@ -108,7 +108,8 @@ bool Shader::Compile(const std::string& vertexPath, const std::string& fragPath)
 			m_HealthUniform = GetUniformLocation("rteHealth");
 			m_StrengthUniform = GetUniformLocation("rteStrength");
 			m_ReliefUniform = GetUniformLocation("rteRelief");
-			m_SpriteMapUniforms = {GetUniformLocation("rteNormalMap"), GetUniformLocation("rteHasNormalMap"), GetUniformLocation("rteEmissiveMap"), GetUniformLocation("rteHasEmissiveMap"), GetUniformLocation("rteMapUVRect"), GetUniformLocation("rteMapStrength")};
+			m_SpriteMapUniforms = {GetUniformLocation("rteNormalMap"), GetUniformLocation("rteHasNormalMap"), GetUniformLocation("rteEmissiveMap"), GetUniformLocation("rteHasEmissiveMap"), GetUniformLocation("rteMapUVRect"), GetUniformLocation("rteMapStrength"),
+			                       GetUniformLocation("rteTeamColor"), GetUniformLocation("rteTeamColorIndices"), GetUniformLocation("rteTeamColorMap"), GetUniformLocation("rteHasTeamColorMap")};
 			result = true;
 		} else {
 			result = false;

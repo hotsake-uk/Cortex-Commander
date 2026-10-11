@@ -302,6 +302,7 @@ Press **F8** for **Photo Mode**:
 | `EventLooks` / `EventLookStrength` | 1 / 1 | The grade answers blasts, a badly hurt unit and nearby fire (see "Looks that answer events"); strength 0–2. Off: the grade stays as set. |
 | `ModShaders` / `ModShaderStrength` | 1 / 1 | Mods' own object shaders and post passes (see "Mod shaders" below). Off draws everything with the game's shaders. The strength (0–1) is handed to mods' shaders as `rteStrength`. |
 | `SpriteMaps` / `SpriteMapStrength` | 1 / 1 | Sprites with authored normal and glow maps (`NormalMapFile`, `EmissiveMapFile`, see "Authored normal and glow maps") are lit and glow as drawn; strength 0–1. Off: every sprite gets the automatic bevel and palette glow. |
+| `UnitTeamColorParts` | 0 | Parts of units' sprites that mods mark (`TeamColorIndex`, `TeamColorMapFile`, see "Parts in the team's colour") are drawn in their side's colour. Off: in the mod's `TeamColorDefault`, or as painted. |
 | `DepthOfField` / `DepthOfFieldFocus` / `DepthOfFieldStrength` | 0 / 0 / 1 | Lens blur by distance from the focus (0 the battlefield, 1 the furthest background); strength 0–2. |
 | `TiltShift` / `TiltShiftLine` / `TiltShiftStrength` | 0 / 0.5 / 1 | Blurs the top and bottom of the screen around a sharp band (0 top to 1 bottom), for a diorama look; strength 0–2. |
 | `FocusEffectsInPhotoModeOnly` | 1 | Depth of field and tilt-shift only while photo mode (F8) is open. Both are also in photo mode's Look sliders. |
@@ -563,6 +564,37 @@ Any MOSprite (particles, rotating objects, units, their parts) takes them. Each 
 - **Glow map:** the brightest of RGB times alpha is how much the pixel glows, in the sprite's own colour, on top of the palette's glow.
 
 The player can turn them off ("Authored sprite maps", `SpriteMaps`, with `SpriteMapStrength` 0–1); old art without maps is drawn as before. A mod's object shader gets them as `rteNormalMap` / `rteHasNormalMap` and `rteEmissiveMap` / `rteHasEmissiveMap` (units 12 and 13), with `rteMapUVRect` (where the frame sits in `rteTexture`, which differs when it's in the sprite atlas) and `rteMapStrength`; `Blit8.frag` shows how to read them.
+
+### Parts in the team's colour
+
+A unit's sprite can mark parts (a bandanna, a helmet stripe, a shoulder pad) to be drawn in its side's colour, so the sides can be told apart at a glance. There are two ways to mark them, and a sprite can use both:
+
+```ini
+AddActor = AHuman
+	PresetName = Bandit
+	...
+	Head = Attachable
+		CopyOf = Bandit Head
+		// Every pixel painted in these palette colours is recoloured. Paint the bandanna in a colour the rest of the head doesn't use. Up to 8.
+		TeamColorIndex = 13
+		TeamColorIndex = 14
+		// Or a mask, one image per frame like the sprite's (BanditHeadTeam000.png ...), the size of the frame, in true colour:
+		// white is recoloured fully, black not at all, grey partly (the brightest of RGB, times alpha).
+		TeamColorMapFile = ContentFile
+			FilePath = MyMod.rte/Actors/Bandit/BanditHeadTeam.png
+		// The marked parts' colour when the player's setting is off or the unit has no side. Without it, they stay as painted then.
+		TeamColorDefault = Color
+			R = 200
+			G = 40
+			B = 40
+```
+
+- **Which side:** a part takes the side of what it's on: a head, arm or helmet its unit's, a held gun its holder's. Things of no side take the default colour, or stay as painted.
+- **The colours:** red, green, blue and yellow for teams 1 to 4, as the unit outlines. The art's own shading is kept, so a fold painted darker stays darker in the new colour.
+- **The setting:** "Team colour on units" in Settings, just above the unit outlines (`UnitTeamColorParts` in Settings.ini), off by default. Off, the marked parts take the default colour if the sprite has one.
+- **Palette indices** work for palette (8-bit) sprites only; for true-colour sprites use the mask. `TeamColored = 0` turns the marking off for one preset, for example a copy of a marked unit that should keep its painted colours.
+- **Lua:** `sprite.TeamColored` (true/false), `sprite.TeamColorDefault` (a `Color`), `sprite:HasTeamColorDefault()`, `sprite:ClearTeamColorDefault()`, `sprite:AddTeamColorIndex(index)` and `sprite:ClearTeamColorIndices()`. They are per object, so a script can mark a unit's parts after it is created.
+- **Mod shaders** get `rteTeamColor` (RGB the colour, A 1 when anything is recoloured), `rteTeamColorIndices` (two `vec4`s, -1 for none) and `rteTeamColorMap` / `rteHasTeamColorMap` (unit 14), read through `rteMapUVRect` as the other maps are.
 
 ### On the screen
 
