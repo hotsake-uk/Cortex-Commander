@@ -970,6 +970,14 @@ void DebugMan::SettingsGUI() {
 			g_SettingsMan.SetBleedOutChance(bleedOut);
 		}
 		Tip("Every wound bleeds, and most stop after a while. This is the chance one keeps on bleeding instead, so the unit, players' and every other, keeps losing health until it's patched up or bleeds out. 0 is as before: wounds stop when they always did. 100: every wound keeps bleeding.");
+		float terrainDamage = g_SettingsMan.WeaponTerrainDamage();
+		if (Slider("Weapon damage to terrain", &terrainDamage, 0.1F, 20.0F, "%.2fx", ImGuiSliderFlags_Logarithmic)) {
+			g_SettingsMan.SetWeaponTerrainDamage(terrainDamage);
+		}
+		Tip("How hard bullets, shrapnel and other weapon fire strike the ground and buildings, as a multiple of normal. Higher, a bullet cuts through stronger stuff (concrete, then metal) and goes further into it before it stops; lower, shots barely mark the ground. Diggers dig by the same rule, so they scale too. Damage to units is unchanged. 1x is normal.");
+		if (Plain() && ToolUI::Button("Normal terrain damage")) {
+			g_SettingsMan.SetWeaponTerrainDamage(1.0F);
+		}
 		Heading("Unit outlines");
 		Check("Outline units", &settings.UnitOutline);
 		Tip("A stroke round each unit and what it holds, so they stand out. It goes over the sky, the background and other objects, never over terrain.");
