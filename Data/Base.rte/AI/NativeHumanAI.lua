@@ -237,6 +237,9 @@ function NativeHumanAI:Update(Owner)
 	-- A suppress order (the sandbox's Suppress): fire into its zone, whatever else is in sight (see SharedBehaviors.SuppressUpdate).
 	local suppressing = SharedBehaviors.SuppressUpdate(self, Owner);
 
+	-- A take-cover order (the sandbox's Take cover): into cover and down there (see SharedBehaviors.CoverOrderUpdate).
+	SharedBehaviors.CoverOrderUpdate(self, Owner);
+
 	-- Running the objective (carrying a flag home): nothing else it was doing is kept (see SharedBehaviors.OnObjective).
 	local objective = SharedBehaviors.OnObjective(Owner);
 	if objective then
@@ -738,6 +741,7 @@ function NativeHumanAI:Update(Owner)
 		SharedBehaviors.FlankUpdate(self, Owner);
 		HumanBehaviors.ShotFromUnseen(self, Owner, hit and AlarmPoint);
 		HumanBehaviors.UseTheWorld(self, Owner);
+		HumanBehaviors.SpellUpdate(self, Owner);
 		-- (A unit shot from out of sight flanks only once it has reached the cover it went for, if any.)
 		local reachingCover = self.Cover and self.Cover.Why == "shot" and not self.Cover.There;
 		if not self.Flank and not self.Target and self.OldTargetPos and self.HitTimer and not self.HitTimer:IsPastSimMS(3000) and not reachingCover then
@@ -776,9 +780,9 @@ function NativeHumanAI:Update(Owner)
 	-- digger never fired, and a unit routed through ground stood at its face with the digger out.)
 	local routeDig = self.engineMover == true and Owner.DiggingRoute == true;
 	if self.squadShoot then
-		self.Ctrl:SetState(Controller.WEAPON_FIRE, (mayFire and (self.fire or self.squadShoot)) or routeDig);
+		self.Ctrl:SetState(Controller.WEAPON_FIRE, (mayFire and (self.fire or self.squadShoot)) or self.spellCast or routeDig);
 	else
-		self.Ctrl:SetState(Controller.WEAPON_FIRE, (mayFire and self.fire) or self.useMedikit or self.medicHeal or self.douse or routeDig);
+		self.Ctrl:SetState(Controller.WEAPON_FIRE, (mayFire and self.fire) or self.useMedikit or self.medicHeal or self.douse or self.spellCast or routeDig);
 	end
 
 	if self.deviceState == AHuman.AIMING then

@@ -1017,13 +1017,45 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 		g_CameraMan.AddScreenShake(m_GibScreenShakeAmount, m_Pos);
 	}
 
+	// The gib chunk settings (Gibs in the settings panel). As they come, nothing here changes: the same chunks, and no more random numbers rolled.
+	const SettingsMan::GibChunkTuning& chunkTuning = g_SettingsMan.GibChunks();
+	// With fewer (or more) chunks asked for, what is left over of one gib's share is carried on to the next, so that half of three single chunks is
+	// one or two rather than always none or all. It starts from a fraction taken from this object's ID rather than from the random numbers.
+	float chunkCarry = static_cast<float>((static_cast<uint32_t>(GetUniqueID()) * 2654435761U) >> 16U) / 65536.0F;
+
 	for (const Gib* gibSettingsObject: m_Gibs) {
 		if (gibSettingsObject->GetCount() == 0) {
 			continue;
 		}
-		MovableObject* gibParticleClone = dynamic_cast<MovableObject*>(gibSettingsObject->GetParticlePreset()->Clone());
+		// A gib chunk is a plain MOSRotating: not blood or flecks (MOPixels and MOSParticles), nor an emitter, a device or a unit.
+		const MovableObject* gibPreset = gibSettingsObject->GetParticlePreset();
+		const bool gibChunk = gibPreset->GetClassName() == "MOSRotating";
+		// The collision spacing for chunks, only where the preset's outline is made from its sprite and its spacing isn't that already.
+		int chunkSpacing = 0;
+		if (gibChunk && chunkTuning.AtomSpacing > 0) {
+			const AtomGroup* presetAtoms = static_cast<const MOSRotating*>(gibPreset)->m_pAtomGroup;
+			if (presetAtoms && presetAtoms->AutoGenerate() && presetAtoms->GetResolution() != chunkTuning.AtomSpacing) {
+				chunkSpacing = chunkTuning.AtomSpacing;
+			}
+		}
+		auto markChunk = [gibChunk, chunkSpacing](MovableObject* gib) {
+			if (gibChunk) {
+				gib->SetGibChunk(true);
+				if (chunkSpacing > 0) {
+					static_cast<MOSRotating*>(gib)->RespaceAtoms(chunkSpacing);
+				}
+			}
+		};
+		MovableObject* gibParticleClone = dynamic_cast<MovableObject*>(gibPreset->Clone());
 
 		int count = gibSettingsObject->GetCount();
+		// How many come out: the preset's count, scaled for chunks by the gib chunk count setting. The screen shakes for the preset's count either way.
+		int spawnCount = count;
+		if (gibChunk && chunkTuning.CountPercent != 100) {
+			float share = static_cast<float>(count * chunkTuning.CountPercent) / 100.0F + chunkCarry;
+			spawnCount = static_cast<int>(share);
+			chunkCarry = share - static_cast<float>(spawnCount);
+		}
 		float lifeVariation = gibSettingsObject->GetLifeVariation();
 		float spread = gibSettingsObject->GetSpread();
 		float minVelocity = gibSettingsObject->GetMinVelocity();
@@ -1044,22 +1076,29 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 			g_CameraMan.AddScreenShake(energy * g_CameraMan.GetDefaultShakePerUnitOfGibEnergy(), m_Pos);
 		}
 
+		if (spawnCount <= 0) {
+			gibParticleClone->DestroyScriptState();
+			delete gibParticleClone;
+			continue;
+		}
+
 		float velocityRange = maxVelocity - minVelocity;
 		Vector rotatedGibOffset = RotateOffset(gibSettingsObject->GetOffset());
 
 		// The "Spiral" spread mode uses the fermat spiral as means to determine the velocity of the gib particles, resulting in a evenly spaced out circle (or ring) of particles.
 		if (gibSettingsObject->GetSpreadMode() == Gib::SpreadMode::SpreadSpiral) {
-			float maxRadius = std::sqrt(static_cast<float>(count));
+			float maxRadius = std::sqrt(static_cast<float>(spawnCount));
 			float scale = velocityRange / maxRadius;
 			float randAngle = c_PI * RandomNormalNum();
 			float goldenAngle = 2.39996F;
 
-			for (int i = 0; i < count; i++) {
+			for (int i = 0; i < spawnCount; i++) {
 				if (i > 0) {
 					gibParticleClone = dynamic_cast<MovableObject*>(gibSettingsObject->GetParticlePreset()->Clone());
 				}
+				markChunk(gibParticleClone);
 
-				float radius = std::sqrt(static_cast<float>(count - i));
+				float radius = std::sqrt(static_cast<float>(spawnCount - i));
 				gibParticleClone->SetPos(m_Pos + rotatedGibOffset);
 				gibParticleClone->SetHFlipped(m_HFlipped);
 				Vector gibVelocity(radius * scale + minVelocity, 0);
@@ -1088,10 +1127,11 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 				g_MovableMan.AddParticle(gibParticleClone);
 			}
 		} else {
-			for (int i = 0; i < count; i++) {
+			for (int i = 0; i < spawnCount; i++) {
 				if (i > 0) {
 					gibParticleClone = dynamic_cast<MovableObject*>(gibSettingsObject->GetParticlePreset()->Clone());
 				}
+				markChunk(gibParticleClone);
 
 				if (gibParticleClone->GetLifetime() != 0) {
 					gibParticleClone->SetLifetime(std::max(static_cast<int>(static_cast<float>(gibParticleClone->GetLifetime()) * (1.0F + (lifeVariation * RandomNormalNum()))), 1));
@@ -1123,7 +1163,7 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 				}
 				// The "Even" spread will spread all gib particles evenly in an arc, while maintaining a randomized velocity magnitude.
 				if (gibSettingsObject->GetSpreadMode() == Gib::SpreadMode::SpreadEven) {
-					gibVelocity.RadRotate(gibSpread - (gibSpread * 2.0F * static_cast<float>(i) / static_cast<float>(count)));
+					gibVelocity.RadRotate(gibSpread - (gibSpread * 2.0F * static_cast<float>(i) / static_cast<float>(spawnCount)));
 				} else {
 					gibVelocity.RadRotate(gibSpread * RandomNormalNum());
 				}
@@ -1148,6 +1188,43 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 			}
 		}
 	}
+}
+
+void MOSRotating::RespaceAtoms(int spacing) {
+	if (!m_pAtomGroup || spacing <= 0) {
+		return;
+	}
+	AtomGroup* respaced = new AtomGroup();
+	respaced->Create(this, m_pAtomGroup->GetMaterial(), spacing, m_pAtomGroup->GetDepth());
+	// (A sprite with nothing drawn on it gives no atoms: it keeps the ones it had.)
+	if (respaced->GetAtomCount() == 0) {
+		delete respaced;
+		return;
+	}
+	delete m_pAtomGroup;
+	m_pAtomGroup = respaced;
+}
+
+const MovableObject* MOSRotating::GetMOUnderneath() const {
+	const int below = m_Pos.GetFloorIntY() + static_cast<int>(m_SpriteRadius) + 2;
+	const int halfWidth = static_cast<int>(m_SpriteRadius * 0.5F);
+	for (int across: {0, -halfWidth, halfWidth}) {
+		MOID underMOID = g_SceneMan.GetMOIDPixel(m_Pos.GetFloorIntX() + across, below);
+		if (underMOID != g_NoMOID && underMOID != m_MOID) {
+			if (const MovableObject* under = g_MovableMan.GetMOFromID(underMOID)) {
+				return under->GetRootParent();
+			}
+		}
+	}
+	return nullptr;
+}
+
+bool MOSRotating::ChunkMaySettleOn(const MovableObject* under) {
+	if (!under || !g_SettingsMan.GibChunks().SettleOnBodies) {
+		return false;
+	}
+	const Actor* unit = dynamic_cast<const Actor*>(under);
+	return !unit || unit->IsDead() || unit->GetStatus() == Actor::DYING;
 }
 
 void MOSRotating::RemoveAttachablesWhenGibbing(const Vector& impactImpulse, MovableObject* movableObjectToIgnore) {
@@ -1264,6 +1341,10 @@ void MOSRotating::RestDetection() {
 					break;
 				}
 			}
+			// A gib chunk lying still on a body or another piece settles there too, with the gib chunks settle on bodies setting on.
+			if (!resting && m_GibChunk && g_SettingsMan.GibChunks().SettleOnBodies) {
+				resting = ChunkMaySettleOn(GetMOUnderneath());
+			}
 		}
 		if (!resting) {
 			m_VelOscillations = 0;
@@ -1277,13 +1358,18 @@ void MOSRotating::RestDetection() {
 }
 
 bool MOSRotating::IsAtRest() {
-	if (m_RestThreshold < 0 || m_PinStrength != 0) {
+	int restThreshold = m_RestThreshold;
+	// A gib chunk lies still for the gib chunk settle time, if one is set, unless its preset never lets it settle.
+	if (m_GibChunk && restThreshold >= 0 && g_SettingsMan.GibChunks().SettleMS >= 0) {
+		restThreshold = g_SettingsMan.GibChunks().SettleMS;
+	}
+	if (restThreshold < 0 || m_PinStrength != 0) {
 		return false;
 	} else if (m_VelOscillations > 2 || m_AngOscillations > 2) {
 		return true;
 	}
 
-	return m_RestTimer.IsPastSimMS(m_RestThreshold);
+	return m_RestTimer.IsPastSimMS(restThreshold);
 }
 
 bool MOSRotating::IsOnScenePoint(Vector& scenePoint) const {
@@ -1583,6 +1669,25 @@ void MOSRotating::Update() {
 		} else if (attachable->IsAttachedTo(this) && !attachable->IsSetToDelete()) {
 			TransferForcesFromAttachable(attachable);
 		}
+	}
+}
+
+void MOSRotating::UpdateWounds() {
+	for (auto woundItr = m_Wounds.begin(); woundItr != m_Wounds.end();) {
+		AEmitter* wound = *woundItr;
+		wound->Update();
+		if (wound->IsSetToDelete() || (wound->GetLifetime() > 0 && wound->GetAge() > wound->GetLifetime())) {
+			std::iter_swap(woundItr, m_Wounds.end() - 1);
+			m_Wounds.pop_back();
+			m_AttachableAndWoundMass -= wound->GetMass();
+			delete wound;
+		} else {
+			wound->ClearImpulseForces();
+			++woundItr;
+		}
+	}
+	for (Attachable* attachable: m_Attachables) {
+		attachable->UpdateWounds();
 	}
 }
 

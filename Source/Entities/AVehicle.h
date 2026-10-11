@@ -163,6 +163,17 @@ namespace RTE {
 		/// @param newTurret The turret to set. nullptr removes it.
 		void SetTurret(Turret* newTurret);
 
+		/// Gets the throwing arm, if it is a catapult. Ownership is NOT transferred!
+		Attachable* GetThrowingArm() const { return m_ThrowingArm; }
+
+		/// Sets the throwing arm: a catapult's, swung about where it is fixed (its ParentOffset) to fling what it throws, manned from a
+		/// gunner's seat as a turret is. Ownership IS transferred!
+		/// @param newArm The arm to set. nullptr removes it.
+		void SetThrowingArm(Attachable* newArm);
+
+		/// Gets the name of what a catapult throws next (the preset of its loaded ammunition), or an empty string.
+		std::string GetLaunchAmmoName() const;
+
 		/// Puts a unit in the driver's seat, taking it out of the scene, and gives this its player if it had one. The unit must be in MovableMan
 		/// and on this one's team; a copy of it is kept (as a craft keeps who goes in) and it is deleted.
 		/// @param unit The unit getting in.
@@ -210,6 +221,10 @@ namespace RTE {
 		/// Updates this MovableObject. Supposed to be done every frame.
 		void Update() override;
 
+		/// Puts the IDs of this and its parts in a list, and of the crew sat in its open seats (whom bullets can hit there).
+		/// @param MOIDs The list to add them to.
+		void GetMOIDs(std::vector<MOID>& MOIDs) const override;
+
 		/// Draws this AVehicle's current graphical representation to a BITMAP of choice, the driver in the seat behind the body's near side.
 		/// @param pTargetBitmap A pointer to a BITMAP to draw on.
 		/// @param targetPos The absolute position of the target bitmap's upper left corner in the Scene.
@@ -229,6 +244,10 @@ namespace RTE {
 
 	protected:
 		static Entity::ClassInfo m_sClass; //!< ClassInfo for this class.
+
+		/// Gives the attachables IDs, as any body's, then the crew in its open seats, so they're drawn to the layer that shots look for MOs
+		/// on and can be hit where they sit. A closed vehicle's crew (DrawsCrew 0) stays out of reach.
+		void UpdateChildMOIDs(std::vector<MovableObject*>& MOIDIndex, MOID rootMOID = g_NoMOID, bool makeNewMOID = true) override;
 
 		/// A wheel and how it hangs: where its spring is fixed, how far the spring is pushed in, and how far round it has turned.
 		struct Wheel {
@@ -287,6 +306,11 @@ namespace RTE {
 			Actor* Occupant = nullptr; //!< Who sits in it, out of the scene while they're in here. Owned.
 		};
 		std::vector<Seat> m_Seats; //!< The seats besides the driver's: seat 1 on.
+		struct SlumpedBody {
+			Actor* Body = nullptr; //!< Someone killed in a seat, left slumped in it (DeadCrewFallOut off). Owned.
+			int Seat = 0; //!< The seat they slump in, which is free for someone to take (they tip the body out getting in).
+		};
+		std::vector<SlumpedBody> m_Slumped; //!< The dead slumped in its seats, out of the scene like the crew.
 		int m_PlayerSeat; //!< The seat the unit of the player in charge got in to, or -1. (The driver's if they took charge another way.)
 		Turret* m_Turret; //!< The turret its gun is on, if it has one. Owned by this, as an attachable.
 		float m_GunRange; //!< How far a gunner looks for something to shoot, in pixels.
@@ -297,6 +321,21 @@ namespace RTE {
 		bool m_ThrowsCrewWhenFlipped; //!< Whether everyone falls out when it rolls onto its roof (an open vehicle; a closed one keeps them in).
 		Vector m_LastVel; //!< Its velocity at the end of the last update, to tell a crash by.
 		Attachable* m_Tracks; //!< The tracks, whose frames step along as it drives. Owned by this, as an attachable.
+		Attachable* m_ThrowingArm; //!< A catapult's throwing arm, if it has one. Owned by this, as an attachable.
+		float m_ArmLength; //!< How far the arm's bucket is from where it turns, in pixels (its picture lies back from there, the way it faces).
+		float m_ArmThrowAngle; //!< How far the arm swings over throwing, in radians.
+		float m_LaunchSpeed; //!< How fast the arm flings what it throws, in m/s.
+		float m_LaunchReloadTime; //!< How long from one throw to the next, in ms: the arm let back down, wound and loaded.
+		float m_MinLaunchAngle; //!< The lowest it can throw, in radians above level.
+		float m_MaxLaunchAngle; //!< The highest it can throw, in radians above level.
+		std::vector<MovableObject*> m_LaunchAmmo; //!< What it can throw, one kind loaded at a time (Next and Prev. Device change it). Owned.
+		int m_LaunchAmmoIndex; //!< Which of m_LaunchAmmo is loaded.
+		enum class LaunchPhase { Loaded, Winding, Throwing, Reloading };
+		LaunchPhase m_LaunchPhase; //!< Where it is in a throw.
+		Timer m_LaunchTimer; //!< Since the throw's phase began.
+		bool m_Released; //!< Whether this throw has let go of its load.
+		Timer m_AmmoSwitchTimer; //!< Since the loaded kind last changed, so a held key doesn't spin through them.
+		int m_AIThrows; //!< How many an AI crew has thrown, to vary what it loads.
 		float m_TrackFrameLength; //!< How far it drives for the tracks to step on a frame, in pixels.
 		float m_TrackTravel; //!< How far the tracks have run round, in pixels, the way they run driving forward.
 		bool m_DrawsCrew; //!< Whether the crew is drawn in their seats, or hidden inside.
@@ -347,8 +386,28 @@ namespace RTE {
 		/// Lets a friendly unit beside the seat that asks to get in, get in; lets the driver out when they ask.
 		void UpdateBoarding();
 
-		/// Puts everyone in it at their seats, as the body lies now, so they are drawn there.
+		/// Puts everyone in it at their seats, as the body lies now, so they are drawn there; the dead slumped forward in theirs.
 		void PlaceCrew() const;
+
+		/// Lets the unit in a seat out, as EjectSeat does.
+		/// @param seat The seat: 0 the driver's, 1 on the others.
+		/// @param thrown Whether they are thrown out (see EjectSeat).
+		/// @param fallen Whether it's a body falling out of its seat: out beside it, or on top if there's no room, whatever is there.
+		/// @return The unit that got out, or nullptr if the seat was empty or there was no room to get out.
+		Actor* LetOut(int seat, bool thrown, bool fallen);
+
+		/// Tips a body slumped in a seat out of it, into the scene beside it (or flung, from a crash or a wreck).
+		/// @param index Which of m_Slumped.
+		/// @param thrown Whether it is flung out with the speed the vehicle had.
+		void TipOutSlumped(size_t index, bool thrown);
+
+		/// Tips out every body slumped in its seats.
+		/// @param thrown Whether they are flung out (see TipOutSlumped).
+		void TipOutAllSlumped(bool thrown);
+
+		/// Lets the crew in its open seats bleed from their wounds and take the damage they've been dealt there, and sees to those who die
+		/// of it: they fall out (DeadCrewFallOut), or slump in their seats. Anyone blown apart in their seat is gone from it.
+		void UpdateSeatedCrew();
 
 		/// Sets who sits in a seat, without taking anyone in or letting them out.
 		void SetSeatOccupant(int seat, Actor* unit);
@@ -388,6 +447,29 @@ namespace RTE {
 
 		/// Takes its orders from a unit: it is sent to where that unit was going.
 		void TakeOrdersFrom(const Actor* unit);
+
+		/// Works a catapult's arm through a throw (wound back, swung over, let back down to load) and lets go of its load on the way over.
+		/// @param fire Whether the one manning it pulls the release this update.
+		void UpdateThrowingArm(bool fire);
+
+		/// Gets the angle above level to throw at to land on a point, the high lob if it can (over walls), else the low one.
+		/// @param toTarget From where the throw starts to the point, in pixels.
+		/// @param angle Where the angle is put, in radians above level, the way it faces.
+		/// @return Whether it can reach there at all, within its angles.
+		bool LobAngleTo(const Vector& toTarget, float& angle) const;
+
+		/// Gets where a throw lets go of its load: the bucket's place with the arm swung most of the way over.
+		Vector GetReleasePoint() const;
+
+		/// Gets the velocity a throw at an angle flings its load with.
+		/// @param angle Radians above level, the way it faces.
+		Vector GetLaunchVelocity(float angle) const;
+
+		/// Gets how hard gravity pulls on what is loaded, in m/s².
+		float GetLaunchGravity() const;
+
+		/// Draws, for the player manning it, the dotted arc a throw at the angle aimed at would take, to where it would land.
+		void DrawLaunchArc() const;
 
 		/// Finds what a gunner would shoot at: the nearest enemy unit in range and in sight, that the gun can swing to.
 		/// @return Its unique ID, or 0 if there is none.

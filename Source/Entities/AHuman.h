@@ -924,6 +924,10 @@ namespace RTE {
 			Vector straightGoal; //!< The goal it was begun for: not tried again for a few seconds (straightTimer), so a flight that failed isn't begun again and again.
 			Timer straightTimer;
 			Timer straightCheckTimer; //!< Since the follower last looked for a full-risk flight.
+			bool skyFlying = false; //!< Flying a sky order (Actor::StandingOrder::SkyGoal) to its point in the air (see UpdateAIMotor).
+			bool skyHovering = false; //!< Got there: hovering at it till the tank runs low.
+			bool skyClear = false; //!< Whether the line to the point was open when last looked (skyCheckTimer).
+			Timer skyCheckTimer;
 			bool settling = false; //!< Waiting to settle before a take-off just now.
 			bool leapWatch = false; //!< A leap of the route's is under way: where from and to, to judge it by when it comes down.
 			Vector leapFrom;
@@ -1114,11 +1118,13 @@ namespace RTE {
 		/// right. @param reach How far ahead to look at most. @return The unit, or nullptr.
 		Actor* UnitAhead(float direction, float reach) const;
 		bool InDoorSweep() const;
-		float FlightFuelNeeded(const Vector& landing, float landingFloorY) const;
+		float FlightFuelNeeded(const Vector& landing, float landingFloorY, bool capped = true) const; // (Capped at most of the tank unless told not to.)
 		/// The jet's push at a given fuel left, in px/s^2: the push now (as learned in flight) scaled by the throttle, which follows the tank.
 		float JetAccelAtFuel(float fuel) const;
 		/// The least fuel the jet lights on from rest, in ms (the engine's 250 ms at the throttle, and the pack's own minimum ratio).
 		float JetRelightFuel() const;
+		/// The fuel a sky order's hover keeps back, in ms: what braking the drop from here to the floor below takes (UpdateAIMotor).
+		float SkyReserve() const;
 		/// What the tank has left at the top of a straight climb of a height, begun with so much fuel, flown as the pilot flies it (full burn
 		/// to the speed cap, held, coasting from the height gravity stops it in); or below zero when the climb can't be made on it.
 		float ClimbFuelLeft(float height, float fuel) const;

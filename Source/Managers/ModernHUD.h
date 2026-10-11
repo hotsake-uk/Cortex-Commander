@@ -19,6 +19,11 @@ namespace RTE {
 		/// Draws the HUD for the first player, with ImGui. Call once per frame while building the ImGui frame.
 		static void Draw();
 
+		/// Adds a line to the feed (top left, under the funds), with its team's colour: a command given, say. Only while the HUD is shown.
+		/// @param text What the line says.
+		/// @param team The team it is about, for its colour.
+		static void AddFeedLine(const std::string& text, int team);
+
 	private:
 		static bool s_Enabled; //!< Whether the modern HUD is shown.
 	};

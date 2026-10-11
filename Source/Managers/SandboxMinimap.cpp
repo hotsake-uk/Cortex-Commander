@@ -210,12 +210,14 @@ namespace SandboxDetail {
 					stroke.Position = point;
 					stroke.Count = io.KeyShift ? 42 : 41;
 					stroke.Clicks = ImGui::GetMouseClickedCount(ImGuiMouseButton_Right);
+					stroke.OrderMode = static_cast<int>(s_CommandMode);
+					BackToCommandAfterOrder(io.KeyShift);
 					s_Queue.push_back(stroke);
 				}
 			}
 			drawList->PopClipRect();
 			if (hovered && !s_MapDragging) {
-				ImGui::SetTooltip("Click: look here.  Drag: select the units in the box.\nRight click: %s here (Shift: add it to their plans).", s_CommandMode == CommandMode::Patrol ? "a point of the patrol route" : c_CommandModeNames[static_cast<int>(s_CommandMode == CommandMode::Select ? CommandMode::Move : s_CommandMode)]);
+				ImGui::SetTooltip("Click: look here.  Drag: select the units in the box.\nRight click: %s here (Shift: add it to their plans).", s_CommandMode == CommandMode::Patrol ? "a point of the patrol route" : s_CommandMode == CommandMode::Command ? "the order that fits (an enemy attacked, an objective taken, else a move)" : c_CommandModeNames[static_cast<int>(s_CommandMode == CommandMode::Select ? CommandMode::Move : s_CommandMode)]);
 			}
 		}
 		ImGui::End();

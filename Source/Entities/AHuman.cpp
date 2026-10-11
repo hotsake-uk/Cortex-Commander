@@ -857,7 +857,12 @@ bool AHuman::EquipLoadedFirearmInGroup(const std::string& group, const std::stri
 		return false;
 	}
 
-	if (HeldDevice* heldDevice = m_pFGArm->GetHeldDevice(); heldDevice && !heldDevice->NeedsReloading() && heldDevice->IsInGroup(group) && !heldDevice->IsInGroup(excludeGroup)) {
+	// (A spell its holder can't pay for isn't loaded, MG-3.)
+	auto affordable = [this](const MovableObject* device) {
+		const HDFirearm* firearm = dynamic_cast<const HDFirearm*>(device);
+		return !firearm || firearm->GetAffordableRoundsFor(this) > 0;
+	};
+	if (HeldDevice* heldDevice = m_pFGArm->GetHeldDevice(); heldDevice && !heldDevice->NeedsReloading() && affordable(heldDevice) && heldDevice->IsInGroup(group) && !heldDevice->IsInGroup(excludeGroup)) {
 		return true;
 	}
 
@@ -865,7 +870,7 @@ bool AHuman::EquipLoadedFirearmInGroup(const std::string& group, const std::stri
 	for (std::deque<MovableObject*>::iterator itr = m_Inventory.begin(); itr != m_Inventory.end(); ++itr) {
 		HDFirearm* pFirearm = dynamic_cast<HDFirearm*>(*itr);
 		// Found proper device to equip, so make the switch!
-		if (pFirearm && !pFirearm->NeedsReloading() && pFirearm->IsInGroup(group) && !pFirearm->IsInGroup(excludeGroup)) {
+		if (pFirearm && !pFirearm->NeedsReloading() && affordable(pFirearm) && pFirearm->IsInGroup(group) && !pFirearm->IsInGroup(excludeGroup)) {
 			if (doEquip) {
 				// The next code may cause reallocation, so we can't just use the same pointer.
 				// Store how far into the inventory the device is, memory wise.
@@ -1350,7 +1355,8 @@ bool AHuman::FirearmIsReady() const {
 	// Check if the currently held device is already the desired type
 	if (m_pFGArm && m_pFGArm->IsAttached()) {
 		const HDFirearm* pWeapon = dynamic_cast<HDFirearm*>(m_pFGArm->GetHeldDevice());
-		if (pWeapon && pWeapon->GetRoundInMagCount() != 0)
+		// (A spell its holder can't pay for is no more ready than an empty gun, MG-3.)
+		if (pWeapon && pWeapon->GetRoundInMagCount() != 0 && pWeapon->GetAffordableRounds() > 0)
 			return true;
 	}
 
@@ -1472,7 +1478,7 @@ bool AHuman::ThrowableIsReady() const {
 bool AHuman::FirearmIsEmpty() const {
 	if (m_pFGArm && m_pFGArm->IsAttached()) {
 		const HDFirearm* pWeapon = dynamic_cast<HDFirearm*>(m_pFGArm->GetHeldDevice());
-		if (pWeapon && pWeapon->GetRoundInMagCount() == 0)
+		if (pWeapon && (pWeapon->GetRoundInMagCount() == 0 || pWeapon->GetAffordableRounds() <= 0))
 			return true;
 	}
 
@@ -3721,7 +3727,14 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 	const float direct = std::max(m_StandingOrder.Direct, 0.0F);
 	const float care = std::max(-m_StandingOrder.Direct, 0.0F);
 	const float rush = 1.0F + (tuning.FlightSpeed - 1.0F) * direct + (tuning.CautiousFlightSpeed - 1.0F) * care;
-	const float safeTouchdown = (5.0F + (tuning.Touchdown - 5.0F) * direct + (tuning.CautiousTouchdown - 5.0F) * care) * ppm;
+	float touchdown = 5.0F + (tuning.Touchdown - 5.0F) * direct + (tuning.CautiousTouchdown - 5.0F) * care;
+	// (With the safe landings setting on, a risky order's harder landing is never past what the body takes unhurt: the speed its impact
+	// damage starts at, as GetMaxSafeFallHeight reckons it, less a margin, and never slower than a normal unit's landing.)
+	if (tuning.SafeLandings && direct > 0.0F && m_TravelImpulseDamage > 0.0F) {
+		float unhurt = m_TravelImpulseDamage / std::max(GetMass(), 1.0F) * 0.85F;
+		touchdown = std::min(touchdown, std::max(unhurt, 5.0F));
+	}
+	const float safeTouchdown = touchdown * ppm;
 	auto allowedFall = [&](float height) {
 		// (On seven tenths of the braking reckoned: the jet's push falls with the tank, and a unit dropped onto a narrow ledge at the full
 		// reckoning met it too fast and bounced off.)
