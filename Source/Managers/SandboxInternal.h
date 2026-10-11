@@ -831,7 +831,7 @@ namespace SandboxDetail {
 		int Loadout = 0; //!< 0 faction default, 1 unarmed, 2+ a weapon from s_Weapons.
 		int Count = 1;
 		bool LitGrenade = false;
-		bool Direct = false; //!< Tool::Command: placed with a triple click, so the order is a direct one (s_DirectOrder).
+		int Clicks = 1; //!< Tool::Command: how many clicks in a row placed it. A double click makes the order partly direct, a triple fully (s_DirectOrder).
 		long UnitID = 0; //!< Dropping a step of a plan: whose (and Choice which step).
 		std::vector<Vector> Points; //!< A patrol route's points (RC-4).
 		Vector Position2; //!< Selection box: the other corner.
@@ -945,11 +945,12 @@ namespace SandboxDetail {
 	inline bool s_ActionSpotValid = false;
 	inline bool s_Dragging = false;
 	inline bool s_DoubleClick = false; //!< The drag or click under way began with a double click.
-	inline bool s_TripleClick = false; //!< The drag or click under way began with a third click or more in a row: its order is a direct one (s_DirectOrder).
-	/// While an order the player triple-clicked is given (a command stroke with Direct): every unit sent (SendUnit) goes the shortest way there
-	/// whatever it takes (Actor::StandingOrder::Direct), and isn't held to the group's pace. Set round the stroke, so every kind of order
+	inline int s_ClickCount = 1; //!< How many clicks in a row the drag or click under way began with: a double or triple click makes its order direct (s_DirectOrder).
+	/// While an order the player double- or triple-clicked is given (a command stroke's Clicks), how direct it is: 0 a plain click, 1 a triple
+	/// click, a double click between (SettingsMan::DirectOrderTuning::DoubleClickShare). Every unit sent (SendUnit) takes that share of the
+	/// Battle Behavior tuning (Actor::StandingOrder::Direct), and isn't held to the group's pace. Set round the stroke, so every kind of order
 	/// placed by a click (move, attack-move, dig to, defend, a map order) is made direct the same way.
-	inline bool s_DirectOrder = false;
+	inline float s_DirectOrder = 0.0F;
 	inline ImVec2 s_DragStart;
 	inline std::array<BattleTeam, c_Sides> s_BattleTeams; //!< The Battle Director's teams, as the sim runs them.
 	inline std::array<BattleSettings, c_Sides> s_BattleSetup = [] { //!< The Battle tab's cards, the window's copy (sent to the sim as each changes).
@@ -1193,7 +1194,7 @@ namespace SandboxDetail {
 		Vector Position;
 		float Life; //!< Seconds left.
 		ImU32 Color;
-		bool Direct = false; //!< A triple-clicked order (s_DirectOrder): drawn with a second, wider ring.
+		float Direct = 0.0F; //!< How direct the order was (s_DirectOrder): over 0, drawn with a second, wider ring, wider the more direct.
 	};
 	inline std::vector<OrderMark> s_OrderMarks;
 	// The gym's start and goal being made (see the Gym region).

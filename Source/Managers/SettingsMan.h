@@ -262,7 +262,7 @@ namespace RTE {
 		/// Whether AI units wait at a take-off for the fuel the flight needs (on, as designed), or go with what is in the tank.
 		bool AIWaitsForFuel() const { return m_AIWaitForFuel; }
 
-		/// How units behave on a direct order (a triple-clicked RTS order, Actor::StandingOrder::Direct): the "Battle Behavior" settings. Each
+		/// How units behave on a direct order (a double- or triple-clicked RTS order, Actor::StandingOrder::Direct): the "Battle Behavior" settings. Each
 		/// member's default is the normal tuning, so DirectOrderTuning() is the reset.
 		struct DirectOrderTuning {
 			float Caution = 0.1F; //!< The most route caution they have (PathAgent::Caution): 1 is a normal unit's, lower shies less from hard flights and long drops.
@@ -275,6 +275,7 @@ namespace RTE {
 			float LineWeight = 0.1F; //!< On a dig-to, what each node off the straight line costs them, in nodes walked (PathFinder::LineCost).
 			bool IgnoreEnemies = true; //!< Whether their routes take no notice of enemies on the way.
 			bool KeepPace = false; //!< Whether a group sent together is still kept to its slowest walker's pace (s_KeepPace on the command row).
+			float DoubleClickShare = 0.5F; //!< How much of this tuning a double-clicked order gets, 0 to 1 (a triple-clicked one gets all of it, a plain click none).
 		};
 
 		/// Gets the direct order tuning, to read or change ("Battle Behavior" settings).

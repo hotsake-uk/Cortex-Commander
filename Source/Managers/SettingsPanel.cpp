@@ -1190,7 +1190,14 @@ void DebugMan::SettingsGUI() {
 	auto battleBehavior = [&]() {
 		SettingsMan::DirectOrderTuning& direct = g_SettingsMan.DirectOrders();
 		if (Plain()) {
-			ImGui::TextWrapped("Triple-click when you place an RTS order (move, attack-move, defend, dig to) to make it a direct order: the units go the shortest way there, whatever it takes. These set how hard they push it.");
+			ImGui::TextWrapped("Click when you place an RTS order (move, attack-move, defend, dig to) for a normal order. Double-click for a riskier, more direct one, and triple-click for a fully direct one: the units go the shortest way there, whatever it takes. These set how hard a triple-clicked order pushes it.");
+		}
+		{
+			float share = direct.DoubleClickShare * 100.0F;
+			if (Slider("Double click strength", &share, 0.0F, 100.0F, "%.0f%% of a triple click")) {
+				direct.DoubleClickShare = share / 100.0F;
+			}
+			Tip("How far a double-clicked order goes toward a triple-clicked one: every setting below is taken this share of the way from a normal order's. 0% makes a double click a normal order; 50% is normal.");
 		}
 		Heading("Jetpack");
 		{

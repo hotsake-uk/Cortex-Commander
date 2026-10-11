@@ -179,7 +179,7 @@ namespace SandboxDetail {
 		if (!resend) {
 			standing.Kind = OrderKindFor(reason);
 			standing.HasDigTarget = false;
-			// Triple-clicked (s_DirectOrder): the shortest way there, whatever it takes. One the standing orders resend keeps it.
+			// Double- or triple-clicked (s_DirectOrder): the shortest way there, whatever it takes. One the standing orders resend keeps it.
 			standing.Direct = s_DirectOrder;
 		}
 		standing.FailReason = Actor::ORDERFAIL_NONE;
@@ -652,7 +652,7 @@ namespace SandboxDetail {
 		// Kept together (RC-5): each no faster than the slowest walker among them, till it gets there (UpdatePace).
 		// (Not on a direct order, s_DirectOrder, unless the Battle Behavior settings say so: each goes as fast as it can.)
 		float pace = 0.0F;
-		if (s_KeepPace && units.size() > 1 && (!s_DirectOrder || g_SettingsMan.DirectOrders().KeepPace)) {
+		if (s_KeepPace && units.size() > 1 && (s_DirectOrder <= 0.0F || g_SettingsMan.DirectOrders().KeepPace)) {
 			for (Actor* unit: units) {
 				if (float own = WalkPace(unit); own > 0.0F && (pace == 0.0F || own < pace)) {
 					pace = own;
