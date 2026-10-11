@@ -1157,6 +1157,10 @@ namespace RTE {
 		/// Updates this MovableObject. Supposed to be done every frame.
 		void Update() override;
 
+		/// Updates what still goes on for a unit sat out of the scene in a vehicle's open seat, where it can be shot: its wounds bleed, and
+		/// the damage to it and its limbs comes off its health.
+		void UpdateWhileSeated();
+
 		/// After every object has updated, before the deletions: lets go of the item in reach if it is going (see m_pItemInReach).
 		void PostUpdate() override;
 

@@ -2676,6 +2676,17 @@ void RTE::Actor::CastSeeRays() {
 	}
 }
 
+void Actor::UpdateWhileSeated() {
+	UpdateWounds();
+	for (AEmitter* wound: m_Wounds) {
+		m_Health -= wound->CollectDamage() * m_DamageMultiplier;
+	}
+	for (Attachable* attachable: m_Attachables) {
+		m_Health -= attachable->CollectDamage();
+	}
+	m_Health = std::min(m_Health, m_MaxHealth);
+}
+
 void Actor::FullUpdate() {
 	PreControllerUpdate();
 	m_Controller.Update();
