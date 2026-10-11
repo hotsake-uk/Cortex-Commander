@@ -3654,7 +3654,14 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 	const float direct = std::max(m_StandingOrder.Direct, 0.0F);
 	const float care = std::max(-m_StandingOrder.Direct, 0.0F);
 	const float rush = 1.0F + (tuning.FlightSpeed - 1.0F) * direct + (tuning.CautiousFlightSpeed - 1.0F) * care;
-	const float safeTouchdown = (5.0F + (tuning.Touchdown - 5.0F) * direct + (tuning.CautiousTouchdown - 5.0F) * care) * ppm;
+	float touchdown = 5.0F + (tuning.Touchdown - 5.0F) * direct + (tuning.CautiousTouchdown - 5.0F) * care;
+	// (With the safe landings setting on, a risky order's harder landing is never past what the body takes unhurt: the speed its impact
+	// damage starts at, as GetMaxSafeFallHeight reckons it, less a margin, and never slower than a normal unit's landing.)
+	if (tuning.SafeLandings && direct > 0.0F && m_TravelImpulseDamage > 0.0F) {
+		float unhurt = m_TravelImpulseDamage / std::max(GetMass(), 1.0F) * 0.85F;
+		touchdown = std::min(touchdown, std::max(unhurt, 5.0F));
+	}
+	const float safeTouchdown = touchdown * ppm;
 	auto allowedFall = [&](float height) {
 		// (On seven tenths of the braking reckoned: the jet's push falls with the tank, and a unit dropped onto a narrow ledge at the full
 		// reckoning met it too fast and bounced off.)

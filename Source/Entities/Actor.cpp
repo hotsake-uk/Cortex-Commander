@@ -1582,6 +1582,10 @@ PathAgent Actor::GetPathAgent() const {
 		if (agent.DigGoal) {
 			agent.DigCostScale = toward(agent.DigCostScale, std::min(agent.DigCostScale, direct.DigCostScale));
 			agent.LineWeight = direct.LineWeight * share;
+		} else {
+			// A move, attack or the like keeps nearer the straight line the riskier it is (PathFinder::LineCost): at half risk the route cuts
+			// corners and takes the jumps a normal one walks round, near full risk it is close to direct; the search still finds the way.
+			agent.LineWeight = direct.MoveLineWeight * share;
 		}
 	}
 	for (const std::pair<Vector, double>& avoid: m_AvoidPoints) {
