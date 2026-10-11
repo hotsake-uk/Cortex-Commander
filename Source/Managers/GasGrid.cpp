@@ -91,6 +91,7 @@ namespace {
 	};
 	std::mutex s_QueueMutex;
 	std::vector<GasRequest> s_Requests;
+	std::vector<std::pair<const MovableObject*, int>> s_SmokePuffs; //!< This update's floating particles named smoke on the grid, in order, with their cells: found once, for both the area and TakeInSmoke.
 
 	bool Active() { return s_Right > s_Left && s_Bottom > s_Top; }
 
@@ -204,7 +205,24 @@ namespace {
 				}
 			}
 		}
+		// A kind with none of it anywhere in the area is passed over: worked through, every flow would be nothing and it would stay nothing.
+		// (Gas is never below nothing, so this is exactly whether anything would change.)
+		std::array<bool, c_Kinds> present{};
 		for (int kind = 0; kind < c_Kinds; ++kind) {
+			const std::vector<float>& gas = s_Gas[kind];
+			for (int y = s_Top; y < s_Bottom && !present[kind]; ++y) {
+				for (int x = s_Left; x < s_Right; ++x) {
+					if (gas[Index(x, y)] != 0.0F) {
+						present[kind] = true;
+						break;
+					}
+				}
+			}
+		}
+		for (int kind = 0; kind < c_Kinds; ++kind) {
+			if (!present[kind]) {
+				continue;
+			}
 			std::vector<float>& gas = s_Gas[kind];
 			std::vector<float>& change = s_Change[kind];
 			float buoyancy = c_Gases[kind].Buoyancy;
@@ -263,6 +281,9 @@ namespace {
 		}
 		float thickest = 0.0F;
 		for (int kind = 0; kind < c_Kinds; ++kind) {
+			if (!present[kind]) {
+				continue;
+			}
 			std::vector<float>& gas = s_Gas[kind];
 			const std::vector<float>& change = s_Change[kind];
 			for (int y = s_Top; y < s_Bottom; ++y) {
@@ -410,22 +431,17 @@ void GasGrid::Clear() {
 	s_GridWidth = s_GridHeight = 0;
 	s_Left = s_Right = s_Top = s_Bottom = 0;
 	s_AnyBurning = false;
+	s_SmokePuffs.clear();
 	std::scoped_lock lock(s_QueueMutex);
 	s_Requests.clear();
 }
 
 void GasGrid::TakeInSmoke() {
-	for (const MovableObject* particle: g_MovableMan.m_Particles) {
+	// (From the particles Update found floating, named smoke and on the grid, in the same order: these are among them.)
+	for (const auto& [particle, cell]: s_SmokePuffs) {
 		// Smoke: weightless air particles that float up (as SmokeGrid tells them), named smoke, so steam and the gas's own puffs aren't.
-		if (!particle || particle->GetGlobalAccScalar() >= 0.0F || particle->ToDelete()) {
-			continue;
-		}
 		const MOSParticle* smoke = dynamic_cast<const MOSParticle*>(particle);
-		if (!smoke || !smoke->GetAtom() || smoke->GetAtom()->GetMaterial()->GetIndex() != g_MaterialAir || smoke->GetPresetName().find("Smoke") == std::string::npos) {
-			continue;
-		}
-		int cell = CellAt(smoke->GetPos());
-		if (cell < 0) {
+		if (!smoke || !smoke->GetAtom() || smoke->GetAtom()->GetMaterial()->GetIndex() != g_MaterialAir) {
 			continue;
 		}
 		// A little each update, more for a big puff: a puff that lives its life out leaves about a cell's worth behind.
@@ -583,9 +599,11 @@ void GasGrid::Update() {
 	int smokeTop = INT_MAX;
 	int smokeRight = INT_MIN;
 	int smokeBottom = INT_MIN;
+	s_SmokePuffs.clear();
 	for (const MovableObject* particle: g_MovableMan.m_Particles) {
 		if (particle && particle->GetGlobalAccScalar() < 0.0F && !particle->ToDelete() && particle->GetPresetName().find("Smoke") != std::string::npos) {
 			if (int cell = CellAt(particle->GetPos()); cell >= 0) {
+				s_SmokePuffs.emplace_back(particle, cell);
 				smokeLeft = std::min(smokeLeft, cell % s_GridWidth);
 				smokeRight = std::max(smokeRight, cell % s_GridWidth);
 				smokeTop = std::min(smokeTop, cell / s_GridWidth);

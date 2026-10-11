@@ -238,6 +238,11 @@ namespace RTE {
 		/// @return An unsigned char specifying the requested pixel's material index.
 		unsigned char GetTerrMatter(int pixelX, int pixelY);
 
+		/// Whether a LiquidsSeeThrough scope is alive on this thread. Under one, each GetTerrMatter read of liquid counts towards how deep the look has
+		/// gone, so a caller that would read the same pixel twice must still read it twice.
+		/// @return Whether a LiquidsSeeThrough scope is alive on this thread.
+		static bool LiquidsSeeThroughActive() { return s_SeeThrough.Active; }
+
 		/// While one of these is alive on a thread, GetTerrMatter on that thread reports liquid in the terrain as air.
 		/// Bodies (anything with an AtomGroup: units, limbs, devices, gibs) travel under it, so they move through water, lava, acid and oil instead of hitting and destroying it.
 		/// Single particles don't, so drops and bullets still strike a liquid's surface.
@@ -325,14 +330,16 @@ namespace RTE {
 		/// @param top The top boundary of the drawn area.
 		/// @param right The right boundary of the draw area.
 		/// @param bottom The bottom boundary of the draw area.
-		void RegisterDrawing(const BITMAP* bitmap, int moid, int left, int top, int right, int bottom);
+		/// @param mo The object drawn, given in the MOID pass: the table of objects by ID is rebuilt while that pass runs, so looking moid up would find last update's object.
+		void RegisterDrawing(const BITMAP* bitmap, int moid, int left, int top, int right, int bottom, const MovableObject* mo = nullptr);
 
 		/// Registers an area of to be drawn upon, so it can be tracked and cleared later.
 		/// @param bitmap The bitmap being drawn upon.
 		/// @param moid The MOID, if we're drawing MOIDs.
 		/// @param center The centre position of the drawn area.
 		/// @param radius The radius of the drawn area.
-		void RegisterDrawing(const BITMAP* bitmap, int moid, const Vector& center, float radius);
+		/// @param mo The object drawn, given in the MOID pass (see above).
+		void RegisterDrawing(const BITMAP* bitmap, int moid, const Vector& center, float radius, const MovableObject* mo = nullptr);
 
 		/// Clears all registered drawn areas of the MOID layer to the g_NoMOID color and clears the registrations too. Should be done each sim update.
 		void ClearAllMOIDDrawings();

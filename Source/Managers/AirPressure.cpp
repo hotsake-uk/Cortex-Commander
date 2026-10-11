@@ -152,6 +152,15 @@ namespace {
 		return x >= s_Left && x < s_Right && y >= s_Top && y < s_Bottom;
 	}
 
+	/// The air's movement through a cell in the active area: the average of what crosses its sides.
+	Vector FlowInCell(int cell) {
+		int x = cell % s_GridWidth;
+		int y = cell / s_GridWidth;
+		float acrossLeft = x > s_Left ? s_FlowX[cell - 1] : 0.0F;
+		float acrossTop = y > s_Top ? s_FlowY[cell - s_GridWidth] : 0.0F;
+		return Vector((acrossLeft + s_FlowX[cell]) * 0.5F, (acrossTop + s_FlowY[cell]) * 0.5F);
+	}
+
 	/// Air or liquid in at least half of four points of the cell lets the wave through.
 	void WorkOutOpenness(const BITMAP* materialBitmap) {
 		int width = materialBitmap->w;
@@ -183,25 +192,34 @@ namespace {
 		float reach = std::max(AirPressure::GetTuning().BlastReach, 0.1F);
 		float flowDamping = 1.0F - (1.0F - c_FlowDamping) / reach;
 		float pressureDamping = 1.0F - (1.0F - c_PressureDamping) / reach;
-		for (int y = s_Top; y < s_Bottom; ++y) {
-			for (int x = s_Left; x < s_Right; ++x) {
+		// (The area and the grids' storage in locals: the compiler can't tell that writing a cell doesn't change them, so would read them again for every cell.)
+		const int left = s_Left;
+		const int right = s_Right;
+		const int top = s_Top;
+		const int bottom = s_Bottom;
+		float* flowX = s_FlowX.data();
+		float* flowY = s_FlowY.data();
+		float* pressures = s_Pressure.data();
+		const unsigned char* open = s_Open.data();
+		for (int y = top; y < bottom; ++y) {
+			for (int x = left; x < right; ++x) {
 				int cell = y * width + x;
-				s_FlowX[cell] = x + 1 < s_Right && s_Open[cell] != Solid && s_Open[cell + 1] != Solid ? (s_FlowX[cell] + c_WaveRate * (s_Pressure[cell] - s_Pressure[cell + 1])) * flowDamping : 0.0F;
-				s_FlowY[cell] = y + 1 < s_Bottom && s_Open[cell] != Solid && s_Open[cell + width] != Solid ? (s_FlowY[cell] + c_WaveRate * (s_Pressure[cell] - s_Pressure[cell + width])) * flowDamping : 0.0F;
+				flowX[cell] = x + 1 < right && open[cell] != Solid && open[cell + 1] != Solid ? (flowX[cell] + c_WaveRate * (pressures[cell] - pressures[cell + 1])) * flowDamping : 0.0F;
+				flowY[cell] = y + 1 < bottom && open[cell] != Solid && open[cell + width] != Solid ? (flowY[cell] + c_WaveRate * (pressures[cell] - pressures[cell + width])) * flowDamping : 0.0F;
 			}
 		}
 		float loudest = 0.0F;
-		for (int y = s_Top; y < s_Bottom; ++y) {
-			for (int x = s_Left; x < s_Right; ++x) {
+		for (int y = top; y < bottom; ++y) {
+			for (int x = left; x < right; ++x) {
 				int cell = y * width + x;
-				if (s_Open[cell] == Solid) {
-					s_Pressure[cell] = 0.0F;
+				if (open[cell] == Solid) {
+					pressures[cell] = 0.0F;
 					continue;
 				}
-				float outflow = s_FlowX[cell] - (x > s_Left ? s_FlowX[cell - 1] : 0.0F) + s_FlowY[cell] - (y > s_Top ? s_FlowY[cell - width] : 0.0F);
-				float pressure = (s_Pressure[cell] - c_WaveRate * outflow) * (y == 0 ? c_SkyRelease : pressureDamping);
-				s_Pressure[cell] = pressure;
-				loudest = std::max({loudest, std::abs(pressure), std::abs(s_FlowX[cell]), std::abs(s_FlowY[cell])});
+				float outflow = flowX[cell] - (x > left ? flowX[cell - 1] : 0.0F) + flowY[cell] - (y > top ? flowY[cell - width] : 0.0F);
+				float pressure = (pressures[cell] - c_WaveRate * outflow) * (y == 0 ? c_SkyRelease : pressureDamping);
+				pressures[cell] = pressure;
+				loudest = std::max({loudest, std::abs(pressure), std::abs(flowX[cell]), std::abs(flowY[cell])});
 			}
 		}
 		return loudest;
@@ -264,7 +282,8 @@ void AirPressure::PushObjects() {
 		if (cell < 0 || !InActiveArea(cell) || s_Open[cell] == Solid) {
 			return;
 		}
-		Vector flow = GetFlow(object->GetPos());
+		// (As GetFlow, which would find the same cell again: the active area is never empty here.)
+		Vector flow = FlowInCell(cell);
 		if (flow.MagnitudeIsLessThan(0.05F)) {
 			return;
 		}
@@ -435,11 +454,7 @@ Vector AirPressure::GetFlow(const Vector& position) {
 	if (cell < 0 || !InActiveArea(cell)) {
 		return Vector();
 	}
-	int x = cell % s_GridWidth;
-	int y = cell / s_GridWidth;
-	float acrossLeft = x > s_Left ? s_FlowX[cell - 1] : 0.0F;
-	float acrossTop = y > s_Top ? s_FlowY[cell - s_GridWidth] : 0.0F;
-	return Vector((acrossLeft + s_FlowX[cell]) * 0.5F, (acrossTop + s_FlowY[cell]) * 0.5F);
+	return FlowInCell(cell);
 }
 
 float AirPressure::GetPressure(const Vector& position) {
@@ -524,8 +539,11 @@ void AirPressure::Update() {
 			Grow(cell % s_GridWidth - reach, cell / s_GridWidth - reach, cell % s_GridWidth + reach + 1, cell / s_GridWidth + reach + 1);
 		}
 	}
+	// (Not again below when done here: nothing between changes the area or the terrain.)
+	bool openWorkedOut = false;
 	if ((!blasts.empty() || !gusts.empty()) && Active()) {
 		WorkOutOpenness(materialBitmap);
+		openWorkedOut = true;
 	}
 	// A gust sets the air moving its way across every open cell in its cone, most at its start and fading to nothing at its far end; the
 	// waves then carry it on from there.
@@ -594,7 +612,9 @@ void AirPressure::Update() {
 	if (!Active()) {
 		return;
 	}
-	WorkOutOpenness(materialBitmap);
+	if (!openWorkedOut) {
+		WorkOutOpenness(materialBitmap);
+	}
 	float loudest = 0.0F;
 	// Overall also sets how fast the waves travel: more steps of the wave each update (never fewer than one, nor so many it costs too much).
 	int substeps = std::clamp(static_cast<int>(std::lround(static_cast<float>(c_Substeps) * GetOverall())), 1, 8);

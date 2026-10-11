@@ -2,6 +2,8 @@
 #include "AirPressure.h"
 #include "Camera.h"
 #include "Constants.h"
+#include "DebugMan.h"
+#include "DrawCall.h"
 #include "PostProcessMan.h"
 #include "SceneMan.h"
 #include "Shapes.h"
@@ -619,6 +621,39 @@ void EffectsParticles::Update(float sparks, float dust, float debris) {
 void EffectsParticles::Draw(const Camera& camera) {
 	const LightingSettings& layers = g_PostProcessMan.GetLightingSettings();
 	float previousZOffset = g_RenderMan.GetCurrentZOffset();
+	RenderBatch* batch = g_RenderMan.GetActiveBatch();
+
+	// Chips and drops nowhere near the view are left out. The batch is drawn through every camera of the screen (the wrap cameras sit whole scene
+	// widths or heights away), so near the view means near it modulo the scene's size along an axis that wraps. With the free camera the batch is drawn
+	// from anywhere, so then everything goes in.
+	const Box& viewport = camera.GetViewport();
+	bool cull = !g_DebugMan.FreeCamEnabled();
+	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
+	float sceneHeight = static_cast<float>(g_SceneMan.GetSceneHeight());
+	bool wrapsX = g_SceneMan.SceneWrapsX();
+	bool wrapsY = g_SceneMan.SceneWrapsY();
+	auto nearView = [](float start, float end, float viewStart, float viewSize, float sceneSize, bool wraps) {
+		// Generous: a chip or drop is at most 4 pixels across, and the view's corner may be up to a pixel off the camera's.
+		constexpr float margin = 8.0F;
+		float delta = start - viewStart;
+		float extent = end - start;
+		if (wraps && sceneSize > 0.0F) {
+			if (viewSize + extent + 2.0F * margin >= sceneSize) {
+				return true;
+			}
+			// The copy of the position at or after the view's left (or top) edge, less the margin.
+			delta += margin + extent;
+			delta -= std::floor(delta / sceneSize) * sceneSize;
+			delta -= margin + extent;
+		}
+		return delta + extent >= -margin && delta <= viewSize + margin;
+	};
+
+	// Every chip and drop drawn here shares one draw call, which is what consecutive draws with the same state come to when the batch is rendered.
+	// Each still gets its own depth: its corners take the depth before it, and the depth steps on after it, as a draw call of its own would.
+	// One left out still steps the depth, so everything drawn after keeps its depth.
+	DrawCall* run = nullptr;
+	bool anyDrawn = false;
 	// Two passes: a splash's under-layer first, so every other drop and chip is drawn over it.
 	for (bool underPass: {true, false}) {
 		for (const Particle& particle: s_Particles) {
@@ -631,12 +666,42 @@ void EffectsParticles::Draw(const Camera& camera) {
 			if (alpha <= 0) {
 				continue;
 			}
+			anyDrawn = true;
 			float size = particle.Type == Kind::Droplet ? std::clamp(std::round(particle.Size), 1.0F, 4.0F) : 1.0F;
 			float offset = std::floor((size - 1.0F) * 0.5F);
+			FloatRect rect(std::floor(particle.Position.x) - offset, std::floor(particle.Position.y) - offset, size, size);
+			if (cull && (!nearView(rect.x, rect.x + rect.w, viewport.m_Corner.m_X, viewport.m_Width, sceneWidth, wrapsX) || !nearView(rect.y, rect.y + rect.h, viewport.m_Corner.m_Y, viewport.m_Height, sceneHeight, wrapsY))) {
+				batch->m_CurrentDepth += RenderBatch::c_DrawDepthIncrement;
+				continue;
+			}
 			// In the effects layer the depth test puts it behind units and the ground in front, drawn before it.
 			g_RenderMan.SetCurrentZOffset(layers.Behind(LayerOf(particle.Type)) ? c_EffectsDepth : previousZOffset);
-			RTE::Draw::Rectangle(FloatRect(std::floor(particle.Position.x) - offset, std::floor(particle.Position.y) - offset, size, size), Color(particle.Color.r, particle.Color.g, particle.Color.b, alpha));
+			// The same corners, in the same order, as Shape::Rectangle with whole-texture UVs.
+			glm::u8vec4 color = Color(particle.Color.r, particle.Color.g, particle.Color.b, alpha);
+			float depth = batch->m_CurrentZ + batch->m_CurrentDepth;
+			glm::u8vec4 surface = batch->m_CurrentSurface;
+			Vertex corners[4] = {
+			    Vertex(glm::vec3(glm::vec2(rect.x, rect.y), depth), glm::vec2(0.0F, 0.0F), color, surface),
+			    Vertex(glm::vec3(glm::vec2(rect.x, rect.y) + glm::vec2(rect.w, rect.h), depth), glm::vec2(1.0F, 1.0F), color, surface),
+			    Vertex(glm::vec3(glm::vec2(rect.x, rect.y) + glm::vec2(rect.w, 0.0F), depth), glm::vec2(1.0F, 0.0F), color, surface),
+			    Vertex(glm::vec3(glm::vec2(rect.x, rect.y) + glm::vec2(0.0F, rect.h), depth), glm::vec2(0.0F, 1.0F), color, surface)};
+			if (!run || batch->m_DrawCalls.empty() || batch->m_DrawCalls.back().get() != run) {
+				std::shared_ptr<DrawCall> draw = g_RenderMan.BeginDraw();
+				draw->m_TextureId = g_RenderMan.GetShapeTexture();
+				draw->m_Indexed = false;
+				draw->m_DrawMode = GL_TRIANGLES;
+				run = draw.get();
+			} else {
+				batch->m_CurrentDepth += RenderBatch::c_DrawDepthIncrement;
+			}
+			int base = static_cast<int>(run->m_Vertices.size());
+			run->m_Vertices.insert(run->m_Vertices.end(), std::begin(corners), std::end(corners));
+			run->m_Indices.insert(run->m_Indices.end(), {base, base + 1, base + 2, base, base + 3, base + 1});
 		}
+	}
+	if (anyDrawn) {
+		// As any draw would, these end a run of batched pixels before them, even when all of them were left out.
+		batch->m_OpenPixelDraw = nullptr;
 	}
 	g_RenderMan.SetCurrentZOffset(previousZOffset);
 }
