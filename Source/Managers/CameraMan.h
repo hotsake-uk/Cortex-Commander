@@ -5,6 +5,7 @@
 #include "Vector.h"
 #include "Camera.h"
 
+#include <algorithm>
 #include <array>
 
 #define g_CameraMan CameraMan::Instance()
@@ -83,6 +84,16 @@ namespace RTE {
 		/// @param occlusion The amount of occlusion of the screen.
 		/// @param screenId Which screen you want to set the occlusion of.
 		void SetScreenOcclusion(const Vector& occlusion, int screenId = 0) { m_Screens[screenId].ScreenOcclusion = occlusion; }
+
+		/// Gets how far past the bottom of a non-wrapping scene a specific screen may scroll, so a bar along the foot of the screen doesn't hide the bottom of the map.
+		/// @param screenId Which screen.
+		/// @return The extra scroll allowed past the bottom edge, in scene pixels.
+		float GetBottomOverscroll(int screenId = 0) const { return m_Screens[screenId].BottomOverscroll; }
+
+		/// Sets how far past the bottom of a non-wrapping scene a specific screen may scroll, usually the height of a bar drawn along the foot of the screen.
+		/// @param overscroll The extra scroll allowed past the bottom edge, in scene pixels.
+		/// @param screenId Which screen.
+		void SetBottomOverscroll(float overscroll, int screenId = 0) { m_Screens[screenId].BottomOverscroll = std::max(0.0F, overscroll); }
 
 		/// Gets the currently set scroll target, i.e. where the center of the specific screen is trying to line up with.
 		/// @param screenId Which screen to get the target for.
@@ -221,6 +232,7 @@ namespace RTE {
 			std::array<int, 2> SeamCrossCount = {0, 0}; //!< Keeps track of how many times and in screen directions the wrapping seam has been crossed. This is used for keeping the background layers' scroll from jumping when wrapping around. X and Y.
 
 			Vector ScreenOcclusion; //!< The amount a screen is occluded or covered by GUI, etc.
+			float BottomOverscroll = 0; //!< How far past the bottom of a non-wrapping scene the view may go, so a bar along the foot of the screen doesn't cover the bottom of the map.
 
 			float ScreenShakeMagnitude = 0; //!< The magnitude of screen shake that is currently being applied.
 			float ScreenShakeTime = 0; //!< Real seconds of shaking so far, driving the shake's smooth noise.
