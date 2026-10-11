@@ -664,6 +664,8 @@ namespace SandboxDetail {
 		OneFlag,
 		CaptureTheShip,
 		WaveDefence,
+		Escort,
+		Extraction,
 		Count
 	};
 
@@ -739,6 +741,11 @@ namespace SandboxDetail {
 		int FirstWave = 6; //!< Wave defence: attackers the first wave brings in all, shared between the attacking teams.
 		int WaveGrowth = 3; //!< Wave defence: how many more each wave brings than the one before.
 		int WaveBreak = 20; //!< Wave defence: seconds between a wave beaten and the next (and before the first).
+		int EscortSide = 0; //!< Escort: the side that takes its VIP to the destination (the mode's first zone); the rest hunt it. Escort and
+		                    //!< extraction use TimeLimit too (0: none).
+		int ExtractSide = 0; //!< Extraction: the side that gets its units out through the extraction zone (the mode's first zone), from Tickets units in all.
+		int ExtractToWin = 10; //!< Extraction: units it has to get out to win.
+		int ExtractSeconds = 3; //!< Extraction: seconds a unit stands in the zone to be lifted out.
 		std::array<bool, c_Sides> Commander = {true, true, true, true}; //!< Every mode but custom: each team an AI commander leads (UpdateCommanders),
 		                                                               //!< as a player would: splitting its units between objectives, sending some
 		                                                               //!< after a flag or to a VIP, picking who to go for. Not a team you command.

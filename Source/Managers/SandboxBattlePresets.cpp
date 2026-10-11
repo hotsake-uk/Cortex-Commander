@@ -97,6 +97,10 @@ namespace SandboxDetail {
 			visit("FirstWave", mode.FirstWave);
 			visit("WaveGrowth", mode.WaveGrowth);
 			visit("WaveBreak", mode.WaveBreak);
+			visit("EscortSide", mode.EscortSide);
+			visit("ExtractSide", mode.ExtractSide);
+			visit("ExtractToWin", mode.ExtractToWin);
+			visit("ExtractSeconds", mode.ExtractSeconds);
 			visit("Commander", mode.Commander);
 			visit("CommanderLevel", mode.CommanderLevel);
 			visit("CommanderReserve", mode.CommanderReserve);
