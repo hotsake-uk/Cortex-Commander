@@ -709,6 +709,7 @@ namespace SandboxDetail {
 		int CommanderFallBack = 60; //!< Assault defenders: how far the attackers' taking of the objective in play has got, in percent, when everyone
 		                            //!< falls back to the next one.
 		bool FogOfWar = false; //!< Battle Command: you see only the enemies your team's units can see (BattleFog.cpp).
+		bool MovingSpawns = false; //!< Every mode: during the game, the player can move the spawn zones of a team they command, behind the spawn line (BattleEditMouse). Chosen before it starts.
 		std::array<bool, c_Sides> PlayerCommands{}; //!< Every mode: each team the player commands. Its units come in on hold ground with no orders and
 		                                            //!< no job from the mode, for the player to command (as in an RTS); the rest of the mode (spawns, scoring) is as for any team.
 	};
@@ -2279,6 +2280,15 @@ namespace SandboxDetail {
 	void ForgetBattleMode();
 	void BattleModeTab();
 	void DrawBattleMode();
+	/// The battle's zones and points edited on the map with the Command tool, while the battle panel (or the Battle tab) shows: a click
+	/// selects one, a drag moves it or its corners. Called with the pointer on the world; true when it took the mouse this frame.
+	bool BattleEditMouse();
+	/// On the map: what is selected for editing, what is under the pointer, and while the game is on, where your spawn zones may go.
+	void DrawBattleEdit();
+	/// Why the last move was taken back, by the pointer for a moment.
+	void DrawBattleEditNote();
+	/// On the battle panel: the "Moving spawns" choice, and how to edit on the map.
+	void BattleEditPanel();
 	/// What a battle mode's tool in hand is for, in the mode chosen, by the pointer (as "Red flag", "Hill"); empty for the tool's own name.
 	std::string BattleToolLabel(Tool kind);
 	/// @param withCustom Whether custom (the Battle Director's cards) is one of the choices. Battle Command plays the modes only.

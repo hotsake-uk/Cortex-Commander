@@ -711,6 +711,8 @@ void Sandbox::DrawGUI() {
 	if (InGame() && !g_DebugMan.IsPhotoModeHidingHUD()) {
 		// A Battle Director mode's game: its flags and score, with the window open or not.
 		DrawBattleMode();
+		DrawBattleEdit();
+		DrawBattleEditNote();
 	}
 	// With the tools hidden in the Sandbox game mode you're still above it all: the view goes on moving with the mouse and keys, and the tool in hand goes on
 	// working. Only the window itself is left out.
@@ -882,7 +884,12 @@ void Sandbox::DrawGUI() {
 	if (CapturesWorldClicks()) {
 		const ToolInfo& tool = CurrentTool();
 		Vector position = MouseScenePosition();
-		if (tool.Kind == Tool::Command) {
+		// With the battle panel showing, a click on one of the battle's zones or points selects and moves it (BattleEditMouse) rather than
+		// giving an order.
+		const bool battleEdit = tool.Kind == Tool::Command && BattleEditMouse();
+		if (battleEdit) {
+			// (Taken: no order, box or stroke from this click.)
+		} else if (tool.Kind == Tool::Command) {
 			// Drag a box to select units; click the ground to send them there, or an enemy to attack it. A click on a "no route" marker
 			// (RC-7) sends its units there again instead.
 			if (const NoRoute* marker = ImGui::IsMouseClicked(ImGuiMouseButton_Left) ? NoRouteAt(io.MousePos) : nullptr) {
@@ -962,7 +969,9 @@ void Sandbox::DrawGUI() {
 			std::string label = std::to_string(static_cast<int>(length)) + " px    right click or Enter: done";
 			drawList->AddText(ImVec2(io.MousePos.x + 14.0F, io.MousePos.y + 10.0F), color, label.c_str());
 		}
-		DrawSideRing();
+		if (!battleEdit) {
+			DrawSideRing();
+		}
 		if (!s_RingOpen) {
 			DrawCursor();
 		}
