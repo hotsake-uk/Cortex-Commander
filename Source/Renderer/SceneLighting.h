@@ -107,6 +107,15 @@ namespace RTE {
 		/// Gets the sun's shadow strength this frame, after the time of day and the weather.
 		float GetSunShadowStrength() const { return m_SunShadowStrength; }
 
+		/// Gets how strongly the sun (or the moon) shines this frame, 0 to 1, before the Sun shadows setting: low at the horizon, by moonlight and under cloud.
+		float GetSunLight() const { return m_SunLight; }
+
+		/// Gets the light under open sky this frame, linear: the time of day's colour, deep night, the weather's tint and lightning all in it.
+		glm::vec3 GetSkyLight() const { return m_EffectiveSky; }
+
+		/// Gets the current lightning flash's brightness, 0 when there's none.
+		float GetLightningFlash() const { return m_Lightning; }
+
 		/// Gets statistics from the last frame, for the Graphics Lab.
 		int GetLastLightCount() const { return m_LastLightCount; }
 		int GetGridCellSize() const { return m_CellSize; }
@@ -233,6 +242,7 @@ namespace RTE {
 		float m_BackgroundShadowStrength = 0.0F; //!< How dark the terrain's shadows on the background are after time of day and weather, this frame (LightingSettings::BackgroundShadows).
 		float m_SunDiscStrength = 0.0F; //!< How bright the sun's disc is in the sky this frame: none at night, fading at the horizon and under weather.
 		float m_SunArc = 0.0F; //!< Where the sun is along its path, -1 rising to 1 setting.
+		float m_SunLight = 0.0F; //!< How strongly the sun or moon shines this frame, before the Sun shadows setting.
 		float m_CloudDrift = 0.0F; //!< How far the clouds have drifted with the wind, in scene pixels.
 		float m_CloudCoverSetting = 0.0F; //!< LightingSettings::CloudCover as it was last frame, to tell the setting being moved from the weather changing.
 		float m_CloudCover = -1.0F; //!< How much of the sky is cloud now, 0 to 1: follows the weather, gathering faster than it breaks up. Below 0 until first set.
