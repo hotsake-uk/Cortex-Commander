@@ -855,6 +855,8 @@ void DebugMan::SettingsGUI() {
 		Tip("Anything bigger counts as the world and never falls. 30,000 is about a 170 by 170 block. A tree's trunk and leaves don't count, so a big tree cut through still comes down whole.");
 		SliderI("Smallest loose bit of building that falls", &tuning.MinFittingPixels, 0, 2000);
 		Tip("Smaller loose bits of building material stay put: lamps, signs and consoles are drawn hanging in mid-air.");
+		Slider("Force to trigger a collapse check", &tuning.CheckMinForce, 0.0F, 2000.0F, "%.0f", ImGuiSliderFlags_Logarithmic);
+		Tip("How hard a bullet, thrown object or unit has to hit the ground (its impulse, in the same units as a material's strength: earth 70, concrete 1000) to start the ground around being checked for pieces cut loose. Weaker hits on the same patch add up over a couple of seconds, so steady fire still brings a ledge down. Weapon damage to terrain counts. Explosions, digging and fire always start a check. 0: every hit that knocks out terrain does.");
 		Heading("How it falls");
 		Slider("How hard explosions throw loose pieces", &tuning.BlastPush, 0.0F, 3.0F);
 		Tip("0: explosions don't move loose pieces at all. Higher: pieces still moving are thrown harder, and more of the pieces lying at rest near a blast are picked up and thrown.");
