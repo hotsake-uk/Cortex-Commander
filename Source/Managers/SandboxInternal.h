@@ -662,7 +662,7 @@ namespace SandboxDetail {
 
 	struct BattleModeSettings {
 		BattleMode Mode = BattleMode::Custom;
-		int TeamSize = 16; //!< Most units each team has alive at once.
+		std::array<int, c_Sides> TeamSize = {16, 16, 16, 16}; //!< Most units each team has alive at once, by side.
 		std::array<bool, c_Sides> Plays = {true, true, false, false}; //!< The teams taking part, by side.
 		std::array<std::vector<std::vector<Vector>>, c_Sides> SpawnZones; //!< Each team's spawn zones, drawn as polygons: its units appear in them.
 		std::array<bool, c_Sides> HasPoint{}; //!< Each team's point placed in its base (capture the flag: where its flag stands). Without, one is picked.
