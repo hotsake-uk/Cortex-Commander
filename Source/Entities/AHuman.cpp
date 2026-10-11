@@ -109,6 +109,10 @@ void AHuman::Clear() {
 	m_WaitingToReloadOffhand = false;
 	m_ThrowTmr.Reset();
 	m_ThrowPrepTime = 1000;
+	m_ThrowReleaseProgress = 0.0F;
+	m_ThrowingDeviceID = 0;
+	m_LastThrownModule.clear();
+	m_LastThrownPreset.clear();
 	m_SharpAimRevertTimer.Reset();
 	m_FGArmFlailScalar = 0.0F;
 	m_BGArmFlailScalar = 0.7F;
@@ -202,6 +206,9 @@ int AHuman::Create(const AHuman& reference) {
 	m_LegJumpSpeed = reference.m_LegJumpSpeed;
 
 	m_ThrowPrepTime = reference.m_ThrowPrepTime;
+	m_ThrowReleaseProgress = reference.m_ThrowReleaseProgress;
+	m_LastThrownModule = reference.m_LastThrownModule;
+	m_LastThrownPreset = reference.m_LastThrownPreset;
 	m_WaitingToReloadOffhand = reference.m_WaitingToReloadOffhand;
 	m_FGArmFlailScalar = reference.m_FGArmFlailScalar;
 	m_BGArmFlailScalar = reference.m_BGArmFlailScalar;
@@ -1356,6 +1363,107 @@ bool AHuman::FirearmIsReady() const {
 	return false;
 }
 
+void AHuman::UpdateThrow(HeldDevice* device, bool throwHeld, float adjustedAimAngle) {
+	ThrownDevice* thrownDevice = dynamic_cast<ThrownDevice*>(device);
+	if (throwHeld && m_ArmsState != THROWING_RELEASE) {
+		if (m_ArmsState != THROWING_PREP) {
+			m_ThrowTmr.Reset();
+			m_ThrowingDeviceID = device->GetUniqueID();
+			if (thrownDevice && !thrownDevice->ActivatesWhenReleased()) {
+				thrownDevice->Activate();
+			}
+		}
+		float throwProgress = GetThrowProgress();
+		m_ArmsState = THROWING_PREP;
+		// Wound back behind the shoulder: a ThrownDevice's StartThrowOffset, or up and back for a melee weapon.
+		Vector startOffset = thrownDevice ? thrownDevice->GetStartThrowOffset() : Vector(-m_pFGArm->GetMaxLength() * 0.7F, -m_pFGArm->GetMaxLength() * 0.6F);
+		m_pFGArm->SetHandPos(m_pFGArm->GetJointPos() + (startOffset.GetXFlipped(m_HFlipped) * throwProgress + device->GetStanceOffset() * (1.0F - throwProgress)).RadRotate(adjustedAimAngle));
+	} else if (m_ArmsState == THROWING_PREP) {
+		// Let go: the arm swings through from the wind-up, and lets go of it at the front of the swing.
+		m_ThrowReleaseProgress = GetThrowProgress();
+		m_ArmsState = THROWING_RELEASE;
+		m_ThrowTmr.Reset();
+		m_pFGArm->ClearHandTargets();
+		m_pFGArm->AddHandTarget("Throw Swing", GetThrowReleasePos(device, m_AimAngle), static_cast<float>(c_ThrowSwingTime));
+	} else if (m_ArmsState == THROWING_RELEASE) {
+		if (m_pFGArm->GetHandHasReachedCurrentTarget() || m_ThrowTmr.IsPastSimMS(c_ThrowSwingTime)) {
+			ReleaseThrow(device, adjustedAimAngle);
+		} else {
+			m_pFGArm->AddHandTarget("Throw Swing", GetThrowReleasePos(device, m_AimAngle), static_cast<float>(c_ThrowSwingTime));
+		}
+	}
+}
+
+Vector AHuman::GetThrowReleasePos(const HeldDevice* device, float aimAngle) const {
+	if (!m_pFGArm) {
+		return m_Pos;
+	}
+	Vector jointPos = m_pFGArm->GetJointPos();
+	const ThrownDevice* thrownDevice = dynamic_cast<const ThrownDevice*>(device);
+	Vector offset = thrownDevice && !thrownDevice->GetEndThrowOffset().IsZero() ? thrownDevice->GetEndThrowOffset() : Vector(m_pFGArm->GetMaxLength(), -m_pFGArm->GetMaxLength() * 0.5F);
+	offset = offset.GetXFlipped(m_HFlipped).RadRotate(aimAngle * GetFlipFactor());
+
+	// Short of the ground in the way (not grass or liquid), backed off by about the device's size so it doesn't start in it.
+	Vector hitPos;
+	if (!offset.IsZero() && g_SceneMan.CastStrengthRay(jointPos, offset, 5.0F, hitPos, 0, g_MaterialAir)) {
+		float clearance = std::max(device ? device->GetRadius() * 0.5F : 2.0F, 2.0F);
+		float freeLength = std::max(g_SceneMan.ShortestDistance(jointPos, hitPos, g_SceneMan.SceneWrapsX()).GetMagnitude() - clearance, 0.0F);
+		return jointPos + offset.GetNormalized() * std::min(freeLength, offset.GetMagnitude());
+	}
+	return jointPos + offset;
+}
+
+void AHuman::ReleaseThrow(HeldDevice* device, float adjustedAimAngle) {
+	ThrownDevice* thrownDevice = dynamic_cast<ThrownDevice*>(device);
+	if (!m_pFGArm || !device) {
+		return;
+	}
+	// Worked out while still in hand: the throw strength comes from the arm holding it.
+	float maxThrowVel = thrownDevice ? thrownDevice->GetCalculatedMaxThrowVelIncludingArmThrowStrength() : (m_pFGArm->GetThrowStrength() + std::abs(m_AngularVel * 0.5F)) / std::sqrt(std::abs(device->GetMass()) + 1.0F);
+	float minThrowVel = thrownDevice ? thrownDevice->GetCalculatedMinThrowVel() : maxThrowVel * 0.5F;
+	Vector releasePos = GetThrowReleasePos(device, m_AimAngle);
+	m_LastThrownModule = device->GetModuleName();
+	m_LastThrownPreset = device->GetPresetName();
+
+	m_pFGArm->ClearHandTargets();
+	if (MovableObject* thrownMO = m_pFGArm->RemoveAttachable(device)) {
+		thrownMO->SetPos(releasePos);
+		float throwSpeed = minThrowVel + (maxThrowVel - minThrowVel) * m_ThrowReleaseProgress;
+		Vector tossVec(throwSpeed, 0.5F * RandomNormalNum());
+		// It leaves with all of the thrower's own speed, as anything let go of does.
+		thrownMO->SetVel(m_Vel + tossVec.RadRotate(m_AimAngle).GetXFlipped(m_HFlipped));
+		// Rolled forward off the fingers, faster the harder it's thrown.
+		thrownMO->SetAngularVel(m_AngularVel - (std::min(throwSpeed * 0.3F, 8.0F) + RandomNum(0.0F, 1.0F)) * GetFlipFactor());
+		thrownMO->SetRotAngle(adjustedAimAngle);
+
+		if (HeldDevice* thrownAsHeldDevice = dynamic_cast<HeldDevice*>(thrownMO)) {
+			thrownAsHeldDevice->SetTeam(m_Team);
+			thrownAsHeldDevice->SetIgnoresTeamHits(true);
+			g_MovableMan.AddItem(thrownAsHeldDevice);
+			if (thrownAsHeldDevice->HasBlade() && thrownAsHeldDevice->IsThrowable()) {
+				// A blade: it flies as one, turning, cutting and sticking in.
+				thrownAsHeldDevice->StartThrownFlight(this);
+			}
+		}
+	}
+	if (thrownDevice && thrownDevice->ActivatesWhenReleased() && !thrownDevice->IsInThrownFlight()) {
+		thrownDevice->Activate();
+	}
+	m_ThrowTmr.Reset();
+}
+
+void AHuman::EquipAfterThrow() {
+	if (m_pFGArm && !m_pFGArm->GetHeldDevice()) {
+		m_pFGArm->ClearHandTargets();
+		if (m_LastThrownPreset.empty() || !EquipNamedDevice(m_LastThrownModule, m_LastThrownPreset, true)) {
+			m_pFGArm->SetHeldDevice(dynamic_cast<HeldDevice*>(SwapNextInventory()));
+			m_pFGArm->SetHandPos(m_Pos + RotateOffset(m_HolsterOffset));
+		}
+	}
+	EquipShieldInBGArm();
+	m_ArmsState = WEAPON_READY;
+}
+
 bool AHuman::ThrowableIsReady() const {
 	// Check if the currently held thrown device is already the desired type
 	if (m_pFGArm && m_pFGArm->IsAttached()) {
@@ -2141,8 +2249,12 @@ void AHuman::PreControllerUpdate() {
 	// Also deal with certain reload cases and setting sharp aim progress for HeldDevices.
 
 	ThrownDevice* thrownDevice = nullptr;
+	bool throwing = false;
 	if (HeldDevice* device = GetEquippedItem(); device && m_Status != INACTIVE) {
-		if (!dynamic_cast<ThrownDevice*>(device)) {
+		// A melee weapon is thrown with the auxiliary weapon key: held to wind up, let go to throw.
+		bool meleeThrow = !dynamic_cast<ThrownDevice*>(device) && device->IsThrowable() && m_pFGArm && device == m_pFGArm->GetHeldDevice() &&
+		                  (((m_ArmsState == THROWING_PREP || m_ArmsState == THROWING_RELEASE) && device->GetUniqueID() == m_ThrowingDeviceID) || m_Controller.IsState(WEAPON_AUXILIARY_HOTKEY));
+		if (!dynamic_cast<ThrownDevice*>(device) && !meleeThrow) {
 			device->SetSharpAim(m_SharpAimProgress);
 
 			if (HDFirearm* deviceAsFirearm = dynamic_cast<HDFirearm*>(device)) {
@@ -2189,55 +2301,14 @@ void AHuman::PreControllerUpdate() {
 			}
 		} else {
 			m_CanActivateBGItem = true;
-			if ((thrownDevice = dynamic_cast<ThrownDevice*>(device))) {
+			thrownDevice = dynamic_cast<ThrownDevice*>(device);
+			throwing = true;
+			if (thrownDevice) {
 				thrownDevice->SetSharpAim(isSharpAiming ? 1.0F : 0);
-				if (m_Controller.IsState(WEAPON_FIRE)) {
-					if (m_ArmsState != THROWING_PREP) {
-						m_ThrowTmr.Reset();
-						if (!thrownDevice->ActivatesWhenReleased()) {
-							thrownDevice->Activate();
-						}
-					}
-					float throwProgress = GetThrowProgress();
-					m_ArmsState = THROWING_PREP;
-					m_pFGArm->SetHandPos(m_pFGArm->GetJointPos() + (thrownDevice->GetStartThrowOffset().GetXFlipped(m_HFlipped) * throwProgress + thrownDevice->GetStanceOffset() * (1.0F - throwProgress)).RadRotate(adjustedAimAngle));
-				} else if (m_ArmsState == THROWING_PREP) {
-					m_ArmsState = THROWING_RELEASE;
-					m_pFGArm->SetHandPos(m_pFGArm->GetJointPos() + thrownDevice->GetEndThrowOffset().RadRotate(adjustedAimAngle).GetXFlipped(m_HFlipped));
-
-					float maxThrowVel = thrownDevice->GetCalculatedMaxThrowVelIncludingArmThrowStrength();
-					if (MovableObject* pMO = m_pFGArm->RemoveAttachable(thrownDevice)) {
-						pMO->SetPos(m_pFGArm->GetJointPos() + Vector(m_pFGArm->GetMaxLength() * GetFlipFactor(), -m_pFGArm->GetMaxLength() * 0.5F).RadRotate(adjustedAimAngle));
-						float minThrowVel = thrownDevice->GetMinThrowVel();
-						if (minThrowVel == 0) {
-							minThrowVel = maxThrowVel * 0.2F;
-						}
-
-						Vector tossVec(minThrowVel + (maxThrowVel - minThrowVel) * GetThrowProgress(), 0.5F * RandomNormalNum());
-						pMO->SetVel(m_Vel * 0.5F + tossVec.RadRotate(m_AimAngle).GetXFlipped(m_HFlipped));
-						pMO->SetAngularVel(m_AngularVel + RandomNum(-5.0F, 2.5F) * GetFlipFactor());
-						pMO->SetRotAngle(adjustedAimAngle);
-
-						if (HeldDevice* moAsHeldDevice = dynamic_cast<HeldDevice*>(pMO)) {
-							moAsHeldDevice->SetTeam(m_Team);
-							moAsHeldDevice->SetIgnoresTeamHits(true);
-							g_MovableMan.AddItem(moAsHeldDevice);
-						}
-						pMO = 0;
-					}
-					if (thrownDevice->ActivatesWhenReleased()) {
-						thrownDevice->Activate();
-					}
-					m_ThrowTmr.Reset();
-				}
-			} else if (m_ArmsState == THROWING_RELEASE && m_ThrowTmr.GetElapsedSimTimeMS() > 100) {
-				m_pFGArm->SetHeldDevice(dynamic_cast<HeldDevice*>(SwapNextInventory()));
-				m_pFGArm->SetHandPos(m_Pos + RotateOffset(m_HolsterOffset));
-				EquipShieldInBGArm();
-				m_ArmsState = WEAPON_READY;
-			} else if (m_ArmsState == THROWING_RELEASE) {
-				m_pFGArm->AddHandTarget("Adjusted Aim Angle", m_Pos + Vector(m_pFGArm->GetMaxLength() * GetFlipFactor(), -m_pFGArm->GetMaxLength() * 0.5F).RadRotate(adjustedAimAngle));
+			} else {
+				device->Deactivate();
 			}
+			UpdateThrow(device, thrownDevice ? m_Controller.IsState(WEAPON_FIRE) : m_Controller.IsState(WEAPON_AUXILIARY_HOTKEY), adjustedAimAngle);
 		}
 		// Hotkey activations
 		if (m_Controller.IsState(WEAPON_PRIMARY_HOTKEY)) {
@@ -2251,14 +2322,10 @@ void AHuman::PreControllerUpdate() {
 			device->DeactivateHotkeyAction(HeldDeviceHotkeyType::AUXILIARYHOTKEY);
 		}
 	} else if (m_ArmsState == THROWING_RELEASE && m_ThrowTmr.GetElapsedSimTimeMS() > 100) {
-		if (m_pFGArm) {
-			m_pFGArm->SetHeldDevice(dynamic_cast<HeldDevice*>(SwapNextInventory()));
-			m_pFGArm->SetHandPos(m_Pos + RotateOffset(m_HolsterOffset));
-		}
-		EquipShieldInBGArm();
-		m_ArmsState = WEAPON_READY;
+		EquipAfterThrow();
 	} else if (m_ArmsState == THROWING_RELEASE && m_pFGArm) {
-		m_pFGArm->AddHandTarget("Adjusted Aim Angle", m_Pos + Vector(m_pFGArm->GetMaxLength() * GetFlipFactor(), -m_pFGArm->GetMaxLength() * 0.5F).RadRotate(adjustedAimAngle));
+		// Follow through, the arm out where it let go.
+		m_pFGArm->AddHandTarget("Throw Follow Through", GetThrowReleasePos(nullptr, m_AimAngle));
 	} else {
 		m_CanActivateBGItem = true;
 	}
@@ -2314,7 +2381,7 @@ void AHuman::PreControllerUpdate() {
 		m_CanActivateBGItem = false;
 	}
 
-	if (m_ArmsState == THROWING_PREP && !thrownDevice) {
+	if (m_ArmsState == THROWING_PREP && !throwing) {
 		m_ArmsState = WEAPON_READY;
 	}
 

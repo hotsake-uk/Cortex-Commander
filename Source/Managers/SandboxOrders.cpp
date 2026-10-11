@@ -1767,6 +1767,9 @@ namespace SandboxDetail {
 			unit->RemoveNumberValue("SandboxSuppressY");
 			unit->RemoveNumberValue("SandboxSuppressR");
 		}
+		if (unit && unit->NumberValueExists("SandboxCover")) {
+			unit->RemoveNumberValue("SandboxCover");
+		}
 	}
 
 	/// Sends the selected units on a patrol (RC-4): round the points in order, fighting what they meet and pausing at each, then round again,
@@ -1813,7 +1816,7 @@ namespace SandboxDetail {
 
 	/// The command ring's choices for the selected units, about a point: 0 move there, 1 attack the enemy nearest it, 2 cancel, 3 defend where they
 	/// are; 13 defend as the last step of their plans, 20 clear their plans (RC-3), 21 clear all their orders, 22 hand them
-	/// back to their team's orders.
+	/// back to their team's orders, 30 take cover.
 	void OrderSelectedUnits(int choice, const Vector& point) {
 		std::vector<Actor*> units = UnitsToMove(0, true);
 		if (choice == 0) {
@@ -1873,6 +1876,19 @@ namespace SandboxDetail {
 				}
 				AnswerOrder(unit, "OrderCancel");
 				MarkOrder(unit->GetPos(), IM_COL32(180, 140, 240, 255));
+			}
+		} else if (choice == 30) {
+			// Take cover: each finds cover from the nearest enemy close by and gets down behind it, or digs in, or falls back, holding there
+			// (the AI does it, told by a number value on the unit: SharedBehaviors.CoverOrderUpdate). Any other order, a hold or a cancel
+			// takes it off (ClearSuppress).
+			const double order = static_cast<double>(g_TimerMan.GetSimUpdateCount() + 1);
+			for (Actor* unit: units) {
+				HoldUnit(unit);
+				unit->SetMovementRule(Actor::MOVE_HOLD_GROUND);
+				unit->SetNumberValue("SandboxCover", order);
+				s_SendNotes[unit->GetUniqueID()] = {"take cover", false, g_TimerMan.GetSimUpdateCount()};
+				AnswerOrder(unit, "OrderTakeCover");
+				MarkOrder(unit->GetPos(), c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)]);
 			}
 		} else if (choice == 20) {
 			// The plans of the units picked, cleared (they carry on with the step they're on).

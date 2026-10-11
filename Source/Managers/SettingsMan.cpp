@@ -149,6 +149,9 @@ void SettingsMan::Clear() {
 	m_AISteadyBeforeJet = true;
 	m_AIWaitForFuel = true;
 	m_AIUsesVehicles = true;
+	m_AICoverDigs = true;
+	m_AICoverFallsBack = true;
+	m_AICoverLiesFlat = true;
 	m_AIBreaksWhenShaken = true;
 	m_DeadCrewFallOut = true;
 	m_DirectOrders = DirectOrderTuning();
@@ -732,6 +735,9 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AISteadyBeforeJet", { reader >> m_AISteadyBeforeJet; });
 	MatchProperty("AIWaitForFuel", { reader >> m_AIWaitForFuel; });
 	MatchProperty("AIUsesVehicles", { reader >> m_AIUsesVehicles; });
+	MatchProperty("AICoverDigs", { reader >> m_AICoverDigs; });
+	MatchProperty("AICoverFallsBack", { reader >> m_AICoverFallsBack; });
+	MatchProperty("AICoverLiesFlat", { reader >> m_AICoverLiesFlat; });
 	MatchProperty("AIBreaksWhenShaken", { reader >> m_AIBreaksWhenShaken; });
 	MatchProperty("DeadCrewFallOut", { reader >> m_DeadCrewFallOut; });
 	MatchProperty("DirectCaution", { reader >> m_DirectOrders.Caution; m_DirectOrders.Caution = std::clamp(m_DirectOrders.Caution, 0.0F, 1.0F); });
@@ -1208,6 +1214,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AISteadyBeforeJet", m_AISteadyBeforeJet);
 	writer.NewPropertyWithValue("AIWaitForFuel", m_AIWaitForFuel);
 	writer.NewPropertyWithValue("AIUsesVehicles", m_AIUsesVehicles);
+	writer.NewPropertyWithValue("AICoverDigs", m_AICoverDigs);
+	writer.NewPropertyWithValue("AICoverFallsBack", m_AICoverFallsBack);
+	writer.NewPropertyWithValue("AICoverLiesFlat", m_AICoverLiesFlat);
 	writer.NewPropertyWithValue("AIBreaksWhenShaken", m_AIBreaksWhenShaken);
 	writer.NewPropertyWithValue("DeadCrewFallOut", m_DeadCrewFallOut);
 	writer.NewPropertyWithValue("DirectCaution", m_DirectOrders.Caution);

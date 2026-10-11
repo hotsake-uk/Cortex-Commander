@@ -186,9 +186,10 @@ void AHuman::UpdateAIMotor() {
 	}
 
 	// A sky order (Jetpack here, or a move clicked in open air; StandingOrder::SkyGoal): with a clear line to the point in the air, the jet
-	// lit and flown to it, wherever the route was taking the legs, and held there in a hover till the tank runs low (a fifth of it left),
-	// when the order comes down to the ground under it, the fall braked below as any is. With no line to it the route walks under it first.
-	// Given up on after 20 s without getting there. (Here, every frame, not in the route-follower: once there the script counts it arrived.)
+	// lit and flown to it, wherever the route was taking the legs, and held there in a hover till the tank is all but empty, when the order
+	// comes down to the ground under it, the fall braked below as any is. With no line to it the route walks under it first. Flown for till
+	// it gets there or the tank runs out the same way, however long that takes: the only fuel kept back is what braking the drop from where
+	// it is takes (SkyReserve). (Here, every frame, not in the route-follower: once there the script counts it arrived.)
 	const bool skyJet = m_pJetpack && m_pJetpack->IsAttached() && m_pJetpack->GetJetpackType() == AEJetpack::JetpackType::Standard;
 	if (m_StandingOrder.SkyGoal && skyJet && !m_Ladder.active && m_Status == STABLE) {
 		RouteMover& mover = m_Mover;
@@ -211,10 +212,8 @@ void AHuman::UpdateAIMotor() {
 			MoverTrace("jetpack here: hovering");
 		}
 		const char* ended = nullptr;
-		if (mover.skyHovering && m_pJetpack->GetJetTimeLeft() < tank * 0.2F) {
-			ended = "tank low; coming down";
-		} else if (mover.skyFlying && !mover.skyHovering && mover.skyTimer.IsPastSimMS(20000)) {
-			ended = "never got there; coming down";
+		if ((mover.skyHovering || mover.skyFlying) && m_pJetpack->GetJetTimeLeft() <= SkyReserve()) {
+			ended = mover.skyHovering ? "tank empty; coming down" : "tank empty short of it; coming down";
 		}
 		if (ended) {
 			MoverTrace(std::string("jetpack here: ") + ended);
@@ -224,7 +223,6 @@ void AHuman::UpdateAIMotor() {
 		} else if (mover.skyHovering || (mover.skyClear && (mover.skyFlying || m_pJetpack->GetJetTimeLeft() > JetRelightFuel() + tank * 0.3F))) {
 			if (!mover.skyFlying) {
 				mover.skyFlying = true;
-				mover.skyTimer.Reset();
 				MoverTrace("jetpack here: flying for " + std::to_string(static_cast<int>(sky.m_X)) + "," + std::to_string(static_cast<int>(sky.m_Y)));
 			}
 			mover.flight = RouteMover::Flight();
@@ -991,6 +989,24 @@ float AHuman::JetAccelAtFuel(float fuel) const {
 	float high = m_pJetpack->GetPositiveThrottleMultiplier();
 	float factor = low + (high - low) * (throttle + 1.0F) * 0.5F;
 	return accelNow / factorNow * factor;
+}
+
+// The fuel a sky order's hover keeps back (UpdateAIMotor): what braking the drop from here to the floor below takes. Dropped from a height
+// h with the jet's net push a lit for the last of it, the body is braked from v, v^2 = 2gh * a / (a + g), in v / a; with the relight's
+// own cost and a third more for the pilot's late start. Nothing under it at all: as from 600 px.
+float AHuman::SkyReserve() const {
+	if (!m_pJetpack) {
+		return 0.0F;
+	}
+	const float floorY = FloorUnder(m_Pos, 2000.0F);
+	const float drop = std::max(0.0F, (floorY >= 0.0F ? floorY : m_Pos.m_Y + 600.0F) - m_Pos.m_Y);
+	const float gravity = std::max(0.01F, g_SceneMan.GetGlobalAcc().m_Y * c_PPM);
+	const float push = JetAccelAtFuel(JetRelightFuel()) - gravity;
+	if (push <= 1.0F) {
+		return JetRelightFuel();
+	}
+	const float speed = std::sqrt(2.0F * gravity * drop * push / (push + gravity));
+	return JetRelightFuel() + speed / push * 1000.0F * 1.3F;
 }
 
 float AHuman::JetRelightFuel() const {
@@ -1813,6 +1829,17 @@ int AHuman::MoveAlongRoute() {
 		// (A dig-to's target is in the ground, RC-11, and the body stands on the floor of its tunnel: the target at its feet or over its head
 		// is as near as it gets, so within half a height is there.)
 		const float reach = IsDiggingTo() && Solid(goal.m_X, goal.m_Y) ? std::max(h * 0.45F, m_MoveProximityLimit * 1.5F) : std::min(h * 0.4F, m_MoveProximityLimit * 1.5F);
+		// (A sky order's goal is the point in the air, not the ground under it: walked to the ground there, the unit waits for its tank to
+		// lift it the rest of the way, UpdateAIMotor's sky block, rather than calling it there. With no clear line up from there it never will:
+		// the sky order is dropped and the ground under it is the end of the move.)
+		const bool skyJet = m_pJetpack && m_pJetpack->IsAttached() && m_pJetpack->GetJetpackType() == AEJetpack::JetpackType::Standard;
+		if (m_StandingOrder.SkyGoal && skyJet && toGoal.MagnitudeIsLessThan(reach) && !airborne) {
+			if (mover.skyClear) {
+				return RouteMover::Moving;
+			}
+			MoverTrace("jetpack here: no clear line up from under it; staying on the ground");
+			m_StandingOrder.SkyGoal = false;
+		}
 		if (toGoal.MagnitudeIsLessThan(reach) && !airborne && m_Vel.MagnitudeIsLessThan(2.0F)) {
 			MoverTrace("arrived");
 			mover.arrivedTick = tick;

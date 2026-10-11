@@ -1279,6 +1279,13 @@ void DebugMan::SettingsGUI() {
 		Tip("AI units wait at a take-off until the tank holds what the flight needs. Off: they go with what's in the tank, and may come down short.");
 		Toggle("AI units use vehicles", g_SettingsMan.AIUsesVehicles(), [](bool on) { g_SettingsMan.SetAIUsesVehicles(on); });
 		Tip("An AI unit sent a long way walks to a friendly vehicle near it that is going its way, gets in and rides (or drives it) there, then gets out and walks the rest. A vehicle with an AI driver drives itself to the place it is sent, and units sent to a vehicle get in. Off: they walk, and AI drivers sit still.");
+		Heading("Take cover order");
+		Toggle("Dig a foxhole when there's no cover", g_SettingsMan.AICoverDigs(), [](bool on) { g_SettingsMan.SetAICoverDigs(on); });
+		Tip("Told to take cover with nothing to get behind within about 150 px, a unit carrying a digger on soft ground (sand, soil, earth) digs itself a foxhole where it stands and crouches in it. Off: it doesn't dig, and falls back or lies flat instead.");
+		Toggle("Fall back when exposed", g_SettingsMan.AICoverFallsBack(), [](bool on) { g_SettingsMan.SetAICoverFallsBack(on); });
+		Tip("Told to take cover with nothing to get behind and no foxhole dug, a unit falls back 200 px away from the enemy if one is within 250 px or it is pinned down. Off: it stays where it is.");
+		Toggle("Lie flat when exposed", g_SettingsMan.AICoverLiesFlat(), [](bool on) { g_SettingsMan.SetAICoverLiesFlat(on); });
+		Tip("Told to take cover with nothing to get behind, a unit that doesn't dig in lies flat where it ends up. Off: it crouches.");
 	};
 
 	// How units behave on a cautious or a direct order: an RTS order placed with one click is cautious, two normal, and a double click held

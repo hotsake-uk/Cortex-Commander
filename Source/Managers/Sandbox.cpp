@@ -258,6 +258,24 @@ Actor* Sandbox::SpawnUnit(const std::string& presetName, int team, const Vector&
 	return actor;
 }
 
+Actor* Sandbox::SpawnBrain(const std::string& presetName, int team, const Vector& position) {
+	if (!InGame()) {
+		return nullptr;
+	}
+	const Entity* preset = g_PresetMan.GetEntityPreset("Actor", presetName);
+	Actor* brain = preset ? dynamic_cast<Actor*>(CreateObject(preset->GetClassName(), presetName, preset->GetModuleID())) : nullptr;
+	if (!brain) {
+		return nullptr;
+	}
+	ActivateSide(team);
+	brain->SetPos(position);
+	brain->SetTeam(team);
+	brain->SetControllerMode(Controller::CIM_AI);
+	g_MovableMan.AddActor(brain);
+	GiveOrder(brain, Order::Hold);
+	return brain;
+}
+
 float Sandbox::UnitCost(const std::string& presetName) {
 	// (The catalogue is built when the window is first drawn; a barracks a script placed before that trained at the 20 supply floor.)
 	if (!s_CatalogueBuilt) {

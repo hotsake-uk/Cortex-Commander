@@ -730,7 +730,11 @@ bool SceneMan::TryPenetrate(int posX,
 			m_pCurrentScene->GetTerrain()->SetMaterialPixel(posX, posY, g_MaterialAir);
 			// Liquid resting against the pixel that just went may now have somewhere to flow.
 			FluidSim::Disturb(Vector(static_cast<float>(posX), static_cast<float>(posY)), 2.0F);
-			TerrainCollapse::NoteDamage(posX, posY, std::sqrt(sqrImpMag));
+			// (Not liquid: it neither holds anything up nor joins anything into one piece, so nothing can be left hanging by its going. Noted, every
+			// drop landing in a pool had the collapse watching the ground round it, and searching it for loose pieces, as if it were being dug.)
+			if (!FluidSim::IsLiquid(materialID)) {
+				TerrainCollapse::NoteDamage(posX, posY, std::sqrt(sqrImpMag));
+			}
 			NoteKnockedOut(posX, posY, materialID);
 		}
 		// TODO: Improve / tweak randomized pushing away of terrain")
