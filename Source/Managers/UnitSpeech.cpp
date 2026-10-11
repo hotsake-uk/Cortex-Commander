@@ -476,14 +476,14 @@ void UnitSpeech::LoadAll() {
 	RebuildTeamToneBits();
 }
 
-bool UnitSpeech::SayOrder(Actor& actor, const std::string& triggerKey) {
+bool UnitSpeech::SayOrder(Actor& actor, const std::string& triggerKey, bool force) {
 	actor.GetSpeech().OrderAnsweredMS = std::max(g_TimerMan.GetSimTimeMS(), 1LL);
-	return Say(actor, triggerKey, true, nullptr);
+	return Say(actor, triggerKey, true, nullptr, force);
 }
 
-bool UnitSpeech::Say(Actor& actor, const std::string& triggerKey, bool answeringOrder, const Actor* subject) {
+bool UnitSpeech::Say(Actor& actor, const std::string& triggerKey, bool answeringOrder, const Actor* subject, bool force) {
 	// (Animals don't talk.)
-	if (!s_Enabled || s_ChancePercent <= 0 || actor.GetStatus() >= Actor::DYING || actor.IsAnimal()) {
+	if (!s_Enabled || (s_ChancePercent <= 0 && !force) || actor.GetStatus() >= Actor::DYING || actor.IsAnimal()) {
 		return false;
 	}
 	EnsureLoaded();
@@ -502,19 +502,19 @@ bool UnitSpeech::Say(Actor& actor, const std::string& triggerKey, bool answering
 		return false;
 	}
 	// Still saying something (and a moment's pause after it), unless this can't wait.
-	if (!state.Text.empty() && recently(state.StartMS, state.DurationMS + 400) && !definition.Urgent) {
+	if (!force && !state.Text.empty() && recently(state.StartMS, state.DurationMS + 400) && !definition.Urgent) {
 		return false;
 	}
 	if (state.LastSaidMS.size() < s_Triggers.size()) {
 		state.LastSaidMS.resize(s_Triggers.size(), 0);
 	}
-	if (recently(state.LastSaidMS[trigger], definition.CooldownMS)) {
+	if (!force && recently(state.LastSaidMS[trigger], definition.CooldownMS)) {
 		return false;
 	}
 	// The chance is rolled once per cooldown: a trigger that fires every hit is considered again only after the cooldown, said or not.
 	state.LastSaidMS[trigger] = std::max(now, 1LL);
 	float chance = static_cast<float>(s_ChancePercent) / 100.0F * definition.Chance;
-	if (std::uniform_real_distribution<float>(0.0F, 1.0F)(Random()) >= chance) {
+	if (!force && std::uniform_real_distribution<float>(0.0F, 1.0F)(Random()) >= chance) {
 		return false;
 	}
 	// The unit's own set's lines for this, else the default set's.
@@ -592,7 +592,7 @@ bool UnitSpeech::Say(Actor& actor, const std::string& triggerKey, bool answering
 		std::atomic<long long>& teamSlot = s_TeamLastSaidMS[team][trigger];
 		long long last = teamSlot.load(std::memory_order_relaxed);
 		do {
-			if (recently(last, definition.TeamCooldownMS)) {
+			if (!force && recently(last, definition.TeamCooldownMS)) {
 				return false;
 			}
 		} while (!teamSlot.compare_exchange_weak(last, std::max(now, 1LL), std::memory_order_relaxed));

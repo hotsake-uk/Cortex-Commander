@@ -183,6 +183,7 @@ void SettingsMan::Clear() {
 	m_ShowEnemyHUD = true;
 	m_ShowUnitTags = false;
 	m_ShowCPUAimReticles = true;
+	m_ShowAlarmExclamation = true;
 	m_EnableSmartBuyMenuNavigation = true;
 	m_AutomaticGoldDeposit = true;
 
@@ -713,6 +714,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DirectLineWeight", { reader >> m_DirectOrders.LineWeight; m_DirectOrders.LineWeight = std::clamp(m_DirectOrders.LineWeight, 0.0F, 1.0F); });
 	MatchProperty("DirectIgnoreEnemies", { reader >> m_DirectOrders.IgnoreEnemies; });
 	MatchProperty("DirectKeepPace", { reader >> m_DirectOrders.KeepPace; });
+	MatchProperty("DirectDoubleClickShare", { reader >> m_DirectOrders.DoubleClickShare; m_DirectOrders.DoubleClickShare = std::clamp(m_DirectOrders.DoubleClickShare, 0.0F, 1.0F); });
 	MatchProperty("NavDebugOverlay", { int level = 0; reader >> level; SetNavDebugOverlay(level); });
 	MatchProperty("DebugTeam", { int team = 0; reader >> team; SetDebugTeam(team); });
 	MatchProperty("UnitInspector", { int which = 0; reader >> which; SetUnitInspector(which); });
@@ -762,6 +764,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("ShowEnemyHUD", { reader >> m_ShowEnemyHUD; });
 	MatchProperty("ShowUnitTags", { reader >> m_ShowUnitTags; });
 	MatchProperty("ShowCPUAimReticles", { reader >> m_ShowCPUAimReticles; });
+	MatchProperty("ShowAlarmExclamation", { reader >> m_ShowAlarmExclamation; });
 	MatchProperty("SmartBuyMenuNavigation", { reader >> m_EnableSmartBuyMenuNavigation; });
 	MatchProperty("ScrapCompactingHeight", { reader >> g_SceneMan.m_ScrapCompactingHeight; });
 	MatchProperty("AutomaticGoldDeposit", { reader >> m_AutomaticGoldDeposit; });
@@ -1151,10 +1154,12 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("DirectLineWeight", m_DirectOrders.LineWeight);
 	writer.NewPropertyWithValue("DirectIgnoreEnemies", m_DirectOrders.IgnoreEnemies);
 	writer.NewPropertyWithValue("DirectKeepPace", m_DirectOrders.KeepPace);
+	writer.NewPropertyWithValue("DirectDoubleClickShare", m_DirectOrders.DoubleClickShare);
 	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
 	writer.NewPropertyWithValue("ModernHUD", ModernHUD::IsEnabled());
 	writer.NewPropertyWithValue("ShowUnitTags", m_ShowUnitTags);
 	writer.NewPropertyWithValue("ShowCPUAimReticles", m_ShowCPUAimReticles);
+	writer.NewPropertyWithValue("ShowAlarmExclamation", m_ShowAlarmExclamation);
 	writer.NewPropertyWithValue("ClassicPieWheel", m_ClassicPieWheel);
 	writer.NewPropertyWithValue("SmoothHUDText", TextOverlay::IsEnabled());
 	writer.NewPropertyWithValue("FrameCap", g_WindowMan.GetFrameCap());

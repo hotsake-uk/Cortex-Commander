@@ -1001,6 +1001,8 @@ void DebugMan::SettingsGUI() {
 		Tip("Each unit's team icon and health number. In the Sandbox game mode every side's are shown; in other games, other sides' only where your side has seen and with \"Show enemy HUD\" (Options, Gameplay) on. Units of no side (training dummies) and those a mod hides never have them.");
 		Toggle("CPU units' aim reticles", g_SettingsMan.ShowCPUAimReticles(), [](bool on) { g_SettingsMan.SetShowCPUAimReticles(on); });
 		Tip("The yellow dots along the sights of a weapon a CPU-controlled unit is aiming, and of a turret's. Off: only your own units' are drawn. Your own aim is always shown.");
+		Toggle("Alert mark over units", g_SettingsMan.ShowAlarmExclamation(), [](bool on) { g_SettingsMan.SetShowAlarmExclamation(on); });
+		Tip("The exclamation mark that pops up over a unit's head when it is alerted to an enemy or a noise.");
 		Toggle("Classic pie wheel", g_SettingsMan.ClassicPieWheel(), [](bool on) { g_SettingsMan.SetClassicPieWheel(on); });
 		Tip("The old wheels on right click, for a unit you play and for the sandbox's command tool, instead of the action menu: a list above the pointer with every order and the weapons and movement rules on one layer. (A gamepad, and players after the first, always get the unit's wheel.)");
 		Toggle("Smooth HUD text", TextOverlay::IsEnabled(), [](bool on) { TextOverlay::SetEnabled(on); });
@@ -1198,7 +1200,14 @@ void DebugMan::SettingsGUI() {
 	auto battleBehavior = [&]() {
 		SettingsMan::DirectOrderTuning& direct = g_SettingsMan.DirectOrders();
 		if (Plain()) {
-			ImGui::TextWrapped("Triple-click when you place an RTS order (move, attack-move, defend, dig to) to make it a direct order: the units go the shortest way there, whatever it takes. These set how hard they push it.");
+			ImGui::TextWrapped("Click when you place an RTS order (move, attack-move, defend, dig to) for a normal order. Double-click for a riskier, more direct one, and triple-click for a fully direct one: the units go the shortest way there, whatever it takes. These set how hard a triple-clicked order pushes it.");
+		}
+		{
+			float share = direct.DoubleClickShare * 100.0F;
+			if (Slider("Double click strength", &share, 0.0F, 100.0F, "%.0f%% of a triple click")) {
+				direct.DoubleClickShare = share / 100.0F;
+			}
+			Tip("How far a double-clicked order goes toward a triple-clicked one: every setting below is taken this share of the way from a normal order's. 0% makes a double click a normal order; 50% is normal.");
 		}
 		Heading("Jetpack");
 		{
