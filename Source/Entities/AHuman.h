@@ -1175,7 +1175,7 @@ namespace RTE {
 		float ClimbFuelNeeded(float height, float reserve) const;
 		/// The fuel a climb burns per pixel of height on this unit's jet, for the path finder's flight links (see PathAgent::JetClimbMSPerPx).
 		float ClimbFuelPerPixel() const;
-		bool FlightWayClear(const Vector& landing, float landingFloorY) const;
+		bool FlightWayClear(const Vector& landing, float landingFloorY, bool passFriends = false) const;
 		bool CanWalkTo(const Vector& landing, float landingFloorY) const;
 		bool FindLanding(Vector& landing, float& landingFloorY, int& pointsToLanding) const;
 		/// FindLanding, and where the flight would take off: the last point on the floor before the route leaves it (the unit itself when the

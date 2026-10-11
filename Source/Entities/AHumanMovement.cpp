@@ -1201,8 +1201,9 @@ float AHuman::FlightFuelNeeded(const Vector& landing, float landingFloorY, bool 
 	return m_pJetpack && capped ? std::min(needed, m_pJetpack->GetJetTimeTotal() * 0.98F) : needed;
 }
 
-// Whether the way to a landing is open air for a flight: up at the unit's column to over the landing's floor, then across.
-bool AHuman::FlightWayClear(const Vector& landing, float landingFloorY) const {
+// Whether the way to a landing is open air for a flight: up at the unit's column to over the landing's floor, then across. With passFriends,
+// units of its own team are no obstacle (they move, and a body flies past them).
+bool AHuman::FlightWayClear(const Vector& landing, float landingFloorY, bool passFriends) const {
 	float h = m_CharHeight;
 	float cruiseY = std::min(m_Pos.m_Y, landingFloorY - 12.0F - h * 0.5F);
 	Vector up(0.0F, cruiseY - m_Pos.m_Y - h * 0.3F);
@@ -1211,13 +1212,14 @@ bool AHuman::FlightWayClear(const Vector& landing, float landingFloorY) const {
 	Vector free;
 	// (Through a ladder's rungs, which a flying body passes: taken for a wall, a shaft with a ladder up its side was never open to fly.)
 	const unsigned char rungs = LadderMaterialID();
+	const int ignoreTeam = passFriends ? m_Team : IgnoresWhichTeam();
 	for (float dx: {-h * 0.15F, h * 0.15F}) {
-		if (up.m_Y < -2.0F && g_SceneMan.CastObstacleRay(m_Pos + Vector(dx, -h * 0.3F), up, obstacle, free, m_MOID, IgnoresWhichTeam(), rungs, 3) >= 0.0F) {
+		if (up.m_Y < -2.0F && g_SceneMan.CastObstacleRay(m_Pos + Vector(dx, -h * 0.3F), up, obstacle, free, m_MOID, ignoreTeam, rungs, 3) >= 0.0F) {
 			return false;
 		}
 	}
 	for (float dy: {-h * 0.35F, h * 0.35F}) {
-		if (g_SceneMan.CastObstacleRay(Vector(m_Pos.m_X, cruiseY + dy), over, obstacle, free, m_MOID, IgnoresWhichTeam(), rungs, 3) >= 0.0F) {
+		if (g_SceneMan.CastObstacleRay(Vector(m_Pos.m_X, cruiseY + dy), over, obstacle, free, m_MOID, ignoreTeam, rungs, 3) >= 0.0F) {
 			return false;
 		}
 	}
@@ -2789,10 +2791,13 @@ int AHuman::MoveAlongRoute() {
 		// Open from one place to another for the body: at its middle and its knees. (A ladder's rungs are no obstacle: a flying body passes
 		// them, see LearnFlight. Counted as walls, any line across a ladder or up a laddered shaft was shut, no full-risk flight was found
 		// in a bunker, and the unit followed the route up the ladder instead.)
+		// (Units of its own team are no obstacle here: they move, and a body flies past them. Counted, a group sent together saw each other
+		// in every line, and the first one up blocked the head room of those under it; only one took off, and the rest walked the route
+		// and hopped at each other.)
 		auto legOpen = [&](const Vector& from, const Vector& to) {
 			const Vector way = Towards(from, to);
 			for (float dy: {-h * 0.3F, feet * 0.5F}) {
-				if (g_SceneMan.CastObstacleRay(from + Vector(0.0F, dy), way, obstacle, free, m_MOID, IgnoresWhichTeam(), LadderMaterialID(), 3) >= 0.0F) {
+				if (g_SceneMan.CastObstacleRay(from + Vector(0.0F, dy), way, obstacle, free, m_MOID, m_Team, LadderMaterialID(), 3) >= 0.0F) {
 					return false;
 				}
 			}
@@ -2801,7 +2806,7 @@ int AHuman::MoveAlongRoute() {
 		// A ceiling right over the head (within about a body): no take-off from here; the route walks out from under it.
 		bool headClear = true;
 		for (float dx: {-h * 0.15F, 0.0F, h * 0.15F}) {
-			if (g_SceneMan.CastObstacleRay(m_Pos + Vector(dx, -h * 0.3F), Vector(0.0F, -h * 0.9F), obstacle, free, m_MOID, IgnoresWhichTeam(), LadderMaterialID(), 3) >= 0.0F) {
+			if (g_SceneMan.CastObstacleRay(m_Pos + Vector(dx, -h * 0.3F), Vector(0.0F, -h * 0.9F), obstacle, free, m_MOID, m_Team, LadderMaterialID(), 3) >= 0.0F) {
 				headClear = false;
 			}
 		}
@@ -2846,7 +2851,7 @@ int AHuman::MoveAlongRoute() {
 			// (The goal itself on any tank, as above; the places short of it on what the risk lets one tank fly.)
 			const float placeReach = &candidate == &points.front() && !skyOnly ? std::numeric_limits<float>::max() : reach;
 			const Vector landingCentre(place.m_X, floorY - feet - 4.0F);
-			if (FlightFuelNeeded(place, floorY, false) <= placeReach && (legOpen(m_Pos, landingCentre) || FlightWayClear(place, floorY))) {
+			if (FlightFuelNeeded(place, floorY, false) <= placeReach && (legOpen(m_Pos, landingCentre) || FlightWayClear(place, floorY, true))) {
 				found = true;
 			} else {
 				// Up and over: a point over the way, the lowest that both legs are open to and one tank flies, up to fourteen bodies over
