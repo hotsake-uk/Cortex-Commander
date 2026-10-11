@@ -756,6 +756,12 @@ void Sandbox::DrawGUI() {
 		if (!g_DebugMan.IsPhotoModeHidingHUD()) {
 			DrawBattleReport();
 		}
+		// (Also while you play a unit: the enemy's strikes coming in, and the squad following you with its keys.)
+		DrawEnemyStrikes();
+		DrawSquad();
+		if (s_Possessed && !ImGui::GetIO().WantTextInput && !ImGui::GetIO().KeyCtrl && !ImGui::GetIO().KeyAlt) {
+			SquadKeys();
+		}
 	}
 	if (!s_Open && !hiddenButAbove) {
 		// The selection's arrows come off while the window is away (they stayed on the units of a game with the window shut, till it was
@@ -783,7 +789,6 @@ void Sandbox::DrawGUI() {
 			DrawPowerTarget();
 			DrawVeterans();
 			DrawMorale();
-			DrawEnemyStrikes();
 		}
 	}
 

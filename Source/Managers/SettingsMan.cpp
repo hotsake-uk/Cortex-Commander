@@ -150,6 +150,7 @@ void SettingsMan::Clear() {
 	m_AIWaitForFuel = true;
 	m_AIEnemyBuysReinforcements = true;
 	m_AIEnemyUsesPowers = true;
+	m_AISquadFollowsYou = true;
 	m_AIUsesVehicles = true;
 	m_AICoverDigs = true;
 	m_AICoverFallsBack = true;
@@ -738,6 +739,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AIWaitForFuel", { reader >> m_AIWaitForFuel; });
 	MatchProperty("AIEnemyBuysReinforcements", { reader >> m_AIEnemyBuysReinforcements; });
 	MatchProperty("AIEnemyUsesPowers", { reader >> m_AIEnemyUsesPowers; });
+	MatchProperty("AISquadFollowsYou", { reader >> m_AISquadFollowsYou; });
 	MatchProperty("AIUsesVehicles", { reader >> m_AIUsesVehicles; });
 	MatchProperty("AICoverDigs", { reader >> m_AICoverDigs; });
 	MatchProperty("AICoverFallsBack", { reader >> m_AICoverFallsBack; });
@@ -1219,6 +1221,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AIWaitForFuel", m_AIWaitForFuel);
 	writer.NewPropertyWithValue("AIEnemyBuysReinforcements", m_AIEnemyBuysReinforcements);
 	writer.NewPropertyWithValue("AIEnemyUsesPowers", m_AIEnemyUsesPowers);
+	writer.NewPropertyWithValue("AISquadFollowsYou", m_AISquadFollowsYou);
 	writer.NewPropertyWithValue("AIUsesVehicles", m_AIUsesVehicles);
 	writer.NewPropertyWithValue("AICoverDigs", m_AICoverDigs);
 	writer.NewPropertyWithValue("AICoverFallsBack", m_AICoverFallsBack);

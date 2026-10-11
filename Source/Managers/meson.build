@@ -60,6 +60,7 @@ sources += files(
 'BattleReport.cpp',
 'BattleMorale.cpp',
 'BattleEnemy.cpp',
+'BattleSquad.cpp',
 'ControlLink.cpp',
 'SettingsMan.cpp',
 'ThreadMan.cpp',

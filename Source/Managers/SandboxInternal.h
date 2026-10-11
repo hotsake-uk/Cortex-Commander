@@ -2616,6 +2616,18 @@ namespace SandboxDetail {
 	void DrawEnemyStrikes();
 #pragma endregion
 
+#pragma region Squad follows me (BattleSquad.cpp)
+	/// The squad of the unit you control in a Battle Command battle: the units you had selected follow it, and go for what it shoots at; T
+	/// and X (SquadKeys) have them hold or follow, and regroup. Call once per sim update, from UpdateBattle.
+	void UpdateSquad();
+
+	/// T and X while you play a unit with a squad. Call from the ImGui frame, with no text box or Ctrl or Alt taking the keys.
+	void SquadKeys();
+
+	/// A mark over each of the squad, and what it's doing with the keys at the top of the view. Call from the ImGui frame.
+	void DrawSquad();
+#pragma endregion
+
 #pragma region Fog of war (BattleFog.cpp)
 	/// Where an enemy was last seen, once your units lost sight of it: shown fading on the map and the minimap.
 	struct FogGhost {

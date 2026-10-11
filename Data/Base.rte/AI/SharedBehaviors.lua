@@ -575,6 +575,34 @@ function SharedBehaviors.CoverOrderUpdate(AI, Owner)
 	return true;
 end
 
+-- Squad follows me (Battle Command): while the unit its squad follows fires, the enemy it's aiming at is the squad's target too. The sandbox
+-- puts that enemy's unique ID on each of the squad (SandboxSquadTarget) and takes it off once the player stops firing or the enemy is down.
+function SharedBehaviors.SquadTargetUpdate(AI, Owner)
+	if not Owner:NumberValueExists("SandboxSquadTarget") then
+		return;
+	end
+	local id = Owner:GetNumberValue("SandboxSquadTarget");
+	if AI.Target and MovableMan:ValidMO(AI.Target) and AI.Target.UniqueID == id then
+		return;
+	end
+	-- (Twice a second at most: an attack the AI drops, out of sight, isn't started again every update.)
+	if AI.SquadTargetTimer and not AI.SquadTargetTimer:IsPastSimMS(500) then
+		return;
+	end
+	AI.SquadTargetTimer = Timer();
+	local Found = MovableMan:FindObjectByUniqueID(id);
+	if not Found or not IsActor(Found) then
+		return;
+	end
+	Found = ToActor(Found);
+	if Found.Status >= Actor.INACTIVE or Found.Team == Owner.Team then
+		return;
+	end
+	AI.Target = Found;
+	AI.TargetOffset = Vector(0, 0);
+	AI:CreateAttackBehavior(Owner);
+end
+
 -- sharp aim at an area where we expect the enemy to be
 function SharedBehaviors.PinArea(AI, Owner, Abort)
 	if AI.OldTargetPos then
