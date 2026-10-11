@@ -352,7 +352,8 @@ void LuaMan::Clear() {
 void LuaMan::Initialize() {
 	m_MasterScriptState.Initialize();
 
-	int luaStateCount = std::thread::hardware_concurrency();
+	// One state per performance core: on Apple Silicon, states on the efficiency cores finish last and every script update waits for them.
+	int luaStateCount = ThreadMan::GetPerformanceCoreCount();
 	if (g_SettingsMan.EnableLuaDebugging()) {
 		luaStateCount = 0;
 	} else if (g_SettingsMan.GetNumberOfLuaStatesOverride() != -1) {

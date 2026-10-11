@@ -68,7 +68,7 @@ jobs:
     uses: ./.github/workflows/meson.yml
     with:
       upload_artefacts: true
-      build_type: "debug"
+      build_type: "debugoptimized" # -O2 with symbols for crash stacks; "debug" built the nightlies unoptimised
       debug_level: "release"
 
   build-msbuild-releases:

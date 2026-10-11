@@ -134,6 +134,9 @@ elif compiler.get_argument_syntax()== 'msvc'
 else
   error('Using unknown compiler, please use gcc or msvc compatible compilers')
 endif
+if host_machine.system() == 'darwin' and host_machine.cpu_family() == 'aarch64' and compiler.has_argument('-mcpu=apple-m1')
+  extra_args += ['-mcpu=apple-m1'] # Tune for Apple Silicon; runs on every M-series chip
+endif
 add_project_arguments(preprocessor_flags, extra_args, language:'cpp')
 add_project_link_arguments(link_args, language:'cpp')
 

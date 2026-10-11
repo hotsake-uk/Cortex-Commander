@@ -1654,7 +1654,8 @@ void MovableMan::Update() {
 			                                                     }
 
 			                                                     g_LuaMan.SetThreadLuaStateOverride(nullptr);
-		                                                     })
+		                                                     },
+		                                                     luaStates.size()) // One block per state, even with more states than threads.
 		    .wait();
 	}
 
@@ -2058,7 +2059,8 @@ void MovableMan::Update() {
 		                                                                         for (int i = start; i < end; ++i) {
 			                                                                         m_Actors[i]->CastSeeRays();
 		                                                                         }
-	                                                                         });
+	                                                                         },
+	                                                                         g_ThreadMan.GetPriorityThreadPool().get_thread_count() * 4); // Small blocks, so faster cores take more of them and slower ones (Apple's efficiency cores) don't hold up the wait.
 
 	// We've finished stuff that can interact with lua script, so it's the ideal time to start a gc run
 	g_LuaMan.StartAsyncGarbageCollection();
@@ -2191,7 +2193,8 @@ void MovableMan::UpdateControllers() {
 				                                                     }
 			                                                     }
 			                                                     g_LuaMan.SetThreadLuaStateOverride(nullptr);
-		                                                     })
+		                                                     },
+		                                                     luaStates.size()) // One block per state, even with more states than threads.
 		    .wait();
 
 		for (Actor* actor: m_Actors) {
