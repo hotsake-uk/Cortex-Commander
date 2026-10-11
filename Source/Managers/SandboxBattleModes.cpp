@@ -6,6 +6,7 @@
 
 #include <deque>
 #include <functional>
+#include <limits>
 #include <unordered_set>
 
 namespace SandboxDetail {
@@ -3620,6 +3621,7 @@ namespace SandboxDetail {
 		ImGui::SetItemTooltip("Each team's units come in by ship over their widest spawn zone (each team's card says which craft), rather than appearing in their zones.");
 		ToolUI::Checkbox("Show spawn zones on the map", &s_ShowModeBases);
 		ImGui::SetItemTooltip("The outline and shading of each team's spawn zones. Off, they're hidden (still shown while you draw one or place a point); flags, hills and the rest still show.");
+		BattleEditPanel();
 		// (Its own zones, if it uses them as set up: one flag's flag spawn zones only if the flag comes in in them.)
 		const char* zoneName = mode.ZoneName && (!mode.ZonesUsed || mode.ZonesUsed(setup)) ? mode.ZoneName : nullptr;
 		if (zoneName || mode.Goals) {
@@ -3937,6 +3939,773 @@ namespace SandboxDetail {
 		}
 		if (IsModeZoneTool(held)) {
 			DrawZoneDraft(ImGui::GetBackgroundDrawList(), std::max(ScenePixelsPerWindowPixel(), 0.01F));
+		}
+	}
+
+	// ---- The battle's zones and points edited on the map ----
+	// With the battle panel (or the sandbox's Battle tab) showing and the Command tool in hand, a click on a spawn zone, mode zone, goal zone,
+	// team point or flag position selects it; a drag moves it, a drag on one of its corners moves that corner, and a drag on the dot in the
+	// middle of an edge puts a new corner there. A right click on a corner takes it away, Delete the whole thing; a click on nothing lets go.
+	// Before the game, all of it; while it's on, only the spawn zones of a team you command, with "Moving spawns" ticked, and only behind the
+	// spawn line (SpawnZoneAllowed).
+
+	namespace {
+		/// What can be selected and moved.
+		enum class EditKind {
+			None,
+			Spawn, //!< One of a team's spawn zones (Side, Index).
+			ModeZone, //!< One of the mode's own zones: a hill, an assault objective, a flag spawn zone (Index).
+			Goal, //!< A team's goal zone (Side).
+			Point, //!< A team's point: its flag, its VIP (Side).
+			FlagSpot //!< One of the one flag's positions (Index).
+		};
+
+		struct EditRef {
+			EditKind Kind = EditKind::None;
+			int Side = -1;
+			int Index = -1;
+			bool operator==(const EditRef& other) const { return Kind == other.Kind && Side == other.Side && Index == other.Index; }
+		};
+
+		/// The part of a thing the pointer is on: the whole of it, one of its corners, or the middle of one of its edges.
+		struct EditHit {
+			EditRef Ref;
+			int Corner = -1; //!< The corner, or -1 for the whole.
+			int Edge = -1; //!< The edge (from this corner to the next), or -1.
+		};
+
+		/// A move being dragged out: the thing as it was, and as it would be let go now.
+		struct EditDrag {
+			bool Active = false;
+			EditRef Ref;
+			int Corner = -1; //!< The corner being moved, or -1 for the whole.
+			ImVec2 Start; //!< Where the pointer went down, on screen.
+			std::vector<Vector> Original;
+			std::vector<Vector> Shape;
+			Vector OriginalPoint;
+			Vector Point;
+			bool Moved = false; //!< Past a few pixels: a click alone only selects.
+			bool Changed = false; //!< Changed already (a corner added), so it's sent even if not moved.
+		};
+
+		constexpr float c_EditCornerReach = 8.0F; //!< Window pixels from a corner (or an edge's middle) that a click takes it.
+		constexpr float c_SpawnLineMargin = 200.0F; //!< Assault attackers: how far short of the objective in play their spawn zones stay.
+		constexpr float c_SpawnKeepAway = 300.0F; //!< Other modes: how far a moved spawn zone stays from objectives and enemy spawn zones.
+		constexpr size_t c_MaxZoneCorners = 32;
+
+		EditRef s_EditSelected;
+		EditHit s_EditHover;
+		EditDrag s_EditDrag;
+		std::string s_EditNote; //!< Why the last move was taken back, shown by the pointer for a moment.
+		double s_EditNoteAt = -10.0;
+
+		/// Whether the mode's game is on (the one set up on the panel).
+		bool EditGameOn() { return s_ModeRun.Running && s_ModeRun.Settings.Mode == s_ModeSetup.Mode; }
+
+		/// Whether the map can be edited now: the battle panel showing, a mode picked, and the Command tool in hand.
+		bool EditActive() { return InGame() && BattleSetupShowing() && s_ModeSetup.Mode != BattleMode::Custom && CurrentTool().Kind == Tool::Command && !s_Possessed; }
+
+		/// Whether a team's spawn zones can be moved: always before the game; while it's on, only a team you command, with moving spawns on.
+		bool SpawnsEditable(int side) {
+			if (side < 0 || side >= c_Sides || !s_ModeSetup.Plays[side]) {
+				return false;
+			}
+			return !EditGameOn() || (s_ModeRun.Settings.MovingSpawns && s_ModeSetup.PlayerCommands[side] && TeamIn(s_ModeRun.Settings, side));
+		}
+
+		/// Whether the mode's own zones are in use as set up.
+		bool ModeZonesUsed() {
+			const BattleModeInfo& mode = ModeOf(s_ModeSetup.Mode);
+			return mode.ZoneName && (!mode.ZonesUsed || mode.ZonesUsed(s_ModeSetup));
+		}
+
+		/// The zone a selection is, or nullptr (a point, or nothing there any more).
+		std::vector<Vector>* ZoneOf(const EditRef& ref) {
+			BattleModeSettings& setup = s_ModeSetup;
+			switch (ref.Kind) {
+				case EditKind::Spawn:
+					if (ref.Side >= 0 && ref.Side < c_Sides && ref.Index >= 0 && ref.Index < static_cast<int>(setup.SpawnZones[ref.Side].size())) {
+						return &setup.SpawnZones[ref.Side][ref.Index];
+					}
+					return nullptr;
+				case EditKind::ModeZone:
+					return ref.Index >= 0 && ref.Index < static_cast<int>(setup.Zones.size()) ? &setup.Zones[ref.Index] : nullptr;
+				case EditKind::Goal:
+					return ref.Side >= 0 && ref.Side < c_Sides && setup.Goals[ref.Side].size() >= 3 ? &setup.Goals[ref.Side] : nullptr;
+				default:
+					return nullptr;
+			}
+		}
+
+		/// The point a selection is, or nullptr (a zone, or nothing there any more).
+		Vector* PointOf(const EditRef& ref) {
+			BattleModeSettings& setup = s_ModeSetup;
+			if (ref.Kind == EditKind::Point) {
+				return ref.Side >= 0 && ref.Side < c_Sides && setup.HasPoint[ref.Side] ? &setup.Points[ref.Side] : nullptr;
+			}
+			if (ref.Kind == EditKind::FlagSpot) {
+				return ref.Index >= 0 && ref.Index < static_cast<int>(setup.FlagSpots.size()) ? &setup.FlagSpots[ref.Index] : nullptr;
+			}
+			return nullptr;
+		}
+
+		/// Whether a selection is of something there, in the mode set up, and editable now.
+		bool EditableNow(const EditRef& ref) {
+			const BattleModeInfo& mode = ModeOf(s_ModeSetup.Mode);
+			const bool setUp = !EditGameOn();
+			switch (ref.Kind) {
+				case EditKind::Spawn:
+					// (Not while hidden, before the game; while it's on, yours are drawn for you to move, DrawBattleEdit.)
+					return ZoneOf(ref) && ZoneOf(ref)->size() >= 3 && SpawnsEditable(ref.Side) && (s_ShowModeBases || !setUp);
+				case EditKind::ModeZone:
+					return setUp && ModeZonesUsed() && ZoneOf(ref) && ZoneOf(ref)->size() >= 3;
+				case EditKind::Goal:
+					return setUp && mode.Goals && s_ModeSetup.Plays[ref.Side] && ZoneOf(ref);
+				case EditKind::Point:
+					return setUp && mode.PointName && s_ModeSetup.Plays[ref.Side] && PointOf(ref);
+				case EditKind::FlagSpot:
+					return setUp && s_ModeSetup.Mode == BattleMode::OneFlag && !s_ModeSetup.FlagByZones && PointOf(ref);
+				default:
+					return false;
+			}
+		}
+
+		/// Everything that can be edited now, the points first (they sit on top of zones), then goals, the mode's zones and the spawn zones.
+		std::vector<EditRef> EditableThings() {
+			std::vector<EditRef> things;
+			for (int side = 0; side < c_Sides; ++side) {
+				things.push_back({EditKind::Point, side, 0});
+			}
+			for (int i = 0; i < static_cast<int>(s_ModeSetup.FlagSpots.size()); ++i) {
+				things.push_back({EditKind::FlagSpot, -1, i});
+			}
+			for (int side = 0; side < c_Sides; ++side) {
+				things.push_back({EditKind::Goal, side, 0});
+			}
+			for (int i = 0; i < static_cast<int>(s_ModeSetup.Zones.size()); ++i) {
+				things.push_back({EditKind::ModeZone, -1, i});
+			}
+			for (int side = 0; side < c_Sides; ++side) {
+				for (int i = 0; i < static_cast<int>(s_ModeSetup.SpawnZones[side].size()); ++i) {
+					things.push_back({EditKind::Spawn, side, i});
+				}
+			}
+			std::erase_if(things, [](const EditRef& ref) { return !EditableNow(ref); });
+			return things;
+		}
+
+		/// What a selection is called, as "Red spawn zone 2" or "Hill 1".
+		std::string EditName(const EditRef& ref) {
+			const BattleModeInfo& mode = ModeOf(s_ModeSetup.Mode);
+			switch (ref.Kind) {
+				case EditKind::Spawn:
+					return SideName(ref.Side) + " spawn zone " + std::to_string(ref.Index + 1);
+				case EditKind::ModeZone: {
+					std::string name = mode.ZoneName ? mode.ZoneName : "zone";
+					name[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(name[0])));
+					return name + " " + std::to_string(ref.Index + 1);
+				}
+				case EditKind::Goal:
+					return SideName(ref.Side) + " goal zone";
+				case EditKind::Point:
+					return SideName(ref.Side) + " " + (mode.PointName ? mode.PointName : "point");
+				case EditKind::FlagSpot:
+					return "Flag position " + std::to_string(ref.Index + 1);
+				default:
+					return std::string();
+			}
+		}
+
+		/// The colour a selection is drawn in: its team's, or the neutral one.
+		ImU32 EditColor(const EditRef& ref) { return ref.Side >= 0 && ref.Side < c_Sides ? c_SideColors[ref.Side] : c_NeutralColor; }
+
+		/// Whether the pointer is on a point's marker (a flag on its pole standing at it).
+		bool OnPointMarker(const ImVec2& mouse, const Vector& point) {
+			const ImVec2 foot = ToScreen(point);
+			return mouse.x >= foot.x - 8.0F && mouse.x <= foot.x + 26.0F && mouse.y >= foot.y - 40.0F && mouse.y <= foot.y + 8.0F;
+		}
+
+		float ScreenDistance(const ImVec2& a, const ImVec2& b) { return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y)); }
+
+		/// What the pointer is on: the selected zone's corners and edge dots first, then whatever is under it.
+		EditHit EditHitAt(const ImVec2& mouse) {
+			const float scale = std::max(ScenePixelsPerWindowPixel(), 0.01F);
+			if (const std::vector<Vector>* zone = EditableNow(s_EditSelected) ? ZoneOf(s_EditSelected) : nullptr) {
+				const std::vector<ImVec2> corners = ZoneOnScreen(*zone, scale);
+				for (int i = 0; i < static_cast<int>(corners.size()); ++i) {
+					if (ScreenDistance(mouse, corners[i]) <= c_EditCornerReach) {
+						return {s_EditSelected, i, -1};
+					}
+				}
+				if (zone->size() < c_MaxZoneCorners) {
+					for (int i = 0; i < static_cast<int>(corners.size()); ++i) {
+						const ImVec2& a = corners[i];
+						const ImVec2& b = corners[(i + 1) % corners.size()];
+						if (ScreenDistance(mouse, ImVec2((a.x + b.x) * 0.5F, (a.y + b.y) * 0.5F)) <= c_EditCornerReach) {
+							return {s_EditSelected, -1, i};
+						}
+					}
+				}
+			}
+			const Vector pointer = MouseScenePosition();
+			for (const EditRef& ref: EditableThings()) {
+				if (const Vector* point = PointOf(ref)) {
+					if (OnPointMarker(mouse, *point)) {
+						return {ref};
+					}
+				} else if (const std::vector<Vector>* zone = ZoneOf(ref); zone && IsInZone(*zone, pointer)) {
+					return {ref};
+				}
+			}
+			return {};
+		}
+
+		// -- The spawn line: where a moved spawn zone may go while the game is on --
+
+		/// A place in the plane of a zone (next to its first corner, as its corners are), across a wrap seam if need be.
+		Vector NextTo(const Vector& origin, const Vector& at) { return origin + g_SceneMan.ShortestDistance(origin, at, g_SceneMan.SceneWrapsX()); }
+
+		/// A zone moved into the plane of a place, whole.
+		std::vector<Vector> ZoneNextTo(const Vector& origin, const std::vector<Vector>& zone) {
+			std::vector<Vector> moved;
+			if (zone.empty()) {
+				return moved;
+			}
+			const Vector shift = NextTo(origin, zone.front()) - zone.front();
+			for (const Vector& corner: zone) {
+				moved.push_back(corner + shift);
+			}
+			return moved;
+		}
+
+		bool InPolygon(const std::vector<Vector>& zone, const Vector& at) {
+			bool inside = false;
+			for (size_t i = 0, j = zone.size() - 1; i < zone.size(); j = i++) {
+				const Vector& a = zone[i];
+				const Vector& b = zone[j];
+				if ((a.m_Y > at.m_Y) != (b.m_Y > at.m_Y) && at.m_X < (b.m_X - a.m_X) * (at.m_Y - a.m_Y) / (b.m_Y - a.m_Y) + a.m_X) {
+					inside = !inside;
+				}
+			}
+			return inside;
+		}
+
+		float ToSegment(const Vector& at, const Vector& a, const Vector& b) {
+			const Vector line = b - a;
+			const float length = line.GetSqrMagnitude();
+			const float t = length > 0.0F ? std::clamp(((at - a).m_X * line.m_X + (at - a).m_Y * line.m_Y) / length, 0.0F, 1.0F) : 0.0F;
+			return (at - (a + line * t)).GetMagnitude();
+		}
+
+		bool SegmentsCross(const Vector& a, const Vector& b, const Vector& c, const Vector& d) {
+			auto turn = [](const Vector& p, const Vector& q, const Vector& r) { return (q.m_X - p.m_X) * (r.m_Y - p.m_Y) - (q.m_Y - p.m_Y) * (r.m_X - p.m_X); };
+			return ((turn(a, b, c) > 0.0F) != (turn(a, b, d) > 0.0F)) && ((turn(c, d, a) > 0.0F) != (turn(c, d, b) > 0.0F));
+		}
+
+		/// How far a place is from a zone, both in one plane: 0 inside it.
+		float GapTo(const std::vector<Vector>& zone, const Vector& at) {
+			if (zone.size() >= 3 && InPolygon(zone, at)) {
+				return 0.0F;
+			}
+			float gap = std::numeric_limits<float>::max();
+			for (size_t i = 0; i < zone.size(); ++i) {
+				gap = std::min(gap, ToSegment(at, zone[i], zone[(i + 1) % zone.size()]));
+			}
+			return gap;
+		}
+
+		/// How far apart two zones are, both in one plane: 0 where they overlap.
+		float GapBetween(const std::vector<Vector>& a, const std::vector<Vector>& b) {
+			float gap = std::numeric_limits<float>::max();
+			for (size_t i = 0; i < a.size(); ++i) {
+				for (size_t j = 0; j < b.size(); ++j) {
+					if (SegmentsCross(a[i], a[(i + 1) % a.size()], b[j], b[(j + 1) % b.size()])) {
+						return 0.0F;
+					}
+				}
+			}
+			for (const Vector& corner: a) {
+				gap = std::min(gap, GapTo(b, corner));
+			}
+			for (const Vector& corner: b) {
+				gap = std::min(gap, GapTo(a, corner));
+			}
+			return gap;
+		}
+
+		/// Assault's spawn line for a team: across the map at an x (taken from the middle of the objective in play), and which way of it the
+		/// team's spawn zones are to stay (-1 left, 1 right). False in any other mode, or with no objective.
+		bool AssaultSpawnLine(int side, Vector& objectiveMiddle, float& lineX, int& keepSide) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			if (settings.Mode != BattleMode::Assault || settings.Zones.empty()) {
+				return false;
+			}
+			const std::vector<Vector>& objective = settings.Zones[std::clamp(s_Objective, 0, static_cast<int>(settings.Zones.size()) - 1)];
+			if (objective.size() < 3) {
+				return false;
+			}
+			objectiveMiddle = ZoneMiddle(objective);
+			float low = std::numeric_limits<float>::max();
+			float high = std::numeric_limits<float>::lowest();
+			for (const Vector& corner: objective) {
+				const float x = g_SceneMan.ShortestDistance(objectiveMiddle, corner, g_SceneMan.SceneWrapsX()).m_X;
+				low = std::min(low, x);
+				high = std::max(high, x);
+			}
+			// The attackers come from the side away from the way the objectives go (first to last); with one objective, from where their spawn
+			// zones are.
+			int attackFrom = -1;
+			if (settings.Zones.size() > 1) {
+				const float ahead = g_SceneMan.ShortestDistance(ZoneMiddle(settings.Zones.front()), ZoneMiddle(settings.Zones.back()), g_SceneMan.SceneWrapsX()).m_X;
+				attackFrom = ahead >= 0.0F ? -1 : 1;
+			} else if (settings.Attacker >= 0 && settings.Attacker < c_Sides) {
+				float sum = 0.0F;
+				for (const std::vector<Vector>& zone: settings.SpawnZones[settings.Attacker]) {
+					if (zone.size() >= 3) {
+						sum += g_SceneMan.ShortestDistance(objectiveMiddle, ZoneMiddle(zone), g_SceneMan.SceneWrapsX()).m_X;
+					}
+				}
+				attackFrom = sum > 0.0F ? 1 : -1;
+			}
+			if (side == settings.Attacker) {
+				keepSide = attackFrom;
+				lineX = attackFrom < 0 ? low - c_SpawnLineMargin : high + c_SpawnLineMargin;
+			} else {
+				keepSide = -attackFrom;
+				lineX = keepSide > 0 ? high : low;
+			}
+			return true;
+		}
+
+		/// What a team's moved spawn zone keeps away from in other modes: the enemy's spawn zones, flags and goals, the hills, the flag's
+		/// positions and spawn zones. Zones, and places (as zones of one corner).
+		std::vector<std::vector<Vector>> KeepAways(int side) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			const BattleModeInfo& mode = ModeOf(settings.Mode);
+			std::vector<std::vector<Vector>> away;
+			for (int other = 0; other < c_Sides; ++other) {
+				if (other == side || !TeamIn(settings, other)) {
+					continue;
+				}
+				for (const std::vector<Vector>& zone: settings.SpawnZones[other]) {
+					if (zone.size() >= 3) {
+						away.push_back(zone);
+					}
+				}
+				if (mode.PointName && settings.HasPoint[other]) {
+					away.push_back({settings.Points[other]});
+				}
+				if (mode.Goals && settings.Goals[other].size() >= 3) {
+					away.push_back(settings.Goals[other]);
+				}
+			}
+			if (mode.ZoneName && (!mode.ZonesUsed || mode.ZonesUsed(settings))) {
+				for (const std::vector<Vector>& zone: settings.Zones) {
+					if (zone.size() >= 3) {
+						away.push_back(zone);
+					}
+				}
+			}
+			if (settings.Mode == BattleMode::OneFlag && !settings.FlagByZones) {
+				for (const Vector& spot: settings.FlagSpots) {
+					away.push_back({spot});
+				}
+			}
+			return away;
+		}
+
+		/// Whether a team's spawn zone may be where it is while the game is on, and if not, why. Before the game, anywhere.
+		bool SpawnZoneAllowed(int side, const std::vector<Vector>& zone, std::string& why) {
+			if (!EditGameOn() || zone.size() < 3) {
+				return true;
+			}
+			Vector middle;
+			float lineX = 0.0F;
+			int keepSide = 0;
+			if (AssaultSpawnLine(side, middle, lineX, keepSide)) {
+				for (const Vector& corner: zone) {
+					if ((g_SceneMan.ShortestDistance(middle, corner, g_SceneMan.SceneWrapsX()).m_X - lineX) * static_cast<float>(keepSide) < 0.0F) {
+						why = "Spawn zones stay behind the spawn line.";
+						return false;
+					}
+				}
+				return true;
+			}
+			if (s_ModeRun.Settings.Mode == BattleMode::Assault) {
+				return true;
+			}
+			for (const std::vector<Vector>& away: KeepAways(side)) {
+				const std::vector<Vector> near = ZoneNextTo(zone.front(), away);
+				if ((near.size() == 1 ? GapTo(zone, near.front()) : GapBetween(zone, near)) < c_SpawnKeepAway) {
+					why = "Spawn zones stay " + std::to_string(static_cast<int>(c_SpawnKeepAway)) + " px from objectives and enemy spawn zones.";
+					return false;
+				}
+			}
+			return true;
+		}
+
+		/// Where a team's spawn zones may not go while the game is on, shaded red: past the spawn line in an assault; round the objectives
+		/// and the enemy's spawn zones in the other modes.
+		void DrawSpawnLimits(ImDrawList* drawList, int side) {
+			const float scale = std::max(ScenePixelsPerWindowPixel(), 0.01F);
+			const ImU32 red = IM_COL32(230, 60, 50, 255);
+			const ImU32 shade = IM_COL32(230, 60, 50, 35);
+			Vector middle;
+			float lineX = 0.0F;
+			int keepSide = 0;
+			if (AssaultSpawnLine(side, middle, lineX, keepSide)) {
+				const GameViewRect view = g_DebugMan.GetUncoveredView();
+				const float x = ToScreen(Vector(middle.m_X + lineX, middle.m_Y)).x;
+				const float top = view.y;
+				const float bottom = view.y + view.h;
+				if (keepSide < 0) {
+					drawList->AddRectFilled(ImVec2(std::max(x, view.x), top), ImVec2(view.x + view.w, bottom), shade);
+				} else {
+					drawList->AddRectFilled(ImVec2(view.x, top), ImVec2(std::min(x, view.x + view.w), bottom), shade);
+				}
+				for (float y = top; y < bottom; y += 20.0F) {
+					drawList->AddLine(ImVec2(x, y), ImVec2(x, std::min(y + 12.0F, bottom)), red, 2.0F);
+				}
+				drawList->AddText(ImVec2(x + (keepSide < 0 ? -ImGui::CalcTextSize("Spawn line").x - 6.0F : 6.0F), top + 150.0F), red, "Spawn line");
+				return;
+			}
+			if (s_ModeRun.Settings.Mode == BattleMode::Assault) {
+				return;
+			}
+			const float band = 2.0F * c_SpawnKeepAway / scale;
+			for (const std::vector<Vector>& away: KeepAways(side)) {
+				if (away.size() == 1) {
+					const ImVec2 at = ToScreen(away.front());
+					drawList->AddCircleFilled(at, c_SpawnKeepAway / scale, shade, 48);
+					drawList->AddCircle(at, c_SpawnKeepAway / scale, (red & 0x00FFFFFF) | (150u << 24), 48, 1.5F);
+				} else {
+					std::vector<ImVec2> corners = ZoneOnScreen(away, scale);
+					drawList->AddConcavePolyFilled(corners.data(), static_cast<int>(corners.size()), shade);
+					drawList->AddPolyline(corners.data(), static_cast<int>(corners.size()), shade, ImDrawFlags_Closed, band);
+				}
+			}
+		}
+
+		// -- Changes made --
+
+		/// A zone kept whole on the map: its first corner wrapped onto it and the rest moved with it.
+		void WrapZone(std::vector<Vector>& zone) {
+			if (zone.empty()) {
+				return;
+			}
+			Vector first = zone.front();
+			g_SceneMan.WrapPosition(first);
+			const Vector shift = first - zone.front();
+			for (Vector& corner: zone) {
+				corner += shift;
+			}
+		}
+
+		/// A team's spawn zones changed: before the game, onto its card too (one set of spawn zones a team, BaseDrawn); while it's on, for
+		/// this game only, so the next starts from the zones as planned.
+		void SpawnZonesChanged(int side) {
+			if (!EditGameOn()) {
+				s_BattleSetup[side].SpawnZones = s_ModeSetup.SpawnZones[side];
+				SendBattleSettings(side);
+			}
+			SendBattleMode();
+		}
+
+		/// A zone or point as edited, put in place and sent; false (and nothing changed) where a spawn zone may not go now.
+		bool EditCommit(const EditRef& ref, std::vector<Vector> shape, Vector point) {
+			if (Vector* place = PointOf(ref)) {
+				g_SceneMan.WrapPosition(point);
+				*place = point;
+				if (ref.Kind == EditKind::Point) {
+					s_ModeSetup.HasPoint[ref.Side] = true;
+				}
+				SendBattleMode();
+				return true;
+			}
+			std::vector<Vector>* zone = ZoneOf(ref);
+			if (!zone || shape.size() < 3) {
+				return false;
+			}
+			WrapZone(shape);
+			if (ref.Kind == EditKind::Spawn) {
+				std::string why;
+				if (!SpawnZoneAllowed(ref.Side, shape, why)) {
+					s_EditNote = why;
+					s_EditNoteAt = ImGui::GetTime();
+					return false;
+				}
+			}
+			*zone = std::move(shape);
+			if (ref.Kind == EditKind::Spawn) {
+				SpawnZonesChanged(ref.Side);
+			} else {
+				SendBattleMode();
+			}
+			return true;
+		}
+
+		/// The selected thing taken away. While the game is on, a team keeps one spawn zone at least.
+		void EditDelete(const EditRef& ref) {
+			BattleModeSettings& setup = s_ModeSetup;
+			switch (ref.Kind) {
+				case EditKind::Spawn:
+					if (EditGameOn() && setup.SpawnZones[ref.Side].size() <= 1) {
+						s_EditNote = "A team keeps one spawn zone at least.";
+						s_EditNoteAt = ImGui::GetTime();
+						return;
+					}
+					setup.SpawnZones[ref.Side].erase(setup.SpawnZones[ref.Side].begin() + ref.Index);
+					SpawnZonesChanged(ref.Side);
+					break;
+				case EditKind::ModeZone:
+					setup.Zones.erase(setup.Zones.begin() + ref.Index);
+					SendBattleMode();
+					break;
+				case EditKind::Goal:
+					setup.Goals[ref.Side].clear();
+					SendBattleMode();
+					break;
+				case EditKind::Point:
+					setup.HasPoint[ref.Side] = false;
+					SendBattleMode();
+					break;
+				case EditKind::FlagSpot:
+					setup.FlagSpots.erase(setup.FlagSpots.begin() + ref.Index);
+					SendBattleMode();
+					break;
+				default:
+					return;
+			}
+			s_EditSelected = {};
+		}
+
+		/// The shape being dragged, as it would be let go now, from how far the pointer has gone.
+		void UpdateEditDrag(const ImVec2& mouse) {
+			EditDrag& drag = s_EditDrag;
+			const float scale = std::max(ScenePixelsPerWindowPixel(), 0.01F);
+			if (!drag.Moved && std::abs(mouse.x - drag.Start.x) + std::abs(mouse.y - drag.Start.y) > 3.0F) {
+				drag.Moved = true;
+			}
+			if (!drag.Moved) {
+				return;
+			}
+			const Vector shift((mouse.x - drag.Start.x) * scale, (mouse.y - drag.Start.y) * scale);
+			drag.Point = drag.OriginalPoint + shift;
+			drag.Shape = drag.Original;
+			if (drag.Corner >= 0 && drag.Corner < static_cast<int>(drag.Shape.size())) {
+				drag.Shape[drag.Corner] += shift;
+			} else {
+				for (Vector& corner: drag.Shape) {
+					corner += shift;
+				}
+			}
+		}
+	} // namespace
+
+	bool BattleEditMouse() {
+		ImGuiIO& io = ImGui::GetIO();
+		if (!EditActive() || s_RingOpen || s_Dragging) {
+			s_EditHover = {};
+			return false;
+		}
+		const ImVec2 mouse = io.MousePos;
+		EditDrag& drag = s_EditDrag;
+		if (drag.Active) {
+			if (!EditableNow(drag.Ref)) {
+				drag = {};
+				return false;
+			}
+			UpdateEditDrag(mouse);
+			if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+				if (drag.Moved || drag.Changed) {
+					EditCommit(drag.Ref, drag.Moved ? drag.Shape : drag.Original, drag.Moved ? drag.Point : drag.OriginalPoint);
+				}
+				drag = {};
+			}
+			return true;
+		}
+		s_EditHover = EditHitAt(mouse);
+		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+			if (s_EditHover.Ref.Kind == EditKind::None) {
+				// (On nothing: let go of it, and the Command tool has the click.)
+				s_EditSelected = {};
+				return false;
+			}
+			s_EditSelected = s_EditHover.Ref;
+			drag = {};
+			drag.Active = true;
+			drag.Ref = s_EditHover.Ref;
+			drag.Start = mouse;
+			if (const Vector* point = PointOf(drag.Ref)) {
+				drag.OriginalPoint = *point;
+				drag.Point = *point;
+			} else if (const std::vector<Vector>* zone = ZoneOf(drag.Ref)) {
+				drag.Original = *zone;
+				drag.Corner = s_EditHover.Corner;
+				if (s_EditHover.Edge >= 0) {
+					// A new corner in the middle of the edge, moved from there.
+					const size_t at = static_cast<size_t>(s_EditHover.Edge) + 1;
+					const Vector& a = drag.Original[s_EditHover.Edge];
+					const Vector& b = drag.Original[at % drag.Original.size()];
+					drag.Original.insert(drag.Original.begin() + static_cast<std::ptrdiff_t>(at), (a + b) * 0.5F);
+					drag.Corner = static_cast<int>(at);
+					drag.Changed = true;
+				}
+				drag.Shape = drag.Original;
+			}
+			return true;
+		}
+		if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && s_EditHover.Corner >= 0) {
+			// A corner taken away (three at least are kept).
+			if (std::vector<Vector>* zone = ZoneOf(s_EditHover.Ref); zone && zone->size() > 3) {
+				std::vector<Vector> shape = *zone;
+				shape.erase(shape.begin() + s_EditHover.Corner);
+				EditCommit(s_EditHover.Ref, shape, Vector());
+			}
+			return true;
+		}
+		return false;
+	}
+
+	void DrawBattleEdit() {
+		if (!EditActive()) {
+			s_EditDrag = {};
+			s_EditHover = {};
+			return;
+		}
+		if (!EditableNow(s_EditSelected)) {
+			s_EditSelected = {};
+		}
+		ImGuiIO& io = ImGui::GetIO();
+		if (io.WantCaptureMouse) {
+			// (Over a window: nothing on the map is under the pointer, and a drag let go of there is dropped.)
+			s_EditHover = {};
+			if (s_EditDrag.Active && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+				s_EditDrag = {};
+			}
+		}
+		if (s_EditSelected.Kind != EditKind::None && !s_EditDrag.Active && !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
+			EditDelete(s_EditSelected);
+		}
+		ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+		const float scale = std::max(ScenePixelsPerWindowPixel(), 0.01F);
+		const bool gameOn = EditGameOn();
+		// While the game is on: your team's spawn zones (they may not be drawn by the mode then), and where they may not go while one is in hand.
+		if (gameOn) {
+			for (int side = 0; side < c_Sides; ++side) {
+				if (!SpawnsEditable(side)) {
+					continue;
+				}
+				for (const std::vector<Vector>& zone: s_ModeSetup.SpawnZones[side]) {
+					if (zone.size() >= 3) {
+						std::vector<ImVec2> corners = ZoneOnScreen(zone, scale);
+						drawList->AddPolyline(corners.data(), static_cast<int>(corners.size()), (c_SideColors[side] & 0x00FFFFFF) | (150u << 24), ImDrawFlags_Closed, 1.5F);
+					}
+				}
+			}
+			const EditRef& held = s_EditDrag.Active ? s_EditDrag.Ref : s_EditSelected;
+			if (held.Kind == EditKind::Spawn) {
+				DrawSpawnLimits(drawList, held.Side);
+			}
+		}
+		const ImU32 yellow = IM_COL32(255, 220, 80, 255);
+		// The thing under the pointer, outlined.
+		if (s_EditHover.Ref.Kind != EditKind::None && !(s_EditHover.Ref == s_EditSelected) && !s_EditDrag.Active) {
+			if (const Vector* point = PointOf(s_EditHover.Ref)) {
+				const ImVec2 foot = ToScreen(*point);
+				drawList->AddCircle(ImVec2(foot.x, foot.y - 14.0F), 22.0F, IM_COL32(255, 255, 255, 170), 32, 2.0F);
+			} else if (const std::vector<Vector>* zone = ZoneOf(s_EditHover.Ref)) {
+				std::vector<ImVec2> corners = ZoneOnScreen(*zone, scale);
+				drawList->AddPolyline(corners.data(), static_cast<int>(corners.size()), IM_COL32(255, 255, 255, 170), ImDrawFlags_Closed, 2.0F);
+			}
+		}
+		// The selected thing (or the one being dragged, where it would go), bright, with its corners and the dots that add one.
+		const EditRef& shown = s_EditDrag.Active ? s_EditDrag.Ref : s_EditSelected;
+		if (!PointOf(shown) && !ZoneOf(shown)) {
+			return;
+		}
+		bool allowed = true;
+		std::string why;
+		if (s_EditDrag.Active && s_EditDrag.Moved && shown.Kind == EditKind::Spawn) {
+			allowed = SpawnZoneAllowed(shown.Side, s_EditDrag.Shape, why);
+		}
+		const ImU32 ink = allowed ? yellow : IM_COL32(240, 70, 60, 255);
+		ImVec2 labelAt;
+		if (PointOf(shown)) {
+			const Vector point = s_EditDrag.Active && s_EditDrag.Moved ? s_EditDrag.Point : *PointOf(shown);
+			const ImVec2 foot = ToScreen(point);
+			if (s_EditDrag.Active && s_EditDrag.Moved) {
+				drawList->AddLine(foot, ImVec2(foot.x, foot.y - 32.0F), ink, 2.0F);
+				drawList->AddTriangleFilled(ImVec2(foot.x, foot.y - 32.0F), ImVec2(foot.x + 18.0F, foot.y - 26.0F), ImVec2(foot.x, foot.y - 20.0F), (EditColor(shown) & 0x00FFFFFF) | (200u << 24));
+			}
+			drawList->AddCircle(ImVec2(foot.x, foot.y - 14.0F), 22.0F, ink, 32, 3.0F);
+			drawList->AddCircleFilled(foot, 4.0F, ink, 12);
+			labelAt = ImVec2(foot.x + 26.0F, foot.y - 40.0F);
+		} else if (const std::vector<Vector>* zone = ZoneOf(shown)) {
+			const std::vector<Vector>& shape = s_EditDrag.Active && s_EditDrag.Moved ? s_EditDrag.Shape : (s_EditDrag.Active ? s_EditDrag.Original : *zone);
+			std::vector<ImVec2> corners = ZoneOnScreen(shape, scale);
+			drawList->AddConcavePolyFilled(corners.data(), static_cast<int>(corners.size()), (ink & 0x00FFFFFF) | (35u << 24));
+			drawList->AddPolyline(corners.data(), static_cast<int>(corners.size()), ink, ImDrawFlags_Closed, 3.0F);
+			for (size_t i = 0; i < corners.size(); ++i) {
+				const ImVec2& a = corners[i];
+				const ImVec2& b = corners[(i + 1) % corners.size()];
+				if (shape.size() < c_MaxZoneCorners) {
+					const ImVec2 middle((a.x + b.x) * 0.5F, (a.y + b.y) * 0.5F);
+					const bool hovered = s_EditHover.Ref == shown && s_EditHover.Edge == static_cast<int>(i);
+					drawList->AddCircleFilled(middle, hovered ? 5.0F : 3.5F, IM_COL32(20, 20, 20, 200), 12);
+					drawList->AddCircle(middle, hovered ? 5.0F : 3.5F, ink, 12, 1.5F);
+				}
+				const bool hovered = (s_EditHover.Ref == shown && s_EditHover.Corner == static_cast<int>(i)) || (s_EditDrag.Active && s_EditDrag.Corner == static_cast<int>(i));
+				drawList->AddCircleFilled(a, hovered ? 7.0F : 5.5F, IM_COL32(20, 20, 20, 220), 12);
+				drawList->AddCircleFilled(a, hovered ? 5.0F : 3.5F, ink, 12);
+			}
+			labelAt = corners.front();
+			for (const ImVec2& corner: corners) {
+				if (corner.y < labelAt.y) {
+					labelAt = corner;
+				}
+			}
+			labelAt.y -= ImGui::GetTextLineHeight() + 12.0F;
+		}
+		// Its name, and what can be done with it.
+		std::string label = EditName(shown) + (allowed ? "    drag to move, Delete to remove" : "    " + why);
+		if (!PointOf(shown) && allowed) {
+			label += ", right click a corner to remove it";
+		}
+		const ImVec2 size = ImGui::CalcTextSize(label.c_str());
+		ImDrawList* front = ImGui::GetForegroundDrawList();
+		front->AddRectFilled(ImVec2(labelAt.x - 4.0F, labelAt.y - 2.0F), ImVec2(labelAt.x + size.x + 4.0F, labelAt.y + size.y + 2.0F), IM_COL32(0, 0, 0, 160), 3.0F);
+		front->AddText(labelAt, ink, label.c_str());
+	}
+
+	void DrawBattleEditNote() {
+		const double age = ImGui::GetTime() - s_EditNoteAt;
+		if (s_EditNote.empty() || age > 2.5) {
+			return;
+		}
+		const ImVec2 at(ImGui::GetIO().MousePos.x + 16.0F, ImGui::GetIO().MousePos.y + 16.0F);
+		const ImVec2 size = ImGui::CalcTextSize(s_EditNote.c_str());
+		const int alpha = static_cast<int>(255.0 * std::clamp(2.5 - age, 0.0, 1.0));
+		ImDrawList* front = ImGui::GetForegroundDrawList();
+		front->AddRectFilled(ImVec2(at.x - 4.0F, at.y - 2.0F), ImVec2(at.x + size.x + 4.0F, at.y + size.y + 2.0F), IM_COL32(0, 0, 0, alpha * 160 / 255), 3.0F);
+		front->AddText(at, IM_COL32(240, 90, 70, alpha), s_EditNote.c_str());
+	}
+
+	void BattleEditPanel() {
+		if (s_ModeSetup.Mode == BattleMode::Custom) {
+			return;
+		}
+		const bool gameOn = EditGameOn();
+		ImGui::BeginDisabled(gameOn);
+		if (ToolUI::Checkbox("Moving spawns", &s_ModeSetup.MovingSpawns)) {
+			SendBattleMode();
+		}
+		ImGui::EndDisabled();
+		ImGui::SetItemTooltip("%s", gameOn ? "Chosen before the battle starts: stop it to change this." : "During the battle you can move and reshape the spawn zones of the team you command (with the Command tool, the battle panel open), but only behind the spawn line: in an assault, short of the objective in play (the defenders, beyond it); in other modes, away from the objectives and the enemy's spawn zones. Chosen before the battle starts.");
+		if (CurrentTool().Kind == Tool::Command && !gameOn) {
+			ImGui::TextDisabled("Click a zone or point on the map to select it, then drag it, or its corners.");
+		} else if (CurrentTool().Kind == Tool::Command && s_ModeSetup.MovingSpawns) {
+			ImGui::TextDisabled("Click one of your spawn zones on the map to move it.");
 		}
 	}
 } // namespace SandboxDetail
