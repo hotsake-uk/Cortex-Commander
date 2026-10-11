@@ -1635,6 +1635,11 @@ void FluidSim::Update() {
 			}
 		}
 	}
+	// Sand and the like come down under the scene's gravity: in a scene with next to none (in space), or in its no gravity area, it stays where it is.
+	// (Scene GlobalAcceleration, which Lua can change; liquids still flow as before.)
+	Scene::Area* noGravityArea = scene->GetArea("NoGravityArea");
+	const bool powdersWeightless = scene->GetGlobalAcc().GetMagnitude() < 1.0F; // (Under a twentieth of the stock 20 m/s/s.)
+	auto powderWeightlessAt = [&](int x, int y) { return powdersWeightless || (noGravityArea && noGravityArea->IsInside(Vector(static_cast<float>(x), static_cast<float>(y)))); };
 	std::vector<int> settled;
 	std::vector<glm::ivec2> hurtSpots;
 	int levelSearches = 0;
@@ -1727,6 +1732,10 @@ void FluidSim::Update() {
 		// (Air, grass and foliage it flows through, or a lighter liquid it changes places with: Passable.)
 		// (Or off the map through an edge it drains or falls out of: Drains. A move there takes it away.)
 		const bool isPowder = kind == Liquid::Powder;
+		if (isPowder && powderWeightlessAt(x, y)) {
+			s_Active.Remove(key);
+			continue;
+		}
 		auto canMoveTo = [&](int tx, int ty) { return CanGo(materialBitmap, tx, ty, width, height, ownMaterial, isPowder); };
 		int heading = s_Active.HeadingRight(key) ? 1 : -1;
 		int still = s_Active.Still(key);
