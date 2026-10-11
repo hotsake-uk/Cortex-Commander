@@ -1098,6 +1098,66 @@ namespace SandboxDetail {
 	}
 
 
+	/// A pick of who crews a vehicle (VehicleTuning::Driver or Crew): the unit picked in the Units list, random units (as the Units list's
+	/// random settings say), or any unit that can sit, listed by faction, with a search. @param which 0 the driver, 1 the crew (each its own search).
+	void CrewPickCombo(const char* label, std::string& pick, int which) {
+		static char filters[2][64] = {};
+		char* filter = filters[which];
+		if (ImGui::BeginCombo(label, CrewPickName(pick).c_str(), ImGuiComboFlags_HeightLarge)) {
+			const Preset* listed = ChosenPreset(Tool::Unit, ChoiceFor(Tool::Unit));
+			std::string fromList = "Units list pick (" + (s_RandomUnits ? RandomSourceName(s_RandomFavourites, s_RandomFaction) : listed ? listed->PresetName : std::string("none")) + ")";
+			if (ImGui::Selectable(fromList.c_str(), pick.empty())) {
+				pick.clear();
+			}
+			if (ImGui::Selectable(RandomSourceName(s_RandomFavourites, s_RandomFaction).c_str(), pick == "*")) {
+				pick = "*";
+			}
+			ImGui::SetItemTooltip("Each one picked at random, from where the Units list's random units come from (Random units, favourites or a faction).");
+			ImGui::Separator();
+			if (ImGui::IsWindowAppearing()) {
+				ImGui::SetKeyboardFocusHere();
+			}
+			ImGui::SetNextItemWidth(-1.0F);
+			ImGui::InputTextWithHint("##crewFilter", "Search...", filter, 64);
+			// Every unit that can sit, under its faction (module), the factions in the order the Units list has them.
+			const std::vector<Preset>& units = ListFor(Tool::Unit);
+			std::vector<std::string> modules;
+			for (const Preset& unit: units) {
+				if (std::find(modules.begin(), modules.end(), unit.Module) == modules.end()) {
+					modules.push_back(unit.Module);
+				}
+			}
+			for (const std::string& module: modules) {
+				bool headed = false;
+				for (const Preset& unit: units) {
+					if (unit.Module != module || !ContainsIgnoringCase(unit.Label, filter) || !CanCrew(&unit)) {
+						continue;
+					}
+					if (!headed) {
+						ImGui::SeparatorText(module.c_str());
+						headed = true;
+					}
+					std::string key = CrewPickKey(unit);
+					ImGui::PushID(key.c_str());
+					if (ImGui::Selectable(unit.Label.c_str(), pick == key)) {
+						pick = key;
+					}
+					ImGui::PopID();
+				}
+			}
+			ImGui::EndCombo();
+		}
+	}
+
+	/// The vehicle crew's two picks, the driver and the rest, and a note on what goes in.
+	void CrewPicks() {
+		VehicleTuning& tuning = s_VehicleTuning;
+		CrewPickCombo("Driver", tuning.Driver, 0);
+		ImGui::SetItemTooltip("Who drives or flies it: the seat it is driven from. They lead the rest as a squad when they get out.");
+		CrewPickCombo("Crew", tuning.Crew, 1);
+		ImGui::SetItemTooltip("Who takes every other seat: gunners and passengers.");
+	}
+
 	void VehicleOptions() {
 		VehicleTuning& tuning = s_VehicleTuning;
 		const Preset* preset = ChosenPreset(Tool::Vehicle, ChoiceFor(Tool::Vehicle));
@@ -1112,10 +1172,9 @@ namespace SandboxDetail {
 		ImGui::SameLine();
 		ToolUI::RadioButton("Full crew", &crew, 1);
 		tuning.Crewed = crew == 1;
-		ImGui::SetItemTooltip("Every seat filled with the unit picked in the Units list (or random units, if Random units is ticked there), with the loadout, orders and temperament below. The driver leads: when they get out the rest follow it as a squad.");
+		ImGui::SetItemTooltip("Every seat filled: the driver and the rest of the crew picked below, with the loadout, orders and temperament below. The driver leads: when they get out the rest follow it as a squad.");
 		if (tuning.Crewed) {
-			const Preset* unit = s_RandomUnits ? nullptr : ChosenPreset(Tool::Unit, ChoiceFor(Tool::Unit));
-			ImGui::TextDisabled("Crewed by: %s", s_RandomUnits ? "random units" : unit ? unit->PresetName.c_str() : "(pick a unit in the Units list)");
+			CrewPicks();
 			LoadoutChooser();
 			UnitOrderCombo("Orders");
 			TemperamentCombo("Temperament");
@@ -1181,10 +1240,12 @@ namespace SandboxDetail {
 			ImGui::Text("Climbs slopes up to about %.0f degrees (as it comes: %.0f).", climb(vehicle->GetAcceleration() * tuning.Power, vehicle->GetGrip() * tuning.Grip), climb(vehicle->GetAcceleration(), vehicle->GetGrip()));
 		}
 		if (ToolUI::Button("Reset to x1")) {
-			const bool crewed = tuning.Crewed;
-			tuning = VehicleTuning();
-			tuning.Modified = true;
-			tuning.Crewed = crewed;
+			VehicleTuning reset;
+			reset.Modified = true;
+			reset.Crewed = tuning.Crewed;
+			reset.Driver = tuning.Driver;
+			reset.Crew = tuning.Crew;
+			tuning = reset;
 		}
 	}
 
@@ -4474,8 +4535,23 @@ namespace SandboxDetail {
 					s_VehicleTuning.Modified = !s_VehicleTuning.Modified;
 				}
 				next();
-				if (BarChip("Full crew", s_VehicleTuning.Crewed, ToolTheme::Text, nullptr, "On: every seat filled with the unit picked in the Units list, a squad behind the driver. Off: empty.") == 1) {
+				if (BarChip("Full crew", s_VehicleTuning.Crewed, ToolTheme::Text, nullptr, "On: every seat filled with the driver and crew picked (the chip after this), a squad behind the driver. Off: empty.") == 1) {
 					s_VehicleTuning.Crewed = !s_VehicleTuning.Crewed;
+				}
+				if (s_VehicleTuning.Crewed) {
+					// Who crews it, on a chip: the driver, and the rest if they differ. Clicked, both picks in a window over the bar.
+					std::string driver = CrewPickName(s_VehicleTuning.Driver);
+					std::string crew = CrewPickName(s_VehicleTuning.Crew);
+					std::string who = (s_VehicleTuning.Driver == s_VehicleTuning.Crew ? driver : driver + " + " + crew) + "...##crewPick";
+					next();
+					if (BarChip(who.c_str(), false, ToolTheme::Text, nullptr, "Who crews it: the driver, then the rest of the crew if they differ. Click to pick.") == 1) {
+						ImGui::OpenPopup("##crewPickPopup");
+					}
+					ImGui::SetNextWindowSize(ImVec2(320.0F * ToolUI::Pixel(), 0.0F));
+					if (ImGui::BeginPopup("##crewPickPopup")) {
+						CrewPicks();
+						ImGui::EndPopup();
+					}
 				}
 			}
 			if (kind == Tool::Item) {
