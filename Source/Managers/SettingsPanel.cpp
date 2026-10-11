@@ -810,6 +810,12 @@ void DebugMan::SettingsGUI() {
 		Tip("How hard it shoves units, on top of the push above. A hard enough shove knocks a unit off its feet. 0: units are never pushed.");
 		Slider("Gust of air", &tuning.AirGust, 0.0F, 5.0F, "%.2fx");
 		Tip("How hard the air a push sets blowing is, carrying smoke, spray and gas with it (needs Air & wind and Blast waves on). 0: no gust.");
+		Toggle("Spells use energy", tuning.SpellEnergy, [&tuning](bool on) { tuning.SpellEnergy = on; });
+		Tip("Casting a spell spends the caster's energy (the blue bar under its health), or the spell's own charge if it has one; with too little the spell doesn't cast. Off: every spell is free.");
+		ImGui::BeginDisabled(!tuning.SpellEnergy);
+		Slider("Energy regen", &tuning.EnergyRegen, 0.0F, 5.0F, "%.2fx");
+		Tip("How fast energy and a spell's own charge come back. 0: they never come back.");
+		ImGui::EndDisabled();
 		ImGui::EndDisabled();
 		if (Plain() && ToolUI::Button("Usual magic")) {
 			tuning = MagicEffects::Tuning();
@@ -1016,6 +1022,25 @@ void DebugMan::SettingsGUI() {
 		Toggle("Show FPS and version", g_SettingsMan.ShowFPSAndVersion(), [](bool on) { g_SettingsMan.SetShowFPSAndVersion(on); });
 		Tip("The frame rate and the game's version, small, in the top right of the window.");
 		Toggle("Modern HUD", ModernHUD::IsEnabled(), [](bool on) { ModernHUD::SetEnabled(on); });
+		Slider("UI lighting", &ToolLight::Strength, 0.0F, 2.0F);
+		Tip("The menus and HUD lit as if they were in the world: the light brightens the side of each panel facing it, shades the far side, catches the edges towards it and casts the panel's shadow away from it. They are never dimmed past reading. 0 turns it off.");
+		{
+			int source = static_cast<int>(ToolLight::Mode);
+			if (Combo("UI light", &source, "Follow the game\0Its own light\0")) {
+				ToolLight::Mode = static_cast<ToolLight::Source>(source);
+			}
+			Tip("Follow the game: the game's sun by day and moon by night, moving with the time of day, in the sky's colour of the hour (gold at dawn and dusk), with lightning flashing on the panels. Out of a game, a steady light from the top left. Its own light: a light just for the menus and HUD, set below, that the game's time of day and weather don't touch.");
+		}
+		if (ToolLight::Mode == ToolLight::Source::OwnLight) {
+			Slider("UI light angle", &ToolLight::OwnAngle, -90.0F, 90.0F, "%.0f");
+			Tip("Where the UI's own light comes from, in degrees from straight above: negative from the left, positive from the right.");
+			Slider("UI light height", &ToolLight::OwnHeight, 0.0F, 1.0F);
+			Tip("How high the UI's own light stands: low throws long shadows, high short ones.");
+			Slider("UI light brightness", &ToolLight::OwnBrightness, 0.0F, 1.0F);
+			Tint("UI light colour", ToolLight::OwnColor);
+		}
+		Check("UI lit by nearby lamps and fires (may crash)", &ToolLight::NearbyLights);
+		Tip("Lamps, fires, blasts and muzzle flashes in the world under a panel light it warmly too. WARNING: this reads the lights the AI's sight uses while the game may be changing them, so it may crash the game. Off unless you want to try it.");
 		Toggle("Side and health beside units", g_SettingsMan.ShowUnitTags(), [](bool on) { g_SettingsMan.SetShowUnitTags(on); });
 		Tip("Each unit's team icon and health number. In the Sandbox game mode every side's are shown; in other games, other sides' only where your side has seen and with \"Show enemy HUD\" (Options, Gameplay) on. Units of no side (training dummies) and those a mod hides never have them.");
 		Toggle("CPU units' aim reticles", g_SettingsMan.ShowCPUAimReticles(), [](bool on) { g_SettingsMan.SetShowCPUAimReticles(on); });
@@ -1215,21 +1240,23 @@ void DebugMan::SettingsGUI() {
 		Tip("An AI unit sent a long way walks to a friendly vehicle near it that is going its way, gets in and rides (or drives it) there, then gets out and walks the rest. A vehicle with an AI driver drives itself to the place it is sent, and units sent to a vehicle get in. Off: they walk, and AI drivers sit still.");
 	};
 
-	// How units behave on a cautious or a direct order: an RTS order placed with one click is cautious, two normal, three risky, and four
-	// fully direct, which sends them the shortest way whatever it takes.
+	// How units behave on a cautious or a direct order: an RTS order placed with one click is cautious, two normal, and a double click held
+	// and dragged goes from normal to fully direct (the shortest way whatever it takes) the further it is dragged.
 	auto battleBehavior = [&]() {
 		SettingsMan::DirectOrderTuning& direct = g_SettingsMan.DirectOrders();
 		if (Plain()) {
-			ImGui::TextWrapped("How many times you click when you place an RTS order (move, attack-move, defend, dig to) says how urgent it is. One click: cautious, walking round jumps and waiting for fuel. Two: a normal order. Three: riskier. Four: fully direct, the shortest way there whatever it takes. The Direct settings say how hard four clicks push it, the Cautious ones how careful one click is.");
+			ImGui::TextWrapped("How you place an RTS order (move, attack-move, defend, dig to) says how urgent it is. One click: cautious, walking round jumps and waiting for fuel. A double click: a normal order. A double click held and dragged: riskier the further you drag, up to fully direct (the shortest way there whatever it takes) at the full risk distance; the way you drag is the way they face when they get there. The Direct settings say how hard a full drag pushes it, the Cautious ones how careful one click is.");
 		}
 		{
-			float share = direct.RiskyClickShare * 100.0F;
-			if (Slider("Three click strength", &share, 0.0F, 100.0F, "%.0f%% of four clicks")) {
-				direct.RiskyClickShare = share / 100.0F;
+			Slider("Full risk drag distance", &direct.RiskDragPixels, 100.0F, 800.0F, "%.0f px");
+			Tip("How far on screen a double click is dragged for a fully direct order. A shorter drag takes that share of the way from a normal order to a fully direct one. 300 px is normal.");
+			float straight = direct.StraightFlightRisk * 100.0F;
+			if (Slider("Straight flight from", &straight, 50.0F, 100.0F, "%.0f%% risk")) {
+				direct.StraightFlightRisk = straight / 100.0F;
 			}
-			Tip("How far an order placed with three clicks goes toward a fully direct one: every Direct setting is taken this share of the way from a normal order's. 0% makes three clicks a normal order; 50% is normal.");
+			Tip("From this much risk, a unit with a jetpack lights it and flies at the place it was sent, straight or up and over what is in the way, a long way off on a few such flights, instead of taking the route. 90% is normal.");
 		}
-		Heading("Direct (four clicks): jetpack");
+		Heading("Direct (full drag): jetpack");
 		{
 			float preference = 1.0F / std::max(direct.FlightCostScale, 0.01F);
 			if (Slider("Jetpack preference", &preference, 1.0F, 5.0F, "%.1fx")) {

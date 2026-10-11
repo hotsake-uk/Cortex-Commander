@@ -2,6 +2,7 @@
 #include "ActorWater.h"
 #include "ActorFire.h"
 #include "FluidSim.h"
+#include "MagicEffects.h"
 #include "TerrainTrees.h"
 #include "ConsoleMan.h"
 #include "WeatherEffects.h"
@@ -74,6 +75,7 @@ void Actor::Clear() {
 	m_DeviceSwitchSound = nullptr;
 	m_Status = STABLE;
 	m_Health = m_PrevHealth = m_MaxHealth = 100.0F;
+	m_Energy = m_MaxEnergy = m_EnergyRegen = 0.0F;
 	m_pTeamIcon = nullptr;
 	m_pControllerIcon = nullptr;
 	m_LastSecondTimer.Reset();
@@ -253,6 +255,9 @@ int Actor::Create(const Actor& reference) {
 	m_Status = reference.m_Status;
 	m_Health = m_PrevHealth = reference.m_Health;
 	m_MaxHealth = reference.m_MaxHealth;
+	m_Energy = reference.m_Energy;
+	m_MaxEnergy = reference.m_MaxEnergy;
+	m_EnergyRegen = reference.m_EnergyRegen;
 	m_pTeamIcon = reference.m_pTeamIcon;
 	//    m_LastSecondTimer.Reset();
 	//    m_LastSecondPos.Reset();
@@ -406,6 +411,18 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 			              m_PrevHealth = m_Health;
 		              }
 	              });
+	MatchProperty("Energy", {
+		reader >> m_Energy;
+		m_MaxEnergy = std::max(m_MaxEnergy, m_Energy);
+	});
+	MatchProperty("MaxEnergy", {
+		// A unit starts full unless it was given less.
+		bool full = m_Energy >= m_MaxEnergy;
+		reader >> m_MaxEnergy;
+		m_MaxEnergy = std::max(m_MaxEnergy, 0.0F);
+		m_Energy = full ? m_MaxEnergy : std::min(m_Energy, m_MaxEnergy);
+	});
+	MatchProperty("EnergyRegen", { reader >> m_EnergyRegen; });
 	MatchProperty("ImpulseDamageThreshold", { reader >> m_TravelImpulseDamage; });
 	MatchProperty("StableVelocityThreshold", { reader >> m_StableVel; });
 	MatchProperty("StableRecoveryDelay", { reader >> m_StableRecoverDelay; });
@@ -546,6 +563,14 @@ int Actor::Save(Writer& writer) const {
 	writer << m_Health;
 	writer.NewProperty("MaxHealth");
 	writer << m_MaxHealth;
+	if (m_MaxEnergy > 0.0F) {
+		writer.NewProperty("MaxEnergy");
+		writer << m_MaxEnergy;
+		writer.NewProperty("Energy");
+		writer << m_Energy;
+		writer.NewProperty("EnergyRegen");
+		writer << m_EnergyRegen;
+	}
 	if (m_DeploymentID) {
 		writer.NewProperty("DeploymentID");
 		writer << m_DeploymentID;
@@ -1551,6 +1576,8 @@ PathAgent Actor::GetPathAgent() const {
 			}
 		}
 		agent.RouteSeed = 0;
+		// From the straight-flight risk up (a full drag as tuned): straight there on the jet when the way is open (PathFinder::CalculatePath).
+		agent.StraightFlight = share >= direct.StraightFlightRisk;
 		if (agent.DigGoal) {
 			agent.DigCostScale = toward(agent.DigCostScale, std::min(agent.DigCostScale, direct.DigCostScale));
 			agent.LineWeight = direct.LineWeight * share;
@@ -2552,6 +2579,11 @@ void Actor::Update() {
 	}
 	m_Health = std::min(m_Health, m_MaxHealth);
 
+	// Energy comes back by itself while alive.
+	if (m_MaxEnergy > 0.0F && m_Energy < m_MaxEnergy && m_Status != DYING && m_Status != DEAD) {
+		m_Energy = std::min(m_Energy + m_EnergyRegen * MagicEffects::GetTuning().EnergyRegen * g_TimerMan.GetDeltaTimeSecs(), m_MaxEnergy);
+	}
+
 	/////////////////////////////
 	// Stability logic
 
@@ -2800,6 +2832,18 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 				pSymbolFont->DrawAligned(&bitmapInt, drawPos.m_X - 0, drawPos.m_Y + m_HUDStack, str, GUIFont::Left);
 
 				m_HUDStack += -12;
+			}
+
+			// Energy, for units that have it: a blue bar over the health (MG-2).
+			if (tags && m_MaxEnergy > 0.0F && m_Health > 0 && MagicEffects::CastingCostsEnergy()) {
+				int barLeft = drawPos.GetFloorIntX() - 10;
+				int barTop = drawPos.GetFloorIntY() + m_HUDStack + 9;
+				int filled = static_cast<int>(std::round(20.0F * std::clamp(m_Energy / m_MaxEnergy, 0.0F, 1.0F)));
+				rectfill(pTargetBitmap, barLeft, barTop, barLeft + 20, barTop + 2, g_BlackColor);
+				if (filled > 0) {
+					rectfill(pTargetBitmap, barLeft, barTop, barLeft + filled - 1, barTop + 1, makecol8(70, 140, 255));
+				}
+				m_HUDStack += -4;
 			}
 
 			if (IsPlayerControlled()) {

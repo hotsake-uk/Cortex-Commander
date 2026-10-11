@@ -858,6 +858,7 @@ namespace RTE {
 				int pointsToLanding = 0;
 				Timer timer;
 				bool via = false; //!< Up a shaft first: flown to a point over its mouth before turning for the landing.
+				bool apex = false; //!< With via, the point is the top of a full-risk flight's two legs (see MoveAlongRoute), not a shaft's mouth: past it, on for the landing with no step across.
 				Vector viaPoint;
 				bool refuelling = false; //!< The tank ran dry under the landing: falling with the jet out until there is enough to go on.
 				int stages = 0; //!< How many times it has refuelled on this flight.
@@ -892,6 +893,10 @@ namespace RTE {
 			int stuckLevel = 0; //!< How many times running it has been long stuck on a step to much that same place.
 			Timer stuckSpotTimer; //!< Since it was first stuck there.
 			Timer steadyTimer; //!< Since the unit was last not standing still and upright, for the settle before a long flight.
+			bool straightTried = false; //!< A full-risk order's straight flight at its goal (see MoveAlongRoute) was begun, for straightGoal.
+			Vector straightGoal; //!< The goal it was begun for: not tried again for a few seconds (straightTimer), so a flight that failed isn't begun again and again.
+			Timer straightTimer;
+			Timer straightCheckTimer; //!< Since the follower last looked for a full-risk flight.
 			bool settling = false; //!< Waiting to settle before a take-off just now.
 			bool leapWatch = false; //!< A leap of the route's is under way: where from and to, to judge it by when it comes down.
 			Vector leapFrom;
@@ -1055,6 +1060,12 @@ namespace RTE {
 		bool FindLadderNear(const Vector& at, float reachX, float& bodyX, float& gripX, int& wallSide, bool& material, int way = 0) const;
 		/// The rungs (their y) of the ladder being climbed between two heights, top first.
 		void LadderRungs(float fromY, float toY, std::vector<float>& rungs) const;
+		/// The rungs (their y) of a ladder taken at gripX (Ladder material, else a background ladder) between two heights, top first.
+		void LadderRungsAt(float gripX, bool material, float fromY, float toY, std::vector<float>& rungs) const;
+		/// How high a hand reaches, standing as the body is now (its y): the highest shoulder less its arm's length, and a little.
+		float HandReachTopY() const;
+		/// Whether the ladder taken at gripX has a rung a hand reaches, from the hand's reach down past the feet (not only one far overhead).
+		bool LadderRungInReach(float gripX, bool material) const;
 		/// Before the jet: taking hold of a ladder (up or down pressed at one), and letting go (a side key, or the jet's key alone).
 		void UpdateLadderInput();
 		/// The body along the ladder, each frame: the climb's pace with the pull of each hand, the top and the bottom.

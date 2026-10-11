@@ -25,6 +25,9 @@ namespace SandboxDetail {
 				stats += "\nHealth: " + Number(actor->GetMaxHealth());
 				stats += "\nMass: " + Number(actor->GetMass()) + " kg (with what it carries)";
 				brief.push_back(Number(actor->GetMaxHealth()) + " HP");
+				if (actor->GetMaxEnergy() > 0.0F) {
+					stats += "\nEnergy: " + Number(actor->GetMaxEnergy()) + ", back " + Number(actor->GetEnergyRegen()) + " a second";
+				}
 				brief.push_back(Number(actor->GetMass()) + " kg");
 				int wounds = actor->GetGibWoundLimit();
 				stats += wounds > 0 ? "\nBody blown apart after " + std::to_string(wounds) + " wounds" : "\nBody never blown apart by wounds";
@@ -39,6 +42,9 @@ namespace SandboxDetail {
 				stats += "\nMass: " + Number(gun->GetMass()) + " kg";
 				stats += "\nFire rate: " + std::to_string(gun->GetRateOfFire()) + " a minute, " + (gun->IsFullAuto() ? "automatic" : "one a pull");
 				brief.push_back(std::to_string(gun->GetRateOfFire()) + " rpm");
+				if (gun->GetEnergyCost() > 0.0F) {
+					stats += "\nEach cast costs " + Number(gun->GetEnergyCost()) + (gun->GetUsesOwnCharge() ? " of its own charge (" + Number(gun->GetMaxCharge()) + ", back " + Number(gun->GetChargeRegen()) + " a second)" : " energy");
+				}
 				if (const Magazine* magazine = gun->GetMagazine()) {
 					int capacity = magazine->GetCapacity();
 					stats += capacity < 0 ? "\nMagazine: never runs out" : "\nMagazine: " + std::to_string(capacity) + " rounds, " + Number(static_cast<float>(gun->GetReloadTime()) / 1000.0F) + " s to reload";
@@ -115,7 +121,7 @@ namespace SandboxDetail {
 			} else if (preset.ClassName == "AVehicle") {
 				preset.Kind = "Vehicles";
 			} else if (preset.ClassName == "HDFirearm") {
-				preset.Kind = object->IsInGroup("Tools - Diggers") ? "Diggers" : (object->IsInGroup("Tools") ? "Tools" : (object->IsInGroup("Weapons - Secondary") ? "Secondary weapons" : (object->IsInGroup("Weapons - Explosive") ? "Explosive weapons" : "Primary weapons")));
+				preset.Kind = object->IsInGroup("Spells") ? "Spells" : object->IsInGroup("Tools - Diggers") ? "Diggers" : (object->IsInGroup("Tools") ? "Tools" : (object->IsInGroup("Weapons - Secondary") ? "Secondary weapons" : (object->IsInGroup("Weapons - Explosive") ? "Explosive weapons" : "Primary weapons")));
 			} else if (preset.ClassName == "TDExplosive") {
 				preset.Kind = object->IsInGroup("Bombs - Grenades") ? "Grenades" : "Bombs";
 			} else if (preset.ClassName == "HeldDevice") {

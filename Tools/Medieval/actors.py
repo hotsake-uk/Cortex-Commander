@@ -48,7 +48,29 @@ UNITS = [
 		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact Armored", foley="Foley Heavy Cloth Light", stride="Footstep Heavy Generic",
 		torsoWounds=24, inventory=[("HDFirearm", "Longsword"), ("HeldDevice", "Kite Shield")], metal=True,
 	),
+	dict(
+		key="Mage", name="Mage", groups=["Actors - Light"], gold=110, mass=42, heads=1,
+		desc="A robed mage with a book of Telekinetic Push and a dagger. Throws back whoever closes in, grenades and all; keep him behind the line.",
+		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=80, walk=4.2, run=5.2,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=12, inventory=[("HDFirearm", "Telekinetic Push"), ("HDFirearm", "Dagger")], metal=False, energy=(100, 12),
+	),
+	dict(
+		key="Witch", name="Witch", groups=["Actors - Light"], gold=110, mass=40, heads=1,
+		desc="A witch with a scroll of Acid Spray and a dagger. Her acid stings and eats the ground for ten seconds, then is gone.",
+		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=80, walk=4.4, run=5.4,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=12, inventory=[("HDFirearm", "Acid Spray"), ("HDFirearm", "Dagger")], metal=False, energy=(100, 15),
+	),
 ]
+
+
+def energy(u):
+	"""A spellcaster's energy pool (MG-2): what its spells spend, and how much comes back a second."""
+	if "energy" not in u:
+		return ""
+	most, regen = u["energy"]
+	return f"\n\tMaxEnergy = {most}\n\tEnergyRegen = {regen}"
 
 
 def vec(x, y, indent):
@@ -358,7 +380,7 @@ AddActor = AHuman
 	DeviceSwitchSound = SoundContainer
 		CopyOf = {u["foley"]}
 	Health = {u["health"]}
-	MaxHealth = {u["health"]}
+	MaxHealth = {u["health"]}{energy(u)}
 	Organic = 1
 	ImpulseDamageThreshold = 1800
 	AimDistance = 30

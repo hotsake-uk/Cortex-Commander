@@ -133,6 +133,7 @@ RAMPS = {
 	"purple": [(40, 16, 56), COLORS["p"], COLORS["P"], COLORS["q"], (200, 150, 224)],
 	"blue": [(16, 22, 56), COLORS["v"], COLORS["V"], COLORS["i"], (140, 170, 230)],
 	"gambeson": [(52, 46, 34), (96, 88, 66), COLORS["W"], (190, 180, 152), COLORS["w"]],
+	"black": [(12, 12, 16), (26, 26, 32), (40, 42, 50), (58, 60, 70), (84, 88, 98)],
 }
 
 # ---------------------------------------------------------------------------
@@ -233,6 +234,46 @@ TORSOS = {
 		"....pPPqPPp..",
 		".....pPqPp...",
 		"......pppp...",
+	],
+	# A robed mage: blue robe with a gold trim down the front, a rope belt.
+	"Mage": [
+		".....vvv.....",
+		"....vVgVv....",
+		"....kslsk....",
+		"...vVVgVVv...",
+		"..vVViGVVVv..",
+		".vVViVgVVVVv.",
+		"vVViVVgVVVVVv",
+		"vVViVVgVVVVVv",
+		"vVVVVVgVVVVVv",
+		"vVVnNjjNNnVVv",
+		".vVVVVgVVVVv.",
+		".vvVVVgVVVVv.",
+		"..vVVVgVVVv..",
+		"....vVgVVv...",
+		"....vVVgVVv..",
+		".....vVgVv...",
+		"......vvvv...",
+	],
+	# A witch: a black robe with green trim and a green sash.
+	"Witch": [
+		".....kkk.....",
+		"....kdedk....",
+		"....kslsk....",
+		"...kddeddk...",
+		"..kddsedddk..",
+		".kddsdedddsk.",
+		"kddsddeddddsk",
+		"kddsddeddddsk",
+		"kdddddeddddsk",
+		"kddfFFeeFFfdk",
+		".kdddddeddsk.",
+		".kkddddeddsk.",
+		"..kdddeddsk..",
+		"....kdedddk..",
+		"....kddeddsk.",
+		".....kdedk...",
+		"......kkkk...",
 	],
 }
 
@@ -366,6 +407,40 @@ HEADS = {
 		"...aaaaaaak..",
 		"...aaaaaaa...",
 		"....aaaaa....",
+		".....tTt.....",
+	],
+	# A tall pointed hat with a gold band, and a long white beard.
+	"Mage": [
+		"........v....",
+		".......vV....",
+		"......vVV....",
+		".....vVVi....",
+		"....vVViV....",
+		"...vVVViVv...",
+		"..gGgGgGgGg..",
+		"...aaTTTxTTu.",
+		"...aaTTTTTTTT",
+		"...aaaTTTTTk.",
+		"...aaaaaaTk..",
+		"....aaaaaaa..",
+		".....aaaaa...",
+		".....tTt.....",
+	],
+	# A black pointed hat with a green band over long dark hair.
+	"Witch": [
+		".......k.....",
+		"......kd.....",
+		".....kdd.....",
+		".....kdds....",
+		"....kddds....",
+		"...kddddsk...",
+		".kkeeeeeeekk.",
+		"..hhhTTTxTTu.",
+		"..hhhTTTTTTTT",
+		"..hhhtTTTTTk.",
+		"..hhhhTTTTk..",
+		"..hhhh.tTk...",
+		"..hhh........",
 		".....tTt.....",
 	],
 }
@@ -564,6 +639,8 @@ def main():
 		"Archer": ("Archer", ["Archer", "Archer B"], "green", "brown", "leather", None),
 		"Crossbowman": ("Crossbowman", ["Crossbowman"], "gambeson", "red", "leather", None),
 		"King": ("King", ["King"], "purple", "red", "leather", "steel"),
+		"Mage": ("Mage", ["Mage"], "blue", "blue", "leather", None),
+		"Witch": ("Witch", ["Witch"], "black", "black", "leather", None),
 	}
 	for unit, (torso, heads, armRamp, legRamp, footRamp, handRamp) in units.items():
 		base = f"Actors/{unit}/"

@@ -831,7 +831,9 @@ namespace SandboxDetail {
 		int Loadout = 0; //!< 0 faction default, 1 unarmed, 2+ a weapon from s_Weapons.
 		int Count = 1;
 		bool LitGrenade = false;
-		int Clicks = 0; //!< Tool::Command: how many clicks in a row placed it, 0 for not by a click: one makes the order cautious, two normal, three risky, four fully direct (s_DirectOrder).
+		int Clicks = 0; //!< Tool::Command: how many clicks in a row placed it, 0 for not by a click: one makes the order cautious, two or more normal (s_DirectOrder).
+		bool HasRisk = false; //!< Tool::Command: placed by a double click dragged, so Risk says how urgent it is, not Clicks.
+		float Risk = 0.0F; //!< With HasRisk, how far the drag went toward the full risk distance, 0 (normal) to 1 (fully direct).
 		long UnitID = 0; //!< Dropping a step of a plan: whose (and Choice which step).
 		std::vector<Vector> Points; //!< A patrol route's points (RC-4).
 		Vector Position2; //!< Selection box: the other corner.
@@ -946,8 +948,8 @@ namespace SandboxDetail {
 	inline bool s_Dragging = false;
 	inline bool s_DoubleClick = false; //!< The drag or click under way began with a double click.
 	inline int s_ClickCount = 0; //!< How many clicks in a row the drag or click under way began with: how urgent its order is (s_DirectOrder).
-	/// While an order placed by clicks is given (a command stroke's Clicks), how urgent it is: -1 one click (cautious), 0 two (normal, and any
-	/// order not placed by a click), 1 four (fully direct), three between (SettingsMan::DirectOrderTuning::RiskyClickShare). Every unit sent
+	/// While an order placed by clicks is given (a command stroke's Clicks or Risk), how urgent it is: -1 one click (cautious), 0 two (normal, and
+	/// any order not placed by a click), and a double click dragged 0 to 1 by how far (SettingsMan::DirectOrderTuning::RiskDragPixels). Every unit sent
 	/// (SendUnit) takes that share of the Battle Behavior tuning (Actor::StandingOrder::Direct), and one over 0 isn't held to the group's pace.
 	/// Set round the stroke, so every kind of order placed by a click (move, attack-move, dig to, defend, a map order) is made so the same way.
 	inline float s_DirectOrder = 0.0F;
@@ -2492,6 +2494,28 @@ namespace SandboxDetail {
 
 	/// A unit's rank and name, short, as "Sgt. Hale"; empty if it has none.
 	std::string VeteranTitle(long id);
+#pragma endregion
+
+#pragma region After-battle report (BattleReport.cpp)
+	/// The battle's record forgotten, and a new one started if a Battle Command battle has just started. At a mode's start and a new game.
+	void ForgetBattleReport();
+
+	/// A unit fallen (UpdateReinforcements' count), with the unit nearest it of another team (0 for none) credited with the kill.
+	void NoteReportKill(long killerID, long victimID);
+
+	/// Every unit in a Battle Command battle kept on record, with the scores and the objectives' holders; the report opened when it ends. Call
+	/// once per sim update, from UpdateBattle.
+	void UpdateBattleReport();
+
+	/// A unit called in from a reinforcement card marked with the card's name: its kind in the report.
+	void TagCardUnit(Actor* unit, int card);
+
+	/// Whether a Battle Command battle has ended with its report to show.
+	bool BattleReportReady();
+	void OpenBattleReport();
+
+	/// The report window, over the paused world, once the battle has ended. Call from the ImGui frame.
+	void DrawBattleReport();
 #pragma endregion
 
 #pragma region Fog of war (BattleFog.cpp)

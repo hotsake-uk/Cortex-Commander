@@ -260,6 +260,12 @@ namespace SandboxDetail {
 				SendBattleMode();
 			}
 			ImGui::SetItemTooltip("You see only the enemies your team's units can see: those in sight of one of them, not behind the ground. Where one was last seen\nis marked, fading, on the map and the minimap. Scouts and jetpack spotters up high see furthest. Can be changed during the game.\nThe sandbox's bar (F11) sees everything.");
+			if (BattleReportReady()) {
+				if (ToolUI::Button("After-battle report", ImVec2(-1.0F, 0.0F))) {
+					OpenBattleReport();
+				}
+				ImGui::SetItemTooltip("How the battle went: kills and losses, the best of your units, time on the objectives and the score over time.");
+			}
 			BattleModeTab();
 		}
 		ImGui::End();

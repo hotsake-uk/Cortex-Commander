@@ -340,6 +340,50 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 			s_LineSet = true;
 		}
 	}
+	// A full-risk order (PathAgent::StraightFlight): one flight from here to there, straight when the air between is open for the body, or
+	// up to a point over the way and down (two straight legs) when something is in the straight line's way, when the jet's tank flies it
+	// (reckoned as CollectFlightLinks does); not the walk and hops the search would find.
+	if (agent.StraightFlight && !agent.DigGoal && startNode && endNode && endNode->m_Navigable && jumpHeight < FLT_MAX && s_JetTimeMS > 0.0F && endNode->Surface >= 0.0F) {
+		const Vector landing(end.m_X, endNode->Surface - s_StandHeight * 0.5F);
+		const Vector way = g_SceneMan.ShortestDistance(start, landing);
+		const Vector head(0.0F, -s_StandHeight * 0.4F);
+		auto fuelFor = [this](float rise, float across) {
+			float climbFuel = rise > 4.0F ? (rise + 12.0F) * s_JetClimbMSPerPx + (across >= 10.0F ? 450.0F : 300.0F) : 0.0F;
+			return 200.0F + climbFuel + across / (5.0F * c_PPM) * 0.5F * 1000.0F * 1.2F;
+		};
+		auto open = [this, &head](const Vector& from, const Vector& to) { return LineOpen(from, to) && LineOpen(from + head, to + head); };
+		if (way.MagnitudeIsGreaterThan(static_cast<float>(m_NodeDimension) * 1.5F)) {
+			std::vector<Vector> route;
+			if (fuelFor(-way.m_Y, std::abs(way.m_X)) <= s_JetTimeMS * 0.95F && open(start, start + way)) {
+				route = {start, end};
+			} else {
+				const float topY = std::min(start.m_Y, landing.m_Y);
+				const float body = s_StandHeight * 2.2F; // (About the CharHeight the follower's own tries are in.)
+				const std::pair<float, float> tries[] = {{0.5F, 1.0F}, {0.5F, 2.0F}, {0.35F, 2.0F}, {0.65F, 2.0F}, {0.5F, 3.5F}};
+				for (const std::pair<float, float>& at: tries) {
+					Vector top = start + way * at.first;
+					top.m_Y = topY - body * at.second;
+					if (top.m_Y < 0.0F || fuelFor(start.m_Y - top.m_Y, std::abs(way.m_X)) > s_JetTimeMS * 0.95F) {
+						continue;
+					}
+					g_SceneMan.WrapPosition(top);
+					if (open(start, start + g_SceneMan.ShortestDistance(start, top)) && open(top, top + g_SceneMan.ShortestDistance(top, landing))) {
+						route = {start, top, end};
+						break;
+					}
+				}
+			}
+			if (!route.empty()) {
+				pathResult.assign(route.begin(), route.end());
+				if (kinds) {
+					kinds->assign(route.size() - 1, PathStepKind::Jump);
+				}
+				totalCostResult = way.GetMagnitude() / static_cast<float>(m_NodeDimension);
+				return MicroPather::SOLVED;
+			}
+		}
+	}
+
 	// If end node is invalid, there's no path
 	if (startNode && endNode && endNode->m_Navigable) {
 		auto solveStart = std::chrono::steady_clock::now();
@@ -1189,8 +1233,11 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 			const PathNode* oneRight = Open(*oneUp->RightMaterial) ? oneUp->Right : nullptr;
 			const PathNode* twoLeft = (twoUp && Open(*twoUp->LeftMaterial)) ? twoUp->Left : nullptr;
 			const PathNode* twoRight = (twoUp && Open(*twoUp->RightMaterial)) ? twoUp->Right : nullptr;
+			// (Only a foot the hands reach from this floor, about a standing body's height over it: a ladder ending higher up was routed
+			// to, and the unit under it took hold of the air below its foot and climbed nothing.)
+			const float floorY = node->Surface >= 0.0F ? node->Surface : node->Pos.m_Y + static_cast<float>(m_NodeDimension) * 0.5F;
 			for (const PathNode* target: std::array<const PathNode*, 6>{oneUp, oneLeft, oneRight, twoUp, twoLeft, twoRight}) {
-				if (target && target->m_Navigable && target->Ladder) {
+				if (target && target->m_Navigable && target->Ladder && target->LadderBottom >= floorY - s_StandHeight) {
 					link(target, target == oneUp ? 2.0F : (target == twoUp ? 4.5F : 3.5F));
 				}
 			}
@@ -2534,6 +2581,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	int oldClearLeft = node->ClearLeft;
 	int oldClearRight = node->ClearRight;
 	bool oldLadder = node->Ladder;
+	float oldLadderBottom = node->LadderBottom;
 	bool oldStairsUpRight = node->StairsUpRight;
 	bool oldGrounded = node->Grounded;
 	bool oldStairsUpLeft = node->StairsUpLeft;
@@ -2665,6 +2713,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		// route up a ladder runs where the body climbs. (Only the Ladder material: a background ladder is no material at all, and the
 		// nodes are measured on many threads, where the scene's particles can't be looked at.)
 		node->Ladder = false;
+		node->LadderBottom = -1.0F;
 		if (m_LadderMaterial != 0) {
 			int stripLeft = INT_MAX;
 			int stripRight = INT_MIN;
@@ -2681,6 +2730,18 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 			}
 			if (stripLeft != INT_MAX && stripRight - stripLeft <= nodeSize) {
 				node->Ladder = true;
+				// (Its lowest pixel in the cell, for the reach up to it from a floor: see AdjacentCost.)
+				node->LadderBottom = static_cast<float>(centreY - 8);
+				for (int y = centreY + std::max(8, nodeSize / 2); y > centreY - 8; --y) {
+					bool found = false;
+					for (int sx = stripLeft; sx <= stripRight && !found; ++sx) {
+						found = g_SceneMan.GetTerrMatter(sx, y) == m_LadderMaterial;
+					}
+					if (found) {
+						node->LadderBottom = static_cast<float>(y);
+						break;
+					}
+				}
 				int mid = (stripLeft + stripRight) / 2;
 				auto wall = [&](int wx) {
 					unsigned char id = TerrNav(wx, centreY);
@@ -2916,7 +2977,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	}
 
 	// Stairs appearing or going count as a change.
-	if (node->StairsUpRight != oldStairsUpRight || node->StairsUpLeft != oldStairsUpLeft || node->ScrambleUpRight != oldScrambleUpRight || node->ScrambleUpLeft != oldScrambleUpLeft || node->Grounded != oldGrounded || node->StepOverRise != oldStepOverRise || node->StepOverRoom != oldStepOverRoom || node->StepOverRiseLeft != oldStepOverRiseLeft || node->StepOverRoomLeft != oldStepOverRoomLeft || node->Ladder != oldLadder) {
+	if (node->StairsUpRight != oldStairsUpRight || node->StairsUpLeft != oldStairsUpLeft || node->ScrambleUpRight != oldScrambleUpRight || node->ScrambleUpLeft != oldScrambleUpLeft || node->Grounded != oldGrounded || node->StepOverRise != oldStepOverRise || node->StepOverRoom != oldStepOverRoom || node->StepOverRiseLeft != oldStepOverRiseLeft || node->StepOverRoomLeft != oldStepOverRoomLeft || node->Ladder != oldLadder || node->LadderBottom != oldLadderBottom) {
 		return true;
 	}
 
@@ -3040,6 +3101,7 @@ bool PathFinder::CopyNodeSamples(const PathFinder& from, const std::vector<int>&
 		    PathNode& node = m_NodeGrid[nodeId];
 		    node.Anchor = source.Anchor;
 		    node.Ladder = source.Ladder;
+		    node.LadderBottom = source.LadderBottom;
 		    node.Surface = source.Surface;
 		    node.FreeHeight = source.FreeHeight;
 		    node.ClearLeft = source.ClearLeft;

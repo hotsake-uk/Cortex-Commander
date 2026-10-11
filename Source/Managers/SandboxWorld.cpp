@@ -2361,7 +2361,7 @@ namespace SandboxDetail {
 				struct DirectScope {
 					explicit DirectScope(float direct) { s_DirectOrder = direct; }
 					~DirectScope() { s_DirectOrder = 0.0F; }
-				} directScope(stroke.Clicks >= 4 ? 1.0F : (stroke.Clicks == 3 ? g_SettingsMan.DirectOrders().RiskyClickShare : (stroke.Clicks == 1 ? -1.0F : 0.0F)));
+				} directScope(stroke.HasRisk ? stroke.Risk : (stroke.Clicks == 1 ? -1.0F : 0.0F));
 				if (stroke.Count == 10 || stroke.Count == 11) {
 					// Defend at (RC-4): the point, the way dragged to face, and 11 with Shift.
 					DefendAtSelected(at, stroke.Position2, stroke.Count == 11);
