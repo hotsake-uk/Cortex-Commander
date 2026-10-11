@@ -197,6 +197,9 @@ namespace RTE {
 		/// Sets the top speed it drives at on the flat, in m/s.
 		void SetMaxSpeed(float newSpeed) { m_MaxSpeed = newSpeed; }
 
+		/// Gets how hard it speeds up in water when driven, in m/s each second. 0: it doesn't drive in water (it isn't a boat).
+		float GetWaterThrust() const { return m_WaterThrust; }
+
 		/// Gets how fast it jumps up off its springs when the driver jumps, in m/s. 0 can't.
 		float GetHopSpeed() const { return m_HopSpeed; }
 

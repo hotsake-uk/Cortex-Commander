@@ -297,6 +297,8 @@ namespace SandboxDetail {
 				return {Icon::Flag, IM_COL32(242, 182, 61, 255)};
 			case Tool::Unit:
 				return {Icon::Person, IM_COL32(232, 224, 190, 255)};
+			case Tool::Vehicle:
+				return {Icon::Wheels, IM_COL32(205, 170, 120, 255)};
 			case Tool::Brain:
 				return {Icon::Jar, IM_COL32(240, 150, 170, 255)};
 			case Tool::Item:
@@ -2122,7 +2124,7 @@ namespace SandboxDetail {
 						drawList->AddImage(static_cast<ImTextureID>(picture.Texture), topLeft, bottomRight, ImVec2(plan.Mirror ? 1.0F : 0.0F, 0.0F), ImVec2(plan.Mirror ? 0.0F : 1.0F, 1.0F), IM_COL32(255, 255, 255, 170));
 					}
 				}
-			} else if ((tool.Kind == Tool::Unit && !s_RandomUnits) || tool.Kind == Tool::Brain) {
+			} else if ((tool.Kind == Tool::Unit && !s_RandomUnits) || tool.Kind == Tool::Brain || tool.Kind == Tool::Vehicle) {
 				// The units a click puts down, see-through, where they will stand (SpawnUnits): the squad spread out sideways from the point,
 				// facing the middle of the view.
 				if (const Preset* preset = ChosenPreset(tool.Kind, ChoiceFor(tool.Kind))) {
@@ -2131,7 +2133,7 @@ namespace SandboxDetail {
 						Vector mouse = MouseScenePosition();
 						Vector viewMiddle(g_CameraMan.GetOffset(0).m_X + static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, mouse.m_Y);
 						bool flipped = g_SceneMan.ShortestDistance(mouse, viewMiddle, g_SceneMan.SceneWrapsX()).m_X < 0.0F;
-						int count = tool.Kind == Tool::Brain ? 1 : std::max(s_SquadSize, 1);
+						int count = tool.Kind == Tool::Unit ? std::max(s_SquadSize, 1) : 1;
 						for (int i = 0; i < count; ++i) {
 							float spread = (static_cast<float>(i) - static_cast<float>(count - 1) * 0.5F) * 16.0F;
 							// Mirrored about the unit's position when it faces left, as the game draws it.
@@ -2207,10 +2209,10 @@ namespace SandboxDetail {
 				// The square brush: the square it paints.
 				drawList->AddRect(ImVec2(io.MousePos.x - half, io.MousePos.y - half), ImVec2(io.MousePos.x + half, io.MousePos.y + half), white, 0.0F, 0, 1.5F);
 			} else {
-				drawList->AddCircle(io.MousePos, half, tool.Kind == Tool::Unit || tool.Kind == Tool::Brain || tool.Kind == Tool::RallyPoint ? c_SideColors[s_Team] : white, 0, 1.5F);
+				drawList->AddCircle(io.MousePos, half, tool.Kind == Tool::Unit || tool.Kind == Tool::Vehicle || tool.Kind == Tool::Brain || tool.Kind == Tool::RallyPoint ? c_SideColors[s_Team] : white, 0, 1.5F);
 			}
 		}
-		if (const Preset* preset = (tool.Kind == Tool::Unit || tool.Kind == Tool::Brain || tool.Kind == Tool::Item || tool.Kind == Tool::Structure) ? ChosenPreset(tool.Kind, ChoiceFor(tool.Kind)) : nullptr) {
+		if (const Preset* preset = (tool.Kind == Tool::Unit || tool.Kind == Tool::Vehicle || tool.Kind == Tool::Brain || tool.Kind == Tool::Item || tool.Kind == Tool::Structure) ? ChosenPreset(tool.Kind, ChoiceFor(tool.Kind)) : nullptr) {
 			label = preset->PresetName;
 			if (tool.Kind == Tool::Unit && s_SquadSize > 1) {
 				label += " x" + std::to_string(s_SquadSize);
@@ -3704,7 +3706,7 @@ namespace SandboxDetail {
 
 	const std::vector<BarShelf>& BarShelves() {
 		static const std::vector<BarShelf> shelves = {
-		    {"Spawn", "Spawn", {Tool::Unit, Tool::Drop, Tool::Brain, Tool::Item}},
+		    {"Spawn", "Spawn", {Tool::Unit, Tool::Vehicle, Tool::Drop, Tool::Brain, Tool::Item}},
 		    {"Build", "Build", {Tool::Structure, Tool::Decor}},
 		    {"Paint", "Liquids", {Tool::Water, Tool::Lava, Tool::Acid, Tool::Oil, Tool::Mud, Tool::Tar, Tool::Mercury, Tool::Fuel, Tool::Cryo, Tool::Blood, Tool::PourOther, Tool::WaterSpawner}},
 		    {"Paint", "Fire and gas", {Tool::Fire, Tool::Smoke, Tool::ToxicGas, Tool::Methane, Tool::Steam}},
@@ -4024,7 +4026,7 @@ namespace SandboxDetail {
 				ImGui::SetNextItemWidth(field * 0.7F);
 				ImGui::Combo("##craft", &s_Craft, "Dropship\0Rocket\0");
 			}
-		} else if (kind == Tool::Item || kind == Tool::Brain) {
+		} else if (kind == Tool::Item || kind == Tool::Brain || kind == Tool::Vehicle) {
 			const Preset* preset = ChosenPreset(kind, ChoiceFor(kind));
 			wide();
 			ImGui::AlignTextToFramePadding();

@@ -1,6 +1,7 @@
 // The catalogue: what can be placed, by faction and kind, and the presets the tools list.
 
 #include "SandboxInternal.h"
+#include "AVehicle.h"
 
 namespace SandboxDetail {
 	namespace {
@@ -119,9 +120,14 @@ namespace SandboxDetail {
 			} else if (preset.ClassName == "ACrab") {
 				preset.Kind = object->IsInGroup("Turrets") ? "Turrets" : "Mecha";
 			} else if (preset.ClassName == "AVehicle") {
-				preset.Kind = "Vehicles";
+				const AVehicle* vehicle = dynamic_cast<const AVehicle*>(object);
+				preset.Kind = vehicle && vehicle->GetWaterThrust() > 0.0F ? "Boats" : "Land vehicles";
 			} else if (preset.ClassName == "ACShip") {
 				preset.Kind = "Flying ships";
+			} else if (preset.ClassName == "ACDropShip") {
+				preset.Kind = "Dropships";
+			} else if (preset.ClassName == "ACRocket") {
+				preset.Kind = "Rockets";
 			} else if (preset.ClassName == "HDFirearm") {
 				preset.Kind = object->IsInGroup("Spells") ? "Spells" : object->IsInGroup("Tools - Diggers") ? "Diggers" : (object->IsInGroup("Tools") ? "Tools" : (object->IsInGroup("Weapons - Secondary") ? "Secondary weapons" : (object->IsInGroup("Weapons - Explosive") ? "Explosive weapons" : "Primary weapons")));
 			} else if (preset.ClassName == "TDExplosive") {
@@ -172,15 +178,22 @@ namespace SandboxDetail {
 
 	void BuildCatalogue() {
 		s_Units.clear();
+		s_Vehicles.clear();
 		s_Brains.clear();
 		s_Items.clear();
 		s_Structures.clear();
 		s_Armouries.clear();
 		s_Weapons.clear();
-		for (const char* type: {"AHuman", "ACrab", "AVehicle", "ACShip"}) {
+		for (const char* type: {"AHuman", "ACrab"}) {
 			std::list<Entity*> entities;
 			g_PresetMan.GetAllOfType(entities, type);
 			AddPresets(s_Units, entities, true, true);
+		}
+		// Everything driven or flown: land vehicles, boats, flying ships and craft, under the Spawn tab's Vehicles.
+		for (const char* type: {"AVehicle", "ACShip", "ACDropShip", "ACRocket"}) {
+			std::list<Entity*> entities;
+			g_PresetMan.GetAllOfType(entities, type);
+			AddPresets(s_Vehicles, entities, true, true);
 		}
 		{
 			std::list<Entity*> entities;
@@ -198,6 +211,7 @@ namespace SandboxDetail {
 			AddPresets(s_Structures, entities, false, false, group);
 		}
 		SortAndDedupe(s_Units);
+		SortAndDedupe(s_Vehicles);
 		SortAndDedupe(s_Brains);
 		SortAndDedupe(s_Items);
 		SortAndDedupe(s_Structures);
@@ -253,6 +267,8 @@ namespace SandboxDetail {
 				return s_Items;
 			case Tool::Structure:
 				return s_Structures;
+			case Tool::Vehicle:
+				return s_Vehicles;
 			default:
 				return s_Units;
 		}
@@ -271,6 +287,8 @@ namespace SandboxDetail {
 				return s_ItemChoice;
 			case Tool::Structure:
 				return s_StructureChoice;
+			case Tool::Vehicle:
+				return s_VehicleChoice;
 			default:
 				return s_UnitChoice;
 		}
