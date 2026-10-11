@@ -3721,6 +3721,10 @@ int AHuman::MoveAlongRoute() {
 	Vector heading = toPoint.GetNormalized() * (h * 0.5F);
 	Vector hit;
 	bool noRoomHere = g_SceneMan.CastStrengthRay(m_Pos, Vector(0.0F, topHeadY - m_Pos.m_Y), 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
+	// (Nor over the head: a ladder's rungs are no ceiling. Counted as one, a unit walking past or under a bunker ladder crouched for it.)
+	if (noRoomHere && g_SceneMan.GetTerrMatter(static_cast<int>(hit.m_X), static_cast<int>(hit.m_Y)) == LadderMaterialID()) {
+		noRoomHere = false;
+	}
 	bool noRoomAhead = g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, topHeadY), heading, 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
 	{
 		// (Not the ladders' rungs, which the body passes: see AHuman::LearnFlight.)
@@ -3751,6 +3755,9 @@ int AHuman::MoveAlongRoute() {
 	if (crouched < standing - 1.0F && !crawlNear && (crouchStepNear || noRoomHere || noRoomAhead)) {
 		float topCrouchedY = std::min(m_Pos.m_Y - 4.0F, floorY - crouched);
 		bool roomHere = !g_SceneMan.CastStrengthRay(m_Pos, Vector(0.0F, topCrouchedY - m_Pos.m_Y), 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
+		if (!roomHere && g_SceneMan.GetTerrMatter(static_cast<int>(hit.m_X), static_cast<int>(hit.m_Y)) == LadderMaterialID()) {
+			roomHere = true;
+		}
 		bool roomAhead = !g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, topCrouchedY), heading, 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
 		if (!roomAhead && g_SceneMan.GetTerrMatter(static_cast<int>(hit.m_X), static_cast<int>(hit.m_Y)) == LadderMaterialID()) {
 			roomAhead = true;
