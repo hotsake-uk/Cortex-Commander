@@ -1389,6 +1389,15 @@ void Actor::UpdateMovePath() {
 		}
 		return g_SceneMan.MovePointToGround(inScene, m_CharHeight * 0.2F, 3);
 	};
+	// But a sky order's point (Jetpack here, or a move clicked in open air: StandingOrder::SkyGoal) is kept as the goal, where it was clicked,
+	// for as long as the order lasts: only the route asked for goes to the ground under it, and the jet flies the rest (AHuman::UpdateAIMotor).
+	// Put on the ground as any goal was, the waypoint dropped there the moment the order was taken, and the unit counted itself there.
+	auto goalFor = [this, &onGround](const Vector& place) {
+		if (m_StandingOrder.SkyGoal && g_SceneMan.ShortestDistance(place, m_StandingOrder.SkyPoint, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(4.0F)) {
+			return place;
+		}
+		return onGround(place);
+	};
 	Vector start = GetPathStart();
 
 	// If we're following someone/thing, then never advance waypoints until that thing disappears
@@ -1404,9 +1413,9 @@ void Actor::UpdateMovePath() {
 			// Ok no path going, so get a new path to the next waypoint, if there is a next waypoint
 			if (!m_Waypoints.empty()) {
 				// Make sure the path starts from the ground and not somewhere up in the air if/when dropped out of ship
-				m_MovePathGoal = onGround(m_Waypoints.front().first);
+				m_MovePathGoal = goalFor(m_Waypoints.front().first);
 				m_HasMovePathGoal = true;
-				m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, m_MovePathGoal, agent, static_cast<Activity::Teams>(m_Team));
+				m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, onGround(m_MovePathGoal), agent, static_cast<Activity::Teams>(m_Team));
 
 				// If the waypoint was tied to an MO to pursue, then load it into the current MO target
 				if (g_MovableMan.ValidMO(m_Waypoints.front().second)) {
@@ -1422,19 +1431,19 @@ void Actor::UpdateMovePath() {
 			// Just try to get to the place we were going, else the last Move Target
 			else {
 				if (!m_HasMovePathGoal) {
-					m_MovePathGoal = onGround(m_MoveTarget);
+					m_MovePathGoal = goalFor(m_MoveTarget);
 					m_HasMovePathGoal = true;
 				}
-				m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, m_MovePathGoal, agent, static_cast<Activity::Teams>(m_Team));
+				m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, onGround(m_MovePathGoal), agent, static_cast<Activity::Teams>(m_Team));
 			}
 		}
 		// We had a path before trying to update, so go on to the place it was for (or, with none kept, its last point).
 		else {
 			if (!m_HasMovePathGoal) {
-				m_MovePathGoal = onGround(Vector(m_MovePath.back()));
+				m_MovePathGoal = goalFor(Vector(m_MovePath.back()));
 				m_HasMovePathGoal = true;
 			}
-			m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, m_MovePathGoal, agent, static_cast<Activity::Teams>(m_Team));
+			m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, onGround(m_MovePathGoal), agent, static_cast<Activity::Teams>(m_Team));
 		}
 	}
 
@@ -2943,12 +2952,18 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 			// Draw the line between the current position and to the start of the movepath, backwards so the dotted lines doesn't crawl
 			skipPhase = g_FrameMan.DrawLine(pTargetBitmap, m_MovePath.front() - targetPos, m_Pos - targetPos, pathColor, 0, AILINEDOTSPACING, skipPhase, true);
 
-			// Draw the first destination/waypoint point
-			waypoint = m_MovePath.back() - targetPos;
+			// Draw the first destination/waypoint point. (A sky order's is the point in the air, over the route's end on the ground under it:
+			// the jet's last leg drawn up to it, so the waypoint shows where it was put.)
+			Vector shownGoal = m_MovePath.back();
+			if (m_StandingOrder.SkyGoal && m_HasMovePathGoal && g_SceneMan.ShortestDistance(m_MovePathGoal, m_StandingOrder.SkyPoint, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(4.0F)) {
+				shownGoal = m_MovePathGoal;
+				skipPhase = g_FrameMan.DrawLine(pTargetBitmap, shownGoal - targetPos, m_MovePath.back() - targetPos, pathColor, 0, AILINEDOTSPACING, skipPhase, true);
+			}
+			waypoint = shownGoal - targetPos;
 			circlefill(pTargetBitmap, waypoint.m_X, waypoint.m_Y, 2, pathColor);
 
 			// Add pixel glow area around it, in scene coordinates
-			g_PostProcessMan.RegisterGlowArea(m_MovePath.back(), 5);
+			g_PostProcessMan.RegisterGlowArea(shownGoal, 5);
 		} else {
 			// No points left on movepath, so draw straight line to the movetarget
 
