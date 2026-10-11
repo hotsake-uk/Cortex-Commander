@@ -2285,7 +2285,9 @@ void MovableMan::Draw(BITMAP* pTargetBitmap, const Vector& targetPos) {
 		ZoneScopedN("Actors Draw");
 
 		for (std::deque<Actor*>::reverse_iterator aIt = m_Actors.rbegin(); aIt != m_Actors.rend(); ++aIt) {
-			(*aIt)->Draw(pTargetBitmap, targetPos);
+			if (!(*aIt)->IsHiddenByFog()) {
+				(*aIt)->Draw(pTargetBitmap, targetPos);
+			}
 		}
 	}
 }
@@ -2313,7 +2315,9 @@ void MovableMan::Draw(const Camera& camera) {
 		ZoneScopedN("Actors Draw GPU");
 		logStages.Next("Objects draw: units");
 		for (auto actor: m_Actors) {
-			actor->Draw(camera);
+			if (!actor->IsHiddenByFog()) {
+				actor->Draw(camera);
+			}
 		}
 	}
 }
@@ -2325,12 +2329,19 @@ void MovableMan::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whi
 	for (std::deque<MovableObject*>::reverse_iterator itmIt = m_Items.rbegin(); itmIt != m_Items.rend(); ++itmIt)
 		(*itmIt)->DrawHUD(pTargetBitmap, targetPos, which);
 
-	for (std::deque<Actor*>::reverse_iterator aIt = m_Actors.rbegin(); aIt != m_Actors.rend(); ++aIt)
-		(*aIt)->DrawHUD(pTargetBitmap, targetPos, which);
+	// (Not those a battle's fog of war hides from the player.)
+	for (std::deque<Actor*>::reverse_iterator aIt = m_Actors.rbegin(); aIt != m_Actors.rend(); ++aIt) {
+		if (!(*aIt)->IsHiddenByFog()) {
+			(*aIt)->DrawHUD(pTargetBitmap, targetPos, which);
+		}
+	}
 
 	// What units are saying (unit speech), over every HUD.
-	for (std::deque<Actor*>::reverse_iterator aIt = m_Actors.rbegin(); aIt != m_Actors.rend(); ++aIt)
-		(*aIt)->DrawSpeech(pTargetBitmap, targetPos, which);
+	for (std::deque<Actor*>::reverse_iterator aIt = m_Actors.rbegin(); aIt != m_Actors.rend(); ++aIt) {
+		if (!(*aIt)->IsHiddenByFog()) {
+			(*aIt)->DrawSpeech(pTargetBitmap, targetPos, which);
+		}
+	}
 }
 
 void MovableMan::DrawHUD(const Camera& camera) {
@@ -2340,6 +2351,8 @@ void MovableMan::DrawHUD(const Camera& camera) {
 	}
 
 	for (auto actor: m_Actors) {
-		actor->DrawHUD(camera);
+		if (!actor->IsHiddenByFog()) {
+			actor->DrawHUD(camera);
+		}
 	}
 }

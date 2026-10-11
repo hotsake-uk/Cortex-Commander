@@ -116,6 +116,7 @@ void Actor::Clear() {
 	m_Speech = UnitSpeech::State();
 	m_PainThreshold = 15.0F;
 	m_CanRevealUnseen = true;
+	m_HiddenByFog = false;
 	m_CharHeight = 0;
 	m_HolsterOffset.Reset();
 	m_ReloadOffset.Reset();

@@ -746,6 +746,7 @@ void Sandbox::DrawGUI() {
 		DrawBattleMarks();
 		if (IsBattleCommand()) {
 			DrawLandingSpot();
+			DrawFogGhosts();
 		}
 	}
 

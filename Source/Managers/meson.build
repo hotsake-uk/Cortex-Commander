@@ -53,6 +53,7 @@ sources += files(
 'Colony.cpp',
 'CommanderBar.cpp',
 'Reinforcements.cpp',
+'BattleFog.cpp',
 'ControlLink.cpp',
 'SettingsMan.cpp',
 'ThreadMan.cpp',

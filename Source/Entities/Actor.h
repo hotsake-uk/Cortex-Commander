@@ -892,6 +892,12 @@ namespace RTE {
 		/// @param newCanRevealUnseen Whether this actor can reveal unseen areas.
 		void SetCanRevealUnseen(bool newCanRevealUnseen) { m_CanRevealUnseen = newCanRevealUnseen; }
 
+		/// Gets whether this actor is hidden from the player by a battle's fog of war (Battle Command): it, its HUD and its speech aren't drawn.
+		bool IsHiddenByFog() const { return m_HiddenByFog; }
+
+		/// Sets whether this actor is hidden from the player by a battle's fog of war. Set by the sandbox each update while the fog is on.
+		void SetHiddenByFog(bool hidden) { m_HiddenByFog = hidden; }
+
 		/// Sets this' PainThreshold value above which it will play PainSound
 		/// @param newPainThreshold Desired PainThreshold value
 		void SetPainThreshold(float newPainThreshold) { m_PainThreshold = newPainThreshold; }
@@ -1521,6 +1527,7 @@ namespace RTE {
 		float m_PainThreshold;
 		// Whether or not this actor can reveal unseen areas by looking
 		bool m_CanRevealUnseen;
+		bool m_HiddenByFog; //!< Hidden from the player by a battle's fog of war: not drawn (SetHiddenByFog).
 		// About How tall is the Actor, in pixels?
 		float m_CharHeight;
 		// Speed at which the m_AimAngle will change, in radians/s.

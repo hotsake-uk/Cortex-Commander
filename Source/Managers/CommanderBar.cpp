@@ -253,6 +253,10 @@ namespace SandboxDetail {
 			}
 			BattlePresetsPanel();
 			BattleModeChooser(false);
+			if (ToolUI::Checkbox("Fog of war", &s_ModeSetup.FogOfWar)) {
+				SendBattleMode();
+			}
+			ImGui::SetItemTooltip("You see only the enemies your team's units can see: those in sight of one of them, not behind the ground. Where one was last seen\nis marked, fading, on the map and the minimap. Scouts and jetpack spotters up high see furthest. Can be changed during the game.\nThe sandbox's bar (F11) sees everything.");
 			BattleModeTab();
 		}
 		ImGui::End();

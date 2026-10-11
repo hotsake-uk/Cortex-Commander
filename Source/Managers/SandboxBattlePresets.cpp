@@ -94,6 +94,7 @@ namespace SandboxDetail {
 			visit("CommanderReserve", mode.CommanderReserve);
 			visit("CommanderFallBack", mode.CommanderFallBack);
 			visit("PlayerCommands", mode.PlayerCommands);
+			visit("FogOfWar", mode.FogOfWar);
 		}
 
 		// Values as text: a point "x,y", a line of points with spaces between, zones with " | " between.
