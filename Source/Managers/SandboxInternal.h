@@ -1363,7 +1363,7 @@ namespace SandboxDetail {
 		DigTo, //!< Dig to the point, in the ground or not (RC-11): those with a digger that cuts the way are sent, to the point itself.
 		Suppress, //!< Fire into a zone round the point and keep firing: no target needed, whatever else is in sight; they walk in range first.
 		JetpackHere, //!< Fly to the point clicked, in the air, not on the ground under it, and hover there till the tank runs low (Actor::StandingOrder::SkyGoal).
-		Select, //!< Clicks only pick units: one clicked (Shift adds, double click all of its kind in view), or none on a click on nothing.
+		Select, //!< Clicks only pick units: one clicked (Shift adds, double click all of its kind in view, Ctrl+double click on the whole map), or none on a click on nothing.
 		Command, //!< The order fits what's under the pointer (CommandTargetAt): with nothing selected, as Select; else a friend is selected, an enemy
 		        //!< attacked, a battle objective gone for, open air flown to, anything else moved to. What the Command tool starts in, and what
 		        //!< a one-off order's mode goes back to once it's placed (and Esc). (After Select, so the ring's slices keep their places.)
@@ -2807,6 +2807,16 @@ namespace SandboxDetail {
 	void DrawMinimap();
 	const NoRoute* NoRouteAt(const ImVec2& mouse);
 	void LookAtUnits(const std::vector<UnitRef>& units);
+	/// Every idle unit of the selection's side selected at once (B-2, Ctrl+.); with add, added to the selection instead.
+	void SelectAllIdle(bool add);
+	/// Every unit of the kinds already selected (RC-6): in view (Q), or on the whole map (B-4, Ctrl+Q).
+	void SelectSameKinds(bool wholeMap);
+	/// The camera bookmark keys (B-10): Ctrl+Shift and 1 to 4 keeps the view for this map, Ctrl+Alt and the number goes back to it. Kept in
+	/// Userdata/CameraBookmarks.txt between games. Call from the ImGui frame while above the world.
+	void CameraBookmarkKeys();
+	/// The Army overview window (B-6): your side's units by kind, with how many, their average health and how many are idle; a click on a
+	/// kind selects them all, a double click looks at them too. Shown while the setting is on (SettingsMan::ShowArmyOverview). Call from the ImGui frame.
+	void DrawArmyOverview();
 	void CommandHotkeys();
 	void KeysPage();
 	void ToggleWindowTab(const char* tab);
@@ -3000,6 +3010,13 @@ namespace SandboxDetail {
 
 	/// The Commander Toolbar's powers group: a tile each, greyed with the seconds left while it cools down.
 	void PowerTiles();
+
+	/// Whether a tile's key on the Commander Toolbar was pressed this frame (B-1): Alt and its number for the reinforcement cards, Alt+Shift and
+	/// its number for the powers, counted from 1 in the toolbar's order. Never with Ctrl, nor while a text box has the keys.
+	bool ToolbarKeyPressed(int number, bool shift);
+
+	/// The game's speed a step slower (step -1) or faster (1) through the speed tile's speeds, stopping at the ends; 0 back to 1x (B-5, - and =).
+	void StepGameSpeed(int step);
 
 	/// A click on the world with the power target tool: the power waiting for one is used there.
 	void PowerTargetClicked(const Vector& position);

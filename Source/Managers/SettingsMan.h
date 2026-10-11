@@ -550,6 +550,12 @@ namespace RTE {
 		/// Sets whether the sandbox's map window is shown.
 		void SetShowSandboxMinimap(bool show) { m_SandboxMinimap = show; }
 
+		/// Whether the Army overview window is shown (B-6): your side's units by kind, with how many, their health and how many are idle.
+		bool ShowArmyOverview() const { return m_ArmyOverview; }
+
+		/// Sets whether the Army overview window is shown.
+		void SetShowArmyOverview(bool show) { m_ArmyOverview = show; }
+
 		/// Gets whether the lighting-by-source readout is on.
 		bool ShowLightsBySource() const { return m_LightsBySource; }
 
@@ -962,6 +968,7 @@ namespace RTE {
 		int m_SandboxSpawnStats; //!< How the Spawn tab shows units' and items' stats (see SandboxSpawnStats).
 		bool m_SandboxAttackPings; //!< Whether units coming under fire are pinged (see ShowSandboxAttackPings).
 		bool m_SandboxMinimap; //!< Whether the sandbox's map window is shown (see ShowSandboxMinimap).
+		bool m_ArmyOverview; //!< Whether the Army overview window is shown (see ShowArmyOverview).
 		bool m_LightsBySource; //!< Whether the lighting-by-source readout is on (see ShowLightsBySource).
 		bool m_SandboxCharacterState; //!< Whether the sandbox's character state line is on (see ShowSandboxCharacterState).
 		bool m_SandboxAutoBattle; //!< Whether the sandbox's battle and colony readout is on (see ShowSandboxAutoBattle). (Named for the auto battle the Battle Director replaced, so settings files keep it.)
