@@ -1031,6 +1031,9 @@ namespace SandboxDetail {
 					nearest->Say("FlagTaken");
 					UnitSays(flag.Pos, side, 500.0F, nullptr, "FlagStolen");
 					Say(SideName(nearest->GetTeam()) + " has " + SideName(side) + "'s flag");
+					if (side == CommandedTeam()) {
+						AddAlert("flag", "Your flag has been taken!", flag.Pos, IM_COL32(239, 90, 80, 255));
+					}
 				}
 			}
 		}
@@ -2987,6 +2990,9 @@ namespace SandboxDetail {
 							return;
 						}
 						Say(SideName(killer) + " got " + SideName(side) + "'s VIP");
+						if (side == CommandedTeam()) {
+							AddAlert("vip", "Your VIP is down", vip.Pos, IM_COL32(239, 90, 80, 255));
+						}
 					} else if (!vip.Has && now >= vip.NextAt) {
 						PickVip(side, fighters);
 					}
