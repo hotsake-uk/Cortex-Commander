@@ -27,6 +27,132 @@ namespace RTE {
 		}
 	} // namespace ToolTheme
 
+	/// The tool windows and the HUD lit as if they were in the world: a light (the game's sun or moon, or the UI's own) lights the side of each
+	/// panel facing it and shades the far side, catches the edges towards it, and casts the panel's shadow away from it. Only light and shadow:
+	/// nothing glows, and nothing is ever dimmed past reading.
+	namespace ToolLight {
+		/// How strong the light and shadows are (the UI lighting setting): 0 turns them off, 1 is the usual, 2 twice as strong.
+		inline float Strength = 1.0F;
+
+		/// Where the light comes from.
+		enum class Source { FollowGame, OwnLight };
+		inline Source Mode = Source::FollowGame;
+
+		/// The UI's own light, used instead of the game's when Mode is OwnLight. The game's time of day and weather don't touch it.
+		inline float OwnAngle = -35.0F; //!< Degrees from straight above; negative from the left, positive from the right.
+		inline float OwnHeight = 0.6F; //!< How high it stands, 0 to 1: low gives long shadows, high short ones.
+		inline float OwnColor[3] = {1.0F, 0.96F, 0.88F}; //!< Its colour.
+		inline float OwnBrightness = 0.8F; //!< How strongly it shines, 0 to 1.
+
+		/// Whether lamps, fires and blasts near a panel light it too. Off by default: it reads the lights the AI's sight uses while they may be changing.
+		inline bool NearbyLights = false;
+
+		/// The light this frame (DebugMan sets it before anything is drawn).
+		struct Light {
+			ImVec2 Direction = {-0.5F, -0.85F}; //!< Towards the light, unit length, y down.
+			float Shine = 0.6F; //!< How strongly it shines, 0 to 1: what the shadows and the lit side follow.
+			float Length = 1.0F; //!< How long the shadows are, 1 the usual.
+			ImVec4 Color = {1.0F, 0.97F, 0.92F, 1.0F}; //!< The light's colour, brightest channel 1.
+			float Flash = 0.0F; //!< A lightning flash, 0 to 1.
+		};
+		inline Light Now;
+
+		/// How lit a point of the window is by nearby lamps and fires, 0 to 1 (set by DebugMan; null out of a game).
+		inline float (*NearbyLightAt)(ImVec2 point) = nullptr;
+
+		inline ImU32 Tint(ImVec4 color, float alpha) { return ImGui::ColorConvertFloat4ToU32(ImVec4(color.x, color.y, color.z, std::clamp(alpha, 0.0F, 1.0F))); }
+
+		/// The shadow a box casts away from the light onto what is behind it, soft-edged, longer and darker the stronger the light. Lightning casts
+		/// a hard one straight down.
+		inline void Shadow(ImDrawList* drawList, ImVec2 from, ImVec2 to, float pixel) {
+			float shine = std::clamp(Now.Shine, 0.0F, 1.0F);
+			float darkness = std::min(Strength, 2.0F) * (0.12F + 0.3F * shine);
+			if (darkness <= 0.004F) {
+				return;
+			}
+			float length = pixel * (3.0F + 9.0F * shine) * Now.Length;
+			ImVec2 offset(-Now.Direction.x * length, -Now.Direction.y * length);
+			if (Now.Flash > 0.0F) {
+				offset = ImVec2(offset.x * (1.0F - Now.Flash), offset.y * (1.0F - Now.Flash) + pixel * 10.0F * Now.Flash);
+				darkness = std::min(1.0F, darkness + 0.35F * Now.Flash);
+			}
+			ImVec2 shadowFrom(from.x + offset.x, from.y + offset.y);
+			ImVec2 shadowTo(to.x + offset.x, to.y + offset.y);
+			// A soft edge: layers growing outward, fainter as they go, softer the weaker the light.
+			constexpr int layers = 5;
+			float blur = pixel * (2.0F + 4.0F * (1.0F - shine));
+			for (int layer = layers - 1; layer >= 0; --layer) {
+				float out = blur * static_cast<float>(layer) / static_cast<float>(layers - 1);
+				drawList->AddRectFilled(ImVec2(shadowFrom.x - out, shadowFrom.y - out), ImVec2(shadowTo.x + out, shadowTo.y + out), IM_COL32(0, 0, 8, static_cast<int>(255.0F * darkness / static_cast<float>(layers))), out);
+			}
+		}
+
+		/// Lights a panel's face: brighter on the side towards the light and shaded on the far side, the edges facing it catching it, a touch of its
+		/// colour over the whole, nearby lamps and fires warming it (when NearbyLights is on), and lightning flaring on it.
+		inline void Surface(ImDrawList* drawList, ImVec2 from, ImVec2 to, float pixel) {
+			float amount = std::min(Strength, 2.0F);
+			if (amount <= 0.0F) {
+				return;
+			}
+			float shine = std::clamp(Now.Shine, 0.0F, 1.0F);
+			// Each corner by how much it faces the light.
+			const ImVec2 corners[4] = {{-0.7071F, -0.7071F}, {0.7071F, -0.7071F}, {0.7071F, 0.7071F}, {-0.7071F, 0.7071F}};
+			ImU32 face[4];
+			for (int i = 0; i < 4; ++i) {
+				float facing = corners[i].x * Now.Direction.x + corners[i].y * Now.Direction.y;
+				if (facing > 0.0F) {
+					face[i] = Tint(Now.Color, amount * facing * (0.06F + 0.16F * shine));
+				} else {
+					face[i] = IM_COL32(0, 0, 10, static_cast<int>(255.0F * std::min(0.35F, amount * -facing * (0.08F + 0.2F * shine))));
+				}
+			}
+			drawList->AddRectFilledMultiColor(from, to, face[0], face[1], face[2], face[3]);
+			drawList->AddRectFilled(from, to, Tint(Now.Color, 0.06F * std::min(amount, 1.0F)));
+			// The edges towards the light catch it.
+			ImU32 rim = Tint(Now.Color, std::min(1.0F, amount * (0.25F + 0.55F * shine)));
+			if (Now.Direction.y < -0.2F) {
+				drawList->AddRectFilled(from, ImVec2(to.x, from.y + pixel), rim);
+			} else if (Now.Direction.y > 0.2F) {
+				drawList->AddRectFilled(ImVec2(from.x, to.y - pixel), to, rim);
+			}
+			if (Now.Direction.x < -0.2F) {
+				drawList->AddRectFilled(from, ImVec2(from.x + pixel, to.y), rim);
+			} else if (Now.Direction.x > 0.2F) {
+				drawList->AddRectFilled(ImVec2(to.x - pixel, from.y), to, rim);
+			}
+			if (NearbyLights && NearbyLightAt) {
+				if (float nearby = NearbyLightAt(ImVec2((from.x + to.x) * 0.5F, (from.y + to.y) * 0.5F)); nearby > 0.01F) {
+					drawList->AddRectFilled(from, to, IM_COL32(255, 196, 130, static_cast<int>(255.0F * std::min(0.3F, 0.3F * nearby * amount))));
+				}
+			}
+			if (Now.Flash > 0.0F) {
+				drawList->AddRectFilled(from, to, IM_COL32(220, 230, 255, static_cast<int>(255.0F * std::min(1.0F, 0.3F * Now.Flash * amount))));
+			}
+		}
+
+		/// Lights every tool window open this frame and casts their shadows. Called once a frame, after the last window is made.
+		inline void Windows() {
+			if (Strength <= 0.0F) {
+				return;
+			}
+			ImGuiContext& context = *GImGui;
+			ImDrawList* behind = ImGui::GetBackgroundDrawList();
+			for (ImGuiWindow* window: context.Windows) {
+				if (!window->Active || window->Hidden || (window->Flags & (ImGuiWindowFlags_ChildWindow | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_Tooltip))) {
+					continue;
+				}
+				ImVec2 from = window->Pos;
+				ImVec2 to(from.x + window->Size.x, from.y + window->Size.y);
+				float pixel = std::max(1.0F, std::floor(window->FontRefSize / 10.0F));
+				Shadow(behind, from, to, pixel);
+				// On the window's own layer, under what its child areas hold, so the lettering and controls sit in the light rather than under it.
+				window->DrawList->PushClipRect(from, to, false);
+				Surface(window->DrawList, from, to, pixel);
+				window->DrawList->PopClipRect();
+			}
+		}
+	} // namespace ToolLight
+
 	/// The controls of the tool windows (the Sandbox, the settings panel), drawn in the manner of the game's own menus: square, hard-edged, a pixel at a time.
 	/// Each stands in for the ImGui control of the same name and is used the same way.
 	namespace ToolUI {

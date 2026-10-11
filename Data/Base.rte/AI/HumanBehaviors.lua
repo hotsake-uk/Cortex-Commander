@@ -2584,8 +2584,13 @@ function HumanBehaviors.MedicUpdate(AI, Owner)
 	if AI.MedicLookTimer and not AI.MedicLookTimer:IsPastSimMS(1000) then
 		return false;
 	end
-	AI.MedicLookTimer = AI.MedicLookTimer or Timer();
-	AI.MedicLookTimer:Reset();
+	if AI.MedicLookTimer then
+		AI.MedicLookTimer:Reset();
+	else
+		-- (The next look a little sooner by the unit's unique ID, so medics made together don't look together; see SharedBehaviors.StaggerMS.)
+		AI.MedicLookTimer = Timer();
+		AI.MedicLookTimer.ElapsedSimTimeMS = SharedBehaviors.StaggerMS(Owner, 1000);
+	end
 	if not Owner:HasObject("Medikit") or Owner.OrderHold or Owner.OrderHasPost or SharedBehaviors.OrderKind(Owner) == "defend"
 		or Owner:NumberValueExists("AIRetreat") or Owner:NumberValueExists("AIFlank") then
 		return false;
