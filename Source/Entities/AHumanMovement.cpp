@@ -2779,15 +2779,16 @@ int AHuman::MoveAlongRoute() {
 		// whatever the tank says, on a timer of its own, since standing still here is not being stuck.)
 		// (The AI movement settings: a careful unit waits for a little more than the flight takes and settles longer, a reckless one less;
 		// with the fuel wait off it goes on a tenth of what it needs, with the steadying off it takes off mid-stride.)
-		// (On a triple-clicked order, StandingOrder::Direct, as reckless as the setting goes and then some: off as soon as the tank has a
-		// little over half what the flight takes, and never steadied first.)
+		// (On a triple-clicked order, StandingOrder::Direct, as reckless as the Battle Behavior settings say: as tuned, off as soon as the
+		// tank has a little over half what the flight takes, and never steadied first.)
 		const bool direct = m_StandingOrder.Direct;
-		const float caution = direct ? std::min(g_SettingsMan.AIMoveCaution(), PathAgent::c_DirectCaution) : g_SettingsMan.AIMoveCaution();
+		const SettingsMan::DirectOrderTuning& directTuning = g_SettingsMan.DirectOrders();
+		const float caution = direct ? std::min(g_SettingsMan.AIMoveCaution(), directTuning.Caution) : g_SettingsMan.AIMoveCaution();
 		float needed = std::min(FlightFuelNeeded(landing, landingFloorY) * std::clamp(0.8F + caution * 0.2F, 0.9F, 1.2F), m_pJetpack->GetJetTimeTotal() * 0.85F);
 		if (!g_SettingsMan.AIWaitsForFuel()) {
 			needed *= 0.1F;
 		} else if (direct) {
-			needed *= 0.6F;
+			needed *= directTuning.FuelShare;
 		}
 		if (canTakeOff && !mover.fuelWaiting) {
 			mover.fuelWaiting = true;
@@ -2811,7 +2812,7 @@ int AHuman::MoveAlongRoute() {
 		}
 		// (Never more than a second and a half of it, whatever the body does: the wait resets the stuck handling, and unbounded, a unit that
 		// never quite settled stood at its take-off with nothing to move it on.)
-		bool wantsSettle = canTakeOff && !hop && !direct && g_SettingsMan.AISteadiesBeforeJet() && (!still || m_Status != STABLE || !mover.steadyTimer.IsPastSimMS(static_cast<double>(settleMS)));
+		bool wantsSettle = canTakeOff && !hop && (!direct || directTuning.Steady) && g_SettingsMan.AISteadiesBeforeJet() && (!still || m_Status != STABLE || !mover.steadyTimer.IsPastSimMS(static_cast<double>(settleMS)));
 		if (wantsSettle && !mover.settling) {
 			mover.settling = true;
 			mover.settleWaitTimer.Reset();
