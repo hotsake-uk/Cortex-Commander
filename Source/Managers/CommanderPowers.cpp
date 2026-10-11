@@ -56,6 +56,15 @@ namespace SandboxDetail {
 		s_PendingPower = -1;
 	}
 
+	void StartPowerCooldowns() {
+		const long long now = g_TimerMan.GetSimUpdateCount();
+		for (auto& side: s_ReadyAt) {
+			for (int power = 0; power < c_PowerCount; ++power) {
+				side[power] = now + static_cast<long long>(c_CommanderPowers[power].Cooldown * UpdatesPerSecond());
+			}
+		}
+	}
+
 	void ApplyPower(const Stroke& stroke) {
 		if (BattlePlayerCommands(stroke.Team)) {
 			UsePowerAs(stroke.Team, stroke.Choice, stroke.Position);

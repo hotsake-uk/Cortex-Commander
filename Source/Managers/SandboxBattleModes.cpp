@@ -4724,6 +4724,8 @@ namespace SandboxDetail {
 			s_RushChosen.fill(0);
 			s_Commanders = {};
 			ForgetReinforcements();
+			// (No airstrike on the enemy's spawn the moment the battle starts: every power cools down first.)
+			StartPowerCooldowns();
 			ForgetSpawnOrderUnits();
 			if (mode.Start) {
 				mode.Start();

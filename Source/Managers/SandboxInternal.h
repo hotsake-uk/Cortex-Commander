@@ -2626,6 +2626,9 @@ namespace SandboxDetail {
 	/// Every team's powers ready again. At a mode's start and a new game.
 	void ForgetPowers();
 
+	/// Every team's powers start their full cooldown, so none can be used the moment a battle starts.
+	void StartPowerCooldowns();
+
 	/// A power used (Tool::BattleTeam, BattlePower), in the sim: if it's ready, done, and its cooldown started.
 	void ApplyPower(const Stroke& stroke);
 
