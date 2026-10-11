@@ -2357,6 +2357,12 @@ namespace SandboxDetail {
 				SelectInBox(stroke.Position, stroke.Position2);
 				break;
 			case Tool::Command: {
+				// (Your brain on the field: the selected units out of its command range aren't ordered.)
+				struct RangeScope {
+					std::vector<UnitRef> Out = TakeOutOfRange();
+					std::vector<UnitRef> Before = s_Selected;
+					~RangeScope() { PutBackOutOfRange(Out, Before); }
+				} rangeScope;
 				// How urgent the order is, by its clicks (s_DirectOrder): one cautious, two normal, three risky, four the shortest way whatever it
 				// takes. (Not placed by a click: normal.)
 				struct DirectScope {
@@ -2423,7 +2429,12 @@ namespace SandboxDetail {
 				}
 				break;
 			}
-			case Tool::OrderSelected:
+			case Tool::OrderSelected: {
+				struct RangeScope {
+					std::vector<UnitRef> Out = TakeOutOfRange();
+					std::vector<UnitRef> Before = s_Selected;
+					~RangeScope() { PutBackOutOfRange(Out, Before); }
+				} rangeScope;
 				if (stroke.Count == 400) {
 					// A step dropped from a unit's plan (RC-3).
 					DropPlanStep(stroke.UnitID, stroke.Choice);
@@ -2460,6 +2471,7 @@ namespace SandboxDetail {
 					}
 				}
 				break;
+			}
 			case Tool::Follow:
 				s_FollowTarget = MakeRef(dynamic_cast<Actor*>(ObjectUnder(at, true)));
 				s_FollowAction = false;

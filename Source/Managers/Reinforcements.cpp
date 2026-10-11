@@ -90,6 +90,7 @@ namespace SandboxDetail {
 		ForgetEnemyCommander();
 		ForgetAlerts();
 		ForgetLoadouts();
+		ForgetFieldBrain();
 	}
 
 	void UpdateReinforcements() {

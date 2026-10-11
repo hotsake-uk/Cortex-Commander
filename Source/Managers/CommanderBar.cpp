@@ -260,6 +260,17 @@ namespace SandboxDetail {
 				SendBattleMode();
 			}
 			ImGui::SetItemTooltip("You see only the enemies your team's units can see: those in sight of one of them, not behind the ground. Where one was last seen\nis marked, fading, on the map and the minimap. Scouts and jetpack spotters up high see furthest. Can be changed during the game.\nThe sandbox's bar (F11) sees everything.");
+			if (ToolUI::Checkbox("Your brain on the field", &s_ModeSetup.FieldBrain)) {
+				SendBattleMode();
+			}
+			ImGui::SetItemTooltip("Your brain is put down at your team's base when the game starts. If it dies, you lose. Orders only reach your units within its\ncommand range (the ring round it): those further out keep doing what they were told last, and the order skips them.");
+			if (s_ModeSetup.FieldBrain) {
+				ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0F);
+				if (ImGui::SliderInt("Command range", &s_ModeSetup.FieldBrainRange, 300, 3000, "%d px")) {
+					SendBattleMode();
+				}
+				ImGui::SetItemTooltip("How far from your brain your orders reach.");
+			}
 			if (BattleReportReady()) {
 				if (ToolUI::Button("After-battle report", ImVec2(-1.0F, 0.0F))) {
 					OpenBattleReport();

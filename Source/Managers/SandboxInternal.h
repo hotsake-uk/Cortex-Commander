@@ -713,6 +713,9 @@ namespace SandboxDetail {
 		int CommanderFallBack = 60; //!< Assault defenders: how far the attackers' taking of the objective in play has got, in percent, when everyone
 		                            //!< falls back to the next one.
 		bool FogOfWar = false; //!< Battle Command: you see only the enemies your team's units can see (BattleFog.cpp).
+		bool FieldBrain = false; //!< Battle Command: your brain is on the field at your base; if it dies you lose, and orders only reach your
+		                         //!< units within FieldBrainRange of it (BattleFieldBrain.cpp).
+		int FieldBrainRange = 900; //!< Its command range, in pixels.
 		bool MovingSpawns = false; //!< Every mode: during the game, the player can move the spawn zones of a team they command, behind the spawn line (BattleEditMouse). Chosen before it starts.
 		std::array<bool, c_Sides> PlayerCommands{}; //!< Every mode: each team the player commands. Its units come in on hold ground with no orders and
 		                                            //!< no job from the mode, for the player to command (as in an RTS); the rest of the mode (spawns, scoring) is as for any team.
@@ -2286,6 +2289,8 @@ namespace SandboxDetail {
 	int BattleCommanderLevel();
 	/// Where a team in the mode's game that is on comes in: the middle of its widest spawn zone, else its point. False for a team not in it.
 	bool BattleTeamBase(int side, Vector& at);
+	/// The mode's game ended: won by a side (or -1, no one), with how it ended said.
+	void EndBattleGame(int winner, const std::string& result);
 	Vector ModeSpawnSpot(int side, const std::vector<Vector>& zone, const Actor* unit);
 	int ModeRoom(int side, int room);
 	void UpdateBattleMode(bool aiPaused);
@@ -2636,6 +2641,25 @@ namespace SandboxDetail {
 
 	/// A mark over each of the squad, and what it's doing with the keys at the top of the view. Call from the ImGui frame.
 	void DrawSquad();
+#pragma endregion
+
+#pragma region Your brain on the field (BattleFieldBrain.cpp)
+	/// The brain on the field forgotten (and the last game's taken away). At a mode's start and a new game.
+	void ForgetFieldBrain();
+
+	/// With the choice on: your brain put down at your base when the game starts, and the game lost if it dies. Call once per sim update.
+	void UpdateFieldBrain();
+
+	/// Whether one of your units is in reach of your brain's orders: always, unless the choice is on and it's of the team the brain commands.
+	bool InCommandRange(const Actor* unit);
+
+	/// The selected units out of command range taken out of the selection, for an order to skip them; PutBackOutOfRange puts them back after
+	/// it, unless the order changed the selection.
+	std::vector<UnitRef> TakeOutOfRange();
+	void PutBackOutOfRange(const std::vector<UnitRef>& out, const std::vector<UnitRef>& before);
+
+	/// The brain's command range, a mark over it, and a mark on the selected units out of range. Call from the ImGui frame, with the order marks.
+	void DrawFieldBrain(ImDrawList* drawList);
 #pragma endregion
 
 #pragma region Re-arming (BattleSupply.cpp)
