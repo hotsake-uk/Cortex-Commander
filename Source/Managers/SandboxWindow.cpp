@@ -337,6 +337,10 @@ namespace SandboxDetail {
 				return {Icon::Wall, IM_COL32(120, 220, 160, 255)};
 			case Tool::BattleModeFlag:
 				return {Icon::Flag, IM_COL32(240, 240, 240, 255)};
+			case Tool::BattlePickupSpot:
+				return {Icon::Target, IM_COL32(120, 230, 90, 255)};
+			case Tool::BattlePickupZone:
+				return {Icon::Wall, IM_COL32(120, 230, 90, 255)};
 			case Tool::Fire:
 				return {Icon::Flame, IM_COL32(255, 140, 40, 255)};
 			case Tool::Napalm:
@@ -2709,6 +2713,26 @@ namespace SandboxDetail {
 		return markers;
 	}
 
+	/// What a step of a plan is called on its marker and in a unit's queue.
+	const char* PlanName(PlanKind kind) {
+		switch (kind) {
+			case PlanKind::AttackMove:
+				return "Attack-move";
+			case PlanKind::Attack:
+				return "Attack";
+			case PlanKind::Guard:
+				return "Guard";
+			case PlanKind::Defend:
+				return "Defend";
+			case PlanKind::Wait:
+				return "Wait";
+			case PlanKind::Suppress:
+				return "Suppress";
+			default:
+				return "Move";
+		}
+	}
+
 	/// The colour a step of a plan is drawn in: its command mode's.
 	ImU32 PlanColor(PlanKind kind) {
 		switch (kind) {
@@ -2720,6 +2744,8 @@ namespace SandboxDetail {
 				return c_CommandModeColors[static_cast<int>(CommandMode::Guard)];
 			case PlanKind::Defend:
 				return IM_COL32(242, 182, 61, 255);
+			case PlanKind::Suppress:
+				return c_CommandModeColors[static_cast<int>(CommandMode::Suppress)];
 			default:
 				return c_CommandModeColors[static_cast<int>(CommandMode::Move)];
 		}
@@ -3218,36 +3244,67 @@ namespace SandboxDetail {
 			}
 			drawList->AddLine(from, ImGui::GetIO().MousePos, (color & 0x00FFFFFF) | (110u << IM_COL32_A_SHIFT), 1.5F);
 		}
-		// The plans of the selected units (RC-3): a line from each unit through the step it is on and those still to come, with a numbered
-		// marker at each queued step in its order's colour (a right click on one drops it).
+		// The plans of the selected units (RC-3), drawn whenever they're selected (no overlay needed): a line from each unit through the
+		// step it is on and those still to come; the step under way ringed and named "now", each queued step a numbered marker in its
+		// order's colour with its name by it (a right click on one drops it), a suppress's spread as a ring round its place; and the
+		// whole queue in order under the unit.
+		ImU32 shade = IM_COL32(0, 0, 0, 170);
+		auto label = [drawList, shade](ImVec2 at, const std::string& text, ImU32 color) {
+			ImVec2 size = ImGui::CalcTextSize(text.c_str());
+			ImVec2 corner(std::floor(at.x), std::floor(at.y - size.y * 0.5F));
+			drawList->AddRectFilled(ImVec2(corner.x - 2.0F, corner.y - 1.0F), ImVec2(corner.x + size.x + 2.0F, corner.y + size.y + 1.0F), shade, 2.0F);
+			drawList->AddText(corner, color, text.c_str());
+		};
+		float planScale = ScenePixelsPerWindowPixel();
 		for (const UnitRef& ref: s_Selected) {
 			const Actor* unit = GetRef(ref);
 			auto plan = unit ? s_Plans.find(unit->GetUniqueID()) : s_Plans.end();
-			if (plan == s_Plans.end() || plan->second.Steps.empty()) {
+			// (A patrol's legs are its own, drawn as its route; and a plan with only a pause left has nothing to show.)
+			if (plan == s_Plans.end() || !plan->second.Route.empty() || (plan->second.Steps.empty() && (!plan->second.Running || plan->second.Current.Kind == PlanKind::Wait))) {
 				continue;
 			}
 			auto placeOf = [](const PlanStep& step) {
 				const Actor* target = GetRef(step.Target);
 				return target ? target->GetPos() : step.Place;
 			};
+			auto spread = [drawList, planScale](const PlanStep& step, ImVec2 at, ImU32 color) {
+				if (step.Kind == PlanKind::Suppress && step.Radius > 0) {
+					drawList->AddCircle(at, static_cast<float>(step.Radius) / planScale, (color & 0x00FFFFFF) | (140u << IM_COL32_A_SHIFT), 0, 1.5F);
+				}
+			};
+			std::string queue;
 			ImVec2 from = ToScreen(unit->GetPos());
 			if (plan->second.Running) {
-				ImVec2 to = ToScreen(placeOf(plan->second.Current));
-				drawList->AddLine(from, to, IM_COL32(255, 255, 255, 90), 1.5F);
+				const PlanStep& current = plan->second.Current;
+				ImVec2 to = ToScreen(placeOf(current));
+				ImU32 color = PlanColor(current.Kind);
+				drawList->AddLine(from, to, IM_COL32(255, 255, 255, 120), 1.5F);
+				drawList->AddCircle(to, 9.0F, color, 0, 2.5F);
+				drawList->AddCircleFilled(to, 3.0F, color);
+				spread(current, to, color);
+				label(ImVec2(to.x + 12.0F, to.y), std::string(PlanName(current.Kind)) + " (now)", color);
+				queue = std::string("Now: ") + PlanName(current.Kind);
 				from = to;
 			}
 			int number = 1;
 			for (const PlanStep& step: plan->second.Steps) {
 				ImVec2 to = ToScreen(placeOf(step));
 				ImU32 color = PlanColor(step.Kind);
-				drawList->AddLine(from, to, (color & 0x00FFFFFF) | (150u << IM_COL32_A_SHIFT), 1.5F);
-				drawList->AddCircleFilled(to, 8.0F, IM_COL32(0, 0, 0, 170));
+				drawList->AddLine(from, to, (color & 0x00FFFFFF) | (170u << IM_COL32_A_SHIFT), 2.0F);
+				spread(step, to, color);
+				drawList->AddCircleFilled(to, 8.0F, shade);
 				drawList->AddCircle(to, 8.0F, color, 0, 1.5F);
-				std::string text = std::to_string(number++);
+				std::string text = std::to_string(number);
 				ImVec2 size = ImGui::CalcTextSize(text.c_str());
 				drawList->AddText(ImVec2(std::floor(to.x - size.x * 0.5F), std::floor(to.y - size.y * 0.5F)), IM_COL32(255, 255, 255, 255), text.c_str());
+				label(ImVec2(to.x + 11.0F, to.y), PlanName(step.Kind), color);
+				queue += (queue.empty() ? "" : "  >  ") + std::to_string(number) + " " + PlanName(step.Kind);
+				++number;
 				from = to;
 			}
+			ImVec2 feet = ToScreen(unit->GetPos() + Vector(0.0F, unit->GetRadius() + 4.0F));
+			ImVec2 size = ImGui::CalcTextSize(queue.c_str());
+			label(ImVec2(feet.x - size.x * 0.5F, feet.y + size.y * 0.5F), queue, IM_COL32(230, 230, 220, 255));
 		}
 		// The engagement rules a selected unit has that aren't the usual (RC-1), in a small tag over it: HF hold fire, RF return fire, and
 		// EN engage, MO move only, HG hold ground.
@@ -3836,19 +3893,32 @@ namespace SandboxDetail {
 				s_ShapeFill = false;
 			}
 			next();
-			if (BarChip("Shape", s_ShapeFill, ToolTheme::Text, nullptr, "Click and drag out a circle, triangle or square on the world, and it is filled in one go (Dig digs it out).\nShift keeps it as wide as tall; Escape drops it.") == 1) {
+			if (BarChip("Shape", s_ShapeFill, ToolTheme::Text, nullptr, "Click and drag out a circle, triangle, square or line on the world, and it is filled in one go (Dig digs it out; with any of them, a right drag digs the shape out).\nShift keeps it as wide as tall (a line: to the 8 ways, straight or at 45 degrees); Escape drops it.") == 1) {
 				s_ShapeFill = true;
 			}
 		}
 		if (terrainBrush && s_ShapeFill) {
-			static const char* const fills[] = {"Circle", "Triangle", "Square"};
-			for (int i = 0; i < 3; ++i) {
+			static const char* const fills[c_FillShapeCount] = {"Circle", "Triangle", "Square", "Line"};
+			for (int i = 0; i < c_FillShapeCount; ++i) {
 				i == 0 ? wide() : next();
 				ImGui::PushID(i + 40);
-				if (BarChip(fills[i], static_cast<int>(s_FillShape) == i) == 1) {
+				if (BarChip(fills[i], static_cast<int>(s_FillShape) == i, ToolTheme::Text, nullptr, i == 3 ? "Drag a line of it, as wide as Width, its ends rounded. Shift keeps it to the 8 ways, straight or at 45 degrees." : nullptr) == 1) {
 					s_FillShape = static_cast<FillShape>(i);
 				}
 				ImGui::PopID();
+			}
+			if (s_FillShape == FillShape::Line) {
+				wide();
+				ImGui::SetNextItemWidth(field);
+				ImGui::SliderInt("##lineWidth", &s_LineWidth, 1, c_MaxLineWidth, "Width %d px", ImGuiSliderFlags_Logarithmic);
+				for (const auto& [label, size]: {std::pair<const char*, int>{"S", 4}, {"M", 8}, {"L", 24}, {"XL", 60}}) {
+					next();
+					ImGui::PushID(size + 60);
+					if (BarChip(label, s_LineWidth == size) == 1) {
+						s_LineWidth = size;
+					}
+					ImGui::PopID();
+				}
 			}
 		} else if (tool.UsesRadius) {
 			wide();

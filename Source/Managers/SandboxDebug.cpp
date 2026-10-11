@@ -505,6 +505,7 @@ namespace {
 			std::string tag;
 			bool hasPost = false;
 			Vector post;
+			float suppressRadius = 0.0F;
 			if (actor->GetOrderTargetID() != 0) {
 				tag = "ATTACK #" + std::to_string(static_cast<long long>(actor->GetOrderTargetID()));
 			} else if (actor->GetOrderHasAttackPlace()) {
@@ -521,8 +522,16 @@ namespace {
 				const MovableObject* target = actor->GetMOMoveTarget();
 				const Actor* leader = target && g_MovableMan.ValidMO(target) ? dynamic_cast<const Actor*>(target) : nullptr;
 				tag = leader && leader->GetTeam() == actor->GetTeam() ? "GUARD #" + std::to_string(leader->GetUniqueID()) : std::string("MOVE");
+			} else if (Vector centre; SuppressZoneOf(actor, centre, suppressRadius)) {
+				post = centre;
+				hasPost = true;
+				tag = "SUPPRESS";
 			} else if (actor->GetAIMode() == Actor::AIMODE_SENTRY) {
 				tag = "HOLD";
+			}
+			// And how many more steps its plan has queued after this (RC-3).
+			if (auto plan = s_Plans.find(actor->GetUniqueID()); plan != s_Plans.end() && plan->second.Route.empty() && !plan->second.Steps.empty()) {
+				tag += (tag.empty() ? "" : " ") + std::string("+") + std::to_string(plan->second.Steps.size()) + " queued";
 			}
 			if (hasPost && g_SceneMan.ShortestDistance(actor->GetPos(), post, g_SceneMan.SceneWrapsX()).GetMagnitude() > 30.0F) {
 				ImVec2 postAt = ToScreen(post);

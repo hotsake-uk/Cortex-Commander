@@ -3040,7 +3040,7 @@ namespace SandboxDetail {
 			s_EscortVip = MakeRef(pick);
 			s_EscortHasVip = true;
 			s_EscortCentre = pick->GetPos();
-			pick->SetHighlighted(true);
+			pick->SetHighlighted(true, true);
 			s_Runners.erase(pick->GetUniqueID());
 			s_BattleDefenders.erase(pick->GetUniqueID());
 			if (!BattlePlayerCommands(side)) {
@@ -4314,7 +4314,7 @@ namespace SandboxDetail {
 			vip.Unit = MakeRef(pick);
 			vip.Has = true;
 			vip.Pos = pick->GetPos();
-			pick->SetHighlighted(true);
+			pick->SetHighlighted(true, true);
 			s_Runners.erase(pick->GetUniqueID());
 			if (!BattlePlayerCommands(side)) {
 				pick->SetOrderAttack(false);
@@ -4694,6 +4694,7 @@ namespace SandboxDetail {
 
 		void StopMode() {
 			ClearHighlights();
+			StopBattlePickups();
 			s_ModeRun.Running = false;
 			s_ModeRun.Over = false;
 			for (BattleTeam& team: s_BattleTeams) {
@@ -4735,7 +4736,9 @@ namespace SandboxDetail {
 
 		/// A spawn zone, goal zone or mode zone closed, by the tool in hand.
 		void ModeZoneClosed(const std::vector<Vector>& zone) {
-			if (CurrentTool().Kind == Tool::BattleModeZone) {
+			if (CurrentTool().Kind == Tool::BattlePickupZone) {
+				PickupZoneDrawn(zone);
+			} else if (CurrentTool().Kind == Tool::BattleModeZone) {
 				ZoneDrawn(zone);
 			} else if (CurrentTool().Kind == Tool::BattleModeGoal) {
 				// (One goal a team: drawn again, it replaces the last, and the tool is put down.)
@@ -5049,6 +5052,10 @@ namespace SandboxDetail {
 
 	/// A change made on the mode panel (or a team's point or base set by a script, with their tools), in the sim.
 	void ApplyBattleMode(const Stroke& stroke) {
+		if (stroke.Kind == Tool::BattlePickupSpot || stroke.Kind == Tool::BattlePickupZone) {
+			ApplyPickupStroke(stroke);
+			return;
+		}
 		if (stroke.Kind == Tool::BattleModeBase) {
 			// From a script's SandboxDo: one corner a call, closed with one on its first corner.
 			if (stroke.Team >= 0 && stroke.Team < c_Sides) {
@@ -5131,6 +5138,7 @@ namespace SandboxDetail {
 			// (No airstrike on the enemy's spawn the moment the battle starts: every power cools down first.)
 			StartPowerCooldowns();
 			ForgetSpawnOrderUnits();
+			StartBattlePickups();
 			if (mode.Start) {
 				mode.Start();
 			}
@@ -5372,6 +5380,7 @@ namespace SandboxDetail {
 		UpdateSpawnOrders(aiPaused);
 		UpdateStuck(aiPaused);
 		UpdateRushers(aiPaused);
+		UpdateBattlePickups(aiPaused);
 		if (!aiPaused) {
 			UpdateRespawnLimit(g_TimerMan.GetSimUpdateCount());
 		}
@@ -5395,6 +5404,10 @@ namespace SandboxDetail {
 		s_ModeSetup.FlagSpots.clear();
 		s_ModeSetup.FlagByZones = false;
 		s_ModeSetup.Zones.clear();
+		// (Places on that scene too.)
+		s_ModeSetup.PickupSpots.clear();
+		s_ModeSetup.PickupZones.clear();
+		StopBattlePickups();
 		s_ScriptZoneDraft.clear();
 		s_ModeRun.Settings = s_ModeSetup;
 		s_ModeRun.Settings.Mode = chosen;
@@ -5520,6 +5533,7 @@ namespace SandboxDetail {
 		if (mode.Panel) {
 			mode.Panel(setup, changed);
 		}
+		BattlePickupsPanel(setup, running, changed);
 
 		if (zoneName) {
 			const std::string zone = zoneName;
@@ -5754,6 +5768,9 @@ namespace SandboxDetail {
 	}
 
 	std::string BattleToolLabel(Tool kind) {
+		if (kind == Tool::BattlePickupSpot || kind == Tool::BattlePickupZone) {
+			return BattlePickupToolLabel(kind);
+		}
 		const BattleModeInfo& mode = ModeOf(s_ModeSetup.Mode);
 		const std::string team = SideName(std::clamp(s_BattleEditTeam, 0, c_Sides - 1));
 		switch (kind) {
@@ -5840,6 +5857,7 @@ namespace SandboxDetail {
 		if (battleOn) {
 			DrawBattleInfo();
 		}
+		DrawBattlePickups();
 		const BattleModeInfo& mode = ModeOf(s_ModeSetup.Mode);
 		if (!mode.Draw) {
 			return;
@@ -6635,6 +6653,24 @@ namespace SandboxDetail {
 			ImGui::TextDisabled("Click one of your spawn zones on the map to move it.");
 		}
 	}
+
+	// ---- What the battle's pickups (BattlePickups.cpp) borrow from here ----
+
+	bool BattleTeamIn(int side) { return TeamIn(s_ModeRun.Settings, side); }
+
+	std::vector<Actor*> BattleFighters() { return Fighters(); }
+
+	bool BattleUnitBusy(const Actor* unit) { return IsVip(unit) || CarriedBy(unit) >= 0 || RefersTo(s_OneFlag.Carrier, unit) || RefersTo(s_EscortVip, unit); }
+
+	float BattleGapToZone(const std::vector<Vector>& zone, const Vector& at) { return GapTo(zone, at); }
+
+	std::vector<std::vector<Vector>> BattleSpawnZonesOf(const BattleModeSettings& settings, int side) { return ZonesOf(settings, side); }
+
+	float BattlePulse(float speed) { return Pulse(speed); }
+
+	void DrawBattleBeacon(ImDrawList* drawList, ImVec2 foot, ImU32 color, float strength) { DrawBeacon(drawList, foot, color, strength); }
+
+	void DrawBattleTag(ImDrawList* drawList, ImVec2 over, const std::string& text, ImU32 color) { DrawTag(drawList, over, text, color); }
 } // namespace SandboxDetail
 
 void Sandbox::StartBattleMode(int mode, int teamSize, bool byShip) {

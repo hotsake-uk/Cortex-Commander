@@ -1117,7 +1117,7 @@ namespace SandboxDetail {
 				DefendAtSelected(point, point, shift);
 				return;
 			case CommandMode::Suppress:
-				SuppressSelected(point);
+				SuppressSelected(point, shift);
 				return;
 			case CommandMode::JetpackHere:
 				JetpackHereSelected(point, shift);
@@ -1424,7 +1424,8 @@ namespace SandboxDetail {
 			return;
 		}
 		if (s_CommandMode == CommandMode::Suppress) {
-			SuppressSelected(position);
+			// Shift: suppressing there is the last step of the plan (RC-3).
+			SuppressSelected(position, modifier == 1);
 			return;
 		}
 		if (s_CommandMode == CommandMode::JetpackHere) {
@@ -1666,6 +1667,9 @@ namespace SandboxDetail {
 			case PlanKind::Wait:
 				// (It stays where the step before left it: nothing to give.)
 				break;
+			case PlanKind::Suppress:
+				SuppressUnit(unit, step.Place, step.Radius);
+				break;
 		}
 		s_FollowingPlan = false;
 		plan.Current = step;
@@ -1688,6 +1692,7 @@ namespace SandboxDetail {
 			case PlanKind::Guard:
 				return !target || target->IsDead();
 			case PlanKind::Defend:
+			case PlanKind::Suppress:
 				return false;
 			case PlanKind::Wait:
 				return g_TimerMan.GetSimUpdateCount() - plan.Started >= plan.Current.Updates;
@@ -1717,6 +1722,7 @@ namespace SandboxDetail {
 			step.Kind = kind;
 			step.Target = MakeRef(target);
 			step.Facing = facing;
+			step.Radius = s_SuppressRadius;
 			if (toPlace) {
 				step.Place = spots.empty() ? place : spots[std::min(i, spots.size() - 1)];
 			} else if (kind == PlanKind::Defend) {
@@ -1735,7 +1741,7 @@ namespace SandboxDetail {
 			if (!plan.Running && plan.Steps.empty()) {
 				StartPlanStep(unit, plan, step);
 				// (Given now, it's answered as the order it is; the step's own sending is a plan's, which doesn't answer.)
-				const char* const answers[] = {"OrderMove", "OrderAttackMove", "OrderAttack", "OrderGuard", "OrderDefend", nullptr};
+				const char* const answers[] = {"OrderMove", "OrderAttackMove", "OrderAttack", "OrderGuard", "OrderDefend", nullptr, "OrderSuppress"};
 				int kindIndex = static_cast<int>(step.Kind);
 				AnswerOrder(unit, kindIndex >= 0 && kindIndex < static_cast<int>(std::size(answers)) ? answers[kindIndex] : nullptr);
 			} else {
@@ -1844,20 +1850,30 @@ namespace SandboxDetail {
 	/// point, aiming about it at random, for as long as it has the order. They need no target, and take no notice of what else is in sight;
 	/// one out of range walks in till it is in, then stands. The AI does the firing (HumanBehaviors.SuppressZone), told the zone by number
 	/// values on the unit; any other order, a hold or a cancel takes them off (ClearSuppress).
-	void SuppressSelected(const Vector& point) {
+	void SuppressSelected(const Vector& point, bool shift) {
 		std::vector<Actor*> units = UnitsToMove(0, true);
-		Vector centre = point;
-		g_SceneMan.WrapPosition(centre);
-		for (Actor* unit: units) {
-			HoldUnit(unit);
-			unit->SetMovementRule(Actor::MOVE_HOLD_GROUND);
-			unit->SetNumberValue("SandboxSuppressX", centre.m_X);
-			unit->SetNumberValue("SandboxSuppressY", centre.m_Y);
-			unit->SetNumberValue("SandboxSuppressR", static_cast<double>(std::max(s_SuppressRadius, 10)));
-			s_SendNotes[unit->GetUniqueID()] = {"suppress", false, g_TimerMan.GetSimUpdateCount()};
-			AnswerOrder(unit, "OrderSuppress");
+		if (shift) {
+			// Shift: firing into the place from where the plan leaves them, as its last step (a suppress, like a defend, is never done).
+			PlanStepFor(units, PlanKind::Suppress, point, nullptr);
+		} else {
+			for (Actor* unit: units) {
+				SuppressUnit(unit, point, s_SuppressRadius);
+				AnswerOrder(unit, "OrderSuppress");
+			}
 		}
 		MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::Suppress)]);
+	}
+
+	/// Sets one unit to hold ground and fire into a place: what a Suppress order, or a plan's suppress step, gives it.
+	void SuppressUnit(Actor* unit, const Vector& point, int radius) {
+		Vector centre = point;
+		g_SceneMan.WrapPosition(centre);
+		HoldUnit(unit);
+		unit->SetMovementRule(Actor::MOVE_HOLD_GROUND);
+		unit->SetNumberValue("SandboxSuppressX", centre.m_X);
+		unit->SetNumberValue("SandboxSuppressY", centre.m_Y);
+		unit->SetNumberValue("SandboxSuppressR", static_cast<double>(std::max(radius, 10)));
+		s_SendNotes[unit->GetUniqueID()] = {"suppress", false, g_TimerMan.GetSimUpdateCount()};
 	}
 
 	/// Whether a unit is suppressing a place, and where and how wide.
