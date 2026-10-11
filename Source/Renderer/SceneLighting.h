@@ -244,6 +244,10 @@ namespace RTE {
 		float m_SunArc = 0.0F; //!< Where the sun is along its path, -1 rising to 1 setting.
 		float m_SunLight = 0.0F; //!< How strongly the sun or moon shines this frame, before the Sun shadows setting.
 		float m_CloudDrift = 0.0F; //!< How far the clouds have drifted with the wind, in scene pixels.
+		double m_WeatherClock = 0.0; //!< The weather drops' own time, in seconds: sim time run at LightingSettings::WeatherSpeed, so changing the speed doesn't jump the drops.
+		double m_WeatherClockSimTime = -1.0; //!< The sim time m_WeatherClock was last moved on at. Negative: not yet.
+		float m_WeatherDrift = 0.0F; //!< The natural wind's drift (AirPressure::GetNaturalWindDrift) run at the weather speed, in pixels.
+		float m_WeatherDriftLast = 0.0F; //!< The natural wind's drift m_WeatherDrift was last moved on from.
 		float m_CloudCoverSetting = 0.0F; //!< LightingSettings::CloudCover as it was last frame, to tell the setting being moved from the weather changing.
 		float m_CloudCover = -1.0F; //!< How much of the sky is cloud now, 0 to 1: follows the weather, gathering faster than it breaks up. Below 0 until first set.
 		GLTarget m_FlowTexture; //!< The moving liquid, for the water surface (LightingSettings::WaterFlowSurface), in the light grid's cells: R sideways speed (128 none), G speed, B how lately it moved, A 255 where any moves.

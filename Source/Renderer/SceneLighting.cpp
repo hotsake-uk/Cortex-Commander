@@ -3127,17 +3127,33 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			}
 		}
 		float glow = std::clamp(m_Settings.WeatherGlow, 0.0F, 2.0F);
+		// The drops run on their own clock at the weather speed: every motion in the drop shader scales with it, and a change of speed carries on from where they are.
+		float speed = std::clamp(m_Settings.WeatherSpeed, 0.1F, 3.0F);
+		double simTime = PostProcessMan::GetSmoothSimTimePrecise();
+		float drift = AirPressure::GetNaturalWindDrift();
+		double elapsed = simTime - m_WeatherClockSimTime;
+		if (m_WeatherClockSimTime < 0.0 || elapsed < 0.0 || elapsed > 1.0) {
+			// First drawn, or the sim time jumped (a new game, a long hitch): pick up from here rather than leap.
+			elapsed = 0.0;
+			m_WeatherDriftLast = drift;
+		}
+		m_WeatherClock = std::fmod(m_WeatherClock + elapsed * static_cast<double>(speed), PostProcessMan::c_EffectTimePeriod);
+		m_WeatherClockSimTime = simTime;
+		// The drift is reset with the scene and wraps, so a leap in it is let go rather than carried.
+		float driftStep = drift - m_WeatherDriftLast;
+		m_WeatherDrift = std::fmod(m_WeatherDrift + (std::abs(driftStep) < 1000.0F ? driftStep * speed : 0.0F), 65536.0F);
+		m_WeatherDriftLast = drift;
 		glEnable(GL_BLEND);
 		glBlendEquation(GL_FUNC_ADD);
 		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 		dropShader->Enable();
 		dropShader->SetVector2f("rteScreenSize", screenSize);
 		dropShader->SetVector2f("rteScreenOrigin", origin);
-		dropShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
+		dropShader->SetFloat("rteTime", static_cast<float>(m_WeatherClock));
 		dropShader->SetInt("rteType", m_Settings.WeatherType);
 		dropShader->SetFloat("rteWind", m_Settings.Wind);
 		// The natural wind: how far its gusts have carried the drops beyond the steady wind, and how it blows now (which way the streaks lean).
-		dropShader->SetFloat("rteWindDrift", AirPressure::GetNaturalWindDrift());
+		dropShader->SetFloat("rteWindDrift", m_WeatherDrift);
 		dropShader->SetFloat("rteWindNow", AirPressure::GetNaturalWind());
 		dropShader->SetInt("rteOccupancy", 0);
 		dropShader->SetFloat("rteCellSize", static_cast<float>(m_CellSize));
