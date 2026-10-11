@@ -98,6 +98,8 @@ namespace SandboxDetail {
 			visit("CommanderFallBack", mode.CommanderFallBack);
 			visit("PlayerCommands", mode.PlayerCommands);
 			visit("FogOfWar", mode.FogOfWar);
+			visit("FieldBrain", mode.FieldBrain);
+			visit("FieldBrainRange", mode.FieldBrainRange);
 			visit("MovingSpawns", mode.MovingSpawns);
 			visit("SpawnOrders", mode.SpawnOrders);
 			visit("ZoneSpawnOrders", mode.ZoneSpawnOrders);

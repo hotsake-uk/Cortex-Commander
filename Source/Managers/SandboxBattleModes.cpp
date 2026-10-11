@@ -4070,6 +4070,8 @@ namespace SandboxDetail {
 
 	int BattleCommanderLevel() { return CommanderLevel(); }
 
+	void EndBattleGame(int winner, const std::string& result) { EndGame(winner, result); }
+
 	bool BattleTeamBase(int side, Vector& at) {
 		const BattleModeSettings& settings = s_ModeRun.Settings;
 		if (!s_ModeRun.Running || side < 0 || side >= c_Sides || !TeamIn(settings, side)) {

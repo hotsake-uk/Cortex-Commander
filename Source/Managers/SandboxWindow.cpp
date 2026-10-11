@@ -1594,6 +1594,8 @@ namespace SandboxDetail {
 
 		// Breaches under way: a burst at each point, with the diggers' lines to it.
 		DrawBreaches(drawList);
+		// Your brain on the field: its command range, and the selected units out of it.
+		DrawFieldBrain(drawList);
 
 		// "No route" markers: a red cross where they were sent, a dashed line from each unit, how many, and a click to send them again.
 		long long now = g_TimerMan.GetSimUpdateCount();

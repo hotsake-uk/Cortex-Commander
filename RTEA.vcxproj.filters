@@ -901,6 +901,9 @@
     <ClCompile Include="Source\Managers\BattleSupply.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Managers\BattleFieldBrain.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Managers\Sandbox.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
