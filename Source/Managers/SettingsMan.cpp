@@ -700,6 +700,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	// (Not from the preset loaded at start: Settings.ini has them as they were last left, a preset as they were when it was saved.)
 	MatchProperty("SandboxCharacter", { std::string setup = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { Sandbox::SetCharacterSetup(setup); } });
 	MatchProperty("SandboxVehicles", { std::string setup = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { Sandbox::SetVehicleSetup(setup); } });
+	MatchProperty("SandboxPanel", { std::string setup = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { Sandbox::SetPanelSetup(setup); } });
 	MatchProperty("SandboxPins", { /* Pins used to live here; they belong to the saved game now. */ reader.ReadPropValue(); });
 	MatchProperty("SandboxFavourites", { /* Favourites used to live here; they have their own file now. */ reader.ReadPropValue(); });
 	MatchProperty("PixelToolFont", { g_DebugMan.m_PixelFont = std::stoi(reader.ReadPropValue()) != 0; });
@@ -1485,9 +1486,11 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 		writer.NewPropertyWithValue("FreeCam", g_DebugMan.m_EnableFreeCam);
 		writer.NewPropertyWithValue("FreeCamZoom", g_DebugMan.m_FreeCamZoom);
 	}
-	// The sandbox's You tab (your character) and how its Spawn tab puts vehicles down: in Settings.ini and in a preset alike.
+	// The sandbox's You tab (your character), how its Spawn tab puts vehicles down and how its window was left: in Settings.ini and in a preset alike.
 	writer.NewPropertyWithValue("SandboxCharacter", Sandbox::GetCharacterSetup());
 	writer.NewPropertyWithValue("SandboxVehicles", Sandbox::GetVehicleSetup());
+	// How the sandbox's window was left: its tab, the tools last taken, the brush and the catalogue's filters.
+	writer.NewPropertyWithValue("SandboxPanel", Sandbox::GetPanelSetup());
 }
 
 namespace {

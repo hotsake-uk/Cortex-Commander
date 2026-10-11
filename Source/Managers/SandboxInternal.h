@@ -2195,6 +2195,8 @@ namespace SandboxDetail {
 
 	inline std::map<std::string, int> s_LastToolOfTab; //!< The tool last picked on each tab, so coming back to the tab from the bar picks it up again.
 
+	inline std::map<std::string, int> s_LastToolOfGroup; //!< The tool last taken from each group of the bar's shelf, taken again when the group is.
+
 	/// A thing kept to hand on the bar: a tool, or a tool with what it makes (a unit to spawn, a bunker piece to build).
 	struct Pin {
 		Tool Kind = Tool::None;

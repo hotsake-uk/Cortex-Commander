@@ -545,6 +545,77 @@ void Sandbox::SetCharacterSetup(const std::string& setup) {
 	}
 }
 
+std::string Sandbox::GetPanelSetup() {
+	// "key:value" entries, a bar between: the tab, the brush, the filters, then each tab's and shelf group's last tool ("tabTool:tab:tool")
+	// and each list's kind and mod filters ("kind:list:kind"). Tools are kept by their Tool number (tools are only ever appended, so they keep
+	// their numbers). (No '=' in it: the settings file's reader takes a value from after the first one on its line.)
+	std::string setup = "tab:" + s_CurrentTab + "|radius:" + std::to_string(s_Radius) + "|shape:" + std::to_string(static_cast<int>(s_BrushShape));
+	setup += "|fill:" + std::string(s_ShapeFill ? "1" : "0") + "|fillShape:" + std::to_string(static_cast<int>(s_FillShape));
+	setup += "|modded:" + std::string(s_ShowModded ? "1" : "0") + "|favourites:" + std::string(s_FavouritesOnly ? "1" : "0");
+	auto toolNumber = [](int toolIndex) { return std::to_string(static_cast<int>(c_Tools[std::clamp(toolIndex, 0, c_ToolCount - 1)].Kind)); };
+	for (const auto& [tab, toolIndex]: s_LastToolOfTab) {
+		setup += "|tabTool:" + tab + ":" + toolNumber(toolIndex);
+	}
+	for (const auto& [group, toolIndex]: s_LastToolOfGroup) {
+		setup += "|groupTool:" + group + ":" + toolNumber(toolIndex);
+	}
+	for (const auto& [filters, prefix]: {std::pair{&s_KindFilter, "|kind:"}, std::pair{&s_ModFilter, "|mod:"}}) {
+		for (const auto& [kind, value]: *filters) {
+			if (!value.empty()) {
+				setup += prefix + std::to_string(static_cast<int>(kind)) + ":" + value;
+			}
+		}
+	}
+	return setup;
+}
+
+void Sandbox::SetPanelSetup(const std::string& setup) {
+	// A tool kept by its number, as a c_Tools index; -1 for a number that isn't a tool (from a newer version, or not one at all).
+	auto toolIndexOf = [](const std::string& number) {
+		const Tool kind = static_cast<Tool>(std::atoi(number.c_str()));
+		const int index = ToolIndex(kind);
+		return c_Tools[index].Kind == kind ? index : -1;
+	};
+	for (size_t at = 0; at < setup.size();) {
+		size_t end = setup.find('|', at);
+		end = end == std::string::npos ? setup.size() : end;
+		const std::string entry = setup.substr(at, end - at);
+		at = end + 1;
+		const size_t colon = entry.find(':');
+		if (colon == std::string::npos) {
+			continue;
+		}
+		const std::string key = entry.substr(0, colon);
+		const std::string value = entry.substr(colon + 1);
+		const int number = std::atoi(value.c_str());
+		// The entries with a name before their value: the tab or group, or the list.
+		const size_t nameEnd = value.find(':');
+		const std::string name = nameEnd != std::string::npos ? value.substr(0, nameEnd) : std::string();
+		const std::string named = nameEnd != std::string::npos ? value.substr(nameEnd + 1) : std::string();
+		if (key == "tab") {
+			s_CurrentTab = value;
+		} else if (key == "radius") {
+			s_Radius = std::clamp(number, 1, c_MaxBrushRadius);
+		} else if (key == "shape") {
+			s_BrushShape = static_cast<BrushShape>(std::clamp(number, 0, 2));
+		} else if (key == "fill") {
+			s_ShapeFill = number != 0;
+		} else if (key == "fillShape") {
+			s_FillShape = static_cast<FillShape>(std::clamp(number, 0, c_FillShapeCount - 1));
+		} else if (key == "modded") {
+			s_ShowModded = number != 0;
+		} else if (key == "favourites") {
+			s_FavouritesOnly = number != 0;
+		} else if ((key == "tabTool" || key == "groupTool") && !name.empty()) {
+			if (int toolIndex = toolIndexOf(named); toolIndex >= 0) {
+				(key == "tabTool" ? s_LastToolOfTab : s_LastToolOfGroup)[name] = toolIndex;
+			}
+		} else if ((key == "kind" || key == "mod") && !name.empty()) {
+			(key == "kind" ? s_KindFilter : s_ModFilter)[static_cast<Tool>(std::atoi(name.c_str()))] = named;
+		}
+	}
+}
+
 std::string Sandbox::GetVehicleSetup() {
 	const VehicleTuning& tuning = s_VehicleTuning;
 	std::ostringstream setup;

@@ -214,6 +214,13 @@ namespace RTE {
 		/// Sets up your character in the Sandbox game mode from a line of text made by GetCharacterSetup.
 		static void SetCharacterSetup(const std::string& setup);
 
+		/// Gets how the sandbox's window was left (S-10), as one line of text for the settings file: the tab showing, the tool last taken on
+		/// each tab and in each group of the bar's shelf, the brush's size and shape, and the catalogue's filters.
+		static std::string GetPanelSetup();
+
+		/// Puts the sandbox's window back as a line of text made by GetPanelSetup left it. What it doesn't know is left as it is.
+		static void SetPanelSetup(const std::string& setup);
+
 		/// Gets how the Spawn tab puts vehicles down (Default or Modified, its tuning sliders, empty or crewed), as one line of text for the settings file.
 		static std::string GetVehicleSetup();
 

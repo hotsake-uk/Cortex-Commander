@@ -4593,8 +4593,6 @@ namespace SandboxDetail {
 		return nullptr;
 	}
 
-	std::map<std::string, int> s_LastToolOfGroup; //!< The tool last taken from each group of the shelf, taken again when the group is.
-
 	/// Takes a tool from the bar's shelf, remembered for its group and part; the window, if open, turns to that part.
 	void TakeFromShelf(const BarShelf& shelf, int toolIndex) {
 		s_ToolIndex = toolIndex;
