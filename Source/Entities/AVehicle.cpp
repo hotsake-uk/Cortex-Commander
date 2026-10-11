@@ -177,6 +177,9 @@ void AVehicle::Clear() {
 	m_AIWantsStop = false;
 	m_AIGaveUp = false;
 	m_AIGaveUpTimer.Reset();
+	m_Commanded = false;
+	m_AIRoutesAsked = 0;
+	m_AIFaceTimer.Reset();
 	m_AIOrderSerialSeen = 0;
 	m_Throttle = 0.0F;
 	m_Braking = false;
@@ -807,29 +810,153 @@ void AVehicle::GiveUpDriving() {
 	m_AIOrderSerialSeen = GetAIOrderSerial();
 }
 
+PathAgent AVehicle::GetPathAgent() const {
+	PathAgent agent = Actor::GetPathAgent();
+	const float gravity = std::max(std::abs(g_SceneMan.GetGlobalAcc().m_Y), 0.01F);
+	// Up: what a hop of its springs lifts it (none, without), in metres; the grid lets anything a node up, as a wheel rolls up a step.
+	agent.JumpHeight = m_HopSpeed > 0.0F ? m_HopSpeed * m_HopSpeed / (2.0F * gravity) : 0.0F;
+	// Down: no drop it would break on landing from, nor one deeper than its driver drives off (CanDriveOnTo looks 200 px down).
+	float safeFall = m_BreakLandingSpeed > 0.0F ? m_BreakLandingSpeed * m_BreakLandingSpeed / (2.0F * gravity) * c_PPM : GetMaxSafeFallHeight();
+	agent.MaxSafeFall = std::clamp(safeFall, 48.0F, 180.0F);
+	// No digging, no doors but its own side's (which open for it), no jets, ladders, stairs, scrambles, leaps or ledges pulled up onto.
+	agent.DigStrength = 1.0F;
+	agent.BreachStrength = 0.0F;
+	agent.JetTimeMS = 0.0F;
+	agent.ClimbsLadders = false;
+	agent.WalksStairs = false;
+	agent.Scrambles = false;
+	agent.LeapHeight = 0.0F;
+	agent.MantleHeight = 0.0F;
+	agent.StraightFlight = false;
+	agent.SkyRoute = false;
+	agent.Lifts.reset();
+	// Its height for head room, and it can't crouch under anything lower. (As wide as the grid can tell: a node's clearances reach no further.)
+	agent.StandHeight = std::clamp(GetRadius() * 0.9F, 24.0F, 90.0F);
+	agent.CrawlHeight = agent.StandHeight;
+	agent.CrouchHeight = 0.0F;
+	agent.HalfWidth = 16.0F;
+	agent.Floats = HasHull();
+	agent.BreathSeconds = FLT_MAX;
+	return agent;
+}
+
+bool AVehicle::InFiringPosition(const MovableObject* target) const {
+	const Actor* enemy = dynamic_cast<const Actor*>(target);
+	// (Manned as UpdateGun mans it: from the first gunner's seat, or the driver's with none.)
+	const int gunnerSeat = std::max(m_Crew.GetSeatOfGun(0), 0);
+	if (!enemy || enemy->GetTeam() == m_Team || (!m_Turret && !m_ThrowingArm) || !GetSeatOccupant(gunnerSeat)) {
+		return false;
+	}
+	Vector pivot = m_Turret ? m_Turret->GetPos() : GetReleasePoint();
+	Vector toTarget = g_SceneMan.ShortestDistance(pivot, enemy->GetPos());
+	if (toTarget.MagnitudeIsGreaterThan(m_GunRange * 0.8F)) {
+		return false;
+	}
+	if (!m_Turret) {
+		float angle = 0.0F;
+		return std::abs(toTarget.m_X) >= 120.0F && LobAngleTo(toTarget, angle);
+	}
+	Vector blocked;
+	return !g_SceneMan.CastStrengthRay(pivot, toTarget, 5.0F, blocked, 3);
+}
+
+void AVehicle::FaceForCommander() {
+	if (!m_AIFaceTimer.IsPastSimMS(1000) || m_Vel.MagnitudeIsGreaterThan(1.0F) || m_Handbrake) {
+		return;
+	}
+	m_AIFaceTimer.Reset();
+	// (Its gunner has something in front: nothing to turn for.)
+	if (m_GunTargetID != 0 || m_Status == DYING || m_Status == DEAD) {
+		return;
+	}
+	int facing = 0;
+	if (m_Turret || m_ThrowingArm) {
+		Vector pivot = m_Turret ? m_Turret->GetPos() : GetReleasePoint();
+		float nearest = m_GunRange;
+		for (const Actor* actor: g_MovableMan.GetActorList()) {
+			if (actor == this || actor->GetTeam() == m_Team || actor->GetTeam() == Activity::NoTeam || actor->IsDead() || actor->GetHealth() <= 0.0F) {
+				continue;
+			}
+			Vector toTarget = g_SceneMan.ShortestDistance(pivot, actor->GetPos());
+			float distance = toTarget.GetMagnitude();
+			if (distance >= nearest || toTarget.m_X * GetFlipFactor() > 0.0F) {
+				continue;
+			}
+			Vector blocked;
+			if (m_Turret && g_SceneMan.CastStrengthRay(pivot, toTarget, 5.0F, blocked, 3)) {
+				continue;
+			}
+			nearest = distance;
+			facing = toTarget.m_X > 0.0F ? 1 : -1;
+		}
+	}
+	if (facing == 0) {
+		facing = m_StandingOrder.PostFacing;
+	}
+	if (facing != 0 && (facing > 0) == m_HFlipped) {
+		SetHFlipped(!m_HFlipped);
+	}
+}
+
 void AVehicle::UpdateAIDriving() {
 	m_Throttle = 0.0F;
 	m_Braking = true;
 	m_AIHop = false;
-	if (Controller::IsAIPaused() || !g_SettingsMan.AIUsesVehicles()) {
+	// (One the player commands drives where it's told whatever the AI vehicles setting, which is about AI units taking vehicles of their own.)
+	if (Controller::IsAIPaused() || (!g_SettingsMan.AIUsesVehicles() && !m_Commanded)) {
 		return;
 	}
 	// A new order starts afresh.
 	if (GetAIOrderSerial() != m_AIOrderSerialSeen) {
 		m_AIOrderSerialSeen = GetAIOrderSerial();
 		m_AIStuckCount = 0;
+		m_AIRoutesAsked = 0;
 		m_AIReversing = false;
 		m_AIStuckTimer.Reset();
 		m_AIGaveUp = false;
 	}
 	if (m_AIMode != AIMODE_GOTO) {
+		if (m_Commanded) {
+			FaceForCommander();
+		}
 		return;
 	}
 	const MovableObject* following = g_MovableMan.ValidMO(GetMOMoveTarget()) ? GetMOMoveTarget() : nullptr;
-	Vector toTarget = g_SceneMan.ShortestDistance(m_Pos, following ? following->GetPos() : GetLastAIWaypoint());
+	// Commanded after an enemy (VC-4): it stops where its gun reaches it and fires from there, rather than driving onto it. It keeps after it,
+	// so it drives on if the enemy gets out of reach or out of sight.
+	if (m_Commanded && following && InFiringPosition(following)) {
+		Vector toEnemy = g_SceneMan.ShortestDistance(m_Pos, following->GetPos());
+		if ((toEnemy.m_X > 0.0F) == m_HFlipped && std::abs(m_Vel.m_X) < 1.5F) {
+			SetHFlipped(!m_HFlipped);
+		}
+		m_AIStuckTimer.Reset();
+		return;
+	}
+	Vector toGoal = g_SceneMan.ShortestDistance(m_Pos, following ? following->GetPos() : GetLastAIWaypoint());
 	float arrive = GetRadius() * 0.4F + 20.0F;
 	float speed = m_Vel.m_X;
-	if (m_AIWantsStop || std::abs(toTarget.m_X) < arrive) {
+	// Along its route (VC-2): the route the pathfinder gave it, as a unit on foot is given one (Actor::UpdateMovePath, from GetPathAgent), its
+	// points passed as it comes level with them. It can't steer up or down, so a point is passed when it's level with it across. With no route
+	// (still being asked for, or none at all), and for a boat, which the grid doesn't know to keep to the water: straight at where it is going.
+	bool boat = HasHull() && m_Wheels.empty();
+	Vector toNext = toGoal;
+	bool lastLeg = true;
+	if (!boat) {
+		while (!m_MovePath.empty() && std::abs(g_SceneMan.ShortestDistance(m_Pos, m_MovePath.front()).m_X) < arrive * 0.5F + 4.0F) {
+			RemoveMovePathBeginning();
+		}
+		if (!m_MovePath.empty()) {
+			toNext = g_SceneMan.ShortestDistance(m_Pos, m_MovePath.front());
+			lastLeg = m_MovePath.size() <= 1;
+		}
+	}
+	// (A goal straight under or over it on another level isn't here: the route goes there. Till the route comes, it waits.)
+	bool levelWithGoal = std::abs(toGoal.m_Y) < GetRadius() * 2.0F + 48.0F || (m_MovePath.size() <= 1 && !IsWaitingOnNewMovePath());
+	if (!m_AIWantsStop && std::abs(toGoal.m_X) < arrive && !levelWithGoal && m_MovePath.empty()) {
+		m_AIStuckTimer.Reset();
+		return;
+	}
+	if (m_AIWantsStop || (std::abs(toGoal.m_X) < arrive && levelWithGoal)) {
 		// There (or someone wants out): stop, and with nothing to follow, the order is done.
 		if (!m_AIWantsStop && !following && std::abs(speed) < 1.0F) {
 			ClearAIWaypoints();
@@ -838,7 +965,7 @@ void AVehicle::UpdateAIDriving() {
 		m_AIStuckTimer.Reset();
 		return;
 	}
-	float direction = toTarget.m_X > 0.0F ? 1.0F : -1.0F;
+	float direction = toNext.m_X > 0.0F ? 1.0F : -1.0F;
 	if (m_AIReversing) {
 		m_Throttle = -direction;
 		m_Braking = false;
@@ -848,9 +975,15 @@ void AVehicle::UpdateAIDriving() {
 		}
 		return;
 	}
-	// Braking in time to stop where it's going.
+	// Braking in time to stop where it's going: at the goal on the last leg of its route, or at a point where the route turns back.
 	float stopping = speed * speed / (2.0F * std::max(m_BrakeStrength, 1.0F)) * c_PPM + arrive * 0.5F;
-	if (speed * direction > 0.5F && std::abs(toTarget.m_X) < stopping) {
+	bool turnsBack = false;
+	if (!lastLeg) {
+		auto after = std::next(m_MovePath.begin());
+		turnsBack = (g_SceneMan.ShortestDistance(m_MovePath.front(), *after).m_X > 0.0F) != (direction > 0.0F);
+	}
+	float brakeFor = lastLeg ? std::abs(toGoal.m_X) : (turnsBack ? std::abs(toNext.m_X) : FLT_MAX);
+	if (speed * direction > 0.5F && brakeFor < stopping) {
 		return;
 	}
 	if (!CanDriveOnTo(direction)) {
@@ -862,14 +995,19 @@ void AVehicle::UpdateAIDriving() {
 	}
 	m_Throttle = direction;
 	m_Braking = false;
-	// No headway for a while: back up a little and try again, or jump if it can; after a few goes, give up.
+	// No headway for a while: back up a little and try again, or jump if it can, and now and then ask for a new route from where it is; after
+	// a few goes, give up. (Commanded, it tries a little longer: its crew then get out and walk.)
 	if (std::abs(speed) > 0.7F) {
 		m_AIStuckTimer.Reset();
 	} else if (m_AIStuckTimer.IsPastSimMS(2500)) {
 		m_AIStuckTimer.Reset();
-		if (++m_AIStuckCount > 4) {
+		if (++m_AIStuckCount > (m_Commanded ? 6 : 4)) {
 			GiveUpDriving();
 			return;
+		}
+		if (m_AIStuckCount % 2 == 0 && !boat && m_AIRoutesAsked < 3 && !IsWaitingOnNewMovePath()) {
+			++m_AIRoutesAsked;
+			m_UpdateMovePath = true;
 		}
 		if (m_HopSpeed > 0.0F && m_AIStuckCount % 2 == 1) {
 			m_AIHop = true;
@@ -950,7 +1088,8 @@ void AVehicle::UpdateAIBoarding() {
 		room += GetSeatOccupant(seat) ? 0 : 1;
 	}
 	room -= static_cast<int>(m_Recruits.size());
-	if (room <= 0 || m_Controller.IsPlayerControlled() || (m_AIGaveUp && !m_AIGaveUpTimer.IsPastSimMS(10000))) {
+	// (Nor into one the player commands: its seats are the player's to fill.)
+	if (room <= 0 || m_Commanded || m_Controller.IsPlayerControlled() || (m_AIGaveUp && !m_AIGaveUpTimer.IsPastSimMS(10000))) {
 		return;
 	}
 	// A boat only takes riders while it is afloat.
@@ -1001,8 +1140,9 @@ void AVehicle::UpdateAIBoarding() {
 
 void AVehicle::UpdateAIUnloading() {
 	m_AIWantsStop = false;
-	// (Told to stay in: nobody gets out on their own.)
-	if (m_CrewStaysIn) {
+	// (Told to stay in, or commanded as one unit, VC-1: nobody gets out on their own. A commanded one's crew get out when ordered out, or are
+	// let out by the sandbox when it can't get where it was sent.)
+	if (m_CrewStaysIn || m_Commanded) {
 		return;
 	}
 	// (Stopped for good with nowhere more to go: riders get out even short of where they're going, a cliff it can't climb, say.)
@@ -1043,14 +1183,20 @@ long AVehicle::FindGunTarget() const {
 	float rotationFacing = Wrapped(m_Rotation.GetRadAngle()) * GetFlipFactor();
 	long best = 0;
 	float bestDistance = m_GunRange;
+	// The enemy it was ordered to attack first, when the gun can be brought to bear on it (VC-4); else the nearest it can.
+	long ordered = m_StandingOrder.TargetID;
+	if (const MovableObject* following = GetMOMoveTarget(); !ordered && m_Commanded && following && g_MovableMan.ValidMO(following)) {
+		ordered = following->GetUniqueID();
+	}
 	for (const Actor* actor: g_MovableMan.GetActorList()) {
 		if (actor == this || actor->GetTeam() == m_Team || actor->GetTeam() == Activity::NoTeam || actor->IsDead() || actor->IsSetToDelete() || actor->GetHealth() <= 0.0F) {
 			continue;
 		}
 		Vector toTarget = g_SceneMan.ShortestDistance(pivot, actor->GetPos());
 		float distance = toTarget.GetMagnitude();
-		// (In front of it, and within the gun's swing: it can't turn the vehicle round.)
-		if (distance >= bestDistance || toTarget.m_X * GetFlipFactor() <= 0.0F) {
+		// (In front of it, and within the gun's swing: it can't turn the vehicle round. The ordered one anywhere in range, nearer ones or not.)
+		const bool isOrdered = ordered != 0 && static_cast<long>(actor->GetUniqueID()) == ordered;
+		if (distance >= (isOrdered ? m_GunRange : bestDistance) || toTarget.m_X * GetFlipFactor() <= 0.0F) {
 			continue;
 		}
 		if (lobs) {
@@ -1067,6 +1213,9 @@ long AVehicle::FindGunTarget() const {
 			if (g_SceneMan.CastStrengthRay(pivot, toTarget, 5.0F, blocked, 3)) {
 				continue;
 			}
+		}
+		if (isOrdered) {
+			return ordered;
 		}
 		best = actor->GetUniqueID();
 		bestDistance = distance;
@@ -1601,6 +1750,10 @@ void AVehicle::Update() {
 	Actor::Update();
 
 	m_Crew.UpdateSeatedCrew();
+	// (Nobody left in it: there's no unit to command, and it is free for AI units to take again.)
+	if (m_Commanded && m_Crew.IsEmpty()) {
+		m_Commanded = false;
+	}
 
 	// A knock hard enough in one update (a crash into a wall, a tumble down a cliff) throws everyone out.
 	if (m_CrewThrowSpeed > 0.0F && !m_Crew.IsEmpty() && (m_Vel - m_Crew.GetLastVel()).MagnitudeIsGreaterThan(m_CrewThrowSpeed)) {

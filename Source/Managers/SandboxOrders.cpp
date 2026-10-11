@@ -139,9 +139,30 @@ namespace SandboxDetail {
 	void SendUnit(Actor* unit, const Vector& waypoint, Actor* target, bool attack, const char* reason, bool lock, bool resend) {
 		// (Never a craft: set to GOTO, a dropship delivering stopped its unload, which only runs in STAY or DELIVER, and hovered with the
 		// squad inside. But a flying ship flies to hover over the place, or over whoever it's sent after, its guns on them.)
+		// The order is the ship's standing order, as a unit's is: its kind, and its risk by the clicks, which the ship's route goes by (VC-3).
 		if (ACShip* ship = dynamic_cast<ACShip*>(unit)) {
-			ship->HoverOver(target ? target->GetPos() : waypoint);
+			Actor::StandingOrder& standing = ship->GetStandingOrder();
+			if (!resend) {
+				standing.Kind = OrderKindFor(reason);
+				standing.Direct = s_DirectOrder;
+				standing.TargetID = attack && target && lock ? static_cast<long>(target->GetUniqueID()) : 0;
+			}
+			// (Nobody at the controls of one that needs a pilot: it can't go, and says so where it was sent.)
+			if (!ship->FlyRouteTo(target ? target->GetPos() : waypoint) && !resend && ship->GetSeatOccupant(0) == nullptr) {
+				AddNoRoute(ship, target ? target->GetPos() : waypoint, "no pilot", false);
+			}
 			return;
+		}
+		// A vehicle ordered about is commanded as one unit, crew and all (VC-1): it drives where it's sent, and its crew stay aboard till ordered
+		// out. With nobody to drive it, it stays, and says so where it was sent.
+		if (AVehicle* car = dynamic_cast<AVehicle*>(unit)) {
+			if (!car->CanBeDriven()) {
+				if (!resend) {
+					AddNoRoute(car, target ? target->GetPos() : waypoint, "no driver", false);
+				}
+				return;
+			}
+			car->SetCommanded(true);
 		}
 		if (dynamic_cast<const ACraft*>(unit)) {
 			return;
@@ -386,13 +407,19 @@ namespace SandboxDetail {
 			}
 			Vector post = actor->GetOrderPost();
 			float off = g_SceneMan.ShortestDistance(actor->GetPos(), post, g_SceneMan.SceneWrapsX()).GetMagnitude();
+			// (A vehicle's middle stands well over the ground, and it stops a little short: it is there within its size, VC-4.)
+			// (A ship hovers its hover height over its post.)
+			float slack = dynamic_cast<const AVehicle*>(actor) ? actor->GetRadius() : 0.0F;
+			if (const ACShip* ship = dynamic_cast<const ACShip*>(actor)) {
+				slack = ship->AutopilotHoverHeight() * 1.5F + ship->GetRadius();
+			}
 			if (actor->GetAIMode() == Actor::AIMODE_GOTO) {
 				// On the way back: once there, guard again.
-				if (off < 30.0F) {
+				if (off < 30.0F + slack) {
 					actor->ClearAIWaypoints();
 					actor->SetAIMode(Actor::AIMODE_SENTRY);
 				}
-			} else if (off > 60.0F) {
+			} else if (off > 60.0F + slack) {
 				SendUnit(actor, post, nullptr, false, "back to its post", false, true);
 				actor->SetOrderPost(post);
 			}
@@ -714,6 +741,32 @@ namespace SandboxDetail {
 			g_SceneMan.WrapPosition(spot);
 			SendUnit(ships[i], spot, nullptr, false, attackMove ? "attack-move" : "move");
 		}
+		// Vehicles (VC-2) likewise go on their own, each by its own route and at its own pace, a vehicle's length apart along the ground there,
+		// and are left out of the formation and pace of those on foot.
+		std::vector<Actor*> vehicles;
+		std::erase_if(units, [&vehicles](Actor* unit) {
+			if (dynamic_cast<const AVehicle*>(unit)) {
+				vehicles.push_back(unit);
+				return true;
+			}
+			return false;
+		});
+		if (!vehicles.empty()) {
+			float along = 0.0F;
+			for (const Actor* vehicle: vehicles) {
+				along += vehicle->GetRadius() * 2.0F;
+			}
+			float at = -along * 0.5F;
+			for (Actor* vehicle: vehicles) {
+				at += vehicle->GetRadius();
+				// (Just over the ground where it goes, as for a unit on foot below; its route is asked for to the ground under the spot.)
+				Vector spot = point + Vector(at, -4.0F);
+				at += vehicle->GetRadius();
+				g_SceneMan.WrapPosition(spot);
+				SendUnit(vehicle, spot, nullptr, false, attackMove ? "attack-move" : "move");
+				vehicle->SetOrderPostFacing(facing);
+			}
+		}
 		if (units.empty()) {
 			return;
 		}
@@ -886,7 +939,7 @@ namespace SandboxDetail {
 		std::vector<DigPlan> plans = DigPlansFor(units, point);
 		for (size_t i = 0; i < units.size(); ++i) {
 			Actor* unit = units[i];
-			if (unit->IsPlayerControlled() || dynamic_cast<const ACraft*>(unit)) {
+			if (unit->IsPlayerControlled() || dynamic_cast<const ACraft*>(unit) || dynamic_cast<const AVehicle*>(unit)) {
 				continue;
 			}
 			if (plans[i].Result == DigPlan::Ok) {
@@ -996,10 +1049,16 @@ namespace SandboxDetail {
 			float distance = g_SceneMan.ShortestDistance(unit->GetPos(), watch->second.Destination, g_SceneMan.SceneWrapsX()).GetMagnitude();
 			bool pending = std::any_of(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); });
 			bool stopped = !pending && now - watch->second.Issued > 60 && unit->GetAIMode() != Actor::AIMODE_GOTO && unit->GetWaypointsSize() == 0;
-			if (distance < 60.0F || unit->IsPlayerControlled()) {
+			// (A vehicle is there within its size: its middle stands well over the ground, and it stops a little short.)
+			const float reach = dynamic_cast<const AVehicle*>(unit) ? 60.0F + unit->GetRadius() : 60.0F;
+			if (distance < reach || unit->IsPlayerControlled()) {
 				watch = s_MoveWatch.erase(watch);
 			} else if (stopped) {
-				AddNoRoute(unit, watch->second.Destination);
+				// A commanded vehicle that couldn't get there (VC-2): its crew get out and go on on foot, unless told to stay in or it was
+				// sent to attack; then it holds there, as any unit with no route does.
+				if (!CrewGoOnFoot(unit, watch->second.Destination)) {
+					AddNoRoute(unit, watch->second.Destination);
+				}
 				watch = s_MoveWatch.erase(watch);
 			} else {
 				++watch;
@@ -1446,11 +1505,11 @@ namespace SandboxDetail {
 			return;
 		}
 		if (s_CommandMode == CommandMode::Breach) {
-			BreachSelected(UnitsToMove(0, true), position);
+			BreachSelected(OnFoot(UnitsToMove(0, true)), position);
 			return;
 		}
 		if (s_CommandMode == CommandMode::Build) {
-			BuildSelected(UnitsToMove(0, true), position);
+			BuildSelected(OnFoot(UnitsToMove(0, true)), position);
 			return;
 		}
 		if (s_CommandMode == CommandMode::Airlift) {
@@ -1572,15 +1631,21 @@ namespace SandboxDetail {
 		MarkOrder(vehicle->GetPos(), c_CommandModeColors[static_cast<int>(CommandMode::Guard)]);
 	}
 
-	void EveryoneOut(Actor* vehicle) {
+	std::vector<Actor*> OnFoot(std::vector<Actor*> units) {
+		std::erase_if(units, [](const Actor* unit) { return dynamic_cast<const AVehicle*>(unit) || dynamic_cast<const ACShip*>(unit); });
+		return units;
+	}
+
+	std::vector<Actor*> EveryoneOut(Actor* vehicle) {
 		AVehicle* car = dynamic_cast<AVehicle*>(vehicle);
 		ACShip* ship = car ? nullptr : dynamic_cast<ACShip*>(vehicle);
 		if (!car && !ship) {
-			return;
+			return {};
 		}
-		// Told to get out, they get out: staying in was until told otherwise.
+		// Told to get out, they get out: staying in was until told otherwise, and so was being commanded as one unit (VC-1).
 		if (car) {
 			car->SetCrewStaysIn(false);
+			car->SetCommanded(false);
 		}
 		std::vector<Actor*> out;
 		const int seats = car ? car->GetSeatCount() : ship->GetSeatCount();
@@ -1590,7 +1655,7 @@ namespace SandboxDetail {
 			}
 		}
 		if (out.empty()) {
-			return;
+			return out;
 		}
 		// A squad behind whoever got out first (the driver, if there was one): the rest follow it as Guard followers do.
 		Actor* leader = out.front();
@@ -1603,6 +1668,36 @@ namespace SandboxDetail {
 			}
 		}
 		MarkOrder(vehicle->GetPos(), c_CommandModeColors[static_cast<int>(CommandMode::Guard)]);
+		return out;
+	}
+
+	bool CrewGoOnFoot(Actor* unit, const Vector& destination) {
+		AVehicle* car = dynamic_cast<AVehicle*>(unit);
+		// (Given up on the way, or with no route there: the pathfinder found none, and it stood down.)
+		const bool failed = car && (car->HasGivenUpDriving() || car->GetStandingOrder().FailReason != Actor::ORDERFAIL_NONE);
+		if (!car || !failed || !car->IsCommanded() || car->GetCrewStaysIn() || car->GetCrewCount() == 0) {
+			return false;
+		}
+		// Sent to attack (or attack-move): it stays where it stopped, its gun on what it can see (and the "no route" marker says why).
+		const int kind = car->GetStandingOrder().Kind;
+		if (kind == Actor::ORDER_ATTACK || kind == Actor::ORDER_ATTACKMOVE) {
+			return false;
+		}
+		const int facing = car->GetStandingOrder().PostFacing;
+		const Vector to = destination;
+		std::vector<Actor*> crew = EveryoneOut(car);
+		HoldUnit(car);
+		std::erase_if(crew, [](const Actor* each) { return each->IsPlayerControlled(); });
+		if (crew.empty()) {
+			return true;
+		}
+		// Defending a place: they defend it on foot; anything else, they go there on foot, as a squad sent there is.
+		if (kind == Actor::ORDER_DEFEND) {
+			DefendUnitsAt(crew, to, facing);
+		} else {
+			MoveUnitsTo(crew, to, false, facing);
+		}
+		return true;
 	}
 
 	int SelectedStayIn() {

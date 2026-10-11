@@ -9,6 +9,8 @@
 #include "MovableMan.h"
 #include "PieSlice.h"
 #include "SceneMan.h"
+#include "Scene.h"
+#include "SettingsMan.h"
 #include "TimerMan.h"
 #include "Turret.h"
 
@@ -167,7 +169,117 @@ bool ACShip::TakeSeat(Actor* unit, int seat) {
 }
 
 bool ACShip::FlyTo(const Vector& spot) {
+	m_Route.clear();
 	return CanFly() && AutopilotGoTo(spot);
+}
+
+PathAgent ACShip::GetPathAgent() const {
+	PathAgent agent = Actor::GetPathAgent();
+	agent.JumpHeight = FLT_MAX;
+	agent.MaxSafeFall = FLT_MAX;
+	agent.DigStrength = 1.0F;
+	agent.BreachStrength = 0.0F;
+	agent.JetTimeMS = 0.0F;
+	agent.ClimbsLadders = false;
+	agent.WalksStairs = false;
+	agent.Scrambles = false;
+	agent.LeapHeight = 0.0F;
+	agent.MantleHeight = 0.0F;
+	agent.StraightFlight = false;
+	agent.SkyRoute = false;
+	agent.Lifts.reset();
+	agent.Floats = false;
+	agent.BreathSeconds = FLT_MAX;
+	agent.CrossesLava = true;
+	// (The grid measures head room up to 96 px: a ship wants all of that it can have over the ground its route follows.)
+	agent.StandHeight = std::clamp(GetRadius() * 1.2F, 24.0F, 90.0F);
+	agent.CrawlHeight = agent.StandHeight;
+	agent.CrouchHeight = 0.0F;
+	agent.HalfWidth = 16.0F;
+	return agent;
+}
+
+bool ACShip::FlyRouteTo(const Vector& spot) {
+	if (!CanFly() || !AutopilotStarted()) {
+		m_Route.clear();
+		return false;
+	}
+	const SettingsMan::DirectOrderTuning& tuning = g_SettingsMan.DirectOrders();
+	const float direct = m_StandingOrder.Direct;
+	const float care = std::clamp(-direct, 0.0F, 1.0F);
+	const float radius = GetRadius();
+	// A cautious order flies higher, up to half as high again over the ground, further from small arms below.
+	const float extra = AutopilotHoverHeight() * 0.5F * care;
+	const Vector goal = AutopilotHoverPoint(spot, extra);
+	// (Sent again where it is already going, as the standing orders do: the route it has goes on.)
+	if (!m_Route.empty() && m_AIMode == AIMODE_GOTO && g_SceneMan.ShortestDistance(m_Route.back(), goal).MagnitudeIsLessThan(24.0F)) {
+		return true;
+	}
+	m_Route.clear();
+	// Open air between two points for its body: along its middle and a little above and below.
+	auto clearLine = [radius](const Vector& from, const Vector& to) {
+		Vector way = g_SceneMan.ShortestDistance(from, to);
+		Vector blocked;
+		for (float dy: {-radius * 0.5F, 0.0F, radius * 0.5F}) {
+			Vector start = from + Vector(0.0F, dy);
+			g_SceneMan.WrapPosition(start);
+			if (g_SceneMan.CastStrengthRay(start, way, 5.0F, blocked, 4)) {
+				return false;
+			}
+		}
+		return true;
+	};
+	Scene* scene = g_SceneMan.GetScene();
+	// Full risk, or open air all the way and no call to keep clear of anyone: straight there, as it always flew.
+	if (!scene || direct >= tuning.StraightFlightRisk || (care <= 0.0F && clearLine(m_Pos, goal))) {
+		return AutopilotGoTo(goal);
+	}
+	// The route a unit would be given over the ground, from the ground under it to the ground under the place (with the care for enemies of
+	// a cautious order, GetPathAgent), is what it flies over. None to be had: straight there, as before.
+	std::list<Vector> path;
+	Vector start = g_SceneMan.MovePointToGround(m_Pos, 20, 6);
+	Vector end = g_SceneMan.MovePointToGround(spot, 20, 6);
+	if (scene->CalculatePath(start, end, path, GetPathAgent(), static_cast<Activity::Teams>(m_Team)) < 0.0F || path.size() < 2) {
+		return AutopilotGoTo(goal);
+	}
+	// Each point raised to its hover height over the ground there, as far as the room over it lets it.
+	const float want = AutopilotHoverHeight() + extra;
+	std::vector<Vector> raised;
+	raised.reserve(path.size());
+	for (const Vector& node: path) {
+		float room = 0.0F;
+		while (room < want) {
+			int y = static_cast<int>(node.m_Y - room - 8.0F);
+			if (y < 0 || g_SceneMan.GetTerrMatter(static_cast<int>(node.m_X), y) != MaterialColorKeys::g_MaterialAir) {
+				break;
+			}
+			room += 8.0F;
+		}
+		raised.emplace_back(node.m_X, std::max(node.m_Y - std::max(room - radius * 0.5F, 0.0F), radius));
+	}
+	// And straight on past the points it can see past: from each, to the furthest a little way on with open air between. (A cautious order
+	// looks less far ahead, so the way round enemies isn't cut across.)
+	const size_t lookAhead = care > 0.0F ? 6 : 40;
+	Vector from = m_Pos;
+	for (size_t i = 0; i < raised.size();) {
+		size_t furthest = i;
+		for (size_t j = std::min(i + lookAhead, raised.size() - 1); j > i; --j) {
+			if (clearLine(from, raised[j])) {
+				furthest = j;
+				break;
+			}
+		}
+		m_Route.push_back(raised[furthest]);
+		from = raised[furthest];
+		i = furthest + 1;
+	}
+	// Last, the place itself.
+	if (!m_Route.empty() && clearLine(m_Route.back(), goal)) {
+		m_Route.back() = goal;
+	} else {
+		m_Route.push_back(goal);
+	}
+	return AutopilotGoTo(m_Route.front());
 }
 
 void ACShip::UpdateAutopilot() {
@@ -177,6 +289,18 @@ void ACShip::UpdateAutopilot() {
 			SetAIMode(AIMODE_SENTRY);
 		}
 		return;
+	}
+	// Along its route (FlyRouteTo): on to the next point once near the one it is flying to. Any other order (it holds, or is sent somewhere
+	// else) or the player flying it ends the route.
+	if (!m_Route.empty()) {
+		if (m_Controller.IsPlayerControlled() || m_AIMode != AIMODE_GOTO) {
+			m_Route.clear();
+		} else if (g_SceneMan.ShortestDistance(m_Pos, m_Route.front()).MagnitudeIsLessThan(std::max(GetRadius(), 40.0F))) {
+			m_Route.pop_front();
+			if (!m_Route.empty()) {
+				AutopilotGoTo(m_Route.front());
+			}
+		}
 	}
 	// A ship stays in the fight: with nothing (more) to deliver it holds where it is rather than flying home as a drop ship does. Only an
 	// order to go home (RETURN) sends it off.

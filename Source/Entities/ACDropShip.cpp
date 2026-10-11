@@ -658,12 +658,16 @@ bool ACDropShip::AutopilotHoverOver(const Vector& spot) {
 	if (!m_Autopilot.begun) {
 		return false;
 	}
+	return AutopilotGoTo(AutopilotHoverPoint(spot));
+}
+
+Vector ACDropShip::AutopilotHoverPoint(const Vector& spot, float extraAltitude) {
 	Vector to = spot;
 	g_SceneMan.WrapPosition(to);
 	// (From just above the place, so a click on the ground's surface finds that ground, not what is under it.)
-	float hover = AutopilotGroundBelow(Vector(to.m_X, to.m_Y - 10.0F), m_Autopilot.hoverAlt);
+	float hover = AutopilotGroundBelow(Vector(to.m_X, to.m_Y - 10.0F), m_Autopilot.hoverAlt + std::max(extraAltitude, 0.0F));
 	to.m_Y = std::max(std::min(to.m_Y, hover), GetRadius());
-	return AutopilotGoTo(to);
+	return to;
 }
 
 void ACDropShip::UpdateAutopilot() {

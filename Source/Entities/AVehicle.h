@@ -104,6 +104,9 @@ namespace RTE {
 		/// Gets whether a unit is in the driver's seat.
 		bool HasDriver() const { return m_Crew.GetOccupant(0) != nullptr; }
 
+		/// Gets whether it can be driven now: someone is in the driver's seat, or it drives itself.
+		bool CanBeDriven() const { return HasDriver() || !m_NeedsDriver; }
+
 		/// Gets how many seats it has: the driver's (seat 0) and any others (1 on), passengers' and gunners'.
 		int GetSeatCount() const { return m_Crew.GetSeatCount(); }
 
@@ -250,6 +253,17 @@ namespace RTE {
 		/// Sets whether its crew stays in (see GetCrewStaysIn). Being thrown out (a crash, a roll, a wreck) still throws them out.
 		void SetCrewStaysIn(bool staysIn) { m_CrewStaysIn = staysIn; }
 
+		/// Gets whether the player commands it as one unit, crew and all (command mode, VC-1): it drives where it is ordered whatever the AI
+		/// vehicles setting, and its crew stay aboard where it stops until they are ordered out, or until it can't get where it was sent
+		/// (the sandbox lets them out to go on on foot then, unless the crew is told to stay in).
+		bool IsCommanded() const { return m_Commanded; }
+
+		/// Sets whether the player commands it as one unit (see IsCommanded).
+		void SetCommanded(bool commanded) { m_Commanded = commanded; }
+
+		/// Gets whether its AI driver gave up on the way it was last sent (stuck, a drop, no way on), until it is sent somewhere again.
+		bool HasGivenUpDriving() const { return m_AIGaveUp; }
+
 		/// Gets how fast it jumps up off its springs when the driver jumps, in m/s. 0 can't.
 		float GetHopSpeed() const { return m_HopSpeed; }
 
@@ -263,6 +277,10 @@ namespace RTE {
 #pragma region Override Methods
 		/// Gets the absolute position of the driver's eye, or the middle of the body with no driver.
 		Vector GetEyePos() const override;
+
+		/// What this vehicle is to the path grid (VC-2): its height for head room, no jets, ladders, stairs, leaps or digging, a hop of its springs
+		/// for a step up, and no drop higher than it lands from whole or would drive off. The order's risk and the route caution as any unit's.
+		PathAgent GetPathAgent() const override;
 
 		/// Tries to handle the activated PieSlice in this object's PieMenu, if there is one, based on its SliceType.
 		/// @param pieSliceType The SliceType of the PieSlice being handled.
@@ -391,6 +409,9 @@ namespace RTE {
 		bool m_AIHop; //!< Whether the AI driver jumps this update, to get unstuck.
 		bool m_AIWantsStop; //!< Whether someone wants to get out, so the AI driver stops.
 		bool m_AIGaveUp; //!< Whether the AI driver gave up on the way (stuck, a drop, the shore): its riders get out and walk.
+		bool m_Commanded; //!< Whether the player commands it as one unit (see IsCommanded).
+		int m_AIRoutesAsked; //!< How many times running the AI driver has asked for a new route because it got stuck on the one it had.
+		Timer m_AIFaceTimer; //!< Since the AI driver of a commanded vehicle last looked round to face an enemy, standing still.
 		Timer m_AIGaveUpTimer; //!< Since it gave up: it doesn't call riders over again for a while.
 		unsigned int m_AIOrderSerialSeen; //!< The order serial its AI driver last started on: a new order starts afresh.
 		float m_Throttle; //!< How hard it is being driven this update, -1 to 1.
@@ -445,6 +466,14 @@ namespace RTE {
 
 		/// Gives up on the way it was sent: stops, and lets its riders out to walk.
 		void GiveUpDriving();
+
+		/// Turns a commanded vehicle standing still round to an enemy behind it within its gun's range (the gun only swings in front), or, with
+		/// none, to the way its post faces (a defend's facing).
+		void FaceForCommander();
+
+		/// Gets whether a commanded vehicle sent after an enemy is near enough to it, with its gun in sight of it, to stop and fire from where it is.
+		/// @param target What it was sent after.
+		bool InFiringPosition(const MovableObject* target) const;
 
 		/// Lets in the AI units sent to it or called over that have got here; calls over AI units near it going a long way its way.
 		void UpdateAIBoarding();

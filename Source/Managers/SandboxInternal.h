@@ -2463,8 +2463,15 @@ namespace SandboxDetail {
 	/// Sends the units that can sit to get into a vehicle or flying ship, the nearest first, as many as it has seats free; the others that
 	/// could have stand guard by it (Command mode's Get in).
 	void GetInVehicle(const std::vector<Actor*>& units, Actor* vehicle);
-	/// Lets everyone out of a vehicle or flying ship: a squad, the rest following whoever got out first (the driver).
-	void EveryoneOut(Actor* vehicle);
+	/// Lets everyone out of a vehicle or flying ship: a squad, the rest following whoever got out first (the driver). A vehicle is no longer
+	/// commanded as one unit (AVehicle::IsCommanded). @return Those who got out.
+	std::vector<Actor*> EveryoneOut(Actor* vehicle);
+	/// The units of a list that aren't vehicles or flying ships: for orders only those on foot can carry out (breach, build).
+	std::vector<Actor*> OnFoot(std::vector<Actor*> units);
+	/// When a commanded vehicle (AVehicle::IsCommanded) has given up on the way it was sent (VC-2): unless it was sent to attack or its crew
+	/// was told to stay in, its crew get out and carry on on foot (to defend the place, for a defend), and the vehicle holds.
+	/// @param destination Where the order sent it. @return Whether its crew went on on foot.
+	bool CrewGoOnFoot(Actor* unit, const Vector& destination);
 	/// Whether the selected vehicles' crews stay in: 1 all do, 0 none do, -1 mixed, -2 no vehicle selected.
 	int SelectedStayIn();
 	/// Whether a vehicle or flying ship is among the selected units.
