@@ -8,6 +8,12 @@
 --   CreaturePounceRange  how close the prey must be to leap at it, in pixels; 0 for a creature that doesn't pounce (default 0)
 --   CreatureChaseRange   how far it runs after its prey before giving up, in pixels (default 900)
 --   CreaturePackRange    how far off a packmate's hunt is joined, in pixels; 0 for a loner (default 400)
+--   CreatureSpitRange    how far it spits at its prey (CR-6, a giant spider's web), in pixels; 0 for one that doesn't spit (default 0)
+--   CreatureSpitCooldown how long between spits, in ms (default 6000)
+--   CreatureSpitSpeed    how fast the spit flies, in m/s (default 18)
+--   CreatureAttackRange  for a creature on two legs (CR-7): how close it gets before it lets its prey have it, in pixels (default 110)
+-- and a string value:
+--   CreatureSpit         the preset of what it spits (an MOPixel in Base.rte)
 
 require("AI/SharedBehaviors");
 
@@ -97,6 +103,42 @@ function CreatureBehaviors.RouteStep(AI, Owner, Route, Target)
 	return Route.points[1] or Target.Pos;
 end
 
+-- Whether the prey is already held by what it spits (a web), so it isn't spat at again meanwhile.
+local function HeldBySpit(Target)
+	return IsActor(Target) and ToActor(Target).IsEnsnared;
+end
+
+-- Spits at its prey (CR-6, a giant spider's web) when it is in range, in the open and not held already, and the spit is ready: aimed a
+-- little high for the drop on the way. @return Whether it spat.
+function CreatureBehaviors.SpitAt(AI, Owner, Target, gap, SpitTimer)
+	local range = Value(Owner, "CreatureSpitRange", 0);
+	if range <= 0 or gap > range or not Owner:StringValueExists("CreatureSpit") or HeldBySpit(Target)
+		or not SpitTimer:IsPastSimMS(Value(Owner, "CreatureSpitCooldown", 6000)) then
+		return false;
+	end
+	local From = Owner.EyePos;
+	if SceneMan:CastStrengthSumRay(From, Target.Pos, 4, rte.grassID) >= 50 then
+		return false;
+	end
+	local Spit = CreateMOPixel(Owner:GetStringValue("CreatureSpit"), "Base.rte");
+	if not Spit then
+		return false;
+	end
+	SpitTimer:Reset();
+	local speed = Value(Owner, "CreatureSpitSpeed", 18);
+	local To = SceneMan:ShortestDistance(From, Target.Pos, false);
+	-- (Its fall on the way, from its flight time: aimed up by that much.)
+	local seconds = To.Magnitude / (speed * GetPPM());
+	local drop = 0.5 * SceneMan.GlobalAcc.Y * Spit.GlobalAccScalar * seconds * seconds * GetPPM();
+	Spit.Pos = Vector(From.X, From.Y);
+	Spit.Vel = (To - Vector(0, drop)):SetMagnitude(speed);
+	Spit.Team = Owner.Team;
+	Spit.IgnoresTeamHits = true;
+	MovableMan:AddParticle(Spit);
+	SharedBehaviors.Trace(Owner, "hunt: spit at " .. Target.PresetName);
+	return true;
+end
+
 -- Running its prey down and biting it (the attack behaviour of a crab-bodied creature). Over when the prey is dead or gone, lost from
 -- sight for four seconds, or run further than the chase range; a creature that was on guard then goes back to its post.
 function CreatureBehaviors.HuntTarget(AI, Owner, Abort)
@@ -111,6 +153,8 @@ function CreatureBehaviors.HuntTarget(AI, Owner, Abort)
 	local Keep = Owner.AIMode == Actor.AIMODE_SENTRY and SharedBehaviors.RememberOrder(AI, Owner) or nil;
 	local Route = { points = {}, pending = false, Timer = Timer() };
 	local LeapTimer = Timer();
+	local SpitTimer = Timer();
+	SpitTimer.ElapsedSimTimeMS = 60000; -- (Ready at once.)
 	local HeldTimer = Timer(); -- How long the prey has been out of reach of one not let go after it.
 	local ProgressTimer = Timer();
 	local closest = math.huge;
@@ -155,6 +199,11 @@ function CreatureBehaviors.HuntTarget(AI, Owner, Abort)
 			Owner.HFlipped = dir < 0;
 			AI.fire = true;
 			HeldTimer:Reset();
+		elseif gap > reach * 2 and CreatureBehaviors.SpitAt(AI, Owner, Target, gap, SpitTimer) then
+			-- Spat at it from where it stands (a web, to hold it while it closes in).
+			AI.fire = false;
+			AI.lateralMoveState = Actor.LAT_STILL;
+			Owner.HFlipped = dir < 0;
 		else
 			AI.fire = false;
 			if not CreatureBehaviors.MayChase(AI, Owner) then
@@ -198,6 +247,93 @@ function CreatureBehaviors.HuntTarget(AI, Owner, Abort)
 		local _ai, _ownr, _abrt = coroutine.yield(); -- wait until next frame
 		if _abrt then
 			return Finish(true);
+		end
+	end
+
+	return Finish(false);
+end
+
+-- Going after its prey and letting it have it with what it was born with (CR-7, the attack behaviour of a creature on two legs: a Flame
+-- Fiend's fire). It walks at its prey on the usual route, as a soldier with a blade closes in (HumanBehaviors.AttackTarget), and once it is
+-- within its attack range and in the open, it aims and fires on the way. Over when the prey is dead or gone, has got further off than the
+-- chase range, or it gets no nearer for four seconds; then it goes back to where it was going, or its post.
+function CreatureBehaviors.ChargeTarget(AI, Owner, Abort)
+	if not AI.Target or not MovableMan:ValidMO(AI.Target) then
+		return true;
+	end
+	AI.TargetLostTimer:SetSimTimeLimitMS(4000);
+	local range = Value(Owner, "CreatureAttackRange", 110);
+	local chaseRange = Value(Owner, "CreatureChaseRange", 900);
+	local Keep = Owner.AIMode == Actor.AIMODE_SENTRY and SharedBehaviors.RememberOrder(AI, Owner) or nil;
+	local ProgressTimer = Timer();
+	local closest = math.huge;
+	Owner:SetNumberValue("CreatureHuntID", AI.Target.UniqueID);
+	SharedBehaviors.Trace(Owner, "charge: " .. AI.Target.PresetName);
+
+	-- (Back to where it was going afterwards, as a soldier closing in with a blade is.)
+	local PrevMOMoveTarget, PrevSceneWaypoint;
+	if Owner.MOMoveTarget and MovableMan:ValidMO(Owner.MOMoveTarget) then
+		PrevMOMoveTarget = Owner.MOMoveTarget;
+	elseif Owner.AIMode ~= Actor.AIMODE_SENTRY then
+		Owner.MOMoveTarget = nil;
+		PrevSceneWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.Height / 5, 4);
+	end
+	Owner:ClearMovePath();
+	Owner:AddAIMOWaypoint(AI.Target);
+	if PrevMOMoveTarget then
+		Owner:AddAIMOWaypoint(PrevMOMoveTarget);
+	elseif PrevSceneWaypoint then
+		Owner:AddAISceneWaypoint(PrevSceneWaypoint);
+	end
+	AI:CreateGoToBehavior(Owner);
+	AI.proneState = AHuman.NOTPRONE;
+
+	local function Finish(aborted)
+		Owner:RemoveNumberValue("CreatureHuntID");
+		AI.fire = false;
+		AI.deviceState = AHuman.STILL;
+		if not aborted then
+			AI.Target = nil;
+			if Keep and Keep.post and Owner.AIMode == Actor.AIMODE_SENTRY and SceneMan:ShortestDistance(Owner.Pos, Keep.post, false):MagnitudeIsGreaterThan(Owner.Height) then
+				SharedBehaviors.RestoreOrder(AI, Owner, Keep);
+			end
+		end
+		return true;
+	end
+
+	while true do
+		local _ai, _ownr, _abrt = coroutine.yield(); -- wait until next frame
+		if _abrt then
+			return Finish(true);
+		end
+		local Target = AI.Target;
+		if not Target or not MovableMan:ValidMO(Target) or (IsActor(Target) and ToActor(Target):IsDead()) then
+			break;
+		end
+		if not Owner.EquippedItem then
+			Owner:EquipFirearm(true);
+		end
+		local gap, ToTarget = CreatureBehaviors.GapTo(Owner, Target);
+		if gap > chaseRange then
+			SharedBehaviors.Trace(Owner, "charge: got away");
+			break;
+		end
+		if gap < closest - 4 then
+			closest = gap;
+			ProgressTimer:Reset();
+		elseif gap > range and ProgressTimer:IsPastSimMS(4000) then
+			SharedBehaviors.Trace(Owner, "charge: can't get at it");
+			break;
+		end
+		AI.Ctrl.AnalogAim = SceneMan:ShortestDistance(Owner.EyePos, Target.Pos, false).Normalized;
+		if gap <= range and SceneMan:CastStrengthSumRay(Owner.EyePos, Target.Pos, 4, rte.grassID) < 50 then
+			AI.deviceState = AHuman.AIMING;
+			Owner.HFlipped = ToTarget.X < 0;
+			AI.fire = true;
+			ProgressTimer:Reset();
+		else
+			AI.deviceState = AHuman.STILL;
+			AI.fire = false;
 		end
 	end
 

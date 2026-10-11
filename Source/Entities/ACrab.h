@@ -125,6 +125,22 @@ namespace RTE {
 		/// @param newLeg The new Leg to use.
 		void SetRightBGLeg(Leg* newLeg);
 
+		/// Which of the four legs that carry it an extra leg copies the stride of (CR-5).
+		enum class LegCopied {
+			LeftFG,
+			LeftBG,
+			RightFG,
+			RightBG
+		};
+
+		/// Adds an extra leg past the four that carry it (CR-5: a spider's other four). It takes no weight; its foot follows the stride of
+		/// the leg it copies, moved along by how far apart their hips are, so the legs ripple along as the four walk. Copying the other layer's
+		/// leg on the same side puts it half a stride out of step. Ownership IS transferred!
+		void AddExtraLeg(Leg* newLeg, LegCopied copies);
+
+		/// Gets how many extra legs it has left (CR-5).
+		int GetExtraLegCount() const { return static_cast<int>(m_ExtraLegs.size()); }
+
 		/// Tries to handle the activated PieSlice in this object's PieMenu, if there is one, based on its SliceType.
 		/// @param pieSliceType The SliceType of the PieSlice being handled.
 		/// @return Whether or not the activated PieSlice SliceType was able to be handled.
@@ -316,6 +332,12 @@ namespace RTE {
 		Leg* m_pRFGLeg;
 		// Right Background leg.
 		Leg* m_pRBGLeg;
+		/// An extra leg (CR-5) and the leg whose stride it copies. The leg is owned as an attachable, as the four are.
+		struct ExtraLeg {
+			Leg* Part = nullptr;
+			LegCopied Copies = LegCopied::LeftFG;
+		};
+		std::vector<ExtraLeg> m_ExtraLegs; //!< The extra legs it has left (CR-5).
 		// Limb AtomGroups.
 		AtomGroup* m_pLFGFootGroup;
 		AtomGroup* m_BackupLFGFootGroup;
@@ -424,6 +446,12 @@ namespace RTE {
 			Timer remedyTimer; //!< Since the last one began.
 		};
 		CrabMover m_CrabMover;
+
+		/// Forgets an extra leg that has come off (CR-5).
+		void RemoveExtraLeg(const Attachable* leg);
+
+		/// Sets each extra leg's foot where the leg it copies has its foot, moved along by how far apart their hips are (CR-5). Each update.
+		void UpdateExtraLegs();
 
 		/// Clears all the member variables of this ACrab, effectively
 		/// resetting the members of this abstraction level only.

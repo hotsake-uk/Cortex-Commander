@@ -45,6 +45,9 @@ namespace RTE {
 		/// The name of the key that swaps the sandbox's bar and the Commander Toolbar, as the hints show it ("F11").
 		static std::string CommanderBarKeyName();
 
+		/// Whether O is Focus on objective just now (the command tool in hand with units selected), so it doesn't also pause the world.
+		static bool TakesObjectiveKey();
+
 		/// Whether the sandbox holds the world still (god mode with its window open and "pause in menus" on), photo mode or not.
 		static bool WantsWorldPaused();
 
