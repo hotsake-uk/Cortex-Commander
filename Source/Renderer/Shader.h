@@ -249,6 +249,10 @@ namespace RTE {
 			GLint HasEmissiveMap{-1};
 			GLint UVRect{-1};
 			GLint Strength{-1};
+			GLint TeamColor{-1};
+			GLint TeamColorIndices{-1};
+			GLint TeamColorMap{-1};
+			GLint HasTeamColorMap{-1};
 		};
 		const SpriteMapUniforms& GetSpriteMapUniforms() const { return m_SpriteMapUniforms; }
 
@@ -312,7 +316,7 @@ namespace RTE {
 		GLint m_HealthUniform{-1}; //!< float rteHealth.
 		GLint m_StrengthUniform{-1}; //!< float rteStrength.
 		GLint m_ReliefUniform{-1}; //!< float rteRelief.
-		SpriteMapUniforms m_SpriteMapUniforms; //!< rteNormalMap, rteHasNormalMap, rteEmissiveMap, rteHasEmissiveMap, rteMapUVRect, rteMapStrength.
+		SpriteMapUniforms m_SpriteMapUniforms; //!< rteNormalMap, rteHasNormalMap, rteEmissiveMap, rteHasEmissiveMap, rteMapUVRect, rteMapStrength, rteTeamColor, rteTeamColorIndices, rteTeamColorMap, rteHasTeamColorMap.
 		bool m_Valid{false}; //!< Compiled and linked.
 		bool m_AbortOnError{true}; //!< The game's own shaders can't do without: a failure stops the game. Mods' shaders are reported and skipped.
 	};

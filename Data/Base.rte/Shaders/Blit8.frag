@@ -25,6 +25,11 @@ uniform bool rteHasEmissiveMap; // How much each pixel glows, in its own colour:
 uniform sampler2D rteEmissiveMap;
 uniform vec4 rteMapUVRect; // Where the frame sits in rteTexture (xy corner, zw size, in UV): the sprite atlas puts it anywhere, the maps are the frame alone.
 uniform float rteMapStrength; // How much the authored maps count over the automatic ones, 0 to 1.
+// The parts of a sprite drawn in its side's colour (MOSprite's TeamColorIndex and TeamColorMapFile).
+uniform vec4 rteTeamColor; // RGB the colour, A 1 when anything is recoloured, 0 when not.
+uniform vec4 rteTeamColorIndices[2]; // Up to 8 palette indices recoloured wherever they're drawn, -1 for none.
+uniform bool rteHasTeamColorMap; // How much each pixel is recoloured: the brightest of RGB, times alpha. True colour, one image per frame, the size of the frame.
+uniform sampler2D rteTeamColorMap;
 
 vec4 textureAA(sampler2D tex, vec2 uv) {
 	vec2 texsize = vec2(textureSize(tex, 0));
@@ -106,8 +111,9 @@ void main() {
 	vec2 relief = rteRelief > 0.0 ? ReliefTilt(uvDx, uvDy) * rteRelief : vec2(0.0);
 	float emissive = 0.0;
 	float shine = 0.0;
+	float colorIndex = 0.0;
 	if (rteIndexed) {
-		float colorIndex = texture(rteTexture, vec2(textureUV.x, textureUV.y)).r;
+		colorIndex = texture(rteTexture, vec2(textureUV.x, textureUV.y)).r;
 		FragColor = texture(rtePalette, vec2(colorIndex, 0.0F)) * vertexColor;
 		vec4 surface = texture(rteEmissivePalette, vec2(colorIndex, 0.0F));
 		emissive = surface.r;
@@ -119,6 +125,28 @@ void main() {
 		discard;
 	} else if (rteReplaceColor) {
 		FragColor.rgba = rteColor;
+	}
+	if (rteTeamColor.a > 0.0 && !rteReplaceColor) {
+		float recolor = 0.0;
+		if (rteIndexed) {
+			float index = floor(colorIndex * 255.0 + 0.5);
+			for (int i = 0; i < 2; ++i) {
+				vec4 marked = rteTeamColorIndices[i];
+				if (any(equal(vec4(index), marked))) {
+					recolor = 1.0;
+				}
+			}
+		}
+		if (rteHasTeamColorMap) {
+			vec4 mask = texelFetch(rteTeamColorMap, MapTexel(rteTeamColorMap), 0);
+			recolor = max(recolor, max(mask.r, max(mask.g, mask.b)) * mask.a);
+		}
+		if (recolor > 0.0) {
+			// The art's own shading is kept: lighter pixels take a lighter shade of the colour, so folds and highlights still read.
+			float brightness = dot(FragColor.rgb, vec3(0.299, 0.587, 0.114));
+			vec3 recolored = clamp(rteTeamColor.rgb * (0.25 + 1.5 * brightness), 0.0, 1.0);
+			FragColor.rgb = mix(FragColor.rgb, recolored, recolor);
+		}
 	}
 	// RG: normal x and y (z is worked out from them). B: 1 - shininess. Alpha: 0 means nothing drawn, 0.5..1 is drawn with emissive strength 0..1.
 	// What has happened to the object, packed into the surface's last value: heat in the high half, snow in the low.

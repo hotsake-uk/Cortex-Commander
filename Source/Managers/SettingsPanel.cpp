@@ -1135,6 +1135,8 @@ void DebugMan::SettingsGUI() {
 				}
 			}
 		}
+		Check("Team colour on units", &settings.UnitTeamColorParts);
+		Tip("Parts of units that mods mark for it (a bandanna, a helmet stripe) are drawn in their side's colour: red, green, blue or yellow. Unticked, they take the mod's own default colour, or stay as painted.");
 		Heading("Unit outlines");
 		Check("Outline units", &settings.UnitOutline);
 		Tip("A stroke round each unit and what it holds, so they stand out. It goes over the sky, the background and other objects, never over terrain.");
