@@ -68,6 +68,7 @@
 #include <climits>
 #include <unordered_set>
 #include <memory>
+#include <functional>
 #include <numeric>
 #include <string>
 #include <vector>
@@ -222,7 +223,10 @@ namespace SandboxDetail {
 		PowerTarget, //!< Battle Command: a click is where the commander power waiting for one (s_PendingPower) is used.
 		BattleRally, //!< Battle Command: a click marks your team's rally point, where its new units and reinforcements make for once they're in.
 		// Appended, so the tools before keep their numbers.
-		Vehicle //!< Puts down the vehicle chosen in the Spawn tab's Vehicles list (s_Vehicles): a cart, a boat, a tank, a ship, a dropship. Nobody in it.
+		Vehicle, //!< Puts down the vehicle chosen in the Spawn tab's Vehicles list (s_Vehicles): a cart, a boat, a tank, a ship, a dropship. Nobody in it.
+		// The battle's pickups (BattlePickups.cpp): appended, so the tools before keep their numbers.
+		BattlePickupSpot, //!< The Battle tab's Pickups: a click puts down another place pickups can come in at.
+		BattlePickupZone //!< The Battle tab's Pickups: each click puts down a corner of a zone pickups can come in anywhere in.
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -237,10 +241,10 @@ namespace SandboxDetail {
 	constexpr const char* c_BuildingMaterials[] = {"Concrete", "Metal", "Mega Metal", "Mangled Metal", "Door Metal", "Scrap Metal", "Glass", "Civilian Stuff", "Military Stuff", "Ladder", "Gold Plate", "Silver Plate", "Bronze Plate", "Brass Plate", "Copper Plate", "Chrome Plate"};
 
 	/// The Battle tab's tools that set something on a team's card, taken from it and put down with Enter (PutDownBattleTool).
-	constexpr bool IsBattleTool(Tool kind) { return kind == Tool::BattleDefendPoint || kind == Tool::BattleDropLine || kind == Tool::BattleSpawnZone || kind == Tool::BattleModePoint || kind == Tool::BattleModeBase || kind == Tool::BattleModeZone || kind == Tool::BattleModeGoal || kind == Tool::BattleModeFlag; }
+	constexpr bool IsBattleTool(Tool kind) { return kind == Tool::BattleDefendPoint || kind == Tool::BattleDropLine || kind == Tool::BattleSpawnZone || kind == Tool::BattleModePoint || kind == Tool::BattleModeBase || kind == Tool::BattleModeZone || kind == Tool::BattleModeGoal || kind == Tool::BattleModeFlag || kind == Tool::BattlePickupSpot || kind == Tool::BattlePickupZone; }
 
 	/// The Battle Director's mode tools that draw a polygon a corner at a click (closed on its first corner, or Enter).
-	constexpr bool IsModeZoneTool(Tool kind) { return kind == Tool::BattleModeBase || kind == Tool::BattleModeZone || kind == Tool::BattleModeGoal; }
+	constexpr bool IsModeZoneTool(Tool kind) { return kind == Tool::BattleModeBase || kind == Tool::BattleModeZone || kind == Tool::BattleModeGoal || kind == Tool::BattlePickupZone; }
 
 	struct ToolInfo {
 		Tool Kind;
@@ -358,6 +362,8 @@ namespace SandboxDetail {
 	    {Tool::PowerTarget, "Commander power", 0.0F, false},
 	    {Tool::BattleRally, "Rally point", 0.0F, false},
 	    {Tool::Vehicle, "Vehicles", 0.0F, false},
+	    {Tool::BattlePickupSpot, "Pickup spot", 0.0F, false},
+	    {Tool::BattlePickupZone, "Pickup zone", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -406,12 +412,14 @@ namespace SandboxDetail {
 		Spray //!< A soft spray: scattered pixels over the circle, thickest in the middle, building up while held.
 	};
 
-	/// The shapes the terrain brushes fill with Brush type Shape (s_ShapeFill): dragged out as a box, filled in one go.
+	/// The shapes the terrain brushes fill with Brush type Shape (s_ShapeFill): dragged out as a box (or a line), filled in one go.
 	enum class FillShape {
 		Circle, //!< The circle (or oval) in the box.
 		Triangle, //!< Its point at the side of the box the drag began, its base along the other.
-		Square //!< The whole box.
+		Square, //!< The whole box.
+		Line //!< A line from where the drag began to where it ends, s_LineWidth wide, its ends rounded (see InLineShape).
 	};
+	constexpr int c_FillShapeCount = 4;
 
 	/// Whether a pixel is in a filled shape dragged out from start to end (scene pixels, end not wrapped round from start).
 	inline bool InFillShape(FillShape shape, const Vector& start, const Vector& end, int x, int y) {
@@ -442,6 +450,21 @@ namespace SandboxDetail {
 			default:
 				return true;
 		}
+	}
+
+	/// Whether a pixel is in a line dragged from start to end (scene pixels, end not wrapped round from start), width pixels wide with
+	/// rounded ends: its middle no further than half the width from the line. (A line 1 px wide still joins up on the slant.)
+	inline bool InLineShape(const Vector& start, const Vector& end, float width, int x, int y) {
+		float px = static_cast<float>(x) + 0.5F - start.m_X;
+		float py = static_cast<float>(y) + 0.5F - start.m_Y;
+		float dx = end.m_X - start.m_X;
+		float dy = end.m_Y - start.m_Y;
+		float lengthSquared = dx * dx + dy * dy;
+		float t = lengthSquared > 0.0F ? std::clamp((px * dx + py * dy) / lengthSquared, 0.0F, 1.0F) : 0.0F;
+		float ox = px - dx * t;
+		float oy = py - dy * t;
+		float half = std::max(width * 0.5F, 0.75F);
+		return ox * ox + oy * oy <= half * half;
 	}
 
 	/// How much of what the "Earth with gold" brush paints is gold.
@@ -677,6 +700,10 @@ namespace SandboxDetail {
 	/// What the Battle tab says for a mode: the choices every mode shares, and those some use (each says which in its panel). The window keeps
 	/// its own copy (s_ModeSetup) and sends it to the sim in a Tool::BattleTeam stroke (Stroke::Mode) whenever it changes.
 	constexpr size_t c_MaxFlagSpots = 8; //!< Most flag positions one flag can have placed.
+	constexpr size_t c_MaxPickupSpots = 8; //!< Most places pickups can come in at, placed.
+	constexpr size_t c_MaxPickupZones = 8; //!< Most pickup zones drawn.
+	/// Where a battle's pickups come in (BattleModeSettings::PickupPlaces), as bits: any of them ticked, each pickup at one of them picked at random.
+	enum PickupPlace { PickupAnywhere = 1, PickupAtSpots = 2, PickupInZones = 4 };
 
 	/// What a team you command has its units do as they come in (SpawnOrders.cpp): the order a spawn order gives each new unit.
 	enum class SpawnOrderKind {
@@ -756,6 +783,8 @@ namespace SandboxDetail {
 		                                                               //!< after a flag or to a VIP, picking who to go for. Not a team you command.
 		int CommanderLevel = 1; //!< How hard the commanders play: 0 easy, 1 normal, 2 hard (how often they look, and how much they send).
 		int CommanderReserve = 30; //!< Its share of each such team's units, in percent, held on the next objective while the one in play is safe.
+		bool CommanderSquads = true; //!< Normal and hard: each such team's runners and hunters go in squads, following a leader (Commander squads,
+		                             //!< SandboxBattleModes.cpp). Not its defenders, nor on assault, king of the hill or capture the ship.
 		int CommanderFallBack = 60; //!< Assault defenders: how far the attackers' taking of the objective in play has got, in percent, when everyone
 		                            //!< falls back to the next one.
 		bool FogOfWar = false; //!< Battle Command: you see only the enemies your team's units can see (BattleFog.cpp).
@@ -775,6 +804,15 @@ namespace SandboxDetail {
 		std::array<SpawnOrder, c_Sides> SpawnOrders; //!< Every mode: what each team the player commands has its new units do (its reinforcements too), unless they come in
 		                                             //!< in a spawn zone with its own order.
 		std::array<std::vector<SpawnOrder>, c_Sides> ZoneSpawnOrders; //!< And each of its spawn zones' own, by the zone's place in SpawnZones (none past the end: the team's).
+		bool Pickups = false; //!< Every mode: powerups (an energy shield, a stim, a spell scroll...) come in on the map now and then, for the first unit
+		                      //!< to reach each to take into its inventory (BattlePickups.cpp).
+		int PickupEvery = 45; //!< Seconds, about, between one pickup coming in and the next.
+		int PickupMost = 3; //!< Most pickups on the map at once.
+		int PickupLasts = 90; //!< Seconds a pickup nobody takes lies before it goes. 0: till it's taken.
+		int PickupKinds = 0x7F; //!< Which kinds come in (bits by c_PickupKinds).
+		int PickupPlaces = PickupAnywhere; //!< Where they come in (PickupPlace bits).
+		std::vector<Vector> PickupSpots; //!< The places placed (up to c_MaxPickupSpots).
+		std::vector<std::vector<Vector>> PickupZones; //!< The pickup zones drawn (up to c_MaxPickupZones).
 	};
 
 	/// One queued action, with the settings it was made with.
@@ -1120,7 +1158,10 @@ namespace SandboxDetail {
 	inline float s_LastPlantX = 0.0F; //!< Where across the plant brush last put a plant, for the spacing.
 	inline bool s_ShapeFill = false; //!< Brush type Shape: the terrain brushes fill a shape dragged out on the world rather than painting where the pointer goes.
 	inline FillShape s_FillShape = FillShape::Square; //!< The shape they fill then.
+	inline int s_LineWidth = 8; //!< How wide the Line shape is, in pixels.
+	constexpr int c_MaxLineWidth = 120; //!< The widest the Line shape goes.
 	inline bool s_ShapeDragging = false; //!< A shape being dragged out, from s_ShapeStart.
+	inline bool s_ShapeDigging = false; //!< The shape being dragged out with the right button: dug out when let go, whatever brush is in hand.
 	inline int s_RopeType = 0; //!< What the Rope tool puts down (RopeSim::GetType).
 	inline float s_RopeSlack = 0.1F; //!< How much longer than the straight line between its points the Rope tool's rope is.
 	inline float s_RopeStrength = 1.0F; //!< How much more (or less) than its kind's own the Rope tool's rope holds before it snaps.
@@ -2274,11 +2315,11 @@ namespace SandboxDetail {
 	/// A point of a line dragged on the world, on the bunker grid when snapping: across to the nearest 12 px, up and down to the nearest
 	/// 24 px (the floors bunker pieces line up on).
 	Vector SnapLinePoint(const Vector& point, bool snap);
-	/// Which way a line dragged without Shift is kept straight: up or down or across, whichever it is nearer, or only the one way.
+	/// Which ways a line dragged with Shift may go: any of the 8, or never straight up and down (Across) or straight across (UpDown).
 	enum class LineLock { Nearer, Across, UpDown };
-	/// Where a line dragged from a start toward the pointer ends: straight up or down, or straight across (as lock says), unless free
-	/// (Shift held); on the bunker grid when snapping; no longer than c_MaxLineDrag.
-	Vector LineDragEnd(const Vector& start, const Vector& pointer, bool free, bool snap, LineLock lock = LineLock::Nearer);
+	/// Where a line dragged from a start toward the pointer ends: any way, or with Shift (eightWays) the nearest of the 8 ways, every 45
+	/// degrees, that lock allows; on the bunker grid when snapping (a slanted line kept at 45); no longer than c_MaxLineDrag.
+	Vector LineDragEnd(const Vector& start, const Vector& pointer, bool eightWays, bool snap, LineLock lock = LineLock::Nearer);
 	constexpr float c_MaxLineDrag = 2400.0F; //!< The longest line a drag puts down (a lift's track), in pixels.
 	constexpr float c_MinLineDrag = 24.0F; //!< A drag shorter than this is a click.
 	/// One piece of a bunker run (see LayOutRun): which piece, and where along the run it starts and how long it is, in pixels.
@@ -2497,6 +2538,26 @@ namespace SandboxDetail {
 	void BattleEditPanel();
 	/// What a battle mode's tool in hand is for, in the mode chosen, by the pointer (as "Red flag", "Hill"); empty for the tool's own name.
 	std::string BattleToolLabel(Tool kind);
+	// The battle's pickups (BattlePickups.cpp).
+	void BattlePickupsPanel(BattleModeSettings& setup, bool running, bool& changed);
+	std::string BattlePickupToolLabel(Tool kind);
+	void PickupSpotPlaced(const Vector& position);
+	void PickupZoneDrawn(const std::vector<Vector>& zone);
+	void ApplyPickupStroke(const Stroke& stroke);
+	void StartBattlePickups();
+	void StopBattlePickups();
+	void UpdateBattlePickups(bool aiPaused);
+	void DrawBattlePickups();
+	void DrawBattlePickupsOnMap(ImDrawList* drawList, const std::function<ImVec2(const Vector&)>& toMap);
+	// What BattlePickups.cpp borrows from the battle modes (SandboxBattleModes.cpp).
+	bool BattleTeamIn(int side);
+	std::vector<Actor*> BattleFighters();
+	bool BattleUnitBusy(const Actor* unit);
+	float BattleGapToZone(const std::vector<Vector>& zone, const Vector& at);
+	std::vector<std::vector<Vector>> BattleSpawnZonesOf(const BattleModeSettings& settings, int side);
+	float BattlePulse(float speed);
+	void DrawBattleBeacon(ImDrawList* drawList, ImVec2 foot, ImU32 color, float strength);
+	void DrawBattleTag(ImDrawList* drawList, ImVec2 over, const std::string& text, ImU32 color);
 	/// @param withCustom Whether custom (the Battle Director's cards) is one of the choices. Battle Command plays the modes only.
 	bool BattleModeChooser(bool withCustom = true);
 	void LogStroke(const Stroke& stroke);
@@ -2845,6 +2906,10 @@ namespace SandboxDetail {
 
 	/// A mark over each of the squad, and what it's doing with the keys at the top of the view. Call from the ImGui frame.
 	void DrawSquad();
+
+	/// With the squad links overlay on: the number of each of the AI commanders' squads over its leader, and a line to each of its
+	/// followers. Call from the ImGui frame.
+	void DrawAISquads();
 #pragma endregion
 
 #pragma region Your brain on the field (BattleFieldBrain.cpp)
