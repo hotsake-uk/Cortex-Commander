@@ -2,6 +2,7 @@
 
 #include "SandboxInternal.h"
 #include "ActionMenu.h"
+#include "AVehicle.h"
 #include "GUISound.h"
 #include "TerrainCandle.h"
 
@@ -1095,6 +1096,95 @@ namespace SandboxDetail {
 	}
 
 
+	void VehicleOptions() {
+		VehicleTuning& tuning = s_VehicleTuning;
+		const Preset* preset = ChosenPreset(Tool::Vehicle, ChoiceFor(Tool::Vehicle));
+		const Entity* entity = preset ? g_PresetMan.GetEntityPreset(preset->ClassName, preset->PresetName, preset->ModuleID) : nullptr;
+		const AVehicle* vehicle = dynamic_cast<const AVehicle*>(entity);
+		const bool seats = vehicle || dynamic_cast<const ACShip*>(entity);
+
+		ImGui::SeparatorText("Crew");
+		ImGui::BeginDisabled(!seats && preset);
+		int crew = tuning.Crewed ? 1 : 0;
+		ToolUI::RadioButton("Empty", &crew, 0);
+		ImGui::SameLine();
+		ToolUI::RadioButton("Full crew", &crew, 1);
+		tuning.Crewed = crew == 1;
+		ImGui::SetItemTooltip("Every seat filled with the unit picked in the Units list (or random units, if Random units is ticked there), with the loadout, orders and temperament below. The driver leads: when they get out the rest follow it as a squad.");
+		if (tuning.Crewed) {
+			const Preset* unit = s_RandomUnits ? nullptr : ChosenPreset(Tool::Unit, ChoiceFor(Tool::Unit));
+			ImGui::TextDisabled("Crewed by: %s", s_RandomUnits ? "random units" : unit ? unit->PresetName.c_str() : "(pick a unit in the Units list)");
+			LoadoutChooser();
+			UnitOrderCombo("Orders");
+			TemperamentCombo("Temperament");
+		}
+		ImGui::EndDisabled();
+		if (preset && !seats) {
+			ImGui::TextDisabled("This one has no seats (a dropship or rocket).");
+		}
+
+		ImGui::SeparatorText("Driving");
+		int mode = tuning.Modified ? 1 : 0;
+		ToolUI::RadioButton("Default settings", &mode, 0);
+		ImGui::SetItemTooltip("Put down as the vehicle comes.");
+		ImGui::SameLine();
+		ToolUI::RadioButton("Modified", &mode, 1);
+		ImGui::SetItemTooltip("Put down with the driving tuned by the sliders: each is times the vehicle's own value. Vehicles already out stay as they are.");
+		tuning.Modified = mode == 1;
+		if (!tuning.Modified) {
+			return;
+		}
+		if (preset && !vehicle) {
+			ImGui::TextDisabled("Only land vehicles and boats can be tuned: this one is put down as it comes.");
+			return;
+		}
+		// One slider: the multiplier, and what it comes to for the vehicle chosen.
+		auto slider = [](const char* label, float& multiplier, float own, const char* unit, const char* tip) {
+			ImGui::PushID(label);
+			std::string shown = "x%.2f";
+			if (own > 0.0F) {
+				char value[48];
+				std::snprintf(value, sizeof(value), "  (%.1f %s)", own * multiplier, unit);
+				shown += value;
+			}
+			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.62F);
+			ImGui::SliderFloat(label, &multiplier, c_VehicleTuneMin, c_VehicleTuneMax, shown.c_str(), ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
+			ImGui::SetItemTooltip("%s Right-click to set it back to x1.", tip);
+			if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+				multiplier = 1.0F;
+			}
+			ImGui::PopID();
+		};
+		const bool boat = vehicle && vehicle->GetWaterThrust() > 0.0F;
+		const bool wheels = !vehicle || !vehicle->GetWheels().empty();
+		if (wheels) {
+			slider("Power", tuning.Power, vehicle ? vehicle->GetAcceleration() : 0.0F, "m/s2", "How hard it speeds up: more power drives it up steeper hills.");
+			slider("Top speed", tuning.TopSpeed, vehicle ? vehicle->GetMaxSpeed() : 0.0F, "m/s", "How fast it goes on the flat.");
+			slider("Grip", tuning.Grip, vehicle ? vehicle->GetGrip() : 0.0F, "", "How much of its weight the wheels push with before they slip: on a steep hill, power is no use without the grip to put it down.");
+			slider("Brakes", tuning.Brakes, vehicle ? vehicle->GetBrakeStrength() : 0.0F, "m/s2", "How hard it slows with the brake on.");
+			if (!vehicle || vehicle->GetHopSpeed() > 0.0F) {
+				slider("Jump", tuning.Jump, vehicle ? vehicle->GetHopSpeed() : 0.0F, "m/s", "How high it jumps off its springs when the driver jumps.");
+			}
+		}
+		if (!vehicle || boat) {
+			slider("Water power", tuning.WaterPower, vehicle ? vehicle->GetWaterThrust() : 0.0F, "m/s2", "How hard it speeds up in water.");
+			slider("Water top speed", tuning.WaterSpeed, vehicle ? vehicle->GetWaterMaxSpeed() : 0.0F, "m/s", "How fast it goes in water.");
+		}
+		if (vehicle && wheels) {
+			// As AVehicle::GetClimbAngle, with the sliders' values.
+			float gravity = std::max(std::abs(g_SceneMan.GetGlobalAcc().m_Y), 0.01F);
+			auto climb = [gravity](float acceleration, float grip) {
+				return std::min(std::asin(std::clamp(acceleration / gravity, 0.0F, 1.0F)), std::atan(std::max(grip, 0.0F))) * 180.0F / c_PI;
+			};
+			ImGui::Text("Climbs slopes up to about %.0f degrees (as it comes: %.0f).", climb(vehicle->GetAcceleration() * tuning.Power, vehicle->GetGrip() * tuning.Grip), climb(vehicle->GetAcceleration(), vehicle->GetGrip()));
+		}
+		if (ToolUI::Button("Reset to x1")) {
+			const bool crewed = tuning.Crewed;
+			tuning = VehicleTuning();
+			tuning.Modified = true;
+			tuning.Crewed = crewed;
+		}
+	}
 
 	/// Frees every picture's texture, for when the sandbox is left: they're made again as they're next needed.
 	void ForgetPictures() {
@@ -2451,6 +2541,12 @@ namespace SandboxDetail {
 				} else {
 					label = "Guard: point at a friendly unit, your brain or craft, a crate or a colony building for " + count + " to stay with";
 				}
+			} else if (mode == CommandMode::Command && commandAt.What == CommandTarget::GetIn && commandAt.Vehicle) {
+				// A vehicle to get into: lit round, and how many will sit in it.
+				ImU32 green = c_CommandModeColors[static_cast<int>(CommandMode::Guard)];
+				drawList->AddCircle(ToScreen(commandAt.Vehicle->GetPos()), std::max(commandAt.Vehicle->GetRadius() / scale, 12.0F), green, 0, pixel * 2.0F);
+				const int free = FreeSeatsOf(commandAt.Vehicle);
+				label = "Get in the " + commandAt.Vehicle->GetPresetName() + ": " + std::to_string(commandAt.Boarders) + " of " + count + " (" + std::to_string(free) + (free == 1 ? " seat free)" : " seats free)");
 			} else if (mode == CommandMode::Command && commandAt.What == CommandTarget::Objective) {
 				// A battle objective: lit round in the order's colour, and where each will stand to hold it.
 				const BattleObjective& objective = commandAt.Goal;
@@ -2770,7 +2866,7 @@ namespace SandboxDetail {
 		}
 		lastFrame = frame;
 
-		enum MenuAction { ClickMode, Now, AIMode, Weapons, Movement, FormationPick, KeepPacePick, MarkersPick, AnimalPick };
+		enum MenuAction { ClickMode, Now, AIMode, Weapons, Movement, FormationPick, KeepPacePick, MarkersPick, VehicleCrew, AnimalPick };
 		float scale = std::clamp(g_WindowMan.GetGameViewRect().h / 720.0F, 0.9F, 2.2F);
 		ActionMenu::MenuLayout menu(scale);
 		// In three parts, each drawn its own way (ActionMenu::Kind): what is done to the selected units now, how they are set now, and your own
@@ -2778,6 +2874,12 @@ namespace SandboxDetail {
 		using Kind = ActionMenu::Kind;
 		menu.Heading("Selected units", Kind::Command);
 		menu.Choices(Now, {"Defend here", "Cancel orders", "Deselect", "Focus on objective", "Follow team orders"}, -1);
+		if (SelectionHasVehicle()) {
+			// The selected vehicles' crews: kept in their seats, or let out. (Stay in shows what they have: lit when they all stay in.)
+			const int stayIn = SelectedStayIn();
+			menu.Heading("Vehicles", Kind::Command);
+			menu.Choices(VehicleCrew, {"Stay in vehicle", "Free to get out", "Everyone out"}, stayIn == 1 ? 0 : (stayIn == 0 ? 1 : -1));
+		}
 		menu.Heading("AI mode", Kind::State);
 		menu.Choices(AIMode, {"Sentry", "Hunt brains", "Dig for gold", "Rally point", "Do nothing"}, SelectedAIMode(), 3);
 		// (With animals among them: their own orders. Penned and Follow pick the mode to click out the pen, or the unit to follow, with.)
@@ -2850,6 +2952,15 @@ namespace SandboxDetail {
 					}
 					g_GUISound.SlicePickedSound()->Play();
 					return false;
+				case VehicleCrew: {
+					Stroke stroke;
+					stroke.Kind = Tool::OrderSelected;
+					stroke.Position = s_RingScenePoint;
+					stroke.Count = 140 + std::clamp(cell.Value, 0, 2);
+					s_Queue.push_back(stroke);
+					g_GUISound.SlicePickedSound()->Play();
+					return false;
+				}
 				case AIMode: {
 					static const Order orders[] = {Order::Hold, Order::HuntBrains, Order::DigGold, Order::Rally, Order::Idle};
 					Stroke stroke;
@@ -4159,6 +4270,16 @@ namespace SandboxDetail {
 			wide();
 			ImGui::AlignTextToFramePadding();
 			ImGui::TextUnformatted(preset ? preset->PresetName.c_str() : "(pick one in the Spawn panel)");
+			if (kind == Tool::Vehicle) {
+				next();
+				if (BarChip("Modified", s_VehicleTuning.Modified, ToolTheme::Text, nullptr, "On: put down with the driving tuned on the Spawn tab (power, top speed, grip...). Off: as it comes.") == 1) {
+					s_VehicleTuning.Modified = !s_VehicleTuning.Modified;
+				}
+				next();
+				if (BarChip("Full crew", s_VehicleTuning.Crewed, ToolTheme::Text, nullptr, "On: every seat filled with the unit picked in the Units list, a squad behind the driver. Off: empty.") == 1) {
+					s_VehicleTuning.Crewed = !s_VehicleTuning.Crewed;
+				}
+			}
 			if (kind == Tool::Item) {
 				next();
 				if (BarChip("Pull the pin", s_LitGrenade, ToolTheme::Text, nullptr, "Grenades are put down live.") == 1) {

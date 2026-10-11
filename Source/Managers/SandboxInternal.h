@@ -925,6 +925,23 @@ namespace SandboxDetail {
 		Count
 	};
 
+	/// How a vehicle from the Spawn tab's Vehicles list is put down: as it comes, or with its driving tuned (multipliers on its own values),
+	/// and empty or with every seat filled. Saved with the sandbox settings (Sandbox::GetVehicleSetup).
+	struct VehicleTuning {
+		bool Modified = false; //!< Whether the multipliers below are used. Off: the vehicle as its preset has it.
+		bool Crewed = false; //!< Whether every seat is filled with the unit picked in the Units list (or random ones), a squad behind the driver.
+		float Power = 1.0F; //!< Times its Acceleration: how hard it speeds up, and so how steep a hill it drives up.
+		float TopSpeed = 1.0F; //!< Times its MaxSpeed.
+		float Grip = 1.0F; //!< Times its Grip: how much of its weight it can push with before the wheels slip.
+		float Brakes = 1.0F; //!< Times its BrakeStrength.
+		float Jump = 1.0F; //!< Times its HopSpeed.
+		float WaterPower = 1.0F; //!< Times its WaterThrust (boats).
+		float WaterSpeed = 1.0F; //!< Times its WaterMaxSpeed (boats).
+	};
+	inline VehicleTuning s_VehicleTuning;
+	constexpr float c_VehicleTuneMin = 0.25F; //!< The least a vehicle tuning multiplier goes down to.
+	constexpr float c_VehicleTuneMax = 5.0F; //!< The most a vehicle tuning multiplier goes up to.
+
 	struct Stroke {
 		Tool Kind;
 		Vector Position;
@@ -965,6 +982,8 @@ namespace SandboxDetail {
 		int Over = 0; //!< Terrain and liquid brushes: what they may paint over besides air, PaintOver flags (Paint > Paint over), taken at the click.
 		int Fill = -1; //!< Terrain brushes: a FillShape filled from Position to Position2 (Brush type Shape), or -1 for a brush stroke at Position.
 		int Temperament = -1; //!< Units and drops: the temperament they are given (Actor::Temperament, NC-1), -1 for each one's own.
+		VehicleTuning Vehicle; //!< Tool::Vehicle: how it is tuned and crewed (s_VehicleTuning), taken at the click.
+		int CrewChoice = 0; //!< Tool::Vehicle with Vehicle.Crewed: the unit picked in the Units list for the crew (s_UnitChoice).
 	};
 
 	struct CraftChoice {
@@ -1309,8 +1328,11 @@ namespace SandboxDetail {
 			Select, //!< Nothing selected, so the click selects (as Select mode).
 			Move, //!< As Move mode: a friend under it is selected, an enemy attacked, else moved to.
 			Objective, //!< A battle objective of the mode on now: gone for, or held if the selection's team defends it.
-			Air //!< Open air, nowhere near the ground: flown to.
+			Air, //!< Open air, nowhere near the ground: flown to.
+			GetIn //!< A friendly vehicle or flying ship with a free seat, with units on foot selected that can sit: they get in.
 		} What = Select;
+		Actor* Vehicle = nullptr; //!< With GetIn: the vehicle. Not owned.
+		int Boarders = 0; //!< With GetIn: how many of the selection will get in (as many as can, up to its free seats).
 		BattleObjective Goal; //!< With Objective: which.
 		bool Defend = false; //!< With Objective: the selection's team holds it rather than goes for it.
 	};
@@ -2434,6 +2456,19 @@ namespace SandboxDetail {
 	void DropPlanStep(long unitID, int step);
 	Actor* EnemyNear(const Vector& point, int team);
 	void OrderSelectedUnits(int choice, const Vector& point);
+	/// How many seats of a vehicle (AVehicle) or flying ship (ACShip) are free; 0 for anything else, or one that is dead.
+	int FreeSeatsOf(const Actor* vehicle);
+	/// Whether a unit could get into a vehicle or flying ship when it reaches it: a humanoid of its side not under a player's control.
+	bool CanBoard(const Actor* vehicle, const Actor* unit);
+	/// Sends the units that can sit to get into a vehicle or flying ship, the nearest first, as many as it has seats free; the others that
+	/// could have stand guard by it (Command mode's Get in).
+	void GetInVehicle(const std::vector<Actor*>& units, Actor* vehicle);
+	/// Lets everyone out of a vehicle or flying ship: a squad, the rest following whoever got out first (the driver).
+	void EveryoneOut(Actor* vehicle);
+	/// Whether the selected vehicles' crews stay in: 1 all do, 0 none do, -1 mixed, -2 no vehicle selected.
+	int SelectedStayIn();
+	/// Whether a vehicle or flying ship is among the selected units.
+	bool SelectionHasVehicle();
 	int SelectedRule(bool weapons);
 	int SelectedAIMode();
 	void QueueRule(bool weapons, int rule);
@@ -2627,6 +2662,9 @@ namespace SandboxDetail {
 	/// The picture browser of a list, as on the Spawn tab. @param pickInto If given, a click sets this to the preset name picked (and that
 	/// one is shown as chosen) instead of taking up the tool, with search and filters of its own.
 	void PictureGrid(Tool kind, const char* group, std::string* pickInto = nullptr);
+
+	/// The Spawn tab's vehicle options: Default or Modified, the tuning sliders (with the vehicle chosen's own values beside them) and the crew.
+	void VehicleOptions();
 	void FormationCombo(const char* id);
 	void DrawOrderFeedback();
 	void DrawMinimap();

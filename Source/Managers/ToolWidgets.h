@@ -141,6 +141,10 @@ namespace RTE {
 				if (!window->Active || window->Hidden || (window->Flags & (ImGuiWindowFlags_ChildWindow | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_Tooltip))) {
 					continue;
 				}
+				// A window with nothing drawn (a see-through background and no contents) has nothing to light, and would cast a shadow and show a dim square.
+				if (window->DrawList->VtxBuffer.Size == 0) {
+					continue;
+				}
 				ImVec2 from = window->Pos;
 				ImVec2 to(from.x + window->Size.x, from.y + window->Size.y);
 				float pixel = std::max(1.0F, std::floor(window->FontRefSize / 10.0F));

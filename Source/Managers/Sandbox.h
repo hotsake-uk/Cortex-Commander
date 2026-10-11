@@ -202,6 +202,12 @@ namespace RTE {
 		/// Sets up your character in the Sandbox game mode from a line of text made by GetCharacterSetup.
 		static void SetCharacterSetup(const std::string& setup);
 
+		/// Gets how the Spawn tab puts vehicles down (Default or Modified, its tuning sliders, empty or crewed), as one line of text for the settings file.
+		static std::string GetVehicleSetup();
+
+		/// Sets how the Spawn tab puts vehicles down from a line of text made by GetVehicleSetup.
+		static void SetVehicleSetup(const std::string& setup);
+
 		/// A unit got into a vehicle (VH-1, AVehicle::TakeDriver): the unit is gone from the scene, a copy of it kept in the vehicle. If it was the
 		/// unit you were controlling, you are in the vehicle now, not back to the god view; if it was your character, it is in there.
 		/// @param unit The unit that got in, still in the scene this update. @param vehicle The vehicle.
