@@ -3427,7 +3427,23 @@ int Actor::FlyRouteWeightless(AEJetpack* jetpack, float jetAccel) {
 	}
 	const Vector target = m_MovePath.front();
 	const bool last = m_MovePath.size() == 1;
-	const Vector toTarget = towards(m_Pos, target);
+	// The last point is aimed for loosely: each unit picks its own spot somewhere near it (the same spot each frame, in open air),
+	// so a group doesn't all come to rest on the one pixel.
+	const float settle = std::max(reach, h * 0.6F);
+	Vector aim = target;
+	if (last && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
+		unsigned int seed = static_cast<unsigned int>(GetUniqueID()) * 2654435761U ^ static_cast<unsigned int>(target.GetFloorIntX() * 73856093) ^ static_cast<unsigned int>(target.GetFloorIntY() * 19349663);
+		seed ^= seed >> 15;
+		seed *= 2246822519U;
+		seed ^= seed >> 13;
+		const float angle = static_cast<float>(seed & 0xFFFF) / 65535.0F * c_TwoPI;
+		const float spread = static_cast<float>((seed >> 16) & 0xFFFF) / 65535.0F * h * 0.5F;
+		Vector spot = target + Vector(spread, 0.0F).RadRotate(angle);
+		if (g_SceneMan.GetTerrMatter(spot.GetFloorIntX(), spot.GetFloorIntY()) == MaterialColorKeys::g_MaterialAir && clearLine(target, spot)) {
+			aim = spot;
+		}
+	}
+	const Vector toTarget = towards(m_Pos, aim);
 	const float distance = toTarget.GetMagnitude();
 	const bool following = g_MovableMan.ValidMO(m_pMOMoveTarget);
 	if (target != mover.target) {
@@ -3436,8 +3452,8 @@ int Actor::FlyRouteWeightless(AEJetpack* jetpack, float jetAccel) {
 		mover.progressTimer.Reset();
 	}
 
-	// Arrived: at the last point and all but still.
-	if (last && distance < std::max(reach, h * 0.4F) && m_Vel.MagnitudeIsLessThan(2.0F)) {
+	// Arrived: near the last point and slowed to a drift (what speed is left is coasted off, not stopped dead).
+	if (last && distance < settle && m_Vel.MagnitudeIsLessThan(3.0F)) {
 		if (!m_Waypoints.empty() && m_HasMovePathGoal && !following) {
 			m_MovePath.clear();
 			m_MovePathKinds.clear();
@@ -3452,20 +3468,21 @@ int Actor::FlyRouteWeightless(AEJetpack* jetpack, float jetAccel) {
 	}
 
 	// The speed wanted: towards the point at the Zero G Settings' speed, and at the last one no faster than the jet can stop in the room left
-	// (on half its push, as the tank and the body's turning take some); points passed on the way are gone through at half speed.
+	// to the middle of the settling zone (on under a third of its push, so the slowing is long and gradual rather than a slam);
+	// points passed on the way are gone through at half speed.
 	const bool standardJet = jetpack && jetpack->IsAttached() && jetpack->GetJetpackType() == AEJetpack::JetpackType::Standard && ZeroGravity::JetpackAnyDirection();
 	const bool fuelled = standardJet && !jetpack->IsOutOfFuel() && (jetpack->IsEmitting() || jetpack->GetJetTimeLeft() > 300.0F || jetpack->IsFullyFueled());
 	const float cruise = std::max(ZeroGravity::FlySpeed(), 0.5F);
-	const float brake = standardJet ? std::max(jetAccel * 0.5F, 1.0F) : 1.0F;
-	const float room = std::max(0.0F, distance - reach * 0.5F) / ppm;
-	const float passSpeed = last ? 0.0F : cruise * 0.5F;
+	const float brake = standardJet ? std::max(jetAccel * 0.3F, 0.8F) : 0.8F;
+	const float room = std::max(0.0F, distance - (last ? settle * 0.5F : reach * 0.5F)) / ppm;
+	const float passSpeed = last ? 1.0F : cruise * 0.5F;
 	const float wantSpeed = std::min(cruise, std::sqrt(passSpeed * passSpeed + 2.0F * brake * room));
 	const Vector wantVel = distance > 0.5F ? toTarget / distance * wantSpeed : Vector();
 	const Vector change = wantVel - m_Vel;
 
 	if (fuelled) {
 		// Lit while the speed is well off what's wanted, out once it's near (a person holds the jet or lets it be, rather than flicking it).
-		mover.jet = mover.jet ? change.MagnitudeIsGreaterThan(0.4F) : change.MagnitudeIsGreaterThan(1.2F);
+		mover.jet = mover.jet ? change.MagnitudeIsGreaterThan(0.8F) : change.MagnitudeIsGreaterThan(1.6F);
 		if (mover.jet) {
 			jetpack->SetSteer(change);
 			ctrl.SetState(BODY_JUMP, true);
@@ -3474,16 +3491,16 @@ int Actor::FlyRouteWeightless(AEJetpack* jetpack, float jetAccel) {
 		mover.jet = false;
 		if (ZeroGravity::PushOff()) {
 			// No jet to fly on: pushed off whatever the body touches, towards the point, as hard as the Zero G Settings say (gentler near it),
-			// and held on to it there at the end.
+			// and caught on it there at the end, slowing over a few frames rather than sticking.
 			const float radius = std::max(GetRadius() * 0.5F, 10.0F);
 			bool touching = false;
 			for (int i = 0; i < 8 && !touching; ++i) {
 				Vector probe = m_Pos + Vector(radius + 4.0F, 0.0F).RadRotate(static_cast<float>(i) * c_QuarterPI);
 				touching = g_SceneMan.GetTerrMatter(probe.GetFloorIntX(), probe.GetFloorIntY()) != MaterialColorKeys::g_MaterialAir;
 			}
-			if (touching && last && distance < std::max(reach, h * 0.4F)) {
-				m_Vel *= 0.5F;
-				m_AngularVel *= 0.5F;
+			if (touching && last && distance < settle) {
+				m_Vel *= 0.9F;
+				m_AngularVel *= 0.85F;
 			} else if (touching && mover.pushTimer.IsPastSimMS(500) && change.MagnitudeIsGreaterThan(1.0F) && distance > 0.5F) {
 				float push = std::clamp(distance / ppm * 1.2F, 1.0F, std::max(ZeroGravity::PushSpeed(), 1.0F));
 				m_Vel = toTarget / distance * push;
@@ -3518,7 +3535,7 @@ int Actor::FlyRouteWeightless(AEJetpack* jetpack, float jetAccel) {
 void Actor::HoldStillWeightless(AEJetpack* jetpack) {
 	const bool somewhere = !m_Waypoints.empty() || !m_MovePath.empty() || m_HasMovePathGoal || g_MovableMan.ValidMO(m_pMOMoveTarget);
 	const bool jet = jetpack && jetpack->IsAttached() && jetpack->GetJetpackType() == AEJetpack::JetpackType::Standard && ZeroGravity::JetpackAnyDirection() && !jetpack->IsOutOfFuel();
-	if (!somewhere && jet && m_Status != INACTIVE && m_Vel.MagnitudeIsGreaterThan(jetpack->IsEmitting() ? 0.3F : 1.5F)) {
+	if (!somewhere && jet && m_Status != INACTIVE && m_Vel.MagnitudeIsGreaterThan(jetpack->IsEmitting() ? 0.8F : 1.5F)) {
 		jetpack->SetSteer(-m_Vel);
 		m_Controller.SetState(BODY_JUMP, true);
 	}
