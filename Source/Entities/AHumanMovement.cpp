@@ -257,7 +257,8 @@ void AHuman::UpdateAIMotor() {
 			Vector free;
 			mover.skyClear = true;
 			for (float dy: {-h * 0.3F, feet * 0.5F}) {
-				if (g_SceneMan.CastObstacleRay(m_Pos + Vector(0.0F, dy), toSky, obstacle, free, m_MOID, IgnoresWhichTeam(), 0, 3) >= 0.0F) {
+				// (Past units of its own team, which move and are flown past: counted, a group sent up together mostly waited on each other.)
+				if (g_SceneMan.CastObstacleRay(m_Pos + Vector(0.0F, dy), toSky, obstacle, free, m_MOID, m_Team, 0, 3) >= 0.0F) {
 					mover.skyClear = false;
 				}
 			}
@@ -1201,9 +1202,10 @@ float AHuman::FlightFuelNeeded(const Vector& landing, float landingFloorY, bool 
 	return m_pJetpack && capped ? std::min(needed, m_pJetpack->GetJetTimeTotal() * 0.98F) : needed;
 }
 
-// Whether the way to a landing is open air for a flight: up at the unit's column to over the landing's floor, then across. With passFriends,
-// units of its own team are no obstacle (they move, and a body flies past them).
-bool AHuman::FlightWayClear(const Vector& landing, float landingFloorY, bool passFriends) const {
+// Whether the way to a landing is open air for a flight: up at the unit's column to over the landing's floor, then across. Units of its own
+// team are no obstacle (they move, and a body flies past them): counted as walls, a group sent together saw each other in the way, and
+// whether a unit took off depended on where its friends stood.
+bool AHuman::FlightWayClear(const Vector& landing, float landingFloorY) const {
 	float h = m_CharHeight;
 	float cruiseY = std::min(m_Pos.m_Y, landingFloorY - 12.0F - h * 0.5F);
 	Vector up(0.0F, cruiseY - m_Pos.m_Y - h * 0.3F);
@@ -1212,7 +1214,7 @@ bool AHuman::FlightWayClear(const Vector& landing, float landingFloorY, bool pas
 	Vector free;
 	// (Through a ladder's rungs, which a flying body passes: taken for a wall, a shaft with a ladder up its side was never open to fly.)
 	const unsigned char rungs = LadderMaterialID();
-	const int ignoreTeam = passFriends ? m_Team : IgnoresWhichTeam();
+	const int ignoreTeam = m_Team;
 	for (float dx: {-h * 0.15F, h * 0.15F}) {
 		if (up.m_Y < -2.0F && g_SceneMan.CastObstacleRay(m_Pos + Vector(dx, -h * 0.3F), up, obstacle, free, m_MOID, ignoreTeam, rungs, 3) >= 0.0F) {
 			return false;
@@ -2851,7 +2853,7 @@ int AHuman::MoveAlongRoute() {
 			// (The goal itself on any tank, as above; the places short of it on what the risk lets one tank fly.)
 			const float placeReach = &candidate == &points.front() && !skyOnly ? std::numeric_limits<float>::max() : reach;
 			const Vector landingCentre(place.m_X, floorY - feet - 4.0F);
-			if (FlightFuelNeeded(place, floorY, false) <= placeReach && (legOpen(m_Pos, landingCentre) || FlightWayClear(place, floorY, true))) {
+			if (FlightFuelNeeded(place, floorY, false) <= placeReach && (legOpen(m_Pos, landingCentre) || FlightWayClear(place, floorY))) {
 				found = true;
 			} else {
 				// Up and over: a point over the way, the lowest that both legs are open to and one tank flies, up to fourteen bodies over
