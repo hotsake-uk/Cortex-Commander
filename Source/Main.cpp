@@ -38,6 +38,7 @@
 #include "MenuMan.h"
 #include "ConsoleMan.h"
 #include "SettingsMan.h"
+#include "Controller.h"
 #include <chrono>
 #include <string>
 #include <utility>
@@ -385,6 +386,11 @@ void PollSDLEvents() {
 		    Sandbox::IsGodMode() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled()) {
 			Sandbox::TogglePlay((sdlEvent.key.mod & SDL_KMOD_SHIFT) != 0);
 		}
+		// The pause AI key (Ctrl+P unless changed in the AI settings): the AI stops thinking and acting while the world and the player carry on, until pressed again.
+		if (sdlEvent.type == SDL_EVENT_KEY_DOWN && !sdlEvent.key.repeat && g_ActivityMan.IsInActivity() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled() &&
+		    !ImGui::GetIO().WantTextInput && !g_SettingsMan.IsTakingKey() && g_SettingsMan.IsPauseAIKey(sdlEvent.key.scancode, sdlEvent.key.mod)) {
+			Controller::SetAIPaused(!Controller::IsAIPaused());
+		}
 		// Pause/Break, or O on keyboards without one: holds the world still until pressed again, with the sandbox tools open or closed.
 		if (sdlEvent.type == SDL_EVENT_KEY_DOWN && !sdlEvent.key.repeat && g_ActivityMan.IsInActivity() && !g_MenuMan.GetIsInMenuScreen() &&
 		    (sdlEvent.key.scancode == SDL_SCANCODE_PAUSE || (sdlEvent.key.scancode == SDL_SCANCODE_O && !(sdlEvent.key.mod & (SDL_KMOD_ALT | SDL_KMOD_CTRL | SDL_KMOD_GUI)) && !g_ConsoleMan.IsEnabled() && !ImGui::GetIO().WantTextInput))) {
@@ -405,8 +411,8 @@ void PollSDLEvents() {
 			} else if (sdlEvent.key.scancode == SDL_SCANCODE_F9 && !Sandbox::IsGodMode() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled()) {
 				// Commander view (RC-9): your side from above in any other game, and back into your unit.
 				Sandbox::ToggleCommander();
-			} else if (sdlEvent.key.scancode == SDL_SCANCODE_F11 && Sandbox::IsBattleCommand() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled()) {
-				// Battle Command, while it's in development: the Commander Toolbar or the sandbox's bar.
+			} else if (Sandbox::IsCommanderBarKey(sdlEvent.key.scancode) && Sandbox::IsGodMode() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled() && !ImGui::GetIO().WantTextInput) {
+				// The Sandbox game mode, and Battle Command while it's in development: the Commander Toolbar or the sandbox's bar (F11 unless rebound).
 				Sandbox::ToggleCommanderBar();
 			}
 		}
