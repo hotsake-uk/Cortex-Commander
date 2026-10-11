@@ -2018,7 +2018,8 @@ void BuyMenuGUI::CategoryChange(bool focusOnCategoryTabs) {
 	} else if (m_MenuCategory == GUNS) {
 		AddObjectsToItemList(catalogList, "HDFirearm", {"Weapons"});
 	} else if (m_MenuCategory == BOMBS) {
-		AddObjectsToItemList(catalogList, "ThrownDevice", {"Bombs"});
+		// Bombs and grenades, and thrown weapons (javelins, throwing axes and knives, bolas), which are neither guns nor bombs.
+		AddObjectsToItemList(catalogList, "ThrownDevice", {"Bombs", "Weapons - Thrown"});
 	} else if (m_MenuCategory == SHIELDS) {
 		AddObjectsToItemList(catalogList, "HeldDevice", {"Shields"});
 	} else if (m_MenuCategory == SPELLS) {
