@@ -1663,7 +1663,8 @@ void GameActivity::Update() {
 					controlledActorPieMenu->RemovePieSlicesByType(PieSliceType::BuyMenu);
 				}
 
-				if (controlledActorPieMenu->IsEnabled() && controlledActorPieMenu->HasSubPieMenuOpen() && m_InventoryMenuGUI[player]->GetMenuMode() == InventoryMenuGUI::MenuMode::Carousel) {
+				// (Not the carousel under the unit menu, which lists the inventory itself.)
+				if (controlledActorPieMenu->IsEnabled() && (controlledActorPieMenu->HasSubPieMenuOpen() || controlledActorPieMenu->IsReplacedByActionMenu()) && m_InventoryMenuGUI[player]->GetMenuMode() == InventoryMenuGUI::MenuMode::Carousel) {
 					m_InventoryMenuGUI[player]->SetEnabled(false);
 				} else if (m_InventoryMenuGUI[player]->GetMenuMode() == InventoryMenuGUI::MenuMode::Carousel || !m_InventoryMenuGUI[player]->IsVisible()) {
 					m_InventoryMenuGUI[player]->SetMenuMode(InventoryMenuGUI::MenuMode::Carousel);

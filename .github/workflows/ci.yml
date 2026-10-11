@@ -1,9 +1,10 @@
 name: Continuous Integration
 
 on:
-  # Triggers the workflow for pushes to development, for pull request events, and for the merge queue
+  # Triggers the workflow for pushes to maindev, for pull request events, and for the merge queue.
+  # Pull requests only build Linux; every platform builds on push, schedule and manual runs.
   push:
-    branches: [development]
+    branches: [maindev]
   pull_request:
     types: [opened, reopened, ready_for_review, synchronize]
   merge_group:
@@ -22,6 +23,9 @@ concurrency:
 jobs:
   meson:
     uses: ./.github/workflows/meson.yml
+    with:
+      linux_only: ${{ github.event_name == 'pull_request' }}
 
   msbuild:
+    if: ${{ github.event_name != 'pull_request' }}
     uses: ./.github/workflows/msbuild.yml

@@ -124,6 +124,12 @@ namespace RTE {
 		/// @return The audio management system object used by AudioMan for playing audio.
 		FMOD::System* GetAudioSystem() const { return m_AudioSystem; }
 
+		/// Gets the FMOD ChannelGroup unit speech voices play in (UnitSpeechVoice), made the first time it's asked for: a group of its own inside the
+		/// mixer's Voices one, so voices follow the Voices slider and the sounds' volume, mute, pause and time scale, while the updates of sound
+		/// effect channels (ForEachSFXChannel, which only walks the mixer groups' own channels, all of them SoundContainers') leave them be.
+		/// @return The group, or none with audio off.
+		FMOD::ChannelGroup* GetUnitSpeechChannelGroup();
+
 		/// Reports whether audio is enabled.
 		/// @return Whether audio is enabled.
 		bool IsAudioEnabled() const { return m_AudioEnabled; }
@@ -370,6 +376,7 @@ namespace RTE {
 		FMOD::ChannelGroup* m_MusicChannelGroup; //!< The FMOD ChannelGroup for music.
 		std::array<FMOD::ChannelGroup*, MIX_CATEGORY_COUNT> m_SoundMixChannelGroups; //!< One FMOD ChannelGroup per SoundMixCategory. All are children of the SFX group, except the UI one which is a child of the UI group.
 		std::array<float, MIX_CATEGORY_COUNT> m_SoundMixVolumes; //!< The mixer volume of each SoundMixCategory, 0.0-1.0.
+		FMOD::ChannelGroup* m_UnitSpeechChannelGroup; //!< The FMOD ChannelGroup for unit speech voices, inside the mixer's Voices one (GetUnitSpeechChannelGroup); none until asked for.
 
 		bool m_AudioEnabled; //!< Bool to tell whether audio is enabled or not.
 		std::vector<std::unique_ptr<const Vector>> m_CurrentActivityHumanPlayerPositions; //!< The stored positions of each human player in the current activity. Only filled when there's an activity running.

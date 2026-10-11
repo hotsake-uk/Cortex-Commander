@@ -470,6 +470,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AVehicle) {
 	    .property("Driver", &AVehicle::GetDriver)
 	    .property("HasDriver", &AVehicle::HasDriver)
 	    .property("Throttle", &AVehicle::GetThrottle)
+	    .property("Handbrake", &AVehicle::IsHandbrakeOn, &AVehicle::SetHandbrake)
 	    .property("MaxSpeed", &AVehicle::GetMaxSpeed, &AVehicle::SetMaxSpeed)
 	    .property("HopSpeed", &AVehicle::GetHopSpeed, &AVehicle::SetHopSpeed)
 	    .property("WheelsOnGround", &AVehicle::GetWheelsOnGround)

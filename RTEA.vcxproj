@@ -846,6 +846,10 @@
     <ClInclude Include="Source\System\Vector.h" />
     <ClInclude Include="Source\System\Writer.h" />
     <ClInclude Include="Source\System\MicroPather\micropather.h" />
+    <ClInclude Include="Source\System\RSynth\darray.h" />
+    <ClInclude Include="Source\System\RSynth\klatt.h" />
+    <ClInclude Include="Source\System\RSynth\resonator.h" />
+    <ClInclude Include="Source\System\RSynth\tts.h" />
     <ClInclude Include="Source\Renderer\raylib\raylib.h" />
     <ClInclude Include="Source\Renderer\raylib\rlconfig.h" />
     <ClInclude Include="Source\Renderer\raylib\rlgl.h" />
@@ -879,6 +883,7 @@
     <ClInclude Include="Source\Managers\MagicEffects.h" />
     <ClInclude Include="Source\Managers\ActorWater.h" />
     <ClInclude Include="Source\Managers\UnitSpeech.h" />
+    <ClInclude Include="Source\Managers\UnitSpeechVoice.h" />
     <ClInclude Include="Source\Managers\ControlLink.h" />
     <ClInclude Include="Source\Managers\Sandbox.h" />
     <ClInclude Include="Source\Managers\SandboxInternal.h" />
@@ -1418,6 +1423,54 @@
       <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Minimal|x64'">false</IncludeInUnityFile>
       <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Full|x64'">false</IncludeInUnityFile>
     </ClCompile>
+    <ClCompile Include="Source\System\RSynth\darray.cpp">
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Release|Win32'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Final|Win32'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Profiling|Win32'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Minimal|Win32'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Full|Win32'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Release|x64'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Final|x64'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Profiling|x64'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Minimal|x64'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Full|x64'">false</IncludeInUnityFile>
+    </ClCompile>
+    <ClCompile Include="Source\System\RSynth\klatt.cpp">
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Release|Win32'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Final|Win32'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Profiling|Win32'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Minimal|Win32'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Full|Win32'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Release|x64'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Final|x64'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Profiling|x64'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Minimal|x64'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Full|x64'">false</IncludeInUnityFile>
+    </ClCompile>
+    <ClCompile Include="Source\System\RSynth\resonator.cpp">
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Release|Win32'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Final|Win32'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Profiling|Win32'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Minimal|Win32'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Full|Win32'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Release|x64'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Final|x64'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Profiling|x64'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Minimal|x64'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Full|x64'">false</IncludeInUnityFile>
+    </ClCompile>
+    <ClCompile Include="Source\System\RSynth\tts.cpp">
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Release|Win32'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Final|Win32'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Profiling|Win32'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Minimal|Win32'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Full|Win32'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Release|x64'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Final|x64'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Profiling|x64'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Minimal|x64'">false</IncludeInUnityFile>
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Full|x64'">false</IncludeInUnityFile>
+    </ClCompile>
     <ClCompile Include="Source\System\PathFinder.cpp" />
     <ClCompile Include="Source\System\Reader.cpp" />
     <ClCompile Include="Source\System\System.cpp" />
@@ -1451,6 +1504,7 @@
     <ClCompile Include="Source\Managers\ActorWater.cpp" />
     <ClCompile Include="Source\Managers\UnitSpeech.cpp" />
     <ClCompile Include="Source\Managers\UnitSpeechWorld.cpp" />
+    <ClCompile Include="Source\Managers\UnitSpeechVoice.cpp" />
     <ClCompile Include="Source\Managers\Sandbox.cpp" />
     <ClCompile Include="Source\Managers\SandboxCatalogue.cpp" />
     <ClCompile Include="Source\Managers\SandboxOrders.cpp" />

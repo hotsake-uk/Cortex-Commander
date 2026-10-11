@@ -10,11 +10,14 @@ namespace RTE {
 	/// The action menu (RC-12): what holding right click opens in place of a wheel. A list above the pointer, on one layer, in the sandbox and
 	/// settings style: headings across a panel, and under each its choices side by side, the one in use lit in gold.
 	///
-	/// On a unit the player is playing it stands in for the pie wheel: every slice the wheel has (its sub-menus' slices under their own
-	/// headings) and the unit's engagement rules (weapons: fire at will, return fire, hold fire; movement: as ordered, engage, move only, hold
-	/// ground), with the group orders' formation, keeping together and the order markers under them. Moving the mouse moves the menu's own
-	/// pointer (the game keeps the mouse for aiming); a left click picks, and so does letting go of the right button over a row. A slice picked
-	/// is handed to the unit's PieMenu (PieMenu::QueueSliceActivation), which carries it out on its next update just as a pick on the wheel.
+	/// On a unit the player is playing it stands in for the pie wheel as the unit menu: its inventory (what it has in hand, lit, and what it
+	/// carries, taken in hand when picked, with the wheel's inventory slices), its actions (a vehicle's handbrake, the wheel's other slices,
+	/// its sub-menus' slices under their own headings) and its rules (weapons: fire at will, return fire, hold fire; movement: as ordered,
+	/// engage, move only, hold ground; temperament). With the "Unit menu opens on a click" setting a right click leaves it up till a click away
+	/// from it or another right click; otherwise it is up while the button is held. Time runs at the "Time while the unit menu is up" speed.
+	/// Moving the mouse moves the menu's own pointer (the game keeps the mouse for aiming); a left click picks, and so does letting go of the
+	/// right button over a row the pointer was moved to. A slice picked is handed to the unit's PieMenu (PieMenu::QueueSliceActivation),
+	/// which carries it out on its next update just as a pick on the wheel.
 	/// The wheel comes back with the "Classic pie wheel" setting; a gamepad, and players after the first, always have it (see
 	/// PieMenu::IsReplacedByActionMenu). The sandbox's command ring is laid out and drawn with the same pieces (MenuLayout, DrawMenu).
 	class ActionMenu {
@@ -51,6 +54,9 @@ namespace RTE {
 			/// A heading across the panel, starting a section of a kind: the choices under it are drawn as that kind, and the heading is
 			/// tagged with it (DO NOW, UNITS' STATE, SETTING).
 			void Heading(const std::string& text, Kind kind);
+
+			/// Draws the choices after this as another kind, with no heading of their own (buttons under a section of states).
+			void SwitchKind(Kind kind) { m_Kind = kind; }
 
 			/// Choices side by side, at most perRow to a row (all on one row with 0), the one at chosen lit (none with -1).
 			void Choices(int action, const std::vector<std::string>& labels, int chosen, int perRow = 0, const std::vector<bool>& enabled = {}, const std::vector<const void*>& data = {});

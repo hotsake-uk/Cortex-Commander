@@ -1,4 +1,5 @@
 #include "UnitSpeech.h"
+#include "UnitSpeechVoice.h"
 #include "Actor.h"
 #include "ConsoleMan.h"
 #include "DataModule.h"
@@ -435,9 +436,12 @@ void UnitSpeech::EnsureLoaded() {
 }
 
 void UnitSpeech::Reload() {
-	std::scoped_lock lock(s_LoadMutex);
-	LoadAll();
-	s_Loaded.store(true, std::memory_order_release);
+	{
+		std::scoped_lock lock(s_LoadMutex);
+		LoadAll();
+		s_Loaded.store(true, std::memory_order_release);
+	}
+	UnitSpeechVoice::Reload();
 }
 
 void UnitSpeech::LoadAll() {
@@ -640,6 +644,7 @@ bool UnitSpeech::Say(Actor& actor, const std::string& triggerKey, bool answering
 	SayText(actor, text, 0);
 	state.Trigger = trigger;
 	state.Line = pick;
+	state.Tones = tones && static_cast<size_t>(pick) < tones->size() ? (*tones)[pick] : 0u;
 	return true;
 }
 
@@ -674,6 +679,7 @@ void UnitSpeech::SayText(Actor& actor, const std::string& text, int durationMS) 
 	state.DurationMS = durationMS > 0 ? durationMS : std::clamp(1500 + 55 * static_cast<int>(text.size()), 1800, 4500);
 	state.Trigger = -1;
 	state.Line = -1;
+	state.Tones = 0;
 }
 
 void UnitSpeech::DrawBubble(BITMAP* targetBitmap, int x, int y, const State& state, int team) {

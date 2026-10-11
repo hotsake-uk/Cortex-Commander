@@ -1,6 +1,10 @@
 sources += files(
 'Base64/base64.cpp',
 'MicroPather/micropather.cpp',
+'RSynth/darray.cpp',
+'RSynth/klatt.cpp',
+'RSynth/resonator.cpp',
+'RSynth/tts.cpp',
 'Semver200/Semver200_comparator.cpp',
 'Semver200/Semver200_modifier.cpp',
 'Semver200/Semver200_parser.cpp',

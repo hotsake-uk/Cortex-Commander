@@ -24,6 +24,7 @@
 #include "ActorFire.h"
 #include "ActorWater.h"
 #include "UnitSpeech.h"
+#include "UnitSpeechVoice.h"
 #include "ModernHUD.h"
 #include "ToolWidgets.h"
 #include "ConsoleMan.h"
@@ -133,6 +134,8 @@ void SettingsMan::Clear() {
 	m_AlwaysDisplayUnheldItemsInStrategicMode = true;
 	m_SubPieMenuHoverOpenDelay = 1000;
 	m_ClassicPieWheel = false;
+	m_UnitMenuClickToOpen = true;
+	m_UnitMenuTimeScale = 0.25F;
 	m_PauseAIKey = "Ctrl+P";
 	m_EndlessMetaGameMode = false;
 	m_EnableCrabBombs = false;
@@ -140,10 +143,12 @@ void SettingsMan::Clear() {
 	m_BodyGearSettlesAsScraps = true;
 	m_GibChunks = GibChunkTuning();
 	m_NoSceneWrap = true;
+	std::fill(std::begin(m_Toughness), std::end(m_Toughness), 1.0F);
 	m_AISuppression = 1.0F;
 	m_AIDigWillingness = 1.0F;
 	m_AIThreatAvoidance = 1.0F;
 	m_AIRecklessness = 0.5F;
+	m_AILadderGiveUpSeconds = 1.5F;
 	m_AISpawnDiggerChance = 0.0F;
 	m_BleedOutChance = 0.0F;
 	m_WeaponTerrainDamage = 1.0F;
@@ -739,6 +744,12 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AlwaysDisplayUnheldItemsInStrategicMode", { reader >> m_AlwaysDisplayUnheldItemsInStrategicMode; });
 	MatchProperty("SubPieMenuHoverOpenDelay", { reader >> m_SubPieMenuHoverOpenDelay; });
 	MatchProperty("ClassicPieWheel", { reader >> m_ClassicPieWheel; });
+	MatchProperty("UnitMenuClickToOpen", { reader >> m_UnitMenuClickToOpen; });
+	MatchProperty("UnitMenuTimeScale", {
+		float scale;
+		reader >> scale;
+		SetUnitMenuTimeScale(scale);
+	});
 	MatchProperty("PauseAIKey", { m_PauseAIKey = reader.ReadPropValue(); });
 	MatchProperty("EndlessMetaGameMode", { reader >> m_EndlessMetaGameMode; });
 	MatchProperty("EndlessMode", { reader >> m_EndlessMetaGameMode; }); // Legacy name, kept for old Settings.ini files.
@@ -756,6 +767,11 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("UnitSpeechChance", { int percent = 40; reader >> percent; UnitSpeech::SetChance(percent); });
 	MatchProperty("UnitSpeechEnemies", { bool on = true; reader >> on; UnitSpeech::SetShowsEnemies(on); });
 	MatchProperty("UnitSpeechBubbles", { bool on = true; reader >> on; UnitSpeech::SetShowsBubbles(on); });
+	MatchProperty("UnitSpeechVoices", { bool on = true; reader >> on; UnitSpeechVoice::SetEnabled(on); });
+	MatchProperty("UnitSpeechVoiceVolume", { int percent = 70; reader >> percent; UnitSpeechVoice::SetVolume(percent); });
+	MatchProperty("UnitSpeechVoiceRadio", { int percent = 75; reader >> percent; UnitSpeechVoice::SetRadio(percent); });
+	MatchProperty("UnitSpeechVoiceEnemies", { bool on = true; reader >> on; UnitSpeechVoice::SetHearsEnemies(on); });
+	MatchProperty("UnitSpeechVoiceWords", { bool on = true; reader >> on; UnitSpeechVoice::SetSpeaksWords(on); });
 	MatchProperty("UnitSpeechOff", { UnitSpeech::SetTriggerOn(reader.ReadPropValue(), false); });
 	MatchProperty("UnitSpeechOn", { UnitSpeech::SetTriggerOn(reader.ReadPropValue(), true); });
 	MatchProperty("UnitSpeechTones1", { UnitSpeech::SetTeamTonesText(0, reader.ReadPropValue()); });
@@ -763,6 +779,10 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("UnitSpeechTones3", { UnitSpeech::SetTeamTonesText(2, reader.ReadPropValue()); });
 	MatchProperty("UnitSpeechTones4", { UnitSpeech::SetTeamTonesText(3, reader.ReadPropValue()); });
 	MatchProperty("UnitSpeechToneMix", { UnitSpeech::SetToneWeightsText(reader.ReadPropValue()); });
+	MatchProperty("UnitToughness", { float toughness = 1.0F; reader >> toughness; SetToughness(ToughnessKind::Units, toughness); });
+	MatchProperty("VehicleToughness", { float toughness = 1.0F; reader >> toughness; SetToughness(ToughnessKind::Vehicles, toughness); });
+	MatchProperty("CraftToughness", { float toughness = 1.0F; reader >> toughness; SetToughness(ToughnessKind::Craft, toughness); });
+	MatchProperty("AnimalToughness", { float toughness = 1.0F; reader >> toughness; SetToughness(ToughnessKind::Animals, toughness); });
 	MatchProperty("AISuppression", {
 		reader >> m_AISuppression;
 		m_AISuppression = std::clamp(m_AISuppression, 0.0F, 2.0F);
@@ -770,6 +790,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AIDigWillingness", { float scale = 1.0F; reader >> scale; SetAIDigWillingness(scale); });
 	MatchProperty("AIThreatAvoidance", { float scale = 1.0F; reader >> scale; SetAIThreatAvoidance(scale); });
 	MatchProperty("AIRecklessness", { float recklessness = 0.5F; reader >> recklessness; SetAIRecklessness(recklessness); });
+	MatchProperty("AILadderGiveUpSeconds", { float seconds = 1.5F; reader >> seconds; SetAILadderGiveUpSeconds(seconds); });
 	MatchProperty("AISpawnDiggerChance", { float percent = 0.0F; reader >> percent; SetAISpawnDiggerChance(percent); });
 	MatchProperty("BleedOutChance", { float percent = 0.0F; reader >> percent; SetBleedOutChance(percent); });
 	MatchProperty("WeaponTerrainDamage", { float scale = 1.0F; reader >> scale; SetWeaponTerrainDamage(scale); });
@@ -1253,6 +1274,10 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("GibChunkAtomSpacing", m_GibChunks.AtomSpacing);
 	writer.NewPropertyWithValue("GibChunksSettleOnBodies", m_GibChunks.SettleOnBodies);
 	writer.NewPropertyWithValue("NoSceneWrap", m_NoSceneWrap);
+	writer.NewPropertyWithValue("UnitToughness", Toughness(ToughnessKind::Units));
+	writer.NewPropertyWithValue("VehicleToughness", Toughness(ToughnessKind::Vehicles));
+	writer.NewPropertyWithValue("CraftToughness", Toughness(ToughnessKind::Craft));
+	writer.NewPropertyWithValue("AnimalToughness", Toughness(ToughnessKind::Animals));
 	writer.NewPropertyWithValue("AISuppression", m_AISuppression);
 	writer.NewPropertyWithValue("AIDigWillingness", m_AIDigWillingness);
 	writer.NewPropertyWithValue("AIThreatAvoidance", m_AIThreatAvoidance);
@@ -1261,6 +1286,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("BleedOutChance", m_BleedOutChance);
 	writer.NewPropertyWithValue("WeaponTerrainDamage", m_WeaponTerrainDamage);
 	writer.NewPropertyWithValue("AIRecklessness", m_AIRecklessness);
+	writer.NewPropertyWithValue("AILadderGiveUpSeconds", m_AILadderGiveUpSeconds);
 	writer.NewPropertyWithValue("AISteadyBeforeJet", m_AISteadyBeforeJet);
 	writer.NewPropertyWithValue("AIWaitForFuel", m_AIWaitForFuel);
 	writer.NewPropertyWithValue("AIEnemyBuysReinforcements", m_AIEnemyBuysReinforcements);
@@ -1308,6 +1334,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("ShowCPUAimReticles", m_ShowCPUAimReticles);
 	writer.NewPropertyWithValue("ShowAlarmExclamation", m_ShowAlarmExclamation);
 	writer.NewPropertyWithValue("ClassicPieWheel", m_ClassicPieWheel);
+	writer.NewPropertyWithValue("UnitMenuClickToOpen", m_UnitMenuClickToOpen);
+	writer.NewPropertyWithValue("UnitMenuTimeScale", m_UnitMenuTimeScale);
 	writer.NewPropertyWithValue("PauseAIKey", m_PauseAIKey);
 	writer.NewPropertyWithValue("SmoothHUDText", TextOverlay::IsEnabled());
 	writer.NewPropertyWithValue("FrameCap", g_WindowMan.GetFrameCap());
@@ -1315,6 +1343,11 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("UnitSpeechChance", UnitSpeech::GetChance());
 	writer.NewPropertyWithValue("UnitSpeechEnemies", UnitSpeech::ShowsEnemies());
 	writer.NewPropertyWithValue("UnitSpeechBubbles", UnitSpeech::ShowsBubbles());
+	writer.NewPropertyWithValue("UnitSpeechVoices", UnitSpeechVoice::IsEnabled());
+	writer.NewPropertyWithValue("UnitSpeechVoiceVolume", UnitSpeechVoice::GetVolume());
+	writer.NewPropertyWithValue("UnitSpeechVoiceRadio", UnitSpeechVoice::GetRadio());
+	writer.NewPropertyWithValue("UnitSpeechVoiceEnemies", UnitSpeechVoice::HearsEnemies());
+	writer.NewPropertyWithValue("UnitSpeechVoiceWords", UnitSpeechVoice::SpeaksWords());
 	for (int team = 0; team < 4; ++team) {
 		writer.NewPropertyWithValue("UnitSpeechTones" + std::to_string(team + 1), UnitSpeech::GetTeamTonesText(team));
 	}
