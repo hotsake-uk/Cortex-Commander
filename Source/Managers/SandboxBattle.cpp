@@ -631,6 +631,7 @@ namespace SandboxDetail {
 		UpdateEnemyCommander(aiPaused);
 		UpdateSquad();
 		UpdateAlerts();
+		UpdateLoadouts();
 		long long now = g_TimerMan.GetSimUpdateCount();
 		if (aiPaused) {
 			for (BattleTeam& team: s_BattleTeams) {

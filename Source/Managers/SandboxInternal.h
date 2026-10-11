@@ -2638,6 +2638,18 @@ namespace SandboxDetail {
 	void DrawSquad();
 #pragma endregion
 
+#pragma region Re-arming (BattleSupply.cpp)
+	/// The units' kits forgotten. At a mode's start and a new game.
+	void ForgetLoadouts();
+
+	/// Each unit's kit (its guns, best first, and what it has to throw) noted the first time it's seen with any. Call once per sim update.
+	void UpdateLoadouts();
+
+	/// What a unit has lost of its kit given back (the Supply power): its best gun if it has none, and its grenades up to what it came with.
+	/// How many items it was given.
+	int RearmUnit(AHuman* human);
+#pragma endregion
+
 #pragma region Breach (SandboxBreach.cpp)
 	/// The breaches under way forgotten. When out of a game.
 	void ForgetBreaches();

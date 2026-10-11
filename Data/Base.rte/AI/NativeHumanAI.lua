@@ -664,6 +664,11 @@ function NativeHumanAI:Update(Owner)
 						self:CreateGetWeaponBehavior(Owner);
 					elseif Owner.AIMode ~= Actor.AIMODE_SENTRY and not Owner:EquipDiggingTool(false) then
 						self:CreateGetToolBehavior(Owner);
+					elseif SettingsMan.AIScavengesBetterWeapons and not self.Target and not self.UnseenTarget and not Owner.OrderHold and Owner.AIMode ~= Actor.AIMODE_SQUAD then
+						-- A better gun, or a grenade when it has nothing to throw, lying near.
+						self.NextBehavior = coroutine.create(HumanBehaviors.Scavenge);
+						self.NextCleanup = nil;
+						self.NextBehaviorName = "Scavenge";
 					end
 				end
 			end

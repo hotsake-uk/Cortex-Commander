@@ -462,6 +462,7 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SettingsMan) {
 	    .property("AICoverFallsBack", &SettingsMan::AICoverFallsBack, &SettingsMan::SetAICoverFallsBack)
 	    .property("AICoverLiesFlat", &SettingsMan::AICoverLiesFlat, &SettingsMan::SetAICoverLiesFlat)
 	    .property("AIBreaksWhenShaken", &SettingsMan::AIBreaksWhenShaken, &SettingsMan::SetAIBreaksWhenShaken)
+	    .property("AIScavengesBetterWeapons", &SettingsMan::AIScavengesBetterWeapons, &SettingsMan::SetAIScavengesBetterWeapons)
 	    .property("NavDebugOverlay", &SettingsMan::NavDebugOverlay, &SettingsMan::SetNavDebugOverlay)
 	    .def("IsDebugChannelOn", &SettingsMan::IsDebugChannelOn)
 	    .property("UnitInspector", &SettingsMan::UnitInspector, &SettingsMan::SetUnitInspector)

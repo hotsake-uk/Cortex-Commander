@@ -289,6 +289,8 @@ namespace RTE {
 		bool AICoverLiesFlat() const { return m_AICoverLiesFlat; }
 		/// Whether a unit whose nerve has gone (morale under 0.3) breaks and falls back, whatever its health.
 		bool AIBreaksWhenShaken() const { return m_AIBreaksWhenShaken; }
+		/// Whether armed AI units with nothing to fight go and pick up a loose gun clearly better than theirs, or a grenade when they have nothing to throw.
+		bool AIScavengesBetterWeapons() const { return m_AIScavengesBetterWeapons; }
 
 		/// Whether AI units wait at a take-off for the fuel the flight needs (on, as designed), or go with what is in the tank.
 		bool AIWaitsForFuel() const { return m_AIWaitForFuel; }
@@ -591,6 +593,7 @@ namespace RTE {
 		void SetAICoverFallsBack(bool on) { m_AICoverFallsBack = on; }
 		void SetAICoverLiesFlat(bool on) { m_AICoverLiesFlat = on; }
 		void SetAIBreaksWhenShaken(bool on) { m_AIBreaksWhenShaken = on; }
+		void SetAIScavengesBetterWeapons(bool on) { m_AIScavengesBetterWeapons = on; }
 
 		/// Sets whether AI units wait for fuel before they jet.
 		void SetAIWaitsForFuel(bool wait) { m_AIWaitForFuel = wait; }
@@ -878,6 +881,7 @@ namespace RTE {
 		bool m_AICoverFallsBack; //!< See AICoverFallsBack.
 		bool m_AICoverLiesFlat; //!< See AICoverLiesFlat.
 		bool m_AIBreaksWhenShaken; //!< See AIBreaksWhenShaken.
+		bool m_AIScavengesBetterWeapons; //!< See AIScavengesBetterWeapons.
 		bool m_AIWaitForFuel; //!< Whether AI units wait for fuel before they jet (see AIWaitsForFuel).
 		bool m_AIEnemyBuysReinforcements; //!< See AIEnemyBuysReinforcements.
 		bool m_AIEnemyUsesPowers; //!< See AIEnemyUsesPowers.
