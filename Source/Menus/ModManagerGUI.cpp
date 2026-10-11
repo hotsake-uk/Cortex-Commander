@@ -5,6 +5,7 @@
 #include "WindowMan.h"
 #include "DataModule.h"
 #include "GlobalScript.h"
+#include "DepotInstall.h"
 
 #include "GUI.h"
 #include "AllegroScreen.h"
@@ -38,6 +39,17 @@ ModManagerGUI::ModManagerGUI(AllegroScreen* guiScreen, GUIInputWrapper* guiInput
 	}
 	m_BackToMainButton->SetPositionAbs((rootBox->GetWidth() - m_BackToMainButton->GetWidth()) / 2, modManagerMenuBox->GetYPos() + modManagerMenuBox->GetHeight() + 10);
 
+	// Getting mods from the Depot is for the main menu: what's installed applies on a restart.
+	m_GetModsButton = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonGetMods"));
+	if (m_GetModsButton) {
+		if (createForPauseMenu) {
+			m_GetModsButton->SetVisible(false);
+		} else {
+			m_BackToMainButton->SetPositionAbs(rootBox->GetWidth() / 2 - m_BackToMainButton->GetWidth() - 5, m_BackToMainButton->GetYPos());
+			m_GetModsButton->SetPositionAbs(rootBox->GetWidth() / 2 + 5, m_BackToMainButton->GetYPos());
+		}
+	}
+
 	m_ModsListBox = dynamic_cast<GUIListBox*>(m_GUIControlManager->GetControl("ListBoxMods"));
 	m_ModsListBox->SetMouseScrolling(true);
 	m_ModsListBox->SetScrollBarThickness(15);
@@ -61,6 +73,9 @@ void ModManagerGUI::PopulateKnownModsList() {
 		if (i >= g_PresetMan.GetOfficialModuleCount() && i < g_PresetMan.GetTotalModuleCount()) {
 			if (const DataModule* dataModule = g_PresetMan.GetDataModule(i); dataModule && !dataModule->IsUserdata()) {
 				ModRecord modRecord = {dataModule->GetFileName(), dataModule->GetFriendlyName(), dataModule->GetDescription(), g_SettingsMan.IsModDisabled(dataModule->GetFileName())};
+				if (const DepotInstall::Entry* fromDepot = DepotInstall::InstalledModule(dataModule->GetFileName())) {
+					modRecord.ModuleName += " (Depot " + fromDepot->Version + ")";
+				}
 				m_KnownMods.emplace_back(modRecord);
 			}
 		}
@@ -267,6 +282,9 @@ bool ModManagerGUI::HandleInputEvents() {
 		if (guiEvent.GetType() == GUIEvent::Command) {
 			if (guiEvent.GetControl() == m_BackToMainButton) {
 				ResetSelectionsAndGoToTop();
+				return true;
+			} else if (m_GetModsButton && guiEvent.GetControl() == m_GetModsButton) {
+				m_WantsDepot = true;
 				return true;
 			} else if (guiEvent.GetControl() == m_ToggleModButton) {
 				ToggleMod();

@@ -2,6 +2,7 @@
 #pragma warning(disable : 4129)
 
 #include "PresetMan.h"
+#include "DepotInstall.h"
 #include "DataModule.h"
 #include "SceneObject.h"
 #include "Loadout.h"
@@ -165,6 +166,8 @@ bool PresetMan::LoadAllDataModules() {
 	Destroy();
 	m_ModuleLoadTimes.clear();
 
+	// Installs and removals from the Depot wait for a start, as modules can't change while loaded.
+	DepotInstall::ApplyPending([](const std::string& change) { LoadingScreen::LoadingSplashProgressReport(change, true); });
 	FindAndExtractZippedModules();
 
 	// Load all the official modules first!

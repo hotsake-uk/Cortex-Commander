@@ -194,6 +194,12 @@ namespace {
 	}
 } // namespace
 
+void System::ForgetPathIndex() {
+	s_WorkingTreeBuilt = false;
+	s_WorkingTree.clear();
+	s_UnindexedDirectories.clear();
+}
+
 bool System::PathExistsCaseSensitive(const std::string& pathToCheck) {
 	// Use Hash for compiler independent hashing.
 	// The working directory's file paths, hashed, are walked once and looked up after. (Kept in a vector and searched end to end for every file
@@ -322,38 +328,34 @@ void System::PrintToCLI(const std::string& stringToPrint) {
 #endif
 }
 
-namespace {
-	/// The path a zip entry may be extracted to, relative to the mods folder, or empty when it would land outside it: an absolute path, a
-	/// drive letter, a ".." step or a NUL. Backslashes count as separators, as Windows would read them.
-	std::string SafeZipEntryPath(const std::string& entryName) {
-		std::string clean = entryName;
-		std::replace(clean.begin(), clean.end(), '\\', '/');
-		if (clean.empty() || clean.front() == '/' || (clean.size() > 1 && clean[1] == ':') || clean.find('\0') != std::string::npos) {
+std::string System::SafeZipEntryPath(const std::string& entryName) {
+	std::string clean = entryName;
+	std::replace(clean.begin(), clean.end(), '\\', '/');
+	if (clean.empty() || clean.front() == '/' || (clean.size() > 1 && clean[1] == ':') || clean.find('\0') != std::string::npos) {
+		return "";
+	}
+	std::string safePath;
+	size_t start = 0;
+	while (start <= clean.size()) {
+		size_t end = clean.find('/', start);
+		if (end == std::string::npos) {
+			end = clean.size();
+		}
+		std::string part = clean.substr(start, end - start);
+		if (part == "..") {
 			return "";
 		}
-		std::string safePath;
-		size_t start = 0;
-		while (start <= clean.size()) {
-			size_t end = clean.find('/', start);
-			if (end == std::string::npos) {
-				end = clean.size();
-			}
-			std::string part = clean.substr(start, end - start);
-			if (part == "..") {
-				return "";
-			}
-			if (!part.empty() && part != ".") {
-				safePath += (safePath.empty() ? "" : "/") + part;
-			}
-			start = end + 1;
+		if (!part.empty() && part != ".") {
+			safePath += (safePath.empty() ? "" : "/") + part;
 		}
-		// Keep a trailing slash: it marks a folder entry.
-		if (!safePath.empty() && clean.back() == '/') {
-			safePath += '/';
-		}
-		return safePath;
+		start = end + 1;
 	}
-} // namespace
+	// Keep a trailing slash: it marks a folder entry.
+	if (!safePath.empty() && clean.back() == '/') {
+		safePath += '/';
+	}
+	return safePath;
+}
 
 std::string System::ExtractZippedDataModule(const std::string& zippedModulePath) {
 	std::string zippedModuleName = System::GetModDirectory() + std::filesystem::path(zippedModulePath).filename().generic_string();

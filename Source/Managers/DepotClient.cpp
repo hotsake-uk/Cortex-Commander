@@ -81,6 +81,7 @@ namespace {
 	};
 	// Never destroyed: a request still running when the game quits is left to the end of the process rather than waited for.
 	Worker& s_Worker = *new Worker;
+	Worker& s_Downloader = *new Worker; //!< Downloads, which can take a while, so browsing doesn't queue behind them.
 
 	std::string Lowered(std::string text) {
 		std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -149,7 +150,7 @@ namespace {
 		}
 	};
 
-	DepotClient::Response FetchNow(const std::string& url, size_t maxBytes, const std::string& toFile, DepotClient::Progress* progress) {
+	DepotClient::Response FetchNow(const std::string& url, size_t maxBytes, const std::string& toFile, DepotClient::Progress* progress, const std::string& method, const std::string& json, const std::string& token) {
 		DepotClient::Response response;
 		std::wstring wideUrl = Wide(url);
 		URL_COMPONENTS parts{};
@@ -175,8 +176,17 @@ namespace {
 		WinHttpSetTimeouts(session.Handle, c_ConnectTimeoutSeconds * 1000, c_ConnectTimeoutSeconds * 1000, c_StallTimeoutSeconds * 1000, c_StallTimeoutSeconds * 1000);
 		InternetHandle connection(WinHttpConnect(session.Handle, hostName, parts.nPort, 0));
 		std::wstring path = std::wstring(urlPath) + extra;
-		InternetHandle request(connection.Handle ? WinHttpOpenRequest(connection.Handle, L"GET", path.c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, parts.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0) : nullptr);
-		if (!request.Handle || !WinHttpSendRequest(request.Handle, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) || !WinHttpReceiveResponse(request.Handle, nullptr)) {
+		InternetHandle request(connection.Handle ? WinHttpOpenRequest(connection.Handle, Wide(method).c_str(), path.c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, parts.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0) : nullptr);
+		std::wstring headers;
+		if (!json.empty()) {
+			headers += L"Content-Type: application/json\r\n";
+		}
+		if (!token.empty()) {
+			headers += L"Authorization: Bearer " + Wide(token) + L"\r\n";
+		}
+		DWORD bodySize = static_cast<DWORD>(json.size());
+		void* body = json.empty() ? WINHTTP_NO_REQUEST_DATA : const_cast<char*>(json.data());
+		if (!request.Handle || !WinHttpSendRequest(request.Handle, headers.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : headers.c_str(), headers.empty() ? 0 : static_cast<DWORD>(-1L), body, bodySize, bodySize, 0) || !WinHttpReceiveResponse(request.Handle, nullptr)) {
 			response.Error = "Couldn't reach the Depot at " + HostOf(url) + ". Is it running?";
 			return response;
 		}
@@ -279,7 +289,7 @@ namespace {
 		return 0;
 	}
 
-	DepotClient::Response FetchNow(const std::string& url, size_t maxBytes, const std::string& toFile, DepotClient::Progress* progress) {
+	DepotClient::Response FetchNow(const std::string& url, size_t maxBytes, const std::string& toFile, DepotClient::Progress* progress, const std::string& method, const std::string& json, const std::string& token) {
 		static std::once_flag curlReady;
 		std::call_once(curlReady, [] { curl_global_init(CURL_GLOBAL_DEFAULT); });
 
@@ -316,7 +326,25 @@ namespace {
 		curl_easy_setopt(curl, CURLOPT_NOPROGRESS, progress ? 0L : 1L);
 		curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, Report);
 		curl_easy_setopt(curl, CURLOPT_XFERINFODATA, progress);
+		curl_slist* headers = nullptr;
+		if (!json.empty()) {
+			headers = curl_slist_append(headers, "Content-Type: application/json");
+		}
+		std::string authorization = "Authorization: Bearer " + token;
+		if (!token.empty()) {
+			// (curl keeps a header like this to the host it was meant for, should a redirect lead elsewhere.)
+			headers = curl_slist_append(headers, authorization.c_str());
+		}
+		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+		if (method == "POST" || !json.empty()) {
+			curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json.data());
+			curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE_LARGE, static_cast<curl_off_t>(json.size()));
+		}
+		if (method != "GET" && method != "POST") {
+			curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, method.c_str());
+		}
 		CURLcode result = curl_easy_perform(curl);
+		curl_slist_free_all(headers);
 		long status = 0;
 		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
 		curl_easy_cleanup(curl);
@@ -382,7 +410,7 @@ std::string DepotClient::Encode(const std::string& value) {
 	return encoded;
 }
 
-DepotClient::Response DepotClient::Fetch(const std::string& url, size_t maxBytes, const std::string& toFile, Progress* progress) {
+DepotClient::Response DepotClient::Fetch(const std::string& url, size_t maxBytes, const std::string& toFile, Progress* progress, const std::string& postJson) {
 	std::string absolute = Absolute(url);
 	std::string why;
 	if (!AddressAllowed(absolute, why)) {
@@ -390,7 +418,24 @@ DepotClient::Response DepotClient::Fetch(const std::string& url, size_t maxBytes
 		response.Error = why;
 		return response;
 	}
-	return FetchNow(absolute, maxBytes, toFile, progress);
+	return FetchNow(absolute, maxBytes, toFile, progress, postJson.empty() ? "GET" : "POST", postJson, "");
+}
+
+DepotClient::Response DepotClient::Send(const Request& request) {
+	std::string absolute = Absolute(request.Url);
+	std::string why;
+	if (!AddressAllowed(absolute, why)) {
+		Response response;
+		response.Error = why;
+		return response;
+	}
+	return FetchNow(absolute, request.MaxBytes, "", nullptr, request.Method, request.Json, request.Token);
+}
+
+void DepotClient::Send(Request request, std::function<void(Response&)> done) {
+	request.Url = Absolute(request.Url);
+	auto response = std::make_shared<Response>();
+	Run([request, response] { *response = Send(request); }, [done, response] { done(*response); }, true);
 }
 
 void DepotClient::Get(const std::string& url, std::function<void(Response&)> done, size_t maxBytes) {
@@ -399,22 +444,29 @@ void DepotClient::Get(const std::string& url, std::function<void(Response&)> don
 	Run([absolute = Absolute(url), maxBytes, response] { *response = Fetch(absolute, maxBytes); }, [done, response] { done(*response); });
 }
 
-void DepotClient::Run(std::function<void()> work, std::function<void()> then) {
+void DepotClient::Post(const std::string& url, const std::string& json, std::function<void(Response&)> done, size_t maxBytes) {
+	auto response = std::make_shared<Response>();
+	Run([absolute = Absolute(url), json, maxBytes, response] { *response = Fetch(absolute, maxBytes, "", nullptr, json); }, [done, response] { done(*response); });
+}
+
+void DepotClient::Run(std::function<void()> work, std::function<void()> then, bool download) {
 	auto job = std::make_shared<Job>();
 	job->Work = std::move(work);
 	job->Then = std::move(then);
-	s_Worker.Add(std::move(job));
+	(download ? s_Downloader : s_Worker).Add(std::move(job));
 }
 
 void DepotClient::Update() {
-	std::deque<std::shared_ptr<Job>> finished;
-	{
-		std::lock_guard<std::mutex> lock(s_Worker.Lock);
-		finished.swap(s_Worker.Finished);
-	}
-	for (const std::shared_ptr<Job>& job: finished) {
-		if (job->Then) {
-			job->Then();
+	for (Worker* worker: {&s_Worker, &s_Downloader}) {
+		std::deque<std::shared_ptr<Job>> finished;
+		{
+			std::lock_guard<std::mutex> lock(worker->Lock);
+			finished.swap(worker->Finished);
+		}
+		for (const std::shared_ptr<Job>& job: finished) {
+			if (job->Then) {
+				job->Then();
+			}
 		}
 	}
 }
@@ -430,10 +482,13 @@ void DepotClient::CancelWaiting() {
 
 void DepotClient::Shutdown() {
 	CancelWaiting();
-	std::lock_guard<std::mutex> lock(s_Worker.Lock);
-	s_Worker.Stopping = true;
-	s_Worker.Wake.notify_all();
-	if (s_Worker.Thread.joinable()) {
-		s_Worker.Thread.detach(); // Its request gives up on its own timeouts; nothing waits for it.
+	for (Worker* worker: {&s_Worker, &s_Downloader}) {
+		std::lock_guard<std::mutex> lock(worker->Lock);
+		worker->Waiting.clear();
+		worker->Stopping = true;
+		worker->Wake.notify_all();
+		if (worker->Thread.joinable()) {
+			worker->Thread.detach(); // Its request gives up on its own timeouts; nothing waits for it.
+		}
 	}
 }

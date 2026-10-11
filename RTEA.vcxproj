@@ -889,6 +889,8 @@
     <ClInclude Include="Source\Managers\ControlLink.h" />
     <ClInclude Include="Source\Managers\DepotClient.h" />
     <ClInclude Include="Source\Managers\DepotBrowser.h" />
+    <ClInclude Include="Source\Managers\DepotInstall.h" />
+    <ClInclude Include="Source\Managers\DepotAccount.h" />
     <ClInclude Include="Source\Managers\Sandbox.h" />
     <ClInclude Include="Source\Managers\MapBrowser.h" />
     <ClInclude Include="Source\Managers\SandboxInternal.h" />
@@ -1519,6 +1521,8 @@
     <ClCompile Include="Source\Managers\SandboxMapBrowser.cpp" />
     <ClCompile Include="Source\Managers\DepotClient.cpp" />
     <ClCompile Include="Source\Managers\DepotBrowser.cpp" />
+    <ClCompile Include="Source\Managers\DepotInstall.cpp" />
+    <ClCompile Include="Source\Managers\DepotAccount.cpp" />
     <ClCompile Include="Source\Managers\SandboxWorld.cpp" />
     <ClCompile Include="Source\Managers\SandboxPlayer.cpp" />
     <ClCompile Include="Source\Managers\SandboxWindow.cpp" />

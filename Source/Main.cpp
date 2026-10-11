@@ -52,6 +52,7 @@
 #include "PerformanceMan.h"
 #include "FrameMan.h"
 #include "DebugMan.h"
+#include "DepotInstall.h"
 #include "TerrainFire.h"
 #include "TerrainGrazing.h"
 #include "WeatherLightning.h"
@@ -826,6 +827,9 @@ int main(int argc, char** argv) {
 	DestroyManagers();
 
 	SDL_Quit();
+
+	// Restarting to apply what was got from the Depot.
+	DepotInstall::RelaunchIfWanted(argv[0]);
 
 	return EXIT_SUCCESS;
 }

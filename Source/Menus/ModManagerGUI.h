@@ -30,6 +30,13 @@ namespace RTE {
 		/// @return Whether the player requested to return to the main menu.
 		bool HandleInputEvents();
 
+		/// Whether Get More Mods was pressed since the last call: HandleInputEvents returned true for it, but for the Depot, not the menu.
+		bool TakeWantsDepot() {
+			bool wants = m_WantsDepot;
+			m_WantsDepot = false;
+			return wants;
+		}
+
 		/// Draws the ModManagerGUI to the screen.
 		void Draw() const;
 #pragma endregion
@@ -102,6 +109,8 @@ namespace RTE {
 
 		/// GUI elements that compose the Mod Manager menu screen.
 		GUIButton* m_BackToMainButton;
+		GUIButton* m_GetModsButton; //!< Opens the Depot, from the main menu's Mod Manager only.
+		bool m_WantsDepot = false;
 		GUIButton* m_ToggleModButton;
 		GUIButton* m_ToggleScriptButton;
 		GUIListBox* m_ModsListBox;

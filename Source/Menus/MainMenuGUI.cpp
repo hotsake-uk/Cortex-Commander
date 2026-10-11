@@ -447,6 +447,10 @@ MainMenuGUI::MainMenuUpdateResult MainMenuGUI::Update() {
 			break;
 		case MenuScreen::ModManagerScreen:
 			backToMainMenu = m_ModManagerMenu->HandleInputEvents();
+			if (m_ModManagerMenu->TakeWantsDepot()) {
+				backToMainMenu = false;
+				OpenDepot("mod", MenuScreen::ModManagerScreen);
+			}
 			break;
 		case MenuScreen::EditorScreen:
 			if (m_MenuScreenChange) {

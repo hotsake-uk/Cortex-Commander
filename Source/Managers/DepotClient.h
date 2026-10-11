@@ -29,6 +29,15 @@ namespace RTE {
 			std::atomic<bool> Cancel = false; //!< Set to stop the download.
 		};
 
+		/// A request to send as it is: any method, a JSON body, and the player's session for what needs signing in to.
+		struct Request {
+			std::string Method = "GET";
+			std::string Url; //!< Absolute, or relative to the hub.
+			std::string Json; //!< Sent as the body, as JSON, when set.
+			std::string Token; //!< The session token from signing in, sent as "Authorization: Bearer", when set.
+			size_t MaxBytes = 4 * 1024 * 1024;
+		};
+
 		/// The hub's address, e.g. "http://192.168.1.20:3000", from DepotAddress in Settings.ini. Empty until the player sets it.
 		static std::string s_Address;
 
@@ -49,20 +58,32 @@ namespace RTE {
 		/// @param maxBytes A body any bigger is cut off and reported as an error.
 		static void Get(const std::string& url, std::function<void(Response&)> done, size_t maxBytes = 32 * 1024 * 1024);
 
-		/// Runs work on the worker thread (after any requests already waiting), then then on the main thread.
-		static void Run(std::function<void()> work, std::function<void()> then);
+		/// Posts JSON to a URL on the worker thread, then calls done on the main thread (from Update) with what came back.
+		static void Post(const std::string& url, const std::string& json, std::function<void(Response&)> done, size_t maxBytes = 32 * 1024 * 1024);
 
-		/// Fetches a URL right away, on the calling thread. For work already on the worker thread.
+		/// Runs work on a worker thread (after any work already waiting there), then then on the main thread.
+		/// @param download Run it on the downloads' own thread instead: it may take a while, so browsing doesn't wait behind it, and
+		/// CancelWaiting leaves it be.
+		static void Run(std::function<void()> work, std::function<void()> then, bool download = false);
+
+		/// Fetches a URL right away, on the calling thread. For work already on a worker thread.
 		/// @param toFile When set, the body is written to this file instead of kept, and progress reports on it.
-		static Response Fetch(const std::string& url, size_t maxBytes, const std::string& toFile = "", Progress* progress = nullptr);
+		/// @param postJson When set, it's posted as JSON instead of the URL fetched with GET.
+		static Response Fetch(const std::string& url, size_t maxBytes, const std::string& toFile = "", Progress* progress = nullptr, const std::string& postJson = "");
+
+		/// Sends a request right away, on the calling thread.
+		static Response Send(const Request& request);
+
+		/// Sends a request on the downloads' thread (so CancelWaiting leaves it be), then calls done on the main thread (from Update).
+		static void Send(Request request, std::function<void(Response&)> done);
 
 		/// Calls the done of every request that has finished. Call from the main thread, each frame.
 		static void Update();
 
-		/// Drops every request still waiting to start; the one running finishes, but its done isn't called.
+		/// Drops every request still waiting to start, but not downloads; the one running finishes, but its done isn't called.
 		static void CancelWaiting();
 
-		/// Stops the worker thread. Called at shutdown.
+		/// Stops the worker threads. Called at shutdown.
 		static void Shutdown();
 	};
 } // namespace RTE

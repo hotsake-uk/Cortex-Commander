@@ -96,6 +96,10 @@ namespace RTE {
 		/// @param pathToCheck The path to check.
 		/// @return Whether the file exists.
 		static bool PathExistsCaseSensitive(const std::string& pathToCheck);
+
+		/// Forgets the index PathExistsCaseSensitive keeps of the working directory, so it's walked afresh when next asked. For files moved in
+		/// at start-up that are older than the program (installs the Depot put off until now). Call only while nothing else is loading.
+		static void ForgetPathIndex();
 #pragma endregion
 
 #pragma region Command-Line Interface
@@ -119,6 +123,16 @@ namespace RTE {
 		/// @param zippedModulePath Path to the module to extract.
 		/// @return A string containing the progress report of the extraction.
 		static std::string ExtractZippedDataModule(const std::string& zippedModulePath);
+
+		/// The path a zip entry may be extracted to, relative to the folder it's extracted into, or empty when it would land outside it: an
+		/// absolute path, a drive letter, a ".." step or a NUL. Backslashes count as separators, as Windows would read them.
+		static std::string SafeZipEntryPath(const std::string& entryName);
+
+		/// Whether a file with this extension (lowered, with its dot) may be extracted from a zipped module.
+		static bool IsExtractableExtension(const std::string& extension) { return s_SupportedExtensions.contains(extension); }
+
+		/// The most one file extracted from a zipped module may hold, in bytes.
+		static constexpr int GetMaxUnzippedFileSize() { return s_MaxUnzippedFileSize; }
 #pragma endregion
 
 #pragma region Module Validation

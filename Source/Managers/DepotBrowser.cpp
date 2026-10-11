@@ -4,7 +4,9 @@
 // are kept in Userdata/DepotPreviews so they show at once next time.
 
 #include "DepotBrowser.h"
+#include "DepotAccount.h"
 #include "DepotClient.h"
+#include "DepotInstall.h"
 #include "GameVersion.h"
 #include "MenuMan.h"
 #include "PresetMan.h"
@@ -21,6 +23,7 @@
 #include <filesystem>
 #include <fstream>
 #include <unordered_map>
+#include <unordered_set>
 
 using namespace RTE;
 using Json = nlohmann::json;
@@ -289,6 +292,19 @@ namespace {
 		bool ContentsLoading = false;
 		std::string ContentsStatus;
 		Json Contents;
+
+		bool LikeAsked = false; //!< Whether the player's like has been asked for (signed in only).
+		int Liked = -1; //!< 1 liked, 0 not, -1 not known yet.
+		long long Likes = -1; //!< The count as the last like or unlike left it, or -1 for the item's own.
+		bool LikeBusy = false;
+
+		bool CommentsAsked = false;
+		bool CommentsLoading = false;
+		std::string CommentsError;
+		Json Comments;
+		char Draft[2048] = "";
+		bool Posting = false;
+		std::string PostError;
 	};
 
 	struct Browser {
@@ -315,6 +331,9 @@ namespace {
 		std::string ListError;
 		int ListGeneration = 0; //!< Raised when the filters change, so lists still arriving for the old ones are dropped.
 		bool FiltersChanged = true;
+
+		bool ShowInstalled = false; //!< Listing what's installed from the Depot instead of the cards.
+		std::unordered_set<std::string> UpdateSlugs; //!< What has an update, from the last check, as of this frame.
 
 		std::string Picked; //!< The slug of the item picked, or empty.
 		Detail Picked_;
@@ -477,6 +496,7 @@ namespace {
 		s_Browser.Picked.clear();
 		s_Browser.Picked_ = Detail();
 		Refresh();
+		DepotInstall::CheckForUpdates();
 	}
 
 	/// Opens a page of the Depot in the player's web browser.
@@ -496,6 +516,40 @@ namespace {
 	/// Whether a module is loaded in this game, so the item that is it can be shown as installed.
 	bool ModuleInstalled(const std::string& moduleID) {
 		return !moduleID.empty() && g_PresetMan.GetModuleID(moduleID) >= 0;
+	}
+
+	/// A card's badge, from what's installed and what's waiting: its words and colour, or nullptr for none.
+	const char* Badge(const std::string& slug, const std::string& moduleID, ImU32& colour) {
+		std::string pending = DepotInstall::PendingFor(slug);
+		if (pending == "install") {
+			colour = IM_COL32(255, 190, 90, 255);
+			return "Restart to install";
+		}
+		if (pending == "remove") {
+			colour = IM_COL32(255, 140, 120, 255);
+			return "Restart to remove";
+		}
+		if (const DepotInstall::Task* task = DepotInstall::TaskFor(slug); task && task->Running) {
+			colour = IM_COL32(150, 190, 255, 255);
+			return "Downloading";
+		}
+		if (DepotInstall::Installed(slug)) {
+			if (s_Browser.UpdateSlugs.contains(slug)) {
+				colour = ToolTheme::Gold;
+				return "Update";
+			}
+			colour = IM_COL32(120, 220, 120, 255);
+			return "Installed";
+		}
+		if (ModuleInstalled(moduleID)) {
+			colour = IM_COL32(120, 220, 120, 255);
+			return "Installed";
+		}
+		return nullptr;
+	}
+
+	void Restart() {
+		DepotInstall::RestartToApply();
 	}
 
 #pragma region Drawing
@@ -533,19 +587,40 @@ namespace {
 			if (i > 0) {
 				ImGui::SameLine();
 			}
-			bool on = s_Browser.Kind == i;
+			bool on = s_Browser.Kind == i && !s_Browser.ShowInstalled;
 			if (on) {
 				ImGui::PushStyleColor(ImGuiCol_Button, ToolTheme::Vec(ToolTheme::WellHover));
 				ImGui::PushStyleColor(ImGuiCol_Text, ToolTheme::Vec(ToolTheme::Gold));
 			}
 			if (ToolUI::Button(c_Kinds[i].Label) && !on) {
+				if (s_Browser.Kind != i) {
+					s_Browser.Tag.clear();
+					s_Browser.FiltersChanged = true;
+				}
 				s_Browser.Kind = i;
-				s_Browser.Tag.clear();
-				s_Browser.FiltersChanged = true;
+				s_Browser.ShowInstalled = false;
 			}
 			if (on) {
 				ImGui::PopStyleColor(2);
 			}
+		}
+		ImGui::SameLine();
+		{
+			bool on = s_Browser.ShowInstalled;
+			if (on) {
+				ImGui::PushStyleColor(ImGuiCol_Button, ToolTheme::Vec(ToolTheme::WellHover));
+				ImGui::PushStyleColor(ImGuiCol_Text, ToolTheme::Vec(ToolTheme::Gold));
+			}
+			size_t updates = s_Browser.UpdateSlugs.size();
+			std::string label = "Installed (" + std::to_string(DepotInstall::AllInstalled().size()) + ")" + (updates > 0 ? ", " + std::to_string(updates) + (updates == 1 ? " update" : " updates") : "") + "###depotInstalled";
+			if (ToolUI::Button(label.c_str()) && !on) {
+				s_Browser.ShowInstalled = true;
+				DepotInstall::CheckForUpdates();
+			}
+			if (on) {
+				ImGui::PopStyleColor(2);
+			}
+			ImGui::SetItemTooltip("What you've installed from the Depot: updates, and removing things.");
 		}
 
 		ImGui::SetNextItemWidth(font * 16.0F);
@@ -650,12 +725,12 @@ namespace {
 				drawList->AddText(ImVec2(from.x + style.FramePadding.x, textY + lineHeight), IM_COL32(190, 196, 220, 255), byline.c_str());
 				std::string stats = std::to_string(card.Downloads) + " downloads, " + std::to_string(card.Likes) + " likes";
 				drawList->AddText(ImVec2(from.x + style.FramePadding.x, textY + lineHeight * 2.0F), IM_COL32(140, 148, 176, 255), stats.c_str());
-				if (ModuleInstalled(card.ModuleID)) {
-					const char* badge = "Installed";
+				ImU32 badgeColour = 0;
+				if (const char* badge = Badge(card.Slug, card.ModuleID, badgeColour)) {
 					ImVec2 size = ImGui::CalcTextSize(badge);
 					ImVec2 at(to.x - size.x - style.FramePadding.x * 2.0F - style.FramePadding.y, from.y + style.FramePadding.y * 2.0F);
 					drawList->AddRectFilled(at, ImVec2(at.x + size.x + style.FramePadding.x * 2.0F, at.y + size.y + 2.0F), IM_COL32(0, 0, 0, 190));
-					drawList->AddText(ImVec2(at.x + style.FramePadding.x, at.y + 1.0F), IM_COL32(120, 220, 120, 255), badge);
+					drawList->AddText(ImVec2(at.x + style.FramePadding.x, at.y + 1.0F), badgeColour, badge);
 				}
 				drawList->PopClipRect();
 				drawList->AddRect(from, to, picked ? ToolTheme::Gold : ToolTheme::Edge, 0.0F, 0, picked ? 2.0F : 1.0F);
@@ -678,6 +753,436 @@ namespace {
 		}
 		ImGui::EndChild();
 	}
+
+	void ErrorText(const std::string& text) {
+		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0F, 0.55F, 0.45F, 1.0F));
+		ImGui::TextWrapped("%s", text.c_str());
+		ImGui::PopStyleColor();
+	}
+
+	void WarningText(const std::string& text) {
+		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0F, 0.8F, 0.4F, 1.0F));
+		ImGui::TextWrapped("%s", text.c_str());
+		ImGui::PopStyleColor();
+	}
+
+	/// What's installed from the Depot, with updates, in place of the cards.
+	void InstalledList(float width, float height) {
+		if (!ImGui::BeginChild("##depotInstalled", ImVec2(width, height), ImGuiChildFlags_None)) {
+			ImGui::EndChild();
+			return;
+		}
+		std::vector<DepotInstall::Update> updates = DepotInstall::Updates();
+		if (DepotInstall::CheckingForUpdates()) {
+			ImGui::TextDisabled("Checking the Depot for updates...");
+		} else {
+			if (!DepotInstall::UpdateError().empty()) {
+				ErrorText(DepotInstall::UpdateError());
+			} else if (updates.empty()) {
+				ImGui::TextDisabled("Everything is up to date.");
+			} else {
+				ImGui::TextDisabled(updates.size() == 1 ? "1 update on the Depot." : "%d updates on the Depot.", static_cast<int>(updates.size()));
+			}
+			ImGui::SameLine();
+			if (ImGui::SmallButton("Check again")) {
+				DepotInstall::CheckForUpdates();
+			}
+		}
+		if (updates.size() > 1 && ToolUI::Button("Update all")) {
+			for (const DepotInstall::Update& update: updates) {
+				DepotInstall::Install(update.Slug, update.Latest);
+			}
+		}
+
+		const std::vector<DepotInstall::Entry>& installed = DepotInstall::AllInstalled();
+		if (installed.empty()) {
+			ImGui::Spacing();
+			ImGui::TextWrapped("Nothing installed from the Depot yet. What you install shows here, so you can update or remove it.");
+		}
+		for (size_t row = 0; row < installed.size(); ++row) {
+			// (A copy: Remove and Undo below change the list.)
+			const DepotInstall::Entry entry = installed[row];
+			ImGui::PushID(static_cast<int>(row));
+			ImGui::Separator();
+			ImVec2 rowStart = ImGui::GetCursorPos();
+			if (ImGui::Selectable("##pick", s_Browser.Picked == entry.Slug, ImGuiSelectableFlags_AllowOverlap, ImVec2(0.0F, ImGui::GetTextLineHeightWithSpacing() * 2.0F))) {
+				Pick(entry.Slug);
+			}
+			ImGui::SetCursorPos(rowStart);
+			ImGui::BeginGroup();
+			ImGui::PushStyleColor(ImGuiCol_Text, ToolTheme::Vec(ToolTheme::Gold));
+			ImGui::TextUnformatted(entry.Title.c_str());
+			ImGui::PopStyleColor();
+			std::string line = KindLabel(entry.Kind) + ", version " + entry.Version + (entry.Adopted ? " (installed by hand)" : "");
+			if (!entry.Modules.empty()) {
+				std::string modules;
+				for (const std::string& module: entry.Modules) {
+					modules += (modules.empty() ? "" : ", ") + module;
+				}
+				line += ": " + modules;
+			} else if (!entry.Map.empty()) {
+				line += ", for " + entry.Map;
+			}
+			ImGui::TextDisabled("%s", line.c_str());
+			ImGui::EndGroup();
+
+			std::string pendingVersion;
+			std::string pending = DepotInstall::PendingFor(entry.Slug, &pendingVersion);
+			const DepotInstall::Task* task = DepotInstall::TaskFor(entry.Slug);
+			auto update = std::find_if(updates.begin(), updates.end(), [&](const DepotInstall::Update& each) { return each.Slug == entry.Slug; });
+			ImGui::SameLine();
+			ImGui::BeginGroup();
+			if (task && task->Running) {
+				ImGui::TextDisabled("%s", task->Doing.c_str());
+			} else if (pending == "install") {
+				ImGui::TextDisabled("Version %s on restart", pendingVersion.c_str());
+				ImGui::SameLine();
+				if (ImGui::SmallButton("Undo")) {
+					DepotInstall::Undo(entry.Slug);
+				}
+			} else if (pending == "remove") {
+				ImGui::TextDisabled("Removed on restart");
+				ImGui::SameLine();
+				if (ImGui::SmallButton("Undo")) {
+					DepotInstall::Undo(entry.Slug);
+				}
+			} else {
+				if (update != updates.end()) {
+					if (ToolUI::SmallButton(("Update to " + update->Latest).c_str())) {
+						DepotInstall::Install(entry.Slug, update->Latest);
+					}
+					if (!update->Changelog.empty()) {
+						ImGui::SetItemTooltip("%s", update->Changelog.c_str());
+					}
+					ImGui::SameLine();
+				}
+				if (ToolUI::SmallButton("Remove")) {
+					DepotInstall::Remove(entry.Slug);
+				}
+			}
+			ImGui::EndGroup();
+			if (task && !task->Running && !task->Error.empty()) {
+				ErrorText(task->Error);
+			}
+			ImGui::PopID();
+		}
+
+		// (A copy: Adopt below changes the list.)
+		const std::vector<DepotInstall::Match> matches = DepotInstall::Matches();
+		if (!matches.empty()) {
+			ImGui::SeparatorText("Installed by hand, and on the Depot");
+			ImGui::TextWrapped("These mods weren't installed from the Depot, but it has them. Let it look after one and its updates show here.");
+			for (const DepotInstall::Match& match: matches) {
+				ImGui::PushID(match.Slug.c_str());
+				ImGui::Bullet();
+				ImGui::SameLine();
+				ImGui::Text("%s, on the Depot as %s %s", match.ModuleID.c_str(), match.Title.c_str(), match.Version.c_str());
+				ImGui::SameLine();
+				if (ToolUI::SmallButton("Look after it")) {
+					DepotInstall::Adopt(match);
+					DepotInstall::CheckForUpdates();
+				}
+				ImGui::SetItemTooltip("Counts your copy as version %s from the Depot. Install it from the Depot to be sure it is.", match.Version.c_str());
+				ImGui::PopID();
+			}
+		}
+		ImGui::EndChild();
+	}
+
+	/// The install, update or remove buttons for the item picked, and how they're getting on.
+	void InstallControls(const Json& item) {
+		const std::string slug = Str(item, "slug");
+		const std::string kind = Str(item, "kind");
+		std::string latest;
+		long long latestSize = 0;
+		if (item.contains("versions") && item["versions"].is_array() && !item["versions"].empty() && item["versions"][0].is_object()) {
+			latest = Str(item["versions"][0], "version");
+			latestSize = Num(item["versions"][0], "fileSize");
+		}
+		const float wide = ImGui::GetContentRegionAvail().x;
+		const float half = std::floor((wide - ImGui::GetStyle().ItemSpacing.x) * 0.5F);
+		if (kind == "tool") {
+			ImGui::TextWrapped("The game doesn't install tools: get this one from the Depot's site.");
+			return;
+		}
+		if (item.value("official", false)) {
+			ImGui::TextWrapped("This comes with the game, so you have it already.");
+			return;
+		}
+		if (latest.empty()) {
+			ImGui::TextWrapped("There's no version of this to install yet.");
+			return;
+		}
+		const DepotInstall::Task* task = DepotInstall::TaskFor(slug);
+		if (task && task->Running) {
+			ImGui::TextWrapped("%s", task->Doing.c_str());
+			// (A negative fraction makes ImGui's bar sweep, for a download of unknown size.)
+			ImGui::ProgressBar(task->Progress >= 0.0F ? task->Progress : -1.0F * static_cast<float>(ImGui::GetTime()), ImVec2(wide, 0.0F));
+			return;
+		}
+		if (task && !task->Error.empty()) {
+			ErrorText(task->Error);
+		}
+		if (task && !task->Warning.empty()) {
+			WarningText(task->Warning);
+		}
+		if (task && (!task->Error.empty() || !task->Warning.empty()) && ImGui::SmallButton("OK")) {
+			DepotInstall::Dismiss(slug);
+		}
+		std::string pendingVersion;
+		std::string pending = DepotInstall::PendingFor(slug, &pendingVersion);
+		if (!pending.empty()) {
+			if (pending == "install") {
+				ImGui::TextWrapped("Version %s is downloaded and goes in when the game restarts.", pendingVersion.c_str());
+			} else {
+				ImGui::TextWrapped("This is taken away when the game restarts.");
+			}
+			if (ToolUI::Button("Restart now", ImVec2(half, 0.0F))) {
+				Restart();
+			}
+			ImGui::SameLine();
+			if (ToolUI::Button("Undo", ImVec2(half, 0.0F))) {
+				DepotInstall::Undo(slug);
+			}
+			return;
+		}
+		if (const DepotInstall::Entry* installed = DepotInstall::Installed(slug)) {
+			ImGui::TextDisabled("Installed: version %s%s", installed->Version.c_str(), installed->Adopted ? " (by hand)" : "");
+			bool newer = installed->Version != latest;
+			if (newer) {
+				if (ToolUI::Button(("Update to " + latest + " (" + Bytes(latestSize) + ")").c_str(), ImVec2(half, 0.0F))) {
+					DepotInstall::Install(slug, latest);
+				}
+				ImGui::SameLine();
+			}
+			if (ToolUI::Button("Remove", ImVec2(newer ? half : wide, 0.0F))) {
+				DepotInstall::Remove(slug);
+			}
+			ImGui::SetItemTooltip(kind == "battle" ? "Takes away the setups it added, when the game restarts." : "Takes its modules out of the mods folder when the game restarts.");
+			return;
+		}
+		std::string label = "Install " + latest + " (" + Bytes(latestSize) + ")";
+		if (ModuleInstalled(Str(item, "moduleId"))) {
+			ImGui::TextDisabled("You have this already, installed by hand.");
+			label = "Install " + latest + " from the Depot over it";
+		}
+		if (ToolUI::Button(label.c_str(), ImVec2(wide, 0.0F))) {
+			DepotInstall::Install(slug);
+		}
+		ImGui::SetItemTooltip("Downloads it, and anything it needs that you don't have. It goes in when the game restarts.");
+	}
+
+#pragma region Account
+	/// The like button: the player's like, toggled.
+	void LikeButton(Detail& detail, const std::string& slug) {
+		if (!DepotAccount::SignedIn()) {
+			if (ImGui::SmallButton("Sign in to like")) {
+				DepotAccount::StartSignIn();
+			}
+			return;
+		}
+		int generation = s_Browser.DetailGeneration;
+		if (!detail.LikeAsked) {
+			detail.LikeAsked = true;
+			DepotClient::Request request;
+			request.Url = "/api/v1/items/" + DepotClient::Encode(slug) + "/like";
+			request.Token = DepotAccount::Token();
+			DepotClient::Send(request, [generation](DepotClient::Response& response) {
+				Json answer = Json::parse(response.Body, nullptr, false);
+				if (generation == s_Browser.DetailGeneration && response.Ok() && answer.is_object()) {
+					s_Browser.Picked_.Liked = answer.value("liked", false) ? 1 : 0;
+				}
+			});
+		}
+		if (detail.Liked < 0 || detail.LikeBusy) {
+			ImGui::BeginDisabled();
+			ImGui::SmallButton(detail.Liked == 1 ? "Liked" : "Like");
+			ImGui::EndDisabled();
+			return;
+		}
+		if (ImGui::SmallButton(detail.Liked == 1 ? "Liked (take it back)" : "Like")) {
+			detail.LikeBusy = true;
+			DepotClient::Request request;
+			request.Method = detail.Liked == 1 ? "DELETE" : "PUT";
+			request.Url = "/api/v1/items/" + DepotClient::Encode(slug) + "/like";
+			request.Token = DepotAccount::Token();
+			DepotClient::Send(request, [generation](DepotClient::Response& response) {
+				if (generation != s_Browser.DetailGeneration) {
+					return;
+				}
+				Detail& detail = s_Browser.Picked_;
+				detail.LikeBusy = false;
+				Json answer = Json::parse(response.Body, nullptr, false);
+				if (response.Ok() && answer.is_object()) {
+					detail.Liked = answer.value("liked", false) ? 1 : 0;
+					detail.Likes = answer.value("likes", 0LL);
+				}
+			});
+		}
+	}
+
+	void FetchComments(const std::string& slug) {
+		Detail& detail = s_Browser.Picked_;
+		detail.CommentsAsked = true;
+		detail.CommentsLoading = true;
+		int generation = s_Browser.DetailGeneration;
+		DepotClient::Get("/api/v1/items/" + DepotClient::Encode(slug) + "/comments", [generation](DepotClient::Response& response) {
+			if (generation != s_Browser.DetailGeneration) {
+				return;
+			}
+			Detail& detail = s_Browser.Picked_;
+			detail.CommentsLoading = false;
+			Json answer = Json::parse(response.Body, nullptr, false);
+			if (!response.Ok() || !answer.is_array()) {
+				detail.CommentsError = !response.Error.empty() ? response.Error : "Couldn't read the comments (" + std::to_string(response.Status) + ").";
+				return;
+			}
+			detail.CommentsError.clear();
+			detail.Comments = std::move(answer);
+		});
+	}
+
+	/// The item's comments, and a box to add one when signed in.
+	void Comments(Detail& detail, const std::string& slug) {
+		if (!detail.CommentsAsked) {
+			FetchComments(slug);
+		}
+		if (detail.CommentsLoading && !detail.Comments.is_array()) {
+			ImGui::TextDisabled("Asking the Depot...");
+		} else if (!detail.CommentsError.empty()) {
+			ImGui::TextWrapped("%s", detail.CommentsError.c_str());
+		} else if (!detail.Comments.is_array() || detail.Comments.empty()) {
+			ImGui::TextDisabled("No comments yet.");
+		} else {
+			for (const Json& comment: detail.Comments) {
+				if (!comment.is_object()) {
+					continue;
+				}
+				bool reply = comment.contains("parentId") && comment["parentId"].is_string();
+				if (reply) {
+					ImGui::Indent();
+				}
+				std::string author = comment.contains("author") && comment["author"].is_object() ? Str(comment["author"], "name") : "";
+				if (author.empty() && comment.contains("author") && comment["author"].is_object()) {
+					author = Str(comment["author"], "username");
+				}
+				ImGui::PushStyleColor(ImGuiCol_Text, ToolTheme::Vec(ToolTheme::Gold));
+				ImGui::TextUnformatted(author.empty() ? "Someone" : author.c_str());
+				ImGui::PopStyleColor();
+				ImGui::SameLine();
+				ImGui::TextDisabled("%s", Str(comment, "createdAt").substr(0, 10).c_str());
+				if (comment.value("deleted", false)) {
+					ImGui::TextDisabled("(deleted)");
+				} else {
+					ImGui::TextWrapped("%s", Str(comment, "body").c_str());
+				}
+				if (reply) {
+					ImGui::Unindent();
+				}
+				ImGui::Spacing();
+			}
+		}
+		if (!DepotAccount::SignedIn()) {
+			if (ImGui::SmallButton("Sign in to comment")) {
+				DepotAccount::StartSignIn();
+			}
+			return;
+		}
+		ImGui::InputTextMultiline("##depotComment", detail.Draft, sizeof(detail.Draft), ImVec2(-1.0F, ImGui::GetTextLineHeight() * 4.0F));
+		if (detail.Posting) {
+			ImGui::TextDisabled("Posting...");
+		} else if (ToolUI::Button("Post comment") && detail.Draft[0] != '\0') {
+			detail.Posting = true;
+			detail.PostError.clear();
+			DepotClient::Request request;
+			request.Method = "POST";
+			request.Url = "/api/v1/items/" + DepotClient::Encode(slug) + "/comments";
+			request.Json = Json({{"body", std::string(detail.Draft)}}).dump();
+			request.Token = DepotAccount::Token();
+			int generation = s_Browser.DetailGeneration;
+			DepotClient::Send(request, [generation, slug](DepotClient::Response& response) {
+				if (generation != s_Browser.DetailGeneration) {
+					return;
+				}
+				Detail& detail = s_Browser.Picked_;
+				detail.Posting = false;
+				if (response.Ok()) {
+					detail.Draft[0] = '\0';
+					FetchComments(slug);
+					return;
+				}
+				Json answer = Json::parse(response.Body, nullptr, false);
+				std::string why = answer.is_object() && answer.contains("error") && answer["error"].is_object() ? Str(answer["error"], "message") : "";
+				detail.PostError = !why.empty() ? why : !response.Error.empty() ? response.Error : "Couldn't post it (" + std::to_string(response.Status) + ").";
+			});
+		}
+		if (!detail.PostError.empty()) {
+			ImGui::TextWrapped("%s", detail.PostError.c_str());
+		}
+	}
+
+	/// Who's signed in, or a button to sign in, for the top of the screen.
+	void AccountBar() {
+		if (DepotAccount::SignedIn()) {
+			ImGui::TextDisabled("Signed in as %s", DepotAccount::Name().c_str());
+			ImGui::SameLine();
+			if (ImGui::SmallButton("Sign out")) {
+				DepotAccount::SignOut();
+			}
+		} else if (ImGui::SmallButton("Sign in")) {
+			DepotAccount::StartSignIn();
+		} else {
+			ImGui::SetItemTooltip("Sign in to like and comment. You approve it on the Depot's site, in a web browser.");
+		}
+		if (!DepotAccount::Problem().empty() && !DepotAccount::SigningIn()) {
+			ImGui::SameLine();
+			ImGui::TextDisabled("(%s)", DepotAccount::Problem().c_str());
+		}
+	}
+
+	/// The code to approve on the site, while signing in.
+	void SignInWindow() {
+		const char* title = "Sign in to the Depot";
+		if (DepotAccount::SigningIn() && !ImGui::IsPopupOpen(title)) {
+			ImGui::OpenPopup(title);
+		}
+		ImGui::SetNextWindowSize(ImVec2(ImGui::GetFontSize() * 28.0F, 0.0F));
+		if (!ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings)) {
+			return;
+		}
+		if (!DepotAccount::SigningIn()) {
+			ImGui::CloseCurrentPopup();
+			ImGui::EndPopup();
+			return;
+		}
+		if (DepotAccount::Code().empty()) {
+			ImGui::TextDisabled("Asking the Depot for a code...");
+		} else {
+			ImGui::TextWrapped("Open the Depot's sign-in page in a web browser, sign in there if you aren't, and approve this code:");
+			ImGui::Spacing();
+			ImGui::SetWindowFontScale(2.0F);
+			ImGui::PushStyleColor(ImGuiCol_Text, ToolTheme::Vec(ToolTheme::Gold));
+			float codeWidth = ImGui::CalcTextSize(DepotAccount::Code().c_str()).x;
+			ImGui::SetCursorPosX(std::max(0.0F, (ImGui::GetWindowWidth() - codeWidth) * 0.5F));
+			ImGui::TextUnformatted(DepotAccount::Code().c_str());
+			ImGui::PopStyleColor();
+			ImGui::SetWindowFontScale(1.0F);
+			ImGui::Spacing();
+			if (ToolUI::Button("Open the sign-in page", ImVec2(-1.0F, 0.0F))) {
+				SDL_OpenURL(DepotAccount::SignInPage().c_str());
+			}
+			ImGui::TextDisabled("Or on another device: %s", DepotAccount::SignInPage().c_str());
+			ImGui::Spacing();
+			ImGui::TextDisabled("Waiting for you to approve it...");
+		}
+		ImGui::Spacing();
+		if (ToolUI::Button("Cancel", ImVec2(-1.0F, 0.0F)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+			DepotAccount::CancelSignIn();
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+#pragma endregion
 
 	/// Markdown, as plain text with headings, lists and links tidied: enough to read it by.
 	void Markdown(const std::string& text) {
@@ -823,9 +1328,10 @@ namespace {
 		const std::string slug = Str(item, "slug");
 		const float room = ImGui::GetContentRegionAvail().x;
 
-		// Open on the Depot stays at the bottom; the rest scrolls above it.
+		// Installing and Open on the Depot stay at the bottom; the rest scrolls above it.
 		const float buttonHeight = ImGui::GetFrameHeight() * 1.6F;
-		ImGui::BeginChild("##depotInfo", ImVec2(0.0F, -(buttonHeight + ImGui::GetStyle().ItemSpacing.y)), ImGuiChildFlags_None);
+		const float installHeight = ImGui::GetFrameHeightWithSpacing() * 2.0F + ImGui::GetTextLineHeightWithSpacing() * 3.0F;
+		ImGui::BeginChild("##depotInfo", ImVec2(0.0F, -(buttonHeight + installHeight + ImGui::GetStyle().ItemSpacing.y * 2.0F)), ImGuiChildFlags_None);
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		if (item.contains("cover") && item["cover"].is_object()) {
 			bool pixelArt = item["cover"].value("pixelArt", false);
@@ -844,7 +1350,9 @@ namespace {
 			byline += ", comes with the game";
 		}
 		ImGui::TextDisabled("%s", byline.c_str());
-		ImGui::TextDisabled("%lld downloads, %lld likes, %lld comments", Num(item, "downloads"), Num(item, "likes"), Num(item, "comments"));
+		ImGui::TextDisabled("%lld downloads, %lld likes, %lld comments", Num(item, "downloads"), detail.Likes >= 0 ? detail.Likes : Num(item, "likes"), Num(item, "comments"));
+		ImGui::SameLine();
+		LikeButton(detail, slug);
 		if (std::string module = Str(item, "moduleId"); !module.empty()) {
 			ImGui::TextDisabled("%s%s", module.c_str(), ModuleInstalled(module) ? "  (installed)" : "");
 		}
@@ -930,9 +1438,21 @@ namespace {
 					continue;
 				}
 				std::string date = Str(version, "createdAt").substr(0, 10);
-				ImGui::Text("%s", Str(version, "version").c_str());
+				std::string number = Str(version, "version");
+				ImGui::Text("%s", number.c_str());
 				ImGui::SameLine();
 				ImGui::TextDisabled("%s, %s%s", date.c_str(), Bytes(Num(version, "fileSize")).c_str(), Str(version, "gameVersion").empty() ? "" : (", for game " + Str(version, "gameVersion")).c_str());
+				const DepotInstall::Entry* installed = DepotInstall::Installed(slug);
+				const DepotInstall::Task* task = DepotInstall::TaskFor(slug);
+				if (installed && installed->Version != number && DepotInstall::PendingFor(slug).empty() && !(task && task->Running)) {
+					ImGui::SameLine();
+					ImGui::PushID(number.c_str());
+					if (ImGui::SmallButton("Install this one")) {
+						DepotInstall::Install(slug, number);
+					}
+					ImGui::SetItemTooltip("Puts version %s in place of %s when the game restarts.", number.c_str(), installed->Version.c_str());
+					ImGui::PopID();
+				}
 				if (std::string changelog = Str(version, "changelog"); !changelog.empty()) {
 					ImGui::Indent();
 					Markdown(changelog);
@@ -947,8 +1467,16 @@ namespace {
 				Contents(detail);
 			}
 		}
+		std::string commentsLabel = "Comments (" + std::to_string(detail.Comments.is_array() ? static_cast<long long>(detail.Comments.size()) : Num(item, "comments")) + ")###depotComments";
+		if (ImGui::CollapsingHeader(commentsLabel.c_str())) {
+			Comments(detail, slug);
+		}
 		ImGui::EndChild();
 
+		ImGui::BeginChild("##depotInstall", ImVec2(0.0F, installHeight), ImGuiChildFlags_None);
+		ImGui::Separator();
+		InstallControls(item);
+		ImGui::EndChild();
 		if (ToolUI::Button("Open on the Depot", ImVec2(-1.0F, buttonHeight))) {
 			OpenOnSite(SitePath(kind, slug));
 		}
@@ -972,6 +1500,10 @@ void DepotBrowser::Open(const std::string& kind) {
 	s_Browser.FiltersChanged = true;
 	s_Browser.Picked.clear();
 	s_Browser.Picked_ = Detail();
+	if (!s_Browser.AskAddress) {
+		DepotInstall::CheckForUpdates();
+	}
+	DepotAccount::CheckAgain();
 }
 
 void DepotBrowser::Close() {
@@ -1004,6 +1536,11 @@ void DepotBrowser::DrawGUI() {
 		Refresh();
 	}
 	FetchPictures();
+	DepotAccount::Update();
+	s_Browser.UpdateSlugs.clear();
+	for (const DepotInstall::Update& update: DepotInstall::Updates()) {
+		s_Browser.UpdateSlugs.insert(update.Slug);
+	}
 
 	const ImGuiViewport* viewport = ImGui::GetMainViewport();
 	const float margin = std::floor(std::min(viewport->Size.x, viewport->Size.y) * 0.03F);
@@ -1012,7 +1549,7 @@ void DepotBrowser::DrawGUI() {
 	if (ImGui::Begin("Cortex Depot###DepotBrowser", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar)) {
 		const ImGuiStyle& style = ImGui::GetStyle();
 		const float backWidth = ImGui::CalcTextSize("Back").x + style.FramePadding.x * 4.0F;
-		if (ToolUI::Button("Back", ImVec2(backWidth, 0.0F)) || (ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !ImGui::GetIO().WantTextInput)) {
+		if (ToolUI::Button("Back", ImVec2(backWidth, 0.0F)) || (ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !ImGui::GetIO().WantTextInput && !DepotAccount::SigningIn())) {
 			s_Browser.Back = true;
 		}
 		ImGui::SameLine();
@@ -1021,17 +1558,43 @@ void DepotBrowser::DrawGUI() {
 			AddressBox();
 		} else {
 			Filters();
-			ImGui::TextDisabled("%d found on the Depot at %s", s_Browser.Total, DepotClient::s_Address.c_str());
+			if (s_Browser.ShowInstalled) {
+				ImGui::TextDisabled("Installed from the Depot at %s", DepotClient::s_Address.c_str());
+			} else {
+				ImGui::TextDisabled("%d found on the Depot at %s", s_Browser.Total, DepotClient::s_Address.c_str());
+			}
 			ImGui::SameLine();
 			if (ImGui::SmallButton("Change")) {
 				s_Browser.AskAddress = true;
 				s_Browser.AddressProblem.clear();
 			}
+			ImGui::SameLine(0.0F, ImGui::GetFontSize() * 1.5F);
+			AccountBar();
+			if (int pending = DepotInstall::PendingCount(); pending > 0) {
+				ImGui::SameLine();
+				ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0F, 0.75F, 0.35F, 1.0F));
+				if (pending == 1) {
+					ImGui::TextUnformatted("  1 change waits for a restart.");
+				} else {
+					ImGui::Text("  %d changes wait for a restart.", pending);
+				}
+				ImGui::PopStyleColor();
+				ImGui::SameLine();
+				if (ImGui::SmallButton("Restart to apply")) {
+					Restart();
+				}
+				ImGui::SetItemTooltip("Closes the game and starts it again, which puts in and takes out what you've asked for.");
+			}
 			ImVec2 room = ImGui::GetContentRegionAvail();
 			float detailsWidth = std::floor(std::clamp(room.x * 0.36F, std::min(room.x * 0.5F, ImGui::GetFontSize() * 18.0F), ImGui::GetFontSize() * 40.0F));
-			Cards(room.x - detailsWidth - style.ItemSpacing.x, room.y);
+			if (s_Browser.ShowInstalled) {
+				InstalledList(room.x - detailsWidth - style.ItemSpacing.x, room.y);
+			} else {
+				Cards(room.x - detailsWidth - style.ItemSpacing.x, room.y);
+			}
 			ImGui::SameLine();
 			Details(detailsWidth, room.y);
+			SignInWindow();
 		}
 	}
 	ImGui::End();
