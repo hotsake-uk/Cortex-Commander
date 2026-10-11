@@ -84,6 +84,16 @@ namespace {
 	};
 	std::mutex s_QueueMutex;
 	std::vector<BlastRequest> s_Blasts;
+	struct GustRequest {
+		int X;
+		int Y;
+		float DirX; //!< Unit direction.
+		float DirY;
+		float Strength;
+		float Length; //!< In pixels.
+		float Spread; //!< Half the cone's width, in radians.
+	};
+	std::vector<GustRequest> s_Gusts;
 
 	bool Active() { return s_Right > s_Left && s_Bottom > s_Top; }
 
@@ -406,6 +416,17 @@ void AirPressure::Blast(const Vector& position, float energy) {
 	}
 }
 
+void AirPressure::Gust(const Vector& position, const Vector& direction, float strength, float length, float spread) {
+	if (!s_On || !s_Enabled || !std::isfinite(strength) || strength <= 0.0F || length <= 0.0F || direction.IsZero() || GetOverall() <= 0.0F) {
+		return;
+	}
+	Vector unit = direction.GetNormalized();
+	std::scoped_lock lock(s_QueueMutex);
+	if (s_Gusts.size() < 64) {
+		s_Gusts.push_back({position.GetFloorIntX(), position.GetFloorIntY(), unit.m_X, unit.m_Y, std::min(strength, 40.0F), std::min(length, static_cast<float>(c_Cell * 64)), std::clamp(spread, 0.0F, 360.0F) * 0.5F * c_PI / 180.0F});
+	}
+}
+
 Vector AirPressure::GetFlow(const Vector& position) {
 	if (!Active()) {
 		return Vector();
@@ -439,6 +460,7 @@ void AirPressure::Clear() {
 	s_Left = s_Right = s_Top = s_Bottom = 0;
 	std::scoped_lock lock(s_QueueMutex);
 	s_Blasts.clear();
+	s_Gusts.clear();
 }
 
 void AirPressure::Update() {
@@ -481,10 +503,13 @@ void AirPressure::Update() {
 	}
 
 	std::vector<BlastRequest> blasts;
+	std::vector<GustRequest> gusts;
 	{
 		std::scoped_lock lock(s_QueueMutex);
 		blasts.swap(s_Blasts);
+		gusts.swap(s_Gusts);
 	}
+	std::sort(gusts.begin(), gusts.end(), [](const GustRequest& a, const GustRequest& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Strength < b.Strength); });
 	// (Blasts made from parallel code are sorted so they land in the same order every time.)
 	std::sort(blasts.begin(), blasts.end(), [](const BlastRequest& a, const BlastRequest& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Energy < b.Energy); });
 	// The area is grown for every blast first, so what is open is worked out once for them all.
@@ -493,8 +518,58 @@ void AirPressure::Update() {
 			Grow(cell % s_GridWidth - 3, cell / s_GridWidth - 3, cell % s_GridWidth + 4, cell / s_GridWidth + 4);
 		}
 	}
-	if (!blasts.empty() && Active()) {
+	for (const GustRequest& gust: gusts) {
+		if (int cell = CellAt(Vector(static_cast<float>(gust.X), static_cast<float>(gust.Y))); cell >= 0) {
+			int reach = static_cast<int>(gust.Length) / c_Cell + 2;
+			Grow(cell % s_GridWidth - reach, cell / s_GridWidth - reach, cell % s_GridWidth + reach + 1, cell / s_GridWidth + reach + 1);
+		}
+	}
+	if ((!blasts.empty() || !gusts.empty()) && Active()) {
 		WorkOutOpenness(materialBitmap);
+	}
+	// A gust sets the air moving its way across every open cell in its cone, most at its start and fading to nothing at its far end; the
+	// waves then carry it on from there.
+	for (const GustRequest& gust: gusts) {
+		int cell = CellAt(Vector(static_cast<float>(gust.X), static_cast<float>(gust.Y)));
+		if (cell < 0) {
+			continue;
+		}
+		int originX = cell % s_GridWidth;
+		int originY = cell / s_GridWidth;
+		int reach = static_cast<int>(gust.Length) / c_Cell + 1;
+		float strength = gust.Strength * GetOverall();
+		float cosSpread = std::cos(gust.Spread);
+		for (int dy = -reach; dy <= reach; ++dy) {
+			for (int dx = -reach; dx <= reach; ++dx) {
+				int x = originX + dx;
+				int y = originY + dy;
+				if (x < 0 || y < 0 || x >= s_GridWidth || y >= s_GridHeight) {
+					continue;
+				}
+				int at = y * s_GridWidth + x;
+				if (!InActiveArea(at) || s_Open[at] == Solid) {
+					continue;
+				}
+				float distance = std::sqrt(static_cast<float>(dx * dx + dy * dy)) * static_cast<float>(c_Cell);
+				if (distance > gust.Length) {
+					continue;
+				}
+				// The cell the gust starts in is always in it; any other only within the cone.
+				Vector way = distance > 0.0F ? Vector(static_cast<float>(dx), static_cast<float>(dy)) / (distance / static_cast<float>(c_Cell)) : Vector(gust.DirX, gust.DirY);
+				if (distance > 0.0F && gust.Spread < c_PI && way.m_X * gust.DirX + way.m_Y * gust.DirY < cosSpread) {
+					continue;
+				}
+				// A cone blows along itself; all the way round (a ring), each cell blows straight out.
+				Vector blow = gust.Spread >= c_PI ? way : Vector(gust.DirX, gust.DirY);
+				float share = strength * (1.0F - 0.75F * distance / gust.Length);
+				if (x + 1 < s_Right && s_Open[at + 1] != Solid) {
+					s_FlowX[at] += blow.m_X * share;
+				}
+				if (y + 1 < s_Bottom && s_Open[at + s_GridWidth] != Solid) {
+					s_FlowY[at] += blow.m_Y * share;
+				}
+			}
+		}
 	}
 	for (const BlastRequest& blast: blasts) {
 		int cell = CellAt(Vector(static_cast<float>(blast.X), static_cast<float>(blast.Y)));
