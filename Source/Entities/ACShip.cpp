@@ -64,6 +64,7 @@ void ACShip::Clear() {
 	m_GunAimRange = 1.3F;
 	m_Guns.clear();
 	m_Parked = false;
+	m_EnginesOff = false;
 	m_TouchdownTimer.Reset();
 	m_OrderedBoardTimer.Reset();
 	m_EngageID = 0;
@@ -93,6 +94,7 @@ int ACShip::Create(const ACShip& reference) {
 	m_GunTurnSpeed = reference.m_GunTurnSpeed;
 	m_GunAimRange = reference.m_GunAimRange;
 	m_Parked = reference.m_Parked;
+	m_EnginesOff = reference.m_EnginesOff;
 	m_FlightSpeed = reference.m_FlightSpeed;
 	m_ClimbSpeed = reference.m_ClimbSpeed;
 
@@ -190,6 +192,7 @@ bool ACShip::TakeSeat(Actor* unit, int seat) {
 
 bool ACShip::FlyTo(const Vector& spot) {
 	m_Route.clear();
+	m_EnginesOff = false;
 	return CanFly() && AutopilotGoTo(spot);
 }
 
@@ -220,6 +223,7 @@ PathAgent ACShip::GetPathAgent() const {
 }
 
 bool ACShip::FlyRouteTo(const Vector& spot) {
+	m_EnginesOff = false;
 	if (!CanFly() || !AutopilotStarted()) {
 		m_Route.clear();
 		return false;
@@ -366,6 +370,7 @@ bool ACShip::EngageTarget(const Actor* target) {
 	if (!target || !CanFly() || !AutopilotStarted()) {
 		return false;
 	}
+	m_EnginesOff = false;
 	if (m_EngageID != target->GetUniqueID()) {
 		m_EngageID = target->GetUniqueID();
 		m_HasCombatSpot = false;
@@ -568,6 +573,14 @@ void ACShip::UpdateAutopilot() {
 		m_HasHoldPoint = true;
 	}
 	m_FlownTimer.Reset();
+	// Landed with its engines off: it stays down till sent somewhere (a go-to, however given).
+	if (m_EnginesOff) {
+		if (m_AIMode != AIMODE_GOTO) {
+			m_Route.clear();
+			return;
+		}
+		m_EnginesOff = false;
+	}
 	UpdateCraftAvoidance();
 	UpdateCombat();
 	// Along its route (FlyRouteTo): on to the next point once near the one it is flying to. Any other order (it holds, or is sent somewhere
@@ -823,8 +836,13 @@ void ACShip::PreControllerUpdate() {
 	ZoneScoped;
 
 	bool flown = CanFly();
-	// (A player at a gun or in a passenger's seat doesn't fly it: the pilot, or the ship itself, holds it where it is.)
-	bool letGo = !flown || (m_Controller.IsPlayerControlled() && GetControlSeat() > 0);
+	// (A player taking the controls starts the engines of a ship landed with them off.)
+	if (m_EnginesOff && (!flown || (m_Controller.IsPlayerControlled() && GetControlSeat() <= 0))) {
+		m_EnginesOff = false;
+	}
+	// (A player at a gun or in a passenger's seat doesn't fly it: the pilot, or the ship itself, holds it where it is. Nor does anyone
+	// while its engines are off.)
+	bool letGo = !flown || m_EnginesOff || (m_Controller.IsPlayerControlled() && GetControlSeat() > 0);
 	if (!letGo) {
 		m_Parked = false;
 		m_TouchdownTimer.Reset();
@@ -865,7 +883,7 @@ void ACShip::PreControllerUpdate() {
 
 	ACDropShip::PreControllerUpdate();
 
-	if (!flown && m_Parked) {
+	if ((!flown && m_Parked) || m_EnginesOff) {
 		for (AEmitter* engine: {m_pLThruster, m_pRThruster, m_pULThruster, m_pURThruster}) {
 			if (engine && engine->IsAttached()) {
 				engine->EnableEmission(false);

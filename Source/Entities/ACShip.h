@@ -68,6 +68,13 @@ namespace RTE {
 		/// Gets whether it is sat on the ground with its engines off, waiting for a pilot.
 		bool IsParked() const { return m_Parked; }
 
+		/// Gets whether its engines are shut off where it has landed (a Land order, as a vehicle's handbrake): it stays down till sent anywhere
+		/// or flown.
+		bool IsEnginesOff() const { return m_EnginesOff; }
+
+		/// Shuts its engines off where it is (once landed), or starts them again. Sending it anywhere, or a player flying it, starts them.
+		void SetEnginesOff(bool off) { m_EnginesOff = off; }
+
 		/// Gets how many seats it has: the pilot's (seat 0) and any others (1 on), passengers' and gunners'.
 		int GetSeatCount() const { return m_Crew.GetSeatCount(); }
 
@@ -230,6 +237,7 @@ namespace RTE {
 		float m_GunAimRange; //!< How far a gun swings up or down from level, in radians.
 		std::vector<GunState> m_Guns; //!< Its manned guns' aim, by turret.
 		bool m_Parked; //!< Whether it is sat on the ground with its engines off (nobody at the controls of a ship that needs a pilot).
+		bool m_EnginesOff; //!< Whether its engines are shut off where it landed (IsEnginesOff).
 		Timer m_TouchdownTimer; //!< How long it has been down and still while setting itself down.
 		Timer m_OrderedBoardTimer; //!< Since it last looked for units sent to it to get in.
 		std::deque<Vector> m_Route; //!< The points of the route FlyRouteTo sent it along still to fly to, the one it is flying to first.

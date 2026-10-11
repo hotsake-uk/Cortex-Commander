@@ -2599,7 +2599,7 @@ namespace SandboxDetail {
 				const ImU32 color = c_CommandModeColors[static_cast<int>(CommandMode::Land)];
 				crosshair(g_SceneMan.MovePointToGround(point, 0.0F, 4), color, pixel * 6.0F);
 				const int ships = static_cast<int>(std::count_if(units.begin(), units.end(), [](const Actor* unit) { return dynamic_cast<const ACShip*>(unit) != nullptr; }));
-				label = "Land here: " + std::to_string(ships) + (ships == 1 ? " ship sets down" : " ships set down");
+				label = "Land here: " + std::to_string(ships) + (ships == 1 ? " ship sets down" : " ships set down") + ", engines off";
 			} else if (mode == CommandMode::Patrol) {
 				label = s_PatrolDraft.empty() ? "Click the first point of the patrol route" : "Click point " + std::to_string(s_PatrolDraft.size() + 1) + " of the route, or start it on the command row";
 			} else if (mode == CommandMode::Pen) {
@@ -4880,7 +4880,7 @@ namespace SandboxDetail {
 			if (SelectionHasShip()) {
 				line.Next(pixel * 2.0F);
 				const int land = static_cast<int>(CommandMode::Land);
-				if (BarChip(c_CommandModeNames[land], current == land, c_CommandModeColors[land], nullptr, "Fly the selected ships to the place clicked and set them down on the ground there. Their passengers get out,\nand they stay down till given another order. Shift adds it to their plans.") == 1) {
+				if (BarChip(c_CommandModeNames[land], current == land, c_CommandModeColors[land], nullptr, "Fly the selected ships to the place clicked, set them down on the ground there and turn their engines off, as a\nvehicle's handbrake. Everyone stays aboard, and they stay down till given another order. Shift adds it to their plans.") == 1) {
 					s_CommandMode = CommandMode::Land;
 				}
 			}

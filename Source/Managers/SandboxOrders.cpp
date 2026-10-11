@@ -1957,17 +1957,24 @@ namespace SandboxDetail {
 				}
 				return false;
 			}
-			// Coming down: once down (or as near as it gets), they get out, and it climbs back up to hover there for orders.
+			// Coming down: once down (or as near as it gets), they get out, and it climbs back up to hover there for orders (or, landing,
+			// it stays down).
 			const bool down = ship->GetAltitude(1000, 4) < ship->GetRadius() * 0.9F && ship->GetVel().MagnitudeIsLessThan(3.0F);
 			if (!down && seconds < 10.0F) {
 				return false;
 			}
-			// (Landed for good: it stays down, holding where it sat down, till another order.)
+			// Landed (Land): its engines off, as a vehicle's handbrake, and everyone stays aboard, till another order.
+			// (Not down after all, sat on something it can't get down from: it doesn't drop from the air, it holds there with them running.)
+			if (dropoff.StayDown) {
+				if (down) {
+					ship->SetAIMode(Actor::AIMODE_SENTRY);
+					ship->SetEnginesOff(true);
+				}
+				return true;
+			}
 			const Vector place = ship->GetPos();
 			EveryoneOut(ship, true);
-			if (!dropoff.StayDown) {
-				ship->FlyRouteTo(place);
-			}
+			ship->FlyRouteTo(place);
 			return true;
 		});
 	}
