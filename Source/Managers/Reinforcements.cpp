@@ -89,6 +89,7 @@ namespace SandboxDetail {
 		ForgetBattleReport();
 		ForgetEnemyCommander();
 		ForgetAlerts();
+		ForgetLoadouts();
 	}
 
 	void UpdateReinforcements() {

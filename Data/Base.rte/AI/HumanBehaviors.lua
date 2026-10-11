@@ -849,12 +849,18 @@ end
 -- find a weapon to pick up
 function HumanBehaviors.WeaponSearch(AI, Owner, Abort)
 	local pickupDiggers = not Owner:HasObjectInGroup("Tools - Diggers");
+	-- (Scavenging, HumanBehaviors.Scavenge: only what passes its test, and nearer.)
+	local accept = AI.ScavengeAccept;
+	AI.ScavengeAccept = nil;
 
 	local maxSearchDistance;
 	if AI.isPlayerOwned then
 		maxSearchDistance = 160; -- don't move player actors too far
 	else
 		maxSearchDistance = FrameMan.PlayerScreenWidth * 0.45;
+	end
+	if accept then
+		maxSearchDistance = math.min(maxSearchDistance, 200);
 	end
 
 	if Owner.AIMode == Actor.AIMODE_SENTRY then
@@ -872,7 +878,7 @@ function HumanBehaviors.WeaponSearch(AI, Owner, Abort)
 		
 		if MovableMan:ValidMO(movableObject) and IsHeldDevice(movableObject) then
 			local device = ToHeldDevice(movableObject);
-			if device:IsPickupableBy(Owner) and not device:IsActivated() and device.Vel.Largest < 3 and not SceneMan:IsUnseen(device.Pos.X, device.Pos.Y, Owner.Team) then
+			if device:IsPickupableBy(Owner) and not device:IsActivated() and device.Vel.Largest < 3 and not SceneMan:IsUnseen(device.Pos.X, device.Pos.Y, Owner.Team) and (not accept or accept(device)) then
 				local distanceToDevice = SceneMan:ShortestDistance(Owner.Pos, device.Pos, SceneMan.SceneWrapsX or SceneMan.SceneWrapsY);
 				if distanceToDevice:MagnitudeIsGreaterThan(Owner.Radius * 0.75) then
 					table.insert(devices, { device = device, distance = distanceToDevice });
@@ -942,6 +948,9 @@ function HumanBehaviors.WeaponSearch(AI, Owner, Abort)
 		end
 
 		if AI.PickupHD then
+			if accept then
+				Owner:Say("Scavenging");
+			end
 			-- where do we move after pick up?
 			local prevMoveTarget, prevSceneWaypoint;
 			if Owner.MOMoveTarget and MovableMan:ValidMO(Owner.MOMoveTarget) then
@@ -977,6 +986,37 @@ function HumanBehaviors.WeaponSearch(AI, Owner, Abort)
 	end
 
 	return true;
+end
+
+
+-- Scavenging (Settings > AI behaviour, "Units pick up better weapons"): an armed unit with nothing to fight looks round for a loose gun
+-- clearly better than its best (worth a third more), or something to throw when it has nothing, and goes to pick it up (WeaponSearch,
+-- told what to take). Then back to where it was going.
+function HumanBehaviors.Scavenge(AI, Owner, Abort)
+	local best = 0;
+	local hasThrown = false;
+	local function weigh(item)
+		if not item then
+			return;
+		end
+		if IsHDFirearm(item) and not ToHeldDevice(item):IsTool() and not item:HasObjectInGroup("Tools - Diggers") then
+			best = math.max(best, item:GetGoldValue(0, 1, 1));
+		elseif item:IsThrownDevice() then
+			hasThrown = true;
+		end
+	end
+	weigh(Owner.EquippedItem);
+	weigh(Owner.EquippedBGItem);
+	for item in Owner.Inventory do
+		weigh(item);
+	end
+	AI.ScavengeAccept = function(device)
+		if IsHDFirearm(device) and not device:IsTool() and not device:HasObjectInGroup("Tools - Diggers") then
+			return device:GetGoldValue(0, 1, 1) > best * 1.33 + 5;
+		end
+		return not hasThrown and device.ClassName == "TDExplosive";
+	end
+	return HumanBehaviors.WeaponSearch(AI, Owner, Abort);
 end
 
 

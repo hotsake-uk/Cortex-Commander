@@ -88,10 +88,13 @@ namespace SandboxDetail {
 				for (Actor* unit: units) {
 					unit->RemoveWounds(unit->GetWoundCount());
 					unit->SetHealth(unit->GetMaxHealth());
-					if (AHuman* human = dynamic_cast<AHuman*>(unit)) {
+					// (And what it's lost of its kit given back: a gun if it has none, its grenades.)
+					AHuman* human = dynamic_cast<AHuman*>(unit);
+					const int rearmed = human ? RearmUnit(human) : 0;
+					if (human) {
 						human->ReloadFirearms();
 					}
-					unit->Say("Resupplied");
+					unit->Say(rearmed > 0 ? "Rearmed" : "Resupplied");
 				}
 				Note(std::string(c_SideNames[side]) + ": supplies to " + std::to_string(units.size()) + (units.size() == 1 ? " unit" : " units"));
 				break;
