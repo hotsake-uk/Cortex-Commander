@@ -468,6 +468,7 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 		reader >> m_StandingOrder.DigTarget;
 		m_StandingOrder.HasDigTarget = true;
 	});
+	MatchProperty("OrderDirect", { reader >> m_StandingOrder.Direct; });
 	MatchProperty("OrderFailReason", {
 		int reason = 0;
 		reader >> reason;
@@ -619,6 +620,9 @@ int Actor::Save(Writer& writer) const {
 	}
 	if (m_StandingOrder.HasDigTarget) {
 		writer.NewPropertyWithValue("OrderDigTarget", m_StandingOrder.DigTarget);
+	}
+	if (m_StandingOrder.Direct) {
+		writer.NewPropertyWithValue("OrderDirect", m_StandingOrder.Direct);
 	}
 	if (m_StandingOrder.FailReason != ORDERFAIL_NONE) {
 		writer.NewPropertyWithValue("OrderFailReason", m_StandingOrder.FailReason);
@@ -1511,6 +1515,18 @@ PathAgent Actor::GetPathAgent() const {
 	if (IsDiggingTo()) {
 		agent.DigGoal = true;
 		agent.DigCostScale = PathAgent::c_DigToCostScale;
+	}
+	// A triple-clicked order (StandingOrder::Direct): the shortest way, whatever it takes. No shying from hard flights, long drops or
+	// enemies, and no taste of its own in routes; and a dig-to digs as near a straight line as the ground it can cut allows.
+	if (m_StandingOrder.Direct) {
+		agent.Direct = true;
+		agent.Caution = std::min(agent.Caution, PathAgent::c_DirectCaution);
+		agent.ThreatWeight = 0.0F;
+		agent.Threats.reset();
+		agent.RouteSeed = 0;
+		if (agent.DigGoal) {
+			agent.DigCostScale = PathAgent::c_DirectDigCostScale;
+		}
 	}
 	for (const std::pair<Vector, double>& avoid: m_AvoidPoints) {
 		if (avoid.second > g_TimerMan.GetSimTimeMS()) {
@@ -2984,6 +3000,7 @@ void Actor::GetDebugState(std::vector<DebugStateField>& fields) const {
 	if (order.Kind != ORDER_NONE) {
 		fields.push_back({"orderKind", order.Kind >= 0 && order.Kind < static_cast<int>(std::size(orderKindNames)) ? orderKindNames[order.Kind] : std::to_string(order.Kind), true});
 	}
+	flag("orderDirect", order.Direct);
 	if (order.HasDigTarget) {
 		number("orderDigX", std::floor(order.DigTarget.m_X));
 		number("orderDigY", std::floor(order.DigTarget.m_Y));

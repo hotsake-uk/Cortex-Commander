@@ -2355,7 +2355,12 @@ namespace SandboxDetail {
 			case Tool::Select:
 				SelectInBox(stroke.Position, stroke.Position2);
 				break;
-			case Tool::Command:
+			case Tool::Command: {
+				// A triple-clicked order (s_DirectOrder): every unit it sends goes the shortest way, whatever it takes.
+				struct DirectScope {
+					explicit DirectScope(bool direct) { s_DirectOrder = direct; }
+					~DirectScope() { s_DirectOrder = false; }
+				} directScope(stroke.Direct);
 				if (stroke.Count == 10 || stroke.Count == 11) {
 					// Defend at (RC-4): the point, the way dragged to face, and 11 with Shift.
 					DefendAtSelected(at, stroke.Position2, stroke.Count == 11);
@@ -2375,6 +2380,7 @@ namespace SandboxDetail {
 					CommandSelected(at, stroke.Count);
 				}
 				break;
+			}
 			case Tool::OrderSelected:
 				if (stroke.Count == 400) {
 					// A step dropped from a unit's plan (RC-3).

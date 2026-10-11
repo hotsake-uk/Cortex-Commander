@@ -200,6 +200,7 @@ namespace SandboxDetail {
 					stroke.Kind = Tool::Command;
 					stroke.Position = point;
 					stroke.Count = io.KeyShift ? 42 : 41;
+					stroke.Direct = ImGui::GetMouseClickedCount(ImGuiMouseButton_Right) >= 3;
 					s_Queue.push_back(stroke);
 				}
 			}

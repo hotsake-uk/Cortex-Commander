@@ -109,6 +109,10 @@ thread_local float s_ThreatWeight = 0.0F; // How much the searcher shies from en
 thread_local Vector s_ThreatGoal; // The search's goal: steps this near it cost nothing for enemies (see ThreatCost).
 thread_local bool s_ThreatGoalSet = false; // Whether s_ThreatGoal is this search's.
 thread_local unsigned s_RouteSeed = 0; // The searcher's taste in routes (PathAgent::RouteSeed); 0 for none.
+thread_local bool s_Direct = false; // Whether the searcher is on a direct order (PathAgent::Direct).
+thread_local bool s_LineSet = false; // Whether a direct dig-to's line (s_LineFrom to s_LineTo) is this search's (see LineCost).
+thread_local Vector s_LineFrom; // The search's start node, for LineCost.
+thread_local Vector s_LineTo; // Its goal node, for LineCost.
 thread_local const std::vector<Vector>* s_Avoid = nullptr; // Where the searcher has failed jumps lately (PathAgent::Avoid). // Whether the searcher's legs take stairs (PathAgent::WalksStairs).
 
 RTE::PathNode::PathNode(const Vector& pos) :
@@ -328,6 +332,12 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	if (endNode) {
 		s_ThreatGoal = endNode->Pos;
 		s_ThreatGoalSet = true;
+		// A direct dig-to keeps to the straight line from here to there (LineCost).
+		if (s_Direct && agent.DigGoal && startNode) {
+			s_LineFrom = startNode->Pos;
+			s_LineTo = endNode->Pos;
+			s_LineSet = true;
+		}
 	}
 	// If end node is invalid, there's no path
 	if (startNode && endNode && endNode->m_Navigable) {
@@ -602,6 +612,8 @@ void PathFinder::ApplyAgent(const PathAgent& agent) {
 	s_ThreatTeamIndex = agent.ThreatTeam + 1;
 	s_ThreatGoalSet = false;
 	s_RouteSeed = agent.RouteSeed;
+	s_Direct = agent.Direct;
+	s_LineSet = false;
 	s_AvoidLinks = agent.AvoidLinks.empty() ? nullptr : &agent.AvoidLinks;
 
 	// Actors capable of jumping/jetpacking can jump upwards.
@@ -663,6 +675,10 @@ namespace {
 		Vector ThreatGoal = s_ThreatGoal;
 		bool ThreatGoalSet = s_ThreatGoalSet;
 		unsigned RouteSeed = s_RouteSeed;
+		bool Direct = s_Direct;
+		bool LineSet = s_LineSet;
+		Vector LineFrom = s_LineFrom;
+		Vector LineTo = s_LineTo;
 
 		~SearcherState() {
 			s_JumpHeight = JumpHeight;
@@ -698,6 +714,10 @@ namespace {
 			s_ThreatGoal = ThreatGoal;
 			s_ThreatGoalSet = ThreatGoalSet;
 			s_RouteSeed = RouteSeed;
+			s_Direct = Direct;
+			s_LineSet = LineSet;
+			s_LineFrom = LineFrom;
+			s_LineTo = LineTo;
 		}
 	};
 } // namespace
@@ -773,7 +793,8 @@ DigPlan PathFinder::PlanDig(const Vector& start, const Vector& target, PathAgent
 		}
 	}
 	agent.DigGoal = true;
-	agent.DigCostScale = PathAgent::c_DigToCostScale;
+	// (A direct dig-to's own lower price is kept: Actor::GetPathAgent.)
+	agent.DigCostScale = std::min(agent.DigCostScale, PathAgent::c_DigToCostScale);
 	float cost = 0.0F;
 	int result = CalculatePath(start, target, plan.Route, cost, agent, &plan.Kinds);
 	if (result != MicroPather::SOLVED && result != MicroPather::START_END_SAME) {
@@ -1061,7 +1082,8 @@ float PathFinder::LeastCostEstimate(void* startState, void* endState) {
 	// straight down 5.66 for 6), and with the straight distance as it was the estimate overshot them, so the search, which never reopens a
 	// node it has closed, could settle on a dearer route and report a total under the sum of its steps (which Actor::UpdateMovePath compares).
 	// 0.94 is under the cheapest such ratio.
-	return g_SceneMan.ShortestDistance(startNode->Pos, endNode->Pos).GetMagnitude() / m_NodeDimension * 0.94F;
+	// (Scaled down as the flights are on a direct order, PathAgent::Direct, so it stays under them.)
+	return g_SceneMan.ShortestDistance(startNode->Pos, endNode->Pos).GetMagnitude() / m_NodeDimension * 0.94F * (s_Direct ? PathAgent::c_DirectFlightCostScale : 1.0F);
 }
 
 void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* adjacentList) {
@@ -1535,6 +1557,12 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 	if (s_RouteSeed != 0) {
 		for (micropather::StateCost& adjacent: *adjacentList) {
 			adjacent.cost += VarietyCost(*static_cast<const PathNode*>(adjacent.state));
+		}
+	}
+	// A direct dig-to (PathAgent::Direct): along the straight line, not just any of the eight-way routes as short as it.
+	if (s_LineSet) {
+		for (micropather::StateCost& adjacent: *adjacentList) {
+			adjacent.cost += LineCost(*static_cast<const PathNode*>(adjacent.state));
 		}
 	}
 	// A flight failed lately (PathAgent::AvoidLinks): from near that take-off to near that landing costs more, so the next route takes off
@@ -2306,7 +2334,8 @@ void PathFinder::CollectFlightLinks(const PathNode& node, std::vector<FlightLink
 				risk += ColumnGrazeCost(node.Pos.m_X, standY, cruiseY);
 			}
 			// (Weighed by the searcher's caution: a careful unit pays more to avoid a hard flight, a reckless one takes it for the time saved.)
-			float cost = seconds * 2.2F + 1.5F + fuel / 1000.0F + LandingWidthCost(*target) + risk * s_Caution;
+			// (On a direct order, PathAgent::Direct, the flight's time and fuel cost about half: it jumps where others walk.)
+			float cost = (seconds * 2.2F + 1.5F + fuel / 1000.0F) * (s_Direct ? PathAgent::c_DirectFlightCostScale : 1.0F) + LandingWidthCost(*target) + risk * s_Caution;
 			links.push_back({target, cost, fuel});
 		}
 	}
@@ -2362,6 +2391,21 @@ float PathFinder::AvoidCost(const PathNode& node) const {
 		}
 	}
 	return 0.0F;
+}
+
+float PathFinder::LineCost(const PathNode& node) const {
+	if (!s_LineSet) {
+		return 0.0F;
+	}
+	Vector line = g_SceneMan.ShortestDistance(s_LineFrom, s_LineTo);
+	Vector off = g_SceneMan.ShortestDistance(s_LineFrom, node.Pos);
+	float length = line.GetMagnitude();
+	if (length < 1.0F) {
+		return 0.0F;
+	}
+	// How far off the line the node is, in nodes: a tenth of a node's walk for each, so a step off it is taken only to get round something.
+	float across = std::abs(line.m_X * off.m_Y - line.m_Y * off.m_X) / length;
+	return 0.1F * across / static_cast<float>(m_NodeDimension);
 }
 
 float PathFinder::VarietyCost(const PathNode& node) const {
