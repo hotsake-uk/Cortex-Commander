@@ -179,6 +179,8 @@ void AVehicle::Clear() {
 	m_AIOrderSerialSeen = 0;
 	m_Throttle = 0.0F;
 	m_Braking = false;
+	m_Handbrake = false;
+	m_HandbrakeHeldAgainst = false;
 	m_UpsideDownTimer.Reset();
 	m_Buoyancy = 0.8F;
 	m_BreakLandingSpeed = 0.0F;
@@ -268,6 +270,7 @@ int AVehicle::Create(const AVehicle& reference) {
 	m_SuspensionDamping = reference.m_SuspensionDamping;
 	m_Acceleration = reference.m_Acceleration;
 	m_BrakeStrength = reference.m_BrakeStrength;
+	m_Handbrake = reference.m_Handbrake;
 	m_RollingResistance = reference.m_RollingResistance;
 	m_MaxSpeed = reference.m_MaxSpeed;
 	m_Grip = reference.m_Grip;
@@ -339,6 +342,7 @@ int AVehicle::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("SuspensionDamping", { reader >> m_SuspensionDamping; });
 	MatchProperty("Acceleration", { reader >> m_Acceleration; });
 	MatchProperty("BrakeStrength", { reader >> m_BrakeStrength; });
+	MatchProperty("Handbrake", { reader >> m_Handbrake; });
 	MatchProperty("RollingResistance", { reader >> m_RollingResistance; });
 	MatchProperty("MaxSpeed", { reader >> m_MaxSpeed; });
 	MatchProperty("Grip", { reader >> m_Grip; });
@@ -438,6 +442,7 @@ int AVehicle::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("SuspensionDamping", m_SuspensionDamping);
 	writer.NewPropertyWithValue("Acceleration", m_Acceleration);
 	writer.NewPropertyWithValue("BrakeStrength", m_BrakeStrength);
+	writer.NewPropertyWithValue("Handbrake", m_Handbrake);
 	writer.NewPropertyWithValue("RollingResistance", m_RollingResistance);
 	writer.NewPropertyWithValue("MaxSpeed", m_MaxSpeed);
 	writer.NewPropertyWithValue("Grip", m_Grip);
@@ -1598,6 +1603,12 @@ void AVehicle::Update() {
 	if (canDrive && !m_Controller.IsPlayerControlled()) {
 		UpdateAIDriving();
 	}
+	// The handbrake holds it whoever drives: the wheels braked, the throttle let go of (its player told so if they try to drive).
+	m_HandbrakeHeldAgainst = m_Handbrake && m_Throttle != 0.0F && m_Controller.IsPlayerControlled();
+	if (m_Handbrake) {
+		m_Throttle = 0.0F;
+		m_Braking = true;
+	}
 	// Facing the way it's driven, as a unit turns to walk: only when slow, so it doesn't flip round while braking from speed.
 	if (m_Throttle != 0.0F && (m_Throttle > 0.0F) == m_HFlipped && m_Vel.MagnitudeIsLessThan(1.5F)) {
 		SetHFlipped(!m_HFlipped);
@@ -1716,6 +1727,15 @@ void AVehicle::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int which
 		}
 		AllegroBitmap bitmap(pTargetBitmap);
 		font->DrawAligned(&bitmap, drawPos.GetFloorIntX(), drawPos.GetFloorIntY() - static_cast<int>(m_CharHeight * 0.5F) - 26, loadLine, GUIFont::Centre);
+	}
+	// The handbrake, to its player: always that it is on, and how to let it off when they try to drive.
+	if (m_Handbrake && GetControlSeat() >= 0 && m_Controller.IsPlayerControlled() && activity->ScreenOfPlayer(m_Controller.GetPlayer()) == whichScreen) {
+		Vector drawPos = m_Pos - targetPos;
+		if (!targetPos.IsZero()) {
+			drawPos += g_SceneMan.GetWrapToScreen(drawPos, pTargetBitmap->w, pTargetBitmap->h);
+		}
+		AllegroBitmap bitmap(pTargetBitmap);
+		font->DrawAligned(&bitmap, drawPos.GetFloorIntX(), drawPos.GetFloorIntY() - static_cast<int>(m_CharHeight * 0.5F) - (loadLine.empty() ? 26 : 38), m_HandbrakeHeldAgainst ? "Handbrake on: right click to let it off" : "Handbrake on", GUIFont::Centre);
 	}
 	if (hint) {
 		Vector drawPos = m_Pos - targetPos;

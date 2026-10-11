@@ -193,6 +193,19 @@ namespace RTE {
 		/// Sets ClassicPieWheel; see there.
 		void SetClassicPieWheel(bool classic) { m_ClassicPieWheel = classic; }
 
+		/// Gets whether a click of the right button opens the unit menu and leaves it up till you click away (true), rather than it being up
+		/// only while the button is held (false).
+		bool UnitMenuClickToOpen() const { return m_UnitMenuClickToOpen; }
+
+		/// Sets UnitMenuClickToOpen; see there.
+		void SetUnitMenuClickToOpen(bool click) { m_UnitMenuClickToOpen = click; }
+
+		/// Gets how fast time runs while the unit menu is up, 0.05 to 1 (1: as fast as ever).
+		float UnitMenuTimeScale() const { return m_UnitMenuTimeScale; }
+
+		/// Sets UnitMenuTimeScale; see there.
+		void SetUnitMenuTimeScale(float scale) { m_UnitMenuTimeScale = std::clamp(scale, 0.05F, 1.0F); }
+
 		/// Whether red and white flashes appear when brain is damaged.
 		/// @return Whether red and white flashes appear when brain is damaged.
 		bool FlashOnBrainDamage() const { return m_FlashOnBrainDamage; }
@@ -838,6 +851,8 @@ namespace RTE {
 		bool m_AlwaysDisplayUnheldItemsInStrategicMode; //!< Whether or not devices on Scene should always show their pick-up HUD when when the player is in strategic mode.
 		int m_SubPieMenuHoverOpenDelay; //!< The number of MS a PieSlice with a sub-PieMenu needs to be hovered over for the sub-PieMenu to open.
 		bool m_ClassicPieWheel; //!< Whether a unit's right-click menu is the classic pie wheel rather than the action menu (see ClassicPieWheel).
+		bool m_UnitMenuClickToOpen; //!< Whether a click opens the unit menu and leaves it up (see UnitMenuClickToOpen).
+		float m_UnitMenuTimeScale; //!< How fast time runs while the unit menu is up (see UnitMenuTimeScale).
 		bool m_EndlessMetaGameMode; //!< Endless MetaGame mode.
 		bool m_ShowFPSAndVersion; //!< Whether the frame rate and version are shown in the top right (see ShowFPSAndVersion).
 		int m_NavDebugOverlay; //!< What the navigation debug overlay shows (see NavDebugOverlay).

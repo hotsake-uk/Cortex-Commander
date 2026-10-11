@@ -1093,7 +1093,13 @@ void DebugMan::SettingsGUI() {
 		Toggle("Alert mark over units", g_SettingsMan.ShowAlarmExclamation(), [](bool on) { g_SettingsMan.SetShowAlarmExclamation(on); });
 		Tip("The exclamation mark that pops up over a unit's head when it is alerted to an enemy or a noise.");
 		Toggle("Classic pie wheel", g_SettingsMan.ClassicPieWheel(), [](bool on) { g_SettingsMan.SetClassicPieWheel(on); });
-		Tip("The old wheels on right click, for a unit you play and for the sandbox's command tool, instead of the action menu: a list above the pointer with every order and the weapons and movement rules on one layer. (A gamepad, and players after the first, always get the unit's wheel.)");
+		Tip("The old wheels on right click, for a unit you play and for the sandbox's command tool, instead of the unit menu and the action menu: lists above the pointer with every order and the weapons and movement rules on one layer. (A gamepad, and players after the first, always get the unit's wheel.)");
+		Toggle("Unit menu opens on a click", g_SettingsMan.UnitMenuClickToOpen(), [](bool on) { g_SettingsMan.SetUnitMenuClickToOpen(on); });
+		Tip("On: a right click opens the menu of the unit you play (its inventory, what it can do, its rules) and it stays up till you click away from it or right click again. Off: it is up only while you hold the right button, and letting go over a row picks it. (Holding, moving onto a row and letting go picks it either way.)");
+		if (float scale = g_SettingsMan.UnitMenuTimeScale(); Slider("Time while the unit menu is up", &scale, 0.05F, 1.0F, "%.2fx")) {
+			g_SettingsMan.SetUnitMenuTimeScale(scale);
+		}
+		Tip("How fast time runs while the menu of the unit you play is up: 1x as ever, lower slows the world down so you can choose. Back to the speed it was when the menu goes.");
 		Toggle("Smooth HUD text", TextOverlay::IsEnabled(), [](bool on) { TextOverlay::SetEnabled(on); });
 		int frameCap = g_WindowMan.GetFrameCap();
 		if (SliderI("Frame cap (0 = none)", &frameCap, 0, 360)) {

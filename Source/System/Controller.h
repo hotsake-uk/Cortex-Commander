@@ -299,12 +299,12 @@ namespace RTE {
 		/// Pauses or resumes the AI.
 		static void SetAIPaused(bool paused) { s_AIPaused = paused; }
 
-		/// Gets whether the right mouse button is kept from opening the pie menu (and the action menu that stands in for it): in the Sandbox game
-		/// mode while you play a unit.
-		static bool IsRightClickMenuBlocked() { return s_RightClickMenuBlocked; }
+		/// Gets whether the unit menu (ActionMenu) is up after the right button was let go, as it stays with UnitMenuClickToOpen: the mouse
+		/// player's pie menu is kept open under it, so the unit doesn't fire or aim with the clicks and mouse moves the menu takes.
+		static bool IsUnitMenuHeldOpen() { return s_UnitMenuHeldOpen; }
 
-		/// Keeps the right mouse button from opening the pie menu, or lets it again.
-		static void SetRightClickMenuBlocked(bool blocked) { s_RightClickMenuBlocked = blocked; }
+		/// Sets IsUnitMenuHeldOpen; see there.
+		static void SetUnitMenuHeldOpen(bool open) { s_UnitMenuHeldOpen = open; }
 
 		/// Gets whether this controller's actor is held still by the paused AI.
 		bool IsHeldByPausedAI() const;
@@ -368,7 +368,7 @@ namespace RTE {
 
 	private:
 		static bool s_AIPaused; //!< Whether the AI is paused.
-		static bool s_RightClickMenuBlocked; //!< Whether the right mouse button is kept from opening the pie menu.
+		static bool s_UnitMenuHeldOpen; //!< Whether the unit menu is up with the right button let go (see IsUnitMenuHeldOpen).
 #pragma region Update Breakdown
 		/// Updates the player's inputs portion of this Controller. For breaking down Update into more comprehensible chunks.
 		/// This method will call both UpdatePlayerPieMenuInput and UpdatePlayerAnalogInput.

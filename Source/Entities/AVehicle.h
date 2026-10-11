@@ -188,6 +188,12 @@ namespace RTE {
 		/// Gets how hard the driver is driving it along, -1 (full to the left) to 1 (full to the right), from this update.
 		float GetThrottle() const { return m_Throttle; }
 
+		/// Gets whether the handbrake is on: the wheels held braked and the throttle ignored, whoever drives, till it is let off.
+		bool IsHandbrakeOn() const { return m_Handbrake; }
+
+		/// Puts the handbrake on or lets it off (the unit menu's Handbrake).
+		void SetHandbrake(bool on) { m_Handbrake = on; }
+
 		/// Gets how much of the body is inside the ground, 0 to 1: the share of its atoms in anything but air and liquid.
 		float GetSunkFraction() const;
 
@@ -341,6 +347,8 @@ namespace RTE {
 		unsigned int m_AIOrderSerialSeen; //!< The order serial its AI driver last started on: a new order starts afresh.
 		float m_Throttle; //!< How hard it is being driven this update, -1 to 1.
 		bool m_Braking; //!< Whether the brake is on this update.
+		bool m_Handbrake; //!< Whether the handbrake is on (see IsHandbrakeOn).
+		bool m_HandbrakeHeldAgainst; //!< Whether its player tried to drive it with the handbrake on this update, to be told so.
 		Timer m_UpsideDownTimer; //!< How long it has lain on its side or roof, still: then the driver rocks it back over.
 		float m_Buoyancy; //!< How hard liquid pushes it up against its weight, with its middle under (1 floats level; a boat's hull is VH-2).
 		float m_BreakLandingSpeed; //!< How fast it can come down on a bottomed-out spring before it breaks apart, in m/s. 0 never breaks it so.
