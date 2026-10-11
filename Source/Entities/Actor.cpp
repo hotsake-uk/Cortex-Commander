@@ -40,6 +40,7 @@
 #include "tracy/Tracy.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <sstream>
 
 using namespace RTE;
