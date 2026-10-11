@@ -231,7 +231,14 @@ void MOPixel::Update() {
 				reach *= std::max(0.25F, 1.0F + randomness * ((own * 2.0F - 1.0F) * 0.8F + waver * 0.25F));
 				brightness *= std::max(0.1F, 1.0F + randomness * ((other * 2.0F - 1.0F) * 0.6F + waver * 0.3F));
 			}
-			g_PostProcessMan.RegisterLight(m_Pos, glm::vec3(trailColor.GetR(), trailColor.GetG(), trailColor.GetB()), reach, brightness, LightSource::Tracers);
+			if (m_JetpackExhaust) {
+				// A jetpack's flame fast enough to light as a tracer: its light follows the Jetpack light settings instead.
+				reach *= lightSettings.JetpackLightReach;
+				brightness *= lightSettings.JetpackLightBrightness;
+			}
+			if (brightness > 0.0F) {
+				g_PostProcessMan.RegisterLight(m_Pos, glm::vec3(trailColor.GetR(), trailColor.GetG(), trailColor.GetB()), reach, brightness, m_JetpackExhaust ? LightSource::Jetpacks : LightSource::Tracers);
+			}
 		}
 	}
 

@@ -513,6 +513,10 @@ void DebugMan::SettingsGUI() {
 		Slider("Blade light reach", &settings.SaberLightReach, 0.2F, 3.0F);
 		Slider("Blade glow in the air", &settings.SaberAirGlow, 0.0F, 4.0F);
 		Tip("The soft glow of a blade's light in the air around it.");
+		Heading("Jetpacks");
+		Slider("Jetpack light brightness", &settings.JetpackLightBrightness, 0.0F, 4.0F);
+		Tip("How much light jetpacks give off while they fire: the glow at the nozzle, and the light of their flames, flashes and glowing exhaust. 0: jets still show but light nothing.");
+		Slider("Jetpack light reach", &settings.JetpackLightReach, 0.2F, 3.0F);
 	};
 
 	auto surfaces = [&]() {
@@ -1182,6 +1186,62 @@ void DebugMan::SettingsGUI() {
 		Tip("An AI unit sent a long way walks to a friendly vehicle near it that is going its way, gets in and rides (or drives it) there, then gets out and walks the rest. A vehicle with an AI driver drives itself to the place it is sent, and units sent to a vehicle get in. Off: they walk, and AI drivers sit still.");
 	};
 
+	// How units behave on a direct order: an RTS order placed with a triple click, which sends them the shortest way whatever it takes.
+	auto battleBehavior = [&]() {
+		SettingsMan::DirectOrderTuning& direct = g_SettingsMan.DirectOrders();
+		if (Plain()) {
+			ImGui::TextWrapped("Triple-click when you place an RTS order (move, attack-move, defend, dig to) to make it a direct order: the units go the shortest way there, whatever it takes. These set how hard they push it.");
+		}
+		Heading("Jetpack");
+		{
+			float preference = 1.0F / std::max(direct.FlightCostScale, 0.01F);
+			if (Slider("Jetpack preference", &preference, 1.0F, 5.0F, "%.1fx")) {
+				direct.FlightCostScale = 1.0F / preference;
+			}
+			Tip("How much more readily they jump than walk round: a jet flight costs them this many times less than it does a normal unit when the route is picked. 1x routes as usual; 2x is normal for a direct order.");
+			float fuel = direct.FuelShare * 100.0F;
+			if (Slider("Fuel tolerance", &fuel, 10.0F, 120.0F, "%.0f%% of the flight")) {
+				direct.FuelShare = fuel / 100.0F;
+			}
+			Tip("How much of the fuel a flight needs they wait for at the take-off before going. Under 100% they go short and may come down early; 60% is normal for a direct order. (With \"AI waits for fuel\" off in AI behaviour, they never wait.)");
+			float risk = (1.0F - direct.Caution) * 100.0F;
+			if (Slider("Risk taking", &risk, 0.0F, 100.0F, "%.0f%%")) {
+				direct.Caution = 1.0F - risk / 100.0F;
+			}
+			Tip("How little hard jumps and long drops put them off a route: 0% weighs them as a normal unit does, 100% not at all. 90% is normal for a direct order.");
+			Check("Steady before take-off", &direct.Steady);
+			Tip("Whether they still come to a stand, still and upright, before a jet climb or jump. Off (normal for a direct order): they take off mid-stride.");
+		}
+		Heading("Flying");
+		{
+			Slider("Flight speed", &direct.FlightSpeed, 1.0F, 3.0F, "%.2fx");
+			Tip("How fast they fly, up, across and down, as a multiple of a normal unit's limits. Faster gets there sooner but overshoots and tumbles more. 1.5x is normal for a direct order.");
+			Slider("Landing speed", &direct.Touchdown, 3.0F, 15.0F, "%.1f m/s");
+			Tip("How fast they let themselves come down onto the floor before braking: harder landings save time and fuel but bounce and stumble more. A normal unit lands at 5 m/s; 7 is normal for a direct order.");
+		}
+		Heading("Route");
+		{
+			float dig = direct.DigCostScale * 100.0F;
+			if (Slider("Dig cost on a dig-to", &dig, 1.0F, 100.0F, "%.0f%%", ImGuiSliderFlags_Logarithmic)) {
+				direct.DigCostScale = dig / 100.0F;
+			}
+			Tip("What tunnelling a node costs on a direct dig-to, as a share of a normal unit's price. Lower digs through rather than walking round; 2% (normal) tunnels straight through anything its digger cuts. A normal dig-to is 25%.");
+			Slider("Dig straightness", &direct.LineWeight, 0.0F, 1.0F, "%.2f");
+			Tip("How hard a direct dig-to keeps to the straight line from where it starts to the point, rather than any route as short: the cost of each node off the line, in nodes walked. 0 doesn't care; 0.1 is normal.");
+			Check("Ignore enemies on the route", &direct.IgnoreEnemies);
+			Tip("Whether their routes take no notice of enemies on the way (normal), even for a unit a game mode wants kept safe.");
+			Check("Groups keep together", &direct.KeepPace);
+			Tip("Whether a group sent with a direct order still walks at its slowest member's pace when \"keep together\" is on. Off (normal): each goes as fast as it can.");
+		}
+		if (Plain()) {
+			ImGui::Spacing();
+			if (ToolUI::Button("Reset to normal")) {
+				direct = SettingsMan::DirectOrderTuning();
+			}
+			ImGui::SetItemTooltip("Puts every Battle Behavior setting back to the tuning direct orders were made with.");
+		}
+	};
+
 	auto debug = [&]() {
 		Combo("View", &settings.DebugView, "Final image\0Lighting on grey\0Sky light only\0Dynamic light only\0Normals\0Distortion\0GI only (radiance cascades)\0Solid objects and distance to them\0Where the sun is visible\0");
 		Check("Freeze simulation", &m_FreezeSim);
@@ -1351,6 +1411,7 @@ void DebugMan::SettingsGUI() {
 	    {"Camera & image", cameraAndImage},
 	    {"Game & HUD", gameAndHUD},
 	    {"AI behaviour", aiBehaviour},
+	    {"Battle Behavior", battleBehavior},
 	    {"Debug", debug},
 	    {"AI debug", aiDebug},
 	    {"Render debug", renderDebug},

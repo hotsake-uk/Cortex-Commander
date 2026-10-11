@@ -474,6 +474,15 @@ namespace RTE {
 		/// @return Whether the screen effect is a spark's glow.
 		bool GetSparkGlow() const { return m_SparkGlow; }
 
+		/// Gets whether this MovableObject was emitted by a jetpack (AEJetpack), so the light it casts follows the Jetpack light settings
+		/// (LightingSettings::JetpackLightBrightness and JetpackLightReach).
+		/// @return Whether this is a jetpack's exhaust.
+		bool IsJetpackExhaust() const { return m_JetpackExhaust; }
+
+		/// Sets whether this MovableObject was emitted by a jetpack. Not read or written: set as a jetpack emits it.
+		/// @param newValue Whether this is a jetpack's exhaust.
+		void SetJetpackExhaust(bool newValue) { m_JetpackExhaust = newValue; }
+
 		/// Sets the current angular velocity of this MovableObject. Positive is
 		/// a counter clockwise rotation.
 		/// @param newRotVel The new angular velocity in radians per second.
@@ -1435,6 +1444,7 @@ namespace RTE {
 		// The effect can't be obscured
 		bool m_EffectAlwaysShows;
 		bool m_SparkGlow; //!< The screen effect is a spark's glow: its strength, and so the light it casts, follows LightingSettings::SparkLights, and it's gone with EffectsSparks at 0.
+		bool m_JetpackExhaust; //!< Emitted by a jetpack: the light it casts (its glow's, its own, as a tracer) follows LightingSettings::JetpackLightBrightness and JetpackLightReach.
 		Color m_LightColor; //!< Color of the light this casts, 0-255.
 		float m_LightRadius; //!< Radius of the light this casts, in pixels. 0 means no light.
 		float m_LightIntensity; //!< Brightness of the light this casts. 0 means no light.
