@@ -1046,6 +1046,31 @@ namespace SandboxDetail {
 		ImGui::SetItemTooltip("Takes back the last brush stroke or the last thing placed, whichever came last (Ctrl+Z): painting and placing share one history. Placed units, craft, items, doors and buildings are taken away (not your character, the unit you are in, or a thing a unit has picked up), and the ground they or a stroke changed is put back. The last 20 can be undone, one at a time, up to about 8 million pixels in all: the oldest go first, and a stroke held for more than a few seconds is undone in parts.");
 	}
 
+	bool Confirmed(bool clicked, const char* title, const char* question, const char* yes) {
+		if (clicked && ImGui::GetIO().KeyCtrl) {
+			return true;
+		}
+		if (clicked) {
+			ImGui::OpenPopup(title);
+		}
+		bool sure = false;
+		if (ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+			ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ToolUI::Pixel() * 320.0F);
+			ImGui::TextWrapped("Are you sure? %s", question);
+			ImGui::PopTextWrapPos();
+			if (ToolUI::SmallButton(yes)) {
+				sure = true;
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::SameLine();
+			if (ToolUI::SmallButton("Cancel")) {
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::EndPopup();
+		}
+		return sure;
+	}
+
 	void SideChooser() {
 		for (int side = 0; side < c_Sides; ++side) {
 			if (side > 0) {
@@ -1503,11 +1528,12 @@ namespace SandboxDetail {
 			ImGui::SetItemTooltip("Only the things marked as favourites (Ctrl+click on a tile marks one, and again unmarks it). Favourites are yours, kept whatever game is played.");
 			if (s_FavouritesOnly && !s_Favourites.empty()) {
 				ImGui::SameLine();
-				if (ToolUI::SmallButton("Clear")) {
+				const bool clear = ToolUI::SmallButton("Clear");
+				ImGui::SetItemTooltip("Unmarks every favourite, in every list. Ctrl+click: no question asked.");
+				if (Confirmed(clear, "Clear the favourites?", "Every favourite is unmarked, in every list and every game, and it can't be undone.", "Yes, clear them")) {
 					s_Favourites.clear();
 					SaveFavouritesFile();
 				}
-				ImGui::SetItemTooltip("Unmarks every favourite.");
 			}
 			ImGui::SameLine();
 			ToolUI::Checkbox("Show modded", &s_ShowModded);
@@ -4759,10 +4785,11 @@ namespace SandboxDetail {
 			wide();
 			ImGui::BeginDisabled(s_WaterSpawners.empty());
 			std::string removeAll = "Remove all " + std::to_string(s_WaterSpawners.size());
-			if (BarChip(removeAll.c_str(), false, IM_COL32(239, 106, 91, 255), nullptr, "Takes away every spring on the map.") == 1) {
+			const bool removeSprings = BarChip(removeAll.c_str(), false, IM_COL32(239, 106, 91, 255), nullptr, "Takes away every spring on the map. Ctrl+click: no question asked.") == 1;
+			ImGui::EndDisabled();
+			if (Confirmed(removeSprings, "Remove all springs?", "Every spring on the map is taken away, and it can't be undone.", "Yes, remove them")) {
 				QueueSimChange(Tool::ClearWaterSpawners);
 			}
-			ImGui::EndDisabled();
 		}
 		// Plants.
 		if (IsPlantBrush(kind)) {
@@ -4834,14 +4861,15 @@ namespace SandboxDetail {
 			}
 			wide();
 			ImGui::BeginDisabled(RopeSim::GetCount() == 0);
-			if (BarChip("Remove all ropes", false, IM_COL32(239, 106, 91, 255)) == 1) {
+			const bool removeRopes = BarChip("Remove all ropes", false, IM_COL32(239, 106, 91, 255), nullptr, "Takes away every rope on the map. Ctrl+click: no question asked.") == 1;
+			ImGui::EndDisabled();
+			if (Confirmed(removeRopes, "Remove all ropes?", "Every rope on the map is taken away, and Ctrl+Z can't bring them back.", "Yes, remove them")) {
 				Stroke stroke;
 				stroke.Kind = Tool::Rope;
 				stroke.Choice = 2;
 				s_Queue.push_back(stroke);
 				s_RopeDraft.clear();
 			}
-			ImGui::EndDisabled();
 		}
 		// Spawning.
 		if (kind == Tool::Unit || kind == Tool::Drop) {
@@ -4992,10 +5020,11 @@ namespace SandboxDetail {
 			}
 			next();
 			std::string removeAll = "Remove all " + std::to_string(s_Effects.size());
-			if (BarChip(removeAll.c_str(), false, IM_COL32(239, 106, 91, 255)) == 1) {
+			const bool removeEffects = BarChip(removeAll.c_str(), false, IM_COL32(239, 106, 91, 255), nullptr, "Takes away every effect put down. Ctrl+click: no question asked.") == 1;
+			ImGui::EndDisabled();
+			if (Confirmed(removeEffects, "Remove all effects?", "Every effect put down is taken away, and it can't be undone.", "Yes, remove them")) {
 				QueueSimChange(Tool::ClearEffects);
 			}
-			ImGui::EndDisabled();
 		} else if (kind == Tool::Decor) {
 			wide();
 			ImGui::SetNextItemWidth(field * 1.4F);

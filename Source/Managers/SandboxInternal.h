@@ -2787,6 +2787,12 @@ namespace SandboxDetail {
 	void MaterialButtons(Tool kind, std::string& chosen, const std::vector<std::string>& names);
 	void SideChooser();
 	void UndoButton(); //!< Takes back the newest step of the shared paint and placing undo (Tool::UndoTerrain), as Ctrl+Z does.
+	/// Asks whether the player is sure before something that can't be taken back, as the Reset button does: a click on the button opens the
+	/// question, and true comes back on the frame they say yes. A Ctrl+click skips the question (say so in the button's tooltip).
+	/// Called after the button, and outside any BeginDisabled, with the ID stack as it was for the button.
+	/// @param clicked Whether the button was clicked this frame. @param title The question's title, which is also its ID.
+	/// @param question What is lost, after "Are you sure?". @param yes The words on the button that goes ahead.
+	bool Confirmed(bool clicked, const char* title, const char* question, const char* yes);
 	void PresetList(Tool kind, const char* group = nullptr, float rows = 8.0F);
 	/// @param mine Whether your loadouts and squads (s_SpawnPick) are offered too: the Spawn tab's units and drops.
 	void LoadoutChooser(const char* label = "Loadout", bool mine = false);

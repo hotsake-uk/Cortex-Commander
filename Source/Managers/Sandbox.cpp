@@ -1848,7 +1848,10 @@ void Sandbox::DrawGUI() {
 						s_Queue.push_back(stroke);
 					}
 				}
-				if (ToolUI::Button("Remove this side's units", ImVec2(-1.0F, 0.0F))) {
+				const bool removeSide = ToolUI::Button("Remove this side's units", ImVec2(-1.0F, 0.0F));
+				ImGui::SetItemTooltip("Takes away every unit of the side picked above (not doors, nor your character). Ctrl+click: no question asked.");
+				const std::string removeSideQuestion = std::string("Every ") + c_SideNames[std::clamp(s_Team, 0, c_Sides - 1)] + " unit on the map is taken away, and it can't be undone.";
+				if (Confirmed(removeSide, "Remove this side's units?", removeSideQuestion.c_str(), "Yes, remove them")) {
 					Stroke stroke;
 					stroke.Kind = Tool::RemoveSide;
 					stroke.Team = s_Team;
@@ -1894,10 +1897,12 @@ void Sandbox::DrawGUI() {
 				ToolButtons({Tool::WaterSpawner});
 				ImGui::SameLine();
 				ImGui::BeginDisabled(s_WaterSpawners.empty());
-				if (ToolUI::Button("Remove all springs")) {
+				const bool removeSprings = ToolUI::Button("Remove all springs");
+				ImGui::EndDisabled();
+				ImGui::SetItemTooltip("Takes away every spring on the map (what they have poured stays). Ctrl+click: no question asked.");
+				if (Confirmed(removeSprings, "Remove all springs?", "Every spring on the map is taken away, and it can't be undone.", "Yes, remove them")) {
 					QueueSimChange(Tool::ClearWaterSpawners);
 				}
-				ImGui::EndDisabled();
 				{
 					// Remove all of one kind: the kinds placed, each with how many.
 					static std::string removeKind;
@@ -2004,14 +2009,16 @@ void Sandbox::DrawGUI() {
 				ToolButtons({Tool::Rope, Tool::RopeCut});
 				ImGui::SameLine();
 				ImGui::BeginDisabled(RopeSim::GetCount() == 0);
-				if (ToolUI::Button("Remove all ropes")) {
+				const bool removeRopes = ToolUI::Button("Remove all ropes");
+				ImGui::EndDisabled();
+				ImGui::SetItemTooltip("Takes away every rope on the map. Ctrl+click: no question asked.");
+				if (Confirmed(removeRopes, "Remove all ropes?", "Every rope on the map is taken away, and Ctrl+Z can't bring them back.", "Yes, remove them")) {
 					Stroke stroke;
 					stroke.Kind = Tool::Rope;
 					stroke.Choice = 2;
 					s_Queue.push_back(stroke);
 					s_RopeDraft.clear();
 				}
-				ImGui::EndDisabled();
 				for (int type = 0; type < RopeSim::GetTypeCount(); ++type) {
 					if (type % 3 != 0) {
 						ImGui::SameLine();
@@ -2145,14 +2152,16 @@ void Sandbox::DrawGUI() {
 				CustomEffectsUI();
 				ImGui::Separator();
 				ImGui::BeginDisabled(s_Effects.empty());
-				if (ToolUI::Button("Remove all effects")) {
-					QueueSimChange(Tool::ClearEffects);
-				}
+				const bool removeEffects = ToolUI::Button("Remove all effects");
+				ImGui::SetItemTooltip("Takes away every effect put down. Ctrl+click: no question asked.");
 				ImGui::SameLine();
 				if (ToolUI::Button("Remove the last one")) {
 					QueueSimChange(Tool::ClearEffects, 1);
 				}
 				ImGui::EndDisabled();
+				if (Confirmed(removeEffects, "Remove all effects?", "Every effect put down is taken away, and it can't be undone.", "Yes, remove them")) {
+					QueueSimChange(Tool::ClearEffects);
+				}
 				ImGui::SameLine();
 				ImGui::TextDisabled("%d running", static_cast<int>(s_Effects.size()));
 				EndSandboxTab();
@@ -2223,7 +2232,9 @@ void Sandbox::DrawGUI() {
 					ImGui::SetItemTooltip("Still water freezes over in snowy weather.");
 				}
 				ImGui::Text("%d burning, %d liquid pixels flowing", TerrainFire::GetCount(), FluidSim::GetActiveCount());
-				if (ToolUI::Button("Put out all fire")) {
+				const bool putOut = ToolUI::Button("Put out all fire");
+				ImGui::SetItemTooltip("Puts out every fire burning on the map at once. Ctrl+click: no question asked.");
+				if (Confirmed(putOut, "Put out all fire?", "Every fire on the map goes out at once, and it can't be undone.", "Yes, put it out")) {
 					TerrainFire::Clear();
 				}
 				EndSandboxTab();

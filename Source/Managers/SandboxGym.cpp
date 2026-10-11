@@ -270,7 +270,10 @@ namespace SandboxDetail {
 				QueueSimChange(Tool::GymRun, i);
 			}
 			ImGui::SameLine();
-			if (ImGui::SmallButton("X")) {
+			const bool removeCourse = ImGui::SmallButton("X");
+			ImGui::SetItemTooltip("Deletes this course from the map's gym file at once. Ctrl+click: no question asked.");
+			const std::string question = "The course \"" + course.Name + "\" is deleted from this map's gym file, and it can't be undone.";
+			if (Confirmed(removeCourse, "Delete this course?", question.c_str(), "Yes, delete it")) {
 				remove = i;
 			}
 			ImGui::TextDisabled("%d,%d to %d,%d", static_cast<int>(course.From.m_X), static_cast<int>(course.From.m_Y), static_cast<int>(course.To.m_X), static_cast<int>(course.To.m_Y));
