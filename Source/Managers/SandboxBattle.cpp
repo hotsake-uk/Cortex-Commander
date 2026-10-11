@@ -705,6 +705,16 @@ namespace SandboxDetail {
 			// whatever is left, so it puts down as many as it was asked for while the money lasts (held to 180 a unit, it was asked for three
 			// and put down one or two, and with dear units often none at all past the cheapest).
 			auto buyWave = [&](int size, bool wholeBudget) {
+				if (ArmyPicked(side)) {
+					// From the army picked, not bought: none once it's used up.
+					std::vector<Actor*> wave = ArmyWave(side, size);
+					if (wave.empty()) {
+						team.Broke = true;
+					} else {
+						ModeUnitsMade(side, wave);
+					}
+					return wave;
+				}
 				std::vector<Actor*> wave;
 				float left = settings.EndlessMoney ? std::numeric_limits<float>::max() : static_cast<float>(settings.Budget) - team.Spent;
 				float waveBudget = wholeBudget || settings.EndlessMoney ? left : std::min(left, std::max(180.0F * static_cast<float>(size), cheapest));
