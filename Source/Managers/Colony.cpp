@@ -122,12 +122,11 @@ namespace {
 
 	/// How much of the plot of a building is solid, counted on every other pixel.
 	int CountSolid(const Colony::Building& building) {
-		const Colony::Type& type = Colony::GetType(building.What);
-		int left = building.Ground.GetFloorIntX() - type.Width / 2;
-		int top = building.Ground.GetFloorIntY() - type.Height;
+		int left = building.Ground.GetFloorIntX() - building.Width() / 2;
+		int top = building.Ground.GetFloorIntY() - building.Height();
 		int solid = 0;
-		for (int y = top; y < top + type.Height; y += 2) {
-			for (int x = left; x < left + type.Width; x += 2) {
+		for (int y = top; y < top + building.Height(); y += 2) {
+			for (int x = left; x < left + building.Width(); x += 2) {
 				if (!IsAir(x, y)) {
 					++solid;
 				}
@@ -185,22 +184,25 @@ namespace {
 		building.BrainID = static_cast<long>(brain->GetUniqueID());
 	}
 
-	/// Where in a building its brain's chamber is: its bottom left corner, on the floor.
+	constexpr int c_LiteFloor = 6; //!< How thick a lite building's walls are under and over its brain's chamber.
+
+	/// Where in a building its brain's chamber is: its bottom left corner, on the floor. (A lite building's is in the middle of its box.)
 	Vector BrainRoom(const Colony::Building& building) {
-		const Colony::Type& type = Colony::GetType(building.What);
-		return Vector(building.Ground.m_X - static_cast<float>(type.Width / 2) + 10.0F, building.Ground.m_Y);
+		if (building.Lite) {
+			return Vector(building.Ground.m_X - static_cast<float>(c_BrainRoomWidth / 2), building.Ground.m_Y - static_cast<float>(c_LiteFloor));
+		}
+		return Vector(building.Ground.m_X - static_cast<float>(building.Width() / 2) + 10.0F, building.Ground.m_Y);
 	}
 
 	/// A brain of a building's side, standing in its plot, that runs no other building and is no player's brain, to take over the building. Nothing if there is none.
 	Actor* BrainInPlot(const Colony::Building& building) {
-		const Colony::Type& type = Colony::GetType(building.What);
-		Vector middle = building.Ground - Vector(0.0F, static_cast<float>(type.Height / 2));
+		Vector middle = building.Ground - Vector(0.0F, static_cast<float>(building.Height() / 2));
 		Actor* brain = g_MovableMan.GetClosestBrainActor(building.Team, middle);
 		if (!brain || brain->IsDead() || (g_ActivityMan.GetActivity() && g_ActivityMan.GetActivity()->IsAssignedBrain(brain))) {
 			return nullptr;
 		}
 		Vector offset = g_SceneMan.ShortestDistance(middle, brain->GetPos(), g_SceneMan.SceneWrapsX());
-		if (std::abs(offset.m_X) > static_cast<float>(type.Width / 2) || std::abs(offset.m_Y) > static_cast<float>(type.Height / 2)) {
+		if (std::abs(offset.m_X) > static_cast<float>(building.Width() / 2) || std::abs(offset.m_Y) > static_cast<float>(building.Height() / 2)) {
 			return nullptr;
 		}
 		for (const Colony::Building& other: s_Buildings) {
@@ -212,17 +214,22 @@ namespace {
 	}
 
 #pragma region Woodcutters
-	/// The way in, on the floor inside: where staff come out and logs are brought.
+	constexpr int c_LiteDoorstep = 24; //!< How far out from a lite building's box, on its right, its doorstep reaches: where its units and staff come out and logs are brought.
+
+	/// The way in, on the floor inside: where staff come out and logs are brought. (A lite building's is just outside its box, on its right.)
 	Vector Door(const Colony::Building& building) {
-		const Colony::Type& type = Colony::GetType(building.What);
-		return building.Ground + Vector(static_cast<float>(type.Width / 2) - 30.0F, -2.0F);
+		if (building.Lite) {
+			return building.Ground + Vector(static_cast<float>(building.Width() / 2 + c_LiteDoorstep / 2), -2.0F);
+		}
+		return building.Ground + Vector(static_cast<float>(building.Width() / 2) - 30.0F, -2.0F);
 	}
 
-	/// Whether a point is inside a building's plot.
+	/// Whether a point is inside a building's plot (or on a lite building's doorstep).
 	bool InPlot(const Colony::Building& building, const Vector& point) {
-		const Colony::Type& type = Colony::GetType(building.What);
 		Vector offset = g_SceneMan.ShortestDistance(building.Ground, point, g_SceneMan.SceneWrapsX());
-		return std::abs(offset.m_X) <= static_cast<float>(type.Width / 2) && offset.m_Y <= 4.0F && offset.m_Y >= -static_cast<float>(type.Height);
+		float left = -static_cast<float>(building.Width() / 2);
+		float right = static_cast<float>(building.Width() / 2) + (building.Lite ? static_cast<float>(c_LiteDoorstep) : 0.0F);
+		return offset.m_X >= left && offset.m_X <= right && offset.m_Y <= 4.0F && offset.m_Y >= -static_cast<float>(std::max(building.Height(), 40));
 	}
 
 	/// Whether a tree is claimed by a worker other than this one, or is one of the saplings still growing.
@@ -838,7 +845,7 @@ namespace {
 				if (carrying) {
 					Hold(unit, Colony::c_Log);
 				}
-				if (InPlot(building, unit->GetPos()) && At(worker, Door(building), static_cast<float>(Colony::GetType(building.What).Width / 2))) {
+				if (InPlot(building, unit->GetPos()) && At(worker, Door(building), static_cast<float>(std::max(building.Width() / 2, c_LiteDoorstep)))) {
 					if (int logs = TakeLogs(unit); logs > 0) {
 						s_Wood[building.Team] += logs;
 						building.Wood += logs;
@@ -972,6 +979,10 @@ namespace {
 #pragma endregion
 } // namespace
 
+int Colony::Building::Width() const { return Lite ? c_LiteWidth : GetType(What).Width; }
+
+int Colony::Building::Height() const { return Lite ? c_LiteHeight : GetType(What).Height; }
+
 const Colony::Type& Colony::GetType(Kind kind) { return c_Types[std::clamp(static_cast<int>(kind), 0, static_cast<int>(Kind::Count) - 1)]; }
 
 const Colony::Look& Colony::GetLook(Kind kind, Style style) { return GetType(kind).Looks[std::clamp(static_cast<int>(style), 0, static_cast<int>(Style::Count) - 1)]; }
@@ -1046,21 +1057,24 @@ bool Colony::PlaceBrain(int id) {
 	return false;
 }
 
-int Colony::Place(Kind kind, const Vector& place, int team, const std::string& unit, int orders, int keepAlive, Style style) {
+int Colony::Place(Kind kind, const Vector& place, int team, const std::string& unit, int orders, int keepAlive, Style style, bool lite) {
 	if (!g_SceneMan.GetScene() || kind == Kind::Count) {
 		return -1;
 	}
-	// Onto the ground: up out of it if the place is inside it, then down to it.
+	// Onto the ground: up out of it if the place is inside it, then down to it. (A lite building goes just where it is put, its box's middle on the place.)
 	int x = place.GetFloorIntX();
-	int y = place.GetFloorIntY();
+	int y = place.GetFloorIntY() + c_LiteHeight / 2 - 1;
 	int sceneHeight = g_SceneMan.GetSceneHeight();
-	for (int tries = 0; tries < 600 && !IsAir(x, y); ++tries) {
-		--y;
+	if (!lite) {
+		y = place.GetFloorIntY();
+		for (int tries = 0; tries < 600 && !IsAir(x, y); ++tries) {
+			--y;
+		}
+		while (y < sceneHeight - 2 && IsAir(x, y + 1)) {
+			++y;
+		}
 	}
-	while (y < sceneHeight - 2 && IsAir(x, y + 1)) {
-		++y;
-	}
-	if (y >= sceneHeight - 2) {
+	if (y >= sceneHeight - 2 || y - c_LiteHeight < 0) {
 		return -1;
 	}
 	const Type& type = GetType(kind);
@@ -1069,6 +1083,7 @@ int Colony::Place(Kind kind, const Vector& place, int team, const std::string& u
 	building.ID = s_NextID++;
 	building.What = kind;
 	building.Looks = style;
+	building.Lite = lite;
 	building.Team = std::clamp(team, 0, 3);
 	building.Ground = Vector(static_cast<float>(x), static_cast<float>(y + 1));
 	building.Unit = unit;
@@ -1076,42 +1091,52 @@ int Colony::Place(Kind kind, const Vector& place, int team, const std::string& u
 	building.KeepAlive = std::clamp(keepAlive, 1, 30);
 	building.HireMS = Now() + 500;
 
-	float left = building.Ground.m_X - static_cast<float>(type.Width / 2);
-	float top = building.Ground.m_Y - static_cast<float>(type.Height);
-	float width = static_cast<float>(type.Width);
-	// The plot is cleared, and what is under it made level, so it stands the same on a slope as on the flat.
-	Sandbox::FillBox(Vector(left, top), type.Width, type.Height, "");
-	const char* footing = style == Style::SciFi ? "Concrete" : "Stone";
-	const TerrainObject* preset = dynamic_cast<const TerrainObject*>(g_PresetMan.GetEntityPreset("TerrainObject", look.Building, look.Module));
-	if (TerrainObject* piece = preset ? dynamic_cast<TerrainObject*>(preset->Clone()) : nullptr) {
-		// The building's floor is the bottom of its picture, so it sits on a footing with its middle over the place.
-		Sandbox::FillBox(Vector(left, building.Ground.m_Y), type.Width, 14, footing);
-		// Where the ground falls away under the plot (a cliff edge, a dip), the footing goes on down to it, so the building is not left overhanging.
-		int groundY = building.Ground.GetFloorIntY() + 14;
-		for (int column = 0; column < type.Width; ++column) {
-			int columnX = static_cast<int>(left) + column;
-			int depth = 0;
-			while (depth < 120 && groundY + depth < sceneHeight - 1 && IsAir(columnX, groundY + depth)) {
-				++depth;
-			}
-			if (depth > 0 && depth < 120) {
-				Sandbox::FillBox(Vector(static_cast<float>(columnX), static_cast<float>(groundY)), 1, depth, footing);
-			}
-		}
-		piece->SetPos(Vector(left, top) - piece->GetBitmapOffset());
-		piece->SetTeam(building.Team);
-		g_SceneMan.AddSceneObject(piece);
+	if (lite) {
+		// Just its core: a solid box (carved out of whatever is there), its brain's chamber cut in the middle below. Placed by hand, it stays put however it hangs.
+		Vector corner(building.Ground.m_X - static_cast<float>(c_LiteWidth / 2), building.Ground.m_Y - static_cast<float>(c_LiteHeight));
+		Sandbox::FillBox(corner, c_LiteWidth, c_LiteHeight, "");
+		// Fantasy: stone with a timber lid. Sci-fi: a metal crate.
+		int lid = style == Style::Fantasy ? 3 : 0;
+		Sandbox::FillBox(corner, c_LiteWidth, lid, "Wood");
+		Sandbox::FillBox(corner + Vector(0.0F, static_cast<float>(lid)), c_LiteWidth, c_LiteHeight - lid, style == Style::SciFi ? "Metal" : "Stone");
 	} else {
-		// Without its module: a block of concrete in its shape.
-		Sandbox::FillBox(Vector(left, building.Ground.m_Y), type.Width, 14, "Concrete");
-		Sandbox::FillBox(Vector(left, building.Ground.m_Y - 8.0F), type.Width, 8, "Concrete");
-		Sandbox::FillBox(Vector(left, top + type.Height / 3), type.Width, 8, "Concrete");
-		Sandbox::FillBox(Vector(left, top + type.Height / 3), 8, type.Height - type.Height / 3, "Concrete");
-		Sandbox::FillBox(Vector(left + width - 8.0F, top + type.Height / 3), 8, 14, "Concrete");
+		float left = building.Ground.m_X - static_cast<float>(type.Width / 2);
+		float top = building.Ground.m_Y - static_cast<float>(type.Height);
+		float width = static_cast<float>(type.Width);
+		// The plot is cleared, and what is under it made level, so it stands the same on a slope as on the flat.
+		Sandbox::FillBox(Vector(left, top), type.Width, type.Height, "");
+		const char* footing = style == Style::SciFi ? "Concrete" : "Stone";
+		const TerrainObject* preset = dynamic_cast<const TerrainObject*>(g_PresetMan.GetEntityPreset("TerrainObject", look.Building, look.Module));
+		if (TerrainObject* piece = preset ? dynamic_cast<TerrainObject*>(preset->Clone()) : nullptr) {
+			// The building's floor is the bottom of its picture, so it sits on a footing with its middle over the place.
+			Sandbox::FillBox(Vector(left, building.Ground.m_Y), type.Width, 14, footing);
+			// Where the ground falls away under the plot (a cliff edge, a dip), the footing goes on down to it, so the building is not left overhanging.
+			int groundY = building.Ground.GetFloorIntY() + 14;
+			for (int column = 0; column < type.Width; ++column) {
+				int columnX = static_cast<int>(left) + column;
+				int depth = 0;
+				while (depth < 120 && groundY + depth < sceneHeight - 1 && IsAir(columnX, groundY + depth)) {
+					++depth;
+				}
+				if (depth > 0 && depth < 120) {
+					Sandbox::FillBox(Vector(static_cast<float>(columnX), static_cast<float>(groundY)), 1, depth, footing);
+				}
+			}
+			piece->SetPos(Vector(left, top) - piece->GetBitmapOffset());
+			piece->SetTeam(building.Team);
+			g_SceneMan.AddSceneObject(piece);
+		} else {
+			// Without its module: a block of concrete in its shape.
+			Sandbox::FillBox(Vector(left, building.Ground.m_Y), type.Width, 14, "Concrete");
+			Sandbox::FillBox(Vector(left, building.Ground.m_Y - 8.0F), type.Width, 8, "Concrete");
+			Sandbox::FillBox(Vector(left, top + type.Height / 3), type.Width, 8, "Concrete");
+			Sandbox::FillBox(Vector(left, top + type.Height / 3), 8, type.Height - type.Height / 3, "Concrete");
+			Sandbox::FillBox(Vector(left + width - 8.0F, top + type.Height / 3), 8, 14, "Concrete");
+		}
+		// It stands as built, however its roof spans or its walls join: the check clearing the plot started took its picture of what hung in the
+		// air before the building was there, and would otherwise take its roof and thin walls for ground just cut loose. Damage later still brings it down.
+		TerrainCollapse::NoteBuilt(static_cast<int>(left), static_cast<int>(top), static_cast<int>(left) + type.Width - 1, building.Ground.GetFloorIntY() + 13);
 	}
-	// It stands as built, however its roof spans or its walls join: the check clearing the plot started took its picture of what hung in the
-	// air before the building was there, and would otherwise take its roof and thin walls for ground just cut loose. Damage later still brings it down.
-	TerrainCollapse::NoteBuilt(static_cast<int>(left), static_cast<int>(top), static_cast<int>(left) + type.Width - 1, building.Ground.GetFloorIntY() + 13);
 	// Its brain, in a chamber cut at the back on the floor, so it has to be broken into to be reached. (The doorway is at the front, the right.)
 	Vector room = BrainRoom(building);
 	Sandbox::FillBox(Vector(room.m_X, room.m_Y - static_cast<float>(c_BrainRoomHeight)), c_BrainRoomWidth, c_BrainRoomHeight, "");
@@ -1228,7 +1253,7 @@ void Colony::Update() {
 			building.Progress = 0.0F;
 			building.Paid = false;
 			// Inside, by the doorway.
-			Vector door = building.Ground + Vector(static_cast<float>(GetType(building.What).Width / 2) - 30.0F, -34.0F);
+			Vector door = Door(building) + Vector(0.0F, -32.0F);
 			if (Actor* unit = Sandbox::SpawnUnit(building.Unit, building.Team, door, building.Orders)) {
 				building.Alive.emplace_back(unit, static_cast<long>(unit->GetUniqueID()));
 				++building.Produced;
