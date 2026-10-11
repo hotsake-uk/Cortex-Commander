@@ -779,6 +779,20 @@ void Sandbox::DrawGUI() {
 	} else {
 		s_BarHeight = 0.0F;
 	}
+	{
+		// Whichever bar is up along the foot of the picture covers that much of the bottom screens, so they may scroll that far past the bottom of the map:
+		// otherwise the bottom of a map that doesn't wrap stays under the bar for good.
+		GameViewRect view = g_WindowMan.GetGameViewRect();
+		bool hSplit = g_FrameMan.GetHSplit();
+		float scenePerWindowPixel = static_cast<float>(g_FrameMan.GetPlayerScreenHeight() * (hSplit ? 2 : 1)) / std::max(1.0F, view.h);
+		float overscroll = std::ceil(s_BarHeight * scenePerWindowPixel);
+		int screenCount = g_FrameMan.GetScreenCount();
+		for (int screenId = 0; screenId < c_MaxScreenCount; ++screenId) {
+			// Split above and below, only the lower screens reach down to the bar.
+			bool alongBottom = screenId < screenCount && (!hSplit || screenId >= screenCount / 2);
+			g_CameraMan.SetBottomOverscroll(alongBottom ? overscroll : 0.0F, screenId);
+		}
+	}
 	if (IsBattleCommand() && InGame()) {
 		KeepCommandedTeam();
 		// Till the battle is started the panel stays open: it's the only way to start one, and with it shut there was nothing to do.
