@@ -896,6 +896,13 @@ namespace RTE {
 		/// @param newCanRevealUnseen Whether this actor can reveal unseen areas.
 		void SetCanRevealUnseen(bool newCanRevealUnseen) { m_CanRevealUnseen = newCanRevealUnseen; }
 
+		/// Gets this actor's veteran rank (Battle Command): 0 for none, up to 3. Each rank steadies its nerve: being shot at pins it down less
+		/// and losses shake it less. (Its AI's aim reads the same rank, as the number value "VeteranRank".)
+		int GetVeterancy() const { return m_Veterancy; }
+
+		/// Sets this actor's veteran rank, 0 to 3.
+		void SetVeterancy(int rank) { m_Veterancy = std::clamp(rank, 0, 3); }
+
 		/// Gets whether this actor is hidden from the player by a battle's fog of war (Battle Command): it, its HUD and its speech aren't drawn.
 		bool IsHiddenByFog() const { return m_HiddenByFog; }
 
@@ -1531,6 +1538,7 @@ namespace RTE {
 		float m_PainThreshold;
 		// Whether or not this actor can reveal unseen areas by looking
 		bool m_CanRevealUnseen;
+		int m_Veterancy; //!< Veteran rank, 0 to 3 (SetVeterancy).
 		bool m_HiddenByFog; //!< Hidden from the player by a battle's fog of war: not drawn (SetHiddenByFog).
 		// About How tall is the Actor, in pixels?
 		float m_CharHeight;
