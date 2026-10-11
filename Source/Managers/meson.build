@@ -35,6 +35,7 @@ sources += files(
 'ThreatMemory.cpp',
 'GasGrid.cpp',
 'AirPressure.cpp',
+'MagicEffects.cpp',
 'ActorWater.cpp',
 'UnitSpeech.cpp',
 'UnitSpeechWorld.cpp',

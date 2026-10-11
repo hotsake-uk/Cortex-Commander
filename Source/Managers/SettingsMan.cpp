@@ -17,6 +17,7 @@
 #include "ThreatMemory.h"
 #include "GasGrid.h"
 #include "AirPressure.h"
+#include "MagicEffects.h"
 #include "Sandbox.h"
 #include "SmokeGrid.h"
 #include "ActorFire.h"
@@ -360,6 +361,10 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("WindCarriesGas", { AirPressure::GetTuning().WindGas = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
 	MatchProperty("BlastWaves", { AirPressure::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("WindMovesSmoke", { AirPressure::SetWindMovesSmoke(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("Magic", { MagicEffects::SetOn(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("MagicPushStrength", { MagicEffects::GetTuning().PushStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
+	MatchProperty("MagicUnitPush", { MagicEffects::GetTuning().UnitPush = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
+	MatchProperty("MagicAirGust", { MagicEffects::GetTuning().AirGust = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
 	MatchProperty("WaterFreezes", { FluidSim::SetFreezingEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("BloodFlows", { FluidSim::SetBloodFlows(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LiquidsDrainBottom", { FluidSim::SetDrainsBottom(std::stoi(reader.ReadPropValue()) != 0); });
@@ -1122,6 +1127,10 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("WindCarriesGas", AirPressure::GetTuning().WindGas);
 	writer.NewPropertyWithValue("BlastWaves", AirPressure::IsEnabled());
 	writer.NewPropertyWithValue("WindMovesSmoke", AirPressure::WindMovesSmoke());
+	writer.NewPropertyWithValue("Magic", MagicEffects::IsOn());
+	writer.NewPropertyWithValue("MagicPushStrength", MagicEffects::GetTuning().PushStrength);
+	writer.NewPropertyWithValue("MagicUnitPush", MagicEffects::GetTuning().UnitPush);
+	writer.NewPropertyWithValue("MagicAirGust", MagicEffects::GetTuning().AirGust);
 	writer.NewPropertyWithValue("BurningUnits", ActorFire::IsEnabled());
 	writer.NewPropertyWithValue("SwimmingAndDrowning", ActorWater::IsEnabled());
 	writer.NewPropertyWithValue("LightPropagationSteps", lighting.PropagationIterationsPerFrame);
