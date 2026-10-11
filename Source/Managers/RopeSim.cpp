@@ -530,6 +530,7 @@ namespace {
 	}
 
 	/// Keeps a tie's point where its unit or thing is now, or lets it go: a unit or thing gone, or the ground it was in dug, burnt or blown away.
+	/// A tie in ground that breaks loose as a falling piece is carried over to that piece.
 	void UpdateAnchors(Rope& rope, bool checkGround) {
 		for (int i = static_cast<int>(rope.Anchors.size()) - 1; i >= 0; --i) {
 			Anchor& anchor = rope.Anchors[i];
@@ -560,6 +561,17 @@ namespace {
 				} else if (!TieAt(anchor, ToVector(node.Pos))) {
 					// It has come to rest (and is ground again, which TieAt finds) or broken up and left nothing there.
 					DropAnchor(rope, i);
+				}
+			} else if (TerrainCollapse::FindLiftedPiece(anchor.Pixel.x, anchor.Pixel.y, anchor.ObjectID, anchor.Local)) {
+				// The ground it was tied to broke loose and is falling: it stays tied to that piece and goes with it.
+				anchor.Piece = true;
+				Vector point;
+				Vector velocity;
+				float mass = 0.0F;
+				if (TerrainCollapse::GetPiece(anchor.ObjectID, anchor.Local, point, velocity, mass)) {
+					node.Prev = node.Pos;
+					node.Pos = node.Pos + Between(node.Pos, ToGlm(point));
+					node.Safe = node.Pos;
 				}
 			} else if (checkGround && !Solid(static_cast<float>(anchor.Pixel.x), static_cast<float>(anchor.Pixel.y))) {
 				DropAnchor(rope, i);

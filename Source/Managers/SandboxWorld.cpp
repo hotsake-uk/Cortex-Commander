@@ -2218,8 +2218,8 @@ namespace SandboxDetail {
 		vehicle->SetWaterMaxSpeed(times(vehicle->GetWaterMaxSpeed(), tuning.WaterSpeed));
 	}
 
-	/// Fills every seat of a vehicle or flying ship just made with new units: the driver's seat with the driver picked on the Spawn tab, the rest
-	/// with the crew picked (each the unit picked in the Units list, a unit of its own, or random ones), with the loadout and temperament in hand.
+	/// Fills every seat of a vehicle or flying ship just made with new units (or only the driver's, With driver): the driver's seat with the
+	/// driver picked on the Spawn tab, the rest with the crew picked (each the unit picked in the Units list, a unit of its own, or random ones), with the loadout and temperament in hand.
 	/// Only humanoids sit, so a pick that can't (a crab, a turret) is crewed by random soldiers instead. @return How many went in.
 	int CrewVehicle(Actor* vehicle, const Stroke& stroke) {
 		AVehicle* car = dynamic_cast<AVehicle*>(vehicle);
@@ -2249,7 +2249,8 @@ namespace SandboxDetail {
 		};
 		const CrewSource driver = sourceOf(stroke.DriverChoice, stroke.DriverRandom);
 		const CrewSource crew = sourceOf(stroke.CrewChoice, stroke.CrewRandom);
-		const int seats = car ? car->GetSeatCount() : ship->GetSeatCount();
+		// (With driver: the driver's seat only.)
+		const int seats = stroke.Vehicle.DriverOnly ? 1 : (car ? car->GetSeatCount() : ship->GetSeatCount());
 		int seated = 0;
 		for (int seat = 0; seat < seats; ++seat) {
 			// One of your loadouts, if picked for the seat (and one that can sit).

@@ -428,7 +428,7 @@ void Sandbox::TogglePlay(bool atPointer) {
 
 std::string Sandbox::GetCharacterSetup() {
 	std::string setup = s_Player.Body + "|" + std::to_string(s_Player.Team) + "|";
-	for (bool flag: {s_Player.Unkillable, s_Player.EndlessJetpack, s_Player.EndlessAmmo, s_Player.NumberKeys, s_Player.FlyKey, s_Player.EnterOnClose, s_PauseInMenus, s_Player.Neutral, s_Player.InheritKit}) {
+	for (bool flag: {s_Player.Unkillable, s_Player.EndlessJetpack, s_Player.EndlessAmmo, s_Player.NumberKeys, s_Player.FlyKey, s_Player.EnterOnClose, s_PauseInMenus, s_Player.Neutral, s_Player.InheritKit, s_Player.RemoveOnLeave}) {
 		setup += flag ? '1' : '0';
 	}
 	setup += "|";
@@ -529,7 +529,7 @@ void Sandbox::SetCharacterSetup(const std::string& setup) {
 	}
 	s_Player.Body = parts[0];
 	s_Player.Team = std::clamp(std::atoi(parts[1].c_str()), 0, c_Sides - 1);
-	bool* flags[] = {&s_Player.Unkillable, &s_Player.EndlessJetpack, &s_Player.EndlessAmmo, &s_Player.NumberKeys, &s_Player.FlyKey, &s_Player.EnterOnClose, &s_PauseInMenus, &s_Player.Neutral, &s_Player.InheritKit};
+	bool* flags[] = {&s_Player.Unkillable, &s_Player.EndlessJetpack, &s_Player.EndlessAmmo, &s_Player.NumberKeys, &s_Player.FlyKey, &s_Player.EnterOnClose, &s_PauseInMenus, &s_Player.Neutral, &s_Player.InheritKit, &s_Player.RemoveOnLeave};
 	for (size_t i = 0; i < std::size(flags) && i < parts[2].size(); ++i) {
 		*flags[i] = parts[2][i] == '1';
 	}
@@ -547,7 +547,7 @@ void Sandbox::SetCharacterSetup(const std::string& setup) {
 std::string Sandbox::GetVehicleSetup() {
 	const VehicleTuning& tuning = s_VehicleTuning;
 	std::ostringstream setup;
-	setup << (tuning.Modified ? 1 : 0) << (tuning.Crewed ? 1 : 0) << "|" << tuning.Power << ";" << tuning.TopSpeed << ";" << tuning.Grip << ";" << tuning.Brakes << ";" << tuning.Jump << ";" << tuning.WaterPower << ";" << tuning.WaterSpeed << "|" << tuning.Driver << "|" << tuning.Crew;
+	setup << (tuning.Modified ? 1 : 0) << (!tuning.Crewed ? 0 : (tuning.DriverOnly ? 2 : 1)) << "|" << tuning.Power << ";" << tuning.TopSpeed << ";" << tuning.Grip << ";" << tuning.Brakes << ";" << tuning.Jump << ";" << tuning.WaterPower << ";" << tuning.WaterSpeed << "|" << tuning.Driver << "|" << tuning.Crew;
 	return setup.str();
 }
 
@@ -558,7 +558,9 @@ void Sandbox::SetVehicleSetup(const std::string& setup) {
 	}
 	VehicleTuning tuning;
 	tuning.Modified = setup[0] == '1';
-	tuning.Crewed = setup[1] == '1';
+	// (Crew: 0 empty, 1 full, 2 with a driver only.)
+	tuning.Crewed = setup[1] == '1' || setup[1] == '2';
+	tuning.DriverOnly = setup[1] == '2';
 	float* values[] = {&tuning.Power, &tuning.TopSpeed, &tuning.Grip, &tuning.Brakes, &tuning.Jump, &tuning.WaterPower, &tuning.WaterSpeed};
 	// (Then the driver and crew picks, each after a bar: not there in settings saved before they could be picked.)
 	std::istringstream fields(setup.substr(bar + 1));
@@ -1573,7 +1575,7 @@ void Sandbox::DrawGUI() {
 					ImGui::TextWrapped("No character. Tab hides and shows these tools; with them hidden the right mouse button and WASD still move the view and the wheel zooms.");
 					EndSandboxTab();
 				} else {
-				ImGui::TextWrapped("For walking about in what you've made. P puts you in it, and P again brings you back above and takes it away (P makes a new one); Shift+Tab puts it down where the mouse points and puts you in it. Tab hides and shows these tools: with a tool in hand you stay above and go on using it, with nothing in hand (Look around) Tab puts you in your character.");
+				ImGui::TextWrapped("For walking about in what you've made. P puts you in it, and P again brings you back above; Shift+Tab puts it down where the mouse points and puts you in it. Tab hides and shows these tools: with a tool in hand you stay above and go on using it, with nothing in hand (Look around) Tab puts you in your character.");
 				if (ToolUI::Button(exists ? "Play (Tab)" : "Make it and play (Tab)", ImVec2(-1.0F, 0.0F))) {
 					Stroke stroke;
 					stroke.Kind = Tool::PlayCharacter;
@@ -1591,6 +1593,8 @@ void Sandbox::DrawGUI() {
 				ToolUI::Checkbox("1 to 9 take out that item of the kit", &s_Player.NumberKeys);
 				ToolUI::Checkbox("Enemies take no notice of it", &s_Player.Neutral);
 				ImGui::SetItemTooltip("On: units run by the AI don't see your character as an enemy and don't pick it as a target, whatever side it is on. Stray shots and blasts still reach it.");
+				ToolUI::Checkbox("Remove it when I leave play", &s_Player.RemoveOnLeave);
+				ImGui::SetItemTooltip("On: going back above takes your character away, and P makes a new one. If it is in a vehicle, it is taken out and the vehicle stays.\nOff: it stays where you left it, and P puts you back in it.");
 				ToolUI::Checkbox("N flies through anything", &s_Player.FlyKey);
 				ImGui::SetItemTooltip("While playing, N lifts the character out of the physics: the movement keys fly it in any direction, through the ground and walls. N again drops it back in.");
 				ImGui::SeparatorText("What it is");

@@ -58,7 +58,7 @@ namespace SandboxDetail {
 
 	void ReleaseControl() {
 		StopFlying();
-		// Leaving play mode takes your character away with it: P makes a new one. A unit of the scene's you took over stays.
+		// Leaving play mode takes your character away with it, if that is ticked in the You tab: P makes a new one. A unit of the scene's you took over stays.
 		bool playing = false;
 		if (GameActivity* game = CurrentGame()) {
 			const Actor* controlled = game->GetControlledActor(Players::PlayerOne);
@@ -66,7 +66,7 @@ namespace SandboxDetail {
 			game->LoseControlOfActor(Players::PlayerOne);
 			game->SetViewState(Activity::ViewState::Observe, Players::PlayerOne);
 		}
-		if (playing) {
+		if (playing && s_Player.RemoveOnLeave) {
 			RemovePlayer();
 		}
 		s_Possessed = nullptr;
