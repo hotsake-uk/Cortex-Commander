@@ -28,7 +28,7 @@ local function spottedTrigger(Owner, Target)
 	if Target then
 		if Target:IsInGroup("Actors - Wildlife") then
 			return "Wildlife";
-		elseif Target.ClassName == "ACDropShip" or Target.ClassName == "ACRocket" then
+		elseif Target.ClassName == "ACDropShip" or Target.ClassName == "ACShip" or Target.ClassName == "ACRocket" then
 			return "EnemyCraft";
 		elseif Target.ClassName == "AVehicle" then
 			return "EnemyVehicle";

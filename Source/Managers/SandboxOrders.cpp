@@ -143,6 +143,23 @@ namespace SandboxDetail {
 		if (ACShip* ship = dynamic_cast<ACShip*>(unit)) {
 			Actor::StandingOrder& standing = ship->GetStandingOrder();
 			if (!resend) {
+				// (A new order ends the old one, as for any unit: a suppress's zone and ring, its plan (RC-3), and a defend's post, which
+				// ReturnDefenders flew it back to whatever it was told after.)
+				ClearSuppress(ship);
+				DropPlan(ship);
+				CancelRetreatAndFlank(ship);
+				s_GuardPosts.erase(ship->GetUniqueID());
+				s_BattleDefenders.erase(ship->GetUniqueID());
+				ReleaseFromBattleMode(ship);
+				standing.Attack = false;
+				standing.HasPost = false;
+				standing.AutoTargetID = 0;
+				standing.Hold = false;
+				standing.Movement = Actor::MOVE_FOLLOW_ORDER;
+				standing.PostFacing = 0;
+				if (!attack) {
+					standing.HasAttackPlace = false;
+				}
 				standing.Kind = OrderKindFor(reason);
 				standing.Direct = s_DirectOrder;
 				standing.TargetID = attack && target && lock ? static_cast<long>(target->GetUniqueID()) : 0;
@@ -336,6 +353,14 @@ namespace SandboxDetail {
 	}
 
 	void GiveOrder(Actor* actor, Order order) {
+		// (A flying ship takes none of these but a rally: any of them ends what it was doing, and it hovers where it is.)
+		if (actor && dynamic_cast<const ACShip*>(actor)) {
+			HoldUnit(actor);
+			if (int team = actor->GetTeam(); order == Order::Rally && team >= 0 && team < c_Sides && s_RallySet[team]) {
+				SendUnit(actor, s_RallyPoints[team], nullptr, false, "to the rally point");
+			}
+			return;
+		}
 		if (!actor || dynamic_cast<ADoor*>(actor) || dynamic_cast<const ACraft*>(actor) || actor->IsInGroup("Brains")) {
 			return;
 		}
@@ -1697,9 +1722,12 @@ namespace SandboxDetail {
 		if (!car || !failed || !car->IsCommanded() || car->GetCrewStaysIn() || car->GetCrewCount() == 0) {
 			return false;
 		}
-		// Sent to attack (or attack-move): it stays where it stopped, its gun on what it can see (and the "no route" marker says why).
+		// Sent to attack (or attack-move), or to suppress a place: it stays where it stopped, its gun on what it can see or the place (and the
+		// "no route" marker says why).
 		const int kind = car->GetStandingOrder().Kind;
-		if (kind == Actor::ORDER_ATTACK || kind == Actor::ORDER_ATTACKMOVE) {
+		Vector suppressCentre;
+		float suppressRadius = 0.0F;
+		if (kind == Actor::ORDER_ATTACK || kind == Actor::ORDER_ATTACKMOVE || car->GetSuppressZone(suppressCentre, suppressRadius)) {
 			return false;
 		}
 		const int facing = car->GetStandingOrder().PostFacing;
@@ -2013,6 +2041,11 @@ namespace SandboxDetail {
 				plan.Current = PlanStep();
 				auto watch = s_MoveWatch.find(unit->GetUniqueID());
 				plan.Current.Place = watch != s_MoveWatch.end() ? watch->second.Destination : unit->GetLastAIWaypoint();
+				// (A flying ship's place is its autopilot's, not a waypoint: without this the step under way was drawn where it was when the
+				// step was queued, behind it as it flew on.)
+				if (const ACShip* ship = dynamic_cast<const ACShip*>(unit)) {
+					ship->GetFlightGoal(plan.Current.Place);
+				}
 				plan.Started = g_TimerMan.GetSimUpdateCount();
 			}
 			if (!plan.Running && plan.Steps.empty()) {
@@ -2147,6 +2180,28 @@ namespace SandboxDetail {
 		g_SceneMan.WrapPosition(centre);
 		HoldUnit(unit);
 		unit->SetMovementRule(Actor::MOVE_HOLD_GROUND);
+		// A vehicle or flying ship has no AI of its own to fire into the place (the units' is HumanBehaviors.SuppressZone): its gunners do
+		// (AVehicle::UpdateGun, ACShip::UpdateGuns), from where it stands. Out of their range it goes in range first, a ship to hover off to
+		// the side, where its side guns bear (they don't fire straight down), and a vehicle to the edge of its range, its crew kept aboard.
+		AVehicle* car = dynamic_cast<AVehicle*>(unit);
+		ACShip* ship = car ? nullptr : dynamic_cast<ACShip*>(unit);
+		if (car || ship) {
+			const float range = car ? car->GetGunRange() : ship->GetGunRange();
+			const float across = g_SceneMan.ShortestDistance(centre, unit->GetPos(), g_SceneMan.SceneWrapsX()).m_X;
+			const float side = across >= 0.0F ? 1.0F : -1.0F;
+			if (ship && (std::abs(across) > range * 0.8F || std::abs(across) < range * 0.25F)) {
+				Vector spot = centre + Vector(side * range * 0.5F, 0.0F);
+				g_SceneMan.WrapPosition(spot);
+				ship->FlyRouteTo(spot);
+			} else if (car && std::abs(across) > range * 0.8F) {
+				Vector spot = centre + Vector(side * range * 0.6F, -4.0F);
+				g_SceneMan.WrapPosition(spot);
+				SendUnit(car, spot, nullptr, false, "suppress");
+			}
+			if (car && car->CanBeDriven()) {
+				car->SetCommanded(true);
+			}
+		}
 		unit->SetNumberValue("SandboxSuppressX", centre.m_X);
 		unit->SetNumberValue("SandboxSuppressY", centre.m_Y);
 		unit->SetNumberValue("SandboxSuppressR", static_cast<double>(std::max(radius, 10)));

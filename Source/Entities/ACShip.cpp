@@ -12,6 +12,7 @@
 #include "Scene.h"
 #include "SettingsMan.h"
 #include "TimerMan.h"
+#include "RTETools.h"
 #include "Turret.h"
 
 #include "GUI.h"
@@ -520,11 +521,27 @@ void ACShip::UpdateGuns() {
 				gun.TargetTimer.Reset();
 			}
 			const Actor* target = gun.TargetID ? dynamic_cast<const Actor*>(g_MovableMan.FindObjectByUniqueID(gun.TargetID)) : nullptr;
+			Vector suppressCentre;
+			float suppressRadius = 0.0F;
 			if (target && !target->IsDead()) {
 				Vector toTarget = g_SceneMan.ShortestDistance(turret->GetPos(), target->GetPos() - Vector(0.0F, target->GetHeight() * 0.1F));
 				float wanted = std::atan2(-toTarget.m_Y, std::max(toTarget.m_X * flip, 0.0F));
 				gun.AimAngle += std::clamp(Wrapped(wanted - gun.AimAngle), -m_GunTurnSpeed * deltaTime, m_GunTurnSpeed * deltaTime);
 				fire = std::abs(Wrapped(wanted - gun.AimAngle)) < 0.1F;
+			} else if (GetSuppressZone(suppressCentre, suppressRadius)) {
+				// Ordered to suppress a place, with nobody in sight to shoot: the gun on that side fires into it, about it at random, when it is
+				// in range and within the gun's swing. No line of sight is wanted: the fire is to keep heads down there.
+				gun.TargetID = 0;
+				if (gun.SuppressTimer.IsPastSimMS(500)) {
+					gun.SuppressTimer.Reset();
+					gun.SuppressPoint = suppressCentre + Vector(RandomNum(-1.0F, 1.0F) * suppressRadius, RandomNum(-0.5F, 0.5F) * suppressRadius);
+				}
+				Vector toPoint = g_SceneMan.ShortestDistance(turret->GetPos(), gun.SuppressPoint);
+				float angle = std::atan2(-toPoint.m_Y, std::abs(toPoint.m_X));
+				if (toPoint.m_X * flip > 0.0F && toPoint.MagnitudeIsLessThan(m_GunRange) && std::abs(Wrapped(angle - rotationFacing)) <= m_GunAimRange) {
+					gun.AimAngle += std::clamp(Wrapped(angle - gun.AimAngle), -m_GunTurnSpeed * deltaTime, m_GunTurnSpeed * deltaTime);
+					fire = std::abs(Wrapped(angle - gun.AimAngle)) < 0.1F;
+				}
 			} else {
 				gun.TargetID = 0;
 			}
