@@ -1794,9 +1794,8 @@ namespace SandboxDetail {
 					if (building == Colony::Buildings().end()) {
 						continue;
 					}
-					const Colony::Type& type = Colony::GetType(building->What);
-					ImVec2 corner = ToScreen(building->Ground - Vector(static_cast<float>(type.Width) * 0.5F, static_cast<float>(type.Height)));
-					drawList->AddRect(corner, ToScreen(building->Ground + Vector(static_cast<float>(type.Width) * 0.5F, 0.0F)), fade(green, 200), 0.0F, 0, 1.5F);
+					ImVec2 corner = ToScreen(building->Ground - Vector(static_cast<float>(building->Width()) * 0.5F, static_cast<float>(building->Height())));
+					drawList->AddRect(corner, ToScreen(building->Ground + Vector(static_cast<float>(building->Width()) * 0.5F, 0.0F)), fade(green, 200), 0.0F, 0, 1.5F);
 					labelAt = ImVec2(corner.x, corner.y - ImGui::GetTextLineHeight() - 2.0F);
 				}
 				if (!inView(labelAt, 40.0F)) {
@@ -2283,18 +2282,25 @@ namespace SandboxDetail {
 		}
 		if (IsColonyTool(tool.Kind)) {
 			// The plot it will take, on the ground under the pointer.
+			// (A lite one's box, just where the pointer is.)
 			const Colony::Type& type = Colony::GetType(ColonyKindOf(tool.Kind));
+			int plotWidth = s_ColonyLite ? Colony::c_LiteWidth : type.Width;
+			int plotHeight = s_ColonyLite ? Colony::c_LiteHeight : type.Height;
 			Vector ground = MouseScenePosition();
-			int sceneHeight = g_SceneMan.GetSceneHeight();
-			for (int tries = 0; tries < 600 && g_SceneMan.GetTerrMatter(ground.GetFloorIntX(), ground.GetFloorIntY()) != g_MaterialAir; ++tries) {
-				ground.m_Y -= 1.0F;
+			if (s_ColonyLite) {
+				ground.m_Y = std::floor(ground.m_Y) + static_cast<float>(plotHeight / 2 - 1);
+			} else {
+				int sceneHeight = g_SceneMan.GetSceneHeight();
+				for (int tries = 0; tries < 600 && g_SceneMan.GetTerrMatter(ground.GetFloorIntX(), ground.GetFloorIntY()) != g_MaterialAir; ++tries) {
+					ground.m_Y -= 1.0F;
+				}
+				while (ground.m_Y < static_cast<float>(sceneHeight - 2) && g_SceneMan.GetTerrMatter(ground.GetFloorIntX(), ground.GetFloorIntY() + 1) == g_MaterialAir) {
+					ground.m_Y += 1.0F;
+				}
 			}
-			while (ground.m_Y < static_cast<float>(sceneHeight - 2) && g_SceneMan.GetTerrMatter(ground.GetFloorIntX(), ground.GetFloorIntY() + 1) == g_MaterialAir) {
-				ground.m_Y += 1.0F;
-			}
-			Vector corner = FromCamera(ground + Vector(-static_cast<float>(type.Width / 2), 1.0F - static_cast<float>(type.Height)));
+			Vector corner = FromCamera(ground + Vector(-static_cast<float>(plotWidth / 2), 1.0F - static_cast<float>(plotHeight)));
 			ImVec2 topLeft(ViewOrigin().x + corner.m_X / scale, ViewOrigin().y + corner.m_Y / scale);
-			drawList->AddRect(topLeft, ImVec2(topLeft.x + static_cast<float>(type.Width) / scale, topLeft.y + static_cast<float>(type.Height) / scale), c_SideColors[s_Team], 0.0F, 0, 1.5F);
+			drawList->AddRect(topLeft, ImVec2(topLeft.x + static_cast<float>(plotWidth) / scale, topLeft.y + static_cast<float>(plotHeight) / scale), c_SideColors[s_Team], 0.0F, 0, 1.5F);
 			if (tool.Kind == Tool::Woodcutter) {
 				// How far its staff go for trees.
 				Vector middle = FromCamera(ground);
@@ -2699,7 +2705,7 @@ namespace SandboxDetail {
 					label = count + " guard " + object->GetPresetName() + ", holding posts round it and seeing off enemies that come near";
 				} else if (building) {
 					const Colony::Type& type = Colony::GetType(building->What);
-					drawList->AddRect(ToScreen(building->Ground - Vector(static_cast<float>(type.Width) * 0.5F, static_cast<float>(type.Height))), ToScreen(building->Ground + Vector(static_cast<float>(type.Width) * 0.5F, 0.0F)), green, 0.0F, 0, pixel * 1.5F);
+					drawList->AddRect(ToScreen(building->Ground - Vector(static_cast<float>(building->Width()) * 0.5F, static_cast<float>(building->Height()))), ToScreen(building->Ground + Vector(static_cast<float>(building->Width()) * 0.5F, 0.0F)), green, 0.0F, 0, pixel * 1.5F);
 					for (const Vector& spot: StandingSpots(building->Ground, static_cast<int>(units.size()))) {
 						flag(spot, green);
 					}
@@ -3390,11 +3396,11 @@ namespace SandboxDetail {
 		drawList->PushClipRect(ImVec2(view.x, view.y), ImVec2(view.x + view.w, view.y + view.h));
 		for (const Colony::Building& building: Colony::Buildings()) {
 			const Colony::Type& type = Colony::GetType(building.What);
-			ImVec2 top = ToScreen(building.Ground + Vector(0.0F, -static_cast<float>(type.Height) - 6.0F));
+			ImVec2 top = ToScreen(building.Ground + Vector(0.0F, -static_cast<float>(building.Height()) - 6.0F));
 			if (top.x < view.x - 100.0F || top.x > view.x + view.w + 100.0F || top.y < view.y || top.y > view.y + view.h + 40.0F) {
 				continue;
 			}
-			std::string label = std::string(type.Name);
+			std::string label = std::string(building.Lite ? "Lite " : "") + type.Name;
 			if (building.What == Colony::Kind::Barracks) {
 				label += "  " + std::to_string(building.Alive.size()) + "/" + std::to_string(building.KeepAlive);
 			} else if (building.What == Colony::Kind::Woodcutter) {
@@ -3418,7 +3424,7 @@ namespace SandboxDetail {
 				drawList->AddCircle(ToScreen(building.Ground), Colony::PowerRange() / scale, (c_SideColors[building.Team] & ~IM_COL32_A_MASK) | IM_COL32(0, 0, 0, 60), 96, 1.0F);
 			}
 			if (building.What == Colony::Kind::Barracks && building.Paid) {
-				float barWidth = std::max(static_cast<float>(type.Width) / scale * 0.6F, 30.0F);
+				float barWidth = std::max(static_cast<float>(building.Width()) / scale * 0.6F, 30.0F);
 				ImVec2 barAt(top.x - barWidth * 0.5F, top.y - 3.0F);
 				drawList->AddRectFilled(barAt, ImVec2(barAt.x + barWidth, barAt.y + 4.0F), IM_COL32(0, 0, 0, 160));
 				drawList->AddRectFilled(barAt, ImVec2(barAt.x + barWidth * std::clamp(building.Progress, 0.0F, 1.0F), barAt.y + 4.0F), c_SideColors[building.Team]);
@@ -3444,7 +3450,7 @@ namespace SandboxDetail {
 	/// The details of one colony building, opened under its row in the Colony tab.
 	void ColonyBuildingDetails(Colony::Building& building) {
 		const Colony::Type& type = Colony::GetType(building.What);
-		ImGui::TextDisabled("%s %s. %s", Colony::StyleName(building.Looks), Colony::GetLook(building.What, building.Looks).Building, type.Description);
+		ImGui::TextDisabled("%s %s. %s", Colony::StyleName(building.Looks), building.Lite ? "lite box" : Colony::GetLook(building.What, building.Looks).Building, type.Description);
 		if (building.What == Colony::Kind::Barracks) {
 			if (building.Paid) {
 				ImGui::ProgressBar(building.Progress, ImVec2(-1.0F, 0.0F));
@@ -3552,12 +3558,20 @@ namespace SandboxDetail {
 		}
 		s_ColonyStyle = static_cast<Colony::Style>(chosenStyle);
 		ImGui::SetItemTooltip("How the buildings you put down look: medieval timber and stone, or sci-fi metal and glass. They work the same.");
+		ImGui::SameLine();
+		ImGui::Checkbox("Lite", &s_ColonyLite);
+		ImGui::SetItemTooltip("Just its core: a small box with its brain in, put exactly where you click (in the air, or carved into the ground), to build your own building round. It does all the full building does.");
 		ToolButtons({Tool::Woodcutter, Tool::Barracks, Tool::Extractor, Tool::Generator});
 		Tool kind = CurrentTool().Kind;
 		if (IsColonyTool(kind)) {
 			const Colony::Kind building = ColonyKindOf(kind);
-			ImGui::TextWrapped("%s: %s", Colony::GetLook(building, s_ColonyStyle).Building, Colony::GetType(building).Description);
-			ImGui::TextDisabled("Click on the ground to build it. Its brain is put in a chamber at the back for you.");
+			if (s_ColonyLite) {
+				ImGui::TextWrapped("Lite %s: %s", Colony::GetType(building).Name, Colony::GetType(building).Description);
+				ImGui::TextDisabled("Click anywhere to put its box there, its brain inside. Build your own building round it: its units and staff come out on its right.");
+			} else {
+				ImGui::TextWrapped("%s: %s", Colony::GetLook(building, s_ColonyStyle).Building, Colony::GetType(building).Description);
+				ImGui::TextDisabled("Click on the ground to build it. Its brain is put in a chamber at the back for you.");
+			}
 			SideChooser();
 			if (kind == Tool::Barracks) {
 				ImGui::TextDisabled("It trains:");
@@ -3594,9 +3608,9 @@ namespace SandboxDetail {
 					count = "  " + std::to_string(building.Staff.size()) + "/" + std::to_string(building.KeepAlive);
 				}
 				ImGui::PushStyleColor(ImGuiCol_Text, c_SideColors[building.Team]);
-				bool open = ImGui::TreeNodeEx("##building", ImGuiTreeNodeFlags_SpanAvailWidth, "%s%s", type.Name, count.c_str());
+				bool open = ImGui::TreeNodeEx("##building", ImGuiTreeNodeFlags_SpanAvailWidth, "%s%s%s", building.Lite ? "Lite " : "", type.Name, count.c_str());
 				ImGui::PopStyleColor();
-				ImGui::SetItemTooltip("%s %s, %s's", Colony::StyleName(building.Looks), Colony::GetLook(building.What, building.Looks).Building, c_SideNames[building.Team]);
+				ImGui::SetItemTooltip("%s %s, %s's", Colony::StyleName(building.Looks), building.Lite ? "lite box" : Colony::GetLook(building.What, building.Looks).Building, c_SideNames[building.Team]);
 				ImGui::TableNextColumn();
 				ColonyStatusPill(building);
 				ImGui::TableNextColumn();
@@ -4680,6 +4694,10 @@ namespace SandboxDetail {
 				}
 				next();
 			}
+			if (BarChip("Lite", s_ColonyLite, ToolTheme::Text, nullptr, "Just its core: a small box with its brain in, put exactly where you click (in the air, or carved into the ground), to build your own building round. It does all the full building does.") == 1) {
+				s_ColonyLite = !s_ColonyLite;
+			}
+			next();
 			if (kind == Tool::Barracks) {
 				ImGui::SetNextItemWidth(field);
 				ImGui::SliderInt("##keep", &s_ColonyKeep, 1, 20, "Keeps %d alive");

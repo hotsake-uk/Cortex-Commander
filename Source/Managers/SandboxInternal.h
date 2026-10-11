@@ -1035,6 +1035,7 @@ namespace SandboxDetail {
 		int Fill = -1; //!< Terrain brushes: a FillShape filled from Position to Position2 (Brush type Shape), or -1 for a brush stroke at Position.
 		int Temperament = -1; //!< Units and drops: the temperament they are given (Actor::Temperament, NC-1), -1 for each one's own.
 		int Style = 0; //!< Colony buildings: how they look (Colony::Style), taken at the click.
+		bool Lite = false; //!< Colony buildings: just the core, a box with its brain in (Colony::Building::Lite), taken at the click.
 		VehicleTuning Vehicle; //!< Tool::Vehicle: how it is tuned and crewed (s_VehicleTuning), taken at the click.
 		int DriverChoice = -1; //!< Tool::Vehicle with Vehicle.Crewed: the driver, an index into the Units list (Vehicle.Driver resolved at the click, ResolveCrewPick).
 		bool DriverRandom = false; //!< Tool::Vehicle with Vehicle.Crewed: the driver a random unit, from FavouritesOnly and RandomFaction.
@@ -1458,6 +1459,7 @@ namespace SandboxDetail {
 	inline int s_ColonyStaff = 2; //!< How many staff a new woodcutter keeps.
 	inline int s_ColonyRemoveID = -1; //!< The colony building the Colony tab was asked to close down this frame, or -1.
 	inline Colony::Style s_ColonyStyle = Colony::Style::Fantasy; //!< How new colony buildings look.
+	inline bool s_ColonyLite = false; //!< Whether new colony buildings are lite: just a box with their brain in, put where clicked, to build your own building round.
 	inline bool s_PauseInMenus = true; //!< In the Sandbox game mode the world stands still while the tools are open.
 	inline bool s_PausedByMenus = false; //!< Whether it is this that has paused the simulation, so only this is undone.
 	inline int s_StepsWanted = 0; //!< Updates to let the paused world do.

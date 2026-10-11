@@ -2860,7 +2860,7 @@ namespace SandboxDetail {
 				if (const Preset* unit = ChosenPreset(Tool::Unit, stroke.Choice)) {
 					ActivateSide(stroke.Team);
 					// ("Move to a place" has no place for trainees: they hold where they come out instead.)
-					int built = Colony::Place(Colony::Kind::Barracks, at, stroke.Team, unit->PresetName, static_cast<int>(UnitOrder(static_cast<int>(stroke.Orders))), stroke.Count, static_cast<Colony::Style>(stroke.Style));
+					int built = Colony::Place(Colony::Kind::Barracks, at, stroke.Team, unit->PresetName, static_cast<int>(UnitOrder(static_cast<int>(stroke.Orders))), stroke.Count, static_cast<Colony::Style>(stroke.Style), stroke.Lite);
 					if (!s_PaintUndo.empty()) {
 						s_PaintUndo.back().ColonyBuilding = built;
 					}
@@ -2870,7 +2870,7 @@ namespace SandboxDetail {
 			case Tool::Generator:
 			case Tool::Woodcutter:
 				ActivateSide(stroke.Team);
-				if (int built = Colony::Place(ColonyKindOf(stroke.Kind), at, stroke.Team, "", 0, stroke.Kind == Tool::Woodcutter ? stroke.Count : 1, static_cast<Colony::Style>(stroke.Style)); !s_PaintUndo.empty()) {
+				if (int built = Colony::Place(ColonyKindOf(stroke.Kind), at, stroke.Team, "", 0, stroke.Kind == Tool::Woodcutter ? stroke.Count : 1, static_cast<Colony::Style>(stroke.Style), stroke.Lite); !s_PaintUndo.empty()) {
 					s_PaintUndo.back().ColonyBuilding = built;
 				}
 				break;
@@ -3607,6 +3607,7 @@ namespace SandboxDetail {
 			stroke.Count = s_ColonyStaff;
 		}
 		stroke.Style = IsColonyTool(kind) ? static_cast<int>(s_ColonyStyle) : 0;
+		stroke.Lite = IsColonyTool(kind) && s_ColonyLite;
 		stroke.LitGrenade = s_LitGrenade;
 		stroke.Craft = s_Craft;
 		stroke.Random = (kind == Tool::Drop || kind == Tool::Unit) && s_RandomUnits;

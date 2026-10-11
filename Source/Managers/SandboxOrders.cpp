@@ -1307,9 +1307,8 @@ namespace SandboxDetail {
 	/// The colony building whose plot a point is on (RC-10), if any.
 	const Colony::Building* BuildingAt(const Vector& position) {
 		for (const Colony::Building& building: Colony::Buildings()) {
-			const Colony::Type& type = Colony::GetType(building.What);
 			Vector off = g_SceneMan.ShortestDistance(building.Ground, position, g_SceneMan.SceneWrapsX());
-			if (std::abs(off.m_X) <= static_cast<float>(type.Width) * 0.5F && off.m_Y <= 4.0F && off.m_Y >= -static_cast<float>(type.Height) - 8.0F) {
+			if (std::abs(off.m_X) <= static_cast<float>(building.Width()) * 0.5F && off.m_Y <= 4.0F && off.m_Y >= -static_cast<float>(building.Height()) - 8.0F) {
 				return &building;
 			}
 		}
