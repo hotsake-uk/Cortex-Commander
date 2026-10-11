@@ -2,6 +2,7 @@
 
 #include "SandboxInternal.h"
 #include "AVehicle.h"
+#include "Turret.h"
 
 namespace SandboxDetail {
 	MovableObject* CreateObject(const std::string& className, const std::string& presetName, int moduleID) {
@@ -192,6 +193,10 @@ namespace SandboxDetail {
 				return;
 			}
 			car->SetCommanded(true);
+			// (A new order lets off a handbrake a Park order put on.)
+			if (!resend) {
+				car->SetHandbrake(false);
+			}
 		}
 		if (dynamic_cast<const ACraft*>(unit)) {
 			return;
@@ -1266,6 +1271,9 @@ namespace SandboxDetail {
 			case CommandMode::Land:
 				LandSelected(point, shift);
 				return;
+			case CommandMode::Park:
+				ParkSelected(point, shift);
+				return;
 			default: {
 				bool attackMove = s_CommandMode == CommandMode::AttackMove;
 				if (shift) {
@@ -1595,6 +1603,10 @@ namespace SandboxDetail {
 			LandSelected(position, modifier == 1);
 			return;
 		}
+		if (s_CommandMode == CommandMode::Park) {
+			ParkSelected(position, modifier == 1);
+			return;
+		}
 		if (s_CommandMode == CommandMode::AttackMove) {
 			if (modifier == 1) {
 				PlanStepFor(UnitsToMove(0, true), PlanKind::AttackMove, position, nullptr);
@@ -1824,6 +1836,7 @@ namespace SandboxDetail {
 			case CommandMode::Suppress:
 			case CommandMode::Dropoff:
 			case CommandMode::Land:
+			case CommandMode::Park:
 				return true;
 			default:
 				return false;
@@ -1905,6 +1918,58 @@ namespace SandboxDetail {
 		MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::Land)]);
 	}
 
+	bool SelectionHasCar() {
+		return std::any_of(s_Selected.begin(), s_Selected.end(), [](const UnitRef& ref) { return dynamic_cast<const AVehicle*>(GetRef(ref)) != nullptr; });
+	}
+
+	void ParkSelected(const Vector& point, bool shift) {
+		std::vector<Actor*> units = UnitsToMove(0, true);
+		std::vector<Actor*> vehicles;
+		std::erase_if(units, [&vehicles](Actor* unit) {
+			if (dynamic_cast<const AVehicle*>(unit) || dynamic_cast<const ACShip*>(unit)) {
+				vehicles.push_back(unit);
+				return true;
+			}
+			return false;
+		});
+		// (Anyone else selected with them just goes there.)
+		if (!units.empty()) {
+			if (shift) {
+				PlanStepFor(units, PlanKind::Move, point, nullptr);
+			} else {
+				MoveUnitsTo(units, point);
+			}
+		}
+		if (shift) {
+			std::vector<Actor*> ships;
+			std::erase_if(vehicles, [&ships](Actor* unit) {
+				if (dynamic_cast<const ACShip*>(unit)) {
+					ships.push_back(unit);
+					return true;
+				}
+				return false;
+			});
+			PlanStepFor(vehicles, PlanKind::Park, point, nullptr);
+			PlanStepFor(ships, PlanKind::Land, point, nullptr);
+		} else {
+			// A vehicle's width apart along the ground there, as a move spreads them.
+			float along = 0.0F;
+			for (const Actor* vehicle: vehicles) {
+				along += vehicle->GetRadius() * 2.2F;
+			}
+			float at = -along * 0.5F;
+			for (Actor* vehicle: vehicles) {
+				at += vehicle->GetRadius() * 1.1F;
+				Vector spot = point + Vector(at, 0.0F);
+				at += vehicle->GetRadius() * 1.1F;
+				g_SceneMan.WrapPosition(spot);
+				StartDropoff(vehicle, spot, true);
+				AnswerOrder(vehicle, "OrderMove");
+			}
+		}
+		MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::Park)]);
+	}
+
 	void StartDropoff(Actor* vehicle, const Vector& place, bool stayDown) {
 		if (!vehicle || vehicle->IsPlayerControlled()) {
 			return;
@@ -1917,7 +1982,7 @@ namespace SandboxDetail {
 		dropoff.Place = place;
 		dropoff.Stage = 0;
 		dropoff.Since = g_TimerMan.GetSimUpdateCount();
-		dropoff.StayDown = stayDown && dynamic_cast<const ACShip*>(vehicle);
+		dropoff.StayDown = stayDown;
 	}
 
 	void UpdateDropoffs() {
@@ -1940,7 +2005,12 @@ namespace SandboxDetail {
 				if (car->GetAIMode() == Actor::AIMODE_GOTO || car->GetWaypointsSize() > 0 || s_MoveWatch.count(car->GetUniqueID())) {
 					return false;
 				}
-				EveryoneOut(car, true);
+				// (Parked: the handbrake on, everyone aboard, till another order lets it off.)
+				if (dropoff.StayDown) {
+					car->SetHandbrake(true);
+				} else {
+					EveryoneOut(car, true);
+				}
 				return true;
 			}
 			ACShip* ship = dynamic_cast<ACShip*>(unit);
@@ -2161,7 +2231,8 @@ namespace SandboxDetail {
 				break;
 			case PlanKind::Dropoff:
 			case PlanKind::Land:
-				StartDropoff(unit, step.Place, step.Kind == PlanKind::Land);
+			case PlanKind::Park:
+				StartDropoff(unit, step.Place, step.Kind != PlanKind::Dropoff);
 				break;
 		}
 		s_FollowingPlan = false;
@@ -2193,6 +2264,7 @@ namespace SandboxDetail {
 				return g_TimerMan.GetSimUpdateCount() - plan.Started >= plan.Current.Updates;
 			case PlanKind::Dropoff:
 			case PlanKind::Land:
+			case PlanKind::Park:
 				return !s_Dropoffs.count(unit->GetUniqueID());
 		}
 		return false;
@@ -2279,7 +2351,7 @@ namespace SandboxDetail {
 			if (!plan.Running && plan.Steps.empty()) {
 				StartPlanStep(unit, plan, step);
 				// (Given now, it's answered as the order it is; the step's own sending is a plan's, which doesn't answer.)
-				const char* const answers[] = {"OrderMove", "OrderAttackMove", "OrderAttack", "OrderGuard", "OrderDefend", nullptr, "OrderSuppress", "OrderMove", "OrderMove"};
+				const char* const answers[] = {"OrderMove", "OrderAttackMove", "OrderAttack", "OrderGuard", "OrderDefend", nullptr, "OrderSuppress", "OrderMove", "OrderMove", "OrderMove"};
 				int kindIndex = static_cast<int>(step.Kind);
 				AnswerOrder(unit, kindIndex >= 0 && kindIndex < static_cast<int>(std::size(answers)) ? answers[kindIndex] : nullptr);
 			} else {
@@ -2421,10 +2493,21 @@ namespace SandboxDetail {
 				Vector spot = centre + Vector(side * range * 0.5F, 0.0F);
 				g_SceneMan.WrapPosition(spot);
 				ship->FlyRouteTo(spot);
-			} else if (car && std::abs(across) > range * 0.8F) {
-				Vector spot = centre + Vector(side * range * 0.6F, -4.0F);
-				g_SceneMan.WrapPosition(spot);
-				SendUnit(car, spot, nullptr, false, "suppress");
+			} else if (car) {
+				// A vehicle that can't fire into it from where it is drives to where it can (AVehicle::FindFiringSpot: a clear line, in range,
+				// within its gun's swing, clear of its side's other vehicles); with none to be found, to the edge of its range as before.
+				const Turret* turret = car->GetTurret();
+				Vector spot;
+				if (turret && car->CanHitFrom(turret->GetPos(), centre)) {
+					// (Where it is will do.)
+				} else if (car->FindFiringSpot(centre, spot)) {
+					spot = g_SceneMan.MovePointToGround(spot, 0, 4) - Vector(0.0F, 4.0F);
+					SendUnit(car, spot, nullptr, false, "suppress");
+				} else if (std::abs(across) > range * 0.8F) {
+					spot = centre + Vector(side * range * 0.6F, -4.0F);
+					g_SceneMan.WrapPosition(spot);
+					SendUnit(car, spot, nullptr, false, "suppress");
+				}
 			}
 			if (car && car->CanBeDriven()) {
 				car->SetCommanded(true);

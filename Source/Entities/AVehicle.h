@@ -264,6 +264,23 @@ namespace RTE {
 		/// Gets how far its gunner looks for something to shoot, in pixels.
 		float GetGunRange() const { return m_GunRange; }
 
+		/// Finds a firing position on the ground to shoot at a place from: either side of it, a share of its gun range off, the near side first
+		/// and the nearest to where it is now, where its gun would have a clear line to it within its swing up or down, with no friend in the
+		/// way, and with room clear of its side's other vehicles (and where they are driving to). Not for a catapult, which lobs over.
+		/// @param aimAt The place. @param spot Set to where its middle would be there. @return Whether it found one.
+		bool FindFiringSpot(const Vector& aimAt, Vector& spot) const;
+
+		/// Gets whether its gun could hit a place from a point: in range, within its swing up or down (level), a clear line to it, no friend in the way.
+		/// @param gunAt Where the gun would be. @param aimAt The place.
+		bool CanHitFrom(const Vector& gunAt, const Vector& aimAt) const;
+
+		/// Gets where across a commanded vehicle is driving to about a fight (UpdateAIManoeuvre), so others keep clear of it.
+		/// @param x Set to the place across. @return Whether it is driving to one.
+		bool GetManoeuvreGoal(float& x) const {
+			x = m_AIManoeuvreX;
+			return m_AIManoeuvring;
+		}
+
 		/// Gets whether its AI driver gave up on the way it was last sent (stuck, a drop, no way on), until it is sent somewhere again.
 		bool HasGivenUpDriving() const { return m_AIGaveUp; }
 
@@ -422,6 +439,9 @@ namespace RTE {
 		bool m_AIKeepFacing; //!< Whether it keeps facing the way it faces this update, backing off rather than turning round.
 		float m_AICombatHealth; //!< Its health when last looked at, to tell when it is hit.
 		Timer m_AIManoeuvreTimer; //!< Since it started moving about the fight.
+		long long m_AIManoeuvreLimitMS; //!< How long it gives the drive about the fight before stopping where it is (further, longer).
+		Timer m_SuppressNoShotTimer; //!< Since its gunner, ordered to suppress a place, last had it (or someone) in its sights.
+		Timer m_AISpacingTimer; //!< Since it last looked for a vehicle of its side stopped on top of it.
 		Timer m_AIHitTimer; //!< Since it was last hit.
 		Timer m_AIJinkTimer; //!< Since it last moved for being hit.
 		Timer m_AINoShotTimer; //!< Since its gun last had the enemy it was sent after in its sights.
@@ -487,7 +507,9 @@ namespace RTE {
 		/// A commanded vehicle in a fight, as a ship does (ACShip::UpdateCombat), by its order's risk (Actor::StandingOrder::Direct): sent
 		/// after an enemy, it backs away from one too close, or over it, to where its gun can bear; in position and hit, it backs off to
 		/// the edge of its range on a cautious order, or shuffles along on a normal one (never on a full-risk one); and holding a post, hit
-		/// while its gunner has someone, it shuffles about the post. Each move is a short drive along the ground, facing the enemy.
+		/// while its gunner has someone, it shuffles about the post. Each move is a short drive along the ground, facing the enemy. With no shot
+		/// at the enemy for a while, or at a place it was ordered to suppress, it drives round to a firing position (FindFiringSpot); and
+		/// stopped right by another of its side's vehicles, one of the two moves off, so they don't sit in each other's way.
 		/// @param enemy The enemy it was sent after, or null. @return Whether it is driving for the fight this update.
 		bool UpdateAIManoeuvre(const Actor* enemy);
 

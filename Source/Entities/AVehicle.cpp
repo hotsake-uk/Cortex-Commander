@@ -205,6 +205,7 @@ void AVehicle::Clear() {
 	m_SunkTimer.Reset();
 	m_AIManoeuvring = false;
 	m_AIManoeuvreX = 0.0F;
+	m_AIManoeuvreLimitMS = 4000;
 	m_AIKeepFacing = false;
 	m_AICombatHealth = -1.0F;
 }
@@ -876,6 +877,85 @@ bool AVehicle::InFiringPosition(const MovableObject* target) const {
 	return !g_SceneMan.CastStrengthRay(pivot, toTarget, 5.0F, blocked, 3);
 }
 
+bool AVehicle::CanHitFrom(const Vector& gunAt, const Vector& aimAt) const {
+	const Vector toAim = g_SceneMan.ShortestDistance(gunAt, aimAt);
+	if (toAim.MagnitudeIsGreaterThan(m_GunRange * 0.85F) || std::abs(std::atan2(-toAim.m_Y, std::abs(toAim.m_X))) > m_AimRange) {
+		return false;
+	}
+	// (A line clear to it, or to the ground right at it: a place on the ground is fired into.)
+	Vector blocked;
+	if (g_SceneMan.CastStrengthRay(gunAt, toAim, 5.0F, blocked, 3) && !g_SceneMan.ShortestDistance(blocked, aimAt).MagnitudeIsLessThan(24.0F)) {
+		return false;
+	}
+	return !FriendInLineOfFire(this, m_Team, gunAt, toAim);
+}
+
+bool AVehicle::FindFiringSpot(const Vector& aimAt, Vector& spot) const {
+	if (!m_Turret) {
+		return false;
+	}
+	const bool wraps = g_SceneMan.SceneWrapsX();
+	const float radius = GetRadius();
+	// How high its middle rides over the ground, and its gun over its middle.
+	const float ride = std::max(g_SceneMan.MovePointToGround(m_Pos, 0, 4).m_Y - m_Pos.m_Y, 0.0F);
+	const float gunUp = m_Turret->GetPos().m_Y - m_Pos.m_Y;
+	const float near = g_SceneMan.ShortestDistance(aimAt, m_Pos, wraps).m_X >= 0.0F ? 1.0F : -1.0F;
+	// Room clear of its side's other vehicles, where they are and where they are driving to.
+	auto crowded = [this, wraps, radius](const Vector& at) {
+		for (const Actor* actor: g_MovableMan.GetActorList()) {
+			const AVehicle* other = dynamic_cast<const AVehicle*>(actor);
+			if (!other || other == this || other->GetTeam() != m_Team || other->IsDead()) {
+				continue;
+			}
+			const float room = (radius + other->GetRadius()) * 1.1F;
+			const Vector off = g_SceneMan.ShortestDistance(other->GetPos(), at, wraps);
+			if (std::abs(off.m_X) < room && std::abs(off.m_Y) < room * 1.5F) {
+				return true;
+			}
+			if (float goal = 0.0F; other->GetManoeuvreGoal(goal) && std::abs(g_SceneMan.ShortestDistance(Vector(goal, at.m_Y), at, wraps).m_X) < room) {
+				return true;
+			}
+		}
+		return false;
+	};
+	bool found = false;
+	float best = FLT_MAX;
+	for (float side: {near, -near}) {
+		for (float share: {0.35F, 0.45F, 0.55F, 0.65F, 0.75F}) {
+			Vector probe(aimAt.m_X + side * share * m_GunRange, aimAt.m_Y - m_GunRange * 0.25F);
+			g_SceneMan.WrapPosition(probe);
+			probe.m_Y = std::max(probe.m_Y, 0.0F);
+			// The ground there: up out of it if the point is in it, else down onto it.
+			int px = static_cast<int>(probe.m_X);
+			int py = static_cast<int>(std::min(probe.m_Y, static_cast<float>(g_SceneMan.GetSceneHeight() - 1)));
+			Vector ground;
+			if (g_SceneMan.GetTerrMatter(px, py) != MaterialColorKeys::g_MaterialAir) {
+				while (py > 0 && g_SceneMan.GetTerrMatter(px, py) != MaterialColorKeys::g_MaterialAir) {
+					py -= 4;
+				}
+				ground = Vector(probe.m_X, static_cast<float>(py + 4));
+			} else {
+				ground = g_SceneMan.MovePointToGround(probe, 0, 4);
+				if (ground.m_Y >= static_cast<float>(g_SceneMan.GetSceneHeight() - 2)) {
+					continue;
+				}
+			}
+			const Vector at(ground.m_X, ground.m_Y - ride);
+			if (!CanHitFrom(at + Vector(0.0F, gunUp), aimAt) || crowded(at)) {
+				continue;
+			}
+			// The nearest, on its own side (the far side means driving past it).
+			float score = std::abs(g_SceneMan.ShortestDistance(m_Pos, at, wraps).m_X) + (side != near ? m_GunRange : 0.0F);
+			if (score < best) {
+				best = score;
+				spot = at;
+				found = true;
+			}
+		}
+	}
+	return found;
+}
+
 void AVehicle::FaceForCommander() {
 	if (!m_AIFaceTimer.IsPastSimMS(1000) || m_Vel.MagnitudeIsGreaterThan(1.0F) || m_Handbrake) {
 		return;
@@ -927,7 +1007,7 @@ bool AVehicle::UpdateAIManoeuvre(const Actor* enemy) {
 		float toX = g_SceneMan.ShortestDistance(m_Pos, Vector(m_AIManoeuvreX, m_Pos.m_Y), wraps).m_X;
 		float direction = toX > 0.0F ? 1.0F : -1.0F;
 		bool stalled = m_AIManoeuvreTimer.IsPastSimMS(1200) && std::abs(m_Vel.m_X) < 0.3F;
-		if (std::abs(toX) < 8.0F || m_AIManoeuvreTimer.IsPastSimMS(4000) || stalled || !CanDriveOnTo(direction)) {
+		if (std::abs(toX) < 8.0F || m_AIManoeuvreTimer.IsPastSimMS(m_AIManoeuvreLimitMS) || stalled || !CanDriveOnTo(direction)) {
 			m_AIManoeuvring = false;
 			m_AIStuckTimer.Reset();
 			return false;
@@ -947,6 +1027,8 @@ bool AVehicle::UpdateAIManoeuvre(const Actor* enemy) {
 		g_SceneMan.WrapPosition(to);
 		m_AIManoeuvreX = to.m_X;
 		m_AIManoeuvring = true;
+		// (Four seconds for a short move, more for a long drive round to a firing position, at a slow crawl's pace.)
+		m_AIManoeuvreLimitMS = std::max(4000LL, static_cast<long long>(std::abs(g_SceneMan.ShortestDistance(m_Pos, to, wraps).m_X) / 60.0F * 1000.0F) + 2000LL);
 		m_AIManoeuvreTimer.Reset();
 		m_AIJinkTimer.Reset();
 		return true;
@@ -968,11 +1050,22 @@ bool AVehicle::UpdateAIManoeuvre(const Actor* enemy) {
 		if (across < nearest && (!inPosition || toEnemy.m_Y < -GetRadius())) {
 			return start(m_Pos.m_X + away * (nearest * 1.3F - across));
 		}
+		// In range but no shot (over a lip, behind cover, a friend in the way), a while: round to a firing position.
+		if (!inPosition && across < m_GunRange * 0.8F && across >= nearest * 1.4F && m_AINoShotTimer.IsPastSimMS(2500)) {
+			m_AINoShotTimer.Reset();
+			if (Vector spot; FindFiringSpot(enemy->GetPos(), spot)) {
+				return start(spot.m_X);
+			}
+		}
 		if (!inPosition && across < nearest * 1.4F) {
 			// Near, with no shot (over a lip, behind cover): it waits there facing it rather than driving back in under it; after a while
 			// with none, it tries a little further out, where the angle is lower.
-			if (m_AINoShotTimer.IsPastSimMS(3000) && across < m_GunRange * 0.7F) {
+			if (m_AINoShotTimer.IsPastSimMS(2500) && across < m_GunRange * 0.7F) {
 				m_AINoShotTimer.Reset();
+				// Round to a firing position with a clear line to it, else a little further out, where the angle is lower.
+				if (Vector spot; FindFiringSpot(enemy->GetPos(), spot)) {
+					return start(spot.m_X);
+				}
 				return start(m_Pos.m_X + away * 80.0F);
 			}
 			if ((toEnemy.m_X > 0.0F) == m_HFlipped && std::abs(m_Vel.m_X) < 1.5F) {
@@ -997,6 +1090,35 @@ bool AVehicle::UpdateAIManoeuvre(const Actor* enemy) {
 			return start(m_Pos.m_X + step);
 		}
 		return false;
+	}
+	// Ordered to suppress a place, with no shot into it for a while from where it holds: round to a firing position.
+	Vector suppressCentre;
+	float suppressRadius = 0.0F;
+	if (m_AIMode != AIMODE_GOTO && m_Turret && GetSuppressZone(suppressCentre, suppressRadius) && m_SuppressNoShotTimer.IsPastSimMS(3000)) {
+		m_SuppressNoShotTimer.Reset();
+		if (Vector spot; FindFiringSpot(suppressCentre, spot) && std::abs(g_SceneMan.ShortestDistance(m_Pos, spot, wraps).m_X) > 16.0F) {
+			return start(spot.m_X);
+		}
+	}
+	// Stopped right by another of its side's vehicles, also stopped: the one made later moves off along the ground, to give them both room.
+	if (m_AIMode != AIMODE_GOTO && !m_Handbrake && m_AISpacingTimer.IsPastSimMS(1000)) {
+		m_AISpacingTimer.Reset();
+		for (const Actor* actor: g_MovableMan.GetActorList()) {
+			const AVehicle* other = dynamic_cast<const AVehicle*>(actor);
+			if (!other || other == this || other->GetTeam() != m_Team || other->IsDead() || other->GetUniqueID() > GetUniqueID() || other->GetVel().MagnitudeIsGreaterThan(1.0F)) {
+				continue;
+			}
+			const Vector off = g_SceneMan.ShortestDistance(other->GetPos(), m_Pos, wraps);
+			const float room = (GetRadius() + other->GetRadius()) * 0.8F;
+			if (std::abs(off.m_X) < room && std::abs(off.m_Y) < room) {
+				const float away = off.m_X >= 0.0F ? 1.0F : -1.0F;
+				const float step = room - std::abs(off.m_X) + 20.0F;
+				if (CanDriveOnTo(away)) {
+					return start(m_Pos.m_X + away * step);
+				}
+				return start(m_Pos.m_X - away * (std::abs(off.m_X) + room + 20.0F));
+			}
+		}
 	}
 	// Holding a post, hit while its gunner has someone: a shuffle about the post, within the reach ReturnDefenders leaves it.
 	if (m_AIMode == AIMODE_SENTRY && m_StandingOrder.HasPost && m_GunTargetID != 0 && mayJink) {
@@ -1429,6 +1551,18 @@ void AVehicle::UpdateGun() {
 					onIt = std::abs(Wrapped(wanted - rotationFacing)) <= m_AimRange;
 				}
 			}
+		}
+		// (Someone in its sights, or a clear line into the place it suppresses: it has a shot from here, and needn't move for one.)
+		if (target && onIt) {
+			m_SuppressNoShotTimer.Reset();
+		} else if (onIt && !lobs) {
+			Vector blocked;
+			Vector toPoint = g_SceneMan.ShortestDistance(m_Turret->GetPos(), m_SuppressPoint);
+			if (!g_SceneMan.CastStrengthRay(m_Turret->GetPos(), toPoint, 5.0F, blocked, 3) || g_SceneMan.ShortestDistance(blocked, m_SuppressPoint).MagnitudeIsLessThan(suppressRadius * 0.5F + 20.0F)) {
+				m_SuppressNoShotTimer.Reset();
+			}
+		} else if (!GetSuppressZone(suppressCentre, suppressRadius)) {
+			m_SuppressNoShotTimer.Reset();
 		}
 		if (onIt) {
 			float turn = std::clamp(Wrapped(wanted - m_AimAngle), -m_GunTurnSpeed * deltaTime, m_GunTurnSpeed * deltaTime);

@@ -2672,6 +2672,11 @@ namespace SandboxDetail {
 					}
 				}
 				label = "Drop off here: " + std::to_string(vehicles) + (vehicles == 1 ? " vehicle, " : " vehicles, ") + std::to_string(passengers) + (passengers == 1 ? " passenger gets out" : " passengers get out");
+			} else if (mode == CommandMode::Park) {
+				const ImU32 color = c_CommandModeColors[static_cast<int>(CommandMode::Park)];
+				crosshair(g_SceneMan.MovePointToGround(point, 0.0F, 4), color, pixel * 6.0F);
+				const int cars = static_cast<int>(std::count_if(units.begin(), units.end(), [](const Actor* unit) { return dynamic_cast<const AVehicle*>(unit) != nullptr; }));
+				label = "Park here: " + std::to_string(cars) + (cars == 1 ? " vehicle" : " vehicles") + ", handbrake on";
 			} else if (mode == CommandMode::Land) {
 				const ImU32 color = c_CommandModeColors[static_cast<int>(CommandMode::Land)];
 				crosshair(g_SceneMan.MovePointToGround(point, 0.0F, 4), color, pixel * 6.0F);
@@ -3003,6 +3008,8 @@ namespace SandboxDetail {
 				return "Drop off";
 			case PlanKind::Land:
 				return "Land";
+			case PlanKind::Park:
+				return "Park";
 			default:
 				return "Move";
 		}
@@ -3025,6 +3032,8 @@ namespace SandboxDetail {
 				return c_CommandModeColors[static_cast<int>(CommandMode::Dropoff)];
 			case PlanKind::Land:
 				return c_CommandModeColors[static_cast<int>(CommandMode::Land)];
+			case PlanKind::Park:
+				return c_CommandModeColors[static_cast<int>(CommandMode::Park)];
 			default:
 				return c_CommandModeColors[static_cast<int>(CommandMode::Move)];
 		}
@@ -3073,7 +3082,24 @@ namespace SandboxDetail {
 		menu.Heading("Movement", Kind::State);
 		menu.Choices(Movement, {std::begin(c_MovementRuleNames), std::end(c_MovementRuleNames)}, SelectedRule(false), 2);
 		menu.Heading("What your clicks do", Kind::Setting);
-		menu.Choices(ClickMode, {std::begin(c_CommandModeNames), std::end(c_CommandModeNames)}, static_cast<int>(s_CommandMode), 3);
+		{
+			// (Only what the selection can do: just vehicles and ships, none of what they can't; Drop off, Land and Park with ones to give them to.)
+			const bool onlyVehicles = SelectionOnlyVehicles();
+			std::vector<bool> canDo;
+			for (int mode = 0; mode < static_cast<int>(std::size(c_CommandModeNames)); ++mode) {
+				const CommandMode each = static_cast<CommandMode>(mode);
+				bool can = !onlyVehicles || ModeFitsVehicles(each);
+				if (each == CommandMode::Dropoff) {
+					can = SelectionHasVehicle();
+				} else if (each == CommandMode::Land) {
+					can = SelectionHasShip();
+				} else if (each == CommandMode::Park) {
+					can = SelectionHasCar();
+				}
+				canDo.push_back(can);
+			}
+			menu.Choices(ClickMode, {std::begin(c_CommandModeNames), std::end(c_CommandModeNames)}, static_cast<int>(s_CommandMode), 3, canDo);
+		}
 		menu.Heading("Group orders", Kind::Setting);
 		menu.Choices(FormationPick, {std::begin(c_FormationNames), std::end(c_FormationNames)}, static_cast<int>(s_Formation));
 		menu.Choices(KeepPacePick, {"Free", "Keep together"}, s_KeepPace ? 1 : 0);
@@ -3092,6 +3118,10 @@ namespace SandboxDetail {
 
 		// @return Whether the menu stays up: true for a setting.
 		auto pick = [&](const ActionMenu::Cell& cell) {
+			// (A greyed-out row, an order the selection can't carry out, does nothing.)
+			if (!cell.Enabled) {
+				return true;
+			}
 			switch (cell.Action) {
 				case AnimalPick:
 					if (cell.Value == 1 || cell.Value == 3) {
@@ -4977,6 +5007,14 @@ namespace SandboxDetail {
 				const int land = static_cast<int>(CommandMode::Land);
 				if (BarChip(c_CommandModeNames[land], current == land, c_CommandModeColors[land], nullptr, "Fly the selected ships to the place clicked, set them down on the ground there and turn their engines off, as a\nvehicle's handbrake. Everyone stays aboard, and they stay down till given another order. Shift adds it to their plans.") == 1) {
 					s_CommandMode = CommandMode::Land;
+				}
+			}
+			// A ground vehicle among them: park it at a place, handbrake on.
+			if (SelectionHasCar()) {
+				line.Next(pixel * 2.0F);
+				const int park = static_cast<int>(CommandMode::Park);
+				if (BarChip(c_CommandModeNames[park], current == park, c_CommandModeColors[park], nullptr, "Drive the selected vehicles to the place clicked and put their handbrakes on there. Everyone stays aboard,\nand they stay put till given another order (ships among them land). Shift adds it to their plans.") == 1) {
+					s_CommandMode = CommandMode::Park;
 				}
 			}
 			if (!onlyVehicles) {
