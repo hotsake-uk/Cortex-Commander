@@ -37,6 +37,7 @@ void CameraMan::Clear() {
 		screen.ScrollSpeed = 0.1F;
 		screen.ScrollTimer.Reset();
 		screen.ScreenOcclusion.Reset();
+		screen.BottomOverscroll = 0.0F;
 		screen.TargetXWrapped = false;
 		screen.TargetYWrapped = false;
 		screen.SeamCrossCount[Axes::X] = 0;
@@ -110,7 +111,7 @@ Vector CameraMan::ClampScrollCenter(const Vector& center, int screenId) {
 	if (!terrain->WrapsY()) {
 		float shift = static_cast<float>(g_FrameMan.GetPlayerScreenHeight() / 2) + screen.ScreenOcclusion.GetY() / 2.0F;
 		float offset = std::max(center.GetY() - shift, 0.0F);
-		offset = std::min(offset, static_cast<float>(terrain->GetBitmap()->h - frameSize.GetFloorIntY()));
+		offset = std::min(offset, static_cast<float>(terrain->GetBitmap()->h - frameSize.GetFloorIntY()) + std::floor(screen.BottomOverscroll));
 		result.SetY(offset + shift);
 	}
 	return result;
@@ -173,8 +174,10 @@ void CameraMan::CheckOffset(int screenId) {
 	if (!terrain->WrapsX() && screen.Offset.GetFloorIntX() >= terrain->GetBitmap()->w - frameWidth) {
 		screen.Offset.SetX(static_cast<float>(terrain->GetBitmap()->w - frameWidth));
 	}
-	if (!terrain->WrapsY() && screen.Offset.GetFloorIntY() >= terrain->GetBitmap()->h - frameHeight) {
-		screen.Offset.SetY(static_cast<float>(terrain->GetBitmap()->h - frameHeight));
+	// The bottom limit goes down by however much a bar along the foot of the screen covers, so the bottom of the map can be scrolled out from under it.
+	int bottomLimit = terrain->GetBitmap()->h - frameHeight + static_cast<int>(std::floor(screen.BottomOverscroll));
+	if (!terrain->WrapsY() && screen.Offset.GetFloorIntY() >= bottomLimit) {
+		screen.Offset.SetY(static_cast<float>(bottomLimit));
 	}
 }
 
