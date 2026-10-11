@@ -57,6 +57,8 @@ function NativeHumanAI:Create(Owner)
 	Members.aimSpeed = Owner:NumberValueExists("AIAimSpeed") and Owner:GetNumberValue("AIAimSpeed") or Members.aimSpeed;
 	Members.aimSkill = Owner:NumberValueExists("AIAimSkill") and Owner:GetNumberValue("AIAimSkill") or Members.aimSkill;
 	Members.skill = Owner:NumberValueExists("AISkill") and Owner:GetNumberValue("AISkill") or Members.skill;
+	-- Veterancy (Battle Command): the aim each rank sharpens, from these (Update).
+	Members.baseAimSpeed, Members.baseAimSkill, Members.veteranRank = Members.aimSpeed, Members.aimSkill, 0;
 	
 	-- default to enhanced AI if AI skill has been set high enough (an AI skill, 1 to 100: Good or Unfair, not a difficulty constant)
 	-- (The engine's scan where the build has it: everyone looks the same way, keener units wider; see HumanBehaviors.ScanTargets.)
@@ -90,6 +92,14 @@ function NativeHumanAI:Create(Owner)
 end
 
 function NativeHumanAI:Update(Owner)
+	-- Veterancy (Battle Command): each rank aims 15% better and quicker.
+	local rank = Owner:NumberValueExists("VeteranRank") and Owner:GetNumberValue("VeteranRank") or 0;
+	if rank ~= self.veteranRank and self.baseAimSkill then
+		self.veteranRank = rank;
+		self.aimSkill = self.baseAimSkill * (1 - 0.15 * rank);
+		self.aimSpeed = self.baseAimSpeed * (1 - 0.15 * rank);
+	end
+
 	self.Ctrl = Owner:GetController();
 
 	-- Our jetpack might have thrust balancing enabled, so update for our current mass
