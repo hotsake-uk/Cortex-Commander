@@ -647,6 +647,15 @@ namespace RTE {
 		/// and carries no weapons, so it has none to drop.
 		bool IsAnimal() const;
 
+		/// Which of the toughness settings this actor follows (a SettingsMan::ToughnessKind), or -1 for none (doors, lifts).
+		int GetToughnessKind() const;
+
+		/// How tough this actor is set to be (SettingsMan::Toughness), 1 for an actor no toughness setting covers.
+		float GetToughness() const;
+
+		/// How hard this is to blow apart, or to knock its head and limbs off: its toughness, and infinite when it is invincible.
+		float GibToughness() const override;
+
 		/// The side that last hurt this (NC-1): the team of the shot, blade or blast, Activity::NoTeam if none has yet.
 		int GetLastAttackerTeam() const { return m_LastAttackerTeam; }
 
@@ -1201,6 +1210,10 @@ namespace RTE {
 		/// the damage to it and its limbs comes off its health.
 		void UpdateWhileSeated();
 
+		/// Scales the health lost since this was last called by the toughness setting (2x loses half of it, invincible none of it), whatever
+		/// took it: shots, wounds bleeding, fire, water, falls or scripts. Health gained is left alone. Called before death is checked.
+		void ApplyToughness();
+
 		/// After every object has updated, before the deletions: lets go of the item in reach if it is going (see m_pItemInReach).
 		void PostUpdate() override;
 
@@ -1682,6 +1695,8 @@ namespace RTE {
 		int m_WeaponRule; //!< What this may shoot at (see WeaponRule).
 		int m_Temperament; //!< What this is like by nature (see Temperament).
 		int m_NonCombatant; //!< 1 or 0 as set on the preset, -1 to follow the temperament (see IsNonCombatant).
+		mutable int m_ToughnessKind; //!< Which toughness setting this follows (see GetToughnessKind), -2 until it is first worked out.
+		float m_ToughnessHealth; //!< The health as ApplyToughness last left it, NaN before it is first called.
 		int m_LastAttackerTeam; //!< The side that last hurt this, Activity::NoTeam for none (see GetLastAttackerTeam). Not saved.
 		long m_LastAttackerID; //!< The unit that last hurt this, if it hit this itself, else 0 (see GetLastAttackerID). Not saved.
 		Timer m_HurtTimer; //!< Since this was last hurt by another side (see GetMSSinceHurt). Not saved.
