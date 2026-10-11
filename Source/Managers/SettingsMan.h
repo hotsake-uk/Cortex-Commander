@@ -223,6 +223,24 @@ namespace RTE {
 		/// Sets whether what came off a unit settles as Flesh Scraps. Remains already in the terrain stay as they settled.
 		void SetBodyGearSettlesAsScraps(bool enable) { m_BodyGearSettlesAsScraps = enable; }
 
+		/// The gib chunk settings ("Gibs" in the settings panel): the solid pieces (plain MOSRotatings, not units or what was attached to the
+		/// thing) a body or wreck breaks into when it gibs, which tumble about and cost far more to move than a pixel of blood. Each member's
+		/// default is how the game has always behaved, so GibChunkTuning() is the reset.
+		struct GibChunkTuning {
+			int CountPercent = 100; //!< How many of each gib's chunks come out, in percent of what its preset says, 0 to 200. 100: all of them.
+			int MaxLoose = 0; //!< The most chunks loose at once, 0 to 5000; past it the oldest that have slowed settle where they lie (see MovableMan::Update). 0: no limit.
+			int SettleMS = -1; //!< How long a chunk lies still before it settles, in ms, 0 to 10000. -1: each preset's own RestThreshold.
+			int MaxBounces = 10; //!< The most hits a chunk takes in one update before it stops moving for that update, 1 to 10 (10 for everything else).
+			int AtomSpacing = 0; //!< Pixels between the collision points round a new chunk's outline, 1 to 16. 0: each preset's own AtomGroup Resolution.
+			bool SettleOnBodies = false; //!< Whether a chunk lying still on a dead body or another chunk, rather than on the ground, settles there (never on a living unit).
+		};
+
+		/// Gets the gib chunk tuning, to read or change ("Gibs" settings).
+		GibChunkTuning& GibChunks() { return m_GibChunks; }
+
+		/// Clamps every gib chunk setting into its range (after reading them).
+		void ClampGibChunks();
+
 		/// Whether every scene is played without wrapping horizontally, with hard left and right edges, whatever its terrain says (see Scene::LoadData).
 		/// Takes effect when a scene is next loaded.
 		bool NoSceneWrap() const { return m_NoSceneWrap; }
@@ -826,6 +844,7 @@ namespace RTE {
 		unsigned m_DebugChannels; //!< The debug text channels ticked in the settings, a bit per DebugChannel.
 		bool m_TraceAllUnits; //!< Whether the AI channels trace every unit (see TraceAllUnits).
 		bool m_BodyGearSettlesAsScraps; //!< Whether what came off a unit settles into the terrain as Flesh Scraps (see BodyGearSettlesAsScraps).
+		GibChunkTuning m_GibChunks; //!< How gib chunks come out, move and settle (see GibChunks).
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
 		bool m_NoSceneWrap; //!< Whether every scene is played with hard left and right edges instead of wrapping.
 		float m_AISuppression; //!< How strongly fire pins units down and shakes them, 0 to 2 (see AISuppression).
