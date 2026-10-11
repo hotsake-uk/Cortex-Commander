@@ -929,6 +929,9 @@ namespace RTE {
 			Vector straightGoal; //!< The goal it was begun for: not tried again for a few seconds (straightTimer), so a flight that failed isn't begun again and again.
 			Timer straightTimer;
 			Timer straightCheckTimer; //!< Since the follower last looked for a full-risk flight.
+			bool ladderStalled = false; //!< A ladder climb stopped rising lately, at ladderStallSpot: that ladder isn't climbed again from there for a while (ladderStallTimer).
+			Vector ladderStallSpot;
+			Timer ladderStallTimer;
 			bool skyFlying = false; //!< Flying a sky order (Actor::StandingOrder::SkyGoal) to its point in the air (see UpdateAIMotor).
 			bool skyHovering = false; //!< Got there: hovering at it till the tank runs low.
 			bool skyClear = false; //!< Whether the line to the point was open when last looked (skyCheckTimer).
@@ -1065,6 +1068,8 @@ namespace RTE {
 			int lastLimb = -1;
 			Timer lostTimer;
 			Timer startTimer;
+			float bestY = 0.0F; //!< The highest the climb has held the body (y), and since when (the AI's follower lets go of a ladder that stops rising).
+			Timer stallTimer;
 		};
 		LadderClimb m_Ladder;
 		struct TacticalMove {
@@ -1102,6 +1107,9 @@ namespace RTE {
 		float HandReachTopY() const;
 		/// Whether the ladder taken at gripX has a rung a hand reaches, from the hand's reach down past the feet (not only one far overhead).
 		bool LadderRungInReach(float gripX, bool material) const;
+		/// Notes that a unit of this team got stuck climbing the ladder taken at ladderX, at height y. @return Whether one of the team was stuck on
+		/// the same ladder in the last minute (the second time, the team is told to avoid it).
+		bool NoteLadderStall(float ladderX, float y) const;
 		/// Before the jet: taking hold of a ladder (up or down pressed at one), and letting go (a side key, or the jet's key alone).
 		void UpdateLadderInput();
 		/// The body along the ladder, each frame: the climb's pace with the pull of each hand, the top and the bottom.

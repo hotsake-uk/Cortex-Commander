@@ -1674,12 +1674,12 @@ void Actor::OnNewMovePath() {
 	}
 }
 
-void Actor::AvoidPathPoint(const Vector& place, float milliseconds) {
+void Actor::AvoidPathPoint(const Vector& place, float milliseconds, bool team) {
 	double now = g_TimerMan.GetSimTimeMS();
 	std::erase_if(m_AvoidPoints, [now](const std::pair<Vector, double>& avoid) { return avoid.second <= now; });
 	m_AvoidPoints.emplace_back(place, now + static_cast<double>(milliseconds));
 	// And for the whole team, for half as long: the next unit to come that way pays for the place too, rather than finding out the same way.
-	if (Scene* scene = g_SceneMan.GetScene(); scene && m_Team >= Activity::TeamOne && m_Team < Activity::MaxTeamCount) {
+	if (Scene* scene = g_SceneMan.GetScene(); team && scene && m_Team >= Activity::TeamOne && m_Team < Activity::MaxTeamCount) {
 		scene->GetPathFinder(static_cast<Activity::Teams>(m_Team)).AddTeamAvoid(place, now + static_cast<double>(milliseconds) * 0.5, now);
 	}
 }
@@ -1688,11 +1688,11 @@ bool Actor::IsAITraced(SettingsMan::DebugChannel channel) const {
 	return g_SettingsMan.DebugChannelOn(channel) && (g_SettingsMan.TraceAllUnits() || IsDebugInspected());
 }
 
-void Actor::AvoidPathLink(const Vector& from, const Vector& to, float milliseconds) {
+void Actor::AvoidPathLink(const Vector& from, const Vector& to, float milliseconds, bool team) {
 	double now = g_TimerMan.GetSimTimeMS();
 	std::erase_if(m_AvoidLinks, [now](const FailedLink& link) { return link.until <= now; });
 	m_AvoidLinks.push_back({from, to, now + static_cast<double>(milliseconds)});
-	if (Scene* scene = g_SceneMan.GetScene(); scene && m_Team >= Activity::TeamOne && m_Team < Activity::MaxTeamCount) {
+	if (Scene* scene = g_SceneMan.GetScene(); team && scene && m_Team >= Activity::TeamOne && m_Team < Activity::MaxTeamCount) {
 		scene->GetPathFinder(static_cast<Activity::Teams>(m_Team)).AddTeamAvoidLink(from, to, now + static_cast<double>(milliseconds) * 0.5, now);
 	}
 }
