@@ -488,6 +488,9 @@ namespace SandboxDetail {
 			DrawScoreChart();
 
 			ImGui::Spacing();
+			if (LinkedBattleControls()) {
+				s_ReportOpen = false;
+			}
 			const float half = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5F;
 			if (ToolUI::Button("Play again", ImVec2(half, 0.0F))) {
 				s_ReportOpen = false;
