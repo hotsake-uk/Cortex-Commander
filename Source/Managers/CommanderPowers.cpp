@@ -160,7 +160,7 @@ namespace SandboxDetail {
 	void PowerTargetClicked(const Vector& position) {
 		if (s_PendingPower >= 0 && StrikeOnSpawn(CommandedTeam(), s_PendingPower, position)) {
 			// (Still picking a place: a strike can't go on an enemy spawn zone.)
-			Note("Strikes can't be called on an enemy spawn zone");
+			Note("Strikes can't be called on or above an enemy spawn zone");
 			return;
 		}
 		if (s_PendingPower >= 0) {
@@ -189,7 +189,7 @@ namespace SandboxDetail {
 			std::snprintf(seconds, sizeof(seconds), "%.0f", std::ceil(left));
 			char tip[400];
 			std::snprintf(tip, sizeof(tip), "%s: %s\nThen %.0f seconds before it can be used again.%s%s%s", info.Name, info.Tip, info.Cooldown, info.Radius > 0.0F ? "\nClick, then click on the map where." : "",
-			              power <= static_cast<int>(CommanderPower::Orbital) ? "\nNot on an enemy spawn zone." : "",
+			              power <= static_cast<int>(CommanderPower::Orbital) ? "\nNot on or above an enemy spawn zone." : "",
 			              !running ? "\nOnce the battle is on." : (fogless ? "\nOnly with fog of war on." : (left > 0.0F ? "\nCooling down." : "")));
 			if (power > 0) {
 				ImGui::SameLine();
@@ -227,6 +227,6 @@ namespace SandboxDetail {
 		const bool barred = StrikeOnSpawn(CommandedTeam(), s_PendingPower, MouseScenePosition());
 		drawList->AddCircleFilled(at, radius, barred ? IM_COL32(150, 150, 150, 40) : IM_COL32(239, 106, 91, 40), 48);
 		drawList->AddCircle(at, radius, barred ? IM_COL32(150, 150, 150, 200) : IM_COL32(239, 106, 91, 200), 48, 2.0F);
-		drawList->AddText(ImVec2(at.x + radius + 6.0F, at.y - ImGui::GetFontSize() * 0.5F), barred ? IM_COL32(200, 200, 200, 230) : IM_COL32(239, 160, 100, 230), barred ? "Not on a spawn zone" : info.Name);
+		drawList->AddText(ImVec2(at.x + radius + 6.0F, at.y - ImGui::GetFontSize() * 0.5F), barred ? IM_COL32(200, 200, 200, 230) : IM_COL32(239, 160, 100, 230), barred ? "Not over a spawn zone" : info.Name);
 	}
 } // namespace SandboxDetail

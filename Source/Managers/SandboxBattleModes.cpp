@@ -4786,20 +4786,36 @@ namespace SandboxDetail {
 		if (!s_ModeRun.Running) {
 			return false;
 		}
+		// The point and the edge of the circle round it (so a strike can't be put just outside the zone to splash in), each checked on
+		// down to the bottom of the zone: what's called in the sky above a spawn zone falls on it.
+		std::vector<Vector> spots{at};
+		for (int step = 0; step < 16 && radius > 0.0F; ++step) {
+			const float angle = static_cast<float>(step) * c_TwoPI / 16.0F;
+			Vector edge = at + Vector(std::cos(angle) * radius, std::sin(angle) * radius);
+			g_SceneMan.WrapPosition(edge);
+			spots.push_back(edge);
+		}
 		for (int other = 0; other < c_Sides; ++other) {
 			if (other == side || !TeamIn(settings, other)) {
 				continue;
 			}
-			if (InZones(settings, other, at)) {
-				return true;
-			}
-			// (And the edge of the circle round it, so a strike can't be put just outside the zone to splash in.)
-			for (int step = 0; step < 16 && radius > 0.0F; ++step) {
-				const float angle = static_cast<float>(step) * c_TwoPI / 16.0F;
-				Vector edge = at + Vector(std::cos(angle) * radius, std::sin(angle) * radius);
-				g_SceneMan.WrapPosition(edge);
-				if (InZones(settings, other, edge)) {
-					return true;
+			for (const std::vector<Vector>& zone: ZonesOf(settings, other)) {
+				float left = zone.front().m_X, right = left, top = zone.front().m_Y, bottom = top;
+				for (const Vector& corner: zone) {
+					left = std::min(left, corner.m_X);
+					right = std::max(right, corner.m_X);
+					top = std::min(top, corner.m_Y);
+					bottom = std::max(bottom, corner.m_Y);
+				}
+				for (const Vector& spot: spots) {
+					if (spot.m_X < left || spot.m_X > right || spot.m_Y > bottom) {
+						continue;
+					}
+					for (float y = std::max(spot.m_Y, top); y <= bottom; y += 4.0F) {
+						if (IsInZone(zone, Vector(spot.m_X, y))) {
+							return true;
+						}
+					}
 				}
 			}
 		}

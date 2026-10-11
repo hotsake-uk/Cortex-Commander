@@ -2376,7 +2376,7 @@ namespace SandboxDetail {
 	int BattleCommanderLevel();
 	/// Where a team in the mode's game that is on comes in: the middle of its widest spawn zone, else its point. False for a team not in it.
 	bool BattleTeamBase(int side, Vector& at);
-	/// Whether a circle at a point would reach into a spawn zone of a team (in the mode's game that is on) other than a side's.
+	/// Whether a circle at a point would reach into, or be in the sky above, a spawn zone of a team (in the mode's game that is on) other than a side's.
 	bool InEnemySpawnZone(int side, const Vector& at, float radius);
 	/// The mode's game ended: won by a side (or -1, no one), with how it ended said.
 	void EndBattleGame(int winner, const std::string& result);
@@ -2640,7 +2640,7 @@ namespace SandboxDetail {
 	/// Seconds before a team's power can be used again, 0 if it can now.
 	float PowerSecondsLeft(int side, int power);
 
-	/// Whether a team's strike (artillery or orbital) at a point would land in an enemy spawn zone, where it can't be called.
+	/// Whether a team's strike (artillery or orbital) at a point would be on or above an enemy spawn zone, where it can't be called.
 	bool StrikeOnSpawn(int side, int power, const Vector& at);
 
 	/// The Commander Toolbar's powers group: a tile each, greyed with the seconds left while it cools down.
