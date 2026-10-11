@@ -279,6 +279,17 @@ namespace SandboxDetail {
 		s_CommandMode = CommandMode::Command;
 	}
 
+	void RallySpotClicked(const Vector& position) {
+		Stroke stroke;
+		stroke.Kind = Tool::RallyPoint;
+		stroke.Team = CommandedTeam();
+		stroke.Position = position;
+		g_SceneMan.WrapPosition(stroke.Position);
+		s_Queue.push_back(stroke);
+		s_ToolIndex = ToolIndex(Tool::Command);
+		s_CommandMode = CommandMode::Command;
+	}
+
 	void ReinforcementTiles() {
 		const int side = std::clamp(CommandedTeam(), 0, c_Sides - 1);
 		const bool running = BattlePlayerCommands(side);
@@ -336,6 +347,18 @@ namespace SandboxDetail {
 			}
 		}
 		ImGui::SameLine();
+		// Where new units and reinforcements make for once they're in.
+		{
+			const bool marking = CurrentTool().Kind == Tool::BattleRally;
+			const int clicked = BarTile("##rally", "Rally", s_RallySet[side] ? "Your rally point: your new units and reinforcements make for it once they're in, and hold there. Click, then click on the map to move it. Right click: take it away (they hold where they come in)." : "Mark a rally point: click, then click on the map. Your new units and reinforcements make for it once they're in, and hold there. Without one they hold where they come in.", marking, [&](ImDrawList* tileList, ImVec2 at, float room) { DrawIcon(tileList, Icon::Flag, at, room / 12.0F, s_RallySet[side] ? c_SideColors[side] : IM_COL32(150, 150, 150, 160)); });
+			if (clicked == 1) {
+				s_PendingCard = -1;
+				s_ToolIndex = ToolIndex(marking ? Tool::Command : Tool::BattleRally);
+			} else if (clicked == 2) {
+				s_RallySet[side] = false;
+			}
+		}
+		ImGui::SameLine();
 		{
 			const char* craft = c_Crafts[std::clamp(s_CallCraft, 0, static_cast<int>(std::size(c_Crafts)) - 1)].Label;
 			if (BarTile("##craft", craft, "What they come in by. Click: dropship or rocket. A ship can be shot down on the way in, with them aboard.", false, [&](ImDrawList* tileList, ImVec2 at, float room) { DrawIcon(tileList, Icon::Rocket, at, room / 12.0F, IM_COL32(190, 190, 190, 255)); }) == 1) {
@@ -355,7 +378,7 @@ namespace SandboxDetail {
 	}
 
 	void DrawLandingSpot() {
-		if (!s_HasLandingSpot && CurrentTool().Kind != Tool::LandingSpot) {
+		if (!s_HasLandingSpot && CurrentTool().Kind != Tool::LandingSpot && CurrentTool().Kind != Tool::BattleRally) {
 			return;
 		}
 		ImDrawList* drawList = ImGui::GetBackgroundDrawList();
@@ -375,6 +398,13 @@ namespace SandboxDetail {
 		}
 		if (CurrentTool().Kind == Tool::LandingSpot && !ImGui::GetIO().WantCaptureMouse) {
 			mark(ImGui::GetIO().MousePos, (color & 0x00FFFFFF) | (150u << IM_COL32_A_SHIFT));
+		}
+		if (CurrentTool().Kind == Tool::BattleRally && !ImGui::GetIO().WantCaptureMouse) {
+			// (The rally flag as DrawRallyPoints draws it, faint, under the pointer.)
+			const ImVec2 base = ImGui::GetIO().MousePos;
+			const ImU32 faint = (color & 0x00FFFFFF) | (150u << IM_COL32_A_SHIFT);
+			drawList->AddLine(base, ImVec2(base.x, base.y - 26.0F), IM_COL32(230, 230, 230, 150), 2.0F);
+			drawList->AddTriangleFilled(ImVec2(base.x, base.y - 26.0F), ImVec2(base.x + 16.0F, base.y - 21.0F), ImVec2(base.x, base.y - 16.0F), faint);
 		}
 	}
 } // namespace SandboxDetail

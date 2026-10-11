@@ -944,6 +944,11 @@ void Sandbox::DrawGUI() {
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 				LandingSpotClicked(position);
 			}
+		} else if (tool.Kind == Tool::BattleRally) {
+			// Battle Command: where your new units make for.
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+				RallySpotClicked(position);
+			}
 		} else if (tool.Kind == Tool::BattleDropLine) {
 			// Drag along where the team's ships are to come in.
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {

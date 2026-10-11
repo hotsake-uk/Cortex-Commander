@@ -285,6 +285,8 @@ namespace SandboxDetail {
 				return {Icon::Down, IM_COL32(242, 182, 61, 255)};
 			case Tool::PowerTarget:
 				return {Icon::Target, IM_COL32(239, 106, 91, 255)};
+			case Tool::BattleRally:
+				return {Icon::Flag, IM_COL32(242, 182, 61, 255)};
 			case Tool::Follow:
 				return {Icon::Target, IM_COL32(232, 224, 190, 255)};
 			case Tool::Possess:
