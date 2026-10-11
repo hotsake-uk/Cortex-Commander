@@ -2381,6 +2381,24 @@ namespace SandboxDetail {
 	/// The Battle tab's setups saved for the map, to save, load, delete, or mark to load with the map.
 	void BattlePresetsPanel();
 
+	/// One of the Battle tab's setups saved with a map (SandboxBattlePresets.cpp), as kept in Userdata/BattlePresets/<map>.txt.
+	struct SavedBattle {
+		std::string Name;
+		bool WithMap = false; //!< Set up again whenever the map starts.
+		bool Linked = false; //!< One of the map's linked battles, played in the list's order.
+		std::array<BattleSettings, c_Sides> Cards;
+		BattleModeSettings Mode;
+	};
+
+	/// The setups saved with a map, read from its file, in their order there. None if it has none.
+	std::vector<SavedBattle> ReadSavedBattles(const std::string& scene);
+
+	/// The next game started (the map browser's Play): the setup of this name goes in once its map is there, in place of the one marked to
+	/// load with the map. With none, nothing does, not even that one.
+	/// @param name The setup's name. Empty to leave it to the one marked to load with the map.
+	/// @param none Load no setup at all.
+	void LoadBattleOnStart(const std::string& name, bool none);
+
 	/// Linked battles (SandboxBattlePresets.cpp): which of them is on, and once it's won, the button to the next. Call inside an ImGui window.
 	/// True when a battle was started from it.
 	bool LinkedBattleControls();
