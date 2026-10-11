@@ -149,6 +149,11 @@ int ACShip::ReadProperty(const std::string_view& propName, Reader& reader) {
 		reader >> drawsCrew;
 		m_Crew.SetDrawsCrew(drawsCrew);
 	});
+	MatchProperty("PassengersCanFire", {
+		bool canFire;
+		reader >> canFire;
+		m_Crew.SetPassengersCanFire(canFire);
+	});
 	MatchProperty("NeedsPilot", { reader >> m_NeedsPilot; });
 	MatchProperty("CanBeTaken", { reader >> m_CanBeTaken; });
 	MatchProperty("SeatsCargo", { reader >> m_SeatsCargo; });
@@ -172,6 +177,7 @@ int ACShip::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("ExitOffset", m_Crew.GetExitOffset());
 	writer.NewPropertyWithValue("BoardingReach", m_Crew.GetBoardingReach());
 	writer.NewPropertyWithValue("DrawsCrew", m_Crew.DrawsCrew());
+	writer.NewPropertyWithValue("PassengersCanFire", m_Crew.PassengersCanFire());
 	writer.NewPropertyWithValue("NeedsPilot", m_NeedsPilot);
 	writer.NewPropertyWithValue("CanBeTaken", m_CanBeTaken);
 	writer.NewPropertyWithValue("SeatsCargo", m_SeatsCargo);
@@ -937,6 +943,7 @@ void ACShip::Update() {
 
 	m_Crew.SetLastVel(m_Vel);
 	m_Crew.PlaceCrew();
+	m_Crew.UpdatePassengerFire();
 }
 
 void ACShip::SeatCargo() {
