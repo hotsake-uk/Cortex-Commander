@@ -316,6 +316,8 @@ namespace SandboxDetail {
 				return {Icon::Wall, IM_COL32(120, 200, 230, 255)};
 			case Tool::Generator:
 				return {Icon::Bolt, IM_COL32(250, 230, 90, 255)};
+			case Tool::Woodcutter:
+				return {Icon::Plant, IM_COL32(170, 210, 110, 255)};
 			case Tool::OrderMove:
 				return {Icon::Arrows, IM_COL32(242, 182, 61, 255)};
 			case Tool::GymStart:
@@ -2161,9 +2163,9 @@ namespace SandboxDetail {
 		if (label.empty()) {
 			label = tool.Name;
 		}
-		if (tool.Kind == Tool::Barracks || tool.Kind == Tool::Extractor || tool.Kind == Tool::Generator) {
+		if (IsColonyTool(tool.Kind)) {
 			// The plot it will take, on the ground under the pointer.
-			const Colony::Type& type = Colony::GetType(tool.Kind == Tool::Barracks ? Colony::Kind::Barracks : tool.Kind == Tool::Extractor ? Colony::Kind::Extractor : Colony::Kind::Generator);
+			const Colony::Type& type = Colony::GetType(ColonyKindOf(tool.Kind));
 			Vector ground = MouseScenePosition();
 			int sceneHeight = g_SceneMan.GetSceneHeight();
 			for (int tries = 0; tries < 600 && g_SceneMan.GetTerrMatter(ground.GetFloorIntX(), ground.GetFloorIntY()) != g_MaterialAir; ++tries) {
@@ -2175,6 +2177,11 @@ namespace SandboxDetail {
 			Vector corner = FromCamera(ground + Vector(-static_cast<float>(type.Width / 2), 1.0F - static_cast<float>(type.Height)));
 			ImVec2 topLeft(ViewOrigin().x + corner.m_X / scale, ViewOrigin().y + corner.m_Y / scale);
 			drawList->AddRect(topLeft, ImVec2(topLeft.x + static_cast<float>(type.Width) / scale, topLeft.y + static_cast<float>(type.Height) / scale), c_SideColors[s_Team], 0.0F, 0, 1.5F);
+			if (tool.Kind == Tool::Woodcutter) {
+				// How far its staff go for trees.
+				Vector middle = FromCamera(ground);
+				drawList->AddCircle(ImVec2(ViewOrigin().x + middle.m_X / scale, ViewOrigin().y + middle.m_Y / scale), Colony::Building().WorkRadius / scale, IM_COL32(170, 210, 110, 110), 96, 1.0F);
+			}
 			if (tool.Kind == Tool::Generator) {
 				// How far it reaches.
 				Vector middle = FromCamera(ground);
@@ -3222,7 +3229,15 @@ namespace SandboxDetail {
 			if (top.x < view.x - 100.0F || top.x > view.x + view.w + 100.0F || top.y < view.y || top.y > view.y + view.h + 40.0F) {
 				continue;
 			}
-			std::string label = std::string(type.Name) + (building.What == Colony::Kind::Barracks ? "  " + std::to_string(building.Alive.size()) + "/" + std::to_string(building.KeepAlive) : "");
+			std::string label = std::string(type.Name);
+			if (building.What == Colony::Kind::Barracks) {
+				label += "  " + std::to_string(building.Alive.size()) + "/" + std::to_string(building.KeepAlive);
+			} else if (building.What == Colony::Kind::Woodcutter) {
+				label += "  " + std::to_string(building.Staff.size()) + "/" + std::to_string(building.KeepAlive) + " staff, " + std::to_string(building.Wood) + " wood";
+			}
+			if (building.Disabled()) {
+				label += "  Brain lost";
+			}
 			// Short of power, said in red after the name.
 			const char* power = building.NoPower ? (building.Power > 0.0F ? "  Low power" : "  No power") : "";
 			ImVec2 size = ImGui::CalcTextSize(label.c_str());
@@ -3247,101 +3262,246 @@ namespace SandboxDetail {
 		drawList->PopClipRect();
 	}
 
-	/// The Colony tab of the sandbox window.
-	void ColonyTab() {
-		ImGui::TextWrapped("Buildings that work for a side. A barracks trains a unit, sends it out with its orders, and trains another whenever fewer than its number are alive. An extractor earns supply. A generator powers its side's buildings near it, when buildings need power. They are built of concrete: wreck one and it stops. Each is run by a brain in a chamber at its back: kill the brain and the building is disabled, until a brain of its side is put back inside with the Brain tool.");
-		ToolUI::Checkbox("Training is free", &Colony::Free());
-		ImGui::SetItemTooltip("Off: a barracks pays for each unit from the supply of its side, which grows slowly by itself and faster with extractors.");
-		if (!Colony::Free()) {
-			for (int side = 0; side < c_Sides; ++side) {
-				ImGui::PushID(side);
-				ImGui::PushStyleColor(ImGuiCol_Text, c_SideColors[side]);
-				ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.4F);
-				ImGui::DragFloat(c_SideNames[side], &Colony::Supply(side), 10.0F, 0.0F, 999999.0F, "%.0f supply");
-				ImGui::PopStyleColor();
+	/// A coloured tag for what a colony building is up to: green working, amber held up, red stopped by damage.
+	void ColonyStatusPill(const Colony::Building& building) {
+		ImU32 color = IM_COL32(120, 200, 120, 255);
+		const std::string& status = building.Status;
+		if (building.Disabled() || status.rfind("Can not", 0) == 0) {
+			color = IM_COL32(240, 100, 80, 255);
+		} else if (building.Paused || building.NoPower || status.rfind("Waiting", 0) == 0 || status.rfind("No ", 0) == 0 || status.rfind("Idle", 0) == 0 || status.rfind("All its", 0) == 0) {
+			color = IM_COL32(235, 190, 80, 255);
+		}
+		ImGui::PushStyleColor(ImGuiCol_Text, color);
+		ImGui::TextUnformatted(status.empty() ? "Starting" : status.c_str());
+		ImGui::PopStyleColor();
+	}
+
+	/// The details of one colony building, opened under its row in the Colony tab.
+	void ColonyBuildingDetails(Colony::Building& building) {
+		const Colony::Type& type = Colony::GetType(building.What);
+		ImGui::TextDisabled("%s %s. %s", Colony::StyleName(building.Looks), Colony::GetLook(building.What, building.Looks).Building, type.Description);
+		if (building.What == Colony::Kind::Barracks) {
+			if (building.Paid) {
+				ImGui::ProgressBar(building.Progress, ImVec2(-1.0F, 0.0F));
+			}
+			if (ImGui::BeginCombo("Trains", building.Unit.c_str(), ImGuiComboFlags_HeightLarge)) {
+				for (const Preset& unit: s_Units) {
+					if (ImGui::Selectable(unit.Label.c_str(), unit.PresetName == building.Unit)) {
+						building.Unit = unit.PresetName;
+					}
+				}
+				ImGui::EndCombo();
+			}
+			building.Orders = static_cast<int>(UnitOrder(building.Orders));
+			ImGui::Combo("Their orders", &building.Orders, OrderName, nullptr, c_UnitOrderCount);
+			ImGui::SliderInt("Keeps this many alive", &building.KeepAlive, 1, 20);
+			ImGui::Text("%d alive, %d trained in all. One takes %.0f s%s.", static_cast<int>(building.Alive.size()), building.Produced, Colony::TrainingSeconds(std::max(Sandbox::UnitCost(building.Unit), 20.0F)),
+			            Colony::Free() ? "" : (" and " + std::to_string(static_cast<int>(std::max(Sandbox::UnitCost(building.Unit), 20.0F))) + " supply").c_str());
+			if (Colony::NeedsPower()) {
+				ImGui::Text("Needs %.0f power while it trains%s.", Colony::TrainingPower(), building.NoPower ? (building.Power > 0.0F ? ", and is getting " + std::to_string(static_cast<int>(building.Power * 100.0F)) + "% of it" : ", and has none: build a generator near it").c_str() : "");
+			}
+		} else if (building.What == Colony::Kind::Woodcutter) {
+			ImGui::SliderInt("Staff", &building.KeepAlive, 1, 6);
+			ImGui::SetItemTooltip("How many staff it keeps. One lost is replaced after %d seconds.", 20);
+			float metres = building.WorkRadius / 20.0F;
+			if (ImGui::SliderFloat("Reach", &metres, 10.0F, 120.0F, "%.0f m")) {
+				building.WorkRadius = metres * 20.0F;
+			}
+			ImGui::SetItemTooltip("How far from the hut its staff go for trees.");
+			ImGui::Text("%d wood brought in. %d saplings growing.", building.Wood, static_cast<int>(building.Saplings.size()));
+			if (building.Staff.empty()) {
+				ImGui::TextDisabled("No staff yet.");
+			}
+			for (size_t i = 0; i < building.Staff.size(); ++i) {
+				const Colony::Worker& worker = building.Staff[i];
+				ImGui::BulletText("%s %d: %s", Colony::GetLook(building.What, building.Looks).Worker, static_cast<int>(i) + 1, worker.Status.c_str());
+				ImGui::SameLine();
+				ImGui::PushID(static_cast<int>(i));
+				if (ToolUI::SmallButton("Look")) {
+					s_FreeCamera = true;
+					s_FollowTarget = UnitRef();
+					s_FollowAction = false;
+					s_CameraCenter = worker.Unit ? worker.Unit->GetPos() : building.Ground;
+				}
 				ImGui::PopID();
 			}
 		}
-		ToolUI::Checkbox("Buildings need power", &Colony::NeedsPower());
-		ImGui::SetItemTooltip("On: a barracks draws %.0f power while it trains, from its side's generators within %.0f pixels. Each generator gives %.0f.", Colony::TrainingPower(), Colony::PowerRange(), Colony::GeneratorPower());
-		if (Colony::NeedsPower()) {
-			int withoutPower = static_cast<int>(Colony::WithoutPower());
-			const char* choices[] = {"stops training", "trains slower"};
-			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.4F);
-			if (ImGui::Combo("Short of power, a barracks", &withoutPower, choices, 2)) {
-				Colony::WithoutPower() = static_cast<Colony::NoPower>(withoutPower);
+		ToolUI::Checkbox("Stopped", &building.Paused);
+		ImGui::SameLine();
+		if (ToolUI::SmallButton("Close it down")) {
+			s_ColonyRemoveID = building.ID;
+		}
+		ImGui::SetItemTooltip("It stops being a building. What it was built of stays standing, and so do its staff.");
+	}
+
+	/// The Colony tab of the sandbox window: what each side has, what can be built, and what stands.
+	void ColonyTab() {
+		// What each side has: its supply and wood, and how fast supply comes in.
+		std::array<int, c_Sides> buildingCount{};
+		for (const Colony::Building& building: Colony::Buildings()) {
+			if (building.Team >= 0 && building.Team < c_Sides) {
+				++buildingCount[building.Team];
 			}
-			ImGui::SetItemTooltip("Slower: it trains at the share of its power it gets, and at a quarter pace with none.");
 		}
+		if (ImGui::BeginTable("##stock", 4, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH)) {
+			ImGui::TableSetupColumn("Side");
+			ImGui::TableSetupColumn("Supply");
+			ImGui::TableSetupColumn("Wood");
+			ImGui::TableSetupColumn("Buildings");
+			ImGui::TableHeadersRow();
+			for (int side = 0; side < c_Sides; ++side) {
+				if (buildingCount[side] == 0 && side != s_Team && Colony::Wood(side) == 0) {
+					continue;
+				}
+				ImGui::PushID(side);
+				ImGui::TableNextRow();
+				ImGui::TableNextColumn();
+				ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(c_SideColors[side]), "%s", c_SideNames[side]);
+				ImGui::TableNextColumn();
+				if (Colony::Free()) {
+					ImGui::TextDisabled("free");
+				} else {
+					ImGui::Text("%.0f", Colony::Supply(side));
+					if (float perMinute = Colony::SupplyPerMinute(side); perMinute > 0.0F) {
+						ImGui::SameLine();
+						ImGui::TextDisabled("+%.0f/min", perMinute);
+					}
+				}
+				ImGui::TableNextColumn();
+				ImGui::Text("%d", Colony::Wood(side));
+				ImGui::TableNextColumn();
+				ImGui::Text("%d", buildingCount[side]);
+				ImGui::PopID();
+			}
+			ImGui::EndTable();
+		}
+
+		// Build: the style, then a card for each kind of building.
 		ImGui::SeparatorText("Build");
-		ToolButtons({Tool::Barracks, Tool::Extractor, Tool::Generator});
+		ImGui::AlignTextToFramePadding();
+		ImGui::TextUnformatted("Style");
+		int chosenStyle = static_cast<int>(s_ColonyStyle);
+		for (int style = 0; style < static_cast<int>(Colony::Style::Count); ++style) {
+			ImGui::SameLine();
+			ToolUI::RadioButton(Colony::StyleName(static_cast<Colony::Style>(style)), &chosenStyle, style);
+		}
+		s_ColonyStyle = static_cast<Colony::Style>(chosenStyle);
+		ImGui::SetItemTooltip("How the buildings you put down look: medieval timber and stone, or sci-fi metal and glass. They work the same.");
+		ToolButtons({Tool::Woodcutter, Tool::Barracks, Tool::Extractor, Tool::Generator});
 		Tool kind = CurrentTool().Kind;
-		if (kind == Tool::Barracks || kind == Tool::Extractor || kind == Tool::Generator) {
+		if (IsColonyTool(kind)) {
+			const Colony::Kind building = ColonyKindOf(kind);
+			ImGui::TextWrapped("%s: %s", Colony::GetLook(building, s_ColonyStyle).Building, Colony::GetType(building).Description);
+			ImGui::TextDisabled("Click on the ground to build it. Its brain is put in a chamber at the back for you.");
 			SideChooser();
+			if (kind == Tool::Barracks) {
+				ImGui::TextDisabled("It trains:");
+				PresetList(Tool::Unit);
+				UnitOrderCombo("Their orders");
+				ImGui::SliderInt("Keeps this many alive", &s_ColonyKeep, 1, 20);
+			} else if (kind == Tool::Woodcutter) {
+				ImGui::SliderInt("Staff", &s_ColonyStaff, 1, 6);
+				ImGui::SetItemTooltip("Its staff go out with %s, fell the trees round it, cut them into logs and carry them home.", s_ColonyStyle == Colony::Style::SciFi ? "laser saws" : "axes");
+			}
 		}
-		if (kind == Tool::Barracks) {
-			ImGui::TextDisabled("It trains:");
-			PresetList(Tool::Unit);
-			UnitOrderCombo("Their orders");
-			ImGui::SliderInt("Keeps this many alive", &s_ColonyKeep, 1, 20);
-		}
-		ImGui::SeparatorText("Standing");
+
+		// What stands: a row each, opened for its details.
+		ImGui::SeparatorText("Your buildings");
 		std::vector<Colony::Building>& buildings = Colony::Buildings();
 		if (buildings.empty()) {
 			ImGui::TextDisabled("Nothing built yet.");
 		}
-		int removeID = -1;
-		for (Colony::Building& building: buildings) {
-			ImGui::PushID(building.ID);
-			const Colony::Type& type = Colony::GetType(building.What);
-			ImGui::PushStyleColor(ImGuiCol_Text, c_SideColors[building.Team]);
-			bool open = ImGui::TreeNode("##building", "%s %d (%s)", type.Name, building.ID, c_SideNames[building.Team]);
-			ImGui::PopStyleColor();
-			ImGui::SameLine();
-			ImGui::TextDisabled("%s", building.Status.c_str());
-			if (open) {
+		s_ColonyRemoveID = -1;
+		int brainFor = -1;
+		if (!buildings.empty() && ImGui::BeginTable("##buildings", 3, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_RowBg)) {
+			ImGui::TableSetupColumn("Building", ImGuiTableColumnFlags_WidthStretch, 1.4F);
+			ImGui::TableSetupColumn("Doing", ImGuiTableColumnFlags_WidthStretch, 1.4F);
+			ImGui::TableSetupColumn("##actions", ImGuiTableColumnFlags_WidthFixed);
+			for (Colony::Building& building: buildings) {
+				ImGui::PushID(building.ID);
+				ImGui::TableNextRow();
+				ImGui::TableNextColumn();
+				const Colony::Type& type = Colony::GetType(building.What);
+				std::string count;
 				if (building.What == Colony::Kind::Barracks) {
-					if (building.Paid) {
-						ImGui::ProgressBar(building.Progress, ImVec2(-1.0F, 0.0F));
-					}
-					if (ImGui::BeginCombo("Trains", building.Unit.c_str(), ImGuiComboFlags_HeightLarge)) {
-						for (const Preset& unit: s_Units) {
-							if (ImGui::Selectable(unit.Label.c_str(), unit.PresetName == building.Unit)) {
-								building.Unit = unit.PresetName;
-							}
-						}
-						ImGui::EndCombo();
-					}
-					building.Orders = static_cast<int>(UnitOrder(building.Orders));
-					ImGui::Combo("Their orders", &building.Orders, OrderName, nullptr, c_UnitOrderCount);
-					ImGui::SliderInt("Keeps this many alive", &building.KeepAlive, 1, 20);
-					ImGui::Text("%d alive, %d trained in all. One takes %.0f s%s.", static_cast<int>(building.Alive.size()), building.Produced, Colony::TrainingSeconds(std::max(Sandbox::UnitCost(building.Unit), 20.0F)),
-					            Colony::Free() ? "" : (" and " + std::to_string(static_cast<int>(std::max(Sandbox::UnitCost(building.Unit), 20.0F))) + " supply").c_str());
-					if (Colony::NeedsPower()) {
-						ImGui::Text("Needs %.0f power while it trains%s.", Colony::TrainingPower(), building.NoPower ? (building.Power > 0.0F ? ", and is getting " + std::to_string(static_cast<int>(building.Power * 100.0F)) + "% of it" : ", and has none: build a generator near it").c_str() : "");
-					}
-				} else {
-					ImGui::TextDisabled("%s", type.Description);
+					count = "  " + std::to_string(building.Alive.size()) + "/" + std::to_string(building.KeepAlive);
+				} else if (building.What == Colony::Kind::Woodcutter) {
+					count = "  " + std::to_string(building.Staff.size()) + "/" + std::to_string(building.KeepAlive);
 				}
-				ToolUI::Checkbox("Stopped", &building.Paused);
-				ImGui::SameLine();
-				if (ToolUI::SmallButton("Look at it")) {
+				ImGui::PushStyleColor(ImGuiCol_Text, c_SideColors[building.Team]);
+				bool open = ImGui::TreeNodeEx("##building", ImGuiTreeNodeFlags_SpanAvailWidth, "%s%s", type.Name, count.c_str());
+				ImGui::PopStyleColor();
+				ImGui::SetItemTooltip("%s %s, %s's", Colony::StyleName(building.Looks), Colony::GetLook(building.What, building.Looks).Building, c_SideNames[building.Team]);
+				ImGui::TableNextColumn();
+				ColonyStatusPill(building);
+				ImGui::TableNextColumn();
+				if (building.Disabled()) {
+					ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 200, 120, 255));
+					if (ToolUI::SmallButton("Place brain")) {
+						brainFor = building.ID;
+					}
+					ImGui::PopStyleColor();
+					ImGui::SetItemTooltip("Puts a new brain of its side in its chamber, so it runs again.");
+					ImGui::SameLine();
+				}
+				if (ToolUI::SmallButton("Look")) {
 					s_FreeCamera = true;
 					s_FollowTarget = UnitRef();
 					s_FollowAction = false;
 					s_CameraCenter = building.Ground + Vector(0.0F, -40.0F);
 				}
-				ImGui::SameLine();
-				if (ToolUI::SmallButton("Close it down")) {
-					removeID = building.ID;
+				if (open) {
+					ImGui::TableNextRow();
+					ImGui::TableNextColumn();
+					ImGui::TableSetColumnIndex(0);
+					ImGui::PushTextWrapPos(0.0F);
+					// (Across the whole row: the details are wider than one column.)
+					ImGui::BeginGroup();
+					ColonyBuildingDetails(building);
+					ImGui::EndGroup();
+					ImGui::PopTextWrapPos();
+					ImGui::TreePop();
 				}
-				ImGui::SetItemTooltip("It stops being a building. What it was built of stays standing.");
-				ImGui::TreePop();
+				ImGui::PopID();
 			}
-			ImGui::PopID();
+			ImGui::EndTable();
 		}
-		if (removeID >= 0) {
-			Colony::Remove(removeID);
+		if (brainFor >= 0) {
+			Colony::PlaceBrain(brainFor);
+		}
+		if (s_ColonyRemoveID >= 0) {
+			Colony::Remove(s_ColonyRemoveID);
+			s_ColonyRemoveID = -1;
+		}
+
+		// The rules every building goes by, out of the way until wanted.
+		if (ImGui::CollapsingHeader("Rules")) {
+			ToolUI::Checkbox("Training is free", &Colony::Free());
+			ImGui::SetItemTooltip("Off: a barracks pays for each unit from the supply of its side, which grows slowly by itself and faster with extractors.");
+			if (!Colony::Free()) {
+				for (int side = 0; side < c_Sides; ++side) {
+					ImGui::PushID(side);
+					ImGui::PushStyleColor(ImGuiCol_Text, c_SideColors[side]);
+					ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.4F);
+					ImGui::DragFloat(c_SideNames[side], &Colony::Supply(side), 10.0F, 0.0F, 999999.0F, "%.0f supply");
+					ImGui::PopStyleColor();
+					ImGui::PopID();
+				}
+			}
+			ToolUI::Checkbox("Buildings need power", &Colony::NeedsPower());
+			ImGui::SetItemTooltip("On: a barracks draws %.0f power while it trains, from its side's generators within %.0f pixels. Each generator gives %.0f.", Colony::TrainingPower(), Colony::PowerRange(), Colony::GeneratorPower());
+			if (Colony::NeedsPower()) {
+				int withoutPower = static_cast<int>(Colony::WithoutPower());
+				const char* choices[] = {"stops training", "trains slower"};
+				ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.4F);
+				if (ImGui::Combo("Short of power, a barracks", &withoutPower, choices, 2)) {
+					Colony::WithoutPower() = static_cast<Colony::NoPower>(withoutPower);
+				}
+				ImGui::SetItemTooltip("Slower: it trains at the share of its power it gets, and at a quarter pace with none.");
+			}
+			ToolUI::Checkbox("Trees regrow", &Colony::Regrow());
+			ImGui::SetItemTooltip("On: a woodcutter's staff plant a sapling where each tree they fell stood. It grows back to a tree in about five minutes.");
+			ImGui::TextDisabled("Kill a building's brain and it is disabled until another brain of its side is put in its plot, or one is placed with Place brain.");
 		}
 	}
 
@@ -3958,7 +4118,7 @@ namespace SandboxDetail {
 		    {"Boom", "Force", {Tool::ForceBlast, Tool::HugeForceBlast, Tool::Implosion, Tool::Updraft, Tool::GustRight, Tool::GustLeft, Tool::SmokeBomb, Tool::Fireworks}},
 		    {"Boom", "From the sky", {Tool::RocketStrike, Tool::RocketBarrage, Tool::CarpetBomb, Tool::Artillery, Tool::NapalmRain, Tool::OrbitalBeam, Tool::BoulderRain, Tool::CrashRocket, Tool::CrashDropship}},
 		    {"Effects", "Effects", {Tool::Effect}},
-		    {"Colony", "Colony", {Tool::Barracks, Tool::Extractor, Tool::Generator}},
+		    {"Colony", "Colony", {Tool::Woodcutter, Tool::Barracks, Tool::Extractor, Tool::Generator}},
 		    {"Gym", "Gym", {Tool::GymStart, Tool::GymGoal}},
 		};
 		return shelves;
@@ -4326,13 +4486,24 @@ namespace SandboxDetail {
 			if (BarChip("Game's build menu", false, ToolTheme::Text, nullptr, "The build menu the game uses before a battle, with its own cursor. Done in its menu, or Tab, comes back.") == 1) {
 				Sandbox::SetBuildMode(true);
 			}
-		} else if (kind == Tool::Barracks) {
+		} else if (IsColonyTool(kind)) {
 			wide();
-			ImGui::SetNextItemWidth(field);
-			ImGui::SliderInt("##keep", &s_ColonyKeep, 1, 20, "Keeps %d alive");
-			next();
-			ImGui::SetNextItemWidth(field);
-			UnitOrderCombo("##orders");
+			for (int style = 0; style < static_cast<int>(Colony::Style::Count); ++style) {
+				if (BarChip(Colony::StyleName(static_cast<Colony::Style>(style)), static_cast<int>(s_ColonyStyle) == style, ToolTheme::Text, nullptr, "How the buildings you put down look: medieval timber and stone, or sci-fi metal and glass. They work the same.") == 1) {
+					s_ColonyStyle = static_cast<Colony::Style>(style);
+				}
+				next();
+			}
+			if (kind == Tool::Barracks) {
+				ImGui::SetNextItemWidth(field);
+				ImGui::SliderInt("##keep", &s_ColonyKeep, 1, 20, "Keeps %d alive");
+				next();
+				ImGui::SetNextItemWidth(field);
+				UnitOrderCombo("##orders");
+			} else if (kind == Tool::Woodcutter) {
+				ImGui::SetNextItemWidth(field);
+				ImGui::SliderInt("##staff", &s_ColonyStaff, 1, 6, "%d staff");
+			}
 		} else if (kind == Tool::Effect) {
 			wide();
 			ImGui::SetNextItemWidth(field * 1.4F);

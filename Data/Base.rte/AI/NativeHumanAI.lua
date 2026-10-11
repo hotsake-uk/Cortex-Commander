@@ -2,6 +2,7 @@ require("Constants")
 require("AI/HumanBehaviors");
 require("AI/SharedBehaviors");
 require("AI/AnimalBehaviors");
+require("AI/WorkerBehaviors");
 require("AI/UnitSpeech");
 
 NativeHumanAI = {};
@@ -763,6 +764,8 @@ function NativeHumanAI:Update(Owner)
 	-- (Its nature, NC-1: a skittish unit runs from danger, and livestock left standing graze about.)
 	SharedBehaviors.FleeUpdate(self, Owner);
 	SharedBehaviors.GrazeUpdate(self, Owner);
+	-- (A colony worker at its work: its tool swung at what it cuts, WorkerBehaviors.lua.)
+	WorkerBehaviors.Update(self, Owner);
 	SharedBehaviors.RememberUpdate(self, Owner);
 	SharedBehaviors.AdvertiseMedikit(self, Owner);
 	if not objective then
@@ -793,7 +796,7 @@ function NativeHumanAI:Update(Owner)
 	if self.squadShoot then
 		self.Ctrl:SetState(Controller.WEAPON_FIRE, (mayFire and (self.fire or self.squadShoot)) or self.spellCast or routeDig);
 	else
-		self.Ctrl:SetState(Controller.WEAPON_FIRE, (mayFire and self.fire) or self.useMedikit or self.medicHeal or self.douse or self.spellCast or routeDig);
+		self.Ctrl:SetState(Controller.WEAPON_FIRE, (mayFire and self.fire) or self.useMedikit or self.medicHeal or self.douse or self.spellCast or routeDig or self.workSwing);
 	end
 
 	if self.deviceState == AHuman.AIMING then

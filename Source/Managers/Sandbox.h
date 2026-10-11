@@ -174,6 +174,18 @@ namespace RTE {
 		/// @return The brain, or nothing if there is no such brain.
 		static Actor* SpawnBrain(const std::string& presetName, int team, const Vector& position);
 
+		/// Makes one of a colony building's staff and puts it in the world, standing by, with no orders of its own (Colony gives it its work).
+		/// @param presetName The unit (an AHuman). @param moduleName Its module. @param team The side. @param position Where.
+		/// @return The unit, or nothing if there is no such unit.
+		static Actor* SpawnWorker(const std::string& presetName, const std::string& moduleName, int team, const Vector& position);
+
+		/// Plants one of the sandbox's trees (the Trees brush's) on the ground at a point, at a size, outside any undo step: a woodcutter's sapling.
+		/// The same variant, piece and mirror give the same tree at every size, so it can be grown by planting it again bigger.
+		/// @param at The ground, or a point above it. @param scale How big: 1 as the brush draws it. @param variant @param piece Which tree, 0 to 1 each.
+		/// @param mirror Whether it is drawn mirrored. @param left @param top @param right @param bottom Set to the box it was drawn in, scene pixels, inclusive.
+		/// @return Whether it was planted (there is ground there, and the trees are loaded).
+		static bool PlantTree(const Vector& at, float scale, float variant, float piece, bool mirror, int& left, int& top, int& right, int& bottom);
+
 		/// Gets what a unit costs, without weapons. 0 if there is no such unit.
 		static float UnitCost(const std::string& presetName);
 
