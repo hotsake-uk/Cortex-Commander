@@ -191,6 +191,10 @@ void AVehicle::Clear() {
 	m_BreakSunkFraction = 0.0F;
 	m_BreakNow = false;
 	m_SunkTimer.Reset();
+	m_AIManoeuvring = false;
+	m_AIManoeuvreX = 0.0F;
+	m_AIKeepFacing = false;
+	m_AICombatHealth = -1.0F;
 }
 
 int AVehicle::Create(const AVehicle& reference) {
@@ -904,6 +908,94 @@ void AVehicle::FaceForCommander() {
 	}
 }
 
+bool AVehicle::UpdateAIManoeuvre(const Actor* enemy) {
+	const bool wraps = g_SceneMan.SceneWrapsX();
+	if (m_AIManoeuvring) {
+		// On the way: there, or held up (blocked, an edge, no headway, too long at it): stopped where it is.
+		float toX = g_SceneMan.ShortestDistance(m_Pos, Vector(m_AIManoeuvreX, m_Pos.m_Y), wraps).m_X;
+		float direction = toX > 0.0F ? 1.0F : -1.0F;
+		bool stalled = m_AIManoeuvreTimer.IsPastSimMS(1200) && std::abs(m_Vel.m_X) < 0.3F;
+		if (std::abs(toX) < 8.0F || m_AIManoeuvreTimer.IsPastSimMS(4000) || stalled || !CanDriveOnTo(direction)) {
+			m_AIManoeuvring = false;
+			m_AIStuckTimer.Reset();
+			return false;
+		}
+		m_Throttle = direction;
+		m_Braking = false;
+		m_AIKeepFacing = true;
+		m_AIStuckTimer.Reset();
+		return true;
+	}
+	if (m_Status == DYING || m_Status == DEAD || (!m_Turret && !m_ThrowingArm)) {
+		return false;
+	}
+	const float direct = std::clamp(m_StandingOrder.Direct, -1.0F, 1.0F);
+	auto start = [this, wraps](float x) {
+		Vector to(x, m_Pos.m_Y);
+		g_SceneMan.WrapPosition(to);
+		m_AIManoeuvreX = to.m_X;
+		m_AIManoeuvring = true;
+		m_AIManoeuvreTimer.Reset();
+		m_AIJinkTimer.Reset();
+		return true;
+	};
+	const bool hit = !m_AIHitTimer.IsPastSimMS(1000);
+	// How often it moves for being hit: soon on a cautious order, a while on a normal one, never on a full-risk one.
+	const float jinkEvery = direct >= 0.9F ? -1.0F : (direct < 0.0F ? 2000.0F : 3500.0F + 2000.0F * direct);
+	const bool mayJink = hit && jinkEvery > 0.0F && m_AIJinkTimer.IsPastSimMS(static_cast<long long>(jinkEvery));
+	if (enemy) {
+		Vector toEnemy = g_SceneMan.ShortestDistance(m_Pos, enemy->GetPos(), wraps);
+		float across = std::abs(toEnemy.m_X);
+		float away = toEnemy.m_X > 0.0F ? -1.0F : 1.0F;
+		// Too close, or right under it, to bring its gun to bear (a quarter of its range to a sixth, by the order's care): back off to where it can.
+		float nearest = std::max(GetRadius() * 1.5F, m_GunRange * (0.3F - 0.15F * direct));
+		bool inPosition = InFiringPosition(enemy);
+		if (inPosition) {
+			m_AINoShotTimer.Reset();
+		}
+		if (across < nearest && (!inPosition || toEnemy.m_Y < -GetRadius())) {
+			return start(m_Pos.m_X + away * (nearest * 1.3F - across));
+		}
+		if (!inPosition && across < nearest * 1.4F) {
+			// Near, with no shot (over a lip, behind cover): it waits there facing it rather than driving back in under it; after a while
+			// with none, it tries a little further out, where the angle is lower.
+			if (m_AINoShotTimer.IsPastSimMS(3000) && across < m_GunRange * 0.7F) {
+				m_AINoShotTimer.Reset();
+				return start(m_Pos.m_X + away * 80.0F);
+			}
+			if ((toEnemy.m_X > 0.0F) == m_HFlipped && std::abs(m_Vel.m_X) < 1.5F) {
+				SetHFlipped(!m_HFlipped);
+			}
+			m_AIStuckTimer.Reset();
+			return true;
+		}
+		if (inPosition && mayJink) {
+			if (direct < 0.0F) {
+				// Cautious: out to the edge of its reach.
+				float edge = m_GunRange * 0.75F;
+				if (across < edge - 20.0F) {
+					return start(m_Pos.m_X + away * std::min(edge - across, m_GunRange * 0.25F));
+				}
+			}
+			// A shuffle, never nearer than it may go.
+			float step = RandomNum(30.0F, 60.0F) * (RandomNum(0.0F, 1.0F) < 0.5F ? 1.0F : -1.0F);
+			if (across + step * away < nearest) {
+				step = std::abs(step) * away;
+			}
+			return start(m_Pos.m_X + step);
+		}
+		return false;
+	}
+	// Holding a post, hit while its gunner has someone: a shuffle about the post, within the reach ReturnDefenders leaves it.
+	if (m_AIMode == AIMODE_SENTRY && m_StandingOrder.HasPost && m_GunTargetID != 0 && mayJink) {
+		float slack = GetRadius() * 0.8F + 30.0F;
+		float offPost = g_SceneMan.ShortestDistance(m_StandingOrder.Post, m_Pos, wraps).m_X;
+		float step = RandomNum(25.0F, 50.0F) * (RandomNum(0.0F, 1.0F) < 0.5F ? 1.0F : -1.0F);
+		return start(m_StandingOrder.Post.m_X + std::clamp(offPost + step, -slack, slack));
+	}
+	return false;
+}
+
 void AVehicle::UpdateAIDriving() {
 	m_Throttle = 0.0F;
 	m_Braking = true;
@@ -921,13 +1013,25 @@ void AVehicle::UpdateAIDriving() {
 		m_AIStuckTimer.Reset();
 		m_AIGaveUp = false;
 	}
+	// Hit since it last looked: its health fell.
+	if (float health = GetHealth(); m_AICombatHealth >= 0.0F && health < m_AICombatHealth - 0.25F) {
+		m_AIHitTimer.Reset();
+	}
+	m_AICombatHealth = GetHealth();
+	m_AIKeepFacing = false;
+	const MovableObject* following = g_MovableMan.ValidMO(GetMOMoveTarget()) ? GetMOMoveTarget() : nullptr;
+	if (m_Commanded) {
+		const Actor* enemy = m_AIMode == AIMODE_GOTO ? dynamic_cast<const Actor*>(following) : nullptr;
+		if (UpdateAIManoeuvre(enemy && enemy->GetTeam() != m_Team && !enemy->IsDead() ? enemy : nullptr)) {
+			return;
+		}
+	}
 	if (m_AIMode != AIMODE_GOTO) {
 		if (m_Commanded) {
 			FaceForCommander();
 		}
 		return;
 	}
-	const MovableObject* following = g_MovableMan.ValidMO(GetMOMoveTarget()) ? GetMOMoveTarget() : nullptr;
 	// Commanded after an enemy (VC-4): it stops where its gun reaches it and fires from there, rather than driving onto it. It keeps after it,
 	// so it drives on if the enemy gets out of reach or out of sight.
 	if (m_Commanded && following && InFiringPosition(following)) {
@@ -1795,6 +1899,7 @@ void AVehicle::Update() {
 	m_Braking = steering && (m_Controller.IsState(MOVE_DOWN) || m_Controller.IsState(BODY_CROUCH));
 	// With no player in charge, its driver drives it where it was sent.
 	m_AIHop = false;
+	m_AIKeepFacing = false;
 	if (canDrive && !m_Controller.IsPlayerControlled()) {
 		UpdateAIDriving();
 	}
@@ -1805,7 +1910,8 @@ void AVehicle::Update() {
 		m_Braking = true;
 	}
 	// Facing the way it's driven, as a unit turns to walk: only when slow, so it doesn't flip round while braking from speed.
-	if (m_Throttle != 0.0F && (m_Throttle > 0.0F) == m_HFlipped && m_Vel.MagnitudeIsLessThan(1.5F)) {
+	// (Not while it backs away from a fight facing the enemy, UpdateAIManoeuvre.)
+	if (m_Throttle != 0.0F && (m_Throttle > 0.0F) == m_HFlipped && m_Vel.MagnitudeIsLessThan(1.5F) && !m_AIKeepFacing) {
 		SetHFlipped(!m_HFlipped);
 	}
 

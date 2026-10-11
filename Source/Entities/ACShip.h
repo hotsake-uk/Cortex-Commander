@@ -140,6 +140,17 @@ namespace RTE {
 			return AutopilotGoal(goal);
 		}
 
+		/// Sends it after an enemy (an attack order): it doesn't hover over the enemy, where its side guns can't bear, but fights it from a
+		/// firing position off to one side (UpdateCombat). Sent after the same enemy again, it keeps the position it has.
+		/// @param target The enemy. @return Whether it can fly there (false while it can't fly or its autopilot hasn't started).
+		bool EngageTarget(const Actor* target);
+
+		/// Drops the enemy EngageTarget sent it after: any other order.
+		void Disengage() { m_EngageID = 0; m_HasCombatSpot = false; }
+
+		/// Gets whether it is moving about a fight (UpdateCombat): its post's pull (ReturnDefenders) waits while it is near the post.
+		bool IsManoeuvring() const { return m_HasCombatSpot; }
+
 		/// Gets how far its gunners look for something to shoot, in pixels.
 		float GetGunRange() const { return m_GunRange; }
 #pragma endregion
@@ -218,6 +229,26 @@ namespace RTE {
 		/// steer off its place to pass them: the higher of two ships climbs over, the other holds back and gives way to the side; one that isn't
 		/// a ship flown by the autopilot (a drop ship, a rocket, one a player flies) is passed by both. Not read until the autopilot steers.
 		void UpdateCraftAvoidance();
+
+		long m_EngageID; //!< The unique ID of the enemy an attack order sent it after (EngageTarget), 0 for none.
+		long m_CombatTargetID; //!< The unique ID of the enemy its firing position (m_CombatSpot) is for.
+		Vector m_CombatSpot; //!< Where it fights that enemy from.
+		bool m_HasCombatSpot; //!< Whether it has a firing position.
+		bool m_CombatSearching; //!< Whether it has moved for want of a shot and not had one since (the next move tries further round).
+		float m_CombatHealth; //!< Its health when last looked at, to tell when it is hit.
+		Timer m_CombatTimer; //!< Since it last looked over the fight.
+		Timer m_NoShotTimer; //!< Since one of its guns last had the enemy.
+		Timer m_HitTimer; //!< Since it was last hit.
+		Timer m_JinkTimer; //!< Since it last moved for being hit.
+
+		/// Fights the enemy it was sent after, or, holding (a defend or guard post, or just holding with no order to stay put), the one its
+		/// guns are on, from a firing position, four times a second: off to one side of the enemy, at a share of its gun range by the
+		/// order's risk (Actor::StandingOrder::Direct: further on a cautious order, closer on a direct one), in the air its hover height up,
+		/// with a clear line to it; and within its post's reach when it has one. A new position when the enemy moves out of reach of the one
+		/// it has, or its guns have had no shot for two seconds (round to the other side and further up when one move didn't do it); and,
+		/// hit, a jink to one near it, sooner on a cautious order and never on a full-risk one. With the enemy gone, it goes back over its
+		/// post, or holds where it is.
+		void UpdateCombat();
 
 	private:
 		/// Aims and fires its manned guns: from the player's aim in a gunner's seat, or the gunner's own, at the nearest enemy in sight and range.

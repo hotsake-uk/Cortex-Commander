@@ -66,6 +66,12 @@ void ACShip::Clear() {
 	m_Parked = false;
 	m_TouchdownTimer.Reset();
 	m_OrderedBoardTimer.Reset();
+	m_EngageID = 0;
+	m_CombatTargetID = 0;
+	m_CombatSpot.Reset();
+	m_HasCombatSpot = false;
+	m_CombatSearching = false;
+	m_CombatHealth = -1.0F;
 }
 
 int ACShip::Create(const ACShip& reference) {
@@ -338,6 +344,180 @@ void ACShip::UpdateCraftAvoidance() {
 	}
 }
 
+bool ACShip::EngageTarget(const Actor* target) {
+	if (!target || !CanFly() || !AutopilotStarted()) {
+		return false;
+	}
+	if (m_EngageID != target->GetUniqueID()) {
+		m_EngageID = target->GetUniqueID();
+		m_HasCombatSpot = false;
+		// (Looked over at once, not up to a quarter of a second on.)
+		m_CombatTimer.SetElapsedSimTimeMS(1000);
+	}
+	return true;
+}
+
+void ACShip::UpdateCombat() {
+	// Hit since it last looked: its health fell.
+	if (float health = GetHealth(); m_CombatHealth >= 0.0F && health < m_CombatHealth - 0.25F) {
+		m_HitTimer.Reset();
+	}
+	m_CombatHealth = GetHealth();
+	if (!m_CombatTimer.IsPastSimMS(250)) {
+		return;
+	}
+	m_CombatTimer.Reset();
+	auto enemyByID = [this](long id) -> const Actor* {
+		const Actor* actor = id ? dynamic_cast<const Actor*>(g_MovableMan.FindObjectByUniqueID(id)) : nullptr;
+		return actor && !actor->IsDead() && !actor->IsSetToDelete() && actor->GetTeam() != m_Team ? actor : nullptr;
+	};
+	Vector suppressCentre;
+	float suppressRadius = 0.0F;
+	const bool holding = m_AIMode == AIMODE_SENTRY || m_AIMode == AIMODE_STAY || (m_AIMode == AIMODE_GOTO && m_HasCombatSpot);
+	const Actor* target = enemyByID(m_EngageID);
+	if (!target) {
+		m_EngageID = 0;
+		target = enemyByID(m_StandingOrder.TargetID);
+	}
+	// (Holding: the enemy its guns are on, unless it was told to stay put or to suppress a place.)
+	if (!target && holding && !m_StandingOrder.Hold && !GetSuppressZone(suppressCentre, suppressRadius)) {
+		for (const GunState& gun: m_Guns) {
+			if ((target = enemyByID(gun.TargetID))) {
+				break;
+			}
+		}
+		// (Still fighting the one it has a position for, though no gun is on it just now.)
+		if (!target && m_HasCombatSpot) {
+			target = enemyByID(m_CombatTargetID);
+		}
+	}
+	if (m_Controller.IsPlayerControlled() || !CanFly() || !target) {
+		if (m_HasCombatSpot && !m_Controller.IsPlayerControlled() && CanFly()) {
+			// The fight over: back over its post, or held where it is.
+			if (m_StandingOrder.HasPost) {
+				FlyRouteTo(m_StandingOrder.Post);
+			} else {
+				AutopilotGoTo(m_Pos);
+			}
+		}
+		m_HasCombatSpot = false;
+		m_CombatSearching = false;
+		return;
+	}
+	const bool wraps = g_SceneMan.SceneWrapsX();
+	const float radius = GetRadius();
+	const float range = m_GunRange;
+	const float direct = std::clamp(m_StandingOrder.Direct, -1.0F, 1.0F);
+	// How far off to fight from, as a share of its range: half on a normal order, three quarters on a cautious one, under a third on a direct one.
+	const float share = direct < 0.0F ? 0.5F - 0.25F * direct : 0.5F - 0.2F * direct;
+	const Vector enemyPos = target->GetPos();
+	const Vector fromEnemy = g_SceneMan.ShortestDistance(enemyPos, m_Pos, wraps);
+	int side = std::abs(fromEnemy.m_X) > radius * 0.5F ? (fromEnemy.m_X > 0.0F ? 1 : -1) : (m_HFlipped ? 1 : -1);
+	// The pull of its post: it fights within the reach ReturnDefenders leaves it.
+	const bool anchored = m_StandingOrder.HasPost;
+	const float reach = AutopilotHoverHeight() * 1.5F + radius + 40.0F;
+
+	bool hasShot = false;
+	for (const GunState& gun: m_Guns) {
+		hasShot = hasShot || gun.TargetID == target->GetUniqueID();
+	}
+	if (hasShot) {
+		m_NoShotTimer.Reset();
+		m_CombatSearching = false;
+	}
+	const bool settled = m_AIMode != AIMODE_GOTO;
+	bool move = !m_HasCombatSpot || m_CombatTargetID != target->GetUniqueID();
+	// The enemy moved out of reach of where it fights from, or right under it.
+	if (!move && settled) {
+		float across = std::abs(fromEnemy.m_X);
+		move = across < range * std::max(share - 0.25F, 0.1F) || across > range * 0.85F || std::abs(fromEnemy.m_X) < radius;
+	}
+	bool search = false;
+	if (!move && settled && m_NoShotTimer.IsPastSimMS(2000)) {
+		move = true;
+		search = true;
+	}
+	bool jink = false;
+	const float jinkEvery = direct >= 0.9F ? -1.0F : (direct < 0.0F ? 1500.0F : 3000.0F + 2000.0F * direct);
+	if (!move && settled && jinkEvery > 0.0F && !m_HitTimer.IsPastSimMS(1000) && m_JinkTimer.IsPastSimMS(static_cast<long long>(jinkEvery))) {
+		move = true;
+		jink = true;
+	}
+	if (!move) {
+		return;
+	}
+	auto clearShot = [&enemyPos, wraps](const Vector& from) {
+		Vector blocked;
+		Vector ray = g_SceneMan.ShortestDistance(from, enemyPos, wraps);
+		return !g_SceneMan.CastStrengthRay(from, ray, 5.0F, blocked, 4);
+	};
+	auto keepNearPost = [&](Vector spot) {
+		if (anchored) {
+			Vector off = g_SceneMan.ShortestDistance(m_StandingOrder.Post, spot, wraps);
+			if (std::abs(off.m_X) > reach) {
+				spot.m_X = m_StandingOrder.Post.m_X + (off.m_X > 0.0F ? reach : -reach);
+			}
+		}
+		g_SceneMan.WrapPosition(spot);
+		return spot;
+	};
+	Vector spot;
+	if (jink) {
+		// A little way off where it is, never nearer over the enemy; outward on a cautious order.
+		float across = (RandomNum(0.0F, 1.0F) < (direct < 0.0F ? 0.8F : 0.5F) ? 1.0F : -1.0F) * RandomNum(0.08F, 0.16F) * range * static_cast<float>(side);
+		spot = keepNearPost(m_Pos + Vector(across, RandomNum(-50.0F, 30.0F)));
+		if (std::abs(g_SceneMan.ShortestDistance(enemyPos, spot, wraps).m_X) < range * 0.15F) {
+			spot = keepNearPost(m_Pos + Vector(std::abs(across) * static_cast<float>(side), RandomNum(-50.0F, 0.0F)));
+		}
+		m_JinkTimer.Reset();
+	} else {
+		// The first of these with a clear line to the enemy: its side first (the other first when looking for a shot it didn't find on this
+		// one), at its distance, nearer, then further, each at its hover height and higher.
+		int firstSide = search && m_CombatSearching ? -side : side;
+		Vector fallback;
+		bool found = false;
+		for (int s: {firstSide, -firstSide}) {
+			for (float distance: {share, share * 0.7F, std::min(share * 1.3F, 0.8F)}) {
+				for (float lift: {0.0F, -60.0F, -120.0F}) {
+					Vector ground = keepNearPost(enemyPos + Vector(static_cast<float>(s) * distance * range, 0.0F));
+					Vector candidate = AutopilotHoverPoint(ground) + Vector(0.0F, lift);
+					candidate.m_Y = std::max(candidate.m_Y, radius);
+					if (fallback.IsZero()) {
+						fallback = candidate;
+					}
+					if (clearShot(candidate)) {
+						spot = candidate;
+						found = true;
+						break;
+					}
+				}
+				if (found) {
+					break;
+				}
+			}
+			if (found) {
+				break;
+			}
+		}
+		if (!found) {
+			spot = fallback;
+		}
+		m_CombatSearching = search;
+		m_NoShotTimer.Reset();
+	}
+	m_CombatSpot = spot;
+	m_CombatTargetID = target->GetUniqueID();
+	m_HasCombatSpot = true;
+	// Straight there through open air, at the height chosen; round what is in the way by a route otherwise.
+	Vector blocked;
+	if (!g_SceneMan.CastStrengthRay(m_Pos, g_SceneMan.ShortestDistance(m_Pos, spot, wraps), 5.0F, blocked, 4)) {
+		m_Route.clear();
+		AutopilotGoTo(spot);
+	} else {
+		FlyRouteTo(spot);
+	}
+}
+
 void ACShip::UpdateAutopilot() {
 	if (!CanFly()) {
 		// (Left on a delivery or a trip home, a pilot getting in would fly off with it: it holds still for them instead.)
@@ -347,6 +527,7 @@ void ACShip::UpdateAutopilot() {
 		return;
 	}
 	UpdateCraftAvoidance();
+	UpdateCombat();
 	// Along its route (FlyRouteTo): on to the next point once near the one it is flying to. Any other order (it holds, or is sent somewhere
 	// else) or the player flying it ends the route.
 	if (!m_Route.empty()) {
