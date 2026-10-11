@@ -716,6 +716,19 @@ namespace SandboxDetail {
 		std::unordered_map<long, FlagRunner> s_Runners; //!< By unique ID.
 		bool s_RunnersDue = false; //!< A flag was picked up, dropped or put back (SetCarrier) or moved: the runners are sent again on this update, not at their half-second turn.
 
+		/// A job a team's AI commander has given one of its runners or hunters over what the mode has it do (PlanJobs): after someone, or to
+		/// a place. Each runner's update sees to it first.
+		struct CommanderJob {
+			int Team = 0;
+			const char* Reason = ""; //!< For SendUnit, as a mode's own sending of it.
+			const char* Doing = ""; //!< For the team's row on the battle panel (CommanderStatus).
+			const char* Trigger = ""; //!< What the unit says when it's given the job (UnitSpeech).
+			bool Chase = false; //!< After Target; else to To.
+			UnitRef Target;
+			Vector To;
+		};
+		std::unordered_map<long, CommanderJob> s_Jobs; //!< By unique ID.
+
 		constexpr float c_FlagReach = 50.0F; //!< How near a unit's middle has to come to a flag to pick it up (or bring it home, or capture with it).
 
 		/// How far from its own flag a team's units appear, or as far as its spawn zone allows.
@@ -726,6 +739,8 @@ namespace SandboxDetail {
 
 		void SetUpTeams();
 		void TakeFlagHome(Actor* unit, int flagSide, long long now);
+		int GuardShare(int side);
+		Actor* LiveVip(int side);
 
 		/// Somewhere in one of a team's spawn zones for a new unit to appear: never at its own flag (at least c_SpawnClear from it, as far as
 		/// the zone allows). A unit going for an enemy's flag appears on the side of the zone nearest it, so it doesn't have to make its way
@@ -868,6 +883,7 @@ namespace SandboxDetail {
 		void FlagsStart() {
 			ClearCarriers();
 			s_Runners.clear();
+		s_Jobs.clear();
 			for (int side = 0; side < c_Sides; ++side) {
 				s_Flags[side] = Flag();
 				if (TeamIn(s_ModeRun.Settings, side)) {
@@ -916,7 +932,7 @@ namespace SandboxDetail {
 			guard.RoamPercent = 30;
 			const long long now = g_TimerMan.GetSimUpdateCount();
 			for (Actor* unit: wave) {
-				if (enemies.empty() || Random01() * 100.0F < static_cast<float>(settings.GuardPercent)) {
+				if (enemies.empty() || Random01() * 100.0F < static_cast<float>(GuardShare(side))) {
 					unit->SetOrderAttack(false);
 					MakeDefender(unit, guard);
 				} else {
@@ -1173,6 +1189,21 @@ namespace SandboxDetail {
 			}
 		}
 
+		/// Sends a runner on its commander's job, if it has one: false for none (or one whose target has gone), for the mode to send it.
+		bool DoJob(Actor* unit, FlagRunner& runner, long long now) {
+			auto found = s_Jobs.find(unit->GetUniqueID());
+			if (found == s_Jobs.end() || found->second.Team != unit->GetTeam()) {
+				return false;
+			}
+			const CommanderJob& job = found->second;
+			Actor* target = job.Chase ? GetRef(job.Target) : nullptr;
+			if (job.Chase && (!target || !IsCombatant(target))) {
+				return false;
+			}
+			SendRunner(unit, runner, target ? target->GetPos() : job.To, target, job.Reason, now);
+			return true;
+		}
+
 		/// Whether a team-mate of a flag's carrier goes with it all the way to score: EscortPercent of them do, the same ones each time.
 		bool Escorts(const Actor* unit) {
 			const uint32_t mixed = static_cast<uint32_t>(unit->GetUniqueID()) * 2654435761u;
@@ -1250,6 +1281,10 @@ namespace SandboxDetail {
 				const int team = runner.Team;
 				if (CarriedBy(unit) >= 0) {
 					SendRunner(unit, runner, s_Flags[team].Home, nullptr, "flag: taking it home", now);
+					++entry;
+					continue;
+				}
+				if (DoJob(unit, runner, now)) {
 					++entry;
 					continue;
 				}
@@ -1476,6 +1511,7 @@ namespace SandboxDetail {
 		void OneFlagStart() {
 			SetCarrier(s_OneFlag, nullptr);
 			s_Runners.clear();
+		s_Jobs.clear();
 			s_OneFlag = Flag();
 			s_FlagPlace = -1;
 			OneFlagHome(true);
@@ -1628,6 +1664,8 @@ namespace SandboxDetail {
 				}
 				if (carrier == unit) {
 					SendRunner(unit, runner, GoalSpot(settings, runner.Team), nullptr, "flag: taking it to our goal", now);
+				} else if (DoJob(unit, runner, now)) {
+					// (On its commander's job.)
 				} else if (carrier && carrier->GetTeam() == runner.Team) {
 					SeeCarrierHome(unit, runner, carrier, s_OneFlag.Home, GoalSpot(settings, runner.Team), now);
 				} else if (carrier) {
@@ -1858,7 +1896,7 @@ namespace SandboxDetail {
 					entry = s_Runners.erase(entry);
 					continue;
 				}
-				if (!unit->IsPlayerControlled()) {
+				if (!unit->IsPlayerControlled() && !DoJob(unit, runner, now)) {
 					if (Actor* target = prey(runner, unit, fighters)) {
 						SendRunner(unit, runner, target->GetPos(), target, reason, now);
 					}
@@ -2304,20 +2342,237 @@ namespace SandboxDetail {
 
 		// ---- Team commanders ----
 
-		/// What a team's AI commander is doing, as it splits its units between the objective in play and the next one with defend zones, as a
-		/// player would with the command bar's Defend at (UpdateCommanders).
+		/// What a team's AI commander is doing (UpdateCommanders). On assault and king of the hill it splits its units between the objective in
+		/// play and the next one with defend zones, as a player would with the command bar's Defend at; on the other modes it gives some of
+		/// its runners or hunters a job over what the mode has them do (PlanJobs).
 		struct Commander {
 			int Objective = -1; //!< The objective in play when it last planned (of the mode's zones).
 			bool FellBack = false; //!< Assault defenders: everyone sent back to hold the next objective, the one in play as good as lost.
 			int Next = -1; //!< The objective it holds some back on, -1 for none.
 			int OnNow = 0; //!< Its units on the objective in play.
 			int OnNext = 0; //!< And on the next.
+			const char* Doing = nullptr; //!< The other modes: the job it has some of its units on, nullptr for none.
+			int OnJob = 0; //!< And how many.
+			long long NextLook = 0; //!< The sim update it looks at the battle again on.
 		};
 		std::array<Commander, c_Sides> s_Commanders;
 
-		/// Whether a team's units are split by a commander: ticked for it, in a mode that has objectives one after another.
+		/// Whether a team is led by a commander: ticked for it (and not one you command), in any mode but custom, where the cards say what
+		/// each team does.
 		bool HasCommander(const BattleModeSettings& settings, int side) {
-			return !BattlePlayerCommands(side) && (settings.Mode == BattleMode::Assault || settings.Mode == BattleMode::KingOfTheHill) && side >= 0 && side < c_Sides && settings.Commander[side] && TeamIn(settings, side);
+			return side >= 0 && side < c_Sides && !BattlePlayerCommands(side) && settings.Mode != BattleMode::Custom && settings.Commander[side] && TeamIn(settings, side);
+		}
+
+		/// How hard the commanders play: 0 easy, 1 normal, 2 hard.
+		int CommanderLevel() { return std::clamp(s_ModeRun.Settings.CommanderLevel, 0, 2); }
+
+		/// Seconds between a commander's looks at the battle.
+		float CommanderLookSeconds() {
+			constexpr std::array<float, 3> seconds = {3.0F, 1.0F, 0.5F};
+			return seconds[CommanderLevel()];
+		}
+
+		/// The share of a team's runners or hunters, in percent, its commander puts on a job when one is called for: going after the enemy
+		/// it has picked out on last team standing (focus), or seeing to a flag or the VIP.
+		int CommanderJobShare(bool focus) {
+			constexpr std::array<int, 3> shares = {15, 30, 50};
+			constexpr std::array<int, 3> focusShares = {25, 50, 75};
+			return focus ? focusShares[CommanderLevel()] : shares[CommanderLevel()];
+		}
+
+		/// The share of a team's new units, in percent, that guard its flag or VIP: the mode's, and with a commander (on normal and hard)
+		/// more while the team is ahead and fewer while it's behind.
+		int GuardShare(int side) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			int share = settings.GuardPercent;
+			if (HasCommander(settings, side) && CommanderLevel() > 0) {
+				int best = std::numeric_limits<int>::min();
+				for (int other = 0; other < c_Sides; ++other) {
+					if (other != side && TeamIn(settings, other)) {
+						best = std::max(best, s_ModeRun.Score[other]);
+					}
+				}
+				if (best != std::numeric_limits<int>::min()) {
+					const int shift = CommanderLevel() == 2 ? 20 : 10;
+					share += s_ModeRun.Score[side] > best ? shift : (s_ModeRun.Score[side] < best ? -shift : 0);
+				}
+			}
+			return std::clamp(share, 0, 90);
+		}
+
+		/// Takes a team's commander's jobs off its units: the mode sends them as it would again.
+		void ForgetJobs(int side) {
+			std::erase_if(s_Jobs, [side](const auto& entry) { return entry.second.Team == side; });
+		}
+
+		/// Puts the share (in percent, one at least) of a team's runners or hunters nearest a place on a job, each new to it saying so; the rest
+		/// keep to the mode's. How many it put on it.
+		int GiveJobs(int side, const Vector& near, int share, const CommanderJob& job, const std::unordered_map<long, const char*>& had) {
+			const bool wraps = g_SceneMan.SceneWrapsX();
+			std::vector<std::pair<float, Actor*>> units;
+			for (Actor* actor: SandboxAccess::Actors()) {
+				auto runner = s_Runners.find(actor->GetUniqueID());
+				if (runner == s_Runners.end() || runner->second.Team != side || actor->GetTeam() != side || actor->IsPlayerControlled() || !IsCombatant(actor) || CarriedBy(actor) >= 0 || RefersTo(s_OneFlag.Carrier, actor)) {
+					continue;
+				}
+				units.emplace_back(g_SceneMan.ShortestDistance(actor->GetPos(), near, wraps).GetSqrMagnitude(), actor);
+			}
+			if (units.empty() || share <= 0) {
+				return 0;
+			}
+			std::sort(units.begin(), units.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+			const int count = std::clamp(static_cast<int>(std::lround(static_cast<float>(units.size()) * static_cast<float>(share) / 100.0F)), 1, static_cast<int>(units.size()));
+			for (int i = 0; i < count; ++i) {
+				Actor* unit = units[i].second;
+				const long id = static_cast<long>(unit->GetUniqueID());
+				s_Jobs[id] = job;
+				if (auto before = had.find(id); before == had.end() || before->second != job.Reason) {
+					unit->Say(job.Trigger);
+				}
+			}
+			return count;
+		}
+
+		/// The enemy last team standing's commander has its hunters go for: the one nearest them, all told, that has fewest of its own about
+		/// it (the weakest spot), so they push together rather than each after whoever is nearest.
+		Actor* FocusTarget(int side, const std::vector<Actor*>& fighters) {
+			const bool wraps = g_SceneMan.SceneWrapsX();
+			std::vector<const Actor*> ours;
+			for (const Actor* fighter: fighters) {
+				if (fighter->GetTeam() == side && s_Runners.count(fighter->GetUniqueID())) {
+					ours.push_back(fighter);
+				}
+			}
+			Actor* best = nullptr;
+			float bestCost = 0.0F;
+			for (Actor* enemy: fighters) {
+				if (enemy->GetTeam() == side) {
+					continue;
+				}
+				float away = 0.0F;
+				for (const Actor* unit: ours) {
+					away += g_SceneMan.ShortestDistance(unit->GetPos(), enemy->GetPos(), wraps).GetMagnitude();
+				}
+				int friends = 0;
+				for (const Actor* other: fighters) {
+					if (other != enemy && other->GetTeam() == enemy->GetTeam() && g_SceneMan.ShortestDistance(other->GetPos(), enemy->GetPos(), wraps).MagnitudeIsLessThan(300.0F)) {
+						++friends;
+					}
+				}
+				const float cost = (away + 1.0F) * (1.0F + 0.5F * static_cast<float>(friends));
+				if (!best || cost < bestCost) {
+					best = enemy;
+					bestCost = cost;
+				}
+			}
+			return best;
+		}
+
+		/// A commander's look at the battle on the modes without objectives one after another: what calls for a job, and who goes on it.
+		/// Capture the flag: ours taken, some go after whoever has it, or to it where it lies to bring it home. One flag: an enemy has it,
+		/// some go to stand in their goal. VIP hunt: ours in danger (an enemy near or it badly hurt), some go back to it. Last team standing:
+		/// the hunters go for the enemy it picks out (FocusTarget).
+		void PlanJobs(int side, Commander& commander) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			const bool wraps = g_SceneMan.SceneWrapsX();
+			std::unordered_map<long, const char*> had;
+			for (auto entry = s_Jobs.begin(); entry != s_Jobs.end();) {
+				if (entry->second.Team == side) {
+					had[entry->first] = entry->second.Reason;
+					entry = s_Jobs.erase(entry);
+				} else {
+					++entry;
+				}
+			}
+			CommanderJob job;
+			job.Team = side;
+			Vector near;
+			int share = CommanderJobShare(false);
+			const char* call = nullptr; // What the commander calls out, the first time.
+			switch (settings.Mode) {
+				case BattleMode::CaptureTheFlag: {
+					const Flag& ours = s_Flags[side];
+					if (Actor* thief = ours.State == FlagState::Carried ? GetRef(ours.Carrier) : nullptr) {
+						job.Reason = "commander: get our flag back";
+						job.Doing = "after our flag";
+						job.Trigger = "CommanderRecoverFlag";
+						job.Chase = true;
+						job.Target = MakeRef(thief);
+						near = thief->GetPos();
+						call = "get our flag back!";
+					} else if (ours.State == FlagState::Dropped) {
+						job.Reason = "commander: bring our flag home";
+						job.Doing = "bringing our flag home";
+						job.Trigger = "CommanderRecoverFlag";
+						job.To = ours.Pos;
+						near = ours.Pos;
+						call = "bring our flag home!";
+					}
+					break;
+				}
+				case BattleMode::OneFlag: {
+					Actor* carrier = s_OneFlag.State == FlagState::Carried ? GetRef(s_OneFlag.Carrier) : nullptr;
+					const int theirs = carrier ? carrier->GetTeam() : -1;
+					if (carrier && theirs != side && TeamIn(settings, theirs) && settings.Goals[theirs].size() >= 3) {
+						job.Reason = "commander: blocking their goal";
+						job.Doing = "blocking their goal";
+						job.Trigger = "CommanderBlockGoal";
+						job.To = GoalSpot(settings, theirs);
+						near = job.To;
+						call = "block their goal!";
+					}
+					break;
+				}
+				case BattleMode::VipHunt: {
+					Actor* vip = LiveVip(side);
+					if (!vip) {
+						break;
+					}
+					const float reach = CommanderLevel() == 2 ? 600.0F : 450.0F;
+					Actor* threat = nullptr;
+					float threatDistance = reach * reach;
+					for (Actor* fighter: Fighters()) {
+						if (fighter->GetTeam() == side) {
+							continue;
+						}
+						if (float distance = g_SceneMan.ShortestDistance(fighter->GetPos(), vip->GetPos(), wraps).GetSqrMagnitude(); distance < threatDistance) {
+							threat = fighter;
+							threatDistance = distance;
+						}
+					}
+					if (threat || vip->GetHealth() < vip->GetMaxHealth() * 0.5F) {
+						job.Reason = "commander: protect the VIP";
+						job.Doing = "protecting the VIP";
+						job.Trigger = "CommanderProtectVip";
+						job.Chase = threat != nullptr;
+						job.Target = MakeRef(threat);
+						job.To = vip->GetPos();
+						near = vip->GetPos();
+						call = "protect the VIP!";
+					}
+					break;
+				}
+				case BattleMode::LastTeamStanding: {
+					if (Actor* target = FocusTarget(side, Fighters())) {
+						job.Reason = "commander: focus fire";
+						job.Doing = "pushing together";
+						job.Trigger = "CommanderFocusTarget";
+						job.Chase = true;
+						job.Target = MakeRef(target);
+						near = target->GetPos();
+						share = CommanderJobShare(true);
+					}
+					break;
+				}
+				default:
+					break;
+			}
+			const int given = job.Reason[0] ? GiveJobs(side, near, share, job, had) : 0;
+			if (given > 0 && call && commander.Doing != job.Doing) {
+				Say(SideName(side) + "'s commander: " + call);
+			}
+			commander.Doing = given > 0 ? job.Doing : nullptr;
+			commander.OnJob = given;
 		}
 
 		/// Where a mode's units hold one of its zones: as HillPost and ObjectivePost give the one in play.
@@ -2392,22 +2647,39 @@ namespace SandboxDetail {
 			return true;
 		}
 
-		/// Twice a second: each team with a commander has its mode's defenders (not those a player told to defend somewhere) split between the
-		/// objective in play and the next as its plan says, the same units going ahead each time (by their rolls), each moved only when its
-		/// place changes.
+		/// Each team with a commander, as often as it looks (CommanderLookSeconds). On assault and king of the hill its mode's defenders (not
+		/// those a player told to defend somewhere) are split between the objective in play and the next as its plan says, the same units
+		/// going ahead each time (by their rolls), each moved only when its place changes. On the rest it hands out jobs (PlanJobs).
 		void UpdateCommanders(bool aiPaused) {
 			const BattleModeSettings& settings = s_ModeRun.Settings;
-			if (aiPaused || s_ModeRun.Over || settings.Zones.empty() || g_TimerMan.GetSimUpdateCount() % 30 != 20) {
+			const long long updates = g_TimerMan.GetSimUpdateCount();
+			if (aiPaused || s_ModeRun.Over || updates % 30 != 20) {
 				return;
 			}
 			const bool wraps = g_SceneMan.SceneWrapsX();
+			const bool splits = settings.Mode == BattleMode::Assault || settings.Mode == BattleMode::KingOfTheHill;
 			for (int side = 0; side < c_Sides; ++side) {
 				Commander& commander = s_Commanders[side];
+				if (!HasCommander(settings, side)) {
+					commander = Commander();
+					ForgetJobs(side);
+					continue;
+				}
+				if (updates < commander.NextLook) {
+					continue;
+				}
+				commander.NextLook = updates + static_cast<long long>(CommanderLookSeconds() * UpdatesPerSecond()) - 1;
+				if (!splits) {
+					PlanJobs(side, commander);
+					continue;
+				}
 				int now = 0;
 				int next = -1;
 				int share = 0;
-				if (!HasCommander(settings, side) || !CommanderPlan(side, commander, now, next, share)) {
+				if (settings.Zones.empty() || !CommanderPlan(side, commander, now, next, share)) {
+					const long long nextLook = commander.NextLook;
 					commander = Commander();
+					commander.NextLook = nextLook;
 					continue;
 				}
 				commander.Objective = now;
@@ -2436,10 +2708,17 @@ namespace SandboxDetail {
 
 		/// What a team's commander is doing, for its row on the Battle tab: "" with none.
 		std::string CommanderStatus(int side) {
-			if (!HasCommander(s_ModeRun.Settings, side) || s_Commanders[side].Objective < 0) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			if (!HasCommander(settings, side)) {
 				return "";
 			}
 			const Commander& commander = s_Commanders[side];
+			if (settings.Mode != BattleMode::Assault && settings.Mode != BattleMode::KingOfTheHill) {
+				return commander.Doing ? "; commander: " + std::to_string(commander.OnJob) + " " + commander.Doing : "; commander: watching";
+			}
+			if (commander.Objective < 0) {
+				return "";
+			}
 			const std::string zone = s_ModeRun.Settings.Mode == BattleMode::Assault ? "objective " : "hill ";
 			if (commander.FellBack) {
 				return "; commander: all back to " + zone + std::to_string(commander.Next + 1);
@@ -2453,6 +2732,12 @@ namespace SandboxDetail {
 
 		/// The commanders' choices, on the Battle tab under the teams, for the modes that have them.
 		void CommanderPanel(BattleModeSettings& setup, bool& changed) {
+			ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0F);
+			changed |= ImGui::Combo("Difficulty", &setup.CommanderLevel, "Easy\0Normal\0Hard\0");
+			ImGui::SetItemTooltip("How well the AI commanders play. Easy looks at the battle every 3 s and sends few units when something calls for it; normal every second; hard twice a second, sending the most, and shifting more of its team onto guard while ahead or onto the attack while behind. Point values don't change.");
+			if (setup.Mode != BattleMode::Assault && setup.Mode != BattleMode::KingOfTheHill) {
+				return;
+			}
 			changed |= ImGui::SliderInt("Held on the next objective", &setup.CommanderReserve, 0, 60, "%d%%");
 			ImGui::SetItemTooltip("Teams with a commander: the share of their units it puts on the next objective (or, on king of the hill, sends ahead to the next hill before it moves), ready for when the one in play goes.");
 			if (setup.Mode == BattleMode::Assault) {
@@ -2578,7 +2863,7 @@ namespace SandboxDetail {
 			const BattleSettings guard = PostAt(VipSpot(settings, side), radius * 0.6F, radius * 0.6F + 250.0F, 30);
 			std::vector<Actor*> hunters;
 			for (Actor* unit: wave) {
-				if (Random01() * 100.0F < static_cast<float>(settings.GuardPercent)) {
+				if (Random01() * 100.0F < static_cast<float>(GuardShare(side))) {
 					unit->SetOrderAttack(false);
 					MakeDefender(unit, guard);
 				} else {
@@ -3350,6 +3635,7 @@ namespace SandboxDetail {
 			std::erase_if(s_BattleDefenders, [](const auto& entry) { return !entry.second.Commanded; });
 			ClearHighlights();
 			s_Runners.clear();
+		s_Jobs.clear();
 			StartRespawns();
 			s_Stuck.clear();
 			s_Rushers.clear();
@@ -3555,6 +3841,7 @@ namespace SandboxDetail {
 		s_ModeRun.Settings = s_ModeSetup;
 		s_ModeRun.Settings.Mode = chosen;
 		s_Runners.clear();
+		s_Jobs.clear();
 		s_Flags = {};
 		s_OneFlag = Flag();
 		s_Stuck.clear();
@@ -3834,11 +4121,32 @@ namespace SandboxDetail {
 				ImGui::Indent();
 				changed |= ToolUI::Checkbox("You command this team", &setup.PlayerCommands[side]);
 				ImGui::SetItemTooltip("%s", "Its units come in on hold ground with no orders and no job from the mode, for you to command with the Command tool (select them, then right-click to send them). Everything else (spawning, respawns, scoring) is as for any team. Can be changed during the game: units already in keep what they were doing.");
-				if (setup.Mode == BattleMode::Assault || setup.Mode == BattleMode::KingOfTheHill) {
+				if (setup.Mode != BattleMode::Custom && !setup.PlayerCommands[side]) {
 					changed |= ToolUI::Checkbox("AI commander", &setup.Commander[side]);
-					ImGui::SetItemTooltip("%s", setup.Mode == BattleMode::Assault
-					                                ? "Defending: a commander splits this team between the objective in play and the next one, and pulls everyone back to the next when the one in play is about to be taken. (Attackers all go for the objective in play either way.) Can be changed during the game."
-					                                : "With the hill moving on: a commander sends some of this team ahead to the next hill before it moves, to be there first. Can be changed during the game.");
+					const char* tip = "";
+					switch (setup.Mode) {
+						case BattleMode::Assault:
+							tip = "Defending: a commander splits this team between the objective in play and the next one, and pulls everyone back to the next when the one in play is about to be taken. (Attackers all go for the objective in play either way.)";
+							break;
+						case BattleMode::KingOfTheHill:
+							tip = "With the hill moving on: a commander sends some of this team ahead to the next hill before it moves, to be there first.";
+							break;
+						case BattleMode::CaptureTheFlag:
+							tip = "A commander sends some of this team after whoever takes its flag, however far off, or to it where it lies to bring it home; and keeps more on guard while the team is ahead, fewer while it's behind.";
+							break;
+						case BattleMode::OneFlag:
+							tip = "While an enemy has the flag, a commander sends some of this team to stand in that enemy's goal, rather than everyone chasing the carrier.";
+							break;
+						case BattleMode::VipHunt:
+							tip = "With an enemy near this team's VIP, or the VIP badly hurt, a commander pulls some of its hunters back to protect it; and keeps more bodyguards while the team is ahead, fewer while it's behind.";
+							break;
+						case BattleMode::LastTeamStanding:
+							tip = "A commander picks out the enemy at the weakest spot (near this team, few of its own about it) and sends its units at it together, rather than each after whoever is nearest.";
+							break;
+						default:
+							break;
+					}
+					ImGui::SetItemTooltip("%s Difficulty is under the teams. Can be changed during the game.", tip);
 				}
 				if (FactionPicker(s_BattleSetup[side])) {
 					SendBattleSettings(side);
@@ -3868,7 +4176,7 @@ namespace SandboxDetail {
 			}
 			ImGui::PopID();
 		}
-		if ((setup.Mode == BattleMode::Assault || setup.Mode == BattleMode::KingOfTheHill) && std::any_of(setup.Commander.begin(), setup.Commander.end(), [](bool on) { return on; })) {
+		if (setup.Mode != BattleMode::Custom && std::any_of(setup.Commander.begin(), setup.Commander.end(), [](bool on) { return on; })) {
 			ImGui::SeparatorText("AI commanders");
 			CommanderPanel(setup, changed);
 		}

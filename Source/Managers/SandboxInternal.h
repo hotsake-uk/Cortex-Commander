@@ -703,8 +703,10 @@ namespace SandboxDetail {
 		int Tickets = 60; //!< Last team standing: units each team gets in all, its first ones counted.
 		int KillsToWin = 5; //!< VIP hunt: enemy VIPs a team has to bring down to win.
 		int VipRespawnSeconds = 20; //!< VIP hunt: seconds before a fallen VIP's team has a new one.
-		std::array<bool, c_Sides> Commander{}; //!< Assault and king of the hill: each team whose units an AI commander splits between the
-		                                        //!< objective in play and the next one (UpdateCommanders), as a player would with defend zones.
+		std::array<bool, c_Sides> Commander = {true, true, true, true}; //!< Every mode but custom: each team an AI commander leads (UpdateCommanders),
+		                                                               //!< as a player would: splitting its units between objectives, sending some
+		                                                               //!< after a flag or to a VIP, picking who to go for. Not a team you command.
+		int CommanderLevel = 1; //!< How hard the commanders play: 0 easy, 1 normal, 2 hard (how often they look, and how much they send).
 		int CommanderReserve = 30; //!< Its share of each such team's units, in percent, held on the next objective while the one in play is safe.
 		int CommanderFallBack = 60; //!< Assault defenders: how far the attackers' taking of the objective in play has got, in percent, when everyone
 		                            //!< falls back to the next one.
