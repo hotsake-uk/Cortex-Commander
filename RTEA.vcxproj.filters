@@ -883,6 +883,9 @@
     <ClCompile Include="Source\Managers\BattleEnemy.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Managers\BattleSquad.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Managers\Sandbox.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
