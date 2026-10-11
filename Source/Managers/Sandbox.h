@@ -158,6 +158,11 @@ namespace RTE {
 		/// @return The unit, or nothing if there is no such unit.
 		static Actor* SpawnUnit(const std::string& presetName, int team, const Vector& position, int order);
 
+		/// Makes a brain and puts it in the world, holding where it is, for the brains that run colony buildings.
+		/// @param presetName The brain (an Actor in the Brains group). @param team The side. @param position Where.
+		/// @return The brain, or nothing if there is no such brain.
+		static Actor* SpawnBrain(const std::string& presetName, int team, const Vector& position);
+
 		/// Gets what a unit costs, without weapons. 0 if there is no such unit.
 		static float UnitCost(const std::string& presetName);
 

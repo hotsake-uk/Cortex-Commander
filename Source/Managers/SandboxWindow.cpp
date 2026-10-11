@@ -2976,7 +2976,7 @@ namespace SandboxDetail {
 
 	/// The Colony tab of the sandbox window.
 	void ColonyTab() {
-		ImGui::TextWrapped("Buildings that work for a side. A barracks trains a unit, sends it out with its orders, and trains another whenever fewer than its number are alive. An extractor earns supply. A generator powers its side's buildings near it, when buildings need power. They are built of concrete: wreck one and it stops.");
+		ImGui::TextWrapped("Buildings that work for a side. A barracks trains a unit, sends it out with its orders, and trains another whenever fewer than its number are alive. An extractor earns supply. A generator powers its side's buildings near it, when buildings need power. They are built of concrete: wreck one and it stops. Each is run by a brain in a chamber at its back: kill the brain and the building is disabled, until a brain of its side is put back inside with the Brain tool.");
 		ToolUI::Checkbox("Training is free", &Colony::Free());
 		ImGui::SetItemTooltip("Off: a barracks pays for each unit from the supply of its side, which grows slowly by itself and faster with extractors.");
 		if (!Colony::Free()) {

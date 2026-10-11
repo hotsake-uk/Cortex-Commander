@@ -1,4 +1,5 @@
 #include "MovableMan.h"
+#include "Colony.h"
 
 #include <optional>
 #include "ConsoleMan.h"
@@ -642,6 +643,18 @@ Actor* MovableMan::GetClosestBrainActor(int team, const Vector& scenePoint) cons
 	return pClosestBrain;
 }
 
+bool MovableMan::HasGameBrain(int team) const {
+	if (team < Activity::TeamOne || team >= Activity::MaxTeamCount) {
+		return false;
+	}
+	for (const Actor* actor: m_ActorRoster[team]) {
+		if (actor->HasObjectInGroup("Brains") && !actor->IsInGroup(Colony::c_BrainGroup)) {
+			return true;
+		}
+	}
+	return false;
+}
+
 Actor* MovableMan::GetClosestOtherBrainActor(int notOfTeam, const Vector& scenePoint) const {
 	if (notOfTeam < Activity::TeamOne || notOfTeam >= Activity::MaxTeamCount || m_Actors.empty())
 		return 0;
@@ -670,7 +683,8 @@ Actor* MovableMan::GetUnassignedBrain(int team) const {
 		return 0;
 
 	for (std::list<Actor*>::const_iterator aIt = m_ActorRoster[team].begin(); aIt != m_ActorRoster[team].end(); ++aIt) {
-		if ((*aIt)->HasObjectInGroup("Brains") && !g_ActivityMan.GetActivity()->IsAssignedBrain(*aIt))
+		// (Not the brain that runs a colony building: that is only ever the building's.)
+		if ((*aIt)->HasObjectInGroup("Brains") && !(*aIt)->IsInGroup(Colony::c_BrainGroup) && !g_ActivityMan.GetActivity()->IsAssignedBrain(*aIt))
 			return *aIt;
 	}
 
@@ -679,7 +693,7 @@ Actor* MovableMan::GetUnassignedBrain(int team) const {
 	for (std::deque<Actor*>::const_iterator aaIt = m_AddedActors.begin(); aaIt != m_AddedActors.end(); ++aaIt) {
 		int actorTeam = (*aaIt)->GetTeam();
 		// Accept no-team brains too - ACTUALLY, DON'T
-		if ((actorTeam == team /* || actorTeam == Activity::NoTeam*/) && (*aaIt)->HasObjectInGroup("Brains") && !g_ActivityMan.GetActivity()->IsAssignedBrain(*aaIt))
+		if ((actorTeam == team /* || actorTeam == Activity::NoTeam*/) && (*aaIt)->HasObjectInGroup("Brains") && !(*aaIt)->IsInGroup(Colony::c_BrainGroup) && !g_ActivityMan.GetActivity()->IsAssignedBrain(*aaIt))
 			return *aaIt;
 	}
 
