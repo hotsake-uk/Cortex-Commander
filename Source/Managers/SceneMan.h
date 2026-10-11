@@ -765,6 +765,12 @@ namespace RTE {
 		/// @return Whether the AI's spell rules run.
 		bool MagicAICasting() const;
 
+		/// Sets fire to an area, as the sandbox's fire brush or a lightning strike does (a fire spell, a firepot): every unit and fuel barrel it touches
+		/// catches, and so does flammable ground. Thread safe; applied on the next sim update. Does nothing to units with unit fire off.
+		/// @param position The centre, in scene coordinates.
+		/// @param radius How far it reaches, in pixels.
+		void IgniteArea(const Vector& position, float radius) const;
+
 		/// Puts a rope from one point to another, tied at each end to what is there: a unit or a thing, else the ground, else nothing (a loose
 		/// end). Thread safe; made on the next sim update.
 		/// @param type What it's made of: "Rope", "Thread", "Chain", "Steel cable" or "Bungee cord" (any other name is rope).

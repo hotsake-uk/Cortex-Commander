@@ -101,6 +101,8 @@ namespace SandboxDetail {
 			visit("FieldBrain", mode.FieldBrain);
 			visit("FieldBrainRange", mode.FieldBrainRange);
 			visit("MovingSpawns", mode.MovingSpawns);
+			visit("SpawnOrders", mode.SpawnOrders);
+			visit("ZoneSpawnOrders", mode.ZoneSpawnOrders);
 		}
 
 		// Values as text: a point "x,y", a line of points with spaces between, zones with " | " between.
@@ -119,6 +121,17 @@ namespace SandboxDetail {
 			std::string text;
 			for (size_t i = 0; i < zones.size(); ++i) {
 				text += (i ? " | " : "") + ToText(zones[i]);
+			}
+			return text;
+		}
+		// A spawn order: "set kind facing risk% backAndForth radius chase roam; x,y x,y" (its points after the semicolon); a zone's of them with " | " between.
+		std::string ToText(const SpawnOrder& order) {
+			return ToText(order.Set) + " " + ToText(order.Kind) + " " + ToText(order.Facing) + " " + ToText(static_cast<int>(std::round(order.Direct * 100.0F))) + " " + ToText(order.BackAndForth) + " " + ToText(order.Radius) + " " + ToText(order.Chase) + " " + ToText(order.Roam) + "; " + ToText(order.Points);
+		}
+		std::string ToText(const std::vector<SpawnOrder>& orders) {
+			std::string text;
+			for (size_t i = 0; i < orders.size(); ++i) {
+				text += (i ? " | " : "") + ToText(orders[i]);
 			}
 			return text;
 		}
@@ -166,6 +179,34 @@ namespace SandboxDetail {
 				if (zone.size() >= 3) {
 					zones.push_back(std::move(zone));
 				}
+			}
+		}
+		void FromText(const std::string& text, SpawnOrder& order) {
+			order = SpawnOrder();
+			const size_t split = text.find(';');
+			int set = 0;
+			int kind = 0;
+			int risk = 0;
+			int backAndForth = 0;
+			if (std::sscanf(text.substr(0, split).c_str(), "%d %d %d %d %d %d %d %d", &set, &kind, &order.Facing, &risk, &backAndForth, &order.Radius, &order.Chase, &order.Roam) >= 2) {
+				order.Set = set != 0;
+				order.Kind = static_cast<SpawnOrderKind>(std::clamp(kind, 0, static_cast<int>(SpawnOrderKind::Count) - 1));
+				order.Facing = std::clamp(order.Facing, -1, 1);
+				order.Direct = std::clamp(static_cast<float>(risk) / 100.0F, -1.0F, 1.0F);
+				order.BackAndForth = backAndForth != 0;
+			}
+			if (split != std::string::npos) {
+				FromText(text.substr(split + 1), order.Points);
+			}
+		}
+		void FromText(const std::string& text, std::vector<SpawnOrder>& orders) {
+			orders.clear();
+			std::istringstream parts(text);
+			std::string part;
+			while (std::getline(parts, part, '|')) {
+				SpawnOrder order;
+				FromText(part, order);
+				orders.push_back(order);
 			}
 		}
 		void FromText(const std::string& text, FactionList& factions) {

@@ -1615,6 +1615,11 @@ void SceneMan::MagicPush(const Vector& origin, const Vector& direction, float po
 	MagicEffects::Push(origin, direction, power, range, spread, caster);
 }
 
+void SceneMan::IgniteArea(const Vector& position, float radius) const {
+	ActorFire::QueueIgniteArea(position, radius);
+	TerrainFire::QueueIgniteArea(position, radius);
+}
+
 Vector SceneMan::GetAirFlow(const Vector& position) const {
 	return AirPressure::GetFlow(position);
 }
