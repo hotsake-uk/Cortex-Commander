@@ -74,6 +74,18 @@ COLORS = {
 	"h": (84, 56, 36), "x": (14, 14, 16), "a": (200, 200, 196),
 	# Purple
 	"p": (70, 30, 96), "P": (120, 60, 156), "q": (168, 104, 200),
+	# Flame: ember, orange, yellow
+	"E": (130, 40, 16), "O": (232, 120, 32), "Y": (250, 204, 64),
+	# Ice
+	"K": (60, 104, 168), "I": (140, 190, 236), "J": (218, 238, 255),
+	# White and grey cloth
+	"D": (104, 106, 116), "B": (164, 166, 176), "A": (228, 228, 234),
+	# Storm teal
+	"S": (36, 104, 124), "U": (90, 176, 196),
+	# Bone
+	"X": (112, 100, 80), "z": (176, 166, 136), "Z": (228, 220, 192),
+	# Fur
+	"L": (104, 78, 52), "M": (164, 134, 96),
 }
 
 
@@ -134,7 +146,18 @@ RAMPS = {
 	"blue": [(16, 22, 56), COLORS["v"], COLORS["V"], COLORS["i"], (140, 170, 230)],
 	"gambeson": [(52, 46, 34), (96, 88, 66), COLORS["W"], (190, 180, 152), COLORS["w"]],
 	"black": [(12, 12, 16), (26, 26, 32), (40, 42, 50), (58, 60, 70), (84, 88, 98)],
+	"grey": [(40, 42, 48), COLORS["D"], (136, 138, 148), COLORS["B"], (204, 206, 214)],
+	"ice": [(30, 56, 104), COLORS["K"], (100, 150, 210), COLORS["I"], COLORS["J"]],
+	"white": [(120, 120, 130), (170, 170, 180), (200, 200, 208), COLORS["A"], (246, 246, 250)],
+	"orange": [(70, 20, 8), COLORS["E"], (190, 80, 24), COLORS["O"], COLORS["Y"]],
+	"skin": [(90, 54, 38), COLORS["t"], (176, 120, 90), COLORS["T"], COLORS["u"]],
+	"bone": [(60, 54, 42), COLORS["X"], COLORS["z"], (204, 196, 166), COLORS["Z"]],
 }
+
+
+def swap(rows, mapping):
+	"""The same drawing in other colours: each character in mapping becomes its value."""
+	return ["".join(mapping.get(ch, ch) for ch in row) for row in rows]
 
 # ---------------------------------------------------------------------------
 # Torsos, 13 x 17, front to the right (same frame as Ronin's, so its joint offsets fit).
@@ -446,6 +469,139 @@ HEADS = {
 }
 
 # ---------------------------------------------------------------------------
+# The expansion's units: new drawings where nothing fits, the rest the drawings above in other colours.
+
+# A berserker: bare chest under a fur mantle, a leather kilt.
+TORSOS["Berserker"] = [
+	".....LLL.....",
+	"....LMMML....",
+	"....tTTTt....",
+	"...LMMLMMLL..",
+	"..LMMLLMMMML.",
+	".tTTuTTTTTTt.",
+	"tTTuTTTTtTTTt",
+	"tTuTTTTtTTTTt",
+	"tTTTTTTTTTTTt",
+	"tTTTtTTTTtTTt",
+	".tTTTTTTTTTt.",
+	".ttTTTTTTTtt.",
+	"..bnnNjNnnbb.",
+	"....bnNnnb...",
+	"....bnnNnnb..",
+	".....bnNnb...",
+	"......bbbb...",
+]
+# A skeleton: ribs and spine, with the gaps between them.
+TORSOS["Skeleton"] = [
+	".....XXX.....",
+	"....XzZzX....",
+	"....XzZzX....",
+	"...XZZZZZX...",
+	"..XZz.Z.zZX..",
+	".XZZZZZZZZZX.",
+	"XZz.zZZz.zZZX",
+	"XZZZZZZZZZZZX",
+	"X.zZz.Z.zZz.X",
+	"XZZZZZZZZZZZX",
+	".X.zZ.Z.Zz.X.",
+	"..XZZZZZZZX..",
+	"....XzZzX....",
+	".....XZX.....",
+	"....XZZZX....",
+	"...XZz.zZX...",
+	"....XXXXX....",
+]
+TORSOS["Pyromancer"] = swap(TORSOS["Mage"], {"v": "r", "V": "R", "i": "o", "g": "O", "G": "Y"})
+TORSOS["Stormcaller"] = swap(TORSOS["Mage"], {"v": "D", "V": "B", "i": "A", "g": "S", "G": "U"})
+TORSOS["Cryomancer"] = swap(TORSOS["Mage"], {"v": "K", "V": "I", "i": "J", "g": "A", "G": "J"})
+TORSOS["Necromancer"] = swap(TORSOS["Witch"], {"e": "P", "f": "p", "F": "P"})
+TORSOS["Druid"] = swap(TORSOS["Mage"], {"v": "f", "V": "F", "i": "e", "g": "N", "G": "j"})
+TORSOS["Archmage"] = swap(TORSOS["Mage"], {"v": "B", "V": "A", "i": "J"})
+TORSOS["Spellblade"] = swap(TORSOS["Knight"], {"r": "p", "R": "P", "o": "q"})
+TORSOS["Paladin"] = swap(TORSOS["Knight"], {"r": "B", "R": "A", "o": "J"})
+TORSOS["Halberdier"] = swap(TORSOS["Footman"], {"v": "r", "V": "R", "i": "Y"})
+TORSOS["Bombardier"] = swap(TORSOS["Crossbowman"], {"r": "E", "R": "O", "o": "Y"})
+TORSOS["Skirmisher"] = swap(TORSOS["Archer"], {"f": "b", "F": "n", "e": "N"})
+
+# A skull, eyes hollow.
+HEADS["Skeleton"] = [
+	".............",
+	".............",
+	"....XXXXX....",
+	"...XZZZZZX...",
+	"..XZZZZZZZX..",
+	"..XZZZZZZZZX.",
+	"..XZZZxxZZxX.",
+	"..XZZZxxZZZX.",
+	"..XzZZZZZZZZX",
+	"...XzZZZxZZX.",
+	"...XzZZZZZX..",
+	"....XZxZxZX..",
+	"....XZZZZZ...",
+	".....XXXX....",
+]
+# A deep black hood with purple lining, a bone-white face and green eyes.
+HEADS["Necromancer"] = [
+	"....kkkk.....",
+	"...kdddpk....",
+	"..kddpppdk...",
+	".kddpdddddk..",
+	".kdpddddddk..",
+	".kddkZZZZZk..",
+	".kdkZZeZZeZ..",
+	".kdkZZZZZZZ..",
+	".kddkzZZZZZ..",
+	".kddkzZxZxZ..",
+	".kddkkzZZZk..",
+	"..kdddkkkk...",
+	"...kddddk....",
+	".....tTt.....",
+]
+# A crown of leaves over long brown hair and beard.
+HEADS["Druid"] = [
+	".............",
+	"..e...e..e...",
+	"..eF.eFe.eF..",
+	"...FnNnNnFe..",
+	"...hhhhhhhh..",
+	"..hhhTTTTTt..",
+	"..hhhTTTxTTu.",
+	"..hhhTTTTTTTT",
+	"..hhhhTTTTTk.",
+	"..hhhhhhhhk..",
+	"...hhhhhhhk..",
+	"...hhhhhhh...",
+	"....hhhhh....",
+	".....tTt.....",
+]
+# A horned helm and a wild red beard.
+HEADS["Berserker"] = [
+	".Z.........Z.",
+	".zZ.......Zz.",
+	"..zZkkkkkZz..",
+	"...kdsmmlHk..",
+	"..kdsmmmlHHk.",
+	"..kkkkkkkkkkk",
+	"..EEETTTxTTu.",
+	"..EEETTTTTTTT",
+	"..EEEETTTTTk.",
+	"..EEEEEEEETk.",
+	"...EEEEEEEk..",
+	"...EEEEEEE...",
+	"....EEEEE....",
+	".....tTt.....",
+]
+HEADS["Pyromancer"] = swap(HEADS["Mage"], {"v": "r", "V": "R", "i": "o", "g": "O", "G": "Y", "a": "h"})
+HEADS["Stormcaller"] = swap(HEADS["Mage"], {"v": "D", "V": "B", "i": "A", "g": "S", "G": "U"})
+HEADS["Cryomancer"] = swap(HEADS["Mage"], {"v": "K", "V": "I", "i": "J", "g": "A", "G": "J"})
+HEADS["Archmage"] = swap(HEADS["Mage"], {"v": "B", "V": "A", "i": "J"})
+HEADS["Spellblade"] = swap(HEADS["Knight"], {"r": "p", "R": "P", "o": "q"})
+HEADS["Paladin"] = swap(HEADS["Knight"], {"r": "g", "R": "G", "o": "Y"})
+HEADS["Bombardier"] = swap(HEADS["Crossbowman"], {"W": "b", "w": "n"})
+HEADS["Skirmisher"] = swap(HEADS["Archer"], {"f": "b", "F": "n", "e": "N"})
+HEADS["Skirmisher B"] = swap(HEADS["Archer B"], {"f": "b", "F": "n", "e": "N"})
+
+# ---------------------------------------------------------------------------
 # Weapons, pointing right, hand at the hilt.
 
 # The hilt's grip is 3 wide, the guard at x 3, the blade from 4 to 22.
@@ -641,6 +797,19 @@ def main():
 		"King": ("King", ["King"], "purple", "red", "leather", "steel"),
 		"Mage": ("Mage", ["Mage"], "blue", "blue", "leather", None),
 		"Witch": ("Witch", ["Witch"], "black", "black", "leather", None),
+		"Pyromancer": ("Pyromancer", ["Pyromancer"], "red", "red", "leather", None),
+		"Stormcaller": ("Stormcaller", ["Stormcaller"], "grey", "grey", "leather", None),
+		"Cryomancer": ("Cryomancer", ["Cryomancer"], "ice", "ice", "leather", None),
+		"Necromancer": ("Necromancer", ["Necromancer"], "black", "black", "black", "bone"),
+		"Druid": ("Druid", ["Druid"], "green", "brown", "leather", None),
+		"Archmage": ("Archmage", ["Archmage"], "white", "white", "leather", None),
+		"Spellblade": ("Spellblade", ["Spellblade", "Knight B"], "steel", "steel", "steel", "steel"),
+		"Paladin": ("Paladin", ["Paladin", "Knight B"], "steel", "steel", "steel", "steel"),
+		"Halberdier": ("Halberdier", ["Footman", "Footman B"], "mail", "red", "leather", "leather"),
+		"Berserker": ("Berserker", ["Berserker"], "skin", "brown", "leather", None),
+		"Bombardier": ("Bombardier", ["Bombardier"], "gambeson", "brown", "leather", "leather"),
+		"Skirmisher": ("Skirmisher", ["Skirmisher", "Skirmisher B"], "leather", "brown", "leather", None),
+		"Skeleton": ("Skeleton", ["Skeleton"], "bone", "bone", "bone", "bone"),
 	}
 	for unit, (torso, heads, armRamp, legRamp, footRamp, handRamp) in units.items():
 		base = f"Actors/{unit}/"
