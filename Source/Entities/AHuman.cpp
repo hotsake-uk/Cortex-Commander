@@ -3638,11 +3638,12 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 	}
 	// How fast it may come down with so much height left: as fast as the jet can still bring down to a safe touchdown (5 m/s) by the floor.
 	// Up to then it falls, the jet out: the bursts all the way down were fuel, time and risk for nothing.
-	// On a triple-clicked order (StandingOrder::Direct) it flies flat out, as the Battle Behavior settings say (as tuned, half as fast again
-	// up, across and down, and down onto the floor harder), for the time saved, though it comes in less under control.
-	const bool direct = m_StandingOrder.Direct;
-	const float rush = direct ? g_SettingsMan.DirectOrders().FlightSpeed : 1.0F;
-	const float safeTouchdown = (direct ? g_SettingsMan.DirectOrders().Touchdown : 5.0F) * ppm;
+	// On a double- or triple-clicked order (StandingOrder::Direct) it flies flat out, as the Battle Behavior settings say in the order's
+	// share (triple-clicked as tuned, half as fast again up, across and down, and down onto the floor harder), for the time saved, though
+	// it comes in less under control.
+	const float direct = m_StandingOrder.Direct;
+	const float rush = 1.0F + (g_SettingsMan.DirectOrders().FlightSpeed - 1.0F) * direct;
+	const float safeTouchdown = (5.0F + (g_SettingsMan.DirectOrders().Touchdown - 5.0F) * direct) * ppm;
 	auto allowedFall = [&](float height) {
 		// (On seven tenths of the braking reckoned: the jet's push falls with the tank, and a unit dropped onto a narrow ledge at the full
 		// reckoning met it too fast and bounced off.)

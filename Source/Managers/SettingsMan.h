@@ -250,6 +250,11 @@ namespace RTE {
 		/// rather than stopping when their own definition says. 0, the default, is every wound as it is defined.
 		float BleedOutChance() const { return m_BleedOutChance; }
 
+		/// Gets how hard weapon fire (bullets, shrapnel and the other particles that hit units) strikes terrain and buildings, as a multiple
+		/// of the force it would: the impulse it meets each terrain pixel with is scaled by this, so it cuts stronger materials and slows less
+		/// going through them. 1, the default, is every weapon as it is defined.
+		float WeaponTerrainDamage() const { return m_WeaponTerrainDamage; }
+
 		/// Gets which digger those units are handed: 0 Light, 1 Medium, 2 Heavy, 3 a random one of the three.
 		int AISpawnDiggerType() const { return m_AISpawnDiggerType; }
 
@@ -262,7 +267,7 @@ namespace RTE {
 		/// Whether AI units wait at a take-off for the fuel the flight needs (on, as designed), or go with what is in the tank.
 		bool AIWaitsForFuel() const { return m_AIWaitForFuel; }
 
-		/// How units behave on a direct order (a triple-clicked RTS order, Actor::StandingOrder::Direct): the "Battle Behavior" settings. Each
+		/// How units behave on a direct order (a double- or triple-clicked RTS order, Actor::StandingOrder::Direct): the "Battle Behavior" settings. Each
 		/// member's default is the normal tuning, so DirectOrderTuning() is the reset.
 		struct DirectOrderTuning {
 			float Caution = 0.1F; //!< The most route caution they have (PathAgent::Caution): 1 is a normal unit's, lower shies less from hard flights and long drops.
@@ -275,6 +280,7 @@ namespace RTE {
 			float LineWeight = 0.1F; //!< On a dig-to, what each node off the straight line costs them, in nodes walked (PathFinder::LineCost).
 			bool IgnoreEnemies = true; //!< Whether their routes take no notice of enemies on the way.
 			bool KeepPace = false; //!< Whether a group sent together is still kept to its slowest walker's pace (s_KeepPace on the command row).
+			float DoubleClickShare = 0.5F; //!< How much of this tuning a double-clicked order gets, 0 to 1 (a triple-clicked one gets all of it, a plain click none).
 		};
 
 		/// Gets the direct order tuning, to read or change ("Battle Behavior" settings).
@@ -525,6 +531,8 @@ namespace RTE {
 		void SetAISpawnDiggerChance(float percent) { m_AISpawnDiggerChance = std::clamp(percent, 0.0F, 100.0F); }
 		/// Sets the percentage of wounds that keep bleeding; see BleedOutChance.
 		void SetBleedOutChance(float percent) { m_BleedOutChance = std::clamp(percent, 0.0F, 100.0F); }
+		/// Sets how hard weapon fire strikes terrain; see WeaponTerrainDamage.
+		void SetWeaponTerrainDamage(float scale) { m_WeaponTerrainDamage = std::clamp(scale, 0.1F, 20.0F); }
 		/// Sets which digger those units are handed; see AISpawnDiggerType.
 		void SetAISpawnDiggerType(int type) { m_AISpawnDiggerType = std::clamp(type, 0, 3); }
 
@@ -803,6 +811,7 @@ namespace RTE {
 		float m_AIRecklessness; //!< How reckless AI units are on the move, 0 to 1 (see AIRecklessness).
 		float m_AISpawnDiggerChance; //!< Percentage of units handed a digger as they come into the scene, 0 to 100 (see AISpawnDiggerChance).
 		float m_BleedOutChance; //!< Percentage of wounds that keep bleeding rather than stopping, 0 to 100 (see BleedOutChance).
+		float m_WeaponTerrainDamage; //!< Multiple of the force weapon fire strikes terrain with, 0.1 to 20 (see WeaponTerrainDamage).
 		int m_AISpawnDiggerType; //!< Which digger they're handed: 0 Light, 1 Medium, 2 Heavy, 3 random (see AISpawnDiggerType).
 		bool m_AISteadyBeforeJet; //!< Whether AI units steady themselves before they jet (see AISteadiesBeforeJet).
 		bool m_AIWaitForFuel; //!< Whether AI units wait for fuel before they jet (see AIWaitsForFuel).
