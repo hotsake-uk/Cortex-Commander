@@ -1680,20 +1680,21 @@ namespace SandboxDetail {
 		return units;
 	}
 
-	std::vector<Actor*> EveryoneOut(Actor* vehicle) {
+	std::vector<Actor*> EveryoneOut(Actor* vehicle, bool keepDriver) {
 		AVehicle* car = dynamic_cast<AVehicle*>(vehicle);
 		ACShip* ship = car ? nullptr : dynamic_cast<ACShip*>(vehicle);
 		if (!car && !ship) {
 			return {};
 		}
-		// Told to get out, they get out: staying in was until told otherwise, and so was being commanded as one unit (VC-1).
-		if (car) {
+		// Told to get out, they get out: staying in was until told otherwise, and so was being commanded as one unit (VC-1). With the driver
+		// kept in, it is still a vehicle under orders, with only its passengers let out.
+		if (car && !keepDriver) {
 			car->SetCrewStaysIn(false);
 			car->SetCommanded(false);
 		}
 		std::vector<Actor*> out;
 		const int seats = car ? car->GetSeatCount() : ship->GetSeatCount();
-		for (int seat = 0; seat < seats; ++seat) {
+		for (int seat = keepDriver ? 1 : 0; seat < seats; ++seat) {
 			if (Actor* unit = car ? car->EjectSeat(seat, false) : ship->EjectSeat(seat, false)) {
 				out.push_back(unit);
 			}
@@ -1701,7 +1702,7 @@ namespace SandboxDetail {
 		if (out.empty()) {
 			return out;
 		}
-		// A squad behind whoever got out first (the driver, if there was one): the rest follow it as Guard followers do.
+		// A squad behind whoever got out first (the driver, if there was one, else the first passenger): the rest follow it as Guard followers do.
 		Actor* leader = out.front();
 		if (!leader->IsPlayerControlled()) {
 			HoldUnit(leader);
@@ -2450,8 +2451,9 @@ namespace SandboxDetail {
 					MarkOrder(car->GetPos(), c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)]);
 				}
 			}
-		} else if (choice == 42) {
-			// Everyone out of the selected vehicles and flying ships, each crew a squad behind its driver.
+		} else if (choice == 42 || choice == 43) {
+			// Everyone out of the selected vehicles and flying ships, each crew a squad behind its driver (42); or the passengers only, a squad
+			// of their own, the driver or pilot staying at the controls (43).
 			std::vector<Actor*> vehicles;
 			for (const UnitRef& ref: s_Selected) {
 				if (Actor* unit = GetRef(ref); dynamic_cast<AVehicle*>(unit) || dynamic_cast<ACShip*>(unit)) {
@@ -2459,7 +2461,7 @@ namespace SandboxDetail {
 				}
 			}
 			for (Actor* vehicle: vehicles) {
-				EveryoneOut(vehicle);
+				EveryoneOut(vehicle, choice == 43);
 			}
 		} else if (choice == 20) {
 			// The plans of the units picked, cleared (they carry on with the step they're on).

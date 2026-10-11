@@ -2490,8 +2490,9 @@ namespace SandboxDetail {
 	/// could have stand guard by it (Command mode's Get in).
 	void GetInVehicle(const std::vector<Actor*>& units, Actor* vehicle);
 	/// Lets everyone out of a vehicle or flying ship: a squad, the rest following whoever got out first (the driver). A vehicle is no longer
-	/// commanded as one unit (AVehicle::IsCommanded). @return Those who got out.
-	std::vector<Actor*> EveryoneOut(Actor* vehicle);
+	/// commanded as one unit (AVehicle::IsCommanded). With keepDriver, only the passengers get out, a squad behind the first of them, and
+	/// the driver or pilot stays at the controls, still under orders. @return Those who got out.
+	std::vector<Actor*> EveryoneOut(Actor* vehicle, bool keepDriver = false);
 	/// The units of a list that aren't vehicles or flying ships: for orders only those on foot can carry out (breach, build).
 	std::vector<Actor*> OnFoot(std::vector<Actor*> units);
 	/// When a commanded vehicle (AVehicle::IsCommanded) has given up on the way it was sent (VC-2): unless it was sent to attack or its crew

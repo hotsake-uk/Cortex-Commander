@@ -188,6 +188,9 @@ namespace RTE {
 			return true;
 		}
 
+		/// Gets how far the autopilot steers off the place it is flying to just now, to keep clear of something: none here (see ACShip).
+		virtual Vector AutopilotSteerOffset() const { return Vector(); }
+
 		/// Protected member variable and method declarations
 	protected:
 		// Member variables

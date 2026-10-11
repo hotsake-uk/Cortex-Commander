@@ -2888,7 +2888,7 @@ namespace SandboxDetail {
 			// The selected vehicles' crews: kept in their seats, or let out. (Stay in shows what they have: lit when they all stay in.)
 			const int stayIn = SelectedStayIn();
 			menu.Heading("Vehicles", Kind::Command);
-			menu.Choices(VehicleCrew, {"Stay in vehicle", "Free to get out", "Everyone out"}, stayIn == 1 ? 0 : (stayIn == 0 ? 1 : -1));
+			menu.Choices(VehicleCrew, {"Stay in vehicle", "Free to get out", "Everyone out", "Passengers out"}, stayIn == 1 ? 0 : (stayIn == 0 ? 1 : -1));
 		}
 		menu.Heading("AI mode", Kind::State);
 		menu.Choices(AIMode, {"Sentry", "Hunt brains", "Dig for gold", "Rally point", "Do nothing"}, SelectedAIMode(), 3);
@@ -2966,7 +2966,7 @@ namespace SandboxDetail {
 					Stroke stroke;
 					stroke.Kind = Tool::OrderSelected;
 					stroke.Position = s_RingScenePoint;
-					stroke.Count = 140 + std::clamp(cell.Value, 0, 2);
+					stroke.Count = 140 + std::clamp(cell.Value, 0, 3);
 					s_Queue.push_back(stroke);
 					g_GUISound.SlicePickedSound()->Play();
 					return false;
