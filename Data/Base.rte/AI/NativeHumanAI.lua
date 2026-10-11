@@ -240,6 +240,9 @@ function NativeHumanAI:Update(Owner)
 	-- A take-cover order (the sandbox's Take cover): into cover and down there (see SharedBehaviors.CoverOrderUpdate).
 	SharedBehaviors.CoverOrderUpdate(self, Owner);
 
+	-- A squad following the unit the player plays: the enemy the player is shooting at (see SharedBehaviors.SquadTargetUpdate).
+	SharedBehaviors.SquadTargetUpdate(self, Owner);
+
 	-- Running the objective (carrying a flag home): nothing else it was doing is kept (see SharedBehaviors.OnObjective).
 	local objective = SharedBehaviors.OnObjective(Owner);
 	if objective then

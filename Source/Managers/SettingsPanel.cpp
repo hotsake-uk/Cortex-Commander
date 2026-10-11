@@ -1263,6 +1263,9 @@ void DebugMan::SettingsGUI() {
 		Tip("An enemy team with an AI commander earns points as you do (kills, objectives) and spends them on the same reinforcement cards at the same prices, landing them by its base. How well it picks follows the commanders' difficulty on the battle panel. Off: it sends only the mode's own waves.");
 		Toggle("Enemy uses powers", g_SettingsMan.AIEnemyUsesPowers(), [](bool on) { g_SettingsMan.SetAIEnemyUsesPowers(on); });
 		Tip("An enemy team with an AI commander uses the same commander powers as you, on the same cooldowns: strikes on your units bunched up, supplies and rallies for its own. Its artillery and orbital strikes are marked where they'll land a few seconds before they hit, so you can scatter. Off: it uses none.");
+		Heading("Playing a unit (Battle Command)");
+		Toggle("Squad follows you", g_SettingsMan.AISquadFollowsYou(), [](bool on) { g_SettingsMan.SetAISquadFollowsYou(on); });
+		Tip("Take control of one of your units with others selected and they follow it as its squad, fighting as they go; while you fire, they go for the enemy you're aiming at. T: hold where they are, or follow again. X: regroup on you. Let go of the unit and they hold where they stand. Off: they stay where they were.");
 		{
 			float spawnDiggers = g_SettingsMan.AISpawnDiggerChance();
 			if (Slider("Units spawn with a digger", &spawnDiggers, 0.0F, 100.0F, "%.0f%%")) {

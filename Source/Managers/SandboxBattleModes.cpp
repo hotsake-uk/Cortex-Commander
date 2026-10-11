@@ -1031,6 +1031,9 @@ namespace SandboxDetail {
 					nearest->Say("FlagTaken");
 					UnitSays(flag.Pos, side, 500.0F, nullptr, "FlagStolen");
 					Say(SideName(nearest->GetTeam()) + " has " + SideName(side) + "'s flag");
+					if (side == CommandedTeam()) {
+						AddAlert("flag", "Your flag has been taken!", flag.Pos, IM_COL32(239, 90, 80, 255));
+					}
 				}
 			}
 		}
@@ -2987,6 +2990,9 @@ namespace SandboxDetail {
 							return;
 						}
 						Say(SideName(killer) + " got " + SideName(side) + "'s VIP");
+						if (side == CommandedTeam()) {
+							AddAlert("vip", "Your VIP is down", vip.Pos, IM_COL32(239, 90, 80, 255));
+						}
 					} else if (!vip.Has && now >= vip.NextAt) {
 						PickVip(side, fighters);
 					}
@@ -3643,6 +3649,7 @@ namespace SandboxDetail {
 			s_RushChosen.fill(0);
 			s_Commanders = {};
 			ForgetReinforcements();
+			ForgetSpawnOrderUnits();
 			if (mode.Start) {
 				mode.Start();
 			}
@@ -3697,15 +3704,24 @@ namespace SandboxDetail {
 
 	void ModeUnitsMade(int side, const std::vector<Actor*>& wave) {
 		if (BattlePlayerCommands(side)) {
-			// The player's team: on hold ground, standing where it came in, with no job from the mode. Nothing else (flag runs, hunts, defence
-			// posts, rushes) is set up for it, and the stuck-unit respawn leaves it be.
+			// The player's team: on hold ground, standing where it came in (or, with a rally point set, making for it and holding there), with
+			// no job from the mode. Nothing else (flag runs, hunts, defence posts, rushes) is set up for it, and the stuck-unit respawn leaves
+			// it be.
+			const bool rally = side >= 0 && side < c_Sides && s_RallySet[side];
 			for (Actor* unit: wave) {
 				if (unit && !dynamic_cast<const ACraft*>(unit)) {
 					unit->SetOrderAttack(false);
 					unit->SetAIMode(Actor::AIMODE_SENTRY);
 					unit->SetMovementRule(Actor::MOVE_HOLD_GROUND);
+					if (rally) {
+						unit->ClearAIWaypoints();
+						unit->AddAISceneWaypoint(s_RallyPoints[side]);
+						unit->SetAIMode(Actor::AIMODE_GOTO);
+					}
 				}
 			}
+			// Then, once in, the team's spawn order (SpawnOrders.cpp), if it has one.
+			SpawnOrderUnitsMade(side, wave);
 			return;
 		}
 		// Route variety: that share of the units each get a taste in routes of their own; the rest take the shortest way.
@@ -3828,6 +3844,7 @@ namespace SandboxDetail {
 			mode.Update(aiPaused);
 		}
 		UpdateCommanders(aiPaused);
+		UpdateSpawnOrders(aiPaused);
 		UpdateStuck(aiPaused);
 		UpdateRushers(aiPaused);
 		if (!aiPaused) {
@@ -3846,6 +3863,9 @@ namespace SandboxDetail {
 			s_ScriptBaseDrafts[side].clear();
 			s_ModeSetup.Goals[side].clear();
 			s_ScriptGoalDrafts[side].clear();
+			// (Spawn orders are places on that scene too.)
+			s_ModeSetup.SpawnOrders[side] = SpawnOrder();
+			s_ModeSetup.ZoneSpawnOrders[side].clear();
 		}
 		s_ModeSetup.FlagSpots.clear();
 		s_ModeSetup.FlagByZones = false;
@@ -4074,6 +4094,9 @@ namespace SandboxDetail {
 					ImGui::SameLine();
 					if (ToolUI::Button("Take back the last##base")) {
 						zones.pop_back();
+						if (setup.ZoneSpawnOrders[side].size() > zones.size()) {
+							setup.ZoneSpawnOrders[side].resize(zones.size());
+						}
 						s_BattleSetup[side].SpawnZones = zones;
 						SendBattleSettings(side);
 						changed = true;
@@ -4081,6 +4104,7 @@ namespace SandboxDetail {
 					ImGui::SameLine();
 					if (ToolUI::Button("Clear##base")) {
 						zones.clear();
+						setup.ZoneSpawnOrders[side].clear();
 						s_BattleSetup[side].SpawnZones.clear();
 						SendBattleSettings(side);
 						changed = true;
@@ -4820,6 +4844,10 @@ namespace SandboxDetail {
 						return;
 					}
 					setup.SpawnZones[ref.Side].erase(setup.SpawnZones[ref.Side].begin() + ref.Index);
+					// (And its spawn order, so the zones after it keep theirs.)
+					if (ref.Index < static_cast<int>(setup.ZoneSpawnOrders[ref.Side].size())) {
+						setup.ZoneSpawnOrders[ref.Side].erase(setup.ZoneSpawnOrders[ref.Side].begin() + ref.Index);
+					}
 					SpawnZonesChanged(ref.Side);
 					break;
 				case EditKind::ModeZone:

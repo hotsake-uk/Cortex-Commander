@@ -756,6 +756,17 @@ void Sandbox::DrawGUI() {
 		if (!g_DebugMan.IsPhotoModeHidingHUD()) {
 			DrawBattleReport();
 		}
+		// (Also while you play a unit: the enemy's strikes coming in, and the squad following you with its keys.)
+		DrawEnemyStrikes();
+		DrawSquad();
+		DrawAlerts();
+		if (!ImGui::GetIO().WantTextInput && !ImGui::GetIO().KeyCtrl && !ImGui::GetIO().KeyAlt) {
+			if (s_Possessed) {
+				SquadKeys();
+			} else if (ImGui::IsKeyPressed(ImGuiKey_Space, false)) {
+				JumpToLatestAlert();
+			}
+		}
 	}
 	if (!s_Open && !hiddenButAbove) {
 		// The selection's arrows come off while the window is away (they stayed on the units of a game with the window shut, till it was
@@ -776,6 +787,7 @@ void Sandbox::DrawGUI() {
 	UpdateFreeCamera();
 	if (InGame()) {
 		DrawRallyPoints();
+		DrawSpawnOrders();
 		DrawBattleMarks();
 		if (IsBattleCommand()) {
 			DrawLandingSpot();
@@ -783,7 +795,6 @@ void Sandbox::DrawGUI() {
 			DrawPowerTarget();
 			DrawVeterans();
 			DrawMorale();
-			DrawEnemyStrikes();
 		}
 	}
 
@@ -934,6 +945,11 @@ void Sandbox::DrawGUI() {
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 				LandingSpotClicked(position);
 			}
+		} else if (tool.Kind == Tool::BattleRally) {
+			// Battle Command: where your new units make for.
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+				RallySpotClicked(position);
+			}
 		} else if (tool.Kind == Tool::BattleDropLine) {
 			// Drag along where the team's ships are to come in.
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
@@ -1083,6 +1099,10 @@ void Sandbox::DrawGUI() {
 			Vector start = g_CameraMan.GetOffset(0) + Vector(s_DragStart.x - ViewOrigin().x, s_DragStart.y - ViewOrigin().y) * ScenePixelsPerWindowPixel();
 			g_SceneMan.WrapPosition(start);
 			commandAt = CommandTargetAt(start).What;
+			// (Setting a spawn order, with none selected: as a move, so a double click drags its risk.)
+			if (s_SpawnOrderArmed && commandAt == CommandTarget::Select) {
+				commandAt = CommandTarget::Move;
+			}
 		}
 		const bool commandMove = s_CommandMode == CommandMode::Command && commandAt == CommandTarget::Move;
 		bool facingMove = (s_CommandMode == CommandMode::Move || s_CommandMode == CommandMode::AttackMove || commandMove) && io.KeyAlt && commandTool;
@@ -1187,7 +1207,10 @@ void Sandbox::DrawGUI() {
 					stroke.OrderMode = static_cast<int>(commandMove && stroke.Count >= 30 ? CommandMode::Move : s_CommandMode);
 					BackToCommandAfterOrder(io.KeyShift);
 				}
-				s_Queue.push_back(stroke);
+				// (Setting a spawn order, the order placed is that, not one for the selection.)
+				if (!TakeSpawnOrder(stroke)) {
+					s_Queue.push_back(stroke);
+				}
 			}
 		}
 	}

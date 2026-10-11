@@ -859,6 +859,9 @@
     <ClCompile Include="Source\Managers\CommanderBar.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Managers\SpawnOrders.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Managers\Reinforcements.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
@@ -878,6 +881,12 @@
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\BattleEnemy.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\BattleSquad.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\BattleAlerts.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\Sandbox.cpp">
