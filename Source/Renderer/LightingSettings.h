@@ -216,6 +216,7 @@ namespace RTE {
 		bool CustomWeather = true; //!< Weather types past the built-in four (data and mods' Weather presets) can be chosen. Off: they fall clear and the menu lists the built-in four.
 		float WeatherGlow = 1.0F; //!< How much light glowing weather (acid rain, embers) gives off, 0 to 2. Built-in weather doesn't glow.
 		float WeatherIntensity = 0.6F; //!< How heavy the rain or snow is, 0 to 1.
+		float WeatherSpeed = 1.0F; //!< How fast the weather's drops move against their preset's own speeds: fall, wind drift, sway, swirl and flicker. 1 is as the preset has it.
 		float Wind = 60.0F; //!< Horizontal wind speed for precipitation, pixels per second. Negative blows left.
 
 		float TimeOfDay = 6.323529F; //!< Hours, 0 to 24. Tints and dims the sky light through dawn, day, dusk and night. Noon reproduces the classic look.
