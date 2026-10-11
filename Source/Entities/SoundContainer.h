@@ -141,6 +141,22 @@ namespace RTE {
 		/// @param newBusRoute The new bus for this sound to route to.
 		void SetBusRouting(BusRouting newBusRoute) { m_BusRouting = newBusRoute; }
 
+		/// Gets the sound mixer category this sound plays in. MIX_AUTO means it's untagged and plays in the World & Other category.
+		/// @return The SoundMixCategory of this SoundContainer.
+		AudioMan::SoundMixCategory GetMixCategory() const { return m_MixCategory; }
+
+		/// Sets the sound mixer category this sound plays in. Does not affect currently playing sounds.
+		/// @param newMixCategory The new SoundMixCategory for this SoundContainer.
+		void SetMixCategory(AudioMan::SoundMixCategory newMixCategory) { m_MixCategory = (newMixCategory >= AudioMan::MIX_AUTO && newMixCategory < AudioMan::MIX_CATEGORY_COUNT) ? newMixCategory : AudioMan::MIX_AUTO; }
+
+		/// Sets the sound mixer category only if one hasn't been set yet, e.g. by an explicit MixCategory INI property. Used to tag sounds by the slot they're loaded into.
+		/// @param defaultMixCategory The SoundMixCategory to use if this SoundContainer doesn't have one yet.
+		void SetDefaultMixCategory(AudioMan::SoundMixCategory defaultMixCategory) {
+			if (m_MixCategory == AudioMan::MIX_AUTO) {
+				m_MixCategory = defaultMixCategory;
+			}
+		}
+
 		/// Gets whether the sounds in this SoundContainer should be considered immobile, i.e. always play at the listener's position.
 		/// @return Whether or not the sounds in this SoundContainer are immobile.
 		bool IsImmobile() const { return m_Immobile; }
@@ -341,6 +357,7 @@ namespace RTE {
 		SoundOverlapMode m_SoundOverlapMode; //!< The SoundOverlapMode for this SoundContainer, used to determine how it should handle overlapping play calls.
 
 		BusRouting m_BusRouting; //!< What bus this sound routes to.
+		AudioMan::SoundMixCategory m_MixCategory; //!< What sound mixer category this sound plays in.
 
 		bool m_Immobile; //!< Whether this SoundContainer's sounds should be treated as immobile, i.e. not affected by 3D sound effects.
 		float m_AttenuationStartDistance; //!< The distance away from the AudioSystem listener to start attenuating this sound. Attenuation follows FMOD 3D Inverse roll-off model.

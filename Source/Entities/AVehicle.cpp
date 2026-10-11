@@ -380,6 +380,7 @@ int AVehicle::ReadProperty(const std::string_view& propName, Reader& reader) {
 		delete m_EngineSound;
 		m_EngineSound = new SoundContainer;
 		reader >> m_EngineSound;
+		m_EngineSound->SetDefaultMixCategory(AudioMan::MIX_ENGINES);
 	});
 	MatchProperty("Exhaust", { SetExhaust(dynamic_cast<AEmitter*>(g_PresetMan.ReadReflectedPreset(reader))); });
 	MatchForwards("AddSeat") MatchProperty("AddGunnerSeat", {

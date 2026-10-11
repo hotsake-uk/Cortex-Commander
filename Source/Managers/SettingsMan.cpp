@@ -1,6 +1,7 @@
 #include "ControlLink.h"
 #include "Actor.h"
 #include "SettingsMan.h"
+#include "SDL3/SDL_keyboard.h"
 #include "Weather.h"
 #include <algorithm>
 #include <cctype>
@@ -132,6 +133,7 @@ void SettingsMan::Clear() {
 	m_AlwaysDisplayUnheldItemsInStrategicMode = true;
 	m_SubPieMenuHoverOpenDelay = 1000;
 	m_ClassicPieWheel = false;
+	m_PauseAIKey = "Ctrl+P";
 	m_EndlessMetaGameMode = false;
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
@@ -173,6 +175,7 @@ void SettingsMan::Clear() {
 	m_SandboxStrokeLog = false;
 	m_SandboxSpotReach = false;
 	m_SandboxGroupBadges = true;
+	m_CommanderBarKey = "F11";
 	m_SandboxOrderGlyphs = 1;
 	m_SandboxSpawnStats = 1;
 	m_SandboxAttackPings = true;
@@ -288,6 +291,29 @@ void SettingsMan::UpdateSettingsFile() const {
 	if (file) {
 		m_LastWrittenSettings = std::move(text);
 	}
+}
+
+std::string SettingsMan::KeyComboName(int scancode, unsigned int modifiers) {
+	SDL_Scancode key = static_cast<SDL_Scancode>(scancode);
+	if (key == SDL_SCANCODE_UNKNOWN || (key >= SDL_SCANCODE_LCTRL && key <= SDL_SCANCODE_RGUI)) {
+		return std::string();
+	}
+	std::string name;
+	if (modifiers & SDL_KMOD_CTRL) {
+		name += "Ctrl+";
+	}
+	if (modifiers & SDL_KMOD_ALT) {
+		name += "Alt+";
+	}
+	if (modifiers & SDL_KMOD_SHIFT) {
+		name += "Shift+";
+	}
+	return name + SDL_GetScancodeName(key);
+}
+
+bool SettingsMan::IsPauseAIKey(int scancode, unsigned int modifiers) const {
+	// The GUI (Windows) key is left out of the name, so a combo held with it isn't this key.
+	return !m_PauseAIKey.empty() && !(modifiers & SDL_KMOD_GUI) && KeyComboName(scancode, modifiers) == m_PauseAIKey;
 }
 
 void SettingsMan::SaveSettingsIfChanged() const {
@@ -461,6 +487,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CustomWeather", { g_PostProcessMan.GetLightingSettings().CustomWeather = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WeatherGlow", { g_PostProcessMan.GetLightingSettings().WeatherGlow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WeatherIntensity", { g_PostProcessMan.GetLightingSettings().WeatherIntensity = std::stof(reader.ReadPropValue()); });
+	MatchProperty("WeatherSpeed", { g_PostProcessMan.GetLightingSettings().WeatherSpeed = std::stof(reader.ReadPropValue()); });
 	MatchProperty("Wind", { g_PostProcessMan.GetLightingSettings().Wind = std::stof(reader.ReadPropValue()); });
 	MatchProperty("TimeOfDay", { g_PostProcessMan.GetLightingSettings().TimeOfDay = std::stof(reader.ReadPropValue()); });
 	MatchProperty("DayLengthMinutes", { g_PostProcessMan.GetLightingSettings().DayLengthMinutes = std::stof(reader.ReadPropValue()); });
@@ -685,6 +712,14 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SoundVolume", { g_AudioMan.SetSoundsVolume(std::stof(reader.ReadPropValue()) / 100.0F); });
 	MatchProperty("MuteSounds", { reader >> g_AudioMan.m_MuteSounds; });
 	MatchProperty("MuteAudioOnFocusLoss", { reader >> g_AudioMan.m_MuteAudioOnFocusLoss; });
+	MatchProperty("SoundMixWeaponsVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_WEAPONS, std::stof(reader.ReadPropValue()) / 100.0F); });
+	MatchProperty("SoundMixExplosionsVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_EXPLOSIONS, std::stof(reader.ReadPropValue()) / 100.0F); });
+	MatchProperty("SoundMixImpactsVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_IMPACTS, std::stof(reader.ReadPropValue()) / 100.0F); });
+	MatchProperty("SoundMixFootstepsVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_FOOTSTEPS, std::stof(reader.ReadPropValue()) / 100.0F); });
+	MatchProperty("SoundMixVoicesVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_VOICES, std::stof(reader.ReadPropValue()) / 100.0F); });
+	MatchProperty("SoundMixEnginesVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_ENGINES, std::stof(reader.ReadPropValue()) / 100.0F); });
+	MatchProperty("SoundMixWorldVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_WORLD, std::stof(reader.ReadPropValue()) / 100.0F); });
+	MatchProperty("SoundMixUIVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_UI, std::stof(reader.ReadPropValue()) / 100.0F); });
 	MatchProperty("SoundPanningEffectStrength", {
 		reader >> g_AudioMan.m_SoundPanningEffectStrength;
 
@@ -704,6 +739,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AlwaysDisplayUnheldItemsInStrategicMode", { reader >> m_AlwaysDisplayUnheldItemsInStrategicMode; });
 	MatchProperty("SubPieMenuHoverOpenDelay", { reader >> m_SubPieMenuHoverOpenDelay; });
 	MatchProperty("ClassicPieWheel", { reader >> m_ClassicPieWheel; });
+	MatchProperty("PauseAIKey", { m_PauseAIKey = reader.ReadPropValue(); });
 	MatchProperty("EndlessMetaGameMode", { reader >> m_EndlessMetaGameMode; });
 	MatchProperty("EndlessMode", { reader >> m_EndlessMetaGameMode; }); // Legacy name, kept for old Settings.ini files.
 	MatchProperty("EnableCrabBombs", { reader >> m_EnableCrabBombs; });
@@ -800,6 +836,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SandboxStrokeLog", { reader >> m_SandboxStrokeLog; });
 	MatchProperty("SandboxSpotReach", { reader >> m_SandboxSpotReach; });
 	MatchProperty("SandboxGroupBadges", { reader >> m_SandboxGroupBadges; });
+	MatchProperty("CommanderBarKey", { m_CommanderBarKey = reader.ReadPropValue(); });
 	MatchProperty("SandboxOrderGlyphs", { int which = 1; reader >> which; SetSandboxOrderGlyphs(which); });
 	MatchProperty("SandboxSpawnStats", { int which = 1; reader >> which; SetSandboxSpawnStats(which); });
 	MatchProperty("SandboxAttackPings", { reader >> m_SandboxAttackPings; });
@@ -936,6 +973,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("CustomWeather", lighting.CustomWeather);
 	writer.NewPropertyWithValue("WeatherGlow", lighting.WeatherGlow);
 	writer.NewPropertyWithValue("WeatherIntensity", lighting.WeatherIntensity);
+	writer.NewPropertyWithValue("WeatherSpeed", lighting.WeatherSpeed);
 	writer.NewPropertyWithValue("Wind", lighting.Wind);
 	writer.NewPropertyWithValue("TimeOfDay", lighting.TimeOfDay);
 	writer.NewPropertyWithValue("DayLengthMinutes", lighting.DayLengthMinutes);
@@ -1270,6 +1308,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("ShowCPUAimReticles", m_ShowCPUAimReticles);
 	writer.NewPropertyWithValue("ShowAlarmExclamation", m_ShowAlarmExclamation);
 	writer.NewPropertyWithValue("ClassicPieWheel", m_ClassicPieWheel);
+	writer.NewPropertyWithValue("PauseAIKey", m_PauseAIKey);
 	writer.NewPropertyWithValue("SmoothHUDText", TextOverlay::IsEnabled());
 	writer.NewPropertyWithValue("FrameCap", g_WindowMan.GetFrameCap());
 	writer.NewPropertyWithValue("UnitSpeech", UnitSpeech::IsEnabled());
@@ -1341,6 +1380,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 		writer.NewPropertyWithValue("SmartBuyMenuNavigation", m_EnableSmartBuyMenuNavigation);
 		writer.NewPropertyWithValue("AutomaticGoldDeposit", m_AutomaticGoldDeposit);
 		writer.NewPropertyWithValue("SandboxGroupBadges", m_SandboxGroupBadges);
+		writer.NewPropertyWithValue("CommanderBarKey", m_CommanderBarKey);
 		writer.NewPropertyWithValue("SandboxOrderGlyphs", m_SandboxOrderGlyphs);
 		writer.NewPropertyWithValue("SandboxSpawnStats", m_SandboxSpawnStats);
 		writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
@@ -1498,6 +1538,9 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("SoundVolume", g_AudioMan.m_SoundsVolume * 100);
 	writer.NewPropertyWithValue("MuteSounds", g_AudioMan.m_MuteSounds);
 	writer.NewPropertyWithValue("MuteAudioOnFocusLoss", g_AudioMan.m_MuteAudioOnFocusLoss);
+	for (int category = 0; category < AudioMan::MIX_CATEGORY_COUNT; ++category) {
+		writer.NewPropertyWithValue("SoundMix" + AudioMan::c_SoundMixCategoryNames[category] + "Volume", g_AudioMan.m_SoundMixVolumes[category] * 100);
+	}
 	writer.NewPropertyWithValue("SoundPanningEffectStrength", g_AudioMan.m_SoundPanningEffectStrength);
 
 	//////////////////////////////////////////////////
@@ -1520,6 +1563,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("EndlessMetaGameMode", m_EndlessMetaGameMode);
 	writer.NewPropertyWithValue("EnableCrabBombs", m_EnableCrabBombs);
 	writer.NewPropertyWithValue("SandboxGroupBadges", m_SandboxGroupBadges);
+	writer.NewPropertyWithValue("CommanderBarKey", m_CommanderBarKey);
 	writer.NewPropertyWithValue("SandboxOrderGlyphs", m_SandboxOrderGlyphs);
 	writer.NewPropertyWithValue("SandboxSpawnStats", m_SandboxSpawnStats);
 	writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
