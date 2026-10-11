@@ -2206,6 +2206,12 @@ void AVehicle::Update() {
 		GibThis();
 		return;
 	}
+	// Killed rather than blown apart (its health run out before its wounds or a knock broke it): dead, it breaks into its wreck all the same, so
+	// the chassis is always left, not the dead vehicle lying there till it settles into the ground or is cleared away.
+	if (m_Status == DEAD && !m_Gibs.empty() && !IsSetToDelete()) {
+		GibThis();
+		return;
+	}
 
 	// Rolled onto its roof: everyone falls out of an open vehicle.
 	float rotation = Wrapped(m_Rotation.GetRadAngle());
