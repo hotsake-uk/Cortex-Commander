@@ -269,7 +269,7 @@ void MOSParticle::Draw(BITMAP* targetBitmap, const Vector& targetPos, DrawMode m
 				break;
 		}
 
-		g_SceneMan.RegisterDrawing(targetBitmap, m_MOID, spriteX, spriteY, spriteX + m_aSprite[m_Frame]->w, spriteY + m_aSprite[m_Frame]->h);
+		g_SceneMan.RegisterDrawing(targetBitmap, m_MOID, spriteX, spriteY, spriteX + m_aSprite[m_Frame]->w, spriteY + m_aSprite[m_Frame]->h, mode == g_DrawMOID ? this : nullptr);
 	}
 }
 

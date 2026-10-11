@@ -71,6 +71,20 @@ namespace {
 		return points;
 	}
 
+	/// Appends a single pixel's quad to a draw call, in the same layout as Shape::Rectangle. The batch's depth and surface are read once for the four corners
+	/// (they're the same for each, as the Vertex constructors would read them).
+	void AppendPixel(DrawCall& draw, glm::vec2 position, glm::u8vec4 vertexColor) {
+		int base = static_cast<int>(draw.m_Vertices.size());
+		const RenderBatch* batch = g_RenderMan.GetActiveBatch();
+		float depth = batch->m_CurrentZ + batch->m_CurrentDepth;
+		glm::u8vec4 surface = batch->m_CurrentSurface;
+		draw.m_Vertices.emplace_back(glm::vec3(position, depth), glm::vec2(0.0f, 0.0f), vertexColor, surface);
+		draw.m_Vertices.emplace_back(glm::vec3(position + glm::vec2(1.0f, 1.0f), depth), glm::vec2(1.0f, 1.0f), vertexColor, surface);
+		draw.m_Vertices.emplace_back(glm::vec3(position + glm::vec2(1.0f, 0.0f), depth), glm::vec2(1.0f, 0.0f), vertexColor, surface);
+		draw.m_Vertices.emplace_back(glm::vec3(position + glm::vec2(0.0f, 1.0f), depth), glm::vec2(0.0f, 1.0f), vertexColor, surface);
+		draw.m_Indices.insert(draw.m_Indices.end(), {base, base + 1, base + 2, base, base + 3, base + 1});
+	}
+
 	std::shared_ptr<DrawCall> Submit(Shape::Shape&& shape, GLenum drawMode = GL_TRIANGLES) {
 		std::shared_ptr<DrawCall> draw = g_RenderMan.BeginDraw();
 		// Append rather than move, so pooled draw calls keep their capacity.
@@ -492,12 +506,8 @@ Shape::Shape Shape::Lines::Line(const glm::vec2& start, const glm::vec2& end, Co
 std::shared_ptr<DrawCall> Draw::Pixel(glm::vec2 position, Color color) {
 	// Hot path (every MOPixel), so build the quad in place without temporary vectors.
 	std::shared_ptr<DrawCall> draw = g_RenderMan.BeginDraw();
-	glm::u8vec4 vertexColor = color;
-	draw->m_Vertices.emplace_back(position, glm::vec2(0.0f, 0.0f), vertexColor);
-	draw->m_Vertices.emplace_back(position + glm::vec2(1.0f, 1.0f), glm::vec2(1.0f, 1.0f), vertexColor);
-	draw->m_Vertices.emplace_back(position + glm::vec2(1.0f, 0.0f), glm::vec2(1.0f, 0.0f), vertexColor);
-	draw->m_Vertices.emplace_back(position + glm::vec2(0.0f, 1.0f), glm::vec2(0.0f, 1.0f), vertexColor);
-	draw->m_Indices.insert(draw->m_Indices.end(), {0, 1, 2, 0, 3, 1});
+	// A new draw call starts empty, so its indices start from 0.
+	AppendPixel(*draw, position, color);
 	draw->m_TextureId = g_RenderMan.GetShapeTexture();
 	draw->m_Indexed = false;
 	return draw;
@@ -519,14 +529,6 @@ namespace {
 		return newDraw.get();
 	}
 
-	void AppendPixel(DrawCall& draw, glm::vec2 position, glm::u8vec4 vertexColor) {
-		int base = static_cast<int>(draw.m_Vertices.size());
-		draw.m_Vertices.emplace_back(position, glm::vec2(0.0f, 0.0f), vertexColor);
-		draw.m_Vertices.emplace_back(position + glm::vec2(1.0f, 1.0f), glm::vec2(1.0f, 1.0f), vertexColor);
-		draw.m_Vertices.emplace_back(position + glm::vec2(1.0f, 0.0f), glm::vec2(1.0f, 0.0f), vertexColor);
-		draw.m_Vertices.emplace_back(position + glm::vec2(0.0f, 1.0f), glm::vec2(0.0f, 1.0f), vertexColor);
-		draw.m_Indices.insert(draw.m_Indices.end(), {base, base + 1, base + 2, base, base + 3, base + 1});
-	}
 } // namespace
 
 void Draw::PixelBatched(glm::vec2 position, Color color) {

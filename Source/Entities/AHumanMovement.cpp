@@ -832,8 +832,9 @@ Actor* AHuman::UnitAhead(float direction, float reach) const {
 	const float h = m_CharHeight;
 	Actor* nearest = nullptr;
 	float nearestAhead = std::min(h * 0.5F + 10.0F, reach);
+	// (The tests below only read, so the cheap ones go first: the side, the hits, where it is; the type checks last.)
 	for (Actor* actor: g_MovableMan.GetActorList()) {
-		if (!actor || actor == this || actor->GetTeam() != m_Team || actor->GetStatus() == DYING || actor->GetStatus() == DEAD || dynamic_cast<ADoor*>(actor) || dynamic_cast<ACraft*>(actor)) {
+		if (!actor || actor == this || actor->GetTeam() != m_Team || actor->GetStatus() == DYING || actor->GetStatus() == DEAD) {
 			continue;
 		}
 		// (Not one our body passes through: units of a side that both ignore team hits don't collide (Atom::IsIgnoringMOID), and every
@@ -843,13 +844,16 @@ Actor* AHuman::UnitAhead(float direction, float reach) const {
 		if ((IgnoresTeamHits() && actor->IgnoresTeamHits()) || GetIgnoresActorHits() || actor->GetIgnoresActorHits()) {
 			continue;
 		}
-		// (Not something that never moves out of the way: a turret, a crab with no legs.)
-		if (const ACrab* crab = dynamic_cast<const ACrab*>(actor); crab && !crab->GetLeftFGLeg() && !crab->GetLeftBGLeg() && !crab->GetRightFGLeg() && !crab->GetRightBGLeg()) {
-			continue;
-		}
 		Vector to = Towards(m_Pos, actor->GetPos());
 		float ahead = to.m_X * direction;
 		if (ahead <= 0.0F || ahead >= nearestAhead || std::abs(to.m_Y) > h * 0.6F) {
+			continue;
+		}
+		if (dynamic_cast<ADoor*>(actor) || dynamic_cast<ACraft*>(actor)) {
+			continue;
+		}
+		// (Not something that never moves out of the way: a turret, a crab with no legs.)
+		if (const ACrab* crab = dynamic_cast<const ACrab*>(actor); crab && !crab->GetLeftFGLeg() && !crab->GetLeftBGLeg() && !crab->GetRightFGLeg() && !crab->GetRightBGLeg()) {
 			continue;
 		}
 		nearest = actor;

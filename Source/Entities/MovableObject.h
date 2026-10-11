@@ -1121,7 +1121,13 @@ namespace RTE {
 
 		/// Copies the live number values to the published ones (GetPublishedNumberValue). On the main thread only, while no script runs: once
 		/// a frame for every unit, before the AI updates (MovableMan::Update).
-		void PublishNumberValues() { m_PublishedNumberValueMap = m_NumberValueMap; }
+		void PublishNumberValues() {
+			// (Copied only when they changed since: every writer of the live map marks it.)
+			if (m_NumberValuesChanged) {
+				m_PublishedNumberValueMap = m_NumberValueMap;
+				m_NumberValuesChanged = false;
+			}
+		}
 
 		/// Checks whether the entity value associated with the specified key exists.
 		/// @param key The key to check.
@@ -1422,6 +1428,7 @@ namespace RTE {
 		std::unordered_map<std::string, std::string> m_StringValueMap; //<! Map to store any generic strings available from script
 		std::unordered_map<std::string, double> m_NumberValueMap; //<! Map to store any generic numbers available from script
 		std::unordered_map<std::string, double> m_PublishedNumberValueMap; //!< The number values as last published, for other units' scripts to read (see GetPublishedNumberValue).
+		bool m_NumberValuesChanged = true; //!< Whether the number values changed since they were last published (see PublishNumberValues).
 		std::unordered_map<std::string, Entity*> m_ObjectValueMap; //<! Map to store any generic object pointers available from script
 		static std::string ms_EmptyString;
 

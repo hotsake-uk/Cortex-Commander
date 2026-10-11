@@ -24,6 +24,7 @@
 #include "ActorWater.h"
 #include "UnitSpeech.h"
 #include "ModernHUD.h"
+#include "ToolWidgets.h"
 #include "ConsoleMan.h"
 #include "CameraMan.h"
 #include "MovableMan.h"
@@ -381,6 +382,15 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("RopeSettleSeconds", { RopeSim::SetSettleSeconds(std::stof(reader.ReadPropValue())); });
 	MatchProperty("CandleBurnMinutes", { TerrainCandle::SetBurnMinutes(std::stof(reader.ReadPropValue())); });
 	MatchProperty("ModernHUD", { ModernHUD::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("UILight", { ToolLight::Strength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 2.0F); });
+	MatchProperty("UILightOwn", { ToolLight::Mode = std::stoi(reader.ReadPropValue()) != 0 ? ToolLight::Source::OwnLight : ToolLight::Source::FollowGame; });
+	MatchProperty("UILightAngle", { ToolLight::OwnAngle = std::clamp(std::stof(reader.ReadPropValue()), -90.0F, 90.0F); });
+	MatchProperty("UILightHeight", { ToolLight::OwnHeight = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
+	MatchProperty("UILightBrightness", { ToolLight::OwnBrightness = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
+	MatchProperty("UILightRed", { ToolLight::OwnColor[0] = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
+	MatchProperty("UILightGreen", { ToolLight::OwnColor[1] = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
+	MatchProperty("UILightBlue", { ToolLight::OwnColor[2] = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
+	MatchProperty("UINearbyLights", { ToolLight::NearbyLights = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("SmoothHUDText", { TextOverlay::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightingSettingsVersion", { s_ReadLightingSettingsVersion = std::stoi(reader.ReadPropValue()); });
 	MatchProperty("GraphicsQuality", {
@@ -1186,6 +1196,15 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("CautiousEnemyAvoidance", m_DirectOrders.CautiousEnemyAvoidance);
 	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
 	writer.NewPropertyWithValue("ModernHUD", ModernHUD::IsEnabled());
+	writer.NewPropertyWithValue("UILight", ToolLight::Strength);
+	writer.NewPropertyWithValue("UILightOwn", ToolLight::Mode == ToolLight::Source::OwnLight);
+	writer.NewPropertyWithValue("UILightAngle", ToolLight::OwnAngle);
+	writer.NewPropertyWithValue("UILightHeight", ToolLight::OwnHeight);
+	writer.NewPropertyWithValue("UILightBrightness", ToolLight::OwnBrightness);
+	writer.NewPropertyWithValue("UILightRed", ToolLight::OwnColor[0]);
+	writer.NewPropertyWithValue("UILightGreen", ToolLight::OwnColor[1]);
+	writer.NewPropertyWithValue("UILightBlue", ToolLight::OwnColor[2]);
+	writer.NewPropertyWithValue("UINearbyLights", ToolLight::NearbyLights);
 	writer.NewPropertyWithValue("ShowUnitTags", m_ShowUnitTags);
 	writer.NewPropertyWithValue("ShowCPUAimReticles", m_ShowCPUAimReticles);
 	writer.NewPropertyWithValue("ShowAlarmExclamation", m_ShowAlarmExclamation);

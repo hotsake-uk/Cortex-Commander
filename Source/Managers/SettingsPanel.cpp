@@ -1022,6 +1022,25 @@ void DebugMan::SettingsGUI() {
 		Toggle("Show FPS and version", g_SettingsMan.ShowFPSAndVersion(), [](bool on) { g_SettingsMan.SetShowFPSAndVersion(on); });
 		Tip("The frame rate and the game's version, small, in the top right of the window.");
 		Toggle("Modern HUD", ModernHUD::IsEnabled(), [](bool on) { ModernHUD::SetEnabled(on); });
+		Slider("UI lighting", &ToolLight::Strength, 0.0F, 2.0F);
+		Tip("The menus and HUD lit as if they were in the world: the light brightens the side of each panel facing it, shades the far side, catches the edges towards it and casts the panel's shadow away from it. They are never dimmed past reading. 0 turns it off.");
+		{
+			int source = static_cast<int>(ToolLight::Mode);
+			if (Combo("UI light", &source, "Follow the game\0Its own light\0")) {
+				ToolLight::Mode = static_cast<ToolLight::Source>(source);
+			}
+			Tip("Follow the game: the game's sun by day and moon by night, moving with the time of day, in the sky's colour of the hour (gold at dawn and dusk), with lightning flashing on the panels. Out of a game, a steady light from the top left. Its own light: a light just for the menus and HUD, set below, that the game's time of day and weather don't touch.");
+		}
+		if (ToolLight::Mode == ToolLight::Source::OwnLight) {
+			Slider("UI light angle", &ToolLight::OwnAngle, -90.0F, 90.0F, "%.0f");
+			Tip("Where the UI's own light comes from, in degrees from straight above: negative from the left, positive from the right.");
+			Slider("UI light height", &ToolLight::OwnHeight, 0.0F, 1.0F);
+			Tip("How high the UI's own light stands: low throws long shadows, high short ones.");
+			Slider("UI light brightness", &ToolLight::OwnBrightness, 0.0F, 1.0F);
+			Tint("UI light colour", ToolLight::OwnColor);
+		}
+		Check("UI lit by nearby lamps and fires (may crash)", &ToolLight::NearbyLights);
+		Tip("Lamps, fires, blasts and muzzle flashes in the world under a panel light it warmly too. WARNING: this reads the lights the AI's sight uses while the game may be changing them, so it may crash the game. Off unless you want to try it.");
 		Toggle("Side and health beside units", g_SettingsMan.ShowUnitTags(), [](bool on) { g_SettingsMan.SetShowUnitTags(on); });
 		Tip("Each unit's team icon and health number. In the Sandbox game mode every side's are shown; in other games, other sides' only where your side has seen and with \"Show enemy HUD\" (Options, Gameplay) on. Units of no side (training dummies) and those a mod hides never have them.");
 		Toggle("CPU units' aim reticles", g_SettingsMan.ShowCPUAimReticles(), [](bool on) { g_SettingsMan.SetShowCPUAimReticles(on); });
