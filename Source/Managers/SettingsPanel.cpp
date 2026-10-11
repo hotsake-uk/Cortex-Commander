@@ -1100,6 +1100,40 @@ void DebugMan::SettingsGUI() {
 		if (Plain() && ToolUI::Button("Normal terrain damage")) {
 			g_SettingsMan.SetWeaponTerrainDamage(1.0F);
 		}
+		Heading("Unit toughness");
+		{
+			struct ToughnessSlider {
+				const char* Label;
+				SettingsMan::ToughnessKind Kind;
+				const char* Tip;
+			};
+			static constexpr const char* c_ToughnessHow = " Higher takes less damage from everything (shots, bleeding, fire, drowning, falls, crushing) and takes that many more wounds and harder blows before it is blown apart or loses a limb or head; lower the other way round. 2x takes half the damage, 0.5x double. All the way up is Invincible: no damage, and never blown apart. Healing is unchanged. 1x is normal.";
+			const ToughnessSlider sliders[] = {
+			    {"Unit toughness", SettingsMan::ToughnessKind::Units, "How tough units on foot are, players' and brains' included, on every side."},
+			    {"Vehicle toughness", SettingsMan::ToughnessKind::Vehicles, "How tough ground vehicles are: wheeled vehicles, tanks, dreadnoughts and turrets. Crew keep their own unit toughness."},
+			    {"Flying craft toughness", SettingsMan::ToughnessKind::Craft, "How tough flying craft are: drop ships, rockets and flying ships. Crew keep their own unit toughness."},
+			    {"Animal toughness", SettingsMan::ToughnessKind::Animals, "How tough animals are: livestock and wildlife such as crabs."},
+			};
+			for (const ToughnessSlider& slider: sliders) {
+				float toughness = g_SettingsMan.Toughness(slider.Kind);
+				const char* format = g_SettingsMan.IsInvincible(slider.Kind) ? "Invincible" : "%.2fx";
+				if (Slider(slider.Label, &toughness, SettingsMan::c_ToughnessMin, SettingsMan::c_ToughnessInvincible, format, ImGuiSliderFlags_Logarithmic)) {
+					g_SettingsMan.SetToughness(slider.Kind, toughness);
+				}
+				Tip((std::string(slider.Tip) + c_ToughnessHow).c_str());
+				if (s_LastShown) {
+					ImGui::PushID(slider.Label);
+					ImGui::SameLine();
+					ImGui::BeginDisabled(toughness == 1.0F);
+					if (ToolUI::Button("Reset")) {
+						g_SettingsMan.SetToughness(slider.Kind, 1.0F);
+					}
+					ImGui::SetItemTooltip("Back to 1x, as the game comes.");
+					ImGui::EndDisabled();
+					ImGui::PopID();
+				}
+			}
+		}
 		Heading("Unit outlines");
 		Check("Outline units", &settings.UnitOutline);
 		Tip("A stroke round each unit and what it holds, so they stand out. It goes over the sky, the background and other objects, never over terrain.");

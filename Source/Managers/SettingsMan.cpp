@@ -141,6 +141,7 @@ void SettingsMan::Clear() {
 	m_BodyGearSettlesAsScraps = true;
 	m_GibChunks = GibChunkTuning();
 	m_NoSceneWrap = true;
+	std::fill(std::begin(m_Toughness), std::end(m_Toughness), 1.0F);
 	m_AISuppression = 1.0F;
 	m_AIDigWillingness = 1.0F;
 	m_AIThreatAvoidance = 1.0F;
@@ -770,6 +771,10 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("UnitSpeechTones3", { UnitSpeech::SetTeamTonesText(2, reader.ReadPropValue()); });
 	MatchProperty("UnitSpeechTones4", { UnitSpeech::SetTeamTonesText(3, reader.ReadPropValue()); });
 	MatchProperty("UnitSpeechToneMix", { UnitSpeech::SetToneWeightsText(reader.ReadPropValue()); });
+	MatchProperty("UnitToughness", { float toughness = 1.0F; reader >> toughness; SetToughness(ToughnessKind::Units, toughness); });
+	MatchProperty("VehicleToughness", { float toughness = 1.0F; reader >> toughness; SetToughness(ToughnessKind::Vehicles, toughness); });
+	MatchProperty("CraftToughness", { float toughness = 1.0F; reader >> toughness; SetToughness(ToughnessKind::Craft, toughness); });
+	MatchProperty("AnimalToughness", { float toughness = 1.0F; reader >> toughness; SetToughness(ToughnessKind::Animals, toughness); });
 	MatchProperty("AISuppression", {
 		reader >> m_AISuppression;
 		m_AISuppression = std::clamp(m_AISuppression, 0.0F, 2.0F);
@@ -1261,6 +1266,10 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("GibChunkAtomSpacing", m_GibChunks.AtomSpacing);
 	writer.NewPropertyWithValue("GibChunksSettleOnBodies", m_GibChunks.SettleOnBodies);
 	writer.NewPropertyWithValue("NoSceneWrap", m_NoSceneWrap);
+	writer.NewPropertyWithValue("UnitToughness", Toughness(ToughnessKind::Units));
+	writer.NewPropertyWithValue("VehicleToughness", Toughness(ToughnessKind::Vehicles));
+	writer.NewPropertyWithValue("CraftToughness", Toughness(ToughnessKind::Craft));
+	writer.NewPropertyWithValue("AnimalToughness", Toughness(ToughnessKind::Animals));
 	writer.NewPropertyWithValue("AISuppression", m_AISuppression);
 	writer.NewPropertyWithValue("AIDigWillingness", m_AIDigWillingness);
 	writer.NewPropertyWithValue("AIThreatAvoidance", m_AIThreatAvoidance);
