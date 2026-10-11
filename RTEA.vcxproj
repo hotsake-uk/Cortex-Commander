@@ -1464,6 +1464,7 @@
     <ClCompile Include="Source\Managers\CommanderBar.cpp" />
     <ClCompile Include="Source\Managers\Reinforcements.cpp" />
     <ClCompile Include="Source\Managers\BattleFog.cpp" />
+    <ClCompile Include="Source\Managers\CommanderPowers.cpp" />
     <ClCompile Include="Source\Managers\ControlLink.cpp" />
     <ClCompile Include="Source\Managers\SettingsMan.cpp" />
     <ClCompile Include="Source\Managers\TimerMan.cpp" />

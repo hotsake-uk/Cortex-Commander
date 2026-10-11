@@ -362,6 +362,8 @@ namespace RTE {
 		float HeadlampTeamTint = 0.0F; //!< How much each side's headlamps take its team color, 0 (none) to 1 (fully).
 		float SaberLightBrightness = 1.0F; //!< Brightness of the light lightsaber blades (energy blades) throw on what's around them.
 		float SaberLightReach = 0.8F; //!< Multiplier for how far that light reaches.
+		float JetpackLightBrightness = 1.0F; //!< Brightness of all the light jetpacks give off: the glow at the nozzle while they fire, and the light of their flames, flashes and exhaust glows. 0 for none.
+		float JetpackLightReach = 1.0F; //!< Multiplier for how far that light reaches.
 		float SaberAirGlow = 1.0F; //!< How strongly blades glow in the air around them, 0 for none.
 		bool AimDotsLight = false; //!< The dots that show where a weapon is aimed light the scene around them. Off, they still glow but cast no light.
 		bool HeadlampsByDay = false; //!< Headlamps are on in daylight too, not only after dark.

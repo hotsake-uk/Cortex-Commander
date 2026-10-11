@@ -420,7 +420,7 @@ namespace {
 		if (!g_SettingsMan.ShowLightsBySource()) {
 			return;
 		}
-		static const char* const sourceNames[] = {"other", "objects", "hot spots", "headlamps", "tracers", "scenery lamps", "fire", "sandbox effects", "scripts", "unit outlines"};
+		static const char* const sourceNames[] = {"other", "objects", "hot spots", "headlamps", "tracers", "scenery lamps", "fire", "sandbox effects", "scripts", "unit outlines", "jetpacks"};
 		static_assert(std::size(sourceNames) == static_cast<size_t>(LightSource::Count));
 		std::array<int, static_cast<size_t>(LightSource::Count)> counts{};
 		std::array<int, static_cast<size_t>(LightSource::Count)> cones{};

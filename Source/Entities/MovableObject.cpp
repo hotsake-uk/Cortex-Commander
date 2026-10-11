@@ -114,6 +114,7 @@ void MovableObject::Clear() {
 	m_EffectStopStrength = 128;
 	m_EffectAlwaysShows = false;
 	m_SparkGlow = false;
+	m_JetpackExhaust = false;
 	m_PostEffectEnabled = false;
 	m_LightColor.SetRGB(255, 255, 255);
 	m_LightRadius = 0.0F;
@@ -306,6 +307,7 @@ int MovableObject::Create(const MovableObject& reference) {
 	m_EffectStopStrength = reference.m_EffectStopStrength;
 	m_EffectAlwaysShows = reference.m_EffectAlwaysShows;
 	m_SparkGlow = reference.m_SparkGlow;
+	m_JetpackExhaust = reference.m_JetpackExhaust;
 	m_RemoveOrphanTerrainRadius = reference.m_RemoveOrphanTerrainRadius;
 	m_RemoveOrphanTerrainMaxArea = reference.m_RemoveOrphanTerrainMaxArea;
 	m_RemoveOrphanTerrainRate = reference.m_RemoveOrphanTerrainRate;
@@ -1138,12 +1140,21 @@ void MovableObject::Update() {
 		}
 		float flicker = m_LightFlicker > 0.0F ? 1.0F - m_LightFlicker * RandomNum(0.0F, 1.0F) : 1.0F;
 		glm::vec3 lightColor(m_LightColor.GetR(), m_LightColor.GetG(), m_LightColor.GetB());
-		if (m_LightConeAngle > 0.0F) {
+		float radius = m_LightRadius;
+		float intensity = m_LightIntensity * flicker;
+		if (m_JetpackExhaust) {
+			const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+			radius *= lighting.JetpackLightReach;
+			intensity *= lighting.JetpackLightBrightness;
+		}
+		if (intensity <= 0.0F || radius <= 0.0F) {
+			// (A jetpack's exhaust with the jetpack light at 0.)
+		} else if (m_LightConeAngle > 0.0F) {
 			// A beam pointing the way this faces, turned by the cone direction.
 			Vector direction = Vector(1.0F, 0.0F).GetRadRotatedCopy(-m_LightConeDirection * c_PI / 180.0F).GetXFlipped(IsHFlipped()) * GetRotMatrix();
-			g_PostProcessMan.RegisterConeLight(m_Pos + lightOffset, direction, m_LightConeAngle, lightColor, m_LightRadius, m_LightIntensity * flicker, LightSource::Objects);
+			g_PostProcessMan.RegisterConeLight(m_Pos + lightOffset, direction, m_LightConeAngle, lightColor, radius, intensity, LightSource::Objects);
 		} else {
-			g_PostProcessMan.RegisterLight(m_Pos + lightOffset, lightColor, m_LightRadius, m_LightIntensity * flicker, LightSource::Objects);
+			g_PostProcessMan.RegisterLight(m_Pos + lightOffset, lightColor, radius, intensity, LightSource::Objects);
 		}
 	}
 }
@@ -1412,7 +1423,13 @@ void MovableObject::SetPostScreenEffectToDraw() const {
 					return;
 				}
 			}
-			g_PostProcessMan.RegisterPostEffect(m_Pos, m_ScreenEffect, m_ScreenEffectHash, static_cast<int>(std::min(strength, 255.0F)), m_EffectRotAngle);
+			if (m_JetpackExhaust) {
+				// A jetpack's flame or glowing exhaust: the glow is drawn as it is, the light it casts follows the Jetpack light settings.
+				const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+				g_PostProcessMan.RegisterPostEffectScaledLight(m_Pos, m_ScreenEffect, m_ScreenEffectHash, static_cast<int>(std::min(strength, 255.0F)), m_EffectRotAngle, lighting.JetpackLightBrightness, lighting.JetpackLightReach);
+			} else {
+				g_PostProcessMan.RegisterPostEffect(m_Pos, m_ScreenEffect, m_ScreenEffectHash, static_cast<int>(std::min(strength, 255.0F)), m_EffectRotAngle);
+			}
 		}
 	}
 }

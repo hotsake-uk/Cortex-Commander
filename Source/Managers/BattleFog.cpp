@@ -70,7 +70,8 @@ namespace SandboxDetail {
 				continue;
 			}
 			const long id = static_cast<long>(actor->GetUniqueID());
-			const bool seen = actor->IsDead() || Sees(eyes, actor->GetPos());
+			// (The Scan power lifts it all for a while.)
+			const bool seen = now < s_ScanUntil || actor->IsDead() || Sees(eyes, actor->GetPos());
 			auto ghost = std::find_if(s_FogGhosts.begin(), s_FogGhosts.end(), [id](const FogGhost& mark) { return mark.ID == id; });
 			if (seen) {
 				if (ghost != s_FogGhosts.end()) {

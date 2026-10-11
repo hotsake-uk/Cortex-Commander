@@ -214,11 +214,22 @@ namespace SandboxDetail {
 		}
 	}
 
-	/// A unit answers an order the player gave it (unit speech, US-2): one of the trigger's lines over its head, on the speech settings'
-	/// chance. Not the unit the player is in, which is the player.
+	/// A unit answers an order the player gave it (unit speech, US-2): one of the trigger's lines over its head. Not the unit the player is in,
+	/// which is the player. A group ordered together answers with exactly one voice: the first of them that has a line says it, whatever the
+	/// speech settings' chance, and the rest stay quiet (a command's units are all ordered within the same sim update, on the same side).
 	void AnswerOrder(Actor* unit, const char* trigger) {
-		if (unit && trigger && !unit->IsPlayerControlled()) {
-			unit->SayOrder(trigger);
+		if (!unit || !trigger || unit->IsPlayerControlled()) {
+			return;
+		}
+		static long long s_AnsweredUpdate = -1;
+		static int s_AnsweredTeam = -1;
+		const long long update = g_TimerMan.GetSimUpdateCount();
+		if (update == s_AnsweredUpdate && unit->GetTeam() == s_AnsweredTeam) {
+			return;
+		}
+		if (unit->SayOrder(trigger, true)) {
+			s_AnsweredUpdate = update;
+			s_AnsweredTeam = unit->GetTeam();
 		}
 	}
 
@@ -650,9 +661,9 @@ namespace SandboxDetail {
 		spots.resize(std::min(spots.size(), units.size()));
 		OrderForFormation(units, point);
 		// Kept together (RC-5): each no faster than the slowest walker among them, till it gets there (UpdatePace).
-		// (Not on a direct order, s_DirectOrder: each goes as fast as it can.)
+		// (Not on a direct order, s_DirectOrder, unless the Battle Behavior settings say so: each goes as fast as it can.)
 		float pace = 0.0F;
-		if (s_KeepPace && units.size() > 1 && !s_DirectOrder) {
+		if (s_KeepPace && units.size() > 1 && (!s_DirectOrder || g_SettingsMan.DirectOrders().KeepPace)) {
 			for (Actor* unit: units) {
 				if (float own = WalkPace(unit); own > 0.0F && (pace == 0.0F || own < pace)) {
 					pace = own;

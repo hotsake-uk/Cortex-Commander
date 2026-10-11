@@ -180,6 +180,9 @@ namespace SandboxDetail {
 			// Reinforcements: the points, the cards to call in, and where and how they come.
 			BarDivider();
 			ReinforcementTiles();
+			// Commander powers, each with its cooldown.
+			BarDivider();
+			PowerTiles();
 
 			// At the right: the speed of time and the pause.
 			ImGui::SameLine(0.0F, pixel * 10.0F);
