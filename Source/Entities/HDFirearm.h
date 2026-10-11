@@ -10,6 +10,7 @@
 namespace RTE {
 
 	class Magazine;
+	class Actor;
 
 	/// A firearm device that fires projectile MO's and discharges shell MO's.
 	class HDFirearm : public HeldDevice {
@@ -429,6 +430,60 @@ namespace RTE {
 		/// @param newValue New value.
 		void SetFullAuto(bool newValue) { m_FullAuto = newValue; }
 
+		/// Gets how much energy each round (each cast of a spell) costs (MG-2). It comes from the spell's own charge if it has one, else from the
+		/// energy of the unit holding it; with too little, it doesn't fire. 0: free.
+		/// @return The energy one round costs.
+		float GetEnergyCost() const { return m_EnergyCost; }
+
+		/// Sets how much energy each round costs.
+		/// @param newValue The new cost. 0: free.
+		void SetEnergyCost(float newValue) { m_EnergyCost = std::max(newValue, 0.0F); }
+
+		/// Gets whether this pays for its rounds from its own charge instead of its holder's energy.
+		/// @return Whether it uses its own charge.
+		bool GetUsesOwnCharge() const { return m_UsesOwnCharge; }
+
+		/// Sets whether this pays for its rounds from its own charge instead of its holder's energy.
+		/// @param newValue Whether it uses its own charge.
+		void SetUsesOwnCharge(bool newValue) { m_UsesOwnCharge = newValue; }
+
+		/// Gets this device's own charge, what it spends when it uses its own charge.
+		/// @return Its charge.
+		float GetCharge() const { return m_Charge; }
+
+		/// Sets this device's own charge, kept between 0 and its max charge.
+		/// @param newValue The new charge.
+		void SetCharge(float newValue) { m_Charge = std::clamp(newValue, 0.0F, m_MaxCharge); }
+
+		/// Gets the most charge this device can have.
+		/// @return Its max charge.
+		float GetMaxCharge() const { return m_MaxCharge; }
+
+		/// Sets the most charge this device can have.
+		/// @param newValue The new max charge.
+		void SetMaxCharge(float newValue) {
+			m_MaxCharge = std::max(newValue, 0.0F);
+			m_Charge = std::min(m_Charge, m_MaxCharge);
+		}
+
+		/// Gets how much charge comes back a second, held or not.
+		/// @return Its charge regen, per second.
+		float GetChargeRegen() const { return m_ChargeRegen; }
+
+		/// Sets how much charge comes back a second.
+		/// @param newValue The new charge regen, per second.
+		void SetChargeRegen(float newValue) { m_ChargeRegen = newValue; }
+
+		/// Gets how many rounds this could pay for right now, from its own charge or its holder's energy. Many if it costs nothing.
+		/// @return How many rounds it can afford.
+		int GetAffordableRounds() const;
+
+		/// Gets how many rounds this could pay for right now if the given unit held it: from its own charge, or that unit's energy. For a
+		/// device in a unit's inventory (which isn't attached to it).
+		/// @param payer The unit whose energy would pay. May be null (then only its own charge can).
+		/// @return How many rounds it can afford.
+		int GetAffordableRoundsFor(const Actor* payer) const;
+
 		/// Updates this MovableObject. Supposed to be done every frame.
 		void Update() override;
 
@@ -541,6 +596,11 @@ namespace RTE {
 		int m_BaseReloadTime;
 		// Whether this HDFirearm is full or semi-auto.
 		bool m_FullAuto;
+		float m_EnergyCost; //!< The energy each round costs (MG-2). 0: free.
+		bool m_UsesOwnCharge; //!< Whether rounds are paid from m_Charge instead of the holder's energy.
+		float m_Charge; //!< This device's own charge.
+		float m_MaxCharge; //!< The most charge it can have.
+		float m_ChargeRegen; //!< How much charge comes back a second.
 		// Whether particles fired from this HDFirearm will ignore hits with itself,
 		// and the root parent of this HDFirearm, regardless if they are set to hit MOs.
 		bool m_FireIgnoresThis;

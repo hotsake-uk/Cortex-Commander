@@ -15,6 +15,7 @@
 #include "Scene.h"
 #include "TimerMan.h"
 #include "imgui/imgui.h"
+#include "ToolWidgets.h"
 #include "glad/gl.h"
 
 #include <algorithm>
@@ -129,11 +130,15 @@ namespace {
 
 	void DrawBar(ImDrawList* drawList, ImVec2 position, ImVec2 size, float fraction, ImU32 color, const char* label) {
 		fraction = std::clamp(fraction, 0.0F, 1.0F);
+		float pixel = std::max(1.0F, std::floor(size.y / 10.0F));
+		// Lit as if in the world (ToolLight): its shadow falls away from the light.
+		ToolLight::Shadow(drawList, position, ImVec2(position.x + size.x, position.y + size.y), pixel);
 		drawList->AddRectFilled(position, ImVec2(position.x + size.x, position.y + size.y), IM_COL32(10, 12, 18, 190), 4.0F);
 		if (fraction > 0.0F) {
 			drawList->AddRectFilled(ImVec2(position.x + 2.0F, position.y + 2.0F), ImVec2(position.x + 2.0F + (size.x - 4.0F) * fraction, position.y + size.y - 2.0F), color, 3.0F);
 		}
 		drawList->AddRect(position, ImVec2(position.x + size.x, position.y + size.y), IM_COL32(255, 255, 255, 60), 4.0F);
+		ToolLight::Surface(drawList, position, ImVec2(position.x + size.x, position.y + size.y), pixel);
 		ImVec2 textSize = ImGui::CalcTextSize(label);
 		ImVec2 textPosition(position.x + (size.x - textSize.x) * 0.5F, position.y + (size.y - textSize.y) * 0.5F);
 		// Dark outline so the label reads over any bar color.
@@ -147,6 +152,13 @@ namespace {
 		drawList->AddText(textPosition, IM_COL32(255, 255, 255, 240), label);
 	}
 } // namespace
+
+void ModernHUD::AddFeedLine(const std::string& text, int team) {
+	if (!s_Enabled) {
+		return;
+	}
+	s_Feed.push_back({text, team, ImGui::GetTime()});
+}
 
 void ModernHUD::Draw() {
 	if (!s_Enabled || !g_ActivityMan.IsInActivity() || !g_SceneMan.GetScene()) {
@@ -177,6 +189,7 @@ void ModernHUD::Draw() {
 		mapHeight = std::min(mapHeight, 160.0F * scale);
 		ImVec2 topLeft(viewOrigin.x + viewSize.x - mapWidth - margin, viewOrigin.y + margin + 24.0F * scale);
 		ImVec2 bottomRight(topLeft.x + mapWidth, topLeft.y + mapHeight);
+		ToolLight::Shadow(drawList, ImVec2(topLeft.x - 3.0F, topLeft.y - 3.0F), ImVec2(bottomRight.x + 3.0F, bottomRight.y + 3.0F), std::max(1.0F, std::floor(2.0F * scale)));
 		drawList->AddRectFilled(ImVec2(topLeft.x - 3.0F, topLeft.y - 3.0F), ImVec2(bottomRight.x + 3.0F, bottomRight.y + 3.0F), IM_COL32(0, 0, 0, 150), 5.0F);
 		drawList->AddImage(static_cast<ImTextureID>(s_Minimap.Texture), topLeft, bottomRight);
 		float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
@@ -203,6 +216,7 @@ void ModernHUD::Draw() {
 			drawList->AddCircleFilled(point, radius, actor == controlled ? IM_COL32(255, 255, 255, 255) : TeamColor(actor->GetTeam()));
 		}
 		drawList->AddRect(ImVec2(topLeft.x - 3.0F, topLeft.y - 3.0F), ImVec2(bottomRight.x + 3.0F, bottomRight.y + 3.0F), IM_COL32(255, 255, 255, 50), 5.0F);
+		ToolLight::Surface(drawList, ImVec2(topLeft.x - 3.0F, topLeft.y - 3.0F), ImVec2(bottomRight.x + 3.0F, bottomRight.y + 3.0F), std::max(1.0F, std::floor(2.0F * scale)));
 	}
 
 	// Controlled unit: name, health and ammo, bottom left.

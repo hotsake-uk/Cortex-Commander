@@ -127,10 +127,10 @@ namespace SandboxDetail {
 				if (BarTile("##main", mainTools[i].Label, tip.c_str(), s_ToolIndex == index, [&](ImDrawList* tileList, ImVec2 at, float room) { DrawIcon(tileList, look.Art, at, room / 12.0F, look.Color); }) == 1) {
 					if (mainTools[i].Kind == Tool::Command) {
 						// Picked again while selecting, it lets them all go.
-						if (s_ToolIndex == index && s_CommandMode == CommandMode::Select) {
+						if (s_ToolIndex == index && (s_CommandMode == CommandMode::Select || s_CommandMode == CommandMode::Command)) {
 							s_Selected.clear();
 						}
-						s_CommandMode = CommandMode::Select;
+						s_CommandMode = CommandMode::Command;
 						s_PatrolDraft.clear();
 					}
 					if (IsBattleTool(CurrentTool().Kind)) {
@@ -169,7 +169,7 @@ namespace SandboxDetail {
 						}
 					}
 					s_ToolIndex = ToolIndex(Tool::Command);
-					s_CommandMode = CommandMode::Select;
+					s_CommandMode = CommandMode::Command;
 					s_PatrolDraft.clear();
 					if (ImGui::GetIO().MouseClickedLastCount[ImGuiMouseButton_Left] >= 2) {
 						LookAtUnits(s_Selected);

@@ -897,8 +897,8 @@ void FrameMan::Draw() {
 	g_PostProcessMan.ClearScreenPostEffects();
 
 	// These accumulate the effects for each player's screen area, and are then transferred to the post-processing lists with the player screen offset applied
-	std::list<PostEffect> screenRelativeEffects;
-	std::list<Box> screenRelativeGlowBoxes;
+	// (A vector, kept for every screen of the frame: a list cost an allocation per effect per screen.)
+	std::vector<PostEffect> screenRelativeEffects;
 
 	const Activity* pActivity = g_ActivityMan.GetActivity();
 
@@ -919,7 +919,6 @@ void FrameMan::Draw() {
 		g_CameraMan.SetCameraZoom(1.0f, playerScreen);
 		g_SceneMan.Update(playerScreen);
 		screenRelativeEffects.clear();
-		screenRelativeGlowBoxes.clear();
 		// rlSetUniformSampler(backgroundShader.GetUniformLocation("rtePalette"), g_PostProcessMan.GetPaletteTexture());
 		BITMAP* drawScreen = m_PlayerScreen8->GetBitmap();
 		BITMAP* drawScreenGUI = m_PlayerScreen8->GetBitmap();
@@ -961,7 +960,7 @@ void FrameMan::Draw() {
 			// Get only the scene-relative post effects that affect this player's screen
 			if (pActivity) {
 				g_PostProcessMan.GetPostScreenEffectsWrapped(targetPos, drawScreen->w, drawScreen->h, screenRelativeEffects, pActivity->GetTeamOfPlayer(pActivity->PlayerOfScreen(playerScreen)));
-				g_PostProcessMan.GetGlowAreasWrapped(targetPos, drawScreen->w, drawScreen->h, screenRelativeGlowBoxes);
+				// (The glow areas on the screen were gathered here too, into a list nothing read; GetGlowAreasWrapped has no other effect, so that's gone.)
 			}
 
 			// TODO: Find out what keeps disabling the clipping on the draw bitmap
@@ -1214,7 +1213,7 @@ void FrameMan::DrawWorldDump(bool drawForScenePreview) const {
 
 	// If we're not dumping a scene preview, draw objects and post-effects.
 	if (!drawForScenePreview) {
-		std::list<PostEffect> postEffectsList;
+		std::vector<PostEffect> postEffectsList;
 		BITMAP* effectBitmap = nullptr;
 		int effectPosX = 0;
 		int effectPosY = 0;

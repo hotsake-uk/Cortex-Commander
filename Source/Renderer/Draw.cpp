@@ -22,10 +22,14 @@ namespace {
 	/// Appends a textured rectangle to a draw call in place, reusing the draw call's vector capacity. Same layout as Shape::Rectangle.
 	void AppendRectangle(DrawCall& draw, const FloatRect& rect, const FloatRect& uv, glm::u8vec4 color) {
 		int base = static_cast<int>(draw.m_Vertices.size());
-		draw.m_Vertices.emplace_back(glm::vec2(rect.x, rect.y), glm::vec2(uv.x, uv.y), color);
-		draw.m_Vertices.emplace_back(glm::vec2(rect.x + rect.w, rect.y + rect.h), glm::vec2(uv.x + uv.w, uv.y + uv.h), color);
-		draw.m_Vertices.emplace_back(glm::vec2(rect.x + rect.w, rect.y), glm::vec2(uv.x + uv.w, uv.y), color);
-		draw.m_Vertices.emplace_back(glm::vec2(rect.x, rect.y + rect.h), glm::vec2(uv.x, uv.y + uv.h), color);
+		// The batch's depth and surface, read once for the four corners (they're the same for each, as the Vertex constructors would read them).
+		const RenderBatch* batch = g_RenderMan.GetActiveBatch();
+		float depth = batch->m_CurrentZ + batch->m_CurrentDepth;
+		glm::u8vec4 surface = batch->m_CurrentSurface;
+		draw.m_Vertices.emplace_back(glm::vec3(rect.x, rect.y, depth), glm::vec2(uv.x, uv.y), color, surface);
+		draw.m_Vertices.emplace_back(glm::vec3(rect.x + rect.w, rect.y + rect.h, depth), glm::vec2(uv.x + uv.w, uv.y + uv.h), color, surface);
+		draw.m_Vertices.emplace_back(glm::vec3(rect.x + rect.w, rect.y, depth), glm::vec2(uv.x + uv.w, uv.y), color, surface);
+		draw.m_Vertices.emplace_back(glm::vec3(rect.x, rect.y + rect.h, depth), glm::vec2(uv.x, uv.y + uv.h), color, surface);
 		draw.m_Indices.insert(draw.m_Indices.end(), {base, base + 1, base + 2, base, base + 3, base + 1});
 	}
 } // namespace

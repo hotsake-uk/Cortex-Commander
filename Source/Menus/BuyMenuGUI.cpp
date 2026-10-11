@@ -121,7 +121,7 @@ void BuyMenuGUI::Clear() {
 	m_FirstMainTab = CRAFT;
 	m_LastMainTab = LOADOUTS;
 	m_FirstEquipmentTab = TOOLS;
-	m_LastEquipmentTab = SHIELDS;
+	m_LastEquipmentTab = SPELLS;
 }
 
 int BuyMenuGUI::Create(Controller* pController) {
@@ -184,6 +184,7 @@ int BuyMenuGUI::Create(Controller* pController) {
 	m_pCategoryTabs[GUNS] = dynamic_cast<GUITab*>(m_pGUIController->GetControl("GunsTab"));
 	m_pCategoryTabs[BOMBS] = dynamic_cast<GUITab*>(m_pGUIController->GetControl("BombsTab"));
 	m_pCategoryTabs[SHIELDS] = dynamic_cast<GUITab*>(m_pGUIController->GetControl("ShieldsTab"));
+	m_pCategoryTabs[SPELLS] = dynamic_cast<GUITab*>(m_pGUIController->GetControl("SpellsTab"));
 	m_pCategoryTabs[LOADOUTS] = dynamic_cast<GUITab*>(m_pGUIController->GetControl("LoadoutsTab"));
 	RefreshTabDisabledStates();
 
@@ -727,6 +728,7 @@ void BuyMenuGUI::RefreshTabDisabledStates() {
 	m_pCategoryTabs[GUNS]->SetEnabled(smartBuyMenuNavigationDisabled || m_SelectingEquipment);
 	m_pCategoryTabs[BOMBS]->SetEnabled(smartBuyMenuNavigationDisabled || m_SelectingEquipment);
 	m_pCategoryTabs[SHIELDS]->SetEnabled(smartBuyMenuNavigationDisabled || m_SelectingEquipment);
+	m_pCategoryTabs[SPELLS]->SetEnabled(smartBuyMenuNavigationDisabled || m_SelectingEquipment);
 	m_pCategoryTabs[LOADOUTS]->SetEnabled(smartBuyMenuNavigationDisabled || !m_SelectingEquipment);
 }
 
@@ -2019,6 +2021,8 @@ void BuyMenuGUI::CategoryChange(bool focusOnCategoryTabs) {
 		AddObjectsToItemList(catalogList, "ThrownDevice", {"Bombs"});
 	} else if (m_MenuCategory == SHIELDS) {
 		AddObjectsToItemList(catalogList, "HeldDevice", {"Shields"});
+	} else if (m_MenuCategory == SPELLS) {
+		AddObjectsToItemList(catalogList, "HeldDevice", {"Spells"});
 	}
 
 	SceneObject* pSObject = 0;
