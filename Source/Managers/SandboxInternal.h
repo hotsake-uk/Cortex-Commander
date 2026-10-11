@@ -1396,7 +1396,8 @@ namespace SandboxDetail {
 		Attack, //!< Go after the enemy until it is dead.
 		Guard, //!< Stay with the friend; done only if the friend is gone.
 		Defend, //!< Hold ground where it stands; never done, so it ends a plan.
-		Wait //!< Stay a while where it is (a patrol's pause at each point, RC-4).
+		Wait, //!< Stay a while where it is (a patrol's pause at each point, RC-4).
+		Suppress //!< Fire into a place from where the step before leaves it; never done, so it ends a plan, as a defend does.
 	};
 
 	/// One step of a unit's plan: a shift-clicked order to carry out after the ones before it.
@@ -1406,6 +1407,7 @@ namespace SandboxDetail {
 		UnitRef Target; //!< The enemy to attack or the friend to guard.
 		int Facing = 0; //!< A defend's way to face: -1 left, 1 right, 0 either (RC-4).
 		int Updates = 0; //!< A wait's length, in sim updates.
+		int Radius = 0; //!< A suppress's spread round its place, px (the Suppress radius when it was queued).
 	};
 
 	/// A unit's plan (RC-3): the step under way and the ones still to come, worked through one at a time. Any order given without Shift drops it.
@@ -2363,7 +2365,8 @@ namespace SandboxDetail {
 	void CommandSelected(const Vector& position, int modifier);
 	void PlanStepFor(std::vector<Actor*> units, PlanKind kind, const Vector& place, Actor* target, int facing = 0);
 	void DefendAtSelected(const Vector& point, const Vector& facingPoint, bool shift);
-	void SuppressSelected(const Vector& point);
+	void SuppressSelected(const Vector& point, bool shift = false);
+	void SuppressUnit(Actor* unit, const Vector& point, int radius);
 	bool SuppressZoneOf(const Actor* unit, Vector& centre, float& radius);
 	void ClearSuppress(Actor* unit);
 	void PatrolSelected(const std::vector<Vector>& points, bool backAndForth);
