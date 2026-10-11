@@ -39,6 +39,7 @@ namespace {
 	struct Before {
 		std::vector<std::vector<int>> Floating; //!< Each mass that was already hanging in the air: its pixels, sorted.
 		std::vector<std::vector<int>> Hanging; //!< The middle of each piece that was already held on by only a thin neck: its pixels, sorted.
+		std::vector<std::vector<int>> Overhangs; //!< Each part of an overhang that already stuck out further than Tuning::OverhangLength from what holds it up: its pixels, sorted.
 	};
 
 	struct Check {
@@ -214,6 +215,10 @@ namespace {
 		float Force; //!< The hit's impulse, or negative for wear that always counts.
 	};
 	std::vector<DamageNote> s_Damage; //!< Pixels knocked out since the last update. Filled from (possibly parallel) collision code. A pixel in the same square as the one before it is folded into it (forces added).
+	std::vector<int> s_Cuts; //!< Every pixel knocked out since the last update, as y * width + x, folded or not (at most 20000). For the first look at a newly watched square: see s_WaitingCuts.
+	/// For each square waiting for its first look, the pixels knocked out in and next to it since it began to be worn. That look sees the ground after them, so
+	/// it's told of them: a piece they cut loose isn't mistaken for one that was hanging in the air before (and so left up), but falls.
+	std::map<std::pair<int, int>, std::vector<int>> s_WaitingCuts;
 	int s_DamageNoted = 0; //!< How many pixels were noted into s_Damage since it was last taken, folded ones included: at most 20000 an update, as before they were folded.
 	/// Hits too weak to start a square being watched (Tuning::CheckMinForce), added up by square (row, column), with when the last came. Gone after c_ForceBuildupUpdates without one.
 	struct ForceBuildup {
@@ -2080,9 +2085,14 @@ namespace {
 	/// Finds pieces of ground around a point that are joined to the rest by a neck no wider than the tuning allows.
 	/// How: pare the edges off all the ground in a window around the point, by half the neck width. Thin necks vanish; what's left in separate lumps that don't reach
 	/// the window's edge are the middles of hanging pieces. Each is grown back out to its own edge, and the ground touching it beyond that is its neck.
-	void FindHangingPieces(const BITMAP* materialBitmap, const Check& check, std::vector<HangingPiece>& found) {
+	/// @param neckWidth The widest neck that snaps, in pixels.
+	/// @param cuts Pixels just knocked out (sorted keys) to count as still there, to see how things were before them; or none.
+	void FindHangingPieces(const BITMAP* materialBitmap, const Check& check, std::vector<HangingPiece>& found, int neckWidth, const std::vector<int>* cuts = nullptr) {
 		found.clear();
-		int neckWidth = TerrainCollapse::GetTuning().NeckWidth;
+		if (cuts && cuts->empty()) {
+			cuts = nullptr;
+		}
+		auto wasCut = [cuts](int key) { return cuts && std::binary_search(cuts->begin(), cuts->end(), key); };
 		if (neckWidth <= 0) {
 			return;
 		}
@@ -2100,7 +2110,7 @@ namespace {
 				return false;
 			}
 			int material = materialBitmap->line[y][x];
-			return material != g_MaterialAir && !s_Flimsy[material] && !FluidSim::IsLiquid(material) && !(s_State[y * s_Width + x] & c_Falling);
+			return (material != g_MaterialAir && !s_Flimsy[material] && !FluidSim::IsLiquid(material) && !(s_State[y * s_Width + x] & c_Falling)) || (material == g_MaterialAir && wasCut(y * s_Width + x));
 		};
 		static std::vector<unsigned char> solid;
 		static std::vector<unsigned char> pared;
@@ -2137,6 +2147,9 @@ namespace {
 					isSolid = material != g_MaterialAir && !s_Flimsy[material] && !FluidSim::IsLiquid(material) && !(s_State[stateRow + x] & c_Falling);
 					if (int neck = s_Neck[material]; isSolid && neck >= 0 && neck < neckWidth) {
 						by = static_cast<unsigned char>((neck + 1) / 2);
+					}
+					if (!isSolid && material == g_MaterialAir && wasCut(static_cast<int>(stateRow) + x)) {
+						isSolid = true;
 					}
 				}
 				solid[rowStart + wx] = isSolid ? 1 : 0;
@@ -2354,8 +2367,235 @@ namespace {
 		}
 	}
 
+	/// Whether a piece found loose was cut loose by pixels just knocked out, rather than already hanging in the air before them: through those pixels it was joined to other ground.
+	/// @param piece Its pixels, sorted keys.
+	/// @param cuts The pixels just knocked out, sorted keys.
+	bool CutLoose(const BITMAP* materialBitmap, const std::vector<int>& piece, const std::vector<int>& cuts) {
+		static std::vector<int> stack;
+		static std::vector<int> reached;
+		stack.clear();
+		reached.clear();
+		auto neighbour = [](int key, int dx, int dy, int& out) {
+			int x = key % s_Width + dx;
+			int y = key / s_Width + dy;
+			if (y < 0 || !WrapInWorld(x, y)) {
+				return false;
+			}
+			out = y * s_Width + x;
+			return true;
+		};
+		for (int cut: cuts) {
+			bool touches = false;
+			for (int dy = -1; dy <= 1 && !touches; ++dy) {
+				for (int dx = -1; dx <= 1 && !touches; ++dx) {
+					int other;
+					touches = (dx != 0 || dy != 0) && neighbour(cut, dx, dy, other) && std::binary_search(piece.begin(), piece.end(), other);
+				}
+			}
+			if (touches) {
+				stack.push_back(cut);
+				reached.push_back(cut);
+			}
+		}
+		// Through the knocked out pixels (a cut may be many wide), looking for ground beyond them that isn't the piece.
+		for (size_t steps = 0; !stack.empty() && steps < 4096; ++steps) {
+			int cut = stack.back();
+			stack.pop_back();
+			for (int dy = -1; dy <= 1; ++dy) {
+				for (int dx = -1; dx <= 1; ++dx) {
+					if (dx == 0 && dy == 0) {
+						continue;
+					}
+					if (cut / s_Width + dy >= s_Height) {
+						return true; // The bottom of the world holds things up.
+					}
+					int other;
+					if (!neighbour(cut, dx, dy, other)) {
+						continue;
+					}
+					if (std::binary_search(cuts.begin(), cuts.end(), other)) {
+						if (std::find(reached.begin(), reached.end(), other) == reached.end()) {
+							reached.push_back(other);
+							stack.push_back(other);
+						}
+						continue;
+					}
+					int material = materialBitmap->line[other / s_Width][other % s_Width];
+					if (material != g_MaterialAir && !FluidSim::IsLiquid(material) && !s_NoHold[material] && !(s_State[other] & c_Falling) && !std::binary_search(piece.begin(), piece.end(), other)) {
+						return true;
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+	/// Finds the parts of overhangs around a point that stick out further than Tuning::OverhangLength from what holds them up. Ground is held up where it stands on
+	/// ground all the way down (to the bottom of the search window), or by bedrock and buildings; the rest is held by the ground it joins, and each pixel's distance
+	/// is how far it is through the ground from the nearest held up. A ledge's tip is as far as the ledge is long; the middle of a cave's roof half as far as the cave is wide.
+	/// Each part too far is given as a HangingPiece: its pixels, and the ground around it that has to go for it to come free.
+	/// @param cuts Pixels just knocked out (sorted keys) to count as still there, to see how things were before them; or none.
+	void FindOverhangs(const BITMAP* materialBitmap, const Check& check, std::vector<HangingPiece>& found, const std::vector<int>* cuts = nullptr) {
+		found.clear();
+		int longest = TerrainCollapse::GetTuning().OverhangLength;
+		if (longest <= 0) {
+			return;
+		}
+		if (cuts && cuts->empty()) {
+			cuts = nullptr;
+		}
+		int reach = std::min(check.Radius + std::max(60, longest), 200);
+		int side = reach * 2 + 1;
+		int left = check.X - reach;
+		int top = check.Y - reach;
+		size_t cells = static_cast<size_t>(side) * side;
+		// 0 nothing that holds (air, liquid, sand-soft stuff, trees), 1 ground, 2 what always holds (bedrock, buildings).
+		static std::vector<unsigned char> kind;
+		static std::vector<int> distance;
+		static std::vector<int> queue;
+		static std::vector<int> region;
+		kind.assign(cells, 0);
+		distance.assign(cells, -1);
+		auto kindAt = [&](int x, int y) -> unsigned char {
+			if (y >= s_Height) {
+				return 2;
+			}
+			if (y < 0 || !WrapInWorld(x, y)) {
+				return 0;
+			}
+			int material = materialBitmap->line[y][x];
+			if (material == g_MaterialAir) {
+				return (cuts && std::binary_search(cuts->begin(), cuts->end(), y * s_Width + x)) ? 1 : 0;
+			}
+			if (s_Flimsy[material] || FluidSim::IsLiquid(material) || s_NoHold[material] || s_Leaves[material] || s_TreeTrunk[material] || TerrainTrees::IsTreeMaterial(material) || (s_State[y * s_Width + x] & c_Falling)) {
+				return 0;
+			}
+			return (s_Fixed[material] || s_Structure[material]) ? 2 : 1;
+		};
+		for (int wy = 0; wy < side; ++wy) {
+			for (int wx = 0; wx < side; ++wx) {
+				kind[static_cast<size_t>(wy) * side + wx] = kindAt(left + wx, top + wy);
+			}
+		}
+		// Held up: standing on ground all the way down. Below the window counts as the ground found there.
+		queue.clear();
+		for (int wx = 0; wx < side; ++wx) {
+			bool standing = kindAt(left + wx, top + side) != 0;
+			for (int wy = side - 1; wy >= 0; --wy) {
+				size_t cell = static_cast<size_t>(wy) * side + wx;
+				standing = kind[cell] != 0 && (standing || kind[cell] == 2);
+				if (standing || kind[cell] == 2) {
+					distance[cell] = 0;
+					queue.push_back(static_cast<int>(cell));
+				}
+			}
+		}
+		static constexpr int steps4[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+		for (size_t next = 0; next < queue.size(); ++next) {
+			int cell = queue[next];
+			int wx = cell % side;
+			int wy = cell / side;
+			for (const auto& step: steps4) {
+				int nx = wx + step[0];
+				int ny = wy + step[1];
+				if (nx < 0 || ny < 0 || nx >= side || ny >= side) {
+					continue;
+				}
+				int neighbour = ny * side + nx;
+				if (kind[neighbour] == 1 && distance[neighbour] < 0) {
+					distance[neighbour] = distance[cell] + 1;
+					queue.push_back(neighbour);
+				}
+			}
+		}
+		// The parts too far out, each on its own. (Ground not reached at all is already loose: that's for the search for loose pieces.)
+		static std::vector<unsigned char> taken;
+		taken.assign(cells, 0);
+		int maxPixels = TerrainCollapse::GetTuning().MaxPiecePixels;
+		for (int start = 0; start < static_cast<int>(cells); ++start) {
+			if (taken[start] || distance[start] <= longest) {
+				continue;
+			}
+			region.clear();
+			region.push_back(start);
+			taken[start] = 1;
+			bool reachesEdge = false;
+			for (size_t next = 0; next < region.size(); ++next) {
+				int cell = region[next];
+				int wx = cell % side;
+				int wy = cell / side;
+				reachesEdge = reachesEdge || wx == 0 || wy == 0 || wx == side - 1 || wy == side - 1;
+				for (const auto& step: steps4) {
+					int nx = wx + step[0];
+					int ny = wy + step[1];
+					if (nx < 0 || ny < 0 || nx >= side || ny >= side) {
+						continue;
+					}
+					int neighbour = ny * side + nx;
+					if (!taken[neighbour] && distance[neighbour] > longest) {
+						taken[neighbour] = 1;
+						region.push_back(neighbour);
+					}
+				}
+			}
+			// Running off the window, it may be held further out than can be seen; too big, it would only hang there once cut, as the world.
+			if (reachesEdge || region.size() < 6 || static_cast<int>(region.size()) > maxPixels) {
+				continue;
+			}
+			HangingPiece piece;
+			bool held = false;
+			for (int cell: region) {
+				int wx = cell % side;
+				int wy = cell / side;
+				int x = left + wx;
+				int y = top + wy;
+				WrapInWorld(x, y);
+				piece.Core.push_back(y * s_Width + x);
+				for (int dy = -1; dy <= 1; ++dy) {
+					for (int dx = -1; dx <= 1; ++dx) {
+						int nx = wx + dx;
+						int ny = wy + dy;
+						if (nx < 0 || ny < 0 || nx >= side || ny >= side) {
+							continue;
+						}
+						int neighbour = ny * side + nx;
+						if (kind[neighbour] == 0 || distance[neighbour] > longest) {
+							continue;
+						}
+						held = held || kind[neighbour] == 2;
+						int cutX = left + nx;
+						int cutY = top + ny;
+						WrapInWorld(cutX, cutY);
+						piece.Cut.push_back(cutY * s_Width + cutX);
+					}
+				}
+			}
+			if (held) {
+				continue;
+			}
+			std::sort(piece.Core.begin(), piece.Core.end());
+			std::sort(piece.Cut.begin(), piece.Cut.end());
+			piece.Cut.erase(std::unique(piece.Cut.begin(), piece.Cut.end()), piece.Cut.end());
+			found.push_back(std::move(piece));
+		}
+	}
+
+	/// The neck widths the search for hanging pieces is run with: the tuning's, and the thin one for thin pieces (which the wide one pares away whole) when it's narrower.
+	std::vector<int> NeckWidths() {
+		const TerrainCollapse::Tuning& tuning = TerrainCollapse::GetTuning();
+		std::vector<int> widths;
+		if (tuning.NeckWidth > 0) {
+			widths.push_back(tuning.NeckWidth);
+		}
+		if (tuning.ThinNeckWidth > 0 && (tuning.NeckWidth <= 0 || tuning.ThinNeckWidth < tuning.NeckWidth)) {
+			widths.push_back(tuning.ThinNeckWidth);
+		}
+		return widths;
+	}
+
 	/// Notes how things are around a point before a blast digs its crater: which masses already hang in the air, and which pieces already hang by a thin neck.
-	std::shared_ptr<Before> LookBefore(SLTerrain* terrain, const Check& check) {
+	/// @param cuts Pixels already knocked out by what's being looked before (sorted keys), when the look comes after the first of them; or none.
+	std::shared_ptr<Before> LookBefore(SLTerrain* terrain, const Check& check, const std::vector<int>* cuts = nullptr) {
 		auto was = std::make_shared<Before>();
 		TerrainTrees::GetTrees(); // Which tree each pixel is part of, as it stands before the change (see Joins).
 		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
@@ -2374,7 +2614,9 @@ namespace {
 					}
 					if (FindFloatingPiece(materialBitmap, key, s_Width, s_Height, s_WrapX, piece, false, treeRules)) {
 						std::sort(piece.begin(), piece.end());
-						was->Floating.push_back(piece);
+						if (!cuts || !CutLoose(materialBitmap, piece, *cuts)) {
+							was->Floating.push_back(piece);
+						}
 					}
 				}
 			}
@@ -2384,9 +2626,15 @@ namespace {
 		}
 		s_Touched.clear();
 		std::vector<HangingPiece> hanging;
-		FindHangingPieces(materialBitmap, check, hanging);
+		for (int neckWidth: NeckWidths()) {
+			FindHangingPieces(materialBitmap, check, hanging, neckWidth, cuts);
+			for (HangingPiece& found: hanging) {
+				was->Hanging.push_back(std::move(found.Core));
+			}
+		}
+		FindOverhangs(materialBitmap, check, hanging, cuts);
 		for (HangingPiece& found: hanging) {
-			was->Hanging.push_back(std::move(found.Core));
+			was->Overhangs.push_back(std::move(found.Core));
 		}
 		return was;
 	}
@@ -2519,25 +2767,38 @@ namespace {
 		const TerrainCollapse::Tuning& tuning = TerrainCollapse::GetTuning();
 
 		// Pieces left hanging by a thin neck snap off: the neck goes, and the piece is then loose like any other. Ones that hung like that before the blast are left.
+		// Then the same for overhangs sticking out too far (only where how things were before is known: what stuck out that far before is scenery, and stays).
 		std::vector<HangingPiece> hanging;
-		FindHangingPieces(materialBitmap, check, hanging);
-		for (const HangingPiece& found: hanging) {
-			bool wasLikeThat = false;
-			for (size_t i = 0; check.Was && i < check.Was->Hanging.size() && !wasLikeThat; ++i) {
-				// The same piece, not merely inside a bigger one that hung before.
-				const std::vector<int>& before = check.Was->Hanging[i];
-				wasLikeThat = before.size() < found.Core.size() * 2 && found.Core.size() < before.size() * 2 && ShareIn(found.Core, before) > 0.5F;
+		auto snap = [&](const std::vector<std::vector<int>>* wasList) {
+			for (const HangingPiece& found: hanging) {
+				bool wasLikeThat = false;
+				for (size_t i = 0; wasList && i < wasList->size() && !wasLikeThat; ++i) {
+					// The same piece, not merely inside a bigger one that hung before.
+					const std::vector<int>& before = (*wasList)[i];
+					wasLikeThat = before.size() < found.Core.size() * 2 && found.Core.size() < before.size() * 2 && ShareIn(found.Core, before) > 0.5F;
+				}
+				if (wasLikeThat) {
+					continue;
+				}
+				for (int key: found.Cut) {
+					int x = key % width;
+					int y = key / width;
+					if (materialBitmap->line[y][x] == g_MaterialAir) {
+						continue;
+					}
+					ThrowDebris(materialBitmap->line[y][x], terrain->GetFGColorPixel(x, y), glm::vec2(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F), glm::vec2(Random01() - 0.5F, Random01() - 0.5F));
+					terrain->SetMaterialPixel(x, y, g_MaterialAir);
+					terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
+				}
 			}
-			if (wasLikeThat) {
-				continue;
-			}
-			for (int key: found.Cut) {
-				int x = key % width;
-				int y = key / width;
-				ThrowDebris(materialBitmap->line[y][x], terrain->GetFGColorPixel(x, y), glm::vec2(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F), glm::vec2(Random01() - 0.5F, Random01() - 0.5F));
-				terrain->SetMaterialPixel(x, y, g_MaterialAir);
-				terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
-			}
+		};
+		for (int neckWidth: NeckWidths()) {
+			FindHangingPieces(materialBitmap, check, hanging, neckWidth);
+			snap(check.Was ? &check.Was->Hanging : nullptr);
+		}
+		if (check.Was) {
+			FindOverhangs(materialBitmap, check, hanging);
+			snap(&check.Was->Overhangs);
 		}
 
 		// Everything loose around the point, and for each, which mass that was already hanging in the air it came from (-1 for none: it was part of the world).
@@ -2869,6 +3130,9 @@ void TerrainCollapse::NoteDamage(int x, int y, float force) {
 	std::scoped_lock lock(s_DamageMutex);
 	if (s_DamageNoted < 20000) {
 		++s_DamageNoted;
+		if (s_Width > 0 && x < s_Width && y < s_Height) {
+			s_Cuts.push_back(y * s_Width + x);
+		}
 		// Only the square a pixel is in matters (see Update), so one in the same square as the last one noted is folded into it: its force added
 		// (weak hits there add up anyway), and wear that always counts makes the note always count. (It still counts towards the cap.)
 		if (!s_Damage.empty() && s_Damage.back().X / c_WatchCell == x / c_WatchCell && s_Damage.back().Y / c_WatchCell == y / c_WatchCell) {
@@ -3139,9 +3403,11 @@ void TerrainCollapse::Update() {
 	// Ground being dug or shot away: start watching the squares it's happening in, and check the ones being watched.
 	{
 		std::vector<DamageNote> damage;
+		std::vector<int> cuts;
 		{
 			std::scoped_lock lock(s_DamageMutex);
 			damage.swap(s_Damage);
+			cuts.swap(s_Cuts);
 			s_DamageNoted = 0;
 		}
 		float minForce = std::max(s_Tuning.CheckMinForce, 0.0F);
@@ -3169,6 +3435,17 @@ void TerrainCollapse::Update() {
 				s_WatchesWaiting.push_back(square);
 			}
 		}
+		// What was knocked out in the squares waiting for their first look, so that look can see past it (see s_WaitingCuts).
+		if (!s_WatchWaitingDamage.empty()) {
+			for (int key: cuts) {
+				std::pair<int, int> square((key / s_Width) / c_WatchCell, (key % s_Width) / c_WatchCell);
+				if (s_WatchWaitingDamage.count(square)) {
+					if (std::vector<int>& list = s_WaitingCuts[square]; list.size() < 4096) {
+						list.push_back(key);
+					}
+				}
+			}
+		}
 		for (auto buildup = s_ForceBuildup.begin(); buildup != s_ForceBuildup.end();) {
 			buildup = now - buildup->second.Last > c_ForceBuildupUpdates ? s_ForceBuildup.erase(buildup) : std::next(buildup);
 		}
@@ -3181,8 +3458,20 @@ void TerrainCollapse::Update() {
 			watch.LastDamage = s_WatchWaitingDamage[square];
 			watch.NextCheck = now + 30;
 			s_WatchWaitingDamage.erase(square);
-			// How things are as the wearing begins: what's already hanging in the air here isn't this digging's doing.
-			watch.Was = LookBefore(terrain, {square.second * c_WatchCell + c_WatchCell / 2, square.first * c_WatchCell + c_WatchCell / 2, c_WatchRadius, now, nullptr});
+			// How things are as the wearing begins: what's already hanging in the air here isn't this digging's doing. The look comes after the first of the wearing,
+			// so it's told what that knocked out in and around the square, to see past it.
+			std::vector<int> knockedOut;
+			for (int row = square.first - 1; row <= square.first + 1; ++row) {
+				for (int column = square.second - 1; column <= square.second + 1; ++column) {
+					if (auto found = s_WaitingCuts.find({row, column}); found != s_WaitingCuts.end()) {
+						knockedOut.insert(knockedOut.end(), found->second.begin(), found->second.end());
+					}
+				}
+			}
+			s_WaitingCuts.erase(square);
+			std::sort(knockedOut.begin(), knockedOut.end());
+			knockedOut.erase(std::unique(knockedOut.begin(), knockedOut.end()), knockedOut.end());
+			watch.Was = LookBefore(terrain, {square.second * c_WatchCell + c_WatchCell / 2, square.first * c_WatchCell + c_WatchCell / 2, c_WatchRadius, now, nullptr}, &knockedOut);
 			s_Watches.emplace(square, std::move(watch));
 		}
 		int checksLeft = 3;
@@ -3238,11 +3527,13 @@ void TerrainCollapse::Clear() {
 	s_WatchesWaiting.clear();
 	s_WatchWaitingDamage.clear();
 	s_ForceBuildup.clear();
+	s_WaitingCuts.clear();
 	s_Rested.clear();
 	s_Blasts.clear();
 	{
 		std::scoped_lock damageLock(s_DamageMutex);
 		s_Damage.clear();
+		s_Cuts.clear();
 		s_DamageNoted = 0;
 	}
 	std::scoped_lock lock(s_QueueMutex);

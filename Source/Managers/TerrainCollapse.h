@@ -17,6 +17,8 @@ namespace RTE {
 		struct Tuning {
 			bool FloatingStays = true; //!< A mass that was already hanging in the air before a blast stays up when it's chipped; if it's cut in two, the bigger part stays and the smaller falls. Off, anything touching nothing falls.
 			int NeckWidth = 15; //!< A piece held on by a neck of ground no wider than this many pixels snaps off. 0 turns this off.
+			int ThinNeckWidth = 3; //!< A second, narrower look for necks, for pieces too thin for NeckWidth's look to find (it pares them away whole): a thin ledge held on by a neck no wider than this snaps off. 0 turns this off.
+			int OverhangLength = 80; //!< Ground sticking out further than this many pixels from what holds it up (ground beneath it all the way down, bedrock, buildings) breaks off where it's that far out, as a ledge or cave roof dug or shot that long. What stuck out that far already stays. 0 turns this off.
 			int MaxPiecePixels = 16755; //!< A connected piece bigger than this counts as the world itself and never falls.
 			int MinFittingPixels = 184; //!< Loose bits of a building smaller than this stay where they are (lamps, signs and consoles are drawn hanging in mid-air).
 			float CheckMinForce = 0.0F; //!< How hard (impulse, kg * m/s, as a material's StructuralIntegrity) a hit knocking terrain out has to be to start the ground around it being checked for collapse. Weaker hits on the same patch add up over a couple of seconds. 0: every hit counts. Explosions, digging and fire always count.
