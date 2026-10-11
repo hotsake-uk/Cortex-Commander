@@ -2453,6 +2453,7 @@ namespace SandboxDetail {
 	void LookAtUnits(const std::vector<UnitRef>& units);
 	void CommandHotkeys();
 	void KeysPage();
+	void ToggleWindowTab(const char* tab);
 	/// Paint > Plants, with a plant brush in hand: which of its pictures it puts down (PlantPick), from a gallery of them all.
 	void PlantPickPanel(Tool kind);
 	void DrawCursor();
@@ -2490,14 +2491,15 @@ namespace SandboxDetail {
 #pragma endregion
 
 #pragma region Battle Command (CommanderBar.cpp)
-	/// While Battle Command is in development, F11 swaps its Commander Toolbar for the sandbox's own bar (and back), so the sandbox's tools can be
-	/// tried out in it. Off, the Commander Toolbar is the only bar.
+	/// While Battle Command is in development, the Commander Toolbar key (F11 unless rebound) swaps its Commander Toolbar for the sandbox's own bar
+	/// (and back), so the sandbox's tools can be tried out in it. Off, the Commander Toolbar is the only bar. (The Sandbox game mode always has the switch.)
 	constexpr bool c_CommanderBarSwitch = true;
-	inline bool s_CommanderBar = true; //!< Battle Command: the Commander Toolbar along the bottom (true), or the sandbox's bar (F11, c_CommanderBarSwitch).
+	inline bool s_CommanderBar = true; //!< The Commander Toolbar along the bottom (true), or the sandbox's bar (the Commander Toolbar key). Battle Command starts on the toolbar, the Sandbox game mode on its bar.
 	inline bool s_BattlePanelOpen = false; //!< Battle Command: the battle panel (setting the battle up, starting and stopping it) is open.
 
-	/// The side you command in Battle Command with the Commander Toolbar up: the team ticked "You command this team" in the battle (the first
-	/// such), else Red. -1 in any other game, or with the sandbox's bar up instead (F11), when every side is yours as in the sandbox.
+	/// The side you command with the Commander Toolbar up: in Battle Command the team ticked "You command this team" in the battle (the first
+	/// such), else Red; in the Sandbox game mode the side picked in the sandbox. -1 in any other game, or with the sandbox's bar up instead,
+	/// when every side is yours as in the sandbox.
 	int CommandedTeam();
 
 	/// The side whose units alone can be selected and commanded: yours in commander mode (RC-9) and in Battle Command; -1 for every side.
@@ -2510,7 +2512,7 @@ namespace SandboxDetail {
 	/// Battle Command: keeps the battle's commanded team one of the teams in it (Red if none is ticked), every frame. Call from the ImGui frame.
 	void KeepCommandedTeam();
 
-	/// The Commander Toolbar along the bottom of the picture in Battle Command: the command tools, the battle panel, your side and its units,
+	/// The Commander Toolbar along the bottom of the picture in Battle Command (and in the Sandbox game mode, swapped in for its bar): the command tools, the battle panel, your side and its units,
 	/// the speed of time and the pause. Above it, the command row (formations, rules, groups) while the Command tool is in hand.
 	void DrawCommanderBar();
 
