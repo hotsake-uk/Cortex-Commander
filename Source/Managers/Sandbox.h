@@ -49,8 +49,13 @@ namespace RTE {
 		static bool WantsWorldPaused();
 
 		/// Esc with the Command tool in hand in another click mode: goes back to Command mode, and true so the game doesn't pause on it too.
+		/// With Copy area in hand, Esc puts its stamp away or unmarks its box, and is taken the same way.
 		/// In Command mode (or with anything else in hand), false: Esc pauses as ever.
 		static bool TakeEscape();
+
+		/// Lets go of the units the sandbox keeps copies of (the clipboard's, and those the undo would put back), while the managers they need
+		/// are still there: called as the game closes, before they are destroyed.
+		static void Destroy();
 
 		/// Gets whether clicks on the world go to the sandbox instead of the game: the window is open, a tool is picked and the mouse isn't over a debug window.
 		static bool CapturesWorldClicks();

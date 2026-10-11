@@ -263,6 +263,8 @@ namespace SandboxDetail {
 				return "Drag along the ground to put down candles: tapers, pillars and stubs in white, ivory, red and beeswax. Set one alight with fire (the Fire brush, a flame, burning grass beside it) and it burns like a real one: a small steady flame that lights up round it, the wax melting down from the top and running down the sides, until it's burnt down. Water, a strong wind, a blast or rain in the open puts it out; light it again and it carries on.";
 			case Tool::CollapseArea:
 				return "Drag out a box on the world: all the ground in it breaks loose and falls, rock, earth, sand, wood, buildings and all (not doors). Each piece lands as its material does: concrete and glass shatter, earth and stone crack, sand crumbles, wood splinters, metal bends. What only the box held up comes down too. A big box falls as rubble. Shift keeps it square, Escape drops it, Ctrl+Z puts it all back. Up to 800 px either way.";
+			case Tool::CopyArea:
+				return "Drag out a box on the world, then Ctrl+C (or Copy) copies its ground: the terrain, what's drawn on it and the background behind, and with \"Include units\" ticked the units wholly inside it too. Ctrl+V (or Paste) gives a stamp of it on the pointer: click to put it down (as often as you like), F flips it, Escape puts it away. Each one put down is a step Ctrl+Z takes back. Up to 800 px either way; the copy is kept until the game is closed.";
 			case Tool::TerrainOther:
 				return "Paints the terrain chosen under \"More terrain...\": the base game's ground (topsoil, bedrock, red and lunar earth, snow, metal, ...).";
 			case Tool::Rope:
@@ -420,6 +422,8 @@ namespace SandboxDetail {
 				return {Icon::Chunk, MaterialMarkColor(s_OtherTerrain, 255)};
 			case Tool::CollapseArea:
 				return {Icon::Down, IM_COL32(242, 150, 60, 255)};
+			case Tool::CopyArea:
+				return {Icon::Copy, IM_COL32(110, 180, 250, 255)};
 			case Tool::Rope: {
 				const RopeSim::TypeInfo& type = RopeSim::GetType(s_RopeType);
 				return {Icon::Rope, IM_COL32(type.R, type.G, type.B, 255)};
@@ -1357,6 +1361,7 @@ namespace SandboxDetail {
 			}
 			pictures->clear();
 		}
+		ForgetStampPicture();
 	}
 
 	/// The colour the game shows for a palette index, as 8-bit RGB: the same conversion the renderer uploads the palette with (Allegro palettes are 6 bits a channel).
@@ -2146,6 +2151,7 @@ namespace SandboxDetail {
 		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view (with a Paint tool in hand: dig)"}, {"Middle drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"U", "Hide or show the bar along the bottom"}, {"Commander Toolbar key", "Swap the bar along the bottom for Battle Command's Commander Toolbar, and back (the key is picked below)"}, {"F9", "Commander view, outside the Sandbox game mode: your side from above, and back into your unit"}, {"Ctrl+Z", "Undo the last paint stroke or the last thing placed"}, {"Ctrl+P", "Pause the AI, or let it go again (in any game; the key can be changed in the AI settings)"}};
 		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it. In Command mode the order fits what's under the pointer: an enemy attacked, an objective taken or held, open air flown to, else a move"}, {"Esc", "Back to Command mode, the mode other orders return to once placed (in Command mode: pause)"}, {"Left drag", "Select units in a box"}, {"Double click and drag", "Order with risk: normal at the click, fully direct at the full risk distance; they face the way dragged"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click a unit", "Every unit of that kind in view"}, {"Clicks to order", "How urgent the order is: 1 cautious (walks round jumps, waits for fuel), 2 normal; drag the second click for risk up to the shortest way whatever it takes (a dig-to tunnels straight, moves take fast, reckless jet jumps); tuned in Battle Behavior settings"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"X", "Dig to: tunnel to the point, in the ground or not (the units with a digger that cuts the way)"}, {"Ctrl+X", "Breach: the diggers tunnel to the point and the rest follow them in; once through, they all attack"}, {"Ctrl+B", "Build: a selected unit with a Constructor puts up the piece picked on the command row (sandbags, a wall, a bunker, a turret)"}, {"Ctrl+L", "Airlift: a gunship comes down by the selected units, flies them to the place clicked and lets them out"}, {"J", "Jetpack here: fly to the point in the air and hover there (a move or attack-move clicked in open air flies there too)"}, {"Z", "Suppress: fire into a zone round the point and keep firing, whatever else is in sight"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends)"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}, {"Delete", "Remove the selected units, with the sandbox's bar up (Ctrl+Z puts them back). A battle zone picked, or an effect or spring under the pointer with the effects overlay on, is removed instead"}};
 		static const Key plants[] = {{"E / Shift+E", "With a plant, cactus, mushroom, tree or candle brush in hand: the next of its pictures, or the one before (just one picked in its gallery: that pick moves on)"}, {"F", "Flip the next one the other way"}};
+		static const Key copying[] = {{"Left drag", "With Copy area in hand (Paint tab): mark a box to copy (Shift: square)"}, {"Ctrl+C", "Copy the marked box: its ground, and its units with \"Include units\""}, {"Ctrl+V", "Paste: a stamp of the copy on the pointer (Copy area taken up)"}, {"Left click", "While pasting: put the stamp down (one step for Ctrl+Z)"}, {"F", "While pasting: flip the stamp left to right"}, {"Esc", "Put the stamp away, or unmark the box"}};
 		auto table = [](const char* id, const Key* keys, size_t count) {
 			if (ImGui::BeginTable(id, 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
 				for (size_t i = 0; i < count; ++i) {
@@ -2165,6 +2171,8 @@ namespace SandboxDetail {
 		table("##keysView", camera, std::size(camera));
 		ImGui::SeparatorText("Plant brushes");
 		table("##keysPlants", plants, std::size(plants));
+		ImGui::SeparatorText("Copy and paste");
+		table("##keysCopy", copying, std::size(copying));
 		ImGui::SeparatorText("Command tool");
 		ImGui::TextDisabled("Not while you play a unit: its keys are its own then.");
 		table("##keysCommand", command, std::size(command));
@@ -2319,6 +2327,110 @@ namespace SandboxDetail {
 		}
 	}
 
+	/// The stamp's preview: the clipboard's ground in its own colours (its air see-through), made again when a new copy comes in.
+	PiecePicture s_StampPicture;
+	int s_StampPictureVersion = -1;
+
+	void ForgetStampPicture() {
+		if (s_StampPicture.Texture != 0) {
+			GLuint texture = s_StampPicture.Texture;
+			glDeleteTextures(1, &texture);
+		}
+		s_StampPicture = PiecePicture();
+		s_StampPictureVersion = -1;
+	}
+
+	const PiecePicture& StampPicture() {
+		if (s_StampPictureVersion == s_Clipboard.Version && s_StampPicture.Texture != 0) {
+			return s_StampPicture;
+		}
+		ForgetStampPicture();
+		s_StampPictureVersion = s_Clipboard.Version;
+		if (s_Clipboard.Empty()) {
+			return s_StampPicture;
+		}
+		s_StampPicture.Width = s_Clipboard.Width;
+		s_StampPicture.Height = s_Clipboard.Height;
+		std::vector<unsigned char> pixels(static_cast<size_t>(s_Clipboard.Width) * s_Clipboard.Height * 4, 0);
+		for (size_t i = 0; i < s_Clipboard.Material.size(); ++i) {
+			if (s_Clipboard.Material[i] == g_MaterialAir) {
+				continue;
+			}
+			// (Ground with nothing drawn on it shows its background, or failing that a plain grey.)
+			int index = s_Clipboard.Foreground[i] != ColorKeys::g_MaskColor ? s_Clipboard.Foreground[i] : s_Clipboard.Background[i];
+			unsigned char* pixel = &pixels[i * 4];
+			if (index == ColorKeys::g_MaskColor) {
+				pixel[0] = pixel[1] = pixel[2] = 128;
+			} else {
+				PaletteColor(index, pixel);
+			}
+			pixel[3] = 255;
+		}
+		GLint boundBefore = 0;
+		glGetIntegerv(GL_TEXTURE_BINDING_2D, &boundBefore);
+		glGenTextures(1, &s_StampPicture.Texture);
+		glBindTexture(GL_TEXTURE_2D, s_StampPicture.Texture);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, s_StampPicture.Width, s_StampPicture.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+		glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(boundBefore));
+		return s_StampPicture;
+	}
+
+	/// Where the stamp's top left corner goes for the pointer: the stamp is held by its middle.
+	Vector StampCorner() {
+		Vector corner = MouseScenePosition() - Vector(static_cast<float>(s_Clipboard.Width / 2), static_cast<float>(s_Clipboard.Height / 2));
+		return corner.GetFloored();
+	}
+
+	void DrawCopyArea() {
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		const ImU32 blue = IM_COL32(110, 180, 250, 235);
+		GameViewRect view = g_WindowMan.GetGameViewRect();
+		drawList->PushClipRect(ImVec2(view.x, view.y), ImVec2(view.x + view.w, view.y + view.h));
+		if (s_Stamping && !s_Clipboard.Empty()) {
+			// The clipboard, see-through, exactly where a click puts it down (flipped as it will be), with its units as rings in their side's colours.
+			const PiecePicture& picture = StampPicture();
+			Vector corner = StampCorner();
+			ImVec2 topLeft = ToScreen(corner);
+			ImVec2 bottomRight = ToScreen(corner + Vector(static_cast<float>(s_Clipboard.Width), static_cast<float>(s_Clipboard.Height)));
+			if (picture.Texture != 0) {
+				drawList->AddImage(static_cast<ImTextureID>(picture.Texture), topLeft, bottomRight, ImVec2(s_StampFlipped ? 1.0F : 0.0F, 0.0F), ImVec2(s_StampFlipped ? 0.0F : 1.0F, 1.0F), IM_COL32(255, 255, 255, 150));
+			}
+			drawList->AddRect(topLeft, bottomRight, blue, 0.0F, 0, 1.5F);
+			const float scale = ScenePixelsPerWindowPixel();
+			for (const Clipboard::Unit& unit: s_Clipboard.Units) {
+				if (!unit.Copy) {
+					continue;
+				}
+				Vector offset = unit.Offset;
+				if (s_StampFlipped) {
+					offset.m_X = static_cast<float>(s_Clipboard.Width) - offset.m_X;
+				}
+				const int team = unit.Copy->GetTeam();
+				ImU32 color = team >= 0 && team < c_Sides ? c_SideColors[team] : IM_COL32(255, 255, 255, 255);
+				drawList->AddCircle(ToScreen(corner + offset), std::max(unit.Copy->GetRadius() / scale, 3.0F), color, 0, 1.5F);
+			}
+		} else if (s_CopyBoxSet && !s_ShapeDragging) {
+			// The marked box, shaded, with its size.
+			Vector end = s_CopyBoxA + g_SceneMan.ShortestDistance(s_CopyBoxA, s_CopyBoxB, g_SceneMan.SceneWrapsX());
+			float left = std::min(s_CopyBoxA.m_X, end.m_X);
+			float top = std::min(s_CopyBoxA.m_Y, end.m_Y);
+			float right = std::max(s_CopyBoxA.m_X, end.m_X) + 1.0F;
+			float bottom = std::max(s_CopyBoxA.m_Y, end.m_Y) + 1.0F;
+			ImVec2 topLeft = ToScreen(Vector(left, top));
+			ImVec2 bottomRight = ToScreen(Vector(right, bottom));
+			drawList->AddRectFilled(topLeft, bottomRight, IM_COL32(110, 180, 250, 40));
+			drawList->AddRect(topLeft, bottomRight, blue, 0.0F, 0, 2.0F);
+			std::string size = std::to_string(static_cast<int>(right - left)) + " x " + std::to_string(static_cast<int>(bottom - top));
+			drawList->AddText(ImVec2(topLeft.x + 4.0F, topLeft.y - ImGui::GetTextLineHeight() - 2.0F), blue, size.c_str());
+		}
+		drawList->PopClipRect();
+	}
+
 	void DrawCursor() {
 		ImGuiIO& io = ImGui::GetIO();
 		const ToolInfo& tool = CurrentTool();
@@ -2359,6 +2471,16 @@ namespace SandboxDetail {
 				// How far it reaches.
 				Vector middle = FromCamera(ground);
 				drawList->AddCircle(ImVec2(ViewOrigin().x + middle.m_X / scale, ViewOrigin().y + middle.m_Y / scale), Colony::PowerRange() / scale, (c_SideColors[s_Team] & ~IM_COL32_A_MASK) | IM_COL32(0, 0, 0, 120), 96, 1.0F);
+			}
+		} else if (tool.Kind == Tool::CopyArea) {
+			// Copy area: the stamp, or the marked box (DrawCopyArea), and what the keys do now.
+			DrawCopyArea();
+			if (s_Stamping && !s_Clipboard.Empty()) {
+				label = std::string("click: put down    F: flip") + (s_StampFlipped ? " (flipped)" : "") + "    Esc: done";
+			} else if (s_CopyBoxSet) {
+				label = "Ctrl+C: copy the box    drag: mark another    Esc: unmark";
+			} else {
+				label = s_Clipboard.Empty() ? "drag a box to copy" : "drag a box to copy    Ctrl+V: paste";
 			}
 		} else if (tool.Kind == Tool::Structure) {
 			if (const Preset* preset = ChosenPreset(Tool::Structure, s_StructureChoice)) {
@@ -4570,7 +4692,7 @@ namespace SandboxDetail {
 		    {"Paint", "Liquids", {Tool::Water, Tool::Lava, Tool::Acid, Tool::Oil, Tool::Mud, Tool::Tar, Tool::Mercury, Tool::Fuel, Tool::Cryo, Tool::Blood, Tool::PourOther, Tool::WaterSpawner}},
 		    {"Paint", "Fire and gas", {Tool::Fire, Tool::Smoke, Tool::ToxicGas, Tool::Methane, Tool::Steam}},
 		    {"Paint", "Loose", {Tool::LooseSand, Tool::LooseSnow, Tool::Gravel, Tool::GlassShards, Tool::Boulder, Tool::Slab}},
-		    {"Paint", "Terrain", {Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::TreeTrunk, Tool::Concrete, Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::Metal, Tool::TerrainOther, Tool::CollapseArea}},
+		    {"Paint", "Terrain", {Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::TreeTrunk, Tool::Concrete, Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::Metal, Tool::TerrainOther, Tool::CollapseArea, Tool::CopyArea}},
 		    {"Paint", "Plants", {Tool::Plants, Tool::Cacti, Tool::Mushrooms, Tool::Trees, Tool::GrowGrass, Tool::Candles}},
 		    {"Paint", "Ropes", {Tool::Rope, Tool::RopeCut}},
 		    {"Boom", "Blasts", {Tool::Grenade, Tool::BigBomb, Tool::Napalm, Tool::Lightning, Tool::Demolition, Tool::BunkerBuster, Tool::Meteor}},
@@ -4867,6 +4989,37 @@ namespace SandboxDetail {
 				stroke.Choice = 2;
 				s_Queue.push_back(stroke);
 				s_RopeDraft.clear();
+			}
+		}
+		// Copy area.
+		if (kind == Tool::CopyArea) {
+			next();
+			ImGui::BeginDisabled(!s_CopyBoxSet || s_Stamping);
+			if (BarChip("Copy", false, ToolTheme::Text, "Ctrl+C", "Copies the box marked on the world: its ground, and the units wholly inside it if \"Include units\" is on.") == 1) {
+				CopyMarkedBox();
+			}
+			ImGui::EndDisabled();
+			next();
+			ImGui::BeginDisabled(s_Clipboard.Empty());
+			if (BarChip("Paste", s_Stamping, ToolTheme::Text, "Ctrl+V", "A stamp of the copy on the pointer: click to put it down, as often as you like; Escape puts it away.") == 1) {
+				if (s_Stamping) {
+					s_Stamping = false;
+				} else {
+					TakeUpStamp();
+				}
+			}
+			ImGui::EndDisabled();
+			next();
+			if (BarChip("Flip", s_StampFlipped, ToolTheme::Text, "F", "The stamp flipped left to right, its units turned round with it.") == 1) {
+				s_StampFlipped = !s_StampFlipped;
+			}
+			next();
+			if (BarChip("Include units", s_CopyUnits, ToolTheme::Text, nullptr, "A copy takes the units wholly inside the box too (not your character, nor the unit you are in), with their kit and side; each paste puts copies of them down.") == 1) {
+				s_CopyUnits = !s_CopyUnits;
+			}
+			next();
+			if (BarChip("Paste air", s_PasteAir, ToolTheme::Text, nullptr, "The air in the copy clears what is under the stamp, so it is put down exactly as it was. Off, only its ground is put down, over what is there.") == 1) {
+				s_PasteAir = !s_PasteAir;
 			}
 		}
 		// Spawning.
@@ -5178,8 +5331,6 @@ namespace SandboxDetail {
 		ImGui::TextDisabled("then place the order");
 	}
 
-	/// The strip of the Command tool, the sandbox's RTS controls: the order the clicks give, with its settings; then the selection, the groups, what
-	/// can be done with the units and how they fight.
 	void QueueSelectionAction(SelectionDo what, int team) {
 		Stroke stroke;
 		stroke.Kind = Tool::SelectionAction;
@@ -5188,6 +5339,26 @@ namespace SandboxDetail {
 		s_Queue.push_back(stroke);
 	}
 
+	void CopyMarkedBox() {
+		if (!s_CopyBoxSet) {
+			return;
+		}
+		Stroke stroke;
+		stroke.Kind = Tool::CopyTake;
+		stroke.Position = s_CopyBoxA;
+		stroke.Position2 = s_CopyBoxB;
+		stroke.Choice = s_CopyUnits ? 1 : 0;
+		s_Queue.push_back(stroke);
+	}
+
+	void TakeUpStamp() {
+		s_ToolIndex = ToolIndex(Tool::CopyArea);
+		s_Stamping = true;
+		s_ShapeDragging = false;
+	}
+
+	/// The strip of the Command tool, the sandbox's RTS controls: the order the clicks give, with its settings; then the selection, the groups, what
+	/// can be done with the units and how they fight.
 	void CommandStrip() {
 		float pixel = ToolUI::Pixel();
 		float field = ImGui::GetFontSize() * 7.0F;

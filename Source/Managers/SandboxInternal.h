@@ -1282,8 +1282,37 @@ namespace SandboxDetail {
 	inline Vector s_LineStart;
 	constexpr int c_MaxDropSide = 800; //!< The biggest box "Make it fall" takes either way, in pixels.
 
-	/// Whether the tool in hand is used by dragging out a shape on the world: the terrain brushes with Brush type Shape, and "Make it fall"'s box.
-	inline bool DragsShape(Tool kind) { return (IsTerrainBrush(kind) && s_ShapeFill) || kind == Tool::CollapseArea; }
+	/// What Copy area copied (S-4): the ground of a box, pixel by pixel, and the units wholly inside it. Kept in memory only, until the
+	/// game is closed (a new game keeps it, so ground can be taken from one map to another).
+	struct Clipboard {
+		/// A unit copied: a copy as it was (never in the world), and where it was from the box's top left corner.
+		struct Unit {
+			std::shared_ptr<Actor> Copy;
+			Vector Offset;
+		};
+		int Width = 0;
+		int Height = 0;
+		std::vector<unsigned char> Material; //!< Width x Height, row by row; 0 is air.
+		std::vector<unsigned char> Foreground; //!< The 8 bit foreground colours.
+		std::vector<unsigned char> Background; //!< The 8 bit background colours.
+		std::vector<Unit> Units;
+		int Version = 0; //!< Counts up with each copy, so the window knows to draw its preview again.
+
+		bool Empty() const { return Width <= 0 || Height <= 0; }
+	};
+	inline Clipboard s_Clipboard; //!< The sim's: written by Tool::CopyTake, read by the window for the stamp's preview (between updates).
+	constexpr int c_MaxCopySide = 800; //!< The biggest box Copy area takes either way, in pixels.
+	inline bool s_CopyBoxSet = false; //!< A box is marked with Copy area, from s_CopyBoxA to s_CopyBoxB (scene positions).
+	inline Vector s_CopyBoxA;
+	inline Vector s_CopyBoxB;
+	inline bool s_Stamping = false; //!< Copy area: the clipboard follows the pointer as a stamp, to be put down with a click.
+	inline bool s_StampFlipped = false; //!< The stamp is flipped left to right (F while stamping).
+	inline bool s_CopyUnits = true; //!< Copy area's "Include units": a copy takes the units wholly inside the box as well.
+	inline bool s_PasteAir = false; //!< Copy area's "Paste the air too": the air in the clipboard clears what is under the stamp.
+
+	/// Whether the tool in hand is used by dragging out a shape on the world: the terrain brushes with Brush type Shape, "Make it fall"'s box,
+	/// and Copy area's box (not while it is stamping).
+	inline bool DragsShape(Tool kind) { return (IsTerrainBrush(kind) && s_ShapeFill) || kind == Tool::CollapseArea || (kind == Tool::CopyArea && !s_Stamping); }
 	/// What the Paint tab's brushes may paint over besides air (flags): Paint > Paint over.
 	namespace PaintOver {
 		constexpr int Liquids = 1; //!< Liquids and loose ground (sand, snow, rubble): replaced by what is painted.
@@ -1886,7 +1915,7 @@ namespace SandboxDetail {
 
 	inline std::deque<std::string> s_StrokeLog; //!< The last tool uses applied, oldest first, for the stroke log (SettingsMan::ShowSandboxStrokeLog).
 
-	enum class Icon { Eye, Arrows, Target, Person, Cross, Flag, Jar, Gun, Wall, Down, Flame, Drop, Cloud, Grains, Chunk, Pick, Bomb, Rocket, Bolt, Star, Plant, Candle, Rope, Wheels };
+	enum class Icon { Eye, Arrows, Target, Person, Cross, Flag, Jar, Gun, Wall, Down, Flame, Drop, Cloud, Grains, Chunk, Pick, Bomb, Rocket, Bolt, Star, Plant, Candle, Rope, Wheels, Copy };
 
 	// Twelve by twelve pixels each: # in the tool's own colour, + a highlight.
 	constexpr const char* c_IconArt[] = {
@@ -2202,6 +2231,19 @@ namespace SandboxDetail {
 	    ".#++#..#++#."
 	    ".####..####."
 	    "..##....##..",
+	    // Copy
+	    "#######....."
+	    "#+.....#...."
+	    "#.......#..."
+	    "#....#######"
+	    "#....#+....#"
+	    "#....#.....#"
+	    "#....#.....#"
+	    "######.....#"
+	    ".....#.....#"
+	    ".....#.....#"
+	    ".....#.....#"
+	    ".....#######",
 	};
 
 	struct ToolLook {
@@ -2368,6 +2410,17 @@ namespace SandboxDetail {
 	/// @param team The side, for SelectionDo::ChangeSide.
 	void QueueSelectionAction(SelectionDo what, int team = 0);
 	inline int s_DeleteKeyTakenFrame = -1; //!< The ImGui frame Delete last removed something under the pointer (a battle zone, an effect, a spring): not the selection then.
+	/// Copy area's copy (Ctrl+C, or its Copy button): the marked box (s_CopyBox) to the clipboard, with its units if "Include units" is
+	/// ticked, for the sim to do (Tool::CopyTake).
+	void CopyMarkedBox();
+	/// Copy area's paste (Ctrl+V, or its Paste button): the Copy area tool taken up with the clipboard as a stamp on the pointer.
+	void TakeUpStamp();
+	/// Copy area's stamp and box, drawn on the world while the tool is in hand (see DrawCursor).
+	void DrawCopyArea();
+	/// Where the stamp's top left corner is for the pointer (held by its middle), in the scene: where a click puts the clipboard down.
+	Vector StampCorner();
+	/// Lets the stamp's preview go (ForgetPictures, and a new copy).
+	void ForgetStampPicture();
 	void NotePaint(const Box& area, const char* kind, const char* material, bool toldCollapse, bool toldLiquid, bool changed);
 	void PaintTerrain(const Vector& center, int radius, const char* materialName, BrushShape shape = BrushShape::Circle, float goldShare = 0.0F, int over = 0);
 	void FillTerrainShape(const Stroke& stroke);

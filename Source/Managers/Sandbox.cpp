@@ -763,6 +763,18 @@ bool Sandbox::IsLookingAround() {
 }
 
 bool Sandbox::TakeEscape() {
+	// Copy area: Esc puts the stamp away, or else unmarks the box (not pausing on it).
+	if (IsGodMode() && !s_Possessed && (s_Open || IsLookingAround()) && CurrentTool().Kind == Tool::CopyArea && !ImGui::GetIO().WantTextInput) {
+		if (s_Stamping) {
+			s_Stamping = false;
+			return true;
+		}
+		if (s_CopyBoxSet || s_ShapeDragging) {
+			s_CopyBoxSet = false;
+			s_ShapeDragging = false;
+			return true;
+		}
+	}
 	if (!IsGodMode() || s_Possessed || !(s_Open || IsLookingAround()) || CurrentTool().Kind != Tool::Command || s_CommandMode == CommandMode::Command || ImGui::GetIO().WantTextInput) {
 		return false;
 	}
@@ -770,6 +782,11 @@ bool Sandbox::TakeEscape() {
 	s_PatrolDraft.clear();
 	s_BackToCommandAt = -1.0;
 	return true;
+}
+
+void Sandbox::Destroy() {
+	s_Clipboard = Clipboard();
+	s_PaintUndo.clear();
 }
 
 bool Sandbox::CapturesWorldClicks() {
@@ -1088,6 +1105,23 @@ void Sandbox::DrawGUI() {
 	if (InGame() && !io.WantTextInput && (CurrentTool().Kind == Tool::BattleSpawnZone || IsModeZoneTool(CurrentTool().Kind)) && !s_ZoneDraft.empty() && ImGui::IsKeyPressed(ImGuiKey_Backspace, false)) {
 		s_ZoneDraft.pop_back();
 	}
+	// Copy area (S-4): Ctrl+C copies the marked box, Ctrl+V takes up the stamp of what was copied (the Copy area tool with it), and F
+	// flips the stamp. In the god view, so long as no text box has the keys. (Escape: see TakeEscape.)
+	if (InGame() && !s_Possessed && !io.WantTextInput && !io.KeyAlt) {
+		if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C, false) && CurrentTool().Kind == Tool::CopyArea && s_CopyBoxSet) {
+			CopyMarkedBox();
+		}
+		if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V, false) && !s_Clipboard.Empty()) {
+			TakeUpStamp();
+		}
+		if (!io.KeyCtrl && s_Stamping && CurrentTool().Kind == Tool::CopyArea && ImGui::IsKeyPressed(ImGuiKey_F, false)) {
+			s_StampFlipped = !s_StampFlipped;
+		}
+	}
+	// (Another tool taken up puts the stamp away.)
+	if (s_Stamping && (CurrentTool().Kind != Tool::CopyArea || !InGame())) {
+		s_Stamping = false;
+	}
 	// Ctrl+Z: the newest paint stroke or placing click undone (see UndoPaint), whichever tool is in hand, so long as no text box has the keys.
 	// Not while you play a unit: in the WASD layouts Ctrl is crouch, so crouching with Z down took back the last stroke.
 	if (InGame() && io.KeyCtrl && !io.WantTextInput && !s_Possessed && ImGui::IsKeyPressed(ImGuiKey_Z, false) && !s_PaintUndo.empty()) {
@@ -1233,8 +1267,19 @@ void Sandbox::DrawGUI() {
 				s_LineDragging = true;
 				s_LineStart = DragsRun(tool.Kind) ? position : SnapLinePoint(position, s_SnapToGrid);
 			}
+		} else if (tool.Kind == Tool::CopyArea && s_Stamping) {
+			// Copy area's stamp: a click puts the clipboard down just where it is shown (DrawCopyArea), and the stamp stays for more.
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !s_Clipboard.Empty()) {
+				Stroke stroke;
+				stroke.Kind = Tool::PasteArea;
+				stroke.Position = StampCorner();
+				stroke.Choice = s_StampFlipped ? 1 : 0;
+				stroke.Count = s_PasteAir ? 1 : 0;
+				s_Queue.push_back(stroke);
+			}
 		} else if (DragsShape(tool.Kind)) {
-			// Brush type Shape: a drag marks out the shape, filled when the button is let go (below). "Make it fall" drags its box the same way.
+			// Brush type Shape: a drag marks out the shape, filled when the button is let go (below). "Make it fall" and Copy area drag their box
+			// the same way.
 			if (!s_ShapeDragging && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 				s_ShapeDragging = true;
 				s_ShapeDigging = false;
@@ -1374,7 +1419,8 @@ void Sandbox::DrawGUI() {
 			s_ShapeDragging = false;
 		} else {
 			bool dropBox = CurrentTool().Kind == Tool::CollapseArea;
-			bool line = !dropBox && s_FillShape == FillShape::Line;
+			bool copyBox = CurrentTool().Kind == Tool::CopyArea;
+			bool line = !dropBox && !copyBox && s_FillShape == FillShape::Line;
 			Vector end = s_ShapeStart + g_SceneMan.ShortestDistance(s_ShapeStart, MouseScenePosition(), g_SceneMan.SceneWrapsX());
 			if (line) {
 				end = LineDragEnd(s_ShapeStart, MouseScenePosition(), io.KeyShift, false);
@@ -1382,9 +1428,9 @@ void Sandbox::DrawGUI() {
 				float side = std::max(std::abs(end.m_X - s_ShapeStart.m_X), std::abs(end.m_Y - s_ShapeStart.m_Y));
 				end = s_ShapeStart + Vector(end.m_X >= s_ShapeStart.m_X ? side : -side, end.m_Y >= s_ShapeStart.m_Y ? side : -side);
 			}
-			if (dropBox) {
-				// (No bigger than c_MaxDropSide either way.)
-				constexpr float c_Most = static_cast<float>(c_MaxDropSide - 1);
+			if (dropBox || copyBox) {
+				// (No bigger than c_MaxDropSide, or c_MaxCopySide, either way.)
+				const float c_Most = static_cast<float>((copyBox ? c_MaxCopySide : c_MaxDropSide) - 1);
 				end = s_ShapeStart + Vector(std::clamp(end.m_X - s_ShapeStart.m_X, -c_Most, c_Most), std::clamp(end.m_Y - s_ShapeStart.m_Y, -c_Most, c_Most));
 			}
 			ImDrawList* drawList = ImGui::GetForegroundDrawList();
@@ -1394,7 +1440,15 @@ void Sandbox::DrawGUI() {
 			float top = std::min(s_ShapeStart.m_Y, end.m_Y);
 			float bottom = std::max(s_ShapeStart.m_Y, end.m_Y) + 1.0F;
 			float middleX = (left + right) * 0.5F;
-			if (dropBox) {
+			if (copyBox) {
+				// The box to copy: shaded, edged in blue, with its size.
+				ImVec2 topLeft = ToScreen(Vector(left, top));
+				ImVec2 bottomRight = ToScreen(Vector(right, bottom));
+				drawList->AddRectFilled(topLeft, bottomRight, IM_COL32(110, 180, 250, 40));
+				drawList->AddRect(topLeft, bottomRight, IM_COL32(110, 180, 250, 235), 0.0F, 0, 2.0F);
+				std::string size = std::to_string(static_cast<int>(right - left)) + " x " + std::to_string(static_cast<int>(bottom - top));
+				drawList->AddText(ImVec2(topLeft.x + 4.0F, topLeft.y - ImGui::GetTextLineHeight() - 2.0F), IM_COL32(110, 180, 250, 235), size.c_str());
+			} else if (dropBox) {
 				// The box whose ground will fall: shaded, edged in warning orange, with its size.
 				ImVec2 topLeft = ToScreen(Vector(left, top));
 				ImVec2 bottomRight = ToScreen(Vector(right, bottom));
@@ -1437,7 +1491,13 @@ void Sandbox::DrawGUI() {
 			} else {
 				drawList->AddRect(ToScreen(Vector(left, top)), ToScreen(Vector(right, bottom)), outline, 0.0F, 0, 1.5F);
 			}
-			if (!ImGui::IsMouseDown(s_ShapeDigging ? ImGuiMouseButton_Right : ImGuiMouseButton_Left)) {
+			if (copyBox && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+				// Copy area: the box is only marked, for Ctrl+C (or the Copy button) to copy. A click without a drag unmarks it.
+				s_ShapeDragging = false;
+				s_CopyBoxSet = right - left >= 2.0F && bottom - top >= 2.0F;
+				s_CopyBoxA = s_ShapeStart;
+				s_CopyBoxB = end;
+			} else if (!ImGui::IsMouseDown(s_ShapeDigging ? ImGuiMouseButton_Right : ImGuiMouseButton_Left)) {
 				s_ShapeDragging = false;
 				Stroke stroke;
 				stroke.Kind = s_ShapeDigging ? Tool::Dig : CurrentTool().Kind;
@@ -2189,6 +2249,40 @@ void Sandbox::DrawGUI() {
 				ImGui::RadioButton("Spray", &shape, 2);
 				s_BrushShape = static_cast<BrushShape>(shape);
 				ImGui::SetItemTooltip("What the terrain brushes (Dig and the materials) paint and dig: a circle, a square as wide as the brush, or a soft spray that scatters it over the circle, thickest in the middle, building up while held.");
+				ImGui::SeparatorText("Copy and paste");
+				ToolButtons({Tool::CopyArea});
+				ImGui::SameLine();
+				ImGui::BeginDisabled(!s_CopyBoxSet || s_Stamping);
+				if (ImGui::Button("Copy")) {
+					CopyMarkedBox();
+				}
+				ImGui::EndDisabled();
+				ImGui::SetItemTooltip("Ctrl+C: copies the box marked on the world with Copy area, its ground and (with \"Include units\") the units wholly inside it.");
+				ImGui::SameLine();
+				ImGui::BeginDisabled(s_Clipboard.Empty());
+				if (ImGui::Button(s_Stamping ? "Stop pasting" : "Paste")) {
+					if (s_Stamping) {
+						s_Stamping = false;
+					} else {
+						TakeUpStamp();
+					}
+				}
+				ImGui::EndDisabled();
+				ImGui::SetItemTooltip("Ctrl+V: a stamp of the copy on the pointer. Click to put it down (as often as you like), F flips it, Escape puts it away. Each one put down is a step Ctrl+Z takes back.");
+				ImGui::Checkbox("Include units", &s_CopyUnits);
+				ImGui::SetItemTooltip("A copy takes the units wholly inside the box too (not your character, nor the unit you are in), with their kit and side; each paste puts copies of them down.");
+				ImGui::SameLine();
+				ImGui::Checkbox("Paste the air too", &s_PasteAir);
+				ImGui::SetItemTooltip("The air in the copy clears what is under the stamp, so it is put down exactly as it was. Off, only its ground is put down, over what is there.");
+				ImGui::SameLine();
+				ImGui::Checkbox("Flipped", &s_StampFlipped);
+				ImGui::SetItemTooltip("F while pasting: the stamp flipped left to right, its units turned round with it.");
+				if (s_Clipboard.Empty()) {
+					ImGui::TextDisabled("Nothing copied yet: drag a box with Copy area, then Ctrl+C.");
+				} else {
+					ImGui::TextDisabled("Copied: %d x %d px, %d unit%s", s_Clipboard.Width, s_Clipboard.Height, static_cast<int>(s_Clipboard.Units.size()), s_Clipboard.Units.size() == 1 ? "" : "s");
+				}
+				ImGui::SetItemTooltip("Kept until the game is closed, so ground can be taken from one map to another.");
 				UndoButton();
 				EndSandboxTab();
 			}

@@ -250,6 +250,19 @@ namespace SandboxDetail {
 		}
 	}
 
+	/// Keeps a pixel as it is, background and all, before a bunker piece or a paste changes it, for the undo.
+	void RecordPixelWithBackground(const SLTerrain* terrain, int x, int y) {
+		if (s_PaintUndo.empty()) {
+			return;
+		}
+		size_t before = s_PaintUndo.back().Pixels.size();
+		RecordPaintPixel(terrain, x, y);
+		// (Only the first time this step sees the pixel, as for the foreground.)
+		if (s_PaintUndo.back().Pixels.size() > before) {
+			s_PaintUndo.back().Background.push_back({static_cast<unsigned short>(x), static_cast<unsigned short>(y), static_cast<unsigned char>(terrain->GetBGColorPixel(x, y))});
+		}
+	}
+
 	/// Keeps the ground a bunker piece will be drawn over, foreground, material and background, for the undo.
 	void RecordTerrainObjectArea(const TerrainObject& piece) {
 		SLTerrain* terrain = g_SceneMan.GetScene() ? g_SceneMan.GetScene()->GetTerrain() : nullptr;
@@ -265,12 +278,7 @@ namespace SandboxDetail {
 				if (x < 0 || y < 0 || x >= terrain->GetWidth() || y >= terrain->GetHeight() || x > 0xFFFF || y > 0xFFFF) {
 					continue;
 				}
-				size_t before = s_PaintUndo.back().Pixels.size();
-				RecordPaintPixel(terrain, x, y);
-				// (Only the first time this step sees the pixel, as for the foreground.)
-				if (s_PaintUndo.back().Pixels.size() > before) {
-					s_PaintUndo.back().Background.push_back({static_cast<unsigned short>(x), static_cast<unsigned short>(y), static_cast<unsigned char>(terrain->GetBGColorPixel(x, y))});
-				}
+				RecordPixelWithBackground(terrain, x, y);
 			}
 		}
 	}
@@ -384,6 +392,8 @@ namespace SandboxDetail {
 						continue;
 					}
 					if (Actor* copy = dynamic_cast<Actor*>(unit->Clone())) {
+						// (Without its way points: those that follow a unit or thing point at it, and it may be gone by the time it's put back.)
+						copy->ClearAIWaypoints();
 						step.Removed.emplace_back(copy);
 					}
 					unit->SetToDelete(true);
@@ -454,6 +464,137 @@ namespace SandboxDetail {
 		}
 	}
 
+
+	/// Copy area's copy (S-4): the ground of the box from stroke.Position to stroke.Position2 (no bigger than c_MaxCopySide either way),
+	/// material, foreground and background, into the clipboard; with Choice 1 also the units wholly inside it (not your character, nor the
+	/// unit you are in), each a copy as it is now.
+	void CopyArea(const Stroke& stroke) {
+		SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
+		const int width = terrain->GetBitmap()->w;
+		const int height = terrain->GetBitmap()->h;
+		Vector end = stroke.Position + g_SceneMan.ShortestDistance(stroke.Position, stroke.Position2, g_SceneMan.SceneWrapsX());
+		const int left = static_cast<int>(std::floor(std::min(stroke.Position.m_X, end.m_X)));
+		const int top = static_cast<int>(std::floor(std::min(stroke.Position.m_Y, end.m_Y)));
+		const int right = std::min(static_cast<int>(std::floor(std::max(stroke.Position.m_X, end.m_X))), left + c_MaxCopySide - 1);
+		const int bottom = std::min(static_cast<int>(std::floor(std::max(stroke.Position.m_Y, end.m_Y))), top + c_MaxCopySide - 1);
+		Clipboard copied;
+		copied.Width = right - left + 1;
+		copied.Height = bottom - top + 1;
+		copied.Version = s_Clipboard.Version + 1;
+		const size_t pixels = static_cast<size_t>(copied.Width) * static_cast<size_t>(copied.Height);
+		// (Off the map is air, with nothing drawn.)
+		copied.Material.assign(pixels, static_cast<unsigned char>(g_MaterialAir));
+		copied.Foreground.assign(pixels, static_cast<unsigned char>(ColorKeys::g_MaskColor));
+		copied.Background.assign(pixels, static_cast<unsigned char>(ColorKeys::g_MaskColor));
+		for (int dy = 0; dy < copied.Height; ++dy) {
+			for (int dx = 0; dx < copied.Width; ++dx) {
+				int x = left + dx;
+				int y = top + dy;
+				if (g_SceneMan.SceneWrapsX()) {
+					x = ((x % width) + width) % width;
+				}
+				if (x < 0 || y < 0 || x >= width || y >= height) {
+					continue;
+				}
+				const size_t i = static_cast<size_t>(dy) * static_cast<size_t>(copied.Width) + static_cast<size_t>(dx);
+				int material = terrain->GetMaterialPixel(x, y);
+				copied.Material[i] = static_cast<unsigned char>(material == g_MaterialOutOfBounds ? g_MaterialAir : material);
+				copied.Foreground[i] = static_cast<unsigned char>(terrain->GetFGColorPixel(x, y));
+				copied.Background[i] = static_cast<unsigned char>(terrain->GetBGColorPixel(x, y));
+			}
+		}
+		if (stroke.Choice == 1) {
+			const Vector topLeft(static_cast<float>(left), static_cast<float>(top));
+			for (Actor* actor: g_MovableMan.GetActorList()) {
+				if (!IsCombatant(actor) || actor->IsSetToDelete() || actor == GetRef(s_PlayerUnit) || actor == s_Possessed) {
+					continue;
+				}
+				// Wholly inside: its round reach within the box.
+				Vector offset = g_SceneMan.ShortestDistance(topLeft, actor->GetPos(), g_SceneMan.SceneWrapsX());
+				const float reach = actor->GetRadius();
+				if (offset.m_X - reach < 0.0F || offset.m_Y - reach < 0.0F || offset.m_X + reach > static_cast<float>(copied.Width) || offset.m_Y + reach > static_cast<float>(copied.Height)) {
+					continue;
+				}
+				if (Actor* copy = dynamic_cast<Actor*>(actor->Clone())) {
+					// (Without its way points: they were for where it was, and those that follow a unit or thing point at it, which may be gone
+					// by the time it's pasted.)
+					copy->ClearAIWaypoints();
+					copied.Units.push_back({std::shared_ptr<Actor>(copy), offset});
+				}
+			}
+		}
+		s_Clipboard = std::move(copied);
+	}
+
+	/// Copy area's paste (S-4): the clipboard put down with its top left corner at stroke.Position, flipped left to right with Choice 1, the
+	/// air in it clearing what is under it with Count 1 (else only the ground is put down, over whatever is there). One step of the undo
+	/// history (see Apply): the ground as it was, background and all, and the units it put down.
+	void PasteArea(const Stroke& stroke) {
+		if (s_Clipboard.Empty()) {
+			return;
+		}
+		SLTerrain* terrain = g_SceneMan.GetScene()->GetTerrain();
+		const int width = terrain->GetBitmap()->w;
+		const int height = terrain->GetBitmap()->h;
+		const bool flipped = stroke.Choice == 1;
+		const bool pasteAir = stroke.Count == 1;
+		const int left = stroke.Position.GetFloorIntX();
+		const int top = stroke.Position.GetFloorIntY();
+		const Vector topLeft(static_cast<float>(left), static_cast<float>(top));
+		const Vector middle = topLeft + Vector(static_cast<float>(s_Clipboard.Width) * 0.5F, static_cast<float>(s_Clipboard.Height) * 0.5F);
+		const float reach = static_cast<float>(std::max(s_Clipboard.Width, s_Clipboard.Height)) * 0.75F;
+		// (Ground it clears can leave what is over it hanging, as a dig does.)
+		TerrainCollapse::BeginChange(middle, reach + 30.0F);
+		bool changed = false;
+		for (int dy = 0; dy < s_Clipboard.Height; ++dy) {
+			for (int dx = 0; dx < s_Clipboard.Width; ++dx) {
+				const size_t i = static_cast<size_t>(dy) * static_cast<size_t>(s_Clipboard.Width) + static_cast<size_t>(flipped ? s_Clipboard.Width - 1 - dx : dx);
+				const int material = s_Clipboard.Material[i];
+				if (material == g_MaterialAir && !pasteAir) {
+					continue;
+				}
+				int x = left + dx;
+				int y = top + dy;
+				if (g_SceneMan.SceneWrapsX()) {
+					x = ((x % width) + width) % width;
+				}
+				if (x < 0 || y < 0 || x >= width || y >= height) {
+					continue;
+				}
+				RecordPixelWithBackground(terrain, x, y);
+				terrain->SetMaterialPixel(x, y, material);
+				terrain->SetFGColorPixel(x, y, s_Clipboard.Foreground[i]);
+				terrain->SetBGColorPixel(x, y, s_Clipboard.Background[i]);
+				changed = true;
+			}
+		}
+		const Box area(topLeft, static_cast<float>(s_Clipboard.Width), static_cast<float>(s_Clipboard.Height));
+		if (changed) {
+			terrain->AddUpdatedMaterialArea(area);
+			TerrainCollapse::NoteBuilt(left, top, left + s_Clipboard.Width - 1, top + s_Clipboard.Height - 1);
+			// Liquid round it takes the new shape, and flows into what it cleared.
+			FluidSim::Disturb(middle, reach + 2.0F);
+		}
+		NotePaint(area, "paste", nullptr, true, true, changed);
+		for (const Clipboard::Unit& unit: s_Clipboard.Units) {
+			Actor* copy = unit.Copy ? dynamic_cast<Actor*>(unit.Copy->Clone()) : nullptr;
+			if (!copy) {
+				continue;
+			}
+			Vector offset = unit.Offset;
+			if (flipped) {
+				// Mirrored across the stamp, and facing the other way.
+				offset.m_X = static_cast<float>(s_Clipboard.Width) - offset.m_X;
+				copy->SetHFlipped(!copy->IsHFlipped());
+			}
+			Vector position = topLeft + offset;
+			g_SceneMan.WrapPosition(position);
+			copy->SetPos(position);
+			ActivateSide(copy->GetTeam());
+			AddObject(copy);
+			NotePlaced(copy);
+		}
+	}
 
 	void NotePaint(const Box& area, const char* kind, const char* material, bool toldCollapse, bool toldLiquid, bool changed) {
 		if (!g_SettingsMan.ShowSandboxPaintAudit()) {
@@ -2940,6 +3081,8 @@ namespace SandboxDetail {
 					case Tool::Extractor:
 					case Tool::Generator:
 					case Tool::Woodcutter:
+					// (A paste is both: the ground it changed, and the units it put down.)
+					case Tool::PasteArea:
 						s_RecordPaint = true;
 						[[fallthrough]];
 					case Tool::Unit:
@@ -3230,6 +3373,12 @@ namespace SandboxDetail {
 				break;
 			case Tool::SelectionAction:
 				DoToSelection(stroke);
+				break;
+			case Tool::CopyTake:
+				CopyArea(stroke);
+				break;
+			case Tool::PasteArea:
+				PasteArea(stroke);
 				break;
 			case Tool::CollapseArea: {
 				Vector end = stroke.Position + g_SceneMan.ShortestDistance(stroke.Position, stroke.Position2, g_SceneMan.SceneWrapsX());
