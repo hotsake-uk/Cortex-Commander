@@ -461,7 +461,8 @@ end
 
 -- What a take-cover order comes to for a unit, worked out once when it's given: cover from the nearest enemy within 600 px, sought within
 -- 150 px; with none, a foxhole dug where it stands (a unit with a digger, on soft ground), else a fall back away from the enemy (it close, or
--- the unit pinned down), else lying flat where it is. With no enemy about, it crouches where it is.
+-- the unit pinned down), else lying flat where it is; each of those can be turned off (AI behaviour: Take cover order). With no enemy
+-- about, it crouches where it is.
 function SharedBehaviors.PlanCoverOrder(AI, Owner, id)
 	local Plan = { id = id, Timer = Timer(), There = false, stance = SharedBehaviors.CROUCHED };
 	local Enemy, enemyDist = SharedBehaviors.NearestEnemy(Owner, 600);
@@ -483,24 +484,25 @@ function SharedBehaviors.PlanCoverOrder(AI, Owner, id)
 		SharedBehaviors.Trace(Owner, "take cover: already in cover");
 		return Plan;
 	end
-	if Owner:HasObjectInGroup("Tools - Diggers") and SharedBehaviors.SoftGroundUnder(Owner) then
+	if SettingsMan.AICoverDigs and Owner:HasObjectInGroup("Tools - Diggers") and SharedBehaviors.SoftGroundUnder(Owner) then
 		Plan.Dig = true;
 		Plan.stance = SharedBehaviors.CROUCHED;
 		SharedBehaviors.Trace(Owner, "take cover: digging in");
 		return Plan;
 	end
 	local suppression = SharedBehaviors.Suppression(AI, Owner);
-	if enemyDist < 250 or suppression > 0.5 then
+	local flat = SettingsMan.AICoverLiesFlat and AHuman.PRONE or SharedBehaviors.CROUCHED;
+	if SettingsMan.AICoverFallsBack and (enemyDist < 250 or suppression > 0.5) then
 		-- Too hot to lie here: back away from the enemy, to cover there if there is any, else 200 px.
 		local away = SceneMan:ShortestDistance(Plan.From, Owner.Pos, SceneMan.SceneWrapsX).X >= 0 and 1 or -1;
 		local Back = SceneMan:MovePointToGround(Owner.Pos + Vector(away * 200, -Owner.Height), math.floor(Owner.Height * 0.2), 4);
 		Plan.FallBack = Back;
-		Plan.stance = AHuman.PRONE;
+		Plan.stance = flat;
 		SharedBehaviors.Trace(Owner, "take cover: none near, falling back");
 		return Plan;
 	end
-	Plan.stance = AHuman.PRONE;
-	SharedBehaviors.Trace(Owner, "take cover: none near, lying flat");
+	Plan.stance = flat;
+	SharedBehaviors.Trace(Owner, "take cover: none near, " .. (flat == AHuman.PRONE and "lying flat" or "crouching"));
 	return Plan;
 end
 
@@ -526,6 +528,7 @@ function SharedBehaviors.CoverOrderUpdate(AI, Owner)
 	if not AI.CoverOrder or AI.CoverOrder.id ~= id then
 		AI.CoverOrder = SharedBehaviors.PlanCoverOrder(AI, Owner, id);
 		if AI.CoverOrder.FallBack then
+			Owner:Say("FallingBack");
 			Owner:ClearAIWaypoints();
 			Owner:AddAISceneWaypoint(AI.CoverOrder.FallBack);
 			Owner.AIMode = Actor.AIMODE_GOTO;
@@ -552,6 +555,7 @@ function SharedBehaviors.CoverOrderUpdate(AI, Owner)
 		Plan.There = true;
 		if Plan.Dig then
 			SharedBehaviors.DigFoxhole(Owner);
+			Owner:Say("DiggingIn");
 		end
 		Owner.AIMode = Actor.AIMODE_SENTRY;
 		AI.SentryPos = Vector(Owner.Pos.X, Owner.Pos.Y);

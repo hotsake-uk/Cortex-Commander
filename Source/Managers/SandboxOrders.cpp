@@ -1674,7 +1674,7 @@ namespace SandboxDetail {
 				unit->SetMovementRule(Actor::MOVE_HOLD_GROUND);
 				unit->SetNumberValue("SandboxCover", order);
 				s_SendNotes[unit->GetUniqueID()] = {"take cover", false, g_TimerMan.GetSimUpdateCount()};
-				AnswerOrder(unit, "OrderDefend");
+				AnswerOrder(unit, "OrderTakeCover");
 				MarkOrder(unit->GetPos(), c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)]);
 			}
 		} else if (choice == 20) {
