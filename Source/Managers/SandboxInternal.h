@@ -744,6 +744,10 @@ namespace SandboxDetail {
 		bool FieldBrain = false; //!< Battle Command: your brain is on the field at your base; if it dies you lose, and orders only reach your
 		                         //!< units within FieldBrainRange of it (BattleFieldBrain.cpp).
 		int FieldBrainRange = 900; //!< Its command range, in pixels.
+		bool PickArmy = false; //!< Battle Command: the team you command fields the army picked (Army) within ArmyPoints: its units, the first and
+		                       //!< those after one falls, come from that roster till it's used up (BattleArmy.cpp).
+		int ArmyPoints = 3000; //!< What the whole army may cost.
+		std::array<int, 5> Army = {8, 2, 2, 2, 0}; //!< How many of each reinforcement card (by c_ReinforcementCards) the army brings.
 		bool MovingSpawns = false; //!< Every mode: during the game, the player can move the spawn zones of a team they command, behind the spawn line (BattleEditMouse). Chosen before it starts.
 		std::array<bool, c_Sides> PlayerCommands{}; //!< Every mode: each team the player commands. Its units come in on hold ground with no orders (or its spawn order) and
 		                                            //!< no job from the mode, for the player to command (as in an RTS); the rest of the mode (spawns, scoring) is as for any team.
@@ -2545,6 +2549,10 @@ namespace SandboxDetail {
 	/// What a card's unit costs, as bought, for a side's faction. 0 if its faction has no such unit. Kept once worked out.
 	float ReinforcementCost(int card, int side);
 
+	/// One of a card's units for a side, of its faction, on its team and AI-controlled, or nothing if the faction has no such unit. Ownership
+	/// is the caller's.
+	Actor* MakeArmyUnit(int card, int side);
+
 	/// The Commander Toolbar's reinforcements group: the points, the cards, the landing spot, the craft and how many at a time.
 	void ReinforcementTiles();
 
@@ -2721,6 +2729,21 @@ namespace SandboxDetail {
 
 	/// The brain's command range, a mark over it, and a mark on the selected units out of range. Call from the ImGui frame, with the order marks.
 	void DrawFieldBrain(ImDrawList* drawList);
+#pragma endregion
+
+#pragma region Pick your army (BattleArmy.cpp)
+	/// Each side's roster forgotten. At a mode's start and a new game.
+	void ForgetArmy();
+
+	/// Whether a side's units come from its picked army: the team you command, with the choice on.
+	bool ArmyPicked(int side);
+
+	/// Up to so many of the side's next units from what's left of its army, made and on its team (ownership is the caller's). Fewer, or none,
+	/// once it's used up.
+	std::vector<Actor*> ArmyWave(int side, int size);
+
+	/// The battle panel's roster: the choice, the budget and how many of each card (what's left of them during the game).
+	void ArmyPanel();
 #pragma endregion
 
 #pragma region Re-arming (BattleSupply.cpp)
