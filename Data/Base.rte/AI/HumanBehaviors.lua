@@ -151,10 +151,12 @@ function HumanBehaviors.GetGrenadeAngle(AimPoint, TargetVel, StartPos, muzVel)
 end
 
 -- A grenade's arc to a point (AC-5): the angle to throw at and how long it flies, for the throw speed in m/s, the flat arc or (high) the
--- lob, under the same underestimated gravity as GetGrenadeAngle. @return angle (radians, for Vector(1,0):RadRotate) and seconds, or nil.
+-- lob, under the scene's whole gravity: a grenade meets no air resistance, and planned under GetGrenadeAngle's two-thirds of it a throw
+-- came down only about two-thirds of the way to its mark, and a short one by the thrower's own feet.
+-- @return angle (radians, for Vector(1,0):RadRotate) and seconds, or nil.
 function HumanBehaviors.GrenadeArc(StartPos, AimPoint, speed, high)
 	local Dist = SceneMan:ShortestDistance(StartPos, AimPoint, false) / GetPPM();
-	local gravity = SceneMan.GlobalAcc.Y * 0.67;
+	local gravity = SceneMan.GlobalAcc.Y;
 	if math.abs(gravity) < 0.1 then
 		-- No gravity: thrown straight at it, and there's no lob.
 		if high or speed <= 0 or Dist.Magnitude < 0.1 then
@@ -183,7 +185,7 @@ end
 -- Whether a grenade thrown on an arc gets to its end without hitting the ground on the way: the arc in short straight pieces, each checked
 -- against the terrain (not units). The last eighth is not checked: the grenade landing there is the point.
 function HumanBehaviors.ArcIsClear(StartPos, angle, speed, seconds)
-	local gravity = SceneMan.GlobalAcc.Y * 0.67;
+	local gravity = SceneMan.GlobalAcc.Y;
 	local ppm = GetPPM();
 	local vx = speed * math.cos(angle);
 	local vy = -speed * math.sin(angle);
@@ -201,9 +203,10 @@ function HumanBehaviors.ArcIsClear(StartPos, angle, speed, seconds)
 end
 
 -- How to throw a grenade at a point (AC-5): the flat arc where it is clear, else the lob over what is in the way (overCover: the lob first),
--- at full or at middling strength, led onto a moving target by its flight time. @return angle, the throw speed, seconds of flight and
--- whether it takes full strength; or nil where no arc gets there.
-function HumanBehaviors.PlanThrow(Grenade, AimPoint, TargetVel, overCover)
+-- at full or at middling strength, led onto a moving target by its flight time. With a clearance (px, see BlastClearance), no arc that
+-- comes down that close to the thrower, nor one whose fuse runs out that close to it on the way. @return angle, the throw speed, seconds
+-- of flight and whether it takes full strength; or nil where no arc gets there.
+function HumanBehaviors.PlanThrow(Grenade, AimPoint, TargetVel, overCover, clearance)
 	local maxVel = Grenade:GetCalculatedMaxThrowVelIncludingArmThrowStrength();
 	local minVel = Grenade.GetCalculatedMinThrowVel and Grenade:GetCalculatedMinThrowVel() or Grenade.MinThrowVel;
 	if minVel == 0 then
@@ -245,12 +248,62 @@ function HumanBehaviors.PlanThrow(Grenade, AimPoint, TargetVel, overCover)
 					angle, seconds = leadAngle, leadSeconds;
 				end
 			end
-			if angle and HumanBehaviors.ArcIsClear(Start, angle, speed, seconds) then
+			if angle and HumanBehaviors.ArcIsClear(Start, angle, speed, seconds) and HumanBehaviors.ArcIsSafe(Owner, Grenade, Start, angle, speed, seconds, speed >= maxVel, clearance) then
 				return angle, speed, seconds, speed >= maxVel;
 			end
 		end
 	end
 	return nil;
+end
+
+-- How far from the thrower and its own side a grenade must burst (px): an explosive's blast and shrapnel, for anything else nothing.
+function HumanBehaviors.BlastClearance(Grenade)
+	return Grenade and Grenade.ClassName == "TDExplosive" and 120 or 0;
+end
+
+-- Whether a throw on an arc keeps its burst clear of the thrower and its own side: where it comes down, and, for a fuse lit as the throw
+-- winds up, where it is when the fuse runs out if that is before it comes down (a long lob, or a short fuse, burst over the thrower's own
+-- head). Not within the clearance of any unit of the thrower's team, the thrower included: a grenade at an enemy in a friend's face, or
+-- lobbed onto a squad-mate, was thrown all the same.
+function HumanBehaviors.ArcIsSafe(Owner, Grenade, StartPos, angle, speed, seconds, fullStrength, clearance)
+	if not clearance or clearance <= 0 or not Owner then
+		return true;
+	end
+	local ppm = GetPPM();
+	local gravity = SceneMan.GlobalAcc.Y;
+	local vx = speed * math.cos(angle);
+	local vy = -speed * math.sin(angle);
+	local Friends = {};
+	for Act in MovableMan.Actors do
+		if Act.Team == Owner.Team then
+			Friends[#Friends + 1] = Vector(Act.Pos.X, Act.Pos.Y);
+		end
+	end
+	local function farEnough(t)
+		local At = StartPos + Vector(vx * t, vy * t + 0.5 * gravity * t * t) * ppm;
+		if SceneMan:ShortestDistance(Owner.Pos, At, false):MagnitudeIsLessThan(clearance) then
+			return false;
+		end
+		for _, Pos in ipairs(Friends) do
+			if SceneMan:ShortestDistance(Pos, At, false):MagnitudeIsLessThan(clearance) then
+				return false;
+			end
+		end
+		return true;
+	end
+	if not farEnough(seconds) then
+		return false;
+	end
+	local fuse = Grenade.TriggerDelay or 0;
+	if fuse > 0 and not Grenade.ActivatesWhenReleased then
+		-- (The longest it is held for that strength, see HoldTime.)
+		local hold = Owner.ThrowPrepTime * (fullStrength and 1.1 or 0.55);
+		local burst = (fuse - hold) * 0.001;
+		if burst < seconds and (burst <= 0 or not farEnough(burst)) then
+			return false;
+		end
+	end
+	return true;
 end
 
 -- How long to hold a grenade before letting go (AC-5): the arm's wind-up, and for a fused grenade thrown at full strength by a good
@@ -260,7 +313,8 @@ function HumanBehaviors.HoldTime(AI, Owner, Grenade, seconds, fullStrength)
 	if not fullStrength then
 		return prep * RangeRand(0.45, 0.55);
 	end
-	local hold = prep * RangeRand(0.9, 1.1);
+	-- (All of the wind-up: let go at nine tenths of it, the throw is short of the full strength it was planned at.)
+	local hold = prep * RangeRand(1.0, 1.1);
 	local fuse = Grenade.TriggerDelay or 0;
 	if fuse > 0 and not Grenade.ActivatesWhenReleased and (AI.skill or 50) >= 50 and math.random() * 100 < AI.skill then
 		local cooked = fuse - seconds * 1000 - 120;
@@ -270,6 +324,20 @@ function HumanBehaviors.HoldTime(AI, Owner, Grenade, seconds, fullStrength)
 		end
 	end
 	return hold;
+end
+
+-- Letting go of a throw (AC-5): still aimed while the arm swings through, until it has left the hand. A gun drawn the update after letting
+-- go put the grenade back in the pack before the swing let go of it, and the next one out was thrown the moment the trigger went down.
+-- @return true if the behavior was aborted meanwhile.
+function HumanBehaviors.FinishThrow(AI, Owner, aim)
+	local Thrown = Owner.EquippedItem;
+	local thrownID = Thrown and Thrown.UniqueID;
+	local Timer0 = Timer();
+	repeat
+		AI.Ctrl.AnalogAim = Vector(1, 0):RadRotate(aim);
+		local _ai, _ownr, _abrt = coroutine.yield();
+		if _abrt then return true end
+	until not Owner.EquippedItem or Owner.EquippedItem.UniqueID ~= thrownID or Timer0:IsPastSimMS(300);
 end
 
 -- Lobbing a grenade where an enemy was last seen behind cover (AC-5): up over the wall or ridge onto the spot (AI.LobPos), then back to the
@@ -289,7 +357,7 @@ function HumanBehaviors.LobAt(AI, Owner, Abort)
 		if not aim then
 			local Grenade = ToThrownDevice(Owner.EquippedItem);
 			local _, seconds, full;
-			aim, _, seconds, full = HumanBehaviors.PlanThrow(Grenade, Spot, nil, true);
+			aim, _, seconds, full = HumanBehaviors.PlanThrow(Grenade, Spot, nil, true, HumanBehaviors.BlastClearance(Grenade));
 			if not aim then
 				SharedBehaviors.Trace(Owner, "grenade: no lob over to it");
 				break;
@@ -304,8 +372,9 @@ function HumanBehaviors.LobAt(AI, Owner, Abort)
 			AI.fire = true;
 		else
 			AI.fire = false;
-			local _ai, _ownr, _abrt = coroutine.yield();
-			if _abrt then return true end
+			if HumanBehaviors.FinishThrow(AI, Owner, aim) then
+				return true;
+			end
 			break;
 		end
 		local _ai, _ownr, _abrt = coroutine.yield();
@@ -346,8 +415,9 @@ function HumanBehaviors.ThrowSmoke(AI, Owner, Abort)
 			AI.fire = true;
 		else
 			AI.fire = false;
-			local _ai, _ownr, _abrt = coroutine.yield();
-			if _abrt then return true end
+			if HumanBehaviors.FinishThrow(AI, Owner, aim) then
+				return true;
+			end
 			break;
 		end
 		local _ai, _ownr, _abrt = coroutine.yield();
@@ -2240,6 +2310,10 @@ function HumanBehaviors.ThrowTarget(AI, Owner, Abort)
 					AI.fire = true;
 				else
 					AI.fire = false;
+					-- (Still aimed while the arm swings through and lets go: with no aim the unit turns the way it walks, and threw behind it.)
+					if not ThrowTimer:IsPastSimMS(aimTime + 300) then
+						AI.Ctrl.AnalogAim = Vector(1,0):RadRotate(aim);
+					end
 					-- A thrown weapon (a javelin, an axe, a knife) is worth fetching back once the fight is over.
 					local Thrown = Owner.EquippedItem;
 					if Thrown and Thrown:HasObjectInGroup("Weapons - Thrown") then
@@ -2351,7 +2425,7 @@ function HumanBehaviors.ThrowTarget(AI, Owner, Abort)
 						local Grenade = ToThrownDevice(Owner.EquippedItem);
 						if Grenade then
 							local _, seconds, full;
-							aim, _, seconds, full = HumanBehaviors.PlanThrow(Grenade, AimPoint, AI.Target.Vel, false);
+							aim, _, seconds, full = HumanBehaviors.PlanThrow(Grenade, AimPoint, AI.Target.Vel, false, HumanBehaviors.BlastClearance(Grenade));
 							if aim then
 								aim = aim - Owner.RotAngle;
 								ThrowTimer:Reset();
@@ -2359,13 +2433,15 @@ function HumanBehaviors.ThrowTarget(AI, Owner, Abort)
 								-- (The runner moves while the grenade is held too: led on by the hold as well, once the hold is known.)
 								local Vel = AI.Target.Vel;
 								if Vel.Magnitude > 1 and aimTime > 200 then
-									local heldAim = HumanBehaviors.PlanThrow(Grenade, AimPoint + Vel * GetPPM() * aimTime * 0.001, Vel, false);
+									local heldAim = HumanBehaviors.PlanThrow(Grenade, AimPoint + Vel * GetPPM() * aimTime * 0.001, Vel, false, HumanBehaviors.BlastClearance(Grenade));
 									if heldAim then
 										aim = heldAim - Owner.RotAngle;
 									end
 								end
 							else
-								break; -- target out of range, or no arc gets there
+								-- Out of range, no arc gets there, or none keeps the burst off ourselves and our own: the gun for a while.
+								AI.ThrowRefusedTimer = Timer();
+								break;
 							end
 						else
 							break;
