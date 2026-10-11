@@ -61,7 +61,7 @@ namespace {
 	constexpr float c_Bounce = 0.2F;
 	constexpr int c_MaxAge = 3600; //!< A piece still moving after this many updates (a minute) is left where it is.
 
-	std::array<bool, 256> s_Fixed{}; //!< Materials that are never lifted out of the terrain: doors (drawn by their own objects) and the world's edge.
+	std::array<bool, 256> s_Fixed{}; //!< Materials that are never lifted out of the terrain: doors and lift decks (drawn by their own objects) and the world's edge.
 	std::array<bool, 256> s_Structure{}; //!< Materials of buildings: concrete, metal and the like.
 	std::array<bool, 256> s_Flimsy{}; //!< Materials too weak to hold a falling piece up: grass, plants, ash. A piece goes through them and flattens them.
 	constexpr int c_MaxTreePiecePixels = 250000; //!< The biggest a tree coming down can be (trees aren't held to the tuning's MaxPiecePixels; see FindFloatingPiece).
@@ -175,7 +175,7 @@ namespace {
 				color.RecalculateIndex();
 				s_WaterColor = color.GetIndex();
 			}
-			for (const char* word: {"Door", "Level End", "Test", "Xenocronium"}) {
+			for (const char* word: {"Door", "Lift", "Level End", "Test", "Xenocronium"}) {
 				if (name.find(word) != std::string::npos) {
 					s_Fixed[id] = true;
 				}

@@ -2096,7 +2096,7 @@ void Actor::UpdateHeadlamp() {
 
 void Actor::UpdateOutlineGlow() {
 	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
-	if (lighting.UnitOutlineGlow <= 0.0F || !lighting.Enabled || m_Status == DEAD || m_Status == DYING || GetClassName() == "ADoor") {
+	if (lighting.UnitOutlineGlow <= 0.0F || !lighting.Enabled || m_Status == DEAD || m_Status == DYING || GetClassName() == "ADoor" || GetClassName() == "AMover") {
 		return;
 	}
 	// The outline's own colour, as Tonemap.frag draws it: a highlighted unit's pink (a flag carrier, a VIP), pulsing with its stroke, else the side's or the set one.

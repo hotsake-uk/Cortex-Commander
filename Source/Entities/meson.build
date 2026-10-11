@@ -6,6 +6,7 @@ sources += files(
 'Activity.cpp',
 'Actor.cpp',
 'ADoor.cpp',
+'AMover.cpp',
 'AVehicle.cpp',
 'ACShip.cpp',
 'CrewSeats.cpp',
