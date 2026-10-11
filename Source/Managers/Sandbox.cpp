@@ -1142,6 +1142,20 @@ void Sandbox::DrawGUI() {
 		if (!io.KeyCtrl && !io.KeyAlt) {
 			CommandHotkeys();
 		}
+		// Delete: the selected units taken away, as the command strip's Delete (S-8), with the sandbox's bar up. Decided on the frame after the
+		// key, so the battle editor and the effects overlay, which take it for what is under the pointer, have had it first (s_DeleteKeyTakenFrame).
+		{
+			static int deletePressed = -1;
+			const int frame = ImGui::GetFrameCount();
+			if (!io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
+				deletePressed = frame;
+			} else if (deletePressed >= 0 && frame > deletePressed) {
+				if (frame == deletePressed + 1 && s_DeleteKeyTakenFrame != deletePressed && !s_CommanderBar && IsGodMode() && !s_Selected.empty()) {
+					QueueSelectionAction(SelectionDo::Remove);
+				}
+				deletePressed = -1;
+			}
+		}
 		if (io.KeyCtrl && !io.KeyAlt && !SelectionOnlyVehicles() && ImGui::IsKeyPressed(ImGuiKey_X, false)) {
 			// Breach: the clicks to come dig through to the point, then attack.
 			s_CommandMode = CommandMode::Breach;

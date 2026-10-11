@@ -180,6 +180,10 @@ namespace {
 		} else if (removeSpawner >= 0) {
 			s_WaterSpawners.erase(s_WaterSpawners.begin() + removeSpawner);
 		}
+		if (removeEffect >= 0 || removeSpawner >= 0) {
+			// (Not the selected units too: see the command tool's Delete.)
+			s_DeleteKeyTakenFrame = ImGui::GetFrameCount();
+		}
 	}
 
 	/// The selection and camera overlay (SettingsMan::ShowSandboxSelectionCamera): while a box is dragged, the box as SelectInBox will take it

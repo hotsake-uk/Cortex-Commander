@@ -2144,7 +2144,7 @@ namespace SandboxDetail {
 			const char* What;
 		};
 		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view (with a Paint tool in hand: dig)"}, {"Middle drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"U", "Hide or show the bar along the bottom"}, {"Commander Toolbar key", "Swap the bar along the bottom for Battle Command's Commander Toolbar, and back (the key is picked below)"}, {"F9", "Commander view, outside the Sandbox game mode: your side from above, and back into your unit"}, {"Ctrl+Z", "Undo the last paint stroke or the last thing placed"}, {"Ctrl+P", "Pause the AI, or let it go again (in any game; the key can be changed in the AI settings)"}};
-		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it. In Command mode the order fits what's under the pointer: an enemy attacked, an objective taken or held, open air flown to, else a move"}, {"Esc", "Back to Command mode, the mode other orders return to once placed (in Command mode: pause)"}, {"Left drag", "Select units in a box"}, {"Double click and drag", "Order with risk: normal at the click, fully direct at the full risk distance; they face the way dragged"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click a unit", "Every unit of that kind in view"}, {"Clicks to order", "How urgent the order is: 1 cautious (walks round jumps, waits for fuel), 2 normal; drag the second click for risk up to the shortest way whatever it takes (a dig-to tunnels straight, moves take fast, reckless jet jumps); tuned in Battle Behavior settings"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"X", "Dig to: tunnel to the point, in the ground or not (the units with a digger that cuts the way)"}, {"Ctrl+X", "Breach: the diggers tunnel to the point and the rest follow them in; once through, they all attack"}, {"Ctrl+B", "Build: a selected unit with a Constructor puts up the piece picked on the command row (sandbags, a wall, a bunker, a turret)"}, {"Ctrl+L", "Airlift: a gunship comes down by the selected units, flies them to the place clicked and lets them out"}, {"J", "Jetpack here: fly to the point in the air and hover there (a move or attack-move clicked in open air flies there too)"}, {"Z", "Suppress: fire into a zone round the point and keep firing, whatever else is in sight"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends)"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}};
+		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it. In Command mode the order fits what's under the pointer: an enemy attacked, an objective taken or held, open air flown to, else a move"}, {"Esc", "Back to Command mode, the mode other orders return to once placed (in Command mode: pause)"}, {"Left drag", "Select units in a box"}, {"Double click and drag", "Order with risk: normal at the click, fully direct at the full risk distance; they face the way dragged"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click a unit", "Every unit of that kind in view"}, {"Clicks to order", "How urgent the order is: 1 cautious (walks round jumps, waits for fuel), 2 normal; drag the second click for risk up to the shortest way whatever it takes (a dig-to tunnels straight, moves take fast, reckless jet jumps); tuned in Battle Behavior settings"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"X", "Dig to: tunnel to the point, in the ground or not (the units with a digger that cuts the way)"}, {"Ctrl+X", "Breach: the diggers tunnel to the point and the rest follow them in; once through, they all attack"}, {"Ctrl+B", "Build: a selected unit with a Constructor puts up the piece picked on the command row (sandbags, a wall, a bunker, a turret)"}, {"Ctrl+L", "Airlift: a gunship comes down by the selected units, flies them to the place clicked and lets them out"}, {"J", "Jetpack here: fly to the point in the air and hover there (a move or attack-move clicked in open air flies there too)"}, {"Z", "Suppress: fire into a zone round the point and keep firing, whatever else is in sight"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends)"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}, {"Delete", "Remove the selected units, with the sandbox's bar up (Ctrl+Z puts them back). A battle zone picked, or an effect or spring under the pointer with the effects overlay on, is removed instead"}};
 		static const Key plants[] = {{"E / Shift+E", "With a plant, cactus, mushroom, tree or candle brush in hand: the next of its pictures, or the one before (just one picked in its gallery: that pick moves on)"}, {"F", "Flip the next one the other way"}};
 		auto table = [](const char* id, const Key* keys, size_t count) {
 			if (ImGui::BeginTable(id, 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
@@ -5180,6 +5180,14 @@ namespace SandboxDetail {
 
 	/// The strip of the Command tool, the sandbox's RTS controls: the order the clicks give, with its settings; then the selection, the groups, what
 	/// can be done with the units and how they fight.
+	void QueueSelectionAction(SelectionDo what, int team) {
+		Stroke stroke;
+		stroke.Kind = Tool::SelectionAction;
+		stroke.Count = static_cast<int>(what);
+		stroke.Team = team;
+		s_Queue.push_back(stroke);
+	}
+
 	void CommandStrip() {
 		float pixel = ToolUI::Pixel();
 		float field = ImGui::GetFontSize() * 7.0F;
@@ -5669,6 +5677,46 @@ namespace SandboxDetail {
 			}
 		}
 		ImGui::EndDisabled();
+		// What the god of the sandbox can do to them (S-8): not on the Commander Toolbar, where they are your side's to command and no more.
+		if (!s_CommanderBar && Sandbox::IsGodMode()) {
+			line.Divide();
+			ImGui::BeginDisabled(alive == 0);
+			line.Next();
+			if (BarChip("Heal", false, IM_COL32(110, 200, 120, 255), nullptr, "Every wound closed and health full, as the Supply power and a Medkit do.") == 1) {
+				QueueSelectionAction(SelectionDo::Heal);
+			}
+			line.Next();
+			if (BarChip("Refill ammo", false, IM_COL32(110, 200, 120, 255), nullptr, "Every gun they hold or carry full again (an empty one reloaded), and the grenades and gun they came with given back where that is known.") == 1) {
+				QueueSelectionAction(SelectionDo::Refill);
+			}
+			line.Next();
+			if (BarChip("Duplicate", false, ToolTheme::Text, nullptr, "A copy of each beside it, the way it faces: on its side, with its kit and its orders. The copies are selected, so another click copies them on.\nCtrl+Z takes the copies away. Not your character, nor the unit you are in.") == 1) {
+				QueueSelectionAction(SelectionDo::Duplicate);
+			}
+			line.Next();
+			const bool sidePicked = BarChip("Side...", false, ToolTheme::Text, nullptr, "Put them on another side. What they were told for the old side is forgotten: they stand and fight back where they are.\nNot your character, nor the unit you are in.") == 1;
+			line.Next();
+			if (BarChip("Delete", false, red, "Delete", "Takes them away (not your character, nor the unit you are in). Ctrl+Z puts them back as they were.") == 1) {
+				QueueSelectionAction(SelectionDo::Remove);
+			}
+			ImGui::EndDisabled();
+			if (sidePicked) {
+				ImGui::OpenPopup("##selectionSide");
+			}
+			if (ImGui::BeginPopup("##selectionSide")) {
+				ImGui::TextDisabled("Put them on");
+				for (int side = 0; side < c_Sides; ++side) {
+					ImGui::PushStyleColor(ImGuiCol_Text, c_SideColors[side]);
+					const bool chosen = ImGui::Selectable(c_SideNames[side]);
+					ImGui::PopStyleColor();
+					ImGui::SetItemTooltip("The %s side.", c_SideNames[side]);
+					if (chosen) {
+						QueueSelectionAction(SelectionDo::ChangeSide, side);
+					}
+				}
+				ImGui::EndPopup();
+			}
+		}
 	}
 
 	/// The row above the bar's main strip, for the tool in hand: the Command tool's strip; or the tools of its part with its settings; or only its

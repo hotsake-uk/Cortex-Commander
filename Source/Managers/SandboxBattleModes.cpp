@@ -6531,6 +6531,8 @@ namespace SandboxDetail {
 		}
 		if (s_EditSelected.Kind != EditKind::None && !s_EditDrag.Active && !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
 			EditDelete(s_EditSelected);
+			// (Not the selected units too: see the command tool's Delete.)
+			s_DeleteKeyTakenFrame = ImGui::GetFrameCount();
 		}
 		ImDrawList* drawList = ImGui::GetBackgroundDrawList();
 		const float scale = std::max(ScenePixelsPerWindowPixel(), 0.01F);

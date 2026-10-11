@@ -228,7 +228,13 @@ namespace SandboxDetail {
 		BattlePickupSpot, //!< The Battle tab's Pickups: a click puts down another place pickups can come in at.
 		BattlePickupZone, //!< The Battle tab's Pickups: each click puts down a corner of a zone pickups can come in anywhere in.
 		// Appended, so the tools before keep their numbers.
-		Woodcutter //!< A colony woodcutter: its staff fell the trees round it and bring the wood home (Colony::Kind::Woodcutter).
+		Woodcutter, //!< A colony woodcutter: its staff fell the trees round it and bring the wood home (Colony::Kind::Woodcutter).
+		// Appended, so the tools before keep their numbers.
+		CopyArea, //!< Copy and paste (S-4): a box dragged out on the world is marked (s_CopyBox), Ctrl+C copies it and Ctrl+V gives a stamp of it to put down.
+		// Not tools, but queued the same way: appended, so the tools before keep their numbers.
+		SelectionAction, //!< Something done to the selected units (S-8): Count a SelectionDo, and Team the side for SelectionDo::ChangeSide.
+		CopyTake, //!< Copies the box from Position to Position2 to the clipboard (s_Clipboard); Choice 1 with the units wholly inside it.
+		PasteArea //!< Puts the clipboard down with its top left corner at Position, one step of the undo history; Choice 1 flipped left to right.
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -237,6 +243,16 @@ namespace SandboxDetail {
 		Liquids, //!< The liquids in Stroke::Materials; with Choice 1, the springs that pour them too.
 		Units, //!< Every unit of the side in Team, or of every side with -1. Not doors, nor your character.
 		Ground //!< The terrain materials in Stroke::Materials.
+	};
+
+	/// What the command strip's actions on the selection do to the selected units (Tool::SelectionAction's Count, S-8). None of them touch
+	/// your character, nor the unit you are in, but Heal and Refill.
+	enum class SelectionDo {
+		Remove, //!< Taken away, one step of the undo history (which puts them back as they were).
+		Heal, //!< Health full and every wound closed, as the Supply power and a Medkit do.
+		Refill, //!< Every gun they hold or carry full, an empty one reloaded, and their lost gun and grenades given back where that is known.
+		Duplicate, //!< A copy of each beside it, on its side with its kit, one step of the undo history; the copies are selected.
+		ChangeSide //!< Put on the side in the stroke's Team, their orders forgotten.
 	};
 
 	/// What bunkers and the things the sandbox builds are made of, cleared with the buildings.
@@ -375,6 +391,7 @@ namespace SandboxDetail {
 	    {Tool::BattlePickupSpot, "Pickup spot", 0.0F, false},
 	    {Tool::BattlePickupZone, "Pickup zone", 0.0F, false},
 	    {Tool::Woodcutter, "Woodcutter", 0.0F, false},
+	    {Tool::CopyArea, "Copy area", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -1638,8 +1655,10 @@ namespace SandboxDetail {
 	/// one stroke of a paint or build tool changed (a drag of the brush is one step: changes less than a quarter second apart run together),
 	/// pixel by pixel as it was before, the first change to each pixel only. A placing step is one click of the Spawn or Build tools: the
 	/// units, craft, items, doors and colony buildings it made (taken away again), and the ground a bunker piece or building drew over (put
-	/// back). The last 20 steps are kept, up to c_PaintUndoPixels pixels in all (the oldest go first), and a new game forgets them. A stroke
-	/// longer than a step holds goes on in a new step, so each Ctrl+Z takes back part of it rather than the rest being lost.
+	/// back). A paste (S-4) is a step of both: the ground it changed, and the units it put down. The selection's Remove and Duplicate (S-8)
+	/// are a step each: the units removed (put back) or the copies made (taken away). The last 20 steps are kept, up to c_PaintUndoPixels
+	/// pixels in all (the oldest go first), and a new game forgets them. A stroke longer than a step holds goes on in a new step, so each
+	/// Ctrl+Z takes back part of it rather than the rest being lost.
 	struct PaintUndoPixel {
 		unsigned short X; //!< (Scenes are well under 65536 px on a side.)
 		unsigned short Y;
@@ -1668,8 +1687,9 @@ namespace SandboxDetail {
 		bool Sealed = false; //!< A placing step: the next stroke starts a step of its own, however soon it comes.
 		int Drop = 0; //!< A "Make it fall" step: the drop TerrainCollapse::DropArea gave, taken back with TerrainCollapse::TakeBackDrop.
 		int Rope = 0; //!< A rope put down (RopeSim), taken away again.
+		std::vector<std::shared_ptr<Actor>> Removed; //!< Units the selection's Remove took away (SelectionDo::Remove), copies as they were, put back.
 
-		bool Empty() const { return Pixels.empty() && Placed.empty() && ColonyBuilding < 0 && Drop == 0 && Rope == 0; }
+		bool Empty() const { return Pixels.empty() && Placed.empty() && ColonyBuilding < 0 && Drop == 0 && Rope == 0 && Removed.empty(); }
 	};
 
 	inline std::deque<PaintUndoStep> s_PaintUndo;
@@ -2342,6 +2362,12 @@ namespace SandboxDetail {
 	void ClosePaintUndoStep(bool always);
 	void UndoPaint();
 	void NotePlaced(const MovableObject* object);
+	/// Does one of the command strip's actions (SelectionDo) to the selected units: Tool::SelectionAction applied.
+	void DoToSelection(const Stroke& stroke);
+	/// Queues one of the command strip's actions on the selected units (SelectionDo), for the sim to do (DoToSelection).
+	/// @param team The side, for SelectionDo::ChangeSide.
+	void QueueSelectionAction(SelectionDo what, int team = 0);
+	inline int s_DeleteKeyTakenFrame = -1; //!< The ImGui frame Delete last removed something under the pointer (a battle zone, an effect, a spring): not the selection then.
 	void NotePaint(const Box& area, const char* kind, const char* material, bool toldCollapse, bool toldLiquid, bool changed);
 	void PaintTerrain(const Vector& center, int radius, const char* materialName, BrushShape shape = BrushShape::Circle, float goldShare = 0.0F, int over = 0);
 	void FillTerrainShape(const Stroke& stroke);

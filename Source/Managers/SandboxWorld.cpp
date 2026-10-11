@@ -6,6 +6,7 @@
 #include "TerrainTrees.h"
 #include "AMover.h"
 #include "AVehicle.h"
+#include "Turret.h"
 
 #include <cstring>
 #include <fstream>
@@ -298,6 +299,12 @@ namespace SandboxDetail {
 		if (step.ColonyBuilding >= 0) {
 			Colony::Remove(step.ColonyBuilding);
 		}
+		for (const std::shared_ptr<Actor>& removed: step.Removed) {
+			// Units the selection's Remove took away: back where they were, as they were (a copy of the one kept, which goes with the step).
+			if (Actor* back = removed ? dynamic_cast<Actor*>(removed->Clone()) : nullptr) {
+				AddObject(back);
+			}
+		}
 		if (step.Drop != 0) {
 			// "Make it fall": its pieces gone from wherever they are, and the ground back where it was.
 			TerrainCollapse::TakeBackDrop(step.Drop);
@@ -327,6 +334,124 @@ namespace SandboxDetail {
 			FluidSim::Disturb(center, reach + 2.0F);
 		}
 		s_PaintUndo.pop_back();
+	}
+
+	/// Fills every gun a unit holds or carries: its magazine topped up, or (one with none in, between magazines) reloaded; and gives back
+	/// what it's lost of its kit, where that is known (RearmUnit: the Battle Director's units and the like).
+	void RefillUnit(Actor* unit) {
+		auto refill = [](MovableObject* item) {
+			if (HDFirearm* gun = dynamic_cast<HDFirearm*>(item)) {
+				if (Magazine* magazine = gun->GetMagazine(); magazine && magazine->GetCapacity() > 0) {
+					magazine->SetRoundCount(magazine->GetCapacity());
+				}
+			}
+		};
+		for (MovableObject* item: *unit->GetInventory()) {
+			refill(item);
+		}
+		if (AHuman* human = dynamic_cast<AHuman*>(unit)) {
+			refill(human->GetEquippedItem());
+			refill(human->GetEquippedBGItem());
+			RearmUnit(human);
+			human->ReloadFirearms();
+		} else if (ACrab* crab = dynamic_cast<ACrab*>(unit)) {
+			if (const Turret* turret = crab->GetTurret()) {
+				for (HeldDevice* mounted: turret->GetMountedDevices()) {
+					refill(mounted);
+				}
+			}
+			crab->ReloadFirearms();
+		}
+	}
+
+	void DoToSelection(const Stroke& stroke) {
+		std::vector<Actor*> units;
+		for (const UnitRef& ref: s_Selected) {
+			if (Actor* unit = GetRef(ref); unit && !unit->IsSetToDelete()) {
+				units.push_back(unit);
+			}
+		}
+		// (Your character and the unit you are in are yours, not the selection's: as the Remove tool, these leave them be.)
+		auto yours = [](const Actor* unit) { return unit == GetRef(s_PlayerUnit) || unit == s_Possessed; };
+		switch (static_cast<SelectionDo>(stroke.Count)) {
+			case SelectionDo::Remove: {
+				// One step of the undo history, which puts them back: each kept as it is now, a copy that was never in the world.
+				PushUndoStep();
+				PaintUndoStep& step = s_PaintUndo.back();
+				step.Sealed = true;
+				for (Actor* unit: units) {
+					if (yours(unit)) {
+						continue;
+					}
+					if (Actor* copy = dynamic_cast<Actor*>(unit->Clone())) {
+						step.Removed.emplace_back(copy);
+					}
+					unit->SetToDelete(true);
+				}
+				if (step.Empty()) {
+					s_PaintUndo.pop_back();
+				} else {
+					TrimUndo();
+				}
+				s_Selected.clear();
+				break;
+			}
+			case SelectionDo::Heal:
+				for (Actor* unit: units) {
+					if (int wounds = unit->GetWoundCount(); wounds > 0) {
+						unit->RemoveWounds(wounds);
+					}
+					unit->SetHealth(unit->GetMaxHealth());
+				}
+				break;
+			case SelectionDo::Refill:
+				for (Actor* unit: units) {
+					RefillUnit(unit);
+				}
+				break;
+			case SelectionDo::Duplicate: {
+				// A copy of each beside it, the way it faces (put out of the ground as anything added is), on its side with its kit, its orders
+				// and all; one step of the undo history, which takes the copies away. The copies are selected, so another press copies them on.
+				PushUndoStep();
+				PaintUndoStep& step = s_PaintUndo.back();
+				step.Sealed = true;
+				std::vector<UnitRef> copies;
+				for (Actor* unit: units) {
+					if (yours(unit)) {
+						continue;
+					}
+					Actor* copy = dynamic_cast<Actor*>(unit->Clone());
+					if (!copy) {
+						continue;
+					}
+					const float across = std::max(unit->GetRadius(), 8.0F) * 1.2F;
+					copy->SetPos(unit->GetPos() + Vector(unit->IsHFlipped() ? -across : across, 0.0F));
+					AddObject(copy);
+					step.Placed.push_back(copy->GetUniqueID());
+					copies.push_back(MakeRef(copy));
+				}
+				if (step.Empty()) {
+					s_PaintUndo.pop_back();
+				} else {
+					TrimUndo();
+					s_Selected = copies;
+				}
+				break;
+			}
+			case SelectionDo::ChangeSide: {
+				const int team = std::clamp(stroke.Team, 0, c_Sides - 1);
+				ActivateSide(team);
+				for (Actor* unit: units) {
+					if (yours(unit) || unit->GetTeam() == team) {
+						continue;
+					}
+					// (Through MovableMan, so the sides' rosters know; and what it was told for its old side is forgotten.)
+					g_MovableMan.ChangeActorTeam(unit, team);
+					HoldUnit(unit);
+				}
+				break;
+			}
+		}
 	}
 
 
@@ -3102,6 +3227,9 @@ namespace SandboxDetail {
 				break;
 			case Tool::UndoTerrain:
 				UndoPaint();
+				break;
+			case Tool::SelectionAction:
+				DoToSelection(stroke);
 				break;
 			case Tool::CollapseArea: {
 				Vector end = stroke.Position + g_SceneMan.ShortestDistance(stroke.Position, stroke.Position2, g_SceneMan.SceneWrapsX());
