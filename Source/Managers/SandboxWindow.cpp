@@ -1594,6 +1594,8 @@ namespace SandboxDetail {
 
 		// Breaches under way: a burst at each point, with the diggers' lines to it.
 		DrawBreaches(drawList);
+		// Engineers' building sites.
+		DrawBuilds(drawList);
 		// Your brain on the field: its command range, and the selected units out of it.
 		DrawFieldBrain(drawList);
 
@@ -1855,7 +1857,7 @@ namespace SandboxDetail {
 			const char* What;
 		};
 		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view (with a Paint tool in hand: dig)"}, {"Middle drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"U", "Hide or show the bar along the bottom"}, {"F9", "Commander view, outside the Sandbox game mode: your side from above, and back into your unit"}, {"Ctrl+Z", "Undo the last paint stroke or the last thing placed"}};
-		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it. In Command mode the order fits what's under the pointer: an enemy attacked, an objective taken or held, open air flown to, else a move"}, {"Esc", "Back to Command mode, the mode other orders return to once placed (in Command mode: pause)"}, {"Left drag", "Select units in a box"}, {"Double click and drag", "Order with risk: normal at the click, fully direct at the full risk distance; they face the way dragged"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click a unit", "Every unit of that kind in view"}, {"Clicks to order", "How urgent the order is: 1 cautious (walks round jumps, waits for fuel), 2 normal; drag the second click for risk up to the shortest way whatever it takes (a dig-to tunnels straight, moves take fast, reckless jet jumps); tuned in Battle Behavior settings"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"X", "Dig to: tunnel to the point, in the ground or not (the units with a digger that cuts the way)"}, {"Ctrl+X", "Breach: the diggers tunnel to the point and the rest follow them in; once through, they all attack"}, {"J", "Jetpack here: fly to the point in the air and hover there (a move or attack-move clicked in open air flies there too)"}, {"Z", "Suppress: fire into a zone round the point and keep firing, whatever else is in sight"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends)"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}};
+		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it. In Command mode the order fits what's under the pointer: an enemy attacked, an objective taken or held, open air flown to, else a move"}, {"Esc", "Back to Command mode, the mode other orders return to once placed (in Command mode: pause)"}, {"Left drag", "Select units in a box"}, {"Double click and drag", "Order with risk: normal at the click, fully direct at the full risk distance; they face the way dragged"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click a unit", "Every unit of that kind in view"}, {"Clicks to order", "How urgent the order is: 1 cautious (walks round jumps, waits for fuel), 2 normal; drag the second click for risk up to the shortest way whatever it takes (a dig-to tunnels straight, moves take fast, reckless jet jumps); tuned in Battle Behavior settings"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"X", "Dig to: tunnel to the point, in the ground or not (the units with a digger that cuts the way)"}, {"Ctrl+X", "Breach: the diggers tunnel to the point and the rest follow them in; once through, they all attack"}, {"Ctrl+B", "Build: a selected unit with a Constructor puts up the piece picked on the command row (sandbags, a wall, a bunker, a turret)"}, {"J", "Jetpack here: fly to the point in the air and hover there (a move or attack-move clicked in open air flies there too)"}, {"Z", "Suppress: fire into a zone round the point and keep firing, whatever else is in sight"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends)"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}};
 		static const Key plants[] = {{"E / Shift+E", "With a plant, cactus, mushroom, tree or candle brush in hand: the next of its pictures, or the one before (just one picked in its gallery: that pick moves on)"}, {"F", "Flip the next one the other way"}};
 		auto table = [](const char* id, const Key* keys, size_t count) {
 			if (ImGui::BeginTable(id, 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
@@ -2365,6 +2367,18 @@ namespace SandboxDetail {
 				} else {
 					label = "Dig to here with " + count + ": " + DigVerdict(preview);
 				}
+			} else if (mode == CommandMode::Build) {
+				// Build: the piece's outline standing on the ground at the point, and who'd build it.
+				const BuildPiece& piece = c_BuildPieces[std::clamp(s_BuildPiece, 0, static_cast<int>(std::size(c_BuildPieces)) - 1)];
+				const Vector ground = g_SceneMan.MovePointToGround(point, 0.0F, 4);
+				const ImVec2 foot = ToScreen(ground);
+				const Actor* builder = BuilderFor(units, ground);
+				const ImU32 color = builder ? c_CommandModeColors[static_cast<int>(CommandMode::Build)] : IM_COL32(239, 90, 80, 220);
+				drawList->AddRect(ImVec2(foot.x - piece.Width * 0.5F / scale, foot.y - piece.Height / scale), ImVec2(foot.x + piece.Width * 0.5F / scale, foot.y), color, 0.0F, 0, pixel * 1.5F);
+				const bool paid = Sandbox::IsBattleCommand() && s_ModeRun.Running;
+				const int team = builder ? builder->GetTeam() : -1;
+				const bool afford = !paid || (team >= 0 && team < c_Sides && s_CommandPoints[team].Points >= static_cast<float>(piece.Cost));
+				label = !builder ? std::string("Build: none of the selected units carries a Constructor") : std::string("Build ") + piece.Name + " here" + (paid ? " for " + std::to_string(piece.Cost) + " points" + (afford ? "" : " (not enough)") : std::string()) + ": " + builder->GetPresetName() + " builds it, " + std::to_string(piece.Seconds) + " s";
 			} else if (mode == CommandMode::Patrol) {
 				label = s_PatrolDraft.empty() ? "Click the first point of the patrol route" : "Click point " + std::to_string(s_PatrolDraft.size() + 1) + " of the route, or start it on the command row";
 			} else if (mode == CommandMode::Guard) {
@@ -2870,7 +2884,7 @@ namespace SandboxDetail {
 			// The game's own AI modes for the units picked, as the pie menu offers them when playing a unit. Up until a click, since the button
 			// that held the first ring open has been let go.
 			// (With the two modes of RC-4, Defend at and Patrol, and the formations of RC-5.)
-			static const std::vector<RingItem> modes = {{"Sentry", IM_COL32(242, 182, 61, 255), "Eye"}, {"Patrol", IM_COL32(120, 200, 220, 255), "Cycle"}, {"Hunt brains", IM_COL32(239, 106, 91, 255), "Brain"}, {"Dig for gold", IM_COL32(230, 200, 80, 255), "Dig"}, {"Rally point", IM_COL32(180, 140, 240, 255), "Flag"}, {"Do nothing", IM_COL32(150, 150, 140, 255), "Blank"}, {"Defend at", c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)], "Reorient"}, {"Formation...", IM_COL32(110, 180, 250, 255), "SubPieMenu1"}, {"Breach", c_CommandModeColors[static_cast<int>(CommandMode::Breach)], "Dig"}, {"Back", IM_COL32(110, 180, 250, 255), "Return"}};
+			static const std::vector<RingItem> modes = {{"Sentry", IM_COL32(242, 182, 61, 255), "Eye"}, {"Patrol", IM_COL32(120, 200, 220, 255), "Cycle"}, {"Hunt brains", IM_COL32(239, 106, 91, 255), "Brain"}, {"Dig for gold", IM_COL32(230, 200, 80, 255), "Dig"}, {"Rally point", IM_COL32(180, 140, 240, 255), "Flag"}, {"Do nothing", IM_COL32(150, 150, 140, 255), "Blank"}, {"Defend at", c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)], "Reorient"}, {"Formation...", IM_COL32(110, 180, 250, 255), "SubPieMenu1"}, {"Breach", c_CommandModeColors[static_cast<int>(CommandMode::Breach)], "Dig"}, {"Build", c_CommandModeColors[static_cast<int>(CommandMode::Build)], "Wrench"}, {"Back", IM_COL32(110, 180, 250, 255), "Return"}};
 			static const Order orders[] = {Order::Hold, Order::Patrol, Order::HuntBrains, Order::DigGold, Order::Rally, Order::Idle};
 			int picked = DrawRing(modes, -1, true);
 			if (picked == -2) {
@@ -2895,6 +2909,9 @@ namespace SandboxDetail {
 				// Breach: the clicks to come dig through to the point, then attack.
 				s_CommandMode = CommandMode::Breach;
 			} else if (picked == 9) {
+				// Build: the clicks to come put up the piece picked on the command row.
+				s_CommandMode = CommandMode::Build;
+			} else if (picked == 10) {
 				s_RingOpen = true;
 				s_RingPage = 2;
 			}
@@ -4268,7 +4285,26 @@ namespace SandboxDetail {
 			if (BarChip(c_CommandModeNames[breach], current == breach, c_CommandModeColors[breach], "Ctrl+X", "Dig through to the place clicked, then attack: the units with a digger tunnel there and the rest follow them in.\nOnce one is through, they all go for the nearest enemy there (or fight their way to the place if there's none).") == 1) {
 				s_CommandMode = CommandMode::Breach;
 			}
+			line.Next(pixel * 2.0F);
+			const int build = static_cast<int>(CommandMode::Build);
+			if (BarChip(c_CommandModeNames[build], current == build, c_CommandModeColors[build], "Ctrl+B", "Put up the piece picked where you click: the nearest selected unit carrying a Constructor walks there and builds it.\nIn Battle Command it costs reinforcement points, paid back if it isn't built.") == 1) {
+				s_CommandMode = CommandMode::Build;
+			}
 			ImGui::EndDisabled();
+		}
+		// Build: the pieces, with their costs.
+		if (s_CommandMode == CommandMode::Build) {
+			line.Divide();
+			for (int piece = 0; piece < static_cast<int>(std::size(c_BuildPieces)); ++piece) {
+				line.Next(pixel * 2.0F);
+				ImGui::PushID(piece + 500);
+				const std::string name = std::string(c_BuildPieces[piece].Name) + (Sandbox::IsBattleCommand() ? " " + std::to_string(c_BuildPieces[piece].Cost) : std::string());
+				const std::string tip = std::string(c_BuildPieces[piece].Tip) + " Takes " + std::to_string(c_BuildPieces[piece].Seconds) + " s to build" + (Sandbox::IsBattleCommand() ? ", for " + std::to_string(c_BuildPieces[piece].Cost) + " points." : ".");
+				if (BarChip(name.c_str(), s_BuildPiece == piece, c_CommandModeColors[static_cast<int>(CommandMode::Build)], nullptr, tip.c_str()) == 1) {
+					s_BuildPiece = piece;
+				}
+				ImGui::PopID();
+			}
 		}
 		// The order's own settings.
 		if (s_CommandMode == CommandMode::Move || s_CommandMode == CommandMode::AttackMove) {

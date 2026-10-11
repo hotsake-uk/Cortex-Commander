@@ -1475,6 +1475,7 @@
     <ClCompile Include="Source\Managers\BattleSquad.cpp" />
     <ClCompile Include="Source\Managers\BattleAlerts.cpp" />
     <ClCompile Include="Source\Managers\SandboxBreach.cpp" />
+    <ClCompile Include="Source\Managers\SandboxBuild.cpp" />
     <ClCompile Include="Source\Managers\BattleSupply.cpp" />
     <ClCompile Include="Source\Managers\BattleFieldBrain.cpp" />
     <ClCompile Include="Source\Managers\ControlLink.cpp" />
