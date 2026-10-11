@@ -3416,6 +3416,35 @@ namespace SandboxDetail {
 				}
 			}
 		}
+		// Recklessness: each unit a risk in the team's range (StandingOrder::Direct, kept by the mode's orders, which resend), toward the top
+		// the stronger it is against the rest of its wave (jetpack tank and what it and its kit are worth), with a third of it left to chance.
+		if (s_ModeRun.Running && side >= 0 && side < c_Sides) {
+			const float low = static_cast<float>(std::min(s_ModeRun.Settings.RiskMin[side], s_ModeRun.Settings.RiskMax[side])) / 100.0F;
+			const float high = static_cast<float>(std::max(s_ModeRun.Settings.RiskMin[side], s_ModeRun.Settings.RiskMax[side])) / 100.0F;
+			if (low != 0.0F || high != 0.0F) {
+				auto strength = [](const Actor* unit) {
+					const AHuman* human = dynamic_cast<const AHuman*>(unit);
+					const float jet = human && human->GetJetpack() ? human->GetJetpack()->GetJetTimeTotal() : 0.0F;
+					return std::make_pair(jet, unit->GetTotalValue());
+				};
+				float jetMost = 1.0F;
+				float valueMost = 1.0F;
+				for (const Actor* unit: wave) {
+					if (unit && !dynamic_cast<const ACraft*>(unit)) {
+						auto [jet, value] = strength(unit);
+						jetMost = std::max(jetMost, jet);
+						valueMost = std::max(valueMost, value);
+					}
+				}
+				for (Actor* unit: wave) {
+					if (unit && !dynamic_cast<const ACraft*>(unit)) {
+						auto [jet, value] = strength(unit);
+						float share = std::clamp((jet / jetMost * 0.5F + value / valueMost * 0.5F) * 0.67F + RandomNum(0.0F, 0.33F), 0.0F, 1.0F);
+						unit->GetStandingOrder().Direct = low + (high - low) * share;
+					}
+				}
+			}
+		}
 		if (const BattleModeInfo& mode = ModeOf(s_ModeRun.Settings.Mode); s_ModeRun.Running && mode.UnitsMade) {
 			mode.UnitsMade(side, wave);
 		}
@@ -3815,6 +3844,21 @@ namespace SandboxDetail {
 				ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0F);
 				changed |= ImGui::SliderInt("Team size##size", &setup.TeamSize[side], 2, 100, "%d alive at most");
 				ImGui::SetItemTooltip("Most of this team's units alive at once. Can be changed during the game.");
+				{
+					// (As the slider's format: a percent sign doubled.)
+					auto riskLabel = [](int risk) { return risk < 0 ? (risk <= -100 ? std::string("cautious") : std::to_string(-risk) + "%% cautious") : (risk == 0 ? std::string("normal") : (risk >= 90 ? "suicide " + std::to_string(risk) + "%%" : std::to_string(risk) + "%% risk")); };
+					ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0F);
+					const std::string lowText = riskLabel(setup.RiskMin[side]);
+					changed |= ImGui::SliderInt("Least risk##riskmin", &setup.RiskMin[side], -100, 100, lowText.c_str());
+					ImGui::SetItemTooltip("Recklessness: the least risk this team's units take with the mode's orders, from cautious (walking round jumps, waiting for a good shot) through normal to a suicide mission (straight there on the jet, whatever it takes). Each unit gets a risk between this and the most, the strongest (biggest jetpack, priciest kit) toward the most. New units only.");
+					ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0F);
+					const std::string highText = riskLabel(setup.RiskMax[side]);
+					changed |= ImGui::SliderInt("Most risk##riskmax", &setup.RiskMax[side], -100, 100, highText.c_str());
+					ImGui::SetItemTooltip("Recklessness: the most risk this team's units take; see Least risk. Both at normal: as before.");
+					if (setup.RiskMax[side] < setup.RiskMin[side]) {
+						setup.RiskMax[side] = setup.RiskMin[side];
+					}
+				}
 				ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0F);
 				changed |= ImGui::SliderInt("Rush the objective##rush", &setup.RushPercent[side], 0, 100, setup.RushPercent[side] > 0 ? "%d%% of its units" : "none");
 				ImGui::SetItemTooltip("The share of this team's units that make a beeline for the objective: on the way they keep moving, shooting as they go, and don't take cover, flank, fall back or stop to fight. Once there they fight as the rest do. Guards (of their own flag or VIP) never rush.");
