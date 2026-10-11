@@ -43,6 +43,14 @@ namespace RTE {
 
 		BS::thread_pool& GetBackgroundThreadPool() { return m_BackgroundThreadPool; }
 
+		/// How many hardware threads run on performance cores. On Apple Silicon that leaves out the efficiency cores, which run game code about half as fast; elsewhere it's every hardware thread.
+		/// @return The number of performance-core hardware threads, at least 1.
+		static int GetPerformanceCoreCount();
+
+		/// Tells the OS the calling thread does frame-critical work (or, for background work, work the player is waiting on), so macOS schedules it on the performance cores. Does nothing on other platforms.
+		/// @param background Whether this is a background pool thread rather than one the frame waits on.
+		static void SetCurrentThreadQoS(bool background);
+
 		/// Protected member variable and method declarations
 	protected:
 		/// Private member variable and method declarations
@@ -50,6 +58,11 @@ namespace RTE {
 		/// Clears all the member variables of this ThreadMan, effectively
 		/// resetting the members of this abstraction level only.
 		void Clear();
+
+		/// Runs SetCurrentThreadQoS once on every thread of a pool.
+		/// @param pool The pool whose threads to set.
+		/// @param background Whether the pool is for background work.
+		static void ApplyQoS(BS::thread_pool& pool, bool background);
 
 		// Disallow the use of some implicit methods.
 		ThreadMan(const ThreadMan& reference);

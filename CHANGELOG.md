@@ -252,6 +252,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 <details><summary><b>Changed</b></summary>
 
+- Apple Silicon Macs: worker threads are kept on the performance cores, one Lua state is made per performance core rather than per core, and units' sight rays are split into smaller pieces, so the efficiency cores no longer hold up each frame. M-series builds are tuned for the chip (`-mcpu=apple-m1`), and nightly Linux and macOS builds are now optimised (they were built at `-O0`). `NumberOfLuaStatesOverride` can now be set above the core count without tripping an assert.
 - Improved navigation, making running and fast walkpaths much more consistent.
 
 - Increased fog-of-war resolution in all vanilla activities, and conquest, from 20x20 to 4x4.  
