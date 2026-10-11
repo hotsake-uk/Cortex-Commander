@@ -23,6 +23,7 @@
 #include "Turret.h"
 
 #include "HeldDevice.h"
+#include "HDFirearm.h"
 
 #include "GUI.h"
 #include "AllegroBitmap.h"
@@ -157,6 +158,7 @@ void AVehicle::Clear() {
 	m_Turret = nullptr;
 	m_GunRange = 600.0F;
 	m_GunTurnSpeed = 2.5F;
+	m_AimRangeUp = -1.0F;
 	m_GunTargetID = 0;
 	m_GunTargetTimer.Reset();
 	m_CrewThrowSpeed = 14.0F;
@@ -254,6 +256,7 @@ int AVehicle::Create(const AVehicle& reference) {
 	m_Crew.Create(reference.m_Crew);
 	m_GunRange = reference.m_GunRange;
 	m_GunTurnSpeed = reference.m_GunTurnSpeed;
+	m_AimRangeUp = reference.m_AimRangeUp;
 	m_CrewThrowSpeed = reference.m_CrewThrowSpeed;
 	m_ThrowsCrewWhenFlipped = reference.m_ThrowsCrewWhenFlipped;
 	m_RecruitRange = reference.m_RecruitRange;
@@ -421,6 +424,7 @@ int AVehicle::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("Turret", { SetTurret(dynamic_cast<Turret*>(g_PresetMan.ReadReflectedPreset(reader))); });
 	MatchProperty("GunRange", { reader >> m_GunRange; });
 	MatchProperty("GunTurnSpeed", { reader >> m_GunTurnSpeed; });
+	MatchProperty("AimRangeUp", { reader >> m_AimRangeUp; });
 	MatchProperty("CrewThrowSpeed", { reader >> m_CrewThrowSpeed; });
 	MatchProperty("ThrowsCrewWhenFlipped", { reader >> m_ThrowsCrewWhenFlipped; });
 	MatchProperty("AIRecruitRange", { reader >> m_RecruitRange; });
@@ -514,6 +518,7 @@ int AVehicle::Save(Writer& writer) const {
 	}
 	writer.NewPropertyWithValue("GunRange", m_GunRange);
 	writer.NewPropertyWithValue("GunTurnSpeed", m_GunTurnSpeed);
+	writer.NewPropertyWithValue("AimRangeUp", m_AimRangeUp);
 	writer.NewPropertyWithValue("CrewThrowSpeed", m_CrewThrowSpeed);
 	writer.NewPropertyWithValue("ThrowsCrewWhenFlipped", m_ThrowsCrewWhenFlipped);
 	writer.NewPropertyWithValue("AIRecruitRange", m_RecruitRange);
@@ -883,7 +888,8 @@ bool AVehicle::InFiringPosition(const MovableObject* target) const {
 
 bool AVehicle::CanHitFrom(const Vector& gunAt, const Vector& aimAt) const {
 	const Vector toAim = g_SceneMan.ShortestDistance(gunAt, aimAt);
-	if (toAim.MagnitudeIsGreaterThan(m_GunRange * 0.85F) || std::abs(std::atan2(-toAim.m_Y, std::abs(toAim.m_X))) > m_AimRange) {
+	const float elevation = std::atan2(-toAim.m_Y, std::abs(toAim.m_X));
+	if (toAim.MagnitudeIsGreaterThan(m_GunRange * 0.85F) || elevation > GetAimRangeUp() || elevation < -m_AimRange) {
 		return false;
 	}
 	// (A line clear to it, or to the ground right at it: a place on the ground is fired into.)
@@ -1422,13 +1428,21 @@ void AVehicle::UpdateAIUnloading() {
 }
 
 long AVehicle::FindGunTarget() const {
+	return FindGunTargetFacing(GetFlipFactor());
+}
+
+long AVehicle::FindGunTargetBehind() const {
+	return FindGunTargetFacing(-GetFlipFactor());
+}
+
+long AVehicle::FindGunTargetFacing(float flip) const {
 	if (!m_Turret && !m_ThrowingArm) {
 		return 0;
 	}
 	// A catapult lobs: it reaches over walls to what its crew knows is there, but not what its arc can't reach, nor right under it.
 	bool lobs = !m_Turret;
 	Vector pivot = lobs ? GetReleasePoint() : m_Turret->GetPos();
-	float rotationFacing = Wrapped(m_Rotation.GetRadAngle()) * GetFlipFactor();
+	float rotationFacing = Wrapped(m_Rotation.GetRadAngle()) * flip;
 	long best = 0;
 	float bestDistance = m_GunRange;
 	// The enemy it was ordered to attack first, when the gun can be brought to bear on it (VC-4); else the nearest it can.
@@ -1444,7 +1458,7 @@ long AVehicle::FindGunTarget() const {
 		float distance = toTarget.GetMagnitude();
 		// (In front of it, and within the gun's swing: it can't turn the vehicle round. The ordered one anywhere in range, nearer ones or not.)
 		const bool isOrdered = ordered != 0 && static_cast<long>(actor->GetUniqueID()) == ordered;
-		if (distance >= (isOrdered ? m_GunRange : bestDistance) || toTarget.m_X * GetFlipFactor() <= 0.0F) {
+		if (distance >= (isOrdered ? m_GunRange : bestDistance) || toTarget.m_X * flip <= 0.0F) {
 			continue;
 		}
 		if (lobs) {
@@ -1453,8 +1467,9 @@ long AVehicle::FindGunTarget() const {
 				continue;
 			}
 		} else {
-			float angle = std::atan2(-toTarget.m_Y, std::abs(toTarget.m_X));
-			if (std::abs(Wrapped(angle - rotationFacing)) > m_AimRange) {
+			// (Up further than down, for aircraft, when it has AimRangeUp.)
+			float angle = Wrapped(std::atan2(-toTarget.m_Y, std::abs(toTarget.m_X)) - rotationFacing);
+			if (angle > GetAimRangeUp() || angle < -m_AimRange) {
 				continue;
 			}
 			Vector blocked;
@@ -1486,7 +1501,7 @@ void AVehicle::UpdateGun() {
 	float rotationFacing = Wrapped(m_Rotation.GetRadAngle()) * GetFlipFactor();
 	// A gun swings either side of level; a catapult throws between its lowest and highest angles.
 	float lowest = lobs ? rotationFacing + m_MinLaunchAngle : rotationFacing - m_AimRange;
-	float highest = lobs ? rotationFacing + m_MaxLaunchAngle : rotationFacing + m_AimRange;
+	float highest = lobs ? rotationFacing + m_MaxLaunchAngle : rotationFacing + GetAimRangeUp();
 	bool fire = false;
 	bool playerAims = manned && m_Controller.IsPlayerControlled() && GetControlSeat() == gunnerSeat;
 	if (playerAims) {
@@ -1522,6 +1537,17 @@ void AVehicle::UpdateGun() {
 		if (m_GunTargetTimer.IsPastSimMS(400)) {
 			m_GunTargetID = FindGunTarget();
 			m_GunTargetTimer.Reset();
+			// Nothing in front, but an enemy behind it (an aircraft come over, most often): sat still with no one driving it on, it turns
+			// round to bring its gun to bear, as a unit turns to face one.
+			if (!m_GunTargetID && !m_Controller.IsPlayerControlled() && m_Throttle == 0.0F && std::abs(m_Vel.m_X) < 1.5F) {
+				if (long behind = FindGunTargetBehind()) {
+					SetHFlipped(!m_HFlipped);
+					m_GunTargetID = behind;
+					rotationFacing = Wrapped(m_Rotation.GetRadAngle()) * GetFlipFactor();
+					lowest = lobs ? rotationFacing + m_MinLaunchAngle : rotationFacing - m_AimRange;
+					highest = lobs ? rotationFacing + m_MaxLaunchAngle : rotationFacing + GetAimRangeUp();
+				}
+			}
 		}
 		const Actor* target = m_GunTargetID ? dynamic_cast<const Actor*>(g_MovableMan.FindObjectByUniqueID(m_GunTargetID)) : nullptr;
 		float wanted = m_AimAngle;
@@ -1532,6 +1558,11 @@ void AVehicle::UpdateGun() {
 				onIt = LobAngleTo(g_SceneMan.ShortestDistance(GetReleasePoint(), target->GetPos()), wanted);
 			} else {
 				Vector toTarget = g_SceneMan.ShortestDistance(m_Turret->GetPos(), target->GetPos() - Vector(0.0F, target->GetHeight() * 0.1F));
+				// Leading what moves (an aircraft most of all) by where it'll be when the round gets there.
+				if (HDFirearm* gun = m_Turret->HasMountedDevice() ? dynamic_cast<HDFirearm*>(m_Turret->GetFirstMountedDevice()) : nullptr; gun && gun->GetAIFireVel() > 0.0F) {
+					Vector lead = target->GetVel() * (toTarget.GetMagnitude() / gun->GetAIFireVel());
+					toTarget += lead.CapMagnitude(toTarget.GetMagnitude() * 0.5F);
+				}
 				wanted = std::atan2(-toTarget.m_Y, std::max(toTarget.m_X * GetFlipFactor(), 0.0F));
 				onIt = true;
 			}
@@ -1552,7 +1583,8 @@ void AVehicle::UpdateGun() {
 					onIt = std::abs(toPoint.m_X) >= 120.0F && LobAngleTo(toPoint, wanted);
 				} else {
 					wanted = std::atan2(-toPoint.m_Y, std::abs(toPoint.m_X));
-					onIt = std::abs(Wrapped(wanted - rotationFacing)) <= m_AimRange;
+					float off = Wrapped(wanted - rotationFacing);
+					onIt = off <= GetAimRangeUp() && off >= -m_AimRange;
 				}
 			}
 		}
