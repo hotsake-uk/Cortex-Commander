@@ -752,6 +752,7 @@ void Sandbox::DrawGUI() {
 			DrawFogGhosts();
 			DrawPowerTarget();
 			DrawVeterans();
+			DrawMorale();
 		}
 	}
 
