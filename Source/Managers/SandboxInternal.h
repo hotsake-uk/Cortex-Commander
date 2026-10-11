@@ -2465,6 +2465,34 @@ namespace SandboxDetail {
 	void DrawPowerTarget();
 #pragma endregion
 
+#pragma region Veterancy (Veterancy.cpp)
+	/// A unit's record in a Battle Command battle: the name it's given, its kills, when it came in and the rank they've earned it.
+	struct Veteran {
+		int Team = -1;
+		int Kills = 0;
+		long long Since = 0; //!< The sim update it was first seen in the battle.
+		int Rank = 0; //!< 0 Private, 1 Corporal, 2 Sergeant, 3 Veteran (Actor::SetVeterancy).
+		std::string Name; //!< A surname, the same for the same unit every time it's asked for.
+	};
+	inline std::unordered_map<long, Veteran> s_Veterans; //!< By unique ID.
+
+	/// The battle's veterans forgotten. At a mode's start and a new game.
+	void ForgetVeterans();
+
+	/// A kill, to the unit nearest the one that fell (UpdateReinforcements' count): toward its next rank. A ranked unit of yours that fell
+	/// is said by name.
+	void NoteVeteranKill(long killerID, long victimID);
+
+	/// Every unit in a Battle Command battle given its record, and its rank from its kills and time in. Call once per sim update, from UpdateBattle.
+	void UpdateVeterans();
+
+	/// The rank badges over units in view, with the names of yours selected or under the pointer. Call from the ImGui frame.
+	void DrawVeterans();
+
+	/// A unit's rank and name, short, as "Sgt. Hale"; empty if it has none.
+	std::string VeteranTitle(long id);
+#pragma endregion
+
 #pragma region Fog of war (BattleFog.cpp)
 	/// Where an enemy was last seen, once your units lost sight of it: shown fading on the map and the minimap.
 	struct FogGhost {

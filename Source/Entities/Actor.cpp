@@ -117,6 +117,7 @@ void Actor::Clear() {
 	m_PainThreshold = 15.0F;
 	m_CanRevealUnseen = true;
 	m_HiddenByFog = false;
+	m_Veterancy = 0;
 	m_CharHeight = 0;
 	m_HolsterOffset.Reset();
 	m_ReloadOffset.Reset();
@@ -2253,14 +2254,17 @@ void Actor::AddSuppression(float amount) {
 	if (amount <= 0.0F || m_Status == DYING || m_Status == DEAD || !FeelsFire()) {
 		return;
 	}
-	m_Suppression = std::clamp(m_Suppression + amount * g_SettingsMan.AISuppression(), 0.0F, 1.0F);
+	// (A veteran's nerve is steadier: 15% less a rank.)
+	const float nerve = 1.0F - 0.15F * static_cast<float>(m_Veterancy);
+	m_Suppression = std::clamp(m_Suppression + amount * nerve * g_SettingsMan.AISuppression(), 0.0F, 1.0F);
 }
 
 void Actor::ChangeMorale(float change) {
 	if (m_Status == DYING || m_Status == DEAD || !FeelsFire()) {
 		return;
 	}
-	m_Morale = std::clamp(m_Morale + (change < 0.0F ? change * g_SettingsMan.AISuppression() : change), 0.0F, 1.0F);
+	const float nerve = 1.0F - 0.15F * static_cast<float>(m_Veterancy);
+	m_Morale = std::clamp(m_Morale + (change < 0.0F ? change * nerve * g_SettingsMan.AISuppression() : change), 0.0F, 1.0F);
 }
 
 void Actor::ShotPassing(const MovableObject& shot) {
