@@ -12,6 +12,7 @@
 #include "ThrownDevice.h"
 #include "MOPixel.h"
 #include "Actor.h"
+#include "AVehicle.h"
 #include "MagicEffects.h"
 #include "TimerMan.h"
 #include <limits>
@@ -696,14 +697,18 @@ bool HDFirearm::IsEmpty() const {
 }
 
 int HDFirearm::GetAffordableRounds() const {
+	return GetAffordableRoundsFor(dynamic_cast<const Actor*>(GetRootParent()));
+}
+
+int HDFirearm::GetAffordableRoundsFor(const Actor* payer) const {
 	if (m_EnergyCost <= 0.0F || !MagicEffects::CastingCostsEnergy()) {
 		return std::numeric_limits<int>::max();
 	}
 	float pool = 0.0F;
 	if (m_UsesOwnCharge) {
 		pool = m_Charge;
-	} else if (const Actor* holder = dynamic_cast<const Actor*>(GetRootParent())) {
-		pool = holder->GetEnergy();
+	} else if (payer) {
+		pool = payer->GetEnergy();
 	}
 	return static_cast<int>(pool / m_EnergyCost + 0.0001F);
 }
@@ -863,8 +868,11 @@ void HDFirearm::Update() {
 					}
 
 					// Set the fired particle to not hit this HeldDevice's parent, if applicable
-					if (m_FireIgnoresThis)
-						pParticle->SetWhichMOToNotHit(this, 1.0f);
+					// (A vehicle's mounted gun: not its own vehicle, nor the crew sat in it, see AVehicle::GetMOIDs.)
+					if (m_FireIgnoresThis) {
+						MovableObject* root = GetRootParent();
+						pParticle->SetWhichMOToNotHit(dynamic_cast<AVehicle*>(root) ? root : this, 1.0f);
+					}
 
 					// Set the team so alarm events that happen if these gib won't freak out the guy firing
 					pParticle->SetTeam(m_Team);

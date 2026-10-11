@@ -761,6 +761,10 @@ namespace RTE {
 		/// Applied at the next sim update.
 		void MagicPush(const Vector& origin, const Vector& direction, float power, float range, float spread, const MovableObject* caster) const;
 
+		/// Gets whether the AI casts spells of its own accord (MG-3; a gameplay setting, Magic & spells). Off as well while magic is off.
+		/// @return Whether the AI's spell rules run.
+		bool MagicAICasting() const;
+
 		/// Puts a rope from one point to another, tied at each end to what is there: a unit or a thing, else the ground, else nothing (a loose
 		/// end). Thread safe; made on the next sim update.
 		/// @param type What it's made of: "Rope", "Thread", "Chain", "Steel cable" or "Bungee cord" (any other name is rope).

@@ -1790,6 +1790,8 @@ namespace SandboxDetail {
 			mode(CommandMode::DigTo);
 		} else if (pressed(ImGuiKey_Z) && !io.KeyCtrl) {
 			mode(CommandMode::Suppress);
+		} else if (pressed(ImGuiKey_J)) {
+			mode(CommandMode::JetpackHere);
 		}
 		if (!s_Selected.empty() && (pressed(ImGuiKey_H) || pressed(ImGuiKey_C))) {
 			// Defend where they stand (with Shift, the last step of their plans), or cancel their orders: as the ring's slices.
@@ -1838,7 +1840,7 @@ namespace SandboxDetail {
 			const char* What;
 		};
 		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view (with a Paint tool in hand: dig)"}, {"Middle drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"U", "Hide or show the bar along the bottom"}, {"F9", "Commander view, outside the Sandbox game mode: your side from above, and back into your unit"}, {"Ctrl+Z", "Undo the last paint stroke or the last thing placed"}};
-		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it. In Command mode the order fits what's under the pointer: an enemy attacked, an objective taken or held, open air flown to, else a move"}, {"Esc", "Back to Command mode, the mode other orders return to once placed (in Command mode: pause)"}, {"Left drag", "Select units in a box"}, {"Double click and drag", "Order with risk: normal at the click, fully direct at the full risk distance; they face the way dragged"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click a unit", "Every unit of that kind in view"}, {"Clicks to order", "How urgent the order is: 1 cautious (walks round jumps, waits for fuel), 2 normal; drag the second click for risk up to the shortest way whatever it takes (a dig-to tunnels straight, moves take fast, reckless jet jumps); tuned in Battle Behavior settings"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"X", "Dig to: tunnel to the point, in the ground or not (the units with a digger that cuts the way)"}, {"Z", "Suppress: fire into a zone round the point and keep firing, whatever else is in sight"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends)"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}};
+		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it. In Command mode the order fits what's under the pointer: an enemy attacked, an objective taken or held, open air flown to, else a move"}, {"Esc", "Back to Command mode, the mode other orders return to once placed (in Command mode: pause)"}, {"Left drag", "Select units in a box"}, {"Double click and drag", "Order with risk: normal at the click, fully direct at the full risk distance; they face the way dragged"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click a unit", "Every unit of that kind in view"}, {"Clicks to order", "How urgent the order is: 1 cautious (walks round jumps, waits for fuel), 2 normal; drag the second click for risk up to the shortest way whatever it takes (a dig-to tunnels straight, moves take fast, reckless jet jumps); tuned in Battle Behavior settings"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"X", "Dig to: tunnel to the point, in the ground or not (the units with a digger that cuts the way)"}, {"J", "Jetpack here: fly to the point in the air and hover there (a move or attack-move clicked in open air flies there too)"}, {"Z", "Suppress: fire into a zone round the point and keep firing, whatever else is in sight"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends)"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}};
 		static const Key plants[] = {{"E / Shift+E", "With a plant, cactus, mushroom, tree or candle brush in hand: the next of its pictures, or the one before (just one picked in its gallery: that pick moves on)"}, {"F", "Flip the next one the other way"}};
 		auto table = [](const char* id, const Key* keys, size_t count) {
 			if (ImGui::BeginTable(id, 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
@@ -2399,14 +2401,14 @@ namespace SandboxDetail {
 				crosshair(objective.Pos, color, pixel * 6.0F);
 				label = (commandAt.Defend ? "Hold " : objective.Zone.empty() ? "Go for " : "Take ") + objective.Name + " with " + count;
 			} else if (mode == CommandMode::Command && commandAt.What == CommandTarget::Air) {
-				// Open air: the point itself, and the way down to the ground under it, where they go till Jetpack here is in.
+				// Open air: the point itself (flown to, as Jetpack here), and the way down to the ground under it, where those without a jet go.
 				ImU32 sky = c_CommandModeColors[static_cast<int>(CommandMode::Patrol)];
 				drawList->AddCircle(io.MousePos, pixel * 8.0F, sky, 0, pixel * 1.5F);
 				Vector ground;
 				if (g_SceneMan.CastNotMaterialRay(point, Vector(0.0F, 2000.0F), g_MaterialAir, ground, 4)) {
 					drawList->AddLine(io.MousePos, ToScreen(ground), (sky & 0x00FFFFFF) | (110u << IM_COL32_A_SHIFT), pixel);
 				}
-				label = "Fly " + count + " here (for now: to the ground below)";
+				label = "Fly " + count + " here";
 			} else {
 				for (const Vector& spot: FormationSpots(units, formationPoint, static_cast<int>(units.size()), formationFacing)) {
 					flag(spot, IM_COL32(110, 180, 250, 255));
@@ -2927,7 +2929,7 @@ namespace SandboxDetail {
 				return label.c_str();
 			};
 			std::vector<RingItem> commands = {{"Move", IM_COL32(110, 180, 250, 255), "GoTo"}, {"Attack", IM_COL32(239, 106, 91, 255), "Death"}, {"Guard", IM_COL32(120, 220, 120, 255), "Follow"}, {"Attack-move", c_CommandModeColors[static_cast<int>(CommandMode::AttackMove)], "Speed"}, {"Defend", IM_COL32(242, 182, 61, 255), "Eye"}, {"Cancel", IM_COL32(200, 160, 120, 255), "Cancel"}, {"Deselect", IM_COL32(150, 150, 140, 255), "Remove"}, {ruleLabel(true), IM_COL32(242, 182, 61, 255), "Reload"}, {ruleLabel(false), IM_COL32(120, 220, 120, 255), "Move"}, {"Focus on objective", IM_COL32(180, 140, 240, 255), "Flag"}, {"More...", IM_COL32(200, 200, 200, 255), "SubPieMenu1"}, {"Dig to", c_CommandModeColors[static_cast<int>(CommandMode::DigTo)], "Dig"}};
-			int picked = DrawRing(commands, s_CommandMode == CommandMode::DigTo ? 11 : static_cast<int>(s_CommandMode), s_RingPage == 2);
+			int picked = DrawRing(commands, s_CommandMode == CommandMode::DigTo ? 11 : (s_CommandMode >= CommandMode::JetpackHere ? -1 : static_cast<int>(s_CommandMode)), s_RingPage == 2);
 			if (picked == -2) {
 				return;
 			}
@@ -4135,8 +4137,8 @@ namespace SandboxDetail {
 		line.Next();
 		ImGui::AlignTextToFramePadding();
 		ImGui::TextColored(ToolTheme::Vec(ToolTheme::Gold), "Click to");
-		static const char* const keys[] = {"M", "T", "G", "F", "B", "R", "X", "Z"};
-		static const char* const tips[] = {"Walk to the place clicked, in the formation set.", "Go after the enemy clicked, and keep after it while it lives.", "Stay by the friend, craft, crate or building clicked and fight off what comes at it.", "Walk to the place, fighting whatever they meet on the way.", "Hold a zone round the place clicked and go after any enemy that comes into it.", "Click out a route, point by point; then Loop or Back and forth sets them off.", "Tunnel to the place clicked, through the ground or not (the units with a digger cut the way).", "Fire into a zone round the place clicked, and keep firing, whatever else is in sight. They walk into range first."};
+		static const char* const keys[] = {"M", "T", "G", "F", "B", "R", "X", "Z", "J"};
+		static const char* const tips[] = {"Walk to the place clicked, in the formation set.", "Go after the enemy clicked, and keep after it while it lives.", "Stay by the friend, craft, crate or building clicked and fight off what comes at it.", "Walk to the place, fighting whatever they meet on the way.", "Hold a zone round the place clicked and go after any enemy that comes into it.", "Click out a route, point by point; then Loop or Back and forth sets them off.", "Tunnel to the place clicked, through the ground or not (the units with a digger cut the way).", "Fire into a zone round the place clicked, and keep firing, whatever else is in sight. They walk into range first.", "Fly to the place clicked, in the air itself, and hover there till the tank runs low, then come down. Those with no line to it walk under it first; those with no jetpack go to the ground under it."};
 		{
 			int current = static_cast<int>(s_CommandMode);
 			line.Next(pixel * 4.0F);

@@ -686,6 +686,8 @@ namespace SandboxDetail {
 		int RespawnSeconds = 5; //!< Every mode: seconds after one of a team's units falls before another comes in its place.
 		int MaxRespawns = 0; //!< Every mode: fallen units each team gets back in all, after its first team size. 0: no limit.
 		int StuckSeconds = 20; //!< Every mode: seconds a unit can get no nearer its objective before it is respawned. 0: never.
+		std::array<int, c_Sides> RiskMin = {0, 0, 0, 0}; //!< Every mode: the least risk each team's units take with the mode's orders, -100 (cautious) to 100 (suicide), 0 normal (Actor::StandingOrder::Direct).
+		std::array<int, c_Sides> RiskMax = {0, 0, 0, 0}; //!< And the most: each unit is given a risk in between as it comes in, the strongest (the biggest jetpack, the priciest kit) toward the top.
 		std::array<int, c_Sides> RushPercent = {30, 30, 30, 30}; //!< Every mode: the share of each team's units, in percent, that rush the objective: on their way there they keep moving, shooting as they go, and don't take cover, flank, fall back or stop to fight.
 		int RouteVariety = 0; //!< Every mode: the share of each team's units, in percent, given a taste in routes of their own (Actor::SetRouteSeed), so they spread over the ways to where they're going rather than all taking the shortest.
 		std::vector<std::vector<Vector>> Zones; //!< The mode's own zones, drawn as polygons: king of the hill's hills, assault's objectives (in order).
@@ -707,6 +709,7 @@ namespace SandboxDetail {
 		int CommanderFallBack = 60; //!< Assault defenders: how far the attackers' taking of the objective in play has got, in percent, when everyone
 		                            //!< falls back to the next one.
 		bool FogOfWar = false; //!< Battle Command: you see only the enemies your team's units can see (BattleFog.cpp).
+		bool MovingSpawns = false; //!< Every mode: during the game, the player can move the spawn zones of a team they command, behind the spawn line (BattleEditMouse). Chosen before it starts.
 		std::array<bool, c_Sides> PlayerCommands{}; //!< Every mode: each team the player commands. Its units come in on hold ground with no orders and
 		                                            //!< no job from the mode, for the player to command (as in an RTS); the rest of the mode (spawns, scoring) is as for any team.
 	};
@@ -954,6 +957,14 @@ namespace SandboxDetail {
 	/// (SendUnit) takes that share of the Battle Behavior tuning (Actor::StandingOrder::Direct), and one over 0 isn't held to the group's pace.
 	/// Set round the stroke, so every kind of order placed by a click (move, attack-move, dig to, defend, a map order) is made so the same way.
 	inline float s_DirectOrder = 0.0F;
+	/// While an order to a point in the air is given (Jetpack here, or a move clicked in open air; see MoveUnitsTo), whether the units sent
+	/// fly to the point itself (Actor::StandingOrder::SkyGoal).
+	inline bool s_SkyOrder = false;
+	inline bool s_ClickOrder = false; //!< While a command stroke the player placed is given: only those take a move clicked in open air for a sky order.
+	/// Whether a point is open air with nothing under it for 120 px: a move or attack-move clicked there flies the units with a jet to it.
+	bool IsSkyPoint(const Vector& point);
+	/// The selected units to the point in the air (CommandMode::JetpackHere): those with a jet fly to it, the rest go to the ground under it.
+	void JetpackHereSelected(const Vector& point, bool shift, int facing = 0);
 	inline ImVec2 s_DragStart;
 	inline std::array<BattleTeam, c_Sides> s_BattleTeams; //!< The Battle Director's teams, as the sim runs them.
 	inline std::array<BattleSettings, c_Sides> s_BattleSetup = [] { //!< The Battle tab's cards, the window's copy (sent to the sim as each changes).
@@ -1152,14 +1163,15 @@ namespace SandboxDetail {
 		Patrol, //!< Each click a point of a patrol route; the command row starts it as a loop or back and forth (RC-4).
 		DigTo, //!< Dig to the point, in the ground or not (RC-11): those with a digger that cuts the way are sent, to the point itself.
 		Suppress, //!< Fire into a zone round the point and keep firing: no target needed, whatever else is in sight; they walk in range first.
+		JetpackHere, //!< Fly to the point clicked, in the air, not on the ground under it, and hover there till the tank runs low (Actor::StandingOrder::SkyGoal).
 		Select, //!< Clicks only pick units: one clicked (Shift adds, double click all of its kind in view), or none on a click on nothing.
 		Command //!< The order fits what's under the pointer (CommandTargetAt): with nothing selected, as Select; else a friend is selected, an enemy
 		        //!< attacked, a battle objective gone for, open air flown to, anything else moved to. What the Command tool starts in, and what
 		        //!< a one-off order's mode goes back to once it's placed (and Esc). (After Select, so the ring's slices keep their places.)
 	};
 	inline CommandMode s_CommandMode = CommandMode::Command;
-	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Select units", "Command"};
-	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(230, 230, 230, 255), IM_COL32(255, 214, 120, 255)};
+	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Jetpack here", "Select units", "Command"};
+	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(140, 230, 255, 255), IM_COL32(230, 230, 230, 255), IM_COL32(255, 214, 120, 255)};
 	/// A mode whose order is given once and then goes back to Command (s_BackToCommandAt): not Select, Command or Patrol (clicked out point by point).
 	inline bool OneOffMode(CommandMode mode) { return mode != CommandMode::Select && mode != CommandMode::Command && mode != CommandMode::Patrol; }
 	inline double s_BackToCommandAt = -1.0; //!< When (ImGui time) the one-off mode in hand goes back to Command: once a double click can no longer follow.
@@ -2187,7 +2199,7 @@ namespace SandboxDetail {
 	/// Sends the selected units for a battle objective (Command mode): into a zone, or round a place their team holds, as a defend zone the
 	/// size of the objective; to a place they go for (an enemy flag), as an attack-move. With shift, steps of their plans.
 	void ObjectiveSelected(const CommandTarget& target, bool shift);
-	/// Sends the selected units to a point in open air (Command mode). Until the Jetpack here order is in, as a move to the ground under it.
+	/// Sends the selected units to a point in open air (Command mode), as Jetpack here; with Shift, a plan step to the ground under it.
 	void FlySelectedTo(const Vector& point, bool shift);
 	bool HiddenFromCommander(const Actor* actor);
 	MovableObject* GuardableObjectAt(const Vector& position, int team);
@@ -2268,6 +2280,15 @@ namespace SandboxDetail {
 	void ForgetBattleMode();
 	void BattleModeTab();
 	void DrawBattleMode();
+	/// The battle's zones and points edited on the map with the Command tool, while the battle panel (or the Battle tab) shows: a click
+	/// selects one, a drag moves it or its corners. Called with the pointer on the world; true when it took the mouse this frame.
+	bool BattleEditMouse();
+	/// On the map: what is selected for editing, what is under the pointer, and while the game is on, where your spawn zones may go.
+	void DrawBattleEdit();
+	/// Why the last move was taken back, by the pointer for a moment.
+	void DrawBattleEditNote();
+	/// On the battle panel: the "Moving spawns" choice, and how to edit on the map.
+	void BattleEditPanel();
 	/// What a battle mode's tool in hand is for, in the mode chosen, by the pointer (as "Red flag", "Hill"); empty for the tool's own name.
 	std::string BattleToolLabel(Tool kind);
 	/// @param withCustom Whether custom (the Battle Director's cards) is one of the choices. Battle Command plays the modes only.
