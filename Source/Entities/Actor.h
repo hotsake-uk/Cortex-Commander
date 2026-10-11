@@ -201,8 +201,15 @@ namespace RTE {
 		/// Gets whether this Actor is drawn with a bright glowing outline, whatever the unit outline settings (see LightingSettings::HighlightUnits).
 		bool IsHighlighted() const { return m_Highlighted; }
 
-		/// Sets whether this Actor is drawn with a bright glowing outline: a capture the flag carrier.
-		void SetHighlighted(bool highlighted) { m_Highlighted = highlighted; }
+		/// Gets whether this Actor's glowing outline is in its side's colour rather than the pink (see SetHighlighted).
+		bool IsHighlightTeamColor() const { return m_HighlightTeamColor; }
+
+		/// Sets whether this Actor is drawn with a bright glowing outline: a capture the flag carrier in pink, or a VIP in its side's colour.
+		/// @param teamColor The glow in the side's colour, brighter and pulsing harder, rather than the pink.
+		void SetHighlighted(bool highlighted, bool teamColor = false) {
+			m_Highlighted = highlighted;
+			m_HighlightTeamColor = highlighted && teamColor;
+		}
 
 		/// Gets how much this Actor's routes keep clear of its enemies (PathFinder::ThreatCost): 0, the shortest way, unless a game mode asks
 		/// for a safe one, as capture the flag does for a flag carrier. Scaled by the AIThreatAvoidance setting.
@@ -1571,6 +1578,7 @@ namespace RTE {
 		/// The effects running on it, over its head. From DrawHUD.
 		void DrawPowerupsHUD(BITMAP* targetBitmap, const Vector& drawPos);
 		bool m_Highlighted = false; //!< Drawn with a bright glowing outline. Not copied or saved, as m_IgnoredByAI.
+		bool m_HighlightTeamColor = false; //!< The glowing outline in its side's colour rather than the pink. Not copied or saved, as m_IgnoredByAI.
 		unsigned m_RouteSeed = 0; //!< Its own taste in routes (see GetRouteSeed). Not copied or saved, as m_IgnoredByAI.
 		float m_RouteThreatAvoidance = 0.0F; //!< How much its routes keep clear of enemies, for a game mode that wants it safe (see GetRouteThreatAvoidance). Not copied or saved, as m_IgnoredByAI.
 
