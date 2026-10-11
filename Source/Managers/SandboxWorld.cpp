@@ -2216,6 +2216,9 @@ namespace SandboxDetail {
 		vehicle->SetHopSpeed(times(vehicle->GetHopSpeed(), tuning.Jump));
 		vehicle->SetWaterThrust(times(vehicle->GetWaterThrust(), tuning.WaterPower));
 		vehicle->SetWaterMaxSpeed(times(vehicle->GetWaterMaxSpeed(), tuning.WaterSpeed));
+		if (tuning.TerrainCrush >= 0.0F) {
+			vehicle->SetTerrainCrush(std::min(tuning.TerrainCrush, c_VehicleCrushMax));
+		}
 	}
 
 	/// Fills every seat of a vehicle or flying ship just made with new units (or only the driver's, With driver): the driver's seat with the

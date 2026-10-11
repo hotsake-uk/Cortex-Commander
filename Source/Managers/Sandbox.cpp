@@ -547,7 +547,7 @@ void Sandbox::SetCharacterSetup(const std::string& setup) {
 std::string Sandbox::GetVehicleSetup() {
 	const VehicleTuning& tuning = s_VehicleTuning;
 	std::ostringstream setup;
-	setup << (tuning.Modified ? 1 : 0) << (!tuning.Crewed ? 0 : (tuning.DriverOnly ? 2 : 1)) << "|" << tuning.Power << ";" << tuning.TopSpeed << ";" << tuning.Grip << ";" << tuning.Brakes << ";" << tuning.Jump << ";" << tuning.WaterPower << ";" << tuning.WaterSpeed << "|" << tuning.Driver << "|" << tuning.Crew;
+	setup << (tuning.Modified ? 1 : 0) << (!tuning.Crewed ? 0 : (tuning.DriverOnly ? 2 : 1)) << "|" << tuning.Power << ";" << tuning.TopSpeed << ";" << tuning.Grip << ";" << tuning.Brakes << ";" << tuning.Jump << ";" << tuning.WaterPower << ";" << tuning.WaterSpeed << "|" << tuning.Driver << "|" << tuning.Crew << "|" << tuning.TerrainCrush;
 	return setup.str();
 }
 
@@ -568,6 +568,11 @@ void Sandbox::SetVehicleSetup(const std::string& setup) {
 	std::getline(fields, field, '|');
 	std::getline(fields, tuning.Driver, '|');
 	std::getline(fields, tuning.Crew, '|');
+	// (Then the terrain damage, -1 for each vehicle's own: not there in settings saved before it could be set.)
+	if (std::string crush; std::getline(fields, crush, '|') && !crush.empty()) {
+		tuning.TerrainCrush = std::clamp(static_cast<float>(std::atof(crush.c_str())), -1.0F, c_VehicleCrushMax);
+		tuning.TerrainCrush = tuning.TerrainCrush < 0.0F ? -1.0F : tuning.TerrainCrush;
+	}
 	std::istringstream numbers(field);
 	std::string number;
 	for (float* value: values) {
@@ -870,6 +875,9 @@ void Sandbox::DrawGUI() {
 	}
 	if (InGame() && !Colony::Buildings().empty() && !g_DebugMan.IsPhotoModeHidingHUD()) {
 		DrawColony();
+	}
+	if (InGame() && !g_DebugMan.IsPhotoModeHidingHUD()) {
+		DrawBuildingPanel();
 	}
 	if (InGame() && !g_DebugMan.IsPhotoModeHidingHUD()) {
 		// A Battle Director mode's game: its flags and score, with the window open or not.
