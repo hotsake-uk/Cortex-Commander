@@ -207,6 +207,8 @@ namespace SandboxDetail {
 				Vector point = toScene(io.MousePos);
 				if (s_CommandMode == CommandMode::Patrol) {
 					s_PatrolDraft.push_back(point);
+				} else if (s_CommandMode == CommandMode::Pen) {
+					s_PenDraft.push_back(point);
 				} else if (!s_Selected.empty()) {
 					Stroke stroke;
 					stroke.Kind = Tool::Command;

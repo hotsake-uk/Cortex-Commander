@@ -1288,17 +1288,19 @@ namespace SandboxDetail {
 		        //!< through they all go for the nearest enemy there. (After Command, so the ring's slices keep their places.)
 		Build, //!< Build the piece picked (s_BuildPiece) at the point (SandboxBuild.cpp): the nearest selected unit with a Constructor walks
 		       //!< there and puts it up. In Battle Command it costs reinforcement points.
-		Airlift //!< Fly the selected units to the point (SandboxAirlift.cpp): a gunship comes down by them, they get in, and it flies them
-		        //!< there and lets them out. In Battle Command each ship costs reinforcement points.
+		Airlift, //!< Fly the selected units to the point (SandboxAirlift.cpp): a gunship comes down by them, they get in, and it flies them
+		         //!< there and lets them out. In Battle Command each ship costs reinforcement points.
+		Pen //!< Pen the selected animals (the livestock among them): each click a corner of the pen, or a box dragged out; the command row
+		    //!< pens them (PenSelected). They live inside it from then on (AnimalBehaviors.lua). (Last, so the ring's slices keep their places.)
 	};
 	inline CommandMode s_CommandMode = CommandMode::Command;
 	inline bool s_SpawnOrderArmed = false; //!< The next order placed sets the spawn order of your team (or of s_SpawnOrderZone) instead (TakeSpawnOrder).
 	inline double s_SpawnOrderDoneAt = -1.0; //!< When (ImGui time) setting it is over, once placed: after a second click of a double click can follow.
 	inline int s_SpawnOrderZone = -1; //!< Which of your team's spawn zones it is for, -1 for the team's own.
-	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Jetpack here", "Select units", "Command", "Breach", "Build", "Airlift"};
-	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(140, 230, 255, 255), IM_COL32(230, 230, 230, 255), IM_COL32(255, 214, 120, 255), IM_COL32(235, 110, 55, 255), IM_COL32(120, 210, 190, 255), IM_COL32(170, 190, 255, 255)};
-	/// A mode whose order is given once and then goes back to Command (s_BackToCommandAt): not Select, Command or Patrol (clicked out point by point).
-	inline bool OneOffMode(CommandMode mode) { return mode != CommandMode::Select && mode != CommandMode::Command && mode != CommandMode::Patrol; }
+	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Jetpack here", "Select units", "Command", "Breach", "Build", "Airlift", "Pen animals"};
+	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(140, 230, 255, 255), IM_COL32(230, 230, 230, 255), IM_COL32(255, 214, 120, 255), IM_COL32(235, 110, 55, 255), IM_COL32(120, 210, 190, 255), IM_COL32(170, 190, 255, 255), IM_COL32(205, 175, 115, 255)};
+	/// A mode whose order is given once and then goes back to Command (s_BackToCommandAt): not Select, Command, Patrol or Pen (clicked out point by point).
+	inline bool OneOffMode(CommandMode mode) { return mode != CommandMode::Select && mode != CommandMode::Command && mode != CommandMode::Patrol && mode != CommandMode::Pen; }
 	inline double s_BackToCommandAt = -1.0; //!< When (ImGui time) the one-off mode in hand goes back to Command: once a double click can no longer follow.
 	inline CommandMode s_BackToCommandFrom = CommandMode::Command; //!< The one-off mode that was in hand then: only that goes back.
 	/// What a click in Command mode comes to at a point (CommandTargetAt).
@@ -1321,6 +1323,7 @@ namespace SandboxDetail {
 		int CanDig = 0; //!< How many of them can dig there.
 	};
 	inline std::vector<Vector> s_PatrolDraft; //!< The points of the patrol route being clicked out (RC-4), in order.
+	inline std::vector<Vector> s_PenDraft; //!< The corners of the animal pen being clicked out, in order.
 	constexpr const char* c_WeaponRuleNames[] = {"Fire at will", "Return fire", "Hold fire"}; //!< By Actor::WeaponRule.
 	constexpr const char* c_MovementRuleNames[] = {"As ordered", "Engage", "Move only", "Hold ground"}; //!< By Actor::MovementRule.
 	inline float s_Spacing = 18.0F; //!< How far apart units stand when sent somewhere together.
@@ -2411,6 +2414,21 @@ namespace SandboxDetail {
 	bool SuppressZoneOf(const Actor* unit, Vector& centre, float& radius);
 	void ClearSuppress(Actor* unit);
 	void PatrolSelected(const std::vector<Vector>& points, bool backAndForth);
+
+	/// Whether a unit is an animal (livestock), which takes the animal orders: roam free, stay, penned (AnimalBehaviors.lua).
+	bool IsAnimal(const Actor* actor);
+
+	/// Pens the selected animals in a polygon (or box) of points, at least three: they roam, graze, drink and rest inside it from then on.
+	void PenSelected(const std::vector<Vector>& points);
+
+	/// Gives the selected animals an animal order that needs no place: 0 roam free (round where they are), 2 stay where they are. Lets them out of any pen.
+	void AnimalOrderSelected(int order);
+
+	/// Gets the animal order the selected animals have: 0 roam free, 1 penned, 2 stay; -1 when they differ, -2 when none of them is an animal.
+	int SelectedAnimalOrder();
+
+	/// Gets an animal's pen, if it is penned: its corners, in order.
+	bool PenOf(const Actor* animal, std::vector<Vector>& corners);
 	void DropPlan(const Actor* unit);
 	void UpdatePlans();
 	void DropPlanStep(long unitID, int step);

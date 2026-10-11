@@ -490,6 +490,21 @@ namespace RTE {
 		/// Gets how many loose pieces of terrain are moving right now.
 		int GetFallingTerrainChunkCount() const;
 
+		/// Finds food on the ground near a point for an animal (TerrainGrazing::FindFood): plant pixels of the diet with air over them, the nearest first.
+		/// @param from Where to look from.
+		/// @param radius How far to look either way; up and down, half as far.
+		/// @param diet What it eats: 1 grass, 2 bushes, 4 tough plants, added together.
+		/// @param most How many places to give back at most.
+		std::vector<Vector>* FindFood(const Vector& from, float radius, int diet, int most) const;
+
+		/// Finds the ground beside water near a point, for an animal to drink at (TerrainGrazing::FindWater), the nearest first: two Vectors to each,
+		/// the ground to stand on and the water's surface beside it.
+		std::vector<Vector>* FindWater(const Vector& from, float radius, int most) const;
+
+		/// Takes a bite of the plants of a diet within a circle (TerrainGrazing::Eat): they grow back a few minutes later. Safe from an AI's thread.
+		/// @return How many food pixels there are to take (up to most): 0 when there is nothing left there.
+		int EatFood(const Vector& at, float radius, int diet, int most);
+
 		/// Removes a box of pixels from the terrain and adds them to MovableMan.
 		/// @param upperLeftCorner The vector position of the upper left corner of the box.
 		/// @param lowerRightCorner The vector position of the lower right corner of the box.

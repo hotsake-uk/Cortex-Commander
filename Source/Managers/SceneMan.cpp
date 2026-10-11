@@ -8,6 +8,7 @@
 #include "RopeSim.h"
 #include "TerrainCollapse.h"
 #include "TerrainTrees.h"
+#include "TerrainGrazing.h"
 #include "SmokeGrid.h"
 #include "TerrainFire.h"
 #include "ActorFire.h"
@@ -171,6 +172,9 @@ int SceneMan::LoadScene(Scene* pNewScene, bool placeObjects, bool placeUnits) {
 	// Which materials are trees', before the path grids are worked out from the terrain (they walk through trees or go round them).
 	TerrainTrees::BuildTables();
 	TerrainTrees::Clear();
+	// Which materials animals eat, and no plants left waiting to grow back from the scene before.
+	TerrainGrazing::BuildTables();
+	TerrainGrazing::Clear();
 	if (m_pCurrentScene->LoadData(placeObjects, true, placeUnits) < 0) {
 		g_ConsoleMan.PrintString("ERROR: Loading scene \'" + m_pCurrentScene->GetPresetName() + "\' failed! Has it been properly defined?");
 		return -1;
@@ -3063,4 +3067,16 @@ void SceneMan::CheckTerrainCollapse(const Vector& centre, float radius) {
 
 int SceneMan::GetFallingTerrainChunkCount() const {
 	return TerrainCollapse::GetFallingCount();
+}
+
+std::vector<Vector>* SceneMan::FindFood(const Vector& from, float radius, int diet, int most) const {
+	return TerrainGrazing::FindFood(from, radius, diet, most);
+}
+
+std::vector<Vector>* SceneMan::FindWater(const Vector& from, float radius, int most) const {
+	return TerrainGrazing::FindWater(from, radius, most);
+}
+
+int SceneMan::EatFood(const Vector& at, float radius, int diet, int most) {
+	return TerrainGrazing::Eat(at, radius, diet, most);
 }
