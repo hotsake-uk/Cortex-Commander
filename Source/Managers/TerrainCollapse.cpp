@@ -55,11 +55,34 @@ namespace {
 	constexpr int c_MaxGeneration = 4; //!< How many times a piece's pieces may crack again.
 	constexpr int c_MaxOutlinePoints = 260; //!< How many points of a piece's outline are tested against the terrain.
 	constexpr int c_MaxDebrisPerUpdate = 160; //!< How many loose particles breaking pieces may throw off in one update.
-	constexpr float c_Gravity = 0.1F; //!< Pixels per update, per update.
+	constexpr float c_Gravity = 0.1F; //!< Pixels per update, per update, under the stock scene gravity (c_StockGravity).
+	constexpr float c_StockGravity = 20.0F; //!< The stock scene gravity, m/s/s, which c_Gravity is tuned for.
+	constexpr float c_Weightless = 0.05F; //!< Under this share of the stock gravity nothing comes down (a scene in space).
 	constexpr float c_MaxSpeed = 9.0F; //!< Pixels per update.
 	constexpr float c_Friction = 0.55F;
 	constexpr float c_Bounce = 0.2F;
 	constexpr int c_MaxAge = 3600; //!< A piece still moving after this many updates (a minute) is left where it is.
+
+	glm::vec2 s_SceneGravity(0.0F, c_Gravity); //!< The scene's gravity this update, in pixels per update per update (Scene GlobalAcceleration, which Lua can change).
+	Scene::Area* s_NoGravityArea = nullptr; //!< The scene's NoGravityArea this update, if it has one: no gravity inside it.
+
+	/// Looks up the scene's gravity and no gravity area for this update.
+	void ReadGravity(Scene* scene) {
+		Vector acc = scene->GetGlobalAcc();
+		s_SceneGravity = glm::vec2(acc.GetX(), acc.GetY()) * (c_Gravity / c_StockGravity);
+		s_NoGravityArea = scene->GetArea("NoGravityArea");
+	}
+
+	/// The gravity at a place, in pixels per update per update.
+	glm::vec2 GravityAt(const glm::vec2& at) {
+		if (s_NoGravityArea && s_NoGravityArea->IsInside(Vector(at.x, at.y))) {
+			return glm::vec2(0.0F);
+		}
+		return s_SceneGravity;
+	}
+
+	/// Whether there's next to no gravity at a place, so nothing there comes down.
+	bool WeightlessAt(const glm::vec2& at) { return glm::length(GravityAt(at)) < c_Gravity * c_Weightless; }
 
 	std::array<bool, 256> s_Fixed{}; //!< Materials that are never lifted out of the terrain: doors and lift decks (drawn by their own objects) and the world's edge.
 	std::array<bool, 256> s_Structure{}; //!< Materials of buildings: concrete, metal and the like.
@@ -1576,12 +1599,19 @@ namespace {
 				return;
 			}
 		}
-		if (body.Pos.y - body.Radius > static_cast<float>(s_Height)) {
-			// Fell out of the bottom of the world.
+		glm::vec2 gravity = GravityAt(body.Pos);
+		bool weightless = glm::length(gravity) < c_Gravity * c_Weightless;
+		if (body.Pos.y - body.Radius > static_cast<float>(s_Height) || (gravity.y <= 0.0F && body.Pos.y + body.Radius < 0.0F)) {
+			// Fell out of the bottom of the world, or drifted out of the top with nothing to bring it back.
 			body.Done = true;
 			return;
 		}
-		body.Vel.y += c_Gravity;
+		body.Vel += gravity;
+		if (weightless) {
+			// With no gravity a piece thrown loose drifts on, slowing a little, rather than flying until it hits something.
+			body.Vel *= 0.99F;
+			body.Spin *= 0.99F;
+		}
 		// A cut tree is pushed over until it leans well past its stump (about 30 degrees), as the last of the wood at the cut would tip it; then it falls on its own.
 		if (body.Topple != 0) {
 			if (std::abs(body.Angle) > 0.5F || body.Age > 300) {
@@ -1924,7 +1954,8 @@ namespace {
 
 		float movedBy = glm::length(body.Pos - startPos) + std::abs(body.Angle - startAngle) * body.Radius;
 		// Lying on something and all but stopped. (How far it moved doesn't count: a piece rocking on the pixel grid is lifted clear and drops back for ever.)
-		bool calm = responses > 0 && glm::length(body.Vel) < 0.35F && std::abs(body.Spin) * body.Radius < 0.35F;
+		// (With no gravity it needn't be lying on anything: it hangs where it stopped.)
+		bool calm = (responses > 0 || weightless) && glm::length(body.Vel) < 0.35F && std::abs(body.Spin) * body.Radius < 0.35F;
 		// A wobble sets the count back a little rather than to nothing, or a piece rocking on a point never comes to rest.
 		body.Still = (calm && body.Topple == 0) ? body.Still + 1 : (movedBy > 2.0F || body.Topple != 0 ? 0 : std::max(body.Still - 4, 0));
 		Stamp(terrain, body);
@@ -2760,6 +2791,10 @@ namespace {
 	}
 
 	void RunCheck(SLTerrain* terrain, const Check& check) {
+		if (WeightlessAt(glm::vec2(static_cast<float>(check.X), static_cast<float>(check.Y)))) {
+			// No gravity here (a scene in space, or its no gravity area): what's cut loose stays where it is.
+			return;
+		}
 		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
 		int width = materialBitmap->w;
 		int height = materialBitmap->h;
@@ -3302,6 +3337,7 @@ void TerrainCollapse::Update() {
 	s_Width = terrain->GetMaterialBitmap()->w;
 	s_Height = terrain->GetMaterialBitmap()->h;
 	s_WrapX = g_SceneMan.SceneWrapsX();
+	ReadGravity(scene);
 	if (size_t pixels = static_cast<size_t>(s_Width) * static_cast<size_t>(s_Height); s_State.size() != pixels) {
 		// A terrain of another size: nothing known about its pixels carries over.
 		s_Bodies.clear();
