@@ -119,12 +119,24 @@ namespace RTE {
 		}
 	} // namespace ToolGlow
 
-	/// Light falling on the tool windows, as the game's lamps fall on the world: each panel lit from above (bright at the top, shaded towards the
-	/// bottom, its top edge catching the light) and a soft warm lamp where the pointer is over it. Drawn on each window under what its child areas
-	/// hold, so the lettering and controls sit in the light rather than under it.
+	/// The tool windows and the HUD lit by the world they sit over, as if they were in it: the sun (or the moon) lights the edges facing it and
+	/// casts each panel's shadow away from it, the sky's colour of the hour tints them (gold at dawn, blue-black at night), lightning flashes on
+	/// them, and a soft lamp shines where the pointer is. Out of a game, a steady light from the top left.
 	namespace ToolLight {
 		/// How strong the light is (the UI lighting setting): 0 turns it off, 1 is the usual, 2 twice as bright.
 		inline float Strength = 1.0F;
+
+		/// The world's light this frame, read from the scene's lighting (DebugMan sets it before anything is drawn).
+		struct WorldLight {
+			ImVec2 Sun = {-0.45F, -0.9F}; //!< Towards the sun or moon, unit length, y down.
+			float SunStrength = 0.6F; //!< How strongly it shines, 0 to 1: what the shadows and the lit edges follow.
+			ImVec4 Sky = {1.0F, 0.97F, 0.92F, 1.0F}; //!< The colour of the sky's light, brightest channel 1.
+			float Brightness = 1.0F; //!< How bright the sky's light is, 0 (dead of night) to 1 (day).
+			float Flash = 0.0F; //!< A lightning flash, 0 to 1.
+		};
+		inline WorldLight World;
+
+		inline ImU32 SkyColor(float alpha) { return ImGui::ColorConvertFloat4ToU32(ImVec4(World.Sky.x, World.Sky.y, World.Sky.z, std::clamp(alpha, 0.0F, 1.0F))); }
 
 		/// A round light fading from its middle to nothing at its reach, built up from rings so it is soft.
 		inline void Lamp(ImDrawList* drawList, ImVec2 at, float reach, ImU32 color, float strength) {
@@ -139,7 +151,75 @@ namespace RTE {
 			}
 		}
 
-		/// Lights every tool window open this frame. Called once a frame, after the last window is made.
+		/// The shadow a box casts away from the sun onto what is behind it, soft-edged, longer and darker the stronger the sun.
+		/// Lightning casts a hard one straight down.
+		inline void Shadow(ImDrawList* drawList, ImVec2 from, ImVec2 to, float pixel) {
+			float sun = std::clamp(World.SunStrength, 0.0F, 1.0F);
+			float darkness = std::min(Strength, 2.0F) * (0.12F + 0.3F * sun);
+			if (darkness <= 0.004F) {
+				return;
+			}
+			float length = pixel * (3.0F + 9.0F * sun);
+			ImVec2 offset(-World.Sun.x * length, -World.Sun.y * length);
+			if (World.Flash > 0.0F) {
+				offset = ImVec2(offset.x * (1.0F - World.Flash), offset.y * (1.0F - World.Flash) + pixel * 10.0F * World.Flash);
+				darkness = std::min(1.0F, darkness + 0.35F * World.Flash);
+			}
+			ImVec2 shadowFrom(from.x + offset.x, from.y + offset.y);
+			ImVec2 shadowTo(to.x + offset.x, to.y + offset.y);
+			// A soft edge: layers growing outward, fainter as they go.
+			constexpr int layers = 5;
+			float blur = pixel * (2.0F + 4.0F * (1.0F - sun));
+			for (int layer = layers - 1; layer >= 0; --layer) {
+				float out = blur * static_cast<float>(layer) / static_cast<float>(layers - 1);
+				drawList->AddRectFilled(ImVec2(shadowFrom.x - out, shadowFrom.y - out), ImVec2(shadowTo.x + out, shadowTo.y + out), IM_COL32(0, 0, 8, static_cast<int>(255.0F * darkness / static_cast<float>(layers))), out);
+			}
+		}
+
+		/// Lights a panel's face as the world would: brighter on the side towards the sun and shaded on the far side, its edges facing the sun
+		/// catching the light, the whole tinted by the sky and dimmed at night, and lightning flaring on it.
+		inline void Surface(ImDrawList* drawList, ImVec2 from, ImVec2 to, float pixel) {
+			float amount = std::min(Strength, 2.0F);
+			if (amount <= 0.0F) {
+				return;
+			}
+			float sun = std::clamp(World.SunStrength, 0.0F, 1.0F);
+			// Each corner by how much it faces the sun: lit towards it, shaded away from it.
+			const ImVec2 corners[4] = {{-0.7071F, -0.7071F}, {0.7071F, -0.7071F}, {0.7071F, 0.7071F}, {-0.7071F, 0.7071F}};
+			ImU32 face[4];
+			for (int i = 0; i < 4; ++i) {
+				float facing = corners[i].x * World.Sun.x + corners[i].y * World.Sun.y;
+				if (facing > 0.0F) {
+					face[i] = SkyColor(amount * facing * (0.06F + 0.16F * sun));
+				} else {
+					face[i] = IM_COL32(0, 0, 10, static_cast<int>(255.0F * std::min(1.0F, amount * -facing * (0.08F + 0.2F * sun))));
+				}
+			}
+			drawList->AddRectFilledMultiColor(from, to, face[0], face[1], face[2], face[3]);
+			// Night: the panel dims, to a point, so it can still be read; the sky's colour tints it.
+			float dim = std::clamp(1.0F - World.Brightness, 0.0F, 1.0F) * 0.4F * std::min(amount, 1.0F);
+			if (dim > 0.004F) {
+				drawList->AddRectFilled(from, to, IM_COL32(2, 4, 16, static_cast<int>(255.0F * dim)));
+			}
+			drawList->AddRectFilled(from, to, SkyColor(0.07F * std::min(amount, 1.0F)));
+			// The edges towards the sun catch its light.
+			ImU32 rim = SkyColor(std::min(1.0F, amount * (0.25F + 0.55F * sun)));
+			if (World.Sun.y < -0.2F) {
+				drawList->AddRectFilled(from, ImVec2(to.x, from.y + pixel), rim);
+			} else if (World.Sun.y > 0.2F) {
+				drawList->AddRectFilled(ImVec2(from.x, to.y - pixel), to, rim);
+			}
+			if (World.Sun.x < -0.2F) {
+				drawList->AddRectFilled(from, ImVec2(from.x + pixel, to.y), rim);
+			} else if (World.Sun.x > 0.2F) {
+				drawList->AddRectFilled(ImVec2(to.x - pixel, from.y), to, rim);
+			}
+			if (World.Flash > 0.0F) {
+				drawList->AddRectFilled(from, to, IM_COL32(220, 230, 255, static_cast<int>(255.0F * std::min(1.0F, 0.3F * World.Flash * amount))));
+			}
+		}
+
+		/// Lights every tool window open this frame, and casts their shadows. Called once a frame, after the last window is made.
 		inline void Windows() {
 			if (Strength <= 0.0F) {
 				return;
@@ -147,28 +227,21 @@ namespace RTE {
 			ImGuiContext& context = *GImGui;
 			ImGuiWindow* hovered = context.HoveredWindow ? context.HoveredWindow->RootWindow : nullptr;
 			ImVec2 mouse = ImGui::GetMousePos();
-			float amount = std::min(Strength, 2.0F);
+			ImDrawList* behind = ImGui::GetBackgroundDrawList();
 			for (ImGuiWindow* window: context.Windows) {
 				if (!window->Active || window->Hidden || (window->Flags & (ImGuiWindowFlags_ChildWindow | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_Tooltip))) {
 					continue;
 				}
-				ImDrawList* drawList = window->DrawList;
 				ImVec2 from = window->Pos;
 				ImVec2 to(from.x + window->Size.x, from.y + window->Size.y);
-				float height = to.y - from.y;
 				float pixel = std::max(1.0F, std::floor(window->FontRefSize / 10.0F));
+				Shadow(behind, from, to, pixel);
+				// On the window's own layer, under what its child areas hold, so the lettering and controls sit in the light rather than under it.
+				ImDrawList* drawList = window->DrawList;
 				drawList->PushClipRect(from, to, false);
-				// Lit from above: a sheen down the top, a shade up from the bottom, and the top edge catching the light.
-				ImU32 sheen = ToolGlow::WithAlpha(IM_COL32(255, 244, 220, 255), 0.14F * amount);
-				ImU32 none = ToolGlow::WithAlpha(IM_COL32(255, 244, 220, 255), 0.0F);
-				drawList->AddRectFilledMultiColor(from, ImVec2(to.x, from.y + height * 0.4F), sheen, sheen, none, none);
-				ImU32 shade = ToolGlow::WithAlpha(IM_COL32(0, 0, 10, 255), 0.22F * amount);
-				ImU32 clear = ToolGlow::WithAlpha(IM_COL32(0, 0, 10, 255), 0.0F);
-				drawList->AddRectFilledMultiColor(ImVec2(from.x, to.y - height * 0.35F), to, clear, clear, shade, shade);
-				drawList->AddRectFilled(from, ImVec2(to.x, from.y + pixel), ToolGlow::WithAlpha(ToolTheme::EdgeLight, 0.55F * std::min(amount, 1.0F)));
-				// A lamp where the pointer is.
+				Surface(drawList, from, to, pixel);
 				if (window == hovered && mouse.x >= from.x && mouse.x < to.x && mouse.y >= from.y && mouse.y < to.y) {
-					Lamp(drawList, mouse, std::max(window->FontRefSize, 10.0F) * 14.0F, IM_COL32(255, 236, 190, 255), 0.16F);
+					Lamp(drawList, mouse, std::max(window->FontRefSize, 10.0F) * 12.0F, IM_COL32(255, 236, 190, 255), 0.12F);
 				}
 				drawList->PopClipRect();
 			}
@@ -201,8 +274,8 @@ namespace RTE {
 				ToolGlow::Fill(drawList, from, to, ToolTheme::Gold, 0.5F * alpha);
 			} else if (ImGui::IsItemHovered()) {
 				// Pointed at, it catches the light: its face brightens from the top and its top edge shines.
-				ImU32 lit = ToolGlow::WithAlpha(IM_COL32(255, 244, 220, 255), 0.2F * ToolLight::Strength * alpha);
-				ImU32 unlit = ToolGlow::WithAlpha(IM_COL32(255, 244, 220, 255), 0.0F);
+				ImU32 lit = ToolLight::SkyColor(0.2F * std::min(ToolLight::Strength, 2.0F) * alpha);
+				ImU32 unlit = ToolLight::SkyColor(0.0F);
 				drawList->AddRectFilledMultiColor(from, to, lit, lit, unlit, unlit);
 				drawList->AddRectFilled(from, ImVec2(to.x, from.y + pixel), ToolGlow::WithAlpha(ToolTheme::EdgeLight, std::min(1.0F, 0.9F * alpha)));
 				ToolGlow::Rect(drawList, from, to, ToolTheme::Gold, pixel * 3.0F, 0.35F * alpha);

@@ -121,6 +121,26 @@ namespace {
 		style.SeparatorTextBorderSize = 2.0F;
 		style.GrabMinSize = 10.0F;
 	}
+
+	/// Reads the scene's light for the tool windows and the HUD (ToolLight::World). Out of a game, a steady light from the top left.
+	void FollowWorldLight() {
+		ToolLight::WorldLight world;
+		SceneLighting* lighting = g_PostProcessMan.GetSceneLighting();
+		if (lighting && g_ActivityMan.IsInActivity() && g_SceneMan.GetScene()) {
+			glm::vec2 sun = lighting->GetSunDirection();
+			world.Sun = ImVec2(sun.x, sun.y);
+			world.SunStrength = std::clamp(lighting->GetSunLight(), 0.0F, 1.0F);
+			float flash = std::max(lighting->GetLightningFlash(), 0.0F) * std::clamp(lighting->GetSettings().LightningBrightness, 0.0F, 2.0F);
+			// The sky's light without the flash, which is lit separately.
+			glm::vec3 sky = glm::max(lighting->GetSkyLight() - glm::vec3(0.75F, 0.8F, 1.0F) * flash, glm::vec3(0.0F));
+			float brightest = std::max({sky.x, sky.y, sky.z, 0.0001F});
+			glm::vec3 tint = glm::pow(sky / brightest, glm::vec3(1.0F / 2.2F));
+			world.Sky = ImVec4(tint.x, tint.y, tint.z, 1.0F);
+			world.Brightness = std::clamp(std::pow(std::clamp(glm::dot(sky, glm::vec3(0.2126F, 0.7152F, 0.0722F)), 0.0F, 1.0F), 1.0F / 2.2F), 0.0F, 1.0F);
+			world.Flash = std::clamp(flash, 0.0F, 1.0F);
+		}
+		ToolLight::World = world;
+	}
 } // namespace
 
 void DebugMan::PrepareFonts() {
@@ -401,6 +421,8 @@ void DebugMan::DrawImGui() {
 		bool pushes = m_DockPanels && !m_PanelsOverlay;
 		g_WindowMan.SetReservedSpace(pushes && m_PanelsLastFrame[0] > 0 ? static_cast<int>(GetPanelWidth(PanelSide::Left)) : 0, pushes && m_PanelsLastFrame[1] > 0 ? static_cast<int>(GetPanelWidth(PanelSide::Right)) : 0);
 	}
+
+	FollowWorldLight();
 
 	// The modern HUD and the debug overlays, unless photo mode is hiding the HUD.
 	if (!IsPhotoModeHidingHUD()) {

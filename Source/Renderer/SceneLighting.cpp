@@ -1698,6 +1698,7 @@ void SceneLighting::Update() {
 	m_SunShadowStrength = m_Settings.SunShadows * sunLight;
 	m_BackgroundShadowStrength = std::clamp(m_Settings.BackgroundShadows, 0.0F, 1.0F) * sunLight;
 	m_SunArc = sunArc;
+	m_SunLight = sunLight;
 	// The sun's disc sinks into the horizon haze at dawn and dusk, and weather hides it.
 	m_SunDiscStrength = sunIsUp ? m_Settings.SunDisc * (1.0F - glm::smoothstep(0.9F, 1.0F, std::abs(sunArc))) * (1.0F - overcast) : 0.0F;
 

@@ -126,9 +126,15 @@ void ActionMenu::DrawMenu(const MenuLayout& menu, int hover, float scale) {
 		}
 	};
 
-	drawList->AddRectFilled(ImVec2(menu.Min.x + 3.0F, menu.Min.y + 4.0F), ImVec2(menu.Max.x + 3.0F, menu.Max.y + 4.0F), IM_COL32(0, 0, 0, 90), rounding);
+	// Its shadow falls away from the world's sun (or straight down and right, with the UI lighting off).
+	if (ToolLight::Strength > 0.0F) {
+		ToolLight::Shadow(drawList, menu.Min, menu.Max, line * 2.0F);
+	} else {
+		drawList->AddRectFilled(ImVec2(menu.Min.x + 3.0F, menu.Min.y + 4.0F), ImVec2(menu.Max.x + 3.0F, menu.Max.y + 4.0F), IM_COL32(0, 0, 0, 90), rounding);
+	}
 	ToolGlow::Rect(drawList, menu.Min, menu.Max, goldDim, 8.0F * scale, 0.5F);
 	drawList->AddRectFilled(menu.Min, menu.Max, panel, rounding);
+	ToolLight::Surface(drawList, menu.Min, menu.Max, line * 2.0F);
 	drawList->AddRect(menu.Min, menu.Max, goldDim, rounding, 0, line);
 	for (int i = 0; i < static_cast<int>(menu.Cells.size()); ++i) {
 		const Cell& cell = menu.Cells[i];

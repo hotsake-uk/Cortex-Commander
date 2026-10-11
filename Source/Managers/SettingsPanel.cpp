@@ -997,7 +997,7 @@ void DebugMan::SettingsGUI() {
 		Tip("The frame rate and the game's version, small, in the top right of the window.");
 		Toggle("Modern HUD", ModernHUD::IsEnabled(), [](bool on) { ModernHUD::SetEnabled(on); });
 		Slider("UI lighting", &ToolLight::Strength, 0.0F, 2.0F);
-		Tip("Light on the tool windows, as the game's lamps light the world: each panel lit from above, a warm lamp where the pointer is, and buttons catching the light when pointed at. 0 turns it off.");
+		Tip("The menus and HUD lit by the world they're over: the sun (or moon) lights the edges facing it and casts each panel's shadow away from it, following the time of day; the sky's colour tints them, gold at dawn and dusk and dark at night; lightning flashes on them; and a soft lamp shines where the pointer is. Out of a game, a steady light from the top left. 0 turns it off.");
 		Slider("UI glow", &ToolGlow::Strength, 0.0F, 2.0F);
 		Tip("The soft halo round the tool windows (gold round the one in use), round what the pointer is on, behind headings and the page shown, and round the modern HUD's bars, minimap and action menu. 0 turns it off.");
 		Toggle("Side and health beside units", g_SettingsMan.ShowUnitTags(), [](bool on) { g_SettingsMan.SetShowUnitTags(on); });
