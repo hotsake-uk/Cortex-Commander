@@ -1026,6 +1026,15 @@ namespace SandboxDetail {
 	inline bool s_ClickOrder = false; //!< While a command stroke the player placed is given: only those take a move clicked in open air for a sky order.
 	/// Whether a point is open air with nothing under it for 120 px: a move or attack-move clicked there flies the units with a jet to it.
 	bool IsSkyPoint(const Vector& point);
+	/// Whether a place a unit is sent to is up in the air, out of reach of one standing on the ground under it (open air there and for
+	/// most of the unit's height below): a battle objective drawn or put in the air, which it flies to rather than stopping under.
+	bool OffTheGround(const Actor* unit, const Vector& point);
+	/// Sends a unit with a jet that is going to a place off the ground (OffTheGround) to fly to the place itself, as Jetpack here does
+	/// (Actor::StandingOrder::SkyGoal); any other place, or a unit with no jet, is gone to on the ground as usual. True when it flies.
+	bool FlyIfOffTheGround(Actor* unit, const Vector& point);
+	/// Whether a unit sent to a place off the ground has come down short of it (its tank ran out: a sky order ends then) and is to be
+	/// sent to fly there again, which it does once its tank has filled enough.
+	bool FlyAgainFor(const Actor* unit, const Vector& point);
 	/// The selected units to the point in the air (CommandMode::JetpackHere): those with a jet fly to it, the rest go to the ground under it.
 	void JetpackHereSelected(const Vector& point, bool shift, int facing = 0);
 	inline ImVec2 s_DragStart;
