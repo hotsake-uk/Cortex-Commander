@@ -159,6 +159,7 @@ void Actor::Clear() {
 	m_MoveVector.Reset();
 	m_MovePath.clear();
 	m_MovePathKinds.clear();
+	m_MovePathSky = false;
 	m_UpdateMovePath = false;
 	m_ImpossiblePaths = 0;
 	m_PathImpossible = false;
@@ -1637,6 +1638,8 @@ PathAgent Actor::GetPathAgent() const {
 		// From the straight-flight risk up (a full drag as tuned): straight there on the jet when the way is open (PathFinder::CalculatePath).
 		agent.StraightFlight = share >= direct.StraightFlightRisk;
 		agent.StraightFlightReach = direct.FlightReach(share);
+		// From the sky-route risk up: out in the open, a flight up into the sky and down onto the goal when that is quicker.
+		agent.SkyRoute = share >= direct.SkyRouteRisk;
 		if (agent.DigGoal) {
 			agent.DigCostScale = toward(agent.DigCostScale, std::min(agent.DigCostScale, direct.DigCostScale));
 			agent.LineWeight = direct.LineWeight * share;
@@ -2004,6 +2007,7 @@ void Actor::PreControllerUpdate() {
 		m_PathCostAtAdoption = m_PathRequest->totalCost;
 		m_PathSizeAtAdoption = static_cast<int>(m_MovePath.size());
 		m_MovePathKinds = const_cast<std::list<PathStepKind>&>(m_PathRequest->kinds);
+		m_MovePathSky = m_PathRequest->skyRoute;
 		if (IsAITraced()) {
 			g_ConsoleMan.PrintString("AITRACE path for " + GetPresetName() + ": status " + std::to_string(m_PathRequest->status) + ", " + std::to_string(m_MovePath.size()) + " nodes, cost " + std::to_string(m_PathRequest->totalCost) + ", from " +
 			                         std::to_string(static_cast<int>(m_PathRequest->startPos.m_X)) + "," + std::to_string(static_cast<int>(m_PathRequest->startPos.m_Y)) + " to " + std::to_string(static_cast<int>(m_PathRequest->targetPos.m_X)) + "," + std::to_string(static_cast<int>(m_PathRequest->targetPos.m_Y)));

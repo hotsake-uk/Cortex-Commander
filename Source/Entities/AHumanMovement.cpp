@@ -2641,6 +2641,22 @@ int AHuman::MoveAlongRoute() {
 				float dx = Towards(m_Pos, flight.via ? flight.viaPoint : flight.landing).m_X;
 				command = Vector(std::clamp(dx / (h * 0.5F), -0.6F, 0.6F), 0.0F);
 			}
+			// A dive, on a risky order (the Battle Behavior's DiveRisk up): prone in the air, so the jet, which pushes along the body, drives
+			// it on across rather than holding it up, for speed over a controlled flight. Decided once a flight, by the order's chance of it
+			// (DiveChanceAt), for a flight across (three bodies or more) to a landing not much over the take-off, not up a shaft. Held while
+			// over the landing's height and more than two bodies short of it, then the body rights itself for the landing.
+			if (!flight.diveRolled) {
+				flight.diveRolled = true;
+				const Vector span = Towards(flight.takeOff, flight.landing);
+				const bool across = std::abs(span.m_X) >= h * 3.0F && flight.floorY >= flight.takeOff.m_Y + feet - h && !flight.step && (!flight.via || flight.apex);
+				flight.dive = across && standardJet && RandomNum() < g_SettingsMan.DirectOrders().DiveChanceAt(m_StandingOrder.Direct);
+				if (flight.dive) {
+					MoverTrace("diving this flight");
+				}
+			}
+			if (flight.dive && airborne && !flight.refuelling && !flight.via && std::abs(to.m_X) > h * 2.0F && feetY < flight.floorY - h * 0.5F && to.m_X * m_Vel.m_X > 0.0F) {
+				ctrl.SetState(BODY_PRONE, true);
+			}
 			ctrl.SetState(BODY_JUMP, command.m_Y > 0.5F);
 			ctrl.SetAnalogMove(Vector(command.m_X, -1.0F));
 			// Still on the ground at the start of the flight: the legs carry it towards the landing (off the edge, for one that is level or
@@ -2744,7 +2760,10 @@ int AHuman::MoveAlongRoute() {
 	// (The goal itself is flown for however far it is, as Jetpack here is: a tank short, the flight comes down, refuels on the way down
 	// and goes on. Held to what one tank flies, a far goal was never tried, the route's points back from it rarely had a clear line, and a
 	// full-risk move walked and climbed the route like any other; so did one short of fuel, which walked the route till the next look.) ----
-	const bool fullRisk = standardJet && !IsDiggingTo() && !m_MovePath.empty() && m_StandingOrder.Direct >= g_SettingsMan.DirectOrders().StraightFlightRisk;
+	// A sky route (PathFinder's, on an order at the Battle Behavior's SkyRouteRisk: one flight up into open sky and down onto the goal,
+	// quicker than the ground) is flown the same way, for the goal only and on what the tank flies, its fuel waited for as above.
+	const bool skyOnly = m_MovePathSky && m_StandingOrder.Direct >= g_SettingsMan.DirectOrders().SkyRouteRisk && m_StandingOrder.Direct < g_SettingsMan.DirectOrders().StraightFlightRisk;
+	const bool fullRisk = standardJet && !IsDiggingTo() && !m_MovePath.empty() && (m_StandingOrder.Direct >= g_SettingsMan.DirectOrders().StraightFlightRisk || skyOnly);
 	if (!fullRisk) {
 		mover.straightHold = false;
 	}
@@ -2783,6 +2802,9 @@ int AHuman::MoveAlongRoute() {
 			points.emplace_back(all.back(), last);
 			const float side = Towards(all.back(), m_Pos).m_X >= 0.0F ? 1.0F : -1.0F;
 			for (float back: {1.0F, 2.0F, 3.5F}) {
+				if (skyOnly) {
+					break;
+				}
 				Vector shortOf = all.back() + Vector(side * h * back, -h * 0.5F);
 				g_SceneMan.WrapPosition(shortOf);
 				float floorY = FloorUnder(shortOf, h * 1.5F);
@@ -2790,7 +2812,7 @@ int AHuman::MoveAlongRoute() {
 					points.emplace_back(Vector(shortOf.m_X, floorY - feet), last - 1); // (The goal kept on the route, to be gone on to from there.)
 				}
 			}
-			for (int k = last - 5; k >= 0 && points.size() < 12; k -= 4) {
+			for (int k = last - 5; k >= 0 && points.size() < 12 && !skyOnly; k -= 4) {
 				points.emplace_back(all[k], k + 1);
 			}
 		}
@@ -2810,20 +2832,22 @@ int AHuman::MoveAlongRoute() {
 				continue;
 			}
 			// (The goal itself on any tank, as above; the places short of it on what the risk lets one tank fly.)
-			const float placeReach = &candidate == &points.front() ? std::numeric_limits<float>::max() : reach;
+			const float placeReach = &candidate == &points.front() && !skyOnly ? std::numeric_limits<float>::max() : reach;
 			const Vector landingCentre(place.m_X, floorY - feet - 4.0F);
 			if (FlightFuelNeeded(place, floorY, false) <= placeReach && (legOpen(m_Pos, landingCentre) || FlightWayClear(place, floorY))) {
 				found = true;
 			} else {
-				// Up and over: a point over the way, the lowest that both legs are open to and one tank flies.
+				// Up and over: a point over the way, the lowest that both legs are open to and one tank flies, up to fourteen bodies over
+				// the higher end. (Held to three and a half, a hill or a bunker in the way out in the open was never cleared, and the order
+				// walked the route round it.) A point over three and a half bodies up is flown on what the tank holds, the goal's too.
 				const Vector across = Towards(m_Pos, landingCentre);
 				const float topY = std::min(m_Pos.m_Y, landingCentre.m_Y);
-				const std::pair<float, float> tries[] = {{0.5F, 1.0F}, {0.5F, 2.0F}, {0.35F, 2.0F}, {0.65F, 2.0F}, {0.5F, 3.5F}};
+				const std::pair<float, float> tries[] = {{0.5F, 1.0F}, {0.5F, 2.0F}, {0.35F, 2.0F}, {0.65F, 2.0F}, {0.5F, 3.5F}, {0.35F, 3.5F}, {0.65F, 3.5F}, {0.5F, 5.0F}, {0.5F, 7.0F}, {0.5F, 10.0F}, {0.5F, 14.0F}};
 				for (const std::pair<float, float>& at: tries) {
 					Vector top = m_Pos + across * at.first;
 					top.m_Y = topY - h * at.second;
 					g_SceneMan.WrapPosition(top);
-					if (top.m_Y < 0.0F || FlightFuelNeeded(place, top.m_Y + feet, false) > placeReach) {
+					if (top.m_Y < 0.0F || FlightFuelNeeded(place, top.m_Y + feet, false) > (at.second > 3.5F ? reach : placeReach)) {
 						continue;
 					}
 					if (legOpen(m_Pos, top) && legOpen(top, landingCentre)) {
@@ -2843,7 +2867,8 @@ int AHuman::MoveAlongRoute() {
 		}
 		if (found) {
 			const float needed = std::min(FlightFuelNeeded(goal, viaApex ? apex.m_Y + feet : goalFloorY), tank * 0.95F);
-			const float want = std::min(needed * g_SettingsMan.DirectOrders().FuelShare, tank * 0.95F);
+			// (A sky route waits for all of it: high over open ground, coming down short is a long fall, not a hop.)
+			const float want = std::min(needed * (skyOnly ? 1.0F : g_SettingsMan.DirectOrders().FuelShare), tank * 0.95F);
 			mover.straightHold = false;
 			if (m_pJetpack->GetJetTimeLeft() < std::max(want, JetRelightFuel())) {
 				// Short of it: stood still for the tank to fill (ten seconds at most, then the route for a while), not walked off along the route.

@@ -130,6 +130,7 @@ namespace RTE {
 		float FlightCostScale = 1.0F; //!< What a jet flight's time, take-off and fuel cost it, as a share of the usual: under 1 on a direct order (Actor::StandingOrder::Direct), which jumps where others walk.
 		bool StraightFlight = false; //!< On a full-risk order (Actor::StandingOrder::Direct at SettingsMan::DirectOrderTuning::StraightFlightRisk): the route is one jet flight from start to goal, straight or up and over, when the air is open and StraightFlightReach of a tank flies it.
 		float StraightFlightReach = 0.95F; //!< How much of a full tank that flight may need (SettingsMan::DirectOrderTuning::FlightReach): over 1 is the risk of coming down short, accepted.
+		bool SkyRoute = false; //!< On a risky order (Actor::StandingOrder::Direct at SettingsMan::DirectOrderTuning::SkyRouteRisk): out in the open, the route may be one flight up into the sky and down onto the goal, when that is quicker than the ground route.
 		float LineWeight = 0.0F; //!< What each node off the straight line from start to goal costs it, in nodes walked (LineCost): over 0 on a risky order, which digs straight or keeps near the line.
 		std::shared_ptr<const LiftTable> Lifts; //!< The lifts it rides (MovableMan::GetPublishedLifts; LM-11), for a humanoid. None for no lift steps.
 		bool CallsLifts = true; //!< Whether it calls a lift to its stop rather than waiting for the lift's own round (SettingsMan::AIUnitsCallLifts): the wait is priced by it.
@@ -160,6 +161,7 @@ namespace RTE {
 		float pathLength = 0.0f;
 		float totalCost = 0.0f;
 		int cutMaterial = 0; //!< The material in the way where the route was cut short (see cutAtDoor), 0 when it wasn't cut.
+		bool skyRoute = false; //!< Whether the route is a sky route (PathAgent::SkyRoute): one flight up into open sky and down onto the goal.
 		bool cutAtDoor = false; //!< Whether the route was cut short at a door the searcher can't get through (yet): a door opens, or is shot open, so this is no dead end.
 		Vector startPos;
 		Vector targetPos;

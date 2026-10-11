@@ -1464,6 +1464,25 @@ void DebugMan::SettingsGUI() {
 				direct.StraightFlightRisk = straight / 100.0F;
 			}
 			Tip("From this much risk, a unit with a jetpack lights it and flies at the place it was sent, straight or up and over what is in the way, a long way off on a few such flights, instead of taking the route. 90% is normal.");
+			float sky = direct.SkyRouteRisk * 100.0F;
+			if (Slider("Sky route from", &sky, 50.0F, 100.0F, "%.0f%% risk")) {
+				direct.SkyRouteRisk = sky / 100.0F;
+			}
+			Tip("From this much risk, on any order, a unit with a jetpack out in the open (open sky over it) may fly up into the sky and down onto the place it was sent, as high as it needs to clear what is between, when that is quicker than the ground route. It waits for the fuel to do it. 80% is normal.");
+			Check("Units dive while flying", &direct.Dives);
+			Tip("Whether units on a risky order dive on flights across open ground: go prone in the air so the jetpack pushes them along, for speed rather than a controlled flight. The two settings below say from what risk and how often.");
+			ImGui::BeginDisabled(!direct.Dives);
+			float dive = direct.DiveRisk * 100.0F;
+			if (Slider("Dive from", &dive, 50.0F, 100.0F, "%.0f%% risk")) {
+				direct.DiveRisk = dive / 100.0F;
+			}
+			Tip("From this much risk, a unit flying across open ground may dive: go prone in the air so the jetpack pushes it along, for speed rather than a controlled flight. It rights itself before the landing. 80% is normal.");
+			float diveChance = direct.DiveChance * 100.0F;
+			if (Slider("Dive chance", &diveChance, 0.0F, 100.0F, "%.0f%%")) {
+				direct.DiveChance = diveChance / 100.0F;
+			}
+			Tip("The chance a flight is dived at the \"Dive from\" risk. It rises to every flight at full risk. 25% is normal.");
+			ImGui::EndDisabled();
 		}
 		Heading("Direct (full drag): jetpack");
 		{

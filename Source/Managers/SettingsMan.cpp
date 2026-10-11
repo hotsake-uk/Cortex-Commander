@@ -828,6 +828,10 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DirectIgnoreEnemies", { reader >> m_DirectOrders.IgnoreEnemies; });
 	MatchProperty("DirectKeepPace", { reader >> m_DirectOrders.KeepPace; });
 	MatchProperty("DirectStraightFlightRisk", { reader >> m_DirectOrders.StraightFlightRisk; m_DirectOrders.StraightFlightRisk = std::clamp(m_DirectOrders.StraightFlightRisk, 0.5F, 1.0F); });
+	MatchProperty("DirectSkyRouteRisk", { reader >> m_DirectOrders.SkyRouteRisk; m_DirectOrders.SkyRouteRisk = std::clamp(m_DirectOrders.SkyRouteRisk, 0.5F, 1.0F); });
+	MatchProperty("DirectDives", { reader >> m_DirectOrders.Dives; });
+	MatchProperty("DirectDiveRisk", { reader >> m_DirectOrders.DiveRisk; m_DirectOrders.DiveRisk = std::clamp(m_DirectOrders.DiveRisk, 0.5F, 1.0F); });
+	MatchProperty("DirectDiveChance", { reader >> m_DirectOrders.DiveChance; m_DirectOrders.DiveChance = std::clamp(m_DirectOrders.DiveChance, 0.0F, 1.0F); });
 	MatchProperty("DirectFullRiskDrag", { reader >> m_DirectOrders.RiskDragPixels; m_DirectOrders.RiskDragPixels = std::clamp(m_DirectOrders.RiskDragPixels, 200.0F, 1200.0F); });
 	MatchProperty("DirectRiskDragPixels", { float unused; reader >> unused; }); // (The straight 300 px drag's, before the curve: its saved value is not carried over.)
 	MatchProperty("DirectRiskyClickShare", { float unused; reader >> unused; }); // (The three click tier's strength, before the risk drag took its place.)
@@ -1326,6 +1330,10 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("DirectKeepPace", m_DirectOrders.KeepPace);
 	writer.NewPropertyWithValue("DirectFullRiskDrag", m_DirectOrders.RiskDragPixels);
 	writer.NewPropertyWithValue("DirectStraightFlightRisk", m_DirectOrders.StraightFlightRisk);
+	writer.NewPropertyWithValue("DirectSkyRouteRisk", m_DirectOrders.SkyRouteRisk);
+	writer.NewPropertyWithValue("DirectDives", m_DirectOrders.Dives);
+	writer.NewPropertyWithValue("DirectDiveRisk", m_DirectOrders.DiveRisk);
+	writer.NewPropertyWithValue("DirectDiveChance", m_DirectOrders.DiveChance);
 	writer.NewPropertyWithValue("CautiousCaution", m_DirectOrders.CautiousCaution);
 	writer.NewPropertyWithValue("CautiousFlightCost", m_DirectOrders.CautiousFlightCostScale);
 	writer.NewPropertyWithValue("CautiousFuelShare", m_DirectOrders.CautiousFuelShare);
