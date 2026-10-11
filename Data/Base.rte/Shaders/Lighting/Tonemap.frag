@@ -144,6 +144,20 @@ void main() {
 				vec3 hot = vec3(0.55, 0.22, 0.38);
 				outputColor = mix(outputColor, vec3(0.9, 0.55, 0.72), stroke);
 				outputColor = clamp(outputColor + hot * glow * glow * pulse * (1.0 - stroke), 0.0, 1.0);
+			} else if (slot >= 7) {
+				// A unit highlighted in its side's colour (a VIP): a stroke in the side's colour hard against it, a second one in the pink round
+				// that, then a glow in the side's colour out to the width. Laid on part see-through so the unit and what's round it still show,
+				// and pulsing harder than the pink highlight so it stands out from plain outlines.
+				float distance = sqrt(nearest);
+				float pulse = 0.5 + 0.5 * sin(rteTime * 5.0);
+				vec3 side = mix(rteOutlineSideColors[clamp(slot - 7, 0, 4)], vec3(1.0), 0.25);
+				float strength = mix(0.45, 0.8, pulse);
+				float inner = 1.0 - smoothstep(1.5, 2.5, distance);
+				float outer = (1.0 - smoothstep(3.0, 4.0, distance)) * (1.0 - inner);
+				float glow = 1.0 - smoothstep(0.0, rteHighlightWidth, distance);
+				outputColor = mix(outputColor, side, inner * strength);
+				outputColor = mix(outputColor, vec3(0.9, 0.55, 0.72), outer * strength);
+				outputColor = clamp(outputColor + side * 0.6 * glow * glow * mix(0.3, 1.0, pulse) * (1.0 - inner - outer), 0.0, 1.0);
 			} else if (slot > 0 && rteOutlineWidth > 0.0) {
 				float coverage = 1.0 - smoothstep(rteOutlineWidth, rteOutlineWidth + 1.0, sqrt(nearest));
 				vec3 stroke = rteOutlineTeamColor ? rteOutlineSideColors[clamp(slot - 1, 0, 4)] : rteOutlineColor;
