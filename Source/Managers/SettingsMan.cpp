@@ -142,6 +142,7 @@ void SettingsMan::Clear() {
 	m_AIDigWillingness = 1.0F;
 	m_AIThreatAvoidance = 1.0F;
 	m_AIRecklessness = 0.5F;
+	m_AILadderGiveUpSeconds = 1.5F;
 	m_AISpawnDiggerChance = 0.0F;
 	m_BleedOutChance = 0.0F;
 	m_WeaponTerrainDamage = 1.0F;
@@ -736,6 +737,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AIDigWillingness", { float scale = 1.0F; reader >> scale; SetAIDigWillingness(scale); });
 	MatchProperty("AIThreatAvoidance", { float scale = 1.0F; reader >> scale; SetAIThreatAvoidance(scale); });
 	MatchProperty("AIRecklessness", { float recklessness = 0.5F; reader >> recklessness; SetAIRecklessness(recklessness); });
+	MatchProperty("AILadderGiveUpSeconds", { float seconds = 1.5F; reader >> seconds; SetAILadderGiveUpSeconds(seconds); });
 	MatchProperty("AISpawnDiggerChance", { float percent = 0.0F; reader >> percent; SetAISpawnDiggerChance(percent); });
 	MatchProperty("BleedOutChance", { float percent = 0.0F; reader >> percent; SetBleedOutChance(percent); });
 	MatchProperty("WeaponTerrainDamage", { float scale = 1.0F; reader >> scale; SetWeaponTerrainDamage(scale); });
@@ -1227,6 +1229,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("BleedOutChance", m_BleedOutChance);
 	writer.NewPropertyWithValue("WeaponTerrainDamage", m_WeaponTerrainDamage);
 	writer.NewPropertyWithValue("AIRecklessness", m_AIRecklessness);
+	writer.NewPropertyWithValue("AILadderGiveUpSeconds", m_AILadderGiveUpSeconds);
 	writer.NewPropertyWithValue("AISteadyBeforeJet", m_AISteadyBeforeJet);
 	writer.NewPropertyWithValue("AIWaitForFuel", m_AIWaitForFuel);
 	writer.NewPropertyWithValue("AIEnemyBuysReinforcements", m_AIEnemyBuysReinforcements);

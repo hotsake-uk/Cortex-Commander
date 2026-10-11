@@ -1289,6 +1289,13 @@ void DebugMan::SettingsGUI() {
 			}
 			Tip("How many chances AI units take getting about. Lower: they steady themselves longer before a jetpack jump, wait for a little more fuel, and pick routes round hard jumps and long drops. Higher: quicker, riskier take-offs and routes, and more missed jumps. 50% is the designed behaviour.");
 		}
+		{
+			float ladderGiveUp = g_SettingsMan.AILadderGiveUpSeconds();
+			if (Slider("Give up on a stuck ladder after", &ladderGiveUp, 0.5F, 10.0F, "%.1f s")) {
+				g_SettingsMan.SetAILadderGiveUpSeconds(ladderGiveUp);
+			}
+			Tip("An AI unit climbing a ladder that stops going up (rungs shot away above, the ladder ending short, the way up blocked) lets go after this long and finds another way. The second time any unit of a team gets stuck on the same ladder, the whole team avoids it for a while. 1.5 s is normal.");
+		}
 		Toggle("AI steadies before jetpacking", g_SettingsMan.AISteadiesBeforeJet(), [](bool on) { g_SettingsMan.SetAISteadiesBeforeJet(on); });
 		Tip("AI units come to a stand, still and upright, before a jetpack climb or jump, so the flight starts true. Off: they take off mid-stride, quicker but more often off line.");
 		Toggle("AI waits for fuel before jetpacking", g_SettingsMan.AIWaitsForFuel(), [](bool on) { g_SettingsMan.SetAIWaitsForFuel(on); });

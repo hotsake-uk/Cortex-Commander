@@ -1455,9 +1455,10 @@ namespace RTE {
 		/// Marks a place where this failed a jump: for so long, routes through it cost more for this (see PathAgent::Avoid).
 		/// @param place The place, a point of the route the jump was to.
 		/// @param milliseconds For how long, in sim time.
-		void AvoidPathPoint(const Vector& place, float milliseconds);
-		/// A flight failed: from that take-off for that landing is dearer for a while, for this unit and (for half as long) its team.
-		void AvoidPathLink(const Vector& from, const Vector& to, float milliseconds);
+		/// @param team Whether its team pays for the place too (for half as long).
+		void AvoidPathPoint(const Vector& place, float milliseconds, bool team = true);
+		/// A flight failed: from that take-off for that landing is dearer for a while, for this unit and (for half as long, unless team is false) its team.
+		void AvoidPathLink(const Vector& from, const Vector& to, float milliseconds, bool team = true);
 		/// Whether this unit's AI decisions are written to the console log (LogConsole.txt, saved when the game closes): every unit when
 		/// tracing all units is ticked (or CCCP_AI_LOG is "all"), else the units being inspected (IsDebugInspected: pinned, selected in the sandbox, or given the AITrace value as the gyms' runners are).
 		/// Which lines go is up to the debug channels (SettingsMan::DebugChannel), ticked in the settings or switched on by CCCP_AI_LOG.

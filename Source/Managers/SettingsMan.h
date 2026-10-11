@@ -260,6 +260,9 @@ namespace RTE {
 		/// How reckless AI units are on the move, 0 (careful) to 1 (reckless); 0.5 is as designed. It scales how long a unit steadies itself
 		/// before it jets, how much fuel it waits for, and how much the route search shies from hard jumps and long drops (see AIMoveCaution).
 		float AIRecklessness() const { return m_AIRecklessness; }
+		/// How long, in seconds, an AI unit climbing a ladder that has stopped rising waits before letting go and finding another way (the rungs
+		/// shot away above, the ladder ending short, the way up it blocked). 1.5 s as the game comes.
+		float AILadderGiveUpSeconds() const { return m_AILadderGiveUpSeconds; }
 
 		/// Gets the percentage, 0 to 100, of units that are handed a digger when they come into the scene without one.
 		float AISpawnDiggerChance() const { return m_AISpawnDiggerChance; }
@@ -585,6 +588,7 @@ namespace RTE {
 		void SetAIThreatAvoidance(float scale) { m_AIThreatAvoidance = std::clamp(scale, 0.0F, 2.0F); }
 		/// Sets how reckless AI units are on the move, 0 to 1 (0.5 as designed).
 		void SetAIRecklessness(float recklessness) { m_AIRecklessness = std::clamp(recklessness, 0.0F, 1.0F); }
+		void SetAILadderGiveUpSeconds(float seconds) { m_AILadderGiveUpSeconds = std::clamp(seconds, 0.5F, 10.0F); }
 		/// Sets the percentage of units handed a digger as they come into the scene; see AISpawnDiggerChance.
 		void SetAISpawnDiggerChance(float percent) { m_AISpawnDiggerChance = std::clamp(percent, 0.0F, 100.0F); }
 		/// Sets the percentage of wounds that keep bleeding; see BleedOutChance.
@@ -880,6 +884,7 @@ namespace RTE {
 		float m_AIDigWillingness; //!< How readily units with a digger tunnel rather than go round, 0 to 2 (see AIDigWillingness).
 		float m_AIThreatAvoidance; //!< How much safe-route units keep clear of enemies, 0 to 2 (see AIThreatAvoidance).
 		float m_AIRecklessness; //!< How reckless AI units are on the move, 0 to 1 (see AIRecklessness).
+		float m_AILadderGiveUpSeconds; //!< See AILadderGiveUpSeconds.
 		float m_AISpawnDiggerChance; //!< Percentage of units handed a digger as they come into the scene, 0 to 100 (see AISpawnDiggerChance).
 		float m_BleedOutChance; //!< Percentage of wounds that keep bleeding rather than stopping, 0 to 100 (see BleedOutChance).
 		float m_WeaponTerrainDamage; //!< Multiple of the force weapon fire strikes terrain with, 0.1 to 20 (see WeaponTerrainDamage).

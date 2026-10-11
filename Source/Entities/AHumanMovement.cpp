@@ -98,6 +98,28 @@ void AHuman::RefreshLadderNodes() {
 	}
 }
 
+bool AHuman::NoteLadderStall(float ladderX, float y) const {
+	// (Per team, kept a minute; the AI's threads move several units at once.)
+	struct Stall {
+		int team;
+		Vector at;
+		double when;
+	};
+	static std::mutex s_Mutex;
+	static std::vector<Stall> s_Stalls;
+	const double now = g_TimerMan.GetSimTimeMS();
+	const Vector at(ladderX, y);
+	std::lock_guard<std::mutex> lock(s_Mutex);
+	std::erase_if(s_Stalls, [now](const Stall& stall) { return now - stall.when > 60000.0 || now < stall.when; });
+	// The same ladder: its line within a few pixels across, and the stall within a couple of bodies up or down of the one before.
+	bool again = std::any_of(s_Stalls.begin(), s_Stalls.end(), [&](const Stall& stall) {
+		Vector off = Towards(stall.at, at);
+		return stall.team == m_Team && std::abs(off.m_X) < 12.0F && std::abs(off.m_Y) < m_CharHeight * 2.0F;
+	});
+	s_Stalls.push_back({m_Team, at, now});
+	return again;
+}
+
 std::optional<Vector> AHuman::LadderNear(const Vector& point, float reachX, float reachY) {
 	// (Called from the AI's threads, several units at once: read only, refreshed by RefreshLadderNodes while none of them runs.)
 	std::optional<Vector> best;
@@ -2050,13 +2072,16 @@ int AHuman::MoveAlongRoute() {
 				if (m_Ladder.pos.m_Y < m_Ladder.bestY - 2.0F) {
 					m_Ladder.bestY = m_Ladder.pos.m_Y;
 					m_Ladder.stallTimer.Reset();
-				} else if (m_Ladder.stallTimer.IsPastSimMS(1500)) {
-					MoverTrace("the ladder goes no higher; letting go for another way");
+				} else if (m_Ladder.stallTimer.IsPastSimMS(static_cast<double>(g_SettingsMan.AILadderGiveUpSeconds()) * 1000.0)) {
+					// (Its team pays for the place too only the second time a unit of it is stuck on this ladder within a minute: once may be
+					// the unit's own bad luck, a body in the way or a climb begun badly.)
+					const bool again = NoteLadderStall(m_Ladder.gripX, m_Pos.m_Y);
+					MoverTrace(std::string("the ladder goes no higher; letting go for another way") + (again ? " (again here: the team avoids it)" : ""));
 					mover.ladderStalled = true;
 					mover.ladderStallSpot = m_Pos;
 					mover.ladderStallTimer.Reset();
-					AvoidPathPoint(m_Pos + Vector(0.0F, -h * 0.5F), 20000.0F);
-					AvoidPathLink(m_Pos, m_MovePath.front(), 20000.0F);
+					AvoidPathPoint(m_Pos + Vector(0.0F, -h * 0.5F), 20000.0F, again);
+					AvoidPathLink(m_Pos, m_MovePath.front(), 20000.0F, again);
 					LetGoOfLadder(Vector(static_cast<float>(-m_Ladder.wallSide) * 1.5F, 0.0F));
 					mover.bestGap = -1.0F;
 					mover.progressTimer.Reset();

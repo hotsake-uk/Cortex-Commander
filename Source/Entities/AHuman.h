@@ -1102,6 +1102,9 @@ namespace RTE {
 		float HandReachTopY() const;
 		/// Whether the ladder taken at gripX has a rung a hand reaches, from the hand's reach down past the feet (not only one far overhead).
 		bool LadderRungInReach(float gripX, bool material) const;
+		/// Notes that a unit of this team got stuck climbing the ladder taken at ladderX, at height y. @return Whether one of the team was stuck on
+		/// the same ladder in the last minute (the second time, the team is told to avoid it).
+		bool NoteLadderStall(float ladderX, float y) const;
 		/// Before the jet: taking hold of a ladder (up or down pressed at one), and letting go (a side key, or the jet's key alone).
 		void UpdateLadderInput();
 		/// The body along the ladder, each frame: the climb's pace with the pull of each hand, the top and the bottom.
