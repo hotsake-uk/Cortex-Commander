@@ -321,6 +321,10 @@ void AVehicle::Destroy(bool notInherited) {
 		delete seat.Occupant;
 		seat.Occupant = nullptr;
 	}
+	for (const SlumpedBody& slumped: m_Slumped) {
+		delete slumped.Body;
+	}
+	m_Slumped.clear();
 	if (m_Turret) {
 		m_HardcodedAttachableUniqueIDsAndRemovers.erase(m_Turret->GetUniqueID());
 	}
@@ -838,6 +842,13 @@ bool AVehicle::TakeSeat(Actor* unit, int seat) {
 	occupant->SetVel(Vector());
 	SetSeatOccupant(seat, occupant);
 	unit->SetToDelete(true);
+	// (Anyone slumped dead in the seat is tipped out of it to make room.)
+	for (size_t index = 0; index < m_Slumped.size(); ++index) {
+		if (m_Slumped[index].Seat == seat) {
+			TipOutSlumped(index, false);
+			break;
+		}
+	}
 	if (Activity* activity = g_ActivityMan.GetActivity()) {
 		activity->ReportDeath(unit->GetTeam(), -1);
 		if (playerUnit) {
@@ -855,6 +866,10 @@ bool AVehicle::TakeSeat(Actor* unit, int seat) {
 }
 
 Actor* AVehicle::EjectSeat(int seat, bool thrown) {
+	return LetOut(seat, thrown, false);
+}
+
+Actor* AVehicle::LetOut(int seat, bool thrown, bool fallen) {
 	Actor* occupant = GetSeatOccupant(seat);
 	if (!occupant) {
 		return nullptr;
@@ -876,7 +891,7 @@ Actor* AVehicle::EjectSeat(int seat, bool thrown) {
 		}
 	}
 	if (!out) {
-		if (!IsDead() && !thrown) {
+		if (!IsDead() && !thrown && !fallen) {
 			return nullptr;
 		}
 		// (Wrecked or thrown: out on top whatever is there, rather than lost with it.)
@@ -904,13 +919,99 @@ Actor* AVehicle::EjectSeat(int seat, bool thrown) {
 	}
 	Sandbox::OnUnitLeftVehicle(this, occupant);
 	m_BoardingTimer.Reset();
-	occupant->Say(thrown || IsDead() || m_Health <= 0.0F ? "BailOut" : "LeaveVehicle");
+	if (!fallen) {
+		occupant->Say(thrown || IsDead() || m_Health <= 0.0F ? "BailOut" : "LeaveVehicle");
+	}
 	return occupant;
 }
 
 void AVehicle::EjectCrew(bool thrown) {
 	for (int seat = 0; seat < GetSeatCount(); ++seat) {
 		EjectSeat(seat, thrown);
+	}
+	TipOutAllSlumped(thrown);
+}
+
+void AVehicle::TipOutSlumped(size_t index, bool thrown) {
+	if (index >= m_Slumped.size()) {
+		return;
+	}
+	Actor* body = m_Slumped[index].Body;
+	int seat = m_Slumped[index].Seat;
+	m_Slumped.erase(m_Slumped.begin() + static_cast<long>(index));
+	// Over the side it faces, or the other, or up out of the seat whatever is there: a body isn't left in it for want of room.
+	Vector above = m_Pos + RotateOffset(GetSeatOffsetOf(seat)) - Vector(0.0F, body->GetHeight() * 0.5F);
+	std::array<Vector, 2> exits = {m_Pos + RotateOffset(m_ExitOffset), m_Pos + RotateOffset(Vector(-m_ExitOffset.m_X, m_ExitOffset.m_Y))};
+	Vector out = above;
+	const AtomGroup* atoms = body->GetAtomGroup();
+	for (const Vector& exit: exits) {
+		if (!thrown && (!atoms || atoms->FitsAt(exit))) {
+			out = exit;
+			break;
+		}
+	}
+	body->SetPos(out);
+	body->SetRotAngle(0.0F);
+	body->SetVel(thrown ? m_LastVel * 0.8F + Vector(RandomNum(-2.0F, 2.0F), -4.0F) : m_Vel);
+	body->SetAngularVel(thrown ? RandomNum(-6.0F, 6.0F) : 0.0F);
+	body->SetWhichMOToNotHit(this, 0.5F);
+	SetWhichMOToNotHit(body, 0.5F);
+	body->ResetAllTimers();
+	g_MovableMan.AddActor(body);
+}
+
+void AVehicle::TipOutAllSlumped(bool thrown) {
+	while (!m_Slumped.empty()) {
+		TipOutSlumped(m_Slumped.size() - 1, thrown);
+	}
+}
+
+void AVehicle::UpdateSeatedCrew() {
+	// (A closed vehicle's crew sit out of reach, and nothing in here can hurt them.)
+	if (!m_DrawsCrew) {
+		return;
+	}
+	for (int seat = 0; seat < GetSeatCount(); ++seat) {
+		Actor* unit = GetSeatOccupant(seat);
+		if (!unit) {
+			continue;
+		}
+		// Blown apart where they sat: their pieces are out in the scene already, and nobody is left in the seat.
+		if (unit->IsSetToDelete()) {
+			SetSeatOccupant(seat, nullptr);
+			if (seat == m_PlayerSeat) {
+				m_PlayerSeat = -1;
+			}
+			delete unit;
+			continue;
+		}
+		unit->UpdateWhileSeated();
+		const AHuman* human = dynamic_cast<const AHuman*>(unit);
+		if (unit->GetHealth() > 0.0F && (!human || human->GetHead())) {
+			continue;
+		}
+		unit->SetHealth(std::min(unit->GetHealth(), 0.0F));
+		// The player's own unit always falls out, so its death is seen and dealt with as anywhere else.
+		bool players = m_Controller.IsPlayerControlled() && seat == GetControlSeat();
+		if (g_SettingsMan.DeadCrewFallOut() || players) {
+			LetOut(seat, false, true);
+		} else {
+			SetSeatOccupant(seat, nullptr);
+			if (seat == m_PlayerSeat) {
+				m_PlayerSeat = -1;
+			}
+			m_Slumped.push_back({unit, seat});
+		}
+	}
+	for (size_t index = 0; index < m_Slumped.size();) {
+		Actor* body = m_Slumped[index].Body;
+		if (body->IsSetToDelete()) {
+			delete body;
+			m_Slumped.erase(m_Slumped.begin() + static_cast<long>(index));
+			continue;
+		}
+		body->UpdateWhileSeated();
+		++index;
 	}
 }
 
@@ -954,6 +1055,7 @@ void AVehicle::GibThis(const Vector& impactImpulse, MovableObject* movableObject
 			unit->SetVel(unit->GetVel() + impactImpulse / std::max(GetMass(), 1.0F) * 0.5F);
 		}
 	}
+	TipOutAllSlumped(true);
 	Actor::GibThis(impactImpulse, movableObjectToIgnore);
 }
 
@@ -966,6 +1068,14 @@ void AVehicle::PlaceCrew() const {
 			unit->SetHFlipped(m_HFlipped);
 			unit->CorrectAttachableAndWoundPositionsAndRotations();
 		}
+	}
+	for (const SlumpedBody& slumped: m_Slumped) {
+		// Slumped forward and down in the seat.
+		slumped.Body->SetPos(m_Pos + RotateOffset(GetSeatOffsetOf(slumped.Seat) + Vector(0.0F, slumped.Body->GetHeight() * 0.08F)));
+		slumped.Body->SetVel(m_Vel);
+		slumped.Body->SetRotAngle(m_Rotation.GetRadAngle() - 0.7F * GetFlipFactor());
+		slumped.Body->SetHFlipped(m_HFlipped);
+		slumped.Body->CorrectAttachableAndWoundPositionsAndRotations();
 	}
 }
 
@@ -1851,8 +1961,10 @@ void AVehicle::Update() {
 
 	Actor::Update();
 
+	UpdateSeatedCrew();
+
 	// A knock hard enough in one update (a crash into a wall, a tumble down a cliff) throws everyone out.
-	if (m_CrewThrowSpeed > 0.0F && GetCrewCount() > 0 && (m_Vel - m_LastVel).MagnitudeIsGreaterThan(m_CrewThrowSpeed)) {
+	if (m_CrewThrowSpeed > 0.0F && (GetCrewCount() > 0 || !m_Slumped.empty()) && (m_Vel - m_LastVel).MagnitudeIsGreaterThan(m_CrewThrowSpeed)) {
 		EjectCrew(true);
 	}
 
@@ -1910,7 +2022,7 @@ void AVehicle::Update() {
 
 	// Rolled onto its roof: everyone falls out of an open vehicle.
 	float rotation = Wrapped(m_Rotation.GetRadAngle());
-	if (m_ThrowsCrewWhenFlipped && std::abs(rotation) > 2.0F && GetCrewCount() > 0) {
+	if (m_ThrowsCrewWhenFlipped && std::abs(rotation) > 2.0F && (GetCrewCount() > 0 || !m_Slumped.empty())) {
 		EjectCrew(true);
 		canDrive = (m_Driver || !m_NeedsDriver) && m_Status != DYING && m_Status != DEAD && m_Status != INACTIVE;
 	}
@@ -1934,12 +2046,15 @@ void AVehicle::Update() {
 }
 
 void AVehicle::Draw(BITMAP* pTargetBitmap, const Vector& targetPos, DrawMode mode, bool onlyPhysical) const {
-	// Everyone in it first, so the body's near side hides their legs: sat in it, not stood on it.
-	if (m_DrawsCrew && (mode == g_DrawColor || mode == g_DrawWhite || mode == g_DrawTrans || mode == g_DrawAlpha)) {
+	// Everyone in it first, so the body's near side hides their legs: sat in it, not stood on it. (And on the MOID layer, so shots hit them.)
+	if (m_DrawsCrew && (mode == g_DrawColor || mode == g_DrawWhite || mode == g_DrawTrans || mode == g_DrawAlpha || mode == g_DrawMOID)) {
 		for (int seat = 0; seat < GetSeatCount(); ++seat) {
 			if (const Actor* unit = GetSeatOccupant(seat)) {
 				unit->Draw(pTargetBitmap, targetPos, mode, onlyPhysical);
 			}
+		}
+		for (const SlumpedBody& slumped: m_Slumped) {
+			slumped.Body->Draw(pTargetBitmap, targetPos, mode, onlyPhysical);
 		}
 	}
 	Actor::Draw(pTargetBitmap, targetPos, mode, onlyPhysical);
@@ -1951,7 +2066,43 @@ void AVehicle::Draw(const Camera& camera) const {
 			unit->Draw(camera);
 		}
 	}
+	for (const SlumpedBody& slumped: m_Slumped) {
+		if (m_DrawsCrew) {
+			slumped.Body->Draw(camera);
+		}
+	}
 	Actor::Draw(camera);
+}
+
+void AVehicle::UpdateChildMOIDs(std::vector<MovableObject*>& MOIDIndex, MOID rootMOID, bool makeNewMOID) {
+	Actor::UpdateChildMOIDs(MOIDIndex, rootMOID, makeNewMOID);
+	if (!m_DrawsCrew) {
+		return;
+	}
+	// Each its own root, as the separate units they are: a shot that hits one hurts them, not the vehicle.
+	for (int seat = 0; seat < GetSeatCount(); ++seat) {
+		if (Actor* unit = GetSeatOccupant(seat)) {
+			unit->UpdateMOID(MOIDIndex);
+		}
+	}
+	for (const SlumpedBody& slumped: m_Slumped) {
+		slumped.Body->UpdateMOID(MOIDIndex);
+	}
+}
+
+void AVehicle::GetMOIDs(std::vector<MOID>& MOIDs) const {
+	Actor::GetMOIDs(MOIDs);
+	if (!m_DrawsCrew) {
+		return;
+	}
+	for (int seat = 0; seat < GetSeatCount(); ++seat) {
+		if (const Actor* unit = GetSeatOccupant(seat)) {
+			unit->GetMOIDs(MOIDs);
+		}
+	}
+	for (const SlumpedBody& slumped: m_Slumped) {
+		slumped.Body->GetMOIDs(MOIDs);
+	}
 }
 
 void AVehicle::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScreen, bool playerControlled) {

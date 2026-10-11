@@ -1,5 +1,12 @@
 SharedBehaviors = {};
 
+-- How far into its first period a unit's once-in-a-while look starts, from 0 up to the period, by its unique ID: units made on the same
+-- update otherwise made their looks over every actor on the same update ever after, and a wave of them made a 17 ms update. (Spread by
+-- the golden ratio, so units with neighbouring IDs are well apart.) The period is unchanged; only the first one is shorter.
+function SharedBehaviors.StaggerMS(Owner, periodMS)
+	return (Owner.UniqueID * 0.6180339887) % 1 * periodMS;
+end
+
 function SharedBehaviors.GetTeamShootingSkill(team)
 	local skill = 80;
 	local Activ = ActivityMan:GetActivity();
@@ -550,12 +557,32 @@ end
 -- Whether the build running this has the engine's route-follower (AHuman::MoveAlongRoute), and the scripts are to use it: CCCP_LUA_MOVER=1
 -- keeps the script's own (GoToWpt), for comparing the two. (A unit with a digger keeps the script's too, which digs; the engine's doesn't yet.)
 local LuaMover = os and os.getenv and os.getenv("CCCP_LUA_MOVER") == "1";
+-- Whether a unit's Lua object has a member, asked without the error a missing member is (for an older exe without it), and kept for that
+-- object: the members it has never change, and asked afresh the probe made a closure and a protected call several times a tick for every
+-- unit. (Weak keys: an answer goes no further than its object. Locals, not fields: SharedBehaviors is read-only once loaded.)
+local function MemberCache()
+	return setmetatable({}, { __mode = "k" });
+end
+local function HasMember(Cache, Object, getter)
+	if type(Object) ~= "userdata" then
+		local ok, value = pcall(getter, Object);
+		return ok and value ~= nil;
+	end
+	local has = Cache[Object];
+	if has == nil then
+		local ok, value = pcall(getter, Object);
+		has = ok and value ~= nil;
+		Cache[Object] = has;
+	end
+	return has;
+end
+local HasMoveAlongRoute = MemberCache();
+local function GetMoveAlongRoute(Owner) return Owner.MoveAlongRoute; end
 function SharedBehaviors.UsesEngineMover(Owner)
 	if LuaMover or not Owner.Head then
 		return false;
 	end
-	local ok, member = pcall(function() return Owner.MoveAlongRoute; end);
-	if not (ok and member ~= nil) then
+	if not HasMember(HasMoveAlongRoute, Owner, GetMoveAlongRoute) then
 		return false;
 	end
 	-- (Diggers too, where the engine digs along a route: a build with the motor. An older one's follower doesn't dig.)
@@ -565,16 +592,18 @@ end
 -- The engine's motor (AHuman.SetAIStance, AHuman.TacticalMoveTo; see AHuman::UpdateAIMotor): the scripts say where to go and how to hold the
 -- body, and the engine walks, crawls, climbs and flies. Asked without the error a missing member is, for a build without it (an older exe),
 -- where the scripts press the keys themselves as they did.
+local HasTacticalMove = MemberCache();
+local function GetTacticalMove(Owner) return Owner.TacticalMoveActive; end
 function SharedBehaviors.EngineMotor(Owner)
-	local ok, value = pcall(function() return Owner.TacticalMoveActive; end);
-	return ok and value ~= nil;
+	return HasMember(HasTacticalMove, Owner, GetTacticalMove);
 end
 
 -- Whether the engine's scan (Actor.ScanForEnemies) is there, for a build without it (an older exe), where the scripts look with one
 -- random ray a tick as they did.
+local HasScan = MemberCache();
+local function GetScan(Owner) return Owner.ScanForEnemies; end
 function SharedBehaviors.CanScan(Owner)
-	local ok, value = pcall(function() return Owner.ScanForEnemies; end);
-	return ok and value ~= nil;
+	return HasMember(HasScan, Owner, GetScan);
 end
 
 -- Spotting by the engine's scan (AC-1): a person's look, not a random ray. The scan says which enemies are in view and how plainly
@@ -585,7 +614,8 @@ end
 -- @param fovDegrees The field of view about the facing. @param budget The rays a scan may cast.
 function SharedBehaviors.ScanForTargets(AI, Owner, skill, fovDegrees, budget)
 	local fighting = AI.Target ~= nil;
-	AI.scanTick = (AI.scanTick or 0) + 1;
+	-- (Started by the unit's unique ID, so units made together don't all scan on the same tick; see StaggerMS.)
+	AI.scanTick = (AI.scanTick or Owner.UniqueID % 12) + 1;
 	if not fighting and AI.scanTick % 3 ~= 0 then
 		return nil;
 	end
@@ -656,8 +686,12 @@ function SharedBehaviors.Suppression(AI, Owner)
 	return Owner.Suppression, Owner.Morale;
 end
 
--- Whether a unit's nerve has gone (morale under 0.3): it pulls back whatever its health (see RetreatUpdate).
+-- Whether a unit's nerve has gone (morale under 0.3): it pulls back whatever its health (see RetreatUpdate). Never with "Units break
+-- when shaken" off.
 function SharedBehaviors.Shaken(AI, Owner)
+	if not SettingsMan.AIBreaksWhenShaken then
+		return false; -- (Turned off: AI behaviour, Units break when shaken.)
+	end
 	local _, morale = SharedBehaviors.Suppression(AI, Owner);
 	return morale < 0.3;
 end
@@ -785,7 +819,10 @@ function SharedBehaviors.SquadTactics(AI, Owner)
 		AI.noShotSince = nil;
 	end
 	AI.overwatch = AI.overwatch and AI.overwatchUntil and now < AI.overwatchUntil and not Target;
-	AI.SquadTacticsTimer = AI.SquadTacticsTimer or Timer();
+	if not AI.SquadTacticsTimer then
+		AI.SquadTacticsTimer = Timer();
+		AI.SquadTacticsTimer.ElapsedSimTimeMS = SharedBehaviors.StaggerMS(Owner, 1000);
+	end
 	if not AI.SquadTacticsTimer:IsPastSimMS(1000) then
 		return;
 	end
@@ -793,24 +830,34 @@ function SharedBehaviors.SquadTactics(AI, Owner)
 	local targetedBy = {};
 	local squadContact = Target ~= nil or (Owner:NumberValueExists("AIContactMS") and now - Owner:GetNumberValue("AIContactMS") < 5000);
 	local beside, besideDir, besideDx, pairedWith;
-	for Mate in MovableMan.Actors do
-		-- (Fighting men and crabs only: a craft or a door standing next to a unit made it step away under fire.)
-		if Mate.Team == Owner.Team and Mate.UniqueID ~= Owner.UniqueID and Mate.Status < Actor.DYING and not Mate:IsPlayerControlled()
-			and (Mate.ClassName == "AHuman" or Mate.ClassName == "ACrab") then
-			local Dist = SceneMan:ShortestDistance(Owner.Pos, Mate.Pos, false);
-			if Dist:MagnitudeIsLessThan(400) then
-				if SharedBehaviors.PeerValueExists(Mate, "AITargetID") then
-					local id = SharedBehaviors.PeerValue(Mate, "AITargetID");
-					targetedBy[id] = (targetedBy[id] or 0) + 1;
-					if Target and id == Target.UniqueID and (not pairedWith or Mate.UniqueID < pairedWith) then
-						pairedWith = Mate.UniqueID;
+	-- (With no target, the teammates are looked at only where something below can use them: under fire and out of cover, for spreading
+	-- out, or a squad follower not yet in contact, for the overwatch. Nothing else comes between this and those then, and the look at them
+	-- only reads, so the pin-down is asked for here instead of after it.)
+	local suppression, underFire;
+	if not Target then
+		suppression = SharedBehaviors.Suppression(AI, Owner);
+		underFire = suppression > 0.2 or (AI.HitTimer and not AI.HitTimer:IsPastSimMS(2000));
+	end
+	if Target or (underFire and not AI.Cover) or (Owner.AIMode == Actor.AIMODE_SQUAD and not squadContact) then
+		for Mate in MovableMan.Actors do
+			-- (Fighting men and crabs only: a craft or a door standing next to a unit made it step away under fire.)
+			if Mate.Team == Owner.Team and Mate.UniqueID ~= Owner.UniqueID and Mate.Status < Actor.DYING and not Mate:IsPlayerControlled()
+				and (Mate.ClassName == "AHuman" or Mate.ClassName == "ACrab") then
+				local Dist = SceneMan:ShortestDistance(Owner.Pos, Mate.Pos, false);
+				if Dist:MagnitudeIsLessThan(400) then
+					if SharedBehaviors.PeerValueExists(Mate, "AITargetID") then
+						local id = SharedBehaviors.PeerValue(Mate, "AITargetID");
+						targetedBy[id] = (targetedBy[id] or 0) + 1;
+						if Target and id == Target.UniqueID and (not pairedWith or Mate.UniqueID < pairedWith) then
+							pairedWith = Mate.UniqueID;
+						end
 					end
-				end
-				if SharedBehaviors.PeerValueExists(Mate, "AIContactMS") and now - SharedBehaviors.PeerValue(Mate, "AIContactMS") < 5000 then
-					squadContact = true;
-				end
-				if math.abs(Dist.X) < 24 and math.abs(Dist.Y) < Owner.Height * 0.5 and (not beside or math.abs(Dist.X) < besideDx) then
-					beside, besideDir, besideDx = Mate, Dist.X > 0 and -1 or 1, math.abs(Dist.X);
+					if SharedBehaviors.PeerValueExists(Mate, "AIContactMS") and now - SharedBehaviors.PeerValue(Mate, "AIContactMS") < 5000 then
+						squadContact = true;
+					end
+					if math.abs(Dist.X) < 24 and math.abs(Dist.Y) < Owner.Height * 0.5 and (not beside or math.abs(Dist.X) < besideDx) then
+						beside, besideDir, besideDx = Mate, Dist.X > 0 and -1 or 1, math.abs(Dist.X);
+					end
 				end
 			end
 		end
@@ -843,8 +890,10 @@ function SharedBehaviors.SquadTactics(AI, Owner)
 		return;
 	end
 	-- Spreading out under fire.
-	local suppression = SharedBehaviors.Suppression(AI, Owner);
-	local underFire = suppression > 0.2 or (AI.HitTimer and not AI.HitTimer:IsPastSimMS(2000));
+	if Target then
+		suppression = SharedBehaviors.Suppression(AI, Owner);
+		underFire = suppression > 0.2 or (AI.HitTimer and not AI.HitTimer:IsPastSimMS(2000));
+	end
 	if beside and underFire and not AI.Cover and SharedBehaviors.OrderKind(Owner) ~= "defend" and not SharedBehaviors.Rushing(Owner) and not AI.flying and SharedBehaviors.StepIsSafe(Owner, besideDir) then
 		SharedBehaviors.Trace(Owner, "squad: spreading out");
 		SharedBehaviors.StepTo(AI, Owner, Owner.Pos + Vector(besideDir * 40, 0), 800);
@@ -990,9 +1039,15 @@ end
 
 -- How careful the unit's order is, 0 to 1: a cautious order (an RTS order placed with one click, Actor.OrderDirect under 0) is over 0.
 -- 0 on a build that hasn't got OrderDirect, or where it is a flag (asked without the error a missing member is).
+local HasOrderDirect = MemberCache();
+local function GetOrderDirect(Owner) return Owner.OrderDirect; end
 function SharedBehaviors.OrderCare(Owner)
-	local ok, direct = pcall(function() return Owner.OrderDirect; end);
-	if ok and type(direct) == "number" and direct < 0 then
+	-- (Whether it has the member is kept; its value is read each time.)
+	if not HasMember(HasOrderDirect, Owner, GetOrderDirect) then
+		return 0;
+	end
+	local direct = Owner.OrderDirect;
+	if type(direct) == "number" and direct < 0 then
 		return math.min(-direct, 1);
 	end
 	return 0;
@@ -1076,9 +1131,10 @@ end
 -- The navigation debug overlay's level (SettingsMan.NavDebugOverlay), or 0 on a build that hasn't got it: the scripts are read by whatever
 -- build runs them, and reading a member the build lacks is an error that would end the unit's movement script.
 -- Whether the build running this has the engine's pilot (AHuman::PilotFlight), asked without the error a missing member is.
+local HasPilot = MemberCache();
+local function GetPilot(Owner) return Owner.PilotFlight; end
 function SharedBehaviors.HasEnginePilot(Owner)
-	local ok, member = pcall(function() return Owner.PilotFlight; end);
-	return ok and member ~= nil;
+	return HasMember(HasPilot, Owner, GetPilot);
 end
 
 function SharedBehaviors.NavDebugLevel()
@@ -2901,9 +2957,15 @@ function SharedBehaviors.AttackOrderUpdate(AI, Owner)
 		if not state.first and not state.Timer:IsPastSimMS(state.wait or 1000) then
 			return;
 		end
+		local firstPick = state.first;
 		state.first = false;
 		state.wait = nil;
 		state.Timer:Reset();
+		-- (After a pick made at once for a new order, the next comes a little sooner by the unit's unique ID, so a group given the order
+		-- together doesn't pick together every second after; see StaggerMS.)
+		if firstPick then
+			state.Timer.ElapsedSimTimeMS = SharedBehaviors.StaggerMS(Owner, 1000);
+		end
 	end
 	if AI.Target or AI.Retreat or AI.Flank or Owner:NumberValueExists("OnFire") or Owner:NumberValueExists("AIRetreat") or Owner:NumberValueExists("AIFlank") then
 		return;
@@ -2915,21 +2977,32 @@ function SharedBehaviors.AttackOrderUpdate(AI, Owner)
 		end
 	end
 
-	-- Everyone on the other sides worth going for, and the picked enemies looked up, in one pass.
-	local chosen, autoPicked;
-	local Enemies = {};
-	for Act in MovableMan.Actors do
-		if Act.Team ~= Owner.Team and Act.Team >= 0 and Act.Team < 4 and Act.Status < Actor.DYING and Act.Health > 0 and Act.ClassName ~= "ADoor" then
-			if Owner.OrderTargetID ~= 0 and Act.UniqueID == Owner.OrderTargetID then
-				chosen = Act;
-			end
-			if Owner.OrderAutoTargetID ~= 0 and Act.UniqueID == Owner.OrderAutoTargetID then
-				autoPicked = Act;
-			end
-			if not Act.IgnoredByAI and not IsACraft(Act) then
-				table.insert(Enemies, Act);
+	-- Everyone on the other sides worth going for, and the picked enemies looked up, in one pass. Made only where something below uses it
+	-- (it only reads, so when it is made doesn't matter): a unit chasing, or waiting on its routes, went over every actor every update.
+	local chosen, autoPicked, Enemies;
+	local function scan()
+		if Enemies then
+			return;
+		end
+		Enemies = {};
+		local team, targetID, autoTargetID = Owner.Team, Owner.OrderTargetID, Owner.OrderAutoTargetID;
+		for Act in MovableMan.Actors do
+			if Act.Team ~= team and Act.Team >= 0 and Act.Team < 4 and Act.Status < Actor.DYING and Act.Health > 0 and Act.ClassName ~= "ADoor" then
+				if targetID ~= 0 and Act.UniqueID == targetID then
+					chosen = Act;
+				end
+				if autoTargetID ~= 0 and Act.UniqueID == autoTargetID then
+					autoPicked = Act;
+				end
+				if not Act.IgnoredByAI and not IsACraft(Act) then
+					table.insert(Enemies, Act);
+				end
 			end
 		end
+	end
+	-- (No target ID, no chosen enemy: the scan is needed for it only when there is one.)
+	if Owner.OrderTargetID ~= 0 then
+		scan();
 	end
 
 	local function goAfter(Enemy, why)
@@ -2982,6 +3055,7 @@ function SharedBehaviors.AttackOrderUpdate(AI, Owner)
 	end
 
 	if Owner.OrderHasAttackPlace then
+		scan();
 		local Place = Owner.OrderAttackPlace;
 		local Enemy = nearestTo(Place, 500);
 		if Enemy then
@@ -2997,6 +3071,9 @@ function SharedBehaviors.AttackOrderUpdate(AI, Owner)
 
 	-- Not after anything. The enemy picked for it last time, still there, with no waypoint left, is one it had no route to (a stand-down
 	-- on an impossible route clears the waypoints), so it is given a rest from that one.
+	if Owner.OrderAutoTargetID ~= 0 then
+		scan();
+	end
 	if autoPicked and Owner:GetWaypointListSize() == 0 then
 		state.GaveUpOn[autoPicked.UniqueID] = Timer();
 	end
@@ -3004,6 +3081,12 @@ function SharedBehaviors.AttackOrderUpdate(AI, Owner)
 
 	-- The few nearest in a straight line (brains after everyone else), then the shortest route among them. The routes are asked for together
 	-- and the pick waits for them (five seconds at most, as when a scene is changed under it); the enemies are kept by unique ID meanwhile.
+	-- (Routes still to come back: the enemies aren't looked at until they are.)
+	if search and search.pending > 0 and not search.Timer:IsPastSimMS(5000) then
+		state.Search = search;
+		return;
+	end
+	scan();
 	local ByID = {};
 	for _, Act in ipairs(Enemies) do
 		ByID[Act.UniqueID] = Act;
@@ -3142,13 +3225,30 @@ end
 -- see RetreatUpdate), a body that can take a medikit (a person or a crab), and not one another medic is already seeing to. @return The friend, or nil.
 function SharedBehaviors.FindPatient(Owner)
 	local Best, bestShare = nil, 0.7;
+	-- Who the team's other medics are seeing to (SharedBehaviors.MedicSeeingTo, for every friend at once): looked up once, when first wanted,
+	-- rather than a pass over every actor for each friend. (The values are the published ones, which stay put for the update.)
+	local seenTo;
+	local function medicSeeingTo(Act)
+		if not seenTo then
+			seenTo = {};
+			for Medic in MovableMan.Actors do
+				if Medic.Team == Owner.Team and Medic.UniqueID ~= Owner.UniqueID and Medic.Status < Actor.DYING then
+					local id = SharedBehaviors.PeerValue(Medic, "AIMedicFor");
+					if id == id then -- (Not NaN, which is no table key and matches nobody.)
+						seenTo[id] = true;
+					end
+				end
+			end
+		end
+		return seenTo[Act.UniqueID];
+	end
 	for Act in MovableMan.Actors do
 		if Act.Team == Owner.Team and Act.ID ~= Owner.ID and Act.Status < Actor.DYING and Act.Health > 0 and Act.MaxHealth > 0
 			and (IsAHuman(Act) or IsACrab(Act)) then
 			local share = Act.Health / Act.MaxHealth;
 			if share < bestShare then
 				local range = SharedBehaviors.PeerValue(Act, "AIRetreat") == 2 and 1200 or 400;
-				if not SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false):MagnitudeIsGreaterThan(range) and not SharedBehaviors.MedicSeeingTo(Act, Owner.UniqueID) then
+				if not SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false):MagnitudeIsGreaterThan(range) and not medicSeeingTo(Act) then
 					Best, bestShare = Act, share;
 				end
 			end

@@ -1,4 +1,5 @@
 #include "AHuman.h"
+#include "MagicEffects.h"
 #include "TerrainCollapse.h"
 #include "ConsoleMan.h"
 #include "SmokeGrid.h"
@@ -35,6 +36,19 @@
 using namespace RTE;
 
 namespace {
+	/// What the HUD shows for a firearm's ammo: the rounds in its magazine, or for a spell that costs energy (MG-2) how many casts are left.
+	std::string AmmoText(const HDFirearm* firearm) {
+		int rounds = firearm->GetRoundInMagCount();
+		if (firearm->GetEnergyCost() > 0.0F && MagicEffects::CastingCostsEnergy()) {
+			int casts = firearm->GetAffordableRounds();
+			if (rounds >= 0) {
+				casts = std::min(casts, rounds);
+			}
+			return std::to_string(casts) + (casts == 1 ? " cast" : " casts");
+		}
+		return rounds < 0 ? "Infinite" : std::to_string(rounds);
+	}
+
 	/// How far from lying flat (in radians) a dead body may rest before it's tipped on over and kept from settling.
 	constexpr float c_DeadLyingTolerance = 0.7F;
 	/// How long after dying a body is tipped and kept from settling while not lying down, before it's left where it is (wedged in a gap).
@@ -836,7 +850,12 @@ bool AHuman::EquipLoadedFirearmInGroup(const std::string& group, const std::stri
 		return false;
 	}
 
-	if (HeldDevice* heldDevice = m_pFGArm->GetHeldDevice(); heldDevice && !heldDevice->NeedsReloading() && heldDevice->IsInGroup(group) && !heldDevice->IsInGroup(excludeGroup)) {
+	// (A spell its holder can't pay for isn't loaded, MG-3.)
+	auto affordable = [this](const MovableObject* device) {
+		const HDFirearm* firearm = dynamic_cast<const HDFirearm*>(device);
+		return !firearm || firearm->GetAffordableRoundsFor(this) > 0;
+	};
+	if (HeldDevice* heldDevice = m_pFGArm->GetHeldDevice(); heldDevice && !heldDevice->NeedsReloading() && affordable(heldDevice) && heldDevice->IsInGroup(group) && !heldDevice->IsInGroup(excludeGroup)) {
 		return true;
 	}
 
@@ -844,7 +863,7 @@ bool AHuman::EquipLoadedFirearmInGroup(const std::string& group, const std::stri
 	for (std::deque<MovableObject*>::iterator itr = m_Inventory.begin(); itr != m_Inventory.end(); ++itr) {
 		HDFirearm* pFirearm = dynamic_cast<HDFirearm*>(*itr);
 		// Found proper device to equip, so make the switch!
-		if (pFirearm && !pFirearm->NeedsReloading() && pFirearm->IsInGroup(group) && !pFirearm->IsInGroup(excludeGroup)) {
+		if (pFirearm && !pFirearm->NeedsReloading() && affordable(pFirearm) && pFirearm->IsInGroup(group) && !pFirearm->IsInGroup(excludeGroup)) {
 			if (doEquip) {
 				// The next code may cause reallocation, so we can't just use the same pointer.
 				// Store how far into the inventory the device is, memory wise.
@@ -1329,7 +1348,8 @@ bool AHuman::FirearmIsReady() const {
 	// Check if the currently held device is already the desired type
 	if (m_pFGArm && m_pFGArm->IsAttached()) {
 		const HDFirearm* pWeapon = dynamic_cast<HDFirearm*>(m_pFGArm->GetHeldDevice());
-		if (pWeapon && pWeapon->GetRoundInMagCount() != 0)
+		// (A spell its holder can't pay for is no more ready than an empty gun, MG-3.)
+		if (pWeapon && pWeapon->GetRoundInMagCount() != 0 && pWeapon->GetAffordableRounds() > 0)
 			return true;
 	}
 
@@ -1350,7 +1370,7 @@ bool AHuman::ThrowableIsReady() const {
 bool AHuman::FirearmIsEmpty() const {
 	if (m_pFGArm && m_pFGArm->IsAttached()) {
 		const HDFirearm* pWeapon = dynamic_cast<HDFirearm*>(m_pFGArm->GetHeldDevice());
-		if (pWeapon && pWeapon->GetRoundInMagCount() == 0)
+		if (pWeapon && (pWeapon->GetRoundInMagCount() == 0 || pWeapon->GetAffordableRounds() <= 0))
 			return true;
 	}
 
@@ -3162,10 +3182,8 @@ void AHuman::Draw(BITMAP* pTargetBitmap, const Vector& targetPos, DrawMode mode,
 void AHuman::Draw(const Camera& camera) const {
 	Actor::Draw(camera);
 
-	if (m_FlashWhiteTimer.IsPastRealTimeLimit()) {
-		g_RenderMan.PushUniform(std::make_shared<BoolValue>(g_RenderMan.GetCurrentShader()->GetUniformLocation("rteReplaceColor"), 1));
-		g_RenderMan.PushUniform(std::make_shared<Vector4fValue>(g_RenderMan.GetCurrentShader()->GetColorUniform(), glm::vec4(1.0f)));
-	}
+	// (A white-flash uniform push here and its clear below were dropped: the batch's current uniforms they went into are read by nothing,
+	// and the lookups cost a glGetUniformLocation and two allocations for every humanoid every frame.)
 
 	// Note: For some reason the ordering of the attachables list can get messed up. The most important thing here is that the FGArm is on top of everything else.
 	if (m_pHead && m_pHead->IsDrawnAfterParent()) {
@@ -3181,11 +3199,6 @@ void AHuman::Draw(const Camera& camera) const {
 		if (HeldDevice* heldDevice = m_pFGArm->GetHeldDevice(); heldDevice && !dynamic_cast<ThrownDevice*>(heldDevice) && !heldDevice->IsReloading() && !heldDevice->IsShield()) {
 			m_pBGArm->DrawHand(camera);
 		}
-	}
-
-	if (m_FlashWhiteTimer.IsPastRealTimeLimit()) {
-		g_RenderMan.ClearUniforms();
-		g_RenderMan.PushUniform(std::make_shared<BoolValue>(g_RenderMan.GetCurrentShader()->GetUniformLocation("rteReplaceColor"), 1));
 	}
 
 	if (g_SettingsMan.DrawHandAndFootGroupVisualizations()) {
@@ -3319,7 +3332,7 @@ void AHuman::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichSc
 						rectfill(pTargetBitmap, drawPos.GetFloorIntX() + 1, drawPos.GetFloorIntY() + m_HUDStack + 13, drawPos.GetFloorIntX() + 29, drawPos.GetFloorIntY() + m_HUDStack + 14, 245);
 						rectfill(pTargetBitmap, drawPos.GetFloorIntX(), drawPos.GetFloorIntY() + m_HUDStack + 12, drawPos.GetFloorIntX() + static_cast<int>(28.0F * fgHeldFirearm->GetReloadProgress() + 0.5F), drawPos.GetFloorIntY() + m_HUDStack + 13, barColorIndex);
 					} else {
-						fgWeaponString = fgHeldFirearm->GetRoundInMagCount() < 0 ? "Infinite" : std::to_string(fgHeldFirearm->GetRoundInMagCount());
+						fgWeaponString = AmmoText(fgHeldFirearm);
 					}
 				}
 
@@ -3349,7 +3362,7 @@ void AHuman::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichSc
 						rectfill(pTargetBitmap, drawPos.GetFloorIntX() + 1 + totalTextWidth, drawPos.GetFloorIntY() + m_HUDStack + 13, drawPos.GetFloorIntX() + 29 + totalTextWidth, drawPos.GetFloorIntY() + m_HUDStack + 14, 245);
 						rectfill(pTargetBitmap, drawPos.GetFloorIntX() + totalTextWidth, drawPos.GetFloorIntY() + m_HUDStack + 12, drawPos.GetFloorIntX() + static_cast<int>(28.0F * bgHeldFirearm->GetReloadProgress() + 0.5F) + totalTextWidth, drawPos.GetFloorIntY() + m_HUDStack + 13, barColorIndex);
 					} else {
-						bgWeaponString = bgHeldFirearm->GetRoundInMagCount() < 0 ? "Infinite" : std::to_string(bgHeldFirearm->GetRoundInMagCount());
+						bgWeaponString = AmmoText(bgHeldFirearm);
 					}
 				}
 				pSymbolFont->DrawAligned(&allegroBitmap, drawPos.GetFloorIntX() - pSymbolFont->CalculateWidth(str) - 3, drawPos.GetFloorIntY() + m_HUDStack, str, GUIFont::Left);
@@ -3563,13 +3576,14 @@ void AHuman::LearnFlight() {
 	}
 	float dt = g_TimerMan.GetDeltaTimeSecs();
 	float radius = std::max(GetRadius() * 0.5F, 10.0F);
-	// Nothing touching the body: no terrain anywhere round it a little past its middle's reach.
+	bool free = m_pJetpack->IsEmitting() && m_Status != INACTIVE && !m_Mantling;
+	// Nothing touching the body: no terrain anywhere round it a little past its middle's reach. (Only looked for when it would count.)
 	bool touching = false;
-	for (int i = 0; i < 8 && !touching; ++i) {
+	for (int i = 0; free && i < 8 && !touching; ++i) {
 		Vector probe = m_Pos + Vector(radius + 4.0F, 0.0F).RadRotate(static_cast<float>(i) * c_QuarterPI);
 		touching = g_SceneMan.GetTerrMatter(probe.GetFloorIntX(), probe.GetFloorIntY()) != MaterialColorKeys::g_MaterialAir;
 	}
-	bool free = m_pJetpack->IsEmitting() && !touching && m_Status != INACTIVE && !m_Mantling;
+	free = free && !touching;
 	if (free && m_JetPrevFree && dt > 0.0F) {
 		// The push the jet gave over the last frame: the change of speed, less gravity's part of it.
 		Vector accel = (m_Vel - m_JetPrevVel) / dt - g_SceneMan.GetGlobalAcc();
@@ -3646,7 +3660,14 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 	const float direct = std::max(m_StandingOrder.Direct, 0.0F);
 	const float care = std::max(-m_StandingOrder.Direct, 0.0F);
 	const float rush = 1.0F + (tuning.FlightSpeed - 1.0F) * direct + (tuning.CautiousFlightSpeed - 1.0F) * care;
-	const float safeTouchdown = (5.0F + (tuning.Touchdown - 5.0F) * direct + (tuning.CautiousTouchdown - 5.0F) * care) * ppm;
+	float touchdown = 5.0F + (tuning.Touchdown - 5.0F) * direct + (tuning.CautiousTouchdown - 5.0F) * care;
+	// (With the safe landings setting on, a risky order's harder landing is never past what the body takes unhurt: the speed its impact
+	// damage starts at, as GetMaxSafeFallHeight reckons it, less a margin, and never slower than a normal unit's landing.)
+	if (tuning.SafeLandings && direct > 0.0F && m_TravelImpulseDamage > 0.0F) {
+		float unhurt = m_TravelImpulseDamage / std::max(GetMass(), 1.0F) * 0.85F;
+		touchdown = std::min(touchdown, std::max(unhurt, 5.0F));
+	}
+	const float safeTouchdown = touchdown * ppm;
 	auto allowedFall = [&](float height) {
 		// (On seven tenths of the braking reckoned: the jet's push falls with the tank, and a unit dropped onto a narrow ledge at the full
 		// reckoning met it too fast and bounced off.)

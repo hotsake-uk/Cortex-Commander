@@ -221,6 +221,10 @@ namespace RTE {
 		/// Updates this MovableObject. Supposed to be done every frame.
 		void Update() override;
 
+		/// Puts the IDs of this and its parts in a list, and of the crew sat in its open seats (whom bullets can hit there).
+		/// @param MOIDs The list to add them to.
+		void GetMOIDs(std::vector<MOID>& MOIDs) const override;
+
 		/// Draws this AVehicle's current graphical representation to a BITMAP of choice, the driver in the seat behind the body's near side.
 		/// @param pTargetBitmap A pointer to a BITMAP to draw on.
 		/// @param targetPos The absolute position of the target bitmap's upper left corner in the Scene.
@@ -240,6 +244,10 @@ namespace RTE {
 
 	protected:
 		static Entity::ClassInfo m_sClass; //!< ClassInfo for this class.
+
+		/// Gives the attachables IDs, as any body's, then the crew in its open seats, so they're drawn to the layer that shots look for MOs
+		/// on and can be hit where they sit. A closed vehicle's crew (DrawsCrew 0) stays out of reach.
+		void UpdateChildMOIDs(std::vector<MovableObject*>& MOIDIndex, MOID rootMOID = g_NoMOID, bool makeNewMOID = true) override;
 
 		/// A wheel and how it hangs: where its spring is fixed, how far the spring is pushed in, and how far round it has turned.
 		struct Wheel {
@@ -298,6 +306,11 @@ namespace RTE {
 			Actor* Occupant = nullptr; //!< Who sits in it, out of the scene while they're in here. Owned.
 		};
 		std::vector<Seat> m_Seats; //!< The seats besides the driver's: seat 1 on.
+		struct SlumpedBody {
+			Actor* Body = nullptr; //!< Someone killed in a seat, left slumped in it (DeadCrewFallOut off). Owned.
+			int Seat = 0; //!< The seat they slump in, which is free for someone to take (they tip the body out getting in).
+		};
+		std::vector<SlumpedBody> m_Slumped; //!< The dead slumped in its seats, out of the scene like the crew.
 		int m_PlayerSeat; //!< The seat the unit of the player in charge got in to, or -1. (The driver's if they took charge another way.)
 		Turret* m_Turret; //!< The turret its gun is on, if it has one. Owned by this, as an attachable.
 		float m_GunRange; //!< How far a gunner looks for something to shoot, in pixels.
@@ -373,8 +386,28 @@ namespace RTE {
 		/// Lets a friendly unit beside the seat that asks to get in, get in; lets the driver out when they ask.
 		void UpdateBoarding();
 
-		/// Puts everyone in it at their seats, as the body lies now, so they are drawn there.
+		/// Puts everyone in it at their seats, as the body lies now, so they are drawn there; the dead slumped forward in theirs.
 		void PlaceCrew() const;
+
+		/// Lets the unit in a seat out, as EjectSeat does.
+		/// @param seat The seat: 0 the driver's, 1 on the others.
+		/// @param thrown Whether they are thrown out (see EjectSeat).
+		/// @param fallen Whether it's a body falling out of its seat: out beside it, or on top if there's no room, whatever is there.
+		/// @return The unit that got out, or nullptr if the seat was empty or there was no room to get out.
+		Actor* LetOut(int seat, bool thrown, bool fallen);
+
+		/// Tips a body slumped in a seat out of it, into the scene beside it (or flung, from a crash or a wreck).
+		/// @param index Which of m_Slumped.
+		/// @param thrown Whether it is flung out with the speed the vehicle had.
+		void TipOutSlumped(size_t index, bool thrown);
+
+		/// Tips out every body slumped in its seats.
+		/// @param thrown Whether they are flung out (see TipOutSlumped).
+		void TipOutAllSlumped(bool thrown);
+
+		/// Lets the crew in its open seats bleed from their wounds and take the damage they've been dealt there, and sees to those who die
+		/// of it: they fall out (DeadCrewFallOut), or slump in their seats. Anyone blown apart in their seat is gone from it.
+		void UpdateSeatedCrew();
 
 		/// Sets who sits in a seat, without taking anyone in or letting them out.
 		void SetSeatOccupant(int seat, Actor* unit);

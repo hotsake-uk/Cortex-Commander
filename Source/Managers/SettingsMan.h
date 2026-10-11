@@ -263,6 +263,8 @@ namespace RTE {
 
 		/// Whether AI units stand still and upright before a jetpack climb or jump (on, as designed), or take off mid-stride.
 		bool AISteadiesBeforeJet() const { return m_AISteadyBeforeJet; }
+		/// Whether a unit whose nerve has gone (morale under 0.3) breaks and falls back, whatever its health.
+		bool AIBreaksWhenShaken() const { return m_AIBreaksWhenShaken; }
 
 		/// Whether AI units wait at a take-off for the fuel the flight needs (on, as designed), or go with what is in the tank.
 		bool AIWaitsForFuel() const { return m_AIWaitForFuel; }
@@ -277,11 +279,17 @@ namespace RTE {
 			bool Steady = false; //!< Whether they still steady themselves before a take-off.
 			float FlightSpeed = 1.5F; //!< How fast they fly, as a multiple of the usual speed limits up, across and down.
 			float Touchdown = 7.0F; //!< How fast they let themselves come down onto the floor, m/s (5 is the usual).
+			bool SafeLandings = true; //!< Whether that landing is held under the speed the body is hurt at (AHuman::PilotFlight).
 			float DigCostScale = 0.02F; //!< What a node dug costs them on a dig-to, as a share of the usual (PathAgent::DigCostScale): lower tunnels straighter.
 			float LineWeight = 0.1F; //!< On a dig-to, what each node off the straight line costs them, in nodes walked (PathFinder::LineCost).
+			float MoveLineWeight = 0.6F; //!< On any other order, what each node off the straight line costs them at full risk, in nodes walked: less in a lesser risk's share.
 			bool IgnoreEnemies = true; //!< Whether their routes take no notice of enemies on the way.
 			bool KeepPace = false; //!< Whether a group sent together is still kept to its slowest walker's pace (s_KeepPace on the command row).
-			float RiskDragPixels = 300.0F; //!< How far on screen a double click is dragged for a fully direct order, 100 to 800 pixels: a shorter drag gets that share of the direct tuning.
+			float StraightFlightRisk = 0.9F; //!< From how much risk (0.5 to 1) a unit with a jet flies straight at the goal when the air between is open and a tank flies it, rather than taking the route.
+			/// How much of a full tank a full-risk flight may need and still be flown (the risk accepted: it may come down short), by the order's
+			/// risk: 0.95 at StraightFlightRisk, up to 1.4 at full risk.
+			float FlightReach(float direct) const { return 0.95F + 0.45F * (StraightFlightRisk >= 1.0F ? (direct >= 1.0F ? 1.0F : 0.0F) : std::clamp((direct - StraightFlightRisk) / (1.0F - StraightFlightRisk), 0.0F, 1.0F)); }
+			float RiskDragPixels = 600.0F; //!< How far on screen a double click is dragged for a fully direct order, 200 to 1200 pixels: a shorter drag gets less of the direct tuning, on a curve (about 70% at four fifths of it).
 			float CautiousCaution = 2.0F; //!< The least route caution a cautious (single-clicked) order has (PathAgent::Caution): over 1 shies more from hard flights and long drops.
 			float CautiousFlightCostScale = 3.0F; //!< What a jet flight costs a cautious order, as a share of the usual (PathAgent::FlightCostScale): over 1 walks round where others jump.
 			float CautiousFuelShare = 1.2F; //!< The share of a flight's fuel a cautious order waits for at a take-off (never more than the tank allows).
@@ -295,6 +303,10 @@ namespace RTE {
 
 		/// Whether AI units use vehicles (VH-4): one going a long way walks to a friendly vehicle on its way and rides it there, or drives it.
 		bool AIUsesVehicles() const { return m_AIUsesVehicles; }
+
+		/// Whether someone killed in an open vehicle's seat falls out of it (on, as the game comes), or slumps in the seat until the vehicle is
+		/// wrecked, thrown over or someone takes the seat. A player's own unit falls out either way, so its death is seen.
+		bool DeadCrewFallOut() const { return m_DeadCrewFallOut; }
 
 		/// Gets what the navigation debug overlay shows: 0 nothing, 1 the path grid in view (where a unit stands, crawls or doesn't fit, and the
 		/// step-overs, stairs and leaps between), 2 that and each flight's landing and the engine pilot's predicted path (see PathFinder::DrawDebug),
@@ -545,12 +557,16 @@ namespace RTE {
 
 		/// Sets whether AI units steady themselves before they jet.
 		void SetAISteadiesBeforeJet(bool steady) { m_AISteadyBeforeJet = steady; }
+		void SetAIBreaksWhenShaken(bool on) { m_AIBreaksWhenShaken = on; }
 
 		/// Sets whether AI units wait for fuel before they jet.
 		void SetAIWaitsForFuel(bool wait) { m_AIWaitForFuel = wait; }
 
 		/// Sets whether AI units use vehicles.
 		void SetAIUsesVehicles(bool use) { m_AIUsesVehicles = use; }
+
+		/// Sets whether crew killed in a vehicle fall out of it; see DeadCrewFallOut.
+		void SetDeadCrewFallOut(bool fallOut) { m_DeadCrewFallOut = fallOut; }
 
 		/// Sets whether the crab bomb effect is enabled or not.
 		/// @param enable Enable the crab bomb effect or not. False means releasing whatever number of crabs will do nothing except release whatever number of crabs.
@@ -821,8 +837,10 @@ namespace RTE {
 		float m_WeaponTerrainDamage; //!< Multiple of the force weapon fire strikes terrain with, 0.1 to 20 (see WeaponTerrainDamage).
 		int m_AISpawnDiggerType; //!< Which digger they're handed: 0 Light, 1 Medium, 2 Heavy, 3 random (see AISpawnDiggerType).
 		bool m_AISteadyBeforeJet; //!< Whether AI units steady themselves before they jet (see AISteadiesBeforeJet).
+		bool m_AIBreaksWhenShaken; //!< See AIBreaksWhenShaken.
 		bool m_AIWaitForFuel; //!< Whether AI units wait for fuel before they jet (see AIWaitsForFuel).
 		bool m_AIUsesVehicles; //!< Whether AI units use vehicles (see AIUsesVehicles).
+		bool m_DeadCrewFallOut; //!< Whether crew killed in a vehicle fall out of it (see DeadCrewFallOut).
 		DirectOrderTuning m_DirectOrders; //!< How units behave on a direct order (see DirectOrders).
 		bool m_EnableCrabBombs; //!< Whether all actors (except Brains and Doors) should be annihilated if a number exceeding the crab bomb threshold is released at once.
 		int m_CrabBombThreshold; //!< The number of crabs needed to be released at once to trigger the crab bomb effect.

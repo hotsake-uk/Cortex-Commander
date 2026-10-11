@@ -1586,6 +1586,25 @@ void MOSRotating::Update() {
 	}
 }
 
+void MOSRotating::UpdateWounds() {
+	for (auto woundItr = m_Wounds.begin(); woundItr != m_Wounds.end();) {
+		AEmitter* wound = *woundItr;
+		wound->Update();
+		if (wound->IsSetToDelete() || (wound->GetLifetime() > 0 && wound->GetAge() > wound->GetLifetime())) {
+			std::iter_swap(woundItr, m_Wounds.end() - 1);
+			m_Wounds.pop_back();
+			m_AttachableAndWoundMass -= wound->GetMass();
+			delete wound;
+		} else {
+			wound->ClearImpulseForces();
+			++woundItr;
+		}
+	}
+	for (Attachable* attachable: m_Attachables) {
+		attachable->UpdateWounds();
+	}
+}
+
 void MOSRotating::PostUpdate() {
 	for (auto itr = m_Wounds.begin(); itr != m_Wounds.end(); ++itr) {
 		(*itr)->PostUpdate();
@@ -1887,7 +1906,7 @@ void MOSRotating::Draw(BITMAP* pTargetBitmap, const Vector& targetPos, DrawMode 
 			for (int i = 0; i < passes; ++i) {
 				int spriteX = aDrawPos[i].GetFloorIntX();
 				int spriteY = aDrawPos[i].GetFloorIntY();
-				g_SceneMan.RegisterDrawing(pTargetBitmap, m_MOID, spriteX - (m_SpriteRadius * m_Scale), spriteY - (m_SpriteRadius * m_Scale), spriteX + (m_SpriteRadius * m_Scale), spriteY + (m_SpriteRadius * m_Scale));
+				g_SceneMan.RegisterDrawing(pTargetBitmap, m_MOID, spriteX - (m_SpriteRadius * m_Scale), spriteY - (m_SpriteRadius * m_Scale), spriteX + (m_SpriteRadius * m_Scale), spriteY + (m_SpriteRadius * m_Scale), mode == g_DrawMOID ? this : nullptr);
 				if (mode == g_DrawMOID) {
 					continue;
 				}
@@ -1913,7 +1932,7 @@ void MOSRotating::Draw(BITMAP* pTargetBitmap, const Vector& targetPos, DrawMode 
 			for (int i = 0; i < passes; ++i) {
 				int spriteX = aDrawPos[i].GetFloorIntX();
 				int spriteY = aDrawPos[i].GetFloorIntY();
-				g_SceneMan.RegisterDrawing(pTargetBitmap, m_MOID, spriteX - (m_SpriteRadius * m_Scale), spriteY - (m_SpriteRadius * m_Scale), spriteX + (m_SpriteRadius * m_Scale), spriteY + (m_SpriteRadius * m_Scale));
+				g_SceneMan.RegisterDrawing(pTargetBitmap, m_MOID, spriteX - (m_SpriteRadius * m_Scale), spriteY - (m_SpriteRadius * m_Scale), spriteX + (m_SpriteRadius * m_Scale), spriteY + (m_SpriteRadius * m_Scale), mode == g_DrawMOID ? this : nullptr);
 				if (mode == g_DrawMOID) {
 					continue;
 				}

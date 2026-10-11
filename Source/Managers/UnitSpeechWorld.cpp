@@ -232,9 +232,10 @@ namespace {
 	}
 
 	/// How much solid ground is over a point, up to the open sky (or 480 px up), in pixels: 0 under the open sky.
+	/// (Counting stops at 64, the most that Look asks about: it only wants to know whether it's 0, 24 or more, or 64 or more.)
 	int RoofOver(const Vector& point) {
 		int solid = 0;
-		for (int up = 4; up <= 480 && point.m_Y - static_cast<float>(up) >= 0.0F; up += 4) {
+		for (int up = 4; up <= 480 && point.m_Y - static_cast<float>(up) >= 0.0F && solid < 64; up += 4) {
 			if (MatterAt(point - Vector(0.0F, static_cast<float>(up))) != g_MaterialAir) {
 				solid += 4;
 			}
@@ -278,6 +279,17 @@ namespace {
 		float Snow = 0.0F;
 		float Dust = 0.0F;
 		float Wind = 0.0F;
+
+		/// Empties it for a new update, keeping the lists' room. (Build sets everything else.)
+		void Clear() {
+			Built = false;
+			Bodies.clear();
+			BurningUnits.clear();
+			Living.clear();
+			NewCraft.clear();
+			Pieces.clear();
+			Strikes.clear();
+		}
 
 		void Build(long long nowMS) {
 			Built = true;
@@ -734,9 +746,19 @@ void UnitSpeech::UpdateWorld() {
 		BuildTables();
 	}
 	const long long nowMS = g_TimerMan.GetSimTimeMS();
-	Shared shared;
+	// (Kept from update to update so its lists keep their room; emptied here.)
+	static Shared shared;
+	shared.Clear();
 	for (Actor* actor: g_MovableMan.GetActorList()) {
-		if (actor->GetStatus() >= Actor::DYING || actor->GetTeam() < 0 || dynamic_cast<ADoor*>(actor) || dynamic_cast<ACraft*>(actor)) {
+		if (actor->GetStatus() >= Actor::DYING || actor->GetTeam() < 0) {
+			continue;
+		}
+		// A unit not due to look, whose next look is already set as below, is passed over whether or not the tests below would pass it over:
+		// either way nothing changes. So those tests (a look-up by name, casts) are only made for units with something to do.
+		if (const Senses& senses = actor->GetSpeech().World; senses.NextLookUpdate != 0 && update < senses.NextLookUpdate && senses.NextLookUpdate <= update + c_LookEvery) {
+			continue;
+		}
+		if (dynamic_cast<ADoor*>(actor) || dynamic_cast<ACraft*>(actor)) {
 			continue;
 		}
 		// (A brain in a bunker has nothing to say about the rain.)

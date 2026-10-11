@@ -195,9 +195,14 @@ namespace RTE {
 		/// Begin a set of draws with camera. Clears batched draw calls.
 		void BeginFrame(const Camera* camera = nullptr);
 
+		/// How many times BeginFrame has been called. Between two calls is one set of draws (a player screen's scene, or less), which lets what is
+		/// only needed once per such set (a terrain layer's upload for a view) be done once.
+		unsigned long long GetBeginFrameCount() const { return m_BeginFrameCount; }
+
 		/// Draws current draw calls to the active target and clears the batch for new draws.
 		void DrawActiveBatch();
 	private:
+		unsigned long long m_BeginFrameCount{0}; //!< See GetBeginFrameCount.
 		RenderBatch* m_ActiveBatch;
 		std::unique_ptr<RenderBatch> m_RenderBatch{nullptr};
 		std::unique_ptr<GLState> m_GLState{nullptr};

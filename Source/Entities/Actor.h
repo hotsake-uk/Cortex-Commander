@@ -210,6 +210,44 @@ namespace RTE {
 		/// @param newValue New max health value.
 		void SetMaxHealth(int newValue) { m_MaxHealth = newValue; }
 
+		/// Gets this Actor's energy, what its spells spend when cast (MG-2). 0 to its max energy.
+		/// @return How much energy it has.
+		float GetEnergy() const { return m_Energy; }
+
+		/// Sets this Actor's energy, kept between 0 and its max energy.
+		/// @param newValue The new energy.
+		void SetEnergy(float newValue) { m_Energy = std::clamp(newValue, 0.0F, m_MaxEnergy); }
+
+		/// Gets the most energy this Actor can have. 0: it has no energy, and spells that need it don't cast for it.
+		/// @return Its max energy.
+		float GetMaxEnergy() const { return m_MaxEnergy; }
+
+		/// Sets the most energy this Actor can have. Its energy is cut to it if it had more.
+		/// @param newValue The new max energy.
+		void SetMaxEnergy(float newValue) {
+			m_MaxEnergy = std::max(newValue, 0.0F);
+			m_Energy = std::min(m_Energy, m_MaxEnergy);
+		}
+
+		/// Gets how much energy this Actor gets back a second.
+		/// @return Its energy regen, per second.
+		float GetEnergyRegen() const { return m_EnergyRegen; }
+
+		/// Sets how much energy this Actor gets back a second.
+		/// @param newValue The new energy regen, per second.
+		void SetEnergyRegen(float newValue) { m_EnergyRegen = newValue; }
+
+		/// Spends some of this Actor's energy, if it has enough.
+		/// @param amount How much to spend.
+		/// @return Whether it had enough and it was spent; nothing is spent if not.
+		bool SpendEnergy(float amount) {
+			if (amount > m_Energy) {
+				return false;
+			}
+			m_Energy -= amount;
+			return true;
+		}
+
 		/// Gets the distance between the actor and the view point when not
 		/// sharp aiming.
 		/// @return A const int describing how far this actor aims/looks by default.
@@ -504,7 +542,9 @@ namespace RTE {
 			Vector DigTarget; //!< That place, exactly as given: it may be inside the ground.
 			int FailReason = ORDERFAIL_NONE; //!< Why the order stopped short (OrderFailReason), ORDERFAIL_NONE while it hasn't.
 			int FailMaterial = 0; //!< The material in the way for ORDERFAIL_TOOHARD, 0 for none known.
-			float Direct = 0.0F; //!< How urgent the order is, by how it was placed (s_DirectOrder): -1 a single click (cautious: walks round jumps, waits for fuel, lands soft, keeps clear of enemies), 0 a double click (a normal order, and any order not placed by a click), 0 to 1 a double click dragged, by how far (SettingsMan::DirectOrderTuning::RiskDragPixels), 1 a full drag (the shortest way there whatever it takes: a dig-to tunnels in a straight line round only what it can't cut, a move takes the hard, fast jet flights a careful route walks round). The Battle Behavior tuning is applied in that share (GetPathAgent, AHuman).
+			bool SkyGoal = false; //!< A Jetpack here order, or a move or attack-move clicked in open air: the unit flies to SkyPoint itself, in the air, when it has a clear line to it, and hovers there till its tank runs low (AHuman::UpdateAIMotor).
+			Vector SkyPoint; //!< That point, exactly as clicked.
+			float Direct = 0.0F; //!< How urgent the order is, by how it was placed (s_DirectOrder): -1 a single click (cautious: walks round jumps, waits for fuel, lands soft, keeps clear of enemies), 0 a double click (a normal order, and any order not placed by a click), 0 to 1 a double click dragged, by how far (SettingsMan::DirectOrderTuning::RiskDragPixels), 1 a full drag (the shortest way there whatever it takes: a dig-to tunnels in a straight line round only what it can't cut, a move takes the hard, fast jet flights a careful route walks round, and from the Battle Behavior's StraightFlightRisk up a unit with a jet flies at the goal on one flight, straight or up and over, when one tank gets it there). The Battle Behavior tuning is applied in that share (GetPathAgent, AHuman).
 		};
 
 		/// Gets this' standing order, to read or change.
@@ -1157,6 +1197,10 @@ namespace RTE {
 		/// Updates this MovableObject. Supposed to be done every frame.
 		void Update() override;
 
+		/// Updates what still goes on for a unit sat out of the scene in a vehicle's open seat, where it can be shot: its wounds bleed, and
+		/// the damage to it and its limbs comes off its health.
+		void UpdateWhileSeated();
+
 		/// After every object has updated, before the deletions: lets go of the item in reach if it is going (see m_pItemInReach).
 		void PostUpdate() override;
 
@@ -1462,6 +1506,9 @@ namespace RTE {
 		float m_MaxHealth;
 		// The health of the previous frame, so we can track damage
 		float m_PrevHealth;
+		float m_Energy; //!< What spells spend when cast (MG-2).
+		float m_MaxEnergy; //!< The most energy it can have. 0: none.
+		float m_EnergyRegen; //!< How much energy comes back a second.
 		// Not owned by this!
 		const Icon* m_pTeamIcon;
 		// Not owned by this!
