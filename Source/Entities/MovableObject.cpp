@@ -96,6 +96,7 @@ void MovableObject::Clear() {
 	m_FunctionsAndScripts.clear();
 	m_StringValueMap.clear();
 	m_NumberValueMap.clear();
+	m_NumberValuesChanged = true;
 	m_ObjectValueMap.clear();
 	m_ThreadedLuaState = nullptr;
 	m_ForceIntoMasterLuaState = g_SettingsMan.EnableLuaDebugging();
@@ -325,6 +326,7 @@ int MovableObject::Create(const MovableObject& reference) {
 
 	m_StringValueMap = reference.m_StringValueMap;
 	m_NumberValueMap = reference.m_NumberValueMap;
+	m_NumberValuesChanged = true;
 	m_ObjectValueMap = reference.m_ObjectValueMap;
 
 	m_UniqueID = MovableObject::GetNextUniqueID();
@@ -883,8 +885,10 @@ bool MovableObject::IsAtRest() {
 }
 
 bool MovableObject::OnMOHit(HitData& hd) {
-	if (hd.RootBody[HITOR] != hd.RootBody[HITEE] && (hd.Body[HITOR] == this || hd.Body[HITEE] == this)) {
-		RunScriptedFunctionInAppropriateScripts("OnCollideWithMO", false, false, {hd.Body[hd.Body[HITOR] == this ? HITEE : HITOR], hd.RootBody[hd.Body[HITOR] == this ? HITEE : HITOR]});
+	static const std::string onCollideWithMOName = "OnCollideWithMO";
+	// Most hits are on objects with no scripts at all, so skip building the argument list unless something can run.
+	if (!m_AllLoadedScripts.empty() && hd.RootBody[HITOR] != hd.RootBody[HITEE] && (hd.Body[HITOR] == this || hd.Body[HITEE] == this)) {
+		RunScriptedFunctionInAppropriateScripts(onCollideWithMOName, false, false, {hd.Body[hd.Body[HITOR] == this ? HITEE : HITOR], hd.RootBody[hd.Body[HITOR] == this ? HITEE : HITOR]});
 	}
 	return hd.Terminate[hd.RootBody[HITOR] == this ? HITOR : HITEE] = false;
 }
@@ -896,7 +900,15 @@ unsigned char MovableObject::HitWhatTerrMaterial() const {
 void MovableObject::SetHitWhatTerrMaterial(unsigned char matID) {
 	m_TerrainMatHit = matID;
 	m_LastCollisionSimFrameNumber = g_MovableMan.GetSimUpdateFrameNumber();
-	RunScriptedFunctionInAppropriateScripts("OnCollideWithTerrain", false, false, {}, {std::to_string(m_TerrainMatHit)});
+	// This runs per atom per terrain contact, so only build the material string when a script will actually receive it.
+	if (m_AllLoadedScripts.empty()) {
+		return;
+	}
+	static const std::string onCollideWithTerrainName = "OnCollideWithTerrain";
+	if (auto itr = m_FunctionsAndScripts.find(onCollideWithTerrainName); itr == m_FunctionsAndScripts.end() || itr->second.empty()) {
+		return;
+	}
+	RunScriptedFunctionInAppropriateScripts(onCollideWithTerrainName, false, false, {}, {std::to_string(m_TerrainMatHit)});
 }
 
 Vector MovableObject::GetTotalForce() {
@@ -1164,7 +1176,7 @@ void MovableObject::Draw(BITMAP* targetBitmap, const Vector& targetPos, DrawMode
 		return;
 	}
 
-	g_SceneMan.RegisterDrawing(targetBitmap, m_MOID, m_Pos - targetPos, 1.0F);
+	g_SceneMan.RegisterDrawing(targetBitmap, m_MOID, m_Pos - targetPos, 1.0F, mode == g_DrawMOID ? this : nullptr);
 }
 
 void MovableObject::Draw(const Camera& camera) const {}
@@ -1249,6 +1261,7 @@ void MovableObject::SetEncodedStringValue(const std::string& key, const std::str
 
 void MovableObject::SetNumberValue(const std::string& key, double value) {
 	m_NumberValueMap[key] = value;
+	m_NumberValuesChanged = true;
 }
 
 void MovableObject::SetObjectValue(const std::string& key, Entity* value) {
@@ -1261,6 +1274,7 @@ void MovableObject::RemoveStringValue(const std::string& key) {
 
 void MovableObject::RemoveNumberValue(const std::string& key) {
 	m_NumberValueMap.erase(key);
+	m_NumberValuesChanged = true;
 }
 
 void MovableObject::RemoveObjectValue(const std::string& key) {

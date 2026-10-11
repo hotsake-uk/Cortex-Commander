@@ -447,7 +447,7 @@ namespace SandboxDetail {
 	/// Director team's are (UpdateBattleDefenders): it holds its post, goes after enemies that come within the zone's radius and chase
 	/// distance, and comes back after. The zone is the command row's as it is now. The unit is already on its way to its post (SendUnit),
 	/// which drops any defending it was doing before, so this comes after.
-	void CommandDefender(Actor* unit, const Vector& centre, const Vector& post) {
+	void CommandDefender(Actor* unit, const Vector& centre, const Vector& post, float radius) {
 		if (!unit || dynamic_cast<const ACraft*>(unit)) {
 			return;
 		}
@@ -456,7 +456,8 @@ namespace SandboxDetail {
 		defender.Commanded = true;
 		defender.Team = unit->GetTeam();
 		defender.Center = centre;
-		defender.Radius = static_cast<float>(std::max(s_DefendRadius, 1));
+		// (A radius of its own for a battle objective's zone, Command mode: else the command row's.)
+		defender.Radius = radius > 0.0F ? radius : static_cast<float>(std::max(s_DefendRadius, 1));
 		defender.Chase = static_cast<float>(std::max(s_DefendChase, 0));
 		defender.Post = post;
 		defender.Made = g_TimerMan.GetSimUpdateCount();

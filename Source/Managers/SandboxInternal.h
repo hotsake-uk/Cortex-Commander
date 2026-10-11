@@ -686,6 +686,8 @@ namespace SandboxDetail {
 		int RespawnSeconds = 5; //!< Every mode: seconds after one of a team's units falls before another comes in its place.
 		int MaxRespawns = 0; //!< Every mode: fallen units each team gets back in all, after its first team size. 0: no limit.
 		int StuckSeconds = 20; //!< Every mode: seconds a unit can get no nearer its objective before it is respawned. 0: never.
+		std::array<int, c_Sides> RiskMin = {0, 0, 0, 0}; //!< Every mode: the least risk each team's units take with the mode's orders, -100 (cautious) to 100 (suicide), 0 normal (Actor::StandingOrder::Direct).
+		std::array<int, c_Sides> RiskMax = {0, 0, 0, 0}; //!< And the most: each unit is given a risk in between as it comes in, the strongest (the biggest jetpack, the priciest kit) toward the top.
 		std::array<int, c_Sides> RushPercent = {30, 30, 30, 30}; //!< Every mode: the share of each team's units, in percent, that rush the objective: on their way there they keep moving, shooting as they go, and don't take cover, flank, fall back or stop to fight.
 		int RouteVariety = 0; //!< Every mode: the share of each team's units, in percent, given a taste in routes of their own (Actor::SetRouteSeed), so they spread over the ways to where they're going rather than all taking the shortest.
 		std::vector<std::vector<Vector>> Zones; //!< The mode's own zones, drawn as polygons: king of the hill's hills, assault's objectives (in order).
@@ -835,6 +837,7 @@ namespace SandboxDetail {
 		int Clicks = 0; //!< Tool::Command: how many clicks in a row placed it, 0 for not by a click: one makes the order cautious, two or more normal (s_DirectOrder).
 		bool HasRisk = false; //!< Tool::Command: placed by a double click dragged, so Risk says how urgent it is, not Clicks.
 		float Risk = 0.0F; //!< With HasRisk, how far the drag went toward the full risk distance, 0 (normal) to 1 (fully direct).
+		int OrderMode = -1; //!< Tool::Command: the CommandMode in hand when it was placed (the mode can go back to Command before it's given), -1 for the one in hand then.
 		long UnitID = 0; //!< Dropping a step of a plan: whose (and Choice which step).
 		std::vector<Vector> Points; //!< A patrol route's points (RC-4).
 		Vector Position2; //!< Selection box: the other corner.
@@ -954,6 +957,14 @@ namespace SandboxDetail {
 	/// (SendUnit) takes that share of the Battle Behavior tuning (Actor::StandingOrder::Direct), and one over 0 isn't held to the group's pace.
 	/// Set round the stroke, so every kind of order placed by a click (move, attack-move, dig to, defend, a map order) is made so the same way.
 	inline float s_DirectOrder = 0.0F;
+	/// While an order to a point in the air is given (Jetpack here, or a move clicked in open air; see MoveUnitsTo), whether the units sent
+	/// fly to the point itself (Actor::StandingOrder::SkyGoal).
+	inline bool s_SkyOrder = false;
+	inline bool s_ClickOrder = false; //!< While a command stroke the player placed is given: only those take a move clicked in open air for a sky order.
+	/// Whether a point is open air with nothing under it for 120 px: a move or attack-move clicked there flies the units with a jet to it.
+	bool IsSkyPoint(const Vector& point);
+	/// The selected units to the point in the air (CommandMode::JetpackHere): those with a jet fly to it, the rest go to the ground under it.
+	void JetpackHereSelected(const Vector& point, bool shift, int facing = 0);
 	inline ImVec2 s_DragStart;
 	inline std::array<BattleTeam, c_Sides> s_BattleTeams; //!< The Battle Director's teams, as the sim runs them.
 	inline std::array<BattleSettings, c_Sides> s_BattleSetup = [] { //!< The Battle tab's cards, the window's copy (sent to the sim as each changes).
@@ -1152,12 +1163,30 @@ namespace SandboxDetail {
 		Patrol, //!< Each click a point of a patrol route; the command row starts it as a loop or back and forth (RC-4).
 		DigTo, //!< Dig to the point, in the ground or not (RC-11): those with a digger that cuts the way are sent, to the point itself.
 		Suppress, //!< Fire into a zone round the point and keep firing: no target needed, whatever else is in sight; they walk in range first.
-		Select //!< Clicks only pick units: one clicked (Shift adds, double click all of its kind in view), or none on a click on nothing. What
-		       //!< the Command tool starts in, from the bar. (Last, so the ring's slices keep their places; the command row shows it first.)
+		JetpackHere, //!< Fly to the point clicked, in the air, not on the ground under it, and hover there till the tank runs low (Actor::StandingOrder::SkyGoal).
+		Select, //!< Clicks only pick units: one clicked (Shift adds, double click all of its kind in view), or none on a click on nothing.
+		Command //!< The order fits what's under the pointer (CommandTargetAt): with nothing selected, as Select; else a friend is selected, an enemy
+		        //!< attacked, a battle objective gone for, open air flown to, anything else moved to. What the Command tool starts in, and what
+		        //!< a one-off order's mode goes back to once it's placed (and Esc). (After Select, so the ring's slices keep their places.)
 	};
-	inline CommandMode s_CommandMode = CommandMode::Select;
-	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Select units"};
-	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(230, 230, 230, 255)};
+	inline CommandMode s_CommandMode = CommandMode::Command;
+	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Jetpack here", "Select units", "Command"};
+	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(140, 230, 255, 255), IM_COL32(230, 230, 230, 255), IM_COL32(255, 214, 120, 255)};
+	/// A mode whose order is given once and then goes back to Command (s_BackToCommandAt): not Select, Command or Patrol (clicked out point by point).
+	inline bool OneOffMode(CommandMode mode) { return mode != CommandMode::Select && mode != CommandMode::Command && mode != CommandMode::Patrol; }
+	inline double s_BackToCommandAt = -1.0; //!< When (ImGui time) the one-off mode in hand goes back to Command: once a double click can no longer follow.
+	inline CommandMode s_BackToCommandFrom = CommandMode::Command; //!< The one-off mode that was in hand then: only that goes back.
+	/// What a click in Command mode comes to at a point (CommandTargetAt).
+	struct CommandTarget {
+		enum Kind {
+			Select, //!< Nothing selected, so the click selects (as Select mode).
+			Move, //!< As Move mode: a friend under it is selected, an enemy attacked, else moved to.
+			Objective, //!< A battle objective of the mode on now: gone for, or held if the selection's team defends it.
+			Air //!< Open air, nowhere near the ground: flown to.
+		} What = Select;
+		BattleObjective Goal; //!< With Objective: which.
+		bool Defend = false; //!< With Objective: the selection's team holds it rather than goes for it.
+	};
 
 	/// What a dig-to to the point under the cursor would come to for the selected units (RC-11; DigToPreview).
 	struct DigPreview {
@@ -2162,6 +2191,16 @@ namespace SandboxDetail {
 	void UpdateMoveWatch();
 	void ReissueNoRoute(const Vector& destination);
 	void MapOrder(const Vector& point, bool shift);
+	/// What a Command mode click at a point would do for the selected units (CommandTarget), as the pointer shows and the click gives.
+	CommandTarget CommandTargetAt(const Vector& point);
+	/// A click of the command tool's has placed an order in the mode in hand: a one-off mode goes back to Command (OneOffMode), once a second click
+	/// of a double click can no longer follow.
+	void BackToCommandAfterOrder(bool shift);
+	/// Sends the selected units for a battle objective (Command mode): into a zone, or round a place their team holds, as a defend zone the
+	/// size of the objective; to a place they go for (an enemy flag), as an attack-move. With shift, steps of their plans.
+	void ObjectiveSelected(const CommandTarget& target, bool shift);
+	/// Sends the selected units to a point in open air (Command mode), as Jetpack here; with Shift, a plan step to the ground under it.
+	void FlySelectedTo(const Vector& point, bool shift);
 	bool HiddenFromCommander(const Actor* actor);
 	MovableObject* GuardableObjectAt(const Vector& position, int team);
 	const Colony::Building* BuildingAt(const Vector& position);
@@ -2222,7 +2261,7 @@ namespace SandboxDetail {
 	void MakeDefender(Actor* unit, const BattleSettings& settings);
 	void RecentreDefenders(int team, const Vector& centre, bool atIt, float radius = -1.0F);
 	void MoveDefender(BattleDefender& defender, const Vector& centre, bool atIt, float radius = -1.0F);
-	void CommandDefender(Actor* unit, const Vector& centre, const Vector& post);
+	void CommandDefender(Actor* unit, const Vector& centre, const Vector& post, float radius = -1.0F);
 	void MoveCommandedZone(Actor* unit, const Vector& centre, const Vector& post);
 	void DrawDefendZone(ImDrawList* drawList, const Vector& centre, float radius, float chase, ImU32 color);
 	void DrawCommandedZones(ImDrawList* drawList);

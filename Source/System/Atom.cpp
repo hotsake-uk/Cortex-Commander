@@ -24,6 +24,11 @@ namespace {
 		unsigned char id = RTE::g_SceneMan.GetTerrMatter(x, y);
 		return (owner && owner->PassesMaterial(id)) ? 0 : id;
 	}
+
+	/// As TerrFor, for a material already read from the terrain at the point.
+	inline unsigned char TerrForMaterial(const RTE::MovableObject* owner, unsigned char id) {
+		return (owner && owner->PassesMaterial(id)) ? 0 : id;
+	}
 } // namespace
 
 namespace {
@@ -763,9 +768,14 @@ int Atom::Travel(float travelTime, bool autoTravel) {
 	// A shot (a particle that hits MOs: bullets, tracers, shrapnel) goes on through liquid as far as the liquid lets it (FluidSim::ShotDepth), slowing, and
 	// is spent there, rather than striking the surface and digging into it. Drops of liquid themselves and fire don't: they meet it as before.
 	// Only something going in as fast as a shot (or already on its way through): a casing or a gib dropped in sinks and settles as before.
-	const bool passesLiquids = m_OwnerMO->m_HitsMOs && !m_OwnerMO->m_IgnoreTerrain && !FluidSim::IsLiquid(m_Material->GetIndex()) && !TerrainFire::IsFireSource(m_OwnerMO) &&
-	                           (m_LiquidTravelled > 0 || velocity.MagnitudeIsGreaterThan(25.0F));
+	// (The fire test takes a lock and a name lookup, so it goes after the cheap speed test.)
+	const bool passesLiquids = m_OwnerMO->m_HitsMOs && !m_OwnerMO->m_IgnoreTerrain && !FluidSim::IsLiquid(m_Material->GetIndex()) &&
+	                           (m_LiquidTravelled > 0 || velocity.MagnitudeIsGreaterThan(25.0F)) && !TerrainFire::IsFireSource(m_OwnerMO);
 	int liquidDepth = 0;
+	// A step that tests a shot for liquid reads the terrain there once and uses it for the terrain test too, as nothing changes the terrain in
+	// between. Not under a LiquidsSeeThrough scope, where every read counts towards how deep a look has gone.
+	const bool reuseStepMaterial = passesLiquids && !SceneMan::LiquidsSeeThroughActive();
+	unsigned char stepMaterial = g_MaterialAir;
 
 	// Bake in the Atom offset.
 	position += m_Offset;
@@ -975,14 +985,14 @@ int Atom::Travel(float travelTime, bool autoTravel) {
 			}
 
 			// A shot in liquid goes on through it, slowing, until it has gone as deep as the liquid lets it, and is spent there (see passesLiquids).
-			else if (passesLiquids && (liquidDepth = FluidSim::ShotDepth(g_SceneMan.GetTerrMatter(intPos[X], intPos[Y]))) > 0) {
+			else if (passesLiquids && (liquidDepth = FluidSim::ShotDepth(stepMaterial = g_SceneMan.GetTerrMatter(intPos[X], intPos[Y]))) > 0) {
 				if (++m_LiquidTravelled > liquidDepth) {
 					m_OwnerMO->SetToDelete(true);
 					// This is to break out of the do-while and the function properly.
 					m_LastHit.Terminate[HITOR] = hit[dom] = hit[sub] = true;
 					break;
 				}
-				velocity *= FluidSim::ShotDrag(g_SceneMan.GetTerrMatter(intPos[X], intPos[Y]));
+				velocity *= FluidSim::ShotDrag(reuseStepMaterial ? stepMaterial : g_SceneMan.GetTerrMatter(intPos[X], intPos[Y]));
 				if (m_TrailLength) {
 					trailPoints.push_back({intPos[X], intPos[Y]});
 				}
@@ -992,7 +1002,7 @@ int Atom::Travel(float travelTime, bool autoTravel) {
 			// Atom-Terrain collision detection and response.
 
 			// If there was no MO collision detected, then check for terrain hits.
-			else if (!m_OwnerMO->m_IgnoreTerrain && (hitMaterialID = TerrFor(m_OwnerMO, intPos[X], intPos[Y]))) {
+			else if (!m_OwnerMO->m_IgnoreTerrain && (hitMaterialID = reuseStepMaterial ? TerrForMaterial(m_OwnerMO, stepMaterial) : TerrFor(m_OwnerMO, intPos[X], intPos[Y]))) {
 				if (hitMaterialID != g_MaterialAir) {
 					m_OwnerMO->SetHitWhatTerrMaterial(hitMaterialID);
 				}

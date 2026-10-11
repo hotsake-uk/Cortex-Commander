@@ -2,6 +2,7 @@
 #include "ActorWater.h"
 #include "ActorFire.h"
 #include "FluidSim.h"
+#include "MagicEffects.h"
 #include "TerrainTrees.h"
 #include "ConsoleMan.h"
 #include "WeatherEffects.h"
@@ -74,6 +75,7 @@ void Actor::Clear() {
 	m_DeviceSwitchSound = nullptr;
 	m_Status = STABLE;
 	m_Health = m_PrevHealth = m_MaxHealth = 100.0F;
+	m_Energy = m_MaxEnergy = m_EnergyRegen = 0.0F;
 	m_pTeamIcon = nullptr;
 	m_pControllerIcon = nullptr;
 	m_LastSecondTimer.Reset();
@@ -253,6 +255,9 @@ int Actor::Create(const Actor& reference) {
 	m_Status = reference.m_Status;
 	m_Health = m_PrevHealth = reference.m_Health;
 	m_MaxHealth = reference.m_MaxHealth;
+	m_Energy = reference.m_Energy;
+	m_MaxEnergy = reference.m_MaxEnergy;
+	m_EnergyRegen = reference.m_EnergyRegen;
 	m_pTeamIcon = reference.m_pTeamIcon;
 	//    m_LastSecondTimer.Reset();
 	//    m_LastSecondPos.Reset();
@@ -406,6 +411,18 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 			              m_PrevHealth = m_Health;
 		              }
 	              });
+	MatchProperty("Energy", {
+		reader >> m_Energy;
+		m_MaxEnergy = std::max(m_MaxEnergy, m_Energy);
+	});
+	MatchProperty("MaxEnergy", {
+		// A unit starts full unless it was given less.
+		bool full = m_Energy >= m_MaxEnergy;
+		reader >> m_MaxEnergy;
+		m_MaxEnergy = std::max(m_MaxEnergy, 0.0F);
+		m_Energy = full ? m_MaxEnergy : std::min(m_Energy, m_MaxEnergy);
+	});
+	MatchProperty("EnergyRegen", { reader >> m_EnergyRegen; });
 	MatchProperty("ImpulseDamageThreshold", { reader >> m_TravelImpulseDamage; });
 	MatchProperty("StableVelocityThreshold", { reader >> m_StableVel; });
 	MatchProperty("StableRecoveryDelay", { reader >> m_StableRecoverDelay; });
@@ -546,6 +563,14 @@ int Actor::Save(Writer& writer) const {
 	writer << m_Health;
 	writer.NewProperty("MaxHealth");
 	writer << m_MaxHealth;
+	if (m_MaxEnergy > 0.0F) {
+		writer.NewProperty("MaxEnergy");
+		writer << m_MaxEnergy;
+		writer.NewProperty("Energy");
+		writer << m_Energy;
+		writer.NewProperty("EnergyRegen");
+		writer << m_EnergyRegen;
+	}
 	if (m_DeploymentID) {
 		writer.NewProperty("DeploymentID");
 		writer << m_DeploymentID;
@@ -1551,9 +1576,16 @@ PathAgent Actor::GetPathAgent() const {
 			}
 		}
 		agent.RouteSeed = 0;
+		// From the straight-flight risk up (a full drag as tuned): straight there on the jet when the way is open (PathFinder::CalculatePath).
+		agent.StraightFlight = share >= direct.StraightFlightRisk;
+		agent.StraightFlightReach = direct.FlightReach(share);
 		if (agent.DigGoal) {
 			agent.DigCostScale = toward(agent.DigCostScale, std::min(agent.DigCostScale, direct.DigCostScale));
 			agent.LineWeight = direct.LineWeight * share;
+		} else {
+			// A move, attack or the like keeps nearer the straight line the riskier it is (PathFinder::LineCost): at half risk the route cuts
+			// corners and takes the jumps a normal one walks round, near full risk it is close to direct; the search still finds the way.
+			agent.LineWeight = direct.MoveLineWeight * share;
 		}
 	}
 	for (const std::pair<Vector, double>& avoid: m_AvoidPoints) {
@@ -1677,11 +1709,17 @@ bool Actor::TryStartMantle(MOSRotating* head, bool rising, float bodyWidth) {
 		return false;
 	}
 	float dir = right ? 1.0F : -1.0F;
+	float height = std::max(m_CharHeight, 20.0F);
+	// Not for an AI whose route goes down from here: pressing towards the wall of a hatch it was dropping through, a unit was pulled back
+	// up onto the ledge beside it, walked back to the hole, and did it again for twenty seconds. (Tested first, being cheap: the fit checks
+	// below only read the terrain.)
+	if (!m_Controller.IsPlayerControlled() && !m_MovePath.empty() && g_SceneMan.ShortestDistance(m_Pos, m_MovePath.front()).m_Y > height * 0.25F) {
+		return false;
+	}
 	// Only against something: free to move on, there's nothing to mantle.
 	if (BodyFitsShifted(Vector(dir * 3.0F, 0.0F), head)) {
 		return false;
 	}
-	float height = std::max(m_CharHeight, 20.0F);
 	// Nor against a slope or a bump the walk goes up: free to move on with the body a little higher (a step's worth over 3 px), the legs
 	// take it. (Anything at all ahead blocked the shifted body, the uphill ground of any incline included, so units pulled themselves up
 	// every hill in a string of mantles instead of walking it.)
@@ -1691,28 +1729,23 @@ bool Actor::TryStartMantle(MOSRotating* head, bool rising, float bodyWidth) {
 			return false;
 		}
 	}
-	// Not for an AI whose route goes down from here: pressing towards the wall of a hatch it was dropping through, a unit was pulled back
-	// up onto the ledge beside it, walked back to the hole, and did it again for twenty seconds.
-	if (!m_Controller.IsPlayerControlled() && !m_MovePath.empty() && g_SceneMan.ShortestDistance(m_Pos, m_MovePath.front()).m_Y > height * 0.25F) {
-		return false;
-	}
 	int maxLift = static_cast<int>(height * (rising ? 0.55F : 0.3F));
 	// Far enough over the edge for the body's middle to be over the top.
 	float over = std::max(8.0F, bodyWidth * 0.6F) + 4.0F;
 	for (int lift = 4; lift <= maxLift; lift += 2) {
 		Vector up(0.0F, static_cast<float>(-lift));
 		Vector end(dir * over, static_cast<float>(-lift));
-		// Room all the way: straight up, then across.
-		if (!BodyFitsShifted(up, head) || !BodyFitsShifted(Vector(0.0F, static_cast<float>(-lift / 2)), head) || !BodyFitsShifted(end, head) || !BodyFitsShifted(Vector(dir * over * 0.5F, static_cast<float>(-lift)), head)) {
-			continue;
-		}
-		// Something to stand on there: ground within the legs' reach under the body's middle.
+		// Something to stand on there: ground within the legs' reach under the body's middle. (Tested before the room, being cheaper.)
 		Vector target = m_Pos + end;
 		bool supported = false;
 		for (int down = 0; down <= static_cast<int>(height * 0.45F) && !supported; down += 2) {
 			supported = IsGroundAt(static_cast<int>(target.m_X), static_cast<int>(target.m_Y) + down);
 		}
 		if (!supported) {
+			continue;
+		}
+		// Room all the way: straight up, then across.
+		if (!BodyFitsShifted(up, head) || !BodyFitsShifted(Vector(0.0F, static_cast<float>(-lift / 2)), head) || !BodyFitsShifted(end, head) || !BodyFitsShifted(Vector(dir * over * 0.5F, static_cast<float>(-lift)), head)) {
 			continue;
 		}
 		m_Mantling = true;
@@ -1744,9 +1777,9 @@ bool Actor::TryCatchLedge(MOSRotating* head, float bodyWidth, float wantDir, flo
 		}
 		dir = right ? 1.0F : -1.0F;
 	}
-	// In the air (free to drop a little), and slow enough for the hands to hold: falling past a lip from up to a storey or so, or at the
-	// top of a rise.
-	if (std::abs(m_Vel.m_Y) > 7.0F || !BodyFitsShifted(Vector(0.0F, 3.0F), head)) {
+	// Slow enough for the hands to hold: falling past a lip from up to a storey or so, or at the top of a rise. (In the air, free to drop a
+	// little, is tested after the cheaper rejects below; the tests only read, so their order doesn't matter.)
+	if (std::abs(m_Vel.m_Y) > 7.0F) {
 		return false;
 	}
 	float height = std::max(m_CharHeight, 20.0F);
@@ -1786,15 +1819,16 @@ bool Actor::TryCatchLedge(MOSRotating* head, float bodyWidth, float wantDir, flo
 	float over = bodyWidth * 0.5F + 4.0F + std::max(8.0F, bodyWidth * 0.6F);
 	Vector end(dir * over, static_cast<float>(lipY) - height * 0.4F - m_Pos.m_Y);
 	Vector up(0.0F, std::min(end.m_Y, 0.0F));
-	if (!BodyFitsShifted(up, head) || !BodyFitsShifted(Vector(end.m_X * 0.5F, up.m_Y), head) || !BodyFitsShifted(end, head)) {
-		return false;
-	}
 	Vector target = m_Pos + end;
 	bool supported = false;
 	for (int down = 0; down <= static_cast<int>(height * 0.45F) && !supported; down += 2) {
 		supported = IsGroundAt(static_cast<int>(target.m_X), static_cast<int>(target.m_Y) + down);
 	}
 	if (!supported) {
+		return false;
+	}
+	// In the air (free to drop a little), and room all the way. (The fit checks last, being the dearest.)
+	if (!BodyFitsShifted(Vector(0.0F, 3.0F), head) || !BodyFitsShifted(up, head) || !BodyFitsShifted(Vector(end.m_X * 0.5F, up.m_Y), head) || !BodyFitsShifted(end, head)) {
 		return false;
 	}
 	// Caught: from the hang, the mantle's pull up and over (UpdateMantle puts the body where it should be each frame, so the fall stops at
@@ -2116,7 +2150,9 @@ std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range,
 		float offAim; // Degrees off the aim.
 		float off; // Degrees off the field it is in (the aim's when sharp and inside it, else the facing's), as a fraction of that field's half.
 	};
-	std::vector<Candidate> candidates;
+	// (A buffer kept between calls, so the scan allocates nothing; nothing in it calls the scan again.)
+	thread_local std::vector<Candidate> candidates;
+	candidates.clear();
 	// The candidates come from the actor list (tens of entries), not the MOID grid: a box this size covers thousands of grid cells, and in a
 	// firefight the grid hashed every bullet, gib and speck of dust in them for each scanning unit, to find the few actors among them. (Scripts
 	// in ThreadedUpdate already walk the same list, as MovableMan.Actors; new actors are queued and joined in MovableMan::Update's serial part.)
@@ -2131,13 +2167,21 @@ std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range,
 			continue;
 		}
 		float distance = toTarget.GetMagnitude();
+		// (Out of reach of both looks: no angles needed. And the facing's angle only when the aim's look doesn't take it.)
+		if (!(sharp && distance <= narrowReach) && !(distance <= reach)) {
+			continue;
+		}
 		float offAim = degreesBetween(toTarget, aimDirection);
-		float offFacing = degreesBetween(toTarget, facing);
 		float off;
 		if (sharp && offAim <= halfNarrow && distance <= narrowReach) {
 			off = offAim / halfNarrow;
-		} else if (offFacing <= halfField && distance <= reach) {
-			off = offFacing / halfField;
+		} else if (distance <= reach) {
+			float offFacing = degreesBetween(toTarget, facing);
+			if (offFacing <= halfField) {
+				off = offFacing / halfField;
+			} else {
+				continue;
+			}
 		} else {
 			continue;
 		}
@@ -2380,10 +2424,12 @@ void Actor::UpdateSuppressionAndMorale() {
 					if (toFriend.MagnitudeIsLessThan(c_SightOfDeath) && !g_SceneMan.CastStrengthRay(m_Pos, toFriend, 10.0F, notUsed, 4, g_MaterialGrass)) {
 						friendActor->ChangeMorale(-(0.08F + 0.12F * (1.0F - toFriend.GetMagnitude() / c_SightOfDeath)));
 						// (The last of them near here says so; the rest name who went down.)
+						// (The distance before the group lookup, a string hash, and the type checks: they only read, so the order doesn't matter.)
+						static const std::string c_BrainsGroup = "Brains";
 						bool alone = true;
 						for (const Actor* other: g_MovableMan.GetActorList()) {
-							if (other != this && other != friendActor && other->GetTeam() == m_Team && other->GetStatus() != DYING && other->GetStatus() != DEAD && !other->IsInGroup("Brains") && other->FeelsFire() &&
-							    g_SceneMan.ShortestDistance(friendActor->GetPos(), other->GetPos(), g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY()).MagnitudeIsLessThan(400.0F)) {
+							if (other != this && other != friendActor && other->GetTeam() == m_Team && other->GetStatus() != DYING && other->GetStatus() != DEAD &&
+							    g_SceneMan.ShortestDistance(friendActor->GetPos(), other->GetPos(), g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY()).MagnitudeIsLessThan(400.0F) && !other->IsInGroup(c_BrainsGroup) && other->FeelsFire()) {
 								alone = false;
 								break;
 							}
@@ -2436,6 +2482,10 @@ void Actor::UpdateSuppressionAndMorale() {
 				brainNear = true;
 			} else if (friends < 3 && toOther.MagnitudeIsLessThan(200.0F)) {
 				++friends;
+			}
+			// (Nothing further can change either: done.)
+			if (brainNear && friends >= 3) {
+				break;
 			}
 		}
 		m_MoraleLevel = std::clamp(0.55F + 0.1F * static_cast<float>(friends) + (brainNear ? 0.15F : 0.0F) - 0.3F * (1.0F - std::clamp(m_Health / std::max(m_MaxHealth, 1.0F), 0.0F, 1.0F)), 0.2F, 1.0F);
@@ -2533,6 +2583,11 @@ void Actor::Update() {
 		m_Health -= attachable->CollectDamage();
 	}
 	m_Health = std::min(m_Health, m_MaxHealth);
+
+	// Energy comes back by itself while alive.
+	if (m_MaxEnergy > 0.0F && m_Energy < m_MaxEnergy && m_Status != DYING && m_Status != DEAD) {
+		m_Energy = std::min(m_Energy + m_EnergyRegen * MagicEffects::GetTuning().EnergyRegen * g_TimerMan.GetDeltaTimeSecs(), m_MaxEnergy);
+	}
 
 	/////////////////////////////
 	// Stability logic
@@ -2782,6 +2837,18 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 				pSymbolFont->DrawAligned(&bitmapInt, drawPos.m_X - 0, drawPos.m_Y + m_HUDStack, str, GUIFont::Left);
 
 				m_HUDStack += -12;
+			}
+
+			// Energy, for units that have it: a blue bar over the health (MG-2).
+			if (tags && m_MaxEnergy > 0.0F && m_Health > 0 && MagicEffects::CastingCostsEnergy()) {
+				int barLeft = drawPos.GetFloorIntX() - 10;
+				int barTop = drawPos.GetFloorIntY() + m_HUDStack + 9;
+				int filled = static_cast<int>(std::round(20.0F * std::clamp(m_Energy / m_MaxEnergy, 0.0F, 1.0F)));
+				rectfill(pTargetBitmap, barLeft, barTop, barLeft + 20, barTop + 2, g_BlackColor);
+				if (filled > 0) {
+					rectfill(pTargetBitmap, barLeft, barTop, barLeft + filled - 1, barTop + 1, makecol8(70, 140, 255));
+				}
+				m_HUDStack += -4;
 			}
 
 			if (IsPlayerControlled()) {
