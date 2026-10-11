@@ -669,6 +669,33 @@ namespace SandboxDetail {
 	/// its own copy (s_ModeSetup) and sends it to the sim in a Tool::BattleTeam stroke (Stroke::Mode) whenever it changes.
 	constexpr size_t c_MaxFlagSpots = 8; //!< Most flag positions one flag can have placed.
 
+	/// What a team you command has its units do as they come in (SpawnOrders.cpp): the order a spawn order gives each new unit.
+	enum class SpawnOrderKind {
+		Hold, //!< Hold ground where it comes in, with no order: as before spawn orders.
+		Move,
+		AttackMove,
+		DefendAt, //!< Posts round the point, as Defend at gives, with the zone's size, chase and roam.
+		Patrol, //!< The route, as a loop or back and forth.
+		JetpackHere, //!< Flies to the point in the air (those with no jetpack go to the ground under it).
+		Objective, //!< The battle objective nearest the point (the nearest to the unit with none): taken, or held if it's the team's own.
+		Count
+	};
+	constexpr const char* c_SpawnOrderNames[] = {"Hold where they land", "Move", "Attack-move", "Defend at", "Patrol", "Jetpack here", "Battle objective"};
+	static_assert(std::size(c_SpawnOrderNames) == static_cast<size_t>(SpawnOrderKind::Count), "c_SpawnOrderNames must name each SpawnOrderKind.");
+
+	/// A spawn order: given to each of a team's new units once it is in and on its feet, as if the player had given it then.
+	struct SpawnOrder {
+		bool Set = false; //!< A spawn zone's: it has its own order, else its units take the team's. (A team's own is always set.)
+		SpawnOrderKind Kind = SpawnOrderKind::Hold;
+		std::vector<Vector> Points; //!< Where: the one point, a patrol's route, or none (a battle objective with no point).
+		int Facing = 0; //!< Which way to face there: -1 left, 1 right, 0 either.
+		float Direct = 0.0F; //!< How urgent, as an order placed by clicks is (Actor::StandingOrder::Direct): -1 cautious to 1 the shortest way whatever it takes.
+		bool BackAndForth = false; //!< A patrol: back and forth rather than a loop.
+		int Radius = 150; //!< Defend at: the zone's reach, chase and roam share, as on the command row when it was set.
+		int Chase = 300;
+		int Roam = 0;
+	};
+
 	struct BattleModeSettings {
 		BattleMode Mode = BattleMode::Custom;
 		std::array<int, c_Sides> TeamSize = {16, 16, 16, 16}; //!< Most units each team has alive at once, by side.
@@ -714,8 +741,11 @@ namespace SandboxDetail {
 		                            //!< falls back to the next one.
 		bool FogOfWar = false; //!< Battle Command: you see only the enemies your team's units can see (BattleFog.cpp).
 		bool MovingSpawns = false; //!< Every mode: during the game, the player can move the spawn zones of a team they command, behind the spawn line (BattleEditMouse). Chosen before it starts.
-		std::array<bool, c_Sides> PlayerCommands{}; //!< Every mode: each team the player commands. Its units come in on hold ground with no orders and
+		std::array<bool, c_Sides> PlayerCommands{}; //!< Every mode: each team the player commands. Its units come in on hold ground with no orders (or its spawn order) and
 		                                            //!< no job from the mode, for the player to command (as in an RTS); the rest of the mode (spawns, scoring) is as for any team.
+		std::array<SpawnOrder, c_Sides> SpawnOrders; //!< Every mode: what each team the player commands has its new units do (its reinforcements too), unless they come in
+		                                             //!< in a spawn zone with its own order.
+		std::array<std::vector<SpawnOrder>, c_Sides> ZoneSpawnOrders; //!< And each of its spawn zones' own, by the zone's place in SpawnZones (none past the end: the team's).
 	};
 
 	/// One queued action, with the settings it was made with.
@@ -1174,6 +1204,9 @@ namespace SandboxDetail {
 		        //!< a one-off order's mode goes back to once it's placed (and Esc). (After Select, so the ring's slices keep their places.)
 	};
 	inline CommandMode s_CommandMode = CommandMode::Command;
+	inline bool s_SpawnOrderArmed = false; //!< The next order placed sets the spawn order of your team (or of s_SpawnOrderZone) instead (TakeSpawnOrder).
+	inline double s_SpawnOrderDoneAt = -1.0; //!< When (ImGui time) setting it is over, once placed: after a second click of a double click can follow.
+	inline int s_SpawnOrderZone = -1; //!< Which of your team's spawn zones it is for, -1 for the team's own.
 	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Jetpack here", "Select units", "Command"};
 	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(140, 230, 255, 255), IM_COL32(230, 230, 230, 255), IM_COL32(255, 214, 120, 255)};
 	/// A mode whose order is given once and then goes back to Command (s_BackToCommandAt): not Select, Command or Patrol (clicked out point by point).
@@ -2269,12 +2302,37 @@ namespace SandboxDetail {
 	void MoveCommandedZone(Actor* unit, const Vector& centre, const Vector& post);
 	void DrawDefendZone(ImDrawList* drawList, const Vector& centre, float radius, float chase, ImU32 color);
 	void DrawCommandedZones(ImDrawList* drawList);
+	/// The orders the selected ones are given, for any units: defend at a point (posts round it, facing), a patrol round points, a battle objective.
+	void DefendUnitsAt(std::vector<Actor*> units, const Vector& point, int facing);
+	void PatrolUnits(std::vector<Actor*> units, const std::vector<Vector>& points, bool backAndForth);
+	void ObjectiveUnits(const std::vector<Actor*>& units, const BattleObjective& objective, bool defend);
 	bool JoinBattleObjective(Actor* unit);
 	void ReleaseFromBattleMode(const Actor* unit);
 	void SendBattleMode(int command = BattleModeSet);
 	void ApplyBattleMode(const Stroke& stroke);
 	BattleSettings ModeTeamSettings(int side, const BattleSettings& card);
 	void ModeUnitsMade(int side, const std::vector<Actor*>& wave);
+
+	// Spawn orders (SpawnOrders.cpp): a team you command has its new units given an order as they come in.
+	/// New units of a team the player commands, made (not yet in): each is given the spawn order once it is in and on its feet.
+	void SpawnOrderUnitsMade(int side, const std::vector<Actor*>& wave);
+	/// Each update: the new units in and ready given their spawn orders.
+	void UpdateSpawnOrders(bool aiPaused);
+	/// The units waiting for their spawn orders forgotten (a game started or stopped).
+	void ForgetSpawnOrderUnits();
+	/// The spawn order a team's unit at a place takes: its spawn zone's own, else the team's.
+	const SpawnOrder& SpawnOrderAt(const BattleModeSettings& settings, int side, const Vector& at);
+	/// With a spawn order being set (s_SpawnOrderArmed), an order placed by the command tool becomes it instead of going to the selection.
+	/// False when it isn't being set, and the stroke is given as usual.
+	bool TakeSpawnOrder(const Stroke& stroke);
+	/// A spawn order set for your team, or a zone of it (zone -1 for the team's), and sent.
+	void SetSpawnOrder(int side, int zone, const SpawnOrder& order);
+	/// The team whose spawn orders the Command tool's row sets: the one you command, or -1 for none.
+	int SpawnOrderSide();
+	/// The colour a spawn order is drawn in: its command mode's.
+	ImU32 SpawnOrderColor(SpawnOrderKind kind);
+	/// Where each spawn order of the team you command sends its units: a line from the zone (or every zone) to the place, in the order's colour.
+	void DrawSpawnOrders();
 
 	/// Whether a team is one the player commands in the mode's game that is on: its units get no orders from the mode or the Battle Director.
 	bool BattlePlayerCommands(int side);

@@ -773,13 +773,17 @@ end
 -- to react, not blind, and a crawling enemy at the edge of the view can get close. Run every update while fighting, every third while
 -- not, which keeps the rays near the one a tick the old look cast. @return The enemy noticed (the plainest), and where the look landed on
 -- it; or nothing.
--- @param fovDegrees The field of view about the facing. @param budget The rays a scan may cast.
+-- @param fovDegrees The field of view about the facing, or a function(AI, Owner, skill) that gives it and the budget. @param budget The rays a scan may cast.
 function SharedBehaviors.ScanForTargets(AI, Owner, skill, fovDegrees, budget)
 	local fighting = AI.Target ~= nil;
 	-- (Started by the unit's unique ID, so units made together don't all scan on the same tick; see StaggerMS.)
 	AI.scanTick = (AI.scanTick or Owner.UniqueID % 12) + 1;
 	if not fighting and AI.scanTick % 3 ~= 0 then
 		return nil;
+	end
+	-- (A field given as a function is worked out only now that the scan looks.)
+	if type(fovDegrees) == "function" then
+		fovDegrees, budget = fovDegrees(AI, Owner, skill);
 	end
 	AI.ScanClock = AI.ScanClock or Timer();
 	AI.Noticing = AI.Noticing or {};
@@ -1001,11 +1005,14 @@ function SharedBehaviors.SquadTactics(AI, Owner)
 		underFire = suppression > 0.2 or (AI.HitTimer and not AI.HitTimer:IsPastSimMS(2000));
 	end
 	if Target or (underFire and not AI.Cover) or (Owner.AIMode == Actor.AIMODE_SQUAD and not squadContact) then
+		-- (The unit's own values read once for the whole look, not again for every actor in the scene: each read is a call into the engine,
+		-- and nothing in the loop changes them.)
+		local team, ownID, OwnPos, halfHeight, dying = Owner.Team, Owner.UniqueID, Owner.Pos, Owner.Height * 0.5, Actor.DYING;
 		for Mate in MovableMan.Actors do
 			-- (Fighting men and crabs only: a craft or a door standing next to a unit made it step away under fire.)
-			if Mate.Team == Owner.Team and Mate.UniqueID ~= Owner.UniqueID and Mate.Status < Actor.DYING and not Mate:IsPlayerControlled()
-				and (Mate.ClassName == "AHuman" or Mate.ClassName == "ACrab") then
-				local Dist = SceneMan:ShortestDistance(Owner.Pos, Mate.Pos, false);
+			local className = Mate.Team == team and Mate.UniqueID ~= ownID and Mate.Status < dying and not Mate:IsPlayerControlled() and Mate.ClassName;
+			if className == "AHuman" or className == "ACrab" then
+				local Dist = SceneMan:ShortestDistance(OwnPos, Mate.Pos, false);
 				if Dist:MagnitudeIsLessThan(400) then
 					if SharedBehaviors.PeerValueExists(Mate, "AITargetID") then
 						local id = SharedBehaviors.PeerValue(Mate, "AITargetID");
@@ -1017,8 +1024,9 @@ function SharedBehaviors.SquadTactics(AI, Owner)
 					if SharedBehaviors.PeerValueExists(Mate, "AIContactMS") and now - SharedBehaviors.PeerValue(Mate, "AIContactMS") < 5000 then
 						squadContact = true;
 					end
-					if math.abs(Dist.X) < 24 and math.abs(Dist.Y) < Owner.Height * 0.5 and (not beside or math.abs(Dist.X) < besideDx) then
-						beside, besideDir, besideDx = Mate, Dist.X > 0 and -1 or 1, math.abs(Dist.X);
+					local distX = Dist.X;
+					if math.abs(distX) < 24 and math.abs(Dist.Y) < halfHeight and (not beside or math.abs(distX) < besideDx) then
+						beside, besideDir, besideDx = Mate, distX > 0 and -1 or 1, math.abs(distX);
 					end
 				end
 			end
