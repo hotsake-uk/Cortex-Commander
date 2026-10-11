@@ -290,7 +290,7 @@ void MOPixel::Draw(BITMAP* targetBitmap, const Vector& targetPos, DrawMode mode,
 		putpixel(targetBitmap, pixelPos.GetFloorIntX(), pixelPos.GetFloorIntY(), drawColor);
 	}
 
-	g_SceneMan.RegisterDrawing(targetBitmap, m_MOID, pixelPos, 1.0F);
+	g_SceneMan.RegisterDrawing(targetBitmap, m_MOID, pixelPos, 1.0F, mode == g_DrawMOID ? this : nullptr);
 }
 
 void MOPixel::Draw(const Camera& camera) const {
