@@ -1802,6 +1802,7 @@ namespace RTE {
 		};
 		std::vector<FailedLink> m_AvoidLinks; //!< Flights this failed lately (take-off, landing), and until when (sim ms).
 		// The mantle: a pull up onto a ledge, or over a low obstacle, that the legs or the jet alone would struggle with (see TryStartMantle).
+		bool m_MovePathSky = false; //!< Whether the route being followed is a sky route (PathAgent::SkyRoute): one flight up into open sky and down onto the goal, flown as a full-risk order's is (AHuman::MoveAlongRoute).
 		float m_PathCostAtAdoption = 0.0F; //!< The cost of the route being followed when it was taken, and how many points it had then: for weighing a route check's answer against what is left of it.
 		int m_PathSizeAtAdoption = 0;
 		bool m_Mantling = false;

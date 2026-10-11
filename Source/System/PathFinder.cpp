@@ -55,6 +55,7 @@ thread_local MicroPatherWrapper s_Pather;
 thread_local float s_JumpHeight = 0.0F;
 thread_local double s_LastSolveMS = 0.0; //!< Debug: how long the last solve took.
 thread_local bool s_LastCutAtDoor = false; //!< Whether the last route this thread solved was cut short at a door (see CalculatePath).
+thread_local bool s_LastSkyRoute = false; //!< Whether the last route this thread solved was a sky route (PathAgent::SkyRoute; see CalculatePath).
 thread_local int s_LastCutMaterial = 0; //!< The material in the way where the last route this thread solved was cut short, 0 when it wasn't.
 thread_local Vector s_LastCutAt; //!< About where that was: the middle of the step that was cut.
 
@@ -274,6 +275,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	float jumpHeight = agent.JumpHeight;
 	float digStrength = agent.DigStrength;
 	ApplyAgent(agent);
+	s_LastSkyRoute = false;
 	s_LeapsTaken.clear();
 	s_LiftStepsTaken.clear();
 	struct KeptLinks {
@@ -358,7 +360,15 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	// A full-risk order (PathAgent::StraightFlight): one flight from here to there, straight when the air between is open for the body, or
 	// up to a point over the way and down (two straight legs) when something is in the straight line's way, when the jet's tank flies it
 	// (reckoned as CollectFlightLinks does); not the walk and hops the search would find.
-	if (agent.StraightFlight && !agent.DigGoal && startNode && endNode && endNode->m_Navigable && jumpHeight < FLT_MAX && s_JetTimeMS > 0.0F && endNode->Surface >= 0.0F) {
+	// And a risky one (PathAgent::SkyRoute) out in the open, open sky over it: the same up-and-over flight, taken when it is quicker than the
+	// ground route the search finds (below). Its fuel is waited for at the take-off, not counted against it: the flight is the kind of
+	// attack such an order means, more than the time.
+	// (The point over the way is the lowest that both legs are open to, up to fourteen bodies over the higher end. Held to three and a half,
+	// a hill or a bunker in the way of an open-air flight was never cleared, and the order walked or climbed the route round it.)
+	std::vector<Vector> skyRoute;
+	float skyCost = 0.0F;
+	const bool flies = !agent.DigGoal && startNode && endNode && endNode->m_Navigable && jumpHeight < FLT_MAX && s_JetTimeMS > 0.0F && endNode->Surface >= 0.0F;
+	if (flies && (agent.StraightFlight || agent.SkyRoute)) {
 		const Vector landing(end.m_X, endNode->Surface - s_StandHeight * 0.5F);
 		const Vector way = g_SceneMan.ShortestDistance(start, landing);
 		const Vector head(0.0F, -s_StandHeight * 0.4F);
@@ -367,34 +377,59 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 			return 200.0F + climbFuel + across / (5.0F * c_PPM) * 0.5F * 1000.0F * 1.2F;
 		};
 		auto open = [this, &head](const Vector& from, const Vector& to) { return LineOpen(from, to) && LineOpen(from + head, to + head); };
-		if (way.MagnitudeIsGreaterThan(static_cast<float>(m_NodeDimension) * 1.5F)) {
-			std::vector<Vector> route;
-			if (fuelFor(-way.m_Y, std::abs(way.m_X)) <= s_JetTimeMS * agent.StraightFlightReach && open(start, start + way)) {
-				route = {start, end};
-			} else {
-				const float topY = std::min(start.m_Y, landing.m_Y);
-				const float body = s_StandHeight * 2.2F; // (About the CharHeight the follower's own tries are in.)
-				const std::pair<float, float> tries[] = {{0.5F, 1.0F}, {0.5F, 2.0F}, {0.35F, 2.0F}, {0.65F, 2.0F}, {0.5F, 3.5F}};
-				for (const std::pair<float, float>& at: tries) {
-					Vector top = start + way * at.first;
-					top.m_Y = topY - body * at.second;
-					if (top.m_Y < 0.0F || fuelFor(start.m_Y - top.m_Y, std::abs(way.m_X)) > s_JetTimeMS * agent.StraightFlightReach) {
-						continue;
-					}
-					g_SceneMan.WrapPosition(top);
-					if (open(start, start + g_SceneMan.ShortestDistance(start, top)) && open(top, top + g_SceneMan.ShortestDistance(top, landing))) {
-						route = {start, top, end};
-						break;
-					}
+		const float tank = s_JetTimeMS * agent.StraightFlightReach;
+		const float body = s_StandHeight * 2.2F; // (About the CharHeight the follower's own tries are in.)
+		// Up and over: the lowest point over the way that both legs are open to and the tank flies, nearest the middle first at each height.
+		auto overTheTop = [&](Vector& top) {
+			const float topY = std::min(start.m_Y, landing.m_Y);
+			const std::pair<float, float> tries[] = {{0.5F, 1.0F}, {0.5F, 2.0F}, {0.35F, 2.0F}, {0.65F, 2.0F}, {0.5F, 3.5F}, {0.35F, 3.5F}, {0.65F, 3.5F}, {0.5F, 5.0F}, {0.5F, 7.0F}, {0.5F, 10.0F}, {0.5F, 14.0F}};
+			for (const std::pair<float, float>& at: tries) {
+				Vector point = start + way * at.first;
+				point.m_Y = topY - body * at.second;
+				if (point.m_Y < 0.0F || fuelFor(start.m_Y - point.m_Y, std::abs(way.m_X)) > tank) {
+					continue;
+				}
+				g_SceneMan.WrapPosition(point);
+				if (open(start, start + g_SceneMan.ShortestDistance(start, point)) && open(point, point + g_SceneMan.ShortestDistance(point, landing))) {
+					top = point;
+					return true;
 				}
 			}
-			if (!route.empty()) {
-				pathResult.assign(route.begin(), route.end());
-				if (kinds) {
-					kinds->assign(route.size() - 1, PathStepKind::Jump);
+			return false;
+		};
+		if (way.MagnitudeIsGreaterThan(static_cast<float>(m_NodeDimension) * 1.5F)) {
+			if (agent.StraightFlight) {
+				std::vector<Vector> route;
+				Vector top;
+				if (fuelFor(-way.m_Y, std::abs(way.m_X)) <= tank && open(start, start + way)) {
+					route = {start, end};
+				} else if (overTheTop(top)) {
+					route = {start, top, end};
 				}
-				totalCostResult = way.GetMagnitude() / static_cast<float>(m_NodeDimension);
-				return MicroPather::SOLVED;
+				if (!route.empty()) {
+					pathResult.assign(route.begin(), route.end());
+					if (kinds) {
+						kinds->assign(route.size() - 1, PathStepKind::Jump);
+					}
+					totalCostResult = way.GetMagnitude() / static_cast<float>(m_NodeDimension);
+					return MicroPather::SOLVED;
+				}
+			}
+			// Out in the open: the air over the take-off open for two bodies, across the body's width (no ceiling over the head).
+			bool openSky = agent.SkyRoute;
+			for (float dx: {-agent.HalfWidth, 0.0F, agent.HalfWidth}) {
+				if (openSky && !LineOpen(start + head + Vector(dx, 0.0F), start + head + Vector(dx, -body * 2.0F))) {
+					openSky = false;
+				}
+			}
+			Vector top;
+			if (openSky && overTheTop(top)) {
+				// Priced as a flight link is (CollectFlightLinks): the climb, the way across and the drop, take-off and landing, and the fuel.
+				const float rise = std::max(0.0F, start.m_Y - top.m_Y);
+				const float drop = std::max(0.0F, landing.m_Y - top.m_Y);
+				const float seconds = rise / (4.0F * c_PPM) + std::abs(way.m_X) / (5.0F * c_PPM) + drop / (6.0F * c_PPM) + 0.6F;
+				skyCost = (seconds * 2.2F + 1.5F + fuelFor(rise, std::abs(way.m_X)) / 1000.0F) * agent.FlightCostScale;
+				skyRoute = {start, top, end};
 			}
 		}
 	}
@@ -426,6 +461,19 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 				}
 			}
 		}
+	}
+
+	// The sky route (above) when it is quicker than the ground's, or there is no way on the ground.
+	if (!skyRoute.empty() && (result != MicroPather::SOLVED || skyCost < totalCostResult)) {
+		pathResult.assign(skyRoute.begin(), skyRoute.end());
+		if (kinds) {
+			kinds->assign(skyRoute.size() - 1, PathStepKind::Jump);
+		}
+		totalCostResult = skyCost;
+		s_LastSkyRoute = true;
+		s_LastCutAtDoor = false;
+		s_LastCutMaterial = 0;
+		return MicroPather::SOLVED;
 	}
 
 	if (result == MicroPather::NO_SOLUTION) {
@@ -1062,6 +1110,7 @@ std::shared_ptr<volatile PathRequest> PathFinder::CalculatePathAsync(Vector star
 			    try {
 				    request.status = this->CalculatePath(start, end, request.path, request.totalCost, agent, &request.kinds);
 				    request.cutAtDoor = s_LastCutAtDoor;
+				    request.skyRoute = s_LastSkyRoute;
 				    request.cutMaterial = s_LastCutMaterial;
 				    request.pathLength = request.path.size();
 				    searched = true;
@@ -1077,6 +1126,7 @@ std::shared_ptr<volatile PathRequest> PathFinder::CalculatePathAsync(Vector star
 				    request.totalCost = 0.0F;
 				    request.pathLength = 0.0F;
 				    request.cutAtDoor = false;
+				    request.skyRoute = false;
 				    request.cutMaterial = 0;
 				    // The thread's pather may have been left mid-solve; the next search builds a new one.
 				    delete s_Pather.m_Instance;

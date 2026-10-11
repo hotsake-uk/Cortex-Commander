@@ -392,6 +392,12 @@ namespace RTE {
 			/// How much of a full tank a full-risk flight may need and still be flown (the risk accepted: it may come down short), by the order's
 			/// risk: 0.95 at StraightFlightRisk, up to 1.4 at full risk.
 			float FlightReach(float direct) const { return 0.95F + 0.45F * (StraightFlightRisk >= 1.0F ? (direct >= 1.0F ? 1.0F : 0.0F) : std::clamp((direct - StraightFlightRisk) / (1.0F - StraightFlightRisk), 0.0F, 1.0F)); }
+			float SkyRouteRisk = 0.8F; //!< From how much risk (0.5 to 1) any order's route may be one flight up into open sky and down onto the goal (PathAgent::SkyRoute), when there is open air over the unit and that is quicker than the ground route; the fuel for it is waited for.
+			bool Dives = true; //!< Whether units on a risky order dive on flights at all (DiveRisk, DiveChance).
+			float DiveRisk = 0.8F; //!< From how much risk (0.5 to 1) a unit may dive on a flight across (go prone in the air, the jet pushing it along), for speed rather than a controlled flight.
+			float DiveChance = 0.25F; //!< The chance of a dive on such a flight at DiveRisk, 0 to 1: it rises to every flight at full risk.
+			/// The chance a flight on an order of this risk is dived (DiveRisk, DiveChance); 0 under DiveRisk.
+			float DiveChanceAt(float direct) const { return (!Dives || direct < DiveRisk) ? 0.0F : (DiveRisk >= 1.0F ? 1.0F : DiveChance + (1.0F - DiveChance) * std::clamp((direct - DiveRisk) / (1.0F - DiveRisk), 0.0F, 1.0F)); }
 			float RiskDragPixels = 600.0F; //!< How far on screen a double click is dragged for a fully direct order, 200 to 1200 pixels: a shorter drag gets less of the direct tuning, on a curve (about 70% at four fifths of it).
 			float CautiousCaution = 2.0F; //!< The least route caution a cautious (single-clicked) order has (PathAgent::Caution): over 1 shies more from hard flights and long drops.
 			float CautiousFlightCostScale = 3.0F; //!< What a jet flight costs a cautious order, as a share of the usual (PathAgent::FlightCostScale): over 1 walks round where others jump.
