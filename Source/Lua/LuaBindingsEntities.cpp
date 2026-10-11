@@ -818,6 +818,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, HDFirearm) {
 	    .property("MaxCharge", &HDFirearm::GetMaxCharge, &HDFirearm::SetMaxCharge)
 	    .property("ChargeRegen", &HDFirearm::GetChargeRegen, &HDFirearm::SetChargeRegen)
 	    .property("AffordableRounds", &HDFirearm::GetAffordableRounds)
+	    .def("GetAffordableRoundsFor", &HDFirearm::GetAffordableRoundsFor)
 	    .property("Reloadable", &HDFirearm::IsReloadable, &HDFirearm::SetReloadable)
 	    .property("DualReloadable", &HDFirearm::IsDualReloadable, &HDFirearm::SetDualReloadable)
 	    .property("OneHandedReloadTimeMultiplier", &HDFirearm::GetOneHandedReloadTimeMultiplier, &HDFirearm::SetOneHandedReloadTimeMultiplier)

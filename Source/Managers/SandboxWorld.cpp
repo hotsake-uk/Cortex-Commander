@@ -2360,9 +2360,25 @@ namespace SandboxDetail {
 				// How urgent the order is, by its clicks (s_DirectOrder): one cautious, two normal, three risky, four the shortest way whatever it
 				// takes. (Not placed by a click: normal.)
 				struct DirectScope {
-					explicit DirectScope(float direct) { s_DirectOrder = direct; }
-					~DirectScope() { s_DirectOrder = 0.0F; }
+					explicit DirectScope(float direct) {
+						s_DirectOrder = direct;
+						s_ClickOrder = true;
+					}
+					~DirectScope() {
+						s_DirectOrder = 0.0F;
+						s_ClickOrder = false;
+					}
 				} directScope(stroke.HasRisk ? stroke.Risk : (stroke.Clicks == 1 ? -1.0F : 0.0F));
+				// And in the mode it was placed in: a one-off mode goes back to Command once placed (s_BackToCommandAt), maybe before it's given.
+				struct ModeScope {
+					CommandMode Saved = s_CommandMode;
+					explicit ModeScope(int mode) {
+						if (mode >= 0) {
+							s_CommandMode = static_cast<CommandMode>(mode);
+						}
+					}
+					~ModeScope() { s_CommandMode = Saved; }
+				} modeScope(stroke.OrderMode);
 				// An order given (it leaves a mark where it went) is logged to the modern HUD's feed: what, to how many, and how urgent.
 				const size_t marksBefore = s_OrderMarks.size();
 				struct OrderLog {

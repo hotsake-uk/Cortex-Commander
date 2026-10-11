@@ -209,8 +209,19 @@ namespace {
 	/// an update, so a crash that chips fifty squares at once doesn't do all fifty in the update already paying for the gibs. First worn, first looked at.
 	std::deque<std::pair<int, int>> s_WatchesWaiting;
 	std::map<std::pair<int, int>, long long> s_WatchWaitingDamage; //!< The waiting squares, with when each last lost a pixel.
-	std::vector<int> s_Damage; //!< Pixels knocked out since the last update, x and y by turns. Filled from (possibly parallel) collision code. A pixel in the same square as the one before it is left out.
-	int s_DamageNoted = 0; //!< How many pixels were noted into s_Damage since it was last taken, left out ones included: at most 20000 an update, as before they were left out.
+	struct DamageNote {
+		int X, Y;
+		float Force; //!< The hit's impulse, or negative for wear that always counts.
+	};
+	std::vector<DamageNote> s_Damage; //!< Pixels knocked out since the last update. Filled from (possibly parallel) collision code. A pixel in the same square as the one before it is folded into it (forces added).
+	int s_DamageNoted = 0; //!< How many pixels were noted into s_Damage since it was last taken, folded ones included: at most 20000 an update, as before they were folded.
+	/// Hits too weak to start a square being watched (Tuning::CheckMinForce), added up by square (row, column), with when the last came. Gone after c_ForceBuildupUpdates without one.
+	struct ForceBuildup {
+		float Sum = 0.0F;
+		long long Last = 0;
+	};
+	std::map<std::pair<int, int>, ForceBuildup> s_ForceBuildup;
+	constexpr long long c_ForceBuildupUpdates = 120;
 	std::mutex s_DamageMutex;
 	std::vector<Check> s_Scheduled;
 	struct ChunkRequest {
@@ -2851,19 +2862,21 @@ void TerrainCollapse::Blast(const Vector& position, float reach, float energy) {
 	}
 }
 
-void TerrainCollapse::NoteDamage(int x, int y) {
+void TerrainCollapse::NoteDamage(int x, int y, float force) {
 	if (!s_Enabled || x < 0 || y < 0) {
 		return;
 	}
 	std::scoped_lock lock(s_DamageMutex);
 	if (s_DamageNoted < 20000) {
 		++s_DamageNoted;
-		// Only the square a pixel is in matters (see Update), so one in the same square as the last one noted adds nothing. (It still counts towards the cap.)
-		if (size_t size = s_Damage.size(); size >= 2 && s_Damage[size - 2] / c_WatchCell == x / c_WatchCell && s_Damage[size - 1] / c_WatchCell == y / c_WatchCell) {
+		// Only the square a pixel is in matters (see Update), so one in the same square as the last one noted is folded into it: its force added
+		// (weak hits there add up anyway), and wear that always counts makes the note always count. (It still counts towards the cap.)
+		if (!s_Damage.empty() && s_Damage.back().X / c_WatchCell == x / c_WatchCell && s_Damage.back().Y / c_WatchCell == y / c_WatchCell) {
+			DamageNote& last = s_Damage.back();
+			last.Force = (last.Force < 0.0F || force < 0.0F) ? -1.0F : last.Force + force;
 			return;
 		}
-		s_Damage.push_back(x);
-		s_Damage.push_back(y);
+		s_Damage.push_back({x, y, force});
 	}
 }
 
@@ -3125,22 +3138,39 @@ void TerrainCollapse::Update() {
 	}
 	// Ground being dug or shot away: start watching the squares it's happening in, and check the ones being watched.
 	{
-		std::vector<int> damage;
+		std::vector<DamageNote> damage;
 		{
 			std::scoped_lock lock(s_DamageMutex);
 			damage.swap(s_Damage);
 			s_DamageNoted = 0;
 		}
-		for (size_t i = 0; i + 1 < damage.size(); i += 2) {
-			std::pair<int, int> square(damage[i + 1] / c_WatchCell, damage[i] / c_WatchCell);
+		float minForce = std::max(s_Tuning.CheckMinForce, 0.0F);
+		for (const DamageNote& note: damage) {
+			std::pair<int, int> square(note.Y / c_WatchCell, note.X / c_WatchCell);
 			if (auto found = s_Watches.find(square); found != s_Watches.end()) {
 				found->second.LastDamage = now;
 			} else if (auto waiting = s_WatchWaitingDamage.find(square); waiting != s_WatchWaitingDamage.end()) {
 				waiting->second = now;
 			} else {
+				// A square not yet watched starts being watched only for a hard enough hit, or for weaker ones on it adding up to one.
+				if (note.Force >= 0.0F && note.Force < minForce) {
+					ForceBuildup& buildup = s_ForceBuildup[square];
+					if (now - buildup.Last > c_ForceBuildupUpdates) {
+						buildup.Sum = 0.0F;
+					}
+					buildup.Sum += note.Force;
+					buildup.Last = now;
+					if (buildup.Sum < minForce) {
+						continue;
+					}
+				}
+				s_ForceBuildup.erase(square);
 				s_WatchWaitingDamage.emplace(square, now);
 				s_WatchesWaiting.push_back(square);
 			}
+		}
+		for (auto buildup = s_ForceBuildup.begin(); buildup != s_ForceBuildup.end();) {
+			buildup = now - buildup->second.Last > c_ForceBuildupUpdates ? s_ForceBuildup.erase(buildup) : std::next(buildup);
 		}
 		// A few new squares an update, more when many are waiting so the wait stays short.
 		constexpr int c_NewWatchesPerUpdate = 4;
@@ -3207,6 +3237,7 @@ void TerrainCollapse::Clear() {
 	s_Watches.clear();
 	s_WatchesWaiting.clear();
 	s_WatchWaitingDamage.clear();
+	s_ForceBuildup.clear();
 	s_Rested.clear();
 	s_Blasts.clear();
 	{

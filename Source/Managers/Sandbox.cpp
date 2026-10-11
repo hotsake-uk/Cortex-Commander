@@ -111,9 +111,9 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		s_Queue.push_back(stroke);
 		return true;
 	}
-	if (stroke.Kind == Tool::Command && s_CommandMode == CommandMode::Select) {
+	if (stroke.Kind == Tool::Command && (s_CommandMode == CommandMode::Select || s_CommandMode == CommandMode::Command)) {
 		// (A script's command clicks are orders, as they were before the tool started out selecting: a move, or an attack on an enemy.)
-		s_CommandMode = CommandMode::Move;
+		stroke.OrderMode = static_cast<int>(CommandMode::Move);
 	}
 	if (stroke.Kind == Tool::None) {
 		// "Look around" from a script: put the free camera on the point, and stop following anything.
@@ -503,7 +503,7 @@ void Sandbox::ToggleCommander() {
 		s_FreeCameraStarted = false;
 		s_FollowTarget = UnitRef();
 		s_ToolIndex = ToolIndex(Tool::Command);
-		s_CommandMode = CommandMode::Select;
+		s_CommandMode = CommandMode::Command;
 		s_Open = true;
 		return;
 	}
@@ -533,6 +533,16 @@ bool Sandbox::IsLookingAround() {
 	static const bool testRun = std::getenv("CCCP_HIDE_PANELS") != nullptr;
 	const GameActivity* game = CurrentGame();
 	return IsGodMode() && game && !s_Possessed && s_PlayerEnterPending == 0 && !game->IsFreeBuildMode() && (!testRun || s_Open);
+}
+
+bool Sandbox::TakeEscape() {
+	if (!IsGodMode() || s_Possessed || !(s_Open || IsLookingAround()) || CurrentTool().Kind != Tool::Command || s_CommandMode == CommandMode::Command || ImGui::GetIO().WantTextInput) {
+		return false;
+	}
+	s_CommandMode = CommandMode::Command;
+	s_PatrolDraft.clear();
+	s_BackToCommandAt = -1.0;
+	return true;
 }
 
 bool Sandbox::CapturesWorldClicks() {
@@ -567,7 +577,7 @@ void Sandbox::DrawGUI() {
 			s_Selected.clear();
 			s_FollowTarget = UnitRef();
 			s_ToolIndex = ToolIndex(IsBattleCommand() ? Tool::Command : Tool::Unit);
-			s_CommandMode = CommandMode::Select;
+			s_CommandMode = CommandMode::Command;
 		}
 	} else {
 		if (s_GodViewSetUp) {
@@ -701,6 +711,8 @@ void Sandbox::DrawGUI() {
 	if (InGame() && !g_DebugMan.IsPhotoModeHidingHUD()) {
 		// A Battle Director mode's game: its flags and score, with the window open or not.
 		DrawBattleMode();
+		DrawBattleEdit();
+		DrawBattleEditNote();
 	}
 	// With the tools hidden in the Sandbox game mode you're still above it all: the view goes on moving with the mouse and keys, and the tool in hand goes on
 	// working. Only the window itself is left out.
@@ -752,6 +764,7 @@ void Sandbox::DrawGUI() {
 			DrawFogGhosts();
 			DrawPowerTarget();
 			DrawVeterans();
+			DrawMorale();
 		}
 	}
 
@@ -872,7 +885,12 @@ void Sandbox::DrawGUI() {
 	if (CapturesWorldClicks()) {
 		const ToolInfo& tool = CurrentTool();
 		Vector position = MouseScenePosition();
-		if (tool.Kind == Tool::Command) {
+		// With the battle panel showing, a click on one of the battle's zones or points selects and moves it (BattleEditMouse) rather than
+		// giving an order.
+		const bool battleEdit = tool.Kind == Tool::Command && BattleEditMouse();
+		if (battleEdit) {
+			// (Taken: no order, box or stroke from this click.)
+		} else if (tool.Kind == Tool::Command) {
 			// Drag a box to select units; click the ground to send them there, or an enemy to attack it. A click on a "no route" marker
 			// (RC-7) sends its units there again instead.
 			if (const NoRoute* marker = ImGui::IsMouseClicked(ImGuiMouseButton_Left) ? NoRouteAt(io.MousePos) : nullptr) {
@@ -952,7 +970,9 @@ void Sandbox::DrawGUI() {
 			std::string label = std::to_string(static_cast<int>(length)) + " px    right click or Enter: done";
 			drawList->AddText(ImVec2(io.MousePos.x + 14.0F, io.MousePos.y + 10.0F), color, label.c_str());
 		}
-		DrawSideRing();
+		if (!battleEdit) {
+			DrawSideRing();
+		}
 		if (!s_RingOpen) {
 			DrawCursor();
 		}
@@ -1025,23 +1045,41 @@ void Sandbox::DrawGUI() {
 			}
 		}
 	}
+	// A one-off order's mode back to Command once it's placed, when no second click of a double click can follow.
+	if (s_BackToCommandAt >= 0.0 && !s_Dragging && ImGui::GetTime() >= s_BackToCommandAt) {
+		if (s_CommandMode == s_BackToCommandFrom) {
+			s_CommandMode = CommandMode::Command;
+		}
+		s_BackToCommandAt = -1.0;
+	}
 	if (s_Dragging) {
 		ImVec2 now = io.MousePos;
 		// Defend at (RC-4), and a move or attack-move with Alt held (RC-5), drag the way to face, drawn as an arrow; anything else drags a box
 		// to select.
 		bool defendAt = s_CommandMode == CommandMode::DefendAt && CurrentTool().Kind == Tool::Command;
-		bool facingMove = (s_CommandMode == CommandMode::Move || s_CommandMode == CommandMode::AttackMove) && io.KeyAlt && CurrentTool().Kind == Tool::Command;
+		// (Command mode is as Move where it would move, at the place the drag began; as Select with nothing selected.)
+		const bool commandTool = CurrentTool().Kind == Tool::Command;
+		CommandTarget::Kind commandAt = CommandTarget::Select;
+		if (commandTool && s_CommandMode == CommandMode::Command) {
+			Vector start = g_CameraMan.GetOffset(0) + Vector(s_DragStart.x - ViewOrigin().x, s_DragStart.y - ViewOrigin().y) * ScenePixelsPerWindowPixel();
+			g_SceneMan.WrapPosition(start);
+			commandAt = CommandTargetAt(start).What;
+		}
+		const bool commandMove = s_CommandMode == CommandMode::Command && commandAt == CommandTarget::Move;
+		bool facingMove = (s_CommandMode == CommandMode::Move || s_CommandMode == CommandMode::AttackMove || commandMove) && io.KeyAlt && commandTool;
 		bool dropLine = CurrentTool().Kind == Tool::BattleDropLine;
 		// A double click held and dragged sets how much risk the order takes, from normal at the click to full at the risk distance, and the
 		// way dragged is the way they face when they get there. It takes over from the box, the facing arrow and the patrol clicks.
-		bool riskDrag = CurrentTool().Kind == Tool::Command && s_ClickCount >= 2 && s_CommandMode != CommandMode::Select && s_CommandMode != CommandMode::Patrol;
+		bool riskDrag = commandTool && s_ClickCount >= 2 && s_CommandMode != CommandMode::Select && s_CommandMode != CommandMode::Patrol && !(s_CommandMode == CommandMode::Command && commandAt == CommandTarget::Select);
 		float riskPixels = std::max(1.0F, g_SettingsMan.DirectOrders().RiskDragPixels);
 		float dragLength = std::sqrt((now.x - s_DragStart.x) * (now.x - s_DragStart.x) + (now.y - s_DragStart.y) * (now.y - s_DragStart.y));
-		float risk = std::clamp(dragLength / riskPixels, 0.0F, 1.0F);
+		// (On a curve: slow at first and steep at the end, so a long drag is about 70% and full risk, a suicide mission, takes the whole of it.)
+		float risk = std::pow(std::clamp(dragLength / riskPixels, 0.0F, 1.0F), 1.6F);
+		const bool suicide = risk >= g_SettingsMan.DirectOrders().StraightFlightRisk;
 		bool riskDragging = riskDrag && std::abs(now.x - s_DragStart.x) + std::abs(now.y - s_DragStart.y) > 8.0F;
 		if (riskDragging) {
 			ImDrawList* draw = ImGui::GetForegroundDrawList();
-			ImU32 color = IM_COL32(static_cast<int>(90.0F + 165.0F * risk), static_cast<int>(200.0F - 150.0F * risk), static_cast<int>(255.0F - 205.0F * risk), 230);
+			ImU32 color = suicide ? IM_COL32(255, 40, 40, 255) : IM_COL32(static_cast<int>(90.0F + 165.0F * risk), static_cast<int>(200.0F - 150.0F * risk), static_cast<int>(255.0F - 205.0F * risk), 230);
 			draw->AddCircle(s_DragStart, riskPixels, IM_COL32(255, 255, 255, 60), 64, 1.0F);
 			draw->AddLine(s_DragStart, now, color, 2.0F + 3.0F * risk);
 			if (dragLength > 1.0F) {
@@ -1050,7 +1088,7 @@ void Sandbox::DrawGUI() {
 				draw->AddTriangleFilled(ImVec2(now.x + dir.x * 10.0F, now.y + dir.y * 10.0F), ImVec2(now.x + normal.x * 6.0F, now.y + normal.y * 6.0F), ImVec2(now.x - normal.x * 6.0F, now.y - normal.y * 6.0F), color);
 			}
 			char label[32];
-			std::snprintf(label, sizeof(label), "Risk %d%%", static_cast<int>(std::round(risk * 100.0F)));
+			std::snprintf(label, sizeof(label), suicide ? "Suicide %d%%" : "Risk %d%%", static_cast<int>(std::round(risk * 100.0F)));
 			draw->AddText(ImVec2(now.x + 14.0F, now.y - 22.0F), color, label);
 		} else if (dropLine) {
 			ImGui::GetForegroundDrawList()->AddLine(s_DragStart, now, c_SideColors[std::clamp(s_BattleEditTeam, 0, c_Sides - 1)], 3.0F);
@@ -1090,7 +1128,7 @@ void Sandbox::DrawGUI() {
 				stroke.Risk = risk;
 				if (s_CommandMode == CommandMode::DefendAt) {
 					stroke.Count = io.KeyShift ? 11 : 10;
-				} else if (s_CommandMode == CommandMode::Move || s_CommandMode == CommandMode::AttackMove) {
+				} else if (s_CommandMode == CommandMode::Move || s_CommandMode == CommandMode::AttackMove || commandMove) {
 					stroke.Count = io.KeyShift ? 31 : 30;
 				} else {
 					stroke.Count = io.KeyShift ? 1 : 0;
@@ -1125,6 +1163,11 @@ void Sandbox::DrawGUI() {
 			if (give) {
 				// (One click places the order cautiously and two normally; a double click dragged carries its own risk.)
 				stroke.Clicks = stroke.Kind == Tool::Command ? s_ClickCount : 0;
+				if (stroke.Kind == Tool::Command) {
+					// Command mode gives a move facing the way dragged as Move does (FacingMoveSelected).
+					stroke.OrderMode = static_cast<int>(commandMove && stroke.Count >= 30 ? CommandMode::Move : s_CommandMode);
+					BackToCommandAfterOrder(io.KeyShift);
+				}
 				s_Queue.push_back(stroke);
 			}
 		}
