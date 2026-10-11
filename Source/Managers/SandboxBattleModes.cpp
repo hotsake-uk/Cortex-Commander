@@ -3029,7 +3029,7 @@ namespace SandboxDetail {
 			s_EscortVip = MakeRef(pick);
 			s_EscortHasVip = true;
 			s_EscortCentre = pick->GetPos();
-			pick->SetHighlighted(true);
+			pick->SetHighlighted(true, true);
 			s_Runners.erase(pick->GetUniqueID());
 			s_BattleDefenders.erase(pick->GetUniqueID());
 			if (!BattlePlayerCommands(side)) {
@@ -3935,7 +3935,7 @@ namespace SandboxDetail {
 			vip.Unit = MakeRef(pick);
 			vip.Has = true;
 			vip.Pos = pick->GetPos();
-			pick->SetHighlighted(true);
+			pick->SetHighlighted(true, true);
 			s_Runners.erase(pick->GetUniqueID());
 			if (!BattlePlayerCommands(side)) {
 				pick->SetOrderAttack(false);
