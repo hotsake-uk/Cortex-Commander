@@ -979,6 +979,9 @@
     <ClCompile Include="Source\Managers\SandboxWorld.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Managers\SandboxLoadouts.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Managers\SandboxPlayer.cpp">
       <Filter>Managers</Filter>
     </ClCompile>

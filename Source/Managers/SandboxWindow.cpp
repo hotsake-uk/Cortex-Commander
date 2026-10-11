@@ -1079,21 +1079,35 @@ namespace SandboxDetail {
 		}
 	}
 
-	void LoadoutChooser(const char* label) {
-		const char* current = s_Loadout == 0 ? "Faction default" : (s_Loadout == 1 ? "Unarmed" : (s_Loadout - 2 < static_cast<int>(s_Weapons.size()) ? s_Weapons[s_Loadout - 2]->Label.c_str() : "?"));
-		if (ImGui::BeginCombo(label, current)) {
-			if (ImGui::Selectable("Faction default", s_Loadout == 0)) {
-				s_Loadout = 0;
+	void LoadoutChooser(const char* label, bool mine) {
+		const bool custom = mine && s_SpawnPick.Kind != CustomPick::None && !s_RandomUnits;
+		std::string customName = custom ? s_SpawnPick.Name + (s_SpawnPick.Kind == CustomPick::Squad ? " (my squad)" : " (my loadout)") : std::string();
+		const char* current = custom ? customName.c_str() : s_Loadout == 0 ? "Faction default" : (s_Loadout == 1 ? "Unarmed" : (s_Loadout - 2 < static_cast<int>(s_Weapons.size()) ? s_Weapons[s_Loadout - 2]->Label.c_str() : "?"));
+		if (ImGui::BeginCombo(label, current, ImGuiComboFlags_HeightLarge)) {
+			if (mine && CustomPickItems(s_SpawnPick, true)) {
+				s_RandomUnits = false;
 			}
-			if (ImGui::Selectable("Unarmed", s_Loadout == 1)) {
+			if (mine) {
+				ImGui::SeparatorText("The unit picked, carrying");
+			}
+			if (ImGui::Selectable("Faction default", !custom && s_Loadout == 0)) {
+				s_Loadout = 0;
+				s_SpawnPick = CustomPick();
+			}
+			if (ImGui::Selectable("Unarmed", !custom && s_Loadout == 1)) {
 				s_Loadout = 1;
+				s_SpawnPick = CustomPick();
 			}
 			for (int i = 0; i < static_cast<int>(s_Weapons.size()); ++i) {
-				if (ImGui::Selectable(s_Weapons[i]->Label.c_str(), s_Loadout == i + 2)) {
+				if (ImGui::Selectable(s_Weapons[i]->Label.c_str(), !custom && s_Loadout == i + 2)) {
 					s_Loadout = i + 2;
+					s_SpawnPick = CustomPick();
 				}
 			}
 			ImGui::EndCombo();
+		}
+		if (custom) {
+			ImGui::SetItemTooltip(s_SpawnPick.Kind == CustomPick::Squad ? "One of your squads: a click puts the whole squad down, the first unit leading, the rest following it." : "One of your loadouts: its own unit carrying its own kit, in place of the unit picked above.");
 		}
 	}
 
@@ -1113,6 +1127,25 @@ namespace SandboxDetail {
 				pick = "*";
 			}
 			ImGui::SetItemTooltip("Each one picked at random, from where the Units list's random units come from (Random units, favourites or a faction).");
+			// Your loadouts whose unit can sit.
+			LoadLoadoutsFile();
+			bool loadoutsHeaded = false;
+			for (const CustomLoadout& loadout: s_CustomLoadouts) {
+				if (!CanCrew(FindPreset(s_Units, loadout.Body))) {
+					continue;
+				}
+				if (!loadoutsHeaded) {
+					ImGui::SeparatorText("My loadouts");
+					loadoutsHeaded = true;
+				}
+				std::string key = "@" + loadout.Name;
+				ImGui::PushID(key.c_str());
+				if (ImGui::Selectable(loadout.Name.c_str(), pick == key)) {
+					pick = key;
+				}
+				ImGui::SetItemTooltip("%s carrying its own kit (the loadout below is not used for it)", loadout.Body.c_str());
+				ImGui::PopID();
+			}
 			ImGui::Separator();
 			if (ImGui::IsWindowAppearing()) {
 				ImGui::SetKeyboardFocusHere();
@@ -1406,12 +1439,12 @@ namespace SandboxDetail {
 		return false;
 	}
 
-	void PictureGrid(Tool kind, const char* group, std::string* pickInto) {
+	void PictureGrid(Tool kind, const char* group, std::string* pickInto, float rows, int pickerSlot) {
 		LoadFavouritesFile();
 		const std::vector<Preset>& list = ListFor(kind);
 		int& choice = ChoiceFor(kind);
-		// A picker keeps its search and filters apart from the tool's, under the character's tool.
-		Tool filterKey = pickInto ? Tool::PlayCharacter : kind;
+		// A picker keeps its search and filters apart from the tool's, under the character's tool (or, for another picker, a key past every tool).
+		Tool filterKey = pickInto ? (pickerSlot > 0 ? static_cast<Tool>(10000 + pickerSlot) : Tool::PlayCharacter) : kind;
 		char* filter = FilterFor(filterKey, true);
 		// How the tiles show what each thing is like: not at all, in the tooltip, or on the tile too. One setting for every list.
 		const char* statsModes[] = {"Stats: off", "Stats: on hover", "Stats: always"};
@@ -1473,7 +1506,7 @@ namespace SandboxDetail {
 		constexpr int c_TileStatLines = 3;
 		float labelHeight = ImGui::GetTextLineHeight() * (statsMode == 2 ? 2.0F + static_cast<float>(c_TileStatLines) : 2.0F);
 		// A picker sits among other settings, so it keeps to a few rows rather than filling the rest of the window.
-		float height = pickInto ? (cell + labelHeight + style.ItemSpacing.y) * 2.6F : std::max(ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() * 6.5F, cell * 2.5F);
+		float height = pickInto && rows < 0.0F ? std::max(ImGui::GetContentRegionAvail().y, cell * 1.5F) : pickInto ? (cell + labelHeight + style.ItemSpacing.y) * (rows > 0.0F ? rows : 2.6F) : std::max(ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() * 6.5F, cell * 2.5F);
 		ImGui::BeginChild("##pictures", ImVec2(-1.0F, height), ImGuiChildFlags_Borders);
 		int columns = std::max(1, static_cast<int>((ImGui::GetContentRegionAvail().x + style.ItemSpacing.x) / (cell + style.ItemSpacing.x)));
 		int shown = 0;
@@ -1563,6 +1596,10 @@ namespace SandboxDetail {
 			} else if (picked) {
 				choice = i;
 				TookTool(ToolIndex(kind));
+				if (kind == Tool::Unit || kind == Tool::Drop) {
+					// (This unit, then, not one of your loadouts or squads.)
+					s_SpawnPick = CustomPick();
+				}
 			}
 			if (ImGui::IsItemClicked(ImGuiMouseButton_Right) && Sandbox::IsGodMode() && !pickInto) {
 				TogglePin(kind, preset.PresetName);
@@ -1757,9 +1794,8 @@ namespace SandboxDetail {
 					if (building == Colony::Buildings().end()) {
 						continue;
 					}
-					const Colony::Type& type = Colony::GetType(building->What);
-					ImVec2 corner = ToScreen(building->Ground - Vector(static_cast<float>(type.Width) * 0.5F, static_cast<float>(type.Height)));
-					drawList->AddRect(corner, ToScreen(building->Ground + Vector(static_cast<float>(type.Width) * 0.5F, 0.0F)), fade(green, 200), 0.0F, 0, 1.5F);
+					ImVec2 corner = ToScreen(building->Ground - Vector(static_cast<float>(building->Width()) * 0.5F, static_cast<float>(building->Height())));
+					drawList->AddRect(corner, ToScreen(building->Ground + Vector(static_cast<float>(building->Width()) * 0.5F, 0.0F)), fade(green, 200), 0.0F, 0, 1.5F);
 					labelAt = ImVec2(corner.x, corner.y - ImGui::GetTextLineHeight() - 2.0F);
 				}
 				if (!inView(labelAt, 40.0F)) {
@@ -2246,18 +2282,25 @@ namespace SandboxDetail {
 		}
 		if (IsColonyTool(tool.Kind)) {
 			// The plot it will take, on the ground under the pointer.
+			// (A lite one's box, just where the pointer is.)
 			const Colony::Type& type = Colony::GetType(ColonyKindOf(tool.Kind));
+			int plotWidth = s_ColonyLite ? Colony::c_LiteWidth : type.Width;
+			int plotHeight = s_ColonyLite ? Colony::c_LiteHeight : type.Height;
 			Vector ground = MouseScenePosition();
-			int sceneHeight = g_SceneMan.GetSceneHeight();
-			for (int tries = 0; tries < 600 && g_SceneMan.GetTerrMatter(ground.GetFloorIntX(), ground.GetFloorIntY()) != g_MaterialAir; ++tries) {
-				ground.m_Y -= 1.0F;
+			if (s_ColonyLite) {
+				ground.m_Y = std::floor(ground.m_Y) + static_cast<float>(plotHeight / 2 - 1);
+			} else {
+				int sceneHeight = g_SceneMan.GetSceneHeight();
+				for (int tries = 0; tries < 600 && g_SceneMan.GetTerrMatter(ground.GetFloorIntX(), ground.GetFloorIntY()) != g_MaterialAir; ++tries) {
+					ground.m_Y -= 1.0F;
+				}
+				while (ground.m_Y < static_cast<float>(sceneHeight - 2) && g_SceneMan.GetTerrMatter(ground.GetFloorIntX(), ground.GetFloorIntY() + 1) == g_MaterialAir) {
+					ground.m_Y += 1.0F;
+				}
 			}
-			while (ground.m_Y < static_cast<float>(sceneHeight - 2) && g_SceneMan.GetTerrMatter(ground.GetFloorIntX(), ground.GetFloorIntY() + 1) == g_MaterialAir) {
-				ground.m_Y += 1.0F;
-			}
-			Vector corner = FromCamera(ground + Vector(-static_cast<float>(type.Width / 2), 1.0F - static_cast<float>(type.Height)));
+			Vector corner = FromCamera(ground + Vector(-static_cast<float>(plotWidth / 2), 1.0F - static_cast<float>(plotHeight)));
 			ImVec2 topLeft(ViewOrigin().x + corner.m_X / scale, ViewOrigin().y + corner.m_Y / scale);
-			drawList->AddRect(topLeft, ImVec2(topLeft.x + static_cast<float>(type.Width) / scale, topLeft.y + static_cast<float>(type.Height) / scale), c_SideColors[s_Team], 0.0F, 0, 1.5F);
+			drawList->AddRect(topLeft, ImVec2(topLeft.x + static_cast<float>(plotWidth) / scale, topLeft.y + static_cast<float>(plotHeight) / scale), c_SideColors[s_Team], 0.0F, 0, 1.5F);
 			if (tool.Kind == Tool::Woodcutter) {
 				// How far its staff go for trees.
 				Vector middle = FromCamera(ground);
@@ -2312,21 +2355,39 @@ namespace SandboxDetail {
 			} else if ((tool.Kind == Tool::Unit && !s_RandomUnits) || tool.Kind == Tool::Brain || tool.Kind == Tool::Vehicle) {
 				// The units a click puts down, see-through, where they will stand (SpawnUnits): the squad spread out sideways from the point,
 				// facing the middle of the view.
-				if (const Preset* preset = ChosenPreset(tool.Kind, ChoiceFor(tool.Kind))) {
-					const PiecePicture& picture = PictureOf(*preset);
-					if (picture.Texture != 0) {
-						Vector mouse = MouseScenePosition();
-						Vector viewMiddle(g_CameraMan.GetOffset(0).m_X + static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, mouse.m_Y);
-						bool flipped = g_SceneMan.ShortestDistance(mouse, viewMiddle, g_SceneMan.SceneWrapsX()).m_X < 0.0F;
-						int count = tool.Kind == Tool::Unit ? std::max(s_SquadSize, 1) : 1;
-						for (int i = 0; i < count; ++i) {
-							float spread = (static_cast<float>(i) - static_cast<float>(count - 1) * 0.5F) * 16.0F;
-							// Mirrored about the unit's position when it faces left, as the game draws it.
-							float left = flipped ? -picture.OffsetX - static_cast<float>(picture.Width) + 1.0F : picture.OffsetX;
-							ImVec2 topLeft = ToScreen(mouse + Vector(spread + left, picture.OffsetY));
-							ImVec2 bottomRight(topLeft.x + static_cast<float>(picture.Width) / scale, topLeft.y + static_cast<float>(picture.Height) / scale);
-							drawList->AddImage(static_cast<ImTextureID>(picture.Texture), topLeft, bottomRight, ImVec2(flipped ? 1.0F : 0.0F, 0.0F), ImVec2(flipped ? 0.0F : 1.0F, 1.0F), IM_COL32(255, 255, 255, 150));
+				// (One of your loadouts or squads: each its own unit.)
+				std::vector<const Preset*> bodies;
+				if (tool.Kind == Tool::Unit && s_SpawnPick.Kind != CustomPick::None) {
+					for (const CustomLoadout& unit: UnitsOfPick(s_SpawnPick)) {
+						const Preset* body = FindPreset(s_Units, unit.Body);
+						bodies.push_back(body ? body : FindPreset(s_Brains, unit.Body));
+					}
+					if (s_SpawnPick.Kind == CustomPick::Loadout && !bodies.empty()) {
+						bodies.assign(static_cast<size_t>(std::max(s_SquadSize, 1)), bodies.front());
+					}
+				}
+				if (bodies.empty()) {
+					bodies.assign(tool.Kind == Tool::Unit ? static_cast<size_t>(std::max(s_SquadSize, 1)) : 1, ChosenPreset(tool.Kind, ChoiceFor(tool.Kind)));
+				}
+				{
+					Vector mouse = MouseScenePosition();
+					Vector viewMiddle(g_CameraMan.GetOffset(0).m_X + static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, mouse.m_Y);
+					bool flipped = g_SceneMan.ShortestDistance(mouse, viewMiddle, g_SceneMan.SceneWrapsX()).m_X < 0.0F;
+					int count = static_cast<int>(bodies.size());
+					for (int i = 0; i < count; ++i) {
+						if (!bodies[i]) {
+							continue;
 						}
+						const PiecePicture& picture = PictureOf(*bodies[i]);
+						if (picture.Texture == 0) {
+							continue;
+						}
+						float spread = (static_cast<float>(i) - static_cast<float>(count - 1) * 0.5F) * 16.0F;
+						// Mirrored about the unit's position when it faces left, as the game draws it.
+						float left = flipped ? -picture.OffsetX - static_cast<float>(picture.Width) + 1.0F : picture.OffsetX;
+						ImVec2 topLeft = ToScreen(mouse + Vector(spread + left, picture.OffsetY));
+						ImVec2 bottomRight(topLeft.x + static_cast<float>(picture.Width) / scale, topLeft.y + static_cast<float>(picture.Height) / scale);
+						drawList->AddImage(static_cast<ImTextureID>(picture.Texture), topLeft, bottomRight, ImVec2(flipped ? 1.0F : 0.0F, 0.0F), ImVec2(flipped ? 0.0F : 1.0F, 1.0F), IM_COL32(255, 255, 255, 150));
 					}
 				}
 			} else if (tool.UsesRadius && !shapeFill) {
@@ -2644,7 +2705,7 @@ namespace SandboxDetail {
 					label = count + " guard " + object->GetPresetName() + ", holding posts round it and seeing off enemies that come near";
 				} else if (building) {
 					const Colony::Type& type = Colony::GetType(building->What);
-					drawList->AddRect(ToScreen(building->Ground - Vector(static_cast<float>(type.Width) * 0.5F, static_cast<float>(type.Height))), ToScreen(building->Ground + Vector(static_cast<float>(type.Width) * 0.5F, 0.0F)), green, 0.0F, 0, pixel * 1.5F);
+					drawList->AddRect(ToScreen(building->Ground - Vector(static_cast<float>(building->Width()) * 0.5F, static_cast<float>(building->Height()))), ToScreen(building->Ground + Vector(static_cast<float>(building->Width()) * 0.5F, 0.0F)), green, 0.0F, 0, pixel * 1.5F);
 					for (const Vector& spot: StandingSpots(building->Ground, static_cast<int>(units.size()))) {
 						flag(spot, green);
 					}
@@ -3335,11 +3396,11 @@ namespace SandboxDetail {
 		drawList->PushClipRect(ImVec2(view.x, view.y), ImVec2(view.x + view.w, view.y + view.h));
 		for (const Colony::Building& building: Colony::Buildings()) {
 			const Colony::Type& type = Colony::GetType(building.What);
-			ImVec2 top = ToScreen(building.Ground + Vector(0.0F, -static_cast<float>(type.Height) - 6.0F));
+			ImVec2 top = ToScreen(building.Ground + Vector(0.0F, -static_cast<float>(building.Height()) - 6.0F));
 			if (top.x < view.x - 100.0F || top.x > view.x + view.w + 100.0F || top.y < view.y || top.y > view.y + view.h + 40.0F) {
 				continue;
 			}
-			std::string label = std::string(type.Name);
+			std::string label = std::string(building.Lite ? "Lite " : "") + type.Name;
 			if (building.What == Colony::Kind::Barracks) {
 				label += "  " + std::to_string(building.Alive.size()) + "/" + std::to_string(building.KeepAlive);
 			} else if (building.What == Colony::Kind::Woodcutter) {
@@ -3363,7 +3424,7 @@ namespace SandboxDetail {
 				drawList->AddCircle(ToScreen(building.Ground), Colony::PowerRange() / scale, (c_SideColors[building.Team] & ~IM_COL32_A_MASK) | IM_COL32(0, 0, 0, 60), 96, 1.0F);
 			}
 			if (building.What == Colony::Kind::Barracks && building.Paid) {
-				float barWidth = std::max(static_cast<float>(type.Width) / scale * 0.6F, 30.0F);
+				float barWidth = std::max(static_cast<float>(building.Width()) / scale * 0.6F, 30.0F);
 				ImVec2 barAt(top.x - barWidth * 0.5F, top.y - 3.0F);
 				drawList->AddRectFilled(barAt, ImVec2(barAt.x + barWidth, barAt.y + 4.0F), IM_COL32(0, 0, 0, 160));
 				drawList->AddRectFilled(barAt, ImVec2(barAt.x + barWidth * std::clamp(building.Progress, 0.0F, 1.0F), barAt.y + 4.0F), c_SideColors[building.Team]);
@@ -3389,7 +3450,7 @@ namespace SandboxDetail {
 	/// The details of one colony building, opened under its row in the Colony tab.
 	void ColonyBuildingDetails(Colony::Building& building) {
 		const Colony::Type& type = Colony::GetType(building.What);
-		ImGui::TextDisabled("%s %s. %s", Colony::StyleName(building.Looks), Colony::GetLook(building.What, building.Looks).Building, type.Description);
+		ImGui::TextDisabled("%s %s. %s", Colony::StyleName(building.Looks), building.Lite ? "lite box" : Colony::GetLook(building.What, building.Looks).Building, type.Description);
 		if (building.What == Colony::Kind::Barracks) {
 			if (building.Paid) {
 				ImGui::ProgressBar(building.Progress, ImVec2(-1.0F, 0.0F));
@@ -3497,12 +3558,20 @@ namespace SandboxDetail {
 		}
 		s_ColonyStyle = static_cast<Colony::Style>(chosenStyle);
 		ImGui::SetItemTooltip("How the buildings you put down look: medieval timber and stone, or sci-fi metal and glass. They work the same.");
+		ImGui::SameLine();
+		ImGui::Checkbox("Lite", &s_ColonyLite);
+		ImGui::SetItemTooltip("Just its core: a small box with its brain in, put exactly where you click (in the air, or carved into the ground), to build your own building round. It does all the full building does.");
 		ToolButtons({Tool::Woodcutter, Tool::Barracks, Tool::Extractor, Tool::Generator});
 		Tool kind = CurrentTool().Kind;
 		if (IsColonyTool(kind)) {
 			const Colony::Kind building = ColonyKindOf(kind);
-			ImGui::TextWrapped("%s: %s", Colony::GetLook(building, s_ColonyStyle).Building, Colony::GetType(building).Description);
-			ImGui::TextDisabled("Click on the ground to build it. Its brain is put in a chamber at the back for you.");
+			if (s_ColonyLite) {
+				ImGui::TextWrapped("Lite %s: %s", Colony::GetType(building).Name, Colony::GetType(building).Description);
+				ImGui::TextDisabled("Click anywhere to put its box there, its brain inside. Build your own building round it: its units and staff come out on its right.");
+			} else {
+				ImGui::TextWrapped("%s: %s", Colony::GetLook(building, s_ColonyStyle).Building, Colony::GetType(building).Description);
+				ImGui::TextDisabled("Click on the ground to build it. Its brain is put in a chamber at the back for you.");
+			}
 			SideChooser();
 			if (kind == Tool::Barracks) {
 				ImGui::TextDisabled("It trains:");
@@ -3539,9 +3608,9 @@ namespace SandboxDetail {
 					count = "  " + std::to_string(building.Staff.size()) + "/" + std::to_string(building.KeepAlive);
 				}
 				ImGui::PushStyleColor(ImGuiCol_Text, c_SideColors[building.Team]);
-				bool open = ImGui::TreeNodeEx("##building", ImGuiTreeNodeFlags_SpanAvailWidth, "%s%s", type.Name, count.c_str());
+				bool open = ImGui::TreeNodeEx("##building", ImGuiTreeNodeFlags_SpanAvailWidth, "%s%s%s", building.Lite ? "Lite " : "", type.Name, count.c_str());
 				ImGui::PopStyleColor();
-				ImGui::SetItemTooltip("%s %s, %s's", Colony::StyleName(building.Looks), Colony::GetLook(building.What, building.Looks).Building, c_SideNames[building.Team]);
+				ImGui::SetItemTooltip("%s %s, %s's", Colony::StyleName(building.Looks), building.Lite ? "lite box" : Colony::GetLook(building.What, building.Looks).Building, c_SideNames[building.Team]);
 				ImGui::TableNextColumn();
 				ColonyStatusPill(building);
 				ImGui::TableNextColumn();
@@ -4526,8 +4595,8 @@ namespace SandboxDetail {
 			std::string randomName = RandomSourceName(s_RandomFavourites, s_RandomFaction);
 			wide();
 			ImGui::AlignTextToFramePadding();
-			ImGui::TextUnformatted(s_RandomUnits ? randomName.c_str() : preset ? preset->PresetName.c_str()
-			                                                                   : "(pick one in the Spawn panel)");
+			ImGui::TextUnformatted(s_RandomUnits ? randomName.c_str() : s_SpawnPick.Kind != CustomPick::None ? s_SpawnPick.Name.c_str() : preset ? preset->PresetName.c_str()
+			                                                                                                                       : "(pick one in the Spawn panel)");
 			next();
 			if (BarChip("Random", s_RandomUnits, ToolTheme::Text, nullptr, "Each unit is picked at random (from what the Spawn panel says), not the one chosen.") == 1) {
 				s_RandomUnits = !s_RandomUnits;
@@ -4540,7 +4609,7 @@ namespace SandboxDetail {
 			UnitOrderCombo("##orders");
 			next();
 			ImGui::SetNextItemWidth(field);
-			LoadoutChooser("##loadout");
+			LoadoutChooser("##loadout", true);
 			next();
 			ImGui::SetNextItemWidth(field);
 			TemperamentCombo("##temperament");
@@ -4625,6 +4694,10 @@ namespace SandboxDetail {
 				}
 				next();
 			}
+			if (BarChip("Lite", s_ColonyLite, ToolTheme::Text, nullptr, "Just its core: a small box with its brain in, put exactly where you click (in the air, or carved into the ground), to build your own building round. It does all the full building does.") == 1) {
+				s_ColonyLite = !s_ColonyLite;
+			}
+			next();
 			if (kind == Tool::Barracks) {
 				ImGui::SetNextItemWidth(field);
 				ImGui::SliderInt("##keep", &s_ColonyKeep, 1, 20, "Keeps %d alive");
@@ -5479,6 +5552,11 @@ namespace SandboxDetail {
 					}
 				}
 				ImGui::PopID();
+			}
+			// The Loadouts window: units and squads of your own design.
+			ImGui::SameLine();
+			if (BarTile("##loadouts", "Loadouts", s_LoadoutWindowOpen ? "Loadouts: design units (a unit and what it carries) and squads of them\nClick: put the window away" : "Loadouts: design units (a unit and what it carries) and squads of them\nClick: open the window", s_LoadoutWindowOpen, [&](ImDrawList* tileList, ImVec2 at, float room) { DrawIcon(tileList, Icon::Gun, at, room / 12.0F, IM_COL32(200, 205, 215, 255)); }) == 1) {
+				s_LoadoutWindowOpen = !s_LoadoutWindowOpen;
 			}
 			// What you've pinned.
 			if (!s_Pins.empty()) {

@@ -29,6 +29,18 @@ using namespace RTE;
 ConcreteClassInfo(ACShip, ACDropShip, 10);
 
 namespace {
+	/// Whether a friend of a team's is the first thing a shot along a line would hit (its own hull and crew aside, and stopping at the ground):
+	/// a gunner holds fire rather than put a round into the vehicle or squad beside it on the way to the enemy.
+	bool FriendInLineOfFire(const RTE::MovableObject* self, int team, const RTE::Vector& from, const RTE::Vector& ray) {
+		RTE::MOID hit = RTE::g_SceneMan.CastMORay(from, ray, self->GetRootID(), RTE::Activity::NoTeam, 0, false, 2);
+		if (hit == RTE::g_NoMOID) {
+			return false;
+		}
+		const RTE::MovableObject* part = RTE::g_MovableMan.GetMOFromID(hit);
+		const RTE::Actor* actor = part ? dynamic_cast<const RTE::Actor*>(RTE::g_MovableMan.GetMOFromID(part->GetRootID())) : nullptr;
+		return actor && actor->GetTeam() == team && !actor->IsDead();
+	}
+
 	/// An angle brought into -pi to pi.
 	float Wrapped(float angle) {
 		angle = std::fmod(angle, c_TwoPI);
@@ -1078,6 +1090,17 @@ void ACShip::UpdateGuns() {
 		}
 		gun.AimAngle = std::clamp(gun.AimAngle, rotationFacing - m_GunAimRange, rotationFacing + m_GunAimRange);
 		turret->SetMountedDeviceRotationOffset((gun.AimAngle * flip) - m_Rotation.GetRadAngle());
+		// (The AI's gunner holds fire with a friend in the way, out to what it shoots at, or where it fires into.)
+		if (fire && !playerAims) {
+			float reach = m_GunRange;
+			if (const MovableObject* target = gun.TargetID ? g_MovableMan.FindObjectByUniqueID(gun.TargetID) : nullptr) {
+				reach = std::min(reach, g_SceneMan.ShortestDistance(turret->GetPos(), target->GetPos()).GetMagnitude());
+			} else if (!gun.SuppressPoint.IsZero()) {
+				reach = std::min(reach, g_SceneMan.ShortestDistance(turret->GetPos(), gun.SuppressPoint).GetMagnitude());
+			}
+			const Vector ray(std::cos(gun.AimAngle) * flip * reach, -std::sin(gun.AimAngle) * reach);
+			fire = !FriendInLineOfFire(this, m_Team, turret->GetPos(), ray);
+		}
 		for (HeldDevice* device: turret->GetMountedDevices()) {
 			if (fire) {
 				device->Activate();
