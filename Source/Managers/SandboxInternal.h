@@ -218,7 +218,8 @@ namespace SandboxDetail {
 		Decor, //!< A light or fire put in the background (Choice a DecorKind): it shines until a blast or a shot destroys it, and nothing collides with it.
 		// Appended, so the tools before keep their numbers.
 		LandingSpot, //!< Battle Command: a click marks where your reinforcements land (s_LandingSpot), and calls in the one waiting for it.
-		PowerTarget //!< Battle Command: a click is where the commander power waiting for one (s_PendingPower) is used.
+		PowerTarget, //!< Battle Command: a click is where the commander power waiting for one (s_PendingPower) is used.
+		BattleRally //!< Battle Command: a click marks your team's rally point, where its new units and reinforcements make for once they're in.
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -352,6 +353,7 @@ namespace SandboxDetail {
 	    {Tool::Decor, "Background light", 0.0F, false},
 	    {Tool::LandingSpot, "Landing spot", 0.0F, false},
 	    {Tool::PowerTarget, "Commander power", 0.0F, false},
+	    {Tool::BattleRally, "Rally point", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -2538,6 +2540,9 @@ namespace SandboxDetail {
 
 	/// A click on the world with the landing spot tool: marks the spot, and calls in the card waiting for one.
 	void LandingSpotClicked(const Vector& position);
+
+	/// A click on the world with the rally point tool (Tool::BattleRally): your team's rally point put there.
+	void RallySpotClicked(const Vector& position);
 
 	/// Battle Command: the landing spot marked on the map. Call from the ImGui frame.
 	void DrawLandingSpot();

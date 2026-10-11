@@ -3704,13 +3704,20 @@ namespace SandboxDetail {
 
 	void ModeUnitsMade(int side, const std::vector<Actor*>& wave) {
 		if (BattlePlayerCommands(side)) {
-			// The player's team: on hold ground, standing where it came in, with no job from the mode. Nothing else (flag runs, hunts, defence
-			// posts, rushes) is set up for it, and the stuck-unit respawn leaves it be.
+			// The player's team: on hold ground, standing where it came in (or, with a rally point set, making for it and holding there), with
+			// no job from the mode. Nothing else (flag runs, hunts, defence posts, rushes) is set up for it, and the stuck-unit respawn leaves
+			// it be.
+			const bool rally = side >= 0 && side < c_Sides && s_RallySet[side];
 			for (Actor* unit: wave) {
 				if (unit && !dynamic_cast<const ACraft*>(unit)) {
 					unit->SetOrderAttack(false);
 					unit->SetAIMode(Actor::AIMODE_SENTRY);
 					unit->SetMovementRule(Actor::MOVE_HOLD_GROUND);
+					if (rally) {
+						unit->ClearAIWaypoints();
+						unit->AddAISceneWaypoint(s_RallyPoints[side]);
+						unit->SetAIMode(Actor::AIMODE_GOTO);
+					}
 				}
 			}
 			// Then, once in, the team's spawn order (SpawnOrders.cpp), if it has one.
