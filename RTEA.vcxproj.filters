@@ -376,6 +376,12 @@
     <ClInclude Include="Source\Entities\AVehicle.h">
       <Filter>Entities</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Entities\ACShip.h">
+      <Filter>Entities</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Entities\CrewSeats.h">
+      <Filter>Entities</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Entities\AEmitter.h">
       <Filter>Entities</Filter>
     </ClInclude>
@@ -859,6 +865,9 @@
     <ClCompile Include="Source\Managers\CommanderBar.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Managers\SpawnOrders.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Managers\Reinforcements.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
@@ -1121,6 +1130,12 @@
       <Filter>Entities</Filter>
     </ClCompile>
     <ClCompile Include="Source\Entities\AVehicle.cpp">
+      <Filter>Entities</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Entities\ACShip.cpp">
+      <Filter>Entities</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Entities\CrewSeats.cpp">
       <Filter>Entities</Filter>
     </ClCompile>
     <ClCompile Include="Source\Entities\AEmitter.cpp">

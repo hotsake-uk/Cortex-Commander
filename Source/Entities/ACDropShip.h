@@ -159,7 +159,10 @@ namespace RTE {
 		/// The engine's drop ship autopilot, one AI update of it: a faithful port of Base.rte/AI/NativeDropShipAI.lua (the hover height,
 		/// the two PID controllers, the delivery stages, avoiding other craft and terrain, going home, scuttling when stuck), so a ship
 		/// flies as it did under the script. Base.rte/AI/DropShipAI.lua calls it where the build has it; a mod's own script is untouched.
-		void UpdateAutopilot();
+		virtual void UpdateAutopilot();
+
+		/// Sends the autopilot straight to a place to hold still at it, as a go-to whose last point it is: false if it hasn't started yet.
+		bool AutopilotGoTo(const Vector& spot);
 
 		/// Protected member variable and method declarations
 	protected:

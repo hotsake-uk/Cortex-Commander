@@ -53,6 +53,7 @@ sources += files(
 'SandboxMinimap.cpp',
 'Colony.cpp',
 'CommanderBar.cpp',
+'SpawnOrders.cpp',
 'Reinforcements.cpp',
 'BattleFog.cpp',
 'CommanderPowers.cpp',

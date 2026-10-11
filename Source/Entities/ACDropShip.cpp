@@ -630,12 +630,28 @@ int ACDropShip::AutopilotObstacleAhead() {
 	MOID obstacle = DetectObstacle(GetDiameter() + m_Vel.GetMagnitude() * 70.0F);
 	if (obstacle > 0 && obstacle != g_NoMOID) {
 		const MovableObject* root = g_MovableMan.GetMOFromID(g_MovableMan.GetRootMOID(obstacle));
-		if (root && (root->GetClassName() == "ACDropShip" || root->GetClassName() == "ACRocket")) {
+		if (root && (root->GetClassName() == "ACDropShip" || root->GetClassName() == "ACShip" || root->GetClassName() == "ACRocket")) {
 			return 2;
 		}
 		return 1;
 	}
 	return 0;
+}
+
+bool ACDropShip::AutopilotGoTo(const Vector& spot) {
+	DropShipAutopilot& ai = m_Autopilot;
+	if (!ai.begun) {
+		return false;
+	}
+	ClearAIWaypoints();
+	m_AIMode = AIMODE_GOTO;
+	// (Told of the go-to as if it had seen it begin, so it doesn't drop the place for a route of its own.)
+	ai.lastAIMode = AIMODE_GOTO;
+	ai.waypoint = spot;
+	ai.hasWaypoint = true;
+	ai.reachedWaypoint = false;
+	ai.stuckTimer.Reset();
+	return true;
 }
 
 void ACDropShip::UpdateAutopilot() {

@@ -60,6 +60,28 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ACDropShip) {
 	    .def("GetAltitude", &ACDropShip::GetAltitude);
 }
 
+LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ACShip) {
+	return ConcreteTypeLuaClassDefinition(ACShip, ACDropShip)
+
+	    .property("Pilot", &ACShip::GetPilot)
+	    .property("HasPilot", &ACShip::HasPilot)
+	    .property("NeedsPilot", &ACShip::NeedsPilot)
+	    .property("CanFly", &ACShip::CanFly)
+	    .property("Parked", &ACShip::IsParked)
+	    .property("SeatCount", &ACShip::GetSeatCount)
+	    .property("CrewCount", &ACShip::GetCrewCount)
+	    .property("FreeSeat", &ACShip::GetFreeSeat)
+	    .property("ControlSeat", &ACShip::GetControlSeat)
+
+	    .def("GetSeatOccupant", &ACShip::GetSeatOccupant)
+	    .def("IsGunnerSeat", &ACShip::IsGunnerSeat)
+	    .def("CanTakeIn", &ACShip::CanTakeIn)
+	    .def("TakeSeat", &ACShip::TakeSeat)
+	    .def("EjectSeat", &ACShip::EjectSeat)
+	    .def("EjectCrew", &ACShip::EjectCrew)
+	    .def("ChangeSeat", &ACShip::ChangeSeat);
+}
+
 LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ACrab) {
 	return ConcreteTypeLuaClassDefinition(ACrab, Actor)
 

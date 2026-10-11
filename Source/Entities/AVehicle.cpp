@@ -38,8 +38,6 @@ using namespace RTE;
 ConcreteClassInfo(AVehicle, Actor, 20);
 
 namespace {
-	constexpr double c_BoardingDelayMS = 400.0; //!< After getting in or out, how long before the same key does the opposite.
-
 	/// Whether a terrain material is a plant: the base game's plants, cacti and mushrooms, and trees' leaves (not the grass on topsoil, which
 	/// is ground). A wheel rolls through plants, crushing them, rather than up over them as if they were rock.
 	bool IsPlant(int material) {
@@ -102,6 +100,7 @@ namespace {
 } // namespace
 
 AVehicle::AVehicle() {
+	m_Crew.SetHost(this);
 	Clear();
 }
 
@@ -119,9 +118,6 @@ void AVehicle::Clear() {
 	m_RollingResistance = 0.25F;
 	m_MaxSpeed = 7.0F;
 	m_Grip = 0.8F;
-	m_SeatOffset.Reset();
-	m_ExitOffset.SetXY(20.0F, -10.0F);
-	m_BoardingReach = 24.0F;
 	m_NeedsDriver = true;
 	m_HopSpeed = 0.0F;
 	m_HopTimer.Reset();
@@ -143,8 +139,7 @@ void AVehicle::Clear() {
 	m_Exhaust = nullptr;
 	m_EngineRunning = false;
 	m_EngineLoad = 0.0F;
-	m_Seats.clear();
-	m_PlayerSeat = -1;
+	m_Crew.Clear();
 	m_Turret = nullptr;
 	m_GunRange = 600.0F;
 	m_GunTurnSpeed = 2.5F;
@@ -152,7 +147,6 @@ void AVehicle::Clear() {
 	m_GunTargetTimer.Reset();
 	m_CrewThrowSpeed = 14.0F;
 	m_ThrowsCrewWhenFlipped = true;
-	m_LastVel.Reset();
 	m_Tracks = nullptr;
 	m_TrackFrameLength = 2.0F;
 	m_TrackTravel = 0.0F;
@@ -170,8 +164,6 @@ void AVehicle::Clear() {
 	m_Released = false;
 	m_AmmoSwitchTimer.Reset();
 	m_AIThrows = 0;
-	m_DrawsCrew = true;
-	m_DriverRider = false;
 	m_Recruits.clear();
 	m_RecruitRange = 300.0F;
 	m_RecruitTimer.Reset();
@@ -185,13 +177,9 @@ void AVehicle::Clear() {
 	m_AIGaveUp = false;
 	m_AIGaveUpTimer.Reset();
 	m_AIOrderSerialSeen = 0;
-	m_Driver = nullptr;
 	m_Throttle = 0.0F;
 	m_Braking = false;
-	m_BoardingTimer.Reset();
 	m_UpsideDownTimer.Reset();
-	m_BoarderInReach = nullptr;
-	m_BoarderPushes = false;
 	m_Buoyancy = 0.8F;
 	m_BreakLandingSpeed = 0.0F;
 	m_BreakSunkFraction = 0.0F;
@@ -239,16 +227,11 @@ int AVehicle::Create(const AVehicle& reference) {
 	if (reference.m_Turret) {
 		SetTurret(dynamic_cast<Turret*>(reference.m_Turret->Clone()));
 	}
-	for (const Seat& seat: reference.m_Seats) {
-		m_Seats.push_back(seat);
-		m_Seats.back().Occupant = seat.Occupant ? dynamic_cast<Actor*>(seat.Occupant->Clone()) : nullptr;
-	}
-	m_PlayerSeat = reference.m_PlayerSeat;
+	m_Crew.Create(reference.m_Crew);
 	m_GunRange = reference.m_GunRange;
 	m_GunTurnSpeed = reference.m_GunTurnSpeed;
 	m_CrewThrowSpeed = reference.m_CrewThrowSpeed;
 	m_ThrowsCrewWhenFlipped = reference.m_ThrowsCrewWhenFlipped;
-	m_DriverRider = reference.m_DriverRider;
 	m_RecruitRange = reference.m_RecruitRange;
 	for (const Wheel& wheel: reference.m_Wheels) {
 		// (A bare strut whose wheel was shot off isn't copied.)
@@ -280,7 +263,6 @@ int AVehicle::Create(const AVehicle& reference) {
 		m_LaunchAmmo.push_back(dynamic_cast<MovableObject*>(ammo->Clone()));
 	}
 	m_LaunchAmmoIndex = reference.m_LaunchAmmoIndex;
-	m_DrawsCrew = reference.m_DrawsCrew;
 	m_SuspensionTravel = reference.m_SuspensionTravel;
 	m_SuspensionStiffness = reference.m_SuspensionStiffness;
 	m_SuspensionDamping = reference.m_SuspensionDamping;
@@ -289,9 +271,6 @@ int AVehicle::Create(const AVehicle& reference) {
 	m_RollingResistance = reference.m_RollingResistance;
 	m_MaxSpeed = reference.m_MaxSpeed;
 	m_Grip = reference.m_Grip;
-	m_SeatOffset = reference.m_SeatOffset;
-	m_ExitOffset = reference.m_ExitOffset;
-	m_BoardingReach = reference.m_BoardingReach;
 	m_NeedsDriver = reference.m_NeedsDriver;
 	m_HopSpeed = reference.m_HopSpeed;
 	m_HullPoints = reference.m_HullPoints;
@@ -307,24 +286,12 @@ int AVehicle::Create(const AVehicle& reference) {
 	m_Buoyancy = reference.m_Buoyancy;
 	m_BreakLandingSpeed = reference.m_BreakLandingSpeed;
 	m_BreakSunkFraction = reference.m_BreakSunkFraction;
-	if (reference.m_Driver) {
-		m_Driver = dynamic_cast<Actor*>(reference.m_Driver->Clone());
-	}
 
 	return 0;
 }
 
 void AVehicle::Destroy(bool notInherited) {
-	delete m_Driver;
-	m_Driver = nullptr;
-	for (Seat& seat: m_Seats) {
-		delete seat.Occupant;
-		seat.Occupant = nullptr;
-	}
-	for (const SlumpedBody& slumped: m_Slumped) {
-		delete slumped.Body;
-	}
-	m_Slumped.clear();
+	m_Crew.DeleteCrew();
 	if (m_Turret) {
 		m_HardcodedAttachableUniqueIDsAndRemovers.erase(m_Turret->GetUniqueID());
 	}
@@ -375,9 +342,21 @@ int AVehicle::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("RollingResistance", { reader >> m_RollingResistance; });
 	MatchProperty("MaxSpeed", { reader >> m_MaxSpeed; });
 	MatchProperty("Grip", { reader >> m_Grip; });
-	MatchProperty("SeatOffset", { reader >> m_SeatOffset; });
-	MatchProperty("ExitOffset", { reader >> m_ExitOffset; });
-	MatchProperty("BoardingReach", { reader >> m_BoardingReach; });
+	MatchProperty("SeatOffset", {
+		Vector offset;
+		reader >> offset;
+		m_Crew.SetMainSeatOffset(offset);
+	});
+	MatchProperty("ExitOffset", {
+		Vector offset;
+		reader >> offset;
+		m_Crew.SetExitOffset(offset);
+	});
+	MatchProperty("BoardingReach", {
+		float reach;
+		reader >> reach;
+		m_Crew.SetBoardingReach(reach);
+	});
 	MatchProperty("NeedsDriver", { reader >> m_NeedsDriver; });
 	MatchProperty("HopSpeed", { reader >> m_HopSpeed; });
 	MatchProperty("AddHullPoint", {
@@ -404,10 +383,9 @@ int AVehicle::ReadProperty(const std::string_view& propName, Reader& reader) {
 	});
 	MatchProperty("Exhaust", { SetExhaust(dynamic_cast<AEmitter*>(g_PresetMan.ReadReflectedPreset(reader))); });
 	MatchForwards("AddSeat") MatchProperty("AddGunnerSeat", {
-		Seat seat;
-		reader >> seat.Offset;
-		seat.Gunner = propName == "AddGunnerSeat";
-		m_Seats.push_back(seat);
+		Vector offset;
+		reader >> offset;
+		m_Crew.AddSeat(offset, propName == "AddGunnerSeat");
 	});
 	MatchProperty("Turret", { SetTurret(dynamic_cast<Turret*>(g_PresetMan.ReadReflectedPreset(reader))); });
 	MatchProperty("GunRange", { reader >> m_GunRange; });
@@ -417,7 +395,11 @@ int AVehicle::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("AIRecruitRange", { reader >> m_RecruitRange; });
 	MatchProperty("Tracks", { SetTracks(dynamic_cast<Attachable*>(g_PresetMan.ReadReflectedPreset(reader))); });
 	MatchProperty("TrackFrameLength", { reader >> m_TrackFrameLength; });
-	MatchProperty("DrawsCrew", { reader >> m_DrawsCrew; });
+	MatchProperty("DrawsCrew", {
+		bool drawsCrew;
+		reader >> drawsCrew;
+		m_Crew.SetDrawsCrew(drawsCrew);
+	});
 	MatchProperty("ThrowingArm", { SetThrowingArm(dynamic_cast<Attachable*>(g_PresetMan.ReadReflectedPreset(reader))); });
 	MatchProperty("ArmLength", { reader >> m_ArmLength; });
 	MatchProperty("ArmThrowAngle", { reader >> m_ArmThrowAngle; });
@@ -459,9 +441,9 @@ int AVehicle::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("RollingResistance", m_RollingResistance);
 	writer.NewPropertyWithValue("MaxSpeed", m_MaxSpeed);
 	writer.NewPropertyWithValue("Grip", m_Grip);
-	writer.NewPropertyWithValue("SeatOffset", m_SeatOffset);
-	writer.NewPropertyWithValue("ExitOffset", m_ExitOffset);
-	writer.NewPropertyWithValue("BoardingReach", m_BoardingReach);
+	writer.NewPropertyWithValue("SeatOffset", m_Crew.GetMainSeatOffset());
+	writer.NewPropertyWithValue("ExitOffset", m_Crew.GetExitOffset());
+	writer.NewPropertyWithValue("BoardingReach", m_Crew.GetBoardingReach());
 	writer.NewPropertyWithValue("NeedsDriver", m_NeedsDriver);
 	writer.NewPropertyWithValue("HopSpeed", m_HopSpeed);
 	for (const Vector& point: m_HullPoints) {
@@ -489,8 +471,8 @@ int AVehicle::Save(Writer& writer) const {
 		writer.NewProperty("Exhaust");
 		writer << m_Exhaust;
 	}
-	for (const Seat& seat: m_Seats) {
-		writer.NewPropertyWithValue(seat.Gunner ? "AddGunnerSeat" : "AddSeat", seat.Offset);
+	for (int seat = 1; seat < m_Crew.GetSeatCount(); ++seat) {
+		writer.NewPropertyWithValue(m_Crew.IsGunnerSeat(seat) ? "AddGunnerSeat" : "AddSeat", m_Crew.GetSeatOffset(seat));
 	}
 	if (m_Turret) {
 		writer.NewProperty("Turret");
@@ -506,7 +488,7 @@ int AVehicle::Save(Writer& writer) const {
 		writer << m_Tracks;
 	}
 	writer.NewPropertyWithValue("TrackFrameLength", m_TrackFrameLength);
-	writer.NewPropertyWithValue("DrawsCrew", m_DrawsCrew);
+	writer.NewPropertyWithValue("DrawsCrew", m_Crew.DrawsCrew());
 	if (m_ThrowingArm) {
 		writer.NewProperty("ThrowingArm");
 		writer << m_ThrowingArm;
@@ -743,297 +725,8 @@ int AVehicle::GetWheelsOnGround() const {
 }
 
 Vector AVehicle::GetEyePos() const {
-	return m_Driver ? m_Pos + RotateOffset(m_SeatOffset - Vector(0.0F, m_Driver->GetHeight() * 0.3F)) : m_Pos;
-}
-
-Actor* AVehicle::GetSeatOccupant(int seat) const {
-	if (seat == 0) {
-		return m_Driver;
-	}
-	return seat >= 1 && seat <= static_cast<int>(m_Seats.size()) ? m_Seats[seat - 1].Occupant : nullptr;
-}
-
-void AVehicle::SetSeatOccupant(int seat, Actor* unit) {
-	if (seat == 0) {
-		m_Driver = unit;
-	} else if (seat >= 1 && seat <= static_cast<int>(m_Seats.size())) {
-		m_Seats[seat - 1].Occupant = unit;
-	}
-	if (!unit) {
-		SetRider(seat, false);
-	}
-}
-
-void AVehicle::SetRider(int seat, bool rider) {
-	if (seat == 0) {
-		m_DriverRider = rider;
-	} else if (seat >= 1 && seat <= static_cast<int>(m_Seats.size())) {
-		m_Seats[seat - 1].Rider = rider;
-	}
-}
-
-int AVehicle::GetCrewCount() const {
-	int count = m_Driver ? 1 : 0;
-	for (const Seat& seat: m_Seats) {
-		count += seat.Occupant ? 1 : 0;
-	}
-	return count;
-}
-
-int AVehicle::GetFreeSeat() const {
-	if (!m_Driver) {
-		return 0;
-	}
-	// A gunner's seat before a passenger's: whoever gets in second mans the gun.
-	for (bool gunner: {true, false}) {
-		for (int seat = 1; seat <= static_cast<int>(m_Seats.size()); ++seat) {
-			if (m_Seats[seat - 1].Gunner == gunner && !m_Seats[seat - 1].Occupant) {
-				return seat;
-			}
-		}
-	}
-	return -1;
-}
-
-int AVehicle::GetControlSeat() const {
-	if (m_PlayerSeat >= 0 && GetSeatOccupant(m_PlayerSeat)) {
-		return m_PlayerSeat;
-	}
-	return m_Driver ? 0 : -1;
-}
-
-bool AVehicle::CanCarry(const Actor* unit) const {
-	if (!unit || unit == this || unit->IsDead() || unit->IsSetToDelete() || unit->GetTeam() != m_Team || !dynamic_cast<const AHuman*>(unit) || unit->IsInGroup("Brains") || IsDead()) {
-		return false;
-	}
-	if (const Activity* activity = g_ActivityMan.GetActivity()) {
-		for (int player = Players::PlayerOne; player < Players::MaxPlayerCount; ++player) {
-			// (A brain that walks about, as in the Sandbox's units, stays out: the side would lose with it gone from the scene.)
-			if (activity->GetPlayerBrain(player) == unit) {
-				return false;
-			}
-		}
-	}
-	return true;
-}
-
-bool AVehicle::TakeDriver(Actor* unit) {
-	return !m_Driver && TakeSeat(unit, 0);
-}
-
-bool AVehicle::TakeSeat(Actor* unit, int seat) {
-	if (seat < 0) {
-		seat = GetFreeSeat();
-	}
-	if (seat < 0 || seat >= GetSeatCount() || GetSeatOccupant(seat) || !CanCarry(unit)) {
-		return false;
-	}
-	bool playerUnit = unit->GetController()->IsPlayerControlled();
-	// (One player at a time: a unit of another player's can't climb into a vehicle someone else is in charge of.)
-	if (playerUnit && m_Controller.IsPlayerControlled() && m_Controller.GetPlayer() != unit->GetController()->GetPlayer()) {
-		return false;
-	}
-	// As a craft takes in who boards it: a copy is kept, the unit itself is deleted from the scene, and the side isn't counted a loss for it.
-	Actor* occupant = dynamic_cast<Actor*>(unit->Clone());
-	if (!occupant) {
-		return false;
-	}
-	occupant->GetController()->SetInputMode(Controller::CIM_AI);
-	occupant->SetVel(Vector());
-	SetSeatOccupant(seat, occupant);
-	unit->SetToDelete(true);
-	// (Anyone slumped dead in the seat is tipped out of it to make room.)
-	for (size_t index = 0; index < m_Slumped.size(); ++index) {
-		if (m_Slumped[index].Seat == seat) {
-			TipOutSlumped(index, false);
-			break;
-		}
-	}
-	if (Activity* activity = g_ActivityMan.GetActivity()) {
-		activity->ReportDeath(unit->GetTeam(), -1);
-		if (playerUnit) {
-			activity->SwitchToActor(this, unit->GetController()->GetPlayer(), m_Team);
-			m_PlayerSeat = seat;
-		}
-	}
-	// (The Sandbox keeps its own hold on the unit you control and on your character: they go with it into the seat.)
-	Sandbox::OnUnitBoarded(unit, this);
-	m_BoardingTimer.Reset();
-	PlaceCrew();
-	// (Said by the vehicle, where they now sit: they are out of the scene while in here.)
-	Say("BoardVehicle");
-	return true;
-}
-
-Actor* AVehicle::EjectSeat(int seat, bool thrown) {
-	return LetOut(seat, thrown, false);
-}
-
-Actor* AVehicle::LetOut(int seat, bool thrown, bool fallen) {
-	Actor* occupant = GetSeatOccupant(seat);
-	if (!occupant) {
-		return nullptr;
-	}
-	// Out on the side it faces, or the other, or straight up out of the seat if both are blocked; thrown out, straight up first.
-	Vector above = m_Pos + RotateOffset(GetSeatOffsetOf(seat)) - Vector(0.0F, occupant->GetHeight() * 0.5F);
-	std::array<Vector, 3> exits = {m_Pos + RotateOffset(m_ExitOffset), m_Pos + RotateOffset(Vector(-m_ExitOffset.m_X, m_ExitOffset.m_Y)), above};
-	if (thrown) {
-		std::swap(exits[0], exits[2]);
-	}
-	occupant->SetRotAngle(0.0F);
-	occupant->SetAngularVel(0.0F);
-	const AtomGroup* atoms = occupant->GetAtomGroup();
-	const Vector* out = nullptr;
-	for (const Vector& exit: exits) {
-		if (!atoms || atoms->FitsAt(exit)) {
-			out = &exit;
-			break;
-		}
-	}
-	if (!out) {
-		if (!IsDead() && !thrown && !fallen) {
-			return nullptr;
-		}
-		// (Wrecked or thrown: out on top whatever is there, rather than lost with it.)
-		out = &above;
-	}
-	int controlSeat = GetControlSeat();
-	SetSeatOccupant(seat, nullptr);
-	occupant->SetPos(*out);
-	if (thrown) {
-		// Flung on with the speed it had before the knock, and up and out of the seat.
-		occupant->SetVel(m_LastVel * 0.8F + Vector(RandomNum(-2.0F, 2.0F), -4.0F));
-		occupant->SetAngularVel(RandomNum(-6.0F, 6.0F));
-	} else {
-		occupant->SetVel(m_Vel + Vector(0.0F, -2.0F));
-	}
-	occupant->SetWhichMOToNotHit(this, 0.5F);
-	SetWhichMOToNotHit(occupant, 0.5F);
-	occupant->ResetAllTimers();
-	g_MovableMan.AddActor(occupant);
-	if (Activity* activity = g_ActivityMan.GetActivity(); activity && seat == controlSeat && m_Controller.IsPlayerControlled() && activity->GetControlledActor(m_Controller.GetPlayer()) == this) {
-		activity->SwitchToActor(occupant, m_Controller.GetPlayer(), occupant->GetTeam());
-	}
-	if (seat == m_PlayerSeat) {
-		m_PlayerSeat = -1;
-	}
-	Sandbox::OnUnitLeftVehicle(this, occupant);
-	m_BoardingTimer.Reset();
-	if (!fallen) {
-		occupant->Say(thrown || IsDead() || m_Health <= 0.0F ? "BailOut" : "LeaveVehicle");
-	}
-	return occupant;
-}
-
-void AVehicle::EjectCrew(bool thrown) {
-	for (int seat = 0; seat < GetSeatCount(); ++seat) {
-		EjectSeat(seat, thrown);
-	}
-	TipOutAllSlumped(thrown);
-}
-
-void AVehicle::TipOutSlumped(size_t index, bool thrown) {
-	if (index >= m_Slumped.size()) {
-		return;
-	}
-	Actor* body = m_Slumped[index].Body;
-	int seat = m_Slumped[index].Seat;
-	m_Slumped.erase(m_Slumped.begin() + static_cast<long>(index));
-	// Over the side it faces, or the other, or up out of the seat whatever is there: a body isn't left in it for want of room.
-	Vector above = m_Pos + RotateOffset(GetSeatOffsetOf(seat)) - Vector(0.0F, body->GetHeight() * 0.5F);
-	std::array<Vector, 2> exits = {m_Pos + RotateOffset(m_ExitOffset), m_Pos + RotateOffset(Vector(-m_ExitOffset.m_X, m_ExitOffset.m_Y))};
-	Vector out = above;
-	const AtomGroup* atoms = body->GetAtomGroup();
-	for (const Vector& exit: exits) {
-		if (!thrown && (!atoms || atoms->FitsAt(exit))) {
-			out = exit;
-			break;
-		}
-	}
-	body->SetPos(out);
-	body->SetRotAngle(0.0F);
-	body->SetVel(thrown ? m_LastVel * 0.8F + Vector(RandomNum(-2.0F, 2.0F), -4.0F) : m_Vel);
-	body->SetAngularVel(thrown ? RandomNum(-6.0F, 6.0F) : 0.0F);
-	body->SetWhichMOToNotHit(this, 0.5F);
-	SetWhichMOToNotHit(body, 0.5F);
-	body->ResetAllTimers();
-	g_MovableMan.AddActor(body);
-}
-
-void AVehicle::TipOutAllSlumped(bool thrown) {
-	while (!m_Slumped.empty()) {
-		TipOutSlumped(m_Slumped.size() - 1, thrown);
-	}
-}
-
-void AVehicle::UpdateSeatedCrew() {
-	// (A closed vehicle's crew sit out of reach, and nothing in here can hurt them.)
-	if (!m_DrawsCrew) {
-		return;
-	}
-	for (int seat = 0; seat < GetSeatCount(); ++seat) {
-		Actor* unit = GetSeatOccupant(seat);
-		if (!unit) {
-			continue;
-		}
-		// Blown apart where they sat: their pieces are out in the scene already, and nobody is left in the seat.
-		if (unit->IsSetToDelete()) {
-			SetSeatOccupant(seat, nullptr);
-			if (seat == m_PlayerSeat) {
-				m_PlayerSeat = -1;
-			}
-			delete unit;
-			continue;
-		}
-		unit->UpdateWhileSeated();
-		const AHuman* human = dynamic_cast<const AHuman*>(unit);
-		if (unit->GetHealth() > 0.0F && (!human || human->GetHead())) {
-			continue;
-		}
-		unit->SetHealth(std::min(unit->GetHealth(), 0.0F));
-		// The player's own unit always falls out, so its death is seen and dealt with as anywhere else.
-		bool players = m_Controller.IsPlayerControlled() && seat == GetControlSeat();
-		if (g_SettingsMan.DeadCrewFallOut() || players) {
-			LetOut(seat, false, true);
-		} else {
-			SetSeatOccupant(seat, nullptr);
-			if (seat == m_PlayerSeat) {
-				m_PlayerSeat = -1;
-			}
-			m_Slumped.push_back({unit, seat});
-		}
-	}
-	for (size_t index = 0; index < m_Slumped.size();) {
-		Actor* body = m_Slumped[index].Body;
-		if (body->IsSetToDelete()) {
-			delete body;
-			m_Slumped.erase(m_Slumped.begin() + static_cast<long>(index));
-			continue;
-		}
-		body->UpdateWhileSeated();
-		++index;
-	}
-}
-
-bool AVehicle::ChangeSeat() {
-	int from = GetControlSeat();
-	if (from < 0) {
-		return false;
-	}
-	for (int step = 1; step < GetSeatCount(); ++step) {
-		int to = (from + step) % GetSeatCount();
-		if (!GetSeatOccupant(to)) {
-			bool rider = IsRider(from);
-			SetSeatOccupant(to, GetSeatOccupant(from));
-			SetSeatOccupant(from, nullptr);
-			SetRider(to, rider);
-			m_PlayerSeat = to;
-			m_BoardingTimer.Reset();
-			PlaceCrew();
-			return true;
-		}
-	}
-	return false;
+	const Actor* driver = GetDriver();
+	return driver ? m_Pos + RotateOffset(GetSeatOffset() - Vector(0.0F, driver->GetHeight() * 0.3F)) : m_Pos;
 }
 
 bool AVehicle::HandlePieCommand(PieSliceType pieSliceType) {
@@ -1055,77 +748,13 @@ void AVehicle::GibThis(const Vector& impactImpulse, MovableObject* movableObject
 			unit->SetVel(unit->GetVel() + impactImpulse / std::max(GetMass(), 1.0F) * 0.5F);
 		}
 	}
-	TipOutAllSlumped(true);
+	m_Crew.TipOutAllSlumped(true);
 	Actor::GibThis(impactImpulse, movableObjectToIgnore);
 }
 
-void AVehicle::PlaceCrew() const {
-	for (int seat = 0; seat < GetSeatCount(); ++seat) {
-		if (Actor* unit = GetSeatOccupant(seat)) {
-			unit->SetPos(m_Pos + RotateOffset(GetSeatOffsetOf(seat)));
-			unit->SetVel(m_Vel);
-			unit->SetRotAngle(m_Rotation.GetRadAngle());
-			unit->SetHFlipped(m_HFlipped);
-			unit->CorrectAttachableAndWoundPositionsAndRotations();
-		}
-	}
-	for (const SlumpedBody& slumped: m_Slumped) {
-		// Slumped forward and down in the seat.
-		slumped.Body->SetPos(m_Pos + RotateOffset(GetSeatOffsetOf(slumped.Seat) + Vector(0.0F, slumped.Body->GetHeight() * 0.08F)));
-		slumped.Body->SetVel(m_Vel);
-		slumped.Body->SetRotAngle(m_Rotation.GetRadAngle() - 0.7F * GetFlipFactor());
-		slumped.Body->SetHFlipped(m_HFlipped);
-		slumped.Body->CorrectAttachableAndWoundPositionsAndRotations();
-	}
-}
-
 void AVehicle::UpdateBoarding() {
-	m_BoarderInReach = nullptr;
-	m_BoarderPushes = false;
-	if (!m_BoardingTimer.IsPastSimMS(c_BoardingDelayMS)) {
-		return;
-	}
-	if (IsDead()) {
-		EjectCrew(false);
-		return;
-	}
-	// The player in charge gets their unit out.
-	if (m_Controller.IsPlayerControlled() && m_Controller.IsState(WEAPON_PICKUP) && GetControlSeat() >= 0) {
-		EjectSeat(GetControlSeat(), false);
-		return;
-	}
 	// On its side or roof and still, a unit beside it pushes it back over instead of getting in (an open one would only throw them out).
-	bool pushOver = std::abs(Wrapped(m_Rotation.GetRadAngle())) > 1.2F && m_Vel.MagnitudeIsLessThan(2.0F);
-	if (GetFreeSeat() < 0 && !pushOver) {
-		return;
-	}
-	for (Actor* unit: g_MovableMan.GetActorList()) {
-		if (unit == this || unit->GetTeam() != m_Team || unit->IsDead() || unit->IsSetToDelete() || !unit->GetController()->IsPlayerControlled() || !dynamic_cast<AHuman*>(unit)) {
-			continue;
-		}
-		// In reach of any of its seats.
-		bool inReach = false;
-		for (int seat = 0; seat < GetSeatCount() && !inReach; ++seat) {
-			inReach = !g_SceneMan.ShortestDistance(m_Pos + RotateOffset(GetSeatOffsetOf(seat)), unit->GetPos()).MagnitudeIsGreaterThan(m_BoardingReach + unit->GetRadius() * 0.25F);
-		}
-		if (!inReach) {
-			continue;
-		}
-		m_BoarderInReach = unit;
-		m_BoarderPushes = pushOver;
-		if (unit->GetController()->IsState(WEAPON_PICKUP)) {
-			if (pushOver) {
-				float rotation = Wrapped(m_Rotation.GetRadAngle());
-				m_AngularVel = rotation > 0.0F ? -5.0F : 5.0F;
-				m_Vel.m_Y -= 4.0F;
-				m_BoardingTimer.Reset();
-				m_BoarderInReach = nullptr;
-			} else if (TakeSeat(unit, -1)) {
-				m_BoarderInReach = nullptr;
-			}
-		}
-		break;
-	}
+	m_Crew.UpdateBoarding(std::abs(Wrapped(m_Rotation.GetRadAngle())) > 1.2F && m_Vel.MagnitudeIsLessThan(2.0F));
 }
 
 void AVehicle::TakeOrdersFrom(const Actor* unit) {
@@ -1247,14 +876,7 @@ void AVehicle::UpdateAIBoarding() {
 		return;
 	}
 	// (A little further than a player's reach: the AI walks up to its middle and stops, not to a seat.)
-	auto inReach = [this](const Actor* unit) {
-		for (int seat = 0; seat < GetSeatCount(); ++seat) {
-			if (!g_SceneMan.ShortestDistance(m_Pos + RotateOffset(GetSeatOffsetOf(seat)), unit->GetPos()).MagnitudeIsGreaterThan(m_BoardingReach + 24.0F + unit->GetRadius() * 0.25F)) {
-				return true;
-			}
-		}
-		return false;
-	};
+	auto inReach = [this](const Actor* unit) { return m_Crew.IsInReach(unit, 24.0F); };
 
 	// Those called over get in once they're here, or are let go after a while if they haven't made it.
 	for (auto recruit = m_Recruits.begin(); recruit != m_Recruits.end();) {
@@ -1318,14 +940,14 @@ void AVehicle::UpdateAIBoarding() {
 	if (HasHull() && m_Wheels.empty() && m_Submerged <= 0.0F) {
 		return;
 	}
-	bool driverComing = !m_Driver && !m_Recruits.empty();
+	bool driverComing = !HasDriver() && !m_Recruits.empty();
 	// (Passengers only once someone drives, so it is known where it's going.)
 	if (driverComing) {
 		return;
 	}
-	Vector going = m_Driver ? GetLastAIWaypoint() : m_Pos;
-	bool goingSomewhere = m_Driver && m_AIMode == AIMODE_GOTO && g_SceneMan.ShortestDistance(m_Pos, going).MagnitudeIsGreaterThan(200.0F);
-	if (m_Driver && !goingSomewhere) {
+	Vector going = HasDriver() ? GetLastAIWaypoint() : m_Pos;
+	bool goingSomewhere = HasDriver() && m_AIMode == AIMODE_GOTO && g_SceneMan.ShortestDistance(m_Pos, going).MagnitudeIsGreaterThan(200.0F);
+	if (HasDriver() && !goingSomewhere) {
 		return;
 	}
 	for (Actor* unit: g_MovableMan.GetActorList()) {
@@ -1349,12 +971,12 @@ void AVehicle::UpdateAIBoarding() {
 			continue;
 		}
 		// With a driver, only going where it's going.
-		if (m_Driver && g_SceneMan.ShortestDistance(going, destination).GetMagnitude() > walk * 0.5F) {
+		if (HasDriver() && g_SceneMan.ShortestDistance(going, destination).GetMagnitude() > walk * 0.5F) {
 			continue;
 		}
 		unit->AddAIMOWaypointFirst(this);
 		m_Recruits.push_back({unit->GetUniqueID(), Timer()});
-		if (--room <= 0 || !m_Driver) {
+		if (--room <= 0 || !HasDriver()) {
 			break;
 		}
 	}
@@ -1372,15 +994,14 @@ void AVehicle::UpdateAIUnloading() {
 		Vector toDestination = g_SceneMan.ShortestDistance(m_Pos, unit->GetLastAIWaypoint());
 		bool there = std::abs(toDestination.m_X) < 150.0F && std::abs(toDestination.m_Y) < 250.0F;
 		// The driver got out and the rider has further to go: they move over to the wheel and drive on.
-		if (seat != 0 && !m_Driver && !there && !m_AIGaveUp && !m_Controller.IsPlayerControlled() && g_SettingsMan.AIUsesVehicles()) {
+		if (seat != 0 && !HasDriver() && !there && !m_AIGaveUp && !m_Controller.IsPlayerControlled() && g_SettingsMan.AIUsesVehicles()) {
 			SetSeatOccupant(0, unit);
-			m_Seats[seat - 1].Occupant = nullptr;
-			m_Seats[seat - 1].Rider = false;
-			m_DriverRider = true;
+			SetSeatOccupant(seat, nullptr);
+			SetRider(0, true);
 			TakeOrdersFrom(unit);
 			continue;
 		}
-		if (there || m_AIGaveUp || stopped || (!m_Driver && seat != 0)) {
+		if (there || m_AIGaveUp || stopped || (!HasDriver() && seat != 0)) {
 			m_AIWantsStop = true;
 			if (m_Vel.MagnitudeIsLessThan(1.5F)) {
 				if (Actor* out = EjectSeat(seat, false)) {
@@ -1440,11 +1061,8 @@ void AVehicle::UpdateGun() {
 	float deltaTime = g_TimerMan.GetDeltaTimeSecs();
 	// The seat that mans it: the first gunner's, or the driver's with none.
 	int gunnerSeat = 0;
-	for (int seat = 1; seat <= static_cast<int>(m_Seats.size()); ++seat) {
-		if (m_Seats[seat - 1].Gunner) {
-			gunnerSeat = seat;
-			break;
-		}
+	if (int seat = m_Crew.GetSeatOfGun(0); seat >= 0) {
+		gunnerSeat = seat;
 	}
 	bool manned = GetSeatOccupant(gunnerSeat) && m_Status != DYING && m_Status != DEAD;
 	float rotationFacing = Wrapped(m_Rotation.GetRadAngle()) * GetFlipFactor();
@@ -1961,14 +1579,14 @@ void AVehicle::Update() {
 
 	Actor::Update();
 
-	UpdateSeatedCrew();
+	m_Crew.UpdateSeatedCrew();
 
 	// A knock hard enough in one update (a crash into a wall, a tumble down a cliff) throws everyone out.
-	if (m_CrewThrowSpeed > 0.0F && (GetCrewCount() > 0 || !m_Slumped.empty()) && (m_Vel - m_LastVel).MagnitudeIsGreaterThan(m_CrewThrowSpeed)) {
+	if (m_CrewThrowSpeed > 0.0F && !m_Crew.IsEmpty() && (m_Vel - m_Crew.GetLastVel()).MagnitudeIsGreaterThan(m_CrewThrowSpeed)) {
 		EjectCrew(true);
 	}
 
-	bool canDrive = (m_Driver || !m_NeedsDriver) && m_Status != DYING && m_Status != DEAD && m_Status != INACTIVE;
+	bool canDrive = (HasDriver() || !m_NeedsDriver) && m_Status != DYING && m_Status != DEAD && m_Status != INACTIVE;
 	// (The player in another seat, the gunner's or a passenger's, doesn't drive: the driver is left to it.)
 	bool steering = canDrive && (!m_Controller.IsPlayerControlled() || GetControlSeat() == 0 || !m_NeedsDriver);
 	bool left = steering && m_Controller.IsState(MOVE_LEFT);
@@ -2022,9 +1640,9 @@ void AVehicle::Update() {
 
 	// Rolled onto its roof: everyone falls out of an open vehicle.
 	float rotation = Wrapped(m_Rotation.GetRadAngle());
-	if (m_ThrowsCrewWhenFlipped && std::abs(rotation) > 2.0F && (GetCrewCount() > 0 || !m_Slumped.empty())) {
+	if (m_ThrowsCrewWhenFlipped && std::abs(rotation) > 2.0F && !m_Crew.IsEmpty()) {
 		EjectCrew(true);
-		canDrive = (m_Driver || !m_NeedsDriver) && m_Status != DYING && m_Status != DEAD && m_Status != INACTIVE;
+		canDrive = (HasDriver() || !m_NeedsDriver) && m_Status != DYING && m_Status != DEAD && m_Status != INACTIVE;
 	}
 
 	// On its side or roof and still: the driver rocks it back over, after a moment.
@@ -2041,68 +1659,30 @@ void AVehicle::Update() {
 		m_ViewPoint += m_Vel * 4.0F;
 	}
 
-	m_LastVel = m_Vel;
-	PlaceCrew();
+	m_Crew.SetLastVel(m_Vel);
+	m_Crew.PlaceCrew();
 }
 
 void AVehicle::Draw(BITMAP* pTargetBitmap, const Vector& targetPos, DrawMode mode, bool onlyPhysical) const {
 	// Everyone in it first, so the body's near side hides their legs: sat in it, not stood on it. (And on the MOID layer, so shots hit them.)
-	if (m_DrawsCrew && (mode == g_DrawColor || mode == g_DrawWhite || mode == g_DrawTrans || mode == g_DrawAlpha || mode == g_DrawMOID)) {
-		for (int seat = 0; seat < GetSeatCount(); ++seat) {
-			if (const Actor* unit = GetSeatOccupant(seat)) {
-				unit->Draw(pTargetBitmap, targetPos, mode, onlyPhysical);
-			}
-		}
-		for (const SlumpedBody& slumped: m_Slumped) {
-			slumped.Body->Draw(pTargetBitmap, targetPos, mode, onlyPhysical);
-		}
-	}
+	m_Crew.Draw(pTargetBitmap, targetPos, mode, onlyPhysical);
 	Actor::Draw(pTargetBitmap, targetPos, mode, onlyPhysical);
 }
 
 void AVehicle::Draw(const Camera& camera) const {
-	for (int seat = 0; seat < GetSeatCount() && m_DrawsCrew; ++seat) {
-		if (const Actor* unit = GetSeatOccupant(seat)) {
-			unit->Draw(camera);
-		}
-	}
-	for (const SlumpedBody& slumped: m_Slumped) {
-		if (m_DrawsCrew) {
-			slumped.Body->Draw(camera);
-		}
-	}
+	m_Crew.Draw(camera);
 	Actor::Draw(camera);
 }
 
 void AVehicle::UpdateChildMOIDs(std::vector<MovableObject*>& MOIDIndex, MOID rootMOID, bool makeNewMOID) {
 	Actor::UpdateChildMOIDs(MOIDIndex, rootMOID, makeNewMOID);
-	if (!m_DrawsCrew) {
-		return;
-	}
-	// Each its own root, as the separate units they are: a shot that hits one hurts them, not the vehicle.
-	for (int seat = 0; seat < GetSeatCount(); ++seat) {
-		if (Actor* unit = GetSeatOccupant(seat)) {
-			unit->UpdateMOID(MOIDIndex);
-		}
-	}
-	for (const SlumpedBody& slumped: m_Slumped) {
-		slumped.Body->UpdateMOID(MOIDIndex);
-	}
+	// (Each its own root, as the separate units they are: a shot that hits one hurts them, not the vehicle.)
+	m_Crew.UpdateMOIDs(MOIDIndex);
 }
 
 void AVehicle::GetMOIDs(std::vector<MOID>& MOIDs) const {
 	Actor::GetMOIDs(MOIDs);
-	if (!m_DrawsCrew) {
-		return;
-	}
-	for (int seat = 0; seat < GetSeatCount(); ++seat) {
-		if (const Actor* unit = GetSeatOccupant(seat)) {
-			unit->GetMOIDs(MOIDs);
-		}
-	}
-	for (const SlumpedBody& slumped: m_Slumped) {
-		slumped.Body->GetMOIDs(MOIDs);
-	}
+	m_Crew.GetMOIDs(MOIDs);
 }
 
 void AVehicle::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScreen, bool playerControlled) {
@@ -2114,9 +1694,9 @@ void AVehicle::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int which
 		return;
 	}
 	const char* hint = nullptr;
-	if (m_BoarderInReach && activity->ScreenOfPlayer(m_BoarderInReach->GetController()->GetPlayer()) == whichScreen) {
-		hint = m_BoarderPushes ? "Pick up: push it back over" : "Pick up: get in";
-	} else if (GetControlSeat() >= 0 && m_Controller.IsPlayerControlled() && activity->ScreenOfPlayer(m_Controller.GetPlayer()) == whichScreen && !m_BoardingTimer.IsPastSimMS(4000)) {
+	if (Actor* boarder = m_Crew.GetBoarderInReach(); boarder && activity->ScreenOfPlayer(boarder->GetController()->GetPlayer()) == whichScreen) {
+		hint = m_Crew.GetBoarderPushes() ? "Pick up: push it back over" : "Pick up: get in";
+	} else if (GetControlSeat() >= 0 && m_Controller.IsPlayerControlled() && activity->ScreenOfPlayer(m_Controller.GetPlayer()) == whichScreen && !m_Crew.GetBoardingTimer().IsPastSimMS(4000)) {
 		int seat = GetControlSeat();
 		if (seat == 0) {
 			hint = m_HopSpeed > 0.0F ? "Pick up: get out   Jump: hop" : "Pick up: get out";

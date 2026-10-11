@@ -18,14 +18,14 @@ UNITS = [
 		desc="A levied footman in mail and a kettle hat, with a long spear. Cheap, and his reach keeps swords at bay.",
 		torsoMat="Kevlared Flesh", headMat="Kevlared Flesh", limbMat="Flesh", health=100, walk=4.2, run=5.2,
 		headImpact="Flesh Head Impact Armored", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
-		torsoWounds=16, inventory=[("HDFirearm", "Spear")], metal=False,
+		torsoWounds=16, inventory=[("HDFirearm", "Spear"), ("ThrownDevice", "Javelin"), ("ThrownDevice", "Javelin")], metal=False,
 	),
 	dict(
 		key="Footman", name="Axeman", groups=["Actors - Heavy"], gold=90, mass=52, heads=2,
 		desc="A footman with a two-handed battle axe. Hits hard enough to take limbs off; keep him out of arrow range until he's close.",
 		torsoMat="Kevlared Flesh", headMat="Kevlared Flesh", limbMat="Flesh", health=100, walk=4.0, run=5.0,
 		headImpact="Flesh Head Impact Armored", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
-		torsoWounds=16, inventory=[("HDFirearm", "Battle Axe")], metal=False,
+		torsoWounds=16, inventory=[("HDFirearm", "Battle Axe"), ("ThrownDevice", "Throwing Axe"), ("ThrownDevice", "Throwing Axe")], metal=False,
 	),
 	dict(
 		key="Archer", name="Archer", groups=["Actors - Light", "Actors - Snipers"], gold=70, mass=45, heads=2,
@@ -39,7 +39,7 @@ UNITS = [
 		desc="A crossbowman in a padded gambeson and steel cap. Slow to reload, but the bolts fly flat and hit hard.",
 		torsoMat="Kevlared Flesh", headMat="Kevlared Flesh", limbMat="Flesh", health=100, walk=4.2, run=5.2,
 		headImpact="Flesh Head Impact Armored", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
-		torsoWounds=16, inventory=[("HDFirearm", "Crossbow"), ("HDFirearm", "Dagger")], metal=False,
+		torsoWounds=16, inventory=[("HDFirearm", "Crossbow"), ("HDFirearm", "Dagger"), ("ThrownDevice", "Throwing Knife"), ("ThrownDevice", "Throwing Knife"), ("ThrownDevice", "Throwing Knife")], metal=False,
 	),
 	dict(
 		key="King", name="King", groups=["Brains"], gold=400, mass=55, heads=1,
@@ -62,6 +62,104 @@ UNITS = [
 		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
 		torsoWounds=12, inventory=[("HDFirearm", "Acid Spray"), ("HDFirearm", "Dagger")], metal=False, energy=(100, 15),
 	),
+	dict(
+		key="Pyromancer", name="Pyromancer", groups=["Actors - Light"], gold=130, mass=42, heads=1,
+		desc="A fire mage in a red robe. Hurls fireballs that burst and set the ground alight, and breathes flame on whoever gets close. Keep him away from your own wooden huts.",
+		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=80, walk=4.2, run=5.2,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=12, inventory=[("HDFirearm", "Fireball"), ("HDFirearm", "Dragon's Breath"), ("HDFirearm", "Dagger")], metal=False, energy=(120, 14),
+	),
+	dict(
+		key="Stormcaller", name="Stormcaller", groups=["Actors - Light"], gold=140, mass=42, heads=1,
+		desc="A storm mage in grey and teal. Calls lightning down out of a clear sky on whatever she points at, and looses homing arcane missiles between strikes.",
+		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=80, walk=4.2, run=5.2,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=12, inventory=[("HDFirearm", "Call Lightning"), ("HDFirearm", "Arcane Missiles"), ("HDFirearm", "Dagger")], metal=False, energy=(110, 14),
+	),
+	dict(
+		key="Cryomancer", name="Cryomancer", groups=["Actors - Light"], gold=120, mass=42, heads=1,
+		desc="An ice mage. A blast of frost shards chills whoever it hits to a crawl, and an arcane nova throws back anyone who closes in, grenades and all.",
+		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=80, walk=4.2, run=5.2,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=12, inventory=[("HDFirearm", "Frost Shards"), ("HDFirearm", "Arcane Nova"), ("HDFirearm", "Dagger")], metal=False, energy=(100, 15),
+	),
+	dict(
+		key="Necromancer", name="Necromancer", groups=["Actors - Light"], gold=150, mass=40, heads=1,
+		desc="A hooded necromancer. Raises skeletons out of the ground to fight for him and lobs clouds of poison into the enemy's trenches. Fragile: keep him at the back.",
+		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=80, walk=4.2, run=5.2,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=12, inventory=[("HDFirearm", "Raise Dead"), ("HDFirearm", "Poison Cloud"), ("HDFirearm", "Dagger")], metal=False, energy=(130, 12),
+	),
+	dict(
+		key="Druid", name="Druid", groups=["Actors - Light"], gold=130, mass=44, heads=1,
+		desc="A druid in a crown of leaves. Shatters the earth in a rolling wave that throws men off their feet, and sends a tornado tearing across the field.",
+		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=90, walk=4.2, run=5.2,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=12, inventory=[("HDFirearm", "Earth Shatter"), ("HDFirearm", "Tornado"), ("HDFirearm", "Dagger")], metal=False, energy=(110, 13),
+	),
+	dict(
+		key="Archmage", name="Archmage", groups=["Actors - Heavy"], gold=280, mass=44, heads=1,
+		desc="The court's archmage, in white and gold. Calls a storm of meteors down on the enemy, opens gravity wells that swallow whole squads, and slows time itself. Expensive, and worth guarding.",
+		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=100, walk=4.2, run=5.2,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=12, inventory=[("HDFirearm", "Meteor Storm"), ("HDFirearm", "Gravity Well"), ("HDFirearm", "Time Warp"), ("HDFirearm", "Dagger")], metal=False, energy=(200, 16),
+	),
+	dict(
+		key="Spellblade", name="Spellblade", groups=["Actors - Heavy"], gold=180, mass=58, heads=2,
+		desc="A knight who studied at the tower. Plate, sword and shield like any knight, and a book of arcane missiles for whoever tries to keep out of reach.",
+		torsoMat="Military Stuff", headMat="Military Stuff", limbMat="Kevlared Flesh", health=120, walk=3.8, run=4.6,
+		headImpact="Flesh Head Impact Armored", torsoImpact="Flesh Torso Impact Armored", foley="Foley Heavy Cloth Light", stride="Footstep Heavy Metal Generic",
+		torsoWounds=22, inventory=[("HDFirearm", "Longsword"), ("HeldDevice", "Kite Shield"), ("HDFirearm", "Arcane Missiles")], metal=True, energy=(80, 10),
+	),
+	dict(
+		key="Paladin", name="Paladin", groups=["Actors - Heavy"], gold=200, mass=62, heads=2,
+		desc="A holy knight in white and gold plate with a two-handed warhammer that knocks men flat, and one Holy Hand Grenade for when it really counts.",
+		torsoMat="Military Stuff", headMat="Military Stuff", limbMat="Kevlared Flesh", health=140, walk=3.7, run=4.5,
+		headImpact="Flesh Head Impact Armored", torsoImpact="Flesh Torso Impact Armored", foley="Foley Heavy Cloth Light", stride="Footstep Heavy Metal Generic",
+		torsoWounds=22, inventory=[("HDFirearm", "Warhammer"), ("TDExplosive", "Holy Hand Grenade")], metal=True,
+	),
+	dict(
+		key="Footman", name="Man-at-Arms", groups=["Actors - Light"], gold=80, mass=50, heads=2,
+		desc="A footman with a flanged mace and a round shield. The mace doesn't care about armour.",
+		torsoMat="Kevlared Flesh", headMat="Kevlared Flesh", limbMat="Flesh", health=100, walk=4.2, run=5.2,
+		headImpact="Flesh Head Impact Armored", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=16, inventory=[("HDFirearm", "Mace"), ("HeldDevice", "Round Shield"), ("ThrownDevice", "Throwing Hammer"), ("ThrownDevice", "Throwing Hammer")], metal=False,
+	),
+	dict(
+		key="Halberdier", name="Halberdier", groups=["Actors - Light"], gold=90, mass=52, heads=2,
+		desc="A footman in the king's red with a halberd: an axe, a spike and a hook on a long pole. Holds a gate against anything.",
+		torsoMat="Kevlared Flesh", headMat="Kevlared Flesh", limbMat="Flesh", health=100, walk=4.0, run=5.0,
+		headImpact="Flesh Head Impact Armored", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=16, inventory=[("HDFirearm", "Halberd")], metal=False,
+	),
+	dict(
+		key="Berserker", name="Berserker", groups=["Actors - Heavy"], gold=110, mass=55, heads=1,
+		desc="A bare-chested northman with a greatsword and two throwing axes. Fast and hard to put down; he doesn't hold a line, he breaks one.",
+		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=150, walk=4.6, run=6.0,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=12, inventory=[("HDFirearm", "Greatsword"), ("ThrownDevice", "Throwing Axe"), ("ThrownDevice", "Throwing Axe")], metal=False,
+	),
+	dict(
+		key="Bombardier", name="Bombardier", groups=["Actors - Light"], gold=100, mass=48, heads=1,
+		desc="A sapper with a satchel of firepots and stinkpots. Throws greek fire and choking gas over walls; don't let him stand near anything that burns.",
+		torsoMat="Kevlared Flesh", headMat="Kevlared Flesh", limbMat="Flesh", health=90, walk=4.2, run=5.2,
+		headImpact="Flesh Head Impact Armored", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=16, inventory=[("TDExplosive", "Firepot"), ("TDExplosive", "Firepot"), ("TDExplosive", "Firepot"), ("TDExplosive", "Stinkpot"), ("TDExplosive", "Stinkpot"), ("HDFirearm", "Dagger")], metal=False,
+	),
+	dict(
+		key="Skirmisher", name="Skirmisher", groups=["Actors - Light"], gold=75, mass=45, heads=2,
+		desc="A light skirmisher in leathers. Javelins for the near ones, bolas to bring down runners, and a pouch of caltrops to cover a retreat.",
+		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=90, walk=4.6, run=5.8,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=12, inventory=[("ThrownDevice", "Javelin"), ("ThrownDevice", "Javelin"), ("ThrownDevice", "Javelin"), ("ThrownDevice", "Bolas"), ("ThrownDevice", "Bolas"), ("ThrownDevice", "Caltrops"), ("HDFirearm", "Dagger")], metal=False,
+	),
+	dict(
+		key="Skeleton", name="Skeleton", groups=["Actors - Light"], gold=40, mass=30, heads=1,
+		desc="Bones that a necromancer talked back onto their feet, with a sword they found on the way up. Cheap and fearless, and falls to pieces when it's hit hard enough.",
+		torsoMat="Bone", headMat="Bone", limbMat="Bone", health=60, walk=4.0, run=5.0,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=12, inventory=[("HDFirearm", "Longsword")], metal=False, speech="Undead", blood="Bone Particle",
+	),
 ]
 
 
@@ -71,6 +169,21 @@ def energy(u):
 		return ""
 	most, regen = u["energy"]
 	return f"\n\tMaxEnergy = {most}\n\tEnergyRegen = {regen}"
+
+
+def blood(u):
+	"""What a unit bleeds: blood, or bone dust for a skeleton."""
+	return u.get("blood", "Drop Blood")
+
+
+def gib(u, preset):
+	"""A flesh gib, or the same in bone for a unit that has no flesh."""
+	return preset.replace("Flesh", "Bone") if "blood" in u else preset
+
+
+def speech(u):
+	"""The unit's speech set (Medieval.rte/Speech): the faction's own lines, or the skeletons'."""
+	return f"\n\tSpeechSet = {u.get('speech', 'Medieval')}"
 
 
 def vec(x, y, indent):
@@ -93,7 +206,7 @@ def parts(u):
 	k = u["key"]
 	d = f"Medieval.rte/Actors/{k}"
 	p = f"Medieval {k}"
-	metalGib = ("MOSParticle", "Gib Metal Grey Tiny A", 3, "") if u["metal"] else ("MOSParticle", "Gib Flesh Tiny A", 2, "")
+	metalGib = ("MOSParticle", "Gib Metal Grey Tiny A", 3, "") if u["metal"] else ("MOSParticle", gib(u, "Gib Flesh Tiny A"), 2, "")
 	return f"""
 ///////////////////////////////////////////////////////////////////////
 // {k} parts
@@ -139,7 +252,7 @@ AddEffect = Attachable
 	GibWoundLimit = {10 if u["metal"] else 8}
 	GibSound = SoundContainer
 		CopyOf = Flesh Head Gib
-{gibs(1, ("MOPixel", "Drop Blood", 60, ""), ("MOSRotating", "Gib Flesh Small A", 2, ""), ("MOSRotating", "Gib Bone Small D", 2, ""), metalGib)}
+{gibs(1, ("MOPixel", blood(u), 60, ""), ("MOSRotating", gib(u, "Gib Flesh Small A"), 2, ""), ("MOSRotating", "Gib Bone Small D", 2, ""), metalGib)}
 
 
 AddActor = Arm
@@ -193,7 +306,7 @@ AddActor = Arm
 	GibWoundLimit = 7
 	GibSound = SoundContainer
 		CopyOf = Flesh Limb Gib
-{gibs(1, ("MOPixel", "Drop Blood", 25, ""), ("MOSRotating", "Gib Bone Small A", 1, ""), ("MOSParticle", "Gib Flesh Micro A", 2, ""), metalGib)}
+{gibs(1, ("MOPixel", blood(u), 25, ""), ("MOSRotating", "Gib Bone Small A", 1, ""), ("MOSParticle", gib(u, "Gib Flesh Micro A"), 2, ""), metalGib)}
 
 
 AddActor = Arm
@@ -307,7 +420,7 @@ AddActor = Leg
 	GibWoundLimit = 9
 	GibSound = SoundContainer
 		CopyOf = Flesh Limb Gib
-{gibs(1, ("MOPixel", "Drop Blood", 35, ""), ("MOSRotating", "Gib Bone Small E", 1, ""), ("MOSParticle", "Gib Flesh Tiny A", 2, ""), metalGib)}
+{gibs(1, ("MOPixel", blood(u), 35, ""), ("MOSRotating", "Gib Bone Small E", 1, ""), ("MOSParticle", gib(u, "Gib Flesh Tiny A"), 2, ""), metalGib)}
 
 
 AddActor = Leg
@@ -329,7 +442,7 @@ def actor(u):
 	p = f"Medieval {k}"
 	groups = "\n".join(f"\tAddToGroup = {g}" for g in ["Actors"] + u["groups"])
 	inv = "\n".join(f"\tAddInventory = {cls}\n\t\tCopyOf = {name}" for cls, name in u["inventory"])
-	metalGib = ("MOSParticle", "Gib Metal Grey Tiny A", 4, "") if u["metal"] else ("MOSParticle", "Gib Flesh Micro A", 3, "")
+	metalGib = ("MOSParticle", "Gib Metal Grey Tiny A", 4, "") if u["metal"] else ("MOSParticle", gib(u, "Gib Flesh Micro A"), 3, "")
 	return f"""
 ///////////////////////////////////////////////////////////////////////
 // {u["name"]}
@@ -374,14 +487,14 @@ AddActor = AHuman
 	BodyHitSound = SoundContainer
 		CopyOf = Foley Light Cloth Impact
 	PainSound = SoundContainer
-		CopyOf = Human Pain
+		CopyOf = {"Bone Hit" if "blood" in u else "Human Pain"}
 	DeathSound = SoundContainer
-		CopyOf = Human Death
+		CopyOf = {"Bone Crack" if "blood" in u else "Human Death"}
 	DeviceSwitchSound = SoundContainer
 		CopyOf = {u["foley"]}
 	Health = {u["health"]}
-	MaxHealth = {u["health"]}{energy(u)}
-	Organic = 1
+	MaxHealth = {u["health"]}{energy(u)}{speech(u)}
+	Organic = {0 if "blood" in u else 1}
 	ImpulseDamageThreshold = 1800
 	AimDistance = 30
 	Perceptiveness = 1
@@ -478,7 +591,7 @@ AddActor = AHuman
 	GibWoundLimit = {u["torsoWounds"]}
 	GibSound = SoundContainer
 		CopyOf = Flesh Torso Gib
-{gibs(1, ("MOPixel", "Drop Blood", 50, ""), ("MOSRotating", "Gib Flesh Small A", 4, ""), ("MOSRotating", "Gib Flesh Small D", 4, ""), ("MOSParticle", "Gib Bone Micro A", 3, ""), metalGib)}
+{gibs(1, ("MOPixel", blood(u), 50, ""), ("MOSRotating", gib(u, "Gib Flesh Small A"), 4, ""), ("MOSRotating", gib(u, "Gib Flesh Small D"), 4, ""), ("MOSParticle", "Gib Bone Micro A", 3, ""), metalGib)}
 """
 
 

@@ -42,6 +42,7 @@ namespace RTE {
 	PER_LUA_BINDING(AEJetpack) \
 	/* ACraft-Derived */ \
 	PER_LUA_BINDING(ACDropShip) \
+	PER_LUA_BINDING(ACShip) \
 	PER_LUA_BINDING(ACRocket) \
 	/* Attachable-Derived */ \
 	PER_LUA_BINDING(Arm) \
@@ -211,6 +212,7 @@ namespace RTE {
 	struct EntityLuaBindings {
 		LuaBindingRegisterFunctionDeclarationForType(Entity);
 		LuaBindingRegisterFunctionDeclarationForType(ACDropShip);
+		LuaBindingRegisterFunctionDeclarationForType(ACShip);
 		LuaBindingRegisterFunctionDeclarationForType(ACrab);
 		LuaBindingRegisterFunctionDeclarationForType(ACraft);
 		LuaBindingRegisterFunctionDeclarationForType(ACRocket);

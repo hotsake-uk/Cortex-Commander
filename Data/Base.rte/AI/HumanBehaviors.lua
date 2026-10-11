@@ -1,16 +1,22 @@
 
 HumanBehaviors = {};
 
+-- The scan's field of view and rays for ScanTargets. Worked out by SharedBehaviors.ScanForTargets only on the ticks it looks (out of a
+-- fight, one in three): the group lookups are calls into the engine. @return fov, budget.
+local function ScanField(AI, Owner, Skill)
+	local keen = Skill >= Activity.GOODSKILL or Owner:HasObjectInGroup("Brains") or Owner:HasObjectInGroup("Actors - Snipers") or Owner:HasObjectInGroup("Actors - Boss");
+	local fov = (keen and 180 or 120) * (0.6 + Skill / 250);
+	local budget = (keen and 4 or 2) + (AI.Target and 1 or 0);
+	return fov, budget;
+end
+
 -- spot targets with the engine's scan (see SharedBehaviors.ScanForTargets): a wide view about the facing, and down the aim when aiming.
 -- Brains, snipers, bosses and top-skill (Good or Unfair) units no longer see every enemy on a screen: they look wider and with more rays.
 function HumanBehaviors.ScanTargets(AI, Owner, Skill)
 	if AI.deviceState == AHuman.AIMING then
 		AI.Ctrl:SetState(Controller.AIM_SHARP, true); -- the scan's long, narrow look down the aim
 	end
-	local keen = Skill >= Activity.GOODSKILL or Owner:HasObjectInGroup("Brains") or Owner:HasObjectInGroup("Actors - Snipers") or Owner:HasObjectInGroup("Actors - Boss");
-	local fov = (keen and 180 or 120) * (0.6 + Skill / 250);
-	local budget = (keen and 4 or 2) + (AI.Target and 1 or 0);
-	return SharedBehaviors.ScanForTargets(AI, Owner, Skill, fov, budget);
+	return SharedBehaviors.ScanForTargets(AI, Owner, Skill, ScanField);
 end
 
 -- spot targets by casting a ray in a random direction
@@ -1640,7 +1646,7 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 				-- Bursts that fit the range (AC-8, see SharedBehaviors.BurstPattern): held down close in, shorter further out, single
 				-- taps where the weapon's spread is far wider than the target, and short bursts when pinned down.
 				local burstOn, burstOff;
-				if Weapon and Weapon.FullAuto then
+				if Weapon and Weapon.FullAuto and AI.Target then -- (The target can be gone by now: killed, or dropped while this ran.)
 					burstOn, burstOff = SharedBehaviors.BurstPattern(Weapon, range, AI.Target.Radius, suppression);
 				end
 				if openFire > 0 and burstOn and BurstTimer:IsPastSimMS(burstOn) then

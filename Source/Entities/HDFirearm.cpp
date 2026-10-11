@@ -13,6 +13,7 @@
 #include "MOPixel.h"
 #include "Actor.h"
 #include "AVehicle.h"
+#include "ACShip.h"
 #include "MagicEffects.h"
 #include "TimerMan.h"
 #include <limits>
@@ -868,10 +869,10 @@ void HDFirearm::Update() {
 					}
 
 					// Set the fired particle to not hit this HeldDevice's parent, if applicable
-					// (A vehicle's mounted gun: not its own vehicle, nor the crew sat in it, see AVehicle::GetMOIDs.)
+					// (A vehicle's or a ship's mounted gun: not its own vehicle or ship, nor the crew sat in it, see AVehicle::GetMOIDs.)
 					if (m_FireIgnoresThis) {
 						MovableObject* root = GetRootParent();
-						pParticle->SetWhichMOToNotHit(dynamic_cast<AVehicle*>(root) ? root : this, 1.0f);
+						pParticle->SetWhichMOToNotHit(dynamic_cast<AVehicle*>(root) || dynamic_cast<ACShip*>(root) ? root : this, 1.0f);
 					}
 
 					// Set the team so alarm events that happen if these gib won't freak out the guy firing
