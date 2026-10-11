@@ -790,6 +790,11 @@ function NativeHumanAI:Update(Owner)
 
 	-- controller states (the trigger only as the weapons rule allows, RC-1; a medikit is always used, and so is a digger cutting the route)
 	local mayFire = SharedBehaviors.MayFire(self, Owner);
+	-- (A throw already winding up is let go of when it was planned to be, not when the unit ducks: let go early, a grenade aimed for full
+	-- strength went a few metres and burst by the thrower.)
+	if not mayFire and self.fire and Owner.ThrowableIsReady and SharedBehaviors.RuleLetsFire(self, Owner) then
+		mayFire = true;
+	end
 	-- (The engine's route-follower holds a digger's trigger itself on a dig step, AHuman::MoveAlongRoute; let go of here every update, the
 	-- digger never fired, and a unit routed through ground stood at its face with the digger out.)
 	local routeDig = self.engineMover == true and Owner.DiggingRoute == true;
@@ -907,7 +912,9 @@ end
 -- functions that create behaviors. the default behaviors are stored in the HumanBehaviors table. store your custom behaviors in a table to avoid name conflicts between mods.
 function NativeHumanAI:CreateQuickthrowBehavior(Owner)
 	if self.Target and MovableMan:ValidMO(self.Target) then
-		if Owner:EquipThrowable(true) and Owner.ThrowableIsReady then
+		-- (Not an explosive at an enemy close enough for its blast to reach the thrower too.)
+		if Owner:EquipThrowable(true) and Owner.ThrowableIsReady
+		and SceneMan:ShortestDistance(Owner.Pos, self.Target.Pos, false):MagnitudeIsGreaterThan(HumanBehaviors.BlastClearance(Owner.EquippedItem)) then
 			self.NextBehavior = coroutine.create(HumanBehaviors.ThrowTarget);
 			self.NextBehaviorName = "ThrowTarget";
 			return true;
@@ -1031,7 +1038,7 @@ function NativeHumanAI:CreateAttackBehavior(Owner)
 		end
 	-- favor grenades as the initiator to a sneak attack
 	elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and Owner.AIMode ~= Actor.AIMODE_SENTRY and self.Target.HFlipped == Owner.HFlipped and Owner:EquipDeviceInGroup("Bombs - Grenades", true)
-	and dist:MagnitudeIsGreaterThan(100) and dist:MagnitudeIsLessThan(ToThrownDevice(Owner.EquippedItem):GetCalculatedMaxThrowVelIncludingArmThrowStrength() * GetPPM()) and (self.Target.Pos.Y + 20) > Owner.Pos.Y then
+	and dist:MagnitudeIsGreaterThan(math.max(100, HumanBehaviors.BlastClearance(Owner.EquippedItem))) and dist:MagnitudeIsLessThan(ToThrownDevice(Owner.EquippedItem):GetCalculatedMaxThrowVelIncludingArmThrowStrength() * GetPPM()) and (self.Target.Pos.Y + 20) > Owner.Pos.Y then
 		self.NextBehavior = coroutine.create(HumanBehaviors.ThrowTarget);
 		self.NextBehaviorName = "ThrowTarget";
 	-- A javelin, throwing axe or knives at a target a few strides off, before closing in.
@@ -1048,7 +1055,9 @@ function NativeHumanAI:CreateAttackBehavior(Owner)
 			self.NextBehavior = coroutine.create(HumanBehaviors.ShootTarget);
 			self.NextBehaviorName = "ShootTarget";
 		end
-	elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and Owner:EquipThrowable(true) and dist:MagnitudeIsLessThan(ToThrownDevice(Owner.EquippedItem):GetCalculatedMaxThrowVelIncludingArmThrowStrength() * GetPPM()) then
+	-- (Nothing else to fight with: something to throw, but not an explosive at an enemy close enough for its blast to reach the thrower.)
+	elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and Owner:EquipThrowable(true) and dist:MagnitudeIsLessThan(ToThrownDevice(Owner.EquippedItem):GetCalculatedMaxThrowVelIncludingArmThrowStrength() * GetPPM())
+	and dist:MagnitudeIsGreaterThan(HumanBehaviors.BlastClearance(Owner.EquippedItem)) then
 		self.NextBehavior = coroutine.create(HumanBehaviors.ThrowTarget);
 		self.NextBehaviorName = "ThrowTarget";
 	elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and Owner:EquipDiggingTool(true) and dist:MagnitudeIsLessThan(250) then
