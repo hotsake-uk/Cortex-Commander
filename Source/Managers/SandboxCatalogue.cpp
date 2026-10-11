@@ -2,6 +2,7 @@
 
 #include "SandboxInternal.h"
 #include "AVehicle.h"
+#include "AHuman.h"
 
 namespace SandboxDetail {
 	namespace {
@@ -302,5 +303,49 @@ namespace SandboxDetail {
 	const Preset* ChosenPreset(Tool kind, int choice) {
 		const std::vector<Preset>& list = ListFor(kind);
 		return choice >= 0 && choice < static_cast<int>(list.size()) ? &list[choice] : nullptr;
+	}
+
+	bool CanCrew(const Preset* unit) {
+		const Entity* entity = unit ? g_PresetMan.GetEntityPreset(unit->ClassName, unit->PresetName, unit->ModuleID) : nullptr;
+		return entity && dynamic_cast<const AHuman*>(entity) && !entity->IsInGroup("Brains");
+	}
+
+	std::string CrewPickKey(const Preset& unit) {
+		return unit.Module + "/" + unit.PresetName;
+	}
+
+	void ResolveCrewPick(const std::string& pick, int& choice, bool& random) {
+		choice = ChoiceFor(Tool::Unit);
+		random = s_RandomUnits;
+		if (pick == "*") {
+			choice = -1;
+			random = true;
+			return;
+		}
+		if (pick.empty()) {
+			return;
+		}
+		const std::vector<Preset>& units = ListFor(Tool::Unit);
+		for (int i = 0; i < static_cast<int>(units.size()); ++i) {
+			if (CrewPickKey(units[i]) == pick) {
+				choice = i;
+				random = false;
+				return;
+			}
+		}
+	}
+
+	std::string CrewPickName(const std::string& pick) {
+		if (pick == "*") {
+			return RandomSourceName(s_RandomFavourites, s_RandomFaction);
+		}
+		if (!pick.empty()) {
+			for (const Preset& unit: ListFor(Tool::Unit)) {
+				if (CrewPickKey(unit) == pick) {
+					return unit.PresetName;
+				}
+			}
+		}
+		return "Units list pick";
 	}
 } // namespace SandboxDetail

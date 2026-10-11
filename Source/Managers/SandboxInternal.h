@@ -950,7 +950,9 @@ namespace SandboxDetail {
 	/// and empty or with every seat filled. Saved with the sandbox settings (Sandbox::GetVehicleSetup).
 	struct VehicleTuning {
 		bool Modified = false; //!< Whether the multipliers below are used. Off: the vehicle as its preset has it.
-		bool Crewed = false; //!< Whether every seat is filled with the unit picked in the Units list (or random ones), a squad behind the driver.
+		bool Crewed = false; //!< Whether every seat is filled with new units (Driver and Crew), a squad behind the driver.
+		std::string Driver; //!< With Crewed: who drives (seat 0). "" the unit picked in the Units list (or random ones, as it says), "*" random units, else a unit by CrewPickKey.
+		std::string Crew; //!< With Crewed: who takes the other seats (gunners and passengers), as Driver.
 		float Power = 1.0F; //!< Times its Acceleration: how hard it speeds up, and so how steep a hill it drives up.
 		float TopSpeed = 1.0F; //!< Times its MaxSpeed.
 		float Grip = 1.0F; //!< Times its Grip: how much of its weight it can push with before the wheels slip.
@@ -1005,7 +1007,10 @@ namespace SandboxDetail {
 		int Temperament = -1; //!< Units and drops: the temperament they are given (Actor::Temperament, NC-1), -1 for each one's own.
 		int Style = 0; //!< Colony buildings: how they look (Colony::Style), taken at the click.
 		VehicleTuning Vehicle; //!< Tool::Vehicle: how it is tuned and crewed (s_VehicleTuning), taken at the click.
-		int CrewChoice = 0; //!< Tool::Vehicle with Vehicle.Crewed: the unit picked in the Units list for the crew (s_UnitChoice).
+		int DriverChoice = -1; //!< Tool::Vehicle with Vehicle.Crewed: the driver, an index into the Units list (Vehicle.Driver resolved at the click, ResolveCrewPick).
+		bool DriverRandom = false; //!< Tool::Vehicle with Vehicle.Crewed: the driver a random unit, from FavouritesOnly and RandomFaction.
+		int CrewChoice = -1; //!< Tool::Vehicle with Vehicle.Crewed: the rest of the crew, as DriverChoice (Vehicle.Crew).
+		bool CrewRandom = false; //!< Tool::Vehicle with Vehicle.Crewed: the rest of the crew random units, as DriverRandom.
 	};
 
 	struct CraftChoice {
@@ -2228,6 +2233,15 @@ namespace SandboxDetail {
 	const std::vector<Preset>& ListFor(Tool kind);
 	int& ChoiceFor(Tool kind);
 	const Preset* ChosenPreset(Tool kind, int choice);
+	/// Whether a unit from the Units list can sit in a vehicle's seat: a humanoid, and not a brain.
+	bool CanCrew(const Preset* unit);
+	/// The text a unit is kept by as a vehicle's crew pick (VehicleTuning::Driver and Crew): its module and preset name.
+	std::string CrewPickKey(const Preset& unit);
+	/// Works out a vehicle's crew pick (VehicleTuning::Driver or Crew) as the Spawn tab stands: the unit picked in the Units list (or random, as it
+	/// says), random units, or the one named, by its index in the Units list. One no longer loaded is taken as the Units list pick.
+	void ResolveCrewPick(const std::string& pick, int& choice, bool& random);
+	/// A vehicle's crew pick as words, for the Spawn tab: "Units list pick", the random units or the unit's name.
+	std::string CrewPickName(const std::string& pick);
 	MovableObject* CreateObject(const std::string& className, const std::string& presetName, int moduleID);
 	MovableObject* CreateBaseObject(const char* className, const char* presetName);
 	void AddObject(MovableObject* object);
