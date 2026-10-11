@@ -465,7 +465,13 @@ static bool ImGui_ImplSDL3_Init(SDL_Window* window, SDL_Renderer* renderer, void
     bool mouse_can_use_global_state = false;
 #if SDL_HAS_CAPTURE_AND_GLOBAL_MOUSE
     const char* sdl_backend = SDL_GetCurrentVideoDriver();
+#ifdef __APPLE__
+    // Cortex Commander: on macOS the global mouse position runs about a frame ahead of SDL's mouse events. Using it only while no button is down made the
+    // cursor jump back on every click, by however far it had moved in that frame. So on macOS the events alone give the position.
+    const char* global_mouse_whitelist[] = { "windows", "x11", "DIVE", "VMAN" };
+#else
     const char* global_mouse_whitelist[] = { "windows", "cocoa", "x11", "DIVE", "VMAN" };
+#endif
     for (int n = 0; n < IM_ARRAYSIZE(global_mouse_whitelist); n++)
         if (strncmp(sdl_backend, global_mouse_whitelist[n], strlen(global_mouse_whitelist[n])) == 0)
             mouse_can_use_global_state = true;
