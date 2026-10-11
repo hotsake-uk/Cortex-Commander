@@ -12,6 +12,7 @@
 #include "ThreatMemory.h"
 #include "GasGrid.h"
 #include "AirPressure.h"
+#include "MagicEffects.h"
 #include "FrameMan.h"
 #include "ModernHUD.h"
 #include "PostProcessMan.h"
@@ -227,6 +228,7 @@ namespace {
 			g_PostProcessMan.GetLightingSettings() = LightingSettings();
 			TerrainCollapse::GetTuning() = TerrainCollapse::Tuning();
 			AirPressure::GetTuning() = AirPressure::Tuning();
+			MagicEffects::GetTuning() = MagicEffects::Tuning();
 			s_PresetMessage = "Everything is back to how the game comes.";
 		}
 		ImGui::SetItemTooltip("Puts every setting here back to how the game comes.");
@@ -804,6 +806,23 @@ void DebugMan::SettingsGUI() {
 		}
 	};
 
+	auto magic = [&]() {
+		MagicEffects::Tuning& tuning = MagicEffects::GetTuning();
+		Toggle("Magic and tool effects", MagicEffects::IsOn(), [](bool on) { MagicEffects::SetOn(on); });
+		Tip("What spells, tools and scripts cast: a telekinetic push or pull shoves units, items and loose bits in a cone and sets the air blowing with it. Off: a push does nothing. (What a spell sprays, like its acid, still flies and fades as its material says.)");
+		ImGui::BeginDisabled(!MagicEffects::IsOn());
+		Slider("Push strength", &tuning.PushStrength, 0.0F, 5.0F, "%.2fx");
+		Tip("How hard a push or pull shoves everything it reaches. 0: it shoves nothing.");
+		Slider("Push on units", &tuning.UnitPush, 0.0F, 5.0F, "%.2fx");
+		Tip("How hard it shoves units, on top of the push above. A hard enough shove knocks a unit off its feet. 0: units are never pushed.");
+		Slider("Gust of air", &tuning.AirGust, 0.0F, 5.0F, "%.2fx");
+		Tip("How hard the air a push sets blowing is, carrying smoke, spray and gas with it (needs Air & wind and Blast waves on). 0: no gust.");
+		ImGui::EndDisabled();
+		if (Plain() && ToolUI::Button("Usual magic")) {
+			tuning = MagicEffects::Tuning();
+		}
+	};
+
 	auto fallingGround = [&]() {
 		TerrainCollapse::Tuning& tuning = TerrainCollapse::GetTuning();
 		Toggle("Collapsing terrain", TerrainCollapse::IsEnabled(), [](bool on) { TerrainCollapse::SetEnabled(on); });
@@ -977,6 +996,14 @@ void DebugMan::SettingsGUI() {
 			g_SettingsMan.SetBleedOutChance(bleedOut);
 		}
 		Tip("Every wound bleeds, and most stop after a while. This is the chance one keeps on bleeding instead, so the unit, players' and every other, keeps losing health until it's patched up or bleeds out. 0 is as before: wounds stop when they always did. 100: every wound keeps bleeding.");
+		float terrainDamage = g_SettingsMan.WeaponTerrainDamage();
+		if (Slider("Weapon damage to terrain", &terrainDamage, 0.1F, 20.0F, "%.2fx", ImGuiSliderFlags_Logarithmic)) {
+			g_SettingsMan.SetWeaponTerrainDamage(terrainDamage);
+		}
+		Tip("How hard bullets, shrapnel and other weapon fire strike the ground and buildings, as a multiple of normal. Higher, a bullet cuts through stronger stuff (concrete, then metal) and goes further into it before it stops; lower, shots barely mark the ground. Diggers dig by the same rule, so they scale too. Damage to units is unchanged. 1x is normal.");
+		if (Plain() && ToolUI::Button("Normal terrain damage")) {
+			g_SettingsMan.SetWeaponTerrainDamage(1.0F);
+		}
 		Heading("Unit outlines");
 		Check("Outline units", &settings.UnitOutline);
 		Tip("A stroke round each unit and what it holds, so they stand out. It goes over the sky, the background and other objects, never over terrain.");
@@ -1199,20 +1226,18 @@ void DebugMan::SettingsGUI() {
 		Tip("An AI unit sent a long way walks to a friendly vehicle near it that is going its way, gets in and rides (or drives it) there, then gets out and walks the rest. A vehicle with an AI driver drives itself to the place it is sent, and units sent to a vehicle get in. Off: they walk, and AI drivers sit still.");
 	};
 
-	// How units behave on a direct order: an RTS order placed with a triple click, which sends them the shortest way whatever it takes.
+	// How units behave on a cautious or a direct order: an RTS order placed with one click is cautious, two normal, and a double click held
+	// and dragged goes from normal to fully direct (the shortest way whatever it takes) the further it is dragged.
 	auto battleBehavior = [&]() {
 		SettingsMan::DirectOrderTuning& direct = g_SettingsMan.DirectOrders();
 		if (Plain()) {
-			ImGui::TextWrapped("Click when you place an RTS order (move, attack-move, defend, dig to) for a normal order. Double-click for a riskier, more direct one, and triple-click for a fully direct one: the units go the shortest way there, whatever it takes. These set how hard a triple-clicked order pushes it.");
+			ImGui::TextWrapped("How you place an RTS order (move, attack-move, defend, dig to) says how urgent it is. One click: cautious, walking round jumps and waiting for fuel. A double click: a normal order. A double click held and dragged: riskier the further you drag, up to fully direct (the shortest way there whatever it takes) at the full risk distance; the way you drag is the way they face when they get there. The Direct settings say how hard a full drag pushes it, the Cautious ones how careful one click is.");
 		}
 		{
-			float share = direct.DoubleClickShare * 100.0F;
-			if (Slider("Double click strength", &share, 0.0F, 100.0F, "%.0f%% of a triple click")) {
-				direct.DoubleClickShare = share / 100.0F;
-			}
-			Tip("How far a double-clicked order goes toward a triple-clicked one: every setting below is taken this share of the way from a normal order's. 0% makes a double click a normal order; 50% is normal.");
+			Slider("Full risk drag distance", &direct.RiskDragPixels, 100.0F, 800.0F, "%.0f px");
+			Tip("How far on screen a double click is dragged for a fully direct order. A shorter drag takes that share of the way from a normal order to a fully direct one. 300 px is normal.");
 		}
-		Heading("Jetpack");
+		Heading("Direct (full drag): jetpack");
 		{
 			float preference = 1.0F / std::max(direct.FlightCostScale, 0.01F);
 			if (Slider("Jetpack preference", &preference, 1.0F, 5.0F, "%.1fx")) {
@@ -1232,14 +1257,14 @@ void DebugMan::SettingsGUI() {
 			Check("Steady before take-off", &direct.Steady);
 			Tip("Whether they still come to a stand, still and upright, before a jet climb or jump. Off (normal for a direct order): they take off mid-stride.");
 		}
-		Heading("Flying");
+		Heading("Direct: flying");
 		{
 			Slider("Flight speed", &direct.FlightSpeed, 1.0F, 3.0F, "%.2fx");
 			Tip("How fast they fly, up, across and down, as a multiple of a normal unit's limits. Faster gets there sooner but overshoots and tumbles more. 1.5x is normal for a direct order.");
 			Slider("Landing speed", &direct.Touchdown, 3.0F, 15.0F, "%.1f m/s");
 			Tip("How fast they let themselves come down onto the floor before braking: harder landings save time and fuel but bounce and stumble more. A normal unit lands at 5 m/s; 7 is normal for a direct order.");
 		}
-		Heading("Route");
+		Heading("Direct: route");
 		{
 			float dig = direct.DigCostScale * 100.0F;
 			if (Slider("Dig cost on a dig-to", &dig, 1.0F, 100.0F, "%.0f%%", ImGuiSliderFlags_Logarithmic)) {
@@ -1253,12 +1278,30 @@ void DebugMan::SettingsGUI() {
 			Check("Groups keep together", &direct.KeepPace);
 			Tip("Whether a group sent with a direct order still walks at its slowest member's pace when \"keep together\" is on. Off (normal): each goes as fast as it can.");
 		}
+		Heading("Cautious (one click)");
+		{
+			Slider("Jetpack reluctance", &direct.CautiousFlightCostScale, 1.0F, 5.0F, "%.1fx");
+			Tip("How much less readily they jump than walk round: a jet flight costs them this many times more than it does a normal unit when the route is picked. 1x routes as usual; 3x is normal for a cautious order.");
+			Slider("Caution", &direct.CautiousCaution, 1.0F, 4.0F, "%.1fx");
+			Tip("How much hard jumps and long drops put them off a route, and how long they steady themselves before a take-off, as a multiple of a normal unit's. 2x is normal for a cautious order.");
+			float fuel = direct.CautiousFuelShare * 100.0F;
+			if (Slider("Fuel kept in hand", &fuel, 100.0F, 150.0F, "%.0f%% of the flight")) {
+				direct.CautiousFuelShare = fuel / 100.0F;
+			}
+			Tip("How much of the fuel a flight needs they wait for at the take-off, never more than the tank holds. 120% is normal for a cautious order.");
+			Slider("Cautious flight speed", &direct.CautiousFlightSpeed, 0.4F, 1.0F, "%.2fx");
+			Tip("How fast they fly, as a multiple of a normal unit's limits. 0.75x is normal for a cautious order.");
+			Slider("Cautious landing speed", &direct.CautiousTouchdown, 2.0F, 5.0F, "%.1f m/s");
+			Tip("How fast they let themselves come down onto the floor. A normal unit lands at 5 m/s; 3.5 is normal for a cautious order.");
+			Slider("Keep clear of enemies", &direct.CautiousEnemyAvoidance, 0.0F, 2.0F, "%.2fx");
+			Tip("How much their routes keep clear of enemies seen on the way, as the Safe routes in game modes setting has it for a flag carrier (and scaled by that setting). 0 takes no notice; 1x is normal.");
+		}
 		if (Plain()) {
 			ImGui::Spacing();
 			if (ToolUI::Button("Reset to normal")) {
 				direct = SettingsMan::DirectOrderTuning();
 			}
-			ImGui::SetItemTooltip("Puts every Battle Behavior setting back to the tuning direct orders were made with.");
+			ImGui::SetItemTooltip("Puts every Battle Behavior setting back to the tuning cautious and direct orders were made with.");
 		}
 	};
 
@@ -1428,6 +1471,7 @@ void DebugMan::SettingsGUI() {
 	    {"Effect layers", effectLayers},
 	    {"Air & wind", airAndWind},
 	    {"Falling ground", fallingGround},
+	    {"Magic & spells", magic},
 	    {"Camera & image", cameraAndImage},
 	    {"Game & HUD", gameAndHUD},
 	    {"AI behaviour", aiBehaviour},

@@ -504,7 +504,7 @@ namespace RTE {
 			Vector DigTarget; //!< That place, exactly as given: it may be inside the ground.
 			int FailReason = ORDERFAIL_NONE; //!< Why the order stopped short (OrderFailReason), ORDERFAIL_NONE while it hasn't.
 			int FailMaterial = 0; //!< The material in the way for ORDERFAIL_TOOHARD, 0 for none known.
-			float Direct = 0.0F; //!< How direct the order is, by how many clicks placed it: 0 a plain order, 1 triple-clicked (the shortest way there whatever it takes: a dig-to tunnels in a straight line round only what it can't cut, a move takes the hard, fast jet flights a careful route walks round), a double click between (SettingsMan::DirectOrderTuning::DoubleClickShare). The Battle Behavior tuning is applied in that share (GetPathAgent, AHuman).
+			float Direct = 0.0F; //!< How urgent the order is, by how it was placed (s_DirectOrder): -1 a single click (cautious: walks round jumps, waits for fuel, lands soft, keeps clear of enemies), 0 a double click (a normal order, and any order not placed by a click), 0 to 1 a double click dragged, by how far (SettingsMan::DirectOrderTuning::RiskDragPixels), 1 a full drag (the shortest way there whatever it takes: a dig-to tunnels in a straight line round only what it can't cut, a move takes the hard, fast jet flights a careful route walks round). The Battle Behavior tuning is applied in that share (GetPathAgent, AHuman).
 		};
 
 		/// Gets this' standing order, to read or change.
@@ -556,7 +556,7 @@ namespace RTE {
 		void SetOrderFailReason(int reason) { m_StandingOrder.FailReason = std::clamp(reason, 0, static_cast<int>(ORDERFAILREASONCOUNT) - 1); }
 		int GetOrderFailMaterial() const { return m_StandingOrder.FailMaterial; }
 		float GetOrderDirect() const { return m_StandingOrder.Direct; }
-		void SetOrderDirect(float direct) { m_StandingOrder.Direct = std::clamp(direct, 0.0F, 1.0F); }
+		void SetOrderDirect(float direct) { m_StandingOrder.Direct = std::clamp(direct, -1.0F, 1.0F); }
 
 		/// Marks the standing order failed (RC-7): why, and the material in the way when that is the reason.
 		/// @param reason An OrderFailReason.
@@ -895,6 +895,13 @@ namespace RTE {
 		/// Sets whether this actor can reveal unseen areas by looking.
 		/// @param newCanRevealUnseen Whether this actor can reveal unseen areas.
 		void SetCanRevealUnseen(bool newCanRevealUnseen) { m_CanRevealUnseen = newCanRevealUnseen; }
+
+		/// Gets this actor's veteran rank (Battle Command): 0 for none, up to 3. Each rank steadies its nerve: being shot at pins it down less
+		/// and losses shake it less. (Its AI's aim reads the same rank, as the number value "VeteranRank".)
+		int GetVeterancy() const { return m_Veterancy; }
+
+		/// Sets this actor's veteran rank, 0 to 3.
+		void SetVeterancy(int rank) { m_Veterancy = std::clamp(rank, 0, 3); }
 
 		/// Gets whether this actor is hidden from the player by a battle's fog of war (Battle Command): it, its HUD and its speech aren't drawn.
 		bool IsHiddenByFog() const { return m_HiddenByFog; }
@@ -1531,6 +1538,7 @@ namespace RTE {
 		float m_PainThreshold;
 		// Whether or not this actor can reveal unseen areas by looking
 		bool m_CanRevealUnseen;
+		int m_Veterancy; //!< Veteran rank, 0 to 3 (SetVeterancy).
 		bool m_HiddenByFog; //!< Hidden from the player by a battle's fog of war: not drawn (SetHiddenByFog).
 		// About How tall is the Actor, in pixels?
 		float m_CharHeight;

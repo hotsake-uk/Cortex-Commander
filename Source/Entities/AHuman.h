@@ -1055,6 +1055,12 @@ namespace RTE {
 		bool FindLadderNear(const Vector& at, float reachX, float& bodyX, float& gripX, int& wallSide, bool& material, int way = 0) const;
 		/// The rungs (their y) of the ladder being climbed between two heights, top first.
 		void LadderRungs(float fromY, float toY, std::vector<float>& rungs) const;
+		/// The rungs (their y) of a ladder taken at gripX (Ladder material, else a background ladder) between two heights, top first.
+		void LadderRungsAt(float gripX, bool material, float fromY, float toY, std::vector<float>& rungs) const;
+		/// How high a hand reaches, standing as the body is now (its y): the highest shoulder less its arm's length, and a little.
+		float HandReachTopY() const;
+		/// Whether the ladder taken at gripX has a rung a hand reaches, from the hand's reach down past the feet (not only one far overhead).
+		bool LadderRungInReach(float gripX, bool material) const;
 		/// Before the jet: taking hold of a ladder (up or down pressed at one), and letting go (a side key, or the jet's key alone).
 		void UpdateLadderInput();
 		/// The body along the ladder, each frame: the climb's pace with the pull of each hand, the top and the bottom.

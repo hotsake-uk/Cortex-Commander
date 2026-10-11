@@ -11,6 +11,7 @@
 #include "MOPixel.h"
 #include "PresetMan.h"
 #include "Actor.h"
+#include "SettingsMan.h"
 
 #include "tracy/Tracy.hpp"
 
@@ -31,7 +32,9 @@ namespace {
 		if (owner && owner->IsBullet() && RTE::TerrainTrees::IsTreeMaterial(RTE::g_SceneMan.GetTerrMatter(x, y)) && RTE::RandomNum() > 0.05F) {
 			return false;
 		}
-		return RTE::g_SceneMan.TryPenetrate(x, y, impulse, velocity, retardation, airRatio, numPenetrations, orphansRadius, orphansMaxArea, orphansRate);
+		// Weapon fire (anything that hits units) strikes terrain as hard as the Weapon damage to terrain setting says.
+		float terrainDamage = (owner && owner->HitsMOs() && !owner->IsJetpackExhaust()) ? RTE::g_SettingsMan.WeaponTerrainDamage() : 1.0F;
+		return RTE::g_SceneMan.TryPenetrate(x, y, terrainDamage == 1.0F ? impulse : impulse * terrainDamage, velocity, retardation, airRatio, numPenetrations, orphansRadius, orphansMaxArea, orphansRate);
 	}
 } // namespace
 

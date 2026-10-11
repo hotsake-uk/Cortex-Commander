@@ -17,6 +17,7 @@
 #include "ThreatMemory.h"
 #include "GasGrid.h"
 #include "AirPressure.h"
+#include "MagicEffects.h"
 #include "Sandbox.h"
 #include "SmokeGrid.h"
 #include "ActorFire.h"
@@ -142,6 +143,7 @@ void SettingsMan::Clear() {
 	m_AIRecklessness = 0.5F;
 	m_AISpawnDiggerChance = 0.0F;
 	m_BleedOutChance = 0.0F;
+	m_WeaponTerrainDamage = 1.0F;
 	m_AISpawnDiggerType = 1;
 	m_AISteadyBeforeJet = true;
 	m_AIWaitForFuel = true;
@@ -361,6 +363,10 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("WindCarriesGas", { AirPressure::GetTuning().WindGas = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
 	MatchProperty("BlastWaves", { AirPressure::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("WindMovesSmoke", { AirPressure::SetWindMovesSmoke(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("Magic", { MagicEffects::SetOn(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("MagicPushStrength", { MagicEffects::GetTuning().PushStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
+	MatchProperty("MagicUnitPush", { MagicEffects::GetTuning().UnitPush = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
+	MatchProperty("MagicAirGust", { MagicEffects::GetTuning().AirGust = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
 	MatchProperty("WaterFreezes", { FluidSim::SetFreezingEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("BloodFlows", { FluidSim::SetBloodFlows(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LiquidsDrainBottom", { FluidSim::SetDrainsBottom(std::stoi(reader.ReadPropValue()) != 0); });
@@ -701,6 +707,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AIRecklessness", { float recklessness = 0.5F; reader >> recklessness; SetAIRecklessness(recklessness); });
 	MatchProperty("AISpawnDiggerChance", { float percent = 0.0F; reader >> percent; SetAISpawnDiggerChance(percent); });
 	MatchProperty("BleedOutChance", { float percent = 0.0F; reader >> percent; SetBleedOutChance(percent); });
+	MatchProperty("WeaponTerrainDamage", { float scale = 1.0F; reader >> scale; SetWeaponTerrainDamage(scale); });
 	MatchProperty("AISpawnDiggerType", { int type = 1; reader >> type; SetAISpawnDiggerType(type); });
 	MatchProperty("AISteadyBeforeJet", { reader >> m_AISteadyBeforeJet; });
 	MatchProperty("AIWaitForFuel", { reader >> m_AIWaitForFuel; });
@@ -715,7 +722,15 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DirectLineWeight", { reader >> m_DirectOrders.LineWeight; m_DirectOrders.LineWeight = std::clamp(m_DirectOrders.LineWeight, 0.0F, 1.0F); });
 	MatchProperty("DirectIgnoreEnemies", { reader >> m_DirectOrders.IgnoreEnemies; });
 	MatchProperty("DirectKeepPace", { reader >> m_DirectOrders.KeepPace; });
-	MatchProperty("DirectDoubleClickShare", { reader >> m_DirectOrders.DoubleClickShare; m_DirectOrders.DoubleClickShare = std::clamp(m_DirectOrders.DoubleClickShare, 0.0F, 1.0F); });
+	MatchProperty("DirectRiskDragPixels", { reader >> m_DirectOrders.RiskDragPixels; m_DirectOrders.RiskDragPixels = std::clamp(m_DirectOrders.RiskDragPixels, 100.0F, 800.0F); });
+	MatchProperty("DirectRiskyClickShare", { float unused; reader >> unused; }); // (The three click tier's strength, before the risk drag took its place.)
+	MatchProperty("DirectDoubleClickShare", { float unused; reader >> unused; }); // (Its older name.)
+	MatchProperty("CautiousCaution", { reader >> m_DirectOrders.CautiousCaution; m_DirectOrders.CautiousCaution = std::clamp(m_DirectOrders.CautiousCaution, 1.0F, 4.0F); });
+	MatchProperty("CautiousFlightCost", { reader >> m_DirectOrders.CautiousFlightCostScale; m_DirectOrders.CautiousFlightCostScale = std::clamp(m_DirectOrders.CautiousFlightCostScale, 1.0F, 5.0F); });
+	MatchProperty("CautiousFuelShare", { reader >> m_DirectOrders.CautiousFuelShare; m_DirectOrders.CautiousFuelShare = std::clamp(m_DirectOrders.CautiousFuelShare, 1.0F, 1.5F); });
+	MatchProperty("CautiousFlightSpeed", { reader >> m_DirectOrders.CautiousFlightSpeed; m_DirectOrders.CautiousFlightSpeed = std::clamp(m_DirectOrders.CautiousFlightSpeed, 0.4F, 1.0F); });
+	MatchProperty("CautiousTouchdown", { reader >> m_DirectOrders.CautiousTouchdown; m_DirectOrders.CautiousTouchdown = std::clamp(m_DirectOrders.CautiousTouchdown, 2.0F, 5.0F); });
+	MatchProperty("CautiousEnemyAvoidance", { reader >> m_DirectOrders.CautiousEnemyAvoidance; m_DirectOrders.CautiousEnemyAvoidance = std::clamp(m_DirectOrders.CautiousEnemyAvoidance, 0.0F, 2.0F); });
 	MatchProperty("NavDebugOverlay", { int level = 0; reader >> level; SetNavDebugOverlay(level); });
 	MatchProperty("DebugTeam", { int team = 0; reader >> team; SetDebugTeam(team); });
 	MatchProperty("UnitInspector", { int which = 0; reader >> which; SetUnitInspector(which); });
@@ -1125,6 +1140,10 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("WindCarriesGas", AirPressure::GetTuning().WindGas);
 	writer.NewPropertyWithValue("BlastWaves", AirPressure::IsEnabled());
 	writer.NewPropertyWithValue("WindMovesSmoke", AirPressure::WindMovesSmoke());
+	writer.NewPropertyWithValue("Magic", MagicEffects::IsOn());
+	writer.NewPropertyWithValue("MagicPushStrength", MagicEffects::GetTuning().PushStrength);
+	writer.NewPropertyWithValue("MagicUnitPush", MagicEffects::GetTuning().UnitPush);
+	writer.NewPropertyWithValue("MagicAirGust", MagicEffects::GetTuning().AirGust);
 	writer.NewPropertyWithValue("BurningUnits", ActorFire::IsEnabled());
 	writer.NewPropertyWithValue("SwimmingAndDrowning", ActorWater::IsEnabled());
 	writer.NewPropertyWithValue("LightPropagationSteps", lighting.PropagationIterationsPerFrame);
@@ -1140,6 +1159,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AISpawnDiggerChance", m_AISpawnDiggerChance);
 	writer.NewPropertyWithValue("AISpawnDiggerType", m_AISpawnDiggerType);
 	writer.NewPropertyWithValue("BleedOutChance", m_BleedOutChance);
+	writer.NewPropertyWithValue("WeaponTerrainDamage", m_WeaponTerrainDamage);
 	writer.NewPropertyWithValue("AIRecklessness", m_AIRecklessness);
 	writer.NewPropertyWithValue("AISteadyBeforeJet", m_AISteadyBeforeJet);
 	writer.NewPropertyWithValue("AIWaitForFuel", m_AIWaitForFuel);
@@ -1154,7 +1174,13 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("DirectLineWeight", m_DirectOrders.LineWeight);
 	writer.NewPropertyWithValue("DirectIgnoreEnemies", m_DirectOrders.IgnoreEnemies);
 	writer.NewPropertyWithValue("DirectKeepPace", m_DirectOrders.KeepPace);
-	writer.NewPropertyWithValue("DirectDoubleClickShare", m_DirectOrders.DoubleClickShare);
+	writer.NewPropertyWithValue("DirectRiskDragPixels", m_DirectOrders.RiskDragPixels);
+	writer.NewPropertyWithValue("CautiousCaution", m_DirectOrders.CautiousCaution);
+	writer.NewPropertyWithValue("CautiousFlightCost", m_DirectOrders.CautiousFlightCostScale);
+	writer.NewPropertyWithValue("CautiousFuelShare", m_DirectOrders.CautiousFuelShare);
+	writer.NewPropertyWithValue("CautiousFlightSpeed", m_DirectOrders.CautiousFlightSpeed);
+	writer.NewPropertyWithValue("CautiousTouchdown", m_DirectOrders.CautiousTouchdown);
+	writer.NewPropertyWithValue("CautiousEnemyAvoidance", m_DirectOrders.CautiousEnemyAvoidance);
 	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
 	writer.NewPropertyWithValue("ModernHUD", ModernHUD::IsEnabled());
 	writer.NewPropertyWithValue("UIGlow", ToolGlow::Strength);

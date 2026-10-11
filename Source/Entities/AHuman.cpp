@@ -3641,9 +3641,12 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 	// On a double- or triple-clicked order (StandingOrder::Direct) it flies flat out, as the Battle Behavior settings say in the order's
 	// share (triple-clicked as tuned, half as fast again up, across and down, and down onto the floor harder), for the time saved, though
 	// it comes in less under control.
-	const float direct = m_StandingOrder.Direct;
-	const float rush = 1.0F + (g_SettingsMan.DirectOrders().FlightSpeed - 1.0F) * direct;
-	const float safeTouchdown = (5.0F + (g_SettingsMan.DirectOrders().Touchdown - 5.0F) * direct) * ppm;
+	// (A cautious one, single-clicked, the other way: slower, and down softer.)
+	const SettingsMan::DirectOrderTuning& tuning = g_SettingsMan.DirectOrders();
+	const float direct = std::max(m_StandingOrder.Direct, 0.0F);
+	const float care = std::max(-m_StandingOrder.Direct, 0.0F);
+	const float rush = 1.0F + (tuning.FlightSpeed - 1.0F) * direct + (tuning.CautiousFlightSpeed - 1.0F) * care;
+	const float safeTouchdown = (5.0F + (tuning.Touchdown - 5.0F) * direct + (tuning.CautiousTouchdown - 5.0F) * care) * ppm;
 	auto allowedFall = [&](float height) {
 		// (On seven tenths of the braking reckoned: the jet's push falls with the tank, and a unit dropped onto a narrow ledge at the full
 		// reckoning met it too fast and bounced off.)

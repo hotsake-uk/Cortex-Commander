@@ -1159,6 +1159,10 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 	-- (or crouched, or flat) by how hard it is being hammered. Unfair AI and machines feel none of it (see SharedBehaviors.Suppression).
 	local suppression = SharedBehaviors.Suppression(AI, Owner);
 	shootDelay = shootDelay + 400 * suppression;
+	-- On a cautious order (one click): it waits for a good shot, taking its time to aim before the first round, and firing only once its
+	-- aim has settled on the target and is well on it.
+	local care = SharedBehaviors.OrderCare(Owner);
+	shootDelay = shootDelay + 500 * care;
 	local BurstTimer = Timer();
 	local SuppressedStanceTimer = Timer();
 	local AimPoint = AI.Target.Pos + AI.TargetOffset;
@@ -1468,8 +1472,10 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 						ErrorOffset = ErrorOffset * (0.93 + 0.05 * suppression);
 					end
 
-					if AI.canHitTarget and angDiff < 0.7 then
-						local overlap = AI.Target.Diameter * math.max(AI.aimSkill, 0.4);
+					-- (A cautious order's good shot: the aim's error down to under the target's size before it fires at all.)
+					local goodShot = care <= 0 or ErrorOffset:MagnitudeIsLessThan(math.max(AI.Target.Radius, 6) * (1.5 - care));
+					if AI.canHitTarget and angDiff < 0.7 and goodShot then
+						local overlap = AI.Target.Diameter * math.max(AI.aimSkill, 0.4) * (1 - 0.4 * care);
 						if Weapon.FullAuto then	-- open fire if our aim overlap the target
 							if math.abs(angDiff) < math.tanh((overlap*2)/(range+10)) then
 								openFire = 5; -- don't stop shooting just because we lose the target for a few frames

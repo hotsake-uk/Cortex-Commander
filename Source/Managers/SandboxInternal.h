@@ -831,7 +831,9 @@ namespace SandboxDetail {
 		int Loadout = 0; //!< 0 faction default, 1 unarmed, 2+ a weapon from s_Weapons.
 		int Count = 1;
 		bool LitGrenade = false;
-		int Clicks = 1; //!< Tool::Command: how many clicks in a row placed it. A double click makes the order partly direct, a triple fully (s_DirectOrder).
+		int Clicks = 0; //!< Tool::Command: how many clicks in a row placed it, 0 for not by a click: one makes the order cautious, two or more normal (s_DirectOrder).
+		bool HasRisk = false; //!< Tool::Command: placed by a double click dragged, so Risk says how urgent it is, not Clicks.
+		float Risk = 0.0F; //!< With HasRisk, how far the drag went toward the full risk distance, 0 (normal) to 1 (fully direct).
 		long UnitID = 0; //!< Dropping a step of a plan: whose (and Choice which step).
 		std::vector<Vector> Points; //!< A patrol route's points (RC-4).
 		Vector Position2; //!< Selection box: the other corner.
@@ -945,11 +947,11 @@ namespace SandboxDetail {
 	inline bool s_ActionSpotValid = false;
 	inline bool s_Dragging = false;
 	inline bool s_DoubleClick = false; //!< The drag or click under way began with a double click.
-	inline int s_ClickCount = 1; //!< How many clicks in a row the drag or click under way began with: a double or triple click makes its order direct (s_DirectOrder).
-	/// While an order the player double- or triple-clicked is given (a command stroke's Clicks), how direct it is: 0 a plain click, 1 a triple
-	/// click, a double click between (SettingsMan::DirectOrderTuning::DoubleClickShare). Every unit sent (SendUnit) takes that share of the
-	/// Battle Behavior tuning (Actor::StandingOrder::Direct), and isn't held to the group's pace. Set round the stroke, so every kind of order
-	/// placed by a click (move, attack-move, dig to, defend, a map order) is made direct the same way.
+	inline int s_ClickCount = 0; //!< How many clicks in a row the drag or click under way began with: how urgent its order is (s_DirectOrder).
+	/// While an order placed by clicks is given (a command stroke's Clicks or Risk), how urgent it is: -1 one click (cautious), 0 two (normal, and
+	/// any order not placed by a click), and a double click dragged 0 to 1 by how far (SettingsMan::DirectOrderTuning::RiskDragPixels). Every unit sent
+	/// (SendUnit) takes that share of the Battle Behavior tuning (Actor::StandingOrder::Direct), and one over 0 isn't held to the group's pace.
+	/// Set round the stroke, so every kind of order placed by a click (move, attack-move, dig to, defend, a map order) is made so the same way.
 	inline float s_DirectOrder = 0.0F;
 	inline ImVec2 s_DragStart;
 	inline std::array<BattleTeam, c_Sides> s_BattleTeams; //!< The Battle Director's teams, as the sim runs them.
@@ -1194,7 +1196,7 @@ namespace SandboxDetail {
 		Vector Position;
 		float Life; //!< Seconds left.
 		ImU32 Color;
-		float Direct = 0.0F; //!< How direct the order was (s_DirectOrder): over 0, drawn with a second, wider ring, wider the more direct.
+		float Direct = 0.0F; //!< How urgent the order was (s_DirectOrder): over 0 drawn with a second, wider ring, wider the more direct; under 0 (cautious) with a small inner one.
 	};
 	inline std::vector<OrderMark> s_OrderMarks;
 	// The gym's start and goal being made (see the Gym region).
@@ -2464,6 +2466,34 @@ namespace SandboxDetail {
 
 	/// The circle a power waiting for a target will hit, under the pointer. Call from the ImGui frame.
 	void DrawPowerTarget();
+#pragma endregion
+
+#pragma region Veterancy (Veterancy.cpp)
+	/// A unit's record in a Battle Command battle: the name it's given, its kills, when it came in and the rank they've earned it.
+	struct Veteran {
+		int Team = -1;
+		int Kills = 0;
+		long long Since = 0; //!< The sim update it was first seen in the battle.
+		int Rank = 0; //!< 0 Private, 1 Corporal, 2 Sergeant, 3 Veteran (Actor::SetVeterancy).
+		std::string Name; //!< A surname, the same for the same unit every time it's asked for.
+	};
+	inline std::unordered_map<long, Veteran> s_Veterans; //!< By unique ID.
+
+	/// The battle's veterans forgotten. At a mode's start and a new game.
+	void ForgetVeterans();
+
+	/// A kill, to the unit nearest the one that fell (UpdateReinforcements' count): toward its next rank. A ranked unit of yours that fell
+	/// is said by name.
+	void NoteVeteranKill(long killerID, long victimID);
+
+	/// Every unit in a Battle Command battle given its record, and its rank from its kills and time in. Call once per sim update, from UpdateBattle.
+	void UpdateVeterans();
+
+	/// The rank badges over units in view, with the names of yours selected or under the pointer. Call from the ImGui frame.
+	void DrawVeterans();
+
+	/// A unit's rank and name, short, as "Sgt. Hale"; empty if it has none.
+	std::string VeteranTitle(long id);
 #pragma endregion
 
 #pragma region Fog of war (BattleFog.cpp)

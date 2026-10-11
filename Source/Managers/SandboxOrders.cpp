@@ -179,7 +179,7 @@ namespace SandboxDetail {
 		if (!resend) {
 			standing.Kind = OrderKindFor(reason);
 			standing.HasDigTarget = false;
-			// Double- or triple-clicked (s_DirectOrder): the shortest way there, whatever it takes. One the standing orders resend keeps it.
+			// How urgent, by its clicks (s_DirectOrder): cautious to the shortest way there whatever it takes. One the standing orders resend keeps it.
 			standing.Direct = s_DirectOrder;
 		}
 		standing.FailReason = Actor::ORDERFAIL_NONE;
