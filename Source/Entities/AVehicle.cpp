@@ -38,6 +38,18 @@ using namespace RTE;
 ConcreteClassInfo(AVehicle, Actor, 20);
 
 namespace {
+	/// Whether a friend of a team's is the first thing a shot along a line would hit (its own hull and crew aside, and stopping at the ground):
+	/// a gunner holds fire rather than put a round into the vehicle or squad beside it on the way to the enemy.
+	bool FriendInLineOfFire(const RTE::MovableObject* self, int team, const RTE::Vector& from, const RTE::Vector& ray) {
+		RTE::MOID hit = RTE::g_SceneMan.CastMORay(from, ray, self->GetRootID(), RTE::Activity::NoTeam, 0, false, 2);
+		if (hit == RTE::g_NoMOID) {
+			return false;
+		}
+		const RTE::MovableObject* part = RTE::g_MovableMan.GetMOFromID(hit);
+		const RTE::Actor* actor = part ? dynamic_cast<const RTE::Actor*>(RTE::g_MovableMan.GetMOFromID(part->GetRootID())) : nullptr;
+		return actor && actor->GetTeam() == team && !actor->IsDead();
+	}
+
 	/// Whether a terrain material is a plant: the base game's plants, cacti and mushrooms, and trees' leaves (not the grass on topsoil, which
 	/// is ground). A wheel rolls through plants, crushing them, rather than up over them as if they were rock.
 	bool IsPlant(int material) {
@@ -1444,6 +1456,17 @@ void AVehicle::UpdateGun() {
 		return;
 	}
 	m_Turret->SetMountedDeviceRotationOffset((m_AimAngle * GetFlipFactor()) - m_Rotation.GetRadAngle());
+	// (The AI's gunner holds fire with a friend in the way, out to what it shoots at or its range.)
+	if (fire && !playerAims) {
+		float reach = m_GunRange;
+		if (const MovableObject* target = m_GunTargetID ? g_MovableMan.FindObjectByUniqueID(m_GunTargetID) : nullptr) {
+			reach = std::min(reach, g_SceneMan.ShortestDistance(m_Turret->GetPos(), target->GetPos()).GetMagnitude());
+		} else if (!m_SuppressPoint.IsZero()) {
+			reach = std::min(reach, g_SceneMan.ShortestDistance(m_Turret->GetPos(), m_SuppressPoint).GetMagnitude());
+		}
+		const Vector ray(std::cos(m_AimAngle) * GetFlipFactor() * reach, -std::sin(m_AimAngle) * reach);
+		fire = !FriendInLineOfFire(this, m_Team, m_Turret->GetPos(), ray);
+	}
 	for (HeldDevice* device: m_Turret->GetMountedDevices()) {
 		if (fire) {
 			device->Activate();
