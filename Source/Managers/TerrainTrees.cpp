@@ -248,6 +248,9 @@ void TerrainTrees::Survey() {
 			tree.Top = height;
 			tree.Right = -1;
 			tree.Bottom = -1;
+			tree.TrunkLeft = width;
+			tree.TrunkTop = height;
+			tree.TrunkRight = -1;
 			long long baseSum = 0;
 			int baseCount = 0;
 			std::array<int, 256> materialCount{};
@@ -258,6 +261,9 @@ void TerrainTrees::Survey() {
 				tree.Left = std::min(tree.Left, px);
 				tree.Right = std::max(tree.Right, px);
 				tree.Top = std::min(tree.Top, py);
+				tree.TrunkLeft = std::min(tree.TrunkLeft, px);
+				tree.TrunkRight = std::max(tree.TrunkRight, px);
+				tree.TrunkTop = std::min(tree.TrunkTop, py);
 				if (py > tree.Bottom) {
 					tree.Bottom = py;
 					baseSum = 0;
@@ -387,6 +393,7 @@ void TerrainTrees::Survey() {
 			into.Top = std::min(into.Top, branch.Top);
 			into.Right = std::max(into.Right, branch.Right);
 			into.Bottom = std::max(into.Bottom, branch.Bottom);
+			into.TrunkTop = std::min(into.TrunkTop, branch.TrunkTop); // (Not its sides: a branch spreading out doesn't make the trunk any wider.)
 			into.TrunkPixels += branch.TrunkPixels;
 			into.LeafPixels += branch.LeafPixels;
 			newIndex[i] = newIndex[root];

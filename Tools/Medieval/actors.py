@@ -160,6 +160,13 @@ UNITS = [
 		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
 		torsoWounds=12, inventory=[("HDFirearm", "Longsword")], metal=False, speech="Undead", blood="Bone Particle",
 	),
+	dict(
+		key="Woodcutter", name="Woodcutter", groups=["Actors - Light", "Non-combatants", "Colony Workers"], gold=40, mass=46, heads=1,
+		desc="A woodcutter with a felling axe. A colony woodcutter's staff: he fells the trees round his hut, cuts them into logs and carries them home. Won't start a fight, but swings that axe at anyone who hits him.",
+		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=90, walk=4.2, run=5.2,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=14, inventory=[("HDFirearm", "Woodcutter's Axe")], metal=False, nature="Defensive",
+	),
 ]
 
 
@@ -179,6 +186,13 @@ def blood(u):
 def gib(u, preset):
 	"""A flesh gib, or the same in bone for a unit that has no flesh."""
 	return preset.replace("Flesh", "Bone") if "blood" in u else preset
+
+
+def nature(u):
+	"""A unit that is no fighter by trade (NC-1): its temperament, and kept out of the fighting units' counts."""
+	if "nature" not in u:
+		return ""
+	return f"\n\tTemperament = {u['nature']}\n\tNonCombatant = 1"
 
 
 def speech(u):
@@ -451,7 +465,7 @@ def actor(u):
 AddActor = AHuman
 	PresetName = {u["name"]}
 {groups}
-	Description = {u["desc"]}
+	Description = {u["desc"]}{nature(u)}
 	Mass = {u["mass"]}
 	GoldValue = {u["gold"]}
 	HitsMOs = 1

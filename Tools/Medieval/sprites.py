@@ -601,6 +601,27 @@ HEADS["Bombardier"] = swap(HEADS["Crossbowman"], {"W": "b", "w": "n"})
 HEADS["Skirmisher"] = swap(HEADS["Archer"], {"f": "b", "F": "n", "e": "N"})
 HEADS["Skirmisher B"] = swap(HEADS["Archer B"], {"f": "b", "F": "n", "e": "N"})
 
+# The woodcutter (a colony woodcutter's staff): a green wool tunic with its sleeves rolled up, a leather belt and apron, and a red knitted cap
+# over brown hair and a beard.
+TORSOS["Woodcutter"] = swap(TORSOS["Skirmisher"], {"b": "f", "n": "F", "N": "e"})
+TORSOS["Woodcutter"][12:] = TORSOS["Skirmisher"][12:]  # (Belt and breeches leather, as the skirmisher's.)
+HEADS["Woodcutter"] = [
+	".............",
+	".............",
+	".....RRRR....",
+	"....RoRRRR...",
+	"...RRRRRRRR..",
+	"...hhhhhhhh..",
+	"..hhhTTTxTTu.",
+	"..hhTTTTTTTTT",
+	"..hhhTTTTTTk.",
+	"..hhhhhhhTTk.",
+	"...hhhhhhhk..",
+	"...hhhhhhh...",
+	"....hhhhh....",
+	".....tTt.....",
+]
+
 # ---------------------------------------------------------------------------
 # Weapons, pointing right, hand at the hilt.
 
@@ -632,6 +653,16 @@ AXE = [
 	"..................kdlHk.",
 	"...................kHk..",
 	"...................kk...",
+]
+
+# A woodcutter's felling axe: a long haft and a narrow, deep bit, one-handed.
+WOODAXE = [
+	"..................kk.",
+	"................kkdk.",
+	"jnNnNnNnNnNnNnNkdmlk.",
+	"bnbnbnbnbnbnbnbkdmlHk",
+	"................kkdk.",
+	"..................kk.",
 ]
 
 SPEAR = [
@@ -810,6 +841,7 @@ def main():
 		"Bombardier": ("Bombardier", ["Bombardier"], "gambeson", "brown", "leather", "leather"),
 		"Skirmisher": ("Skirmisher", ["Skirmisher", "Skirmisher B"], "leather", "brown", "leather", None),
 		"Skeleton": ("Skeleton", ["Skeleton"], "bone", "bone", "bone", "bone"),
+		"Woodcutter": ("Woodcutter", ["Woodcutter"], "skin", "brown", "leather", None),
 	}
 	for unit, (torso, heads, armRamp, legRamp, footRamp, handRamp) in units.items():
 		base = f"Actors/{unit}/"
@@ -831,6 +863,7 @@ def main():
 	save(grid(SWORD), "Devices/Longsword/Longsword.png")
 	save(grid(DAGGER), "Devices/Dagger/Dagger.png")
 	save(grid(AXE), "Devices/BattleAxe/BattleAxe.png")
+	save(grid(WOODAXE), "Devices/WoodcutterAxe/WoodcutterAxe.png")
 	save(grid(SPEAR), "Devices/Spear/Spear.png")
 	save(grid(BOW), "Devices/Longbow/Longbow.png")
 	save(grid(ARROW_NOCKED), "Devices/Longbow/ArrowNocked.png")
