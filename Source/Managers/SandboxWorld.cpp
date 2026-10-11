@@ -1,6 +1,7 @@
 // Changing the world: painting and building, effects, incoming fire, lightning, spawning units, items and structures, and the stroke queue that applies every tool use.
 
 #include "SandboxInternal.h"
+#include "ModernHUD.h"
 #include "GasGrid.h"
 #include "TerrainTrees.h"
 
@@ -2362,6 +2363,30 @@ namespace SandboxDetail {
 					explicit DirectScope(float direct) { s_DirectOrder = direct; }
 					~DirectScope() { s_DirectOrder = 0.0F; }
 				} directScope(stroke.HasRisk ? stroke.Risk : (stroke.Clicks == 1 ? -1.0F : 0.0F));
+				// An order given (it leaves a mark where it went) is logged to the modern HUD's feed: what, to how many, and how urgent.
+				const size_t marksBefore = s_OrderMarks.size();
+				struct OrderLog {
+					size_t Before;
+					~OrderLog() {
+						if (s_OrderMarks.size() <= Before) {
+							return;
+						}
+						const OrderMark& mark = s_OrderMarks.back();
+						std::string what = c_CommandModeNames[static_cast<int>(s_CommandMode == CommandMode::Select ? CommandMode::Move : s_CommandMode)];
+						for (size_t mode = 0; mode < std::size(c_CommandModeNames); ++mode) {
+							if ((c_CommandModeColors[mode] & 0x00FFFFFF) == (mark.Color & 0x00FFFFFF)) {
+								what = c_CommandModeNames[mode];
+								break;
+							}
+						}
+						int units = 0;
+						for (const UnitRef& ref: s_Selected) {
+							units += GetRef(ref) ? 1 : 0;
+						}
+						std::string risk = mark.Direct < 0.0F ? "cautious" : (mark.Direct > 0.0F ? "risk " + std::to_string(static_cast<int>(std::round(mark.Direct * 100.0F))) + "%" : "normal");
+						ModernHUD::AddFeedLine(what + ": " + std::to_string(units) + (units == 1 ? " unit, " : " units, ") + risk, SelectionTeam());
+					}
+				} orderLog{marksBefore};
 				if (stroke.Count == 10 || stroke.Count == 11) {
 					// Defend at (RC-4): the point, the way dragged to face, and 11 with Shift.
 					DefendAtSelected(at, stroke.Position2, stroke.Count == 11);
