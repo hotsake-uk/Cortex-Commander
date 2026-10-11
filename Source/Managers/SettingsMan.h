@@ -262,6 +262,24 @@ namespace RTE {
 		/// Whether AI units wait at a take-off for the fuel the flight needs (on, as designed), or go with what is in the tank.
 		bool AIWaitsForFuel() const { return m_AIWaitForFuel; }
 
+		/// How units behave on a direct order (a triple-clicked RTS order, Actor::StandingOrder::Direct): the "Battle Behavior" settings. Each
+		/// member's default is the normal tuning, so DirectOrderTuning() is the reset.
+		struct DirectOrderTuning {
+			float Caution = 0.1F; //!< The most route caution they have (PathAgent::Caution): 1 is a normal unit's, lower shies less from hard flights and long drops.
+			float FlightCostScale = 0.5F; //!< What a jet flight's time, take-off and fuel cost them as a share of the usual (PathAgent::FlightCostScale): lower jumps more where others walk.
+			float FuelShare = 0.6F; //!< The share of a flight's fuel they wait for at a take-off before going (with the fuel wait on).
+			bool Steady = false; //!< Whether they still steady themselves before a take-off.
+			float FlightSpeed = 1.5F; //!< How fast they fly, as a multiple of the usual speed limits up, across and down.
+			float Touchdown = 7.0F; //!< How fast they let themselves come down onto the floor, m/s (5 is the usual).
+			float DigCostScale = 0.02F; //!< What a node dug costs them on a dig-to, as a share of the usual (PathAgent::DigCostScale): lower tunnels straighter.
+			float LineWeight = 0.1F; //!< On a dig-to, what each node off the straight line costs them, in nodes walked (PathFinder::LineCost).
+			bool IgnoreEnemies = true; //!< Whether their routes take no notice of enemies on the way.
+			bool KeepPace = false; //!< Whether a group sent together is still kept to its slowest walker's pace (s_KeepPace on the command row).
+		};
+
+		/// Gets the direct order tuning, to read or change ("Battle Behavior" settings).
+		DirectOrderTuning& DirectOrders() { return m_DirectOrders; }
+
 		/// Whether AI units use vehicles (VH-4): one going a long way walks to a friendly vehicle on its way and rides it there, or drives it.
 		bool AIUsesVehicles() const { return m_AIUsesVehicles; }
 
@@ -789,6 +807,7 @@ namespace RTE {
 		bool m_AISteadyBeforeJet; //!< Whether AI units steady themselves before they jet (see AISteadiesBeforeJet).
 		bool m_AIWaitForFuel; //!< Whether AI units wait for fuel before they jet (see AIWaitsForFuel).
 		bool m_AIUsesVehicles; //!< Whether AI units use vehicles (see AIUsesVehicles).
+		DirectOrderTuning m_DirectOrders; //!< How units behave on a direct order (see DirectOrders).
 		bool m_EnableCrabBombs; //!< Whether all actors (except Brains and Doors) should be annihilated if a number exceeding the crab bomb threshold is released at once.
 		int m_CrabBombThreshold; //!< The number of crabs needed to be released at once to trigger the crab bomb effect.
 		bool m_ShowEnemyHUD; //!< Whether the HUD of enemy actors should be visible to the player.

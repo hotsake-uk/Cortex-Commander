@@ -1520,14 +1520,19 @@ PathAgent Actor::GetPathAgent() const {
 	}
 	// A triple-clicked order (StandingOrder::Direct): the shortest way, whatever it takes. No shying from hard flights, long drops or
 	// enemies, and no taste of its own in routes; and a dig-to digs as near a straight line as the ground it can cut allows.
+	// (As tuned in the Battle Behavior settings, SettingsMan::DirectOrders.)
 	if (m_StandingOrder.Direct) {
-		agent.Direct = true;
-		agent.Caution = std::min(agent.Caution, PathAgent::c_DirectCaution);
-		agent.ThreatWeight = 0.0F;
-		agent.Threats.reset();
+		const SettingsMan::DirectOrderTuning& direct = g_SettingsMan.DirectOrders();
+		agent.Caution = std::min(agent.Caution, direct.Caution);
+		agent.FlightCostScale = direct.FlightCostScale;
+		if (direct.IgnoreEnemies) {
+			agent.ThreatWeight = 0.0F;
+			agent.Threats.reset();
+		}
 		agent.RouteSeed = 0;
 		if (agent.DigGoal) {
-			agent.DigCostScale = PathAgent::c_DirectDigCostScale;
+			agent.DigCostScale = std::min(agent.DigCostScale, direct.DigCostScale);
+			agent.LineWeight = direct.LineWeight;
 		}
 	}
 	for (const std::pair<Vector, double>& avoid: m_AvoidPoints) {

@@ -1,7 +1,12 @@
 #include "AEJetpack.h"
 
 #include "Actor.h"
+#include "Atom.h"
 #include "Controller.h"
+#include "Emission.h"
+#include "MOPixel.h"
+#include "PostProcessMan.h"
+#include "TimerMan.h"
 
 using namespace RTE;
 
@@ -121,6 +126,49 @@ int AEJetpack::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("AdjustsThrottleForWeight", m_AdjustsThrottleForWeight);
 
 	return 0;
+}
+
+void AEJetpack::Update() {
+	AEmitter::Update();
+
+	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+	if (!m_EmitEnabled || !lighting.Enabled || lighting.JetpackLightBrightness <= 0.0F || lighting.JetpackLightReach <= 0.0F) {
+		return;
+	}
+	// The glow at the nozzle, in the colour of the flame: the first pixel it puts out that shows (its trail's colour, else its own). A jet that puts out
+	// no pixels that show (the invisible push of a leap or a hop, or only smoke) lights nothing here; a glow it puts out still lights, as its own.
+	bool flame = false;
+	Color flameColor;
+	for (Emission* emission: m_EmissionList) {
+		const MOPixel* pixel = dynamic_cast<const MOPixel*>(emission->GetEmissionParticlePreset());
+		if (!pixel) {
+			continue;
+		}
+		const Atom* atom = pixel->GetAtom();
+		if (atom && atom->GetTrailLength() > 0 && atom->GetTrailColor().GetIndex() != g_MaskColor) {
+			flameColor = Color(atom->GetTrailColor().GetIndex());
+		} else if (pixel->GetColorIndex() != g_MaskColor) {
+			flameColor = Color(pixel->GetColorIndex());
+		} else {
+			continue;
+		}
+		flame = true;
+		break;
+	}
+	if (!flame) {
+		return;
+	}
+	// Brighter and further at a harder throttle, and flickering a little, from the ID and the clock (not the game's random numbers, so it changes nothing in the simulation).
+	float throttle = std::clamp(GetThrottleFactor(), 0.6F, 1.4F);
+	unsigned int seed = static_cast<unsigned int>(GetUniqueID()) * 2654435761u;
+	float phase = static_cast<float>((seed >> 8) & 0xFFFF) / 65535.0F * 40.0F;
+	float update = static_cast<float>(g_TimerMan.GetSimUpdateCount());
+	float flicker = 0.9F + 0.06F * std::sin(update * 1.7F + phase) + 0.04F * std::sin(update * 4.3F + phase * 0.7F);
+	// A little way down the flame from the nozzle, where most of it is.
+	Vector lightPos = m_Pos + RotateOffset(m_EmissionOffset) + GetEmitVector() * 6.0F;
+	float reach = 55.0F * lighting.JetpackLightReach * (0.8F + 0.2F * throttle);
+	float brightness = 1.1F * lighting.JetpackLightBrightness * throttle * flicker;
+	g_PostProcessMan.RegisterLight(lightPos, glm::vec3(flameColor.GetR(), flameColor.GetG(), flameColor.GetB()), reach, brightness, LightSource::Jetpacks);
 }
 
 void AEJetpack::UpdateBurstState(Actor& parentActor) {
