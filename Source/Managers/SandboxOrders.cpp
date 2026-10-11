@@ -661,9 +661,9 @@ namespace SandboxDetail {
 		spots.resize(std::min(spots.size(), units.size()));
 		OrderForFormation(units, point);
 		// Kept together (RC-5): each no faster than the slowest walker among them, till it gets there (UpdatePace).
-		// (Not on a direct order, s_DirectOrder: each goes as fast as it can.)
+		// (Not on a direct order, s_DirectOrder, unless the Battle Behavior settings say so: each goes as fast as it can.)
 		float pace = 0.0F;
-		if (s_KeepPace && units.size() > 1 && !s_DirectOrder) {
+		if (s_KeepPace && units.size() > 1 && (!s_DirectOrder || g_SettingsMan.DirectOrders().KeepPace)) {
 			for (Actor* unit: units) {
 				if (float own = WalkPace(unit); own > 0.0F && (pace == 0.0F || own < pace)) {
 					pace = own;
