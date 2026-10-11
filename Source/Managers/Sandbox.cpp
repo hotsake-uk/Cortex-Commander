@@ -609,10 +609,11 @@ void Sandbox::ToggleCommanderBar() {
 }
 
 namespace {
-	/// The Commander Toolbar key from the settings, F11 if it names no key.
+	/// The Commander Toolbar key from the settings, F11 if it names no key, or F10 or F12 (picked before those were taken out of the
+	/// choices: they clear the console and take a screenshot).
 	SDL_Scancode CommanderBarScancode() {
 		SDL_Scancode key = SDL_GetScancodeFromName(g_SettingsMan.CommanderBarKey().c_str());
-		return key == SDL_SCANCODE_UNKNOWN ? SDL_SCANCODE_F11 : key;
+		return (key == SDL_SCANCODE_UNKNOWN || key == SDL_SCANCODE_F10 || key == SDL_SCANCODE_F12) ? SDL_SCANCODE_F11 : key;
 	}
 } // namespace
 
@@ -622,6 +623,11 @@ bool Sandbox::IsCommanderBarKey(int scancode) {
 
 std::string Sandbox::CommanderBarKeyName() {
 	return SDL_GetScancodeName(CommanderBarScancode());
+}
+
+bool Sandbox::TakesObjectiveKey() {
+	// As CommandHotkeys is reached in DrawGUI: the command tool in hand, units selected, not playing one, no text box.
+	return InGame() && CurrentTool().Kind == Tool::Command && !s_Selected.empty() && !s_Possessed && !ImGui::GetIO().WantTextInput;
 }
 
 bool Sandbox::WantsWheelZoom() {
