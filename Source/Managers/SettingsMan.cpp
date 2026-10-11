@@ -321,6 +321,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CollapseFloatingStays", { TerrainCollapse::GetTuning().FloatingStays = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("CollapseNeckWidth", { TerrainCollapse::GetTuning().NeckWidth = std::clamp(std::stoi(reader.ReadPropValue()), 0, 16); });
 	MatchProperty("CollapseMaxPiece", { TerrainCollapse::GetTuning().MaxPiecePixels = std::clamp(std::stoi(reader.ReadPropValue()), 500, 200000); });
+	MatchProperty("CollapseCheckMinForce", { TerrainCollapse::GetTuning().CheckMinForce = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 10000.0F); });
 	MatchProperty("CollapseMinFitting", { TerrainCollapse::GetTuning().MinFittingPixels = std::clamp(std::stoi(reader.ReadPropValue()), 0, 5000); });
 	MatchProperty("CollapseBreakStrength", { TerrainCollapse::GetTuning().BreakStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 10.0F); });
 	MatchProperty("CollapseShatterSpeed", { TerrainCollapse::GetTuning().ShatterSpeed = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 100.0F); });
@@ -1105,6 +1106,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("CollapseNeckWidth", TerrainCollapse::GetTuning().NeckWidth);
 	writer.NewPropertyWithValue("CollapseMaxPiece", TerrainCollapse::GetTuning().MaxPiecePixels);
 	writer.NewPropertyWithValue("CollapseMinFitting", TerrainCollapse::GetTuning().MinFittingPixels);
+	writer.NewPropertyWithValue("CollapseCheckMinForce", TerrainCollapse::GetTuning().CheckMinForce);
 	writer.NewPropertyWithValue("CollapseBreakStrength", TerrainCollapse::GetTuning().BreakStrength);
 	writer.NewPropertyWithValue("CollapseShatterSpeed", TerrainCollapse::GetTuning().ShatterSpeed);
 	writer.NewPropertyWithValue("CollapseCrackSpeed", TerrainCollapse::GetTuning().CrackSpeed);
