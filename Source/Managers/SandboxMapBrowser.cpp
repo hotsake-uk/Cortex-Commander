@@ -1,8 +1,9 @@
 // The map browser: the main menu's screen for picking the map the Sandbox game mode or Battle Command is played on, in place of the planet.
 // Every playable map is a card with a big picture of the map itself, drawn from its terrain, backdrop and bunkers the first time it's shown
-// and kept in Userdata/MapPreviews after that. The cards filter by name, mod, mod type, size and whether the map has saved battles (on by
-// default for Battle). The map picked shows bigger beside them with its saved battles: the one picked is drawn over the picture (its spawn
-// zones, bases, flags, goals and objectives), and Play starts the game on the map with it set up.
+// and kept in Userdata/MapPreviews after that. The cards filter by name, mod, mod type, size, whether the map has saved battles (on by
+// default for Battle) and whether it's a favourite: favourites are starred on their cards, kept in Userdata/MapFavourites.txt and listed
+// first. The map picked shows bigger beside them with its saved battles: the one picked is drawn over the picture (its spawn zones, bases,
+// flags, goals and objectives), and Play starts the game on the map with it set up.
 
 #include "MapBrowser.h"
 #include "SandboxInternal.h"
@@ -12,6 +13,8 @@
 #include "SLBackground.h"
 
 #include <SDL3_image/SDL_image.h>
+
+#include <set>
 
 namespace SandboxDetail {
 	namespace {
@@ -86,6 +89,7 @@ namespace SandboxDetail {
 			int Source = -1; //!< Only maps of this MapSource; -1 for any.
 			int Size = -1; //!< Only maps of this size; -1 for any.
 			bool OnlyWithBattles = false;
+			bool OnlyFavourites = false;
 			SortBy Sort = SortBy::Name;
 			int Picked = -1; //!< Index into Maps of the map picked, or -1.
 			int PickedBattle = -1; //!< Index into its Battles of the battle picked, or -1 for none: the map as it is.
@@ -94,6 +98,60 @@ namespace SandboxDetail {
 			MapBrowser::Choice Choice;
 		};
 		Browser s_Browser;
+
+		constexpr const char* c_FavouritesFile = "Userdata/MapFavourites.txt"; //!< The maps marked as favourites, by name, one to a line.
+		std::set<std::string> s_Favourites;
+		bool s_FavouritesRead = false;
+
+		/// The maps marked as favourites, read from their file the first time.
+		std::set<std::string>& Favourites() {
+			if (!s_FavouritesRead) {
+				s_FavouritesRead = true;
+				std::ifstream file(c_FavouritesFile);
+				std::string line;
+				while (std::getline(file, line)) {
+					if (!line.empty() && line.back() == '\r') {
+						line.pop_back();
+					}
+					if (!line.empty()) {
+						s_Favourites.insert(line);
+					}
+				}
+			}
+			return s_Favourites;
+		}
+
+		bool IsFavourite(const std::string& mapName) { return Favourites().count(mapName) != 0; }
+
+		/// Marks a map as a favourite or not, and keeps the list in its file.
+		void ToggleFavourite(const std::string& mapName) {
+			std::set<std::string>& favourites = Favourites();
+			if (!favourites.erase(mapName)) {
+				favourites.insert(mapName);
+			}
+			std::error_code error;
+			std::filesystem::create_directories(std::filesystem::path(c_FavouritesFile).parent_path(), error);
+			std::ofstream file(c_FavouritesFile, std::ios::trunc);
+			for (const std::string& name: favourites) {
+				file << name << '\n';
+			}
+			s_Browser.FiltersChanged = true;
+		}
+
+		/// A five-pointed star centred on a point: filled gold for a favourite, else an outline (brighter when hovered).
+		void DrawStar(ImDrawList* drawList, ImVec2 middle, float radius, bool filled, bool hovered) {
+			ImVec2 points[10];
+			for (int i = 0; i < 10; ++i) {
+				float reach = i % 2 == 0 ? radius : radius * 0.45F;
+				float angle = -c_HalfPI + static_cast<float>(i) * c_PI / 5.0F;
+				points[i] = ImVec2(middle.x + std::cos(angle) * reach, middle.y + std::sin(angle) * reach);
+			}
+			drawList->AddCircleFilled(middle, radius * 1.25F, IM_COL32(0, 0, 0, hovered ? 200 : 140), 16);
+			if (filled) {
+				drawList->AddConcavePolyFilled(points, 10, ToolTheme::Gold);
+			}
+			drawList->AddPolyline(points, 10, filled ? ToolTheme::GoldShadow : hovered ? ToolTheme::Gold : IM_COL32(200, 200, 210, 220), ImDrawFlags_Closed, 1.5F);
+		}
 
 		const char* ActivityName(MapBrowser::Purpose purpose) { return purpose == MapBrowser::Purpose::Battle ? "Battle Command" : "Sandbox"; }
 
@@ -506,7 +564,7 @@ namespace SandboxDetail {
 			for (int i = 0; i < static_cast<int>(s_Browser.Maps.size()); ++i) {
 				const MapEntry& map = s_Browser.Maps[i];
 				if ((s_Browser.Module >= 0 && map.ModuleID != s_Browser.Module) || (s_Browser.Source >= 0 && static_cast<int>(map.Source) != s_Browser.Source) || (s_Browser.Size >= 0 && map.Size != s_Browser.Size) ||
-				    (s_Browser.OnlyWithBattles && map.Battles.empty())) {
+				    (s_Browser.OnlyWithBattles && map.Battles.empty()) || (s_Browser.OnlyFavourites && !IsFavourite(map.Name))) {
 					continue;
 				}
 				if (!search.empty() && Lowered(map.Name).find(search) == std::string::npos && Lowered(map.ModName).find(search) == std::string::npos) {
@@ -518,6 +576,10 @@ namespace SandboxDetail {
 			std::stable_sort(s_Browser.Shown.begin(), s_Browser.Shown.end(), [&maps](int a, int b) {
 				const MapEntry& first = maps[a];
 				const MapEntry& second = maps[b];
+				// Favourites first, whatever the order.
+				if (bool favourite = IsFavourite(first.Name); favourite != IsFavourite(second.Name)) {
+					return favourite;
+				}
 				switch (s_Browser.Sort) {
 					case SortBy::Size:
 						if (first.Width * static_cast<long long>(first.Height) != second.Width * static_cast<long long>(second.Height)) {
@@ -835,6 +897,9 @@ namespace SandboxDetail {
 			changed |= ToolUI::Checkbox("With saved battles", &s_Browser.OnlyWithBattles);
 			ImGui::SetItemTooltip("Only maps with battles saved on them from the Battle tab or the battle panel.");
 			ImGui::SameLine();
+			changed |= ToolUI::Checkbox("Favourites only", &s_Browser.OnlyFavourites);
+			ImGui::SetItemTooltip("Only the maps starred as favourites (click the star on a map's card). Favourites are listed first either way.");
+			ImGui::SameLine();
 			ImGui::TextUnformatted("Sort");
 			ImGui::SameLine();
 			int sort = static_cast<int>(s_Browser.Sort);
@@ -857,7 +922,7 @@ namespace SandboxDetail {
 			}
 			if (s_Browser.Shown.empty()) {
 				ImGui::Spacing();
-				ImGui::TextDisabled(s_Browser.OnlyWithBattles ? "No map matches. Untick \"With saved battles\" to see maps with no battles saved yet." : "No map matches.");
+				ImGui::TextDisabled(s_Browser.OnlyFavourites && Favourites().empty() ? "No favourites yet. Click the star on a map's card to make it one." : s_Browser.OnlyWithBattles ? "No map matches. Untick \"With saved battles\" to see maps with no battles saved yet." : "No map matches.");
 				ImGui::EndChild();
 				return;
 			}
@@ -884,10 +949,19 @@ namespace SandboxDetail {
 					ImGui::SetScrollHereY(0.3F);
 					s_Browser.ScrollToPicked = false;
 				}
-				if (clicked) {
+				// The favourite star, in the picture's top left corner: a click there stars the map rather than picking it.
+				const float starRadius = std::floor(font * 0.6F);
+				const ImVec2 star(from.x + style.FramePadding.y * 2.0F + starRadius * 1.3F, from.y + style.FramePadding.y * 2.0F + starRadius * 1.3F);
+				const bool overStar = hovered && ImGui::IsMouseHoveringRect(ImVec2(star.x - starRadius * 1.3F, star.y - starRadius * 1.3F), ImVec2(star.x + starRadius * 1.3F, star.y + starRadius * 1.3F));
+				if (clicked && overStar) {
+					ToggleFavourite(map.Name);
+				} else if (clicked) {
 					Pick(index);
 				}
-				if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+				if (overStar) {
+					ImGui::SetTooltip(IsFavourite(map.Name) ? "A favourite: click to unstar it" : "Click to star it as a favourite");
+				}
+				if (hovered && !overStar && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
 					Pick(index);
 					Play();
 				}
@@ -919,6 +993,7 @@ namespace SandboxDetail {
 						drawList->AddText(ImVec2(badge.x + style.FramePadding.x, badge.y + 1.0F), ToolTheme::Gold, battles.c_str());
 					}
 					drawList->PopClipRect();
+					DrawStar(drawList, star, starRadius, IsFavourite(map.Name), overStar);
 					drawList->AddRect(from, to, picked ? ToolTheme::Gold : ToolTheme::Edge, 0.0F, 0, picked ? 2.0F : 1.0F);
 				}
 				ImGui::PopID();
@@ -954,6 +1029,19 @@ namespace SandboxDetail {
 			}
 			drawList->AddRect(from, to, ToolTheme::Edge);
 
+			{
+				// The favourite star, then the name beside it.
+				const float side = ImGui::GetFrameHeight();
+				ImVec2 at = ImGui::GetCursorScreenPos();
+				if (ImGui::InvisibleButton("##favourite", ImVec2(side, side))) {
+					ToggleFavourite(map.Name);
+				}
+				bool hovered = ImGui::IsItemHovered();
+				ImGui::SetItemTooltip(IsFavourite(map.Name) ? "A favourite: click to unstar it" : "Click to star it as a favourite");
+				DrawStar(drawList, ImVec2(at.x + side * 0.5F, at.y + side * 0.5F), side * 0.38F, IsFavourite(map.Name), hovered);
+				ImGui::SameLine();
+				ImGui::AlignTextToFramePadding();
+			}
 			ImGui::PushStyleColor(ImGuiCol_Text, ToolTheme::Vec(ToolTheme::Gold));
 			ImGui::TextWrapped("%s", map.Name.c_str());
 			ImGui::PopStyleColor();
@@ -1013,6 +1101,7 @@ void MapBrowser::Open(Purpose purpose) {
 	s_Browser.For = purpose;
 	s_Browser.Choice = Choice();
 	s_Browser.OnlyWithBattles = purpose == Purpose::Battle;
+	s_Browser.OnlyFavourites = false;
 	// Read afresh each time: battles may have been saved, or mods turned on, since it was last open.
 	std::string picked = s_Browser.Picked >= 0 && s_Browser.Picked < static_cast<int>(s_Browser.Maps.size()) ? s_Browser.Maps[s_Browser.Picked].Name : "";
 	ListMaps();
