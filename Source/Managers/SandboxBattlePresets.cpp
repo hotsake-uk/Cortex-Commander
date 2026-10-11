@@ -109,6 +109,7 @@ namespace SandboxDetail {
 			visit("CommanderLevel", mode.CommanderLevel);
 			visit("CommanderReserve", mode.CommanderReserve);
 			visit("CommanderFallBack", mode.CommanderFallBack);
+			visit("CommanderSquads", mode.CommanderSquads);
 			visit("PlayerCommands", mode.PlayerCommands);
 			visit("FogOfWar", mode.FogOfWar);
 			visit("FieldBrain", mode.FieldBrain);
@@ -121,6 +122,14 @@ namespace SandboxDetail {
 			visit("MovingSpawns", mode.MovingSpawns);
 			visit("SpawnOrders", mode.SpawnOrders);
 			visit("ZoneSpawnOrders", mode.ZoneSpawnOrders);
+			visit("Pickups", mode.Pickups);
+			visit("PickupEvery", mode.PickupEvery);
+			visit("PickupMost", mode.PickupMost);
+			visit("PickupLasts", mode.PickupLasts);
+			visit("PickupKinds", mode.PickupKinds);
+			visit("PickupPlaces", mode.PickupPlaces);
+			visit("PickupSpots", mode.PickupSpots);
+			visit("PickupZones", mode.PickupZones);
 		}
 
 		// Values as text: a point "x,y", a line of points with spaces between, zones with " | " between.
@@ -313,6 +322,12 @@ namespace SandboxDetail {
 			preset.Mode.Attacker = std::clamp(preset.Mode.Attacker, 0, c_Sides - 1);
 			if (preset.Mode.FlagSpots.size() > c_MaxFlagSpots) {
 				preset.Mode.FlagSpots.resize(c_MaxFlagSpots);
+			}
+			if (preset.Mode.PickupSpots.size() > c_MaxPickupSpots) {
+				preset.Mode.PickupSpots.resize(c_MaxPickupSpots);
+			}
+			if (preset.Mode.PickupZones.size() > c_MaxPickupZones) {
+				preset.Mode.PickupZones.resize(c_MaxPickupZones);
 			}
 			return preset;
 		}

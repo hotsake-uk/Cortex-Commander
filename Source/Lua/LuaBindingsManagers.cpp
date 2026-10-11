@@ -431,6 +431,9 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SceneMan) {
 	    .def("PourLiquid", &SceneMan::PourLiquid)
 	    .def("SpawnTerrainChunk", &SceneMan::SpawnTerrainChunk)
 	    .def("CheckTerrainCollapse", &SceneMan::CheckTerrainCollapse)
+	    .def("FindFood", &SceneMan::FindFood, luabind::adopt(luabind::return_value) + luabind::return_stl_iterator)
+	    .def("FindWater", &SceneMan::FindWater, luabind::adopt(luabind::return_value) + luabind::return_stl_iterator)
+	    .def("EatFood", &SceneMan::EatFood)
 	    .def("GetFallingTerrainChunkCount", &SceneMan::GetFallingTerrainChunkCount);
 }
 

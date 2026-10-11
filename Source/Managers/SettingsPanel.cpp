@@ -1396,24 +1396,6 @@ void DebugMan::SettingsGUI() {
 			}
 			Tip("Which digger those units are handed. The heavier the digger, the harder the ground it cuts through and the sooner they choose to dig.");
 		}
-		{
-			float recklessness = g_SettingsMan.AIRecklessness() * 100.0F;
-			if (Slider("AI movement recklessness", &recklessness, 0.0F, 100.0F, "%.0f%%")) {
-				g_SettingsMan.SetAIRecklessness(recklessness / 100.0F);
-			}
-			Tip("How many chances AI units take getting about. Lower: they steady themselves longer before a jetpack jump, wait for a little more fuel, and pick routes round hard jumps and long drops. Higher: quicker, riskier take-offs and routes, and more missed jumps. 50% is the designed behaviour.");
-		}
-		{
-			float ladderGiveUp = g_SettingsMan.AILadderGiveUpSeconds();
-			if (Slider("Give up on a stuck ladder after", &ladderGiveUp, 0.5F, 10.0F, "%.1f s")) {
-				g_SettingsMan.SetAILadderGiveUpSeconds(ladderGiveUp);
-			}
-			Tip("An AI unit climbing a ladder that stops going up (rungs shot away above, the ladder ending short, the way up blocked) lets go after this long and finds another way. The second time any unit of a team gets stuck on the same ladder, the whole team avoids it for a while. 1.5 s is normal.");
-		}
-		Toggle("AI steadies before jetpacking", g_SettingsMan.AISteadiesBeforeJet(), [](bool on) { g_SettingsMan.SetAISteadiesBeforeJet(on); });
-		Tip("AI units come to a stand, still and upright, before a jetpack climb or jump, so the flight starts true. Off: they take off mid-stride, quicker but more often off line.");
-		Toggle("AI waits for fuel before jetpacking", g_SettingsMan.AIWaitsForFuel(), [](bool on) { g_SettingsMan.SetAIWaitsForFuel(on); });
-		Tip("AI units wait at a take-off until the tank holds what the flight needs. Off: they go with what's in the tank, and may come down short.");
 		Toggle("AI units use vehicles", g_SettingsMan.AIUsesVehicles(), [](bool on) { g_SettingsMan.SetAIUsesVehicles(on); });
 		Tip("An AI unit sent a long way walks to a friendly vehicle near it that is going its way, gets in and rides (or drives it) there, then gets out and walks the rest. A vehicle with an AI driver drives itself to the place it is sent, and units sent to a vehicle get in. Off: they walk, and AI drivers sit still.");
 		Heading("Take cover order");
@@ -1423,6 +1405,48 @@ void DebugMan::SettingsGUI() {
 		Tip("Told to take cover with nothing to get behind and no foxhole dug, a unit falls back 200 px away from the enemy if one is within 250 px or it is pinned down. Off: it stays where it is.");
 		Toggle("Lie flat when exposed", g_SettingsMan.AICoverLiesFlat(), [](bool on) { g_SettingsMan.SetAICoverLiesFlat(on); });
 		Tip("Told to take cover with nothing to get behind, a unit that doesn't dig in lies flat where it ends up. Off: it crouches.");
+	};
+
+	// How units get about: the AI's moves and jetpack, and ladders.
+	auto movement = [&]() {
+		Heading("AI movement");
+		{
+			float recklessness = g_SettingsMan.AIRecklessness() * 100.0F;
+			if (Slider("AI movement recklessness", &recklessness, 0.0F, 100.0F, "%.0f%%")) {
+				g_SettingsMan.SetAIRecklessness(recklessness / 100.0F);
+			}
+			Tip("How many chances AI units take getting about. Lower: they steady themselves longer before a jetpack jump, wait for a little more fuel, and pick routes round hard jumps and long drops. Higher: quicker, riskier take-offs and routes, and more missed jumps. 50% is the designed behaviour.");
+		}
+		Toggle("AI steadies before jetpacking", g_SettingsMan.AISteadiesBeforeJet(), [](bool on) { g_SettingsMan.SetAISteadiesBeforeJet(on); });
+		Tip("AI units come to a stand, still and upright, before a jetpack climb or jump, so the flight starts true. Off: they take off mid-stride, quicker but more often off line.");
+		Toggle("AI waits for fuel before jetpacking", g_SettingsMan.AIWaitsForFuel(), [](bool on) { g_SettingsMan.SetAIWaitsForFuel(on); });
+		Tip("AI units wait at a take-off until the tank holds what the flight needs. Off: they go with what's in the tank, and may come down short.");
+		Heading("Ladders");
+		Toggle("AI grabs ladders only on purpose", g_SettingsMan.AIGrabsLaddersOnPurpose(), [](bool on) { g_SettingsMan.SetAIGrabsLaddersOnPurpose(on); });
+		Tip("AI units take hold of a ladder only when their route climbs it, so they don't catch on ladders they are only passing. Bunker ladders follow the same rule. Off: they grab any ladder they press up or down at, as a player does. Players always climb as before.");
+		Toggle("AI grabs ladders mid-jetpack", g_SettingsMan.AIGrabsLaddersMidJet(), [](bool on) { g_SettingsMan.SetAIGrabsLaddersMidJet(on); });
+		Tip("An AI unit flying, hopping or falling past the ladder its route climbs next takes hold of it, cutting the jetpack. Off: a lit jetpack stops it grabbing, and it has to land first.");
+		Toggle("Risky orders fly past ladders", g_SettingsMan.RiskyOrdersFlyPastLadders(), [](bool on) { g_SettingsMan.SetRiskyOrdersFlyPastLadders(on); });
+		Tip("On a risky order (a double click dragged), units with the fuel jetpack up a laddered shaft instead of climbing, and their routes count ladders as slower the riskier the order. Off: they climb ladders as a normal order does.");
+		{
+			float ladderGiveUp = g_SettingsMan.AILadderGiveUpSeconds();
+			if (Slider("Give up on a stuck ladder after", &ladderGiveUp, 0.5F, 10.0F, "%.1f s")) {
+				g_SettingsMan.SetAILadderGiveUpSeconds(ladderGiveUp);
+			}
+			Tip("An AI unit climbing a ladder that stops going up (rungs shot away above, the ladder ending short, the way up blocked) lets go after this long and finds another way. 1.5 s is normal.");
+			int teamStalls = g_SettingsMan.AILadderTeamStalls();
+			if (SliderI("Team avoids a ladder after", &teamStalls, 1, 5, "%d stuck units")) {
+				g_SettingsMan.SetAILadderTeamStalls(teamStalls);
+			}
+			Tip("How many times units of a team must get stuck on the same ladder within a minute before the whole team avoids it for a while. Until then only the unit that got stuck avoids it. 2 is normal.");
+		}
+		if (Plain()) {
+			ImGui::Spacing();
+			if (ToolUI::Button("Reset ladders to normal")) {
+				g_SettingsMan.ResetLadderSettings();
+			}
+			ImGui::SetItemTooltip("Puts the ladder settings back as the game comes.");
+		}
 	};
 
 	// How units behave on a cautious or a direct order: an RTS order placed with one click is cautious, two normal, and a double click held
@@ -1684,6 +1708,7 @@ void DebugMan::SettingsGUI() {
 	    {"Camera & image", cameraAndImage},
 	    {"Game & HUD", gameAndHUD},
 	    {"AI behaviour", aiBehaviour},
+	    {"Movement", movement},
 	    {"Battle Behavior", battleBehavior},
 	    {"Debug", debug},
 	    {"AI debug", aiDebug},

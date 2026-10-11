@@ -1319,7 +1319,7 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 		};
 		// On a risky order, whose flights cost less (PathAgent::FlightCostScale under 1), the climb costs more by as much: it jets where
 		// others climb. (Priced as ever, a reckless unit with a short jet still went up every ladder on the way, at a careful unit's pace.)
-		const float climbScale = s_FlightCostScale < 1.0F ? 1.0F / std::max(s_FlightCostScale, 0.2F) : 1.0F;
+		const float climbScale = (s_FlightCostScale < 1.0F && g_SettingsMan.RiskyOrdersFlyPastLadders()) ? 1.0F / std::max(s_FlightCostScale, 0.2F) : 1.0F;
 		// The way up the ladder's line where the body climbs (the anchor), up to the head's height at the node above: open, the rungs
 		// aside. (The step's own material is the weakest of a few lines across the cell, so a shaft choked over the ladder with a gap
 		// beside it read as open, and the climber, whose head goes up the ladder's line, was routed up it and hung under the blockage.)

@@ -870,6 +870,7 @@
     <ClInclude Include="Source\Managers\WeatherLightning.h" />
     <ClInclude Include="Source\Managers\TerrainCollapse.h" />
     <ClInclude Include="Source\Managers\TerrainTrees.h" />
+    <ClInclude Include="Source\Managers\TerrainGrazing.h" />
     <ClInclude Include="Source\Managers\FluidSim.h" />
     <ClInclude Include="Source\Managers\ModernHUD.h" />
     <ClInclude Include="Source\Managers\ActionMenu.h" />
@@ -1493,6 +1494,7 @@
     <ClCompile Include="Source\Managers\WeatherLightning.cpp" />
     <ClCompile Include="Source\Managers\TerrainCollapse.cpp" />
     <ClCompile Include="Source\Managers\TerrainTrees.cpp" />
+    <ClCompile Include="Source\Managers\TerrainGrazing.cpp" />
     <ClCompile Include="Source\Managers\FluidSim.cpp" />
     <ClCompile Include="Source\Managers\ModernHUD.cpp" />
     <ClCompile Include="Source\Managers\ActionMenu.cpp" />
@@ -1535,6 +1537,7 @@
     <ClCompile Include="Source\Managers\SandboxBuild.cpp" />
     <ClCompile Include="Source\Managers\SandboxAirlift.cpp" />
     <ClCompile Include="Source\Managers\BattleSupply.cpp" />
+    <ClCompile Include="Source\Managers\BattlePickups.cpp" />
     <ClCompile Include="Source\Managers\BattleFieldBrain.cpp" />
     <ClCompile Include="Source\Managers\BattleHotSeat.cpp" />
     <ClCompile Include="Source\Managers\BattleArmy.cpp" />

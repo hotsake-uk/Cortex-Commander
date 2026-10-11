@@ -1720,6 +1720,17 @@ void AVehicle::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int which
 	if (!activity || !font || !m_HUDVisible) {
 		return;
 	}
+	// The gun's reticle and rounds, to the player laying it.
+	if (m_Turret && m_Turret->IsAttached() && m_Controller.IsPlayerControlled() && !m_Controller.IsState(PIE_MENU_ACTIVE) && activity->ScreenOfPlayer(m_Controller.GetPlayer()) == whichScreen) {
+		int gunnerSeat = std::max(m_Crew.GetSeatOfGun(0), 0);
+		if (GetControlSeat() == gunnerSeat && GetSeatOccupant(gunnerSeat)) {
+			Vector drawPos = m_Pos - targetPos;
+			if (!targetPos.IsZero()) {
+				drawPos += g_SceneMan.GetWrapToScreen(drawPos, pTargetBitmap->w, pTargetBitmap->h);
+			}
+			m_Turret->DrawGunnerHUD(pTargetBitmap, targetPos, drawPos, m_HUDStack);
+		}
+	}
 	const char* hint = nullptr;
 	if (Actor* boarder = m_Crew.GetBoarderInReach(); boarder && activity->ScreenOfPlayer(boarder->GetController()->GetPlayer()) == whichScreen) {
 		hint = m_Crew.GetBoarderPushes() ? "Pick up: push it back over" : "Pick up: get in";

@@ -253,6 +253,9 @@
     <ClInclude Include="Source\Managers\TerrainTrees.h">
       <Filter>Managers</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Managers\TerrainGrazing.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Managers\TerrainFire.h">
       <Filter>Managers</Filter>
     </ClInclude>
@@ -943,6 +946,9 @@
     <ClCompile Include="Source\Managers\BattleSupply.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Managers\BattlePickups.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Managers\BattleFieldBrain.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
@@ -1037,6 +1043,9 @@
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\TerrainTrees.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\TerrainGrazing.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\TerrainFire.cpp">
