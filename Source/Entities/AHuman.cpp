@@ -3638,7 +3638,10 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 	}
 	// How fast it may come down with so much height left: as fast as the jet can still bring down to a safe touchdown (5 m/s) by the floor.
 	// Up to then it falls, the jet out: the bursts all the way down were fuel, time and risk for nothing.
-	const float safeTouchdown = 5.0F * ppm;
+	// On a triple-clicked order (StandingOrder::Direct) it flies flat out: half as fast again up, across and down, and down onto the floor
+	// harder, for the time saved, though it comes in less under control.
+	const float rush = m_StandingOrder.Direct ? 1.5F : 1.0F;
+	const float safeTouchdown = (m_StandingOrder.Direct ? 7.0F : 5.0F) * ppm;
 	auto allowedFall = [&](float height) {
 		// (On seven tenths of the braking reckoned: the jet's push falls with the tank, and a unit dropped onto a narrow ledge at the full
 		// reckoning met it too fast and bounced off.)
@@ -3656,7 +3659,7 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 		float rise = pos.m_Y - aimY; // Above zero: still to go up.
 		// Up at the speed gravity alone would stop at the top, up to 12 m/s: burn hard early and coast, as a climb costs fuel by the second
 		// lit, not by the pixel. Capped at 9 the jet held the speed the whole way up a 190 px shaft and ran the tank dry at the mouth.
-		float wantVy = rise > 0.0F ? -std::min(12.0F * ppm, std::sqrt(2.0F * g * rise)) : std::min(9.0F * ppm, allowedFall(-rise));
+		float wantVy = rise > 0.0F ? -std::min(12.0F * rush * ppm, std::sqrt(2.0F * g * rise) * rush) : std::min(9.0F * rush * ppm, allowedFall(-rise));
 		float wantVx;
 		if (overIt && landing) {
 			// Over the landing: no steering but to stay over it, down to where its floor ends at the speed the jet's lean can stop from.
@@ -3671,7 +3674,7 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 			float direction = toTarget.m_X > 0.0F ? 1.0F : -1.0F;
 			float room = std::max(0.0F, std::abs(toTarget.m_X) - (landing ? std::max(4.0F, (zoneRight - zoneLeft) * 0.5F) : 4.0F));
 			float stoppable = std::sqrt(2.0F * sideAccel * room);
-			float cap = std::clamp(std::abs(toTarget.m_X), 3.0F * ppm, 7.0F * ppm);
+			float cap = std::clamp(std::abs(toTarget.m_X), 3.0F * ppm, 7.0F * rush * ppm);
 			float along = vel.m_X * direction;
 			if (rise > 12.0F) {
 				// Climbing: the time the climb takes at the rate wanted, and the crossing spread over it.

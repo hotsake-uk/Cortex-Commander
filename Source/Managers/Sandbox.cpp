@@ -880,6 +880,7 @@ void Sandbox::DrawGUI() {
 				s_Dragging = true;
 				s_DragStart = io.MousePos;
 				s_DoubleClick = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+				s_TripleClick = ImGui::GetMouseClickedCount(ImGuiMouseButton_Left) >= 3;
 			}
 		} else if (tool.Kind == Tool::LandingSpot) {
 			// Battle Command: where reinforcements come down.
@@ -892,6 +893,7 @@ void Sandbox::DrawGUI() {
 				s_Dragging = true;
 				s_DragStart = io.MousePos;
 				s_DoubleClick = false;
+				s_TripleClick = false;
 			}
 		} else if (DragsShape(tool.Kind)) {
 			// Brush type Shape: a drag marks out the shape, filled when the button is let go (below). "Make it fall" drags its box the same way.
@@ -1077,6 +1079,8 @@ void Sandbox::DrawGUI() {
 				stroke.Count = io.KeyShift ? 1 : (s_DoubleClick ? 2 : 0);
 			}
 			if (give) {
+				// (A triple click makes the order a direct one: the shortest way there, whatever it takes.)
+				stroke.Direct = stroke.Kind == Tool::Command && s_TripleClick;
 				s_Queue.push_back(stroke);
 			}
 		}

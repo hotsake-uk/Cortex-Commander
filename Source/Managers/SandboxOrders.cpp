@@ -179,6 +179,8 @@ namespace SandboxDetail {
 		if (!resend) {
 			standing.Kind = OrderKindFor(reason);
 			standing.HasDigTarget = false;
+			// Triple-clicked (s_DirectOrder): the shortest way there, whatever it takes. One the standing orders resend keeps it.
+			standing.Direct = s_DirectOrder;
 		}
 		standing.FailReason = Actor::ORDERFAIL_NONE;
 		standing.FailMaterial = 0;
@@ -648,8 +650,9 @@ namespace SandboxDetail {
 		spots.resize(std::min(spots.size(), units.size()));
 		OrderForFormation(units, point);
 		// Kept together (RC-5): each no faster than the slowest walker among them, till it gets there (UpdatePace).
+		// (Not on a direct order, s_DirectOrder: each goes as fast as it can.)
 		float pace = 0.0F;
-		if (s_KeepPace && units.size() > 1) {
+		if (s_KeepPace && units.size() > 1 && !s_DirectOrder) {
 			for (Actor* unit: units) {
 				if (float own = WalkPace(unit); own > 0.0F && (pace == 0.0F || own < pace)) {
 					pace = own;
@@ -1134,7 +1137,7 @@ namespace SandboxDetail {
 		return s_Team;
 	}
 
-	void MarkOrder(const Vector& at, ImU32 color) { s_OrderMarks.push_back({at, 1.0F, color}); }
+	void MarkOrder(const Vector& at, ImU32 color) { s_OrderMarks.push_back({at, 1.0F, color, s_DirectOrder}); }
 
 
 	/// A click on the world with the command tool, as the mode says. Count: 0 a plain click, 1 with Shift held (add to the selection), 2 a double click
