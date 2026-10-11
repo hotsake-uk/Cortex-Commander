@@ -10,6 +10,8 @@
 #include "AMover.h"
 #include "ACraft.h"
 #include "ACrab.h"
+#include "AVehicle.h"
+#include "HeldDevice.h"
 #include "SoundContainer.h"
 #include "AEJetpack.h"
 #include "AtomGroup.h"
@@ -999,7 +1001,8 @@ Actor* AHuman::UnitAhead(float direction, float reach) const {
 		if (ahead <= 0.0F || ahead >= nearestAhead || std::abs(to.m_Y) > h * 0.6F) {
 			continue;
 		}
-		if (dynamic_cast<ADoor*>(actor) || dynamic_cast<ACraft*>(actor)) {
+		// (Nor a vehicle: one never gives way or lies down, and the walk has its own handling of them, VehicleAhead's.)
+		if (dynamic_cast<ADoor*>(actor) || dynamic_cast<ACraft*>(actor) || dynamic_cast<AVehicle*>(actor)) {
 			continue;
 		}
 		// (Not something that never moves out of the way: a turret, a crab with no legs.)
@@ -1010,6 +1013,95 @@ Actor* AHuman::UnitAhead(float direction, float reach) const {
 		nearestAhead = ahead;
 	}
 	return nearest;
+}
+
+const MOSRotating* AHuman::VehicleAhead(float direction, float reach, float floorY) const {
+	const float h = m_CharHeight;
+	std::vector<MOID> ours;
+	GetMOIDs(ours);
+	Vector obstacle;
+	Vector free;
+	// (Knee and chest: a low cart or a boat on land is under the chest, a tank's hull over the knee.)
+	for (float y: {floorY - std::max(4.0F, h * 0.12F), m_Pos.m_Y}) {
+		if (g_SceneMan.CastObstacleRay(Vector(m_Pos.m_X, y), Vector(direction * reach, 0.0F), obstacle, free, ours, Activity::NoTeam, 0, 1) < 0.0F) {
+			continue;
+		}
+		MOID hit = g_SceneMan.GetMOIDPixel(static_cast<int>(obstacle.m_X), static_cast<int>(obstacle.m_Y));
+		if (hit == g_NoMOID) {
+			continue; // (The terrain: the wall sense's.)
+		}
+		const MovableObject* root = g_MovableMan.GetMOFromID(hit);
+		root = root ? root->GetRootParent() : nullptr;
+		const MOSRotating* hull = dynamic_cast<const MOSRotating*>(root);
+		if (!hull || hull == this || hull->IsSetToDelete()) {
+			continue;
+		}
+		if (dynamic_cast<const AVehicle*>(hull)) {
+			return hull;
+		}
+		// A loose body as big as a vehicle's: a wreck, a crate. Not a unit, not a gun on the ground, not a gib or a scrap.
+		if (!dynamic_cast<const Actor*>(hull) && !dynamic_cast<const HeldDevice*>(hull) && hull->GetRadius() > h * 0.35F && hull->GetsHitByMOs()) {
+			return hull;
+		}
+	}
+	return nullptr;
+}
+
+bool AHuman::MeasureHull(const MOSRotating* hull, float direction, float floorY, float& topY, float& nearX, float& farX) const {
+	const float h = m_CharHeight;
+	const MOID hullRoot = hull->GetRootID();
+	std::vector<MOID> ours;
+	GetMOIDs(ours);
+	Vector obstacle;
+	Vector free;
+	auto hullAt = [&](const Vector& from, float length) {
+		if (g_SceneMan.CastObstacleRay(from, Vector(length, 0.0F), obstacle, free, ours, Activity::NoTeam, 0, 1) < 0.0F) {
+			return false;
+		}
+		MOID hit = g_SceneMan.GetMOIDPixel(static_cast<int>(obstacle.m_X), static_cast<int>(obstacle.m_Y));
+		return hit != g_NoMOID && g_MovableMan.GetRootMOID(hit) == hullRoot;
+	};
+	const float reach = std::abs(Towards(m_Pos, hull->GetPos()).m_X) + hull->GetRadius() + 4.0F;
+	bool seen = false;
+	int missesSinceHit = 0;
+	float nearest = std::numeric_limits<float>::max();
+	std::vector<float> rows;
+	// Rows of rays 3 px apart up from the floor, to a body and a half: the highest that meets the hull is its top (a tank's turret too), the
+	// nearest hit its near end. Three misses running above a hit is the top passed.
+	for (float y = floorY - 2.0F; y > floorY - h * 1.5F && missesSinceHit < 3; y -= 3.0F) {
+		if (hullAt(Vector(m_Pos.m_X, y), direction * reach)) {
+			float ahead = Towards(m_Pos, obstacle).m_X * direction;
+			if (ahead < nearest) {
+				nearest = ahead;
+				nearX = obstacle.m_X;
+			}
+			topY = y;
+			rows.push_back(y);
+			seen = true;
+			missesSinceHit = 0;
+		} else if (seen) {
+			++missesSinceHit;
+		}
+	}
+	if (!seen) {
+		return false;
+	}
+	// The far end: rays back from beyond it, at the bottom, middle and top rows; the furthest hit. (Terrain behind it, a slope: its middle
+	// and its size.)
+	farX = hull->GetPos().m_X + direction * hull->GetRadius();
+	const float span = hull->GetDiameter() + 8.0F;
+	float furthest = -std::numeric_limits<float>::max();
+	for (float y: {rows.front(), rows[rows.size() / 2], rows.back()}) {
+		Vector from(nearX + direction * span, y);
+		if (hullAt(from, -direction * span)) {
+			float ahead = Towards(m_Pos, obstacle).m_X * direction;
+			if (ahead > furthest) {
+				furthest = ahead;
+				farX = obstacle.m_X;
+			}
+		}
+	}
+	return true;
 }
 
 bool AHuman::InDoorSweep() const {
@@ -3726,6 +3818,174 @@ int AHuman::MoveAlongRoute() {
 	if (!ctrl.IsState(MOVE_LEFT) && !ctrl.IsState(MOVE_RIGHT) && InDoorSweep()) {
 		ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
 		mover.progressTimer.Reset();
+	}
+	// A vehicle in the way (any side's, a parked or empty one too) or a wreck or crate as big: the route's grid is terrain only and never sees
+	// them, the wall sense neither, and the walk pushed into the hull until the stuck handling blamed the ground. Now: one driving our way is
+	// followed; one driving at us is backed away from; one standing is leapt when the leap's arc clears it end to end, else hopped with the
+	// jet, held a little over its top until the feet are past its far end, else a route round it is asked for (this unit's only) and the
+	// unit waits. Not the one it is sent to (a move target: boarding, a charge). In the way for 8 s all told and it is left to the ordinary
+	// walk and the stuck handling for 8 s. Not climbed onto and walked over on purpose.
+	if (mover.vehicleIgnoreID != 0 && mover.vehicleIgnoreTimer.IsPastSimMS(8000)) {
+		mover.vehicleIgnoreID = 0;
+	}
+	if (mover.vehicleHop) {
+		const MOSRotating* hull = dynamic_cast<const MOSRotating*>(g_MovableMan.FindObjectByUniqueID(mover.vehicle));
+		const float way = mover.vehicleWay;
+		Vector moved = hull ? Towards(mover.vehicleMeasuredAt, hull->GetPos()) : Vector();
+		const float past = Towards(Vector(mover.vehicleFarX + moved.m_X, m_Pos.m_Y), m_Pos).m_X * way;
+		bool jetLeft = m_pJetpack && m_pJetpack->GetJetTimeLeft() > 0.0F;
+		if (!hull || past > std::max(4.0F, h * 0.12F) + 2.0F || mover.vehicleHopTimer.IsPastSimMS(3000) || !jetLeft || m_Status != STABLE || m_Ladder.active) {
+			MoverTrace(past > 0.0F ? "over the vehicle" : "hop over the vehicle given up");
+			mover.vehicleHop = false;
+			if (!hull || past <= 0.0F) {
+				mover.vehicleIgnoreID = mover.vehicle;
+				mover.vehicleIgnoreTimer.Reset();
+			}
+		} else {
+			mover.progressTimer.Reset();
+			ctrl.SetState(MOVE_LEFT, way < 0.0F);
+			ctrl.SetState(MOVE_RIGHT, way > 0.0F);
+			ctrl.SetState(MOVE_FAST, false);
+			ctrl.SetState(BODY_CROUCH, false);
+			ctrl.SetState(BODY_PRONE, false);
+			// (The jet held while the feet are under a little over its top: up its side, then skimming it to the far end.)
+			if (m_Pos.m_Y + feet > mover.vehicleTopY + moved.m_Y - 5.0F) {
+				ctrl.SetState(BODY_JUMP, true);
+				SetAimAngle(c_HalfPI * 0.4F);
+			}
+			return RouteMover::Moving;
+		}
+	}
+	if (!prone && !mover.flight.active && kind != PathStepKind::Fall && std::abs(toPoint.m_X) > 3.0F && !InDoorSweep() && !m_Ladder.active) {
+		const float way = toPoint.m_X < 0.0F ? -1.0F : 1.0F;
+		const MOSRotating* hull = VehicleAhead(way, std::min(h * 0.6F + 12.0F, std::abs(toPoint.m_X) + h * 0.3F), floorY);
+		if (hull && (hull->GetUniqueID() == mover.vehicleIgnoreID || (g_MovableMan.ValidMO(m_pMOMoveTarget) && m_pMOMoveTarget->GetRootParent() == hull))) {
+			hull = nullptr;
+		}
+		// On the last leg, with the goal at the hull: as near as it gets.
+		if (hull && m_MovePath.size() <= 1 && m_Waypoints.empty() && !g_MovableMan.ValidMO(m_pMOMoveTarget) && Towards(hull->GetPos(), GetLastAIWaypoint()).MagnitudeIsLessThan(hull->GetRadius() + h * 0.5F)) {
+			MoverTrace("arrived (a vehicle on the goal)");
+			mover.arrivedTick = tick;
+			return RouteMover::Arrived;
+		}
+		if (!hull) {
+			if (mover.vehicle != 0 && mover.vehicleSeenTimer.IsPastSimMS(1000)) {
+				mover.vehicle = 0;
+			}
+		} else {
+			bool measure = mover.vehicleMeasureTimer.IsPastSimMS(250);
+			if (mover.vehicle != hull->GetUniqueID()) {
+				mover.vehicle = hull->GetUniqueID();
+				mover.vehicleTimer.Reset();
+				mover.vehicleRepathed = false;
+				mover.vehicleActionTimer.SetElapsedSimTimeMS(10000.0);
+				measure = true;
+				MoverTrace("a vehicle in the way (" + hull->GetPresetName() + ")");
+			}
+			mover.vehicleSeenTimer.Reset();
+			if (measure || mover.vehicleWay != way) {
+				mover.vehicleMeasureTimer.Reset();
+				mover.vehicleWay = way;
+				mover.vehicleMeasuredAt = hull->GetPos();
+				if (!MeasureHull(hull, way, floorY, mover.vehicleTopY, mover.vehicleNearX, mover.vehicleFarX)) {
+					// (Seen by the sense but not by the rows: its middle and size.)
+					mover.vehicleTopY = hull->GetPos().m_Y - hull->GetRadius();
+					mover.vehicleNearX = hull->GetPos().m_X - way * hull->GetRadius();
+					mover.vehicleFarX = hull->GetPos().m_X + way * hull->GetRadius();
+				}
+			}
+			auto release = [&ctrl]() {
+				ctrl.SetState(MOVE_LEFT, false);
+				ctrl.SetState(MOVE_RIGHT, false);
+				ctrl.SetState(MOVE_FAST, false);
+			};
+			if (mover.vehicleTimer.IsPastSimMS(8000)) {
+				MoverTrace("still behind the vehicle; leaving it to the walk for a while");
+				mover.vehicleIgnoreID = mover.vehicle;
+				mover.vehicleIgnoreTimer.Reset();
+				mover.vehicle = 0;
+			} else {
+				// (Not stuck on the ground for it: the terrain is not to blame.)
+				mover.progressTimer.Reset();
+				const float bodyHalf = std::max(4.0F, h * 0.12F);
+				const float above = floorY - mover.vehicleTopY;
+				const float nearAhead = Towards(m_Pos, Vector(mover.vehicleNearX, m_Pos.m_Y)).m_X * way;
+				const float farAhead = std::max(nearAhead, Towards(m_Pos, Vector(mover.vehicleFarX, m_Pos.m_Y)).m_X * way);
+				const float along = hull->GetVel().m_X * way;
+				const bool grounded = floorHere >= 0.0F && m_Status == STABLE;
+				// The leap's arc (UpdateLeap: up to the leap's height, across at its speed): the feet are over the hull's top, with a little to
+				// spare, from d1 to d2 ahead. It clears the hull from here if the near end is at d1 or beyond and the far end at d2 or short of it.
+				bool leapFits = false;
+				bool leapNearer = false;
+				bool leapBack = false;
+				const float legHeight = GetLegJumpHeight();
+				const float clearance = above + 3.0F;
+				if (legHeight > clearance) {
+					const float gravity = std::max(0.1F, g_SceneMan.GetGlobalAcc().m_Y);
+					const float rise = std::sqrt(2.0F * gravity * legHeight * c_MPP);
+					const float range = m_LegJumpSpeed * (2.0F * rise / gravity) / c_MPP;
+					const float spread = range * 0.5F * std::sqrt(1.0F - clearance / legHeight);
+					const float d1 = range * 0.5F - spread;
+					const float d2 = range * 0.5F + spread;
+					const float start = nearAhead - bodyHalf;
+					const float width = farAhead - nearAhead + bodyHalf * 2.0F;
+					if (width <= d2 - d1) {
+						leapNearer = start > d2 - width;
+						leapBack = start < d1;
+						leapFits = !leapNearer && !leapBack;
+					}
+				}
+				const bool canLeap = legHeight > clearance && (leapFits || leapNearer || leapBack);
+				const bool hopFits = standardJet && !RouteClimbsLadderNext() && !mover.fuelWaiting && m_pJetpack->GetJetTimeLeft() > std::max(ClimbFuelNeeded(above + 6.0F, JetRelightFuel()), JetRelightFuel() + 150.0F) && ColumnOpen(m_Pos.m_X, topHeadY + 2.0F, topHeadY - above - 8.0F) && ColumnOpen(mover.vehicleFarX, mover.vehicleTopY - 2.0F, mover.vehicleTopY - standing - 6.0F);
+				if (!grounded && !m_Leaping) {
+					// (Off its feet a moment, a bump or a knock: nothing judged till it is down again.)
+				} else if (std::abs(hull->GetVel().m_X) > 1.0F && along > 1.0F) {
+					// Driving our way: behind it, at its pace.
+					release();
+				} else if (std::abs(hull->GetVel().m_X) > 1.0F && along < -1.0F) {
+					// Driving at us: out of its way, back the way we came.
+					if (mover.vehicleActionTimer.IsPastSimMS(1000)) {
+						mover.vehicleActionTimer.Reset();
+						MoverTrace("a vehicle driving at us; backing off");
+					}
+					release();
+					ctrl.SetState(way < 0.0F ? MOVE_RIGHT : MOVE_LEFT, true);
+					ctrl.SetState(MOVE_FAST, true);
+				} else if (canLeap) {
+					if (leapBack) {
+						// (Too close for the arc to clear its near end: a step back first.)
+						release();
+						ctrl.SetState(way < 0.0F ? MOVE_RIGHT : MOVE_LEFT, true);
+					} else if (leapFits && CanLeap()) {
+						if (mover.vehicleActionTimer.IsPastSimMS(1000)) {
+							mover.vehicleActionTimer.Reset();
+							MoverTrace("a low vehicle in the way; leap over");
+						}
+						if (!mover.vehicleActionTimer.IsPastSimMS(200)) {
+							ctrl.SetState(BODY_LEAP, true);
+						}
+					}
+					// (Nearer: the walk on, as it was.)
+				} else if (hopFits && !m_Leaping) {
+					MoverTrace("a vehicle in the way; hop over");
+					mover.vehicleHop = true;
+					mover.vehicleHopTimer.Reset();
+					ctrl.SetState(BODY_JUMP, true);
+					SetAimAngle(c_HalfPI * 0.4F);
+					return RouteMover::Moving;
+				} else if (!m_Leaping && !mover.vehicleRepathed && !m_MovePath.empty()) {
+					MoverTrace("a vehicle in the way and no way over; new route round it");
+					mover.vehicleRepathed = true;
+					AvoidPathLink(m_Pos, m_MovePath.front(), 8000.0F);
+					RefreshRoute();
+					return RouteMover::Moving;
+				} else if (nearAhead < bodyHalf + 6.0F) {
+					// No way over or round: waiting a body's width short of it (a jet's tank may fill, it may drive off).
+					release();
+				}
+				return RouteMover::Moving;
+			}
+		}
 	}
 	// A unit of our own side in the way (LM-2), one whose body ours collides with (UnitAhead: most of a side pass through each other, and
 	// those aren't in the way at all). The walk pushed into one until the stuck handling blamed

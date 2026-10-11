@@ -1017,6 +1017,21 @@ namespace RTE {
 			bool blockRepathed = false; //!< A route round it was asked for while behind it.
 			long blockIgnoreID = 0; //!< A unit given up on steering round: the ordinary walk, wall sense and stuck handling have it for a while.
 			Timer blockIgnoreTimer;
+			long vehicle = 0; //!< The vehicle or wreck in the way just now (see VehicleAhead), by unique ID, or 0.
+			Timer vehicleTimer; //!< Since it got in the way (kept through gaps under a second).
+			Timer vehicleSeenTimer; //!< Since it was last seen in the way.
+			Timer vehicleMeasureTimer; //!< Since it was last measured.
+			Timer vehicleActionTimer; //!< Since the last leap at it began.
+			float vehicleTopY = 0.0F; //!< Its top, near and far ends as last measured (scene y and x).
+			float vehicleNearX = 0.0F;
+			float vehicleFarX = 0.0F;
+			float vehicleWay = 1.0F; //!< The way the walk was going when it met it.
+			Vector vehicleMeasuredAt; //!< Where it was when measured: the ends and top move with it.
+			bool vehicleHop = false; //!< Hopping it with the jet, held until the feet are past its far end.
+			Timer vehicleHopTimer;
+			bool vehicleRepathed = false; //!< A route round it was asked for.
+			long vehicleIgnoreID = 0; //!< One given up on: the ordinary walk and stuck handling have it for a while.
+			Timer vehicleIgnoreTimer;
 			long yieldTo = 0; //!< The unit this one is giving way to, head on, by unique ID, or 0.
 			Timer yieldTimer; //!< Since it began giving way.
 			long long arrivedTick = -1; //!< The sim update the follower last answered arrived on (standing at the goal is no pin).
@@ -1174,6 +1189,14 @@ namespace RTE {
 		/// (both ignoring team hits, as every AHuman and ACrab does by default, or either ignoring actor hits). @param direction -1 walking left, 1
 		/// right. @param reach How far ahead to look at most. @return The unit, or nullptr.
 		Actor* UnitAhead(float direction, float reach) const;
+		/// A vehicle (AVehicle) of any side, a parked or empty one too, or a big loose body (a vehicle's wreck, a crate) in the walk's way: what the
+		/// body's knee or chest ray, a little ahead on the side it walks to, meets first, when that is one of those. The route's grid is terrain
+		/// only and never sees them. @param direction -1 walking left, 1 right. @param reach How far ahead to look. @param floorY The floor here.
+		/// @return The hull's root body, or nullptr.
+		const MOSRotating* VehicleAhead(float direction, float reach, float floorY) const;
+		/// Measures a hull found by VehicleAhead along the walk's way, by rows of rays up from the floor: the top of it (y) and its near and far
+		/// ends (x). @return Whether any of it was seen.
+		bool MeasureHull(const MOSRotating* hull, float direction, float floorY, float& topY, float& nearX, float& farX) const;
 		bool InDoorSweep() const;
 		float FlightFuelNeeded(const Vector& landing, float landingFloorY, bool capped = true) const; // (Capped at most of the tank unless told not to.)
 		/// The jet's push at a given fuel left, in px/s^2: the push now (as learned in flight) scaled by the throttle, which follows the tank.
