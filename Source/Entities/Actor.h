@@ -504,7 +504,7 @@ namespace RTE {
 			Vector DigTarget; //!< That place, exactly as given: it may be inside the ground.
 			int FailReason = ORDERFAIL_NONE; //!< Why the order stopped short (OrderFailReason), ORDERFAIL_NONE while it hasn't.
 			int FailMaterial = 0; //!< The material in the way for ORDERFAIL_TOOHARD, 0 for none known.
-			float Direct = 0.0F; //!< How direct the order is, by how many clicks placed it: 0 a plain order, 1 triple-clicked (the shortest way there whatever it takes: a dig-to tunnels in a straight line round only what it can't cut, a move takes the hard, fast jet flights a careful route walks round), a double click between (SettingsMan::DirectOrderTuning::DoubleClickShare). The Battle Behavior tuning is applied in that share (GetPathAgent, AHuman).
+			float Direct = 0.0F; //!< How urgent the order is, by how many clicks placed it (s_DirectOrder): -1 a single click (cautious: walks round jumps, waits for fuel, lands soft, keeps clear of enemies), 0 a double click (a normal order, and any order not placed by a click), 1 four clicks (the shortest way there whatever it takes: a dig-to tunnels in a straight line round only what it can't cut, a move takes the hard, fast jet flights a careful route walks round), three clicks between (SettingsMan::DirectOrderTuning::RiskyClickShare). The Battle Behavior tuning is applied in that share (GetPathAgent, AHuman).
 		};
 
 		/// Gets this' standing order, to read or change.
@@ -556,7 +556,7 @@ namespace RTE {
 		void SetOrderFailReason(int reason) { m_StandingOrder.FailReason = std::clamp(reason, 0, static_cast<int>(ORDERFAILREASONCOUNT) - 1); }
 		int GetOrderFailMaterial() const { return m_StandingOrder.FailMaterial; }
 		float GetOrderDirect() const { return m_StandingOrder.Direct; }
-		void SetOrderDirect(float direct) { m_StandingOrder.Direct = std::clamp(direct, 0.0F, 1.0F); }
+		void SetOrderDirect(float direct) { m_StandingOrder.Direct = std::clamp(direct, -1.0F, 1.0F); }
 
 		/// Marks the standing order failed (RC-7): why, and the material in the way when that is the reason.
 		/// @param reason An OrderFailReason.

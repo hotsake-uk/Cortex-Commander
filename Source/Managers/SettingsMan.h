@@ -267,7 +267,8 @@ namespace RTE {
 		/// Whether AI units wait at a take-off for the fuel the flight needs (on, as designed), or go with what is in the tank.
 		bool AIWaitsForFuel() const { return m_AIWaitForFuel; }
 
-		/// How units behave on a direct order (a double- or triple-clicked RTS order, Actor::StandingOrder::Direct): the "Battle Behavior" settings. Each
+		/// How units behave on a cautious or a direct order (an RTS order placed with one click, or three or four, Actor::StandingOrder::Direct):
+		/// the "Battle Behavior" settings. Each
 		/// member's default is the normal tuning, so DirectOrderTuning() is the reset.
 		struct DirectOrderTuning {
 			float Caution = 0.1F; //!< The most route caution they have (PathAgent::Caution): 1 is a normal unit's, lower shies less from hard flights and long drops.
@@ -280,7 +281,13 @@ namespace RTE {
 			float LineWeight = 0.1F; //!< On a dig-to, what each node off the straight line costs them, in nodes walked (PathFinder::LineCost).
 			bool IgnoreEnemies = true; //!< Whether their routes take no notice of enemies on the way.
 			bool KeepPace = false; //!< Whether a group sent together is still kept to its slowest walker's pace (s_KeepPace on the command row).
-			float DoubleClickShare = 0.5F; //!< How much of this tuning a double-clicked order gets, 0 to 1 (a triple-clicked one gets all of it, a plain click none).
+			float RiskyClickShare = 0.5F; //!< How much of the direct tuning an order placed with three clicks gets, 0 to 1 (four clicks get all of it, two none).
+			float CautiousCaution = 2.0F; //!< The least route caution a cautious (single-clicked) order has (PathAgent::Caution): over 1 shies more from hard flights and long drops.
+			float CautiousFlightCostScale = 3.0F; //!< What a jet flight costs a cautious order, as a share of the usual (PathAgent::FlightCostScale): over 1 walks round where others jump.
+			float CautiousFuelShare = 1.2F; //!< The share of a flight's fuel a cautious order waits for at a take-off (never more than the tank allows).
+			float CautiousFlightSpeed = 0.75F; //!< How fast a cautious order flies, as a multiple of the usual speed limits.
+			float CautiousTouchdown = 3.5F; //!< How fast a cautious order comes down onto the floor, m/s.
+			float CautiousEnemyAvoidance = 1.0F; //!< How much a cautious order's route keeps clear of enemies (PathAgent::ThreatWeight, times the Safe routes setting), 0 to 2.
 		};
 
 		/// Gets the direct order tuning, to read or change ("Battle Behavior" settings).

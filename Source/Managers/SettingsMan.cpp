@@ -719,7 +719,14 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DirectLineWeight", { reader >> m_DirectOrders.LineWeight; m_DirectOrders.LineWeight = std::clamp(m_DirectOrders.LineWeight, 0.0F, 1.0F); });
 	MatchProperty("DirectIgnoreEnemies", { reader >> m_DirectOrders.IgnoreEnemies; });
 	MatchProperty("DirectKeepPace", { reader >> m_DirectOrders.KeepPace; });
-	MatchProperty("DirectDoubleClickShare", { reader >> m_DirectOrders.DoubleClickShare; m_DirectOrders.DoubleClickShare = std::clamp(m_DirectOrders.DoubleClickShare, 0.0F, 1.0F); });
+	MatchProperty("DirectRiskyClickShare", { reader >> m_DirectOrders.RiskyClickShare; m_DirectOrders.RiskyClickShare = std::clamp(m_DirectOrders.RiskyClickShare, 0.0F, 1.0F); });
+	MatchProperty("DirectDoubleClickShare", { reader >> m_DirectOrders.RiskyClickShare; m_DirectOrders.RiskyClickShare = std::clamp(m_DirectOrders.RiskyClickShare, 0.0F, 1.0F); }); // (Its name before the cautious tier moved it to three clicks.)
+	MatchProperty("CautiousCaution", { reader >> m_DirectOrders.CautiousCaution; m_DirectOrders.CautiousCaution = std::clamp(m_DirectOrders.CautiousCaution, 1.0F, 4.0F); });
+	MatchProperty("CautiousFlightCost", { reader >> m_DirectOrders.CautiousFlightCostScale; m_DirectOrders.CautiousFlightCostScale = std::clamp(m_DirectOrders.CautiousFlightCostScale, 1.0F, 5.0F); });
+	MatchProperty("CautiousFuelShare", { reader >> m_DirectOrders.CautiousFuelShare; m_DirectOrders.CautiousFuelShare = std::clamp(m_DirectOrders.CautiousFuelShare, 1.0F, 1.5F); });
+	MatchProperty("CautiousFlightSpeed", { reader >> m_DirectOrders.CautiousFlightSpeed; m_DirectOrders.CautiousFlightSpeed = std::clamp(m_DirectOrders.CautiousFlightSpeed, 0.4F, 1.0F); });
+	MatchProperty("CautiousTouchdown", { reader >> m_DirectOrders.CautiousTouchdown; m_DirectOrders.CautiousTouchdown = std::clamp(m_DirectOrders.CautiousTouchdown, 2.0F, 5.0F); });
+	MatchProperty("CautiousEnemyAvoidance", { reader >> m_DirectOrders.CautiousEnemyAvoidance; m_DirectOrders.CautiousEnemyAvoidance = std::clamp(m_DirectOrders.CautiousEnemyAvoidance, 0.0F, 2.0F); });
 	MatchProperty("NavDebugOverlay", { int level = 0; reader >> level; SetNavDebugOverlay(level); });
 	MatchProperty("DebugTeam", { int team = 0; reader >> team; SetDebugTeam(team); });
 	MatchProperty("UnitInspector", { int which = 0; reader >> which; SetUnitInspector(which); });
@@ -1163,7 +1170,13 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("DirectLineWeight", m_DirectOrders.LineWeight);
 	writer.NewPropertyWithValue("DirectIgnoreEnemies", m_DirectOrders.IgnoreEnemies);
 	writer.NewPropertyWithValue("DirectKeepPace", m_DirectOrders.KeepPace);
-	writer.NewPropertyWithValue("DirectDoubleClickShare", m_DirectOrders.DoubleClickShare);
+	writer.NewPropertyWithValue("DirectRiskyClickShare", m_DirectOrders.RiskyClickShare);
+	writer.NewPropertyWithValue("CautiousCaution", m_DirectOrders.CautiousCaution);
+	writer.NewPropertyWithValue("CautiousFlightCost", m_DirectOrders.CautiousFlightCostScale);
+	writer.NewPropertyWithValue("CautiousFuelShare", m_DirectOrders.CautiousFuelShare);
+	writer.NewPropertyWithValue("CautiousFlightSpeed", m_DirectOrders.CautiousFlightSpeed);
+	writer.NewPropertyWithValue("CautiousTouchdown", m_DirectOrders.CautiousTouchdown);
+	writer.NewPropertyWithValue("CautiousEnemyAvoidance", m_DirectOrders.CautiousEnemyAvoidance);
 	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
 	writer.NewPropertyWithValue("ModernHUD", ModernHUD::IsEnabled());
 	writer.NewPropertyWithValue("ShowUnitTags", m_ShowUnitTags);
