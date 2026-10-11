@@ -1199,6 +1199,8 @@ void DebugMan::SettingsGUI() {
 			}
 			Tip("How much fire pins AI units down: shots cracking past and blasts nearby make them duck, crawl, run for cover and shoot worse, and losses, wounds and fire shake their nerve until they pull back. 0 turns it off; machines never feel it, and Unfair AI ignores it.");
 		}
+		Toggle("Units break when shaken", g_SettingsMan.AIBreaksWhenShaken(), [](bool on) { g_SettingsMan.SetAIBreaksWhenShaken(on); });
+		Tip("A unit whose nerve has gone (losses, wounds and fire wear it down) breaks and falls back, whatever its health, until it steadies or is rallied; in Battle Command yours show a \"!\" over them. Off: suppression still makes them duck and crawl, but nobody runs.");
 		{
 			float dig = g_SettingsMan.AIDigWillingness();
 			if (Slider("AI digging", &dig, 0.0F, 2.0F, "%.2fx")) {

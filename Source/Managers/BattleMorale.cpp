@@ -18,7 +18,7 @@ namespace SandboxDetail {
 		bool InBattle() { return Sandbox::IsBattleCommand() && s_ModeRun.Running && !s_ModeRun.Over; }
 
 		/// (A machine never loses its nerve: its morale stays at 1.)
-		bool Shaken(const Actor* actor) { return actor->GetStatus() != Actor::DYING && actor->GetStatus() != Actor::DEAD && actor->GetMorale() < c_ShakenMorale; }
+		bool Shaken(const Actor* actor) { return g_SettingsMan.AIBreaksWhenShaken() && actor->GetStatus() != Actor::DYING && actor->GetStatus() != Actor::DEAD && actor->GetMorale() < c_ShakenMorale; }
 
 		void Note(const std::string& note) {
 			s_ModeRun.Note = note;
