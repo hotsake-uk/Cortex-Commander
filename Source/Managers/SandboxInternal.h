@@ -226,7 +226,9 @@ namespace SandboxDetail {
 		Vehicle, //!< Puts down the vehicle chosen in the Spawn tab's Vehicles list (s_Vehicles): a cart, a boat, a tank, a ship, a dropship. Nobody in it.
 		// The battle's pickups (BattlePickups.cpp): appended, so the tools before keep their numbers.
 		BattlePickupSpot, //!< The Battle tab's Pickups: a click puts down another place pickups can come in at.
-		BattlePickupZone //!< The Battle tab's Pickups: each click puts down a corner of a zone pickups can come in anywhere in.
+		BattlePickupZone, //!< The Battle tab's Pickups: each click puts down a corner of a zone pickups can come in anywhere in.
+		// Appended, so the tools before keep their numbers.
+		Woodcutter //!< A colony woodcutter: its staff fell the trees round it and bring the wood home (Colony::Kind::Woodcutter).
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -242,6 +244,14 @@ namespace SandboxDetail {
 
 	/// The Battle tab's tools that set something on a team's card, taken from it and put down with Enter (PutDownBattleTool).
 	constexpr bool IsBattleTool(Tool kind) { return kind == Tool::BattleDefendPoint || kind == Tool::BattleDropLine || kind == Tool::BattleSpawnZone || kind == Tool::BattleModePoint || kind == Tool::BattleModeBase || kind == Tool::BattleModeZone || kind == Tool::BattleModeGoal || kind == Tool::BattleModeFlag || kind == Tool::BattlePickupSpot || kind == Tool::BattlePickupZone; }
+
+	/// The colony tools: each builds one kind of colony building.
+	constexpr bool IsColonyTool(Tool kind) { return kind == Tool::Barracks || kind == Tool::Extractor || kind == Tool::Generator || kind == Tool::Woodcutter; }
+
+	/// The colony building a colony tool builds.
+	constexpr Colony::Kind ColonyKindOf(Tool kind) {
+		return kind == Tool::Extractor ? Colony::Kind::Extractor : kind == Tool::Generator ? Colony::Kind::Generator : kind == Tool::Woodcutter ? Colony::Kind::Woodcutter : Colony::Kind::Barracks;
+	}
 
 	/// The Battle Director's mode tools that draw a polygon a corner at a click (closed on its first corner, or Enter).
 	constexpr bool IsModeZoneTool(Tool kind) { return kind == Tool::BattleModeBase || kind == Tool::BattleModeZone || kind == Tool::BattleModeGoal || kind == Tool::BattlePickupZone; }
@@ -364,6 +374,7 @@ namespace SandboxDetail {
 	    {Tool::Vehicle, "Vehicles", 0.0F, false},
 	    {Tool::BattlePickupSpot, "Pickup spot", 0.0F, false},
 	    {Tool::BattlePickupZone, "Pickup zone", 0.0F, false},
+	    {Tool::Woodcutter, "Woodcutter", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -982,6 +993,7 @@ namespace SandboxDetail {
 		int Over = 0; //!< Terrain and liquid brushes: what they may paint over besides air, PaintOver flags (Paint > Paint over), taken at the click.
 		int Fill = -1; //!< Terrain brushes: a FillShape filled from Position to Position2 (Brush type Shape), or -1 for a brush stroke at Position.
 		int Temperament = -1; //!< Units and drops: the temperament they are given (Actor::Temperament, NC-1), -1 for each one's own.
+		int Style = 0; //!< Colony buildings: how they look (Colony::Style), taken at the click.
 		VehicleTuning Vehicle; //!< Tool::Vehicle: how it is tuned and crewed (s_VehicleTuning), taken at the click.
 		int CrewChoice = 0; //!< Tool::Vehicle with Vehicle.Crewed: the unit picked in the Units list for the crew (s_UnitChoice).
 	};
@@ -1390,6 +1402,9 @@ namespace SandboxDetail {
 	inline ImVec2 s_RingCenter;
 	inline Vector s_RingScenePoint; //!< Where in the world the right button went down, which the choice is about.
 	inline int s_ColonyKeep = 4; //!< How many of its units a new barracks keeps alive.
+	inline int s_ColonyStaff = 2; //!< How many staff a new woodcutter keeps.
+	inline int s_ColonyRemoveID = -1; //!< The colony building the Colony tab was asked to close down this frame, or -1.
+	inline Colony::Style s_ColonyStyle = Colony::Style::Fantasy; //!< How new colony buildings look.
 	inline bool s_PauseInMenus = true; //!< In the Sandbox game mode the world stands still while the tools are open.
 	inline bool s_PausedByMenus = false; //!< Whether it is this that has paused the simulation, so only this is undone.
 	inline int s_StepsWanted = 0; //!< Updates to let the paused world do.

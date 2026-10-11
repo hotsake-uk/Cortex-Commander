@@ -25,6 +25,10 @@ namespace RTE {
 			int TrunkPixels = 0; //!< How much trunk it has: the wood that felling it would give.
 			int LeafPixels = 0; //!< How many leaves hang on it.
 			int TrunkMaterial = 0; //!< What its trunk is made of (the most of it).
+			int TrunkLeft = 0, TrunkTop = 0, TrunkRight = 0; //!< The box round its trunk alone (its bottom is BaseY), in scene coordinates, inclusive.
+
+			/// Whether it stands up as a tree does, rather than lying on the ground (a felled trunk come to rest): its trunk is taller than it is wide.
+			bool Standing() const { return BaseY - TrunkTop >= 24 && BaseY - TrunkTop >= (TrunkRight - TrunkLeft) * 6 / 10; }
 		};
 
 		/// Gets whether units and vehicles bump into trees (a gameplay setting). Off (as the game comes) they walk and drive through them.
