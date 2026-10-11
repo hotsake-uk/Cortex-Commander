@@ -325,6 +325,10 @@ namespace RTE {
 		bool AIGrabsLaddersOnPurpose() const { return m_AIGrabsLaddersOnPurpose; }
 		/// Whether an AI unit meaning to climb a ladder can take hold of it with its jetpack lit (cutting the jet), on as the game comes.
 		bool AIGrabsLaddersMidJet() const { return m_AIGrabsLaddersMidJet; }
+		/// Whether AI units pull themselves up onto ledges and over obstacles, or catch ledges in the air, only when they mean to (AHuman::WantMantle).
+		bool AIMantlesOnPurpose() const { return m_AIMantlesOnPurpose; }
+		/// Whether an AI unit whose flight comes up short beside its landing catches the landing's lip in the air.
+		bool AICatchesLedgesMidAir() const { return m_AICatchesLedgesMidAir; }
 		/// Whether risky orders fly past ladders a careful route climbs: they jet up a background ladder's shaft when the tank makes it, and the
 		/// route search prices a ladder climb dearer as their flights are cheaper. On as the game comes.
 		bool RiskyOrdersFlyPastLadders() const { return m_RiskyOrdersFlyPastLadders; }
@@ -671,6 +675,8 @@ namespace RTE {
 		void SetAILadderTeamStalls(int stalls) { m_AILadderTeamStalls = std::clamp(stalls, 1, 5); }
 		void SetAIGrabsLaddersOnPurpose(bool on) { m_AIGrabsLaddersOnPurpose = on; }
 		void SetAIGrabsLaddersMidJet(bool on) { m_AIGrabsLaddersMidJet = on; }
+		void SetAIMantlesOnPurpose(bool on) { m_AIMantlesOnPurpose = on; }
+		void SetAICatchesLedgesMidAir(bool on) { m_AICatchesLedgesMidAir = on; }
 		void SetRiskyOrdersFlyPastLadders(bool on) { m_RiskyOrdersFlyPastLadders = on; }
 		/// Puts the Movement category's ladder settings back as the game comes.
 		void ResetLadderSettings() { m_AILadderGiveUpSeconds = 1.5F; m_AILadderTeamStalls = 2; m_AIGrabsLaddersOnPurpose = true; m_AIGrabsLaddersMidJet = true; m_RiskyOrdersFlyPastLadders = true; }
@@ -982,6 +988,8 @@ namespace RTE {
 		int m_AILadderTeamStalls; //!< See AILadderTeamStalls.
 		bool m_AIGrabsLaddersOnPurpose; //!< See AIGrabsLaddersOnPurpose.
 		bool m_AIGrabsLaddersMidJet; //!< See AIGrabsLaddersMidJet.
+		bool m_AIMantlesOnPurpose = true; //!< See AIMantlesOnPurpose.
+		bool m_AICatchesLedgesMidAir = true; //!< See AICatchesLedgesMidAir.
 		bool m_RiskyOrdersFlyPastLadders; //!< See RiskyOrdersFlyPastLadders.
 		float m_AISpawnDiggerChance; //!< Percentage of units handed a digger as they come into the scene, 0 to 100 (see AISpawnDiggerChance).
 		float m_BleedOutChance; //!< Percentage of wounds that keep bleeding rather than stopping, 0 to 100 (see BleedOutChance).

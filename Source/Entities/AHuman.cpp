@@ -2994,7 +2994,10 @@ void AHuman::Update() {
 		if (m_pHead) {
 			bodyWidth = std::max(bodyWidth, static_cast<float>(m_pHead->GetSpriteWidth()));
 		}
-		TryStartMantle(m_pHead, rising, bodyWidth);
+		// (An AI unit only when it means to, WantMantle: pressing on along its route, it pulled itself up onto ledges the route never went to.)
+		if (MantleWanted()) {
+			TryStartMantle(m_pHead, rising, bodyWidth);
+		}
 		// Or a ledge caught in the air (LM-6): on the side pressed; and for the route-follower with the jet giving out under a flight's
 		// landing beside it, that landing's lip, whatever is pressed (the catch before the flight is judged failed).
 		if (!m_Mantling) {
@@ -3008,7 +3011,15 @@ void AHuman::Update() {
 					lipNearY = flight.floorY;
 				}
 			}
-			TryCatchLedge(m_pHead, bodyWidth, catchDir, lipNearY);
+			// (The follower's own catch at a flight's landing is meant, with the setting on; any other AI catch only when the mantle is asked for.)
+			const bool aiUnit = m_Controller.GetInputMode() == Controller::CIM_AI;
+			if (aiUnit && catchDir != 0.0F && !g_SettingsMan.AICatchesLedgesMidAir()) {
+				catchDir = 0.0F;
+				lipNearY = -1.0F;
+			}
+			if ((aiUnit && catchDir != 0.0F) || MantleWanted()) {
+				TryCatchLedge(m_pHead, bodyWidth, catchDir, lipNearY);
+			}
 		}
 	}
 	if (m_Mantling) {

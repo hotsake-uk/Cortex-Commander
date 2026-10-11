@@ -104,6 +104,18 @@ void AHuman::GrabLadder() {
 	m_AIGrabLadderSimMS = g_TimerMan.GetSimTimeMS();
 }
 
+void AHuman::WantMantle() {
+	m_AIMantleSimMS = g_TimerMan.GetSimTimeMS();
+}
+
+bool AHuman::MantleWanted() const {
+	if (m_Controller.GetInputMode() != Controller::CIM_AI || !g_SettingsMan.AIMantlesOnPurpose()) {
+		return true;
+	}
+	// (Set by the follower each tick it wants the mantle; good for a quarter second, so an AI tick that skips a frame doesn't drop it.)
+	return m_AIMantleSimMS >= 0.0 && g_TimerMan.GetSimTimeMS() - m_AIMantleSimMS < 250.0;
+}
+
 bool AHuman::LadderHoldWanted() const {
 	if (m_Controller.GetInputMode() != Controller::CIM_AI || !g_SettingsMan.AIGrabsLaddersOnPurpose()) {
 		return true;
@@ -1762,7 +1774,7 @@ void AHuman::GetDebugState(std::vector<DebugStateField>& fields) const {
 	number("progressMs", mover.progressTimer.GetElapsedSimTimeMS());
 	number("stuckLevel", mover.stuckLevel);
 	{
-		const char* const remedyNames[] = {"crouch", "back off", "leap", "hop", "lie down", "stand up"};
+		const char* const remedyNames[] = {"crouch", "back off", "leap", "hop", "lie down", "stand up", "mantle"};
 		fields.push_back({"stuckRemedy", mover.remedy >= 0 && mover.remedy < static_cast<int>(StuckRemedy::Count) ? remedyNames[mover.remedy] : "none", true});
 	}
 	number("impossibleAnswers", mover.impossibleAnswers);
@@ -2576,6 +2588,11 @@ int AHuman::MoveAlongRoute() {
 				return RouteMover::Moving;
 			}
 		} else {
+			// Near the landing, about its height: the mantle asked for, so a body coming in at the lip pulls itself up onto it (AI mantles are
+			// only on purpose; see WantMantle).
+			if (std::abs(to.m_X) < h * 1.5F && std::abs(feetY - flight.floorY) < h * 0.7F) {
+				WantMantle();
+			}
 			// Up a shaft: to the point over its mouth first, straight up its middle, and only then for the landing; a landing off to one side
 			// is stepped across onto (below).
 			// Over the top of a full-risk flight's two legs (the apex): on for the landing, no step across.
@@ -3054,6 +3071,7 @@ int AHuman::MoveAlongRoute() {
 	// when the way on is blocked and there is room up and over). No jet. While pulling, the pull has the body. ----
 	if (kind == PathStepKind::Mantle && std::abs(toPoint.m_X) > 3.0F) {
 		if (!IsMantling()) {
+			WantMantle();
 			ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
 		} else {
 			mover.progressTimer.Reset();
@@ -3878,6 +3896,9 @@ int AHuman::MoveAlongRoute() {
 				leapOver = sensed.distance <= bodyHalf + 8.0F;
 			} else if (sensed.rise > mantle + 2.0F && canHop) {
 				lowObstacle = true;
+			} else if (sensed.rise <= mantle + 2.0F) {
+				// (Within the mantle's reach: asked for, as the pull over is meant here.)
+				WantMantle();
 			}
 		}
 	}
@@ -3887,8 +3908,8 @@ int AHuman::MoveAlongRoute() {
 	// to stand), none twice in one stuck spell, one that failed at this spot lately left out, and one that worked here tried first. (As
 	// unconditional moves, 8.0's back-offs read as pacing and its lying down as lying down at random, and a jetless unit had nothing.)
 	const float direction = toPoint.m_X < 0.0F ? -1.0F : 1.0F;
-	const char* const remedyNames[] = {"crouch", "back off", "leap", "hop", "lie down", "stand up"};
-	static constexpr int remedyWindowMS[] = {1000, 1000, 800, 1200, 1500, 800};
+	const char* const remedyNames[] = {"crouch", "back off", "leap", "hop", "lie down", "stand up", "mantle"};
+	static constexpr int remedyWindowMS[] = {1000, 1000, 800, 1200, 1500, 800, 1200};
 	if (!stuck || mover.fuelWaiting) {
 		if (mover.remedy >= 0 && !mover.fuelWaiting) {
 			RememberStuckRemedy(mover.remedySpot, mover.remedy, true);
@@ -3912,6 +3933,8 @@ int AHuman::MoveAlongRoute() {
 			const float crawlRoom = std::max(8.0F, h * 0.2F);
 			allowed[static_cast<int>(StuckRemedy::Prone)] = !prone && !steep && m_ProneState == NOTPRONE && !g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, floorY - crawlRoom), heading, 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
 			allowed[static_cast<int>(StuckRemedy::Stand)] = m_ProneState == PRONE && !noRoomHere && !noRoomAhead;
+			// (A mantle on purpose: with mantles only on purpose, a unit pressed against a ledge it could pull itself over had to be told to.)
+			allowed[static_cast<int>(StuckRemedy::Mantle)] = !prone && m_ProneState == NOTPRONE && g_SettingsMan.MantlingEnabled() && !IsMantling() && (m_pFGArm || m_pBGArm);
 			mover.remedy = PickStuckRemedy(m_Pos, allowed, mover.remedyTried);
 			if (mover.remedy >= 0) {
 				mover.remedyTried |= 1U << mover.remedy;
@@ -3944,6 +3967,12 @@ int AHuman::MoveAlongRoute() {
 				break;
 			case StuckRemedy::Stand:
 				ctrl.SetState(BODY_PRONE, false);
+				break;
+			case StuckRemedy::Mantle:
+				WantMantle();
+				ctrl.SetState(BODY_CROUCH, false);
+				ctrl.SetState(direction < 0.0F ? MOVE_RIGHT : MOVE_LEFT, false);
+				ctrl.SetState(direction < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
 				break;
 			default:
 				break;
