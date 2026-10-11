@@ -1210,7 +1210,8 @@ void UInputMan::HandleSpecialInput() {
 			} else {
 				RTEError::ShowMessageBox("Cannot Save Game - This Activity Does Not Allow QuickSaving!");
 			}
-		} else if (KeyPressed(SDLK_F9)) {
+		} else if (KeyPressed(SDLK_F9) && FlagShiftState()) {
+			// Shift+F9: plain F9 is Commander view (Main.cpp), and loading over the game by mistake loses it.
 			g_ActivityMan.LoadAndLaunchGame("QuickSave");
 		} else if (KeyPressed(SDLK_F10)) {
 			g_ConsoleMan.ClearLog();

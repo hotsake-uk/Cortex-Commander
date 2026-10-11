@@ -1274,6 +1274,28 @@ namespace SandboxDetail {
 			if (!vehicle || vehicle->GetHopSpeed() > 0.0F) {
 				slider("Jump", tuning.Jump, vehicle ? vehicle->GetHopSpeed() : 0.0F, "m/s", "How high it jumps off its springs when the driver jumps.");
 			}
+			// Terrain damage: a toughness, not a multiplier (a cart's own is 0), shown as the vehicle's own until it is moved.
+			const float own = vehicle ? vehicle->GetTerrainCrush() : 0.0F;
+			float crush = tuning.TerrainCrush >= 0.0F ? tuning.TerrainCrush : own;
+			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.62F);
+			if (ImGui::SliderFloat("Terrain damage", &crush, 0.0F, c_VehicleCrushMax, tuning.TerrainCrush >= 0.0F ? "%.0f" : "%.0f (its own)", ImGuiSliderFlags_AlwaysClamp)) {
+				tuning.TerrainCrush = crush;
+			}
+			ImGui::SetItemTooltip("How tough a ground it smashes through, driving into it (in front and behind, never under it): it breaks any material whose toughness is this or less. Snow 15, gravel 30, earth 70, stone 140, concrete 200, metal 400. Right-click to set it back to the vehicle's own (%.0f).", own);
+			if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+				tuning.TerrainCrush = -1.0F;
+			}
+			// What that comes to, by the toughest of the usual materials it gets through.
+			static const std::pair<float, const char*> c_Breaks[] = {{400.0F, "metal"}, {200.0F, "concrete"}, {150.0F, "bedrock"}, {140.0F, "stone"}, {70.0F, "earth"}, {45.0F, "sand"}, {30.0F, "gravel"}, {15.0F, "snow"}, {10.0F, "glass"}};
+			const char* breaks = nullptr;
+			for (const auto& [toughness, name]: c_Breaks) {
+				if (crush >= toughness) {
+					breaks = name;
+					break;
+				}
+			}
+			ImGui::SameLine();
+			ImGui::TextDisabled(breaks ? "breaks up to %s" : "breaks only plants", breaks);
 		}
 		if (!vehicle || boat) {
 			slider("Water power", tuning.WaterPower, vehicle ? vehicle->GetWaterThrust() : 0.0F, "m/s2", "How hard it speeds up in water.");
@@ -1295,6 +1317,7 @@ namespace SandboxDetail {
 			reset.Driver = tuning.Driver;
 			reset.Crew = tuning.Crew;
 			tuning = reset;
+			// (Terrain damage back to each vehicle's own, as the multipliers go back to x1.)
 		}
 	}
 
@@ -2071,7 +2094,7 @@ namespace SandboxDetail {
 	/// The key that swaps the sandbox's bar along the bottom and Battle Command's Commander Toolbar, picked from keys nothing else in the game
 	/// answers to (CommanderBarKey in the settings).
 	void CommanderBarKeyPicker() {
-		static const SDL_Scancode choices[] = {SDL_SCANCODE_F10, SDL_SCANCODE_F11, SDL_SCANCODE_F12, SDL_SCANCODE_INSERT, SDL_SCANCODE_HOME, SDL_SCANCODE_END, SDL_SCANCODE_PAGEUP, SDL_SCANCODE_PAGEDOWN};
+		static const SDL_Scancode choices[] = {SDL_SCANCODE_F11, SDL_SCANCODE_INSERT, SDL_SCANCODE_HOME, SDL_SCANCODE_END, SDL_SCANCODE_PAGEUP, SDL_SCANCODE_PAGEDOWN};
 		const std::string current = Sandbox::CommanderBarKeyName();
 		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8.0F);
 		if (ImGui::BeginCombo("Commander Toolbar key", current.c_str())) {
@@ -2095,7 +2118,7 @@ namespace SandboxDetail {
 			const char* What;
 		};
 		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view (with a Paint tool in hand: dig)"}, {"Middle drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"U", "Hide or show the bar along the bottom"}, {"Commander Toolbar key", "Swap the bar along the bottom for Battle Command's Commander Toolbar, and back (the key is picked below)"}, {"F9", "Commander view, outside the Sandbox game mode: your side from above, and back into your unit"}, {"Ctrl+Z", "Undo the last paint stroke or the last thing placed"}, {"Ctrl+P", "Pause the AI, or let it go again (in any game; the key can be changed in the AI settings)"}};
-		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it. In Command mode the order fits what's under the pointer: an enemy attacked, an objective taken or held, open air flown to, else a move"}, {"Esc", "Back to Command mode, the mode other orders return to once placed (in Command mode: pause)"}, {"Left drag", "Select units in a box"}, {"Double click and drag", "Order with risk: normal at the click, fully direct at the full risk distance; they face the way dragged"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click a unit", "Every unit of that kind in view"}, {"Clicks to order", "How urgent the order is: 1 cautious (walks round jumps, waits for fuel), 2 normal; drag the second click for risk up to the shortest way whatever it takes (a dig-to tunnels straight, moves take fast, reckless jet jumps); tuned in Battle Behavior settings"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"X", "Dig to: tunnel to the point, in the ground or not (the units with a digger that cuts the way)"}, {"Ctrl+X", "Breach: the diggers tunnel to the point and the rest follow them in; once through, they all attack"}, {"Ctrl+B", "Build: a selected unit with a Constructor puts up the piece picked on the command row (sandbags, a wall, a bunker, a turret)"}, {"Ctrl+L", "Airlift: a gunship comes down by the selected units, flies them to the place clicked and lets them out"}, {"J", "Jetpack here: fly to the point in the air and hover there (a move or attack-move clicked in open air flies there too)"}, {"Z", "Suppress: fire into a zone round the point and keep firing, whatever else is in sight"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends)"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}};
+		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it. In Command mode the order fits what's under the pointer: an enemy attacked, an objective taken or held, open air flown to, else a move"}, {"Esc", "Back to Command mode, the mode other orders return to once placed (in Command mode: pause)"}, {"Left drag", "Select units in a box"}, {"Double click and drag", "Order with risk: normal at the click, fully direct at the full risk distance; they face the way dragged"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click a unit", "Every unit of that kind in view"}, {"Clicks to order", "How urgent the order is: 1 cautious (walks round jumps, waits for fuel), 2 normal; drag the second click for risk up to the shortest way whatever it takes (a dig-to tunnels straight, moves take fast, reckless jet jumps); tuned in Battle Behavior settings"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"X", "Dig to: tunnel to the point, in the ground or not (the units with a digger that cuts the way)"}, {"Ctrl+X", "Breach: the diggers tunnel to the point and the rest follow them in; once through, they all attack"}, {"Ctrl+B", "Build: a selected unit with a Constructor puts up the piece picked on the command row (sandbags, a wall, a bunker, a turret)"}, {"Ctrl+L", "Airlift: a gunship comes down by the selected units, flies them to the place clicked and lets them out"}, {"J", "Jetpack here: fly to the point in the air and hover there (a move or attack-move clicked in open air flies there too)"}, {"Z", "Suppress: fire into a zone round the point and keep firing, whatever else is in sight"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends). With nothing selected, O pauses"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}};
 		static const Key plants[] = {{"E / Shift+E", "With a plant, cactus, mushroom, tree or candle brush in hand: the next of its pictures, or the one before (just one picked in its gallery: that pick moves on)"}, {"F", "Flip the next one the other way"}};
 		auto table = [](const char* id, const Key* keys, size_t count) {
 			if (ImGui::BeginTable(id, 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
@@ -3444,7 +3467,17 @@ namespace SandboxDetail {
 			ImVec2 size = ImGui::CalcTextSize(label.c_str());
 			ImVec2 powerSize = ImGui::CalcTextSize(power);
 			ImVec2 at(top.x - (size.x + powerSize.x) * 0.5F, top.y - size.y - 6.0F);
-			drawList->AddRectFilled(ImVec2(at.x - 4.0F, at.y - 2.0F), ImVec2(at.x + size.x + powerSize.x + 4.0F, at.y + size.y + 2.0F), IM_COL32(0, 0, 0, 140), 3.0F);
+			ImVec2 labelMin(at.x - 4.0F, at.y - 2.0F);
+			ImVec2 labelMax(at.x + size.x + powerSize.x + 4.0F, at.y + size.y + 2.0F);
+			// A click on the label (looking around or commanding) opens the building's panel.
+			const ImVec2 mouse = ImGui::GetIO().MousePos;
+			bool hovered = mouse.x >= labelMin.x && mouse.x <= labelMax.x && mouse.y >= labelMin.y && mouse.y <= labelMax.y && !ImGui::GetIO().WantCaptureMouse;
+			Tool kind = CurrentTool().Kind;
+			if (hovered && (kind == Tool::None || kind == Tool::Command) && s_RallyPickID < 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+				s_BuildingPanelID = building.ID;
+				s_BuildingPanelNote.clear();
+			}
+			drawList->AddRectFilled(labelMin, labelMax, hovered ? IM_COL32(40, 40, 40, 200) : IM_COL32(0, 0, 0, 140), 3.0F);
 			drawList->AddText(at, c_SideColors[building.Team], label.c_str());
 			if (*power) {
 				drawList->AddText(ImVec2(at.x + size.x, at.y), IM_COL32(255, 90, 70, 255), power);
@@ -3533,6 +3566,187 @@ namespace SandboxDetail {
 			s_ColonyRemoveID = building.ID;
 		}
 		ImGui::SetItemTooltip("It stops being a building. What it was built of stays standing, and so do its staff.");
+	}
+
+	/// The panel of one colony building, beside it in the world: what it is and is doing, its controls, and its upgrades.
+	/// Opened by clicking the building (looking around) or its label, or Panel in the Colony tab.
+	void DrawBuildingPanel() {
+		ImGuiIO& io = ImGui::GetIO();
+		Tool kind = CurrentTool().Kind;
+		bool looking = Sandbox::IsOpen() || Sandbox::IsLookingAround();
+		// A click on a building while looking around opens its panel.
+		if (looking && kind == Tool::None && s_RallyPickID < 0 && !io.WantCaptureMouse && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+			if (const Colony::Building* building = BuildingAt(MouseScenePosition())) {
+				s_BuildingPanelID = building->ID;
+				s_BuildingPanelNote.clear();
+			}
+		}
+		std::vector<Colony::Building>& buildings = Colony::Buildings();
+		auto found = std::find_if(buildings.begin(), buildings.end(), [](const Colony::Building& each) { return each.ID == s_BuildingPanelID; });
+		if (found == buildings.end() || !looking) {
+			s_BuildingPanelID = -1;
+			s_RallyPickID = -1;
+			return;
+		}
+		Colony::Building& building = *found;
+		const Colony::Type& type = Colony::GetType(building.What);
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+
+		// Picking its rally point: the next click in the world, outside any window. Right click or Esc stops.
+		if (s_RallyPickID == building.ID) {
+			ImVec2 mouse = io.MousePos;
+			drawList->AddLine(ToScreen(building.Ground + Vector(0.0F, -static_cast<float>(building.Height()) * 0.5F)), mouse, c_SideColors[building.Team], 1.5F);
+			drawList->AddText(ImVec2(mouse.x + 14.0F, mouse.y + 10.0F), IM_COL32(255, 255, 255, 230), "Click to set its rally point (right click to stop)");
+			if (!io.WantCaptureMouse && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+				building.Rally = MouseScenePosition();
+				building.HasRally = true;
+				s_RallyPickID = -1;
+			} else if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+				s_RallyPickID = -1;
+			}
+		} else if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !io.WantTextInput) {
+			s_BuildingPanelID = -1;
+			return;
+		}
+		if (building.What == Colony::Kind::Barracks && building.HasRally) {
+			ImVec2 flagAt = ToScreen(building.Rally);
+			drawList->AddLine(ToScreen(building.Ground + Vector(0.0F, -static_cast<float>(building.Height()) * 0.5F)), flagAt, (c_SideColors[building.Team] & ~IM_COL32_A_MASK) | IM_COL32(0, 0, 0, 110), 1.0F);
+			drawList->AddLine(flagAt, ImVec2(flagAt.x, flagAt.y - 16.0F), c_SideColors[building.Team], 2.0F);
+			drawList->AddTriangleFilled(ImVec2(flagAt.x, flagAt.y - 16.0F), ImVec2(flagAt.x + 10.0F, flagAt.y - 12.0F), ImVec2(flagAt.x, flagAt.y - 8.0F), c_SideColors[building.Team]);
+		}
+		// Its plot, outlined while the panel is open.
+		drawList->AddRect(ToScreen(building.Ground - Vector(static_cast<float>(building.Width()) * 0.5F, static_cast<float>(building.Height()))), ToScreen(building.Ground + Vector(static_cast<float>(building.Width()) * 0.5F, 0.0F)), c_SideColors[building.Team], 0.0F, 0, 2.0F);
+
+		// Beside it, on its right, following it as the view moves (kept on screen).
+		GameViewRect view = g_WindowMan.GetGameViewRect();
+		ImVec2 anchor = ToScreen(building.Ground + Vector(static_cast<float>(building.Width()) * 0.5F + 8.0F, -static_cast<float>(building.Height())));
+		anchor.x = std::clamp(anchor.x, view.x + 8.0F, view.x + view.w - 340.0F);
+		anchor.y = std::clamp(anchor.y, view.y + 8.0F, view.y + view.h - 200.0F);
+		ImGui::SetNextWindowPos(anchor, ImGuiCond_Always);
+		ImGui::SetNextWindowSizeConstraints(ImVec2(300.0F, 0.0F), ImVec2(360.0F, view.h * 0.8F));
+		bool open = true;
+		std::string title = std::string(building.Lite ? "Lite " : "") + type.Name + " (level " + std::to_string(building.Level) + ")###BuildingPanel";
+		ImGui::PushStyleColor(ImGuiCol_TitleBgActive, (c_SideColors[building.Team] & ~IM_COL32_A_MASK) | IM_COL32(0, 0, 0, 150));
+		ImGui::PushStyleColor(ImGuiCol_TitleBg, (c_SideColors[building.Team] & ~IM_COL32_A_MASK) | IM_COL32(0, 0, 0, 110));
+		if (ImGui::Begin(title.c_str(), &open, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoFocusOnAppearing)) {
+			ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(c_SideColors[building.Team]), "%s's", c_SideNames[building.Team]);
+			ImGui::SameLine();
+			ColonyStatusPill(building);
+			if (building.Disabled()) {
+				ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 200, 120, 255));
+				ImGui::TextUnformatted("Its brain is dead: it does nothing.");
+				ImGui::PopStyleColor();
+				ImGui::SameLine();
+				if (ToolUI::SmallButton("Place brain")) {
+					Colony::PlaceBrain(building.ID);
+				}
+			} else if (building.BrainID != -1) {
+				ImGui::TextDisabled("Run by its brain, in a chamber %s.", building.Lite ? "inside its box" : "at its back");
+			}
+
+			// The things it does, by kind.
+			if (building.What == Colony::Kind::Barracks) {
+				ImGui::SeparatorText("Training");
+				ImGui::TextUnformatted("Train now:");
+				for (int count: {1, 5}) {
+					ImGui::SameLine();
+					if (ToolUI::SmallButton(("+" + std::to_string(count)).c_str())) {
+						Colony::TrainNow(building.ID, count);
+					}
+				}
+				if (building.Queued > 0) {
+					ImGui::SameLine();
+					ImGui::Text("%d ordered", building.Queued);
+					ImGui::SameLine();
+					if (ToolUI::SmallButton("Cancel")) {
+						Colony::TrainNow(building.ID, -building.Queued);
+					}
+				}
+				ImGui::SetItemTooltip("Units to train on top of those it keeps alive, paid for as each starts.");
+				ImGui::TextUnformatted("Rally point:");
+				ImGui::SameLine();
+				if (ToolUI::SmallButton(s_RallyPickID == building.ID ? "Click in the world..." : building.HasRally ? "Move" : "Set")) {
+					s_RallyPickID = building.ID;
+				}
+				ImGui::SetItemTooltip("Where its units go when trained, to wait there.");
+				if (building.HasRally) {
+					ImGui::SameLine();
+					if (ToolUI::SmallButton("Clear")) {
+						building.HasRally = false;
+					}
+				}
+			} else if (building.What == Colony::Kind::Extractor) {
+				ImGui::SeparatorText("Supply");
+				ImGui::Text("Earns %.0f supply a minute.", Colony::ExtractorIncome(building) * 60.0F);
+			} else if (building.What == Colony::Kind::Generator) {
+				ImGui::SeparatorText("Power");
+				ImGui::Text("Gives up to %.0f power to its side's buildings within %.0f m.", Colony::GeneratorPower(building), Colony::PowerRange() / 20.0F);
+				if (!Colony::NeedsPower()) {
+					ImGui::TextDisabled("Buildings run without power: turn on \"Buildings need power\" in the Colony tab's rules.");
+				}
+			} else if (building.What == Colony::Kind::Woodcutter) {
+				ImGui::SeparatorText("Wood");
+				if (building.Level > 1) {
+					ImGui::TextDisabled("Keeps %d more staff than set, for its level.", building.Level - 1);
+				}
+			}
+			ColonyBuildingDetails(building);
+
+			// Upgrades: wood and supply for a level.
+			ImGui::SeparatorText("Upgrade");
+			for (int level = 1; level <= Colony::c_MaxLevel; ++level) {
+				if (level > 1) {
+					ImGui::SameLine(0.0F, 4.0F);
+				}
+				ImGui::TextColored(level <= building.Level ? ImVec4(1.0F, 0.85F, 0.3F, 1.0F) : ImVec4(0.45F, 0.45F, 0.45F, 1.0F), level <= building.Level ? "*" : "o");
+			}
+			float supply = 0.0F;
+			int wood = 0;
+			if (Colony::UpgradeCost(building, supply, wood)) {
+				// (What the next level is, against level 1.)
+				Colony::Building next = building;
+				++next.Level;
+				int faster = static_cast<int>(std::round((Colony::LevelPace(next) - 1.0F) * 100.0F));
+				std::string gain = building.What == Colony::Kind::Barracks ? "trains " + std::to_string(faster) + "% faster" :
+				                   building.What == Colony::Kind::Woodcutter ? "keeps " + std::to_string(next.Level - 1) + " more staff, who cut " + std::to_string(faster) + "% faster and go further" :
+				                   building.What == Colony::Kind::Extractor ? "earns " + std::to_string(faster) + "% more supply" : "gives " + std::to_string(faster) + "% more power";
+				ImGui::TextWrapped("Level %d %s than level 1.", next.Level, gain.c_str());
+				std::string cost = std::to_string(wood) + " wood" + (supply > 0.0F ? ", " + std::to_string(static_cast<int>(supply)) + " supply" : "");
+				bool affordable = Colony::Wood(building.Team) >= wood && Colony::Supply(building.Team) >= supply;
+				ImGui::BeginDisabled(!affordable);
+				if (ImGui::Button(("Upgrade (" + cost + ")").c_str())) {
+					s_BuildingPanelNote = Colony::Upgrade(building.ID);
+				}
+				ImGui::EndDisabled();
+				if (!affordable) {
+					ImGui::SameLine();
+					ImGui::TextDisabled("%s has %d wood%s", c_SideNames[building.Team], Colony::Wood(building.Team), supply > 0.0F ? (", " + std::to_string(static_cast<int>(Colony::Supply(building.Team))) + " supply").c_str() : "");
+				}
+				if (!s_BuildingPanelNote.empty()) {
+					ImGui::TextColored(ImVec4(1.0F, 0.5F, 0.4F, 1.0F), "%s", s_BuildingPanelNote.c_str());
+				}
+			} else {
+				ImGui::TextDisabled("At its top level.");
+			}
+			if (ToolUI::SmallButton("Look")) {
+				s_FreeCamera = true;
+				s_FollowTarget = UnitRef();
+				s_FollowAction = false;
+				s_CameraCenter = building.Ground + Vector(0.0F, -40.0F);
+			}
+		}
+		ImGui::End();
+		ImGui::PopStyleColor(2);
+		if (!open) {
+			s_BuildingPanelID = -1;
+			s_RallyPickID = -1;
+		}
+		if (s_ColonyRemoveID >= 0) {
+			// ("Close it down", from its details.)
+			Colony::Remove(s_ColonyRemoveID);
+			s_ColonyRemoveID = -1;
+			s_BuildingPanelID = -1;
+		}
 	}
 
 	/// The Colony tab of the sandbox window: what each side has, what can be built, and what stands.
@@ -3659,6 +3873,16 @@ namespace SandboxDetail {
 					s_FollowAction = false;
 					s_CameraCenter = building.Ground + Vector(0.0F, -40.0F);
 				}
+				ImGui::SameLine();
+				if (ToolUI::SmallButton("Panel")) {
+					s_BuildingPanelID = building.ID;
+					s_BuildingPanelNote.clear();
+					s_FreeCamera = true;
+					s_FollowTarget = UnitRef();
+					s_FollowAction = false;
+					s_CameraCenter = building.Ground + Vector(0.0F, -40.0F);
+				}
+				ImGui::SetItemTooltip("Opens its panel beside it: its orders, upgrades and more. Clicking it in the world while looking around, or its label, does too.");
 				if (open) {
 					ImGui::TableNextRow();
 					ImGui::TableNextColumn();
