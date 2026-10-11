@@ -149,6 +149,8 @@ void SettingsMan::Clear() {
 	m_AISteadyBeforeJet = true;
 	m_AIWaitForFuel = true;
 	m_AIUsesVehicles = true;
+	m_AIBreaksWhenShaken = true;
+	m_DeadCrewFallOut = true;
 	m_DirectOrders = DirectOrderTuning();
 	m_NavDebugOverlay = 0;
 	m_DebugTeam = 0;
@@ -323,6 +325,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CollapseFloatingStays", { TerrainCollapse::GetTuning().FloatingStays = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("CollapseNeckWidth", { TerrainCollapse::GetTuning().NeckWidth = std::clamp(std::stoi(reader.ReadPropValue()), 0, 16); });
 	MatchProperty("CollapseMaxPiece", { TerrainCollapse::GetTuning().MaxPiecePixels = std::clamp(std::stoi(reader.ReadPropValue()), 500, 200000); });
+	MatchProperty("CollapseCheckMinForce", { TerrainCollapse::GetTuning().CheckMinForce = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 10000.0F); });
 	MatchProperty("CollapseMinFitting", { TerrainCollapse::GetTuning().MinFittingPixels = std::clamp(std::stoi(reader.ReadPropValue()), 0, 5000); });
 	MatchProperty("CollapseBreakStrength", { TerrainCollapse::GetTuning().BreakStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 10.0F); });
 	MatchProperty("CollapseShatterSpeed", { TerrainCollapse::GetTuning().ShatterSpeed = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 100.0F); });
@@ -369,6 +372,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("MagicUnitPush", { MagicEffects::GetTuning().UnitPush = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
 	MatchProperty("MagicAirGust", { MagicEffects::GetTuning().AirGust = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
 	MatchProperty("MagicSpellEnergy", { MagicEffects::GetTuning().SpellEnergy = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("MagicAICasting", { MagicEffects::GetTuning().AICasting = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("MagicEnergyRegen", { MagicEffects::GetTuning().EnergyRegen = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
 	MatchProperty("WaterFreezes", { FluidSim::SetFreezingEnabled(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("BloodFlows", { FluidSim::SetBloodFlows(std::stoi(reader.ReadPropValue()) != 0); });
@@ -728,18 +732,23 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AISteadyBeforeJet", { reader >> m_AISteadyBeforeJet; });
 	MatchProperty("AIWaitForFuel", { reader >> m_AIWaitForFuel; });
 	MatchProperty("AIUsesVehicles", { reader >> m_AIUsesVehicles; });
+	MatchProperty("AIBreaksWhenShaken", { reader >> m_AIBreaksWhenShaken; });
+	MatchProperty("DeadCrewFallOut", { reader >> m_DeadCrewFallOut; });
 	MatchProperty("DirectCaution", { reader >> m_DirectOrders.Caution; m_DirectOrders.Caution = std::clamp(m_DirectOrders.Caution, 0.0F, 1.0F); });
 	MatchProperty("DirectFlightCost", { reader >> m_DirectOrders.FlightCostScale; m_DirectOrders.FlightCostScale = std::clamp(m_DirectOrders.FlightCostScale, 0.2F, 1.0F); });
 	MatchProperty("DirectFuelShare", { reader >> m_DirectOrders.FuelShare; m_DirectOrders.FuelShare = std::clamp(m_DirectOrders.FuelShare, 0.1F, 1.2F); });
 	MatchProperty("DirectSteady", { reader >> m_DirectOrders.Steady; });
 	MatchProperty("DirectFlightSpeed", { reader >> m_DirectOrders.FlightSpeed; m_DirectOrders.FlightSpeed = std::clamp(m_DirectOrders.FlightSpeed, 1.0F, 3.0F); });
+	MatchProperty("DirectSafeLandings", { reader >> m_DirectOrders.SafeLandings; });
 	MatchProperty("DirectTouchdown", { reader >> m_DirectOrders.Touchdown; m_DirectOrders.Touchdown = std::clamp(m_DirectOrders.Touchdown, 3.0F, 15.0F); });
 	MatchProperty("DirectDigCost", { reader >> m_DirectOrders.DigCostScale; m_DirectOrders.DigCostScale = std::clamp(m_DirectOrders.DigCostScale, 0.01F, 1.0F); });
+	MatchProperty("DirectMoveLineWeight", { reader >> m_DirectOrders.MoveLineWeight; m_DirectOrders.MoveLineWeight = std::clamp(m_DirectOrders.MoveLineWeight, 0.0F, 2.0F); });
 	MatchProperty("DirectLineWeight", { reader >> m_DirectOrders.LineWeight; m_DirectOrders.LineWeight = std::clamp(m_DirectOrders.LineWeight, 0.0F, 1.0F); });
 	MatchProperty("DirectIgnoreEnemies", { reader >> m_DirectOrders.IgnoreEnemies; });
 	MatchProperty("DirectKeepPace", { reader >> m_DirectOrders.KeepPace; });
 	MatchProperty("DirectStraightFlightRisk", { reader >> m_DirectOrders.StraightFlightRisk; m_DirectOrders.StraightFlightRisk = std::clamp(m_DirectOrders.StraightFlightRisk, 0.5F, 1.0F); });
-	MatchProperty("DirectRiskDragPixels", { reader >> m_DirectOrders.RiskDragPixels; m_DirectOrders.RiskDragPixels = std::clamp(m_DirectOrders.RiskDragPixels, 100.0F, 800.0F); });
+	MatchProperty("DirectFullRiskDrag", { reader >> m_DirectOrders.RiskDragPixels; m_DirectOrders.RiskDragPixels = std::clamp(m_DirectOrders.RiskDragPixels, 200.0F, 1200.0F); });
+	MatchProperty("DirectRiskDragPixels", { float unused; reader >> unused; }); // (The straight 300 px drag's, before the curve: its saved value is not carried over.)
 	MatchProperty("DirectRiskyClickShare", { float unused; reader >> unused; }); // (The three click tier's strength, before the risk drag took its place.)
 	MatchProperty("DirectDoubleClickShare", { float unused; reader >> unused; }); // (Its older name.)
 	MatchProperty("CautiousCaution", { reader >> m_DirectOrders.CautiousCaution; m_DirectOrders.CautiousCaution = std::clamp(m_DirectOrders.CautiousCaution, 1.0F, 4.0F); });
@@ -1130,6 +1139,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("CollapseNeckWidth", TerrainCollapse::GetTuning().NeckWidth);
 	writer.NewPropertyWithValue("CollapseMaxPiece", TerrainCollapse::GetTuning().MaxPiecePixels);
 	writer.NewPropertyWithValue("CollapseMinFitting", TerrainCollapse::GetTuning().MinFittingPixels);
+	writer.NewPropertyWithValue("CollapseCheckMinForce", TerrainCollapse::GetTuning().CheckMinForce);
 	writer.NewPropertyWithValue("CollapseBreakStrength", TerrainCollapse::GetTuning().BreakStrength);
 	writer.NewPropertyWithValue("CollapseShatterSpeed", TerrainCollapse::GetTuning().ShatterSpeed);
 	writer.NewPropertyWithValue("CollapseCrackSpeed", TerrainCollapse::GetTuning().CrackSpeed);
@@ -1171,6 +1181,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("MagicAirGust", MagicEffects::GetTuning().AirGust);
 	writer.NewPropertyWithValue("MagicSpellEnergy", MagicEffects::GetTuning().SpellEnergy);
 	writer.NewPropertyWithValue("MagicEnergyRegen", MagicEffects::GetTuning().EnergyRegen);
+	writer.NewPropertyWithValue("MagicAICasting", MagicEffects::GetTuning().AICasting);
 	writer.NewPropertyWithValue("BurningUnits", ActorFire::IsEnabled());
 	writer.NewPropertyWithValue("SwimmingAndDrowning", ActorWater::IsEnabled());
 	writer.NewPropertyWithValue("LightPropagationSteps", lighting.PropagationIterationsPerFrame);
@@ -1197,17 +1208,21 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AISteadyBeforeJet", m_AISteadyBeforeJet);
 	writer.NewPropertyWithValue("AIWaitForFuel", m_AIWaitForFuel);
 	writer.NewPropertyWithValue("AIUsesVehicles", m_AIUsesVehicles);
+	writer.NewPropertyWithValue("AIBreaksWhenShaken", m_AIBreaksWhenShaken);
+	writer.NewPropertyWithValue("DeadCrewFallOut", m_DeadCrewFallOut);
 	writer.NewPropertyWithValue("DirectCaution", m_DirectOrders.Caution);
 	writer.NewPropertyWithValue("DirectFlightCost", m_DirectOrders.FlightCostScale);
 	writer.NewPropertyWithValue("DirectFuelShare", m_DirectOrders.FuelShare);
 	writer.NewPropertyWithValue("DirectSteady", m_DirectOrders.Steady);
 	writer.NewPropertyWithValue("DirectFlightSpeed", m_DirectOrders.FlightSpeed);
 	writer.NewPropertyWithValue("DirectTouchdown", m_DirectOrders.Touchdown);
+	writer.NewPropertyWithValue("DirectSafeLandings", m_DirectOrders.SafeLandings);
 	writer.NewPropertyWithValue("DirectDigCost", m_DirectOrders.DigCostScale);
 	writer.NewPropertyWithValue("DirectLineWeight", m_DirectOrders.LineWeight);
+	writer.NewPropertyWithValue("DirectMoveLineWeight", m_DirectOrders.MoveLineWeight);
 	writer.NewPropertyWithValue("DirectIgnoreEnemies", m_DirectOrders.IgnoreEnemies);
 	writer.NewPropertyWithValue("DirectKeepPace", m_DirectOrders.KeepPace);
-	writer.NewPropertyWithValue("DirectRiskDragPixels", m_DirectOrders.RiskDragPixels);
+	writer.NewPropertyWithValue("DirectFullRiskDrag", m_DirectOrders.RiskDragPixels);
 	writer.NewPropertyWithValue("DirectStraightFlightRisk", m_DirectOrders.StraightFlightRisk);
 	writer.NewPropertyWithValue("CautiousCaution", m_DirectOrders.CautiousCaution);
 	writer.NewPropertyWithValue("CautiousFlightCost", m_DirectOrders.CautiousFlightCostScale);

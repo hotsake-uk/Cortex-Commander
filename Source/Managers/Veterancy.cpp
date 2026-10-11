@@ -107,6 +107,7 @@ namespace SandboxDetail {
 				veteran.Rank = rank;
 				actor->SetVeterancy(rank);
 				actor->SetNumberValue("VeteranRank", static_cast<double>(rank));
+				actor->Say("Promoted");
 				if (veteran.Team == yours) {
 					Note(veteran.Name + " is now a " + c_RankNames[rank] + " (" + std::to_string(veteran.Kills) + (veteran.Kills == 1 ? " kill)" : " kills)"));
 				}
@@ -144,7 +145,7 @@ namespace SandboxDetail {
 				continue;
 			}
 			const Veteran& veteran = found->second;
-			Vector onScreen = FromCamera(actor->GetPos() - Vector(0.0F, actor->GetHeight() * 0.5F + 14.0F));
+			Vector onScreen = FromCamera(OverHeadPos(actor) - Vector(0.0F, 6.0F));
 			ImVec2 at(ViewOrigin().x + onScreen.m_X / scale, ViewOrigin().y + onScreen.m_Y / scale);
 			if (veteran.Rank > 0) {
 				DrawStars(drawList, at, veteran.Rank, veteran.Team == yours ? 1.0F : 0.7F);

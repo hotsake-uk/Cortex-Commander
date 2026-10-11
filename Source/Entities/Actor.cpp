@@ -1578,9 +1578,14 @@ PathAgent Actor::GetPathAgent() const {
 		agent.RouteSeed = 0;
 		// From the straight-flight risk up (a full drag as tuned): straight there on the jet when the way is open (PathFinder::CalculatePath).
 		agent.StraightFlight = share >= direct.StraightFlightRisk;
+		agent.StraightFlightReach = direct.FlightReach(share);
 		if (agent.DigGoal) {
 			agent.DigCostScale = toward(agent.DigCostScale, std::min(agent.DigCostScale, direct.DigCostScale));
 			agent.LineWeight = direct.LineWeight * share;
+		} else {
+			// A move, attack or the like keeps nearer the straight line the riskier it is (PathFinder::LineCost): at half risk the route cuts
+			// corners and takes the jumps a normal one walks round, near full risk it is close to direct; the search still finds the way.
+			agent.LineWeight = direct.MoveLineWeight * share;
 		}
 	}
 	for (const std::pair<Vector, double>& avoid: m_AvoidPoints) {
@@ -2724,6 +2729,17 @@ void RTE::Actor::CastSeeRays() {
 			Look(45 * m_Perceptiveness, g_FrameMan.GetPlayerScreenWidth() * 0.51 * m_Perceptiveness);
 		}
 	}
+}
+
+void Actor::UpdateWhileSeated() {
+	UpdateWounds();
+	for (AEmitter* wound: m_Wounds) {
+		m_Health -= wound->CollectDamage() * m_DamageMultiplier;
+	}
+	for (Attachable* attachable: m_Attachables) {
+		m_Health -= attachable->CollectDamage();
+	}
+	m_Health = std::min(m_Health, m_MaxHealth);
 }
 
 void Actor::FullUpdate() {

@@ -78,6 +78,8 @@ namespace SandboxDetail {
 			visit("MaxRespawns", mode.MaxRespawns);
 			visit("StuckSeconds", mode.StuckSeconds);
 			visit("RushPercent", mode.RushPercent);
+			visit("RiskMin", mode.RiskMin);
+			visit("RiskMax", mode.RiskMax);
 			visit("RouteVariety", mode.RouteVariety);
 			visit("Zones", mode.Zones);
 			visit("HoldToWin", mode.HoldToWin);
@@ -95,6 +97,7 @@ namespace SandboxDetail {
 			visit("CommanderFallBack", mode.CommanderFallBack);
 			visit("PlayerCommands", mode.PlayerCommands);
 			visit("FogOfWar", mode.FogOfWar);
+			visit("MovingSpawns", mode.MovingSpawns);
 		}
 
 		// Values as text: a point "x,y", a line of points with spaces between, zones with " | " between.

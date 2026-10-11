@@ -638,7 +638,7 @@ int SceneMan::RemoveOrphans(int posX, int posY,
 		m_pCurrentScene->GetTerrain()->SetMaterialPixel(posX, posY, g_MaterialAir);
 		// Liquid resting against the pixel that just went may now have somewhere to flow.
 		FluidSim::Disturb(Vector(static_cast<float>(posX), static_cast<float>(posY)), 2.0F);
-		TerrainCollapse::NoteDamage(posX, posY);
+		TerrainCollapse::NoteDamage(posX, posY, 0.0F);
 		NoteKnockedOut(posX, posY, materialID);
 	}
 
@@ -730,7 +730,7 @@ bool SceneMan::TryPenetrate(int posX,
 			m_pCurrentScene->GetTerrain()->SetMaterialPixel(posX, posY, g_MaterialAir);
 			// Liquid resting against the pixel that just went may now have somewhere to flow.
 			FluidSim::Disturb(Vector(static_cast<float>(posX), static_cast<float>(posY)), 2.0F);
-			TerrainCollapse::NoteDamage(posX, posY);
+			TerrainCollapse::NoteDamage(posX, posY, std::sqrt(sqrImpMag));
 			NoteKnockedOut(posX, posY, materialID);
 		}
 		// TODO: Improve / tweak randomized pushing away of terrain")
@@ -741,7 +741,7 @@ bool SceneMan::TryPenetrate(int posX,
 			m_pCurrentScene->GetTerrain()->SetMaterialPixel(posX, posY, g_MaterialAir);
 			// Liquid resting against the pixel that just went may now have somewhere to flow.
 			FluidSim::Disturb(Vector(static_cast<float>(posX), static_cast<float>(posY)), 2.0F);
-			TerrainCollapse::NoteDamage(posX, posY);
+			TerrainCollapse::NoteDamage(posX, posY, std::sqrt(sqrImpMag));
 			NoteKnockedOut(posX, posY, materialID);
 		}
 
@@ -1601,6 +1601,10 @@ float SceneMan::GetGas(const Vector& position, int kind) const {
 
 void SceneMan::AddAirGust(const Vector& position, const Vector& direction, float strength, float length, float spread) const {
 	AirPressure::Gust(position, direction, strength, length, spread);
+}
+
+bool SceneMan::MagicAICasting() const {
+	return MagicEffects::IsOn() && MagicEffects::GetTuning().AICasting;
 }
 
 void SceneMan::MagicPush(const Vector& origin, const Vector& direction, float power, float range, float spread, const MovableObject* caster) const {
