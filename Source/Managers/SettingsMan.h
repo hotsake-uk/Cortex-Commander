@@ -193,6 +193,24 @@ namespace RTE {
 		/// Sets ClassicPieWheel; see there.
 		void SetClassicPieWheel(bool classic) { m_ClassicPieWheel = classic; }
 
+		/// Gets the key that pauses and resumes the AI in any game, as written: modifiers then SDL's name for the key, e.g. "Ctrl+P". Empty for none.
+		const std::string& GetPauseAIKey() const { return m_PauseAIKey; }
+
+		/// Sets the key that pauses and resumes the AI; see GetPauseAIKey.
+		void SetPauseAIKey(const std::string& key) { m_PauseAIKey = key; }
+
+		/// Whether a key press (an SDL_Scancode with the SDL_Keymod held) is the key that pauses and resumes the AI. Left and right modifiers count alike.
+		bool IsPauseAIKey(int scancode, unsigned int modifiers) const;
+
+		/// The name for a key press as GetPauseAIKey writes it, e.g. "Ctrl+Shift+F10". Empty for a modifier on its own.
+		static std::string KeyComboName(int scancode, unsigned int modifiers);
+
+		/// Whether the settings panel is waiting for a key to bind, so the keys pressed for it do nothing else. Not saved.
+		bool IsTakingKey() const { return m_TakingKey; }
+
+		/// Sets IsTakingKey; see there.
+		void SetTakingKey(bool taking) { m_TakingKey = taking; }
+
 		/// Whether red and white flashes appear when brain is damaged.
 		/// @return Whether red and white flashes appear when brain is damaged.
 		bool FlashOnBrainDamage() const { return m_FlashOnBrainDamage; }
@@ -831,6 +849,8 @@ namespace RTE {
 		bool m_AlwaysDisplayUnheldItemsInStrategicMode; //!< Whether or not devices on Scene should always show their pick-up HUD when when the player is in strategic mode.
 		int m_SubPieMenuHoverOpenDelay; //!< The number of MS a PieSlice with a sub-PieMenu needs to be hovered over for the sub-PieMenu to open.
 		bool m_ClassicPieWheel; //!< Whether a unit's right-click menu is the classic pie wheel rather than the action menu (see ClassicPieWheel).
+		std::string m_PauseAIKey; //!< The key that pauses and resumes the AI (see GetPauseAIKey).
+		bool m_TakingKey = false; //!< Whether the settings panel is waiting for a key to bind (see IsTakingKey).
 		bool m_EndlessMetaGameMode; //!< Endless MetaGame mode.
 		bool m_ShowFPSAndVersion; //!< Whether the frame rate and version are shown in the top right (see ShowFPSAndVersion).
 		int m_NavDebugOverlay; //!< What the navigation debug overlay shows (see NavDebugOverlay).

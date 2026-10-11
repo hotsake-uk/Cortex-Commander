@@ -714,8 +714,10 @@ void Sandbox::DrawGUI() {
 		}
 	}
 	if (Controller::IsAIPaused() && InGame()) {
-		// A reminder that nobody will move until it's resumed.
-		const char* banner = "AI PAUSED";
+		// A reminder that nobody will move until it's resumed, with the key that resumes it.
+		const std::string& key = g_SettingsMan.GetPauseAIKey();
+		std::string bannerText = key.empty() ? std::string("AI PAUSED") : "AI PAUSED (" + key + ")";
+		const char* banner = bannerText.c_str();
 		ImDrawList* drawList = ImGui::GetForegroundDrawList();
 		ImVec2 size = ImGui::CalcTextSize(banner);
 		float scale = g_DebugMan.UsingPixelFont() ? 2.0F : 1.6F;

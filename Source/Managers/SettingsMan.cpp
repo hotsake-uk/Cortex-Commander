@@ -1,6 +1,7 @@
 #include "ControlLink.h"
 #include "Actor.h"
 #include "SettingsMan.h"
+#include "SDL3/SDL_keyboard.h"
 #include "Weather.h"
 #include <algorithm>
 #include <cctype>
@@ -132,6 +133,7 @@ void SettingsMan::Clear() {
 	m_AlwaysDisplayUnheldItemsInStrategicMode = true;
 	m_SubPieMenuHoverOpenDelay = 1000;
 	m_ClassicPieWheel = false;
+	m_PauseAIKey = "Ctrl+P";
 	m_EndlessMetaGameMode = false;
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
@@ -288,6 +290,29 @@ void SettingsMan::UpdateSettingsFile() const {
 	if (file) {
 		m_LastWrittenSettings = std::move(text);
 	}
+}
+
+std::string SettingsMan::KeyComboName(int scancode, unsigned int modifiers) {
+	SDL_Scancode key = static_cast<SDL_Scancode>(scancode);
+	if (key == SDL_SCANCODE_UNKNOWN || (key >= SDL_SCANCODE_LCTRL && key <= SDL_SCANCODE_RGUI)) {
+		return std::string();
+	}
+	std::string name;
+	if (modifiers & SDL_KMOD_CTRL) {
+		name += "Ctrl+";
+	}
+	if (modifiers & SDL_KMOD_ALT) {
+		name += "Alt+";
+	}
+	if (modifiers & SDL_KMOD_SHIFT) {
+		name += "Shift+";
+	}
+	return name + SDL_GetScancodeName(key);
+}
+
+bool SettingsMan::IsPauseAIKey(int scancode, unsigned int modifiers) const {
+	// The GUI (Windows) key is left out of the name, so a combo held with it isn't this key.
+	return !m_PauseAIKey.empty() && !(modifiers & SDL_KMOD_GUI) && KeyComboName(scancode, modifiers) == m_PauseAIKey;
 }
 
 void SettingsMan::SaveSettingsIfChanged() const {
@@ -704,6 +729,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AlwaysDisplayUnheldItemsInStrategicMode", { reader >> m_AlwaysDisplayUnheldItemsInStrategicMode; });
 	MatchProperty("SubPieMenuHoverOpenDelay", { reader >> m_SubPieMenuHoverOpenDelay; });
 	MatchProperty("ClassicPieWheel", { reader >> m_ClassicPieWheel; });
+	MatchProperty("PauseAIKey", { m_PauseAIKey = reader.ReadPropValue(); });
 	MatchProperty("EndlessMetaGameMode", { reader >> m_EndlessMetaGameMode; });
 	MatchProperty("EndlessMode", { reader >> m_EndlessMetaGameMode; }); // Legacy name, kept for old Settings.ini files.
 	MatchProperty("EnableCrabBombs", { reader >> m_EnableCrabBombs; });
@@ -1270,6 +1296,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("ShowCPUAimReticles", m_ShowCPUAimReticles);
 	writer.NewPropertyWithValue("ShowAlarmExclamation", m_ShowAlarmExclamation);
 	writer.NewPropertyWithValue("ClassicPieWheel", m_ClassicPieWheel);
+	writer.NewPropertyWithValue("PauseAIKey", m_PauseAIKey);
 	writer.NewPropertyWithValue("SmoothHUDText", TextOverlay::IsEnabled());
 	writer.NewPropertyWithValue("FrameCap", g_WindowMan.GetFrameCap());
 	writer.NewPropertyWithValue("UnitSpeech", UnitSpeech::IsEnabled());
