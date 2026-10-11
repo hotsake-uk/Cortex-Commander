@@ -3355,6 +3355,7 @@ namespace SandboxDetail {
 			s_RushMade.fill(0);
 			s_RushChosen.fill(0);
 			s_Commanders = {};
+			ForgetReinforcements();
 			if (mode.Start) {
 				mode.Start();
 			}

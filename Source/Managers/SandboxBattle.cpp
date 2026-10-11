@@ -622,6 +622,7 @@ namespace SandboxDetail {
 	void UpdateBattle(bool aiPaused) {
 		UpdateBattleCraft();
 		UpdateBattleMode(aiPaused);
+		UpdateReinforcements();
 		long long now = g_TimerMan.GetSimUpdateCount();
 		if (aiPaused) {
 			for (BattleTeam& team: s_BattleTeams) {
@@ -795,6 +796,10 @@ namespace SandboxDetail {
 		}
 		const int side = stroke.Team;
 		const bool oneTeam = side >= 0 && side < c_Sides;
+		if (stroke.Kind == Tool::BattleTeam && stroke.Count == BattleReinforce) {
+			ApplyReinforcement(stroke);
+			return;
+		}
 		if (stroke.Kind == Tool::BattleModePoint || IsModeZoneTool(stroke.Kind) || stroke.Kind == Tool::BattleModeFlag || (stroke.Kind == Tool::BattleTeam && (stroke.Count == BattleModeSet || stroke.Count == BattleModeStart || stroke.Count == BattleModeStop))) {
 			ApplyBattleMode(stroke);
 			return;
@@ -892,6 +897,7 @@ namespace SandboxDetail {
 		s_ScriptAnyFaction = false;
 		s_ScriptFavourites = false;
 		ForgetBattleMode();
+		ForgetReinforcements();
 	}
 
 	/// The card's factions: a list to tick, none ticked for any faction.

@@ -215,7 +215,9 @@ namespace SandboxDetail {
 		SmokeBomb, //!< A burst of thick smoke, with no blast.
 		Fireworks, //!< Bursts of coloured sparks in the air above the point.
 		// Appended, so the tools before keep their numbers.
-		Decor //!< A light or fire put in the background (Choice a DecorKind): it shines until a blast or a shot destroys it, and nothing collides with it.
+		Decor, //!< A light or fire put in the background (Choice a DecorKind): it shines until a blast or a shot destroys it, and nothing collides with it.
+		// Appended, so the tools before keep their numbers.
+		LandingSpot //!< Battle Command: a click marks where your reinforcements land (s_LandingSpot), and calls in the one waiting for it.
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -347,6 +349,7 @@ namespace SandboxDetail {
 	    {Tool::SmokeBomb, "Smoke bomb", 0.0F, false},
 	    {Tool::Fireworks, "Fireworks", 0.0F, false},
 	    {Tool::Decor, "Background light", 0.0F, false},
+	    {Tool::LandingSpot, "Landing spot", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -639,7 +642,8 @@ namespace SandboxDetail {
 		BattleClearCraft, //!< Team's ships, all of them, taken off the map (with anyone still aboard).
 		BattleModeSet, //!< No team's settings: the mode's (Stroke::Mode) only.
 		BattleModeStart, //!< The mode's settings, and its game started afresh, every team in it set up by it (BattleModeInfo::TeamSettings).
-		BattleModeStop //!< The mode's game stopped, and every team with it.
+		BattleModeStop, //!< The mode's game stopped, and every team with it.
+		BattleReinforce //!< Battle Command: reinforcements bought for the team you command (Choice the card, Radius how many, Craft, Position where they land).
 	};
 
 	/// The Battle Director's preset modes: a game with rules of its own, set up from a few choices (how big, which teams, and a point for
@@ -2346,6 +2350,64 @@ namespace SandboxDetail {
 	/// Battle Command's battle panel: the battle's mode, teams, spawn zones and objectives, started and stopped. What the sandbox's Battle tab
 	/// is in the Sandbox game mode, which Battle Command doesn't offer.
 	void DrawCommanderPanel();
+#pragma endregion
+
+#pragma region Reinforcements (Reinforcements.cpp)
+	/// The units a team you command can call in, by Loadout preset: each from the team's first faction (Coalition with none picked).
+	struct ReinforcementCard {
+		const char* Name;
+		const char* Loadout;
+		const char* Tip;
+	};
+	constexpr ReinforcementCard c_ReinforcementCards[] = {
+	    {"Rifleman", "Infantry Light", "A light soldier with a rifle and a sidearm."},
+	    {"Sniper", "Infantry Sniper", "A light soldier with a sniper rifle: long range, slow to fire."},
+	    {"Heavy", "Infantry Heavy", "A heavy soldier with a heavy weapon: tough and hard-hitting, slow."},
+	    {"Digger", "Infantry Engineer", "A soldier with a digger: tunnels through the ground, and digs gold when left to it."},
+	    {"Crab", "Mecha", "The faction's crab: armoured and heavily armed, but can't climb or jump much."},
+	};
+	constexpr int c_ReinforcementCardCount = static_cast<int>(std::size(c_ReinforcementCards));
+
+	/// A team's points for reinforcements while a battle mode's game is on and you command it: earned by its kills, the objectives it takes
+	/// and the gold it digs, spent on units called in by ship.
+	struct CommandPoints {
+		float Points = 0.0F;
+		float FromKills = 0.0F;
+		float FromObjectives = 0.0F;
+		float FromGold = 0.0F;
+		int Kills = 0;
+		int Called = 0; //!< Units called in.
+		float Spent = 0.0F;
+	};
+	inline std::array<CommandPoints, c_Sides> s_CommandPoints;
+
+	// The Commander Toolbar's reinforcements, in the window: where they land, and how.
+	inline Vector s_LandingSpot;
+	inline bool s_HasLandingSpot = false;
+	inline int s_PendingCard = -1; //!< A card clicked with no landing spot marked: called in once one is (Tool::LandingSpot).
+	inline int s_CallCraft = 0; //!< Index into c_Crafts.
+	inline int s_CallSize = 1; //!< Units a card calls in at a time: 1, 3 or 5.
+
+	/// Every team's points back to the start, and the kills, scores and gold they're earned from forgotten. At a mode's start and a new game.
+	void ForgetReinforcements();
+
+	/// The points earned since the last update, by the teams you command. Call once per sim update, from UpdateBattle.
+	void UpdateReinforcements();
+
+	/// A call for reinforcements (Tool::BattleTeam, BattleReinforce), in the sim: bought from the team's points and sent in by ship.
+	void ApplyReinforcement(const Stroke& stroke);
+
+	/// What a card's unit costs, as bought, for a side's faction. 0 if its faction has no such unit. Kept once worked out.
+	float ReinforcementCost(int card, int side);
+
+	/// The Commander Toolbar's reinforcements group: the points, the cards, the landing spot, the craft and how many at a time.
+	void ReinforcementTiles();
+
+	/// A click on the world with the landing spot tool: marks the spot, and calls in the card waiting for one.
+	void LandingSpotClicked(const Vector& position);
+
+	/// Battle Command: the landing spot marked on the map. Call from the ImGui frame.
+	void DrawLandingSpot();
 #pragma endregion
 
 	/// One tile of the bar: a small picture drawn by the caller, with its name under it when given (else the tile is only the picture). The one in use
