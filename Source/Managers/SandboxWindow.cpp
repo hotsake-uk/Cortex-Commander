@@ -3444,7 +3444,17 @@ namespace SandboxDetail {
 			ImVec2 size = ImGui::CalcTextSize(label.c_str());
 			ImVec2 powerSize = ImGui::CalcTextSize(power);
 			ImVec2 at(top.x - (size.x + powerSize.x) * 0.5F, top.y - size.y - 6.0F);
-			drawList->AddRectFilled(ImVec2(at.x - 4.0F, at.y - 2.0F), ImVec2(at.x + size.x + powerSize.x + 4.0F, at.y + size.y + 2.0F), IM_COL32(0, 0, 0, 140), 3.0F);
+			ImVec2 labelMin(at.x - 4.0F, at.y - 2.0F);
+			ImVec2 labelMax(at.x + size.x + powerSize.x + 4.0F, at.y + size.y + 2.0F);
+			// A click on the label (looking around or commanding) opens the building's panel.
+			const ImVec2 mouse = ImGui::GetIO().MousePos;
+			bool hovered = mouse.x >= labelMin.x && mouse.x <= labelMax.x && mouse.y >= labelMin.y && mouse.y <= labelMax.y && !ImGui::GetIO().WantCaptureMouse;
+			Tool kind = CurrentTool().Kind;
+			if (hovered && (kind == Tool::None || kind == Tool::Command) && s_RallyPickID < 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+				s_BuildingPanelID = building.ID;
+				s_BuildingPanelNote.clear();
+			}
+			drawList->AddRectFilled(labelMin, labelMax, hovered ? IM_COL32(40, 40, 40, 200) : IM_COL32(0, 0, 0, 140), 3.0F);
 			drawList->AddText(at, c_SideColors[building.Team], label.c_str());
 			if (*power) {
 				drawList->AddText(ImVec2(at.x + size.x, at.y), IM_COL32(255, 90, 70, 255), power);
@@ -3533,6 +3543,187 @@ namespace SandboxDetail {
 			s_ColonyRemoveID = building.ID;
 		}
 		ImGui::SetItemTooltip("It stops being a building. What it was built of stays standing, and so do its staff.");
+	}
+
+	/// The panel of one colony building, beside it in the world: what it is and is doing, its controls, and its upgrades.
+	/// Opened by clicking the building (looking around) or its label, or Panel in the Colony tab.
+	void DrawBuildingPanel() {
+		ImGuiIO& io = ImGui::GetIO();
+		Tool kind = CurrentTool().Kind;
+		bool looking = Sandbox::IsOpen() || Sandbox::IsLookingAround();
+		// A click on a building while looking around opens its panel.
+		if (looking && kind == Tool::None && s_RallyPickID < 0 && !io.WantCaptureMouse && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+			if (const Colony::Building* building = BuildingAt(MouseScenePosition())) {
+				s_BuildingPanelID = building->ID;
+				s_BuildingPanelNote.clear();
+			}
+		}
+		std::vector<Colony::Building>& buildings = Colony::Buildings();
+		auto found = std::find_if(buildings.begin(), buildings.end(), [](const Colony::Building& each) { return each.ID == s_BuildingPanelID; });
+		if (found == buildings.end() || !looking) {
+			s_BuildingPanelID = -1;
+			s_RallyPickID = -1;
+			return;
+		}
+		Colony::Building& building = *found;
+		const Colony::Type& type = Colony::GetType(building.What);
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+
+		// Picking its rally point: the next click in the world, outside any window. Right click or Esc stops.
+		if (s_RallyPickID == building.ID) {
+			ImVec2 mouse = io.MousePos;
+			drawList->AddLine(ToScreen(building.Ground + Vector(0.0F, -static_cast<float>(building.Height()) * 0.5F)), mouse, c_SideColors[building.Team], 1.5F);
+			drawList->AddText(ImVec2(mouse.x + 14.0F, mouse.y + 10.0F), IM_COL32(255, 255, 255, 230), "Click to set its rally point (right click to stop)");
+			if (!io.WantCaptureMouse && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+				building.Rally = MouseScenePosition();
+				building.HasRally = true;
+				s_RallyPickID = -1;
+			} else if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+				s_RallyPickID = -1;
+			}
+		} else if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !io.WantTextInput) {
+			s_BuildingPanelID = -1;
+			return;
+		}
+		if (building.What == Colony::Kind::Barracks && building.HasRally) {
+			ImVec2 flagAt = ToScreen(building.Rally);
+			drawList->AddLine(ToScreen(building.Ground + Vector(0.0F, -static_cast<float>(building.Height()) * 0.5F)), flagAt, (c_SideColors[building.Team] & ~IM_COL32_A_MASK) | IM_COL32(0, 0, 0, 110), 1.0F);
+			drawList->AddLine(flagAt, ImVec2(flagAt.x, flagAt.y - 16.0F), c_SideColors[building.Team], 2.0F);
+			drawList->AddTriangleFilled(ImVec2(flagAt.x, flagAt.y - 16.0F), ImVec2(flagAt.x + 10.0F, flagAt.y - 12.0F), ImVec2(flagAt.x, flagAt.y - 8.0F), c_SideColors[building.Team]);
+		}
+		// Its plot, outlined while the panel is open.
+		drawList->AddRect(ToScreen(building.Ground - Vector(static_cast<float>(building.Width()) * 0.5F, static_cast<float>(building.Height()))), ToScreen(building.Ground + Vector(static_cast<float>(building.Width()) * 0.5F, 0.0F)), c_SideColors[building.Team], 0.0F, 0, 2.0F);
+
+		// Beside it, on its right, following it as the view moves (kept on screen).
+		GameViewRect view = g_WindowMan.GetGameViewRect();
+		ImVec2 anchor = ToScreen(building.Ground + Vector(static_cast<float>(building.Width()) * 0.5F + 8.0F, -static_cast<float>(building.Height())));
+		anchor.x = std::clamp(anchor.x, view.x + 8.0F, view.x + view.w - 340.0F);
+		anchor.y = std::clamp(anchor.y, view.y + 8.0F, view.y + view.h - 200.0F);
+		ImGui::SetNextWindowPos(anchor, ImGuiCond_Always);
+		ImGui::SetNextWindowSizeConstraints(ImVec2(300.0F, 0.0F), ImVec2(360.0F, view.h * 0.8F));
+		bool open = true;
+		std::string title = std::string(building.Lite ? "Lite " : "") + type.Name + " (level " + std::to_string(building.Level) + ")###BuildingPanel";
+		ImGui::PushStyleColor(ImGuiCol_TitleBgActive, (c_SideColors[building.Team] & ~IM_COL32_A_MASK) | IM_COL32(0, 0, 0, 150));
+		ImGui::PushStyleColor(ImGuiCol_TitleBg, (c_SideColors[building.Team] & ~IM_COL32_A_MASK) | IM_COL32(0, 0, 0, 110));
+		if (ImGui::Begin(title.c_str(), &open, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoFocusOnAppearing)) {
+			ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(c_SideColors[building.Team]), "%s's", c_SideNames[building.Team]);
+			ImGui::SameLine();
+			ColonyStatusPill(building);
+			if (building.Disabled()) {
+				ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 200, 120, 255));
+				ImGui::TextUnformatted("Its brain is dead: it does nothing.");
+				ImGui::PopStyleColor();
+				ImGui::SameLine();
+				if (ToolUI::SmallButton("Place brain")) {
+					Colony::PlaceBrain(building.ID);
+				}
+			} else if (building.BrainID != -1) {
+				ImGui::TextDisabled("Run by its brain, in a chamber %s.", building.Lite ? "inside its box" : "at its back");
+			}
+
+			// The things it does, by kind.
+			if (building.What == Colony::Kind::Barracks) {
+				ImGui::SeparatorText("Training");
+				ImGui::TextUnformatted("Train now:");
+				for (int count: {1, 5}) {
+					ImGui::SameLine();
+					if (ToolUI::SmallButton(("+" + std::to_string(count)).c_str())) {
+						Colony::TrainNow(building.ID, count);
+					}
+				}
+				if (building.Queued > 0) {
+					ImGui::SameLine();
+					ImGui::Text("%d ordered", building.Queued);
+					ImGui::SameLine();
+					if (ToolUI::SmallButton("Cancel")) {
+						Colony::TrainNow(building.ID, -building.Queued);
+					}
+				}
+				ImGui::SetItemTooltip("Units to train on top of those it keeps alive, paid for as each starts.");
+				ImGui::TextUnformatted("Rally point:");
+				ImGui::SameLine();
+				if (ToolUI::SmallButton(s_RallyPickID == building.ID ? "Click in the world..." : building.HasRally ? "Move" : "Set")) {
+					s_RallyPickID = building.ID;
+				}
+				ImGui::SetItemTooltip("Where its units go when trained, to wait there.");
+				if (building.HasRally) {
+					ImGui::SameLine();
+					if (ToolUI::SmallButton("Clear")) {
+						building.HasRally = false;
+					}
+				}
+			} else if (building.What == Colony::Kind::Extractor) {
+				ImGui::SeparatorText("Supply");
+				ImGui::Text("Earns %.0f supply a minute.", Colony::ExtractorIncome(building) * 60.0F);
+			} else if (building.What == Colony::Kind::Generator) {
+				ImGui::SeparatorText("Power");
+				ImGui::Text("Gives up to %.0f power to its side's buildings within %.0f m.", Colony::GeneratorPower(building), Colony::PowerRange() / 20.0F);
+				if (!Colony::NeedsPower()) {
+					ImGui::TextDisabled("Buildings run without power: turn on \"Buildings need power\" in the Colony tab's rules.");
+				}
+			} else if (building.What == Colony::Kind::Woodcutter) {
+				ImGui::SeparatorText("Wood");
+				if (building.Level > 1) {
+					ImGui::TextDisabled("Keeps %d more staff than set, for its level.", building.Level - 1);
+				}
+			}
+			ColonyBuildingDetails(building);
+
+			// Upgrades: wood and supply for a level.
+			ImGui::SeparatorText("Upgrade");
+			for (int level = 1; level <= Colony::c_MaxLevel; ++level) {
+				if (level > 1) {
+					ImGui::SameLine(0.0F, 4.0F);
+				}
+				ImGui::TextColored(level <= building.Level ? ImVec4(1.0F, 0.85F, 0.3F, 1.0F) : ImVec4(0.45F, 0.45F, 0.45F, 1.0F), level <= building.Level ? "*" : "o");
+			}
+			float supply = 0.0F;
+			int wood = 0;
+			if (Colony::UpgradeCost(building, supply, wood)) {
+				// (What the next level is, against level 1.)
+				Colony::Building next = building;
+				++next.Level;
+				int faster = static_cast<int>(std::round((Colony::LevelPace(next) - 1.0F) * 100.0F));
+				std::string gain = building.What == Colony::Kind::Barracks ? "trains " + std::to_string(faster) + "% faster" :
+				                   building.What == Colony::Kind::Woodcutter ? "keeps " + std::to_string(next.Level - 1) + " more staff, who cut " + std::to_string(faster) + "% faster and go further" :
+				                   building.What == Colony::Kind::Extractor ? "earns " + std::to_string(faster) + "% more supply" : "gives " + std::to_string(faster) + "% more power";
+				ImGui::TextWrapped("Level %d %s than level 1.", next.Level, gain.c_str());
+				std::string cost = std::to_string(wood) + " wood" + (supply > 0.0F ? ", " + std::to_string(static_cast<int>(supply)) + " supply" : "");
+				bool affordable = Colony::Wood(building.Team) >= wood && Colony::Supply(building.Team) >= supply;
+				ImGui::BeginDisabled(!affordable);
+				if (ImGui::Button(("Upgrade (" + cost + ")").c_str())) {
+					s_BuildingPanelNote = Colony::Upgrade(building.ID);
+				}
+				ImGui::EndDisabled();
+				if (!affordable) {
+					ImGui::SameLine();
+					ImGui::TextDisabled("%s has %d wood%s", c_SideNames[building.Team], Colony::Wood(building.Team), supply > 0.0F ? (", " + std::to_string(static_cast<int>(Colony::Supply(building.Team))) + " supply").c_str() : "");
+				}
+				if (!s_BuildingPanelNote.empty()) {
+					ImGui::TextColored(ImVec4(1.0F, 0.5F, 0.4F, 1.0F), "%s", s_BuildingPanelNote.c_str());
+				}
+			} else {
+				ImGui::TextDisabled("At its top level.");
+			}
+			if (ToolUI::SmallButton("Look")) {
+				s_FreeCamera = true;
+				s_FollowTarget = UnitRef();
+				s_FollowAction = false;
+				s_CameraCenter = building.Ground + Vector(0.0F, -40.0F);
+			}
+		}
+		ImGui::End();
+		ImGui::PopStyleColor(2);
+		if (!open) {
+			s_BuildingPanelID = -1;
+			s_RallyPickID = -1;
+		}
+		if (s_ColonyRemoveID >= 0) {
+			// ("Close it down", from its details.)
+			Colony::Remove(s_ColonyRemoveID);
+			s_ColonyRemoveID = -1;
+			s_BuildingPanelID = -1;
+		}
 	}
 
 	/// The Colony tab of the sandbox window: what each side has, what can be built, and what stands.
@@ -3659,6 +3850,16 @@ namespace SandboxDetail {
 					s_FollowAction = false;
 					s_CameraCenter = building.Ground + Vector(0.0F, -40.0F);
 				}
+				ImGui::SameLine();
+				if (ToolUI::SmallButton("Panel")) {
+					s_BuildingPanelID = building.ID;
+					s_BuildingPanelNote.clear();
+					s_FreeCamera = true;
+					s_FollowTarget = UnitRef();
+					s_FollowAction = false;
+					s_CameraCenter = building.Ground + Vector(0.0F, -40.0F);
+				}
+				ImGui::SetItemTooltip("Opens its panel beside it: its orders, upgrades and more. Clicking it in the world while looking around, or its label, does too.");
 				if (open) {
 					ImGui::TableNextRow();
 					ImGui::TableNextColumn();

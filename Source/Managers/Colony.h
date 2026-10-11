@@ -116,6 +116,7 @@ namespace RTE {
 			int ID = 0;
 			Kind What = Kind::Barracks;
 			Style Looks = Style::Fantasy;
+			int Level = 1; //!< How far it is upgraded, 1 to c_MaxLevel: barracks train faster, woodcutters keep more staff, cut faster and go further, extractors earn more, generators give more.
 			bool Lite = false; //!< Just its core: a small box with its brain in, for a building of your own round it. It does all the full building does.
 			int Team = 0;
 			Vector Ground; //!< The middle of its plot, at ground level.
@@ -124,6 +125,10 @@ namespace RTE {
 			int KeepAlive = 4; //!< Barracks: it trains until this many of its units are alive, and again as they fall. Woodcutter: how many staff it keeps.
 			bool Paused = false;
 			bool Paid = false; //!< Barracks: the unit in training has been paid for.
+			int Queued = 0; //!< Barracks: units ordered on top of those it keeps alive, still to train.
+			bool ForQueue = false; //!< Barracks: the unit in training is one of those ordered, not one it keeps alive.
+			bool HasRally = false; //!< Barracks: its units go to its rally point when trained, rather than following their orders from where they come out.
+			Vector Rally; //!< Barracks: its rally point.
 			float Progress = 0.0F; //!< Barracks: how far the unit in training is, 0 to 1.
 			int Produced = 0; //!< Units trained so far (woodcutter: staff taken on).
 			int SolidAtStart = 0; //!< How much of it there was when built, to tell when it is wrecked.
@@ -149,6 +154,9 @@ namespace RTE {
 
 		/// The group every building's brain is put in, so the game never takes it for a player's brain.
 		static constexpr const char* c_BrainGroup = "Building Brains";
+
+		/// How far a building can be upgraded.
+		static constexpr int c_MaxLevel = 3;
 
 		/// The size of a lite building's box, in pixels: walls round its brain's chamber.
 		static constexpr int c_LiteWidth = 44;
@@ -176,6 +184,17 @@ namespace RTE {
 
 		/// Takes a building out of the list. What it was built of stays standing, and so do its staff (who stop working).
 		static void Remove(int id);
+
+		/// Gets what upgrading a building to its next level costs: supply (nothing while everything is free) and wood, its side's.
+		/// @return Whether it can be upgraded at all (false at its top level).
+		static bool UpgradeCost(const Building& building, float& supply, int& wood);
+
+		/// Upgrades a building a level, paying for it from its side's supply and wood.
+		/// @return Why it couldn't be, or nothing if it was.
+		static std::string Upgrade(int id);
+
+		/// Orders a barracks to train more units on top of those it keeps alive.
+		static void TrainNow(int id, int count);
 
 		/// Puts a new brain of its side in a disabled building's chamber, so it runs again.
 		/// @return Whether a brain was put in.
@@ -208,8 +227,17 @@ namespace RTE {
 		/// Gets how far from a generator, in pixels, a building takes power from it.
 		static float PowerRange();
 
-		/// Gets how much power a generator gives.
+		/// Gets how much power a generator gives (at level 1).
 		static float GeneratorPower();
+
+		/// Gets how much power a generator gives at its level.
+		static float GeneratorPower(const Building& generator);
+
+		/// Gets how much supply an extractor earns a second at its level.
+		static float ExtractorIncome(const Building& extractor);
+
+		/// Gets how many times faster than at level 1 a building works at its level.
+		static float LevelPace(const Building& building);
 
 		/// Gets how much power a barracks draws while it trains.
 		static float TrainingPower();

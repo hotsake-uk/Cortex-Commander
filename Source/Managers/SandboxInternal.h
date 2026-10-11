@@ -1460,6 +1460,9 @@ namespace SandboxDetail {
 	inline int s_ColonyKeep = 4; //!< How many of its units a new barracks keeps alive.
 	inline int s_ColonyStaff = 2; //!< How many staff a new woodcutter keeps.
 	inline int s_ColonyRemoveID = -1; //!< The colony building the Colony tab was asked to close down this frame, or -1.
+	inline int s_BuildingPanelID = -1; //!< The colony building whose panel is open beside it, or -1.
+	inline int s_RallyPickID = -1; //!< The barracks whose rally point the next click in the world sets, or -1.
+	inline std::string s_BuildingPanelNote; //!< What the panel last had to say (why an upgrade couldn't be done).
 	inline Colony::Style s_ColonyStyle = Colony::Style::Fantasy; //!< How new colony buildings look.
 	inline bool s_ColonyLite = false; //!< Whether new colony buildings are lite: just a box with their brain in, put where clicked, to build your own building round.
 	inline bool s_PauseInMenus = true; //!< In the Sandbox game mode the world stands still while the tools are open.
@@ -2830,6 +2833,7 @@ namespace SandboxDetail {
 	void GymTab();
 	void DrawColony();
 	void ColonyTab();
+	void DrawBuildingPanel();
 	void UnmarkSelection();
 	void DrawSelection();
 	void DrawRallyPoints();
