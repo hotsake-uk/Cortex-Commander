@@ -34,11 +34,40 @@ namespace SandboxDetail {
 		}
 	}
 
+	/// Takes your character out of the world, and out of the seat of the vehicle it rides if it is in one (the vehicle stays).
+	void RemovePlayer() {
+		StopFlying();
+		if (Actor* actor = GetRef(s_PlayerUnit)) {
+			actor->SetToDelete(true);
+		} else if (Actor* ridden = GetRef(s_PlayerVehicle)) {
+			// (Let out thrown, which always gets it out, so there is a unit to delete: a blocked way out would otherwise keep it in its seat.)
+			Actor* rider = nullptr;
+			if (AVehicle* vehicle = dynamic_cast<AVehicle*>(ridden)) {
+				rider = vehicle->EjectSeat(vehicle->GetControlSeat(), true);
+			} else if (ACShip* ship = dynamic_cast<ACShip*>(ridden)) {
+				rider = ship->EjectSeat(ship->GetControlSeat(), true);
+			}
+			if (rider) {
+				rider->SetToDelete(true);
+			}
+		}
+		s_PlayerUnit = UnitRef();
+		s_PlayerVehicle = UnitRef();
+		s_PlayerEnterPending = 0;
+	}
+
 	void ReleaseControl() {
 		StopFlying();
+		// Leaving play mode takes your character away with it: P makes a new one. A unit of the scene's you took over stays.
+		bool playing = false;
 		if (GameActivity* game = CurrentGame()) {
+			const Actor* controlled = game->GetControlledActor(Players::PlayerOne);
+			playing = controlled && (controlled == GetRef(s_PlayerUnit) || controlled == GetRef(s_PlayerVehicle));
 			game->LoseControlOfActor(Players::PlayerOne);
 			game->SetViewState(Activity::ViewState::Observe, Players::PlayerOne);
+		}
+		if (playing) {
+			RemovePlayer();
 		}
 		s_Possessed = nullptr;
 	}
