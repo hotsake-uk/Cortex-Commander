@@ -831,7 +831,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DirectCaution", { reader >> m_DirectOrders.Caution; m_DirectOrders.Caution = std::clamp(m_DirectOrders.Caution, 0.0F, 1.0F); });
 	MatchProperty("DirectFlightCost", { reader >> m_DirectOrders.FlightCostScale; m_DirectOrders.FlightCostScale = std::clamp(m_DirectOrders.FlightCostScale, 0.2F, 1.0F); });
 	MatchProperty("DirectFuelShare", { reader >> m_DirectOrders.FuelShare; m_DirectOrders.FuelShare = std::clamp(m_DirectOrders.FuelShare, 0.1F, 1.2F); });
-	MatchProperty("DirectSteady", { reader >> m_DirectOrders.Steady; });
+	MatchProperty("DirectRecklessSkipsSteady", { reader >> m_DirectOrders.RecklessSkipsSteady; });
+	MatchProperty("DirectSteady", { bool unused; reader >> unused; }); // (The older "still steady" switch, off by default: its saved value is not carried over, so risky orders steady again.)
 	MatchProperty("DirectFlightSpeed", { reader >> m_DirectOrders.FlightSpeed; m_DirectOrders.FlightSpeed = std::clamp(m_DirectOrders.FlightSpeed, 1.0F, 3.0F); });
 	MatchProperty("DirectSafeLandings", { reader >> m_DirectOrders.SafeLandings; });
 	MatchProperty("DirectTouchdown", { reader >> m_DirectOrders.Touchdown; m_DirectOrders.Touchdown = std::clamp(m_DirectOrders.Touchdown, 3.0F, 15.0F); });
@@ -1343,7 +1344,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("DirectCaution", m_DirectOrders.Caution);
 	writer.NewPropertyWithValue("DirectFlightCost", m_DirectOrders.FlightCostScale);
 	writer.NewPropertyWithValue("DirectFuelShare", m_DirectOrders.FuelShare);
-	writer.NewPropertyWithValue("DirectSteady", m_DirectOrders.Steady);
+	writer.NewPropertyWithValue("DirectRecklessSkipsSteady", m_DirectOrders.RecklessSkipsSteady);
 	writer.NewPropertyWithValue("DirectFlightSpeed", m_DirectOrders.FlightSpeed);
 	writer.NewPropertyWithValue("DirectTouchdown", m_DirectOrders.Touchdown);
 	writer.NewPropertyWithValue("DirectSafeLandings", m_DirectOrders.SafeLandings);

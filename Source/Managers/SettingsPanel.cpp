@@ -1514,8 +1514,8 @@ void DebugMan::SettingsGUI() {
 				direct.Caution = 1.0F - risk / 100.0F;
 			}
 			Tip("How little hard jumps and long drops put them off a route: 0% weighs them as a normal unit does, 100% not at all. 90% is normal for a direct order.");
-			Check("Steady before take-off", &direct.Steady);
-			Tip("Whether they still come to a stand, still and upright, before a jet climb or jump. Off (normal for a direct order): they take off mid-stride.");
+			Check("Recklessness skips steadying", &direct.RecklessSkipsSteady);
+			Tip("Whether the riskier the order, the less they come to a stand (still and upright) before a jet climb or jump, none at all at full risk. Off (normal): they steady as any unit does, then go straight for it.");
 		}
 		Heading("Direct: flying");
 		{
