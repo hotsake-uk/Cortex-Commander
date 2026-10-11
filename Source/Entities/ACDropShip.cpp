@@ -775,12 +775,14 @@ void ACDropShip::UpdateAutopilot() {
 	}
 
 	// Sideways, on a PID of where it will be in a while.
-	float change = ai.xPID.Update(g_SceneMan.ShortestDistance(m_Pos + m_Vel * 30.0F, ai.waypoint, false).m_X, 0.0F);
+	// (Aimed off the place by what it keeps clear of on the way, AutopilotSteerOffset; it arrives by the place itself.)
+	const Vector steerTo = ai.waypoint + AutopilotSteerOffset();
+	float change = ai.xPID.Update(g_SceneMan.ShortestDistance(m_Pos + m_Vel * 30.0F, steerTo, false).m_X, 0.0F);
 	if (std::abs(change) > 0.6F) {
 		ctrl.SetAnalogMove(Vector(change / 8.0F, 0.0F));
 	}
 	// Up and down, likewise.
-	change = ai.yPID.Update(g_SceneMan.ShortestDistance(m_Pos + m_Vel * 5.0F, ai.waypoint, false).m_Y, 0.0F);
+	change = ai.yPID.Update(g_SceneMan.ShortestDistance(m_Pos + m_Vel * 5.0F, steerTo, false).m_Y, 0.0F);
 	if (change > 2.0F) {
 		ai.altitudeMoveState = DESCEND;
 	} else if (change < -2.0F) {

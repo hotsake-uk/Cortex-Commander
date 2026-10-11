@@ -283,6 +283,61 @@ bool ACShip::FlyRouteTo(const Vector& spot) {
 	return AutopilotGoTo(m_Route.front());
 }
 
+void ACShip::UpdateCraftAvoidance() {
+	if (!m_AvoidTimer.IsPastSimMS(100)) {
+		return;
+	}
+	m_AvoidTimer.Reset();
+	m_AvoidOffset.Reset();
+	const bool wraps = g_SceneMan.SceneWrapsX();
+	const float radius = GetRadius();
+	// How far ahead it looks, in seconds, and its own way in pixels a second.
+	const float horizon = 2.0F;
+	const Vector velocity = m_Vel * c_PPM;
+	for (const Actor* actor: g_MovableMan.GetActorList()) {
+		const ACraft* other = dynamic_cast<const ACraft*>(actor);
+		if (!other || other == this || other->IsDead() || other->IsSetToDelete()) {
+			continue;
+		}
+		// (A body's room each, a little less than the radius, which takes in the corners of a wide hull.)
+		const float clearance = (radius + other->GetRadius()) * 0.85F;
+		const Vector toOther = g_SceneMan.ShortestDistance(m_Pos, other->GetPos(), wraps);
+		const Vector closing = other->GetVel() * c_PPM - velocity;
+		if (toOther.MagnitudeIsGreaterThan(clearance + closing.GetMagnitude() * horizon + 40.0F)) {
+			continue;
+		}
+		// Where the other will be from it when they are nearest, within the look ahead.
+		float speedSquared = closing.GetSqrMagnitude();
+		float when = speedSquared > 0.01F ? std::clamp(-(toOther.m_X * closing.m_X + toOther.m_Y * closing.m_Y) / speedSquared, 0.0F, horizon) : 0.0F;
+		Vector nearest = toOther + closing * when;
+		float gap = nearest.GetMagnitude();
+		if (gap >= clearance) {
+			continue;
+		}
+		// The sooner, the harder it steers; and the more it would overlap, the further.
+		float need = (clearance - gap) * (1.0F - 0.6F * when / horizon);
+		Vector away = gap > 1.0F ? -nearest / gap : Vector(toOther.m_X > 0.0F ? -1.0F : 1.0F, 0.0F);
+		const ACShip* ship = dynamic_cast<const ACShip*>(other);
+		bool otherGivesWay = ship && ship->CanFly() && !ship->IsPlayerControlled();
+		// Of two ships, the higher (or, level, the one first made) climbs over; the other gives way, holding back to the side of it.
+		bool climbs = !otherGivesWay || m_Pos.m_Y < other->GetPos().m_Y - 4.0F || (std::abs(m_Pos.m_Y - other->GetPos().m_Y) <= 4.0F && GetUniqueID() < other->GetUniqueID());
+		Vector steer(away.m_X * need * 1.5F, 0.0F);
+		if (climbs) {
+			steer.m_Y = -need * 2.0F;
+		} else if (away.m_Y > 0.0F) {
+			// (Down only while there is room under it.)
+			float room = g_SceneMan.CastNotMaterialRay(m_Pos, Vector(0.0F, radius * 2.0F + need), MaterialColorKeys::g_MaterialAir, 4);
+			if (room < 0.0F) {
+				steer.m_Y = away.m_Y * need;
+			}
+		}
+		m_AvoidOffset += steer;
+	}
+	if (m_AvoidOffset.MagnitudeIsGreaterThan(radius * 3.0F)) {
+		m_AvoidOffset.SetMagnitude(radius * 3.0F);
+	}
+}
+
 void ACShip::UpdateAutopilot() {
 	if (!CanFly()) {
 		// (Left on a delivery or a trip home, a pilot getting in would fly off with it: it holds still for them instead.)
@@ -291,6 +346,7 @@ void ACShip::UpdateAutopilot() {
 		}
 		return;
 	}
+	UpdateCraftAvoidance();
 	// Along its route (FlyRouteTo): on to the next point once near the one it is flying to. Any other order (it holds, or is sent somewhere
 	// else) or the player flying it ends the route.
 	if (!m_Route.empty()) {

@@ -154,6 +154,9 @@ namespace RTE {
 		/// still, so a pilot getting in later doesn't take it off home.
 		void UpdateAutopilot() override;
 
+		/// Gets how far the autopilot steers off its place to keep clear of other craft (UpdateCraftAvoidance).
+		Vector AutopilotSteerOffset() const override { return m_AvoidOffset; }
+
 		/// The drop ship's flying from the controller, unless nobody flies it: then the stick is let go, and a ship that needs a pilot sets
 		/// itself down and shuts off. A player at a gun or in a passenger's seat doesn't fly it: it holds where it is.
 		void PreControllerUpdate() override;
@@ -208,6 +211,13 @@ namespace RTE {
 		Timer m_TouchdownTimer; //!< How long it has been down and still while setting itself down.
 		Timer m_OrderedBoardTimer; //!< Since it last looked for units sent to it to get in.
 		std::deque<Vector> m_Route; //!< The points of the route FlyRouteTo sent it along still to fly to, the one it is flying to first.
+		Vector m_AvoidOffset; //!< How far the autopilot steers off its place just now to keep clear of other craft.
+		Timer m_AvoidTimer; //!< Since it last looked for craft in its way.
+
+		/// Looks, ten times a second, for other craft it would come within a body of soon at the speeds both are going, and sets how far to
+		/// steer off its place to pass them: the higher of two ships climbs over, the other holds back and gives way to the side; one that isn't
+		/// a ship flown by the autopilot (a drop ship, a rocket, one a player flies) is passed by both. Not read until the autopilot steers.
+		void UpdateCraftAvoidance();
 
 	private:
 		/// Aims and fires its manned guns: from the player's aim in a gunner's seat, or the gunner's own, at the nearest enemy in sight and range.
