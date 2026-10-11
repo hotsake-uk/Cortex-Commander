@@ -892,6 +892,9 @@ namespace RTE {
 			int stuckLevel = 0; //!< How many times running it has been long stuck on a step to much that same place.
 			Timer stuckSpotTimer; //!< Since it was first stuck there.
 			Timer steadyTimer; //!< Since the unit was last not standing still and upright, for the settle before a long flight.
+			bool straightTried = false; //!< A full-risk order's straight flight at its goal (see MoveAlongRoute) was begun, for straightGoal.
+			Vector straightGoal; //!< The goal it was begun for: not tried again for a few seconds (straightTimer), so a flight that failed isn't begun again and again.
+			Timer straightTimer;
 			bool settling = false; //!< Waiting to settle before a take-off just now.
 			bool leapWatch = false; //!< A leap of the route's is under way: where from and to, to judge it by when it comes down.
 			Vector leapFrom;

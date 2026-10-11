@@ -504,7 +504,7 @@ namespace RTE {
 			Vector DigTarget; //!< That place, exactly as given: it may be inside the ground.
 			int FailReason = ORDERFAIL_NONE; //!< Why the order stopped short (OrderFailReason), ORDERFAIL_NONE while it hasn't.
 			int FailMaterial = 0; //!< The material in the way for ORDERFAIL_TOOHARD, 0 for none known.
-			float Direct = 0.0F; //!< How urgent the order is, by how it was placed (s_DirectOrder): -1 a single click (cautious: walks round jumps, waits for fuel, lands soft, keeps clear of enemies), 0 a double click (a normal order, and any order not placed by a click), 0 to 1 a double click dragged, by how far (SettingsMan::DirectOrderTuning::RiskDragPixels), 1 a full drag (the shortest way there whatever it takes: a dig-to tunnels in a straight line round only what it can't cut, a move takes the hard, fast jet flights a careful route walks round). The Battle Behavior tuning is applied in that share (GetPathAgent, AHuman).
+			float Direct = 0.0F; //!< How urgent the order is, by how it was placed (s_DirectOrder): -1 a single click (cautious: walks round jumps, waits for fuel, lands soft, keeps clear of enemies), 0 a double click (a normal order, and any order not placed by a click), 0 to 1 a double click dragged, by how far (SettingsMan::DirectOrderTuning::RiskDragPixels), 1 a full drag (the shortest way there whatever it takes: a dig-to tunnels in a straight line round only what it can't cut, a move takes the hard, fast jet flights a careful route walks round, and from the Battle Behavior's StraightFlightRisk up a unit with a jet flies straight at the goal when the air between is open). The Battle Behavior tuning is applied in that share (GetPathAgent, AHuman).
 		};
 
 		/// Gets this' standing order, to read or change.

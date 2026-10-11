@@ -2321,6 +2321,61 @@ int AHuman::MoveAlongRoute() {
 		return RouteMover::Moving;
 	}
 
+	// ---- A full-risk order (StandingOrder::Direct at or over the Battle Behavior's StraightFlightRisk): the jet lit and flown straight at
+	// the goal from where it stands, whatever the route's walk would do, when the air between is open and one tank flies it. Short of the
+	// fuel the tuning's tolerance asks for, the route is followed as usual. ----
+	if (standardJet && !IsDiggingTo() && !m_MovePath.empty() && m_StandingOrder.Direct >= g_SettingsMan.DirectOrders().StraightFlightRisk) {
+		const Vector goal = m_MovePath.back();
+		const Vector toGoal = Towards(m_Pos, goal);
+		const float goalFloorY = FloorUnder(goal, h * 0.8F);
+		const bool triedLately = mover.straightTried && Towards(mover.straightGoal, goal).MagnitudeIsLessThan(h) && !mover.straightTimer.IsPastSimMS(8000);
+		if (!triedLately && goalFloorY >= 0.0F && toGoal.MagnitudeIsGreaterThan(h * 1.5F)) {
+			const float tank = m_pJetpack->GetJetTimeTotal();
+			const float needed = FlightFuelNeeded(goal, goalFloorY);
+			// Open along the straight line, at the body's middle and its knees, or up and across (as a flight's way is reckoned elsewhere).
+			auto straightOpen = [&]() {
+				const Vector landingCentre(goal.m_X, goalFloorY - feet - 4.0F);
+				const Vector way = Towards(m_Pos, landingCentre);
+				Vector obstacle;
+				Vector free;
+				for (float dy: {-h * 0.3F, feet * 0.5F}) {
+					if (g_SceneMan.CastObstacleRay(m_Pos + Vector(0.0F, dy), way, obstacle, free, m_MOID, IgnoresWhichTeam(), 0, 3) >= 0.0F) {
+						return false;
+					}
+				}
+				return true;
+			};
+			if (needed <= tank * 0.95F && (straightOpen() || FlightWayClear(goal, goalFloorY))) {
+				const float want = std::min(needed * g_SettingsMan.DirectOrders().FuelShare, tank * 0.95F);
+				if (m_pJetpack->GetJetTimeLeft() >= std::max(want, JetRelightFuel())) {
+					mover.straightTried = true;
+					mover.straightGoal = goal;
+					mover.straightTimer.Reset();
+					mover.fuelWaiting = false;
+					mover.flight = RouteMover::Flight();
+					mover.flight.active = true;
+					mover.settling = false;
+					mover.flight.landing = goal;
+					mover.flight.floorY = goalFloorY;
+					mover.flight.pointsToLanding = static_cast<int>(m_MovePath.size());
+					mover.flight.timer.Reset();
+					mover.flight.totalTimer.Reset();
+					mover.flight.riseTimer.Reset();
+					mover.flight.startY = m_Pos.m_Y;
+					mover.flight.bestY = m_Pos.m_Y;
+					mover.flight.takeOff = m_Pos;
+					mover.progressTimer.Reset();
+					MoverTrace("full risk; straight for " + std::to_string(static_cast<int>(goal.m_X)) + "," + std::to_string(static_cast<int>(goalFloorY)));
+					Vector command = PilotFlight(goal, goalFloorY);
+					ctrl.SetState(BODY_JUMPSTART, true);
+					ctrl.SetState(BODY_JUMP, true);
+					ctrl.SetAnalogMove(Vector(command.m_X, -1.0F));
+					return RouteMover::Moving;
+				}
+			}
+		}
+	}
+
 	// ---- No legs (both shot off): the route is flown in short hops, point to point along it, not walked. With no legs the walk's keys
 	// only rocked the body where it lay, and the unit was stuck at the first point for the rest of the order. Each hop is a flight like any
 	// other (the pilot's, landed and popped as above): to the furthest of the next few points with floor under it that the body can fly to

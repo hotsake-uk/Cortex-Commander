@@ -340,6 +340,28 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 			s_LineSet = true;
 		}
 	}
+	// A full-risk order (PathAgent::StraightFlight): one straight flight from here to there, when the air between is open for the body and
+	// the jet's tank flies it (reckoned as CollectFlightLinks does), not the walk and hops the search would find.
+	if (agent.StraightFlight && !agent.DigGoal && startNode && endNode && endNode->m_Navigable && jumpHeight < FLT_MAX && s_JetTimeMS > 0.0F && endNode->Surface >= 0.0F) {
+		Vector landing(end.m_X, endNode->Surface - s_StandHeight * 0.5F);
+		Vector way = g_SceneMan.ShortestDistance(start, landing);
+		float rise = -way.m_Y; // Up is positive.
+		float across = std::abs(way.m_X);
+		float climbFuel = rise > 4.0F ? (rise + 12.0F) * s_JetClimbMSPerPx + (across >= 10.0F ? 450.0F : 300.0F) : 0.0F;
+		float fuel = 200.0F + climbFuel + across / (5.0F * c_PPM) * 0.5F * 1000.0F * 1.2F;
+		Vector head(0.0F, -s_StandHeight * 0.4F);
+		if (way.MagnitudeIsGreaterThan(static_cast<float>(m_NodeDimension) * 1.5F) && fuel <= s_JetTimeMS * 0.95F && LineOpen(start, start + way) && LineOpen(start + head, start + way + head)) {
+			pathResult.push_back(start);
+			pathResult.push_back(end);
+			if (kinds) {
+				kinds->clear();
+				kinds->push_back(PathStepKind::Jump);
+			}
+			totalCostResult = way.GetMagnitude() / static_cast<float>(m_NodeDimension);
+			return MicroPather::SOLVED;
+		}
+	}
+
 	// If end node is invalid, there's no path
 	if (startNode && endNode && endNode->m_Navigable) {
 		auto solveStart = std::chrono::steady_clock::now();

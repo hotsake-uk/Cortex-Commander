@@ -1225,6 +1225,11 @@ void DebugMan::SettingsGUI() {
 		{
 			Slider("Full risk drag distance", &direct.RiskDragPixels, 100.0F, 800.0F, "%.0f px");
 			Tip("How far on screen a double click is dragged for a fully direct order. A shorter drag takes that share of the way from a normal order to a fully direct one. 300 px is normal.");
+			float straight = direct.StraightFlightRisk * 100.0F;
+			if (Slider("Straight flight from", &straight, 50.0F, 100.0F, "%.0f%% risk")) {
+				direct.StraightFlightRisk = straight / 100.0F;
+			}
+			Tip("From this much risk, a unit with a jetpack lights it and flies straight at the place it was sent, when the air between is open and one tank gets it there, instead of taking the route. 90% is normal.");
 		}
 		Heading("Direct (full drag): jetpack");
 		{
