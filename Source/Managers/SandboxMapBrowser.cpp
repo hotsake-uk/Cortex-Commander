@@ -1083,6 +1083,12 @@ void MapBrowser::DrawGUI() {
 		ImGui::SameLine();
 		Filters();
 		ImGui::TextDisabled("%d of %d maps", static_cast<int>(s_Browser.Shown.size()), static_cast<int>(s_Browser.Maps.size()));
+		ImGui::SameLine();
+		if (ImGui::SmallButton("Find more maps on the Depot")) {
+			s_Browser.Choice = Choice();
+			s_Browser.Choice.OpenDepot = true;
+		}
+		ImGui::SetItemTooltip("Browse the maps shared on Cortex Depot.");
 		if (!s_Browser.ToDraw.empty()) {
 			ImGui::SameLine();
 			ImGui::TextDisabled("   Drawing map pictures: %d to go (kept for next time)", static_cast<int>(s_Browser.ToDraw.size()));

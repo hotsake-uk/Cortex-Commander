@@ -33,6 +33,7 @@
 #include "ActorWater.h"
 #include "Controller.h"
 #include "Sandbox.h"
+#include "DepotBrowser.h"
 #include "MapBrowser.h"
 #include "ModernHUD.h"
 #include "ActionMenu.h"
@@ -492,6 +493,7 @@ void DebugMan::DrawImGui() {
 
 	Sandbox::DrawGUI();
 	MapBrowser::DrawGUI();
+	DepotBrowser::DrawGUI();
 	UpdateFreeze();
 
 	if (m_ShowPhotoMode) {

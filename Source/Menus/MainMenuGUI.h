@@ -70,6 +70,7 @@ namespace RTE {
 			EditorScreen,
 			SandboxScreen,
 			MapBrowserScreen,
+			DepotScreen,
 			CreditsScreen,
 			QuitScreen,
 			ScreenCount
@@ -84,6 +85,7 @@ namespace RTE {
 			SaveOrLoadGameButton,
 			SettingsButton,
 			ModManagerButton,
+			DepotButton,
 			EditorsButton,
 			CreditsButton,
 			QuitButton,
@@ -128,6 +130,8 @@ namespace RTE {
 		std::vector<std::pair<GUIButton*, std::string>> m_SandboxThemeButtons; //!< The theme panel's buttons and the theme each starts.
 		GUIButton* m_SandboxThemeBackButton; //!< The theme panel's button back to the sizes.
 		MenuScreen m_MapBrowserBackScreen; //!< The screen the map browser goes back to: the sandbox screen it was opened from, or the main screen.
+		bool m_MapBrowserForBattle; //!< Whether the map browser was last opened for Battle Command (else the Sandbox), to open it again on coming back from the Depot.
+		MenuScreen m_DepotBackScreen; //!< The screen the Depot screen goes back to: the main screen or the map browser.
 
 		Timer m_ResumeButtonBlinkTimer; //!< Activity resume button blink timer.
 		Timer m_CreditsScrollTimer; //!< Credits scrolling timer.
@@ -243,6 +247,14 @@ namespace RTE {
 
 		/// Acts on what was done in the map browser: back to where it was opened from, or the game picked started.
 		void HandleMapBrowserChoice();
+
+		/// Opens the Depot screen.
+		/// @param kind The kind of item to show first ("map"…), or empty for what showed last.
+		/// @param backScreen The screen its Back goes to.
+		void OpenDepot(const std::string& kind, MenuScreen backScreen);
+
+		/// Goes back from the Depot screen when its Back was pressed.
+		void HandleDepotBack();
 
 		/// Handles the player interaction with the quit screen GUI elements.
 		/// @param guiEventControl Pointer to the GUI element that the player interacted with.

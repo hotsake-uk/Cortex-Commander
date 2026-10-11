@@ -4,7 +4,8 @@ external_inc_dirs = [include_directories('boost_1_75',
                                          'glad-2.0.0-beta',
                                          'glm-0.9.9.8',
                                          'thread-pool-3.5.0/include',
-                                         'hopscotch-map-2.3.1/include',)]
+                                         'hopscotch-map-2.3.1/include',
+                                         'nlohmann-json-3.11.3',)]
 if host_machine.system() in ['linux', 'darwin']
 endif
 if host_machine.system() == 'windows'
