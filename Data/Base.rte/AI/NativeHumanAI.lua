@@ -1036,8 +1036,8 @@ function NativeHumanAI:CreateAttackBehavior(Owner)
 			self.Target = nil;
 			return;
 		end
-	-- favor grenades as the initiator to a sneak attack
-	elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and Owner.AIMode ~= Actor.AIMODE_SENTRY and self.Target.HFlipped == Owner.HFlipped and Owner:EquipDeviceInGroup("Bombs - Grenades", true)
+	-- favor grenades as the initiator to a sneak attack (not again for a few seconds after one was called off: see ThrowTarget)
+	elseif not (self.ThrowRefusedTimer and not self.ThrowRefusedTimer:IsPastSimMS(3000)) and Owner.AIMode ~= Actor.AIMODE_SQUAD and Owner.AIMode ~= Actor.AIMODE_SENTRY and self.Target.HFlipped == Owner.HFlipped and Owner:EquipDeviceInGroup("Bombs - Grenades", true)
 	and dist:MagnitudeIsGreaterThan(math.max(100, HumanBehaviors.BlastClearance(Owner.EquippedItem))) and dist:MagnitudeIsLessThan(ToThrownDevice(Owner.EquippedItem):GetCalculatedMaxThrowVelIncludingArmThrowStrength() * GetPPM()) and (self.Target.Pos.Y + 20) > Owner.Pos.Y then
 		self.NextBehavior = coroutine.create(HumanBehaviors.ThrowTarget);
 		self.NextBehaviorName = "ThrowTarget";
@@ -1056,7 +1056,7 @@ function NativeHumanAI:CreateAttackBehavior(Owner)
 			self.NextBehaviorName = "ShootTarget";
 		end
 	-- (Nothing else to fight with: something to throw, but not an explosive at an enemy close enough for its blast to reach the thrower.)
-	elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and Owner:EquipThrowable(true) and dist:MagnitudeIsLessThan(ToThrownDevice(Owner.EquippedItem):GetCalculatedMaxThrowVelIncludingArmThrowStrength() * GetPPM())
+	elseif not (self.ThrowRefusedTimer and not self.ThrowRefusedTimer:IsPastSimMS(3000)) and Owner.AIMode ~= Actor.AIMODE_SQUAD and Owner:EquipThrowable(true) and dist:MagnitudeIsLessThan(ToThrownDevice(Owner.EquippedItem):GetCalculatedMaxThrowVelIncludingArmThrowStrength() * GetPPM())
 	and dist:MagnitudeIsGreaterThan(HumanBehaviors.BlastClearance(Owner.EquippedItem)) then
 		self.NextBehavior = coroutine.create(HumanBehaviors.ThrowTarget);
 		self.NextBehaviorName = "ThrowTarget";

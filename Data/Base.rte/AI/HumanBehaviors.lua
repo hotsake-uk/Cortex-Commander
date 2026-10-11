@@ -256,13 +256,15 @@ function HumanBehaviors.PlanThrow(Grenade, AimPoint, TargetVel, overCover, clear
 	return nil;
 end
 
--- How far from the thrower a grenade must burst (px): an explosive's blast and shrapnel, for anything else nothing.
+-- How far from the thrower and its own side a grenade must burst (px): an explosive's blast and shrapnel, for anything else nothing.
 function HumanBehaviors.BlastClearance(Grenade)
 	return Grenade and Grenade.ClassName == "TDExplosive" and 120 or 0;
 end
 
--- Whether a throw on an arc keeps its burst clear of the thrower: where it comes down, and, for a fuse lit as the throw winds up, where
--- it is when the fuse runs out if that is before it comes down (a long lob, or a short fuse, burst over the thrower's own head).
+-- Whether a throw on an arc keeps its burst clear of the thrower and its own side: where it comes down, and, for a fuse lit as the throw
+-- winds up, where it is when the fuse runs out if that is before it comes down (a long lob, or a short fuse, burst over the thrower's own
+-- head). Not within the clearance of any unit of the thrower's team, the thrower included: a grenade at an enemy in a friend's face, or
+-- lobbed onto a squad-mate, was thrown all the same.
 function HumanBehaviors.ArcIsSafe(Owner, Grenade, StartPos, angle, speed, seconds, fullStrength, clearance)
 	if not clearance or clearance <= 0 or not Owner then
 		return true;
@@ -271,9 +273,23 @@ function HumanBehaviors.ArcIsSafe(Owner, Grenade, StartPos, angle, speed, second
 	local gravity = SceneMan.GlobalAcc.Y;
 	local vx = speed * math.cos(angle);
 	local vy = -speed * math.sin(angle);
+	local Friends = {};
+	for Act in MovableMan.Actors do
+		if Act.Team == Owner.Team then
+			Friends[#Friends + 1] = Vector(Act.Pos.X, Act.Pos.Y);
+		end
+	end
 	local function farEnough(t)
 		local At = StartPos + Vector(vx * t, vy * t + 0.5 * gravity * t * t) * ppm;
-		return not SceneMan:ShortestDistance(Owner.Pos, At, false):MagnitudeIsLessThan(clearance);
+		if SceneMan:ShortestDistance(Owner.Pos, At, false):MagnitudeIsLessThan(clearance) then
+			return false;
+		end
+		for _, Pos in ipairs(Friends) do
+			if SceneMan:ShortestDistance(Pos, At, false):MagnitudeIsLessThan(clearance) then
+				return false;
+			end
+		end
+		return true;
 	end
 	if not farEnough(seconds) then
 		return false;
@@ -2423,7 +2439,9 @@ function HumanBehaviors.ThrowTarget(AI, Owner, Abort)
 									end
 								end
 							else
-								break; -- target out of range, or no arc gets there
+								-- Out of range, no arc gets there, or none keeps the burst off ourselves and our own: the gun for a while.
+								AI.ThrowRefusedTimer = Timer();
+								break;
 							end
 						else
 							break;
