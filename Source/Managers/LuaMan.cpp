@@ -173,6 +173,7 @@ void LuaStateWrapper::Initialize() {
 	                         RegisterLuaBindingsOfConcreteType(EntityLuaBindings, Turret),
 	                         RegisterLuaBindingsOfAbstractType(EntityLuaBindings, ACraft),
 	                         RegisterLuaBindingsOfConcreteType(EntityLuaBindings, ACDropShip),
+	                         RegisterLuaBindingsOfConcreteType(EntityLuaBindings, ACShip),
 	                         RegisterLuaBindingsOfConcreteType(EntityLuaBindings, ACRocket),
 	                         RegisterLuaBindingsOfConcreteType(EntityLuaBindings, HeldDevice),
 	                         RegisterLuaBindingsOfConcreteType(EntityLuaBindings, Magazine),
