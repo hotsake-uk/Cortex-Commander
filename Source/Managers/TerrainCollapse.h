@@ -161,6 +161,15 @@ namespace RTE {
 		/// @return Whether a piece is there.
 		static bool FindPiece(int x, int y, const Vector& at, long& id, Vector& local);
 
+		/// Finds the loose piece that ground at a pixel broke off as this sim update, wherever the piece has moved since, so what was tied to that
+		/// ground (a rope) goes with it. Call from the simulation, after this update's TerrainCollapse::Update.
+		/// @param x The pixel the ground was at, in scene coordinates.
+		/// @param y The pixel the ground was at, in scene coordinates.
+		/// @param id Set to the piece's ID (as FindPiece).
+		/// @param local Set to where that pixel's middle is on the piece (as FindPiece).
+		/// @return Whether ground there broke loose this update.
+		static bool FindLiftedPiece(int x, int y, long& id, Vector& local);
+
 		/// Gets where a point on a loose piece is now, and how it moves.
 		/// @param id The piece's ID (FindPiece).
 		/// @param local Where on it (FindPiece).

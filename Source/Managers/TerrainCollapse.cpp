@@ -355,6 +355,14 @@ namespace {
 	std::vector<Body> s_Bodies;
 	std::vector<Body> s_NewBodies; //!< Pieces made while the bodies are being stepped; they join afterwards.
 
+	/// A piece of ground that broke loose this update, remembered so what was tied to that ground (a rope) can go with it (TerrainCollapse::FindLiftedPiece).
+	struct Lifted {
+		long Id; //!< The piece's ID.
+		int Left, Top; //!< Where the top left of its bitmap was in the scene when it broke loose.
+	};
+	std::vector<Lifted> s_Lifted;
+	long long s_LiftedUpdate = -1; //!< The sim update s_Lifted is for.
+
 	/// A piece that came to rest not long ago and is ordinary ground again. Remembered so a blast beside it can pick it up and throw it, as debris lying about should be.
 	struct Rested {
 		std::vector<int> Keys; //!< Its pixels in the terrain.
@@ -2741,6 +2749,13 @@ namespace {
 			}
 		}
 		s_CollapsedCount += body.PixelCount;
+		// Given its ID now, so a rope tied to the ground it was can find it (FindLiftedPiece) once it has moved off that ground.
+		body.Id = s_NextPieceId++;
+		if (long long now = g_TimerMan.GetSimUpdateCount(); now != s_LiftedUpdate) {
+			s_Lifted.clear();
+			s_LiftedUpdate = now;
+		}
+		s_Lifted.push_back({body.Id, minX, minY});
 		s_Bodies.push_back(std::move(body));
 	}
 
@@ -3567,6 +3582,7 @@ void TerrainCollapse::Clear() {
 	}
 	s_Bodies.clear();
 	s_NewBodies.clear();
+	s_Lifted.clear();
 	s_Watches.clear();
 	s_WatchesWaiting.clear();
 	s_WatchWaitingDamage.clear();
@@ -3618,6 +3634,29 @@ bool TerrainCollapse::FindPiece(int x, int y, const Vector& at, long& id, Vector
 			float s = std::sin(body.Angle);
 			id = body.Id;
 			local = Vector(offset.m_X * c + offset.m_Y * s, -offset.m_X * s + offset.m_Y * c);
+			return true;
+		}
+	}
+	return false;
+}
+
+bool TerrainCollapse::FindLiftedPiece(int x, int y, long& id, Vector& local) {
+	if (s_Lifted.empty() || s_LiftedUpdate != g_TimerMan.GetSimUpdateCount() || !WrapInWorld(x, y)) {
+		return false;
+	}
+	for (const Lifted& lifted: s_Lifted) {
+		for (const Body& body: s_Bodies) {
+			if (body.Done || body.Id != lifted.Id) {
+				continue;
+			}
+			int lx = x - lifted.Left;
+			int ly = y - lifted.Top;
+			if (lx < 0 || ly < 0 || lx >= body.W || ly >= body.H || !body.Materials[static_cast<size_t>(ly) * body.W + lx]) {
+				break;
+			}
+			// Its bitmap is as it was in the ground, so the pixel's place on it is where it was there, from its middle.
+			id = body.Id;
+			local = Vector(static_cast<float>(lx) + 0.5F - body.Center.x, static_cast<float>(ly) + 0.5F - body.Center.y);
 			return true;
 		}
 	}
