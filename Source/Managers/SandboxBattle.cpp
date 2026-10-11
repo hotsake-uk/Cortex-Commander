@@ -623,6 +623,7 @@ namespace SandboxDetail {
 		UpdateBattleCraft();
 		UpdateBattleMode(aiPaused);
 		UpdateReinforcements();
+		UpdateFog();
 		long long now = g_TimerMan.GetSimUpdateCount();
 		if (aiPaused) {
 			for (BattleTeam& team: s_BattleTeams) {

@@ -703,6 +703,7 @@ namespace SandboxDetail {
 		int CommanderReserve = 30; //!< Its share of each such team's units, in percent, held on the next objective while the one in play is safe.
 		int CommanderFallBack = 60; //!< Assault defenders: how far the attackers' taking of the objective in play has got, in percent, when everyone
 		                            //!< falls back to the next one.
+		bool FogOfWar = false; //!< Battle Command: you see only the enemies your team's units can see (BattleFog.cpp).
 		std::array<bool, c_Sides> PlayerCommands{}; //!< Every mode: each team the player commands. Its units come in on hold ground with no orders and
 		                                            //!< no job from the mode, for the player to command (as in an RTS); the rest of the mode (spawns, scoring) is as for any team.
 	};
@@ -2408,6 +2409,33 @@ namespace SandboxDetail {
 
 	/// Battle Command: the landing spot marked on the map. Call from the ImGui frame.
 	void DrawLandingSpot();
+#pragma endregion
+
+#pragma region Fog of war (BattleFog.cpp)
+	/// Where an enemy was last seen, once your units lost sight of it: shown fading on the map and the minimap.
+	struct FogGhost {
+		long ID = 0;
+		int Team = -1;
+		Vector Pos;
+		bool Brain = false;
+		long long SeenAt = 0; //!< The sim update it was last seen on.
+	};
+	inline std::vector<FogGhost> s_FogGhosts;
+	constexpr float c_FogGhostSeconds = 20.0F; //!< How long a "last seen" mark lasts, fading.
+
+	/// Whether the battle's fog of war is on now: Battle Command, a mode's game on with fog of war ticked, and the Commander Toolbar up (the
+	/// sandbox's bar, F11, sees everything).
+	bool FogOn();
+
+	/// Hides from view each enemy none of your team's units can see, and marks where those lost sight of were last. With the fog off, every
+	/// unit is shown again. Call once per sim update, from UpdateBattle.
+	void UpdateFog();
+
+	/// How long ago a "last seen" mark was made, as its share of c_FogGhostSeconds (0 new, 1 gone).
+	float FogGhostAge(const FogGhost& ghost);
+
+	/// The "last seen" marks on the map. Call from the ImGui frame.
+	void DrawFogGhosts();
 #pragma endregion
 
 	/// One tile of the bar: a small picture drawn by the caller, with its name under it when given (else the tile is only the picture). The one in use

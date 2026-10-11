@@ -77,6 +77,10 @@ namespace SandboxDetail {
 
 	/// Whether an actor is hidden from you in commander mode (RC-9): another side's, where your side can't see. Orders can't be aimed at it.
 	bool HiddenFromCommander(const Actor* actor) {
+		// (Or by Battle Command's fog of war.)
+		if (actor && actor->IsHiddenByFog()) {
+			return true;
+		}
 		return s_Commander && actor && actor->GetTeam() != s_CommanderTeam && g_SceneMan.IsUnseen(actor->GetPos().GetFloorIntX(), actor->GetPos().GetFloorIntY(), s_CommanderTeam);
 	}
 
