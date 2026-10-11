@@ -99,6 +99,18 @@ void AHuman::RefreshLadderNodes() {
 	}
 }
 
+void AHuman::GrabLadder() {
+	m_AIGrabLadderSimMS = g_TimerMan.GetSimTimeMS();
+}
+
+bool AHuman::LadderHoldWanted() const {
+	if (m_Controller.GetInputMode() != Controller::CIM_AI || !g_SettingsMan.AIGrabsLaddersOnPurpose()) {
+		return true;
+	}
+	// (Set by the follower each tick it wants the ladder; good for a quarter second, so an AI tick that skips a frame doesn't drop it.)
+	return m_AIGrabLadderSimMS >= 0.0 && g_TimerMan.GetSimTimeMS() - m_AIGrabLadderSimMS < 250.0;
+}
+
 bool AHuman::RouteClimbsLadderNext() const {
 	int index = 0;
 	for (PathStepKind kind: m_MovePathKinds) {
@@ -126,12 +138,13 @@ bool AHuman::NoteLadderStall(float ladderX, float y) const {
 	std::lock_guard<std::mutex> lock(s_Mutex);
 	std::erase_if(s_Stalls, [now](const Stall& stall) { return now - stall.when > 60000.0 || now < stall.when; });
 	// The same ladder: its line within a few pixels across, and the stall within a couple of bodies up or down of the one before.
-	bool again = std::any_of(s_Stalls.begin(), s_Stalls.end(), [&](const Stall& stall) {
+	// (How many it takes, this one counted, is the Movement settings' AILadderTeamStalls.)
+	const int before = static_cast<int>(std::count_if(s_Stalls.begin(), s_Stalls.end(), [&](const Stall& stall) {
 		Vector off = Towards(stall.at, at);
 		return stall.team == m_Team && std::abs(off.m_X) < 12.0F && std::abs(off.m_Y) < m_CharHeight * 2.0F;
-	});
+	}));
 	s_Stalls.push_back({m_Team, at, now});
-	return again;
+	return before + 1 >= g_SettingsMan.AILadderTeamStalls();
 }
 
 std::optional<Vector> AHuman::LadderNear(const Vector& point, float reachX, float reachY) {
@@ -608,11 +621,18 @@ void AHuman::UpdateLadderInput() {
 			MoverTrace("no hold on a ladder: " + why);
 		}
 	};
-	// (Flying is no refusal for an AI unit whose route climbs this ladder next: it jetted there, for a hop over the foot, a stuck hop, or a
-	// flight the route ended by the rungs, and the jet still lit, or lit a moment ago, it could never take hold of the ladder it was routed
-	// up. It hung beside the rungs pressing up, or fell back and hopped again. The jet is cut as it takes hold.)
-	const bool routeWantsLadder = m_Controller.GetInputMode() == Controller::CIM_AI && RouteClimbsLadderNext();
-	const bool flying = IsJetFlying() && !routeWantsLadder;
+	// An AI unit takes hold only when it means to (GrabLadder, its follower's grab-ladder intent): up or down pressed by a ladder is no
+	// grab for it otherwise, so it never catches on a ladder its route passes. And meaning to, flying is no refusal: it jetted there (a hop
+	// over the foot, a stuck hop, a flight the route ended by the rungs), and with the jet still lit, or lit a moment ago, it could never
+	// take hold of the ladder it was routed up; it hung beside the rungs pressing up, or fell back and hopped again. The jet is cut as it
+	// takes hold. A player climbs as ever.
+	// (Both as the Movement settings' Ladders section has them: off, an AI unit takes hold as a player does, and not with its jet lit.)
+	const bool aiControlled = m_Controller.GetInputMode() == Controller::CIM_AI;
+	if (aiControlled && !LadderHoldWanted()) {
+		return;
+	}
+	const bool aiMeansIt = aiControlled && m_AIGrabLadderSimMS >= 0.0 && g_TimerMan.GetSimTimeMS() - m_AIGrabLadderSimMS < 250.0;
+	const bool flying = IsJetFlying() && !(aiMeansIt && g_SettingsMan.AIGrabsLaddersMidJet());
 	if (m_Status != STABLE || m_Mantling || m_GettingUp || m_ProneState != NOTPRONE || flying || (!m_pFGArm && !m_pBGArm)) {
 		refused(m_Status != STABLE ? "not stable" : (m_Mantling ? "mantling" : (m_GettingUp ? "getting up" : (m_ProneState != NOTPRONE ? "prone" : (flying ? "flying" : "no arms")))));
 		return;
@@ -2292,10 +2312,10 @@ int AHuman::MoveAlongRoute() {
 					m_Ladder.bestY = m_Ladder.pos.m_Y;
 					m_Ladder.stallTimer.Reset();
 				} else if (m_Ladder.stallTimer.IsPastSimMS(static_cast<double>(g_SettingsMan.AILadderGiveUpSeconds()) * 1000.0)) {
-					// (Its team pays for the place too only the second time a unit of it is stuck on this ladder within a minute: once may be
-					// the unit's own bad luck, a body in the way or a climb begun badly.)
+					// (Its team pays for the place too only once units of it have been stuck on this ladder within a minute as often as the
+					// Movement settings say, twice as the game comes: once may be the unit's own bad luck, a body in the way or a climb begun badly.)
 					const bool again = NoteLadderStall(m_Ladder.gripX, m_Pos.m_Y);
-					MoverTrace(std::string("the ladder goes no higher; letting go for another way") + (again ? " (again here: the team avoids it)" : ""));
+					MoverTrace(std::string("the ladder goes no higher; letting go for another way") + (again ? " (the team avoids it now)" : ""));
 					mover.ladderStalled = true;
 					mover.ladderStallSpot = m_Pos;
 					mover.ladderStallTimer.Reset();
@@ -2320,7 +2340,7 @@ int AHuman::MoveAlongRoute() {
 	// ---- In the air (flying, hopped or falling) by the ladder the route climbs next: up or down to take hold of it, the jet let go of. A
 	// unit that jetted at the ladder (a hop over its foot, a stuck hop, a flight that ended at the rungs) pressed nothing a ladder takes
 	// hold on in the air, and flew or fell past the ladder it was routed up. ----
-	if ((airborne || IsJetFlying()) && !m_MovePath.empty() && RouteClimbsLadderNext()) {
+	if ((airborne || IsJetFlying()) && g_SettingsMan.AIGrabsLaddersMidJet() && !m_MovePath.empty() && RouteClimbsLadderNext()) {
 		const Vector to = Towards(m_Pos, m_MovePath.front());
 		float bodyX = 0.0F;
 		float gripX = 0.0F;
@@ -2338,6 +2358,7 @@ int AHuman::MoveAlongRoute() {
 			ctrl.SetState(MOVE_LEFT, false);
 			ctrl.SetState(MOVE_RIGHT, false);
 			ctrl.SetState(to.m_Y < 0.0F ? MOVE_UP : MOVE_DOWN, true);
+			GrabLadder();
 			SetAimAngle(to.m_Y < 0.0F ? 0.9F : -0.6F);
 			mover.progressTimer.Reset();
 			return RouteMover::Moving;
@@ -3094,6 +3115,7 @@ int AHuman::MoveAlongRoute() {
 			ctrl.SetState(toPoint.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
 		} else {
 			ctrl.SetState(toPoint.m_Y < 0.0F ? MOVE_UP : MOVE_DOWN, true);
+			GrabLadder();
 			SetAimAngle(toPoint.m_Y < 0.0F ? 0.9F : -0.6F);
 			// Lying down, it gets up for the ladder (the motor lets a prone stance go while standUp holds, see UpdateAIMotor): the climb
 			// refuses a prone body, and an AI renews its prone stance every tick for any order but a move, so an attack, patrol or guard
@@ -3225,7 +3247,7 @@ int AHuman::MoveAlongRoute() {
 				MoverTrace("background ladder broken or short of the landing; flying");
 			}
 		}
-		if (climbLadder && m_StandingOrder.Direct > 0.0F && m_pJetpack->GetJetTimeTotal() * 0.95F >= FlightFuelNeeded(landing, landingFloorY, false)) {
+		if (climbLadder && g_SettingsMan.RiskyOrdersFlyPastLadders() && m_StandingOrder.Direct > 0.0F && m_pJetpack->GetJetTimeTotal() * 0.95F >= FlightFuelNeeded(landing, landingFloorY, false)) {
 			climbLadder = false;
 		}
 		if (climbLadder && mover.ladderStalled && !mover.ladderStallTimer.IsPastSimMS(20000) && std::abs(Towards(mover.ladderStallSpot, *ladder).m_X) < h * 0.4F) {
@@ -3233,6 +3255,7 @@ int AHuman::MoveAlongRoute() {
 		}
 		if (climbLadder) {
 			ctrl.SetState(MOVE_UP, true);
+			GrabLadder();
 			SetAimAngle(c_HalfPI);
 			mover.progressTimer.Reset();
 			return RouteMover::Moving;
@@ -3504,6 +3527,7 @@ int AHuman::MoveAlongRoute() {
 	}
 	if (ladder && !floorUnderFeet && toPoint.m_Y > h * 0.3F && std::abs(toPoint.m_X) < h * 0.4F) {
 		ctrl.SetState(MOVE_DOWN, true);
+		GrabLadder();
 		SetAimAngle(-c_HalfPI);
 		mover.progressTimer.Reset();
 		return RouteMover::Moving;

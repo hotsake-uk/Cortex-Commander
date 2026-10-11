@@ -43,6 +43,12 @@ function Update(self)
 					if okClimb and climbing then
 						flying = true;
 					end
+					-- (Nor an AI unit that isn't asking to climb: AHuman.LadderHoldWanted, the AI's grab-ladder control. Held whenever it pressed up
+					-- or down in front of a ladder, a unit caught on ladders its route only passed; the engine takes hold of the one it means.)
+					local okWant, wanted = pcall(function() return actor.LadderHoldWanted; end);
+					if okWant and wanted == false then
+						flying = true;
+					end
 					if limbs and actor.Status == Actor.STABLE and not controller:IsState(Controller.BODY_JUMP) and not flying then
 						local velFactor = 1 + actor.Vel.Magnitude * 0.3;
 						local aimAngle = actor:GetAimAngle(false);
