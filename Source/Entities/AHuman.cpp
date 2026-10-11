@@ -1382,6 +1382,11 @@ bool AHuman::FirearmIsReady() const {
 
 void AHuman::UpdateThrow(HeldDevice* device, bool throwHeld, float adjustedAimAngle) {
 	ThrownDevice* thrownDevice = dynamic_cast<ThrownDevice*>(device);
+	// A swing left over from a throw that never let go (what it was throwing was put away mid-swing): not this device's, so it starts its
+	// own wind-up rather than being let go of the moment the trigger goes down, unlit and at whatever strength the last one had.
+	if (m_ArmsState == THROWING_RELEASE && device->GetUniqueID() != m_ThrowingDeviceID) {
+		m_ArmsState = WEAPON_READY;
+	}
 	if (throwHeld && m_ArmsState != THROWING_RELEASE) {
 		if (m_ArmsState != THROWING_PREP) {
 			m_ThrowTmr.Reset();
@@ -2451,7 +2456,8 @@ void AHuman::PreControllerUpdate() {
 		m_CanActivateBGItem = false;
 	}
 
-	if (m_ArmsState == THROWING_PREP && !throwing) {
+	// (Nor a swing through with something else now in hand: the thrown thing was put away before it let go.)
+	if ((m_ArmsState == THROWING_PREP || (m_ArmsState == THROWING_RELEASE && GetEquippedItem())) && !throwing) {
 		m_ArmsState = WEAPON_READY;
 	}
 

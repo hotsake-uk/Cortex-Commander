@@ -1942,6 +1942,10 @@ namespace SandboxDetail {
 		const ImGuiIO& io = ImGui::GetIO();
 		auto pressed = [](ImGuiKey key) { return ImGui::IsKeyPressed(key, false); };
 		auto mode = [](CommandMode to) {
+			// (Only vehicles and flying ships selected: what they can't do isn't on the bar, and its key does nothing.)
+			if (SelectionOnlyVehicles() && !ModeFitsVehicles(to)) {
+				return;
+			}
 			s_CommandMode = to;
 			if (to == CommandMode::Patrol) {
 				s_PatrolDraft.clear();
@@ -2575,6 +2579,22 @@ namespace SandboxDetail {
 				const int team = builder ? builder->GetTeam() : -1;
 				const bool afford = !paid || (team >= 0 && team < c_Sides && s_CommandPoints[team].Points >= static_cast<float>(piece.Cost));
 				label = !builder ? std::string("Build: none of the selected units carries a Constructor") : std::string("Build ") + piece.Name + " here" + (paid ? " for " + std::to_string(piece.Cost) + " points" + (afford ? "" : " (not enough)") : std::string()) + ": " + builder->GetPresetName() + " builds it, " + std::to_string(piece.Seconds) + " s";
+			} else if (mode == CommandMode::Dropoff) {
+				// Drop off: where the vehicles stop and their passengers get out.
+				const ImU32 color = c_CommandModeColors[static_cast<int>(CommandMode::Dropoff)];
+				crosshair(g_SceneMan.MovePointToGround(point, 0.0F, 4), color, pixel * 6.0F);
+				int vehicles = 0;
+				int passengers = 0;
+				for (const Actor* unit: units) {
+					if (const AVehicle* car = dynamic_cast<const AVehicle*>(unit)) {
+						++vehicles;
+						passengers += std::max(car->GetCrewCount() - 1, 0);
+					} else if (const ACShip* ship = dynamic_cast<const ACShip*>(unit)) {
+						++vehicles;
+						passengers += std::max(ship->GetCrewCount() - (ship->HasPilot() ? 1 : 0), 0);
+					}
+				}
+				label = "Drop off here: " + std::to_string(vehicles) + (vehicles == 1 ? " vehicle, " : " vehicles, ") + std::to_string(passengers) + (passengers == 1 ? " passenger gets out" : " passengers get out");
 			} else if (mode == CommandMode::Patrol) {
 				label = s_PatrolDraft.empty() ? "Click the first point of the patrol route" : "Click point " + std::to_string(s_PatrolDraft.size() + 1) + " of the route, or start it on the command row";
 			} else if (mode == CommandMode::Pen) {
@@ -2897,6 +2917,8 @@ namespace SandboxDetail {
 				return "Wait";
 			case PlanKind::Suppress:
 				return "Suppress";
+			case PlanKind::Dropoff:
+				return "Drop off";
 			default:
 				return "Move";
 		}
@@ -2915,6 +2937,8 @@ namespace SandboxDetail {
 				return IM_COL32(242, 182, 61, 255);
 			case PlanKind::Suppress:
 				return c_CommandModeColors[static_cast<int>(CommandMode::Suppress)];
+			case PlanKind::Dropoff:
+				return c_CommandModeColors[static_cast<int>(CommandMode::Dropoff)];
 			default:
 				return c_CommandModeColors[static_cast<int>(CommandMode::Move)];
 		}
@@ -4791,6 +4815,13 @@ namespace SandboxDetail {
 			s_PatrolDraft.clear();
 			s_PenDraft.clear();
 		}
+		// Only vehicles and flying ships selected: just the orders they can carry out are on the bar, and a mode they can't is let go.
+		const bool onlyVehicles = SelectionOnlyVehicles();
+		if (onlyVehicles && !ModeFitsVehicles(s_CommandMode)) {
+			s_CommandMode = CommandMode::Command;
+			s_PatrolDraft.clear();
+			s_PenDraft.clear();
+		}
 
 		// The first row: what a click does.
 		BarLine line;
@@ -4815,6 +4846,9 @@ namespace SandboxDetail {
 			// (Setting a spawn order, they place it with none selected.)
 			ImGui::BeginDisabled(alive == 0 && !s_SpawnOrderArmed);
 			for (int mode = 0; mode < select; ++mode) {
+				if (onlyVehicles && !ModeFitsVehicles(static_cast<CommandMode>(mode))) {
+					continue;
+				}
 				line.Next(pixel * 2.0F);
 				ImGui::PushID(mode + 300);
 				if (BarChip(c_CommandModeNames[mode], current == mode, c_CommandModeColors[mode], keys[mode], tips[mode]) == 1) {
@@ -4825,6 +4859,15 @@ namespace SandboxDetail {
 				}
 				ImGui::PopID();
 			}
+			// A vehicle or flying ship among them: drop its passengers off at a place.
+			if (SelectionHasVehicle()) {
+				line.Next(pixel * 2.0F);
+				const int dropoff = static_cast<int>(CommandMode::Dropoff);
+				if (BarChip(c_CommandModeNames[dropoff], current == dropoff, c_CommandModeColors[dropoff], nullptr, "Drive or fly the selected vehicles and ships to the place clicked and let their passengers out there. The driver or\npilot stays at the controls and holds there for orders (a ship comes down to let them out, then climbs back up).\nShift adds it to their plans.") == 1) {
+					s_CommandMode = CommandMode::Dropoff;
+				}
+			}
+			if (!onlyVehicles) {
 			line.Next(pixel * 2.0F);
 			const int breach = static_cast<int>(CommandMode::Breach);
 			if (BarChip(c_CommandModeNames[breach], current == breach, c_CommandModeColors[breach], "Ctrl+X", "Dig through to the place clicked, then attack: the units with a digger tunnel there and the rest follow them in.\nOnce one is through, they all go for the nearest enemy there (or fight their way to the place if there's none).") == 1) {
@@ -4839,6 +4882,7 @@ namespace SandboxDetail {
 			const int airlift = static_cast<int>(CommandMode::Airlift);
 			if (BarChip(c_CommandModeNames[airlift], current == airlift, c_CommandModeColors[airlift], "Ctrl+L", ("Fly the selected units to the place clicked: a gunship for each six of them comes down by them, they get in, and it flies\nthem there and lets them out." + (Sandbox::IsBattleCommand() ? " Each ship costs " + std::to_string(c_AirliftCost) + " reinforcement points." : std::string())).c_str()) == 1) {
 				s_CommandMode = CommandMode::Airlift;
+			}
 			}
 			// (Only with animals among them: the pen is theirs.)
 			if (SelectedAnimalOrder() != -2) {

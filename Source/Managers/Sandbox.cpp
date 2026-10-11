@@ -1043,15 +1043,15 @@ void Sandbox::DrawGUI() {
 		if (!io.KeyCtrl && !io.KeyAlt) {
 			CommandHotkeys();
 		}
-		if (io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_X, false)) {
+		if (io.KeyCtrl && !io.KeyAlt && !SelectionOnlyVehicles() && ImGui::IsKeyPressed(ImGuiKey_X, false)) {
 			// Breach: the clicks to come dig through to the point, then attack.
 			s_CommandMode = CommandMode::Breach;
 		}
-		if (io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_B, false)) {
+		if (io.KeyCtrl && !io.KeyAlt && !SelectionOnlyVehicles() && ImGui::IsKeyPressed(ImGuiKey_B, false)) {
 			// Build: the clicks to come put up the piece picked.
 			s_CommandMode = CommandMode::Build;
 		}
-		if (io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_L, false)) {
+		if (io.KeyCtrl && !io.KeyAlt && !SelectionOnlyVehicles() && ImGui::IsKeyPressed(ImGuiKey_L, false)) {
 			// Airlift: the click to come is where they're flown.
 			s_CommandMode = CommandMode::Airlift;
 		}
@@ -2235,6 +2235,7 @@ void Sandbox::Update() {
 	}
 	ClosePaintUndoStep(false);
 	UpdatePlans();
+	UpdateDropoffs();
 	UpdateBreaches();
 	UpdateBuilds();
 	UpdateAirlifts();
