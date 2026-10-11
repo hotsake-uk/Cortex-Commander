@@ -122,7 +122,7 @@ namespace SandboxDetail {
 			s_PendingPower = -1;
 		}
 		s_ToolIndex = ToolIndex(Tool::Command);
-		s_CommandMode = CommandMode::Select;
+		s_CommandMode = CommandMode::Command;
 	}
 
 	void PowerTiles() {

@@ -12,6 +12,7 @@
 #include "MenuMan.h"
 #include "Icon.h"
 #include "GameActivity.h"
+#include "Sandbox.h"
 #include "System.h"
 
 #include <SDL3/SDL.h>
@@ -1109,6 +1110,10 @@ void UInputMan::HandleSpecialInput() {
 	if (g_ActivityMan.IsInActivity()) {
 		const GameActivity* gameActivity = dynamic_cast<GameActivity*>(g_ActivityMan.GetActivity());
 		// Don't allow pausing and returning to main menu when running in server mode to not disrupt the simulation for the clients
+		// (In the sandbox and Battle Command, Esc first takes the Command tool back to Command mode from another click mode; there, it pauses.)
+		if (KeyPressed(SDLK_ESCAPE) && Sandbox::TakeEscape()) {
+			return;
+		}
 		if (AnyStartPress(false) && (!gameActivity || !gameActivity->IsBuyGUIVisible(-1))) {
 			g_ActivityMan.PauseActivity(true, FlagShiftState());
 			return;

@@ -1840,7 +1840,7 @@ namespace SandboxDetail {
 			const char* What;
 		};
 		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view (with a Paint tool in hand: dig)"}, {"Middle drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"U", "Hide or show the bar along the bottom"}, {"F9", "Commander view, outside the Sandbox game mode: your side from above, and back into your unit"}, {"Ctrl+Z", "Undo the last paint stroke or the last thing placed"}};
-		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it"}, {"Left drag", "Select units in a box"}, {"Double click and drag", "Order with risk: normal at the click, fully direct at the full risk distance; they face the way dragged"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click a unit", "Every unit of that kind in view"}, {"Clicks to order", "How urgent the order is: 1 cautious (walks round jumps, waits for fuel), 2 normal; drag the second click for risk up to the shortest way whatever it takes (a dig-to tunnels straight, moves take fast, reckless jet jumps); tuned in Battle Behavior settings"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"X", "Dig to: tunnel to the point, in the ground or not (the units with a digger that cuts the way)"}, {"J", "Jetpack here: fly to the point in the air and hover there (a move or attack-move clicked in open air flies there too)"}, {"Z", "Suppress: fire into a zone round the point and keep firing, whatever else is in sight"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends)"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}};
+		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it. In Command mode the order fits what's under the pointer: an enemy attacked, an objective taken or held, open air flown to, else a move"}, {"Esc", "Back to Command mode, the mode other orders return to once placed (in Command mode: pause)"}, {"Left drag", "Select units in a box"}, {"Double click and drag", "Order with risk: normal at the click, fully direct at the full risk distance; they face the way dragged"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click a unit", "Every unit of that kind in view"}, {"Clicks to order", "How urgent the order is: 1 cautious (walks round jumps, waits for fuel), 2 normal; drag the second click for risk up to the shortest way whatever it takes (a dig-to tunnels straight, moves take fast, reckless jet jumps); tuned in Battle Behavior settings"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"X", "Dig to: tunnel to the point, in the ground or not (the units with a digger that cuts the way)"}, {"J", "Jetpack here: fly to the point in the air and hover there (a move or attack-move clicked in open air flies there too)"}, {"Z", "Suppress: fire into a zone round the point and keep firing, whatever else is in sight"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends)"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Q", "Every unit in view of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}};
 		static const Key plants[] = {{"E / Shift+E", "With a plant, cactus, mushroom, tree or candle brush in hand: the next of its pictures, or the one before (just one picked in its gallery: that pick moves on)"}, {"F", "Flip the next one the other way"}};
 		auto table = [](const char* id, const Key* keys, size_t count) {
 			if (ImGui::BeginTable(id, 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
@@ -2237,7 +2237,15 @@ namespace SandboxDetail {
 				formationFacing = across * scale > 12.0F ? 1 : (across * scale < -12.0F ? -1 : 0);
 			}
 			std::string formation = std::string(" in ") + c_FormationNames[static_cast<int>(s_Formation)] + (s_KeepPace ? ", kept together" : "") + (s_Dragging && io.KeyAlt ? "" : "  (Alt-drag: face a way)");
-			if (s_CommandMode == CommandMode::Select) {
+			// Command mode shows what its click would come to there: as Select, as Move (a friend selected, an enemy attacked, the ground
+			// moved to), or its own objective and open air.
+			CommandMode mode = s_CommandMode;
+			CommandTarget commandAt;
+			if (mode == CommandMode::Command) {
+				commandAt = CommandTargetAt(point);
+				mode = commandAt.What == CommandTarget::Select ? CommandMode::Select : commandAt.What == CommandTarget::Move ? CommandMode::Move : CommandMode::Command;
+			}
+			if (mode == CommandMode::Select) {
 				const bool pickable = under && IsSelectable(under);
 				if (pickable) {
 					drawList->AddCircle(ToScreen(under->GetPos()), std::max(under->GetRadius() / scale, 8.0F) + pixel * 2.0F, IM_COL32(255, 255, 255, 200), 0, pixel);
@@ -2245,14 +2253,14 @@ namespace SandboxDetail {
 				} else {
 					label = units.empty() ? "Click a unit or drag a box round several to select them" : count + " selected: pick an order (M, T, F, G, B...) or right click";
 				}
-			} else if (units.empty() || (underIsFriend && s_CommandMode == CommandMode::Move)) {
+			} else if (units.empty() || (underIsFriend && mode == CommandMode::Move)) {
 				if (underIsUnit) {
 					drawList->AddCircle(ToScreen(under->GetPos()), std::max(under->GetRadius() / scale, 8.0F) + pixel * 2.0F, IM_COL32(255, 255, 255, 200), 0, pixel);
 					label = "Select " + under->GetPresetName() + "  (Shift: add, double click: all of this kind)";
 				} else {
 					label = units.empty() ? "Drag a box round units to select them" : "Move " + count + " here";
 				}
-			} else if (s_CommandMode == CommandMode::Attack || (s_CommandMode == CommandMode::Move && underIsUnit && !underIsFriend)) {
+			} else if (mode == CommandMode::Attack || (mode == CommandMode::Move && underIsUnit && !underIsFriend)) {
 				ImU32 red = IM_COL32(239, 106, 91, 255);
 				Actor* target = (underIsUnit && !underIsFriend) ? under : nullptr;
 				float nearest = 400.0F * 400.0F;
@@ -2282,7 +2290,7 @@ namespace SandboxDetail {
 					crosshair(point, (red & 0x00FFFFFF) | (110u << IM_COL32_A_SHIFT), pixel * 6.0F);
 					label = "Attack: point at or near an enemy  (to fight towards a place, Attack-move)";
 				}
-			} else if (s_CommandMode == CommandMode::AttackMove) {
+			} else if (mode == CommandMode::AttackMove) {
 				// Attack-move (RC-2): where each will stand, and the crosshair over the place, in the mode's orange.
 				ImU32 orange = c_CommandModeColors[static_cast<int>(CommandMode::AttackMove)];
 				for (const Vector& spot: FormationSpots(units, formationPoint, static_cast<int>(units.size()), formationFacing)) {
@@ -2291,7 +2299,7 @@ namespace SandboxDetail {
 				crosshair(formationPoint, orange, pixel * 6.0F);
 				reachMarks(units, formationPoint);
 				label = "Attack-move " + count + " here" + formation + ": they fight what they meet on the way";
-			} else if (s_CommandMode == CommandMode::DefendAt) {
+			} else if (mode == CommandMode::DefendAt) {
 				// Defend at (RC-4): where each will stand to hold the place.
 				ImU32 amber = c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)];
 				for (const Vector& spot: StandingSpots(point, static_cast<int>(units.size()))) {
@@ -2300,13 +2308,13 @@ namespace SandboxDetail {
 				// And the zone they'll hold: the radius they go after enemies in, and the chase past it (faint).
 				DrawDefendZone(drawList, point, static_cast<float>(s_DefendRadius), static_cast<float>(s_DefendChase), amber);
 				label = "Defend here with " + count + "  (drag left or right to face that way)";
-			} else if (s_CommandMode == CommandMode::Suppress) {
+			} else if (mode == CommandMode::Suppress) {
 				// Suppress: the zone the fire will land in.
 				ImU32 violet = c_CommandModeColors[static_cast<int>(CommandMode::Suppress)];
 				DrawDefendZone(drawList, point, static_cast<float>(s_SuppressRadius), 0.0F, violet);
 				crosshair(point, violet, pixel * 6.0F);
 				label = "Suppress here with " + count + ": they fire into the zone and keep firing";
-			} else if (s_CommandMode == CommandMode::DigTo) {
+			} else if (mode == CommandMode::DigTo) {
 				// Dig to (RC-11): the lead digger's way there, walked parts in the mode's colour and dug parts from yellow (soft) to red-orange
 				// (near its digger's limit); where it can't go, a red cross on what stops it. And the verdict in words.
 				ImU32 sand = c_CommandModeColors[static_cast<int>(CommandMode::DigTo)];
@@ -2337,9 +2345,9 @@ namespace SandboxDetail {
 				}
 				crosshair(point, plan.Result == DigPlan::Ok ? sand : IM_COL32(239, 90, 80, 200), pixel * 6.0F);
 				label = "Dig to here with " + count + ": " + DigVerdict(preview);
-			} else if (s_CommandMode == CommandMode::Patrol) {
+			} else if (mode == CommandMode::Patrol) {
 				label = s_PatrolDraft.empty() ? "Click the first point of the patrol route" : "Click point " + std::to_string(s_PatrolDraft.size() + 1) + " of the route, or start it on the command row";
-			} else if (s_CommandMode == CommandMode::Guard) {
+			} else if (mode == CommandMode::Guard) {
 				ImU32 green = IM_COL32(120, 220, 120, 255);
 				auto guardRing = [&](const Vector& where, float sceneRadius) {
 					ImVec2 at = ToScreen(where);
@@ -2372,6 +2380,35 @@ namespace SandboxDetail {
 				} else {
 					label = "Guard: point at a friendly unit, your brain or craft, a crate or a colony building for " + count + " to stay with";
 				}
+			} else if (mode == CommandMode::Command && commandAt.What == CommandTarget::Objective) {
+				// A battle objective: lit round in the order's colour, and where each will stand to hold it.
+				const BattleObjective& objective = commandAt.Goal;
+				ImU32 color = c_CommandModeColors[static_cast<int>(commandAt.Defend ? CommandMode::DefendAt : CommandMode::AttackMove)];
+				if (objective.Zone.size() >= 3) {
+					std::vector<ImVec2> outline;
+					for (const Vector& corner: objective.Zone) {
+						outline.push_back(ToScreen(corner));
+					}
+					drawList->AddPolyline(outline.data(), static_cast<int>(outline.size()), color, ImDrawFlags_Closed, pixel * 2.0F);
+				} else {
+					drawList->AddCircle(ToScreen(objective.Pos), std::max(objective.Radius / scale, 10.0F), color, 0, pixel * 2.0F);
+					if (commandAt.Defend) {
+						for (const Vector& spot: StandingSpots(objective.Pos, static_cast<int>(units.size()))) {
+							flag(spot, color);
+						}
+					}
+				}
+				crosshair(objective.Pos, color, pixel * 6.0F);
+				label = (commandAt.Defend ? "Hold " : objective.Zone.empty() ? "Go for " : "Take ") + objective.Name + " with " + count;
+			} else if (mode == CommandMode::Command && commandAt.What == CommandTarget::Air) {
+				// Open air: the point itself (flown to, as Jetpack here), and the way down to the ground under it, where those without a jet go.
+				ImU32 sky = c_CommandModeColors[static_cast<int>(CommandMode::Patrol)];
+				drawList->AddCircle(io.MousePos, pixel * 8.0F, sky, 0, pixel * 1.5F);
+				Vector ground;
+				if (g_SceneMan.CastNotMaterialRay(point, Vector(0.0F, 2000.0F), g_MaterialAir, ground, 4)) {
+					drawList->AddLine(io.MousePos, ToScreen(ground), (sky & 0x00FFFFFF) | (110u << IM_COL32_A_SHIFT), pixel);
+				}
+				label = "Fly " + count + " here";
 			} else {
 				for (const Vector& spot: FormationSpots(units, formationPoint, static_cast<int>(units.size()), formationFacing)) {
 					flag(spot, IM_COL32(110, 180, 250, 255));
@@ -2380,7 +2417,7 @@ namespace SandboxDetail {
 				label = "Move " + count + " here" + formation;
 			}
 			// With Shift held, the order is a further step of their plans (RC-3), not one for now.
-			if (io.KeyShift && !units.empty() && s_CommandMode != CommandMode::Select && !(underIsFriend && s_CommandMode == CommandMode::Move) && !label.empty()) {
+			if (io.KeyShift && !units.empty() && mode != CommandMode::Select && !(underIsFriend && mode == CommandMode::Move) && !label.empty()) {
 				label = "Then: " + label + "  (added to the plan)";
 			}
 		}
@@ -4088,10 +4125,10 @@ namespace SandboxDetail {
 				++alive;
 			}
 		}
-		// With nothing selected there is nothing to order: the clicks select, and the orders wait till some are (a script's command clicks still
-		// waiting keep their mode).
-		if (alive == 0 && s_CommandMode != CommandMode::Select && std::none_of(s_Queue.begin(), s_Queue.end(), [](const Stroke& queued) { return queued.Kind == Tool::Command; })) {
-			s_CommandMode = CommandMode::Select;
+		// With nothing selected there is nothing to order: back to Command mode, whose clicks select till some are (a script's command clicks
+		// still waiting keep their mode).
+		if (alive == 0 && s_CommandMode != CommandMode::Select && s_CommandMode != CommandMode::Command && std::none_of(s_Queue.begin(), s_Queue.end(), [](const Stroke& queued) { return queued.Kind == Tool::Command; })) {
+			s_CommandMode = CommandMode::Command;
 			s_PatrolDraft.clear();
 		}
 
@@ -4105,6 +4142,12 @@ namespace SandboxDetail {
 		{
 			int current = static_cast<int>(s_CommandMode);
 			line.Next(pixel * 4.0F);
+			const int command = static_cast<int>(CommandMode::Command);
+			if (BarChip("Command", current == command, c_CommandModeColors[command], "Esc", "The order fits what's under the pointer: an enemy is attacked, a battle objective taken (or held, if it's your team's),\nopen air flown to, the ground moved to; a friend is selected. With nothing selected, clicks select.\nOther modes come back to this once their order is placed.") == 1) {
+				s_CommandMode = CommandMode::Command;
+				s_PatrolDraft.clear();
+			}
+			line.Next(pixel * 2.0F);
 			const int select = static_cast<int>(CommandMode::Select);
 			if (BarChip("Select", current == select, c_CommandModeColors[select], nullptr, "Click a unit to select it, drag a box for several (Shift adds, double click: all of that kind in view).\nA click on the Command tool on the bar while selecting lets them all go.") == 1) {
 				s_CommandMode = CommandMode::Select;
@@ -4530,11 +4573,11 @@ namespace SandboxDetail {
 				std::string tip = std::string(c_Tools[index].Name) + (ToolTipText(mainTools[i].Kind) ? std::string("\n") + ToolTipText(mainTools[i].Kind) : "");
 				if (BarTile("##main", mainTools[i].Label, tip.c_str(), s_ToolIndex == index, [&](ImDrawList* tileList, ImVec2 at, float room) { DrawIcon(tileList, look.Art, at, room / 12.0F, look.Color); }) == 1) {
 					if (mainTools[i].Kind == Tool::Command) {
-						// The Command tool always starts by selecting units; picked again while selecting, it lets them all go.
-						if (s_ToolIndex == index && s_CommandMode == CommandMode::Select) {
+						// The Command tool always starts in Command mode; picked again while selecting, it lets them all go.
+						if (s_ToolIndex == index && (s_CommandMode == CommandMode::Select || s_CommandMode == CommandMode::Command)) {
 							s_Selected.clear();
 						}
-						s_CommandMode = CommandMode::Select;
+						s_CommandMode = CommandMode::Command;
 						s_PatrolDraft.clear();
 					}
 					s_ToolIndex = index;
@@ -4693,7 +4736,7 @@ namespace SandboxDetail {
 							}
 						}
 						s_ToolIndex = ToolIndex(Tool::Command);
-						s_CommandMode = CommandMode::Select;
+						s_CommandMode = CommandMode::Command;
 						s_PatrolDraft.clear();
 						if (ImGui::GetIO().MouseClickedLastCount[ImGuiMouseButton_Left] >= 2) {
 							LookAtUnits(s_Selected);
