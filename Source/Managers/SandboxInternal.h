@@ -2471,6 +2471,13 @@ namespace SandboxDetail {
 #pragma endregion
 
 #pragma region Veterancy (Veterancy.cpp)
+	/// Where marks over a unit go: just over the top of what its own HUD drew above its head last frame (health, team, weapon), or, with
+	/// that not drawn, just over its head.
+	inline Vector OverHeadPos(const Actor* actor) {
+		const float stack = actor->GetAboveHUDPos().m_Y - actor->GetPos().m_Y - 6.0F;
+		return actor->GetPos() + Vector(0.0F, std::min(stack, -actor->GetHeight() * 0.5F) - 2.0F);
+	}
+
 	/// A unit's record in a Battle Command battle: the name it's given, its kills, when it came in and the rank they've earned it.
 	struct Veteran {
 		int Team = -1;

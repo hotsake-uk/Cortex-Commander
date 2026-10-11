@@ -85,6 +85,7 @@ namespace SandboxDetail {
 					if (AHuman* human = dynamic_cast<AHuman*>(unit)) {
 						human->ReloadFirearms();
 					}
+					unit->Say("Resupplied");
 				}
 				Note(std::string(c_SideNames[side]) + ": supplies to " + std::to_string(units.size()) + (units.size() == 1 ? " unit" : " units"));
 				break;
@@ -116,6 +117,7 @@ namespace SandboxDetail {
 				for (Actor* unit: units) {
 					if (unit->GetMorale() < c_RallyMorale) {
 						unit->ChangeMorale(c_RallyMorale - unit->GetMorale());
+						unit->Say("Rallied");
 						++steadied;
 					}
 				}

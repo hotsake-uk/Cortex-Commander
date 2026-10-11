@@ -82,7 +82,7 @@ namespace SandboxDetail {
 				continue;
 			}
 			// Over its rank stars (DrawVeterans), pulsing.
-			Vector onScreen = FromCamera(actor->GetPos() - Vector(0.0F, actor->GetHeight() * 0.5F + 28.0F));
+			Vector onScreen = FromCamera(OverHeadPos(actor) - Vector(0.0F, 18.0F));
 			ImVec2 at(ViewOrigin().x + onScreen.m_X / scale, ViewOrigin().y + onScreen.m_Y / scale);
 			const float pulse = 0.65F + 0.35F * std::sin(static_cast<float>(ImGui::GetTime()) * 6.0F);
 			const int alpha = static_cast<int>(255.0F * pulse);
