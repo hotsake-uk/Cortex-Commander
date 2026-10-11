@@ -22,6 +22,29 @@
 
 using namespace RTE;
 
+#ifdef __APPLE__
+#include <dlfcn.h>
+
+namespace {
+	/// macOS merges the mouse moves an app hasn't collected yet into one event ("coalescing"). A drag that started while a frame was being made then arrived
+	/// as one jump to wherever the pointer had got to, so drags started in the wrong place. The game wants every move, so it asks for them kept apart.
+	/// NSEvent is reached through the Objective-C runtime, looked up when it's needed, because the engine is built as C++ with no Objective-C.
+	void DisableMacMouseCoalescing() {
+		using GetClassFunc = void* (*)(const char*);
+		using RegisterNameFunc = void* (*)(const char*);
+		using SendBoolFunc = void (*)(void*, void*, bool);
+		auto getClass = reinterpret_cast<GetClassFunc>(dlsym(RTLD_DEFAULT, "objc_getClass"));
+		auto registerName = reinterpret_cast<RegisterNameFunc>(dlsym(RTLD_DEFAULT, "sel_registerName"));
+		auto sendBool = reinterpret_cast<SendBoolFunc>(dlsym(RTLD_DEFAULT, "objc_msgSend"));
+		if (getClass && registerName && sendBool) {
+			if (void* eventClass = getClass("NSEvent")) {
+				sendBool(eventClass, registerName("setMouseCoalescingEnabled:"), false);
+			}
+		}
+	}
+} // namespace
+#endif
+
 std::vector<Gamepad> UInputMan::s_PrevJoystickStates(Players::MaxPlayerCount);
 std::vector<Gamepad> UInputMan::s_ChangedJoystickStates(Players::MaxPlayerCount);
 
@@ -69,6 +92,9 @@ void UInputMan::Clear() {
 }
 
 int UInputMan::Initialize() {
+#ifdef __APPLE__
+	DisableMacMouseCoalescing();
+#endif
 	int numKeys;
 	m_KeyboardStates[0] = {};
 	const bool* keyboardState = SDL_GetKeyboardState(&numKeys);
