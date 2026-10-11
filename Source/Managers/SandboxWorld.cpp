@@ -977,7 +977,7 @@ namespace SandboxDetail {
 
 	/// Whether what a tool makes belongs to a side, so the side is shown with it and the ring of sides is offered.
 	bool TakesSide(Tool kind) {
-		return kind == Tool::Unit || kind == Tool::Vehicle || kind == Tool::Drop || kind == Tool::Brain || kind == Tool::RallyPoint || kind == Tool::Structure || kind == Tool::Barracks || kind == Tool::Extractor || kind == Tool::Generator || kind == Tool::OrderMove;
+		return kind == Tool::Unit || kind == Tool::Vehicle || kind == Tool::Drop || kind == Tool::Brain || kind == Tool::RallyPoint || kind == Tool::Structure || IsColonyTool(kind) || kind == Tool::OrderMove;
 	}
 
 	/// Clears a box of the terrain to air.
@@ -2727,6 +2727,7 @@ namespace SandboxDetail {
 					case Tool::Barracks:
 					case Tool::Extractor:
 					case Tool::Generator:
+					case Tool::Woodcutter:
 						s_RecordPaint = true;
 						[[fallthrough]];
 					case Tool::Unit:
@@ -2775,21 +2776,17 @@ namespace SandboxDetail {
 				if (const Preset* unit = ChosenPreset(Tool::Unit, stroke.Choice)) {
 					ActivateSide(stroke.Team);
 					// ("Move to a place" has no place for trainees: they hold where they come out instead.)
-					int built = Colony::Place(Colony::Kind::Barracks, at, stroke.Team, unit->PresetName, static_cast<int>(UnitOrder(static_cast<int>(stroke.Orders))), stroke.Count);
+					int built = Colony::Place(Colony::Kind::Barracks, at, stroke.Team, unit->PresetName, static_cast<int>(UnitOrder(static_cast<int>(stroke.Orders))), stroke.Count, static_cast<Colony::Style>(stroke.Style));
 					if (!s_PaintUndo.empty()) {
 						s_PaintUndo.back().ColonyBuilding = built;
 					}
 				}
 				break;
 			case Tool::Extractor:
-				ActivateSide(stroke.Team);
-				if (int built = Colony::Place(Colony::Kind::Extractor, at, stroke.Team, "", 0, 1); !s_PaintUndo.empty()) {
-					s_PaintUndo.back().ColonyBuilding = built;
-				}
-				break;
 			case Tool::Generator:
+			case Tool::Woodcutter:
 				ActivateSide(stroke.Team);
-				if (int built = Colony::Place(Colony::Kind::Generator, at, stroke.Team, "", 0, 1); !s_PaintUndo.empty()) {
+				if (int built = Colony::Place(ColonyKindOf(stroke.Kind), at, stroke.Team, "", 0, stroke.Kind == Tool::Woodcutter ? stroke.Count : 1, static_cast<Colony::Style>(stroke.Style)); !s_PaintUndo.empty()) {
 					s_PaintUndo.back().ColonyBuilding = built;
 				}
 				break;
@@ -3522,7 +3519,10 @@ namespace SandboxDetail {
 			stroke.Count = 1;
 		} else if (kind == Tool::Barracks) {
 			stroke.Count = s_ColonyKeep;
+		} else if (kind == Tool::Woodcutter) {
+			stroke.Count = s_ColonyStaff;
 		}
+		stroke.Style = IsColonyTool(kind) ? static_cast<int>(s_ColonyStyle) : 0;
 		stroke.LitGrenade = s_LitGrenade;
 		stroke.Craft = s_Craft;
 		stroke.Random = (kind == Tool::Drop || kind == Tool::Unit) && s_RandomUnits;

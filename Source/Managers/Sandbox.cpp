@@ -280,6 +280,58 @@ Actor* Sandbox::SpawnBrain(const std::string& presetName, int team, const Vector
 	return brain;
 }
 
+Actor* Sandbox::SpawnWorker(const std::string& presetName, const std::string& moduleName, int team, const Vector& position) {
+	if (!InGame()) {
+		return nullptr;
+	}
+	const Entity* preset = g_PresetMan.GetEntityPreset("AHuman", presetName, moduleName);
+	Actor* worker = preset ? dynamic_cast<Actor*>(preset->Clone()) : nullptr;
+	if (!worker) {
+		return nullptr;
+	}
+	ActivateSide(team);
+	worker->SetPos(position);
+	worker->SetTeam(team);
+	worker->SetControllerMode(Controller::CIM_AI);
+	worker->SetAIMode(Actor::AIMODE_SENTRY);
+	worker->SetOrderHold(false);
+	g_MovableMan.AddActor(worker);
+	return worker;
+}
+
+bool Sandbox::PlantTree(const Vector& at, float scale, float variant, float piece, bool mirror, int& left, int& top, int& right, int& bottom) {
+	if (!InGame()) {
+		return false;
+	}
+	PlantRoll roll;
+	roll.Variant = variant;
+	roll.Piece = piece;
+	roll.Jitter = 0.5F;
+	roll.Depth = 0.0F;
+	roll.Mirror = mirror;
+	roll.Kind = Tool::Trees;
+	PlantPlacement plan;
+	if (!PlanPlant(at, 0, Tool::Trees, scale, roll, plan) || !plan.Piece) {
+		return false;
+	}
+	int width = std::max(1, static_cast<int>(static_cast<float>(plan.Piece->w) * plan.Scale));
+	int height = std::max(1, static_cast<int>(static_cast<float>(plan.Piece->h) * plan.Scale));
+	if (plan.LeafPiece) {
+		width = std::max(width, static_cast<int>(static_cast<float>(plan.LeafPiece->w) * plan.Scale));
+		height = std::max(height, static_cast<int>(static_cast<float>(plan.LeafPiece->h) * plan.Scale));
+	}
+	left = plan.Left;
+	top = plan.Upper;
+	right = plan.Left + width - 1;
+	bottom = plan.Upper + height - 1;
+	// (Not the player's own stroke: nothing to undo.)
+	bool recording = s_RecordPaint;
+	s_RecordPaint = false;
+	PlacePlant(at, 0, Tool::Trees, scale, &roll);
+	s_RecordPaint = recording;
+	return true;
+}
+
 float Sandbox::UnitCost(const std::string& presetName) {
 	// (The catalogue is built when the window is first drawn; a barracks a script placed before that trained at the 20 supply floor.)
 	if (!s_CatalogueBuilt) {
