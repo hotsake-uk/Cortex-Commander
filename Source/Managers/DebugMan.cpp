@@ -122,24 +122,46 @@ namespace {
 		style.GrabMinSize = 10.0F;
 	}
 
-	/// Reads the scene's light for the tool windows and the HUD (ToolLight::World). Out of a game, a steady light from the top left.
-	void FollowWorldLight() {
-		ToolLight::WorldLight world;
-		SceneLighting* lighting = g_PostProcessMan.GetSceneLighting();
-		if (lighting && g_ActivityMan.IsInActivity() && g_SceneMan.GetScene()) {
+	/// How lit a point of the window is by the lamps, fires and blasts in the scene under it (see ToolLight::NearbyLights).
+	float SceneLightUnderPoint(ImVec2 point) {
+		GameViewRect view = g_WindowMan.GetGameViewRect();
+		if (point.x < view.x || point.y < view.y || point.x >= view.x + view.w || point.y >= view.y + view.h) {
+			return 0.0F;
+		}
+		Vector position = g_CameraMan.GetOffset(0) + Vector(point.x - view.x, point.y - view.y) * DebugDraw::ScenePixelsPerWindowPixel();
+		return g_PostProcessMan.GetDynamicLightAt(position);
+	}
+
+	/// Sets the light on the tool windows and the HUD (ToolLight::Now): the game's sun or moon, sky colour and lightning, or the UI's own light.
+	/// Out of a game, following the game is a steady light from the top left. Never dimmer than day, so everything stays readable.
+	void UpdateUILight() {
+		using namespace ToolLight;
+		Light light;
+		bool inGame = g_ActivityMan.IsInActivity() && g_SceneMan.GetScene();
+		SceneLighting* lighting = inGame ? g_PostProcessMan.GetSceneLighting() : nullptr;
+		if (Mode == Source::OwnLight) {
+			float angle = OwnAngle * 3.14159265F / 180.0F;
+			light.Direction = ImVec2(std::sin(angle), -std::cos(angle));
+			light.Shine = std::clamp(OwnBrightness, 0.0F, 1.0F);
+			light.Length = 1.6F - 1.2F * std::clamp(OwnHeight, 0.0F, 1.0F);
+			float brightest = std::max({OwnColor[0], OwnColor[1], OwnColor[2], 0.0001F});
+			light.Color = ImVec4(OwnColor[0] / brightest, OwnColor[1] / brightest, OwnColor[2] / brightest, 1.0F);
+		} else if (lighting) {
 			glm::vec2 sun = lighting->GetSunDirection();
-			world.Sun = ImVec2(sun.x, sun.y);
-			world.SunStrength = std::clamp(lighting->GetSunLight(), 0.0F, 1.0F);
+			light.Direction = ImVec2(sun.x, sun.y);
+			light.Shine = std::clamp(lighting->GetSunLight(), 0.0F, 1.0F);
+			// A low sun throws long shadows.
+			light.Length = 0.6F + 0.8F * std::abs(sun.x);
 			float flash = std::max(lighting->GetLightningFlash(), 0.0F) * std::clamp(lighting->GetSettings().LightningBrightness, 0.0F, 2.0F);
-			// The sky's light without the flash, which is lit separately.
+			// The colour of the sky's light without the flash, which is lit separately; only its colour, never how dark it is.
 			glm::vec3 sky = glm::max(lighting->GetSkyLight() - glm::vec3(0.75F, 0.8F, 1.0F) * flash, glm::vec3(0.0F));
 			float brightest = std::max({sky.x, sky.y, sky.z, 0.0001F});
 			glm::vec3 tint = glm::pow(sky / brightest, glm::vec3(1.0F / 2.2F));
-			world.Sky = ImVec4(tint.x, tint.y, tint.z, 1.0F);
-			world.Brightness = std::clamp(std::pow(std::clamp(glm::dot(sky, glm::vec3(0.2126F, 0.7152F, 0.0722F)), 0.0F, 1.0F), 1.0F / 2.2F), 0.0F, 1.0F);
-			world.Flash = std::clamp(flash, 0.0F, 1.0F);
+			light.Color = ImVec4(tint.x, tint.y, tint.z, 1.0F);
+			light.Flash = std::clamp(flash, 0.0F, 1.0F);
 		}
-		ToolLight::World = world;
+		Now = light;
+		NearbyLightAt = inGame ? &SceneLightUnderPoint : nullptr;
 	}
 } // namespace
 
@@ -422,7 +444,7 @@ void DebugMan::DrawImGui() {
 		g_WindowMan.SetReservedSpace(pushes && m_PanelsLastFrame[0] > 0 ? static_cast<int>(GetPanelWidth(PanelSide::Left)) : 0, pushes && m_PanelsLastFrame[1] > 0 ? static_cast<int>(GetPanelWidth(PanelSide::Right)) : 0);
 	}
 
-	FollowWorldLight();
+	UpdateUILight();
 
 	// The modern HUD and the debug overlays, unless photo mode is hiding the HUD.
 	if (!IsPhotoModeHidingHUD()) {
@@ -475,7 +497,6 @@ void DebugMan::DrawImGui() {
 	}
 
 	ToolLight::Windows();
-	ToolGlow::Windows();
 
 }
 

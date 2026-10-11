@@ -126,13 +126,12 @@ void ActionMenu::DrawMenu(const MenuLayout& menu, int hover, float scale) {
 		}
 	};
 
-	// Its shadow falls away from the world's sun (or straight down and right, with the UI lighting off).
+	// Its shadow falls away from the UI's light (ToolLight), or down and right with the UI lighting off.
 	if (ToolLight::Strength > 0.0F) {
 		ToolLight::Shadow(drawList, menu.Min, menu.Max, line * 2.0F);
 	} else {
 		drawList->AddRectFilled(ImVec2(menu.Min.x + 3.0F, menu.Min.y + 4.0F), ImVec2(menu.Max.x + 3.0F, menu.Max.y + 4.0F), IM_COL32(0, 0, 0, 90), rounding);
 	}
-	ToolGlow::Rect(drawList, menu.Min, menu.Max, goldDim, 8.0F * scale, 0.5F);
 	drawList->AddRectFilled(menu.Min, menu.Max, panel, rounding);
 	ToolLight::Surface(drawList, menu.Min, menu.Max, line * 2.0F);
 	drawList->AddRect(menu.Min, menu.Max, goldDim, rounding, 0, line);
@@ -146,7 +145,7 @@ void ActionMenu::DrawMenu(const MenuLayout& menu, int hover, float scale) {
 			ImVec2 tagExtent = font->CalcTextSizeA(tagSize, FLT_MAX, 0.0F, tag);
 			float tagLeft = std::floor(cell.Max.x - tagExtent.x - 4.0F * scale);
 			std::string label = FitLabel(font, fontSize * 0.85F, cell.Label, tagLeft - cell.Min.x - 8.0F * scale);
-			ToolGlow::GlowingText(drawList, ImVec2(cell.Min.x + 2.0F, cell.Min.y + 2.0F * scale), colour, colour, label.c_str(), nullptr, 2.0F * scale, 0.7F, font, fontSize * 0.85F);
+			drawList->AddText(font, fontSize * 0.85F, ImVec2(cell.Min.x + 2.0F, cell.Min.y + 2.0F * scale), colour, label.c_str());
 			float tagTop = std::floor(cell.Min.y + 2.0F * scale + (fontSize * 0.85F - tagSize) * 0.5F);
 			drawList->AddRectFilled(ImVec2(tagLeft - 3.0F * scale, tagTop - 1.0F * scale), ImVec2(cell.Max.x, tagTop + tagExtent.y + 1.0F * scale), colourOf(cell.Section, 60), 2.0F * scale);
 			drawList->AddText(font, tagSize, ImVec2(tagLeft, tagTop), colour, tag);
@@ -168,16 +167,7 @@ void ActionMenu::DrawMenu(const MenuLayout& menu, int hover, float scale) {
 			// Choices not in use: sunk into the panel.
 			fill = hovered ? IM_COL32(64, 80, 50, 255) : IM_COL32(30, 37, 25, 255);
 		}
-		// What is in use glows in its section's colour, and what the pointer is on more brightly, breathing.
-		if (hovered) {
-			ToolGlow::Rect(drawList, cell.Min, cell.Max, colour, 6.0F * scale, 0.6F + 0.25F * ToolGlow::Pulse(3.0F));
-		} else if (lit) {
-			ToolGlow::Rect(drawList, cell.Min, cell.Max, colour, 4.0F * scale, 0.4F);
-		}
 		drawList->AddRectFilled(cell.Min, cell.Max, fill, rounding * 0.75F);
-		if (lit || hovered) {
-			ToolGlow::Fill(drawList, cell.Min, cell.Max, colour, hovered ? 0.45F : 0.3F);
-		}
 		if (cell.Section == Kind::Command && !hovered) {
 			drawList->AddRect(cell.Min, cell.Max, colourOf(Kind::Command, 90), rounding * 0.75F, 0, 1.0F);
 		} else if (!lit && !hovered) {

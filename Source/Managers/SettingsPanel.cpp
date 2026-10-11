@@ -85,25 +85,18 @@ namespace {
 		if (s_LastShown) {
 			++s_ShownCount;
 			if (s_PendingHeading) {
-				ToolUI::GlowHeading(s_PendingHeading);
+				ImGui::SeparatorText(s_PendingHeading);
 				s_PendingHeading = nullptr;
 			}
 		}
 		return s_LastShown;
 	}
 
-	/// ImGui's own controls, with a gold halo while pointed at or held (ToolUI::HoverGlow).
-	template <typename Control> bool Glowing(Control control) {
-		bool changed = control();
-		ToolUI::HoverGlow();
-		return changed;
-	}
-
-	bool Slider(const char* label, float* value, float low, float high, const char* format = "%.2f", ImGuiSliderFlags flags = 0) { return Shown(label) && Glowing([&] { return ImGui::SliderFloat(label, value, low, high, format, flags); }); }
-	bool SliderI(const char* label, int* value, int low, int high, const char* format = "%d", ImGuiSliderFlags flags = 0) { return Shown(label) && Glowing([&] { return ImGui::SliderInt(label, value, low, high, format, flags); }); }
+	bool Slider(const char* label, float* value, float low, float high, const char* format = "%.2f", ImGuiSliderFlags flags = 0) { return Shown(label) && ImGui::SliderFloat(label, value, low, high, format, flags); }
+	bool SliderI(const char* label, int* value, int low, int high, const char* format = "%d", ImGuiSliderFlags flags = 0) { return Shown(label) && ImGui::SliderInt(label, value, low, high, format, flags); }
 	bool Check(const char* label, bool* value) { return Shown(label) && ToolUI::Checkbox(label, value); }
-	bool Combo(const char* label, int* value, const char* items) { return Shown(label) && Glowing([&] { return ImGui::Combo(label, value, items); }); }
-	bool Tint(const char* label, float* value) { return Shown(label) && Glowing([&] { return ImGui::ColorEdit3(label, value, ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR); }); }
+	bool Combo(const char* label, int* value, const char* items) { return Shown(label) && ImGui::Combo(label, value, items); }
+	bool Tint(const char* label, float* value) { return Shown(label) && ImGui::ColorEdit3(label, value, ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR); }
 
 	/// A checkbox for something that is read and set through functions.
 	template <typename Setter> void Toggle(const char* label, bool value, Setter set) {
@@ -124,7 +117,7 @@ namespace {
 
 	void Heading(const char* text) {
 		if (Plain()) {
-			ToolUI::GlowHeading(text);
+			ImGui::SeparatorText(text);
 		}
 	}
 
@@ -1024,9 +1017,24 @@ void DebugMan::SettingsGUI() {
 		Tip("The frame rate and the game's version, small, in the top right of the window.");
 		Toggle("Modern HUD", ModernHUD::IsEnabled(), [](bool on) { ModernHUD::SetEnabled(on); });
 		Slider("UI lighting", &ToolLight::Strength, 0.0F, 2.0F);
-		Tip("The menus and HUD lit by the world they're over: the sun (or moon) lights the edges facing it and casts each panel's shadow away from it, following the time of day; the sky's colour tints them, gold at dawn and dusk and dark at night; lightning flashes on them; and a soft lamp shines where the pointer is. Out of a game, a steady light from the top left. 0 turns it off.");
-		Slider("UI glow", &ToolGlow::Strength, 0.0F, 2.0F);
-		Tip("The soft halo round the tool windows (gold round the one in use), round what the pointer is on, behind headings and the page shown, and round the modern HUD's bars, minimap and action menu. 0 turns it off.");
+		Tip("The menus and HUD lit as if they were in the world: the light brightens the side of each panel facing it, shades the far side, catches the edges towards it and casts the panel's shadow away from it. They are never dimmed past reading. 0 turns it off.");
+		{
+			int source = static_cast<int>(ToolLight::Mode);
+			if (Combo("UI light", &source, "Follow the game\0Its own light\0")) {
+				ToolLight::Mode = static_cast<ToolLight::Source>(source);
+			}
+			Tip("Follow the game: the game's sun by day and moon by night, moving with the time of day, in the sky's colour of the hour (gold at dawn and dusk), with lightning flashing on the panels. Out of a game, a steady light from the top left. Its own light: a light just for the menus and HUD, set below, that the game's time of day and weather don't touch.");
+		}
+		if (ToolLight::Mode == ToolLight::Source::OwnLight) {
+			Slider("UI light angle", &ToolLight::OwnAngle, -90.0F, 90.0F, "%.0f");
+			Tip("Where the UI's own light comes from, in degrees from straight above: negative from the left, positive from the right.");
+			Slider("UI light height", &ToolLight::OwnHeight, 0.0F, 1.0F);
+			Tip("How high the UI's own light stands: low throws long shadows, high short ones.");
+			Slider("UI light brightness", &ToolLight::OwnBrightness, 0.0F, 1.0F);
+			Tint("UI light colour", ToolLight::OwnColor);
+		}
+		Check("UI lit by nearby lamps and fires (may crash)", &ToolLight::NearbyLights);
+		Tip("Lamps, fires, blasts and muzzle flashes in the world under a panel light it warmly too. WARNING: this reads the lights the AI's sight uses while the game may be changing them, so it may crash the game. Off unless you want to try it.");
 		Toggle("Side and health beside units", g_SettingsMan.ShowUnitTags(), [](bool on) { g_SettingsMan.SetShowUnitTags(on); });
 		Tip("Each unit's team icon and health number. In the Sandbox game mode every side's are shown; in other games, other sides' only where your side has seen and with \"Show enemy HUD\" (Options, Gameplay) on. Units of no side (training dummies) and those a mod hides never have them.");
 		Toggle("CPU units' aim reticles", g_SettingsMan.ShowCPUAimReticles(), [](bool on) { g_SettingsMan.SetShowCPUAimReticles(on); });
@@ -1519,20 +1527,8 @@ void DebugMan::SettingsGUI() {
 		listWidth += ImGui::GetStyle().FramePadding.x * 4.0F;
 		ImGui::BeginChild("##Categories", ImVec2(listWidth, 0.0F));
 		for (int i = 0; i < categoryCount; ++i) {
-			bool chosen = m_SettingsCategory == i;
-			if (ImGui::Selectable(categories[i].first, chosen)) {
+			if (ImGui::Selectable(categories[i].first, m_SettingsCategory == i)) {
 				m_SettingsCategory = i;
-			}
-			// The page shown is lit: a gold bar down its left and a soft glow through it.
-			if (chosen) {
-				ImDrawList* drawList = ImGui::GetWindowDrawList();
-				ImVec2 from = ImGui::GetItemRectMin();
-				ImVec2 to = ImGui::GetItemRectMax();
-				ToolGlow::Fill(drawList, from, to, ToolTheme::Gold, 0.45F);
-				drawList->AddRectFilled(from, ImVec2(from.x + ToolUI::Pixel() * 2.0F, to.y), ToolTheme::Gold);
-				ToolGlow::Rect(drawList, from, ImVec2(from.x + ToolUI::Pixel() * 2.0F, to.y), ToolTheme::Gold, ToolUI::Pixel() * 4.0F, 0.6F);
-			} else {
-				ToolUI::HoverGlow();
 			}
 		}
 		ImGui::EndChild();
