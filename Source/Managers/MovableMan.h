@@ -30,6 +30,7 @@ namespace RTE {
 	class MOSprite;
 	class AHuman;
 	struct ThreatField;
+	struct LiftTable;
 	class ADoor;
 	class SceneLayer;
 	class SceneObject;
@@ -580,6 +581,11 @@ namespace RTE {
 		/// @return The field, or none before the first.
 		std::shared_ptr<const ThreatField> GetPublishedThreats() const { return m_PublishedThreats; }
 
+		/// Gets every lift's and moving platform's stops when last published (see PublishLifts), for a humanoid's route search to ride them
+		/// (LM-11). Never changed once published: hold the pointer for as long as it's read, on any thread.
+		/// @return The table, or none when there are no lifts.
+		std::shared_ptr<const LiftTable> GetPublishedLifts() const { return m_PublishedLifts; }
+
 		/// Gets pointers to the MOs that are within the given Box, and whose team is not ignored.
 		/// @param box The Box to get MOs within.
 		/// @param ignoreTeam The team to ignore.
@@ -728,6 +734,7 @@ namespace RTE {
 		unsigned int m_SimUpdateFrameNumber;
 
 		std::shared_ptr<const ThreatField> m_PublishedThreats; //!< Where the units stood when last published (see GetPublishedThreats). Swapped for a new one only at the start of Update, while nothing reads it.
+		std::shared_ptr<const LiftTable> m_PublishedLifts; //!< The lifts' stops when last published (see GetPublishedLifts). Swapped likewise.
 
 		// Global map which stores all objects so they could be foud by their unique ID
 		std::map<long int, MovableObject*> m_KnownObjects;
@@ -737,6 +744,10 @@ namespace RTE {
 		/// Builds a new ThreatField from where the units stand and publishes it in place of the last (see GetPublishedThreats). On the main
 		/// thread, at the start of Update, while no AI runs; searches already under way keep the field they started with.
 		void PublishThreats();
+
+		/// Builds a new LiftTable from the lifts in the scene and publishes it in place of the last (see GetPublishedLifts), or none when there
+		/// are none. On the main thread, at the start of Update, as PublishThreats.
+		void PublishLifts();
 
 		static const std::string c_ClassName; //!< A string with the friendly-formatted type name of this object.
 

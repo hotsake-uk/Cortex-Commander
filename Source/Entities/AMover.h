@@ -89,6 +89,20 @@ namespace RTE {
 		/// The middle of the deck's top where it is now, in scene coordinates.
 		Vector GetDeckStandingPos() const;
 
+		/// Half the deck's width, in pixels; 0 with no deck.
+		float GetDeckHalfWidth() const;
+
+		/// How long until the deck sets off from the stop it stands at, in ms, as things stand: 0 while it travels, and a long time when it
+		/// waits on call with nothing calling it.
+		float GetDepartureMS() const;
+
+		/// Whether a unit stands on the deck.
+		bool HasRiders() const;
+
+		/// Whether a body stands on the deck (and is carried by it).
+		/// @param mo The body.
+		bool IsRiding(const MovableObject* mo) const { return StandsOnDeck(mo, 0.0F); }
+
 		/// The deck's speed along its path, in pixels per second.
 		float GetSpeed() const { return m_Speed; }
 

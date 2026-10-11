@@ -29,6 +29,7 @@
 #include "ThreadMan.h"
 #include "PathFinder.h"
 #include "ACraft.h"
+#include "AMover.h"
 
 #include "tracy/Tracy.hpp"
 
@@ -68,6 +69,7 @@ MovableMan::~MovableMan() {
 void MovableMan::Clear() {
 	m_Actors.clear();
 	m_PublishedThreats.reset();
+	m_PublishedLifts.reset();
 	m_Doors.clear();
 	m_ContiguousActorIDs.clear();
 	m_Items.clear();
@@ -1506,6 +1508,30 @@ void MovableMan::PublishThreats() {
 	m_PublishedThreats = std::move(field);
 }
 
+void MovableMan::PublishLifts() {
+	std::shared_ptr<LiftTable> table;
+	for (const Actor* actor: m_Actors) {
+		const AMover* mover = dynamic_cast<const AMover*>(actor);
+		// (Not one whose deck is gone, nor one that only comes when called while units don't call lifts: no one would bring it.)
+		if (!mover || !mover->GetDeck() || mover->GetStopCount() < 2 || mover->GetStatus() >= Actor::DYING || (mover->GetOnCall() && !g_SettingsMan.AIUnitsCallLifts())) {
+			continue;
+		}
+		if (!table) {
+			table = std::make_shared<LiftTable>();
+		}
+		LiftTable::Lift& lift = table->Lifts.emplace_back();
+		lift.UniqueID = mover->GetUniqueID();
+		for (int stop = 0; stop < mover->GetStopCount(); ++stop) {
+			lift.Stops.push_back(mover->GetStopStandingPos(stop));
+		}
+		lift.DeckHalfWidth = mover->GetDeckHalfWidth();
+		lift.Speed = mover->GetSpeed();
+		lift.StopWaitMS = static_cast<float>(mover->GetStopWait());
+		lift.OnCall = mover->GetOnCall();
+	}
+	m_PublishedLifts = std::move(table);
+}
+
 void MovableMan::Update() {
 	ZoneScoped;
 
@@ -1533,6 +1559,10 @@ void MovableMan::Update() {
 		}
 	} else {
 		m_PublishedThreats.reset();
+	}
+	// And the lifts' stops, for routes to ride them (LM-11): twice a second, as lifts are built, bought or blown up now and then.
+	if (m_SimUpdateFrameNumber % 30 == 0) {
+		PublishLifts();
 	}
 
 	// ---TEMP ---

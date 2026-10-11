@@ -1135,6 +1135,11 @@ PathAgent AHuman::GetPathAgent() const {
 	if (agent.JetTimeMS > 0.0F) {
 		agent.JetClimbMSPerPx = ClimbFuelPerPixel();
 	}
+	// The lifts and moving platforms (LM-11), ridden standing on the deck: for anything with legs to stand on it.
+	if ((m_pFGLeg || m_pBGLeg) && agent.JumpHeight != FLT_MAX) {
+		agent.Lifts = g_MovableMan.GetPublishedLifts();
+		agent.CallsLifts = g_SettingsMan.AIUnitsCallLifts();
+	}
 	return agent;
 }
 
