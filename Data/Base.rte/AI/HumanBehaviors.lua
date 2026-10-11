@@ -1531,7 +1531,7 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 				-- Bursts that fit the range (AC-8, see SharedBehaviors.BurstPattern): held down close in, shorter further out, single
 				-- taps where the weapon's spread is far wider than the target, and short bursts when pinned down.
 				local burstOn, burstOff;
-				if Weapon and Weapon.FullAuto then
+				if Weapon and Weapon.FullAuto and AI.Target then -- (The target can be gone by now: killed, or dropped while this ran.)
 					burstOn, burstOff = SharedBehaviors.BurstPattern(Weapon, range, AI.Target.Radius, suppression);
 				end
 				if openFire > 0 and burstOn and BurstTimer:IsPastSimMS(burstOn) then
