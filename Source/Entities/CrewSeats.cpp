@@ -189,6 +189,20 @@ bool CrewSeats::TakeSeat(Actor* unit, int seat, bool anyTeam) {
 	return true;
 }
 
+bool CrewSeats::SeatNew(Actor* unit, int seat) {
+	if (seat < 0) {
+		seat = GetFreeSeat();
+	}
+	if (seat < 0 || seat >= GetSeatCount() || GetOccupant(seat) || !CanCarry(unit)) {
+		return false;
+	}
+	unit->GetController()->SetInputMode(Controller::CIM_AI);
+	unit->SetVel(Vector());
+	SetOccupant(seat, unit);
+	PlaceCrew();
+	return true;
+}
+
 Actor* CrewSeats::LetOut(int seat, bool thrown, bool fallen) {
 	Actor* occupant = GetOccupant(seat);
 	if (!occupant) {

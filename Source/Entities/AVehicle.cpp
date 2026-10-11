@@ -119,6 +119,7 @@ void AVehicle::Clear() {
 	m_MaxSpeed = 7.0F;
 	m_Grip = 0.8F;
 	m_NeedsDriver = true;
+	m_CrewStaysIn = false;
 	m_HopSpeed = 0.0F;
 	m_HopTimer.Reset();
 	m_HullPoints.clear();
@@ -275,6 +276,7 @@ int AVehicle::Create(const AVehicle& reference) {
 	m_MaxSpeed = reference.m_MaxSpeed;
 	m_Grip = reference.m_Grip;
 	m_NeedsDriver = reference.m_NeedsDriver;
+	m_CrewStaysIn = reference.m_CrewStaysIn;
 	m_HopSpeed = reference.m_HopSpeed;
 	m_HullPoints = reference.m_HullPoints;
 	m_HullDraft = reference.m_HullDraft;
@@ -362,6 +364,7 @@ int AVehicle::ReadProperty(const std::string_view& propName, Reader& reader) {
 		m_Crew.SetBoardingReach(reach);
 	});
 	MatchProperty("NeedsDriver", { reader >> m_NeedsDriver; });
+	MatchProperty("CrewStaysIn", { reader >> m_CrewStaysIn; });
 	MatchProperty("HopSpeed", { reader >> m_HopSpeed; });
 	MatchProperty("AddHullPoint", {
 		Vector point;
@@ -451,6 +454,7 @@ int AVehicle::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("ExitOffset", m_Crew.GetExitOffset());
 	writer.NewPropertyWithValue("BoardingReach", m_Crew.GetBoardingReach());
 	writer.NewPropertyWithValue("NeedsDriver", m_NeedsDriver);
+	writer.NewPropertyWithValue("CrewStaysIn", m_CrewStaysIn);
 	writer.NewPropertyWithValue("HopSpeed", m_HopSpeed);
 	for (const Vector& point: m_HullPoints) {
 		writer.NewPropertyWithValue("AddHullPoint", point);
@@ -876,6 +880,13 @@ void AVehicle::UpdateAIDriving() {
 	}
 }
 
+float AVehicle::GetClimbAngle() const {
+	float gravity = std::max(std::abs(g_SceneMan.GetGlobalAcc().m_Y), 0.01F);
+	float byPower = std::asin(std::clamp(m_Acceleration / gravity, 0.0F, 1.0F));
+	float byGrip = std::atan(std::max(m_Grip, 0.0F));
+	return std::min(byPower, byGrip) * 180.0F / c_PI;
+}
+
 void AVehicle::UpdateAIBoarding() {
 	if (!g_SettingsMan.AIUsesVehicles() || IsDead() || Controller::IsAIPaused()) {
 		m_Recruits.clear();
@@ -990,6 +1001,10 @@ void AVehicle::UpdateAIBoarding() {
 
 void AVehicle::UpdateAIUnloading() {
 	m_AIWantsStop = false;
+	// (Told to stay in: nobody gets out on their own.)
+	if (m_CrewStaysIn) {
+		return;
+	}
 	// (Stopped for good with nowhere more to go: riders get out even short of where they're going, a cliff it can't climb, say.)
 	bool stopped = !m_Controller.IsPlayerControlled() && m_AIMode != AIMODE_GOTO;
 	for (int seat = 0; seat < GetSeatCount(); ++seat) {

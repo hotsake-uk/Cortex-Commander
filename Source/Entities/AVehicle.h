@@ -143,6 +143,11 @@ namespace RTE {
 		/// @param thrown Whether they are thrown out (see EjectSeat).
 		void EjectCrew(bool thrown) { m_Crew.EjectCrew(thrown); }
 
+		/// Puts a unit just made, not in the scene (a vehicle spawned with its crew), straight in a seat: nobody is copied, deleted or told.
+		/// @param unit The unit. Ownership IS transferred if it went in. @param seat The seat, or -1 for the one GetFreeSeat gives.
+		/// @return Whether it went in: a free seat, and a unit that could get in.
+		bool SeatNewCrew(Actor* unit, int seat = -1) { return m_Crew.SeatNew(unit, seat); }
+
 		/// Moves the unit the player is in charge of to the next empty seat, as the Change Seat pie slice does.
 		/// @return Whether they moved.
 		bool ChangeSeat() { return m_Crew.ChangeSeat(); }
@@ -203,8 +208,44 @@ namespace RTE {
 		/// Sets the top speed it drives at on the flat, in m/s.
 		void SetMaxSpeed(float newSpeed) { m_MaxSpeed = newSpeed; }
 
+		/// Gets how hard it speeds up with the wheels down, in m/s each second: its power, and so the steepest slope it can drive up.
+		float GetAcceleration() const { return m_Acceleration; }
+
+		/// Sets how hard it speeds up with the wheels down, in m/s each second.
+		void SetAcceleration(float newAcceleration) { m_Acceleration = std::max(newAcceleration, 0.0F); }
+
+		/// Gets how much of its weight on the wheels it can push or brake with before they slip, 0 to about 1 (more for tracks).
+		float GetGrip() const { return m_Grip; }
+
+		/// Sets how much of its weight on the wheels it can push or brake with before they slip.
+		void SetGrip(float newGrip) { m_Grip = std::max(newGrip, 0.0F); }
+
+		/// Gets how hard it slows with the brake on, in m/s each second.
+		float GetBrakeStrength() const { return m_BrakeStrength; }
+
+		/// Sets how hard it slows with the brake on, in m/s each second.
+		void SetBrakeStrength(float newStrength) { m_BrakeStrength = std::max(newStrength, 0.0F); }
+
+		/// Gets roughly the steepest slope it can drive up, in degrees: as far as its power lifts it against gravity, and its grip holds.
+		float GetClimbAngle() const;
+
 		/// Gets how hard it speeds up in water when driven, in m/s each second. 0: it doesn't drive in water (it isn't a boat).
 		float GetWaterThrust() const { return m_WaterThrust; }
+
+		/// Sets how hard it speeds up in water when driven, in m/s each second (nothing for one with no hull).
+		void SetWaterThrust(float newThrust) { m_WaterThrust = std::max(newThrust, 0.0F); }
+
+		/// Gets the top speed it is driven at in water, in m/s.
+		float GetWaterMaxSpeed() const { return m_WaterMaxSpeed; }
+
+		/// Sets the top speed it is driven at in water, in m/s.
+		void SetWaterMaxSpeed(float newSpeed) { m_WaterMaxSpeed = std::max(newSpeed, 0.0F); }
+
+		/// Gets whether its crew stays in (the Stay in vehicle order): riders don't get out where they were going, nor when it stops.
+		bool GetCrewStaysIn() const { return m_CrewStaysIn; }
+
+		/// Sets whether its crew stays in (see GetCrewStaysIn). Being thrown out (a crash, a roll, a wreck) still throws them out.
+		void SetCrewStaysIn(bool staysIn) { m_CrewStaysIn = staysIn; }
 
 		/// Gets how fast it jumps up off its springs when the driver jumps, in m/s. 0 can't.
 		float GetHopSpeed() const { return m_HopSpeed; }
@@ -279,6 +320,7 @@ namespace RTE {
 		float m_RollingResistance; //!< How much rolling on its own slows it, in m/s each second (low: it rolls down slopes).
 		float m_MaxSpeed; //!< The top speed it is driven at on the flat, in m/s.
 		float m_Grip; //!< How much of its weight on the wheels it can push or brake with before they slip, 0 to about 1.
+		bool m_CrewStaysIn; //!< Whether its crew stays in (the Stay in vehicle order; see GetCrewStaysIn).
 		bool m_NeedsDriver; //!< Whether it only drives with someone in the seat (a cart does; a drone vehicle wouldn't).
 		float m_HopSpeed; //!< How fast it jumps up off its springs when the driver jumps, in m/s. 0 can't.
 
