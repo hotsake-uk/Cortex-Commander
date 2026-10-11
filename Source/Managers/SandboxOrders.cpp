@@ -143,9 +143,23 @@ namespace SandboxDetail {
 		if (ACShip* ship = dynamic_cast<ACShip*>(unit)) {
 			Actor::StandingOrder& standing = ship->GetStandingOrder();
 			if (!resend) {
-				// (A new order ends a suppress, as for any unit: its zone and ring go; and its plan, RC-3.)
+				// (A new order ends the old one, as for any unit: a suppress's zone and ring, its plan (RC-3), and a defend's post, which
+				// ReturnDefenders flew it back to whatever it was told after.)
 				ClearSuppress(ship);
 				DropPlan(ship);
+				CancelRetreatAndFlank(ship);
+				s_GuardPosts.erase(ship->GetUniqueID());
+				s_BattleDefenders.erase(ship->GetUniqueID());
+				ReleaseFromBattleMode(ship);
+				standing.Attack = false;
+				standing.HasPost = false;
+				standing.AutoTargetID = 0;
+				standing.Hold = false;
+				standing.Movement = Actor::MOVE_FOLLOW_ORDER;
+				standing.PostFacing = 0;
+				if (!attack) {
+					standing.HasAttackPlace = false;
+				}
 				standing.Kind = OrderKindFor(reason);
 				standing.Direct = s_DirectOrder;
 				standing.TargetID = attack && target && lock ? static_cast<long>(target->GetUniqueID()) : 0;
@@ -335,9 +349,13 @@ namespace SandboxDetail {
 	}
 
 	void GiveOrder(Actor* actor, Order order) {
-		// (A flying ship takes none of these, but any of them still ends its suppress, as for a unit.)
+		// (A flying ship takes none of these but a rally: any of them ends what it was doing, and it hovers where it is.)
 		if (actor && dynamic_cast<const ACShip*>(actor)) {
-			ClearSuppress(actor);
+			HoldUnit(actor);
+			if (int team = actor->GetTeam(); order == Order::Rally && team >= 0 && team < c_Sides && s_RallySet[team]) {
+				SendUnit(actor, s_RallyPoints[team], nullptr, false, "to the rally point");
+			}
+			return;
 		}
 		if (!actor || dynamic_cast<ADoor*>(actor) || dynamic_cast<const ACraft*>(actor) || actor->IsInGroup("Brains")) {
 			return;
