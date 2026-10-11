@@ -774,6 +774,11 @@ void Sandbox::DrawGUI() {
 	}
 	if (IsBattleCommand() && InGame()) {
 		KeepCommandedTeam();
+		// Till the battle is started the panel stays open: it's the only way to start one, and with it shut there was nothing to do.
+		static const bool hidePanelsForTests = std::getenv("CCCP_HIDE_PANELS") != nullptr;
+		if (!s_ModeRun.Running && !hidePanelsForTests) {
+			s_BattlePanelOpen = true;
+		}
 		if (s_BattlePanelOpen && !s_Possessed && !g_DebugMan.IsPhotoModeHidingHUD()) {
 			DrawCommanderPanel();
 		}
