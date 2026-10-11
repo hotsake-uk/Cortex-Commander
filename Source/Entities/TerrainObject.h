@@ -91,6 +91,11 @@ namespace RTE {
 		/// @param light The light, positioned from the top left corner of this' bitmaps.
 		void AddLight(const TerrainLight& light) { m_Lights.emplace_back(light); }
 
+		/// Makes this draw from bitmaps of the caller's (a run of pieces built as one, see the sandbox's bunker runs) rather than its preset's,
+		/// with their top left corner at this' position, and without the preset's lights or child objects. Any of them may be nullptr.
+		/// @param fgColor, bgColor, material The layers. Ownership is NOT transferred: they are the caller's to keep alive until this is placed or gone, then destroy.
+		void UseBitmaps(BITMAP* fgColor, BITMAP* bgColor, BITMAP* material);
+
 		/// Gets a BITMAP showing a good identifiable icon of this, for use in GUI lists.
 		/// @return A good identifiable graphical representation of this in a BITMAP, if available. If not, nullptr is returned. Ownership is NOT transferred!
 		BITMAP* GetGraphicalIcon() const override;
