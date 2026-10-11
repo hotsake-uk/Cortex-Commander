@@ -747,6 +747,7 @@ void Sandbox::DrawGUI() {
 		if (IsBattleCommand()) {
 			DrawLandingSpot();
 			DrawFogGhosts();
+			DrawPowerTarget();
 		}
 	}
 
@@ -881,6 +882,11 @@ void Sandbox::DrawGUI() {
 				s_DragStart = io.MousePos;
 				s_DoubleClick = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
 				s_TripleClick = ImGui::GetMouseClickedCount(ImGuiMouseButton_Left) >= 3;
+			}
+		} else if (tool.Kind == Tool::PowerTarget) {
+			// Battle Command: where a commander power strikes.
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+				PowerTargetClicked(position);
 			}
 		} else if (tool.Kind == Tool::LandingSpot) {
 			// Battle Command: where reinforcements come down.
