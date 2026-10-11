@@ -148,6 +148,13 @@ namespace {
 	}
 } // namespace
 
+void ModernHUD::AddFeedLine(const std::string& text, int team) {
+	if (!s_Enabled) {
+		return;
+	}
+	s_Feed.push_back({text, team, ImGui::GetTime()});
+}
+
 void ModernHUD::Draw() {
 	if (!s_Enabled || !g_ActivityMan.IsInActivity() || !g_SceneMan.GetScene()) {
 		s_KnownActors.clear();
