@@ -1696,8 +1696,9 @@ void Actor::OnNewMovePath() {
 		m_PrevPathTarget = m_MovePath.front();
 		m_MovePath.pop_front();
 		// Also remove the one after that; it may move in opposite direction since it heads to the nearest PathNode center
-		// Unless it is the last one, in which case it shouldn't be removed
-		if (m_MovePath.size() > 1) {
+		// Unless it is the last one, in which case it shouldn't be removed. (Nor the end of a lift's ride, LM-11: the route starts on its deck,
+		// and without that point the unit walked off the deck into the shaft.)
+		if (m_MovePath.size() > 1 && (m_MovePathKinds.empty() || m_MovePathKinds.front() != PathStepKind::Lift)) {
 			m_PrevPathTarget = m_MovePath.front();
 			popFront();
 		}
@@ -1713,8 +1714,17 @@ void Actor::OnNewMovePath() {
 	// Smash all non-airborne waypoints down to just above the ground, so they more accurately represent the ground path
 	std::list<Vector>::iterator finalItr = m_MovePath.end();
 	--finalItr;
+	// (Not a lift ride's ends, LM-11: they are where the deck stands at its stops, which may be away, and the follower finds the lift by them.)
+	std::list<PathStepKind>::const_iterator kindItr = m_MovePathKinds.begin();
 	for (std::list<Vector>::iterator lItr = m_MovePath.begin(); lItr != finalItr; ++lItr) {
-		(*lItr) = g_SceneMan.MovePointToGround((*lItr), m_CharHeight * 0.2, 0, g_SettingsMan.GetPathFinderGridNodeSize() * 2.5f);
+		bool liftPoint = false;
+		if (kindItr != m_MovePathKinds.end()) {
+			liftPoint = *kindItr == PathStepKind::Lift || (std::next(kindItr) != m_MovePathKinds.end() && *std::next(kindItr) == PathStepKind::Lift);
+			++kindItr;
+		}
+		if (!liftPoint) {
+			(*lItr) = g_SceneMan.MovePointToGround((*lItr), m_CharHeight * 0.2, 0, g_SettingsMan.GetPathFinderGridNodeSize() * 2.5f);
+		}
 	}
 }
 
@@ -3198,7 +3208,7 @@ void Actor::GetDebugState(std::vector<DebugStateField>& fields) const {
 	number("routePoints", static_cast<double>(m_MovePath.size()));
 	number("waypoints", static_cast<double>(m_Waypoints.size()));
 	flag("routeAsked", IsWaitingOnNewMovePath());
-	static const char* const stepNames[] = {"walk", "crawl", "jump", "fall", "dig", "door", "stairs", "ladder", "leap", "mantle", "crouch", "scramble", "swim", "wade", "step over"};
+	static const char* const stepNames[] = {"walk", "crawl", "jump", "fall", "dig", "door", "stairs", "ladder", "leap", "mantle", "crouch", "scramble", "swim", "wade", "step over", "lift"};
 	auto stepName = [](int kind) { return kind >= 0 && kind < static_cast<int>(std::size(stepNames)) ? std::string(stepNames[kind]) : std::string("none"); };
 	fields.push_back({"step", stepName(GetMovePathStepKind()), true});
 	fields.push_back({"nextStep", stepName(GetMovePathNextStepKind()), true});

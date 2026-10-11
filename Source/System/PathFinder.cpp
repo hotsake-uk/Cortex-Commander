@@ -16,6 +16,7 @@
 
 #include <array>
 #include <execution>
+#include <map>
 #include <mutex>
 #include <set>
 #include <thread>
@@ -115,6 +116,19 @@ thread_local bool s_LineSet = false; // Whether a dig-to's line (s_LineFrom to s
 thread_local Vector s_LineFrom; // The search's start node, for LineCost.
 thread_local Vector s_LineTo; // Its goal node, for LineCost.
 thread_local const std::vector<Vector>* s_Avoid = nullptr; // Where the searcher has failed jumps lately (PathAgent::Avoid). // Whether the searcher's legs take stairs (PathAgent::WalksStairs).
+// The searcher's lift steps (LM-11; see PathFinder::BuildLiftLinks): from each node, the nodes a lift takes it to or that it steps on or off a
+// deck to, with their costs. Empty for a searcher that rides none.
+struct LiftLink {
+	const RTE::PathNode* To = nullptr;
+	float Cost = 0.0F;
+	bool Ride = false; //!< A ride on the deck from one stop to another; otherwise a step on or off it.
+};
+thread_local std::unordered_map<const RTE::PathNode*, std::vector<LiftLink>> s_LiftLinks;
+// Where a unit stands on the deck at each lift stop's node (its route's point there, rather than the node's anchor in the shaft's air).
+thread_local std::unordered_map<const RTE::PathNode*, Vector> s_LiftStopPos;
+// The steps of this search whose cheapest edge was a lift's (see AdjacentCost), and what each is: a ride, or a walk on or off the deck. As
+// s_LeapsTaken: labelled by the geometry, a ride down a shaft was a fall and a step onto a deck across a gap a flight.
+thread_local std::map<std::pair<const RTE::PathNode*, const RTE::PathNode*>, PathStepKind> s_LiftStepsTaken;
 
 RTE::PathNode::PathNode(const Vector& pos) :
     Pos(pos), Anchor(pos) {
@@ -261,6 +275,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	float digStrength = agent.DigStrength;
 	ApplyAgent(agent);
 	s_LeapsTaken.clear();
+	s_LiftStepsTaken.clear();
 	struct KeptLinks {
 		KeptLinks() { s_KeepLinks = true; }
 		~KeptLinks() {
@@ -523,11 +538,24 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 					steps.push_back({apex, PathStepKind::Jump, apex});
 				}
 			}
+			// A ride's ends are where a unit stands on the deck at its stops, not the nodes' anchors in the shaft's air; and kept there, the
+			// leg between them being through the deck.
+			if (kind == PathStepKind::Lift) {
+				if (auto board = s_LiftStopPos.find(from); board != s_LiftStopPos.end()) {
+					steps.back().Pos = board->second;
+					steps.back().Centre = board->second;
+				}
+				if (auto leave = s_LiftStopPos.find(to); leave != s_LiftStopPos.end()) {
+					steps.push_back({leave->second, kind, leave->second});
+					continue;
+				}
+			}
 			steps.push_back({to->Anchor, kind, to->Pos});
 		}
 		// (Not when the route was cut short at an obstacle: then the last point is the node the unit can get to, and giving it the goal's
 		// coordinates told a unit at the foot of a hatch it couldn't pass to jump 771 px to the room above.)
-		if (!cut) {
+		// (Nor at a lift's stop: the ride's end is where the deck stands, which the follower finds the lift by.)
+		if (!cut && steps.back().Kind != PathStepKind::Lift) {
 			steps.back().Pos = end;
 		}
 
@@ -541,7 +569,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 		// ledge's corner sent units up into the ledge's underside instead of round its lip.)
 		auto legOpen = [&](const Vector& a, const Vector& b) { return LineOpen(a, b); };
 		for (size_t i = 1; i < steps.size(); ++i) {
-			if (legOpen(steps[i - 1].Pos, steps[i].Pos)) {
+			if (steps[i].Kind == PathStepKind::Lift || (i + 1 < steps.size() && steps[i + 1].Kind == PathStepKind::Lift) || legOpen(steps[i - 1].Pos, steps[i].Pos)) {
 				continue;
 			}
 			steps[i].Pos = steps[i].Centre;
@@ -682,6 +710,76 @@ void PathFinder::ApplyAgent(const PathAgent& agent) {
 	s_BreachStrength = agent.BreachStrength < 0.0F ? agent.DigStrength : agent.BreachStrength;
 	s_DigWillingness = g_SettingsMan.AIDigWillingness();
 	s_DigCostScale = agent.DigCostScale;
+
+	BuildLiftLinks(agent.Lifts.get(), agent.CallsLifts);
+}
+
+void PathFinder::BuildLiftLinks(const LiftTable* lifts, bool callsLifts) {
+	s_LiftLinks.clear();
+	s_LiftStopPos.clear();
+	s_LiftStepsTaken.clear();
+	if (!lifts || lifts->Lifts.empty() || s_JumpHeight == FLT_MAX) {
+		return;
+	}
+	const float nodeSize = static_cast<float>(m_NodeDimension);
+	auto gridOf = [&](float v) { return static_cast<int>(std::floor(v / nodeSize)); };
+	// About how fast a soldier walks, in nodes a second: what a second of riding or waiting costs, in walked nodes.
+	const float nodesPerSecond = 2.0F;
+	for (const LiftTable::Lift& lift: lifts->Lifts) {
+		const int stopCount = static_cast<int>(lift.Stops.size());
+		if (stopCount < 2 || lift.Speed <= 0.0F) {
+			continue;
+		}
+		// The node a unit standing on the deck at each stop is in: the cell just over the deck's top.
+		std::vector<PathNode*> stopNodes;
+		for (const Vector& stop: lift.Stops) {
+			PathNode* node = GetPathNodeAtGridCoords(gridOf(stop.m_X), gridOf(stop.m_Y - nodeSize * 0.5F));
+			if (!node || !node->m_Navigable) {
+				break;
+			}
+			stopNodes.push_back(node);
+		}
+		if (static_cast<int>(stopNodes.size()) != stopCount) {
+			continue;
+		}
+		// The wait for the deck: called, about half the way along its stops; on its own round, about half a round with its stands.
+		float span = 0.0F;
+		for (int i = 1; i < stopCount; ++i) {
+			span += g_SceneMan.ShortestDistance(lift.Stops[i - 1], lift.Stops[i]).GetMagnitude();
+		}
+		float waitSeconds = callsLifts ? span / lift.Speed * 0.5F : span / lift.Speed + static_cast<float>(stopCount - 1) * lift.StopWaitMS * 0.001F;
+		for (int i = 0; i < stopCount; ++i) {
+			s_LiftStopPos[stopNodes[i]] = lift.Stops[i] - Vector(0.0F, nodeSize * 0.5F);
+			for (int j = 0; j < stopCount; ++j) {
+				if (i == j || stopNodes[i] == stopNodes[j]) {
+					continue;
+				}
+				float rideSeconds = g_SceneMan.ShortestDistance(lift.Stops[i], lift.Stops[j]).GetMagnitude() / lift.Speed + lift.StopWaitMS * 0.001F * static_cast<float>(std::abs(i - j) - 1);
+				s_LiftLinks[stopNodes[i]].push_back({stopNodes[j], 2.0F + (rideSeconds + waitSeconds) * nodesPerSecond, true});
+			}
+			// On and off the deck: the first floor beside the stop, either way, clear of the deck's ends (where the unit waits when the deck
+			// is away). Level with it: a lift's landings are floors at its stops.
+			const int row = gridOf(lift.Stops[i].m_Y - nodeSize * 0.5F);
+			const int column = gridOf(lift.Stops[i].m_X);
+			const int reach = static_cast<int>((lift.DeckHalfWidth + s_HalfWidth) / nodeSize) + 2;
+			for (int side: {-1, 1}) {
+				for (int k = 1; k <= reach; ++k) {
+					PathNode* landing = GetPathNodeAtGridCoords(column + side * k, row);
+					if (!landing) {
+						break;
+					}
+					if (std::abs(g_SceneMan.ShortestDistance(lift.Stops[i], landing->Pos).m_X) < lift.DeckHalfWidth + s_HalfWidth * 0.5F) {
+						continue;
+					}
+					if (landing->m_Navigable && NodeIsOnSolidGround(*landing) && static_cast<float>(landing->FreeHeight) >= s_StandHeight) {
+						s_LiftLinks[landing].push_back({stopNodes[i], static_cast<float>(k), false});
+						s_LiftLinks[stopNodes[i]].push_back({landing, static_cast<float>(k), false});
+					}
+					break;
+				}
+			}
+		}
+	}
 }
 
 namespace {
@@ -726,6 +824,9 @@ namespace {
 		bool LineSet = s_LineSet;
 		Vector LineFrom = s_LineFrom;
 		Vector LineTo = s_LineTo;
+		std::unordered_map<const RTE::PathNode*, std::vector<LiftLink>> LiftLinks = s_LiftLinks;
+		std::unordered_map<const RTE::PathNode*, Vector> LiftStopPos = s_LiftStopPos;
+		std::map<std::pair<const RTE::PathNode*, const RTE::PathNode*>, PathStepKind> LiftStepsTaken = s_LiftStepsTaken;
 
 		~SearcherState() {
 			s_JumpHeight = JumpHeight;
@@ -766,6 +867,9 @@ namespace {
 			s_LineSet = LineSet;
 			s_LineFrom = LineFrom;
 			s_LineTo = LineTo;
+			s_LiftLinks = std::move(LiftLinks);
+			s_LiftStopPos = std::move(LiftStopPos);
+			s_LiftStepsTaken = std::move(LiftStepsTaken);
 		}
 	};
 } // namespace
@@ -1176,6 +1280,20 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 			}
 		}
 	}
+
+	// Lifts (LM-11; see BuildLiftLinks): a ride from a stop's node to each other stop's, and on or off the deck from the floor beside it,
+	// whether the deck is there now or not (the follower waits for it, and calls it).
+	const size_t liftsBegin = adjacentList->size();
+	if (!s_LiftLinks.empty()) {
+		if (auto found = s_LiftLinks.find(node); found != s_LiftLinks.end()) {
+			for (const LiftLink& lift: found->second) {
+				adjCost.cost = lift.Cost + radiatedCost;
+				adjCost.state = const_cast<PathNode*>(lift.To);
+				adjacentList->push_back(adjCost);
+			}
+		}
+	}
+	const size_t liftsEnd = adjacentList->size();
 
 	// (Only the steps down pay it: a step across, in the air or on the ground, is flight or a walk, not a fall. Charged on the sideways steps
 	// too, a flight straight across a high room cost more than diving to its floor and climbing back up, and that is the route units took.)
@@ -1672,6 +1790,26 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 			s_LeapsTaken.erase(key);
 		}
 	}
+	// Likewise the lift steps: one that is the cheapest way to its node is labelled a ride, or a walk on or off the deck.
+	if (liftsEnd > liftsBegin) {
+		const std::vector<LiftLink>& links = s_LiftLinks.find(node)->second;
+		for (size_t i = liftsBegin; i < liftsEnd; ++i) {
+			const micropather::StateCost& lift = (*adjacentList)[i];
+			bool taken = true;
+			for (size_t j = 0; j < adjacentList->size() && taken; ++j) {
+				const micropather::StateCost& other = (*adjacentList)[j];
+				if (j != i && other.state == lift.state && (j < i ? other.cost <= lift.cost : other.cost < lift.cost)) {
+					taken = false;
+				}
+			}
+			std::pair<const PathNode*, const PathNode*> key(node, static_cast<const PathNode*>(lift.state));
+			if (taken) {
+				s_LiftStepsTaken[key] = links[i - liftsBegin].Ride ? PathStepKind::Lift : PathStepKind::Walk;
+			} else {
+				s_LiftStepsTaken.erase(key);
+			}
+		}
+	}
 }
 
 bool PathFinder::PositionsAreTheSamePathNode(const Vector& pos1, const Vector& pos2) const {
@@ -1875,6 +2013,12 @@ float PathFinder::HeadRoomFactor(const PathNode& from, const PathNode& to) const
 PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* to) const {
 	if (!from || !to) {
 		return PathStepKind::Walk;
+	}
+	// A lift's ride, or a step on or off its deck, where the search took the lift's edge (see s_LiftStepsTaken).
+	if (!s_LiftStepsTaken.empty()) {
+		if (auto taken = s_LiftStepsTaken.find({from, to}); taken != s_LiftStepsTaken.end()) {
+			return taken->second;
+		}
 	}
 	// The material along the step, from whichever side has it sampled (down and right are sampled; up and left are the neighbour's).
 	const Material* material = nullptr;

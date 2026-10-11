@@ -224,6 +224,24 @@ Vector AMover::GetDeckStandingPos() const {
 	return Vector(box.GetCorner().m_X + box.GetWidth() * 0.5F, box.GetCorner().m_Y);
 }
 
+float AMover::GetDeckHalfWidth() const {
+	return m_Deck ? static_cast<float>(m_Deck->GetSpriteWidth()) * 0.5F : 0.0F;
+}
+
+float AMover::GetDepartureMS() const {
+	if (m_Moving || GetCurrentStop() < 0) {
+		return 0.0F;
+	}
+	if (m_OnCall && m_CalledStop < 0) {
+		return 60000.0F;
+	}
+	return std::max(0.0F, static_cast<float>(m_PauseMS - m_StopTimer.GetElapsedSimTimeMS()));
+}
+
+bool AMover::HasRiders() const {
+	return std::any_of(g_MovableMan.GetActorList().begin(), g_MovableMan.GetActorList().end(), [this](const Actor* actor) { return actor != this && actor->IsControllable() && StandsOnDeck(actor, 0.0F); });
+}
+
 void AMover::SetStops(const std::vector<Vector>& stops) {
 	if (m_DeckMaterialDrawn) {
 		EraseDeckMaterial(true);
