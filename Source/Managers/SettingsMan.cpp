@@ -24,6 +24,7 @@
 #include "ActorFire.h"
 #include "ActorWater.h"
 #include "UnitSpeech.h"
+#include "UnitSpeechVoice.h"
 #include "ModernHUD.h"
 #include "ToolWidgets.h"
 #include "ConsoleMan.h"
@@ -757,6 +758,11 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("UnitSpeechChance", { int percent = 40; reader >> percent; UnitSpeech::SetChance(percent); });
 	MatchProperty("UnitSpeechEnemies", { bool on = true; reader >> on; UnitSpeech::SetShowsEnemies(on); });
 	MatchProperty("UnitSpeechBubbles", { bool on = true; reader >> on; UnitSpeech::SetShowsBubbles(on); });
+	MatchProperty("UnitSpeechVoices", { bool on = true; reader >> on; UnitSpeechVoice::SetEnabled(on); });
+	MatchProperty("UnitSpeechVoiceVolume", { int percent = 70; reader >> percent; UnitSpeechVoice::SetVolume(percent); });
+	MatchProperty("UnitSpeechVoiceRadio", { int percent = 75; reader >> percent; UnitSpeechVoice::SetRadio(percent); });
+	MatchProperty("UnitSpeechVoiceEnemies", { bool on = true; reader >> on; UnitSpeechVoice::SetHearsEnemies(on); });
+	MatchProperty("UnitSpeechVoiceWords", { bool on = true; reader >> on; UnitSpeechVoice::SetSpeaksWords(on); });
 	MatchProperty("UnitSpeechOff", { UnitSpeech::SetTriggerOn(reader.ReadPropValue(), false); });
 	MatchProperty("UnitSpeechOn", { UnitSpeech::SetTriggerOn(reader.ReadPropValue(), true); });
 	MatchProperty("UnitSpeechTones1", { UnitSpeech::SetTeamTonesText(0, reader.ReadPropValue()); });
@@ -1318,6 +1324,11 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("UnitSpeechChance", UnitSpeech::GetChance());
 	writer.NewPropertyWithValue("UnitSpeechEnemies", UnitSpeech::ShowsEnemies());
 	writer.NewPropertyWithValue("UnitSpeechBubbles", UnitSpeech::ShowsBubbles());
+	writer.NewPropertyWithValue("UnitSpeechVoices", UnitSpeechVoice::IsEnabled());
+	writer.NewPropertyWithValue("UnitSpeechVoiceVolume", UnitSpeechVoice::GetVolume());
+	writer.NewPropertyWithValue("UnitSpeechVoiceRadio", UnitSpeechVoice::GetRadio());
+	writer.NewPropertyWithValue("UnitSpeechVoiceEnemies", UnitSpeechVoice::HearsEnemies());
+	writer.NewPropertyWithValue("UnitSpeechVoiceWords", UnitSpeechVoice::SpeaksWords());
 	for (int team = 0; team < 4; ++team) {
 		writer.NewPropertyWithValue("UnitSpeechTones" + std::to_string(team + 1), UnitSpeech::GetTeamTonesText(team));
 	}
