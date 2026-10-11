@@ -801,6 +801,10 @@ namespace SandboxDetail {
 			ApplyReinforcement(stroke);
 			return;
 		}
+		if (stroke.Kind == Tool::BattleTeam && stroke.Count == BattlePower) {
+			ApplyPower(stroke);
+			return;
+		}
 		if (stroke.Kind == Tool::BattleModePoint || IsModeZoneTool(stroke.Kind) || stroke.Kind == Tool::BattleModeFlag || (stroke.Kind == Tool::BattleTeam && (stroke.Count == BattleModeSet || stroke.Count == BattleModeStart || stroke.Count == BattleModeStop))) {
 			ApplyBattleMode(stroke);
 			return;
