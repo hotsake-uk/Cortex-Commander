@@ -1462,6 +1462,7 @@
     <ClCompile Include="Source\Managers\SandboxDebug.cpp" />
     <ClCompile Include="Source\Managers\Colony.cpp" />
     <ClCompile Include="Source\Managers\CommanderBar.cpp" />
+    <ClCompile Include="Source\Managers\SpawnOrders.cpp" />
     <ClCompile Include="Source\Managers\Reinforcements.cpp" />
     <ClCompile Include="Source\Managers\BattleFog.cpp" />
     <ClCompile Include="Source\Managers\CommanderPowers.cpp" />

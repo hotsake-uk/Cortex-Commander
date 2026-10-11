@@ -4150,6 +4150,81 @@ namespace SandboxDetail {
 		}
 	}
 
+	/// The Command tool's spawn order chip (SpawnOrders.cpp): with it on, which zone (or all) the next order placed is for, and the orders
+	/// that need no place.
+	void SpawnOrderRow(BarLine& line) {
+		const int side = SpawnOrderSide();
+		if (side < 0 || s_ModeSetup.Mode == BattleMode::Custom) {
+			s_SpawnOrderArmed = false;
+			return;
+		}
+		const ImU32 gold = IM_COL32(255, 214, 120, 255);
+		const std::vector<std::vector<Vector>>& zones = s_ModeSetup.SpawnZones[side];
+		if (s_SpawnOrderZone >= static_cast<int>(zones.size())) {
+			s_SpawnOrderZone = -1;
+		}
+		const SpawnOrder& teamOrder = s_ModeSetup.SpawnOrders[side];
+		line.Divide();
+		line.Next();
+		std::string tip = std::string("What your new units do as they come in (reinforcements too): now \"") + c_SpawnOrderNames[static_cast<int>(teamOrder.Kind)] +
+		                  "\".\nClick, pick all zones or one, then place the order as you would for units: Move, Attack-move, Defend at, Patrol, Jetpack here,\nor in Command mode a click on a battle objective. A spawn zone with an order of its own uses that instead.\nUnits you order as they come in keep your order.";
+		if (BarChip("Spawn order", s_SpawnOrderArmed, gold, nullptr, tip.c_str()) == 1) {
+			s_SpawnOrderArmed = !s_SpawnOrderArmed;
+			s_SpawnOrderDoneAt = -1.0;
+			if (s_SpawnOrderArmed && s_CommandMode == CommandMode::Select) {
+				s_CommandMode = CommandMode::Command;
+			}
+			s_PatrolDraft.clear();
+		}
+		if (!s_SpawnOrderArmed) {
+			return;
+		}
+		line.Next();
+		if (BarChip("All zones", s_SpawnOrderZone < 0, c_SideColors[side], nullptr, "The order for the whole team: every spawn zone without one of its own, and reinforcements.") == 1) {
+			s_SpawnOrderZone = -1;
+		}
+		for (int i = 0; i < static_cast<int>(zones.size()); ++i) {
+			if (zones[i].size() < 3) {
+				continue;
+			}
+			line.Next();
+			ImGui::PushID(i + 900);
+			const std::vector<SpawnOrder>& own = s_ModeSetup.ZoneSpawnOrders[side];
+			const bool hasOwn = i < static_cast<int>(own.size()) && own[i].Set;
+			std::string label = "Zone " + std::to_string(i + 1) + (hasOwn ? "*" : "");
+			std::string zoneTip = "Spawn zone " + std::to_string(i + 1) + " (outlined on the map while picked): " + (hasOwn ? std::string("its own order, \"") + c_SpawnOrderNames[static_cast<int>(own[i].Kind)] + "\"." : std::string("takes the team's order."));
+			if (BarChip(label.c_str(), s_SpawnOrderZone == i, c_SideColors[side], nullptr, zoneTip.c_str()) == 1) {
+				s_SpawnOrderZone = i;
+			}
+			ImGui::PopID();
+		}
+		line.Next();
+		if (BarChip("Hold", false, ToolTheme::Text, nullptr, "No order: they hold ground where they land, for you to send.") == 1) {
+			SpawnOrder hold;
+			hold.Set = true;
+			SetSpawnOrder(side, s_SpawnOrderZone, hold);
+			s_SpawnOrderArmed = false;
+		}
+		line.Next();
+		if (BarChip("Objective", false, SpawnOrderColor(SpawnOrderKind::Objective), nullptr, "Each goes for the battle objective nearest it: takes it, or holds it if it's your team's.") == 1) {
+			SpawnOrder objective;
+			objective.Set = true;
+			objective.Kind = SpawnOrderKind::Objective;
+			SetSpawnOrder(side, s_SpawnOrderZone, objective);
+			s_SpawnOrderArmed = false;
+		}
+		if (s_SpawnOrderZone >= 0) {
+			line.Next();
+			if (BarChip("Team's order", false, ToolTheme::Text, nullptr, "This zone takes the team's order again.") == 1) {
+				SetSpawnOrder(side, s_SpawnOrderZone, SpawnOrder());
+				s_SpawnOrderArmed = false;
+			}
+		}
+		line.Next();
+		ImGui::AlignTextToFramePadding();
+		ImGui::TextDisabled("then place the order");
+	}
+
 	/// The strip of the Command tool, the sandbox's RTS controls: the order the clicks give, with its settings; then the selection, the groups, what
 	/// can be done with the units and how they fight.
 	void CommandStrip() {
@@ -4167,7 +4242,7 @@ namespace SandboxDetail {
 		}
 		// With nothing selected there is nothing to order: back to Command mode, whose clicks select till some are (a script's command clicks
 		// still waiting keep their mode).
-		if (alive == 0 && s_CommandMode != CommandMode::Select && s_CommandMode != CommandMode::Command && std::none_of(s_Queue.begin(), s_Queue.end(), [](const Stroke& queued) { return queued.Kind == Tool::Command; })) {
+		if (alive == 0 && !s_SpawnOrderArmed && s_CommandMode != CommandMode::Select && s_CommandMode != CommandMode::Command && std::none_of(s_Queue.begin(), s_Queue.end(), [](const Stroke& queued) { return queued.Kind == Tool::Command; })) {
 			s_CommandMode = CommandMode::Command;
 			s_PatrolDraft.clear();
 		}
@@ -4192,7 +4267,8 @@ namespace SandboxDetail {
 			if (BarChip("Select", current == select, c_CommandModeColors[select], nullptr, "Click a unit to select it, drag a box for several (Shift adds, double click: all of that kind in view).\nA click on the Command tool on the bar while selecting lets them all go.") == 1) {
 				s_CommandMode = CommandMode::Select;
 			}
-			ImGui::BeginDisabled(alive == 0);
+			// (Setting a spawn order, they place it with none selected.)
+			ImGui::BeginDisabled(alive == 0 && !s_SpawnOrderArmed);
 			for (int mode = 0; mode < select; ++mode) {
 				line.Next(pixel * 2.0F);
 				ImGui::PushID(mode + 300);
@@ -4271,7 +4347,7 @@ namespace SandboxDetail {
 			ImGui::TextDisabled("%d points", static_cast<int>(s_PatrolDraft.size()));
 			for (int backAndForth = 0; backAndForth < 2; ++backAndForth) {
 				line.Next();
-				ImGui::BeginDisabled(s_PatrolDraft.size() < 2 || s_Selected.empty());
+				ImGui::BeginDisabled(s_PatrolDraft.size() < 2 || (s_Selected.empty() && !s_SpawnOrderArmed));
 				ImGui::PushID(backAndForth + 310);
 				if (BarChip(backAndForth ? "Back and forth" : "Loop", false, c_CommandModeColors[static_cast<int>(CommandMode::Patrol)], nullptr, backAndForth ? "Along the points to the last, then back the same way, again and again." : "Round the points and back to the first, again and again.") == 1) {
 					Stroke stroke;
@@ -4279,7 +4355,9 @@ namespace SandboxDetail {
 					stroke.Count = backAndForth ? 21 : 20;
 					stroke.Position = s_PatrolDraft.front();
 					stroke.Points = s_PatrolDraft;
-					s_Queue.push_back(stroke);
+					if (!TakeSpawnOrder(stroke)) {
+						s_Queue.push_back(stroke);
+					}
 					s_PatrolDraft.clear();
 				}
 				ImGui::PopID();
@@ -4292,6 +4370,7 @@ namespace SandboxDetail {
 			}
 			ImGui::EndDisabled();
 		}
+		SpawnOrderRow(line);
 		// What is drawn of the orders, the routes and the groups, kept in the settings.
 		line.Divide();
 		line.Next();
