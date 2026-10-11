@@ -435,6 +435,11 @@ int AVehicle::ReadProperty(const std::string_view& propName, Reader& reader) {
 		reader >> drawsCrew;
 		m_Crew.SetDrawsCrew(drawsCrew);
 	});
+	MatchProperty("PassengersCanFire", {
+		bool canFire;
+		reader >> canFire;
+		m_Crew.SetPassengersCanFire(canFire);
+	});
 	MatchProperty("ThrowingArm", { SetThrowingArm(dynamic_cast<Attachable*>(g_PresetMan.ReadReflectedPreset(reader))); });
 	MatchProperty("ArmLength", { reader >> m_ArmLength; });
 	MatchProperty("ArmThrowAngle", { reader >> m_ArmThrowAngle; });
@@ -528,6 +533,7 @@ int AVehicle::Save(Writer& writer) const {
 	}
 	writer.NewPropertyWithValue("TrackFrameLength", m_TrackFrameLength);
 	writer.NewPropertyWithValue("DrawsCrew", m_Crew.DrawsCrew());
+	writer.NewPropertyWithValue("PassengersCanFire", m_Crew.PassengersCanFire());
 	if (m_ThrowingArm) {
 		writer.NewProperty("ThrowingArm");
 		writer << m_ThrowingArm;
@@ -2236,6 +2242,7 @@ void AVehicle::Update() {
 
 	m_Crew.SetLastVel(m_Vel);
 	m_Crew.PlaceCrew();
+	m_Crew.UpdatePassengerFire();
 }
 
 void AVehicle::Draw(BITMAP* pTargetBitmap, const Vector& targetPos, DrawMode mode, bool onlyPhysical) const {

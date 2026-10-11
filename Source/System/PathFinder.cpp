@@ -2033,7 +2033,10 @@ bool PathFinder::RoomToPass(const PathNode& node, float widths) const {
 	// The run of air through the node counts the node's own column: the clearances are counted from the pixels beside the centre, so a
 	// 48 px hatch measured 47 from either column in it, and the jet column up it was refused for a unit three half-widths of 16 wide by
 	// that one pixel.
-	return s_JumpHeight == FLT_MAX || static_cast<float>(node.ClearLeft + node.ClearRight + 1) >= s_HalfWidth * widths;
+	// (A body wider than the grid measures, a big creature's (CR-5), needs all the room it does measure: the clearances reach a node either
+	// side, so past a soldier's widest it would fit nowhere. No soldier is wider than 16 either side, so theirs is as it was.)
+	const float needed = std::min(s_HalfWidth * widths, std::max(16.0F * widths, static_cast<float>(m_NodeDimension * 2 + 1)));
+	return s_JumpHeight == FLT_MAX || static_cast<float>(node.ClearLeft + node.ClearRight + 1) >= needed;
 }
 
 bool PathFinder::HasFloor(const PathNode& node) const {

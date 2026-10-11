@@ -1479,7 +1479,7 @@ namespace SandboxDetail {
 
 
 	/// A click on the world with the command tool, as the mode says. Count: 0 a plain click, 1 with Shift held (add to the selection), 2 a double click
-	/// (select every unit of that kind in sight).
+	/// (select every unit of that kind in sight), 3 a double click with Ctrl held (every unit of that kind on the whole map, B-4).
 	void CommandSelected(const Vector& position, int modifier) {
 		if (s_CommandMode == CommandMode::Command) {
 			// Command mode: the order fits what's at the point. Selecting, and a friend, enemy or the ground, go as Select or Move would.
@@ -1618,15 +1618,17 @@ namespace SandboxDetail {
 		}
 		// Move: a friend is picked up into the selection, an enemy attacked, the ground gone to.
 		if (friendly && (selecting || modifier != 0 || !selected || s_Selected.size() == 1)) {
-			if (modifier == 2) {
-				// Every unit of that kind in sight.
+			if (modifier == 2 || modifier == 3) {
+				// Every unit of that kind in sight; with Ctrl (3), on the whole map (B-4).
+				const bool wholeMap = modifier == 3;
 				GameViewRect view = g_WindowMan.GetGameViewRect();
 				float scale = ScenePixelsPerWindowPixel();
 				Vector corner = g_CameraMan.GetOffset(0);
 				Vector far = corner + Vector(view.w * scale, view.h * scale);
 				for (Actor* actor: SandboxAccess::Actors()) {
 					Vector onScreen = FromCamera(actor->GetPos());
-					if (IsSelectable(actor) && actor->GetTeam() == target->GetTeam() && actor->GetPresetName() == target->GetPresetName() && onScreen.m_X >= 0.0F && onScreen.m_Y >= 0.0F && onScreen.m_X <= far.m_X - corner.m_X && onScreen.m_Y <= far.m_Y - corner.m_Y &&
+					const bool inSight = wholeMap || (onScreen.m_X >= 0.0F && onScreen.m_Y >= 0.0F && onScreen.m_X <= far.m_X - corner.m_X && onScreen.m_Y <= far.m_Y - corner.m_Y);
+					if (IsSelectable(actor) && actor->GetTeam() == target->GetTeam() && actor->GetPresetName() == target->GetPresetName() && inSight &&
 					    std::none_of(s_Selected.begin(), s_Selected.end(), [actor](const UnitRef& ref) { return RefersTo(ref, actor); })) {
 						s_Selected.push_back(MakeRef(actor));
 					}
