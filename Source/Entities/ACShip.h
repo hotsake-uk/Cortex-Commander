@@ -3,6 +3,8 @@
 #include "ACDropShip.h"
 #include "CrewSeats.h"
 
+#include <deque>
+
 namespace RTE {
 
 	class Turret;
@@ -114,12 +116,30 @@ namespace RTE {
 
 		/// Sends it to hover over a place, as a move order does: at its hover height over the ground there, or at the place if that is in the
 		/// open air higher up. Nothing happens while it can't fly or its autopilot hasn't started yet. @return Whether it was sent.
-		bool HoverOver(const Vector& spot) { return CanFly() && AutopilotHoverOver(spot); }
+		bool HoverOver(const Vector& spot) {
+			m_Route.clear();
+			return CanFly() && AutopilotHoverOver(spot);
+		}
+
+		/// Sends it to hover over a place as the player's commands do (VC-3): by the risk of its standing order (StandingOrder::Direct), along a
+		/// route round what is in the way, the route the pathfinder gives (with its care for enemies on a cautious order), flown at its hover
+		/// height over the ground along it and straight across wherever the air is open. Straight there, as HoverOver, when the way is open and
+		/// the order isn't cautious, or on a full-risk order. A cautious order also flies higher. Nothing happens while it can't fly or its
+		/// autopilot hasn't started yet. @param spot The place. @return Whether it was sent.
+		bool FlyRouteTo(const Vector& spot);
+
+		/// Gets the points of the route FlyRouteTo sent it along that it has still to fly to, the next first.
+		const std::deque<Vector>& GetRoute() const { return m_Route; }
 #pragma endregion
 
 #pragma region Override Methods
-		/// The drop ship's autopilot, while it can fly: with nobody at the controls of a ship that needs a pilot, it does nothing (the ship
-		/// sets itself down) and any delivery it was on is dropped for holding still, so a pilot getting in later doesn't take it off home.
+		/// What this ship is to the path grid, for a route round what is in the way (FlyRouteTo): it flies, digs nothing, and wants the room it
+		/// is high (as much as the grid tells) over the ground the route follows. The order's risk and the route caution as any unit's.
+		PathAgent GetPathAgent() const override;
+
+		/// The drop ship's autopilot, while it can fly, taking it along the route FlyRouteTo sent it on a point at a time. With nobody at the
+		/// controls of a ship that needs a pilot, it does nothing (the ship sets itself down) and any delivery it was on is dropped for holding
+		/// still, so a pilot getting in later doesn't take it off home.
 		void UpdateAutopilot() override;
 
 		/// The drop ship's flying from the controller, unless nobody flies it: then the stick is let go, and a ship that needs a pilot sets
@@ -173,6 +193,7 @@ namespace RTE {
 		bool m_Parked; //!< Whether it is sat on the ground with its engines off (nobody at the controls of a ship that needs a pilot).
 		Timer m_TouchdownTimer; //!< How long it has been down and still while setting itself down.
 		Timer m_OrderedBoardTimer; //!< Since it last looked for units sent to it to get in.
+		std::deque<Vector> m_Route; //!< The points of the route FlyRouteTo sent it along still to fly to, the one it is flying to first.
 
 	private:
 		/// Aims and fires its manned guns: from the player's aim in a gunner's seat, or the gunner's own, at the nearest enemy in sight and range.

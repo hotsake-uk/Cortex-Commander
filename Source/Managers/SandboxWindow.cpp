@@ -3359,6 +3359,17 @@ namespace SandboxDetail {
 			if (Actor* unit = GetRef(ref)) {
 				unit->SetSandboxSelected(true);
 				s_MarkedSelected.push_back(ref);
+				// A vehicle or flying ship selected is selected crew and all (VC-1): how many are aboard, under it.
+				const AVehicle* car = dynamic_cast<const AVehicle*>(unit);
+				const ACShip* ship = car ? nullptr : dynamic_cast<const ACShip*>(unit);
+				if (const int aboard = car ? car->GetCrewCount() : (ship ? ship->GetCrewCount() : -1); aboard >= 0 && !HiddenFromCommander(unit)) {
+					const std::string text = aboard == 0 ? std::string("empty") : std::to_string(aboard) + " aboard";
+					const ImVec2 size = ImGui::CalcTextSize(text.c_str());
+					const ImVec2 at = ToScreen(unit->GetPos() + Vector(0.0F, unit->GetRadius() * 0.8F));
+					const ImVec2 corner(std::floor(at.x - size.x * 0.5F), std::floor(at.y));
+					drawList->AddRectFilled(ImVec2(corner.x - 2.0F, corner.y - 1.0F), ImVec2(corner.x + size.x + 2.0F, corner.y + size.y + 1.0F), IM_COL32(0, 0, 0, 150), 2.0F);
+					drawList->AddText(corner, aboard == 0 ? IM_COL32(200, 200, 200, 230) : IM_COL32(150, 220, 255, 255), text.c_str());
+				}
 			}
 		}
 		// The patrol route being clicked out (RC-4): its points joined up, and on to the pointer.

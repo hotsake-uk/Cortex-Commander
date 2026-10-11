@@ -46,7 +46,8 @@ namespace SandboxDetail {
 			// No crabs (ACrab: crabs, and the tanks and walkers built on them) unless the team's card says so: they can't climb most of what
 			// the infantry can, and stood in the way of everyone else.
 			// Nor animals or civilians (NC-1): a wave is soldiers.
-			std::erase_if(pool, [](const Preset* unit) { return unit->NonCombatant; });
+			// Nor creatures (CR-1), for now: they come into a battle by the spawn panel only.
+			std::erase_if(pool, [](const Preset* unit) { return unit->NonCombatant || unit->Kind == "Creatures"; });
 			if (!settings.Crabs) {
 				std::erase_if(pool, [](const Preset* unit) { return unit->ClassName == "ACrab"; });
 			}

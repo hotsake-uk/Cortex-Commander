@@ -796,6 +796,7 @@ PathAgent ACrab::GetPathAgent() const {
 	// Gaps and lips it leaps on its legs (LM-8).
 	agent.LeapHeight = GetLegJumpHeight();
 	agent.LeapSpeed = m_LegJumpSpeed;
+	ApplyMovementProfile(agent);
 	return agent;
 }
 

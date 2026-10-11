@@ -704,8 +704,8 @@ bool AHuman::HandlePieCommand(PieSliceType pieSliceIndex) {
 }
 
 void AHuman::AddInventoryItem(MovableObject* pItemToAdd) {
-	// (An animal carries no weapons: Actor::AddInventoryItem turns them away.)
-	if (dynamic_cast<HeldDevice*>(pItemToAdd) && IsAnimal()) {
+	// (A beast carries no weapons but natural ones: Actor::AddInventoryItem turns them away.)
+	if (dynamic_cast<HeldDevice*>(pItemToAdd) && IsBeast() && !pItemToAdd->IsInGroup("Weapons - Natural")) {
 		Actor::AddInventoryItem(pItemToAdd);
 		return;
 	}
@@ -1140,6 +1140,7 @@ PathAgent AHuman::GetPathAgent() const {
 		agent.Lifts = g_MovableMan.GetPublishedLifts();
 		agent.CallsLifts = g_SettingsMan.AIUnitsCallLifts();
 	}
+	ApplyMovementProfile(agent);
 	return agent;
 }
 
