@@ -1552,7 +1552,7 @@ void Sandbox::DrawGUI() {
 					ImGui::TextWrapped("No character. Tab hides and shows these tools; with them hidden the right mouse button and WASD still move the view and the wheel zooms.");
 					EndSandboxTab();
 				} else {
-				ImGui::TextWrapped("For walking about in what you've made. P puts you in it, and P again brings you back above; Shift+Tab puts it down where the mouse points and puts you in it. Tab hides and shows these tools: with a tool in hand you stay above and go on using it, with nothing in hand (Look around) Tab puts you in your character.");
+				ImGui::TextWrapped("For walking about in what you've made. P puts you in it, and P again brings you back above and takes it away (P makes a new one); Shift+Tab puts it down where the mouse points and puts you in it. Tab hides and shows these tools: with a tool in hand you stay above and go on using it, with nothing in hand (Look around) Tab puts you in your character.");
 				if (ToolUI::Button(exists ? "Play (Tab)" : "Make it and play (Tab)", ImVec2(-1.0F, 0.0F))) {
 					Stroke stroke;
 					stroke.Kind = Tool::PlayCharacter;
