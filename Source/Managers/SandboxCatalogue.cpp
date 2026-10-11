@@ -126,6 +126,9 @@ namespace SandboxDetail {
 				preset.Kind = object->IsInGroup("Spells") ? "Spells" : object->IsInGroup("Tools - Diggers") ? "Diggers" : (object->IsInGroup("Tools") ? "Tools" : (object->IsInGroup("Weapons - Secondary") ? "Secondary weapons" : (object->IsInGroup("Weapons - Explosive") ? "Explosive weapons" : "Primary weapons")));
 			} else if (preset.ClassName == "TDExplosive") {
 				preset.Kind = object->IsInGroup("Bombs - Grenades") ? "Grenades" : "Bombs";
+			} else if (preset.ClassName == "ThrownDevice") {
+				// Javelins, throwing axes and knives, bolas; a pouch the AI lobs like a grenade (caltrops) with the grenades.
+				preset.Kind = object->IsInGroup("Bombs - Grenades") ? "Grenades" : "Thrown weapons";
 			} else if (preset.ClassName == "HeldDevice") {
 				preset.Kind = object->IsInGroup("Shields") ? "Shields" : "Other items";
 			} else {

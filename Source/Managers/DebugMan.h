@@ -151,6 +151,7 @@ namespace RTE {
 
 		bool m_FreezeSim{false}; //!< "Freeze simulation" on the Debug page: the world stands still, in any game, until it's unticked or stepped.
 		bool m_UserPause{false}; //!< The pause hotkey is holding the world still.
+		bool m_UserPausedSounds{false}; //!< Whether the pause hotkey has the world's sounds paused, so only its letting go resumes them.
 		bool m_FrozeSim{false}; //!< Whether it's this that paused the simulation, so only this unpauses it.
 		int m_FreezeStepsWanted{0}; //!< Updates to let the frozen world do, from the Step buttons.
 
