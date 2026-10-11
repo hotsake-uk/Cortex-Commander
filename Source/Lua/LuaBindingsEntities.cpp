@@ -485,6 +485,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AVehicle) {
 	    .property("WaterThrust", &AVehicle::GetWaterThrust, &AVehicle::SetWaterThrust)
 	    .property("WaterMaxSpeed", &AVehicle::GetWaterMaxSpeed, &AVehicle::SetWaterMaxSpeed)
 	    .property("CrewStaysIn", &AVehicle::GetCrewStaysIn, &AVehicle::SetCrewStaysIn)
+	    .property("TerrainCrush", &AVehicle::GetTerrainCrush, &AVehicle::SetTerrainCrush)
 	    .property("ClimbAngle", &AVehicle::GetClimbAngle)
 	    .property("WheelsOnGround", &AVehicle::GetWheelsOnGround)
 	    .property("SunkFraction", &AVehicle::GetSunkFraction)

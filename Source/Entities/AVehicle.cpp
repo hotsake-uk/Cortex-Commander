@@ -132,6 +132,7 @@ void AVehicle::Clear() {
 	m_Grip = 0.8F;
 	m_NeedsDriver = true;
 	m_CrewStaysIn = false;
+	m_TerrainCrush = 0.0F;
 	m_HopSpeed = 0.0F;
 	m_HopTimer.Reset();
 	m_HullPoints.clear();
@@ -297,6 +298,7 @@ int AVehicle::Create(const AVehicle& reference) {
 	m_Grip = reference.m_Grip;
 	m_NeedsDriver = reference.m_NeedsDriver;
 	m_CrewStaysIn = reference.m_CrewStaysIn;
+	m_TerrainCrush = reference.m_TerrainCrush;
 	m_HopSpeed = reference.m_HopSpeed;
 	m_HullPoints = reference.m_HullPoints;
 	m_HullDraft = reference.m_HullDraft;
@@ -385,6 +387,7 @@ int AVehicle::ReadProperty(const std::string_view& propName, Reader& reader) {
 	});
 	MatchProperty("NeedsDriver", { reader >> m_NeedsDriver; });
 	MatchProperty("CrewStaysIn", { reader >> m_CrewStaysIn; });
+	MatchProperty("TerrainCrush", { reader >> m_TerrainCrush; });
 	MatchProperty("HopSpeed", { reader >> m_HopSpeed; });
 	MatchProperty("AddHullPoint", {
 		Vector point;
@@ -475,6 +478,7 @@ int AVehicle::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("BoardingReach", m_Crew.GetBoardingReach());
 	writer.NewPropertyWithValue("NeedsDriver", m_NeedsDriver);
 	writer.NewPropertyWithValue("CrewStaysIn", m_CrewStaysIn);
+	writer.NewPropertyWithValue("TerrainCrush", m_TerrainCrush);
 	writer.NewPropertyWithValue("HopSpeed", m_HopSpeed);
 	for (const Vector& point: m_HullPoints) {
 		writer.NewPropertyWithValue("AddHullPoint", point);
@@ -1745,6 +1749,69 @@ void AVehicle::DrawLaunchArc() const {
 	}
 }
 
+void AVehicle::UpdateTerrainCrush() {
+	float deltaTime = g_TimerMan.GetDeltaTimeSecs();
+	SLTerrain* terrain = g_SceneMan.GetTerrain();
+	if (m_TerrainCrush <= 0.0F || deltaTime <= 0.0F || !terrain || m_Wheels.empty() || IsDead()) {
+		return;
+	}
+	Vector along = Vector(1.0F, 0.0F).GetRadRotatedCopy(m_Rotation.GetRadAngle());
+	float speedAlong = m_Vel.Dot(along);
+	// Moving along, or driven into what is in the way (stopped against a wall, it would never get going again).
+	float heading = std::abs(speedAlong) >= 1.0F ? (speedAlong > 0.0F ? 1.0F : -1.0F) : (GetWheelsOnGround() > 0 && m_Throttle != 0.0F && !m_Handbrake ? (m_Throttle > 0.0F ? 1.0F : -1.0F) : 0.0F);
+	if (heading == 0.0F) {
+		return;
+	}
+	// The way it is going, from its middle upright (RotateOffset mirrors a vehicle facing left, so its nose is +x either way).
+	float forward = heading * GetFlipFactor();
+
+	// The band it smashes, from its middle upright and facing right: from its nose (or tail) out as far as it goes this update and a little
+	// more, and from its top down to its lowest axle, so the ground its wheels roll on, and the slope ahead they climb, is left.
+	float nose = static_cast<float>(GetSpriteWidth()) * 0.5F;
+	float axles = -static_cast<float>(GetSpriteHeight()) * 0.5F;
+	for (const Wheel& wheel: m_Wheels) {
+		if (wheel.Part) {
+			nose = std::max(nose, std::abs(wheel.Mount.m_X) + static_cast<float>(wheel.Part->GetSpriteWidth()) * 0.5F);
+			axles = std::max(axles, wheel.Mount.m_Y - wheel.Compression);
+		}
+	}
+	float top = -static_cast<float>(GetSpriteHeight()) * 0.5F;
+	float reach = 2.0F + std::abs(speedAlong) * deltaTime * c_PPM * 1.5F;
+	float mass = std::max(GetMass(), 1.0F);
+
+	// (A handful of the pixels fly as rubble; the rest are just gone, so a wall knocked down doesn't flood the scene with particles.)
+	int smashed = 0;
+	float slowing = 0.0F;
+	constexpr int maxSmashed = 400;
+	for (float out = nose - 1.0F; out <= nose + reach && smashed < maxSmashed; out += 1.0F) {
+		for (float down = top; down <= axles - 1.0F && smashed < maxSmashed; down += 1.0F) {
+			Vector at = m_Pos + RotateOffset(Vector(out * forward, down));
+			int x = at.GetFloorIntX();
+			int y = at.GetFloorIntY();
+			if (!g_SceneMan.WrapPosition(x, y) && !g_SceneMan.IsWithinBounds(x, y)) {
+				continue;
+			}
+			int material = terrain->GetMaterialPixel(x, y);
+			if (material == g_MaterialAir || FluidSim::IsLiquid(material) || TerrainTrees::ActorsPass(material)) {
+				continue;
+			}
+			const Material* kind = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(material));
+			float toughness = kind ? kind->GetIntegrity() : -1.0F;
+			if (toughness < 0.0F || toughness > m_TerrainCrush) {
+				continue;
+			}
+			g_SceneMan.DislodgePixelBool(x, y, smashed % 6 != 0);
+			++smashed;
+			slowing += std::max(toughness, 1.0F);
+		}
+	}
+	if (smashed > 0) {
+		// Each pixel takes some of its way: a kilogram of push for each point of toughness, at most what stops it.
+		float loss = std::min(slowing * 0.02F / mass, std::abs(speedAlong));
+		m_Vel -= along * (loss * (speedAlong >= 0.0F ? 1.0F : -1.0F));
+	}
+}
+
 void AVehicle::UpdateWheels() {
 	float deltaTime = g_TimerMan.GetDeltaTimeSecs();
 	if (deltaTime <= 0.0F) {
@@ -2082,6 +2149,7 @@ void AVehicle::Update() {
 
 	UpdateEngine(canDrive);
 	UpdateWheels();
+	UpdateTerrainCrush();
 	UpdateHull();
 	if (m_Oar) {
 		// Back and forth with the stroke: the blade goes from forward to back as it pulls, and forward again through the air.

@@ -1274,6 +1274,28 @@ namespace SandboxDetail {
 			if (!vehicle || vehicle->GetHopSpeed() > 0.0F) {
 				slider("Jump", tuning.Jump, vehicle ? vehicle->GetHopSpeed() : 0.0F, "m/s", "How high it jumps off its springs when the driver jumps.");
 			}
+			// Terrain damage: a toughness, not a multiplier (a cart's own is 0), shown as the vehicle's own until it is moved.
+			const float own = vehicle ? vehicle->GetTerrainCrush() : 0.0F;
+			float crush = tuning.TerrainCrush >= 0.0F ? tuning.TerrainCrush : own;
+			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.62F);
+			if (ImGui::SliderFloat("Terrain damage", &crush, 0.0F, c_VehicleCrushMax, tuning.TerrainCrush >= 0.0F ? "%.0f" : "%.0f (its own)", ImGuiSliderFlags_AlwaysClamp)) {
+				tuning.TerrainCrush = crush;
+			}
+			ImGui::SetItemTooltip("How tough a ground it smashes through, driving into it (in front and behind, never under it): it breaks any material whose toughness is this or less. Snow 15, gravel 30, earth 70, stone 140, concrete 200, metal 400. Right-click to set it back to the vehicle's own (%.0f).", own);
+			if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+				tuning.TerrainCrush = -1.0F;
+			}
+			// What that comes to, by the toughest of the usual materials it gets through.
+			static const std::pair<float, const char*> c_Breaks[] = {{400.0F, "metal"}, {200.0F, "concrete"}, {150.0F, "bedrock"}, {140.0F, "stone"}, {70.0F, "earth"}, {45.0F, "sand"}, {30.0F, "gravel"}, {15.0F, "snow"}, {10.0F, "glass"}};
+			const char* breaks = nullptr;
+			for (const auto& [toughness, name]: c_Breaks) {
+				if (crush >= toughness) {
+					breaks = name;
+					break;
+				}
+			}
+			ImGui::SameLine();
+			ImGui::TextDisabled(breaks ? "breaks up to %s" : "breaks only plants", breaks);
 		}
 		if (!vehicle || boat) {
 			slider("Water power", tuning.WaterPower, vehicle ? vehicle->GetWaterThrust() : 0.0F, "m/s2", "How hard it speeds up in water.");
@@ -1295,6 +1317,7 @@ namespace SandboxDetail {
 			reset.Driver = tuning.Driver;
 			reset.Crew = tuning.Crew;
 			tuning = reset;
+			// (Terrain damage back to each vehicle's own, as the multipliers go back to x1.)
 		}
 	}
 
