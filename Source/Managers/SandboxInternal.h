@@ -961,10 +961,12 @@ namespace SandboxDetail {
 		float Jump = 1.0F; //!< Times its HopSpeed.
 		float WaterPower = 1.0F; //!< Times its WaterThrust (boats).
 		float WaterSpeed = 1.0F; //!< Times its WaterMaxSpeed (boats).
+		float TerrainCrush = -1.0F; //!< How tough a material it smashes through (AVehicle::SetTerrainCrush), not a multiplier; -1 its own.
 	};
 	inline VehicleTuning s_VehicleTuning;
 	constexpr float c_VehicleTuneMin = 0.25F; //!< The least a vehicle tuning multiplier goes down to.
 	constexpr float c_VehicleTuneMax = 5.0F; //!< The most a vehicle tuning multiplier goes up to.
+	constexpr float c_VehicleCrushMax = 500.0F; //!< The most the Terrain damage slider goes up to: past metal (400).
 
 	/// A unit of your own design (the Loadout Builder): a unit preset and exactly what it carries. Kept in c_LoadoutsFile, by name.
 	struct CustomLoadout {

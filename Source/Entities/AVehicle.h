@@ -232,6 +232,13 @@ namespace RTE {
 		/// Sets how hard it slows with the brake on, in m/s each second.
 		void SetBrakeStrength(float newStrength) { m_BrakeStrength = std::max(newStrength, 0.0F); }
 
+		/// Gets how tough a material it smashes through when it drives into it (a material's StructuralIntegrity: earth 70, concrete 200,
+		/// metal 400). 0 smashes nothing (plants are crushed regardless).
+		float GetTerrainCrush() const { return m_TerrainCrush; }
+
+		/// Sets how tough a material it smashes through when it drives into it. 0 smashes nothing.
+		void SetTerrainCrush(float newCrush) { m_TerrainCrush = std::max(newCrush, 0.0F); }
+
 		/// Gets roughly the steepest slope it can drive up, in degrees: as far as its power lifts it against gravity, and its grip holds.
 		float GetClimbAngle() const;
 
@@ -361,6 +368,7 @@ namespace RTE {
 		float m_RollingResistance; //!< How much rolling on its own slows it, in m/s each second (low: it rolls down slopes).
 		float m_MaxSpeed; //!< The top speed it is driven at on the flat, in m/s.
 		float m_Grip; //!< How much of its weight on the wheels it can push or brake with before they slip, 0 to about 1.
+		float m_TerrainCrush; //!< How tough a material it smashes through driving into it (see GetTerrainCrush). 0 none.
 		bool m_CrewStaysIn; //!< Whether its crew stays in (the Stay in vehicle order; see GetCrewStaysIn).
 		bool m_NeedsDriver; //!< Whether it only drives with someone in the seat (a cart does; a drone vehicle wouldn't).
 		float m_HopSpeed; //!< How fast it jumps up off its springs when the driver jumps, in m/s. 0 can't.
@@ -461,6 +469,10 @@ namespace RTE {
 	private:
 		/// Works out each wheel's spring against the ground and pushes the body by them, drives and brakes the wheels on the ground, and turns them.
 		void UpdateWheels();
+
+		/// Smashes the ground it drives into, in front of it (behind, backing up) and above its axles, never under it: each pixel of a material
+		/// no tougher than TerrainCrush goes as rubble, slowing it by how tough it was. Only while it moves along or is driven into it.
+		void UpdateTerrainCrush();
 
 		/// Holds the hull up on the liquid it is in, slows it in it and keeps it upright, and drives it along with the oars or motor.
 		/// @return Whether any of the hull is in liquid.
