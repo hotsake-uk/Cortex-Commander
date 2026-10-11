@@ -146,6 +146,23 @@ namespace RTE {
 		/// @param byShip Whether they come in by ship over their widest spawn zone, rather than appearing in their zones.
 		static void StartBattleMode(int mode, int teamSize, bool byShip);
 
+		/// Whether a battle mode's game is on (won or not yet): the pause menu shows its battle entries then (B-14).
+		static bool IsBattleModeRunning();
+
+		/// Whether a battle mode's game is on and not yet over, with a team you command to give it up (the pause menu's Surrender).
+		static bool CanSurrenderBattle();
+
+		/// Starts the battle mode's game again from the start, set up as it is on the battle panel (the pause menu's Restart battle, as the
+		/// after-battle report's Play again). It happens when the game next runs.
+		static void RestartBattleMode();
+
+		/// The team you command gives up the battle mode's game: it ends as a loss for it and, in Battle Command, the after-battle report
+		/// opens. It happens when the game next runs.
+		static void SurrenderBattleMode();
+
+		/// Opens the sandbox window on its Keys page: every key the tools and the command tool answer to.
+		static void ShowKeys();
+
 		/// The old auto battle's calls, kept for one release for scripts that use them: a team attacking with one faction's units, or any
 		/// faction's (Lua: SandboxAutoBattleSide, SandboxAutoBattleRandom, SandboxStartAutoBattle). Use the SandboxBattle calls instead.
 		static void SetAutoBattleSide(int team, const std::string& faction, int budget);

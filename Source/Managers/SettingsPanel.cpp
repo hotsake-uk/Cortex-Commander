@@ -1204,6 +1204,47 @@ void DebugMan::SettingsGUI() {
 		if (SliderI("Frame cap (0 = none)", &frameCap, 0, 360)) {
 			g_WindowMan.SetFrameCap(frameCap > 0 && frameCap < 30 ? 30 : frameCap);
 		}
+		Heading("Battle alerts and display (Battle Command)");
+		Toggle("Battle alerts", g_SettingsMan.ShowBattleAlerts(), [](bool on) { g_SettingsMan.SetShowBattleAlerts(on); });
+		Tip("What needs your eye in a battle (your units under attack or falling, a strike coming in, your flag taken...) listed at the top left of the view for a while, each to click and look there. Off: not listed, but still kept in the alert log, and Space and Shift+Space still look at them.");
+		if (int lines = g_SettingsMan.BattleAlertLines(); SliderI("Battle alert lines", &lines, 1, 12)) {
+			g_SettingsMan.SetBattleAlertLines(lines);
+		}
+		Tip("The most alerts listed at once: a new one pushes the oldest off. 6 as before.");
+		if (int seconds = g_SettingsMan.BattleAlertSeconds(); SliderI("Battle alert time", &seconds, 3, 60, "%d s")) {
+			g_SettingsMan.SetBattleAlertSeconds(seconds);
+		}
+		Tip("How long an alert stays listed, the last two seconds fading. 12 s as before.");
+		Toggle("Battle alert sounds", g_SettingsMan.BattleAlertSounds(), [](bool on) { g_SettingsMan.SetBattleAlertSounds(on); });
+		Tip("A short sound as each alert comes, one for each kind (under attack, a unit lost, your brain or flag, a strike, reinforcements...), so you hear what needs you without looking. Several at once make one sound.");
+		if (float volume = g_SettingsMan.BattleAlertVolume() * 100.0F; Slider("Battle alert volume", &volume, 0.0F, 100.0F, "%.0f%%")) {
+			g_SettingsMan.SetBattleAlertVolume(volume / 100.0F);
+		}
+		Tip("How loud the alert sounds are, under the game's own sound volume.");
+		Toggle("Kill feed", g_SettingsMan.ShowBattleKillFeed(), [](bool on) { g_SettingsMan.SetShowBattleKillFeed(on); });
+		Tip("Who killed whom in a battle, listed at the top right of the view, each side in its colour.");
+		if (int lines = g_SettingsMan.BattleKillLines(); SliderI("Kill feed lines", &lines, 1, 12)) {
+			g_SettingsMan.SetBattleKillLines(lines);
+		}
+		Tip("The most kills listed at once: a new one pushes the oldest off. 6 as before.");
+		if (int seconds = g_SettingsMan.BattleKillSeconds(); SliderI("Kill feed time", &seconds, 3, 60, "%d s")) {
+			g_SettingsMan.SetBattleKillSeconds(seconds);
+		}
+		Tip("How long a kill stays listed, the last two seconds fading. 10 s as before.");
+		Toggle("Ask before losing a battle setup", g_SettingsMan.BattleAskFirst(), [](bool on) { g_SettingsMan.SetBattleAskFirst(on); });
+		Tip("The battle panel asks first before a saved setup is deleted or saved over, and before a battle that's on is started again or stopped. Ctrl+click skips the question either way. Off is the same as ticking \"Don't ask again\".");
+		Toggle("Show battle info", g_SettingsMan.ShowBattleInfo(), [](bool on) { g_SettingsMan.SetShowBattleInfo(on); });
+		Tip("While a battle is on, a panel under the score: each team's tally, units in and fallen, respawns left, and how many are waiting to come back and when the next does. The same as the box on the battle panel.");
+		Toggle("Show battle objectives", g_SettingsMan.ShowBattleObjectives(), [](bool on) { g_SettingsMan.SetShowBattleObjectives(on); });
+		Tip("What the game is about lit up on the map and the map window: flags, VIPs, hills, assault objectives and goals. The same as the box on the battle panel.");
+		if (int look = g_SettingsMan.BattleObjectiveLook(); Combo("Battle objective look", &look, "Each mode's own\0Glowing ring\0Glowing outline\0Glowing ground line\0Glowing terrain\0")) {
+			g_SettingsMan.SetBattleObjectiveLook(look);
+		}
+		Tip("How zone objectives (hills, assault objectives, goals) are lit up: as the mode has them, or all the same way. Flags and VIPs always get a ring.");
+		Toggle("Show spawn zones on the map", g_SettingsMan.ShowBattleSpawnZones(), [](bool on) { g_SettingsMan.SetShowBattleSpawnZones(on); });
+		Tip("The outline and shading of each team's spawn zones, on the map and the map window. Off, they're hidden (still shown while you draw one or place a point).");
+		Toggle("Show mode zones on the map", g_SettingsMan.ShowBattleModeZones(), [](bool on) { g_SettingsMan.SetShowBattleModeZones(on); });
+		Tip("The outline and shading of a mode's own zones (hills, assault objectives, goal zones), on the map and the map window. Off, they're hidden but for their names (still shown while you draw one).");
 		Heading("Unit speech");
 		Toggle("Unit speech", UnitSpeech::IsEnabled(), [](bool on) { UnitSpeech::SetEnabled(on); });
 		Tip("Units say short lines over their heads when their AI does something: \"Take cover!\", \"Reloading!\", \"Got one!\". The lines are in Base.rte/Speech.ini, and mods can add their own.");
