@@ -148,6 +148,8 @@ void SettingsMan::Clear() {
 	m_AISpawnDiggerType = 1;
 	m_AISteadyBeforeJet = true;
 	m_AIWaitForFuel = true;
+	m_AIEnemyBuysReinforcements = true;
+	m_AIEnemyUsesPowers = true;
 	m_AIUsesVehicles = true;
 	m_AIBreaksWhenShaken = true;
 	m_DeadCrewFallOut = true;
@@ -731,6 +733,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AISpawnDiggerType", { int type = 1; reader >> type; SetAISpawnDiggerType(type); });
 	MatchProperty("AISteadyBeforeJet", { reader >> m_AISteadyBeforeJet; });
 	MatchProperty("AIWaitForFuel", { reader >> m_AIWaitForFuel; });
+	MatchProperty("AIEnemyBuysReinforcements", { reader >> m_AIEnemyBuysReinforcements; });
+	MatchProperty("AIEnemyUsesPowers", { reader >> m_AIEnemyUsesPowers; });
 	MatchProperty("AIUsesVehicles", { reader >> m_AIUsesVehicles; });
 	MatchProperty("AIBreaksWhenShaken", { reader >> m_AIBreaksWhenShaken; });
 	MatchProperty("DeadCrewFallOut", { reader >> m_DeadCrewFallOut; });
@@ -1207,6 +1211,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AIRecklessness", m_AIRecklessness);
 	writer.NewPropertyWithValue("AISteadyBeforeJet", m_AISteadyBeforeJet);
 	writer.NewPropertyWithValue("AIWaitForFuel", m_AIWaitForFuel);
+	writer.NewPropertyWithValue("AIEnemyBuysReinforcements", m_AIEnemyBuysReinforcements);
+	writer.NewPropertyWithValue("AIEnemyUsesPowers", m_AIEnemyUsesPowers);
 	writer.NewPropertyWithValue("AIUsesVehicles", m_AIUsesVehicles);
 	writer.NewPropertyWithValue("AIBreaksWhenShaken", m_AIBreaksWhenShaken);
 	writer.NewPropertyWithValue("DeadCrewFallOut", m_DeadCrewFallOut);
