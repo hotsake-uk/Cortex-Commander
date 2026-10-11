@@ -297,7 +297,12 @@ namespace RTE {
 
 		/// Sets this HDFirearm's pre fire sound. Ownership IS transferred!
 		/// @param newSound The new SoundContainer for this HDFirearm's pre fire sound.
-		void SetPreFireSound(SoundContainer* newSound) { m_PreFireSound = newSound; }
+		void SetPreFireSound(SoundContainer* newSound) {
+			m_PreFireSound = newSound;
+			if (m_PreFireSound) {
+				m_PreFireSound->SetDefaultMixCategory(AudioMan::MIX_WEAPONS);
+			}
+		}
 
 		/// Gets this HDFirearm's fire sound. Ownership is NOT transferred!
 		/// @return The SoundContainer for this HDFirearm's fire sound.
@@ -305,7 +310,12 @@ namespace RTE {
 
 		/// Sets this HDFirearm's fire sound. Ownership IS transferred!
 		/// @param newSound The new SoundContainer for this HDFirearm's fire sound.
-		void SetFireSound(SoundContainer* newSound) { m_FireSound = newSound; }
+		void SetFireSound(SoundContainer* newSound) {
+			m_FireSound = newSound;
+			if (m_FireSound) {
+				m_FireSound->SetDefaultMixCategory(AudioMan::MIX_WEAPONS);
+			}
+		}
 
 		/// Gets this HDFirearm's fire echo sound. Ownership is NOT transferred!
 		/// @return The SoundContainer for this HDFirearm's fire echo sound.
@@ -313,7 +323,12 @@ namespace RTE {
 
 		/// Sets this HDFirearm's fire echo sound. Ownership IS transferred!
 		/// @param newSound The new SoundContainer for this HDFirearm's fire echo sound.
-		void SetFireEchoSound(SoundContainer* newSound) { m_FireEchoSound = newSound; }
+		void SetFireEchoSound(SoundContainer* newSound) {
+			m_FireEchoSound = newSound;
+			if (m_FireEchoSound) {
+				m_FireEchoSound->SetDefaultMixCategory(AudioMan::MIX_WEAPONS);
+			}
+		}
 
 		/// Gets this HDFirearm's active sound. Ownership is NOT transferred!
 		/// @return The SoundContainer for this HDFirearm's active sound.
@@ -321,7 +336,12 @@ namespace RTE {
 
 		/// Sets this HDFirearm's active sound. Ownership IS transferred!
 		/// @param newSound The new SoundContainer for this HDFirearm's active sound.
-		void SetActiveSound(SoundContainer* newSound) { m_ActiveSound = newSound; }
+		void SetActiveSound(SoundContainer* newSound) {
+			m_ActiveSound = newSound;
+			if (m_ActiveSound) {
+				m_ActiveSound->SetDefaultMixCategory(AudioMan::MIX_WEAPONS);
+			}
+		}
 
 		/// Gets this HDFirearm's deactivation sound. Ownership is NOT transferred!
 		/// @return The SoundContainer for this HDFirearm's deactivation sound.
@@ -329,7 +349,12 @@ namespace RTE {
 
 		/// Sets this HDFirearm's deactivation sound. Ownership IS transferred!
 		/// @param newSound The new SoundContainer for this HDFirearm's deactivation sound.
-		void SetDeactivationSound(SoundContainer* newSound) { m_DeactivationSound = newSound; }
+		void SetDeactivationSound(SoundContainer* newSound) {
+			m_DeactivationSound = newSound;
+			if (m_DeactivationSound) {
+				m_DeactivationSound->SetDefaultMixCategory(AudioMan::MIX_WEAPONS);
+			}
+		}
 
 		/// Gets this HDFirearm's empty sound. Ownership is NOT transferred!
 		/// @return The SoundContainer for this HDFirearm's empty sound.
@@ -337,7 +362,12 @@ namespace RTE {
 
 		/// Sets this HDFirearm's empty sound. Ownership IS transferred!
 		/// @param newSound The new SoundContainer for this HDFirearm's empty sound.
-		void SetEmptySound(SoundContainer* newSound) { m_EmptySound = newSound; }
+		void SetEmptySound(SoundContainer* newSound) {
+			m_EmptySound = newSound;
+			if (m_EmptySound) {
+				m_EmptySound->SetDefaultMixCategory(AudioMan::MIX_WEAPONS);
+			}
+		}
 
 		/// Gets this HDFirearm's reload start sound. Ownership is NOT transferred!
 		/// @return The SoundContainer for this HDFirearm's reload start sound.
@@ -345,7 +375,12 @@ namespace RTE {
 
 		/// Sets this HDFirearm's reload start sound. Ownership IS transferred!
 		/// @param newSound The new SoundContainer for this HDFirearm's reload start sound.
-		void SetReloadStartSound(SoundContainer* newSound) { m_ReloadStartSound = newSound; }
+		void SetReloadStartSound(SoundContainer* newSound) {
+			m_ReloadStartSound = newSound;
+			if (m_ReloadStartSound) {
+				m_ReloadStartSound->SetDefaultMixCategory(AudioMan::MIX_WEAPONS);
+			}
+		}
 
 		/// Gets this HDFirearm's reload end sound. Ownership is NOT transferred!
 		/// @return The SoundContainer for this HDFirearm's reload end sound.
@@ -353,7 +388,12 @@ namespace RTE {
 
 		/// Sets this HDFirearm's reload end sound. Ownership IS transferred!
 		/// @param newSound The new SoundContainer for this HDFirearm's reload end sound.
-		void SetReloadEndSound(SoundContainer* newSound) { m_ReloadEndSound = newSound; }
+		void SetReloadEndSound(SoundContainer* newSound) {
+			m_ReloadEndSound = newSound;
+			if (m_ReloadEndSound) {
+				m_ReloadEndSound->SetDefaultMixCategory(AudioMan::MIX_WEAPONS);
+			}
+		}
 
 		/// Resest all the timers used by this. Can be emitters, etc. This is to
 		/// prevent backed up emissions to come out all at once while this has been

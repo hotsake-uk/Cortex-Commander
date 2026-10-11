@@ -686,6 +686,14 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SoundVolume", { g_AudioMan.SetSoundsVolume(std::stof(reader.ReadPropValue()) / 100.0F); });
 	MatchProperty("MuteSounds", { reader >> g_AudioMan.m_MuteSounds; });
 	MatchProperty("MuteAudioOnFocusLoss", { reader >> g_AudioMan.m_MuteAudioOnFocusLoss; });
+	MatchProperty("SoundMixWeaponsVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_WEAPONS, std::stof(reader.ReadPropValue()) / 100.0F); });
+	MatchProperty("SoundMixExplosionsVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_EXPLOSIONS, std::stof(reader.ReadPropValue()) / 100.0F); });
+	MatchProperty("SoundMixImpactsVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_IMPACTS, std::stof(reader.ReadPropValue()) / 100.0F); });
+	MatchProperty("SoundMixFootstepsVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_FOOTSTEPS, std::stof(reader.ReadPropValue()) / 100.0F); });
+	MatchProperty("SoundMixVoicesVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_VOICES, std::stof(reader.ReadPropValue()) / 100.0F); });
+	MatchProperty("SoundMixEnginesVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_ENGINES, std::stof(reader.ReadPropValue()) / 100.0F); });
+	MatchProperty("SoundMixWorldVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_WORLD, std::stof(reader.ReadPropValue()) / 100.0F); });
+	MatchProperty("SoundMixUIVolume", { g_AudioMan.SetSoundMixVolume(AudioMan::MIX_UI, std::stof(reader.ReadPropValue()) / 100.0F); });
 	MatchProperty("SoundPanningEffectStrength", {
 		reader >> g_AudioMan.m_SoundPanningEffectStrength;
 
@@ -1500,6 +1508,9 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("SoundVolume", g_AudioMan.m_SoundsVolume * 100);
 	writer.NewPropertyWithValue("MuteSounds", g_AudioMan.m_MuteSounds);
 	writer.NewPropertyWithValue("MuteAudioOnFocusLoss", g_AudioMan.m_MuteAudioOnFocusLoss);
+	for (int category = 0; category < AudioMan::MIX_CATEGORY_COUNT; ++category) {
+		writer.NewPropertyWithValue("SoundMix" + AudioMan::c_SoundMixCategoryNames[category] + "Volume", g_AudioMan.m_SoundMixVolumes[category] * 100);
+	}
 	writer.NewPropertyWithValue("SoundPanningEffectStrength", g_AudioMan.m_SoundPanningEffectStrength);
 
 	//////////////////////////////////////////////////

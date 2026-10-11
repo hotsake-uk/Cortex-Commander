@@ -350,6 +350,7 @@ int MOSRotating::ReadProperty(const std::string_view& propName, Reader& reader) 
 			m_GibSound = new SoundContainer;
 		}
 		reader >> m_GibSound;
+		m_GibSound->SetDefaultMixCategory(AudioMan::MIX_EXPLOSIONS);
 	});
 	MatchProperty("EffectOnGib", { reader >> m_EffectOnGib; });
 	MatchProperty("LoudnessOnGib", { reader >> m_LoudnessOnGib; });

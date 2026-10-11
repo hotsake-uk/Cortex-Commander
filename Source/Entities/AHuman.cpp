@@ -352,6 +352,7 @@ int AHuman::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("StrideSound", {
 		m_StrideSound = new SoundContainer;
 		reader >> m_StrideSound;
+		m_StrideSound->SetDefaultMixCategory(AudioMan::MIX_FOOTSTEPS);
 	});
 	MatchProperty("StandLimbPath", { reader >> m_Paths[FGROUND][STAND]; });
 	MatchProperty("StandLimbPathBG", { reader >> m_Paths[BGROUND][STAND]; });

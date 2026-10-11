@@ -192,35 +192,43 @@ int HDFirearm::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("PreFireSound", {
 		m_PreFireSound = new SoundContainer;
 		reader >> m_PreFireSound;
+		m_PreFireSound->SetDefaultMixCategory(AudioMan::MIX_WEAPONS);
 	});
 	MatchProperty("FireSound", {
 		m_FireSound = new SoundContainer;
 		reader >> m_FireSound;
+		m_FireSound->SetDefaultMixCategory(AudioMan::MIX_WEAPONS);
 	});
 	MatchProperty("FireEchoSound", {
 		m_FireEchoSound = new SoundContainer;
 		reader >> m_FireEchoSound;
+		m_FireEchoSound->SetDefaultMixCategory(AudioMan::MIX_WEAPONS);
 		m_FireEchoSound->SetSoundOverlapMode(SoundContainer::SoundOverlapMode::RESTART);
 	});
 	MatchProperty("ActiveSound", {
 		m_ActiveSound = new SoundContainer;
 		reader >> m_ActiveSound;
+		m_ActiveSound->SetDefaultMixCategory(AudioMan::MIX_WEAPONS);
 	});
 	MatchProperty("DeactivationSound", {
 		m_DeactivationSound = new SoundContainer;
 		reader >> m_DeactivationSound;
+		m_DeactivationSound->SetDefaultMixCategory(AudioMan::MIX_WEAPONS);
 	});
 	MatchProperty("EmptySound", {
 		m_EmptySound = new SoundContainer;
 		reader >> m_EmptySound;
+		m_EmptySound->SetDefaultMixCategory(AudioMan::MIX_WEAPONS);
 	});
 	MatchProperty("ReloadStartSound", {
 		m_ReloadStartSound = new SoundContainer;
 		reader >> m_ReloadStartSound;
+		m_ReloadStartSound->SetDefaultMixCategory(AudioMan::MIX_WEAPONS);
 	});
 	MatchProperty("ReloadEndSound", {
 		m_ReloadEndSound = new SoundContainer;
 		reader >> m_ReloadEndSound;
+		m_ReloadEndSound->SetDefaultMixCategory(AudioMan::MIX_WEAPONS);
 	});
 	MatchProperty("ReloadEndOffset", { reader >> m_ReloadEndOffset; });
 	MatchProperty("RateOfFire", { reader >> m_RateOfFire; });
