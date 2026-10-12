@@ -104,6 +104,22 @@ namespace SandboxDetail {
 		ClearRespawn();
 	}
 
+	/// Takes away every character made as yours except the current one, wherever it has got to: only ever one of you.
+	void RemoveStrayPlayers() {
+		if (s_PlayerMade.empty()) {
+			return;
+		}
+		const Actor* current = GetRef(s_PlayerUnit);
+		if (!current) {
+			return;
+		}
+		for (Actor* actor: SandboxAccess::Actors()) {
+			if (actor != current && !actor->IsSetToDelete() && std::find(s_PlayerMade.begin(), s_PlayerMade.end(), static_cast<long>(actor->GetUniqueID())) != s_PlayerMade.end()) {
+				actor->SetToDelete(true);
+			}
+		}
+	}
+
 	/// Forgets any death in progress: the character was taken away on purpose, or is back, so nothing is to be respawned.
 	void ClearRespawn() {
 		s_PlayerWasPlaying = false;
@@ -214,6 +230,8 @@ namespace SandboxDetail {
 		actor->SetPos(place);
 		g_MovableMan.AddActor(actor);
 		s_PlayerUnit = {actor, static_cast<long>(actor->GetUniqueID())};
+		s_PlayerMade.push_back(s_PlayerUnit.ID);
+		RemoveStrayPlayers();
 		return actor;
 	}
 
@@ -316,6 +334,7 @@ namespace SandboxDetail {
 			}
 			return;
 		}
+		RemoveStrayPlayers();
 		bool playing = s_Possessed == actor;
 		if (playing) {
 			s_PlayerWasPlaying = true;
