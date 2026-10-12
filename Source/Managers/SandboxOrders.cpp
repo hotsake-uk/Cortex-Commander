@@ -2330,13 +2330,20 @@ namespace SandboxDetail {
 	}
 
 	void FlySelectedTo(const Vector& point, bool shift) {
-		// As Jetpack here: the point in the sky kept as it is, flown to by those with a jetpack. (A plan's step goes to the ground, as plans do.)
+		// As Jetpack here: the point in the sky kept as it is, flown to by those with a jetpack.
 		if (!shift) {
 			JetpackHereSelected(point, false);
 			return;
 		}
+		// A plan's step flies there too (PlanStep::Sky). (It went to the ground under the point, as a plan's move: a unit already standing
+		// under it was there at once, and its "Fly" step ended with it put on hold where it stood.)
+		struct SkyScope {
+			bool Was = s_SkyOrder;
+			SkyScope() { s_SkyOrder = true; }
+			~SkyScope() { s_SkyOrder = Was; }
+		} skyScope;
 		PlanStepFor(UnitsToMove(0, true), PlanKind::Move, point, nullptr);
-		MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::Move)]);
+		MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::JetpackHere)]);
 	}
 
 	/// The nearest enemy of a side to a point, within 400 px: what Attack goes for at a click near it. Null for none.
@@ -2371,8 +2378,17 @@ namespace SandboxDetail {
 		switch (step.Kind) {
 			case PlanKind::Move:
 			case PlanKind::AttackMove:
-				// (Just over the ground under the spot, as for a move: see MoveUnitsTo.)
-				SendUnit(unit, step.Place + Vector(0.0F, -4.0F), nullptr, false, step.Kind == PlanKind::Move ? "move (plan)" : "attack-move (plan)");
+				if (step.Sky) {
+					// A Fly step: the point in the air for one with a jetpack (a sky order, as Jetpack here gives), the ground under it for the rest.
+					const bool flies = HasSkyJet(unit);
+					const bool was = s_SkyOrder;
+					s_SkyOrder = flies;
+					SendUnit(unit, flies ? step.Place : g_SceneMan.MovePointToGround(step.Place, 20, 3) + Vector(0.0F, -4.0F), nullptr, false, "move (plan, fly)");
+					s_SkyOrder = was;
+				} else {
+					// (Just over the ground under the spot, as for a move: see MoveUnitsTo.)
+					SendUnit(unit, step.Place + Vector(0.0F, -4.0F), nullptr, false, step.Kind == PlanKind::Move ? "move (plan)" : "attack-move (plan)");
+				}
 				if (step.Kind == PlanKind::AttackMove) {
 					unit->SetMovementRule(Actor::MOVE_ENGAGE);
 				}
@@ -2475,13 +2491,14 @@ namespace SandboxDetail {
 					plan.Current = PlanStep();
 					plan.Current.Kind = kind;
 					plan.Current.Facing = facing;
+					plan.Current.Sky = s_SkyOrder;
 					auto order = std::find_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); });
 					plan.Current.Place = order != s_PendingOrders.end() ? order->Waypoint : place;
 					plan.Started = g_TimerMan.GetSimUpdateCount();
 				}
 			}
 		}
-		std::vector<Vector> spots = toPlace ? StandingSpots(place, static_cast<int>(units.size())) : std::vector<Vector>();
+		std::vector<Vector> spots = toPlace && !s_SkyOrder ? StandingSpots(place, static_cast<int>(units.size())) : std::vector<Vector>();
 		if (toPlace) {
 			std::sort(units.begin(), units.end(), [&place](Actor* a, Actor* b) {
 				return g_SceneMan.ShortestDistance(place, a->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude() < g_SceneMan.ShortestDistance(place, b->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
@@ -2499,7 +2516,12 @@ namespace SandboxDetail {
 			step.Target = MakeRef(target);
 			step.Facing = facing;
 			step.Radius = s_SuppressRadius;
-			if (toPlace) {
+			if (toPlace && s_SkyOrder) {
+				// A Fly step: the point itself, those flying spread along it a little apart, as MoveUnitsTo spreads a sky order.
+				step.Sky = true;
+				step.Place = place + Vector((static_cast<float>(i) - static_cast<float>(units.size() - 1) * 0.5F) * 28.0F, 0.0F);
+				g_SceneMan.WrapPosition(step.Place);
+			} else if (toPlace) {
 				step.Place = spots.empty() ? place : spots[std::min(i, spots.size() - 1)];
 			} else if (kind == PlanKind::Defend) {
 				step.Place = !plan.Steps.empty() ? plan.Steps.back().Place : (plan.Running ? plan.Current.Place : unit->GetPos());

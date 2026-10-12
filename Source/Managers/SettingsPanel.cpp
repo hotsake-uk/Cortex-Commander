@@ -1678,6 +1678,11 @@ void DebugMan::SettingsGUI() {
 				g_SettingsMan.SetAIShipRideWait(wait);
 			}
 			Tip("The longest a ship waits for the units it called over, counted from when the first of them gets in, before it flies with those aboard; it goes sooner once all are in or its seats are full, or when it's hit. Also how long a land vehicle waits for its passengers. 20 s, as the game comes.");
+			float dropRing = g_SettingsMan.AIShipRideDropRing();
+			if (Slider("Ship drop-off ring", &dropRing, Normal{150.0F}, 30.0F, 1000.0F, "%.0f px", ImGuiSliderFlags_Logarithmic)) {
+				g_SettingsMan.SetAIShipRideDropRing(dropRing);
+			}
+			Tip("How far round the place its riders are going a ship lets them out: they start jumping as soon as it flies into this ring, low enough to land safely (within about a hull's height and a half of the ground). Higher up inside the ring, it comes down first. 150 px, as the game comes.");
 		}
 		Heading("Take cover order");
 		Toggle("Dig a foxhole when there's no cover", g_SettingsMan.AICoverDigs(), [](bool on) { g_SettingsMan.SetAICoverDigs(on); });
