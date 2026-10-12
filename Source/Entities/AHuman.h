@@ -1244,7 +1244,8 @@ namespace RTE {
 		int MoveAlongRouteWeightless();
 		/// Drops the route but keeps the place it was for, and asks for a new one to it. (ClearMovePath forgets the goal too, and set the
 		/// target to the unit's own place: every refresh told the unit it had arrived.)
-		void RefreshRoute();
+		/// @param keepRoute Whether the route in hand is followed until the new one replaces it (a routine refresh), rather than dropped now.
+		void RefreshRoute(bool keepRoute = false);
 		void MoverTrace(const std::string& text) const;
 		/// The navigation debug overlay's view of the route-follower (level 2): the route ahead, the point in hand, and a flight's take-off,
 		/// shaft point and landing.
