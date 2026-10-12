@@ -19,8 +19,8 @@
 --   CreatureHoverRange   for a flier that hovers (C8): how far off its prey it holds in the air, in pixels (default 40)
 --   CreatureDiveRange    for a flier that dives: how close it must be, in the open, to dive at its prey, in pixels (default 160)
 --   CreatureScatters     1 for a flier that breaks off and flies away for a moment when it is hurt (a carrion bat)
---   CreatureChargeRange  for one that charges (a boar): how close its prey must be, level and in the open, to charge it, in pixels;
---                        0 for one that doesn't (default 0)
+--   CreatureChargeRange  for one that charges (a boar, a minotaur; four legs or two): how close its prey must be, level and in the open,
+--                        to charge it, in pixels; 0 for one that doesn't (default 0)
 --   CreatureChargeSpeed  how fast it bursts forward in a charge, in m/s (default 9)
 --   CreatureChargeCooldown how long between charges, in ms (default 3000)
 --   CreatureFleeBelow    for a swarm creature (a giant rat): it breaks off its hunt and runs when fewer of its kind than this, itself
@@ -374,8 +374,10 @@ function CreatureBehaviors.ChargeTarget(AI, Owner, Abort)
 	AI.TargetLostTimer:SetSimTimeLimitMS(SharedBehaviors.TargetMemoryMS(4000));
 	local range = Value(Owner, "CreatureAttackRange", 110);
 	local chaseRange = Value(Owner, "CreatureChaseRange", 900);
+	local chargeRange = Value(Owner, "CreatureChargeRange", 0);
 	local Keep = Owner.AIMode == Actor.AIMODE_SENTRY and SharedBehaviors.RememberOrder(AI, Owner) or nil;
 	local ProgressTimer = Timer();
+	local ChargeTimer = Timer();
 	local closest = math.huge;
 	Owner:SetNumberValue("CreatureHuntID", AI.Target.UniqueID);
 	SharedBehaviors.Trace(Owner, "charge: " .. AI.Target.PresetName);
@@ -434,6 +436,17 @@ function CreatureBehaviors.ChargeTarget(AI, Owner, Abort)
 		elseif gap > range and ProgressTimer:IsPastSimMS(4000) then
 			SharedBehaviors.Trace(Owner, "charge: can't get at it");
 			break;
+		end
+		if chargeRange > 0 and gap < chargeRange and gap > range * 1.5 and math.abs(ToTarget.Y) < Owner.MoveHeight * 0.6
+			and ChargeTimer:IsPastSimMS(Value(Owner, "CreatureChargeCooldown", 3000))
+			and SceneMan:CastStrengthSumRay(Owner.EyePos, Target.Pos, 4, rte.grassID) < 50 then
+			-- Close, level and nothing in the way: a charge at it, a burst of speed (what it runs into, its trample sees to).
+			local dir = ToTarget.X < 0 and -1 or 1;
+			Owner.HFlipped = dir < 0;
+			Owner:AddImpulseForce(Vector(dir * Value(Owner, "CreatureChargeSpeed", 9), -1) * Owner.Mass, Vector());
+			ChargeTimer:Reset();
+			ProgressTimer:Reset();
+			SharedBehaviors.Trace(Owner, "charge: bursts at it");
 		end
 		AI.Ctrl.AnalogAim = SceneMan:ShortestDistance(Owner.EyePos, Target.Pos, false).Normalized;
 		if gap <= range and SceneMan:CastStrengthSumRay(Owner.EyePos, Target.Pos, 4, rte.grassID) < 50 then

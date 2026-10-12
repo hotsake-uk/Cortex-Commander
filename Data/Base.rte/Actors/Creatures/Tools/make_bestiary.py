@@ -432,7 +432,9 @@ def stonify(path):
 	text = re.sub(r"CopyOf = Wound (Flesh|Bone) \w+( \w+)?", "CopyOf = Dent Metal No Spark", text)
 	text = text.replace("Organic = 1", "Organic = 0")
 	text = re.sub(r"CopyOf = Gib (?:Flesh|Bone) Small ([A-Z])", lambda m: "CopyOf = Gib Stone Small " + "ABC"[(ord(m.group(1)) - 65) % 3], text)
-	text = re.sub(r"CopyOf = (Gib (?:Flesh|Bone) (?:Tiny|Micro) A|Drop Blood|Blood Spray Particle)", "CopyOf = Gib Stone Tiny A", text)
+	# (Blood drops are MOPixels; the stone dust is an MOSParticle, so the gib's class goes with it.)
+	text = re.sub(r"GibParticle = MOPixel(\n\s*)CopyOf = Drop Blood", r"GibParticle = MOSParticle\1CopyOf = Gib Stone Tiny A", text)
+	text = re.sub(r"CopyOf = (Gib (?:Flesh|Bone) (?:Tiny|Micro) A|Blood Spray Particle)", "CopyOf = Gib Stone Tiny A", text)
 	text = text.replace("CopyOf = Flesh Limb Gib", "CopyOf = Metal Door Gib")
 	with open(path, "w", encoding="utf-8", newline="\n") as handle:
 		handle.write(text)
@@ -466,6 +468,113 @@ def rock(target, size, seed):
 	image.save(target, transparency=0)
 
 
+# ---------------------------------------------------------------------------------------------------------------------------------------
+# Bestiary II: the Basilisk on the Hound's rig; the Giant Beetle on the Scorpion's; the Giant Centipede on the Spider's legs with a long body
+# of its own; the Myconid drawn whole; the Treant, Minotaur and Cyclops on the Civilian's rig.
+
+CRABS.append(dict(name="Basilisk", folder="Basilisk", prefix="Basilisk", scale=1.4, walk=3.8, jump=30, jumpSpeed=6,
+	ramp=[(14, 24, 12), (28, 48, 22), (46, 76, 34), (68, 104, 46), (96, 134, 60), (130, 164, 84)], eyes=(250, 230, 60), outline=(8, 14, 6),
+	header="The Basilisk's body: the Hound's rig 1.4x, in dull green scales."))
+
+BEETLE_RAMP = [(10, 10, 18), (22, 24, 40), (36, 40, 64), (52, 58, 88), (70, 80, 110), (96, 110, 136)]
+CENTIPEDE_RAMP = [(30, 10, 6), (62, 22, 10), (96, 36, 14), (130, 54, 20), (160, 76, 30), (190, 104, 48)]
+TREANT_RAMP = [(24, 18, 10), (44, 32, 16), (66, 48, 24), (88, 64, 32), (74, 92, 36), (98, 120, 48), (130, 150, 64), (170, 186, 96)]
+MINOTAUR_RAMP = [(20, 12, 8), (44, 26, 16), (74, 44, 26), (104, 64, 36), (134, 86, 50), (160, 110, 68), (186, 140, 96), (210, 170, 128)]
+CYCLOPS_RAMP = [(40, 26, 18), (74, 50, 34), (108, 76, 52), (140, 102, 70), (168, 128, 92), (192, 152, 114), (212, 176, 140), (228, 200, 168)]
+
+
+def reshade_set(src_folder, src_prefix, folder, prefix, stems, ramp, scale=1.0, eyes=None, outline=None):
+	"""Another creature's sprites (those whose names start src_prefix + a stem) reshaded into folder under prefix."""
+	src = os.path.join(CREATURES_DIR, src_folder)
+	out = os.path.join(CREATURES_DIR, folder)
+	os.makedirs(out, exist_ok=True)
+	count = 0
+	for stem in stems:
+		for path in sorted(glob.glob(os.path.join(src, src_prefix + stem + "*.png"))):
+			name = os.path.basename(path).replace(src_prefix, prefix, 1)
+			reshade(path, os.path.join(out, name), ramp, scale, eyes=eyes, outline=outline)
+			count += 1
+	return count
+
+
+def centipede_body(target, frame):
+	"""The Giant Centipede's body, 84 x 18: nine plates of red-brown chitin and a head with mandibles at the right. Frame 1 undulates."""
+	width, height = 84, 18
+	image, draw, ink = new_sprite((width, height))
+	dark, mid, light, line = ink((40, 14, 8)), ink((110, 42, 16)), ink((160, 76, 30)), ink((16, 6, 4))
+	for i in range(9):
+		cx = 8 + i * 8
+		dy = (1 if i % 2 == 0 else -1) if frame else 0
+		draw.ellipse((cx - 5, 3 + dy, cx + 5, 14 + dy), fill=mid, outline=line)
+		draw.line((cx - 3, 5 + dy, cx + 3, 5 + dy), fill=light)
+		draw.line((cx - 3, 12 + dy, cx + 3, 12 + dy), fill=dark)
+	draw.ellipse((73, 2, 83, 15), fill=dark, outline=line)
+	draw.point((80, 6), fill=ink((250, 200, 40)))
+	draw.line((82, 5, 83, 1), fill=line)
+	draw.line((82, 12, 83, 16), fill=line)
+	image.save(target, transparency=0)
+
+
+def myconid_body(target, width, height, frame):
+	"""A Myconid: a violet mushroom cap with pale spots over a pale stalk with two dark eyes. Frame 1 squashes the cap a pixel."""
+	image, draw, ink = new_sprite((width, height))
+	cap, cap_dark, spot, stalk, stalk_dark, line = ink((120, 60, 130)), ink((70, 30, 80)), ink((220, 190, 230)), ink((200, 190, 160)), ink((150, 140, 110)), ink((30, 14, 36))
+	squash = 1 if frame else 0
+	cap_bottom = int(height * 0.55)
+	draw.rectangle((int(width * 0.32), int(cap_bottom * 0.6), int(width * 0.68), height - 1), fill=stalk, outline=line)
+	draw.line((int(width * 0.34), height - 2, int(width * 0.66), height - 2), fill=stalk_dark)
+	draw.ellipse((0, squash, width - 1, cap_bottom + squash), fill=cap, outline=line)
+	draw.line((2, cap_bottom + squash - 1, width - 3, cap_bottom + squash - 1), fill=cap_dark)
+	for sx, sy in ((width * 0.25, cap_bottom * 0.4), (width * 0.55, cap_bottom * 0.25), (width * 0.75, cap_bottom * 0.55)):
+		draw.rectangle((int(sx), int(sy) + squash, int(sx) + max(1, width // 15), int(sy) + max(1, height // 13) + squash), fill=spot)
+	eye_y = int(cap_bottom * 0.75)
+	draw.point((int(width * 0.42), eye_y), fill=line)
+	draw.point((int(width * 0.58), eye_y), fill=line)
+	image.save(target, transparency=0)
+
+
+def woodify(path):
+	"""The Treant's body made of living wood: flesh to Wood, wounds to the dry kind (sap, not blood), gibs to planks and splinters (Shared/WoodGibs.ini)."""
+	with open(path, encoding="utf-8") as handle:
+		text = handle.read()
+	text = text.replace("CopyOf = Flesh\n", "CopyOf = Wood\n")
+	def wound(match):
+		kind = match.group(2)
+		return "CopyOf = Wound Dry Flesh " + ("Entry" if kind == "Entry" else "Exit" if kind == "Exit" else "Body")
+	text = re.sub(r"CopyOf = Wound (Flesh|Bone) (\w+)( \w+)?", wound, text)
+	text = re.sub(r"CopyOf = Gib (?:Flesh|Bone) Small ([A-Z])", lambda m: "CopyOf = Gib Wood Plank " + "ABC"[(ord(m.group(1)) - 65) % 3], text)
+	text = re.sub(r"GibParticle = MOPixel(\n\s*)CopyOf = Drop Blood", r"GibParticle = MOSParticle\1CopyOf = Gib Wood Splinter", text)
+	text = re.sub(r"CopyOf = (Gib (?:Flesh|Bone) (?:Tiny|Micro) A|Blood Spray Particle)", "CopyOf = Gib Wood Splinter", text)
+	with open(path, "w", encoding="utf-8", newline="\n") as handle:
+		handle.write(text)
+
+
+def bestiary_two():
+	count = reshade_set("Scorpion", "Scorpion", "GiantBeetle", "Beetle", ["BodyA", "LegFGA", "LegBGA"], BEETLE_RAMP, eyes=(200, 40, 20), outline=(4, 4, 10))
+	count += reshade_set("GiantSpider", "Spider", "GiantCentipede", "Centipede", ["LegFGA", "LegBGA"], CENTIPEDE_RAMP, outline=(16, 6, 4))
+	for frame in (0, 1):
+		centipede_body(os.path.join(CREATURES_DIR, "GiantCentipede", "CentipedeBodyA%03d.png" % frame), frame)
+		count += 1
+	os.makedirs(os.path.join(CREATURES_DIR, "Myconid"), exist_ok=True)
+	for frame in (0, 1):
+		myconid_body(os.path.join(CREATURES_DIR, "Myconid", "MyconidBodyA%03d.png" % frame), 30, 26, frame)
+		myconid_body(os.path.join(CREATURES_DIR, "Myconid", "MyconidSproutBodyA%03d.png" % frame), 18, 16, frame)
+		count += 2
+	print("wrote", count, "Bestiary II sprites")
+	treant = two_legged("Treant", "TreantBody.ini", 2.0, "Treant", "Treant",
+		["// The Treant's body: the Civilian's rig twice as big, in bark and moss; its flesh is Wood, its wounds dry, its gibs planks and splinters.",
+		"// GENERATED by Base.rte/Actors/Creatures/Tools/make_bestiary.py - edit that and re-run. The Treant itself is Treant.ini."], TREANT_RAMP)
+	woodify(treant)
+	two_legged("Minotaur", "MinotaurBody.ini", 1.8, "Minotaur", "Minotaur",
+		["// The Minotaur's body: the Civilian's rig 1.8x, in dark brown hide.",
+		"// GENERATED by Base.rte/Actors/Creatures/Tools/make_bestiary.py - edit that and re-run. The Minotaur itself is Minotaur.ini."], MINOTAUR_RAMP)
+	two_legged("Cyclops", "CyclopsBody.ini", 2.2, "Cyclops", "Cyclops",
+		["// The Cyclops' body: the Civilian's rig 2.2x, in weathered tan skin.",
+		"// GENERATED by Base.rte/Actors/Creatures/Tools/make_bestiary.py - edit that and re-run. The Cyclops itself is Cyclops.ini."], CYCLOPS_RAMP)
+	rock(os.path.join(CREATURES_DIR, "Cyclops", "CyclopsBoulder.png"), 22, 6)
+	print("wrote the Treant, Minotaur and Cyclops rigs and the Cyclops' boulder")
+
+
 def main():
 	# Four legs.
 	for c in CRABS:
@@ -486,6 +595,7 @@ def main():
 	rock(os.path.join(CREATURES_DIR, "StoneGolem", "StoneTinyA.png"), 4, 4)
 	rock(os.path.join(CREATURES_DIR, "CaveTroll", "TrollBoulder.png"), 16, 5)
 	print("wrote the rocks")
+	bestiary_two()
 
 
 if __name__ == "__main__":

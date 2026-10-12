@@ -6,6 +6,7 @@
 --   TrollThrowRange     how far it throws, in pixels (default 420)
 --   TrollThrowCooldown  how long between throws, in ms (default 4000)
 --   TrollThrowSpeed     how fast the boulder leaves its hand, in m/s (default 22)
+-- and a string value, TrollThrowRock, the MOSRotating it throws (default Troll Boulder; the Cyclops throws its own).
 
 local function Number(self, key, default)
 	return self:NumberValueExists(key) and self:GetNumberValue(key) or default;
@@ -67,7 +68,7 @@ function Update(self)
 	if not vel then
 		return;
 	end
-	local rock = CreateMOSRotating("Troll Boulder", "Base.rte");
+	local rock = CreateMOSRotating(self:StringValueExists("TrollThrowRock") and self:GetStringValue("TrollThrowRock") or "Troll Boulder", "Base.rte");
 	if not rock then
 		return;
 	end
