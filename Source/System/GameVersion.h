@@ -5,7 +5,7 @@
 namespace RTE {
 
 #pragma region Game Version
-	static constexpr const char* c_VersionString = "8.5.192";
+	static constexpr const char* c_VersionString = "8.5.193";
 	static const version::Semver200_version c_GameVersion = version::Semver200_version(c_VersionString);
 #pragma endregion
 } // namespace RTE
