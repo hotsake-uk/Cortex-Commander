@@ -1,6 +1,6 @@
 """Makes the flying ships' pictures (FS-1) in the look of the base game's art, as MakeVehicleSprites does: 8-bit in the game's palette,
-index 0 the see-through mask colour, lit from the upper left, with a little dithering. The ships fly on the drop ship's engines, which
-keep their own pictures.
+index 0 the see-through mask colour, lit from the upper left, with a little dithering. The ships' engines are drawn by
+MakeShipEngines.py.
 
 The Gunship: a side-on hull, facing right, with an open cabin under its roof where the crew show from the waist up (the pilot at the
 front behind a framed windscreen, a gunner at each end, passengers between), a tail boom with a fin, and the buy menu's icon.
