@@ -3,6 +3,9 @@
 import os
 import sys
 
+# The module written: its .rte, the prefix of its part presets ("Medieval Knight Head") and its default speech set. Tools/FellLegion/actors.py
+# sets these to its own and reuses everything below.
+MODULE = "Medieval"
 OUT = os.path.join(sys.argv[1], "Medieval.rte/Actors.ini")
 
 UNITS = [
@@ -270,7 +273,7 @@ def nature(u):
 
 def speech(u):
 	"""The unit's speech set (Medieval.rte/Speech): the faction's own lines, or the skeletons'."""
-	return f"\n\tSpeechSet = {u.get('speech', 'Medieval')}"
+	return f"\n\tSpeechSet = {u.get('speech', MODULE)}"
 
 
 def vec(x, y, indent):
@@ -291,8 +294,8 @@ def gibs(indent, *items):
 
 def parts(u):
 	k = u["key"]
-	d = f"Medieval.rte/Actors/{k.replace(' ', '')}"
-	p = f"Medieval {k}"
+	d = f"{MODULE}.rte/Actors/{k.replace(' ', '')}"
+	p = f"{MODULE} {k}"
 	metalGib = ("MOSParticle", "Gib Metal Grey Tiny A", 3, "") if u["metal"] else ("MOSParticle", gib(u, "Gib Flesh Tiny A"), 2, "")
 	return f"""
 ///////////////////////////////////////////////////////////////////////
@@ -525,8 +528,8 @@ AddActor = Leg
 
 def actor(u):
 	k = u["key"]
-	d = f"Medieval.rte/Actors/{k.replace(' ', '')}"
-	p = f"Medieval {k}"
+	d = f"{MODULE}.rte/Actors/{k.replace(' ', '')}"
+	p = f"{MODULE} {k}"
 	groups = "\n".join(f"\tAddToGroup = {g}" for g in ["Actors"] + u["groups"])
 	inv = "\n".join(f"\tAddInventory = {cls}\n\t\tCopyOf = {name}" for cls, name in u["inventory"])
 	metalGib = ("MOSParticle", "Gib Metal Grey Tiny A", 4, "") if u["metal"] else ("MOSParticle", gib(u, "Gib Flesh Micro A"), 3, "")
@@ -748,13 +751,18 @@ AddEffect = AEJetpack
 	CanAdjustAngleWhileFiring = 0
 """
 
-with open(OUT, "w") as f:
-	f.write(HEADER)
-	done = set()
-	for u in UNITS:
-		if u["key"] not in done:
-			f.write(parts(u))
-			done.add(u["key"])
-	for u in UNITS:
-		f.write(actor(u))
-print("actors done")
+def main():
+	with open(OUT, "w") as f:
+		f.write(HEADER)
+		done = set()
+		for u in UNITS:
+			if u["key"] not in done:
+				f.write(parts(u))
+				done.add(u["key"])
+		for u in UNITS:
+			f.write(actor(u))
+	print("actors done")
+
+
+if __name__ == "__main__":
+	main()

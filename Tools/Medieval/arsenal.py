@@ -626,4 +626,5 @@ def main():
 	print("arsenal sprites done")
 
 
-main()
+if __name__ == "__main__":
+	main()
