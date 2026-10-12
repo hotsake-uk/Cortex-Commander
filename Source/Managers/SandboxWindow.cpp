@@ -177,7 +177,7 @@ namespace SandboxDetail {
 		if (PoursLiquid(kind) && !FluidSim::IsEnabled()) {
 			return "Flowing liquids are off (World > Simulations, or F6 > Water): nothing is poured.";
 		}
-		if (kind == Tool::CollapseArea && !TerrainCollapse::IsEnabled()) {
+		if ((kind == Tool::CollapseArea || kind == Tool::HoldGround) && !TerrainCollapse::IsEnabled()) {
 			return "Collapsing terrain is off (F6 > Falling ground): nothing falls.";
 		}
 		if (PoursPowder(kind) && !FluidSim::PowdersEnabled()) {
@@ -264,6 +264,8 @@ namespace SandboxDetail {
 				return "Drag along the ground to put down candles: tapers, pillars and stubs in white, ivory, red and beeswax. Set one alight with fire (the Fire brush, a flame, burning grass beside it) and it burns like a real one: a small steady flame that lights up round it, the wax melting down from the top and running down the sides, until it's burnt down. Water, a strong wind, a blast or rain in the open puts it out; light it again and it carries on.";
 			case Tool::CollapseArea:
 				return "Drag out a box on the world: all the ground in it breaks loose and falls, rock, earth, sand, wood, buildings and all (not doors). Each piece lands as its material does: concrete and glass shatter, earth and stone crack, sand crumbles, wood splinters, metal bends. What only the box held up comes down too. A big box falls as rubble. Shift keeps it square, Escape drops it, Ctrl+Z puts it all back. Up to 800 px either way.";
+			case Tool::HoldGround:
+				return "Marks out where the ground never falls, as if it were bedrock. Drag out a box, or click the corners of a polygon (click the first corner again, press Enter or right click to close it; Backspace takes back a corner, Escape drops it). Ground inside never breaks loose, and holds up the ground joined to it, which can still snap off at a thin neck or a long overhang as it would from bedrock. It can still be dug, shot and blasted away; ground put back there is held too. Right click a zone to take it away; Ctrl+Z undoes. Kept for this map until another starts, and saved with a battle setup when its Hold zones box is ticked.";
 			case Tool::TerrainOther:
 				return "Paints the terrain chosen under \"More terrain...\": the base game's ground (topsoil, bedrock, red and lunar earth, snow, metal, ...).";
 			case Tool::Rope:
@@ -421,6 +423,8 @@ namespace SandboxDetail {
 				return {Icon::Chunk, MaterialMarkColor(s_OtherTerrain, 255)};
 			case Tool::CollapseArea:
 				return {Icon::Down, IM_COL32(242, 150, 60, 255)};
+			case Tool::HoldGround:
+				return {Icon::Wall, IM_COL32(120, 200, 255, 255)};
 			case Tool::Rope: {
 				const RopeSim::TypeInfo& type = RopeSim::GetType(s_RopeType);
 				return {Icon::Rope, IM_COL32(type.R, type.G, type.B, 255)};
@@ -4732,7 +4736,7 @@ namespace SandboxDetail {
 		    {"Paint", "Liquids", {Tool::Water, Tool::Lava, Tool::Acid, Tool::Oil, Tool::Mud, Tool::Tar, Tool::Mercury, Tool::Fuel, Tool::Cryo, Tool::Blood, Tool::PourOther, Tool::WaterSpawner}},
 		    {"Paint", "Fire and gas", {Tool::Fire, Tool::Smoke, Tool::ToxicGas, Tool::Methane, Tool::Steam}},
 		    {"Paint", "Loose", {Tool::LooseSand, Tool::LooseSnow, Tool::Gravel, Tool::GlassShards, Tool::Boulder, Tool::Slab}},
-		    {"Paint", "Terrain", {Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::TreeTrunk, Tool::Concrete, Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::Metal, Tool::TerrainOther, Tool::CollapseArea}},
+		    {"Paint", "Terrain", {Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::TreeTrunk, Tool::Concrete, Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::Metal, Tool::TerrainOther, Tool::CollapseArea, Tool::HoldGround}},
 		    {"Paint", "Plants", {Tool::Plants, Tool::Cacti, Tool::Mushrooms, Tool::Trees, Tool::GrowGrass, Tool::Candles}},
 		    {"Paint", "Ropes", {Tool::Rope, Tool::RopeCut}},
 		    {"Boom", "Blasts", {Tool::Grenade, Tool::BigBomb, Tool::Napalm, Tool::Lightning, Tool::Demolition, Tool::BunkerBuster, Tool::Meteor}},

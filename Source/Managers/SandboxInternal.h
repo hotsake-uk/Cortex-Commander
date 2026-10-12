@@ -228,7 +228,9 @@ namespace SandboxDetail {
 		BattlePickupSpot, //!< The Battle tab's Pickups: a click puts down another place pickups can come in at.
 		BattlePickupZone, //!< The Battle tab's Pickups: each click puts down a corner of a zone pickups can come in anywhere in.
 		// Appended, so the tools before keep their numbers.
-		Woodcutter //!< A colony woodcutter: its staff fell the trees round it and bring the wood home (Colony::Kind::Woodcutter).
+		Woodcutter, //!< A colony woodcutter: its staff fell the trees round it and bring the wood home (Colony::Kind::Woodcutter).
+		// Appended, so the tools before keep their numbers.
+		HoldGround //!< A box dragged out, or a polygon clicked out, where the ground never falls (TerrainCollapse::AddHoldZone; SandboxHold.cpp). Choice 1 takes away the zone at Position, 2 all of them.
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -375,6 +377,7 @@ namespace SandboxDetail {
 	    {Tool::BattlePickupSpot, "Pickup spot", 0.0F, false},
 	    {Tool::BattlePickupZone, "Pickup zone", 0.0F, false},
 	    {Tool::Woodcutter, "Woodcutter", 0.0F, false},
+	    {Tool::HoldGround, "Hold ground", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -1268,6 +1271,7 @@ namespace SandboxDetail {
 	inline bool s_LineDragging = false; //!< A line being dragged out on the world, from s_LineStart: a lift's or moving platform's track (DragsTrack) or a bunker run (DragsRun).
 	inline Vector s_LineStart;
 	constexpr int c_MaxDropSide = 800; //!< The biggest box "Make it fall" takes either way, in pixels.
+	inline std::vector<Vector> s_HoldDraft; //!< "Hold ground": the corners of the polygon being clicked out, each placed from the first.
 
 	/// Whether the tool in hand is used by dragging out a shape on the world: the terrain brushes with Brush type Shape, and "Make it fall"'s box.
 	inline bool DragsShape(Tool kind) { return (IsTerrainBrush(kind) && s_ShapeFill) || kind == Tool::CollapseArea; }
@@ -1670,8 +1674,10 @@ namespace SandboxDetail {
 		bool Sealed = false; //!< A placing step: the next stroke starts a step of its own, however soon it comes.
 		int Drop = 0; //!< A "Make it fall" step: the drop TerrainCollapse::DropArea gave, taken back with TerrainCollapse::TakeBackDrop.
 		int Rope = 0; //!< A rope put down (RopeSim), taken away again.
+		bool HoldZones = false; //!< A "Hold ground" step: the hold zones put back to HoldZonesBefore.
+		std::vector<std::vector<Vector>> HoldZonesBefore; //!< The hold zones before the step.
 
-		bool Empty() const { return Pixels.empty() && Placed.empty() && ColonyBuilding < 0 && Drop == 0 && Rope == 0; }
+		bool Empty() const { return Pixels.empty() && Placed.empty() && ColonyBuilding < 0 && Drop == 0 && Rope == 0 && !HoldZones; }
 	};
 
 	inline std::deque<PaintUndoStep> s_PaintUndo;
@@ -2640,6 +2646,8 @@ namespace SandboxDetail {
 		bool Linked = false; //!< One of the map's linked battles, played in the list's order.
 		std::array<BattleSettings, c_Sides> Cards;
 		BattleModeSettings Mode;
+		bool HasHoldZones = false; //!< Saved with the hold zones ("Hold ground"): loading it puts them in place of those on the map.
+		std::vector<std::vector<Vector>> HoldZones;
 	};
 
 	/// The setups saved with a map, read from its file, in their order there. None if it has none.
@@ -2671,6 +2679,11 @@ namespace SandboxDetail {
 	/// True when a battle was started from it.
 	bool LinkedBattleControls();
 	void DrawBattleMarks();
+	/// "Hold ground" (SandboxHold.cpp): the mouse on the world with it in hand (a drag a box, clicks a polygon's corners, a right click takes a zone
+	/// away), and Enter, Backspace and Escape for the polygon being drawn. Call each frame; it lets go of a part drawn polygon once the tool is put down.
+	void HoldGroundInput();
+	/// The hold zones on the map, with the setting on or "Hold ground" in hand, and the box or polygon being drawn.
+	void DrawHoldZones();
 	void TakeBattleTool(Tool kind, int team);
 	bool AddZoneCorner(std::vector<Vector>& draft, BattleSettings& settings, const Vector& position, float closeWithin);
 	bool CloseSpawnZone(std::vector<Vector>& draft, BattleSettings& settings);

@@ -946,6 +946,9 @@
     <ClCompile Include="Source\Managers\SandboxAirlift.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Managers\SandboxHold.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Managers\BattleSupply.cpp">
       <Filter>Managers</Filter>
     </ClCompile>

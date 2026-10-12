@@ -406,6 +406,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("TreeStrayBulletPercent", { TerrainTrees::SetStrayBulletPercent(std::stoi(reader.ReadPropValue())); });
 	MatchProperty("UnitsBumpIntoTrees", { TerrainTrees::SetUnitsCollide(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("FallingGroundPassesTrees", { TerrainCollapse::SetPassesTrees(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("ShowHoldZones", { TerrainCollapse::SetShowHoldZones(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("ZeroGTerrainFollowsGravity", { ZeroGravity::SetTerrainFollowsGravity(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("ZeroGLiquidsFloat", { ZeroGravity::SetLiquidsFloat(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("ZeroGCountZones", { ZeroGravity::SetCountZones(std::stoi(reader.ReadPropValue()) != 0); });
@@ -1278,6 +1279,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("UnitsBumpIntoTrees", TerrainTrees::UnitsCollide());
 	writer.NewPropertyWithValue("TreeStrayBulletPercent", TerrainTrees::StrayBulletPercent());
 	writer.NewPropertyWithValue("FallingGroundPassesTrees", TerrainCollapse::PassesTrees());
+	writer.NewPropertyWithValue("ShowHoldZones", TerrainCollapse::ShowsHoldZones());
 	writer.NewPropertyWithValue("ZeroGTerrainFollowsGravity", ZeroGravity::TerrainFollowsGravity());
 	writer.NewPropertyWithValue("ZeroGLiquidsFloat", ZeroGravity::LiquidsFloat());
 	writer.NewPropertyWithValue("ZeroGCountZones", ZeroGravity::CountZones());
