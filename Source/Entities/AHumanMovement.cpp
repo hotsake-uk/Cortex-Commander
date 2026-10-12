@@ -2446,7 +2446,7 @@ int AHuman::MoveAlongRoute() {
 	// Points passed are dropped: within reach, or behind with the next in plain sight (the points are 24 px apart, and waiting to stand on
 	// each pulled a running unit back to every one). Not while a flight is on: the flight pops its own on landing.
 	if (!mover.flight.active && !m_MovePath.empty()) {
-		float tolerance = m_MoveProximityLimit * (airborne ? 2.0F : 1.0F);
+		float tolerance = m_MoveProximityLimit * (airborne ? 2.0F : 1.0F) * g_SettingsMan.PathTunings().ReachScale;
 		for (int guard = 0; guard < 6 && !m_MovePath.empty(); ++guard) {
 			Vector toPoint = Towards(m_Pos, m_MovePath.front());
 			bool last = m_MovePath.size() == 1;
@@ -2488,8 +2488,10 @@ int AHuman::MoveAlongRoute() {
 			mover.progressTimer.Reset();
 		}
 	}
-	bool stuck = mover.progressTimer.IsPastSimMS(2500);
-	if (stuck && mover.progressTimer.IsPastSimMS(6000)) {
+	// (2.5 s and 6 s as tuned: the Pathfinding settings.)
+	const SettingsMan::PathTuning& tuning = g_SettingsMan.PathTunings();
+	bool stuck = mover.progressTimer.IsPastSimMS(static_cast<double>(tuning.StuckRemedySeconds) * 1000.0);
+	if (stuck && mover.progressTimer.IsPastSimMS(static_cast<double>(std::max(tuning.StuckRepathSeconds, tuning.StuckRemedySeconds)) * 1000.0)) {
 		// Long stuck: the route asked for afresh from here, and the place avoided.
 		AvoidPathPoint(m_MovePath.empty() ? m_Pos : m_MovePath.front(), 20000.0F);
 		// Stuck again on a step to much the same place (within a node and a half, inside the minute): the one big step there isn't working
@@ -2560,13 +2562,14 @@ int AHuman::MoveAlongRoute() {
 		if (inSight || airborne || inLiquid || ladderStep || digStep || DoorAhead(m_MovePath.front())) {
 			mover.noSightTimer.Reset();
 		}
-		if ((mover.noSightTimer.IsPastSimMS(1000) || mover.repathTimer.IsPastSimMS(7500)) && !IsWaitingOnNewMovePath()) {
-			MoverTrace(mover.noSightTimer.IsPastSimMS(1000) ? "next point out of sight; new route" : "route refreshed");
+		const double noSightMS = static_cast<double>(tuning.NoSightSeconds) * 1000.0;
+		if ((mover.noSightTimer.IsPastSimMS(noSightMS) || mover.repathTimer.IsPastSimMS(static_cast<double>(tuning.RefreshSeconds) * 1000.0)) && !IsWaitingOnNewMovePath()) {
+			MoverTrace(mover.noSightTimer.IsPastSimMS(noSightMS) ? "next point out of sight; new route" : "route refreshed");
 			RefreshRoute(true);
 			mover.repathTimer.Reset();
 			mover.noSightTimer.Reset();
 		}
-	} else if (airborne && mover.routeCheckTimer.IsPastSimMS(500) && !mover.flight.direct) {
+	} else if (airborne && mover.routeCheckTimer.IsPastSimMS(static_cast<double>(tuning.AirCheckSeconds) * 1000.0) && !mover.flight.direct) {
 		mover.routeCheckTimer.Reset();
 		RequestRouteCheck();
 	}

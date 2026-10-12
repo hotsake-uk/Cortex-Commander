@@ -1715,6 +1715,97 @@ void DebugMan::SettingsGUI() {
 		}
 	};
 
+	// The route search's and route follower's tuning: how units pick a way, and when they ask for a new one.
+	auto pathfinding = [&]() {
+		SettingsMan::PathTuning& tuning = g_SettingsMan.PathTunings();
+		const SettingsMan::PathTuning normal;
+		// A small Reset beside the control just made, putting that one setting back as the game comes (greyed out while it is).
+		auto resetItem = [](const char* label, float& value, float normalValue) {
+			if (!s_LastShown) {
+				return;
+			}
+			ImGui::SameLine();
+			ImGui::PushID(label);
+			ImGui::BeginDisabled(value == normalValue);
+			if (ImGui::SmallButton("Reset")) {
+				value = normalValue;
+			}
+			ImGui::EndDisabled();
+			ImGui::SetItemTooltip("Puts this one setting back to the value the game comes with.");
+			ImGui::PopID();
+		};
+		if (Plain()) {
+			ImGui::TextWrapped("How AI units pick a way to where they are sent, and when they ask for a new one. Costs are counted in nodes walked (a node is 24 px; walking one costs 1). Changes apply to the next route each unit asks for. Each tip says the value the game comes with; Reset to defaults puts them all back.");
+		}
+		Heading("Route choice");
+		{
+			Slider("Route straightness", &tuning.LineWeight, 0.0F, 2.0F, "%.2f");
+			Tip("How hard every unit's route keeps to the straight line from where it is to where it is sent: what each node off the line costs, in nodes walked. 0 (default) takes the cheapest way however far it strays; around 0.5 cuts corners and takes jumps it would walk round. Added to a dragged order's own Route straightness (Battle Behavior).");
+			resetItem("Route straightness", tuning.LineWeight, normal.LineWeight);
+			Slider("Uphill cost", &tuning.UpCost, 0.0F, 5.0F, "%.2f");
+			Tip("The extra cost of every node gone up, on foot or on the jet. Lower goes over hills and up through buildings; higher walks round them. 1.5 is the default.");
+			resetItem("Uphill cost", tuning.UpCost, normal.UpCost);
+			float preference = 1.0F / std::max(tuning.FlightCostScale, 0.01F);
+			if (Slider("Jetpack preference", &preference, 1.0F, 5.0F, "%.1fx")) {
+				tuning.FlightCostScale = 1.0F / preference;
+			}
+			Tip("How readily every unit takes a jet flight between floors over walking round: a flight costs this many times less when the route is picked. Cautious and direct orders' own jetpack settings multiply it. 1x is the default.");
+			resetItem("Jetpack preference", tuning.FlightCostScale, normal.FlightCostScale);
+			float jetOverClimb = tuning.JetOverClimb * 100.0F;
+			if (Slider("Jetpack over climbing", &jetOverClimb, 0.0F, 100.0F, "%.0f%%")) {
+				tuning.JetOverClimb = jetOverClimb / 100.0F;
+			}
+			Tip("How much a unit with a jetpack and fuel jets up a slope, stairs or a scramble rather than walking or climbing it. 50% makes the climb on foot cost twice as much, 90% ten times; at 100% it always jets when it can. The full effect from half a tank; less below, none on an empty one. 0% (default) prices the climb as usual.");
+			resetItem("Jetpack over climbing", tuning.JetOverClimb, normal.JetOverClimb);
+			Slider("Tall jump cost", &tuning.JumpHeightCost, 0.0F, 2.0F, "%.2f");
+			Tip("How much dearer each node of a jet jump up a wall is than the one below it. Lower takes tall jumps; higher keeps to short hops and walks round cliffs. 0.5 is the default.");
+			resetItem("Tall jump cost", tuning.JumpHeightCost, normal.JumpHeightCost);
+			Slider("Ladder cost", &tuning.LadderCostScale, 0.8F, 5.0F, "%.2fx");
+			Tip("What climbing a ladder costs (2 a node up, 1.2 down), as a multiple. Higher keeps units off ladders where there's another way. 1x is the default.");
+			resetItem("Ladder cost", tuning.LadderCostScale, normal.LadderCostScale);
+			Slider("Drop cost", &tuning.FallCostPerNode, 0.0F, 10.0F, "%.1f");
+			Tip("The cost of each node of a drop past one storey (96 px). 0 jumps off anything; higher takes the stairs down. 2.5 is the default.");
+			resetItem("Drop cost", tuning.FallCostPerNode, normal.FallCostPerNode);
+			Slider("Route variety", &tuning.RouteVariety, 0.0F, 4.0F, "%.2fx");
+			Tip("How far units' own taste in routes spreads them over different ways to the same place, where the ways are near enough alike. 0 sends everyone down the same shortest way. 1x is the default.");
+			resetItem("Route variety", tuning.RouteVariety, normal.RouteVariety);
+			Slider("Failed spot avoidance", &tuning.FailedSpotCost, 0.0F, 100.0F, "%.0f");
+			Tip("What a place or jump a unit or its team got stuck at lately costs its next routes, in nodes walked. 0 keeps trying the same way; 25 (default) is worth a detour of about twenty nodes.");
+			resetItem("Failed spot avoidance", tuning.FailedSpotCost, normal.FailedSpotCost);
+		}
+		Heading("Route following");
+		{
+			Slider("Route refresh", &tuning.RefreshSeconds, 1.0F, 30.0F, "every %.1f s");
+			Tip("How often a unit on the move asks for its route afresh, to catch changes on the way. 7.5 s is the default.");
+			resetItem("Route refresh", tuning.RefreshSeconds, normal.RefreshSeconds);
+			Slider("Next point out of sight", &tuning.NoSightSeconds, 0.25F, 5.0F, "%.2f s");
+			Tip("How long the route's next point may be out of sight from the ground before a new route is asked for. 1 s is the default.");
+			resetItem("Next point out of sight", tuning.NoSightSeconds, normal.NoSightSeconds);
+			Slider("Stuck: try remedies after", &tuning.StuckRemedySeconds, 0.5F, 10.0F, "%.1f s");
+			Tip("How long without getting nearer the next point before a unit starts trying to get unstuck (jumping, backing off, crouching). 2.5 s is the default.");
+			resetItem("Stuck: try remedies after", tuning.StuckRemedySeconds, normal.StuckRemedySeconds);
+			Slider("Stuck: new route after", &tuning.StuckRepathSeconds, 1.0F, 20.0F, "%.1f s");
+			Tip("How long without getting nearer before the unit gives up on the spot, marks it to avoid and asks for a new route. Never sooner than the remedies start. 6 s is the default.");
+			resetItem("Stuck: new route after", tuning.StuckRepathSeconds, normal.StuckRepathSeconds);
+			Slider("Mid-air route check", &tuning.AirCheckSeconds, 0.1F, 3.0F, "every %.2f s");
+			Tip("How often a unit in the air checks for a better route; it switches only when the new one is better. 0.5 s is the default.");
+			resetItem("Mid-air route check", tuning.AirCheckSeconds, normal.AirCheckSeconds);
+			Slider("Waypoint reach distance", &tuning.ReachScale, 0.5F, 3.0F, "%.2fx");
+			Tip("How near a point on the route counts as reached, as a multiple of the unit's own reach (twice it in the air). Higher cuts corners and runs smoother but can clip ledges; lower follows the route tightly. 1x is the default.");
+			resetItem("Waypoint reach distance", tuning.ReachScale, normal.ReachScale);
+			Slider("No route: ask again after", &tuning.NoRouteRetrySeconds, 0.5F, 15.0F, "%.1f s");
+			Tip("How long a unit told there's no way there waits before asking again. 3 s is the default.");
+			resetItem("No route: ask again after", tuning.NoRouteRetrySeconds, normal.NoRouteRetrySeconds);
+		}
+		if (Plain()) {
+			ImGui::Spacing();
+			if (ToolUI::Button("Reset to defaults")) {
+				tuning = SettingsMan::PathTuning();
+			}
+			ImGui::SetItemTooltip("Puts every Pathfinding setting back to the values the game comes with.");
+		}
+	};
+
 	auto debug = [&]() {
 		Combo("View", &settings.DebugView, "Final image\0Lighting on grey\0Sky light only\0Dynamic light only\0Normals\0Distortion\0GI only (radiance cascades)\0Solid objects and distance to them\0Where the sun is visible\0");
 		Check("Freeze simulation", &m_FreezeSim);
@@ -2028,6 +2119,7 @@ void DebugMan::SettingsGUI() {
 	    {"AI behaviour", aiBehaviour},
 	    {"Movement", movement},
 	    {"Battle Behavior", battleBehavior},
+	    {"Pathfinding", pathfinding},
 	    {"Performance", performance},
 	    {"Debug", debug},
 	    {"AI debug", aiDebug},
@@ -2035,6 +2127,14 @@ void DebugMan::SettingsGUI() {
 	    {"Sandbox debug", sandboxDebug},
 	};
 	const int categoryCount = static_cast<int>(std::size(categories));
+	// Asked for the Debug page (c_SettingsCategoryDebug, by the old debug window's key): found by its name, so adding a page doesn't move it.
+	if (m_SettingsCategory == c_SettingsCategoryDebug) {
+		for (int i = 0; i < categoryCount; ++i) {
+			if (std::string_view(categories[i].first) == "Debug") {
+				m_SettingsCategory = i;
+			}
+		}
+	}
 	m_SettingsCategory = std::clamp(m_SettingsCategory, 0, categoryCount - 1);
 
 	DrawPresets();

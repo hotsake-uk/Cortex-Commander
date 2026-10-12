@@ -477,7 +477,7 @@ void DebugMan::DrawImGui() {
 	if (m_ShowDebugWindow) {
 		m_ShowDebugWindow = false;
 		m_ShowWorldDebug = true;
-		m_SettingsCategory = 16; // "Debug".
+		m_SettingsCategory = c_SettingsCategoryDebug;
 	}
 	if (m_ShowWorldDebug) {
 		SettingsGUI();
