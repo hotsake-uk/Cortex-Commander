@@ -1919,7 +1919,10 @@ PathAgent Actor::GetPathAgent() const {
 	const SettingsMan::PathTuning& tuning = g_SettingsMan.PathTunings();
 	agent.FlightCostScale *= tuning.FlightCostScale;
 	if (!agent.DigGoal) {
-		agent.LineWeight += tuning.LineWeight;
+		// Tied to the risk slider (PathTuning::LineWeightByRisk): all of it on a normal order, fading to none on a fully cautious one, which
+		// walks round as it likes; a risky one has its own on top, above.
+		const float cautiousShare = tuning.LineWeightByRisk ? std::max(-m_StandingOrder.Direct, 0.0F) : 0.0F;
+		agent.LineWeight += tuning.LineWeight * (1.0F - std::min(cautiousShare, 1.0F));
 	}
 	for (const std::pair<Vector, double>& avoid: m_AvoidPoints) {
 		if (avoid.second > g_TimerMan.GetSimTimeMS()) {
