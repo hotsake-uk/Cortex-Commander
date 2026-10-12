@@ -167,7 +167,9 @@ function CreatureBehaviors.SpitAt(AI, Owner, Target, gap, SpitTimer)
 	Spit.Vel = (To - Vector(0, drop)):SetMagnitude(speed);
 	Spit.Team = Owner.Team;
 	Spit.IgnoresTeamHits = true;
-	MovableMan:AddParticle(Spit);
+	-- (Put in the scene by UpdateAI in CrabAI.lua, not here: this runs on an AI thread, and adding an object from one races the other
+	-- AI threads' MovableMan:ValidMO checks, a crash with no message in a big fight.)
+	AI.PendingSpit = Spit;
 	SharedBehaviors.Trace(Owner, "hunt: spit at " .. Target.PresetName);
 	return true;
 end

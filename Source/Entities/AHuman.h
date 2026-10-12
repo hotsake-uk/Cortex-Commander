@@ -1035,6 +1035,7 @@ namespace RTE {
 			bool skyHovering = false; //!< Got there: hovering at it till the tank runs low.
 			bool skyClear = false; //!< Whether the line to the point was open when last looked (skyCheckTimer).
 			Timer skyCheckTimer;
+			Timer skyBlockedTimer; //!< Since the line to the point was last seen open (or the mover was reset): one blocked look is no verdict.
 			bool settling = false; //!< Waiting to settle before a take-off just now.
 			bool leapWatch = false; //!< A leap of the route's is under way: where from and to, to judge it by when it comes down.
 			Vector leapFrom;

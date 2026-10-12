@@ -1674,6 +1674,7 @@ namespace SandboxDetail {
 		int Facing = 0; //!< A defend's way to face: -1 left, 1 right, 0 either (RC-4).
 		int Updates = 0; //!< A wait's length, in sim updates.
 		int Radius = 0; //!< A suppress's spread round its place, px (the Suppress radius when it was queued).
+		bool Sky = false; //!< A Fly step (Shift with Fly here): Place is the point in the air, flown to by those with a jetpack, the rest going to the ground under it.
 	};
 
 	/// A unit's plan (RC-3): the step under way and the ones still to come, worked through one at a time. Any order given without Shift drops it.
