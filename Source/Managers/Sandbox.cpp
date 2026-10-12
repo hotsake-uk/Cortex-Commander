@@ -4,6 +4,7 @@
 #include "Notices.h"
 #include "Weather.h"
 #include "TerrainCandle.h"
+#include "ZeroGravity.h"
 
 bool Sandbox::s_Open = false;
 
@@ -550,6 +551,77 @@ void Sandbox::SetCharacterSetup(const std::string& setup) {
 	}
 }
 
+std::string Sandbox::GetPanelSetup() {
+	// "key:value" entries, a bar between: the tab, the brush, the filters, then each tab's and shelf group's last tool ("tabTool:tab:tool")
+	// and each list's kind and mod filters ("kind:list:kind"). Tools are kept by their Tool number (tools are only ever appended, so they keep
+	// their numbers). (No '=' in it: the settings file's reader takes a value from after the first one on its line.)
+	std::string setup = "tab:" + s_CurrentTab + "|radius:" + std::to_string(s_Radius) + "|shape:" + std::to_string(static_cast<int>(s_BrushShape));
+	setup += "|fill:" + std::string(s_ShapeFill ? "1" : "0") + "|fillShape:" + std::to_string(static_cast<int>(s_FillShape));
+	setup += "|modded:" + std::string(s_ShowModded ? "1" : "0") + "|favourites:" + std::string(s_FavouritesOnly ? "1" : "0");
+	auto toolNumber = [](int toolIndex) { return std::to_string(static_cast<int>(c_Tools[std::clamp(toolIndex, 0, c_ToolCount - 1)].Kind)); };
+	for (const auto& [tab, toolIndex]: s_LastToolOfTab) {
+		setup += "|tabTool:" + tab + ":" + toolNumber(toolIndex);
+	}
+	for (const auto& [group, toolIndex]: s_LastToolOfGroup) {
+		setup += "|groupTool:" + group + ":" + toolNumber(toolIndex);
+	}
+	for (const auto& [filters, prefix]: {std::pair{&s_KindFilter, "|kind:"}, std::pair{&s_ModFilter, "|mod:"}}) {
+		for (const auto& [kind, value]: *filters) {
+			if (!value.empty()) {
+				setup += prefix + std::to_string(static_cast<int>(kind)) + ":" + value;
+			}
+		}
+	}
+	return setup;
+}
+
+void Sandbox::SetPanelSetup(const std::string& setup) {
+	// A tool kept by its number, as a c_Tools index; -1 for a number that isn't a tool (from a newer version, or not one at all).
+	auto toolIndexOf = [](const std::string& number) {
+		const Tool kind = static_cast<Tool>(std::atoi(number.c_str()));
+		const int index = ToolIndex(kind);
+		return c_Tools[index].Kind == kind ? index : -1;
+	};
+	for (size_t at = 0; at < setup.size();) {
+		size_t end = setup.find('|', at);
+		end = end == std::string::npos ? setup.size() : end;
+		const std::string entry = setup.substr(at, end - at);
+		at = end + 1;
+		const size_t colon = entry.find(':');
+		if (colon == std::string::npos) {
+			continue;
+		}
+		const std::string key = entry.substr(0, colon);
+		const std::string value = entry.substr(colon + 1);
+		const int number = std::atoi(value.c_str());
+		// The entries with a name before their value: the tab or group, or the list.
+		const size_t nameEnd = value.find(':');
+		const std::string name = nameEnd != std::string::npos ? value.substr(0, nameEnd) : std::string();
+		const std::string named = nameEnd != std::string::npos ? value.substr(nameEnd + 1) : std::string();
+		if (key == "tab") {
+			s_CurrentTab = value;
+		} else if (key == "radius") {
+			s_Radius = std::clamp(number, 1, c_MaxBrushRadius);
+		} else if (key == "shape") {
+			s_BrushShape = static_cast<BrushShape>(std::clamp(number, 0, 2));
+		} else if (key == "fill") {
+			s_ShapeFill = number != 0;
+		} else if (key == "fillShape") {
+			s_FillShape = static_cast<FillShape>(std::clamp(number, 0, c_FillShapeCount - 1));
+		} else if (key == "modded") {
+			s_ShowModded = number != 0;
+		} else if (key == "favourites") {
+			s_FavouritesOnly = number != 0;
+		} else if ((key == "tabTool" || key == "groupTool") && !name.empty()) {
+			if (int toolIndex = toolIndexOf(named); toolIndex >= 0) {
+				(key == "tabTool" ? s_LastToolOfTab : s_LastToolOfGroup)[name] = toolIndex;
+			}
+		} else if ((key == "kind" || key == "mod") && !name.empty()) {
+			(key == "kind" ? s_KindFilter : s_ModFilter)[static_cast<Tool>(std::atoi(name.c_str()))] = named;
+		}
+	}
+}
+
 std::string Sandbox::GetVehicleSetup() {
 	const VehicleTuning& tuning = s_VehicleTuning;
 	std::ostringstream setup;
@@ -710,6 +782,18 @@ bool Sandbox::IsLookingAround() {
 }
 
 bool Sandbox::TakeEscape() {
+	// Copy area: Esc puts the stamp away, or else unmarks the box (not pausing on it).
+	if (IsGodMode() && !s_Possessed && (s_Open || IsLookingAround()) && CurrentTool().Kind == Tool::CopyArea && !ImGui::GetIO().WantTextInput) {
+		if (s_Stamping) {
+			s_Stamping = false;
+			return true;
+		}
+		if (s_CopyBoxSet || s_ShapeDragging) {
+			s_CopyBoxSet = false;
+			s_ShapeDragging = false;
+			return true;
+		}
+	}
 	// (A hold zone being clicked out is dropped, not the game paused.)
 	if (CurrentTool().Kind == Tool::HoldGround && !s_HoldDraft.empty() && !ImGui::GetIO().WantTextInput) {
 		s_HoldDraft.clear();
@@ -722,6 +806,11 @@ bool Sandbox::TakeEscape() {
 	s_PatrolDraft.clear();
 	s_BackToCommandAt = -1.0;
 	return true;
+}
+
+void Sandbox::Destroy() {
+	s_Clipboard = Clipboard();
+	s_PaintUndo.clear();
 }
 
 bool Sandbox::CapturesWorldClicks() {
@@ -1052,6 +1141,23 @@ void Sandbox::DrawGUI() {
 	if (InGame() && !io.WantTextInput && (CurrentTool().Kind == Tool::BattleSpawnZone || IsModeZoneTool(CurrentTool().Kind)) && !s_ZoneDraft.empty() && ImGui::IsKeyPressed(ImGuiKey_Backspace, false)) {
 		s_ZoneDraft.pop_back();
 	}
+	// Copy area (S-4): Ctrl+C copies the marked box, Ctrl+V takes up the stamp of what was copied (the Copy area tool with it), and F
+	// flips the stamp. In the god view, so long as no text box has the keys. (Escape: see TakeEscape.)
+	if (InGame() && !s_Possessed && !io.WantTextInput && !io.KeyAlt) {
+		if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C, false) && CurrentTool().Kind == Tool::CopyArea && s_CopyBoxSet) {
+			CopyMarkedBox();
+		}
+		if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V, false) && !s_Clipboard.Empty()) {
+			TakeUpStamp();
+		}
+		if (!io.KeyCtrl && s_Stamping && CurrentTool().Kind == Tool::CopyArea && ImGui::IsKeyPressed(ImGuiKey_F, false)) {
+			s_StampFlipped = !s_StampFlipped;
+		}
+	}
+	// (Another tool taken up puts the stamp away.)
+	if (s_Stamping && (CurrentTool().Kind != Tool::CopyArea || !InGame())) {
+		s_Stamping = false;
+	}
 	// Ctrl+Z: the newest paint stroke or placing click undone (see UndoPaint), whichever tool is in hand, so long as no text box has the keys.
 	// Not while you play a unit: in the WASD layouts Ctrl is crouch, so crouching with Z down took back the last stroke.
 	if (InGame() && io.KeyCtrl && !io.KeyShift && !io.WantTextInput && !s_Possessed && ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
@@ -1134,6 +1240,20 @@ void Sandbox::DrawGUI() {
 		}
 		if (!io.KeyCtrl && !io.KeyAlt) {
 			CommandHotkeys();
+		}
+		// Delete: the selected units taken away, as the command strip's Delete (S-8), with the sandbox's bar up. Decided on the frame after the
+		// key, so the battle editor and the effects overlay, which take it for what is under the pointer, have had it first (s_DeleteKeyTakenFrame).
+		{
+			static int deletePressed = -1;
+			const int frame = ImGui::GetFrameCount();
+			if (!io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
+				deletePressed = frame;
+			} else if (deletePressed >= 0 && frame > deletePressed) {
+				if (frame == deletePressed + 1 && s_DeleteKeyTakenFrame != deletePressed && !s_CommanderBar && IsGodMode() && !s_Selected.empty()) {
+					QueueSelectionAction(SelectionDo::Remove);
+				}
+				deletePressed = -1;
+			}
 		}
 		if (io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_Period, false)) {
 			// Every idle unit of the side at once (B-2); with Shift, added to the selection.
@@ -1235,10 +1355,21 @@ void Sandbox::DrawGUI() {
 				s_LineDragging = true;
 				s_LineStart = DragsRun(tool.Kind) ? position : SnapLinePoint(position, s_SnapToGrid);
 			}
+		} else if (tool.Kind == Tool::CopyArea && s_Stamping) {
+			// Copy area's stamp: a click puts the clipboard down just where it is shown (DrawCopyArea), and the stamp stays for more.
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !s_Clipboard.Empty()) {
+				Stroke stroke;
+				stroke.Kind = Tool::PasteArea;
+				stroke.Position = StampCorner();
+				stroke.Choice = s_StampFlipped ? 1 : 0;
+				stroke.Count = s_PasteAir ? 1 : 0;
+				s_Queue.push_back(stroke);
+			}
 		} else if (tool.Kind == Tool::HoldGround) {
 			// (Its clicks and drags: HoldGroundInput, below.)
 		} else if (DragsShape(tool.Kind)) {
-			// Brush type Shape: a drag marks out the shape, filled when the button is let go (below). "Make it fall" drags its box the same way.
+			// Brush type Shape: a drag marks out the shape, filled when the button is let go (below). "Make it fall" and Copy area drag their box
+			// the same way.
 			if (!s_ShapeDragging && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 				s_ShapeDragging = true;
 				s_ShapeDigging = false;
@@ -1387,7 +1518,8 @@ void Sandbox::DrawGUI() {
 			s_ShapeDragging = false;
 		} else {
 			bool dropBox = CurrentTool().Kind == Tool::CollapseArea;
-			bool line = !dropBox && s_FillShape == FillShape::Line;
+			bool copyBox = CurrentTool().Kind == Tool::CopyArea;
+			bool line = !dropBox && !copyBox && s_FillShape == FillShape::Line;
 			Vector end = s_ShapeStart + g_SceneMan.ShortestDistance(s_ShapeStart, MouseScenePosition(), g_SceneMan.SceneWrapsX());
 			if (line) {
 				end = LineDragEnd(s_ShapeStart, MouseScenePosition(), io.KeyShift, false);
@@ -1395,9 +1527,9 @@ void Sandbox::DrawGUI() {
 				float side = std::max(std::abs(end.m_X - s_ShapeStart.m_X), std::abs(end.m_Y - s_ShapeStart.m_Y));
 				end = s_ShapeStart + Vector(end.m_X >= s_ShapeStart.m_X ? side : -side, end.m_Y >= s_ShapeStart.m_Y ? side : -side);
 			}
-			if (dropBox) {
-				// (No bigger than c_MaxDropSide either way.)
-				constexpr float c_Most = static_cast<float>(c_MaxDropSide - 1);
+			if (dropBox || copyBox) {
+				// (No bigger than c_MaxDropSide, or c_MaxCopySide, either way.)
+				const float c_Most = static_cast<float>((copyBox ? c_MaxCopySide : c_MaxDropSide) - 1);
 				end = s_ShapeStart + Vector(std::clamp(end.m_X - s_ShapeStart.m_X, -c_Most, c_Most), std::clamp(end.m_Y - s_ShapeStart.m_Y, -c_Most, c_Most));
 			}
 			ImDrawList* drawList = ImGui::GetForegroundDrawList();
@@ -1407,7 +1539,15 @@ void Sandbox::DrawGUI() {
 			float top = std::min(s_ShapeStart.m_Y, end.m_Y);
 			float bottom = std::max(s_ShapeStart.m_Y, end.m_Y) + 1.0F;
 			float middleX = (left + right) * 0.5F;
-			if (dropBox) {
+			if (copyBox) {
+				// The box to copy: shaded, edged in blue, with its size.
+				ImVec2 topLeft = ToScreen(Vector(left, top));
+				ImVec2 bottomRight = ToScreen(Vector(right, bottom));
+				drawList->AddRectFilled(topLeft, bottomRight, IM_COL32(110, 180, 250, 40));
+				drawList->AddRect(topLeft, bottomRight, IM_COL32(110, 180, 250, 235), 0.0F, 0, 2.0F);
+				std::string size = std::to_string(static_cast<int>(right - left)) + " x " + std::to_string(static_cast<int>(bottom - top));
+				drawList->AddText(ImVec2(topLeft.x + 4.0F, topLeft.y - ImGui::GetTextLineHeight() - 2.0F), IM_COL32(110, 180, 250, 235), size.c_str());
+			} else if (dropBox) {
 				// The box whose ground will fall: shaded, edged in warning orange, with its size.
 				ImVec2 topLeft = ToScreen(Vector(left, top));
 				ImVec2 bottomRight = ToScreen(Vector(right, bottom));
@@ -1450,7 +1590,13 @@ void Sandbox::DrawGUI() {
 			} else {
 				drawList->AddRect(ToScreen(Vector(left, top)), ToScreen(Vector(right, bottom)), outline, 0.0F, 0, 1.5F);
 			}
-			if (!ImGui::IsMouseDown(s_ShapeDigging ? ImGuiMouseButton_Right : ImGuiMouseButton_Left)) {
+			if (copyBox && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+				// Copy area: the box is only marked, for Ctrl+C (or the Copy button) to copy. A click without a drag unmarks it.
+				s_ShapeDragging = false;
+				s_CopyBoxSet = right - left >= 2.0F && bottom - top >= 2.0F;
+				s_CopyBoxA = s_ShapeStart;
+				s_CopyBoxB = end;
+			} else if (!ImGui::IsMouseDown(s_ShapeDigging ? ImGuiMouseButton_Right : ImGuiMouseButton_Left)) {
 				s_ShapeDragging = false;
 				Stroke stroke;
 				stroke.Kind = s_ShapeDigging ? Tool::Dig : CurrentTool().Kind;
@@ -1951,7 +2097,10 @@ void Sandbox::DrawGUI() {
 						s_Queue.push_back(stroke);
 					}
 				}
-				if (ToolUI::Button("Remove this side's units", ImVec2(-1.0F, 0.0F))) {
+				const bool removeSide = ToolUI::Button("Remove this side's units", ImVec2(-1.0F, 0.0F));
+				ImGui::SetItemTooltip("Takes away every unit of the side picked above (not doors, nor your character). Ctrl+click: no question asked.");
+				const std::string removeSideQuestion = std::string("Every ") + c_SideNames[std::clamp(s_Team, 0, c_Sides - 1)] + " unit on the map is taken away, and it can't be undone.";
+				if (Confirmed(removeSide, "Remove this side's units?", removeSideQuestion.c_str(), "Yes, remove them")) {
 					Stroke stroke;
 					stroke.Kind = Tool::RemoveSide;
 					stroke.Team = s_Team;
@@ -1998,10 +2147,12 @@ void Sandbox::DrawGUI() {
 				ToolButtons({Tool::WaterSpawner});
 				ImGui::SameLine();
 				ImGui::BeginDisabled(s_WaterSpawners.empty());
-				if (ToolUI::Button("Remove all springs")) {
+				const bool removeSprings = ToolUI::Button("Remove all springs");
+				ImGui::EndDisabled();
+				ImGui::SetItemTooltip("Takes away every spring on the map (what they have poured stays). Ctrl+click: no question asked.");
+				if (Confirmed(removeSprings, "Remove all springs?", "Every spring on the map is taken away, and it can't be undone.", "Yes, remove them")) {
 					QueueSimChange(Tool::ClearWaterSpawners);
 				}
-				ImGui::EndDisabled();
 				{
 					// Remove all of one kind: the kinds placed, each with how many.
 					static std::string removeKind;
@@ -2119,14 +2270,16 @@ void Sandbox::DrawGUI() {
 				ToolButtons({Tool::Rope, Tool::RopeCut});
 				ImGui::SameLine();
 				ImGui::BeginDisabled(RopeSim::GetCount() == 0);
-				if (ToolUI::Button("Remove all ropes")) {
+				const bool removeRopes = ToolUI::Button("Remove all ropes");
+				ImGui::EndDisabled();
+				ImGui::SetItemTooltip("Takes away every rope on the map. Ctrl+click: no question asked.");
+				if (Confirmed(removeRopes, "Remove all ropes?", "Every rope on the map is taken away, and Ctrl+Z can't bring them back.", "Yes, remove them")) {
 					Stroke stroke;
 					stroke.Kind = Tool::Rope;
 					stroke.Choice = 2;
 					s_Queue.push_back(stroke);
 					s_RopeDraft.clear();
 				}
-				ImGui::EndDisabled();
 				for (int type = 0; type < RopeSim::GetTypeCount(); ++type) {
 					if (type % 3 != 0) {
 						ImGui::SameLine();
@@ -2226,6 +2379,40 @@ void Sandbox::DrawGUI() {
 				ImGui::RadioButton("Spray", &shape, 2);
 				s_BrushShape = static_cast<BrushShape>(shape);
 				ImGui::SetItemTooltip("What the terrain brushes (Dig and the materials) paint and dig: a circle, a square as wide as the brush, or a soft spray that scatters it over the circle, thickest in the middle, building up while held.");
+				ImGui::SeparatorText("Copy and paste");
+				ToolButtons({Tool::CopyArea});
+				ImGui::SameLine();
+				ImGui::BeginDisabled(!s_CopyBoxSet || s_Stamping);
+				if (ImGui::Button("Copy")) {
+					CopyMarkedBox();
+				}
+				ImGui::EndDisabled();
+				ImGui::SetItemTooltip("Ctrl+C: copies the box marked on the world with Copy area, its ground and (with \"Include units\") the units wholly inside it.");
+				ImGui::SameLine();
+				ImGui::BeginDisabled(s_Clipboard.Empty());
+				if (ImGui::Button(s_Stamping ? "Stop pasting" : "Paste")) {
+					if (s_Stamping) {
+						s_Stamping = false;
+					} else {
+						TakeUpStamp();
+					}
+				}
+				ImGui::EndDisabled();
+				ImGui::SetItemTooltip("Ctrl+V: a stamp of the copy on the pointer. Click to put it down (as often as you like), F flips it, Escape puts it away. Each one put down is a step Ctrl+Z takes back.");
+				ImGui::Checkbox("Include units", &s_CopyUnits);
+				ImGui::SetItemTooltip("A copy takes the units wholly inside the box too (not your character, nor the unit you are in), with their kit and side; each paste puts copies of them down.");
+				ImGui::SameLine();
+				ImGui::Checkbox("Paste the air too", &s_PasteAir);
+				ImGui::SetItemTooltip("The air in the copy clears what is under the stamp, so it is put down exactly as it was. Off, only its ground is put down, over what is there.");
+				ImGui::SameLine();
+				ImGui::Checkbox("Flipped", &s_StampFlipped);
+				ImGui::SetItemTooltip("F while pasting: the stamp flipped left to right, its units turned round with it.");
+				if (s_Clipboard.Empty()) {
+					ImGui::TextDisabled("Nothing copied yet: drag a box with Copy area, then Ctrl+C.");
+				} else {
+					ImGui::TextDisabled("Copied: %d x %d px, %d unit%s", s_Clipboard.Width, s_Clipboard.Height, static_cast<int>(s_Clipboard.Units.size()), s_Clipboard.Units.size() == 1 ? "" : "s");
+				}
+				ImGui::SetItemTooltip("Kept until the game is closed, so ground can be taken from one map to another.");
 				UndoButton();
 				EndSandboxTab();
 			}
@@ -2286,14 +2473,16 @@ void Sandbox::DrawGUI() {
 				CustomEffectsUI();
 				ImGui::Separator();
 				ImGui::BeginDisabled(s_Effects.empty());
-				if (ToolUI::Button("Remove all effects")) {
-					QueueSimChange(Tool::ClearEffects);
-				}
+				const bool removeEffects = ToolUI::Button("Remove all effects");
+				ImGui::SetItemTooltip("Takes away every effect put down. Ctrl+click: no question asked.");
 				ImGui::SameLine();
 				if (ToolUI::Button("Remove the last one")) {
 					QueueSimChange(Tool::ClearEffects, 1);
 				}
 				ImGui::EndDisabled();
+				if (Confirmed(removeEffects, "Remove all effects?", "Every effect put down is taken away, and it can't be undone.", "Yes, remove them")) {
+					QueueSimChange(Tool::ClearEffects);
+				}
 				ImGui::SameLine();
 				ImGui::TextDisabled("%d running", static_cast<int>(s_Effects.size()));
 				EndSandboxTab();
@@ -2338,6 +2527,41 @@ void Sandbox::DrawGUI() {
 				if (ToolUI::Checkbox("Slow motion", &s_SlowMotion)) {
 					g_TimerMan.SetTimeScale(s_SlowMotion ? 0.25F : 1.0F);
 				}
+				// The map's gravity (Scene GlobalAcceleration, which scripts can set too), its pull down as a share of Earth's. Everything reads it as it
+				// goes, so under a twentieth of Earth's the zero gravity ways (ZeroGravity: units flying on their jets, liquids hanging, nothing
+				// falling) take over at once, and go again as it comes back. Its pull sideways, if the map has one, is left as it is.
+				ImGui::SeparatorText("Gravity");
+				if (Scene* scene = g_SceneMan.GetScene()) {
+					Vector gravity = scene->GetGlobalAcc();
+					float earths = gravity.m_Y / c_EarthGravity;
+					ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.55F);
+					if (ImGui::SliderFloat("##gravity", &earths, 0.0F, 3.0F, "x%.2f Earth")) {
+						scene->SetGlobalAcc(Vector(gravity.m_X, earths * c_EarthGravity));
+					}
+					ImGui::SetItemTooltip("How hard everything is pulled down: units, things, shots, liquids, sand and falling ground. x1 is the game's own (20 m/s/s, as most maps have).\nUnder x0.05 there is no gravity to speak of: units fly on their jetpacks or push off what they touch, and liquids float (Settings > Zero G says how).\nCtrl+click to type a value outside the slider's.");
+					ImGui::SameLine();
+					ImGui::TextDisabled("%.1f m/s/s", gravity.m_Y);
+					ImGui::SetItemTooltip("The pull down in the game's own units, metres per second per second.");
+					for (const auto& [name, share, tip]: {std::tuple<const char*, float, const char*>{"Earth", 1.0F, "The game's own gravity, x1 (20 m/s/s)."}, {"Moon", c_MoonGravity, "About a sixth of Earth's: units jump high and fall slowly."}, {"Zero", 0.0F, "No gravity at all: as in space. Units fly on their jetpacks, liquids float, nothing falls."}}) {
+						if (share != 1.0F) {
+							ImGui::SameLine();
+						}
+						if (ToolUI::Button(name)) {
+							scene->SetGlobalAcc(Vector(gravity.m_X, share * c_EarthGravity));
+						}
+						ImGui::SetItemTooltip("%s", tip);
+					}
+					ImGui::SameLine();
+					ImGui::BeginDisabled(!s_MapGravityKnown || gravity == s_MapGravity);
+					if (ToolUI::Button("Map's own")) {
+						scene->SetGlobalAcc(s_MapGravity);
+					}
+					ImGui::EndDisabled();
+					ImGui::SetItemTooltip("Back to the gravity this map had when the game started (x%.2f Earth).", s_MapGravity.m_Y / c_EarthGravity);
+					if (ZeroGravity::UnitsWeightless()) {
+						ImGui::TextColored(ImVec4(0.6F, 0.82F, 1.0F, 1.0F), "Zero gravity: units fly, liquids float.");
+					}
+				}
 				// The world simulations the Paint tools need, here as well as in F6, so a brush that does nothing says why and can be fixed on the spot.
 				ImGui::SeparatorText("Simulations");
 				{
@@ -2366,7 +2590,9 @@ void Sandbox::DrawGUI() {
 					ImGui::SetItemTooltip("Still water freezes over in snowy weather.");
 				}
 				ImGui::Text("%d burning, %d liquid pixels flowing", TerrainFire::GetCount(), FluidSim::GetActiveCount());
-				if (ToolUI::Button("Put out all fire")) {
+				const bool putOut = ToolUI::Button("Put out all fire");
+				ImGui::SetItemTooltip("Puts out every fire burning on the map at once. Ctrl+click: no question asked.");
+				if (Confirmed(putOut, "Put out all fire?", "Every fire on the map goes out at once, and it can't be undone.", "Yes, put it out")) {
 					TerrainFire::Clear();
 				}
 				EndSandboxTab();
@@ -2394,6 +2620,8 @@ void Sandbox::OnActivityStarted() {
 	s_Effects.clear();
 	s_Decor.clear();
 	s_PaintUndo.clear();
+	// (The new map's own gravity is taken on the first update, once its scene is loaded.)
+	s_MapGravityKnown = false;
 	s_PaintRedo.clear();
 	// The same random stream from the start of every game, so the same inputs give the same game.
 	s_Random = c_RandomSeed;
@@ -2440,6 +2668,11 @@ void Sandbox::Update() {
 		s_Effects.clear();
 		s_Decor.clear();
 		return;
+	}
+	if (!s_MapGravityKnown && g_SceneMan.GetScene()) {
+		// The map's own gravity, for the World tab to put back (after the game's own start-up, which may set it).
+		s_MapGravity = g_SceneMan.GetScene()->GetGlobalAcc();
+		s_MapGravityKnown = true;
 	}
 	BattlePresetsUpdate();
 	ApplyPendingOrders();
