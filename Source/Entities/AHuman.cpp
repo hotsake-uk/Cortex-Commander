@@ -300,7 +300,7 @@ int AHuman::ReadProperty(const std::string_view& propName, Reader& reader) {
 		float jumpTime;
 		reader >> jumpTime;
 		if (m_pJetpack) {
-			m_pJetpack->SetJetTimeTotal(jumpTime * 1000.0F);
+			m_pJetpack->SetBaseJetTimeTotal(jumpTime * 1000.0F);
 			m_pJetpack->SetJetTimeLeft(jumpTime * 1000.0F);
 		}
 	});
@@ -2053,6 +2053,8 @@ void AHuman::UpdateLimbPathSpeed() {
 		}
 		// A creature's venom slows it; its web all but stops it (CR-6).
 		travelSpeedMultiplier *= GetAfflictionSpeedMultiplier();
+		// A heavy load slows it (the Carry weight settings).
+		travelSpeedMultiplier *= GetOverloadSpeedMultiplier();
 		// Kept to a group's pace (RC-5): no faster than the slowest of those sent with it.
 		if (m_PaceLimit > 0.0F) {
 			const float fullSpeed = std::max(m_Paths[FGROUND][pathState].GetTravelSpeed(), m_Paths[BGROUND][pathState].GetTravelSpeed()) * 0.5F * travelSpeedMultiplier;

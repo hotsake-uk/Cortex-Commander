@@ -335,11 +335,10 @@ void AHuman::UpdateAIMotor() {
 // ---------------------------------------------------------------- The leap
 
 float AHuman::GetLegJumpHeight() const {
-	if (m_LegJumpHeight >= 0.0F) {
-		return m_LegJumpHeight;
-	}
 	// A little over half the standing body (0.44 of the character height): a soldier clears a knee-high crate or a node-wide gap at a run.
-	return std::max(16.0F, m_CharHeight * 0.44F) * 0.55F;
+	float height = m_LegJumpHeight >= 0.0F ? m_LegJumpHeight : std::max(16.0F, m_CharHeight * 0.44F) * 0.55F;
+	// The Carry weight settings: stronger legs leap higher, a load holds it down.
+	return height * g_SettingsMan.LegStrength() * GetOverloadSpeedMultiplier();
 }
 
 bool AHuman::CanLeap() const {
@@ -1546,15 +1545,28 @@ bool AHuman::ShaftColumn(float columnX, float topHeadY, float& middleX, float& w
 	return true;
 }
 
-void AHuman::RefreshRoute() {
+void AHuman::RefreshRoute(bool keepRoute) {
 	Vector goal = m_HasMovePathGoal ? m_MovePathGoal : GetLastAIWaypoint();
 	bool hadGoal = m_HasMovePathGoal || !m_MovePath.empty();
-	m_MovePath.clear();
-	m_MovePathKinds.clear();
+	// (A refresh is a new route, never a route check: kept, a check's flag had the answer weighed against the route it replaces.)
+	m_RouteCheck = false;
 	if (hadGoal) {
 		m_MovePathGoal = goal;
 		m_HasMovePathGoal = true;
 		m_MoveTarget = goal;
+	}
+	// A routine refresh keeps the route it has until the new one comes: cleared, the unit stood still for the frames the search took, every
+	// second while its next point was out of sight, and the route drawn in the debug view blinked out each time.
+	if (keepRoute && !m_MovePath.empty()) {
+		UpdateMovePath();
+		return;
+	}
+	m_MovePath.clear();
+	m_MovePathKinds.clear();
+	// With no route, the next request loads the next waypoint on the list: the leg being walked goes back on first, or a refresh mid-leg
+	// skipped it and sent the unit on to the one after.
+	if (hadGoal && !m_Waypoints.empty() && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
+		m_Waypoints.emplace_front(goal, nullptr);
 	}
 	UpdateMovePath();
 }
@@ -1819,7 +1831,7 @@ void AHuman::DrawMoverDebug() const {
 				g_PrimitiveMan.DrawBoxFillPrimitive(barLeft, barLeft + Vector(width * used, 3.0F), record.fuelUsed > record.fuelPredicted ? overColor : withinColor);
 			}
 			g_PrimitiveMan.DrawLinePrimitive(barLeft + Vector(width * predicted, -2.0F), barLeft + Vector(width * predicted, 5.0F), plannedColor);
-			g_PrimitiveMan.DrawTextPrimitive(barLeft + Vector(width * 0.5F, -10.0F), "fuel " + std::to_string(static_cast<int>(record.fuelUsed)) + " of " + std::to_string(static_cast<int>(record.fuelPredicted)), true, 1);
+			g_PrimitiveMan.DrawTextPrimitive(barLeft + Vector(width * 0.5F, -10.0F), "had " + std::to_string(static_cast<int>(record.fuelAtTakeOff)) + ", needs " + std::to_string(static_cast<int>(record.fuelPredicted)) + ", used " + std::to_string(static_cast<int>(record.fuelUsed)), true, 1);
 		}
 	}
 	std::string state = mover.flight.active ? (mover.flight.refuelling ? "refuel" : (mover.flight.step ? "step" : (mover.flight.via ? "shaft" : "flight"))) : (mover.fuelWaiting ? "fuel wait" : "walk");
@@ -1846,6 +1858,7 @@ void AHuman::RecordFlightDebug() {
 			record.planned.push_back(Vector(flight.landing.m_X, flight.floorY - feet));
 			record.fuelPredicted = FlightFuelNeeded(flight.landing, flight.floorY);
 			record.tank = m_pJetpack ? m_pJetpack->GetJetTimeTotal() : 0.0F;
+			record.fuelAtTakeOff = fuel;
 			record.lastFuel = fuel;
 		}
 		record.fuelUsed += std::max(0.0F, record.lastFuel - fuel);
@@ -2166,12 +2179,8 @@ int AHuman::MoveAlongRoute() {
 		mover.impossibleSeen = m_ImpossiblePaths;
 		mover.repathTimer.Reset();
 	}
-	if (IsWaitingOnNewMovePath()) {
-		// (Standing still while the search runs, unless in the air, where the last flight goes on.)
-		if (!mover.flight.active) {
-			return RouteMover::Moving;
-		}
-	}
+	// (Standing still while the search runs with no route at all, unless in the air, where the last flight goes on. With a route in hand,
+	// kept by a routine refresh or a route check, the unit goes on along it until the answer replaces it.)
 	if (m_MovePath.empty() && !mover.flight.active) {
 		return RouteMover::Moving;
 	}
@@ -2351,10 +2360,9 @@ int AHuman::MoveAlongRoute() {
 		}
 		if ((mover.noSightTimer.IsPastSimMS(1000) || mover.repathTimer.IsPastSimMS(7500)) && !IsWaitingOnNewMovePath()) {
 			MoverTrace(mover.noSightTimer.IsPastSimMS(1000) ? "next point out of sight; new route" : "route refreshed");
-			RefreshRoute();
+			RefreshRoute(true);
 			mover.repathTimer.Reset();
 			mover.noSightTimer.Reset();
-			return RouteMover::Moving;
 		}
 	} else if (airborne && mover.routeCheckTimer.IsPastSimMS(500)) {
 		mover.routeCheckTimer.Reset();
@@ -3004,8 +3012,10 @@ int AHuman::MoveAlongRoute() {
 		}
 		if (found) {
 			const float needed = std::min(FlightFuelNeeded(goal, viaApex ? apex.m_Y + feet : goalFloorY), tank * 0.95F);
-			// (A sky route waits for all of it: high over open ground, coming down short is a long fall, not a hop.)
-			const float want = std::min(needed * (skyOnly ? 1.0F : g_SettingsMan.DirectOrders().FuelShare), tank * 0.95F);
+			// (A sky route waits for all of it: high over open ground, coming down short is a long fall, not a hop. So does a climb, to a floor
+			// over this one or by a point over the way: short, it came back down under the landing, steadied and tried again, slower than the wait.)
+			const bool climb = viaApex || goalFloorY < m_Pos.m_Y + feet - h * 0.5F;
+			const float want = std::min(needed * (skyOnly || climb ? 1.0F : g_SettingsMan.DirectOrders().FuelShare), tank * 0.95F);
 			mover.straightHold = false;
 			if (m_pJetpack->GetJetTimeLeft() < std::max(want, JetRelightFuel())) {
 				// Short of it: stood still for the tank to fill (ten seconds at most, then the route for a while), not walked off along the route.
@@ -3602,9 +3612,16 @@ int AHuman::MoveAlongRoute() {
 		if (!g_SettingsMan.AIWaitsForFuel()) {
 			needed *= 0.1F;
 		} else {
-			needed *= 1.0F + (directTuning.FuelShare - 1.0F) * direct + (directTuning.CautiousFuelShare - 1.0F) * care;
+			// (A risky order's smaller share only for a flight across or down: a climb taken short of its fuel came back down under the
+			// landing, steadied and went again, which is slower than the wait it skipped.)
+			const bool climb = toLanding.m_Y < -h * 0.5F;
+			needed *= 1.0F + (climb ? 0.0F : (directTuning.FuelShare - 1.0F) * direct) + (directTuning.CautiousFuelShare - 1.0F) * care;
 			needed = std::min(needed, m_pJetpack->GetJetTimeTotal() * 0.95F); // (A cautious one's more than the flight is never more than a tank holds.)
 		}
+		// The wait's cap: six seconds, or as long as the tank takes to fill to what is needed from empty and a second more, if longer. (Six
+		// seconds flat sent a unit with a big tank or a slow refill off short of it.)
+		const float refillMS = needed / std::max(m_pJetpack->GetJetReplenishRate(), 0.05F);
+		const double fuelWaitCapMS = std::max(6000.0, static_cast<double>(refillMS) + 1000.0);
 		if (canTakeOff && !mover.fuelWaiting) {
 			mover.fuelWaiting = true;
 			mover.fuelWaitTimer.Reset();
@@ -3646,7 +3663,7 @@ int AHuman::MoveAlongRoute() {
 			}
 			return RouteMover::Moving;
 		}
-		if (canTakeOff && (m_pJetpack->GetJetTimeLeft() >= needed || mover.fuelWaitTimer.IsPastSimMS(6000))) {
+		if (canTakeOff && (m_pJetpack->GetJetTimeLeft() >= needed || mover.fuelWaitTimer.IsPastSimMS(fuelWaitCapMS))) {
 			mover.fuelWaiting = false;
 			{
 				mover.flight = RouteMover::Flight();

@@ -202,6 +202,9 @@
     <ClInclude Include="Source\Managers\MapBrowser.h">
       <Filter>Managers</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Managers\MapGen.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Managers\SandboxInternal.h">
       <Filter>Managers</Filter>
     </ClInclude>
@@ -233,6 +236,9 @@
       <Filter>Managers</Filter>
     </ClInclude>
     <ClInclude Include="Source\Managers\ModernHUD.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Managers\Notices.h">
       <Filter>Managers</Filter>
     </ClInclude>
     <ClInclude Include="Source\Managers\ActionMenu.h">
@@ -946,6 +952,9 @@
     <ClCompile Include="Source\Managers\SandboxAirlift.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Managers\SandboxHold.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Managers\BattleSupply.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
@@ -974,6 +983,9 @@
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\SandboxMapBrowser.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\MapGen.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\SandboxWorld.cpp">
@@ -1037,6 +1049,9 @@
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\ModernHUD.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\Notices.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\ActionMenu.cpp">

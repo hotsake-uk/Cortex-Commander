@@ -111,6 +111,7 @@ void MainMenuGUI::CreateMainScreen() {
 	m_MainMenuButtons[MenuButton::ScenarioButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToSkirmish"));
 	m_MainMenuButtons[MenuButton::SandboxButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToSandbox"));
 	m_MainMenuButtons[MenuButton::BattleCommandButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToBattleCommand"));
+	m_MainMenuButtons[MenuButton::QuickBattleButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToQuickBattle"));
 	m_MainMenuButtons[MenuButton::SaveOrLoadGameButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonSaveOrLoadGame"));
 	m_MainMenuButtons[MenuButton::SettingsButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToOptions"));
 	m_MainMenuButtons[MenuButton::ModManagerButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToModManager"));
@@ -323,7 +324,8 @@ void MainMenuGUI::ShowSandboxScreen() {
 	}
 	ShowSandboxPanels("");
 
-	// "Current map" is the map of the game in progress (or last played), if it's a real map that can be loaded again, else the Sandbox game mode's own map.
+	// "Current map" is the map of the game in progress, else the map last played (LastMap in the settings, kept between launches, U-3), if it's
+	// a real map that can be loaded again: "Continue on" it. Else the Sandbox game mode's own map.
 	m_SandboxCurrentMapName.clear();
 	const Activity* activity = g_ActivityMan.GetActivity();
 	const Scene* scene = g_SceneMan.GetScene();
@@ -333,11 +335,15 @@ void MainMenuGUI::ShowSandboxScreen() {
 			m_SandboxCurrentMapName = sceneName;
 		}
 	}
-	if (m_SandboxCurrentMapName.empty()) {
+	if (const std::string& lastMap = g_SettingsMan.LastMap(); m_SandboxCurrentMapName.empty() && !lastMap.empty() && g_PresetMan.GetEntityPreset("Scene", lastMap)) {
+		m_SandboxCurrentMapName = lastMap;
+	}
+	const bool played = !m_SandboxCurrentMapName.empty();
+	if (!played) {
 		const Activity* sandbox = dynamic_cast<const Activity*>(g_PresetMan.GetEntityPreset("GAScripted", "Sandbox"));
 		m_SandboxCurrentMapName = (sandbox && !sandbox->GetSceneName().empty()) ? sandbox->GetSceneName() : "Ketanot Hills";
 	}
-	m_MainMenuButtons[MenuButton::SandboxCurrentMapButton]->SetText("Current Map: " + m_SandboxCurrentMapName);
+	m_MainMenuButtons[MenuButton::SandboxCurrentMapButton]->SetText((played ? "Continue on " : "Current Map: ") + m_SandboxCurrentMapName);
 
 	m_MenuScreenChange = false;
 }
@@ -561,6 +567,9 @@ void MainMenuGUI::HandleMainScreenInputEvents(const GUIControl* guiEventControl)
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::BattleCommandButton]) {
 		// The map browser, for a map to play Battle Command on (and a battle saved on it), then in.
 		OpenMapBrowser(true);
+	} else if (guiEventControl == m_MainMenuButtons[MenuButton::QuickBattleButton]) {
+		// The map browser on the maps with saved battles: the one picked is started at once on its map (B-16).
+		OpenMapBrowser(true, true);
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SaveOrLoadGameButton]) {
 		SetActiveMenuScreen(MenuScreen::SaveOrLoadGameScreen);
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SettingsButton]) {
@@ -590,10 +599,10 @@ void MainMenuGUI::HandleMetaGameNoticeScreenInputEvents(const GUIControl* guiEve
 	}
 }
 
-void MainMenuGUI::OpenMapBrowser(bool battle) {
+void MainMenuGUI::OpenMapBrowser(bool battle, bool quickBattle) {
 	m_MapBrowserBackScreen = battle ? MenuScreen::MainScreen : MenuScreen::SandboxScreen;
 	SetActiveMenuScreen(MenuScreen::MapBrowserScreen);
-	MapBrowser::Open(battle ? MapBrowser::Purpose::Battle : MapBrowser::Purpose::Sandbox);
+	MapBrowser::Open(battle ? MapBrowser::Purpose::Battle : MapBrowser::Purpose::Sandbox, quickBattle);
 }
 
 void MainMenuGUI::HandleMapBrowserChoice() {

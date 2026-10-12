@@ -144,6 +144,18 @@ namespace RTE {
 		/// @return The mass of this Actor, its inventory and all its Attachables and wounds in Kilograms (kg).
 		float GetMass() const override;
 
+		/// Gets the mass of what this Actor carries: its inventory, its gold and the items in its hands, as the Carry weight settings weigh them.
+		/// @return The carried mass in Kilograms (kg).
+		float GetCarriedMass() const;
+
+		/// Gets the mass of the items this Actor holds in its hands, which are counted in its Attachables' mass. None, for actors without hands.
+		/// @return The held mass in Kilograms (kg).
+		virtual float GetHeldMass() const { return 0.0F; }
+
+		/// Gets how much this Actor's load slows its walk and lowers its leap, from the Carry weight settings' overload slowdown.
+		/// @return A multiplier for its speed, 1 when unhindered.
+		float GetOverloadSpeedMultiplier() const;
+
 		/// Gets the mass that this actor had upon spawning, i.e with ini-defined inventory, gold and holding no items
 		/// @return The base mass of this Actor, in Kilograms (kg).
 		float GetBaseMass();

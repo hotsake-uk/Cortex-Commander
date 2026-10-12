@@ -473,6 +473,10 @@ namespace RTE {
 		/// @return The mass of this AHuman's equipped devices.
 		float GetEquippedMass() const;
 
+		/// Gets the mass of the items in this AHuman's hands, for the Carry weight settings.
+		/// @return The equipped mass in Kilograms (kg).
+		float GetHeldMass() const override { return GetEquippedMass(); }
+
 		/// Indicates whether the currently held HDFirearm's is ready for use, and has
 		/// ammo etc.
 		/// @return Whether a currently HDFirearm (if any) is ready for use.
@@ -1063,6 +1067,7 @@ namespace RTE {
 				float fuelPredicted = 0.0F; //!< FlightFuelNeeded as the flight began, ms of jet.
 				float fuelUsed = 0.0F; //!< What the tank lost over the flight, refills not counted back, ms of jet.
 				float lastFuel = 0.0F;
+				float fuelAtTakeOff = 0.0F; //!< What the tank held as the flight began, ms of jet.
 				float tank = 0.0F; //!< The jet's full tank, ms.
 				Timer sinceEnd; //!< Since it landed or gave up, so the record still shows for a few seconds after.
 			};
@@ -1240,7 +1245,8 @@ namespace RTE {
 		int MoveAlongRouteWeightless();
 		/// Drops the route but keeps the place it was for, and asks for a new one to it. (ClearMovePath forgets the goal too, and set the
 		/// target to the unit's own place: every refresh told the unit it had arrived.)
-		void RefreshRoute();
+		/// @param keepRoute Whether the route in hand is followed until the new one replaces it (a routine refresh), rather than dropped now.
+		void RefreshRoute(bool keepRoute = false);
 		void MoverTrace(const std::string& text) const;
 		/// The navigation debug overlay's view of the route-follower (level 2): the route ahead, the point in hand, and a flight's take-off,
 		/// shaft point and landing.
