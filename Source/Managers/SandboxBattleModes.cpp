@@ -146,7 +146,14 @@ namespace SandboxDetail {
 				return team;
 			}
 			const std::vector<std::vector<Vector>> zones = ZonesOf(settings, side);
-			if (settings.ByShip) {
+			team.KeepClear = settings.KeepClear;
+			if (settings.ByShip && settings.Anywhere) {
+				// Anywhere across the map, clear of the enemy where it can (ClearDropX).
+				team.ShipsPerBurst = std::clamp(SizeOf(settings, side) / 15 + 1, 1, 4);
+				team.Invincible = true;
+				team.DropOnLine = false;
+				team.HasLine = false;
+			} else if (settings.ByShip) {
 				// Over its widest spawn zone, from one side of it to the other.
 				const std::vector<Vector>& base = WidestZone(zones);
 				float left = 0.0F;
@@ -163,6 +170,8 @@ namespace SandboxDetail {
 			} else {
 				team.ShipsPerBurst = 0;
 				team.SpawnZones = zones;
+				// (Anywhere on the map instead, on the zones' clock: AnywhereSpot.)
+				team.AppearAnywhere = settings.Anywhere;
 			}
 			return team;
 		}
@@ -5881,6 +5890,25 @@ namespace SandboxDetail {
 		}
 	}
 
+	void ModeKeepClearSpots(std::vector<Vector>& spots) {
+		const BattleModeSettings& settings = s_ModeRun.Settings;
+		if (settings.Mode == BattleMode::CaptureTheFlag) {
+			for (int side = 0; side < c_Sides; ++side) {
+				if (TeamIn(settings, side)) {
+					spots.push_back(s_Flags[side].Pos);
+				}
+			}
+		} else if (settings.Mode == BattleMode::OneFlag) {
+			spots.push_back(s_OneFlag.Pos);
+		} else if (settings.Mode == BattleMode::CaptureTheShip) {
+			if (const ACShip* ship = LiveShip()) {
+				spots.push_back(ship->GetPos());
+			}
+		} else if (settings.Mode == BattleMode::ThePoint && !settings.FlagSpots.empty()) {
+			spots.push_back(settings.FlagSpots.front());
+		}
+	}
+
 	Vector ModeSpawnSpot(int side, const std::vector<Vector>& zone, const Actor* unit) {
 		const BattleModeInfo& mode = ModeOf(s_ModeRun.Settings.Mode);
 		return mode.SpawnSpot ? mode.SpawnSpot(side, zone, unit) : SpreadSpot(zone, unit ? unit->GetHeight() : 0.0F, nullptr);
@@ -6034,16 +6062,24 @@ namespace SandboxDetail {
 		ImGui::SetItemTooltip("A unit that gets no nearer to its objective for this long (stuck in a hole or on a ledge, or with no way there) is taken away and another comes in its place at once. Not while it is fighting, nor a VIP.");
 		changed |= ImGui::SliderInt("Route variety", &setup.RouteVariety, 0, 100, setup.RouteVariety > 0 ? "%d%% go their own way" : "all take the shortest way");
 		ImGui::SetItemTooltip("The share of each team's units that each pick a way of their own to where they're going, so a team spreads over the routes across the map rather than filing down the one. At 50%% half take the shortest way and the rest spread over the others that are near enough as short (up to about half as long again). New units only: those already in keep their way.");
-		if (ToolUI::RadioButton("Appear in their spawn zones##arrive", !setup.ByShip)) {
-			setup.ByShip = false;
-			changed = true;
-		}
+		// How units come in: appearing or by ship, at their base or anywhere on the map.
+		auto arrive = [&](const char* label, bool byShip, bool anywhere, const char* tip) {
+			if (ToolUI::RadioButton(label, setup.ByShip == byShip && setup.Anywhere == anywhere)) {
+				setup.ByShip = byShip;
+				setup.Anywhere = anywhere;
+				changed = true;
+			}
+			ImGui::SetItemTooltip("%s", tip);
+		};
+		arrive("Appear in their spawn zones##arrive", false, false, "Each team's units appear in their spawn zones.");
 		ImGui::SameLine();
-		if (ToolUI::RadioButton("Come in by ship##arrive", setup.ByShip)) {
-			setup.ByShip = true;
-			changed = true;
+		arrive("Appear anywhere##arrive", false, true, "Each team's units appear anywhere on the map there's ground to stand on (caves too), with room above them and not in liquid, kept clear of enemies and objectives. Spawn zones still mark each team's base (its flag, its defenders).");
+		arrive("Ships over their base##arrive", true, false, "Each team's units come in by ship over their widest spawn zone (each team's card says which craft), rather than appearing in their zones.");
+		ImGui::SameLine();
+		arrive("Ships anywhere##arrive", true, true, "Each team's units come in by ship anywhere across the map (each team's card says which craft), kept clear of enemies and objectives. Spawn zones still mark each team's base.");
+		if (setup.Anywhere) {
+			changed |= KeepClearSlider(setup.KeepClear, "##modeclear");
 		}
-		ImGui::SetItemTooltip("Each team's units come in by ship over their widest spawn zone (each team's card says which craft), rather than appearing in their zones.");
 		if (bool show = g_SettingsMan.ShowBattleSpawnZones(); ToolUI::Checkbox("Show spawn zones on the map", &show)) {
 			g_SettingsMan.SetShowBattleSpawnZones(show);
 		}
