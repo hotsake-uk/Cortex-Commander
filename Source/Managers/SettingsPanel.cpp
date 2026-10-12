@@ -338,6 +338,8 @@ void DebugMan::SettingsGUI() {
 		Tip("How fast the rain, snow, ash and dust move: their fall, how the wind carries them, and their sway, swirl and flicker. They keep their angle, so shelter and splashes still line up. 1: as the weather has it.");
 		Check("Weather everywhere", &settings.WeatherEverywhere);
 		Tip("The rain, snow, ash and dust show everywhere but over the terrain and its back walls: under roofs and overhangs and in cave mouths too, wherever the sky or the scenery behind shows. The ground still only gets wet or snowy where the weather reaches it.");
+		Check("Weather over the background", &settings.WeatherOverBackground);
+		Tip("The rain, snow, ash and dust are drawn over the sky and the distant scenery. Off: they only show in front of the terrain's back walls, units and the rest of the scene, not painted over the background.");
 		Slider("Wind", &settings.Wind, -400.0F, 400.0F, "%.0f px/s");
 		Tip("The wind's steady strength and way: negative blows left. The natural wind below makes it gust and wander around this.");
 		{
