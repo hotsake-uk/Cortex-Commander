@@ -3960,7 +3960,8 @@ void AHuman::LearnFlight() {
 			m_JetFlying = true;
 		}
 		// (Walked through too: a ladder's rungs stood in a corridor, and a unit coming at a ladder from its open side walked into them. A
-		// living soldier passes rungs whatever it is doing; a limp body lands on them; the climb takes hold of them by its hands.)
+		// living soldier passes rungs whatever it is doing; the climb takes hold of them by its hands. A body, and everything else but a shot,
+		// passes them too now: see MovableObject::RootPassesRungs.)
 		bool alive = m_Status != INACTIVE && m_Status != DEAD && m_Status != DYING;
 		SetPassMaterial(alive ? static_cast<unsigned char>(s_LadderMaterial) : 0);
 	}

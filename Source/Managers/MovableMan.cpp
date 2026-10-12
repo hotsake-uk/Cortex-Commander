@@ -45,6 +45,28 @@ namespace {
 		const MovableObject* root = mo->GetRootParent();
 		return root && root->IsActor();
 	}
+
+	/// Whether something settling into the terrain would be drawn among a ladder's rungs: still falling (put to settle by a limit on loose
+	/// objects) with a rung inside its reach. Everything but shots passes rungs (MovableObject::RootPassesRungs), so nothing comes to rest on them;
+	/// drawn in where it was, a helmet or a gib falling down a ladder became a lump of solid ground across the shaft that units stuck on.
+	bool SettlesAmongRungs(const MovableObject* mo) {
+		const unsigned char rung = MovableObject::RungMaterial();
+		if (rung == 0 || !mo->GetVel().MagnitudeIsGreaterThan(1.0F)) {
+			return false;
+		}
+		const int reach = std::clamp(static_cast<int>(std::ceil(mo->GetRadius())) + 2, 2, 24);
+		const int step = reach > 6 ? 2 : 1;
+		const int x0 = mo->GetPos().GetFloorIntX();
+		const int y0 = mo->GetPos().GetFloorIntY();
+		for (int dy = -reach; dy <= reach; dy += step) {
+			for (int dx = -reach; dx <= reach; dx += step) {
+				if (g_SceneMan.GetTerrMatter(x0 + dx, y0 + dy) == rung) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
 } // namespace
 
 AlarmEvent::AlarmEvent(const Vector& pos, int team, float range) :
@@ -2041,8 +2063,8 @@ void MovableMan::Update() {
 			while (parIt != m_Particles.end()) {
 				Vector parPos((*parIt)->GetPos());
 				Material const* terrMat = g_SceneMan.GetMaterialFromID(g_SceneMan.GetTerrain()->GetMaterialPixel(parPos.GetFloorIntX(), parPos.GetFloorIntY()));
-				// (A particle with no material can't settle into the terrain: it is only deleted.)
-				if (!(*parIt)->GetMaterial() || !terrMat) {
+				// (A particle with no material can't settle into the terrain: it is only deleted. Nor can one falling among a ladder's rungs.)
+				if (!(*parIt)->GetMaterial() || !terrMat || SettlesAmongRungs(*parIt)) {
 					(*parIt)->DestroyScriptState();
 					delete (*parIt);
 					m_ValidParticles.erase(*parIt);

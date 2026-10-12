@@ -346,15 +346,25 @@ namespace RTE {
 		/// flying on its jet passes the ladders' rungs (AHuman sets it), and meets them again once the jet has been out a moment.
 		unsigned char GetPassMaterial() const { return m_PassMaterial; }
 		void SetPassMaterial(unsigned char material) { m_PassMaterial = material; }
-		/// Whether a terrain material is one this object's body passes through just now: its root's pass material, or a tree's for a unit or
-		/// vehicle (and what it carries) while they don't bump into trees (TerrainTrees::ActorsPass).
+		/// Whether a terrain material is one this object's body passes through just now: its root's pass material, a tree's for a unit or
+		/// vehicle (and what it carries) while they don't bump into trees (TerrainTrees::ActorsPass), or the ladders' rungs for anything but a
+		/// shot (see RootPassesRungs).
 		bool PassesMaterial(unsigned char material) const {
 			if (material == 0) {
 				return false;
 			}
 			const MovableObject* root = GetRootParent();
-			return (root->m_PassMaterial != 0 && root->m_PassMaterial == material) || (TerrainTrees::ActorsPass(material) && root->IsActor()) || PassesTreeAsShot(material);
+			return (root->m_PassMaterial != 0 && root->m_PassMaterial == material) || (TerrainTrees::ActorsPass(material) && root->IsActor()) || PassesTreeAsShot(material) || (material == RungMaterial() && root->RootPassesRungs());
 		}
+
+		/// The ladders' rungs' material (the "Ladder" material), 0 if there is none.
+		static unsigned char RungMaterial();
+
+		/// Whether this, as a root object, passes the ladders' rungs: everything but a shot does. A unit of any kind and whatever it wears or
+		/// carries (a mod's helmet, a crab's turret, a vehicle's wheels), and loose things: a knocked-off helmet, a gib, a dropped gun, a body.
+		/// (The path grid has every unit walk through rungs, so a unit that met them stuck there; and loose things lying on rungs, or settled
+		/// into the terrain among them, were a wall to the soldiers coming up the ladder.) Shots still strike them, and can shoot a ladder away.
+		bool RootPassesRungs() const { return !IsBullet(); }
 
 		/// Whether this is a shot that goes past a tree material: a bullet (a small fast particle that hits MOs, not fire) past all of a tree but for
 		/// the odd stray one (TerrainTrees::StrayBulletPercent), and a launched rocket past its trunk but not its leaves.
