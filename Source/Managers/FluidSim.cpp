@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <climits>
 #include <cmath>
 #include <cstdlib>
 #include <functional>
@@ -803,28 +804,56 @@ namespace {
 	/// The box the liquids changed what can be walked through this update (to or from something solid: stone set from lava, ice, a hole eaten
 	/// by acid, sand sliding), told to the pathfinder at the end of the update (M-4), as TerrainFire does.
 	struct ChangedBox {
-		int MinX = 0, MinY = 0, MaxX = -1, MaxY = -1;
+		/// Changes further apart than this are kept as separate boxes, so a puddle at each end of the map isn't told as one box over the whole map between them.
+		static constexpr int c_JoinGap = 48;
+		static constexpr size_t c_MaxBoxes = 16;
+		struct Area {
+			int MinX, MinY, MaxX, MaxY;
+			int GapTo(int x, int y) const { return std::max({MinX - x, x - MaxX, MinY - y, y - MaxY, 0}); }
+		};
+		std::vector<Area> Areas;
+		size_t Last = 0; //!< The area last added to: a flowing stream adds pixel after pixel to the same one.
 		void Add(int x, int y) {
-			if (MaxX < 0) {
-				MinX = MaxX = x;
-				MinY = MaxY = y;
+			if (Last < Areas.size() && Areas[Last].GapTo(x, y) == 0) {
 				return;
 			}
-			MinX = std::min(MinX, x);
-			MinY = std::min(MinY, y);
-			MaxX = std::max(MaxX, x);
-			MaxY = std::max(MaxY, y);
+			Area* nearest = nullptr;
+			int nearestGap = INT_MAX;
+			for (Area& area: Areas) {
+				if (int gap = area.GapTo(x, y); gap < nearestGap) {
+					nearest = &area;
+					nearestGap = gap;
+					if (gap == 0) {
+						Last = static_cast<size_t>(nearest - Areas.data());
+						return;
+					}
+				}
+			}
+			// (With the fix off, as before: everything in one box.)
+			if (!nearest || (nearestGap > c_JoinGap && Areas.size() < c_MaxBoxes && g_SettingsMan.SlowdownFixes().LiquidTellsOnlyMoves)) {
+				Last = Areas.size();
+				Areas.push_back({x, y, x, y});
+				return;
+			}
+			Last = static_cast<size_t>(nearest - Areas.data());
+			nearest->MinX = std::min(nearest->MinX, x);
+			nearest->MinY = std::min(nearest->MinY, y);
+			nearest->MaxX = std::max(nearest->MaxX, x);
+			nearest->MaxY = std::max(nearest->MaxY, y);
 		}
-		bool Empty() const { return MaxX < 0; }
-		void Reset() { MaxX = MaxY = -1; }
+		bool Empty() const { return Areas.empty(); }
+		void Reset() { Areas.clear(); }
 	};
 	ChangedBox s_SolidChanged;
-	ChangedBox s_LiquidRested; //!< Where liquid came to rest since it was last told (the path grid weighs liquid: LM-4), told once a second.
+	ChangedBox s_LiquidRested; //!< Where liquid moved since it was last told (the path grid weighs liquid: LM-4), told once a second. (Only where it moved: a resting pool the sweep
+	                           //!< wakes to look for a lower level and that goes back to sleep where it was changes nothing, and telling it re-sampled the path grid over every pool on the map, for ever.)
 
-	/// Tells the pathfinder what changed (M-4): what can be walked through at once, where liquid settled once a second.
+	/// Tells the pathfinder what changed (M-4): what can be walked through at once, where liquid moved once a second.
 	void TellPathfinder(SLTerrain* terrain, long long simUpdate) {
 		auto tell = [terrain](ChangedBox& box) {
-			terrain->AddUpdatedMaterialArea(Box(Vector(static_cast<float>(box.MinX), static_cast<float>(box.MinY)), static_cast<float>(box.MaxX - box.MinX + 1), static_cast<float>(box.MaxY - box.MinY + 1)));
+			for (const ChangedBox::Area& area: box.Areas) {
+				terrain->AddUpdatedMaterialArea(Box(Vector(static_cast<float>(area.MinX), static_cast<float>(area.MinY)), static_cast<float>(area.MaxX - area.MinX + 1), static_cast<float>(area.MaxY - area.MinY + 1)));
+			}
 			box.Reset();
 		};
 		if (!s_SolidChanged.Empty()) {
@@ -979,6 +1008,9 @@ namespace {
 		}
 		BITMAP* materialBitmap = terrain->GetBitmap();
 		bool anyFire = TerrainFire::GetCount() > 0;
+		// How far along a row the sweep looks for a drop to wake a surface pixel for: no further than its step will go for one (with the fix on).
+		const bool reachLikeStep = g_SettingsMan.SlowdownFixes().LiquidTellsOnlyMoves;
+		auto sweepReach = [reachLikeStep](int material) { return reachLikeStep ? std::min(s_Props[material].Flow * 60, 300) : 300; };
 		size_t index = s_SweepCursor < total ? s_SweepCursor : 0;
 		int x = static_cast<int>(index % static_cast<size_t>(width));
 		int y = static_cast<int>(index / static_cast<size_t>(width));
@@ -996,8 +1028,9 @@ namespace {
 				int right = x + 1 < width ? x + 1 : (s_WrapsX ? 0 : x);
 				if (Passable(below[x], swept) || Passable(below[left], swept) || Passable(below[right], swept)) {
 					Activate(x, y, width, height, terrain);
-				} else if ((Passable(materialBitmap->line[y][left], swept) || Passable(materialBitmap->line[y][right], swept)) && (FindRowDrop(materialBitmap, x, y, -1, 300, width, height) || FindRowDrop(materialBitmap, x, y, 1, 300, width, height))) {
+				} else if ((Passable(materialBitmap->line[y][left], swept) || Passable(materialBitmap->line[y][right], swept)) && (FindRowDrop(materialBitmap, x, y, -1, sweepReach(swept), width, height) || FindRowDrop(materialBitmap, x, y, 1, sweepReach(swept), width, height))) {
 					// The end of a layer on the surface, with somewhere lower along its row to go to. (One with nowhere to go is left asleep, or the top of every pool would stir for ever.)
+					// (Looking no further than the step itself will go for it: a slow liquid like lava, woken for a drop past its reach, could never get there and was woken again every pass.)
 					Activate(x, y, width, height, terrain);
 				} else if (HasReactionPartner(materialBitmap, x, y, width, height, anyFire)) {
 					// Something beside it to react with (acid by soft ground, lava by wood or snow, a pool by a fire): woken, it reacts in the step, so an acid
@@ -1669,6 +1702,7 @@ void FluidSim::Update() {
 	// moved off), and the newcomer has had its step.
 	std::unordered_set<int> movedInto;
 	movedInto.reserve(keys.size());
+	const bool tellOnlyMoves = g_SettingsMan.SlowdownFixes().LiquidTellsOnlyMoves;
 	for (int key: keys) {
 		if (!s_Active.Contains(key) || movedInto.count(key) != 0) {
 			continue;
@@ -2010,6 +2044,9 @@ void FluidSim::Update() {
 			Uncover(terrain, x, y, width);
 			s_LifeTags.erase(key);
 			s_Active.Remove(key);
+			if (tellOnlyMoves) {
+				s_LiquidRested.Add(x, y);
+			}
 			ActivateAround(x, y, width, height, terrain);
 			continue;
 		}
@@ -2073,6 +2110,10 @@ void FluidSim::Update() {
 				TerrainFire::MoveBurning(x, y, targetX, targetY);
 			}
 			s_Active.Remove(key);
+			if (tellOnlyMoves) {
+				s_LiquidRested.Add(x, y);
+				s_LiquidRested.Add(targetX, targetY);
+			}
 			// Running along the level without getting any lower counts towards coming to rest, so ripples die down.
 			// (One waiting for a level search counts toward rest a quarter as fast, not at all: with the search budget spent lower down every update, as
 			// in a map-wide flood, it held its count where it qualifies for ever and neither rested nor searched.)
@@ -2102,7 +2143,9 @@ void FluidSim::Update() {
 	for (int key: settled) {
 		if (movedInto.count(key) == 0) {
 			s_Active.Remove(key);
-			s_LiquidRested.Add(key % width, key / width);
+			if (!tellOnlyMoves) {
+				s_LiquidRested.Add(key % width, key / width);
+			}
 		}
 	}
 	for (const glm::ivec2& spot: hurtSpots) {

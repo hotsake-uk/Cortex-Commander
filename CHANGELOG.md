@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 <details><summary><b>Added</b></summary>
 
+- **Late-battle slowdown fixes**, a new **Performance** page in the settings panel, each with its own switch so it can be tried against the old behaviour: liquid tells the path grid only where it moved (blood pools re-sampled most of the map every second for good), vehicle and ship wrecks settle into the ground as their own material after lying still (**Wrecks settle after**, 20 s; 0 never), debris lying across a crack settles, the gas area shrinks to where gas is, and the lighting works out each changed patch of terrain on its own. A **Slowdown readout** on the same page shows loose objects, wrecks, moving liquid, path grid nodes waiting and the gas area.
 claude/infinite-jetpack
 - **Infinite jetpack fuel**, a tick box under Movement > Carry weight in the settings panel, next to Jetpack fuel: every jetpack's tank stays full however long it fires. Off by default, cleared by Reset carry weight to normal, and saved with the settings and presets.
 - Two **Falling terrain** settings for the loose pixels breaking, snapping and crushed ground throws off: **Most loose bits thrown per update** (0 to 5000, 160 as before) and **Loose bits kept past that (%)** (0 to 100, 0 as before), the share of the pixels past that most which are thrown anyway rather than vanishing (pixels of snapped necks and overhangs, and scraps a falling piece crushes). Saved with the settings.

@@ -274,6 +274,19 @@ namespace RTE {
 		/// Clamps every gib chunk setting into its range (after reading them).
 		void ClampGibChunks();
 
+		/// The late-battle slowdown fixes ("Performance" in the settings panel), each with a switch so it can be tried against the old behaviour: things a battle
+		/// leaves behind (blood pools, wrecks, debris, gas, scattered terrain changes) that kept costing every frame after the fighting, all actors gone or not.
+		struct SlowdownFixTuning {
+			bool LiquidTellsOnlyMoves = true; //!< Liquid tells the path grid only where it moved, in separate boxes; off: every pixel coming to rest again, all in one box (re-sampling the grid over every pool on the map, for ever).
+			int WreckSettleSeconds = 20; //!< How long a vehicle's or ship's wreck lies still before it settles into the terrain as its own material, 0 to 600. 0: never (it stays a live object, as before).
+			bool DebrisRestsAcrossGaps = true; //!< A piece lying still looks for ground under both sides as well as its middle, so one across a crack or crater lip settles; off: the middle only.
+			bool GasAreaShrinks = true; //!< The gas grid's worked-out area draws in to where gas still is; off: it only grows until no gas is left anywhere.
+			bool LightingSplitsChanges = true; //!< The lighting handles each changed patch of terrain on its own; off: every patch changed in a frame as one box round them all.
+		};
+
+		/// Gets the late-battle slowdown fixes, to read or change.
+		SlowdownFixTuning& SlowdownFixes() { return m_SlowdownFixes; }
+
 		/// Whether every scene is played without wrapping horizontally, with hard left and right edges, whatever its terrain says (see Scene::LoadData).
 		/// Takes effect when a scene is next loaded.
 		bool NoSceneWrap() const { return m_NoSceneWrap; }
@@ -1211,6 +1224,7 @@ namespace RTE {
 		float m_OverloadSlowdown = 0.0F; //!< See OverloadSlowdown.
 		float m_JetpackFuelMultiplier = 1.0F; //!< See JetpackFuelMultiplier.
 		bool m_InfiniteJetpackFuel = false; //!< See InfiniteJetpackFuel.
+		SlowdownFixTuning m_SlowdownFixes; //!< See SlowdownFixes.
 		int m_AILadderTeamStalls; //!< See AILadderTeamStalls.
 		bool m_AIGrabsLaddersOnPurpose; //!< See AIGrabsLaddersOnPurpose.
 		bool m_AIGrabsLaddersMidJet; //!< See AIGrabsLaddersMidJet.
