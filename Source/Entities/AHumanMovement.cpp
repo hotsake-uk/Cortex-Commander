@@ -392,8 +392,12 @@ void AHuman::UpdateAIMotor() {
 			ctrl.SetState(MOVE_RIGHT, false);
 			// (One burst, at the take-off. Pressed every frame while the floor was in reach, it burst again as often as the jetpack allowed,
 			// a burst's fuel each time, and the tank was down to the hover's reserve 30 px up: "tank empty", the order ended, the unit on Hold.)
-			ctrl.SetState(BODY_JUMPSTART, takingOff && FloorUnder(m_Pos, h * 0.8F) >= 0.0F && toSky.m_Y < -h * 0.3F);
-			ctrl.SetState(BODY_JUMP, command.m_Y > 0.5F);
+			// And lit, whatever the pilot chose, while the floor is still under the feet with the point well above: its look ahead counts
+			// staying stood on the floor as no worse than flying into it, so where the jet's climb tracked the speed wanted badly enough (a
+			// heavier unit, a weaker jet) it chose to stay put, and after the burst the unit bobbed and stood there on the order.
+			const bool offTheFloor = FloorUnder(m_Pos, h * 0.8F) >= 0.0F && toSky.m_Y < -h * 0.3F;
+			ctrl.SetState(BODY_JUMPSTART, takingOff && offTheFloor);
+			ctrl.SetState(BODY_JUMP, command.m_Y > 0.5F || offTheFloor);
 			ctrl.SetAnalogMove(Vector(command.m_X, -1.0F));
 			if (mover.skyHovering && m_StandingOrder.PostFacing != 0) {
 				m_HFlipped = m_StandingOrder.PostFacing < 0;
