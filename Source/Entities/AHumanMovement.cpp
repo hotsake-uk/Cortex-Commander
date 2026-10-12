@@ -1057,6 +1057,57 @@ const MOSRotating* AHuman::VehicleAhead(float direction, float reach, float floo
 	return nullptr;
 }
 
+bool AHuman::BodyCollidesWith(const MovableObject* other) const {
+	if (!other || !other->GetsHitByMOs()) {
+		return false;
+	}
+	if (IgnoresTeamHits() && other->IgnoresTeamHits() && GetTeam() == other->GetTeam()) {
+		return false;
+	}
+	if (IgnoresAtomGroupHits() || other->IgnoresAtomGroupHits()) {
+		return false; // (A gun or tool lying still: HeldDevice's IgnoresAGHitsWhenSlowerThan.)
+	}
+	return !GetIgnoresActorHits() && !(other->GetIgnoresActorHits());
+}
+
+const MOSRotating* AHuman::ObjectAhead(float direction, float reach, float floorY) const {
+	const float h = m_CharHeight;
+	std::vector<MOID> passed;
+	GetMOIDs(passed);
+	Vector obstacle;
+	Vector free;
+	for (float y: {floorY - std::max(4.0F, h * 0.12F), m_Pos.m_Y}) {
+		// (Each body the ray meets that ours goes through is looked past, a few deep: a teammate in front hid the corpse behind him.)
+		for (int look = 0; look < 4; ++look) {
+			if (g_SceneMan.CastObstacleRay(Vector(m_Pos.m_X, y), Vector(direction * reach, 0.0F), obstacle, free, passed, Activity::NoTeam, 0, 1) < 0.0F) {
+				break;
+			}
+			MOID hit = g_SceneMan.GetMOIDPixel(static_cast<int>(obstacle.m_X), static_cast<int>(obstacle.m_Y));
+			if (hit == g_NoMOID) {
+				break; // (The terrain: the wall sense's.)
+			}
+			const MovableObject* root = g_MovableMan.GetMOFromID(hit);
+			root = root ? root->GetRootParent() : nullptr;
+			const MOSRotating* body = dynamic_cast<const MOSRotating*>(root);
+			if (!body || body == this || body->IsSetToDelete()) {
+				break;
+			}
+			const Actor* actor = dynamic_cast<const Actor*>(body);
+			const bool living = actor && actor->GetStatus() != DYING && actor->GetStatus() != DEAD;
+			// (Light enough to be shoved aside by the walk, a helmet, a hand: walked on into.)
+			const bool shoved = body->GetMass() < GetMass() * 0.25F;
+			if (!living && !dynamic_cast<const ADoor*>(body) && !dynamic_cast<const ACraft*>(body) && !shoved && BodyCollidesWith(body)) {
+				return body;
+			}
+			if (living && BodyCollidesWith(body)) {
+				break; // (A unit in the way that ours meets: UnitAhead's, or a fight.)
+			}
+			body->GetMOIDs(passed);
+		}
+	}
+	return nullptr;
+}
+
 bool AHuman::MeasureHull(const MOSRotating* hull, float direction, float floorY, float& topY, float& nearX, float& farX) const {
 	const float h = m_CharHeight;
 	const MOID hullRoot = hull->GetRootID();
@@ -4049,7 +4100,14 @@ int AHuman::MoveAlongRoute() {
 	}
 	if (!prone && !mover.flight.active && kind != PathStepKind::Fall && std::abs(toPoint.m_X) > 3.0F && !InDoorSweep() && !m_Ladder.active) {
 		const float way = toPoint.m_X < 0.0F ? -1.0F : 1.0F;
-		const MOSRotating* hull = VehicleAhead(way, std::min(h * 0.6F + 12.0F, std::abs(toPoint.m_X) + h * 0.3F), floorY);
+		const float hullReach = std::min(h * 0.6F + 12.0F, std::abs(toPoint.m_X) + h * 0.3F);
+		const MOSRotating* hull = VehicleAhead(way, hullReach, floorY);
+		// Any other loose body ours bumps into (a corpse, a gib), with Step over objects on: only once the walk is held up by it, or while one
+		// is being dealt with, since what lies low on the floor is mostly walked over. Then as a wreck: leapt, hopped, routed round or waited
+		// for. (Unseen, the unit pressed into it until the stuck handling, 2.5 s on, tried a leap or a hop.)
+		if (!hull && g_SettingsMan.UnitsStepOverObjects() && (m_Vel.m_X * way < 1.0F || (mover.vehicle != 0 && !mover.vehicleSeenTimer.IsPastSimMS(1000)))) {
+			hull = ObjectAhead(way, hullReach, floorY);
+		}
 		if (hull && (hull->GetUniqueID() == mover.vehicleIgnoreID || (g_MovableMan.ValidMO(m_pMOMoveTarget) && m_pMOMoveTarget->GetRootParent() == hull))) {
 			hull = nullptr;
 		}

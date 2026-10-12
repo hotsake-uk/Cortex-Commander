@@ -334,6 +334,9 @@ namespace RTE {
 		/// move through (FluidSim::UnitsPassThrough); 2 that, and the path grid wades every flowing liquid, mud, tar, mercury and fuel among
 		/// them, as it does oil (it knew only water, oil, acid and lava, and took the rest for ground). 2 as the game comes.
 		int UnitWaterBehaviour() const { return m_UnitWaterBehaviour; }
+		/// Whether the AI's walk sees loose bodies its own collides with in the way (a corpse, a gib, a limb: AHuman::ObjectAhead) and leaps
+		/// them, hops them with the jet, routes round or waits, as it does a wreck. Off as before: it pressed into them until the stuck handling.
+		bool UnitsStepOverObjects() const { return m_UnitsStepOverObjects; }
 		/// How much a load slows a unit's walk and lowers its leap, 0 to 1 (0 as the game comes): this share of its speed is lost once what it
 		/// carries weighs as much as its own body, less below that (Actor::GetOverloadSpeedMultiplier).
 		float OverloadSlowdown() const { return m_OverloadSlowdown; }
@@ -847,6 +850,7 @@ namespace RTE {
 		void SetLegStrength(float strength) { m_LegStrength = std::clamp(strength, 0.25F, 3.0F); }
 		void SetJetpackWeightCompensation(int mode) { m_JetpackWeightCompensation = std::clamp(mode, 0, 2); }
 		void SetUnitWaterBehaviour(int mode) { m_UnitWaterBehaviour = std::clamp(mode, 0, 2); }
+		void SetUnitsStepOverObjects(bool on) { m_UnitsStepOverObjects = on; }
 		void SetOverloadSlowdown(float slowdown) { m_OverloadSlowdown = std::clamp(slowdown, 0.0F, 1.0F); }
 		void SetJetpackFuelMultiplier(float multiplier) { m_JetpackFuelMultiplier = std::clamp(multiplier, 0.25F, 5.0F); }
 		void SetInfiniteJetpackFuel(bool on) { m_InfiniteJetpackFuel = on; }
@@ -1192,6 +1196,7 @@ namespace RTE {
 		float m_LegStrength = 1.0F; //!< See LegStrength.
 		int m_JetpackWeightCompensation = 0; //!< See JetpackWeightCompensation.
 		int m_UnitWaterBehaviour = 2; //!< See UnitWaterBehaviour.
+		bool m_UnitsStepOverObjects = true; //!< See UnitsStepOverObjects.
 		float m_OverloadSlowdown = 0.0F; //!< See OverloadSlowdown.
 		float m_JetpackFuelMultiplier = 1.0F; //!< See JetpackFuelMultiplier.
 		bool m_InfiniteJetpackFuel = false; //!< See InfiniteJetpackFuel.

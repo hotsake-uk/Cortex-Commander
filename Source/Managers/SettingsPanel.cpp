@@ -1103,6 +1103,8 @@ void DebugMan::SettingsGUI() {
 		}
 		Toggle("Mantle ledges and vault low obstacles", g_SettingsMan.MantlingEnabled(), [](bool on) { g_SettingsMan.SetMantlingEnabled(on); });
 		Tip("Units, players' included, pull themselves up onto a ledge or over a low obstacle they walk or jet into, rather than needing the jetpack to get the height exactly right.");
+		Toggle("Units step over objects in their way", g_SettingsMan.UnitsStepOverObjects(), [](bool on) { g_SettingsMan.SetUnitsStepOverObjects(on); });
+		Tip("An AI unit held up by a loose body it bumps into (a corpse, a gib, a limb, but not a gun lying still, which bodies pass, or a scrap light enough to shove aside) leaps over it, hops it with the jet, finds a way round or waits, as it does a wreck. Off, as before: it walks into it until it counts as stuck, which after a couple of seconds tries a leap or a hop.");
 		Toggle("Push free when stuck", g_SettingsMan.StuckPushEnabled(), [](bool on) { g_SettingsMan.SetStuckPushEnabled(on); });
 		Tip("AI soldiers stuck on terrain, once crouching, backing off, leaping, hopping, crawling and mantling haven't got them moving, get a small nudge up and on. Players' own units are never pushed.");
 		Toggle("No map wrapping", g_SettingsMan.NoSceneWrap(), [](bool on) { g_SettingsMan.SetNoSceneWrap(on); });
