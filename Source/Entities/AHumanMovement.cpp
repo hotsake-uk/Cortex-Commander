@@ -335,16 +335,35 @@ void AHuman::UpdateAIMotor() {
 		const Vector toSky = Towards(m_Pos, sky);
 		if (mover.skyCheckTimer.IsPastSimMS(250)) {
 			mover.skyCheckTimer.Reset();
-			Vector obstacle;
-			Vector free;
+			Vector hit;
 			mover.skyClear = true;
 			for (float dy: {-h * 0.3F, feet * 0.5F}) {
-				// (Past units of its own team, which move and are flown past: counted, a group sent up together mostly waited on each other.)
-				if (g_SceneMan.CastObstacleRay(m_Pos + Vector(0.0F, dy), toSky, obstacle, free, m_MOID, m_Team, 0, 3) >= 0.0F) {
+				// The ground in the way only where the body can't pass it (BodyRay): liquid, blood pooled at the feet, plants, crumbs and the bits
+				// of a fight are flown through. (Any pixel that wasn't air counted, so a unit standing in a puddle of blood, the low look starting
+				// in it, was "blocked"; or one look caught the gore its own jet kicked up just as it lifted off, and the order was dropped at
+				// once, the jet out and the unit stood down a moment after take-off.)
+				if (BodyRay(m_Pos + Vector(0.0F, dy), toSky, 5.0F, hit, 3, MaterialColorKeys::g_MaterialDoor)) {
 					mover.skyClear = false;
+					break;
+				}
+				// And a living unit or a craft of another side across the line. (Past units of its own team, which move and are flown past:
+				// counted, a group sent up together mostly waited on each other. And past loose things, gibs, corpses and dropped guns, which
+				// a jet pushes through.)
+				const MOID moid = g_SceneMan.CastMORay(m_Pos + Vector(0.0F, dy), toSky, m_MOID, m_Team, 0, true, 3);
+				const MovableObject* hitMO = moid != g_NoMOID ? g_MovableMan.GetMOFromID(moid) : nullptr;
+				const MovableObject* root = hitMO ? hitMO->GetRootParent() : nullptr;
+				const Actor* blocker = root && root != this ? dynamic_cast<const Actor*>(root) : nullptr;
+				if (blocker && blocker->GetStatus() != DYING && blocker->GetStatus() != DEAD) {
+					mover.skyClear = false;
+					break;
 				}
 			}
+			if (mover.skyClear) {
+				mover.skyBlockedTimer.Reset();
+			}
 		}
+		// (Blocked only once it has looked blocked for most of a second: three looks.)
+		const bool skyBlocked = !mover.skyClear && mover.skyBlockedTimer.IsPastSimMS(750);
 		const float tank = m_pJetpack->GetJetTimeTotal();
 		if (toSky.MagnitudeIsLessThan(h * 0.6F) && !mover.skyHovering) {
 			mover.skyHovering = true;
@@ -359,7 +378,7 @@ void AHuman::UpdateAIMotor() {
 			m_StandingOrder.SkyGoal = false;
 			mover.skyFlying = false;
 			mover.skyHovering = false;
-		} else if (mover.skyHovering || (mover.skyClear && (mover.skyFlying || m_pJetpack->GetJetTimeLeft() > JetRelightFuel() + tank * 0.3F))) {
+		} else if (mover.skyHovering || (mover.skyFlying && !skyBlocked) || (mover.skyClear && m_pJetpack->GetJetTimeLeft() > JetRelightFuel() + tank * 0.3F)) {
 			if (!mover.skyFlying) {
 				mover.skyFlying = true;
 				MoverTrace("jetpack here: flying for " + std::to_string(static_cast<int>(sky.m_X)) + "," + std::to_string(static_cast<int>(sky.m_Y)));
@@ -2688,7 +2707,8 @@ int AHuman::MoveAlongRoute() {
 		// the sky order is dropped and the ground under it is the end of the move.)
 		const bool skyJet = m_pJetpack && m_pJetpack->IsAttached() && m_pJetpack->GetJetpackType() == AEJetpack::JetpackType::Standard;
 		if (m_StandingOrder.SkyGoal && skyJet && toGoal.MagnitudeIsLessThan(reach) && !airborne) {
-			if (mover.skyClear) {
+			// (Not on one look: see skyBlockedTimer.)
+			if (mover.skyClear || !mover.skyBlockedTimer.IsPastSimMS(750)) {
 				return RouteMover::Moving;
 			}
 			MoverTrace("jetpack here: no clear line up from under it; staying on the ground");
@@ -2914,10 +2934,11 @@ int AHuman::MoveAlongRoute() {
 	};
 	// A door of ours (or no one's) across the way to a point, not open: held short of it, on the ground at its sensor, in the air hovering
 	// (a hatch across a shaft: its leaves gib what is in their sweep, and a unit flown up into them died at full health). Given up on
-	// after a while (walked or flown into) for 5 s. @return Whether holding for it this tick.
-	auto holdForDoor = [&](const Vector& towards, bool inAir) -> bool {
+	// after a while (walked or flown into) for 5 s. farLook: looked for as far off as in the air, from the ground (a take-off's look up the
+	// flight it is about to begin). @return Whether holding for it this tick.
+	auto holdForDoor = [&](const Vector& towards, bool inAir, bool farLook = false) -> bool {
 		// (AIWaitsAtDoors: looked for further off in the air, so a climb up a shaft has room to slow before the leaf.)
-		ADoor* door = DoorAhead(towards, g_SettingsMan.AIWaitsAtDoors() && inAir ? 3.0F : 1.5F);
+		ADoor* door = DoorAhead(towards, g_SettingsMan.AIWaitsAtDoors() && (inAir || farLook) ? 3.0F : 1.5F);
 		if (!door) {
 			return false;
 		}
@@ -3336,7 +3357,13 @@ int AHuman::MoveAlongRoute() {
 				return RouteMover::Moving;
 			}
 			if (!flight.refuelling && holdForDoor(flight.via ? flight.viaPoint : flight.landing, true)) {
+				// (The wait is the flight's, not a failure of it: its clocks start again, and a hover let down to a sensor lower than the
+				// take-off isn't a fall back. Left running, a unit whose hold place was at its own height, by a hatch a storey up, had its jet
+				// cut the tick after take-off, came down, and the flight was ended "down again under the landing", that take-off marked
+				// failed and a new route asked for, over and over.)
 				flight.riseTimer.Reset();
+				flight.timer.Reset();
+				flight.startY = std::max(flight.startY, m_Pos.m_Y);
 				return RouteMover::Moving;
 			}
 			Vector command = flight.via ? PilotFlight(flight.viaPoint, -1.0F) : PilotFlight(flight.landing, flight.floorY);
@@ -4402,6 +4429,18 @@ int AHuman::MoveAlongRoute() {
 		}
 		if (wantsSettle && mover.settleWaitTimer.IsPastSimMS(1500.0 * std::max(1.0F, caution))) {
 			wantsSettle = false;
+		}
+		// A door of ours across the flight, not yet open (a hatch over the shaft): waited for here, on its sensor, before the jet is lit. The
+		// ground's look for doors goes only to the route's next point, a step up, so a hatch a storey over the take-off was first seen by the
+		// flight's own look, the tick after take-off, and the wait there cut the jet with the unit a few pixels up.
+		if (canTakeOff && holdForDoor(inShaft ? Vector(shaftMiddle, landingFloorY - feet - 8.0F) : (cornerVia ? cornerPoint : landing), false, true)) {
+			mover.settling = false;
+			mover.hopTimer.Reset();
+			if (mover.traceTimer.IsPastSimMS(1000)) {
+				mover.traceTimer.Reset();
+				MoverTrace("waiting for a door before take-off");
+			}
+			return RouteMover::Moving;
 		}
 		if (wantsSettle) {
 			mover.progressTimer.Reset();
