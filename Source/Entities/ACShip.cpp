@@ -330,13 +330,13 @@ float ACShip::HullTop() const {
 }
 
 bool ACShip::HullLineClear(const Vector& from, const Vector& to) const {
-	// Its whole outline swept along the line, engines and all, not just its middle: rays from its two ends, top and bottom, and its middle,
-	// with a little room round it, and more top and bottom for the lean of its ends as it tilts.
+	// Its whole outline swept along the line, engines and all, not just its middle: rays from its two ends, top and bottom, and its middle.
+	// (Its underside's rays run half its ground gap under the hull, not more: a ship sitting at its clearance over the ground, or sent to a
+	// place there, must not find the ground in the way of every line it could fly.)
 	const Vector way = g_SceneMan.ShortestDistance(from, to, g_SceneMan.SceneWrapsX());
-	const float halfWidth = HullHalfWidth() + 6.0F;
-	const float lean = HullHalfWidth() * 0.2F + 6.0F;
-	const float top = HullTop() + lean;
-	const float under = HullUnderside() + lean;
+	const float halfWidth = HullHalfWidth();
+	const float top = HullTop() + 4.0F;
+	const float under = HullUnderside() + std::min(4.0F, g_SettingsMan.ShipGroundClearance() * 0.5F);
 	const std::array<Vector, 7> outline{Vector(0.0F, 0.0F), Vector(-halfWidth, -top), Vector(halfWidth, -top), Vector(-halfWidth, under), Vector(halfWidth, under), Vector(0.0F, -top), Vector(0.0F, under)};
 	Vector blocked;
 	for (const Vector& offset: outline) {
@@ -393,7 +393,6 @@ bool ACShip::FlyRouteTo(const Vector& spot) {
 		return true;
 	}
 	m_Route.clear();
-	// Open air between two points for its body: along its middle and a little above and below.
 	// Open air between two points for its whole hull, engines and all (HullLineClear).
 	auto clearLine = [this](const Vector& from, const Vector& to) { return HullLineClear(from, to); };
 	Scene* scene = g_SceneMan.GetScene();
