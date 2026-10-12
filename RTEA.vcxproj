@@ -838,6 +838,7 @@
     <ClInclude Include="Source\System\RTETools.h" />
     <ClInclude Include="Source\System\Matrix.h" />
     <ClInclude Include="Source\System\PathFinder.h" />
+    <ClInclude Include="Source\System\AirRoute.h" />
     <ClInclude Include="Source\System\Reader.h" />
     <ClInclude Include="Source\System\Serializable.h" />
     <ClInclude Include="Source\System\Singleton.h" />
@@ -1477,6 +1478,7 @@
       <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Full|x64'">false</IncludeInUnityFile>
     </ClCompile>
     <ClCompile Include="Source\System\PathFinder.cpp" />
+    <ClCompile Include="Source\System\AirRoute.cpp" />
     <ClCompile Include="Source\System\Reader.cpp" />
     <ClCompile Include="Source\System\System.cpp" />
     <ClCompile Include="Source\System\Timer.cpp" />

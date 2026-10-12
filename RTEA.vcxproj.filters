@@ -82,6 +82,9 @@
     <ClInclude Include="Source\System\PathFinder.h">
       <Filter>System</Filter>
     </ClInclude>
+    <ClInclude Include="Source\System\AirRoute.h">
+      <Filter>System</Filter>
+    </ClInclude>
     <ClInclude Include="Source\System\Reader.h">
       <Filter>System</Filter>
     </ClInclude>
@@ -839,6 +842,9 @@
       <Filter>System</Filter>
     </ClCompile>
     <ClCompile Include="Source\System\PathFinder.cpp">
+      <Filter>System</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\System\AirRoute.cpp">
       <Filter>System</Filter>
     </ClCompile>
     <ClCompile Include="Source\System\Reader.cpp">

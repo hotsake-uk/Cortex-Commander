@@ -616,6 +616,22 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 		}
 	});
 	MatchProperty("CrawlSpeed", { reader >> m_MovementProfile.CrawlSpeed; });
+	MatchProperty("Flies", {
+		std::string value;
+		reader >> value;
+		std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		if (value == "none" || value == "0") {
+			m_MovementProfile.Flies = 0;
+		} else if (value == "wings" || value == "1") {
+			m_MovementProfile.Flies = 1;
+		} else if (value == "free" || value == "2") {
+			m_MovementProfile.Flies = 2;
+		} else {
+			reader.ReportError("Unknown Flies \"" + value + "\": use None, Wings or Free.");
+		}
+	});
+	MatchProperty("FlySpeed", { reader >> m_MovementProfile.FlySpeed; });
+	MatchProperty("FlyStamina", { reader >> m_MovementProfile.FlyStamina; });
 	// Elements (CR-7): what it sets alight round it, and what water does to it.
 	MatchProperty("FireAuraRadius", { reader >> m_FireAuraRadius; });
 	MatchProperty("WaterWeakness", { reader >> m_WaterWeakness; });
@@ -739,6 +755,16 @@ int Actor::Save(Writer& writer) const {
 	}
 	if (m_MovementProfile.CrawlSpeed >= 0.0F) {
 		writer.NewPropertyWithValue("CrawlSpeed", m_MovementProfile.CrawlSpeed);
+	}
+	if (m_MovementProfile.Flies >= 0) {
+		static const char* const c_FlightNames[] = {"None", "Wings", "Free"};
+		writer.NewPropertyWithValue("Flies", std::string(c_FlightNames[std::clamp(m_MovementProfile.Flies, 0, 2)]));
+	}
+	if (m_MovementProfile.FlySpeed >= 0.0F) {
+		writer.NewPropertyWithValue("FlySpeed", m_MovementProfile.FlySpeed);
+	}
+	if (m_MovementProfile.FlyStamina >= 0.0F) {
+		writer.NewPropertyWithValue("FlyStamina", m_MovementProfile.FlyStamina);
 	}
 	if (m_FireAuraRadius > 0.0F) {
 		writer.NewPropertyWithValue("FireAuraRadius", m_FireAuraRadius);
@@ -1723,6 +1749,17 @@ Actor::Climbing Actor::GetClimbing() const {
 
 float Actor::GetCrawlSpeed() const {
 	return (m_MovementProfile.CrawlSpeed >= 0.0F ? m_MovementProfile.CrawlSpeed : 3.0F) * g_SettingsMan.CreatureClimbSpeed();
+}
+
+Actor::Flight Actor::GetFlight() const {
+	if (m_MovementProfile.Flies <= 0 || !g_SettingsMan.CreaturesFly()) {
+		return Flight::None;
+	}
+	return m_MovementProfile.Flies >= 2 ? Flight::Free : Flight::Wings;
+}
+
+float Actor::GetFlySpeed() const {
+	return (m_MovementProfile.FlySpeed >= 0.0F ? m_MovementProfile.FlySpeed : 6.0F) * g_SettingsMan.CreatureFlySpeed();
 }
 
 int Actor::GetLiquidDepth() const {
