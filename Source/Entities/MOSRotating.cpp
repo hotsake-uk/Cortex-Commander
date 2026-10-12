@@ -1342,7 +1342,12 @@ void MOSRotating::RestDetection() {
 	// Note that this uses sprite radius to avoid possibly settling when it shouldn't (e.g. if there's a lopsided attachable enlarging the radius, using GetRadius might make it settle in the air).
 	if (m_ToSettle || IsAtRest()) {
 		bool resting = true;
-		if (g_SceneMan.OverAltitude(m_Pos, static_cast<int>(m_SpriteRadius) + 4, 3)) {
+		// (Looked for under its middle and towards both sides: a piece lying across a crack or a crater's lip, with air under its middle, was never let settle
+		// and stayed a live object for good, more of them the more the ground was blown up.)
+		const int altitude = static_cast<int>(m_SpriteRadius) + 4;
+		const float across = m_SpriteRadius * 0.6F;
+		const bool lookAcross = g_SettingsMan.SlowdownFixes().DebrisRestsAcrossGaps;
+		if (g_SceneMan.OverAltitude(m_Pos, altitude, 3) && (!lookAcross || (g_SceneMan.OverAltitude(m_Pos + Vector(-across, 0), altitude, 3) && g_SceneMan.OverAltitude(m_Pos + Vector(across, 0), altitude, 3)))) {
 			resting = false;
 			for (const Attachable* attachable: m_Attachables) {
 				if (attachable->GetCollidesWithTerrainWhileAttached() && !g_SceneMan.OverAltitude(attachable->GetPos(), static_cast<int>(attachable->GetIndividualRadius()) + 2, 3)) {
@@ -1371,6 +1376,14 @@ bool MOSRotating::IsAtRest() {
 	// A gib chunk lies still for the gib chunk settle time, if one is set, unless its preset never lets it settle.
 	if (m_GibChunk && restThreshold >= 0 && g_SettingsMan.GibChunks().SettleMS >= 0) {
 		restThreshold = g_SettingsMan.GibChunks().SettleMS;
+	}
+	// A vehicle's or ship's wreck (RestThreshold -1, group Wrecks) settles into the ground as its own material once it has lain still for the wreck settle
+	// time, if one is set: left a live object for good, every wreck of a long battle cost its physics, collisions and hits every frame, and the chunks
+	// lying on it could never settle either.
+	if (restThreshold < 0 && m_PinStrength == 0) {
+		if (int wreckSeconds = g_SettingsMan.SlowdownFixes().WreckSettleSeconds; wreckSeconds > 0 && IsInGroup("Wrecks")) {
+			return m_RestTimer.IsPastSimMS(wreckSeconds * 1000);
+		}
 	}
 	if (restThreshold < 0 || m_PinStrength != 0) {
 		return false;

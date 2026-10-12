@@ -145,6 +145,7 @@ void SettingsMan::Clear() {
 	m_EnableStuckPush = false;
 	m_BodyGearSettlesAsScraps = true;
 	m_GibChunks = GibChunkTuning();
+	m_SlowdownFixes = SlowdownFixTuning();
 	m_NoSceneWrap = true;
 	std::fill(std::begin(m_Toughness), std::end(m_Toughness), 1.0F);
 	m_AISuppression = 1.0F;
@@ -809,6 +810,11 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("GibChunkBounces", { reader >> m_GibChunks.MaxBounces; ClampGibChunks(); });
 	MatchProperty("GibChunkAtomSpacing", { reader >> m_GibChunks.AtomSpacing; ClampGibChunks(); });
 	MatchProperty("GibChunksSettleOnBodies", { reader >> m_GibChunks.SettleOnBodies; });
+	MatchProperty("FixLiquidTellsOnlyMoves", { reader >> m_SlowdownFixes.LiquidTellsOnlyMoves; });
+	MatchProperty("WreckSettleSeconds", { reader >> m_SlowdownFixes.WreckSettleSeconds; m_SlowdownFixes.WreckSettleSeconds = std::clamp(m_SlowdownFixes.WreckSettleSeconds, 0, 600); });
+	MatchProperty("FixDebrisRestsAcrossGaps", { reader >> m_SlowdownFixes.DebrisRestsAcrossGaps; });
+	MatchProperty("FixGasAreaShrinks", { reader >> m_SlowdownFixes.GasAreaShrinks; });
+	MatchProperty("FixLightingSplitsChanges", { reader >> m_SlowdownFixes.LightingSplitsChanges; });
 	MatchProperty("NoSceneWrap", { reader >> m_NoSceneWrap; });
 	MatchProperty("UnitSpeech", { bool on = true; reader >> on; UnitSpeech::SetEnabled(on); });
 	MatchProperty("UnitSpeechChance", { int percent = 40; reader >> percent; UnitSpeech::SetChance(percent); });
@@ -1384,6 +1390,11 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("GibChunkBounces", m_GibChunks.MaxBounces);
 	writer.NewPropertyWithValue("GibChunkAtomSpacing", m_GibChunks.AtomSpacing);
 	writer.NewPropertyWithValue("GibChunksSettleOnBodies", m_GibChunks.SettleOnBodies);
+	writer.NewPropertyWithValue("FixLiquidTellsOnlyMoves", m_SlowdownFixes.LiquidTellsOnlyMoves);
+	writer.NewPropertyWithValue("WreckSettleSeconds", m_SlowdownFixes.WreckSettleSeconds);
+	writer.NewPropertyWithValue("FixDebrisRestsAcrossGaps", m_SlowdownFixes.DebrisRestsAcrossGaps);
+	writer.NewPropertyWithValue("FixGasAreaShrinks", m_SlowdownFixes.GasAreaShrinks);
+	writer.NewPropertyWithValue("FixLightingSplitsChanges", m_SlowdownFixes.LightingSplitsChanges);
 	writer.NewPropertyWithValue("NoSceneWrap", m_NoSceneWrap);
 	writer.NewPropertyWithValue("UnitToughness", Toughness(ToughnessKind::Units));
 	writer.NewPropertyWithValue("VehicleToughness", Toughness(ToughnessKind::Vehicles));
