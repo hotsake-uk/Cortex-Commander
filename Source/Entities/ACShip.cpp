@@ -3,6 +3,7 @@
 #include "ADoor.h"
 #include "AEmitter.h"
 #include "AHuman.h"
+#include "AVehicle.h"
 #include "ActivityMan.h"
 #include "Controller.h"
 #include "FrameMan.h"
@@ -116,6 +117,18 @@ void ACShip::Clear() {
 	m_PausedAt.Reset();
 	m_FlightToRestore = FlightToRestore::None;
 	m_GoalToRestore.Reset();
+	m_RideStage = RideStage::None;
+	m_RideRecruits.clear();
+	m_RideGoal.Reset();
+	m_RideTeam = Activity::NoTeam;
+	m_RideStageTimer.Reset();
+	m_RideWaitTimer.Reset();
+	m_RideWaitStarted = false;
+	m_RideScanTimer.Reset();
+	m_RideSent = false;
+	m_RideSends = 0;
+	m_RideHealth = 0.0F;
+	m_RideUnloadAt.Reset();
 }
 
 int ACShip::Create(const ACShip& reference) {
@@ -1588,6 +1601,7 @@ void ACShip::Update() {
 
 	UpdateGuns();
 	m_Crew.UpdateBoarding(false, m_CanBeTaken && m_Crew.IsEmpty());
+	UpdateAIRides();
 	UpdateAIBoarding();
 
 	m_Crew.SetLastVel(m_Vel);
@@ -1629,11 +1643,351 @@ void ACShip::UpdateAIBoarding() {
 		if (GetFreeSeat() < 0) {
 			break;
 		}
+		// (Not those called over for a ride, UpdateAIRides: they get in as riders, keeping where they're going.)
+		if (std::any_of(m_RideRecruits.begin(), m_RideRecruits.end(), [unit](const RideRecruit& recruit) { return recruit.ID == unit->GetUniqueID(); })) {
+			continue;
+		}
 		if (unit->GetMOMoveTarget() == this && !unit->GetController()->IsPlayerControlled() && CanTakeIn(unit) && m_Crew.IsInReach(unit, 24.0F)) {
 			unit->RemoveAIMOWaypoint(this);
 			unit->ClearAIWaypoints();
 			unit->SetAIMode(AIMODE_SENTRY);
 			TakeSeat(unit, -1);
+		}
+	}
+}
+
+bool ACShip::OffersRides() const {
+	if (IsDead() || m_Status == DYING || m_Controller.IsPlayerControlled() || m_Crew.GetPlayerSeat() >= 0 || IsRamming() || m_HasCombatSpot || m_EngageID != 0) {
+		return false;
+	}
+	// (Given an order by the player, or a battle mode: it is theirs, ride or not. Nor an airlift's ship, which has its own passengers.)
+	if (m_StandingOrder.Kind != ORDER_NONE || m_StandingOrder.Hold || m_StandingOrder.HasPost || m_StandingOrder.Attack || m_StandingOrder.TargetID != 0 || NumberValueExists("NoShipRides")) {
+		return false;
+	}
+	// (Busy with something of its own: a delivery, a trip home. A go-to is only its own ride's.)
+	if (m_AIMode == AIMODE_DELIVER || m_AIMode == AIMODE_RETURN || m_AIMode == AIMODE_BRAINHUNT || m_AIMode == AIMODE_BOMB || m_AIMode == AIMODE_SCUTTLE || (m_AIMode == AIMODE_GOTO && m_RideStage == RideStage::None)) {
+		return false;
+	}
+	// (A crewed ship's crew all its own: anyone in it that isn't a rider is its AI crew, who fly or man the guns for whoever rides.)
+	return true;
+}
+
+int ACShip::RiderCount() const {
+	int riders = 0;
+	for (int seat = 0; seat < GetSeatCount(); ++seat) {
+		riders += m_Crew.GetOccupant(seat) && m_Crew.IsRider(seat) ? 1 : 0;
+	}
+	return riders;
+}
+
+void ACShip::LetRidersOut() {
+	for (int seat = GetSeatCount() - 1; seat >= 0; --seat) {
+		if (m_Crew.GetOccupant(seat) && m_Crew.IsRider(seat)) {
+			if (Actor* out = m_Crew.LetOut(seat, false)) {
+				out->ResumeAIWaypoints();
+			}
+		}
+	}
+}
+
+void ACShip::ReleaseRideRecruits() {
+	for (const RideRecruit& recruit: m_RideRecruits) {
+		if (Actor* unit = dynamic_cast<Actor*>(g_MovableMan.FindObjectByUniqueID(recruit.ID))) {
+			unit->RemoveAIMOWaypoint(this);
+		}
+	}
+	m_RideRecruits.clear();
+}
+
+bool ACShip::RiderTakesControls() {
+	if (!m_NeedsPilot || HasPilot() || m_Status == DYING || m_Status == DEAD) {
+		return false;
+	}
+	for (int seat = 1; seat < GetSeatCount(); ++seat) {
+		if (Actor* unit = m_Crew.GetOccupant(seat); unit && m_Crew.IsRider(seat)) {
+			m_Crew.SetOccupant(0, unit);
+			m_Crew.SetOccupant(seat, nullptr);
+			m_Crew.SetRider(0, true);
+			return true;
+		}
+	}
+	return false;
+}
+
+void ACShip::SetRideStage(RideStage stage) {
+	m_RideStage = stage;
+	m_RideStageTimer.Reset();
+	m_RideSent = false;
+	m_RideSends = 0;
+}
+
+void ACShip::UpdateAIRides() {
+	if (IsDead() || m_Status == DYING || !Controller::AIMayAct()) {
+		return;
+	}
+	const bool ridesOn = g_SettingsMan.AIRidesShips();
+	const float radius = GetRadius();
+	auto down = [this, radius]() { return GetAltitude(1000, 4) < radius * 0.9F && m_Vel.MagnitudeIsLessThan(3.0F); };
+
+	// Those called over get in once they're here, as riders keeping where they're going; or are let go if they've stopped coming (a new
+	// order, dead, or too long on the way), the seats have filled, or it has gone.
+	for (auto recruit = m_RideRecruits.begin(); recruit != m_RideRecruits.end();) {
+		Actor* unit = dynamic_cast<Actor*>(g_MovableMan.FindObjectByUniqueID(recruit->ID));
+		bool coming = unit && (unit->GetMOMoveTarget() == this || std::any_of(unit->GetWaypointList().begin(), unit->GetWaypointList().end(), [this](const std::pair<Vector, const MovableObject*>& waypoint) { return waypoint.second == this; }));
+		bool keep = coming && ridesOn && m_RideStage == RideStage::Gathering && !unit->IsDead() && !unit->IsSetToDelete() && !unit->GetController()->IsPlayerControlled() && !recruit->Since.IsPastSimMS(45000) && GetFreeSeat() >= 0 && CanTakeIn(unit);
+		if (keep && m_Crew.IsInReach(unit, 24.0F)) {
+			unit->RemoveAIMOWaypoint(this);
+			int seat = GetFreeSeat();
+			if (TakeSeat(unit, seat)) {
+				m_Crew.SetRider(seat, true);
+				if (!m_RideWaitStarted) {
+					m_RideWaitStarted = true;
+					m_RideWaitTimer.Reset();
+				}
+			}
+			recruit = m_RideRecruits.erase(recruit);
+			continue;
+		}
+		if (!keep) {
+			if (unit && coming) {
+				unit->RemoveAIMOWaypoint(this);
+			}
+			recruit = m_RideRecruits.erase(recruit);
+			continue;
+		}
+		++recruit;
+	}
+
+	// Taken over by a player (flown, sat in, or given an order): the ride is off. Those coming walk on, and those in it ride along as the
+	// player's passengers, to be ordered out as they like.
+	const bool taken = m_Controller.IsPlayerControlled() || m_Crew.GetPlayerSeat() >= 0 || m_StandingOrder.Kind != ORDER_NONE || m_StandingOrder.Hold || m_StandingOrder.HasPost || m_StandingOrder.Attack || m_StandingOrder.TargetID != 0;
+	if (taken) {
+		if (m_RideStage != RideStage::None) {
+			ReleaseRideRecruits();
+			for (int seat = 0; seat < GetSeatCount(); ++seat) {
+				m_Crew.SetRider(seat, false);
+			}
+			SetRideStage(RideStage::None);
+		}
+		return;
+	}
+
+	const int riders = RiderCount();
+	// Riders in it with no ride under way (read from a saved game): it takes them on to where they're going.
+	if (m_RideStage == RideStage::None && riders > 0) {
+		for (int seat = 0; seat < GetSeatCount(); ++seat) {
+			if (Actor* unit = m_Crew.GetOccupant(seat); unit && m_Crew.IsRider(seat)) {
+				m_RideGoal = unit->GetLastAIWaypoint();
+				m_RideTeam = unit->GetTeam();
+				break;
+			}
+		}
+		m_RideWaitStarted = true;
+		m_RideWaitTimer.Reset();
+		m_RideHealth = GetHealth();
+		SetRideStage(RideStage::Gathering);
+	}
+	// With its pilot shot (or out), a rider takes the controls.
+	if (m_RideStage != RideStage::None) {
+		RiderTakesControls();
+	}
+
+	switch (m_RideStage) {
+		case RideStage::Gathering: {
+			// Rides turned off, or nobody (left) to take: those coming go back to walking, and any in it get out once it's down.
+			if (!ridesOn || (riders == 0 && m_RideRecruits.empty())) {
+				ReleaseRideRecruits();
+				if (riders > 0) {
+					m_RideUnloadAt = DropOffPoint(m_Pos);
+					SetRideStage(RideStage::Unloading);
+				} else {
+					SetRideStage(RideStage::None);
+				}
+				break;
+			}
+			// Down by the ground for them to get in (a parked one already is; one with nobody to fly it can't come).
+			if (!m_RideSent && CanFly() && AutopilotStarted() && !down()) {
+				Vector ground = g_SceneMan.MovePointToGround(m_Pos, 0.0F, 4);
+				m_RideSent = FlyTo(ground - Vector(0.0F, radius * 0.3F));
+			}
+			// Off once everyone it called is in, its seats are full, the wait since the first got in has run out, or it's been hit.
+			const bool everyone = m_RideRecruits.empty();
+			const bool full = GetFreeSeat() < 0;
+			const bool waited = m_RideWaitStarted && m_RideWaitTimer.IsPastSimMS(static_cast<double>(g_SettingsMan.AIShipRideWait()) * 1000.0);
+			const bool hit = GetHealth() < m_RideHealth - 1.0F;
+			if (riders > 0 && (everyone || full || waited || hit)) {
+				if (!CanFly()) {
+					// (Nobody to fly it, and no rider can: a ship whose pilot's seat a rider can't take. They get out and walk.)
+					if (m_RideStageTimer.IsPastSimMS(static_cast<double>(g_SettingsMan.AIShipRideWait()) * 1000.0 + 15000.0)) {
+						ReleaseRideRecruits();
+						m_RideUnloadAt = DropOffPoint(m_Pos);
+						SetRideStage(RideStage::Unloading);
+					}
+					break;
+				}
+				ReleaseRideRecruits();
+				SetRideStage(RideStage::Flying);
+			}
+			break;
+		}
+		case RideStage::Flying: {
+			if (riders == 0) {
+				SetRideStage(RideStage::None);
+				break;
+			}
+			if (!CanFly()) {
+				// Nobody to fly it: it sets itself down, and they get out there.
+				m_RideUnloadAt = DropOffPoint(m_Pos);
+				SetRideStage(RideStage::Unloading);
+				break;
+			}
+			// There, or near enough to walk the rest: down low, and out.
+			Vector toGoal = g_SceneMan.ShortestDistance(m_Pos, m_RideGoal);
+			if (std::abs(toGoal.m_X) < std::max(150.0F, radius * 2.0F) && std::abs(toGoal.m_Y) < 250.0F) {
+				m_RideUnloadAt = DropOffPoint(m_RideGoal);
+				SetRideStage(RideStage::Unloading);
+				break;
+			}
+			// Sent there by its air route (again whenever it stopped short: its go-to ended in a hold); it gives up after a few tries, or two
+			// minutes, and lets them out where it is.
+			const bool stopped = m_RideSent && m_AIMode != AIMODE_GOTO;
+			if (!m_RideSent || stopped) {
+				if (m_RideSends >= 4 || m_RideStageTimer.IsPastSimMS(120000)) {
+					m_RideUnloadAt = DropOffPoint(m_Pos);
+					SetRideStage(RideStage::Unloading);
+					break;
+				}
+				if (FlyRouteTo(m_RideGoal)) {
+					m_RideSent = true;
+					++m_RideSends;
+				}
+			}
+			break;
+		}
+		case RideStage::Unloading: {
+			if (riders == 0) {
+				SetRideStage(RideStage::None);
+				break;
+			}
+			if (CanFly() && AutopilotStarted() && !m_RideSent) {
+				m_RideSent = FlyTo(m_RideUnloadAt);
+			}
+			// Low and slow over the place (or settled wherever it set itself down, or it's taking too long): out.
+			const bool there = g_SceneMan.ShortestDistance(m_Pos, m_RideUnloadAt).MagnitudeIsLessThan(radius + 30.0F) && m_Vel.MagnitudeIsLessThan(3.0F);
+			if (there || down() || m_RideStageTimer.IsPastSimMS(15000)) {
+				LetRidersOut();
+				SetRideStage(RideStage::None);
+			}
+			break;
+		}
+		default:
+			break;
+	}
+
+	// Now and then, while it has room and is idle (or gathering), it looks round for units that want a ride, going near where it's going.
+	if (!ridesOn || !m_RideScanTimer.IsPastSimMS(1000) || (m_RideStage != RideStage::None && m_RideStage != RideStage::Gathering)) {
+		return;
+	}
+	m_RideScanTimer.Reset();
+	if (!OffersRides() || (!g_SettingsMan.AIShipRideNoRoute() && !g_SettingsMan.AIShipRideLongWalk())) {
+		return;
+	}
+	int room = 0;
+	for (int seat = 0; seat < GetSeatCount(); ++seat) {
+		room += m_Crew.GetOccupant(seat) ? 0 : 1;
+	}
+	room -= static_cast<int>(m_RideRecruits.size());
+	if (room <= 0) {
+		return;
+	}
+	Scene* scene = g_SceneMan.GetScene();
+	if (!scene) {
+		return;
+	}
+	bool gathering = m_RideStage == RideStage::Gathering;
+	const float range = g_SettingsMan.AIShipRideRange();
+	const float longWalk = g_SettingsMan.AIShipRideLongWalkDistance();
+	// (Routes are searched on the spot: only a few a look, the nearest units first.)
+	int searchesLeft = 3;
+	std::vector<std::pair<float, Actor*>> candidates;
+	for (Actor* unit: g_MovableMan.GetActorList()) {
+		if (unit->GetController()->IsPlayerControlled() || unit->IsDead() || !CanTakeIn(unit) || unit->IsDiggingTo()) {
+			continue;
+		}
+		// (All of a ride on one side: an empty ship anyone can take is taken by the first in, for theirs.)
+		if ((gathering || !m_Crew.IsEmpty()) && unit->GetTeam() != (gathering ? m_RideTeam : m_Team)) {
+			continue;
+		}
+		// (Not one already called over by a vehicle or ship, or sent to one.)
+		const MovableObject* following = unit->GetMOMoveTarget();
+		if ((following && (dynamic_cast<const AVehicle*>(following) || dynamic_cast<const ACShip*>(following))) ||
+		    std::any_of(unit->GetWaypointList().begin(), unit->GetWaypointList().end(), [](const std::pair<Vector, const MovableObject*>& waypoint) { return waypoint.second && (dynamic_cast<const AVehicle*>(waypoint.second) || dynamic_cast<const ACShip*>(waypoint.second)); })) {
+			continue;
+		}
+		Vector toShip = g_SceneMan.ShortestDistance(unit->GetPos(), m_Pos);
+		if (toShip.MagnitudeIsGreaterThan(range)) {
+			continue;
+		}
+		candidates.emplace_back(toShip.GetMagnitude(), unit);
+	}
+	std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+	for (const auto& [distance, unit]: candidates) {
+		if (room <= 0 || searchesLeft <= 0) {
+			break;
+		}
+		// Why it wants a ride: no way there on foot, or a long way to walk (and the ship no further from there than it is).
+		Vector goal;
+		bool noRoute = g_SettingsMan.AIShipRideNoRoute() && unit->WantsShipRide(goal);
+		if (!noRoute) {
+			if (!g_SettingsMan.AIShipRideLongWalk() || unit->GetAIMode() != AIMODE_GOTO || unit->GetMOMoveTarget()) {
+				continue;
+			}
+			goal = unit->GetLastAIWaypoint();
+			float walk = g_SceneMan.ShortestDistance(unit->GetPos(), goal).GetMagnitude();
+			if (walk < longWalk || g_SceneMan.ShortestDistance(m_Pos, goal).GetMagnitude() > walk + 100.0F) {
+				continue;
+			}
+		}
+		// (Not one already near there: let out by a ship that couldn't get it closer, it would only be flown round again.)
+		if (g_SceneMan.ShortestDistance(unit->GetPos(), goal).MagnitudeIsLessThan(400.0F)) {
+			continue;
+		}
+		// Going near where the others it has called are going.
+		if (gathering && g_SceneMan.ShortestDistance(m_RideGoal, goal).MagnitudeIsGreaterThan(300.0F)) {
+			continue;
+		}
+		// It can walk to the ship, and (for the first of a ride) the ship can fly there.
+		--searchesLeft;
+		std::list<Vector> path;
+		Vector shipGround = g_SceneMan.MovePointToGround(m_Pos, 0.0F, 4) - Vector(0.0F, 10.0F);
+		float cost = scene->CalculatePath(unit->GetPathStart(), shipGround, path, unit->GetPathAgent(), static_cast<Activity::Teams>(unit->GetTeam()));
+		if (cost < 0.0F || cost >= 100000.0F) {
+			continue;
+		}
+		if (!gathering) {
+			std::deque<Vector> route;
+			bool reached = false;
+			if (!AirPath(m_Pos, LowPoint(goal), 0.0F, route, reached) || !reached) {
+				continue;
+			}
+		}
+		// Called over, keeping where it was going (put back for one that had stood down, its goal forgotten).
+		unit->ForgetShipRide();
+		if (g_SceneMan.ShortestDistance(unit->GetLastAIWaypoint(), goal).MagnitudeIsGreaterThan(20.0F)) {
+			unit->ClearAIWaypoints();
+			unit->AddAISceneWaypoint(goal);
+		}
+		unit->SetAIMode(AIMODE_GOTO);
+		unit->AddAIMOWaypointFirst(this);
+		m_RideRecruits.push_back({unit->GetUniqueID(), Timer()});
+		--room;
+		if (!gathering) {
+			gathering = true;
+			m_RideGoal = goal;
+			m_RideTeam = unit->GetTeam();
+			m_RideWaitStarted = false;
+			m_RideHealth = GetHealth();
+			SetRideStage(RideStage::Gathering);
 		}
 	}
 }
@@ -1838,6 +2192,20 @@ void ACShip::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichSc
 				}
 			}
 		}
+	}
+	// With the AI paths shown: what ride it is giving, and how many are in and still coming.
+	if (m_RideStage != RideStage::None && (s_ShowAIPaths == 1 || (s_ShowAIPaths == 2 && m_SandboxSelected))) {
+		static const char* const stages[] = {"", "Ride: waiting", "Ride: flying", "Ride: letting out"};
+		std::string text = std::string(stages[static_cast<int>(m_RideStage)]) + " " + std::to_string(RiderCount()) + " in";
+		if (!m_RideRecruits.empty()) {
+			text += ", " + std::to_string(m_RideRecruits.size()) + " coming";
+		}
+		Vector drawPos = m_Pos - targetPos;
+		if (!targetPos.IsZero()) {
+			drawPos += g_SceneMan.GetWrapToScreen(drawPos, pTargetBitmap->w, pTargetBitmap->h);
+		}
+		AllegroBitmap bitmap(pTargetBitmap);
+		font->DrawAligned(&bitmap, drawPos.GetFloorIntX(), drawPos.GetFloorIntY() - static_cast<int>(m_CharHeight * 0.5F) - 26, text, GUIFont::Centre);
 	}
 	const char* hint = nullptr;
 	if (Actor* boarder = m_Crew.GetBoarderInReach(); boarder && activity->ScreenOfPlayer(boarder->GetController()->GetPlayer()) == whichScreen) {

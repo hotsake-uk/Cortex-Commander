@@ -238,6 +238,14 @@ namespace RTE {
 
 		/// Gets its seats and who sits in them (for saving them).
 		const CrewSeats& GetCrewSeats() const { return m_Crew; }
+
+		/// Gets whether it is taking AI units somewhere that asked for a ride (SettingsMan::AIRidesShips): calling them over and waiting for
+		/// them, or flying them there and letting them out (UpdateAIRides).
+		bool IsGivingRide() const { return m_RideStage != RideStage::None; }
+
+		/// Gets whether it may be called on for a ride now: its AI flies it (or can, once someone gets in), nobody has given it an order, no
+		/// player flies it or sits in it, and it isn't in a fight, ramming or airlifting.
+		bool OffersRides() const;
 #pragma endregion
 
 #pragma region Override Methods
@@ -446,6 +454,55 @@ namespace RTE {
 
 		/// Lets in the AI units sent to it (a move order onto it) once they get here.
 		void UpdateAIBoarding();
+
+		/// Where it is in giving AI units a ride (UpdateAIRides).
+		enum class RideStage {
+			None, //!< Not giving one.
+			Gathering, //!< Calling units over and waiting for them to get in, down by the ground.
+			Flying, //!< Flying them to where they're going.
+			Unloading //!< Down low there (or wherever it gave up), letting them out.
+		};
+
+		/// A unit called over to ride, on its way to get in.
+		struct RideRecruit {
+			long ID = 0; //!< Its unique ID.
+			Timer Since; //!< Since it was called: it is let go if it hasn't got here in a while.
+		};
+
+		RideStage m_RideStage; //!< Where it is in giving a ride.
+		std::vector<RideRecruit> m_RideRecruits; //!< The units called over to ride, still on their way.
+		Vector m_RideGoal; //!< Where its riders are going, on the ground: everyone it calls over is going near there.
+		int m_RideTeam; //!< The team of the units it is giving a ride to (an empty ship can be taken by anyone's).
+		Timer m_RideStageTimer; //!< Since the stage began.
+		Timer m_RideWaitTimer; //!< Since the first rider got in: the wait for the rest (SettingsMan::AIShipRideWait) runs from then.
+		bool m_RideWaitStarted; //!< Whether anyone has got in yet for this ride.
+		Timer m_RideScanTimer; //!< Since it last looked round for units that want a ride.
+		bool m_RideSent; //!< Whether it has been sent where this stage takes it (down to the ground, or there).
+		int m_RideSends; //!< How many times it has been sent there this stage (it stopped short, and was sent again).
+		float m_RideHealth; //!< Its health when the ride began, to tell it has been hit and should go.
+		Vector m_RideUnloadAt; //!< Where it comes down to let its riders out.
+
+		/// Gives AI units a ride where they can't walk, or have a long way to walk (SettingsMan::AIRidesShips): looks round now and then, while
+		/// idle, for units of its side within reach that want one and can walk to it, all going near the same place it can fly to, and calls
+		/// them over; comes down to the ground for them; once the first is in, waits for the rest (or for its seats to fill, the wait to run
+		/// out, or a hit), the first in flying it if it needs a pilot; flies them there by the air route, comes down low and lets them out to
+		/// carry on. With its pilot shot, a passenger takes the controls; with nobody to fly it, it sets down and they get out.
+		void UpdateAIRides();
+
+		/// Gets how many of its seats hold a unit riding (that got in for a ride).
+		int RiderCount() const;
+
+		/// Lets every rider out (the last seat first, the pilot last), each to carry on to where it was going.
+		void LetRidersOut();
+
+		/// Lets the units still on their way to it go, to walk on (or look for another ride).
+		void ReleaseRideRecruits();
+
+		/// Moves a rider into the empty pilot's seat, so a ship that needs a pilot flies on. @return Whether someone moved.
+		bool RiderTakesControls();
+
+		/// Starts a stage of the ride.
+		void SetRideStage(RideStage stage);
 
 		/// Moves the units in its hold into its empty seats (SeatsCargo): a ship bought with its crew comes in crewed.
 		void SeatCargo();

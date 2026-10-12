@@ -893,6 +893,7 @@ namespace RTE {
 		/// Removes all AI waypoints and clears the current path to the current
 		/// waypoint. The AI Actor will stop in its tracks.
 		void ClearAIWaypoints() {
+			m_WantsShipRide = false;
 			m_pMOMoveTarget = 0;
 			m_Waypoints.clear();
 			m_MovePath.clear();
@@ -918,6 +919,20 @@ namespace RTE {
 			}
 			return m_Pos;
 		}
+
+		/// Gets whether this found no way on foot to where it was sent, lately (the last minute), so an idle flying ship may fly it there
+		/// (SettingsMan::AIRidesShips, ACShip). Kept after the unit stands down for want of a route, which forgets the place.
+		/// @param goal Set to where it was sent. @return Whether it wants a ride.
+		bool WantsShipRide(Vector& goal) const {
+			if (!m_WantsShipRide || m_ShipRideWantTimer.IsPastSimMS(60000)) {
+				return false;
+			}
+			goal = m_ShipRideGoal;
+			return true;
+		}
+
+		/// Forgets that it wanted a ship ride (a ship has called it over, or it has been given a new order).
+		void ForgetShipRide() { m_WantsShipRide = false; }
 
 		/// Gets the ID of the last set AI MO waypoint of this. If none, g_NoMOID is returned.
 		/// @return The furthest set AI MO waypoint of this.
@@ -2000,6 +2015,9 @@ namespace RTE {
 		// How many path answers in a row needed digging the unit can't do; at six the unit stands down.
 		int m_ImpossiblePaths;
 		bool m_PathImpossible; //!< Whether the last route asked for came back with no way there (or only through ground that can't be dug), for the path display.
+		bool m_WantsShipRide; //!< Whether its last route to where it was sent came back with no way there on foot, so a ship may fly it there (WantsShipRide).
+		Vector m_ShipRideGoal; //!< Where it was sent, then.
+		Timer m_ShipRideWantTimer; //!< Since it first found no way there on foot.
 		// Since the last of those: no new path is asked for until a few seconds have gone by.
 		Timer m_PathRetryTimer;
 		std::vector<std::pair<Vector, double>> m_AvoidPoints; //!< Places this failed jumps at, and the sim time (ms) each is avoided until.

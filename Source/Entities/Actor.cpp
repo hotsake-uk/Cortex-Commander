@@ -179,6 +179,8 @@ void Actor::Clear() {
 	m_UpdateMovePath = false;
 	m_ImpossiblePaths = 0;
 	m_PathImpossible = false;
+	m_WantsShipRide = false;
+	m_ShipRideGoal.Reset();
 	m_PathRetryTimer.Reset();
 	m_MoveProximityLimit = 20.0F;
 	m_AIBaseDigStrength = c_PathFindingDefaultDigStrength;
@@ -2375,6 +2377,17 @@ void Actor::PreControllerUpdate() {
 		m_ImpossiblePaths = impossible ? m_ImpossiblePaths + 1 : 0;
 		// For the path display: a route with no way there, or one that only gets there through ground this unit can't dig, is shown in red.
 		m_PathImpossible = m_PathRequest->status != micropather::MicroPather::SOLVED || overStrength;
+		// No way there on foot: an idle ship near it may fly it there (ACShip::UpdateAIRides). Where it was sent is kept for that, as the
+		// stand-down below forgets it. (Not a dig-to, whose way is the digging, nor one following someone.)
+		if (m_PathImpossible && !digTo && !m_pMOMoveTarget && g_SettingsMan.AIRidesShips() && g_SettingsMan.AIShipRideNoRoute()) {
+			if (!m_WantsShipRide) {
+				m_ShipRideWantTimer.Reset();
+			}
+			m_WantsShipRide = true;
+			m_ShipRideGoal = GetLastAIWaypoint();
+		} else if (!m_PathImpossible) {
+			m_WantsShipRide = false;
+		}
 		const int cutMaterial = m_PathRequest->cutMaterial;
 		if (impossible) {
 			m_PathRetryTimer.Reset();
