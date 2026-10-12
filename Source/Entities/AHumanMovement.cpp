@@ -2076,7 +2076,11 @@ int AHuman::MoveAlongRoute() {
 		const bool arrived = mover.arrivedTick >= 0 && tick - mover.arrivedTick <= static_cast<long long>(std::max(1, g_SettingsMan.GetAIUpdateInterval()) * 2 + 1);
 		// (Nor beside a unit it follows, which may stand still as long as it likes.)
 		const bool atTarget = g_MovableMan.ValidMO(m_pMOMoveTarget) && Towards(m_Pos, m_pMOMoveTarget->GetPos()).MagnitudeIsLessThan(m_CharHeight * 1.5F);
-		const bool holding = !somewhere || arrived || atTarget || m_Tactical.active || m_GettingUp || mover.digging || mover.yieldTo != 0 || m_Status == DYING || m_Status == DEAD;
+		// (Nor while it waits on purpose: for fuel at a take-off, or for a lift at its stop or on its deck. Each wait has its own limit; taken
+		// for pinned at 8 s, a unit waiting for fuel stepped sideways off its take-off, and one waiting for a slow lift marked the lift's way
+		// avoided and went round.)
+		const bool waiting = mover.fuelWaiting || mover.straightHold || mover.liftID != 0;
+		const bool holding = !somewhere || arrived || atTarget || waiting || m_Tactical.active || m_GettingUp || mover.digging || mover.yieldTo != 0 || m_Status == DYING || m_Status == DEAD;
 		if (WatchForPin(holding)) {
 			return RouteMover::Moving;
 		}
@@ -2595,6 +2599,19 @@ int AHuman::MoveAlongRoute() {
 		Vector to = Towards(m_Pos, flight.landing);
 		float feetY = m_Pos.m_Y + feet;
 		bool onLanding = std::abs(to.m_X) < h * 0.25F && std::abs(feetY - flight.floorY) < h * 0.3F;
+		// (Or anywhere on the landing as the pilot sees it, the floor level with the landing's out to 72 px either side (see PilotFlight):
+		// held to a quarter body of the point, a unit the pilot had set down on the ledge counted itself short and walked back to the point,
+		// and on a narrow ledge the climb's point pulled it back over the edge.)
+		if (!onLanding && std::abs(to.m_X) <= 72.0F && std::abs(feetY - flight.floorY) < h * 0.3F) {
+			const int y = static_cast<int>(flight.floorY);
+			const float step = to.m_X < 0.0F ? 4.0F : -4.0F; // (From the landing back towards the body.)
+			bool levelFloor = true;
+			for (float dx = 0.0F; std::abs(dx) < std::abs(to.m_X) && levelFloor; dx += step) {
+				const int x = static_cast<int>(flight.landing.m_X + dx);
+				levelFloor = g_SceneMan.GetTerrMatter(x, y + 1) != MaterialColorKeys::g_MaterialAir && g_SceneMan.GetTerrMatter(x, y - 3) == MaterialColorKeys::g_MaterialAir;
+			}
+			onLanding = levelFloor;
+		}
 		bool ended = false;
 		// The climb's failure tests (8.0's SharedBehaviors.ClimbUpdate): no height gained for a second while the way is up, fallen back a
 		// third of a body under where it began, or too long at it (twelve seconds, and four more for each refuel). Any of them ends the
