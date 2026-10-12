@@ -58,6 +58,8 @@ namespace SandboxDetail {
 			visit("SpawnZones", card.SpawnZones);
 			visit("ZoneEverySeconds", card.ZoneEverySeconds);
 			visit("ZoneUnits", card.ZoneUnits);
+			visit("AppearAnywhere", card.AppearAnywhere);
+			visit("KeepClear", card.KeepClear);
 			visit("EverySeconds", card.EverySeconds);
 			visit("Invincible", card.Invincible);
 			visit("HasDefendPos", card.HasDefendPos);
@@ -79,6 +81,8 @@ namespace SandboxDetail {
 			visit("FlagSpots", mode.FlagSpots);
 			visit("FlagByZones", mode.FlagByZones);
 			visit("ByShip", mode.ByShip);
+			visit("Anywhere", mode.Anywhere);
+			visit("KeepClear", mode.KeepClear);
 			visit("MoveStuckPoint", mode.MoveStuckPoint);
 			visit("ScoreToWin", mode.ScoreToWin);
 			visit("GuardPercent", mode.GuardPercent);
