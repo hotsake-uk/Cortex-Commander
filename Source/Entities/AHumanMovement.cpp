@@ -335,16 +335,35 @@ void AHuman::UpdateAIMotor() {
 		const Vector toSky = Towards(m_Pos, sky);
 		if (mover.skyCheckTimer.IsPastSimMS(250)) {
 			mover.skyCheckTimer.Reset();
-			Vector obstacle;
-			Vector free;
+			Vector hit;
 			mover.skyClear = true;
 			for (float dy: {-h * 0.3F, feet * 0.5F}) {
-				// (Past units of its own team, which move and are flown past: counted, a group sent up together mostly waited on each other.)
-				if (g_SceneMan.CastObstacleRay(m_Pos + Vector(0.0F, dy), toSky, obstacle, free, m_MOID, m_Team, 0, 3) >= 0.0F) {
+				// The ground in the way only where the body can't pass it (BodyRay): liquid, blood pooled at the feet, plants, crumbs and the bits
+				// of a fight are flown through. (Any pixel that wasn't air counted, so a unit standing in a puddle of blood, the low look starting
+				// in it, was "blocked"; or one look caught the gore its own jet kicked up just as it lifted off, and the order was dropped at
+				// once, the jet out and the unit stood down a moment after take-off.)
+				if (BodyRay(m_Pos + Vector(0.0F, dy), toSky, 5.0F, hit, 3, MaterialColorKeys::g_MaterialDoor)) {
 					mover.skyClear = false;
+					break;
+				}
+				// And a living unit or a craft of another side across the line. (Past units of its own team, which move and are flown past:
+				// counted, a group sent up together mostly waited on each other. And past loose things, gibs, corpses and dropped guns, which
+				// a jet pushes through.)
+				const MOID moid = g_SceneMan.CastMORay(m_Pos + Vector(0.0F, dy), toSky, m_MOID, m_Team, 0, true, 3);
+				const MovableObject* hitMO = moid != g_NoMOID ? g_MovableMan.GetMOFromID(moid) : nullptr;
+				const MovableObject* root = hitMO ? hitMO->GetRootParent() : nullptr;
+				const Actor* blocker = root && root != this ? dynamic_cast<const Actor*>(root) : nullptr;
+				if (blocker && blocker->GetStatus() != DYING && blocker->GetStatus() != DEAD) {
+					mover.skyClear = false;
+					break;
 				}
 			}
+			if (mover.skyClear) {
+				mover.skyBlockedTimer.Reset();
+			}
 		}
+		// (Blocked only once it has looked blocked for most of a second: three looks.)
+		const bool skyBlocked = !mover.skyClear && mover.skyBlockedTimer.IsPastSimMS(750);
 		const float tank = m_pJetpack->GetJetTimeTotal();
 		if (toSky.MagnitudeIsLessThan(h * 0.6F) && !mover.skyHovering) {
 			mover.skyHovering = true;
@@ -359,7 +378,7 @@ void AHuman::UpdateAIMotor() {
 			m_StandingOrder.SkyGoal = false;
 			mover.skyFlying = false;
 			mover.skyHovering = false;
-		} else if (mover.skyHovering || (mover.skyClear && (mover.skyFlying || m_pJetpack->GetJetTimeLeft() > JetRelightFuel() + tank * 0.3F))) {
+		} else if (mover.skyHovering || (mover.skyFlying && !skyBlocked) || (mover.skyClear && m_pJetpack->GetJetTimeLeft() > JetRelightFuel() + tank * 0.3F)) {
 			if (!mover.skyFlying) {
 				mover.skyFlying = true;
 				MoverTrace("jetpack here: flying for " + std::to_string(static_cast<int>(sky.m_X)) + "," + std::to_string(static_cast<int>(sky.m_Y)));
@@ -2688,7 +2707,8 @@ int AHuman::MoveAlongRoute() {
 		// the sky order is dropped and the ground under it is the end of the move.)
 		const bool skyJet = m_pJetpack && m_pJetpack->IsAttached() && m_pJetpack->GetJetpackType() == AEJetpack::JetpackType::Standard;
 		if (m_StandingOrder.SkyGoal && skyJet && toGoal.MagnitudeIsLessThan(reach) && !airborne) {
-			if (mover.skyClear) {
+			// (Not on one look: see skyBlockedTimer.)
+			if (mover.skyClear || !mover.skyBlockedTimer.IsPastSimMS(750)) {
 				return RouteMover::Moving;
 			}
 			MoverTrace("jetpack here: no clear line up from under it; staying on the ground");
