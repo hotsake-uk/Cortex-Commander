@@ -114,6 +114,11 @@ namespace RTE {
 #pragma region Memory Management
 		/// Grabs from the pre-allocated pool, an available chunk of memory the exact size of an Atom. OWNERSHIP IS TRANSFERRED!
 		/// @return A pointer to the pre-allocated pool memory. OWNERSHIP IS TRANSFERRED!
+		/// Whether a solid terrain pixel is part of a speck: a clump of no more than four pixels touching each other (diagonally too). Loose
+		/// pixels left by blasts and digging, a single stray pixel on a floor, a crumb on a ledge: an actor's body brushes through these
+		/// rather than catching on them. Anything bigger is real terrain.
+		static bool IsTerrainSpeck(int x, int y);
+
 		static void* GetPoolMemory();
 
 		/// Adds a certain number of newly allocated instances to this' pool.

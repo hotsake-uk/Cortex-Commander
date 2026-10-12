@@ -37,20 +37,11 @@ namespace {
 		return g_SceneMan.ShortestDistance(from, to, g_SceneMan.SceneWrapsX());
 	}
 
-	// The floor under a point within so far: its y, or below zero for none.
-	float FloorUnder(const Vector& point, float reach) {
-		Vector hit;
-		if (g_SceneMan.CastStrengthRay(point, Vector(0.0F, reach), 5.0F, hit, 2)) {
-			return hit.m_Y;
-		}
-		return -1.0F;
-	}
-
 	/// (Liquid isn't, while the Water behaviour setting says units pass it: a flooded corridor read as a wall, and the walk to a landing
-	/// across it was refused for a flight.)
-	bool Solid(float x, float y) {
+	/// across it was refused for a flight. Nor, by the settings, a plant, a rung the body passes or a crumb: Actor::SensesPassTerrain.)
+	bool Solid(float x, float y, bool passesRungs) {
 		unsigned char id = g_SceneMan.GetTerrMatter(static_cast<int>(x), static_cast<int>(y));
-		return id != MaterialColorKeys::g_MaterialAir && !TerrainTrees::ActorsPass(id) && !FluidSim::UnitsPassThrough(id);
+		return id != MaterialColorKeys::g_MaterialAir && !TerrainTrees::ActorsPass(id) && !FluidSim::UnitsPassThrough(id) && !Actor::SensesPassTerrain(id, static_cast<int>(x), static_cast<int>(y), passesRungs);
 	}
 
 	/// The Ladder material's index (the bunkers' rungs; see Materials.ini), 0 when there is none.
@@ -343,10 +334,54 @@ float AHuman::GetLegJumpHeight() const {
 	return height * g_SettingsMan.LegStrength() * GetOverloadSpeedMultiplier();
 }
 
-bool AHuman::LandingFloorAt(int x, int y) {
-	const unsigned char under = g_SceneMan.GetTerrMatter(x, y + 1);
-	const unsigned char over = g_SceneMan.GetTerrMatter(x, y - 3);
-	return under != MaterialColorKeys::g_MaterialAir && !FluidSim::UnitsPassThrough(under) && (over == MaterialColorKeys::g_MaterialAir || FluidSim::UnitsPassThrough(over));
+bool AHuman::PassesRungs() const {
+	return PassesMaterial(LadderMaterialID());
+}
+
+bool AHuman::SensedOpen(int x, int y) const {
+	unsigned char id = g_SceneMan.GetTerrMatter(x, y);
+	return id == MaterialColorKeys::g_MaterialAir || SensesPassTerrain(id, x, y, PassesRungs());
+}
+
+bool AHuman::BodyRay(const Vector& start, const Vector& ray, float strength, Vector& result, int skip, unsigned char ignoreMaterial) const {
+	// (Each time the ray stops on something the body passes, it goes on from just past it, for the rest of its length. A ladder's rungs are
+	// a bar every 8 px, so up a shaft that is many stops; past 64 the rest is taken as hit.)
+	const float length = ray.GetMagnitude();
+	if (length < 0.5F) {
+		return g_SceneMan.CastStrengthRay(start, ray, strength, result, skip, ignoreMaterial);
+	}
+	const Vector direction = ray / length;
+	Vector from = start;
+	float travelled = 0.0F;
+	for (int stop = 0; stop < 64; ++stop) {
+		if (!g_SceneMan.CastStrengthRay(from, direction * (length - travelled), strength, result, skip, ignoreMaterial)) {
+			return false;
+		}
+		const int x = result.GetFloorIntX();
+		const int y = result.GetFloorIntY();
+		if (!SensesPassTerrain(g_SceneMan.GetTerrMatter(x, y), x, y, PassesRungs())) {
+			return true;
+		}
+		travelled += Towards(from, result).GetMagnitude() + 2.0F;
+		if (travelled >= length) {
+			result = start + ray;
+			return false;
+		}
+		from = start + direction * travelled;
+	}
+	return true;
+}
+
+float AHuman::FloorUnder(const Vector& point, float reach) const {
+	Vector hit;
+	if (BodyRay(point, Vector(0.0F, reach), 5.0F, hit, 2)) {
+		return hit.m_Y;
+	}
+	return -1.0F;
+}
+
+bool AHuman::LandingFloorAt(int x, int y) const {
+	return !SensedOpen(x, y + 1) && SensedOpen(x, y - 3);
 }
 
 bool AHuman::CanLeap() const {
@@ -421,9 +456,11 @@ AHuman::Sensed AHuman::SenseAhead(float direction, float floorY, float standing)
 	// (A plant ahead is walked through, not a wall or a step: sensed as one, every bush got a hop of the jet, or a leap from short of it.
 	// Liquid likewise, with the Water behaviour setting: wading, the water's depth was a step to leap, mantle or hop, and a deep pool or a
 	// stream pouring down in front a wall the route was sent round.)
-	auto blocks = [](float x, float y) {
+	// (And a crumb the body brushes through, by the settings: ducked, crawled and routed round: Actor::SensesPassTerrain.)
+	const bool passesRungs = PassesRungs();
+	auto blocks = [passesRungs](float x, float y) {
 		unsigned char id = g_SceneMan.GetTerrMatter(static_cast<int>(x), static_cast<int>(y));
-		return id != MaterialColorKeys::g_MaterialAir && id != LadderMaterialID() && id != MaterialColorKeys::g_MaterialDoor && !WalkedThrough(id) && !FluidSim::UnitsPassThrough(id);
+		return id != MaterialColorKeys::g_MaterialAir && id != LadderMaterialID() && id != MaterialColorKeys::g_MaterialDoor && !WalkedThrough(id) && !FluidSim::UnitsPassThrough(id) && !SensesPassTerrain(id, static_cast<int>(x), static_cast<int>(y), passesRungs);
 	};
 	for (float d = halfWidth; d <= halfWidth + reach; d += 2.0F) {
 		float x = m_Pos.m_X + direction * d;
@@ -1173,7 +1210,7 @@ void AHuman::PushFree(float direction) {
 	for (int k = 0; k < 8; ++k) {
 		const float angle = static_cast<float>(k) * c_QuarterPI;
 		const Vector out(std::cos(angle), std::sin(angle));
-		if (Solid(m_Pos.m_X + out.m_X * reach, m_Pos.m_Y + out.m_Y * reach)) {
+		if (Solid(m_Pos.m_X + out.m_X * reach, m_Pos.m_Y + out.m_Y * reach, PassesRungs())) {
 			away -= out;
 		}
 	}
@@ -1190,7 +1227,7 @@ void AHuman::PushFree(float direction) {
 		push.m_X = 0.0F;
 	}
 	// (Under a roof: not up into it.)
-	if (Solid(m_Pos.m_X, m_Pos.m_Y - h * 0.6F)) {
+	if (Solid(m_Pos.m_X, m_Pos.m_Y - h * 0.6F, PassesRungs())) {
 		push.m_Y = std::max(push.m_Y, 0.0F);
 	}
 	push.CapMagnitude(4.0F);
@@ -1410,7 +1447,7 @@ bool AHuman::CanWalkTo(const Vector& landing, float landingFloorY) const {
 	float direction = to.m_X > 0.0F ? 1.0F : -1.0F;
 	for (int k = 1; k <= steps; ++k) {
 		float x = m_Pos.m_X + direction * static_cast<float>(k) * 12.0F;
-		if (Solid(x, floorY - stepUp)) {
+		if (Solid(x, floorY - stepUp, PassesRungs())) {
 			return false;
 		}
 		Vector next;
@@ -1572,7 +1609,7 @@ bool AHuman::ShaftColumn(float columnX, float topHeadY, float& middleX, float& w
 	float rightFace = std::numeric_limits<float>::max();
 	bool found = false;
 	for (float y = fromY; y >= topHeadY; y -= step) {
-		if (Solid(columnX, y)) {
+		if (Solid(columnX, y, PassesRungs())) {
 			continue; // (Inside a ceiling or a wall at this height: nothing to measure from.)
 		}
 		Vector from(columnX, y);
@@ -2266,7 +2303,7 @@ int AHuman::MoveAlongRoute() {
 	// only ever judged against the last waypoint queued, so a unit at the end of its first leg stood there, hopped at 2.5 s and at 6 s
 	// marked its own goal avoided for its whole team before the stuck handling's re-path loaded the next leg.)
 	if (m_MovePath.size() <= 1 && !mover.flight.active && !m_Waypoints.empty() && m_HasMovePathGoal && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
-		Vector legGround = Solid(m_MovePathGoal.m_X, m_MovePathGoal.m_Y) ? m_MovePathGoal : g_SceneMan.MovePointToGround(m_MovePathGoal, static_cast<int>(h * 0.2F), 4);
+		Vector legGround = Solid(m_MovePathGoal.m_X, m_MovePathGoal.m_Y, PassesRungs()) ? m_MovePathGoal : g_SceneMan.MovePointToGround(m_MovePathGoal, static_cast<int>(h * 0.2F), 4);
 		if (Towards(m_Pos, legGround).MagnitudeIsLessThan(std::min(h * 0.4F, m_MoveProximityLimit * 1.5F)) && !airborne) {
 			MoverTrace("leg done; on to the next waypoint");
 			m_MovePath.clear();
@@ -2279,13 +2316,13 @@ int AHuman::MoveAlongRoute() {
 	}
 	if (m_MovePath.size() <= 1 && !mover.flight.active && m_Waypoints.empty() && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
 		Vector goal = GetLastAIWaypoint();
-		Vector goalGround = Solid(goal.m_X, goal.m_Y) ? goal : g_SceneMan.MovePointToGround(goal, static_cast<int>(h * 0.2F), 4);
+		Vector goalGround = Solid(goal.m_X, goal.m_Y, PassesRungs()) ? goal : g_SceneMan.MovePointToGround(goal, static_cast<int>(h * 0.2F), 4);
 		Vector toGoal = Towards(m_Pos, goalGround);
 		// (Within reach is the waypoint's own limit and a little: a unit standing 42 px from a point it called reached was, to everything
 		// waiting on it, 42 px short.)
 		// (A dig-to's target is in the ground, RC-11, and the body stands on the floor of its tunnel: the target at its feet or over its head
 		// is as near as it gets, so within half a height is there.)
-		const float reach = IsDiggingTo() && Solid(goal.m_X, goal.m_Y) ? std::max(h * 0.45F, m_MoveProximityLimit * 1.5F) : std::min(h * 0.4F, m_MoveProximityLimit * 1.5F);
+		const float reach = IsDiggingTo() && Solid(goal.m_X, goal.m_Y, PassesRungs()) ? std::max(h * 0.45F, m_MoveProximityLimit * 1.5F) : std::min(h * 0.4F, m_MoveProximityLimit * 1.5F);
 		// (A sky order's goal is the point in the air, not the ground under it: walked to the ground there, the unit waits for its tank to
 		// lift it the rest of the way, UpdateAIMotor's sky block, rather than calling it there. With no clear line up from there it never will:
 		// the sky order is dropped and the ground under it is the end of the move.)
@@ -2827,7 +2864,7 @@ int AHuman::MoveAlongRoute() {
 				}
 				Vector reach(side * (std::abs(to.m_X) + h * 0.15F), 0.0F);
 				Vector hit;
-				bool feetClear = !g_SceneMan.CastStrengthRay(m_Pos + Vector(0.0F, feet - 2.0F), reach, 5.0F, hit, 3, MaterialColorKeys::g_MaterialDoor) && !g_SceneMan.CastStrengthRay(m_Pos + Vector(0.0F, h * 0.1F), reach, 5.0F, hit, 3, MaterialColorKeys::g_MaterialDoor);
+				bool feetClear = !BodyRay(m_Pos + Vector(0.0F, feet - 2.0F), reach, 5.0F, hit, 3, MaterialColorKeys::g_MaterialDoor) && !BodyRay(m_Pos + Vector(0.0F, h * 0.1F), reach, 5.0F, hit, 3, MaterialColorKeys::g_MaterialDoor);
 				if (!feetClear) {
 					flight.holdY = std::max(flight.floorY - feet - h * 0.3F, flight.holdY - 1.0F);
 				}
@@ -3505,7 +3542,7 @@ int AHuman::MoveAlongRoute() {
 				const Vector line = Towards(m_Pos, to);
 				Vector hit;
 				for (const Vector& offset: {Vector(0.0F, -h * 0.3F), Vector(0.0F, feet - 4.0F), Vector(-h * 0.5F, -h * 0.1F), Vector(h * 0.5F, -h * 0.1F)}) {
-					if (g_SceneMan.CastStrengthRay(m_Pos + offset, line, 5.0F, hit, 2, MaterialColorKeys::g_MaterialDoor)) {
+					if (BodyRay(m_Pos + offset, line, 5.0F, hit, 2, MaterialColorKeys::g_MaterialDoor)) {
 						return false;
 					}
 				}
@@ -3650,7 +3687,7 @@ int AHuman::MoveAlongRoute() {
 				Vector line = Towards(from, to);
 				Vector hit;
 				for (const Vector& offset: {Vector(0.0F, -h * 0.3F), Vector(0.0F, feet - 4.0F), Vector(-h * 0.15F, 0.0F), Vector(h * 0.15F, 0.0F)}) {
-					if (g_SceneMan.CastStrengthRay(from + offset, line, 5.0F, hit, 2, MaterialColorKeys::g_MaterialDoor)) {
+					if (BodyRay(from + offset, line, 5.0F, hit, 2, MaterialColorKeys::g_MaterialDoor)) {
 						return false;
 					}
 				}
