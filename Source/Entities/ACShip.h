@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ACDropShip.h"
+#include "AirRoute.h"
 #include "CrewSeats.h"
 
 #include <algorithm>
@@ -154,6 +155,9 @@ namespace RTE {
 		/// Gets whether there's open air for its whole hull, engines and guns and all, flown straight from one place to another.
 		/// @param from Where it starts. @param to Where it goes. @return Whether nothing is in the way.
 		bool HullLineClear(const Vector& from, const Vector& to) const;
+
+		/// Its hull's shape for planning a way through the air (AirRoute): its ends, top and underside, the last with half its ground gap.
+		AirBody GetAirBody() const;
 
 		/// Gets how much past the map's edges it may go before it counts as gone to orbit: the Ship room past map edges setting.
 		float GetOrbitGrace() const override;

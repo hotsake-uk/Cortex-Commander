@@ -1,0 +1,188 @@
+// Hasted.frag (Medieval.rte, the "Medieval Hasted" Shader preset, written by Tools/Medieval/shaders.py from Frozen.frag)
+// A unit under Haste: tinted electric cyan with streaks of speed racing across it and a flickering double edge. Fades by rteStrength.
+// Everything else (the three outputs, palette, snow, heat, authored maps) is Blit8.frag's.
+#version 330 core
+
+in vec2 textureUV;
+in vec4 vertexColor;
+in vec4 vertexSurface;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec4 NormalOut;
+layout(location = 2) out vec4 SurfaceOut;
+
+uniform sampler2D rteTexture;
+uniform sampler2D rtePalette;
+uniform bool rteIndexed;
+uniform vec4 rteColor;
+uniform bool rteReplaceColor;
+uniform sampler2D rteEmissivePalette; // 256x1, R = how much each palette color glows.
+uniform float rteRelief; // How much the sprite's own shading counts as relief for the lighting, 0 for none.
+// A sprite's authored maps (MOSprite's NormalMapFile and EmissiveMapFile), true colour, one image per frame, the size of the frame.
+uniform bool rteHasNormalMap; // RGB = normal * 0.5 + 0.5, x to the right and y up the image, as most tools write them. Alpha 0 leaves a pixel to the automatic normal.
+uniform sampler2D rteNormalMap;
+uniform bool rteHasEmissiveMap; // How much each pixel glows, in its own colour: the brightest of RGB, times alpha.
+uniform sampler2D rteEmissiveMap;
+uniform vec4 rteMapUVRect; // Where the frame sits in rteTexture (xy corner, zw size, in UV): the sprite atlas puts it anywhere, the maps are the frame alone.
+uniform float rteMapStrength; // How much the authored maps count over the automatic ones, 0 to 1.
+// Given to mods' object shaders (Documentation/LightingAndEffects.md, "Mod shaders").
+uniform float rteTime; // Seconds of effect time.
+uniform float rteObjectSeed; // 0 to 1, different for each unit.
+uniform float rteStrength; // The player's mod shader strength, 0 to 1: the effect fades by it.
+
+float Hash(vec2 p) {
+	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+vec4 textureAA(sampler2D tex, vec2 uv) {
+	vec2 texsize = vec2(textureSize(tex, 0));
+	vec2 uv_texspace = uv * texsize;
+	vec2 seam = floor(uv_texspace + .5);
+	uv_texspace = (uv_texspace - seam) / fwidth(uv_texspace) + seam;
+	uv_texspace = clamp(uv_texspace, seam - .5, seam + .5);
+	return texture(tex, uv_texspace / texsize);
+}
+
+float Coverage(vec2 uv) {
+	if (rteIndexed) {
+		return texture(rteTexture, uv).r > 0.0 ? 1.0 : 0.0;
+	}
+	return texture(rteTexture, uv).a > 0.5 ? 1.0 : 0.0;
+}
+
+vec3 EdgeNormal(vec2 uvDx, vec2 uvDy) {
+	vec2 texel = 1.0 / vec2(textureSize(rteTexture, 0));
+	vec2 dx = vec2(texel.x, 0.0);
+	vec2 dy = vec2(0.0, texel.y);
+	// Coverage gradient in texels, at two widths for a slightly softer bevel.
+	vec2 gradient = vec2(Coverage(textureUV + dx) - Coverage(textureUV - dx), Coverage(textureUV + dy) - Coverage(textureUV - dy));
+	gradient += 0.5 * vec2(Coverage(textureUV + 2.0 * dx) - Coverage(textureUV - 2.0 * dx), Coverage(textureUV + 2.0 * dy) - Coverage(textureUV - 2.0 * dy));
+	float edge = clamp(length(gradient), 0.0, 1.0);
+	if (edge <= 0.0) {
+		return vec3(0.0, 0.0, 1.0);
+	}
+	// Bring the texture space gradient into screen space using how UVs change across screen pixels. This handles rotation, flipping and scaling without needing the transform.
+	mat2 uvPerPixel = mat2(uvDx / texel, uvDy / texel);
+	vec2 screenGradient = transpose(uvPerPixel) * gradient;
+	if (dot(screenGradient, screenGradient) < 1e-8) {
+		return vec3(0.0, 0.0, 1.0);
+	}
+	// Coverage increases into the sprite, so the outward normal points against the gradient.
+	vec2 outward = -normalize(screenGradient);
+	return normalize(vec3(outward * edge, 1.0 - 0.6 * edge));
+}
+
+// How high a point of the sprite stands, going by how bright the art is there: pixel artists paint what sticks out lighter. Below zero outside the sprite.
+float Height(vec2 uv) {
+	if (rteIndexed) {
+		float colorIndex = texture(rteTexture, uv).r;
+		return colorIndex > 0.0 ? dot(texture(rtePalette, vec2(colorIndex, 0.0)).rgb, vec3(0.299, 0.587, 0.114)) : -1.0;
+	}
+	vec4 color = texture(rteTexture, uv);
+	return color.a > 0.5 ? dot(color.rgb, vec3(0.299, 0.587, 0.114)) : -1.0;
+}
+
+// The tilt the art's own shading implies inside the sprite, in screen space: plates, rivets and folds painted lighter and darker lean the surface, so lights and reflections pick them out.
+// The outline is left to EdgeNormal: neighbours outside the sprite count as level with this pixel.
+vec2 ReliefTilt(vec2 uvDx, vec2 uvDy) {
+	vec2 texel = 1.0 / vec2(textureSize(rteTexture, 0));
+	float here = Height(textureUV);
+	if (here < 0.0) {
+		return vec2(0.0);
+	}
+	float left = Height(textureUV - vec2(texel.x, 0.0));
+	float right = Height(textureUV + vec2(texel.x, 0.0));
+	float up = Height(textureUV - vec2(0.0, texel.y));
+	float down = Height(textureUV + vec2(0.0, texel.y));
+	vec2 gradient = vec2((right < 0.0 ? here : right) - (left < 0.0 ? here : left), (down < 0.0 ? here : down) - (up < 0.0 ? here : up));
+	mat2 uvPerPixel = mat2(uvDx / texel, uvDy / texel);
+	// Downhill is away from the lighter side.
+	return -(transpose(uvPerPixel) * gradient) * 2.2;
+}
+
+// The frame's pixel in its authored maps.
+ivec2 MapTexel(sampler2D map) {
+	ivec2 size = textureSize(map, 0);
+	vec2 frameUV = (textureUV - rteMapUVRect.xy) / max(rteMapUVRect.zw, vec2(1e-6));
+	return clamp(ivec2(floor(frameUV * vec2(size))), ivec2(0), size - 1);
+}
+
+void main() {
+	// Derivatives must be taken in uniform control flow, before any discard.
+	vec2 uvDx = dFdx(textureUV);
+	vec2 uvDy = dFdy(textureUV);
+	vec2 relief = rteRelief > 0.0 ? ReliefTilt(uvDx, uvDy) * rteRelief : vec2(0.0);
+	float emissive = 0.0;
+	float shine = 0.0;
+	if (rteIndexed) {
+		float colorIndex = texture(rteTexture, vec2(textureUV.x, textureUV.y)).r;
+		FragColor = texture(rtePalette, vec2(colorIndex, 0.0F)) * vertexColor;
+		vec4 surface = texture(rteEmissivePalette, vec2(colorIndex, 0.0F));
+		emissive = surface.r;
+		shine = surface.a;
+	} else {
+		FragColor = textureAA(rteTexture, textureUV) * vertexColor;
+	}
+	if (FragColor.a == 0.0) {
+		discard;
+	} else if (rteReplaceColor) {
+		FragColor.rgba = rteColor;
+	}
+	// RG: normal x and y (z is worked out from them). B: 1 - shininess. Alpha: 0 means nothing drawn, 0.5..1 is drawn with emissive strength 0..1.
+	// What has happened to the object, packed into the surface's last value: heat in the high half, snow in the low.
+	// A shining thing with no surface of its own (a tracer and its trail) is marked by a half value where solid objects say whether they cast shadows; its last value is then how strongly it shines.
+	bool shining = abs(vertexSurface.b - 0.5) < 0.1;
+	if (shining) {
+		emissive = max(emissive, vertexSurface.a);
+	}
+	float packedStates = shining ? 0.0 : floor(vertexSurface.a * 255.0 + 0.5);
+	float heat = floor(packedStates / 16.0) / 15.0;
+	float snow = mod(packedStates, 16.0) / 15.0;
+	if (snow > 0.0) {
+		// Snow lies where nothing of the sprite is above: its top pixel, and thinner on the one below. "Above" is up the screen, whichever way the sprite is turned.
+		float lying = 1.0 - Coverage(textureUV - uvDy);
+		lying = max(lying, 0.3 * (1.0 - Coverage(textureUV - uvDy * 2.0)));
+		FragColor.rgb = mix(FragColor.rgb, vec3(0.9, 0.93, 1.0), clamp(lying * snow * 1.4, 0.0, 0.95));
+		shine *= 1.0 - lying * snow;
+	}
+	if (heat > 0.0) {
+		// Hot metal glows from dull red to orange.
+		vec3 glow = mix(vec3(0.75, 0.12, 0.03), vec3(1.0, 0.6, 0.18), heat);
+		float brightness = dot(FragColor.rgb, vec3(0.3, 0.55, 0.15));
+		FragColor.rgb = mix(FragColor.rgb, glow * (0.6 + 1.1 * brightness), heat * 0.75);
+		emissive = max(emissive, heat * 0.85);
+	}
+	// Haste: cyan tint, racing streaks and a flickering edge.
+	{
+		float lum = dot(FragColor.rgb, vec3(0.3, 0.59, 0.11));
+		float streak = smoothstep(0.75, 1.0, sin(gl_FragCoord.x * 0.9 + gl_FragCoord.y * 0.3 - rteTime * 40.0 + rteObjectSeed * 30.0));
+		float edge = 1.0 - Coverage(textureUV - uvDx * 2.0) * Coverage(textureUV + uvDx * 2.0);
+		float flicker = step(0.5, fract(rteTime * 18.0 + rteObjectSeed));
+		vec3 cyan = vec3(0.45, 0.95, 1.0);
+		FragColor.rgb = mix(FragColor.rgb, cyan * (0.5 + 0.9 * lum), 0.3 * rteStrength);
+		FragColor.rgb += cyan * (streak * 0.6 + edge * flicker * 0.5) * rteStrength;
+		emissive = max(emissive, (0.1 + streak * 0.6 + edge * flicker * 0.4) * rteStrength);
+	}
+	vec3 normal = normalize(EdgeNormal(uvDx, uvDy) + vec3(relief, 0.0));
+	if (rteHasNormalMap) {
+		// The artist's normal, brought from the image's axes onto the screen the same way the automatic tilt is (which handles turning, flipping and scaling),
+		// and as steep as the relief setting makes the art's own shading.
+		vec4 authored = texelFetch(rteNormalMap, MapTexel(rteNormalMap), 0);
+		vec2 tilt = vec2(authored.r, 1.0 - authored.g) * 2.0 - 1.0; // Image y up becomes texture y down.
+		vec2 texel = 1.0 / vec2(textureSize(rteTexture, 0));
+		vec2 screenTilt = transpose(mat2(uvDx / texel, uvDy / texel)) * tilt;
+		screenTilt = dot(screenTilt, screenTilt) > 1e-8 ? normalize(screenTilt) * length(tilt) : vec2(0.0);
+		vec3 drawn = normalize(vec3(screenTilt * clamp(rteRelief / 0.6, 0.0, 2.0), max(authored.b * 2.0 - 1.0, 0.05)));
+		normal = normalize(mix(normal, drawn, rteMapStrength * authored.a));
+	}
+	if (rteHasEmissiveMap) {
+		vec4 glow = texelFetch(rteEmissiveMap, MapTexel(rteEmissiveMap), 0);
+		emissive = max(emissive, max(glow.r, max(glow.g, glow.b)) * glow.a * rteMapStrength);
+	}
+	// An object that says what it's made of is as glossy as that; the palette's guess (greys are metal or concrete) only counts in full for things that don't say, like particles.
+	bool hasSurface = vertexSurface.r + vertexSurface.g > 0.0;
+	if (hasSurface) {
+		shine = max(shine * 0.5, vertexSurface.g);
+	}
+	NormalOut = vec4(normal.xy * 0.5 + 0.5, 1.0 - shine, 0.5 + 0.5 * emissive);
+	SurfaceOut = vec4(vertexSurface.rg, shining ? 0.0 : vertexSurface.b, 1.0);
+}

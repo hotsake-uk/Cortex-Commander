@@ -25,6 +25,7 @@ sources += files(
 'System.cpp',
 'InputMapping.cpp',
 'PathFinder.cpp',
+'AirRoute.cpp',
 'DataModule.cpp',
 'Timer.cpp',
 'RTEError.cpp',

@@ -5,6 +5,7 @@
 /// data@datarealms.com
 /// http://www.datarealms.com
 /// Inclusions of header files
+#include "AirRoute.h"
 #include "Actor.h"
 #include "LimbPath.h"
 #include "Leg.h"
@@ -337,6 +338,20 @@ namespace RTE {
 		/// Whether it was made with no legs at all (CR-9, an ooze): it crawls on its body, and having none is no wound.
 		bool IsBornLegless() const { return m_BornLegless; }
 
+		/// Whether it is flying (C8, Actor::GetFlight): on its wings or freely, gravity held off and moved through the air by what it wants.
+		bool IsFlying() const { return m_AirMode == AirMode::Flying; }
+
+		/// Whether it is too tired to fly (C8, a body with FlyStamina): gliding down, or resting where it came down or perched, till it has
+		/// got its strength back.
+		bool IsFlightTired() const { return m_FlightTired; }
+
+		/// How much of its strength to fly it has left, 0 to 1 (1 for one that never tires).
+		float GetFlightStamina() const;
+
+		/// Asks a flier to take hold of the wall or ceiling it flies into next (C8, a bat roosting): for the next two seconds it grips one it
+		/// pushes into, as a climber does, rather than flying on. (A player's flier takes hold of what it is pushed into anyway.)
+		void Perch() { m_PerchTimer.Reset(); m_PerchAsked = true; }
+
 		/// Protected member variable and method declarations
 	protected:
 		/// Function that is called when we get a new movepath.
@@ -497,6 +512,40 @@ namespace RTE {
 
 		/// Puts each foot of a crawling body on the surface it grips (CR-10), found by a ray from its hip, stepping as it moves.
 		void PlaceCrawlingFeet();
+
+		/// Where a flier is in the air (C8).
+		enum class AirMode {
+			None, //!< Not flying: on the ground, gripping a surface, or a body that doesn't fly.
+			Flying, //!< Flying: gravity held off, moved through the air by what it wants.
+			Gliding //!< Too tired to fly on: down on its wings, gravity a third of what it is, steered a little across.
+		};
+		AirMode m_AirMode = AirMode::None; //!< Where it is in the air.
+		float m_FlightAccScalar = 1.0F; //!< Its gravity scalar from before it took to the air, put back when it comes down.
+		float m_FlightStamina = -1.0F; //!< How many seconds of flight it has left (below zero till first set, from its FlyStamina).
+		bool m_FlightTired = false; //!< Whether it is too tired to fly (see IsFlightTired).
+		float m_FlapPhase = 0.0F; //!< How far through a wing beat it is (0 to 1, round and round), for its bob and its picture.
+		Vector m_FlockPush; //!< How it steers off other fliers of its side close by, in m/s (C8, a swarm spaced out in the air).
+		Timer m_FlockTimer; //!< Since it last looked for fliers close by.
+		Timer m_PerchTimer; //!< Since it was last asked to perch (Perch).
+		bool m_PerchAsked = false; //!< Whether it has been asked to perch at all.
+
+		/// Flies it (C8): takes to the air, holds gravity off and moves it through the air by what it wants (CrawlIntent) at its fly speed,
+		/// spends and gets back its strength, glides down when it has none left and rests till it has. Each update, after crawling.
+		void UpdateFlight();
+
+		/// Comes down out of the air (C8): its gravity put back. @param gripping Whether it is taking hold of a surface (which holds gravity off itself).
+		void Land(bool gripping);
+
+		/// The shape of its body for planning a way through the air (AirRoute).
+		AirBody GetAirBody() const;
+
+		/// Plans its route through the air (C8), in place of the ground's route search: to its waypoint, or after what it follows, round and
+		/// over what is in the way (AirRoute::Plan).
+		void UpdateMovePath() override;
+
+		/// Flies along its air route (C8, MoveAlongRoute for a flier): on to each point, braking to stop at the last one, planning again when
+		/// the way is blocked or it gets no nearer. @return As MoveAlongRoute.
+		int FlyAlongRoute();
 
 		/// Clears all the member variables of this ACrab, effectively
 		/// resetting the members of this abstraction level only.
