@@ -1702,13 +1702,15 @@ bool AHuman::ShaftColumn(float columnX, float topHeadY, float& middleX, float& w
 	middleX = (leftFace + rightFace) * 0.5F;
 	// The middle, or the nearest line beside it that is open all the way up (a ladder's rungs, a lip): 8.0 climbed a soldier up a node's
 	// own x with its side in the rungs, and it burned a tank getting two thirds of the way.
+	// (None open, no shaft: a notch blasted into a wall has walls both sides at the body's height and its ceiling over them, and taken for a
+	// shaft, the unit walked in under the middle of it, past the ladder beside it, and flew up into the overhang again and again.)
 	for (float dx: {0.0F, -h * 0.08F, h * 0.08F, -h * 0.16F, h * 0.16F, -h * 0.24F, h * 0.24F}) {
 		if (ColumnOpen(middleX + dx, fromY + 2.0F, topHeadY + 2.0F)) {
 			middleX += dx;
-			break;
+			return true;
 		}
 	}
-	return true;
+	return false;
 }
 
 void AHuman::RefreshRoute(bool keepRoute) {
@@ -2137,6 +2139,45 @@ bool AHuman::WatchForPin(bool holding) {
 	return false;
 }
 
+void AHuman::AvoidRouteLadder() {
+	// Stuck or pinned getting onto a ladder the route climbs next (not on it): the ladder itself avoided for a while, its length, not just
+	// its foot, and by the team too once it has happened twice there within the minute (as for a climb of it that stalls). (Its foot alone
+	// marked, the next route took the same ladder a rung or two up, by a jump to it; units that terrain damage had opened a ladder's foot
+	// to stood under it for good, where before they had flown up onto the ledge beside it.)
+	RouteMover& mover = m_Mover;
+	if (!IsClimbingLadder() && RouteClimbsLadderNext()) {
+		auto kindIt = m_MovePathKinds.begin();
+		int index = 0;
+		bool onLadder = false;
+		bool team = false;
+		for (const Vector& routePoint: m_MovePath) {
+			const PathStepKind stepKind = kindIt != m_MovePathKinds.end() ? *kindIt++ : PathStepKind::Walk;
+			++index;
+			if (stepKind != PathStepKind::Ladder) {
+				if (onLadder || index > 2) {
+					break;
+				}
+				continue;
+			}
+			if (!onLadder) {
+				onLadder = true;
+				team = NoteLadderStall(routePoint.m_X, routePoint.m_Y);
+				MoverTrace(std::string("stuck getting onto the route's ladder; avoiding it") + (team ? " (the team avoids it now)" : ""));
+				mover.ladderStalled = true;
+				mover.ladderStallSpot = routePoint;
+				mover.ladderStallTimer.Reset();
+				AvoidPathPoint(routePoint, 20000.0F, team);
+			} else if (index % 2 == 0) {
+				// (A mark covers a node and a half about it: every other point covers the ladder.)
+				AvoidPathPoint(routePoint, 20000.0F, team);
+			}
+			if (index > 30) {
+				break;
+			}
+		}
+	}
+}
+
 void AHuman::Unpin() {
 	RouteMover& mover = m_Mover;
 	const float h = GetMoveHeight();
@@ -2163,6 +2204,8 @@ void AHuman::Unpin() {
 	mover.takeOffCommitted = false;
 	mover.noTakeOff = false;
 	mover.leapWatch = false;
+
+	AvoidRouteLadder();
 
 	// The steps it was pinned on, dearer for it for a while: the route's next few points from here, and the next point itself (each time
 	// at the same spot, more), so the route asked for after is another way where there is one.
@@ -2531,6 +2574,7 @@ int AHuman::MoveAlongRoute() {
 				MoverTrace("stuck; new route");
 			}
 		}
+		AvoidRouteLadder();
 		RefreshRoute();
 		mover.flight = RouteMover::Flight();
 		mover.bestGap = -1.0F;
