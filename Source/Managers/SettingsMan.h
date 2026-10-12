@@ -283,7 +283,7 @@ namespace RTE {
 			bool GasAreaShrinks = true; //!< The gas grid's worked-out area draws in to where gas still is; off: it only grows until no gas is left anywhere.
 			bool LightingSplitsChanges = true; //!< The lighting handles each changed patch of terrain on its own; off: every patch changed in a frame as one box round them all.
 			int MaxLooseBits = 2000; //!< The most loose bits (pixels and small sprite particles that never expire: blood, flecks, chips) at once, 0 to 50000; past it the oldest that have slowed settle where they lie, or are removed where they can't (see MovableMan::Update). 0: no limit.
-			std::array<int, 6> MaxLooseBitsOf{}; //!< The most loose bits of each kind of material (see LooseBitKind) at once, 0 to 50000, each within the overall most. 0: no limit of its own.
+			std::array<int, 6> MaxLooseBitsOf{200, 0, 0, 0, 0, 0}; //!< The most loose bits of each kind of material (see LooseBitKind) at once, 0 to 50000, each within the overall most. 0: no limit of its own. Blood & flesh 200 by default (blood was most of what piled up), the rest none.
 		};
 
 		/// The kinds of material loose bits are limited by, each on its own as well as all together (SlowdownFixTuning::MaxLooseBitsOf).
