@@ -1702,13 +1702,15 @@ bool AHuman::ShaftColumn(float columnX, float topHeadY, float& middleX, float& w
 	middleX = (leftFace + rightFace) * 0.5F;
 	// The middle, or the nearest line beside it that is open all the way up (a ladder's rungs, a lip): 8.0 climbed a soldier up a node's
 	// own x with its side in the rungs, and it burned a tank getting two thirds of the way.
+	// (None open, no shaft: a notch blasted into a wall has walls both sides at the body's height and its ceiling over them, and taken for a
+	// shaft, the unit walked in under the middle of it, past the ladder beside it, and flew up into the overhang again and again.)
 	for (float dx: {0.0F, -h * 0.08F, h * 0.08F, -h * 0.16F, h * 0.16F, -h * 0.24F, h * 0.24F}) {
 		if (ColumnOpen(middleX + dx, fromY + 2.0F, topHeadY + 2.0F)) {
 			middleX += dx;
-			break;
+			return true;
 		}
 	}
-	return true;
+	return false;
 }
 
 void AHuman::RefreshRoute(bool keepRoute) {
