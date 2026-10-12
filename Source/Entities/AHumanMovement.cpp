@@ -46,9 +46,11 @@ namespace {
 		return -1.0F;
 	}
 
+	/// (Liquid isn't, while the Water behaviour setting says units pass it: a flooded corridor read as a wall, and the walk to a landing
+	/// across it was refused for a flight.)
 	bool Solid(float x, float y) {
 		unsigned char id = g_SceneMan.GetTerrMatter(static_cast<int>(x), static_cast<int>(y));
-		return id != MaterialColorKeys::g_MaterialAir && !TerrainTrees::ActorsPass(id);
+		return id != MaterialColorKeys::g_MaterialAir && !TerrainTrees::ActorsPass(id) && !FluidSim::UnitsPassThrough(id);
 	}
 
 	/// The Ladder material's index (the bunkers' rungs; see Materials.ini), 0 when there is none.
@@ -341,6 +343,12 @@ float AHuman::GetLegJumpHeight() const {
 	return height * g_SettingsMan.LegStrength() * GetOverloadSpeedMultiplier();
 }
 
+bool AHuman::LandingFloorAt(int x, int y) {
+	const unsigned char under = g_SceneMan.GetTerrMatter(x, y + 1);
+	const unsigned char over = g_SceneMan.GetTerrMatter(x, y - 3);
+	return under != MaterialColorKeys::g_MaterialAir && !FluidSim::UnitsPassThrough(under) && (over == MaterialColorKeys::g_MaterialAir || FluidSim::UnitsPassThrough(over));
+}
+
 bool AHuman::CanLeap() const {
 	if (m_Status != STABLE || m_Leaping || m_Mantling || m_GettingUp || m_Ladder.active || m_ProneState != NOTPRONE || (!m_pFGLeg && !m_pBGLeg) || GetLegJumpHeight() <= 0.0F) {
 		return false;
@@ -410,10 +418,12 @@ AHuman::Sensed AHuman::SenseAhead(float direction, float floorY, float standing)
 	const float halfWidth = std::clamp(bodyWidth * 0.5F + 1.0F, 5.0F, 16.0F);
 	const float reach = h * 0.35F;
 	const float crawl = std::max(12.0F, h * 0.24F);
-	// (A plant ahead is walked through, not a wall or a step: sensed as one, every bush got a hop of the jet, or a leap from short of it.)
+	// (A plant ahead is walked through, not a wall or a step: sensed as one, every bush got a hop of the jet, or a leap from short of it.
+	// Liquid likewise, with the Water behaviour setting: wading, the water's depth was a step to leap, mantle or hop, and a deep pool or a
+	// stream pouring down in front a wall the route was sent round.)
 	auto blocks = [](float x, float y) {
 		unsigned char id = g_SceneMan.GetTerrMatter(static_cast<int>(x), static_cast<int>(y));
-		return id != MaterialColorKeys::g_MaterialAir && id != LadderMaterialID() && id != MaterialColorKeys::g_MaterialDoor && !WalkedThrough(id);
+		return id != MaterialColorKeys::g_MaterialAir && id != LadderMaterialID() && id != MaterialColorKeys::g_MaterialDoor && !WalkedThrough(id) && !FluidSim::UnitsPassThrough(id);
 	};
 	for (float d = halfWidth; d <= halfWidth + reach; d += 2.0F) {
 		float x = m_Pos.m_X + direction * d;
@@ -1363,6 +1373,11 @@ bool AHuman::FlightWayClear(const Vector& landing, float landingFloorY) const {
 	// (Through a ladder's rungs, which a flying body passes: taken for a wall, a shaft with a ladder up its side was never open to fly.)
 	const unsigned char rungs = LadderMaterialID();
 	const int ignoreTeam = m_Team;
+	// (And through liquid, with the Water behaviour setting: a stream pouring off the landing's edge closed the way up to it.)
+	std::optional<SceneMan::LiquidsPassable> liquidsPassable;
+	if (g_SettingsMan.UnitWaterBehaviour() > 0) {
+		liquidsPassable.emplace();
+	}
 	for (float dx: {-h * 0.15F, h * 0.15F}) {
 		if (up.m_Y < -2.0F && g_SceneMan.CastObstacleRay(m_Pos + Vector(dx, -h * 0.3F), up, obstacle, free, m_MOID, ignoreTeam, rungs, 3) >= 0.0F) {
 			return false;
@@ -2657,7 +2672,7 @@ int AHuman::MoveAlongRoute() {
 			bool levelFloor = true;
 			for (float dx = 0.0F; std::abs(dx) < std::abs(to.m_X) && levelFloor; dx += step) {
 				const int x = static_cast<int>(flight.landing.m_X + dx);
-				levelFloor = g_SceneMan.GetTerrMatter(x, y + 1) != MaterialColorKeys::g_MaterialAir && g_SceneMan.GetTerrMatter(x, y - 3) == MaterialColorKeys::g_MaterialAir;
+				levelFloor = LandingFloorAt(x, y);
 			}
 			onLanding = levelFloor;
 		}

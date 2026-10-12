@@ -20,6 +20,7 @@
 #include "PresetMan.h"
 #include "Scene.h"
 #include "SettingsMan.h"
+#include "FluidSim.h"
 #include "ZeroGravity.h"
 #include "PostProcessMan.h"
 #include "PieMenu.h"
@@ -3811,7 +3812,8 @@ void AHuman::LearnFlight() {
 	bool touching = false;
 	for (int i = 0; free && i < 8 && !touching; ++i) {
 		Vector probe = m_Pos + Vector(radius + 4.0F, 0.0F).RadRotate(static_cast<float>(i) * c_QuarterPI);
-		touching = g_SceneMan.GetTerrMatter(probe.GetFloorIntX(), probe.GetFloorIntY()) != MaterialColorKeys::g_MaterialAir;
+		unsigned char id = g_SceneMan.GetTerrMatter(probe.GetFloorIntX(), probe.GetFloorIntY());
+		touching = id != MaterialColorKeys::g_MaterialAir && !FluidSim::UnitsPassThrough(id);
 	}
 	free = free && !touching;
 	if (free && m_JetPrevFree && dt > 0.0F) {
@@ -3829,8 +3831,10 @@ void AHuman::LearnFlight() {
 	m_JetPrevVel = m_Vel;
 	// Standing still on the ground: how far under Pos the floor is.
 	if (!m_pJetpack->IsEmitting() && m_Vel.MagnitudeIsLessThan(0.5F) && m_Status == STABLE) {
+		// (Through liquid, with the Water behaviour setting: standing in a puddle, its surface was learnt as the floor, and the leap, which looks
+		// for the floor at the feet through the water, found none there and was refused.)
 		for (int down = 0; down < static_cast<int>(m_CharHeight); down += 2) {
-			if (g_SceneMan.GetTerrMatter(m_Pos.GetFloorIntX(), m_Pos.GetFloorIntY() + down) != MaterialColorKeys::g_MaterialAir) {
+			if (unsigned char id = g_SceneMan.GetTerrMatter(m_Pos.GetFloorIntX(), m_Pos.GetFloorIntY() + down); id != MaterialColorKeys::g_MaterialAir && !FluidSim::UnitsPassThrough(id)) {
 				float feetHere = static_cast<float>(down);
 				m_FeetBelowPos = m_FeetBelowPos < 0.0F ? feetHere : m_FeetBelowPos + (feetHere - m_FeetBelowPos) * 0.1F;
 				break;
@@ -3869,7 +3873,7 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 		auto floorAt = [&](float dx) {
 			int x = static_cast<int>(target.m_X + dx);
 			int y = static_cast<int>(floorY);
-			return g_SceneMan.GetTerrMatter(x, y + 1) != MaterialColorKeys::g_MaterialAir && g_SceneMan.GetTerrMatter(x, y - 3) == MaterialColorKeys::g_MaterialAir;
+			return LandingFloorAt(x, y);
 		};
 		while (zoneLeft > -72.0F && floorAt(zoneLeft - 4.0F)) {
 			zoneLeft -= 4.0F;
@@ -3954,8 +3958,10 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 	};
 	auto hits = [&](const Vector& pos) {
 		const Vector points[] = {pos, pos + Vector(0.0F, feet * 0.9F), pos + Vector(0.0F, -m_CharHeight * 0.3F), pos + Vector(-halfWidth, 0.0F), pos + Vector(halfWidth, 0.0F)};
+		// (Liquid is no terrain to fly into, with the Water behaviour setting: taking off from a puddle, every way flown hit it at once, and
+		// a flight past a stream pouring off a ledge was steered clear of it.)
 		for (const Vector& point: points) {
-			if (g_SceneMan.GetTerrMatter(point.GetFloorIntX(), point.GetFloorIntY()) != MaterialColorKeys::g_MaterialAir) {
+			if (unsigned char id = g_SceneMan.GetTerrMatter(point.GetFloorIntX(), point.GetFloorIntY()); id != MaterialColorKeys::g_MaterialAir && !FluidSim::UnitsPassThrough(id)) {
 				return true;
 			}
 		}
@@ -4086,7 +4092,8 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 		for (float dx: {-4.0F, 0.0F, 4.0F}) {
 			for (float dy: {1.0F, 3.0F}) {
 				unsigned char id = g_SceneMan.GetTerrMatter(static_cast<int>(m_Pos.m_X + dx), static_cast<int>(headTop - dy));
-				headJammed = headJammed || (id != g_MaterialAir && id != static_cast<unsigned char>(s_Ladder));
+				// (Nor liquid, with the Water behaviour setting: flying up through water pouring off a ledge, it was a ceiling and the jet went out.)
+				headJammed = headJammed || (id != g_MaterialAir && id != static_cast<unsigned char>(s_Ladder) && !FluidSim::UnitsPassThrough(id));
 			}
 		}
 		headJammed = headJammed && m_Vel.m_Y > -1.0F && m_Vel.m_Y < 4.0F;
@@ -4148,9 +4155,10 @@ void AHuman::UpdateGetUp(float& rot) {
 			return;
 		}
 		Vector standing(m_Pos.m_X, floorY - feet);
-		// Room for the standing body: nothing solid along its height over the feet.
+		// Room for the standing body: nothing solid along its height over the feet. (Liquid isn't, with the Water behaviour setting: lying in
+		// a puddle, the water over the body was no room to stand, and the unit never began to get up.)
 		for (float up = 4.0F; up <= h * 0.7F; up += 4.0F) {
-			if (g_SceneMan.GetTerrMatter(static_cast<int>(standing.m_X), static_cast<int>(standing.m_Y - up + feet)) != MaterialColorKeys::g_MaterialAir) {
+			if (unsigned char id = g_SceneMan.GetTerrMatter(static_cast<int>(standing.m_X), static_cast<int>(standing.m_Y - up + feet)); id != MaterialColorKeys::g_MaterialAir && !FluidSim::UnitsPassThrough(id)) {
 				return;
 			}
 		}

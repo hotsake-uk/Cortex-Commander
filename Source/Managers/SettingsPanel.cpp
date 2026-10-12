@@ -633,6 +633,10 @@ void DebugMan::SettingsGUI() {
 		Tip("Sand, snow, gravel and other loose ground that slides down to the bottom of the map, or off a side that doesn't wrap, falls out of it and is gone. Off: it piles up there, as before.");
 		Toggle("Units swim, float and drown", ActorWater::IsEnabled(), [](bool on) { ActorWater::SetEnabled(on); });
 		Tip("Flesh and blood units hold their breath for 12 seconds with their heads under; an Air gauge shows over the unit you play while it lasts.\nSwimming: left and right swim, Up or Jump strokes up, Down or Crouch dives.");
+		if (int waterBehaviour = g_SettingsMan.UnitWaterBehaviour(); Combo("Water in units' way", &waterBehaviour, "As terrain (as before)\0Open water\0Open water, every liquid waded\0")) {
+			g_SettingsMan.SetUnitWaterBehaviour(waterBehaviour);
+		}
+		Tip("How units, players' and the AI's, take liquid when they look where they're going. Their bodies move through it whichever you pick.\nAs terrain: as before. Wading reads as a step to leap or jet over, a deep pool or a stream pouring down in front as a wall to go round, water pouring off a ledge as a ceiling that puts the jet out, a puddle as ground that stops a take-off or a leap, and a unit knocked down in a puddle doesn't get up.\nOpen water: none of that; liquid is seen as the open water it is.\nEvery liquid waded: that, and routes wade mud, tar, mercury, fuel and the other liquids as they do oil, rather than walking along the top and sinking in. That part takes effect when the next map loads.");
 		Slider("Light glowing through water", &settings.WaterLightGlow, 0.0F, 1.5F);
 		Tip("How much a lamp, fire or blast in or beside water shows as a glow in the water, in the light's own colour. 0: water is only lit like a surface.");
 		Check("Each liquid has its own look", &settings.DistinctLiquidLooks);

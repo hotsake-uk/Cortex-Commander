@@ -3,6 +3,7 @@
 #include "LuaAdapterDefinitions.h"
 #include "LuabindObjectWrapper.h"
 #include "LuaMan.h"
+#include "FluidSim.h"
 
 #include "lj_obj.h"
 
@@ -736,6 +737,19 @@ float LuaAdaptersSceneMan::CastObstacleRay3(SceneMan& sceneMan, const Vector& st
 float LuaAdaptersSceneMan::CastObstacleRay4(SceneMan& sceneMan, const Vector& start, const Vector& ray, Vector& obstaclePos, Vector& freePos, MOID ignoreMOID, int ignoreTeam, unsigned char ignoreMaterial, int skip, bool seeThroughLiquid) {
 	std::vector<MOID> ignoreMOIDs = {ignoreMOID};
 	return sceneMan.CastObstacleRay(start, ray, obstaclePos, freePos, ignoreMOIDs, ignoreTeam, ignoreMaterial, skip, seeThroughLiquid);
+}
+
+float LuaAdaptersSceneMan::CastBodyObstacleRay(SceneMan& sceneMan, const Vector& start, const Vector& ray, Vector& obstaclePos, Vector& freePos, MOID ignoreMOID, int ignoreTeam, unsigned char ignoreMaterial, int skip) {
+	std::optional<SceneMan::LiquidsPassable> liquidsPassable;
+	if (g_SettingsMan.UnitWaterBehaviour() > 0) {
+		liquidsPassable.emplace();
+	}
+	std::vector<MOID> ignoreMOIDs = {ignoreMOID};
+	return sceneMan.CastObstacleRay(start, ray, obstaclePos, freePos, ignoreMOIDs, ignoreTeam, ignoreMaterial, skip);
+}
+
+bool LuaAdaptersSceneMan::UnitsPassThrough(SceneMan& sceneMan, int materialID) {
+	return FluidSim::UnitsPassThrough(materialID);
 }
 
 const std::list<Box>* LuaAdaptersSceneMan::WrapBoxes(SceneMan& sceneMan, const Box& boxToWrap) {

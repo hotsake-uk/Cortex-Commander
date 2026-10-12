@@ -3451,7 +3451,7 @@ int Actor::FlyRouteWeightless(AEJetpack* jetpack, float jetAccel) {
 		for (float t = 0.0F; t <= length; t += 4.0F) {
 			Vector point = from + step * t;
 			for (const Vector& probe: {point, point + side, point - side}) {
-				if (g_SceneMan.GetTerrMatter(probe.GetFloorIntX(), probe.GetFloorIntY()) != MaterialColorKeys::g_MaterialAir) {
+				if (unsigned char id = g_SceneMan.GetTerrMatter(probe.GetFloorIntX(), probe.GetFloorIntY()); id != MaterialColorKeys::g_MaterialAir && !FluidSim::UnitsPassThrough(id)) {
 					return false;
 				}
 			}
@@ -3546,7 +3546,8 @@ int Actor::FlyRouteWeightless(AEJetpack* jetpack, float jetAccel) {
 			bool touching = false;
 			for (int i = 0; i < 8 && !touching; ++i) {
 				Vector probe = m_Pos + Vector(radius + 4.0F, 0.0F).RadRotate(static_cast<float>(i) * c_QuarterPI);
-				touching = g_SceneMan.GetTerrMatter(probe.GetFloorIntX(), probe.GetFloorIntY()) != MaterialColorKeys::g_MaterialAir;
+				unsigned char id = g_SceneMan.GetTerrMatter(probe.GetFloorIntX(), probe.GetFloorIntY());
+				touching = id != MaterialColorKeys::g_MaterialAir && !FluidSim::UnitsPassThrough(id); // (Water is nothing to push off.)
 			}
 			if (touching && last && distance < settle) {
 				m_Vel *= 0.9F;

@@ -391,6 +391,9 @@ namespace RTE {
 		/// Whether a leap could begin now: on its feet on the floor, with a leg, not lying down, climbing, mantling or just landed.
 		/// @return Whether it can leap.
 		bool CanLeap() const;
+		/// Whether a pixel row is a landing's level floor at an x: ground under (y + 1) and open over it (y - 3). Liquid is neither ground nor
+		/// in the way while the Water behaviour setting says units pass it (a pool read as floor, a trickle over the landing as not level).
+		static bool LandingFloorAt(int x, int y);
 
 		/// The AI's motor (see UpdateAIMotor): what an AI script asks of the body, done by the engine. A script decides where to go and how to
 		/// hold itself; the engine walks, crawls, climbs and flies. (A script may still press the controls itself, as a mod's may.)

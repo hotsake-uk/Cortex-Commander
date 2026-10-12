@@ -14,6 +14,7 @@
 #include "HDFirearm.h"
 #include "Scene.h"
 #include "SettingsMan.h"
+#include "FluidSim.h"
 #include "ZeroGravity.h"
 #include "PresetMan.h"
 #include "FrameMan.h"
@@ -2059,7 +2060,9 @@ int ACrab::MoveAlongRoute() {
 			// (Over the legs' own step only, and not where the route itself climbs, a slope or stairs: the low ray meets any incline over
 			// about twelve degrees, and a crab bounded up every slope.)
 			float rise = 0.0F;
-			while (rise < h && g_SceneMan.GetTerrMatter(static_cast<int>(lowHit.m_X + direction * 2.0F), static_cast<int>(floorY - 2.0F - rise)) != MaterialColorKeys::g_MaterialAir) {
+			// (Water standing on it is no part of it, with the Water behaviour setting.)
+			auto solid = [](unsigned char id) { return id != MaterialColorKeys::g_MaterialAir && !FluidSim::UnitsPassThrough(id); };
+			while (rise < h && solid(g_SceneMan.GetTerrMatter(static_cast<int>(lowHit.m_X + direction * 2.0F), static_cast<int>(floorY - 2.0F - rise)))) {
 				rise += 1.0F;
 			}
 			bool routeClimbs = above > rise * 0.5F && std::abs(toPoint.m_X) < h;

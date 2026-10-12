@@ -141,6 +141,7 @@ void SettingsMan::Clear() {
 	m_EndlessMetaGameMode = false;
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
+	m_UnitWaterBehaviour = 2;
 	m_EnableStuckPush = false;
 	m_BodyGearSettlesAsScraps = true;
 	m_GibChunks = GibChunkTuning();
@@ -841,6 +842,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CarriedWeightMultiplier", { float multiplier = 1.0F; reader >> multiplier; SetCarriedWeightMultiplier(multiplier); });
 	MatchProperty("LegStrength", { float strength = 1.0F; reader >> strength; SetLegStrength(strength); });
 	MatchProperty("JetpackWeightCompensation", { int mode = 0; reader >> mode; SetJetpackWeightCompensation(mode); });
+	MatchProperty("UnitWaterBehaviour", { int mode = 2; reader >> mode; SetUnitWaterBehaviour(mode); });
 	MatchProperty("OverloadSlowdown", { float slowdown = 0.0F; reader >> slowdown; SetOverloadSlowdown(slowdown); });
 	MatchProperty("JetpackFuelMultiplier", { float multiplier = 1.0F; reader >> multiplier; SetJetpackFuelMultiplier(multiplier); });
 	MatchProperty("InfiniteJetpackFuel", { reader >> m_InfiniteJetpackFuel; });
@@ -1404,6 +1406,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("CarriedWeightMultiplier", m_CarriedWeightMultiplier);
 	writer.NewPropertyWithValue("LegStrength", m_LegStrength);
 	writer.NewPropertyWithValue("JetpackWeightCompensation", m_JetpackWeightCompensation);
+	writer.NewPropertyWithValue("UnitWaterBehaviour", m_UnitWaterBehaviour);
 	writer.NewPropertyWithValue("OverloadSlowdown", m_OverloadSlowdown);
 	writer.NewPropertyWithValue("JetpackFuelMultiplier", m_JetpackFuelMultiplier);
 	writer.NewPropertyWithValue("InfiniteJetpackFuel", m_InfiniteJetpackFuel);
