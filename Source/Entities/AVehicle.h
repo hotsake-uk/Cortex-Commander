@@ -477,6 +477,7 @@ namespace RTE {
 		Timer m_AIJinkTimer; //!< Since it last moved for being hit.
 		Timer m_AINoShotTimer; //!< Since its gun last had the enemy it was sent after in its sights.
 		Timer m_AIGaveUpTimer; //!< Since it gave up: it doesn't call riders over again for a while.
+		Timer m_AIRiderWaitTimer; //!< Since its driver called the first passenger over: it waits for them that long at most (AIVehiclesWaitForRiders).
 		unsigned int m_AIOrderSerialSeen; //!< The order serial its AI driver last started on: a new order starts afresh.
 		float m_Throttle; //!< How hard it is being driven this update, -1 to 1.
 		bool m_Braking; //!< Whether the brake is on this update.

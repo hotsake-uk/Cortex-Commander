@@ -1,5 +1,6 @@
 #include "AVehicle.h"
 
+#include "ACShip.h"
 #include "AEmitter.h"
 #include "AHuman.h"
 #include "ActivityMan.h"
@@ -192,6 +193,7 @@ void AVehicle::Clear() {
 	m_AIWantsStop = false;
 	m_AIGaveUp = false;
 	m_AIGaveUpTimer.Reset();
+	m_AIRiderWaitTimer.Reset();
 	m_Commanded = false;
 	m_AIRoutesAsked = 0;
 	m_AIFaceTimer.Reset();
@@ -1200,6 +1202,11 @@ void AVehicle::UpdateAIDriving() {
 		}
 		return;
 	}
+	// Passengers it called over still on their way: it waits for them, braked, for at most the ride wait from when the first was called.
+	if (!m_Commanded && HasDriver() && !m_Recruits.empty() && g_SettingsMan.AIVehiclesWaitForRiders() && !m_AIRiderWaitTimer.IsPastSimMS(static_cast<double>(g_SettingsMan.AIShipRideWait()) * 1000.0)) {
+		m_AIStuckTimer.Reset();
+		return;
+	}
 	// Commanded after an enemy (VC-4): it stops where its gun reaches it and fires from there, rather than driving onto it. It keeps after it,
 	// so it drives on if the enemy gets out of reach or out of sight.
 	if (m_Commanded && following && InFiringPosition(following)) {
@@ -1390,8 +1397,8 @@ void AVehicle::UpdateAIBoarding() {
 		}
 		// (Not one already called over by a vehicle, or sent to one.)
 		const MovableObject* following = unit->GetMOMoveTarget();
-		if ((following && dynamic_cast<const AVehicle*>(following)) ||
-		    std::any_of(unit->GetWaypointList().begin(), unit->GetWaypointList().end(), [](const std::pair<Vector, const MovableObject*>& waypoint) { return waypoint.second && dynamic_cast<const AVehicle*>(waypoint.second); })) {
+		if ((following && (dynamic_cast<const AVehicle*>(following) || dynamic_cast<const ACShip*>(following))) ||
+		    std::any_of(unit->GetWaypointList().begin(), unit->GetWaypointList().end(), [](const std::pair<Vector, const MovableObject*>& waypoint) { return waypoint.second && (dynamic_cast<const AVehicle*>(waypoint.second) || dynamic_cast<const ACShip*>(waypoint.second)); })) {
 			continue;
 		}
 		Vector toVehicle = g_SceneMan.ShortestDistance(unit->GetPos(), m_Pos);
@@ -1407,6 +1414,10 @@ void AVehicle::UpdateAIBoarding() {
 		// With a driver, only going where it's going.
 		if (HasDriver() && g_SceneMan.ShortestDistance(going, destination).GetMagnitude() > walk * 0.5F) {
 			continue;
+		}
+		// (The wait for passengers, AIVehiclesWaitForRiders, runs from the first called over once someone drives.)
+		if (HasDriver() && m_Recruits.empty()) {
+			m_AIRiderWaitTimer.Reset();
 		}
 		unit->AddAIMOWaypointFirst(this);
 		m_Recruits.push_back({unit->GetUniqueID(), Timer()});

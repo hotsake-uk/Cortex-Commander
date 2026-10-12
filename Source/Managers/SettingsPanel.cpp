@@ -1611,6 +1611,31 @@ void DebugMan::SettingsGUI() {
 		}
 		Toggle("AI units use vehicles", g_SettingsMan.AIUsesVehicles(), [](bool on) { g_SettingsMan.SetAIUsesVehicles(on); });
 		Tip("An AI unit sent a long way walks to a friendly vehicle near it that is going its way, gets in and rides (or drives it) there, then gets out and walks the rest. A vehicle with an AI driver drives itself to the place it is sent, and units sent to a vehicle get in. Off: they walk, and AI drivers sit still.");
+		Toggle("Vehicles wait for their passengers", g_SettingsMan.AIVehiclesWaitForRiders(), [](bool on) { g_SettingsMan.SetAIVehiclesWaitForRiders(on); });
+		Tip("An AI driver that has called units over to ride waits for them to get in before it drives off, for at most the ship ride wait below from when it has somewhere to go. Off: it drives off as soon as it knows where it's going, and those still walking over are left behind.");
+		Toggle("AI units ride flying ships", g_SettingsMan.AIRidesShips(), [](bool on) { g_SettingsMan.SetAIRidesShips(on); });
+		Tip("A unit of any side, yours too, that can't walk to where it was sent, or has a very long way to go, walks to an idle friendly flying ship near it, gets in (the first one in flies it, unless it has a pilot or flies itself) and is flown there with anyone else going the same way. The ship waits for everyone it called over, then flies them there, comes down low and lets them out. Never a ship a player flies, sits in or has given an order. Off: they walk, or stop with no route.");
+		Toggle("Ride when there's no route on foot", g_SettingsMan.AIShipRideNoRoute(), [](bool on) { g_SettingsMan.SetAIShipRideNoRoute(on); });
+		Tip("With ship rides on: a unit that finds no way on foot to where it was sent (a cliff it can't climb, ground it can't dig, across a chasm) looks for a ship to fly it. Off: it stops with no route, as before.");
+		Toggle("Ride on very long walks", g_SettingsMan.AIShipRideLongWalk(), [](bool on) { g_SettingsMan.SetAIShipRideLongWalk(on); });
+		Tip("With ship rides on: a unit sent further than the distance below looks for a ship to fly it, even though it could walk. Off: only units with no route ride.");
+		{
+			float longWalk = g_SettingsMan.AIShipRideLongWalkDistance();
+			if (Slider("Long walk for a ship ride", &longWalk, Normal{2000.0F}, 500.0F, 10000.0F, "%.0f px", ImGuiSliderFlags_Logarithmic)) {
+				g_SettingsMan.SetAIShipRideLongWalkDistance(longWalk);
+			}
+			Tip("How far away, in a straight line, the place a unit is sent to has to be for it to look for a ship ride. 2000 px, as the game comes.");
+			float range = g_SettingsMan.AIShipRideRange();
+			if (Slider("Ship ride search range", &range, Normal{1500.0F}, 200.0F, 5000.0F, "%.0f px", ImGuiSliderFlags_Logarithmic)) {
+				g_SettingsMan.SetAIShipRideRange(range);
+			}
+			Tip("How far an idle ship looks round for units that want a ride. Each must also have a way on foot to the ship, and the ship must be no further from where they're going than they are. 1500 px, as the game comes.");
+			float wait = g_SettingsMan.AIShipRideWait();
+			if (Slider("Ship ride wait", &wait, Normal{20.0F}, 0.0F, 120.0F, "%.0f s")) {
+				g_SettingsMan.SetAIShipRideWait(wait);
+			}
+			Tip("The longest a ship waits for the units it called over, counted from when the first of them gets in, before it flies with those aboard; it goes sooner once all are in or its seats are full, or when it's hit. Also how long a land vehicle waits for its passengers. 20 s, as the game comes.");
+		}
 		Heading("Take cover order");
 		Toggle("Dig a foxhole when there's no cover", g_SettingsMan.AICoverDigs(), [](bool on) { g_SettingsMan.SetAICoverDigs(on); });
 		Tip("Told to take cover with nothing to get behind within about 150 px, a unit carrying a digger on soft ground (sand, soil, earth) digs itself a foxhole where it stands and crouches in it. Off: it doesn't dig, and falls back or lies flat instead.");

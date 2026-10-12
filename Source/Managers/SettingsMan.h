@@ -566,6 +566,30 @@ namespace RTE {
 		/// Whether AI units use vehicles (VH-4): one going a long way walks to a friendly vehicle on its way and rides it there, or drives it.
 		bool AIUsesVehicles() const { return m_AIUsesVehicles; }
 
+		/// Whether AI units get a ride in a friendly flying ship (ACShip) standing idle near them to where they can't walk, or that is a very long
+		/// walk: they walk to it, it waits for the others coming, then flies them there and lets them out. Each of the two reasons has its own
+		/// switch (AIShipRideNoRoute, AIShipRideLongWalk). Never a ship a player flies, sits in or has given an order.
+		bool AIRidesShips() const { return m_AIRidesShips; }
+
+		/// Whether a unit with no route on foot to where it was sent looks for a ship to fly it there (with AIRidesShips).
+		bool AIShipRideNoRoute() const { return m_AIShipRideNoRoute; }
+
+		/// Whether a unit sent further than AIShipRideLongWalkDistance looks for a ship to fly it there (with AIRidesShips).
+		bool AIShipRideLongWalk() const { return m_AIShipRideLongWalk; }
+
+		/// How far a unit has to be sent, in pixels in a straight line, to count as a long walk worth a ship ride.
+		float AIShipRideLongWalkDistance() const { return m_AIShipRideLongWalkDistance; }
+
+		/// How far off an idle ship looks for units that want a ride, in pixels.
+		float AIShipRideRange() const { return m_AIShipRideRange; }
+
+		/// The longest a ship waits, in seconds from the first rider getting in, for the rest coming to it before it flies with those aboard.
+		float AIShipRideWait() const { return m_AIShipRideWait; }
+
+		/// Whether an AI driver of a land vehicle waits for the passengers it called over to get in before it drives off (up to AIShipRideWait),
+		/// rather than leaving as soon as it has somewhere to go.
+		bool AIVehiclesWaitForRiders() const { return m_AIVehiclesWaitForRiders; }
+
 		/// Whether someone killed in an open vehicle's seat falls out of it (on, as the game comes), or slumps in the seat until the vehicle is
 		/// wrecked, thrown over or someone takes the seat. A player's own unit falls out either way, so its death is seen.
 		bool DeadCrewFallOut() const { return m_DeadCrewFallOut; }
@@ -1005,6 +1029,15 @@ namespace RTE {
 		/// Sets whether AI units use vehicles.
 		void SetAIUsesVehicles(bool use) { m_AIUsesVehicles = use; }
 
+		/// Sets the ship ride settings; see AIRidesShips and the rest.
+		void SetAIRidesShips(bool ride) { m_AIRidesShips = ride; }
+		void SetAIShipRideNoRoute(bool ride) { m_AIShipRideNoRoute = ride; }
+		void SetAIShipRideLongWalk(bool ride) { m_AIShipRideLongWalk = ride; }
+		void SetAIShipRideLongWalkDistance(float distance) { m_AIShipRideLongWalkDistance = std::clamp(distance, 500.0F, 10000.0F); }
+		void SetAIShipRideRange(float range) { m_AIShipRideRange = std::clamp(range, 200.0F, 5000.0F); }
+		void SetAIShipRideWait(float seconds) { m_AIShipRideWait = std::clamp(seconds, 0.0F, 120.0F); }
+		void SetAIVehiclesWaitForRiders(bool wait) { m_AIVehiclesWaitForRiders = wait; }
+
 		/// Sets whether crew killed in a vehicle fall out of it; see DeadCrewFallOut.
 		void SetDeadCrewFallOut(bool fallOut) { m_DeadCrewFallOut = fallOut; }
 
@@ -1345,6 +1378,13 @@ namespace RTE {
 		bool m_AIEnemyUsesPowers; //!< See AIEnemyUsesPowers.
 		bool m_AISquadFollowsYou; //!< See AISquadFollowsYou.
 		bool m_AIUsesVehicles; //!< Whether AI units use vehicles (see AIUsesVehicles).
+		bool m_AIRidesShips; //!< See AIRidesShips.
+		bool m_AIShipRideNoRoute; //!< See AIShipRideNoRoute.
+		bool m_AIShipRideLongWalk; //!< See AIShipRideLongWalk.
+		float m_AIShipRideLongWalkDistance; //!< See AIShipRideLongWalkDistance.
+		float m_AIShipRideRange; //!< See AIShipRideRange.
+		float m_AIShipRideWait; //!< See AIShipRideWait.
+		bool m_AIVehiclesWaitForRiders; //!< See AIVehiclesWaitForRiders.
 		bool m_DeadCrewFallOut; //!< Whether crew killed in a vehicle fall out of it (see DeadCrewFallOut).
 		bool m_PassengersFireFromVehicles; //!< Whether passengers shoot out of vehicles built to let them (see PassengersFireFromVehicles).
 		DirectOrderTuning m_DirectOrders; //!< How units behave on a direct order (see DirectOrders).

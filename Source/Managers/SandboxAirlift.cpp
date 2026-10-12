@@ -114,6 +114,8 @@ namespace SandboxDetail {
 			ship->SetPos(at);
 			ship->SetTeam(team);
 			ship->SetAIMode(Actor::AIMODE_SENTRY);
+			// (Its seats are the airlift's: it gives no rides of its own, ACShip::UpdateAIRides.)
+			ship->SetNumberValue("NoShipRides", 1.0);
 			ActivateSide(team);
 			AddObject(ship);
 			Lift lift;
