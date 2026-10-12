@@ -461,7 +461,7 @@ namespace RTE {
 		/// going through them. 1, the default, is every weapon as it is defined.
 		float WeaponTerrainDamage() const { return m_WeaponTerrainDamage; }
 
-		/// Gets which digger those units are handed: 0 Light, 1 Medium, 2 Heavy, 3 a random one of the three.
+		/// Gets which digger those units are handed: 0 Light, 1 Medium, 2 Heavy, 3 a random one of the four, 4 Mega.
 		int AISpawnDiggerType() const { return m_AISpawnDiggerType; }
 
 		/// The recklessness as a multiplier on the AI's movement caution: 2 at the careful end, 1 as designed, 0.5 at the reckless end.
@@ -989,7 +989,7 @@ namespace RTE {
 		/// Sets how hard weapon fire strikes terrain; see WeaponTerrainDamage.
 		void SetWeaponTerrainDamage(float scale) { m_WeaponTerrainDamage = std::clamp(scale, 0.1F, 20.0F); }
 		/// Sets which digger those units are handed; see AISpawnDiggerType.
-		void SetAISpawnDiggerType(int type) { m_AISpawnDiggerType = std::clamp(type, 0, 3); }
+		void SetAISpawnDiggerType(int type) { m_AISpawnDiggerType = std::clamp(type, 0, 4); }
 
 		/// Sets whether AI units steady themselves before they jet.
 		void SetAISteadiesBeforeJet(bool steady) { m_AISteadyBeforeJet = steady; }
@@ -1338,7 +1338,7 @@ namespace RTE {
 		float m_ShipGraceZone; //!< Pixels past the map's top and sides flying ships may go, 0 to 700 (see ShipGraceZone).
 		float m_CameraOverscroll; //!< Pixels past the map's edges the camera may scroll, 0 to 2000 (see CameraOverscroll).
 		float m_WeaponTerrainDamage; //!< Multiple of the force weapon fire strikes terrain with, 0.1 to 20 (see WeaponTerrainDamage).
-		int m_AISpawnDiggerType; //!< Which digger they're handed: 0 Light, 1 Medium, 2 Heavy, 3 random (see AISpawnDiggerType).
+		int m_AISpawnDiggerType; //!< Which digger they're handed: 0 Light, 1 Medium, 2 Heavy, 3 random, 4 Mega (see AISpawnDiggerType).
 		bool m_AISteadyBeforeJet; //!< Whether AI units steady themselves before they jet (see AISteadiesBeforeJet).
 		bool m_AICoverDigs; //!< See AICoverDigs.
 		bool m_AICoverFallsBack; //!< See AICoverFallsBack.
