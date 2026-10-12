@@ -27,7 +27,8 @@ namespace RTE {
 			bool NoBattle = false; //!< No saved battle: the map as it is.
 		};
 
-		/// Opens the browser, every filter as it was left except the saved battles one, which is on for Battle and off for Sandbox.
+		/// Opens the browser, every filter as it was left (kept between launches, in the settings) except the saved battles one, which is on for
+		/// Battle and off for Sandbox.
 		static void Open(Purpose purpose);
 
 		/// Closes the browser and lets go of the map pictures it holds.
@@ -45,5 +46,10 @@ namespace RTE {
 		/// Sets the game a Play choice asks for as the one to start: its game mode on its map, its saved battle (or none) to go in once it's there.
 		/// @return Whether the game mode and the map exist to be started.
 		static bool SetStartChoice(const Choice& choice);
+
+		/// Notes a map as played (U-3): the latest in the browser's "Recently played" list (Userdata/MapRecent.txt, the last ten), and the
+		/// settings' LastMap, which the main menu's Sandbox screen offers to continue on. Called when any game starts on a map.
+		/// @param mapName The map's preset name.
+		static void NoteMapPlayed(const std::string& mapName);
 	};
 } // namespace RTE

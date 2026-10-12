@@ -43,6 +43,7 @@
 #include <SDL3_image/SDL_image.h>
 
 #include "Sandbox.h"
+#include "MapBrowser.h"
 
 #include <array>
 #include <execution>
@@ -530,6 +531,15 @@ int ActivityMan::StartActivity(Activity* activity) {
 		g_ConsoleMan.PrintString("ERROR: Activity \"" + m_Activity->GetPresetName() + "\" was NOT started due to errors!");
 		m_Activity->SetActivityState(Activity::HasError);
 		return error;
+	}
+
+	// The map is noted as played (U-3), for the map browser's recently played list and the main menu's "Continue on": a real map that can be
+	// started again, not a saved game's own copy, a campaign scene or an editor's.
+	if (const Scene* scene = g_SceneMan.GetScene(); scene && !dynamic_cast<const EditorActivity*>(m_Activity.get()) && !scene->IsSavedGameInternal() && !scene->IsMetagameInternal()) {
+		const std::string& sceneName = scene->GetPresetName();
+		if (sceneName != "Null Scene" && sceneName != "Editor Scene" && g_PresetMan.GetEntityPreset("Scene", sceneName)) {
+			MapBrowser::NoteMapPlayed(sceneName);
+		}
 	}
 
 	// Close the console in case it was open by the player or because of a previous Activity error.

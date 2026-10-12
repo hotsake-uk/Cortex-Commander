@@ -323,7 +323,8 @@ void MainMenuGUI::ShowSandboxScreen() {
 	}
 	ShowSandboxPanels("");
 
-	// "Current map" is the map of the game in progress (or last played), if it's a real map that can be loaded again, else the Sandbox game mode's own map.
+	// "Current map" is the map of the game in progress, else the map last played (LastMap in the settings, kept between launches, U-3), if it's
+	// a real map that can be loaded again: "Continue on" it. Else the Sandbox game mode's own map.
 	m_SandboxCurrentMapName.clear();
 	const Activity* activity = g_ActivityMan.GetActivity();
 	const Scene* scene = g_SceneMan.GetScene();
@@ -333,11 +334,15 @@ void MainMenuGUI::ShowSandboxScreen() {
 			m_SandboxCurrentMapName = sceneName;
 		}
 	}
-	if (m_SandboxCurrentMapName.empty()) {
+	if (const std::string& lastMap = g_SettingsMan.LastMap(); m_SandboxCurrentMapName.empty() && !lastMap.empty() && g_PresetMan.GetEntityPreset("Scene", lastMap)) {
+		m_SandboxCurrentMapName = lastMap;
+	}
+	const bool played = !m_SandboxCurrentMapName.empty();
+	if (!played) {
 		const Activity* sandbox = dynamic_cast<const Activity*>(g_PresetMan.GetEntityPreset("GAScripted", "Sandbox"));
 		m_SandboxCurrentMapName = (sandbox && !sandbox->GetSceneName().empty()) ? sandbox->GetSceneName() : "Ketanot Hills";
 	}
-	m_MainMenuButtons[MenuButton::SandboxCurrentMapButton]->SetText("Current Map: " + m_SandboxCurrentMapName);
+	m_MainMenuButtons[MenuButton::SandboxCurrentMapButton]->SetText((played ? "Continue on " : "Current Map: ") + m_SandboxCurrentMapName);
 
 	m_MenuScreenChange = false;
 }

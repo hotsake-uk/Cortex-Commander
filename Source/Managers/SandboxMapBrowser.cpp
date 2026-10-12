@@ -4,6 +4,8 @@
 // default for Battle) and whether it's a favourite: favourites are starred on their cards, kept in Userdata/MapFavourites.txt and listed
 // first. The map picked shows bigger beside them with its saved battles: the one picked is drawn over the picture (its spawn zones, bases,
 // flags, goals and objectives), and Play starts the game on the map with it set up.
+// The last ten maps played are kept in Userdata/MapRecent.txt for the "Recently played" filter, the filters and order are kept in the
+// settings between launches, and Random map picks one of the maps shown (U-3).
 
 #include "MapBrowser.h"
 #include "SandboxInternal.h"
@@ -14,6 +16,7 @@
 
 #include <SDL3_image/SDL_image.h>
 
+#include <random>
 #include <set>
 
 namespace SandboxDetail {
@@ -90,6 +93,7 @@ namespace SandboxDetail {
 			int Size = -1; //!< Only maps of this size; -1 for any.
 			bool OnlyWithBattles = false;
 			bool OnlyFavourites = false;
+			bool OnlyRecent = false; //!< Only the maps played lately, the latest first, whatever the sort.
 			SortBy Sort = SortBy::Name;
 			int Picked = -1; //!< Index into Maps of the map picked, or -1.
 			int PickedBattle = -1; //!< Index into its Battles of the battle picked, or -1 for none: the map as it is.
@@ -136,6 +140,59 @@ namespace SandboxDetail {
 				file << name << '\n';
 			}
 			s_Browser.FiltersChanged = true;
+		}
+
+		constexpr const char* c_RecentFile = "Userdata/MapRecent.txt"; //!< The maps played lately, by name, the latest first, one to a line.
+		constexpr size_t c_RecentKept = 10; //!< How many maps the recently played list keeps.
+		std::vector<std::string> s_Recent;
+		bool s_RecentRead = false;
+
+		/// The maps played lately, the latest first, read from their file the first time.
+		std::vector<std::string>& RecentMaps() {
+			if (!s_RecentRead) {
+				s_RecentRead = true;
+				std::ifstream file(c_RecentFile);
+				std::string line;
+				while (std::getline(file, line) && s_Recent.size() < c_RecentKept) {
+					if (!line.empty() && line.back() == '\r') {
+						line.pop_back();
+					}
+					if (!line.empty() && std::find(s_Recent.begin(), s_Recent.end(), line) == s_Recent.end()) {
+						s_Recent.push_back(line);
+					}
+				}
+			}
+			return s_Recent;
+		}
+
+		/// Where a map is in the recently played list: 0 for the latest, or -1 if it isn't in it.
+		int RecentRank(const std::string& mapName) {
+			const std::vector<std::string>& recent = RecentMaps();
+			auto found = std::find(recent.begin(), recent.end(), mapName);
+			return found == recent.end() ? -1 : static_cast<int>(found - recent.begin());
+		}
+
+		/// Puts the browser's filters and order as the settings keep them (U-3). The saved battles filter is set by the purpose instead.
+		void ReadKeptFilters() {
+			const SettingsMan::MapBrowserFilters& kept = g_SettingsMan.MapBrowserFilterSettings();
+			s_Browser.Module = kept.Mod.empty() ? -1 : g_PresetMan.GetModuleID(kept.Mod);
+			s_Browser.Source = kept.Source >= 0 && kept.Source < static_cast<int>(MapSource::Count) ? kept.Source : -1;
+			s_Browser.Size = kept.Size >= 0 && kept.Size < static_cast<int>(std::size(c_SizeNames)) ? kept.Size : -1;
+			s_Browser.OnlyFavourites = kept.OnlyFavourites;
+			s_Browser.OnlyRecent = kept.OnlyRecent;
+			s_Browser.Sort = kept.Sort >= 0 && kept.Sort < static_cast<int>(SortBy::Count) ? static_cast<SortBy>(kept.Sort) : SortBy::Name;
+		}
+
+		/// Keeps the browser's filters and order in the settings, for the next time it opens, after a restart too.
+		void KeepFilters() {
+			SettingsMan::MapBrowserFilters& kept = g_SettingsMan.MapBrowserFilterSettings();
+			const DataModule* module = s_Browser.Module >= 0 ? g_PresetMan.GetDataModule(s_Browser.Module) : nullptr;
+			kept.Mod = module ? module->GetFileName() : std::string();
+			kept.Source = s_Browser.Source;
+			kept.Size = s_Browser.Size;
+			kept.OnlyFavourites = s_Browser.OnlyFavourites;
+			kept.OnlyRecent = s_Browser.OnlyRecent;
+			kept.Sort = static_cast<int>(s_Browser.Sort);
 		}
 
 		/// A five-pointed star centred on a point: filled gold for a favourite, else an outline (brighter when hovered).
@@ -564,7 +621,7 @@ namespace SandboxDetail {
 			for (int i = 0; i < static_cast<int>(s_Browser.Maps.size()); ++i) {
 				const MapEntry& map = s_Browser.Maps[i];
 				if ((s_Browser.Module >= 0 && map.ModuleID != s_Browser.Module) || (s_Browser.Source >= 0 && static_cast<int>(map.Source) != s_Browser.Source) || (s_Browser.Size >= 0 && map.Size != s_Browser.Size) ||
-				    (s_Browser.OnlyWithBattles && map.Battles.empty()) || (s_Browser.OnlyFavourites && !IsFavourite(map.Name))) {
+				    (s_Browser.OnlyWithBattles && map.Battles.empty()) || (s_Browser.OnlyFavourites && !IsFavourite(map.Name)) || (s_Browser.OnlyRecent && RecentRank(map.Name) < 0)) {
 					continue;
 				}
 				if (!search.empty() && Lowered(map.Name).find(search) == std::string::npos && Lowered(map.ModName).find(search) == std::string::npos) {
@@ -576,6 +633,10 @@ namespace SandboxDetail {
 			std::stable_sort(s_Browser.Shown.begin(), s_Browser.Shown.end(), [&maps](int a, int b) {
 				const MapEntry& first = maps[a];
 				const MapEntry& second = maps[b];
+				// Recently played: the latest first, whatever the order.
+				if (s_Browser.OnlyRecent) {
+					return RecentRank(first.Name) < RecentRank(second.Name);
+				}
 				// Favourites first, whatever the order.
 				if (bool favourite = IsFavourite(first.Name); favourite != IsFavourite(second.Name)) {
 					return favourite;
@@ -900,6 +961,9 @@ namespace SandboxDetail {
 			changed |= ToolUI::Checkbox("Favourites only", &s_Browser.OnlyFavourites);
 			ImGui::SetItemTooltip("Only the maps starred as favourites (click the star on a map's card). Favourites are listed first either way.");
 			ImGui::SameLine();
+			changed |= ToolUI::Checkbox("Recently played", &s_Browser.OnlyRecent);
+			ImGui::SetItemTooltip("Only the last ten maps played, in the Sandbox, Battle Command or any other game, the latest first.");
+			ImGui::SameLine();
 			ImGui::TextUnformatted("Sort");
 			ImGui::SameLine();
 			int sort = static_cast<int>(s_Browser.Sort);
@@ -908,8 +972,28 @@ namespace SandboxDetail {
 				s_Browser.Sort = static_cast<SortBy>(sort);
 				changed = true;
 			}
+			ImGui::SetItemTooltip("Favourites are listed first in any order. With \"Recently played\" ticked, the latest played comes first instead.");
+			ImGui::SameLine();
+			ImGui::BeginDisabled(s_Browser.Shown.empty());
+			if (ToolUI::Button("Random map")) {
+				// One of the maps shown, not the one picked already if there's another; Play (or Enter) then starts it as usual.
+				static std::mt19937 s_Random(std::random_device{}());
+				std::vector<int> others;
+				for (int index: s_Browser.Shown) {
+					if (index != s_Browser.Picked) {
+						others.push_back(index);
+					}
+				}
+				if (!others.empty()) {
+					Pick(others[std::uniform_int_distribution<size_t>(0, others.size() - 1)(s_Random)]);
+					s_Browser.ScrollToPicked = true;
+				}
+			}
+			ImGui::EndDisabled();
+			ImGui::SetItemTooltip("Picks one of the maps shown, at random, with the filters as they are. Play (or Enter) starts it.");
 			if (changed) {
 				s_Browser.FiltersChanged = true;
+				KeepFilters();
 			}
 		}
 
@@ -922,7 +1006,7 @@ namespace SandboxDetail {
 			}
 			if (s_Browser.Shown.empty()) {
 				ImGui::Spacing();
-				ImGui::TextDisabled(s_Browser.OnlyFavourites && Favourites().empty() ? "No favourites yet. Click the star on a map's card to make it one." : s_Browser.OnlyWithBattles ? "No map matches. Untick \"With saved battles\" to see maps with no battles saved yet." : "No map matches.");
+				ImGui::TextDisabled(s_Browser.OnlyFavourites && Favourites().empty() ? "No favourites yet. Click the star on a map's card to make it one." : s_Browser.OnlyRecent && RecentMaps().empty() ? "No maps played yet. The maps you play are listed here, the latest first." : s_Browser.OnlyWithBattles ? "No map matches. Untick \"With saved battles\" to see maps with no battles saved yet." : "No map matches.");
 				ImGui::EndChild();
 				return;
 			}
@@ -1100,8 +1184,8 @@ void MapBrowser::Open(Purpose purpose) {
 	s_Browser.Open = true;
 	s_Browser.For = purpose;
 	s_Browser.Choice = Choice();
+	ReadKeptFilters();
 	s_Browser.OnlyWithBattles = purpose == Purpose::Battle;
-	s_Browser.OnlyFavourites = false;
 	// Read afresh each time: battles may have been saved, or mods turned on, since it was last open.
 	std::string picked = s_Browser.Picked >= 0 && s_Browser.Picked < static_cast<int>(s_Browser.Maps.size()) ? s_Browser.Maps[s_Browser.Picked].Name : "";
 	ListMaps();
@@ -1144,6 +1228,26 @@ bool MapBrowser::SetStartChoice(const Choice& choice) {
 	}
 	LoadBattleOnStart(choice.Battle, choice.NoBattle);
 	return true;
+}
+
+void MapBrowser::NoteMapPlayed(const std::string& mapName) {
+	if (mapName.empty()) {
+		return;
+	}
+	g_SettingsMan.SetLastMap(mapName);
+	std::vector<std::string>& recent = RecentMaps();
+	std::erase(recent, mapName);
+	recent.insert(recent.begin(), mapName);
+	if (recent.size() > c_RecentKept) {
+		recent.resize(c_RecentKept);
+	}
+	std::error_code error;
+	std::filesystem::create_directories(std::filesystem::path(c_RecentFile).parent_path(), error);
+	std::ofstream file(c_RecentFile, std::ios::trunc);
+	for (const std::string& name: recent) {
+		file << name << '\n';
+	}
+	s_Browser.FiltersChanged = true;
 }
 
 void MapBrowser::DrawGUI() {
