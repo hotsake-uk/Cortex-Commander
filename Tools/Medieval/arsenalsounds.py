@@ -308,4 +308,5 @@ def main():
 	print("arsenal sounds done")
 
 
-main()
+if __name__ == "__main__":
+	main()

@@ -293,4 +293,5 @@ def main():
 	print("spell sounds done")
 
 
-main()
+if __name__ == "__main__":
+	main()

@@ -75,6 +75,7 @@ Pick **Sandbox** on the main menu and play as a god:
 - **Non-combatants and temperaments:** farm animals and civilians, and temperaments that shape how units behave.
 - **Vehicles:** a Wooden Cart that units board, which breaks apart, burns and crushes plants.
 - **Medieval faction** (swords, archers, blades that spark on metal) and **medieval buildings**: huts, cottages, a longhouse, a stone house, a watchtower, tents, a market stall, a palisade, lit by candles and lanterns.
+- **Fell Legion faction**: the kingdom's dark mirror. Black knights, a death knight, cultists, shadows and a lich under a Dread Lord, with cursed steel, plague pots and six dark spells (shadow bolts, bone spears, hellfire rain, shadowflame, the Doom and chains out of the ground). Every unit is Unholy.
 - **Unit speech:** Serious, Casual and Funny tones per side, with mix sliders and mod tones.
 - **Sandbox paint:** metals (gold, silver, bronze, brass, copper, chrome, bunker plating), every liquid, powder and terrain, candles that burn down, and a "Make it fall" box.
 - A **Pause/Break** hotkey, split Sparks, Dust and Debris settings, a bleed chance setting, unit and item stats in the spawn panel, and settings that save as soon as they change.

@@ -403,4 +403,5 @@ def main():
 	print("spell sprites done")
 
 
-main()
+if __name__ == "__main__":
+	main()
