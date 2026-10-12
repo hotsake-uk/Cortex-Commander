@@ -8,6 +8,7 @@
 #include "Sandbox.h"
 #include "SceneMan.h"
 #include "SettingsMan.h"
+#include "ThreatMemory.h"
 #include "TimerMan.h"
 
 #include <algorithm>
@@ -265,6 +266,7 @@ Actor* CrewSeats::LetOut(int seat, bool thrown, bool fallen) {
 	occupant->SetWhichMOToNotHit(m_Host, 0.5F);
 	m_Host->SetWhichMOToNotHit(occupant, 0.5F);
 	occupant->ResetAllTimers();
+	ThreatMemory::NoteLeftCarrier(occupant);
 	g_MovableMan.AddActor(occupant);
 	Controller* hostController = m_Host->GetController();
 	if (Activity* activity = g_ActivityMan.GetActivity(); activity && seat == controlSeat && hostController->IsPlayerControlled() && activity->GetControlledActor(hostController->GetPlayer()) == m_Host) {

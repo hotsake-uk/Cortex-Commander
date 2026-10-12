@@ -1594,6 +1594,10 @@ Vector SceneMan::GetRememberedEnemyPos(int team, const Vector& near, float maxAg
 	return ThreatMemory::GetNearestRemembered(team, near, maxAgeMS, maxDistance);
 }
 
+float SceneMan::GetEnemySeenAgeMS(int team, long enemyID) const {
+	return ThreatMemory::GetAgeOfID(team, enemyID);
+}
+
 Vector SceneMan::GetPlayerLastSeenPos(int team, float maxAgeMS) const {
 	return ThreatMemory::GetPlayerLastSeen(team, maxAgeMS);
 }

@@ -1,5 +1,7 @@
 #include "ThreatMemory.h"
+#include "ACShip.h"
 #include "ACraft.h"
+#include "AVehicle.h"
 #include "ADoor.h"
 #include "Activity.h"
 #include "Actor.h"
@@ -155,12 +157,68 @@ Vector ThreatMemory::GetPlayerLastSeen(int team, float maxAgeMS) {
 	return best;
 }
 
+void ThreatMemory::NoteLeftCarrier(Actor* unit) {
+	if (unit) {
+		unit->SetNumberValue("AILeftCarrierMS", static_cast<double>(g_TimerMan.GetSimTimeMS()));
+	}
+}
+
 float ThreatMemory::GetAgeOf(int team, const Actor* enemy) {
-	if (!s_Enabled || !enemy || team < 0 || team >= Activity::MaxTeamCount) {
+	return enemy ? GetAgeOfID(team, enemy->GetUniqueID()) : -1.0F;
+}
+
+float ThreatMemory::GetAgeOfID(int team, long enemyID) {
+	if (!s_Enabled || team < 0 || team >= Activity::MaxTeamCount) {
 		return -1.0F;
 	}
-	auto found = s_Memories[team].find(enemy->GetUniqueID());
+	auto found = s_Memories[team].find(enemyID);
 	return found == s_Memories[team].end() ? -1.0F : AgeMS(found->second.SeenUpdate);
+}
+
+void ThreatMemory::LookOutFromCarriers() {
+	for (Actor* carrier: g_MovableMan.GetActorList()) {
+		const ACraft* craft = dynamic_cast<const ACraft*>(carrier);
+		const AVehicle* vehicle = craft ? nullptr : dynamic_cast<const AVehicle*>(carrier);
+		if ((!craft && !vehicle) || carrier->IsDead() || carrier->GetTeam() < 0 || carrier->GetTeam() >= Activity::MaxTeamCount) {
+			continue;
+		}
+		// Who is inside: those in its seats (a ship's or a vehicle's) and those in its hold. They look as far as the keenest of them sees.
+		float sight = 0.0F;
+		auto rider = [&sight](const Actor* unit) {
+			if (unit && !unit->IsDead()) {
+				sight = std::max(sight, unit->GetSightDistance());
+			}
+		};
+		if (const ACShip* ship = dynamic_cast<const ACShip*>(carrier)) {
+			for (int seat = 0; seat < ship->GetSeatCount(); ++seat) {
+				rider(ship->GetSeatOccupant(seat));
+			}
+		} else if (vehicle) {
+			for (int seat = 0; seat < vehicle->GetSeatCount(); ++seat) {
+				rider(vehicle->GetSeatOccupant(seat));
+			}
+		}
+		if (craft) {
+			for (const MovableObject* item: *craft->GetInventory()) {
+				rider(dynamic_cast<const Actor*>(item));
+			}
+		}
+		if (sight <= 0.0F) {
+			continue;
+		}
+		const Vector eye = carrier->GetPos();
+		for (const Actor* enemy: g_MovableMan.GetActorList()) {
+			if (enemy == carrier || enemy->GetTeam() == carrier->GetTeam() || enemy->GetTeam() == Activity::NoTeam || enemy->IsDead() || enemy->IsSetToDelete() || enemy->GetHealth() <= 0.0F) {
+				continue;
+			}
+			Vector toEnemy = g_SceneMan.ShortestDistance(eye, enemy->GetPos(), g_SceneMan.SceneWrapsX());
+			Vector blocked;
+			if (toEnemy.MagnitudeIsGreaterThan(sight) || g_SceneMan.CastStrengthRay(eye, toEnemy, 5.0F, blocked, 3)) {
+				continue;
+			}
+			Report(carrier, enemy);
+		}
+	}
 }
 
 void ThreatMemory::Update() {
@@ -169,8 +227,12 @@ void ThreatMemory::Update() {
 		s_Scene = g_SceneMan.GetScene();
 		s_SceneGeneration = g_SceneMan.GetSceneGeneration();
 	}
-	ApplyReports();
 	long long now = g_TimerMan.GetSimUpdateCount();
+	// (On the updates between the forgetting, so the two don't fall on the same one.)
+	if (s_Enabled && now % 30 == 15) {
+		LookOutFromCarriers();
+	}
+	ApplyReports();
 	if (!s_Enabled || now % 30 != 0) {
 		return;
 	}

@@ -372,6 +372,7 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SceneMan) {
 	    .def("IsBurningNear", &SceneMan::IsBurningNear)
 	    .def("ReportEnemy", &SceneMan::ReportEnemy)
 	    .def("GetRememberedEnemyPos", &SceneMan::GetRememberedEnemyPos)
+	    .def("GetEnemySeenAgeMS", &SceneMan::GetEnemySeenAgeMS)
 	    .def("GetPlayerLastSeenPos", &SceneMan::GetPlayerLastSeenPos)
 	    .def("AddGas", &SceneMan::AddGas)
 	    .def("GetGas", &SceneMan::GetGas)

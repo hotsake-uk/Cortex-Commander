@@ -733,6 +733,11 @@ namespace RTE {
 		/// @param maxDistance How far from near at most, in pixels.
 		Vector GetRememberedEnemyPos(int team, const Vector& near, float maxAgeMS, float maxDistance) const;
 
+		/// Gets how long ago a team last saw an enemy (AC-2), in sim milliseconds, or -1 if it has no memory of it.
+		/// @param team The team that remembers.
+		/// @param enemyID The enemy's unique ID.
+		float GetEnemySeenAgeMS(int team, long enemyID) const;
+
 		/// Gets where a team last saw a unit a player controls (AC-2), or a zero vector if not within maxAgeMS sim milliseconds.
 		Vector GetPlayerLastSeenPos(int team, float maxAgeMS) const;
 

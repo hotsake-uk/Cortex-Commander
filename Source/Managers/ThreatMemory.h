@@ -26,6 +26,12 @@ namespace RTE {
 		/// @param enemy The enemy noticed.
 		static void Report(const Actor* reporter, const Actor* enemy);
 
+		/// Notes that a unit has just got out of a craft or vehicle (its seats or its hold): for a few seconds after, its AI takes the enemies
+		/// its team saw lately as already noticed, and turns to face the nearest (SharedBehaviors.KnowsOf). Kept in its number value
+		/// "AILeftCarrierMS", the sim time it got out.
+		/// @param unit The unit that got out.
+		static void NoteLeftCarrier(Actor* unit);
+
 		/// Gets where the closest enemy a team remembers was last seen, if it was seen recently enough and is still about.
 		/// @param team The team that remembers.
 		/// @param near The point to measure from.
@@ -43,7 +49,11 @@ namespace RTE {
 		/// Gets how long ago a team last saw an enemy, in sim milliseconds, or -1 if it has no memory of it.
 		static float GetAgeOf(int team, const Actor* enemy);
 
-		/// Forgets enemies that are gone and memories over a minute old. Call once per sim update, from the main thread.
+		/// Gets how long ago a team last saw an enemy, in sim milliseconds, or -1 if it has no memory of it, by the enemy's unique ID.
+		static float GetAgeOfID(int team, long enemyID);
+
+		/// Forgets enemies that are gone and memories over a minute old, and has every craft and vehicle with anyone inside look out for its
+		/// riders (LookOutFromCarriers). Call once per sim update, from the main thread.
 		static void Update();
 
 		/// Forgets everything, e.g. when the scene changes.
@@ -54,5 +64,10 @@ namespace RTE {
 
 		/// Applies the reports queued since the last Update, on the main thread.
 		static void ApplyReports();
+
+		/// Those riding in a craft or vehicle are out of the scene, so see nothing for themselves: twice a second each craft and vehicle with
+		/// anyone inside reports the enemies in clear sight of it, out to the furthest any of them can see, as if they had seen them. So the team
+		/// knows what they would have seen, and they get out knowing it (see SharedBehaviors.KnowsOf).
+		static void LookOutFromCarriers();
 	};
 } // namespace RTE

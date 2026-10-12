@@ -1,4 +1,5 @@
 #include "Actor.h"
+#include "ThreatMemory.h"
 #include "ActorWater.h"
 #include "ActorFire.h"
 #include "Atom.h"
@@ -1371,6 +1372,7 @@ void Actor::DropAllInventory() {
 				pPassenger->SetAngularVel(pPassenger->GetAngularVel() * 5.0F);
 				pPassenger->SetHFlipped(RandomNum() > 0.5F);
 				pPassenger->SetStatus(UNSTABLE);
+				ThreatMemory::NoteLeftCarrier(pPassenger);
 				g_MovableMan.AddActor(pPassenger);
 			}
 			// Add the gib to the scene, passing ownership from the inventory
@@ -1496,6 +1498,7 @@ void Actor::GibThis(const Vector& impactImpulse, MovableObject* movableObjectToI
 			pPassenger->SetAngularVel(pPassenger->GetAngularVel() * 5.0F);
 			pPassenger->SetHFlipped(RandomNum() > 0.5F);
 			pPassenger->SetStatus(UNSTABLE);
+			ThreatMemory::NoteLeftCarrier(pPassenger);
 			g_MovableMan.AddActor(pPassenger);
 		}
 		// Add the gib to the scene, passing ownership from the inventory
