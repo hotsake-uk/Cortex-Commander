@@ -2914,10 +2914,11 @@ int AHuman::MoveAlongRoute() {
 	};
 	// A door of ours (or no one's) across the way to a point, not open: held short of it, on the ground at its sensor, in the air hovering
 	// (a hatch across a shaft: its leaves gib what is in their sweep, and a unit flown up into them died at full health). Given up on
-	// after a while (walked or flown into) for 5 s. @return Whether holding for it this tick.
-	auto holdForDoor = [&](const Vector& towards, bool inAir) -> bool {
+	// after a while (walked or flown into) for 5 s. farLook: looked for as far off as in the air, from the ground (a take-off's look up the
+	// flight it is about to begin). @return Whether holding for it this tick.
+	auto holdForDoor = [&](const Vector& towards, bool inAir, bool farLook = false) -> bool {
 		// (AIWaitsAtDoors: looked for further off in the air, so a climb up a shaft has room to slow before the leaf.)
-		ADoor* door = DoorAhead(towards, g_SettingsMan.AIWaitsAtDoors() && inAir ? 3.0F : 1.5F);
+		ADoor* door = DoorAhead(towards, g_SettingsMan.AIWaitsAtDoors() && (inAir || farLook) ? 3.0F : 1.5F);
 		if (!door) {
 			return false;
 		}
@@ -3336,7 +3337,13 @@ int AHuman::MoveAlongRoute() {
 				return RouteMover::Moving;
 			}
 			if (!flight.refuelling && holdForDoor(flight.via ? flight.viaPoint : flight.landing, true)) {
+				// (The wait is the flight's, not a failure of it: its clocks start again, and a hover let down to a sensor lower than the
+				// take-off isn't a fall back. Left running, a unit whose hold place was at its own height, by a hatch a storey up, had its jet
+				// cut the tick after take-off, came down, and the flight was ended "down again under the landing", that take-off marked
+				// failed and a new route asked for, over and over.)
 				flight.riseTimer.Reset();
+				flight.timer.Reset();
+				flight.startY = std::max(flight.startY, m_Pos.m_Y);
 				return RouteMover::Moving;
 			}
 			Vector command = flight.via ? PilotFlight(flight.viaPoint, -1.0F) : PilotFlight(flight.landing, flight.floorY);
@@ -4402,6 +4409,18 @@ int AHuman::MoveAlongRoute() {
 		}
 		if (wantsSettle && mover.settleWaitTimer.IsPastSimMS(1500.0 * std::max(1.0F, caution))) {
 			wantsSettle = false;
+		}
+		// A door of ours across the flight, not yet open (a hatch over the shaft): waited for here, on its sensor, before the jet is lit. The
+		// ground's look for doors goes only to the route's next point, a step up, so a hatch a storey over the take-off was first seen by the
+		// flight's own look, the tick after take-off, and the wait there cut the jet with the unit a few pixels up.
+		if (canTakeOff && holdForDoor(inShaft ? Vector(shaftMiddle, landingFloorY - feet - 8.0F) : (cornerVia ? cornerPoint : landing), false, true)) {
+			mover.settling = false;
+			mover.hopTimer.Reset();
+			if (mover.traceTimer.IsPastSimMS(1000)) {
+				mover.traceTimer.Reset();
+				MoverTrace("waiting for a door before take-off");
+			}
+			return RouteMover::Moving;
 		}
 		if (wantsSettle) {
 			mover.progressTimer.Reset();
