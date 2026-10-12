@@ -159,6 +159,22 @@ namespace RTE {
 		/// @param target The enemy. @return Whether it can fly there (false while it can't fly or its autopilot hasn't started).
 		bool EngageTarget(const Actor* target);
 
+		/// Sends it to ram an enemy (a Ram order, or by itself once its guns are all shot off): it backs off for a run-up, charges it at speed
+		/// (RamSpeedScale times its top speed) and pulls up past it, then comes round and goes again, till the enemy is dead or it is given any
+		/// other order. Each hit hurts the enemy by how fast it struck (RamDamage) and the ship a share of that (RamSelfDamage).
+		/// @param target The enemy. @param automatic Whether it took this on itself (its guns gone): it gives up on one that gets far off.
+		/// @return Whether it can (false while it can't fly or its autopilot hasn't started).
+		bool RamTarget(const Actor* target, bool automatic = false);
+
+		/// Stops ramming: any other order.
+		void StopRam() { m_RamID = 0; }
+
+		/// Gets whether it is ramming an enemy (RamTarget).
+		bool IsRamming() const { return m_RamID != 0; }
+
+		/// Gets the unique ID of the enemy it is ramming, 0 for none.
+		long GetRamTargetID() const { return m_RamID; }
+
 		/// Drops the enemy EngageTarget sent it after: any other order.
 		void Disengage() { m_EngageID = 0; m_HasCombatSpot = false; }
 
@@ -274,7 +290,8 @@ namespace RTE {
 		/// keep clear of the ground ahead along the way it goes, so it climbs over a rise rather than flying into it, and slows across till it
 		/// has; though not near the place itself, so it can come down onto the ground there.
 		/// @param target The place, its middle there. @param stop Whether to stop there (else it is a point of a route flown through).
-		void SteerTo(const Vector& target, bool stop);
+		/// @param clearanceScale How much of its usual clearance over the ground ahead it keeps (less when it rams something on the ground).
+		void SteerTo(const Vector& target, bool stop, float clearanceScale = 1.0F);
 
 		/// The top of the ground at a point of the scene: the first air going up from it if it is in the ground, FLT_MAX if it is in the open air
 		/// (nothing to keep over there).
@@ -285,6 +302,37 @@ namespace RTE {
 		bool AirRoute(const Vector& from, const Vector& to, std::deque<Vector>& route) const;
 
 		long m_EngageID; //!< The unique ID of the enemy an attack order sent it after (EngageTarget), 0 for none.
+
+		/// Where it is in a ram (RamTarget).
+		enum class RamPhase {
+			RunUp, //!< Backing off to one side of the enemy for a run at it.
+			Charge, //!< Flying at it flat out.
+			PullAway //!< Past it or having hit it: climbing away beyond it, to come round again.
+		};
+		long m_RamID; //!< The unique ID of the enemy it is ramming, 0 for none.
+		bool m_RamAuto; //!< Whether it took the ram on itself, its guns gone.
+		RamPhase m_RamPhase; //!< Where it is in the ram.
+		float m_RamSide; //!< Which side of the enemy it charges from: 1 its right, -1 its left.
+		Timer m_RamTimer; //!< Since this part of the ram began.
+		Timer m_RamHitTimer; //!< Since it last struck the enemy.
+		Timer m_RamLookTimer; //!< Since it last looked for an enemy to ram with its guns gone.
+		bool m_HadGuns; //!< Whether it has had a gun on it: one that never had any doesn't take to ramming by itself.
+		float m_RamSpeedScale; //!< How much faster than its top speed it charges (RamSpeedScale).
+		float m_RamDamage; //!< How much of the enemy's full health a hit at full charge takes off (RamDamage); less the slower it struck.
+		float m_RamSelfDamage; //!< The share of the damage a hit does that the ship takes itself (RamSelfDamage), at most a twelfth of its own full health.
+
+		/// Flies the ram, each AI update while it has one: the run-up, the charge and pulling away, by turns.
+		/// @return Whether it is ramming (and has been steered for it).
+		bool UpdateRam();
+
+		/// Strikes the enemy it rams if the hull has reached it going fast enough, each update.
+		void UpdateRamHits();
+
+		/// With all its guns shot off (and given no order to hold or a plain move), it rams the enemy it was sent after, or the nearest in reach.
+		void UpdateAutoRam();
+
+		/// Gets how many of its guns are still on it, with a weapon mounted.
+		int ArmedGunCount() const;
 		long m_CombatTargetID; //!< The unique ID of the enemy its firing position (m_CombatSpot) is for.
 		Vector m_CombatSpot; //!< Where it fights that enemy from.
 		bool m_HasCombatSpot; //!< Whether it has a firing position.
