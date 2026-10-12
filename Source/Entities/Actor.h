@@ -39,6 +39,7 @@ namespace RTE {
 #define AILINEDOTSPACING 16
 
 	constexpr float c_StimSpeedMultiplier = 1.5F; //!< How much faster a unit stimmed by a powerup runs (Actor::IsStimmed).
+	constexpr const char* c_SavedUniqueIDKey = "SavedUniqueID"; //!< The number value a saved game's unit keeps its unique ID from when saved in, till it is loaded (ActivityMan::RemapLoadedUniqueIDs).
 
 	/// A sprite movable object that is autonomous.
 	class Actor : public MOSRotating {
@@ -620,6 +621,11 @@ namespace RTE {
 			Vector SkyPoint; //!< That point, exactly as clicked.
 			float Direct = 0.0F; //!< How urgent the order is, by how it was placed (s_DirectOrder): -1 a single click (cautious: walks round jumps, waits for fuel, lands soft, keeps clear of enemies), 0 a double click (a normal order, and any order not placed by a click), 0 to 1 a double click dragged, by how far (SettingsMan::DirectOrderTuning::RiskDragPixels), 1 a full drag (the shortest way there whatever it takes: a dig-to tunnels in a straight line round only what it can't cut, a move takes the hard, fast jet flights a careful route walks round, and from the Battle Behavior's StraightFlightRisk up a unit with a jet flies at the goal on one flight, straight or up and over, when one tank gets it there). The Battle Behavior tuning is applied in that share (GetPathAgent, AHuman).
 		};
+
+		/// Writes the standing order (the parts it has), the weapon and movement rules, temperament and non-combatant flag, as properties
+		/// ReadProperty reads back: for Save, and for a saved game's units (Scene::SaveSceneObject).
+		/// @param writer The writer to write to.
+		void SaveStandingOrder(Writer& writer) const;
 
 		/// Gets this' standing order, to read or change.
 		/// @return The standing order of this.

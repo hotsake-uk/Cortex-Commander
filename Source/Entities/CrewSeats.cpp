@@ -42,6 +42,8 @@ void CrewSeats::Clear() {
 	m_BoardingTimer.Reset();
 	m_BoarderInReach = nullptr;
 	m_BoarderPushes = false;
+	m_SeatToLoad = -1;
+	m_RiderToLoad = false;
 }
 
 void CrewSeats::Create(const CrewSeats& reference) {
@@ -66,6 +68,20 @@ void CrewSeats::DeleteCrew() {
 		delete slumped.Body;
 	}
 	m_Slumped.clear();
+}
+
+void CrewSeats::LoadSeated(Actor* unit) {
+	const int seat = m_SeatToLoad;
+	m_SeatToLoad = -1;
+	if (!unit) {
+		return;
+	}
+	if (seat < 0 || seat >= GetSeatCount() || m_Seats[seat].Occupant) {
+		delete unit;
+		return;
+	}
+	m_Seats[seat].Occupant = unit;
+	m_Seats[seat].Rider = m_RiderToLoad;
 }
 
 void CrewSeats::SetOccupant(int seat, Actor* unit) {

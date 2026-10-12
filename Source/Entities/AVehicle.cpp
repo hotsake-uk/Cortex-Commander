@@ -301,6 +301,8 @@ int AVehicle::Create(const AVehicle& reference) {
 	m_Grip = reference.m_Grip;
 	m_NeedsDriver = reference.m_NeedsDriver;
 	m_CrewStaysIn = reference.m_CrewStaysIn;
+	// (A vehicle read from a saved game is copied into the scene: commanded as one unit, it still is.)
+	m_Commanded = reference.m_Commanded;
 	m_TerrainCrush = reference.m_TerrainCrush;
 	m_HopSpeed = reference.m_HopSpeed;
 	m_HullPoints = reference.m_HullPoints;
@@ -422,6 +424,22 @@ int AVehicle::ReadProperty(const std::string_view& propName, Reader& reader) {
 		m_Crew.AddSeat(offset, propName == "AddGunnerSeat");
 	});
 	MatchProperty("Turret", { SetTurret(dynamic_cast<Turret*>(g_PresetMan.ReadReflectedPreset(reader))); });
+	// A saved game's (Scene::SaveSceneObject): where the wheel just added is fixed, and the vehicle's state and crew as they were.
+	MatchProperty("SpecialBehaviour_WheelMount", {
+		Vector mount;
+		reader >> mount;
+		if (!m_Wheels.empty() && m_Wheels.back().Part) {
+			m_Wheels.back().Mount = mount;
+			m_Wheels.back().Part->SetParentOffset(mount);
+		}
+	});
+	MatchProperty("SpecialBehaviour_Commanded", { reader >> m_Commanded; });
+	MatchForwards("SpecialBehaviour_CrewSeat") MatchProperty("SpecialBehaviour_RiderSeat", {
+		int seat;
+		reader >> seat;
+		m_Crew.SetSeatToLoad(seat, propName == "SpecialBehaviour_RiderSeat");
+	});
+	MatchProperty("SpecialBehaviour_Crew", { m_Crew.LoadSeated(dynamic_cast<Actor*>(g_PresetMan.ReadReflectedPreset(reader))); });
 	MatchProperty("GunRange", { reader >> m_GunRange; });
 	MatchProperty("GunTurnSpeed", { reader >> m_GunTurnSpeed; });
 	MatchProperty("AimRangeUp", { reader >> m_AimRangeUp; });
