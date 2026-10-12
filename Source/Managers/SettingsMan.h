@@ -282,7 +282,17 @@ namespace RTE {
 			bool DebrisRestsAcrossGaps = true; //!< A piece lying still looks for ground under both sides as well as its middle, so one across a crack or crater lip settles; off: the middle only.
 			bool GasAreaShrinks = true; //!< The gas grid's worked-out area draws in to where gas still is; off: it only grows until no gas is left anywhere.
 			bool LightingSplitsChanges = true; //!< The lighting handles each changed patch of terrain on its own; off: every patch changed in a frame as one box round them all.
+			int MaxLooseBits = 2000; //!< The most loose bits (pixels and small sprite particles that never expire: blood, flecks, chips) at once, 0 to 50000; past it the oldest that have slowed settle where they lie, or are removed where they can't (see MovableMan::Update). 0: no limit.
+			std::array<int, 6> MaxLooseBitsOf{}; //!< The most loose bits of each kind of material (see LooseBitKind) at once, 0 to 50000, each within the overall most. 0: no limit of its own.
 		};
+
+		/// The kinds of material loose bits are limited by, each on its own as well as all together (SlowdownFixTuning::MaxLooseBitsOf).
+		enum LooseBitKind { BloodAndFlesh, Liquids, EarthAndStone, Metal, WoodAndPlants, OtherBits, LooseBitKindCount };
+		static constexpr const char* c_LooseBitKindNames[LooseBitKindCount] = {"Blood & flesh", "Liquids", "Earth & stone", "Metal", "Wood & plants", "Everything else"};
+
+		/// Which kind a loose bit of a material is, by the material's name (looked up once per material).
+		/// @param materialIndex The material's index, 0 to 255.
+		static LooseBitKind GetLooseBitKind(int materialIndex);
 
 		/// Gets the late-battle slowdown fixes, to read or change.
 		SlowdownFixTuning& SlowdownFixes() { return m_SlowdownFixes; }

@@ -107,6 +107,16 @@ namespace RTE {
 		/// @return Whether the performance log is on.
 		static bool IsLogging() { return s_Logging; }
 
+		/// Turns the live timings on or off: the same named timings as the performance log, kept in memory and averaged over each second, for the
+		/// settings panel's slowdown readout. Off as the game starts (timing everything costs a little).
+		static void SetLiveTimings(bool on);
+
+		/// Whether the live timings are on.
+		static bool LiveTimingsOn() { return s_LiveTimings; }
+
+		/// The last second's live timings, in milliseconds a frame, most first. Empty until a second has gone by with them on.
+		static std::vector<std::pair<std::string, float>> GetLiveTimings();
+
 		/// Adds time to a named entry of the performance log. Safe to call from any thread. Does nothing while the log is off.
 		/// @param name The entry's name.
 		/// @param microseconds The time to add.
@@ -223,6 +233,8 @@ namespace RTE {
 
 		static bool s_Logging; //!< Whether the performance log is on.
 		static bool s_LogGPU; //!< Whether the performance log's scopes may wait for the GPU.
+		static bool s_LiveTimings; //!< Whether the live timings are on (see SetLiveTimings).
+		static bool s_Timing; //!< Whether anything gathers the named timings: the performance log or the live timings.
 
 	private:
 #pragma region Performance Counter Handling

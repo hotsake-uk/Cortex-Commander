@@ -17,6 +17,10 @@
 #include "ModernHUD.h"
 #include "Notices.h"
 #include "PathFinder.h"
+#include "Material.h"
+#include "MOSParticle.h"
+#include "MOPixel.h"
+#include "PerformanceMan.h"
 #include "PostProcessMan.h"
 #include "RenderTarget.h"
 #include "Texture.h"
@@ -49,6 +53,7 @@
 #include <cstring>
 #include <functional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 using namespace RTE;
@@ -1909,6 +1914,13 @@ void DebugMan::SettingsGUI() {
 		Tip("The area the gas is worked out over draws in, every half second, to where gas still is.\nOff, as before: it only grows, until there is no gas left anywhere on the map, which with methane in an enclosed space can take half an hour.");
 		Check("Lighting handles each change on its own", &fixes.LightingSplitsChanges);
 		Tip("Where the terrain changed, the scorch and stain ground is worked out over each changed patch on its own.\nOff, as before: one box round every patch changed that frame, so two changes at the ends of the map read every material pixel between them.");
+		SliderI("Most loose bits", &fixes.MaxLooseBits, 0, 20000, fixes.MaxLooseBits == 0 ? "No limit" : "%d");
+		Tip("The most loose bits (blood drops, flecks, chips: pixels and small sprite particles that never expire on their own) at once. Past it, the oldest that have slowed down settle into the ground where they lie, in their own colour and material, so blood stays as a stain; one with no ground under it (lying on a body, or stuck) is removed.\n0: no limit, as before. Bits that couldn't settle where they came to rest then only ever added up over a battle. Solid gib chunks have their own limit, under Gibs.");
+		for (int kind = 0; kind < SettingsMan::LooseBitKindCount; ++kind) {
+			std::string label = std::string("Most loose bits: ") + SettingsMan::c_LooseBitKindNames[kind];
+			SliderI(label.c_str(), &fixes.MaxLooseBitsOf[kind], 0, 20000, fixes.MaxLooseBitsOf[kind] == 0 ? "No own limit" : "%d");
+			Tip("The most loose bits of this kind of material at once, within the overall most above: past it the oldest that have slowed settle or are removed in the same way. 0: no limit of its own.\nBlood & flesh: blood, flesh and bone. Liquids: water, oil, acid and the rest. Earth & stone: earth, sand, snow, stone, gravel, concrete, rubble. Metal: metal, military stuff, plating, casings. Wood & plants: wood, grass, leaves, charcoal.");
+		}
 		if (!Plain()) {
 			return;
 		}
@@ -1934,6 +1946,65 @@ void DebugMan::SettingsGUI() {
 		ImGui::Text("Path grid nodes waiting to re-sample: %d", static_cast<int>(g_SceneMan.GetScene()->GetPathFinder(Activity::Teams::NoTeam).GetWaitingNodeCount()));
 		ImGui::Text("Gas area: %d cells", GasGrid::GetActiveCells());
 		Tip("What a long battle leaves behind that can cost frames. With nothing happening, the path grid's waiting count should sit at 0 and the solid pieces should go down as they settle.");
+
+		// What the loose objects are: by preset, with how many of each are lying still and never expire on their own (the ones that pile up).
+		struct Kind {
+			std::string Name;
+			int Count = 0;
+			int Still = 0;
+			int Forever = 0;
+		};
+		std::unordered_map<std::string, Kind> kinds;
+		for (const MovableObject* particle: g_MovableMan.GetParticleList()) {
+			if (!particle) {
+				continue;
+			}
+			std::string key = particle->GetPresetName() + " (" + particle->GetClassName() + ")";
+			Kind& kind = kinds[key];
+			kind.Name = key;
+			++kind.Count;
+			kind.Still += particle->GetVel().MagnitudeIsLessThan(1.0F) ? 1 : 0;
+			kind.Forever += particle->GetLifetime() == 0 ? 1 : 0;
+		}
+		std::vector<Kind> sorted;
+		sorted.reserve(kinds.size());
+		for (auto& [key, kind]: kinds) {
+			sorted.push_back(std::move(kind));
+		}
+		std::sort(sorted.begin(), sorted.end(), [](const Kind& left, const Kind& right) { return left.Count > right.Count; });
+		{
+			std::array<int, SettingsMan::LooseBitKindCount> bitsOf{};
+			for (const MovableObject* particle: g_MovableMan.GetParticleList()) {
+				if (particle && particle->GetLifetime() == 0 && particle->GetMaterial() && (dynamic_cast<const MOPixel*>(particle) || dynamic_cast<const MOSParticle*>(particle))) {
+					++bitsOf[SettingsMan::GetLooseBitKind(particle->GetMaterial()->GetIndex())];
+				}
+			}
+			ImGui::SeparatorText("Loose bits that never expire, by material");
+			for (int kind = 0; kind < SettingsMan::LooseBitKindCount; ++kind) {
+				ImGui::Text("%6d  %s", bitsOf[kind], SettingsMan::c_LooseBitKindNames[kind]);
+			}
+		}
+		ImGui::SeparatorText("Most common loose objects");
+		ImGui::TextDisabled("count / lying still / never expire");
+		for (size_t i = 0; i < std::min<size_t>(sorted.size(), 12); ++i) {
+			ImGui::Text("%5d / %5d / %5d  %s", sorted[i].Count, sorted[i].Still, sorted[i].Forever, sorted[i].Name.c_str());
+		}
+
+		ImGui::SeparatorText("Where each frame's time goes");
+		bool live = PerformanceMan::LiveTimingsOn();
+		if (ToolUI::Checkbox("Time each system", &live)) {
+			PerformanceMan::SetLiveTimings(live);
+		}
+		Tip("Times the simulation and drawing systems every frame and shows the last second's milliseconds a frame for each, most first. Timing costs a little itself, so it is off unless ticked here, and isn't saved. (Some entries are inside others: 'total' lines include the parts listed under them.)");
+		if (live) {
+			std::vector<std::pair<std::string, float>> timings = PerformanceMan::GetLiveTimings();
+			if (timings.empty()) {
+				ImGui::TextDisabled("Gathering...");
+			}
+			for (size_t i = 0; i < std::min<size_t>(timings.size(), 24); ++i) {
+				ImGui::Text("%7.2f ms  %s", timings[i].second, timings[i].first.c_str());
+			}
+		}
 	};
 
 	const std::pair<const char*, std::function<void()>> categories[] = {
