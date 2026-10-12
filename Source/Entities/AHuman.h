@@ -940,6 +940,7 @@ namespace RTE {
 				float holdY = 0.0F; //!< The height held while stepping across (raised a pixel at a time until the feet clear the lip).
 				Timer stepTimer;
 				bool fromWater = false; //!< Taken off from the surface of a liquid (LM-4): still in it for the first moments of the climb, which is no coming down in it.
+				bool direct = false; //!< Flown straight through open air to a landing further along the route, as the Fly command flies (see MoveAlongRoute): no rise or fall-back checks on the way.
 				bool diveRolled = false; //!< Whether it has been decided yet if this flight is dived (see MoveAlongRoute).
 				bool dive = false; //!< Dived: prone in the air on a risky order, the jet driving it on across (SettingsMan::DirectOrderTuning::DiveRisk).
 			};
@@ -997,6 +998,8 @@ namespace RTE {
 			Timer standUpTimer;
 			bool noTakeOff = false; //!< At a take-off that the flight can't begin from, just now.
 			Timer noTakeOffTimer; //!< Since then.
+			Timer directBlockTimer; //!< Since a direct flight came down short of its landing: none tried again for a while.
+			bool directBlocked = false;
 			Timer settleWaitTimer; //!< Since the wait to settle began: it never lasts more than a second and a half.
 			Timer traceTimer;
 			bool fuelWaiting = false; //!< Standing for the tank to fill before a flight, and since when.
