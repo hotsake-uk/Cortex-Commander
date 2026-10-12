@@ -339,6 +339,135 @@ def grab():
 	return drone * env(n, 0.03, 0.9) * 0.7 + crackle * 0.5
 
 
+# The second batch of attack and control spells (Spells2.ini).
+
+
+def chain_zap():
+	# Chain Lightning: a crackling zap that jumps, three snaps in a row each a little higher, with a sizzle under them.
+	t = t_of(0.9)
+	n = len(t)
+	out = np.zeros(n)
+	for k in range(4):
+		start = int(0.12 * k * SR)
+		seg = t[: n - start]
+		snap = bandpass(rng.standard_normal(len(seg)), 1200 * (1 + 0.3 * k), 9000) * np.exp(-seg / 0.025) * (1 - 0.15 * k) * 3
+		out[start:] += snap
+	sizzle = bandpass((rng.random(n) > 0.9) * rng.standard_normal(n), 2000, 8000) * env(n, 0.005, 0.25) * 0.6
+	return out + sizzle
+
+
+def ice_lance():
+	# Ice Lance: a sharp whistling shard loosed, with a glassy ring.
+	t = t_of(0.6)
+	n = len(t)
+	f = 2600 - 1400 * (t / t[-1]) ** 0.7
+	whistle = swept_noise(n, f, 0.25) * env(n, 0.005, 0.12) * 2
+	ring = np.sin(2 * np.pi * 3100 * t) * np.exp(-t / 0.18) * 0.5 + np.sin(2 * np.pi * 4650 * t) * np.exp(-t / 0.12) * 0.3
+	crack = bandpass(rng.standard_normal(n), 3000, 12000) * env(n, 0.0005, 0.02) * 2
+	return whistle + ring + crack
+
+
+def blizzard():
+	# Blizzard: six seconds of howling, swirling wind with hissing snow, rising and falling.
+	t = t_of(6.0)
+	n = len(t)
+	gust = 0.5 + 0.5 * np.sin(2 * np.pi * 0.45 * t + 1.0) * np.sin(2 * np.pi * 0.17 * t)
+	howl = swept_noise(n, 350 + 450 * gust, 0.5) * (0.4 + 0.6 * gust)
+	hiss = bandpass(rng.standard_normal(n), 3000, 11000) * (0.3 + 0.4 * gust) * 0.5
+	whine = np.sin(2 * np.pi * np.cumsum(620 + 180 * gust) / SR) * (0.1 + 0.15 * gust)
+	shape = np.clip(t / 0.6, 0, 1) * np.clip((t[-1] - t) / 1.2, 0, 1)
+	return (howl + hiss + whine) * shape
+
+
+def holy_smite():
+	# Holy Smite: a rising choir chord, then a bright crash of light with a long shimmering tail.
+	t = t_of(2.4)
+	n = len(t)
+	chord = np.zeros(n)
+	for k, f in enumerate([261.63, 329.63, 392.0, 523.25, 659.25]):
+		vib = 1 + 0.006 * np.sin(2 * np.pi * 5.5 * t + k)
+		chord += np.sin(2 * np.pi * f * vib * t) * np.clip(t / 0.5, 0, 1) * (1 - 0.1 * k)
+	chord *= np.exp(-np.clip(t - 0.6, 0, None) / 0.9)
+	crash_at = int(0.55 * SR)
+	seg = t[: n - crash_at]
+	crash = np.zeros(n)
+	crash[crash_at:] = bandpass(rng.standard_normal(len(seg)), 400, 9000) * np.exp(-seg / 0.18) * 4 + np.sin(2 * np.pi * 90 * seg) * np.exp(-seg / 0.3) * 2
+	shimmer = bandpass((rng.random(n) > 0.995) * rng.standard_normal(n) * 3, 3000, 10000) * env(n, 0.6, 1.2) * 0.5
+	return chord * 0.5 + crash + shimmer
+
+
+def sunbeam():
+	# Sunbeam: a hot, bright beam held: a steady roar with a high singing tone, looped.
+	t = t_of(1.2)
+	n = len(t)
+	roar = bandpass(rng.standard_normal(n), 300, 2500) * (0.8 + 0.2 * np.sin(2 * np.pi * 13 * t))
+	sing = np.sin(2 * np.pi * 1760 * t) * 0.15 + np.sin(2 * np.pi * 2640 * t + 0.5) * 0.08
+	sizzle = bandpass(rng.standard_normal(n), 5000, 12000) * 0.3
+	return roar + sing + sizzle
+
+
+def water_jet():
+	# Water Jet: rushing water with a spattering hiss, looped.
+	t = t_of(1.2)
+	n = len(t)
+	rush = bandpass(rng.standard_normal(n), 400, 4000) * (0.8 + 0.2 * np.sin(2 * np.pi * 7 * t))
+	spatter = bandpass((rng.random(n) > 0.97) * rng.standard_normal(n) * 3, 2000, 9000) * 0.6
+	gurgle = swept_noise(n, 250 + 100 * np.sin(2 * np.pi * 3 * t), 0.4) * 0.5
+	return rush + spatter + gurgle
+
+
+def wolf_howl():
+	# A wolf's howl: a long rising tone that holds and falls, breathy, with a second wolf answering lower.
+	t = t_of(2.2)
+	n = len(t)
+	def voice(f0, start, length, gain):
+		seg = np.clip(t - start, 0, length)
+		shape = np.clip(seg / 0.35, 0, 1) * np.clip((length - seg) / 0.5, 0, 1) * (t >= start)
+		f = f0 * (0.85 + 0.25 * np.clip(seg / 0.4, 0, 1) - 0.12 * np.clip((seg - length + 0.6) / 0.6, 0, 1))
+		vib = 1 + 0.01 * np.sin(2 * np.pi * 6 * t)
+		phase = 2 * np.pi * np.cumsum(f * vib) / SR
+		tone = np.sin(phase) + 0.5 * np.sin(2 * phase) + 0.25 * np.sin(3 * phase) + 0.12 * np.sin(4 * phase)
+		breath = bandpass(rng.standard_normal(n), 800, 3000) * 0.15
+		return (tone + breath) * shape * gain
+	return voice(440, 0.0, 1.9, 1.0) + voice(330, 0.5, 1.6, 0.6)
+
+
+def stone_spikes():
+	# Stone Spikes: rock splitting and spikes punching up, a cracking rumble with sharp stone knocks.
+	t = t_of(1.0)
+	n = len(t)
+	rumble = lowpass(rng.standard_normal(n), 220) * env(n, 0.01, 0.4) * 4
+	out = rumble
+	for k in range(6):
+		start = int(0.08 * k * SR)
+		seg = t[: n - start]
+		knock = bandpass(rng.standard_normal(len(seg)), 600, 4000) * np.exp(-seg / 0.03) * 2
+		out = out + np.concatenate([np.zeros(start), knock])
+	return out
+
+
+def thunderclap():
+	# Thunderclap: one hard close crack and a short rolling boom.
+	t = t_of(1.2)
+	n = len(t)
+	crack = rng.standard_normal(n) * env(n, 0.0002, 0.012) * 6
+	boom = lowpass(rng.standard_normal(n), 140) * env(n, 0.01, 0.35) * 6
+	mid = bandpass(rng.standard_normal(n), 200, 1500) * env(n, 0.003, 0.15) * 2
+	return crack + boom + mid
+
+
+def wall_rise():
+	# Wall of Stone: stone grinding up out of the ground and locking with a thud.
+	t = t_of(1.1)
+	n = len(t)
+	grind = bandpass(rng.standard_normal(n), 150, 1500) * (0.6 + 0.4 * np.sin(2 * np.pi * 17 * t)) * np.clip(t / 0.05, 0, 1) * np.clip((0.75 - t) / 0.2, 0, 1)
+	thud_at = int(0.7 * SR)
+	seg = t[: n - thud_at]
+	thud = np.zeros(n)
+	thud[thud_at:] = np.sin(2 * np.pi * (70 - 30 * seg) * seg) * np.exp(-seg / 0.15) * 3
+	return grind * 2 + thud
+
+
 def main():
 	for i in range(2):
 		write(f"CastWhoosh{i + 1}", whoosh(i), 0.5)
@@ -365,6 +494,17 @@ def main():
 	write("StoneGrind1", stone_grind(), 0.7)
 	write("Dispel1", dispel(), 0.6)
 	write("Grab1", grab(), 0.7)
+	# The second batch of attack and control spells'.
+	write("ChainZap1", chain_zap(), 0.7)
+	write("IceLance1", ice_lance(), 0.6)
+	write("Blizzard1", blizzard(), 0.6, faded=False)
+	write("HolySmite1", holy_smite(), 0.85)
+	write("Sunbeam1", sunbeam(), 0.5, faded=False)
+	write("WaterJet1", water_jet(), 0.55, faded=False)
+	write("WolfHowl1", wolf_howl(), 0.6)
+	write("StoneSpikes1", stone_spikes(), 0.8)
+	write("Thunderclap1", thunderclap(), 0.95)
+	write("WallRise1", wall_rise(), 0.75)
 	print("spell sounds done")
 
 
