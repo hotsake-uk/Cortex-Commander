@@ -268,10 +268,35 @@ namespace SandboxDetail {
 		}
 
 		/// How many of each team's fighters are in a zone.
+		/// Standing on the ground under the zone where it has no floor (GroundUnderZone): its middle no more than its height above it.
+		bool OnGroundUnder(const std::vector<Vector>& below, const Actor* fighter) {
+			const bool wraps = g_SceneMan.SceneWrapsX();
+			const Vector at = fighter->GetPos();
+			const float reach = std::max(fighter->GetHeight(), 24.0F);
+			return std::any_of(below.begin(), below.end(), [&](const Vector& ground) {
+				const Vector off = g_SceneMan.ShortestDistance(at, ground, wraps);
+				return std::abs(off.m_X) <= 3.0F && off.m_Y >= 0.0F && off.m_Y <= reach;
+			});
+		}
+
+		/// How many of each team's fighters are in a zone: inside it, or (where it has no floor) on the ground straight under it.
 		std::array<int, c_Sides> CountIn(const std::vector<Vector>& zone, const std::vector<Actor*>& fighters) {
 			std::array<int, c_Sides> count{};
+			std::vector<Vector> below;
+			bool looked = false;
 			for (const Actor* fighter: fighters) {
-				if (fighter->GetTeam() >= 0 && fighter->GetTeam() < c_Sides && IsInZone(zone, fighter->GetPos())) {
+				if (fighter->GetTeam() < 0 || fighter->GetTeam() >= c_Sides) {
+					continue;
+				}
+				bool in = IsInZone(zone, fighter->GetPos());
+				if (!in) {
+					if (!looked) {
+						below = GroundUnderZone(zone);
+						looked = true;
+					}
+					in = OnGroundUnder(below, fighter);
+				}
+				if (in) {
 					++count[fighter->GetTeam()];
 				}
 			}
@@ -532,6 +557,7 @@ namespace SandboxDetail {
 			std::vector<std::vector<Vector>> Crest; //!< Runs of the ground's top, left to right.
 			float Cell = 4.0F;
 			std::vector<std::pair<Vector, bool>> Cells; //!< Each solid cell's top left, and whether it's at an edge.
+			std::vector<Vector> Below; //!< The ground straight under each column with no floor in the zone (GroundUnderZone).
 		};
 
 		std::vector<ZoneTerrain> s_ZoneTerrain;
@@ -559,6 +585,7 @@ namespace SandboxDetail {
 			terrain.At = now;
 			terrain.Crest.clear();
 			terrain.Cells.clear();
+			terrain.Below.clear();
 			float left = zone.front().m_X;
 			float right = left;
 			float top = zone.front().m_Y;
@@ -599,6 +626,7 @@ namespace SandboxDetail {
 							run.clear();
 						}
 						run.emplace_back(x, y);
+						terrain.Below.emplace_back(x, y);
 						continue;
 					}
 				}
@@ -662,7 +690,11 @@ namespace SandboxDetail {
 			}
 			return terrain;
 		}
+	} // namespace
 
+	std::vector<Vector> GroundUnderZone(const std::vector<Vector>& zone) { return zone.size() < 3 ? std::vector<Vector>() : TerrainOf(zone).Below; }
+
+	namespace {
 		/// A line drawn as a glow: wide and faint under narrow and bright.
 		void GlowPolyline(ImDrawList* drawList, const std::vector<ImVec2>& points, ImU32 color, bool closed, float strength) {
 			if (points.size() < 2) {
@@ -5155,6 +5187,14 @@ namespace SandboxDetail {
 
 		/// Where a unit of a mode's game is headed and how near counts as there, or false for none: a runner's or hunter's last destination,
 		/// or the place a defender (on a hill, an objective, a flag) keeps to.
+		/// Whether a mode's defender is standing at the post it was given (on the ground under its zone, that can be further from the
+		/// zone's middle than near enough counts): there, not on its way nor stuck.
+		bool AtItsPost(const Actor* unit) {
+			auto defender = s_BattleDefenders.find(unit->GetUniqueID());
+			return defender != s_BattleDefenders.end() && !defender->second.Commanded &&
+			       g_SceneMan.ShortestDistance(unit->GetPos(), defender->second.Post, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(unit->GetHeight() + 20.0F);
+		}
+
 		bool ObjectiveOf(const Actor* unit, Vector& goal, float& near) {
 			const long id = unit->GetUniqueID();
 			if (auto runner = s_Runners.find(id); runner != s_Runners.end() && runner->second.HasSent) {
@@ -5223,7 +5263,7 @@ namespace SandboxDetail {
 				seen.insert(id);
 				Vector goal;
 				float near = 0.0F;
-				const bool rushing = !unit->IsPlayerControlled() && !IsVip(unit) && ObjectiveOf(unit, goal, near) && !g_SceneMan.ShortestDistance(unit->GetPos(), goal, wraps).MagnitudeIsLessThan(near) && !GuardingOwn(unit->GetTeam(), goal, objectives);
+				const bool rushing = !unit->IsPlayerControlled() && !IsVip(unit) && ObjectiveOf(unit, goal, near) && !g_SceneMan.ShortestDistance(unit->GetPos(), goal, wraps).MagnitudeIsLessThan(near) && !AtItsPost(unit) && !GuardingOwn(unit->GetTeam(), goal, objectives);
 				if (rushing) {
 					unit->SetNumberValue("SandboxRush", 1.0);
 				} else if (unit->NumberValueExists("SandboxRush")) {
@@ -5290,7 +5330,7 @@ namespace SandboxDetail {
 				auto [entry, made] = s_Stuck.try_emplace(id);
 				StuckWatch& watch = entry->second;
 				const float route = RouteLeft(unit, goal);
-				if (made || distance < near || engaged) {
+				if (made || distance < near || engaged || AtItsPost(unit)) {
 					watch = {goal, distance, at, now, route, route};
 					continue;
 				}

@@ -157,8 +157,14 @@ namespace SandboxDetail {
 				if (FloorInZone(*zone, 24.0F, feet) || FloorInZone(*zone, 0.0F, feet)) {
 					return feet;
 				}
-				// No floor in it at all (drawn in the open air): a place in it, in the air, that those with a jet fly to and hold
-				// (FlyIfOffTheGround). On the ground under it, as before, they stood out of it, below, and never took it.
+				// No floor in it at all (drawn in the open air, or its floor blown away): the ground straight under it, however far down, for
+				// walkers and those with a jet alike. Standing there counts as in it (CountIn), as its glowing line shows.
+				if (const std::vector<Vector> below = GroundUnderZone(*zone); !below.empty()) {
+					Vector spot = below[std::min(static_cast<size_t>(Random01() * static_cast<float>(below.size())), below.size() - 1)] - Vector(0.0F, 2.0F);
+					g_SceneMan.WrapPosition(spot);
+					return spot;
+				}
+				// (Nothing under it either, all the way down: a place in it, in the air, that those with a jet fly to and hold.)
 				return SpotInZone(*zone, 24.0F);
 			}
 			Vector around = centre + Vector((Random01() * 2.0F - 1.0F) * radius * 0.6F, 0.0F);
@@ -580,6 +586,15 @@ namespace SandboxDetail {
 				continue;
 			}
 			FollowCard(defender);
+			// Its post in a mode's zone left in the air (the floor under it blown away): a new one on what ground there is now, in the zone or
+			// straight under it. Walking to a post in the air, a unit went back and forth under it, finding its way there afresh each time.
+			if (!defender.Commanded && ModeZoneAt(defender.Center) && OffTheGround(unit, defender.Post)) {
+				if (const Vector post = PostAround(defender.Center, defender.Radius); !OffTheGround(unit, post)) {
+					defender.Post = post;
+					defender.IdleSince = -1;
+					FlyIfOffTheGround(unit, post);
+				}
+			}
 			const float reach = defender.Radius + defender.Chase;
 			Actor* enemy = nullptr;
 			if (g_SceneMan.ShortestDistance(defender.Center, unit->GetPos(), wraps).MagnitudeIsLessThan(reach)) {

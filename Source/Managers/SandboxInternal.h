@@ -2838,6 +2838,10 @@ namespace SandboxDetail {
 	bool IsInZone(const std::vector<Vector>& zone, const Vector& at);
 	/// A place picked at random inside a zone drawn as a polygon, on its ground, for something this tall to stand at (its middle).
 	Vector SpotInZone(const std::vector<Vector>& zone, float height);
+	/// The ground straight under a mode zone's columns that have no floor in them (a gap, or the zone drawn in the air or its floor blown
+	/// away), however far down: the first solid point under each, a few pixels apart, as its glowing line shows it. Standing there counts as
+	/// in the zone (CountIn), and it's where the zone's units are posted when it has no floor at all.
+	std::vector<Vector> GroundUnderZone(const std::vector<Vector>& zone);
 	bool ModeBaseCorner(const Vector& position, float closeWithin);
 	bool CloseModeBase();
 	void PutDownBattleTool();
