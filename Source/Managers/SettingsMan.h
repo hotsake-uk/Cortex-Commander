@@ -347,6 +347,9 @@ namespace RTE {
 		/// move through (FluidSim::UnitsPassThrough); 2 that, and the path grid wades every flowing liquid, mud, tar, mercury and fuel among
 		/// them, as it does oil (it knew only water, oil, acid and lava, and took the rest for ground). 2 as the game comes.
 		int UnitWaterBehaviour() const { return m_UnitWaterBehaviour; }
+		/// Whether the AI's walk sees loose bodies its own collides with in the way (a corpse, a gib, a limb: AHuman::ObjectAhead) and leaps
+		/// them, hops them with the jet, routes round or waits, as it does a wreck. Off as before: it pressed into them until the stuck handling.
+		bool UnitsStepOverObjects() const { return m_UnitsStepOverObjects; }
 		/// Whether units' own senses (the walk's look ahead, getting up, leaps, landings, mantling, ducking) see through what their bodies push
 		/// through: grass and soft plants (integrity 5 or under, not flowing). Off as before: grass read as ground over the dirt the floor
 		/// rays find, and units ducked under hanging plants and mantled onto bushes. See Actor::SensesPassTerrain.
@@ -870,6 +873,7 @@ namespace RTE {
 		void SetLegStrength(float strength) { m_LegStrength = std::clamp(strength, 0.25F, 3.0F); }
 		void SetJetpackWeightCompensation(int mode) { m_JetpackWeightCompensation = std::clamp(mode, 0, 2); }
 		void SetUnitWaterBehaviour(int mode) { m_UnitWaterBehaviour = std::clamp(mode, 0, 2); }
+		void SetUnitsStepOverObjects(bool on) { m_UnitsStepOverObjects = on; }
 		void SetSensesPassPlants(bool on) { m_SensesPassPlants = on; }
 		void SetSensesPassRungs(bool on) { m_SensesPassRungs = on; }
 		void SetSensesPassSpecks(bool on) { m_SensesPassSpecks = on; }
@@ -1218,6 +1222,7 @@ namespace RTE {
 		float m_LegStrength = 1.0F; //!< See LegStrength.
 		int m_JetpackWeightCompensation = 0; //!< See JetpackWeightCompensation.
 		int m_UnitWaterBehaviour = 2; //!< See UnitWaterBehaviour.
+		bool m_UnitsStepOverObjects = true; //!< See UnitsStepOverObjects.
 		bool m_SensesPassPlants = true; //!< See SensesPassPlants.
 		bool m_SensesPassRungs = true; //!< See SensesPassRungs.
 		bool m_SensesPassSpecks = true; //!< See SensesPassSpecks.

@@ -142,6 +142,7 @@ void SettingsMan::Clear() {
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
 	m_UnitWaterBehaviour = 2;
+	m_UnitsStepOverObjects = true;
 	m_SensesPassPlants = true;
 	m_SensesPassRungs = true;
 	m_SensesPassSpecks = true;
@@ -853,6 +854,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("LegStrength", { float strength = 1.0F; reader >> strength; SetLegStrength(strength); });
 	MatchProperty("JetpackWeightCompensation", { int mode = 0; reader >> mode; SetJetpackWeightCompensation(mode); });
 	MatchProperty("UnitWaterBehaviour", { int mode = 2; reader >> mode; SetUnitWaterBehaviour(mode); });
+	MatchProperty("UnitsStepOverObjects", { reader >> m_UnitsStepOverObjects; });
 	MatchProperty("SensesPassPlants", { reader >> m_SensesPassPlants; });
 	MatchProperty("SensesPassRungs", { reader >> m_SensesPassRungs; });
 	MatchProperty("SensesPassSpecks", { reader >> m_SensesPassSpecks; });
@@ -1426,6 +1428,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("LegStrength", m_LegStrength);
 	writer.NewPropertyWithValue("JetpackWeightCompensation", m_JetpackWeightCompensation);
 	writer.NewPropertyWithValue("UnitWaterBehaviour", m_UnitWaterBehaviour);
+	writer.NewPropertyWithValue("UnitsStepOverObjects", m_UnitsStepOverObjects);
 	writer.NewPropertyWithValue("SensesPassPlants", m_SensesPassPlants);
 	writer.NewPropertyWithValue("SensesPassRungs", m_SensesPassRungs);
 	writer.NewPropertyWithValue("SensesPassSpecks", m_SensesPassSpecks);

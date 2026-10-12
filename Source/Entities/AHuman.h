@@ -1227,6 +1227,13 @@ namespace RTE {
 		/// only and never sees them. @param direction -1 walking left, 1 right. @param reach How far ahead to look. @param floorY The floor here.
 		/// @return The hull's root body, or nullptr.
 		const MOSRotating* VehicleAhead(float direction, float reach, float floorY) const;
+		/// Any other loose body this one collides with in the walk's way (SettingsMan::UnitsStepOverObjects): a corpse, a gib or a limb that
+		/// Atom::IsIgnoringMOID doesn't let the body through, heavy enough not to be shoved aside. Looked for past what the body passes (a
+		/// teammate, a gun lying still), with the knee and chest rays VehicleAhead has. Not a living unit (UnitAhead's, or an enemy), a door
+		/// or a craft. Same arguments and result as VehicleAhead.
+		const MOSRotating* ObjectAhead(float direction, float reach, float floorY) const;
+		/// Whether this body collides with another's (the rules of Atom::IsIgnoringMOID, by the root bodies).
+		bool BodyCollidesWith(const MovableObject* other) const;
 		/// Measures a hull found by VehicleAhead along the walk's way, by rows of rays up from the floor: the top of it (y) and its near and far
 		/// ends (x). @return Whether any of it was seen.
 		bool MeasureHull(const MOSRotating* hull, float direction, float floorY, float& topY, float& nearX, float& farX) const;

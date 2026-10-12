@@ -1106,6 +1106,8 @@ void DebugMan::SettingsGUI() {
 		}
 		Toggle("Mantle ledges and vault low obstacles", g_SettingsMan.MantlingEnabled(), [](bool on) { g_SettingsMan.SetMantlingEnabled(on); });
 		Tip("Units, players' included, pull themselves up onto a ledge or over a low obstacle they walk or jet into, rather than needing the jetpack to get the height exactly right.");
+		Toggle("Units step over objects in their way", g_SettingsMan.UnitsStepOverObjects(), [](bool on) { g_SettingsMan.SetUnitsStepOverObjects(on); });
+		Tip("An AI unit held up by a loose body it bumps into (a corpse, a gib, a limb, but not a gun lying still, which bodies pass, or a scrap light enough to shove aside) leaps over it, hops it with the jet, finds a way round or waits, as it does a wreck. Off, as before: it walks into it until it counts as stuck, which after a couple of seconds tries a leap or a hop.");
 		Toggle("Units see through grass and plants", g_SettingsMan.SensesPassPlants(), [](bool on) { g_SettingsMan.SetSensesPassPlants(on); });
 		Tip("Units' own checks (getting up, leaping, landing, ducking, mantling, the walk's look ahead) treat grass, bushes and hanging plants as the open ground their bodies push through. Off, as before: a unit lying on grass may not get up, leaps and landings on thick grass go wrong, units duck under hanging plants and mantle onto bushes.");
 		Toggle("Soldiers see through ladder rungs", g_SettingsMan.SensesPassRungs(), [](bool on) { g_SettingsMan.SetSensesPassRungs(on); });
