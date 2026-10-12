@@ -2627,6 +2627,7 @@ namespace SandboxDetail {
 		vehicle->SetMaxSpeed(times(vehicle->GetMaxSpeed(), tuning.TopSpeed));
 		vehicle->SetGrip(times(vehicle->GetGrip(), tuning.Grip));
 		vehicle->SetBrakeStrength(times(vehicle->GetBrakeStrength(), tuning.Brakes));
+		vehicle->SetRollingResistance(times(vehicle->GetRollingResistance(), tuning.Friction));
 		vehicle->SetHopSpeed(times(vehicle->GetHopSpeed(), tuning.Jump));
 		vehicle->SetWaterThrust(times(vehicle->GetWaterThrust(), tuning.WaterPower));
 		vehicle->SetWaterMaxSpeed(times(vehicle->GetWaterMaxSpeed(), tuning.WaterSpeed));

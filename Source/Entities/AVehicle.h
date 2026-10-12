@@ -244,6 +244,12 @@ namespace RTE {
 		/// Sets how hard it slows with the brake on, in m/s each second.
 		void SetBrakeStrength(float newStrength) { m_BrakeStrength = std::max(newStrength, 0.0F); }
 
+		/// Gets how much rolling on its own slows it, in m/s each second: how far it coasts.
+		float GetRollingResistance() const { return m_RollingResistance; }
+
+		/// Sets how much rolling on its own slows it, in m/s each second.
+		void SetRollingResistance(float newResistance) { m_RollingResistance = std::max(newResistance, 0.0F); }
+
 		/// Gets how tough a material it smashes through when it drives into it (a material's StructuralIntegrity: earth 70, concrete 200,
 		/// metal 400). 0 smashes nothing (plants are crushed regardless).
 		float GetTerrainCrush() const { return m_TerrainCrush; }
@@ -358,6 +364,7 @@ namespace RTE {
 
 	protected:
 		static Entity::ClassInfo m_sClass; //!< ClassInfo for this class.
+		static constexpr float c_HoldSpeed = 1.0F; //!< Below this speed along the ground, in m/s, with no throttle, its wheels hold it still (on a slope too).
 
 		/// Gives the attachables IDs, as any body's, then the crew in its open seats, so they're drawn to the layer that shots look for MOs
 		/// on and can be hit where they sit. A closed vehicle's crew (DrawsCrew 0) stays out of reach.
@@ -380,7 +387,7 @@ namespace RTE {
 		float m_SuspensionDamping; //!< How much the springs resist moving, as acceleration per m/s, shared between the wheels.
 		float m_Acceleration; //!< How hard it speeds up with the wheels down, in m/s each second.
 		float m_BrakeStrength; //!< How hard it slows with the brake on, in m/s each second.
-		float m_RollingResistance; //!< How much rolling on its own slows it, in m/s each second (low: it rolls down slopes).
+		float m_RollingResistance; //!< How much rolling on its own slows it, in m/s each second (low: it coasts far).
 		float m_MaxSpeed; //!< The top speed it is driven at on the flat, in m/s.
 		float m_Grip; //!< How much of its weight on the wheels it can push or brake with before they slip, 0 to about 1.
 		float m_TerrainCrush; //!< How tough a material it smashes through driving into it (see GetTerrainCrush). 0 none.

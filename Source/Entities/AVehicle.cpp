@@ -1942,13 +1942,22 @@ void AVehicle::UpdateWheels() {
 		float grip = m_Grip * pushingUp;
 		float stopping = std::abs(speedAlong) / deltaTime; // (No more than brings it to a stop, so it doesn't rock back and forth on the spot.)
 		float direction = speedAlong >= 0.0F ? 1.0F : -1.0F;
+		// Gravity's pull along the ground, which it gets on its next move: braking takes that off as well as its speed, or it creeps downhill.
+		float slopePull = g_SceneMan.GetGlobalAcc().Dot(along) * m_GlobalAccScalar;
+		float brake = m_BrakeStrength * onGroundShare;
+		// Left alone and slow (parked, empty, or its driver idle), its wheels hold it where it stands, as far as the brake and grip go.
+		// (Faster than that it coasts on, slowed by its rolling resistance.)
+		bool holding = m_Throttle == 0.0F && std::abs(speedAlong) < c_HoldSpeed;
 		float push = 0.0F;
 		if (m_Throttle != 0.0F && m_Throttle * speedAlong >= -0.1F) {
 			if (std::abs(speedAlong) < m_MaxSpeed) {
 				push = std::min(m_Acceleration * onGroundShare * std::abs(m_Throttle), (m_MaxSpeed - std::abs(speedAlong)) / deltaTime) * (m_Throttle > 0.0F ? 1.0F : -1.0F);
+			} else {
+				// Running away downhill past its top speed: it brakes back down to it.
+				push = -direction * std::min(brake, (std::abs(speedAlong) - m_MaxSpeed) / deltaTime + std::max(slopePull * direction, 0.0F));
 			}
-		} else if (m_Throttle != 0.0F || m_Braking) {
-			push = -direction * std::min(m_BrakeStrength * onGroundShare, stopping);
+		} else if (m_Throttle != 0.0F || m_Braking || holding) {
+			push = std::clamp(-direction * stopping - slopePull, -brake, brake);
 		}
 		push = std::clamp(push, -grip, grip);
 		push -= direction * std::min(m_RollingResistance * onGroundShare, std::max(stopping - std::abs(push), 0.0F));
