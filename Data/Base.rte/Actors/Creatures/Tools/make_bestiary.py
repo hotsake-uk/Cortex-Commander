@@ -575,6 +575,87 @@ def bestiary_two():
 	print("wrote the Treant, Minotaur and Cyclops rigs and the Cyclops' boulder")
 
 
+# ---------------------------------------------------------------------------------------------------------------------------------------
+# Bestiary III, the fliers: winged bodies drawn whole (as make_placeholders.py draws the Wyvern), and the Shade, which has no wings.
+
+def winged_body(target, frame, width, height, body, dark, wing, belly, eye=(250, 200, 40), horns=False, beak=False, tail=True):
+	"""A winged creature facing right: a body with a lighter belly, a tail behind, a head on a short neck in front (horned or beaked,
+	as asked) and two wings by the frame (0 up, 1 level, 2 down)."""
+	image, draw, ink = new_sprite((width, height))
+	B, D, W, L = ink(body), ink(dark), ink(wing), ink(belly)
+	cx, cy = int(width * 0.45), int(height * 0.5)
+	bw, bh = max(4, int(width * 0.3)), max(3, int(height * 0.26))
+	spread = int(bw * 1.3)
+	tips = [((cx - spread * 0.5, 0), (cx + spread * 0.4, 0)), ((cx - spread * 1.3, cy * 0.7), (cx + spread * 1.1, cy * 0.7)),
+		((cx - spread * 0.6, height - 1), (cx + spread * 0.5, height - 1))][frame]
+	for tip in tips:
+		lean = max(3, width // 12) if tip[0] < cx else -max(3, width // 12)
+		draw.polygon([(cx - 2, cy - 2), tip, (tip[0] + lean, tip[1] + max(2, height // 8)), (cx + 6, cy)], fill=W, outline=D)
+	stroke = max(2, height // 10)
+	if tail:
+		draw.line((2, cy + bh * 0.6, cx - bw + 2, cy), fill=B, width=stroke)
+		draw.polygon([(0, cy + bh * 0.6), (4, cy + bh * 0.2), (4, cy + bh)], fill=D)
+	draw.ellipse((cx - bw, cy - bh, cx + bw, cy + bh), fill=B, outline=D)
+	draw.ellipse((cx - bw * 0.7, cy, cx + bw * 0.7, cy + bh * 0.85), fill=L)
+	hr = max(3, int(height * 0.14))
+	hx, hy = cx + bw + hr, cy - int(height * 0.18)
+	draw.line((cx + bw - 2, cy - 2, hx - hr, hy), fill=B, width=stroke)
+	draw.ellipse((hx - hr, hy - hr, hx + hr, hy + hr), fill=B, outline=D)
+	draw.polygon([(hx + hr - 1, hy - 1), (hx + hr + 4, hy + 1), (hx + hr - 1, hy + 2)], fill=ink((230, 190, 60)) if beak else B, outline=D)
+	if horns:
+		draw.polygon([(hx, hy - hr), (hx - 2, hy - hr - 5), (hx + 2, hy - hr + 1)], fill=L, outline=D)
+	draw.point((hx + 1, hy - 1), fill=ink(eye))
+	# Legs tucked under.
+	draw.line((cx - bw * 0.4, cy + bh, cx - bw * 0.5, cy + bh + 4), fill=D, width=2)
+	draw.line((cx + bw * 0.4, cy + bh, cx + bw * 0.5, cy + bh + 4), fill=D, width=2)
+	image.save(target, transparency=0)
+
+
+def shade_body(target, frame, width, height):
+	"""A Shade: a hooded, tattered ghost of dark grey-blue with two pale eyes, its hem drifting by the frame."""
+	image, draw, ink = new_sprite((width, height))
+	body, dark, eye = ink((44, 48, 70)), ink((18, 20, 32)), ink((200, 220, 255))
+	cx = width // 2
+	draw.ellipse((cx - width * 0.35, 0, cx + width * 0.35, height * 0.5), fill=body, outline=dark)
+	draw.polygon([(cx - width * 0.35, height * 0.3), (cx + width * 0.35, height * 0.3), (cx + width * 0.45, height * 0.8), (cx - width * 0.45, height * 0.8)], fill=body, outline=dark)
+	hem = [(cx - width * 0.45, height * 0.8)]
+	for i in range(5):
+		x = cx - width * 0.45 + (width * 0.9) * (i + 0.5) / 5
+		hem.append((x, height - 1 - ((i + frame) % 2) * 3))
+		hem.append((x + width * 0.09, height * 0.8))
+	draw.polygon(hem, fill=body, outline=dark)
+	draw.point((cx - 2, int(height * 0.25)), fill=eye)
+	draw.point((cx + 2, int(height * 0.25)), fill=eye)
+	image.save(target, transparency=0)
+
+
+FLIERS = [
+	# folder, prefix, width, height, body, dark, wing, belly, eye, horns, beak, tail
+	("Harpy", "Harpy", 44, 30, (150, 110, 80), (50, 30, 20), (110, 80, 50), (200, 170, 140), (230, 60, 40), False, False, True),
+	("Gargoyle", "Gargoyle", 44, 30, (96, 94, 88), (36, 34, 32), (74, 72, 68), (130, 128, 120), (230, 60, 40), True, False, True),
+	("FireDrake", "FireDrake", 64, 36, (150, 40, 30), (40, 10, 8), (100, 30, 20), (210, 140, 60), (250, 200, 40), True, False, True),
+	("FrostDrake", "FrostDrake", 64, 36, (120, 170, 210), (30, 50, 80), (90, 130, 180), (220, 240, 255), (240, 250, 255), True, False, True),
+	("GiantEagle", "GiantEagle", 48, 28, (110, 70, 40), (40, 24, 12), (80, 50, 30), (230, 225, 210), (250, 200, 40), False, True, True),
+	("Stirge", "Stirge", 14, 10, (100, 60, 60), (30, 14, 14), (120, 80, 80), (150, 100, 100), (230, 30, 30), False, False, False),
+]
+
+
+def bestiary_three():
+	count = 0
+	for folder, prefix, width, height, body, dark, wing, belly, eye, horns, beak, tail in FLIERS:
+		out = os.path.join(CREATURES_DIR, folder)
+		os.makedirs(out, exist_ok=True)
+		for frame in range(3):
+			winged_body(os.path.join(out, "%sBodyA%03d.png" % (prefix, frame)), frame, width, height, body, dark, wing, belly, eye, horns, beak, tail)
+			count += 1
+	out = os.path.join(CREATURES_DIR, "Shade")
+	os.makedirs(out, exist_ok=True)
+	for frame in range(2):
+		shade_body(os.path.join(out, "ShadeBodyA%03d.png" % frame), frame, 22, 28)
+		count += 1
+	print("wrote", count, "Bestiary III sprites")
+
+
 def main():
 	# Four legs.
 	for c in CRABS:
@@ -596,6 +677,7 @@ def main():
 	rock(os.path.join(CREATURES_DIR, "CaveTroll", "TrollBoulder.png"), 16, 5)
 	print("wrote the rocks")
 	bestiary_two()
+	bestiary_three()
 
 
 if __name__ == "__main__":
