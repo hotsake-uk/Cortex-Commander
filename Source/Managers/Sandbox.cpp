@@ -2421,6 +2421,7 @@ void Sandbox::Update() {
 		}
 		UpdatePlayer();
 		UpdatePlayerSquads();
+		UpdateLoadoutUnits();
 		if (game) {
 			for (int team = 0; team < c_Sides; ++team) {
 				if (game->GetTeamFunds(team) < 500000.0F) {

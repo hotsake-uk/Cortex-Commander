@@ -976,6 +976,10 @@ namespace SandboxDetail {
 		std::vector<std::string> Items; //!< What it carries, by item preset name, in order: the first is what it holds.
 		int Temperament = -1; //!< Actor::Temperament it is given, -1 for the unit's own.
 		bool FactionKit = false; //!< A squad's plain unit: armed as the Spawn tab's "Faction default" arms it, not with Items.
+		std::string Jetpack; //!< "" the unit's own jetpack, "-" none, else the jetpack fitted, as "Module/PresetName" (JetpackKey).
+		float JetFuel = 1.0F; //!< Times its jetpack's fuel (JetTimeTotal).
+		bool JetEndless = false; //!< Its jetpack never runs dry (kept full each sim update, UpdateLoadoutUnits).
+		float JetThrust = 1.0F; //!< Times its jetpack's push (AEJetpack::SetThrustMultiplier), at no extra fuel.
 	};
 
 	/// One line of a squad: a plain unit (with its faction's guns) or one of your loadouts, and how many of it.
@@ -3166,6 +3170,9 @@ namespace SandboxDetail {
 
 	/// Keeps your squads together: followers joined to the leader once out in the world, a new leader for a fallen one. Each sim update.
 	void UpdatePlayerSquads();
+
+	/// Units made from loadouts with an endless jetpack kept topped up. Each sim update.
+	void UpdateLoadoutUnits();
 
 	/// Each of your squads' name over its leader, with a line to each member. Call from the ImGui frame.
 	void DrawPlayerSquads();

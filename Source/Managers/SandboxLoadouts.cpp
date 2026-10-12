@@ -3,6 +3,7 @@
 // squads that keep together once spawned.
 
 #include "SandboxInternal.h"
+#include "DataModule.h"
 
 namespace SandboxDetail {
 	namespace {
@@ -21,6 +22,93 @@ namespace SandboxDetail {
 			int LeaderWait = 0; //!< Sim updates others have been out while the leader never was.
 		};
 		std::vector<PlayerSquad> s_PlayerSquads;
+
+		constexpr float c_JetFuelMin = 0.25F; //!< The least a loadout's jetpack fuel multiplier goes down to.
+		constexpr float c_JetFuelMax = 5.0F;
+		constexpr float c_JetThrustMin = 0.5F; //!< The least a loadout's jetpack thrust multiplier goes down to.
+		constexpr float c_JetThrustMax = 3.0F;
+		constexpr const char* c_EndlessJetKey = "SandboxEndlessJet"; //!< Number value on a unit whose jetpack is kept full (JetEndless).
+		bool s_AnyEndlessJet = false; //!< A unit with an endless jetpack has been made, so UpdateLoadoutUnits has work.
+
+		/// Every jetpack there is, to fit to a loadout, as presets (for their pictures), in the order the modules load.
+		const std::vector<Preset>& Jetpacks() {
+			static std::vector<Preset> jetpacks;
+			static bool listed = false;
+			if (!listed) {
+				listed = true;
+				std::list<Entity*> found;
+				g_PresetMan.GetAllOfType(found, "AEJetpack");
+				for (const Entity* entity: found) {
+					Preset preset;
+					preset.ClassName = "AEJetpack";
+					preset.PresetName = entity->GetPresetName();
+					preset.ModuleID = entity->GetModuleID();
+					const DataModule* module = g_PresetMan.GetDataModule(preset.ModuleID);
+					preset.Module = module ? module->GetFileName() : std::string();
+					preset.Label = preset.PresetName;
+					jetpacks.push_back(preset);
+				}
+			}
+			return jetpacks;
+		}
+
+		std::string JetpackKey(const Preset& jetpack) { return jetpack.Module + "/" + jetpack.PresetName; }
+
+		const Preset* FindJetpack(const std::string& key) {
+			for (const Preset& jetpack: Jetpacks()) {
+				if (JetpackKey(jetpack) == key) {
+					return &jetpack;
+				}
+			}
+			return nullptr;
+		}
+
+		AEJetpack* JetpackOf(Actor* actor) {
+			if (AHuman* human = dynamic_cast<AHuman*>(actor)) {
+				return human->GetJetpack();
+			}
+			ACrab* crab = dynamic_cast<ACrab*>(actor);
+			return crab ? crab->GetJetpack() : nullptr;
+		}
+
+		/// Fits a loadout's jetpack to a unit just made and sets its fuel and push: none, another one in the place of its own (or where the
+		/// new one's game files put it, on a unit that had none), or its own. Only soldiers and crabs have a jetpack to change.
+		void FitJetpack(Actor* actor, const CustomLoadout& loadout) {
+			AHuman* human = dynamic_cast<AHuman*>(actor);
+			ACrab* crab = human ? nullptr : dynamic_cast<ACrab*>(actor);
+			if (!human && !crab) {
+				return;
+			}
+			if (loadout.Jetpack == "-") {
+				human ? human->SetJetpack(nullptr) : crab->SetJetpack(nullptr);
+				return;
+			}
+			if (!loadout.Jetpack.empty()) {
+				const Preset* preset = FindJetpack(loadout.Jetpack);
+				if (AEJetpack* fitted = preset ? dynamic_cast<AEJetpack*>(CreateObject(preset->ClassName, preset->PresetName, preset->ModuleID)) : nullptr) {
+					if (const AEJetpack* own = JetpackOf(actor)) {
+						fitted->SetParentOffset(own->GetParentOffset());
+					} else if (fitted->GetParentOffset().XIsZero() && fitted->GetParentOffset().YIsZero()) {
+						// (A jetpack whose game files leave its place to the unit: on the back, about where soldiers carry theirs.)
+						fitted->SetParentOffset(Vector(-6.0F, -3.0F));
+					}
+					human ? human->SetJetpack(fitted) : crab->SetJetpack(fitted);
+				}
+			}
+			if (AEJetpack* jetpack = JetpackOf(actor)) {
+				if (loadout.JetFuel != 1.0F) {
+					jetpack->SetJetTimeTotal(jetpack->GetJetTimeTotal() * std::clamp(loadout.JetFuel, c_JetFuelMin, c_JetFuelMax));
+					jetpack->SetJetTimeLeft(jetpack->GetJetTimeTotal());
+				}
+				if (loadout.JetThrust != 1.0F) {
+					jetpack->SetThrustMultiplier(std::clamp(loadout.JetThrust, c_JetThrustMin, c_JetThrustMax));
+				}
+				if (loadout.JetEndless) {
+					actor->SetNumberValue(c_EndlessJetKey, 1.0);
+					s_AnyEndlessJet = true;
+				}
+			}
+		}
 
 		constexpr int c_SquadGiveUp = 60 * 90; //!< Sim updates a squad none of which has come out is kept before it is forgotten (a craft shot down).
 		constexpr int c_LeaderWaitLimit = 120; //!< Sim updates followers wait out in the world for a leader who never comes out.
@@ -138,6 +226,28 @@ namespace SandboxDetail {
 			return cost > 0.0F ? std::string(text) : std::string("free");
 		}
 
+		/// How high, in metres, a loadout's jetpack lifts it from a standstill (-1 for without limit), worked out on a copy made as it says (the
+		/// unit, its kit, the jetpack, fuel and push) the first time each version of it is asked about.
+		float LiftOf(const CustomLoadout& loadout) {
+			static std::map<std::string, float> lifts;
+			std::string key = loadout.Body + "|" + loadout.Jetpack + "|" + std::to_string(loadout.JetFuel) + "|" + std::to_string(loadout.JetThrust);
+			for (const std::string& item: loadout.Items) {
+				key += "|" + item;
+			}
+			if (auto found = lifts.find(key); found != lifts.end()) {
+				return found->second;
+			}
+			float lift = 0.0F;
+			CustomLoadout copy = loadout;
+			copy.JetEndless = false;
+			if (Actor* unit = MakeCustomUnit(copy, 0)) {
+				lift = unit->EstimateJumpHeight();
+				lift = lift == FLT_MAX ? -1.0F : lift;
+				delete unit;
+			}
+			return lifts[key] = lift;
+		}
+
 		/// Puts the Unit tool in hand, making what pick says.
 		void SpawnWith(const CustomPick& pick) {
 			s_SpawnPick = pick;
@@ -159,7 +269,7 @@ namespace SandboxDetail {
 			}
 			std::vector<std::string> parts = Split(line, '|');
 			if (parts.size() >= 5 && parts[0] == "Loadout") {
-				// Loadout|name|unit|temperament|item;item;...
+				// Loadout|name|unit|temperament|item;item;...[|jetpack|fuel|endless|thrust]
 				CustomLoadout loadout;
 				loadout.Name = parts[1];
 				loadout.Body = parts[2];
@@ -168,6 +278,12 @@ namespace SandboxDetail {
 					if (!item.empty()) {
 						loadout.Items.push_back(item);
 					}
+				}
+				if (parts.size() >= 9) {
+					loadout.Jetpack = parts[5];
+					loadout.JetFuel = std::clamp(static_cast<float>(std::atof(parts[6].c_str())), c_JetFuelMin, c_JetFuelMax);
+					loadout.JetEndless = parts[7] == "1";
+					loadout.JetThrust = std::clamp(static_cast<float>(std::atof(parts[8].c_str())), c_JetThrustMin, c_JetThrustMax);
 				}
 				if (!loadout.Name.empty() && !FindCustomLoadout(loadout.Name)) {
 					s_CustomLoadouts.push_back(loadout);
@@ -211,6 +327,7 @@ namespace SandboxDetail {
 			for (size_t i = 0; i < loadout.Items.size(); ++i) {
 				file << (i > 0 ? ";" : "") << loadout.Items[i];
 			}
+			file << '|' << loadout.Jetpack << '|' << loadout.JetFuel << '|' << (loadout.JetEndless ? 1 : 0) << '|' << loadout.JetThrust;
 			file << '\n';
 		}
 		for (const CustomSquad& squad: s_CustomSquads) {
@@ -311,6 +428,9 @@ namespace SandboxDetail {
 					}
 				}
 			}
+		}
+		if (!loadout.FactionKit) {
+			FitJetpack(actor, loadout);
 		}
 		if (loadout.Temperament >= 0) {
 			ApplyTemperament(actor, loadout.Temperament);
@@ -422,6 +542,19 @@ namespace SandboxDetail {
 			}
 			return !waiting || squad.Age > c_SquadGiveUp;
 		});
+	}
+
+	void UpdateLoadoutUnits() {
+		if (!s_AnyEndlessJet) {
+			return;
+		}
+		for (Actor* actor: SandboxAccess::Actors()) {
+			if (actor->GetNumberValue(c_EndlessJetKey) > 0.0) {
+				if (AEJetpack* jetpack = JetpackOf(actor)) {
+					jetpack->SetJetTimeLeft(jetpack->GetJetTimeTotal());
+				}
+			}
+		}
 	}
 
 	void DrawPlayerSquads() {
@@ -696,6 +829,102 @@ namespace SandboxDetail {
 						changed = true;
 					}
 					ImGui::Text("Total cost: %s", CostText(CostOf(*loadout)).c_str());
+
+					// Its jetpack: its own, none, or any there is, with how much fuel and push.
+					ImGui::SeparatorText("Jetpack");
+					const Entity* bodyEntity = body ? g_PresetMan.GetEntityPreset(body->ClassName, body->PresetName, body->ModuleID) : nullptr;
+					const bool canJet = dynamic_cast<const AHuman*>(bodyEntity) || dynamic_cast<const ACrab*>(bodyEntity);
+					if (!canJet) {
+						ImGui::TextDisabled("%s", body ? "This unit can't wear a jetpack: only soldiers and crabs can." : "Pick a unit first.");
+					} else {
+						const AEJetpack* ownJetpack = nullptr;
+						if (const AHuman* human = dynamic_cast<const AHuman*>(bodyEntity)) {
+							ownJetpack = human->GetJetpack();
+						} else if (const ACrab* crab = dynamic_cast<const ACrab*>(bodyEntity)) {
+							ownJetpack = crab->GetJetpack();
+						}
+						const std::string ownName = ownJetpack ? "Its own (" + ownJetpack->GetPresetName() + ")" : std::string("Its own (it has none)");
+						const Preset* fitted = FindJetpack(loadout->Jetpack);
+						std::string current = loadout->Jetpack.empty() ? ownName : loadout->Jetpack == "-" ? std::string("None") : fitted ? fitted->PresetName + "  (" + fitted->Module + ")" : loadout->Jetpack + "  (not in this game)";
+						ImGui::SetNextItemWidth(-1.0F);
+						if (ImGui::BeginCombo("##jetpack", current.c_str(), ImGuiComboFlags_HeightLarge)) {
+							if (ImGui::Selectable(ownName.c_str(), loadout->Jetpack.empty())) {
+								loadout->Jetpack.clear();
+								changed = true;
+							}
+							if (ImGui::Selectable("None: take it off", loadout->Jetpack == "-")) {
+								loadout->Jetpack = "-";
+								changed = true;
+							}
+							ImGui::Separator();
+							float rowHeight = ImGui::GetFontSize() * 2.0F;
+							for (const Preset& jetpack: Jetpacks()) {
+								std::string key = JetpackKey(jetpack);
+								ImGui::PushID(key.c_str());
+								ImVec2 at = ImGui::GetCursorPos();
+								if (ImGui::Selectable("##jet", loadout->Jetpack == key, 0, ImVec2(0.0F, rowHeight))) {
+									loadout->Jetpack = key;
+									changed = true;
+								}
+								ImGui::SetCursorPos(at);
+								PictureBox(&jetpack, rowHeight * 1.4F, rowHeight, loadout->Jetpack == key);
+								ImGui::SameLine();
+								ImGui::BeginGroup();
+								ImGui::TextUnformatted(jetpack.PresetName.c_str());
+								ImGui::TextDisabled("%s", jetpack.Module.c_str());
+								ImGui::EndGroup();
+								ImGui::SetCursorPos(ImVec2(at.x, at.y + rowHeight + ImGui::GetStyle().ItemSpacing.y));
+								ImGui::PopID();
+							}
+							ImGui::EndCombo();
+						}
+						ImGui::SetItemTooltip("The jetpack it wears: its own, none at all, or any jetpack there is (fitted where its own sits).");
+						const bool hasJet = loadout->Jetpack.empty() ? ownJetpack != nullptr : loadout->Jetpack != "-";
+						ImGui::BeginDisabled(!hasJet);
+						ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.5F);
+						float fuel = loadout->JetFuel;
+						if (ImGui::SliderFloat("Fuel", &fuel, c_JetFuelMin, c_JetFuelMax, "%.2fx", ImGuiSliderFlags_AlwaysClamp)) {
+							loadout->JetFuel = fuel;
+							changed = true;
+						}
+						ImGui::SetItemTooltip("Times the jetpack's own tank: how long it can fire before it has to recharge.");
+						ImGui::SameLine();
+						if (ToolUI::Checkbox("Endless", &loadout->JetEndless)) {
+							changed = true;
+						}
+						ImGui::SetItemTooltip("Its jetpack never runs dry.");
+						ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.5F);
+						float thrust = loadout->JetThrust;
+						if (ImGui::SliderFloat("Thrust", &thrust, c_JetThrustMin, c_JetThrustMax, "%.2fx", ImGuiSliderFlags_AlwaysClamp)) {
+							loadout->JetThrust = thrust;
+							changed = true;
+						}
+						ImGui::SetItemTooltip("Times how hard the jetpack pushes, at no extra fuel.");
+						if (hasJet) {
+							float lift = LiftOf(*loadout);
+							if (loadout->JetEndless || lift < 0.0F) {
+								ImGui::TextUnformatted("Flies without limit");
+							} else if (lift <= 0.0F) {
+								ImGui::TextDisabled("Too weak to lift it off the ground");
+							} else {
+								ImGui::Text("Lifts it about %d m", static_cast<int>(std::round(lift)));
+							}
+						} else {
+							ImGui::TextDisabled("No jetpack");
+						}
+						ImGui::EndDisabled();
+						if (loadout->Jetpack != "" || loadout->JetFuel != 1.0F || loadout->JetThrust != 1.0F || loadout->JetEndless) {
+							ImGui::SameLine();
+							if (ToolUI::SmallButton("As it comes")) {
+								loadout->Jetpack.clear();
+								loadout->JetFuel = 1.0F;
+								loadout->JetThrust = 1.0F;
+								loadout->JetEndless = false;
+								changed = true;
+							}
+							ImGui::SetItemTooltip("Its own jetpack, as its game files make it.");
+						}
+					}
 
 					ImGui::SeparatorText("What it carries");
 					ImGui::TextDisabled("The first is what it holds. Click items in the armoury to add them.");
