@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <vector>
 
 namespace RTE {
@@ -121,6 +122,13 @@ namespace RTE {
 
 		/// Gets whether a point is in a hold zone.
 		static bool IsInHoldZone(const Vector& point);
+
+		/// Gets the hold zones as text, for a saved game: "v1", then each zone after " | ", its corners "x,y" with spaces between.
+		static std::string GetHoldZonesSaveState();
+
+		/// Sets the hold zones of a saved game being loaded (as GetHoldZonesSaveState wrote them; empty for none), put in place of any when its
+		/// scene starts, whatever map was played before.
+		static void SetHoldZonesLoadState(const std::string& state);
 
 		/// Gets whether the hold zones are shown on the map (a setting; the sandbox always shows them while "Hold ground" is in hand).
 		static bool ShowsHoldZones() { return s_ShowHoldZones; }

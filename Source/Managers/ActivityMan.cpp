@@ -3,6 +3,7 @@
 #include "TerrainCandle.h"
 #include "RopeSim.h"
 #include "FluidSim.h"
+#include "TerrainCollapse.h"
 #include "Activity.h"
 
 #include "CameraMan.h"
@@ -173,6 +174,7 @@ bool ActivityMan::SaveCurrentGame(const std::string& fileName) {
 	writer->NewPropertyWithValue("TerrainCandleState", TerrainCandle::GetSaveState());
 	writer->NewPropertyWithValue("RopeState", RopeSim::GetSaveState());
 	writer->NewPropertyWithValue("FlowingLiquidState", FluidSim::GetSaveState());
+	writer->NewPropertyWithValue("HoldZones", TerrainCollapse::GetHoldZonesSaveState());
 
 	// Save a small little file with index info (activity and original scene name) so we can display info in the samegame menu without needing to decompress and read through the entire zip
 	std::unique_ptr<std::stringstream> indexStream = std::make_unique<std::stringstream>();
@@ -378,6 +380,8 @@ bool ActivityMan::LoadAndLaunchGame(const std::string& fileName) {
 	std::string originalScenePresetName = fileName;
 	bool placeObjectsIfSceneIsRestarted = true;
 	bool placeUnitsIfSceneIsRestarted = true;
+	// (A save from before hold zones had none: the loaded game starts with none, not those of the game played before.)
+	TerrainCollapse::SetHoldZonesLoadState(std::string());
 	while (reader.NextProperty()) {
 		std::string propName = reader.ReadPropName();
 		if (propName == "Activity") {
@@ -398,6 +402,8 @@ bool ActivityMan::LoadAndLaunchGame(const std::string& fileName) {
 			RopeSim::SetPendingLoadState(reader.ReadPropValue());
 		} else if (propName == "FlowingLiquidState") {
 			FluidSim::SetPendingLoadState(reader.ReadPropValue());
+		} else if (propName == "HoldZones") {
+			TerrainCollapse::SetHoldZonesLoadState(reader.ReadPropValue());
 		} else if (propName == "SandboxPins") {
 			s_PinsOfLoadedGame = reader.ReadPropValue();
 		}

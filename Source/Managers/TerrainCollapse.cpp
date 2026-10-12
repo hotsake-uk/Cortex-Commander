@@ -26,6 +26,8 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <sstream>
+#include <cstdio>
 #include <vector>
 
 using namespace RTE;
@@ -400,6 +402,8 @@ namespace {
 	std::vector<std::vector<Vector>> s_HoldZones; //!< The hold zones, each a polygon (TerrainCollapse::AddHoldZone).
 	std::string s_HoldScene; //!< The map the hold zones were drawn on: another map starting forgets them.
 	bool s_HeldDrawn = false; //!< Whether the pixel states carry the hold zones as they are now.
+	bool s_HoldLoadPending = false; //!< A saved game is being loaded: its hold zones (s_HoldLoadZones) go in when its scene starts.
+	std::vector<std::vector<Vector>> s_HoldLoadZones;
 
 	/// Whether a pixel is in a hold zone.
 	inline bool Held(int key) { return (s_State[key] & c_Held) != 0; }
@@ -3385,6 +3389,40 @@ const std::vector<std::vector<Vector>>& TerrainCollapse::GetHoldZones() {
 	return s_HoldZones;
 }
 
+std::string TerrainCollapse::GetHoldZonesSaveState() {
+	// (Begun with a word of its own, so the line is never left empty.)
+	std::string text = "v1";
+	for (const std::vector<Vector>& zone: s_HoldZones) {
+		text += " | ";
+		for (size_t i = 0; i < zone.size(); ++i) {
+			text += (i ? " " : "") + std::to_string(static_cast<int>(std::round(zone[i].m_X))) + "," + std::to_string(static_cast<int>(std::round(zone[i].m_Y)));
+		}
+	}
+	return text;
+}
+
+void TerrainCollapse::SetHoldZonesLoadState(const std::string& state) {
+	s_HoldLoadZones.clear();
+	s_HoldLoadPending = true;
+	std::istringstream parts(state);
+	std::string part;
+	while (std::getline(parts, part, '|')) {
+		std::vector<Vector> zone;
+		std::istringstream words(part);
+		std::string word;
+		while (words >> word) {
+			float x = 0.0F;
+			float y = 0.0F;
+			if (std::sscanf(word.c_str(), "%f,%f", &x, &y) == 2) {
+				zone.emplace_back(x, y);
+			}
+		}
+		if (zone.size() >= 3) {
+			s_HoldLoadZones.push_back(std::move(zone));
+		}
+	}
+}
+
 void TerrainCollapse::SpawnChunk(const Vector& position, float radius, const char* materialName) {
 	if (!s_Enabled) {
 		return;
@@ -3473,7 +3511,13 @@ void TerrainCollapse::Update() {
 		s_HeldDrawn = false;
 		s_Scene = g_SceneMan.GetScene();
 		// (The hold zones stay through a reset of the same map; another map forgets them.)
-		if (const Scene* newScene = g_SceneMan.GetScene(); newScene && newScene->GetPresetName() != s_HoldScene) {
+		// A saved game's own zones (none if it had none) go in, in place of those of whatever was played before.
+		if (const Scene* newScene = g_SceneMan.GetScene(); newScene && s_HoldLoadPending) {
+			s_HoldZones.swap(s_HoldLoadZones);
+			s_HoldLoadZones.clear();
+			s_HoldLoadPending = false;
+			s_HoldScene = newScene->GetPresetName();
+		} else if (newScene && newScene->GetPresetName() != s_HoldScene) {
 			s_HoldZones.clear();
 			s_HoldScene = newScene->GetPresetName();
 		}
