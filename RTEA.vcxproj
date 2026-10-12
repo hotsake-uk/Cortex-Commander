@@ -874,6 +874,7 @@
     <ClInclude Include="Source\Managers\TerrainGrazing.h" />
     <ClInclude Include="Source\Managers\FluidSim.h" />
     <ClInclude Include="Source\Managers\ModernHUD.h" />
+    <ClInclude Include="Source\Managers\Notices.h" />
     <ClInclude Include="Source\Managers\ActionMenu.h" />
     <ClInclude Include="Source\Managers\DebugDraw.h" />
     <ClInclude Include="Source\Managers\DebugOverlays.h" />
@@ -889,6 +890,7 @@
     <ClInclude Include="Source\Managers\ControlLink.h" />
     <ClInclude Include="Source\Managers\Sandbox.h" />
     <ClInclude Include="Source\Managers\MapBrowser.h" />
+    <ClInclude Include="Source\Managers\MapGen.h" />
     <ClInclude Include="Source\Managers\SandboxInternal.h" />
     <ClInclude Include="Source\Managers\Colony.h" />
     <ClInclude Include="Source\Managers\WeatherEffects.h" />
@@ -1499,6 +1501,7 @@
     <ClCompile Include="Source\Managers\TerrainGrazing.cpp" />
     <ClCompile Include="Source\Managers\FluidSim.cpp" />
     <ClCompile Include="Source\Managers\ModernHUD.cpp" />
+    <ClCompile Include="Source\Managers\Notices.cpp" />
     <ClCompile Include="Source\Managers\ActionMenu.cpp" />
     <ClCompile Include="Source\Managers\SmokeGrid.cpp" />
     <ClCompile Include="Source\Managers\ActorFire.cpp" />
@@ -1515,6 +1518,7 @@
     <ClCompile Include="Source\Managers\SandboxOrders.cpp" />
     <ClCompile Include="Source\Managers\SandboxMinimap.cpp" />
     <ClCompile Include="Source\Managers\SandboxMapBrowser.cpp" />
+    <ClCompile Include="Source\Managers\MapGen.cpp" />
     <ClCompile Include="Source\Managers\SandboxWorld.cpp" />
     <ClCompile Include="Source\Managers\SandboxLoadouts.cpp" />
     <ClCompile Include="Source\Managers\SandboxPlayer.cpp" />
@@ -1539,6 +1543,7 @@
     <ClCompile Include="Source\Managers\SandboxBreach.cpp" />
     <ClCompile Include="Source\Managers\SandboxBuild.cpp" />
     <ClCompile Include="Source\Managers\SandboxAirlift.cpp" />
+    <ClCompile Include="Source\Managers\SandboxHold.cpp" />
     <ClCompile Include="Source\Managers\BattleSupply.cpp" />
     <ClCompile Include="Source\Managers\BattlePickups.cpp" />
     <ClCompile Include="Source\Managers\BattleFieldBrain.cpp" />

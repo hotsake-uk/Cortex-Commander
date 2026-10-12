@@ -15,6 +15,7 @@
 #include "MagicEffects.h"
 #include "FrameMan.h"
 #include "ModernHUD.h"
+#include "Notices.h"
 #include "PostProcessMan.h"
 #include "RenderTarget.h"
 #include "Texture.h"
@@ -228,7 +229,9 @@ namespace {
 			for (const std::string& name: s_Presets) {
 				if (ImGui::Selectable(name.c_str(), name == s_PresetName)) {
 					std::snprintf(s_PresetName, sizeof(s_PresetName), "%s", name.c_str());
-					s_PresetMessage = g_SettingsMan.LoadPreset(name) ? "Loaded \"" + name + "\"." : "Could not load \"" + name + "\".";
+					bool loaded = g_SettingsMan.LoadPreset(name);
+					s_PresetMessage = loaded ? "Loaded \"" + name + "\"." : "Could not load \"" + name + "\".";
+					Notices::Post(loaded ? "Preset \"" + name + "\" loaded." : "Could not load the preset \"" + name + "\".");
 				}
 			}
 			ImGui::EndCombo();
@@ -255,6 +258,7 @@ namespace {
 		if (ToolUI::Button("Save")) {
 			std::string saved = g_SettingsMan.SavePreset(s_PresetName);
 			s_PresetMessage = saved.empty() ? "Could not save it." : "Saved \"" + saved + "\".";
+			Notices::Post(saved.empty() ? "Could not save the preset." : "Preset \"" + saved + "\" saved.");
 			std::snprintf(s_PresetName, sizeof(s_PresetName), "%s", saved.c_str());
 			s_PresetsListed = false;
 		}
@@ -332,6 +336,8 @@ void DebugMan::SettingsGUI() {
 		Slider("Weather intensity", &settings.WeatherIntensity, 0.0F, 1.0F);
 		Slider("Weather speed", &settings.WeatherSpeed, 0.1F, 3.0F, "%.2fx");
 		Tip("How fast the rain, snow, ash and dust move: their fall, how the wind carries them, and their sway, swirl and flicker. They keep their angle, so shelter and splashes still line up. 1: as the weather has it.");
+		Check("Weather everywhere", &settings.WeatherEverywhere);
+		Tip("The rain, snow, ash and dust show everywhere but over the terrain and its back walls: under roofs and overhangs and in cave mouths too, wherever the sky or the scenery behind shows. The ground still only gets wet or snowy where the weather reaches it.");
 		Slider("Wind", &settings.Wind, -400.0F, 400.0F, "%.0f px/s");
 		Tip("The wind's steady strength and way: negative blows left. The natural wind below makes it gust and wander around this.");
 		{
@@ -904,6 +910,8 @@ void DebugMan::SettingsGUI() {
 		Toggle("Units' metal and gear settle as scraps", g_SettingsMan.BodyGearSettlesAsScraps(), [](bool on) { g_SettingsMan.SetBodyGearSettlesAsScraps(on); });
 		Tip("Armour plating, robot parts and the rest of what comes off a unit keep their look when they come to rest in the ground, but become the same soft scraps as the flesh, so the remains of the fallen never leave lumps of metal nobody can dig through. Flesh and bone settle as scraps and ashes either way. Off: everything settles as its own material.");
 		Heading("What falls");
+		Toggle("Show hold zones on the map", TerrainCollapse::ShowsHoldZones(), [](bool on) { TerrainCollapse::SetShowHoldZones(on); });
+		Tip("Outlines the sandbox's hold zones (Paint > Terrain > Hold ground) on the map, where the ground never falls. Off: they show only while Hold ground is in hand.");
 		Check("Floating masses stay up when chipped", &tuning.FloatingStays);
 		Tip("On: a mass that was already hanging in the air before a blast stays; cut in two, the bigger part stays and the smaller falls. Off: anything touching nothing falls.");
 		SliderI("Thin neck that snaps (pixels)", &tuning.NeckWidth, 0, 16);
@@ -1168,6 +1176,8 @@ void DebugMan::SettingsGUI() {
 		Toggle("Show FPS and version", g_SettingsMan.ShowFPSAndVersion(), [](bool on) { g_SettingsMan.SetShowFPSAndVersion(on); });
 		Tip("The frame rate and the game's version, small, in the top right of the window.");
 		Toggle("Modern HUD", ModernHUD::IsEnabled(), [](bool on) { ModernHUD::SetEnabled(on); });
+		Toggle("Notices at the top of the screen", g_SettingsMan.ShowNotices(), [](bool on) { g_SettingsMan.SetShowNotices(on); });
+		Tip("Short notes at the top of the screen for a few seconds when something is done that is hard to see otherwise: \"Game saved\", a preset loaded, \"Nothing to undo\", a camera spot kept, or a sandbox tool used while its simulation is off.");
 		Slider("UI lighting", &ToolLight::Strength, 0.0F, 2.0F);
 		Tip("The menus and HUD lit as if they were in the world: the light brightens the side of each panel facing it, shades the far side, catches the edges towards it and casts the panel's shadow away from it. They are never dimmed past reading. 0 turns it off.");
 		{

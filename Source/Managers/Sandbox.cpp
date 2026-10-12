@@ -1,6 +1,7 @@
 #include "SandboxInternal.h"
 #include "ActorWater.h"
 #include "MenuMan.h"
+#include "Notices.h"
 #include "Weather.h"
 #include "TerrainCandle.h"
 
@@ -697,6 +698,11 @@ bool Sandbox::IsLookingAround() {
 }
 
 bool Sandbox::TakeEscape() {
+	// (A hold zone being clicked out is dropped, not the game paused.)
+	if (CurrentTool().Kind == Tool::HoldGround && !s_HoldDraft.empty() && !ImGui::GetIO().WantTextInput) {
+		s_HoldDraft.clear();
+		return true;
+	}
 	if (!IsGodMode() || s_Possessed || !(s_Open || IsLookingAround()) || CurrentTool().Kind != Tool::Command || s_CommandMode == CommandMode::Command || ImGui::GetIO().WantTextInput) {
 		return false;
 	}
@@ -966,6 +972,7 @@ void Sandbox::DrawGUI() {
 		DrawRallyPoints();
 		DrawSpawnOrders();
 		DrawBattleMarks();
+		DrawHoldZones();
 		if (IsBattleCommand()) {
 			DrawLandingSpot();
 			DrawFogGhosts();
@@ -1025,10 +1032,14 @@ void Sandbox::DrawGUI() {
 	}
 	// Ctrl+Z: the newest paint stroke or placing click undone (see UndoPaint), whichever tool is in hand, so long as no text box has the keys.
 	// Not while you play a unit: in the WASD layouts Ctrl is crouch, so crouching with Z down took back the last stroke.
-	if (InGame() && io.KeyCtrl && !io.WantTextInput && !s_Possessed && ImGui::IsKeyPressed(ImGuiKey_Z, false) && !s_PaintUndo.empty()) {
-		QueueSimChange(Tool::UndoTerrain);
-		// (A rope part put down is taken away whole, so the next click starts a new one.)
-		s_RopeDraft.clear();
+	if (InGame() && io.KeyCtrl && !io.WantTextInput && !s_Possessed && ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
+		if (s_PaintUndo.empty()) {
+			Notices::Post("Nothing to undo");
+		} else {
+			QueueSimChange(Tool::UndoTerrain);
+			// (A rope part put down is taken away whole, so the next click starts a new one.)
+			s_RopeDraft.clear();
+		}
 	}
 	// The rope being put down is finished with Enter or Escape, a right click (not a drag, which moves the view), or another tool taken up.
 	if (!s_RopeDraft.empty()) {
@@ -1133,6 +1144,12 @@ void Sandbox::DrawGUI() {
 	if (CapturesWorldClicks()) {
 		const ToolInfo& tool = CurrentTool();
 		Vector position = MouseScenePosition();
+		// A tool its simulation is off for does nothing (it's greyed in the window): a click with it says why, rather than nothing happening.
+		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+			if (const char* unavailable = ToolUnavailableReason(tool.Kind)) {
+				Notices::Post(unavailable);
+			}
+		}
 		// With the battle panel showing, a click on one of the battle's zones or points selects and moves it (BattleEditMouse) rather than
 		// giving an order.
 		const bool battleEdit = tool.Kind == Tool::Command && BattleEditMouse();
@@ -1183,6 +1200,8 @@ void Sandbox::DrawGUI() {
 				s_LineDragging = true;
 				s_LineStart = DragsRun(tool.Kind) ? position : SnapLinePoint(position, s_SnapToGrid);
 			}
+		} else if (tool.Kind == Tool::HoldGround) {
+			// (Its clicks and drags: HoldGroundInput, below.)
 		} else if (DragsShape(tool.Kind)) {
 			// Brush type Shape: a drag marks out the shape, filled when the button is let go (below). "Make it fall" drags its box the same way.
 			if (!s_ShapeDragging && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
@@ -1405,6 +1424,7 @@ void Sandbox::DrawGUI() {
 			}
 		}
 	}
+	HoldGroundInput();
 	// A one-off order's mode back to Command once it's placed, when no second click of a double click can follow.
 	if (s_BackToCommandAt >= 0.0 && !s_Dragging && ImGui::GetTime() >= s_BackToCommandAt) {
 		if (s_CommandMode == s_BackToCommandFrom) {
@@ -1610,7 +1630,7 @@ void Sandbox::DrawGUI() {
 		if (DrawTabRows()) {
 			if (IsGodMode() && SandboxTab("You")) {
 				s_CurrentTab = "You";
-				bool exists = GetRef(s_PlayerUnit) != nullptr;
+				bool exists = GetRef(s_PlayerUnit) || PlayerHolder();
 				if (ToolUI::Checkbox("Have a character of my own", &s_Player.EnterOnClose) && !s_Player.EnterOnClose) {
 					Stroke stroke;
 					stroke.Kind = Tool::PlayerRemove;
@@ -2080,7 +2100,22 @@ void Sandbox::DrawGUI() {
 				}
 				ImGui::SeparatorText("Terrain");
 				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::TreeTrunk, Tool::Concrete});
-				ToolButtons({Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::CollapseArea});
+				ToolButtons({Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::CollapseArea, Tool::HoldGround});
+				if (CurrentTool().Kind == Tool::HoldGround) {
+					bool show = TerrainCollapse::ShowsHoldZones();
+					if (ToolUI::Checkbox("Show hold zones without the tool", &show)) {
+						TerrainCollapse::SetShowHoldZones(show);
+					}
+					ImGui::SetItemTooltip("On: the hold zones are outlined on the map whatever is in hand (also under Settings > Falling ground). Off: only while Hold ground is.");
+					ImGui::SameLine();
+					ImGui::BeginDisabled(TerrainCollapse::GetHoldZones().empty());
+					if (ImGui::SmallButton("Clear all hold zones")) {
+						QueueSimChange(Tool::HoldGround, 0);
+						s_Queue.back().Choice = 2;
+					}
+					ImGui::EndDisabled();
+					ImGui::SetItemTooltip("Takes every hold zone on this map away (Ctrl+Z puts them back).");
+				}
 				{
 					// The rest of the base game's ground, a button each, for the "Other terrain" tool. Those with buttons of their own (above, and
 					// under Metals) aren't repeated.
@@ -2205,6 +2240,8 @@ void Sandbox::DrawGUI() {
 				LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
 				ImGui::Combo("Weather", &settings.WeatherType, Weather::GetComboItems(settings.CustomWeather).c_str());
 				ImGui::SliderFloat("Intensity", &settings.WeatherIntensity, 0.0F, 1.0F);
+				ImGui::Checkbox("Weather everywhere", &settings.WeatherEverywhere);
+				ImGui::SetItemTooltip("The weather shows everywhere but over the terrain and its back walls, under roofs and overhangs too. The same as in the settings.");
 				ImGui::SliderFloat("Wind", &settings.Wind, -200.0F, 200.0F, "%.0f px/s");
 				ImGui::SliderFloat("Hour", &settings.TimeOfDay, 0.0F, 24.0F, "%.1f");
 				for (auto [name, hour]: {std::pair{"Dawn", 6.5F}, std::pair{"Day", 12.0F}, std::pair{"Dusk", 19.0F}, std::pair{"Night", 23.0F}}) {
@@ -2419,6 +2456,7 @@ void Sandbox::Update() {
 		}
 		UpdatePlayer();
 		UpdatePlayerSquads();
+		UpdateLoadoutUnits();
 		if (game) {
 			for (int team = 0; team < c_Sides; ++team) {
 				if (game->GetTeamFunds(team) < 500000.0F) {

@@ -138,6 +138,7 @@ void SceneLighting::LoadShaders() {
 	m_DepthOfFieldShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/DepthOfField.frag");
 	m_GodRaysApplyShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/GodRaysApply.frag");
 	m_RainSplashShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RainSplash.frag");
+	m_WeatherEverywhereShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/WeatherEverywhere.frag");
 	m_ScorchShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/Scorch.frag");
 	m_StainShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/Stain.frag");
 	m_DecalFadeShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/DecalFade.frag");
@@ -415,6 +416,7 @@ void SceneLighting::DestroyScreenResources() {
 	m_HDRScene.Destroy();
 	m_ModPostScene.Destroy();
 	m_FocusScene.Destroy();
+	m_WeatherDrops.Destroy();
 	for (GLTarget& mip: m_BloomMips) {
 		mip.Destroy();
 	}
@@ -3143,10 +3145,22 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		float driftStep = drift - m_WeatherDriftLast;
 		m_WeatherDrift = std::fmod(m_WeatherDrift + (std::abs(driftStep) < 1000.0F ? driftStep * speed : 0.0F), 65536.0F);
 		m_WeatherDriftLast = drift;
+		// Weather everywhere: the drops ignore shelter and are drawn on their own first, so they can be laid over the scene everywhere but the terrain and its back walls.
+		bool everywhere = m_Settings.WeatherEverywhere && sceneDepth && surface;
+		if (everywhere) {
+			if (m_WeatherDrops.Width != width || m_WeatherDrops.Height != height || !m_WeatherDrops.Texture) {
+				m_WeatherDrops.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+			}
+			glBindFramebuffer(GL_FRAMEBUFFER, m_WeatherDrops.Framebuffer);
+			glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
+			glClear(GL_COLOR_BUFFER_BIT);
+		}
 		glEnable(GL_BLEND);
 		glBlendEquation(GL_FUNC_ADD);
+		// Over a cleared target this leaves the drops premultiplied, with their coverage in alpha, so laying them over the scene later comes out as drawing them there.
 		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 		dropShader->Enable();
+		dropShader->SetBool("rteEverywhere", everywhere);
 		dropShader->SetVector2f("rteScreenSize", screenSize);
 		dropShader->SetVector2f("rteScreenOrigin", origin);
 		dropShader->SetFloat("rteTime", static_cast<float>(m_WeatherClock));
@@ -3192,6 +3206,30 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glActiveTexture(GL_TEXTURE0);
 		glBindVertexArray(m_EmptyVAO);
 		glDrawArrays(GL_TRIANGLES, 0, dropCount * 6);
+		if (everywhere) {
+			glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+			glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+			m_WeatherEverywhereShader->Enable();
+			m_WeatherEverywhereShader->SetInt("rteDrops", 0);
+			m_WeatherEverywhereShader->SetInt("rteSceneDepth", 1);
+			m_WeatherEverywhereShader->SetInt("rteSurface", 2);
+			m_WeatherEverywhereShader->SetInt("rteOccupancy", 3);
+			m_WeatherEverywhereShader->SetVector2f("rteScreenSize", screenSize);
+			m_WeatherEverywhereShader->SetVector2f("rteScreenOrigin", origin);
+			m_WeatherEverywhereShader->SetVector2f("rteGridWorldSize", gridWorldSize);
+			m_WeatherEverywhereShader->SetFloat("rteForegroundDepth", foregroundDepth);
+			m_WeatherEverywhereShader->SetFloat("rteBackgroundDepth", backgroundThresholdNDC * 0.5F + 0.5F);
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, sceneDepth->GetTextureId());
+			glActiveTexture(GL_TEXTURE2);
+			glBindTexture(GL_TEXTURE_2D, surface->GetTextureId());
+			glActiveTexture(GL_TEXTURE3);
+			glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, m_WeatherDrops.Texture);
+			DrawFullscreen();
+			glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+		}
 		// Drops splashing on whatever they land on (rain's, Weather::Splashes).
 		std::shared_ptr<DepthTexture> splashDepth = playerScreen->GetDepthTexture().lock();
 		if (look.Splashes > 0.0F && m_Settings.RainSplashes > 0.0F && splashDepth) {

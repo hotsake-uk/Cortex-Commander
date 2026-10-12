@@ -59,6 +59,7 @@ int AEJetpack::Create(const AEJetpack& reference) {
 	m_JetAngleRange = reference.m_JetAngleRange;
 	m_CanAdjustAngleWhileFiring = reference.m_CanAdjustAngleWhileFiring;
 	m_AdjustsThrottleForWeight = reference.m_AdjustsThrottleForWeight;
+	m_JetThrustBonusMultiplier = reference.m_JetThrustBonusMultiplier;
 
 	return 0;
 }

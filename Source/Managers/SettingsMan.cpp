@@ -219,6 +219,9 @@ void SettingsMan::Clear() {
 	m_DebugChannels = 0;
 	m_TraceAllUnits = false;
 	m_ShowFPSAndVersion = true;
+	m_ShowNotices = true;
+	m_MapBrowserFilters = MapBrowserFilters();
+	m_LastMap.clear();
 	m_CrabBombThreshold = 42;
 	m_ShowEnemyHUD = true;
 	m_ShowUnitTags = false;
@@ -406,6 +409,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("TreeStrayBulletPercent", { TerrainTrees::SetStrayBulletPercent(std::stoi(reader.ReadPropValue())); });
 	MatchProperty("UnitsBumpIntoTrees", { TerrainTrees::SetUnitsCollide(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("FallingGroundPassesTrees", { TerrainCollapse::SetPassesTrees(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("ShowHoldZones", { TerrainCollapse::SetShowHoldZones(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("ZeroGTerrainFollowsGravity", { ZeroGravity::SetTerrainFollowsGravity(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("ZeroGLiquidsFloat", { ZeroGravity::SetLiquidsFloat(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("ZeroGCountZones", { ZeroGravity::SetCountZones(std::stoi(reader.ReadPropValue()) != 0); });
@@ -521,6 +525,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("WeatherGlow", { g_PostProcessMan.GetLightingSettings().WeatherGlow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WeatherIntensity", { g_PostProcessMan.GetLightingSettings().WeatherIntensity = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WeatherSpeed", { g_PostProcessMan.GetLightingSettings().WeatherSpeed = std::stof(reader.ReadPropValue()); });
+	MatchProperty("WeatherEverywhere", { g_PostProcessMan.GetLightingSettings().WeatherEverywhere = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("Wind", { g_PostProcessMan.GetLightingSettings().Wind = std::stof(reader.ReadPropValue()); });
 	MatchProperty("TimeOfDay", { g_PostProcessMan.GetLightingSettings().TimeOfDay = std::stof(reader.ReadPropValue()); });
 	MatchProperty("DayLengthMinutes", { g_PostProcessMan.GetLightingSettings().DayLengthMinutes = std::stof(reader.ReadPropValue()); });
@@ -942,6 +947,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DebugChannels", { reader >> m_DebugChannels; });
 	MatchProperty("TraceAllUnits", { reader >> m_TraceAllUnits; });
 	MatchProperty("ShowFPSAndVersion", { reader >> m_ShowFPSAndVersion; });
+	MatchProperty("ShowNotices", { reader >> m_ShowNotices; });
 	MatchProperty("CrabBombThreshold", { reader >> m_CrabBombThreshold; });
 	MatchProperty("ShowEnemyHUD", { reader >> m_ShowEnemyHUD; });
 	MatchProperty("ShowUnitTags", { reader >> m_ShowUnitTags; });
@@ -962,6 +968,13 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DefaultActivityType", { reader >> g_ActivityMan.m_DefaultActivityType; });
 	MatchProperty("DefaultActivityName", { reader >> g_ActivityMan.m_DefaultActivityName; });
 	MatchProperty("DefaultSceneName", { reader >> g_SceneMan.m_DefaultSceneName; });
+	MatchProperty("LastMap", { m_LastMap = reader.ReadPropValue(); });
+	MatchProperty("MapBrowserMod", { m_MapBrowserFilters.Mod = reader.ReadPropValue(); });
+	MatchProperty("MapBrowserType", { reader >> m_MapBrowserFilters.Source; });
+	MatchProperty("MapBrowserSize", { reader >> m_MapBrowserFilters.Size; });
+	MatchProperty("MapBrowserFavouritesOnly", { reader >> m_MapBrowserFilters.OnlyFavourites; });
+	MatchProperty("MapBrowserRecentOnly", { reader >> m_MapBrowserFilters.OnlyRecent; });
+	MatchProperty("MapBrowserSort", { reader >> m_MapBrowserFilters.Sort; });
 	MatchProperty("DisableLuaJIT", { reader >> m_DisableLuaJIT; });
 	MatchProperty("EnableLuaDebugging", { reader >> m_EnableLuaDebugging; });
 	MatchProperty("RecommendedMOIDCount", { reader >> m_RecommendedMOIDCount; });
@@ -1061,6 +1074,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("WeatherGlow", lighting.WeatherGlow);
 	writer.NewPropertyWithValue("WeatherIntensity", lighting.WeatherIntensity);
 	writer.NewPropertyWithValue("WeatherSpeed", lighting.WeatherSpeed);
+	writer.NewPropertyWithValue("WeatherEverywhere", lighting.WeatherEverywhere);
 	writer.NewPropertyWithValue("Wind", lighting.Wind);
 	writer.NewPropertyWithValue("TimeOfDay", lighting.TimeOfDay);
 	writer.NewPropertyWithValue("DayLengthMinutes", lighting.DayLengthMinutes);
@@ -1276,6 +1290,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("UnitsBumpIntoTrees", TerrainTrees::UnitsCollide());
 	writer.NewPropertyWithValue("TreeStrayBulletPercent", TerrainTrees::StrayBulletPercent());
 	writer.NewPropertyWithValue("FallingGroundPassesTrees", TerrainCollapse::PassesTrees());
+	writer.NewPropertyWithValue("ShowHoldZones", TerrainCollapse::ShowsHoldZones());
 	writer.NewPropertyWithValue("ZeroGTerrainFollowsGravity", ZeroGravity::TerrainFollowsGravity());
 	writer.NewPropertyWithValue("ZeroGLiquidsFloat", ZeroGravity::LiquidsFloat());
 	writer.NewPropertyWithValue("ZeroGCountZones", ZeroGravity::CountZones());
@@ -1414,6 +1429,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("CautiousTouchdown", m_DirectOrders.CautiousTouchdown);
 	writer.NewPropertyWithValue("CautiousEnemyAvoidance", m_DirectOrders.CautiousEnemyAvoidance);
 	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
+	writer.NewPropertyWithValue("ShowNotices", m_ShowNotices);
 	writer.NewPropertyWithValue("ModernHUD", ModernHUD::IsEnabled());
 	writer.NewPropertyWithValue("UILight", ToolLight::Strength);
 	writer.NewPropertyWithValue("UILightOwn", ToolLight::Mode == ToolLight::Source::OwnLight);
@@ -1752,6 +1768,23 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("DefaultActivityType", g_ActivityMan.m_DefaultActivityType);
 	writer.NewPropertyWithValue("DefaultActivityName", g_ActivityMan.m_DefaultActivityName);
 	writer.NewPropertyWithValue("DefaultSceneName", g_SceneMan.m_DefaultSceneName);
+
+	writer.NewLine(false, 2);
+	writer.NewDivider(false);
+	writer.NewLineString("// Map Browser Settings (the main menu's map picker, and the map last played for \"Continue on\")", false);
+	writer.NewLine(false);
+	// (The two names only when there is one, as StartupPreset.)
+	if (!m_LastMap.empty()) {
+		writer.NewPropertyWithValue("LastMap", m_LastMap);
+	}
+	if (!m_MapBrowserFilters.Mod.empty()) {
+		writer.NewPropertyWithValue("MapBrowserMod", m_MapBrowserFilters.Mod);
+	}
+	writer.NewPropertyWithValue("MapBrowserType", m_MapBrowserFilters.Source);
+	writer.NewPropertyWithValue("MapBrowserSize", m_MapBrowserFilters.Size);
+	writer.NewPropertyWithValue("MapBrowserFavouritesOnly", m_MapBrowserFilters.OnlyFavourites);
+	writer.NewPropertyWithValue("MapBrowserRecentOnly", m_MapBrowserFilters.OnlyRecent);
+	writer.NewPropertyWithValue("MapBrowserSort", m_MapBrowserFilters.Sort);
 
 	writer.NewLine(false, 2);
 	writer.NewDivider(false);

@@ -4,6 +4,7 @@
 // Userdata/BattlePresets/LastSetup, and offered first in the list as "Last setup".
 
 #include "SandboxInternal.h"
+#include "Notices.h"
 
 namespace SandboxDetail {
 	namespace {
@@ -17,6 +18,7 @@ namespace SandboxDetail {
 		std::string s_PresetNote; //!< What the last save or load did, shown under the list.
 		std::string s_PresetOnStart; //!< The setup the map browser picked to go in when the next game starts, in place of the one with the map.
 		bool s_NoPresetOnStart = false; //!< The map browser picked no setup for the next game: none goes in.
+		bool s_SaveHoldZones = true; //!< Whether a setup saved now keeps the map's hold zones ("Hold ground") with it.
 		bool s_StartOnStart = false; //!< The map browser's quick battle: the setup that goes in with the next game is started too.
 		constexpr const char* c_LastSetupName = "Last setup"; //!< The name the last setup is kept under in its file.
 		std::vector<BattlePreset> s_LastSetup; //!< The last setup started on s_PresetsScene, if one was kept (one at most).
@@ -316,6 +318,10 @@ namespace SandboxDetail {
 			preset.WithMap = withMap != lines.end() && withMap->second == "1";
 			auto linked = lines.find("Linked");
 			preset.Linked = linked != lines.end() && linked->second == "1";
+			if (auto hold = lines.find("HoldZones"); hold != lines.end()) {
+				preset.HasHoldZones = true;
+				FromText(hold->second, preset.HoldZones);
+			}
 			for (int side = 0; side < c_Sides; ++side) {
 				Loader load{lines, "Team" + std::to_string(side) + "."};
 				VisitCard(preset.Cards[side], load);
@@ -397,6 +403,9 @@ namespace SandboxDetail {
 				file << "\n[" << preset.Name << "]\n";
 				file << "WithMap = " << ToText(preset.WithMap) << '\n';
 				file << "Linked = " << ToText(preset.Linked) << '\n';
+				if (preset.HasHoldZones) {
+					file << "HoldZones = " << ToText(preset.HoldZones) << '\n';
+				}
 				for (int side = 0; side < c_Sides; ++side) {
 					Saver save{file, "Team" + std::to_string(side) + "."};
 					VisitCard(preset.Cards[side], save);
@@ -425,6 +434,15 @@ namespace SandboxDetail {
 				SendBattleSettings(side);
 			}
 			SendBattleMode();
+			if (preset.HasHoldZones) {
+				TerrainCollapse::SetHoldZones(preset.HoldZones);
+			}
+		}
+
+		/// The hold zones on the map, kept with a setup being saved if "Hold zones" is ticked.
+		void TakeHoldZones(BattlePreset& preset) {
+			preset.HasHoldZones = s_SaveHoldZones;
+			preset.HoldZones = s_SaveHoldZones ? TerrainCollapse::GetHoldZones() : std::vector<std::vector<Vector>>();
 		}
 
 		/// Plays a linked battle: its setup on the Battle tab, and its game started. With carry, your team's points and survivors (and their
@@ -588,6 +606,7 @@ namespace SandboxDetail {
 		const BattlePreset& preset = last ? s_LastSetup.front() : *withMap;
 		UsePreset(preset);
 		g_ConsoleMan.PrintString("SANDBOX: Battle setup \"" + preset.Name + "\" loaded with the map.");
+		Notices::Post("Battle setup \"" + preset.Name + "\" loaded with the map");
 		// The main menu's quick battle: started at once, if it can be.
 		if (start) {
 			std::string why;
@@ -609,7 +628,7 @@ namespace SandboxDetail {
 			ImGui::TextDisabled("No map open.");
 			return;
 		}
-		ImGui::TextWrapped("Saves every team's card, the mode and its choices, and the spawn zones, points, goals, flag spots and lines drawn on this map. Tick \"With map\" on one and it is set up again whenever this map starts: after a reset, or in a new game.");
+		ImGui::TextWrapped("Saves every team's card, the mode and its choices, the spawn zones, points, goals, flag spots and lines drawn on this map, and (with Hold zones ticked) where the ground never falls. Tick \"With map\" on one and it is set up again whenever this map starts: after a reset, or in a new game.");
 		float buttonWidth = ImGui::CalcTextSize("Save").x + ImGui::GetStyle().FramePadding.x * 2.0F;
 		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - buttonWidth - ImGui::GetStyle().ItemSpacing.x);
 		bool entered = ImGui::InputTextWithHint("##battlePresetName", "Setup name", s_PresetName, sizeof(s_PresetName), ImGuiInputTextFlags_EnterReturnsTrue);
@@ -626,6 +645,7 @@ namespace SandboxDetail {
 			preset.Name = name;
 			preset.Cards = s_BattleSetup;
 			preset.Mode = s_ModeSetup;
+			TakeHoldZones(preset);
 			if (same != s_Presets.end()) {
 				preset.WithMap = same->WithMap;
 				*same = preset;
@@ -637,8 +657,12 @@ namespace SandboxDetail {
 				s_PresetNote = "\"" + name + "\" saved.";
 			}
 			WritePresets();
+			Notices::Post("Battle setup \"" + name + "\" saved");
 			s_PresetName[0] = 0;
 		}
+		std::string holdLabel = "Hold zones (" + std::to_string(TerrainCollapse::GetHoldZones().size()) + ")###battlePresetHold";
+		ToolUI::Checkbox(holdLabel.c_str(), &s_SaveHoldZones);
+		ImGui::SetItemTooltip("Saves the map's hold zones (Paint > Terrain > Hold ground: where the ground never falls) with the setup, so loading it puts them back\nin place of those on the map then. Off: the setup leaves the hold zones alone.");
 
 		// The setup the last battle on this map was started with, kept by itself, first.
 		if (!s_LastSetup.empty()) {
@@ -646,6 +670,7 @@ namespace SandboxDetail {
 			if (ImGui::SmallButton("Load")) {
 				UsePreset(s_LastSetup.front());
 				s_PresetNote = "The last setup loaded.";
+				Notices::Post("The last battle setup loaded");
 			}
 			ImGui::SetItemTooltip("Puts the setup the last battle on this map was started with on the Battle tab (kept by itself each time a battle starts).\nA battle that's on keeps going: start it again to play the setup.");
 			ImGui::SameLine();
@@ -675,6 +700,7 @@ namespace SandboxDetail {
 			if (ImGui::SmallButton("Load")) {
 				UsePreset(preset);
 				s_PresetNote = "\"" + preset.Name + "\" loaded.";
+				Notices::Post("Battle setup \"" + preset.Name + "\" loaded");
 			}
 			ImGui::SetItemTooltip("Puts this setup on the Battle tab. A battle that's on keeps going: start it again to play the setup.");
 			ImGui::SameLine();
@@ -683,7 +709,9 @@ namespace SandboxDetail {
 			if (AskFirst(saveOver, "Save over?##battlePresetSaveOver", "Save over \"" + preset.Name + "\"? The setup saved now is lost.", "Yes, save over")) {
 				preset.Cards = s_BattleSetup;
 				preset.Mode = s_ModeSetup;
+				TakeHoldZones(preset);
 				s_PresetNote = "\"" + preset.Name + "\" saved over.";
+				Notices::Post("Battle setup \"" + preset.Name + "\" saved");
 				changed = true;
 			}
 			ImGui::SameLine();
