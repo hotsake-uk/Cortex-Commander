@@ -379,6 +379,7 @@ void AHuman::UpdateAIMotor() {
 			mover.skyFlying = false;
 			mover.skyHovering = false;
 		} else if (mover.skyHovering || (mover.skyFlying && !skyBlocked) || (mover.skyClear && m_pJetpack->GetJetTimeLeft() > JetRelightFuel() + tank * 0.3F)) {
+			const bool takingOff = !mover.skyFlying;
 			if (!mover.skyFlying) {
 				mover.skyFlying = true;
 				MoverTrace("jetpack here: flying for " + std::to_string(static_cast<int>(sky.m_X)) + "," + std::to_string(static_cast<int>(sky.m_Y)));
@@ -389,8 +390,14 @@ void AHuman::UpdateAIMotor() {
 			Vector command = PilotFlight(sky, -1.0F);
 			ctrl.SetState(MOVE_LEFT, false);
 			ctrl.SetState(MOVE_RIGHT, false);
-			ctrl.SetState(BODY_JUMPSTART, FloorUnder(m_Pos, h * 0.8F) >= 0.0F && toSky.m_Y < -h * 0.3F);
-			ctrl.SetState(BODY_JUMP, command.m_Y > 0.5F);
+			// (One burst, at the take-off. Pressed every frame while the floor was in reach, it burst again as often as the jetpack allowed,
+			// a burst's fuel each time, and the tank was down to the hover's reserve 30 px up: "tank empty", the order ended, the unit on Hold.)
+			// And lit, whatever the pilot chose, while the floor is still under the feet with the point well above: its look ahead counts
+			// staying stood on the floor as no worse than flying into it, so where the jet's climb tracked the speed wanted badly enough (a
+			// heavier unit, a weaker jet) it chose to stay put, and after the burst the unit bobbed and stood there on the order.
+			const bool offTheFloor = FloorUnder(m_Pos, h * 0.8F) >= 0.0F && toSky.m_Y < -h * 0.3F;
+			ctrl.SetState(BODY_JUMPSTART, takingOff && offTheFloor);
+			ctrl.SetState(BODY_JUMP, command.m_Y > 0.5F || offTheFloor);
 			ctrl.SetAnalogMove(Vector(command.m_X, -1.0F));
 			if (mover.skyHovering && m_StandingOrder.PostFacing != 0) {
 				m_HFlipped = m_StandingOrder.PostFacing < 0;
@@ -1581,15 +1588,26 @@ float AHuman::SkyReserve() const {
 	if (!m_pJetpack) {
 		return 0.0F;
 	}
+	// (The drop is the feet's, to the floor: from the body's middle, a unit standing on the floor had half its height's fall to brake, and
+	// on the ground at take-off the reserve was most of the tank.)
+	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : GetMoveHeight() * 0.2F;
 	const float floorY = FloorUnder(m_Pos, 2000.0F);
-	const float drop = std::max(0.0F, (floorY >= 0.0F ? floorY : m_Pos.m_Y + 600.0F) - m_Pos.m_Y);
+	const float drop = std::max(0.0F, (floorY >= 0.0F ? floorY : m_Pos.m_Y + 600.0F) - (m_Pos.m_Y + feet));
 	const float gravity = std::max(0.01F, g_SceneMan.GetGlobalAcc().m_Y * c_PPM);
 	const float push = JetAccelAtFuel(JetRelightFuel()) - gravity;
 	if (push <= 1.0F) {
 		return JetRelightFuel();
 	}
+	// Only what the landing needs braking: down to the speed of a fall the body takes unhurt (most of its safe fall), and none at all over a
+	// drop that is no more than that. (Braked to a stop from any height, 50 px over the floor the reserve was more than half a soldier's
+	// tank: the hover, begun with most of it gone on the climb, ended "tank empty" a moment after take-off, and the unit was put on Hold.)
+	const float safeFall = std::min(GetMaxSafeFallHeight(), 2000.0F) * 0.8F;
+	if (drop <= safeFall) {
+		return 0.0F;
+	}
 	const float speed = std::sqrt(2.0F * gravity * drop * push / (push + gravity));
-	return JetRelightFuel() + speed / push * 1000.0F * 1.3F;
+	const float safeSpeed = std::sqrt(2.0F * gravity * safeFall);
+	return JetRelightFuel() + std::max(0.0F, speed - safeSpeed) / push * 1000.0F * 1.3F;
 }
 
 float AHuman::JetRelightFuel() const {
