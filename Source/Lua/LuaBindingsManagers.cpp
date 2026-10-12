@@ -469,6 +469,7 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SettingsMan) {
 	    .property("AISquadFollowsYou", &SettingsMan::AISquadFollowsYou, &SettingsMan::SetAISquadFollowsYou)
 	    .property("AIThreatAvoidance", &SettingsMan::AIThreatAvoidance, &SettingsMan::SetAIThreatAvoidance)
 	    .property("AIUnitsCallLifts", &SettingsMan::AIUnitsCallLifts, &SettingsMan::SetAIUnitsCallLifts)
+	    .property("AIWaitsAtDoors", &SettingsMan::AIWaitsAtDoors, &SettingsMan::SetAIWaitsAtDoors)
 	    .property("AICoverDigs", &SettingsMan::AICoverDigs, &SettingsMan::SetAICoverDigs)
 	    .property("AICoverFallsBack", &SettingsMan::AICoverFallsBack, &SettingsMan::SetAICoverFallsBack)
 	    .property("AICoverLiesFlat", &SettingsMan::AICoverLiesFlat, &SettingsMan::SetAICoverLiesFlat)

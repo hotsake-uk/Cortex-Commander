@@ -174,6 +174,7 @@ void SettingsMan::Clear() {
 	m_AISpawnDiggerType = 1;
 	m_AISteadyBeforeJet = true;
 	m_AIWaitForFuel = true;
+	m_AIWaitsAtDoors = true;
 	m_AIEnemyBuysReinforcements = true;
 	m_AIEnemyUsesPowers = true;
 	m_AISquadFollowsYou = true;
@@ -891,6 +892,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AISpawnDiggerType", { int type = 1; reader >> type; SetAISpawnDiggerType(type); });
 	MatchProperty("AISteadyBeforeJet", { reader >> m_AISteadyBeforeJet; });
 	MatchProperty("AIWaitForFuel", { reader >> m_AIWaitForFuel; });
+	MatchProperty("AIWaitsAtDoors", { reader >> m_AIWaitsAtDoors; });
 	MatchProperty("AIEnemyBuysReinforcements", { reader >> m_AIEnemyBuysReinforcements; });
 	MatchProperty("AIEnemyUsesPowers", { reader >> m_AIEnemyUsesPowers; });
 	MatchProperty("AISquadFollowsYou", { reader >> m_AISquadFollowsYou; });
@@ -1505,6 +1507,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("RiskyOrdersFlyPastLadders", m_RiskyOrdersFlyPastLadders);
 	writer.NewPropertyWithValue("AISteadyBeforeJet", m_AISteadyBeforeJet);
 	writer.NewPropertyWithValue("AIWaitForFuel", m_AIWaitForFuel);
+	writer.NewPropertyWithValue("AIWaitsAtDoors", m_AIWaitsAtDoors);
 	writer.NewPropertyWithValue("AIEnemyBuysReinforcements", m_AIEnemyBuysReinforcements);
 	writer.NewPropertyWithValue("AIEnemyUsesPowers", m_AIEnemyUsesPowers);
 	writer.NewPropertyWithValue("AISquadFollowsYou", m_AISquadFollowsYou);
