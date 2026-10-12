@@ -50,6 +50,8 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <functional>
 #include <string>
@@ -102,8 +104,93 @@ namespace {
 		return s_LastShown;
 	}
 
-	bool Slider(const char* label, float* value, float low, float high, const char* format = "%.2f", ImGuiSliderFlags flags = 0) { return Shown(label) && ImGui::SliderFloat(label, value, low, high, format, flags); }
-	bool SliderI(const char* label, int* value, int low, int high, const char* format = "%d", ImGuiSliderFlags flags = 0) { return Shown(label) && ImGui::SliderInt(label, value, low, high, format, flags); }
+	/// Where the settings that sliders change live, each with a copy of it as the game comes, so a slider's Reset knows what to put back (see Normals).
+	struct NormalSource {
+		std::uintptr_t Live;
+		size_t Size;
+		const char* Normal;
+	};
+	std::vector<NormalSource> s_NormalSources;
+
+	/// Lets every slider on a member of this settings object offer a Reset to the value a freshly made one has.
+	template <typename T> void Normals(const T& live) {
+		static const T s_Normal{};
+		s_NormalSources.push_back({reinterpret_cast<std::uintptr_t>(&live), sizeof(T), reinterpret_cast<const char*>(&s_Normal)});
+	}
+
+	/// The value as the game comes of a setting that lives in an object given to Normals, or null for one that doesn't.
+	template <typename T> const T* NormalOf(const T* value) {
+		std::uintptr_t at = reinterpret_cast<std::uintptr_t>(value);
+		for (const NormalSource& source: s_NormalSources) {
+			if (at >= source.Live && at + sizeof(T) <= source.Live + source.Size) {
+				return reinterpret_cast<const T*>(source.Normal + (at - source.Live));
+			}
+		}
+		return nullptr;
+	}
+
+	/// The value as the game comes, for a slider whose setting isn't in an object given to Normals (one read and set through functions).
+	template <typename T> struct Normal {
+		T Value;
+	};
+
+	bool AtNormal(float value, float normal) { return std::abs(value - normal) <= 0.0001F * std::max(1.0F, std::abs(normal)); }
+	bool AtNormal(int value, int normal) { return value == normal; }
+
+	/// A small Reset beside the slider just made, putting that one setting back as the game comes (greyed out while it is).
+	/// The slider stays the last item, so a Tip after it is still the slider's own.
+	template <typename T> bool ResetButton(const char* label, T* value, T normal) {
+		const ImGuiLastItemData slider = GImGui->LastItemData;
+		ImGui::SameLine();
+		ImGui::PushID(label);
+		ImGui::PushID("Reset");
+		ImGui::BeginDisabled(AtNormal(*value, normal));
+		bool reset = ToolUI::SmallButton("Reset");
+		ImGui::SetItemTooltip("Puts this one setting back to the value the game comes with.");
+		ImGui::EndDisabled();
+		ImGui::PopID();
+		ImGui::PopID();
+		GImGui->LastItemData = slider;
+		if (reset) {
+			*value = normal;
+		}
+		return reset;
+	}
+
+	bool Slider(const char* label, float* value, Normal<float> normal, float low, float high, const char* format = "%.2f", ImGuiSliderFlags flags = 0) {
+		if (!Shown(label)) {
+			return false;
+		}
+		bool changed = ImGui::SliderFloat(label, value, low, high, format, flags);
+		return ResetButton(label, value, normal.Value) || changed;
+	}
+	bool Slider(const char* label, float* value, float low, float high, const char* format = "%.2f", ImGuiSliderFlags flags = 0) {
+		if (!Shown(label)) {
+			return false;
+		}
+		bool changed = ImGui::SliderFloat(label, value, low, high, format, flags);
+		if (const float* normal = NormalOf(value)) {
+			changed = ResetButton(label, value, *normal) || changed;
+		}
+		return changed;
+	}
+	bool SliderI(const char* label, int* value, Normal<int> normal, int low, int high, const char* format = "%d", ImGuiSliderFlags flags = 0) {
+		if (!Shown(label)) {
+			return false;
+		}
+		bool changed = ImGui::SliderInt(label, value, low, high, format, flags);
+		return ResetButton(label, value, normal.Value) || changed;
+	}
+	bool SliderI(const char* label, int* value, int low, int high, const char* format = "%d", ImGuiSliderFlags flags = 0) {
+		if (!Shown(label)) {
+			return false;
+		}
+		bool changed = ImGui::SliderInt(label, value, low, high, format, flags);
+		if (const int* normal = NormalOf(value)) {
+			changed = ResetButton(label, value, *normal) || changed;
+		}
+		return changed;
+	}
 	bool Check(const char* label, bool* value) { return Shown(label) && ToolUI::Checkbox(label, value); }
 	bool Combo(const char* label, int* value, const char* items) { return Shown(label) && ImGui::Combo(label, value, items); }
 	bool Tint(const char* label, float* value) { return Shown(label) && ImGui::ColorEdit3(label, value, ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR); }
@@ -184,7 +271,9 @@ namespace {
 	/// A slider for how bright a colour is, keeping its tint.
 	void Brightness(const char* label, glm::vec3& color, float maxValue) {
 		float level = std::max({color.x, color.y, color.z});
-		if (Slider(label, &level, 0.0F, maxValue) && level > 0.0F) {
+		const glm::vec3* normal = NormalOf(&color);
+		bool changed = normal ? Slider(label, &level, Normal{std::max({normal->x, normal->y, normal->z})}, 0.0F, maxValue) : Slider(label, &level, 0.0F, maxValue);
+		if (changed && level > 0.0F) {
 			float current = std::max({color.x, color.y, color.z});
 			color = current > 0.0F ? color * (level / current) : glm::vec3(level);
 		}
@@ -309,6 +398,15 @@ void DebugMan::SettingsGUI() {
 		return;
 	}
 	LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
+	// The settings objects whose sliders get a Reset by themselves; the rest pass their value as the game comes (Normal).
+	s_NormalSources.clear();
+	Normals(settings);
+	Normals(AirPressure::GetTuning());
+	Normals(MagicEffects::GetTuning());
+	Normals(TerrainCollapse::GetTuning());
+	Normals(g_SettingsMan.GibChunks());
+	Normals(g_SettingsMan.DirectOrders());
+	Normals(g_SettingsMan.SlowdownFixes());
 
 	auto timeAndWeather = [&]() {
 		Slider("Hour", &settings.TimeOfDay, 0.0F, 24.0F);
@@ -743,22 +841,22 @@ void DebugMan::SettingsGUI() {
 			ImGui::SameLine();
 			ImGui::TextDisabled("(%d burning)", TerrainFire::GetCount());
 		}
-		if (float chance = TerrainFire::GetEmberIgniteChance(); Slider("Embers set things alight", &chance, 0.0F, 10.0F, "%.2f%% a second")) {
+		if (float chance = TerrainFire::GetEmberIgniteChance(); Slider("Embers set things alight", &chance, Normal{0.1F}, 0.0F, 10.0F, "%.2f%% a second")) {
 			TerrainFire::SetEmberIgniteChance(chance);
 		}
 		Tip("The chance each second that smouldering charcoal (what's left glowing of burnt wood) sets alight each grass, wood or oil pixel touching it. Charcoal never relights other charcoal. 0 for never.");
 		Toggle("Candles burn forever", TerrainCandle::GetBurnMinutes() <= 0.0F, [](bool on) { TerrainCandle::SetBurnMinutes(on ? 0.0F : 2.0F); });
 		Tip("Lit candles (Paint > Plants > Candles) keep burning and never melt down. Off, they burn down in the time below.");
-		if (float minutes = TerrainCandle::GetBurnMinutes(); minutes > 0.0F && Slider("Candle burn time", &minutes, 0.5F, 60.0F, "%.1f minutes", ImGuiSliderFlags_Logarithmic)) {
+		if (float minutes = TerrainCandle::GetBurnMinutes(); minutes > 0.0F && Slider("Candle burn time", &minutes, Normal{2.0F}, 0.5F, 60.0F, "%.1f minutes", ImGuiSliderFlags_Logarithmic)) {
 			TerrainCandle::SetBurnMinutes(minutes);
 		}
 		Tip("How long a lit candle 20 pixels tall takes to burn down, whatever its width; a taller one takes longer. 2 minutes as it comes.");
-		if (float reaction = RopeSim::GetReaction(); Slider("Ropes react to wind and blasts", &reaction, 0.0F, 3.0F, "%.2fx")) {
+		if (float reaction = RopeSim::GetReaction(); Slider("Ropes react to wind and blasts", &reaction, Normal{1.0F}, 0.0F, 3.0F, "%.2fx")) {
 			RopeSim::SetReaction(reaction);
 		}
 		Tip("How strongly ropes, threads, chains and cables blow about in the wind, ride the pressure of a passing blast wave and are thrown out from explosions. 1 as it comes, 0 they hang still.");
 		Toggle("Dropped ropes settle into the ground", RopeSim::GetSettleSeconds() > 0.0F, [](bool on) { RopeSim::SetSettleSeconds(on ? 5.0F : 0.0F); });
-		if (float settle = RopeSim::GetSettleSeconds(); settle > 0.0F && Slider("Rope settle time", &settle, 0.5F, 60.0F, "%.1f seconds", ImGuiSliderFlags_Logarithmic)) {
+		if (float settle = RopeSim::GetSettleSeconds(); settle > 0.0F && Slider("Rope settle time", &settle, Normal{5.0F}, 0.5F, 60.0F, "%.1f seconds", ImGuiSliderFlags_Logarithmic)) {
 			RopeSim::SetSettleSeconds(settle);
 		}
 		Tip("A rope, chain or cable that is no longer tied to anything and has stayed within a small area (about 6 pixels of room) this long, even if it is still swaying, turns into terrain where it lies (wood for rope, thread and bungee, metal for chain and cable), so it stops being simulated. Off, it stays a rope.");
@@ -767,7 +865,7 @@ void DebugMan::SettingsGUI() {
 		Toggle("Gas", GasGrid::IsEnabled(), [](bool on) { GasGrid::SetEnabled(on); });
 		Tip("Smoke, toxic gas, methane and steam spread through the air and stay in closed rooms: smoke builds up where it can't get out, toxic gas sinks and pools and hurts whoever breathes it, methane rises and goes up in a chain of blasts where it meets fire, steam rises, scalds and condenses away. Smoke, toxic gas and steam block sight.");
 		if (GasGrid::IsEnabled()) {
-			if (float shown = GasGrid::GetShown(); Slider("Gas shown", &shown, 0.0F, 2.0F)) {
+			if (float shown = GasGrid::GetShown(); Slider("Gas shown", &shown, Normal{1.0F}, 0.0F, 2.0F)) {
 				GasGrid::SetShown(shown);
 			}
 			Tip("How much of the gas is drawn: green puffs for toxic gas, steam puffs, and haze for built-up smoke. 0 draws none (the gas still does what it does); methane is never drawn.");
@@ -805,7 +903,7 @@ void DebugMan::SettingsGUI() {
 		Tip("Heat haze rises from fire, burning ground, blasts and warm glows only. Off: anything bright shimmers, lamps and screens included, as before.");
 		Slider("Shockwave strength", &settings.ShockwaveStrength, 0.0F, 3.0F);
 		float hitStop = g_CameraMan.GetHitStopStrength();
-		if (Slider("Hit-stop on big blasts", &hitStop, 0.0F, 2.0F)) {
+		if (Slider("Hit-stop on big blasts", &hitStop, Normal{1.0F}, 0.0F, 2.0F)) {
 			g_CameraMan.SetHitStopStrength(hitStop);
 		}
 	};
@@ -910,7 +1008,7 @@ void DebugMan::SettingsGUI() {
 		Tip("Off (as the game comes): units walk and vehicles drive through trees, and a tree coming down falls through them too. Trees still burn, stand until their trunks burn through, fall and land on the ground, and bullets, fire and liquids still meet them. On: trees are solid to units and vehicles like any ground, and a falling tree hits them.");
 		{
 			int strayPercent = TerrainTrees::StrayBulletPercent();
-			if (SliderI("Stray bullets that hit trees (%)", &strayPercent, 0, 100)) {
+			if (SliderI("Stray bullets that hit trees (%)", &strayPercent, Normal{5}, 0, 100)) {
 				TerrainTrees::SetStrayBulletPercent(strayPercent);
 			}
 		}
@@ -961,7 +1059,7 @@ void DebugMan::SettingsGUI() {
 		Tip("How much more easily a falling tree's leaves (and grass) come off and break up when it lands than the piece itself breaks: at 4 a landing at a quarter of the speed strips as many, and a hard one nearly all of them. A clump of nothing but leaves comes apart this much more easily too. 1: as easily as the rest.");
 		{
 			int litterPercent = static_cast<int>(std::round(tuning.LeafLitter * 100.0F));
-			if (SliderI("Leaves left on the ground (%)", &litterPercent, 0, 100)) {
+			if (SliderI("Leaves left on the ground (%)", &litterPercent, Normal{static_cast<int>(std::round(*NormalOf(&tuning.LeafLitter) * 100.0F))}, 0, 100)) {
 				tuning.LeafLitter = static_cast<float>(litterPercent) / 100.0F;
 			}
 		}
@@ -1032,7 +1130,7 @@ void DebugMan::SettingsGUI() {
 			}
 		}
 		float cameraZoom = g_FrameMan.GetCameraZoom();
-		if (Slider("Camera zoom", &cameraZoom, FrameMan::c_MinCameraZoom, FrameMan::c_MaxCameraZoom, "%.2fx")) {
+		if (Slider("Camera zoom", &cameraZoom, Normal{1.0F}, FrameMan::c_MinCameraZoom, FrameMan::c_MaxCameraZoom, "%.2fx")) {
 			g_FrameMan.SetCameraZoom(cameraZoom);
 		}
 		Tip("Ctrl + mouse wheel in a game, or the wheel alone in the sandbox's view from above.");
@@ -1101,7 +1199,7 @@ void DebugMan::SettingsGUI() {
 
 	auto gameAndHUD = [&]() {
 		float timeScale = g_TimerMan.GetTimeScale();
-		if (Slider("Game speed", &timeScale, 0.1F, 4.0F, "%.2fx", ImGuiSliderFlags_Logarithmic)) {
+		if (Slider("Game speed", &timeScale, Normal{1.0F}, 0.1F, 4.0F, "%.2fx", ImGuiSliderFlags_Logarithmic)) {
 			g_TimerMan.SetTimeScale(timeScale);
 		}
 		if (Plain() && ToolUI::Button("Normal speed")) {
@@ -1122,12 +1220,12 @@ void DebugMan::SettingsGUI() {
 		Toggle("No map wrapping", g_SettingsMan.NoSceneWrap(), [](bool on) { g_SettingsMan.SetNoSceneWrap(on); });
 		Tip("Every map has hard left and right edges and one copy of the world, instead of looping round. Takes effect when the next map loads.");
 		float bleedOut = g_SettingsMan.BleedOutChance();
-		if (Slider("Wounds that keep bleeding", &bleedOut, 0.0F, 100.0F, "%.0f%%")) {
+		if (Slider("Wounds that keep bleeding", &bleedOut, Normal{0.0F}, 0.0F, 100.0F, "%.0f%%")) {
 			g_SettingsMan.SetBleedOutChance(bleedOut);
 		}
 		Tip("Every wound bleeds, and most stop after a while. This is the chance one keeps on bleeding instead, so the unit, players' and every other, keeps losing health until it's patched up or bleeds out. 0 is as before: wounds stop when they always did. 100: every wound keeps bleeding.");
 		float bleedTime = g_SettingsMan.WoundBleedTime();
-		if (Slider("Wound bleed time", &bleedTime, 0.1F, 10.0F, "%.2fx", ImGuiSliderFlags_Logarithmic)) {
+		if (Slider("Wound bleed time", &bleedTime, Normal{1.0F}, 0.1F, 10.0F, "%.2fx", ImGuiSliderFlags_Logarithmic)) {
 			g_SettingsMan.SetWoundBleedTime(bleedTime);
 		}
 		Tip("How long a wound bleeds before it stops, as a multiple of normal, for the unit, players' and every other. Longer bleeds out more health: 2x bleeds twice as long and takes twice the health, 0.5x half. A plain flesh wound bleeds for about half a minute at 1x. Wounds kept bleeding by the setting above never stop either way. Takes effect on new wounds. 1x is normal.");
@@ -1139,7 +1237,7 @@ void DebugMan::SettingsGUI() {
 		Toggle("Passengers fire from vehicles", g_SettingsMan.PassengersFireFromVehicles(), [](bool on) { g_SettingsMan.SetPassengersFireFromVehicles(on); });
 		Tip("Units riding in the passenger seats of the vehicles built for it (the cart, boats, buggy, Moonhopper and Gunship) shoot out with the guns they hold: the AI at the nearest enemy in sight, your own unit where you aim. Their shots go through their own vehicle and its crew. The driver never shoots, and gunners man the vehicle's gun as before.");
 		float shipClearance = g_SettingsMan.ShipGroundClearance();
-		if (Slider("Ship ground clearance", &shipClearance, 0.0F, 200.0F, "%.0f px")) {
+		if (Slider("Ship ground clearance", &shipClearance, Normal{12.0F}, 0.0F, 200.0F, "%.0f px")) {
 			g_SettingsMan.SetShipGroundClearance(shipClearance);
 		}
 		Tip("How close flying ships (the Gunship and Frigate) fly to the ground when they're sent down low: the gap kept between the bottom of the hull and the ground, on the way and where they stop, for the AI's ships and yours alike. They still climb over hills in their way and rise higher for a clear shot. A cautious order flies up to a hull's height higher. Dropping passengers off, they hover a little higher so there is room to get out. 12 px is normal: just clear of the ground.");
@@ -1147,17 +1245,17 @@ void DebugMan::SettingsGUI() {
 			g_SettingsMan.SetShipGroundClearance(12.0F);
 		}
 		float graceZone = g_SettingsMan.ShipGraceZone();
-		if (Slider("Ship room past map edges", &graceZone, 0.0F, 700.0F, "%.0f px")) {
+		if (Slider("Ship room past map edges", &graceZone, Normal{400.0F}, 0.0F, 700.0F, "%.0f px")) {
 			g_SettingsMan.SetShipGraceZone(graceZone);
 		}
 		Tip("How far flying ships (the Gunship and Frigate) can go above the top of the map, and past its sides where it doesn't wrap, before they leave for orbit. With room up there they can fly over buildings at the very top of the map and drop people onto them, and you can send them there. Drop ships and rockets still leave just over the edge. 0 is the old line. 400 px is normal.");
 		float overscroll = g_SettingsMan.CameraOverscroll();
-		if (Slider("Camera scroll past map edges", &overscroll, 0.0F, 2000.0F, "%.0f px")) {
+		if (Slider("Camera scroll past map edges", &overscroll, Normal{400.0F}, 0.0F, 2000.0F, "%.0f px")) {
 			g_SettingsMan.SetCameraOverscroll(overscroll);
 		}
 		Tip("How far the camera can scroll or pan past the top, sides and bottom of a map that doesn't wrap, so what's at the edge can be brought into the middle of the screen. 0 stops at the edge as before. 400 px is normal.");
 		float terrainDamage = g_SettingsMan.WeaponTerrainDamage();
-		if (Slider("Weapon damage to terrain", &terrainDamage, 0.1F, 20.0F, "%.2fx", ImGuiSliderFlags_Logarithmic)) {
+		if (Slider("Weapon damage to terrain", &terrainDamage, Normal{1.0F}, 0.1F, 20.0F, "%.2fx", ImGuiSliderFlags_Logarithmic)) {
 			g_SettingsMan.SetWeaponTerrainDamage(terrainDamage);
 		}
 		Tip("How hard bullets, shrapnel and other weapon fire strike the ground and buildings, as a multiple of normal. Higher, a bullet cuts through stronger stuff (concrete, then metal) and goes further into it before it stops; lower, shots barely mark the ground. Diggers dig by the same rule, so they scale too. Damage to units is unchanged. 1x is normal.");
@@ -1182,21 +1280,10 @@ void DebugMan::SettingsGUI() {
 			for (const ToughnessSlider& slider: sliders) {
 				float toughness = g_SettingsMan.Toughness(slider.Kind);
 				const char* format = g_SettingsMan.IsInvincible(slider.Kind) ? "Invincible" : "%.2fx";
-				if (Slider(slider.Label, &toughness, SettingsMan::c_ToughnessMin, SettingsMan::c_ToughnessInvincible, format, ImGuiSliderFlags_Logarithmic)) {
+				if (Slider(slider.Label, &toughness, Normal{1.0F}, SettingsMan::c_ToughnessMin, SettingsMan::c_ToughnessInvincible, format, ImGuiSliderFlags_Logarithmic)) {
 					g_SettingsMan.SetToughness(slider.Kind, toughness);
 				}
 				Tip((std::string(slider.Tip) + c_ToughnessHow).c_str());
-				if (s_LastShown) {
-					ImGui::PushID(slider.Label);
-					ImGui::SameLine();
-					ImGui::BeginDisabled(toughness == 1.0F);
-					if (ToolUI::Button("Reset")) {
-						g_SettingsMan.SetToughness(slider.Kind, 1.0F);
-					}
-					ImGui::SetItemTooltip("Back to 1x, as the game comes.");
-					ImGui::EndDisabled();
-					ImGui::PopID();
-				}
 			}
 		}
 		Check("Team colour on units", &settings.UnitTeamColorParts);
@@ -1222,7 +1309,7 @@ void DebugMan::SettingsGUI() {
 		Toggle("Modern HUD", ModernHUD::IsEnabled(), [](bool on) { ModernHUD::SetEnabled(on); });
 		Toggle("Notices at the top of the screen", g_SettingsMan.ShowNotices(), [](bool on) { g_SettingsMan.SetShowNotices(on); });
 		Tip("Short notes at the top of the screen for a few seconds when something is done that is hard to see otherwise: \"Game saved\", a preset loaded, \"Nothing to undo\", a camera spot kept, or a sandbox tool used while its simulation is off.");
-		Slider("UI lighting", &ToolLight::Strength, 0.0F, 2.0F);
+		Slider("UI lighting", &ToolLight::Strength, Normal{1.0F}, 0.0F, 2.0F);
 		Tip("The menus and HUD lit as if they were in the world: the light brightens the side of each panel facing it, shades the far side, catches the edges towards it and casts the panel's shadow away from it. They are never dimmed past reading. 0 turns it off.");
 		{
 			int source = static_cast<int>(ToolLight::Mode);
@@ -1232,11 +1319,11 @@ void DebugMan::SettingsGUI() {
 			Tip("Follow the game: the game's sun by day and moon by night, moving with the time of day, in the sky's colour of the hour (gold at dawn and dusk), with lightning flashing on the panels. Out of a game, a steady light from the top left. Its own light: a light just for the menus and HUD, set below, that the game's time of day and weather don't touch.");
 		}
 		if (ToolLight::Mode == ToolLight::Source::OwnLight) {
-			Slider("UI light angle", &ToolLight::OwnAngle, -90.0F, 90.0F, "%.0f");
+			Slider("UI light angle", &ToolLight::OwnAngle, Normal{-35.0F}, -90.0F, 90.0F, "%.0f");
 			Tip("Where the UI's own light comes from, in degrees from straight above: negative from the left, positive from the right.");
-			Slider("UI light height", &ToolLight::OwnHeight, 0.0F, 1.0F);
+			Slider("UI light height", &ToolLight::OwnHeight, Normal{0.6F}, 0.0F, 1.0F);
 			Tip("How high the UI's own light stands: low throws long shadows, high short ones.");
-			Slider("UI light brightness", &ToolLight::OwnBrightness, 0.0F, 1.0F);
+			Slider("UI light brightness", &ToolLight::OwnBrightness, Normal{0.8F}, 0.0F, 1.0F);
 			Tint("UI light colour", ToolLight::OwnColor);
 		}
 		Check("UI lit by nearby lamps and fires (may crash)", &ToolLight::NearbyLights);
@@ -1251,39 +1338,39 @@ void DebugMan::SettingsGUI() {
 		Tip("The old wheels on right click, for a unit you play and for the sandbox's command tool, instead of the unit menu and the action menu: lists above the pointer with every order and the weapons and movement rules on one layer. (A gamepad, and players after the first, always get the unit's wheel.)");
 		Toggle("Unit menu opens on a click", g_SettingsMan.UnitMenuClickToOpen(), [](bool on) { g_SettingsMan.SetUnitMenuClickToOpen(on); });
 		Tip("On: a right click opens the menu of the unit you play (its inventory, what it can do, its rules) and it stays up till you click away from it or right click again. Off: it is up only while you hold the right button, and letting go over a row picks it. (Holding, moving onto a row and letting go picks it either way.)");
-		if (float scale = g_SettingsMan.UnitMenuTimeScale(); Slider("Time while the unit menu is up", &scale, 0.05F, 1.0F, "%.2fx")) {
+		if (float scale = g_SettingsMan.UnitMenuTimeScale(); Slider("Time while the unit menu is up", &scale, Normal{0.25F}, 0.05F, 1.0F, "%.2fx")) {
 			g_SettingsMan.SetUnitMenuTimeScale(scale);
 		}
 		Tip("How fast time runs while the menu of the unit you play is up: 1x as ever, lower slows the world down so you can choose. Back to the speed it was when the menu goes.");
 		Toggle("Smooth HUD text", TextOverlay::IsEnabled(), [](bool on) { TextOverlay::SetEnabled(on); });
 		int frameCap = g_WindowMan.GetFrameCap();
-		if (SliderI("Frame cap (0 = none)", &frameCap, 0, 360)) {
+		if (SliderI("Frame cap (0 = none)", &frameCap, Normal{0}, 0, 360)) {
 			g_WindowMan.SetFrameCap(frameCap > 0 && frameCap < 30 ? 30 : frameCap);
 		}
 		Heading("Battle alerts and display (Battle Command)");
 		Toggle("Battle alerts", g_SettingsMan.ShowBattleAlerts(), [](bool on) { g_SettingsMan.SetShowBattleAlerts(on); });
 		Tip("What needs your eye in a battle (your units under attack or falling, a strike coming in, your flag taken...) listed at the top left of the view for a while, each to click and look there. Off: not listed, but still kept in the alert log, and Space and Shift+Space still look at them.");
-		if (int lines = g_SettingsMan.BattleAlertLines(); SliderI("Battle alert lines", &lines, 1, 12)) {
+		if (int lines = g_SettingsMan.BattleAlertLines(); SliderI("Battle alert lines", &lines, Normal{6}, 1, 12)) {
 			g_SettingsMan.SetBattleAlertLines(lines);
 		}
 		Tip("The most alerts listed at once: a new one pushes the oldest off. 6 as before.");
-		if (int seconds = g_SettingsMan.BattleAlertSeconds(); SliderI("Battle alert time", &seconds, 3, 60, "%d s")) {
+		if (int seconds = g_SettingsMan.BattleAlertSeconds(); SliderI("Battle alert time", &seconds, Normal{12}, 3, 60, "%d s")) {
 			g_SettingsMan.SetBattleAlertSeconds(seconds);
 		}
 		Tip("How long an alert stays listed, the last two seconds fading. 12 s as before.");
 		Toggle("Battle alert sounds", g_SettingsMan.BattleAlertSounds(), [](bool on) { g_SettingsMan.SetBattleAlertSounds(on); });
 		Tip("A short sound as each alert comes, one for each kind (under attack, a unit lost, your brain or flag, a strike, reinforcements...), so you hear what needs you without looking. Several at once make one sound.");
-		if (float volume = g_SettingsMan.BattleAlertVolume() * 100.0F; Slider("Battle alert volume", &volume, 0.0F, 100.0F, "%.0f%%")) {
+		if (float volume = g_SettingsMan.BattleAlertVolume() * 100.0F; Slider("Battle alert volume", &volume, Normal{60.0F}, 0.0F, 100.0F, "%.0f%%")) {
 			g_SettingsMan.SetBattleAlertVolume(volume / 100.0F);
 		}
 		Tip("How loud the alert sounds are, under the game's own sound volume.");
 		Toggle("Kill feed", g_SettingsMan.ShowBattleKillFeed(), [](bool on) { g_SettingsMan.SetShowBattleKillFeed(on); });
 		Tip("Who killed whom in a battle, listed at the top right of the view, each side in its colour.");
-		if (int lines = g_SettingsMan.BattleKillLines(); SliderI("Kill feed lines", &lines, 1, 12)) {
+		if (int lines = g_SettingsMan.BattleKillLines(); SliderI("Kill feed lines", &lines, Normal{6}, 1, 12)) {
 			g_SettingsMan.SetBattleKillLines(lines);
 		}
 		Tip("The most kills listed at once: a new one pushes the oldest off. 6 as before.");
-		if (int seconds = g_SettingsMan.BattleKillSeconds(); SliderI("Kill feed time", &seconds, 3, 60, "%d s")) {
+		if (int seconds = g_SettingsMan.BattleKillSeconds(); SliderI("Kill feed time", &seconds, Normal{10}, 3, 60, "%d s")) {
 			g_SettingsMan.SetBattleKillSeconds(seconds);
 		}
 		Tip("How long a kill stays listed, the last two seconds fading. 10 s as before.");
@@ -1306,7 +1393,7 @@ void DebugMan::SettingsGUI() {
 		Tip("Units say short lines over their heads when their AI does something: \"Take cover!\", \"Reloading!\", \"Got one!\". The lines are in Base.rte/Speech.ini, and mods can add their own.");
 		if (UnitSpeech::IsEnabled()) {
 			int chance = UnitSpeech::GetChance();
-			if (SliderI("Speech chance", &chance, 0, 100, "%d%%")) {
+			if (SliderI("Speech chance", &chance, Normal{76}, 0, 100, "%d%%")) {
 				UnitSpeech::SetChance(chance);
 			}
 			Tip("How likely a unit is to say something when it does one of the things below. 100%: nearly every time (a unit still waits a few seconds before saying the same thing again, and a squad doesn't all say it at once).");
@@ -1318,12 +1405,12 @@ void DebugMan::SettingsGUI() {
 			Tip("A voice for each line a unit on your screen says, made in the game from the line's words: most units babble in a voice of their own, robots speak the words, all over a radio. What each kind of unit sounds like is in Base.rte/Voices.ini, and mods can add their own.");
 			if (UnitSpeechVoice::IsEnabled()) {
 				int volume = UnitSpeechVoice::GetVolume();
-				if (SliderI("Speech volume", &volume, 0, 100, "%d%%")) {
+				if (SliderI("Speech volume", &volume, Normal{70}, 0, 100, "%d%%")) {
 					UnitSpeechVoice::SetVolume(volume);
 				}
 				Tip("How loud the speech voices are, against units' other sounds. They also follow the sound mixer's Voices slider (Options, Audio), with pain and death cries.");
 				int radio = UnitSpeechVoice::GetRadio();
-				if (SliderI("Radio effect", &radio, 0, 100, "%d%%")) {
+				if (SliderI("Radio effect", &radio, Normal{75}, 0, 100, "%d%%")) {
 					UnitSpeechVoice::SetRadio(radio);
 				}
 				Tip("How much the voices sound like they come over a field radio: band-limited and crackly, with a squelch as each line starts and ends, and a roger beep after Serious lines. 0%: clean voices.");
@@ -1346,7 +1433,7 @@ void DebugMan::SettingsGUI() {
 					const int share = toneTotal > 0 ? (weight * 100 + toneTotal / 2) / toneTotal : 0;
 					std::string label = tone + " lines, share of the mix##SpeechToneMix" + tone;
 					std::string format = "%d (" + std::to_string(share) + "%% of lines)";
-					if (SliderI(label.c_str(), &weight, 0, 100, format.c_str())) {
+					if (SliderI(label.c_str(), &weight, Normal{UnitSpeech::GetNormalToneWeight(tone)}, 0, 100, format.c_str())) {
 						UnitSpeech::SetToneWeight(tone, weight);
 					}
 					Tip("How often a unit says a line of this tone against the others: Funny 90 and Serious 10 is nine funny lines to one serious. "
@@ -1461,7 +1548,7 @@ void DebugMan::SettingsGUI() {
 		Tip("A unit that spots an enemy tells its team: AI teammates close by turn to face it, and the team remembers where each enemy was last seen for a minute. Units that lost sight of an enemy look there, AI units on patrol go and check the last place they saw your units, and idle ones keep watch toward it. Off: each unit knows only what it sees.");
 		{
 			float suppression = g_SettingsMan.AISuppression();
-			if (Slider("AI suppression and morale", &suppression, 0.0F, 2.0F, "%.2fx")) {
+			if (Slider("AI suppression and morale", &suppression, Normal{1.0F}, 0.0F, 2.0F, "%.2fx")) {
 				g_SettingsMan.SetAISuppression(suppression);
 			}
 			Tip("How much fire pins AI units down: shots cracking past and blasts nearby make them duck, crawl, run for cover and shoot worse, and losses, wounds and fire shake their nerve until they pull back. 0 turns it off; machines never feel it, and Unfair AI ignores it.");
@@ -1474,14 +1561,14 @@ void DebugMan::SettingsGUI() {
 		Tip("AI soldiers route by lifts and moving platforms. On: a unit waiting at a stop calls the deck to it, and a rider sends it on to the stop it wants; the deck then goes back to its own round. Off: they wait for a shuttling deck to come round on its own, and leave alone lifts that only come when called.");
 		{
 			float dig = g_SettingsMan.AIDigWillingness();
-			if (Slider("AI digging", &dig, 0.0F, 2.0F, "%.2fx")) {
+			if (Slider("AI digging", &dig, Normal{1.0F}, 0.0F, 2.0F, "%.2fx")) {
 				g_SettingsMan.SetAIDigWillingness(dig);
 			}
 			Tip("How readily units carrying a digger tunnel through ground instead of going round it: at 1 a short cut through a hill or a bank of earth beats a long walk round, the softer the ground and the stronger the digger the sooner. Units only dig what their digger's regular rounds cut, and give up and go round when a cut stops getting anywhere. 0 digs only when there is no other way.");
 		}
 		{
 			float threats = g_SettingsMan.AIThreatAvoidance();
-			if (Slider("Safe routes in game modes", &threats, 0.0F, 2.0F, "%.2fx")) {
+			if (Slider("Safe routes in game modes", &threats, Normal{1.0F}, 0.0F, 2.0F, "%.2fx")) {
 				g_SettingsMan.SetAIThreatAvoidance(threats);
 			}
 			Tip("How much a unit that a game mode wants kept safe weighs the enemies along a route when picking one: a capture the flag carrier taking an enemy flag home. At 1 a way past a crowd of enemies loses to a longer one past none: twenty in the way are worth walking most of a large map round, while a lone sentry is only skirted when going round is short. Places they are sent to are reached however many enemies are there. Every other unit takes the shortest way. 0 turns it off.");
@@ -1496,7 +1583,7 @@ void DebugMan::SettingsGUI() {
 		Tip("Take control of one of your units with others selected and they follow it as its squad, fighting as they go; while you fire, they go for the enemy you're aiming at. T: hold where they are, or follow again. X: regroup on you. Let go of the unit and they hold where they stand. Off: they stay where they were.");
 		{
 			float spawnDiggers = g_SettingsMan.AISpawnDiggerChance();
-			if (Slider("Units spawn with a digger", &spawnDiggers, 0.0F, 100.0F, "%.0f%%")) {
+			if (Slider("Units spawn with a digger", &spawnDiggers, Normal{0.0F}, 0.0F, 100.0F, "%.0f%%")) {
 				g_SettingsMan.SetAISpawnDiggerChance(spawnDiggers);
 			}
 			Tip("The share of units, every team's, that are handed a digger as they come into the scene, whether bought, dropped in or placed with it, if they don't carry one already. It goes in their inventory, so they keep their own guns in hand and get it out when a route calls for digging. 0 hands out none.");
@@ -1522,7 +1609,7 @@ void DebugMan::SettingsGUI() {
 		Heading("AI movement");
 		{
 			float recklessness = g_SettingsMan.AIRecklessness() * 100.0F;
-			if (Slider("AI movement recklessness", &recklessness, 0.0F, 100.0F, "%.0f%%")) {
+			if (Slider("AI movement recklessness", &recklessness, Normal{50.0F}, 0.0F, 100.0F, "%.0f%%")) {
 				g_SettingsMan.SetAIRecklessness(recklessness / 100.0F);
 			}
 			Tip("How many chances AI units take getting about. Lower: they steady themselves longer before a jetpack jump, wait for a little more fuel, and pick routes round hard jumps and long drops. Higher: quicker, riskier take-offs and routes, and more missed jumps. 50% is the designed behaviour.");
@@ -1549,12 +1636,12 @@ void DebugMan::SettingsGUI() {
 		Tip("On a risky order (a double click dragged), units with the fuel jetpack up a laddered shaft instead of climbing, and their routes count ladders as slower the riskier the order. Off: they climb ladders as a normal order does.");
 		{
 			float ladderGiveUp = g_SettingsMan.AILadderGiveUpSeconds();
-			if (Slider("Give up on a stuck ladder after", &ladderGiveUp, 0.5F, 10.0F, "%.1f s")) {
+			if (Slider("Give up on a stuck ladder after", &ladderGiveUp, Normal{1.5F}, 0.5F, 10.0F, "%.1f s")) {
 				g_SettingsMan.SetAILadderGiveUpSeconds(ladderGiveUp);
 			}
 			Tip("An AI unit climbing a ladder that stops going up (rungs shot away above, the ladder ending short, the way up blocked) lets go after this long and finds another way. 1.5 s is normal.");
 			int teamStalls = g_SettingsMan.AILadderTeamStalls();
-			if (SliderI("Team avoids a ladder after", &teamStalls, 1, 5, "%d stuck units")) {
+			if (SliderI("Team avoids a ladder after", &teamStalls, Normal{2}, 1, 5, "%d stuck units")) {
 				g_SettingsMan.SetAILadderTeamStalls(teamStalls);
 			}
 			Tip("How many times units of a team must get stuck on the same ladder within a minute before the whole team avoids it for a while. Until then only the unit that got stuck avoids it. 2 is normal.");
@@ -1569,17 +1656,17 @@ void DebugMan::SettingsGUI() {
 		Heading("Carry weight");
 		{
 			float carried = g_SettingsMan.CarriedWeightMultiplier();
-			if (Slider("Carried weight", &carried, 0.0F, 5.0F, "%.2fx")) {
+			if (Slider("Carried weight", &carried, Normal{1.0F}, 0.0F, 5.0F, "%.2fx")) {
 				g_SettingsMan.SetCarriedWeightMultiplier(carried);
 			}
 			Tip("How much what a unit carries weighs: its inventory, the guns in its hands and its gold, as a multiple of their own mass. Heavier units get less from each step, fall harder and need more jetpack. 0x: carried things weigh nothing. 1x is normal.");
 			float legs = g_SettingsMan.LegStrength();
-			if (Slider("Leg strength", &legs, 0.25F, 3.0F, "%.2fx")) {
+			if (Slider("Leg strength", &legs, Normal{1.0F}, 0.25F, 3.0F, "%.2fx")) {
 				g_SettingsMan.SetLegStrength(legs);
 			}
 			Tip("How hard every unit's limbs push walking, crawling and climbing, and how high a leap of the legs goes. Weaker legs struggle more with weight, slopes and steps. 1x is normal.");
 			float slowdown = g_SettingsMan.OverloadSlowdown() * 100.0F;
-			if (Slider("Overload slowdown", &slowdown, 0.0F, 100.0F, "%.0f%%")) {
+			if (Slider("Overload slowdown", &slowdown, Normal{0.0F}, 0.0F, 100.0F, "%.0f%%")) {
 				g_SettingsMan.SetOverloadSlowdown(slowdown / 100.0F);
 			}
 			Tip("A straight cut to the walk speed and leap height of a loaded unit, on top of the physics: this much once what it carries (at the Carried weight above) weighs as much as its own body, less for a lighter load. A tenth of the speed is always kept. 0% is normal.");
@@ -1589,7 +1676,7 @@ void DebugMan::SettingsGUI() {
 			}
 			Tip("Whether a jetpack raises its thrust for the unit's load. Always: loaded units fly as well as light ones but burn fuel faster. Never: loaded units fly lower and slower on the usual fuel. As each jetpack says is normal (most do make up for it).");
 			float fuel = g_SettingsMan.JetpackFuelMultiplier();
-			if (Slider("Jetpack fuel", &fuel, 0.25F, 5.0F, "%.2fx")) {
+			if (Slider("Jetpack fuel", &fuel, Normal{1.0F}, 0.25F, 5.0F, "%.2fx")) {
 				g_SettingsMan.SetJetpackFuelMultiplier(fuel);
 			}
 			Tip("How much fuel every jetpack holds, as a multiple of its own. More lets units fly longer; a fuller tank also takes longer to refill. 1x is normal.");
@@ -1609,6 +1696,7 @@ void DebugMan::SettingsGUI() {
 	// and dragged goes from normal to fully direct (the shortest way whatever it takes) the further it is dragged.
 	auto battleBehavior = [&]() {
 		SettingsMan::DirectOrderTuning& direct = g_SettingsMan.DirectOrders();
+		const SettingsMan::DirectOrderTuning normal;
 		if (Plain()) {
 			ImGui::TextWrapped("How you place an RTS order (move, attack-move, defend, dig to) says how urgent it is. One click: cautious, walking round jumps and waiting for fuel. A double click: a normal order. A double click held and dragged: riskier the further you drag, up to fully direct (the shortest way there whatever it takes) at the full risk distance; the way you drag is the way they face when they get there. The Direct settings say how hard a full drag pushes it, the Cautious ones how careful one click is.");
 		}
@@ -1616,12 +1704,12 @@ void DebugMan::SettingsGUI() {
 			Slider("Full risk drag distance", &direct.RiskDragPixels, 200.0F, 1200.0F, "%.0f px");
 			Tip("How far on screen a double click is dragged for a fully direct order, a suicide mission. Risk rises slowly and then steeply: half the distance is about 35%, four fifths about 70%. 600 px is normal.");
 			float straight = direct.StraightFlightRisk * 100.0F;
-			if (Slider("Straight flight from", &straight, 50.0F, 100.0F, "%.0f%% risk")) {
+			if (Slider("Straight flight from", &straight, Normal{normal.StraightFlightRisk * 100.0F}, 50.0F, 100.0F, "%.0f%% risk")) {
 				direct.StraightFlightRisk = straight / 100.0F;
 			}
 			Tip("From this much risk, a unit with a jetpack lights it and flies at the place it was sent, straight or up and over what is in the way, a long way off on a few such flights, instead of taking the route. 90% is normal.");
 			float sky = direct.SkyRouteRisk * 100.0F;
-			if (Slider("Sky route from", &sky, 50.0F, 100.0F, "%.0f%% risk")) {
+			if (Slider("Sky route from", &sky, Normal{normal.SkyRouteRisk * 100.0F}, 50.0F, 100.0F, "%.0f%% risk")) {
 				direct.SkyRouteRisk = sky / 100.0F;
 			}
 			Tip("From this much risk, on any order, a unit with a jetpack out in the open (open sky over it) may fly up into the sky and down onto the place it was sent, as high as it needs to clear what is between, when that is quicker than the ground route. It waits for the fuel to do it. 80% is normal.");
@@ -1629,12 +1717,12 @@ void DebugMan::SettingsGUI() {
 			Tip("Whether units on a risky order dive on flights across open ground: go prone in the air so the jetpack pushes them along, for speed rather than a controlled flight. The two settings below say from what risk and how often.");
 			ImGui::BeginDisabled(!direct.Dives);
 			float dive = direct.DiveRisk * 100.0F;
-			if (Slider("Dive from", &dive, 50.0F, 100.0F, "%.0f%% risk")) {
+			if (Slider("Dive from", &dive, Normal{normal.DiveRisk * 100.0F}, 50.0F, 100.0F, "%.0f%% risk")) {
 				direct.DiveRisk = dive / 100.0F;
 			}
 			Tip("From this much risk, a unit flying across open ground may dive: go prone in the air so the jetpack pushes it along, for speed rather than a controlled flight. It rights itself before the landing. 80% is normal.");
 			float diveChance = direct.DiveChance * 100.0F;
-			if (Slider("Dive chance", &diveChance, 0.0F, 100.0F, "%.0f%%")) {
+			if (Slider("Dive chance", &diveChance, Normal{normal.DiveChance * 100.0F}, 0.0F, 100.0F, "%.0f%%")) {
 				direct.DiveChance = diveChance / 100.0F;
 			}
 			Tip("The chance a flight is dived at the \"Dive from\" risk. It rises to every flight at full risk. 25% is normal.");
@@ -1643,22 +1731,22 @@ void DebugMan::SettingsGUI() {
 		Heading("Direct (full drag): jetpack");
 		{
 			float preference = 1.0F / std::max(direct.FlightCostScale, 0.01F);
-			if (Slider("Jetpack preference", &preference, 1.0F, 5.0F, "%.1fx")) {
+			if (Slider("Jetpack preference", &preference, Normal{1.0F / std::max(normal.FlightCostScale, 0.01F)}, 1.0F, 5.0F, "%.1fx")) {
 				direct.FlightCostScale = 1.0F / preference;
 			}
 			Tip("How much more readily they jump than walk round: a jet flight costs them this many times less than it does a normal unit when the route is picked. 1x routes as usual; 2x is normal for a direct order.");
 			float fuel = direct.FuelShare * 100.0F;
-			if (Slider("Fuel tolerance", &fuel, 10.0F, 120.0F, "%.0f%% of the flight")) {
+			if (Slider("Fuel tolerance", &fuel, Normal{normal.FuelShare * 100.0F}, 10.0F, 120.0F, "%.0f%% of the flight")) {
 				direct.FuelShare = fuel / 100.0F;
 			}
 			Tip("How much of the fuel a flight needs they wait for at the take-off before going. Under 100% they go short and may come down early; 60% is normal for a direct order. (With \"AI waits for fuel\" off in AI behaviour, they never wait.)");
 			float risk = (1.0F - direct.Caution) * 100.0F;
-			if (Slider("Risk taking", &risk, 0.0F, 100.0F, "%.0f%%")) {
+			if (Slider("Risk taking", &risk, Normal{(1.0F - normal.Caution) * 100.0F}, 0.0F, 100.0F, "%.0f%%")) {
 				direct.Caution = 1.0F - risk / 100.0F;
 			}
 			Tip("How little hard jumps and long drops put them off a route: 0% weighs them as a normal unit does, 100% not at all. 90% is normal for a direct order.");
 			float steadyCut = direct.RecklessSteadyCut * 100.0F;
-			if (Slider("Recklessness cuts steadying", &steadyCut, 0.0F, 100.0F, "%.0f%%")) {
+			if (Slider("Recklessness cuts steadying", &steadyCut, Normal{normal.RecklessSteadyCut * 100.0F}, 0.0F, 100.0F, "%.0f%%")) {
 				direct.RecklessSteadyCut = steadyCut / 100.0F;
 			}
 			Tip("How much shorter the riskier the order makes their coming to a stand (still and upright) before a jet climb or jump, at full risk: 100% none at all, 50% half as long. 0% (normal): they steady as any unit does, then go straight for it.");
@@ -1675,7 +1763,7 @@ void DebugMan::SettingsGUI() {
 		Heading("Direct: route");
 		{
 			float dig = direct.DigCostScale * 100.0F;
-			if (Slider("Dig cost on a dig-to", &dig, 1.0F, 100.0F, "%.0f%%", ImGuiSliderFlags_Logarithmic)) {
+			if (Slider("Dig cost on a dig-to", &dig, Normal{normal.DigCostScale * 100.0F}, 1.0F, 100.0F, "%.0f%%", ImGuiSliderFlags_Logarithmic)) {
 				direct.DigCostScale = dig / 100.0F;
 			}
 			Tip("What tunnelling a node costs on a direct dig-to, as a share of a normal unit's price. Lower digs through rather than walking round; 2% (normal) tunnels straight through anything its digger cuts. A normal dig-to is 25%.");
@@ -1695,7 +1783,7 @@ void DebugMan::SettingsGUI() {
 			Slider("Caution", &direct.CautiousCaution, 1.0F, 4.0F, "%.1fx");
 			Tip("How much hard jumps and long drops put them off a route, and how long they steady themselves before a take-off, as a multiple of a normal unit's. 2x is normal for a cautious order.");
 			float fuel = direct.CautiousFuelShare * 100.0F;
-			if (Slider("Fuel kept in hand", &fuel, 100.0F, 150.0F, "%.0f%% of the flight")) {
+			if (Slider("Fuel kept in hand", &fuel, Normal{normal.CautiousFuelShare * 100.0F}, 100.0F, 150.0F, "%.0f%% of the flight")) {
 				direct.CautiousFuelShare = fuel / 100.0F;
 			}
 			Tip("How much of the fuel a flight needs they wait for at the take-off, never more than the tank holds. 120% is normal for a cautious order.");
@@ -1857,12 +1945,12 @@ void DebugMan::SettingsGUI() {
 		Tip("AI units with no jetpack, or an empty one, push off whatever they're touching towards where they're going, and grab hold when they get there. Off: they stay where they are.");
 		{
 			float speed = ZeroGravity::FlySpeed();
-			if (Slider("Flying speed (m/s)", &speed, 1.0F, 20.0F, "%.1f")) {
+			if (Slider("Flying speed (m/s)", &speed, Normal{6.0F}, 1.0F, 20.0F, "%.1f")) {
 				ZeroGravity::SetFlySpeed(speed);
 			}
 			Tip("How fast AI units fly between points in zero gravity, before braking for the last one.");
 			float push = ZeroGravity::PushSpeed();
-			if (Slider("Push-off speed (m/s)", &push, 1.0F, 15.0F, "%.1f")) {
+			if (Slider("Push-off speed (m/s)", &push, Normal{4.0F}, 1.0F, 15.0F, "%.1f")) {
 				ZeroGravity::SetPushSpeed(push);
 			}
 			Tip("How hard a push-off sends a unit (gentler when the point is close).");
