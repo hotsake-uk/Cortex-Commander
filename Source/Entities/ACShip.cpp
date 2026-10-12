@@ -96,6 +96,9 @@ void ACShip::Clear() {
 	m_RouteSpot.Reset();
 	m_RouteBest = FLT_MAX;
 	m_RouteReplans = 0;
+	m_UnstickStep = -1;
+	m_UnstickTries = 0;
+	m_UnstickSide = 1.0F;
 	m_CombatTargetID = 0;
 	m_CombatSpot.Reset();
 	m_HasCombatSpot = false;
@@ -400,6 +403,8 @@ bool ACShip::FlyRouteTo(const Vector& spot) {
 	m_RouteSpot = spot;
 	m_RouteBest = FLT_MAX;
 	m_RouteReplans = 0;
+	m_UnstickTries = 0;
+	m_UnstickStep = -1;
 	m_RouteProgressTimer.Reset();
 	m_RouteCheckTimer.Reset();
 	// Open air all the way there for its whole hull, and no call to keep clear of anyone (or a full-risk order, which doesn't): straight there.
@@ -924,6 +929,11 @@ void ACShip::UpdateAutopilot() {
 	if (UpdateRam()) {
 		return;
 	}
+	// (Working itself free, UpdateRoute: to the move it is making.)
+	if (m_UnstickStep >= 0) {
+		SteerTo(m_UnstickPoint, true, 0.5F);
+		return;
+	}
 	UpdateFlight();
 }
 
@@ -1245,16 +1255,6 @@ bool ACShip::AirPath(const Vector& from, const Vector& to, float care, std::dequ
 			open[static_cast<size_t>(row) * columns + column] = anySolid(at.m_X - halfWidth, at.m_Y - hullTop, at.m_X + halfWidth, at.m_Y + hullUnder) ? 0 : 1;
 		}
 	}
-	// How high each open step is over the next shut one under it, for keeping low.
-	std::vector<float> height(static_cast<size_t>(columns) * rows, 0.0F);
-	for (int column = 0; column < columns; ++column) {
-		float over = 0.0F;
-		for (int row = rows - 1; row >= 0; --row) {
-			const size_t index = static_cast<size_t>(row) * columns + column;
-			over = open[index] ? over + c_Cell : 0.0F;
-			height[index] = over;
-		}
-	}
 	auto indexOf = [&](const Vector& local) {
 		const int column = static_cast<int>(std::floor((local.m_X - left) / c_Cell));
 		const int row = static_cast<int>(std::floor((local.m_Y - top) / c_Cell));
@@ -1302,11 +1302,9 @@ bool ACShip::AirPath(const Vector& from, const Vector& to, float care, std::dequ
 			}
 		}
 	}
-	// What a step costs: its length, more the higher it is over the ground under it (it keeps low unless round is much further), and on a
-	// cautious order more near enemies (and no keeping low: it would rather be high over them).
-	const float keepLow = care > 0.0F ? 0.0F : 0.6F;
+	// What a step costs: its length (the shortest way, however high that takes it), and on a cautious order more near enemies.
 	auto stepCost = [&](int index, float length) {
-		float scale = 1.0F + keepLow * std::clamp(height[static_cast<size_t>(index)] / 480.0F, 0.0F, 1.0F);
+		float scale = 1.0F;
 		if (!enemies.empty()) {
 			const Vector at = centre(index % columns, index / columns);
 			for (const Vector& enemy: enemies) {
@@ -1412,21 +1410,40 @@ bool ACShip::AirPath(const Vector& from, const Vector& to, float care, std::dequ
 }
 
 void ACShip::UpdateRoute() {
-	if (m_Route.empty()) {
-		return;
-	}
-	// Any other order (it holds, or is sent somewhere else) or the player flying it ends the route.
-	if (m_Controller.IsPlayerControlled() || m_AIMode != AIMODE_GOTO) {
+	// Any other order (it holds, or is sent somewhere else) or the player flying it ends the route and any working free.
+	if (m_Controller.IsPlayerControlled() || m_AIMode != AIMODE_GOTO || m_RamID) {
 		m_Route.clear();
+		m_UnstickStep = -1;
+		m_RouteBest = FLT_MAX;
+		m_RouteProgressTimer.Reset();
 		return;
 	}
-	const float distance = g_SceneMan.ShortestDistance(m_Pos, m_Route.front(), g_SceneMan.SceneWrapsX()).GetMagnitude();
-	// On to the next point once near the one it is flying to.
-	if (distance < std::max(GetRadius(), 40.0F)) {
+	const bool wraps = g_SceneMan.SceneWrapsX();
+	// Working itself free: a few short moves off where it got stuck, back and up, up, back and down, on and up, each skipped where its hull
+	// hasn't the room, then the way there planned again from where that leaves it.
+	if (m_UnstickStep >= 0) {
+		if (!m_UnstickTimer.IsPastSimMS(700)) {
+			return;
+		}
+		m_UnstickTimer.Reset();
+		if (NextUnstickMove()) {
+			return;
+		}
+		const int tries = m_UnstickTries;
+		m_Route.clear();
+		FlyRouteTo(m_UnstickGoal);
+		m_UnstickTries = tries;
+		return;
+	}
+	const Vector target = m_Route.empty() ? m_Autopilot.waypoint : m_Route.front();
+	const float distance = g_SceneMan.ShortestDistance(m_Pos, target, wraps).GetMagnitude();
+	// On to the next point of its route once near the one it is flying to.
+	if (!m_Route.empty() && distance < std::max(GetRadius(), 40.0F)) {
 		m_Route.pop_front();
 		m_RouteBest = FLT_MAX;
 		m_RouteProgressTimer.Reset();
 		m_RouteReplans = 0;
+		m_UnstickTries = 0;
 		if (!m_Route.empty()) {
 			AutopilotGoTo(m_Route.front());
 		}
@@ -1436,21 +1453,47 @@ void ACShip::UpdateRoute() {
 		m_RouteBest = distance;
 		m_RouteProgressTimer.Reset();
 	}
-	// The way to the next point found blocked (dug, built, a door shut), or no nearer it for a couple of seconds (caught on something):
-	// planned again from where it is, a few times running at most.
-	bool blocked = false;
-	if (m_RouteCheckTimer.IsPastSimMS(500)) {
+	// The way to its route's next point found blocked (dug, built, a door shut): planned again from where it is, a few times running at most.
+	if (!m_Route.empty() && m_RouteCheckTimer.IsPastSimMS(500)) {
 		m_RouteCheckTimer.Reset();
-		blocked = !HullLineClear(m_Pos, m_Route.front());
+		if (m_RouteReplans < 3 && !HullLineClear(m_Pos, m_Route.front())) {
+			const int replans = m_RouteReplans + 1;
+			const int tries = m_UnstickTries;
+			m_Route.clear();
+			FlyRouteTo(m_RouteSpot);
+			m_RouteReplans = replans;
+			m_UnstickTries = tries;
+			return;
+		}
 	}
-	if ((blocked || m_RouteProgressTimer.IsPastSimMS(2500)) && m_RouteReplans < 3) {
-		++m_RouteReplans;
-		const int replans = m_RouteReplans;
-		const Vector spot = m_RouteSpot;
-		m_Route.clear();
-		FlyRouteTo(spot);
-		m_RouteReplans = replans;
+	// No nearer where it is going for a couple of seconds, not there yet and barely moving: caught on something. It works itself free, as a
+	// unit on foot does, a few times running at most.
+	if (m_Autopilot.hasWaypoint && !IsWaitingOnNewMovePath() && m_RouteProgressTimer.IsPastSimMS(2500) && distance > 30.0F && m_Vel.MagnitudeIsLessThan(1.5F) && m_UnstickTries < 3) {
+		++m_UnstickTries;
+		m_UnstickGoal = m_Route.empty() ? target : m_RouteSpot;
+		m_UnstickFrom = m_Pos;
+		m_UnstickSide = g_SceneMan.ShortestDistance(m_Pos, target, wraps).m_X >= 0.0F ? 1.0F : -1.0F;
+		m_UnstickStep = -1;
+		m_RouteBest = FLT_MAX;
+		m_RouteProgressTimer.Reset();
+		m_UnstickTimer.Reset();
+		NextUnstickMove();
 	}
+}
+
+bool ACShip::NextUnstickMove() {
+	// Back and up, up, back and down, on and up, off where it got stuck (back being away from where it was going).
+	const std::array<Vector, 4> moves{Vector(-60.0F, -60.0F), Vector(0.0F, -100.0F), Vector(-60.0F, 40.0F), Vector(40.0F, -80.0F)};
+	while (++m_UnstickStep < static_cast<int>(moves.size())) {
+		Vector point = m_UnstickFrom + Vector(moves[m_UnstickStep].m_X * m_UnstickSide, moves[m_UnstickStep].m_Y);
+		g_SceneMan.WrapPosition(point);
+		if (HullLineClear(m_Pos, point)) {
+			m_UnstickPoint = point;
+			return true;
+		}
+	}
+	m_UnstickStep = -1;
+	return false;
 }
 
 void ACShip::PreControllerUpdate() {

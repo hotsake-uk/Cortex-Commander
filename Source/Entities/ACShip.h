@@ -351,7 +351,7 @@ namespace RTE {
 
 		/// Plans a route through the air from one place to another (FlyRouteTo), over, under or round whatever is in the way, terrain and
 		/// buildings and doors alike: the shortest way on a grid of the places its whole hull fits (its ends, engines and guns, and its gap over
-		/// the ground under it), kept low unless going round costs much more, and, on a cautious order, kept off enemies. Then cut to as few
+		/// the ground under it), however high that takes it, and, on a cautious order, kept off enemies. Then cut to as few
 		/// points as have open air for its hull between (HullLineClear). With no way all the way there, the route goes as near as it can get.
 		/// @param from Where it starts. @param to Where it is going. @param care How much a cautious order keeps it off enemies, 0 to 1.
 		/// @param route Filled with the route's points, the first to fly to first. @param reached Set to whether the route gets all the way there.
@@ -363,10 +363,22 @@ namespace RTE {
 		Timer m_RouteProgressTimer; //!< Since it last got nearer its route's next point.
 		float m_RouteBest; //!< The nearest it has got to its route's next point, for telling it is stuck.
 		int m_RouteReplans; //!< How many times running it has planned its route again without getting to a point of it.
+		int m_UnstickStep; //!< Which of its moves to work itself free it is making, -1 for none (UpdateRoute).
+		int m_UnstickTries; //!< How many times running it has tried to work itself free without getting anywhere.
+		Timer m_UnstickTimer; //!< Since it began the move it is making to work itself free.
+		Vector m_UnstickFrom; //!< Where it got stuck, its moves to work free made from.
+		Vector m_UnstickPoint; //!< Where the move it is making takes it.
+		Vector m_UnstickGoal; //!< Where it was going when it got stuck, planned for again once free.
+		float m_UnstickSide; //!< Which way it was going across (1 right, -1 left), so it backs off the other way.
 
 		/// Follows the route FlyRouteTo planned: on to the next point once near the one it is flying to; planned again from where it is if the
-		/// way to that point is found blocked (terrain dug or built) or it gets no nearer it for a while (stuck on something).
+		/// way to that point is found blocked (terrain dug or built). On any go-to, if it gets no nearer where it is going for a while, barely
+		/// moving (caught on something), it works itself free with a few short moves (back and up, up, back and down, on and up), as a unit on
+		/// foot does, then plans its way there again.
 		void UpdateRoute();
+
+		/// Picks the next of its moves to work itself free (UpdateRoute) that its hull has the room for. @return Whether there was one.
+		bool NextUnstickMove();
 
 		long m_EngageID; //!< The unique ID of the enemy an attack order sent it after (EngageTarget), 0 for none.
 
