@@ -832,6 +832,10 @@ namespace SandboxDetail {
 			ApplyPower(stroke);
 			return;
 		}
+		if (stroke.Kind == Tool::BattleTeam && stroke.Count == BattleSurrender) {
+			SurrenderBattleGame(side);
+			return;
+		}
 		if (stroke.Kind == Tool::BattleModePoint || IsModeZoneTool(stroke.Kind) || stroke.Kind == Tool::BattleModeFlag || stroke.Kind == Tool::BattlePickupSpot || (stroke.Kind == Tool::BattleTeam && (stroke.Count == BattleModeSet || stroke.Count == BattleModeStart || stroke.Count == BattleModeStop))) {
 			ApplyBattleMode(stroke);
 			return;

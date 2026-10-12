@@ -6,6 +6,7 @@
 #include "ActivityMan.h"
 #include "UInputMan.h"
 #include "SettingsMan.h"
+#include "Sandbox.h"
 
 #include "SaveLoadMenuGUI.h"
 #include "SettingsGUI.h"
@@ -42,6 +43,7 @@ void PauseMenuGUI::Clear() {
 
 	m_SavingButtonsDisabled = false;
 	m_ModManagerButtonDisabled = false;
+	m_BattleButtonsShown = true;
 
 	m_PauseMenuBox = nullptr;
 	m_PauseMenuButtons.fill(nullptr);
@@ -63,6 +65,9 @@ void PauseMenuGUI::Create(AllegroScreen* guiScreen, GUIInputWrapper* guiInput) {
 	m_PauseMenuButtons[PauseMenuButton::SaveOrLoadGameButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonSaveOrLoadGame"));
 	m_PauseMenuButtons[PauseMenuButton::SettingsButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonSettings"));
 	m_PauseMenuButtons[PauseMenuButton::ModManagerButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonModManager"));
+	m_PauseMenuButtons[PauseMenuButton::RestartBattleButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonRestartBattle"));
+	m_PauseMenuButtons[PauseMenuButton::SurrenderButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonSurrender"));
+	m_PauseMenuButtons[PauseMenuButton::KeysButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonKeys"));
 	m_PauseMenuButtons[PauseMenuButton::ResumeButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonResume"));
 
 	for (size_t pauseMenuButton = 0; pauseMenuButton < m_PauseMenuButtons.size(); ++pauseMenuButton) {
@@ -121,9 +126,32 @@ void PauseMenuGUI::EnableOrDisablePauseMenuFeatures() {
 		int yOffset = m_PauseMenuButtons[PauseMenuButton::ModManagerButton]->GetHeight();
 
 		m_PauseMenuButtons[PauseMenuButton::ResumeButton]->MoveRelative(0, yOffset * (disableModManager ? -1 : 1));
+		// (The battle entries sit under the mod manager's button: up or down with it.)
+		for (int battleButton = PauseMenuButton::RestartBattleButton; battleButton <= PauseMenuButton::KeysButton; ++battleButton) {
+			m_PauseMenuButtons[battleButton]->MoveRelative(0, yOffset * (disableModManager ? -1 : 1));
+		}
 		m_PauseMenuBox->MoveRelative(0, yOffset / 2 * -1);
 
 		m_ModManagerButtonDisabled = disableModManager;
+	}
+
+	// The battle entries (Restart battle, Surrender, Keys): only while a battle mode's game is on, in the Sandbox game mode or Battle Command.
+	// Surrender only while the battle can still be lost by a team you command.
+	const bool showBattleButtons = Sandbox::IsBattleModeRunning();
+	if (m_BattleButtonsShown != showBattleButtons) {
+		int yOffset = 0;
+		for (int battleButton = PauseMenuButton::RestartBattleButton; battleButton <= PauseMenuButton::KeysButton; ++battleButton) {
+			m_PauseMenuButtons[battleButton]->SetVisible(showBattleButtons);
+			m_PauseMenuButtons[battleButton]->SetEnabled(showBattleButtons);
+			yOffset += m_PauseMenuButtons[battleButton]->GetHeight();
+		}
+		m_PauseMenuButtons[PauseMenuButton::ResumeButton]->MoveRelative(0, yOffset * (showBattleButtons ? 1 : -1));
+		m_PauseMenuBox->MoveRelative(0, yOffset / 2 * (showBattleButtons ? -1 : 1));
+
+		m_BattleButtonsShown = showBattleButtons;
+	}
+	if (showBattleButtons) {
+		m_PauseMenuButtons[PauseMenuButton::SurrenderButton]->SetEnabled(Sandbox::CanSurrenderBattle());
 	}
 }
 
@@ -211,6 +239,18 @@ bool PauseMenuGUI::HandleInputEvents() {
 				SetActiveMenuScreen(PauseMenuScreen::SettingsScreen);
 			} else if (guiEvent.GetControl() == m_PauseMenuButtons[PauseMenuButton::ModManagerButton]) {
 				SetActiveMenuScreen(PauseMenuScreen::ModManagerScreen);
+			} else if (guiEvent.GetControl() == m_PauseMenuButtons[PauseMenuButton::RestartBattleButton]) {
+				// (These three go back to the game as Resume does, with its sound.) The battle mode's game from the start, as it's set up, once the game is back.
+				Sandbox::RestartBattleMode();
+				return true;
+			} else if (guiEvent.GetControl() == m_PauseMenuButtons[PauseMenuButton::SurrenderButton]) {
+				// Lost by the team you command; in Battle Command the after-battle report opens.
+				Sandbox::SurrenderBattleMode();
+				return true;
+			} else if (guiEvent.GetControl() == m_PauseMenuButtons[PauseMenuButton::KeysButton]) {
+				// The sandbox window's Keys page, over the game.
+				Sandbox::ShowKeys();
+				return true;
 			} else if (guiEvent.GetControl() == m_PauseMenuButtons[PauseMenuButton::BackToMainButton]) {
 				g_GUISound.BackButtonPressSound()->Play();
 				m_UpdateResult = PauseMenuUpdateResult::BackToMain;
