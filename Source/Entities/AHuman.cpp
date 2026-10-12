@@ -1137,6 +1137,11 @@ PathAgent AHuman::GetPathAgent() const {
 	agent.LeapSpeed = m_LegJumpSpeed;
 	// Rough slopes too steep for stairs, on the legs and arms (LM-10): for anything with an arm to climb with as well as the legs.
 	agent.Scrambles = (m_pFGLeg || m_pBGLeg) && (m_pFGArm || m_pBGArm);
+	// (Under the strict climb limits, an arm that climbs on the walk: the back arm always does, the front only with nothing in its hand; see
+	// the arm climbing in PreControllerUpdate. A unit with only a front arm, holding a gun, has nothing to climb with.)
+	if (agent.Scrambles && g_SettingsMan.StrictClimbLimits()) {
+		agent.Scrambles = m_pBGArm || (m_pFGArm && !m_pFGArm->GetHeldDevice());
+	}
 	// And what its climbs burn per pixel, from its own jet's push against its own weight (a heavy unit on a weak jet climbs slower, and
 	// burns more of the tank for the same shaft).
 	if (agent.JetTimeMS > 0.0F) {

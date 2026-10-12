@@ -216,6 +216,12 @@ namespace RTE {
 		bool StairsUpLeft = false; //!< Likewise up to the left.
 		bool ScrambleUpRight = false; //!< Whether a rough slope of loose or diggable ground, too steep for stairs, leads from this node's floor up to the floor of the node three up and one to the right (see UpdateNodeCosts).
 		bool ScrambleUpLeft = false; //!< Likewise up to the left.
+		/// The same four under the strict climb limits (SettingsMan::StrictClimbLimits; see UpdateNodeCosts): stairs whose slope has footholds,
+		/// a scramble with no sheer section taller than a step. Each is set only where its plain flag is; the search reads one set or the other.
+		bool StairsFirmUpRight = false;
+		bool StairsFirmUpLeft = false;
+		bool ScrambleFirmUpRight = false;
+		bool ScrambleFirmUpLeft = false;
 		/// Liquid under this node's surface (LM-4): the surface is then the liquid's, and LiquidDepth is how far down its centre column the
 		/// liquid goes before the bottom, up to c_ClearanceReach. None and 0 for a dry node.
 		PathLiquid Liquid = PathLiquid::None;

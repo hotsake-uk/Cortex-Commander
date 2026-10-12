@@ -1517,6 +1517,8 @@ void DebugMan::SettingsGUI() {
 		Tip("AI units come to a stand, still and upright, before a jetpack climb or jump, so the flight starts true. Off: they take off mid-stride, quicker but more often off line.");
 		Toggle("AI waits for fuel before jetpacking", g_SettingsMan.AIWaitsForFuel(), [](bool on) { g_SettingsMan.SetAIWaitsForFuel(on); });
 		Tip("AI units wait at a take-off until the tank holds what the flight needs. Off: they go with what's in the tank, and may come down short.");
+		Toggle("Strict climb limits", g_SettingsMan.StrictClimbLimits(), [](bool on) { g_SettingsMan.SetStrictClimbLimits(on); });
+		Tip("AI routes only climb slopes a body can get up: stairs need footholds (a smooth slope steeper than about 50 degrees isn't walked), a scramble up a steep face needs no sheer section taller than a step and a hand free, and a unit whose stairs or scramble stops gaining height gives up after 1.5 s and finds another way instead of clawing at it and jet-hopping. Off: as before, any 51 to 68 degree slope counts as stairs and any soft 68 to 73 degree face as a scramble.");
 		Heading("Ledges");
 		Toggle("AI mantles only on purpose", g_SettingsMan.AIMantlesOnPurpose(), [](bool on) { g_SettingsMan.SetAIMantlesOnPurpose(on); });
 		Tip("AI units pull themselves up onto a ledge or over an obstacle, or catch a ledge in the air, only when they mean to: where their route goes up onto it or over it, at a flight's landing, or to get unstuck. Off: they mantle whenever they press into a ledge they can pull themselves over, as a player does. Players always mantle as before.");

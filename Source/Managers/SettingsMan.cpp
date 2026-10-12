@@ -141,6 +141,7 @@ void SettingsMan::Clear() {
 	m_EndlessMetaGameMode = false;
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
+	m_StrictClimbLimits = true;
 	m_UnitWaterBehaviour = 2;
 	m_EnableStuckPush = false;
 	m_BodyGearSettlesAsScraps = true;
@@ -838,6 +839,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AIDigWillingness", { float scale = 1.0F; reader >> scale; SetAIDigWillingness(scale); });
 	MatchProperty("AIThreatAvoidance", { float scale = 1.0F; reader >> scale; SetAIThreatAvoidance(scale); });
 	MatchProperty("AIRecklessness", { float recklessness = 0.5F; reader >> recklessness; SetAIRecklessness(recklessness); });
+	MatchProperty("StrictClimbLimits", { reader >> m_StrictClimbLimits; });
 	MatchProperty("AILadderGiveUpSeconds", { float seconds = 1.5F; reader >> seconds; SetAILadderGiveUpSeconds(seconds); });
 	MatchProperty("CarriedWeightMultiplier", { float multiplier = 1.0F; reader >> multiplier; SetCarriedWeightMultiplier(multiplier); });
 	MatchProperty("LegStrength", { float strength = 1.0F; reader >> strength; SetLegStrength(strength); });
@@ -1402,6 +1404,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("CameraOverscroll", m_CameraOverscroll);
 	writer.NewPropertyWithValue("WeaponTerrainDamage", m_WeaponTerrainDamage);
 	writer.NewPropertyWithValue("AIRecklessness", m_AIRecklessness);
+	writer.NewPropertyWithValue("StrictClimbLimits", m_StrictClimbLimits);
 	writer.NewPropertyWithValue("AILadderGiveUpSeconds", m_AILadderGiveUpSeconds);
 	writer.NewPropertyWithValue("CarriedWeightMultiplier", m_CarriedWeightMultiplier);
 	writer.NewPropertyWithValue("LegStrength", m_LegStrength);
