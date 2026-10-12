@@ -149,6 +149,8 @@ void SettingsMan::Clear() {
 	m_MeasuredBodySize = false;
 	m_UnitWaterBehaviour = 2;
 	m_UnitsStepOverObjects = true;
+	m_UnitsPushObjects = true;
+	m_ObjectPushStrength = 1.0F;
 	m_SensesPassPlants = true;
 	m_SensesPassRungs = true;
 	m_SensesPassSpecks = true;
@@ -209,6 +211,7 @@ void SettingsMan::Clear() {
 	m_SandboxSpawnStats = 1;
 	m_SandboxSpawnSort = 0;
 	m_SandboxAttackPings = true;
+	m_SandboxNoRouteMarkers = true;
 	m_SandboxMinimap = false;
 	m_BattleAlerts = true;
 	m_BattleAlertLines = 6;
@@ -879,6 +882,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("JetpackWeightCompensation", { int mode = 0; reader >> mode; SetJetpackWeightCompensation(mode); });
 	MatchProperty("UnitWaterBehaviour", { int mode = 2; reader >> mode; SetUnitWaterBehaviour(mode); });
 	MatchProperty("UnitsStepOverObjects", { reader >> m_UnitsStepOverObjects; });
+	MatchProperty("UnitsPushObjects", { reader >> m_UnitsPushObjects; });
+	MatchProperty("ObjectPushStrength", { float strength = 1.0F; reader >> strength; SetObjectPushStrength(strength); });
 	MatchProperty("SensesPassPlants", { reader >> m_SensesPassPlants; });
 	MatchProperty("SensesPassRungs", { reader >> m_SensesPassRungs; });
 	MatchProperty("SensesPassSpecks", { reader >> m_SensesPassSpecks; });
@@ -990,6 +995,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SandboxSpawnStats", { int which = 1; reader >> which; SetSandboxSpawnStats(which); });
 	MatchProperty("SandboxSpawnSort", { int which = 0; reader >> which; SetSandboxSpawnSort(which); });
 	MatchProperty("SandboxAttackPings", { reader >> m_SandboxAttackPings; });
+	MatchProperty("SandboxNoRouteMarkers", { reader >> m_SandboxNoRouteMarkers; });
 	MatchProperty("SandboxMinimap", { reader >> m_SandboxMinimap; });
 	MatchProperty("BattleAlerts", { reader >> m_BattleAlerts; });
 	MatchProperty("BattleAlertLines", { int lines = 6; reader >> lines; SetBattleAlertLines(lines); });
@@ -1535,6 +1541,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("JetpackWeightCompensation", m_JetpackWeightCompensation);
 	writer.NewPropertyWithValue("UnitWaterBehaviour", m_UnitWaterBehaviour);
 	writer.NewPropertyWithValue("UnitsStepOverObjects", m_UnitsStepOverObjects);
+	writer.NewPropertyWithValue("UnitsPushObjects", m_UnitsPushObjects);
+	writer.NewPropertyWithValue("ObjectPushStrength", m_ObjectPushStrength);
 	writer.NewPropertyWithValue("SensesPassPlants", m_SensesPassPlants);
 	writer.NewPropertyWithValue("SensesPassRungs", m_SensesPassRungs);
 	writer.NewPropertyWithValue("SensesPassSpecks", m_SensesPassSpecks);
@@ -1702,6 +1710,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 		writer.NewPropertyWithValue("SandboxSpawnStats", m_SandboxSpawnStats);
 		writer.NewPropertyWithValue("SandboxSpawnSort", m_SandboxSpawnSort);
 		writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
+		writer.NewPropertyWithValue("SandboxNoRouteMarkers", m_SandboxNoRouteMarkers);
 		writer.NewPropertyWithValue("SandboxMinimap", m_SandboxMinimap);
 		writer.NewPropertyWithValue("BattleAlerts", m_BattleAlerts);
 		writer.NewPropertyWithValue("BattleAlertLines", m_BattleAlertLines);
@@ -1905,6 +1914,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("SandboxSpawnStats", m_SandboxSpawnStats);
 	writer.NewPropertyWithValue("SandboxSpawnSort", m_SandboxSpawnSort);
 	writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
+	writer.NewPropertyWithValue("SandboxNoRouteMarkers", m_SandboxNoRouteMarkers);
 	writer.NewPropertyWithValue("SandboxMinimap", m_SandboxMinimap);
 	writer.NewPropertyWithValue("BattleAlerts", m_BattleAlerts);
 	writer.NewPropertyWithValue("BattleAlertLines", m_BattleAlertLines);

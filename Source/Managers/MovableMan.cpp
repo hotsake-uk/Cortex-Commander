@@ -770,9 +770,10 @@ static void GiveSpawnDigger(Actor* actor) {
 	if (human->HasObjectInGroup("Tools - Diggers") || RandomNum(0.0F, 100.0F) >= chance) {
 		return;
 	}
-	static const char* const diggers[] = {"Light Digger", "Medium Digger", "Heavy Digger"};
+	// (By the setting's numbers: 3 is a random one of the four, and the Mega Digger, added after it, is 4.)
+	static const char* const diggers[] = {"Light Digger", "Medium Digger", "Heavy Digger", "Mega Digger"};
 	int type = g_SettingsMan.AISpawnDiggerType();
-	const char* name = diggers[type >= 0 && type < 3 ? type : RandomNum(0, 2)];
+	const char* name = diggers[type == 4 ? 3 : (type >= 0 && type < 3 ? type : RandomNum(0, 3))];
 	if (const HDFirearm* preset = dynamic_cast<const HDFirearm*>(g_PresetMan.GetEntityPreset("HDFirearm", name, "Base.rte"))) {
 		human->AddInventoryItem(dynamic_cast<MovableObject*>(preset->Clone()));
 	}

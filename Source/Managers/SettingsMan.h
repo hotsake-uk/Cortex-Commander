@@ -400,6 +400,11 @@ namespace RTE {
 		/// Whether the AI's walk sees loose bodies its own collides with in the way (a corpse, a gib, a limb: AHuman::ObjectAhead) and leaps
 		/// them, hops them with the jet, routes round or waits, as it does a wreck. Off as before: it pressed into them until the stuck handling.
 		bool UnitsStepOverObjects() const { return m_UnitsStepOverObjects; }
+		/// Whether an AI soldier whose walk is held up by a loose object (a corpse, a gib, a crate) no heavier than itself shoves it along out of
+		/// the way (AHuman::PushObjectAhead), before stepping over it or going round. On as the game comes.
+		bool UnitsPushObjects() const { return m_UnitsPushObjects; }
+		/// How hard units shove loose objects out of their way, times each unit's own ObjectPushStrength: 1 as the game comes, 0 to 3.
+		float ObjectPushStrength() const { return m_ObjectPushStrength; }
 		/// Whether units' own senses (the walk's look ahead, getting up, leaps, landings, mantling, ducking) see through what their bodies push
 		/// through: grass and soft plants (integrity 5 or under, not flowing). Off as before: grass read as ground over the dirt the floor
 		/// rays find, and units ducked under hanging plants and mantled onto bushes. See Actor::SensesPassTerrain.
@@ -461,7 +466,7 @@ namespace RTE {
 		/// going through them. 1, the default, is every weapon as it is defined.
 		float WeaponTerrainDamage() const { return m_WeaponTerrainDamage; }
 
-		/// Gets which digger those units are handed: 0 Light, 1 Medium, 2 Heavy, 3 a random one of the three.
+		/// Gets which digger those units are handed: 0 Light, 1 Medium, 2 Heavy, 3 a random one of the four, 4 Mega.
 		int AISpawnDiggerType() const { return m_AISpawnDiggerType; }
 
 		/// The recklessness as a multiplier on the AI's movement caution: 2 at the careful end, 1 as designed, 0.5 at the reckless end.
@@ -723,6 +728,12 @@ namespace RTE {
 		/// Sets whether the sandbox pings where units of the selection's side come under fire.
 		void SetShowSandboxAttackPings(bool show) { m_SandboxAttackPings = show; }
 
+		/// Whether the sandbox shows its "no route" markers where units couldn't get to (RC-7).
+		bool ShowSandboxNoRouteMarkers() const { return m_SandboxNoRouteMarkers; }
+
+		/// Sets whether the sandbox shows its "no route" markers.
+		void SetShowSandboxNoRouteMarkers(bool show) { m_SandboxNoRouteMarkers = show; }
+
 		/// Whether the sandbox's map window is shown (RC-8).
 		bool ShowSandboxMinimap() const { return m_SandboxMinimap; }
 
@@ -958,6 +969,8 @@ namespace RTE {
 		void SetJetpackWeightCompensation(int mode) { m_JetpackWeightCompensation = std::clamp(mode, 0, 2); }
 		void SetUnitWaterBehaviour(int mode) { m_UnitWaterBehaviour = std::clamp(mode, 0, 2); }
 		void SetUnitsStepOverObjects(bool on) { m_UnitsStepOverObjects = on; }
+		void SetUnitsPushObjects(bool on) { m_UnitsPushObjects = on; }
+		void SetObjectPushStrength(float strength) { m_ObjectPushStrength = std::clamp(strength, 0.0F, 3.0F); }
 		void SetSensesPassPlants(bool on) { m_SensesPassPlants = on; }
 		void SetSensesPassRungs(bool on) { m_SensesPassRungs = on; }
 		void SetSensesPassSpecks(bool on) { m_SensesPassSpecks = on; }
@@ -983,7 +996,7 @@ namespace RTE {
 		/// Sets how hard weapon fire strikes terrain; see WeaponTerrainDamage.
 		void SetWeaponTerrainDamage(float scale) { m_WeaponTerrainDamage = std::clamp(scale, 0.1F, 20.0F); }
 		/// Sets which digger those units are handed; see AISpawnDiggerType.
-		void SetAISpawnDiggerType(int type) { m_AISpawnDiggerType = std::clamp(type, 0, 3); }
+		void SetAISpawnDiggerType(int type) { m_AISpawnDiggerType = std::clamp(type, 0, 4); }
 
 		/// Sets whether AI units steady themselves before they jet.
 		void SetAISteadiesBeforeJet(bool steady) { m_AISteadyBeforeJet = steady; }
@@ -1256,6 +1269,7 @@ namespace RTE {
 		int m_SandboxSpawnStats; //!< How the Spawn tab shows units' and items' stats (see SandboxSpawnStats).
 		int m_SandboxSpawnSort; //!< How the sandbox's picture lists are sorted (see SandboxSpawnSort).
 		bool m_SandboxAttackPings; //!< Whether units coming under fire are pinged (see ShowSandboxAttackPings).
+		bool m_SandboxNoRouteMarkers; //!< Whether "no route" markers are shown (see ShowSandboxNoRouteMarkers).
 		bool m_SandboxMinimap; //!< Whether the sandbox's map window is shown (see ShowSandboxMinimap).
 		bool m_BattleAlerts; //!< Whether Battle Command's alerts are listed (see ShowBattleAlerts).
 		int m_BattleAlertLines; //!< The most alerts listed at once (see BattleAlertLines).
@@ -1311,6 +1325,8 @@ namespace RTE {
 		int m_JetpackWeightCompensation = 0; //!< See JetpackWeightCompensation.
 		int m_UnitWaterBehaviour = 2; //!< See UnitWaterBehaviour.
 		bool m_UnitsStepOverObjects = true; //!< See UnitsStepOverObjects.
+		bool m_UnitsPushObjects = true; //!< See UnitsPushObjects.
+		float m_ObjectPushStrength = 1.0F; //!< See ObjectPushStrength.
 		bool m_SensesPassPlants = true; //!< See SensesPassPlants.
 		bool m_SensesPassRungs = true; //!< See SensesPassRungs.
 		bool m_SensesPassSpecks = true; //!< See SensesPassSpecks.
@@ -1331,7 +1347,7 @@ namespace RTE {
 		float m_ShipGraceZone; //!< Pixels past the map's top and sides flying ships may go, 0 to 700 (see ShipGraceZone).
 		float m_CameraOverscroll; //!< Pixels past the map's edges the camera may scroll, 0 to 2000 (see CameraOverscroll).
 		float m_WeaponTerrainDamage; //!< Multiple of the force weapon fire strikes terrain with, 0.1 to 20 (see WeaponTerrainDamage).
-		int m_AISpawnDiggerType; //!< Which digger they're handed: 0 Light, 1 Medium, 2 Heavy, 3 random (see AISpawnDiggerType).
+		int m_AISpawnDiggerType; //!< Which digger they're handed: 0 Light, 1 Medium, 2 Heavy, 3 random, 4 Mega (see AISpawnDiggerType).
 		bool m_AISteadyBeforeJet; //!< Whether AI units steady themselves before they jet (see AISteadiesBeforeJet).
 		bool m_AICoverDigs; //!< See AICoverDigs.
 		bool m_AICoverFallsBack; //!< See AICoverFallsBack.

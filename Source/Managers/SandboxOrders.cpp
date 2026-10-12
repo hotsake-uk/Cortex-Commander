@@ -1222,13 +1222,26 @@ namespace SandboxDetail {
 			}
 			float distance = g_SceneMan.ShortestDistance(unit->GetPos(), watch->second.Destination, g_SceneMan.SceneWrapsX()).GetMagnitude();
 			bool pending = std::any_of(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); });
-			bool stopped = !pending && now - watch->second.Issued > 60 && unit->GetAIMode() != Actor::AIMODE_GOTO && unit->GetWaypointsSize() == 0;
+			// (Nor while its AI is off on an errand of its own: falling back, working round a flank, a medic's call, a look at where an enemy
+			// was seen, a run from danger. It waits at the end of one as a sentry with no waypoints, and was taken for stopped short and marked
+			// "no route" every time a unit fell back under fire; the AI puts the order back when the errand ends.)
+			const bool errand = unit->NumberValueExists(c_RetreatTag) || unit->NumberValueExists(c_FlankTag) || unit->NumberValueExists(c_MedicTag) || unit->NumberValueExists("AIInvestigate") || unit->NumberValueExists("AIFlee");
+			bool stopped = !pending && !errand && now - watch->second.Issued > 60 && unit->GetAIMode() != Actor::AIMODE_GOTO && unit->GetWaypointsSize() == 0;
+			const bool vehicle = dynamic_cast<const AVehicle*>(unit) != nullptr;
 			// (A vehicle is there within its size: its middle stands well over the ground, and it stops a little short.)
-			const float reach = dynamic_cast<const AVehicle*>(unit) ? 60.0F + unit->GetRadius() : 60.0F;
+			const float reach = vehicle ? 60.0F + unit->GetRadius() : 60.0F;
 			if (distance < reach || unit->IsPlayerControlled()) {
+				// There after all: off any "no route" marker an earlier look put it on (MoveUnitsTo's reach check, which can be wrong).
+				ForgetNoRoutes(unit);
 				watch = s_MoveWatch.erase(watch);
 			} else if (stopped) {
-				stoppedShort.emplace_back(unit, watch->second.Destination);
+				// Stopped short with its route given up on (the route-follower's stand-down sets why, Actor::FailOrder): no route. Stopped
+				// short for anything else, it isn't: the order ended as its AI judged it there (on the ground under a place in the air, where the
+				// AI calls it there and this measured to the point itself), or was dropped for something other than the way. Those were all
+				// marked "no route" once, most of the markers seen. (A vehicle's driving has no reason to give, and is marked as before.)
+				if (vehicle || unit->GetOrderFailReason() != Actor::ORDERFAIL_NONE) {
+					stoppedShort.emplace_back(unit, watch->second.Destination);
+				}
 				watch = s_MoveWatch.erase(watch);
 			} else {
 				++watch;
