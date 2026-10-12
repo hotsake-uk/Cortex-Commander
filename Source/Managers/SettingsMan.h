@@ -502,6 +502,24 @@ namespace RTE {
 		/// Gets the direct order tuning, to read or change ("Battle Behavior" settings).
 		DirectOrderTuning& DirectOrders() { return m_DirectOrders; }
 
+		/// How units with a digger keep from bringing the ground down on themselves: the "Digging" settings. Each member's default is the
+		/// designed behaviour, so DigSafetyTuning() is the reset.
+		struct DigSafetyTuning {
+			bool AvoidCaveIns = true; //!< Before each node of a tunnel, a digger looks whether cutting it would bring ground down into the tunnel (TerrainCollapse::TunnelWouldCaveIn), and if so asks for a way round.
+			bool BackOff = true; //!< With no way round, it digs on, and backs out from under the ground expected to fall while it comes down, waiting for it to settle before going on.
+			bool DigToOrders = true; //!< Units on a dig-to order do the same, but never go round: the player asked for that tunnel, so they dig it and back off.
+			bool PreviewWarns = true; //!< The dig-to preview says when the tunnel would bring the roof down.
+		};
+
+		/// Gets the digging safety tuning, to read or change ("Digging" settings).
+		DigSafetyTuning& DigSafety() { return m_DigSafety; }
+
+		/// Whether AI units get out from under falling ground: a loose piece of terrain coming down on a unit has it step out to the nearer side it can get to.
+		bool AIDodgesFallingGround() const { return m_AIDodgesFallingGround; }
+
+		/// Sets whether AI units get out from under falling ground.
+		void SetAIDodgesFallingGround(bool on) { m_AIDodgesFallingGround = on; }
+
 		/// Whether AI units use vehicles (VH-4): one going a long way walks to a friendly vehicle on its way and rides it there, or drives it.
 		bool AIUsesVehicles() const { return m_AIUsesVehicles; }
 
@@ -1284,6 +1302,8 @@ namespace RTE {
 		bool m_DeadCrewFallOut; //!< Whether crew killed in a vehicle fall out of it (see DeadCrewFallOut).
 		bool m_PassengersFireFromVehicles; //!< Whether passengers shoot out of vehicles built to let them (see PassengersFireFromVehicles).
 		DirectOrderTuning m_DirectOrders; //!< How units behave on a direct order (see DirectOrders).
+		DigSafetyTuning m_DigSafety; //!< How diggers keep from bringing the ground down on themselves (see DigSafety).
+		bool m_AIDodgesFallingGround; //!< See AIDodgesFallingGround.
 		bool m_EnableCrabBombs; //!< Whether all actors (except Brains and Doors) should be annihilated if a number exceeding the crab bomb threshold is released at once.
 		int m_CrabBombThreshold; //!< The number of crabs needed to be released at once to trigger the crab bomb effect.
 		bool m_ShowEnemyHUD; //!< Whether the HUD of enemy actors should be visible to the player.

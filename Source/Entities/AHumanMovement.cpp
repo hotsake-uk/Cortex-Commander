@@ -29,6 +29,7 @@
 #include "PrimitiveMan.h"
 #include "FluidSim.h"
 #include "TerrainTrees.h"
+#include "TerrainCollapse.h"
 
 using namespace RTE;
 
@@ -185,6 +186,71 @@ void AHuman::TacticalMoveTo(const Vector& place, float milliseconds) {
 	m_Tactical.timer.Reset();
 }
 
+void AHuman::DodgeFallingGround() {
+	GroundDodge& dodge = m_GroundDodge;
+	if (!g_SettingsMan.AIDodgesFallingGround() || m_Status != STABLE || m_Ladder.active || m_Mantling) {
+		dodge.active = false;
+		return;
+	}
+	const float h = GetMoveHeight();
+	const float halfWidth = std::max(6.0F, h * 0.2F);
+	const float head = m_Pos.m_Y - h * 0.5F;
+	// The piece most about to land on it: over it (its width and the body's), above its middle, coming down (not lying still), and due on its
+	// head within about a second. Grains and scraps under the size that hurts are left to fall.
+	const TerrainCollapse::FallingPiece* threat = nullptr;
+	float soonest = 60.0F;
+	for (const TerrainCollapse::FallingPiece& piece: TerrainCollapse::GetFallingNow()) {
+		if (piece.Radius < 5.0F || (piece.VelY < 0.05F && std::abs(piece.VelX) < 0.2F)) {
+			continue;
+		}
+		Vector off = Towards(m_Pos, Vector(piece.X, piece.Y));
+		if (std::abs(off.m_X) > piece.Radius + halfWidth || off.m_Y > 0.0F) {
+			continue;
+		}
+		float gap = std::max(head - (piece.Y + piece.Radius), 0.0F);
+		float updates = gap / std::max(piece.VelY, 0.1F);
+		if (updates < soonest) {
+			soonest = updates;
+			threat = &piece;
+		}
+	}
+	if (threat) {
+		dodge.seenTimer.Reset();
+		if (!dodge.active) {
+			// To the nearer side out from under it, unless there's a wall or a drop right there, then the other; with both shut, nowhere to go.
+			float dx = Towards(m_Pos, Vector(threat->X, threat->Y)).m_X;
+			float outLeft = threat->Radius + halfWidth + dx;
+			float outRight = threat->Radius + halfWidth - dx;
+			float first = outLeft <= outRight ? -1.0F : 1.0F;
+			auto open = [&](float way) {
+				Vector hit;
+				return !g_SceneMan.CastStrengthRay(m_Pos, Vector(way * h * 0.5F, 0.0F), 5.0F, hit, 2, MaterialColorKeys::g_MaterialDoor) && FloorUnder(m_Pos + Vector(way * h * 0.4F, 0.0F), h * 0.9F) >= 0.0F;
+			};
+			float way = open(first) ? first : (open(-first) ? -first : 0.0F);
+			if (way != 0.0F) {
+				dodge.active = true;
+				dodge.way = way;
+				dodge.timer.Reset();
+				MoverTrace(std::string("ground coming down overhead: out from under it to the ") + (way < 0.0F ? "left" : "right"));
+			}
+		}
+	}
+	if (!dodge.active) {
+		return;
+	}
+	// Out from under it once it has been clear overhead a moment, or after a second and a half however it went.
+	if (dodge.seenTimer.IsPastSimMS(250) || dodge.timer.IsPastSimMS(1500)) {
+		dodge.active = false;
+		return;
+	}
+	Controller& ctrl = m_Controller;
+	ctrl.SetState(BODY_PRONE, false);
+	ctrl.SetState(BODY_CROUCH, false);
+	ctrl.SetState(dodge.way < 0.0F ? MOVE_RIGHT : MOVE_LEFT, false);
+	ctrl.SetState(dodge.way < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+	m_Mover.progressTimer.Reset();
+}
+
 void AHuman::UpdateAIMotor() {
 	if (m_Controller.GetInputMode() != Controller::CIM_AI || m_Status == DYING || m_Status == DEAD) {
 		return;
@@ -253,6 +319,9 @@ void AHuman::UpdateAIMotor() {
 			ctrl.SetState(dx < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
 		}
 	}
+
+	// Ground coming down on it: out from under, before anything else the legs were doing.
+	DodgeFallingGround();
 
 	// A sky order (Jetpack here, or a move clicked in open air; StandingOrder::SkyGoal): with a clear line to the point in the air, the jet
 	// lit and flown to it, wherever the route was taking the legs, and held there in a hover till the tank is all but empty, when the order
@@ -3414,6 +3483,51 @@ int AHuman::MoveAlongRoute() {
 		return RouteMover::Moving;
 	}
 
+	// Digging on through a tunnel that brings ground down (no way round; see the dig step below): when it starts coming down over the tunnel,
+	// back out from under it the way it came, and wait until nothing has moved there for a second before going on (the dig step then cuts
+	// through what came down, as it would any plug). A tunnel that turns out to hold is no different from any other.
+	if (mover.caveInRisky) {
+		bool coming = false;
+		for (const TerrainCollapse::FallingPiece& piece: TerrainCollapse::GetFallingNow()) {
+			if (piece.Radius < 3.0F || (std::abs(piece.VelY) < 0.05F && std::abs(piece.VelX) < 0.2F)) {
+				continue;
+			}
+			Vector off = Towards(m_Pos, Vector(piece.X, piece.Y));
+			float x = m_Pos.m_X + off.m_X;
+			coming = coming || (x + piece.Radius >= mover.caveInLeft - 16.0F && x - piece.Radius <= mover.caveInRight + 16.0F && off.m_Y < feet);
+		}
+		if (coming) {
+			if (!mover.caveInWaiting) {
+				MoverTrace("the roof is coming down: backing out from under it");
+				mover.caveInWaiting = true;
+				mover.caveInWaitTimer.Reset();
+			}
+			mover.caveInClearTimer.Reset();
+		}
+		if (mover.caveInWaiting) {
+			if (mover.caveInClearTimer.IsPastSimMS(1000) || mover.caveInWaitTimer.IsPastSimMS(8000)) {
+				// Settled: on with the route, and the ground looked at again at the next dig step.
+				mover.caveInWaiting = false;
+				mover.caveInRisky = false;
+				mover.caveInChecked = false;
+			} else {
+				if (mover.digging) {
+					mover.digging = false;
+					EquipFirearm(true);
+				}
+				float dx = mover.caveInSafeX - m_Pos.m_X;
+				if (std::abs(dx) > 6.0F) {
+					ctrl.SetState(dx < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+				}
+				mover.progressTimer.Reset();
+				return RouteMover::Moving;
+			}
+		} else if (kind != PathStepKind::Dig) {
+			// Through, with nothing come down: done with it.
+			mover.caveInRisky = false;
+		}
+	}
+
 	// A dig step (ground this unit's digger cuts, on the route): the digger out, aimed along the way and swept a little either side, fired
 	// while there is ground within reach ahead, and the legs on into the cut once its first part is clear; put away again when the way is
 	// open. (The script's follower did this for diggers; now the engine's does, and diggers follow routes like everyone else.)
@@ -3455,6 +3569,59 @@ int AHuman::MoveAlongRoute() {
 				// stone cut slower than the rate model has it sent a Heavy Digger off up a jet climb it then stood under for half a minute.)
 				if (IsDiggingTo()) {
 					mover.digBudgetMS *= 2.0;
+				}
+				// Will cutting this bring ground down into the tunnel (SettingsMan::DigSafety)? Looked at once a step, as the cut begins, for
+				// the body-wide tunnel from here to the step's point and on through the next two dug steps: the ground a unit stands under
+				// while it digs, and walks back under.
+				const SettingsMan::DigSafetyTuning& safety = g_SettingsMan.DigSafety();
+				if (kind == PathStepKind::Dig && safety.AvoidCaveIns && (!IsDiggingTo() || safety.DigToOrders) && !(mover.caveInChecked && Towards(mover.caveInPoint, point).MagnitudeIsLessThan(1.0F))) {
+					mover.caveInChecked = true;
+					mover.caveInPoint = point;
+					std::vector<std::pair<Vector, Vector>> legs{{m_Pos, point}};
+					auto next = std::next(m_MovePath.begin());
+					auto nextKind = m_MovePathKinds.empty() ? m_MovePathKinds.end() : std::next(m_MovePathKinds.begin());
+					for (int more = 0; more < 2 && next != m_MovePath.end() && nextKind != m_MovePathKinds.end() && *nextKind == PathStepKind::Dig; ++more, ++next, ++nextKind) {
+						legs.emplace_back(legs.back().second, *next);
+					}
+					const TerrainCollapse::CaveIn caveIn = TerrainCollapse::TunnelWouldCaveIn(legs, h * 0.45F);
+					if (mover.caveInReroutes > 0 && mover.caveInRerouteTimer.IsPastSimMS(30000)) {
+						mover.caveInReroutes = 0;
+					}
+					if (caveIn.Falls && !IsDiggingTo() && mover.caveInReroutes < 3) {
+						// A way round it, as for a dig given up on: four marks on the step, and a route asked afresh. (Three tries; then it digs on.)
+						MoverTrace("the cut would bring the roof down; a way round");
+						if (mover.caveInReroutes++ == 0) {
+							mover.caveInRerouteTimer.Reset();
+						}
+						for (int k = 0; k < 4; ++k) {
+							AvoidPathLink(m_Pos, point, 30000.0F);
+						}
+						mover.caveInChecked = false;
+						if (mover.digging) {
+							mover.digging = false;
+							EquipFirearm(true);
+						}
+						RefreshRoute();
+						mover.progressTimer.Reset();
+						return RouteMover::Moving;
+					}
+					mover.caveInRisky = caveIn.Falls && safety.BackOff;
+					if (mover.caveInRisky) {
+						// The box, unwrapped near the unit; backed off to out from under it, on the side it came from (against the way it digs),
+						// or where it stands if that is out from under already. Never more than 200 px back.
+						const float boxLeft = m_Pos.m_X + Towards(m_Pos, Vector(static_cast<float>(caveIn.Left), m_Pos.m_Y)).m_X;
+						mover.caveInLeft = boxLeft;
+						mover.caveInRight = boxLeft + static_cast<float>(caveIn.Right - caveIn.Left);
+						mover.caveInWaiting = false;
+						const float margin = std::max(12.0F, h * 0.4F);
+						if (m_Pos.m_X < mover.caveInLeft - margin || m_Pos.m_X > mover.caveInRight + margin) {
+							mover.caveInSafeX = m_Pos.m_X;
+						} else {
+							const float safeX = toPoint.m_X >= 0.0F ? mover.caveInLeft - margin : mover.caveInRight + margin;
+							mover.caveInSafeX = m_Pos.m_X + std::clamp(safeX - m_Pos.m_X, -200.0F, 200.0F);
+						}
+						MoverTrace("the cut would bring the roof down, and there is no way round: digging on, ready to back off");
+					}
 				}
 			} else if (groundAhead && gap < mover.digBestGap - 4.0F) {
 				// Getting on into the cut: the time again from here. (Only standing at the face for the whole of it is given up on, not a cut

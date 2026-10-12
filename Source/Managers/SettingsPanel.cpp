@@ -983,6 +983,8 @@ void DebugMan::SettingsGUI() {
 		Tip("A piece heavier than this many times the unit it hits hurts only as much as one this heavy. Higher: big boulders are deadlier than big rocks.");
 		Slider("How hard pieces knock units", &tuning.HitKnockback, 0.0F, 3.0F, "%.2fx");
 		Tip("How hard falling pieces shove the units and loose objects they hit. Units knocked flying into the ground take the usual impact damage on top.");
+		Toggle("AI units get out from under falling ground", g_SettingsMan.AIDodgesFallingGround(), [](bool on) { g_SettingsMan.SetAIDodgesFallingGround(on); });
+		Tip("An AI unit with a loose piece of ground coming down on it steps out from under it to the nearer side it can get to (not into a wall or off an edge), whatever brought it down. Grains and scraps too small to hurt are left to fall. Off: they carry on with what they were doing.");
 		if (Plain() && ToolUI::Button("Usual falling")) {
 			tuning = TerrainCollapse::Tuning();
 		}
@@ -1517,6 +1519,27 @@ void DebugMan::SettingsGUI() {
 		Tip("Told to take cover with nothing to get behind, a unit that doesn't dig in lies flat where it ends up. Off: it crouches.");
 	};
 
+	// How units with a digger keep from bringing the ground down on themselves (SettingsMan::DigSafety).
+	auto digging = [&]() {
+		SettingsMan::DigSafetyTuning& safety = g_SettingsMan.DigSafety();
+		Heading("Cave-ins");
+		Check("Diggers avoid cave-ins", &safety.AvoidCaveIns);
+		Tip("Before cutting each part of a tunnel, an AI digger looks whether it would leave ground hanging that then falls into the tunnel (the Falling ground rules: an overhang longer than the longest that holds, or a piece left on a thin neck), and if so looks for a way round, deeper, or through other ground. Off: they dig wherever the route goes, and may bring the roof down on themselves.");
+		Check("Dig on and back off when there's no way round", &safety.BackOff);
+		Tip("When the only way is a tunnel that will cave in (or three ways round all did), the digger digs it anyway, and when the ground starts coming down over the tunnel it backs out from under it the way it came, waits until nothing has moved for a second, then digs on through what fell. Off: it digs on and takes its chances.");
+		Check("Dig-to orders too", &safety.DigToOrders);
+		Tip("Units you send to dig to a place look out for cave-ins too, but never go round: you asked for that tunnel, so they dig it and back off from what comes down (with the setting above on). Off: they just dig.");
+		Check("Dig-to preview warns of cave-ins", &safety.PreviewWarns);
+		Tip("The dig-to line by the cursor adds \"the roof will come down\" when the planned tunnel would bring ground down into it.");
+		if (Plain()) {
+			ImGui::Spacing();
+			if (ToolUI::Button("Reset to defaults")) {
+				safety = SettingsMan::DigSafetyTuning();
+			}
+			ImGui::SetItemTooltip("Puts every Digging setting back to how the game comes.");
+		}
+	};
+
 	// How units get about: the AI's moves and jetpack, and ladders.
 	auto movement = [&]() {
 		Heading("AI movement");
@@ -2028,6 +2051,7 @@ void DebugMan::SettingsGUI() {
 	    {"AI behaviour", aiBehaviour},
 	    {"Movement", movement},
 	    {"Battle Behavior", battleBehavior},
+	    {"Digging", digging},
 	    {"Performance", performance},
 	    {"Debug", debug},
 	    {"AI debug", aiDebug},

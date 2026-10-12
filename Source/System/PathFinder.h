@@ -187,6 +187,7 @@ namespace RTE {
 		int BlockingMaterial = 0; //!< For TooHard, the material in the way, 0 for none known.
 		Vector BlockingAt; //!< For TooHard, about where it is.
 		bool Floods = false; //!< Whether a step dug is next to liquid: the tunnel lets it in. A warning, not a refusal.
+		bool CavesIn = false; //!< Whether digging the tunnel would bring ground down into it (PathFinder::CheckCaveIn). A warning, not a refusal.
 	};
 
 	using PathCompleteCallback = std::function<void(std::shared_ptr<volatile PathRequest>)>;
@@ -322,6 +323,12 @@ namespace RTE {
 		/// @param digStrength What the searcher's digger cuts, for a plan that's too hard.
 		/// @return E.g. "Dig 4 m, hardest Earth, about 12 s" or "Too hard: Concrete; its digger cuts up to 75".
 		static std::string DescribeDigPlan(const DigPlan& plan, float digStrength);
+
+		/// Looks whether digging a plan's tunnel would bring ground down into it (TerrainCollapse::TunnelWouldCaveIn), for the dig-to preview's
+		/// warning, and sets the plan's CavesIn. Only with the preview's warning on (SettingsMan::DigSafety); a few milliseconds, so not every frame.
+		/// @param plan The plan (PlanDig).
+		/// @param radius How far either side of the route it is dug, in pixels (about half the unit's height).
+		static void CheckCaveIn(DigPlan& plan, float radius);
 
 		/// Calculates and returns the least difficult path between two points on the current scene.
 		/// This is asynchronous and thus will not block the current thread.
