@@ -953,6 +953,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DeadCrewFallOut", { reader >> m_DeadCrewFallOut; });
 	MatchProperty("PassengersFireFromVehicles", { reader >> m_PassengersFireFromVehicles; });
 	MatchProperty("PathLineWeight", { reader >> m_PathTuning.LineWeight; m_PathTuning.LineWeight = std::clamp(m_PathTuning.LineWeight, 0.0F, 2.0F); });
+	MatchProperty("PathLineWeightByRisk", { reader >> m_PathTuning.LineWeightByRisk; });
 	MatchProperty("PathUpCost", { reader >> m_PathTuning.UpCost; m_PathTuning.UpCost = std::clamp(m_PathTuning.UpCost, 0.0F, 5.0F); });
 	MatchProperty("PathFlightCost", { reader >> m_PathTuning.FlightCostScale; m_PathTuning.FlightCostScale = std::clamp(m_PathTuning.FlightCostScale, 0.2F, 1.0F); });
 	MatchProperty("PathJumpHeightCost", { reader >> m_PathTuning.JumpHeightCost; m_PathTuning.JumpHeightCost = std::clamp(m_PathTuning.JumpHeightCost, 0.0F, 2.0F); });
@@ -1626,6 +1627,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("DeadCrewFallOut", m_DeadCrewFallOut);
 	writer.NewPropertyWithValue("PassengersFireFromVehicles", m_PassengersFireFromVehicles);
 	writer.NewPropertyWithValue("PathLineWeight", m_PathTuning.LineWeight);
+	writer.NewPropertyWithValue("PathLineWeightByRisk", m_PathTuning.LineWeightByRisk);
 	writer.NewPropertyWithValue("PathUpCost", m_PathTuning.UpCost);
 	writer.NewPropertyWithValue("PathFlightCost", m_PathTuning.FlightCostScale);
 	writer.NewPropertyWithValue("PathJumpHeightCost", m_PathTuning.JumpHeightCost);

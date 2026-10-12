@@ -1978,8 +1978,10 @@ void DebugMan::SettingsGUI() {
 		Heading("Route choice");
 		{
 			Slider("Route straightness", &tuning.LineWeight, 0.0F, 2.0F, "%.2f");
-			Tip("How hard every unit's route keeps to the straight line from where it is to where it is sent: what each node off the line costs, in nodes walked. 0 (default) takes the cheapest way however far it strays; around 0.5 cuts corners and takes jumps it would walk round. Added to a dragged order's own Route straightness (Battle Behavior).");
+			Tip("How hard every unit's route keeps to the straight line from where it is to where it is sent: what each node off the line costs, in nodes walked. 0 takes the cheapest way however far it strays; around 0.5 cuts corners and takes jumps it would walk round; 1.75 is the default. Added to a dragged order's own Route straightness (Battle Behavior).");
 			resetItem("Route straightness", tuning.LineWeight, normal.LineWeight);
+			Check("Straightness follows risk", &tuning.LineWeightByRisk);
+			Tip("On (default): Route straightness follows each order's risk, as the battle modes' Least and Most risk give it too. A normal order keeps to the line by the value above, a cautious one less, down to not at all when fully cautious, and a risky one more (Battle Behavior's own Route straightness on top, up to close to a beeline at full risk). Off: the value above on every order alike.");
 			Slider("Uphill cost", &tuning.UpCost, 0.0F, 5.0F, "%.2f");
 			Tip("The extra cost of every node gone up, on foot or on the jet. Lower goes over hills and up through buildings; higher walks round them. 1.5 is the default.");
 			resetItem("Uphill cost", tuning.UpCost, normal.UpCost);
