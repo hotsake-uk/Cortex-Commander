@@ -3406,7 +3406,11 @@ int AHuman::MoveAlongRoute() {
 			if (flight.dive && airborne && !flight.refuelling && !flight.via && std::abs(to.m_X) > h * 2.0F && feetY < flight.floorY - h * 0.5F && to.m_X * m_Vel.m_X > 0.0F) {
 				ctrl.SetState(BODY_PRONE, true);
 			}
-			ctrl.SetState(BODY_JUMP, command.m_Y > 0.5F);
+			// (Lit, whatever the pilot chose, while still on the floor with the way up: its look ahead counts staying stood on the floor as
+			// no worse than flying into it, so where the jet's climb tracked the speed wanted badly (a heavier unit, a weaker jet, a narrow
+			// shaft) it chose to stay put. The take-off's burst bobbed the unit, the flight ended on the ground and the take-off was marked
+			// failed, over and over, with fuel to spare.)
+			ctrl.SetState(BODY_JUMP, command.m_Y > 0.5F || (climbingUp && !airborne));
 			ctrl.SetAnalogMove(Vector(command.m_X, -1.0F));
 			// Still on the ground at the start of the flight: the legs carry it towards the landing (off the edge, for one that is level or
 			// below), and the pilot has it once it is in the air. The stick alone moves nothing on the ground, and a flight whose pilot
