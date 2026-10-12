@@ -411,6 +411,10 @@ bool CrewSeats::ChangeSeat() {
 }
 
 bool CrewSeats::IsInReach(const Actor* unit, float extraReach) const {
+	// Anywhere close round it, under it too (BoardFromBelow): a unit jetting up under a hovering ship gets in from below.
+	if (g_SettingsMan.BoardFromBelow() && !g_SceneMan.ShortestDistance(m_Host->GetPos(), unit->GetPos()).MagnitudeIsGreaterThan(m_Host->GetRadius() + g_SettingsMan.BoardFromBelowReach() + extraReach)) {
+		return true;
+	}
 	for (int seat = 0; seat < GetSeatCount(); ++seat) {
 		if (!g_SceneMan.ShortestDistance(m_Host->GetPos() + m_Host->RotateOffset(GetSeatOffset(seat)), unit->GetPos()).MagnitudeIsGreaterThan(m_BoardingReach + extraReach + unit->GetRadius() * 0.25F)) {
 			return true;

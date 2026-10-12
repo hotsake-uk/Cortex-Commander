@@ -838,6 +838,7 @@
     <ClInclude Include="Source\System\RTETools.h" />
     <ClInclude Include="Source\System\Matrix.h" />
     <ClInclude Include="Source\System\PathFinder.h" />
+    <ClInclude Include="Source\System\AirRoute.h" />
     <ClInclude Include="Source\System\Reader.h" />
     <ClInclude Include="Source\System\Serializable.h" />
     <ClInclude Include="Source\System\Singleton.h" />
@@ -940,6 +941,7 @@
     <ClInclude Include="Source\Entities\ACraft.h" />
     <ClInclude Include="Source\Entities\ACRocket.h" />
     <ClInclude Include="Source\Entities\Actor.h" />
+    <ClInclude Include="Source\Entities\StatusEffect.h" />
     <ClInclude Include="Source\Entities\ADoor.h" />
     <ClInclude Include="Source\Entities\AMover.h" />
     <ClInclude Include="Source\Entities\AVehicle.h" />
@@ -1477,6 +1479,7 @@
       <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug Full|x64'">false</IncludeInUnityFile>
     </ClCompile>
     <ClCompile Include="Source\System\PathFinder.cpp" />
+    <ClCompile Include="Source\System\AirRoute.cpp" />
     <ClCompile Include="Source\System\Reader.cpp" />
     <ClCompile Include="Source\System\System.cpp" />
     <ClCompile Include="Source\System\Timer.cpp" />
@@ -1595,6 +1598,7 @@
     <ClCompile Include="Source\Entities\Actor.cpp" />
     <ClCompile Include="Source\Entities\ActorAfflictions.cpp" />
     <ClCompile Include="Source\Entities\ActorPowerups.cpp" />
+    <ClCompile Include="Source\Entities\StatusEffect.cpp" />
     <ClCompile Include="Source\Entities\ADoor.cpp" />
     <ClCompile Include="Source\Entities\AMover.cpp" />
     <ClCompile Include="Source\Entities\AVehicle.cpp" />

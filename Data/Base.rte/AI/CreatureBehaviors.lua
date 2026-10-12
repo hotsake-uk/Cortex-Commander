@@ -16,8 +16,13 @@
 --   CreatureLurkHeight   how far over its post it looks for a ceiling to lurk on, in pixels (default 300)
 --   CreatureLurkWait     how long it waits up there for prey it has seen to come under it before going after it, in ms (default 8000)
 --   CreatureDropReach    how far to one side of right under it its prey may be for it to drop on it, in pixels (default 40)
--- and a string value:
+--   CreatureHoverRange   for a flier that hovers (C8): how far off its prey it holds in the air, in pixels (default 40)
+--   CreatureDiveRange    for a flier that dives: how close it must be, in the open, to dive at its prey, in pixels (default 160)
+--   CreatureScatters     1 for a flier that breaks off and flies away for a moment when it is hurt (a carrion bat)
+-- and string values:
 --   CreatureSpit         the preset of what it spits (an MOPixel in Base.rte)
+--   CreatureFlyAttack    for a flier (C8): Dive to swoop on its prey, bite and pull away (default), or Hover to hold off it and let it have
+--                        what it was born with from there
 
 require("AI/SharedBehaviors");
 
@@ -166,6 +171,10 @@ end
 function CreatureBehaviors.HuntTarget(AI, Owner, Abort)
 	if not AI.Target or not MovableMan:ValidMO(AI.Target) then
 		return true;
+	end
+	-- (A flier hunts from the air, C8.)
+	if Owner.ClassName == "ACrab" and Owner.Flies > 0 then
+		return CreatureBehaviors.FlyHunt(AI, Owner, Abort);
 	end
 	AI.TargetLostTimer:Reset();
 	AI.TargetLostTimer:SetSimTimeLimitMS(SharedBehaviors.TargetMemoryMS(4000));
@@ -483,6 +492,14 @@ function CreatureBehaviors.LurkUpdate(AI, Owner)
 		return;
 	end
 
+	-- (A flier, C8: straight up to it and into the ceiling, asked to perch there.)
+	if Owner.Flies > 0 then
+		Crab:Perch();
+		AI.lateralMoveState = Actor.LAT_STILL;
+		AI.Ctrl.AnalogMove = SceneMan:ShortestDistance(Owner.Pos, Lurk.Spot + Vector(0, -Owner.Radius), false).Normalized;
+		return;
+	end
+
 	-- (On the way: along a route to the spot, asked on the pathing threads, which keeps the goal on the ceiling where it is given.)
 	if not Lurk.pending and Lurk.Timer:IsPastSimMS(2000) then
 		Lurk.pending = true;
@@ -503,3 +520,150 @@ function CreatureBehaviors.LurkUpdate(AI, Owner)
 	end
 	CrawlTo(AI, Owner, SceneMan:ShortestDistance(Owner.Pos, Lurk.points[1] or Lurk.Spot, false));
 end
+
+-- Hunting from the air (C8, the attack behaviour of a creature that flies): after its prey along a route through the air (the engine's
+-- flier route-follower, ACrab::MoveAlongRoute), and once near it in the open, by its way of attack (CreatureFlyAttack): a diver swoops
+-- on it, bites and pulls away up and off to one side to come round again; a hoverer holds in the air off it and lets it have what it was
+-- born with from there. Either spits too, when it has something to spit. One that scatters breaks off and flies away for a moment when it
+-- is hurt; a tired one makes for a ceiling over it to perch on, if it roosts, and otherwise glides down to rest. Over as HuntTarget is.
+function CreatureBehaviors.FlyHunt(AI, Owner, Abort)
+	local Crab = ToACrab(Owner);
+	AI.TargetLostTimer:Reset();
+	AI.TargetLostTimer:SetSimTimeLimitMS(SharedBehaviors.TargetMemoryMS(4000));
+	local reach = Value(Owner, "CreatureBiteReach", 30);
+	local chaseRange = Value(Owner, "CreatureChaseRange", 900);
+	local hoverRange = Value(Owner, "CreatureHoverRange", 40);
+	local diveRange = Value(Owner, "CreatureDiveRange", 160);
+	local attackRange = Value(Owner, "CreatureAttackRange", reach);
+	local style = Owner:StringValueExists("CreatureFlyAttack") and Owner:GetStringValue("CreatureFlyAttack") or "Dive";
+	local scatters = Value(Owner, "CreatureScatters", 0) > 0;
+	local Keep = Owner.AIMode == Actor.AIMODE_SENTRY and SharedBehaviors.RememberOrder(AI, Owner) or nil;
+	local SpitTimer = Timer();
+	SpitTimer.ElapsedSimTimeMS = 60000; -- (Ready at once.)
+	local PhaseTimer = Timer();
+	local HurtTimer = Timer();
+	local phase = "approach";
+	local Away;
+	local lastHealth = Owner.Health;
+	local routed = false;
+	Owner:SetNumberValue("CreatureHuntID", AI.Target.UniqueID);
+	SharedBehaviors.Trace(Owner, "fly hunt: " .. AI.Target.PresetName .. " (" .. style .. ")");
+
+	local function Finish(aborted)
+		Owner:RemoveNumberValue("CreatureHuntID");
+		if not aborted then
+			AI.Target = nil;
+		end
+		AI.fire = false;
+		AI.lateralMoveState = Actor.LAT_STILL;
+		AI.deviceState = ACrab.STILL;
+		Owner:ClearMovePath();
+		if not aborted and Keep and Keep.post and Owner.AIMode == Actor.AIMODE_SENTRY and SceneMan:ShortestDistance(Owner.Pos, Keep.post, false):MagnitudeIsGreaterThan(Owner.MoveHeight) then
+			SharedBehaviors.RestoreOrder(AI, Owner, Keep);
+		end
+		return true;
+	end
+
+	-- Along its air route after the prey (the follower plans it again as the prey moves).
+	local function Chase(Target)
+		if not routed then
+			Owner:ClearMovePath();
+			Owner:AddAIMOWaypoint(Target);
+			routed = true;
+		end
+		Crab:MoveAlongRoute();
+	end
+
+	while true do
+		local Target = AI.Target;
+		if not Target or not MovableMan:ValidMO(Target) or Target:IsDead() then
+			break;
+		end
+		local gap, ToTarget = CreatureBehaviors.GapTo(Owner, Target);
+		if gap > chaseRange then
+			SharedBehaviors.Trace(Owner, "fly hunt: got away");
+			break;
+		end
+		local dir = ToTarget.X >= 0 and 1 or -1;
+		local clear = SceneMan:CastStrengthSumRay(Owner.EyePos, Target.Pos, 4, rte.grassID) < 50;
+		AI.deviceState = ACrab.AIMING;
+		AI.Ctrl.AnalogAim = SceneMan:ShortestDistance(Owner.EyePos, Target.Pos, false).Normalized;
+		AI.lateralMoveState = Actor.LAT_STILL;
+		AI.fire = clear and gap <= attackRange;
+
+		-- (Hurt, one that scatters breaks off: away from its prey and up, for a moment.)
+		if scatters and phase ~= "scatter" and lastHealth - Owner.Health >= Owner.MaxHealth * 0.15 then
+			phase = "scatter";
+			PhaseTimer:Reset();
+			Away = Vector(-dir, -1).Normalized;
+			SharedBehaviors.Trace(Owner, "fly hunt: scatters");
+		end
+		if HurtTimer:IsPastSimMS(1000) then
+			HurtTimer:Reset();
+			lastHealth = Owner.Health;
+		end
+
+		if Crab.IsFlightTired then
+			-- Tired: up into a ceiling close over it to perch, if it roosts; else it glides down and rests (ACrab::UpdateFlight).
+			local Hit = Vector();
+			if Owner.Climbs >= 2 and SceneMan:CastStrengthRay(Owner.Pos, Vector(0, -200), 30, Hit, 3, rte.grassID, SceneMan.SceneWrapsX) then
+				Crab:Perch();
+				AI.Ctrl.AnalogMove = Vector(0, -1);
+			end
+		elseif phase == "scatter" then
+			AI.Ctrl.AnalogMove = Away;
+			AI.fire = false;
+			if PhaseTimer:IsPastSimMS(1200) then
+				phase = "approach";
+				routed = false;
+			end
+		elseif phase == "pull" then
+			-- Pulling away from a dive: up and on past its prey, to come round again.
+			AI.Ctrl.AnalogMove = SceneMan:ShortestDistance(Owner.Pos, Away, false).Normalized;
+			if PhaseTimer:IsPastSimMS(900) or not SceneMan:ShortestDistance(Owner.Pos, Away, false):MagnitudeIsGreaterThan(20) then
+				phase = "approach";
+				routed = false;
+			end
+		elseif style == "Hover" then
+			-- Held in the air off its prey, above and to the side it came from, and lets it have it from there.
+			local Spot = Target.Pos + Vector(-dir * hoverRange, -hoverRange * 0.5);
+			local ToSpot = SceneMan:ShortestDistance(Owner.Pos, Spot, false);
+			if clear and gap < math.max(hoverRange * 3, 200) and SceneMan:CastStrengthSumRay(Owner.Pos, Spot, 4, rte.grassID) < 50 then
+				AI.Ctrl.AnalogMove = ToSpot.Magnitude > 4 and ToSpot:SetMagnitude(math.min(ToSpot.Magnitude / 40, 1)) or Vector();
+				Owner.HFlipped = dir < 0;
+				routed = false;
+			else
+				Chase(Target);
+			end
+			if gap > reach * 2 then
+				CreatureBehaviors.SpitAt(AI, Owner, Target, gap, SpitTimer);
+			end
+		else
+			-- A diver: at its prey flat out once close and in the open, biting in reach, then away.
+			if clear and gap < diveRange then
+				AI.Ctrl.AnalogMove = ToTarget.Normalized;
+				Owner.HFlipped = dir < 0;
+				routed = false;
+				if gap <= reach then
+					AI.fire = true;
+					phase = "pull";
+					PhaseTimer:Reset();
+					Away = Target.Pos + Vector(dir * 120, -110);
+				end
+			else
+				if gap > reach * 2 then
+					CreatureBehaviors.SpitAt(AI, Owner, Target, gap, SpitTimer);
+				end
+				Chase(Target);
+			end
+		end
+
+		local _ai, _ownr, _abrt = coroutine.yield(); -- wait until next frame
+		if _abrt then
+			return Finish(true);
+		end
+	end
+
+	return Finish(false);
+end
+

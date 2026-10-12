@@ -1272,7 +1272,9 @@ bool HeldDevice::CutWithBlade(MOID hitMOID, const Vector& hitPos, const Vector& 
 	Vector direction = relativeVel.GetNormalized();
 	Color cutColor = m_BladeEnergy ? m_BladeColor : Color(200, 200, 200);
 	MOPixel* cut = new MOPixel(cutColor, GetBladeMass(), hitPos - direction * 3.0F, hitMO->GetVel() + relativeVel, new Atom(Vector(), s_CutMaterial, nullptr, cutColor, 0), 60);
-	cut->SetSharpness(GetBladeSharpness());
+	// (Its holder blessed or cursed, SE-1: the cut bites that much more or less.)
+	const Actor* holderActor = dynamic_cast<const Actor*>(holder);
+	cut->SetSharpness(GetBladeSharpness() * (holderActor ? holderActor->GetDamageDealtMultiplier() : 1.0F));
 	cut->SetToHitMOs(true);
 	cut->SetToGetHitByMOs(false);
 	cut->SetWhichMOToNotHit(holder, -1.0F);

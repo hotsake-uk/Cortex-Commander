@@ -6,6 +6,7 @@
 - The projectiles: the fireball, the meteor, the poison and gravity orbs (four frames each, they flicker), and the rune circles the
   meteor storm and the raising of the dead glow on the ground.
   All of these are 8-bit in the game palette (index 0 the see-through mask colour), lit from the upper left.
+- The props the second batch of spells leaves on the field: the stone spike and wall, the bridge of light, the ice crust, and the gold rune circle.
 - Coloured glows: true-colour RGB images, black for nothing, added onto the screen where an object with ScreenEffect is (and they light the
   scene in their average colour).
 
@@ -82,6 +83,36 @@ EMBLEMS = {
 	"hourglass": ["ccccc", ".bab.", "..b..", ".bcb.", "ccccc"],
 	"fang": ["c...c", "cc.cc", ".bcb.", "..b..", "....."],
 	"eye": [".bbb.", "bcacb", "bcacb", ".bbb.", "....."],
+	# The support spells'.
+	"cross": ["..c..", ".ccc.", "..c..", "..c..", "..b.."],
+	"sun": ["b.c.b", ".ccc.", "ccacc", ".ccc.", "b.c.b"],
+	"dove": ["....c", "..cc.", "cccc.", ".ccb.", "..b.."],
+	"shield": ["ccccc", "cbabc", "cbabc", ".cbc.", "..c.."],
+	"wing": ["c....", "cc...", "cccc.", ".ccbb", "...bb"],
+	"tablet": [".ccc.", ".cbc.", ".cbc.", ".cbc.", ".ccc."],
+	"noflame": ["..b..", ".bc..", "cbcb.", "bcacb", ".bab."],
+	"leaf": ["....c", "..ccc", ".cccb", "ccbb.", "cb..."],
+	"sword": ["....c", "...cc", "..cc.", "bcc..", "ab..."],
+	"feather": ["....c", "...cc", "..ccc", ".cc..", "b...."],
+	"mirror": [".ccc.", "cbabc", "cbabc", ".ccc.", "..b.."],
+	"arrow": ["..c..", ".ccc.", "c.c.c", "..c..", "..c.."],
+	"ring": [".ccc.", "c...c", "c...b", "c....", ".cc.."],
+	"candle": ["..c..", "..a..", "..b..", "..b..", ".bbb."],
+	"hand": ["b.b.b", "bbbbb", "bbbbb", ".bbb.", "..b.."],
+	# The second batch of attack and control spells'.
+	"chain": ["c...c", ".c.c.", "..c..", ".c.c.", "c...c"],
+	"lance": ["....c", "...cc", "..cb.", ".cb..", "ab..."],
+	"snow": ["c.c.c", ".ccc.", "ccacc", ".ccc.", "c.c.c"],
+	"firewall": ["b.b.b", "cbcbc", "ccccc", "ccacc", "ccccc"],
+	"pillar": [".ccc.", "..c..", "..a..", "..c..", ".ccc."],
+	"beam": ["c....", ".c...", "..a..", "...c.", "....c"],
+	"spikes": [".c.c.", ".c.c.", "cccc.", "bbbbb", "....."],
+	"clap": ["c...c", ".c.c.", "cbabc", ".c.c.", "c...c"],
+	"stoneeye": [".bbb.", "bcacb", "bcacb", ".bbb.", ".c.c."],
+	"wave": ["c.c..", ".c.c.", "..c.c", "c.c..", ".c.c."],
+	"brick": ["ccccc", "c.c.c", "ccccc", ".c.c.", "ccccc"],
+	"bridge": ["c...c", "cc.cc", "ccccc", ".bbb.", "..b.."],
+	"paw": [".b.b.", "b.b.b", ".ccc.", "ccccc", ".ccc."],
 }
 
 
@@ -209,6 +240,65 @@ def make_items():
 	book("TimeWarp.png", [(110, 76, 22), (180, 136, 40), (236, 200, 96)], [(70, 46, 20), (110, 76, 34), (150, 110, 50)], "hourglass", [(250, 240, 200), (120, 80, 30), (70, 46, 20)])
 	# Arcane Nova: a white scroll with violet ends and a bright violet seal.
 	scroll("ArcaneNova.png", [(180, 176, 190), (220, 216, 230), (250, 248, 255)], [(70, 30, 110), (130, 70, 180)], [(90, 30, 140), (170, 90, 240), (240, 200, 255)], ribbon=[(110, 50, 170), (70, 30, 110)])
+	# The support spells.
+	WHITE = [(150, 146, 140), (210, 206, 198), (246, 244, 240)]
+	# Heal: a white book with a gold cross.
+	book("Heal.png", WHITE, GOLD, "cross", [(160, 120, 30), (220, 180, 50), (255, 240, 170)])
+	# Mass Heal: a big white tome with a gold sunburst.
+	book("MassHeal.png", WHITE, GOLD, "sun", [(170, 130, 30), (236, 196, 60), (255, 250, 200)], w=14, h=10)
+	# Blessing: a gold-edged white book with a dove.
+	book("Blessing.png", [(170, 160, 140), (226, 218, 200), (250, 246, 236)], GOLD, "dove", [(170, 150, 110), (236, 230, 220), (255, 255, 255)])
+	# Shield of Faith: a blue book with a white shield.
+	book("ShieldOfFaith.png", [(30, 50, 110), (54, 90, 170), (100, 140, 210)], SILVER, "shield", [(60, 90, 160), (210, 222, 240), (255, 255, 255)])
+	# Haste: a thin cyan scroll with a winged seal.
+	scroll("Haste.png", [(120, 170, 180), (170, 220, 228), (220, 246, 250)], [(20, 90, 110), (40, 150, 170)], [(20, 100, 120), (70, 200, 220), (200, 250, 255)], ribbon=[(40, 140, 160), (20, 90, 110)])
+	# Stoneskin: a grey stone tablet (Earth Shatter's is browner).
+	tablet("Stoneskin.png")
+	# Fire Ward: an orange book with a flame struck through.
+	book("FireWard.png", [(130, 50, 10), (200, 90, 20), (236, 140, 50)], IRON, "noflame", [(60, 60, 70), (255, 170, 60), (255, 240, 170)])
+	# Regeneration: a green book with a leaf.
+	book("Regeneration.png", [(26, 70, 30), (50, 120, 56), (96, 170, 90)], BONE, "leaf", [(40, 100, 40), (120, 220, 90), (200, 255, 160)])
+	# Enchant Weapon: a violet book with a sword.
+	book("EnchantWeapon.png", [(60, 30, 100), (110, 60, 170), (160, 110, 220)], SILVER, "sword", [(120, 90, 50), (210, 216, 230), (255, 255, 255)])
+	# Levitate: a pale scroll with a feather seal.
+	scroll("Levitate.png", [(170, 170, 180), (214, 214, 226), (244, 244, 252)], [(90, 100, 150), (140, 150, 210)], [(90, 100, 160), (190, 200, 240), (255, 255, 255)], ribbon=[(120, 130, 190), (80, 90, 140)])
+	# Mirror Image: a silver-backed book with a mirror.
+	book("MirrorImage.png", [(80, 86, 100), (140, 148, 164), (200, 208, 222)], SILVER, "mirror", [(100, 110, 130), (170, 150, 230), (240, 236, 255)])
+	# Blink: a small violet scroll.
+	scroll("Blink.png", [(130, 110, 170), (176, 156, 216), (220, 206, 246)], [(60, 30, 110), (110, 70, 180)], [(70, 30, 130), (160, 100, 240), (230, 200, 255)], ribbon=[(100, 60, 170), (60, 30, 110)], w=13, h=7)
+	# Dispel: a white scroll with a broken-ring seal.
+	scroll("Dispel.png", [(190, 186, 190), (228, 226, 230), (252, 252, 255)], [(120, 120, 130), (180, 180, 190)], [(110, 110, 120), (230, 230, 235), (255, 255, 255)], ribbon=[(160, 160, 170), (110, 110, 120)])
+	# Light: a plain tan book with a candle.
+	book("Light.png", [(110, 86, 50), (170, 136, 86), (214, 184, 130)], BONE, "candle", [(255, 240, 160), (230, 226, 200), (255, 255, 230)], clasp=False)
+	# Telekinetic Grab: a violet book with a grasping hand.
+	book("TelekineticGrab.png", [(50, 24, 90), (96, 44, 150), (140, 90, 200)], IRON, "hand", [(200, 170, 240), (0, 0, 0), (0, 0, 0)])
+	# The second batch of attack and control spells (Spells2.ini).
+	# Chain Lightning: a storm-blue book with a white zigzag chain, silver.
+	book("ChainLightning.png", [(28, 40, 80), (56, 80, 140), (100, 130, 190)], SILVER, "chain", [(160, 180, 220), (230, 240, 255), (255, 255, 255)])
+	# Ice Lance: a thin white-blue scroll with a frosted seal.
+	scroll("IceLance.png", [(150, 190, 220), (200, 230, 248), (236, 248, 255)], [(40, 80, 140), (90, 150, 210)], [(60, 120, 190), (180, 230, 255), (255, 255, 255)], ribbon=[(80, 140, 200), (40, 80, 140)], w=14, h=7)
+	# Blizzard: a big dark-blue tome with a white snowflake, silver.
+	book("Blizzard.png", [(20, 30, 60), (40, 60, 110), (80, 110, 170)], SILVER, "snow", [(150, 200, 240), (220, 240, 255), (255, 255, 255)], w=14, h=10)
+	# Flame Wall: a charred black book with a row of flames.
+	book("FlameWall.png", [(40, 18, 12), (80, 34, 20), (130, 60, 30)], IRON, "firewall", [(200, 60, 20), (250, 150, 40), (255, 240, 150)])
+	# Holy Smite: a white tome with a gold pillar of light.
+	book("HolySmite.png", [(170, 160, 140), (226, 218, 200), (252, 248, 236)], GOLD, "pillar", [(180, 140, 40), (240, 200, 70), (255, 255, 220)], w=14, h=10)
+	# Sunbeam: a gold book with a diagonal white beam.
+	book("Sunbeam.png", [(120, 80, 20), (190, 140, 40), (240, 200, 90)], [(70, 46, 20), (110, 76, 34), (150, 110, 50)], "beam", [(255, 240, 180), (255, 230, 140), (255, 255, 255)])
+	# Stone Spikes: a brown stone tablet (its own grey-brown).
+	tablet("StoneSpikes.png")
+	# Thunderclap: a slate book with a white burst, iron.
+	book("Thunderclap.png", [(40, 44, 56), (74, 80, 96), (120, 128, 146)], IRON, "clap", [(190, 200, 230), (240, 244, 255), (255, 255, 255)])
+	# Petrify: a grey-green book with a stone eye, bone corners.
+	book("Petrify.png", [(50, 60, 50), (90, 104, 86), (130, 146, 124)], BONE, "stoneeye", [(60, 60, 56), (150, 150, 140), (210, 210, 200)])
+	# Water Jet: a sea-blue scroll with a wave seal.
+	scroll("WaterJet.png", [(140, 170, 190), (180, 214, 230), (220, 240, 250)], [(20, 60, 110), (40, 110, 170)], [(20, 80, 150), (60, 160, 230), (190, 230, 255)], ribbon=[(40, 110, 170), (20, 60, 110)])
+	# Wall of Stone: a grey book with a brick wall, iron.
+	book("WallOfStone.png", [(60, 60, 64), (100, 100, 104), (140, 140, 144)], IRON, "brick", [(70, 68, 64), (150, 146, 138), (200, 196, 186)])
+	# Bridge of Light: a pale gold scroll with a white seal.
+	scroll("BridgeOfLight.png", [(200, 190, 160), (236, 226, 196), (255, 250, 230)], [(170, 130, 40), (230, 190, 70)], [(190, 150, 50), (255, 240, 180), (255, 255, 255)], ribbon=[(220, 180, 60), (170, 130, 40)])
+	# Summon Wolf: a grey fur-bound book with a paw print, bone corners.
+	book("SummonWolf.png", [(50, 48, 46), (90, 86, 82), (130, 124, 118)], BONE, "paw", [(30, 28, 26), (200, 196, 190), (240, 236, 230)])
 
 
 # ---------------------------------------------------------------------------------------------------------------------------------
@@ -321,6 +411,70 @@ def make_projectiles():
 
 
 # ---------------------------------------------------------------------------------------------------------------------------------
+# Props the second batch leaves on the field (Spells2.ini): the stone spike and wall, the bridge of light and the ice crust.
+
+
+def make_props():
+	stone = {"k": (30, 30, 32), "s": (70, 70, 74), "g": (104, 104, 108), "G": (140, 140, 144), "L": (176, 176, 180), "n": (84, 56, 32)}
+	# A stone spike, 7 wide and 22 tall, lit from the upper left.
+	spike = [
+		"...k...",
+		"...k...",
+		"..kLk..",
+		"..kLk..",
+		"..kLgk.",
+		".kGLgk.",
+		".kGLgk.",
+		".kGLgsk",
+		".kGLgsk",
+		"kGGLgsk",
+		"kGGLgsk",
+		"kGGLgsk",
+		"kGgLgsk",
+		"kGgLgsk",
+		"kGggssk",
+		"kGggssk",
+		"kGggssk",
+		"kgggssk",
+		"kgggssk",
+		"kgsgssk",
+		"kgsssnk",
+		"kkkkkkk",
+	]
+	save_grid(spike, stone, "StoneSpike.png")
+	# A wall of stone, 6 wide and 40 tall: coursed blocks with mortar lines, real terrain once it settles.
+	wall = []
+	for y in range(40):
+		if y % 5 == 4:
+			wall.append("kssssk")
+		else:
+			shade = "G" if y % 10 < 5 else "g"
+			if y % 5 == 0:
+				wall.append("k" + "L" + shade * 3 + "k")
+			else:
+				wall.append("k" + shade + shade + shade + "s" + "k")
+	save_grid(wall, stone, "StoneWall.png")
+	# A bridge of light, 100 wide and 4 tall: a plank of pale gold, brightest along the top.
+	light = {"w": (255, 252, 230), "y": (250, 220, 130), "g": (210, 170, 70), "d": (150, 110, 40)}
+	bridge = ["w" * 100, "y" * 100, "g" * 100, "d" * 100]
+	save_grid(bridge, light, "LightBridge.png")
+	# An ice crust, 24 wide and 8 tall: a frosted hump that settles as ice where an Ice Lance strikes.
+	ice = {"k": (120, 170, 210), "I": (170, 210, 240), "J": (220, 240, 255), "W": (245, 252, 255)}
+	crust = [
+		"........kkkkkkkk........",
+		".....kkkJWWJJWWJkkk.....",
+		"...kkJJWWJJJJJJWWJJkk...",
+		"..kJJWJJJIIJJIIJJJWJJk..",
+		".kJJJJJIIIIJJIIIIJJJJJk.",
+		"kJJIIIIIIIIIIIIIIIIIIJJk",
+		"kIIIIIIIIIIIIIIIIIIIIIIk",
+		"kkkkkkkkkkkkkkkkkkkkkkkk",
+	]
+	save_grid(crust, ice, "IceCrust.png")
+	rune_circle("RuneCircleGold.png", (120, 90, 20), (230, 180, 50), (255, 245, 190))
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------
 # Glows (true colour, additive)
 
 
@@ -393,12 +547,21 @@ def make_glows():
 	ring_glow("GlowRuneRed.png", 61, 17, (255, 70, 30), 0.14)
 	ring_glow("GlowRuneGreen.png", 61, 17, (60, 255, 90), 0.14)
 	ring_glow("GlowClock.png", 151, 151, (255, 190, 60), 0.05, 12, (255, 240, 180))
+	glow("GlowWhiteBig.png", 61, (255, 255, 255), (255, 250, 220), 1.6)
+	glow("GlowGoldHuge.png", 121, (255, 250, 220), (230, 170, 40), 1.6)
+	glow("GlowCyanBig.png", 41, (230, 255, 255), (60, 220, 255))
+	# The second batch's.
+	ring_glow("GlowRuneGold.png", 61, 17, (255, 200, 70), 0.14)
+	glow("GlowBlueHuge.png", 121, (220, 240, 255), (60, 120, 255), 1.6)
+	glow("GlowSunHuge.png", 161, (255, 255, 240), (255, 200, 80), 1.3, 0.35)
+	glow("GlowWaterSmall.png", 15, (220, 245, 255), (60, 150, 230))
 
 
 def main():
 	os.makedirs(OUT, exist_ok=True)
 	make_items()
 	make_projectiles()
+	make_props()
 	make_glows()
 	print("spell sprites done")
 

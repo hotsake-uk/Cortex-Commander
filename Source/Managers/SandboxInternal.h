@@ -2770,6 +2770,9 @@ namespace SandboxDetail {
 	bool CrewGoOnFoot(Actor* unit, const Vector& destination);
 	/// Whether the selected vehicles' crews stay in: 1 all do, 0 none do, -1 mixed, -2 no vehicle selected.
 	int SelectedStayIn();
+
+	/// Whether the selected vehicles and flying ships are locked (Actor::IsVehicleLocked): 1 all, 0 none, -1 some, -2 there are none.
+	int SelectedLocked();
 	/// Whether a vehicle or flying ship is among the selected units.
 	bool SelectionHasVehicle();
 	/// Whether everyone selected (and alive) is a vehicle or flying ship: then the command bar shows only the orders they can carry out.
@@ -3081,6 +3084,9 @@ namespace SandboxDetail {
 	/// The Army overview window (B-6): your side's units by kind, with how many, their average health and how many are idle; a click on a
 	/// kind selects them all, a double click looks at them too. Shown while the setting is on (SettingsMan::ShowArmyOverview). Call from the ImGui frame.
 	void DrawArmyOverview();
+	/// Sets the selected units off round the patrol route clicked out (s_PatrolDraft), a loop or back and forth, or takes it as the spawn order
+	/// being set; the route is cleared. Nothing with fewer than two points.
+	void StartPatrolDraft(bool backAndForth);
 	void CommandHotkeys();
 	void KeysPage();
 	void ToggleWindowTab(const char* tab);
