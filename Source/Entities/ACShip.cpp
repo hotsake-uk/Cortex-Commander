@@ -295,15 +295,75 @@ PathAgent ACShip::GetPathAgent() const {
 	return agent;
 }
 
+float ACShip::HullUnderside() const {
+	float underside = static_cast<float>(GetSpriteHeight()) + m_SpriteOffset.m_Y;
+	// (A gun or engine hung under the hull counts; the crew in their seats don't.)
+	for (const Attachable* attachable: m_Attachables) {
+		if (attachable && !dynamic_cast<const Actor*>(attachable)) {
+			underside = std::max(underside, attachable->GetParentOffset().m_Y + attachable->GetIndividualRadius() * 0.75F);
+		}
+	}
+	return std::clamp(underside, 4.0F, GetRadius());
+}
+
+float ACShip::HullHalfWidth() const {
+	float halfWidth = std::max(-m_SpriteOffset.m_X, static_cast<float>(GetSpriteWidth()) + m_SpriteOffset.m_X);
+	// (Its engines and guns out at its ends count; the crew in their seats don't.)
+	for (const Attachable* attachable: m_Attachables) {
+		if (attachable && !dynamic_cast<const Actor*>(attachable)) {
+			halfWidth = std::max(halfWidth, std::abs(attachable->GetParentOffset().m_X) + attachable->GetIndividualRadius() * 0.75F);
+		}
+	}
+	return std::clamp(halfWidth, 8.0F, GetRadius());
+}
+
+float ACShip::HullTop() const {
+	float top = -m_SpriteOffset.m_Y;
+	for (const Attachable* attachable: m_Attachables) {
+		if (attachable && !dynamic_cast<const Actor*>(attachable)) {
+			top = std::max(top, -attachable->GetParentOffset().m_Y + attachable->GetIndividualRadius() * 0.75F);
+		}
+	}
+	return std::clamp(top, 4.0F, GetRadius());
+}
+
+bool ACShip::HullLineClear(const Vector& from, const Vector& to) const {
+	// Its whole outline swept along the line, engines and all, not just its middle: rays from its two ends, top and bottom, and its middle,
+	// with a little room round it, and more top and bottom for the lean of its ends as it tilts.
+	const Vector way = g_SceneMan.ShortestDistance(from, to, g_SceneMan.SceneWrapsX());
+	const float halfWidth = HullHalfWidth() + 6.0F;
+	const float lean = HullHalfWidth() * 0.2F + 6.0F;
+	const float top = HullTop() + lean;
+	const float under = HullUnderside() + lean;
+	const std::array<Vector, 7> outline{Vector(0.0F, 0.0F), Vector(-halfWidth, -top), Vector(halfWidth, -top), Vector(-halfWidth, under), Vector(halfWidth, under), Vector(0.0F, -top), Vector(0.0F, under)};
+	Vector blocked;
+	for (const Vector& offset: outline) {
+		Vector start = from + offset;
+		g_SceneMan.WrapPosition(start);
+		if (g_SceneMan.CastStrengthRay(start, way, 5.0F, blocked, 4)) {
+			return false;
+		}
+	}
+	return true;
+}
+
 float ACShip::LowClearance() const {
-	return std::max(GetRadius() * 1.1F, 30.0F);
+	return HullUnderside() + g_SettingsMan.ShipGroundClearance();
 }
 
 Vector ACShip::LowPoint(const Vector& spot, float extraAltitude) {
-	// Where it's sent, as it was clicked: only raised off the ground enough to clear it, not up to a drop ship's hover height.
+	// Where it's sent, as it was clicked: only raised off the ground enough for its underside to clear the highest of it under its hull, not
+	// up to a drop ship's hover height. (From just above the place, so a click on the ground's surface finds that ground.)
 	Vector to = spot;
 	g_SceneMan.WrapPosition(to);
-	const float lowest = AutopilotGroundBelow(Vector(to.m_X, to.m_Y - 10.0F), LowClearance() + std::max(extraAltitude, 0.0F));
+	const int keep = static_cast<int>(LowClearance() + std::max(extraAltitude, 0.0F));
+	const float halfWidth = HullHalfWidth();
+	float lowest = FLT_MAX;
+	for (float side: {-halfWidth, 0.0F, halfWidth}) {
+		Vector under(to.m_X + side, to.m_Y - 10.0F);
+		g_SceneMan.WrapPosition(under);
+		lowest = std::min(lowest, g_SceneMan.MovePointToGround(under, keep, 4).m_Y);
+	}
 	to.m_Y = std::max(std::min(to.m_Y, lowest), GetRadius());
 	return to;
 }
@@ -319,8 +379,8 @@ bool ACShip::FlyRouteTo(const Vector& spot) {
 	const float direct = m_StandingOrder.Direct;
 	const float care = std::clamp(-direct, 0.0F, 1.0F);
 	const float radius = GetRadius();
-	// A cautious order flies higher, up to half as high again over the ground, further from small arms below.
-	const float extra = AutopilotHoverHeight() * 0.5F * care;
+	// A cautious order flies higher, up to a hull's height more over the ground, further from small arms below.
+	const float extra = HullHeight() * care;
 	const Vector goal = LowPoint(spot, extra);
 	// (Sent again where it is already going, as the standing orders do: the route it has goes on.)
 	if (!m_Route.empty() && m_AIMode == AIMODE_GOTO && g_SceneMan.ShortestDistance(m_Route.back(), goal).MagnitudeIsLessThan(24.0F)) {
@@ -328,18 +388,8 @@ bool ACShip::FlyRouteTo(const Vector& spot) {
 	}
 	m_Route.clear();
 	// Open air between two points for its body: along its middle and a little above and below.
-	auto clearLine = [radius](const Vector& from, const Vector& to) {
-		Vector way = g_SceneMan.ShortestDistance(from, to);
-		Vector blocked;
-		for (float dy: {-radius * 0.5F, 0.0F, radius * 0.5F}) {
-			Vector start = from + Vector(0.0F, dy);
-			g_SceneMan.WrapPosition(start);
-			if (g_SceneMan.CastStrengthRay(start, way, 5.0F, blocked, 4)) {
-				return false;
-			}
-		}
-		return true;
-	};
+	// Open air between two points for its whole hull, engines and all (HullLineClear).
+	auto clearLine = [this](const Vector& from, const Vector& to) { return HullLineClear(from, to); };
 	Scene* scene = g_SceneMan.GetScene();
 	// Full risk, or open air all the way and no call to keep clear of anyone: straight there, as it always flew.
 	if (!scene || direct >= tuning.StraightFlightRisk || (care <= 0.0F && clearLine(m_Pos, goal))) {
@@ -358,20 +408,24 @@ bool ACShip::FlyRouteTo(const Vector& spot) {
 	if (scene->CalculatePath(start, end, path, GetPathAgent(), static_cast<Activity::Teams>(m_Team)) < 0.0F || path.size() < 2) {
 		return AutopilotGoTo(goal);
 	}
-	// Each point raised to its hover height over the ground there, as far as the room over it lets it.
-	const float want = LowClearance() + 20.0F + extra;
+	// Each point raised to its clearance over the ground there, as far as the room over it lets it: with less room than its whole hull
+	// needs, as far up the room as its top lets it, and never under half of it.
+	const float want = LowClearance() + extra;
+	const float top = std::max(radius * 0.25F, HullHeight() - HullUnderside());
 	std::vector<Vector> raised;
 	raised.reserve(path.size());
 	for (const Vector& node: path) {
+		const float ground = g_SceneMan.MovePointToGround(Vector(node.m_X, node.m_Y - 10.0F), 0, 4).m_Y;
 		float room = 0.0F;
-		while (room < want) {
-			int y = static_cast<int>(node.m_Y - room - 8.0F);
+		while (room < want + top) {
+			int y = static_cast<int>(ground - room - 8.0F);
 			if (y < 0 || g_SceneMan.GetTerrMatter(static_cast<int>(node.m_X), y) != MaterialColorKeys::g_MaterialAir) {
 				break;
 			}
 			room += 8.0F;
 		}
-		raised.emplace_back(node.m_X, std::max(node.m_Y - std::max(room - radius * 0.5F, 0.0F), radius));
+		const float lift = room >= want + top ? want : std::max(room - top, std::min(room, want) * 0.5F);
+		raised.emplace_back(node.m_X, std::max(ground - lift, radius));
 	}
 	// And straight on past the points it can see past: from each, to the furthest a little way on with open air between. (A cautious order
 	// looks less far ahead, so the way round enemies isn't cut across.)
@@ -584,7 +638,7 @@ void ACShip::UpdateCombat() {
 		m_JinkTimer.Reset();
 	} else {
 		// The first of these with a clear line to the enemy: its side first (the other first when looking for a shot it didn't find on this
-		// one), at its distance, nearer, then further, each at its hover height and higher.
+		// one), at its distance, nearer, then further, each just clear of the ground and higher.
 		int firstSide = search && m_CombatSearching ? -side : side;
 		Vector fallback;
 		bool found = false;
@@ -592,7 +646,7 @@ void ACShip::UpdateCombat() {
 			for (float distance: {share, share * 0.7F, std::min(share * 1.3F, 0.8F)}) {
 				for (float lift: {0.0F, -60.0F, -120.0F}) {
 					Vector ground = keepNearPost(enemyPos + Vector(static_cast<float>(s) * distance * range, 0.0F));
-					Vector candidate = LowPoint(ground, 40.0F) + Vector(0.0F, lift);
+					Vector candidate = LowPoint(ground) + Vector(0.0F, lift);
 					candidate.m_Y = std::max(candidate.m_Y, radius);
 					if (fallback.IsZero()) {
 						fallback = candidate;
@@ -621,8 +675,7 @@ void ACShip::UpdateCombat() {
 	m_CombatTargetID = target->GetUniqueID();
 	m_HasCombatSpot = true;
 	// Straight there through open air, at the height chosen; round what is in the way by a route otherwise.
-	Vector blocked;
-	if (!g_SceneMan.CastStrengthRay(m_Pos, g_SceneMan.ShortestDistance(m_Pos, spot, wraps), 5.0F, blocked, 4)) {
+	if (HullLineClear(m_Pos, spot)) {
 		m_Route.clear();
 		AutopilotGoTo(spot);
 	} else {
@@ -956,9 +1009,10 @@ void ACShip::UpdateFlight() {
 			}
 			m_HasHoldPoint = true;
 		} else if (m_AIMode == AIMODE_DELIVER || (m_AIMode == AIMODE_STAY && (wasDelivering || first))) {
-			// Its cargo let out at its hover height over the ground under it, or, just come in (bought, from orbit), waiting there: the only
+			// Its cargo let out low over the ground under it, or, just come in (bought, from orbit), waiting there: the only
 			// times it goes down to it by itself.
-			m_HoldPoint = AutopilotHoverPoint(Vector(m_Pos.m_X, std::max(m_Pos.m_Y, radius)));
+			// (Low, but with room under it for whoever gets out to land on their feet.)
+			m_HoldPoint = DropOffPoint(Vector(m_Pos.m_X, std::max(m_Pos.m_Y, radius)));
 			m_HasHoldPoint = true;
 		} else {
 			// Any other: it holds where it is, at the height it is (in the scene).
@@ -1042,6 +1096,7 @@ void ACShip::SteerTo(const Vector& target, bool stop, float clearanceScale) {
 	const float radius = GetRadius();
 	// How far over the ground it keeps on the way: its body and a little more.
 	const float clearance = LowClearance() * clearanceScale;
+	const float halfWidth = HullHalfWidth();
 	Vector aim = target + m_AvoidOffset;
 	Vector toAim = g_SceneMan.ShortestDistance(m_Pos, aim, wraps);
 
@@ -1060,8 +1115,8 @@ void ACShip::SteerTo(const Vector& target, bool stop, float clearanceScale) {
 		// (Down the straight line to the place, where it would be at that point, its underside.)
 		const float share = std::abs(toAim.m_X) > 1.0F ? along / std::abs(toAim.m_X) : 0.0F;
 		const float lineY = m_Pos.m_Y + toAim.m_Y * share;
-		for (float side: {-0.8F, 0.0F, 0.8F}) {
-			const float x = m_Pos.m_X + way * along + side * radius;
+		for (float side: {-1.0F, 0.0F, 1.0F}) {
+			const float x = m_Pos.m_X + way * along + side * halfWidth;
 			floor = std::min(floor, GroundTopAt(x, lineY + clearance) - clearance);
 		}
 	}
@@ -1112,19 +1167,9 @@ bool ACShip::AirRoute(const Vector& from, const Vector& to, std::deque<Vector>& 
 	route.clear();
 	const float radius = GetRadius();
 	const float clearance = LowClearance();
+	const float halfWidth = HullHalfWidth();
 	const Vector way = g_SceneMan.ShortestDistance(from, to, g_SceneMan.SceneWrapsX());
-	auto clearLine = [radius](const Vector& a, const Vector& b) {
-		Vector line = g_SceneMan.ShortestDistance(a, b);
-		Vector blocked;
-		for (float dy: {-radius * 0.5F, 0.0F, radius * 0.5F}) {
-			Vector start = a + Vector(0.0F, dy);
-			g_SceneMan.WrapPosition(start);
-			if (g_SceneMan.CastStrengthRay(start, line, 5.0F, blocked, 4)) {
-				return false;
-			}
-		}
-		return true;
-	};
+	auto clearLine = [this](const Vector& a, const Vector& b) { return HullLineClear(a, b); };
 	// The straight line's points a little apart, each raised to its clearance over the highest ground there across its hull.
 	const int steps = std::max(1, static_cast<int>(std::abs(way.m_X) / 32.0F));
 	std::vector<Vector> points;
@@ -1133,8 +1178,8 @@ bool ACShip::AirRoute(const Vector& from, const Vector& to, std::deque<Vector>& 
 		const float share = static_cast<float>(i) / static_cast<float>(steps);
 		Vector point = from + way * share;
 		float top = FLT_MAX;
-		for (float side: {-0.8F, 0.0F, 0.8F}) {
-			top = std::min(top, GroundTopAt(point.m_X + side * radius, point.m_Y + clearance));
+		for (float side: {-1.0F, 0.0F, 1.0F}) {
+			top = std::min(top, GroundTopAt(point.m_X + side * halfWidth, point.m_Y + clearance));
 		}
 		point.m_Y = std::max(std::min(point.m_Y, top - clearance), radius);
 		g_SceneMan.WrapPosition(point);

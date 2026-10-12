@@ -2061,36 +2061,42 @@ namespace SandboxDetail {
 				if (ship->GetAIMode() == Actor::AIMODE_GOTO) {
 					return false;
 				}
-				// Over the place (or stopped short of it for good): nobody aboard but the pilot, and it is just a move; else it comes down
-				// where it is to let them out.
+				// Over the place (or stopped short of it for good): nobody aboard but the pilot, and it is just a move. Else, landing, it comes
+				// down where it is; dropping off, it hovers low there for them to jump out, never setting down.
 				if (!dropoff.StayDown && ship->GetCrewCount() <= (ship->HasPilot() ? 1 : 0)) {
 					return true;
 				}
 				const Vector ground = g_SceneMan.MovePointToGround(Vector(ship->GetPos().m_X, dropoff.Place.m_Y), 0, 4);
-				if (ship->FlyTo(ground - Vector(0.0F, ship->GetRadius() * 0.3F))) {
+				const Vector to = dropoff.StayDown ? ground - Vector(0.0F, ship->GetRadius() * 0.3F) : ship->DropOffPoint(ground);
+				if (ship->FlyTo(to)) {
+					dropoff.Hover = to;
 					dropoff.Stage = 1;
 					dropoff.Since = g_TimerMan.GetSimUpdateCount();
 				}
 				return false;
 			}
-			// Coming down: once down (or as near as it gets), they get out, and it climbs back up to hover there for orders (or, landing,
-			// it stays down).
+			// Dropping off: once hovering low over the place (or as near as it gets), they jump out, and it holds there for orders.
+			if (!dropoff.StayDown) {
+				const bool over = g_SceneMan.ShortestDistance(ship->GetPos(), dropoff.Hover, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(24.0F) && ship->GetVel().MagnitudeIsLessThan(2.0F);
+				if (!over && seconds < 8.0F) {
+					return false;
+				}
+				const Vector place = ship->GetPos();
+				EveryoneOut(ship, true);
+				ship->FlyRouteTo(place);
+				return true;
+			}
+			// Landing: once down (or as near as it gets).
 			const bool down = ship->GetAltitude(1000, 4) < ship->GetRadius() * 0.9F && ship->GetVel().MagnitudeIsLessThan(3.0F);
 			if (!down && seconds < 10.0F) {
 				return false;
 			}
 			// Landed (Land): its engines off, as a vehicle's handbrake, and everyone stays aboard, till another order.
 			// (Not down after all, sat on something it can't get down from: it doesn't drop from the air, it holds there with them running.)
-			if (dropoff.StayDown) {
-				if (down) {
-					ship->SetAIMode(Actor::AIMODE_SENTRY);
-					ship->SetEnginesOff(true);
-				}
-				return true;
+			if (down) {
+				ship->SetAIMode(Actor::AIMODE_SENTRY);
+				ship->SetEnginesOff(true);
 			}
-			const Vector place = ship->GetPos();
-			EveryoneOut(ship, true);
-			ship->FlyRouteTo(place);
 			return true;
 		});
 	}
