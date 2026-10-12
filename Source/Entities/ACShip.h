@@ -155,6 +155,13 @@ namespace RTE {
 		/// @param from Where it starts. @param to Where it goes. @return Whether nothing is in the way.
 		bool HullLineClear(const Vector& from, const Vector& to) const;
 
+		/// Gets how much past the map's edges it may go before it counts as gone to orbit: the Ship room past map edges setting.
+		float GetOrbitGrace() const override;
+
+		/// Gets the highest it is sent to in the scene: as far over the top of the map as its room past the edges lets it, its whole body
+		/// within that. (A y, which is down the scene.)
+		float SkyTop() const { return GetRadius() - GetOrbitGrace(); }
+
 		/// Gets the height of its hull's picture.
 		float HullHeight() const { return static_cast<float>(std::max(GetSpriteHeight(), 1)); }
 

@@ -349,6 +349,10 @@ bool ACShip::HullLineClear(const Vector& from, const Vector& to) const {
 	return true;
 }
 
+float ACShip::GetOrbitGrace() const {
+	return g_SettingsMan.ShipGraceZone();
+}
+
 float ACShip::LowClearance() const {
 	return HullUnderside() + g_SettingsMan.ShipGroundClearance();
 }
@@ -366,7 +370,7 @@ Vector ACShip::LowPoint(const Vector& spot, float extraAltitude) {
 		g_SceneMan.WrapPosition(under);
 		lowest = std::min(lowest, g_SceneMan.MovePointToGround(under, keep, 4).m_Y);
 	}
-	to.m_Y = std::max(std::min(to.m_Y, lowest), GetRadius());
+	to.m_Y = std::max(std::min(to.m_Y, lowest), SkyTop());
 	return to;
 }
 
@@ -420,14 +424,15 @@ bool ACShip::FlyRouteTo(const Vector& spot) {
 		const float ground = g_SceneMan.MovePointToGround(Vector(node.m_X, node.m_Y - 10.0F), 0, 4).m_Y;
 		float room = 0.0F;
 		while (room < want + top) {
+			// (Over the top of the map is open air, as far as its room past the edges goes.)
 			int y = static_cast<int>(ground - room - 8.0F);
-			if (y < 0 || g_SceneMan.GetTerrMatter(static_cast<int>(node.m_X), y) != MaterialColorKeys::g_MaterialAir) {
+			if (static_cast<float>(y) < SkyTop() || g_SceneMan.GetTerrMatter(static_cast<int>(node.m_X), y) != MaterialColorKeys::g_MaterialAir) {
 				break;
 			}
 			room += 8.0F;
 		}
 		const float lift = room >= want + top ? want : std::max(room - top, std::min(room, want) * 0.5F);
-		raised.emplace_back(node.m_X, std::max(ground - lift, radius));
+		raised.emplace_back(node.m_X, std::max(ground - lift, SkyTop()));
 	}
 	// And straight on past the points it can see past: from each, to the furthest a little way on with open air between. (A cautious order
 	// looks less far ahead, so the way round enemies isn't cut across.)
@@ -649,7 +654,7 @@ void ACShip::UpdateCombat() {
 				for (float lift: {0.0F, -60.0F, -120.0F}) {
 					Vector ground = keepNearPost(enemyPos + Vector(static_cast<float>(s) * distance * range, 0.0F));
 					Vector candidate = LowPoint(ground) + Vector(0.0F, lift);
-					candidate.m_Y = std::max(candidate.m_Y, radius);
+					candidate.m_Y = std::max(candidate.m_Y, SkyTop());
 					if (fallback.IsZero()) {
 						fallback = candidate;
 					}
@@ -802,7 +807,7 @@ bool ACShip::UpdateRam() {
 		Vector point = at;
 		g_SceneMan.WrapPosition(point);
 		const float ground = g_SceneMan.MovePointToGround(point, 0.0F, 4).m_Y;
-		point.m_Y = std::max(std::min(point.m_Y, ground - radius * 0.6F), radius);
+		point.m_Y = std::max(std::min(point.m_Y, ground - radius * 0.6F), SkyTop());
 		return point;
 	};
 	const float flightSpeed = m_FlightSpeed;
@@ -1027,11 +1032,11 @@ void ACShip::UpdateFlight() {
 			// Its cargo let out low over the ground under it, or, just come in (bought, from orbit), waiting there: the only
 			// times it goes down to it by itself.
 			// (Low, but with room under it for whoever gets out to land on their feet.)
-			m_HoldPoint = DropOffPoint(Vector(m_Pos.m_X, std::max(m_Pos.m_Y, radius)));
+			m_HoldPoint = DropOffPoint(Vector(m_Pos.m_X, std::max(m_Pos.m_Y, SkyTop())));
 			m_HasHoldPoint = true;
 		} else {
 			// Any other: it holds where it is, at the height it is (in the scene).
-			m_HoldPoint = Vector(m_Pos.m_X, std::max(m_Pos.m_Y, radius * 2.0F));
+			m_HoldPoint = Vector(m_Pos.m_X, std::max(m_Pos.m_Y, SkyTop() + radius));
 			m_HasHoldPoint = true;
 		}
 		if (wasDelivering && m_AIMode != AIMODE_DELIVER) {
@@ -1196,7 +1201,7 @@ bool ACShip::AirRoute(const Vector& from, const Vector& to, std::deque<Vector>& 
 		for (float side: {-1.0F, 0.0F, 1.0F}) {
 			top = std::min(top, GroundTopAt(point.m_X + side * halfWidth, point.m_Y + clearance));
 		}
-		point.m_Y = std::max(std::min(point.m_Y, top - clearance), radius);
+		point.m_Y = std::max(std::min(point.m_Y, top - clearance), SkyTop());
 		g_SceneMan.WrapPosition(point);
 		points.push_back(point);
 	}
@@ -1291,7 +1296,7 @@ void ACShip::Update() {
 	ZoneScoped;
 
 	// Going to orbit with its crew: they go with it, in its hold (so they're counted and kept, as whoever rides in a craft's hold is).
-	if (m_CanEnterOrbit && (m_Pos.m_Y < -m_CharHeight || m_Pos.m_Y > g_SceneMan.GetSceneHeight() + m_CharHeight) && !m_Crew.IsEmpty()) {
+	if (m_CanEnterOrbit && (m_Pos.m_Y < -m_CharHeight - GetOrbitGrace() || m_Pos.m_Y > g_SceneMan.GetSceneHeight() + m_CharHeight + GetOrbitGrace()) && !m_Crew.IsEmpty()) {
 		for (Actor* unit: m_Crew.TakeAllCrew()) {
 			AddInventoryItem(unit);
 		}

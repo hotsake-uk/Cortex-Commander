@@ -1128,6 +1128,16 @@ void DebugMan::SettingsGUI() {
 		if (Plain() && ToolUI::Button("Normal ship clearance")) {
 			g_SettingsMan.SetShipGroundClearance(12.0F);
 		}
+		float graceZone = g_SettingsMan.ShipGraceZone();
+		if (Slider("Ship room past map edges", &graceZone, 0.0F, 700.0F, "%.0f px")) {
+			g_SettingsMan.SetShipGraceZone(graceZone);
+		}
+		Tip("How far flying ships (the Gunship and Frigate) can go above the top of the map, and past its sides where it doesn't wrap, before they leave for orbit. With room up there they can fly over buildings at the very top of the map and drop people onto them, and you can send them there. Drop ships and rockets still leave just over the edge. 0 is the old line. 400 px is normal.");
+		float overscroll = g_SettingsMan.CameraOverscroll();
+		if (Slider("Camera scroll past map edges", &overscroll, 0.0F, 2000.0F, "%.0f px")) {
+			g_SettingsMan.SetCameraOverscroll(overscroll);
+		}
+		Tip("How far the camera can scroll or pan past the top, sides and bottom of a map that doesn't wrap, so what's at the edge can be brought into the middle of the screen. 0 stops at the edge as before. 400 px is normal.");
 		float terrainDamage = g_SettingsMan.WeaponTerrainDamage();
 		if (Slider("Weapon damage to terrain", &terrainDamage, 0.1F, 20.0F, "%.2fx", ImGuiSliderFlags_Logarithmic)) {
 			g_SettingsMan.SetWeaponTerrainDamage(terrainDamage);

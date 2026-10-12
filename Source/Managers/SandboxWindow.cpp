@@ -51,8 +51,8 @@ namespace SandboxDetail {
 			s_CameraCenter += g_SceneMan.ShortestDistance(s_CameraCenter, s_ActionSpot, g_SceneMan.SceneWrapsX()) * std::min(1.0F, io.DeltaTime * 2.0F);
 		}
 		g_SceneMan.WrapPosition(s_CameraCenter);
-		g_SceneMan.ForceBounds(s_CameraCenter);
-		// Held in where the view stops at a hard edge, so panning back moves the view straight away.
+		// Held in where the view stops at a hard edge (past the map's edges by the Camera scroll past map edges setting), so panning back
+		// moves the view straight away.
 		s_CameraCenter = g_CameraMan.ClampScrollCenter(s_CameraCenter, 0);
 		g_CameraMan.SetScrollTarget(s_CameraCenter, 1.0F, 0);
 		// The god view's own camera follows along, so the two don't fight.

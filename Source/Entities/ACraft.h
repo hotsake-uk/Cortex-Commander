@@ -260,6 +260,10 @@ namespace RTE {
 		/// @return Whether this craft can enter orbit or not.
 		bool GetCanEnterOrbit() const { return m_CanEnterOrbit; }
 
+		/// Gets how much further than the usual line past the map's top and bottom (and its sides, where craft orbit there) this craft may go
+		/// before it counts as gone to orbit. None for a craft as such; a flying ship has the Ship room past map edges setting (ACShip).
+		virtual float GetOrbitGrace() const { return 0.0F; }
+
 		/// Sets whether this craft can enter orbit and refund the owning team when out of the map. If false,
 		/// only default out-of-bounds deletion logic applies.
 		/// @param canEnterOrbit Whether this craft can enter orbit or not.

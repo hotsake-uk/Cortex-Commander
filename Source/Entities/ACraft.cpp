@@ -708,7 +708,8 @@ void ACraft::Update() {
 	// Check for having gone into orbit
 
 	if (m_CanEnterOrbit) {
-		if (m_Pos.m_Y < -m_CharHeight || m_Pos.m_Y > g_SceneMan.GetSceneHeight() + m_CharHeight) {
+		const float grace = GetOrbitGrace();
+		if (m_Pos.m_Y < -m_CharHeight - grace || m_Pos.m_Y > g_SceneMan.GetSceneHeight() + m_CharHeight + grace) {
 			g_ActivityMan.GetActivity()->HandleCraftEnteringOrbit(this);
 			// Play fading away thruster sound
 			//        if (m_pMThruster && m_pMThruster->IsEmitting())
@@ -719,7 +720,7 @@ void ACraft::Update() {
 		// Horizontal orbiting, if scene doesn't wrap
 		if (g_ActivityMan.GetActivity()->GetCraftOrbitAtTheEdge()) {
 			if (g_SceneMan.GetScene() && !g_SceneMan.GetScene()->WrapsX()) {
-				if (m_Pos.m_X < -GetSpriteWidth() || m_Pos.m_X > g_SceneMan.GetSceneWidth() + GetSpriteWidth()) {
+				if (m_Pos.m_X < -GetSpriteWidth() - grace || m_Pos.m_X > g_SceneMan.GetSceneWidth() + GetSpriteWidth() + grace) {
 					g_ActivityMan.GetActivity()->HandleCraftEnteringOrbit(this);
 					m_ToDelete = true;
 				}
