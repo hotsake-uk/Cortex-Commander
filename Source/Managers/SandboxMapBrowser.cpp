@@ -896,13 +896,16 @@ namespace SandboxDetail {
 				}
 			}
 			if (mode.Mode == BattleMode::ThePoint && !mode.FlagSpots.empty()) {
-				// The point: its circle and bullseye, to scale.
+				// The point: its bullseye and rings, to scale.
 				const ImVec2 at = toScreen(mode.FlagSpots.front());
-				const float outer = std::max(static_cast<float>(mode.PointRadius) * scenePixel, 4.0F);
-				const float inner = std::max(static_cast<float>(mode.BullseyeRadius) * scenePixel, 2.0F);
-				drawList->AddCircleFilled(at, outer, IM_COL32(255, 255, 255, 50), 32);
-				drawList->AddCircle(at, outer, IM_COL32(255, 255, 255, 230), 32, 1.5F);
-				drawList->AddCircleFilled(at, inner, IM_COL32(255, 210, 80, 140), 24);
+				const int rings = std::clamp(mode.PointRings, 0, c_MaxPointRings);
+				float outer = 4.0F;
+				for (int band = rings; band >= 0; --band) {
+					const float radius = std::max(static_cast<float>(mode.RingRadius[band]) * scenePixel, 2.0F + 2.0F * static_cast<float>(band));
+					outer = std::max(outer, radius);
+					drawList->AddCircleFilled(at, radius, band == 0 ? IM_COL32(255, 210, 80, 140) : IM_COL32(255, 255, 255, 35), 32);
+					drawList->AddCircle(at, radius, IM_COL32(255, 255, 255, 230), 32, 1.5F);
+				}
 				if (labels) {
 					Tag(drawList, ImVec2(at.x, at.y + outer + ImGui::GetFontSize() * 0.7F), IM_COL32(255, 255, 255, 255), "The point");
 				}

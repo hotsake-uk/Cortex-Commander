@@ -3355,18 +3355,65 @@ namespace SandboxDetail {
 		}
 
 		// ---- The point ----
-		// King of the hill on one circle, placed like a defend zone: a bullseye in the middle and a ring round it, each held and scored on its own.
+		// King of the hill on one point, placed like a defend zone: a bullseye in the middle with rings round it, each band held, scored and
+		// ordered onto (a battle objective of its own) apart from the others.
 
 		std::array<float, c_Sides> s_PointScore{}; //!< Each team's points, to the fraction (the score shows the whole points).
-		int s_BullseyeHolder = -1; //!< The team holding the bullseye now: -1 nobody, -2 more than one (contested).
-		int s_RingHolder = -1; //!< And the ring round it.
+		std::array<int, c_MaxPointRings + 1> s_BandHolder = {-1, -1, -1, -1, -1}; //!< The team holding each band now, the bullseye first: -1 nobody, -2 more than one (contested).
 
 		/// The middle of the point, as placed (the mode's first flag position).
 		Vector PointPos(const BattleModeSettings& settings) { return settings.FlagSpots.empty() ? Vector() : settings.FlagSpots.front(); }
 
-		/// The circle's reach, and the bullseye's within it.
-		float PointOuter(const BattleModeSettings& settings) { return static_cast<float>(std::max(settings.PointRadius, 20)); }
-		float PointInner(const BattleModeSettings& settings) { return std::clamp(static_cast<float>(settings.BullseyeRadius), 10.0F, PointOuter(settings) - 10.0F); }
+		/// How many bands it has: the bullseye and its rings.
+		int PointBands(const BattleModeSettings& settings) { return std::clamp(settings.PointRings, 0, c_MaxPointRings) + 1; }
+
+		/// How far out a band reaches, each at least a little past the one inside it.
+		float BandOuter(const BattleModeSettings& settings, int band) {
+			float reach = 0.0F;
+			for (int i = 0; i <= band; ++i) {
+				reach = std::max(static_cast<float>(settings.RingRadius[i]), reach + 10.0F);
+			}
+			return reach;
+		}
+		float BandInner(const BattleModeSettings& settings, int band) { return band > 0 ? BandOuter(settings, band - 1) : 0.0F; }
+
+		/// A band's name, as "Bullseye" or "Ring 2".
+		std::string BandName(int band) { return band == 0 ? std::string("Bullseye") : "Ring " + std::to_string(band); }
+
+		/// A band as a zone: the bullseye a circle, a ring the circle round it with the circle inside cut out (round the outside, then back
+		/// round the inside, joined by a seam), so whether something is in it is the zone test every objective uses.
+		std::vector<Vector> BandZone(const BattleModeSettings& settings, int band) {
+			constexpr int c_Corners = 32;
+			const Vector middle = PointPos(settings);
+			const float outer = BandOuter(settings, band);
+			const float inner = BandInner(settings, band);
+			std::vector<Vector> zone;
+			for (int i = 0; i <= c_Corners; ++i) {
+				const float turn = static_cast<float>(i) / static_cast<float>(c_Corners) * 6.2831853F;
+				zone.push_back(middle + Vector(std::cos(turn), std::sin(turn)) * outer);
+				if (band == 0 && i == c_Corners - 1) {
+					break;
+				}
+			}
+			if (band > 0) {
+				for (int i = c_Corners; i >= 0; --i) {
+					const float turn = static_cast<float>(i) / static_cast<float>(c_Corners) * 6.2831853F;
+					zone.push_back(middle + Vector(std::cos(turn), std::sin(turn)) * inner);
+				}
+			}
+			return zone;
+		}
+
+		/// The band a place is in, or -1 outside the point.
+		int BandAt(const BattleModeSettings& settings, const Vector& at) {
+			const float distance = g_SceneMan.ShortestDistance(PointPos(settings), at, g_SceneMan.SceneWrapsX()).GetMagnitude();
+			for (int band = 0; band < PointBands(settings); ++band) {
+				if (distance <= BandOuter(settings, band)) {
+					return band;
+				}
+			}
+			return -1;
+		}
 
 		bool PointReady(const BattleModeSettings& setup, std::string& why) {
 			if (setup.FlagSpots.empty()) {
@@ -3378,22 +3425,21 @@ namespace SandboxDetail {
 
 		void PointStart() {
 			s_PointScore.fill(0.0F);
-			s_BullseyeHolder = -1;
-			s_RingHolder = -1;
+			s_BandHolder.fill(-1);
 		}
 
-		/// New units make for the point, about half of them for the bullseye and the rest round the ring.
+		/// New units make for the point, spread over its bands, each holding a post out to its band's edge.
 		void PointUnitsMade(int side, const std::vector<Actor*>& wave) {
 			const BattleModeSettings& settings = s_ModeRun.Settings;
 			if (settings.FlagSpots.empty()) {
 				return;
 			}
-			const float outer = PointOuter(settings);
-			const BattleSettings bullseye = PostAt(PointPos(settings), PointInner(settings), outer + 250.0F, 0);
-			const BattleSettings ring = PostAt(PointPos(settings), outer, outer + 250.0F, 0);
+			const int bands = PointBands(settings);
+			const float outer = BandOuter(settings, bands - 1);
 			for (Actor* unit: wave) {
+				const int band = std::min(static_cast<int>(Random01() * static_cast<float>(bands)), bands - 1);
 				unit->SetOrderAttack(false);
-				MakeDefender(unit, Random01() < 0.5F ? bullseye : ring);
+				MakeDefender(unit, PostAt(PointPos(settings), BandOuter(settings, band), outer + 250.0F, 0));
 			}
 		}
 
@@ -3403,9 +3449,9 @@ namespace SandboxDetail {
 			return SpreadSpot(zone, unit ? unit->GetHeight() : 0.0F, [&point](const Vector& spot) { return DistanceBetween(spot, point); });
 		}
 
-		/// Who holds an area from the units of each team in it: the one team there, -1 nobody, or -2 contested (with "most units" on, the team with
+		/// Who holds a band from the units of each team in it: the one team there, -1 nobody, or -2 contested (with "most units" on, the team with
 		/// the most there, unless tied).
-		int PointHolder(const BattleModeSettings& settings, const std::array<int, c_Sides>& in) {
+		int BandHolder(const BattleModeSettings& settings, const std::array<int, c_Sides>& in) {
 			int holder = -1;
 			int most = 0;
 			int teams = 0;
@@ -3426,62 +3472,46 @@ namespace SandboxDetail {
 			return teams > 1 && (!settings.MajorityScores || tied) ? -2 : holder;
 		}
 
-		/// Twice a second or so (every six updates): who holds the bullseye and who the ring, and the points each scores them.
+		/// Twice a second or so (every six updates): who holds each band, and the points each scores them.
 		void PointUpdate(bool aiPaused) {
 			const BattleModeSettings& settings = s_ModeRun.Settings;
 			const long long now = g_TimerMan.GetSimUpdateCount();
 			if (aiPaused || s_ModeRun.Over || settings.FlagSpots.empty() || now % 6 != 0) {
 				return;
 			}
-			const Vector middle = PointPos(settings);
-			const float outer = PointOuter(settings);
-			const float inner = PointInner(settings);
-			const bool wraps = g_SceneMan.SceneWrapsX();
-			std::array<int, c_Sides> inBullseye{};
-			std::array<int, c_Sides> inRing{};
+			const int bands = PointBands(settings);
+			std::array<std::array<int, c_Sides>, c_MaxPointRings + 1> in{};
 			for (const Actor* fighter: Fighters()) {
 				const int team = fighter->GetTeam();
-				if (team < 0 || team >= c_Sides) {
-					continue;
+				if (const int band = BandAt(settings, fighter->GetPos()); band >= 0 && team >= 0 && team < c_Sides) {
+					++in[band][team];
 				}
-				const float distance = g_SceneMan.ShortestDistance(middle, fighter->GetPos(), wraps).GetMagnitude();
-				if (distance <= inner) {
-					++inBullseye[team];
-				} else if (distance <= outer) {
-					++inRing[team];
-				}
-			}
-			const int bullseye = PointHolder(settings, inBullseye);
-			const int ring = PointHolder(settings, inRing);
-			if (bullseye != s_BullseyeHolder) {
-				if (bullseye >= 0) {
-					Say(SideName(bullseye) + " holds the bullseye");
-				} else if (bullseye == -2) {
-					Say("The bullseye is contested");
-				}
-				s_BullseyeHolder = bullseye;
-			}
-			if (ring != s_RingHolder) {
-				if (ring >= 0 && ring != bullseye) {
-					Say(SideName(ring) + " holds the ring");
-				}
-				s_RingHolder = ring;
 			}
 			const float seconds = 6.0F / UpdatesPerSecond();
-			if (bullseye >= 0) {
-				s_PointScore[bullseye] += static_cast<float>(std::max(settings.BullseyePoints, 0)) * seconds;
+			for (int band = 0; band < bands; ++band) {
+				const int holder = BandHolder(settings, in[band]);
+				if (holder != s_BandHolder[band]) {
+					if (holder >= 0) {
+						Say(SideName(holder) + " holds the " + (band == 0 ? std::string("bullseye") : "ring " + std::to_string(band)));
+					} else if (holder == -2 && band == 0) {
+						Say("The bullseye is contested");
+					}
+					s_BandHolder[band] = holder;
+				}
+				if (holder >= 0) {
+					s_PointScore[holder] += static_cast<float>(std::max(settings.RingPoints[band], 0)) * seconds;
+				}
 			}
-			if (ring >= 0) {
-				s_PointScore[ring] += static_cast<float>(std::max(settings.RingPoints, 0)) * seconds;
+			for (int band = bands; band <= c_MaxPointRings; ++band) {
+				s_BandHolder[band] = -1;
 			}
 			for (int side = 0; side < c_Sides; ++side) {
-				if (!TeamIn(settings, side)) {
-					continue;
+				if (TeamIn(settings, side)) {
+					s_ModeRun.Score[side] = static_cast<int>(s_PointScore[side]);
 				}
-				s_ModeRun.Score[side] = static_cast<int>(s_PointScore[side]);
 			}
 			if (settings.PointsToWin > 0) {
-				// (Both held by the same team at once can take two over the line together: the one further over wins.)
+				// (More than one over the line together, holding different bands: the one furthest over wins.)
 				int winner = -1;
 				for (int side = 0; side < c_Sides; ++side) {
 					if (TeamIn(settings, side) && s_PointScore[side] >= static_cast<float>(settings.PointsToWin) && (winner < 0 || s_PointScore[side] > s_PointScore[winner])) {
@@ -3517,26 +3547,38 @@ namespace SandboxDetail {
 			} else {
 				ImGui::TextDisabled("placed");
 			}
-			ImGui::PopID();
-			if (ImGui::SliderInt("Point radius", &setup.PointRadius, 60, 600, "%d px")) {
-				setup.BullseyeRadius = std::min(setup.BullseyeRadius, setup.PointRadius - 10);
-				changed = true;
+			changed |= ImGui::SliderInt("Rings", &setup.PointRings, 0, c_MaxPointRings, setup.PointRings > 0 ? "%d round the bullseye" : "bullseye only");
+			ImGui::SetItemTooltip("Rings round the bullseye. Each ring, and the bullseye, is held and scored on its own, and is an objective of its own you can order your units onto.");
+			for (int band = 0; band < PointBands(setup); ++band) {
+				ImGui::PushID(band);
+				ImGui::AlignTextToFramePadding();
+				ImGui::TextUnformatted(BandName(band).c_str());
+				ImGui::SameLine(ImGui::GetFontSize() * 5.0F);
+				ImGui::SetNextItemWidth(ImGui::GetFontSize() * 9.0F);
+				const int least = band > 0 ? setup.RingRadius[band - 1] + 10 : 10;
+				if (ImGui::SliderInt("##reach", &setup.RingRadius[band], least, std::max(least, 800), "out to %d px")) {
+					// (The rings outside it pushed out to stay outside it.)
+					for (int outer = band + 1; outer <= c_MaxPointRings; ++outer) {
+						setup.RingRadius[outer] = std::max(setup.RingRadius[outer], setup.RingRadius[outer - 1] + 10);
+					}
+					changed = true;
+				}
+				ImGui::SetItemTooltip("How far out from the middle of the point it reaches.");
+				ImGui::SameLine();
+				ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7.0F);
+				changed |= ImGui::SliderInt("##points", &setup.RingPoints[band], 0, 20, "%d pts a second");
+				ImGui::SetItemTooltip("Points a team scores every second it alone has units in it.");
+				ImGui::PopID();
 			}
-			ImGui::SetItemTooltip("How far the circle reaches round its middle, the outer ring and all.");
-			changed |= ImGui::SliderInt("Bullseye radius", &setup.BullseyeRadius, 10, std::max(setup.PointRadius - 10, 10), "%d px");
-			ImGui::SetItemTooltip("How far the bullseye in the middle reaches. The ring is the rest of the circle, round it.");
-			changed |= ImGui::SliderInt("Bullseye points", &setup.BullseyePoints, 0, 10, "%d a second");
-			ImGui::SetItemTooltip("Points a team scores every second it alone has units in the bullseye.");
-			changed |= ImGui::SliderInt("Ring points", &setup.RingPoints, 0, 10, "%d a second");
-			ImGui::SetItemTooltip("Points a team scores every second it alone has units in the outer ring. The bullseye and the ring are held apart: one team can hold the bullseye while another holds the ring, and each scores.");
-			changed |= ImGui::SliderInt("Points to win", &setup.PointsToWin, 0, 2000, setup.PointsToWin > 0 ? "%d" : "play on");
+			ImGui::PopID();
+			changed |= ImGui::SliderInt("Points to win", &setup.PointsToWin, 0, 5000, setup.PointsToWin > 0 ? "%d" : "play on");
 			ImGui::SetItemTooltip("The first team to this many points wins. 0: it goes on till you stop it.");
 			changed |= ToolUI::Checkbox("Most units scores", &setup.MajorityScores);
-			ImGui::SetItemTooltip("The bullseye or the ring with more than one team in it scores for the team with the most units there. Off: it scores for nobody while contested.");
+			ImGui::SetItemTooltip("The bullseye or a ring with more than one team in it scores for the team with the most units there. Off: it scores for nobody while contested.");
 		}
 
-		/// The colour an area of the point shows in: its holder's, orange while contested, else white.
-		ImU32 PointColor(int holder) { return holder >= 0 ? c_SideColors[holder] : (holder == -2 ? IM_COL32(255, 150, 40, 255) : IM_COL32(255, 255, 255, 255)); }
+		/// The colour a band shows in: its holder's, orange while contested, else white (the bullseye gold while set up).
+		ImU32 BandColor(int holder) { return holder >= 0 ? c_SideColors[holder] : (holder == -2 ? IM_COL32(255, 150, 40, 255) : IM_COL32(255, 255, 255, 255)); }
 
 		void PointDraw(bool running) {
 			ImDrawList* drawList = ImGui::GetBackgroundDrawList();
@@ -3545,19 +3587,29 @@ namespace SandboxDetail {
 			if (!settings.FlagSpots.empty()) {
 				const float scale = std::max(ScenePixelsPerWindowPixel(), 0.01F);
 				const ImVec2 middle = ToScreen(PointPos(settings));
-				const float outer = PointOuter(settings) / scale;
-				const float inner = PointInner(settings) / scale;
 				const float pulse = running ? Pulse() : 0.0F;
-				const ImU32 ring = running ? PointColor(s_RingHolder) : IM_COL32(255, 255, 255, 255);
-				const ImU32 bullseye = running ? PointColor(s_BullseyeHolder) : IM_COL32(255, 210, 80, 255);
-				drawList->AddCircleFilled(middle, outer, (ring & 0x00FFFFFF) | (static_cast<ImU32>(30.0F + 30.0F * pulse) << 24), 64);
-				drawList->AddCircle(middle, outer, (ring & 0x00FFFFFF) | (230u << 24), 64, 2.0F + 2.0F * pulse);
-				drawList->AddCircleFilled(middle, inner, (bullseye & 0x00FFFFFF) | (static_cast<ImU32>(60.0F + 40.0F * pulse) << 24), 48);
-				drawList->AddCircle(middle, inner, (bullseye & 0x00FFFFFF) | (240u << 24), 48, 2.0F + 2.0F * pulse);
+				const int bands = PointBands(settings);
+				bool contested = false;
+				// (Outside in, so each band's shade sits over the one round it.)
+				for (int band = bands - 1; band >= 0; --band) {
+					const float reach = BandOuter(settings, band) / scale;
+					const int holder = running ? s_BandHolder[band] : -1;
+					contested |= holder == -2;
+					const ImU32 color = running || band > 0 ? BandColor(holder) : IM_COL32(255, 210, 80, 255);
+					const bool held = running && holder != -1;
+					drawList->AddCircleFilled(middle, reach, (color & 0x00FFFFFF) | (static_cast<ImU32>((band == 0 ? 60.0F : 25.0F) + (held ? 40.0F * pulse : 0.0F)) << 24), 64);
+					drawList->AddCircle(middle, reach, (color & 0x00FFFFFF) | (230u << 24), 64, held ? 2.0F + 2.0F * pulse : 2.0F);
+					// Its points, on the top of the band.
+					const std::string points = std::to_string(settings.RingPoints[band]);
+					const ImVec2 size = ImGui::CalcTextSize(points.c_str());
+					const float inner = BandInner(settings, band) / scale;
+					drawList->AddText(ImVec2(middle.x - size.x * 0.5F, middle.y - (band == 0 ? 0.0F : (reach + inner) * 0.5F) - size.y * 0.5F), IM_COL32(255, 255, 255, 220), points.c_str());
+				}
 				std::string label = "THE POINT";
-				if (running && (s_BullseyeHolder == -2 || s_RingHolder == -2)) {
+				if (contested) {
 					label += ": CONTESTED";
 				}
+				const float outer = BandOuter(settings, bands - 1) / scale;
 				const ImVec2 size = ImGui::CalcTextSize(label.c_str());
 				const ImVec2 at(middle.x - size.x * 0.5F, middle.y - outer - size.y - 6.0F);
 				drawList->AddRectFilled(ImVec2(at.x - 4.0F, at.y - 2.0F), ImVec2(at.x + size.x + 4.0F, at.y + size.y + 2.0F), IM_COL32(0, 0, 0, 140), 3.0F);
@@ -3572,31 +3624,28 @@ namespace SandboxDetail {
 			}
 		}
 
+		/// Each band an objective of its own: a team can be ordered onto the bullseye or one ring.
 		void PointObjectives(const BattleModeSettings& settings, bool running, std::vector<BattleObjective>& out) {
 			if (settings.FlagSpots.empty()) {
 				return;
 			}
 			const unsigned teams = TeamsIn(settings);
-			BattleObjective point{.Name = "The point", .Pos = PointPos(settings), .Radius = PointOuter(settings), .Look = ObjectiveLook::Marker};
-			if (running) {
-				const int holder = s_BullseyeHolder >= 0 ? s_BullseyeHolder : s_RingHolder;
-				point.Color = PointColor(holder);
-				point.Defenders = holder >= 0 ? Bit(holder) : 0u;
-				point.Attackers = teams & ~point.Defenders;
-			} else {
-				point.Attackers = teams;
+			for (int band = 0; band < PointBands(settings); ++band) {
+				BattleObjective objective{.Name = BandName(band), .Pos = PointPos(settings), .Zone = BandZone(settings, band), .Radius = BandOuter(settings, band), .Look = ObjectiveLook::Outline};
+				const int holder = running ? s_BandHolder[band] : -1;
+				objective.Color = BandColor(holder);
+				objective.Defenders = holder >= 0 ? Bit(holder) : 0u;
+				objective.Attackers = teams & ~objective.Defenders;
+				out.push_back(objective);
 			}
-			out.push_back(point);
 		}
 
 		std::string PointStatus(int side) {
 			std::string holds;
-			if (s_BullseyeHolder == side && s_RingHolder == side) {
-				holds = ", holds the bullseye and ring";
-			} else if (s_BullseyeHolder == side) {
-				holds = ", holds the bullseye";
-			} else if (s_RingHolder == side) {
-				holds = ", holds the ring";
+			for (int band = 0; band < PointBands(s_ModeRun.Settings); ++band) {
+				if (s_BandHolder[band] == side) {
+					holds += (holds.empty() ? ", holds " : " and ") + std::string(band == 0 ? "the bullseye" : "ring " + std::to_string(band));
+				}
 			}
 			return std::to_string(s_ModeRun.Score[side]) + " points" + holds + ", " + std::to_string(Sandbox::CountUnits(side)) + " in";
 		}
@@ -4899,9 +4948,10 @@ namespace SandboxDetail {
 		     .Status = ExtractStatus,
 		     .Objectives = ExtractObjectives},
 		    {.Name = "The point",
-		     .Blurb = "One point, placed on the map like a defend zone: a circle with a bullseye in the middle. Give each team its spawn zones, and every "
-		              "unit fights for the point. The bullseye and the ring round it are held apart: a team scores the bullseye's points every second it "
-		              "alone has units in it, and the ring's (fewer) every second it alone has units in that. The first to the points set wins.",
+		     .Blurb = "One point, placed on the map like a defend zone: a bullseye with rings round it, each worth its own points. Give each team its "
+		              "spawn zones, and every unit fights for the point. The bullseye and each ring are held apart: a team scores a band's points every "
+		              "second it alone has units in it. Each is an objective of its own, so you can order your units onto the bullseye or one ring. The "
+		              "first to the points set wins.",
 		     .Ready = PointReady,
 		     .Start = PointStart,
 		     .UnitsMade = PointUnitsMade,
