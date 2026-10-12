@@ -182,6 +182,13 @@ void SettingsMan::Clear() {
 	m_AIEnemyUsesPowers = true;
 	m_AISquadFollowsYou = true;
 	m_AIUsesVehicles = true;
+	m_AIRidesShips = true;
+	m_AIShipRideNoRoute = true;
+	m_AIShipRideLongWalk = true;
+	m_AIShipRideLongWalkDistance = 2000.0F;
+	m_AIShipRideRange = 1500.0F;
+	m_AIShipRideWait = 20.0F;
+	m_AIVehiclesWaitForRiders = true;
 	m_AICoverDigs = true;
 	m_AICoverFallsBack = true;
 	m_AICoverLiesFlat = true;
@@ -191,6 +198,8 @@ void SettingsMan::Clear() {
 	m_DeadCrewFallOut = true;
 	m_PassengersFireFromVehicles = true;
 	m_DirectOrders = DirectOrderTuning();
+	m_DigSafety = DigSafetyTuning();
+	m_AIDodgesFallingGround = true;
 	m_PathTuning = PathTuning();
 	m_NavDebugOverlay = 0;
 	m_DebugTeam = 0;
@@ -748,6 +757,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	// (Not from the preset loaded at start: Settings.ini has them as they were last left, a preset as they were when it was saved.)
 	MatchProperty("SandboxCharacter", { std::string setup = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { Sandbox::SetCharacterSetup(setup); } });
 	MatchProperty("SandboxVehicles", { std::string setup = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { Sandbox::SetVehicleSetup(setup); } });
+	MatchProperty("SandboxUnits", { std::string setup = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { Sandbox::SetUnitSetup(setup); } });
 	MatchProperty("SandboxPanel", { std::string setup = reader.ReadPropValue(); if (!s_ReadingStartupPreset) { Sandbox::SetPanelSetup(setup); } });
 	MatchProperty("SandboxPins", { /* Pins used to live here; they belong to the saved game now. */ reader.ReadPropValue(); });
 	MatchProperty("SandboxFavourites", { /* Favourites used to live here; they have their own file now. */ reader.ReadPropValue(); });
@@ -818,6 +828,10 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("EndlessMode", { reader >> m_EndlessMetaGameMode; }); // Legacy name, kept for old Settings.ini files.
 	MatchProperty("EnableCrabBombs", { reader >> m_EnableCrabBombs; });
 	MatchProperty("EnableMantling", { reader >> m_EnableMantling; });
+	MatchProperty("CreaturesClimbWalls", { reader >> m_CreaturesClimbWalls; });
+	MatchProperty("CreatureClimbSpeed", { float speed = 1.0F; reader >> speed; SetCreatureClimbSpeed(speed); });
+	MatchProperty("CreaturesFly", { reader >> m_CreaturesFly; });
+	MatchProperty("CreatureFlySpeed", { float speed = 1.0F; reader >> speed; SetCreatureFlySpeed(speed); });
 	MatchProperty("EnableStuckPush", { reader >> m_EnableStuckPush; });
 	MatchProperty("BodyGearSettlesAsScraps", { reader >> m_BodyGearSettlesAsScraps; });
 	MatchProperty("GibChunkPercent", { reader >> m_GibChunks.CountPercent; ClampGibChunks(); });
@@ -911,6 +925,13 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AIEnemyUsesPowers", { reader >> m_AIEnemyUsesPowers; });
 	MatchProperty("AISquadFollowsYou", { reader >> m_AISquadFollowsYou; });
 	MatchProperty("AIUsesVehicles", { reader >> m_AIUsesVehicles; });
+	MatchProperty("AIRidesShips", { reader >> m_AIRidesShips; });
+	MatchProperty("AIShipRideNoRoute", { reader >> m_AIShipRideNoRoute; });
+	MatchProperty("AIShipRideLongWalk", { reader >> m_AIShipRideLongWalk; });
+	MatchProperty("AIShipRideLongWalkDistance", { float distance = 0.0F; reader >> distance; SetAIShipRideLongWalkDistance(distance); });
+	MatchProperty("AIShipRideRange", { float range = 0.0F; reader >> range; SetAIShipRideRange(range); });
+	MatchProperty("AIShipRideWait", { float seconds = 0.0F; reader >> seconds; SetAIShipRideWait(seconds); });
+	MatchProperty("AIVehiclesWaitForRiders", { reader >> m_AIVehiclesWaitForRiders; });
 	MatchProperty("AICoverDigs", { reader >> m_AICoverDigs; });
 	MatchProperty("AICoverFallsBack", { reader >> m_AICoverFallsBack; });
 	MatchProperty("AICoverLiesFlat", { reader >> m_AICoverLiesFlat; });
@@ -951,6 +972,11 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DirectStraightFlightRisk", { reader >> m_DirectOrders.StraightFlightRisk; m_DirectOrders.StraightFlightRisk = std::clamp(m_DirectOrders.StraightFlightRisk, 0.5F, 1.0F); });
 	MatchProperty("DirectSkyRouteRisk", { reader >> m_DirectOrders.SkyRouteRisk; m_DirectOrders.SkyRouteRisk = std::clamp(m_DirectOrders.SkyRouteRisk, 0.5F, 1.0F); });
 	MatchProperty("DirectDives", { reader >> m_DirectOrders.Dives; });
+	MatchProperty("DigAvoidCaveIns", { reader >> m_DigSafety.AvoidCaveIns; });
+	MatchProperty("DigBackOff", { reader >> m_DigSafety.BackOff; });
+	MatchProperty("DigToAvoidCaveIns", { reader >> m_DigSafety.DigToOrders; });
+	MatchProperty("DigToPreviewWarns", { reader >> m_DigSafety.PreviewWarns; });
+	MatchProperty("AIDodgesFallingGround", { reader >> m_AIDodgesFallingGround; });
 	MatchProperty("DirectDiveRisk", { reader >> m_DirectOrders.DiveRisk; m_DirectOrders.DiveRisk = std::clamp(m_DirectOrders.DiveRisk, 0.5F, 1.0F); });
 	MatchProperty("DirectDiveChance", { reader >> m_DirectOrders.DiveChance; m_DirectOrders.DiveChance = std::clamp(m_DirectOrders.DiveChance, 0.0F, 1.0F); });
 	MatchProperty("DirectFullRiskDrag", { reader >> m_DirectOrders.RiskDragPixels; m_DirectOrders.RiskDragPixels = std::clamp(m_DirectOrders.RiskDragPixels, 200.0F, 1200.0F); });
@@ -1487,6 +1513,10 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 
 	// The rest of the settings panel: the AI, the HUD and speech, the overlays, and the tool windows' own layout.
 	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
+	writer.NewPropertyWithValue("CreaturesClimbWalls", m_CreaturesClimbWalls);
+	writer.NewPropertyWithValue("CreatureClimbSpeed", m_CreatureClimbSpeed);
+	writer.NewPropertyWithValue("CreaturesFly", m_CreaturesFly);
+	writer.NewPropertyWithValue("CreatureFlySpeed", m_CreatureFlySpeed);
 	writer.NewPropertyWithValue("EnableStuckPush", m_EnableStuckPush);
 	writer.NewPropertyWithValue("BodyGearSettlesAsScraps", m_BodyGearSettlesAsScraps);
 	writer.NewPropertyWithValue("GibChunkPercent", m_GibChunks.CountPercent);
@@ -1562,6 +1592,13 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AIEnemyUsesPowers", m_AIEnemyUsesPowers);
 	writer.NewPropertyWithValue("AISquadFollowsYou", m_AISquadFollowsYou);
 	writer.NewPropertyWithValue("AIUsesVehicles", m_AIUsesVehicles);
+	writer.NewPropertyWithValue("AIRidesShips", m_AIRidesShips);
+	writer.NewPropertyWithValue("AIShipRideNoRoute", m_AIShipRideNoRoute);
+	writer.NewPropertyWithValue("AIShipRideLongWalk", m_AIShipRideLongWalk);
+	writer.NewPropertyWithValue("AIShipRideLongWalkDistance", m_AIShipRideLongWalkDistance);
+	writer.NewPropertyWithValue("AIShipRideRange", m_AIShipRideRange);
+	writer.NewPropertyWithValue("AIShipRideWait", m_AIShipRideWait);
+	writer.NewPropertyWithValue("AIVehiclesWaitForRiders", m_AIVehiclesWaitForRiders);
 	writer.NewPropertyWithValue("AICoverDigs", m_AICoverDigs);
 	writer.NewPropertyWithValue("AICoverFallsBack", m_AICoverFallsBack);
 	writer.NewPropertyWithValue("AICoverLiesFlat", m_AICoverLiesFlat);
@@ -1602,6 +1639,11 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("DirectStraightFlightRisk", m_DirectOrders.StraightFlightRisk);
 	writer.NewPropertyWithValue("DirectSkyRouteRisk", m_DirectOrders.SkyRouteRisk);
 	writer.NewPropertyWithValue("DirectDives", m_DirectOrders.Dives);
+	writer.NewPropertyWithValue("DigAvoidCaveIns", m_DigSafety.AvoidCaveIns);
+	writer.NewPropertyWithValue("DigBackOff", m_DigSafety.BackOff);
+	writer.NewPropertyWithValue("DigToAvoidCaveIns", m_DigSafety.DigToOrders);
+	writer.NewPropertyWithValue("DigToPreviewWarns", m_DigSafety.PreviewWarns);
+	writer.NewPropertyWithValue("AIDodgesFallingGround", m_AIDodgesFallingGround);
 	writer.NewPropertyWithValue("DirectDiveRisk", m_DirectOrders.DiveRisk);
 	writer.NewPropertyWithValue("DirectDiveChance", m_DirectOrders.DiveChance);
 	writer.NewPropertyWithValue("CautiousCaution", m_DirectOrders.CautiousCaution);
@@ -1747,6 +1789,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	// The sandbox's You tab (your character), how its Spawn tab puts vehicles down and how its window was left: in Settings.ini and in a preset alike.
 	writer.NewPropertyWithValue("SandboxCharacter", Sandbox::GetCharacterSetup());
 	writer.NewPropertyWithValue("SandboxVehicles", Sandbox::GetVehicleSetup());
+	writer.NewPropertyWithValue("SandboxUnits", Sandbox::GetUnitSetup());
 	// How the sandbox's window was left: its tab, the tools last taken, the brush and the catalogue's filters.
 	writer.NewPropertyWithValue("SandboxPanel", Sandbox::GetPanelSetup());
 }

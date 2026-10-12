@@ -1,8 +1,10 @@
 #include "ACShip.h"
+#include "AirRoute.h"
 
 #include "ADoor.h"
 #include "AEmitter.h"
 #include "AHuman.h"
+#include "AVehicle.h"
 #include "ActivityMan.h"
 #include "Controller.h"
 #include "FrameMan.h"
@@ -116,6 +118,18 @@ void ACShip::Clear() {
 	m_PausedAt.Reset();
 	m_FlightToRestore = FlightToRestore::None;
 	m_GoalToRestore.Reset();
+	m_RideStage = RideStage::None;
+	m_RideRecruits.clear();
+	m_RideGoal.Reset();
+	m_RideTeam = Activity::NoTeam;
+	m_RideStageTimer.Reset();
+	m_RideWaitTimer.Reset();
+	m_RideWaitStarted = false;
+	m_RideScanTimer.Reset();
+	m_RideSent = false;
+	m_RideSends = 0;
+	m_RideHealth = 0.0F;
+	m_RideUnloadAt.Reset();
 }
 
 int ACShip::Create(const ACShip& reference) {
@@ -337,24 +351,21 @@ float ACShip::HullTop() const {
 	return std::clamp(top, 4.0F, GetRadius());
 }
 
+AirBody ACShip::GetAirBody() const {
+	// (Its underside's figure takes in half its ground gap, as the route and the lines it flies keep: see AirRoute::LineClear.)
+	AirBody body;
+	body.HalfWidth = HullHalfWidth();
+	body.Top = HullTop();
+	body.Under = HullUnderside() + std::min(4.0F, g_SettingsMan.ShipGroundClearance() * 0.5F);
+	body.SkyTop = SkyTop();
+	body.OrbitGrace = GetOrbitGrace();
+	body.Team = m_Team;
+	body.Self = static_cast<const Actor*>(this);
+	return body;
+}
+
 bool ACShip::HullLineClear(const Vector& from, const Vector& to) const {
-	// Its whole outline swept along the line, engines and all, not just its middle: rays from its two ends, top and bottom, and its middle.
-	// (Its underside's rays run half its ground gap under the hull, not more: a ship sitting at its clearance over the ground, or sent to a
-	// place there, must not find the ground in the way of every line it could fly.)
-	const Vector way = g_SceneMan.ShortestDistance(from, to, g_SceneMan.SceneWrapsX());
-	const float halfWidth = HullHalfWidth();
-	const float top = HullTop() + 4.0F;
-	const float under = HullUnderside() + std::min(4.0F, g_SettingsMan.ShipGroundClearance() * 0.5F);
-	const std::array<Vector, 7> outline{Vector(0.0F, 0.0F), Vector(-halfWidth, -top), Vector(halfWidth, -top), Vector(-halfWidth, under), Vector(halfWidth, under), Vector(0.0F, -top), Vector(0.0F, under)};
-	Vector blocked;
-	for (const Vector& offset: outline) {
-		Vector start = from + offset;
-		g_SceneMan.WrapPosition(start);
-		if (g_SceneMan.CastStrengthRay(start, way, 5.0F, blocked, 4)) {
-			return false;
-		}
-	}
-	return true;
+	return AirRoute::LineClear(GetAirBody(), from, to);
 }
 
 float ACShip::GetOrbitGrace() const {
@@ -1142,271 +1153,7 @@ void ACShip::SteerTo(const Vector& target, bool stop, float clearanceScale) {
 }
 
 bool ACShip::AirPath(const Vector& from, const Vector& to, float care, std::deque<Vector>& route, bool& reached) const {
-	route.clear();
-	reached = false;
-	const bool wraps = g_SceneMan.SceneWrapsX();
-	const float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
-	const float sceneHeight = static_cast<float>(g_SceneMan.GetSceneHeight());
-	const Vector way = g_SceneMan.ShortestDistance(from, to, wraps);
-
-	// The part of the scene it plans in: round the two places, wider than the way between them by enough to go round what is in it, from as
-	// high as it may fly (past the top of the map by its room there) to a little under the lower of them. Worked in a frame from its corner,
-	// so a wrapping scene's seam is nothing special.
-	constexpr float c_Cell = 16.0F; // A step of the route grid.
-	constexpr int c_Sample = 4; // How finely the ground is looked at, in pixels: fine enough for a bunker's walls.
-	constexpr float c_Margin = 480.0F;
-	const float halfWidth = HullHalfWidth();
-	float left = std::min(0.0F, way.m_X) - c_Margin - halfWidth;
-	float right = std::max(0.0F, way.m_X) + c_Margin + halfWidth;
-	if (wraps) {
-		const float extra = std::max(0.0F, (right - left) - sceneWidth) * 0.5F;
-		left += extra;
-		right -= extra;
-	} else {
-		const float grace = GetOrbitGrace();
-		left = std::max(left, -grace - from.m_X);
-		right = std::min(right, sceneWidth + grace - from.m_X);
-	}
-	const float top = std::max(SkyTop() - c_Cell, std::min(from.m_Y, to.m_Y) - 640.0F);
-	const float bottom = std::min(sceneHeight, std::max(from.m_Y, to.m_Y) + 320.0F);
-	const int columns = static_cast<int>((right - left) / c_Cell);
-	const int rows = static_cast<int>((bottom - top) / c_Cell);
-	if (columns < 2 || rows < 2) {
-		return false;
-	}
-	// (The world place of a point of the frame, x from its own place along it.)
-	auto toWorld = [&](float x, float y) {
-		Vector point(from.m_X + x, y);
-		g_SceneMan.WrapPosition(point);
-		return point;
-	};
-
-	// What is solid, a few pixels at a time: the terrain (its buildings in it) as a ray of its hull would find it (CastStrengthRay's
-	// strength), and the doors, which are not terrain. Summed up so how much is solid in any box of it is a few look-ups.
-	const int sampleColumns = static_cast<int>((right - left) / c_Sample) + 1;
-	const int sampleRows = static_cast<int>((bottom - top) / c_Sample) + 1;
-	std::array<bool, c_PaletteEntriesNumber> solidMaterial{};
-	for (int id = 0; id < c_PaletteEntriesNumber; ++id) {
-		const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
-		solidMaterial[id] = id != MaterialColorKeys::g_MaterialAir && material && material->GetIntegrity() >= 5.0F;
-	}
-	std::vector<uint8_t> solid(static_cast<size_t>(sampleColumns) * sampleRows, 0);
-	for (int sx = 0; sx < sampleColumns; ++sx) {
-		const float localX = left + static_cast<float>(sx * c_Sample);
-		for (int sy = 0; sy < sampleRows; ++sy) {
-			const float y = top + static_cast<float>(sy * c_Sample);
-			// (Under the scene is solid; over it, open air.)
-			if (y >= sceneHeight) {
-				solid[static_cast<size_t>(sy) * sampleColumns + sx] = 1;
-				continue;
-			}
-			const Vector point = toWorld(localX, y);
-			if (!wraps && (point.m_X < 0.0F || point.m_X >= sceneWidth)) {
-				continue;
-			}
-			solid[static_cast<size_t>(sy) * sampleColumns + sx] = solidMaterial[g_SceneMan.GetTerrMatter(point.GetFloorIntX(), point.GetFloorIntY())] ? 1 : 0;
-		}
-	}
-	for (const ADoor* door: g_MovableMan.GetDoorList()) {
-		if (!door || door->IsSetToDelete()) {
-			continue;
-		}
-		const Vector at = g_SceneMan.ShortestDistance(from, door->GetPos(), wraps);
-		const float reach = door->GetRadius() * 0.7F;
-		const int x0 = std::max(0, static_cast<int>((at.m_X - reach - left) / c_Sample));
-		const int x1 = std::min(sampleColumns - 1, static_cast<int>((at.m_X + reach - left) / c_Sample));
-		const int y0 = std::max(0, static_cast<int>((door->GetPos().m_Y - reach - top) / c_Sample));
-		const int y1 = std::min(sampleRows - 1, static_cast<int>((door->GetPos().m_Y + reach - top) / c_Sample));
-		for (int sy = y0; sy <= y1; ++sy) {
-			for (int sx = x0; sx <= x1; ++sx) {
-				solid[static_cast<size_t>(sy) * sampleColumns + sx] = 1;
-			}
-		}
-	}
-	std::vector<int> summed(static_cast<size_t>(sampleColumns + 1) * (sampleRows + 1), 0);
-	const int summedColumns = sampleColumns + 1;
-	for (int sy = 0; sy < sampleRows; ++sy) {
-		int rowSum = 0;
-		for (int sx = 0; sx < sampleColumns; ++sx) {
-			rowSum += solid[static_cast<size_t>(sy) * sampleColumns + sx];
-			summed[static_cast<size_t>(sy + 1) * summedColumns + sx + 1] = summed[static_cast<size_t>(sy) * summedColumns + sx + 1] + rowSum;
-		}
-	}
-	auto anySolid = [&](float x0, float y0, float x1, float y1) {
-		const int ax = std::clamp(static_cast<int>(std::floor((x0 - left) / c_Sample)), 0, sampleColumns);
-		const int bx = std::clamp(static_cast<int>(std::ceil((x1 - left) / c_Sample)) + 1, 0, sampleColumns);
-		const int ay = std::clamp(static_cast<int>(std::floor((y0 - top) / c_Sample)), 0, sampleRows);
-		const int by = std::clamp(static_cast<int>(std::ceil((y1 - top) / c_Sample)) + 1, 0, sampleRows);
-		if (ax >= bx || ay >= by) {
-			return false;
-		}
-		return summed[static_cast<size_t>(by) * summedColumns + bx] - summed[static_cast<size_t>(ay) * summedColumns + bx] - summed[static_cast<size_t>(by) * summedColumns + ax] + summed[static_cast<size_t>(ay) * summedColumns + ax] > 0;
-	};
-
-	// The grid: a step is open where its whole hull fits there, its ends, engines and guns, and half its gap over the ground under it (as
-	// HullLineClear has it).
-	const float hullTop = HullTop() + 2.0F;
-	const float hullUnder = HullUnderside() + std::min(4.0F, g_SettingsMan.ShipGroundClearance() * 0.5F);
-	auto centre = [&](int column, int row) { return Vector(left + (static_cast<float>(column) + 0.5F) * c_Cell, top + (static_cast<float>(row) + 0.5F) * c_Cell); };
-	std::vector<uint8_t> open(static_cast<size_t>(columns) * rows, 0);
-	for (int column = 0; column < columns; ++column) {
-		for (int row = 0; row < rows; ++row) {
-			const Vector at = centre(column, row);
-			open[static_cast<size_t>(row) * columns + column] = anySolid(at.m_X - halfWidth, at.m_Y - hullTop, at.m_X + halfWidth, at.m_Y + hullUnder) ? 0 : 1;
-		}
-	}
-	auto indexOf = [&](const Vector& local) {
-		const int column = static_cast<int>(std::floor((local.m_X - left) / c_Cell));
-		const int row = static_cast<int>(std::floor((local.m_Y - top) / c_Cell));
-		return (column < 0 || column >= columns || row < 0 || row >= rows) ? -1 : row * columns + column;
-	};
-	// The open step nearest a place, a few steps round it at most (its middle may sit a little off the grid's steps).
-	auto nearestOpen = [&](const Vector& local, int within) {
-		const int column = static_cast<int>(std::floor((local.m_X - left) / c_Cell));
-		const int row = static_cast<int>(std::floor((local.m_Y - top) / c_Cell));
-		int best = -1;
-		float bestDistance = FLT_MAX;
-		for (int dy = -within; dy <= within; ++dy) {
-			for (int dx = -within; dx <= within; ++dx) {
-				const int c = column + dx;
-				const int r = row + dy;
-				if (c < 0 || c >= columns || r < 0 || r >= rows || !open[static_cast<size_t>(r) * columns + c]) {
-					continue;
-				}
-				const float distance = (centre(c, r) - local).GetSqrMagnitude();
-				if (distance < bestDistance) {
-					bestDistance = distance;
-					best = r * columns + c;
-				}
-			}
-		}
-		return best;
-	};
-	const Vector startLocal(0.0F, from.m_Y);
-	const Vector goalLocal(way.m_X, to.m_Y);
-	const int start = nearestOpen(startLocal, 4);
-	if (start < 0) {
-		return false;
-	}
-	const int goalIndex = indexOf(goalLocal) >= 0 ? nearestOpen(goalLocal, 6) : -1;
-
-	// Enemies a cautious order keeps off, in the frame.
-	std::vector<Vector> enemies;
-	if (care > 0.0F) {
-		for (const Actor* actor: g_MovableMan.GetActorList()) {
-			if (actor && actor->GetTeam() != m_Team && actor->GetTeam() >= 0 && !actor->IsDead() && actor != this) {
-				const Vector at = g_SceneMan.ShortestDistance(from, actor->GetPos(), wraps);
-				if (at.m_X > left - 400.0F && at.m_X < right + 400.0F) {
-					enemies.emplace_back(at.m_X, actor->GetPos().m_Y);
-				}
-			}
-		}
-	}
-	// What a step costs: its length (the shortest way, however high that takes it), and on a cautious order more near enemies.
-	auto stepCost = [&](int index, float length) {
-		float scale = 1.0F;
-		if (!enemies.empty()) {
-			const Vector at = centre(index % columns, index / columns);
-			for (const Vector& enemy: enemies) {
-				const float distance = (enemy - at).GetMagnitude();
-				if (distance < 360.0F) {
-					scale += care * 3.0F * (1.0F - distance / 360.0F);
-				}
-			}
-		}
-		return length * scale;
-	};
-
-	// A* over the open steps, eight ways. With no way to the place, the nearest it got.
-	const size_t count = static_cast<size_t>(columns) * rows;
-	std::vector<float> cost(count, FLT_MAX);
-	std::vector<int> cameFrom(count, -1);
-	std::vector<uint8_t> done(count, 0);
-	using Entry = std::pair<float, int>;
-	std::priority_queue<Entry, std::vector<Entry>, std::greater<Entry>> frontier;
-	auto guess = [&](int index) { return (centre(index % columns, index / columns) - goalLocal).GetMagnitude(); };
-	cost[start] = 0.0F;
-	frontier.emplace(guess(start), start);
-	int nearest = start;
-	float nearestGuess = guess(start);
-	constexpr std::array<std::array<int, 2>, 8> c_Steps{{{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}}};
-	while (!frontier.empty()) {
-		const int index = frontier.top().second;
-		frontier.pop();
-		if (done[index]) {
-			continue;
-		}
-		done[index] = 1;
-		if (const float remaining = guess(index); remaining < nearestGuess) {
-			nearestGuess = remaining;
-			nearest = index;
-		}
-		if (index == goalIndex) {
-			break;
-		}
-		const int column = index % columns;
-		const int row = index / columns;
-		for (const std::array<int, 2>& step: c_Steps) {
-			const int c = column + step[0];
-			const int r = row + step[1];
-			if (c < 0 || c >= columns || r < 0 || r >= rows) {
-				continue;
-			}
-			const int next = r * columns + c;
-			// (Not cutting a corner past something shut.)
-			if (!open[next] || done[next] || (step[0] != 0 && step[1] != 0 && (!open[static_cast<size_t>(row) * columns + c] || !open[static_cast<size_t>(r) * columns + column]))) {
-				continue;
-			}
-			const float length = (step[0] != 0 && step[1] != 0) ? c_Cell * 1.4142F : c_Cell;
-			const float reachedFor = cost[index] + stepCost(next, length);
-			if (reachedFor < cost[next]) {
-				cost[next] = reachedFor;
-				cameFrom[next] = index;
-				frontier.emplace(reachedFor + guess(next), next);
-			}
-		}
-	}
-	reached = goalIndex >= 0 && done[goalIndex];
-	const int end = reached ? goalIndex : nearest;
-	std::vector<Vector> points;
-	for (int index = end; index >= 0 && index != start; index = cameFrom[index]) {
-		const Vector at = centre(index % columns, index / columns);
-		points.push_back(toWorld(at.m_X, at.m_Y));
-	}
-	std::reverse(points.begin(), points.end());
-	// The place itself last, where it can get straight to it from the step it ends on.
-	if (reached && (points.empty() || HullLineClear(points.back(), to))) {
-		points.push_back(to);
-	}
-	if (points.empty()) {
-		return true;
-	}
-
-	// Cut to as few points as have open air between: from each, to the furthest on it can fly straight to (found by halving, the way being
-	// near enough always clear up to some point and blocked past it).
-	Vector at = from;
-	for (size_t i = 0; i < points.size();) {
-		size_t furthest = i;
-		if (HullLineClear(at, points.back())) {
-			furthest = points.size() - 1;
-		} else {
-			size_t low = i;
-			size_t high = points.size() - 1;
-			while (high - low > 1) {
-				const size_t middle = (low + high) / 2;
-				if (HullLineClear(at, points[middle])) {
-					low = middle;
-				} else {
-					high = middle;
-				}
-			}
-			furthest = low;
-		}
-		route.push_back(points[furthest]);
-		at = points[furthest];
-		i = furthest + 1;
-	}
-	return true;
+	return AirRoute::Plan(GetAirBody(), from, to, care, route, reached);
 }
 
 void ACShip::UpdateRoute() {
@@ -1588,6 +1335,7 @@ void ACShip::Update() {
 
 	UpdateGuns();
 	m_Crew.UpdateBoarding(false, m_CanBeTaken && m_Crew.IsEmpty());
+	UpdateAIRides();
 	UpdateAIBoarding();
 
 	m_Crew.SetLastVel(m_Vel);
@@ -1629,11 +1377,351 @@ void ACShip::UpdateAIBoarding() {
 		if (GetFreeSeat() < 0) {
 			break;
 		}
+		// (Not those called over for a ride, UpdateAIRides: they get in as riders, keeping where they're going.)
+		if (std::any_of(m_RideRecruits.begin(), m_RideRecruits.end(), [unit](const RideRecruit& recruit) { return recruit.ID == unit->GetUniqueID(); })) {
+			continue;
+		}
 		if (unit->GetMOMoveTarget() == this && !unit->GetController()->IsPlayerControlled() && CanTakeIn(unit) && m_Crew.IsInReach(unit, 24.0F)) {
 			unit->RemoveAIMOWaypoint(this);
 			unit->ClearAIWaypoints();
 			unit->SetAIMode(AIMODE_SENTRY);
 			TakeSeat(unit, -1);
+		}
+	}
+}
+
+bool ACShip::OffersRides() const {
+	if (IsDead() || m_Status == DYING || m_Controller.IsPlayerControlled() || m_Crew.GetPlayerSeat() >= 0 || IsRamming() || m_HasCombatSpot || m_EngageID != 0) {
+		return false;
+	}
+	// (Given an order by the player, or a battle mode: it is theirs, ride or not. Nor an airlift's ship, which has its own passengers.)
+	if (m_StandingOrder.Kind != ORDER_NONE || m_StandingOrder.Hold || m_StandingOrder.HasPost || m_StandingOrder.Attack || m_StandingOrder.TargetID != 0 || NumberValueExists("NoShipRides")) {
+		return false;
+	}
+	// (Busy with something of its own: a delivery, a trip home. A go-to is only its own ride's.)
+	if (m_AIMode == AIMODE_DELIVER || m_AIMode == AIMODE_RETURN || m_AIMode == AIMODE_BRAINHUNT || m_AIMode == AIMODE_BOMB || m_AIMode == AIMODE_SCUTTLE || (m_AIMode == AIMODE_GOTO && m_RideStage == RideStage::None)) {
+		return false;
+	}
+	// (A crewed ship's crew all its own: anyone in it that isn't a rider is its AI crew, who fly or man the guns for whoever rides.)
+	return true;
+}
+
+int ACShip::RiderCount() const {
+	int riders = 0;
+	for (int seat = 0; seat < GetSeatCount(); ++seat) {
+		riders += m_Crew.GetOccupant(seat) && m_Crew.IsRider(seat) ? 1 : 0;
+	}
+	return riders;
+}
+
+void ACShip::LetRidersOut() {
+	for (int seat = GetSeatCount() - 1; seat >= 0; --seat) {
+		if (m_Crew.GetOccupant(seat) && m_Crew.IsRider(seat)) {
+			if (Actor* out = m_Crew.LetOut(seat, false)) {
+				out->ResumeAIWaypoints();
+			}
+		}
+	}
+}
+
+void ACShip::ReleaseRideRecruits() {
+	for (const RideRecruit& recruit: m_RideRecruits) {
+		if (Actor* unit = dynamic_cast<Actor*>(g_MovableMan.FindObjectByUniqueID(recruit.ID))) {
+			unit->RemoveAIMOWaypoint(this);
+		}
+	}
+	m_RideRecruits.clear();
+}
+
+bool ACShip::RiderTakesControls() {
+	if (!m_NeedsPilot || HasPilot() || m_Status == DYING || m_Status == DEAD) {
+		return false;
+	}
+	for (int seat = 1; seat < GetSeatCount(); ++seat) {
+		if (Actor* unit = m_Crew.GetOccupant(seat); unit && m_Crew.IsRider(seat)) {
+			m_Crew.SetOccupant(0, unit);
+			m_Crew.SetOccupant(seat, nullptr);
+			m_Crew.SetRider(0, true);
+			return true;
+		}
+	}
+	return false;
+}
+
+void ACShip::SetRideStage(RideStage stage) {
+	m_RideStage = stage;
+	m_RideStageTimer.Reset();
+	m_RideSent = false;
+	m_RideSends = 0;
+}
+
+void ACShip::UpdateAIRides() {
+	if (IsDead() || m_Status == DYING || !Controller::AIMayAct()) {
+		return;
+	}
+	const bool ridesOn = g_SettingsMan.AIRidesShips();
+	const float radius = GetRadius();
+	auto down = [this, radius]() { return GetAltitude(1000, 4) < radius * 0.9F && m_Vel.MagnitudeIsLessThan(3.0F); };
+
+	// Those called over get in once they're here, as riders keeping where they're going; or are let go if they've stopped coming (a new
+	// order, dead, or too long on the way), the seats have filled, or it has gone.
+	for (auto recruit = m_RideRecruits.begin(); recruit != m_RideRecruits.end();) {
+		Actor* unit = dynamic_cast<Actor*>(g_MovableMan.FindObjectByUniqueID(recruit->ID));
+		bool coming = unit && (unit->GetMOMoveTarget() == this || std::any_of(unit->GetWaypointList().begin(), unit->GetWaypointList().end(), [this](const std::pair<Vector, const MovableObject*>& waypoint) { return waypoint.second == this; }));
+		bool keep = coming && ridesOn && m_RideStage == RideStage::Gathering && !unit->IsDead() && !unit->IsSetToDelete() && !unit->GetController()->IsPlayerControlled() && !recruit->Since.IsPastSimMS(45000) && GetFreeSeat() >= 0 && CanTakeIn(unit);
+		if (keep && m_Crew.IsInReach(unit, 24.0F)) {
+			unit->RemoveAIMOWaypoint(this);
+			int seat = GetFreeSeat();
+			if (TakeSeat(unit, seat)) {
+				m_Crew.SetRider(seat, true);
+				if (!m_RideWaitStarted) {
+					m_RideWaitStarted = true;
+					m_RideWaitTimer.Reset();
+				}
+			}
+			recruit = m_RideRecruits.erase(recruit);
+			continue;
+		}
+		if (!keep) {
+			if (unit && coming) {
+				unit->RemoveAIMOWaypoint(this);
+			}
+			recruit = m_RideRecruits.erase(recruit);
+			continue;
+		}
+		++recruit;
+	}
+
+	// Taken over by a player (flown, sat in, or given an order): the ride is off. Those coming walk on, and those in it ride along as the
+	// player's passengers, to be ordered out as they like.
+	const bool taken = m_Controller.IsPlayerControlled() || m_Crew.GetPlayerSeat() >= 0 || m_StandingOrder.Kind != ORDER_NONE || m_StandingOrder.Hold || m_StandingOrder.HasPost || m_StandingOrder.Attack || m_StandingOrder.TargetID != 0;
+	if (taken) {
+		if (m_RideStage != RideStage::None) {
+			ReleaseRideRecruits();
+			for (int seat = 0; seat < GetSeatCount(); ++seat) {
+				m_Crew.SetRider(seat, false);
+			}
+			SetRideStage(RideStage::None);
+		}
+		return;
+	}
+
+	const int riders = RiderCount();
+	// Riders in it with no ride under way (read from a saved game): it takes them on to where they're going.
+	if (m_RideStage == RideStage::None && riders > 0) {
+		for (int seat = 0; seat < GetSeatCount(); ++seat) {
+			if (Actor* unit = m_Crew.GetOccupant(seat); unit && m_Crew.IsRider(seat)) {
+				m_RideGoal = unit->GetLastAIWaypoint();
+				m_RideTeam = unit->GetTeam();
+				break;
+			}
+		}
+		m_RideWaitStarted = true;
+		m_RideWaitTimer.Reset();
+		m_RideHealth = GetHealth();
+		SetRideStage(RideStage::Gathering);
+	}
+	// With its pilot shot (or out), a rider takes the controls.
+	if (m_RideStage != RideStage::None) {
+		RiderTakesControls();
+	}
+
+	switch (m_RideStage) {
+		case RideStage::Gathering: {
+			// Rides turned off, or nobody (left) to take: those coming go back to walking, and any in it get out once it's down.
+			if (!ridesOn || (riders == 0 && m_RideRecruits.empty())) {
+				ReleaseRideRecruits();
+				if (riders > 0) {
+					m_RideUnloadAt = DropOffPoint(m_Pos);
+					SetRideStage(RideStage::Unloading);
+				} else {
+					SetRideStage(RideStage::None);
+				}
+				break;
+			}
+			// Down by the ground for them to get in (a parked one already is; one with nobody to fly it can't come).
+			if (!m_RideSent && CanFly() && AutopilotStarted() && !down()) {
+				Vector ground = g_SceneMan.MovePointToGround(m_Pos, 0.0F, 4);
+				m_RideSent = FlyTo(ground - Vector(0.0F, radius * 0.3F));
+			}
+			// Off once everyone it called is in, its seats are full, the wait since the first got in has run out, or it's been hit.
+			const bool everyone = m_RideRecruits.empty();
+			const bool full = GetFreeSeat() < 0;
+			const bool waited = m_RideWaitStarted && m_RideWaitTimer.IsPastSimMS(static_cast<double>(g_SettingsMan.AIShipRideWait()) * 1000.0);
+			const bool hit = GetHealth() < m_RideHealth - 1.0F;
+			if (riders > 0 && (everyone || full || waited || hit)) {
+				if (!CanFly()) {
+					// (Nobody to fly it, and no rider can: a ship whose pilot's seat a rider can't take. They get out and walk.)
+					if (m_RideStageTimer.IsPastSimMS(static_cast<double>(g_SettingsMan.AIShipRideWait()) * 1000.0 + 15000.0)) {
+						ReleaseRideRecruits();
+						m_RideUnloadAt = DropOffPoint(m_Pos);
+						SetRideStage(RideStage::Unloading);
+					}
+					break;
+				}
+				ReleaseRideRecruits();
+				SetRideStage(RideStage::Flying);
+			}
+			break;
+		}
+		case RideStage::Flying: {
+			if (riders == 0) {
+				SetRideStage(RideStage::None);
+				break;
+			}
+			if (!CanFly()) {
+				// Nobody to fly it: it sets itself down, and they get out there.
+				m_RideUnloadAt = DropOffPoint(m_Pos);
+				SetRideStage(RideStage::Unloading);
+				break;
+			}
+			// There, or near enough to walk the rest: down low, and out.
+			Vector toGoal = g_SceneMan.ShortestDistance(m_Pos, m_RideGoal);
+			if (std::abs(toGoal.m_X) < std::max(150.0F, radius * 2.0F) && std::abs(toGoal.m_Y) < 250.0F) {
+				m_RideUnloadAt = DropOffPoint(m_RideGoal);
+				SetRideStage(RideStage::Unloading);
+				break;
+			}
+			// Sent there by its air route (again whenever it stopped short: its go-to ended in a hold); it gives up after a few tries, or two
+			// minutes, and lets them out where it is.
+			const bool stopped = m_RideSent && m_AIMode != AIMODE_GOTO;
+			if (!m_RideSent || stopped) {
+				if (m_RideSends >= 4 || m_RideStageTimer.IsPastSimMS(120000)) {
+					m_RideUnloadAt = DropOffPoint(m_Pos);
+					SetRideStage(RideStage::Unloading);
+					break;
+				}
+				if (FlyRouteTo(m_RideGoal)) {
+					m_RideSent = true;
+					++m_RideSends;
+				}
+			}
+			break;
+		}
+		case RideStage::Unloading: {
+			if (riders == 0) {
+				SetRideStage(RideStage::None);
+				break;
+			}
+			if (CanFly() && AutopilotStarted() && !m_RideSent) {
+				m_RideSent = FlyTo(m_RideUnloadAt);
+			}
+			// Low and slow over the place (or settled wherever it set itself down, or it's taking too long): out.
+			const bool there = g_SceneMan.ShortestDistance(m_Pos, m_RideUnloadAt).MagnitudeIsLessThan(radius + 30.0F) && m_Vel.MagnitudeIsLessThan(3.0F);
+			if (there || down() || m_RideStageTimer.IsPastSimMS(15000)) {
+				LetRidersOut();
+				SetRideStage(RideStage::None);
+			}
+			break;
+		}
+		default:
+			break;
+	}
+
+	// Now and then, while it has room and is idle (or gathering), it looks round for units that want a ride, going near where it's going.
+	if (!ridesOn || !m_RideScanTimer.IsPastSimMS(1000) || (m_RideStage != RideStage::None && m_RideStage != RideStage::Gathering)) {
+		return;
+	}
+	m_RideScanTimer.Reset();
+	if (!OffersRides() || (!g_SettingsMan.AIShipRideNoRoute() && !g_SettingsMan.AIShipRideLongWalk())) {
+		return;
+	}
+	int room = 0;
+	for (int seat = 0; seat < GetSeatCount(); ++seat) {
+		room += m_Crew.GetOccupant(seat) ? 0 : 1;
+	}
+	room -= static_cast<int>(m_RideRecruits.size());
+	if (room <= 0) {
+		return;
+	}
+	Scene* scene = g_SceneMan.GetScene();
+	if (!scene) {
+		return;
+	}
+	bool gathering = m_RideStage == RideStage::Gathering;
+	const float range = g_SettingsMan.AIShipRideRange();
+	const float longWalk = g_SettingsMan.AIShipRideLongWalkDistance();
+	// (Routes are searched on the spot: only a few a look, the nearest units first.)
+	int searchesLeft = 3;
+	std::vector<std::pair<float, Actor*>> candidates;
+	for (Actor* unit: g_MovableMan.GetActorList()) {
+		if (unit->GetController()->IsPlayerControlled() || unit->IsDead() || !CanTakeIn(unit) || unit->IsDiggingTo()) {
+			continue;
+		}
+		// (All of a ride on one side: an empty ship anyone can take is taken by the first in, for theirs.)
+		if ((gathering || !m_Crew.IsEmpty()) && unit->GetTeam() != (gathering ? m_RideTeam : m_Team)) {
+			continue;
+		}
+		// (Not one already called over by a vehicle or ship, or sent to one.)
+		const MovableObject* following = unit->GetMOMoveTarget();
+		if ((following && (dynamic_cast<const AVehicle*>(following) || dynamic_cast<const ACShip*>(following))) ||
+		    std::any_of(unit->GetWaypointList().begin(), unit->GetWaypointList().end(), [](const std::pair<Vector, const MovableObject*>& waypoint) { return waypoint.second && (dynamic_cast<const AVehicle*>(waypoint.second) || dynamic_cast<const ACShip*>(waypoint.second)); })) {
+			continue;
+		}
+		Vector toShip = g_SceneMan.ShortestDistance(unit->GetPos(), m_Pos);
+		if (toShip.MagnitudeIsGreaterThan(range)) {
+			continue;
+		}
+		candidates.emplace_back(toShip.GetMagnitude(), unit);
+	}
+	std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+	for (const auto& [distance, unit]: candidates) {
+		if (room <= 0 || searchesLeft <= 0) {
+			break;
+		}
+		// Why it wants a ride: no way there on foot, or a long way to walk (and the ship no further from there than it is).
+		Vector goal;
+		bool noRoute = g_SettingsMan.AIShipRideNoRoute() && unit->WantsShipRide(goal);
+		if (!noRoute) {
+			if (!g_SettingsMan.AIShipRideLongWalk() || unit->GetAIMode() != AIMODE_GOTO || unit->GetMOMoveTarget()) {
+				continue;
+			}
+			goal = unit->GetLastAIWaypoint();
+			float walk = g_SceneMan.ShortestDistance(unit->GetPos(), goal).GetMagnitude();
+			if (walk < longWalk || g_SceneMan.ShortestDistance(m_Pos, goal).GetMagnitude() > walk + 100.0F) {
+				continue;
+			}
+		}
+		// (Not one already near there: let out by a ship that couldn't get it closer, it would only be flown round again.)
+		if (g_SceneMan.ShortestDistance(unit->GetPos(), goal).MagnitudeIsLessThan(400.0F)) {
+			continue;
+		}
+		// Going near where the others it has called are going.
+		if (gathering && g_SceneMan.ShortestDistance(m_RideGoal, goal).MagnitudeIsGreaterThan(300.0F)) {
+			continue;
+		}
+		// It can walk to the ship, and (for the first of a ride) the ship can fly there.
+		--searchesLeft;
+		std::list<Vector> path;
+		Vector shipGround = g_SceneMan.MovePointToGround(m_Pos, 0.0F, 4) - Vector(0.0F, 10.0F);
+		float cost = scene->CalculatePath(unit->GetPathStart(), shipGround, path, unit->GetPathAgent(), static_cast<Activity::Teams>(unit->GetTeam()));
+		if (cost < 0.0F || cost >= 100000.0F) {
+			continue;
+		}
+		if (!gathering) {
+			std::deque<Vector> route;
+			bool reached = false;
+			if (!AirPath(m_Pos, LowPoint(goal), 0.0F, route, reached) || !reached) {
+				continue;
+			}
+		}
+		// Called over, keeping where it was going (put back for one that had stood down, its goal forgotten).
+		unit->ForgetShipRide();
+		if (g_SceneMan.ShortestDistance(unit->GetLastAIWaypoint(), goal).MagnitudeIsGreaterThan(20.0F)) {
+			unit->ClearAIWaypoints();
+			unit->AddAISceneWaypoint(goal);
+		}
+		unit->SetAIMode(AIMODE_GOTO);
+		unit->AddAIMOWaypointFirst(this);
+		m_RideRecruits.push_back({unit->GetUniqueID(), Timer()});
+		--room;
+		if (!gathering) {
+			gathering = true;
+			m_RideGoal = goal;
+			m_RideTeam = unit->GetTeam();
+			m_RideWaitStarted = false;
+			m_RideHealth = GetHealth();
+			SetRideStage(RideStage::Gathering);
 		}
 	}
 }
@@ -1838,6 +1926,20 @@ void ACShip::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichSc
 				}
 			}
 		}
+	}
+	// With the AI paths shown: what ride it is giving, and how many are in and still coming.
+	if (m_RideStage != RideStage::None && (s_ShowAIPaths == 1 || (s_ShowAIPaths == 2 && m_SandboxSelected))) {
+		static const char* const stages[] = {"", "Ride: waiting", "Ride: flying", "Ride: letting out"};
+		std::string text = std::string(stages[static_cast<int>(m_RideStage)]) + " " + std::to_string(RiderCount()) + " in";
+		if (!m_RideRecruits.empty()) {
+			text += ", " + std::to_string(m_RideRecruits.size()) + " coming";
+		}
+		Vector drawPos = m_Pos - targetPos;
+		if (!targetPos.IsZero()) {
+			drawPos += g_SceneMan.GetWrapToScreen(drawPos, pTargetBitmap->w, pTargetBitmap->h);
+		}
+		AllegroBitmap bitmap(pTargetBitmap);
+		font->DrawAligned(&bitmap, drawPos.GetFloorIntX(), drawPos.GetFloorIntY() - static_cast<int>(m_CharHeight * 0.5F) - 26, text, GUIFont::Centre);
 	}
 	const char* hint = nullptr;
 	if (Actor* boarder = m_Crew.GetBoarderInReach(); boarder && activity->ScreenOfPlayer(boarder->GetController()->GetPlayer()) == whichScreen) {

@@ -2490,6 +2490,7 @@ namespace SandboxDetail {
 			if (loadout.Temperament < 0) {
 				ApplyTemperament(actor, stroke.Temperament);
 			}
+			TuneUnit(actor, stroke.Stats);
 			float spread = (static_cast<float>(i) - static_cast<float>(count - 1) * 0.5F) * 16.0F;
 			actor->SetPos(stroke.Position + Vector(spread, 0.0F));
 			actor->SetHFlipped(stroke.HasView && g_SceneMan.ShortestDistance(stroke.Position, Vector(stroke.ViewMiddleX, stroke.Position.m_Y), g_SceneMan.SceneWrapsX()).m_X < 0.0F);
@@ -2529,6 +2530,7 @@ namespace SandboxDetail {
 			if (!brain) {
 				GiveLoadout(actor, *preset, stroke.Loadout);
 				ApplyTemperament(actor, stroke.Temperament);
+				TuneUnit(actor, stroke.Stats);
 			}
 			// A squad spreads out sideways from the click.
 			float spread = (static_cast<float>(i) - static_cast<float>(count - 1) * 0.5F) * 16.0F;
@@ -2584,6 +2586,7 @@ namespace SandboxDetail {
 					if (loadout.Temperament < 0) {
 						ApplyTemperament(unit, stroke.Temperament);
 					}
+					TuneUnit(unit, stroke.Stats);
 					ReadyOrder(unit, stroke.Team, stroke.Orders);
 					NotePlaced(unit);
 					units.push_back(unit);
@@ -2609,6 +2612,7 @@ namespace SandboxDetail {
 			const Preset* pick = stroke.Random ? RandomPick(pool) : preset;
 			if (Actor* unit = pick ? CreateUnit(*pick, stroke.Team, stroke.Loadout, stroke.Orders) : nullptr) {
 				ApplyTemperament(unit, stroke.Temperament);
+				TuneUnit(unit, stroke.Stats);
 				// (Each noted as well as the craft: once out of it, taking the craft away leaves them.)
 				NotePlaced(unit);
 				units.push_back(unit);
@@ -2631,6 +2635,10 @@ namespace SandboxDetail {
 		vehicle->SetHopSpeed(times(vehicle->GetHopSpeed(), tuning.Jump));
 		vehicle->SetWaterThrust(times(vehicle->GetWaterThrust(), tuning.WaterPower));
 		vehicle->SetWaterMaxSpeed(times(vehicle->GetWaterMaxSpeed(), tuning.WaterSpeed));
+		if (tuning.Health != 1.0F) {
+			vehicle->SetMaxHealth(std::max(1, static_cast<int>(std::round(times(vehicle->GetMaxHealth(), tuning.Health)))));
+			vehicle->SetHealth(vehicle->GetMaxHealth());
+		}
 		if (tuning.TerrainCrush >= 0.0F) {
 			vehicle->SetTerrainCrush(std::min(tuning.TerrainCrush, c_VehicleCrushMax));
 		}
@@ -2694,6 +2702,7 @@ namespace SandboxDetail {
 				GiveLoadout(unit, *preset, stroke.Loadout);
 				ApplyTemperament(unit, stroke.Temperament);
 			}
+			TuneUnit(unit, stroke.Stats);
 			unit->SetTeam(stroke.Team);
 			unit->SetPos(vehicle->GetPos());
 			unit->SetControllerMode(Controller::CIM_AI);
@@ -4174,6 +4183,9 @@ namespace SandboxDetail {
 		stroke.RandomFaction = s_RandomFaction;
 		stroke.JetpackOnly = s_JetpackOnly;
 		stroke.Temperament = (kind == Tool::Drop || kind == Tool::Unit) ? s_SpawnTemperament : -1;
+		if (kind == Tool::Drop || kind == Tool::Unit || (kind == Tool::Vehicle && s_VehicleTuning.Crewed)) {
+			stroke.Stats = s_UnitTuning;
+		}
 		if ((kind == Tool::Drop || kind == Tool::Unit) && !s_RandomUnits && s_SpawnPick.Kind != CustomPick::None) {
 			// One of your loadouts (as many as the squad size) or one of your squads, taken now so editing it later doesn't change what was put down.
 			std::vector<CustomLoadout> units = UnitsOfPick(s_SpawnPick);

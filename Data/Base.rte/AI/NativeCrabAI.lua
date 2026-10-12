@@ -354,6 +354,7 @@ function NativeCrabAI:Update(Owner)
 		-- (A creature never falls back to be patched up; it hunts with its pack instead, CR-1.)
 		if self.isCreature then
 			CreatureBehaviors.PackUpdate(self, Owner);
+			CreatureBehaviors.LurkUpdate(self, Owner);
 		else
 			SharedBehaviors.RetreatUpdate(self, Owner);
 		end

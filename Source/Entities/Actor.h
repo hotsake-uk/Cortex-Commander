@@ -243,9 +243,22 @@ namespace RTE {
 		/// Whether a web holds it.
 		bool IsEnsnared() const;
 
+		/// Burns this with acid (CR-9, an ooze's spit and touch): it loses health each second for a while, flesh or metal alike, with no slow.
+		/// A fresh dose keeps the stronger burn and the later end.
+		/// @param damagePerSecond The health it loses each second.
+		/// @param seconds How long the burn lasts.
+		void Corrode(float damagePerSecond, float seconds);
+
+		/// Gets whether acid is eating at this now (Corrode).
+		bool IsCorroding() const;
+
 		/// The share of its pace it walks at for what has hold of it: venom slows it, a web stops it, and status effects (Haste, Stoneskin)
 		/// change it. 1 when nothing has.
 		float GetAfflictionSpeedMultiplier() const;
+
+		/// How much faster or slower than its preset this one walks, runs and crawls (the Sandbox's unit Stats), 1 as it comes.
+		float GetSpeedMultiplier() const { return m_SpeedMultiplier; }
+		void SetSpeedMultiplier(float multiplier) { m_SpeedMultiplier = std::max(multiplier, 0.0F); }
 #pragma endregion
 
 #pragma region Status effects (ActorAfflictions.cpp, SE-1)
@@ -831,8 +844,12 @@ namespace RTE {
 		/// Which of the toughness settings this actor follows (a SettingsMan::ToughnessKind), or -1 for none (doors, lifts).
 		int GetToughnessKind() const;
 
-		/// How tough this actor is set to be (SettingsMan::Toughness), 1 for an actor no toughness setting covers.
+		/// How tough this actor is set to be (SettingsMan::Toughness, times its own ToughnessMultiplier), 1 for an actor no toughness setting covers.
 		float GetToughness() const;
+
+		/// How much tougher than the rest of its kind this one is (the Sandbox's unit Stats), on top of the toughness setting; 1 as it comes.
+		float GetToughnessMultiplier() const { return m_ToughnessMultiplier; }
+		void SetToughnessMultiplier(float multiplier) { m_ToughnessMultiplier = std::max(multiplier, SettingsMan::c_ToughnessMin); }
 
 		/// How hard this is to blow apart, or to knock its head and limbs off: its toughness, and infinite when it is invincible.
 		float GibToughness() const override;
@@ -916,6 +933,7 @@ namespace RTE {
 		/// Removes all AI waypoints and clears the current path to the current
 		/// waypoint. The AI Actor will stop in its tracks.
 		void ClearAIWaypoints() {
+			m_WantsShipRide = false;
 			m_pMOMoveTarget = 0;
 			m_Waypoints.clear();
 			m_MovePath.clear();
@@ -941,6 +959,20 @@ namespace RTE {
 			}
 			return m_Pos;
 		}
+
+		/// Gets whether this found no way on foot to where it was sent, lately (the last minute), so an idle flying ship may fly it there
+		/// (SettingsMan::AIRidesShips, ACShip). Kept after the unit stands down for want of a route, which forgets the place.
+		/// @param goal Set to where it was sent. @return Whether it wants a ride.
+		bool WantsShipRide(Vector& goal) const {
+			if (!m_WantsShipRide || m_ShipRideWantTimer.IsPastSimMS(60000)) {
+				return false;
+			}
+			goal = m_ShipRideGoal;
+			return true;
+		}
+
+		/// Forgets that it wanted a ship ride (a ship has called it over, or it has been given a new order).
+		void ForgetShipRide() { m_WantsShipRide = false; }
 
 		/// Gets the ID of the last set AI MO waypoint of this. If none, g_NoMOID is returned.
 		/// @return The furthest set AI MO waypoint of this.
@@ -1376,7 +1408,50 @@ namespace RTE {
 			int Swims = -1; //!< 0 never swims (walks the bottom), 1 swims along the surface, 2 swims under water and never drowns.
 			float BreathSeconds = -1.0F; //!< How long it holds its breath under liquid, in seconds; 0 for something that doesn't breathe.
 			int FireProof = -1; //!< 1 for a body fire doesn't catch on, and that is routed through lava.
+			int Climbs = -1; //!< What it crawls up and along (CR-10; see Climbing): 0 none, 1 walls, 2 walls and ceilings.
+			float CrawlSpeed = -1.0F; //!< How fast it crawls on a wall or ceiling, or on any ground with no legs, in m/s (see GetCrawlSpeed).
+			int Flies = -1; //!< How it flies (C8; see Flight): 0 not at all, 1 on wings, 2 freely, as by magic.
+			float FlySpeed = -1.0F; //!< How fast it flies, in m/s (see GetFlySpeed).
+			float FlyStamina = -1.0F; //!< How long it flies before it must rest, in seconds; 0 (or not set) for one that never tires.
 		};
+
+		/// What a body crawls on (CR-10, a giant spider up a wall): its movement profile's Climbs.
+		enum class Climbing {
+			None = 0,
+			Walls, //!< Up and down walls, and along the floor.
+			WallsAndCeilings //!< Up and down walls and along ceilings too, hanging under them.
+		};
+
+		/// Gets what this crawls on (its movement profile's Climbs), None while the creature climbing setting is off
+		/// (SettingsMan::CreaturesClimbWalls).
+		Climbing GetClimbing() const;
+
+		/// Gets what this crawls on as a number, for scripts (Lua's Climbs): 0 nothing, 1 walls, 2 walls and ceilings.
+		int GetClimbsValue() const { return static_cast<int>(GetClimbing()); }
+
+		/// Gets how fast this crawls on a wall or ceiling, in m/s: its movement profile's CrawlSpeed (3 when not set), times the creature
+		/// climbing speed setting (SettingsMan::CreatureClimbSpeed).
+		float GetCrawlSpeed() const;
+
+		/// How a body flies (C8, a bat or a wyvern on its wings, a wisp freely): its movement profile's Flies.
+		enum class Flight {
+			None = 0,
+			Wings, //!< Flapping: it climbs slower than it flies across, bobs with each beat, and glides down when it tires.
+			Free //!< As a flying vehicle does, with no wings: up, down and across alike, holding still in the air.
+		};
+
+		/// Gets how this flies (its movement profile's Flies), None while the creature flight setting is off (SettingsMan::CreaturesFly).
+		Flight GetFlight() const;
+
+		/// Gets how this flies as a number, for scripts (Lua's Flies): 0 not at all, 1 on wings, 2 freely.
+		int GetFliesValue() const { return static_cast<int>(GetFlight()); }
+
+		/// Gets how fast this flies, in m/s: its movement profile's FlySpeed (6 when not set), times the creature flying speed setting
+		/// (SettingsMan::CreatureFlySpeed).
+		float GetFlySpeed() const;
+
+		/// Gets how long this flies before it must rest, in seconds: its movement profile's FlyStamina; 0 for one that never tires.
+		float GetFlyStamina() const { return std::max(m_MovementProfile.FlyStamina, 0.0F); }
 
 		/// Gets this actor's movement profile (CR-2).
 		const MovementProfile& GetMovementProfile() const { return m_MovementProfile; }
@@ -1761,6 +1836,8 @@ namespace RTE {
 		float m_VenomDamagePerSecond = 0.0F; //!< The health the venom takes a second.
 		float m_VenomSlowTo = 1.0F; //!< The share of its pace it walks at while envenomed.
 		long long m_SnareUntil = 0; //!< The sim time, ms, a web holds it until (CR-6). Not copied or saved.
+		long long m_AcidUntil = 0; //!< The sim time, ms, acid eats at it until (CR-9). Not copied or saved.
+		float m_AcidDamagePerSecond = 0.0F; //!< The health the acid takes a second.
 
 		std::vector<StatusEffect> m_PassiveEffects; //!< The status effects it has about it for good, from its preset (PassiveEffect, SE-1): put on it as it lives.
 		std::vector<StatusEffect> m_StatusEffects; //!< The status effects on it now (SE-1). Not copied or saved, as m_PowerupUntil; the passives come back by themselves.
@@ -1960,6 +2037,8 @@ namespace RTE {
 		float m_WaterWeakness = 0.0F; //!< The share of its full health it loses a second deep in water (CR-7; see GetWaterWeakness).
 		mutable int m_ToughnessKind; //!< Which toughness setting this follows (see GetToughnessKind), -2 until it is first worked out.
 		float m_ToughnessHealth; //!< The health as ApplyToughness last left it, NaN before it is first called.
+		float m_ToughnessMultiplier; //!< Its own toughness on top of its kind's (see GetToughnessMultiplier).
+		float m_SpeedMultiplier; //!< Its own pace on top of its preset's (see GetSpeedMultiplier).
 		int m_LastAttackerTeam; //!< The side that last hurt this, Activity::NoTeam for none (see GetLastAttackerTeam). Not saved.
 		long m_LastAttackerID; //!< The unit that last hurt this, if it hit this itself, else 0 (see GetLastAttackerID). Not saved.
 		Timer m_HurtTimer; //!< Since this was last hurt by another side (see GetMSSinceHurt). Not saved.
@@ -2014,6 +2093,9 @@ namespace RTE {
 		// How many path answers in a row needed digging the unit can't do; at six the unit stands down.
 		int m_ImpossiblePaths;
 		bool m_PathImpossible; //!< Whether the last route asked for came back with no way there (or only through ground that can't be dug), for the path display.
+		bool m_WantsShipRide; //!< Whether its last route to where it was sent came back with no way there on foot, so a ship may fly it there (WantsShipRide).
+		Vector m_ShipRideGoal; //!< Where it was sent, then.
+		Timer m_ShipRideWantTimer; //!< Since it first found no way there on foot.
 		// Since the last of those: no new path is asked for until a few seconds have gone by.
 		Timer m_PathRetryTimer;
 		std::vector<std::pair<Vector, double>> m_AvoidPoints; //!< Places this failed jumps at, and the sim time (ms) each is avoided until.

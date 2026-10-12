@@ -260,6 +260,12 @@ namespace RTE {
 		/// Sets how the Spawn tab puts vehicles down from a line of text made by GetVehicleSetup.
 		static void SetVehicleSetup(const std::string& setup);
 
+		/// Gets how the Spawn tab makes units (Default or Modified, its Stats sliders), as one line of text for the settings file.
+		static std::string GetUnitSetup();
+
+		/// Sets how the Spawn tab makes units from a line of text made by GetUnitSetup.
+		static void SetUnitSetup(const std::string& setup);
+
 		/// A unit got into a vehicle (VH-1, AVehicle::TakeDriver): the unit is gone from the scene, a copy of it kept in the vehicle. If it was the
 		/// unit you were controlling, you are in the vehicle now, not back to the god view; if it was your character, it is in there.
 		/// @param unit The unit that got in, still in the scene this update. @param vehicle The vehicle.

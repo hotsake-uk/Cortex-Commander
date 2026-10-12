@@ -557,6 +557,61 @@ namespace SandboxDetail {
 		}
 	}
 
+	void TuneUnit(Actor* actor, const UnitTuning& tuning) {
+		if (!actor || !tuning.Modified) {
+			return;
+		}
+		auto times = [](float multiplier) { return std::clamp(multiplier, c_UnitTuneMin, c_UnitTuneMax); };
+		if (tuning.Health != 1.0F) {
+			actor->SetMaxHealth(std::max(1, static_cast<int>(std::round(actor->GetMaxHealth() * times(tuning.Health)))));
+			actor->SetHealth(actor->GetMaxHealth());
+		}
+		actor->SetToughnessMultiplier(times(tuning.Toughness));
+		actor->SetSpeedMultiplier(times(tuning.Speed));
+		if (tuning.Sight != 1.0F) {
+			actor->SetSightDistance(actor->GetSightDistance() * times(tuning.Sight));
+		}
+		if (tuning.Jump != 1.0F) {
+			if (AHuman* human = dynamic_cast<AHuman*>(actor)) {
+				human->SetLegJumpHeight(human->GetLegJumpHeight() * times(tuning.Jump));
+			} else if (ACrab* crab = dynamic_cast<ACrab*>(actor)) {
+				crab->SetLegJumpHeight(crab->GetLegJumpHeight() * times(tuning.Jump));
+			}
+		}
+		if (AEJetpack* jetpack = JetpackOf(actor)) {
+			if (tuning.JetFuel != 1.0F) {
+				jetpack->SetJetTimeTotal(jetpack->GetJetTimeTotal() * std::clamp(tuning.JetFuel, c_JetFuelMin, c_JetFuelMax));
+				jetpack->SetJetTimeLeft(jetpack->GetJetTimeTotal());
+			}
+			if (tuning.JetThrust != 1.0F) {
+				jetpack->SetThrustMultiplier(jetpack->GetThrustMultiplier() * std::clamp(tuning.JetThrust, c_JetThrustMin, c_JetThrustMax));
+			}
+			if (tuning.JetEndless) {
+				actor->SetNumberValue(c_EndlessJetKey, 1.0);
+				s_AnyEndlessJet = true;
+			}
+		}
+		if (tuning.FireRate != 1.0F) {
+			// Every gun it is made with: in its hands, carried, or fixed to it (a crab's turret).
+			const float rate = times(tuning.FireRate);
+			auto tune = [rate](MovableObject* item) {
+				if (HDFirearm* gun = dynamic_cast<HDFirearm*>(item)) {
+					gun->SetRateOfFire(std::max(1, static_cast<int>(std::round(static_cast<float>(gun->GetRateOfFire()) * rate))));
+				}
+			};
+			std::function<void(MOSRotating*)> attached = [&](MOSRotating* part) {
+				for (Attachable* attachable: part->GetAttachableList()) {
+					tune(attachable);
+					attached(attachable);
+				}
+			};
+			attached(actor);
+			for (MovableObject* item: *actor->GetInventory()) {
+				tune(item);
+			}
+		}
+	}
+
 	void DrawPlayerSquads() {
 		if (s_PlayerSquads.empty() || g_DebugMan.IsPhotoModeHidingHUD()) {
 			return;

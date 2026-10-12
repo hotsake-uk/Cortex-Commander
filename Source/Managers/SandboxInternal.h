@@ -1004,8 +1004,27 @@ namespace SandboxDetail {
 		float WaterPower = 1.0F; //!< Times its WaterThrust (boats).
 		float WaterSpeed = 1.0F; //!< Times its WaterMaxSpeed (boats).
 		float TerrainCrush = -1.0F; //!< How tough a material it smashes through (AVehicle::SetTerrainCrush), not a multiplier; -1 its own.
+		float Health = 1.0F; //!< Times its MaxHealth (it is put down at full health).
 	};
 	inline VehicleTuning s_VehicleTuning;
+
+	/// How units from the Spawn tab (put down, dropped, or crewing a vehicle) are made: as they come, or with their stats tuned (multipliers
+	/// on each one's own values). Saved with the sandbox settings (Sandbox::GetUnitSetup).
+	struct UnitTuning {
+		bool Modified = false; //!< Whether the values below are used. Off: each unit as its preset has it.
+		float Health = 1.0F; //!< Times its MaxHealth (it is put down at full health).
+		float Toughness = 1.0F; //!< Its own toughness (Actor::SetToughnessMultiplier), on top of the Unit toughness setting.
+		float Speed = 1.0F; //!< Times how fast it walks, runs and crawls (Actor::SetSpeedMultiplier).
+		float Jump = 1.0F; //!< Times how high a leap of its legs lifts it.
+		float JetFuel = 1.0F; //!< Times its jetpack's fuel (JetTimeTotal).
+		float JetThrust = 1.0F; //!< Times its jetpack's push (AEJetpack::SetThrustMultiplier), at no extra fuel.
+		bool JetEndless = false; //!< Its jetpack never runs dry (kept full each sim update, UpdateLoadoutUnits).
+		float Sight = 1.0F; //!< Times how far it sees (SightDistance).
+		float FireRate = 1.0F; //!< Times the rate of fire of every gun it is made with.
+	};
+	inline UnitTuning s_UnitTuning;
+	constexpr float c_UnitTuneMin = 0.25F; //!< The least a unit stat multiplier goes down to.
+	constexpr float c_UnitTuneMax = 5.0F; //!< The most a unit stat multiplier goes up to.
 	constexpr float c_VehicleTuneMin = 0.25F; //!< The least a vehicle tuning multiplier goes down to.
 	constexpr float c_VehicleTuneMax = 5.0F; //!< The most a vehicle tuning multiplier goes up to.
 	constexpr float c_VehicleCrushMax = 500.0F; //!< The most the Terrain damage slider goes up to: past metal (400).
@@ -1085,6 +1104,7 @@ namespace SandboxDetail {
 		int Style = 0; //!< Colony buildings: how they look (Colony::Style), taken at the click.
 		bool Lite = false; //!< Colony buildings: just the core, a box with its brain in (Colony::Building::Lite), taken at the click.
 		VehicleTuning Vehicle; //!< Tool::Vehicle: how it is tuned and crewed (s_VehicleTuning), taken at the click.
+		UnitTuning Stats; //!< Units, drops and a vehicle's crew: how their stats are tuned (s_UnitTuning), taken at the click.
 		int DriverChoice = -1; //!< Tool::Vehicle with Vehicle.Crewed: the driver, an index into the Units list (Vehicle.Driver resolved at the click, ResolveCrewPick).
 		bool DriverRandom = false; //!< Tool::Vehicle with Vehicle.Crewed: the driver a random unit, from FavouritesOnly and RandomFaction.
 		int CrewChoice = -1; //!< Tool::Vehicle with Vehicle.Crewed: the rest of the crew, as DriverChoice (Vehicle.Crew).
@@ -2646,7 +2666,11 @@ namespace SandboxDetail {
 	RunLayout LayOutRun(const Preset& preset, const Vector& start, const Vector& end, bool snap);
 	void TakeControl(const Vector& position);
 	void StopFlying();
-	void ReleaseControl();
+	/// Lets go of the unit you control and goes back above. @param leavingPlay Whether this is leaving play mode (not stepping from one unit into your character),
+	/// which takes your character away if "Remove it when I leave play" is ticked.
+	void ReleaseControl(bool leavingPlay = true);
+	/// Out of play mode with "Remove it when I leave play" ticked, takes away your character if one is left, in the world, a vehicle or a craft.
+	void RemovePlayerOutOfPlay();
 	const Preset* FindPreset(const std::vector<Preset>& list, const std::string& presetName);
 	Vector OpenAirAt(Vector place);
 	Vector StandingPlaceBelow(Vector place);
@@ -3041,6 +3065,7 @@ namespace SandboxDetail {
 
 	/// The Spawn tab's vehicle options: Default or Modified, the tuning sliders (with the vehicle chosen's own values beside them) and the crew.
 	void VehicleOptions();
+	void UnitStatsOptions(const Actor* unit, const char* heading);
 	void FormationCombo(const char* id);
 	void DrawOrderFeedback();
 	void DrawMinimap();
@@ -3382,6 +3407,9 @@ namespace SandboxDetail {
 
 	/// Units made from loadouts with an endless jetpack kept topped up. Each sim update.
 	void UpdateLoadoutUnits();
+
+	/// A unit just made from the Spawn tab, its stats tuned as the Stats sliders say (nothing, unless Modified).
+	void TuneUnit(Actor* actor, const UnitTuning& tuning);
 
 	/// Each of your squads' name over its leader, with a line to each member. Call from the ImGui frame.
 	void DrawPlayerSquads();

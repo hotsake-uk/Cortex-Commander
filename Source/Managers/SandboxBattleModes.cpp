@@ -6058,14 +6058,7 @@ namespace SandboxDetail {
 			ImGui::TextColored(ImVec4(1.0F, 0.6F, 0.4F, 1.0F), "%s", why.c_str());
 		}
 
-		changed |= ImGui::SliderInt("Respawn after", &setup.RespawnSeconds, 0, 60, setup.RespawnSeconds > 0 ? "%d s" : "at once");
-		ImGui::SetItemTooltip("Seconds after one of a team's units falls before another comes in its place.");
-		changed |= ImGui::SliderInt("Most respawns", &setup.MaxRespawns, 0, 500, setup.MaxRespawns > 0 ? "%d a team" : "no limit");
-		ImGui::SetItemTooltip("How many fallen units each team gets back in all, after its first team size. A team with none left and no units in is out, and the last team in wins. 0: no limit. (A unit respawned for being stuck isn't counted.)");
-		changed |= ImGui::SliderInt("Respawn if stuck", &setup.StuckSeconds, 0, 120, setup.StuckSeconds > 0 ? "after %d s" : "never");
-		ImGui::SetItemTooltip("A unit that gets no nearer to its objective for this long (stuck in a hole or on a ledge, or with no way there) is taken away and another comes in its place at once. Not while it is fighting, nor a VIP.");
-		changed |= ImGui::SliderInt("Route variety", &setup.RouteVariety, 0, 100, setup.RouteVariety > 0 ? "%d%% go their own way" : "all take the shortest way");
-		ImGui::SetItemTooltip("The share of each team's units that each pick a way of their own to where they're going, so a team spreads over the routes across the map rather than filing down the one. At 50%% half take the shortest way and the rest spread over the others that are near enough as short (up to about half as long again). New units only: those already in keep their way.");
+		ImGui::SeparatorText("Where units come in");
 		// How units come in: appearing or by ship, at their base or anywhere on the map.
 		auto arrive = [&](const char* label, bool byShip, bool anywhere, const char* tip) {
 			if (ToolUI::RadioButton(label, setup.ByShip == byShip && setup.Anywhere == anywhere)) {
@@ -6084,6 +6077,15 @@ namespace SandboxDetail {
 		if (setup.Anywhere) {
 			changed |= KeepClearSlider(setup.KeepClear, "##modeclear");
 		}
+		ImGui::SeparatorText("Respawns and routes");
+		changed |= ImGui::SliderInt("Respawn after", &setup.RespawnSeconds, 0, 60, setup.RespawnSeconds > 0 ? "%d s" : "at once");
+		ImGui::SetItemTooltip("Seconds after one of a team's units falls before another comes in its place.");
+		changed |= ImGui::SliderInt("Most respawns", &setup.MaxRespawns, 0, 500, setup.MaxRespawns > 0 ? "%d a team" : "no limit");
+		ImGui::SetItemTooltip("How many fallen units each team gets back in all, after its first team size. A team with none left and no units in is out, and the last team in wins. 0: no limit. (A unit respawned for being stuck isn't counted.)");
+		changed |= ImGui::SliderInt("Respawn if stuck", &setup.StuckSeconds, 0, 120, setup.StuckSeconds > 0 ? "after %d s" : "never");
+		ImGui::SetItemTooltip("A unit that gets no nearer to its objective for this long (stuck in a hole or on a ledge, or with no way there) is taken away and another comes in its place at once. Not while it is fighting, nor a VIP.");
+		changed |= ImGui::SliderInt("Route variety", &setup.RouteVariety, 0, 100, setup.RouteVariety > 0 ? "%d%% go their own way" : "all take the shortest way");
+		ImGui::SetItemTooltip("The share of each team's units that each pick a way of their own to where they're going, so a team spreads over the routes across the map rather than filing down the one. At 50%% half take the shortest way and the rest spread over the others that are near enough as short (up to about half as long again). New units only: those already in keep their way.");
 		if (bool show = g_SettingsMan.ShowBattleSpawnZones(); ToolUI::Checkbox("Show spawn zones on the map", &show)) {
 			g_SettingsMan.SetShowBattleSpawnZones(show);
 		}
