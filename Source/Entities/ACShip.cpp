@@ -1,5 +1,6 @@
 #include "ACShip.h"
 
+#include "ADoor.h"
 #include "AEmitter.h"
 #include "AHuman.h"
 #include "ActivityMan.h"
@@ -23,6 +24,7 @@
 
 #include <algorithm>
 #include <array>
+#include <queue>
 #include <cmath>
 
 using namespace RTE;
@@ -91,6 +93,12 @@ void ACShip::Clear() {
 	m_RamSpeedScale = 1.5F;
 	m_RamDamage = 0.6F;
 	m_RamSelfDamage = 0.25F;
+	m_RouteSpot.Reset();
+	m_RouteBest = FLT_MAX;
+	m_RouteReplans = 0;
+	m_UnstickStep = -1;
+	m_UnstickTries = 0;
+	m_UnstickSide = 1.0F;
 	m_CombatTargetID = 0;
 	m_CombatSpot.Reset();
 	m_HasCombatSpot = false;
@@ -330,13 +338,13 @@ float ACShip::HullTop() const {
 }
 
 bool ACShip::HullLineClear(const Vector& from, const Vector& to) const {
-	// Its whole outline swept along the line, engines and all, not just its middle: rays from its two ends, top and bottom, and its middle,
-	// with a little room round it, and more top and bottom for the lean of its ends as it tilts.
+	// Its whole outline swept along the line, engines and all, not just its middle: rays from its two ends, top and bottom, and its middle.
+	// (Its underside's rays run half its ground gap under the hull, not more: a ship sitting at its clearance over the ground, or sent to a
+	// place there, must not find the ground in the way of every line it could fly.)
 	const Vector way = g_SceneMan.ShortestDistance(from, to, g_SceneMan.SceneWrapsX());
-	const float halfWidth = HullHalfWidth() + 6.0F;
-	const float lean = HullHalfWidth() * 0.2F + 6.0F;
-	const float top = HullTop() + lean;
-	const float under = HullUnderside() + lean;
+	const float halfWidth = HullHalfWidth();
+	const float top = HullTop() + 4.0F;
+	const float under = HullUnderside() + std::min(4.0F, g_SettingsMan.ShipGroundClearance() * 0.5F);
 	const std::array<Vector, 7> outline{Vector(0.0F, 0.0F), Vector(-halfWidth, -top), Vector(halfWidth, -top), Vector(-halfWidth, under), Vector(halfWidth, under), Vector(0.0F, -top), Vector(0.0F, under)};
 	Vector blocked;
 	for (const Vector& offset: outline) {
@@ -384,79 +392,34 @@ bool ACShip::FlyRouteTo(const Vector& spot) {
 	const SettingsMan::DirectOrderTuning& tuning = g_SettingsMan.DirectOrders();
 	const float direct = m_StandingOrder.Direct;
 	const float care = std::clamp(-direct, 0.0F, 1.0F);
-	const float radius = GetRadius();
 	// A cautious order flies higher, up to a hull's height more over the ground, further from small arms below.
 	const float extra = HullHeight() * care;
 	const Vector goal = LowPoint(spot, extra);
 	// (Sent again where it is already going, as the standing orders do: the route it has goes on.)
-	if (!m_Route.empty() && m_AIMode == AIMODE_GOTO && g_SceneMan.ShortestDistance(m_Route.back(), goal).MagnitudeIsLessThan(24.0F)) {
+	if (!m_Route.empty() && m_AIMode == AIMODE_GOTO && g_SceneMan.ShortestDistance(m_RouteSpot, spot).MagnitudeIsLessThan(24.0F)) {
 		return true;
 	}
 	m_Route.clear();
-	// Open air between two points for its body: along its middle and a little above and below.
-	// Open air between two points for its whole hull, engines and all (HullLineClear).
-	auto clearLine = [this](const Vector& from, const Vector& to) { return HullLineClear(from, to); };
-	Scene* scene = g_SceneMan.GetScene();
-	// Full risk, or open air all the way and no call to keep clear of anyone: straight there, as it always flew.
-	if (!scene || direct >= tuning.StraightFlightRisk || (care <= 0.0F && clearLine(m_Pos, goal))) {
+	m_RouteSpot = spot;
+	m_RouteBest = FLT_MAX;
+	m_RouteReplans = 0;
+	m_UnstickTries = 0;
+	m_UnstickStep = -1;
+	m_RouteProgressTimer.Reset();
+	m_RouteCheckTimer.Reset();
+	// Open air all the way there for its whole hull, and no call to keep clear of anyone (or a full-risk order, which doesn't): straight there.
+	const bool fullRisk = direct >= tuning.StraightFlightRisk;
+	if (!g_SceneMan.GetScene() || ((care <= 0.0F || fullRisk) && HullLineClear(m_Pos, goal))) {
 		return AutopilotGoTo(goal);
 	}
-	// No call to keep clear of anyone: through the air, over what is in the way, wherever the air lets it.
-	if (care <= 0.0F && AirRoute(m_Pos, goal, m_Route)) {
+	// Else through the air, over, under or round what is in the way (with no care for enemies on a full-risk order), as near as it can get.
+	bool reached = false;
+	if (AirPath(m_Pos, goal, fullRisk ? 0.0F : care, m_Route, reached) && !m_Route.empty()) {
 		return AutopilotGoTo(m_Route.front());
 	}
+	// (No room to start from at all, wedged in somewhere: straight at it, as before.)
 	m_Route.clear();
-	// The route a unit would be given over the ground, from the ground under it to the ground under the place (with the care for enemies of
-	// a cautious order, GetPathAgent), is what it flies over. None to be had: straight there, as before.
-	std::list<Vector> path;
-	Vector start = g_SceneMan.MovePointToGround(m_Pos, 20, 6);
-	Vector end = g_SceneMan.MovePointToGround(spot, 20, 6);
-	if (scene->CalculatePath(start, end, path, GetPathAgent(), static_cast<Activity::Teams>(m_Team)) < 0.0F || path.size() < 2) {
-		return AutopilotGoTo(goal);
-	}
-	// Each point raised to its clearance over the ground there, as far as the room over it lets it: with less room than its whole hull
-	// needs, as far up the room as its top lets it, and never under half of it.
-	const float want = LowClearance() + extra;
-	const float top = std::max(radius * 0.25F, HullHeight() - HullUnderside());
-	std::vector<Vector> raised;
-	raised.reserve(path.size());
-	for (const Vector& node: path) {
-		const float ground = g_SceneMan.MovePointToGround(Vector(node.m_X, node.m_Y - 10.0F), 0, 4).m_Y;
-		float room = 0.0F;
-		while (room < want + top) {
-			// (Over the top of the map is open air, as far as its room past the edges goes.)
-			int y = static_cast<int>(ground - room - 8.0F);
-			if (static_cast<float>(y) < SkyTop() || g_SceneMan.GetTerrMatter(static_cast<int>(node.m_X), y) != MaterialColorKeys::g_MaterialAir) {
-				break;
-			}
-			room += 8.0F;
-		}
-		const float lift = room >= want + top ? want : std::max(room - top, std::min(room, want) * 0.5F);
-		raised.emplace_back(node.m_X, std::max(ground - lift, SkyTop()));
-	}
-	// And straight on past the points it can see past: from each, to the furthest a little way on with open air between. (A cautious order
-	// looks less far ahead, so the way round enemies isn't cut across.)
-	const size_t lookAhead = care > 0.0F ? 6 : 40;
-	Vector from = m_Pos;
-	for (size_t i = 0; i < raised.size();) {
-		size_t furthest = i;
-		for (size_t j = std::min(i + lookAhead, raised.size() - 1); j > i; --j) {
-			if (clearLine(from, raised[j])) {
-				furthest = j;
-				break;
-			}
-		}
-		m_Route.push_back(raised[furthest]);
-		from = raised[furthest];
-		i = furthest + 1;
-	}
-	// Last, the place itself.
-	if (!m_Route.empty() && clearLine(m_Route.back(), goal)) {
-		m_Route.back() = goal;
-	} else {
-		m_Route.push_back(goal);
-	}
-	return AutopilotGoTo(m_Route.front());
+	return AutopilotGoTo(goal);
 }
 
 void ACShip::UpdateCraftAvoidance() {
@@ -952,18 +915,8 @@ void ACShip::UpdateAutopilot() {
 	UpdateCraftAvoidance();
 	UpdateAutoRam();
 	UpdateCombat();
-	// Along its route (FlyRouteTo): on to the next point once near the one it is flying to. Any other order (it holds, or is sent somewhere
-	// else) or the player flying it ends the route.
-	if (!m_Route.empty()) {
-		if (m_Controller.IsPlayerControlled() || m_AIMode != AIMODE_GOTO) {
-			m_Route.clear();
-		} else if (g_SceneMan.ShortestDistance(m_Pos, m_Route.front()).MagnitudeIsLessThan(std::max(GetRadius(), 40.0F))) {
-			m_Route.pop_front();
-			if (!m_Route.empty()) {
-				AutopilotGoTo(m_Route.front());
-			}
-		}
-	}
+	// Along its route (FlyRouteTo, UpdateRoute).
+	UpdateRoute();
 	// A ship stays in the fight: with nothing (more) to deliver it holds where it is rather than flying home as a drop ship does. Only an
 	// order to go home (RETURN) sends it off.
 	if (m_AIMode == AIMODE_DELIVER && IsInventoryEmpty()) {
@@ -974,6 +927,11 @@ void ACShip::UpdateAutopilot() {
 		return;
 	}
 	if (UpdateRam()) {
+		return;
+	}
+	// (Working itself free, UpdateRoute: to the move it is making.)
+	if (m_UnstickStep >= 0) {
+		SteerTo(m_UnstickPoint, true, 0.5F);
 		return;
 	}
 	UpdateFlight();
@@ -1183,48 +1141,359 @@ void ACShip::SteerTo(const Vector& target, bool stop, float clearanceScale) {
 	m_Controller.SetAnalogMove(Vector(stickX, stickY));
 }
 
-bool ACShip::AirRoute(const Vector& from, const Vector& to, std::deque<Vector>& route) const {
+bool ACShip::AirPath(const Vector& from, const Vector& to, float care, std::deque<Vector>& route, bool& reached) const {
 	route.clear();
-	const float radius = GetRadius();
-	const float clearance = LowClearance();
+	reached = false;
+	const bool wraps = g_SceneMan.SceneWrapsX();
+	const float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
+	const float sceneHeight = static_cast<float>(g_SceneMan.GetSceneHeight());
+	const Vector way = g_SceneMan.ShortestDistance(from, to, wraps);
+
+	// The part of the scene it plans in: round the two places, wider than the way between them by enough to go round what is in it, from as
+	// high as it may fly (past the top of the map by its room there) to a little under the lower of them. Worked in a frame from its corner,
+	// so a wrapping scene's seam is nothing special.
+	constexpr float c_Cell = 16.0F; // A step of the route grid.
+	constexpr int c_Sample = 4; // How finely the ground is looked at, in pixels: fine enough for a bunker's walls.
+	constexpr float c_Margin = 480.0F;
 	const float halfWidth = HullHalfWidth();
-	const Vector way = g_SceneMan.ShortestDistance(from, to, g_SceneMan.SceneWrapsX());
-	auto clearLine = [this](const Vector& a, const Vector& b) { return HullLineClear(a, b); };
-	// The straight line's points a little apart, each raised to its clearance over the highest ground there across its hull.
-	const int steps = std::max(1, static_cast<int>(std::abs(way.m_X) / 32.0F));
-	std::vector<Vector> points;
-	points.reserve(steps + 1);
-	for (int i = 1; i < steps; ++i) {
-		const float share = static_cast<float>(i) / static_cast<float>(steps);
-		Vector point = from + way * share;
-		float top = FLT_MAX;
-		for (float side: {-1.0F, 0.0F, 1.0F}) {
-			top = std::min(top, GroundTopAt(point.m_X + side * halfWidth, point.m_Y + clearance));
-		}
-		point.m_Y = std::max(std::min(point.m_Y, top - clearance), SkyTop());
-		g_SceneMan.WrapPosition(point);
-		points.push_back(point);
+	float left = std::min(0.0F, way.m_X) - c_Margin - halfWidth;
+	float right = std::max(0.0F, way.m_X) + c_Margin + halfWidth;
+	if (wraps) {
+		const float extra = std::max(0.0F, (right - left) - sceneWidth) * 0.5F;
+		left += extra;
+		right -= extra;
+	} else {
+		const float grace = GetOrbitGrace();
+		left = std::max(left, -grace - from.m_X);
+		right = std::min(right, sceneWidth + grace - from.m_X);
 	}
-	points.push_back(to);
-	// Cut to as few as have open air between, on from each to the furthest of the next forty it can reach.
-	Vector at = from;
-	for (size_t i = 0; i < points.size();) {
-		size_t furthest = points.size();
-		for (size_t j = std::min(i + 40, points.size() - 1) + 1; j-- > i;) {
-			if (clearLine(at, points[j])) {
-				furthest = j;
-				break;
+	const float top = std::max(SkyTop() - c_Cell, std::min(from.m_Y, to.m_Y) - 640.0F);
+	const float bottom = std::min(sceneHeight, std::max(from.m_Y, to.m_Y) + 320.0F);
+	const int columns = static_cast<int>((right - left) / c_Cell);
+	const int rows = static_cast<int>((bottom - top) / c_Cell);
+	if (columns < 2 || rows < 2) {
+		return false;
+	}
+	// (The world place of a point of the frame, x from its own place along it.)
+	auto toWorld = [&](float x, float y) {
+		Vector point(from.m_X + x, y);
+		g_SceneMan.WrapPosition(point);
+		return point;
+	};
+
+	// What is solid, a few pixels at a time: the terrain (its buildings in it) as a ray of its hull would find it (CastStrengthRay's
+	// strength), and the doors, which are not terrain. Summed up so how much is solid in any box of it is a few look-ups.
+	const int sampleColumns = static_cast<int>((right - left) / c_Sample) + 1;
+	const int sampleRows = static_cast<int>((bottom - top) / c_Sample) + 1;
+	std::array<bool, c_PaletteEntriesNumber> solidMaterial{};
+	for (int id = 0; id < c_PaletteEntriesNumber; ++id) {
+		const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
+		solidMaterial[id] = id != MaterialColorKeys::g_MaterialAir && material && material->GetIntegrity() >= 5.0F;
+	}
+	std::vector<uint8_t> solid(static_cast<size_t>(sampleColumns) * sampleRows, 0);
+	for (int sx = 0; sx < sampleColumns; ++sx) {
+		const float localX = left + static_cast<float>(sx * c_Sample);
+		for (int sy = 0; sy < sampleRows; ++sy) {
+			const float y = top + static_cast<float>(sy * c_Sample);
+			// (Under the scene is solid; over it, open air.)
+			if (y >= sceneHeight) {
+				solid[static_cast<size_t>(sy) * sampleColumns + sx] = 1;
+				continue;
+			}
+			const Vector point = toWorld(localX, y);
+			if (!wraps && (point.m_X < 0.0F || point.m_X >= sceneWidth)) {
+				continue;
+			}
+			solid[static_cast<size_t>(sy) * sampleColumns + sx] = solidMaterial[g_SceneMan.GetTerrMatter(point.GetFloorIntX(), point.GetFloorIntY())] ? 1 : 0;
+		}
+	}
+	for (const ADoor* door: g_MovableMan.GetDoorList()) {
+		if (!door || door->IsSetToDelete()) {
+			continue;
+		}
+		const Vector at = g_SceneMan.ShortestDistance(from, door->GetPos(), wraps);
+		const float reach = door->GetRadius() * 0.7F;
+		const int x0 = std::max(0, static_cast<int>((at.m_X - reach - left) / c_Sample));
+		const int x1 = std::min(sampleColumns - 1, static_cast<int>((at.m_X + reach - left) / c_Sample));
+		const int y0 = std::max(0, static_cast<int>((door->GetPos().m_Y - reach - top) / c_Sample));
+		const int y1 = std::min(sampleRows - 1, static_cast<int>((door->GetPos().m_Y + reach - top) / c_Sample));
+		for (int sy = y0; sy <= y1; ++sy) {
+			for (int sx = x0; sx <= x1; ++sx) {
+				solid[static_cast<size_t>(sy) * sampleColumns + sx] = 1;
 			}
 		}
-		if (furthest == points.size()) {
-			route.clear();
+	}
+	std::vector<int> summed(static_cast<size_t>(sampleColumns + 1) * (sampleRows + 1), 0);
+	const int summedColumns = sampleColumns + 1;
+	for (int sy = 0; sy < sampleRows; ++sy) {
+		int rowSum = 0;
+		for (int sx = 0; sx < sampleColumns; ++sx) {
+			rowSum += solid[static_cast<size_t>(sy) * sampleColumns + sx];
+			summed[static_cast<size_t>(sy + 1) * summedColumns + sx + 1] = summed[static_cast<size_t>(sy) * summedColumns + sx + 1] + rowSum;
+		}
+	}
+	auto anySolid = [&](float x0, float y0, float x1, float y1) {
+		const int ax = std::clamp(static_cast<int>(std::floor((x0 - left) / c_Sample)), 0, sampleColumns);
+		const int bx = std::clamp(static_cast<int>(std::ceil((x1 - left) / c_Sample)) + 1, 0, sampleColumns);
+		const int ay = std::clamp(static_cast<int>(std::floor((y0 - top) / c_Sample)), 0, sampleRows);
+		const int by = std::clamp(static_cast<int>(std::ceil((y1 - top) / c_Sample)) + 1, 0, sampleRows);
+		if (ax >= bx || ay >= by) {
 			return false;
+		}
+		return summed[static_cast<size_t>(by) * summedColumns + bx] - summed[static_cast<size_t>(ay) * summedColumns + bx] - summed[static_cast<size_t>(by) * summedColumns + ax] + summed[static_cast<size_t>(ay) * summedColumns + ax] > 0;
+	};
+
+	// The grid: a step is open where its whole hull fits there, its ends, engines and guns, and half its gap over the ground under it (as
+	// HullLineClear has it).
+	const float hullTop = HullTop() + 2.0F;
+	const float hullUnder = HullUnderside() + std::min(4.0F, g_SettingsMan.ShipGroundClearance() * 0.5F);
+	auto centre = [&](int column, int row) { return Vector(left + (static_cast<float>(column) + 0.5F) * c_Cell, top + (static_cast<float>(row) + 0.5F) * c_Cell); };
+	std::vector<uint8_t> open(static_cast<size_t>(columns) * rows, 0);
+	for (int column = 0; column < columns; ++column) {
+		for (int row = 0; row < rows; ++row) {
+			const Vector at = centre(column, row);
+			open[static_cast<size_t>(row) * columns + column] = anySolid(at.m_X - halfWidth, at.m_Y - hullTop, at.m_X + halfWidth, at.m_Y + hullUnder) ? 0 : 1;
+		}
+	}
+	auto indexOf = [&](const Vector& local) {
+		const int column = static_cast<int>(std::floor((local.m_X - left) / c_Cell));
+		const int row = static_cast<int>(std::floor((local.m_Y - top) / c_Cell));
+		return (column < 0 || column >= columns || row < 0 || row >= rows) ? -1 : row * columns + column;
+	};
+	// The open step nearest a place, a few steps round it at most (its middle may sit a little off the grid's steps).
+	auto nearestOpen = [&](const Vector& local, int within) {
+		const int column = static_cast<int>(std::floor((local.m_X - left) / c_Cell));
+		const int row = static_cast<int>(std::floor((local.m_Y - top) / c_Cell));
+		int best = -1;
+		float bestDistance = FLT_MAX;
+		for (int dy = -within; dy <= within; ++dy) {
+			for (int dx = -within; dx <= within; ++dx) {
+				const int c = column + dx;
+				const int r = row + dy;
+				if (c < 0 || c >= columns || r < 0 || r >= rows || !open[static_cast<size_t>(r) * columns + c]) {
+					continue;
+				}
+				const float distance = (centre(c, r) - local).GetSqrMagnitude();
+				if (distance < bestDistance) {
+					bestDistance = distance;
+					best = r * columns + c;
+				}
+			}
+		}
+		return best;
+	};
+	const Vector startLocal(0.0F, from.m_Y);
+	const Vector goalLocal(way.m_X, to.m_Y);
+	const int start = nearestOpen(startLocal, 4);
+	if (start < 0) {
+		return false;
+	}
+	const int goalIndex = indexOf(goalLocal) >= 0 ? nearestOpen(goalLocal, 6) : -1;
+
+	// Enemies a cautious order keeps off, in the frame.
+	std::vector<Vector> enemies;
+	if (care > 0.0F) {
+		for (const Actor* actor: g_MovableMan.GetActorList()) {
+			if (actor && actor->GetTeam() != m_Team && actor->GetTeam() >= 0 && !actor->IsDead() && actor != this) {
+				const Vector at = g_SceneMan.ShortestDistance(from, actor->GetPos(), wraps);
+				if (at.m_X > left - 400.0F && at.m_X < right + 400.0F) {
+					enemies.emplace_back(at.m_X, actor->GetPos().m_Y);
+				}
+			}
+		}
+	}
+	// What a step costs: its length (the shortest way, however high that takes it), and on a cautious order more near enemies.
+	auto stepCost = [&](int index, float length) {
+		float scale = 1.0F;
+		if (!enemies.empty()) {
+			const Vector at = centre(index % columns, index / columns);
+			for (const Vector& enemy: enemies) {
+				const float distance = (enemy - at).GetMagnitude();
+				if (distance < 360.0F) {
+					scale += care * 3.0F * (1.0F - distance / 360.0F);
+				}
+			}
+		}
+		return length * scale;
+	};
+
+	// A* over the open steps, eight ways. With no way to the place, the nearest it got.
+	const size_t count = static_cast<size_t>(columns) * rows;
+	std::vector<float> cost(count, FLT_MAX);
+	std::vector<int> cameFrom(count, -1);
+	std::vector<uint8_t> done(count, 0);
+	using Entry = std::pair<float, int>;
+	std::priority_queue<Entry, std::vector<Entry>, std::greater<Entry>> frontier;
+	auto guess = [&](int index) { return (centre(index % columns, index / columns) - goalLocal).GetMagnitude(); };
+	cost[start] = 0.0F;
+	frontier.emplace(guess(start), start);
+	int nearest = start;
+	float nearestGuess = guess(start);
+	constexpr std::array<std::array<int, 2>, 8> c_Steps{{{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}}};
+	while (!frontier.empty()) {
+		const int index = frontier.top().second;
+		frontier.pop();
+		if (done[index]) {
+			continue;
+		}
+		done[index] = 1;
+		if (const float remaining = guess(index); remaining < nearestGuess) {
+			nearestGuess = remaining;
+			nearest = index;
+		}
+		if (index == goalIndex) {
+			break;
+		}
+		const int column = index % columns;
+		const int row = index / columns;
+		for (const std::array<int, 2>& step: c_Steps) {
+			const int c = column + step[0];
+			const int r = row + step[1];
+			if (c < 0 || c >= columns || r < 0 || r >= rows) {
+				continue;
+			}
+			const int next = r * columns + c;
+			// (Not cutting a corner past something shut.)
+			if (!open[next] || done[next] || (step[0] != 0 && step[1] != 0 && (!open[static_cast<size_t>(row) * columns + c] || !open[static_cast<size_t>(r) * columns + column]))) {
+				continue;
+			}
+			const float length = (step[0] != 0 && step[1] != 0) ? c_Cell * 1.4142F : c_Cell;
+			const float reachedFor = cost[index] + stepCost(next, length);
+			if (reachedFor < cost[next]) {
+				cost[next] = reachedFor;
+				cameFrom[next] = index;
+				frontier.emplace(reachedFor + guess(next), next);
+			}
+		}
+	}
+	reached = goalIndex >= 0 && done[goalIndex];
+	const int end = reached ? goalIndex : nearest;
+	std::vector<Vector> points;
+	for (int index = end; index >= 0 && index != start; index = cameFrom[index]) {
+		const Vector at = centre(index % columns, index / columns);
+		points.push_back(toWorld(at.m_X, at.m_Y));
+	}
+	std::reverse(points.begin(), points.end());
+	// The place itself last, where it can get straight to it from the step it ends on.
+	if (reached && (points.empty() || HullLineClear(points.back(), to))) {
+		points.push_back(to);
+	}
+	if (points.empty()) {
+		return true;
+	}
+
+	// Cut to as few points as have open air between: from each, to the furthest on it can fly straight to (found by halving, the way being
+	// near enough always clear up to some point and blocked past it).
+	Vector at = from;
+	for (size_t i = 0; i < points.size();) {
+		size_t furthest = i;
+		if (HullLineClear(at, points.back())) {
+			furthest = points.size() - 1;
+		} else {
+			size_t low = i;
+			size_t high = points.size() - 1;
+			while (high - low > 1) {
+				const size_t middle = (low + high) / 2;
+				if (HullLineClear(at, points[middle])) {
+					low = middle;
+				} else {
+					high = middle;
+				}
+			}
+			furthest = low;
 		}
 		route.push_back(points[furthest]);
 		at = points[furthest];
 		i = furthest + 1;
 	}
-	return !route.empty();
+	return true;
+}
+
+void ACShip::UpdateRoute() {
+	// Any other order (it holds, or is sent somewhere else) or the player flying it ends the route and any working free.
+	if (m_Controller.IsPlayerControlled() || m_AIMode != AIMODE_GOTO || m_RamID) {
+		m_Route.clear();
+		m_UnstickStep = -1;
+		m_RouteBest = FLT_MAX;
+		m_RouteProgressTimer.Reset();
+		return;
+	}
+	const bool wraps = g_SceneMan.SceneWrapsX();
+	// Working itself free: a few short moves off where it got stuck, back and up, up, back and down, on and up, each skipped where its hull
+	// hasn't the room, then the way there planned again from where that leaves it.
+	if (m_UnstickStep >= 0) {
+		if (!m_UnstickTimer.IsPastSimMS(700)) {
+			return;
+		}
+		m_UnstickTimer.Reset();
+		if (NextUnstickMove()) {
+			return;
+		}
+		const int tries = m_UnstickTries;
+		m_Route.clear();
+		FlyRouteTo(m_UnstickGoal);
+		m_UnstickTries = tries;
+		return;
+	}
+	const Vector target = m_Route.empty() ? m_Autopilot.waypoint : m_Route.front();
+	const float distance = g_SceneMan.ShortestDistance(m_Pos, target, wraps).GetMagnitude();
+	// On to the next point of its route once near the one it is flying to.
+	if (!m_Route.empty() && distance < std::max(GetRadius(), 40.0F)) {
+		m_Route.pop_front();
+		m_RouteBest = FLT_MAX;
+		m_RouteProgressTimer.Reset();
+		m_RouteReplans = 0;
+		m_UnstickTries = 0;
+		if (!m_Route.empty()) {
+			AutopilotGoTo(m_Route.front());
+		}
+		return;
+	}
+	if (distance < m_RouteBest - 8.0F) {
+		m_RouteBest = distance;
+		m_RouteProgressTimer.Reset();
+	}
+	// The way to its route's next point found blocked (dug, built, a door shut): planned again from where it is, a few times running at most.
+	if (!m_Route.empty() && m_RouteCheckTimer.IsPastSimMS(500)) {
+		m_RouteCheckTimer.Reset();
+		if (m_RouteReplans < 3 && !HullLineClear(m_Pos, m_Route.front())) {
+			const int replans = m_RouteReplans + 1;
+			const int tries = m_UnstickTries;
+			m_Route.clear();
+			FlyRouteTo(m_RouteSpot);
+			m_RouteReplans = replans;
+			m_UnstickTries = tries;
+			return;
+		}
+	}
+	// No nearer where it is going for a couple of seconds, not there yet and barely moving: caught on something. It works itself free, as a
+	// unit on foot does, a few times running at most.
+	if (m_Autopilot.hasWaypoint && !IsWaitingOnNewMovePath() && m_RouteProgressTimer.IsPastSimMS(2500) && distance > 30.0F && m_Vel.MagnitudeIsLessThan(1.5F) && m_UnstickTries < 3) {
+		++m_UnstickTries;
+		m_UnstickGoal = m_Route.empty() ? target : m_RouteSpot;
+		m_UnstickFrom = m_Pos;
+		m_UnstickSide = g_SceneMan.ShortestDistance(m_Pos, target, wraps).m_X >= 0.0F ? 1.0F : -1.0F;
+		m_UnstickStep = -1;
+		m_RouteBest = FLT_MAX;
+		m_RouteProgressTimer.Reset();
+		m_UnstickTimer.Reset();
+		NextUnstickMove();
+	}
+}
+
+bool ACShip::NextUnstickMove() {
+	// Back and up, up, back and down, on and up, off where it got stuck (back being away from where it was going).
+	const std::array<Vector, 4> moves{Vector(-60.0F, -60.0F), Vector(0.0F, -100.0F), Vector(-60.0F, 40.0F), Vector(40.0F, -80.0F)};
+	while (++m_UnstickStep < static_cast<int>(moves.size())) {
+		Vector point = m_UnstickFrom + Vector(moves[m_UnstickStep].m_X * m_UnstickSide, moves[m_UnstickStep].m_Y);
+		g_SceneMan.WrapPosition(point);
+		if (HullLineClear(m_Pos, point)) {
+			m_UnstickPoint = point;
+			return true;
+		}
+	}
+	m_UnstickStep = -1;
+	return false;
 }
 
 void ACShip::PreControllerUpdate() {
