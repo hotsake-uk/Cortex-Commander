@@ -61,6 +61,7 @@ void HDFirearm::Clear() {
 	m_UsesOwnCharge = false;
 	m_Charge = m_MaxCharge = m_ChargeRegen = 0.0F;
 	m_FireIgnoresThis = true;
+	m_FiredFromInside = nullptr;
 	m_Reloadable = true;
 	m_DualReloadable = false;
 	m_OneHandedReloadTimeMultiplier = 1.5F;
@@ -918,6 +919,10 @@ void HDFirearm::Update() {
 						MovableObject* root = GetRootParent();
 						pParticle->SetWhichMOToNotHit(dynamic_cast<AVehicle*>(root) || dynamic_cast<ACShip*>(root) ? root : this, 1.0f);
 					}
+					// Fired out of a vehicle by a passenger: it goes through the vehicle and everyone sat in it (see AVehicle::GetMOIDs), all the way.
+					if (m_FiredFromInside && g_MovableMan.ValidMO(m_FiredFromInside)) {
+						pParticle->SetWhichMOToNotHit(m_FiredFromInside, -1.0F);
+					}
 
 					// Set the team so alarm events that happen if these gib won't freak out the guy firing
 					pParticle->SetTeam(m_Team);
@@ -955,6 +960,9 @@ void HDFirearm::Update() {
 					// Set the ejected shell to not hit this HeldDevice's parent, if applicable
 					if (m_FireIgnoresThis)
 						pShell->SetWhichMOToNotHit(this, 1.0f);
+					if (m_FiredFromInside && g_MovableMan.ValidMO(m_FiredFromInside)) {
+						pShell->SetWhichMOToNotHit(m_FiredFromInside, -1.0F);
+					}
 					// Set the team so alarm events that happen if these gib won't freak out the guy firing
 					pShell->SetTeam(m_Team);
 					// Set this to ignore team hits in case it's lethal

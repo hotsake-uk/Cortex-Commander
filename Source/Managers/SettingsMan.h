@@ -440,6 +440,10 @@ namespace RTE {
 		/// wrecked, thrown over or someone takes the seat. A player's own unit falls out either way, so its death is seen.
 		bool DeadCrewFallOut() const { return m_DeadCrewFallOut; }
 
+		/// Whether units in the passenger seats of a vehicle or ship built to let them (PassengersCanFire) shoot out of it with the guns they
+		/// hold (on, as the game comes). Their shots never hit their own vehicle or anyone sat in it.
+		bool PassengersFireFromVehicles() const { return m_PassengersFireFromVehicles; }
+
 		/// Gets what the navigation debug overlay shows: 0 nothing, 1 the path grid in view (where a unit stands, crawls or doesn't fit, and the
 		/// step-overs, stairs and leaps between), 2 that and each flight's landing and the engine pilot's predicted path (see PathFinder::DrawDebug),
 		/// 3 that and the node under the pointer: what the grid makes of it and every way out of it with its cost (see DebugOverlays::DrawNavNode).
@@ -739,6 +743,9 @@ namespace RTE {
 
 		/// Sets whether crew killed in a vehicle fall out of it; see DeadCrewFallOut.
 		void SetDeadCrewFallOut(bool fallOut) { m_DeadCrewFallOut = fallOut; }
+
+		/// Sets whether passengers shoot out of vehicles built to let them; see PassengersFireFromVehicles.
+		void SetPassengersFireFromVehicles(bool fire) { m_PassengersFireFromVehicles = fire; }
 
 		/// Sets whether the crab bomb effect is enabled or not.
 		/// @param enable Enable the crab bomb effect or not. False means releasing whatever number of crabs will do nothing except release whatever number of crabs.
@@ -1042,6 +1049,7 @@ namespace RTE {
 		bool m_AISquadFollowsYou; //!< See AISquadFollowsYou.
 		bool m_AIUsesVehicles; //!< Whether AI units use vehicles (see AIUsesVehicles).
 		bool m_DeadCrewFallOut; //!< Whether crew killed in a vehicle fall out of it (see DeadCrewFallOut).
+		bool m_PassengersFireFromVehicles; //!< Whether passengers shoot out of vehicles built to let them (see PassengersFireFromVehicles).
 		DirectOrderTuning m_DirectOrders; //!< How units behave on a direct order (see DirectOrders).
 		bool m_EnableCrabBombs; //!< Whether all actors (except Brains and Doors) should be annihilated if a number exceeding the crab bomb threshold is released at once.
 		int m_CrabBombThreshold; //!< The number of crabs needed to be released at once to trigger the crab bomb effect.

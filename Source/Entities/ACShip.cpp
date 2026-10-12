@@ -91,6 +91,7 @@ void ACShip::Clear() {
 	m_HasHoldPoint = false;
 	m_FlightTarget.Reset();
 	m_FlightFloor = FLT_MAX;
+	m_SteerTrim.Reset();
 	m_FlownTimer.Reset();
 }
 
@@ -149,6 +150,11 @@ int ACShip::ReadProperty(const std::string_view& propName, Reader& reader) {
 		reader >> drawsCrew;
 		m_Crew.SetDrawsCrew(drawsCrew);
 	});
+	MatchProperty("PassengersCanFire", {
+		bool canFire;
+		reader >> canFire;
+		m_Crew.SetPassengersCanFire(canFire);
+	});
 	MatchProperty("NeedsPilot", { reader >> m_NeedsPilot; });
 	MatchProperty("CanBeTaken", { reader >> m_CanBeTaken; });
 	MatchProperty("SeatsCargo", { reader >> m_SeatsCargo; });
@@ -172,6 +178,7 @@ int ACShip::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("ExitOffset", m_Crew.GetExitOffset());
 	writer.NewPropertyWithValue("BoardingReach", m_Crew.GetBoardingReach());
 	writer.NewPropertyWithValue("DrawsCrew", m_Crew.DrawsCrew());
+	writer.NewPropertyWithValue("PassengersCanFire", m_Crew.PassengersCanFire());
 	writer.NewPropertyWithValue("NeedsPilot", m_NeedsPilot);
 	writer.NewPropertyWithValue("CanBeTaken", m_CanBeTaken);
 	writer.NewPropertyWithValue("SeatsCargo", m_SeatsCargo);
@@ -234,6 +241,19 @@ PathAgent ACShip::GetPathAgent() const {
 	return agent;
 }
 
+float ACShip::LowClearance() const {
+	return std::max(GetRadius() * 1.1F, 30.0F);
+}
+
+Vector ACShip::LowPoint(const Vector& spot, float extraAltitude) {
+	// Where it's sent, as it was clicked: only raised off the ground enough to clear it, not up to a drop ship's hover height.
+	Vector to = spot;
+	g_SceneMan.WrapPosition(to);
+	const float lowest = AutopilotGroundBelow(Vector(to.m_X, to.m_Y - 10.0F), LowClearance() + std::max(extraAltitude, 0.0F));
+	to.m_Y = std::max(std::min(to.m_Y, lowest), GetRadius());
+	return to;
+}
+
 bool ACShip::FlyRouteTo(const Vector& spot) {
 	m_EnginesOff = false;
 	if (!CanFly() || !AutopilotStarted()) {
@@ -246,7 +266,7 @@ bool ACShip::FlyRouteTo(const Vector& spot) {
 	const float radius = GetRadius();
 	// A cautious order flies higher, up to half as high again over the ground, further from small arms below.
 	const float extra = AutopilotHoverHeight() * 0.5F * care;
-	const Vector goal = AutopilotHoverPoint(spot, extra);
+	const Vector goal = LowPoint(spot, extra);
 	// (Sent again where it is already going, as the standing orders do: the route it has goes on.)
 	if (!m_Route.empty() && m_AIMode == AIMODE_GOTO && g_SceneMan.ShortestDistance(m_Route.back(), goal).MagnitudeIsLessThan(24.0F)) {
 		return true;
@@ -284,7 +304,7 @@ bool ACShip::FlyRouteTo(const Vector& spot) {
 		return AutopilotGoTo(goal);
 	}
 	// Each point raised to its hover height over the ground there, as far as the room over it lets it.
-	const float want = AutopilotHoverHeight() + extra;
+	const float want = LowClearance() + 20.0F + extra;
 	std::vector<Vector> raised;
 	raised.reserve(path.size());
 	for (const Vector& node: path) {
@@ -408,7 +428,8 @@ void ACShip::UpdateCombat() {
 	};
 	Vector suppressCentre;
 	float suppressRadius = 0.0F;
-	const bool holding = m_AIMode == AIMODE_SENTRY || m_AIMode == AIMODE_STAY || (m_AIMode == AIMODE_GOTO && m_HasCombatSpot);
+	// (Sent somewhere on a plain move, it stays where it was sent: its guns fight from there, it doesn't fly off after what they're on.)
+	const bool holding = (m_AIMode == AIMODE_SENTRY || m_AIMode == AIMODE_STAY || (m_AIMode == AIMODE_GOTO && m_HasCombatSpot)) && m_StandingOrder.Kind != ORDER_MOVE;
 	const Actor* target = enemyByID(m_EngageID);
 	if (!target) {
 		m_EngageID = 0;
@@ -515,7 +536,7 @@ void ACShip::UpdateCombat() {
 			for (float distance: {share, share * 0.7F, std::min(share * 1.3F, 0.8F)}) {
 				for (float lift: {0.0F, -60.0F, -120.0F}) {
 					Vector ground = keepNearPost(enemyPos + Vector(static_cast<float>(s) * distance * range, 0.0F));
-					Vector candidate = AutopilotHoverPoint(ground) + Vector(0.0F, lift);
+					Vector candidate = LowPoint(ground, 40.0F) + Vector(0.0F, lift);
 					candidate.m_Y = std::max(candidate.m_Y, radius);
 					if (fallback.IsZero()) {
 						fallback = candidate;
@@ -677,7 +698,7 @@ void ACShip::UpdateFlight() {
 			m_HoldPoint = m_Pos;
 		} else {
 			if (!ai.hasWaypoint && !m_MovePath.empty()) {
-				ai.waypoint = AutopilotHoverPoint(m_MovePath.back());
+				ai.waypoint = LowPoint(m_MovePath.back());
 				ai.hasWaypoint = true;
 			}
 			if (ai.hasWaypoint) {
@@ -735,7 +756,7 @@ void ACShip::SteerTo(const Vector& target, bool stop) {
 	const bool wraps = g_SceneMan.SceneWrapsX();
 	const float radius = GetRadius();
 	// How far over the ground it keeps on the way: its body and a little more.
-	const float clearance = std::max(radius * 1.2F, 30.0F);
+	const float clearance = LowClearance();
 	Vector aim = target + m_AvoidOffset;
 	Vector toAim = g_SceneMan.ShortestDistance(m_Pos, aim, wraps);
 
@@ -763,6 +784,10 @@ void ACShip::SteerTo(const Vector& target, bool stop) {
 		aim.m_Y = floor;
 		toAim = g_SceneMan.ShortestDistance(m_Pos, aim, wraps);
 	}
+	// (A new place, or not stopping at it: what it built up against drift starts again.)
+	if (!stop || g_SceneMan.ShortestDistance(m_FlightTarget, aim, wraps).MagnitudeIsGreaterThan(20.0F)) {
+		m_SteerTrim.Reset();
+	}
 	m_FlightTarget = aim;
 	m_FlightFloor = floor;
 
@@ -783,8 +808,16 @@ void ACShip::SteerTo(const Vector& target, bool stop) {
 	float wantY = down < 0.0F ? -std::min(climbSpeed, std::abs(down) * 1.2F) : std::min({climbSpeed * 0.7F, std::sqrt(2.0F * gravity * 0.5F * down), down * 1.2F});
 
 	// The stick: up or down is a speed to hold (the drop ship's throttle, its range 7.5 m/s), across a tilt toward the speed wanted.
-	const float stickX = std::clamp((wantX - m_Vel.m_X) * 0.35F, -1.0F, 1.0F);
-	const float stickY = std::clamp((wantY + 0.5F * (wantY - m_Vel.m_Y)) / 7.5F, -1.0F, 1.0F);
+	// Near the place, what's left off it builds up on the stick, so the drop ship's hover trim (made for an empty one), a load, a lean or the
+	// stick's dead zone don't leave it held off to one side or hanging high or low of it.
+	if (stop && toAim.MagnitudeIsLessThan(std::max(radius * 3.0F, 120.0F))) {
+		const float deltaTime = g_TimerMan.GetDeltaTimeSecs();
+		m_SteerTrim += Vector(toAim.m_X, toAim.m_Y) * (deltaTime / c_PPM);
+		m_SteerTrim.m_X = std::clamp(m_SteerTrim.m_X, -3.0F, 3.0F);
+		m_SteerTrim.m_Y = std::clamp(m_SteerTrim.m_Y, -3.0F, 3.0F);
+	}
+	const float stickX = std::clamp((wantX - m_Vel.m_X) * 0.35F + m_SteerTrim.m_X * 0.15F, -1.0F, 1.0F);
+	const float stickY = std::clamp((wantY + 0.5F * (wantY - m_Vel.m_Y)) / 7.5F + m_SteerTrim.m_Y * 0.12F, -1.0F, 1.0F);
 	m_Controller.SetState(MOVE_UP, false);
 	m_Controller.SetState(MOVE_DOWN, false);
 	m_Controller.SetAnalogMove(Vector(stickX, stickY));
@@ -793,7 +826,7 @@ void ACShip::SteerTo(const Vector& target, bool stop) {
 bool ACShip::AirRoute(const Vector& from, const Vector& to, std::deque<Vector>& route) const {
 	route.clear();
 	const float radius = GetRadius();
-	const float clearance = std::max(radius * 1.2F, 30.0F);
+	const float clearance = LowClearance();
 	const Vector way = g_SceneMan.ShortestDistance(from, to, g_SceneMan.SceneWrapsX());
 	auto clearLine = [radius](const Vector& a, const Vector& b) {
 		Vector line = g_SceneMan.ShortestDistance(a, b);
@@ -937,6 +970,7 @@ void ACShip::Update() {
 
 	m_Crew.SetLastVel(m_Vel);
 	m_Crew.PlaceCrew();
+	m_Crew.UpdatePassengerFire();
 }
 
 void ACShip::SeatCargo() {
