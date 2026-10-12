@@ -7,7 +7,7 @@ local RADIUS = 48;
 function Create(self)
 	self.Vel = Vector();
 	self.poisonTimer = Timer();
-	PostProcessMan:AddFog(self.Pos, RADIUS, 0.8, 110, 50, 140);
+	PostProcessMan:AddFog(self.Pos, RADIUS, 0.8);
 end
 
 function Update(self)
