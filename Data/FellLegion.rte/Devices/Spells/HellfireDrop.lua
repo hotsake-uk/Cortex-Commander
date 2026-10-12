@@ -1,7 +1,9 @@
 -- A drop of hellfire falling out of the sky (Hellfire Rain), trailing green flame and black smoke, lit by its own light. It bursts on
--- the first thing it meets that isn't a friend, or when it lands: a green fiery explosion, smaller than a fireball's.
+-- the first thing it meets that isn't a friend, or when it lands: a green fiery explosion, smaller than a fireball's, and every enemy
+-- within two paces of it is Burning (FellEffects.lua): green flames clinging for four seconds, their health away a little at a time.
 
 local FX = dofile("Medieval.rte/Devices/Spells/SpellFX.lua");
+local Fell = dofile("FellLegion.rte/Devices/Spells/FellEffects.lua");
 
 local function burst(self, pos, struck)
 	if self.burst then
@@ -12,6 +14,11 @@ local function burst(self, pos, struck)
 		FX.Hurt(ToActor(struck), 14, 120);
 	end
 	FX.FireBlast(pos, self.Team, 0.6);
+	for _, near in ipairs(FX.ActorsNear(pos, 40, self.Team)) do
+		if not near.actor.FireProof then
+			Fell.Apply(near.actor, "Burning");
+		end
+	end
 	-- Green over the orange.
 	EmitVisualParticles("Sparks", pos, Vector(0, -8), 1, 30, 0x6EFF6E);
 	EmitVisualParticles("Embers", pos, Vector(0, -4), 1, 20, 0x40C040);

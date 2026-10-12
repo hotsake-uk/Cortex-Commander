@@ -119,14 +119,21 @@ SHADERS = {
 }
 
 
-def main():
-	for name, (what, block) in SHADERS.items():
-		header = (f"// {name}.frag (Medieval.rte, the \"Medieval {name}\" Shader preset, written by Tools/Medieval/shaders.py from Frozen.frag)\n"
+def write_shaders(shaders, out, rte="Medieval.rte", prefix="Medieval", tool="Tools/Medieval/shaders.py", source="Frozen.frag"):
+	"""Writes each shader (name: (what, block)) to out as rte's "<prefix> <name>" preset's fragment shader."""
+	os.makedirs(out, exist_ok=True)
+	for name, (what, block) in shaders.items():
+		header = (f"// {name}.frag ({rte}, the \"{prefix} {name}\" Shader preset, written by {tool} from {source})\n"
 			f"// {what} Fades by rteStrength.\n"
 			"// Everything else (the three outputs, palette, snow, heat, authored maps) is Blit8.frag's.\n")
-		with open(os.path.join(OUT, name + ".frag"), "w") as f:
+		with open(os.path.join(out, name + ".frag"), "w") as f:
 			f.write(header + HEAD_CODE + block + tail)
+
+
+def main():
+	write_shaders(SHADERS, OUT)
 	print("shaders done")
 
 
-main()
+if __name__ == "__main__":
+	main()
