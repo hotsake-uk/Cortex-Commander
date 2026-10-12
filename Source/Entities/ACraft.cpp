@@ -10,6 +10,7 @@
 #include "SceneMan.h"
 #include "Scene.h"
 #include "SettingsMan.h"
+#include "ThreatMemory.h"
 #include "FrameMan.h"
 
 #include "GUI.h"
@@ -541,7 +542,8 @@ void ACraft::DropAllInventory() {
 				pPassenger->SetWhichMOToNotHit(this, 0.5f);
 				// Avoid this immediate collisions with it
 				SetWhichMOToNotHit(pPassenger, 0.5f);
-				// Add to scene
+				// Add to scene, knowing what the team saw while it rode
+				ThreatMemory::NoteLeftCarrier(pPassenger);
 				g_MovableMan.AddActor(pPassenger);
 
 				// If this craft is being directly controlled by a player, and has landed, switch control to the first guy out

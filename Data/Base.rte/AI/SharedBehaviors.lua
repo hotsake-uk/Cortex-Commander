@@ -846,7 +846,8 @@ function SharedBehaviors.ScanForTargets(AI, Owner, skill, fovDegrees, budget)
 			local id = Target.UniqueID;
 			local entry = AI.Noticing[id];
 			if not entry then
-				entry = {progress = 0};
+				-- (An enemy its team has just seen, for a unit just out of a craft or vehicle, is noticed already: see KnowsOf.)
+				entry = {progress = SharedBehaviors.KnowsOf(AI, Owner, id) and 1 or 0};
 				AI.Noticing[id] = entry;
 			end
 			-- (A target already being fought is known: no delay to keep it.)
@@ -3672,12 +3673,69 @@ function SharedBehaviors.ReportEnemy(Owner, Enemy)
 	end
 end
 
+-- Whether the engine has SceneMan.GetEnemySeenAgeMS (an older exe doesn't). (A local, as CanRememberCached is.)
+local CanAgeCached = nil;
+local function CanAge()
+	if CanAgeCached == nil then
+		local ok, value = pcall(function() return SceneMan.GetEnemySeenAgeMS; end);
+		CanAgeCached = ok and value ~= nil;
+	end
+	return CanAgeCached;
+end
+
+-- How long a unit out of a craft or vehicle knows what its team saw while it rode, and how lately the team must have seen an enemy for it to
+-- count, in sim milliseconds.
+local LEFT_CARRIER_MS = 5000;
+local KNOWN_SEEN_MS = 3000;
+
+-- When a unit got out of a craft or vehicle (its seats or its hold; the engine notes it, ThreatMemory::NoteLeftCarrier), if it did in the
+-- last few seconds. @return The sim time it got out, or nil.
+function SharedBehaviors.LeftCarrierAt(Owner)
+	if not Owner:NumberValueExists("AILeftCarrierMS") then
+		return nil;
+	end
+	local at = Owner:GetNumberValue("AILeftCarrierMS");
+	local since = TimerMan.SimTimeMS - at;
+	-- (Not a time from before a saved game was loaded, when the clock started again.)
+	if since < 0 or since > LEFT_CARRIER_MS then
+		return nil;
+	end
+	return at;
+end
+
+-- Whether a unit knows of an enemy before it has noticed it for itself: it has just got out of a craft or vehicle, and its team saw that
+-- enemy in the last three seconds (the craft's riders look out of it, and its gunners report what they shoot at), so it is not a stranger
+-- to be noticed slowly but one it was watching from inside. @param id The enemy's unique ID.
+function SharedBehaviors.KnowsOf(AI, Owner, id)
+	if not CanAge() or not SharedBehaviors.LeftCarrierAt(Owner) then
+		return false;
+	end
+	local age = SceneMan:GetEnemySeenAgeMS(Owner.Team, id);
+	return age >= 0 and age <= KNOWN_SEEN_MS;
+end
+
+-- Just out of a craft or vehicle, once: it turns to face the nearest enemy its team saw in the last three seconds, the one the craft was
+-- fighting, rather than looking round as if it had just arrived.
+function SharedBehaviors.FaceKnownOnLeaving(AI, Owner)
+	local at = SharedBehaviors.LeftCarrierAt(Owner);
+	if not at or AI.FacedOnLeaving == at or AI.Target or not SharedBehaviors.CanRemember() then
+		return;
+	end
+	AI.FacedOnLeaving = at;
+	local Seen = SceneMan:GetRememberedEnemyPos(Owner.Team, Owner.Pos, KNOWN_SEEN_MS, Owner.AimDistance + FrameMan.PlayerScreenWidth * 0.51);
+	if Seen.Largest > 0 then
+		Owner:SetAlarmPoint(Seen);
+		SharedBehaviors.Trace(Owner, "out of a carrier: facing a known enemy at " .. math.floor(Seen.X) .. "," .. math.floor(Seen.Y));
+	end
+end
+
 -- What the team remembers (AC-2), for a unit with no enemy in sight, every two seconds: it keeps watch toward the nearest enemy the team
 -- saw in the last ten seconds within 700 px (turning to face it, as an alarm makes it); and an AI team's unit out on patrol or hunting goes
 -- to check the last place the team saw a player's unit within 1500 px, then takes up its order again (see InvestigateUpdate). Not a unit a
 -- player owns (it is only turned to look), not one told to hold, and not while falling back or flanking.
 function SharedBehaviors.RememberUpdate(AI, Owner)
 	SharedBehaviors.InvestigateUpdate(AI, Owner);
+	SharedBehaviors.FaceKnownOnLeaving(AI, Owner);
 	if AI.Target or AI.UnseenTarget or AI.Flank or AI.Retreat or AI.Investigate or not SharedBehaviors.CanRemember() then
 		return;
 	end

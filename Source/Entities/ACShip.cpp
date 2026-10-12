@@ -15,6 +15,7 @@
 #include "SceneMan.h"
 #include "Scene.h"
 #include "SettingsMan.h"
+#include "ThreatMemory.h"
 #include "TimerMan.h"
 #include "RTETools.h"
 #include "Turret.h"
@@ -1817,11 +1818,16 @@ void ACShip::UpdateGuns() {
 		} else if (manned && Controller::AIMayAct()) {
 			// A gunner looks round now and then for the nearest enemy in sight, swings round to it and fires once it is on it. (With the AI
 			// paused, it holds its aim and fire.)
-			if (gun.TargetTimer.IsPastSimMS(400)) {
+			const bool lookedRound = gun.TargetTimer.IsPastSimMS(400);
+			if (lookedRound) {
 				gun.TargetID = FindGunTarget(turret);
 				gun.TargetTimer.Reset();
 			}
 			const Actor* target = gun.TargetID ? dynamic_cast<const Actor*>(g_MovableMan.FindObjectByUniqueID(gun.TargetID)) : nullptr;
+			// The team hears of what its gunner has in its sights (AC-2), so those riding get out knowing it.
+			if (lookedRound && target) {
+				ThreatMemory::Report(this, target);
+			}
 			Vector suppressCentre;
 			float suppressRadius = 0.0F;
 			if (target && !target->IsDead()) {
