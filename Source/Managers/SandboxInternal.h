@@ -1467,8 +1467,9 @@ namespace SandboxDetail {
 		      //!< down till given another order (LandSelected). (After Drop off, so the ring's slices keep their places.)
 		Park, //!< The selected ground vehicles drive to the point and put their handbrakes on there, everyone staying aboard, till given another
 		      //!< order (ParkSelected); ships among them land. (After Land, so the ring's slices keep their places.)
-		Ram //!< The selected flying ships ram the enemy clicked, run after run, till it is dead or they are given another order (RamSelected);
-		    //!< anyone else selected attacks it. (Last, so the ring's slices keep their places.)
+		Ram //!< The selected flying ships ram what was clicked (anything not their side's) or the place itself, as a suppress is given: run after
+		    //!< run, striking whatever is there, till it is gone or they are given another order (RamSelected);
+		    //!< anyone else selected attacks it or goes there. (Last, so the ring's slices keep their places.)
 	};
 	inline CommandMode s_CommandMode = CommandMode::Command;
 	inline bool s_SpawnOrderArmed = false; //!< The next order placed sets the spawn order of your team (or of s_SpawnOrderZone) instead (TakeSpawnOrder).
@@ -2749,9 +2750,10 @@ namespace SandboxDetail {
 	/// The selected ground vehicles drive to the point and put their handbrakes on (ships among them land), staying there (Shift: as a step of
 	/// their plans). Anyone else selected goes there.
 	void ParkSelected(const Vector& point, bool shift);
-	/// The Ram order on an enemy: the selected flying ships ram it (ACShip::RamTarget), anyone else selected attacks it.
-	/// @param enemy The enemy, or nullptr for none there (nothing is done).
-	void RamSelected(Actor* enemy);
+	/// The Ram order: the selected flying ships ram what was clicked (ACShip::RamTarget), or with nothing clicked the place (ACShip::RamPlace);
+	/// anyone else selected attacks it, or goes there.
+	/// @param target What was clicked, not of their side, or nullptr. @param point The place clicked.
+	void RamSelected(Actor* target, const Vector& point);
 	/// Whether a ground vehicle (not a flying ship) is among those selected.
 	bool SelectionHasCar();
 	/// Whether a flying ship is among those selected.
