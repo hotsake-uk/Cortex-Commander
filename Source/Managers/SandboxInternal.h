@@ -3081,6 +3081,9 @@ namespace SandboxDetail {
 	/// The Army overview window (B-6): your side's units by kind, with how many, their average health and how many are idle; a click on a
 	/// kind selects them all, a double click looks at them too. Shown while the setting is on (SettingsMan::ShowArmyOverview). Call from the ImGui frame.
 	void DrawArmyOverview();
+	/// Sets the selected units off round the patrol route clicked out (s_PatrolDraft), a loop or back and forth, or takes it as the spawn order
+	/// being set; the route is cleared. Nothing with fewer than two points.
+	void StartPatrolDraft(bool backAndForth);
 	void CommandHotkeys();
 	void KeysPage();
 	void ToggleWindowTab(const char* tab);
