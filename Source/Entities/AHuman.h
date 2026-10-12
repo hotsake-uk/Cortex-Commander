@@ -760,6 +760,10 @@ namespace RTE {
 		/// Detects overhead ceilings and crouches for them.
 		void UpdateCrouching();
 
+		/// How deep a crouch-walk may go and keep the body clear of the ground under it and a step ahead, in pixels of walk path shift.
+		/// @return The deepest shift that keeps the body's lowest points a couple of pixels over the ground, or the full crouch's if nothing is near.
+		float GetCrouchWalkGroundLimit() const;
+
 		/// Updates our limbpath speed based on our current movement speed and style (crouching, walking etc).
 		void UpdateLimbPathSpeed();
 
