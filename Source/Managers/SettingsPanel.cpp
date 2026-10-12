@@ -1644,10 +1644,10 @@ void DebugMan::SettingsGUI() {
 		Tip("With ship rides on: a unit sent further than the shortest walk below takes a ship near it that can fly it there, even though it could walk. Off: only units with no route ride.");
 		{
 			float longWalk = g_SettingsMan.AIShipRideLongWalkDistance();
-			if (Slider("Shortest walk worth a ride", &longWalk, Normal{500.0F}, 200.0F, 10000.0F, "%.0f px", ImGuiSliderFlags_Logarithmic)) {
+			if (Slider("Shortest walk worth a ship ride", &longWalk, Normal{500.0F}, 200.0F, 10000.0F, "%.0f px", ImGuiSliderFlags_Logarithmic)) {
 				g_SettingsMan.SetAIShipRideLongWalkDistance(longWalk);
 			}
-			Tip("How far away, in a straight line, the place a unit is sent to has to be for it to take a ship or a land vehicle near it that can get it there; nearer, it walks. A ship or vehicle a little behind it counts too (up to a quarter of the walk). 500 px, as the game comes.");
+			Tip("How far away, in a straight line, the place a unit is sent to has to be for it to take a flying ship near it that can fly it there; nearer, it walks. A ship a little behind it counts too (up to a quarter of the walk). 500 px, as the game comes.");
 			float range = g_SettingsMan.AIShipRideRange();
 			if (Slider("Ship ride search range", &range, Normal{1500.0F}, 200.0F, 5000.0F, "%.0f px", ImGuiSliderFlags_Logarithmic)) {
 				g_SettingsMan.SetAIShipRideRange(range);

@@ -607,8 +607,8 @@ namespace RTE {
 		/// walk: whenever a ship near it can get it there.
 		bool AIShipRideLongWalk() const { return m_AIShipRideLongWalk; }
 
-		/// The shortest walk worth a ride, in pixels in a straight line: a unit sent further takes a ship (AIShipRideLongWalk) or a land
-		/// vehicle (AIUsesVehicles) near it that can get it there.
+		/// The shortest walk worth a ship ride, in pixels in a straight line: a unit sent further takes a ship near it that can fly it
+		/// there (AIShipRideLongWalk). (Land vehicles keep their own 700 px.)
 		float AIShipRideLongWalkDistance() const { return m_AIShipRideLongWalkDistance; }
 
 		/// How far off an idle ship looks for units that want a ride, in pixels.
