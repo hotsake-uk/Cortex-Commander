@@ -335,11 +335,10 @@ void AHuman::UpdateAIMotor() {
 // ---------------------------------------------------------------- The leap
 
 float AHuman::GetLegJumpHeight() const {
-	if (m_LegJumpHeight >= 0.0F) {
-		return m_LegJumpHeight;
-	}
 	// A little over half the standing body (0.44 of the character height): a soldier clears a knee-high crate or a node-wide gap at a run.
-	return std::max(16.0F, m_CharHeight * 0.44F) * 0.55F;
+	float height = m_LegJumpHeight >= 0.0F ? m_LegJumpHeight : std::max(16.0F, m_CharHeight * 0.44F) * 0.55F;
+	// The Carry weight settings: stronger legs leap higher, a load holds it down.
+	return height * g_SettingsMan.LegStrength() * GetOverloadSpeedMultiplier();
 }
 
 bool AHuman::CanLeap() const {

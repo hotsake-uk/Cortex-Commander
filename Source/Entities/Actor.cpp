@@ -794,7 +794,28 @@ float Actor::GetInventoryMass() const {
 }
 
 float Actor::GetMass() const {
-	return MOSRotating::GetMass() + GetInventoryMass() + (m_GoldCarried * g_SceneMan.GetKgPerOz());
+	float inventoryAndGold = GetInventoryMass() + (m_GoldCarried * g_SceneMan.GetKgPerOz());
+	float mass = MOSRotating::GetMass() + inventoryAndGold;
+	// The Carry weight settings' multiplier: what it carries counts that many times over (the held guns are already in its attachables' mass once).
+	if (float multiplier = g_SettingsMan.CarriedWeightMultiplier(); multiplier != 1.0F) {
+		mass += (multiplier - 1.0F) * (inventoryAndGold + GetHeldMass());
+	}
+	return mass;
+}
+
+float Actor::GetCarriedMass() const {
+	return (GetInventoryMass() + (m_GoldCarried * g_SceneMan.GetKgPerOz()) + GetHeldMass()) * g_SettingsMan.CarriedWeightMultiplier();
+}
+
+float Actor::GetOverloadSpeedMultiplier() const {
+	float slowdown = g_SettingsMan.OverloadSlowdown();
+	if (slowdown <= 0.0F) {
+		return 1.0F;
+	}
+	// The load against the body that bears it: the full slowdown once it carries its own weight. (Never quite to a stop: a tenth of the speed is kept.)
+	float body = std::max(MOSRotating::GetMass() - GetHeldMass(), 1.0F);
+	float load = std::clamp(GetCarriedMass() / body, 0.0F, 1.0F);
+	return std::max(1.0F - slowdown * load, 0.1F);
 }
 
 float Actor::GetBaseMass() {

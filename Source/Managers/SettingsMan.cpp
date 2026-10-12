@@ -150,6 +150,7 @@ void SettingsMan::Clear() {
 	m_AIThreatAvoidance = 1.0F;
 	m_AIRecklessness = 0.5F;
 	ResetLadderSettings();
+	ResetCarryWeightSettings();
 	m_AISpawnDiggerChance = 0.0F;
 	m_BleedOutChance = 0.0F;
 	m_WoundBleedTime = 1.0F;
@@ -808,6 +809,11 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AIThreatAvoidance", { float scale = 1.0F; reader >> scale; SetAIThreatAvoidance(scale); });
 	MatchProperty("AIRecklessness", { float recklessness = 0.5F; reader >> recklessness; SetAIRecklessness(recklessness); });
 	MatchProperty("AILadderGiveUpSeconds", { float seconds = 1.5F; reader >> seconds; SetAILadderGiveUpSeconds(seconds); });
+	MatchProperty("CarriedWeightMultiplier", { float multiplier = 1.0F; reader >> multiplier; SetCarriedWeightMultiplier(multiplier); });
+	MatchProperty("LegStrength", { float strength = 1.0F; reader >> strength; SetLegStrength(strength); });
+	MatchProperty("JetpackWeightCompensation", { int mode = 0; reader >> mode; SetJetpackWeightCompensation(mode); });
+	MatchProperty("OverloadSlowdown", { float slowdown = 0.0F; reader >> slowdown; SetOverloadSlowdown(slowdown); });
+	MatchProperty("JetpackFuelMultiplier", { float multiplier = 1.0F; reader >> multiplier; SetJetpackFuelMultiplier(multiplier); });
 	MatchProperty("AILadderTeamStalls", { int stalls = 2; reader >> stalls; SetAILadderTeamStalls(stalls); });
 	MatchProperty("AIGrabsLaddersOnPurpose", { reader >> m_AIGrabsLaddersOnPurpose; });
 	MatchProperty("AIGrabsLaddersMidJet", { reader >> m_AIGrabsLaddersMidJet; });
@@ -1330,6 +1336,11 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("WeaponTerrainDamage", m_WeaponTerrainDamage);
 	writer.NewPropertyWithValue("AIRecklessness", m_AIRecklessness);
 	writer.NewPropertyWithValue("AILadderGiveUpSeconds", m_AILadderGiveUpSeconds);
+	writer.NewPropertyWithValue("CarriedWeightMultiplier", m_CarriedWeightMultiplier);
+	writer.NewPropertyWithValue("LegStrength", m_LegStrength);
+	writer.NewPropertyWithValue("JetpackWeightCompensation", m_JetpackWeightCompensation);
+	writer.NewPropertyWithValue("OverloadSlowdown", m_OverloadSlowdown);
+	writer.NewPropertyWithValue("JetpackFuelMultiplier", m_JetpackFuelMultiplier);
 	writer.NewPropertyWithValue("AILadderTeamStalls", m_AILadderTeamStalls);
 	writer.NewPropertyWithValue("AIGrabsLaddersOnPurpose", m_AIGrabsLaddersOnPurpose);
 	writer.NewPropertyWithValue("AIGrabsLaddersMidJet", m_AIGrabsLaddersMidJet);
