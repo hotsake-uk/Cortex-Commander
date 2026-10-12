@@ -1169,7 +1169,7 @@ bool AHuman::BodyCollidesWith(const MovableObject* other) const {
 	return !GetIgnoresActorHits() && !(other->GetIgnoresActorHits());
 }
 
-const MOSRotating* AHuman::ObjectAhead(float direction, float reach, float floorY) const {
+const MOSRotating* AHuman::ObjectAhead(float direction, float reach, float floorY, bool light) const {
 	const float h = GetMoveHeight();
 	std::vector<MOID> passed;
 	GetMOIDs(passed);
@@ -1194,7 +1194,7 @@ const MOSRotating* AHuman::ObjectAhead(float direction, float reach, float floor
 			const Actor* actor = dynamic_cast<const Actor*>(body);
 			const bool living = actor && actor->GetStatus() != DYING && actor->GetStatus() != DEAD;
 			// (Light enough to be shoved aside by the walk, a helmet, a hand: walked on into.)
-			const bool shoved = body->GetMass() < GetMass() * 0.25F;
+			const bool shoved = !light && body->GetMass() < GetMass() * 0.25F;
 			if (!living && !dynamic_cast<const ADoor*>(body) && !dynamic_cast<const ACraft*>(body) && !shoved && BodyCollidesWith(body)) {
 				return body;
 			}
@@ -1205,6 +1205,75 @@ const MOSRotating* AHuman::ObjectAhead(float direction, float reach, float floor
 		}
 	}
 	return nullptr;
+}
+
+bool AHuman::PushObjectAhead(const MOSRotating* object, float direction) {
+	RouteMover& mover = m_Mover;
+	if (!object || !g_SettingsMan.UnitsPushObjects() || m_Controller.GetInputMode() != Controller::CIM_AI) {
+		return false;
+	}
+	const long id = object->GetUniqueID();
+	if (id == mover.pushGiveUpID && !mover.pushGiveUpTimer.IsPastSimMS(20000)) {
+		return false;
+	}
+	// (Never a unit, a living one or a vehicle of any state, a door or a craft, nor what is pinned in place.)
+	const Actor* actor = dynamic_cast<const Actor*>(object);
+	if ((actor && actor->GetStatus() != DYING && actor->GetStatus() != DEAD) || dynamic_cast<const AVehicle*>(object) || dynamic_cast<const ADoor*>(object) || dynamic_cast<const ACraft*>(object) || object->GetPinStrength() > 0.0F) {
+		return false;
+	}
+	// No heavier than this body, times the strengths: about its own weight as the game comes.
+	const float strength = g_SettingsMan.ObjectPushStrength() * m_ObjectPushStrength;
+	const float mass = std::max(0.1F, object->GetMass());
+	if (strength <= 0.0F || mass > GetMass() * strength) {
+		return false;
+	}
+	const float h = GetMoveHeight();
+	const Vector beyond = object->GetPos() + Vector(direction * (object->GetRadius() + h * 0.4F), 0.0F);
+	// (Not onto a teammate just beyond it, nor off a drop with no floor a body and a half under its far side.)
+	Vector distance;
+	if (const Actor* other = g_MovableMan.GetClosestActor(beyond, static_cast<int>(h * 0.5F), distance, this); other && other != object && other->GetTeam() == GetTeam() && other->GetStatus() != DYING && other->GetStatus() != DEAD) {
+		return false;
+	}
+	if (FloorUnder(beyond, object->GetRadius() + h * 1.5F) < 0.0F) {
+		return false;
+	}
+	if (mover.pushID != id) {
+		mover.pushID = id;
+		mover.pushFrom = object->GetPos();
+		mover.pushFutile = 0;
+		mover.pushTimer.SetElapsedSimTimeMS(10000.0);
+		MoverTrace("pushing an object out of the way (" + object->GetPresetName() + ")");
+	}
+	if (mover.pushTimer.IsPastSimMS(400)) {
+		// (One that hasn't moved on over a few shoves is wedged: left to stepping over and the stuck handling for a while.)
+		if (Towards(mover.pushFrom, object->GetPos()).m_X * direction > 2.0F) {
+			mover.pushFrom = object->GetPos();
+			mover.pushFutile = 0;
+		} else if (++mover.pushFutile > 5) {
+			MoverTrace("the object won't budge; stepping over or round it");
+			mover.pushGiveUpID = id;
+			mover.pushGiveUpTimer.Reset();
+			mover.pushID = 0;
+			return false;
+		}
+		mover.pushTimer.Reset();
+		MovableObject* body = g_MovableMan.FindObjectByUniqueID(id);
+		if (!body) {
+			return false;
+		}
+		// A shove, not a throw: the lighter it is for the strength, the quicker it goes, a little up so it slides rather than digs in, and
+		// never over 4 m/s, too slow to hurt anything it meets.
+		const float ease = std::clamp(GetMass() * strength / mass, 0.3F, 1.0F);
+		Vector vel = body->GetVel();
+		vel.m_X = direction * std::max(vel.m_X * direction, 1.5F + 1.5F * ease);
+		vel.m_Y = std::min(vel.m_Y, -0.6F * ease);
+		vel.CapMagnitude(4.0F);
+		body->SetVel(vel);
+		body->NotResting();
+	}
+	// (Not stuck on the ground while it clears the way.)
+	mover.progressTimer.Reset();
+	return true;
 }
 
 bool AHuman::MeasureHull(const MOSRotating* hull, float direction, float floorY, float& topY, float& nearX, float& farX) const {
@@ -4415,11 +4484,25 @@ int AHuman::MoveAlongRoute() {
 		// Any other loose body ours bumps into (a corpse, a gib), with Step over objects on: only once the walk is held up by it, or while one
 		// is being dealt with, since what lies low on the floor is mostly walked over. Then as a wreck: leapt, hopped, routed round or waited
 		// for. (Unseen, the unit pressed into it until the stuck handling, 2.5 s on, tried a leap or a hop.)
-		if (!hull && g_SettingsMan.UnitsStepOverObjects() && (m_Vel.m_X * way < 1.0F || (mover.vehicle != 0 && !mover.vehicleSeenTimer.IsPastSimMS(1000)))) {
-			hull = ObjectAhead(way, hullReach, floorY);
+		// With Push objects on, the light ones too, and while one is being shoved: pushed along (PushObjectAhead) first, and stepped over only
+		// once it is too heavy or won't budge.
+		const bool pushObjects = g_SettingsMan.UnitsPushObjects() && m_Controller.GetInputMode() == Controller::CIM_AI;
+		const bool pushing = pushObjects && mover.pushID != 0 && !mover.pushTimer.IsPastSimMS(1000);
+		bool looseObject = false;
+		if (!hull && (g_SettingsMan.UnitsStepOverObjects() || pushObjects) && (m_Vel.m_X * way < 1.0F || pushing || (mover.vehicle != 0 && !mover.vehicleSeenTimer.IsPastSimMS(1000)))) {
+			hull = ObjectAhead(way, hullReach, floorY, pushObjects);
+			looseObject = hull != nullptr;
 		}
 		if (hull && (hull->GetUniqueID() == mover.vehicleIgnoreID || (g_MovableMan.ValidMO(m_pMOMoveTarget) && m_pMOMoveTarget->GetRootParent() == hull))) {
 			hull = nullptr;
+		}
+		if (hull && pushObjects && PushObjectAhead(hull, way)) {
+			hull = nullptr;
+		} else if (hull && looseObject && !g_SettingsMan.UnitsStepOverObjects()) {
+			hull = nullptr; // (Step over objects off: walked into, as before.)
+		}
+		if (mover.pushID != 0 && mover.pushTimer.IsPastSimMS(1000)) {
+			mover.pushID = 0;
 		}
 		// On the last leg, with the goal at the hull: as near as it gets.
 		if (hull && m_MovePath.size() <= 1 && m_Waypoints.empty() && !g_MovableMan.ValidMO(m_pMOMoveTarget) && Towards(hull->GetPos(), GetLastAIWaypoint()).MagnitudeIsLessThan(hull->GetRadius() + h * 0.5F)) {

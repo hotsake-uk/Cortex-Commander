@@ -213,6 +213,7 @@ int AHuman::Create(const AHuman& reference) {
 	m_LookToAimRatio = reference.m_LookToAimRatio;
 	m_LegJumpHeight = reference.m_LegJumpHeight;
 	m_LegJumpSpeed = reference.m_LegJumpSpeed;
+	m_ObjectPushStrength = reference.m_ObjectPushStrength;
 
 	m_ThrowPrepTime = reference.m_ThrowPrepTime;
 	m_ThrowReleaseProgress = reference.m_ThrowReleaseProgress;
@@ -298,6 +299,7 @@ int AHuman::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("LookToAimRatio", { reader >> m_LookToAimRatio; });
 	MatchProperty("LegJumpHeight", { reader >> m_LegJumpHeight; });
 	MatchProperty("LegJumpSpeed", { reader >> m_LegJumpSpeed; });
+	MatchProperty("ObjectPushStrength", { float strength = 1.0F; reader >> strength; SetObjectPushStrength(strength); });
 	MatchProperty("Jetpack", { SetJetpack(AEJetpack::FromReadPreset(g_PresetMan.ReadReflectedPreset(reader))); });
 	// Older mods set how the jetpack flies on the unit itself. Those settings live on the jetpack now, so they're passed on to it.
 	MatchProperty("JumpTime", {
@@ -402,6 +404,8 @@ int AHuman::Save(Writer& writer) const {
 	writer << m_LegJumpHeight;
 	writer.NewProperty("LegJumpSpeed");
 	writer << m_LegJumpSpeed;
+	writer.NewProperty("ObjectPushStrength");
+	writer << m_ObjectPushStrength;
 	writer.NewProperty("Jetpack");
 	writer << m_pJetpack;
 	writer.NewProperty("FGArmFlailScalar");

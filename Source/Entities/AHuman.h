@@ -385,6 +385,13 @@ namespace RTE {
 		/// Sets how fast a leap carries this forward, in m/s.
 		/// @param speed The speed.
 		void SetLegJumpSpeed(float speed) { m_LegJumpSpeed = speed; }
+		/// How hard this shoves a loose object out of its way (SettingsMan::UnitsPushObjects), times the setting's strength: set in the preset
+		/// (ObjectPushStrength), by default 1. Zero for never.
+		/// @return The strength.
+		float GetObjectPushStrength() const { return m_ObjectPushStrength; }
+		/// Sets how hard this shoves a loose object out of its way.
+		/// @param strength The strength, 1 as the game comes.
+		void SetObjectPushStrength(float strength) { m_ObjectPushStrength = std::max(0.0F, strength); }
 		/// Whether this is in the air on a leap of its legs just now.
 		/// @return Whether leaping.
 		bool IsLeaping() const { return m_Leaping; }
@@ -916,6 +923,7 @@ namespace RTE {
 		float MoveHalfWidthCap() const { return GetMoveBodyWidth() > 0.0F ? 48.0F : 16.0F; }
 		float m_LegJumpHeight = -1.0F; //!< How high a leap lifts the body, px (see GetLegJumpHeight); below zero for the default.
 		float m_LegJumpSpeed = 4.0F; //!< How fast a leap carries the body forward with a move key held, m/s.
+		float m_ObjectPushStrength = 1.0F; //!< How hard this shoves a loose object out of its way (see GetObjectPushStrength).
 		bool m_Leaping = false; //!< In the air on a leap just now.
 		Timer m_LeapTimer; //!< Since the leap began, or since it landed (for the pause before the next).
 		/// The leap on the legs (BODY_LEAP): begun from the floor with a push of the body's speed, the jump pose held while in the air, ended
@@ -1086,6 +1094,12 @@ namespace RTE {
 			bool vehicleRepathed = false; //!< A route round it was asked for.
 			long vehicleIgnoreID = 0; //!< One given up on: the ordinary walk and stuck handling have it for a while.
 			Timer vehicleIgnoreTimer;
+			long pushID = 0; //!< The loose object being shoved out of the way just now (see PushObjectAhead), by unique ID, or 0.
+			Timer pushTimer; //!< Since the last shove.
+			Vector pushFrom; //!< Where it was when it last moved on the walk's way while being shoved.
+			int pushFutile = 0; //!< Shoves running that haven't moved it on.
+			long pushGiveUpID = 0; //!< One given up on (wedged, too heavy): left to stepping over and the stuck handling for a while.
+			Timer pushGiveUpTimer;
 			long yieldTo = 0; //!< The unit this one is giving way to, head on, by unique ID, or 0.
 			Timer yieldTimer; //!< Since it began giving way.
 			long long arrivedTick = -1; //!< The sim update the follower last answered arrived on (standing at the goal is no pin).
@@ -1264,8 +1278,14 @@ namespace RTE {
 		/// Any other loose body this one collides with in the walk's way (SettingsMan::UnitsStepOverObjects): a corpse, a gib or a limb that
 		/// Atom::IsIgnoringMOID doesn't let the body through, heavy enough not to be shoved aside. Looked for past what the body passes (a
 		/// teammate, a gun lying still), with the knee and chest rays VehicleAhead has. Not a living unit (UnitAhead's, or an enemy), a door
-		/// or a craft. Same arguments and result as VehicleAhead.
-		const MOSRotating* ObjectAhead(float direction, float reach, float floorY) const;
+		/// or a craft. Same arguments and result as VehicleAhead. @param light Also one light enough to be shoved aside by the walk, which
+		/// otherwise is walked on into (for pushing it).
+		const MOSRotating* ObjectAhead(float direction, float reach, float floorY, bool light = false) const;
+		/// Shoves a loose object in the walk's way along, as a person would (SettingsMan::UnitsPushObjects): a corpse, a gib, a crate, one
+		/// no heavier than this body (times the strengths), not pinned, not towards a teammate just beyond it or off a drop. Gives up on one
+		/// that hasn't moved on after a few shoves. @param object What VehicleAhead or ObjectAhead found. @param direction -1 walking left,
+		/// 1 right. @return Whether it is being pushed, so the walk goes on into it rather than stepping over it.
+		bool PushObjectAhead(const MOSRotating* object, float direction);
 		/// Whether this body collides with another's (the rules of Atom::IsIgnoringMOID, by the root bodies).
 		bool BodyCollidesWith(const MovableObject* other) const;
 		/// Measures a hull found by VehicleAhead along the walk's way, by rows of rays up from the floor: the top of it (y) and its near and far
