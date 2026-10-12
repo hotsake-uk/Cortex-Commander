@@ -1657,7 +1657,7 @@ void ACShip::UpdateAIBoarding() {
 }
 
 bool ACShip::OffersRides() const {
-	if (IsDead() || m_Status == DYING || m_Controller.IsPlayerControlled() || m_Crew.GetPlayerSeat() >= 0 || IsRamming() || m_HasCombatSpot || m_EngageID != 0 || NumberValueExists("NoShipRides")) {
+	if (IsVehicleLocked() || IsDead() || m_Status == DYING || m_Controller.IsPlayerControlled() || m_Crew.GetPlayerSeat() >= 0 || IsRamming() || m_HasCombatSpot || m_EngageID != 0 || NumberValueExists("NoShipRides")) {
 		return false;
 	}
 	// (An empty ship that needs a pilot does nothing it is told: sent along with the units it stands by, its order is one it can't follow,
@@ -1770,7 +1770,8 @@ void ACShip::UpdateAIRides() {
 	// Taken over by a player (flown, sat in, or given an order): the ride is off. Those coming walk on, and those in it ride along as the
 	// player's passengers, to be ordered out as they like.
 	// (An order given to it while it stood empty, which it couldn't follow, was dropped when the ride began.)
-	const bool taken = m_Controller.IsPlayerControlled() || m_Crew.GetPlayerSeat() >= 0 || HasOrder();
+	// (Or locked, the command bar's Lock: likewise.)
+	const bool taken = m_Controller.IsPlayerControlled() || m_Crew.GetPlayerSeat() >= 0 || HasOrder() || IsVehicleLocked();
 	if (taken) {
 		if (m_RideStage != RideStage::None) {
 			ReleaseRideRecruits();

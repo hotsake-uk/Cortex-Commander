@@ -2770,6 +2770,9 @@ namespace SandboxDetail {
 	bool CrewGoOnFoot(Actor* unit, const Vector& destination);
 	/// Whether the selected vehicles' crews stay in: 1 all do, 0 none do, -1 mixed, -2 no vehicle selected.
 	int SelectedStayIn();
+
+	/// Whether the selected vehicles and flying ships are locked (Actor::IsVehicleLocked): 1 all, 0 none, -1 some, -2 there are none.
+	int SelectedLocked();
 	/// Whether a vehicle or flying ship is among the selected units.
 	bool SelectionHasVehicle();
 	/// Whether everyone selected (and alive) is a vehicle or flying ship: then the command bar shows only the orders they can carry out.
