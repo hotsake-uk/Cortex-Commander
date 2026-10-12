@@ -1067,6 +1067,17 @@ namespace RTE {
 			Vector unstickDig; //!< The route's point of a step of another kind it was stuck on with ground it cuts in the way: dug to (see MoveAlongRoute).
 			bool unstickDigSet = false;
 			Timer digRefusedTimer; //!< Since then: after the half minute the avoided step lasts, a route through there again is dug again.
+			Vector caveInPoint; //!< The dig step last looked at for a cave-in (SettingsMan::DigSafety): looked at once per step.
+			bool caveInChecked = false;
+			int caveInReroutes = 0; //!< How many ways round a cave-in it has asked for lately (caveInRerouteTimer since the first): after three it digs on.
+			Timer caveInRerouteTimer;
+			bool caveInRisky = false; //!< Digging on through a tunnel that brings ground down, with no way round: backs off from under it when it comes down.
+			float caveInLeft = 0.0F; //!< The x range the ground expected to come down is over (scene x, unwrapped near the unit).
+			float caveInRight = 0.0F;
+			float caveInSafeX = 0.0F; //!< Where it backs off to: out from under that, the way it came.
+			bool caveInWaiting = false; //!< Backed off, waiting for what came down to settle (caveInClearTimer since it was last seen moving, caveInWaitTimer since the wait began).
+			Timer caveInClearTimer;
+			Timer caveInWaitTimer;
 			int remedy = -1; //!< The stuck remedy being tried just now (StuckRemedy), or -1 (see MoveAlongRoute's walk).
 			Timer remedyTimer; //!< Since it began.
 			Vector remedySpot; //!< Where the unit was stuck when it began.
@@ -1214,6 +1225,18 @@ namespace RTE {
 			float limitMS = 0.0F;
 		};
 		TacticalMove m_Tactical;
+
+		/// Getting out from under falling ground (SettingsMan::AIDodgesFallingGround; see UpdateAIMotor).
+		struct GroundDodge {
+			bool active = false;
+			float way = 1.0F; //!< Which way it steps: -1 left, 1 right.
+			Timer timer; //!< Since the step began.
+			Timer seenTimer; //!< Since the ground coming down was last seen over it.
+		};
+		GroundDodge m_GroundDodge;
+
+		/// Steps an AI unit out from under a loose piece of terrain coming down on it, to the nearer side it can get to (SettingsMan::AIDodgesFallingGround).
+		void DodgeFallingGround();
 		int m_AIStance = 0;
 		Timer m_AIStanceTimer;
 		float m_AIStanceMS = 0.0F;

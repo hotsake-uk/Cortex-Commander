@@ -191,6 +191,8 @@ void SettingsMan::Clear() {
 	m_DeadCrewFallOut = true;
 	m_PassengersFireFromVehicles = true;
 	m_DirectOrders = DirectOrderTuning();
+	m_DigSafety = DigSafetyTuning();
+	m_AIDodgesFallingGround = true;
 	m_PathTuning = PathTuning();
 	m_NavDebugOverlay = 0;
 	m_DebugTeam = 0;
@@ -951,6 +953,11 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DirectStraightFlightRisk", { reader >> m_DirectOrders.StraightFlightRisk; m_DirectOrders.StraightFlightRisk = std::clamp(m_DirectOrders.StraightFlightRisk, 0.5F, 1.0F); });
 	MatchProperty("DirectSkyRouteRisk", { reader >> m_DirectOrders.SkyRouteRisk; m_DirectOrders.SkyRouteRisk = std::clamp(m_DirectOrders.SkyRouteRisk, 0.5F, 1.0F); });
 	MatchProperty("DirectDives", { reader >> m_DirectOrders.Dives; });
+	MatchProperty("DigAvoidCaveIns", { reader >> m_DigSafety.AvoidCaveIns; });
+	MatchProperty("DigBackOff", { reader >> m_DigSafety.BackOff; });
+	MatchProperty("DigToAvoidCaveIns", { reader >> m_DigSafety.DigToOrders; });
+	MatchProperty("DigToPreviewWarns", { reader >> m_DigSafety.PreviewWarns; });
+	MatchProperty("AIDodgesFallingGround", { reader >> m_AIDodgesFallingGround; });
 	MatchProperty("DirectDiveRisk", { reader >> m_DirectOrders.DiveRisk; m_DirectOrders.DiveRisk = std::clamp(m_DirectOrders.DiveRisk, 0.5F, 1.0F); });
 	MatchProperty("DirectDiveChance", { reader >> m_DirectOrders.DiveChance; m_DirectOrders.DiveChance = std::clamp(m_DirectOrders.DiveChance, 0.0F, 1.0F); });
 	MatchProperty("DirectFullRiskDrag", { reader >> m_DirectOrders.RiskDragPixels; m_DirectOrders.RiskDragPixels = std::clamp(m_DirectOrders.RiskDragPixels, 200.0F, 1200.0F); });
@@ -1602,6 +1609,11 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("DirectStraightFlightRisk", m_DirectOrders.StraightFlightRisk);
 	writer.NewPropertyWithValue("DirectSkyRouteRisk", m_DirectOrders.SkyRouteRisk);
 	writer.NewPropertyWithValue("DirectDives", m_DirectOrders.Dives);
+	writer.NewPropertyWithValue("DigAvoidCaveIns", m_DigSafety.AvoidCaveIns);
+	writer.NewPropertyWithValue("DigBackOff", m_DigSafety.BackOff);
+	writer.NewPropertyWithValue("DigToAvoidCaveIns", m_DigSafety.DigToOrders);
+	writer.NewPropertyWithValue("DigToPreviewWarns", m_DigSafety.PreviewWarns);
+	writer.NewPropertyWithValue("AIDodgesFallingGround", m_AIDodgesFallingGround);
 	writer.NewPropertyWithValue("DirectDiveRisk", m_DirectOrders.DiveRisk);
 	writer.NewPropertyWithValue("DirectDiveChance", m_DirectOrders.DiveChance);
 	writer.NewPropertyWithValue("CautiousCaution", m_DirectOrders.CautiousCaution);

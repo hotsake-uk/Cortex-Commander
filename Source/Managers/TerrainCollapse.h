@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace RTE {
@@ -188,6 +189,28 @@ namespace RTE {
 		/// Gets the loose pieces moving right now, for the world simulation overlay and unit speech. Call from the main thread, between sim updates.
 		/// @param pieces Filled with them.
 		static void GetFallingPieces(std::vector<FallingPiece>& pieces);
+
+		/// Gets the loose pieces as they were at the end of this sim update's TerrainCollapse::Update, for the AI. Safe to read from the AI's threads:
+		/// it only changes in Update, which never runs alongside them.
+		static const std::vector<FallingPiece>& GetFallingNow();
+
+		/// What digging a tunnel would bring down into it (TunnelWouldCaveIn).
+		struct CaveIn {
+			bool Falls = false; //!< Whether ground would come down into the tunnel.
+			int Left = 0; //!< The box the ground that would come down is in, in scene pixels (Left can be past Right on a wrapping scene's seam).
+			int Top = 0;
+			int Right = 0;
+			int Bottom = 0;
+		};
+
+		/// Gets whether digging a tunnel would cut ground loose that comes down into it, by the same overhang and neck rules digging is checked by,
+		/// run as if the tunnel were already dug. Nothing is changed. What already hangs (as the real check, which holds it against how things were
+		/// when the digging began) is left out, and so is ground that would fall somewhere not over the tunnel. Thread safe (callers wait their turn);
+		/// a few milliseconds a call, so not every update.
+		/// @param legs The tunnel's middle line, a straight piece at a time, in scene coordinates.
+		/// @param radius How far either side of that line it is dug, in pixels (about half a unit's height).
+		/// @return What would come down.
+		static CaveIn TunnelWouldCaveIn(const std::vector<std::pair<Vector, Vector>>& legs, float radius);
 
 		/// Finds the loose piece moving right now that has a pixel at a place, so something can be tied to it (a rope). Call from the simulation.
 		/// @param x The pixel, in scene coordinates.

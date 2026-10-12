@@ -23,6 +23,7 @@
 #include <array>
 #include <cmath>
 #include <string>
+#include <limits>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -287,6 +288,8 @@ namespace {
 	constexpr size_t c_MaxDrops = 20;
 	int s_LiftDrop = 0; //!< While a drop's pieces are lifted (LiftPiece): the drop they belong to.
 	std::mutex s_QueueMutex;
+	std::mutex s_CaveInMutex; //!< TunnelWouldCaveIn's searches share the checks' buffers: one asker at a time (the checks themselves never run alongside the AI).
+	std::vector<TerrainCollapse::FallingPiece> s_FallingNow; //!< The loose pieces as of the end of the last Update (GetFallingNow).
 	const void* s_Scene = nullptr;
 	unsigned int s_SceneGeneration = 0; //!< SceneMan's count of scene loads when this scene was taken up: the same scene restarted, or a new one at the old one's address, still counts as new (as in FluidSim).
 	int s_CollapsedCount = 0;
@@ -2084,6 +2087,15 @@ namespace {
 		s_Bodies.erase(std::remove_if(s_Bodies.begin(), s_Bodies.end(), [](const Body& body) { return body.Done; }), s_Bodies.end());
 	}
 
+	/// Ground a tunnel not yet dug would take out, for TunnelWouldCaveIn: the overhang and neck searches see it as air. Sorted keys; none outside that.
+	/// (Only set under s_CaveInMutex, by the thread asking.)
+	thread_local const std::vector<int>* s_PretendDug = nullptr;
+
+	/// Whether a pixel is ground a tunnel not yet dug would take out (s_PretendDug).
+	inline bool PretendDug(int key) {
+		return s_PretendDug && key >= s_PretendDug->front() && key <= s_PretendDug->back() && std::binary_search(s_PretendDug->begin(), s_PretendDug->end(), key);
+	}
+
 	/// Whether two touching pixels' materials make one piece. With tree rules, leaves join only leaves and tree trunk: a tree hangs on its own trunk,
 	/// so one whose trunk is cut falls with its leaves, even where they brush the ground or a wall.
 	bool Joins(int material, int other, bool treeRules, int x, int y, int otherX, int otherY) {
@@ -2240,7 +2252,7 @@ namespace {
 			if (y >= s_Height) {
 				return true;
 			}
-			if (!WrapInWorld(x, y)) {
+			if (!WrapInWorld(x, y) || PretendDug(y * s_Width + x)) {
 				return false;
 			}
 			int material = materialBitmap->line[y][x];
@@ -2284,6 +2296,9 @@ namespace {
 					}
 					if (!isSolid && material == g_MaterialAir && wasCut(static_cast<int>(stateRow) + x)) {
 						isSolid = true;
+					}
+					if (isSolid && PretendDug(static_cast<int>(stateRow) + x)) {
+						isSolid = false;
 					}
 				}
 				solid[rowStart + wx] = isSolid ? 1 : 0;
@@ -2601,6 +2616,9 @@ namespace {
 			int material = materialBitmap->line[y][x];
 			if (material == g_MaterialAir) {
 				return (cuts && std::binary_search(cuts->begin(), cuts->end(), y * s_Width + x)) ? 1 : 0;
+			}
+			if (PretendDug(y * s_Width + x)) {
+				return 0;
 			}
 			if (s_Flimsy[material] || FluidSim::IsLiquid(material) || s_NoHold[material] || s_Leaves[material] || s_TreeTrunk[material] || TerrainTrees::IsTreeMaterial(material) || (s_State[y * s_Width + x] & c_Falling)) {
 				return 0;
@@ -3741,6 +3759,8 @@ void TerrainCollapse::Update() {
 		}
 	}
 	UpdateBodies(terrain);
+	s_FallingNow.clear();
+	GetFallingPieces(s_FallingNow);
 	// The checks come due: a few an update (more when many are due, so the wait stays short), the longest due first, the rest carried over. A place
 	// and size already checked this update isn't checked again (a crater queued twice, or a check's second look come due while its first waited).
 	constexpr int c_ChecksPerUpdate = 4;
@@ -3777,6 +3797,7 @@ void TerrainCollapse::Clear() {
 	s_Bodies.clear();
 	s_NewBodies.clear();
 	s_Lifted.clear();
+	s_FallingNow.clear();
 	s_Watches.clear();
 	s_WatchesWaiting.clear();
 	s_WatchWaitingDamage.clear();
@@ -3900,4 +3921,140 @@ void TerrainCollapse::GetFallingPieces(std::vector<FallingPiece>& pieces) {
 	for (const Body& body: s_Bodies) {
 		pieces.push_back({body.Pos.x, body.Pos.y, body.Radius, body.Vel.x, body.Vel.y, IsTree(body)});
 	}
+}
+
+const std::vector<TerrainCollapse::FallingPiece>& TerrainCollapse::GetFallingNow() {
+	return s_FallingNow;
+}
+
+TerrainCollapse::CaveIn TerrainCollapse::TunnelWouldCaveIn(const std::vector<std::pair<Vector, Vector>>& legs, float radius) {
+	CaveIn result;
+	if (!s_Enabled || legs.empty()) {
+		return result;
+	}
+	std::scoped_lock lock(s_CaveInMutex);
+	Scene* scene = g_SceneMan.GetScene();
+	SLTerrain* terrain = scene ? scene->GetTerrain() : nullptr;
+	// Only once the system has seen this scene (its tables and pixel states are for it), as BeginChange.
+	if (!terrain || scene != s_Scene || !s_TablesBuilt || s_Width <= 0 || s_State.size() != static_cast<size_t>(s_Width) * static_cast<size_t>(s_Height)) {
+		return result;
+	}
+	const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
+	const int r = std::max(2, static_cast<int>(radius));
+	// The tunnel: every pixel within r of its line. Its ground is what is dug; each column it crosses, from its top to its bottom, is where
+	// ground coming down lands in it.
+	std::vector<int> dug;
+	std::map<int, std::pair<int, int>> columns;
+	struct Window {
+		glm::vec2 Low{std::numeric_limits<float>::max()};
+		glm::vec2 High{std::numeric_limits<float>::lowest()};
+	};
+	std::vector<Window> windows(1);
+	glm::vec2 windowStart;
+	bool windowBegun = false;
+	for (const auto& leg: legs) {
+		Vector way = g_SceneMan.ShortestDistance(leg.first, leg.second, s_WrapX);
+		glm::vec2 a(leg.first.m_X, leg.first.m_Y);
+		glm::vec2 b = a + glm::vec2(way.m_X, way.m_Y);
+		// The legs in windows of up to about 140 px of tunnel, each searched on its own: the searches see 400 px across at most.
+		if (!windowBegun) {
+			windowStart = a;
+			windowBegun = true;
+		} else if (glm::length(b - windowStart) > 140.0F) {
+			windows.emplace_back();
+			windowStart = a;
+		}
+		Window& window = windows.back();
+		window.Low = glm::min(window.Low, glm::min(a, b));
+		window.High = glm::max(window.High, glm::max(a, b));
+		glm::vec2 along = b - a;
+		float lengthSquared = std::max(glm::dot(along, along), 0.0001F);
+		for (int y = static_cast<int>(std::floor(std::min(a.y, b.y))) - r; y <= static_cast<int>(std::ceil(std::max(a.y, b.y))) + r; ++y) {
+			for (int rawX = static_cast<int>(std::floor(std::min(a.x, b.x))) - r; rawX <= static_cast<int>(std::ceil(std::max(a.x, b.x))) + r; ++rawX) {
+				glm::vec2 point(static_cast<float>(rawX) + 0.5F, static_cast<float>(y) + 0.5F);
+				float t = std::clamp(glm::dot(point - a, along) / lengthSquared, 0.0F, 1.0F);
+				glm::vec2 off = point - (a + along * t);
+				if (glm::dot(off, off) > static_cast<float>(r * r)) {
+					continue;
+				}
+				int x = rawX;
+				if (!WrapInWorld(x, y)) {
+					continue;
+				}
+				auto [column, added] = columns.try_emplace(x, y, y);
+				if (!added) {
+					column->second.first = std::min(column->second.first, y);
+					column->second.second = std::max(column->second.second, y);
+				}
+				if (materialBitmap->line[y][x] != g_MaterialAir) {
+					dug.push_back(y * s_Width + x);
+				}
+			}
+		}
+	}
+	std::sort(dug.begin(), dug.end());
+	dug.erase(std::unique(dug.begin(), dug.end()), dug.end());
+	if (dug.empty()) {
+		return result;
+	}
+	bool boxed = false;
+	// What comes down if this is dug, and was not already about to: found with the tunnel taken out and not, and only what is new counts.
+	auto newlyLoose = [](const std::vector<std::vector<int>>& before, const std::vector<int>& core) {
+		return std::none_of(before.begin(), before.end(), [&core](const std::vector<int>& was) { return was.size() < core.size() * 2 && core.size() < was.size() * 2 && ShareIn(core, was) > 0.5F; });
+	};
+	std::vector<HangingPiece> found;
+	for (const Window& window: windows) {
+		glm::vec2 middle = (window.Low + window.High) * 0.5F;
+		int reach = static_cast<int>(glm::length(window.High - window.Low) * 0.5F) + r;
+		Check check{static_cast<int>(middle.x), static_cast<int>(middle.y), reach, 0, nullptr};
+		std::vector<std::vector<int>> before;
+		std::vector<std::vector<int>> after;
+		for (bool pretend: {false, true}) {
+			s_PretendDug = pretend ? &dug : nullptr;
+			std::vector<std::vector<int>>& list = pretend ? after : before;
+			for (int neckWidth: NeckWidths()) {
+				FindHangingPieces(materialBitmap, check, found, neckWidth);
+				for (HangingPiece& piece: found) {
+					list.push_back(std::move(piece.Core));
+				}
+			}
+			FindOverhangs(materialBitmap, check, found);
+			for (HangingPiece& piece: found) {
+				list.push_back(std::move(piece.Core));
+			}
+		}
+		s_PretendDug = nullptr;
+		for (const std::vector<int>& core: after) {
+			if (!newlyLoose(before, core)) {
+				continue;
+			}
+			// Only ground that comes down into the tunnel: over a column of it, above its floor.
+			int over = 0;
+			int left = s_Width;
+			int top = s_Height;
+			int right = -1;
+			int bottom = -1;
+			for (int key: core) {
+				int x = key % s_Width;
+				int y = key / s_Width;
+				left = std::min(left, x);
+				right = std::max(right, x);
+				top = std::min(top, y);
+				bottom = std::max(bottom, y);
+				if (auto column = columns.find(x); column != columns.end() && y <= column->second.second) {
+					++over;
+				}
+			}
+			if (over < 4) {
+				continue;
+			}
+			result.Falls = true;
+			result.Left = boxed ? std::min(result.Left, left) : left;
+			result.Top = boxed ? std::min(result.Top, top) : top;
+			result.Right = boxed ? std::max(result.Right, right) : right;
+			result.Bottom = boxed ? std::max(result.Bottom, bottom) : bottom;
+			boxed = true;
+		}
+	}
+	return result;
 }
