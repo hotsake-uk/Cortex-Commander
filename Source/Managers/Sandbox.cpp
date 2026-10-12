@@ -2747,6 +2747,7 @@ void Sandbox::Update() {
 	}
 	if (!aiPaused && g_TimerMan.GetSimUpdateCount() % 30 == 0) {
 		UpdateGuards();
+		UpdateShipTeamOrders();
 	}
 	GymUpdate();
 	// (No sandbox-side watchdog for units that have stopped: getting unstuck, waiting for fuel before a tall climb, and giving up on a route that

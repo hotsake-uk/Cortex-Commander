@@ -274,6 +274,35 @@ namespace RTE {
 		/// Clamps every gib chunk setting into its range (after reading them).
 		void ClampGibChunks();
 
+		/// The AI combat settings ("AI combat" on the AI behaviour page of the settings panel): how well AI units shoot, how quickly they react
+		/// and spot, how far they look, how long they remember a target, how readily they throw and how long they hold the trigger. Each
+		/// scales what the AI scripts already work out (team AI skill, the unit's own overrides, veteran rank); at its default the scripts
+		/// skip it, so AICombatTuning() is the reset and plays exactly as the game always has.
+		struct AICombatTuning {
+			float Accuracy = 1.0F; //!< How well they aim, 0.25 to 4: their aim error is divided by it. 1: as the game comes.
+			float Reaction = 1.0F; //!< How long they take to fire and settle their aim, 0.25 to 3: those delays are multiplied by it. 1: as the game comes.
+			float Spotting = 1.0F; //!< How quickly they notice an enemy in view, 0.25 to 3: the rate noticing fills is multiplied by it. 1: as the game comes.
+			float SightRange = 1.0F; //!< How far they look for enemies, 0.5 to 2: the scan's reach is multiplied by it. 1: as the game comes.
+			float TargetMemory = 1.0F; //!< How long they keep on a target after losing sight of it, 0.25 to 4: each behaviour's own time (about a second while shooting) is multiplied by it. 1: as the game comes.
+			float GrenadeUse = 1.0F; //!< The chance, 0 to 1, they take a grenade or thrown weapon throw the AI judges worth making. 1: every one, as the game comes.
+			float Burst = 1.0F; //!< How long an automatic stays on the trigger in each burst, 0.5 to 2. 1: as the game comes.
+		};
+
+		/// Gets the AI combat tuning, to read or change ("AI combat" settings).
+		AICombatTuning& AICombat() { return m_AICombat; }
+
+		/// Clamps every AI combat setting into its range (after reading or changing them).
+		void ClampAICombat();
+
+		/// Each AI combat setting on its own, for the AI scripts (see AICombatTuning).
+		float AICombatAccuracy() const { return m_AICombat.Accuracy; }
+		float AICombatReaction() const { return m_AICombat.Reaction; }
+		float AICombatSpotting() const { return m_AICombat.Spotting; }
+		float AICombatSightRange() const { return m_AICombat.SightRange; }
+		float AICombatTargetMemory() const { return m_AICombat.TargetMemory; }
+		float AICombatGrenadeUse() const { return m_AICombat.GrenadeUse; }
+		float AICombatBurst() const { return m_AICombat.Burst; }
+
 		/// The late-battle slowdown fixes ("Performance" in the settings panel), each with a switch so it can be tried against the old behaviour: things a battle
 		/// leaves behind (blood pools, wrecks, debris, gas, scattered terrain changes) that kept costing every frame after the fighting, all actors gone or not.
 		struct SlowdownFixTuning {
@@ -283,7 +312,7 @@ namespace RTE {
 			bool GasAreaShrinks = true; //!< The gas grid's worked-out area draws in to where gas still is; off: it only grows until no gas is left anywhere.
 			bool LightingSplitsChanges = true; //!< The lighting handles each changed patch of terrain on its own; off: every patch changed in a frame as one box round them all.
 			int MaxLooseBits = 2000; //!< The most loose bits (pixels and small sprite particles that never expire: blood, flecks, chips) at once, 0 to 50000; past it the oldest that have slowed settle where they lie, or are removed where they can't (see MovableMan::Update). 0: no limit.
-			std::array<int, 6> MaxLooseBitsOf{}; //!< The most loose bits of each kind of material (see LooseBitKind) at once, 0 to 50000, each within the overall most. 0: no limit of its own.
+			std::array<int, 6> MaxLooseBitsOf{200, 0, 0, 0, 0, 0}; //!< The most loose bits of each kind of material (see LooseBitKind) at once, 0 to 50000, each within the overall most. 0: no limit of its own. Blood & flesh 200 by default (blood was most of what piled up), the rest none.
 		};
 
 		/// The kinds of material loose bits are limited by, each on its own as well as all together (SlowdownFixTuning::MaxLooseBitsOf).
@@ -371,6 +400,11 @@ namespace RTE {
 		/// Whether the AI's walk sees loose bodies its own collides with in the way (a corpse, a gib, a limb: AHuman::ObjectAhead) and leaps
 		/// them, hops them with the jet, routes round or waits, as it does a wreck. Off as before: it pressed into them until the stuck handling.
 		bool UnitsStepOverObjects() const { return m_UnitsStepOverObjects; }
+		/// Whether an AI soldier whose walk is held up by a loose object (a corpse, a gib, a crate) no heavier than itself shoves it along out of
+		/// the way (AHuman::PushObjectAhead), before stepping over it or going round. On as the game comes.
+		bool UnitsPushObjects() const { return m_UnitsPushObjects; }
+		/// How hard units shove loose objects out of their way, times each unit's own ObjectPushStrength: 1 as the game comes, 0 to 3.
+		float ObjectPushStrength() const { return m_ObjectPushStrength; }
 		/// Whether units' own senses (the walk's look ahead, getting up, leaps, landings, mantling, ducking) see through what their bodies push
 		/// through: grass and soft plants (integrity 5 or under, not flowing). Off as before: grass read as ground over the dirt the floor
 		/// rays find, and units ducked under hanging plants and mantled onto bushes. See Actor::SensesPassTerrain.
@@ -432,7 +466,7 @@ namespace RTE {
 		/// going through them. 1, the default, is every weapon as it is defined.
 		float WeaponTerrainDamage() const { return m_WeaponTerrainDamage; }
 
-		/// Gets which digger those units are handed: 0 Light, 1 Medium, 2 Heavy, 3 a random one of the three.
+		/// Gets which digger those units are handed: 0 Light, 1 Medium, 2 Heavy, 3 a random one of the four, 4 Mega.
 		int AISpawnDiggerType() const { return m_AISpawnDiggerType; }
 
 		/// The recklessness as a multiplier on the AI's movement caution: 2 at the careful end, 1 as designed, 0.5 at the reckless end.
@@ -457,6 +491,10 @@ namespace RTE {
 
 		/// Whether AI units wait at a take-off for the fuel the flight needs (on, as designed), or go with what is in the tank.
 		bool AIWaitsForFuel() const { return m_AIWaitForFuel; }
+		/// Whether AI units wait for a door of their side on its sensor until it is fully open: hovering in a hatch's sensor under it, braking
+		/// short of the leaf, and giving up only after 4 s seen by the sensor with the door still shut (on). Off, as before: held wherever the
+		/// door came near, an opening door taken as open, and given up on after 2-3 s.
+		bool AIWaitsAtDoors() const { return m_AIWaitsAtDoors; }
 		/// Battle Command: whether an enemy team's AI commander spends its points on reinforcements, as you do.
 		bool AIEnemyBuysReinforcements() const { return m_AIEnemyBuysReinforcements; }
 		/// Battle Command: whether an enemy team's AI commander uses commander powers, as you do.
@@ -519,6 +557,33 @@ namespace RTE {
 
 		/// Sets whether AI units get out from under falling ground.
 		void SetAIDodgesFallingGround(bool on) { m_AIDodgesFallingGround = on; }
+		/// The route search's and route follower's tuning (the "Pathfinding" settings). Each member's default is the tuning the game comes
+		/// with, so PathTuning() is the reset.
+		struct PathTuning {
+			// The search (PathFinder::AdjacentCost). Costs are in nodes walked: a node's walk costs about 1.
+			float LineWeight = 0.0F; //!< On every order, what each node off the straight line from start to goal costs, in nodes walked (PathFinder::LineCost), 0 to 2; added to a direct order's own.
+			float UpCost = 1.5F; //!< The extra cost of each node gone up, on foot or on the jet, 0 to 5 (extraUpCost): lower goes over hills, higher walks round them.
+			float FlightCostScale = 1.0F; //!< What a jet flight's time, take-off and fuel cost every unit, as a share of the usual (PathAgent::FlightCostScale), 0.2 to 1; a direct or cautious order's own scale multiplies it.
+			float JumpHeightCost = 0.5F; //!< How much dearer each node of a jet jump up a column is than the one below it, 0 to 2: higher keeps jumps short.
+			float LadderCostScale = 1.0F; //!< Ladder climbs' cost (2 a node up, 1.2 down), as a multiple, 0.8 to 5.
+			float FallCostPerNode = 2.5F; //!< The cost of each node of a drop past a storey (PathFinder::FallCost), 0 to 10.
+			float RouteVariety = 1.0F; //!< How much each unit's own taste in routes (PathFinder::VarietyCost) weighs, 0 to 4: 0 sends everyone the same shortest way.
+			float FailedSpotCost = 25.0F; //!< What a place or flight a unit or its team failed at lately costs (PathFinder::AvoidCost, AvoidLinks), 0 to 100.
+			float JetOverClimb = 0.0F; //!< 0 to 1: how much a unit with a jetpack and fuel jets up rather than walking or scrambling up a slope or stairs. The climb on foot costs 1 / (1 - this) as much (from half a tank; less below), and at 1 it is a last resort.
+			// The follower (AHuman::MoveAlongRoute).
+			float RefreshSeconds = 7.5F; //!< How often a unit on the move asks for its route afresh, s.
+			float NoSightSeconds = 1.0F; //!< How long the route's next point may be out of sight on the ground before a new route is asked for, s.
+			float StuckRemedySeconds = 2.5F; //!< How long without getting nearer the next point before the stuck remedies start, s.
+			float StuckRepathSeconds = 6.0F; //!< How long without getting nearer before the place is avoided and a new route asked for, s.
+			float AirCheckSeconds = 0.5F; //!< How often a unit in the air checks for a better route, s (taken only when better).
+			float ReachScale = 1.0F; //!< How near a route point counts as reached, as a multiple of the unit's own reach (twice that in the air), 0.5 to 3: higher cuts corners.
+			float NoRouteRetrySeconds = 3.0F; //!< How long a unit told there is no way waits before asking again, s.
+		};
+
+		/// Gets the pathfinding tuning, to read or change ("Pathfinding" settings).
+		PathTuning& PathTunings() { return m_PathTuning; }
+		/// Gets the pathfinding tuning, to read.
+		const PathTuning& PathTunings() const { return m_PathTuning; }
 
 		/// Whether AI units use vehicles (VH-4): one going a long way walks to a friendly vehicle on its way and rides it there, or drives it.
 		bool AIUsesVehicles() const { return m_AIUsesVehicles; }
@@ -679,6 +744,12 @@ namespace RTE {
 
 		/// Sets whether the sandbox pings where units of the selection's side come under fire.
 		void SetShowSandboxAttackPings(bool show) { m_SandboxAttackPings = show; }
+
+		/// Whether the sandbox shows its "no route" markers where units couldn't get to (RC-7).
+		bool ShowSandboxNoRouteMarkers() const { return m_SandboxNoRouteMarkers; }
+
+		/// Sets whether the sandbox shows its "no route" markers.
+		void SetShowSandboxNoRouteMarkers(bool show) { m_SandboxNoRouteMarkers = show; }
 
 		/// Whether the sandbox's map window is shown (RC-8).
 		bool ShowSandboxMinimap() const { return m_SandboxMinimap; }
@@ -915,6 +986,8 @@ namespace RTE {
 		void SetJetpackWeightCompensation(int mode) { m_JetpackWeightCompensation = std::clamp(mode, 0, 2); }
 		void SetUnitWaterBehaviour(int mode) { m_UnitWaterBehaviour = std::clamp(mode, 0, 2); }
 		void SetUnitsStepOverObjects(bool on) { m_UnitsStepOverObjects = on; }
+		void SetUnitsPushObjects(bool on) { m_UnitsPushObjects = on; }
+		void SetObjectPushStrength(float strength) { m_ObjectPushStrength = std::clamp(strength, 0.0F, 3.0F); }
 		void SetSensesPassPlants(bool on) { m_SensesPassPlants = on; }
 		void SetSensesPassRungs(bool on) { m_SensesPassRungs = on; }
 		void SetSensesPassSpecks(bool on) { m_SensesPassSpecks = on; }
@@ -940,7 +1013,7 @@ namespace RTE {
 		/// Sets how hard weapon fire strikes terrain; see WeaponTerrainDamage.
 		void SetWeaponTerrainDamage(float scale) { m_WeaponTerrainDamage = std::clamp(scale, 0.1F, 20.0F); }
 		/// Sets which digger those units are handed; see AISpawnDiggerType.
-		void SetAISpawnDiggerType(int type) { m_AISpawnDiggerType = std::clamp(type, 0, 3); }
+		void SetAISpawnDiggerType(int type) { m_AISpawnDiggerType = std::clamp(type, 0, 4); }
 
 		/// Sets whether AI units steady themselves before they jet.
 		void SetAISteadiesBeforeJet(bool steady) { m_AISteadyBeforeJet = steady; }
@@ -954,6 +1027,7 @@ namespace RTE {
 
 		/// Sets whether AI units wait for fuel before they jet.
 		void SetAIWaitsForFuel(bool wait) { m_AIWaitForFuel = wait; }
+		void SetAIWaitsAtDoors(bool wait) { m_AIWaitsAtDoors = wait; }
 		void SetAIEnemyBuysReinforcements(bool on) { m_AIEnemyBuysReinforcements = on; }
 		void SetAIEnemyUsesPowers(bool on) { m_AIEnemyUsesPowers = on; }
 		void SetAISquadFollowsYou(bool on) { m_AISquadFollowsYou = on; }
@@ -1212,6 +1286,7 @@ namespace RTE {
 		int m_SandboxSpawnStats; //!< How the Spawn tab shows units' and items' stats (see SandboxSpawnStats).
 		int m_SandboxSpawnSort; //!< How the sandbox's picture lists are sorted (see SandboxSpawnSort).
 		bool m_SandboxAttackPings; //!< Whether units coming under fire are pinged (see ShowSandboxAttackPings).
+		bool m_SandboxNoRouteMarkers; //!< Whether "no route" markers are shown (see ShowSandboxNoRouteMarkers).
 		bool m_SandboxMinimap; //!< Whether the sandbox's map window is shown (see ShowSandboxMinimap).
 		bool m_BattleAlerts; //!< Whether Battle Command's alerts are listed (see ShowBattleAlerts).
 		int m_BattleAlertLines; //!< The most alerts listed at once (see BattleAlertLines).
@@ -1250,6 +1325,7 @@ namespace RTE {
 		bool m_TraceAllUnits; //!< Whether the AI channels trace every unit (see TraceAllUnits).
 		bool m_BodyGearSettlesAsScraps; //!< Whether what came off a unit settles into the terrain as Flesh Scraps (see BodyGearSettlesAsScraps).
 		GibChunkTuning m_GibChunks; //!< How gib chunks come out, move and settle (see GibChunks).
+		AICombatTuning m_AICombat; //!< How well AI units shoot, react, spot and throw (see AICombat).
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
 		bool m_EnableStuckPush; //!< Whether an AI humanoid stuck on the ground is nudged free once its own moves are spent (AHuman::PushFree).
 		bool m_NoSceneWrap; //!< Whether every scene is played with hard left and right edges instead of wrapping.
@@ -1266,6 +1342,8 @@ namespace RTE {
 		int m_JetpackWeightCompensation = 0; //!< See JetpackWeightCompensation.
 		int m_UnitWaterBehaviour = 2; //!< See UnitWaterBehaviour.
 		bool m_UnitsStepOverObjects = true; //!< See UnitsStepOverObjects.
+		bool m_UnitsPushObjects = true; //!< See UnitsPushObjects.
+		float m_ObjectPushStrength = 1.0F; //!< See ObjectPushStrength.
 		bool m_SensesPassPlants = true; //!< See SensesPassPlants.
 		bool m_SensesPassRungs = true; //!< See SensesPassRungs.
 		bool m_SensesPassSpecks = true; //!< See SensesPassSpecks.
@@ -1286,7 +1364,7 @@ namespace RTE {
 		float m_ShipGraceZone; //!< Pixels past the map's top and sides flying ships may go, 0 to 700 (see ShipGraceZone).
 		float m_CameraOverscroll; //!< Pixels past the map's edges the camera may scroll, 0 to 2000 (see CameraOverscroll).
 		float m_WeaponTerrainDamage; //!< Multiple of the force weapon fire strikes terrain with, 0.1 to 20 (see WeaponTerrainDamage).
-		int m_AISpawnDiggerType; //!< Which digger they're handed: 0 Light, 1 Medium, 2 Heavy, 3 random (see AISpawnDiggerType).
+		int m_AISpawnDiggerType; //!< Which digger they're handed: 0 Light, 1 Medium, 2 Heavy, 3 random, 4 Mega (see AISpawnDiggerType).
 		bool m_AISteadyBeforeJet; //!< Whether AI units steady themselves before they jet (see AISteadiesBeforeJet).
 		bool m_AICoverDigs; //!< See AICoverDigs.
 		bool m_AICoverFallsBack; //!< See AICoverFallsBack.
@@ -1295,6 +1373,7 @@ namespace RTE {
 		bool m_AIScavengesBetterWeapons; //!< See AIScavengesBetterWeapons.
 		bool m_AIUnitsCallLifts; //!< See AIUnitsCallLifts.
 		bool m_AIWaitForFuel; //!< Whether AI units wait for fuel before they jet (see AIWaitsForFuel).
+		bool m_AIWaitsAtDoors = true; //!< See AIWaitsAtDoors.
 		bool m_AIEnemyBuysReinforcements; //!< See AIEnemyBuysReinforcements.
 		bool m_AIEnemyUsesPowers; //!< See AIEnemyUsesPowers.
 		bool m_AISquadFollowsYou; //!< See AISquadFollowsYou.
@@ -1304,6 +1383,7 @@ namespace RTE {
 		DirectOrderTuning m_DirectOrders; //!< How units behave on a direct order (see DirectOrders).
 		DigSafetyTuning m_DigSafety; //!< How diggers keep from bringing the ground down on themselves (see DigSafety).
 		bool m_AIDodgesFallingGround; //!< See AIDodgesFallingGround.
+		PathTuning m_PathTuning; //!< The route search's and follower's tuning (see PathTunings).
 		bool m_EnableCrabBombs; //!< Whether all actors (except Brains and Doors) should be annihilated if a number exceeding the crab bomb threshold is released at once.
 		int m_CrabBombThreshold; //!< The number of crabs needed to be released at once to trigger the crab bomb effect.
 		bool m_ShowEnemyHUD; //!< Whether the HUD of enemy actors should be visible to the player.

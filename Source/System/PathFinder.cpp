@@ -118,6 +118,8 @@ thread_local Vector s_ThreatGoal; // The search's goal: steps this near it cost 
 thread_local bool s_ThreatGoalSet = false; // Whether s_ThreatGoal is this search's.
 thread_local unsigned s_RouteSeed = 0; // The searcher's taste in routes (PathAgent::RouteSeed); 0 for none.
 thread_local float s_FlightCostScale = 1.0F; // The searcher's share of a flight's usual cost (PathAgent::FlightCostScale).
+thread_local float s_ClimbOnFootScale = 1.0F; // What climbing a slope on foot costs the searcher, as a multiple (PathAgent::ClimbOnFootScale).
+thread_local RTE::SettingsMan::PathTuning s_Tune; // The pathfinding tuning when the search began (SettingsMan::PathTunings): the same for the whole search.
 thread_local float s_LineWeight = 0.0F; // What a node off a dig-to's straight line costs the searcher (PathAgent::LineWeight).
 thread_local bool s_LineSet = false; // Whether a dig-to's line (s_LineFrom to s_LineTo) is this search's (see LineCost).
 thread_local Vector s_LineFrom; // The search's start node, for LineCost.
@@ -743,6 +745,8 @@ void PathFinder::ApplyAgent(const PathAgent& agent) {
 	s_FlightCostScale = agent.FlightCostScale;
 	s_LineWeight = agent.LineWeight;
 	s_LineSet = false;
+	s_ClimbOnFootScale = agent.ClimbOnFootScale;
+	s_Tune = g_SettingsMan.PathTunings();
 	s_AvoidLinks = agent.AvoidLinks.empty() ? nullptr : &agent.AvoidLinks;
 
 	// Actors capable of jumping/jetpacking can jump upwards.
@@ -877,6 +881,7 @@ namespace {
 		unsigned RouteSeed = s_RouteSeed;
 		float FlightCostScale = s_FlightCostScale;
 		float LineWeight = s_LineWeight;
+		float ClimbOnFootScale = s_ClimbOnFootScale;
 		bool LineSet = s_LineSet;
 		Vector LineFrom = s_LineFrom;
 		Vector LineTo = s_LineTo;
@@ -921,6 +926,7 @@ namespace {
 			s_RouteSeed = RouteSeed;
 			s_FlightCostScale = FlightCostScale;
 			s_LineWeight = LineWeight;
+			s_ClimbOnFootScale = ClimbOnFootScale;
 			s_LineSet = LineSet;
 			s_LineFrom = LineFrom;
 			s_LineTo = LineTo;
@@ -1419,10 +1425,10 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 		};
 		if (node->Ladder) {
 			if (node->Up && node->Up->m_Navigable && Open(*node->UpMaterial) && (node->Up->Ladder || standsAt(node->Up)) && climbOpen(node, node->Up)) {
-				link(node->Up, 2.0F * climbScale);
+				link(node->Up, 2.0F * climbScale * s_Tune.LadderCostScale);
 			}
 			if (node->Down && node->Down->m_Navigable && Open(*node->DownMaterial) && (node->Down->Ladder || standsAt(node->Down))) {
-				link(node->Down, 1.2F * climbScale);
+				link(node->Down, 1.2F * climbScale * s_Tune.LadderCostScale);
 			}
 			// (Off the side and over the top only where the way between is open: a ladder stands against a wall, and offered through it,
 			// the floor on the wall's far side was a step away, and units walked into the wall behind the ladder.)
@@ -1483,7 +1489,11 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 
 	if (isInNoGrav || NodeIsOnSolidGround(*node)) {
 		// Cost to discourage us from going up. At 3 a hill was worth a long walk round, which is what units did; at half that they go over.
-		const float extraUpCost = 1.5F;
+		// (1.5 as tuned: SettingsMan::PathTuning::UpCost.)
+		const float extraUpCost = s_Tune.UpCost;
+		// A climb up a slope on foot (stairs, a scramble, a walk up a diagonal), dearer for a searcher with a jet and fuel that the settings
+		// want jetting up instead (PathAgent::ClimbOnFootScale).
+		const float footClimb = s_ClimbOnFootScale;
 
 		// (A walk's steps pay nothing for a plant or anything else a walking body goes through as it comes (WalkMaterialCost). At its
 		// integrity, a node of foliage cost four of air and a grassy slope's step up four more, and a leap over them, which paid nothing for
@@ -1571,13 +1581,13 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 		if (s_WalksStairs && s_JumpHeight < FLT_MAX) {
 			const PathNode* upRight = node->Up ? node->Up->UpRight : nullptr;
 			if (StairsUp(*node, true) && upRight && upRight->m_Navigable) {
-				adjCost.cost = (2.24F + extraUpCost * 2.0F + radiatedCost) * HeadRoomFactor(*node, *upRight);
+				adjCost.cost = (2.24F + extraUpCost * 2.0F + radiatedCost) * HeadRoomFactor(*node, *upRight) * footClimb;
 				adjCost.state = const_cast<PathNode*>(upRight);
 				adjacentList->push_back(adjCost);
 			}
 			const PathNode* upLeft = node->Up ? node->Up->LeftUp : nullptr;
 			if (StairsUp(*node, false) && upLeft && upLeft->m_Navigable) {
-				adjCost.cost = (2.24F + extraUpCost * 2.0F + radiatedCost) * HeadRoomFactor(*node, *upLeft);
+				adjCost.cost = (2.24F + extraUpCost * 2.0F + radiatedCost) * HeadRoomFactor(*node, *upLeft) * footClimb;
 				adjCost.state = const_cast<PathNode*>(upLeft);
 				adjacentList->push_back(adjCost);
 			}
@@ -1602,13 +1612,13 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 		if (s_Scrambles && s_JumpHeight < FLT_MAX) {
 			const PathNode* upRight = node->Up && node->Up->Up ? node->Up->Up->UpRight : nullptr;
 			if (ScrambleUp(*node, true) && upRight && upRight->m_Navigable) {
-				adjCost.cost = (9.5F + extraUpCost * 3.0F + radiatedCost) * HeadRoomFactor(*node, *upRight);
+				adjCost.cost = (9.5F + extraUpCost * 3.0F + radiatedCost) * HeadRoomFactor(*node, *upRight) * footClimb;
 				adjCost.state = const_cast<PathNode*>(upRight);
 				adjacentList->push_back(adjCost);
 			}
 			const PathNode* upLeft = node->Up && node->Up->Up ? node->Up->Up->LeftUp : nullptr;
 			if (ScrambleUp(*node, false) && upLeft && upLeft->m_Navigable) {
-				adjCost.cost = (9.5F + extraUpCost * 3.0F + radiatedCost) * HeadRoomFactor(*node, *upLeft);
+				adjCost.cost = (9.5F + extraUpCost * 3.0F + radiatedCost) * HeadRoomFactor(*node, *upLeft) * footClimb;
 				adjCost.state = const_cast<PathNode*>(upLeft);
 				adjacentList->push_back(adjCost);
 			}
@@ -1630,7 +1640,7 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 				}
 
 				float f = i + 2; // Exponential cost increase for jumping higher
-				float extraJumpCost = f * 0.5F; // Dearer the higher, but not by the square: at that a 190 px cliff was worth a 1250 px walk round through the valley; at a quarter, units leapt over whole courses rather than walk them.
+				float extraJumpCost = f * s_Tune.JumpHeightCost; // Dearer the higher, but not by the square: at that a 190 px cliff was worth a 1250 px walk round through the valley; at a quarter, units leapt over whole courses rather than walk them.
 
 				// (And for how hard the rung is to fly: a person goes up a node or two out from a wall, where there's room to drift over the
 				// lip, not pressed to its face where the jet has to go precisely straight up; see ClimbMarginCost.)
@@ -1717,7 +1727,7 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 				}
 
 				float f = i + 2; // Exponential cost increase for jumping higher
-				float extraJumpCost = f * 0.5F; // Dearer the higher, but not by the square: at that a 190 px cliff was worth a 1250 px walk round through the valley; at a quarter, units leapt over whole courses rather than walk them.
+				float extraJumpCost = f * s_Tune.JumpHeightCost; // Dearer the higher, but not by the square: at that a 190 px cliff was worth a 1250 px walk round through the valley; at a quarter, units leapt over whole courses rather than walk them.
 
 				totalMaterialCost += 1.4F + (extraUpCost * 1.4F) + (extraJumpCost * 1.4f) + (GetMaterialTransitionCost(*currentNode->UpRightMaterial) * 1.4F * 3.0F) + radiatedCost;
 
@@ -1742,7 +1752,7 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 				}
 
 				float f = i + 2; // Exponential cost increase for jumping higher
-				float extraJumpCost = f * 0.5F; // Dearer the higher, but not by the square: at that a 190 px cliff was worth a 1250 px walk round through the valley; at a quarter, units leapt over whole courses rather than walk them.
+				float extraJumpCost = f * s_Tune.JumpHeightCost; // Dearer the higher, but not by the square: at that a 190 px cliff was worth a 1250 px walk round through the valley; at a quarter, units leapt over whole courses rather than walk them.
 
 				totalMaterialCost += 1.4F + (extraUpCost * 1.4F) + (extraJumpCost * 1.4f) + (GetMaterialTransitionCost(*currentNode->LeftUpMaterial) * 1.4F * 3.0F) + radiatedCost;
 
@@ -1757,13 +1767,13 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 		// Add cost for digging at 45 degrees and for digging upwards. (A step up a slope wants the head room a walk does: a crawl's worth at
 		// the least, and dearer under a low ceiling.)
 		if (node->UpRight && node->UpRight->m_Navigable && allowDiagonal) {
-			adjCost.cost = (1.4F + (extraUpCost * 1.4F) + (WalkMaterialCost(*node->UpRightMaterial) * 1.4F * 3.0F) + radiatedCost) * (Open(*node->UpRightMaterial) ? HeadRoomFactor(*node, *node->UpRight) : 1.0F); // Three times more expensive when digging.
+			adjCost.cost = (1.4F + (extraUpCost * 1.4F) + (WalkMaterialCost(*node->UpRightMaterial) * 1.4F * 3.0F) + radiatedCost) * (Open(*node->UpRightMaterial) ? HeadRoomFactor(*node, *node->UpRight) * footClimb : 1.0F); // Three times more expensive when digging.
 			adjCost.state = static_cast<void*>(node->UpRight);
 			adjacentList->push_back(adjCost);
 		}
 
 		if (node->LeftUp && node->LeftUp->m_Navigable && allowDiagonal) {
-			adjCost.cost = (1.4F + (extraUpCost * 1.4F) + (WalkMaterialCost(*node->LeftUpMaterial) * 1.4F * 3.0F) + radiatedCost) * (Open(*node->LeftUpMaterial) ? HeadRoomFactor(*node, *node->LeftUp) : 1.0F); // Three times more expensive when digging.
+			adjCost.cost = (1.4F + (extraUpCost * 1.4F) + (WalkMaterialCost(*node->LeftUpMaterial) * 1.4F * 3.0F) + radiatedCost) * (Open(*node->LeftUpMaterial) ? HeadRoomFactor(*node, *node->LeftUp) * footClimb : 1.0F); // Three times more expensive when digging.
 			adjCost.state = static_cast<void*>(node->LeftUp);
 			adjacentList->push_back(adjCost);
 		}
@@ -1774,7 +1784,7 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 		if (allowDiagonal && s_JumpHeight < FLT_MAX && node->Surface >= 0.0F) {
 			auto slopeWalk = [&](const PathNode* to, const Material* along, bool up) {
 				if (to && to->m_Navigable && !Open(*along) && SurfaceWalkable(*node, *to)) {
-					adjCost.cost = ((up ? 1.4F + extraUpCost * 1.4F : 1.4F) + radiatedCost) * HeadRoomFactor(*node, *to);
+					adjCost.cost = ((up ? 1.4F + extraUpCost * 1.4F : 1.4F) + radiatedCost) * HeadRoomFactor(*node, *to) * (up ? footClimb : 1.0F);
 					adjCost.state = const_cast<PathNode*>(to);
 					adjacentList->push_back(adjCost);
 				}
@@ -1845,7 +1855,7 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 			}
 			for (micropather::StateCost& adjacent: *adjacentList) {
 				if (g_SceneMan.ShortestDistance(static_cast<const PathNode*>(adjacent.state)->Pos, failed.second).MagnitudeIsLessThan(near)) {
-					adjacent.cost += 25.0F;
+					adjacent.cost += s_Tune.FailedSpotCost;
 				}
 			}
 		}
@@ -1999,7 +2009,7 @@ float PathFinder::FallCost(const PathNode& to) const {
 			return 1000.0F;
 		}
 	}
-	return drop > c_SafeFallNodes ? c_FallCostPerNode * s_Caution : 0.0F;
+	return drop > c_SafeFallNodes ? s_Tune.FallCostPerNode * s_Caution : 0.0F;
 }
 
 bool PathFinder::Open(const Material& material) const {
@@ -2703,8 +2713,8 @@ float PathFinder::AvoidCost(const PathNode& node) const {
 	}
 	for (const Vector& place: *s_Avoid) {
 		if (g_SceneMan.ShortestDistance(node.Pos, place).MagnitudeIsLessThan(static_cast<float>(m_NodeDimension) * 1.5F)) {
-			// About what a detour of twenty-odd nodes costs: taken only when there's no other reasonable way.
-			return 25.0F;
+			// About what a detour of twenty-odd nodes costs: taken only when there's no other reasonable way. (25 as tuned.)
+			return s_Tune.FailedSpotCost;
 		}
 	}
 	return 0.0F;
@@ -2742,7 +2752,7 @@ float PathFinder::VarietyCost(const PathNode& node) const {
 	hash ^= hash >> 16;
 	// Up to a node's walk again: a way up to about half as long again can win for one seed, and the shortest still wins for most when the
 	// others are much longer.
-	return static_cast<float>(hash & 0xFFFFu) / 65536.0F;
+	return static_cast<float>(hash & 0xFFFFu) / 65536.0F * s_Tune.RouteVariety;
 }
 
 float PathFinder::ThreatCost(const PathNode& node) const {

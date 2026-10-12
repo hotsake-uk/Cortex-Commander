@@ -46,7 +46,7 @@ function NativeHumanAI:Create(Owner)
 	Members.AlarmTimer:SetSimTimeLimitMS(400);
 
 	Members.TargetLostTimer = Timer();
-	Members.TargetLostTimer:SetSimTimeLimitMS(1000);
+	Members.TargetLostTimer:SetSimTimeLimitMS(SharedBehaviors.TargetMemoryMS(1000));
 	
 	-- customizable variables, trend started by pawnis on 01/09/2023 :)
 	
@@ -98,13 +98,9 @@ function NativeHumanAI:Create(Owner)
 end
 
 function NativeHumanAI:Update(Owner)
-	-- Veterancy (Battle Command): each rank aims 15% better and quicker.
+	-- Veterancy (Battle Command): each rank aims 15% better and quicker; and the AI combat settings.
 	local rank = Owner:NumberValueExists("VeteranRank") and Owner:GetNumberValue("VeteranRank") or 0;
-	if rank ~= self.veteranRank and self.baseAimSkill then
-		self.veteranRank = rank;
-		self.aimSkill = self.baseAimSkill * (1 - 0.15 * rank);
-		self.aimSpeed = self.baseAimSpeed * (1 - 0.15 * rank);
-	end
+	SharedBehaviors.UpdateCombatAim(self, rank);
 
 	self.Ctrl = Owner:GetController();
 
@@ -497,15 +493,17 @@ function NativeHumanAI:Update(Owner)
 									self.Ctrl:SetState(control, state);
 								end
 							end
-							if Leader.EquippedItem then
+							-- (Read once: the leader runs on another thread and can drop or swap its item between two reads, which left ToHDFirearm nil.)
+							local LeaderItem = Leader.EquippedItem;
+							if LeaderItem then
 								local aimDelta = SceneMan:ShortestDistance(Leader.Pos, Leader.ViewPoint, false);
 								
-								if IsHDFirearm(Leader.EquippedItem) then
+								if IsHDFirearm(LeaderItem) then
 									local aimCorrectionRatio = Leader.SharpAimProgress * (dist/radius);
 									self.Ctrl.AnalogAim = (aimDelta * (1 - aimCorrectionRatio) + SceneMan:ShortestDistance(Owner.Pos, Leader.ViewPoint + aimDelta, false) * aimCorrectionRatio).Normalized;
 									
-									local LeaderWeapon = ToHDFirearm(Leader.EquippedItem);
-									if LeaderWeapon:IsWeapon() then
+									local LeaderWeapon = ToHDFirearm(LeaderItem);
+									if LeaderWeapon and LeaderWeapon:IsWeapon() then
 										self.deviceState = AHuman.POINTING;
 
 										-- check if the SL is shooting and if we have a similar weapon
@@ -542,7 +540,7 @@ function NativeHumanAI:Update(Owner)
 											end
 										end
 									end
-								elseif IsThrownDevice(Leader.EquippedItem) and Leader:IsPlayerControlled() and ToThrownDevice(Leader.EquippedItem):HasObjectInGroup("Bombs - Grenades") and Owner:HasObjectInGroup("Bombs - Grenades") then
+								elseif IsThrownDevice(LeaderItem) and Leader:IsPlayerControlled() and ToThrownDevice(LeaderItem):HasObjectInGroup("Bombs - Grenades") and Owner:HasObjectInGroup("Bombs - Grenades") then
 									-- throw grenades in unison with squad
 									self.Ctrl.AnalogAim = aimDelta.Normalized;
 									self.deviceState = AHuman.POINTING;
@@ -1054,7 +1052,7 @@ function NativeHumanAI:CreateAttackBehavior(Owner)
 			AI.deviceState = AHuman.STILL;
 			AI.proneState = AHuman.NOTPRONE;
 			HumanBehaviors.StopRangeStep(AI, Owner);
-			AI.TargetLostTimer:SetSimTimeLimitMS(2000);
+			AI.TargetLostTimer:SetSimTimeLimitMS(SharedBehaviors.TargetMemoryMS(2000));
 		end
 		return;
 	end
@@ -1072,13 +1070,14 @@ function NativeHumanAI:CreateAttackBehavior(Owner)
 			self.Target = nil;
 			return;
 		end
-	-- favor grenades as the initiator to a sneak attack (not again for a few seconds after one was called off: see ThrowTarget)
-	elseif not (self.ThrowRefusedTimer and not self.ThrowRefusedTimer:IsPastSimMS(3000)) and Owner.AIMode ~= Actor.AIMODE_SQUAD and Owner.AIMode ~= Actor.AIMODE_SENTRY and self.Target.HFlipped == Owner.HFlipped and Owner:EquipDeviceInGroup("Bombs - Grenades", true)
+	-- favor grenades as the initiator to a sneak attack (not again for a few seconds after one was called off: see ThrowTarget; only as often
+	-- as the Grenade use setting lets it, every time at its default)
+	elseif not (self.ThrowRefusedTimer and not self.ThrowRefusedTimer:IsPastSimMS(3000)) and Owner.AIMode ~= Actor.AIMODE_SQUAD and Owner.AIMode ~= Actor.AIMODE_SENTRY and self.Target.HFlipped == Owner.HFlipped and SharedBehaviors.TakesThrow() and Owner:EquipDeviceInGroup("Bombs - Grenades", true)
 	and dist:MagnitudeIsGreaterThan(math.max(100, HumanBehaviors.BlastClearance(Owner.EquippedItem))) and dist:MagnitudeIsLessThan(ToThrownDevice(Owner.EquippedItem):GetCalculatedMaxThrowVelIncludingArmThrowStrength() * GetPPM()) and (self.Target.Pos.Y + 20) > Owner.Pos.Y then
 		self.NextBehavior = coroutine.create(HumanBehaviors.ThrowTarget);
 		self.NextBehaviorName = "ThrowTarget";
-	-- A javelin, throwing axe or knives at a target a few strides off, before closing in.
-	elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and dist:MagnitudeIsGreaterThan(80) and Owner:HasObjectInGroup("Weapons - Thrown") and math.random() < 0.75
+	-- A javelin, throwing axe or knives at a target a few strides off, before closing in (three times in four, times the Grenade use setting).
+	elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and dist:MagnitudeIsGreaterThan(80) and Owner:HasObjectInGroup("Weapons - Thrown") and math.random() < 0.75 * SettingsMan.AICombatGrenadeUse
 	and Owner:EquipDeviceInGroup("Weapons - Thrown", true) and IsThrownDevice(Owner.EquippedItem)
 	and dist:MagnitudeIsLessThan(math.min(ToThrownDevice(Owner.EquippedItem):GetCalculatedMaxThrowVelIncludingArmThrowStrength() * GetPPM() * 0.9, 400)) then
 		self.NextBehavior = coroutine.create(HumanBehaviors.ThrowTarget);
@@ -1126,7 +1125,7 @@ function NativeHumanAI:CreateAttackBehavior(Owner)
 		AI.deviceState = AHuman.STILL;
 		AI.proneState = AHuman.NOTPRONE;
 		HumanBehaviors.StopRangeStep(AI, Owner);
-		AI.TargetLostTimer:SetSimTimeLimitMS(2000);
+		AI.TargetLostTimer:SetSimTimeLimitMS(SharedBehaviors.TargetMemoryMS(2000));
 	end
 end
 

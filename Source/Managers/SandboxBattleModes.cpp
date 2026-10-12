@@ -146,7 +146,14 @@ namespace SandboxDetail {
 				return team;
 			}
 			const std::vector<std::vector<Vector>> zones = ZonesOf(settings, side);
-			if (settings.ByShip) {
+			team.KeepClear = settings.KeepClear;
+			if (settings.ByShip && settings.Anywhere) {
+				// Anywhere across the map, clear of the enemy where it can (ClearDropX).
+				team.ShipsPerBurst = std::clamp(SizeOf(settings, side) / 15 + 1, 1, 4);
+				team.Invincible = true;
+				team.DropOnLine = false;
+				team.HasLine = false;
+			} else if (settings.ByShip) {
 				// Over its widest spawn zone, from one side of it to the other.
 				const std::vector<Vector>& base = WidestZone(zones);
 				float left = 0.0F;
@@ -163,6 +170,8 @@ namespace SandboxDetail {
 			} else {
 				team.ShipsPerBurst = 0;
 				team.SpawnZones = zones;
+				// (Anywhere on the map instead, on the zones' clock: AnywhereSpot.)
+				team.AppearAnywhere = settings.Anywhere;
 			}
 			return team;
 		}
@@ -268,10 +277,35 @@ namespace SandboxDetail {
 		}
 
 		/// How many of each team's fighters are in a zone.
+		/// Standing on the ground under the zone where it has no floor (GroundUnderZone): its middle no more than its height above it.
+		bool OnGroundUnder(const std::vector<Vector>& below, const Actor* fighter) {
+			const bool wraps = g_SceneMan.SceneWrapsX();
+			const Vector at = fighter->GetPos();
+			const float reach = std::max(fighter->GetHeight(), 24.0F);
+			return std::any_of(below.begin(), below.end(), [&](const Vector& ground) {
+				const Vector off = g_SceneMan.ShortestDistance(at, ground, wraps);
+				return std::abs(off.m_X) <= 3.0F && off.m_Y >= 0.0F && off.m_Y <= reach;
+			});
+		}
+
+		/// How many of each team's fighters are in a zone: inside it, or (where it has no floor) on the ground straight under it.
 		std::array<int, c_Sides> CountIn(const std::vector<Vector>& zone, const std::vector<Actor*>& fighters) {
 			std::array<int, c_Sides> count{};
+			std::vector<Vector> below;
+			bool looked = false;
 			for (const Actor* fighter: fighters) {
-				if (fighter->GetTeam() >= 0 && fighter->GetTeam() < c_Sides && IsInZone(zone, fighter->GetPos())) {
+				if (fighter->GetTeam() < 0 || fighter->GetTeam() >= c_Sides) {
+					continue;
+				}
+				bool in = IsInZone(zone, fighter->GetPos());
+				if (!in) {
+					if (!looked) {
+						below = GroundUnderZone(zone);
+						looked = true;
+					}
+					in = OnGroundUnder(below, fighter);
+				}
+				if (in) {
 					++count[fighter->GetTeam()];
 				}
 			}
@@ -532,6 +566,7 @@ namespace SandboxDetail {
 			std::vector<std::vector<Vector>> Crest; //!< Runs of the ground's top, left to right.
 			float Cell = 4.0F;
 			std::vector<std::pair<Vector, bool>> Cells; //!< Each solid cell's top left, and whether it's at an edge.
+			std::vector<Vector> Below; //!< The ground straight under each column with no floor in the zone (GroundUnderZone).
 		};
 
 		std::vector<ZoneTerrain> s_ZoneTerrain;
@@ -559,6 +594,7 @@ namespace SandboxDetail {
 			terrain.At = now;
 			terrain.Crest.clear();
 			terrain.Cells.clear();
+			terrain.Below.clear();
 			float left = zone.front().m_X;
 			float right = left;
 			float top = zone.front().m_Y;
@@ -599,6 +635,7 @@ namespace SandboxDetail {
 							run.clear();
 						}
 						run.emplace_back(x, y);
+						terrain.Below.emplace_back(x, y);
 						continue;
 					}
 				}
@@ -662,7 +699,11 @@ namespace SandboxDetail {
 			}
 			return terrain;
 		}
+	} // namespace
 
+	std::vector<Vector> GroundUnderZone(const std::vector<Vector>& zone) { return zone.size() < 3 ? std::vector<Vector>() : TerrainOf(zone).Below; }
+
+	namespace {
 		/// A line drawn as a glow: wide and faint under narrow and bright.
 		void GlowPolyline(ImDrawList* drawList, const std::vector<ImVec2>& points, ImU32 color, bool closed, float strength) {
 			if (points.size() < 2) {
@@ -5155,6 +5196,14 @@ namespace SandboxDetail {
 
 		/// Where a unit of a mode's game is headed and how near counts as there, or false for none: a runner's or hunter's last destination,
 		/// or the place a defender (on a hill, an objective, a flag) keeps to.
+		/// Whether a mode's defender is standing at the post it was given (on the ground under its zone, that can be further from the
+		/// zone's middle than near enough counts): there, not on its way nor stuck.
+		bool AtItsPost(const Actor* unit) {
+			auto defender = s_BattleDefenders.find(unit->GetUniqueID());
+			return defender != s_BattleDefenders.end() && !defender->second.Commanded &&
+			       g_SceneMan.ShortestDistance(unit->GetPos(), defender->second.Post, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(unit->GetHeight() + 20.0F);
+		}
+
 		bool ObjectiveOf(const Actor* unit, Vector& goal, float& near) {
 			const long id = unit->GetUniqueID();
 			if (auto runner = s_Runners.find(id); runner != s_Runners.end() && runner->second.HasSent) {
@@ -5223,7 +5272,7 @@ namespace SandboxDetail {
 				seen.insert(id);
 				Vector goal;
 				float near = 0.0F;
-				const bool rushing = !unit->IsPlayerControlled() && !IsVip(unit) && ObjectiveOf(unit, goal, near) && !g_SceneMan.ShortestDistance(unit->GetPos(), goal, wraps).MagnitudeIsLessThan(near) && !GuardingOwn(unit->GetTeam(), goal, objectives);
+				const bool rushing = !unit->IsPlayerControlled() && !IsVip(unit) && ObjectiveOf(unit, goal, near) && !g_SceneMan.ShortestDistance(unit->GetPos(), goal, wraps).MagnitudeIsLessThan(near) && !AtItsPost(unit) && !GuardingOwn(unit->GetTeam(), goal, objectives);
 				if (rushing) {
 					unit->SetNumberValue("SandboxRush", 1.0);
 				} else if (unit->NumberValueExists("SandboxRush")) {
@@ -5290,7 +5339,7 @@ namespace SandboxDetail {
 				auto [entry, made] = s_Stuck.try_emplace(id);
 				StuckWatch& watch = entry->second;
 				const float route = RouteLeft(unit, goal);
-				if (made || distance < near || engaged) {
+				if (made || distance < near || engaged || AtItsPost(unit)) {
 					watch = {goal, distance, at, now, route, route};
 					continue;
 				}
@@ -5798,14 +5847,18 @@ namespace SandboxDetail {
 	/// hill or the objective), none of them kept back as guards, which is what Defend is for; else, for a Battle Director team defending a
 	/// place, a post there. False when the battle has nothing for it.
 	bool JoinBattleObjective(Actor* unit) {
-		if (!unit || dynamic_cast<const ACraft*>(unit) || unit->IsInGroup("Brains")) {
+		// (A flying ship is one of the team too, though no other craft is.)
+		const bool ship = dynamic_cast<const ACShip*>(unit) != nullptr;
+		if (!unit || (dynamic_cast<const ACraft*>(unit) && !ship) || unit->IsInGroup("Brains")) {
 			return false;
 		}
 		const int side = unit->GetTeam();
 		if (side < 0 || side >= c_Sides) {
 			return false;
 		}
-		if (s_ModeRun.Running && !s_ModeRun.Over && TeamIn(s_ModeRun.Settings, side) && !ModeOf(s_ModeRun.Settings.Mode).UnitsMade) {
+		// (A ship can't carry a flag, stand on a hill or be a VIP's guard as the mode's own jobs have it: in any mode it flies over its team's
+		// nearest objective, as a defender of it, and fights what comes near.)
+		if (s_ModeRun.Running && !s_ModeRun.Over && TeamIn(s_ModeRun.Settings, side) && (ship || !ModeOf(s_ModeRun.Settings.Mode).UnitsMade)) {
 			// A mode with no job of its own for new units: to its nearest objective (BattleObjectiveFor), held as a defend zone round it.
 			BattleObjective objective;
 			bool defend = false;
@@ -5838,6 +5891,25 @@ namespace SandboxDetail {
 		if (unit) {
 			s_Runners.erase(unit->GetUniqueID());
 			s_Stuck.erase(unit->GetUniqueID());
+		}
+	}
+
+	void ModeKeepClearSpots(std::vector<Vector>& spots) {
+		const BattleModeSettings& settings = s_ModeRun.Settings;
+		if (settings.Mode == BattleMode::CaptureTheFlag) {
+			for (int side = 0; side < c_Sides; ++side) {
+				if (TeamIn(settings, side)) {
+					spots.push_back(s_Flags[side].Pos);
+				}
+			}
+		} else if (settings.Mode == BattleMode::OneFlag) {
+			spots.push_back(s_OneFlag.Pos);
+		} else if (settings.Mode == BattleMode::CaptureTheShip) {
+			if (const ACShip* ship = LiveShip()) {
+				spots.push_back(ship->GetPos());
+			}
+		} else if (settings.Mode == BattleMode::ThePoint && !settings.FlagSpots.empty()) {
+			spots.push_back(settings.FlagSpots.front());
 		}
 	}
 
@@ -5994,16 +6066,24 @@ namespace SandboxDetail {
 		ImGui::SetItemTooltip("A unit that gets no nearer to its objective for this long (stuck in a hole or on a ledge, or with no way there) is taken away and another comes in its place at once. Not while it is fighting, nor a VIP.");
 		changed |= ImGui::SliderInt("Route variety", &setup.RouteVariety, 0, 100, setup.RouteVariety > 0 ? "%d%% go their own way" : "all take the shortest way");
 		ImGui::SetItemTooltip("The share of each team's units that each pick a way of their own to where they're going, so a team spreads over the routes across the map rather than filing down the one. At 50%% half take the shortest way and the rest spread over the others that are near enough as short (up to about half as long again). New units only: those already in keep their way.");
-		if (ToolUI::RadioButton("Appear in their spawn zones##arrive", !setup.ByShip)) {
-			setup.ByShip = false;
-			changed = true;
-		}
+		// How units come in: appearing or by ship, at their base or anywhere on the map.
+		auto arrive = [&](const char* label, bool byShip, bool anywhere, const char* tip) {
+			if (ToolUI::RadioButton(label, setup.ByShip == byShip && setup.Anywhere == anywhere)) {
+				setup.ByShip = byShip;
+				setup.Anywhere = anywhere;
+				changed = true;
+			}
+			ImGui::SetItemTooltip("%s", tip);
+		};
+		arrive("Appear in their spawn zones##arrive", false, false, "Each team's units appear in their spawn zones.");
 		ImGui::SameLine();
-		if (ToolUI::RadioButton("Come in by ship##arrive", setup.ByShip)) {
-			setup.ByShip = true;
-			changed = true;
+		arrive("Appear anywhere##arrive", false, true, "Each team's units appear anywhere on the map there's ground to stand on (caves too), with room above them and not in liquid, kept clear of enemies and objectives. Spawn zones still mark each team's base (its flag, its defenders).");
+		arrive("Ships over their base##arrive", true, false, "Each team's units come in by ship over their widest spawn zone (each team's card says which craft), rather than appearing in their zones.");
+		ImGui::SameLine();
+		arrive("Ships anywhere##arrive", true, true, "Each team's units come in by ship anywhere across the map (each team's card says which craft), kept clear of enemies and objectives. Spawn zones still mark each team's base.");
+		if (setup.Anywhere) {
+			changed |= KeepClearSlider(setup.KeepClear, "##modeclear");
 		}
-		ImGui::SetItemTooltip("Each team's units come in by ship over their widest spawn zone (each team's card says which craft), rather than appearing in their zones.");
 		if (bool show = g_SettingsMan.ShowBattleSpawnZones(); ToolUI::Checkbox("Show spawn zones on the map", &show)) {
 			g_SettingsMan.SetShowBattleSpawnZones(show);
 		}

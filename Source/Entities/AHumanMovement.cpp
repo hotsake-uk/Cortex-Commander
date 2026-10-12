@@ -1090,8 +1090,8 @@ void AHuman::UpdateLadderLimbs() {
 	}
 }
 
-// A door of ours, or no one's, whose moving part lies near the line from us to a point, within a body and a half.
-ADoor* AHuman::DoorAhead(const Vector& toPoint) const {
+// A door of ours, or no one's, whose moving part lies near the line from us to a point, within reach bodies (a body and a half by default).
+ADoor* AHuman::DoorAhead(const Vector& toPoint, float reach) const {
 	ADoor* best = nullptr;
 	float bestDistance = std::numeric_limits<float>::max();
 	Vector along = Towards(m_Pos, toPoint);
@@ -1101,7 +1101,7 @@ ADoor* AHuman::DoorAhead(const Vector& toPoint) const {
 			continue;
 		}
 		Vector toLeaf = Towards(m_Pos, door->GetDoor()->GetPos());
-		if (toLeaf.MagnitudeIsGreaterThan(GetMoveHeight() * 1.5F)) {
+		if (toLeaf.MagnitudeIsGreaterThan(GetMoveHeight() * reach)) {
 			continue;
 		}
 		float t = length > 1.0F ? std::clamp(toLeaf.Dot(along) / (length * length), 0.0F, 1.0F) : 0.0F;
@@ -1112,6 +1112,50 @@ ADoor* AHuman::DoorAhead(const Vector& toPoint) const {
 		}
 	}
 	return best;
+}
+
+// Where to wait for a door's sensor to see us. A sensor is a ray, and it opens the door for a body crossing it: a hatch's runs up and down
+// through the leaf, reaching about 50 px under it, so a unit waiting under a tall shaft, or hovering where the door first came near, was never
+// seen, gave up, and flew into the shut leaf. Sampled along each ray, with the body placed so its span from head
+// to feet crosses the sample; kept where the body is clear of terrain (the shut leaf is door material) and reached from here without passing
+// through the door. The nearest such place to us.
+bool AHuman::DoorSensorHoldPoint(const ADoor* door, Vector& point) const {
+	const float h = GetMoveHeight();
+	const float headAbove = h * 0.24F;
+	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : h * 0.2F;
+	const float halfWidth = std::clamp(MoveBodyWidth() * 0.5F, 4.0F, MoveHalfWidthCap());
+	float nearest = std::numeric_limits<float>::max();
+	bool found = false;
+	Vector hit;
+	for (const ADSensor& sensor: door->GetSensors()) {
+		Vector start = door->GetPos() + sensor.GetStartOffset().GetXFlipped(door->IsHFlipped()) * door->GetRotMatrix();
+		Vector ray = sensor.GetSensorRay().GetXFlipped(door->IsHFlipped()) * door->GetRotMatrix();
+		for (int i = 0; i <= 12; ++i) {
+			Vector sample = start + ray * (static_cast<float>(i) / 12.0F);
+			for (float offset: {0.0F, headAbove * 0.4F, headAbove * 0.8F, -feet * 0.4F, -feet * 0.8F}) {
+				Vector spot = sample + Vector(0.0F, offset);
+				float distance = Towards(m_Pos, spot).GetMagnitude();
+				if (distance >= nearest) {
+					continue;
+				}
+				// The body, head to feet, at both sides, clear of anything solid (the shut leaf included).
+				bool clear = true;
+				for (float side: {-halfWidth, halfWidth}) {
+					if (g_SceneMan.CastStrengthRay(spot + Vector(side, -headAbove), Vector(0.0F, headAbove + feet), 0.5F, hit, 2)) {
+						clear = false;
+						break;
+					}
+				}
+				// On our side of it: nothing solid (the door least of all) between us and there.
+				if (clear && !g_SceneMan.CastStrengthRay(m_Pos, Towards(m_Pos, spot), 0.5F, hit, 3)) {
+					nearest = distance;
+					point = spot;
+					found = true;
+				}
+			}
+		}
+	}
+	return found;
 }
 
 Actor* AHuman::UnitAhead(float direction, float reach) const {
@@ -1194,7 +1238,7 @@ bool AHuman::BodyCollidesWith(const MovableObject* other) const {
 	return !GetIgnoresActorHits() && !(other->GetIgnoresActorHits());
 }
 
-const MOSRotating* AHuman::ObjectAhead(float direction, float reach, float floorY) const {
+const MOSRotating* AHuman::ObjectAhead(float direction, float reach, float floorY, bool light) const {
 	const float h = GetMoveHeight();
 	std::vector<MOID> passed;
 	GetMOIDs(passed);
@@ -1219,7 +1263,7 @@ const MOSRotating* AHuman::ObjectAhead(float direction, float reach, float floor
 			const Actor* actor = dynamic_cast<const Actor*>(body);
 			const bool living = actor && actor->GetStatus() != DYING && actor->GetStatus() != DEAD;
 			// (Light enough to be shoved aside by the walk, a helmet, a hand: walked on into.)
-			const bool shoved = body->GetMass() < GetMass() * 0.25F;
+			const bool shoved = !light && body->GetMass() < GetMass() * 0.25F;
 			if (!living && !dynamic_cast<const ADoor*>(body) && !dynamic_cast<const ACraft*>(body) && !shoved && BodyCollidesWith(body)) {
 				return body;
 			}
@@ -1230,6 +1274,75 @@ const MOSRotating* AHuman::ObjectAhead(float direction, float reach, float floor
 		}
 	}
 	return nullptr;
+}
+
+bool AHuman::PushObjectAhead(const MOSRotating* object, float direction) {
+	RouteMover& mover = m_Mover;
+	if (!object || !g_SettingsMan.UnitsPushObjects() || m_Controller.GetInputMode() != Controller::CIM_AI) {
+		return false;
+	}
+	const long id = object->GetUniqueID();
+	if (id == mover.pushGiveUpID && !mover.pushGiveUpTimer.IsPastSimMS(20000)) {
+		return false;
+	}
+	// (Never a unit, a living one or a vehicle of any state, a door or a craft, nor what is pinned in place.)
+	const Actor* actor = dynamic_cast<const Actor*>(object);
+	if ((actor && actor->GetStatus() != DYING && actor->GetStatus() != DEAD) || dynamic_cast<const AVehicle*>(object) || dynamic_cast<const ADoor*>(object) || dynamic_cast<const ACraft*>(object) || object->GetPinStrength() > 0.0F) {
+		return false;
+	}
+	// No heavier than this body, times the strengths: about its own weight as the game comes.
+	const float strength = g_SettingsMan.ObjectPushStrength() * m_ObjectPushStrength;
+	const float mass = std::max(0.1F, object->GetMass());
+	if (strength <= 0.0F || mass > GetMass() * strength) {
+		return false;
+	}
+	const float h = GetMoveHeight();
+	const Vector beyond = object->GetPos() + Vector(direction * (object->GetRadius() + h * 0.4F), 0.0F);
+	// (Not onto a teammate just beyond it, nor off a drop with no floor a body and a half under its far side.)
+	Vector distance;
+	if (const Actor* other = g_MovableMan.GetClosestActor(beyond, static_cast<int>(h * 0.5F), distance, this); other && other != object && other->GetTeam() == GetTeam() && other->GetStatus() != DYING && other->GetStatus() != DEAD) {
+		return false;
+	}
+	if (FloorUnder(beyond, object->GetRadius() + h * 1.5F) < 0.0F) {
+		return false;
+	}
+	if (mover.pushID != id) {
+		mover.pushID = id;
+		mover.pushFrom = object->GetPos();
+		mover.pushFutile = 0;
+		mover.pushTimer.SetElapsedSimTimeMS(10000.0);
+		MoverTrace("pushing an object out of the way (" + object->GetPresetName() + ")");
+	}
+	if (mover.pushTimer.IsPastSimMS(400)) {
+		// (One that hasn't moved on over a few shoves is wedged: left to stepping over and the stuck handling for a while.)
+		if (Towards(mover.pushFrom, object->GetPos()).m_X * direction > 2.0F) {
+			mover.pushFrom = object->GetPos();
+			mover.pushFutile = 0;
+		} else if (++mover.pushFutile > 5) {
+			MoverTrace("the object won't budge; stepping over or round it");
+			mover.pushGiveUpID = id;
+			mover.pushGiveUpTimer.Reset();
+			mover.pushID = 0;
+			return false;
+		}
+		mover.pushTimer.Reset();
+		MovableObject* body = g_MovableMan.FindObjectByUniqueID(id);
+		if (!body) {
+			return false;
+		}
+		// A shove, not a throw: the lighter it is for the strength, the quicker it goes, a little up so it slides rather than digs in, and
+		// never over 4 m/s, too slow to hurt anything it meets.
+		const float ease = std::clamp(GetMass() * strength / mass, 0.3F, 1.0F);
+		Vector vel = body->GetVel();
+		vel.m_X = direction * std::max(vel.m_X * direction, 1.5F + 1.5F * ease);
+		vel.m_Y = std::min(vel.m_Y, -0.6F * ease);
+		vel.CapMagnitude(4.0F);
+		body->SetVel(vel);
+		body->NotResting();
+	}
+	// (Not stuck on the ground while it clears the way.)
+	mover.progressTimer.Reset();
+	return true;
 }
 
 bool AHuman::MeasureHull(const MOSRotating* hull, float direction, float floorY, float& topY, float& nearX, float& farX) const {
@@ -1771,13 +1884,15 @@ bool AHuman::ShaftColumn(float columnX, float topHeadY, float& middleX, float& w
 	middleX = (leftFace + rightFace) * 0.5F;
 	// The middle, or the nearest line beside it that is open all the way up (a ladder's rungs, a lip): 8.0 climbed a soldier up a node's
 	// own x with its side in the rungs, and it burned a tank getting two thirds of the way.
+	// (None open, no shaft: a notch blasted into a wall has walls both sides at the body's height and its ceiling over them, and taken for a
+	// shaft, the unit walked in under the middle of it, past the ladder beside it, and flew up into the overhang again and again.)
 	for (float dx: {0.0F, -h * 0.08F, h * 0.08F, -h * 0.16F, h * 0.16F, -h * 0.24F, h * 0.24F}) {
 		if (ColumnOpen(middleX + dx, fromY + 2.0F, topHeadY + 2.0F)) {
 			middleX += dx;
-			break;
+			return true;
 		}
 	}
-	return true;
+	return false;
 }
 
 void AHuman::RefreshRoute(bool keepRoute) {
@@ -2206,6 +2321,45 @@ bool AHuman::WatchForPin(bool holding) {
 	return false;
 }
 
+void AHuman::AvoidRouteLadder() {
+	// Stuck or pinned getting onto a ladder the route climbs next (not on it): the ladder itself avoided for a while, its length, not just
+	// its foot, and by the team too once it has happened twice there within the minute (as for a climb of it that stalls). (Its foot alone
+	// marked, the next route took the same ladder a rung or two up, by a jump to it; units that terrain damage had opened a ladder's foot
+	// to stood under it for good, where before they had flown up onto the ledge beside it.)
+	RouteMover& mover = m_Mover;
+	if (!IsClimbingLadder() && RouteClimbsLadderNext()) {
+		auto kindIt = m_MovePathKinds.begin();
+		int index = 0;
+		bool onLadder = false;
+		bool team = false;
+		for (const Vector& routePoint: m_MovePath) {
+			const PathStepKind stepKind = kindIt != m_MovePathKinds.end() ? *kindIt++ : PathStepKind::Walk;
+			++index;
+			if (stepKind != PathStepKind::Ladder) {
+				if (onLadder || index > 2) {
+					break;
+				}
+				continue;
+			}
+			if (!onLadder) {
+				onLadder = true;
+				team = NoteLadderStall(routePoint.m_X, routePoint.m_Y);
+				MoverTrace(std::string("stuck getting onto the route's ladder; avoiding it") + (team ? " (the team avoids it now)" : ""));
+				mover.ladderStalled = true;
+				mover.ladderStallSpot = routePoint;
+				mover.ladderStallTimer.Reset();
+				AvoidPathPoint(routePoint, 20000.0F, team);
+			} else if (index % 2 == 0) {
+				// (A mark covers a node and a half about it: every other point covers the ladder.)
+				AvoidPathPoint(routePoint, 20000.0F, team);
+			}
+			if (index > 30) {
+				break;
+			}
+		}
+	}
+}
+
 void AHuman::Unpin() {
 	RouteMover& mover = m_Mover;
 	const float h = GetMoveHeight();
@@ -2232,6 +2386,8 @@ void AHuman::Unpin() {
 	mover.takeOffCommitted = false;
 	mover.noTakeOff = false;
 	mover.leapWatch = false;
+
+	AvoidRouteLadder();
 
 	// The steps it was pinned on, dearer for it for a while: the route's next few points from here, and the next point itself (each time
 	// at the same spot, more), so the route asked for after is another way where there is one.
@@ -2515,7 +2671,7 @@ int AHuman::MoveAlongRoute() {
 	// Points passed are dropped: within reach, or behind with the next in plain sight (the points are 24 px apart, and waiting to stand on
 	// each pulled a running unit back to every one). Not while a flight is on: the flight pops its own on landing.
 	if (!mover.flight.active && !m_MovePath.empty()) {
-		float tolerance = m_MoveProximityLimit * (airborne ? 2.0F : 1.0F);
+		float tolerance = m_MoveProximityLimit * (airborne ? 2.0F : 1.0F) * g_SettingsMan.PathTunings().ReachScale;
 		for (int guard = 0; guard < 6 && !m_MovePath.empty(); ++guard) {
 			Vector toPoint = Towards(m_Pos, m_MovePath.front());
 			bool last = m_MovePath.size() == 1;
@@ -2557,8 +2713,10 @@ int AHuman::MoveAlongRoute() {
 			mover.progressTimer.Reset();
 		}
 	}
-	bool stuck = mover.progressTimer.IsPastSimMS(2500);
-	if (stuck && mover.progressTimer.IsPastSimMS(6000)) {
+	// (2.5 s and 6 s as tuned: the Pathfinding settings.)
+	const SettingsMan::PathTuning& tuning = g_SettingsMan.PathTunings();
+	bool stuck = mover.progressTimer.IsPastSimMS(static_cast<double>(tuning.StuckRemedySeconds) * 1000.0);
+	if (stuck && mover.progressTimer.IsPastSimMS(static_cast<double>(std::max(tuning.StuckRepathSeconds, tuning.StuckRemedySeconds)) * 1000.0)) {
 		// Long stuck: the route asked for afresh from here, and the place avoided.
 		AvoidPathPoint(m_MovePath.empty() ? m_Pos : m_MovePath.front(), 20000.0F);
 		// Stuck again on a step to much the same place (within a node and a half, inside the minute): the one big step there isn't working
@@ -2600,6 +2758,7 @@ int AHuman::MoveAlongRoute() {
 				MoverTrace("stuck; new route");
 			}
 		}
+		AvoidRouteLadder();
 		RefreshRoute();
 		mover.flight = RouteMover::Flight();
 		mover.bestGap = -1.0F;
@@ -2629,24 +2788,103 @@ int AHuman::MoveAlongRoute() {
 		if (inSight || airborne || inLiquid || ladderStep || digStep || DoorAhead(m_MovePath.front())) {
 			mover.noSightTimer.Reset();
 		}
-		if ((mover.noSightTimer.IsPastSimMS(1000) || mover.repathTimer.IsPastSimMS(7500)) && !IsWaitingOnNewMovePath()) {
-			MoverTrace(mover.noSightTimer.IsPastSimMS(1000) ? "next point out of sight; new route" : "route refreshed");
+		const double noSightMS = static_cast<double>(tuning.NoSightSeconds) * 1000.0;
+		if ((mover.noSightTimer.IsPastSimMS(noSightMS) || mover.repathTimer.IsPastSimMS(static_cast<double>(tuning.RefreshSeconds) * 1000.0)) && !IsWaitingOnNewMovePath()) {
+			MoverTrace(mover.noSightTimer.IsPastSimMS(noSightMS) ? "next point out of sight; new route" : "route refreshed");
 			RefreshRoute(true);
 			mover.repathTimer.Reset();
 			mover.noSightTimer.Reset();
 		}
-	} else if (airborne && mover.routeCheckTimer.IsPastSimMS(500) && !mover.flight.direct) {
+	} else if (airborne && mover.routeCheckTimer.IsPastSimMS(static_cast<double>(tuning.AirCheckSeconds) * 1000.0) && !mover.flight.direct) {
 		mover.routeCheckTimer.Reset();
 		RequestRouteCheck();
 	}
 
+	// AIWaitsAtDoors: a door of ours across the way, not yet fully open, waited for where its sensor sees us. (A unit under a hatch overhead
+	// waited out of its sensor's sight, gave up, flew into the shut leaf and fell; the door it then opened was shut again before the next
+	// take-off.) In the air, or on the ground with the sensor out of reach overhead and a jet to get there, a hover at the place (see
+	// DoorSensorHoldPoint), the jet cut early enough that the rise coasts to a stop under it rather than into the leaf; on the ground with
+	// the place at our height, a walk to it. Through only once the door is open: an opening leaf is still in the way (a Door Slide Long takes
+	// 1.5 s), and on the sensor it stays open while we climb through. Given up on (walked or flown into, as before) after 4 s seen by its
+	// sensor with the door still shut, or 10 s in all when the place can't be reached. @return Whether holding for it this tick.
+	auto holdOnDoorSensor = [&](ADoor* door, bool inAir) -> bool {
+		ADoor::DoorState state = door->GetDoorState();
+		if (state == ADoor::OPEN) {
+			mover.doorWaitID = 0;
+			mover.doorHoldValid = false;
+			return false;
+		}
+		if (door->GetUniqueID() == mover.doorIgnoreID) {
+			return false;
+		}
+		// (A wait broken off, the door out of the way for a while, starts afresh when it comes back: not given up on at once for the old one.)
+		if (door->GetUniqueID() != mover.doorWaitID || mover.doorHoldTickTimer.IsPastSimMS(1000)) {
+			mover.doorWaitID = door->GetUniqueID();
+			mover.doorWaitTimer.Reset();
+			mover.doorWaitTotalTimer.Reset();
+			mover.doorHoldValid = false;
+		}
+		mover.doorHoldTickTimer.Reset();
+		// The place, picked while the leaf is shut and drawn into the terrain (a moving one isn't, and a place in its travel would look clear),
+		// twice a second.
+		if (!mover.doorHoldValid || (state == ADoor::CLOSED && mover.doorPickTimer.IsPastSimMS(500))) {
+			mover.doorPickTimer.Reset();
+			Vector spot;
+			if (DoorSensorHoldPoint(door, spot)) {
+				mover.doorHoldPoint = spot;
+				mover.doorHoldValid = true;
+			} else if (!mover.doorHoldValid) {
+				mover.doorHoldPoint = door->NearestSensorPoint(m_Pos);
+				mover.doorHoldValid = true;
+			}
+		}
+		const Vector to = Towards(m_Pos, mover.doorHoldPoint);
+		const float h = GetMoveHeight();
+		const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : h * 0.2F;
+		bool seen = false;
+		for (float dy: {-h * 0.24F, -h * 0.12F, 0.0F, feet * 0.5F, feet}) {
+			seen = seen || door->SensesPoint(m_Pos + Vector(0.0F, dy), 6.0F);
+		}
+		if (!seen || state != ADoor::CLOSED) {
+			mover.doorWaitTimer.Reset();
+		}
+		if (mover.doorWaitTimer.IsPastSimMS(4000) || mover.doorWaitTotalTimer.IsPastSimMS(10000)) {
+			MoverTrace(inAir ? "door didn't open; flying into it" : "door didn't open; walking into it");
+			mover.doorIgnoreID = door->GetUniqueID();
+			mover.doorIgnoreTimer.Reset();
+			mover.doorHoldValid = false;
+			return false;
+		}
+		mover.progressTimer.Reset();
+		const bool hasJet = m_pJetpack && m_pJetpack->GetJetTimeLeft() > 0.0F;
+		if (inAir || (to.m_Y < -h * 0.2F && hasJet)) {
+			// The height: lit while below it, unless the rise already under way coasts there (v^2 / 2g); lit when sinking near it.
+			float error = -to.m_Y; // (Positive when below.)
+			float rising = std::max(0.0F, -m_Vel.m_Y);
+			float coast = rising * rising / (2.0F * std::max(0.1F, g_SceneMan.GetGlobalAcc().m_Y)) * c_PPM;
+			bool jet = (error - coast > 0.0F && m_Vel.m_Y > -3.0F) || (error > -6.0F && m_Vel.m_Y > 0.5F);
+			ctrl.SetState(BODY_JUMP, jet && hasJet);
+			// Sideways by speed to the place's column.
+			float wantVelX = std::clamp(to.m_X / 6.0F, -1.0F, 1.0F);
+			ctrl.SetAnalogMove(Vector(std::clamp((wantVelX - m_Vel.m_X) * 0.6F, -1.0F, 1.0F), -1.0F));
+			return true;
+		}
+		if (std::abs(to.m_X) > 6.0F) {
+			ctrl.SetState(to.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+		}
+		return true;
+	};
 	// A door of ours (or no one's) across the way to a point, not open: held short of it, on the ground at its sensor, in the air hovering
 	// (a hatch across a shaft: its leaves gib what is in their sweep, and a unit flown up into them died at full health). Given up on
 	// after a while (walked or flown into) for 5 s. @return Whether holding for it this tick.
 	auto holdForDoor = [&](const Vector& towards, bool inAir) -> bool {
-		ADoor* door = DoorAhead(towards);
+		// (AIWaitsAtDoors: looked for further off in the air, so a climb up a shaft has room to slow before the leaf.)
+		ADoor* door = DoorAhead(towards, g_SettingsMan.AIWaitsAtDoors() && inAir ? 3.0F : 1.5F);
 		if (!door) {
 			return false;
+		}
+		if (g_SettingsMan.AIWaitsAtDoors()) {
+			return holdOnDoorSensor(door, inAir);
 		}
 		ADoor::DoorState state = door->GetDoorState();
 		if (state == ADoor::OPEN || state == ADoor::OPENING) {
@@ -4413,11 +4651,25 @@ int AHuman::MoveAlongRoute() {
 		// Any other loose body ours bumps into (a corpse, a gib), with Step over objects on: only once the walk is held up by it, or while one
 		// is being dealt with, since what lies low on the floor is mostly walked over. Then as a wreck: leapt, hopped, routed round or waited
 		// for. (Unseen, the unit pressed into it until the stuck handling, 2.5 s on, tried a leap or a hop.)
-		if (!hull && g_SettingsMan.UnitsStepOverObjects() && (m_Vel.m_X * way < 1.0F || (mover.vehicle != 0 && !mover.vehicleSeenTimer.IsPastSimMS(1000)))) {
-			hull = ObjectAhead(way, hullReach, floorY);
+		// With Push objects on, the light ones too, and while one is being shoved: pushed along (PushObjectAhead) first, and stepped over only
+		// once it is too heavy or won't budge.
+		const bool pushObjects = g_SettingsMan.UnitsPushObjects() && m_Controller.GetInputMode() == Controller::CIM_AI;
+		const bool pushing = pushObjects && mover.pushID != 0 && !mover.pushTimer.IsPastSimMS(1000);
+		bool looseObject = false;
+		if (!hull && (g_SettingsMan.UnitsStepOverObjects() || pushObjects) && (m_Vel.m_X * way < 1.0F || pushing || (mover.vehicle != 0 && !mover.vehicleSeenTimer.IsPastSimMS(1000)))) {
+			hull = ObjectAhead(way, hullReach, floorY, pushObjects);
+			looseObject = hull != nullptr;
 		}
 		if (hull && (hull->GetUniqueID() == mover.vehicleIgnoreID || (g_MovableMan.ValidMO(m_pMOMoveTarget) && m_pMOMoveTarget->GetRootParent() == hull))) {
 			hull = nullptr;
+		}
+		if (hull && pushObjects && PushObjectAhead(hull, way)) {
+			hull = nullptr;
+		} else if (hull && looseObject && !g_SettingsMan.UnitsStepOverObjects()) {
+			hull = nullptr; // (Step over objects off: walked into, as before.)
+		}
+		if (mover.pushID != 0 && mover.pushTimer.IsPastSimMS(1000)) {
+			mover.pushID = 0;
 		}
 		// On the last leg, with the goal at the hull: as near as it gets.
 		if (hull && m_MovePath.size() <= 1 && m_Waypoints.empty() && !g_MovableMan.ValidMO(m_pMOMoveTarget) && Towards(hull->GetPos(), GetLastAIWaypoint()).MagnitudeIsLessThan(hull->GetRadius() + h * 0.5F)) {

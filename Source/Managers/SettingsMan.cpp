@@ -149,12 +149,15 @@ void SettingsMan::Clear() {
 	m_MeasuredBodySize = false;
 	m_UnitWaterBehaviour = 2;
 	m_UnitsStepOverObjects = true;
+	m_UnitsPushObjects = true;
+	m_ObjectPushStrength = 1.0F;
 	m_SensesPassPlants = true;
 	m_SensesPassRungs = true;
 	m_SensesPassSpecks = true;
 	m_EnableStuckPush = false;
 	m_BodyGearSettlesAsScraps = true;
 	m_GibChunks = GibChunkTuning();
+	m_AICombat = AICombatTuning();
 	m_SlowdownFixes = SlowdownFixTuning();
 	m_NoSceneWrap = true;
 	std::fill(std::begin(m_Toughness), std::end(m_Toughness), 1.0F);
@@ -174,6 +177,7 @@ void SettingsMan::Clear() {
 	m_AISpawnDiggerType = 1;
 	m_AISteadyBeforeJet = true;
 	m_AIWaitForFuel = true;
+	m_AIWaitsAtDoors = true;
 	m_AIEnemyBuysReinforcements = true;
 	m_AIEnemyUsesPowers = true;
 	m_AISquadFollowsYou = true;
@@ -189,6 +193,7 @@ void SettingsMan::Clear() {
 	m_DirectOrders = DirectOrderTuning();
 	m_DigSafety = DigSafetyTuning();
 	m_AIDodgesFallingGround = true;
+	m_PathTuning = PathTuning();
 	m_NavDebugOverlay = 0;
 	m_DebugTeam = 0;
 	m_UnitInspector = 0;
@@ -208,6 +213,7 @@ void SettingsMan::Clear() {
 	m_SandboxSpawnStats = 1;
 	m_SandboxSpawnSort = 0;
 	m_SandboxAttackPings = true;
+	m_SandboxNoRouteMarkers = true;
 	m_SandboxMinimap = false;
 	m_BattleAlerts = true;
 	m_BattleAlertLines = 6;
@@ -822,6 +828,13 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("GibChunkBounces", { reader >> m_GibChunks.MaxBounces; ClampGibChunks(); });
 	MatchProperty("GibChunkAtomSpacing", { reader >> m_GibChunks.AtomSpacing; ClampGibChunks(); });
 	MatchProperty("GibChunksSettleOnBodies", { reader >> m_GibChunks.SettleOnBodies; });
+	MatchProperty("AICombatAccuracy", { reader >> m_AICombat.Accuracy; ClampAICombat(); });
+	MatchProperty("AICombatReaction", { reader >> m_AICombat.Reaction; ClampAICombat(); });
+	MatchProperty("AICombatSpotting", { reader >> m_AICombat.Spotting; ClampAICombat(); });
+	MatchProperty("AICombatSightRange", { reader >> m_AICombat.SightRange; ClampAICombat(); });
+	MatchProperty("AICombatTargetMemory", { reader >> m_AICombat.TargetMemory; ClampAICombat(); });
+	MatchProperty("AICombatGrenadeUse", { reader >> m_AICombat.GrenadeUse; ClampAICombat(); });
+	MatchProperty("AICombatBurst", { reader >> m_AICombat.Burst; ClampAICombat(); });
 	MatchProperty("FixLiquidTellsOnlyMoves", { reader >> m_SlowdownFixes.LiquidTellsOnlyMoves; });
 	MatchProperty("WreckSettleSeconds", { reader >> m_SlowdownFixes.WreckSettleSeconds; m_SlowdownFixes.WreckSettleSeconds = std::clamp(m_SlowdownFixes.WreckSettleSeconds, 0, 600); });
 	MatchProperty("FixDebrisRestsAcrossGaps", { reader >> m_SlowdownFixes.DebrisRestsAcrossGaps; });
@@ -871,6 +884,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("JetpackWeightCompensation", { int mode = 0; reader >> mode; SetJetpackWeightCompensation(mode); });
 	MatchProperty("UnitWaterBehaviour", { int mode = 2; reader >> mode; SetUnitWaterBehaviour(mode); });
 	MatchProperty("UnitsStepOverObjects", { reader >> m_UnitsStepOverObjects; });
+	MatchProperty("UnitsPushObjects", { reader >> m_UnitsPushObjects; });
+	MatchProperty("ObjectPushStrength", { float strength = 1.0F; reader >> strength; SetObjectPushStrength(strength); });
 	MatchProperty("SensesPassPlants", { reader >> m_SensesPassPlants; });
 	MatchProperty("SensesPassRungs", { reader >> m_SensesPassRungs; });
 	MatchProperty("SensesPassSpecks", { reader >> m_SensesPassSpecks; });
@@ -893,6 +908,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AISpawnDiggerType", { int type = 1; reader >> type; SetAISpawnDiggerType(type); });
 	MatchProperty("AISteadyBeforeJet", { reader >> m_AISteadyBeforeJet; });
 	MatchProperty("AIWaitForFuel", { reader >> m_AIWaitForFuel; });
+	MatchProperty("AIWaitsAtDoors", { reader >> m_AIWaitsAtDoors; });
 	MatchProperty("AIEnemyBuysReinforcements", { reader >> m_AIEnemyBuysReinforcements; });
 	MatchProperty("AIEnemyUsesPowers", { reader >> m_AIEnemyUsesPowers; });
 	MatchProperty("AISquadFollowsYou", { reader >> m_AISquadFollowsYou; });
@@ -905,6 +921,22 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AIUnitsCallLifts", { reader >> m_AIUnitsCallLifts; });
 	MatchProperty("DeadCrewFallOut", { reader >> m_DeadCrewFallOut; });
 	MatchProperty("PassengersFireFromVehicles", { reader >> m_PassengersFireFromVehicles; });
+	MatchProperty("PathLineWeight", { reader >> m_PathTuning.LineWeight; m_PathTuning.LineWeight = std::clamp(m_PathTuning.LineWeight, 0.0F, 2.0F); });
+	MatchProperty("PathUpCost", { reader >> m_PathTuning.UpCost; m_PathTuning.UpCost = std::clamp(m_PathTuning.UpCost, 0.0F, 5.0F); });
+	MatchProperty("PathFlightCost", { reader >> m_PathTuning.FlightCostScale; m_PathTuning.FlightCostScale = std::clamp(m_PathTuning.FlightCostScale, 0.2F, 1.0F); });
+	MatchProperty("PathJumpHeightCost", { reader >> m_PathTuning.JumpHeightCost; m_PathTuning.JumpHeightCost = std::clamp(m_PathTuning.JumpHeightCost, 0.0F, 2.0F); });
+	MatchProperty("PathLadderCost", { reader >> m_PathTuning.LadderCostScale; m_PathTuning.LadderCostScale = std::clamp(m_PathTuning.LadderCostScale, 0.8F, 5.0F); });
+	MatchProperty("PathFallCost", { reader >> m_PathTuning.FallCostPerNode; m_PathTuning.FallCostPerNode = std::clamp(m_PathTuning.FallCostPerNode, 0.0F, 10.0F); });
+	MatchProperty("PathRouteVariety", { reader >> m_PathTuning.RouteVariety; m_PathTuning.RouteVariety = std::clamp(m_PathTuning.RouteVariety, 0.0F, 4.0F); });
+	MatchProperty("PathFailedSpotCost", { reader >> m_PathTuning.FailedSpotCost; m_PathTuning.FailedSpotCost = std::clamp(m_PathTuning.FailedSpotCost, 0.0F, 100.0F); });
+	MatchProperty("PathJetOverClimb", { reader >> m_PathTuning.JetOverClimb; m_PathTuning.JetOverClimb = std::clamp(m_PathTuning.JetOverClimb, 0.0F, 1.0F); });
+	MatchProperty("PathRefreshSeconds", { reader >> m_PathTuning.RefreshSeconds; m_PathTuning.RefreshSeconds = std::clamp(m_PathTuning.RefreshSeconds, 1.0F, 30.0F); });
+	MatchProperty("PathNoSightSeconds", { reader >> m_PathTuning.NoSightSeconds; m_PathTuning.NoSightSeconds = std::clamp(m_PathTuning.NoSightSeconds, 0.25F, 5.0F); });
+	MatchProperty("PathStuckRemedySeconds", { reader >> m_PathTuning.StuckRemedySeconds; m_PathTuning.StuckRemedySeconds = std::clamp(m_PathTuning.StuckRemedySeconds, 0.5F, 10.0F); });
+	MatchProperty("PathStuckRepathSeconds", { reader >> m_PathTuning.StuckRepathSeconds; m_PathTuning.StuckRepathSeconds = std::clamp(m_PathTuning.StuckRepathSeconds, 1.0F, 20.0F); });
+	MatchProperty("PathAirCheckSeconds", { reader >> m_PathTuning.AirCheckSeconds; m_PathTuning.AirCheckSeconds = std::clamp(m_PathTuning.AirCheckSeconds, 0.1F, 3.0F); });
+	MatchProperty("PathReachScale", { reader >> m_PathTuning.ReachScale; m_PathTuning.ReachScale = std::clamp(m_PathTuning.ReachScale, 0.5F, 3.0F); });
+	MatchProperty("PathNoRouteRetrySeconds", { reader >> m_PathTuning.NoRouteRetrySeconds; m_PathTuning.NoRouteRetrySeconds = std::clamp(m_PathTuning.NoRouteRetrySeconds, 0.5F, 15.0F); });
 	MatchProperty("DirectCaution", { reader >> m_DirectOrders.Caution; m_DirectOrders.Caution = std::clamp(m_DirectOrders.Caution, 0.0F, 1.0F); });
 	MatchProperty("DirectFlightCost", { reader >> m_DirectOrders.FlightCostScale; m_DirectOrders.FlightCostScale = std::clamp(m_DirectOrders.FlightCostScale, 0.2F, 1.0F); });
 	MatchProperty("DirectFuelShare", { reader >> m_DirectOrders.FuelShare; m_DirectOrders.FuelShare = std::clamp(m_DirectOrders.FuelShare, 0.1F, 1.2F); });
@@ -970,6 +1002,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SandboxSpawnStats", { int which = 1; reader >> which; SetSandboxSpawnStats(which); });
 	MatchProperty("SandboxSpawnSort", { int which = 0; reader >> which; SetSandboxSpawnSort(which); });
 	MatchProperty("SandboxAttackPings", { reader >> m_SandboxAttackPings; });
+	MatchProperty("SandboxNoRouteMarkers", { reader >> m_SandboxNoRouteMarkers; });
 	MatchProperty("SandboxMinimap", { reader >> m_SandboxMinimap; });
 	MatchProperty("BattleAlerts", { reader >> m_BattleAlerts; });
 	MatchProperty("BattleAlertLines", { int lines = 6; reader >> lines; SetBattleAlertLines(lines); });
@@ -1128,6 +1161,16 @@ void SettingsMan::ClampGibChunks() {
 	m_GibChunks.SettleMS = std::clamp(m_GibChunks.SettleMS, -1, 10000);
 	m_GibChunks.MaxBounces = std::clamp(m_GibChunks.MaxBounces, 1, 10);
 	m_GibChunks.AtomSpacing = std::clamp(m_GibChunks.AtomSpacing, 0, 16);
+}
+
+void SettingsMan::ClampAICombat() {
+	m_AICombat.Accuracy = std::clamp(m_AICombat.Accuracy, 0.25F, 4.0F);
+	m_AICombat.Reaction = std::clamp(m_AICombat.Reaction, 0.25F, 3.0F);
+	m_AICombat.Spotting = std::clamp(m_AICombat.Spotting, 0.25F, 3.0F);
+	m_AICombat.SightRange = std::clamp(m_AICombat.SightRange, 0.5F, 2.0F);
+	m_AICombat.TargetMemory = std::clamp(m_AICombat.TargetMemory, 0.25F, 4.0F);
+	m_AICombat.GrenadeUse = std::clamp(m_AICombat.GrenadeUse, 0.0F, 1.0F);
+	m_AICombat.Burst = std::clamp(m_AICombat.Burst, 0.5F, 2.0F);
 }
 
 void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting, bool forPreset) const {
@@ -1459,6 +1502,13 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("GibChunkBounces", m_GibChunks.MaxBounces);
 	writer.NewPropertyWithValue("GibChunkAtomSpacing", m_GibChunks.AtomSpacing);
 	writer.NewPropertyWithValue("GibChunksSettleOnBodies", m_GibChunks.SettleOnBodies);
+	writer.NewPropertyWithValue("AICombatAccuracy", m_AICombat.Accuracy);
+	writer.NewPropertyWithValue("AICombatReaction", m_AICombat.Reaction);
+	writer.NewPropertyWithValue("AICombatSpotting", m_AICombat.Spotting);
+	writer.NewPropertyWithValue("AICombatSightRange", m_AICombat.SightRange);
+	writer.NewPropertyWithValue("AICombatTargetMemory", m_AICombat.TargetMemory);
+	writer.NewPropertyWithValue("AICombatGrenadeUse", m_AICombat.GrenadeUse);
+	writer.NewPropertyWithValue("AICombatBurst", m_AICombat.Burst);
 	writer.NewPropertyWithValue("FixLiquidTellsOnlyMoves", m_SlowdownFixes.LiquidTellsOnlyMoves);
 	writer.NewPropertyWithValue("WreckSettleSeconds", m_SlowdownFixes.WreckSettleSeconds);
 	writer.NewPropertyWithValue("FixDebrisRestsAcrossGaps", m_SlowdownFixes.DebrisRestsAcrossGaps);
@@ -1498,6 +1548,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("JetpackWeightCompensation", m_JetpackWeightCompensation);
 	writer.NewPropertyWithValue("UnitWaterBehaviour", m_UnitWaterBehaviour);
 	writer.NewPropertyWithValue("UnitsStepOverObjects", m_UnitsStepOverObjects);
+	writer.NewPropertyWithValue("UnitsPushObjects", m_UnitsPushObjects);
+	writer.NewPropertyWithValue("ObjectPushStrength", m_ObjectPushStrength);
 	writer.NewPropertyWithValue("SensesPassPlants", m_SensesPassPlants);
 	writer.NewPropertyWithValue("SensesPassRungs", m_SensesPassRungs);
 	writer.NewPropertyWithValue("SensesPassSpecks", m_SensesPassSpecks);
@@ -1512,6 +1564,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("RiskyOrdersFlyPastLadders", m_RiskyOrdersFlyPastLadders);
 	writer.NewPropertyWithValue("AISteadyBeforeJet", m_AISteadyBeforeJet);
 	writer.NewPropertyWithValue("AIWaitForFuel", m_AIWaitForFuel);
+	writer.NewPropertyWithValue("AIWaitsAtDoors", m_AIWaitsAtDoors);
 	writer.NewPropertyWithValue("AIEnemyBuysReinforcements", m_AIEnemyBuysReinforcements);
 	writer.NewPropertyWithValue("AIEnemyUsesPowers", m_AIEnemyUsesPowers);
 	writer.NewPropertyWithValue("AISquadFollowsYou", m_AISquadFollowsYou);
@@ -1524,6 +1577,22 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AIUnitsCallLifts", m_AIUnitsCallLifts);
 	writer.NewPropertyWithValue("DeadCrewFallOut", m_DeadCrewFallOut);
 	writer.NewPropertyWithValue("PassengersFireFromVehicles", m_PassengersFireFromVehicles);
+	writer.NewPropertyWithValue("PathLineWeight", m_PathTuning.LineWeight);
+	writer.NewPropertyWithValue("PathUpCost", m_PathTuning.UpCost);
+	writer.NewPropertyWithValue("PathFlightCost", m_PathTuning.FlightCostScale);
+	writer.NewPropertyWithValue("PathJumpHeightCost", m_PathTuning.JumpHeightCost);
+	writer.NewPropertyWithValue("PathLadderCost", m_PathTuning.LadderCostScale);
+	writer.NewPropertyWithValue("PathFallCost", m_PathTuning.FallCostPerNode);
+	writer.NewPropertyWithValue("PathRouteVariety", m_PathTuning.RouteVariety);
+	writer.NewPropertyWithValue("PathFailedSpotCost", m_PathTuning.FailedSpotCost);
+	writer.NewPropertyWithValue("PathJetOverClimb", m_PathTuning.JetOverClimb);
+	writer.NewPropertyWithValue("PathRefreshSeconds", m_PathTuning.RefreshSeconds);
+	writer.NewPropertyWithValue("PathNoSightSeconds", m_PathTuning.NoSightSeconds);
+	writer.NewPropertyWithValue("PathStuckRemedySeconds", m_PathTuning.StuckRemedySeconds);
+	writer.NewPropertyWithValue("PathStuckRepathSeconds", m_PathTuning.StuckRepathSeconds);
+	writer.NewPropertyWithValue("PathAirCheckSeconds", m_PathTuning.AirCheckSeconds);
+	writer.NewPropertyWithValue("PathReachScale", m_PathTuning.ReachScale);
+	writer.NewPropertyWithValue("PathNoRouteRetrySeconds", m_PathTuning.NoRouteRetrySeconds);
 	writer.NewPropertyWithValue("DirectCaution", m_DirectOrders.Caution);
 	writer.NewPropertyWithValue("DirectFlightCost", m_DirectOrders.FlightCostScale);
 	writer.NewPropertyWithValue("DirectFuelShare", m_DirectOrders.FuelShare);
@@ -1653,6 +1722,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 		writer.NewPropertyWithValue("SandboxSpawnStats", m_SandboxSpawnStats);
 		writer.NewPropertyWithValue("SandboxSpawnSort", m_SandboxSpawnSort);
 		writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
+		writer.NewPropertyWithValue("SandboxNoRouteMarkers", m_SandboxNoRouteMarkers);
 		writer.NewPropertyWithValue("SandboxMinimap", m_SandboxMinimap);
 		writer.NewPropertyWithValue("BattleAlerts", m_BattleAlerts);
 		writer.NewPropertyWithValue("BattleAlertLines", m_BattleAlertLines);
@@ -1856,6 +1926,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("SandboxSpawnStats", m_SandboxSpawnStats);
 	writer.NewPropertyWithValue("SandboxSpawnSort", m_SandboxSpawnSort);
 	writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
+	writer.NewPropertyWithValue("SandboxNoRouteMarkers", m_SandboxNoRouteMarkers);
 	writer.NewPropertyWithValue("SandboxMinimap", m_SandboxMinimap);
 	writer.NewPropertyWithValue("BattleAlerts", m_BattleAlerts);
 	writer.NewPropertyWithValue("BattleAlertLines", m_BattleAlertLines);

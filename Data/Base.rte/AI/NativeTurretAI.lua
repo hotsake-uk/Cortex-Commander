@@ -36,6 +36,7 @@ function NativeTurretAI:Create(Owner)
 
 	-- set shooting skill
 	Members.aimSpeed, Members.aimSkill = SharedBehaviors.GetTeamShootingSkill(Owner.Team);
+	Members.baseAimSpeed, Members.baseAimSkill, Members.veteranRank = Members.aimSpeed, Members.aimSkill, 0;
 
 	setmetatable(Members, self);
 	self.__index = self;
@@ -43,6 +44,7 @@ function NativeTurretAI:Create(Owner)
 end
 
 function NativeTurretAI:Update(Owner)
+	SharedBehaviors.UpdateCombatAim(self, 0); -- the AI combat settings
 	self.Ctrl = Owner:GetController();
 
 	if self.isPlayerOwned then

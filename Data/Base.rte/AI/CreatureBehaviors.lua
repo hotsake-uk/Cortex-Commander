@@ -146,7 +146,7 @@ function CreatureBehaviors.HuntTarget(AI, Owner, Abort)
 		return true;
 	end
 	AI.TargetLostTimer:Reset();
-	AI.TargetLostTimer:SetSimTimeLimitMS(4000);
+	AI.TargetLostTimer:SetSimTimeLimitMS(SharedBehaviors.TargetMemoryMS(4000));
 	local reach = Value(Owner, "CreatureBiteReach", 30);
 	local pounceRange = Value(Owner, "CreaturePounceRange", 0);
 	local chaseRange = Value(Owner, "CreatureChaseRange", 900);
@@ -261,7 +261,7 @@ function CreatureBehaviors.ChargeTarget(AI, Owner, Abort)
 	if not AI.Target or not MovableMan:ValidMO(AI.Target) then
 		return true;
 	end
-	AI.TargetLostTimer:SetSimTimeLimitMS(4000);
+	AI.TargetLostTimer:SetSimTimeLimitMS(SharedBehaviors.TargetMemoryMS(4000));
 	local range = Value(Owner, "CreatureAttackRange", 110);
 	local chaseRange = Value(Owner, "CreatureChaseRange", 900);
 	local Keep = Owner.AIMode == Actor.AIMODE_SENTRY and SharedBehaviors.RememberOrder(AI, Owner) or nil;

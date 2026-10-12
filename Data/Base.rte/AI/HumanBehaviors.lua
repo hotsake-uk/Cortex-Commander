@@ -1352,7 +1352,7 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 	end
 
 	AI.canHitTarget = false;
-	AI.TargetLostTimer:SetSimTimeLimitMS(1000);
+	AI.TargetLostTimer:SetSimTimeLimitMS(SharedBehaviors.TargetMemoryMS(1000));
 
 	local LOSTimer = Timer();
 	LOSTimer:SetSimTimeLimitMS(170);
@@ -1589,7 +1589,7 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 					-- periodically check that we have LOS to the target
 					if LOSTimer:IsPastSimTimeLimit() then
 						LOSTimer:Reset();
-						AI.TargetLostTimer:SetSimTimeLimitMS(700);
+						AI.TargetLostTimer:SetSimTimeLimitMS(SharedBehaviors.TargetMemoryMS(700));
 						local TargetPoint = AI.Target.Pos + AI.TargetOffset;
 
 						local shotClear = false;
@@ -1763,7 +1763,7 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 			elseif Owner:EquipFirearm(true) then
 				local _ai, _ownr, _abrt = coroutine.yield(); -- wait until next frame, just in case the magazine is replenished by another script
 				if _abrt then return true end
-				AI.TargetLostTimer:SetSimTimeLimitMS(1400);
+				AI.TargetLostTimer:SetSimTimeLimitMS(SharedBehaviors.TargetMemoryMS(1400));
 
 				if Owner.FirearmIsEmpty then
 					AI.deviceState = AHuman.POINTING;
@@ -2296,7 +2296,7 @@ function HumanBehaviors.ThrowTarget(AI, Owner, Abort)
 	local miss = 0; -- stop scanning after a few missed attempts
 	local AimPoint, Dist, MO, ID, rootID, LOS, aim;
 
-	AI.TargetLostTimer:SetSimTimeLimitMS(1500);
+	AI.TargetLostTimer:SetSimTimeLimitMS(SharedBehaviors.TargetMemoryMS(1500));
 
 	while true do
 		if not MovableMan:ValidMO(AI.Target) then
@@ -2475,7 +2475,7 @@ function HumanBehaviors.AttackTarget(AI, Owner, Abort)
 		return true;
 	end
 
-	AI.TargetLostTimer:SetSimTimeLimitMS(5000);
+	AI.TargetLostTimer:SetSimTimeLimitMS(SharedBehaviors.TargetMemoryMS(5000));
 
 	-- If we've been trying for a while and we're not getting any closer to our target, auto-fail the behaviour so we do other stuff
 	local MovementFailTimer = Timer();

@@ -123,6 +123,9 @@ namespace RTE {
 		/// Gets how often a tone is picked against the others a side speaks in, 0 to 100 (Speech.ini's ToneWeight, else 100, unless set).
 		static int GetToneWeight(const std::string& tone);
 
+		/// Gets how often a tone is picked before the settings set it: Speech.ini's ToneWeight, else 100.
+		static int GetNormalToneWeight(const std::string& tone);
+
 		/// Gets what a tone is like, for the settings (Speech.ini's ToneDescription); empty if none says.
 		static std::string GetToneDescription(const std::string& tone);
 

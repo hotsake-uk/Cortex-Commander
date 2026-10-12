@@ -134,6 +134,7 @@ namespace RTE {
 		float LineWeight = 0.0F; //!< What each node off the straight line from start to goal costs it, in nodes walked (LineCost): over 0 on a risky order, which digs straight or keeps near the line.
 		std::shared_ptr<const LiftTable> Lifts; //!< The lifts it rides (MovableMan::GetPublishedLifts; LM-11), for a humanoid. None for no lift steps.
 		bool CallsLifts = true; //!< Whether it calls a lift to its stop rather than waiting for the lift's own round (SettingsMan::AIUnitsCallLifts): the wait is priced by it.
+		float ClimbOnFootScale = 1.0F; //!< What walking, stairs and scrambling up a slope cost it, as a multiple: over 1 for a unit with a jetpack and fuel, which jets up instead (SettingsMan::PathTuning::JetOverClimb).
 		unsigned RouteSeed = 0; //!< Its own taste in routes (Actor::GetRouteSeed): each part of the map costs it a little more or less, by the seed, so units with different seeds go different ways where the ways are near enough alike. 0 for none: the shortest.
 	};
 
@@ -525,7 +526,7 @@ namespace RTE {
 	private:
 		static constexpr int c_SafeFallNodes = 4; //!< A drop of this many nodes (a storey, 96 px) costs nothing extra: it is what a hatch is.
 		static constexpr int c_FallCostReach = 24; //!< How far down a fall is measured for its cost; past this it is as dear as it gets.
-		static constexpr float c_FallCostPerNode = 2.5F; //!< The extra cost of each node of a fall that is still more than the safe drop above the ground: about what a rung of a jump costs, since the jetpack brakes the fall with fuel at the bottom.
+		static constexpr float c_FallCostPerNode = 2.5F; //!< (As tuned; the search uses SettingsMan::PathTuning::FallCostPerNode.) The extra cost of each node of a fall that is still more than the safe drop above the ground: about what a rung of a jump costs, since the jetpack brakes the fall with fuel at the bottom.
 		static constexpr float c_NodeCostChangeEpsilon = 5.0F; //!< The minimum change in a PathNodes's cost for the pathfinder to recognize a change and reset itself. This is so minor changes (e.g. blood particles) don't force constant pathfinder resets.
 		static constexpr float c_OpenIntegrity = 5.0F; //!< The strongest material a body passes as open air (see Open).
 

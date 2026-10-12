@@ -114,6 +114,18 @@ namespace SandboxDetail {
 
 
 
+	namespace {
+		/// A flying ship on one of its side's orders (UpdateShipTeamOrders).
+		struct ShipTeamOrder {
+			Order Kind = Order::Attack;
+			Vector Centre; //!< Where it was told to patrol (Order::Patrol).
+			bool Right = false; //!< Which way along its patrol it is flying now.
+		};
+		std::unordered_map<long, ShipTeamOrder> s_ShipTeamOrders; //!< By the ship's unique ID.
+
+		constexpr float c_ShipPatrolReach = 300.0F; //!< How far each way from its place a patrolling ship flies.
+	} // namespace
+
 	/// The kind of order (Actor::OrderKind) a unit sent with this reason (SendUnit) is on.
 	int OrderKindFor(const char* reason) {
 		std::string_view why = reason ? reason : "";
@@ -150,6 +162,7 @@ namespace SandboxDetail {
 				ClearSuppress(ship);
 				DropPlan(ship);
 				CancelRetreatAndFlank(ship);
+				s_ShipTeamOrders.erase(ship->GetUniqueID());
 				s_GuardPosts.erase(ship->GetUniqueID());
 				s_BattleDefenders.erase(ship->GetUniqueID());
 				ReleaseFromBattleMode(ship);
@@ -335,6 +348,7 @@ namespace SandboxDetail {
 	void HoldUnit(Actor* unit) {
 		if (ACShip* ship = dynamic_cast<ACShip*>(unit)) {
 			ship->Disengage();
+			s_ShipTeamOrders.erase(ship->GetUniqueID());
 		}
 		DropPlan(unit);
 		ClearSuppress(unit);
@@ -377,11 +391,29 @@ namespace SandboxDetail {
 	}
 
 	void GiveOrder(Actor* actor, Order order) {
-		// (A flying ship takes none of these but a rally: any of them ends what it was doing, and it hovers where it is.)
-		if (actor && dynamic_cast<const ACShip*>(actor)) {
-			HoldUnit(actor);
-			if (int team = actor->GetTeam(); order == Order::Rally && team >= 0 && team < c_Sides && s_RallySet[team]) {
-				SendUnit(actor, s_RallyPoints[team], nullptr, false, "to the rally point");
+		// A flying ship: any of them ends what it was doing. Attack, hunt and patrol it carries out from the sandbox (UpdateShipTeamOrders),
+		// having no AI script to; its team's job in the battle it takes up as a defender of the objective (JoinBattleObjective), flying over it
+		// and fighting what comes; a rally flies it to the rally point; anything else (hold, idle, dig) hovers where it is.
+		if (ACShip* ship = dynamic_cast<ACShip*>(actor)) {
+			HoldUnit(ship);
+			const int team = ship->GetTeam();
+			if (order == Order::BattleObjective) {
+				if (JoinBattleObjective(ship)) {
+					return;
+				}
+				order = Order::Attack;
+			}
+			if (order == Order::Rally && team >= 0 && team < c_Sides && s_RallySet[team]) {
+				SendUnit(ship, s_RallyPoints[team], nullptr, false, "to the rally point");
+			} else if (order == Order::Attack || order == Order::HuntBrains || order == Order::Patrol) {
+				ShipTeamOrder& teamOrder = s_ShipTeamOrders[ship->GetUniqueID()];
+				teamOrder = ShipTeamOrder();
+				teamOrder.Kind = order;
+				teamOrder.Centre = ship->GetPos();
+				teamOrder.Right = Random01() < 0.5F;
+				ship->SetOrderKind(order == Order::Patrol ? Actor::ORDER_PATROL : Actor::ORDER_ATTACK);
+			} else if (order == Order::Hold) {
+				ship->SetOrderHold(true);
 			}
 			return;
 		}
@@ -460,8 +492,9 @@ namespace SandboxDetail {
 			if (!actor->GetOrderHasPost() || actor->IsPlayerControlled() || !IsCombatant(actor)) {
 				continue;
 			}
-			// (A ship fighting from its post keeps within its reach by itself, and goes back over it when the fight is over.)
-			if (const ACShip* fighting = dynamic_cast<const ACShip*>(actor); fighting && fighting->IsManoeuvring()) {
+			// (A ship fighting from its post keeps within its reach by itself, and goes back over it when the fight is over; one a battle's
+			// defenders sent after an enemy is brought back by them, UpdateBattleDefenders.)
+			if (const ACShip* fighting = dynamic_cast<const ACShip*>(actor); fighting && (fighting->IsManoeuvring() || fighting->GetEngageID() != 0)) {
 				continue;
 			}
 			Vector post = actor->GetOrderPost();
@@ -481,6 +514,73 @@ namespace SandboxDetail {
 			} else if (off > 60.0F + slack) {
 				SendUnit(actor, post, nullptr, false, "back to its post", false, true);
 				actor->SetOrderPost(post);
+			}
+		}
+	}
+
+	void UpdateShipTeamOrders() {
+		if (s_ShipTeamOrders.empty()) {
+			return;
+		}
+		const bool wraps = g_SceneMan.SceneWrapsX();
+		std::unordered_map<long, ACShip*> ships;
+		std::vector<Actor*> enemies;
+		for (Actor* actor: SandboxAccess::Actors()) {
+			if (ACShip* ship = dynamic_cast<ACShip*>(actor); ship && s_ShipTeamOrders.count(ship->GetUniqueID())) {
+				ships[ship->GetUniqueID()] = ship;
+			}
+			// (What they go after: fighting units, other ships among them, but not a dropship or rocket coming and going.)
+			if (IsSoldier(actor) && (!dynamic_cast<const ACraft*>(actor) || dynamic_cast<const ACShip*>(actor)) && !actor->IsIgnoredByAI()) {
+				enemies.push_back(actor);
+			}
+		}
+		for (auto entry = s_ShipTeamOrders.begin(); entry != s_ShipTeamOrders.end();) {
+			auto found = ships.find(entry->first);
+			ACShip* ship = found == ships.end() ? nullptr : found->second;
+			if (!ship || !IsCombatant(ship)) {
+				entry = s_ShipTeamOrders.erase(entry);
+				continue;
+			}
+			ShipTeamOrder& order = entry->second;
+			++entry;
+			// (Flown by a player, or with nobody at the controls of one that needs a pilot: its order waits till it can be flown again.)
+			if (ship->IsPlayerControlled() || !ship->CanFly() || ship->IsRamming()) {
+				continue;
+			}
+			// After an enemy still alive: it keeps after it (UpdateCombat).
+			if (ship->GetEngageID() != 0) {
+				continue;
+			}
+			// The nearest enemy (for hunt, the nearest brain if there is one; for patrol, the nearest come near enough), not one the
+			// commander's side can't see.
+			const bool commanded = s_Commander && ship->GetTeam() == s_CommanderTeam;
+			const float reach = order.Kind == Order::Patrol ? std::max(ship->GetGunRange() * 1.5F, c_ShipPatrolReach + 100.0F) : -1.0F;
+			Actor* enemy = nullptr;
+			bool enemyIsBrain = false;
+			float nearest = 0.0F;
+			for (Actor* other: enemies) {
+				if (other->GetTeam() == ship->GetTeam() || (commanded && HiddenFromCommander(other))) {
+					continue;
+				}
+				const float distance = g_SceneMan.ShortestDistance(ship->GetPos(), other->GetPos(), wraps).GetMagnitude();
+				if (reach > 0.0F && distance > reach) {
+					continue;
+				}
+				const bool brain = order.Kind == Order::HuntBrains && other->IsInGroup("Brains");
+				if (!enemy || (brain && !enemyIsBrain) || (brain == enemyIsBrain && distance < nearest)) {
+					enemy = other;
+					enemyIsBrain = brain;
+					nearest = distance;
+				}
+			}
+			if (enemy) {
+				ship->EngageTarget(enemy);
+			} else if (order.Kind == Order::Patrol && !ship->IsManoeuvring() && ship->GetAIMode() != Actor::AIMODE_GOTO) {
+				// Nobody near: on along its patrol, to the other end once it is at one.
+				order.Right = !order.Right;
+				Vector to = order.Centre + Vector(order.Right ? c_ShipPatrolReach : -c_ShipPatrolReach, 0.0F);
+				g_SceneMan.WrapPosition(to);
+				ship->FlyRouteTo(to);
 			}
 		}
 	}
@@ -1123,13 +1223,26 @@ namespace SandboxDetail {
 			}
 			float distance = g_SceneMan.ShortestDistance(unit->GetPos(), watch->second.Destination, g_SceneMan.SceneWrapsX()).GetMagnitude();
 			bool pending = std::any_of(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); });
-			bool stopped = !pending && now - watch->second.Issued > 60 && unit->GetAIMode() != Actor::AIMODE_GOTO && unit->GetWaypointsSize() == 0;
+			// (Nor while its AI is off on an errand of its own: falling back, working round a flank, a medic's call, a look at where an enemy
+			// was seen, a run from danger. It waits at the end of one as a sentry with no waypoints, and was taken for stopped short and marked
+			// "no route" every time a unit fell back under fire; the AI puts the order back when the errand ends.)
+			const bool errand = unit->NumberValueExists(c_RetreatTag) || unit->NumberValueExists(c_FlankTag) || unit->NumberValueExists(c_MedicTag) || unit->NumberValueExists("AIInvestigate") || unit->NumberValueExists("AIFlee");
+			bool stopped = !pending && !errand && now - watch->second.Issued > 60 && unit->GetAIMode() != Actor::AIMODE_GOTO && unit->GetWaypointsSize() == 0;
+			const bool vehicle = dynamic_cast<const AVehicle*>(unit) != nullptr;
 			// (A vehicle is there within its size: its middle stands well over the ground, and it stops a little short.)
-			const float reach = dynamic_cast<const AVehicle*>(unit) ? 60.0F + unit->GetRadius() : 60.0F;
+			const float reach = vehicle ? 60.0F + unit->GetRadius() : 60.0F;
 			if (distance < reach || unit->IsPlayerControlled()) {
+				// There after all: off any "no route" marker an earlier look put it on (MoveUnitsTo's reach check, which can be wrong).
+				ForgetNoRoutes(unit);
 				watch = s_MoveWatch.erase(watch);
 			} else if (stopped) {
-				stoppedShort.emplace_back(unit, watch->second.Destination);
+				// Stopped short with its route given up on (the route-follower's stand-down sets why, Actor::FailOrder): no route. Stopped
+				// short for anything else, it isn't: the order ended as its AI judged it there (on the ground under a place in the air, where the
+				// AI calls it there and this measured to the point itself), or was dropped for something other than the way. Those were all
+				// marked "no route" once, most of the markers seen. (A vehicle's driving has no reason to give, and is marked as before.)
+				if (vehicle || unit->GetOrderFailReason() != Actor::ORDERFAIL_NONE) {
+					stoppedShort.emplace_back(unit, watch->second.Destination);
+				}
 				watch = s_MoveWatch.erase(watch);
 			} else {
 				++watch;

@@ -700,6 +700,10 @@ namespace SandboxDetail {
 		std::vector<std::vector<Vector>> SpawnZones; //!< Areas of the map drawn as polygons (their corners in order, each next to the first, not wrapped), that its units appear in, besides (or instead of) coming in by ship.
 		int ZoneEverySeconds = 30; //!< Seconds of game time between one lot of units at the spawn zones and the next.
 		int ZoneUnits = 3; //!< Units that appear at each spawn zone each time.
+		bool AppearAnywhere = false; //!< Its units also appear anywhere on the map there is ground to stand on (AnywhereSpot), on the spawn zones' clock,
+		                             //!< ZoneUnits a lot (for each zone drawn), rather than only in its zones.
+		int KeepClear = 300; //!< Ships coming in anywhere, and units appearing anywhere: how far, in pixels, they keep from enemy units, enemy spawn
+		                     //!< zones and a mode's objectives where they can. 0: no gap.
 		int EverySeconds = 30; //!< Seconds of game time between bursts.
 		bool Invincible = false; //!< Its ships take no harm, and are taken away once they've unloaded and left.
 		bool HasDefendPos = false;
@@ -791,6 +795,9 @@ namespace SandboxDetail {
 		std::vector<Vector> FlagSpots; //!< One flag (and capture the ship, its ship positions): the flag positions placed (up to c_MaxFlagSpots), which the flag comes in at in turn, the next after each score.
 		bool FlagByZones = false; //!< One flag: the flag comes in somewhere in one of the flag spawn zones (the mode's zones), picked at random, rather than at the positions placed.
 		bool ByShip = false; //!< Its units come in by ship over their base, rather than appearing in it.
+		bool Anywhere = false; //!< Every mode: its units come in anywhere on the map (appearing on any ground, or by ship anywhere across it, with
+		                       //!< ByShip) rather than at their base. The spawn zones still mark each team's base (its flag, its defenders).
+		int KeepClear = 300; //!< With Anywhere: how far, in pixels, new units keep from enemy units, enemy spawn zones and the objectives. 0: no gap.
 		bool MoveStuckPoint = true; //!< Capture the flag: a flag nobody can get to (buried, or cut off) moves somewhere else in its base.
 		int ScoreToWin = 3; //!< Capture the flag: captures that win. 0 plays on for good.
 		int GuardPercent = 30; //!< Capture the flag: the share of each team's units, in percent, that stay to guard its flag.
@@ -2457,6 +2464,10 @@ namespace SandboxDetail {
 	void AnswerOrder(Actor* unit, const char* trigger);
 	const char* OrderTrigger(Order order);
 	void ReturnDefenders();
+	/// Flying ships (ACShip) on one of their side's orders (GiveOrder): attack and hunt send each after the nearest enemy (a brain first
+	/// for hunt), again whenever the one it was after is dead; patrol flies it to and fro over where it was told, going after enemies that
+	/// come near. Ships have no AI script to do this for them, as a unit on foot's does. Twice a second.
+	void UpdateShipTeamOrders();
 	void ActivateSide(int team);
 	void Detonate(const char* presetName, const Vector& position);
 	/// How a ForceBurst pushes.
@@ -2836,8 +2847,15 @@ namespace SandboxDetail {
 	void DrawZoneDraft(ImDrawList* drawList, float scale);
 	/// Whether a place is inside a zone drawn as a polygon (a spawn zone, a mode's base), across a wrap or not.
 	bool IsInZone(const std::vector<Vector>& zone, const Vector& at);
+	/// The battle panel's "Keep clear of enemies" slider (BattleSettings::KeepClear, BattleModeSettings::KeepClear), with a button back to
+	/// its default. True when changed. The id (an ImGui "##" suffix) keeps one apart from another in the same panel.
+	bool KeepClearSlider(int& keepClear, const char* id);
 	/// A place picked at random inside a zone drawn as a polygon, on its ground, for something this tall to stand at (its middle).
 	Vector SpotInZone(const std::vector<Vector>& zone, float height);
+	/// The ground straight under a mode zone's columns that have no floor in them (a gap, or the zone drawn in the air or its floor blown
+	/// away), however far down: the first solid point under each, a few pixels apart, as its glowing line shows it. Standing there counts as
+	/// in the zone (CountIn), and it's where the zone's units are posted when it has no floor at all.
+	std::vector<Vector> GroundUnderZone(const std::vector<Vector>& zone);
 	bool ModeBaseCorner(const Vector& position, float closeWithin);
 	bool CloseModeBase();
 	void PutDownBattleTool();
@@ -2902,6 +2920,8 @@ namespace SandboxDetail {
 	/// choices on the battle panel have them on the view.
 	void DrawBattleModeOnMap(ImDrawList* drawList, const std::function<ImVec2(const Vector&)>& toMap);
 	Vector ModeSpawnSpot(int side, const std::vector<Vector>& zone, const Actor* unit);
+	/// The places new units coming in anywhere keep clear of while a mode's game is on, besides enemy units and spawn zones: its flags.
+	void ModeKeepClearSpots(std::vector<Vector>& spots);
 	int ModeRoom(int side, int room);
 	void UpdateBattleMode(bool aiPaused);
 	void ForgetBattleMode();

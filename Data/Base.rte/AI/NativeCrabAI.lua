@@ -66,13 +66,9 @@ function NativeCrabAI:Create(Owner)
 end
 
 function NativeCrabAI:Update(Owner)
-	-- Veterancy (Battle Command): each rank aims 15% better and quicker.
+	-- Veterancy (Battle Command): each rank aims 15% better and quicker; and the AI combat settings.
 	local rank = Owner:NumberValueExists("VeteranRank") and Owner:GetNumberValue("VeteranRank") or 0;
-	if rank ~= self.veteranRank and self.baseAimSkill then
-		self.veteranRank = rank;
-		self.aimSkill = self.baseAimSkill * (1 - 0.15 * rank);
-		self.aimSpeed = self.baseAimSpeed * (1 - 0.15 * rank);
-	end
+	SharedBehaviors.UpdateCombatAim(self, rank);
 
 	self.Ctrl = Owner:GetController();
 
@@ -233,9 +229,11 @@ function NativeCrabAI:Update(Owner)
 			if Owner.AIMode == Actor.AIMODE_SQUAD then
 				-- look where the SL looks, if not moving
 				if not self.jump and self.lateralMoveState == Actor.LAT_STILL then
-					if Leader and Leader.EquippedItem and IsHDFirearm(Leader.EquippedItem) and SceneMan:ShortestDistance(Owner.Pos, Leader.Pos, false).Largest < (Leader.MoveHeight + Owner.MoveHeight) * 0.5 then
-						local LeaderWeapon = ToHDFirearm(Leader.EquippedItem);
-						if LeaderWeapon:IsWeapon() then
+					-- (The leader's item read once: it can change between two reads while the leader updates on another thread.)
+					local LeaderItem = Leader and Leader.EquippedItem;
+					if LeaderItem and IsHDFirearm(LeaderItem) and SceneMan:ShortestDistance(Owner.Pos, Leader.Pos, false).Largest < (Leader.MoveHeight + Owner.MoveHeight) * 0.5 then
+						local LeaderWeapon = ToHDFirearm(LeaderItem);
+						if LeaderWeapon and LeaderWeapon:IsWeapon() then
 							local AimDelta = SceneMan:ShortestDistance(Leader.Pos, Leader.ViewPoint, false);
 							self.Ctrl.AnalogAim = SceneMan:ShortestDistance(Owner.Pos, Leader.ViewPoint+AimDelta, false).Normalized;
 							self.deviceState = AHuman.POINTING;
