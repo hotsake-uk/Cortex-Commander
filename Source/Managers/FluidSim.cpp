@@ -10,6 +10,7 @@
 #include "Atom.h"
 #include "PresetMan.h"
 #include "SceneMan.h"
+#include "SettingsMan.h"
 #include "SLTerrain.h"
 #include "Scene.h"
 #include "TerrainFire.h"
@@ -1050,6 +1051,10 @@ namespace {
 
 bool FluidSim::IsLiquid(int materialID) {
 	return s_TablesBuilt && materialID > 0 && materialID < 256 && s_Kinds[materialID] != Liquid::None && s_Kinds[materialID] != Liquid::Powder;
+}
+
+bool FluidSim::UnitsPassThrough(int materialID) {
+	return g_SettingsMan.UnitWaterBehaviour() > 0 && IsLiquid(materialID);
 }
 
 bool FluidSim::IsFlowing(int materialID) {

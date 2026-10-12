@@ -1,5 +1,6 @@
 #include "PathFinder.h"
 #include "SettingsMan.h"
+#include "FluidSim.h"
 #include <algorithm>
 #include "PrimitiveMan.h"
 #include "Color.h"
@@ -1987,6 +1988,11 @@ PathLiquid PathFinder::LiquidOf(unsigned char id) const {
 			return static_cast<PathLiquid>(i);
 		}
 	}
+	// Any other flowing liquid (mud, tar, mercury, fuel...), with the Water behaviour setting at its fullest: waded as oil is. (Taken for
+	// ground, a route walked along the top of a pool of it and the unit sank in.)
+	if (g_SettingsMan.UnitWaterBehaviour() >= 2 && FluidSim::IsLiquid(id)) {
+		return PathLiquid::Oil;
+	}
 	return PathLiquid::None;
 }
 
@@ -2828,8 +2834,8 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 			int surfaceY = static_cast<int>(node->Surface);
 			node->Liquid = LiquidOf(g_SceneMan.GetTerrMatter(x, surfaceY));
 			if (node->Liquid != PathLiquid::None) {
-				unsigned char liquidID = m_LiquidMaterials[static_cast<int>(node->Liquid)];
-				while (node->LiquidDepth < PathNode::c_ClearanceReach && g_SceneMan.GetTerrMatter(x, surfaceY + node->LiquidDepth) == liquidID) {
+				// (By kind, not by material: every liquid waded as oil is the one kind.)
+				while (node->LiquidDepth < PathNode::c_ClearanceReach && LiquidOf(g_SceneMan.GetTerrMatter(x, surfaceY + node->LiquidDepth)) == node->Liquid) {
 					++node->LiquidDepth;
 				}
 			}

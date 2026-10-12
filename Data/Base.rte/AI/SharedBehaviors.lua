@@ -1474,12 +1474,12 @@ function SharedBehaviors.FlightWayClear(Owner, landing)
 	local Up = Vector(0, cruiseY - Owner.Pos.Y - h * 0.3);
 	local Over = SceneMan:ShortestDistance(Vector(Owner.Pos.X, cruiseY), Vector(landing.pos.X, cruiseY), false);
 	for _, dx in ipairs({ -h * 0.15, h * 0.15 }) do
-		if Up.Y < -2 and SceneMan:CastObstacleRay(Owner.Pos + Vector(dx, -h * 0.3), Up, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 then
+		if Up.Y < -2 and SceneMan:CastBodyObstacleRay(Owner.Pos + Vector(dx, -h * 0.3), Up, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 then
 			return false;
 		end
 	end
 	for _, dy in ipairs({ -h * 0.35, h * 0.35 }) do
-		if SceneMan:CastObstacleRay(Vector(Owner.Pos.X, cruiseY + dy), Over, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 then
+		if SceneMan:CastBodyObstacleRay(Vector(Owner.Pos.X, cruiseY + dy), Over, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 then
 			return false;
 		end
 	end
@@ -1510,7 +1510,8 @@ function SharedBehaviors.CanWalkTo(Owner, landing)
 	for k = 1, steps do
 		local x = Owner.Pos.X + dir * k * 12;
 		-- A wall higher than a step: solid where the step's top would be.
-		if SceneMan:GetTerrMatter(x, floorY - stepUp) ~= rte.airID then
+		local id = SceneMan:GetTerrMatter(x, floorY - stepUp);
+		if id ~= rte.airID and not SceneMan:UnitsPassThrough(id) then
 			return false;
 		end
 		local Next = Vector();
@@ -1699,7 +1700,7 @@ end
 -- The floor under a point, looking down so far. @return Its y, or nil.
 function SharedBehaviors.FloorUnder(Owner, Point, reach)
 	local Hit = Vector();
-	if SceneMan:CastObstacleRay(Point, Vector(0, reach), Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 2) >= 0 then
+	if SceneMan:CastBodyObstacleRay(Point, Vector(0, reach), Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 2) >= 0 then
 		return Hit.Y;
 	end
 	return nil;
@@ -1711,7 +1712,7 @@ function SharedBehaviors.ColumnOpen(Owner, x, fromY, toY)
 		return true;
 	end
 	local Hit = Vector();
-	return SceneMan:CastObstacleRay(Vector(x, fromY), Vector(0, toY - fromY), Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 2) < 0 or SharedBehaviors.OurDoorAt(Owner, Hit) ~= nil;
+	return SceneMan:CastBodyObstacleRay(Vector(x, fromY), Vector(0, toY - fromY), Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 2) < 0 or SharedBehaviors.OurDoorAt(Owner, Hit) ~= nil;
 end
 
 -- A climb's plan from the route, or nil when this is no climb for the climber. @param Top The jump point well above (the route's first

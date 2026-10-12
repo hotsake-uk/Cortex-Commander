@@ -656,6 +656,12 @@ namespace RTE {
 		/// As CastObstacleRay1 and 2, with whether the ray sees through liquid as far as units do (FluidSim::SightDepth), for a line of sight or fire.
 		static float CastObstacleRay3(SceneMan& sceneMan, const Vector& start, const Vector& ray, Vector& obstaclePos, Vector& freePos, const luabind::object& ignoreMOIDs, int ignoreTeam, unsigned char ignoreMaterial, int skip, bool seeThroughLiquid);
 		static float CastObstacleRay4(SceneMan& sceneMan, const Vector& start, const Vector& ray, Vector& obstaclePos, Vector& freePos, MOID ignoreMOID, int ignoreTeam, unsigned char ignoreMaterial, int skip, bool seeThroughLiquid);
+
+		/// As CastObstacleRay2, for a body's way: through liquid while the Water behaviour setting says units pass it (SettingsMan::UnitWaterBehaviour).
+		static float CastBodyObstacleRay(SceneMan& sceneMan, const Vector& start, const Vector& ray, Vector& obstaclePos, Vector& freePos, MOID ignoreMOID, int ignoreTeam, unsigned char ignoreMaterial, int skip);
+
+		/// Whether units' own senses take a material for open water rather than terrain (FluidSim::UnitsPassThrough).
+		static bool UnitsPassThrough(SceneMan& sceneMan, int materialID);
 		
 		/// Takes a Box and returns a list of Boxes that describe the Box, wrapped appropriately for the current Scene.
 		/// @param boxToWrap The Box to wrap.

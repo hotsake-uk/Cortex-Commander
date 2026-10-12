@@ -62,6 +62,10 @@ namespace RTE {
 		/// Gets whether a material is one of the flowing liquids. Powders aren't.
 		static bool IsLiquid(int materialID);
 
+		/// Gets whether units' own senses (the walk's look ahead, the jet pilot, leaps, getting up) take a material for open water rather than
+		/// terrain: a liquid, while the Water behaviour setting says so (SettingsMan::UnitWaterBehaviour). Their bodies move through it either way.
+		static bool UnitsPassThrough(int materialID);
+
 		/// Gets whether a material is simulated as flowing: a liquid, or loose powder (sand, snow, rubble) that falls and piles.
 		static bool IsFlowing(int materialID);
 
