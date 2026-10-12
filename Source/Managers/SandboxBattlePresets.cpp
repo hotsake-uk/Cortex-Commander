@@ -4,6 +4,7 @@
 // Userdata/BattlePresets/LastSetup, and offered first in the list as "Last setup".
 
 #include "SandboxInternal.h"
+#include "Notices.h"
 
 namespace SandboxDetail {
 	namespace {
@@ -605,6 +606,7 @@ namespace SandboxDetail {
 		const BattlePreset& preset = last ? s_LastSetup.front() : *withMap;
 		UsePreset(preset);
 		g_ConsoleMan.PrintString("SANDBOX: Battle setup \"" + preset.Name + "\" loaded with the map.");
+		Notices::Post("Battle setup \"" + preset.Name + "\" loaded with the map");
 		// The main menu's quick battle: started at once, if it can be.
 		if (start) {
 			std::string why;
@@ -655,6 +657,7 @@ namespace SandboxDetail {
 				s_PresetNote = "\"" + name + "\" saved.";
 			}
 			WritePresets();
+			Notices::Post("Battle setup \"" + name + "\" saved");
 			s_PresetName[0] = 0;
 		}
 		std::string holdLabel = "Hold zones (" + std::to_string(TerrainCollapse::GetHoldZones().size()) + ")###battlePresetHold";
@@ -667,6 +670,7 @@ namespace SandboxDetail {
 			if (ImGui::SmallButton("Load")) {
 				UsePreset(s_LastSetup.front());
 				s_PresetNote = "The last setup loaded.";
+				Notices::Post("The last battle setup loaded");
 			}
 			ImGui::SetItemTooltip("Puts the setup the last battle on this map was started with on the Battle tab (kept by itself each time a battle starts).\nA battle that's on keeps going: start it again to play the setup.");
 			ImGui::SameLine();
@@ -696,6 +700,7 @@ namespace SandboxDetail {
 			if (ImGui::SmallButton("Load")) {
 				UsePreset(preset);
 				s_PresetNote = "\"" + preset.Name + "\" loaded.";
+				Notices::Post("Battle setup \"" + preset.Name + "\" loaded");
 			}
 			ImGui::SetItemTooltip("Puts this setup on the Battle tab. A battle that's on keeps going: start it again to play the setup.");
 			ImGui::SameLine();
@@ -706,6 +711,7 @@ namespace SandboxDetail {
 				preset.Mode = s_ModeSetup;
 				TakeHoldZones(preset);
 				s_PresetNote = "\"" + preset.Name + "\" saved over.";
+				Notices::Post("Battle setup \"" + preset.Name + "\" saved");
 				changed = true;
 			}
 			ImGui::SameLine();

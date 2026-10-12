@@ -76,8 +76,11 @@ namespace RTE {
 		/// Enumeration for all the different buttons of the pause menu.
 		enum PauseMenuButton {
 			BackToMainButton,
+			QuickSaveButton,
 			SaveOrLoadGameButton,
 			SettingsButton,
+			SettingsPanelButton,
+			RestartButton,
 			ModManagerButton,
 			RestartBattleButton,
 			SurrenderButton,
@@ -110,6 +113,7 @@ namespace RTE {
 		bool m_SavingButtonsDisabled; //!< Whether the save and load buttons are disabled and hidden.
 		bool m_ModManagerButtonDisabled; //!< Whether the mod manager button is disabled and hidden.
 		bool m_BattleButtonsShown; //!< Whether the battle entries (Restart battle, Surrender, Keys) are shown: only while a battle mode's game is on.
+		bool m_RestartAsked; //!< Whether Restart was pressed once and now asks to be pressed again to restart the game (U-4).
 
 		/// GUI elements that compose the pause menu screen.
 		GUICollectionBox* m_PauseMenuBox;
@@ -137,6 +141,11 @@ namespace RTE {
 
 		/// Animates (blinking) the resume game button.
 		void BlinkResumeButton();
+
+		/// Changes a pause menu button's text, in both its hovered and unhovered lettering, widening the button if the text needs it.
+		/// @param button Which button. See PauseMenuButton enumeration.
+		/// @param text The new text.
+		void SetButtonText(PauseMenuButton button, const std::string& text);
 #pragma endregion
 
 		/// Clears all the member variables of this PauseMenuGUI, effectively resetting the members of this object.

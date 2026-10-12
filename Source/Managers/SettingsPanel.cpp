@@ -15,6 +15,7 @@
 #include "MagicEffects.h"
 #include "FrameMan.h"
 #include "ModernHUD.h"
+#include "Notices.h"
 #include "PostProcessMan.h"
 #include "RenderTarget.h"
 #include "Texture.h"
@@ -228,7 +229,9 @@ namespace {
 			for (const std::string& name: s_Presets) {
 				if (ImGui::Selectable(name.c_str(), name == s_PresetName)) {
 					std::snprintf(s_PresetName, sizeof(s_PresetName), "%s", name.c_str());
-					s_PresetMessage = g_SettingsMan.LoadPreset(name) ? "Loaded \"" + name + "\"." : "Could not load \"" + name + "\".";
+					bool loaded = g_SettingsMan.LoadPreset(name);
+					s_PresetMessage = loaded ? "Loaded \"" + name + "\"." : "Could not load \"" + name + "\".";
+					Notices::Post(loaded ? "Preset \"" + name + "\" loaded." : "Could not load the preset \"" + name + "\".");
 				}
 			}
 			ImGui::EndCombo();
@@ -255,6 +258,7 @@ namespace {
 		if (ToolUI::Button("Save")) {
 			std::string saved = g_SettingsMan.SavePreset(s_PresetName);
 			s_PresetMessage = saved.empty() ? "Could not save it." : "Saved \"" + saved + "\".";
+			Notices::Post(saved.empty() ? "Could not save the preset." : "Preset \"" + saved + "\" saved.");
 			std::snprintf(s_PresetName, sizeof(s_PresetName), "%s", saved.c_str());
 			s_PresetsListed = false;
 		}
@@ -1172,6 +1176,8 @@ void DebugMan::SettingsGUI() {
 		Toggle("Show FPS and version", g_SettingsMan.ShowFPSAndVersion(), [](bool on) { g_SettingsMan.SetShowFPSAndVersion(on); });
 		Tip("The frame rate and the game's version, small, in the top right of the window.");
 		Toggle("Modern HUD", ModernHUD::IsEnabled(), [](bool on) { ModernHUD::SetEnabled(on); });
+		Toggle("Notices at the top of the screen", g_SettingsMan.ShowNotices(), [](bool on) { g_SettingsMan.SetShowNotices(on); });
+		Tip("Short notes at the top of the screen for a few seconds when something is done that is hard to see otherwise: \"Game saved\", a preset loaded, \"Nothing to undo\", a camera spot kept, or a sandbox tool used while its simulation is off.");
 		Slider("UI lighting", &ToolLight::Strength, 0.0F, 2.0F);
 		Tip("The menus and HUD lit as if they were in the world: the light brightens the side of each panel facing it, shades the far side, catches the edges towards it and casts the panel's shadow away from it. They are never dimmed past reading. 0 turns it off.");
 		{

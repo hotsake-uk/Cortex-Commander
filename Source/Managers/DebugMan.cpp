@@ -2,6 +2,7 @@
 #include "Weather.h"
 #include "DebugDraw.h"
 #include "DebugOverlays.h"
+#include "Notices.h"
 #include <unordered_map>
 #include <unordered_set>
 #include "Actor.h"
@@ -514,6 +515,10 @@ void DebugMan::DrawImGui() {
 
 	ToolLight::Windows();
 
+	// Notices last, over everything (they're on the foreground list either way), in every game mode and the menus; not while photo mode hides the HUD.
+	if (!IsPhotoModeHidingHUD()) {
+		Notices::Draw();
+	}
 }
 
 bool DebugMan::BeginPanel(const char* name, bool* open, PanelSide side, PanelPlacement placement, bool flow) {

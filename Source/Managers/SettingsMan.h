@@ -458,6 +458,33 @@ namespace RTE {
 		/// @param show Whether to show them.
 		void SetShowFPSAndVersion(bool show) { m_ShowFPSAndVersion = show; }
 
+		/// Gets whether short notices ("Game saved", "Nothing to undo") are shown at the top of the screen (see Notices; on by default).
+		bool ShowNotices() const { return m_ShowNotices; }
+
+		/// Sets whether short notices are shown at the top of the screen.
+		void SetShowNotices(bool show) { m_ShowNotices = show; }
+
+		/// The main menu's map browser's filters and order (U-3), kept between launches. The "With saved battles" filter isn't kept: it's on for
+		/// Battle Command and off for the Sandbox each time the browser opens. See SandboxMapBrowser.cpp.
+		struct MapBrowserFilters {
+			std::string Mod; //!< Only maps of this mod, by its file name ("Base.rte"); empty for any.
+			int Source = -1; //!< Only maps of this kind (official, from a mod, made in the editor); -1 for any.
+			int Size = -1; //!< Only maps of this size (small to extra large); -1 for any.
+			bool OnlyFavourites = false; //!< Only the maps starred as favourites.
+			bool OnlyRecent = false; //!< Only the maps played lately, the latest first.
+			int Sort = 0; //!< What the maps are sorted by: name, size, mod or saved battles.
+		};
+
+		/// Gets the map browser's kept filters and order, to read or change.
+		MapBrowserFilters& MapBrowserFilterSettings() { return m_MapBrowserFilters; }
+
+		/// Gets the map last played (any game started on a map, not a saved game or an editor), for the main menu's "Continue on" (U-3).
+		/// @return The map's preset name, or nothing if none has been played yet.
+		const std::string& LastMap() const { return m_LastMap; }
+
+		/// Sets the map last played. Kept in Settings.ini.
+		void SetLastMap(const std::string& mapName) { m_LastMap = mapName; }
+
 		/// The debug text channels: kinds of debug lines written to the console (and LogConsole.txt). Each keeps its line prefix (AITRACE, PATHLOG, SANDBOX, PERF), so log readers still match.
 		enum class DebugChannel { AI, Path, Pilot, Climb, Combat, Squad, Sandbox, Perf, Grid, Count };
 
@@ -1060,6 +1087,9 @@ namespace RTE {
 		bool m_TakingKey = false; //!< Whether the settings panel is waiting for a key to bind (see IsTakingKey).
 		bool m_EndlessMetaGameMode; //!< Endless MetaGame mode.
 		bool m_ShowFPSAndVersion; //!< Whether the frame rate and version are shown in the top right (see ShowFPSAndVersion).
+		bool m_ShowNotices; //!< Whether short notices are shown at the top of the screen (see ShowNotices).
+		MapBrowserFilters m_MapBrowserFilters; //!< The map browser's kept filters and order (see MapBrowserFilterSettings).
+		std::string m_LastMap; //!< The map last played (see LastMap).
 		int m_NavDebugOverlay; //!< What the navigation debug overlay shows (see NavDebugOverlay).
 		int m_DebugTeam; //!< The team whose view the debug overlays show (see DebugTeam).
 		int m_UnitInspector; //!< Which units the unit inspector overlay labels (see UnitInspector).
