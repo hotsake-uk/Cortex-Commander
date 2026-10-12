@@ -1,6 +1,7 @@
 // The Battle tab's setups saved with a map: every team's card, the mode and its choices, and the zones, points and lines drawn for them,
 // kept in Userdata/BattlePresets/<map>.txt. One of a map's setups can be marked to load with it, so it is there again whenever the map
-// starts: after a reset, or in a fresh game.
+// starts: after a reset, or in a fresh game. The setup each battle was last started with is kept too (B-11), in a file of its own under
+// Userdata/BattlePresets/LastSetup, and offered first in the list as "Last setup".
 
 #include "SandboxInternal.h"
 #include "Notices.h"
@@ -17,6 +18,9 @@ namespace SandboxDetail {
 		std::string s_PresetNote; //!< What the last save or load did, shown under the list.
 		std::string s_PresetOnStart; //!< The setup the map browser picked to go in when the next game starts, in place of the one with the map.
 		bool s_NoPresetOnStart = false; //!< The map browser picked no setup for the next game: none goes in.
+		bool s_StartOnStart = false; //!< The map browser's quick battle: the setup that goes in with the next game is started too.
+		constexpr const char* c_LastSetupName = "Last setup"; //!< The name the last setup is kept under in its file.
+		std::vector<BattlePreset> s_LastSetup; //!< The last setup started on s_PresetsScene, if one was kept (one at most).
 
 		/// Linked battles: the setups being played in turn, by name, and which is on.
 		struct LinkedRun {
@@ -293,6 +297,12 @@ namespace SandboxDetail {
 			return "Userdata/BattlePresets/" + file + ".txt";
 		}
 
+		/// The file the setup a map's battle was last started with is kept in: apart from its saved setups, so the map browser doesn't count it.
+		std::string LastSetupFile(const std::string& scene) {
+			std::string file = PresetsFile(scene);
+			return "Userdata/BattlePresets/LastSetup/" + file.substr(std::strlen("Userdata/BattlePresets/"));
+		}
+
 		std::string Trim(const std::string& text) {
 			size_t from = text.find_first_not_of(" \t\r");
 			size_t to = text.find_last_not_of(" \t\r");
@@ -333,10 +343,10 @@ namespace SandboxDetail {
 			return preset;
 		}
 
-		/// Reads the setups saved for a map from its file.
-		std::vector<BattlePreset> ReadPresetsFile(const std::string& scene) {
+		/// Reads the setups saved for a map from its file (or another file in the same form).
+		std::vector<BattlePreset> ReadPresetsFile(const std::string& scene, bool lastSetup = false) {
 			std::vector<BattlePreset> presets;
-			std::ifstream file(PresetsFile(scene));
+			std::ifstream file(lastSetup ? LastSetupFile(scene) : PresetsFile(scene));
 			std::string line;
 			std::string name;
 			std::map<std::string, std::string> lines;
@@ -375,16 +385,16 @@ namespace SandboxDetail {
 				return;
 			}
 			s_Presets = ReadPresetsFile(scene);
+			s_LastSetup = ReadPresetsFile(scene, true);
+			s_LastSetup.resize(std::min<size_t>(s_LastSetup.size(), 1));
 		}
 
-		void WritePresets() {
-			if (s_PresetsScene.empty()) {
-				return;
-			}
-			std::filesystem::create_directories("Userdata/BattlePresets");
-			std::ofstream file(PresetsFile(s_PresetsScene), std::ios::trunc);
-			file << "// Battle Director setups for " << s_PresetsScene << ", saved from the Battle tab.\n";
-			for (BattlePreset& preset: s_Presets) {
+		/// Writes setups to a file, each under its name.
+		void WritePresetsTo(const std::string& path, const std::string& heading, std::vector<BattlePreset>& presets) {
+			std::filesystem::create_directories(std::filesystem::path(path).parent_path());
+			std::ofstream file(path, std::ios::trunc);
+			file << heading << '\n';
+			for (BattlePreset& preset: presets) {
 				file << "\n[" << preset.Name << "]\n";
 				file << "WithMap = " << ToText(preset.WithMap) << '\n';
 				file << "Linked = " << ToText(preset.Linked) << '\n';
@@ -395,6 +405,13 @@ namespace SandboxDetail {
 				Saver save{file, "Mode."};
 				VisitMode(preset.Mode, save);
 			}
+		}
+
+		void WritePresets() {
+			if (s_PresetsScene.empty()) {
+				return;
+			}
+			WritePresetsTo(PresetsFile(s_PresetsScene), "// Battle Director setups for " + s_PresetsScene + ", saved from the Battle tab.", s_Presets);
 		}
 
 		/// Puts a setup on the Battle tab and sends it to the sim, as if each choice had been made there. A battle on keeps going.
@@ -461,6 +478,55 @@ namespace SandboxDetail {
 		s_NoPresetOnStart = none;
 	}
 
+	void StartBattleOnStart(bool start) {
+		s_StartOnStart = start;
+	}
+
+	void RememberLastBattleSetup() {
+		ReadPresets();
+		if (s_PresetsScene.empty()) {
+			return;
+		}
+		BattlePreset last;
+		last.Name = c_LastSetupName;
+		last.Cards = s_BattleSetup;
+		last.Mode = s_ModeSetup;
+		s_LastSetup = {last};
+		WritePresetsTo(LastSetupFile(s_PresetsScene), "// The battle setup last started on " + s_PresetsScene + ", kept by itself each time a battle starts.", s_LastSetup);
+	}
+
+	bool AskFirst(bool clicked, const char* popup, const std::string& question, const char* yes) {
+		bool confirmed = false;
+		if (clicked) {
+			// (Ctrl+click, or asking turned off: at once.)
+			if (!g_SettingsMan.BattleAskFirst() || ImGui::GetIO().KeyCtrl) {
+				confirmed = true;
+			} else {
+				ImGui::OpenPopup(popup);
+			}
+		}
+		if (ImGui::BeginPopupModal(popup, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+			ImGui::TextUnformatted(question.c_str());
+			bool dontAsk = !g_SettingsMan.BattleAskFirst();
+			if (ToolUI::Checkbox("Don't ask again", &dontAsk)) {
+				g_SettingsMan.SetBattleAskFirst(!dontAsk);
+			}
+			ImGui::SetItemTooltip("Saved setups deleted or saved over, and a battle started again or stopped, go ahead at once from now on.\nTurn asking back on under Game & HUD in the settings (F6). Ctrl+click always skips the question.");
+			if (ToolUI::SmallButton(yes)) {
+				confirmed = true;
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::SetItemTooltip("Goes ahead.");
+			ImGui::SameLine();
+			if (ToolUI::SmallButton("Cancel")) {
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::SetItemTooltip("Leaves things as they are.");
+			ImGui::EndPopup();
+		}
+		return confirmed;
+	}
+
 	void BattlePresetsNewGame() {
 		s_PresetPending = true;
 		s_Linked = LinkedRun();
@@ -508,15 +574,30 @@ namespace SandboxDetail {
 		// The map browser's pick, if it made one, for this game only.
 		std::string picked = s_PresetOnStart;
 		bool none = s_NoPresetOnStart;
+		const bool start = s_StartOnStart;
 		LoadBattleOnStart("", false);
+		StartBattleOnStart(false);
 		if (none) {
 			return;
 		}
 		auto withMap = std::find_if(s_Presets.begin(), s_Presets.end(), [&picked](const BattlePreset& preset) { return picked.empty() ? preset.WithMap : preset.Name == picked; });
-		if (withMap != s_Presets.end()) {
-			UsePreset(*withMap);
-			g_ConsoleMan.PrintString("SANDBOX: Battle setup \"" + withMap->Name + "\" loaded with the map.");
-			Notices::Post("Battle setup \"" + withMap->Name + "\" loaded with the map");
+		// (The last setup only when picked by its name, and no saved setup has that name.)
+		const bool last = withMap == s_Presets.end() && !s_LastSetup.empty() && picked == c_LastSetupName;
+		if (withMap == s_Presets.end() && !last) {
+			return;
+		}
+		const BattlePreset& preset = last ? s_LastSetup.front() : *withMap;
+		UsePreset(preset);
+		g_ConsoleMan.PrintString("SANDBOX: Battle setup \"" + preset.Name + "\" loaded with the map.");
+		Notices::Post("Battle setup \"" + preset.Name + "\" loaded with the map");
+		// The main menu's quick battle: started at once, if it can be.
+		if (start) {
+			std::string why;
+			if (BattleModeReady(why)) {
+				SendBattleMode(BattleModeStart);
+			} else {
+				g_ConsoleMan.PrintString("SANDBOX: Battle setup \"" + preset.Name + "\" can't be started as it is: " + why);
+			}
 		}
 	}
 
@@ -537,7 +618,11 @@ namespace SandboxDetail {
 		ImGui::SameLine();
 		std::string name = CleanName(s_PresetName);
 		ImGui::BeginDisabled(name.empty());
-		if ((ToolUI::Button("Save", ImVec2(-1.0F, 0.0F)) || entered) && !name.empty()) {
+		const bool saveClicked = (ToolUI::Button("Save", ImVec2(-1.0F, 0.0F)) || entered) && !name.empty();
+		ImGui::EndDisabled();
+		ImGui::SetItemTooltip("Saves the Battle tab as it is now, under this name (over the one of the same name, if there is one: you're asked first, Ctrl+click not).");
+		const bool exists = std::any_of(s_Presets.begin(), s_Presets.end(), [&name](const BattlePreset& preset) { return preset.Name == name; });
+		if (exists ? AskFirst(saveClicked, "Save over?##battlePresetSaveSame", "Save over \"" + name + "\"? The setup saved under that name is lost.", "Yes, save over") : saveClicked) {
 			auto same = std::find_if(s_Presets.begin(), s_Presets.end(), [&name](const BattlePreset& preset) { return preset.Name == name; });
 			BattlePreset preset;
 			preset.Name = name;
@@ -557,8 +642,22 @@ namespace SandboxDetail {
 			Notices::Post("Battle setup \"" + name + "\" saved");
 			s_PresetName[0] = 0;
 		}
-		ImGui::EndDisabled();
-		ImGui::SetItemTooltip("Saves the Battle tab as it is now, under this name (over the one of the same name, if there is one).");
+
+		// The setup the last battle on this map was started with, kept by itself, first.
+		if (!s_LastSetup.empty()) {
+			ImGui::PushID("lastSetup");
+			if (ImGui::SmallButton("Load")) {
+				UsePreset(s_LastSetup.front());
+				s_PresetNote = "The last setup loaded.";
+				Notices::Post("The last battle setup loaded");
+			}
+			ImGui::SetItemTooltip("Puts the setup the last battle on this map was started with on the Battle tab (kept by itself each time a battle starts).\nA battle that's on keeps going: start it again to play the setup.");
+			ImGui::SameLine();
+			ImGui::TextColored(ImVec4(0.6F, 0.85F, 1.0F, 1.0F), "%s", c_LastSetupName);
+			ImGui::SameLine();
+			ImGui::TextDisabled("(kept each time a battle starts)");
+			ImGui::PopID();
+		}
 
 		int remove = -1;
 		bool changed = false;
@@ -584,19 +683,21 @@ namespace SandboxDetail {
 			}
 			ImGui::SetItemTooltip("Puts this setup on the Battle tab. A battle that's on keeps going: start it again to play the setup.");
 			ImGui::SameLine();
-			if (ImGui::SmallButton("Save over")) {
+			const bool saveOver = ImGui::SmallButton("Save over");
+			ImGui::SetItemTooltip("Saves the Battle tab as it is now in place of this setup. You're asked first (Ctrl+click: not).");
+			if (AskFirst(saveOver, "Save over?##battlePresetSaveOver", "Save over \"" + preset.Name + "\"? The setup saved now is lost.", "Yes, save over")) {
 				preset.Cards = s_BattleSetup;
 				preset.Mode = s_ModeSetup;
 				s_PresetNote = "\"" + preset.Name + "\" saved over.";
 				Notices::Post("Battle setup \"" + preset.Name + "\" saved");
 				changed = true;
 			}
-			ImGui::SetItemTooltip("Saves the Battle tab as it is now in place of this setup.");
 			ImGui::SameLine();
-			if (ImGui::SmallButton("X")) {
+			const bool deleteClicked = ImGui::SmallButton("X");
+			ImGui::SetItemTooltip("Deletes this setup. You're asked first (Ctrl+click: not).");
+			if (AskFirst(deleteClicked, "Delete the setup?##battlePresetDelete", "Delete \"" + preset.Name + "\"? It can't be brought back.", "Yes, delete")) {
 				remove = i;
 			}
-			ImGui::SetItemTooltip("Deletes this setup.");
 			ImGui::SameLine();
 			ImGui::TextUnformatted(preset.Name.c_str());
 			ImGui::PopID();

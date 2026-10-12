@@ -94,6 +94,7 @@ namespace SandboxDetail {
 			bool OnlyWithBattles = false;
 			bool OnlyFavourites = false;
 			bool OnlyRecent = false; //!< Only the maps played lately, the latest first, whatever the sort.
+			bool QuickBattle = false; //!< Opened from the main menu's Quick Battle: Play starts the battle picked (MapBrowser::Choice::StartBattle).
 			SortBy Sort = SortBy::Name;
 			int Picked = -1; //!< Index into Maps of the map picked, or -1.
 			int PickedBattle = -1; //!< Index into its Battles of the battle picked, or -1 for none: the map as it is.
@@ -682,6 +683,7 @@ namespace SandboxDetail {
 			choice.Play = true;
 			choice.For = s_Browser.For;
 			choice.Scene = map.Name;
+			choice.StartBattle = s_Browser.QuickBattle;
 			if (s_Browser.PickedBattle >= 0 && s_Browser.PickedBattle < static_cast<int>(map.Battles.size())) {
 				choice.Battle = map.Battles[s_Browser.PickedBattle].Name;
 			} else {
@@ -1171,7 +1173,7 @@ namespace SandboxDetail {
 			if (ToolUI::Button(play.c_str(), ImVec2(-1.0F, playHeight))) {
 				Play();
 			}
-			ImGui::SetItemTooltip(s_Browser.For == MapBrowser::Purpose::Battle ? "Starts Battle Command on this map, with the battle picked set up on the battle panel." : "Starts the Sandbox on this map, with the battle picked set up on the Battle tab.");
+			ImGui::SetItemTooltip("%s", s_Browser.QuickBattle ? "Starts Battle Command on this map with the battle picked, and the battle itself at once (if it's ready to start; else it waits on the battle panel)." : s_Browser.For == MapBrowser::Purpose::Battle ? "Starts Battle Command on this map, with the battle picked set up on the battle panel." : "Starts the Sandbox on this map, with the battle picked set up on the Battle tab.");
 			ImGui::EndChild();
 		}
 #pragma endregion
@@ -1180,9 +1182,10 @@ namespace SandboxDetail {
 
 using namespace SandboxDetail;
 
-void MapBrowser::Open(Purpose purpose) {
+void MapBrowser::Open(Purpose purpose, bool quickBattle) {
 	s_Browser.Open = true;
 	s_Browser.For = purpose;
+	s_Browser.QuickBattle = quickBattle && purpose == Purpose::Battle;
 	s_Browser.Choice = Choice();
 	ReadKeptFilters();
 	s_Browser.OnlyWithBattles = purpose == Purpose::Battle;
@@ -1227,6 +1230,7 @@ bool MapBrowser::SetStartChoice(const Choice& choice) {
 		return false;
 	}
 	LoadBattleOnStart(choice.Battle, choice.NoBattle);
+	StartBattleOnStart(choice.StartBattle && !choice.NoBattle);
 	return true;
 }
 
@@ -1265,7 +1269,7 @@ void MapBrowser::DrawGUI() {
 	const float margin = std::floor(std::min(viewport->Size.x, viewport->Size.y) * 0.03F);
 	ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + margin, viewport->Pos.y + margin));
 	ImGui::SetNextWindowSize(ImVec2(viewport->Size.x - margin * 2.0F, viewport->Size.y - margin * 2.0F));
-	std::string title = std::string(s_Browser.For == Purpose::Battle ? "Battle Command: pick a map" : "Sandbox: pick a map") + "###MapBrowser";
+	std::string title = std::string(s_Browser.QuickBattle ? "Quick battle: pick a map and a saved battle" : s_Browser.For == Purpose::Battle ? "Battle Command: pick a map" : "Sandbox: pick a map") + "###MapBrowser";
 	if (ImGui::Begin(title.c_str(), nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar)) {
 		const ImGuiStyle& style = ImGui::GetStyle();
 		const float backWidth = ImGui::CalcTextSize("Back").x + style.FramePadding.x * 4.0F;

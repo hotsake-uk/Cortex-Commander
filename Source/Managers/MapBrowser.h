@@ -25,11 +25,14 @@ namespace RTE {
 			std::string Scene; //!< The map.
 			std::string Battle; //!< The saved battle picked to set up on it. Empty with NoBattle for none, or for the one marked to load with the map.
 			bool NoBattle = false; //!< No saved battle: the map as it is.
+			bool StartBattle = false; //!< Opened for a quick battle: the saved battle picked is started as soon as the map is in.
 		};
 
 		/// Opens the browser, every filter as it was left (kept between launches, in the settings) except the saved battles one, which is on for
 		/// Battle and off for Sandbox.
-		static void Open(Purpose purpose);
+		/// @param purpose What a map is picked for.
+		/// @param quickBattle For Battle: the main menu's Quick Battle, where Play starts the saved battle picked at once (B-16).
+		static void Open(Purpose purpose, bool quickBattle = false);
 
 		/// Closes the browser and lets go of the map pictures it holds.
 		static void Close();

@@ -79,6 +79,9 @@ namespace RTE {
 			SaveOrLoadGameButton,
 			SettingsButton,
 			ModManagerButton,
+			RestartBattleButton,
+			SurrenderButton,
+			KeysButton,
 			ResumeButton,
 			ButtonCount
 		};
@@ -106,6 +109,7 @@ namespace RTE {
 
 		bool m_SavingButtonsDisabled; //!< Whether the save and load buttons are disabled and hidden.
 		bool m_ModManagerButtonDisabled; //!< Whether the mod manager button is disabled and hidden.
+		bool m_BattleButtonsShown; //!< Whether the battle entries (Restart battle, Surrender, Keys) are shown: only while a battle mode's game is on.
 
 		/// GUI elements that compose the pause menu screen.
 		GUICollectionBox* m_PauseMenuBox;
