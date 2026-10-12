@@ -59,7 +59,8 @@ function FX.CasterOf(self)
 		return FX.ActorByUID(self:GetNumberValue("CasterUID"));
 	end
 	local ok, gun = pcall(self.GetWhichMOToNotHit, self);
-	if ok and gun then
+	-- (Only while the gun is still in the scene: it may be gone by the time a slow projectile lands, and reading it then is a crash.)
+	if ok and gun and MovableMan:ValidMO(gun) then
 		local rootOK, rootID = pcall(function() return gun.RootID; end);
 		if rootOK and rootID and rootID ~= FX.NoMOID then
 			local root = MovableMan:GetMOFromID(rootID);
