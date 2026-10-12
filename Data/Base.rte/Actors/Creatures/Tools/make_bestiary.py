@@ -432,7 +432,9 @@ def stonify(path):
 	text = re.sub(r"CopyOf = Wound (Flesh|Bone) \w+( \w+)?", "CopyOf = Dent Metal No Spark", text)
 	text = text.replace("Organic = 1", "Organic = 0")
 	text = re.sub(r"CopyOf = Gib (?:Flesh|Bone) Small ([A-Z])", lambda m: "CopyOf = Gib Stone Small " + "ABC"[(ord(m.group(1)) - 65) % 3], text)
-	text = re.sub(r"CopyOf = (Gib (?:Flesh|Bone) (?:Tiny|Micro) A|Drop Blood|Blood Spray Particle)", "CopyOf = Gib Stone Tiny A", text)
+	# (Blood drops are MOPixels; the stone dust is an MOSParticle, so the gib's class goes with it.)
+	text = re.sub(r"GibParticle = MOPixel(\n\s*)CopyOf = Drop Blood", r"GibParticle = MOSParticle\1CopyOf = Gib Stone Tiny A", text)
+	text = re.sub(r"CopyOf = (Gib (?:Flesh|Bone) (?:Tiny|Micro) A|Blood Spray Particle)", "CopyOf = Gib Stone Tiny A", text)
 	text = text.replace("CopyOf = Flesh Limb Gib", "CopyOf = Metal Door Gib")
 	with open(path, "w", encoding="utf-8", newline="\n") as handle:
 		handle.write(text)
