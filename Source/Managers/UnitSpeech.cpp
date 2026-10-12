@@ -364,6 +364,11 @@ int UnitSpeech::GetToneWeight(const std::string& tone) {
 	return ToneWeightOf(tone);
 }
 
+int UnitSpeech::GetNormalToneWeight(const std::string& tone) {
+	auto weight = s_ToneDefaultWeights.find(tone);
+	return weight == s_ToneDefaultWeights.end() ? 100 : weight->second;
+}
+
 std::string UnitSpeech::GetToneDescription(const std::string& tone) {
 	auto description = s_ToneDescriptions.find(tone);
 	return description == s_ToneDescriptions.end() ? "" : description->second;
