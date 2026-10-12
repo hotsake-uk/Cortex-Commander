@@ -403,6 +403,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CollapseRestSeconds", { TerrainCollapse::GetTuning().RestSeconds = std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 30.0F); });
 	MatchProperty("CollapseHitDamage", { TerrainCollapse::GetTuning().HitDamage = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 20.0F); });
 	MatchProperty("CollapseHitMinSpeed", { TerrainCollapse::GetTuning().HitMinSpeed = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 30.0F); });
+	MatchProperty("CollapseMaxDebrisPerUpdate", { TerrainCollapse::GetTuning().MaxDebrisPerUpdate = std::clamp(std::stoi(reader.ReadPropValue()), 0, 5000); });
+	MatchProperty("CollapseDebrisKeptPercent", { TerrainCollapse::GetTuning().DebrisKeptPercent = std::clamp(std::stoi(reader.ReadPropValue()), 0, 100); });
 	MatchProperty("CollapseHitMinPixels", { TerrainCollapse::GetTuning().HitMinPixels = std::clamp(std::stoi(reader.ReadPropValue()), 0, 5000); });
 	MatchProperty("CollapseHitMassCap", { TerrainCollapse::GetTuning().HitMassCap = std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 50.0F); });
 	MatchProperty("CollapseHitKnockback", { TerrainCollapse::GetTuning().HitKnockback = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 10.0F); });
@@ -1323,6 +1325,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("CollapseBlastPush", TerrainCollapse::GetTuning().BlastPush);
 	writer.NewPropertyWithValue("CollapseHitDamage", TerrainCollapse::GetTuning().HitDamage);
 	writer.NewPropertyWithValue("CollapseHitMinSpeed", TerrainCollapse::GetTuning().HitMinSpeed);
+	writer.NewPropertyWithValue("CollapseMaxDebrisPerUpdate", TerrainCollapse::GetTuning().MaxDebrisPerUpdate);
+	writer.NewPropertyWithValue("CollapseDebrisKeptPercent", TerrainCollapse::GetTuning().DebrisKeptPercent);
 	writer.NewPropertyWithValue("CollapseHitMinPixels", TerrainCollapse::GetTuning().HitMinPixels);
 	writer.NewPropertyWithValue("CollapseHitMassCap", TerrainCollapse::GetTuning().HitMassCap);
 	writer.NewPropertyWithValue("CollapseHitKnockback", TerrainCollapse::GetTuning().HitKnockback);
