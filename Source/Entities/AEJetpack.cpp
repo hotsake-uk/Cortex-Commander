@@ -241,7 +241,8 @@ void AEJetpack::UpdateBurstState(Actor& parentActor) {
 		Recharge(parentActor);
 	}
 
-	m_JetTimeLeft = std::clamp(m_JetTimeLeft, 0.0f, GetJetTimeTotal());
+	// Infinite jetpack fuel (the Carry weight settings): the tank never runs down.
+	m_JetTimeLeft = g_SettingsMan.InfiniteJetpackFuel() ? GetJetTimeTotal() : std::clamp(m_JetTimeLeft, 0.0f, GetJetTimeTotal());
 
 	// If pie menu is on, keep the angle to what it was before.
 	bool canAdjustAngle = !controller.IsState(PIE_MENU_ACTIVE) && (m_CanAdjustAngleWhileFiring || !IsEmitting());

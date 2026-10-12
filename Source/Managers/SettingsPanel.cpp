@@ -956,6 +956,10 @@ void DebugMan::SettingsGUI() {
 		Tip("Of the leaves (and grass) that come off a falling tree or break off a clump, how many are laid on the ground below as plant matter rather than thrown as loose bits, most of which vanish as they land. 100: all of them stay. 0: all are thrown, as before. Leaves thrown when too many are flying at once are laid down either way rather than lost.");
 		Slider("Metal (Bend, m/s)", &tuning.BendSpeed, 0.5F, 30.0F, "%.1f");
 		Tip("Metal never breaks from a landing. Above this, a long thin piece (a beam, a plate) folds at a crease, more the harder the hit and the thinner it is, and a chunky piece dents. Falling pieces move at most 27 m/s, so above that never.");
+		SliderI("Most loose bits thrown per update", &tuning.MaxDebrisPerUpdate, 0, 5000, "%d", ImGuiSliderFlags_Logarithmic);
+		Tip("How many loose pixels breaking, snapping and crushed ground may throw off as particles in one update. Past it, little pieces wait and come apart later, but pixels of snapped necks and overhangs and crushed scraps are lost (see the next setting). Higher: fewer lost, slower big collapses. 160: as the game comes.");
+		SliderI("Loose bits kept past that (%)", &tuning.DebrisKeptPercent, 0, 100);
+		Tip("Of the loose pixels past the most per update that would otherwise vanish, how many in a hundred are thrown anyway. 0: all of them vanish, as the game comes. 100: none do, at the cost of more particles in big collapses.");
 		Heading("Hitting units");
 		Slider("How much falling pieces hurt", &tuning.HitDamage, 0.0F, 5.0F, "%.2fx");
 		Tip("Damage is a share of the unit's full health, by how fast the piece is moving into it and how heavy it is for the unit. At 1 a block a metre across falling 10 m/s onto a soldier takes about a quarter to a third of their health. 0: pieces never hurt.");
@@ -1545,6 +1549,8 @@ void DebugMan::SettingsGUI() {
 				g_SettingsMan.SetJetpackFuelMultiplier(fuel);
 			}
 			Tip("How much fuel every jetpack holds, as a multiple of its own. More lets units fly longer; a fuller tank also takes longer to refill. 1x is normal.");
+			Toggle("Infinite jetpack fuel", g_SettingsMan.InfiniteJetpackFuel(), [](bool on) { g_SettingsMan.SetInfiniteJetpackFuel(on); });
+			Tip("Every jetpack's tank stays full however long it fires, for players and the AI alike. The AI still plans its flights for one tankful, so it won't take routes longer than that. Off is normal.");
 		}
 		if (Plain()) {
 			ImGui::Spacing();

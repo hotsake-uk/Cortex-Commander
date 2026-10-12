@@ -58,7 +58,6 @@ namespace {
 	constexpr int c_MinBreakPixels = 40; //!< Pieces smaller than this don't crack any further.
 	constexpr int c_MaxGeneration = 4; //!< How many times a piece's pieces may crack again.
 	constexpr int c_MaxOutlinePoints = 260; //!< How many points of a piece's outline are tested against the terrain.
-	constexpr int c_MaxDebrisPerUpdate = 160; //!< How many loose particles breaking pieces may throw off in one update.
 	constexpr float c_Gravity = 0.1F; //!< Pixels per update, per update, under the stock scene gravity (c_StockGravity).
 	constexpr float c_StockGravity = 20.0F; //!< The stock scene gravity, m/s/s, which c_Gravity is tuned for.
 	constexpr float c_Weightless = 0.05F; //!< Under this share of the stock gravity nothing comes down (a scene in space).
@@ -292,6 +291,10 @@ namespace {
 	unsigned int s_SceneGeneration = 0; //!< SceneMan's count of scene loads when this scene was taken up: the same scene restarted, or a new one at the old one's address, still counts as new (as in FluidSim).
 	int s_CollapsedCount = 0;
 	int s_DebrisThisUpdate = 0;
+
+	/// How many loose particles may be thrown off in one update (the tuning's MaxDebrisPerUpdate).
+	int MaxDebrisPerUpdate() { return std::max(TerrainCollapse::GetTuning().MaxDebrisPerUpdate, 0); }
+
 	unsigned int s_Random = 0x51ED270Bu;
 
 	float Random01() {
@@ -816,12 +819,18 @@ namespace {
 	/// Whether this many more pixels can be thrown off as loose particles this update. Beyond that, a scrap stays a little body of its own and comes apart later,
 	/// rather than vanishing.
 	bool CanThrow(size_t count) {
-		return s_DebrisThisUpdate + static_cast<int>(count) <= c_MaxDebrisPerUpdate;
+		return s_DebrisThisUpdate + static_cast<int>(count) <= MaxDebrisPerUpdate();
 	}
 
 	/// Throws a pixel of a body off as a loose particle.
 	void ThrowDebris(int material, int colorIndex, const glm::vec2& position, const glm::vec2& velocity) {
-		if (s_DebrisThisUpdate >= c_MaxDebrisPerUpdate || colorIndex == ColorKeys::g_MaskColor) {
+		if (colorIndex == ColorKeys::g_MaskColor) {
+			return;
+		}
+		// Past the most for this update the pixel is lost, but for the tuning's DebrisKeptPercent share, which is thrown anyway.
+		// (The roll only with a share set, so at 0 the falls play out exactly as before.)
+		int keptPercent = TerrainCollapse::GetTuning().DebrisKeptPercent;
+		if (s_DebrisThisUpdate >= MaxDebrisPerUpdate() && (keptPercent <= 0 || (keptPercent < 100 && Random01() * 100.0F >= static_cast<float>(keptPercent)))) {
 			return;
 		}
 		const Material* sceneMaterial = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(material));
@@ -1080,7 +1089,7 @@ namespace {
 		// How far from the hit brittle material is powdered and loose ground falls apart into grains.
 		float chipRadius = 1.5F + std::min(violence, 4.0F);
 		float crumbleRadius = body.Radius * std::min(1.0F, 0.35F + 0.25F * violence) + 2.0F;
-		int debrisLeft = c_MaxDebrisPerUpdate - s_DebrisThisUpdate;
+		int debrisLeft = MaxDebrisPerUpdate() - s_DebrisThisUpdate;
 		constexpr int c_Loose = -3; //!< A pixel thrown off as a loose particle.
 		constexpr int c_Grain = -4; //!< A pixel of loose ground let go where it is, as loose grains in the terrain (the powders then slide them down: FluidSim).
 		std::vector<int> region(body.Materials.size(), -1);
@@ -1578,7 +1587,7 @@ namespace {
 		glm::vec2 hitLocal = ToLocal(body, hitPoint);
 		float reach = std::max(body.Radius, 1.0F);
 		int shed = 0;
-		for (int local = 0; local < static_cast<int>(body.Materials.size()) && s_DebrisThisUpdate < c_MaxDebrisPerUpdate; ++local) {
+		for (int local = 0; local < static_cast<int>(body.Materials.size()) && s_DebrisThisUpdate < MaxDebrisPerUpdate(); ++local) {
 			int material = body.Materials[local];
 			if (!material || !s_Flimsy[material]) {
 				continue;
