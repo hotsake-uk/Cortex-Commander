@@ -1,6 +1,8 @@
 // Creature afflictions (CR-6): what a monster's attack leaves on whoever it hits. A giant spider's venom eats at the victim's health for a
 // few seconds and slows its walk; its web holds the victim's legs fast for a couple of seconds, though it can still turn and shoot. The
 // bite and the web glob put them on (Envenom, Ensnare, from their scripts); they run here.
+// Status effects (SE-1) run here too: the buffs and curses spells leave on a unit (StatusEffect.h), and the passives a creature's preset
+// gives it. Each Update they are expired, their regeneration and hold applied, and the shader and light they give the unit set.
 
 #include "Actor.h"
 #include "Color.h"
@@ -11,6 +13,8 @@
 #include "TimerMan.h"
 
 #include <algorithm>
+#include <cfloat>
+#include <climits>
 #include <cmath>
 
 using namespace RTE;
@@ -51,13 +55,151 @@ bool Actor::IsEnsnared() const {
 }
 
 float Actor::GetAfflictionSpeedMultiplier() const {
-	if (IsEnsnared()) {
+	if (IsEnsnared() || m_EffectHeld) {
 		return c_SnaredPace;
 	}
-	return IsEnvenomed() ? m_VenomSlowTo : 1.0F;
+	return (IsEnvenomed() ? m_VenomSlowTo : 1.0F) * m_EffectSpeed;
+}
+
+void Actor::AddStatusEffect(const StatusEffect& effect, float seconds) {
+	if (IsDead() || effect.Name.empty()) {
+		return;
+	}
+	const long long now = g_TimerMan.GetSimTimeMS();
+	const long long until = seconds > 0.0F ? now + static_cast<long long>(seconds * 1000.0F) : 0;
+	for (StatusEffect& running: m_StatusEffects) {
+		if (running.Name == effect.Name) {
+			const long long had = running.Until;
+			running = effect;
+			running.Until = (until == 0 || had == 0) ? 0 : std::max(had, until);
+			return;
+		}
+	}
+	m_StatusEffects.push_back(effect);
+	m_StatusEffects.back().Until = until;
+}
+
+bool Actor::RemoveStatusEffect(const std::string& name) {
+	auto found = std::find_if(m_StatusEffects.begin(), m_StatusEffects.end(), [&name](const StatusEffect& effect) { return effect.Name == name; });
+	if (found == m_StatusEffects.end()) {
+		return false;
+	}
+	m_StatusEffects.erase(found);
+	return true;
+}
+
+int Actor::RemoveStatusEffects(bool harmful, bool helpful) {
+	const size_t before = m_StatusEffects.size();
+	std::erase_if(m_StatusEffects, [harmful, helpful](const StatusEffect& effect) { return effect.Harmful ? harmful : helpful; });
+	return static_cast<int>(before - m_StatusEffects.size());
+}
+
+bool Actor::HasStatusEffect(const std::string& name) const {
+	const long long now = g_TimerMan.GetSimTimeMS();
+	return std::any_of(m_StatusEffects.begin(), m_StatusEffects.end(), [&](const StatusEffect& effect) { return effect.Name == name && effect.IsActiveAt(now); });
+}
+
+float Actor::GetStatusEffectSecondsLeft(const std::string& name) const {
+	const long long now = g_TimerMan.GetSimTimeMS();
+	for (const StatusEffect& effect: m_StatusEffects) {
+		if (effect.Name == name) {
+			if (effect.Until == 0) {
+				return FLT_MAX;
+			}
+			return effect.Until > now ? static_cast<float>(effect.Until - now) / 1000.0F : 0.0F;
+		}
+	}
+	return 0.0F;
+}
+
+void Actor::UpdateStatusEffects() {
+	// The passives its preset gives it, back on it whenever they are missing (a Dispel takes them off for a moment only).
+	for (const StatusEffect& passive: m_PassiveEffects) {
+		if (!HasStatusEffect(passive.Name)) {
+			AddStatusEffect(passive, passive.Seconds);
+		}
+	}
+	const long long now = g_TimerMan.GetSimTimeMS();
+	std::erase_if(m_StatusEffects, [now](const StatusEffect& effect) { return !effect.IsActiveAt(now); });
+
+	// What they add up to.
+	float speed = 1.0F, taken = 1.0F, dealt = 1.0F, healthPerSecond = 0.0F, energyPerSecond = 0.0F;
+	bool fireProof = false, held = false, silenced = false;
+	const StatusEffect* shaded = nullptr;
+	for (const StatusEffect& effect: m_StatusEffects) {
+		speed *= effect.SpeedMultiplier;
+		taken *= effect.DamageTakenMultiplier;
+		dealt *= effect.DamageDealtMultiplier;
+		healthPerSecond += effect.HealthPerSecond;
+		energyPerSecond += effect.EnergyPerSecond;
+		fireProof = fireProof || effect.FireProof;
+		held = held || effect.Held;
+		silenced = silenced || effect.Silenced;
+		if (!effect.Shader.empty() && (!shaded || effect.Priority >= shaded->Priority)) {
+			shaded = &effect;
+		}
+	}
+	m_EffectSpeed = std::clamp(speed, 0.05F, 10.0F);
+	m_EffectDamageTaken = taken;
+	m_EffectDamageDealt = dealt;
+	m_EffectFireProof = fireProof;
+	m_EffectHeld = held;
+	m_EffectSilenced = silenced;
+
+	const bool alive = !IsDead() && m_Status != DYING;
+	const float deltaTime = g_TimerMan.GetDeltaTimeSecs();
+	const long long frame = g_TimerMan.GetSimUpdateCount();
+	if (alive && healthPerSecond != 0.0F) {
+		m_Health = std::min(m_Health + healthPerSecond * deltaTime, m_MaxHealth);
+		// Mending closes a wound every couple of seconds as well, so the bleeding stops.
+		if (healthPerSecond > 0.0F && frame % 120 == 0 && GetWoundCount() > 0) {
+			RemoveWounds(1);
+		}
+	}
+	if (alive && energyPerSecond != 0.0F && m_MaxEnergy > 0.0F) {
+		SetEnergy(m_Energy + energyPerSecond * deltaTime);
+	}
+	if (held && alive) {
+		// Held fast: nothing moves and nothing fires, however it is controlled (the controller has had its say this update).
+		for (ControlState state: {MOVE_LEFT, MOVE_RIGHT, MOVE_UP, MOVE_DOWN, BODY_JUMP, BODY_JUMPSTART, BODY_LEAP, BODY_CROUCH, WEAPON_FIRE, WEAPON_RELOAD, AIM_SHARP}) {
+			m_Controller.SetState(state, false);
+		}
+		m_Vel.m_X *= 0.5F;
+		if (m_Vel.m_Y < 0.0F) {
+			m_Vel.m_Y *= 0.5F;
+		}
+		m_AngularVel *= 0.5F;
+	}
+	for (const StatusEffect& effect: m_StatusEffects) {
+		if (effect.LightRadius > 0.0F) {
+			const Color& c = effect.LightColor;
+			g_PostProcessMan.RegisterLight(m_Pos, glm::vec3(static_cast<float>(c.GetR()), static_cast<float>(c.GetG()), static_cast<float>(c.GetB())), effect.LightRadius, effect.LightIntensity, LightSource::Objects);
+		}
+	}
+
+	// The shader they give it. Something else (a script, a chill) may change the unit's shader meanwhile: that becomes the one to put back.
+	const std::string wanted = shaded ? shaded->Shader : std::string();
+	if (m_ShaderName != m_EffectShader) {
+		m_ShaderBeforeEffects = m_ShaderName;
+		m_EffectShader.clear();
+	}
+	if (wanted != m_EffectShader) {
+		if (wanted.empty()) {
+			SetShaderName(m_ShaderBeforeEffects);
+			m_ShaderBeforeEffects.clear();
+		} else {
+			SetShaderName(wanted);
+		}
+		m_EffectShader = wanted;
+		if (m_ShaderName != wanted) {
+			// (A shader that isn't defined: left as it was, and not asked for again this update.)
+			m_EffectShader = m_ShaderName;
+		}
+	}
 }
 
 void Actor::UpdateAfflictions() {
+	UpdateStatusEffects();
 	if (m_VenomUntil == 0 && m_SnareUntil == 0) {
 		return;
 	}
@@ -67,7 +209,7 @@ void Actor::UpdateAfflictions() {
 
 	if (IsEnvenomed()) {
 		if (alive) {
-			m_Health -= m_VenomDamagePerSecond * deltaTime;
+			m_Health -= m_VenomDamagePerSecond * deltaTime * GetDamageTakenMultiplier();
 		}
 		// Sickly green: a faint glow, and now and then a drip of it.
 		g_PostProcessMan.RegisterLight(m_Pos, glm::vec3(120.0F, 220.0F, 70.0F), m_SpriteRadius * 1.2F, 0.25F);

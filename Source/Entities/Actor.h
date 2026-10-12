@@ -7,6 +7,7 @@
 /// Inclusions of header files
 #include "MOSRotating.h"
 #include "PathFinder.h"
+#include "StatusEffect.h"
 #include "SettingsMan.h"
 #include "UnitSpeech.h"
 
@@ -212,6 +213,10 @@ namespace RTE {
 		/// Unseen by the AI (IsIgnoredByAI), and faint to look at.
 		bool IsCloaked() const { return GetPowerupSecondsLeft(PowerupEffect::Cloak) > 0.0F; }
 
+		/// Gives it a powerup's timed effect without an item, by name ("Shield", "Stim", "Overcharge" or "Cloak"), for the seconds (added to
+		/// what it has left of it): what a spell such as Shield of Faith casts on an ally (SE-1). @return Whether the name was one.
+		bool AddPowerupSeconds(const std::string& effectName, float seconds);
+
 		/// Whether it can use a powerup it carries now: not while every effect it gives is still running, and a spell scroll needs a hand.
 		bool CanUsePowerup(const HeldDevice* item) const;
 		/// Uses a powerup it carries in its inventory: starts its effects (or puts a scroll's spell in its hand), and the item is used up with
@@ -238,8 +243,43 @@ namespace RTE {
 		/// Whether a web holds it.
 		bool IsEnsnared() const;
 
-		/// The share of its pace it walks at for what has hold of it: venom slows it, a web stops it. 1 when nothing has.
+		/// The share of its pace it walks at for what has hold of it: venom slows it, a web stops it, and status effects (Haste, Stoneskin)
+		/// change it. 1 when nothing has.
 		float GetAfflictionSpeedMultiplier() const;
+#pragma endregion
+
+#pragma region Status effects (ActorAfflictions.cpp, SE-1)
+		/// Puts a status effect on it (a buff or a curse, see StatusEffect) for some seconds, 0 for as long as it lives. One of a name at a
+		/// time: the same name again refreshes the effect with the new values and the later of the two end times. Nothing on the dead.
+		void AddStatusEffect(const StatusEffect& effect, float seconds);
+
+		/// Takes a status effect off it by name. @return Whether it had one.
+		bool RemoveStatusEffect(const std::string& name);
+
+		/// Takes every status effect off it: the harmful ones (Dispel on an ally), the helpful ones (Dispel on an enemy), or both.
+		/// @return How many came off.
+		int RemoveStatusEffects(bool harmful, bool helpful);
+
+		/// Whether a status effect of the name is on it now.
+		bool HasStatusEffect(const std::string& name) const;
+
+		/// How long a status effect of the name has left on it, in seconds; 0 for none, FLT_MAX for one that lasts as long as it lives.
+		float GetStatusEffectSecondsLeft(const std::string& name) const;
+
+		/// The status effects on it now, in the order they were added.
+		const std::vector<StatusEffect>& GetStatusEffects() const { return m_StatusEffects; }
+
+		/// How much of the harm it takes reaches its health, for its status effects (Stoneskin 0.4, Curse of Weakness 1.5); 1 for none.
+		float GetDamageTakenMultiplier() const { return m_EffectDamageTaken; }
+
+		/// How much harder what it fires, throws and cuts with hurts, for its status effects (Blessing 1.25); 1 for none.
+		float GetDamageDealtMultiplier() const { return m_EffectDamageDealt; }
+
+		/// Whether a status effect holds it fast (petrified, frozen solid): no walking, leaping, flying or firing.
+		bool IsHeldByEffect() const { return m_EffectHeld; }
+
+		/// Whether a status effect keeps it from casting spells.
+		bool IsSilenced() const { return m_EffectSilenced; }
 #pragma endregion
 
 		/// Gets whether this Actor is drawn with a bright glowing outline, whatever the unit outline settings (see LightingSettings::HighlightUnits).
@@ -1346,7 +1386,7 @@ namespace RTE {
 		float GetBreathSeconds() const;
 
 		/// Gets whether fire doesn't catch on this (its movement profile's FireProof).
-		bool IsFireProof() const { return m_MovementProfile.FireProof > 0; }
+		bool IsFireProof() const { return m_MovementProfile.FireProof > 0 || m_EffectFireProof; }
 
 		/// Gets how far round it it sets things alight, in pixels (CR-7, a Flame Fiend: the ground, and units not of its side); 0 for none.
 		float GetFireAuraRadius() const { return m_FireAuraRadius; }
@@ -1721,6 +1761,21 @@ namespace RTE {
 		float m_VenomDamagePerSecond = 0.0F; //!< The health the venom takes a second.
 		float m_VenomSlowTo = 1.0F; //!< The share of its pace it walks at while envenomed.
 		long long m_SnareUntil = 0; //!< The sim time, ms, a web holds it until (CR-6). Not copied or saved.
+
+		std::vector<StatusEffect> m_PassiveEffects; //!< The status effects it has about it for good, from its preset (PassiveEffect, SE-1): put on it as it lives.
+		std::vector<StatusEffect> m_StatusEffects; //!< The status effects on it now (SE-1). Not copied or saved, as m_PowerupUntil; the passives come back by themselves.
+		float m_EffectSpeed = 1.0F; //!< What the status effects on it make of its pace, worked out each Update.
+		float m_EffectDamageTaken = 1.0F; //!< ...of the harm it takes.
+		float m_EffectDamageDealt = 1.0F; //!< ...of the harm it does.
+		bool m_EffectFireProof = false; //!< Whether one keeps fire off it.
+		bool m_EffectHeld = false; //!< Whether one holds it fast.
+		bool m_EffectSilenced = false; //!< Whether one keeps it from casting.
+		std::string m_EffectShader; //!< The shader the status effects have it drawn with now, empty for none; what SetShaderName was last given by them.
+		std::string m_ShaderBeforeEffects; //!< The shader it had before the status effects gave it one, to put back after.
+
+		/// Runs the status effects on it (SE-1): expiry, regeneration, holding, the shader and light they give it, and what the passives
+		/// put back. Each Update, from UpdateAfflictions.
+		void UpdateStatusEffects();
 
 		/// Runs what has hold of it (CR-6): venom's harm, a web's hold on its legs, and how they look. Each Update.
 		void UpdateAfflictions();

@@ -222,10 +222,20 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("IsCloaked", &Actor::IsCloaked)
 	    .def("CanUsePowerup", &Actor::CanUsePowerup)
 	    .def("UsePowerup", &Actor::UsePowerup)
+	    .def("AddPowerupSeconds", &Actor::AddPowerupSeconds)
 	    .def("Envenom", &Actor::Envenom)
 	    .def("Ensnare", &Actor::Ensnare)
 	    .property("IsEnvenomed", &Actor::IsEnvenomed)
 	    .property("IsEnsnared", &Actor::IsEnsnared)
+	    .def("AddStatusEffect", &Actor::AddStatusEffect)
+	    .def("RemoveStatusEffect", &Actor::RemoveStatusEffect)
+	    .def("RemoveStatusEffects", &Actor::RemoveStatusEffects)
+	    .def("HasStatusEffect", &Actor::HasStatusEffect)
+	    .def("GetStatusEffectSecondsLeft", &Actor::GetStatusEffectSecondsLeft)
+	    .property("DamageTakenMultiplier", &Actor::GetDamageTakenMultiplier)
+	    .property("DamageDealtMultiplier", &Actor::GetDamageDealtMultiplier)
+	    .property("IsHeldByEffect", &Actor::IsHeldByEffect)
+	    .property("IsSilenced", &Actor::IsSilenced)
 	    .property("FireAuraRadius", &Actor::GetFireAuraRadius)
 	    .property("WaterWeakness", &Actor::GetWaterWeakness)
 	    .property("BodyHitSound", &Actor::GetBodyHitSound, &LuaAdaptersPropertyOwnershipSafetyFaker::ActorSetBodyHitSound)
@@ -465,6 +475,28 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .enum_("ActorHotkeyType")[luabind::value("PRIMARYHOTKEY", Actor::ActorHotkeyType::PRIMARYHOTKEY),
 	                              luabind::value("AUXILIARYHOTKEY", Actor::ActorHotkeyType::AUXILIARYHOTKEY),
 	                              luabind::value("ACTORHOTKEYTYPECOUNT", Actor::ActorHotkeyType::ACTORHOTKEYTYPECOUNT)];
+}
+
+LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, StatusEffect) {
+	return luabind::class_<StatusEffect>("StatusEffect")
+	    .def(luabind::constructor<>())
+	    .def(luabind::constructor<const std::string&>())
+	    .def_readwrite("Name", &StatusEffect::Name)
+	    .def_readwrite("Label", &StatusEffect::Label)
+	    .def_readwrite("Harmful", &StatusEffect::Harmful)
+	    .def_readwrite("SpeedMultiplier", &StatusEffect::SpeedMultiplier)
+	    .def_readwrite("DamageTakenMultiplier", &StatusEffect::DamageTakenMultiplier)
+	    .def_readwrite("DamageDealtMultiplier", &StatusEffect::DamageDealtMultiplier)
+	    .def_readwrite("HealthPerSecond", &StatusEffect::HealthPerSecond)
+	    .def_readwrite("EnergyPerSecond", &StatusEffect::EnergyPerSecond)
+	    .def_readwrite("FireProof", &StatusEffect::FireProof)
+	    .def_readwrite("Held", &StatusEffect::Held)
+	    .def_readwrite("Silenced", &StatusEffect::Silenced)
+	    .def_readwrite("Shader", &StatusEffect::Shader)
+	    .def_readwrite("Priority", &StatusEffect::Priority)
+	    .def_readwrite("LightColor", &StatusEffect::LightColor)
+	    .def_readwrite("LightRadius", &StatusEffect::LightRadius)
+	    .def_readwrite("LightIntensity", &StatusEffect::LightIntensity);
 }
 
 LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ActorSighting) {
