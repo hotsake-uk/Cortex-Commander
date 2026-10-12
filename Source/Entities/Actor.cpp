@@ -2044,7 +2044,12 @@ bool Actor::SensesPassTerrain(unsigned char id, int x, int y, bool passesRungs) 
 	if (g_SettingsMan.SensesPassPlants()) {
 		// (As the walk and the path grid have it: AHumanMovement's WalkedThrough, PathFinder::Open.)
 		const Material* material = g_SceneMan.GetMaterialFromID(id);
-		if (TerrainTrees::ActorsPass(id) || (material && material->GetIntegrity() <= 5.0F && material->GetBehaviour().Flows != 1)) {
+		// (A flowing liquid is left to the Water behaviour above; but blood with "spilt blood runs" off doesn't flow: it lies where it fell
+		// as soft ground the body walks and flies through. Counted out by its Flows key all the same, every settled drop was a wall to the
+		// senses: the look up a Fly order takes, the pilot's look ahead, the floor under the feet.)
+		static const Material* s_Blood = g_SceneMan.GetMaterial("Blood");
+		const bool flows = material && material->GetBehaviour().Flows == 1 && !(s_Blood && material == s_Blood && !FluidSim::BloodFlows());
+		if (TerrainTrees::ActorsPass(id) || (material && material->GetIntegrity() <= 5.0F && !flows)) {
 			return true;
 		}
 	}
