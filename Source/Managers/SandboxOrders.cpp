@@ -1101,6 +1101,9 @@ namespace SandboxDetail {
 	/// nothing left to walk) well short of it a second or more after the order. Old markers fade.
 	void UpdateMoveWatch() {
 		long long now = g_TimerMan.GetSimUpdateCount();
+		// (Those that stopped short are dealt with after the walk over the watch list: getting a vehicle's crew out holds the vehicle and sends
+		// the crew on, which takes the vehicle off the list and puts the crew on it, and the list can't change under the walk.)
+		std::vector<std::pair<Actor*, Vector>> stoppedShort;
 		for (auto watch = s_MoveWatch.begin(); watch != s_MoveWatch.end();) {
 			Actor* unit = nullptr;
 			for (Actor* actor: SandboxAccess::Actors()) {
@@ -1121,14 +1124,17 @@ namespace SandboxDetail {
 			if (distance < reach || unit->IsPlayerControlled()) {
 				watch = s_MoveWatch.erase(watch);
 			} else if (stopped) {
-				// A commanded vehicle that couldn't get there (VC-2): its crew get out and go on on foot, unless told to stay in or it was
-				// sent to attack; then it holds there, as any unit with no route does.
-				if (!CrewGoOnFoot(unit, watch->second.Destination)) {
-					AddNoRoute(unit, watch->second.Destination);
-				}
+				stoppedShort.emplace_back(unit, watch->second.Destination);
 				watch = s_MoveWatch.erase(watch);
 			} else {
 				++watch;
+			}
+		}
+		// A commanded vehicle that couldn't get there (VC-2): its crew get out and go on on foot, unless told to stay in or it was sent to
+		// attack; then it holds there, as any unit with no route does.
+		for (const auto& [unit, destination]: stoppedShort) {
+			if (!CrewGoOnFoot(unit, destination)) {
+				AddNoRoute(unit, destination);
 			}
 		}
 		s_NoRoutes.erase(std::remove_if(s_NoRoutes.begin(), s_NoRoutes.end(), [now](const NoRoute& marker) { return now - marker.At > c_NoRouteUpdates || std::none_of(marker.Units.begin(), marker.Units.end(), [](const UnitRef& ref) { return GetRef(ref) != nullptr; }); }), s_NoRoutes.end());
