@@ -413,6 +413,173 @@ namespace SandboxDetail {
 			g_SceneMan.WrapPosition(spot);
 			return spot;
 		}
+
+		// ---- Coming in anywhere ----
+
+		/// How far a place is from a zone drawn on the map: 0 inside it, else to its nearest edge.
+		float DistanceToZone(const std::vector<Vector>& zone, const Vector& at) {
+			if (zone.size() < 3) {
+				return std::numeric_limits<float>::max();
+			}
+			if (IsInZone(zone, at)) {
+				return 0.0F;
+			}
+			// (Its corners from the place, each placed from the first so a zone across a wrap seam stays whole.)
+			const Vector first = g_SceneMan.ShortestDistance(at, zone.front(), g_SceneMan.SceneWrapsX());
+			float nearest = std::numeric_limits<float>::max();
+			for (size_t i = 0; i < zone.size(); ++i) {
+				const Vector a = first + (zone[i] - zone.front());
+				const Vector b = first + (zone[(i + 1) % zone.size()] - zone.front());
+				const Vector edge = b - a;
+				const float length = edge.GetSqrMagnitude();
+				const float along = length > 0.0F ? std::clamp(-(a.m_X * edge.m_X + a.m_Y * edge.m_Y) / length, 0.0F, 1.0F) : 0.0F;
+				nearest = std::min(nearest, (a + edge * along).GetMagnitude());
+			}
+			return nearest;
+		}
+
+		/// How clear a place is for a team's new units to come in at, up to a cap: how far it is from the nearest enemy unit, enemy spawn
+		/// zone and, in a mode's game, objective (its zones, goals and flags).
+		float Clearance(int side, const Vector& at, float cap) {
+			if (cap <= 0.0F) {
+				return 0.0F;
+			}
+			const bool wraps = g_SceneMan.SceneWrapsX();
+			float nearest = cap;
+			for (const Actor* actor: SandboxAccess::Actors()) {
+				const int team = actor->GetTeam();
+				if (team >= 0 && team < c_Sides && team != side && IsSoldier(actor)) {
+					nearest = std::min(nearest, g_SceneMan.ShortestDistance(at, actor->GetPos(), wraps).GetMagnitude());
+				}
+			}
+			for (int other = 0; other < c_Sides; ++other) {
+				if (other == side) {
+					continue;
+				}
+				const bool plays = s_ModeRun.Running ? s_ModeRun.Settings.Plays[other] : s_BattleTeams[other].Running;
+				if (!plays) {
+					continue;
+				}
+				for (const std::vector<Vector>& zone: s_ModeRun.Running ? s_ModeRun.Settings.SpawnZones[other] : s_BattleTeams[other].Settings.SpawnZones) {
+					nearest = std::min(nearest, DistanceToZone(zone, at));
+				}
+			}
+			if (s_ModeRun.Running) {
+				for (const std::vector<Vector>& zone: s_ModeRun.Settings.Zones) {
+					nearest = std::min(nearest, DistanceToZone(zone, at));
+				}
+				for (const std::vector<Vector>& goal: s_ModeRun.Settings.Goals) {
+					nearest = std::min(nearest, DistanceToZone(goal, at));
+				}
+				std::vector<Vector> spots;
+				ModeKeepClearSpots(spots);
+				for (const Vector& spot: spots) {
+					nearest = std::min(nearest, g_SceneMan.ShortestDistance(at, spot, wraps).GetMagnitude());
+				}
+			}
+			return nearest;
+		}
+
+		std::vector<Vector> s_AnywhereAt; //!< Where units have appeared anywhere this update, so the next ones don't land on top of them.
+		long long s_AnywhereOn = -1;
+
+		/// Where a team's unit (this tall) appears when its units come in anywhere: on ground anywhere on the map, caves and all, with room
+		/// above for it to stand and no liquid under it, of a few dozen places picked at random the first at least keepClear from enemies
+		/// and objectives (else the clearest). Its middle, as ZoneSpawnSpot gives.
+		Vector AnywhereSpot(int side, float height, int keepClear) {
+			const long long now = g_TimerMan.GetSimUpdateCount();
+			if (s_AnywhereOn != now) {
+				s_AnywhereAt.clear();
+				s_AnywhereOn = now;
+			}
+			const bool wraps = g_SceneMan.SceneWrapsX();
+			const float width = static_cast<float>(g_SceneMan.GetSceneWidth());
+			const float bottom = static_cast<float>(g_SceneMan.GetSceneHeight()) - 2.0F;
+			const float margin = wraps ? 0.0F : std::min(60.0F, width * 0.1F);
+			const float room = std::max(height, 20.0F);
+			const float wanted = static_cast<float>(std::max(keepClear, 0));
+			const Vector step(0.0F, 2.0F);
+			Vector best;
+			float bestScore = 0.0F;
+			bool found = false;
+			for (int tries = 0; tries < 60; ++tries) {
+				Vector at(margin + Random01() * (width - margin * 2.0F), Random01() * bottom);
+				while (at.m_Y > 0.0F && !AirAt(at)) {
+					at -= step;
+				}
+				if (at.m_Y <= 0.0F) {
+					continue; // (Ground right up to the top of the map.)
+				}
+				while (at.m_Y < bottom && AirAt(at + step)) {
+					at += step;
+				}
+				if (at.m_Y >= bottom) {
+					continue; // (Nothing under it: it would fall out of the map.)
+				}
+				Vector under = at + step;
+				g_SceneMan.WrapPosition(under);
+				if (FluidSim::IsLiquid(g_SceneMan.GetTerrMatter(under.GetFloorIntX(), under.GetFloorIntY()))) {
+					continue;
+				}
+				bool headroom = true;
+				for (float up = 2.0F; up <= room && headroom; up += 2.0F) {
+					headroom = AirAt(at - Vector(0.0F, up));
+				}
+				if (!headroom) {
+					continue;
+				}
+				g_SceneMan.WrapPosition(at);
+				float score = Clearance(side, at, wanted);
+				for (const Vector& other: s_AnywhereAt) {
+					if (g_SceneMan.ShortestDistance(at, other, wraps).MagnitudeIsLessThan(30.0F)) {
+						score -= 10000.0F;
+					}
+				}
+				if (!found || score > bestScore) {
+					best = at;
+					bestScore = score;
+					found = true;
+				}
+				if (bestScore >= wanted) {
+					break;
+				}
+			}
+			if (!found) {
+				// (Nowhere found to stand: somewhere on the ground across the whole map, as a spawn zone the size of it gives.)
+				const std::vector<Vector> map = {Vector(margin, 0.0F), Vector(width - margin, 0.0F), Vector(width - margin, bottom), Vector(margin, bottom)};
+				return ZoneSpawnSpot(map, height);
+			}
+			s_AnywhereAt.push_back(best);
+			Vector spot = best - Vector(0.0F, height * 0.5F);
+			g_SceneMan.WrapPosition(spot);
+			return spot;
+		}
+
+		/// Where across the scene one ship of a burst comes in, as DropX, but for ships that come in anywhere, of a few picks in its stretch the
+		/// first whose ground below is at least the team's KeepClear from enemies and objectives (else the clearest).
+		float ClearDropX(const BattleSettings& settings, int side, int ship, int ships) {
+			if ((settings.DropOnLine && settings.HasLine) || settings.KeepClear <= 0) {
+				return DropX(settings, ship, ships);
+			}
+			const float bottom = static_cast<float>(g_SceneMan.GetSceneHeight()) - 2.0F;
+			const float wanted = static_cast<float>(settings.KeepClear);
+			float best = 0.0F;
+			float bestScore = -1.0F;
+			for (int tries = 0; tries < 10 && bestScore < wanted; ++tries) {
+				const float x = DropX(settings, ship, ships);
+				// (Where it sets down: the first ground from the top.)
+				Vector ground(x, 0.0F);
+				while (ground.m_Y < bottom && AirAt(ground)) {
+					ground.m_Y += 4.0F;
+				}
+				const float score = Clearance(side, ground, wanted);
+				if (score > bestScore) {
+					best = x;
+					bestScore = score;
+				}
+			}
+			return best;
+		}
 	} // namespace
 
 	/// Gives a unit just bought a post in a place it defends, as a defending team's are given theirs (a mode's guards, by settings made for
@@ -661,7 +828,7 @@ namespace SandboxDetail {
 			}
 			// Ships and spawn zones each on a clock of their own.
 			const bool shipsDue = settings.ShipsPerBurst > 0 && now >= team.NextWave;
-			const bool zonesDue = !settings.SpawnZones.empty() && now >= team.NextZoneWave;
+			const bool zonesDue = (!settings.SpawnZones.empty() || settings.AppearAnywhere) && now >= team.NextZoneWave;
 			if (!shipsDue && !zonesDue) {
 				continue;
 			}
@@ -773,7 +940,7 @@ namespace SandboxDetail {
 					}
 					// (Counted as sent only once a craft took them: with no craft to be had, DropUnits deletes the units and returns nothing.)
 					int count = static_cast<int>(wave.size());
-					float paid = DropUnits(wave, side, DropX(settings, ship, ships), settings.Craft, settings.Invincible);
+					float paid = DropUnits(wave, side, ClearDropX(settings, side, ship, ships), settings.Craft, settings.Invincible);
 					if (paid > 0.0F) {
 						team.Sent += count;
 						team.Spent += paid;
@@ -790,6 +957,21 @@ namespace SandboxDetail {
 				// (Filling the team at once: its whole limit shared between the zones.)
 				const int usable = static_cast<int>(std::count_if(zones.begin(), zones.end(), [](const std::vector<Vector>& zone) { return zone.size() >= 3; }));
 				const int perZone = team.FillFirst && room < std::numeric_limits<int>::max() ? std::max((room + std::max(usable, 1) - 1) / std::max(usable, 1), 1) : std::clamp(settings.ZoneUnits, 1, 20);
+				if (settings.AppearAnywhere && room > 0 && !team.Broke) {
+					// Anywhere on the map: as many as the zones would have put down between them, all in one lot.
+					std::vector<Actor*> wave = buyWave(std::min(perZone * std::max(usable, 1), room), true);
+					if (!wave.empty()) {
+						ActivateSide(side);
+						for (Actor* unit: wave) {
+							team.Spent += unit->GetTotalValue(unit->GetModuleID(), 1.0F);
+							unit->SetPos(AnywhereSpot(side, unit->GetHeight(), settings.KeepClear));
+							g_MovableMan.AddActor(unit);
+						}
+						team.Sent += static_cast<int>(wave.size());
+						room -= static_cast<int>(wave.size());
+					}
+					zones.clear();
+				}
 				for (const std::vector<Vector>& zone: zones) {
 					if (zone.size() < 3) {
 						continue;
@@ -1083,6 +1265,9 @@ namespace SandboxDetail {
 					ImGui::TextColored(ImVec4(1.0F, 0.6F, 0.4F, 1.0F), "not drawn: anywhere till it is");
 				}
 			}
+			if (!setup.DropOnLine) {
+				changed |= KeepClearSlider(setup.KeepClear, "##shipsclear");
+			}
 			changed |= ImGui::SliderInt("Ships at a time", &setup.ShipsPerBurst, 0, 6, setup.ShipsPerBurst > 0 ? "%d" : "no ships");
 			ImGui::SetItemTooltip("How many ships set off together, each with a wave of its own and its own place to come in. 0: no ships, the team's units come only from its spawn zones.");
 			changed |= ImGui::SliderInt("Every", &setup.EverySeconds, 5, 300, "%d s", ImGuiSliderFlags_Logarithmic);
@@ -1096,6 +1281,11 @@ namespace SandboxDetail {
 			ImGui::SetItemTooltip("Every ship of this team taken off the map now, without a blast, with anyone still aboard.");
 
 			ImGui::SeparatorText("Spawn zones");
+			changed |= ToolUI::Checkbox("Units appear anywhere on the map", &setup.AppearAnywhere);
+			ImGui::SetItemTooltip("Units appear anywhere on the map there's ground to stand on (caves too), with room above them and not in liquid, kept clear of enemies. They come on the zones' clock, as many each time as the zones would bring between them (at least one lot with no zones drawn). Instead of in the zones.");
+			if (setup.AppearAnywhere) {
+				changed |= KeepClearSlider(setup.KeepClear, "##appearclear");
+			}
 			bool zoning = CurrentTool().Kind == Tool::BattleSpawnZone && s_BattleEditTeam == side;
 			if (ToolUI::Button(zoning ? "Done##zones" : "Draw spawn zones")) {
 				if (zoning) {
@@ -1123,7 +1313,7 @@ namespace SandboxDetail {
 				}
 				ImGui::SetItemTooltip("Takes away all of this team's spawn zones.");
 			}
-			if (!setup.SpawnZones.empty()) {
+			if (!setup.SpawnZones.empty() || setup.AppearAnywhere) {
 				changed |= ImGui::SliderInt("Units per zone", &setup.ZoneUnits, 1, 10);
 				ImGui::SetItemTooltip("How many units appear in each zone each time, anywhere inside it (fewer when the budget or the unit limit runs short).");
 				changed |= ImGui::SliderInt("Every##zones", &setup.ZoneEverySeconds, 5, 300, "%d s", ImGuiSliderFlags_Logarithmic);
@@ -1300,6 +1490,20 @@ namespace SandboxDetail {
 		for (size_t i = 1; i < s_ZoneDraft.size(); ++i) {
 			drawList->AddCircleFilled(corners[i], 3.0F, color, 8);
 		}
+	}
+
+	bool KeepClearSlider(int& keepClear, const char* id) {
+		bool changed = ImGui::SliderInt((std::string("Keep clear of enemies") + id).c_str(), &keepClear, 0, 1000, keepClear > 0 ? "%d px" : "no gap");
+		ImGui::SetItemTooltip("Units coming in anywhere keep at least this far from enemy units, enemy spawn zones and the battle's objectives (flags, hills, goals) where the map has room. 0: anywhere at all, even on top of them.");
+		ImGui::SameLine();
+		ImGui::BeginDisabled(keepClear == 300);
+		if (ToolUI::Button((std::string("Reset") + id).c_str())) {
+			keepClear = 300;
+			changed = true;
+		}
+		ImGui::EndDisabled();
+		ImGui::SetItemTooltip("Back to the default, 300 px.");
+		return changed;
 	}
 
 	bool IsInZone(const std::vector<Vector>& zone, const Vector& at) {
