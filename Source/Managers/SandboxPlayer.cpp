@@ -34,22 +34,69 @@ namespace SandboxDetail {
 		}
 	}
 
-	/// Takes your character out of the world, and out of the seat of the vehicle it rides if it is in one (the vehicle stays).
+	/// The unit carrying your character in its inventory (a rocket or dropship it climbed into), and where in it. Out of the world there,
+	/// it is the same unit, back in the world when it gets out.
+	Actor* CarrierOfPlayer(int* index) {
+		if (s_PlayerUnit.ID == 0 || GetRef(s_PlayerUnit)) {
+			return nullptr;
+		}
+		for (Actor* carrier: SandboxAccess::Actors()) {
+			const std::deque<MovableObject*>* inventory = carrier->GetInventory();
+			for (size_t i = 0; i < inventory->size(); ++i) {
+				if ((*inventory)[i] && (*inventory)[i]->GetUniqueID() == s_PlayerUnit.ID) {
+					if (index) {
+						*index = static_cast<int>(i);
+					}
+					return carrier;
+				}
+			}
+		}
+		return nullptr;
+	}
+
+	/// What has your character while it isn't standing in the world: the vehicle it sits in or the craft carrying it. Null when it is in the world, or there is none.
+	Actor* PlayerHolder() {
+		if (GetRef(s_PlayerUnit)) {
+			return nullptr;
+		}
+		if (Actor* ridden = GetRef(s_PlayerVehicle)) {
+			return ridden;
+		}
+		return CarrierOfPlayer(nullptr);
+	}
+
+	/// Your character, out of the vehicle or craft that has it if one does, so there is a unit in the world to move or delete. Null if there is none.
+	Actor* TakeOutPlayer() {
+		if (Actor* actor = GetRef(s_PlayerUnit)) {
+			return actor;
+		}
+		if (Actor* ridden = GetRef(s_PlayerVehicle)) {
+			// (Let out thrown, which always gets it out: a blocked way out would otherwise keep it in its seat. Getting out makes it your character again.)
+			if (AVehicle* vehicle = dynamic_cast<AVehicle*>(ridden)) {
+				vehicle->EjectSeat(vehicle->GetControlSeat(), true);
+			} else if (ACShip* ship = dynamic_cast<ACShip*>(ridden)) {
+				ship->EjectSeat(ship->GetControlSeat(), true);
+			}
+			return GetRef(s_PlayerUnit);
+		}
+		int index = -1;
+		if (Actor* carrier = CarrierOfPlayer(&index)) {
+			if (Actor* unit = dynamic_cast<Actor*>(carrier->RemoveInventoryItemAtIndex(index))) {
+				unit->SetPos(OpenAirAt(carrier->GetPos()));
+				unit->SetVel(Vector());
+				g_MovableMan.AddActor(unit);
+				s_PlayerUnit = MakeRef(unit);
+				return unit;
+			}
+		}
+		return nullptr;
+	}
+
+	/// Takes your character out of the world, or out of the vehicle or craft that has it (which stays).
 	void RemovePlayer() {
 		StopFlying();
-		if (Actor* actor = GetRef(s_PlayerUnit)) {
+		if (Actor* actor = TakeOutPlayer()) {
 			actor->SetToDelete(true);
-		} else if (Actor* ridden = GetRef(s_PlayerVehicle)) {
-			// (Let out thrown, which always gets it out, so there is a unit to delete: a blocked way out would otherwise keep it in its seat.)
-			Actor* rider = nullptr;
-			if (AVehicle* vehicle = dynamic_cast<AVehicle*>(ridden)) {
-				rider = vehicle->EjectSeat(vehicle->GetControlSeat(), true);
-			} else if (ACShip* ship = dynamic_cast<ACShip*>(ridden)) {
-				rider = ship->EjectSeat(ship->GetControlSeat(), true);
-			}
-			if (rider) {
-				rider->SetToDelete(true);
-			}
 		}
 		s_PlayerUnit = UnitRef();
 		s_PlayerVehicle = UnitRef();
@@ -62,7 +109,7 @@ namespace SandboxDetail {
 		bool playing = false;
 		if (GameActivity* game = CurrentGame()) {
 			const Actor* controlled = game->GetControlledActor(Players::PlayerOne);
-			playing = controlled && (controlled == GetRef(s_PlayerUnit) || controlled == GetRef(s_PlayerVehicle));
+			playing = controlled && (controlled == GetRef(s_PlayerUnit) || controlled == PlayerHolder());
 			game->LoseControlOfActor(Players::PlayerOne);
 			game->SetViewState(Activity::ViewState::Observe, Players::PlayerOne);
 		}
@@ -143,7 +190,22 @@ namespace SandboxDetail {
 		if (!CurrentGame() || !Sandbox::IsGodMode()) {
 			return;
 		}
-		Actor* actor = GetRef(s_PlayerUnit);
+		Actor* actor = atPlace ? TakeOutPlayer() : GetRef(s_PlayerUnit);
+		if (!actor) {
+			// Still sat in a vehicle or carried in a craft: back into that, rather than a second character made beside it.
+			if (Actor* holder = PlayerHolder()) {
+				GameActivity* game = CurrentGame();
+				if (holder->IsPlayerControllable() && game->SwitchToActor(holder, Players::PlayerOne, holder->GetTeam())) {
+					game->SetViewState(Activity::ViewState::Normal, Players::PlayerOne);
+					SetPossessed(holder);
+					s_PlayHintSeconds = 9.0F;
+					g_DebugMan.CloseTools();
+					return;
+				}
+				// (One that can't be taken over lets it out instead.)
+				actor = TakeOutPlayer();
+			}
+		}
 		if (!actor && s_PlayerEnterPending == 0) {
 			Vector viewMiddle = g_CameraMan.GetOffset(0) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, static_cast<float>(g_FrameMan.GetPlayerScreenHeight()) * 0.4F);
 			g_SceneMan.WrapPosition(viewMiddle);

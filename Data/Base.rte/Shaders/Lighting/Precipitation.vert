@@ -28,6 +28,7 @@ uniform vec2 rteLength; // Along the way it moves, pixels, min and max.
 uniform float rteWidth; // Across, pixels.
 uniform vec2 rteAlpha; // How solid, min and max.
 uniform bool rteSheltered; // Kept out from under roofs and overhangs. Off: everywhere but inside the ground.
+uniform bool rteEverywhere; // Weather everywhere: every drop is drawn, and WeatherEverywhere.frag hides them over the terrain and its back walls, pixel by pixel.
 uniform sampler2D rteOccupancy; // The world's grid of solid ground: A = how full each cell is (R is how much it stops light, which water barely does).
 uniform vec2 rteGridWorldSize;
 uniform float rteCellSize; // World pixels per grid cell.
@@ -113,7 +114,9 @@ void main() {
 
 	// Shelter is worked out for the drop as a whole, along the line it is falling down: rain driven by wind gets in under an overhang on the windward side
 	// and leaves a dry strip beyond a wall on the lee side. Each drop's line is nudged a little so the edge of the shelter is soft, not ruled.
-	if (textureLod(rteOccupancy, head / rteGridWorldSize, 0.0).a > 0.9) {
+	if (rteEverywhere) {
+		reaches = 1.0;
+	} else if (textureLod(rteOccupancy, head / rteGridWorldSize, 0.0).a > 0.9) {
 		reaches = 0.0;
 	} else if (!rteSheltered || velocity.y <= 0.0) {
 		// Weather that goes everywhere, and drops that rise, which nothing above shelters.

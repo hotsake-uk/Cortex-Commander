@@ -61,19 +61,27 @@ namespace RTE {
 
 		/// Returns whether or not this jetpack is fully fueled.
 		/// @return Whether or not this jetpack is fully fueled.
-		bool IsFullyFueled() const { return m_JetTimeLeft >= m_JetTimeTotal - (m_JetTimeTotal * std::numeric_limits<float>::epsilon()); }
+		bool IsFullyFueled() const { return m_JetTimeLeft >= GetJetTimeTotal() - (GetJetTimeTotal() * std::numeric_limits<float>::epsilon()); }
 
 		/// Returns whether or not this jetpack is out of fuel.
 		/// @return Whether or not this jetpack is out of fuel.
 		bool IsOutOfFuel() const { return m_JetTimeLeft <= std::numeric_limits<float>::epsilon(); }
 
-		/// Gets the amount of time this jetpack can fire when filled, in ms.
+		/// Gets the amount of time this jetpack can fire when filled, in ms: its own, times the Carry weight settings' jetpack fuel multiplier.
 		/// @return The amount of time this jetpack can fire when it's at max.
-		float GetJetTimeTotal() const { return m_JetTimeTotal; }
+		float GetJetTimeTotal() const;
 
-		/// Sets the amount of time this' jetpack can fire when filled, in ms.
+		/// Sets the amount of time this' jetpack can fire when filled, in ms, as GetJetTimeTotal gives it (the fuel multiplier included).
 		/// @param newValue The amount of time this jetpack can fire when it's at max.
-		void SetJetTimeTotal(float newValue) { m_JetTimeTotal = newValue; }
+		void SetJetTimeTotal(float newValue);
+
+		/// Gets this jetpack's own fill, in ms, before the Carry weight settings' jetpack fuel multiplier: its JumpTime.
+		/// @return The jetpack's own fill, in ms.
+		float GetBaseJetTimeTotal() const { return m_JetTimeTotal; }
+
+		/// Sets this jetpack's own fill, in ms, before the Carry weight settings' jetpack fuel multiplier.
+		/// @param newValue The jetpack's own fill, in ms.
+		void SetBaseJetTimeTotal(float newValue) { m_JetTimeTotal = newValue; }
 
 		/// Gets the amount of time this jetpack can still fire until out, in ms.
 		/// @return The amount of time this jetpack can still fire before running out.
@@ -81,11 +89,11 @@ namespace RTE {
 
 		/// Sets the amount of time this' jetpack can still fire until out, in ms.
 		/// @param newValue The amount of time this' jetpack can still fire before running out.
-		void SetJetTimeLeft(float newValue) { m_JetTimeLeft = newValue < m_JetTimeTotal ? newValue : m_JetTimeTotal; }
+		void SetJetTimeLeft(float newValue) { m_JetTimeLeft = std::min(newValue, GetJetTimeTotal()); }
 
 		/// Gets the ratio of jetpack time that is left.
 		/// @return The ratio of jetpack time that is left.
-		float GetJetTimeRatio() { return m_JetTimeLeft / m_JetTimeTotal; }
+		float GetJetTimeRatio() { return m_JetTimeLeft / GetJetTimeTotal(); }
 
 		/// Gets the rate at which this AHuman's jetpack is replenished during downtime.
 		/// @return The rate at which the jetpack is replenished.
@@ -162,7 +170,7 @@ namespace RTE {
 		float m_MinimumFuelRatio; // Minimum ratio of current fuel to max fuel to be able to initiate the jetpack.
 		float m_JetAngleRange; //!< Ratio at which the jetpack angle follows aim angle
 		bool m_CanAdjustAngleWhileFiring; //!< Whether or not the angle of the thrust can change while firing, or if it can only be adjusted while the jetpack is off
-		bool m_AdjustsThrottleForWeight; //!< Whether or not the jetpack throttle auto-adjusts for weight, at the cost of fuel usage.
+		bool m_AdjustsThrottleForWeight; //!< Whether or not the jetpack throttle auto-adjusts for weight, at the cost of fuel usage. The Carry weight settings can override it.
 		Vector m_Steer; //!< The way the AI last steered the jet in zero gravity (SetSteer), and the sim update it did.
 		long long m_SteerTick;
 

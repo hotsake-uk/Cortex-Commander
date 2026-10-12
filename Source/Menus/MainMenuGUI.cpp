@@ -111,6 +111,7 @@ void MainMenuGUI::CreateMainScreen() {
 	m_MainMenuButtons[MenuButton::ScenarioButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToSkirmish"));
 	m_MainMenuButtons[MenuButton::SandboxButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToSandbox"));
 	m_MainMenuButtons[MenuButton::BattleCommandButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToBattleCommand"));
+	m_MainMenuButtons[MenuButton::QuickBattleButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToQuickBattle"));
 	m_MainMenuButtons[MenuButton::SaveOrLoadGameButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonSaveOrLoadGame"));
 	m_MainMenuButtons[MenuButton::SettingsButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToOptions"));
 	m_MainMenuButtons[MenuButton::ModManagerButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToModManager"));
@@ -561,6 +562,9 @@ void MainMenuGUI::HandleMainScreenInputEvents(const GUIControl* guiEventControl)
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::BattleCommandButton]) {
 		// The map browser, for a map to play Battle Command on (and a battle saved on it), then in.
 		OpenMapBrowser(true);
+	} else if (guiEventControl == m_MainMenuButtons[MenuButton::QuickBattleButton]) {
+		// The map browser on the maps with saved battles: the one picked is started at once on its map (B-16).
+		OpenMapBrowser(true, true);
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SaveOrLoadGameButton]) {
 		SetActiveMenuScreen(MenuScreen::SaveOrLoadGameScreen);
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SettingsButton]) {
@@ -590,10 +594,10 @@ void MainMenuGUI::HandleMetaGameNoticeScreenInputEvents(const GUIControl* guiEve
 	}
 }
 
-void MainMenuGUI::OpenMapBrowser(bool battle) {
+void MainMenuGUI::OpenMapBrowser(bool battle, bool quickBattle) {
 	m_MapBrowserBackScreen = battle ? MenuScreen::MainScreen : MenuScreen::SandboxScreen;
 	SetActiveMenuScreen(MenuScreen::MapBrowserScreen);
-	MapBrowser::Open(battle ? MapBrowser::Purpose::Battle : MapBrowser::Purpose::Sandbox);
+	MapBrowser::Open(battle ? MapBrowser::Purpose::Battle : MapBrowser::Purpose::Sandbox, quickBattle);
 }
 
 void MainMenuGUI::HandleMapBrowserChoice() {

@@ -249,7 +249,7 @@ int ACrab::ReadProperty(const std::string_view& propName, Reader& reader) {
 		float jumpTime;
 		reader >> jumpTime;
 		if (m_pJetpack) {
-			m_pJetpack->SetJetTimeTotal(jumpTime * 1000.0F);
+			m_pJetpack->SetBaseJetTimeTotal(jumpTime * 1000.0F);
 			m_pJetpack->SetJetTimeLeft(jumpTime * 1000.0F);
 		}
 	});
@@ -872,11 +872,10 @@ float ACrab::GetLegJumpHeight() const {
 	if (!m_pLFGLeg && !m_pLBGLeg && !m_pRFGLeg && !m_pRBGLeg) {
 		return 0.0F;
 	}
-	if (m_LegJumpHeight >= 0.0F) {
-		return m_LegJumpHeight;
-	}
 	// A third of the body, halved: a crab clears a kerb or a node-wide gap, not a human's knee-high crate.
-	return std::max(16.0F, m_CharHeight * 0.33F) * 0.5F;
+	float height = m_LegJumpHeight >= 0.0F ? m_LegJumpHeight : std::max(16.0F, m_CharHeight * 0.33F) * 0.5F;
+	// The Carry weight settings: stronger legs leap higher, a load holds it down.
+	return height * g_SettingsMan.LegStrength() * GetOverloadSpeedMultiplier();
 }
 
 bool ACrab::CanLeap() const {
@@ -1215,6 +1214,8 @@ void ACrab::PreControllerUpdate() {
 			}
 			// A creature's venom slows it; its web all but stops it (CR-6).
 			paceMultiplier *= GetAfflictionSpeedMultiplier();
+			// A heavy load slows it (the Carry weight settings).
+			paceMultiplier *= GetOverloadSpeedMultiplier();
 			for (int side = 0; side < SIDECOUNT; ++side) {
 				for (int layer = 0; layer < LAYERCOUNT; ++layer) {
 					m_Paths[side][layer][WALK].SetTravelSpeedMultiplier(paceMultiplier);

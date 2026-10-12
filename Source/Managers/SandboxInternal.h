@@ -697,7 +697,8 @@ namespace SandboxDetail {
 		BattleModeStart, //!< The mode's settings, and its game started afresh, every team in it set up by it (BattleModeInfo::TeamSettings).
 		BattleModeStop, //!< The mode's game stopped, and every team with it.
 		BattlePower, //!< Battle Command: a commander power used by the team you command (Choice the CommanderPower, Position where).
-		BattleReinforce //!< Battle Command: reinforcements bought for the team you command (Choice the card, Radius how many, Craft, Position where they land).
+		BattleReinforce, //!< Battle Command: reinforcements bought for the team you command (Choice the card, Radius how many, Craft, Position where they land).
+		BattleSurrender //!< The mode's game given up by Team (SurrenderBattleGame).
 	};
 
 	/// The Battle Director's preset modes: a game with rules of its own, set up from a few choices (how big, which teams, and a point for
@@ -1223,11 +1224,10 @@ namespace SandboxDetail {
 	};
 	inline BattleModeRun s_ModeRun;
 	inline BattleModeSettings s_ModeSetup; //!< The Battle tab's mode panel, the window's copy (sent to the sim as it changes).
-	inline bool s_ShowModeZones = true; //!< A mode's own zones (hills, assault objectives, goal zones) shaded and outlined on the map (always while one is being drawn).
-	inline bool s_ShowBattleInfo = true; //!< A panel under the score while a battle is on: each team's units in, fallen, respawns left and next one in.
-	inline bool s_ShowObjectives = true; //!< Each battle mode's objectives (its flags, hills, goals...) lit up on the map, each in the look it asks for.
-	inline int s_ObjectiveLook = 0; //!< The look of zone objectives: 0 each mode's own, else an ObjectiveLook (plus one) for all of them.
-	inline bool s_ShowModeBases = true; //!< The teams' spawn zones shaded and outlined on the map (always while one is being drawn, or a point placed).
+	// What the battle shows on the map, kept between launches in the settings (B-12): ShowBattleModeZones (a mode's own zones: hills, assault
+	// objectives, goal zones; always while one is being drawn), ShowBattleInfo (the panel under the score), ShowBattleObjectives (each mode's
+	// objectives lit up), BattleObjectiveLook (0 each mode's own look, else an ObjectiveLook plus one for all of them) and ShowBattleSpawnZones
+	// (the teams' spawn zones; always while one is being drawn, or a point placed).
 	// The Unit and Drop tools' random units (copied into the stroke at the click): from every faction, one faction or the favourites.
 	inline bool s_RandomUnits = false;
 	inline bool s_RandomFavourites = false;
@@ -2491,6 +2491,9 @@ namespace SandboxDetail {
 	Vector OpenAirAt(Vector place);
 	Vector StandingPlaceBelow(Vector place);
 	Actor* MakePlayer(const Vector& place);
+	Actor* PlayerHolder();
+	Actor* TakeOutPlayer();
+	void RemovePlayer();
 	void EnterPlayer(bool atPlace, const Vector& place);
 	void UpdatePlayer();
 	void SelectInBox(const Vector& cornerA, const Vector& cornerB);
@@ -2643,6 +2646,22 @@ namespace SandboxDetail {
 	/// @param none Load no setup at all.
 	void LoadBattleOnStart(const std::string& name, bool none);
 
+	/// The next game started from the map browser's quick battle (the main menu's Quick Battle): the setup it loads is started as well, once it
+	/// is in and ready.
+	void StartBattleOnStart(bool start);
+
+	/// The battle setup now on the Battle tab kept as the map's last setup (B-11), in Userdata/BattlePresets/LastSetup/<map>.txt: offered first
+	/// in the saved setups as "Last setup". Each time a battle is started.
+	void RememberLastBattleSetup();
+
+	/// A button's click asked about first (B-13), in a popup with a "Don't ask again" box (BattleAskFirst in the settings): true once it is to
+	/// happen, at once with asking off or Ctrl held. Call right after the button (and its tooltip), in the same ID scope.
+	/// @param clicked Whether the button was clicked this frame.
+	/// @param popup The popup's ID, unique in the ID scope.
+	/// @param question What is asked, as "Delete "Rush"?".
+	/// @param yes The button that goes ahead, as "Yes, delete".
+	bool AskFirst(bool clicked, const char* popup, const std::string& question, const char* yes);
+
 	/// Linked battles (SandboxBattlePresets.cpp): which of them is on, and once it's won, the button to the next. Call inside an ImGui window.
 	/// True when a battle was started from it.
 	bool LinkedBattleControls();
@@ -2712,6 +2731,14 @@ namespace SandboxDetail {
 	bool InEnemySpawnZone(int side, const Vector& at, float radius);
 	/// The mode's game ended: won by a side (or -1, no one), with how it ended said.
 	void EndBattleGame(int winner, const std::string& result);
+	/// A side gives up the mode's game that is on (the pause menu's Surrender, through a BattleSurrender stroke): it ends, won by the only other
+	/// team in it (or nobody, with more than one), and in Battle Command the after-battle report opens.
+	void SurrenderBattleGame(int side);
+	/// Whether the mode set up on the Battle tab (not custom) can be started as it is, and if not, why.
+	bool BattleModeReady(std::string& why);
+	/// The battle mode's objectives, flags and their carriers, spawn zones and mode zones on the sandbox's map window (B-7), as the "Show..."
+	/// choices on the battle panel have them on the view.
+	void DrawBattleModeOnMap(ImDrawList* drawList, const std::function<ImVec2(const Vector&)>& toMap);
 	Vector ModeSpawnSpot(int side, const std::vector<Vector>& zone, const Actor* unit);
 	int ModeRoom(int side, int room);
 	void UpdateBattleMode(bool aiPaused);
@@ -3194,6 +3221,9 @@ namespace SandboxDetail {
 
 	/// The brain's command range, a mark over it, and a mark on the selected units out of range. Call from the ImGui frame, with the order marks.
 	void DrawFieldBrain(ImDrawList* drawList);
+
+	/// The brain and its command range on the sandbox's map window, mapScale its pixels for one of the scene's.
+	void DrawFieldBrainOnMap(ImDrawList* drawList, const std::function<ImVec2(const Vector&)>& toMap, float mapScale);
 #pragma endregion
 
 #pragma region Hot-seat (BattleHotSeat.cpp)
@@ -3319,11 +3349,19 @@ namespace SandboxDetail {
 	/// Your units under attack noticed. Call once per sim update, from UpdateBattle.
 	void UpdateAlerts();
 
-	/// The view moved to the latest alert (Space).
-	void JumpToLatestAlert();
+	/// The view moved to the latest alert (Space), or with back, to the one before the last looked at this way (Shift+Space, again and again).
+	void JumpToAlert(bool back);
 
-	/// The alerts, top left, and the kill feed, top right. Call from the ImGui frame.
+	/// The alerts, top left (with the log's button by them), and the kill feed, top right; the alert log, when open; and each new alert's sound.
+	/// Call from the ImGui frame.
 	void DrawAlerts();
+
+	/// Opens or closes the alert log: the last alerts of the battle, each with when it came, to click and look there.
+	void ToggleAlertLog();
+	bool AlertLogOpen();
+
+	/// Where alerts have just come, blinking for a few seconds on the sandbox's map window.
+	void DrawAlertsOnMap(ImDrawList* drawList, const std::function<ImVec2(const Vector&)>& toMap);
 #pragma endregion
 
 #pragma region Fog of war (BattleFog.cpp)

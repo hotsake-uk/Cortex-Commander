@@ -198,6 +198,13 @@ namespace SandboxDetail {
 						ToggleWindowTab("Battle");
 					}
 				}
+				// The alert log: the battle's last alerts with when each came (B-8).
+				if (Sandbox::IsBattleCommand()) {
+					ImGui::SameLine();
+					if (BarTile("##alertLog", "Alerts", "The alert log: the last 50 alerts of this battle with when each came; click one to look there.\nSpace looks at the latest, Shift+Space steps back through the ones before.", AlertLogOpen(), [&](ImDrawList* tileList, ImVec2 at, float room) { PictureText(tileList, at, room, IM_COL32(239, 160, 100, 255), "!"); }) == 1) {
+						ToggleAlertLog();
+					}
+				}
 			}
 			BarDivider();
 			// Your side, and its units: a click selects them all, a double click looks at them too.

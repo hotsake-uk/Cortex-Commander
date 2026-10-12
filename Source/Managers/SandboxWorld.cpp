@@ -2878,7 +2878,7 @@ namespace SandboxDetail {
 				}
 				break;
 			case Tool::PlayerRemake:
-				if (Actor* old = GetRef(s_PlayerUnit)) {
+				if (Actor* old = TakeOutPlayer()) {
 					Vector place = old->GetPos();
 					StopFlying();
 					old->SetToDelete(true);
@@ -2887,12 +2887,7 @@ namespace SandboxDetail {
 				}
 				break;
 			case Tool::PlayerRemove:
-				if (Actor* old = GetRef(s_PlayerUnit)) {
-					StopFlying();
-					old->SetToDelete(true);
-				}
-				s_PlayerUnit = UnitRef();
-				s_PlayerEnterPending = 0;
+				RemovePlayer();
 				break;
 			case Tool::Remove:
 				if (MovableObject* object = ObjectUnder(at, false)) {
