@@ -506,6 +506,34 @@ namespace RTE {
 		/// Gets the direct order tuning, to read or change ("Battle Behavior" settings).
 		DirectOrderTuning& DirectOrders() { return m_DirectOrders; }
 
+		/// The route search's and route follower's tuning (the "Pathfinding" settings). Each member's default is the tuning the game comes
+		/// with, so PathTuning() is the reset.
+		struct PathTuning {
+			// The search (PathFinder::AdjacentCost). Costs are in nodes walked: a node's walk costs about 1.
+			float LineWeight = 0.0F; //!< On every order, what each node off the straight line from start to goal costs, in nodes walked (PathFinder::LineCost), 0 to 2; added to a direct order's own.
+			float UpCost = 1.5F; //!< The extra cost of each node gone up, on foot or on the jet, 0 to 5 (extraUpCost): lower goes over hills, higher walks round them.
+			float FlightCostScale = 1.0F; //!< What a jet flight's time, take-off and fuel cost every unit, as a share of the usual (PathAgent::FlightCostScale), 0.2 to 1; a direct or cautious order's own scale multiplies it.
+			float JumpHeightCost = 0.5F; //!< How much dearer each node of a jet jump up a column is than the one below it, 0 to 2: higher keeps jumps short.
+			float LadderCostScale = 1.0F; //!< Ladder climbs' cost (2 a node up, 1.2 down), as a multiple, 0.8 to 5.
+			float FallCostPerNode = 2.5F; //!< The cost of each node of a drop past a storey (PathFinder::FallCost), 0 to 10.
+			float RouteVariety = 1.0F; //!< How much each unit's own taste in routes (PathFinder::VarietyCost) weighs, 0 to 4: 0 sends everyone the same shortest way.
+			float FailedSpotCost = 25.0F; //!< What a place or flight a unit or its team failed at lately costs (PathFinder::AvoidCost, AvoidLinks), 0 to 100.
+			float JetOverClimb = 0.0F; //!< 0 to 1: how much a unit with a jetpack and fuel jets up rather than walking or scrambling up a slope or stairs. The climb on foot costs 1 / (1 - this) as much (from half a tank; less below), and at 1 it is a last resort.
+			// The follower (AHuman::MoveAlongRoute).
+			float RefreshSeconds = 7.5F; //!< How often a unit on the move asks for its route afresh, s.
+			float NoSightSeconds = 1.0F; //!< How long the route's next point may be out of sight on the ground before a new route is asked for, s.
+			float StuckRemedySeconds = 2.5F; //!< How long without getting nearer the next point before the stuck remedies start, s.
+			float StuckRepathSeconds = 6.0F; //!< How long without getting nearer before the place is avoided and a new route asked for, s.
+			float AirCheckSeconds = 0.5F; //!< How often a unit in the air checks for a better route, s (taken only when better).
+			float ReachScale = 1.0F; //!< How near a route point counts as reached, as a multiple of the unit's own reach (twice that in the air), 0.5 to 3: higher cuts corners.
+			float NoRouteRetrySeconds = 3.0F; //!< How long a unit told there is no way waits before asking again, s.
+		};
+
+		/// Gets the pathfinding tuning, to read or change ("Pathfinding" settings).
+		PathTuning& PathTunings() { return m_PathTuning; }
+		/// Gets the pathfinding tuning, to read.
+		const PathTuning& PathTunings() const { return m_PathTuning; }
+
 		/// Whether AI units use vehicles (VH-4): one going a long way walks to a friendly vehicle on its way and rides it there, or drives it.
 		bool AIUsesVehicles() const { return m_AIUsesVehicles; }
 
@@ -1290,6 +1318,7 @@ namespace RTE {
 		bool m_DeadCrewFallOut; //!< Whether crew killed in a vehicle fall out of it (see DeadCrewFallOut).
 		bool m_PassengersFireFromVehicles; //!< Whether passengers shoot out of vehicles built to let them (see PassengersFireFromVehicles).
 		DirectOrderTuning m_DirectOrders; //!< How units behave on a direct order (see DirectOrders).
+		PathTuning m_PathTuning; //!< The route search's and follower's tuning (see PathTunings).
 		bool m_EnableCrabBombs; //!< Whether all actors (except Brains and Doors) should be annihilated if a number exceeding the crab bomb threshold is released at once.
 		int m_CrabBombThreshold; //!< The number of crabs needed to be released at once to trigger the crab bomb effect.
 		bool m_ShowEnemyHUD; //!< Whether the HUD of enemy actors should be visible to the player.

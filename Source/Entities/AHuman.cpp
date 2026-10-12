@@ -1129,6 +1129,13 @@ PathAgent AHuman::GetPathAgent() const {
 	agent.MantleHeight = g_SettingsMan.MantlingEnabled() ? std::max(moveHeight, 20.0F) * 0.3F : 0.0F;
 	// The flight links (PathFinder::AddFlightLinks): for a standard jetpack, its full tank.
 	agent.JetTimeMS = (m_pJetpack && m_pJetpack->GetJetpackType() == AEJetpack::JetpackType::Standard) ? m_pJetpack->GetJetTimeTotal() : 0.0F;
+	// Jetting up rather than climbing a slope on foot (the Pathfinding settings' "Jetpack over climbing"): a climb's cost is 1 / (1 - the
+	// setting) as much, in the share of it the fuel allows (all of it from half a tank, none on an empty one), and a last resort at 100%.
+	if (const float jetOverClimb = g_SettingsMan.PathTunings().JetOverClimb; jetOverClimb > 0.0F && agent.JetTimeMS > 0.0F && agent.JumpHeight > 0.0F) {
+		const float fuelShare = std::clamp(m_pJetpack->GetJetTimeLeft() / agent.JetTimeMS / 0.5F, 0.0F, 1.0F);
+		const float share = jetOverClimb * fuelShare;
+		agent.ClimbOnFootScale = share >= 0.999F ? 1000.0F : 1.0F / (1.0F - share);
+	}
 	// Ladders are a way up and down for anything with a hand to climb them with (see UpdateLadder), routed for now only where the jet
 	// can't do the work: no jetpack, or one that lifts the unit less than four nodes. (Routed for every soldier, as the cheaper way, ladders
 	// on a map full of them, Bywater, took over the routes there before the follower handles every way they meet the rest: a route that

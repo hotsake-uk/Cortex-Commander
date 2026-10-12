@@ -1519,7 +1519,7 @@ void Actor::UpdateMovePath() {
 		return;
 	}
 	// After an impossible answer, a few seconds for the unit to be somewhere else before asking again.
-	if (m_ImpossiblePaths > 0 && !m_PathRetryTimer.IsPastSimMS(3000)) {
+	if (m_ImpossiblePaths > 0 && !m_PathRetryTimer.IsPastSimMS(static_cast<double>(g_SettingsMan.PathTunings().NoRouteRetrySeconds) * 1000.0)) {
 		return;
 	}
 	// At a door that's in the way, the route is asked for again now and then, not every frame: when the door opens or is shot out, the
@@ -1788,6 +1788,13 @@ PathAgent Actor::GetPathAgent() const {
 			// corners and takes the jumps a normal one walks round, near full risk it is close to direct; the search still finds the way.
 			agent.LineWeight = direct.MoveLineWeight * share;
 		}
+	}
+	// The Pathfinding settings, for every order on top of its own: how readily a flight is taken over a walk, and how near the straight line
+	// the route keeps (a dig-to has its own line, above).
+	const SettingsMan::PathTuning& tuning = g_SettingsMan.PathTunings();
+	agent.FlightCostScale *= tuning.FlightCostScale;
+	if (!agent.DigGoal) {
+		agent.LineWeight += tuning.LineWeight;
 	}
 	for (const std::pair<Vector, double>& avoid: m_AvoidPoints) {
 		if (avoid.second > g_TimerMan.GetSimTimeMS()) {
