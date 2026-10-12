@@ -815,6 +815,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("EndlessMode", { reader >> m_EndlessMetaGameMode; }); // Legacy name, kept for old Settings.ini files.
 	MatchProperty("EnableCrabBombs", { reader >> m_EnableCrabBombs; });
 	MatchProperty("EnableMantling", { reader >> m_EnableMantling; });
+	MatchProperty("CreaturesClimbWalls", { reader >> m_CreaturesClimbWalls; });
+	MatchProperty("CreatureClimbSpeed", { float speed = 1.0F; reader >> speed; SetCreatureClimbSpeed(speed); });
 	MatchProperty("EnableStuckPush", { reader >> m_EnableStuckPush; });
 	MatchProperty("BodyGearSettlesAsScraps", { reader >> m_BodyGearSettlesAsScraps; });
 	MatchProperty("GibChunkPercent", { reader >> m_GibChunks.CountPercent; ClampGibChunks(); });
@@ -1481,6 +1483,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 
 	// The rest of the settings panel: the AI, the HUD and speech, the overlays, and the tool windows' own layout.
 	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
+	writer.NewPropertyWithValue("CreaturesClimbWalls", m_CreaturesClimbWalls);
+	writer.NewPropertyWithValue("CreatureClimbSpeed", m_CreatureClimbSpeed);
 	writer.NewPropertyWithValue("EnableStuckPush", m_EnableStuckPush);
 	writer.NewPropertyWithValue("BodyGearSettlesAsScraps", m_BodyGearSettlesAsScraps);
 	writer.NewPropertyWithValue("GibChunkPercent", m_GibChunks.CountPercent);

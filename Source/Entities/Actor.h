@@ -238,6 +238,15 @@ namespace RTE {
 		/// Whether a web holds it.
 		bool IsEnsnared() const;
 
+		/// Burns this with acid (CR-9, an ooze's spit and touch): it loses health each second for a while, flesh or metal alike, with no slow.
+		/// A fresh dose keeps the stronger burn and the later end.
+		/// @param damagePerSecond The health it loses each second.
+		/// @param seconds How long the burn lasts.
+		void Corrode(float damagePerSecond, float seconds);
+
+		/// Gets whether acid is eating at this now (Corrode).
+		bool IsCorroding() const;
+
 		/// The share of its pace it walks at for what has hold of it: venom slows it, a web stops it. 1 when nothing has.
 		float GetAfflictionSpeedMultiplier() const;
 #pragma endregion
@@ -1336,7 +1345,27 @@ namespace RTE {
 			int Swims = -1; //!< 0 never swims (walks the bottom), 1 swims along the surface, 2 swims under water and never drowns.
 			float BreathSeconds = -1.0F; //!< How long it holds its breath under liquid, in seconds; 0 for something that doesn't breathe.
 			int FireProof = -1; //!< 1 for a body fire doesn't catch on, and that is routed through lava.
+			int Climbs = -1; //!< What it crawls up and along (CR-10; see Climbing): 0 none, 1 walls, 2 walls and ceilings.
+			float CrawlSpeed = -1.0F; //!< How fast it crawls on a wall or ceiling, or on any ground with no legs, in m/s (see GetCrawlSpeed).
 		};
+
+		/// What a body crawls on (CR-10, a giant spider up a wall): its movement profile's Climbs.
+		enum class Climbing {
+			None = 0,
+			Walls, //!< Up and down walls, and along the floor.
+			WallsAndCeilings //!< Up and down walls and along ceilings too, hanging under them.
+		};
+
+		/// Gets what this crawls on (its movement profile's Climbs), None while the creature climbing setting is off
+		/// (SettingsMan::CreaturesClimbWalls).
+		Climbing GetClimbing() const;
+
+		/// Gets what this crawls on as a number, for scripts (Lua's Climbs): 0 nothing, 1 walls, 2 walls and ceilings.
+		int GetClimbsValue() const { return static_cast<int>(GetClimbing()); }
+
+		/// Gets how fast this crawls on a wall or ceiling, in m/s: its movement profile's CrawlSpeed (3 when not set), times the creature
+		/// climbing speed setting (SettingsMan::CreatureClimbSpeed).
+		float GetCrawlSpeed() const;
 
 		/// Gets this actor's movement profile (CR-2).
 		const MovementProfile& GetMovementProfile() const { return m_MovementProfile; }
@@ -1721,6 +1750,8 @@ namespace RTE {
 		float m_VenomDamagePerSecond = 0.0F; //!< The health the venom takes a second.
 		float m_VenomSlowTo = 1.0F; //!< The share of its pace it walks at while envenomed.
 		long long m_SnareUntil = 0; //!< The sim time, ms, a web holds it until (CR-6). Not copied or saved.
+		long long m_AcidUntil = 0; //!< The sim time, ms, acid eats at it until (CR-9). Not copied or saved.
+		float m_AcidDamagePerSecond = 0.0F; //!< The health the acid takes a second.
 
 		/// Runs what has hold of it (CR-6): venom's harm, a web's hold on its legs, and how they look. Each Update.
 		void UpdateAfflictions();

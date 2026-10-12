@@ -1,6 +1,8 @@
 // Creature afflictions (CR-6): what a monster's attack leaves on whoever it hits. A giant spider's venom eats at the victim's health for a
-// few seconds and slows its walk; its web holds the victim's legs fast for a couple of seconds, though it can still turn and shoot. The
-// bite and the web glob put them on (Envenom, Ensnare, from their scripts); they run here.
+// few seconds and slows its walk; its web holds the victim fast for a couple of seconds, legs and weapons both: it can still turn and look
+// about, but not walk, fire, swing, throw or reload. The
+// bite and the web glob put them on (Envenom, Ensnare, from their scripts); they run here. An ooze's acid (CR-9) eats at flesh and metal
+// alike (Corrode).
 
 #include "Actor.h"
 #include "Color.h"
@@ -19,6 +21,7 @@ namespace {
 	constexpr float c_SnaredPace = 0.05F; //!< The share of its pace a webbed unit's legs keep (not none: a path's time divides by it).
 	constexpr unsigned int c_VenomRGB = 0x7CE040;
 	constexpr unsigned int c_WebRGB = 0xE8E8F0;
+	constexpr unsigned int c_AcidRGB = 0xB8F020;
 } // namespace
 
 void Actor::Envenom(float damagePerSecond, float seconds, float slowTo) {
@@ -42,6 +45,22 @@ void Actor::Ensnare(float seconds) {
 	m_SnareUntil = std::max(m_SnareUntil, g_TimerMan.GetSimTimeMS() + static_cast<long long>(seconds * 1000.0F));
 }
 
+void Actor::Corrode(float damagePerSecond, float seconds) {
+	if (IsDead() || damagePerSecond <= 0.0F || seconds <= 0.0F) {
+		return;
+	}
+	const long long now = g_TimerMan.GetSimTimeMS();
+	if (!IsCorroding()) {
+		m_AcidDamagePerSecond = 0.0F;
+	}
+	m_AcidUntil = std::max(m_AcidUntil, now + static_cast<long long>(seconds * 1000.0F));
+	m_AcidDamagePerSecond = std::max(m_AcidDamagePerSecond, damagePerSecond);
+}
+
+bool Actor::IsCorroding() const {
+	return m_AcidUntil > g_TimerMan.GetSimTimeMS();
+}
+
 bool Actor::IsEnvenomed() const {
 	return m_VenomUntil > g_TimerMan.GetSimTimeMS();
 }
@@ -58,7 +77,7 @@ float Actor::GetAfflictionSpeedMultiplier() const {
 }
 
 void Actor::UpdateAfflictions() {
-	if (m_VenomUntil == 0 && m_SnareUntil == 0) {
+	if (m_VenomUntil == 0 && m_SnareUntil == 0 && m_AcidUntil == 0) {
 		return;
 	}
 	const bool alive = !IsDead();
@@ -80,11 +99,26 @@ void Actor::UpdateAfflictions() {
 		m_VenomSlowTo = 1.0F;
 	}
 
+	if (IsCorroding()) {
+		if (alive) {
+			m_Health -= m_AcidDamagePerSecond * deltaTime;
+		}
+		// Yellow-green fizz: a sickly glow, and wisps of smoke off it.
+		g_PostProcessMan.RegisterLight(m_Pos, glm::vec3(180.0F, 240.0F, 40.0F), m_SpriteRadius, 0.2F);
+		if (frame % 8 == 0) {
+			EffectsParticles::Emit("Mist", m_Pos + Vector(0.0F, -m_SpriteRadius * 0.2F), Vector(0.0F, -0.5F), 0.5F, 1, c_AcidRGB);
+		}
+	} else if (m_AcidUntil != 0) {
+		m_AcidUntil = 0;
+		m_AcidDamagePerSecond = 0.0F;
+	}
+
 	if (IsEnsnared()) {
 		if (alive) {
-			// The legs held: no walking, leaping, jumping or flying off, however it is controlled (the controller has had its say this update,
-			// and the legs read it next). Turning, aiming and shooting are left to it.
-			for (ControlState state: {MOVE_LEFT, MOVE_RIGHT, MOVE_UP, BODY_JUMP, BODY_JUMPSTART, BODY_LEAP}) {
+			// Held fast: no walking, leaping, jumping or flying off, and no firing, swinging, throwing or reloading its weapons, however it is
+			// controlled (the controller has had its say this update, and the legs and arms read it next, so a weapon being fired is let go).
+			// Turning and aiming are left to it.
+			for (ControlState state: {MOVE_LEFT, MOVE_RIGHT, MOVE_UP, BODY_JUMP, BODY_JUMPSTART, BODY_LEAP, WEAPON_FIRE, WEAPON_RELOAD, WEAPON_AUXILIARY_HOTKEY, WEAPON_PRIMARY_HOTKEY}) {
 				m_Controller.SetState(state, false);
 			}
 			m_Vel.m_X *= 0.6F;

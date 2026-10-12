@@ -1302,6 +1302,16 @@ void DebugMan::SettingsGUI() {
 				Tip((std::string(slider.Tip) + c_ToughnessHow).c_str());
 			}
 		}
+		Heading("Creatures");
+		Toggle("Creatures climb walls", g_SettingsMan.CreaturesClimbWalls(), [](bool on) { g_SettingsMan.SetCreaturesClimbWalls(on); });
+		Tip("Creatures that climb crawl up walls and along ceilings, and the AI routes them that way: a giant spider goes up a wall and across the ceiling, hangs there in wait and drops on whoever walks under it; an ooze creeps up walls. Unticked, they keep to the ground like other units.");
+		{
+			float climbSpeed = g_SettingsMan.CreatureClimbSpeed();
+			if (Slider("Creature climbing speed", &climbSpeed, Normal{1.0F}, 0.25F, 3.0F, "%.2fx")) {
+				g_SettingsMan.SetCreatureClimbSpeed(climbSpeed);
+			}
+			Tip("How fast climbing creatures crawl on walls and ceilings, as a multiple of each one's own pace (a giant spider about 3 m/s, an ooze about 1.2). 1x is normal.");
+		}
 		Check("Team colour on units", &settings.UnitTeamColorParts);
 		Tip("Parts of units that mods mark for it (a bandanna, a helmet stripe) are drawn in their side's colour: red, green, blue or yellow. Unticked, they take the mod's own default colour, or stay as painted.");
 		Heading("Unit outlines");
