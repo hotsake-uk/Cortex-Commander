@@ -751,6 +751,7 @@ function NativeHumanAI:Update(Owner)
 	end
 	if not objective then
 		HumanBehaviors.SmokeUpdate(self, Owner);
+		HumanBehaviors.DraughtUpdate(self, Owner);
 		SharedBehaviors.SquadTactics(self, Owner);
 		SharedBehaviors.FlankUpdate(self, Owner);
 		HumanBehaviors.ShotFromUnseen(self, Owner, hit and AlarmPoint);

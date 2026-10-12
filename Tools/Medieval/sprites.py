@@ -601,6 +601,23 @@ HEADS["Bombardier"] = swap(HEADS["Crossbowman"], {"W": "b", "w": "n"})
 HEADS["Skirmisher"] = swap(HEADS["Archer"], {"f": "b", "F": "n", "e": "N"})
 HEADS["Skirmisher B"] = swap(HEADS["Archer B"], {"f": "b", "F": "n", "e": "N"})
 
+# The Kingdom's second levy (Devices/Arsenal/Arsenal2.ini).
+# A longbowman: a brigandine of brown leather studded with steel over green, hooded in green.
+TORSOS["Longbowman"] = swap(TORSOS["Archer"], {"F": "n", "e": "N"})
+# A hunter: leathers dyed forest green, a hood.
+TORSOS["Hunter"] = swap(TORSOS["Skirmisher"], {"b": "f", "n": "F", "N": "e"})
+HEADS["Hunter"] = swap(HEADS["Archer"], {"f": "b", "F": "f", "e": "F"})
+HEADS["Hunter B"] = swap(HEADS["Archer B"], {"f": "b", "F": "f", "e": "F"})
+# An arbalester: a grey gambeson and a steel cap.
+TORSOS["Arbalester"] = swap(TORSOS["Crossbowman"], {"r": "D", "R": "B", "o": "A"})
+HEADS["Arbalester"] = swap(HEADS["Crossbowman"], {"W": "D", "w": "B"})
+# A royal guard: a knight's plate under a purple surcoat with gold, a purple plume.
+TORSOS["Royal Guard"] = swap(TORSOS["Knight"], {"r": "p", "R": "P", "o": "q"})
+HEADS["Royal Guard"] = swap(HEADS["Knight"], {"r": "p", "R": "P", "o": "q"})
+# An alchemist: a brown leather apron over a tan robe, a green stripe, a flat brown hat.
+TORSOS["Alchemist"] = swap(TORSOS["Mage"], {"v": "b", "V": "N", "i": "e", "g": "n", "G": "j"})
+HEADS["Alchemist"] = swap(HEADS["Mage"], {"v": "b", "V": "n", "i": "N", "g": "N", "G": "j"})
+
 # The woodcutter (a colony woodcutter's staff): a green wool tunic with its sleeves rolled up, a leather belt and apron, and a red knitted cap
 # over brown hair and a beard.
 TORSOS["Woodcutter"] = swap(TORSOS["Skirmisher"], {"b": "f", "n": "F", "N": "e"})
@@ -842,9 +859,14 @@ def main():
 		"Skirmisher": ("Skirmisher", ["Skirmisher", "Skirmisher B"], "leather", "brown", "leather", None),
 		"Skeleton": ("Skeleton", ["Skeleton"], "bone", "bone", "bone", "bone"),
 		"Woodcutter": ("Woodcutter", ["Woodcutter"], "skin", "brown", "leather", None),
+		"Longbowman": ("Longbowman", ["Archer", "Archer B"], "green", "brown", "leather", None),
+		"Hunter": ("Hunter", ["Hunter", "Hunter B"], "green", "green", "leather", None),
+		"Arbalester": ("Arbalester", ["Arbalester"], "grey", "grey", "leather", None),
+		"Royal Guard": ("Royal Guard", ["Royal Guard", "Knight B"], "steel", "steel", "steel", "steel"),
+		"Alchemist": ("Alchemist", ["Alchemist"], "brown", "brown", "leather", None),
 	}
 	for unit, (torso, heads, armRamp, legRamp, footRamp, handRamp) in units.items():
-		base = f"Actors/{unit}/"
+		base = f"Actors/{unit.replace(' ', '')}/"
 		save(grid(TORSOS[torso]), base + "Torso.png")
 		for i, h in enumerate(heads):
 			save(grid(HEADS[h]), base + f"Head{i:03d}.png")

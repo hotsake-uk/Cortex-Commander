@@ -167,6 +167,42 @@ UNITS = [
 		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
 		torsoWounds=14, inventory=[("HDFirearm", "Woodcutter's Axe")], metal=False, nature="Defensive",
 	),
+	# The Kingdom's second levy (Devices/Arsenal/Arsenal2.ini).
+	dict(
+		key="Longbowman", name="Longbowman", groups=["Actors - Light", "Actors - Snipers"], gold=95, mass=48, heads=2,
+		desc="A big man in a studded brigandine with a six-foot warbow and a quiver of bodkins that go through mail, a few fire arrows for the thatch, and a falchion for when they get close. Slow to draw, long to reach; put him on a hill.",
+		torsoMat="Kevlared Flesh", headMat="Flesh", limbMat="Flesh", health=100, walk=4.2, run=5.2,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact Armored", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=16, inventory=[("HDFirearm", "Warbow"), ("HDFirearm", "Fire Arrows"), ("HDFirearm", "Falchion")], metal=False,
+	),
+	dict(
+		key="Hunter", name="Hunter", groups=["Actors - Light"], gold=85, mass=44, heads=2,
+		desc="A huntsman in green leathers with a quick hunting bow and barbed arrows, a net for the one who runs, two snare traps for the path behind, and a hunting knife. Fast, quiet, and not for the shield wall.",
+		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=90, walk=4.6, run=5.8,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=12, inventory=[("HDFirearm", "Hunting Bow"), ("ThrownDevice", "Net"), ("ThrownDevice", "Snare Trap"), ("ThrownDevice", "Snare Trap"), ("HDFirearm", "Hunting Knife")], metal=False,
+	),
+	dict(
+		key="Arbalester", name="Arbalester", groups=["Actors - Light", "Actors - Snipers"], gold=110, mass=50, heads=1,
+		desc="A crossbowman with a steel-bowed arbalest that takes an age to span and goes through a shield and the man behind it, a buckler on his arm and a falchion at his belt. One shot, then cover.",
+		torsoMat="Kevlared Flesh", headMat="Kevlared Flesh", limbMat="Flesh", health=100, walk=4.0, run=5.0,
+		headImpact="Flesh Head Impact Armored", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=16, inventory=[("HDFirearm", "Arbalest"), ("HDFirearm", "Falchion"), ("HeldDevice", "Buckler")], metal=False,
+	),
+	dict(
+		key="Royal Guard", name="Royal Guard", groups=["Actors - Heavy"], gold=210, mass=68, heads=2,
+		desc="The king's own, in full plate under purple and gold, with a poleaxe that cuts, crushes and knocks men flat, and a tower shield that covers all of him. The slowest man on the field, and the hardest to move.",
+		torsoMat="Military Stuff", headMat="Military Stuff", limbMat="Kevlared Flesh", health=160, walk=3.4, run=4.2,
+		headImpact="Flesh Head Impact Armored", torsoImpact="Flesh Torso Impact Armored", foley="Foley Heavy Cloth Light", stride="Footstep Heavy Metal Generic",
+		torsoWounds=26, inventory=[("HDFirearm", "Poleaxe"), ("HeldDevice", "Tower Shield"), ("HDFirearm", "Morning Star")], metal=True,
+	),
+	dict(
+		key="Alchemist", name="Alchemist", groups=["Actors - Light"], gold=120, mass=44, heads=1,
+		desc="An alchemist in a leather apron with a satchel of flasks: oil to lay a slick for the fire arrows, frost to freeze a squad in its tracks, smoke to cross the open, and two healing draughts he throws among the wounded. A quarterstaff for the rest.",
+		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=90, walk=4.2, run=5.2,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=14, inventory=[("HDFirearm", "Quarterstaff"), ("TDExplosive", "Oil Flask"), ("TDExplosive", "Oil Flask"), ("TDExplosive", "Frost Flask"), ("TDExplosive", "Smoke Flask"), ("TDExplosive", "Healing Draught"), ("TDExplosive", "Healing Draught")], metal=False,
+	),
 ]
 
 
@@ -218,7 +254,7 @@ def gibs(indent, *items):
 
 def parts(u):
 	k = u["key"]
-	d = f"Medieval.rte/Actors/{k}"
+	d = f"Medieval.rte/Actors/{k.replace(' ', '')}"
 	p = f"Medieval {k}"
 	metalGib = ("MOSParticle", "Gib Metal Grey Tiny A", 3, "") if u["metal"] else ("MOSParticle", gib(u, "Gib Flesh Tiny A"), 2, "")
 	return f"""
@@ -452,7 +488,7 @@ AddActor = Leg
 
 def actor(u):
 	k = u["key"]
-	d = f"Medieval.rte/Actors/{k}"
+	d = f"Medieval.rte/Actors/{k.replace(' ', '')}"
 	p = f"Medieval {k}"
 	groups = "\n".join(f"\tAddToGroup = {g}" for g in ["Actors"] + u["groups"])
 	inv = "\n".join(f"\tAddInventory = {cls}\n\t\tCopyOf = {name}" for cls, name in u["inventory"])
