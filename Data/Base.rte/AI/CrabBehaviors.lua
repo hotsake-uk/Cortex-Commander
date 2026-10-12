@@ -284,7 +284,7 @@ function CrabBehaviors.ShootTarget(AI, Owner, Abort)
 
 	AI.ReloadTimer:Reset();
 	AI.TargetLostTimer:Reset();
-	AI.TargetLostTimer:SetSimTimeLimitMS(1500);
+	AI.TargetLostTimer:SetSimTimeLimitMS(SharedBehaviors.TargetMemoryMS(1500));
 
 	local LOSTimer = Timer();
 	LOSTimer:SetSimTimeLimitMS(450);

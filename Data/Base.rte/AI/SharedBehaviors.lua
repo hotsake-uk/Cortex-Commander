@@ -29,6 +29,33 @@ function SharedBehaviors.GetTeamShootingSkill(team)
 	return aimSpeed, aimSkill, skill;
 end
 
+-- The aim a unit fights with, from its own (AI.baseAimSkill, AI.baseAimSpeed), its veteran rank (Battle Command: each rank aims 15% better
+-- and quicker) and the AI combat settings (Shot accuracy divides the aim error, Reaction time multiplies the delays). Worked out again only
+-- when one of those changes. At the settings' defaults it is exactly the aim the unit always had.
+function SharedBehaviors.UpdateCombatAim(AI, rank)
+	if not AI.baseAimSkill then
+		return;
+	end
+	local accuracy, reaction = SettingsMan.AICombatAccuracy, SettingsMan.AICombatReaction;
+	if rank ~= AI.veteranRank or accuracy ~= AI.combatAccuracy or reaction ~= AI.combatReaction then
+		AI.veteranRank, AI.combatAccuracy, AI.combatReaction = rank, accuracy, reaction;
+		AI.aimSkill = AI.baseAimSkill * (1 - 0.15 * rank) / accuracy;
+		AI.aimSpeed = AI.baseAimSpeed * (1 - 0.15 * rank) * reaction;
+	end
+end
+
+-- How long a unit keeps on a target it has lost sight of (ms), from the time a behaviour gives it and the Target memory setting.
+function SharedBehaviors.TargetMemoryMS(ms)
+	local memory = SettingsMan.AICombatTargetMemory;
+	return memory == 1 and ms or ms * memory;
+end
+
+-- Whether a unit takes a throw it judges worth making, by the Grenade use setting (at 1, always, with no roll).
+function SharedBehaviors.TakesThrow()
+	local use = SettingsMan.AICombatGrenadeUse;
+	return use >= 1 or math.random() < use;
+end
+
 function SharedBehaviors.ProcessAlarmEvent(AI, Owner)
 	AI.AlarmPos = nil;
 
@@ -798,8 +825,17 @@ function SharedBehaviors.ScanForTargets(AI, Owner, skill, fovDegrees, budget)
 	AI.lastScanMS = now;
 	-- (As far as the old look reached: the aim distance and half a screen.)
 	local range = Owner.AimDistance + FrameMan.PlayerScreenWidth * 0.51;
+	-- (Times the Sight range setting, and the rate below times Spotting speed.)
+	local sightRange = SettingsMan.AICombatSightRange;
+	if sightRange ~= 1 then
+		range = range * sightRange;
+	end
 	-- How fast noticing fills, per second at full visibility: about 0.3 s for the best units, about 1.2 s for the worst; skill 0 to 100.
 	local rate = (0.8 + (skill or 50) / 40) * Owner.Perceptiveness;
+	local spotting = SettingsMan.AICombatSpotting;
+	if spotting ~= 1 then
+		rate = rate * spotting;
+	end
 	local noticed, noticedHit, noticedVisibility, noticedID;
 	local current, currentHit, currentID;
 	for Sighting in Owner:ScanForEnemies(fovDegrees, range, budget) do
@@ -2565,6 +2601,11 @@ function SharedBehaviors.BurstPattern(Weapon, range, targetRadius, suppression)
 	end
 	if suppression > 0.5 then
 		on, off = math.min(on or 350, 350), math.max(off or 400, 400);
+	end
+	-- (Times the Burst length setting; held down close in, whatever it is.)
+	local burst = SettingsMan.AICombatBurst;
+	if on and burst ~= 1 then
+		on = on * burst;
 	end
 	return on, off;
 end
