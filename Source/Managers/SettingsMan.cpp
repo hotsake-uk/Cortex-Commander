@@ -4,6 +4,8 @@
 #include "SDL3/SDL_keyboard.h"
 #include "Weather.h"
 #include <algorithm>
+#include <array>
+#include <initializer_list>
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
@@ -16,6 +18,8 @@
 #include "ZeroGravity.h"
 #include "TerrainTrees.h"
 #include "FluidSim.h"
+#include "Material.h"
+#include "SceneMan.h"
 #include "ThreatMemory.h"
 #include "GasGrid.h"
 #include "AirPressure.h"
@@ -820,6 +824,13 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("FixDebrisRestsAcrossGaps", { reader >> m_SlowdownFixes.DebrisRestsAcrossGaps; });
 	MatchProperty("FixGasAreaShrinks", { reader >> m_SlowdownFixes.GasAreaShrinks; });
 	MatchProperty("FixLightingSplitsChanges", { reader >> m_SlowdownFixes.LightingSplitsChanges; });
+	MatchProperty("MaxLooseBits", { reader >> m_SlowdownFixes.MaxLooseBits; m_SlowdownFixes.MaxLooseBits = std::clamp(m_SlowdownFixes.MaxLooseBits, 0, 50000); });
+	MatchProperty("MaxLooseBitsOfKinds", {
+		for (int& most: m_SlowdownFixes.MaxLooseBitsOf) {
+			reader >> most;
+			most = std::clamp(most, 0, 50000);
+		}
+	});
 	MatchProperty("NoSceneWrap", { reader >> m_NoSceneWrap; });
 	MatchProperty("UnitSpeech", { bool on = true; reader >> on; UnitSpeech::SetEnabled(on); });
 	MatchProperty("UnitSpeechChance", { int percent = 40; reader >> percent; UnitSpeech::SetChance(percent); });
@@ -1061,6 +1072,45 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	});
 
 	EndPropertyList;
+}
+
+SettingsMan::LooseBitKind SettingsMan::GetLooseBitKind(int materialIndex) {
+	static std::array<signed char, 256> s_Kinds = [] {
+		std::array<signed char, 256> kinds;
+		kinds.fill(-1);
+		return kinds;
+	}();
+	materialIndex &= 0xFF;
+	if (s_Kinds[materialIndex] >= 0) {
+		return static_cast<LooseBitKind>(s_Kinds[materialIndex]);
+	}
+	const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(materialIndex));
+	if (!material) {
+		return OtherBits;
+	}
+	const std::string& name = material->GetPresetName();
+	auto has = [&name](std::initializer_list<const char*> parts) {
+		for (const char* part: parts) {
+			if (name.find(part) != std::string::npos) {
+				return true;
+			}
+		}
+		return false;
+	};
+	LooseBitKind kind = OtherBits;
+	if (material->IsBody() || has({"Blood", "Flesh", "Bone"})) {
+		kind = BloodAndFlesh;
+	} else if (FluidSim::IsLiquid(materialIndex)) {
+		kind = Liquids;
+	} else if (has({"Earth", "Stone", "Sand", "Snow", "Ice", "Gravel", "Concrete", "Rubble", "Ash", "soil", "Cave", "Rock", "Bedrock"})) {
+		kind = EarthAndStone;
+	} else if (has({"Metal", "Military", "Plate", "Bullet", "Casing", "Ladder", "Gold"})) {
+		kind = Metal;
+	} else if (has({"Wood", "Vegetation", "Grass", "Tree", "Charcoal", "Candle", "Leaves"})) {
+		kind = WoodAndPlants;
+	}
+	s_Kinds[materialIndex] = static_cast<signed char>(kind);
+	return kind;
 }
 
 void SettingsMan::ClampGibChunks() {
@@ -1405,6 +1455,14 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("FixDebrisRestsAcrossGaps", m_SlowdownFixes.DebrisRestsAcrossGaps);
 	writer.NewPropertyWithValue("FixGasAreaShrinks", m_SlowdownFixes.GasAreaShrinks);
 	writer.NewPropertyWithValue("FixLightingSplitsChanges", m_SlowdownFixes.LightingSplitsChanges);
+	writer.NewPropertyWithValue("MaxLooseBits", m_SlowdownFixes.MaxLooseBits);
+	{
+		std::string kinds;
+		for (int most: m_SlowdownFixes.MaxLooseBitsOf) {
+			kinds += (kinds.empty() ? "" : " ") + std::to_string(most);
+		}
+		writer.NewPropertyWithValue("MaxLooseBitsOfKinds", kinds);
+	}
 	writer.NewPropertyWithValue("NoSceneWrap", m_NoSceneWrap);
 	writer.NewPropertyWithValue("UnitToughness", Toughness(ToughnessKind::Units));
 	writer.NewPropertyWithValue("VehicleToughness", Toughness(ToughnessKind::Vehicles));

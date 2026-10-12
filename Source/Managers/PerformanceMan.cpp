@@ -22,6 +22,8 @@ using namespace RTE;
 
 bool PerformanceMan::s_Logging = false;
 bool PerformanceMan::s_LogGPU = false;
+bool PerformanceMan::s_LiveTimings = false;
+bool PerformanceMan::s_Timing = false;
 
 namespace {
 	struct LogEntry {
@@ -45,6 +47,11 @@ namespace {
 	int s_LogVerySlowFrames = 0; //!< Frames that took longer than 1/30 s.
 	int s_LogFrames = 0;
 	int s_LogUpdates = 0;
+
+	std::map<std::string, LogEntry, std::less<>> s_LiveEntries; //!< The live timings' totals since the last snapshot (see SetLiveTimings).
+	std::vector<std::pair<std::string, float>> s_LiveSnapshot; //!< The last second's milliseconds a frame per entry, most first.
+	uint64_t s_LiveStart = 0;
+	int s_LiveFrames = 0;
 } // namespace
 
 const std::array<std::string, PerformanceMan::PerformanceCounters::PerfCounterCount> PerformanceMan::m_PerfCounterNames = {"Total", "Act AI", "Act Travel", "Act Update", "Prt Travel", "Prt Update", "Activity", "Scripts"};
@@ -82,6 +89,7 @@ void PerformanceMan::Initialize() {
 	if (const char* logPath = std::getenv("CCCP_PERF_LOG"); logPath && *logPath) {
 		s_LogPath = logPath;
 		s_Logging = true;
+		s_Timing = true;
 		s_LogGPU = std::getenv("CCCP_PERF_LOG_GPU") != nullptr;
 		std::ofstream log(s_LogPath, std::ios::trunc);
 		log << "Performance log. Each block covers about five seconds. 'share' is of all the time in the block; 'worst' is the longest single call." << (s_LogGPU ? " GPU waits are on, so the frame rate is lower than in normal play." : "") << "\n";
@@ -102,30 +110,53 @@ void PerformanceMan::StartPerformanceMeasurement(PerformanceCounters counter) {
 void PerformanceMan::StopPerformanceMeasurement(PerformanceCounters counter) {
 	s_PerfMeasureStop[counter] = g_TimerMan.GetAbsoluteTime();
 	AddPerformanceSample(counter, s_PerfMeasureStop[counter] - s_PerfMeasureStart[counter]);
-	if (s_Logging) {
+	if (s_Timing) {
 		AddLogTime(c_LogCounterNames[counter], s_PerfMeasureStop[counter] - s_PerfMeasureStart[counter]);
 	}
 }
 
 void PerformanceMan::AddLogTime(const char* name, uint64_t microseconds) {
-	if (!s_Logging) {
+	if (!s_Timing) {
 		return;
 	}
 	std::lock_guard<std::mutex> lock(s_LogMutex);
 	// Found by the name as given, so a call makes no string once its entry is there: the hottest callers time every part of every unit.
-	auto found = s_LogEntries.find(std::string_view(name));
-	if (found == s_LogEntries.end()) {
-		found = s_LogEntries.emplace(name, LogEntry()).first;
+	auto add = [name, microseconds](std::map<std::string, LogEntry, std::less<>>& entries) {
+		auto found = entries.find(std::string_view(name));
+		if (found == entries.end()) {
+			found = entries.emplace(name, LogEntry()).first;
+		}
+		LogEntry& entry = found->second;
+		entry.Total += microseconds;
+		++entry.Calls;
+		entry.Worst = std::max(entry.Worst, microseconds);
+	};
+	if (s_Logging) {
+		add(s_LogEntries);
 	}
-	LogEntry& entry = found->second;
-	entry.Total += microseconds;
-	++entry.Calls;
-	entry.Worst = std::max(entry.Worst, microseconds);
+	if (s_LiveTimings) {
+		add(s_LiveEntries);
+	}
+}
+
+void PerformanceMan::SetLiveTimings(bool on) {
+	s_LiveTimings = on;
+	s_Timing = s_Logging || s_LiveTimings;
+	std::lock_guard<std::mutex> lock(s_LogMutex);
+	s_LiveEntries.clear();
+	s_LiveSnapshot.clear();
+	s_LiveStart = 0;
+	s_LiveFrames = 0;
+}
+
+std::vector<std::pair<std::string, float>> PerformanceMan::GetLiveTimings() {
+	std::lock_guard<std::mutex> lock(s_LogMutex);
+	return s_LiveSnapshot;
 }
 
 PerformanceMan::LogScope::LogScope(const char* name, bool waitForGPU) :
     m_Name(name), m_WaitForGPU(waitForGPU && s_LogGPU), m_Start(0) {
-	if (s_Logging) {
+	if (s_Timing) {
 		if (m_WaitForGPU) {
 			glFinish();
 		}
@@ -134,7 +165,7 @@ PerformanceMan::LogScope::LogScope(const char* name, bool waitForGPU) :
 }
 
 PerformanceMan::LogScope::~LogScope() {
-	if (s_Logging) {
+	if (s_Timing && m_Start != 0) {
 		if (m_WaitForGPU) {
 			glFinish();
 		}
@@ -146,7 +177,7 @@ PerformanceMan::LogStages::LogStages(bool waitForGPU) :
     m_Name(nullptr), m_WaitForGPU(waitForGPU && s_LogGPU), m_Start(0) {}
 
 void PerformanceMan::LogStages::Next(const char* name) {
-	if (!s_Logging) {
+	if (!s_Timing) {
 		return;
 	}
 	if (m_WaitForGPU) {
@@ -161,6 +192,27 @@ void PerformanceMan::LogStages::Next(const char* name) {
 }
 
 void PerformanceMan::UpdateLog() {
+	if (s_LiveTimings) {
+		// The live timings: every second, each entry's milliseconds a frame over that second, for the settings panel's slowdown readout.
+		uint64_t now = g_TimerMan.GetAbsoluteTime();
+		if (s_LiveStart == 0) {
+			s_LiveStart = now;
+		}
+		++s_LiveFrames;
+		if (now - s_LiveStart >= 1'000'000) {
+			std::lock_guard<std::mutex> lock(s_LogMutex);
+			s_LiveSnapshot.clear();
+			for (const auto& [name, entry]: s_LiveEntries) {
+				if (!name.empty() && name[0] != '#') {
+					s_LiveSnapshot.emplace_back(name, static_cast<float>(static_cast<double>(entry.Total) / static_cast<double>(std::max(s_LiveFrames, 1)) / 1000.0));
+				}
+			}
+			std::sort(s_LiveSnapshot.begin(), s_LiveSnapshot.end(), [](const auto& left, const auto& right) { return left.second > right.second; });
+			s_LiveEntries.clear();
+			s_LiveStart = now;
+			s_LiveFrames = 0;
+		}
+	}
 	if (!s_Logging) {
 		return;
 	}

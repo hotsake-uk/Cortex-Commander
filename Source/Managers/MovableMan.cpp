@@ -13,6 +13,7 @@
 #include "AEmitter.h"
 #include "AHuman.h"
 #include "MOPixel.h"
+#include "MOSParticle.h"
 #include "HeldDevice.h"
 #include "HDFirearm.h"
 #include "SLTerrain.h"
@@ -1756,6 +1757,13 @@ void MovableMan::Update() {
 			// The most gib chunks loose at once (the gib chunk setting, 0 for no limit): the chunks still loose are gathered as they update.
 			const int maxLooseChunks = g_SettingsMan.GibChunks().MaxLoose;
 			std::vector<MovableObject*> looseChunks;
+			// The most loose bits (pixels and small sprite particles that never expire: blood, flecks, chips) at once, 0 for no limit, gathered the same way.
+			const SettingsMan::SlowdownFixTuning& slowdownFixes = g_SettingsMan.SlowdownFixes();
+			const int maxLooseBits = slowdownFixes.MaxLooseBits;
+			const bool anyKindLimit = std::any_of(slowdownFixes.MaxLooseBitsOf.begin(), slowdownFixes.MaxLooseBitsOf.end(), [](int most) { return most > 0; });
+			const bool limitBits = maxLooseBits > 0 || anyKindLimit;
+			std::vector<MovableObject*> looseBits;
+			std::array<std::vector<MovableObject*>, SettingsMan::LooseBitKindCount> looseBitsOf;
 			for (MovableObject* particle: m_Particles) {
 				particle->Update();
 
@@ -1777,6 +1785,12 @@ void MovableMan::Update() {
 				}
 				if (maxLooseChunks > 0 && particle->IsGibChunk() && !particle->ToSettle() && !particle->ToDelete()) {
 					looseChunks.push_back(particle);
+				}
+				if (limitBits && particle->GetLifetime() == 0 && !particle->ToSettle() && !particle->ToDelete() && (dynamic_cast<MOPixel*>(particle) || dynamic_cast<MOSParticle*>(particle))) {
+					looseBits.push_back(particle);
+					if (anyKindLimit && particle->GetMaterial()) {
+						looseBitsOf[SettingsMan::GetLooseBitKind(particle->GetMaterial()->GetIndex())].push_back(particle);
+					}
 				}
 			}
 			// Past the most, the oldest that have slowed down settle into the ground where they lie, as dropped items past the most kept do. One lying on a
@@ -1802,6 +1816,35 @@ void MovableMan::Update() {
 					}
 				}
 			}
+			// Past the most loose bits, the oldest that have slowed down settle into the ground where they lie, in their own colour and material (a drop of
+			// blood stays a stain); one with no ground under it (lying on a body, caught on a ledge's edge, stuck in the air) is removed. Left alone, bits
+			// that could never settle where they had come to rest only ever added up over a battle, each updated every frame for good.
+			// Each kind of material's own most first (blood can be kept to fewer than the rest), then the overall most over what is left.
+			auto limitLooseBits = [this](std::vector<MovableObject*>& bits, int most) {
+				if (most <= 0 || bits.size() <= static_cast<size_t>(most)) {
+					return;
+				}
+				const size_t excess = bits.size() - static_cast<size_t>(most);
+				std::nth_element(bits.begin(), bits.begin() + excess, bits.end(), [](const MovableObject* first, const MovableObject* second) { return first->GetAge() > second->GetAge(); });
+				for (size_t i = 0; i < excess; ++i) {
+					MovableObject* bit = bits[i];
+					if (!bit->GetVel().MagnitudeIsLessThan(4.0F)) {
+						continue;
+					}
+					if (m_SettlingEnabled && !g_SceneMan.OverAltitude(bit->GetPos(), static_cast<int>(bit->GetRadius()) + 3, 0)) {
+						bit->SetToSettle(true);
+					} else {
+						bit->SetToDelete(true);
+					}
+				}
+			};
+			if (anyKindLimit) {
+				for (int kind = 0; kind < SettingsMan::LooseBitKindCount; ++kind) {
+					limitLooseBits(looseBitsOf[kind], slowdownFixes.MaxLooseBitsOf[kind]);
+				}
+				std::erase_if(looseBits, [](const MovableObject* bit) { return bit->ToSettle() || bit->ToDelete(); });
+			}
+			limitLooseBits(looseBits, maxLooseBits);
 			g_PerformanceMan.StopPerformanceMeasurement(PerformanceMan::ParticlesUpdate);
 		}
 
