@@ -1472,6 +1472,17 @@ void MovableObject::AddHeatAt(const Vector& offset, float heat, float radius) {
 	}
 }
 
+unsigned char MovableObject::RungMaterial() {
+	// (Looked up once the materials are in: before that there is no "Ladder" yet, and 0 isn't kept.)
+	static unsigned char s_Rung = 0;
+	if (s_Rung == 0) {
+		if (const Material* ladder = g_SceneMan.GetMaterial("Ladder")) {
+			s_Rung = static_cast<unsigned char>(ladder->GetIndex());
+		}
+	}
+	return s_Rung;
+}
+
 bool MovableObject::IsBullet() const {
 	return m_HitsMOs && (dynamic_cast<const MOPixel*>(this) || dynamic_cast<const MOSParticle*>(this)) && !TerrainFire::IsFireSource(this);
 }

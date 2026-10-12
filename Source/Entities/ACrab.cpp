@@ -2352,8 +2352,9 @@ int ACrab::MoveAlongRoute() {
 			// (Over the legs' own step only, and not where the route itself climbs, a slope or stairs: the low ray meets any incline over
 			// about twelve degrees, and a crab bounded up every slope.)
 			float rise = 0.0F;
-			// (Water standing on it is no part of it, nor grass or a crumb on it, by the settings: Actor::SensesPassTerrain. A crab passes no rungs.)
-			auto solid = [](int x, int y) { unsigned char id = g_SceneMan.GetTerrMatter(x, y); return id != MaterialColorKeys::g_MaterialAir && !SensesPassTerrain(id, x, y, false); };
+			// (Water standing on it is no part of it, nor grass or a crumb on it, by the settings: Actor::SensesPassTerrain. Nor a ladder's rungs,
+			// which a crab's body passes as every unit's does: MovableObject::RootPassesRungs.)
+			auto solid = [](int x, int y) { unsigned char id = g_SceneMan.GetTerrMatter(x, y); return id != MaterialColorKeys::g_MaterialAir && !SensesPassTerrain(id, x, y, true); };
 			while (rise < h && solid(static_cast<int>(lowHit.m_X + direction * 2.0F), static_cast<int>(floorY - 2.0F - rise))) {
 				rise += 1.0F;
 			}
