@@ -1545,6 +1545,8 @@ void DebugMan::SettingsGUI() {
 				g_SettingsMan.SetJetpackFuelMultiplier(fuel);
 			}
 			Tip("How much fuel every jetpack holds, as a multiple of its own. More lets units fly longer; a fuller tank also takes longer to refill. 1x is normal.");
+			Toggle("Infinite jetpack fuel", g_SettingsMan.InfiniteJetpackFuel(), [](bool on) { g_SettingsMan.SetInfiniteJetpackFuel(on); });
+			Tip("Every jetpack's tank stays full however long it fires, for players and the AI alike. The AI still plans its flights for one tankful, so it won't take routes longer than that. Off is normal.");
 		}
 		if (Plain()) {
 			ImGui::Spacing();
