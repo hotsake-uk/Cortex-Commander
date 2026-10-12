@@ -2452,6 +2452,9 @@ namespace SandboxDetail {
 	const std::vector<Preset>& ListFor(Tool kind);
 	int& ChoiceFor(Tool kind);
 	const Preset* ChosenPreset(Tool kind, int choice);
+	/// How many of a unit one click of the Unit tool puts down: its preset's SpawnGroup number value (a swarm creature, CR-1: giant rats
+	/// by the eight), 1 for any other.
+	int SpawnGroupSize(const Preset& preset);
 	/// Whether a unit from the Units list can sit in a vehicle's seat: a humanoid, and not a brain.
 	bool CanCrew(const Preset* unit);
 	/// The text a unit is kept by as a vehicle's crew pick (VehicleTuning::Driver and Crew): its module and preset name.

@@ -3229,6 +3229,13 @@ namespace SandboxDetail {
 				}
 				if (bodies.empty()) {
 					bodies.assign(tool.Kind == Tool::Unit ? static_cast<size_t>(std::max(s_SquadSize, 1)) : 1, ChosenPreset(tool.Kind, ChoiceFor(tool.Kind)));
+					// (A swarm creature, CR-1: the whole swarm, as SpawnUnits puts it down.)
+					if (tool.Kind == Tool::Unit && bodies.front()) {
+						int group = SpawnGroupSize(*bodies.front());
+						if (group > 1) {
+							bodies.assign(bodies.size() * static_cast<size_t>(group), bodies.front());
+						}
+					}
 				}
 				{
 					Vector mouse = MouseScenePosition();

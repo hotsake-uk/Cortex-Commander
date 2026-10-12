@@ -1,5 +1,5 @@
--- The Ogre's trample (phase 3): going at speed, it knocks small units not of its side out of its way: aside and off their feet (Status
--- UNSTABLE), no more than once a second each. The Ogre's number values:
+-- A trample (phase 3, the Ogre's; the Bear's, the Boar's, the Dire Wolf's and the Cave Troll's too): going at speed, the creature knocks small units not of its side out of its way: aside and off their feet (Status
+-- UNSTABLE), no more than once a second each. The creature's number values:
 --   TrampleSpeed    how fast it must be going, in m/s (default 2)
 --   TrampleMass     the heaviest a unit it shoulders aside is, in kg (default 150)
 --   TrampleReach    how far in front of its middle it shoulders them, in pixels (default 30)

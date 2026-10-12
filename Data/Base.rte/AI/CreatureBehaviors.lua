@@ -19,6 +19,12 @@
 --   CreatureHoverRange   for a flier that hovers (C8): how far off its prey it holds in the air, in pixels (default 40)
 --   CreatureDiveRange    for a flier that dives: how close it must be, in the open, to dive at its prey, in pixels (default 160)
 --   CreatureScatters     1 for a flier that breaks off and flies away for a moment when it is hurt (a carrion bat)
+--   CreatureChargeRange  for one that charges (a boar): how close its prey must be, level and in the open, to charge it, in pixels;
+--                        0 for one that doesn't (default 0)
+--   CreatureChargeSpeed  how fast it bursts forward in a charge, in m/s (default 9)
+--   CreatureChargeCooldown how long between charges, in ms (default 3000)
+--   CreatureFleeBelow    for a swarm creature (a giant rat): it breaks off its hunt and runs when fewer of its kind than this, itself
+--                        counted, are within its pack range; 0 for one that never does (default 0)
 -- and string values:
 --   CreatureSpit         the preset of what it spits (an MOPixel in Base.rte)
 --   CreatureFlyAttack    for a flier (C8): Dive to swoop on its prey, bite and pull away (default), or Hover to hold off it and let it have
@@ -181,9 +187,15 @@ function CreatureBehaviors.HuntTarget(AI, Owner, Abort)
 	local reach = Value(Owner, "CreatureBiteReach", 30);
 	local pounceRange = Value(Owner, "CreaturePounceRange", 0);
 	local chaseRange = Value(Owner, "CreatureChaseRange", 900);
+	local chargeRange = Value(Owner, "CreatureChargeRange", 0);
+	local fleeBelow = Value(Owner, "CreatureFleeBelow", 0);
 	local Keep = Owner.AIMode == Actor.AIMODE_SENTRY and SharedBehaviors.RememberOrder(AI, Owner) or nil;
 	local Route = { points = {}, pending = false, Timer = Timer() };
 	local LeapTimer = Timer();
+	local ChargeTimer = Timer();
+	ChargeTimer.ElapsedSimTimeMS = 60000; -- (Ready at once.)
+	local FleeCheck = Timer();
+	local Flee = nil; -- Running, since when (a swarm creature left with too few of its kind).
 	local SpitTimer = Timer();
 	SpitTimer.ElapsedSimTimeMS = 60000; -- (Ready at once.)
 	local HeldTimer = Timer(); -- How long the prey has been out of reach of one not let go after it.
@@ -240,11 +252,42 @@ function CreatureBehaviors.HuntTarget(AI, Owner, Abort)
 			end
 		end
 
+		-- A swarm creature left with too few of its kind about it runs (CreatureFleeBelow): looked at once a second.
+		if fleeBelow > 0 and not Flee and FleeCheck:IsPastSimMS(1000) then
+			FleeCheck:Reset();
+			local packRange = math.max(Value(Owner, "CreaturePackRange", 400), 100);
+			local kin = 0;
+			for Act in MovableMan.Actors do
+				if Act.Team == Owner.Team and Act.PresetName == Owner.PresetName and Act.Status < Actor.DYING
+					and not SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false):MagnitudeIsGreaterThan(packRange) then
+					kin = kin + 1;
+				end
+			end
+			if kin < fleeBelow then
+				Flee = Timer();
+				SharedBehaviors.Trace(Owner, "hunt: too few of its kind left, runs");
+			end
+		end
+
 		if waiting then
 			AI.fire = false;
 			AI.lateralMoveState = Actor.LAT_STILL;
 			if gap > reach * 2 then
 				CreatureBehaviors.SpitAt(AI, Owner, Target, gap, SpitTimer);
+			end
+		elseif Flee then
+			-- Running from it: away for three seconds, with a leap now and then, and the hunt is over.
+			if Flee:IsPastSimMS(3000) then
+				SharedBehaviors.Trace(Owner, "hunt: ran");
+				break;
+			end
+			AI.fire = false;
+			AI.deviceState = ACrab.STILL;
+			AI.lateralMoveState = dir > 0 and Actor.LAT_LEFT or Actor.LAT_RIGHT;
+			Owner.HFlipped = dir > 0;
+			if LeapTimer:IsPastSimMS(900) and math.random() < 0.05 then
+				AI.Ctrl:SetState(Controller.BODY_LEAP, true);
+				LeapTimer:Reset();
 			end
 		elseif gap <= reach then
 			-- In reach: stand and bite.
@@ -266,6 +309,16 @@ function CreatureBehaviors.HuntTarget(AI, Owner, Abort)
 				if HeldTimer:IsPastSimMS(2000) then
 					break;
 				end
+			elseif chargeRange > 0 and gap < chargeRange and gap > reach * 1.5 and math.abs(ToTarget.Y) < Owner.MoveHeight * 0.6
+				and ChargeTimer:IsPastSimMS(Value(Owner, "CreatureChargeCooldown", 3000))
+				and SceneMan:CastStrengthSumRay(Owner.EyePos, Target.Pos, 4, rte.grassID) < 50 then
+				-- Close, level and nothing in the way: a charge at it, a burst of speed (what it runs into, its trample sees to).
+				AI.lateralMoveState = dir > 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
+				Owner.HFlipped = dir < 0;
+				Owner:AddImpulseForce(Vector(dir * Value(Owner, "CreatureChargeSpeed", 9), -1) * Owner.Mass, Vector());
+				ChargeTimer:Reset();
+				ProgressTimer:Reset();
+				SharedBehaviors.Trace(Owner, "hunt: charges");
 			elseif pounceRange > 0 and gap < pounceRange and math.abs(ToTarget.Y) < Owner.MoveHeight * 0.5 and LeapTimer:IsPastSimMS(1800)
 				and SceneMan:CastStrengthSumRay(Owner.EyePos, Target.Pos, 4, rte.grassID) < 50 then
 				-- Close, level and nothing in the way: a leap at it.
