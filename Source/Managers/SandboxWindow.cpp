@@ -6523,6 +6523,14 @@ namespace SandboxDetail {
 		if (BarChip("Objective", false, c_CommandModeColors[static_cast<int>(CommandMode::AttackMove)], "O", "After their team's objective in the battle: an enemy flag, an enemy VIP, the hill or the objective in play, or the place\ntheir Battle Director card defends; with none, they attack.") == 1) {
 			QueueOrder(Order::BattleObjective);
 		}
+		if (SelectionHasVehicle()) {
+			// Lock the selected vehicles and ships, or unlock them: lit while they are all locked.
+			const bool allLocked = SelectedLocked() == 1;
+			line.Next();
+			if (BarChip(allLocked ? "Unlock" : "Lock", allLocked, red, nullptr, "Lock the selected vehicles and flying ships: no unit gets in by itself to ride them, and they call nobody over.\nUnits you send to one still get in, and whoever is in stays. Click again to unlock.") == 1) {
+				orderSelected(allLocked ? 145 : 144);
+			}
+		}
 		line.Next();
 		if (BarChip("Cancel", false, red, "C", "Every order forgotten, and the side's standing orders (the list below) apply.") == 1) {
 			orderSelected(102);

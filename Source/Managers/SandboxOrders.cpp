@@ -1943,6 +1943,17 @@ namespace SandboxDetail {
 		return found;
 	}
 
+	int SelectedLocked() {
+		int found = -2;
+		for (const UnitRef& ref: s_Selected) {
+			if (const Actor* unit = GetRef(ref); dynamic_cast<const AVehicle*>(unit) || dynamic_cast<const ACShip*>(unit)) {
+				const int locked = unit->IsVehicleLocked() ? 1 : 0;
+				found = found == -2 ? locked : (found == locked ? found : -1);
+			}
+		}
+		return found;
+	}
+
 	bool SelectionHasVehicle() {
 		return std::any_of(s_Selected.begin(), s_Selected.end(), [](const UnitRef& ref) {
 			const Actor* unit = GetRef(ref);
@@ -2919,6 +2930,14 @@ namespace SandboxDetail {
 				if (AVehicle* car = dynamic_cast<AVehicle*>(GetRef(ref))) {
 					car->SetCrewStaysIn(choice == 40);
 					MarkOrder(car->GetPos(), c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)]);
+				}
+			}
+		} else if (choice == 44 || choice == 45) {
+			// Lock (44) or unlock (45) the selected vehicles and flying ships: locked, no unit gets in by itself to ride, nor is called over.
+			for (const UnitRef& ref: s_Selected) {
+				if (Actor* unit = GetRef(ref); dynamic_cast<AVehicle*>(unit) || dynamic_cast<ACShip*>(unit)) {
+					unit->SetVehicleLocked(choice == 44);
+					MarkOrder(unit->GetPos(), choice == 44 ? IM_COL32(239, 90, 80, 255) : c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)]);
 				}
 			}
 		} else if (choice == 42 || choice == 43) {

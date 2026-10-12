@@ -614,10 +614,12 @@ namespace RTE {
 		/// Whether a unit with no route on foot to where it was sent looks for a ship to fly it there (with AIRidesShips).
 		bool AIShipRideNoRoute() const { return m_AIShipRideNoRoute; }
 
-		/// Whether a unit sent further than AIShipRideLongWalkDistance looks for a ship to fly it there (with AIRidesShips).
+		/// Whether a unit sent further than AIShipRideLongWalkDistance looks for a ship to fly it there (with AIRidesShips), though it could
+		/// walk: whenever a ship near it can get it there.
 		bool AIShipRideLongWalk() const { return m_AIShipRideLongWalk; }
 
-		/// How far a unit has to be sent, in pixels in a straight line, to count as a long walk worth a ship ride.
+		/// The shortest walk worth a ship ride, in pixels in a straight line: a unit sent further takes a ship near it that can fly it
+		/// there (AIShipRideLongWalk). (Land vehicles keep their own 700 px.)
 		float AIShipRideLongWalkDistance() const { return m_AIShipRideLongWalkDistance; }
 
 		/// How far off an idle ship looks for units that want a ride, in pixels.
@@ -629,6 +631,13 @@ namespace RTE {
 		/// Whether an AI driver of a land vehicle waits for the passengers it called over to get in before it drives off (up to AIShipRideWait),
 		/// rather than leaving as soon as it has somewhere to go.
 		bool AIVehiclesWaitForRiders() const { return m_AIVehiclesWaitForRiders; }
+
+		/// Whether a unit (the player's or the AI's) can get into a vehicle or ship from anywhere close round it, from underneath too, as well
+		/// as at its seats: within its size and BoardFromBelowReach of its middle. So a unit can jet up under a hovering ship and get in.
+		bool BoardFromBelow() const { return m_BoardFromBelow; }
+
+		/// How far beyond a vehicle's size a unit can be and still get in with BoardFromBelow, in pixels.
+		float BoardFromBelowReach() const { return m_BoardFromBelowReach; }
 
 		/// Whether someone killed in an open vehicle's seat falls out of it (on, as the game comes), or slumps in the seat until the vehicle is
 		/// wrecked, thrown over or someone takes the seat. A player's own unit falls out either way, so its death is seen.
@@ -1086,10 +1095,12 @@ namespace RTE {
 		void SetAIRidesShips(bool ride) { m_AIRidesShips = ride; }
 		void SetAIShipRideNoRoute(bool ride) { m_AIShipRideNoRoute = ride; }
 		void SetAIShipRideLongWalk(bool ride) { m_AIShipRideLongWalk = ride; }
-		void SetAIShipRideLongWalkDistance(float distance) { m_AIShipRideLongWalkDistance = std::clamp(distance, 500.0F, 10000.0F); }
+		void SetAIShipRideLongWalkDistance(float distance) { m_AIShipRideLongWalkDistance = std::clamp(distance, 200.0F, 10000.0F); }
 		void SetAIShipRideRange(float range) { m_AIShipRideRange = std::clamp(range, 200.0F, 5000.0F); }
 		void SetAIShipRideWait(float seconds) { m_AIShipRideWait = std::clamp(seconds, 0.0F, 120.0F); }
 		void SetAIVehiclesWaitForRiders(bool wait) { m_AIVehiclesWaitForRiders = wait; }
+		void SetBoardFromBelow(bool on) { m_BoardFromBelow = on; }
+		void SetBoardFromBelowReach(float reach) { m_BoardFromBelowReach = std::clamp(reach, 0.0F, 200.0F); }
 
 		/// Sets whether crew killed in a vehicle fall out of it; see DeadCrewFallOut.
 		void SetDeadCrewFallOut(bool fallOut) { m_DeadCrewFallOut = fallOut; }
@@ -1446,6 +1457,8 @@ namespace RTE {
 		float m_AIShipRideRange; //!< See AIShipRideRange.
 		float m_AIShipRideWait; //!< See AIShipRideWait.
 		bool m_AIVehiclesWaitForRiders; //!< See AIVehiclesWaitForRiders.
+		bool m_BoardFromBelow; //!< See BoardFromBelow.
+		float m_BoardFromBelowReach; //!< See BoardFromBelowReach.
 		bool m_DeadCrewFallOut; //!< Whether crew killed in a vehicle fall out of it (see DeadCrewFallOut).
 		bool m_PassengersFireFromVehicles; //!< Whether passengers shoot out of vehicles built to let them (see PassengersFireFromVehicles).
 		DirectOrderTuning m_DirectOrders; //!< How units behave on a direct order (see DirectOrders).
