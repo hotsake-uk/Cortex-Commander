@@ -98,6 +98,18 @@ namespace RTE {
 		/// Gets how many of its wheels are on the ground.
 		int GetWheelsOnGround() const;
 
+		/// Gets how many wheels it keeps track of (for saving them), a bare strut whose wheel was shot off included.
+		int GetWheelCount() const { return static_cast<int>(m_Wheels.size()); }
+
+		/// Gets a wheel, its strut and where it is fixed (for saving them). Ownership is NOT transferred!
+		/// @param index The wheel, 0 to GetWheelCount. @return The wheel or its strut, either nullptr if it has none.
+		const Attachable* GetWheelPart(int index) const { return m_Wheels[index].Part; }
+		const Attachable* GetWheelStrut(int index) const { return m_Wheels[index].Strut; }
+		const Vector& GetWheelMount(int index) const { return m_Wheels[index].Mount; }
+
+		/// Gets its seats and who sits in them (for saving them).
+		const CrewSeats& GetCrewSeats() const { return m_Crew; }
+
 		/// Gets the unit driving this, if any. Ownership is NOT transferred!
 		Actor* GetDriver() const { return m_Crew.GetOccupant(0); }
 

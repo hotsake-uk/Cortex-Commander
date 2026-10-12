@@ -143,6 +143,20 @@ namespace RTE {
 		int GetPlayerSeat() const { return m_PlayerSeat; }
 #pragma endregion
 
+#pragma region Saved Games
+		/// Notes the seat (and whether its unit is a rider) the next unit read from a saved game goes in (LoadSeated).
+		/// @param seat The seat. @param rider Whether its unit got in by itself to ride somewhere.
+		void SetSeatToLoad(int seat, bool rider) {
+			m_SeatToLoad = seat;
+			m_RiderToLoad = rider;
+		}
+
+		/// Puts a unit read from a saved game back in the seat SetSeatToLoad named, as it sat when the game was saved: nobody is copied, deleted
+		/// or told. With no such seat free (the preset has changed), the unit is deleted.
+		/// @param unit The unit. Ownership IS transferred.
+		void LoadSeated(Actor* unit);
+#pragma endregion
+
 #pragma region Getting In And Out
 		/// Gets whether a unit can get in: alive, a humanoid, not a brain, and on the host's team (or, with anyTeam, any team's).
 		/// @param unit The unit. @param anyTeam Whether a unit of another team can get in too (an empty ship anyone can take).
@@ -250,6 +264,8 @@ namespace RTE {
 		Timer m_BoardingTimer; //!< Since someone last got in or out.
 		Actor* m_BoarderInReach; //!< A friendly player-controlled unit beside a seat in the last UpdateBoarding. Not owned.
 		bool m_BoarderPushes; //!< Whether that unit would push the host back over rather than get in.
+		int m_SeatToLoad; //!< The seat the next unit read from a saved game goes in (SetSeatToLoad).
+		bool m_RiderToLoad; //!< Whether that unit is a rider.
 
 		/// Finds the enemy a passenger would shoot at out of it: the nearest alive in front of them, within their sight and aim, with nothing
 		/// solid between. @param unit The passenger. @return Its unique ID, or 0 if there is none.

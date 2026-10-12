@@ -177,6 +177,12 @@ namespace RTE {
 
 		/// Gets the place it holds at while not going anywhere: where it was told to go, or where it was let go of, at that height.
 		const Vector& GetHoldPoint() const { return m_HoldPoint; }
+
+		/// Gets whether it has a place to hold at yet (GetHoldPoint).
+		bool HasHoldPoint() const { return m_HasHoldPoint; }
+
+		/// Gets its seats and who sits in them (for saving them).
+		const CrewSeats& GetCrewSeats() const { return m_Crew; }
 #pragma endregion
 
 #pragma region Override Methods
@@ -264,6 +270,14 @@ namespace RTE {
 		float m_FlightFloor; //!< The lowest it may fly just now for the ground ahead (GetFlightFloor).
 		Vector m_SteerTrim; //!< What the controller has built up, near a place it stops at, against whatever drifts it off (its trim, its load, a lean): the off, in metre seconds.
 		Timer m_FlownTimer; //!< Since its flight controller last ran: a gap means a player flew it.
+		/// What a saved game it was read from had it doing in the air, taken up when its flight controller first runs (RestoreFlight).
+		enum class FlightToRestore { None, Hold, Goal };
+		FlightToRestore m_FlightToRestore; //!< What it was doing.
+		Vector m_GoalToRestore; //!< Where it was going, with Goal.
+
+		/// Takes up what a saved game had it doing in the air (m_FlightToRestore), once its autopilot has started: on its way along the route
+		/// it had, or to the place it was going; or holding where it held, without the drop of a ship just come in to its hover height.
+		void RestoreFlight();
 
 		/// Its flight controller, each AI update: what it is to do by its AI mode (hold where it was told or let go, fly to its go-to's place,
 		/// deliver its hold's cargo, go home), then SteerTo there.

@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <sstream>
 
 using namespace RTE;
 
@@ -180,6 +181,8 @@ namespace {
 	/// Makes a brain the one that runs a building.
 	void GiveBrain(Colony::Building& building, Actor* brain) {
 		brain->AddToGroup(Colony::c_BrainGroup);
+		// (Which building it runs goes with it into a saved game, LoadSaveState.)
+		brain->SetNumberValue("ColonyBrainOf", building.ID);
 		building.Brain = brain;
 		building.BrainID = static_cast<long>(brain->GetUniqueID());
 	}
@@ -1090,6 +1093,157 @@ void Colony::Clear() {
 	s_NextID = 1;
 }
 
+namespace {
+	/// A name in a saved state: spaces and percents written as %20 and %25, so it reads back as one word ("-" for none).
+	std::string SavedName(const std::string& name) {
+		if (name.empty()) {
+			return "-";
+		}
+		std::string saved;
+		for (char letter: name) {
+			saved += letter == ' ' ? "%20" : letter == '%' ? "%25" : std::string(1, letter);
+		}
+		return saved;
+	}
+
+	std::string LoadedName(const std::string& saved) {
+		if (saved == "-") {
+			return "";
+		}
+		std::string name;
+		for (size_t i = 0; i < saved.size(); ++i) {
+			if (saved[i] == '%' && i + 2 < saved.size()) {
+				name += saved.compare(i, 3, "%20") == 0 ? ' ' : '%';
+				i += 2;
+			} else {
+				name += saved[i];
+			}
+		}
+		return name;
+	}
+} // namespace
+
+std::string Colony::GetSaveState() {
+	if (s_Buildings.empty()) {
+		return "";
+	}
+	// Times are kept as how long is left, as the sim's clock starts again in a loaded game.
+	const long long now = Now();
+	std::ostringstream state;
+	state << 1 << ' ' << s_NextID << ' ' << s_Free << ' ' << s_NeedsPower << ' ' << s_Regrow << ' ' << static_cast<int>(s_WithoutPower);
+	for (int team = 0; team < 4; ++team) {
+		state << ' ' << s_Supply[team] << ' ' << s_Wood[team];
+	}
+	state << ' ' << s_Buildings.size();
+	for (const Building& building: s_Buildings) {
+		state << ' ' << building.ID << ' ' << static_cast<int>(building.What) << ' ' << static_cast<int>(building.Looks) << ' ' << building.Level << ' ' << building.Lite << ' ' << building.Team
+		      << ' ' << building.Ground.m_X << ' ' << building.Ground.m_Y << ' ' << SavedName(building.Unit) << ' ' << building.Orders << ' ' << building.KeepAlive << ' ' << building.Paused
+		      << ' ' << building.Paid << ' ' << building.Queued << ' ' << building.ForQueue << ' ' << building.HasRally << ' ' << building.Rally.m_X << ' ' << building.Rally.m_Y
+		      << ' ' << building.Progress << ' ' << building.Produced << ' ' << building.SolidAtStart << ' ' << (building.BrainID != -1) << ' ' << std::max(building.HireMS - now, 0LL)
+		      << ' ' << building.Wood << ' ' << building.WorkRadius << ' ' << building.Saplings.size();
+		for (const Sapling& sapling: building.Saplings) {
+			state << ' ' << sapling.X << ' ' << sapling.Y << ' ' << sapling.Stage << ' ' << std::max(sapling.DueMS - now, 0LL) << ' ' << sapling.Variant << ' ' << sapling.Piece << ' ' << sapling.Mirror
+			      << ' ' << sapling.Left << ' ' << sapling.Top << ' ' << sapling.Right << ' ' << sapling.Bottom;
+		}
+	}
+	return state.str();
+}
+
+void Colony::LoadSaveState(const std::string& state) {
+	if (state.empty()) {
+		return;
+	}
+	Clear();
+	const long long now = Now();
+	std::istringstream stream(state);
+	int version = 0;
+	stream >> version;
+	if (version != 1) {
+		return;
+	}
+	int withoutPower = 0;
+	stream >> s_NextID >> s_Free >> s_NeedsPower >> s_Regrow >> withoutPower;
+	s_WithoutPower = static_cast<NoPower>(std::clamp(withoutPower, 0, 1));
+	for (int team = 0; team < 4; ++team) {
+		stream >> s_Supply[team] >> s_Wood[team];
+	}
+	size_t count = 0;
+	stream >> count;
+	for (size_t i = 0; i < count && stream; ++i) {
+		Building building;
+		int what = 0;
+		int looks = 0;
+		std::string unit;
+		bool hadBrain = false;
+		long long hireIn = 0;
+		size_t saplings = 0;
+		stream >> building.ID >> what >> looks >> building.Level >> building.Lite >> building.Team >> building.Ground.m_X >> building.Ground.m_Y >> unit >> building.Orders >> building.KeepAlive >> building.Paused >>
+		    building.Paid >> building.Queued >> building.ForQueue >> building.HasRally >> building.Rally.m_X >> building.Rally.m_Y >> building.Progress >> building.Produced >> building.SolidAtStart >> hadBrain >>
+		    hireIn >> building.Wood >> building.WorkRadius >> saplings;
+		building.What = static_cast<Kind>(std::clamp(what, 0, static_cast<int>(Kind::Count) - 1));
+		building.Looks = static_cast<Style>(std::clamp(looks, 0, static_cast<int>(Style::Count) - 1));
+		building.Unit = LoadedName(unit);
+		building.HireMS = now + hireIn;
+		// (Disabled till its brain is found below, if it had one.)
+		building.BrainID = hadBrain ? 0 : -1;
+		for (size_t sapling = 0; sapling < saplings && stream; ++sapling) {
+			Sapling grown;
+			long long dueIn = 0;
+			stream >> grown.X >> grown.Y >> grown.Stage >> dueIn >> grown.Variant >> grown.Piece >> grown.Mirror >> grown.Left >> grown.Top >> grown.Right >> grown.Bottom;
+			grown.DueMS = now + dueIn;
+			building.Saplings.push_back(grown);
+		}
+		if (stream) {
+			s_Buildings.push_back(building);
+		}
+	}
+	auto findBuilding = [](double id) -> Building* {
+		for (Building& building: s_Buildings) {
+			if (building.ID == static_cast<int>(id)) {
+				return &building;
+			}
+		}
+		return nullptr;
+	};
+	// The units that belong to the buildings, marked with which.
+	std::list<SceneObject*> placed;
+	g_MovableMan.GetAllActors(false, placed);
+	for (SceneObject* object: placed) {
+		Actor* unit = dynamic_cast<Actor*>(object);
+		if (!unit || unit->IsDead()) {
+			continue;
+		}
+		if (unit->NumberValueExists("ColonyBrainOf")) {
+			Building* building = findBuilding(unit->GetNumberValue("ColonyBrainOf"));
+			if (building && building->BrainID != -1 && !building->Brain) {
+				GiveBrain(*building, unit);
+			}
+		}
+		if (unit->NumberValueExists("ColonyUnitOf")) {
+			if (Building* building = findBuilding(unit->GetNumberValue("ColonyUnitOf"))) {
+				building->Alive.emplace_back(unit, static_cast<long>(unit->GetUniqueID()));
+			}
+		}
+		if (unit->NumberValueExists("ColonyWorker")) {
+			Building* building = findBuilding(unit->GetNumberValue("ColonyWorker"));
+			if (building && building->What == Kind::Woodcutter) {
+				// What it was about isn't kept (the trees it claimed have new IDs): it looks for work afresh.
+				Worker worker;
+				worker.Unit = unit;
+				worker.UnitID = static_cast<long>(unit->GetUniqueID());
+				worker.Spot = unit->GetPos();
+				worker.JobMS = now;
+				worker.MoveMS = now;
+				StopCutting(unit);
+				building->Staff.push_back(worker);
+			} else {
+				StopCutting(unit);
+				unit->RemoveNumberValue("ColonyWorker");
+			}
+		}
+	}
+}
+
 void Colony::Remove(int id) {
 	for (Building& building: s_Buildings) {
 		if (building.ID == id) {
@@ -1315,6 +1469,7 @@ void Colony::Update() {
 			Vector door = Door(building) + Vector(0.0F, -32.0F);
 			if (Actor* unit = Sandbox::SpawnUnit(building.Unit, building.Team, door, building.Orders)) {
 				building.Alive.emplace_back(unit, static_cast<long>(unit->GetUniqueID()));
+				unit->SetNumberValue("ColonyUnitOf", building.ID);
 				++building.Produced;
 				if (building.ForQueue) {
 					building.Queued = std::max(building.Queued - 1, 0);

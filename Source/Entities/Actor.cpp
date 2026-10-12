@@ -522,6 +522,10 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 		SetOrderFailReason(reason);
 	});
 	MatchProperty("OrderFailMaterial", { reader >> m_StandingOrder.FailMaterial; });
+	MatchProperty("OrderSkyPoint", {
+		reader >> m_StandingOrder.SkyPoint;
+		m_StandingOrder.SkyGoal = true;
+	});
 	MatchProperty("OrderMovement", {
 		int rule = 0;
 		reader >> rule;
@@ -675,55 +679,7 @@ int Actor::Save(Writer& writer) const {
 	writer << m_MaxInventoryMass;
 	writer.NewProperty("AIMode");
 	writer << m_AIMode;
-	// The standing order, the parts it has.
-	if (m_StandingOrder.Attack) {
-		writer.NewPropertyWithValue("OrderAttack", m_StandingOrder.Attack);
-	}
-	if (m_StandingOrder.TargetID != 0) {
-		writer.NewPropertyWithValue("OrderTargetID", m_StandingOrder.TargetID);
-	}
-	if (m_StandingOrder.AutoTargetID != 0) {
-		writer.NewPropertyWithValue("OrderAutoTargetID", m_StandingOrder.AutoTargetID);
-	}
-	if (m_StandingOrder.HasAttackPlace) {
-		writer.NewPropertyWithValue("OrderAttackPlace", m_StandingOrder.AttackPlace);
-	}
-	if (m_StandingOrder.HasPost) {
-		writer.NewPropertyWithValue("OrderPost", m_StandingOrder.Post);
-	}
-	if (m_StandingOrder.Hold) {
-		writer.NewPropertyWithValue("OrderHold", m_StandingOrder.Hold);
-	}
-	if (m_StandingOrder.PostFacing != 0) {
-		writer.NewPropertyWithValue("OrderPostFacing", m_StandingOrder.PostFacing);
-	}
-	if (m_StandingOrder.Kind != ORDER_NONE) {
-		writer.NewPropertyWithValue("OrderKind", m_StandingOrder.Kind);
-	}
-	if (m_StandingOrder.HasDigTarget) {
-		writer.NewPropertyWithValue("OrderDigTarget", m_StandingOrder.DigTarget);
-	}
-	if (m_StandingOrder.Direct != 0.0F) {
-		writer.NewPropertyWithValue("OrderDirect", m_StandingOrder.Direct);
-	}
-	if (m_StandingOrder.FailReason != ORDERFAIL_NONE) {
-		writer.NewPropertyWithValue("OrderFailReason", m_StandingOrder.FailReason);
-		if (m_StandingOrder.FailMaterial != 0) {
-			writer.NewPropertyWithValue("OrderFailMaterial", m_StandingOrder.FailMaterial);
-		}
-	}
-	if (m_StandingOrder.Movement != MOVE_FOLLOW_ORDER) {
-		writer.NewPropertyWithValue("OrderMovement", m_StandingOrder.Movement);
-	}
-	if (m_WeaponRule != WEAPONS_AT_WILL) {
-		writer.NewPropertyWithValue("WeaponRule", m_WeaponRule);
-	}
-	if (m_Temperament != TEMPERAMENT_FIGHTER) {
-		writer.NewPropertyWithValue("Temperament", std::string(TemperamentName(m_Temperament)));
-	}
-	if (m_NonCombatant >= 0) {
-		writer.NewPropertyWithValue("NonCombatant", m_NonCombatant != 0);
-	}
+	SaveStandingOrder(writer);
 	writer.NewProperty("PieMenu");
 	writer << m_PieMenu.get();
 
@@ -757,6 +713,61 @@ int Actor::Save(Writer& writer) const {
 	}
 
 	return 0;
+}
+
+void Actor::SaveStandingOrder(Writer& writer) const {
+	// The standing order, the parts it has.
+	if (m_StandingOrder.Attack) {
+		writer.NewPropertyWithValue("OrderAttack", m_StandingOrder.Attack);
+	}
+	if (m_StandingOrder.TargetID != 0) {
+		writer.NewPropertyWithValue("OrderTargetID", m_StandingOrder.TargetID);
+	}
+	if (m_StandingOrder.AutoTargetID != 0) {
+		writer.NewPropertyWithValue("OrderAutoTargetID", m_StandingOrder.AutoTargetID);
+	}
+	if (m_StandingOrder.HasAttackPlace) {
+		writer.NewPropertyWithValue("OrderAttackPlace", m_StandingOrder.AttackPlace);
+	}
+	if (m_StandingOrder.HasPost) {
+		writer.NewPropertyWithValue("OrderPost", m_StandingOrder.Post);
+	}
+	if (m_StandingOrder.Hold) {
+		writer.NewPropertyWithValue("OrderHold", m_StandingOrder.Hold);
+	}
+	if (m_StandingOrder.PostFacing != 0) {
+		writer.NewPropertyWithValue("OrderPostFacing", m_StandingOrder.PostFacing);
+	}
+	if (m_StandingOrder.Kind != ORDER_NONE) {
+		writer.NewPropertyWithValue("OrderKind", m_StandingOrder.Kind);
+	}
+	if (m_StandingOrder.HasDigTarget) {
+		writer.NewPropertyWithValue("OrderDigTarget", m_StandingOrder.DigTarget);
+	}
+	if (m_StandingOrder.SkyGoal) {
+		writer.NewPropertyWithValue("OrderSkyPoint", m_StandingOrder.SkyPoint);
+	}
+	if (m_StandingOrder.Direct != 0.0F) {
+		writer.NewPropertyWithValue("OrderDirect", m_StandingOrder.Direct);
+	}
+	if (m_StandingOrder.FailReason != ORDERFAIL_NONE) {
+		writer.NewPropertyWithValue("OrderFailReason", m_StandingOrder.FailReason);
+		if (m_StandingOrder.FailMaterial != 0) {
+			writer.NewPropertyWithValue("OrderFailMaterial", m_StandingOrder.FailMaterial);
+		}
+	}
+	if (m_StandingOrder.Movement != MOVE_FOLLOW_ORDER) {
+		writer.NewPropertyWithValue("OrderMovement", m_StandingOrder.Movement);
+	}
+	if (m_WeaponRule != WEAPONS_AT_WILL) {
+		writer.NewPropertyWithValue("WeaponRule", m_WeaponRule);
+	}
+	if (m_Temperament != TEMPERAMENT_FIGHTER) {
+		writer.NewPropertyWithValue("Temperament", std::string(TemperamentName(m_Temperament)));
+	}
+	if (m_NonCombatant >= 0) {
+		writer.NewPropertyWithValue("NonCombatant", m_NonCombatant != 0);
+	}
 }
 
 void Actor::DestroyScriptState() {

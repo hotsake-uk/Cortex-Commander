@@ -37,6 +37,8 @@
 #include "Turret.h"
 #include "ACRocket.h"
 #include "ACDropShip.h"
+#include "ACShip.h"
+#include "AVehicle.h"
 #include "HDFirearm.h"
 #include "Magazine.h"
 #include "ThrownDevice.h"
@@ -1241,6 +1243,16 @@ void Scene::SaveSceneObject(Writer& writer, const SceneObject* sceneObjectToSave
 			writer.NewPropertyWithValue(propertyName, "None");
 		}
 	};
+	// Who sits in a vehicle's or a flying ship's seats: they are out of the scene, kept by it, so they are saved with it.
+	auto WriteCrew = [this, &writer, &saveFullData](const CrewSeats& crew) {
+		for (int seat = 0; seat < crew.GetSeatCount(); ++seat) {
+			if (const Actor* unit = crew.GetOccupant(seat)) {
+				writer.NewPropertyWithValue(crew.IsRider(seat) ? "SpecialBehaviour_RiderSeat" : "SpecialBehaviour_CrewSeat", seat);
+				writer.NewProperty("SpecialBehaviour_Crew");
+				SaveSceneObject(writer, unit, false, saveFullData);
+			}
+		}
+	};
 
 	writer.ObjectStart(sceneObjectToSave->GetClassName());
 	writer.NewPropertyWithValue("CopyOf", sceneObjectToSave->GetModuleAndPresetName());
@@ -1435,6 +1447,23 @@ void Scene::SaveSceneObject(Writer& writer, const SceneObject* sceneObjectToSave
 			}
 		}
 
+		if (saveFullData) {
+			// Its orders and rules, and how it is doing, as they were, not as its preset has them.
+			actorToSave->SaveStandingOrder(writer);
+			writer.NewPropertyWithValue("GoldCarried", actorToSave->GetGoldCarried());
+			writer.NewPropertyWithValue("Morale", actorToSave->GetMorale());
+			writer.NewPropertyWithValue("Suppression", actorToSave->GetSuppression());
+			if (actorToSave->GetMaxEnergy() > 0.0F) {
+				writer.NewPropertyWithValue("Energy", actorToSave->GetEnergy());
+			}
+			// Its unique ID as it was: a loaded unit gets a new one, and what pointed at it by the old (an attack order's target) is pointed at
+			// the new (ActivityMan::RemapLoadedUniqueIDs).
+			writer.NewProperty("AddCustomValue");
+			writer.ObjectStart("NumberValue");
+			writer.NewPropertyWithValue(c_SavedUniqueIDKey, static_cast<double>(actorToSave->GetUniqueID()));
+			writer.ObjectEnd();
+		}
+
 		if (actorToSave->GetDeploymentID()) {
 			writer.NewPropertyWithValue("DeploymentID", actorToSave->GetDeploymentID());
 		}
@@ -1461,6 +1490,11 @@ void Scene::SaveSceneObject(Writer& writer, const SceneObject* sceneObjectToSave
 				WriteHardcodedAttachableOrNone("LeftBGLeg", aCrabToSave->GetLeftBGLeg());
 				WriteHardcodedAttachableOrNone("RightFGLeg", aCrabToSave->GetRightFGLeg());
 				WriteHardcodedAttachableOrNone("RightBGLeg", aCrabToSave->GetRightBGLeg());
+				static const char* const c_ExtraLegProperties[] = {"AddLeftFGExtraLeg", "AddLeftBGExtraLeg", "AddRightFGExtraLeg", "AddRightBGExtraLeg"};
+				for (int leg = 0; leg < aCrabToSave->GetExtraLegCount(); ++leg) {
+					writer.NewProperty(c_ExtraLegProperties[static_cast<int>(aCrabToSave->GetExtraLegCopies(leg))]);
+					SaveSceneObject(writer, aCrabToSave->GetExtraLeg(leg), true, saveFullData);
+				}
 			} else if (const ACRocket* acRocketToSave = dynamic_cast<const ACRocket*>(sceneObjectToSave)) {
 				WriteHardcodedAttachableOrNone("RightLeg", acRocketToSave->GetRightLeg());
 				WriteHardcodedAttachableOrNone("LeftLeg", acRocketToSave->GetLeftLeg());
@@ -1476,6 +1510,48 @@ void Scene::SaveSceneObject(Writer& writer, const SceneObject* sceneObjectToSave
 				WriteHardcodedAttachableOrNone("UpLeftThruster", acDropShipToSave->GetULeftThruster());
 				WriteHardcodedAttachableOrNone("RightHatchDoor", acDropShipToSave->GetRightHatch());
 				WriteHardcodedAttachableOrNone("LeftHatchDoor", acDropShipToSave->GetLeftHatch());
+			}
+
+			// The parts the classes below keep track of themselves are cleared with the rest (SpecialBehaviour_ClearAllAttachables) and put back here.
+			if (const AVehicle* vehicleToSave = dynamic_cast<const AVehicle*>(sceneObjectToSave)) {
+				for (int wheel = 0; wheel < vehicleToSave->GetWheelCount(); ++wheel) {
+					// (A bare strut whose wheel was shot off isn't kept, as it isn't copied.)
+					if (const Attachable* wheelPart = vehicleToSave->GetWheelPart(wheel)) {
+						writer.NewProperty("AddWheel");
+						SaveSceneObject(writer, wheelPart, true, saveFullData);
+						writer.NewPropertyWithValue("SpecialBehaviour_WheelMount", vehicleToSave->GetWheelMount(wheel));
+						if (const Attachable* strut = vehicleToSave->GetWheelStrut(wheel)) {
+							writer.NewProperty("AddStrut");
+							SaveSceneObject(writer, strut, true, saveFullData);
+						}
+					}
+				}
+				WriteHardcodedAttachableOrNone("Turret", vehicleToSave->GetTurret());
+				WriteHardcodedAttachableOrNone("Tracks", vehicleToSave->GetTracks());
+				WriteHardcodedAttachableOrNone("ThrowingArm", vehicleToSave->GetThrowingArm());
+				WriteHardcodedAttachableOrNone("Oar", vehicleToSave->GetOar());
+				WriteHardcodedAttachableOrNone("Exhaust", vehicleToSave->GetExhaust());
+				writer.NewPropertyWithValue("Handbrake", vehicleToSave->IsHandbrakeOn());
+				writer.NewPropertyWithValue("SpecialBehaviour_Commanded", vehicleToSave->IsCommanded());
+				WriteCrew(vehicleToSave->GetCrewSeats());
+			} else if (const ACShip* shipToSave = dynamic_cast<const ACShip*>(sceneObjectToSave)) {
+				WriteCrew(shipToSave->GetCrewSeats());
+				writer.NewPropertyWithValue("SpecialBehaviour_Parked", shipToSave->IsParked());
+				writer.NewPropertyWithValue("SpecialBehaviour_EnginesOff", shipToSave->IsEnginesOff());
+				writer.NewPropertyWithValue("HoverHeightModifier", shipToSave->GetHoverHeightModifier());
+				if (shipToSave->HasHoldPoint()) {
+					writer.NewPropertyWithValue("SpecialBehaviour_HoldPoint", shipToSave->GetHoldPoint());
+				}
+				// Where it was flying to, by the route it was on: its AI mode above is saved as holding when its own flight, not a path, took it.
+				Vector flightGoal;
+				if (shipToSave->GetAIMode() == Actor::AIMode::AIMODE_GOTO && shipToSave->GetFlightGoal(flightGoal)) {
+					for (const Vector& point: shipToSave->GetRoute()) {
+						writer.NewPropertyWithValue("SpecialBehaviour_AddRoutePoint", point);
+					}
+					writer.NewPropertyWithValue("SpecialBehaviour_FlightGoal", flightGoal);
+				}
+			} else if (const AMover* moverToSave = dynamic_cast<const AMover*>(sceneObjectToSave)) {
+				WriteHardcodedAttachableOrNone("Deck", moverToSave->GetDeck());
 			}
 		} else if (const AHuman* aHumanToSave = dynamic_cast<const AHuman*>(sceneObjectToSave)) {
 			if (const HeldDevice* equippedItem = aHumanToSave->GetEquippedItem()) {

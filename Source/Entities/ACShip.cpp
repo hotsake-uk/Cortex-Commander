@@ -8,6 +8,7 @@
 #include "HeldDevice.h"
 #include "MovableMan.h"
 #include "PieSlice.h"
+#include "PresetMan.h"
 #include "SceneMan.h"
 #include "Scene.h"
 #include "SettingsMan.h"
@@ -93,6 +94,8 @@ void ACShip::Clear() {
 	m_FlightFloor = FLT_MAX;
 	m_SteerTrim.Reset();
 	m_FlownTimer.Reset();
+	m_FlightToRestore = FlightToRestore::None;
+	m_GoalToRestore.Reset();
 }
 
 int ACShip::Create(const ACShip& reference) {
@@ -110,6 +113,12 @@ int ACShip::Create(const ACShip& reference) {
 	m_EnginesOff = reference.m_EnginesOff;
 	m_FlightSpeed = reference.m_FlightSpeed;
 	m_ClimbSpeed = reference.m_ClimbSpeed;
+	// (A ship read from a saved game is copied into the scene: what it was doing in the air goes with it.)
+	m_HoldPoint = reference.m_HoldPoint;
+	m_HasHoldPoint = reference.m_HasHoldPoint;
+	m_Route = reference.m_Route;
+	m_FlightToRestore = reference.m_FlightToRestore;
+	m_GoalToRestore = reference.m_GoalToRestore;
 
 	return 0;
 }
@@ -164,6 +173,31 @@ int ACShip::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("GunAimRange", { reader >> m_GunAimRange; });
 	MatchProperty("FlightSpeed", { reader >> m_FlightSpeed; });
 	MatchProperty("ClimbSpeed", { reader >> m_ClimbSpeed; });
+	// A saved game's (Scene::SaveSceneObject): its crew, and what it was doing in the air.
+	MatchForwards("SpecialBehaviour_CrewSeat") MatchProperty("SpecialBehaviour_RiderSeat", {
+		int seat;
+		reader >> seat;
+		m_Crew.SetSeatToLoad(seat, propName == "SpecialBehaviour_RiderSeat");
+	});
+	MatchProperty("SpecialBehaviour_Crew", { m_Crew.LoadSeated(dynamic_cast<Actor*>(g_PresetMan.ReadReflectedPreset(reader))); });
+	MatchProperty("SpecialBehaviour_Parked", { reader >> m_Parked; });
+	MatchProperty("SpecialBehaviour_EnginesOff", { reader >> m_EnginesOff; });
+	MatchProperty("SpecialBehaviour_HoldPoint", {
+		reader >> m_HoldPoint;
+		m_HasHoldPoint = true;
+		if (m_FlightToRestore == FlightToRestore::None) {
+			m_FlightToRestore = FlightToRestore::Hold;
+		}
+	});
+	MatchProperty("SpecialBehaviour_FlightGoal", {
+		reader >> m_GoalToRestore;
+		m_FlightToRestore = FlightToRestore::Goal;
+	});
+	MatchProperty("SpecialBehaviour_AddRoutePoint", {
+		Vector point;
+		reader >> point;
+		m_Route.push_back(point);
+	});
 
 	EndPropertyList;
 }
@@ -594,6 +628,7 @@ void ACShip::UpdateAutopilot() {
 			m_AIMode = AIMODE_STAY;
 		}
 		m_FlownTimer.Reset();
+		RestoreFlight();
 	}
 	if (ai.savedHoverHeightModifier != m_HoverHeightModifier) {
 		ai.savedHoverHeightModifier = m_HoverHeightModifier;
@@ -638,6 +673,25 @@ void ACShip::UpdateAutopilot() {
 		return;
 	}
 	UpdateFlight();
+}
+
+void ACShip::RestoreFlight() {
+	const FlightToRestore restore = m_FlightToRestore;
+	m_FlightToRestore = FlightToRestore::None;
+	if (restore == FlightToRestore::Goal) {
+		// (AutopilotGoTo puts it in a go-to whatever AI mode it was read with: one there already is saved as holding.)
+		std::deque<Vector> route = m_Route;
+		if (!route.empty()) {
+			AutopilotGoTo(route.front());
+			m_Route = route;
+		} else {
+			AutopilotGoTo(m_GoalToRestore);
+		}
+	} else if (restore == FlightToRestore::Hold && m_AIMode != AIMODE_GOTO && m_AIMode != AIMODE_RETURN && m_AIMode != AIMODE_DELIVER) {
+		// Told of its AI mode as if it had seen it begin, so it holds where it held rather than taking the mode up afresh.
+		m_Route.clear();
+		m_Autopilot.lastAIMode = static_cast<AIMode>(m_AIMode);
+	}
 }
 
 void ACShip::UpdateFlight() {

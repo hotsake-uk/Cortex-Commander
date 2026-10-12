@@ -141,6 +141,11 @@ namespace RTE {
 		/// Gets how many extra legs it has left (CR-5).
 		int GetExtraLegCount() const { return static_cast<int>(m_ExtraLegs.size()); }
 
+		/// Gets an extra leg and the leg whose stride it copies (for saving them). Ownership is NOT transferred!
+		/// @param index The extra leg, 0 to GetExtraLegCount.
+		const Leg* GetExtraLeg(int index) const { return m_ExtraLegs[index].Part; }
+		LegCopied GetExtraLegCopies(int index) const { return m_ExtraLegs[index].Copies; }
+
 		/// Tries to handle the activated PieSlice in this object's PieMenu, if there is one, based on its SliceType.
 		/// @param pieSliceType The SliceType of the PieSlice being handled.
 		/// @return Whether or not the activated PieSlice SliceType was able to be handled.
