@@ -3354,6 +3354,302 @@ namespace SandboxDetail {
 			return "stopping them, " + std::to_string(Sandbox::CountUnits(side)) + " in";
 		}
 
+		// ---- The point ----
+		// King of the hill on one point, placed like a defend zone: a bullseye in the middle with rings round it, each band held, scored and
+		// ordered onto (a battle objective of its own) apart from the others.
+
+		std::array<float, c_Sides> s_PointScore{}; //!< Each team's points, to the fraction (the score shows the whole points).
+		std::array<int, c_MaxPointRings + 1> s_BandHolder = {-1, -1, -1, -1, -1}; //!< The team holding each band now, the bullseye first: -1 nobody, -2 more than one (contested).
+
+		/// The middle of the point, as placed (the mode's first flag position).
+		Vector PointPos(const BattleModeSettings& settings) { return settings.FlagSpots.empty() ? Vector() : settings.FlagSpots.front(); }
+
+		/// How many bands it has: the bullseye and its rings.
+		int PointBands(const BattleModeSettings& settings) { return std::clamp(settings.PointRings, 0, c_MaxPointRings) + 1; }
+
+		/// How far out a band reaches, each at least a little past the one inside it.
+		float BandOuter(const BattleModeSettings& settings, int band) {
+			float reach = 0.0F;
+			for (int i = 0; i <= band; ++i) {
+				reach = std::max(static_cast<float>(settings.RingRadius[i]), reach + 10.0F);
+			}
+			return reach;
+		}
+		float BandInner(const BattleModeSettings& settings, int band) { return band > 0 ? BandOuter(settings, band - 1) : 0.0F; }
+
+		/// A band's name, as "Bullseye" or "Ring 2".
+		std::string BandName(int band) { return band == 0 ? std::string("Bullseye") : "Ring " + std::to_string(band); }
+
+		/// A band as a zone: the bullseye a circle, a ring the circle round it with the circle inside cut out (round the outside, then back
+		/// round the inside, joined by a seam), so whether something is in it is the zone test every objective uses.
+		std::vector<Vector> BandZone(const BattleModeSettings& settings, int band) {
+			constexpr int c_Corners = 32;
+			const Vector middle = PointPos(settings);
+			const float outer = BandOuter(settings, band);
+			const float inner = BandInner(settings, band);
+			std::vector<Vector> zone;
+			for (int i = 0; i <= c_Corners; ++i) {
+				const float turn = static_cast<float>(i) / static_cast<float>(c_Corners) * 6.2831853F;
+				zone.push_back(middle + Vector(std::cos(turn), std::sin(turn)) * outer);
+				if (band == 0 && i == c_Corners - 1) {
+					break;
+				}
+			}
+			if (band > 0) {
+				for (int i = c_Corners; i >= 0; --i) {
+					const float turn = static_cast<float>(i) / static_cast<float>(c_Corners) * 6.2831853F;
+					zone.push_back(middle + Vector(std::cos(turn), std::sin(turn)) * inner);
+				}
+			}
+			return zone;
+		}
+
+		/// The band a place is in, or -1 outside the point.
+		int BandAt(const BattleModeSettings& settings, const Vector& at) {
+			const float distance = g_SceneMan.ShortestDistance(PointPos(settings), at, g_SceneMan.SceneWrapsX()).GetMagnitude();
+			for (int band = 0; band < PointBands(settings); ++band) {
+				if (distance <= BandOuter(settings, band)) {
+					return band;
+				}
+			}
+			return -1;
+		}
+
+		bool PointReady(const BattleModeSettings& setup, std::string& why) {
+			if (setup.FlagSpots.empty()) {
+				why = "Place the point on the map.";
+				return false;
+			}
+			return true;
+		}
+
+		void PointStart() {
+			s_PointScore.fill(0.0F);
+			s_BandHolder.fill(-1);
+		}
+
+		/// New units make for the point, spread over its bands, each holding a post out to its band's edge.
+		void PointUnitsMade(int side, const std::vector<Actor*>& wave) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			if (settings.FlagSpots.empty()) {
+				return;
+			}
+			const int bands = PointBands(settings);
+			const float outer = BandOuter(settings, bands - 1);
+			for (Actor* unit: wave) {
+				const int band = std::min(static_cast<int>(Random01() * static_cast<float>(bands)), bands - 1);
+				unit->SetOrderAttack(false);
+				MakeDefender(unit, PostAt(PointPos(settings), BandOuter(settings, band), outer + 250.0F, 0));
+			}
+		}
+
+		/// New units appear on the side of their base nearest the point.
+		Vector PointSpawnSpot(int side, const std::vector<Vector>& zone, const Actor* unit) {
+			const Vector point = PointPos(s_ModeRun.Settings);
+			return SpreadSpot(zone, unit ? unit->GetHeight() : 0.0F, [&point](const Vector& spot) { return DistanceBetween(spot, point); });
+		}
+
+		/// Who holds a band from the units of each team in it: the one team there, -1 nobody, or -2 contested (with "most units" on, the team with
+		/// the most there, unless tied).
+		int BandHolder(const BattleModeSettings& settings, const std::array<int, c_Sides>& in) {
+			int holder = -1;
+			int most = 0;
+			int teams = 0;
+			bool tied = false;
+			for (int side = 0; side < c_Sides; ++side) {
+				if (!TeamIn(settings, side) || in[side] == 0) {
+					continue;
+				}
+				++teams;
+				if (in[side] > most) {
+					most = in[side];
+					holder = side;
+					tied = false;
+				} else if (in[side] == most) {
+					tied = true;
+				}
+			}
+			return teams > 1 && (!settings.MajorityScores || tied) ? -2 : holder;
+		}
+
+		/// Twice a second or so (every six updates): who holds each band, and the points each scores them.
+		void PointUpdate(bool aiPaused) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			const long long now = g_TimerMan.GetSimUpdateCount();
+			if (aiPaused || s_ModeRun.Over || settings.FlagSpots.empty() || now % 6 != 0) {
+				return;
+			}
+			const int bands = PointBands(settings);
+			std::array<std::array<int, c_Sides>, c_MaxPointRings + 1> in{};
+			for (const Actor* fighter: Fighters()) {
+				const int team = fighter->GetTeam();
+				if (const int band = BandAt(settings, fighter->GetPos()); band >= 0 && team >= 0 && team < c_Sides) {
+					++in[band][team];
+				}
+			}
+			const float seconds = 6.0F / UpdatesPerSecond();
+			for (int band = 0; band < bands; ++band) {
+				const int holder = BandHolder(settings, in[band]);
+				if (holder != s_BandHolder[band]) {
+					if (holder >= 0) {
+						Say(SideName(holder) + " holds the " + (band == 0 ? std::string("bullseye") : "ring " + std::to_string(band)));
+					} else if (holder == -2 && band == 0) {
+						Say("The bullseye is contested");
+					}
+					s_BandHolder[band] = holder;
+				}
+				if (holder >= 0) {
+					s_PointScore[holder] += static_cast<float>(std::max(settings.RingPoints[band], 0)) * seconds;
+				}
+			}
+			for (int band = bands; band <= c_MaxPointRings; ++band) {
+				s_BandHolder[band] = -1;
+			}
+			for (int side = 0; side < c_Sides; ++side) {
+				if (TeamIn(settings, side)) {
+					s_ModeRun.Score[side] = static_cast<int>(s_PointScore[side]);
+				}
+			}
+			if (settings.PointsToWin > 0) {
+				// (More than one over the line together, holding different bands: the one furthest over wins.)
+				int winner = -1;
+				for (int side = 0; side < c_Sides; ++side) {
+					if (TeamIn(settings, side) && s_PointScore[side] >= static_cast<float>(settings.PointsToWin) && (winner < 0 || s_PointScore[side] > s_PointScore[winner])) {
+						winner = side;
+					}
+				}
+				if (winner >= 0) {
+					EndGame(winner, SideName(winner) + " takes the point!");
+				}
+			}
+		}
+
+		void PointPanel(BattleModeSettings& setup, bool& changed) {
+			const bool running = s_ModeRun.Running;
+			ImGui::PushID("thepoint");
+			ImGui::BeginDisabled(running);
+			const bool placing = CurrentTool().Kind == Tool::BattleModeFlag;
+			if (ToolUI::Button(placing ? "Cancel##point" : (setup.FlagSpots.empty() ? "Place the point" : "Move the point"))) {
+				if (placing) {
+					PutDownBattleTool();
+				} else {
+					TakeBattleTool(Tool::BattleModeFlag, s_BattleEditTeam);
+				}
+			}
+			ImGui::SetItemTooltip("Then click on the map where the middle of the point goes. With the Command tool in hand you can drag it about, too.");
+			ImGui::EndDisabled();
+			if (running) {
+				ImGui::SetItemTooltip("Stop the game to move it.");
+			}
+			ImGui::SameLine();
+			if (setup.FlagSpots.empty()) {
+				ImGui::TextColored(ImVec4(1.0F, 0.6F, 0.4F, 1.0F), "not placed yet");
+			} else {
+				ImGui::TextDisabled("placed");
+			}
+			changed |= ImGui::SliderInt("Rings", &setup.PointRings, 0, c_MaxPointRings, setup.PointRings > 0 ? "%d round the bullseye" : "bullseye only");
+			ImGui::SetItemTooltip("Rings round the bullseye. Each ring, and the bullseye, is held and scored on its own, and is an objective of its own you can order your units onto.");
+			for (int band = 0; band < PointBands(setup); ++band) {
+				ImGui::PushID(band);
+				ImGui::AlignTextToFramePadding();
+				ImGui::TextUnformatted(BandName(band).c_str());
+				ImGui::SameLine(ImGui::GetFontSize() * 5.0F);
+				ImGui::SetNextItemWidth(ImGui::GetFontSize() * 9.0F);
+				const int least = band > 0 ? setup.RingRadius[band - 1] + 10 : 10;
+				if (ImGui::SliderInt("##reach", &setup.RingRadius[band], least, std::max(least, 800), "out to %d px")) {
+					// (The rings outside it pushed out to stay outside it.)
+					for (int outer = band + 1; outer <= c_MaxPointRings; ++outer) {
+						setup.RingRadius[outer] = std::max(setup.RingRadius[outer], setup.RingRadius[outer - 1] + 10);
+					}
+					changed = true;
+				}
+				ImGui::SetItemTooltip("How far out from the middle of the point it reaches.");
+				ImGui::SameLine();
+				ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7.0F);
+				changed |= ImGui::SliderInt("##points", &setup.RingPoints[band], 0, 20, "%d pts a second");
+				ImGui::SetItemTooltip("Points a team scores every second it alone has units in it.");
+				ImGui::PopID();
+			}
+			ImGui::PopID();
+			changed |= ImGui::SliderInt("Points to win", &setup.PointsToWin, 0, 5000, setup.PointsToWin > 0 ? "%d" : "play on");
+			ImGui::SetItemTooltip("The first team to this many points wins. 0: it goes on till you stop it.");
+			changed |= ToolUI::Checkbox("Most units scores", &setup.MajorityScores);
+			ImGui::SetItemTooltip("The bullseye or a ring with more than one team in it scores for the team with the most units there. Off: it scores for nobody while contested.");
+		}
+
+		/// The colour a band shows in: its holder's, orange while contested, else white (the bullseye gold while set up).
+		ImU32 BandColor(int holder) { return holder >= 0 ? c_SideColors[holder] : (holder == -2 ? IM_COL32(255, 150, 40, 255) : IM_COL32(255, 255, 255, 255)); }
+
+		void PointDraw(bool running) {
+			ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+			const BattleModeSettings& settings = running ? s_ModeRun.Settings : s_ModeSetup;
+			DrawBases(drawList, settings);
+			if (!settings.FlagSpots.empty()) {
+				const float scale = std::max(ScenePixelsPerWindowPixel(), 0.01F);
+				const ImVec2 middle = ToScreen(PointPos(settings));
+				const float pulse = running ? Pulse() : 0.0F;
+				const int bands = PointBands(settings);
+				bool contested = false;
+				// (Outside in, so each band's shade sits over the one round it.)
+				for (int band = bands - 1; band >= 0; --band) {
+					const float reach = BandOuter(settings, band) / scale;
+					const int holder = running ? s_BandHolder[band] : -1;
+					contested |= holder == -2;
+					const ImU32 color = running || band > 0 ? BandColor(holder) : IM_COL32(255, 210, 80, 255);
+					const bool held = running && holder != -1;
+					drawList->AddCircleFilled(middle, reach, (color & 0x00FFFFFF) | (static_cast<ImU32>((band == 0 ? 60.0F : 25.0F) + (held ? 40.0F * pulse : 0.0F)) << 24), 64);
+					drawList->AddCircle(middle, reach, (color & 0x00FFFFFF) | (230u << 24), 64, held ? 2.0F + 2.0F * pulse : 2.0F);
+					// Its points, on the top of the band.
+					const std::string points = std::to_string(settings.RingPoints[band]);
+					const ImVec2 size = ImGui::CalcTextSize(points.c_str());
+					const float inner = BandInner(settings, band) / scale;
+					drawList->AddText(ImVec2(middle.x - size.x * 0.5F, middle.y - (band == 0 ? 0.0F : (reach + inner) * 0.5F) - size.y * 0.5F), IM_COL32(255, 255, 255, 220), points.c_str());
+				}
+				std::string label = "THE POINT";
+				if (contested) {
+					label += ": CONTESTED";
+				}
+				const float outer = BandOuter(settings, bands - 1) / scale;
+				const ImVec2 size = ImGui::CalcTextSize(label.c_str());
+				const ImVec2 at(middle.x - size.x * 0.5F, middle.y - outer - size.y - 6.0F);
+				drawList->AddRectFilled(ImVec2(at.x - 4.0F, at.y - 2.0F), ImVec2(at.x + size.x + 4.0F, at.y + size.y + 2.0F), IM_COL32(0, 0, 0, 140), 3.0F);
+				drawList->AddText(at, IM_COL32(255, 255, 255, 255), label.c_str());
+			}
+			if (running) {
+				std::string line = Scores("THE POINT", "");
+				if (settings.PointsToWin > 0) {
+					line += "    (first to " + std::to_string(settings.PointsToWin) + ")";
+				}
+				DrawScore(line);
+			}
+		}
+
+		/// Each band an objective of its own: a team can be ordered onto the bullseye or one ring.
+		void PointObjectives(const BattleModeSettings& settings, bool running, std::vector<BattleObjective>& out) {
+			if (settings.FlagSpots.empty()) {
+				return;
+			}
+			const unsigned teams = TeamsIn(settings);
+			for (int band = 0; band < PointBands(settings); ++band) {
+				BattleObjective objective{.Name = BandName(band), .Pos = PointPos(settings), .Zone = BandZone(settings, band), .Radius = BandOuter(settings, band), .Look = ObjectiveLook::Outline};
+				const int holder = running ? s_BandHolder[band] : -1;
+				objective.Color = BandColor(holder);
+				objective.Defenders = holder >= 0 ? Bit(holder) : 0u;
+				objective.Attackers = teams & ~objective.Defenders;
+				out.push_back(objective);
+			}
+		}
+
+		std::string PointStatus(int side) {
+			std::string holds;
+			for (int band = 0; band < PointBands(s_ModeRun.Settings); ++band) {
+				if (s_BandHolder[band] == side) {
+					holds += (holds.empty() ? ", holds " : " and ") + std::string(band == 0 ? "the bullseye" : "ring " + std::to_string(band));
+				}
+			}
+			return std::to_string(s_ModeRun.Score[side]) + " points" + holds + ", " + std::to_string(Sandbox::CountUnits(side)) + " in";
+		}
+
 		// ---- Team commanders ----
 
 		/// What a team's AI commander is doing (UpdateCommanders). On assault and king of the hill it splits its units between the objective in
@@ -4123,7 +4419,7 @@ namespace SandboxDetail {
 			ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0F);
 			changed |= ImGui::Combo("Difficulty", &setup.CommanderLevel, "Easy\0Normal\0Hard\0");
 			ImGui::SetItemTooltip("How well the AI commanders play. Easy looks at the battle every 3 s and sends few units when something calls for it; normal every second; hard twice a second, sending the most, and shifting more of its team onto guard while ahead or onto the attack while behind. Point values don't change.");
-			if (setup.Mode != BattleMode::Assault && setup.Mode != BattleMode::KingOfTheHill && setup.Mode != BattleMode::CaptureTheShip) {
+			if (setup.Mode != BattleMode::Assault && setup.Mode != BattleMode::KingOfTheHill && setup.Mode != BattleMode::CaptureTheShip && setup.Mode != BattleMode::ThePoint) {
 				changed |= ImGui::Checkbox("Squads", &setup.CommanderSquads);
 				ImGui::SetItemTooltip("Teams with a commander, on normal and hard: its attackers (not its guards) go in squads, which follow a leader, keep together and fire where it fires. Squads grow with the team: two of two in four, two of three in six, two of four in eight, up to six in a squad. On hard a leader waits for those who fall behind. On easy they go one by one.");
 			}
@@ -4651,6 +4947,20 @@ namespace SandboxDetail {
 		     .Draw = ExtractDraw,
 		     .Status = ExtractStatus,
 		     .Objectives = ExtractObjectives},
+		    {.Name = "The point",
+		     .Blurb = "One point, placed on the map like a defend zone: a bullseye with rings round it, each worth its own points. Give each team its "
+		              "spawn zones, and every unit fights for the point. The bullseye and each ring are held apart: a team scores a band's points every "
+		              "second it alone has units in it. Each is an objective of its own, so you can order your units onto the bullseye or one ring. The "
+		              "first to the points set wins.",
+		     .Ready = PointReady,
+		     .Start = PointStart,
+		     .UnitsMade = PointUnitsMade,
+		     .SpawnSpot = PointSpawnSpot,
+		     .Update = PointUpdate,
+		     .Panel = PointPanel,
+		     .Draw = PointDraw,
+		     .Status = PointStatus,
+		     .Objectives = PointObjectives},
 		};
 		static_assert(std::size(c_Modes) == static_cast<size_t>(BattleMode::Count), "c_Modes must describe each BattleMode.");
 
@@ -5090,6 +5400,11 @@ namespace SandboxDetail {
 			Vector at = stroke.Position;
 			g_SceneMan.WrapPosition(at);
 			for (BattleModeSettings* settings : {&s_ModeRun.Settings, &s_ModeSetup}) {
+				if (settings->Mode == BattleMode::ThePoint) {
+					// (The point has only the one: it moves here.)
+					settings->FlagSpots.assign(1, at);
+					continue;
+				}
 				if (settings->FlagSpots.size() < c_MaxFlagSpots) {
 					settings->FlagSpots.push_back(at);
 				}
@@ -5890,6 +6205,9 @@ namespace SandboxDetail {
 			case Tool::BattleModeGoal:
 				return team + " goal zone";
 			case Tool::BattleModeFlag:
+				if (s_ModeSetup.Mode == BattleMode::ThePoint) {
+					return "The point";
+				}
 				if (s_ModeSetup.Mode == BattleMode::CaptureTheShip) {
 					return s_ModeSetup.FlagSpots.size() < c_MaxFlagSpots ? "Ship position " + std::to_string(s_ModeSetup.FlagSpots.size() + 1) : std::string("All ship positions placed");
 				}
@@ -6116,7 +6434,7 @@ namespace SandboxDetail {
 				case EditKind::Point:
 					return setUp && mode.PointName && s_ModeSetup.Plays[ref.Side] && PointOf(ref);
 				case EditKind::FlagSpot:
-					return setUp && ((s_ModeSetup.Mode == BattleMode::OneFlag && !s_ModeSetup.FlagByZones) || s_ModeSetup.Mode == BattleMode::CaptureTheShip) && PointOf(ref);
+					return setUp && ((s_ModeSetup.Mode == BattleMode::OneFlag && !s_ModeSetup.FlagByZones) || s_ModeSetup.Mode == BattleMode::CaptureTheShip || (s_ModeSetup.Mode == BattleMode::ThePoint && ref.Index == 0)) && PointOf(ref);
 				default:
 					return false;
 			}
@@ -6162,7 +6480,7 @@ namespace SandboxDetail {
 				case EditKind::Point:
 					return SideName(ref.Side) + " " + (mode.PointName ? mode.PointName : "point");
 				case EditKind::FlagSpot:
-					return "Flag position " + std::to_string(ref.Index + 1);
+					return s_ModeSetup.Mode == BattleMode::ThePoint ? std::string("The point") : "Flag position " + std::to_string(ref.Index + 1);
 				default:
 					return std::string();
 			}
@@ -6362,6 +6680,9 @@ namespace SandboxDetail {
 				for (const Vector& spot: settings.FlagSpots) {
 					away.push_back({spot});
 				}
+			}
+			if (settings.Mode == BattleMode::ThePoint && !settings.FlagSpots.empty()) {
+				away.push_back({settings.FlagSpots.front()});
 			}
 			return away;
 		}

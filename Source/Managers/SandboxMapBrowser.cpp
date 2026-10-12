@@ -31,7 +31,7 @@ namespace SandboxDetail {
 		constexpr int c_PictureVersion = 1; //!< Kept in the cached pictures' names: raise it when the way they're drawn changes, so they're drawn again.
 		constexpr const char* c_PictureFolder = "Userdata/MapPreviews/";
 
-		constexpr const char* c_ModeNames[] = {"Custom", "Capture the flag", "King of the hill", "Assault", "Last team standing", "VIP hunt", "One flag", "Capture the ship", "Wave defence", "Escort", "Extraction"};
+		constexpr const char* c_ModeNames[] = {"Custom", "Capture the flag", "King of the hill", "Assault", "Last team standing", "VIP hunt", "One flag", "Capture the ship", "Wave defence", "Escort", "Extraction", "The point"};
 		static_assert(std::size(c_ModeNames) == static_cast<size_t>(BattleMode::Count), "c_ModeNames must name each BattleMode.");
 
 		/// Where a map comes from.
@@ -893,6 +893,21 @@ namespace SandboxDetail {
 					if (labels) {
 						Tag(drawList, ImVec2(foot.x, foot.y + ImGui::GetFontSize() * 0.7F), color, std::string(c_SideNames[side]) + (mode.Mode == BattleMode::CaptureTheFlag ? " flag" : mode.Mode == BattleMode::VipHunt ? " VIP" : " base"));
 					}
+				}
+			}
+			if (mode.Mode == BattleMode::ThePoint && !mode.FlagSpots.empty()) {
+				// The point: its bullseye and rings, to scale.
+				const ImVec2 at = toScreen(mode.FlagSpots.front());
+				const int rings = std::clamp(mode.PointRings, 0, c_MaxPointRings);
+				float outer = 4.0F;
+				for (int band = rings; band >= 0; --band) {
+					const float radius = std::max(static_cast<float>(mode.RingRadius[band]) * scenePixel, 2.0F + 2.0F * static_cast<float>(band));
+					outer = std::max(outer, radius);
+					drawList->AddCircleFilled(at, radius, band == 0 ? IM_COL32(255, 210, 80, 140) : IM_COL32(255, 255, 255, 35), 32);
+					drawList->AddCircle(at, radius, IM_COL32(255, 255, 255, 230), 32, 1.5F);
+				}
+				if (labels) {
+					Tag(drawList, ImVec2(at.x, at.y + outer + ImGui::GetFontSize() * 0.7F), IM_COL32(255, 255, 255, 255), "The point");
 				}
 			}
 			if ((mode.Mode == BattleMode::OneFlag && !mode.FlagByZones) || mode.Mode == BattleMode::CaptureTheShip) {

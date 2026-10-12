@@ -739,6 +739,7 @@ namespace SandboxDetail {
 		WaveDefence,
 		Escort,
 		Extraction,
+		ThePoint,
 		Count
 	};
 
@@ -747,6 +748,7 @@ namespace SandboxDetail {
 	constexpr size_t c_MaxFlagSpots = 8; //!< Most flag positions one flag can have placed.
 	constexpr size_t c_MaxPickupSpots = 8; //!< Most places pickups can come in at, placed.
 	constexpr size_t c_MaxPickupZones = 8; //!< Most pickup zones drawn.
+	constexpr int c_MaxPointRings = 4; //!< The point: most rings round its bullseye.
 	/// Where a battle's pickups come in (BattleModeSettings::PickupPlaces), as bits: any of them ticked, each pickup at one of them picked at random.
 	enum PickupPlace { PickupAnywhere = 1, PickupAtSpots = 2, PickupInZones = 4 };
 
@@ -823,6 +825,12 @@ namespace SandboxDetail {
 		int ExtractSide = 0; //!< Extraction: the side that gets its units out through the extraction zone (the mode's first zone), from Tickets units in all.
 		int ExtractToWin = 10; //!< Extraction: units it has to get out to win.
 		int ExtractSeconds = 3; //!< Extraction: seconds a unit stands in the zone to be lifted out.
+		int PointRings = 2; //!< The point: rings round its bullseye, 0 to c_MaxPointRings.
+		std::array<int, c_MaxPointRings + 1> RingRadius = {60, 130, 200, 270, 340}; //!< The point: how far out from its middle (the mode's first flag
+		                                                                          //!< position) each band reaches, the bullseye first, then each ring.
+		std::array<int, c_MaxPointRings + 1> RingPoints = {5, 3, 1, 1, 1}; //!< The point: points a second for holding each band alone. Each is held,
+		                                                                   //!< scored and ordered onto (a battle objective) on its own.
+		int PointsToWin = 300; //!< The point: points that win. 0 plays on for good.
 		std::array<bool, c_Sides> Commander = {true, true, true, true}; //!< Every mode but custom: each team an AI commander leads (UpdateCommanders),
 		                                                               //!< as a player would: splitting its units between objectives, sending some
 		                                                               //!< after a flag or to a VIP, picking who to go for. Not a team you command.
