@@ -401,6 +401,17 @@ void Sandbox::OnToolsClosed(bool atPointer) {
 	s_Queue.push_back(stroke);
 }
 
+void Sandbox::SetRespawnPoint(bool atPointer) {
+	GameActivity* game = CurrentGame();
+	if (!IsGodMode() || !game || game->IsFreeBuildMode() || !HasCharacter()) {
+		return;
+	}
+	const Actor* playing = s_Possessed && s_Possessed == GetRef(s_PlayerUnit) ? s_Possessed : nullptr;
+	s_RespawnPoint = playing && !atPointer ? playing->GetPos() : MouseScenePosition();
+	s_RespawnSet = true;
+	g_ConsoleMan.PrintString("SANDBOX: Respawn point set. If your character dies while you play it, it comes back here.");
+}
+
 void Sandbox::TogglePlay(bool atPointer) {
 	GameActivity* game = CurrentGame();
 	if (!IsGodMode() || !game || game->IsFreeBuildMode()) {
@@ -435,7 +446,7 @@ void Sandbox::TogglePlay(bool atPointer) {
 
 std::string Sandbox::GetCharacterSetup() {
 	std::string setup = s_Player.Body + "|" + std::to_string(s_Player.Team) + "|";
-	for (bool flag: {s_Player.Unkillable, s_Player.EndlessJetpack, s_Player.EndlessAmmo, s_Player.NumberKeys, s_Player.FlyKey, s_Player.EnterOnClose, s_PauseInMenus, s_Player.Neutral, s_Player.InheritKit, s_Player.RemoveOnLeave}) {
+	for (bool flag: {s_Player.Unkillable, s_Player.EndlessJetpack, s_Player.EndlessAmmo, s_Player.NumberKeys, s_Player.FlyKey, s_Player.EnterOnClose, s_PauseInMenus, s_Player.Neutral, s_Player.InheritKit, s_Player.RemoveOnLeave, s_Player.RespawnInstant}) {
 		setup += flag ? '1' : '0';
 	}
 	setup += "|";
@@ -536,7 +547,7 @@ void Sandbox::SetCharacterSetup(const std::string& setup) {
 	}
 	s_Player.Body = parts[0];
 	s_Player.Team = std::clamp(std::atoi(parts[1].c_str()), 0, c_Sides - 1);
-	bool* flags[] = {&s_Player.Unkillable, &s_Player.EndlessJetpack, &s_Player.EndlessAmmo, &s_Player.NumberKeys, &s_Player.FlyKey, &s_Player.EnterOnClose, &s_PauseInMenus, &s_Player.Neutral, &s_Player.InheritKit, &s_Player.RemoveOnLeave};
+	bool* flags[] = {&s_Player.Unkillable, &s_Player.EndlessJetpack, &s_Player.EndlessAmmo, &s_Player.NumberKeys, &s_Player.FlyKey, &s_Player.EnterOnClose, &s_PauseInMenus, &s_Player.Neutral, &s_Player.InheritKit, &s_Player.RemoveOnLeave, &s_Player.RespawnInstant};
 	for (size_t i = 0; i < std::size(flags) && i < parts[2].size(); ++i) {
 		*flags[i] = parts[2][i] == '1';
 	}
@@ -836,6 +847,8 @@ void Sandbox::DrawGUI() {
 			s_Possessed = nullptr;
 			s_PlayerUnit = UnitRef();
 			s_PlayerEnterPending = 0;
+			s_RespawnSet = false;
+			ClearRespawn();
 			s_Flying = false;
 			s_StepsWanted = 0;
 			s_GodStartUpdate = g_TimerMan.GetSimUpdateCount();
@@ -1071,6 +1084,7 @@ void Sandbox::DrawGUI() {
 	UpdateFreeCamera();
 	if (InGame()) {
 		DrawRallyPoints();
+		DrawRespawnPoint();
 		DrawSpawnOrders();
 		DrawBattleMarks();
 		DrawHoldZones();
@@ -1852,6 +1866,21 @@ void Sandbox::DrawGUI() {
 				ImGui::SetItemTooltip("On: units run by the AI don't see your character as an enemy and don't pick it as a target, whatever side it is on. Stray shots and blasts still reach it.");
 				ToolUI::Checkbox("Remove it when I leave play", &s_Player.RemoveOnLeave);
 				ImGui::SetItemTooltip("On: going back above takes your character away, and P makes a new one. If it is in a vehicle, it is taken out and the vehicle stays.\nOff: it stays where you left it, and P puts you back in it.");
+				ImGui::SeparatorText("Respawn point");
+				ImGui::TextWrapped(s_RespawnSet ? "Set. When your character dies while you play it, it is made again there." : "Not set. When your character dies, you go back to the god view.");
+				if (ToolUI::Button("Set it here (Alt+P)")) {
+					Sandbox::SetRespawnPoint(false);
+				}
+				ImGui::SetItemTooltip("Where your character stands while you play, or where the mouse points from above. It is cleared when a new scene starts.");
+				ImGui::SameLine();
+				ImGui::BeginDisabled(!s_RespawnSet);
+				if (ToolUI::Button("Clear it")) {
+					s_RespawnSet = false;
+					ClearRespawn();
+				}
+				ImGui::EndDisabled();
+				ToolUI::Checkbox("Respawn at once", &s_Player.RespawnInstant);
+				ImGui::SetItemTooltip("On: back at the respawn point the moment it dies.\nOff: the view stays where it died for a few seconds first, so you can see what happens, then it respawns.");
 				ToolUI::Checkbox("N flies through anything", &s_Player.FlyKey);
 				ImGui::SetItemTooltip("While playing, N lifts the character out of the physics: the movement keys fly it in any direction, through the ground and walls. N again drops it back in.");
 				ImGui::SeparatorText("What it is");
@@ -2630,6 +2659,8 @@ void Sandbox::OnActivityStarted() {
 	s_Possessed = nullptr;
 	s_PlayerUnit = UnitRef();
 	s_PlayerEnterPending = 0;
+	s_RespawnSet = false;
+	ClearRespawn();
 	s_Flying = false;
 	s_StepsWanted = 0;
 	s_RallySet.fill(false);
@@ -2723,14 +2754,19 @@ void Sandbox::Update() {
 	if (IsGodMode()) {
 		GameActivity* game = CurrentGame();
 		if (s_Possessed && (!g_MovableMan.IsActor(s_Possessed) || static_cast<long>(s_Possessed->GetUniqueID()) != s_PossessedID)) {
-			// The unit you were controlling died: back to the god view.
-			g_ConsoleMan.PrintString("SANDBOX: The unit you were controlling is gone; back to the god view.");
 			s_Possessed = nullptr;
 			s_Flying = false;
-			if (!IsBattleCommand()) {
-				g_DebugMan.OpenTools();
+			if (s_PlayerWasPlaying && s_RespawnSet && HasCharacter() && !IsBattleCommand()) {
+				// Your character died and has a respawn point: the view stays where it died, with the tools away, until it is back (UpdatePlayer).
+				g_ConsoleMan.PrintString(s_Player.RespawnInstant ? "SANDBOX: You died; back at your respawn point." : "SANDBOX: You died; you respawn in a few seconds.");
+			} else {
+				// The unit you were controlling died: back to the god view.
+				g_ConsoleMan.PrintString("SANDBOX: The unit you were controlling is gone; back to the god view.");
+				if (!IsBattleCommand()) {
+					g_DebugMan.OpenTools();
+				}
+				s_FreeCameraStarted = false;
 			}
-			s_FreeCameraStarted = false;
 		} else if (s_Possessed && game && s_PlayerEnterPending == 0) {
 			// The unit the game says you control is the one you control. Its own next/previous actor keys stay live while you're in a unit,
 			// and switch among the activity's side (Red in the sandbox), which the sandbox never heard of: it went on watching the unit you

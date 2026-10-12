@@ -393,6 +393,11 @@ void PollSDLEvents() {
 		    Sandbox::IsGodMode() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled()) {
 			Sandbox::TogglePlay((sdlEvent.key.mod & SDL_KMOD_SHIFT) != 0);
 		}
+		// Alt+P in the Sandbox game mode: the respawn point for your character, where it stands or where the mouse points.
+		if (sdlEvent.type == SDL_EVENT_KEY_DOWN && !sdlEvent.key.repeat && sdlEvent.key.scancode == SDL_SCANCODE_P && (sdlEvent.key.mod & SDL_KMOD_ALT) && !(sdlEvent.key.mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI)) &&
+		    Sandbox::IsGodMode() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled()) {
+			Sandbox::SetRespawnPoint(false);
+		}
 		// The pause AI key (Ctrl+P unless changed in the AI settings): the AI stops thinking and acting while the world and the player carry on, until pressed again.
 		if (sdlEvent.type == SDL_EVENT_KEY_DOWN && !sdlEvent.key.repeat && g_ActivityMan.IsInActivity() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled() &&
 		    !ImGui::GetIO().WantTextInput && !g_SettingsMan.IsTakingKey() && g_SettingsMan.IsPauseAIKey(sdlEvent.key.scancode, sdlEvent.key.mod)) {
