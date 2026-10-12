@@ -1,6 +1,7 @@
 #include "Actor.h"
 #include "ActorWater.h"
 #include "ActorFire.h"
+#include "Atom.h"
 #include "FluidSim.h"
 #include "MagicEffects.h"
 #include "TerrainTrees.h"
@@ -1899,12 +1900,39 @@ bool Actor::BodyFitsShifted(const Vector& shift, MOSRotating* head) const {
 	return !head || !head->GetAtomGroup() || head->GetAtomGroup()->FitsAt(head->GetPos() + shift);
 }
 
+bool Actor::SensesPassTerrain(unsigned char id, int x, int y, bool passesRungs) {
+	if (id == MaterialColorKeys::g_MaterialAir || FluidSim::UnitsPassThrough(id)) {
+		return true;
+	}
+	if (g_SettingsMan.SensesPassPlants()) {
+		// (As the walk and the path grid have it: AHumanMovement's WalkedThrough, PathFinder::Open.)
+		const Material* material = g_SceneMan.GetMaterialFromID(id);
+		if (TerrainTrees::ActorsPass(id) || (material && material->GetIntegrity() <= 5.0F && material->GetBehaviour().Flows != 1)) {
+			return true;
+		}
+	}
+	if (passesRungs && g_SettingsMan.SensesPassRungs()) {
+		static const Material* s_Ladder = g_SceneMan.GetMaterial("Ladder");
+		if (s_Ladder && id == static_cast<unsigned char>(s_Ladder->GetIndex())) {
+			return true;
+		}
+	}
+	return g_SettingsMan.SensesPassSpecks() && Atom::IsTerrainSpeck(x, y);
+}
+
 namespace {
 	/// Ground to hold or stand on: terrain that is neither air nor liquid. (Liquid is no lip: a swimmer pressing towards a bank caught the
-	/// water's own surface and was pulled up onto it.)
-	bool IsGroundAt(int x, int y) {
+	/// water's own surface and was pulled up onto it. Nor, by the settings, a bush, a ladder's rung the body passes or a crumb: mantled onto,
+	/// the body went through it and dropped; see Actor::SensesPassTerrain.)
+	bool IsGroundAt(int x, int y, bool passesRungs) {
 		unsigned char id = g_SceneMan.GetTerrMatter(x, y);
-		return id != MaterialColorKeys::g_MaterialAir && !FluidSim::IsLiquid(id) && !TerrainTrees::ActorsPass(id);
+		return id != MaterialColorKeys::g_MaterialAir && !FluidSim::IsLiquid(id) && !TerrainTrees::ActorsPass(id) && !Actor::SensesPassTerrain(id, x, y, passesRungs);
+	}
+
+	/// Whether a body passes ladder rungs just now (a living humanoid does; MovableObject::SetPassMaterial).
+	bool PassesRungs(const Actor* actor) {
+		static const Material* s_Ladder = g_SceneMan.GetMaterial("Ladder");
+		return s_Ladder && actor->PassesMaterial(static_cast<unsigned char>(s_Ladder->GetIndex()));
 	}
 } // namespace
 
@@ -1948,7 +1976,7 @@ bool Actor::TryStartMantle(MOSRotating* head, bool rising, float bodyWidth) {
 		Vector target = m_Pos + end;
 		bool supported = false;
 		for (int down = 0; down <= static_cast<int>(height * 0.45F) && !supported; down += 2) {
-			supported = IsGroundAt(static_cast<int>(target.m_X), static_cast<int>(target.m_Y) + down);
+			supported = IsGroundAt(static_cast<int>(target.m_X), static_cast<int>(target.m_Y) + down, PassesRungs(this));
 		}
 		if (!supported) {
 			continue;
@@ -1999,7 +2027,7 @@ bool Actor::TryCatchLedge(MOSRotating* head, float bodyWidth, float wantDir, flo
 	const bool wading = FluidSim::IsLiquid(g_SceneMan.GetTerrMatter(static_cast<int>(m_Pos.m_X), static_cast<int>(m_Pos.m_Y)));
 	for (float side: {0.0F, -bodyWidth * 0.3F, bodyWidth * 0.3F}) {
 		for (int down = 0; !wading && down <= static_cast<int>(height * 0.6F); down += 2) {
-			if (IsGroundAt(static_cast<int>(m_Pos.m_X + side), static_cast<int>(m_Pos.m_Y) + down)) {
+			if (IsGroundAt(static_cast<int>(m_Pos.m_X + side), static_cast<int>(m_Pos.m_Y) + down, PassesRungs(this))) {
 				return false;
 			}
 		}
@@ -2015,7 +2043,7 @@ bool Actor::TryCatchLedge(MOSRotating* head, float bodyWidth, float wantDir, flo
 	int toY = static_cast<int>(m_Pos.m_Y + height * 0.1F);
 	int lipY = -1;
 	for (int y = fromY; y <= toY; ++y) {
-		if (IsGroundAt(handX, y)) {
+		if (IsGroundAt(handX, y, PassesRungs(this))) {
 			lipY = y;
 			break;
 		}
@@ -2031,7 +2059,7 @@ bool Actor::TryCatchLedge(MOSRotating* head, float bodyWidth, float wantDir, flo
 	Vector target = m_Pos + end;
 	bool supported = false;
 	for (int down = 0; down <= static_cast<int>(height * 0.45F) && !supported; down += 2) {
-		supported = IsGroundAt(static_cast<int>(target.m_X), static_cast<int>(target.m_Y) + down);
+		supported = IsGroundAt(static_cast<int>(target.m_X), static_cast<int>(target.m_Y) + down, PassesRungs(this));
 	}
 	if (!supported) {
 		return false;
@@ -3451,7 +3479,7 @@ int Actor::FlyRouteWeightless(AEJetpack* jetpack, float jetAccel) {
 		for (float t = 0.0F; t <= length; t += 4.0F) {
 			Vector point = from + step * t;
 			for (const Vector& probe: {point, point + side, point - side}) {
-				if (unsigned char id = g_SceneMan.GetTerrMatter(probe.GetFloorIntX(), probe.GetFloorIntY()); id != MaterialColorKeys::g_MaterialAir && !FluidSim::UnitsPassThrough(id)) {
+				if (unsigned char id = g_SceneMan.GetTerrMatter(probe.GetFloorIntX(), probe.GetFloorIntY()); id != MaterialColorKeys::g_MaterialAir && !SensesPassTerrain(id, probe.GetFloorIntX(), probe.GetFloorIntY(), PassesRungs(this))) {
 					return false;
 				}
 			}

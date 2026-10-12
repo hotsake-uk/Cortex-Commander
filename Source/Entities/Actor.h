@@ -47,6 +47,14 @@ namespace RTE {
 
 		/// Public member variable, method and friend function declarations
 	public:
+		/// Whether a unit's own senses (the walk's look ahead, getting up, leaps, landings, mantling, ducking, flights' clear lines) take a solid
+		/// terrain pixel for open, as its body does, by the settings: liquid (FluidSim::UnitsPassThrough), grass and soft plants
+		/// (SettingsMan::SensesPassPlants), ladder rungs for a body that passes them (SensesPassRungs), and specks (SensesPassSpecks).
+		/// @param id The pixel's material.
+		/// @param x, y Where it is, for the speck test.
+		/// @param passesRungs Whether the body passes ladder rungs (a living humanoid does; MovableObject::PassesMaterial).
+		static bool SensesPassTerrain(unsigned char id, int x, int y, bool passesRungs);
+
 		enum Status {
 			STABLE = 0,
 			UNSTABLE,

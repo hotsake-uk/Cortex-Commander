@@ -16,6 +16,7 @@
 #include "SLTerrain.h"
 #include "Scene.h"
 #include "SceneMan.h"
+#include "SettingsMan.h"
 #include "TerrainFire.h"
 #include "TimerMan.h"
 #include "Vector.h"
@@ -181,6 +182,57 @@ namespace {
 		}
 		s_Left = s_Right = s_Top = s_Bottom = 0;
 		s_AnyBurning = false;
+	}
+
+	/// Draws the active area in to the cells that still hold gas (or burn), and the smoke puffs' cells, with a margin: the area only ever grew, so gas let out at
+	/// both ends of a battle kept the whole span between worked out every update until every last trace of gas on the map was gone. What is left in the cells
+	/// given up is less than a trace, and is cleared.
+	void Shrink(int smokeLeft, int smokeTop, int smokeRight, int smokeBottom) {
+		int left = smokeLeft;
+		int top = smokeTop;
+		int right = smokeRight;
+		int bottom = smokeBottom;
+		for (int y = s_Top; y < s_Bottom; ++y) {
+			for (int x = s_Left; x < s_Right; ++x) {
+				size_t cell = Index(x, y);
+				bool any = s_Burning[cell] != 0;
+				for (int kind = 0; kind < c_Kinds && !any; ++kind) {
+					any = s_Gas[kind][cell] >= c_Trace;
+				}
+				if (any) {
+					left = std::min(left, x);
+					right = std::max(right, x);
+					top = std::min(top, y);
+					bottom = std::max(bottom, y);
+				}
+			}
+		}
+		if (right < left) {
+			return;
+		}
+		const int margin = 3;
+		int newLeft = std::max(left - margin, s_Left);
+		int newTop = std::max(top - margin, s_Top);
+		int newRight = std::min(right + margin + 1, s_Right);
+		int newBottom = std::min(bottom + margin + 1, s_Bottom);
+		if (newLeft == s_Left && newTop == s_Top && newRight == s_Right && newBottom == s_Bottom) {
+			return;
+		}
+		for (int y = s_Top; y < s_Bottom; ++y) {
+			for (int x = s_Left; x < s_Right; ++x) {
+				if (x < newLeft || x >= newRight || y < newTop || y >= newBottom) {
+					size_t cell = Index(x, y);
+					for (int kind = 0; kind < c_Kinds; ++kind) {
+						s_Gas[kind][cell] = 0.0F;
+					}
+					s_Burning[cell] = 0;
+				}
+			}
+		}
+		s_Left = newLeft;
+		s_Top = newTop;
+		s_Right = newRight;
+		s_Bottom = newBottom;
 	}
 
 	/// Gas evens out between open cells beside each other, and buoyant gas trades places with the air above or below.
@@ -625,6 +677,9 @@ void GasGrid::Update() {
 	if (Spread() < c_Trace && smokeRight < smokeLeft) {
 		Empty();
 		return;
+	}
+	if (g_SettingsMan.SlowdownFixes().GasAreaShrinks && update % 30 == 0) {
+		Shrink(smokeLeft, smokeTop, smokeRight, smokeBottom);
 	}
 	BurnMethane();
 	if (update % c_HurtEvery == 0) {
