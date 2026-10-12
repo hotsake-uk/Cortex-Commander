@@ -35,7 +35,7 @@ function Create(self)
 				self.proximityFuze = nil -- Reset the proximity fuze
 
 				-- Don't target the center of a craft
-				if self.SAM_Target.ClassName == "ACDropShip" then
+				if self.SAM_Target.ClassName == "ACDropShip" or self.SAM_Target.ClassName == "ACShip" then
 					if self.SAM_Target.Pos.X > self.SAM.Pos.X then
 						self.SAM_Offset = Vector(-self.SAM_Target.Radius, 0) -- Left
 					else

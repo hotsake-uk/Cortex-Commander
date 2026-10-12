@@ -1035,9 +1035,10 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 		if (gibSettingsObject->GetCount() == 0) {
 			continue;
 		}
-		// A gib chunk is a plain MOSRotating: not blood or flecks (MOPixels and MOSParticles), nor an emitter, a device or a unit.
+		// A gib chunk is a plain MOSRotating: not blood or flecks (MOPixels and MOSParticles), nor an emitter, a device or a unit. Nor a vehicle's or
+		// ship's wreck (group Wrecks): that always comes out and stays, whatever the gib chunk settings.
 		const MovableObject* gibPreset = gibSettingsObject->GetParticlePreset();
-		const bool gibChunk = gibPreset->GetClassName() == "MOSRotating";
+		const bool gibChunk = gibPreset->GetClassName() == "MOSRotating" && !gibPreset->IsInGroup("Wrecks");
 		// The collision spacing for chunks, only where the preset's outline is made from its sprite and its spacing isn't that already.
 		int chunkSpacing = 0;
 		if (gibChunk && chunkTuning.AtomSpacing > 0) {
