@@ -39,6 +39,8 @@ namespace RTE {
 			float RestSeconds = 2.5F; //!< How long a piece lies still before it becomes ordinary ground again.
 			float HitDamage = 3.05F; //!< How much a falling piece hurts the units it hits: at 1 a block a metre across (about 100 kg) falling 10 m/s onto a soldier takes about a quarter to a third of their health, at 2 twice that. 0 turns hit damage off (pieces still knock units about).
 			float HitMinSpeed = 5.0F; //!< How fast in m/s a piece has to be moving into a unit to hurt it at all. Only the speed above this counts.
+			int MaxDebrisPerUpdate = 160; //!< How many loose particles breaking, snapping and crushed ground may throw off in one update. Past it, scraps that can wait stay little pieces and come apart later; the rest are lost (see DebrisKeptPercent).
+			int DebrisKeptPercent = 0; //!< Of the loose bits past MaxDebrisPerUpdate that would otherwise be lost (pixels of snapped necks and overhangs, crushed scraps), how many in a hundred are thrown anyway. 0: all lost, as before. 100: none lost.
 			int HitMinPixels = 66; //!< Pieces smaller than this many pixels never hurt (gravel, a few grains).
 			float HitMassCap = 20.0F; //!< A piece heavier than this many times the unit it hits counts as only this heavy, so a boulder doesn't hurt endlessly more than a big rock.
 			float HitKnockback = 3.0F; //!< How hard pieces shove the units and loose objects they hit: 0 not at all, 1 as before, 2 twice as hard.
