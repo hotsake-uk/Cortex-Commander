@@ -46,6 +46,11 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		QueueSimChange(Tool::UndoTerrain);
 		return true;
 	}
+	if (toolName == "Redo") {
+		// As Ctrl+Y: the newest step the undo took back made again.
+		QueueSimChange(Tool::RedoTerrain);
+		return true;
+	}
 	if (toolName == "Effect") {
 		// The preset name is the effect's name.
 		LoadCustomEffects();
@@ -640,6 +645,13 @@ bool Sandbox::WantsWheelZoom() {
 	return IsLookingAround() && !ImGui::GetIO().WantCaptureMouse;
 }
 
+bool Sandbox::TakeBrushWheel(bool up) {
+	if (!CapturesWorldClicks() || s_Possessed || !IsPaintTool(CurrentTool().Kind)) {
+		return false;
+	}
+	return StepBrushSize(up ? 1 : -1);
+}
+
 void Sandbox::ToggleCommander() {
 	GameActivity* game = CurrentGame();
 	if (!game || !InGame() || IsGodMode()) {
@@ -839,7 +851,7 @@ void Sandbox::DrawGUI() {
 			if (CurrentTool().Kind != Tool::None) {
 				hint += std::string("    In hand: ") + CurrentTool().Name;
 			}
-			hint += IsPaintTool(CurrentTool().Kind) ? "    Right button: dig    Middle drag / WASD: move    Wheel: zoom" : "    Right drag / WASD: move    Wheel: zoom";
+			hint += IsPaintTool(CurrentTool().Kind) ? "    Right button: dig    Middle drag / WASD: move    Wheel: zoom    [ ]: size    Alt+click: pick" : "    Right drag / WASD: move    Wheel: zoom";
 			hint += s_BarShown ? "    U: hide the bar" : "    U: show the bar";
 		} else {
 			hint += "    P: back above";
@@ -1012,6 +1024,16 @@ void Sandbox::DrawGUI() {
 			FlipNextPlant(CurrentTool().Kind);
 		}
 	}
+	// [ and ]: the brush in hand smaller or bigger, a tenth at a time, held down to keep going (Ctrl+wheel over the world does the same: see
+	// TakeBrushWheel). So long as no text box has the keys.
+	if (InGame() && !s_Possessed && IsPaintTool(CurrentTool().Kind) && !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt) {
+		if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket)) {
+			StepBrushSize(-1);
+		}
+		if (ImGui::IsKeyPressed(ImGuiKey_RightBracket)) {
+			StepBrushSize(1);
+		}
+	}
 	// Enter: done with the Battle tab's defence point, drop line or spawn zone tool, which goes back to the one in hand before (PutDownBattleTool). Not
 	// part way through a drag, so the line being drawn isn't lost.
 	// With a spawn zone part drawn, Enter closes it instead (three corners or more; fewer are dropped), and Backspace takes back its last
@@ -1032,7 +1054,7 @@ void Sandbox::DrawGUI() {
 	}
 	// Ctrl+Z: the newest paint stroke or placing click undone (see UndoPaint), whichever tool is in hand, so long as no text box has the keys.
 	// Not while you play a unit: in the WASD layouts Ctrl is crouch, so crouching with Z down took back the last stroke.
-	if (InGame() && io.KeyCtrl && !io.WantTextInput && !s_Possessed && ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
+	if (InGame() && io.KeyCtrl && !io.KeyShift && !io.WantTextInput && !s_Possessed && ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
 		if (s_PaintUndo.empty()) {
 			Notices::Post("Nothing to undo");
 		} else {
@@ -1040,6 +1062,10 @@ void Sandbox::DrawGUI() {
 			// (A rope part put down is taken away whole, so the next click starts a new one.)
 			s_RopeDraft.clear();
 		}
+	}
+	// Ctrl+Y, or Ctrl+Shift+Z: what Ctrl+Z took back made again (see RedoPaint), the same way.
+	if (InGame() && io.KeyCtrl && !io.WantTextInput && !s_Possessed && (ImGui::IsKeyPressed(ImGuiKey_Y, false) || (io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false))) && !s_PaintRedo.empty()) {
+		QueueSimChange(Tool::RedoTerrain);
 	}
 	// The rope being put down is finished with Enter or Escape, a right click (not a drag, which moves the view), or another tool taken up.
 	if (!s_RopeDraft.empty()) {
@@ -1144,6 +1170,15 @@ void Sandbox::DrawGUI() {
 	if (CapturesWorldClicks()) {
 		const ToolInfo& tool = CurrentTool();
 		Vector position = MouseScenePosition();
+		// Alt+click with a Paint or Spawn tool in hand: the eyedropper, what is under the pointer taken up (Eyedrop). The button held
+		// after it paints and places nothing until let go. (Alt+drag is the Command tool's facing, which isn't one of these.)
+		if (io.KeyAlt && !s_Possessed && CanEyedrop(tool.Kind) && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+			Eyedrop(position);
+			s_EyedropHeld = true;
+		}
+		if (s_EyedropHeld && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+			s_EyedropHeld = false;
+		}
 		// A tool its simulation is off for does nothing (it's greyed in the window): a click with it says why, rather than nothing happening.
 		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 			if (const char* unavailable = ToolUnavailableReason(tool.Kind)) {
@@ -1152,8 +1187,8 @@ void Sandbox::DrawGUI() {
 		}
 		// With the battle panel showing, a click on one of the battle's zones or points selects and moves it (BattleEditMouse) rather than
 		// giving an order.
-		const bool battleEdit = tool.Kind == Tool::Command && BattleEditMouse();
-		if (battleEdit) {
+		const bool battleEdit = !s_EyedropHeld && tool.Kind == Tool::Command && BattleEditMouse();
+		if (battleEdit || s_EyedropHeld) {
 			// (Taken: no order, box or stroke from this click.)
 		} else if (tool.Kind == Tool::Command) {
 			// Drag a box to select units; click the ground to send them there, or an enemy to attack it. A click on a "no route" marker
@@ -1262,6 +1297,15 @@ void Sandbox::DrawGUI() {
 		}
 		if (!s_RingOpen) {
 			DrawCursor();
+		}
+		// A word by the pointer for a moment: the brush's new size, or what the eyedropper picked. It fades over its last quarter second.
+		if (const double age = ImGui::GetTime() - s_PointerNoteAt; age < 1.2 && !s_PointerNote.empty()) {
+			const int alpha = static_cast<int>(255.0 * std::clamp((1.2 - age) / 0.25, 0.0, 1.0));
+			ImDrawList* drawList = ImGui::GetForegroundDrawList();
+			ImVec2 at(io.MousePos.x + 16.0F, io.MousePos.y - ImGui::GetTextLineHeight() - 14.0F);
+			ImVec2 size = ImGui::CalcTextSize(s_PointerNote.c_str());
+			drawList->AddRectFilled(ImVec2(at.x - 4.0F, at.y - 2.0F), ImVec2(at.x + size.x + 4.0F, at.y + size.y + 2.0F), IM_COL32(0, 0, 0, alpha * 150 / 255), 3.0F);
+			drawList->AddText(at, IM_COL32(255, 255, 255, alpha), s_PointerNote.c_str());
 		}
 	} else {
 		s_RingOpen = false;
@@ -1420,6 +1464,7 @@ void Sandbox::DrawGUI() {
 				} else if (stroke.Kind == Tool::Metal) {
 					stroke.Material = s_PaintMetal;
 				}
+				NoteRecent(stroke.Kind, stroke.Material);
 				s_Queue.push_back(stroke);
 			}
 		}
@@ -1927,6 +1972,7 @@ void Sandbox::DrawGUI() {
 			}
 			if (SandboxTab("Paint")) {
 				s_CurrentTab = "Paint";
+				RecentRow(Tool::PourOther);
 				ImGui::SeparatorText("Paint over");
 				ToolUI::Checkbox("Liquids", &s_PaintOverLiquids);
 				ImGui::SetItemTooltip("The liquid, loose-ground and terrain brushes replace water, lava, oil, sand, snow and the like, instead of only filling air. Dig is as it was.");
@@ -1985,8 +2031,19 @@ void Sandbox::DrawGUI() {
 					}
 					ImGui::EndDisabled();
 				}
-				if (ImGui::BeginCombo("Springs pour", s_SpringLiquid.c_str())) {
+				if (ImGui::BeginCombo("Springs pour", s_SpringLiquid.c_str(), ImGuiComboFlags_HeightLarge)) {
+					// A search over them, ready to type into as it opens: with mods' there can be dozens.
+					static char filter[64] = {};
+					if (ImGui::IsWindowAppearing()) {
+						ImGui::SetKeyboardFocusHere();
+					}
+					ImGui::SetNextItemWidth(-1.0F);
+					ImGui::InputTextWithHint("##springFilter", "Search...", filter, 64);
+					ImGui::SetItemTooltip("Only the liquids and loose ground whose names have this in them.");
 					for (const std::string& name: PourableNames()) {
+						if (!ContainsIgnoringCase(name, filter)) {
+							continue;
+						}
 						if (ImGui::Selectable(name.c_str(), name == s_SpringLiquid)) {
 							s_SpringLiquid = name;
 						}
@@ -2193,10 +2250,23 @@ void Sandbox::DrawGUI() {
 			if (SandboxTab("Effects")) {
 				s_CurrentTab = "Effects";
 				ImGui::TextWrapped("Pick one, then click in the world to put it down. They keep running until removed.");
-				ImGui::SeparatorText("Lights");
-				auto effectButtons = [](std::initializer_list<EffectKind> kinds) {
+				RecentRow(Tool::Effect);
+				// A search over every effect, these and the ones you made.
+				char* filter = FilterFor(Tool::Effect, false);
+				ImGui::SetNextItemWidth(-1.0F);
+				ImGui::InputTextWithHint("##effectFilter", "Search...", filter, 64);
+				ImGui::SetItemTooltip("Only the effects whose names have this in them, the ones you made too.");
+				// Each heading with its effects, left out when the search lets none of them through.
+				auto effectButtons = [filter](const char* heading, std::initializer_list<EffectKind> kinds) {
+					if (std::none_of(kinds.begin(), kinds.end(), [filter](EffectKind kind) { return ContainsIgnoringCase(c_Effects[static_cast<int>(kind)].Name, filter); })) {
+						return;
+					}
+					ImGui::SeparatorText(heading);
 					int column = 0;
 					for (EffectKind kind: kinds) {
+						if (!ContainsIgnoringCase(c_Effects[static_cast<int>(kind)].Name, filter)) {
+							continue;
+						}
 						if (column++ % 3 != 0) {
 							ImGui::SameLine();
 						}
@@ -2209,12 +2279,10 @@ void Sandbox::DrawGUI() {
 						ImGui::SetItemTooltip("%s", c_Effects[index].Tip);
 					}
 				};
-				effectButtons({EffectKind::NuclearGlow, EffectKind::StormCell, EffectKind::RedAlarm, EffectKind::PoliceLights, EffectKind::BlueBeacon, EffectKind::Floodlight, EffectKind::Searchlight, EffectKind::Strobe, EffectKind::Disco,
+				effectButtons("Lights", {EffectKind::NuclearGlow, EffectKind::StormCell, EffectKind::RedAlarm, EffectKind::PoliceLights, EffectKind::BlueBeacon, EffectKind::Floodlight, EffectKind::Searchlight, EffectKind::Strobe, EffectKind::Disco,
 				               EffectKind::Candle, EffectKind::LavaGlow, EffectKind::Fireflies});
-				ImGui::SeparatorText("Lights with particles");
-				effectButtons({EffectKind::Campfire, EffectKind::WeldingArc, EffectKind::Portal, EffectKind::SparkFountain, EffectKind::FireJet, EffectKind::ToxicVent});
-				ImGui::SeparatorText("Particles and air");
-				effectButtons({EffectKind::EmberVent, EffectKind::SmokeStack, EffectKind::SmokePlume, EffectKind::MistVent, EffectKind::DustDevil, EffectKind::HeatShimmer, EffectKind::ShockwavePulse});
+				effectButtons("Lights with particles", {EffectKind::Campfire, EffectKind::WeldingArc, EffectKind::Portal, EffectKind::SparkFountain, EffectKind::FireJet, EffectKind::ToxicVent});
+				effectButtons("Particles and air", {EffectKind::EmberVent, EffectKind::SmokeStack, EffectKind::SmokePlume, EffectKind::MistVent, EffectKind::DustDevil, EffectKind::HeatShimmer, EffectKind::ShockwavePulse});
 				CustomEffectsUI();
 				ImGui::Separator();
 				ImGui::BeginDisabled(s_Effects.empty());
@@ -2326,6 +2394,7 @@ void Sandbox::OnActivityStarted() {
 	s_Effects.clear();
 	s_Decor.clear();
 	s_PaintUndo.clear();
+	s_PaintRedo.clear();
 	// The same random stream from the start of every game, so the same inputs give the same game.
 	s_Random = c_RandomSeed;
 	// And none of the last game's units, orders or battle: in any game, not only a Sandbox one. (Reset only when the god view opened, an

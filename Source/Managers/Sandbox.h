@@ -75,6 +75,12 @@ namespace RTE {
 		/// Gets whether the mouse wheel zooms the camera: the sandbox window is open in the god view and the mouse isn't over a debug window.
 		static bool WantsWheelZoom();
 
+		/// Ctrl+mouse wheel with a Paint tool in hand and the mouse over the world: the brush made a tenth bigger or smaller (as [ and ]),
+		/// instead of the camera zooming. Call for a turn of the wheel with Ctrl held.
+		/// @param up Whether the wheel turned up (bigger).
+		/// @return Whether it was taken for the brush; if not, it zooms as ever.
+		static bool TakeBrushWheel(bool up);
+
 		/// Draws the sandbox window, the brush outline and the free camera. Call from the ImGui frame.
 		static void DrawGUI();
 
@@ -94,7 +100,7 @@ namespace RTE {
 
 		/// Uses a sandbox tool from a script, as if clicked at a point (Lua: SandboxDo). Applied in the next sim update.
 		/// @param toolName The tool's name as shown in the window ("Units", "Brain", "Item", "Structure", "Fire", "Water", "Lightning", "Rally point", "Take control", "Remove"...), "Orders" to order a whole side,
-		/// or "Undo" to take back the newest paint stroke, placing click or drop (as Ctrl+Z). "Make it fall" and "Select" take a box of half-size count round the point.
+		/// "Undo" to take back the newest paint stroke, placing click or drop (as Ctrl+Z), or "Redo" to make again what it took back (as Ctrl+Y). "Make it fall" and "Select" take a box of half-size count round the point.
 		/// @param position Where to use it.
 		/// @param team The side: 0 Red, 1 Green, 2 Blue, 3 Yellow (the game's team colours).
 		/// @param order For units and "Orders": 0 hold, 1 attack nearest enemy, 2 hunt brains, 3 patrol, 4 go to rally point, 5 do nothing, 6 dig for gold.

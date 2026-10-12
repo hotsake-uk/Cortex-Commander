@@ -19,12 +19,17 @@ namespace SandboxDetail {
 			std::string& stats = preset.Stats;
 			std::vector<std::string> brief;
 			float cost = object->GetTotalValue(0, 1.0F, 1.0F);
+			preset.Cost = cost;
+			if (const MovableObject* movable = dynamic_cast<const MovableObject*>(object)) {
+				preset.Mass = movable->GetMass();
+			}
 			stats += "\nCost: " + (cost > 0.0F ? Number(cost) + " oz" : std::string("free"));
 			brief.push_back(cost > 0.0F ? Number(cost) + " oz" : "free");
 			const MOSRotating* body = dynamic_cast<const MOSRotating*>(object);
 			if (const Actor* actor = dynamic_cast<const Actor*>(object)) {
 				stats += std::string("\nTemperament: ") + Actor::TemperamentName(actor->GetTemperament()) + (IsNonCombatantPreset(actor) ? " (non-combatant)" : "");
 				stats += "\nHealth: " + Number(actor->GetMaxHealth());
+				preset.Health = actor->GetMaxHealth();
 				stats += "\nMass: " + Number(actor->GetMass()) + " kg (with what it carries)";
 				brief.push_back(Number(actor->GetMaxHealth()) + " HP");
 				if (actor->GetMaxEnergy() > 0.0F) {

@@ -230,7 +230,8 @@ namespace SandboxDetail {
 		// Appended, so the tools before keep their numbers.
 		Woodcutter, //!< A colony woodcutter: its staff fell the trees round it and bring the wood home (Colony::Kind::Woodcutter).
 		// Appended, so the tools before keep their numbers.
-		HoldGround //!< A box dragged out, or a polygon clicked out, where the ground never falls (TerrainCollapse::AddHoldZone; SandboxHold.cpp). Choice 1 takes away the zone at Position, 2 all of them.
+		HoldGround, //!< A box dragged out, or a polygon clicked out, where the ground never falls (TerrainCollapse::AddHoldZone; SandboxHold.cpp). Choice 1 takes away the zone at Position, 2 all of them.
+		RedoTerrain //!< Makes again the newest step the undo took back (see s_PaintRedo).
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -623,6 +624,9 @@ namespace SandboxDetail {
 		float OffsetY = 0.0F;
 		std::string Stats; //!< What its game files say about it (cost, health, mass, fire rate...), a line each, for the Spawn tab's tooltip (SpawnStats).
 		std::string StatsShort; //!< The few that matter most, short enough to go under its picture on the tile, a line each.
+		float Cost = 0.0F; //!< What its game files say it costs, health and mass, for sorting the lists by (SettingsMan::SandboxSpawnSort); 0 where it has none.
+		float Health = 0.0F;
+		float Mass = 0.0F;
 		mutable std::string PictureKey; //!< "ClassName/Module/PresetName", made the first time its picture is asked for (PictureOf), not each frame it is drawn.
 	};
 
@@ -1242,6 +1246,11 @@ namespace SandboxDetail {
 	inline std::vector<std::string> s_FactionNames;
 	inline int s_Radius = 6;
 	constexpr int c_MaxBrushRadius = 120; //!< The biggest the brush size goes (was 40).
+	/// A word shown by the pointer for a moment from s_PointerNoteAt (ImGui time): the brush's new size ([ ], Ctrl+wheel), or what the
+	/// eyedropper picked (Alt+click).
+	inline std::string s_PointerNote;
+	inline double s_PointerNoteAt = -10.0;
+	inline bool s_EyedropHeld = false; //!< The left button is still down from an Alt+click that picked something: it paints and places nothing until let go.
 	inline float s_PlantScale = 1.0F; //!< How big the plant brushes draw their plants, 1 as the game's own art (Paint > Plants).
 	inline int s_PlantSpacing = 10; //!< How far apart along the stroke the plant brushes put plants, in pixels (Paint > Plants).
 	inline float s_LastPlantX = 0.0F; //!< Where across the plant brush last put a plant, for the spacing.
@@ -1640,12 +1649,26 @@ namespace SandboxDetail {
 	inline int s_CommanderTeam = 0; //!< The side you command: your own in the game.
 	inline UnitRef s_CommanderReturnTo; //!< The unit you were playing, to go back into.
 
+	/// A place water keeps pouring from until it's removed: a spring, a burst pipe, a tap left on.
+	struct WaterSpawner {
+		Vector Position;
+		int Radius = 3; //!< How wide the pour is: air within this many pixels of the place is kept full of water.
+		std::string Liquid = "Water"; //!< What it pours, by preset name: any liquid or powder FluidSim pours.
+		float Rate = 1.0F; //!< How much of the time it pours, 0.05 to 1 (1 every update).
+		float Life = 0.0F; //!< How many seconds what it pours lasts before it is gone wherever it has flowed to, 0 for ever: a stream or waterfall that doesn't fill up what it runs into.
+		float Due = 0.0F; //!< Rate summed since its last pour: it pours when this reaches 1.
+		bool On = true; //!< Off, it stays where it is and pours nothing until turned on again.
+	};
+
 	/// The sandbox's undo, one history for painting and placing (Ctrl+Z takes back the newest step, whichever it was). A paint step is what
 	/// one stroke of a paint or build tool changed (a drag of the brush is one step: changes less than a quarter second apart run together),
 	/// pixel by pixel as it was before, the first change to each pixel only. A placing step is one click of the Spawn or Build tools: the
 	/// units, craft, items, doors and colony buildings it made (taken away again), and the ground a bunker piece or building drew over (put
 	/// back). The last 20 steps are kept, up to c_PaintUndoPixels pixels in all (the oldest go first), and a new game forgets them. A stroke
 	/// longer than a step holds goes on in a new step, so each Ctrl+Z takes back part of it rather than the rest being lost.
+	/// What only lands over the next moments (poured liquids and loose ground, boulders, the Boom tab's blasts) is kept as a box of the
+	/// ground round it, taken before it lands (RecordPaintBox): the undo puts the whole box back. A Remove click keeps a copy of what it
+	/// took, which the undo puts back; a spring step, the springs it put down or took away.
 	struct PaintUndoPixel {
 		unsigned short X; //!< (Scenes are well under 65536 px on a side.)
 		unsigned short Y;
@@ -1670,17 +1693,26 @@ namespace SandboxDetail {
 		long long LastUpdate = 0;
 		std::vector<UndoBackgroundPixel> Background; //!< A bunker piece's: the background it drew over.
 		std::vector<long> Placed; //!< The unique IDs of what a placing step made.
+		std::vector<std::unique_ptr<MovableObject>> Removed; //!< Copies of what the step took out of the world (a Remove click; for the redo, what an undo took away), put back as they were.
+		std::vector<WaterSpawner> SpringsAdded; //!< Springs the step put down, taken away again.
+		std::vector<WaterSpawner> SpringsRemoved; //!< Springs the step took away, put back.
 		int ColonyBuilding = -1; //!< The colony building a placing step built, or -1.
 		bool Sealed = false; //!< A placing step: the next stroke starts a step of its own, however soon it comes.
 		int Drop = 0; //!< A "Make it fall" step: the drop TerrainCollapse::DropArea gave, taken back with TerrainCollapse::TakeBackDrop.
 		int Rope = 0; //!< A rope put down (RopeSim), taken away again.
+		long long PouredAt = -1; //!< The sim update a pour or boulder of the step was last let go in: what it lets go lands at the next liquid or collapse update, and the undo waits for that.
 		bool HoldZones = false; //!< A "Hold ground" step: the hold zones put back to HoldZonesBefore.
 		std::vector<std::vector<Vector>> HoldZonesBefore; //!< The hold zones before the step.
 
-		bool Empty() const { return Pixels.empty() && Placed.empty() && ColonyBuilding < 0 && Drop == 0 && Rope == 0 && !HoldZones; }
+		bool Empty() const { return Pixels.empty() && Placed.empty() && Removed.empty() && SpringsAdded.empty() && SpringsRemoved.empty() && ColonyBuilding < 0 && Drop == 0 && Rope == 0 && !HoldZones; }
 	};
 
 	inline std::deque<PaintUndoStep> s_PaintUndo;
+
+	/// The redo (Ctrl+Y, Ctrl+Shift+Z): the steps the undo took back, newest last, each holding what the undo changed so it can be changed
+	/// back. A redo puts its step back on the undo history. Anything new done with a tool forgets them, as does a new game. A step with a
+	/// colony building, a "Make it fall" drop or a rope in it can't be made again: undoing one forgets the redo.
+	inline std::deque<PaintUndoStep> s_PaintRedo;
 
 	inline bool s_RecordPaint = false; //!< While a paint or build stroke is applied (see Apply): only the player's own strokes are undone, not craters.
 
@@ -1803,17 +1835,6 @@ namespace SandboxDetail {
 	};
 
 	inline std::vector<PlacedDecor> s_Decor;
-
-	/// A place water keeps pouring from until it's removed: a spring, a burst pipe, a tap left on.
-	struct WaterSpawner {
-		Vector Position;
-		int Radius = 3; //!< How wide the pour is: air within this many pixels of the place is kept full of water.
-		std::string Liquid = "Water"; //!< What it pours, by preset name: any liquid or powder FluidSim pours.
-		float Rate = 1.0F; //!< How much of the time it pours, 0.05 to 1 (1 every update).
-		float Life = 0.0F; //!< How many seconds what it pours lasts before it is gone wherever it has flowed to, 0 for ever: a stream or waterfall that doesn't fill up what it runs into.
-		float Due = 0.0F; //!< Rate summed since its last pour: it pours when this reaches 1.
-		bool On = true; //!< Off, it stays where it is and pours nothing until turned on again.
-	};
 
 	inline std::vector<WaterSpawner> s_WaterSpawners;
 	inline std::string s_SpringLiquid = "Water"; //!< What new springs and the tank pour (Paint > Springs).
@@ -2224,6 +2245,14 @@ namespace SandboxDetail {
 	/// The bar's pins are the player's too, the same in every game and save, and kept in their own file the moment they change.
 	constexpr const char* c_PinsFile = "Userdata/SandboxPins.txt";
 
+	/// What was last used with the tools (S-6), newest first, shown as a Recent row over its list: the units, brains, items, vehicles and
+	/// bunker pieces put down (each list its own), the Paint tab's liquids, loose ground and terrain, and the effects. Up to
+	/// c_RecentPerList of each list. As the pins, a tool and what it makes (a preset, a material or an effect by name; "" for a material
+	/// tool's own), the player's whatever game is played, kept in their own file the moment they change.
+	inline std::vector<Pin> s_Recent;
+	constexpr size_t c_RecentPerList = 8;
+	constexpr const char* c_RecentFile = "Userdata/SandboxRecent.txt";
+
 	/// A bunker piece as a picture ImGui can draw: its background and foreground art put together.
 	struct PiecePicture {
 		unsigned int Texture = 0;
@@ -2347,6 +2376,10 @@ namespace SandboxDetail {
 	void RecordPaintPixel(const SLTerrain* terrain, int x, int y);
 	void ClosePaintUndoStep(bool always);
 	void UndoPaint();
+	void RedoPaint();
+	/// Keeps every pixel of a box of the terrain as it is, for the undo of what lands there over the next moments (see s_PaintUndo).
+	/// Scene pixels, inclusive; wrapped round a scene that wraps, and cut to the scene.
+	void RecordPaintBox(int left, int top, int right, int bottom);
 	void NotePlaced(const MovableObject* object);
 	void NotePaint(const Box& area, const char* kind, const char* material, bool toldCollapse, bool toldLiquid, bool changed);
 	void PaintTerrain(const Vector& center, int radius, const char* materialName, BrushShape shape = BrushShape::Circle, float goldShare = 0.0F, int over = 0);
@@ -2834,8 +2867,28 @@ namespace SandboxDetail {
 	/// @param chosen What that tool uses, set by a click.
 	/// @param names The materials, by preset name.
 	void MaterialButtons(Tool kind, std::string& chosen, const std::vector<std::string>& names);
+	/// The list a tool's recent uses are shown over (s_Recent): a spawn or build tool's own list (its kind), Tool::PourOther for every
+	/// Paint tab material (liquids, loose ground, terrain), Tool::Effect for effects; Tool::None for a tool whose uses aren't kept.
+	Tool RecentList(Tool kind);
+	/// Notes a use of a tool, newest first in its list's Recent row, and keeps the file. @param name The preset, material or effect it was used with ("" for a material tool's own).
+	void NoteRecent(Tool kind, const std::string& name);
+	/// Reads the Recent rows from their file, the first time only.
+	void LoadRecentFile();
+	/// The Recent row over a list: a tile for each thing of it last used, newest first, a click taking it up again. Nothing while there are none.
+	/// @param list The list, as RecentList gives it.
+	void RecentRow(Tool list);
+	/// The brush in hand a tenth bigger (way 1) or smaller (-1), by a pixel at least, within its slider's range ([ and ], Ctrl+wheel over
+	/// the world): its size, or with Brush type Shape's Line, the line's width. The size is shown by the pointer for a moment.
+	/// @return Whether the tool in hand has a size to change.
+	bool StepBrushSize(int way);
+	/// Whether Alt+click is the eyedropper with this tool in hand: the Paint tab's brushes and the Spawn tab's tools.
+	bool CanEyedrop(Tool kind);
+	/// The eyedropper (Alt+click): what is under the pointer taken up. A unit, brain, vehicle or item picks it in the Spawn tab's list,
+	/// with its tool; a liquid, loose ground or terrain the Paint tab's tool that pours or paints it. With a Spawn tool in hand a thing is
+	/// looked for first, with a Paint tool the ground. What was picked is shown by the pointer.
+	void Eyedrop(const Vector& at);
 	void SideChooser();
-	void UndoButton(); //!< Takes back the newest step of the shared paint and placing undo (Tool::UndoTerrain), as Ctrl+Z does.
+	void UndoButton(); //!< Undo and Redo: the newest step of the shared paint and placing undo taken back (Tool::UndoTerrain), as Ctrl+Z does, or made again (Tool::RedoTerrain), as Ctrl+Y does.
 	void PresetList(Tool kind, const char* group = nullptr, float rows = 8.0F);
 	/// @param mine Whether your loadouts and squads (s_SpawnPick) are offered too: the Spawn tab's units and drops.
 	void LoadoutChooser(const char* label = "Loadout", bool mine = false);

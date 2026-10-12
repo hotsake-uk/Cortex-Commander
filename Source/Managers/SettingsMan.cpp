@@ -188,6 +188,7 @@ void SettingsMan::Clear() {
 	m_CommanderBarKey = "F11";
 	m_SandboxOrderGlyphs = 1;
 	m_SandboxSpawnStats = 1;
+	m_SandboxSpawnSort = 0;
 	m_SandboxAttackPings = true;
 	m_SandboxMinimap = false;
 	m_BattleAlerts = true;
@@ -916,6 +917,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CommanderBarKey", { m_CommanderBarKey = reader.ReadPropValue(); });
 	MatchProperty("SandboxOrderGlyphs", { int which = 1; reader >> which; SetSandboxOrderGlyphs(which); });
 	MatchProperty("SandboxSpawnStats", { int which = 1; reader >> which; SetSandboxSpawnStats(which); });
+	MatchProperty("SandboxSpawnSort", { int which = 0; reader >> which; SetSandboxSpawnSort(which); });
 	MatchProperty("SandboxAttackPings", { reader >> m_SandboxAttackPings; });
 	MatchProperty("SandboxMinimap", { reader >> m_SandboxMinimap; });
 	MatchProperty("BattleAlerts", { reader >> m_BattleAlerts; });
@@ -1526,6 +1528,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 		writer.NewPropertyWithValue("CommanderBarKey", m_CommanderBarKey);
 		writer.NewPropertyWithValue("SandboxOrderGlyphs", m_SandboxOrderGlyphs);
 		writer.NewPropertyWithValue("SandboxSpawnStats", m_SandboxSpawnStats);
+		writer.NewPropertyWithValue("SandboxSpawnSort", m_SandboxSpawnSort);
 		writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
 		writer.NewPropertyWithValue("SandboxMinimap", m_SandboxMinimap);
 		writer.NewPropertyWithValue("BattleAlerts", m_BattleAlerts);
@@ -1726,6 +1729,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("CommanderBarKey", m_CommanderBarKey);
 	writer.NewPropertyWithValue("SandboxOrderGlyphs", m_SandboxOrderGlyphs);
 	writer.NewPropertyWithValue("SandboxSpawnStats", m_SandboxSpawnStats);
+	writer.NewPropertyWithValue("SandboxSpawnSort", m_SandboxSpawnSort);
 	writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
 	writer.NewPropertyWithValue("SandboxMinimap", m_SandboxMinimap);
 	writer.NewPropertyWithValue("BattleAlerts", m_BattleAlerts);

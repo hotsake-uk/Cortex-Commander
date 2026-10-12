@@ -730,6 +730,364 @@ namespace SandboxDetail {
 		drawList->AddTriangleFilled(ImVec2(to.x - size, from.y), ImVec2(to.x, from.y), ImVec2(to.x, from.y + size), IM_COL32(242, 182, 61, 255));
 	}
 
+
+	Tool RecentList(Tool kind) {
+		switch (kind) {
+			case Tool::Unit:
+			case Tool::Brain:
+			case Tool::Item:
+			case Tool::Vehicle:
+			case Tool::Drop:
+			case Tool::Structure:
+			case Tool::Effect:
+				return kind;
+			case Tool::Dig:
+			case Tool::WaterSpawner:
+			case Tool::BuildTank:
+			case Tool::GrowGrass:
+				return Tool::None;
+			default:
+				// The Paint tab's materials, poured or painted.
+				return PoursLiquid(kind) || IsTerrainBrush(kind) ? Tool::PourOther : Tool::None;
+		}
+	}
+
+	namespace {
+		void SaveRecentFile() {
+			if (std::ofstream file(c_RecentFile, std::ios::trunc); file) {
+				std::string line;
+				for (const Pin& recent: s_Recent) {
+					line += (line.empty() ? "" : ";") + std::string(c_Tools[ToolIndex(recent.Kind)].Name) + "=" + recent.PresetName;
+				}
+				file << line << '\n';
+			}
+		}
+
+		/// The index in its tool's list of the preset a recent use names, or -1.
+		int RecentPresetIndex(const Pin& recent) {
+			const std::vector<Preset>& list = ListFor(recent.Kind);
+			for (size_t i = 0; i < list.size(); ++i) {
+				if (list[i].PresetName == recent.PresetName) {
+					return static_cast<int>(i);
+				}
+			}
+			return -1;
+		}
+
+		/// The index of a recent effect as the Effects tab picks it (s_EffectChoice): a built-in one by its name, then one you made, or -1.
+		int RecentEffectChoice(const std::string& name) {
+			for (int i = 0; i < static_cast<int>(EffectKind::Count); ++i) {
+				if (name == c_Effects[i].Name) {
+					return i;
+				}
+			}
+			LoadCustomEffects();
+			for (size_t i = 0; i < s_CustomEffects.size(); ++i) {
+				if (s_CustomEffects[i].Name == name) {
+					return static_cast<int>(EffectKind::Count) + static_cast<int>(i);
+				}
+			}
+			return -1;
+		}
+
+		/// The material a recent use of a Paint tool stands for: what it was used with, else the tool's own.
+		std::string RecentMaterial(const Pin& recent) {
+			if (!recent.PresetName.empty()) {
+				return recent.PresetName;
+			}
+			if (const char* material = TerrainBrushMaterial(recent.Kind)) {
+				return material;
+			}
+			return c_Tools[ToolIndex(recent.Kind)].Name;
+		}
+
+		/// Takes up a recent use again, as a click on it in its own list does.
+		void TakeRecent(const Pin& recent) {
+			switch (RecentList(recent.Kind)) {
+				case Tool::PourOther:
+					if (recent.Kind == Tool::PourOther) {
+						s_OtherPourable = recent.PresetName;
+					} else if (recent.Kind == Tool::TerrainOther) {
+						s_OtherTerrain = recent.PresetName;
+					} else if (recent.Kind == Tool::Metal) {
+						s_PaintMetal = recent.PresetName;
+					}
+					TookTool(ToolIndex(recent.Kind));
+					break;
+				case Tool::Effect:
+					if (int choice = RecentEffectChoice(recent.PresetName); choice >= 0) {
+						s_EffectChoice = choice;
+						TookTool(ToolIndex(Tool::Effect));
+					}
+					break;
+				case Tool::None:
+					break;
+				default:
+					if (int index = RecentPresetIndex(recent); index >= 0) {
+						ChoiceFor(recent.Kind) = index;
+						TookTool(ToolIndex(recent.Kind));
+						if (recent.Kind == Tool::Unit || recent.Kind == Tool::Drop) {
+							// (This unit, then, not one of your loadouts or squads, nor random ones.)
+							s_SpawnPick = CustomPick();
+							s_RandomUnits = false;
+						}
+					}
+					break;
+			}
+		}
+	} // namespace
+
+	void NoteRecent(Tool kind, const std::string& name) {
+		const Tool list = RecentList(kind);
+		// (Not a name that would break the file's line apart.)
+		if (list == Tool::None || (name.empty() && list != Tool::PourOther) || name.find_first_of(";\n\r") != std::string::npos) {
+			return;
+		}
+		LoadRecentFile();
+		auto same = [kind, &name](const Pin& recent) { return recent.Kind == kind && recent.PresetName == name; };
+		auto first = std::find_if(s_Recent.begin(), s_Recent.end(), [list](const Pin& recent) { return RecentList(recent.Kind) == list; });
+		if (first != s_Recent.end() && same(*first)) {
+			// Already the newest: a brush held down notes itself many times a second, and the file isn't written for each.
+			return;
+		}
+		s_Recent.erase(std::remove_if(s_Recent.begin(), s_Recent.end(), same), s_Recent.end());
+		s_Recent.insert(s_Recent.begin(), {kind, name});
+		size_t kept = 0;
+		s_Recent.erase(std::remove_if(s_Recent.begin(), s_Recent.end(), [list, &kept](const Pin& recent) { return RecentList(recent.Kind) == list && ++kept > c_RecentPerList; }), s_Recent.end());
+		SaveRecentFile();
+	}
+
+	void LoadRecentFile() {
+		static bool loaded = false;
+		if (loaded) {
+			return;
+		}
+		loaded = true;
+		std::ifstream file(c_RecentFile);
+		std::string line;
+		if (!file || !std::getline(file, line)) {
+			return;
+		}
+		for (size_t at = 0; at < line.size();) {
+			size_t end = line.find(';', at);
+			end = end == std::string::npos ? line.size() : end;
+			std::string one = line.substr(at, end - at);
+			if (size_t equals = one.find('='); equals != std::string::npos) {
+				std::string toolName = one.substr(0, equals);
+				for (int i = 0; i < c_ToolCount; ++i) {
+					if (toolName == c_Tools[i].Name && RecentList(c_Tools[i].Kind) != Tool::None) {
+						s_Recent.push_back({c_Tools[i].Kind, one.substr(equals + 1)});
+						break;
+					}
+				}
+			}
+			at = end + 1;
+		}
+	}
+
+	void RecentRow(Tool list) {
+		LoadRecentFile();
+		std::vector<Pin> shown;
+		for (const Pin& recent: s_Recent) {
+			if (RecentList(recent.Kind) == list) {
+				shown.push_back(recent);
+			}
+		}
+		if (shown.empty()) {
+			return;
+		}
+		ImGui::PushID("recent");
+		ImGui::AlignTextToFramePadding();
+		ImGui::TextDisabled("Recent");
+		ImGui::SetItemTooltip("What you last used from this list, newest first: click one to take it up again. Kept whatever game is played.");
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		const float side = std::floor(ImGui::GetFrameHeight() * 1.6F);
+		const float gap = ImGui::GetStyle().ItemSpacing.x * 0.5F;
+		for (size_t i = 0; i < shown.size(); ++i) {
+			const Pin& recent = shown[i];
+			ImGui::PushID(static_cast<int>(i));
+			if (list == Tool::Effect) {
+				// Effects have no picture: their names, as the Effects tab lists them.
+				const bool chosen = CurrentTool().Kind == Tool::Effect && s_EffectChoice == RecentEffectChoice(recent.PresetName);
+				ImGui::SameLine(0.0F, gap);
+				if (ImGui::GetContentRegionAvail().x < ImGui::CalcTextSize(recent.PresetName.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0F) {
+					ImGui::NewLine();
+				}
+				if (chosen) {
+					ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_SliderGrab));
+				}
+				if (ToolUI::SmallButton(recent.PresetName.c_str())) {
+					TakeRecent(recent);
+				}
+				if (chosen) {
+					ImGui::PopStyleColor();
+				}
+				ImGui::SetItemTooltip("%s\nClick: take it up again", recent.PresetName.c_str());
+				ImGui::PopID();
+				continue;
+			}
+			ImGui::SameLine(0.0F, gap);
+			if (ImGui::GetContentRegionAvail().x < side) {
+				ImGui::NewLine();
+			}
+			const int presetIndex = list == Tool::PourOther ? -1 : RecentPresetIndex(recent);
+			const std::string material = list == Tool::PourOther ? RecentMaterial(recent) : std::string();
+			const std::string name = list == Tool::PourOther ? material : recent.PresetName;
+			bool chosen = s_ToolIndex == ToolIndex(recent.Kind);
+			if (chosen && presetIndex >= 0) {
+				chosen = ChoiceFor(recent.Kind) == presetIndex;
+			} else if (chosen && !recent.PresetName.empty()) {
+				chosen = (recent.Kind == Tool::PourOther ? s_OtherPourable : recent.Kind == Tool::TerrainOther ? s_OtherTerrain : s_PaintMetal) == recent.PresetName;
+			}
+			ImVec2 at = ImGui::GetCursorScreenPos();
+			if (ImGui::InvisibleButton("##recentTile", ImVec2(side, side))) {
+				TakeRecent(recent);
+			}
+			const bool hovered = ImGui::IsItemHovered();
+			ImGui::SetItemTooltip("%s  (%s)\nClick: take it up again", name.c_str(), c_Tools[ToolIndex(recent.Kind)].Name);
+			ImVec2 to(at.x + side, at.y + side);
+			drawList->AddRectFilled(at, to, chosen ? ToolTheme::Panel : hovered ? ToolTheme::WellHover : ToolTheme::Well);
+			drawList->AddRect(at, to, chosen ? ToolTheme::Gold : ToolTheme::Edge, 0.0F, 0, chosen ? 2.0F : 1.0F);
+			const PiecePicture* picture = presetIndex >= 0 ? &PictureOf(ListFor(recent.Kind)[presetIndex]) : nullptr;
+			const float room = side - 4.0F;
+			if (picture && picture->Width > 0) {
+				float fit = std::min(room / static_cast<float>(picture->Width), room / static_cast<float>(picture->Height));
+				if (fit >= 1.0F) {
+					fit = std::floor(fit);
+				}
+				ImVec2 size(static_cast<float>(picture->Width) * fit, static_cast<float>(picture->Height) * fit);
+				ImVec2 corner(std::floor(at.x + (side - size.x) * 0.5F), std::floor(at.y + (side - size.y) * 0.5F));
+				drawList->AddImage(static_cast<ImTextureID>(picture->Texture), corner, ImVec2(corner.x + size.x, corner.y + size.y));
+			} else {
+				// A material in its own colour, as its button; anything else the tool's own picture.
+				ToolLook look = LookOf(recent.Kind);
+				if (list == Tool::PourOther) {
+					if (const Material* found = g_SceneMan.GetMaterial(material); found && found->GetIndex() != g_MaterialAir) {
+						look.Art = FluidSim::IsLiquid(found->GetIndex()) ? Icon::Drop : (PoursPowder(recent.Kind) || recent.Kind == Tool::PourOther ? Icon::Grains : Icon::Chunk);
+						look.Color = MaterialMarkColor(material, 255);
+					}
+				}
+				const float pixel = std::floor(room / 12.0F);
+				DrawIcon(drawList, look.Art, ImVec2(std::floor(at.x + (side - pixel * 12.0F) * 0.5F), std::floor(at.y + (side - pixel * 12.0F) * 0.5F)), pixel, look.Color);
+			}
+			ImGui::PopID();
+		}
+		ImGui::PopID();
+	}
+
+	bool StepBrushSize(int way) {
+		const Tool kind = CurrentTool().Kind;
+		if (!IsPaintTool(kind)) {
+			return false;
+		}
+		int* size = &s_Radius;
+		int most = c_MaxBrushRadius;
+		const char* what = "Size";
+		if (DragsShape(kind)) {
+			// (A shape is as big as it is dragged: only the line has a width of its own.)
+			if (!IsTerrainBrush(kind) || s_FillShape != FillShape::Line) {
+				return false;
+			}
+			size = &s_LineWidth;
+			most = c_MaxLineWidth;
+			what = "Width";
+		}
+		const int step = std::max(1, static_cast<int>(std::lround(static_cast<float>(*size) * 0.1F)));
+		*size = std::clamp(*size + way * step, 1, most);
+		s_PointerNote = std::string(what) + " " + std::to_string(*size) + " px";
+		s_PointerNoteAt = ImGui::GetTime();
+		return true;
+	}
+
+	bool CanEyedrop(Tool kind) {
+		return IsPaintTool(kind) || kind == Tool::Unit || kind == Tool::Brain || kind == Tool::Item || kind == Tool::Vehicle || kind == Tool::Drop;
+	}
+
+	void Eyedrop(const Vector& at) {
+		s_PointerNoteAt = ImGui::GetTime();
+		const bool spawning = !IsPaintTool(CurrentTool().Kind);
+		const std::vector<const char*> tabs = VisibleTabs();
+		// Shows the tab with the tool picked, with the window open (and that tab on offer).
+		auto showTab = [&tabs](const char* tab) {
+			if (Sandbox::IsOpen() && std::any_of(tabs.begin(), tabs.end(), [tab](const char* offered) { return std::string(offered) == tab; })) {
+				s_CurrentTab = tab;
+			}
+		};
+		// A unit, brain or vehicle, or a loose item: its preset in the Spawn tab's list, if it is there.
+		auto pickThing = [&]() {
+			const MovableObject* object = ObjectUnder(at, false);
+			object = object ? object->GetRootParent() : nullptr;
+			if (!object) {
+				return false;
+			}
+			for (Tool kind: {Tool::Unit, Tool::Brain, Tool::Vehicle, Tool::Item}) {
+				const std::vector<Preset>& list = ListFor(kind);
+				for (size_t i = 0; i < list.size(); ++i) {
+					if (list[i].PresetName == object->GetPresetName() && (list[i].ModuleID == object->GetModuleID() || list[i].ModuleID < 0)) {
+						showTab("Spawn");
+						ChoiceFor(kind) = static_cast<int>(i);
+						TookTool(ToolIndex(kind));
+						if (kind == Tool::Unit) {
+							s_SpawnPick = CustomPick();
+							s_RandomUnits = false;
+						}
+						s_PointerNote = "Picked " + list[i].PresetName;
+						return true;
+					}
+				}
+			}
+			s_PointerNote = object->GetPresetName() + " can't be spawned from the lists";
+			return true;
+		};
+		// The material under the pointer: the Paint tool that pours or paints it.
+		auto pickGround = [&]() {
+			const int id = g_SceneMan.GetTerrMatter(at.GetFloorIntX(), at.GetFloorIntY());
+			const Material* material = id != g_MaterialAir ? g_SceneMan.GetMaterialFromID(id) : nullptr;
+			if (!material) {
+				return false;
+			}
+			const std::string name = material->GetPresetName();
+			auto take = [&](Tool kind, std::string* chosen) {
+				if (chosen) {
+					*chosen = name;
+				}
+				showTab("Paint");
+				TookTool(ToolIndex(kind));
+				s_PointerNote = "Picked " + name;
+				return true;
+			};
+			// The liquids and loose ground with tools of their own (snow pours as loose snow: there is no snow brush), then the terrain brushes.
+			static const std::pair<Tool, const char*> c_Pours[] = {{Tool::Water, "Water"}, {Tool::Lava, "Lava"}, {Tool::Acid, "Acid"}, {Tool::Oil, "Oil"}, {Tool::Mud, "Mud"}, {Tool::Tar, "Tar"}, {Tool::Mercury, "Mercury"}, {Tool::Fuel, "Fuel"}, {Tool::Cryo, "Cryogenic Fluid"}, {Tool::Blood, "Blood"}, {Tool::LooseSnow, "Snow"}, {Tool::Gravel, "Gravel"}, {Tool::GlassShards, "Glass Shards"}};
+			for (const auto& [kind, poured]: c_Pours) {
+				if (name == poured) {
+					return take(kind, nullptr);
+				}
+			}
+			for (Tool kind: {Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::TreeTrunk, Tool::Concrete, Tool::Stone, Tool::DenseEarth}) {
+				if (const char* painted = TerrainBrushMaterial(kind); painted && name == painted) {
+					return take(kind, nullptr);
+				}
+			}
+			for (const PaintMetal& metal: c_PaintMetals) {
+				if (name == metal.Material) {
+					return take(Tool::Metal, &s_PaintMetal);
+				}
+			}
+			if (std::find(std::begin(c_TerrainMaterials), std::end(c_TerrainMaterials), name) != std::end(c_TerrainMaterials)) {
+				return take(Tool::TerrainOther, &s_OtherTerrain);
+			}
+			if (std::vector<std::string> pourables = PourableNames(); std::find(pourables.begin(), pourables.end(), name) != pourables.end()) {
+				return take(Tool::PourOther, &s_OtherPourable);
+			}
+			s_PointerNote = name + " can't be painted with the brushes";
+			return true;
+		};
+		if (spawning ? (pickThing() || pickGround()) : (pickGround() || pickThing())) {
+			return;
+		}
+		s_PointerNote = "Nothing here to pick";
+	}
+
 	/// How many tiles go to a row, and how wide each is (into width): about the given size, whatever the window's width, so a wider window
 	/// (the large view) fits more of them to a row rather than making them bigger. Never fewer than the given count, as in a narrow panel.
 	int TileColumns(float tile, int fewest, float gap, float& width) {
@@ -767,8 +1125,13 @@ namespace SandboxDetail {
 		if (s_CustomEffects.empty()) {
 			ImGui::TextDisabled("None made yet.");
 		}
+		// (Only those the Effects tab's search lets through.)
+		const char* filter = FilterFor(Tool::Effect, false);
 		int column = 0;
 		for (size_t i = 0; i < s_CustomEffects.size(); ++i) {
+			if (!ContainsIgnoringCase(s_CustomEffects[i].Name, filter)) {
+				continue;
+			}
 			if (column++ % 3 != 0) {
 				ImGui::SameLine();
 			}
@@ -1011,10 +1374,15 @@ namespace SandboxDetail {
 		float pad = pixel * 2.0F;
 		float height = pad + pixel * 12.0F + ImGui::GetTextLineHeight() * 2.0F + pad;
 		int toolIndex = ToolIndex(kind);
+		// A search over them: with mods' there can be dozens.
+		char* filter = FilterFor(kind, false);
+		ImGui::SetNextItemWidth(-1.0F);
+		ImGui::InputTextWithHint("##materialFilter", "Search...", filter, 64);
+		ImGui::SetItemTooltip("Only the materials whose names have this in them.");
 		int column = 0;
 		for (const std::string& name: names) {
 			const Material* material = g_SceneMan.GetMaterial(name);
-			if (!material || material->GetIndex() == g_MaterialAir) {
+			if (!material || material->GetIndex() == g_MaterialAir || !ContainsIgnoringCase(name, filter)) {
 				continue;
 			}
 			if (column++ % perRow != 0) {
@@ -1041,6 +1409,9 @@ namespace SandboxDetail {
 			ImGui::PopClipRect();
 			ImGui::PopID();
 		}
+		if (column == 0 && filter[0] != '\0') {
+			ImGui::TextDisabled("Nothing matches.");
+		}
 	}
 
 	void UndoButton() {
@@ -1049,7 +1420,14 @@ namespace SandboxDetail {
 			QueueSimChange(Tool::UndoTerrain);
 		}
 		ImGui::EndDisabled();
-		ImGui::SetItemTooltip("Takes back the last brush stroke or the last thing placed, whichever came last (Ctrl+Z): painting and placing share one history. Placed units, craft, items, doors and buildings are taken away (not your character, the unit you are in, or a thing a unit has picked up), and the ground they or a stroke changed is put back. The last 20 can be undone, one at a time, up to about 8 million pixels in all: the oldest go first, and a stroke held for more than a few seconds is undone in parts.");
+		ImGui::SetItemTooltip("Takes back the last brush stroke or the last thing placed, whichever came last (Ctrl+Z): painting and placing share one history. Placed units, craft, items, doors and buildings are taken away (not your character, the unit you are in, or a thing a unit has picked up), and the ground they or a stroke changed is put back. Poured liquids and loose ground, boulders, the Boom tab's bombs and craters, Remove and springs can be undone too: for what lands over the next moments, the ground round where it was let go is put back as it was. Fire and gas can't be. The last 20 can be undone, one at a time, up to about 8 million pixels in all: the oldest go first, and a stroke held for more than a few seconds is undone in parts.");
+		ImGui::SameLine();
+		ImGui::BeginDisabled(s_PaintRedo.empty());
+		if (ToolUI::Button("Redo")) {
+			QueueSimChange(Tool::RedoTerrain);
+		}
+		ImGui::EndDisabled();
+		ImGui::SetItemTooltip("Makes again what Undo last took back (Ctrl+Y or Ctrl+Shift+Z), one step at a time. Anything new done with a tool forgets what there was to redo. A colony building, a \"Make it fall\" or a rope taken back can't be made again.");
 	}
 
 	void SideChooser() {
@@ -1090,6 +1468,14 @@ namespace SandboxDetail {
 		std::string customName = custom ? s_SpawnPick.Name + (s_SpawnPick.Kind == CustomPick::Squad ? " (my squad)" : " (my loadout)") : std::string();
 		const char* current = custom ? customName.c_str() : s_Loadout == 0 ? "Faction default" : (s_Loadout == 1 ? "Unarmed" : (s_Loadout - 2 < static_cast<int>(s_Weapons.size()) ? s_Weapons[s_Loadout - 2]->Label.c_str() : "?"));
 		if (ImGui::BeginCombo(label, current, ImGuiComboFlags_HeightLarge)) {
+			// A search over the guns (one for every loadout combo), ready to type into as it opens.
+			static char filter[64] = {};
+			if (ImGui::IsWindowAppearing()) {
+				ImGui::SetKeyboardFocusHere();
+			}
+			ImGui::SetNextItemWidth(-1.0F);
+			ImGui::InputTextWithHint("##loadoutFilter", "Search...", filter, 64);
+			ImGui::SetItemTooltip("Only the guns whose names have this in them.");
 			if (mine && CustomPickItems(s_SpawnPick, true)) {
 				s_RandomUnits = false;
 			}
@@ -1105,6 +1491,9 @@ namespace SandboxDetail {
 				s_SpawnPick = CustomPick();
 			}
 			for (int i = 0; i < static_cast<int>(s_Weapons.size()); ++i) {
+				if (!ContainsIgnoringCase(s_Weapons[i]->Label, filter)) {
+					continue;
+				}
 				if (ImGui::Selectable(s_Weapons[i]->Label.c_str(), !custom && s_Loadout == i + 2)) {
 					s_Loadout = i + 2;
 					s_SpawnPick = CustomPick();
@@ -1475,11 +1864,25 @@ namespace SandboxDetail {
 		// A picker keeps its search and filters apart from the tool's, under the character's tool (or, for another picker, a key past every tool).
 		Tool filterKey = pickInto ? (pickerSlot > 0 ? static_cast<Tool>(10000 + pickerSlot) : Tool::PlayCharacter) : kind;
 		char* filter = FilterFor(filterKey, true);
+		// What was last used from this list, to take up again.
+		if (!pickInto) {
+			RecentRow(kind);
+		}
 		// How the tiles show what each thing is like: not at all, in the tooltip, or on the tile too. One setting for every list.
 		const char* statsModes[] = {"Stats: off", "Stats: on hover", "Stats: always"};
 		float statsWidth = ImGui::CalcTextSize(statsModes[1]).x + ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 2.0F;
-		ImGui::SetNextItemWidth(-(statsWidth + ImGui::GetStyle().ItemSpacing.x));
+		// And the order they come in, another setting for every list.
+		const char* sortModes[] = {"Sort: name", "Sort: cost", "Sort: health", "Sort: mass"};
+		float sortWidth = ImGui::CalcTextSize(sortModes[2]).x + ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 2.0F;
+		ImGui::SetNextItemWidth(-(statsWidth + sortWidth + ImGui::GetStyle().ItemSpacing.x * 2.0F));
 		ImGui::InputTextWithHint("##filter", "Search...", filter, 64);
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(sortWidth);
+		int sortMode = g_SettingsMan.SandboxSpawnSort();
+		if (ImGui::Combo("##sort", &sortMode, sortModes, IM_ARRAYSIZE(sortModes))) {
+			g_SettingsMan.SetSandboxSpawnSort(sortMode);
+		}
+		ImGui::SetItemTooltip("The order the tiles come in: by name, or by cost, health or mass from their game files, the most first (the rest by name). One setting for every list.");
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(-1.0F);
 		int statsMode = g_SettingsMan.SandboxSpawnStats();
@@ -1540,7 +1943,14 @@ namespace SandboxDetail {
 		int columns = std::max(1, static_cast<int>((ImGui::GetContentRegionAvail().x + style.ItemSpacing.x) / (cell + style.ItemSpacing.x)));
 		int shown = 0;
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
-		for (int i = 0; i < static_cast<int>(list.size()); ++i) {
+		// The list itself stays sorted by name (a choice is its index in it): the tiles go in the order the sort asks for.
+		std::vector<int> order(list.size());
+		std::iota(order.begin(), order.end(), 0);
+		if (sortMode > 0) {
+			auto key = [sortMode](const Preset& preset) { return sortMode == 1 ? preset.Cost : (sortMode == 2 ? preset.Health : preset.Mass); };
+			std::stable_sort(order.begin(), order.end(), [&list, &key](int a, int b) { return key(list[a]) > key(list[b]); });
+		}
+		for (int i: order) {
 			const Preset& preset = list[i];
 			if (!ContainsIgnoringCase(preset.Label, filter) || (group && preset.Group != group)) {
 				continue;
@@ -2305,8 +2715,9 @@ namespace SandboxDetail {
 			const char* Keys;
 			const char* What;
 		};
-		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view (with a Paint tool in hand: dig)"}, {"Middle drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"U", "Hide or show the bar along the bottom"}, {"Commander Toolbar key", "Swap the bar along the bottom for Battle Command's Commander Toolbar, and back (the key is picked below)"}, {"F9", "Commander view, outside the Sandbox game mode: your side from above, and back into your unit"}, {"Ctrl+Z", "Undo the last paint stroke or the last thing placed"}, {"Ctrl+P", "Pause the AI, or let it go again (in any game; the key can be changed in the AI settings)"}, {"- / =", "The game a step slower or faster, through the speed tile's speeds (Shift with either: back to 1x)"}, {"Ctrl+Shift+1 to 4", "Keep the view as bookmark 1 to 4, for this map (kept between games)"}, {"Ctrl+Alt+1 to 4", "Back to view bookmark 1 to 4"}};
+		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view (with a Paint tool in hand: dig)"}, {"Middle drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"U", "Hide or show the bar along the bottom"}, {"Commander Toolbar key", "Swap the bar along the bottom for Battle Command's Commander Toolbar, and back (the key is picked below)"}, {"F9", "Commander view, outside the Sandbox game mode: your side from above, and back into your unit"}, {"Ctrl+Z", "Undo the last paint stroke or the last thing placed"}, {"Ctrl+Y / Ctrl+Shift+Z", "Redo what Ctrl+Z took back"}, {"Ctrl+P", "Pause the AI, or let it go again (in any game; the key can be changed in the AI settings)"}, {"- / =", "The game a step slower or faster, through the speed tile's speeds (Shift with either: back to 1x)"}, {"Ctrl+Shift+1 to 4", "Keep the view as bookmark 1 to 4, for this map (kept between games)"}, {"Ctrl+Alt+1 to 4", "Back to view bookmark 1 to 4"}};
 		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it. In Command mode the order fits what's under the pointer: an enemy attacked, an objective taken or held, open air flown to, else a move"}, {"Esc", "Back to Command mode, the mode other orders return to once placed (in Command mode: pause)"}, {"Left drag", "Select units in a box"}, {"Double click and drag", "Order with risk: normal at the click, fully direct at the full risk distance; they face the way dragged"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click a unit", "Every unit of that kind in view"}, {"Ctrl+double click a unit", "Every unit of that kind on the whole map"}, {"Clicks to order", "How urgent the order is: 1 cautious (walks round jumps, waits for fuel), 2 normal; drag the second click for risk up to the shortest way whatever it takes (a dig-to tunnels straight, moves take fast, reckless jet jumps); tuned in Battle Behavior settings"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"X", "Dig to: tunnel to the point, in the ground or not (the units with a digger that cuts the way)"}, {"Ctrl+X", "Breach: the diggers tunnel to the point and the rest follow them in; once through, they all attack"}, {"Ctrl+B", "Build: a selected unit with a Constructor puts up the piece picked on the command row (sandbags, a wall, a bunker, a turret)"}, {"Ctrl+L", "Airlift: a gunship comes down by the selected units, flies them to the place clicked and lets them out"}, {"J", "Jetpack here: fly to the point in the air and hover there (a move or attack-move clicked in open air flies there too)"}, {"Z", "Suppress: fire into a zone round the point and keep firing, whatever else is in sight"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends). With nothing selected, O pauses"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Ctrl+.", "Every idle unit of the side at once (Shift: add them)"}, {"Q", "Every unit in view of the kinds selected"}, {"Ctrl+Q", "Every unit on the whole map of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Shift+number", "Add the selection to the group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}, {"Space / Shift+Space", "Battle Command: look at the latest alert / step back to the one before, each press (the alert log lists them all)"}, {"Alt+1 to Alt+5", "Commander Toolbar: call in that reinforcement card, in the toolbar's order (any tool in hand)"}, {"Alt+Shift+1 to Alt+Shift+7", "Commander Toolbar: use that commander power, in the toolbar's order (any tool in hand)"}};
+		static const Key brushes[] = {{"[ / ]", "With a Paint tool in hand: the brush smaller or bigger, a tenth at a time (Brush type Shape's line: its width)"}, {"Ctrl+wheel", "With a Paint tool in hand and the pointer over the world: the brush smaller or bigger (with anything else in hand: zoom)"}, {"Alt+click", "With a Paint or Spawn tool in hand: pick what's under the pointer. A liquid, loose ground or terrain takes up the Paint tool that makes it; a unit, vehicle or item, its tile in the Spawn tab's list"}};
 		static const Key plants[] = {{"E / Shift+E", "With a plant, cactus, mushroom, tree or candle brush in hand: the next of its pictures, or the one before (just one picked in its gallery: that pick moves on)"}, {"F", "Flip the next one the other way"}};
 		auto table = [](const char* id, const Key* keys, size_t count) {
 			if (ImGui::BeginTable(id, 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
@@ -2325,6 +2736,8 @@ namespace SandboxDetail {
 		};
 		ImGui::SeparatorText("View");
 		table("##keysView", camera, std::size(camera));
+		ImGui::SeparatorText("Brushes and picking");
+		table("##keysBrushes", brushes, std::size(brushes));
 		ImGui::SeparatorText("Plant brushes");
 		table("##keysPlants", plants, std::size(plants));
 		ImGui::SeparatorText("Command tool");
@@ -5878,7 +6291,7 @@ namespace SandboxDetail {
 	}
 
 	/// The sandbox's bar across the bottom of the picture, in the Sandbox game mode while you're above it all: along the bottom the main tools, the side,
-	/// the parts of the sandbox, the things you've pinned, and at the right, when the F6 setting shows it, the sides' units, the AI, the speed of time and undo; above them, the tools
+	/// the parts of the sandbox, the things you've pinned, and at the right, when the F6 setting shows it, the sides' units, the AI, the speed of time, undo and redo; above them, the tools
 	/// and settings of the tool in hand. It is there whether the window is open or not.
 	void DrawBar() {
 		GameViewRect view = g_WindowMan.GetGameViewRect();
@@ -6093,7 +6506,7 @@ namespace SandboxDetail {
 			}
 
 			if (g_SettingsMan.ShowSandboxBarRight()) {
-				// At the right: each side's units, the AI, the speed of time, undo.
+				// At the right: each side's units, the AI, the speed of time, undo and redo.
 				ImGui::SameLine(0.0F, pixel * 10.0F);
 				{
 					float contentRight = windowRight - style.WindowPadding.x;
@@ -6196,6 +6609,21 @@ namespace SandboxDetail {
 						} else {
 							Notices::Post("Nothing to undo");
 						}
+					}
+				}
+				ImGui::SameLine();
+				{
+					// Redo: what Undo last took back, made again. Its arrow is Undo's turned round.
+					bool canRedo = !s_PaintRedo.empty();
+					if (BarTile("##redo", "Redo", canRedo ? "Makes again what Undo last took back (Ctrl+Y or Ctrl+Shift+Z)." : "Nothing to redo: what Undo takes back can be made again (Ctrl+Y), until something new is done with a tool.", false, [&](ImDrawList* tileList, ImVec2 at, float room) {
+						    ImU32 ink = canRedo ? ToolTheme::Text : IM_COL32(200, 200, 200, 80);
+						    float thick = std::max(pixel * 1.5F, 1.5F);
+						    ImVec2 points[] = {ImVec2(at.x + room * 0.22F, at.y + room * 0.82F), ImVec2(at.x + room * 0.22F, at.y + room * 0.38F), ImVec2(at.x + room * 0.64F, at.y + room * 0.38F)};
+						    tileList->AddPolyline(points, 3, ink, ImDrawFlags_None, thick);
+						    tileList->AddTriangleFilled(ImVec2(at.x + room * 0.88F, at.y + room * 0.38F), ImVec2(at.x + room * 0.6F, at.y + room * 0.16F), ImVec2(at.x + room * 0.6F, at.y + room * 0.6F), ink);
+					    }) == 1 &&
+					    canRedo) {
+						QueueSimChange(Tool::RedoTerrain);
 					}
 				}
 				rightWidth = ImGui::GetItemRectMax().x - rightStart;
