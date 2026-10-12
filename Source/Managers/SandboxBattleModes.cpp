@@ -5847,14 +5847,18 @@ namespace SandboxDetail {
 	/// hill or the objective), none of them kept back as guards, which is what Defend is for; else, for a Battle Director team defending a
 	/// place, a post there. False when the battle has nothing for it.
 	bool JoinBattleObjective(Actor* unit) {
-		if (!unit || dynamic_cast<const ACraft*>(unit) || unit->IsInGroup("Brains")) {
+		// (A flying ship is one of the team too, though no other craft is.)
+		const bool ship = dynamic_cast<const ACShip*>(unit) != nullptr;
+		if (!unit || (dynamic_cast<const ACraft*>(unit) && !ship) || unit->IsInGroup("Brains")) {
 			return false;
 		}
 		const int side = unit->GetTeam();
 		if (side < 0 || side >= c_Sides) {
 			return false;
 		}
-		if (s_ModeRun.Running && !s_ModeRun.Over && TeamIn(s_ModeRun.Settings, side) && !ModeOf(s_ModeRun.Settings.Mode).UnitsMade) {
+		// (A ship can't carry a flag, stand on a hill or be a VIP's guard as the mode's own jobs have it: in any mode it flies over its team's
+		// nearest objective, as a defender of it, and fights what comes near.)
+		if (s_ModeRun.Running && !s_ModeRun.Over && TeamIn(s_ModeRun.Settings, side) && (ship || !ModeOf(s_ModeRun.Settings.Mode).UnitsMade)) {
 			// A mode with no job of its own for new units: to its nearest objective (BattleObjectiveFor), held as a defend zone round it.
 			BattleObjective objective;
 			bool defend = false;

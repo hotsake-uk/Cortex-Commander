@@ -211,6 +211,9 @@ namespace RTE {
 		/// Gets the unique ID of the enemy it is ramming, 0 for none.
 		long GetRamTargetID() const { return m_RamID; }
 
+		/// Gets the unique ID of the enemy EngageTarget sent it after, 0 for none (or once that enemy is dead or gone).
+		long GetEngageID() const { return m_EngageID; }
+
 		/// Drops the enemy EngageTarget sent it after: any other order.
 		void Disengage() { m_EngageID = 0; m_HasCombatSpot = false; }
 

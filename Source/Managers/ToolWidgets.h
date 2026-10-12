@@ -199,6 +199,7 @@ namespace RTE {
 
 		inline bool AtNormal(float value, float normal) { return std::abs(value - normal) <= 0.0001F * std::max(1.0F, std::abs(normal)); }
 		inline bool AtNormal(int value, int normal) { return value == normal; }
+		inline bool AtNormal(bool value, bool normal) { return value == normal; }
 
 		/// A small Reset beside the slider just made, putting that one value back to normal (greyed out while it is).
 		/// The slider stays the last item, so a tooltip after it is still the slider's own.
