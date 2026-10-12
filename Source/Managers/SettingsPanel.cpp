@@ -1603,11 +1603,13 @@ void DebugMan::SettingsGUI() {
 				g_SettingsMan.SetAISpawnDiggerChance(spawnDiggers);
 			}
 			Tip("The share of units, every team's, that are handed a digger as they come into the scene, whether bought, dropped in or placed with it, if they don't carry one already. It goes in their inventory, so they keep their own guns in hand and get it out when a route calls for digging. 0 hands out none.");
+			// (The list puts the Mega Digger before "A random one", which the setting keeps at 3 so saved settings still mean what they did.)
 			int diggerType = g_SettingsMan.AISpawnDiggerType();
-			if (Combo("Digger they spawn with", &diggerType, "Light Digger\0Medium Digger\0Heavy Digger\0A random one\0")) {
-				g_SettingsMan.SetAISpawnDiggerType(diggerType);
+			int diggerItem = diggerType == 3 ? 4 : (diggerType == 4 ? 3 : diggerType);
+			if (Combo("Digger they spawn with", &diggerItem, "Light Digger\0Medium Digger\0Heavy Digger\0Mega Digger\0A random one\0")) {
+				g_SettingsMan.SetAISpawnDiggerType(diggerItem == 4 ? 3 : (diggerItem == 3 ? 4 : diggerItem));
 			}
-			Tip("Which digger those units are handed. The heavier the digger, the harder the ground it cuts through and the sooner they choose to dig.");
+			Tip("Which digger those units are handed. The heavier the digger, the harder the ground it cuts through and the sooner they choose to dig. The Mega Digger cuts stone and concrete easily, but not metal.");
 		}
 		Toggle("AI units use vehicles", g_SettingsMan.AIUsesVehicles(), [](bool on) { g_SettingsMan.SetAIUsesVehicles(on); });
 		Tip("An AI unit sent a long way walks to a friendly vehicle near it that is going its way, gets in and rides (or drives it) there, then gets out and walks the rest. A vehicle with an AI driver drives itself to the place it is sent, and units sent to a vehicle get in. Off: they walk, and AI drivers sit still.");
