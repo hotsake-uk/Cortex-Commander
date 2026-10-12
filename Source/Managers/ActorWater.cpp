@@ -11,6 +11,7 @@
 #include "MovableMan.h"
 #include "SceneMan.h"
 #include "SLTerrain.h"
+#include "TerrainFire.h"
 #include "TimerMan.h"
 #include "PostProcessMan.h"
 #include "WeatherEffects.h"
@@ -40,6 +41,8 @@ namespace {
 	std::array<float, 256> s_Heaviness{}; //!< How hard a liquid pushes a body up against water's push: its density over water's, 1 to 3 (mercury the most).
 	std::array<float, 256> s_CutDamage{}; //!< For what isn't a liquid (glass shards): the health a second it takes from a body walking through it.
 	std::array<float, 256> s_Chill{}; //!< How cold a liquid is (MaterialBehaviour::Chills; cryogenic fluid): frosts a body over while it is in it.
+	std::array<bool, 256> s_Water{}; //!< Whether a liquid is water, which douses a creature of fire (CR-7, Actor::GetWaterWeakness).
+	std::array<bool, 256> s_Molten{}; //!< Whether a liquid is molten rock, whose touch a fire-proof body shrugs off (CR-7).
 	bool s_AnyLiquid = false;
 	bool s_TablesBuilt = false;
 
@@ -67,6 +70,8 @@ namespace {
 		s_Heaviness.fill(1.0F);
 		s_CutDamage.fill(0.0F);
 		s_Chill.fill(0.0F);
+		s_Water.fill(false);
+		s_Molten.fill(false);
 		s_AnyLiquid = false;
 		for (int id = 1; id < 256; ++id) {
 			const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
@@ -88,6 +93,8 @@ namespace {
 			s_HoldsBodies[id] = true;
 			s_Chill[id] = behaviour.Chills > 0.0F ? behaviour.Chills : 0.0F;
 			s_Breathable[id] = behaviour.Breathable == 1;
+			s_Water[id] = material->GetPresetName().find("Water") != std::string::npos;
+			s_Molten[id] = material->GetPresetName().find("Lava") != std::string::npos || material->GetPresetName().find("Magma") != std::string::npos;
 			s_TouchDamage[id] = behaviour.TouchDamage >= 0.0F ? behaviour.TouchDamage : (material->GetPresetName() == "Acid" ? 5.0F : 0.0F);
 			s_AnyLiquid = true;
 		}
@@ -281,8 +288,17 @@ void ActorWater::Update() {
 
 		// What eats at bodies in it (acid): the worst of the liquid at the feet, a little under them and at the middle.
 		float touchDamage = std::max({s_TouchDamage[static_cast<unsigned char>(MaterialAt(feet))], s_TouchDamage[static_cast<unsigned char>(MaterialAt(position))], s_TouchDamage[static_cast<unsigned char>(MaterialAt(feet + Vector(0.0F, 3.0F)))]});
-		if (alive && touchDamage > 0.0F) {
+		// (Not molten rock on a fire-proof body, a Flame Fiend's: it wades lava as others wade water.)
+		if (alive && touchDamage > 0.0F && !(actor->IsFireProof() && (s_Molten[static_cast<unsigned char>(MaterialAt(feet))] || s_Molten[static_cast<unsigned char>(MaterialAt(position))]))) {
 			actor->SetHealth(actor->GetHealth() - touchDamage * static_cast<float>(depth) * deltaTime);
+		}
+
+		// Doused (CR-7): a creature of fire deep in water loses its life fast, hissing steam (a Flame Fiend lasts about five seconds).
+		if (const float weakness = actor->GetWaterWeakness(); alive && weakness > 0.0F && depth >= 2 && s_Water[static_cast<unsigned char>(MaterialAt(position))]) {
+			actor->SetHealth(actor->GetHealth() - actor->GetMaxHealth() * weakness * deltaTime);
+			if (g_TimerMan.GetSimUpdateCount() % 6 == 0) {
+				TerrainFire::SpawnSteam(position - Vector(0.0F, actor->GetRadius() * 0.3F), 2);
+			}
 		}
 
 		// (Not in a liquid a body can breathe in: none of the stock ones.)

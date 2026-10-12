@@ -1,6 +1,7 @@
 #include "SandboxInternal.h"
 #include "ActorWater.h"
 #include "MenuMan.h"
+#include "Notices.h"
 #include "Weather.h"
 #include "TerrainCandle.h"
 
@@ -619,10 +620,11 @@ void Sandbox::ToggleCommanderBar() {
 }
 
 namespace {
-	/// The Commander Toolbar key from the settings, F11 if it names no key.
+	/// The Commander Toolbar key from the settings, F11 if it names no key, or F10 or F12 (picked before those were taken out of the
+	/// choices: they clear the console and take a screenshot).
 	SDL_Scancode CommanderBarScancode() {
 		SDL_Scancode key = SDL_GetScancodeFromName(g_SettingsMan.CommanderBarKey().c_str());
-		return key == SDL_SCANCODE_UNKNOWN ? SDL_SCANCODE_F11 : key;
+		return (key == SDL_SCANCODE_UNKNOWN || key == SDL_SCANCODE_F10 || key == SDL_SCANCODE_F12) ? SDL_SCANCODE_F11 : key;
 	}
 } // namespace
 
@@ -632,6 +634,11 @@ bool Sandbox::IsCommanderBarKey(int scancode) {
 
 std::string Sandbox::CommanderBarKeyName() {
 	return SDL_GetScancodeName(CommanderBarScancode());
+}
+
+bool Sandbox::TakesObjectiveKey() {
+	// As CommandHotkeys is reached in DrawGUI: the command tool in hand, units selected, not playing one, no text box.
+	return InGame() && CurrentTool().Kind == Tool::Command && !s_Selected.empty() && !s_Possessed && !ImGui::GetIO().WantTextInput;
 }
 
 bool Sandbox::WantsWheelZoom() {
@@ -703,6 +710,11 @@ bool Sandbox::IsLookingAround() {
 }
 
 bool Sandbox::TakeEscape() {
+	// (A hold zone being clicked out is dropped, not the game paused.)
+	if (CurrentTool().Kind == Tool::HoldGround && !s_HoldDraft.empty() && !ImGui::GetIO().WantTextInput) {
+		s_HoldDraft.clear();
+		return true;
+	}
 	if (!IsGodMode() || s_Possessed || !(s_Open || IsLookingAround()) || CurrentTool().Kind != Tool::Command || s_CommandMode == CommandMode::Command || ImGui::GetIO().WantTextInput) {
 		return false;
 	}
@@ -946,7 +958,8 @@ void Sandbox::DrawGUI() {
 			if (s_Possessed) {
 				SquadKeys();
 			} else if (ImGui::IsKeyPressed(ImGuiKey_Space, false)) {
-				JumpToLatestAlert();
+				// Space: the latest alert. Shift+Space: the one before, each press.
+				JumpToAlert(ImGui::GetIO().KeyShift);
 			}
 		}
 	}
@@ -971,6 +984,7 @@ void Sandbox::DrawGUI() {
 		DrawRallyPoints();
 		DrawSpawnOrders();
 		DrawBattleMarks();
+		DrawHoldZones();
 		if (IsBattleCommand()) {
 			DrawLandingSpot();
 			DrawFogGhosts();
@@ -1040,10 +1054,14 @@ void Sandbox::DrawGUI() {
 	}
 	// Ctrl+Z: the newest paint stroke or placing click undone (see UndoPaint), whichever tool is in hand, so long as no text box has the keys.
 	// Not while you play a unit: in the WASD layouts Ctrl is crouch, so crouching with Z down took back the last stroke.
-	if (InGame() && io.KeyCtrl && !io.KeyShift && !io.WantTextInput && !s_Possessed && ImGui::IsKeyPressed(ImGuiKey_Z, false) && !s_PaintUndo.empty()) {
-		QueueSimChange(Tool::UndoTerrain);
-		// (A rope part put down is taken away whole, so the next click starts a new one.)
-		s_RopeDraft.clear();
+	if (InGame() && io.KeyCtrl && !io.KeyShift && !io.WantTextInput && !s_Possessed && ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
+		if (s_PaintUndo.empty()) {
+			Notices::Post("Nothing to undo");
+		} else {
+			QueueSimChange(Tool::UndoTerrain);
+			// (A rope part put down is taken away whole, so the next click starts a new one.)
+			s_RopeDraft.clear();
+		}
 	}
 	// Ctrl+Y, or Ctrl+Shift+Z: what Ctrl+Z took back made again (see RedoPaint), the same way.
 	if (InGame() && io.KeyCtrl && !io.WantTextInput && !s_Possessed && (ImGui::IsKeyPressed(ImGuiKey_Y, false) || (io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false))) && !s_PaintRedo.empty()) {
@@ -1072,17 +1090,38 @@ void Sandbox::DrawGUI() {
 			s_RopeRightDown = false;
 		}
 	}
-	// Control groups: Ctrl and a number keeps the selection under it, the number alone brings it back, and the number again straight after
-	// looks at them (RC-6); Ctrl+A takes the whole side. With the command tool in hand, wherever the pointer is, so long as no text box has
-	// the keys. (Only while the pointer was over the world, as these were, they did nothing with it resting on the window.) Not while you
-	// play a unit: those keys are its own then (its weapons, and Ctrl+A as A).
+	// - and =: the game a step slower or faster through the speed tile's speeds, Shift with either back to 1x (B-5). Above the world, so long
+	// as no text box has the keys; not while you play a unit.
+	if ((IsGodMode() || s_Commander) && InGame() && !s_Possessed && !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt) {
+		const bool slower = ImGui::IsKeyPressed(ImGuiKey_Minus, false);
+		const bool faster = ImGui::IsKeyPressed(ImGuiKey_Equal, false);
+		if (slower || faster) {
+			StepGameSpeed(io.KeyShift ? 0 : (faster ? 1 : -1));
+		}
+	}
+	// Ctrl+Shift and 1 to 4 keeps the view, Ctrl+Alt and the number goes back to it (B-10). Whichever tool is in hand.
+	if ((IsGodMode() || s_Commander) && InGame()) {
+		CameraBookmarkKeys();
+	}
+	// Control groups: Ctrl and a number keeps the selection under it, Shift and a number adds it to the group (B-3), the number alone brings
+	// it back, and the number again straight after looks at them (RC-6); Ctrl+A takes the whole side. With the command tool in hand, wherever
+	// the pointer is, so long as no text box has the keys. (Only while the pointer was over the world, as these were, they did nothing with it
+	// resting on the window.) Not while you play a unit: those keys are its own then (its weapons, and Ctrl+A as A). Alt and a number is the
+	// Commander Toolbar's (B-1), and Ctrl+Shift or Ctrl+Alt and a number the camera bookmarks' (B-10), so none of those touch the groups.
 	if (InGame() && CurrentTool().Kind == Tool::Command && !io.WantTextInput && !s_Possessed) {
 		static int lastNumber = -1;
 		static double lastNumberTime = -10.0;
 		for (int number = 0; number < 10; ++number) {
-			if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_0 + number), false)) {
+			if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_0 + number), false) && !io.KeyAlt && !(io.KeyCtrl && io.KeyShift)) {
 				if (io.KeyCtrl) {
 					s_Groups[number] = s_Selected;
+				} else if (io.KeyShift) {
+					// Added to the group, each unit once.
+					for (const UnitRef& ref: s_Selected) {
+						if (std::none_of(s_Groups[number].begin(), s_Groups[number].end(), [&ref](const UnitRef& member) { return member.ID == ref.ID; })) {
+							s_Groups[number].push_back(ref);
+						}
+					}
 				} else if (!s_Groups[number].empty()) {
 					s_Selected = s_Groups[number];
 					if (number == lastNumber && ImGui::GetTime() - lastNumberTime < 0.4) {
@@ -1095,6 +1134,14 @@ void Sandbox::DrawGUI() {
 		}
 		if (!io.KeyCtrl && !io.KeyAlt) {
 			CommandHotkeys();
+		}
+		if (io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_Period, false)) {
+			// Every idle unit of the side at once (B-2); with Shift, added to the selection.
+			SelectAllIdle(io.KeyShift);
+		}
+		if (io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_Q, false)) {
+			// Every unit of the kinds selected on the whole map, not only in view (B-4).
+			SelectSameKinds(true);
 		}
 		if (io.KeyCtrl && !io.KeyAlt && !SelectionOnlyVehicles() && ImGui::IsKeyPressed(ImGuiKey_X, false)) {
 			// Breach: the clicks to come dig through to the point, then attack.
@@ -1131,6 +1178,12 @@ void Sandbox::DrawGUI() {
 		}
 		if (s_EyedropHeld && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
 			s_EyedropHeld = false;
+		}
+		// A tool its simulation is off for does nothing (it's greyed in the window): a click with it says why, rather than nothing happening.
+		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+			if (const char* unavailable = ToolUnavailableReason(tool.Kind)) {
+				Notices::Post(unavailable);
+			}
 		}
 		// With the battle panel showing, a click on one of the battle's zones or points selects and moves it (BattleEditMouse) rather than
 		// giving an order.
@@ -1182,6 +1235,8 @@ void Sandbox::DrawGUI() {
 				s_LineDragging = true;
 				s_LineStart = DragsRun(tool.Kind) ? position : SnapLinePoint(position, s_SnapToGrid);
 			}
+		} else if (tool.Kind == Tool::HoldGround) {
+			// (Its clicks and drags: HoldGroundInput, below.)
 		} else if (DragsShape(tool.Kind)) {
 			// Brush type Shape: a drag marks out the shape, filled when the button is let go (below). "Make it fall" drags its box the same way.
 			if (!s_ShapeDragging && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
@@ -1414,6 +1469,7 @@ void Sandbox::DrawGUI() {
 			}
 		}
 	}
+	HoldGroundInput();
 	// A one-off order's mode back to Command once it's placed, when no second click of a double click can follow.
 	if (s_BackToCommandAt >= 0.0 && !s_Dragging && ImGui::GetTime() >= s_BackToCommandAt) {
 		if (s_CommandMode == s_BackToCommandFrom) {
@@ -1552,7 +1608,8 @@ void Sandbox::DrawGUI() {
 				stroke.Kind = Tool::Command;
 				stroke.Position = end;
 				g_SceneMan.WrapPosition(stroke.Position);
-				stroke.Count = io.KeyShift ? 1 : (s_DoubleClick ? 2 : 0);
+				// (Ctrl and a double click: 3, every unit of that kind on the whole map rather than in view, B-4.)
+				stroke.Count = io.KeyShift ? 1 : (s_DoubleClick ? (io.KeyCtrl ? 3 : 2) : 0);
 			}
 			if (give) {
 				// (One click places the order cautiously and two normally; a double click dragged carries its own risk.)
@@ -1575,6 +1632,7 @@ void Sandbox::DrawGUI() {
 		DrawMinimap();
 		if (!s_Possessed) {
 			LoadoutWindow();
+			DrawArmyOverview();
 		}
 	}
 
@@ -1617,7 +1675,7 @@ void Sandbox::DrawGUI() {
 		if (DrawTabRows()) {
 			if (IsGodMode() && SandboxTab("You")) {
 				s_CurrentTab = "You";
-				bool exists = GetRef(s_PlayerUnit) != nullptr;
+				bool exists = GetRef(s_PlayerUnit) || PlayerHolder();
 				if (ToolUI::Checkbox("Have a character of my own", &s_Player.EnterOnClose) && !s_Player.EnterOnClose) {
 					Stroke stroke;
 					stroke.Kind = Tool::PlayerRemove;
@@ -2099,7 +2157,22 @@ void Sandbox::DrawGUI() {
 				}
 				ImGui::SeparatorText("Terrain");
 				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::TreeTrunk, Tool::Concrete});
-				ToolButtons({Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::CollapseArea});
+				ToolButtons({Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::CollapseArea, Tool::HoldGround});
+				if (CurrentTool().Kind == Tool::HoldGround) {
+					bool show = TerrainCollapse::ShowsHoldZones();
+					if (ToolUI::Checkbox("Show hold zones without the tool", &show)) {
+						TerrainCollapse::SetShowHoldZones(show);
+					}
+					ImGui::SetItemTooltip("On: the hold zones are outlined on the map whatever is in hand (also under Settings > Falling ground). Off: only while Hold ground is.");
+					ImGui::SameLine();
+					ImGui::BeginDisabled(TerrainCollapse::GetHoldZones().empty());
+					if (ImGui::SmallButton("Clear all hold zones")) {
+						QueueSimChange(Tool::HoldGround, 0);
+						s_Queue.back().Choice = 2;
+					}
+					ImGui::EndDisabled();
+					ImGui::SetItemTooltip("Takes every hold zone on this map away (Ctrl+Z puts them back).");
+				}
 				{
 					// The rest of the base game's ground, a button each, for the "Other terrain" tool. Those with buttons of their own (above, and
 					// under Metals) aren't repeated.
@@ -2235,6 +2308,8 @@ void Sandbox::DrawGUI() {
 				LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
 				ImGui::Combo("Weather", &settings.WeatherType, Weather::GetComboItems(settings.CustomWeather).c_str());
 				ImGui::SliderFloat("Intensity", &settings.WeatherIntensity, 0.0F, 1.0F);
+				ImGui::Checkbox("Weather everywhere", &settings.WeatherEverywhere);
+				ImGui::SetItemTooltip("The weather shows everywhere but over the terrain and its back walls, under roofs and overhangs too. The same as in the settings.");
 				ImGui::SliderFloat("Wind", &settings.Wind, -200.0F, 200.0F, "%.0f px/s");
 				ImGui::SliderFloat("Hour", &settings.TimeOfDay, 0.0F, 24.0F, "%.1f");
 				for (auto [name, hour]: {std::pair{"Dawn", 6.5F}, std::pair{"Day", 12.0F}, std::pair{"Dusk", 19.0F}, std::pair{"Night", 23.0F}}) {
@@ -2450,6 +2525,7 @@ void Sandbox::Update() {
 		}
 		UpdatePlayer();
 		UpdatePlayerSquads();
+		UpdateLoadoutUnits();
 		if (game) {
 			for (int team = 0; team < c_Sides; ++team) {
 				if (game->GetTeamFunds(team) < 500000.0F) {

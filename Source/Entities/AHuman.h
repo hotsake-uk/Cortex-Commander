@@ -473,6 +473,10 @@ namespace RTE {
 		/// @return The mass of this AHuman's equipped devices.
 		float GetEquippedMass() const;
 
+		/// Gets the mass of the items in this AHuman's hands, for the Carry weight settings.
+		/// @return The equipped mass in Kilograms (kg).
+		float GetHeldMass() const override { return GetEquippedMass(); }
+
 		/// Indicates whether the currently held HDFirearm's is ready for use, and has
 		/// ammo etc.
 		/// @return Whether a currently HDFirearm (if any) is ready for use.
@@ -506,6 +510,14 @@ namespace RTE {
 		/// Reloads the currently held firearm, if any. Will only reload the BG Firearm if the FG one is full already, to support reloading guns one at a time.
 		/// @param onlyReloadEmptyFirearms Whether or not to only reload empty fireams. (default: false)
 		void ReloadFirearms(bool onlyReloadEmptyFirearms = false);
+
+		/// Aims and works the gun in its hand while it sits out of the scene in a vehicle's or ship's passenger seat (CrewSeats): swings its arms
+		/// to the aim, pulls the trigger or lets go, reloads, and runs its arms and gun on, so what it fires leaves the muzzle where it sits.
+		/// @param aimAngle Where to aim, from level ahead of the way it faces, up positive; clamped to its aim range.
+		/// @param fire Whether the trigger is held. @param reload Whether to reload now (it reloads by itself when empty).
+		/// @param repeat Whether a held trigger keeps firing a gun that isn't full auto, as fast as it can (the AI's), or fires it once a pull.
+		/// @param vehicle What it sits in: what it fires goes through that and everyone sat in it.
+		void UpdateFiringFromSeat(float aimAngle, bool fire, bool reload, bool repeat, MovableObject* vehicle);
 
 		/// Tells whether a point on the scene is within close range of the currently
 		/// used device and aiming status, if applicable.
@@ -1017,6 +1029,21 @@ namespace RTE {
 			bool blockRepathed = false; //!< A route round it was asked for while behind it.
 			long blockIgnoreID = 0; //!< A unit given up on steering round: the ordinary walk, wall sense and stuck handling have it for a while.
 			Timer blockIgnoreTimer;
+			long vehicle = 0; //!< The vehicle or wreck in the way just now (see VehicleAhead), by unique ID, or 0.
+			Timer vehicleTimer; //!< Since it got in the way (kept through gaps under a second).
+			Timer vehicleSeenTimer; //!< Since it was last seen in the way.
+			Timer vehicleMeasureTimer; //!< Since it was last measured.
+			Timer vehicleActionTimer; //!< Since the last leap at it began.
+			float vehicleTopY = 0.0F; //!< Its top, near and far ends as last measured (scene y and x).
+			float vehicleNearX = 0.0F;
+			float vehicleFarX = 0.0F;
+			float vehicleWay = 1.0F; //!< The way the walk was going when it met it.
+			Vector vehicleMeasuredAt; //!< Where it was when measured: the ends and top move with it.
+			bool vehicleHop = false; //!< Hopping it with the jet, held until the feet are past its far end.
+			Timer vehicleHopTimer;
+			bool vehicleRepathed = false; //!< A route round it was asked for.
+			long vehicleIgnoreID = 0; //!< One given up on: the ordinary walk and stuck handling have it for a while.
+			Timer vehicleIgnoreTimer;
 			long yieldTo = 0; //!< The unit this one is giving way to, head on, by unique ID, or 0.
 			Timer yieldTimer; //!< Since it began giving way.
 			long long arrivedTick = -1; //!< The sim update the follower last answered arrived on (standing at the goal is no pin).
@@ -1040,6 +1067,7 @@ namespace RTE {
 				float fuelPredicted = 0.0F; //!< FlightFuelNeeded as the flight began, ms of jet.
 				float fuelUsed = 0.0F; //!< What the tank lost over the flight, refills not counted back, ms of jet.
 				float lastFuel = 0.0F;
+				float fuelAtTakeOff = 0.0F; //!< What the tank held as the flight began, ms of jet.
 				float tank = 0.0F; //!< The jet's full tank, ms.
 				Timer sinceEnd; //!< Since it landed or gave up, so the record still shows for a few seconds after.
 			};
@@ -1174,6 +1202,14 @@ namespace RTE {
 		/// (both ignoring team hits, as every AHuman and ACrab does by default, or either ignoring actor hits). @param direction -1 walking left, 1
 		/// right. @param reach How far ahead to look at most. @return The unit, or nullptr.
 		Actor* UnitAhead(float direction, float reach) const;
+		/// A vehicle (AVehicle) of any side, a parked or empty one too, or a big loose body (a vehicle's wreck, a crate) in the walk's way: what the
+		/// body's knee or chest ray, a little ahead on the side it walks to, meets first, when that is one of those. The route's grid is terrain
+		/// only and never sees them. @param direction -1 walking left, 1 right. @param reach How far ahead to look. @param floorY The floor here.
+		/// @return The hull's root body, or nullptr.
+		const MOSRotating* VehicleAhead(float direction, float reach, float floorY) const;
+		/// Measures a hull found by VehicleAhead along the walk's way, by rows of rays up from the floor: the top of it (y) and its near and far
+		/// ends (x). @return Whether any of it was seen.
+		bool MeasureHull(const MOSRotating* hull, float direction, float floorY, float& topY, float& nearX, float& farX) const;
 		bool InDoorSweep() const;
 		float FlightFuelNeeded(const Vector& landing, float landingFloorY, bool capped = true) const; // (Capped at most of the tank unless told not to.)
 		/// The jet's push at a given fuel left, in px/s^2: the push now (as learned in flight) scaled by the throttle, which follows the tank.
@@ -1209,7 +1245,8 @@ namespace RTE {
 		int MoveAlongRouteWeightless();
 		/// Drops the route but keeps the place it was for, and asks for a new one to it. (ClearMovePath forgets the goal too, and set the
 		/// target to the unit's own place: every refresh told the unit it had arrived.)
-		void RefreshRoute();
+		/// @param keepRoute Whether the route in hand is followed until the new one replaces it (a routine refresh), rather than dropped now.
+		void RefreshRoute(bool keepRoute = false);
 		void MoverTrace(const std::string& text) const;
 		/// The navigation debug overlay's view of the route-follower (level 2): the route ahead, the point in hand, and a flight's take-off,
 		/// shaft point and landing.

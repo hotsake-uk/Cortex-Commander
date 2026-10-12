@@ -317,6 +317,20 @@ namespace RTE {
 		/// How long, in seconds, an AI unit climbing a ladder that has stopped rising waits before letting go and finding another way (the rungs
 		/// shot away above, the ladder ending short, the way up it blocked). 1.5 s as the game comes.
 		float AILadderGiveUpSeconds() const { return m_AILadderGiveUpSeconds; }
+		/// How much what a unit carries (its inventory, the guns in its hands and its gold) weighs, as a multiple of the items' own mass,
+		/// 0 to 5; 1 as the game comes (Actor::GetMass).
+		float CarriedWeightMultiplier() const { return m_CarriedWeightMultiplier; }
+		/// How hard every unit's limbs push along their paths walking, crawling and climbing, and how high a leap of the legs goes, 0.25 to 3;
+		/// 1 as the game comes.
+		float LegStrength() const { return m_LegStrength; }
+		/// Whether jetpacks raise their thrust for a unit's load, burning fuel faster: 0 as each jetpack says (AdjustsThrottleForWeight),
+		/// 1 always, 2 never.
+		int JetpackWeightCompensation() const { return m_JetpackWeightCompensation; }
+		/// How much a load slows a unit's walk and lowers its leap, 0 to 1 (0 as the game comes): this share of its speed is lost once what it
+		/// carries weighs as much as its own body, less below that (Actor::GetOverloadSpeedMultiplier).
+		float OverloadSlowdown() const { return m_OverloadSlowdown; }
+		/// How much fuel every jetpack's tank holds, as a multiple of its own JumpTime, 0.25 to 5; 1 as the game comes.
+		float JetpackFuelMultiplier() const { return m_JetpackFuelMultiplier; }
 		/// How many times units of a team must get stuck on the same ladder within a minute before the whole team avoids it, 1 to 5 (2 as the game
 		/// comes). Fewer, the unit stuck avoids it alone.
 		int AILadderTeamStalls() const { return m_AILadderTeamStalls; }
@@ -426,6 +440,10 @@ namespace RTE {
 		/// wrecked, thrown over or someone takes the seat. A player's own unit falls out either way, so its death is seen.
 		bool DeadCrewFallOut() const { return m_DeadCrewFallOut; }
 
+		/// Whether units in the passenger seats of a vehicle or ship built to let them (PassengersCanFire) shoot out of it with the guns they
+		/// hold (on, as the game comes). Their shots never hit their own vehicle or anyone sat in it.
+		bool PassengersFireFromVehicles() const { return m_PassengersFireFromVehicles; }
+
 		/// Gets what the navigation debug overlay shows: 0 nothing, 1 the path grid in view (where a unit stands, crawls or doesn't fit, and the
 		/// step-overs, stairs and leaps between), 2 that and each flight's landing and the engine pilot's predicted path (see PathFinder::DrawDebug),
 		/// 3 that and the node under the pointer: what the grid makes of it and every way out of it with its cost (see DebugOverlays::DrawNavNode).
@@ -439,6 +457,33 @@ namespace RTE {
 		/// Sets whether the frame rate and the game's version are shown in the top right of the window.
 		/// @param show Whether to show them.
 		void SetShowFPSAndVersion(bool show) { m_ShowFPSAndVersion = show; }
+
+		/// Gets whether short notices ("Game saved", "Nothing to undo") are shown at the top of the screen (see Notices; on by default).
+		bool ShowNotices() const { return m_ShowNotices; }
+
+		/// Sets whether short notices are shown at the top of the screen.
+		void SetShowNotices(bool show) { m_ShowNotices = show; }
+
+		/// The main menu's map browser's filters and order (U-3), kept between launches. The "With saved battles" filter isn't kept: it's on for
+		/// Battle Command and off for the Sandbox each time the browser opens. See SandboxMapBrowser.cpp.
+		struct MapBrowserFilters {
+			std::string Mod; //!< Only maps of this mod, by its file name ("Base.rte"); empty for any.
+			int Source = -1; //!< Only maps of this kind (official, from a mod, made in the editor); -1 for any.
+			int Size = -1; //!< Only maps of this size (small to extra large); -1 for any.
+			bool OnlyFavourites = false; //!< Only the maps starred as favourites.
+			bool OnlyRecent = false; //!< Only the maps played lately, the latest first.
+			int Sort = 0; //!< What the maps are sorted by: name, size, mod or saved battles.
+		};
+
+		/// Gets the map browser's kept filters and order, to read or change.
+		MapBrowserFilters& MapBrowserFilterSettings() { return m_MapBrowserFilters; }
+
+		/// Gets the map last played (any game started on a map, not a saved game or an editor), for the main menu's "Continue on" (U-3).
+		/// @return The map's preset name, or nothing if none has been played yet.
+		const std::string& LastMap() const { return m_LastMap; }
+
+		/// Sets the map last played. Kept in Settings.ini.
+		void SetLastMap(const std::string& mapName) { m_LastMap = mapName; }
 
 		/// The debug text channels: kinds of debug lines written to the console (and LogConsole.txt). Each keeps its line prefix (AITRACE, PATHLOG, SANDBOX, PERF), so log readers still match.
 		enum class DebugChannel { AI, Path, Pilot, Climb, Combat, Squad, Sandbox, Perf, Grid, Count };
@@ -551,6 +596,95 @@ namespace RTE {
 
 		/// Sets whether the sandbox's map window is shown.
 		void SetShowSandboxMinimap(bool show) { m_SandboxMinimap = show; }
+
+		/// Whether Battle Command's alerts (your units under attack, your flag taken...) are listed at the top left of the view.
+		bool ShowBattleAlerts() const { return m_BattleAlerts; }
+
+		/// Sets ShowBattleAlerts; see there.
+		void SetShowBattleAlerts(bool show) { m_BattleAlerts = show; }
+
+		/// The most Battle Command alerts listed at once.
+		int BattleAlertLines() const { return m_BattleAlertLines; }
+
+		/// Sets BattleAlertLines; see there.
+		void SetBattleAlertLines(int lines) { m_BattleAlertLines = std::clamp(lines, 1, 12); }
+
+		/// Seconds a Battle Command alert stays listed.
+		int BattleAlertSeconds() const { return m_BattleAlertSeconds; }
+
+		/// Sets BattleAlertSeconds; see there.
+		void SetBattleAlertSeconds(int seconds) { m_BattleAlertSeconds = std::clamp(seconds, 3, 60); }
+
+		/// Whether Battle Command's kill feed (who killed whom) is listed at the top right of the view.
+		bool ShowBattleKillFeed() const { return m_BattleKillFeed; }
+
+		/// Sets ShowBattleKillFeed; see there.
+		void SetShowBattleKillFeed(bool show) { m_BattleKillFeed = show; }
+
+		/// The most kills the kill feed lists at once.
+		int BattleKillLines() const { return m_BattleKillLines; }
+
+		/// Sets BattleKillLines; see there.
+		void SetBattleKillLines(int lines) { m_BattleKillLines = std::clamp(lines, 1, 12); }
+
+		/// Seconds a kill stays in the kill feed.
+		int BattleKillSeconds() const { return m_BattleKillSeconds; }
+
+		/// Sets BattleKillSeconds; see there.
+		void SetBattleKillSeconds(int seconds) { m_BattleKillSeconds = std::clamp(seconds, 3, 60); }
+
+		/// Whether each Battle Command alert plays a short sound, one for each kind.
+		bool BattleAlertSounds() const { return m_BattleAlertSounds; }
+
+		/// Sets BattleAlertSounds; see there.
+		void SetBattleAlertSounds(bool on) { m_BattleAlertSounds = on; }
+
+		/// How loud the alert sounds are, 0 to 1 (under the game's sound volume).
+		float BattleAlertVolume() const { return m_BattleAlertVolume; }
+
+		/// Sets BattleAlertVolume; see there.
+		void SetBattleAlertVolume(float volume) { m_BattleAlertVolume = std::clamp(volume, 0.0F, 1.0F); }
+
+		/// Whether the battle panel asks before something that loses a setup or a battle on: a saved setup deleted or saved over, a battle started again or stopped.
+		bool BattleAskFirst() const { return m_BattleAskFirst; }
+
+		/// Sets BattleAskFirst; see there.
+		void SetBattleAskFirst(bool ask) { m_BattleAskFirst = ask; }
+
+		/// Whether the battle info panel (each team's tally, units in and fallen, respawns) is shown under the score while a battle is on.
+		bool ShowBattleInfo() const { return m_BattleShowInfo; }
+
+		/// Sets ShowBattleInfo; see there.
+		void SetShowBattleInfo(bool show) { m_BattleShowInfo = show; }
+
+		/// Whether a battle mode's objectives (flags, hills, goals...) are lit up on the map.
+		bool ShowBattleObjectives() const { return m_BattleShowObjectives; }
+
+		/// Sets ShowBattleObjectives; see there.
+		void SetShowBattleObjectives(bool show) { m_BattleShowObjectives = show; }
+
+		/// The look of zone objectives: 0 each mode's own, else an objective look (plus one) for all of them.
+		int BattleObjectiveLook() const { return m_BattleObjectiveLook; }
+
+		/// Sets BattleObjectiveLook; see there.
+		void SetBattleObjectiveLook(int look) { m_BattleObjectiveLook = std::max(look, 0); }
+
+		/// Whether the teams' spawn zones are shaded and outlined on the map.
+		bool ShowBattleSpawnZones() const { return m_BattleShowSpawnZones; }
+
+		/// Sets ShowBattleSpawnZones; see there.
+		void SetShowBattleSpawnZones(bool show) { m_BattleShowSpawnZones = show; }
+
+		/// Whether a battle mode's own zones (hills, assault objectives, goal zones) are shaded and outlined on the map.
+		bool ShowBattleModeZones() const { return m_BattleShowModeZones; }
+
+		/// Sets ShowBattleModeZones; see there.
+		void SetShowBattleModeZones(bool show) { m_BattleShowModeZones = show; }
+		/// Whether the Army overview window is shown (B-6): your side's units by kind, with how many, their health and how many are idle.
+		bool ShowArmyOverview() const { return m_ArmyOverview; }
+
+		/// Sets whether the Army overview window is shown.
+		void SetShowArmyOverview(bool show) { m_ArmyOverview = show; }
 
 		/// Gets whether the lighting-by-source readout is on.
 		bool ShowLightsBySource() const { return m_LightsBySource; }
@@ -684,6 +818,13 @@ namespace RTE {
 		void SetAIMantlesOnPurpose(bool on) { m_AIMantlesOnPurpose = on; }
 		void SetAICatchesLedgesMidAir(bool on) { m_AICatchesLedgesMidAir = on; }
 		void SetRiskyOrdersFlyPastLadders(bool on) { m_RiskyOrdersFlyPastLadders = on; }
+		void SetCarriedWeightMultiplier(float multiplier) { m_CarriedWeightMultiplier = std::clamp(multiplier, 0.0F, 5.0F); }
+		void SetLegStrength(float strength) { m_LegStrength = std::clamp(strength, 0.25F, 3.0F); }
+		void SetJetpackWeightCompensation(int mode) { m_JetpackWeightCompensation = std::clamp(mode, 0, 2); }
+		void SetOverloadSlowdown(float slowdown) { m_OverloadSlowdown = std::clamp(slowdown, 0.0F, 1.0F); }
+		void SetJetpackFuelMultiplier(float multiplier) { m_JetpackFuelMultiplier = std::clamp(multiplier, 0.25F, 5.0F); }
+		/// Puts the Movement category's carry weight settings back as the game comes.
+		void ResetCarryWeightSettings() { m_CarriedWeightMultiplier = 1.0F; m_LegStrength = 1.0F; m_JetpackWeightCompensation = 0; m_OverloadSlowdown = 0.0F; m_JetpackFuelMultiplier = 1.0F; }
 		/// Puts the Movement category's ladder settings back as the game comes.
 		void ResetLadderSettings() { m_AILadderGiveUpSeconds = 1.5F; m_AILadderTeamStalls = 2; m_AIGrabsLaddersOnPurpose = true; m_AIGrabsLaddersMidJet = true; m_RiskyOrdersFlyPastLadders = true; }
 		/// Sets the percentage of units handed a digger as they come into the scene; see AISpawnDiggerChance.
@@ -718,6 +859,9 @@ namespace RTE {
 
 		/// Sets whether crew killed in a vehicle fall out of it; see DeadCrewFallOut.
 		void SetDeadCrewFallOut(bool fallOut) { m_DeadCrewFallOut = fallOut; }
+
+		/// Sets whether passengers shoot out of vehicles built to let them; see PassengersFireFromVehicles.
+		void SetPassengersFireFromVehicles(bool fire) { m_PassengersFireFromVehicles = fire; }
 
 		/// Sets whether the crab bomb effect is enabled or not.
 		/// @param enable Enable the crab bomb effect or not. False means releasing whatever number of crabs will do nothing except release whatever number of crabs.
@@ -949,6 +1093,9 @@ namespace RTE {
 		bool m_TakingKey = false; //!< Whether the settings panel is waiting for a key to bind (see IsTakingKey).
 		bool m_EndlessMetaGameMode; //!< Endless MetaGame mode.
 		bool m_ShowFPSAndVersion; //!< Whether the frame rate and version are shown in the top right (see ShowFPSAndVersion).
+		bool m_ShowNotices; //!< Whether short notices are shown at the top of the screen (see ShowNotices).
+		MapBrowserFilters m_MapBrowserFilters; //!< The map browser's kept filters and order (see MapBrowserFilterSettings).
+		std::string m_LastMap; //!< The map last played (see LastMap).
 		int m_NavDebugOverlay; //!< What the navigation debug overlay shows (see NavDebugOverlay).
 		int m_DebugTeam; //!< The team whose view the debug overlays show (see DebugTeam).
 		int m_UnitInspector; //!< Which units the unit inspector overlay labels (see UnitInspector).
@@ -962,6 +1109,21 @@ namespace RTE {
 		int m_SandboxSpawnSort; //!< How the sandbox's picture lists are sorted (see SandboxSpawnSort).
 		bool m_SandboxAttackPings; //!< Whether units coming under fire are pinged (see ShowSandboxAttackPings).
 		bool m_SandboxMinimap; //!< Whether the sandbox's map window is shown (see ShowSandboxMinimap).
+		bool m_BattleAlerts; //!< Whether Battle Command's alerts are listed (see ShowBattleAlerts).
+		int m_BattleAlertLines; //!< The most alerts listed at once (see BattleAlertLines).
+		int m_BattleAlertSeconds; //!< Seconds an alert stays listed (see BattleAlertSeconds).
+		bool m_BattleKillFeed; //!< Whether the kill feed is listed (see ShowBattleKillFeed).
+		int m_BattleKillLines; //!< The most kills listed at once (see BattleKillLines).
+		int m_BattleKillSeconds; //!< Seconds a kill stays listed (see BattleKillSeconds).
+		bool m_BattleAlertSounds; //!< Whether alerts play a sound (see BattleAlertSounds).
+		float m_BattleAlertVolume; //!< How loud they are (see BattleAlertVolume).
+		bool m_BattleAskFirst; //!< Whether the battle panel asks before losing a setup or a battle (see BattleAskFirst).
+		bool m_BattleShowInfo; //!< Whether the battle info panel is shown (see ShowBattleInfo).
+		bool m_BattleShowObjectives; //!< Whether battle objectives are lit up on the map (see ShowBattleObjectives).
+		int m_BattleObjectiveLook; //!< The look of zone objectives (see BattleObjectiveLook).
+		bool m_BattleShowSpawnZones; //!< Whether spawn zones are shown on the map (see ShowBattleSpawnZones).
+		bool m_BattleShowModeZones; //!< Whether a mode's own zones are shown on the map (see ShowBattleModeZones).
+		bool m_ArmyOverview; //!< Whether the Army overview window is shown (see ShowArmyOverview).
 		bool m_LightsBySource; //!< Whether the lighting-by-source readout is on (see ShowLightsBySource).
 		bool m_SandboxCharacterState; //!< Whether the sandbox's character state line is on (see ShowSandboxCharacterState).
 		bool m_SandboxAutoBattle; //!< Whether the sandbox's battle and colony readout is on (see ShowSandboxAutoBattle). (Named for the auto battle the Battle Director replaced, so settings files keep it.)
@@ -992,6 +1154,11 @@ namespace RTE {
 		float m_AIThreatAvoidance; //!< How much safe-route units keep clear of enemies, 0 to 2 (see AIThreatAvoidance).
 		float m_AIRecklessness; //!< How reckless AI units are on the move, 0 to 1 (see AIRecklessness).
 		float m_AILadderGiveUpSeconds; //!< See AILadderGiveUpSeconds.
+		float m_CarriedWeightMultiplier = 1.0F; //!< See CarriedWeightMultiplier.
+		float m_LegStrength = 1.0F; //!< See LegStrength.
+		int m_JetpackWeightCompensation = 0; //!< See JetpackWeightCompensation.
+		float m_OverloadSlowdown = 0.0F; //!< See OverloadSlowdown.
+		float m_JetpackFuelMultiplier = 1.0F; //!< See JetpackFuelMultiplier.
 		int m_AILadderTeamStalls; //!< See AILadderTeamStalls.
 		bool m_AIGrabsLaddersOnPurpose; //!< See AIGrabsLaddersOnPurpose.
 		bool m_AIGrabsLaddersMidJet; //!< See AIGrabsLaddersMidJet.
@@ -1016,6 +1183,7 @@ namespace RTE {
 		bool m_AISquadFollowsYou; //!< See AISquadFollowsYou.
 		bool m_AIUsesVehicles; //!< Whether AI units use vehicles (see AIUsesVehicles).
 		bool m_DeadCrewFallOut; //!< Whether crew killed in a vehicle fall out of it (see DeadCrewFallOut).
+		bool m_PassengersFireFromVehicles; //!< Whether passengers shoot out of vehicles built to let them (see PassengersFireFromVehicles).
 		DirectOrderTuning m_DirectOrders; //!< How units behave on a direct order (see DirectOrders).
 		bool m_EnableCrabBombs; //!< Whether all actors (except Brains and Doors) should be annihilated if a number exceeding the crab bomb threshold is released at once.
 		int m_CrabBombThreshold; //!< The number of crabs needed to be released at once to trigger the crab bomb effect.

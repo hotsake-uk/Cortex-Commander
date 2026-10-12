@@ -187,23 +187,28 @@ namespace SandboxDetail {
 			const bool ready = running && left <= 0.0F && !fogless;
 			char seconds[16];
 			std::snprintf(seconds, sizeof(seconds), "%.0f", std::ceil(left));
-			char tip[400];
-			std::snprintf(tip, sizeof(tip), "%s: %s\nThen %.0f seconds before it can be used again.%s%s%s", info.Name, info.Tip, info.Cooldown, info.Radius > 0.0F ? "\nClick, then click on the map where." : "",
-			              power <= static_cast<int>(CommanderPower::Orbital) ? "\nNot on or above an enemy spawn zone." : "",
+			char tip[512];
+			std::snprintf(tip, sizeof(tip), "%s: %s\nThen %.0f seconds before it can be used again.%s%s\nKey: Alt+Shift+%d, as a click.%s", info.Name, info.Tip, info.Cooldown, info.Radius > 0.0F ? "\nClick, then click on the map where." : "",
+			              power <= static_cast<int>(CommanderPower::Orbital) ? "\nNot on or above an enemy spawn zone." : "", power + 1,
 			              !running ? "\nOnce the battle is on." : (fogless ? "\nOnly with fog of war on." : (left > 0.0F ? "\nCooling down." : "")));
 			if (power > 0) {
 				ImGui::SameLine();
 			}
 			ImGui::PushID(power + 900);
 			const bool waiting = s_PendingPower == power;
-			if (BarTile("##power", info.Name, tip, waiting, [&](ImDrawList* tileList, ImVec2 at, float room) {
-				    DrawIcon(tileList, icons[power], at, room / 12.0F, ready ? IM_COL32(239, 160, 100, 255) : IM_COL32(150, 150, 150, 110));
-				    if (left > 0.0F) {
-					    PictureText(tileList, at, room, IM_COL32(255, 220, 120, 255), seconds);
-				    }
-			    },
-			            ready ? 0 : IM_COL32(160, 160, 160, 160)) == 1 &&
-			    ready) {
+			char key[4];
+			std::snprintf(key, sizeof(key), "%d", power + 1);
+			const int clicked = BarTile("##power", info.Name, tip, waiting, [&](ImDrawList* tileList, ImVec2 at, float room) {
+				DrawIcon(tileList, icons[power], at, room / 12.0F, ready ? IM_COL32(239, 160, 100, 255) : IM_COL32(150, 150, 150, 110));
+				if (left > 0.0F) {
+					PictureText(tileList, at, room, IM_COL32(255, 220, 120, 255), seconds);
+				}
+				// Its key (Alt+Shift and this number), faintly in the top corner.
+				tileList->AddText(ImVec2(at.x + room - ImGui::CalcTextSize(key).x, at.y), IM_COL32(220, 220, 220, 130), key);
+			},
+			                            ready ? 0 : IM_COL32(160, 160, 160, 160));
+			// Alt+Shift and the power's number: as a click (B-1).
+			if ((clicked == 1 || ToolbarKeyPressed(power + 1, true)) && ready) {
 				if (info.Radius > 0.0F) {
 					s_PendingPower = waiting ? -1 : power;
 					s_ToolIndex = ToolIndex(waiting ? Tool::Command : Tool::PowerTarget);

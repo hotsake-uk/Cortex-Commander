@@ -31,6 +31,9 @@ namespace RTE {
 		/// Toggles the World Debug window (time of day, weather, lighting and game speed), bound to F6.
 		void ToggleWorldDebug() { m_ShowWorldDebug = !m_ShowWorldDebug; }
 
+		/// Opens the settings panel (F6) where it was left, as the pause menu's Settings Panel button does.
+		void ShowSettingsPanel() { m_ShowWorldDebug = true; }
+
 		/// Toggles photo mode (F8): frozen time, a free camera, look controls and window resolution screenshots.
 		void TogglePhotoMode() { m_ShowPhotoMode = !m_ShowPhotoMode; }
 

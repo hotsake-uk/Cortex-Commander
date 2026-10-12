@@ -8,6 +8,7 @@
 #include "Sandbox.h"
 #include "SceneMan.h"
 #include "SettingsMan.h"
+#include "TimerMan.h"
 
 #include <algorithm>
 #include <array>
@@ -35,10 +36,14 @@ void CrewSeats::Clear() {
 	m_ExitOffset.SetXY(20.0F, -10.0F);
 	m_BoardingReach = 24.0F;
 	m_DrawsCrew = true;
+	m_PassengersCanFire = false;
+	m_PassengerTargetTimer.Reset();
 	m_LastVel.Reset();
 	m_BoardingTimer.Reset();
 	m_BoarderInReach = nullptr;
 	m_BoarderPushes = false;
+	m_SeatToLoad = -1;
+	m_RiderToLoad = false;
 }
 
 void CrewSeats::Create(const CrewSeats& reference) {
@@ -51,6 +56,7 @@ void CrewSeats::Create(const CrewSeats& reference) {
 	m_ExitOffset = reference.m_ExitOffset;
 	m_BoardingReach = reference.m_BoardingReach;
 	m_DrawsCrew = reference.m_DrawsCrew;
+	m_PassengersCanFire = reference.m_PassengersCanFire;
 }
 
 void CrewSeats::DeleteCrew() {
@@ -62,6 +68,20 @@ void CrewSeats::DeleteCrew() {
 		delete slumped.Body;
 	}
 	m_Slumped.clear();
+}
+
+void CrewSeats::LoadSeated(Actor* unit) {
+	const int seat = m_SeatToLoad;
+	m_SeatToLoad = -1;
+	if (!unit) {
+		return;
+	}
+	if (seat < 0 || seat >= GetSeatCount() || m_Seats[seat].Occupant) {
+		delete unit;
+		return;
+	}
+	m_Seats[seat].Occupant = unit;
+	m_Seats[seat].Rider = m_RiderToLoad;
 }
 
 void CrewSeats::SetOccupant(int seat, Actor* unit) {
@@ -465,6 +485,83 @@ void CrewSeats::PlaceCrew() const {
 		slumped.Body->SetHFlipped(flipped);
 		slumped.Body->CorrectAttachableAndWoundPositionsAndRotations();
 	}
+}
+
+void CrewSeats::UpdatePassengerFire() {
+	if (!m_PassengersCanFire || !g_SettingsMan.PassengersFireFromVehicles() || m_Host->GetStatus() == Actor::DYING || m_Host->GetStatus() == Actor::DEAD) {
+		return;
+	}
+	bool lookRound = m_PassengerTargetTimer.IsPastSimMS(400);
+	if (lookRound) {
+		m_PassengerTargetTimer.Reset();
+	}
+	const Controller* controller = m_Host->GetController();
+	int playerSeat = controller->IsPlayerControlled() ? GetControlSeat() : -1;
+	float deltaTime = g_TimerMan.GetDeltaTimeSecs();
+	// (Seat 0's unit drives or flies it, and never shoots; gunners man its guns.)
+	for (int seat = 1; seat < GetSeatCount(); ++seat) {
+		AHuman* unit = dynamic_cast<AHuman*>(GetOccupant(seat));
+		if (!unit || IsGunnerSeat(seat) || unit->GetHealth() <= 0.0F) {
+			continue;
+		}
+		if (seat == playerSeat) {
+			// The player aims as on foot: the aim keys swing it, the mouse or stick points it.
+			m_Seats[seat].TargetID = 0;
+			float aim = unit->GetAimAngle(false);
+			float speed = controller->IsState(AIM_SHARP) ? 0.6F : 1.8F;
+			if (controller->IsState(AIM_UP)) {
+				aim += speed * deltaTime;
+			} else if (controller->IsState(AIM_DOWN)) {
+				aim -= speed * deltaTime;
+			}
+			if (Vector analogAim = controller->GetAnalogAim(); analogAim.MagnitudeIsGreaterThan(0.1F)) {
+				// (Behind it, the aim stays at the end of its swing on that side, up or down.)
+				aim = std::atan2(-analogAim.m_Y, std::max(analogAim.m_X * m_Host->GetFlipFactor(), 0.0F));
+			}
+			unit->UpdateFiringFromSeat(aim, controller->IsState(WEAPON_FIRE), controller->IsState(WEAPON_RELOAD), false, m_Host);
+			continue;
+		}
+		if (lookRound) {
+			m_Seats[seat].TargetID = FindPassengerTarget(unit);
+		}
+		const Actor* target = m_Seats[seat].TargetID ? dynamic_cast<const Actor*>(g_MovableMan.FindObjectByUniqueID(m_Seats[seat].TargetID)) : nullptr;
+		if (target && (target->IsDead() || target->IsSetToDelete() || target->GetHealth() <= 0.0F)) {
+			m_Seats[seat].TargetID = 0;
+			target = nullptr;
+		}
+		float aim = 0.0F;
+		if (target) {
+			// At its middle, a little high: the chest more than the legs.
+			Vector toTarget = g_SceneMan.ShortestDistance(unit->GetEyePos(), target->GetPos() - Vector(0.0F, target->GetHeight() * 0.1F));
+			aim = std::atan2(-toTarget.m_Y, std::max(toTarget.m_X * m_Host->GetFlipFactor(), 0.0F));
+		}
+		unit->UpdateFiringFromSeat(aim, target != nullptr, false, true, m_Host);
+	}
+}
+
+long CrewSeats::FindPassengerTarget(const Actor* unit) const {
+	const Vector eye = unit->GetEyePos();
+	const int team = m_Host->GetTeam();
+	const float flip = m_Host->GetFlipFactor();
+	float bestDistance = unit->GetSightDistance();
+	long best = 0;
+	for (const Actor* actor: g_MovableMan.GetActorList()) {
+		if (actor == m_Host || actor->GetTeam() == team || actor->GetTeam() == Activity::NoTeam || actor->IsDead() || actor->IsSetToDelete() || actor->GetHealth() <= 0.0F) {
+			continue;
+		}
+		Vector toTarget = g_SceneMan.ShortestDistance(eye, actor->GetPos());
+		// (In front, the way it faces, within the swing of their arm: they can't turn round in the seat.)
+		if (toTarget.m_X * flip <= 0.0F || toTarget.MagnitudeIsGreaterThan(bestDistance) || std::abs(std::atan2(-toTarget.m_Y, std::abs(toTarget.m_X))) > unit->GetAimRange()) {
+			continue;
+		}
+		Vector blocked;
+		if (g_SceneMan.CastStrengthRay(eye, toTarget, 5.0F, blocked, 3)) {
+			continue;
+		}
+		bestDistance = toTarget.GetMagnitude();
+		best = static_cast<long>(actor->GetUniqueID());
+	}
+	return best;
 }
 
 void CrewSeats::Draw(BITMAP* targetBitmap, const Vector& targetPos, DrawMode mode, bool onlyPhysical) const {

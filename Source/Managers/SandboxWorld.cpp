@@ -393,6 +393,11 @@ namespace SandboxDetail {
 			// "Make it fall": its pieces gone from wherever they are, and the ground back where it was.
 			TerrainCollapse::TakeBackDrop(step.Drop);
 		}
+		if (step.HoldZones) {
+			back.HoldZones = true;
+			back.HoldZonesBefore = TerrainCollapse::GetHoldZones();
+			TerrainCollapse::SetHoldZones(step.HoldZonesBefore);
+		}
 		if (step.Rope != 0) {
 			// A rope: taken away, the one being put down included (the next click starts another).
 			RopeSim::Remove(step.Rope);
@@ -3111,7 +3116,7 @@ namespace SandboxDetail {
 				}
 				break;
 			case Tool::PlayerRemake:
-				if (Actor* old = GetRef(s_PlayerUnit)) {
+				if (Actor* old = TakeOutPlayer()) {
 					Vector place = old->GetPos();
 					StopFlying();
 					old->SetToDelete(true);
@@ -3120,12 +3125,7 @@ namespace SandboxDetail {
 				}
 				break;
 			case Tool::PlayerRemove:
-				if (Actor* old = GetRef(s_PlayerUnit)) {
-					StopFlying();
-					old->SetToDelete(true);
-				}
-				s_PlayerUnit = UnitRef();
-				s_PlayerEnterPending = 0;
+				RemovePlayer();
 				break;
 			case Tool::Remove:
 				if (MovableObject* object = ObjectUnder(at, false)) {
@@ -3350,6 +3350,29 @@ namespace SandboxDetail {
 			case Tool::RedoTerrain:
 				RedoPaint();
 				break;
+			case Tool::HoldGround: {
+				// A hold zone put down (Points), or with Choice 1 the one at Position taken away, with 2 all of them: a step of its own in the undo.
+				std::vector<std::vector<Vector>> before = TerrainCollapse::GetHoldZones();
+				bool changed = false;
+				if (stroke.Choice == 1) {
+					changed = TerrainCollapse::RemoveHoldZoneAt(stroke.Position);
+				} else if (stroke.Choice == 2) {
+					// Every one taken away.
+					changed = !before.empty();
+					TerrainCollapse::SetHoldZones({});
+				} else if (stroke.Points.size() >= 3) {
+					TerrainCollapse::AddHoldZone(stroke.Points);
+					changed = true;
+				}
+				if (changed) {
+					PushUndoStep();
+					s_PaintUndo.back().HoldZones = true;
+					s_PaintUndo.back().HoldZonesBefore = std::move(before);
+					s_PaintUndo.back().Sealed = true;
+					TrimUndo();
+				}
+				break;
+			}
 			case Tool::CollapseArea: {
 				Vector end = stroke.Position + g_SceneMan.ShortestDistance(stroke.Position, stroke.Position2, g_SceneMan.SceneWrapsX());
 				int left = static_cast<int>(std::floor(std::min(stroke.Position.m_X, end.m_X)));

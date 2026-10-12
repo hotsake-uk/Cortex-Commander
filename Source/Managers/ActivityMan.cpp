@@ -3,6 +3,7 @@
 #include "TerrainCandle.h"
 #include "RopeSim.h"
 #include "FluidSim.h"
+#include "TerrainCollapse.h"
 #include "Activity.h"
 
 #include "CameraMan.h"
@@ -43,9 +44,15 @@
 #include <SDL3_image/SDL_image.h>
 
 #include "Sandbox.h"
+#include "Colony.h"
+#include "MovableMan.h"
+#include "ACShip.h"
+#include "AVehicle.h"
+#include "MapBrowser.h"
 
 #include <array>
 #include <execution>
+#include <unordered_map>
 
 using namespace RTE;
 
@@ -173,6 +180,11 @@ bool ActivityMan::SaveCurrentGame(const std::string& fileName) {
 	writer->NewPropertyWithValue("TerrainCandleState", TerrainCandle::GetSaveState());
 	writer->NewPropertyWithValue("RopeState", RopeSim::GetSaveState());
 	writer->NewPropertyWithValue("FlowingLiquidState", FluidSim::GetSaveState());
+	// The colony's buildings (the sandbox's): their units are saved with the scene, marked with the building they belong to.
+	if (std::string colony = Colony::GetSaveState(); !colony.empty()) {
+		writer->NewPropertyWithValue("ColonyState", colony);
+	}
+	writer->NewPropertyWithValue("HoldZones", TerrainCollapse::GetHoldZonesSaveState());
 
 	// Save a small little file with index info (activity and original scene name) so we can display info in the samegame menu without needing to decompress and read through the entire zip
 	std::unique_ptr<std::stringstream> indexStream = std::make_unique<std::stringstream>();
@@ -278,6 +290,69 @@ bool ActivityMan::SaveCurrentGame(const std::string& fileName) {
 }
 
 std::string ActivityMan::s_PinsOfLoadedGame;
+bool ActivityMan::s_StartingSavedGame = false;
+std::string ActivityMan::s_ColonyOfLoadedGame;
+
+namespace {
+	/// The number values on a unit that hold another unit's unique ID: an AI's target, the one its medic tends, a creature's prey, a squad's
+	/// target, a summoner.
+	constexpr std::array<const char*, 5> c_UniqueIDValueKeys = {"AITargetID", "AIMedicFor", "CreatureHuntID", "SandboxSquadTarget", "MedievalSummonerUID"};
+
+	/// A saved game's units get new unique IDs when it is loaded. Each was saved with its old one (c_SavedUniqueIDKey, Scene::SaveSceneObject):
+	/// what pointed at a unit by its old ID (an attack order's target, an AI's) is pointed at its new one, or let go of if it wasn't saved.
+	/// Without this an old ID could match a different unit in the new game, as the IDs count from 1 again.
+	void RemapLoadedUniqueIDs() {
+		std::list<SceneObject*> placed;
+		g_MovableMan.GetAllActors(false, placed);
+		std::vector<Actor*> units;
+		for (SceneObject* object: placed) {
+			Actor* unit = dynamic_cast<Actor*>(object);
+			if (!unit) {
+				continue;
+			}
+			units.push_back(unit);
+			// (And whoever sits in a vehicle or a ship, out of the scene.)
+			if (const AVehicle* vehicle = dynamic_cast<const AVehicle*>(unit)) {
+				for (int seat = 0; seat < vehicle->GetSeatCount(); ++seat) {
+					if (Actor* crew = vehicle->GetSeatOccupant(seat)) {
+						units.push_back(crew);
+					}
+				}
+			} else if (const ACShip* ship = dynamic_cast<const ACShip*>(unit)) {
+				for (int seat = 0; seat < ship->GetSeatCount(); ++seat) {
+					if (Actor* crew = ship->GetSeatOccupant(seat)) {
+						units.push_back(crew);
+					}
+				}
+			}
+		}
+		std::unordered_map<long, long> newIDs;
+		for (Actor* unit: units) {
+			if (unit->NumberValueExists(c_SavedUniqueIDKey)) {
+				newIDs[static_cast<long>(unit->GetNumberValue(c_SavedUniqueIDKey))] = unit->GetUniqueID();
+				unit->RemoveNumberValue(c_SavedUniqueIDKey);
+			}
+		}
+		auto remapped = [&newIDs](long oldID) {
+			auto found = newIDs.find(oldID);
+			return found != newIDs.end() ? found->second : 0L;
+		};
+		for (Actor* unit: units) {
+			Actor::StandingOrder& order = unit->GetStandingOrder();
+			order.TargetID = order.TargetID != 0 ? remapped(order.TargetID) : 0;
+			order.AutoTargetID = order.AutoTargetID != 0 ? remapped(order.AutoTargetID) : 0;
+			for (const char* key: c_UniqueIDValueKeys) {
+				if (unit->NumberValueExists(key)) {
+					if (long newID = remapped(static_cast<long>(unit->GetNumberValue(key))); newID != 0) {
+						unit->SetNumberValue(key, static_cast<double>(newID));
+					} else {
+						unit->RemoveNumberValue(key);
+					}
+				}
+			}
+		}
+	}
+} // namespace
 
 bool ActivityMan::LoadAndLaunchGame(const std::string& fileName) {
 	std::string filePath = g_PresetMan.GetFullModulePath(c_UserScriptedSavesModuleName) + "/" + fileName;
@@ -378,6 +453,8 @@ bool ActivityMan::LoadAndLaunchGame(const std::string& fileName) {
 	std::string originalScenePresetName = fileName;
 	bool placeObjectsIfSceneIsRestarted = true;
 	bool placeUnitsIfSceneIsRestarted = true;
+	// (A save from before hold zones had none: the loaded game starts with none, not those of the game played before.)
+	TerrainCollapse::SetHoldZonesLoadState(std::string());
 	while (reader.NextProperty()) {
 		std::string propName = reader.ReadPropName();
 		if (propName == "Activity") {
@@ -398,6 +475,10 @@ bool ActivityMan::LoadAndLaunchGame(const std::string& fileName) {
 			RopeSim::SetPendingLoadState(reader.ReadPropValue());
 		} else if (propName == "FlowingLiquidState") {
 			FluidSim::SetPendingLoadState(reader.ReadPropValue());
+		} else if (propName == "ColonyState") {
+			s_ColonyOfLoadedGame = reader.ReadPropValue();
+		} else if (propName == "HoldZones") {
+			TerrainCollapse::SetHoldZonesLoadState(reader.ReadPropValue());
 		} else if (propName == "SandboxPins") {
 			s_PinsOfLoadedGame = reader.ReadPropValue();
 		}
@@ -414,7 +495,9 @@ bool ActivityMan::LoadAndLaunchGame(const std::string& fileName) {
 	// However, saving a game you've already saved will end up with its OriginalScenePresetName set to the filename, which will screw up restarting the Activity, so we set its PresetName here.
 	scene->SetPresetName(originalScenePresetName);
 	// For starting Activity, we need to directly clone the Activity we want to start.
+	s_StartingSavedGame = true;
 	StartActivity(dynamic_cast<GAScripted*>(activity->Clone()));
+	s_StartingSavedGame = false;
 	// When this method exits, our Scene object will be destroyed, which will cause problems if you try to restart it. To avoid this, set the Scene to load to the preset object with the same name.
 	g_SceneMan.SetSceneToLoad(originalScenePresetName, placeObjectsIfSceneIsRestarted, placeUnitsIfSceneIsRestarted);
 
@@ -523,6 +606,12 @@ int ActivityMan::StartActivity(Activity* activity) {
 
 	m_Activity->SetupPlayers();
 	int error = m_Activity->Start();
+	// (A saved game's units are in the scene now, with new IDs.)
+	if (error >= 0 && s_StartingSavedGame) {
+		RemapLoadedUniqueIDs();
+		Colony::LoadSaveState(s_ColonyOfLoadedGame);
+	}
+	s_ColonyOfLoadedGame.clear();
 
 	if (error >= 0)
 		g_ConsoleMan.PrintString("SYSTEM: Activity \"" + m_Activity->GetPresetName() + "\" was successfully started");
@@ -530,6 +619,15 @@ int ActivityMan::StartActivity(Activity* activity) {
 		g_ConsoleMan.PrintString("ERROR: Activity \"" + m_Activity->GetPresetName() + "\" was NOT started due to errors!");
 		m_Activity->SetActivityState(Activity::HasError);
 		return error;
+	}
+
+	// The map is noted as played (U-3), for the map browser's recently played list and the main menu's "Continue on": a real map that can be
+	// started again, not a saved game's own copy, a campaign scene or an editor's.
+	if (const Scene* scene = g_SceneMan.GetScene(); scene && !dynamic_cast<const EditorActivity*>(m_Activity.get()) && !scene->IsSavedGameInternal() && !scene->IsMetagameInternal()) {
+		const std::string& sceneName = scene->GetPresetName();
+		if (sceneName != "Null Scene" && sceneName != "Editor Scene" && g_PresetMan.GetEntityPreset("Scene", sceneName)) {
+			MapBrowser::NoteMapPlayed(sceneName);
+		}
 	}
 
 	// Close the console in case it was open by the player or because of a previous Activity error.

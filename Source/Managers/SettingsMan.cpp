@@ -150,6 +150,7 @@ void SettingsMan::Clear() {
 	m_AIThreatAvoidance = 1.0F;
 	m_AIRecklessness = 0.5F;
 	ResetLadderSettings();
+	ResetCarryWeightSettings();
 	m_AISpawnDiggerChance = 0.0F;
 	m_BleedOutChance = 0.0F;
 	m_WoundBleedTime = 1.0F;
@@ -168,6 +169,7 @@ void SettingsMan::Clear() {
 	m_AIScavengesBetterWeapons = true;
 	m_AIUnitsCallLifts = true;
 	m_DeadCrewFallOut = true;
+	m_PassengersFireFromVehicles = true;
 	m_DirectOrders = DirectOrderTuning();
 	m_NavDebugOverlay = 0;
 	m_DebugTeam = 0;
@@ -189,6 +191,21 @@ void SettingsMan::Clear() {
 	m_SandboxSpawnSort = 0;
 	m_SandboxAttackPings = true;
 	m_SandboxMinimap = false;
+	m_BattleAlerts = true;
+	m_BattleAlertLines = 6;
+	m_BattleAlertSeconds = 12;
+	m_BattleKillFeed = true;
+	m_BattleKillLines = 6;
+	m_BattleKillSeconds = 10;
+	m_BattleAlertSounds = true;
+	m_BattleAlertVolume = 0.6F;
+	m_BattleAskFirst = true;
+	m_BattleShowInfo = true;
+	m_BattleShowObjectives = true;
+	m_BattleObjectiveLook = 0;
+	m_BattleShowSpawnZones = true;
+	m_BattleShowModeZones = true;
+	m_ArmyOverview = false;
 	m_LightsBySource = false;
 	m_SandboxCharacterState = false;
 	m_SandboxAutoBattle = false;
@@ -203,6 +220,9 @@ void SettingsMan::Clear() {
 	m_DebugChannels = 0;
 	m_TraceAllUnits = false;
 	m_ShowFPSAndVersion = true;
+	m_ShowNotices = true;
+	m_MapBrowserFilters = MapBrowserFilters();
+	m_LastMap.clear();
 	m_CrabBombThreshold = 42;
 	m_ShowEnemyHUD = true;
 	m_ShowUnitTags = false;
@@ -390,6 +410,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("TreeStrayBulletPercent", { TerrainTrees::SetStrayBulletPercent(std::stoi(reader.ReadPropValue())); });
 	MatchProperty("UnitsBumpIntoTrees", { TerrainTrees::SetUnitsCollide(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("FallingGroundPassesTrees", { TerrainCollapse::SetPassesTrees(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("ShowHoldZones", { TerrainCollapse::SetShowHoldZones(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("ZeroGTerrainFollowsGravity", { ZeroGravity::SetTerrainFollowsGravity(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("ZeroGLiquidsFloat", { ZeroGravity::SetLiquidsFloat(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("ZeroGCountZones", { ZeroGravity::SetCountZones(std::stoi(reader.ReadPropValue()) != 0); });
@@ -505,6 +526,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("WeatherGlow", { g_PostProcessMan.GetLightingSettings().WeatherGlow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WeatherIntensity", { g_PostProcessMan.GetLightingSettings().WeatherIntensity = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WeatherSpeed", { g_PostProcessMan.GetLightingSettings().WeatherSpeed = std::stof(reader.ReadPropValue()); });
+	MatchProperty("WeatherEverywhere", { g_PostProcessMan.GetLightingSettings().WeatherEverywhere = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("Wind", { g_PostProcessMan.GetLightingSettings().Wind = std::stof(reader.ReadPropValue()); });
 	MatchProperty("TimeOfDay", { g_PostProcessMan.GetLightingSettings().TimeOfDay = std::stof(reader.ReadPropValue()); });
 	MatchProperty("DayLengthMinutes", { g_PostProcessMan.GetLightingSettings().DayLengthMinutes = std::stof(reader.ReadPropValue()); });
@@ -807,6 +829,11 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AIThreatAvoidance", { float scale = 1.0F; reader >> scale; SetAIThreatAvoidance(scale); });
 	MatchProperty("AIRecklessness", { float recklessness = 0.5F; reader >> recklessness; SetAIRecklessness(recklessness); });
 	MatchProperty("AILadderGiveUpSeconds", { float seconds = 1.5F; reader >> seconds; SetAILadderGiveUpSeconds(seconds); });
+	MatchProperty("CarriedWeightMultiplier", { float multiplier = 1.0F; reader >> multiplier; SetCarriedWeightMultiplier(multiplier); });
+	MatchProperty("LegStrength", { float strength = 1.0F; reader >> strength; SetLegStrength(strength); });
+	MatchProperty("JetpackWeightCompensation", { int mode = 0; reader >> mode; SetJetpackWeightCompensation(mode); });
+	MatchProperty("OverloadSlowdown", { float slowdown = 0.0F; reader >> slowdown; SetOverloadSlowdown(slowdown); });
+	MatchProperty("JetpackFuelMultiplier", { float multiplier = 1.0F; reader >> multiplier; SetJetpackFuelMultiplier(multiplier); });
 	MatchProperty("AILadderTeamStalls", { int stalls = 2; reader >> stalls; SetAILadderTeamStalls(stalls); });
 	MatchProperty("AIGrabsLaddersOnPurpose", { reader >> m_AIGrabsLaddersOnPurpose; });
 	MatchProperty("AIGrabsLaddersMidJet", { reader >> m_AIGrabsLaddersMidJet; });
@@ -831,6 +858,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AIScavengesBetterWeapons", { reader >> m_AIScavengesBetterWeapons; });
 	MatchProperty("AIUnitsCallLifts", { reader >> m_AIUnitsCallLifts; });
 	MatchProperty("DeadCrewFallOut", { reader >> m_DeadCrewFallOut; });
+	MatchProperty("PassengersFireFromVehicles", { reader >> m_PassengersFireFromVehicles; });
 	MatchProperty("DirectCaution", { reader >> m_DirectOrders.Caution; m_DirectOrders.Caution = std::clamp(m_DirectOrders.Caution, 0.0F, 1.0F); });
 	MatchProperty("DirectFlightCost", { reader >> m_DirectOrders.FlightCostScale; m_DirectOrders.FlightCostScale = std::clamp(m_DirectOrders.FlightCostScale, 0.2F, 1.0F); });
 	MatchProperty("DirectFuelShare", { reader >> m_DirectOrders.FuelShare; m_DirectOrders.FuelShare = std::clamp(m_DirectOrders.FuelShare, 0.1F, 1.2F); });
@@ -892,6 +920,21 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SandboxSpawnSort", { int which = 0; reader >> which; SetSandboxSpawnSort(which); });
 	MatchProperty("SandboxAttackPings", { reader >> m_SandboxAttackPings; });
 	MatchProperty("SandboxMinimap", { reader >> m_SandboxMinimap; });
+	MatchProperty("BattleAlerts", { reader >> m_BattleAlerts; });
+	MatchProperty("BattleAlertLines", { int lines = 6; reader >> lines; SetBattleAlertLines(lines); });
+	MatchProperty("BattleAlertSeconds", { int seconds = 12; reader >> seconds; SetBattleAlertSeconds(seconds); });
+	MatchProperty("BattleKillFeed", { reader >> m_BattleKillFeed; });
+	MatchProperty("BattleKillLines", { int lines = 6; reader >> lines; SetBattleKillLines(lines); });
+	MatchProperty("BattleKillSeconds", { int seconds = 10; reader >> seconds; SetBattleKillSeconds(seconds); });
+	MatchProperty("BattleAlertSounds", { reader >> m_BattleAlertSounds; });
+	MatchProperty("BattleAlertVolume", { float volume = 0.6F; reader >> volume; SetBattleAlertVolume(volume); });
+	MatchProperty("BattleAskFirst", { reader >> m_BattleAskFirst; });
+	MatchProperty("BattleShowInfo", { reader >> m_BattleShowInfo; });
+	MatchProperty("BattleShowObjectives", { reader >> m_BattleShowObjectives; });
+	MatchProperty("BattleObjectiveLook", { int look = 0; reader >> look; SetBattleObjectiveLook(look); });
+	MatchProperty("BattleShowSpawnZones", { reader >> m_BattleShowSpawnZones; });
+	MatchProperty("BattleShowModeZones", { reader >> m_BattleShowModeZones; });
+	MatchProperty("ArmyOverview", { reader >> m_ArmyOverview; });
 	MatchProperty("LightsBySource", { reader >> m_LightsBySource; });
 	MatchProperty("SandboxCharacterState", { reader >> m_SandboxCharacterState; });
 	MatchProperty("SandboxAutoBattle", { reader >> m_SandboxAutoBattle; });
@@ -906,6 +949,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DebugChannels", { reader >> m_DebugChannels; });
 	MatchProperty("TraceAllUnits", { reader >> m_TraceAllUnits; });
 	MatchProperty("ShowFPSAndVersion", { reader >> m_ShowFPSAndVersion; });
+	MatchProperty("ShowNotices", { reader >> m_ShowNotices; });
 	MatchProperty("CrabBombThreshold", { reader >> m_CrabBombThreshold; });
 	MatchProperty("ShowEnemyHUD", { reader >> m_ShowEnemyHUD; });
 	MatchProperty("ShowUnitTags", { reader >> m_ShowUnitTags; });
@@ -926,6 +970,13 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DefaultActivityType", { reader >> g_ActivityMan.m_DefaultActivityType; });
 	MatchProperty("DefaultActivityName", { reader >> g_ActivityMan.m_DefaultActivityName; });
 	MatchProperty("DefaultSceneName", { reader >> g_SceneMan.m_DefaultSceneName; });
+	MatchProperty("LastMap", { m_LastMap = reader.ReadPropValue(); });
+	MatchProperty("MapBrowserMod", { m_MapBrowserFilters.Mod = reader.ReadPropValue(); });
+	MatchProperty("MapBrowserType", { reader >> m_MapBrowserFilters.Source; });
+	MatchProperty("MapBrowserSize", { reader >> m_MapBrowserFilters.Size; });
+	MatchProperty("MapBrowserFavouritesOnly", { reader >> m_MapBrowserFilters.OnlyFavourites; });
+	MatchProperty("MapBrowserRecentOnly", { reader >> m_MapBrowserFilters.OnlyRecent; });
+	MatchProperty("MapBrowserSort", { reader >> m_MapBrowserFilters.Sort; });
 	MatchProperty("DisableLuaJIT", { reader >> m_DisableLuaJIT; });
 	MatchProperty("EnableLuaDebugging", { reader >> m_EnableLuaDebugging; });
 	MatchProperty("RecommendedMOIDCount", { reader >> m_RecommendedMOIDCount; });
@@ -1025,6 +1076,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("WeatherGlow", lighting.WeatherGlow);
 	writer.NewPropertyWithValue("WeatherIntensity", lighting.WeatherIntensity);
 	writer.NewPropertyWithValue("WeatherSpeed", lighting.WeatherSpeed);
+	writer.NewPropertyWithValue("WeatherEverywhere", lighting.WeatherEverywhere);
 	writer.NewPropertyWithValue("Wind", lighting.Wind);
 	writer.NewPropertyWithValue("TimeOfDay", lighting.TimeOfDay);
 	writer.NewPropertyWithValue("DayLengthMinutes", lighting.DayLengthMinutes);
@@ -1240,6 +1292,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("UnitsBumpIntoTrees", TerrainTrees::UnitsCollide());
 	writer.NewPropertyWithValue("TreeStrayBulletPercent", TerrainTrees::StrayBulletPercent());
 	writer.NewPropertyWithValue("FallingGroundPassesTrees", TerrainCollapse::PassesTrees());
+	writer.NewPropertyWithValue("ShowHoldZones", TerrainCollapse::ShowsHoldZones());
 	writer.NewPropertyWithValue("ZeroGTerrainFollowsGravity", ZeroGravity::TerrainFollowsGravity());
 	writer.NewPropertyWithValue("ZeroGLiquidsFloat", ZeroGravity::LiquidsFloat());
 	writer.NewPropertyWithValue("ZeroGCountZones", ZeroGravity::CountZones());
@@ -1328,6 +1381,11 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("WeaponTerrainDamage", m_WeaponTerrainDamage);
 	writer.NewPropertyWithValue("AIRecklessness", m_AIRecklessness);
 	writer.NewPropertyWithValue("AILadderGiveUpSeconds", m_AILadderGiveUpSeconds);
+	writer.NewPropertyWithValue("CarriedWeightMultiplier", m_CarriedWeightMultiplier);
+	writer.NewPropertyWithValue("LegStrength", m_LegStrength);
+	writer.NewPropertyWithValue("JetpackWeightCompensation", m_JetpackWeightCompensation);
+	writer.NewPropertyWithValue("OverloadSlowdown", m_OverloadSlowdown);
+	writer.NewPropertyWithValue("JetpackFuelMultiplier", m_JetpackFuelMultiplier);
 	writer.NewPropertyWithValue("AILadderTeamStalls", m_AILadderTeamStalls);
 	writer.NewPropertyWithValue("AIGrabsLaddersOnPurpose", m_AIGrabsLaddersOnPurpose);
 	writer.NewPropertyWithValue("AIGrabsLaddersMidJet", m_AIGrabsLaddersMidJet);
@@ -1347,6 +1405,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AIScavengesBetterWeapons", m_AIScavengesBetterWeapons);
 	writer.NewPropertyWithValue("AIUnitsCallLifts", m_AIUnitsCallLifts);
 	writer.NewPropertyWithValue("DeadCrewFallOut", m_DeadCrewFallOut);
+	writer.NewPropertyWithValue("PassengersFireFromVehicles", m_PassengersFireFromVehicles);
 	writer.NewPropertyWithValue("DirectCaution", m_DirectOrders.Caution);
 	writer.NewPropertyWithValue("DirectFlightCost", m_DirectOrders.FlightCostScale);
 	writer.NewPropertyWithValue("DirectFuelShare", m_DirectOrders.FuelShare);
@@ -1372,6 +1431,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("CautiousTouchdown", m_DirectOrders.CautiousTouchdown);
 	writer.NewPropertyWithValue("CautiousEnemyAvoidance", m_DirectOrders.CautiousEnemyAvoidance);
 	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
+	writer.NewPropertyWithValue("ShowNotices", m_ShowNotices);
 	writer.NewPropertyWithValue("ModernHUD", ModernHUD::IsEnabled());
 	writer.NewPropertyWithValue("UILight", ToolLight::Strength);
 	writer.NewPropertyWithValue("UILightOwn", ToolLight::Mode == ToolLight::Source::OwnLight);
@@ -1471,6 +1531,21 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 		writer.NewPropertyWithValue("SandboxSpawnSort", m_SandboxSpawnSort);
 		writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
 		writer.NewPropertyWithValue("SandboxMinimap", m_SandboxMinimap);
+		writer.NewPropertyWithValue("BattleAlerts", m_BattleAlerts);
+		writer.NewPropertyWithValue("BattleAlertLines", m_BattleAlertLines);
+		writer.NewPropertyWithValue("BattleAlertSeconds", m_BattleAlertSeconds);
+		writer.NewPropertyWithValue("BattleKillFeed", m_BattleKillFeed);
+		writer.NewPropertyWithValue("BattleKillLines", m_BattleKillLines);
+		writer.NewPropertyWithValue("BattleKillSeconds", m_BattleKillSeconds);
+		writer.NewPropertyWithValue("BattleAlertSounds", m_BattleAlertSounds);
+		writer.NewPropertyWithValue("BattleAlertVolume", m_BattleAlertVolume);
+		writer.NewPropertyWithValue("BattleAskFirst", m_BattleAskFirst);
+		writer.NewPropertyWithValue("BattleShowInfo", m_BattleShowInfo);
+		writer.NewPropertyWithValue("BattleShowObjectives", m_BattleShowObjectives);
+		writer.NewPropertyWithValue("BattleObjectiveLook", m_BattleObjectiveLook);
+		writer.NewPropertyWithValue("BattleShowSpawnZones", m_BattleShowSpawnZones);
+		writer.NewPropertyWithValue("BattleShowModeZones", m_BattleShowModeZones);
+		writer.NewPropertyWithValue("ArmyOverview", m_ArmyOverview);
 		writer.NewPropertyWithValue("SandboxBarRight", m_SandboxBarRight);
 		writer.NewPropertyWithValue("ScreenShakeStrength", g_CameraMan.m_ScreenShakeStrength);
 
@@ -1657,6 +1732,21 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("SandboxSpawnSort", m_SandboxSpawnSort);
 	writer.NewPropertyWithValue("SandboxAttackPings", m_SandboxAttackPings);
 	writer.NewPropertyWithValue("SandboxMinimap", m_SandboxMinimap);
+	writer.NewPropertyWithValue("BattleAlerts", m_BattleAlerts);
+	writer.NewPropertyWithValue("BattleAlertLines", m_BattleAlertLines);
+	writer.NewPropertyWithValue("BattleAlertSeconds", m_BattleAlertSeconds);
+	writer.NewPropertyWithValue("BattleKillFeed", m_BattleKillFeed);
+	writer.NewPropertyWithValue("BattleKillLines", m_BattleKillLines);
+	writer.NewPropertyWithValue("BattleKillSeconds", m_BattleKillSeconds);
+	writer.NewPropertyWithValue("BattleAlertSounds", m_BattleAlertSounds);
+	writer.NewPropertyWithValue("BattleAlertVolume", m_BattleAlertVolume);
+	writer.NewPropertyWithValue("BattleAskFirst", m_BattleAskFirst);
+	writer.NewPropertyWithValue("BattleShowInfo", m_BattleShowInfo);
+	writer.NewPropertyWithValue("BattleShowObjectives", m_BattleShowObjectives);
+	writer.NewPropertyWithValue("BattleObjectiveLook", m_BattleObjectiveLook);
+	writer.NewPropertyWithValue("BattleShowSpawnZones", m_BattleShowSpawnZones);
+	writer.NewPropertyWithValue("BattleShowModeZones", m_BattleShowModeZones);
+	writer.NewPropertyWithValue("ArmyOverview", m_ArmyOverview);
 	writer.NewPropertyWithValue("CrabBombThreshold", m_CrabBombThreshold);
 	writer.NewPropertyWithValue("ShowEnemyHUD", m_ShowEnemyHUD);
 	writer.NewPropertyWithValue("SmartBuyMenuNavigation", m_EnableSmartBuyMenuNavigation);
@@ -1682,6 +1772,23 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("DefaultActivityType", g_ActivityMan.m_DefaultActivityType);
 	writer.NewPropertyWithValue("DefaultActivityName", g_ActivityMan.m_DefaultActivityName);
 	writer.NewPropertyWithValue("DefaultSceneName", g_SceneMan.m_DefaultSceneName);
+
+	writer.NewLine(false, 2);
+	writer.NewDivider(false);
+	writer.NewLineString("// Map Browser Settings (the main menu's map picker, and the map last played for \"Continue on\")", false);
+	writer.NewLine(false);
+	// (The two names only when there is one, as StartupPreset.)
+	if (!m_LastMap.empty()) {
+		writer.NewPropertyWithValue("LastMap", m_LastMap);
+	}
+	if (!m_MapBrowserFilters.Mod.empty()) {
+		writer.NewPropertyWithValue("MapBrowserMod", m_MapBrowserFilters.Mod);
+	}
+	writer.NewPropertyWithValue("MapBrowserType", m_MapBrowserFilters.Source);
+	writer.NewPropertyWithValue("MapBrowserSize", m_MapBrowserFilters.Size);
+	writer.NewPropertyWithValue("MapBrowserFavouritesOnly", m_MapBrowserFilters.OnlyFavourites);
+	writer.NewPropertyWithValue("MapBrowserRecentOnly", m_MapBrowserFilters.OnlyRecent);
+	writer.NewPropertyWithValue("MapBrowserSort", m_MapBrowserFilters.Sort);
 
 	writer.NewLine(false, 2);
 	writer.NewDivider(false);

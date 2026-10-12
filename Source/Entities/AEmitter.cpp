@@ -317,10 +317,10 @@ float AEmitter::EstimateImpulse(bool burst) {
 	float throttleFactor = GetThrottleFactor();
 	// Apply the throttle factor to the emission rate per update
 	if (burst) {
-		return m_AvgBurstImpulse * throttleFactor;
+		return m_AvgBurstImpulse * throttleFactor * GetPushMultiplier();
 	}
 
-	return m_AvgImpulse * throttleFactor;
+	return m_AvgImpulse * throttleFactor * GetPushMultiplier();
 }
 
 float AEmitter::GetTotalParticlesPerMinute() const {
@@ -542,7 +542,7 @@ void AEmitter::Update() {
 			fakeImpulse = RotateOffset(fakeImpulse);
 			AddImpulseForce(fakeImpulse);
 		} else {
-			AddImpulseForce(pushImpulses);
+			AddImpulseForce(pushImpulses * GetPushMultiplier());
 		}
 
 		// Count the the damage caused by the emissions, and only if we're not bursting

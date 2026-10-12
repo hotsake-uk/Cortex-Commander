@@ -39,6 +39,7 @@ namespace RTE {
 #define AILINEDOTSPACING 16
 
 	constexpr float c_StimSpeedMultiplier = 1.5F; //!< How much faster a unit stimmed by a powerup runs (Actor::IsStimmed).
+	constexpr const char* c_SavedUniqueIDKey = "SavedUniqueID"; //!< The number value a saved game's unit keeps its unique ID from when saved in, till it is loaded (ActivityMan::RemapLoadedUniqueIDs).
 
 	/// A sprite movable object that is autonomous.
 	class Actor : public MOSRotating {
@@ -143,6 +144,18 @@ namespace RTE {
 		/// @return The mass of this Actor, its inventory and all its Attachables and wounds in Kilograms (kg).
 		float GetMass() const override;
 
+		/// Gets the mass of what this Actor carries: its inventory, its gold and the items in its hands, as the Carry weight settings weigh them.
+		/// @return The carried mass in Kilograms (kg).
+		float GetCarriedMass() const;
+
+		/// Gets the mass of the items this Actor holds in its hands, which are counted in its Attachables' mass. None, for actors without hands.
+		/// @return The held mass in Kilograms (kg).
+		virtual float GetHeldMass() const { return 0.0F; }
+
+		/// Gets how much this Actor's load slows its walk and lowers its leap, from the Carry weight settings' overload slowdown.
+		/// @return A multiplier for its speed, 1 when unhindered.
+		float GetOverloadSpeedMultiplier() const;
+
 		/// Gets the mass that this actor had upon spawning, i.e with ini-defined inventory, gold and holding no items
 		/// @return The base mass of this Actor, in Kilograms (kg).
 		float GetBaseMass();
@@ -197,6 +210,28 @@ namespace RTE {
 		/// its last use. The unit menu's Quick actions, Lua, and units run by the AI (UpdatePowerups) use this.
 		/// @return Whether it was used.
 		bool UsePowerup(MovableObject* item);
+#pragma endregion
+
+#pragma region Creature afflictions (ActorAfflictions.cpp)
+		/// Poisons it (CR-6, a giant spider's bite): it loses health over the time, and walks slower meanwhile. A fresh dose tops the time up
+		/// and keeps the stronger of the two. Nothing for a machine (not organic).
+		/// @param damagePerSecond The health it loses a second.
+		/// @param seconds How long it lasts.
+		/// @param slowTo The share of its pace it walks at meanwhile, 0 to 1.
+		void Envenom(float damagePerSecond, float seconds, float slowTo);
+
+		/// Webs it (CR-6, a giant spider's web): its legs held fast for the time, so it can't walk, leap, jump or fly off; it can still turn,
+		/// aim and shoot.
+		void Ensnare(float seconds);
+
+		/// Whether venom is working on it.
+		bool IsEnvenomed() const;
+
+		/// Whether a web holds it.
+		bool IsEnsnared() const;
+
+		/// The share of its pace it walks at for what has hold of it: venom slows it, a web stops it. 1 when nothing has.
+		float GetAfflictionSpeedMultiplier() const;
 #pragma endregion
 
 		/// Gets whether this Actor is drawn with a bright glowing outline, whatever the unit outline settings (see LightingSettings::HighlightUnits).
@@ -586,6 +621,11 @@ namespace RTE {
 			Vector SkyPoint; //!< That point, exactly as clicked.
 			float Direct = 0.0F; //!< How urgent the order is, by how it was placed (s_DirectOrder): -1 a single click (cautious: walks round jumps, waits for fuel, lands soft, keeps clear of enemies), 0 a double click (a normal order, and any order not placed by a click), 0 to 1 a double click dragged, by how far (SettingsMan::DirectOrderTuning::RiskDragPixels), 1 a full drag (the shortest way there whatever it takes: a dig-to tunnels in a straight line round only what it can't cut, a move takes the hard, fast jet flights a careful route walks round, and from the Battle Behavior's StraightFlightRisk up a unit with a jet flies at the goal on one flight, straight or up and over, when one tank gets it there). The Battle Behavior tuning is applied in that share (GetPathAgent, AHuman).
 		};
+
+		/// Writes the standing order (the parts it has), the weapon and movement rules, temperament and non-combatant flag, as properties
+		/// ReadProperty reads back: for Save, and for a saved game's units (Scene::SaveSceneObject).
+		/// @param writer The writer to write to.
+		void SaveStandingOrder(Writer& writer) const;
 
 		/// Gets this' standing order, to read or change.
 		/// @return The standing order of this.
@@ -1272,6 +1312,12 @@ namespace RTE {
 		/// Gets whether fire doesn't catch on this (its movement profile's FireProof).
 		bool IsFireProof() const { return m_MovementProfile.FireProof > 0; }
 
+		/// Gets how far round it it sets things alight, in pixels (CR-7, a Flame Fiend: the ground, and units not of its side); 0 for none.
+		float GetFireAuraRadius() const { return m_FireAuraRadius; }
+
+		/// Gets the share of its full health it loses a second deep in water (CR-7, a Flame Fiend: doused); 0 for none.
+		float GetWaterWeakness() const { return m_WaterWeakness; }
+
 		/// Gets how deep this is in liquid (ActorWater): 0 dry, 1 feet in, 2 body in, 3 head under.
 		int GetLiquidDepth() const;
 
@@ -1635,6 +1681,14 @@ namespace RTE {
 		long m_PowerupReturnID = 0; //!< The unique ID of what it held before a scroll's spell, now spent and going: taken back in hand once it's gone.
 		long long m_NextPowerupThought = 0; //!< Units run by the AI: the sim time, ms, it next looks at whether to use a powerup it carries.
 
+		long long m_VenomUntil = 0; //!< The sim time, ms, venom works on it until (CR-6). Not copied or saved, as m_PowerupUntil.
+		float m_VenomDamagePerSecond = 0.0F; //!< The health the venom takes a second.
+		float m_VenomSlowTo = 1.0F; //!< The share of its pace it walks at while envenomed.
+		long long m_SnareUntil = 0; //!< The sim time, ms, a web holds it until (CR-6). Not copied or saved.
+
+		/// Runs what has hold of it (CR-6): venom's harm, a web's hold on its legs, and how they look. Each Update.
+		void UpdateAfflictions();
+
 		/// Runs the powerup effects on it (the shield's deflecting, the cloak's fading, a spent scroll put away), and has a unit run by the AI
 		/// use a powerup it carries when it's in the thick of it. Each Update.
 		void UpdatePowerups();
@@ -1809,6 +1863,8 @@ namespace RTE {
 		int m_Temperament; //!< What this is like by nature (see Temperament).
 		int m_NonCombatant; //!< 1 or 0 as set on the preset, -1 to follow the temperament (see IsNonCombatant).
 		MovementProfile m_MovementProfile; //!< What its body can do, as the preset declares it (CR-2).
+		float m_FireAuraRadius = 0.0F; //!< How far round it it sets things alight, in pixels (CR-7; see GetFireAuraRadius).
+		float m_WaterWeakness = 0.0F; //!< The share of its full health it loses a second deep in water (CR-7; see GetWaterWeakness).
 		mutable int m_ToughnessKind; //!< Which toughness setting this follows (see GetToughnessKind), -2 until it is first worked out.
 		float m_ToughnessHealth; //!< The health as ApplyToughness last left it, NaN before it is first called.
 		int m_LastAttackerTeam; //!< The side that last hurt this, Activity::NoTeam for none (see GetLastAttackerTeam). Not saved.

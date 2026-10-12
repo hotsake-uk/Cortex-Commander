@@ -4,6 +4,40 @@
 #include "SandboxInternal.h"
 
 namespace SandboxDetail {
+	namespace {
+		constexpr float c_Speeds[] = {0.25F, 0.5F, 1.0F, 2.0F, 3.0F}; //!< The speed tile's speeds, slowest first.
+	} // namespace
+
+	bool ToolbarKeyPressed(int number, bool shift) {
+		const ImGuiIO& io = ImGui::GetIO();
+		// (The toolbar itself is only up while you're above the world, not while you play a unit.)
+		return number >= 1 && number <= 9 && io.KeyAlt && !io.KeyCtrl && io.KeyShift == shift && !io.WantTextInput && !s_Possessed && ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_0 + number), false);
+	}
+
+	void StepGameSpeed(int step) {
+		const float timeScale = g_TimerMan.GetTimeScale();
+		float next = 1.0F;
+		if (step > 0) {
+			// The next speed up, or the fastest again.
+			next = c_Speeds[std::size(c_Speeds) - 1];
+			for (float speed: c_Speeds) {
+				if (speed > timeScale + 0.01F) {
+					next = speed;
+					break;
+				}
+			}
+		} else if (step < 0) {
+			// The next speed down, or the slowest again.
+			next = c_Speeds[0];
+			for (float speed: c_Speeds) {
+				if (speed < timeScale - 0.01F) {
+					next = speed;
+				}
+			}
+		}
+		g_TimerMan.SetTimeScale(next);
+	}
+
 	int CommandedTeam() {
 		if (!Sandbox::IsGodMode() || !s_CommanderBar) {
 			return -1;
@@ -164,6 +198,13 @@ namespace SandboxDetail {
 						ToggleWindowTab("Battle");
 					}
 				}
+				// The alert log: the battle's last alerts with when each came (B-8).
+				if (Sandbox::IsBattleCommand()) {
+					ImGui::SameLine();
+					if (BarTile("##alertLog", "Alerts", "The alert log: the last 50 alerts of this battle with when each came; click one to look there.\nSpace looks at the latest, Shift+Space steps back through the ones before.", AlertLogOpen(), [&](ImDrawList* tileList, ImVec2 at, float room) { PictureText(tileList, at, room, IM_COL32(239, 160, 100, 255), "!"); }) == 1) {
+						ToggleAlertLog();
+					}
+				}
 			}
 			BarDivider();
 			// Your side, and its units: a click selects them all, a double click looks at them too.
@@ -192,6 +233,14 @@ namespace SandboxDetail {
 					}
 				}
 			}
+			ImGui::SameLine();
+			// The Army overview: your side's units by kind.
+			{
+				const bool shown = g_SettingsMan.ShowArmyOverview();
+				if (BarTile("##army", "Army", "The Army overview: your side's units by kind, with how many, their average health and how many are idle.\nClick a kind there to select them all; double click to look at them too.", shown, [&](ImDrawList* tileList, ImVec2 at, float room) { DrawIcon(tileList, Icon::Person, at, room / 12.0F, shown ? ToolTheme::Gold : ToolTheme::Text); }) == 1) {
+					g_SettingsMan.SetShowArmyOverview(!shown);
+				}
+			}
 
 			// Reinforcements: the points, the cards to call in, and where and how they come.
 			BarDivider();
@@ -211,14 +260,13 @@ namespace SandboxDetail {
 			}
 			const float rightStart = ImGui::GetCursorScreenPos().x;
 			{
-				static const float speeds[] = {0.25F, 0.5F, 1.0F, 2.0F, 3.0F};
 				float timeScale = g_TimerMan.GetTimeScale();
 				char shown[16];
 				std::snprintf(shown, sizeof(shown), "%.3gx", timeScale);
-				int clicked = BarTile("##speed", "Speed", "How fast time runs. Click: faster (0.25x, 0.5x, 1x, 2x, 3x, and round again). Right click: back to 1x.", timeScale < 0.99F || timeScale > 1.01F, [&](ImDrawList* tileList, ImVec2 at, float room) { PictureText(tileList, at, room, ToolTheme::Text, shown); });
+				int clicked = BarTile("##speed", "Speed", "How fast time runs. Click: faster (0.25x, 0.5x, 1x, 2x, 3x, and round again). Right click: back to 1x.\nKeys: - slower, = faster, Shift with either back to 1x.", timeScale < 0.99F || timeScale > 1.01F, [&](ImDrawList* tileList, ImVec2 at, float room) { PictureText(tileList, at, room, ToolTheme::Text, shown); });
 				if (clicked == 1) {
-					float nextSpeed = speeds[0];
-					for (float speed: speeds) {
+					float nextSpeed = c_Speeds[0];
+					for (float speed: c_Speeds) {
 						if (speed > timeScale + 0.01F) {
 							nextSpeed = speed;
 							break;

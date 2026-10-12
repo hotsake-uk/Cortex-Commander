@@ -230,6 +230,7 @@ namespace SandboxDetail {
 		// Appended, so the tools before keep their numbers.
 		Woodcutter, //!< A colony woodcutter: its staff fell the trees round it and bring the wood home (Colony::Kind::Woodcutter).
 		// Appended, so the tools before keep their numbers.
+		HoldGround, //!< A box dragged out, or a polygon clicked out, where the ground never falls (TerrainCollapse::AddHoldZone; SandboxHold.cpp). Choice 1 takes away the zone at Position, 2 all of them.
 		RedoTerrain //!< Makes again the newest step the undo took back (see s_PaintRedo).
 	};
 
@@ -377,6 +378,7 @@ namespace SandboxDetail {
 	    {Tool::BattlePickupSpot, "Pickup spot", 0.0F, false},
 	    {Tool::BattlePickupZone, "Pickup zone", 0.0F, false},
 	    {Tool::Woodcutter, "Woodcutter", 0.0F, false},
+	    {Tool::HoldGround, "Hold ground", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -702,7 +704,8 @@ namespace SandboxDetail {
 		BattleModeStart, //!< The mode's settings, and its game started afresh, every team in it set up by it (BattleModeInfo::TeamSettings).
 		BattleModeStop, //!< The mode's game stopped, and every team with it.
 		BattlePower, //!< Battle Command: a commander power used by the team you command (Choice the CommanderPower, Position where).
-		BattleReinforce //!< Battle Command: reinforcements bought for the team you command (Choice the card, Radius how many, Craft, Position where they land).
+		BattleReinforce, //!< Battle Command: reinforcements bought for the team you command (Choice the card, Radius how many, Craft, Position where they land).
+		BattleSurrender //!< The mode's game given up by Team (SurrenderBattleGame).
 	};
 
 	/// The Battle Director's preset modes: a game with rules of its own, set up from a few choices (how big, which teams, and a point for
@@ -980,6 +983,10 @@ namespace SandboxDetail {
 		std::vector<std::string> Items; //!< What it carries, by item preset name, in order: the first is what it holds.
 		int Temperament = -1; //!< Actor::Temperament it is given, -1 for the unit's own.
 		bool FactionKit = false; //!< A squad's plain unit: armed as the Spawn tab's "Faction default" arms it, not with Items.
+		std::string Jetpack; //!< "" the unit's own jetpack, "-" none, else the jetpack fitted, as "Module/PresetName" (JetpackKey).
+		float JetFuel = 1.0F; //!< Times its jetpack's fuel (JetTimeTotal).
+		bool JetEndless = false; //!< Its jetpack never runs dry (kept full each sim update, UpdateLoadoutUnits).
+		float JetThrust = 1.0F; //!< Times its jetpack's push (AEJetpack::SetThrustMultiplier), at no extra fuel.
 	};
 
 	/// One line of a squad: a plain unit (with its faction's guns) or one of your loadouts, and how many of it.
@@ -1224,11 +1231,10 @@ namespace SandboxDetail {
 	};
 	inline BattleModeRun s_ModeRun;
 	inline BattleModeSettings s_ModeSetup; //!< The Battle tab's mode panel, the window's copy (sent to the sim as it changes).
-	inline bool s_ShowModeZones = true; //!< A mode's own zones (hills, assault objectives, goal zones) shaded and outlined on the map (always while one is being drawn).
-	inline bool s_ShowBattleInfo = true; //!< A panel under the score while a battle is on: each team's units in, fallen, respawns left and next one in.
-	inline bool s_ShowObjectives = true; //!< Each battle mode's objectives (its flags, hills, goals...) lit up on the map, each in the look it asks for.
-	inline int s_ObjectiveLook = 0; //!< The look of zone objectives: 0 each mode's own, else an ObjectiveLook (plus one) for all of them.
-	inline bool s_ShowModeBases = true; //!< The teams' spawn zones shaded and outlined on the map (always while one is being drawn, or a point placed).
+	// What the battle shows on the map, kept between launches in the settings (B-12): ShowBattleModeZones (a mode's own zones: hills, assault
+	// objectives, goal zones; always while one is being drawn), ShowBattleInfo (the panel under the score), ShowBattleObjectives (each mode's
+	// objectives lit up), BattleObjectiveLook (0 each mode's own look, else an ObjectiveLook plus one for all of them) and ShowBattleSpawnZones
+	// (the teams' spawn zones; always while one is being drawn, or a point placed).
 	// The Unit and Drop tools' random units (copied into the stroke at the click): from every faction, one faction or the favourites.
 	inline bool s_RandomUnits = false;
 	inline bool s_RandomFavourites = false;
@@ -1274,6 +1280,7 @@ namespace SandboxDetail {
 	inline bool s_LineDragging = false; //!< A line being dragged out on the world, from s_LineStart: a lift's or moving platform's track (DragsTrack) or a bunker run (DragsRun).
 	inline Vector s_LineStart;
 	constexpr int c_MaxDropSide = 800; //!< The biggest box "Make it fall" takes either way, in pixels.
+	inline std::vector<Vector> s_HoldDraft; //!< "Hold ground": the corners of the polygon being clicked out, each placed from the first.
 
 	/// Whether the tool in hand is used by dragging out a shape on the world: the terrain brushes with Brush type Shape, and "Make it fall"'s box.
 	inline bool DragsShape(Tool kind) { return (IsTerrainBrush(kind) && s_ShapeFill) || kind == Tool::CollapseArea; }
@@ -1373,7 +1380,7 @@ namespace SandboxDetail {
 		DigTo, //!< Dig to the point, in the ground or not (RC-11): those with a digger that cuts the way are sent, to the point itself.
 		Suppress, //!< Fire into a zone round the point and keep firing: no target needed, whatever else is in sight; they walk in range first.
 		JetpackHere, //!< Fly to the point clicked, in the air, not on the ground under it, and hover there till the tank runs low (Actor::StandingOrder::SkyGoal).
-		Select, //!< Clicks only pick units: one clicked (Shift adds, double click all of its kind in view), or none on a click on nothing.
+		Select, //!< Clicks only pick units: one clicked (Shift adds, double click all of its kind in view, Ctrl+double click on the whole map), or none on a click on nothing.
 		Command, //!< The order fits what's under the pointer (CommandTargetAt): with nothing selected, as Select; else a friend is selected, an enemy
 		        //!< attacked, a battle objective gone for, open air flown to, anything else moved to. What the Command tool starts in, and what
 		        //!< a one-off order's mode goes back to once it's placed (and Esc). (After Select, so the ring's slices keep their places.)
@@ -1389,15 +1396,17 @@ namespace SandboxDetail {
 		        //!< the controls and holding there for orders (DropoffSelected). (After Pen, so the ring's slices keep their places.)
 		Land, //!< The selected flying ships fly to the point, set down on the ground there and turn their engines off (a handbrake), and stay
 		      //!< down till given another order (LandSelected). (After Drop off, so the ring's slices keep their places.)
-		Park //!< The selected ground vehicles drive to the point and put their handbrakes on there, everyone staying aboard, till given another
-		     //!< order (ParkSelected); ships among them land. (Last, so the ring's slices keep their places.)
+		Park, //!< The selected ground vehicles drive to the point and put their handbrakes on there, everyone staying aboard, till given another
+		      //!< order (ParkSelected); ships among them land. (After Land, so the ring's slices keep their places.)
+		Ram //!< The selected flying ships ram the enemy clicked, run after run, till it is dead or they are given another order (RamSelected);
+		    //!< anyone else selected attacks it. (Last, so the ring's slices keep their places.)
 	};
 	inline CommandMode s_CommandMode = CommandMode::Command;
 	inline bool s_SpawnOrderArmed = false; //!< The next order placed sets the spawn order of your team (or of s_SpawnOrderZone) instead (TakeSpawnOrder).
 	inline double s_SpawnOrderDoneAt = -1.0; //!< When (ImGui time) setting it is over, once placed: after a second click of a double click can follow.
 	inline int s_SpawnOrderZone = -1; //!< Which of your team's spawn zones it is for, -1 for the team's own.
-	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Jetpack here", "Select units", "Command", "Breach", "Build", "Airlift", "Pen animals", "Drop off", "Land", "Park"};
-	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(140, 230, 255, 255), IM_COL32(230, 230, 230, 255), IM_COL32(255, 214, 120, 255), IM_COL32(235, 110, 55, 255), IM_COL32(120, 210, 190, 255), IM_COL32(170, 190, 255, 255), IM_COL32(205, 175, 115, 255), IM_COL32(150, 225, 140, 255), IM_COL32(190, 170, 140, 255), IM_COL32(200, 200, 120, 255)};
+	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Jetpack here", "Select units", "Command", "Breach", "Build", "Airlift", "Pen animals", "Drop off", "Land", "Park", "Ram"};
+	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(140, 230, 255, 255), IM_COL32(230, 230, 230, 255), IM_COL32(255, 214, 120, 255), IM_COL32(235, 110, 55, 255), IM_COL32(120, 210, 190, 255), IM_COL32(170, 190, 255, 255), IM_COL32(205, 175, 115, 255), IM_COL32(150, 225, 140, 255), IM_COL32(190, 170, 140, 255), IM_COL32(200, 200, 120, 255), IM_COL32(255, 95, 150, 255)};
 	/// A mode whose order is given once and then goes back to Command (s_BackToCommandAt): not Select, Command, Patrol or Pen (clicked out point by point).
 	inline bool OneOffMode(CommandMode mode) { return mode != CommandMode::Select && mode != CommandMode::Command && mode != CommandMode::Patrol && mode != CommandMode::Pen; }
 	inline double s_BackToCommandAt = -1.0; //!< When (ImGui time) the one-off mode in hand goes back to Command: once a double click can no longer follow.
@@ -1692,8 +1701,10 @@ namespace SandboxDetail {
 		int Drop = 0; //!< A "Make it fall" step: the drop TerrainCollapse::DropArea gave, taken back with TerrainCollapse::TakeBackDrop.
 		int Rope = 0; //!< A rope put down (RopeSim), taken away again.
 		long long PouredAt = -1; //!< The sim update a pour or boulder of the step was last let go in: what it lets go lands at the next liquid or collapse update, and the undo waits for that.
+		bool HoldZones = false; //!< A "Hold ground" step: the hold zones put back to HoldZonesBefore.
+		std::vector<std::vector<Vector>> HoldZonesBefore; //!< The hold zones before the step.
 
-		bool Empty() const { return Pixels.empty() && Placed.empty() && Removed.empty() && SpringsAdded.empty() && SpringsRemoved.empty() && ColonyBuilding < 0 && Drop == 0 && Rope == 0; }
+		bool Empty() const { return Pixels.empty() && Placed.empty() && Removed.empty() && SpringsAdded.empty() && SpringsRemoved.empty() && ColonyBuilding < 0 && Drop == 0 && Rope == 0 && !HoldZones; }
 	};
 
 	inline std::deque<PaintUndoStep> s_PaintUndo;
@@ -2521,6 +2532,9 @@ namespace SandboxDetail {
 	Vector OpenAirAt(Vector place);
 	Vector StandingPlaceBelow(Vector place);
 	Actor* MakePlayer(const Vector& place);
+	Actor* PlayerHolder();
+	Actor* TakeOutPlayer();
+	void RemovePlayer();
 	void EnterPlayer(bool atPlace, const Vector& place);
 	void UpdatePlayer();
 	void SelectInBox(const Vector& cornerA, const Vector& cornerB);
@@ -2631,6 +2645,9 @@ namespace SandboxDetail {
 	/// The selected ground vehicles drive to the point and put their handbrakes on (ships among them land), staying there (Shift: as a step of
 	/// their plans). Anyone else selected goes there.
 	void ParkSelected(const Vector& point, bool shift);
+	/// The Ram order on an enemy: the selected flying ships ram it (ACShip::RamTarget), anyone else selected attacks it.
+	/// @param enemy The enemy, or nullptr for none there (nothing is done).
+	void RamSelected(Actor* enemy);
 	/// Whether a ground vehicle (not a flying ship) is among those selected.
 	bool SelectionHasCar();
 	/// Whether a flying ship is among those selected.
@@ -2662,6 +2679,8 @@ namespace SandboxDetail {
 		bool Linked = false; //!< One of the map's linked battles, played in the list's order.
 		std::array<BattleSettings, c_Sides> Cards;
 		BattleModeSettings Mode;
+		bool HasHoldZones = false; //!< Saved with the hold zones ("Hold ground"): loading it puts them in place of those on the map.
+		std::vector<std::vector<Vector>> HoldZones;
 	};
 
 	/// The setups saved with a map, read from its file, in their order there. None if it has none.
@@ -2673,10 +2692,31 @@ namespace SandboxDetail {
 	/// @param none Load no setup at all.
 	void LoadBattleOnStart(const std::string& name, bool none);
 
+	/// The next game started from the map browser's quick battle (the main menu's Quick Battle): the setup it loads is started as well, once it
+	/// is in and ready.
+	void StartBattleOnStart(bool start);
+
+	/// The battle setup now on the Battle tab kept as the map's last setup (B-11), in Userdata/BattlePresets/LastSetup/<map>.txt: offered first
+	/// in the saved setups as "Last setup". Each time a battle is started.
+	void RememberLastBattleSetup();
+
+	/// A button's click asked about first (B-13), in a popup with a "Don't ask again" box (BattleAskFirst in the settings): true once it is to
+	/// happen, at once with asking off or Ctrl held. Call right after the button (and its tooltip), in the same ID scope.
+	/// @param clicked Whether the button was clicked this frame.
+	/// @param popup The popup's ID, unique in the ID scope.
+	/// @param question What is asked, as "Delete "Rush"?".
+	/// @param yes The button that goes ahead, as "Yes, delete".
+	bool AskFirst(bool clicked, const char* popup, const std::string& question, const char* yes);
+
 	/// Linked battles (SandboxBattlePresets.cpp): which of them is on, and once it's won, the button to the next. Call inside an ImGui window.
 	/// True when a battle was started from it.
 	bool LinkedBattleControls();
 	void DrawBattleMarks();
+	/// "Hold ground" (SandboxHold.cpp): the mouse on the world with it in hand (a drag a box, clicks a polygon's corners, a right click takes a zone
+	/// away), and Enter, Backspace and Escape for the polygon being drawn. Call each frame; it lets go of a part drawn polygon once the tool is put down.
+	void HoldGroundInput();
+	/// The hold zones on the map, with the setting on or "Hold ground" in hand, and the box or polygon being drawn.
+	void DrawHoldZones();
 	void TakeBattleTool(Tool kind, int team);
 	bool AddZoneCorner(std::vector<Vector>& draft, BattleSettings& settings, const Vector& position, float closeWithin);
 	bool CloseSpawnZone(std::vector<Vector>& draft, BattleSettings& settings);
@@ -2742,6 +2782,14 @@ namespace SandboxDetail {
 	bool InEnemySpawnZone(int side, const Vector& at, float radius);
 	/// The mode's game ended: won by a side (or -1, no one), with how it ended said.
 	void EndBattleGame(int winner, const std::string& result);
+	/// A side gives up the mode's game that is on (the pause menu's Surrender, through a BattleSurrender stroke): it ends, won by the only other
+	/// team in it (or nobody, with more than one), and in Battle Command the after-battle report opens.
+	void SurrenderBattleGame(int side);
+	/// Whether the mode set up on the Battle tab (not custom) can be started as it is, and if not, why.
+	bool BattleModeReady(std::string& why);
+	/// The battle mode's objectives, flags and their carriers, spawn zones and mode zones on the sandbox's map window (B-7), as the "Show..."
+	/// choices on the battle panel have them on the view.
+	void DrawBattleModeOnMap(ImDrawList* drawList, const std::function<ImVec2(const Vector&)>& toMap);
 	Vector ModeSpawnSpot(int side, const std::vector<Vector>& zone, const Actor* unit);
 	int ModeRoom(int side, int room);
 	void UpdateBattleMode(bool aiPaused);
@@ -2861,6 +2909,16 @@ namespace SandboxDetail {
 	void DrawMinimap();
 	const NoRoute* NoRouteAt(const ImVec2& mouse);
 	void LookAtUnits(const std::vector<UnitRef>& units);
+	/// Every idle unit of the selection's side selected at once (B-2, Ctrl+.); with add, added to the selection instead.
+	void SelectAllIdle(bool add);
+	/// Every unit of the kinds already selected (RC-6): in view (Q), or on the whole map (B-4, Ctrl+Q).
+	void SelectSameKinds(bool wholeMap);
+	/// The camera bookmark keys (B-10): Ctrl+Shift and 1 to 4 keeps the view for this map, Ctrl+Alt and the number goes back to it. Kept in
+	/// Userdata/CameraBookmarks.txt between games. Call from the ImGui frame while above the world.
+	void CameraBookmarkKeys();
+	/// The Army overview window (B-6): your side's units by kind, with how many, their average health and how many are idle; a click on a
+	/// kind selects them all, a double click looks at them too. Shown while the setting is on (SettingsMan::ShowArmyOverview). Call from the ImGui frame.
+	void DrawArmyOverview();
 	void CommandHotkeys();
 	void KeysPage();
 	void ToggleWindowTab(const char* tab);
@@ -3055,6 +3113,13 @@ namespace SandboxDetail {
 	/// The Commander Toolbar's powers group: a tile each, greyed with the seconds left while it cools down.
 	void PowerTiles();
 
+	/// Whether a tile's key on the Commander Toolbar was pressed this frame (B-1): Alt and its number for the reinforcement cards, Alt+Shift and
+	/// its number for the powers, counted from 1 in the toolbar's order. Never with Ctrl, nor while a text box has the keys.
+	bool ToolbarKeyPressed(int number, bool shift);
+
+	/// The game's speed a step slower (step -1) or faster (1) through the speed tile's speeds, stopping at the ends; 0 back to 1x (B-5, - and =).
+	void StepGameSpeed(int step);
+
 	/// A click on the world with the power target tool: the power waiting for one is used there.
 	void PowerTargetClicked(const Vector& position);
 
@@ -3177,6 +3242,9 @@ namespace SandboxDetail {
 	/// Keeps your squads together: followers joined to the leader once out in the world, a new leader for a fallen one. Each sim update.
 	void UpdatePlayerSquads();
 
+	/// Units made from loadouts with an endless jetpack kept topped up. Each sim update.
+	void UpdateLoadoutUnits();
+
 	/// Each of your squads' name over its leader, with a line to each member. Call from the ImGui frame.
 	void DrawPlayerSquads();
 
@@ -3224,6 +3292,9 @@ namespace SandboxDetail {
 
 	/// The brain's command range, a mark over it, and a mark on the selected units out of range. Call from the ImGui frame, with the order marks.
 	void DrawFieldBrain(ImDrawList* drawList);
+
+	/// The brain and its command range on the sandbox's map window, mapScale its pixels for one of the scene's.
+	void DrawFieldBrainOnMap(ImDrawList* drawList, const std::function<ImVec2(const Vector&)>& toMap, float mapScale);
 #pragma endregion
 
 #pragma region Hot-seat (BattleHotSeat.cpp)
@@ -3349,11 +3420,19 @@ namespace SandboxDetail {
 	/// Your units under attack noticed. Call once per sim update, from UpdateBattle.
 	void UpdateAlerts();
 
-	/// The view moved to the latest alert (Space).
-	void JumpToLatestAlert();
+	/// The view moved to the latest alert (Space), or with back, to the one before the last looked at this way (Shift+Space, again and again).
+	void JumpToAlert(bool back);
 
-	/// The alerts, top left, and the kill feed, top right. Call from the ImGui frame.
+	/// The alerts, top left (with the log's button by them), and the kill feed, top right; the alert log, when open; and each new alert's sound.
+	/// Call from the ImGui frame.
 	void DrawAlerts();
+
+	/// Opens or closes the alert log: the last alerts of the battle, each with when it came, to click and look there.
+	void ToggleAlertLog();
+	bool AlertLogOpen();
+
+	/// Where alerts have just come, blinking for a few seconds on the sandbox's map window.
+	void DrawAlertsOnMap(ImDrawList* drawList, const std::function<ImVec2(const Vector&)>& toMap);
 #pragma endregion
 
 #pragma region Fog of war (BattleFog.cpp)
