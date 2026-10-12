@@ -214,7 +214,7 @@ void DebugOverlays::DrawCombatOverlay() {
 
 void DebugOverlays::DrawNavNode() {
 	Scene* scene = g_SceneMan.GetScene();
-	if (g_SettingsMan.NavDebugOverlay() < 3 || !scene) {
+	if (g_SettingsMan.NavDebugOverlay() != 3 || !scene) {
 		return;
 	}
 	const ImGuiIO& io = ImGui::GetIO();

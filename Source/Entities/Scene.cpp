@@ -2806,7 +2806,8 @@ void Scene::Update() {
 	m_PathfindingUpdated = false;
 
 	// The navigation debug overlay (SettingsMan::NavDebugOverlay): the grid in the first screen's view, as the debug team (SettingsMan::DebugTeam) sees it.
-	if (g_SettingsMan.NavDebugOverlay() > 0 && g_ActivityMan.ActivityRunning()) {
+	// (Not at level 4, the flights alone.)
+	if (g_SettingsMan.NavDebugOverlay() > 0 && g_SettingsMan.NavDebugOverlay() < 4 && g_ActivityMan.ActivityRunning()) {
 		Vector corner = g_CameraMan.GetOffset(0);
 		Box view(corner, static_cast<float>(g_FrameMan.GetPlayerScreenWidth()), static_cast<float>(g_FrameMan.GetPlayerScreenHeight()));
 		// Drawn for that team's unit the overlays look through (see GetNavDebugActor: its sizes, its leaps), or else a soldier's.
