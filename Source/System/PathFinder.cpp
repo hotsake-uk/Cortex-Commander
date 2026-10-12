@@ -2994,11 +2994,26 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 					unsigned char id = TerrNav(wx, centreY);
 					return id != MaterialColorKeys::g_MaterialAir && id != m_LadderMaterial;
 				};
+				// (On the side with room for the body: where the wall the ladder stood from was blown away, rubble left at its foot read as
+				// the wall, and the anchor went to the other side, inside the wall still standing there. See AHuman::FindLadderNear.)
+				auto bodyRoom = [&](int bx) {
+					for (int y = centreY - nodeSize; y <= centreY + nodeSize / 4; y += 4) {
+						unsigned char id = TerrNav(bx, y);
+						if (id != MaterialColorKeys::g_MaterialAir && id != m_LadderMaterial) {
+							return false;
+						}
+					}
+					return true;
+				};
+				const int leftBody = stripLeft - 7;
+				const int rightBody = stripRight + 7;
 				float bodyX = static_cast<float>(mid);
-				if (wall(stripLeft - 2)) {
-					bodyX = static_cast<float>(stripRight) + 7.0F;
-				} else if (wall(stripRight + 2)) {
-					bodyX = static_cast<float>(stripLeft) - 7.0F;
+				if (wall(stripLeft - 2) && (bodyRoom(rightBody) || !bodyRoom(leftBody))) {
+					bodyX = static_cast<float>(rightBody);
+				} else if (wall(stripRight + 2) && (bodyRoom(leftBody) || !bodyRoom(rightBody))) {
+					bodyX = static_cast<float>(leftBody);
+				} else if (wall(stripLeft - 2) || wall(stripRight + 2)) {
+					bodyX = static_cast<float>(bodyRoom(leftBody) ? leftBody : rightBody);
 				}
 				node->Anchor = Vector(bodyX + (node->Pos.m_X - static_cast<float>(x)), node->Pos.m_Y);
 			}

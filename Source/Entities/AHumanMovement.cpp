@@ -566,6 +566,22 @@ bool AHuman::FindLadderNear(const Vector& at, float reachX, float& bodyX, float&
 				return false;
 			};
 			wallSide = wallAt(left - 2) ? -1 : (wallAt(right + 2) ? 1 : 0);
+			// (The body goes on the side with room for it. Where the wall it stood from was blown away and left rubble at the foot, the rubble
+			// read as the wall, and the body was sent to the other side, into the wall still standing there: every unit sent up stood at the
+			// foot pressing into it.)
+			auto bodyRoom = [&](float bx) {
+				for (float y = at.m_Y - h * 0.4F; y <= at.m_Y + h * 0.1F; y += 4.0F) {
+					if (SolidNotLadder(bx, y)) {
+						return false;
+					}
+				}
+				return true;
+			};
+			if (wallSide < 0 && !bodyRoom(static_cast<float>(right) + 7.0F) && bodyRoom(static_cast<float>(left) - 7.0F)) {
+				wallSide = 1;
+			} else if (wallSide > 0 && !bodyRoom(static_cast<float>(left) - 7.0F) && bodyRoom(static_cast<float>(right) + 7.0F)) {
+				wallSide = -1;
+			}
 			// The rungs' outer ends are taken (the rail is against the wall); the body hangs a few pixels off them on the open side.
 			if (wallSide < 0) {
 				gripX = static_cast<float>(right) - 2.0F;
