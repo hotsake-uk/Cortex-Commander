@@ -633,6 +633,9 @@ namespace RTE {
 		/// The longest a ship waits, in seconds from the first rider getting in, for the rest coming to it before it flies with those aboard.
 		float AIShipRideWait() const { return m_AIShipRideWait; }
 
+		/// How far round the place riders are going a ship lets them out, in pixels: they jump as soon as it is inside this ring.
+		float AIShipRideDropRing() const { return m_AIShipRideDropRing; }
+
 		/// Whether an AI driver of a land vehicle waits for the passengers it called over to get in before it drives off (up to AIShipRideWait),
 		/// rather than leaving as soon as it has somewhere to go.
 		bool AIVehiclesWaitForRiders() const { return m_AIVehiclesWaitForRiders; }
@@ -1105,6 +1108,7 @@ namespace RTE {
 		void SetAIShipRideLongWalkDistance(float distance) { m_AIShipRideLongWalkDistance = std::clamp(distance, 200.0F, 10000.0F); }
 		void SetAIShipRideRange(float range) { m_AIShipRideRange = std::clamp(range, 200.0F, 5000.0F); }
 		void SetAIShipRideWait(float seconds) { m_AIShipRideWait = std::clamp(seconds, 0.0F, 120.0F); }
+		void SetAIShipRideDropRing(float range) { m_AIShipRideDropRing = std::clamp(range, 30.0F, 1000.0F); }
 		void SetAIVehiclesWaitForRiders(bool wait) { m_AIVehiclesWaitForRiders = wait; }
 		void SetBoardFromBelow(bool on) { m_BoardFromBelow = on; }
 		void SetBoardFromBelowReach(float reach) { m_BoardFromBelowReach = std::clamp(reach, 0.0F, 200.0F); }
@@ -1465,6 +1469,7 @@ namespace RTE {
 		float m_AIShipRideLongWalkDistance; //!< See AIShipRideLongWalkDistance.
 		float m_AIShipRideRange; //!< See AIShipRideRange.
 		float m_AIShipRideWait; //!< See AIShipRideWait.
+		float m_AIShipRideDropRing; //!< See AIShipRideDropRing.
 		bool m_AIVehiclesWaitForRiders; //!< See AIVehiclesWaitForRiders.
 		bool m_BoardFromBelow; //!< See BoardFromBelow.
 		float m_BoardFromBelowReach; //!< See BoardFromBelowReach.
