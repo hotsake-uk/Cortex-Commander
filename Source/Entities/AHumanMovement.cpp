@@ -1780,17 +1780,18 @@ void AHuman::DrawMoverDebug() const {
 	static const unsigned char takeOffColor = static_cast<unsigned char>(Color(255, 150, 40).GetIndex());
 	static const unsigned char landingColor = static_cast<unsigned char>(Color(80, 230, 90).GetIndex());
 	static const unsigned char viaColor = static_cast<unsigned char>(Color(220, 90, 255).GetIndex());
-	// The route ahead, its first dozen points, and the point in hand.
+	// The route ahead, its first dozen points, and the point in hand. (Not with the flights alone, overlay level 4.)
+	const bool flightsOnly = g_SettingsMan.NavDebugOverlay() == 4;
 	Vector last = m_Pos;
 	int count = 0;
 	for (const Vector& point: m_MovePath) {
-		if (++count > 12) {
+		if (flightsOnly || ++count > 12) {
 			break;
 		}
 		g_PrimitiveMan.DrawLinePrimitive(last, point, routeColor);
 		last = point;
 	}
-	if (!m_MovePath.empty()) {
+	if (!m_MovePath.empty() && !flightsOnly) {
 		g_PrimitiveMan.DrawCirclePrimitive(m_MovePath.front(), 3, pointColor);
 	}
 	const RouteMover& mover = m_Mover;
@@ -1834,7 +1835,10 @@ void AHuman::DrawMoverDebug() const {
 			g_PrimitiveMan.DrawTextPrimitive(barLeft + Vector(width * 0.5F, -10.0F), "had " + std::to_string(static_cast<int>(record.fuelAtTakeOff)) + ", needs " + std::to_string(static_cast<int>(record.fuelPredicted)) + ", used " + std::to_string(static_cast<int>(record.fuelUsed)), true, 1);
 		}
 	}
-	std::string state = mover.flight.active ? (mover.flight.refuelling ? "refuel" : (mover.flight.step ? "step" : (mover.flight.via ? "shaft" : "flight"))) : (mover.fuelWaiting ? "fuel wait" : "walk");
+	std::string state = mover.flight.active ? (mover.flight.refuelling ? "refuel" : (mover.flight.step ? "step" : (mover.flight.via ? "shaft" : (mover.flight.direct ? "direct" : "flight")))) : (mover.fuelWaiting ? "fuel wait" : "walk");
+	if (flightsOnly && state == "walk") {
+		return;
+	}
 	g_PrimitiveMan.DrawTextPrimitive(m_Pos + Vector(0.0F, -m_CharHeight * 0.6F), state, true, 1);
 }
 
