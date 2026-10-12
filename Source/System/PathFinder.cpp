@@ -2174,7 +2174,10 @@ PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* t
 	// Something solid on the straight line between the two: a dig if this searcher digs that, and otherwise the step wasn't along that
 	// line at all but up the column and over onto a ledge (the landing edges), which is a jump. (Read as a dig, a step up onto a 24 px
 	// ledge whose corner the line clipped was neither hopped nor climbed by a unit with no digger, and it stood at the step for ever.)
-	if (material && material->GetIntegrity() > c_PathFindingDefaultDigStrength && std::abs(dy) <= nodeSize && std::abs(dx) <= nodeSize) {
+	// (For a searcher with a digger, loose ground under the default dig strength too, rubble, gravel and the like: labelled a walk, the
+	// follower pressed into a pile of rubble without the digger out until it had been stuck there two seconds.)
+	const bool digsLoose = s_DigStrength > c_PathFindingDefaultDigStrength && material && !Open(*material);
+	if (material && (material->GetIntegrity() > c_PathFindingDefaultDigStrength || digsLoose) && std::abs(dy) <= nodeSize && std::abs(dx) <= nodeSize) {
 		if (material->GetIntegrity() <= s_DigStrength) {
 			return PathStepKind::Dig;
 		}
@@ -2781,10 +2784,13 @@ float PathFinder::GetMaterialTransitionCost(const Material& material) const {
 	bool door = material.GetIndex() == MaterialColorKeys::g_MaterialDoor;
 	if (strength > (door ? s_BreachStrength : s_DigStrength)) {
 		strength *= 1000.0F;
-	} else if (!door && strength > c_PathFindingDefaultDigStrength) {
+	} else if (!door && (strength > c_PathFindingDefaultDigStrength || (s_DigStrength > c_PathFindingDefaultDigStrength && !Open(material)))) {
 		// Ground this searcher's digger cuts: priced by how long the cut takes (DigNodeCost). (At its integrity, a node of earth cost seventy
 		// of walking and a diagonal dug up through it three times that, so a digger went round anything with a way round, however long, and
 		// was never seen to dig.)
+		// (Loose ground under the default dig strength too, for a searcher with a digger: blasted earth and stone settle as Earth Rubble, at
+		// 25, and priced at its integrity a node of it cost a digger more than a node of the red earth beside it, so it tunnelled round the
+		// pile through the solid ground. Searchers without a digger keep the old price.)
 		strength = DigNodeCost(strength, s_DigStrength, s_DigWillingness, s_DigCostScale);
 	}
 
