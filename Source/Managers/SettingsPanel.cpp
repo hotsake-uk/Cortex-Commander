@@ -904,6 +904,8 @@ void DebugMan::SettingsGUI() {
 		Toggle("Units' metal and gear settle as scraps", g_SettingsMan.BodyGearSettlesAsScraps(), [](bool on) { g_SettingsMan.SetBodyGearSettlesAsScraps(on); });
 		Tip("Armour plating, robot parts and the rest of what comes off a unit keep their look when they come to rest in the ground, but become the same soft scraps as the flesh, so the remains of the fallen never leave lumps of metal nobody can dig through. Flesh and bone settle as scraps and ashes either way. Off: everything settles as its own material.");
 		Heading("What falls");
+		Toggle("Show hold zones on the map", TerrainCollapse::ShowsHoldZones(), [](bool on) { TerrainCollapse::SetShowHoldZones(on); });
+		Tip("Outlines the sandbox's hold zones (Paint > Terrain > Hold ground) on the map, where the ground never falls. Off: they show only while Hold ground is in hand.");
 		Check("Floating masses stay up when chipped", &tuning.FloatingStays);
 		Tip("On: a mass that was already hanging in the air before a blast stays; cut in two, the bigger part stays and the smaller falls. Off: anything touching nothing falls.");
 		SliderI("Thin neck that snaps (pixels)", &tuning.NeckWidth, 0, 16);

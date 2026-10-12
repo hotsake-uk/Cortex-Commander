@@ -101,6 +101,33 @@ namespace RTE {
 		/// Sets whether falling pieces go through trees.
 		static void SetPassesTrees(bool passes) { s_PassesTrees = passes; }
 
+		/// Hold zones: places on the map (the sandbox's "Hold ground", drawn as boxes or polygons) where the ground never falls, as if it were bedrock.
+		/// Ground inside one is never lifted out, whatever cuts it loose, and holds up the ground joined to it; that ground still snaps off at a thin
+		/// neck or past the longest overhang as it would from bedrock. It can still be dug, shot and blasted away. By place, not by pixel: ground
+		/// put back into a zone is held too. Kept while the same map is played (through resets), forgotten when another map starts. Main thread only.
+		/// @param corners The zone's corners in order, in scene pixels, at least three, each placed from the first (not wrapped).
+		static void AddHoldZone(const std::vector<Vector>& corners);
+
+		/// Takes away the newest hold zone with a point inside it.
+		/// @param point The point, in scene coordinates.
+		/// @return Whether one was there.
+		static bool RemoveHoldZoneAt(const Vector& point);
+
+		/// Puts these hold zones in place of all of them (none to clear them), for an undo or a saved battle setup.
+		static void SetHoldZones(const std::vector<std::vector<Vector>>& zones);
+
+		/// Gets the hold zones, each a polygon as AddHoldZone took it.
+		static const std::vector<std::vector<Vector>>& GetHoldZones();
+
+		/// Gets whether a point is in a hold zone.
+		static bool IsInHoldZone(const Vector& point);
+
+		/// Gets whether the hold zones are shown on the map (a setting; the sandbox always shows them while "Hold ground" is in hand).
+		static bool ShowsHoldZones() { return s_ShowHoldZones; }
+
+		/// Sets whether the hold zones are shown on the map.
+		static void SetShowHoldZones(bool show) { s_ShowHoldZones = show; }
+
 		/// Queues a check for floating terrain around a crater. Thread safe.
 		/// @param position Centre of the crater, in scene coordinates.
 		/// @param radius How far around it to look.
@@ -189,6 +216,7 @@ namespace RTE {
 		static bool s_Enabled; //!< Whether collapsing terrain is on.
 		static bool s_BuildingsFall; //!< Whether pieces of buildings fall too.
 		static bool s_PassesTrees; //!< Whether falling pieces go through trees.
+		static bool s_ShowHoldZones; //!< Whether the hold zones are shown on the map.
 		static Tuning s_Tuning; //!< What falls and how.
 	};
 } // namespace RTE

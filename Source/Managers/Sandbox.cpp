@@ -697,6 +697,11 @@ bool Sandbox::IsLookingAround() {
 }
 
 bool Sandbox::TakeEscape() {
+	// (A hold zone being clicked out is dropped, not the game paused.)
+	if (CurrentTool().Kind == Tool::HoldGround && !s_HoldDraft.empty() && !ImGui::GetIO().WantTextInput) {
+		s_HoldDraft.clear();
+		return true;
+	}
 	if (!IsGodMode() || s_Possessed || !(s_Open || IsLookingAround()) || CurrentTool().Kind != Tool::Command || s_CommandMode == CommandMode::Command || ImGui::GetIO().WantTextInput) {
 		return false;
 	}
@@ -965,6 +970,7 @@ void Sandbox::DrawGUI() {
 		DrawRallyPoints();
 		DrawSpawnOrders();
 		DrawBattleMarks();
+		DrawHoldZones();
 		if (IsBattleCommand()) {
 			DrawLandingSpot();
 			DrawFogGhosts();
@@ -1182,6 +1188,8 @@ void Sandbox::DrawGUI() {
 				s_LineDragging = true;
 				s_LineStart = DragsRun(tool.Kind) ? position : SnapLinePoint(position, s_SnapToGrid);
 			}
+		} else if (tool.Kind == Tool::HoldGround) {
+			// (Its clicks and drags: HoldGroundInput, below.)
 		} else if (DragsShape(tool.Kind)) {
 			// Brush type Shape: a drag marks out the shape, filled when the button is let go (below). "Make it fall" drags its box the same way.
 			if (!s_ShapeDragging && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
@@ -1404,6 +1412,7 @@ void Sandbox::DrawGUI() {
 			}
 		}
 	}
+	HoldGroundInput();
 	// A one-off order's mode back to Command once it's placed, when no second click of a double click can follow.
 	if (s_BackToCommandAt >= 0.0 && !s_Dragging && ImGui::GetTime() >= s_BackToCommandAt) {
 		if (s_CommandMode == s_BackToCommandFrom) {
@@ -2079,7 +2088,22 @@ void Sandbox::DrawGUI() {
 				}
 				ImGui::SeparatorText("Terrain");
 				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::TreeTrunk, Tool::Concrete});
-				ToolButtons({Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::CollapseArea});
+				ToolButtons({Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::CollapseArea, Tool::HoldGround});
+				if (CurrentTool().Kind == Tool::HoldGround) {
+					bool show = TerrainCollapse::ShowsHoldZones();
+					if (ToolUI::Checkbox("Show hold zones without the tool", &show)) {
+						TerrainCollapse::SetShowHoldZones(show);
+					}
+					ImGui::SetItemTooltip("On: the hold zones are outlined on the map whatever is in hand (also under Settings > Falling ground). Off: only while Hold ground is.");
+					ImGui::SameLine();
+					ImGui::BeginDisabled(TerrainCollapse::GetHoldZones().empty());
+					if (ImGui::SmallButton("Clear all hold zones")) {
+						QueueSimChange(Tool::HoldGround, 0);
+						s_Queue.back().Choice = 2;
+					}
+					ImGui::EndDisabled();
+					ImGui::SetItemTooltip("Takes every hold zone on this map away (Ctrl+Z puts them back).");
+				}
 				{
 					// The rest of the base game's ground, a button each, for the "Other terrain" tool. Those with buttons of their own (above, and
 					// under Metals) aren't repeated.

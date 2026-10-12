@@ -33,6 +33,7 @@ using namespace RTE;
 bool TerrainCollapse::s_Enabled = true;
 bool TerrainCollapse::s_BuildingsFall = true;
 bool TerrainCollapse::s_PassesTrees = false;
+bool TerrainCollapse::s_ShowHoldZones = false;
 TerrainCollapse::Tuning TerrainCollapse::s_Tuning;
 
 namespace {
@@ -392,9 +393,83 @@ namespace {
 	enum PixelState : unsigned char {
 		c_Seen = 1, //!< Reached by a fill during the current check.
 		c_Supported = 2, //!< Part of a piece found to be held up during the current check.
-		c_Falling = 4 //!< Part of a falling piece, which checks ignore. Kept between checks.
+		c_Falling = 4, //!< Part of a falling piece, which checks ignore. Kept between checks.
+		c_Held = 8 //!< In a hold zone: never lifted out, and holds up what is joined to it, as bedrock does. Kept between checks (DrawHoldZones).
 	};
 	std::vector<unsigned char> s_State;
+	std::vector<std::vector<Vector>> s_HoldZones; //!< The hold zones, each a polygon (TerrainCollapse::AddHoldZone).
+	std::string s_HoldScene; //!< The map the hold zones were drawn on: another map starting forgets them.
+	bool s_HeldDrawn = false; //!< Whether the pixel states carry the hold zones as they are now.
+
+	/// Whether a pixel is in a hold zone.
+	inline bool Held(int key) { return (s_State[key] & c_Held) != 0; }
+
+	/// Whether a point is inside a polygon (even-odd), the polygon's corners as they are.
+	bool InsidePolygon(const std::vector<Vector>& corners, float x, float y) {
+		bool inside = false;
+		for (size_t i = 0, j = corners.size() - 1; i < corners.size(); j = i++) {
+			const Vector& a = corners[i];
+			const Vector& b = corners[j];
+			if ((a.m_Y > y) != (b.m_Y > y) && x < (b.m_X - a.m_X) * (y - a.m_Y) / (b.m_Y - a.m_Y) + a.m_X) {
+				inside = !inside;
+			}
+		}
+		return inside;
+	}
+
+	/// Marks the pixels in the hold zones in the pixel states (and unmarks the rest): each zone filled a row at a time, a pixel in when its middle is.
+	void DrawHoldZones(int width, int height, bool wrapX) {
+		if (s_State.size() != static_cast<size_t>(width) * static_cast<size_t>(height)) {
+			return;
+		}
+		for (unsigned char& state: s_State) {
+			state &= static_cast<unsigned char>(~c_Held);
+		}
+		std::vector<float> crossings;
+		for (const std::vector<Vector>& zone: s_HoldZones) {
+			if (zone.size() < 3) {
+				continue;
+			}
+			float minY = zone.front().m_Y;
+			float maxY = minY;
+			for (const Vector& corner: zone) {
+				minY = std::min(minY, corner.m_Y);
+				maxY = std::max(maxY, corner.m_Y);
+			}
+			int firstRow = std::max(0, static_cast<int>(std::floor(minY)));
+			int lastRow = std::min(height - 1, static_cast<int>(std::ceil(maxY)));
+			for (int y = firstRow; y <= lastRow; ++y) {
+				float middleY = static_cast<float>(y) + 0.5F;
+				crossings.clear();
+				for (size_t i = 0, j = zone.size() - 1; i < zone.size(); j = i++) {
+					const Vector& a = zone[i];
+					const Vector& b = zone[j];
+					if ((a.m_Y > middleY) != (b.m_Y > middleY)) {
+						crossings.push_back(a.m_X + (b.m_X - a.m_X) * (middleY - a.m_Y) / (b.m_Y - a.m_Y));
+					}
+				}
+				std::sort(crossings.begin(), crossings.end());
+				for (size_t i = 0; i + 1 < crossings.size(); i += 2) {
+					int from = static_cast<int>(std::ceil(crossings[i] - 0.5F));
+					int to = static_cast<int>(std::floor(crossings[i + 1] - 0.5F));
+					if (to - from >= width) {
+						from = 0;
+						to = width - 1;
+					}
+					for (int rawX = from; rawX <= to; ++rawX) {
+						int x = rawX;
+						if (wrapX) {
+							x = (x % width + width) % width;
+						} else if (x < 0 || x >= width) {
+							continue;
+						}
+						s_State[static_cast<size_t>(y) * width + x] |= c_Held;
+					}
+				}
+			}
+		}
+		s_HeldDrawn = true;
+	}
 	std::vector<int> s_Touched; //!< Pixels marked seen or supported during the current check, to clear afterwards.
 	std::vector<int> s_Stack;
 	std::vector<int> s_FillSeen; //!< Every pixel the current fill has reached.
@@ -1752,7 +1827,7 @@ namespace {
 					for (size_t next = 0; next < scrap.size() && small; ++next) {
 						int x = scrap[next] % s_Width;
 						int y = scrap[next] / s_Width;
-						fixed = fixed || s_Fixed[materialBitmap->line[y][x]];
+						fixed = fixed || s_Fixed[materialBitmap->line[y][x]] || Held(scrap[next]);
 						for (int dy = -1; dy <= 1 && small; ++dy) {
 							for (int dx = -1; dx <= 1; ++dx) {
 								int nx = x + dx;
@@ -1790,7 +1865,7 @@ namespace {
 								for (int dx = -1; dx <= 1; ++dx) {
 									int x = startX + dx;
 									int y = startY + dy;
-									if (SolidAt(materialBitmap, x, y) && WrapInWorld(x, y) && !s_Fixed[materialBitmap->line[y][x]]) {
+									if (SolidAt(materialBitmap, x, y) && WrapInWorld(x, y) && !s_Fixed[materialBitmap->line[y][x]] && !Held(y * s_Width + x)) {
 										scrap.push_back(y * s_Width + x);
 									}
 								}
@@ -2047,7 +2122,7 @@ namespace {
 			if (s_TreeTrunk[material] || TerrainTrees::IsTreeMaterial(material) || (treeRules && s_Leaves[material])) {
 				++treePixels;
 			}
-			if (static_cast<int>(piece.size()) - treePixels > TerrainCollapse::GetTuning().MaxPiecePixels || static_cast<int>(piece.size()) > c_MaxTreePiecePixels || s_Fixed[material]) {
+			if (static_cast<int>(piece.size()) - treePixels > TerrainCollapse::GetTuning().MaxPiecePixels || static_cast<int>(piece.size()) > c_MaxTreePiecePixels || s_Fixed[material] || Held(key)) {
 				floating = false;
 				break;
 			}
@@ -2324,7 +2399,7 @@ namespace {
 				int y = top + wy;
 				WrapInWorld(x, y);
 				int material = materialBitmap->line[y][x];
-				fixed = fixed || s_Fixed[material];
+				fixed = fixed || s_Fixed[material] || Held(y * s_Width + x);
 				building = building || s_Structure[material];
 				if (i < coreSize) {
 					piece.Core.push_back(y * s_Width + x);
@@ -2355,6 +2430,7 @@ namespace {
 			}
 			for (int key: piece.Cut) {
 				int material = materialBitmap->line[key / s_Width][key % s_Width];
+				// (A neck in a hold zone still snaps, as one of bedrock would: only the piece itself being held keeps it.)
 				fixed = fixed || s_Fixed[material];
 			}
 			if (fixed) {
@@ -2516,7 +2592,7 @@ namespace {
 			if (s_Flimsy[material] || FluidSim::IsLiquid(material) || s_NoHold[material] || s_Leaves[material] || s_TreeTrunk[material] || TerrainTrees::IsTreeMaterial(material) || (s_State[y * s_Width + x] & c_Falling)) {
 				return 0;
 			}
-			return (s_Fixed[material] || s_Structure[material]) ? 2 : 1;
+			return (s_Fixed[material] || s_Structure[material] || Held(y * s_Width + x)) ? 2 : 1;
 		};
 		for (int wy = 0; wy < side; ++wy) {
 			for (int wx = 0; wx < side; ++wx) {
@@ -3045,7 +3121,7 @@ namespace {
 			for (int bx = 0; bx < boxWidth; ++bx) {
 				int key = keyOf(bx, by);
 				int material = materialBitmap->line[key / s_Width][key % s_Width];
-				if (material == g_MaterialAir || FluidSim::IsLiquid(material) || s_Fixed[material] || (s_State[key] & c_Falling)) {
+				if (material == g_MaterialAir || FluidSim::IsLiquid(material) || s_Fixed[material] || (s_State[key] & (c_Falling | c_Held))) {
 					continue;
 				}
 				int nearest = 0;
@@ -3255,6 +3331,60 @@ void TerrainCollapse::NoteBuilt(int left, int top, int right, int bottom) {
 	}
 }
 
+void TerrainCollapse::AddHoldZone(const std::vector<Vector>& corners) {
+	if (corners.size() < 3) {
+		return;
+	}
+	s_HoldScene = g_SceneMan.GetScene() ? g_SceneMan.GetScene()->GetPresetName() : std::string();
+	s_HoldZones.push_back(corners);
+	s_HeldDrawn = false;
+}
+
+bool TerrainCollapse::IsInHoldZone(const Vector& point) {
+	for (const std::vector<Vector>& zone: s_HoldZones) {
+		if (zone.size() < 3) {
+			continue;
+		}
+		// (On the same side of a wrap as the first corner, as the corners are.)
+		Vector at = zone.front() + g_SceneMan.ShortestDistance(zone.front(), point, g_SceneMan.SceneWrapsX());
+		if (InsidePolygon(zone, at.m_X, at.m_Y)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool TerrainCollapse::RemoveHoldZoneAt(const Vector& point) {
+	for (size_t i = s_HoldZones.size(); i-- > 0;) {
+		const std::vector<Vector>& zone = s_HoldZones[i];
+		if (zone.size() < 3) {
+			continue;
+		}
+		Vector at = zone.front() + g_SceneMan.ShortestDistance(zone.front(), point, g_SceneMan.SceneWrapsX());
+		if (InsidePolygon(zone, at.m_X, at.m_Y)) {
+			s_HoldZones.erase(s_HoldZones.begin() + static_cast<std::ptrdiff_t>(i));
+			s_HeldDrawn = false;
+			return true;
+		}
+	}
+	return false;
+}
+
+void TerrainCollapse::SetHoldZones(const std::vector<std::vector<Vector>>& zones) {
+	s_HoldScene = g_SceneMan.GetScene() ? g_SceneMan.GetScene()->GetPresetName() : std::string();
+	s_HoldZones.clear();
+	for (const std::vector<Vector>& zone: zones) {
+		if (zone.size() >= 3) {
+			s_HoldZones.push_back(zone);
+		}
+	}
+	s_HeldDrawn = false;
+}
+
+const std::vector<std::vector<Vector>>& TerrainCollapse::GetHoldZones() {
+	return s_HoldZones;
+}
+
 void TerrainCollapse::SpawnChunk(const Vector& position, float radius, const char* materialName) {
 	if (!s_Enabled) {
 		return;
@@ -3340,7 +3470,13 @@ void TerrainCollapse::Update() {
 		Clear();
 		// (The pixel states of the last game are no guide to this one, even on a terrain of the same size.)
 		s_State.clear();
+		s_HeldDrawn = false;
 		s_Scene = g_SceneMan.GetScene();
+		// (The hold zones stay through a reset of the same map; another map forgets them.)
+		if (const Scene* newScene = g_SceneMan.GetScene(); newScene && newScene->GetPresetName() != s_HoldScene) {
+			s_HoldZones.clear();
+			s_HoldScene = newScene->GetPresetName();
+		}
 		s_SceneGeneration = g_SceneMan.GetSceneGeneration();
 		s_CollapsedCount = 0;
 		s_TablesBuilt = false;
@@ -3365,6 +3501,10 @@ void TerrainCollapse::Update() {
 		// A terrain of another size: nothing known about its pixels carries over.
 		s_Bodies.clear();
 		s_State.assign(pixels, 0);
+		s_HeldDrawn = false;
+	}
+	if (!s_HeldDrawn) {
+		DrawHoldZones(s_Width, s_Height, s_WrapX);
 	}
 	long long now = g_TimerMan.GetSimUpdateCount();
 	std::vector<ChunkRequest> chunks;
@@ -3443,7 +3583,7 @@ void TerrainCollapse::Update() {
 				std::vector<int> piece;
 				for (int key: rested.Keys) {
 					int material = materialBitmap->line[key / s_Width][key % s_Width];
-					if (material != g_MaterialAir && !FluidSim::IsLiquid(material) && !s_Fixed[material] && !(s_State[key] & c_Falling)) {
+					if (material != g_MaterialAir && !FluidSim::IsLiquid(material) && !s_Fixed[material] && !(s_State[key] & (c_Falling | c_Held))) {
 						piece.push_back(key);
 					}
 				}
@@ -3579,6 +3719,7 @@ void TerrainCollapse::Clear() {
 	// Only falling pieces leave marks on the pixel states between checks. Where they are drawn in the terrain they stay, as ordinary ground.
 	if (!s_Bodies.empty()) {
 		std::fill(s_State.begin(), s_State.end(), static_cast<unsigned char>(0));
+		s_HeldDrawn = false;
 	}
 	s_Bodies.clear();
 	s_NewBodies.clear();
