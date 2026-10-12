@@ -1425,6 +1425,7 @@ namespace SandboxDetail {
 	inline PlayerSetup s_Player;
 
 	/// The respawn point for your character: it is made again here, and stepped into, when it dies while you are playing it.
+	inline std::vector<long> s_PlayerMade; //!< Every character made as yours so far (this game): any but the current one still about is taken away.
 	inline bool s_RespawnSet = false;
 	inline Vector s_RespawnPoint;
 	constexpr float c_RespawnWaitSeconds = 4.0F; //!< How long the view stays where it died, when not respawning instantly.
@@ -2641,6 +2642,7 @@ namespace SandboxDetail {
 	Actor* TakeOutPlayer();
 	void RemovePlayer();
 	void ClearRespawn();
+	void RemoveStrayPlayers();
 	void EnterPlayer(bool atPlace, const Vector& place);
 	void UpdatePlayer();
 	void SelectInBox(const Vector& cornerA, const Vector& cornerB);
