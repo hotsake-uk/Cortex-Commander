@@ -6,6 +6,10 @@
 #include "ActivityMan.h"
 #include "UInputMan.h"
 #include "SettingsMan.h"
+#include "Sandbox.h"
+#include "DebugMan.h"
+#include "MetaMan.h"
+#include "Notices.h"
 
 #include "SaveLoadMenuGUI.h"
 #include "SettingsGUI.h"
@@ -42,6 +46,8 @@ void PauseMenuGUI::Clear() {
 
 	m_SavingButtonsDisabled = false;
 	m_ModManagerButtonDisabled = false;
+	m_BattleButtonsShown = true;
+	m_RestartAsked = false;
 
 	m_PauseMenuBox = nullptr;
 	m_PauseMenuButtons.fill(nullptr);
@@ -60,9 +66,15 @@ void PauseMenuGUI::Create(AllegroScreen* guiScreen, GUIInputWrapper* guiInput) {
 	m_PauseMenuBox->CenterInParent(true, true);
 
 	m_PauseMenuButtons[PauseMenuButton::BackToMainButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonBackToMain"));
+	m_PauseMenuButtons[PauseMenuButton::QuickSaveButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonQuickSave"));
+	m_PauseMenuButtons[PauseMenuButton::SettingsPanelButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonSettingsPanel"));
+	m_PauseMenuButtons[PauseMenuButton::RestartButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonRestart"));
 	m_PauseMenuButtons[PauseMenuButton::SaveOrLoadGameButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonSaveOrLoadGame"));
 	m_PauseMenuButtons[PauseMenuButton::SettingsButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonSettings"));
 	m_PauseMenuButtons[PauseMenuButton::ModManagerButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonModManager"));
+	m_PauseMenuButtons[PauseMenuButton::RestartBattleButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonRestartBattle"));
+	m_PauseMenuButtons[PauseMenuButton::SurrenderButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonSurrender"));
+	m_PauseMenuButtons[PauseMenuButton::KeysButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonKeys"));
 	m_PauseMenuButtons[PauseMenuButton::ResumeButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonResume"));
 
 	for (size_t pauseMenuButton = 0; pauseMenuButton < m_PauseMenuButtons.size(); ++pauseMenuButton) {
@@ -106,6 +118,16 @@ void PauseMenuGUI::SetBackButtonTargetName(const std::string& menuName) {
 }
 
 void PauseMenuGUI::EnableOrDisablePauseMenuFeatures() {
+	// The quick actions (U-4). Quick Save as F5, only where the game can be saved; the menu's font has no other way to show it greyed, so
+	// it says so. Restart as Ctrl+R, not in a campaign (where Ctrl+R doesn't either), and asking again each time the menu opens.
+	const Activity* currentActivity = g_ActivityMan.GetActivity();
+	const bool canQuickSave = currentActivity && currentActivity->CanBeUserSaved();
+	m_PauseMenuButtons[PauseMenuButton::QuickSaveButton]->SetEnabled(canQuickSave);
+	SetButtonText(PauseMenuButton::QuickSaveButton, canQuickSave ? "Quick Save" : "No Quick Save Here");
+	m_PauseMenuButtons[PauseMenuButton::RestartButton]->SetEnabled(currentActivity && !g_MetaMan.GameInProgress());
+	m_RestartAsked = false;
+	SetButtonText(PauseMenuButton::RestartButton, "Restart");
+
 	bool disableModManager = true;
 
 	if (const Activity* activity = g_ActivityMan.GetActivity(); activity) {
@@ -121,9 +143,32 @@ void PauseMenuGUI::EnableOrDisablePauseMenuFeatures() {
 		int yOffset = m_PauseMenuButtons[PauseMenuButton::ModManagerButton]->GetHeight();
 
 		m_PauseMenuButtons[PauseMenuButton::ResumeButton]->MoveRelative(0, yOffset * (disableModManager ? -1 : 1));
+		// (The battle entries sit under the mod manager's button: up or down with it.)
+		for (int battleButton = PauseMenuButton::RestartBattleButton; battleButton <= PauseMenuButton::KeysButton; ++battleButton) {
+			m_PauseMenuButtons[battleButton]->MoveRelative(0, yOffset * (disableModManager ? -1 : 1));
+		}
 		m_PauseMenuBox->MoveRelative(0, yOffset / 2 * -1);
 
 		m_ModManagerButtonDisabled = disableModManager;
+	}
+
+	// The battle entries (Restart battle, Surrender, Keys): only while a battle mode's game is on, in the Sandbox game mode or Battle Command.
+	// Surrender only while the battle can still be lost by a team you command.
+	const bool showBattleButtons = Sandbox::IsBattleModeRunning();
+	if (m_BattleButtonsShown != showBattleButtons) {
+		int yOffset = 0;
+		for (int battleButton = PauseMenuButton::RestartBattleButton; battleButton <= PauseMenuButton::KeysButton; ++battleButton) {
+			m_PauseMenuButtons[battleButton]->SetVisible(showBattleButtons);
+			m_PauseMenuButtons[battleButton]->SetEnabled(showBattleButtons);
+			yOffset += m_PauseMenuButtons[battleButton]->GetHeight();
+		}
+		m_PauseMenuButtons[PauseMenuButton::ResumeButton]->MoveRelative(0, yOffset * (showBattleButtons ? 1 : -1));
+		m_PauseMenuBox->MoveRelative(0, yOffset / 2 * (showBattleButtons ? -1 : 1));
+
+		m_BattleButtonsShown = showBattleButtons;
+	}
+	if (showBattleButtons) {
+		m_PauseMenuButtons[PauseMenuButton::SurrenderButton]->SetEnabled(Sandbox::CanSurrenderBattle());
 	}
 }
 
@@ -203,7 +248,35 @@ bool PauseMenuGUI::HandleInputEvents() {
 	GUIEvent guiEvent;
 	while (m_GUIControlManager->GetEvent(&guiEvent)) {
 		if (guiEvent.GetType() == GUIEvent::Command) {
+			// Any other button pressed puts Restart back from asking again.
+			if (m_RestartAsked && guiEvent.GetControl() != m_PauseMenuButtons[PauseMenuButton::RestartButton]) {
+				m_RestartAsked = false;
+				SetButtonText(PauseMenuButton::RestartButton, "Restart");
+			}
 			if (guiEvent.GetControl() == m_PauseMenuButtons[PauseMenuButton::ResumeButton]) {
+				return true;
+			} else if (guiEvent.GetControl() == m_PauseMenuButtons[PauseMenuButton::QuickSaveButton]) {
+				// As F5: saved over the quick-save, with a notice over the menu, which stays open.
+				if (const Activity* activity = g_ActivityMan.GetActivity(); activity && activity->CanBeUserSaved()) {
+					g_GUISound.ButtonPressSound()->Play();
+					Notices::Post(g_ActivityMan.SaveCurrentGame("QuickSave") ? "Game saved" : "Could not save the game");
+				}
+			} else if (guiEvent.GetControl() == m_PauseMenuButtons[PauseMenuButton::RestartButton]) {
+				// Pressed twice: the first asks, the second restarts the game as Ctrl+R does (the same map and setup, from the start), once
+				// the game is back.
+				if (!m_RestartAsked) {
+					g_GUISound.ButtonPressSound()->Play();
+					m_RestartAsked = true;
+					SetButtonText(PauseMenuButton::RestartButton, "Confirm Restart");
+				} else {
+					m_RestartAsked = false;
+					SetButtonText(PauseMenuButton::RestartButton, "Restart");
+					g_ActivityMan.SetRestartActivity();
+					return true;
+				}
+			} else if (guiEvent.GetControl() == m_PauseMenuButtons[PauseMenuButton::SettingsPanelButton]) {
+				// The settings panel (F6) over the game, rather than the old Settings menu.
+				g_DebugMan.ShowSettingsPanel();
 				return true;
 			} else if (guiEvent.GetControl() == m_PauseMenuButtons[PauseMenuButton::SaveOrLoadGameButton]) {
 				SetActiveMenuScreen(PauseMenuScreen::SaveOrLoadGameScreen);
@@ -211,6 +284,18 @@ bool PauseMenuGUI::HandleInputEvents() {
 				SetActiveMenuScreen(PauseMenuScreen::SettingsScreen);
 			} else if (guiEvent.GetControl() == m_PauseMenuButtons[PauseMenuButton::ModManagerButton]) {
 				SetActiveMenuScreen(PauseMenuScreen::ModManagerScreen);
+			} else if (guiEvent.GetControl() == m_PauseMenuButtons[PauseMenuButton::RestartBattleButton]) {
+				// (These three go back to the game as Resume does, with its sound.) The battle mode's game from the start, as it's set up, once the game is back.
+				Sandbox::RestartBattleMode();
+				return true;
+			} else if (guiEvent.GetControl() == m_PauseMenuButtons[PauseMenuButton::SurrenderButton]) {
+				// Lost by the team you command; in Battle Command the after-battle report opens.
+				Sandbox::SurrenderBattleMode();
+				return true;
+			} else if (guiEvent.GetControl() == m_PauseMenuButtons[PauseMenuButton::KeysButton]) {
+				// The sandbox window's Keys page, over the game.
+				Sandbox::ShowKeys();
+				return true;
 			} else if (guiEvent.GetControl() == m_PauseMenuButtons[PauseMenuButton::BackToMainButton]) {
 				g_GUISound.BackButtonPressSound()->Play();
 				m_UpdateResult = PauseMenuUpdateResult::BackToMain;
@@ -241,6 +326,22 @@ void PauseMenuGUI::UpdateHoveredButton(const GUIButton* hoveredButton) {
 	} else {
 		m_HoveredButton = nullptr;
 	}
+}
+
+void PauseMenuGUI::SetButtonText(PauseMenuButton button, const std::string& text) {
+	std::string buttonText = text;
+	std::transform(buttonText.begin(), buttonText.end(), buttonText.begin(), ::toupper);
+	m_ButtonHoveredText[button] = buttonText;
+	std::transform(buttonText.begin(), buttonText.end(), buttonText.begin(), ::tolower);
+	m_ButtonUnhoveredText[button] = buttonText;
+
+	GUIButton* guiButton = m_PauseMenuButtons[button];
+	int wantedWidth = m_GUIControlManager->GetSkin()->GetFont("FontMainMenu.png")->CalculateWidth(m_ButtonHoveredText[button]) + 20;
+	if (wantedWidth > guiButton->GetWidth()) {
+		guiButton->SetSize(wantedWidth, guiButton->GetHeight());
+	}
+	guiButton->SetText(guiButton == m_HoveredButton ? m_ButtonHoveredText[button] : m_ButtonUnhoveredText[button]);
+	guiButton->CenterInParent(true, false);
 }
 
 void PauseMenuGUI::BlinkResumeButton() {

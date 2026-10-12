@@ -3,6 +3,7 @@
 #include "SandboxInternal.h"
 #include "ActionMenu.h"
 #include "ModernHUD.h"
+#include "Notices.h"
 #include "AVehicle.h"
 #include "GUISound.h"
 #include "TerrainCandle.h"
@@ -177,7 +178,7 @@ namespace SandboxDetail {
 		if (PoursLiquid(kind) && !FluidSim::IsEnabled()) {
 			return "Flowing liquids are off (World > Simulations, or F6 > Water): nothing is poured.";
 		}
-		if (kind == Tool::CollapseArea && !TerrainCollapse::IsEnabled()) {
+		if ((kind == Tool::CollapseArea || kind == Tool::HoldGround) && !TerrainCollapse::IsEnabled()) {
 			return "Collapsing terrain is off (F6 > Falling ground): nothing falls.";
 		}
 		if (PoursPowder(kind) && !FluidSim::PowdersEnabled()) {
@@ -264,6 +265,8 @@ namespace SandboxDetail {
 				return "Drag along the ground to put down candles: tapers, pillars and stubs in white, ivory, red and beeswax. Set one alight with fire (the Fire brush, a flame, burning grass beside it) and it burns like a real one: a small steady flame that lights up round it, the wax melting down from the top and running down the sides, until it's burnt down. Water, a strong wind, a blast or rain in the open puts it out; light it again and it carries on.";
 			case Tool::CollapseArea:
 				return "Drag out a box on the world: all the ground in it breaks loose and falls, rock, earth, sand, wood, buildings and all (not doors). Each piece lands as its material does: concrete and glass shatter, earth and stone crack, sand crumbles, wood splinters, metal bends. What only the box held up comes down too. A big box falls as rubble. Shift keeps it square, Escape drops it, Ctrl+Z puts it all back. Up to 800 px either way.";
+			case Tool::HoldGround:
+				return "Marks out where the ground never falls, as if it were bedrock. Drag out a box, or click the corners of a polygon (click the first corner again, press Enter or right click to close it; Backspace takes back a corner, Escape drops it). Ground inside never breaks loose, and holds up the ground joined to it, which can still snap off at a thin neck or a long overhang as it would from bedrock. It can still be dug, shot and blasted away; ground put back there is held too. Right click a zone to take it away; Ctrl+Z undoes. Kept for this map until another starts, and saved with a battle setup when its Hold zones box is ticked.";
 			case Tool::TerrainOther:
 				return "Paints the terrain chosen under \"More terrain...\": the base game's ground (topsoil, bedrock, red and lunar earth, snow, metal, ...).";
 			case Tool::Rope:
@@ -421,6 +424,8 @@ namespace SandboxDetail {
 				return {Icon::Chunk, MaterialMarkColor(s_OtherTerrain, 255)};
 			case Tool::CollapseArea:
 				return {Icon::Down, IM_COL32(242, 150, 60, 255)};
+			case Tool::HoldGround:
+				return {Icon::Wall, IM_COL32(120, 200, 255, 255)};
 			case Tool::Rope: {
 				const RopeSim::TypeInfo& type = RopeSim::GetType(s_RopeType);
 				return {Icon::Rope, IM_COL32(type.R, type.G, type.B, 255)};
@@ -2093,15 +2098,15 @@ namespace SandboxDetail {
 				// The middle of the view as it is now.
 				Bookmarks()[key] = s_FreeCamera ? s_CameraCenter : g_CameraMan.GetOffset(0) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, static_cast<float>(g_FrameMan.GetPlayerScreenHeight()) * 0.5F);
 				WriteBookmarks();
-				ModernHUD::AddFeedLine("View " + name + " kept (Ctrl+Alt+" + name + " to come back)", SelectionTeam());
+				Notices::Post("View " + name + " kept (Ctrl+Alt+" + name + " to come back)");
 			} else if (auto found = Bookmarks().find(key); found != Bookmarks().end()) {
 				s_FreeCamera = true;
 				s_FollowTarget = UnitRef();
 				s_FollowAction = false;
 				s_CameraCenter = found->second;
-				ModernHUD::AddFeedLine("Back to view " + name, SelectionTeam());
+				Notices::Post("Back to view " + name);
 			} else {
-				ModernHUD::AddFeedLine("No view " + name + " kept on this map yet (Ctrl+Shift+" + name + " keeps one)", SelectionTeam());
+				Notices::Post("No view " + name + " kept on this map yet (Ctrl+Shift+" + name + " keeps one)");
 			}
 		}
 	}
@@ -2301,7 +2306,7 @@ namespace SandboxDetail {
 			const char* What;
 		};
 		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view (with a Paint tool in hand: dig)"}, {"Middle drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"U", "Hide or show the bar along the bottom"}, {"Commander Toolbar key", "Swap the bar along the bottom for Battle Command's Commander Toolbar, and back (the key is picked below)"}, {"F9", "Commander view, outside the Sandbox game mode: your side from above, and back into your unit"}, {"Ctrl+Z", "Undo the last paint stroke or the last thing placed"}, {"Ctrl+P", "Pause the AI, or let it go again (in any game; the key can be changed in the AI settings)"}, {"- / =", "The game a step slower or faster, through the speed tile's speeds (Shift with either: back to 1x)"}, {"Ctrl+Shift+1 to 4", "Keep the view as bookmark 1 to 4, for this map (kept between games)"}, {"Ctrl+Alt+1 to 4", "Back to view bookmark 1 to 4"}};
-		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it. In Command mode the order fits what's under the pointer: an enemy attacked, an objective taken or held, open air flown to, else a move"}, {"Esc", "Back to Command mode, the mode other orders return to once placed (in Command mode: pause)"}, {"Left drag", "Select units in a box"}, {"Double click and drag", "Order with risk: normal at the click, fully direct at the full risk distance; they face the way dragged"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click a unit", "Every unit of that kind in view"}, {"Ctrl+double click a unit", "Every unit of that kind on the whole map"}, {"Clicks to order", "How urgent the order is: 1 cautious (walks round jumps, waits for fuel), 2 normal; drag the second click for risk up to the shortest way whatever it takes (a dig-to tunnels straight, moves take fast, reckless jet jumps); tuned in Battle Behavior settings"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"X", "Dig to: tunnel to the point, in the ground or not (the units with a digger that cuts the way)"}, {"Ctrl+X", "Breach: the diggers tunnel to the point and the rest follow them in; once through, they all attack"}, {"Ctrl+B", "Build: a selected unit with a Constructor puts up the piece picked on the command row (sandbags, a wall, a bunker, a turret)"}, {"Ctrl+L", "Airlift: a gunship comes down by the selected units, flies them to the place clicked and lets them out"}, {"J", "Jetpack here: fly to the point in the air and hover there (a move or attack-move clicked in open air flies there too)"}, {"Z", "Suppress: fire into a zone round the point and keep firing, whatever else is in sight"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends). With nothing selected, O pauses"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Ctrl+.", "Every idle unit of the side at once (Shift: add them)"}, {"Q", "Every unit in view of the kinds selected"}, {"Ctrl+Q", "Every unit on the whole map of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Shift+number", "Add the selection to the group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}, {"Alt+1 to Alt+5", "Commander Toolbar: call in that reinforcement card, in the toolbar's order (any tool in hand)"}, {"Alt+Shift+1 to Alt+Shift+7", "Commander Toolbar: use that commander power, in the toolbar's order (any tool in hand)"}};
+		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it. In Command mode the order fits what's under the pointer: an enemy attacked, an objective taken or held, open air flown to, else a move"}, {"Esc", "Back to Command mode, the mode other orders return to once placed (in Command mode: pause)"}, {"Left drag", "Select units in a box"}, {"Double click and drag", "Order with risk: normal at the click, fully direct at the full risk distance; they face the way dragged"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click a unit", "Every unit of that kind in view"}, {"Ctrl+double click a unit", "Every unit of that kind on the whole map"}, {"Clicks to order", "How urgent the order is: 1 cautious (walks round jumps, waits for fuel), 2 normal; drag the second click for risk up to the shortest way whatever it takes (a dig-to tunnels straight, moves take fast, reckless jet jumps); tuned in Battle Behavior settings"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"X", "Dig to: tunnel to the point, in the ground or not (the units with a digger that cuts the way)"}, {"Ctrl+X", "Breach: the diggers tunnel to the point and the rest follow them in; once through, they all attack"}, {"Ctrl+B", "Build: a selected unit with a Constructor puts up the piece picked on the command row (sandbags, a wall, a bunker, a turret)"}, {"Ctrl+L", "Airlift: a gunship comes down by the selected units, flies them to the place clicked and lets them out"}, {"J", "Jetpack here: fly to the point in the air and hover there (a move or attack-move clicked in open air flies there too)"}, {"Z", "Suppress: fire into a zone round the point and keep firing, whatever else is in sight"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends). With nothing selected, O pauses"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Ctrl+.", "Every idle unit of the side at once (Shift: add them)"}, {"Q", "Every unit in view of the kinds selected"}, {"Ctrl+Q", "Every unit on the whole map of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Shift+number", "Add the selection to the group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}, {"Space / Shift+Space", "Battle Command: look at the latest alert / step back to the one before, each press (the alert log lists them all)"}, {"Alt+1 to Alt+5", "Commander Toolbar: call in that reinforcement card, in the toolbar's order (any tool in hand)"}, {"Alt+Shift+1 to Alt+Shift+7", "Commander Toolbar: use that commander power, in the toolbar's order (any tool in hand)"}};
 		static const Key plants[] = {{"E / Shift+E", "With a plant, cactus, mushroom, tree or candle brush in hand: the next of its pictures, or the one before (just one picked in its gallery: that pick moves on)"}, {"F", "Flip the next one the other way"}};
 		auto table = [](const char* id, const Key* keys, size_t count) {
 			if (ImGui::BeginTable(id, 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
@@ -2883,6 +2888,9 @@ namespace SandboxDetail {
 				crosshair(g_SceneMan.MovePointToGround(point, 0.0F, 4), color, pixel * 6.0F);
 				const int cars = static_cast<int>(std::count_if(units.begin(), units.end(), [](const Actor* unit) { return dynamic_cast<const AVehicle*>(unit) != nullptr; }));
 				label = "Park here: " + std::to_string(cars) + (cars == 1 ? " vehicle" : " vehicles") + ", handbrake on";
+			} else if (mode == CommandMode::Ram) {
+				const int ships = static_cast<int>(std::count_if(units.begin(), units.end(), [](const Actor* unit) { return dynamic_cast<const ACShip*>(unit) != nullptr; }));
+				label = "Ram the enemy clicked: " + std::to_string(ships) + (ships == 1 ? " ship" : " ships") + ", run after run";
 			} else if (mode == CommandMode::Land) {
 				const ImU32 color = c_CommandModeColors[static_cast<int>(CommandMode::Land)];
 				crosshair(g_SceneMan.MovePointToGround(point, 0.0F, 4), color, pixel * 6.0F);
@@ -3301,6 +3309,8 @@ namespace SandboxDetail {
 					can = SelectionHasShip();
 				} else if (each == CommandMode::Park) {
 					can = SelectionHasCar();
+				} else if (each == CommandMode::Ram) {
+					can = SelectionHasShip();
 				}
 				canDo.push_back(can);
 			}
@@ -4727,7 +4737,7 @@ namespace SandboxDetail {
 		    {"Paint", "Liquids", {Tool::Water, Tool::Lava, Tool::Acid, Tool::Oil, Tool::Mud, Tool::Tar, Tool::Mercury, Tool::Fuel, Tool::Cryo, Tool::Blood, Tool::PourOther, Tool::WaterSpawner}},
 		    {"Paint", "Fire and gas", {Tool::Fire, Tool::Smoke, Tool::ToxicGas, Tool::Methane, Tool::Steam}},
 		    {"Paint", "Loose", {Tool::LooseSand, Tool::LooseSnow, Tool::Gravel, Tool::GlassShards, Tool::Boulder, Tool::Slab}},
-		    {"Paint", "Terrain", {Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::TreeTrunk, Tool::Concrete, Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::Metal, Tool::TerrainOther, Tool::CollapseArea}},
+		    {"Paint", "Terrain", {Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::TreeTrunk, Tool::Concrete, Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::Metal, Tool::TerrainOther, Tool::CollapseArea, Tool::HoldGround}},
 		    {"Paint", "Plants", {Tool::Plants, Tool::Cacti, Tool::Mushrooms, Tool::Trees, Tool::GrowGrass, Tool::Candles}},
 		    {"Paint", "Ropes", {Tool::Rope, Tool::RopeCut}},
 		    {"Boom", "Blasts", {Tool::Grenade, Tool::BigBomb, Tool::Napalm, Tool::Lightning, Tool::Demolition, Tool::BunkerBuster, Tool::Meteor}},
@@ -5414,6 +5424,11 @@ namespace SandboxDetail {
 				const int land = static_cast<int>(CommandMode::Land);
 				if (BarChip(c_CommandModeNames[land], current == land, c_CommandModeColors[land], nullptr, "Fly the selected ships to the place clicked, set them down on the ground there and turn their engines off, as a\nvehicle's handbrake. Everyone stays aboard, and they stay down till given another order. Shift adds it to their plans.") == 1) {
 					s_CommandMode = CommandMode::Land;
+				}
+				line.Next(pixel * 2.0F);
+				const int ram = static_cast<int>(CommandMode::Ram);
+				if (BarChip(c_CommandModeNames[ram], current == ram, c_CommandModeColors[ram], nullptr, "Ram the enemy clicked with the selected ships: each backs off for a run-up, charges it flat out and pulls up past\nit, then comes round and goes again, till it is dead or they are given another order. A hit hurts the ship a little too.\nOthers selected attack it. A ship whose guns are all shot off rams by itself.") == 1) {
+					s_CommandMode = CommandMode::Ram;
 				}
 			}
 			// A ground vehicle among them: park it at a place, handbrake on.
@@ -6175,9 +6190,12 @@ namespace SandboxDetail {
 						    ImVec2 points[] = {ImVec2(at.x + room * 0.78F, at.y + room * 0.82F), ImVec2(at.x + room * 0.78F, at.y + room * 0.38F), ImVec2(at.x + room * 0.36F, at.y + room * 0.38F)};
 						    tileList->AddPolyline(points, 3, ink, ImDrawFlags_None, thick);
 						    tileList->AddTriangleFilled(ImVec2(at.x + room * 0.12F, at.y + room * 0.38F), ImVec2(at.x + room * 0.4F, at.y + room * 0.16F), ImVec2(at.x + room * 0.4F, at.y + room * 0.6F), ink);
-					    }) == 1 &&
-					    canUndo) {
-						QueueSimChange(Tool::UndoTerrain);
+					    }) == 1) {
+						if (canUndo) {
+							QueueSimChange(Tool::UndoTerrain);
+						} else {
+							Notices::Post("Nothing to undo");
+						}
 					}
 				}
 				rightWidth = ImGui::GetItemRectMax().x - rightStart;

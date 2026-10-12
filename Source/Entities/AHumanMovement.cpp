@@ -335,11 +335,10 @@ void AHuman::UpdateAIMotor() {
 // ---------------------------------------------------------------- The leap
 
 float AHuman::GetLegJumpHeight() const {
-	if (m_LegJumpHeight >= 0.0F) {
-		return m_LegJumpHeight;
-	}
 	// A little over half the standing body (0.44 of the character height): a soldier clears a knee-high crate or a node-wide gap at a run.
-	return std::max(16.0F, m_CharHeight * 0.44F) * 0.55F;
+	float height = m_LegJumpHeight >= 0.0F ? m_LegJumpHeight : std::max(16.0F, m_CharHeight * 0.44F) * 0.55F;
+	// The Carry weight settings: stronger legs leap higher, a load holds it down.
+	return height * g_SettingsMan.LegStrength() * GetOverloadSpeedMultiplier();
 }
 
 bool AHuman::CanLeap() const {
@@ -1546,15 +1545,28 @@ bool AHuman::ShaftColumn(float columnX, float topHeadY, float& middleX, float& w
 	return true;
 }
 
-void AHuman::RefreshRoute() {
+void AHuman::RefreshRoute(bool keepRoute) {
 	Vector goal = m_HasMovePathGoal ? m_MovePathGoal : GetLastAIWaypoint();
 	bool hadGoal = m_HasMovePathGoal || !m_MovePath.empty();
-	m_MovePath.clear();
-	m_MovePathKinds.clear();
+	// (A refresh is a new route, never a route check: kept, a check's flag had the answer weighed against the route it replaces.)
+	m_RouteCheck = false;
 	if (hadGoal) {
 		m_MovePathGoal = goal;
 		m_HasMovePathGoal = true;
 		m_MoveTarget = goal;
+	}
+	// A routine refresh keeps the route it has until the new one comes: cleared, the unit stood still for the frames the search took, every
+	// second while its next point was out of sight, and the route drawn in the debug view blinked out each time.
+	if (keepRoute && !m_MovePath.empty()) {
+		UpdateMovePath();
+		return;
+	}
+	m_MovePath.clear();
+	m_MovePathKinds.clear();
+	// With no route, the next request loads the next waypoint on the list: the leg being walked goes back on first, or a refresh mid-leg
+	// skipped it and sent the unit on to the one after.
+	if (hadGoal && !m_Waypoints.empty() && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
+		m_Waypoints.emplace_front(goal, nullptr);
 	}
 	UpdateMovePath();
 }
@@ -2166,12 +2178,8 @@ int AHuman::MoveAlongRoute() {
 		mover.impossibleSeen = m_ImpossiblePaths;
 		mover.repathTimer.Reset();
 	}
-	if (IsWaitingOnNewMovePath()) {
-		// (Standing still while the search runs, unless in the air, where the last flight goes on.)
-		if (!mover.flight.active) {
-			return RouteMover::Moving;
-		}
-	}
+	// (Standing still while the search runs with no route at all, unless in the air, where the last flight goes on. With a route in hand,
+	// kept by a routine refresh or a route check, the unit goes on along it until the answer replaces it.)
 	if (m_MovePath.empty() && !mover.flight.active) {
 		return RouteMover::Moving;
 	}
@@ -2351,10 +2359,9 @@ int AHuman::MoveAlongRoute() {
 		}
 		if ((mover.noSightTimer.IsPastSimMS(1000) || mover.repathTimer.IsPastSimMS(7500)) && !IsWaitingOnNewMovePath()) {
 			MoverTrace(mover.noSightTimer.IsPastSimMS(1000) ? "next point out of sight; new route" : "route refreshed");
-			RefreshRoute();
+			RefreshRoute(true);
 			mover.repathTimer.Reset();
 			mover.noSightTimer.Reset();
-			return RouteMover::Moving;
 		}
 	} else if (airborne && mover.routeCheckTimer.IsPastSimMS(500)) {
 		mover.routeCheckTimer.Reset();
@@ -3719,8 +3726,28 @@ int AHuman::MoveAlongRoute() {
 	float floorY = floorHere >= 0.0F ? std::min(floorHere, m_Pos.m_Y + feet) : m_Pos.m_Y + feet;
 	float topHeadY = std::min(m_Pos.m_Y - 4.0F, floorY - standing);
 	Vector heading = toPoint.GetNormalized() * (h * 0.5F);
+	// The head's way half a body on: along the floor (to the same height over the floor there, up or down a slope), not at the route's
+	// point. (Aimed at the point, which is a node's middle and often a little over the body's, the ray rose as it went and met the ceiling
+	// of an ordinary corridor or the underside of a ledge well over the head, and units crouched or lay down where they had room to stand.)
+	auto headWay = [&](float fromY, float height) {
+		const float dir = toPoint.m_X < 0.0F ? -1.0F : 1.0F;
+		const float aheadX = m_Pos.m_X + dir * h * 0.5F;
+		const float floorAhead = FloorUnder(Vector(aheadX, fromY + 2.0F), height + h * 0.3F);
+		float toY = fromY;
+		if (floorAhead >= 0.0F && std::abs(floorAhead - floorY) < h * 0.25F) {
+			toY = std::min(fromY + (floorAhead - floorY), floorAhead - 4.0F);
+		}
+		return Vector(dir * h * 0.5F, toY - fromY);
+	};
+	if (std::abs(toPoint.m_X) > 3.0F) {
+		heading = headWay(topHeadY, standing);
+	}
 	Vector hit;
 	bool noRoomHere = g_SceneMan.CastStrengthRay(m_Pos, Vector(0.0F, topHeadY - m_Pos.m_Y), 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
+	// (Nor over the head: a ladder's rungs are no ceiling. Counted as one, a unit walking past or under a bunker ladder crouched for it.)
+	if (noRoomHere && g_SceneMan.GetTerrMatter(static_cast<int>(hit.m_X), static_cast<int>(hit.m_Y)) == LadderMaterialID()) {
+		noRoomHere = false;
+	}
 	bool noRoomAhead = g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, topHeadY), heading, 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
 	{
 		// (Not the ladders' rungs, which the body passes: see AHuman::LearnFlight.)
@@ -3751,7 +3778,10 @@ int AHuman::MoveAlongRoute() {
 	if (crouched < standing - 1.0F && !crawlNear && (crouchStepNear || noRoomHere || noRoomAhead)) {
 		float topCrouchedY = std::min(m_Pos.m_Y - 4.0F, floorY - crouched);
 		bool roomHere = !g_SceneMan.CastStrengthRay(m_Pos, Vector(0.0F, topCrouchedY - m_Pos.m_Y), 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
-		bool roomAhead = !g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, topCrouchedY), heading, 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
+		if (!roomHere && g_SceneMan.GetTerrMatter(static_cast<int>(hit.m_X), static_cast<int>(hit.m_Y)) == LadderMaterialID()) {
+			roomHere = true;
+		}
+		bool roomAhead = !g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, topCrouchedY), std::abs(toPoint.m_X) > 3.0F ? headWay(topCrouchedY, crouched) : heading, 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
 		if (!roomAhead && g_SceneMan.GetTerrMatter(static_cast<int>(hit.m_X), static_cast<int>(hit.m_Y)) == LadderMaterialID()) {
 			roomAhead = true;
 		}

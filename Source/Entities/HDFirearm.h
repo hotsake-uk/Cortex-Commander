@@ -570,6 +570,10 @@ namespace RTE {
 		/// @return Returns true if at least one round has already been fired during the current activation.
 		bool FiredOnce() const { return m_FiredOnce; }
 
+		/// Sets the vehicle or ship it is being fired out of by a passenger sat in it (CrewSeats), or nullptr: what it fires never hits that, nor
+		/// anyone sat in it, however long it flies. Not owned, nor saved or copied.
+		void SetFiredFromInside(MovableObject* vehicle) { m_FiredFromInside = vehicle; }
+
 		/// Whether at least one round has already been fired during the current frame.
 		/// @return Returns true at least one round has already been fired during the current frame.
 		bool FiredFrame() const { return m_FireFrame; }
@@ -661,6 +665,7 @@ namespace RTE {
 		// Whether particles fired from this HDFirearm will ignore hits with itself,
 		// and the root parent of this HDFirearm, regardless if they are set to hit MOs.
 		bool m_FireIgnoresThis;
+		MovableObject* m_FiredFromInside; //!< The vehicle a passenger fires it out of (see SetFiredFromInside). Not owned.
 		bool m_Reloadable; //!< Whether this HDFirearm is reloadable by normal means.
 		float m_OneHandedReloadTimeMultiplier; //!< The multiplier for how long this weapon takes to reload when being used one-handed. Only relevant for one-handed weapons.
 		bool m_DualReloadable; //!< Whether or not this weapon can be dual-reloaded, i.e. both guns can reload at once instead of having to wait til the other dual-wielded gun isn't being reloaded. Only relevant for one-handed weapons.

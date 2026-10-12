@@ -25,10 +25,14 @@ namespace RTE {
 			std::string Scene; //!< The map.
 			std::string Battle; //!< The saved battle picked to set up on it. Empty with NoBattle for none, or for the one marked to load with the map.
 			bool NoBattle = false; //!< No saved battle: the map as it is.
+			bool StartBattle = false; //!< Opened for a quick battle: the saved battle picked is started as soon as the map is in.
 		};
 
-		/// Opens the browser, every filter as it was left except the saved battles one, which is on for Battle and off for Sandbox.
-		static void Open(Purpose purpose);
+		/// Opens the browser, every filter as it was left (kept between launches, in the settings) except the saved battles one, which is on for
+		/// Battle and off for Sandbox.
+		/// @param purpose What a map is picked for.
+		/// @param quickBattle For Battle: the main menu's Quick Battle, where Play starts the saved battle picked at once (B-16).
+		static void Open(Purpose purpose, bool quickBattle = false);
 
 		/// Closes the browser and lets go of the map pictures it holds.
 		static void Close();
@@ -45,5 +49,10 @@ namespace RTE {
 		/// Sets the game a Play choice asks for as the one to start: its game mode on its map, its saved battle (or none) to go in once it's there.
 		/// @return Whether the game mode and the map exist to be started.
 		static bool SetStartChoice(const Choice& choice);
+
+		/// Notes a map as played (U-3): the latest in the browser's "Recently played" list (Userdata/MapRecent.txt, the last ten), and the
+		/// settings' LastMap, which the main menu's Sandbox screen offers to continue on. Called when any game starts on a map.
+		/// @param mapName The map's preset name.
+		static void NoteMapPlayed(const std::string& mapName);
 	};
 } // namespace RTE

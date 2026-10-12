@@ -3,6 +3,7 @@
 #include "TerrainCandle.h"
 #include "RopeSim.h"
 #include "FluidSim.h"
+#include "TerrainCollapse.h"
 #include "Activity.h"
 
 #include "CameraMan.h"
@@ -43,6 +44,7 @@
 #include <SDL3_image/SDL_image.h>
 
 #include "Sandbox.h"
+#include "MapBrowser.h"
 
 #include <array>
 #include <execution>
@@ -173,6 +175,7 @@ bool ActivityMan::SaveCurrentGame(const std::string& fileName) {
 	writer->NewPropertyWithValue("TerrainCandleState", TerrainCandle::GetSaveState());
 	writer->NewPropertyWithValue("RopeState", RopeSim::GetSaveState());
 	writer->NewPropertyWithValue("FlowingLiquidState", FluidSim::GetSaveState());
+	writer->NewPropertyWithValue("HoldZones", TerrainCollapse::GetHoldZonesSaveState());
 
 	// Save a small little file with index info (activity and original scene name) so we can display info in the samegame menu without needing to decompress and read through the entire zip
 	std::unique_ptr<std::stringstream> indexStream = std::make_unique<std::stringstream>();
@@ -378,6 +381,8 @@ bool ActivityMan::LoadAndLaunchGame(const std::string& fileName) {
 	std::string originalScenePresetName = fileName;
 	bool placeObjectsIfSceneIsRestarted = true;
 	bool placeUnitsIfSceneIsRestarted = true;
+	// (A save from before hold zones had none: the loaded game starts with none, not those of the game played before.)
+	TerrainCollapse::SetHoldZonesLoadState(std::string());
 	while (reader.NextProperty()) {
 		std::string propName = reader.ReadPropName();
 		if (propName == "Activity") {
@@ -398,6 +403,8 @@ bool ActivityMan::LoadAndLaunchGame(const std::string& fileName) {
 			RopeSim::SetPendingLoadState(reader.ReadPropValue());
 		} else if (propName == "FlowingLiquidState") {
 			FluidSim::SetPendingLoadState(reader.ReadPropValue());
+		} else if (propName == "HoldZones") {
+			TerrainCollapse::SetHoldZonesLoadState(reader.ReadPropValue());
 		} else if (propName == "SandboxPins") {
 			s_PinsOfLoadedGame = reader.ReadPropValue();
 		}
@@ -530,6 +537,15 @@ int ActivityMan::StartActivity(Activity* activity) {
 		g_ConsoleMan.PrintString("ERROR: Activity \"" + m_Activity->GetPresetName() + "\" was NOT started due to errors!");
 		m_Activity->SetActivityState(Activity::HasError);
 		return error;
+	}
+
+	// The map is noted as played (U-3), for the map browser's recently played list and the main menu's "Continue on": a real map that can be
+	// started again, not a saved game's own copy, a campaign scene or an editor's.
+	if (const Scene* scene = g_SceneMan.GetScene(); scene && !dynamic_cast<const EditorActivity*>(m_Activity.get()) && !scene->IsSavedGameInternal() && !scene->IsMetagameInternal()) {
+		const std::string& sceneName = scene->GetPresetName();
+		if (sceneName != "Null Scene" && sceneName != "Editor Scene" && g_PresetMan.GetEntityPreset("Scene", sceneName)) {
+			MapBrowser::NoteMapPlayed(sceneName);
+		}
 	}
 
 	// Close the console in case it was open by the player or because of a previous Activity error.

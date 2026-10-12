@@ -300,7 +300,7 @@ int AHuman::ReadProperty(const std::string_view& propName, Reader& reader) {
 		float jumpTime;
 		reader >> jumpTime;
 		if (m_pJetpack) {
-			m_pJetpack->SetJetTimeTotal(jumpTime * 1000.0F);
+			m_pJetpack->SetBaseJetTimeTotal(jumpTime * 1000.0F);
 			m_pJetpack->SetJetTimeLeft(jumpTime * 1000.0F);
 		}
 	});
@@ -1549,6 +1549,66 @@ bool AHuman::FirearmIsSemiAuto() const {
 	return false;
 }
 
+void AHuman::UpdateFiringFromSeat(float aimAngle, bool fire, bool reload, bool repeat, MovableObject* vehicle) {
+	if (!m_pFGArm) {
+		return;
+	}
+	m_AimAngle = std::clamp(aimAngle, -m_AimRange, m_AimRange);
+	float adjustedAimAngle = m_AimAngle * GetFlipFactor();
+	m_pFGArm->SetRotAngle(adjustedAimAngle);
+	if (m_pBGArm) {
+		m_pBGArm->SetRotAngle(adjustedAimAngle);
+	}
+	HDFirearm* gun = dynamic_cast<HDFirearm*>(GetEquippedItem());
+	if (gun) {
+		if (reload && !gun->IsFull()) {
+			ReloadFirearms();
+		} else if (gun->IsEmpty()) {
+			ReloadFirearms(true);
+		}
+		if (fire && !gun->IsReloading()) {
+			if (gun->IsFullAuto()) {
+				gun->Activate();
+			} else if (m_TriggerPulled && repeat) {
+				// Let go for this update, to pull again on the next.
+				gun->Deactivate();
+				m_TriggerPulled = false;
+			} else if (!m_TriggerPulled) {
+				gun->Activate();
+			}
+		} else {
+			gun->Deactivate();
+			m_TriggerPulled = false;
+		}
+		// Held in both hands where it can be, as on foot.
+		if (m_pBGArm && !GetEquippedBGItem() && gun->IsSupportable() && !gun->IsReloading()) {
+			m_pBGArm->SetHeldDeviceThisArmIsTryingToSupport(gun);
+			gun->SetSupported(true);
+		} else {
+			gun->SetSupported(false);
+		}
+		gun->SetFiredFromInside(vehicle);
+	}
+	// (The arms run their hands to the aim and the gun in hand on with them: it fires, cycles and reloads there.)
+	m_pFGArm->Update();
+	if (m_pBGArm) {
+		m_pBGArm->Update();
+	}
+	if (gun) {
+		gun->SetFiredFromInside(nullptr);
+		if (gun->FiredOnce()) {
+			m_TriggerPulled = true;
+		}
+		// Nothing out of the scene ever spends the kick, so it isn't kept to pile up.
+		gun->ClearImpulseForces();
+	}
+	m_pFGArm->ClearImpulseForces();
+	if (m_pBGArm) {
+		m_pBGArm->ClearImpulseForces();
+	}
+	ClearImpulseForces();
+}
+
 void AHuman::ReloadFirearms(bool onlyReloadEmptyFirearms) {
 	for (Arm* arm: {m_pFGArm, m_pBGArm}) {
 		if (arm) {
@@ -1918,6 +1978,18 @@ void AHuman::UpdateCrouching() {
 			g_SceneMan.CastStrengthRay(hitPosStart, Vector(0.0F, -desiredCrouchHeadRoom - startBelow), 1.0F, hitPos, 0, g_MaterialGrass);
 			g_SceneMan.CastStrengthRay(hitPosPredictedStart, Vector(0.0F, -desiredCrouchHeadRoom - startBelow), 1.0F, hitPosPredicted, 0, g_MaterialGrass);
 
+			// Nor for a ladder's rungs, which the body passes: ducked under, a unit by a bunker ladder crouched as it walked past.
+			static const Material* s_Ladder = g_SceneMan.GetMaterial("Ladder");
+			if (s_Ladder) {
+				const unsigned char rung = static_cast<unsigned char>(s_Ladder->GetIndex());
+				if (g_SceneMan.GetTerrMatter(static_cast<int>(hitPos.m_X), static_cast<int>(hitPos.m_Y)) == rung) {
+					hitPos.m_Y = 0.0F;
+				}
+				if (g_SceneMan.GetTerrMatter(static_cast<int>(hitPosPredicted.m_X), static_cast<int>(hitPosPredicted.m_Y)) == rung) {
+					hitPosPredicted.m_Y = 0.0F;
+				}
+			}
+
 			// Don't do it if we're already hitting, we're probably in a weird spot
 			if (hitPosStart.m_Y - hitPos.m_Y <= 2.0F) {
 				hitPos.m_Y = 0.0F;
@@ -1981,6 +2053,8 @@ void AHuman::UpdateLimbPathSpeed() {
 		}
 		// A creature's venom slows it; its web all but stops it (CR-6).
 		travelSpeedMultiplier *= GetAfflictionSpeedMultiplier();
+		// A heavy load slows it (the Carry weight settings).
+		travelSpeedMultiplier *= GetOverloadSpeedMultiplier();
 		// Kept to a group's pace (RC-5): no faster than the slowest of those sent with it.
 		if (m_PaceLimit > 0.0F) {
 			const float fullSpeed = std::max(m_Paths[FGROUND][pathState].GetTravelSpeed(), m_Paths[BGROUND][pathState].GetTravelSpeed()) * 0.5F * travelSpeedMultiplier;

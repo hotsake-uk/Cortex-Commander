@@ -81,6 +81,7 @@ namespace RTE {
 			ScenarioButton,
 			SandboxButton,
 			BattleCommandButton,
+			QuickBattleButton,
 			SaveOrLoadGameButton,
 			SettingsButton,
 			ModManagerButton,
@@ -239,7 +240,8 @@ namespace RTE {
 
 		/// Opens the map browser in place of the menu, for a map to play the Sandbox or Battle Command on.
 		/// @param battle Whether it's for Battle Command: it goes back to the main screen, rather than the sandbox screen.
-		void OpenMapBrowser(bool battle);
+		/// @param quickBattle Whether it's for the Quick Battle button: the saved battle picked is started as soon as its map is in.
+		void OpenMapBrowser(bool battle, bool quickBattle = false);
 
 		/// Acts on what was done in the map browser: back to where it was opened from, or the game picked started.
 		void HandleMapBrowserChoice();
