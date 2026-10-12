@@ -1128,6 +1128,13 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 			holding = true;
 		elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and (AI.BehaviorName == "ShootArea" or AI.BehaviorName == "FaceAlarm") and not SharedBehaviors.FightsOnTheMove(AI, Owner) then
 			holding = true;
+		elseif AI.Target and not AI.closingIn and AI.BehaviorName ~= "AttackTarget" and AI.BehaviorName ~= "ChargeTarget" and Owner.ClassName == "AHuman"
+		and (Owner.DiggingRoute or Owner.MovePathStepKind == 4) then
+			-- Fighting on the move with a dig step under way or next (4: PathStepKind::Dig): it stops and fights with its gun, and digs on
+			-- after. Moved on, the route-follower took the digger out every tick over the gun the attack had equipped, and the shoot
+			-- behaviour, which counts a digger as a ready firearm, fired it at the enemy. (Closing in on one it can't hit, or
+			-- going at it hand to hand with the digger, it digs on.)
+			holding = true;
 		elseif AI.overwatch then
 			-- Bounding overwatch (AC-6): this half of the squad holds and watches while the other moves.
 			holding = true;
@@ -1156,6 +1163,10 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 		end
 		AI.engineMover = not holding; -- (And the run key: the follower runs where the way is open.)
 		if holding then
+			-- (Held mid-dig: the digger is put away and the gun taken out now, not when the hold ends; see AHuman::ResetRouteMovement.)
+			if not AI.routeHeld and Owner.ClassName == "AHuman" and Owner.DiggingRoute then
+				Owner:ResetRouteMovement();
+			end
 			AI.routeHeld = true;
 		elseif AI.routeHeld then
 			-- Back from a hold (a fight, a look at an alarm): the route-follower's timers and flight start again. It isn't called while

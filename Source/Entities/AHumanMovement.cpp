@@ -1150,7 +1150,14 @@ int AHuman::PickStuckRemedy(const Vector& spot, const std::array<bool, static_ca
 }
 
 void AHuman::ResetRouteMovement() {
+	// Reset mid-dig (a hold for a fight or an alarm, following someone, a player taking over): the digger is put away here, as the dig's own
+	// end does. The flag went with the reset and the gun was never taken out again, so the unit walked on, and went at the enemy, with the
+	// digger in hand.
+	const bool wasDigging = m_Mover.digging;
 	m_Mover = RouteMover();
+	if (wasDigging) {
+		EquipFirearm(true);
+	}
 	m_Mover.lastProgressPos = m_Pos;
 }
 
