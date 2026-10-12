@@ -82,6 +82,22 @@ EMBLEMS = {
 	"hourglass": ["ccccc", ".bab.", "..b..", ".bcb.", "ccccc"],
 	"fang": ["c...c", "cc.cc", ".bcb.", "..b..", "....."],
 	"eye": [".bbb.", "bcacb", "bcacb", ".bbb.", "....."],
+	# The support spells'.
+	"cross": ["..c..", ".ccc.", "..c..", "..c..", "..b.."],
+	"sun": ["b.c.b", ".ccc.", "ccacc", ".ccc.", "b.c.b"],
+	"dove": ["....c", "..cc.", "cccc.", ".ccb.", "..b.."],
+	"shield": ["ccccc", "cbabc", "cbabc", ".cbc.", "..c.."],
+	"wing": ["c....", "cc...", "cccc.", ".ccbb", "...bb"],
+	"tablet": [".ccc.", ".cbc.", ".cbc.", ".cbc.", ".ccc."],
+	"noflame": ["..b..", ".bc..", "cbcb.", "bcacb", ".bab."],
+	"leaf": ["....c", "..ccc", ".cccb", "ccbb.", "cb..."],
+	"sword": ["....c", "...cc", "..cc.", "bcc..", "ab..."],
+	"feather": ["....c", "...cc", "..ccc", ".cc..", "b...."],
+	"mirror": [".ccc.", "cbabc", "cbabc", ".ccc.", "..b.."],
+	"arrow": ["..c..", ".ccc.", "c.c.c", "..c..", "..c.."],
+	"ring": [".ccc.", "c...c", "c...b", "c....", ".cc.."],
+	"candle": ["..c..", "..a..", "..b..", "..b..", ".bbb."],
+	"hand": ["b.b.b", "bbbbb", "bbbbb", ".bbb.", "..b.."],
 }
 
 
@@ -209,6 +225,38 @@ def make_items():
 	book("TimeWarp.png", [(110, 76, 22), (180, 136, 40), (236, 200, 96)], [(70, 46, 20), (110, 76, 34), (150, 110, 50)], "hourglass", [(250, 240, 200), (120, 80, 30), (70, 46, 20)])
 	# Arcane Nova: a white scroll with violet ends and a bright violet seal.
 	scroll("ArcaneNova.png", [(180, 176, 190), (220, 216, 230), (250, 248, 255)], [(70, 30, 110), (130, 70, 180)], [(90, 30, 140), (170, 90, 240), (240, 200, 255)], ribbon=[(110, 50, 170), (70, 30, 110)])
+	# The support spells.
+	WHITE = [(150, 146, 140), (210, 206, 198), (246, 244, 240)]
+	# Heal: a white book with a gold cross.
+	book("Heal.png", WHITE, GOLD, "cross", [(160, 120, 30), (220, 180, 50), (255, 240, 170)])
+	# Mass Heal: a big white tome with a gold sunburst.
+	book("MassHeal.png", WHITE, GOLD, "sun", [(170, 130, 30), (236, 196, 60), (255, 250, 200)], w=14, h=10)
+	# Blessing: a gold-edged white book with a dove.
+	book("Blessing.png", [(170, 160, 140), (226, 218, 200), (250, 246, 236)], GOLD, "dove", [(170, 150, 110), (236, 230, 220), (255, 255, 255)])
+	# Shield of Faith: a blue book with a white shield.
+	book("ShieldOfFaith.png", [(30, 50, 110), (54, 90, 170), (100, 140, 210)], SILVER, "shield", [(60, 90, 160), (210, 222, 240), (255, 255, 255)])
+	# Haste: a thin cyan scroll with a winged seal.
+	scroll("Haste.png", [(120, 170, 180), (170, 220, 228), (220, 246, 250)], [(20, 90, 110), (40, 150, 170)], [(20, 100, 120), (70, 200, 220), (200, 250, 255)], ribbon=[(40, 140, 160), (20, 90, 110)])
+	# Stoneskin: a grey stone tablet (Earth Shatter's is browner).
+	tablet("Stoneskin.png")
+	# Fire Ward: an orange book with a flame struck through.
+	book("FireWard.png", [(130, 50, 10), (200, 90, 20), (236, 140, 50)], IRON, "noflame", [(60, 60, 70), (255, 170, 60), (255, 240, 170)])
+	# Regeneration: a green book with a leaf.
+	book("Regeneration.png", [(26, 70, 30), (50, 120, 56), (96, 170, 90)], BONE, "leaf", [(40, 100, 40), (120, 220, 90), (200, 255, 160)])
+	# Enchant Weapon: a violet book with a sword.
+	book("EnchantWeapon.png", [(60, 30, 100), (110, 60, 170), (160, 110, 220)], SILVER, "sword", [(120, 90, 50), (210, 216, 230), (255, 255, 255)])
+	# Levitate: a pale scroll with a feather seal.
+	scroll("Levitate.png", [(170, 170, 180), (214, 214, 226), (244, 244, 252)], [(90, 100, 150), (140, 150, 210)], [(90, 100, 160), (190, 200, 240), (255, 255, 255)], ribbon=[(120, 130, 190), (80, 90, 140)])
+	# Mirror Image: a silver-backed book with a mirror.
+	book("MirrorImage.png", [(80, 86, 100), (140, 148, 164), (200, 208, 222)], SILVER, "mirror", [(100, 110, 130), (170, 150, 230), (240, 236, 255)])
+	# Blink: a small violet scroll.
+	scroll("Blink.png", [(130, 110, 170), (176, 156, 216), (220, 206, 246)], [(60, 30, 110), (110, 70, 180)], [(70, 30, 130), (160, 100, 240), (230, 200, 255)], ribbon=[(100, 60, 170), (60, 30, 110)], w=13, h=7)
+	# Dispel: a white scroll with a broken-ring seal.
+	scroll("Dispel.png", [(190, 186, 190), (228, 226, 230), (252, 252, 255)], [(120, 120, 130), (180, 180, 190)], [(110, 110, 120), (230, 230, 235), (255, 255, 255)], ribbon=[(160, 160, 170), (110, 110, 120)])
+	# Light: a plain tan book with a candle.
+	book("Light.png", [(110, 86, 50), (170, 136, 86), (214, 184, 130)], BONE, "candle", [(255, 240, 160), (230, 226, 200), (255, 255, 230)], clasp=False)
+	# Telekinetic Grab: a violet book with a grasping hand.
+	book("TelekineticGrab.png", [(50, 24, 90), (96, 44, 150), (140, 90, 200)], IRON, "hand", [(200, 170, 240), (0, 0, 0), (0, 0, 0)])
 
 
 # ---------------------------------------------------------------------------------------------------------------------------------
@@ -393,6 +441,9 @@ def make_glows():
 	ring_glow("GlowRuneRed.png", 61, 17, (255, 70, 30), 0.14)
 	ring_glow("GlowRuneGreen.png", 61, 17, (60, 255, 90), 0.14)
 	ring_glow("GlowClock.png", 151, 151, (255, 190, 60), 0.05, 12, (255, 240, 180))
+	glow("GlowWhiteBig.png", 61, (255, 255, 255), (255, 250, 220), 1.6)
+	glow("GlowGoldHuge.png", 121, (255, 250, 220), (230, 170, 40), 1.6)
+	glow("GlowCyanBig.png", 41, (230, 255, 255), (60, 220, 255))
 
 
 def main():

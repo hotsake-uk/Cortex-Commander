@@ -406,6 +406,9 @@
     <ClInclude Include="Source\Entities\Actor.h">
       <Filter>Entities</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Entities\StatusEffect.h">
+      <Filter>Entities</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Entities\ADoor.h">
       <Filter>Entities</Filter>
     </ClInclude>
@@ -1226,6 +1229,9 @@
       <Filter>Entities</Filter>
     </ClCompile>
     <ClCompile Include="Source\Entities\ActorPowerups.cpp">
+      <Filter>Entities</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Entities\StatusEffect.cpp">
       <Filter>Entities</Filter>
     </ClCompile>
     <ClCompile Include="Source\Entities\ADoor.cpp">

@@ -154,6 +154,12 @@ void Actor::Clear() {
 	m_VenomDamagePerSecond = 0.0F;
 	m_VenomSlowTo = 1.0F;
 	m_SnareUntil = 0;
+	m_PassiveEffects.clear();
+	m_StatusEffects.clear();
+	m_EffectSpeed = m_EffectDamageTaken = m_EffectDamageDealt = 1.0F;
+	m_EffectFireProof = m_EffectHeld = m_EffectSilenced = false;
+	m_EffectShader.clear();
+	m_ShaderBeforeEffects.clear();
 	m_AcidUntil = 0;
 	m_AcidDamagePerSecond = 0.0F;
 	m_ToughnessKind = -2;
@@ -372,6 +378,7 @@ int Actor::Create(const Actor& reference) {
 	m_ToughnessMultiplier = reference.m_ToughnessMultiplier;
 	m_SpeedMultiplier = reference.m_SpeedMultiplier;
 	m_WaterWeakness = reference.m_WaterWeakness;
+	m_PassiveEffects = reference.m_PassiveEffects;
 	m_Waypoints = reference.m_Waypoints;
 	m_DrawWaypoints = reference.m_DrawWaypoints;
 	m_MoveTarget = reference.m_MoveTarget;
@@ -635,6 +642,15 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 	// Elements (CR-7): what it sets alight round it, and what water does to it.
 	MatchProperty("FireAuraRadius", { reader >> m_FireAuraRadius; });
 	MatchProperty("WaterWeakness", { reader >> m_WaterWeakness; });
+	// Status effects it has about it for good (SE-1): a troll's regeneration, a golem's stone skin.
+	MatchProperty("PassiveEffect", {
+		StatusEffect effect;
+		reader >> effect;
+		if (effect.Name.empty()) {
+			reader.ReportError("A PassiveEffect needs a Name.");
+		}
+		m_PassiveEffects.push_back(effect);
+	});
 	MatchProperty("ToughnessMultiplier", { reader >> m_ToughnessMultiplier; });
 	MatchProperty("SpeedMultiplier", { reader >> m_SpeedMultiplier; });
 
@@ -771,6 +787,9 @@ int Actor::Save(Writer& writer) const {
 	}
 	if (m_WaterWeakness > 0.0F) {
 		writer.NewPropertyWithValue("WaterWeakness", m_WaterWeakness);
+	}
+	for (const StatusEffect& effect: m_PassiveEffects) {
+		writer.NewPropertyWithValue("PassiveEffect", effect);
 	}
 	if (m_ToughnessMultiplier != 1.0F) {
 		writer.NewPropertyWithValue("ToughnessMultiplier", m_ToughnessMultiplier);
@@ -1553,7 +1572,7 @@ bool Actor::ParticlePenetration(HitData& hd) {
 	}
 
 	if (damageToAdd != 0) {
-		m_Health = std::min(m_Health - (damageToAdd * m_DamageMultiplier), m_MaxHealth);
+		m_Health = std::min(m_Health - (damageToAdd * m_DamageMultiplier * GetDamageTakenMultiplier()), m_MaxHealth);
 	}
 	if ((penetrated || damageToAdd != 0) && m_Perceptiveness > 0 && m_Health > 0) {
 		Vector extruded(hd.HitVel[HITOR]);
@@ -3031,10 +3050,10 @@ void Actor::Update() {
 	/////////////////////////////////////
 	// Take damage/heal from wounds and wounds on Attachables
 	for (AEmitter* wound: m_Wounds) {
-		m_Health -= wound->CollectDamage() * m_DamageMultiplier;
+		m_Health -= wound->CollectDamage() * m_DamageMultiplier * GetDamageTakenMultiplier();
 	}
 	for (Attachable* attachable: m_Attachables) {
-		m_Health -= attachable->CollectDamage();
+		m_Health -= attachable->CollectDamage() * GetDamageTakenMultiplier();
 	}
 	m_Health = std::min(m_Health, m_MaxHealth);
 
@@ -3189,10 +3208,10 @@ void RTE::Actor::CastSeeRays() {
 void Actor::UpdateWhileSeated() {
 	UpdateWounds();
 	for (AEmitter* wound: m_Wounds) {
-		m_Health -= wound->CollectDamage() * m_DamageMultiplier;
+		m_Health -= wound->CollectDamage() * m_DamageMultiplier * GetDamageTakenMultiplier();
 	}
 	for (Attachable* attachable: m_Attachables) {
-		m_Health -= attachable->CollectDamage();
+		m_Health -= attachable->CollectDamage() * GetDamageTakenMultiplier();
 	}
 	m_Health = std::min(m_Health, m_MaxHealth);
 	ApplyToughness();

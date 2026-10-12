@@ -272,6 +272,73 @@ def time_warp():
 	return tone * shape * 0.5 + ticks * 0.9
 
 
+def holy_chime(i):
+	# A heal or blessing: a soft bright chord of bells blooming, with a breath of air under it.
+	t = t_of(1.3)
+	n = len(t)
+	notes = [523.25, 659.25, 783.99, 1046.5] if i == 0 else [587.33, 739.99, 880.0, 1174.7]
+	chord = np.zeros(n)
+	for k, f in enumerate(notes):
+		start = int(0.06 * k * SR)
+		seg = t[: n - start]
+		chord[start:] += (np.sin(2 * np.pi * f * seg) + 0.3 * np.sin(2 * np.pi * f * 2.01 * seg)) * np.exp(-seg / 0.6) * (1 - 0.15 * k)
+	breath = bandpass(rng.standard_normal(n), 2000, 7000) * env(n, 0.1, 0.4) * 0.25
+	return chord * 0.6 + breath
+
+
+def buff_shimmer(i):
+	# An enchantment settling on someone: a rising glissando of sparkle, chorused.
+	t = t_of(0.9)
+	n = len(t)
+	f = 500 + 1400 * (t / t[-1]) ** 0.8 * (1 + 0.1 * i)
+	phase = 2 * np.pi * np.cumsum(f) / SR
+	tone = np.sin(phase) + 0.5 * np.sin(phase * 1.5 + 0.3) + 0.3 * np.sin(phase * 2.0)
+	sparkle = (rng.random(n) > 0.993) * rng.standard_normal(n) * 3
+	sparkle = bandpass(sparkle, 3000, 9000) * env(n, 0.05, 0.4)
+	return tone * env(n, 0.02, 0.3) * 0.5 + sparkle * 0.5
+
+
+def blink_pop():
+	# A blink or a mirror image: a quick suck of air inward and a pop outward.
+	t = t_of(0.5)
+	n = len(t)
+	suck = swept_noise(n, 3000 * (1 - t / t[-1]) ** 2 + 200, 0.5) * np.clip(1 - t / 0.2, 0, 1)
+	pop_start = int(0.2 * SR)
+	seg = t[: n - pop_start]
+	pop = np.zeros(n)
+	pop[pop_start:] = np.sin(2 * np.pi * (300 - 200 * seg) * seg) * np.exp(-seg / 0.05) * 2 + bandpass(rng.standard_normal(len(seg)), 1500, 6000) * np.exp(-seg / 0.08)
+	return suck * 0.6 + pop
+
+
+def stone_grind():
+	# Stoneskin: a grinding of rock with a deep thud as it sets.
+	t = t_of(1.0)
+	n = len(t)
+	grind = bandpass(rng.standard_normal(n), 200, 1200) * (0.6 + 0.4 * np.sin(2 * np.pi * 23 * t)) * env(n, 0.05, 0.3)
+	thud = np.sin(2 * np.pi * (60 - 20 * t) * t) * env(n, 0.002, 0.2) * 2
+	return grind + thud
+
+
+def dispel():
+	# Dispel: a falling, dissolving chord with a glassy break.
+	t = t_of(1.1)
+	n = len(t)
+	base = 880 * np.exp(-t * 1.2)
+	tone = sum(np.sin(2 * np.pi * np.cumsum(base * r) / SR) / (1 + j) for j, r in enumerate((1, 1.26, 1.5, 2.0)))
+	glass = bandpass((rng.random(n) > 0.996) * rng.standard_normal(n) * 4, 2500, 9000) * env(n, 0.01, 0.35)
+	return tone * env(n, 0.01, 0.4) * 0.5 + glass * 0.6
+
+
+def grab():
+	# Telekinetic grab: a deep pulsing drone yanked downward, crackling.
+	t = t_of(1.6)
+	n = len(t)
+	f = 160 * (1 - 0.4 * t / t[-1]) * (1 + 0.05 * np.sin(2 * np.pi * 9 * t))
+	drone = np.sin(2 * np.pi * np.cumsum(f) / SR) + 0.5 * np.sin(2 * np.pi * np.cumsum(f * 2.02) / SR)
+	crackle = bandpass((rng.random(n) > 0.995) * rng.standard_normal(n) * 3, 1000, 6000) * env(n, 0.02, 0.8)
+	return drone * env(n, 0.03, 0.9) * 0.7 + crackle * 0.5
+
+
 def main():
 	for i in range(2):
 		write(f"CastWhoosh{i + 1}", whoosh(i), 0.5)
@@ -290,6 +357,14 @@ def main():
 	write("VortexHum1", vortex_hum(), 0.7)
 	write("PoisonBurst1", poison_burst(), 0.65)
 	write("TimeWarp1", time_warp(), 0.6)
+	# The support spells'.
+	for i in range(2):
+		write(f"HolyChime{i + 1}", holy_chime(i), 0.6)
+		write(f"BuffShimmer{i + 1}", buff_shimmer(i), 0.5)
+	write("BlinkPop1", blink_pop(), 0.7)
+	write("StoneGrind1", stone_grind(), 0.7)
+	write("Dispel1", dispel(), 0.6)
+	write("Grab1", grab(), 0.7)
 	print("spell sounds done")
 
 

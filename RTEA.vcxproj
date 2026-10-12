@@ -941,6 +941,7 @@
     <ClInclude Include="Source\Entities\ACraft.h" />
     <ClInclude Include="Source\Entities\ACRocket.h" />
     <ClInclude Include="Source\Entities\Actor.h" />
+    <ClInclude Include="Source\Entities\StatusEffect.h" />
     <ClInclude Include="Source\Entities\ADoor.h" />
     <ClInclude Include="Source\Entities\AMover.h" />
     <ClInclude Include="Source\Entities\AVehicle.h" />
@@ -1597,6 +1598,7 @@
     <ClCompile Include="Source\Entities\Actor.cpp" />
     <ClCompile Include="Source\Entities\ActorAfflictions.cpp" />
     <ClCompile Include="Source\Entities\ActorPowerups.cpp" />
+    <ClCompile Include="Source\Entities\StatusEffect.cpp" />
     <ClCompile Include="Source\Entities\ADoor.cpp" />
     <ClCompile Include="Source\Entities\AMover.cpp" />
     <ClCompile Include="Source\Entities\AVehicle.cpp" />

@@ -164,6 +164,7 @@ void LuaStateWrapper::Initialize() {
 	                         RegisterLuaBindingsOfConcreteType(EntityLuaBindings, PEmitter),
 	                         RegisterLuaBindingsOfConcreteType(EntityLuaBindings, Actor),
 	                         RegisterLuaBindingsOfType(EntityLuaBindings, ActorSighting),
+	                         RegisterLuaBindingsOfType(EntityLuaBindings, StatusEffect),
 	                         RegisterLuaBindingsOfConcreteType(EntityLuaBindings, ADoor),
 	                         RegisterLuaBindingsOfConcreteType(EntityLuaBindings, AMover),
 	                         RegisterLuaBindingsOfConcreteType(EntityLuaBindings, AVehicle),
