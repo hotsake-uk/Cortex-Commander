@@ -2063,6 +2063,41 @@ float AHuman::GetCrouchShift() const {
 	return std::max(m_MaxWalkPathCrouchShift, std::max(16.0F, GetMoveHeight() * 0.44F) - GetCrouchHeight());
 }
 
+float AHuman::GetCrouchWalkGroundLimit() const {
+	const float crouchShift = GetCrouchShift();
+	if (!m_pAtomGroup || m_pAtomGroup->GetAtomList().empty()) {
+		return crouchShift;
+	}
+	// The body's low points: its atoms (the torso's, and the head's and jetpack's merged in) within a few pixels of the lowest, as the
+	// body leans now.
+	float lowest = -1000.0F;
+	for (const Atom* atom: m_pAtomGroup->GetAtomList()) {
+		lowest = std::max(lowest, m_pAtomGroup->GetAdjustedAtomOffset(atom).m_Y);
+	}
+	// Looked at a step ahead the way it walks, further the faster it goes, so it is rising before the bump reaches the body.
+	const float dir = m_Controller.IsState(MOVE_RIGHT) ? 1.0F : (m_Controller.IsState(MOVE_LEFT) ? -1.0F : 0.0F);
+	const float lead = dir * std::clamp(std::abs(m_Vel.m_X) * c_PPM * 0.15F, 3.0F, 8.0F);
+	const float currentShift = -m_WalkPathOffset.m_Y;
+	constexpr float clearance = 2.0F;
+	float limit = crouchShift;
+	for (const Atom* atom: m_pAtomGroup->GetAtomList()) {
+		const Vector offset = m_pAtomGroup->GetAdjustedAtomOffset(atom);
+		if (offset.m_Y < lowest - 4.0F) {
+			continue;
+		}
+		// Down from where the point would be standing (no crouch) to just under where it is: ground met on the way is what it must clear.
+		// Met at once, it is a wall, not a bump, and no rise gets over it (crouched behind cover against a wall, it stays down).
+		const Vector point = m_Pos + offset + Vector(lead, 0.0F);
+		const Vector start(point.m_X, point.m_Y - currentShift);
+		Vector hit;
+		if (BodyRay(start, Vector(0.0F, currentShift + clearance + 1.0F), 1.0F, hit, 0, g_MaterialGrass) && hit.m_Y > start.m_Y + 0.5F) {
+			// The shift that puts the point the clearance over the ground there.
+			limit = std::min(limit, std::max(0.0F, hit.m_Y - clearance - start.m_Y));
+		}
+	}
+	return limit;
+}
+
 void AHuman::UpdateCrouching() {
 	const float crouchShift = GetCrouchShift();
 	float desiredWalkPathYOffset = 0.0F;
@@ -2070,11 +2105,9 @@ void AHuman::UpdateCrouching() {
 		// If overridden in script, use that directly
 		desiredWalkPathYOffset = m_CrouchAmountOverride * crouchShift;
 	} else if (!m_Controller.IsState(BODY_PRONE)) {
-		if (m_Controller.IsState(BODY_CROUCH)) {
-			// Manually crouch fully when the crouch controller state is set
-			desiredWalkPathYOffset = crouchShift;
-		} else if (!m_Controller.IsState(BODY_JUMP) && m_pHead) {
-			// Otherwise figure out auto crouching
+		// What the head needs: as far down as a ceiling over it, or the one a second ahead, makes it duck.
+		float headNeed = 0.0F;
+		if (!m_Controller.IsState(BODY_JUMP) && m_pHead) {
 			// Cast a ray above our head to either side to determine whether we need to crouch. The rays start as far under the head as the
 			// crouch can lower it, so a ceiling anywhere down to the crouched height is ducked under (they started half a radius under it,
 			// which with a 6 px duck was as low as a ceiling could be ducked).
@@ -2110,7 +2143,20 @@ void AHuman::UpdateCrouching() {
 			}
 
 			float headroom = m_pHead->GetPos().m_Y - std::max(hitPos.m_Y, hitPosPredicted.m_Y);
-			desiredWalkPathYOffset = desiredCrouchHeadRoom - headroom;
+			headNeed = desiredCrouchHeadRoom - headroom;
+		}
+		if (m_Controller.IsState(BODY_CROUCH)) {
+			// Manually crouch fully when the crouch controller state is set. Walking, only as deep as keeps the body off the ground under
+			// it and a step ahead: at the full crouch (11 px for a Soldier Light, and the lean) the torso's low corner rode a pixel or two
+			// over flat ground, so any bump caught the body before the feet could step onto it, and crouched units ground to a halt on
+			// rough terrain. The head's need wins: under a low beam it still ducks all the way.
+			desiredWalkPathYOffset = crouchShift;
+			if (m_MovementState == WALK && m_Status == STABLE && !m_Ladder.active) {
+				desiredWalkPathYOffset = std::max(headNeed, std::min(desiredWalkPathYOffset, GetCrouchWalkGroundLimit()));
+			}
+		} else {
+			// Otherwise auto crouching, for the head alone.
+			desiredWalkPathYOffset = headNeed;
 		}
 	}
 
@@ -2120,7 +2166,9 @@ void AHuman::UpdateCrouching() {
 
 	// A walker more than half down strides on the crouched walk's leg paths, and back on the walk's once it is under a third (a band, so
 	// a crouch that hovers about the line doesn't restart the stride every frame).
-	bool crouchWalking = m_MovementState == WALK && m_Paths[FGROUND][WALKCROUCH].GetSegCount() > 0 && m_CrouchAmount >= (m_CrouchWalking ? 0.33F : 0.5F);
+	// (Held crouched, it stays on them while it rises over a bump, see GetCrouchWalkGroundLimit: back and forth, the stride restarted.)
+	const bool crouchHeld = m_Controller.IsState(BODY_CROUCH) && !m_Controller.IsState(BODY_PRONE);
+	bool crouchWalking = m_MovementState == WALK && m_Paths[FGROUND][WALKCROUCH].GetSegCount() > 0 && (m_CrouchAmount >= (m_CrouchWalking ? 0.33F : 0.5F) || (m_CrouchWalking && crouchHeld));
 	if (crouchWalking != m_CrouchWalking) {
 		m_CrouchWalking = crouchWalking;
 		m_StrideStart = true;
