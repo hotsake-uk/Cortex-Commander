@@ -196,6 +196,8 @@ void SettingsMan::Clear() {
 	m_AICoverFallsBack = true;
 	m_AICoverLiesFlat = true;
 	m_AIBreaksWhenShaken = true;
+	m_AISharedSpotting = false;
+	m_AISharedSpottingHeadStart = 1.0F;
 	m_AIScavengesBetterWeapons = true;
 	m_AIUnitsCallLifts = true;
 	m_DeadCrewFallOut = true;
@@ -942,6 +944,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AICoverFallsBack", { reader >> m_AICoverFallsBack; });
 	MatchProperty("AICoverLiesFlat", { reader >> m_AICoverLiesFlat; });
 	MatchProperty("AIBreaksWhenShaken", { reader >> m_AIBreaksWhenShaken; });
+	MatchProperty("AISharedSpotting", { reader >> m_AISharedSpotting; });
+	MatchProperty("AISharedSpottingHeadStart", { float headStart = 1.0F; reader >> headStart; SetAISharedSpottingHeadStart(headStart); });
 	MatchProperty("AIScavengesBetterWeapons", { reader >> m_AIScavengesBetterWeapons; });
 	MatchProperty("AIUnitsCallLifts", { reader >> m_AIUnitsCallLifts; });
 	MatchProperty("DeadCrewFallOut", { reader >> m_DeadCrewFallOut; });
@@ -1612,6 +1616,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AICoverFallsBack", m_AICoverFallsBack);
 	writer.NewPropertyWithValue("AICoverLiesFlat", m_AICoverLiesFlat);
 	writer.NewPropertyWithValue("AIBreaksWhenShaken", m_AIBreaksWhenShaken);
+	writer.NewPropertyWithValue("AISharedSpotting", m_AISharedSpotting);
+	writer.NewPropertyWithValue("AISharedSpottingHeadStart", m_AISharedSpottingHeadStart);
 	writer.NewPropertyWithValue("AIScavengesBetterWeapons", m_AIScavengesBetterWeapons);
 	writer.NewPropertyWithValue("AIUnitsCallLifts", m_AIUnitsCallLifts);
 	writer.NewPropertyWithValue("DeadCrewFallOut", m_DeadCrewFallOut);
