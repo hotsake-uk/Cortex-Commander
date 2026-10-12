@@ -1172,7 +1172,7 @@ void DebugMan::SettingsGUI() {
 		Slider("Film grain", &settings.FilmGrain, 0.0F, 1.0F);
 		Slider("Chromatic aberration (px)", &settings.ChromaticAberration, 0.0F, 4.0F);
 		Slider("CRT scanlines", &settings.Scanlines, 0.0F, 1.0F);
-		if (settings.Scanlines > 0.0F) {
+		if (settings.Scanlines > 0.0F || settings.ActiveRetro().CRT > 0.0F) {
 			Combo("CRT style", &settings.CRTStyle, "Scanlines\0Aperture grille\0Shadow mask\0Scanlines with bloom\0");
 			Tip("What the CRT effect looks like: dark lines between rows (as before), the vertical colour stripes of a Trinitron-style tube, the dot triads of a shadow-mask tube, or scanlines that bright pixels bloom across.");
 		}
@@ -1185,6 +1185,60 @@ void DebugMan::SettingsGUI() {
 		if (settings.EventLooks) {
 			Slider("Event grade strength", &settings.EventLookStrength, 0.0F, 2.0F);
 			EventLookSwitches(settings);
+		}
+		Heading("Screen style");
+		Combo("Screen style", &settings.ScreenStyle, "Off\0Synthwave\0");
+		Tip("A whole retro look over everything in a game, the HUD included (the menus stay plain). Synthwave: an Outrun sunset sky with a striped sun and a neon grid racing to the horizon, pink and cyan glow, glowing edges, a neon palette, video tape wobble, glitches and a curved CRT. Each style keeps its own settings below, so switching back to Off gives you your own filters as they were.");
+		settings.ScreenStyle = std::clamp(settings.ScreenStyle, 0, static_cast<int>(LightingSettings::StyleCount) - 1);
+		if (settings.ScreenStyle != LightingSettings::StyleOff) {
+			Slider("Screen style strength", &settings.ScreenStyleStrength, 0.0F, 1.0F);
+			Tip("How strongly the style applies: 1 the full look, down to 0 the plain picture.");
+		}
+		{
+			LightingSettings::RetroLayers& retro = settings.EditedRetro();
+			if (Plain()) {
+				ImGui::TextDisabled(settings.ScreenStyle == LightingSettings::StyleOff ? "Your own retro filters:" : "This style's filters:");
+			}
+			Combo("Palette", &retro.Palette, "Off\0Synthwave\0Vaporwave\0Miami\0Game Boy\0CGA\0Sepia\0Thermal\0Night vision\0");
+			Tip("Remaps the picture's brightness onto a palette: Synthwave's indigo, magenta and cyan, Vaporwave's pastels, Miami's teal and coral, the Game Boy's four greens, CGA's black, cyan, magenta and white, sepia, a thermal camera or night vision.");
+			retro.Palette = std::clamp(retro.Palette, 0, static_cast<int>(LightingSettings::PaletteCount) - 1);
+			if (retro.Palette != LightingSettings::PaletteOff) {
+				Slider("Palette strength", &retro.PaletteStrength, 0.0F, 1.0F);
+			}
+			Slider("Neon glow", &retro.NeonGlow, 0.0F, 1.0F);
+			Tip("Bloom from much dimmer light, wider and brighter: warm lights (fire, blasts, the sun) glow hot pink and cool ones (lamps, lasers) cyan. Works with Bloom off.");
+			Slider("Edge lines", &retro.EdgeLines, 0.0F, 1.0F);
+			Tip("Lines along the edges of terrain, units and buildings, strongest where the battlefield meets the sky.");
+			if (retro.EdgeLines > 0.0F) {
+				Check("Ink edges", &retro.InkEdges);
+				Tip("Black ink lines, for a comic look. Off: glowing neon, pink near the top of the screen to cyan near the bottom.");
+			}
+			Slider("Retro sky", &retro.RetroSky, 0.0F, 1.0F);
+			Tip("Replaces the sky behind the terrain with an Outrun sunset: a striped sun on the horizon, stars, and a neon grid racing towards it. Distant hills become dark silhouettes with a glowing rim. It still darkens at night.");
+			if (retro.RetroSky > 0.0F) {
+				Slider("Grid speed", &retro.GridSpeed, 0.0F, 3.0F);
+			}
+			Slider("VHS tape", &retro.VHS, 0.0F, 1.0F);
+			Tip("Colour bleeding sideways, a tracking band rolling up the screen, a little wobble, tape noise and a slewed strip at the bottom.");
+			Slider("Glitch", &retro.Glitch, 0.0F, 1.0F);
+			Tip("Every so often a short burst of the picture torn sideways in blocks with its colours split. More: more often and longer.");
+			if (retro.Glitch > 0.0F) {
+				Check("Glitch on big explosions", &retro.GlitchOnBlasts);
+				Tip("A big blast in view sets off a glitch burst too.");
+			}
+			Slider("Screen curvature", &retro.Curvature, 0.0F, 1.0F);
+			Tip("The picture bends like the glass of a CRT tube, with darkened, rounded corners.");
+			Slider("CRT", &retro.CRT, 0.0F, 1.0F);
+			Tip("CRT scanlines at least this strong, in the CRT style chosen under Lens and screen. The CRT scanlines setting still applies if it's stronger.");
+			Slider("Posterize", &retro.Posterize, 0.0F, 1.0F);
+			Tip("Fewer colour levels, down to four per channel.");
+			Slider("Dither", &retro.Dither, 0.0F, 1.0F);
+			Tip("Ordered dithering between colour levels, for a cheap 80s computer look. Shows with Posterize, or the Game Boy and CGA palettes.");
+			Slider("Pixelate", &retro.Pixelate, 0.0F, 1.0F);
+			Tip("Chunkier pixels, up to 8 game pixels a block. Covers the HUD too.");
+			if (settings.ScreenStyle != LightingSettings::StyleOff && Plain() && ToolUI::Button("Reset style")) {
+				retro = LightingSettings::StyleLayers(settings.ScreenStyle);
+			}
 		}
 		Heading("Mods");
 		Check("Mod shaders", &settings.ModShaders);
