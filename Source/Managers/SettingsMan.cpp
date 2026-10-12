@@ -141,6 +141,7 @@ void SettingsMan::Clear() {
 	m_EndlessMetaGameMode = false;
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
+	m_EnableStuckPush = false;
 	m_BodyGearSettlesAsScraps = true;
 	m_GibChunks = GibChunkTuning();
 	m_NoSceneWrap = true;
@@ -795,6 +796,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("EndlessMode", { reader >> m_EndlessMetaGameMode; }); // Legacy name, kept for old Settings.ini files.
 	MatchProperty("EnableCrabBombs", { reader >> m_EnableCrabBombs; });
 	MatchProperty("EnableMantling", { reader >> m_EnableMantling; });
+	MatchProperty("EnableStuckPush", { reader >> m_EnableStuckPush; });
 	MatchProperty("BodyGearSettlesAsScraps", { reader >> m_BodyGearSettlesAsScraps; });
 	MatchProperty("GibChunkPercent", { reader >> m_GibChunks.CountPercent; ClampGibChunks(); });
 	MatchProperty("MaxLooseGibChunks", { reader >> m_GibChunks.MaxLoose; ClampGibChunks(); });
@@ -1364,6 +1366,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 
 	// The rest of the settings panel: the AI, the HUD and speech, the overlays, and the tool windows' own layout.
 	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
+	writer.NewPropertyWithValue("EnableStuckPush", m_EnableStuckPush);
 	writer.NewPropertyWithValue("BodyGearSettlesAsScraps", m_BodyGearSettlesAsScraps);
 	writer.NewPropertyWithValue("GibChunkPercent", m_GibChunks.CountPercent);
 	writer.NewPropertyWithValue("MaxLooseGibChunks", m_GibChunks.MaxLoose);
