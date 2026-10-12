@@ -216,11 +216,16 @@ namespace SandboxDetail {
 		/// ship has let it out, and from then on UpdateBattleDefenders sends it after enemies near the place and back again.
 		void DefendPlace(Actor* unit, const BattleSettings& settings) {
 			Vector post = PostIn(settings);
-			unit->ClearAIWaypoints();
-			unit->AddAISceneWaypoint(post);
-			unit->SetAIMode(Actor::AIMODE_GOTO);
+			if (dynamic_cast<const ACShip*>(unit)) {
+				// (A flying ship flies there through the air, to hover over its post.)
+				SendUnit(unit, post, nullptr, false, "defending: to its post", false, true);
+			} else {
+				unit->ClearAIWaypoints();
+				unit->AddAISceneWaypoint(post);
+				unit->SetAIMode(Actor::AIMODE_GOTO);
+				FlyIfOffTheGround(unit, post);
+			}
 			unit->SetOrderPost(post);
-			FlyIfOffTheGround(unit, post);
 			BattleDefender& defender = s_BattleDefenders[unit->GetUniqueID()];
 			defender.Team = unit->GetTeam();
 			defender.Center = settings.DefendPos;
@@ -242,6 +247,11 @@ namespace SandboxDetail {
 				return false;
 			}
 			if (unit->GetAIMode() == Actor::AIMODE_GOTO) {
+				// (A flying ship goes by its flight, not by AI waypoints: where it is flying to, over its post, at the height it hovers.)
+				if (const ACShip* ship = dynamic_cast<const ACShip*>(unit)) {
+					Vector goal;
+					return !ship->GetEngageID() && ship->GetFlightGoal(goal) && std::abs(g_SceneMan.ShortestDistance(goal, defender.Post, wraps).m_X) < 60.0F;
+				}
 				return !unit->GetMOMoveTarget() && g_SceneMan.ShortestDistance(unit->GetLastAIWaypoint(), defender.Post, wraps).MagnitudeIsLessThan(60.0F);
 			}
 			return true;
@@ -789,6 +799,10 @@ namespace SandboxDetail {
 			} else if (defender.ChasingID != 0 || !HeadingForPost(unit, defender) || FlyAgainFor(unit, defender.Post)) {
 				// (A post up in the air the unit came down from, its tank run out: flown to again once the tank has filled.)
 				defender.ChasingID = 0;
+				// (A flying ship drops the enemy it was after, which a resend leaves it fighting.)
+				if (ACShip* ship = dynamic_cast<ACShip*>(unit)) {
+					ship->Disengage();
+				}
 				SendUnit(unit, defender.Post, nullptr, false, "defending: back to its post", false, true);
 				unit->SetOrderPost(defender.Post);
 				defender.IdleSince = -1;
