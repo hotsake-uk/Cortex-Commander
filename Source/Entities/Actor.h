@@ -971,6 +971,19 @@ namespace RTE {
 			return true;
 		}
 
+		/// Gets whether this vehicle or ship is locked (the command bar's Lock): no unit gets in by itself to ride it, nor is called over. Units
+		/// sent to it still get in.
+		bool IsVehicleLocked() const { return NumberValueExists("VehicleLocked"); }
+
+		/// Locks this vehicle or ship, or unlocks it (see IsVehicleLocked).
+		void SetVehicleLocked(bool locked) {
+			if (locked) {
+				SetNumberValue("VehicleLocked", 1.0);
+			} else if (NumberValueExists("VehicleLocked")) {
+				RemoveNumberValue("VehicleLocked");
+			}
+		}
+
 		/// Forgets that it wanted a ship ride (a ship has called it over, or it has been given a new order).
 		void ForgetShipRide() { m_WantsShipRide = false; }
 

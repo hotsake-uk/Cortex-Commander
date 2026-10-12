@@ -67,24 +67,31 @@ UNITS = [
 	),
 	dict(
 		key="Pyromancer", name="Pyromancer", groups=["Actors - Light"], gold=130, mass=42, heads=1,
-		desc="A fire mage in a red robe. Hurls fireballs that burst and set the ground alight, and breathes flame on whoever gets close. Keep him away from your own wooden huts.",
+		desc="A fire mage in a red robe. Hurls fireballs that burst and set the ground alight, raises a wall of flame across the enemy's path, and breathes flame on whoever gets close. Keep him away from your own wooden huts.",
 		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=80, walk=4.2, run=5.2,
 		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
-		torsoWounds=12, inventory=[("HDFirearm", "Fireball"), ("HDFirearm", "Dragon's Breath"), ("HDFirearm", "Dagger")], metal=False, energy=(120, 14),
+		torsoWounds=12, inventory=[("HDFirearm", "Fireball"), ("HDFirearm", "Flame Wall"), ("HDFirearm", "Dragon's Breath"), ("HDFirearm", "Dagger")], metal=False, energy=(130, 14),
 	),
 	dict(
 		key="Stormcaller", name="Stormcaller", groups=["Actors - Light"], gold=140, mass=42, heads=1,
-		desc="A storm mage in grey and teal. Calls lightning down out of a clear sky on whatever she points at, and looses homing arcane missiles between strikes.",
+		desc="A storm mage in grey and teal. Calls lightning down out of a clear sky on whatever she points at, chains it from one man to the next, claps thunder that stuns whoever closes in, and looses homing arcane missiles between strikes.",
 		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=80, walk=4.2, run=5.2,
 		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
-		torsoWounds=12, inventory=[("HDFirearm", "Call Lightning"), ("HDFirearm", "Arcane Missiles"), ("HDFirearm", "Dagger")], metal=False, energy=(110, 14),
+		torsoWounds=12, inventory=[("HDFirearm", "Call Lightning"), ("HDFirearm", "Chain Lightning"), ("HDFirearm", "Thunderclap"), ("HDFirearm", "Arcane Missiles"), ("HDFirearm", "Dagger")], metal=False, energy=(130, 15),
 	),
 	dict(
 		key="Cryomancer", name="Cryomancer", groups=["Actors - Light"], gold=120, mass=42, heads=1,
-		desc="An ice mage. A blast of frost shards chills whoever it hits to a crawl, and an arcane nova throws back anyone who closes in, grenades and all.",
+		desc="An ice mage. A blast of frost shards chills whoever it hits to a crawl, an ice lance skewers one man at range, a blizzard freezes a whole squad where it stands, and an arcane nova throws back anyone who closes in, grenades and all.",
 		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=80, walk=4.2, run=5.2,
 		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
-		torsoWounds=12, inventory=[("HDFirearm", "Frost Shards"), ("HDFirearm", "Arcane Nova"), ("HDFirearm", "Dagger")], metal=False, energy=(100, 15),
+		torsoWounds=12, inventory=[("HDFirearm", "Frost Shards"), ("HDFirearm", "Ice Lance"), ("HDFirearm", "Blizzard"), ("HDFirearm", "Arcane Nova"), ("HDFirearm", "Dagger")], metal=False, energy=(130, 15),
+	),
+	dict(
+		key="Geomancer", name="Geomancer", groups=["Actors - Light"], gold=150, mass=44, heads=1,
+		desc="An earth mage in brown and ochre. Drives a line of stone spikes up through whoever stands in front of him, raises a wall of stone for his friends to shelter behind, and turns the man under his aim to a statue for five seconds.",
+		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=85, walk=4.2, run=5.2,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=12, inventory=[("HDFirearm", "Stone Spikes"), ("HDFirearm", "Wall of Stone"), ("HDFirearm", "Petrify"), ("HDFirearm", "Dagger")], metal=False, energy=(130, 14),
 	),
 	dict(
 		key="Necromancer", name="Necromancer", groups=["Actors - Light"], gold=150, mass=40, heads=1,
@@ -95,17 +102,17 @@ UNITS = [
 	),
 	dict(
 		key="Druid", name="Druid", groups=["Actors - Light"], gold=130, mass=44, heads=1,
-		desc="A druid in a crown of leaves. Shatters the earth in a rolling wave that throws men off their feet, and sends a tornado tearing across the field.",
+		desc="A druid in a crown of leaves. Shatters the earth in a rolling wave that throws men off their feet, calls a pair of wolves out of the mist, douses fires and knocks men down with a jet of water, and sends a tornado tearing across the field.",
 		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=90, walk=4.2, run=5.2,
 		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
-		torsoWounds=12, inventory=[("HDFirearm", "Earth Shatter"), ("HDFirearm", "Tornado"), ("HDFirearm", "Dagger")], metal=False, energy=(110, 13),
+		torsoWounds=12, inventory=[("HDFirearm", "Earth Shatter"), ("HDFirearm", "Summon Wolf"), ("HDFirearm", "Water Jet"), ("HDFirearm", "Tornado"), ("HDFirearm", "Dagger")], metal=False, energy=(140, 14),
 	),
 	dict(
 		key="Archmage", name="Archmage", groups=["Actors - Heavy"], gold=280, mass=44, heads=1,
-		desc="The court's archmage, in white and gold. Calls a storm of meteors down on the enemy, opens gravity wells that swallow whole squads, and slows time itself. Expensive, and worth guarding.",
+		desc="The court's archmage, in white and gold. Calls a storm of meteors down on the enemy, burns them with a beam of sunlight from his hands, opens gravity wells that swallow whole squads, and slows time itself. Expensive, and worth guarding.",
 		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=100, walk=4.2, run=5.2,
 		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
-		torsoWounds=12, inventory=[("HDFirearm", "Meteor Storm"), ("HDFirearm", "Gravity Well"), ("HDFirearm", "Time Warp"), ("HDFirearm", "Dagger")], metal=False, energy=(200, 16),
+		torsoWounds=12, inventory=[("HDFirearm", "Meteor Storm"), ("HDFirearm", "Sunbeam"), ("HDFirearm", "Gravity Well"), ("HDFirearm", "Time Warp"), ("HDFirearm", "Dagger")], metal=False, energy=(220, 17),
 	),
 	dict(
 		key="Spellblade", name="Spellblade", groups=["Actors - Heavy"], gold=180, mass=58, heads=2,
@@ -170,6 +177,42 @@ UNITS = [
 		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
 		torsoWounds=14, inventory=[("HDFirearm", "Woodcutter's Axe")], metal=False, nature="Defensive",
 	),
+	# The Kingdom's second levy (Devices/Arsenal/Arsenal2.ini).
+	dict(
+		key="Longbowman", name="Longbowman", groups=["Actors - Light", "Actors - Snipers"], gold=95, mass=48, heads=2,
+		desc="A big man in a studded brigandine with a six-foot warbow and a quiver of bodkins that go through mail, a few fire arrows for the thatch, and a falchion for when they get close. Slow to draw, long to reach; put him on a hill.",
+		torsoMat="Kevlared Flesh", headMat="Flesh", limbMat="Flesh", health=100, walk=4.2, run=5.2,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact Armored", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=16, inventory=[("HDFirearm", "Warbow"), ("HDFirearm", "Fire Arrows"), ("HDFirearm", "Falchion")], metal=False,
+	),
+	dict(
+		key="Hunter", name="Hunter", groups=["Actors - Light"], gold=85, mass=44, heads=2,
+		desc="A huntsman in green leathers with a quick hunting bow and barbed arrows, a net for the one who runs, two snare traps for the path behind, and a hunting knife. Fast, quiet, and not for the shield wall.",
+		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=90, walk=4.6, run=5.8,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=12, inventory=[("HDFirearm", "Hunting Bow"), ("ThrownDevice", "Net"), ("ThrownDevice", "Snare Trap"), ("ThrownDevice", "Snare Trap"), ("HDFirearm", "Hunting Knife")], metal=False,
+	),
+	dict(
+		key="Arbalester", name="Arbalester", groups=["Actors - Light", "Actors - Snipers"], gold=110, mass=50, heads=1,
+		desc="A crossbowman with a steel-bowed arbalest that takes an age to span and goes through a shield and the man behind it, a buckler on his arm and a falchion at his belt. One shot, then cover.",
+		torsoMat="Kevlared Flesh", headMat="Kevlared Flesh", limbMat="Flesh", health=100, walk=4.0, run=5.0,
+		headImpact="Flesh Head Impact Armored", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=16, inventory=[("HDFirearm", "Arbalest"), ("HDFirearm", "Falchion"), ("HeldDevice", "Buckler")], metal=False,
+	),
+	dict(
+		key="Royal Guard", name="Royal Guard", groups=["Actors - Heavy"], gold=210, mass=68, heads=2,
+		desc="The king's own, in full plate under purple and gold, with a poleaxe that cuts, crushes and knocks men flat, and a tower shield that covers all of him. The slowest man on the field, and the hardest to move.",
+		torsoMat="Military Stuff", headMat="Military Stuff", limbMat="Kevlared Flesh", health=160, walk=3.4, run=4.2,
+		headImpact="Flesh Head Impact Armored", torsoImpact="Flesh Torso Impact Armored", foley="Foley Heavy Cloth Light", stride="Footstep Heavy Metal Generic",
+		torsoWounds=26, inventory=[("HDFirearm", "Poleaxe"), ("HeldDevice", "Tower Shield"), ("HDFirearm", "Morning Star")], metal=True,
+	),
+	dict(
+		key="Alchemist", name="Alchemist", groups=["Actors - Light"], gold=120, mass=44, heads=1,
+		desc="An alchemist in a leather apron with a satchel of flasks: oil to lay a slick for the fire arrows, frost to freeze a squad in its tracks, smoke to cross the open, and two healing draughts he throws among the wounded. A quarterstaff for the rest.",
+		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=90, walk=4.2, run=5.2,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=14, inventory=[("HDFirearm", "Quarterstaff"), ("TDExplosive", "Oil Flask"), ("TDExplosive", "Oil Flask"), ("TDExplosive", "Frost Flask"), ("TDExplosive", "Smoke Flask"), ("TDExplosive", "Healing Draught"), ("TDExplosive", "Healing Draught")], metal=False,
+	),
 	# The Kingdom's support casters and champions (SE-1). The AI casts the support spells on friends who need them (HumanBehaviors.lua,
 	# SupportSpellUpdate) and fights with the mace, dagger or sword between casts.
 	dict(
@@ -177,21 +220,21 @@ UNITS = [
 		desc="A hooded cleric in white with a mace, and the books of Heal, Blessing and Shield of Faith. Heals whoever is hurt near him, blesses the fighters and shields the one about to fall; keep him just behind the line.",
 		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=90, walk=4.2, run=5.2,
 		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
-		torsoWounds=14, inventory=[("HDFirearm", "Mace"), ("HDFirearm", "Heal"), ("HDFirearm", "Blessing"), ("HDFirearm", "Shield of Faith")], metal=False, energy=(120, 14),
+		torsoWounds=14, inventory=[("HDFirearm", "Mace"), ("HDFirearm", "Holy Smite"), ("HDFirearm", "Heal"), ("HDFirearm", "Blessing"), ("HDFirearm", "Shield of Faith")], metal=False, energy=(140, 14),
 	),
 	dict(
 		key="Enchanter", name="Enchanter", groups=["Actors - Light"], gold=130, mass=42, heads=1,
 		desc="A purple-robed enchanter with Haste, Enchant Weapon, Stoneskin and Dispel, and a dagger. Makes the fighters round him faster, harder-hitting and tougher, and lifts curses; worth nothing alone, worth a squad with one.",
 		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=80, walk=4.2, run=5.2,
 		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
-		torsoWounds=12, inventory=[("HDFirearm", "Haste"), ("HDFirearm", "Enchant Weapon"), ("HDFirearm", "Stoneskin"), ("HDFirearm", "Dispel"), ("HDFirearm", "Dagger")], metal=False, energy=(120, 14),
+		torsoWounds=12, inventory=[("HDFirearm", "Haste"), ("HDFirearm", "Enchant Weapon"), ("HDFirearm", "Stoneskin"), ("HDFirearm", "Dispel"), ("HDFirearm", "Bridge of Light"), ("HDFirearm", "Dagger")], metal=False, energy=(120, 14),
 	),
 	dict(
 		key="Battlemage", name="Battlemage", groups=["Actors - Heavy"], gold=190, mass=60, heads=2,
 		desc="A knight in blue plate who fights with a longsword and casts between blows: Fireball at range, Telekinetic Grab to haul a man out of the line, and Blink to cross a wall or escape one. Plate makes him a slow caster, but a hard one to stop.",
 		torsoMat="Military Stuff", headMat="Military Stuff", limbMat="Kevlared Flesh", health=120, walk=3.8, run=4.6,
 		headImpact="Flesh Head Impact Armored", torsoImpact="Flesh Torso Impact Armored", foley="Foley Heavy Cloth Light", stride="Footstep Heavy Metal Generic",
-		torsoWounds=22, inventory=[("HDFirearm", "Longsword"), ("HDFirearm", "Fireball"), ("HDFirearm", "Telekinetic Grab"), ("HDFirearm", "Blink")], metal=True, energy=(100, 10),
+		torsoWounds=22, inventory=[("HDFirearm", "Longsword"), ("HDFirearm", "Fireball"), ("HDFirearm", "Wall of Stone"), ("HDFirearm", "Telekinetic Grab"), ("HDFirearm", "Blink")], metal=True, energy=(110, 10),
 	),
 	dict(
 		key="Champion", name="Champion", groups=["Actors - Heavy"], gold=220, mass=64, heads=2,
@@ -261,7 +304,7 @@ def gibs(indent, *items):
 
 def parts(u):
 	k = u["key"]
-	d = f"{MODULE}.rte/Actors/{k}"
+	d = f"{MODULE}.rte/Actors/{k.replace(' ', '')}"
 	p = f"{MODULE} {k}"
 	metalGib = ("MOSParticle", "Gib Metal Grey Tiny A", 3, "") if u["metal"] else ("MOSParticle", gib(u, "Gib Flesh Tiny A"), 2, "")
 	return f"""
@@ -495,7 +538,7 @@ AddActor = Leg
 
 def actor(u):
 	k = u["key"]
-	d = f"{MODULE}.rte/Actors/{k}"
+	d = f"{MODULE}.rte/Actors/{k.replace(' ', '')}"
 	p = f"{MODULE} {k}"
 	groups = "\n".join(f"\tAddToGroup = {g}" for g in ["Actors"] + u["groups"])
 	inv = "\n".join(f"\tAddInventory = {cls}\n\t\tCopyOf = {name}" for cls, name in u["inventory"])

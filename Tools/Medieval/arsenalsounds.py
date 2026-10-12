@@ -290,6 +290,114 @@ def holy_blast():
 	return boom + crack + rumble + choir * 0.9 + bells * 0.12
 
 
+# ---------------------------------------------------------------------------
+# The second armoury (Arsenal2.ini).
+
+
+def pluck(freq, dur, damp=0.996):
+	n = int(SR * dur)
+	period = int(SR / freq)
+	buf = rng.uniform(-1, 1, period)
+	out = np.zeros(n)
+	for k in range(n):
+		out[k] = buf[k % period]
+		buf[k % period] = damp * 0.5 * (buf[k % period] + buf[(k + 1) % period])
+	return out
+
+
+def warbow(i):
+	"""A heavy bow loosed: a deep, long string note, a thump of the stave, and the arrow's hiss away."""
+	n = int(SR * 0.6)
+	t = np.arange(n) / SR
+	string = pluck([88, 98][i], 0.6, 0.997) * env(n, 0.001, 0.25)
+	thump = np.sin(2 * np.pi * 55 * t) * env(n, 0.001, 0.06) * 1.2
+	hiss = band(rng.standard_normal(n), 2500, 9000) * env(n, 0.005, 0.12) * 0.5
+	return string + thump + hiss
+
+
+def arbalest(n_dur=0.5):
+	"""An arbalest's steel bow snapping straight: a hard clack, a short deep twang and a whip of air."""
+	n = int(SR * n_dur)
+	t = np.arange(n) / SR
+	clack = band(rng.standard_normal(n), 1200, 6000) * env(n, 0.0005, 0.015) * 3
+	twang = pluck(140, n_dur, 0.99) * env(n, 0.001, 0.07) * 1.5
+	thump = np.sin(2 * np.pi * 70 * t) * env(n, 0.001, 0.04) * 1.5
+	whip = band(rng.standard_normal(n), 3000, 10000) * env(n, 0.002, 0.08) * 0.6
+	return clack + twang + thump + whip
+
+
+def sling(i):
+	"""A sling whirled and let go: a rising whirr, then a snap of the cords."""
+	n = int(SR * 0.7)
+	t = np.arange(n) / SR
+	rate = 6 + 10 * t / t[-1]
+	whirr = band(rng.standard_normal(n), 300, 1800) * (0.5 + 0.5 * np.sin(2 * np.pi * np.cumsum(rate) / SR)) * np.clip(t / 0.1, 0, 1) * np.clip((0.55 - t) / 0.1, 0, 1)
+	snap = at(n, 0.55, band(rng.standard_normal(int(SR * 0.08)), 2000, 8000) * env(int(SR * 0.08), 0.0005, 0.01) * 3)
+	return whirr * (0.6 + 0.1 * i) + snap
+
+
+def stone_hit(i):
+	"""A sling stone striking: a sharp knock."""
+	n = int(SR * 0.15)
+	t = np.arange(n) / SR
+	knock = np.sin(2 * np.pi * [420, 360][i] * t) * env(n, 0.0005, 0.02)
+	crack = band(rng.standard_normal(n), 1500, 7000) * env(n, 0.0002, 0.008) * 2
+	return knock + crack
+
+
+def net_wrap():
+	"""A net dropping over someone: a rustle of cord and the thuds of its weights."""
+	n = int(SR * 0.6)
+	rustle = band(rng.standard_normal(n), 800, 4000) * env(n, 0.01, 0.2)
+	thuds = np.zeros(n)
+	for k in range(4):
+		seg = int(SR * 0.08)
+		thuds += at(n, 0.05 + 0.09 * k + rng.uniform(0, 0.03), np.sin(2 * np.pi * rng.uniform(150, 260) * np.arange(seg) / SR) * env(seg, 0.001, 0.02))
+	return rustle * 0.6 + thuds
+
+
+def trap_snap():
+	"""A snare trap closing: a spring's twang and the clang of iron jaws."""
+	n = int(SR * 0.4)
+	t = np.arange(n) / SR
+	spring = pluck(320, 0.4, 0.99) * env(n, 0.001, 0.04)
+	clang = sum(np.sin(2 * np.pi * f * t) * env(n, 0.001, 0.12 / (k + 1)) for k, f in enumerate((1900, 2700, 3900)))
+	knock = np.sin(2 * np.pi * 110 * t) * env(n, 0.001, 0.03) * 1.5
+	return spring + clang * 0.5 + knock
+
+
+def flail_whirl():
+	"""A flail's ball whirling through a swing: chain rattle and a rising whoosh."""
+	n = int(SR * 0.45)
+	t = np.arange(n) / SR
+	noise = rng.standard_normal(n)
+	rise = np.sin(np.pi * t / t[-1]) ** 2
+	whoosh = (band(noise, 200, 1200) * (1 - t / t[-1]) + band(noise, 900, 2500) * (t / t[-1])) * rise
+	rattle = band((rng.random(n) > 0.992) * rng.standard_normal(n) * 3, 2000, 7000) * env(n, 0.01, 0.3)
+	return whoosh + rattle * 0.5
+
+
+def frost_burst():
+	"""A frost flask breaking: glass, then a rushing crackle of ice forming and a cold ring."""
+	n = int(SR * 1.2)
+	t = np.arange(n) / SR
+	glass = band(rng.standard_normal(n), 3000, 10000) * env(n, 0.0005, 0.03) * 2
+	crackle = band((rng.random(n) > 0.994) * rng.standard_normal(n) * 4, 1500, 9000) * env(n, 0.02, 0.5)
+	ring = sum(np.sin(2 * np.pi * f * t) for f in (1760, 2217, 2637)) * env(n, 0.01, 0.6) * 0.25
+	rush = band(rng.standard_normal(n), 400, 2000) * env(n, 0.005, 0.25)
+	return glass + crackle + ring + rush * 0.6
+
+
+def draught_burst():
+	"""A healing draught breaking: glass, a soft bubbling fizz and a warm chime."""
+	n = int(SR * 1.0)
+	t = np.arange(n) / SR
+	glass = band(rng.standard_normal(n), 3000, 10000) * env(n, 0.0005, 0.03) * 1.5
+	fizz = band((rng.random(n) > 0.99) * rng.standard_normal(n) * 2, 2000, 8000) * env(n, 0.05, 0.4)
+	chime = sum(np.sin(2 * np.pi * f * t) * env(n, 0.02, 0.5) for f in (1046.5, 1318.5, 1568.0)) * 0.3
+	return glass + fizz + chime
+
+
 def main():
 	for i in range(2):
 		write(f"PotShatter{i + 1}", shatter(0.6), 0.75)
@@ -303,6 +411,17 @@ def main():
 		write(f"BluntHit{i + 1}", blunt(i), 0.85)
 	for i in range(2):
 		write(f"HeavySwing{i + 1}", heavy_swing(i), 0.6)
+	# The second armoury's.
+	for i in range(2):
+		write(f"Warbow{i + 1}", warbow(i), 0.75)
+		write(f"Sling{i + 1}", sling(i), 0.6)
+		write(f"StoneHit{i + 1}", stone_hit(i), 0.6)
+	write("Arbalest1", arbalest(), 0.85)
+	write("NetWrap1", net_wrap(), 0.6)
+	write("TrapSnap1", trap_snap(), 0.8)
+	write("FlailWhirl1", flail_whirl(), 0.5)
+	write("FrostBurst1", frost_burst(), 0.7)
+	write("DraughtBurst1", draught_burst(), 0.6)
 	write("Hallelujah1", hallelujah(), 0.7)
 	write("HolyBlast1", holy_blast(), 0.95)
 	print("arsenal sounds done")

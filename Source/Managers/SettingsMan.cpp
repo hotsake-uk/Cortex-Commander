@@ -149,6 +149,7 @@ void SettingsMan::Clear() {
 	m_MeasuredBodySize = false;
 	m_UnitWaterBehaviour = 2;
 	m_UnitsStepOverObjects = true;
+	m_UnitsCrossVehicles = true;
 	m_UnitsPushObjects = true;
 	m_ObjectPushStrength = 1.0F;
 	m_SensesPassPlants = true;
@@ -185,10 +186,12 @@ void SettingsMan::Clear() {
 	m_AIRidesShips = true;
 	m_AIShipRideNoRoute = true;
 	m_AIShipRideLongWalk = true;
-	m_AIShipRideLongWalkDistance = 2000.0F;
+	m_AIShipRideLongWalkDistance = 500.0F;
 	m_AIShipRideRange = 1500.0F;
 	m_AIShipRideWait = 20.0F;
 	m_AIVehiclesWaitForRiders = true;
+	m_BoardFromBelow = true;
+	m_BoardFromBelowReach = 24.0F;
 	m_AICoverDigs = true;
 	m_AICoverFallsBack = true;
 	m_AICoverLiesFlat = true;
@@ -896,6 +899,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("JetpackWeightCompensation", { int mode = 0; reader >> mode; SetJetpackWeightCompensation(mode); });
 	MatchProperty("UnitWaterBehaviour", { int mode = 2; reader >> mode; SetUnitWaterBehaviour(mode); });
 	MatchProperty("UnitsStepOverObjects", { reader >> m_UnitsStepOverObjects; });
+	MatchProperty("UnitsCrossVehicles", { reader >> m_UnitsCrossVehicles; });
 	MatchProperty("UnitsPushObjects", { reader >> m_UnitsPushObjects; });
 	MatchProperty("ObjectPushStrength", { float strength = 1.0F; reader >> strength; SetObjectPushStrength(strength); });
 	MatchProperty("SensesPassPlants", { reader >> m_SensesPassPlants; });
@@ -932,6 +936,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AIShipRideRange", { float range = 0.0F; reader >> range; SetAIShipRideRange(range); });
 	MatchProperty("AIShipRideWait", { float seconds = 0.0F; reader >> seconds; SetAIShipRideWait(seconds); });
 	MatchProperty("AIVehiclesWaitForRiders", { reader >> m_AIVehiclesWaitForRiders; });
+	MatchProperty("BoardFromBelow", { reader >> m_BoardFromBelow; });
+	MatchProperty("BoardFromBelowReach", { float reach = 0.0F; reader >> reach; SetBoardFromBelowReach(reach); });
 	MatchProperty("AICoverDigs", { reader >> m_AICoverDigs; });
 	MatchProperty("AICoverFallsBack", { reader >> m_AICoverFallsBack; });
 	MatchProperty("AICoverLiesFlat", { reader >> m_AICoverLiesFlat; });
@@ -1571,6 +1577,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("JetpackWeightCompensation", m_JetpackWeightCompensation);
 	writer.NewPropertyWithValue("UnitWaterBehaviour", m_UnitWaterBehaviour);
 	writer.NewPropertyWithValue("UnitsStepOverObjects", m_UnitsStepOverObjects);
+	writer.NewPropertyWithValue("UnitsCrossVehicles", m_UnitsCrossVehicles);
 	writer.NewPropertyWithValue("UnitsPushObjects", m_UnitsPushObjects);
 	writer.NewPropertyWithValue("ObjectPushStrength", m_ObjectPushStrength);
 	writer.NewPropertyWithValue("SensesPassPlants", m_SensesPassPlants);
@@ -1599,6 +1606,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AIShipRideRange", m_AIShipRideRange);
 	writer.NewPropertyWithValue("AIShipRideWait", m_AIShipRideWait);
 	writer.NewPropertyWithValue("AIVehiclesWaitForRiders", m_AIVehiclesWaitForRiders);
+	writer.NewPropertyWithValue("BoardFromBelow", m_BoardFromBelow);
+	writer.NewPropertyWithValue("BoardFromBelowReach", m_BoardFromBelowReach);
 	writer.NewPropertyWithValue("AICoverDigs", m_AICoverDigs);
 	writer.NewPropertyWithValue("AICoverFallsBack", m_AICoverFallsBack);
 	writer.NewPropertyWithValue("AICoverLiesFlat", m_AICoverLiesFlat);

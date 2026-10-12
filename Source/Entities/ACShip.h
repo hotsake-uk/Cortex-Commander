@@ -496,6 +496,12 @@ namespace RTE {
 		/// Gets how many of its seats hold a unit riding (that got in for a ride).
 		int RiderCount() const;
 
+		/// Gets whether it stands with nobody in it and needs a pilot to fly: then nothing it is told does anything.
+		bool Stranded() const { return m_NeedsPilot && m_Crew.IsEmpty(); }
+
+		/// Gets whether it has been given an order (by the player or a battle mode) that it keeps to.
+		bool HasOrder() const;
+
 		/// Lets every rider out (the last seat first, the pilot last), each to carry on to where it was going.
 		void LetRidersOut();
 
