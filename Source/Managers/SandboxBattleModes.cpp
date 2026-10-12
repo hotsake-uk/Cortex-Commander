@@ -569,10 +569,39 @@ namespace SandboxDetail {
 				top = std::min(top, corner.m_Y);
 				bottom = std::max(bottom, corner.m_Y);
 			}
-			// The ground's top: in each column, the first solid point under air, inside the zone.
+			// The ground's top: in each column, the first solid point under air, inside the zone. A column with no ground in the zone (a gap, or a
+			// zone drawn in the air) takes the ground straight below it instead, however far down that is.
+			const float sceneBottom = static_cast<float>(g_SceneMan.GetSceneHeight());
+			const auto groundBelow = [sceneBottom](float x, float from) {
+				for (float y = from; y < sceneBottom; y += 2.0F) {
+					if (SolidAt(x, y)) {
+						return y;
+					}
+				}
+				return -1.0F;
+			};
 			std::vector<Vector> run;
 			for (float x = left; x <= right; x += 3.0F) {
 				bool found = false;
+				bool anySolid = false;
+				float lowest = -1.0F;
+				for (float y = top; y <= bottom; y += 2.0F) {
+					if (!IsInZone(zone, Vector(x, y))) {
+						continue;
+					}
+					lowest = y;
+					anySolid = anySolid || SolidAt(x, y);
+				}
+				if (lowest >= 0.0F && !anySolid) {
+					if (const float y = groundBelow(x, lowest + 2.0F); y >= 0.0F) {
+						if (!run.empty() && (std::abs(run.back().m_Y - y) > 12.0F || x - run.back().m_X > 4.0F)) {
+							terrain.Crest.push_back(std::move(run));
+							run.clear();
+						}
+						run.emplace_back(x, y);
+						continue;
+					}
+				}
 				for (float y = top; y <= bottom; y += 2.0F) {
 					if (IsInZone(zone, Vector(x, y)) && SolidAt(x, y) && !SolidAt(x, y - 2.0F)) {
 						if (!run.empty() && (std::abs(run.back().m_Y - y) > 12.0F || x - run.back().m_X > 4.0F)) {
@@ -596,15 +625,39 @@ namespace SandboxDetail {
 			const float area = std::max((right - left) * (bottom - top), 1.0F);
 			terrain.Cell = std::max(3.0F, std::ceil(std::sqrt(area / 6000.0F)));
 			const float cell = terrain.Cell;
+			const int columns = static_cast<int>(std::ceil((right - left) / cell)) + 1;
+			std::vector<float> lowestInZone(std::max(columns, 0), -1.0F); //!< Each column's lowest cell middle in the zone, or -1.
+			std::vector<bool> columnSolid(std::max(columns, 0), false);
 			for (float y = top; y < bottom; y += cell) {
-				for (float x = left; x < right; x += cell) {
+				int column = 0;
+				for (float x = left; x < right && column < columns; x += cell, ++column) {
 					const float midX = x + cell * 0.5F;
 					const float midY = y + cell * 0.5F;
-					if (!IsInZone(zone, Vector(midX, midY)) || !SolidAt(midX, midY)) {
+					if (!IsInZone(zone, Vector(midX, midY))) {
 						continue;
 					}
+					lowestInZone[column] = midY;
+					if (!SolidAt(midX, midY)) {
+						continue;
+					}
+					columnSolid[column] = true;
 					const bool edge = !SolidAt(midX - cell, midY) || !SolidAt(midX + cell, midY) || !SolidAt(midX, midY - cell) || !SolidAt(midX, midY + cell);
 					terrain.Cells.emplace_back(Vector(x, y), edge);
+				}
+			}
+			// A column of the zone with nothing solid in it lights up the ground straight below it instead (its top lit, a little under it tinted),
+			// however far down, so the objective still shows where a unit can stand.
+			for (int column = 0; column < columns; ++column) {
+				if (columnSolid[column] || lowestInZone[column] < 0.0F) {
+					continue;
+				}
+				const float x = left + static_cast<float>(column) * cell;
+				const float ground = groundBelow(x + cell * 0.5F, lowestInZone[column] + cell * 0.5F);
+				if (ground < 0.0F) {
+					continue;
+				}
+				for (int depth = 0; depth < 3; ++depth) {
+					terrain.Cells.emplace_back(Vector(x, ground + static_cast<float>(depth) * cell), depth == 0);
 				}
 			}
 			return terrain;
