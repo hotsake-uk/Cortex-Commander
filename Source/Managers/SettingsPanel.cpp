@@ -1099,6 +1099,8 @@ void DebugMan::SettingsGUI() {
 		}
 		Toggle("Mantle ledges and vault low obstacles", g_SettingsMan.MantlingEnabled(), [](bool on) { g_SettingsMan.SetMantlingEnabled(on); });
 		Tip("Units, players' included, pull themselves up onto a ledge or over a low obstacle they walk or jet into, rather than needing the jetpack to get the height exactly right.");
+		Toggle("Push free when stuck", g_SettingsMan.StuckPushEnabled(), [](bool on) { g_SettingsMan.SetStuckPushEnabled(on); });
+		Tip("AI soldiers stuck on terrain, once crouching, backing off, leaping, hopping, crawling and mantling haven't got them moving, get a small nudge up and on. Players' own units are never pushed.");
 		Toggle("No map wrapping", g_SettingsMan.NoSceneWrap(), [](bool on) { g_SettingsMan.SetNoSceneWrap(on); });
 		Tip("Every map has hard left and right edges and one copy of the world, instead of looping round. Takes effect when the next map loads.");
 		float bleedOut = g_SettingsMan.BleedOutChance();

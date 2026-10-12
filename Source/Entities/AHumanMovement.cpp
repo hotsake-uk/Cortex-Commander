@@ -1149,6 +1149,44 @@ int AHuman::PickStuckRemedy(const Vector& spot, const std::array<bool, static_ca
 	return -1;
 }
 
+void AHuman::PushFree(float direction) {
+	m_StuckPushTimer.Reset();
+	// Out of the terrain first, if the body has sunk into it: to the nearest clear place, as a unit dropped into the ground is.
+	if (m_pAtomGroup && m_pAtomGroup->InTerrain()) {
+		MoveOutOfTerrain(MaterialColorKeys::g_MaterialGrass);
+	}
+	const float h = m_CharHeight;
+	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : h * 0.2F;
+	// Away from what it is pressed against: the ground in a ring round the body, each solid point pushing the other way.
+	Vector away;
+	const float reach = std::max(6.0F, h * 0.4F);
+	for (int k = 0; k < 8; ++k) {
+		const float angle = static_cast<float>(k) * c_QuarterPI;
+		const Vector out(std::cos(angle), std::sin(angle));
+		if (Solid(m_Pos.m_X + out.m_X * reach, m_Pos.m_Y + out.m_Y * reach)) {
+			away -= out;
+		}
+	}
+	if (!away.IsZero()) {
+		away.Normalize();
+	}
+	// A nudge, not a leap: up at the speed that rises a quarter of the body against gravity, a little the way it is going, a little away.
+	// (Never towards a drop: with no floor a body and a half under the side it would go, nothing that way.)
+	const float gravity = std::max(0.1F, g_SceneMan.GetGlobalAcc().m_Y);
+	const float rise = std::sqrt(2.0F * gravity * h * 0.25F * c_MPP);
+	Vector push(direction * 1.5F, -rise);
+	push += away * 1.5F;
+	if (push.m_X != 0.0F && FloorUnder(m_Pos + Vector((push.m_X < 0.0F ? -1.0F : 1.0F) * h * 0.5F, 0.0F), feet + h * 1.5F) < 0.0F) {
+		push.m_X = 0.0F;
+	}
+	// (Under a roof: not up into it.)
+	if (Solid(m_Pos.m_X, m_Pos.m_Y - h * 0.6F)) {
+		push.m_Y = std::max(push.m_Y, 0.0F);
+	}
+	push.CapMagnitude(4.0F);
+	m_Vel += push;
+}
+
 void AHuman::ResetRouteMovement() {
 	// Reset mid-dig (a hold for a fight or an alarm, following someone, a player taking over): the digger is put away here, as the dig's own
 	// end does. The flag went with the reset and the gun was never taken out again, so the unit walked on, and went at the enemy, with the
@@ -1894,7 +1932,7 @@ void AHuman::GetDebugState(std::vector<DebugStateField>& fields) const {
 	number("progressMs", mover.progressTimer.GetElapsedSimTimeMS());
 	number("stuckLevel", mover.stuckLevel);
 	{
-		const char* const remedyNames[] = {"crouch", "back off", "leap", "hop", "lie down", "stand up", "mantle"};
+		const char* const remedyNames[] = {"crouch", "back off", "leap", "hop", "lie down", "stand up", "mantle", "push"};
 		fields.push_back({"stuckRemedy", mover.remedy >= 0 && mover.remedy < static_cast<int>(StuckRemedy::Count) ? remedyNames[mover.remedy] : "none", true});
 	}
 	number("impossibleAnswers", mover.impossibleAnswers);
@@ -4306,8 +4344,8 @@ int AHuman::MoveAlongRoute() {
 	// to stand), none twice in one stuck spell, one that failed at this spot lately left out, and one that worked here tried first. (As
 	// unconditional moves, 8.0's back-offs read as pacing and its lying down as lying down at random, and a jetless unit had nothing.)
 	const float direction = toPoint.m_X < 0.0F ? -1.0F : 1.0F;
-	const char* const remedyNames[] = {"crouch", "back off", "leap", "hop", "lie down", "stand up", "mantle"};
-	static constexpr int remedyWindowMS[] = {1000, 1000, 800, 1200, 1500, 800, 1200};
+	const char* const remedyNames[] = {"crouch", "back off", "leap", "hop", "lie down", "stand up", "mantle", "push"};
+	static constexpr int remedyWindowMS[] = {1000, 1000, 800, 1200, 1500, 800, 1200, 1000};
 	if (!stuck || mover.fuelWaiting) {
 		if (mover.remedy >= 0 && !mover.fuelWaiting) {
 			RememberStuckRemedy(mover.remedySpot, mover.remedy, true);
@@ -4333,6 +4371,9 @@ int AHuman::MoveAlongRoute() {
 			allowed[static_cast<int>(StuckRemedy::Stand)] = m_ProneState == PRONE && !noRoomHere && !noRoomAhead;
 			// (A mantle on purpose: with mantles only on purpose, a unit pressed against a ledge it could pull itself over had to be told to.)
 			allowed[static_cast<int>(StuckRemedy::Mantle)] = !prone && m_ProneState == NOTPRONE && g_SettingsMan.MantlingEnabled() && !IsMantling() && (m_pFGArm || m_pBGArm);
+			// (The push, behind its setting and off by default: last in the order, so only once the unit's own moves are spent here, unless it
+			// worked at this spot before. Once a stuck spell, and not again for 3 s.)
+			allowed[static_cast<int>(StuckRemedy::Push)] = g_SettingsMan.StuckPushEnabled() && m_Controller.GetInputMode() == Controller::CIM_AI && m_StuckPushTimer.IsPastSimMS(3000) && !mover.flight.active && !m_Ladder.active && !IsMantling() && m_PinStrength <= 0.0F;
 			mover.remedy = PickStuckRemedy(m_Pos, allowed, mover.remedyTried);
 			if (mover.remedy >= 0) {
 				mover.remedyTried |= 1U << mover.remedy;
@@ -4340,6 +4381,9 @@ int AHuman::MoveAlongRoute() {
 				mover.remedySpot = m_Pos;
 				MoverTrace(std::string("stuck; ") + remedyNames[mover.remedy]);
 				Say("Stuck");
+				if (mover.remedy == static_cast<int>(StuckRemedy::Push)) {
+					PushFree(direction);
+				}
 			}
 		}
 		switch (static_cast<StuckRemedy>(mover.remedy)) {
