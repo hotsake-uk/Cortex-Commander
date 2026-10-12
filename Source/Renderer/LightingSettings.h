@@ -218,6 +218,7 @@ namespace RTE {
 		float WeatherIntensity = 0.6F; //!< How heavy the rain or snow is, 0 to 1.
 		float WeatherSpeed = 1.0F; //!< How fast the weather's drops move against their preset's own speeds: fall, wind drift, sway, swirl and flicker. 1 is as the preset has it.
 		bool WeatherEverywhere = false; //!< The weather's drops show everywhere but over the terrain and its back walls: under roofs and overhangs and in cave mouths too, wherever the sky or the backdrop shows. Ground wetness, snow cover and splashes still keep to shelter. Off: drops keep out of shelter, as before.
+		bool WeatherOverBackground = true; //!< The weather's drops are drawn over the background: the sky and the distant scenery. Off: they only show in front of the terrain's back walls, units and the rest of the scene.
 		float Wind = 60.0F; //!< Horizontal wind speed for precipitation, pixels per second. Negative blows left.
 
 		float TimeOfDay = 6.323529F; //!< Hours, 0 to 24. Tints and dims the sky light through dawn, day, dusk and night. Noon reproduces the classic look.

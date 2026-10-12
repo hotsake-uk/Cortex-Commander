@@ -3146,8 +3146,10 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_WeatherDrift = std::fmod(m_WeatherDrift + (std::abs(driftStep) < 1000.0F ? driftStep * speed : 0.0F), 65536.0F);
 		m_WeatherDriftLast = drift;
 		// Weather everywhere: the drops ignore shelter and are drawn on their own first, so they can be laid over the scene everywhere but the terrain and its back walls.
+		// Kept off the background (the sky and the distant scenery), they are drawn on their own the same way and left off there.
 		bool everywhere = m_Settings.WeatherEverywhere && sceneDepth && surface;
-		if (everywhere) {
+		bool masked = (everywhere || !m_Settings.WeatherOverBackground) && sceneDepth && surface;
+		if (masked) {
 			if (m_WeatherDrops.Width != width || m_WeatherDrops.Height != height || !m_WeatherDrops.Texture) {
 				m_WeatherDrops.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 			}
@@ -3206,7 +3208,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glActiveTexture(GL_TEXTURE0);
 		glBindVertexArray(m_EmptyVAO);
 		glDrawArrays(GL_TRIANGLES, 0, dropCount * 6);
-		if (everywhere) {
+		if (masked) {
 			glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
 			glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 			m_WeatherEverywhereShader->Enable();
@@ -3219,6 +3221,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			m_WeatherEverywhereShader->SetVector2f("rteGridWorldSize", gridWorldSize);
 			m_WeatherEverywhereShader->SetFloat("rteForegroundDepth", foregroundDepth);
 			m_WeatherEverywhereShader->SetFloat("rteBackgroundDepth", backgroundThresholdNDC * 0.5F + 0.5F);
+			m_WeatherEverywhereShader->SetBool("rteHideTerrain", everywhere);
+			m_WeatherEverywhereShader->SetBool("rteHideBackground", !m_Settings.WeatherOverBackground);
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, sceneDepth->GetTextureId());
 			glActiveTexture(GL_TEXTURE2);

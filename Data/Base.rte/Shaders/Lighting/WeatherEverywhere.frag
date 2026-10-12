@@ -1,6 +1,7 @@
 // WeatherEverywhere.frag
 // Weather everywhere (LightingSettings::WeatherEverywhere): lays the weather's drops, drawn on their own and premultiplied, over the lit scene everywhere but the
 // terrain and its back walls. So they show over the sky, the scenery behind, units and open air under roofs and in cave mouths, and not over solid ground.
+// With Weather over the background off (LightingSettings::WeatherOverBackground) it also leaves them off the sky and the distant scenery, with or without that.
 #version 330 core
 
 out vec4 FragColor;
@@ -14,6 +15,8 @@ uniform vec2 rteScreenOrigin;
 uniform vec2 rteGridWorldSize;
 uniform float rteForegroundDepth; // Depth below which pixels are foreground terrain and objects.
 uniform float rteBackgroundDepth; // Depth beyond which pixels are the distant background layers (or nothing was drawn).
+uniform bool rteHideTerrain; // Weather everywhere: off the terrain and its back walls.
+uniform bool rteHideBackground; // Off the sky and the distant scenery.
 
 void main() {
 	vec2 screenUV = gl_FragCoord.xy / rteScreenSize;
@@ -22,6 +25,13 @@ void main() {
 		discard;
 	}
 	float depth = texture(rteSceneDepth, screenUV).r;
+	if (rteHideBackground && depth > rteBackgroundDepth) {
+		discard;
+	}
+	if (!rteHideTerrain) {
+		FragColor = drops;
+		return;
+	}
 	// The terrain's back walls sit between the foreground and the distant layers.
 	bool backWall = depth >= rteForegroundDepth && depth <= rteBackgroundDepth;
 	// The foreground terrain shares its depth with units and objects; solid objects mark themselves in the surface buffer, and the ground grid tells the terrain
