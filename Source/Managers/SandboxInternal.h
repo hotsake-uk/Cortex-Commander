@@ -991,6 +991,7 @@ namespace SandboxDetail {
 		float TopSpeed = 1.0F; //!< Times its MaxSpeed.
 		float Grip = 1.0F; //!< Times its Grip: how much of its weight it can push with before the wheels slip.
 		float Brakes = 1.0F; //!< Times its BrakeStrength.
+		float Friction = 1.0F; //!< Times its RollingResistance: how quickly it slows coasting.
 		float Jump = 1.0F; //!< Times its HopSpeed.
 		float WaterPower = 1.0F; //!< Times its WaterThrust (boats).
 		float WaterSpeed = 1.0F; //!< Times its WaterMaxSpeed (boats).

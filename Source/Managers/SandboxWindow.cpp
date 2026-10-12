@@ -1693,8 +1693,9 @@ namespace SandboxDetail {
 		if (wheels) {
 			slider("Power", tuning.Power, vehicle ? vehicle->GetAcceleration() : 0.0F, "m/s2", "How hard it speeds up: more power drives it up steeper hills.");
 			slider("Top speed", tuning.TopSpeed, vehicle ? vehicle->GetMaxSpeed() : 0.0F, "m/s", "How fast it goes on the flat.");
-			slider("Grip", tuning.Grip, vehicle ? vehicle->GetGrip() : 0.0F, "", "How much of its weight the wheels push with before they slip: on a steep hill, power is no use without the grip to put it down.");
-			slider("Brakes", tuning.Brakes, vehicle ? vehicle->GetBrakeStrength() : 0.0F, "m/s2", "How hard it slows with the brake on.");
+			slider("Grip", tuning.Grip, vehicle ? vehicle->GetGrip() : 0.0F, "", "How much of its weight the wheels push or brake with before they slip: on a steep hill, power is no use without the grip to put it down, and it can't be parked on a slope steeper than its grip holds.");
+			slider("Brakes", tuning.Brakes, vehicle ? vehicle->GetBrakeStrength() : 0.0F, "m/s2", "How hard it slows with the brake on, and holds itself still on a slope when left alone.");
+			slider("Friction", tuning.Friction, vehicle ? vehicle->GetRollingResistance() : 0.0F, "m/s2", "How quickly it slows coasting with nobody driving it: low, it rolls on a long way.");
 			if (!vehicle || vehicle->GetHopSpeed() > 0.0F) {
 				slider("Jump", tuning.Jump, vehicle ? vehicle->GetHopSpeed() : 0.0F, "m/s", "How high it jumps off its springs when the driver jumps.");
 			}
