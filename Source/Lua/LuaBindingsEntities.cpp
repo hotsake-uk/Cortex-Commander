@@ -641,6 +641,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AHuman) {
 	    .property("LadderHoldWanted", &AHuman::LadderHoldWanted)
 	    .property("LegJumpHeight", &AHuman::GetLegJumpHeight, &AHuman::SetLegJumpHeight)
 	    .property("LegJumpSpeed", &AHuman::GetLegJumpSpeed, &AHuman::SetLegJumpSpeed)
+	    .property("ObjectPushStrength", &AHuman::GetObjectPushStrength, &AHuman::SetObjectPushStrength)
 	    .property("Leaping", &AHuman::IsLeaping)
 	    .def("CanLeap", &AHuman::CanLeap)
 	    .property("AIStance", &AHuman::GetAIStance)

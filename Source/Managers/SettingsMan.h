@@ -400,6 +400,11 @@ namespace RTE {
 		/// Whether the AI's walk sees loose bodies its own collides with in the way (a corpse, a gib, a limb: AHuman::ObjectAhead) and leaps
 		/// them, hops them with the jet, routes round or waits, as it does a wreck. Off as before: it pressed into them until the stuck handling.
 		bool UnitsStepOverObjects() const { return m_UnitsStepOverObjects; }
+		/// Whether an AI soldier whose walk is held up by a loose object (a corpse, a gib, a crate) no heavier than itself shoves it along out of
+		/// the way (AHuman::PushObjectAhead), before stepping over it or going round. On as the game comes.
+		bool UnitsPushObjects() const { return m_UnitsPushObjects; }
+		/// How hard units shove loose objects out of their way, times each unit's own ObjectPushStrength: 1 as the game comes, 0 to 3.
+		float ObjectPushStrength() const { return m_ObjectPushStrength; }
 		/// Whether units' own senses (the walk's look ahead, getting up, leaps, landings, mantling, ducking) see through what their bodies push
 		/// through: grass and soft plants (integrity 5 or under, not flowing). Off as before: grass read as ground over the dirt the floor
 		/// rays find, and units ducked under hanging plants and mantled onto bushes. See Actor::SensesPassTerrain.
@@ -958,6 +963,8 @@ namespace RTE {
 		void SetJetpackWeightCompensation(int mode) { m_JetpackWeightCompensation = std::clamp(mode, 0, 2); }
 		void SetUnitWaterBehaviour(int mode) { m_UnitWaterBehaviour = std::clamp(mode, 0, 2); }
 		void SetUnitsStepOverObjects(bool on) { m_UnitsStepOverObjects = on; }
+		void SetUnitsPushObjects(bool on) { m_UnitsPushObjects = on; }
+		void SetObjectPushStrength(float strength) { m_ObjectPushStrength = std::clamp(strength, 0.0F, 3.0F); }
 		void SetSensesPassPlants(bool on) { m_SensesPassPlants = on; }
 		void SetSensesPassRungs(bool on) { m_SensesPassRungs = on; }
 		void SetSensesPassSpecks(bool on) { m_SensesPassSpecks = on; }
@@ -1311,6 +1318,8 @@ namespace RTE {
 		int m_JetpackWeightCompensation = 0; //!< See JetpackWeightCompensation.
 		int m_UnitWaterBehaviour = 2; //!< See UnitWaterBehaviour.
 		bool m_UnitsStepOverObjects = true; //!< See UnitsStepOverObjects.
+		bool m_UnitsPushObjects = true; //!< See UnitsPushObjects.
+		float m_ObjectPushStrength = 1.0F; //!< See ObjectPushStrength.
 		bool m_SensesPassPlants = true; //!< See SensesPassPlants.
 		bool m_SensesPassRungs = true; //!< See SensesPassRungs.
 		bool m_SensesPassSpecks = true; //!< See SensesPassSpecks.

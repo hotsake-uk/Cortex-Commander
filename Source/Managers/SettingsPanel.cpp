@@ -1225,6 +1225,15 @@ void DebugMan::SettingsGUI() {
 		Tip("Units, players' included, pull themselves up onto a ledge or over a low obstacle they walk or jet into, rather than needing the jetpack to get the height exactly right.");
 		Toggle("Units step over objects in their way", g_SettingsMan.UnitsStepOverObjects(), [](bool on) { g_SettingsMan.SetUnitsStepOverObjects(on); });
 		Tip("An AI unit held up by a loose body it bumps into (a corpse, a gib, a limb, but not a gun lying still, which bodies pass, or a scrap light enough to shove aside) leaps over it, hops it with the jet, finds a way round or waits, as it does a wreck. Off, as before: it walks into it until it counts as stuck, which after a couple of seconds tries a leap or a hop.");
+		Toggle("Units push loose objects out of their way", g_SettingsMan.UnitsPushObjects(), [](bool on) { g_SettingsMan.SetUnitsPushObjects(on); });
+		Tip("An AI soldier held up by a loose object (a corpse, a gib that hasn't settled, a crate) no heavier than itself shoves it along ahead of it, gently, never onto a teammate or off a drop. One that is too heavy or won't budge is stepped over or gone round instead. Players' own units are never made to push.");
+		{
+			float pushStrength = g_SettingsMan.ObjectPushStrength();
+			if (Slider("Object push strength", &pushStrength, Normal{1.0F}, 0.0F, 3.0F, "%.2fx")) {
+				g_SettingsMan.SetObjectPushStrength(pushStrength);
+			}
+			Tip("How hard units shove loose objects, and so how heavy an object they can shift: 1 is about their own weight. Times each unit's own ObjectPushStrength, which mods can set. The shoved object's speed stays capped, so it is never thrown.");
+		}
 		Toggle("Units see through grass and plants", g_SettingsMan.SensesPassPlants(), [](bool on) { g_SettingsMan.SetSensesPassPlants(on); });
 		Tip("Units' own checks (getting up, leaping, landing, ducking, mantling, the walk's look ahead) treat grass, bushes and hanging plants as the open ground their bodies push through. Off, as before: a unit lying on grass may not get up, leaps and landings on thick grass go wrong, units duck under hanging plants and mantle onto bushes.");
 		Toggle("Soldiers see through ladder rungs", g_SettingsMan.SensesPassRungs(), [](bool on) { g_SettingsMan.SetSensesPassRungs(on); });
