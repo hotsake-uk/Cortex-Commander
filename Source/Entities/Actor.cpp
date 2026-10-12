@@ -1273,8 +1273,12 @@ int Actor::GetToughnessKind() const {
 float Actor::GetToughness() const {
 	int kind = GetToughnessKind();
 	float toughness = kind < 0 ? 1.0F : g_SettingsMan.Toughness(static_cast<SettingsMan::ToughnessKind>(kind));
-	// (Its own on top, short of invincible: only the setting makes it that.)
-	return toughness >= SettingsMan::c_ToughnessInvincible || m_ToughnessMultiplier == 1.0F ? toughness : std::clamp(toughness * m_ToughnessMultiplier, SettingsMan::c_ToughnessMin, SettingsMan::c_ToughnessMax);
+	if (toughness >= SettingsMan::c_ToughnessInvincible || m_ToughnessMultiplier == 1.0F) {
+		return toughness;
+	}
+	// Its own on top: past the toughest the setting goes, invincible (as the setting is all the way up).
+	toughness *= m_ToughnessMultiplier;
+	return toughness > SettingsMan::c_ToughnessMax ? SettingsMan::c_ToughnessInvincible : std::max(toughness, 0.01F);
 }
 
 float Actor::GibToughness() const {

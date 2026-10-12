@@ -2637,7 +2637,7 @@ namespace SandboxDetail {
 		if (!vehicle || !tuning.Modified) {
 			return;
 		}
-		auto times = [](float value, float multiplier) { return value * std::clamp(multiplier, c_VehicleTuneMin, c_VehicleTuneMax); };
+		auto times = [](float value, float multiplier) { return value * std::clamp(multiplier, c_VehicleTuneMin, c_TuneTypedMax); };
 		vehicle->SetAcceleration(times(vehicle->GetAcceleration(), tuning.Power));
 		vehicle->SetMaxSpeed(times(vehicle->GetMaxSpeed(), tuning.TopSpeed));
 		vehicle->SetGrip(times(vehicle->GetGrip(), tuning.Grip));
