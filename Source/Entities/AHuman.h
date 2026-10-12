@@ -1146,6 +1146,10 @@ namespace RTE {
 		bool WatchForPin(bool holding);
 		/// Begins getting free of a pin (see WatchForPin).
 		void Unpin();
+
+		/// Stuck or pinned getting onto the ladder the route climbs next: that ladder avoided for a while, along its length.
+		void AvoidRouteLadder();
+
 		bool m_PinAnchorSet = false; //!< The pin watch: where the body was when it last moved, and since when. Kept out of the follower's own
 		Vector m_PinAnchor;            //!< state, which starts again whenever its caller skips a tick or two (as the AI's script does while a
 		Timer m_PinTimer;              //!< route is asked for), so a unit re-asked for the same route every few seconds never counted as pinned.

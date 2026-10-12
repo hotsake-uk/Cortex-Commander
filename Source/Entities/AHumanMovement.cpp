@@ -2137,6 +2137,45 @@ bool AHuman::WatchForPin(bool holding) {
 	return false;
 }
 
+void AHuman::AvoidRouteLadder() {
+	// Stuck or pinned getting onto a ladder the route climbs next (not on it): the ladder itself avoided for a while, its length, not just
+	// its foot, and by the team too once it has happened twice there within the minute (as for a climb of it that stalls). (Its foot alone
+	// marked, the next route took the same ladder a rung or two up, by a jump to it; units that terrain damage had opened a ladder's foot
+	// to stood under it for good, where before they had flown up onto the ledge beside it.)
+	RouteMover& mover = m_Mover;
+	if (!IsClimbingLadder() && RouteClimbsLadderNext()) {
+		auto kindIt = m_MovePathKinds.begin();
+		int index = 0;
+		bool onLadder = false;
+		bool team = false;
+		for (const Vector& routePoint: m_MovePath) {
+			const PathStepKind stepKind = kindIt != m_MovePathKinds.end() ? *kindIt++ : PathStepKind::Walk;
+			++index;
+			if (stepKind != PathStepKind::Ladder) {
+				if (onLadder || index > 2) {
+					break;
+				}
+				continue;
+			}
+			if (!onLadder) {
+				onLadder = true;
+				team = NoteLadderStall(routePoint.m_X, routePoint.m_Y);
+				MoverTrace(std::string("stuck getting onto the route's ladder; avoiding it") + (team ? " (the team avoids it now)" : ""));
+				mover.ladderStalled = true;
+				mover.ladderStallSpot = routePoint;
+				mover.ladderStallTimer.Reset();
+				AvoidPathPoint(routePoint, 20000.0F, team);
+			} else if (index % 2 == 0) {
+				// (A mark covers a node and a half about it: every other point covers the ladder.)
+				AvoidPathPoint(routePoint, 20000.0F, team);
+			}
+			if (index > 30) {
+				break;
+			}
+		}
+	}
+}
+
 void AHuman::Unpin() {
 	RouteMover& mover = m_Mover;
 	const float h = GetMoveHeight();
@@ -2163,6 +2202,8 @@ void AHuman::Unpin() {
 	mover.takeOffCommitted = false;
 	mover.noTakeOff = false;
 	mover.leapWatch = false;
+
+	AvoidRouteLadder();
 
 	// The steps it was pinned on, dearer for it for a while: the route's next few points from here, and the next point itself (each time
 	// at the same spot, more), so the route asked for after is another way where there is one.
@@ -2531,6 +2572,7 @@ int AHuman::MoveAlongRoute() {
 				MoverTrace("stuck; new route");
 			}
 		}
+		AvoidRouteLadder();
 		RefreshRoute();
 		mover.flight = RouteMover::Flight();
 		mover.bestGap = -1.0F;
