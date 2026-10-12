@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Draws the Medieval arsenal's sprites and glows (Devices/Arsenal): the firepot, stinkpot, Holy Hand Grenade, throwing hammer, bolas,
-caltrops and their shards, and the warhammer, mace, halberd and greatsword.
+caltrops and their shards, and the warhammer, mace, halberd and greatsword; and the Kingdom's second armoury (Arsenal2.ini): the warbow,
+hunting bow and arbalest, the flamberge, poleaxe, flail, falchion, morning star, hunting knife, war scythe and quarterstaff, the tower
+shield and buckler, the throwing spear, francisca, sling and its stones, the net, the snare trap, and the alchemist's four flasks.
 
 Sprites are ASCII grids saved as 8-bit PNGs in the game palette (index 0 the see-through magenta), like sprites.py; glows are true-colour
 RGB images with a soft radial falloff on black, for ScreenEffect. Deterministic, so it can be re-run.
@@ -257,7 +259,331 @@ GREATSWORD = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# The second armoury (Arsenal2.ini).
+
+# Bows, drawn strung, front to the right as the longbow is (sprites.py's BOW is 8 x 24).
+# A warbow: taller and thicker than the longbow, horn nocks.
+WARBOW = [
+	"..H.....",
+	"..nn....",
+	".bNNn...",
+	".w.NNn..",
+	".w..NNn.",
+	".w...NNn",
+	".w...NNn",
+	".w....NN",
+	".w....NN",
+	".w....NN",
+	".w....NN",
+	".w.....N",
+	".w.....j",
+	".w.....j",
+	".w.....j",
+	".w.....j",
+	".w.....N",
+	".w....NN",
+	".w....NN",
+	".w....NN",
+	".w....NN",
+	".w...NNn",
+	".w...NNn",
+	".w..NNn.",
+	".w.NNn..",
+	".bNNn...",
+	"..nn....",
+	"..H.....",
+]
+
+# A hunting bow: short, light, recurved tips.
+HUNTING_BOW = [
+	"....n...",
+	"...Nn...",
+	"..nN....",
+	".w.Nn...",
+	".w..Nn..",
+	".w...Nn.",
+	".w....Nn",
+	".w....Nn",
+	".w....Nj",
+	".w....Nj",
+	".w....Nn",
+	".w....Nn",
+	".w...Nn.",
+	".w..Nn..",
+	".w.Nn...",
+	"..nN....",
+	"...Nn...",
+	"....n...",
+]
+
+# An arbalest: a heavy steel-bowed crossbow with a windlass at the butt.
+ARBALEST = [
+	"..............k....",
+	"..............k....",
+	"..............s....",
+	"..........w...s....",
+	"...........w..m....",
+	"kdk.........w.l....",
+	"kmkbnnNNjNNNNnsNnkk",
+	"kdkbnnNNnNnnnnNsnmk",
+	"..bb.bbn....w.l.kk.",
+	"..b..bn....w..m....",
+	"......b.......s....",
+	"..............s....",
+	"..............k....",
+	"..............k....",
+]
+
+# Melee, pointing right, hand at the grip.
+# A flamberge: a greatsword with a wave-edged blade.
+FLAMBERGE = [
+	"." * 8 + "y" + "." * 4 + "k" + "." * 20 + ".",
+	"." * 8 + "g" + "." * 4 + "k" + ".HH..HH..HH..HH..HH." + ".",
+	"Gjnjnjnj" + "g" + "ll" + "HHllHHllHHllHHllHHllk" + ".",
+	"yjnjnjnj" + "g" + "sm" + "mmssmmssmmssmmssmmssmk",
+	"." * 8 + "g" + "." * 4 + "k" + ".ss..ss..ss..ss..ss." + ".",
+	"." * 8 + "y" + "." * 25 + ".",
+]
+
+# A poleaxe: a long haft, an axe blade one side, a hammer the other, a spike on top.
+POLEAXE = [
+	"." * 28 + "kHk" + "." * 7,
+	"." * 28 + "klk" + "." * 7,
+	"." * 23 + "kkkk.kdmk..kk..",
+	"." * 23 + "kmlk.kdmk.kHk..",
+	"jnNn" * 5 + "jnN" + "kmlkkkdmkkdlHk.",
+	"bnbn" * 5 + "bnb" + "kdmkkkdmkksmlHk",
+	"." * 23 + "kdmk.kdmk.kmk..",
+	"." * 23 + "kkkk.kdmk..kk..",
+	"." * 28 + "kdk" + "." * 7,
+]
+
+# A flail: a short haft, a chain, and a spiked iron ball.
+FLAIL = [
+	"................k.k...",
+	"...............kkkkk..",
+	"..........k.k.kkmlkkk.",
+	"jnNnNnNnNnkkk.kklmlkk.",
+	"bnbnbnbnbnk.kkkkmmdkk.",
+	"...............kkkkk..",
+	"................k.k...",
+]
+
+# A falchion: a broad, cleaver-like single-edged blade, one-handed.
+FALCHION = [
+	"...y................",
+	"...g.........lHHHHk.",
+	"jnNgllHHHHHHHHHHHHHk",
+	"bnngsmmmmmmmmmmmmllk",
+	"...g...........kkk..",
+	"...y................",
+]
+
+# A morning star: a one-handed haft and a spiked ball.
+MORNING_STAR = [
+	"............k.k.k..",
+	"...........kkkkkk..",
+	"..y.......kkmlllkk.",
+	"jnynNnNnNnkkllHHlkk",
+	"bnybnbnbnbkkmmmmdkk",
+	"...........kkkkkk..",
+	"............k.k.k..",
+]
+
+# A hunting knife: a broad, short blade with a bone grip.
+HUNTING_KNIFE = [
+	"...k..........",
+	"ZzzklHHHHHHlk.",
+	"zZzksmmmmmmmlk",
+	"...k..........",
+]
+
+# A war scythe: a long pole and a scythe blade set upright on it.
+WAR_SCYTHE = [
+	"." * 30 + "kk" + "." * 10,
+	"." * 30 + "kHk" + "." * 9,
+	"." * 30 + "kHlk" + "." * 8,
+	"." * 30 + "kHlmk" + "." * 7,
+	"jnNn" * 7 + "jn" + "kHlmsk" + "." * 6,
+	"bnbn" * 7 + "bn" + "kHlmmsk" + "." * 5,
+	"." * 30 + "kHllmmsk" + "." * 4,
+	"." * 30 + "kkkkkkkkk" + "." * 3,
+]
+
+# A quarterstaff: a plain oak staff shod with iron.
+QUARTERSTAFF = [
+	"kk" + "jnNn" * 7 + "jn" + "kk",
+	"kk" + "bnbn" * 7 + "bn" + "kk",
+]
+
+# Shields, seen face on, as the kite shield is (sprites.py's KITE is 9 x 17).
+# A tower shield: tall, square-topped, iron-banded, the king's colours.
+TOWER = [
+	"kkkkkkkkkkk",
+	"klmmmmmmmdk",
+	"kmRRRRRRRdk",
+	"kmRRRgRRRdk",
+	"kmRRRgRRRdk",
+	"kmmmmmmmmdk",
+	"kmRRRgRRRdk",
+	"kmRRggGRRdk",
+	"kmRRRgRRRdk",
+	"kmRRRgRRRdk",
+	"kmmmmmmmmdk",
+	"kmRRRgRRRdk",
+	"kmRRRgRRRdk",
+	"kmRRRRRRRdk",
+	"kmRRRRRRRdk",
+	".kmmmmmmdk.",
+	".kmRRRRRdk.",
+	"..kmRRRdk..",
+	"...kmRdk...",
+	"....kkk....",
+]
+
+# A buckler: a small round steel shield with a boss.
+BUCKLER = [
+	"..kkkkk..",
+	".klmmmmk.",
+	"klmmlmmdk",
+	"kmmlHlmdk",
+	"kmmlllmdk",
+	"kmmmmmmdk",
+	".kmmmmdk.",
+	"..kkkkk..",
+]
+
+# Thrown.
+# A throwing spear: heavier than the javelin, a broad leaf head.
+THROWING_SPEAR = [
+	"." * 24 + "kk" + "." * 4,
+	"." * 22 + "kkllHk" + "." * 2,
+	"jnNnNnNnNnNnNnNnNnNnNnNdsmmllHk",
+	"bnbnbnbnbnbnbnbnbnbnbnbksmmmmlk",
+	"." * 22 + "kksmk" + "." * 3,
+	"." * 24 + "kk" + "." * 4,
+]
+THROWING_SPEAR = [r[:30] for r in THROWING_SPEAR]
+
+# A francisca: a throwing axe with a long, curved, flared blade.
+FRANCISCA = [
+	".............kk..",
+	"............kHlk.",
+	"...........kdlHk.",
+	"..........kkdmlHk",
+	"jnNnNnNnNnkdsmlHk",
+	"bnbnbnbnbnkdsmlk.",
+	"..........kkdmk..",
+	"...........kkk...",
+]
+
+# A sling: a leather pouch on two cords, held bunched.
+SLING = [
+	".....n......",
+	"....n.n.....",
+	"...n...n....",
+	"..n.....n...",
+	".n.......n..",
+	"bNNjjNNb..n.",
+	".bNNNNb...n.",
+	"..bbbb....n.",
+]
+
+# A sling stone, three of them.
+STONES = [
+	["sms", "mlm", "sms"],
+	[".ms", "mlm", "sm."],
+	["sm", "ms"],
+]
+
+# A net, bunched to throw.
+NET = [
+	"...j.j.j...",
+	"..jNjNjNj..",
+	".jNjNjNjNj.",
+	"jNjNjNjNjNj",
+	".jNjNjNjNj.",
+	"..jNjNjNj..",
+	"...j.j.j...",
+]
+
+# A snare trap: an iron hoop with a sprung jaw, set.
+SNARE_TRAP = [
+	"k.........k",
+	"kk.......kk",
+	".kkkdddkkk.",
+	"..kdsmmsdk.",
+	"..kkmHmkk..",
+	"...kkkkk...",
+]
+
+# Flasks: glass, with a stopper; what's in them shows.
+def flask(liquid):
+	a, b, c = liquid
+	return [
+		"...qq...",
+		"..kqqk..",
+		"..k" + a + a + "k..",
+		".k" + a + b + b + a + "k.",
+		"k" + a + b + c + c + b + a + "k",
+		"k" + a + b + c + c + b + a + "k",
+		"k" + a + b + b + b + b + a + "k",
+		".k" + a + a + a + a + "k.",
+		"..kkkk..",
+	]
+
+def pad(rows):
+	"""Rows padded out to the longest with nothing, for the grids built from pieces."""
+	w = max(len(r) for r in rows)
+	return [r + "." * (w - len(r)) for r in rows]
+
+
+FLAMBERGE = pad(FLAMBERGE)
+POLEAXE = pad(POLEAXE)
+WAR_SCYTHE = pad(WAR_SCYTHE)
+THROWING_SPEAR = pad(THROWING_SPEAR)
+
+OIL_FLASK = flask("kds")
+FROST_FLASK = flask("vVw")
+SMOKE_FLASK = flask("smH")
+HEALING_DRAUGHT = flask("rRO")
+
+
 def main():
+	check("warbow", WARBOW, 8, 28)
+	check("hunting bow", HUNTING_BOW, 8, 18)
+	check("arbalest", ARBALEST, 19, 14)
+	check("flamberge", FLAMBERGE, len(FLAMBERGE[0]), 6)
+	check("poleaxe", POLEAXE, len(POLEAXE[0]), 9)
+	check("flail", FLAIL, 22, 7)
+	check("falchion", FALCHION, 20, 6)
+	check("morning star", MORNING_STAR, 19, 7)
+	check("hunting knife", HUNTING_KNIFE, 14, 4)
+	check("war scythe", WAR_SCYTHE, len(WAR_SCYTHE[0]), 8)
+	check("quarterstaff", QUARTERSTAFF, 34, 2)
+	check("tower", TOWER, 11, 20)
+	check("buckler", BUCKLER, 9, 8)
+	check("throwing spear", THROWING_SPEAR, len(THROWING_SPEAR[0]), 6)
+	check("francisca", FRANCISCA, 17, 8)
+	check("sling", SLING, 12, 8)
+	check("net", NET, 11, 7)
+	check("snare trap", SNARE_TRAP, 11, 6)
+	for name, rows in (("warbow", WARBOW), ("huntingbow", HUNTING_BOW), ("arbalest", ARBALEST), ("flamberge", FLAMBERGE), ("poleaxe", POLEAXE),
+			("flail", FLAIL), ("falchion", FALCHION), ("morningstar", MORNING_STAR), ("huntingknife", HUNTING_KNIFE), ("warscythe", WAR_SCYTHE),
+			("quarterstaff", QUARTERSTAFF), ("towershield", TOWER), ("buckler", BUCKLER), ("throwingspear", THROWING_SPEAR), ("francisca", FRANCISCA),
+			("sling", SLING), ("net", NET), ("snaretrap", SNARE_TRAP), ("oilflask", OIL_FLASK), ("frostflask", FROST_FLASK), ("smokeflask", SMOKE_FLASK),
+			("healingdraught", HEALING_DRAUGHT)):
+		file = {"warbow": "Warbow", "huntingbow": "HuntingBow", "arbalest": "Arbalest", "flamberge": "Flamberge", "poleaxe": "Poleaxe", "flail": "Flail",
+			"falchion": "Falchion", "morningstar": "MorningStar", "huntingknife": "HuntingKnife", "warscythe": "WarScythe", "quarterstaff": "Quarterstaff",
+			"towershield": "TowerShield", "buckler": "Buckler", "throwingspear": "ThrowingSpear", "francisca": "Francisca", "sling": "Sling", "net": "Net",
+			"snaretrap": "SnareTrap", "oilflask": "OilFlask", "frostflask": "FrostFlask", "smokeflask": "SmokeFlask", "healingdraught": "HealingDraught"}[name]
+		save(grid(rows), file + ".png")
+	for i, rows in enumerate(STONES):
+		save(grid(rows), f"Stone{i:03d}.png")
+	glow("FrostGlow.png", 41, (120, 200, 255), 1.4)
+	glow("DraughtGlow.png", 31, (255, 120, 140), 1.4)
+
 	check("firepot", FIREPOT, 8, 12)
 	check("stinkpot", STINKPOT, 8, 11)
 	check("holy", HOLY, 7, 10)

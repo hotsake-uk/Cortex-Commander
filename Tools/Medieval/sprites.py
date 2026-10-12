@@ -601,6 +601,39 @@ HEADS["Bombardier"] = swap(HEADS["Crossbowman"], {"W": "b", "w": "n"})
 HEADS["Skirmisher"] = swap(HEADS["Archer"], {"f": "b", "F": "n", "e": "N"})
 HEADS["Skirmisher B"] = swap(HEADS["Archer B"], {"f": "b", "F": "n", "e": "N"})
 
+# The Kingdom's second levy (Devices/Arsenal/Arsenal2.ini).
+# A longbowman: a brigandine of brown leather studded with steel over green, hooded in green.
+TORSOS["Longbowman"] = swap(TORSOS["Archer"], {"F": "n", "e": "N"})
+# A hunter: leathers dyed forest green, a hood.
+TORSOS["Hunter"] = swap(TORSOS["Skirmisher"], {"b": "f", "n": "F", "N": "e"})
+HEADS["Hunter"] = swap(HEADS["Archer"], {"f": "b", "F": "f", "e": "F"})
+HEADS["Hunter B"] = swap(HEADS["Archer B"], {"f": "b", "F": "f", "e": "F"})
+# An arbalester: a grey gambeson and a steel cap.
+TORSOS["Arbalester"] = swap(TORSOS["Crossbowman"], {"r": "D", "R": "B", "o": "A"})
+HEADS["Arbalester"] = swap(HEADS["Crossbowman"], {"W": "D", "w": "B"})
+# A royal guard: a knight's plate under a purple surcoat with gold, a purple plume.
+TORSOS["Royal Guard"] = swap(TORSOS["Knight"], {"r": "p", "R": "P", "o": "q"})
+HEADS["Royal Guard"] = swap(HEADS["Knight"], {"r": "p", "R": "P", "o": "q"})
+# An alchemist: a brown leather apron over a tan robe, a green stripe, a flat brown hat.
+TORSOS["Alchemist"] = swap(TORSOS["Mage"], {"v": "b", "V": "N", "i": "e", "g": "n", "G": "j"})
+HEADS["Alchemist"] = swap(HEADS["Mage"], {"v": "b", "V": "n", "i": "N", "g": "N", "G": "j"})
+# The Kingdom's support casters and champions (SE-1).
+# A cleric: a white robe with a gold stripe, hooded in white.
+TORSOS["Cleric"] = swap(TORSOS["Mage"], {"v": "B", "V": "A", "i": "g", "G": "G"})
+HEADS["Cleric"] = swap(HEADS["Archer"], {"f": "B", "F": "A", "e": "A"})
+# An enchanter: a purple robe and hat with a gold stripe.
+TORSOS["Enchanter"] = swap(TORSOS["Mage"], {"v": "p", "V": "P", "i": "q"})
+HEADS["Enchanter"] = swap(HEADS["Mage"], {"v": "p", "V": "P", "i": "q"})
+# A battlemage: a knight's plate with a blue surcoat, blue-plumed helm.
+TORSOS["Battlemage"] = swap(TORSOS["Knight"], {"r": "v", "R": "V", "o": "i"})
+HEADS["Battlemage"] = swap(HEADS["Knight"], {"r": "v", "R": "V", "o": "i"})
+# A champion: a knight's plate with a gold surcoat, gold-plumed helm.
+TORSOS["Champion"] = swap(TORSOS["Knight"], {"r": "y", "R": "g", "o": "G"})
+HEADS["Champion"] = swap(HEADS["Knight"], {"r": "y", "R": "g", "o": "G"})
+# A geomancer (Spells2.ini's stone spells): an earth-brown robe and hat with an ochre stripe.
+TORSOS["Geomancer"] = swap(TORSOS["Mage"], {"v": "b", "V": "n", "i": "N", "g": "y", "G": "j"})
+HEADS["Geomancer"] = swap(HEADS["Mage"], {"v": "b", "V": "n", "i": "N", "g": "y", "G": "j"})
+
 # The woodcutter (a colony woodcutter's staff): a green wool tunic with its sleeves rolled up, a leather belt and apron, and a red knitted cap
 # over brown hair and a beard.
 TORSOS["Woodcutter"] = swap(TORSOS["Skirmisher"], {"b": "f", "n": "F", "N": "e"})
@@ -831,6 +864,7 @@ def main():
 		"Pyromancer": ("Pyromancer", ["Pyromancer"], "red", "red", "leather", None),
 		"Stormcaller": ("Stormcaller", ["Stormcaller"], "grey", "grey", "leather", None),
 		"Cryomancer": ("Cryomancer", ["Cryomancer"], "ice", "ice", "leather", None),
+		"Geomancer": ("Geomancer", ["Geomancer"], "brown", "brown", "leather", None),
 		"Necromancer": ("Necromancer", ["Necromancer"], "black", "black", "black", "bone"),
 		"Druid": ("Druid", ["Druid"], "green", "brown", "leather", None),
 		"Archmage": ("Archmage", ["Archmage"], "white", "white", "leather", None),
@@ -842,9 +876,18 @@ def main():
 		"Skirmisher": ("Skirmisher", ["Skirmisher", "Skirmisher B"], "leather", "brown", "leather", None),
 		"Skeleton": ("Skeleton", ["Skeleton"], "bone", "bone", "bone", "bone"),
 		"Woodcutter": ("Woodcutter", ["Woodcutter"], "skin", "brown", "leather", None),
+		"Longbowman": ("Longbowman", ["Archer", "Archer B"], "green", "brown", "leather", None),
+		"Hunter": ("Hunter", ["Hunter", "Hunter B"], "green", "green", "leather", None),
+		"Arbalester": ("Arbalester", ["Arbalester"], "grey", "grey", "leather", None),
+		"Royal Guard": ("Royal Guard", ["Royal Guard", "Knight B"], "steel", "steel", "steel", "steel"),
+		"Alchemist": ("Alchemist", ["Alchemist"], "brown", "brown", "leather", None),
+		"Cleric": ("Cleric", ["Cleric"], "white", "white", "leather", None),
+		"Enchanter": ("Enchanter", ["Enchanter"], "purple", "purple", "leather", None),
+		"Battlemage": ("Battlemage", ["Battlemage", "Knight B"], "steel", "steel", "steel", "steel"),
+		"Champion": ("Champion", ["Champion", "Knight B"], "steel", "steel", "steel", "steel"),
 	}
 	for unit, (torso, heads, armRamp, legRamp, footRamp, handRamp) in units.items():
-		base = f"Actors/{unit}/"
+		base = f"Actors/{unit.replace(' ', '')}/"
 		save(grid(TORSOS[torso]), base + "Torso.png")
 		for i, h in enumerate(heads):
 			save(grid(HEADS[h]), base + f"Head{i:03d}.png")

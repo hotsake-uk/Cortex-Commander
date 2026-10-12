@@ -1317,6 +1317,16 @@ void AVehicle::UpdateAIBoarding() {
 	}
 	// (A little further than a player's reach: the AI walks up to its middle and stops, not to a seat.)
 	auto inReach = [this](const Actor* unit) { return m_Crew.IsInReach(unit, 24.0F); };
+	// Locked (the command bar's Lock): those called over to ride walk on instead.
+	const bool locked = IsVehicleLocked();
+	if (locked) {
+		for (const Recruit& recruit: m_Recruits) {
+			if (Actor* unit = dynamic_cast<Actor*>(g_MovableMan.FindObjectByUniqueID(recruit.ID))) {
+				unit->RemoveAIMOWaypoint(this);
+			}
+		}
+		m_Recruits.clear();
+	}
 
 	// Those called over get in once they're here, or are let go after a while if they haven't made it.
 	for (auto recruit = m_Recruits.begin(); recruit != m_Recruits.end();) {
@@ -1364,7 +1374,7 @@ void AVehicle::UpdateAIBoarding() {
 	}
 
 	// Now and then, AI units near it going a long way its way are called over: the first to drive, then any going where it's going.
-	if (!m_RecruitTimer.IsPastSimMS(1000)) {
+	if (locked || !m_RecruitTimer.IsPastSimMS(1000)) {
 		return;
 	}
 	m_RecruitTimer.Reset();

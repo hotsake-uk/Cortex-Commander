@@ -751,11 +751,13 @@ function NativeHumanAI:Update(Owner)
 	end
 	if not objective then
 		HumanBehaviors.SmokeUpdate(self, Owner);
+		HumanBehaviors.DraughtUpdate(self, Owner);
 		SharedBehaviors.SquadTactics(self, Owner);
 		SharedBehaviors.FlankUpdate(self, Owner);
 		HumanBehaviors.ShotFromUnseen(self, Owner, hit and AlarmPoint);
 		HumanBehaviors.UseTheWorld(self, Owner);
 		HumanBehaviors.SpellUpdate(self, Owner);
+		HumanBehaviors.SupportSpellUpdate(self, Owner);
 		-- (A unit shot from out of sight flanks only once it has reached the cover it went for, if any.)
 		local reachingCover = self.Cover and self.Cover.Why == "shot" and not self.Cover.There;
 		if not self.Flank and not self.Target and self.OldTargetPos and self.HitTimer and not self.HitTimer:IsPastSimMS(3000) and not reachingCover then

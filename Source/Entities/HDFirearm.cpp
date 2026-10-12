@@ -725,6 +725,10 @@ int HDFirearm::GetAffordableRoundsFor(const Actor* payer) const {
 	if (m_EnergyCost <= 0.0F || !MagicEffects::CastingCostsEnergy()) {
 		return std::numeric_limits<int>::max();
 	}
+	// (Silenced by a status effect, SE-1: no spell can be paid for.)
+	if (payer && payer->IsSilenced()) {
+		return 0;
+	}
 	float pool = 0.0F;
 	if (m_UsesOwnCharge) {
 		pool = m_Charge;
@@ -926,6 +930,10 @@ void HDFirearm::Update() {
 
 					// Set the team so alarm events that happen if these gib won't freak out the guy firing
 					pParticle->SetTeam(m_Team);
+					// Its holder blessed or cursed (SE-1): what it fires hurts that much more or less.
+					if (pActor && pActor->GetDamageDealtMultiplier() != 1.0F) {
+						pParticle->SetWoundDamageMultiplier(pParticle->WoundDamageMultiplier() * pActor->GetDamageDealtMultiplier());
+					}
 
 					// Also make this not hit team members
 					// TODO: Don't hardcode this???

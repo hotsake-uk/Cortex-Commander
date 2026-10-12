@@ -7,6 +7,7 @@ sources += files(
 'Actor.cpp',
 'ActorAfflictions.cpp',
 'ActorPowerups.cpp',
+'StatusEffect.cpp',
 'ADoor.cpp',
 'AMover.cpp',
 'AVehicle.cpp',
