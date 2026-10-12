@@ -614,6 +614,9 @@ HEADS["Battlemage"] = swap(HEADS["Knight"], {"r": "v", "R": "V", "o": "i"})
 # A champion: a knight's plate with a gold surcoat, gold-plumed helm.
 TORSOS["Champion"] = swap(TORSOS["Knight"], {"r": "y", "R": "g", "o": "G"})
 HEADS["Champion"] = swap(HEADS["Knight"], {"r": "y", "R": "g", "o": "G"})
+# A geomancer (Spells2.ini's stone spells): an earth-brown robe and hat with an ochre stripe.
+TORSOS["Geomancer"] = swap(TORSOS["Mage"], {"v": "b", "V": "n", "i": "N", "g": "y", "G": "j"})
+HEADS["Geomancer"] = swap(HEADS["Mage"], {"v": "b", "V": "n", "i": "N", "g": "y", "G": "j"})
 
 # The woodcutter (a colony woodcutter's staff): a green wool tunic with its sleeves rolled up, a leather belt and apron, and a red knitted cap
 # over brown hair and a beard.
@@ -845,6 +848,7 @@ def main():
 		"Pyromancer": ("Pyromancer", ["Pyromancer"], "red", "red", "leather", None),
 		"Stormcaller": ("Stormcaller", ["Stormcaller"], "grey", "grey", "leather", None),
 		"Cryomancer": ("Cryomancer", ["Cryomancer"], "ice", "ice", "leather", None),
+		"Geomancer": ("Geomancer", ["Geomancer"], "brown", "brown", "leather", None),
 		"Necromancer": ("Necromancer", ["Necromancer"], "black", "black", "black", "bone"),
 		"Druid": ("Druid", ["Druid"], "green", "brown", "leather", None),
 		"Archmage": ("Archmage", ["Archmage"], "white", "white", "leather", None),

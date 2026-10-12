@@ -5,6 +5,8 @@
 -- The support spells (Heal, Blessing, Haste... Spells.ini's second half) are cast on the friend under the aim within reach, or on the caster
 -- when there is none; their effects are SpellEffects.lua's status effects, and what they leave behind (a light, a levitation, the mirror
 -- images, a grab) is a controller with a script of its own.
+-- The second batch (Spells2.ini: Chain Lightning, Ice Lance, Blizzard, Flame Wall, Holy Smite, Sunbeam, Stone Spikes, Thunderclap,
+-- Petrify, Water Jet, Wall of Stone, Bridge of Light, Summon Wolf) follows the same shapes: a cast on the spot, a controller, or a held beam.
 
 local FX = dofile("Medieval.rte/Devices/Spells/SpellFX.lua");
 local Effects = dofile("Medieval.rte/Devices/Spells/SpellEffects.lua");
@@ -163,6 +165,20 @@ local SPELLS = {
 	["Dispel"] = {speech = "CastHoly", colour = {255, 255, 255}, hex = 0xFFFFFF},
 	["Light"] = {speech = "CastBuff", colour = {255, 255, 230}, hex = 0xFFFFE6},
 	["Telekinetic Grab"] = {speech = "CastArcane", colour = {180, 120, 255}, hex = 0xB478FF},
+	-- The second batch (Spells2.ini).
+	["Chain Lightning"] = {speech = "CastLightning", colour = {170, 200, 255}, hex = 0xCFE4FF},
+	["Ice Lance"] = {speech = "CastFrost", colour = {160, 210, 255}, hex = 0xD0F0FF},
+	["Blizzard"] = {speech = "CastFrost", colour = {150, 190, 255}, hex = 0xC0DCFF},
+	["Flame Wall"] = {speech = "CastFire", colour = {255, 130, 30}, hex = 0xFF8A20},
+	["Holy Smite"] = {speech = "CastHoly", colour = {255, 235, 160}, hex = 0xFFEBA0},
+	["Sunbeam"] = {speech = "CastHoly", colour = {255, 230, 140}, hex = 0xFFE68C, channel = true},
+	["Stone Spikes"] = {speech = "CastStone", colour = {170, 160, 140}, hex = 0xA8A090},
+	["Thunderclap"] = {speech = "CastLightning", colour = {220, 230, 255}, hex = 0xDCE6FF},
+	["Petrify"] = {speech = "CastStone", colour = {150, 160, 140}, hex = 0x96A08C},
+	["Water Jet"] = {speech = "CastWater", colour = {120, 190, 255}, hex = 0x78BEFF, channel = true},
+	["Wall of Stone"] = {speech = "CastStone", colour = {160, 160, 160}, hex = 0xA0A0A0},
+	["Bridge of Light"] = {speech = "CastArcane", colour = {255, 240, 190}, hex = 0xFFF0BE},
+	["Summon Wolf"] = {speech = "CastSummon", colour = {150, 220, 180}, hex = 0x96DCB4},
 };
 local DEFAULT = {speech = "CastArcane", colour = {200, 200, 255}, hex = 0xFFFFFF};
 
@@ -491,6 +507,222 @@ SPELLS["Telekinetic Grab"].Cast = function(self, caster, aim)
 		EmitVisualParticles("Sparks", point, Vector(0, -1), 0.5, 6, 0xB478FF);
 	end
 	PostProcessMan:AddLight(self.MuzzlePos, 90, 180, 120, 255, 1.5);
+end
+
+---------------------------------------------------------------------------------------------------------------------------------------
+-- The second batch of attack and control spells (Spells2.ini).
+
+-- Where a held beam ends: the first enemy along the aim within reach (looking past friends), else the wall or ground it strikes, else
+-- the end of its reach. Returns the point and the unit struck, if one was.
+local function beamEnd(self, caster, aim, reach)
+	local team = caster and caster.Team or self.Team;
+	local start = Vector(self.MuzzlePos.X, self.MuzzlePos.Y);
+	local point, struck = strikePoint(start, aim, reach, caster, team);
+	if SceneMan:ShortestDistance(start, point, true).Magnitude > reach + 2 then
+		point = start + aim * reach;
+	end
+	return point, struck, team;
+end
+
+-- Chain Lightning: a bolt into the enemy under the aim that leaps on to those near them (ChainLightning.lua).
+SPELLS["Chain Lightning"].Cast = function(self, caster, aim)
+	local team = caster and caster.Team or self.Team;
+	local point, struck = strikePoint(self.MuzzlePos, aim, 300, caster, team);
+	FX.Controller("Medieval Spell Chain Lightning", point, team, caster and caster.UniqueID or 0,
+		{StruckUID = struck and struck.UniqueID or 0, HandX = self.MuzzlePos.X, HandY = self.MuzzlePos.Y});
+	EmitVisualParticles("Sparks", self.MuzzlePos, aim * 8, 0.8, 14, 0xCFE4FF);
+	PostProcessMan:AddLight(self.MuzzlePos, 120, 190, 215, 255, 2);
+end
+
+SPELLS["Ice Lance"].Cast = function(self, caster, aim)
+	EmitVisualParticles("Mist", self.MuzzlePos, aim * 6, 0.6, 8, 0xD8F2FF);
+	FX.Flash("Ice", self.MuzzlePos);
+end
+
+-- Blizzard: a storm over whatever is under the aim (Blizzard.lua).
+SPELLS["Blizzard"].Cast = function(self, caster, aim)
+	local team = caster and caster.Team or self.Team;
+	local point = strikePoint(self.MuzzlePos, aim, 350, caster, team);
+	-- (Over the ground there, not the unit: the storm sits on the ground below.)
+	local ground, found = FX.GroundBelow(point + Vector(0, -20), 200);
+	FX.Controller("Medieval Spell Blizzard Cloud", found and ground or point, team, caster and caster.UniqueID or 0);
+	EmitVisualParticles("Mist", self.MuzzlePos, Vector(0, -4), 0.8, 10, 0xD8E8FF);
+	FX.Ring("Sparks", self.MuzzlePos, 12, 5, 0xC0DCFF, 4);
+end
+
+-- Flame Wall: a wall of fire on the ground in front (FlameWall.lua).
+SPELLS["Flame Wall"].Cast = function(self, caster, aim)
+	local dirX = aim.X >= 0 and 1 or -1;
+	local ground = groundInFront(caster, self, dirX, 50);
+	FX.Controller("Medieval Spell Flame Wall", ground, caster and caster.Team or self.Team, caster and caster.UniqueID or 0, {Dir = dirX});
+	EmitVisualParticles("Embers", self.MuzzlePos, aim * 6, 0.6, 12, 0xFF8A20);
+	FX.Flash("Fire", self.MuzzlePos);
+end
+
+-- Holy Smite: a pillar of light out of the sky on what is under the aim (HolySmite.lua).
+SPELLS["Holy Smite"].Cast = function(self, caster, aim)
+	local team = caster and caster.Team or self.Team;
+	local point, struck = strikePoint(self.MuzzlePos, aim, 400, caster, team);
+	local ground, found = FX.GroundBelow(point + Vector(0, -10), 120);
+	FX.Controller("Medieval Spell Holy Pillar", found and ground or point, team, caster and caster.UniqueID or 0, {StruckUID = struck and struck.UniqueID or 0});
+	EmitVisualParticles("Sparks", self.MuzzlePos, Vector(0, -6), 0.8, 14, 0xFFEBA0);
+	FX.Flash("Gold", self.MuzzlePos);
+end
+
+-- Sunbeam: every pulse of the held beam burns what it touches and lights the ground; the beam itself is drawn by Update while it pours.
+SPELLS["Sunbeam"].Cast = function(self, caster, aim)
+	local point, struck, team = beamEnd(self, caster, aim, 350);
+	self.beamEnd = point;
+	if struck and FX.Alive(struck) then
+		FX.Hurt(struck, 3.5, 40);
+		SceneMan:IgniteArea(struck.Pos, 6);
+		EmitVisualParticles("Sparks", point, Vector(0, -3), 0.8, 4, 0xFFF0B0);
+	else
+		SceneMan:IgniteArea(point - aim * 2, 5);
+		EmitVisualParticles("Embers", point - aim * 2, Vector(0, -3), 0.5, 3, 0xFFB040);
+	end
+	local now = FX.Now();
+	if now - (self.lastScorch or 0) > 400 then
+		self.lastScorch = now;
+		PostProcessMan:AddScorchMark(point, 600);
+	end
+end
+
+SPELLS["Sunbeam"].Update = function(self)
+	if FX.Now() - self.lastFire < 150 and self.beamEnd then
+		local aim = FX.AimOf(self);
+		local from = self.MuzzlePos + aim * 4;
+		PostProcessMan:AddEnergyBeam(from, self.beamEnd, 5, 255, 220, 120, 1.6, 60);
+		PostProcessMan:AddEnergyBeam(from, self.beamEnd, 2, 255, 255, 240, 2.2, 30);
+		PostProcessMan:AddLight(self.beamEnd, 140, 255, 230, 150, 1.8);
+		PostProcessMan:AddLight(self.MuzzlePos, 90, 255, 230, 150, 1.4);
+		PostProcessMan:AddShimmer(self.MuzzlePos + (self.beamEnd - self.MuzzlePos) * 0.5, 24, 0.6);
+	end
+end
+
+-- Stone Spikes: a line of rock spikes up out of the ground ahead (StoneSpikes.lua).
+SPELLS["Stone Spikes"].Cast = function(self, caster, aim)
+	local dirX = aim.X >= 0 and 1 or -1;
+	local ground = groundInFront(caster, self, dirX, 4);
+	FX.Controller("Medieval Spell Stone Spikes", ground, caster and caster.Team or self.Team, caster and caster.UniqueID or 0, {Dir = dirX});
+	EmitVisualParticles("Dust", ground, Vector(dirX * 3, -3), 0.8, 10, 0x9C948A);
+	CameraMan:AddScreenShake(3, ground);
+end
+
+-- Thunderclap: a stunning clap all round the caster (and a push spell: the AI throws grenades back with it).
+SPELLS["Thunderclap"].Cast = function(self, caster, aim)
+	local centre = caster and caster.Pos or self.Pos;
+	local team = caster and caster.Team or self.Team;
+	SceneMan:MagicPush(centre, Vector(0, -1), 18, 90, 360, caster);
+	for _, hit in ipairs(FX.HurtRadius(centre, 80, 8, team, 6, 100)) do
+		if FX.Alive(hit.actor) then
+			hit.actor:Ensnare(1.5);
+			hit.actor:Say("Stunned");
+		end
+	end
+	FX.Ring("Sparks", centre, 32, 26, 0xDCE6FF, 6);
+	FX.Ring("Mist", centre, 14, 8, 0xE8F0FF, 8);
+	PostProcessMan:AddShockwave(centre, 14000);
+	PostProcessMan:AddLight(centre, 180, 220, 230, 255, 2.5);
+	FX.Flash("White", centre);
+	CameraMan:AddScreenShake(6, centre);
+end
+
+-- Petrify: the enemy under the aim turned to stone for five seconds (SpellEffects.lua's Petrified).
+SPELLS["Petrify"].Cast = function(self, caster, aim)
+	local team = caster and caster.Team or self.Team;
+	local point, struck = strikePoint(self.MuzzlePos, aim, 250, caster, team);
+	if struck and FX.Alive(struck) then
+		Effects.Apply(struck, "Petrified", 5);
+		struck.Vel = struck.Vel * 0.3;
+		struck.AngularVel = 0;
+		EmitVisualParticles("Dust", struck.Pos, Vector(0, -2), 1, 16, 0xA09890);
+		EmitVisualParticles("Sparks", struck.Pos, Vector(0, -3), 0.8, 10, 0x96A08C);
+		FX.Flash("White", struck.Pos);
+		FX.PlaySound("Medieval Spell Stone Grind", struck.Pos);
+		-- (A word when it wears off: the statue can't speak. Petrified.lua sees to it.)
+		FX.Controller("Medieval Spell Petrify Watch", struck.Pos, team, caster and caster.UniqueID or 0, {TargetUID = struck.UniqueID});
+	else
+		EmitVisualParticles("Dust", point, Vector(0, -1), 0.5, 6, 0xA09890);
+	end
+	PostProcessMan:AddLight(self.MuzzlePos, 80, 150, 160, 140, 1.2);
+end
+
+-- Water Jet: every pulse of the held jet douses, shoves and pours; the spray itself is drawn by Update while it pours.
+SPELLS["Water Jet"].Cast = function(self, caster, aim)
+	local point, struck, team = beamEnd(self, caster, aim, 220);
+	self.jetEnd = point;
+	if struck and FX.Alive(struck) then
+		SceneMan:Extinguish(struck);
+		struck.Vel = struck.Vel + aim * 1.4 + Vector(0, -0.3);
+		FX.Hurt(struck, 0.4, 0);
+		if math.random() < 0.3 then
+			struck.Status = Actor.UNSTABLE;
+		end
+	end
+	local now = FX.Now();
+	if now - (self.lastPour or 0) > 120 then
+		self.lastPour = now;
+		SceneMan:PourLiquid(point - aim * 2, 4, "Water");
+	end
+	-- The jet itself: real droplets' worth of look, render only.
+	for _ = 1, 3 do
+		local along = FX.Rand(0.2, 1);
+		local at = self.MuzzlePos + (point - self.MuzzlePos) * along;
+		EmitVisualParticles("Sparks", at, aim * 6 + Vector(FX.Rand(-1, 1), FX.Rand(-1, 1)), 0.3, 1, 0x78BEFF);
+	end
+	EmitVisualParticles("Mist", point, Vector(-aim.X, -aim.Y - 0.5), 0.5, 2, 0xC8E8FF);
+end
+
+SPELLS["Water Jet"].Update = function(self)
+	if FX.Now() - self.lastFire < 150 and self.jetEnd then
+		local aim = FX.AimOf(self);
+		local from = self.MuzzlePos + aim * 3;
+		PostProcessMan:AddEnergyBeam(from, self.jetEnd, 4, 120, 190, 255, 0.7, 30);
+		PostProcessMan:AddLight(self.jetEnd, 60, 120, 190, 255, 0.6);
+	end
+end
+
+-- Wall of Stone: a wall of real stone up out of the ground a pace in front (WallOfStone.lua).
+SPELLS["Wall of Stone"].Cast = function(self, caster, aim)
+	local dirX = aim.X >= 0 and 1 or -1;
+	local ground = groundInFront(caster, self, dirX, 18);
+	FX.Controller("Medieval Spell Wall Raiser", ground, caster and caster.Team or self.Team, caster and caster.UniqueID or 0, {Dir = dirX});
+	EmitVisualParticles("Dust", ground, Vector(0, -3), 0.8, 10, 0x9C948A);
+end
+
+-- Bridge of Light: a plank of light laid along the aim from the caster's feet (BridgeOfLight.lua keeps it).
+SPELLS["Bridge of Light"].Cast = function(self, caster, aim)
+	local team = caster and caster.Team or self.Team;
+	local feet = caster and caster.Pos + Vector(0, 6) or self.Pos;
+	local length = 100;
+	-- Up to the first wall along the way, a little short of it.
+	local hit, free = Vector(), Vector();
+	local dist = SceneMan:CastObstacleRay(feet + aim * 8, aim * length, hit, free, caster and caster.ID or FX.NoMOID, team, 0, 2);
+	if dist >= 0 then
+		length = math.max(24, dist - 4);
+	end
+	local angle = math.atan2(-aim.Y, aim.X);
+	local centre = feet + aim * (length / 2 + 6);
+	local bridge = FX.Spawn("MOSRotating", "Medieval Spell Light Bridge", FX.Module, centre, Vector());
+	if bridge then
+		bridge.RotAngle = angle;
+		FX.Controller("Medieval Spell Bridge Keeper", centre, team, caster and caster.UniqueID or 0, {BridgeUID = bridge.UniqueID, Angle = angle});
+	end
+	for i = 0, 8 do
+		EmitVisualParticles("Sparks", feet + aim * (6 + length * i / 8), Vector(0, -2), 0.5, 2, 0xFFF0BE);
+	end
+	PostProcessMan:AddLight(centre, 140, 255, 240, 190, 1.6);
+	FX.Flash("Gold", centre);
+end
+
+-- Summon Wolf: two wolves out of the mist in front (SummonWolf.lua).
+SPELLS["Summon Wolf"].Cast = function(self, caster, aim)
+	local dirX = aim.X >= 0 and 1 or -1;
+	local ground = groundInFront(caster, self, dirX, 36);
+	FX.Controller("Medieval Spell Wolf Mist", ground, caster and caster.Team or self.Team, caster and caster.UniqueID or 0, {Dir = dirX});
+	EmitVisualParticles("Mist", ground, Vector(0, -1), 0.8, 12, 0xB8C8C0);
+	PostProcessMan:AddLight(ground, 100, 150, 220, 180, 1.2);
 end
 
 function Create(self)
