@@ -2464,6 +2464,10 @@ namespace SandboxDetail {
 	void AnswerOrder(Actor* unit, const char* trigger);
 	const char* OrderTrigger(Order order);
 	void ReturnDefenders();
+	/// Flying ships (ACShip) on one of their side's orders (GiveOrder): attack and hunt send each after the nearest enemy (a brain first
+	/// for hunt), again whenever the one it was after is dead; patrol flies it to and fro over where it was told, going after enemies that
+	/// come near. Ships have no AI script to do this for them, as a unit on foot's does. Twice a second.
+	void UpdateShipTeamOrders();
 	void ActivateSide(int team);
 	void Detonate(const char* presetName, const Vector& position);
 	/// How a ForceBurst pushes.
