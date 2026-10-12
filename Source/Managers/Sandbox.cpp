@@ -636,7 +636,7 @@ void Sandbox::SetPanelSetup(const std::string& setup) {
 std::string Sandbox::GetVehicleSetup() {
 	const VehicleTuning& tuning = s_VehicleTuning;
 	std::ostringstream setup;
-	setup << (tuning.Modified ? 1 : 0) << (!tuning.Crewed ? 0 : (tuning.DriverOnly ? 2 : 1)) << "|" << tuning.Power << ";" << tuning.TopSpeed << ";" << tuning.Grip << ";" << tuning.Brakes << ";" << tuning.Jump << ";" << tuning.WaterPower << ";" << tuning.WaterSpeed << ";" << tuning.Friction << "|" << tuning.Driver << "|" << tuning.Crew << "|" << tuning.TerrainCrush;
+	setup << (tuning.Modified ? 1 : 0) << (!tuning.Crewed ? 0 : (tuning.DriverOnly ? 2 : 1)) << "|" << tuning.Power << ";" << tuning.TopSpeed << ";" << tuning.Grip << ";" << tuning.Brakes << ";" << tuning.Jump << ";" << tuning.WaterPower << ";" << tuning.WaterSpeed << ";" << tuning.Friction << ";" << tuning.Health << "|" << tuning.Driver << "|" << tuning.Crew << "|" << tuning.TerrainCrush;
 	return setup.str();
 }
 
@@ -650,8 +650,8 @@ void Sandbox::SetVehicleSetup(const std::string& setup) {
 	// (Crew: 0 empty, 1 full, 2 with a driver only.)
 	tuning.Crewed = setup[1] == '1' || setup[1] == '2';
 	tuning.DriverOnly = setup[1] == '2';
-	float* values[] = {&tuning.Power, &tuning.TopSpeed, &tuning.Grip, &tuning.Brakes, &tuning.Jump, &tuning.WaterPower, &tuning.WaterSpeed, &tuning.Friction};
-	// (Friction last: not there in settings saved before it could be set, so left at x1.)
+	float* values[] = {&tuning.Power, &tuning.TopSpeed, &tuning.Grip, &tuning.Brakes, &tuning.Jump, &tuning.WaterPower, &tuning.WaterSpeed, &tuning.Friction, &tuning.Health};
+	// (Friction, then Health, last: not there in settings saved before they could be set, so left at x1.)
 	// (Then the driver and crew picks, each after a bar: not there in settings saved before they could be picked.)
 	std::istringstream fields(setup.substr(bar + 1));
 	std::string field;
@@ -672,6 +672,37 @@ void Sandbox::SetVehicleSetup(const std::string& setup) {
 		*value = std::clamp(static_cast<float>(std::atof(number.c_str())), c_VehicleTuneMin, c_VehicleTuneMax);
 	}
 	s_VehicleTuning = tuning;
+}
+
+std::string Sandbox::GetUnitSetup() {
+	const UnitTuning& tuning = s_UnitTuning;
+	std::ostringstream setup;
+	setup << (tuning.Modified ? 1 : 0) << "|" << tuning.Health << ";" << tuning.Toughness << ";" << tuning.Speed << ";" << tuning.Jump << ";" << tuning.JetFuel << ";" << tuning.JetThrust << ";" << tuning.Sight << ";" << tuning.FireRate << "|" << (tuning.JetEndless ? 1 : 0);
+	return setup.str();
+}
+
+void Sandbox::SetUnitSetup(const std::string& setup) {
+	if (setup.size() < 2 || setup[1] != '|') {
+		return;
+	}
+	UnitTuning tuning;
+	tuning.Modified = setup[0] == '1';
+	std::istringstream fields(setup.substr(2));
+	std::string field;
+	std::getline(fields, field, '|');
+	if (std::string endless; std::getline(fields, endless, '|')) {
+		tuning.JetEndless = endless == "1";
+	}
+	float* values[] = {&tuning.Health, &tuning.Toughness, &tuning.Speed, &tuning.Jump, &tuning.JetFuel, &tuning.JetThrust, &tuning.Sight, &tuning.FireRate};
+	std::istringstream numbers(field);
+	std::string number;
+	for (float* value: values) {
+		if (!std::getline(numbers, number, ';')) {
+			break;
+		}
+		*value = std::clamp(static_cast<float>(std::atof(number.c_str())), c_UnitTuneMin, c_UnitTuneMax);
+	}
+	s_UnitTuning = tuning;
 }
 
 bool Sandbox::WantsWorldPaused() {
@@ -2032,6 +2063,10 @@ void Sandbox::DrawGUI() {
 					LoadoutChooser("Loadout", true);
 					UnitOrderCombo("Orders");
 					ImGui::EndDisabled();
+					// (What the multipliers come to shown for the one unit picked, when there is one.)
+					const bool onePicked = !s_RandomUnits && s_SpawnPick.Kind == CustomPick::None;
+					const Preset* shownUnit = onePicked ? ChosenPreset(kind == Tool::Drop ? Tool::Unit : kind, ChoiceFor(kind)) : nullptr;
+					UnitStatsOptions(shownUnit ? dynamic_cast<const Actor*>(g_PresetMan.GetEntityPreset(shownUnit->ClassName, shownUnit->PresetName, shownUnit->ModuleID)) : nullptr, "Stats");
 				} else if (kind == Tool::Vehicle) {
 					VehicleOptions();
 				} else if (kind == Tool::Item) {

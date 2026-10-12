@@ -1627,6 +1627,55 @@ namespace SandboxDetail {
 		tuning.DriverOnly = crewing == 1;
 	}
 
+	/// The Spawn tab's Stats for units put down, dropped or crewing a vehicle: as they come, or tuned by multipliers on each one's own values.
+	/// @param unit The unit picked, to show what the multipliers come to for it, or null when there is no one unit (random, a squad, a crew).
+	void UnitStatsOptions(const Actor* unit, const char* heading) {
+		UnitTuning& tuning = s_UnitTuning;
+		ImGui::PushID(heading);
+		ImGui::SeparatorText(heading);
+		int mode = tuning.Modified ? 1 : 0;
+		ToolUI::RadioButton("Default settings", &mode, 0);
+		ImGui::SetItemTooltip("Units are made as they come.");
+		ImGui::SameLine();
+		ToolUI::RadioButton("Modified", &mode, 1);
+		ImGui::SetItemTooltip("Units are made with their stats tuned by the sliders: each is times the unit's own value. Units already out stay as they are.");
+		tuning.Modified = mode == 1;
+		if (!tuning.Modified) {
+			ImGui::PopID();
+			return;
+		}
+		// One slider: the multiplier, what it comes to for the unit picked, and a Reset to x1.
+		auto slider = [](const char* label, float& multiplier, float own, const char* unit, const char* tip) {
+			ImGui::PushID(label);
+			std::string shown = "x%.2f";
+			if (own > 0.0F) {
+				char value[48];
+				std::snprintf(value, sizeof(value), "  (%.0f %s)", own * multiplier, unit);
+				shown += value;
+			}
+			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.62F);
+			ImGui::SliderFloat(label, &multiplier, c_UnitTuneMin, c_UnitTuneMax, shown.c_str(), ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
+			ToolUI::ResetButton(label, &multiplier, 1.0F, "Back to x1: the unit's own value.");
+			ImGui::SetItemTooltip("%s", tip);
+			ImGui::PopID();
+		};
+		slider("Health", tuning.Health, unit ? unit->GetMaxHealth() : 0.0F, "hp", "How much health it has. It is made at full health.");
+		slider("Toughness", tuning.Toughness, 0.0F, "", "How much less harm it takes from everything, and how many more wounds and harder blows before it loses a limb or is blown apart. On top of the Unit toughness setting: 2x takes half the damage.");
+		slider("Speed", tuning.Speed, 0.0F, "", "How fast it walks, runs and crawls.");
+		slider("Jump", tuning.Jump, 0.0F, "", "How high a leap of its legs lifts it.");
+		slider("Sight", tuning.Sight, unit ? unit->GetSightDistance() : 0.0F, "px", "How far it sees enemies.");
+		slider("Fire rate", tuning.FireRate, 0.0F, "", "How fast every gun it is made with fires. Guns it picks up later fire as they come.");
+		slider("Jet fuel", tuning.JetFuel, 0.0F, "", "How long its jetpack flies before it runs dry.");
+		slider("Jet thrust", tuning.JetThrust, 0.0F, "", "How hard its jetpack pushes, at no extra fuel.");
+		ToolUI::Checkbox("Endless jet fuel", &tuning.JetEndless);
+		ImGui::SetItemTooltip("Its jetpack never runs dry.");
+		if (ToolUI::Button("Reset all to x1")) {
+			tuning = UnitTuning();
+			tuning.Modified = true;
+		}
+		ImGui::PopID();
+	}
+
 	void VehicleOptions() {
 		VehicleTuning& tuning = s_VehicleTuning;
 		const Preset* preset = ChosenPreset(Tool::Vehicle, ChoiceFor(Tool::Vehicle));
@@ -1650,6 +1699,7 @@ namespace SandboxDetail {
 			LoadoutChooser();
 			UnitOrderCombo("Orders");
 			TemperamentCombo("Temperament");
+			UnitStatsOptions(nullptr, "Crew stats");
 		}
 		ImGui::EndDisabled();
 		if (preset && !seats) {
@@ -1682,12 +1732,14 @@ namespace SandboxDetail {
 			}
 			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.62F);
 			ImGui::SliderFloat(label, &multiplier, c_VehicleTuneMin, c_VehicleTuneMax, shown.c_str(), ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
+			ToolUI::ResetButton(label, &multiplier, 1.0F, "Back to x1: the vehicle's own value.");
 			ImGui::SetItemTooltip("%s Right-click to set it back to x1.", tip);
 			if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
 				multiplier = 1.0F;
 			}
 			ImGui::PopID();
 		};
+		slider("Health", tuning.Health, vehicle ? vehicle->GetMaxHealth() : 0.0F, "hp", "How much harm it takes before it is destroyed. It is put down at full health.");
 		const bool boat = vehicle && vehicle->GetWaterThrust() > 0.0F;
 		const bool wheels = !vehicle || !vehicle->GetWheels().empty();
 		if (wheels) {

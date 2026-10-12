@@ -1209,9 +1209,10 @@ void ACrab::PreControllerUpdate() {
 				for (int layer = 0; layer < LAYERCOUNT; ++layer)
 					m_Paths[side][layer][STAND].Terminate();
 			// Kept to a group's pace (RC-5): no faster than the slowest of those sent with it.
-			float paceMultiplier = 1.0F;
-			if (const float fullSpeed = m_Paths[LEFTSIDE][FGROUND][WALK].GetTravelSpeed() * 0.5F; m_PaceLimit > 0.0F && fullSpeed > m_PaceLimit) {
-				paceMultiplier = m_PaceLimit / fullSpeed;
+			// (Its own pace, the Sandbox's unit Stats, counted in.)
+			float paceMultiplier = m_SpeedMultiplier;
+			if (const float fullSpeed = m_Paths[LEFTSIDE][FGROUND][WALK].GetTravelSpeed() * 0.5F * m_SpeedMultiplier; m_PaceLimit > 0.0F && fullSpeed > m_PaceLimit) {
+				paceMultiplier *= m_PaceLimit / fullSpeed;
 			}
 			// A creature's venom slows it; its web all but stops it (CR-6).
 			paceMultiplier *= GetAfflictionSpeedMultiplier();

@@ -134,28 +134,7 @@ namespace {
 		T Value;
 	};
 
-	bool AtNormal(float value, float normal) { return std::abs(value - normal) <= 0.0001F * std::max(1.0F, std::abs(normal)); }
-	bool AtNormal(int value, int normal) { return value == normal; }
-
-	/// A small Reset beside the slider just made, putting that one setting back as the game comes (greyed out while it is).
-	/// The slider stays the last item, so a Tip after it is still the slider's own.
-	template <typename T> bool ResetButton(const char* label, T* value, T normal) {
-		const ImGuiLastItemData slider = GImGui->LastItemData;
-		ImGui::SameLine();
-		ImGui::PushID(label);
-		ImGui::PushID("Reset");
-		ImGui::BeginDisabled(AtNormal(*value, normal));
-		bool reset = ToolUI::SmallButton("Reset");
-		ImGui::SetItemTooltip("Puts this one setting back to the value the game comes with.");
-		ImGui::EndDisabled();
-		ImGui::PopID();
-		ImGui::PopID();
-		GImGui->LastItemData = slider;
-		if (reset) {
-			*value = normal;
-		}
-		return reset;
-	}
+	using ToolUI::ResetButton;
 
 	bool Slider(const char* label, float* value, Normal<float> normal, float low, float high, const char* format = "%.2f", ImGuiSliderFlags flags = 0) {
 		if (!Shown(label)) {

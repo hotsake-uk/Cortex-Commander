@@ -649,10 +649,10 @@ namespace SandboxDetail {
 	/// The pace a unit walks at, m/s, for keeping a group to its slowest (RC-5); 0 for one that doesn't walk.
 	float WalkPace(Actor* unit) {
 		if (AHuman* human = dynamic_cast<AHuman*>(unit)) {
-			return human->GetLimbPathTravelSpeed(Actor::WALK) * 0.5F;
+			return human->GetLimbPathTravelSpeed(Actor::WALK) * 0.5F * human->GetSpeedMultiplier();
 		}
 		if (ACrab* crab = dynamic_cast<ACrab*>(unit)) {
-			return crab->GetLimbPathTravelSpeed(Actor::WALK) * 0.5F;
+			return crab->GetLimbPathTravelSpeed(Actor::WALK) * 0.5F * crab->GetSpeedMultiplier();
 		}
 		return 0.0F;
 	}
