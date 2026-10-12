@@ -2205,6 +2205,8 @@ void Sandbox::DrawGUI() {
 				LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
 				ImGui::Combo("Weather", &settings.WeatherType, Weather::GetComboItems(settings.CustomWeather).c_str());
 				ImGui::SliderFloat("Intensity", &settings.WeatherIntensity, 0.0F, 1.0F);
+				ImGui::Checkbox("Weather everywhere", &settings.WeatherEverywhere);
+				ImGui::SetItemTooltip("The weather shows everywhere but over the terrain and its back walls, under roofs and overhangs too. The same as in the settings.");
 				ImGui::SliderFloat("Wind", &settings.Wind, -200.0F, 200.0F, "%.0f px/s");
 				ImGui::SliderFloat("Hour", &settings.TimeOfDay, 0.0F, 24.0F, "%.1f");
 				for (auto [name, hour]: {std::pair{"Dawn", 6.5F}, std::pair{"Day", 12.0F}, std::pair{"Dusk", 19.0F}, std::pair{"Night", 23.0F}}) {

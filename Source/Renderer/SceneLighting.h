@@ -290,6 +290,7 @@ namespace RTE {
 		GLTarget m_HDRScene;
 		GLTarget m_ModPostScene; //!< A copy of the lit scene for a mod's post pass to read (LightingSettings::ModShaders). Made when one is first used.
 		GLTarget m_FocusScene; //!< A copy of the lit scene for depth of field and tilt-shift to read. Made when they're first used.
+		GLTarget m_WeatherDrops; //!< The weather's drops on their own, premultiplied, for Weather everywhere to lay over the scene but the terrain. Made when it's first used.
 		static constexpr int c_BloomMipCount = 5;
 		GLTarget m_BloomMips[c_BloomMipCount];
 		static constexpr int c_RCCascadeCount = 5;
@@ -335,6 +336,7 @@ namespace RTE {
 		std::unique_ptr<Shader> m_ShockwaveShader;
 		std::unique_ptr<Shader> m_PrecipitationShader;
 		std::unique_ptr<Shader> m_RainSplashShader;
+		std::unique_ptr<Shader> m_WeatherEverywhereShader;
 		std::unique_ptr<Shader> m_GodRaysShader;
 		std::unique_ptr<Shader> m_DepthOfFieldShader;
 		std::unique_ptr<Shader> m_GodRaysApplyShader;

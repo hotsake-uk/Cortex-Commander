@@ -521,6 +521,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("WeatherGlow", { g_PostProcessMan.GetLightingSettings().WeatherGlow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WeatherIntensity", { g_PostProcessMan.GetLightingSettings().WeatherIntensity = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WeatherSpeed", { g_PostProcessMan.GetLightingSettings().WeatherSpeed = std::stof(reader.ReadPropValue()); });
+	MatchProperty("WeatherEverywhere", { g_PostProcessMan.GetLightingSettings().WeatherEverywhere = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("Wind", { g_PostProcessMan.GetLightingSettings().Wind = std::stof(reader.ReadPropValue()); });
 	MatchProperty("TimeOfDay", { g_PostProcessMan.GetLightingSettings().TimeOfDay = std::stof(reader.ReadPropValue()); });
 	MatchProperty("DayLengthMinutes", { g_PostProcessMan.GetLightingSettings().DayLengthMinutes = std::stof(reader.ReadPropValue()); });
@@ -1061,6 +1062,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("WeatherGlow", lighting.WeatherGlow);
 	writer.NewPropertyWithValue("WeatherIntensity", lighting.WeatherIntensity);
 	writer.NewPropertyWithValue("WeatherSpeed", lighting.WeatherSpeed);
+	writer.NewPropertyWithValue("WeatherEverywhere", lighting.WeatherEverywhere);
 	writer.NewPropertyWithValue("Wind", lighting.Wind);
 	writer.NewPropertyWithValue("TimeOfDay", lighting.TimeOfDay);
 	writer.NewPropertyWithValue("DayLengthMinutes", lighting.DayLengthMinutes);
