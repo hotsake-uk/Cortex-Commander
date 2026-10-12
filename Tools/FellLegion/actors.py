@@ -20,10 +20,10 @@ UNHOLY = ["Unholy"]
 M.UNITS = [
 	dict(
 		key="DreadLord", name="Dread Lord", groups=["Brains"] + UNHOLY, gold=450, mass=64, heads=1,
-		desc="The Legion's master, in black plate under a crimson tabard, his horned helm burning from within. He commands the host like any brain unit, and carries a black blade, a spiked shield and the Doom: lose him and the Legion scatters.",
+		desc="The Legion's master, in black plate under a crimson tabard, his horned helm burning from within. He commands the host like any brain unit, and carries a black blade, a spiked shield, the Doom and a Dark Shield for his guard: lose him and the Legion scatters.",
 		torsoMat="Military Stuff", headMat="Military Stuff", limbMat="Kevlared Flesh", health=170, walk=3.8, run=4.6,
 		headImpact="Flesh Head Impact Armored", torsoImpact="Flesh Torso Impact Armored", foley="Foley Heavy Cloth Light", stride="Footstep Heavy Metal Generic",
-		torsoWounds=26, inventory=[("HDFirearm", "Black Blade"), ("HeldDevice", "Spiked Shield"), ("HDFirearm", "Doom")], metal=True, energy=(120, 12),
+		torsoWounds=26, inventory=[("HDFirearm", "Black Blade"), ("HeldDevice", "Spiked Shield"), ("HDFirearm", "Doom"), ("HDFirearm", "Dark Shield")], metal=True, energy=(120, 12),
 	),
 	dict(
 		key="BlackKnight", name="Black Knight", groups=["Actors - Heavy"] + UNHOLY, gold=150, mass=62, heads=2,
@@ -34,10 +34,10 @@ M.UNITS = [
 	),
 	dict(
 		key="DeathKnight", name="Death Knight", groups=["Actors - Heavy"] + UNHOLY, gold=220, mass=62, heads=2,
-		desc="A knight who died and was not let rest, in black plate under a purple tabard. He swings a cursed greatsword that feeds him the blood it spills, and calls Chains of the Damned out of the ground to hold the enemy still for it.",
+		desc="A knight who died and was not let rest, in black plate under a purple tabard. He swings a cursed greatsword that feeds him the blood it spills, calls Chains of the Damned out of the ground to hold the enemy still for it, and drives his comrades into an Unholy Frenzy.",
 		torsoMat="Military Stuff", headMat="Military Stuff", limbMat="Kevlared Flesh", health=140, walk=3.8, run=4.6,
 		headImpact="Flesh Head Impact Armored", torsoImpact="Flesh Torso Impact Armored", foley="Foley Heavy Cloth Light", stride="Footstep Heavy Metal Generic",
-		torsoWounds=24, inventory=[("HDFirearm", "Cursed Greatsword"), ("HDFirearm", "Chains of the Damned")], metal=True, energy=(90, 10),
+		torsoWounds=24, inventory=[("HDFirearm", "Cursed Greatsword"), ("HDFirearm", "Chains of the Damned"), ("HDFirearm", "Unholy Frenzy")], metal=True, energy=(100, 10),
 	),
 	dict(
 		key="Executioner", name="Executioner", groups=["Actors - Heavy"] + UNHOLY, gold=120, mass=58, heads=1,
@@ -48,10 +48,10 @@ M.UNITS = [
 	),
 	dict(
 		key="Cultist", name="Cultist", groups=["Actors - Light"] + UNHOLY, gold=90, mass=42, heads=1,
-		desc="A hooded cultist in black robes with a crimson sash and a wicked dagger. Cheap, and he casts Shadow Bolts that seek the enemy out and give him back what they take.",
+		desc="A hooded cultist in black robes with a crimson sash and a wicked dagger. Cheap, and he casts Shadow Bolts that seek the enemy out and give him back what they take, and a Blood Pact that trades his own blood for the energy to cast more.",
 		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=85, walk=4.4, run=5.4,
 		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
-		torsoWounds=12, inventory=[("HDFirearm", "Shadow Bolt"), ("HDFirearm", "Wicked Dagger")], metal=False, energy=(90, 12),
+		torsoWounds=12, inventory=[("HDFirearm", "Shadow Bolt"), ("HDFirearm", "Blood Pact"), ("HDFirearm", "Wicked Dagger")], metal=False, energy=(90, 12),
 	),
 	dict(
 		key="DarkArcher", name="Dark Archer", groups=["Actors - Light", "Actors - Snipers"] + UNHOLY, gold=75, mass=45, heads=2,
@@ -69,24 +69,24 @@ M.UNITS = [
 	),
 	dict(
 		key="Shadow", name="Shadow", groups=["Actors - Light"] + UNHOLY, gold=85, mass=44, heads=2,
-		desc="An assassin in black leathers head to foot, quick on his feet, with a wicked dagger and a sheaf of cursed throwing knives. Sent round the flank while the knights hold the front.",
+		desc="An assassin in black leathers head to foot, quick on his feet, with a wicked dagger and a sheaf of cursed throwing knives. Sent round the flank while the knights hold the front; a Shadow Step takes him through a wall or a line, and a Shroud hides him from the enemy's eyes.",
 		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=85, walk=4.8, run=6.0,
 		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
-		torsoWounds=12, inventory=[("HDFirearm", "Wicked Dagger"), ("ThrownDevice", "Cursed Throwing Knife"), ("ThrownDevice", "Cursed Throwing Knife"), ("ThrownDevice", "Cursed Throwing Knife"), ("ThrownDevice", "Cursed Throwing Knife")], metal=False,
+		torsoWounds=12, inventory=[("HDFirearm", "Wicked Dagger"), ("ThrownDevice", "Cursed Throwing Knife"), ("ThrownDevice", "Cursed Throwing Knife"), ("ThrownDevice", "Cursed Throwing Knife"), ("ThrownDevice", "Cursed Throwing Knife"), ("HDFirearm", "Shadow Step"), ("HDFirearm", "Shroud")], metal=False, energy=(70, 10),
 	),
 	dict(
 		key="Warlock", name="Warlock", groups=["Actors - Light"] + UNHOLY, gold=150, mass=42, heads=1,
-		desc="A warlock in purple robes trimmed with green. Casts Shadow Bolts that hunt the enemy down and drink from them, and the Doom, a mark that bursts whoever bears it three heartbeats later.",
+		desc="A warlock in purple robes trimmed with green. A curse caster: Hex Bolts that weaken the enemy's arm, a Curse of Weakness over a whole knot of them, Fear that sends them running, and Life Drain, a held tether that pulls their life into him.",
 		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=80, walk=4.2, run=5.2,
 		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
-		torsoWounds=12, inventory=[("HDFirearm", "Shadow Bolt"), ("HDFirearm", "Doom"), ("HDFirearm", "Wicked Dagger")], metal=False, energy=(120, 14),
+		torsoWounds=12, inventory=[("HDFirearm", "Hex Bolt"), ("HDFirearm", "Curse of Weakness"), ("HDFirearm", "Life Drain"), ("HDFirearm", "Fear"), ("HDFirearm", "Wicked Dagger")], metal=False, energy=(130, 14),
 	),
 	dict(
 		key="Lich", name="Lich", groups=["Actors - Heavy"] + UNHOLY, gold=260, mass=36, heads=1,
-		desc="A sorcerer long dead and still walking, green fire in his empty sockets. He hurls spears of bone, binds the enemy in Chains of the Damned and lays the Doom on them. No flesh to bleed: he falls to dust instead.",
+		desc="A sorcerer long dead and still walking, green fire in his empty sockets. He hurls spears of bone, claws Ghouls up out of the ground, binds the enemy in Chains of the Damned, lays the Doom on them and harvests the souls of the fallen for his own strength. No flesh to bleed: he falls to dust instead.",
 		torsoMat="Kevlared Flesh", headMat="Kevlared Flesh", limbMat="Flesh", health=110, walk=4.0, run=5.0,
 		headImpact="Flesh Head Impact Armored", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
-		torsoWounds=14, inventory=[("HDFirearm", "Bone Spear"), ("HDFirearm", "Chains of the Damned"), ("HDFirearm", "Doom")], metal=False, energy=(180, 15), blood="Bone Particle",
+		torsoWounds=14, inventory=[("HDFirearm", "Bone Spear"), ("HDFirearm", "Raise Ghoul"), ("HDFirearm", "Chains of the Damned"), ("HDFirearm", "Doom"), ("HDFirearm", "Soul Harvest")], metal=False, energy=(180, 15), blood="Bone Particle",
 	),
 	dict(
 		key="Plaguebearer", name="Plaguebearer", groups=["Actors - Light"] + UNHOLY, gold=100, mass=48, heads=1,
@@ -97,10 +97,34 @@ M.UNITS = [
 	),
 	dict(
 		key="HellfireMage", name="Hellfire Mage", groups=["Actors - Light"] + UNHOLY, gold=160, mass=42, heads=1,
-		desc="A mage in black robes trimmed with green flame. Calls Hellfire Rain, a sigil that draws green fire down out of the sky on a patch of ground, and breathes Shadowflame, a held cone of black fire that burns whoever stands in it.",
+		desc="A mage in black robes trimmed with green flame. Calls Hellfire Rain, a sigil that draws green fire down out of the sky on a patch of ground, breathes Shadowflame, a held cone of black fire that burns whoever stands in it, and calls down Darkness over the field.",
 		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=80, walk=4.2, run=5.2,
 		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
-		torsoWounds=12, inventory=[("HDFirearm", "Hellfire Rain"), ("HDFirearm", "Shadowflame"), ("HDFirearm", "Wicked Dagger")], metal=False, energy=(130, 14),
+		torsoWounds=12, inventory=[("HDFirearm", "Hellfire Rain"), ("HDFirearm", "Shadowflame"), ("HDFirearm", "Darkness"), ("HDFirearm", "Wicked Dagger")], metal=False, energy=(140, 14),
+	),
+]
+
+M.UNITS += [
+	dict(
+		key="SkeletonWarrior", name="Skeleton Warrior", groups=["Actors - Light", "Actors - Undead"] + UNHOLY, gold=45, mass=32, heads=1,
+		desc="Bones the Legion's liches keep on their feet, green fire in the sockets, with a rusted sword and a bone shield. Cheap, slow, fearless, and nothing to bleed: it falls to pieces when it's hit hard enough.",
+		torsoMat="Bone", headMat="Bone", limbMat="Bone", health=65, walk=3.8, run=4.8,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=12, inventory=[("HDFirearm", "Rusted Sword"), ("HeldDevice", "Bone Shield")], metal=False, blood="Bone Particle",
+	),
+	dict(
+		key="Ghoul", name="Ghoul", groups=["Actors - Light", "Actors - Undead", "Actors - Creatures"] + UNHOLY, gold=70, mass=48, heads=1,
+		desc="A corpse that won't lie down: rotten green flesh on a runner's frame, a skull for a face. It runs at the enemy and tears at them with its claws, and its wounds knit themselves closed (Ghoul.lua). Raise Ghoul claws one out of the ground.",
+		torsoMat="Flesh", headMat="Bone", limbMat="Flesh", health=90, walk=5.0, run=6.4,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=14, inventory=[("HDFirearm", "Ghoul Claws")], metal=False, blood="Bone Particle", script="FellLegion.rte/Actors/Ghoul/Ghoul.lua",
+	),
+	dict(
+		key="Imp", name="Imp", groups=["Actors - Light", "Actors - Creatures"] + UNHOLY, gold=40, mass=28, heads=1,
+		desc="A small red fiend with horns and a grin. Fire doesn't catch on it, it cackles, and it throws gouts of fire at whatever it hunts. Weak alone; the Legion buys them in threes.",
+		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=60, walk=4.8, run=6.0,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=10, inventory=[("HDFirearm", "Imp Fire Bolt")], metal=False, fireproof=True,
 	),
 ]
 

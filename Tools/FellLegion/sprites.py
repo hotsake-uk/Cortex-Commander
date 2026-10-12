@@ -115,8 +115,36 @@ H["Plaguebearer"] = swap(H["Crossbowman"], {"W": "6", "w": "7", **IRON})
 T["HellfireMage"] = swap(T["Mage"], {"v": "1", "V": "2", "i": "3", "g": "7", "G": "8"})
 H["HellfireMage"] = swap(H["Mage"], {"v": "1", "V": "2", "i": "3", "g": "7", "G": "8", "a": "h"})
 
+# Skeleton Warrior: the Medieval skeleton's bones, grave-stained and green-eyed.
+T["SkeletonWarrior"] = swap(T["Skeleton"], {"X": "X", "z": "X", "Z": "z"})
+H["SkeletonWarrior"] = swap(H["Skeleton"], {"x": "8"})
+# Ghoul: the Berserker's bare body gone to rotten green flesh, a skull-faced head with a black mane.
+T["Ghoul"] = swap(T["Berserker"], {"t": "6", "T": "7", "u": "8", "L": "1", "M": "2"})
+H["Ghoul"] = swap(H["Berserker"], {"t": "6", "T": "7", "u": "8", "E": "1", "Z": "1", "z": "2", "k": "1", "d": "1", "s": "2", "m": "2", "l": "3", "H": "3"})
+# Imp: a small red-skinned fiend with horns and a grin, on the Berserker's frame.
+T["Imp"] = swap(T["Berserker"], {"t": "r", "T": "R", "u": "o", "L": "1", "M": "2", "b": "1", "n": "2", "N": "3", "j": "3"})
+H["Imp"] = [
+	"..X.......X..",
+	"..zX.....Xz..",
+	"...zk...kz...",
+	"....krRRk....",
+	"...krRRRRk...",
+	"..krRRRRRRk..",
+	"..kRRRYRRYRk.",
+	"..kRRRRRRRRRk",
+	"..kRRkRkRkRk.",
+	"..krRRkkkkRk.",
+	"...krRRRRRk..",
+	"....krRRRk...",
+	".....kkk.....",
+	".....rRr.....",
+]
+
 UNITS = {
 	# name: torso, heads, arm ramp, leg ramp, foot ramp, hand ramp
+	"SkeletonWarrior": ("SkeletonWarrior", ["SkeletonWarrior"], "bone", "bone", "bone", "bone"),
+	"Ghoul": ("Ghoul", ["Ghoul"], "sickly", "sickly", "sickly", "sickly"),
+	"Imp": ("Imp", ["Imp"], "red", "red", "red", "red"),
 	"DreadLord": ("DreadLord", ["DreadLord"], "iron", "iron", "iron", "iron"),
 	"BlackKnight": ("BlackKnight", ["BlackKnight", "BlackKnight B"], "iron", "iron", "iron", "iron"),
 	"DeathKnight": ("DeathKnight", ["DeathKnight", "BlackKnight B"], "iron", "iron", "iron", "iron"),
@@ -143,6 +171,9 @@ BLACK_ARROW_NOCKED = swap(S.ARROW_NOCKED, {"w": "2", "R": "1", "n": "2", "m": "4
 SPIKED_SHIELD = swap(S.KITE, {**IRON, "R": "1", "g": "7", "G": "8"})
 PLAGUE_POT = swap(A.STINKPOT, {"f": "p", "F": "P", "e": "q", "E": "q"})
 HELLFIRE_POT = swap(A.FIREPOT, {"R": "6", "o": "7", "O": "8"})
+
+RUSTED_SWORD = swap(S.SWORD, {"k": "1", "d": "b", "s": "n", "m": "N", "l": "N", "H": "j", "y": "1", "g": "2"})
+BONE_SHIELD = swap(S.ROUND, {"n": "X", "N": "z", "V": "z", "v": "X", "i": "Z", "m": "4", "k": "1"})
 
 # A headsman's axe: a long dark haft and one great crescent blade.
 EXECUTIONER_AXE = [
@@ -210,6 +241,31 @@ def make_spells():
 	# Chains of the Damned: an iron-bound black tome with chain links.
 	P.book("ChainsOfTheDamned.png", BLACK_COVER, P.IRON, "chain", [(60, 62, 70), (110, 114, 124), (170, 174, 184)], w=13, h=10)
 
+	# Hex Bolt: a violet book with a grey eye.
+	P.book("HexBolt.png", [(50, 20, 80), (90, 40, 140), (140, 90, 190)], P.IRON, "eye", [(60, 60, 70), (160, 150, 180), (230, 220, 240)], w=11, h=8)
+	# Curse of Weakness: a black book with a purple spiral, bone corners.
+	P.book("CurseOfWeakness.png", BLACK_COVER, P.BONE, "spiral", [(90, 30, 130), (150, 70, 200), (210, 160, 240)])
+	# Fear: a scroll with black ends and a red skull seal.
+	P.scroll("Fear.png", [(120, 110, 100), (160, 150, 130), (190, 180, 160)], [(20, 20, 24), (50, 50, 60)], [(120, 20, 24), (200, 40, 40), (255, 140, 120)], ribbon=[(60, 10, 14), (30, 6, 8)])
+	# Life Drain: a dark red book with a green fang.
+	P.book("LifeDrain.png", [(60, 10, 14), (100, 20, 28), (140, 40, 50)], GREEN_IRON, "fang", [(26, 70, 34), (120, 220, 100), (200, 255, 180)])
+	# Soul Harvest: a big bone-bound grimoire with a green skull.
+	P.book("SoulHarvest.png", [(40, 38, 32), (70, 66, 56), (100, 94, 80)], P.BONE, "skull", [(60, 220, 90), (200, 196, 170), (236, 232, 210)], w=14, h=10)
+	# Blood Pact: a small crimson scroll with a black seal.
+	P.scroll("BloodPact.png", [(120, 30, 34), (170, 50, 56), (200, 90, 90)], [(40, 8, 10), (80, 16, 20)], [(14, 12, 16), (40, 36, 44), (90, 84, 96)], w=13, h=7)
+	# Unholy Frenzy: a crimson book with a black flame.
+	P.book("UnholyFrenzy.png", [(90, 14, 18), (150, 30, 30), (200, 70, 60)], P.IRON, "flame", [(14, 12, 16), (50, 40, 50), (120, 60, 80)])
+	# Dark Shield: an iron-bound black book with a grey star.
+	P.book("DarkShield.png", BLACK_COVER, P.IRON, "star", [(60, 62, 70), (120, 124, 136), (190, 194, 204)])
+	# Shadow Step: a small black scroll with a violet seal.
+	P.scroll("ShadowStep.png", [(40, 36, 44), (70, 64, 78), (100, 92, 110)], [(14, 12, 16), (40, 36, 44)], [(90, 30, 140), (170, 90, 240), (240, 200, 255)], w=13, h=7)
+	# Shroud: a grey scroll with a black seal.
+	P.scroll("Shroud.png", [(90, 90, 100), (130, 130, 140), (170, 170, 180)], [(30, 30, 36), (60, 60, 70)], [(14, 12, 16), (40, 36, 44), (90, 84, 96)])
+	# Darkness: a huge black tome, iron bound, a black star on black.
+	P.book("Darkness.png", [(8, 8, 12), (18, 16, 22), (34, 30, 40)], P.IRON, "star", [(30, 20, 50), (60, 40, 90), (110, 80, 150)], w=15, h=11)
+	# Raise Ghoul: a grave-dirt brown grimoire with a bone skull, green eyed.
+	P.book("RaiseGhoul.png", [(40, 30, 22), (70, 52, 36), (100, 78, 54)], P.BONE, "skull", [(60, 220, 90), (200, 196, 170), (236, 232, 210)], w=13, h=10)
+
 	# The shadow bolt: a dark orb with a violet heart.
 	def shadow_color(r, ang, f, n, dx, dy):
 		import math
@@ -249,6 +305,59 @@ def make_spells():
 	P.rune_circle("RuneCircleHell.png", (20, 60, 30), (56, 140, 60), (160, 255, 140))
 
 
+# ---------------------------------------------------------------------------
+# Hellhound: Base.rte's Hound rig (Actors/Creatures/Hound) in charcoal black, red-eyed, so its frames and joints still fit its limb paths.
+
+HELLHOUND_RAMP = [(14, 10, 10), (34, 24, 24), (60, 40, 36), (90, 56, 46), (130, 70, 50), (170, 90, 56)]
+
+
+def reshade(source, target, ramp, eyes=None, outline=None):
+	"""Writes the sprite at source to target with every colour's shade mapped onto ramp. Reddish pixels (the Hound's eyes) become eyes."""
+	import glob  # noqa: F401 (kept beside the function for the caller below)
+	image = Image.open(source)
+	palette = image.getpalette()[:768]
+	data = list(image.getdata())
+	shades = {}
+	for index in set(data):
+		if index == 0:
+			continue
+		r, g, b = palette[index * 3:index * 3 + 3]
+		if (r, g, b) == (255, 0, 255):
+			continue
+		shades[index] = ((0.299 * r + 0.587 * g + 0.114 * b) / 255, (r, g, b))
+	if not shades:
+		image.save(target)
+		return
+	lo = min(sh for sh, _ in shades.values())
+	hi = max(sh for sh, _ in shades.values())
+	remap = {}
+	for index, (shade, (r, g, b)) in shades.items():
+		if eyes and r > 120 and r > g * 2 and r > b * 2:
+			remap[index] = S.nearest(eyes)
+			continue
+		norm = (shade - lo) / max(hi - lo, 1e-6)
+		if outline and norm < 0.08:
+			remap[index] = S.nearest(outline)
+		else:
+			pos = norm * (len(ramp) - 1)
+			i = min(int(pos), len(ramp) - 2)
+			f = pos - i
+			remap[index] = S.nearest(tuple(int(ramp[i][k] * (1 - f) + ramp[i + 1][k] * f) for k in range(3)))
+	out = image.copy()
+	out.putdata([remap.get(index, index) for index in data])
+	out.save(target, transparency=0)
+
+
+def make_hellhound():
+	import glob
+	hound = os.path.join(DATA, "Base.rte/Actors/Creatures/Hound")
+	out = os.path.join(S.OUT, "Actors/Hellhound")
+	os.makedirs(out, exist_ok=True)
+	for path in sorted(glob.glob(os.path.join(hound, "Hound*.png"))):
+		name = os.path.basename(path).replace("Hound", "Hellhound")
+		reshade(path, os.path.join(out, name), HELLHOUND_RAMP, eyes=(255, 120, 40), outline=(10, 8, 8))
+
+
 def main():
 	for name, rows in T.items():
 		S.check("torso " + name, rows, 13, 17)
@@ -285,6 +394,9 @@ def main():
 	for i, img in enumerate(S.arrow_frames(11, 2, 2, DARK["2"])):
 		S.save(img, f"Devices/DarkLongbow/BlackArrow{i:03d}.png")
 	S.save(S.grid(SPIKED_SHIELD), "Devices/SpikedShield/SpikedShield.png")
+	S.save(S.grid(RUSTED_SWORD), "Devices/RustedSword/RustedSword.png")
+	S.save(S.grid(BONE_SHIELD), "Devices/BoneShield/BoneShield.png")
+	make_hellhound()
 	# The Bone Spear's flight frames: an arrow of bone, longer and headed, in the arrow's 15 pixel frame.
 	for i, img in enumerate(S.arrow_frames(13, 3, 0, S.COLORS["z"])):
 		S.save(img, f"Devices/Spells/BoneSpear{i:03d}.png")

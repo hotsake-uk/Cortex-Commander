@@ -316,6 +316,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("DeploymentID", &Actor::GetDeploymentID)
 	    .property("PassengerSlots", &Actor::GetPassengerSlots, &Actor::SetPassengerSlots)
 	    .property("Perceptiveness", &Actor::GetPerceptiveness, &Actor::SetPerceptiveness)
+	    .property("FireProof", &Actor::IsFireProof)
 	    .property("HeadlampBrightness", &Actor::GetHeadlampBrightness, &Actor::SetHeadlampBrightness)
 	    .property("HeadlampLit", &Actor::IsHeadlampLit)
 	    .def("SetHeadlampColor", &Actor::SetHeadlampColor)

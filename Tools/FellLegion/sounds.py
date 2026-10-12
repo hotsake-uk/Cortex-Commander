@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Synthesises FellLegion.rte/Sounds as FLAC (needs numpy and ffmpeg), with Tools/Medieval/spellsounds.py's helpers: the Doom's toll and
-burst, the chains' rattle, the shadow bolt, the life drain, the bone spear's throw and the hellfire's fall.
+burst, the chains' rattle, the shadow bolt, the life drain, the bone spear's throw, the hellfire's fall, the hex, the curse, the fear,
+the blood pact, the shadow step, the darkness, the dark chime, the soul wisp and the ghoul rising.
 Run from the repository root: python3 Tools/FellLegion/sounds.py Data
 """
 import os
@@ -102,7 +103,109 @@ def hellfire_fall():
 	return whistle + roar * 0.8 + crackle * 0.5
 
 
+def hex_zap():
+	# A sharp violet zap with a sour warble on the tail.
+	t = P.t_of(0.45)
+	n = len(t)
+	f = 900 + 600 * np.sin(2 * np.pi * 9 * t) * np.exp(-t * 4) - 500 * t
+	phase = 2 * np.pi * np.cumsum(f) / SR
+	tone = (np.sin(phase) + 0.4 * np.sin(2 * phase)) * P.env(n, 0.005, 0.2)
+	return tone + P.bandpass(rng.standard_normal(n), 2500, 8000) * np.exp(-t * 30) * 0.5
+
+
+def curse_whisper():
+	# A breathy whisper rising and falling, with a low hum under it.
+	t = P.t_of(1.2)
+	n = len(t)
+	whisper = P.swept_noise(n, np.interp(t, [0, 0.4, 0.8, 1.2], [1800, 3200, 2200, 1200]), 0.35) * (0.6 + 0.4 * np.sin(2 * np.pi * 7 * t)) * P.env(n, 0.1, 0.5)
+	hum = np.sin(2 * np.pi * 55 * t) * P.env(n, 0.2, 0.6) * 0.5
+	return whisper + hum
+
+
+def fear_pulse():
+	# A deep boom with a shriek over it, falling away.
+	t = P.t_of(1.3)
+	n = len(t)
+	boom = np.sin(2 * np.pi * (45 + 30 * np.exp(-t * 8)) * t) * np.exp(-t * 3)
+	f = 2600 - 1800 * (t / t[-1]) ** 0.5
+	phase = 2 * np.pi * np.cumsum(f) / SR
+	shriek = (np.sin(phase) + 0.5 * np.sin(1.5 * phase + 0.3)) * P.env(n, 0.02, 0.5) * 0.35
+	rush = P.bandpass(rng.standard_normal(n), 200, 1500) * np.exp(-t * 4) * 0.5
+	return boom + shriek + rush
+
+
+def blood_pact():
+	# A wet cut and a short gasp.
+	t = P.t_of(0.6)
+	n = len(t)
+	cut = P.bandpass(rng.standard_normal(n), 1500, 6000) * np.exp(-t * 40)
+	wet = P.lowpass(rng.standard_normal(n), 900) * P.env(n, 0.02, 0.25) * 0.5
+	gasp = P.bandpass(rng.standard_normal(n), 600, 2500) * P.env(n, 0.2, 0.2) * 0.3
+	return cut + wet + gasp
+
+
+def shadow_step():
+	# A soft puff of smoke and a reversed whoosh.
+	t = P.t_of(0.5)
+	n = len(t)
+	puff = P.lowpass(rng.standard_normal(n), 700) * np.exp(-t * 14)
+	back = P.swept_noise(n, np.interp(t, [0, 0.5], [500, 2500]), 0.4) * P.env(n, 0.3, 0.05) * 0.6
+	return puff + back
+
+
+def darkness_fall():
+	# Night falling: a long low fall of tone with a cold wind, ending in a deep thud.
+	t = P.t_of(2.2)
+	n = len(t)
+	f = 400 - 330 * (t / t[-1]) ** 0.6
+	phase = 2 * np.pi * np.cumsum(f) / SR
+	tone = (np.sin(phase) + 0.5 * np.sin(0.5 * phase)) * P.env(n, 0.1, 1.5) * 0.6
+	wind = P.swept_noise(n, np.interp(t, [0, 1.1, 2.2], [1200, 600, 250]), 0.5) * P.env(n, 0.4, 1.0) * 0.5
+	thud = np.sin(2 * np.pi * 40 * t) * np.exp(-(t - 1.8) ** 2 * 60) * 0.8
+	return tone + wind + thud
+
+
+def dark_chime():
+	# A dull bell struck once, a sour second under it.
+	t = P.t_of(0.9)
+	n = len(t)
+	bell = (np.sin(2 * np.pi * 440 * t) + 0.6 * np.sin(2 * np.pi * 466 * t) + 0.3 * np.sin(2 * np.pi * 880 * t)) * np.exp(-t * 4)
+	return bell * P.env(n, 0.003, 0.8)
+
+
+def soul_wisp():
+	# A soul flying off: a rising, trembling whistle.
+	t = P.t_of(0.7)
+	n = len(t)
+	f = 500 + 1500 * (t / t[-1]) ** 1.3
+	phase = 2 * np.pi * np.cumsum(f) / SR
+	return np.sin(phase + 0.5 * np.sin(2 * np.pi * 14 * t)) * P.env(n, 0.05, 0.3) + P.bandpass(rng.standard_normal(n), 3000, 7000) * P.env(n, 0.3, 0.1) * 0.2
+
+
+def ghoul_rise():
+	# Earth breaking and a wet snarl.
+	t = P.t_of(1.0)
+	n = len(t)
+	earth = P.lowpass(rng.standard_normal(n), 400) * P.env(n, 0.05, 0.5)
+	crumbs = (rng.random(n) < 0.003).astype(float) * rng.uniform(0.3, 1, n)
+	crumbs = P.lowpass(crumbs, 4000) * P.env(n, 0.1, 0.5)
+	f = 180 + 60 * np.sin(2 * np.pi * 25 * t)
+	phase = 2 * np.pi * np.cumsum(f) / SR
+	snarl = (np.sin(phase) + 0.6 * np.sin(2 * phase) + 0.4 * np.sin(3 * phase)) * P.env(n, 0.3, 0.3) * 0.5
+	snarl = snarl * (0.5 + 0.5 * P.bandpass(rng.standard_normal(n), 800, 3000))
+	return earth + crumbs + snarl
+
+
 def main():
+	P.write("HexZap1", hex_zap(), 0.5)
+	P.write("CurseWhisper1", curse_whisper(), 0.55)
+	P.write("FearPulse1", fear_pulse(), 0.9)
+	P.write("BloodPact1", blood_pact(), 0.55)
+	P.write("ShadowStep1", shadow_step(), 0.55)
+	P.write("DarknessFall1", darkness_fall(), 0.8)
+	P.write("DarkChime1", dark_chime(), 0.45)
+	P.write("SoulWisp1", soul_wisp(), 0.45)
+	P.write("GhoulRise1", ghoul_rise(), 0.7)
 	P.write("DoomToll1", doom_toll(), 0.8)
 	P.write("DoomBurst1", doom_burst(), 0.9)
 	P.write("ChainRattle1", chain_rattle(), 0.7)

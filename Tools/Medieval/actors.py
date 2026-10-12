@@ -228,6 +228,16 @@ def nature(u):
 	return f"\n\tTemperament = {u['nature']}\n\tNonCombatant = 1"
 
 
+def script(u):
+	"""A unit's own script, run beside the AI's (a Ghoul's regeneration)."""
+	return f"\n\tScriptPath = {u['script']}" if "script" in u else ""
+
+
+def fireproof(u):
+	"""A body fire doesn't catch on, routed through lava (an Imp's)."""
+	return "\n\tFireProof = 1" if u.get("fireproof") else ""
+
+
 def speech(u):
 	"""The unit's speech set (Medieval.rte/Speech): the faction's own lines, or the skeletons'."""
 	return f"\n\tSpeechSet = {u.get('speech', MODULE)}"
@@ -504,7 +514,7 @@ AddActor = AHuman
 	HitsMOs = 1
 	GetsHitByMOs = 1
 	ScriptPath = Base.rte/AI/HumanAI.lua
-	ScriptPath = Base.rte/Scripts/Shared/AlternateHumanPainSounds.lua
+	ScriptPath = Base.rte/Scripts/Shared/AlternateHumanPainSounds.lua{script(u)}
 	SpriteFile = ContentFile
 		FilePath = {d}/Torso.png
 	FrameCount = 1
@@ -541,7 +551,7 @@ AddActor = AHuman
 		CopyOf = {u["foley"]}
 	Health = {u["health"]}
 	MaxHealth = {u["health"]}{energy(u)}{speech(u)}
-	Organic = {0 if "blood" in u else 1}
+	Organic = {0 if "blood" in u else 1}{fireproof(u)}
 	ImpulseDamageThreshold = 1800
 	AimDistance = 30
 	Perceptiveness = 1
