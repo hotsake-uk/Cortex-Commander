@@ -940,7 +940,8 @@ void Sandbox::DrawGUI() {
 			if (s_Possessed) {
 				SquadKeys();
 			} else if (ImGui::IsKeyPressed(ImGuiKey_Space, false)) {
-				JumpToLatestAlert();
+				// Space: the latest alert. Shift+Space: the one before, each press.
+				JumpToAlert(ImGui::GetIO().KeyShift);
 			}
 		}
 	}
@@ -1609,7 +1610,7 @@ void Sandbox::DrawGUI() {
 		if (DrawTabRows()) {
 			if (IsGodMode() && SandboxTab("You")) {
 				s_CurrentTab = "You";
-				bool exists = GetRef(s_PlayerUnit) != nullptr;
+				bool exists = GetRef(s_PlayerUnit) || PlayerHolder();
 				if (ToolUI::Checkbox("Have a character of my own", &s_Player.EnterOnClose) && !s_Player.EnterOnClose) {
 					Stroke stroke;
 					stroke.Kind = Tool::PlayerRemove;

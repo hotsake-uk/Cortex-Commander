@@ -473,6 +473,10 @@ namespace RTE {
 		/// @return The mass of this AHuman's equipped devices.
 		float GetEquippedMass() const;
 
+		/// Gets the mass of the items in this AHuman's hands, for the Carry weight settings.
+		/// @return The equipped mass in Kilograms (kg).
+		float GetHeldMass() const override { return GetEquippedMass(); }
+
 		/// Indicates whether the currently held HDFirearm's is ready for use, and has
 		/// ammo etc.
 		/// @return Whether a currently HDFirearm (if any) is ready for use.
@@ -506,6 +510,14 @@ namespace RTE {
 		/// Reloads the currently held firearm, if any. Will only reload the BG Firearm if the FG one is full already, to support reloading guns one at a time.
 		/// @param onlyReloadEmptyFirearms Whether or not to only reload empty fireams. (default: false)
 		void ReloadFirearms(bool onlyReloadEmptyFirearms = false);
+
+		/// Aims and works the gun in its hand while it sits out of the scene in a vehicle's or ship's passenger seat (CrewSeats): swings its arms
+		/// to the aim, pulls the trigger or lets go, reloads, and runs its arms and gun on, so what it fires leaves the muzzle where it sits.
+		/// @param aimAngle Where to aim, from level ahead of the way it faces, up positive; clamped to its aim range.
+		/// @param fire Whether the trigger is held. @param reload Whether to reload now (it reloads by itself when empty).
+		/// @param repeat Whether a held trigger keeps firing a gun that isn't full auto, as fast as it can (the AI's), or fires it once a pull.
+		/// @param vehicle What it sits in: what it fires goes through that and everyone sat in it.
+		void UpdateFiringFromSeat(float aimAngle, bool fire, bool reload, bool repeat, MovableObject* vehicle);
 
 		/// Tells whether a point on the scene is within close range of the currently
 		/// used device and aiming status, if applicable.

@@ -42,7 +42,7 @@ int AEJetpack::Create() {
 	}
 
 	// Initalize the jump time left
-	m_JetTimeLeft = m_JetTimeTotal;
+	m_JetTimeLeft = GetJetTimeTotal();
 	EnableEmission(false);
 
 	return 0;
@@ -175,6 +175,14 @@ void AEJetpack::Update() {
 	g_PostProcessMan.RegisterLight(lightPos, glm::vec3(flameColor.GetR(), flameColor.GetG(), flameColor.GetB()), reach, brightness, LightSource::Jetpacks);
 }
 
+float AEJetpack::GetJetTimeTotal() const {
+	return m_JetTimeTotal * g_SettingsMan.JetpackFuelMultiplier();
+}
+
+void AEJetpack::SetJetTimeTotal(float newValue) {
+	m_JetTimeTotal = newValue / g_SettingsMan.JetpackFuelMultiplier();
+}
+
 void AEJetpack::UpdateBurstState(Actor& parentActor) {
 	const Controller& controller = *parentActor.GetController();
 
@@ -184,7 +192,9 @@ void AEJetpack::UpdateBurstState(Actor& parentActor) {
 	}
 
 	float fuelUseMultiplier = 1.0F;
-	if (m_AdjustsThrottleForWeight) {
+	// The Carry weight settings may make every jetpack make up for weight, or none.
+	const int weightCompensation = g_SettingsMan.JetpackWeightCompensation();
+	if (weightCompensation == 1 || (weightCompensation == 0 && m_AdjustsThrottleForWeight)) {
 		// Adjust force based on weight, so we have greater thrust with a heavier inventory (but spend fuel faster)
 		float thrustAdjustment = parentActor.GetMass() / parentActor.GetBaseMass();
 		float adjustedThrottle = GetScaledThrottle(0.0F, thrustAdjustment);
@@ -230,7 +240,7 @@ void AEJetpack::UpdateBurstState(Actor& parentActor) {
 		Recharge(parentActor);
 	}
 
-	m_JetTimeLeft = std::clamp(m_JetTimeLeft, 0.0f, m_JetTimeTotal);
+	m_JetTimeLeft = std::clamp(m_JetTimeLeft, 0.0f, GetJetTimeTotal());
 
 	// If pie menu is on, keep the angle to what it was before.
 	bool canAdjustAngle = !controller.IsState(PIE_MENU_ACTIVE) && (m_CanAdjustAngleWhileFiring || !IsEmitting());
