@@ -152,20 +152,27 @@ namespace SandboxDetail {
 		}
 	}
 
-	void ReleaseControl() {
+	void ReleaseControl(bool leavingPlay) {
 		StopFlying();
-		// Leaving play mode takes your character away with it, if that is ticked in the You tab: P makes a new one. A unit of the scene's you took over stays.
-		bool playing = false;
 		if (GameActivity* game = CurrentGame()) {
-			const Actor* controlled = game->GetControlledActor(Players::PlayerOne);
-			playing = controlled && (controlled == GetRef(s_PlayerUnit) || controlled == PlayerHolder());
 			game->LoseControlOfActor(Players::PlayerOne);
 			game->SetViewState(Activity::ViewState::Observe, Players::PlayerOne);
 		}
-		if (playing && s_Player.RemoveOnLeave) {
+		s_Possessed = nullptr;
+		// Leaving play mode takes your character away with it, if that is ticked in the You tab: P makes a new one. A unit of the scene's you took over stays.
+		// (Whatever the game says you were controlling: by the time the release came round it could already have let go of the character, and it stayed.)
+		if (leavingPlay) {
+			RemovePlayerOutOfPlay();
+		}
+	}
+
+	void RemovePlayerOutOfPlay() {
+		if (!s_Player.RemoveOnLeave || s_Possessed || s_PlayerEnterPending > 0 || Sandbox::IsBattleCommand()) {
+			return;
+		}
+		if (GetRef(s_PlayerUnit) || PlayerHolder()) {
 			RemovePlayer();
 		}
-		s_Possessed = nullptr;
 	}
 
 	const Preset* FindPreset(const std::vector<Preset>& list, const std::string& presetName) {
@@ -279,7 +286,7 @@ namespace SandboxDetail {
 		if (s_PlayerEnterPending > 0 && game) {
 			if (actor) {
 				if (s_Possessed && s_Possessed != actor) {
-					ReleaseControl();
+					ReleaseControl(false);
 				}
 				if (game->SwitchToActor(actor, Players::PlayerOne, actor->GetTeam())) {
 					game->SetViewState(Activity::ViewState::Normal, Players::PlayerOne);
