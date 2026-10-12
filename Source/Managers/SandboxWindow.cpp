@@ -2107,6 +2107,10 @@ namespace SandboxDetail {
 
 	/// The "no route" marker under the pointer (RC-7), if any.
 	const NoRoute* NoRouteAt(const ImVec2& mouse) {
+		// (Hidden, they aren't there to click.)
+		if (!g_SettingsMan.ShowSandboxNoRouteMarkers()) {
+			return nullptr;
+		}
 		for (const NoRoute& marker: s_NoRoutes) {
 			ImVec2 at = ToScreen(marker.Destination);
 			if ((mouse.x - at.x) * (mouse.x - at.x) + (mouse.y - at.y) * (mouse.y - at.y) <= 11.0F * 11.0F) {
@@ -2289,7 +2293,9 @@ namespace SandboxDetail {
 		// "No route" markers: a red cross where they were sent, a dashed line from each unit, how many, and a click to send them again.
 		long long now = g_TimerMan.GetSimUpdateCount();
 		const NoRoute* hovered = NoRouteAt(io.MousePos);
-		for (const NoRoute& marker: s_NoRoutes) {
+		// (Hidden by the setting: still kept, and shown as they are when it's turned back on.)
+		static const std::vector<NoRoute> none;
+		for (const NoRoute& marker: g_SettingsMan.ShowSandboxNoRouteMarkers() ? s_NoRoutes : none) {
 			ImVec2 at = ToScreen(marker.Destination);
 			float life = 1.0F - static_cast<float>(now - marker.At) / static_cast<float>(c_NoRouteUpdates);
 			int alpha = static_cast<int>(255.0F * std::clamp(life * 3.0F, 0.0F, 1.0F));
@@ -6265,6 +6271,11 @@ namespace SandboxDetail {
 				g_SettingsMan.SetShowSandboxAttackPings(pings);
 			}
 			ImGui::SetItemTooltip("When a unit of the selection's side is hurt: a ring where it is, or an arrow at the edge of the picture pointing the way.");
+			bool noRoutes = g_SettingsMan.ShowSandboxNoRouteMarkers();
+			if (ToolUI::Checkbox("No route markers", &noRoutes)) {
+				g_SettingsMan.SetShowSandboxNoRouteMarkers(noRoutes);
+			}
+			ImGui::SetItemTooltip("A red cross where units were sent and couldn't get to, with a line from each and why; click it to send them again.");
 			bool tags = g_SettingsMan.ShowUnitTags();
 			if (ToolUI::Checkbox("Side and health", &tags)) {
 				g_SettingsMan.SetShowUnitTags(tags);
