@@ -2487,6 +2487,9 @@ namespace SandboxDetail {
 	Vector OpenAirAt(Vector place);
 	Vector StandingPlaceBelow(Vector place);
 	Actor* MakePlayer(const Vector& place);
+	Actor* PlayerHolder();
+	Actor* TakeOutPlayer();
+	void RemovePlayer();
 	void EnterPlayer(bool atPlace, const Vector& place);
 	void UpdatePlayer();
 	void SelectInBox(const Vector& cornerA, const Vector& cornerB);
