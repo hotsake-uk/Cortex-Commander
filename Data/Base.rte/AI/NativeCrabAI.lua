@@ -229,9 +229,11 @@ function NativeCrabAI:Update(Owner)
 			if Owner.AIMode == Actor.AIMODE_SQUAD then
 				-- look where the SL looks, if not moving
 				if not self.jump and self.lateralMoveState == Actor.LAT_STILL then
-					if Leader and Leader.EquippedItem and IsHDFirearm(Leader.EquippedItem) and SceneMan:ShortestDistance(Owner.Pos, Leader.Pos, false).Largest < (Leader.MoveHeight + Owner.MoveHeight) * 0.5 then
-						local LeaderWeapon = ToHDFirearm(Leader.EquippedItem);
-						if LeaderWeapon:IsWeapon() then
+					-- (The leader's item read once: it can change between two reads while the leader updates on another thread.)
+					local LeaderItem = Leader and Leader.EquippedItem;
+					if LeaderItem and IsHDFirearm(LeaderItem) and SceneMan:ShortestDistance(Owner.Pos, Leader.Pos, false).Largest < (Leader.MoveHeight + Owner.MoveHeight) * 0.5 then
+						local LeaderWeapon = ToHDFirearm(LeaderItem);
+						if LeaderWeapon and LeaderWeapon:IsWeapon() then
 							local AimDelta = SceneMan:ShortestDistance(Leader.Pos, Leader.ViewPoint, false);
 							self.Ctrl.AnalogAim = SceneMan:ShortestDistance(Owner.Pos, Leader.ViewPoint+AimDelta, false).Normalized;
 							self.deviceState = AHuman.POINTING;
