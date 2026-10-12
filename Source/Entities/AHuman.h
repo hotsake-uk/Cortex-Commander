@@ -1067,6 +1067,7 @@ namespace RTE {
 				float fuelPredicted = 0.0F; //!< FlightFuelNeeded as the flight began, ms of jet.
 				float fuelUsed = 0.0F; //!< What the tank lost over the flight, refills not counted back, ms of jet.
 				float lastFuel = 0.0F;
+				float fuelAtTakeOff = 0.0F; //!< What the tank held as the flight began, ms of jet.
 				float tank = 0.0F; //!< The jet's full tank, ms.
 				Timer sinceEnd; //!< Since it landed or gave up, so the record still shows for a few seconds after.
 			};

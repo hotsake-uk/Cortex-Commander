@@ -1831,7 +1831,7 @@ void AHuman::DrawMoverDebug() const {
 				g_PrimitiveMan.DrawBoxFillPrimitive(barLeft, barLeft + Vector(width * used, 3.0F), record.fuelUsed > record.fuelPredicted ? overColor : withinColor);
 			}
 			g_PrimitiveMan.DrawLinePrimitive(barLeft + Vector(width * predicted, -2.0F), barLeft + Vector(width * predicted, 5.0F), plannedColor);
-			g_PrimitiveMan.DrawTextPrimitive(barLeft + Vector(width * 0.5F, -10.0F), "fuel " + std::to_string(static_cast<int>(record.fuelUsed)) + " of " + std::to_string(static_cast<int>(record.fuelPredicted)), true, 1);
+			g_PrimitiveMan.DrawTextPrimitive(barLeft + Vector(width * 0.5F, -10.0F), "had " + std::to_string(static_cast<int>(record.fuelAtTakeOff)) + ", needs " + std::to_string(static_cast<int>(record.fuelPredicted)) + ", used " + std::to_string(static_cast<int>(record.fuelUsed)), true, 1);
 		}
 	}
 	std::string state = mover.flight.active ? (mover.flight.refuelling ? "refuel" : (mover.flight.step ? "step" : (mover.flight.via ? "shaft" : "flight"))) : (mover.fuelWaiting ? "fuel wait" : "walk");
@@ -1858,6 +1858,7 @@ void AHuman::RecordFlightDebug() {
 			record.planned.push_back(Vector(flight.landing.m_X, flight.floorY - feet));
 			record.fuelPredicted = FlightFuelNeeded(flight.landing, flight.floorY);
 			record.tank = m_pJetpack ? m_pJetpack->GetJetTimeTotal() : 0.0F;
+			record.fuelAtTakeOff = fuel;
 			record.lastFuel = fuel;
 		}
 		record.fuelUsed += std::max(0.0F, record.lastFuel - fuel);
@@ -3011,8 +3012,10 @@ int AHuman::MoveAlongRoute() {
 		}
 		if (found) {
 			const float needed = std::min(FlightFuelNeeded(goal, viaApex ? apex.m_Y + feet : goalFloorY), tank * 0.95F);
-			// (A sky route waits for all of it: high over open ground, coming down short is a long fall, not a hop.)
-			const float want = std::min(needed * (skyOnly ? 1.0F : g_SettingsMan.DirectOrders().FuelShare), tank * 0.95F);
+			// (A sky route waits for all of it: high over open ground, coming down short is a long fall, not a hop. So does a climb, to a floor
+			// over this one or by a point over the way: short, it came back down under the landing, steadied and tried again, slower than the wait.)
+			const bool climb = viaApex || goalFloorY < m_Pos.m_Y + feet - h * 0.5F;
+			const float want = std::min(needed * (skyOnly || climb ? 1.0F : g_SettingsMan.DirectOrders().FuelShare), tank * 0.95F);
 			mover.straightHold = false;
 			if (m_pJetpack->GetJetTimeLeft() < std::max(want, JetRelightFuel())) {
 				// Short of it: stood still for the tank to fill (ten seconds at most, then the route for a while), not walked off along the route.
@@ -3609,9 +3612,16 @@ int AHuman::MoveAlongRoute() {
 		if (!g_SettingsMan.AIWaitsForFuel()) {
 			needed *= 0.1F;
 		} else {
-			needed *= 1.0F + (directTuning.FuelShare - 1.0F) * direct + (directTuning.CautiousFuelShare - 1.0F) * care;
+			// (A risky order's smaller share only for a flight across or down: a climb taken short of its fuel came back down under the
+			// landing, steadied and went again, which is slower than the wait it skipped.)
+			const bool climb = toLanding.m_Y < -h * 0.5F;
+			needed *= 1.0F + (climb ? 0.0F : (directTuning.FuelShare - 1.0F) * direct) + (directTuning.CautiousFuelShare - 1.0F) * care;
 			needed = std::min(needed, m_pJetpack->GetJetTimeTotal() * 0.95F); // (A cautious one's more than the flight is never more than a tank holds.)
 		}
+		// The wait's cap: six seconds, or as long as the tank takes to fill to what is needed from empty and a second more, if longer. (Six
+		// seconds flat sent a unit with a big tank or a slow refill off short of it.)
+		const float refillMS = needed / std::max(m_pJetpack->GetJetReplenishRate(), 0.05F);
+		const double fuelWaitCapMS = std::max(6000.0, static_cast<double>(refillMS) + 1000.0);
 		if (canTakeOff && !mover.fuelWaiting) {
 			mover.fuelWaiting = true;
 			mover.fuelWaitTimer.Reset();
@@ -3653,7 +3663,7 @@ int AHuman::MoveAlongRoute() {
 			}
 			return RouteMover::Moving;
 		}
-		if (canTakeOff && (m_pJetpack->GetJetTimeLeft() >= needed || mover.fuelWaitTimer.IsPastSimMS(6000))) {
+		if (canTakeOff && (m_pJetpack->GetJetTimeLeft() >= needed || mover.fuelWaitTimer.IsPastSimMS(fuelWaitCapMS))) {
 			mover.fuelWaiting = false;
 			{
 				mover.flight = RouteMover::Flight();
