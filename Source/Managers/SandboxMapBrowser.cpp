@@ -162,7 +162,7 @@ namespace SandboxDetail {
 			s_Browser.FiltersChanged = true;
 		}
 
-		constexpr const char* c_RecentFile = "Userdata/MapRecent.txt"; //!< The maps played lately, by name, the latest first, one to a line.
+		constexpr const char* c_RecentMapsFile = "Userdata/MapRecent.txt"; //!< The maps played lately, by name, the latest first, one to a line.
 		constexpr size_t c_RecentKept = 10; //!< How many maps the recently played list keeps.
 		std::vector<std::string> s_Recent;
 		bool s_RecentRead = false;
@@ -171,7 +171,7 @@ namespace SandboxDetail {
 		std::vector<std::string>& RecentMaps() {
 			if (!s_RecentRead) {
 				s_RecentRead = true;
-				std::ifstream file(c_RecentFile);
+				std::ifstream file(c_RecentMapsFile);
 				std::string line;
 				while (std::getline(file, line) && s_Recent.size() < c_RecentKept) {
 					if (!line.empty() && line.back() == '\r') {
@@ -1488,8 +1488,8 @@ void MapBrowser::NoteMapPlayed(const std::string& mapName) {
 		recent.resize(c_RecentKept);
 	}
 	std::error_code error;
-	std::filesystem::create_directories(std::filesystem::path(c_RecentFile).parent_path(), error);
-	std::ofstream file(c_RecentFile, std::ios::trunc);
+	std::filesystem::create_directories(std::filesystem::path(c_RecentMapsFile).parent_path(), error);
+	std::ofstream file(c_RecentMapsFile, std::ios::trunc);
 	for (const std::string& name: recent) {
 		file << name << '\n';
 	}
