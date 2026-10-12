@@ -274,6 +274,35 @@ namespace RTE {
 		/// Clamps every gib chunk setting into its range (after reading them).
 		void ClampGibChunks();
 
+		/// The AI combat settings ("AI combat" on the AI behaviour page of the settings panel): how well AI units shoot, how quickly they react
+		/// and spot, how far they look, how long they remember a target, how readily they throw and how long they hold the trigger. Each
+		/// scales what the AI scripts already work out (team AI skill, the unit's own overrides, veteran rank); at its default the scripts
+		/// skip it, so AICombatTuning() is the reset and plays exactly as the game always has.
+		struct AICombatTuning {
+			float Accuracy = 1.0F; //!< How well they aim, 0.25 to 4: their aim error is divided by it. 1: as the game comes.
+			float Reaction = 1.0F; //!< How long they take to fire and settle their aim, 0.25 to 3: those delays are multiplied by it. 1: as the game comes.
+			float Spotting = 1.0F; //!< How quickly they notice an enemy in view, 0.25 to 3: the rate noticing fills is multiplied by it. 1: as the game comes.
+			float SightRange = 1.0F; //!< How far they look for enemies, 0.5 to 2: the scan's reach is multiplied by it. 1: as the game comes.
+			float TargetMemory = 1.0F; //!< How long they keep on a target after losing sight of it, 0.25 to 4: each behaviour's own time (about a second while shooting) is multiplied by it. 1: as the game comes.
+			float GrenadeUse = 1.0F; //!< The chance, 0 to 1, they take a grenade or thrown weapon throw the AI judges worth making. 1: every one, as the game comes.
+			float Burst = 1.0F; //!< How long an automatic stays on the trigger in each burst, 0.5 to 2. 1: as the game comes.
+		};
+
+		/// Gets the AI combat tuning, to read or change ("AI combat" settings).
+		AICombatTuning& AICombat() { return m_AICombat; }
+
+		/// Clamps every AI combat setting into its range (after reading or changing them).
+		void ClampAICombat();
+
+		/// Each AI combat setting on its own, for the AI scripts (see AICombatTuning).
+		float AICombatAccuracy() const { return m_AICombat.Accuracy; }
+		float AICombatReaction() const { return m_AICombat.Reaction; }
+		float AICombatSpotting() const { return m_AICombat.Spotting; }
+		float AICombatSightRange() const { return m_AICombat.SightRange; }
+		float AICombatTargetMemory() const { return m_AICombat.TargetMemory; }
+		float AICombatGrenadeUse() const { return m_AICombat.GrenadeUse; }
+		float AICombatBurst() const { return m_AICombat.Burst; }
+
 		/// The late-battle slowdown fixes ("Performance" in the settings panel), each with a switch so it can be tried against the old behaviour: things a battle
 		/// leaves behind (blood pools, wrecks, debris, gas, scattered terrain changes) that kept costing every frame after the fighting, all actors gone or not.
 		struct SlowdownFixTuning {
@@ -1232,6 +1261,7 @@ namespace RTE {
 		bool m_TraceAllUnits; //!< Whether the AI channels trace every unit (see TraceAllUnits).
 		bool m_BodyGearSettlesAsScraps; //!< Whether what came off a unit settles into the terrain as Flesh Scraps (see BodyGearSettlesAsScraps).
 		GibChunkTuning m_GibChunks; //!< How gib chunks come out, move and settle (see GibChunks).
+		AICombatTuning m_AICombat; //!< How well AI units shoot, react, spot and throw (see AICombat).
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
 		bool m_EnableStuckPush; //!< Whether an AI humanoid stuck on the ground is nudged free once its own moves are spent (AHuman::PushFree).
 		bool m_NoSceneWrap; //!< Whether every scene is played with hard left and right edges instead of wrapping.

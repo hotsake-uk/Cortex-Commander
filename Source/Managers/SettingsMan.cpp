@@ -155,6 +155,7 @@ void SettingsMan::Clear() {
 	m_EnableStuckPush = false;
 	m_BodyGearSettlesAsScraps = true;
 	m_GibChunks = GibChunkTuning();
+	m_AICombat = AICombatTuning();
 	m_SlowdownFixes = SlowdownFixTuning();
 	m_NoSceneWrap = true;
 	std::fill(std::begin(m_Toughness), std::end(m_Toughness), 1.0F);
@@ -820,6 +821,13 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("GibChunkBounces", { reader >> m_GibChunks.MaxBounces; ClampGibChunks(); });
 	MatchProperty("GibChunkAtomSpacing", { reader >> m_GibChunks.AtomSpacing; ClampGibChunks(); });
 	MatchProperty("GibChunksSettleOnBodies", { reader >> m_GibChunks.SettleOnBodies; });
+	MatchProperty("AICombatAccuracy", { reader >> m_AICombat.Accuracy; ClampAICombat(); });
+	MatchProperty("AICombatReaction", { reader >> m_AICombat.Reaction; ClampAICombat(); });
+	MatchProperty("AICombatSpotting", { reader >> m_AICombat.Spotting; ClampAICombat(); });
+	MatchProperty("AICombatSightRange", { reader >> m_AICombat.SightRange; ClampAICombat(); });
+	MatchProperty("AICombatTargetMemory", { reader >> m_AICombat.TargetMemory; ClampAICombat(); });
+	MatchProperty("AICombatGrenadeUse", { reader >> m_AICombat.GrenadeUse; ClampAICombat(); });
+	MatchProperty("AICombatBurst", { reader >> m_AICombat.Burst; ClampAICombat(); });
 	MatchProperty("FixLiquidTellsOnlyMoves", { reader >> m_SlowdownFixes.LiquidTellsOnlyMoves; });
 	MatchProperty("WreckSettleSeconds", { reader >> m_SlowdownFixes.WreckSettleSeconds; m_SlowdownFixes.WreckSettleSeconds = std::clamp(m_SlowdownFixes.WreckSettleSeconds, 0, 600); });
 	MatchProperty("FixDebrisRestsAcrossGaps", { reader >> m_SlowdownFixes.DebrisRestsAcrossGaps; });
@@ -1121,6 +1129,16 @@ void SettingsMan::ClampGibChunks() {
 	m_GibChunks.SettleMS = std::clamp(m_GibChunks.SettleMS, -1, 10000);
 	m_GibChunks.MaxBounces = std::clamp(m_GibChunks.MaxBounces, 1, 10);
 	m_GibChunks.AtomSpacing = std::clamp(m_GibChunks.AtomSpacing, 0, 16);
+}
+
+void SettingsMan::ClampAICombat() {
+	m_AICombat.Accuracy = std::clamp(m_AICombat.Accuracy, 0.25F, 4.0F);
+	m_AICombat.Reaction = std::clamp(m_AICombat.Reaction, 0.25F, 3.0F);
+	m_AICombat.Spotting = std::clamp(m_AICombat.Spotting, 0.25F, 3.0F);
+	m_AICombat.SightRange = std::clamp(m_AICombat.SightRange, 0.5F, 2.0F);
+	m_AICombat.TargetMemory = std::clamp(m_AICombat.TargetMemory, 0.25F, 4.0F);
+	m_AICombat.GrenadeUse = std::clamp(m_AICombat.GrenadeUse, 0.0F, 1.0F);
+	m_AICombat.Burst = std::clamp(m_AICombat.Burst, 0.5F, 2.0F);
 }
 
 void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting, bool forPreset) const {
@@ -1452,6 +1470,13 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("GibChunkBounces", m_GibChunks.MaxBounces);
 	writer.NewPropertyWithValue("GibChunkAtomSpacing", m_GibChunks.AtomSpacing);
 	writer.NewPropertyWithValue("GibChunksSettleOnBodies", m_GibChunks.SettleOnBodies);
+	writer.NewPropertyWithValue("AICombatAccuracy", m_AICombat.Accuracy);
+	writer.NewPropertyWithValue("AICombatReaction", m_AICombat.Reaction);
+	writer.NewPropertyWithValue("AICombatSpotting", m_AICombat.Spotting);
+	writer.NewPropertyWithValue("AICombatSightRange", m_AICombat.SightRange);
+	writer.NewPropertyWithValue("AICombatTargetMemory", m_AICombat.TargetMemory);
+	writer.NewPropertyWithValue("AICombatGrenadeUse", m_AICombat.GrenadeUse);
+	writer.NewPropertyWithValue("AICombatBurst", m_AICombat.Burst);
 	writer.NewPropertyWithValue("FixLiquidTellsOnlyMoves", m_SlowdownFixes.LiquidTellsOnlyMoves);
 	writer.NewPropertyWithValue("WreckSettleSeconds", m_SlowdownFixes.WreckSettleSeconds);
 	writer.NewPropertyWithValue("FixDebrisRestsAcrossGaps", m_SlowdownFixes.DebrisRestsAcrossGaps);

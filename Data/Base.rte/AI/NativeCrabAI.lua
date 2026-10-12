@@ -66,13 +66,9 @@ function NativeCrabAI:Create(Owner)
 end
 
 function NativeCrabAI:Update(Owner)
-	-- Veterancy (Battle Command): each rank aims 15% better and quicker.
+	-- Veterancy (Battle Command): each rank aims 15% better and quicker; and the AI combat settings.
 	local rank = Owner:NumberValueExists("VeteranRank") and Owner:GetNumberValue("VeteranRank") or 0;
-	if rank ~= self.veteranRank and self.baseAimSkill then
-		self.veteranRank = rank;
-		self.aimSkill = self.baseAimSkill * (1 - 0.15 * rank);
-		self.aimSpeed = self.baseAimSpeed * (1 - 0.15 * rank);
-	end
+	SharedBehaviors.UpdateCombatAim(self, rank);
 
 	self.Ctrl = Owner:GetController();
 

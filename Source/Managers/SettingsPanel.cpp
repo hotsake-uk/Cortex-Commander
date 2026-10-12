@@ -181,6 +181,22 @@ namespace {
 		}
 	}
 
+	/// A small button after the control just made (and its tooltip) that puts its value back to how the game comes; greyed out while it is.
+	void ResetButton(const char* id, float* value, float defaultValue) {
+		if (!s_LastShown) {
+			return;
+		}
+		ImGui::SameLine();
+		ImGui::PushID(id);
+		ImGui::BeginDisabled(*value == defaultValue);
+		if (ImGui::SmallButton("Reset")) {
+			*value = defaultValue;
+		}
+		ImGui::EndDisabled();
+		ImGui::SetItemTooltip("Back to how the game comes.");
+		ImGui::PopID();
+	}
+
 	/// A slider for how bright a colour is, keeping its tint.
 	void Brightness(const char* label, glm::vec3& color, float maxValue) {
 		float level = std::max({color.x, color.y, color.z});
@@ -1515,6 +1531,44 @@ void DebugMan::SettingsGUI() {
 		Tip("Told to take cover with nothing to get behind and no foxhole dug, a unit falls back 200 px away from the enemy if one is within 250 px or it is pinned down. Off: it stays where it is.");
 		Toggle("Lie flat when exposed", g_SettingsMan.AICoverLiesFlat(), [](bool on) { g_SettingsMan.SetAICoverLiesFlat(on); });
 		Tip("Told to take cover with nothing to get behind, a unit that doesn't dig in lies flat where it ends up. Off: it crouches.");
+		Heading("AI combat");
+		{
+			// Each scales what the AI scripts already work out from the team's AI skill, the unit's own settings and its veteran rank;
+			// at its default the scripts leave that untouched, so Reset gives exactly the AI as it always played.
+			SettingsMan::AICombatTuning& combat = g_SettingsMan.AICombat();
+			const SettingsMan::AICombatTuning defaults;
+			Slider("Shot accuracy", &combat.Accuracy, 0.25F, 4.0F, "%.2fx", ImGuiSliderFlags_Logarithmic);
+			Tip("How well AI units aim: their aim error on the first shot, while tracking a target and when leading a moving one is divided by this. 2: half the miss, 0.5: twice it. It works on top of the team's AI skill from the game setup and each unit's rank. 1, as the game comes.");
+			ResetButton("Accuracy", &combat.Accuracy, defaults.Accuracy);
+			Slider("Reaction time", &combat.Reaction, 0.25F, 3.0F, "%.2fx", ImGuiSliderFlags_Logarithmic);
+			Tip("How long AI units take to fire on a target they've just seen and to settle their aim on it: those delays are multiplied by this. Lower is quicker (at the default skill the first shot comes about half a second after they turn on a target). 1, as the game comes.");
+			ResetButton("Reaction", &combat.Reaction, defaults.Reaction);
+			Slider("Spotting speed", &combat.Spotting, 0.25F, 3.0F, "%.2fx", ImGuiSliderFlags_Logarithmic);
+			Tip("How quickly an AI unit notices an enemy in its view, from a third of a second for a keen unit in the open to much longer for one in the dark or behind grass: that rate is multiplied by this. 1, as the game comes.");
+			ResetButton("Spotting", &combat.Spotting, defaults.Spotting);
+			Slider("Sight range", &combat.SightRange, 0.5F, 2.0F, "%.2fx");
+			Tip("How far AI units look for enemies (their aim distance and half a screen): multiplied by this. Night and stealth still cut it down as before. 1, as the game comes.");
+			ResetButton("SightRange", &combat.SightRange, defaults.SightRange);
+			Slider("Target memory", &combat.TargetMemory, 0.25F, 4.0F, "%.2fx", ImGuiSliderFlags_Logarithmic);
+			Tip("How long an AI unit keeps firing at and hunting a target after losing sight of it before it gives up on it: each of the times it gives (about a second while shooting, longer when it goes after the target) is multiplied by this. 1, as the game comes.");
+			ResetButton("TargetMemory", &combat.TargetMemory, defaults.TargetMemory);
+			float grenades = combat.GrenadeUse * 100.0F;
+			if (Slider("Grenade use", &grenades, 0.0F, 100.0F, "%.0f%%")) {
+				combat.GrenadeUse = grenades / 100.0F;
+			}
+			Tip("The chance an AI unit takes a throw it judges worth making: opening on a target with a grenade, or a javelin, axe or knives before closing in. 0: they keep to their guns. 100%, as the game comes (every grenade throw, and three in four of the thrown weapons).");
+			ResetButton("GrenadeUse", &combat.GrenadeUse, defaults.GrenadeUse);
+			Slider("Burst length", &combat.Burst, 0.5F, 2.0F, "%.2fx");
+			Tip("How long an AI unit with an automatic weapon holds the trigger in each burst at range (it already shortens them further out and when pinned down; close in it holds the trigger down whatever this is): multiplied by this. 1, as the game comes.");
+			ResetButton("Burst", &combat.Burst, defaults.Burst);
+			g_SettingsMan.ClampAICombat();
+			if (Plain()) {
+				if (ToolUI::Button("Reset AI combat to defaults")) {
+					combat = defaults;
+				}
+				ImGui::SetItemTooltip("Puts every AI combat setting back to how the game comes, which is how the AI always fought.");
+			}
+		}
 	};
 
 	// How units get about: the AI's moves and jetpack, and ladders.
