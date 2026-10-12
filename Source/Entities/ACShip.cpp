@@ -102,6 +102,8 @@ void ACShip::Clear() {
 	m_FlightFloor = FLT_MAX;
 	m_SteerTrim.Reset();
 	m_FlownTimer.Reset();
+	m_HeldByPause = false;
+	m_PausedAt.Reset();
 	m_FlightToRestore = FlightToRestore::None;
 	m_GoalToRestore.Reset();
 }
@@ -829,6 +831,19 @@ void ACShip::UpdateAutopilot() {
 		m_HasHoldPoint = true;
 	}
 	m_FlownTimer.Reset();
+	// The AI paused: it hovers where it was when the pause came and does nothing else (no fighting, ramming, or going on along its route),
+	// then carries on with what it was doing once the AI is let loose.
+	if (!Controller::AIMayAct()) {
+		if (!m_HeldByPause) {
+			m_HeldByPause = true;
+			m_PausedAt = m_Pos;
+		}
+		if (!m_EnginesOff) {
+			SteerTo(m_PausedAt, true);
+		}
+		return;
+	}
+	m_HeldByPause = false;
 	// Landed with its engines off: it stays down till sent somewhere (a go-to, however given).
 	if (m_EnginesOff) {
 		if (m_AIMode != AIMODE_GOTO) {
@@ -1247,7 +1262,7 @@ void ACShip::SeatCargo() {
 }
 
 void ACShip::UpdateAIBoarding() {
-	if (!m_OrderedBoardTimer.IsPastSimMS(250) || IsDead() || Controller::IsAIPaused()) {
+	if (!m_OrderedBoardTimer.IsPastSimMS(250) || IsDead() || !Controller::AIMayAct()) {
 		return;
 	}
 	m_OrderedBoardTimer.Reset();
@@ -1335,8 +1350,9 @@ void ACShip::UpdateGuns() {
 			}
 			fire = m_Controller.IsState(WEAPON_FIRE);
 			gun.TargetID = 0;
-		} else if (manned) {
-			// A gunner looks round now and then for the nearest enemy in sight, swings round to it and fires once it is on it.
+		} else if (manned && Controller::AIMayAct()) {
+			// A gunner looks round now and then for the nearest enemy in sight, swings round to it and fires once it is on it. (With the AI
+			// paused, it holds its aim and fire.)
 			if (gun.TargetTimer.IsPastSimMS(400)) {
 				gun.TargetID = FindGunTarget(turret);
 				gun.TargetTimer.Reset();
@@ -1366,7 +1382,7 @@ void ACShip::UpdateGuns() {
 			} else {
 				gun.TargetID = 0;
 			}
-		} else {
+		} else if (!manned) {
 			// Unmanned, it comes to rest pointing ahead.
 			gun.AimAngle += std::clamp(rotationFacing - gun.AimAngle, -deltaTime, deltaTime);
 			gun.TargetID = 0;

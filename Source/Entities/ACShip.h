@@ -286,6 +286,8 @@ namespace RTE {
 		float m_FlightFloor; //!< The lowest it may fly just now for the ground ahead (GetFlightFloor).
 		Vector m_SteerTrim; //!< What the controller has built up, near a place it stops at, against whatever drifts it off (its trim, its load, a lean): the off, in metre seconds.
 		Timer m_FlownTimer; //!< Since its flight controller last ran: a gap means a player flew it.
+		bool m_HeldByPause; //!< Whether its autopilot is holding it for the paused AI (Controller::AIMayAct).
+		Vector m_PausedAt; //!< Where it hovers while the AI is paused.
 		/// What a saved game it was read from had it doing in the air, taken up when its flight controller first runs (RestoreFlight).
 		enum class FlightToRestore { None, Hold, Goal };
 		FlightToRestore m_FlightToRestore; //!< What it was doing.
