@@ -1545,15 +1545,28 @@ bool AHuman::ShaftColumn(float columnX, float topHeadY, float& middleX, float& w
 	return true;
 }
 
-void AHuman::RefreshRoute() {
+void AHuman::RefreshRoute(bool keepRoute) {
 	Vector goal = m_HasMovePathGoal ? m_MovePathGoal : GetLastAIWaypoint();
 	bool hadGoal = m_HasMovePathGoal || !m_MovePath.empty();
-	m_MovePath.clear();
-	m_MovePathKinds.clear();
+	// (A refresh is a new route, never a route check: kept, a check's flag had the answer weighed against the route it replaces.)
+	m_RouteCheck = false;
 	if (hadGoal) {
 		m_MovePathGoal = goal;
 		m_HasMovePathGoal = true;
 		m_MoveTarget = goal;
+	}
+	// A routine refresh keeps the route it has until the new one comes: cleared, the unit stood still for the frames the search took, every
+	// second while its next point was out of sight, and the route drawn in the debug view blinked out each time.
+	if (keepRoute && !m_MovePath.empty()) {
+		UpdateMovePath();
+		return;
+	}
+	m_MovePath.clear();
+	m_MovePathKinds.clear();
+	// With no route, the next request loads the next waypoint on the list: the leg being walked goes back on first, or a refresh mid-leg
+	// skipped it and sent the unit on to the one after.
+	if (hadGoal && !m_Waypoints.empty() && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
+		m_Waypoints.emplace_front(goal, nullptr);
 	}
 	UpdateMovePath();
 }
@@ -2165,12 +2178,8 @@ int AHuman::MoveAlongRoute() {
 		mover.impossibleSeen = m_ImpossiblePaths;
 		mover.repathTimer.Reset();
 	}
-	if (IsWaitingOnNewMovePath()) {
-		// (Standing still while the search runs, unless in the air, where the last flight goes on.)
-		if (!mover.flight.active) {
-			return RouteMover::Moving;
-		}
-	}
+	// (Standing still while the search runs with no route at all, unless in the air, where the last flight goes on. With a route in hand,
+	// kept by a routine refresh or a route check, the unit goes on along it until the answer replaces it.)
 	if (m_MovePath.empty() && !mover.flight.active) {
 		return RouteMover::Moving;
 	}
@@ -2350,10 +2359,9 @@ int AHuman::MoveAlongRoute() {
 		}
 		if ((mover.noSightTimer.IsPastSimMS(1000) || mover.repathTimer.IsPastSimMS(7500)) && !IsWaitingOnNewMovePath()) {
 			MoverTrace(mover.noSightTimer.IsPastSimMS(1000) ? "next point out of sight; new route" : "route refreshed");
-			RefreshRoute();
+			RefreshRoute(true);
 			mover.repathTimer.Reset();
 			mover.noSightTimer.Reset();
-			return RouteMover::Moving;
 		}
 	} else if (airborne && mover.routeCheckTimer.IsPastSimMS(500)) {
 		mover.routeCheckTimer.Reset();
