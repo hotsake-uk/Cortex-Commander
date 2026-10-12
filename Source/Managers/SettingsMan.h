@@ -246,6 +246,9 @@ namespace RTE {
 		/// Whether actors pull themselves up onto ledges and over low obstacles they walk or jet into (see Actor::TryStartMantle).
 		bool MantlingEnabled() const { return m_EnableMantling; }
 
+		/// Whether an AI humanoid stuck on the ground, its own moves spent, is given a small nudge free (off by default).
+		bool StuckPushEnabled() const { return m_EnableStuckPush; }
+
 		/// Whether everything that came off a unit and isn't flesh or bone (metal plating, gear, robot parts) settles into the terrain as Flesh Scraps,
 		/// keeping its colours, as the flesh does (see Material::GetTerrainSettleMaterial).
 		bool BodyGearSettlesAsScraps() const { return m_BodyGearSettlesAsScraps; }
@@ -368,6 +371,14 @@ namespace RTE {
 		/// Gets the gap, in pixels, a flying ship flown by its autopilot keeps between the underside of its hull and the ground when it is
 		/// sent down low, on its way and where it stops. 12, the default, is just clear of it.
 		float ShipGroundClearance() const { return m_ShipGroundClearance; }
+
+		/// Gets how far, in pixels, flying ships may go past the top of the map, and past its sides where it doesn't wrap, before they count as
+		/// gone to orbit: room to fly over and drop people onto buildings at the very top or ends of the map. Other craft are unaffected. 400 is
+		/// the default; 0 is the old line, just over the edge.
+		float ShipGraceZone() const { return m_ShipGraceZone; }
+
+		/// Gets how far, in pixels, the camera may scroll past the top, sides and bottom of a map that doesn't wrap. 400 is the default.
+		float CameraOverscroll() const { return m_CameraOverscroll; }
 
 		/// Gets how hard weapon fire (bullets, shrapnel and the other particles that hit units) strikes terrain and buildings, as a multiple
 		/// of the force it would: the impulse it meets each terrain pixel with is scaled by this, so it cuts stronger materials and slows less
@@ -811,6 +822,7 @@ namespace RTE {
 
 		/// Sets whether actors mantle ledges and vault low obstacles.
 		void SetMantlingEnabled(bool enable) { m_EnableMantling = enable; }
+		void SetStuckPushEnabled(bool enable) { m_EnableStuckPush = enable; }
 
 		/// Sets whether every scene is played without wrapping horizontally. Takes effect when a scene is next loaded.
 		void SetNoSceneWrap(bool enable) { m_NoSceneWrap = enable; }
@@ -850,6 +862,10 @@ namespace RTE {
 		void SetWoundBleedTime(float scale) { m_WoundBleedTime = std::clamp(scale, 0.1F, 10.0F); }
 		/// Sets the gap ships keep over the ground; see ShipGroundClearance.
 		void SetShipGroundClearance(float gap) { m_ShipGroundClearance = std::clamp(gap, 0.0F, 200.0F); }
+		/// Sets how far past the map's edges ships may fly; see ShipGraceZone. (Short of the 1000 px out of the scene where anything is deleted.)
+		void SetShipGraceZone(float zone) { m_ShipGraceZone = std::clamp(zone, 0.0F, 700.0F); }
+		/// Sets how far past the map's edges the camera may scroll; see CameraOverscroll.
+		void SetCameraOverscroll(float overscroll) { m_CameraOverscroll = std::clamp(overscroll, 0.0F, 2000.0F); }
 		/// Sets how hard weapon fire strikes terrain; see WeaponTerrainDamage.
 		void SetWeaponTerrainDamage(float scale) { m_WeaponTerrainDamage = std::clamp(scale, 0.1F, 20.0F); }
 		/// Sets which digger those units are handed; see AISpawnDiggerType.
@@ -1164,6 +1180,7 @@ namespace RTE {
 		bool m_BodyGearSettlesAsScraps; //!< Whether what came off a unit settles into the terrain as Flesh Scraps (see BodyGearSettlesAsScraps).
 		GibChunkTuning m_GibChunks; //!< How gib chunks come out, move and settle (see GibChunks).
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
+		bool m_EnableStuckPush; //!< Whether an AI humanoid stuck on the ground is nudged free once its own moves are spent (AHuman::PushFree).
 		bool m_NoSceneWrap; //!< Whether every scene is played with hard left and right edges instead of wrapping.
 		float m_Toughness[static_cast<int>(ToughnessKind::Count)]; //!< How tough each kind of actor is (see Toughness).
 		float m_AISuppression; //!< How strongly fire pins units down and shakes them, 0 to 2 (see AISuppression).
@@ -1188,6 +1205,8 @@ namespace RTE {
 		float m_BleedOutChance; //!< Percentage of wounds that keep bleeding rather than stopping, 0 to 100 (see BleedOutChance).
 		float m_WoundBleedTime; //!< Multiple of how long wounds bleed for before they stop, 0.1 to 10 (see WoundBleedTime).
 		float m_ShipGroundClearance; //!< Pixels flying ships keep between their underside and the ground, 0 to 200 (see ShipGroundClearance).
+		float m_ShipGraceZone; //!< Pixels past the map's top and sides flying ships may go, 0 to 700 (see ShipGraceZone).
+		float m_CameraOverscroll; //!< Pixels past the map's edges the camera may scroll, 0 to 2000 (see CameraOverscroll).
 		float m_WeaponTerrainDamage; //!< Multiple of the force weapon fire strikes terrain with, 0.1 to 20 (see WeaponTerrainDamage).
 		int m_AISpawnDiggerType; //!< Which digger they're handed: 0 Light, 1 Medium, 2 Heavy, 3 random (see AISpawnDiggerType).
 		bool m_AISteadyBeforeJet; //!< Whether AI units steady themselves before they jet (see AISteadiesBeforeJet).

@@ -1090,6 +1090,7 @@ namespace RTE {
 			Prone, //!< Lie down and crawl.
 			Stand, //!< Stand up from lying down.
 			Mantle, //!< Press into what is ahead with the mantle asked for (WantMantle): pulled up onto it or over it when there is room.
+			Push, //!< A small nudge to the body, up and on and away from what it is pressed against (the "Push free when stuck" setting; see PushFree).
 			Count
 		};
 		/// What a remedy did at a spot: kept across routes and orders (the route-follower's own state starts again with each), so a remedy
@@ -1101,6 +1102,10 @@ namespace RTE {
 			Timer Age;
 		};
 		std::deque<StuckRemedyMemory> m_StuckRemedyMemory;
+		Timer m_StuckPushTimer; //!< Since the last stuck push (PushFree), for its cooldown.
+		/// The stuck remedy's push (StuckRemedy::Push): out of the terrain first if the body is in it, then one small nudge, mostly up, partly
+		/// the way it is going and away from what it is pressed against. @param direction The way the route goes, -1 left or 1 right.
+		void PushFree(float direction);
 		void RememberStuckRemedy(const Vector& spot, int remedy, bool worked);
 		/// Picks the next remedy to try at a spot, of those allowed now and not tried this time stuck: one that worked there first, then the
 		/// rest in order, leaving out those that failed there last time. @return The remedy, or -1 for none.

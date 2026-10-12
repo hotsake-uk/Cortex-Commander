@@ -104,6 +104,8 @@ void ACShip::Clear() {
 	m_FlightFloor = FLT_MAX;
 	m_SteerTrim.Reset();
 	m_FlownTimer.Reset();
+	m_HeldByPause = false;
+	m_PausedAt.Reset();
 	m_FlightToRestore = FlightToRestore::None;
 	m_GoalToRestore.Reset();
 }
@@ -347,6 +349,10 @@ bool ACShip::HullLineClear(const Vector& from, const Vector& to) const {
 	return true;
 }
 
+float ACShip::GetOrbitGrace() const {
+	return g_SettingsMan.ShipGraceZone();
+}
+
 float ACShip::LowClearance() const {
 	return HullUnderside() + g_SettingsMan.ShipGroundClearance();
 }
@@ -364,7 +370,7 @@ Vector ACShip::LowPoint(const Vector& spot, float extraAltitude) {
 		g_SceneMan.WrapPosition(under);
 		lowest = std::min(lowest, g_SceneMan.MovePointToGround(under, keep, 4).m_Y);
 	}
-	to.m_Y = std::max(std::min(to.m_Y, lowest), GetRadius());
+	to.m_Y = std::max(std::min(to.m_Y, lowest), SkyTop());
 	return to;
 }
 
@@ -418,14 +424,15 @@ bool ACShip::FlyRouteTo(const Vector& spot) {
 		const float ground = g_SceneMan.MovePointToGround(Vector(node.m_X, node.m_Y - 10.0F), 0, 4).m_Y;
 		float room = 0.0F;
 		while (room < want + top) {
+			// (Over the top of the map is open air, as far as its room past the edges goes.)
 			int y = static_cast<int>(ground - room - 8.0F);
-			if (y < 0 || g_SceneMan.GetTerrMatter(static_cast<int>(node.m_X), y) != MaterialColorKeys::g_MaterialAir) {
+			if (static_cast<float>(y) < SkyTop() || g_SceneMan.GetTerrMatter(static_cast<int>(node.m_X), y) != MaterialColorKeys::g_MaterialAir) {
 				break;
 			}
 			room += 8.0F;
 		}
 		const float lift = room >= want + top ? want : std::max(room - top, std::min(room, want) * 0.5F);
-		raised.emplace_back(node.m_X, std::max(ground - lift, radius));
+		raised.emplace_back(node.m_X, std::max(ground - lift, SkyTop()));
 	}
 	// And straight on past the points it can see past: from each, to the furthest a little way on with open air between. (A cautious order
 	// looks less far ahead, so the way round enemies isn't cut across.)
@@ -647,7 +654,7 @@ void ACShip::UpdateCombat() {
 				for (float lift: {0.0F, -60.0F, -120.0F}) {
 					Vector ground = keepNearPost(enemyPos + Vector(static_cast<float>(s) * distance * range, 0.0F));
 					Vector candidate = LowPoint(ground) + Vector(0.0F, lift);
-					candidate.m_Y = std::max(candidate.m_Y, radius);
+					candidate.m_Y = std::max(candidate.m_Y, SkyTop());
 					if (fallback.IsZero()) {
 						fallback = candidate;
 					}
@@ -800,7 +807,7 @@ bool ACShip::UpdateRam() {
 		Vector point = at;
 		g_SceneMan.WrapPosition(point);
 		const float ground = g_SceneMan.MovePointToGround(point, 0.0F, 4).m_Y;
-		point.m_Y = std::max(std::min(point.m_Y, ground - radius * 0.6F), radius);
+		point.m_Y = std::max(std::min(point.m_Y, ground - radius * 0.6F), SkyTop());
 		return point;
 	};
 	const float flightSpeed = m_FlightSpeed;
@@ -921,6 +928,19 @@ void ACShip::UpdateAutopilot() {
 		m_HasHoldPoint = true;
 	}
 	m_FlownTimer.Reset();
+	// The AI paused: it hovers where it was when the pause came and does nothing else (no fighting, ramming, or going on along its route),
+	// then carries on with what it was doing once the AI is let loose.
+	if (!Controller::AIMayAct()) {
+		if (!m_HeldByPause) {
+			m_HeldByPause = true;
+			m_PausedAt = m_Pos;
+		}
+		if (!m_EnginesOff) {
+			SteerTo(m_PausedAt, true);
+		}
+		return;
+	}
+	m_HeldByPause = false;
 	// Landed with its engines off: it stays down till sent somewhere (a go-to, however given).
 	if (m_EnginesOff) {
 		if (m_AIMode != AIMODE_GOTO) {
@@ -1012,11 +1032,11 @@ void ACShip::UpdateFlight() {
 			// Its cargo let out low over the ground under it, or, just come in (bought, from orbit), waiting there: the only
 			// times it goes down to it by itself.
 			// (Low, but with room under it for whoever gets out to land on their feet.)
-			m_HoldPoint = DropOffPoint(Vector(m_Pos.m_X, std::max(m_Pos.m_Y, radius)));
+			m_HoldPoint = DropOffPoint(Vector(m_Pos.m_X, std::max(m_Pos.m_Y, SkyTop())));
 			m_HasHoldPoint = true;
 		} else {
 			// Any other: it holds where it is, at the height it is (in the scene).
-			m_HoldPoint = Vector(m_Pos.m_X, std::max(m_Pos.m_Y, radius * 2.0F));
+			m_HoldPoint = Vector(m_Pos.m_X, std::max(m_Pos.m_Y, SkyTop() + radius));
 			m_HasHoldPoint = true;
 		}
 		if (wasDelivering && m_AIMode != AIMODE_DELIVER) {
@@ -1181,7 +1201,7 @@ bool ACShip::AirRoute(const Vector& from, const Vector& to, std::deque<Vector>& 
 		for (float side: {-1.0F, 0.0F, 1.0F}) {
 			top = std::min(top, GroundTopAt(point.m_X + side * halfWidth, point.m_Y + clearance));
 		}
-		point.m_Y = std::max(std::min(point.m_Y, top - clearance), radius);
+		point.m_Y = std::max(std::min(point.m_Y, top - clearance), SkyTop());
 		g_SceneMan.WrapPosition(point);
 		points.push_back(point);
 	}
@@ -1276,7 +1296,7 @@ void ACShip::Update() {
 	ZoneScoped;
 
 	// Going to orbit with its crew: they go with it, in its hold (so they're counted and kept, as whoever rides in a craft's hold is).
-	if (m_CanEnterOrbit && (m_Pos.m_Y < -m_CharHeight || m_Pos.m_Y > g_SceneMan.GetSceneHeight() + m_CharHeight) && !m_Crew.IsEmpty()) {
+	if (m_CanEnterOrbit && (m_Pos.m_Y < -m_CharHeight - GetOrbitGrace() || m_Pos.m_Y > g_SceneMan.GetSceneHeight() + m_CharHeight + GetOrbitGrace()) && !m_Crew.IsEmpty()) {
 		for (Actor* unit: m_Crew.TakeAllCrew()) {
 			AddInventoryItem(unit);
 		}
@@ -1331,7 +1351,7 @@ void ACShip::SeatCargo() {
 }
 
 void ACShip::UpdateAIBoarding() {
-	if (!m_OrderedBoardTimer.IsPastSimMS(250) || IsDead() || Controller::IsAIPaused()) {
+	if (!m_OrderedBoardTimer.IsPastSimMS(250) || IsDead() || !Controller::AIMayAct()) {
 		return;
 	}
 	m_OrderedBoardTimer.Reset();
@@ -1419,8 +1439,9 @@ void ACShip::UpdateGuns() {
 			}
 			fire = m_Controller.IsState(WEAPON_FIRE);
 			gun.TargetID = 0;
-		} else if (manned) {
-			// A gunner looks round now and then for the nearest enemy in sight, swings round to it and fires once it is on it.
+		} else if (manned && Controller::AIMayAct()) {
+			// A gunner looks round now and then for the nearest enemy in sight, swings round to it and fires once it is on it. (With the AI
+			// paused, it holds its aim and fire.)
 			if (gun.TargetTimer.IsPastSimMS(400)) {
 				gun.TargetID = FindGunTarget(turret);
 				gun.TargetTimer.Reset();
@@ -1450,7 +1471,7 @@ void ACShip::UpdateGuns() {
 			} else {
 				gun.TargetID = 0;
 			}
-		} else {
+		} else if (!manned) {
 			// Unmanned, it comes to rest pointing ahead.
 			gun.AimAngle += std::clamp(rotationFacing - gun.AimAngle, -deltaTime, deltaTime);
 			gun.TargetID = 0;

@@ -155,6 +155,13 @@ namespace RTE {
 		/// @param from Where it starts. @param to Where it goes. @return Whether nothing is in the way.
 		bool HullLineClear(const Vector& from, const Vector& to) const;
 
+		/// Gets how much past the map's edges it may go before it counts as gone to orbit: the Ship room past map edges setting.
+		float GetOrbitGrace() const override;
+
+		/// Gets the highest it is sent to in the scene: as far over the top of the map as its room past the edges lets it, its whole body
+		/// within that. (A y, which is down the scene.)
+		float SkyTop() const { return GetRadius() - GetOrbitGrace(); }
+
 		/// Gets the height of its hull's picture.
 		float HullHeight() const { return static_cast<float>(std::max(GetSpriteHeight(), 1)); }
 
@@ -315,6 +322,8 @@ namespace RTE {
 		float m_FlightFloor; //!< The lowest it may fly just now for the ground ahead (GetFlightFloor).
 		Vector m_SteerTrim; //!< What the controller has built up, near a place it stops at, against whatever drifts it off (its trim, its load, a lean): the off, in metre seconds.
 		Timer m_FlownTimer; //!< Since its flight controller last ran: a gap means a player flew it.
+		bool m_HeldByPause; //!< Whether its autopilot is holding it for the paused AI (Controller::AIMayAct).
+		Vector m_PausedAt; //!< Where it hovers while the AI is paused.
 		/// What a saved game it was read from had it doing in the air, taken up when its flight controller first runs (RestoreFlight).
 		enum class FlightToRestore { None, Hold, Goal };
 		FlightToRestore m_FlightToRestore; //!< What it was doing.

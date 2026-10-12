@@ -299,6 +299,13 @@ namespace RTE {
 		/// Pauses or resumes the AI.
 		static void SetAIPaused(bool paused) { s_AIPaused = paused; }
 
+		/// Gets whether AI decisions may be made right now: the one check every AI branch a unit class runs itself goes through. UpdateAI (the
+		/// Lua AI) is already held by the pause here in the controller, but a class that thinks in its own C++ update (a vehicle's driver and
+		/// gunner, a ship's autopilot, its guns, passengers firing from their seats, riders getting out) must ask this first, the unit's own AI
+		/// and its AI crew alike (an AI gunner in a player's vehicle too), or the pause and any later global AI switch won't reach it.
+		/// (Not IsHeldByPausedAI, which only blanks an AI unit's keys and leaves craft flying so they don't fall: a paused craft hovers.)
+		static bool AIMayAct() { return !s_AIPaused; }
+
 		/// Gets whether the unit menu (ActionMenu) is up after the right button was let go, as it stays with UnitMenuClickToOpen: the mouse
 		/// player's pie menu is kept open under it, so the unit doesn't fire or aim with the clicks and mouse moves the menu takes.
 		static bool IsUnitMenuHeldOpen() { return s_UnitMenuHeldOpen; }

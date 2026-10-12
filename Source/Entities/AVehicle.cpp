@@ -1169,7 +1169,7 @@ void AVehicle::UpdateAIDriving() {
 	m_Braking = true;
 	m_AIHop = false;
 	// (One the player commands drives where it's told whatever the AI vehicles setting, which is about AI units taking vehicles of their own.)
-	if (Controller::IsAIPaused() || (!g_SettingsMan.AIUsesVehicles() && !m_Commanded)) {
+	if (!Controller::AIMayAct() || (!g_SettingsMan.AIUsesVehicles() && !m_Commanded)) {
 		return;
 	}
 	// A new order starts afresh.
@@ -1304,7 +1304,7 @@ float AVehicle::GetClimbAngle() const {
 }
 
 void AVehicle::UpdateAIBoarding() {
-	if (!g_SettingsMan.AIUsesVehicles() || IsDead() || Controller::IsAIPaused()) {
+	if (!g_SettingsMan.AIUsesVehicles() || IsDead() || !Controller::AIMayAct()) {
 		m_Recruits.clear();
 		return;
 	}
@@ -1418,9 +1418,9 @@ void AVehicle::UpdateAIBoarding() {
 
 void AVehicle::UpdateAIUnloading() {
 	m_AIWantsStop = false;
-	// (Told to stay in, or commanded as one unit, VC-1: nobody gets out on their own. A commanded one's crew get out when ordered out, or are
+	// (Told to stay in, commanded as one unit, VC-1, or the AI paused: nobody gets out on their own. A commanded one's crew get out when ordered out, or are
 	// let out by the sandbox when it can't get where it was sent.)
-	if (m_CrewStaysIn || m_Commanded) {
+	if (m_CrewStaysIn || m_Commanded || !Controller::AIMayAct()) {
 		return;
 	}
 	// (Stopped for good with nowhere more to go: riders get out even short of where they're going, a cliff it can't climb, say.)
@@ -1556,8 +1556,9 @@ void AVehicle::UpdateGun() {
 			}
 		}
 		m_GunTargetID = 0;
-	} else if (manned) {
-		// A gunner looks round now and then for the nearest enemy in sight, swings round to it and fires once it is on it.
+	} else if (manned && Controller::AIMayAct()) {
+		// A gunner looks round now and then for the nearest enemy in sight, swings round to it and fires once it is on it. (With the AI
+		// paused, it holds its aim and fire.)
 		if (m_GunTargetTimer.IsPastSimMS(400)) {
 			m_GunTargetID = FindGunTarget();
 			m_GunTargetTimer.Reset();

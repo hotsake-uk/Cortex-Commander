@@ -338,6 +338,8 @@ void DebugMan::SettingsGUI() {
 		Tip("How fast the rain, snow, ash and dust move: their fall, how the wind carries them, and their sway, swirl and flicker. They keep their angle, so shelter and splashes still line up. 1: as the weather has it.");
 		Check("Weather everywhere", &settings.WeatherEverywhere);
 		Tip("The rain, snow, ash and dust show everywhere but over the terrain and its back walls: under roofs and overhangs and in cave mouths too, wherever the sky or the scenery behind shows. The ground still only gets wet or snowy where the weather reaches it.");
+		Check("Weather over the background", &settings.WeatherOverBackground);
+		Tip("The rain, snow, ash and dust are drawn over the sky and the distant scenery. Off: they only show in front of the terrain's back walls, units and the rest of the scene, not painted over the background.");
 		Slider("Wind", &settings.Wind, -400.0F, 400.0F, "%.0f px/s");
 		Tip("The wind's steady strength and way: negative blows left. The natural wind below makes it gust and wander around this.");
 		{
@@ -1101,6 +1103,8 @@ void DebugMan::SettingsGUI() {
 		}
 		Toggle("Mantle ledges and vault low obstacles", g_SettingsMan.MantlingEnabled(), [](bool on) { g_SettingsMan.SetMantlingEnabled(on); });
 		Tip("Units, players' included, pull themselves up onto a ledge or over a low obstacle they walk or jet into, rather than needing the jetpack to get the height exactly right.");
+		Toggle("Push free when stuck", g_SettingsMan.StuckPushEnabled(), [](bool on) { g_SettingsMan.SetStuckPushEnabled(on); });
+		Tip("AI soldiers stuck on terrain, once crouching, backing off, leaping, hopping, crawling and mantling haven't got them moving, get a small nudge up and on. Players' own units are never pushed.");
 		Toggle("No map wrapping", g_SettingsMan.NoSceneWrap(), [](bool on) { g_SettingsMan.SetNoSceneWrap(on); });
 		Tip("Every map has hard left and right edges and one copy of the world, instead of looping round. Takes effect when the next map loads.");
 		float bleedOut = g_SettingsMan.BleedOutChance();
@@ -1128,6 +1132,16 @@ void DebugMan::SettingsGUI() {
 		if (Plain() && ToolUI::Button("Normal ship clearance")) {
 			g_SettingsMan.SetShipGroundClearance(12.0F);
 		}
+		float graceZone = g_SettingsMan.ShipGraceZone();
+		if (Slider("Ship room past map edges", &graceZone, 0.0F, 700.0F, "%.0f px")) {
+			g_SettingsMan.SetShipGraceZone(graceZone);
+		}
+		Tip("How far flying ships (the Gunship and Frigate) can go above the top of the map, and past its sides where it doesn't wrap, before they leave for orbit. With room up there they can fly over buildings at the very top of the map and drop people onto them, and you can send them there. Drop ships and rockets still leave just over the edge. 0 is the old line. 400 px is normal.");
+		float overscroll = g_SettingsMan.CameraOverscroll();
+		if (Slider("Camera scroll past map edges", &overscroll, 0.0F, 2000.0F, "%.0f px")) {
+			g_SettingsMan.SetCameraOverscroll(overscroll);
+		}
+		Tip("How far the camera can scroll or pan past the top, sides and bottom of a map that doesn't wrap, so what's at the edge can be brought into the middle of the screen. 0 stops at the edge as before. 400 px is normal.");
 		float terrainDamage = g_SettingsMan.WeaponTerrainDamage();
 		if (Slider("Weapon damage to terrain", &terrainDamage, 0.1F, 20.0F, "%.2fx", ImGuiSliderFlags_Logarithmic)) {
 			g_SettingsMan.SetWeaponTerrainDamage(terrainDamage);
