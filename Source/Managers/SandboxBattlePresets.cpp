@@ -99,6 +99,7 @@ namespace SandboxDetail {
 			visit("CaptureSeconds", mode.CaptureSeconds);
 			visit("TimeLimit", mode.TimeLimit);
 			visit("BonusSeconds", mode.BonusSeconds);
+			visit("BlockLastRespawns", mode.BlockLastRespawns);
 			visit("Tickets", mode.Tickets);
 			visit("KillsToWin", mode.KillsToWin);
 			visit("VipRespawnSeconds", mode.VipRespawnSeconds);

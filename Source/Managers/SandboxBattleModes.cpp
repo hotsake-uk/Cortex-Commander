@@ -2560,6 +2560,21 @@ namespace SandboxDetail {
 			return SpreadSpot(zone, unit ? unit->GetHeight() : 0.0F, [&objective](const Vector& spot) { return DistanceBetween(spot, objective); });
 		}
 
+		/// Whether the defenders' respawns are held back now: "Block respawns on last objective" on, the last objective in play, and the
+		/// attackers taking it or fighting over it.
+		bool LastRespawnsBlocked() {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			return settings.BlockLastRespawns && !settings.Zones.empty() && s_Objective == static_cast<int>(settings.Zones.size()) - 1 && (s_Contested || s_Progress > 0.0F);
+		}
+
+		/// The defenders get no units past their first team size while LastRespawnsBlocked.
+		int AssaultRoom(int side, int room) {
+			if (side != AttackerOf(s_ModeRun.Settings) && LastRespawnsBlocked()) {
+				return std::min(room, std::max(s_ModeRun.Settings.TeamSize[side] - s_BattleTeams[side].Sent, 0));
+			}
+			return room;
+		}
+
 		/// The first of the defending teams (who are named as the winners when time runs out), or -1 with more than one.
 		int OnlyDefender(const BattleModeSettings& settings) {
 			int defender = -1;
@@ -2593,6 +2608,7 @@ namespace SandboxDetail {
 				defenders += side != attacker && TeamIn(settings, side) ? in[side] : 0;
 			}
 			const float step = 6.0F / UpdatesPerSecond();
+			const bool wasBlocked = LastRespawnsBlocked();
 			const bool wasContested = s_Contested;
 			s_Contested = in[attacker] > 0 && defenders > 0;
 			if (s_Contested && !wasContested) {
@@ -2602,6 +2618,9 @@ namespace SandboxDetail {
 				s_Progress += step;
 			} else if (in[attacker] == 0) {
 				s_Progress = std::max(s_Progress - step * 0.5F, 0.0F);
+			}
+			if (const bool blocked = LastRespawnsBlocked(); blocked != wasBlocked) {
+				Say(blocked ? "Last objective under attack: no more respawns for the defenders" : "Last objective clear: the defenders' respawns are back");
 			}
 			if (s_Progress >= static_cast<float>(std::max(settings.CaptureSeconds, 1))) {
 				++s_ModeRun.Score[attacker];
@@ -2639,6 +2658,9 @@ namespace SandboxDetail {
 			changed |= ImGui::SliderInt("Added per objective", &setup.BonusSeconds, 0, 300, "%d s");
 			ImGui::EndDisabled();
 			ImGui::SetItemTooltip("Seconds added to the attackers' time for each objective they take.");
+			changed |= ImGui::Checkbox("Block respawns on last objective", &setup.BlockLastRespawns);
+			ImGui::SetItemTooltip("While the last objective is in play and the attackers are taking it or fighting over it, the defenders get no more respawns: "
+			                      "only the units they have left can hold it. Their respawns come back if the attackers are pushed off and its taking slips back to nothing.");
 		}
 
 		void AssaultDraw(bool running) {
@@ -2668,6 +2690,9 @@ namespace SandboxDetail {
 			}
 			if (running) {
 				std::string line = "ASSAULT    " + SideName(attacker) + " attacking    objective " + std::to_string(std::min(s_Objective + 1, static_cast<int>(settings.Zones.size()))) + " of " + std::to_string(settings.Zones.size());
+				if (LastRespawnsBlocked()) {
+					line += "    NO DEFENDER RESPAWNS";
+				}
 				if (s_Contested) {
 					line += "    CONTESTED";
 				} else if (s_Progress > 0.0F) {
@@ -4841,6 +4866,7 @@ namespace SandboxDetail {
 		     .SettingsChanged = AssaultSettingsChanged,
 		     .UnitsMade = AssaultUnitsMade,
 		     .SpawnSpot = AssaultSpawnSpot,
+		     .Room = AssaultRoom,
 		     .Update = AssaultUpdate,
 		     .Panel = AssaultPanel,
 		     .Draw = AssaultDraw,
