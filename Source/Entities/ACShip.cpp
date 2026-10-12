@@ -80,6 +80,14 @@ void ACShip::Clear() {
 	m_TouchdownTimer.Reset();
 	m_OrderedBoardTimer.Reset();
 	m_EngageID = 0;
+	m_RamID = 0;
+	m_RamAuto = false;
+	m_RamPhase = RamPhase::RunUp;
+	m_RamSide = 1.0F;
+	m_HadGuns = false;
+	m_RamSpeedScale = 1.5F;
+	m_RamDamage = 0.6F;
+	m_RamSelfDamage = 0.25F;
 	m_CombatTargetID = 0;
 	m_CombatSpot.Reset();
 	m_HasCombatSpot = false;
@@ -91,6 +99,7 @@ void ACShip::Clear() {
 	m_HasHoldPoint = false;
 	m_FlightTarget.Reset();
 	m_FlightFloor = FLT_MAX;
+	m_SteerTrim.Reset();
 	m_FlownTimer.Reset();
 }
 
@@ -109,6 +118,9 @@ int ACShip::Create(const ACShip& reference) {
 	m_EnginesOff = reference.m_EnginesOff;
 	m_FlightSpeed = reference.m_FlightSpeed;
 	m_ClimbSpeed = reference.m_ClimbSpeed;
+	m_RamSpeedScale = reference.m_RamSpeedScale;
+	m_RamDamage = reference.m_RamDamage;
+	m_RamSelfDamage = reference.m_RamSelfDamage;
 
 	return 0;
 }
@@ -163,6 +175,9 @@ int ACShip::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("GunAimRange", { reader >> m_GunAimRange; });
 	MatchProperty("FlightSpeed", { reader >> m_FlightSpeed; });
 	MatchProperty("ClimbSpeed", { reader >> m_ClimbSpeed; });
+	MatchProperty("RamSpeedScale", { reader >> m_RamSpeedScale; });
+	MatchProperty("RamDamage", { reader >> m_RamDamage; });
+	MatchProperty("RamSelfDamage", { reader >> m_RamSelfDamage; });
 
 	EndPropertyList;
 }
@@ -187,6 +202,9 @@ int ACShip::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("GunAimRange", m_GunAimRange);
 	writer.NewPropertyWithValue("FlightSpeed", m_FlightSpeed);
 	writer.NewPropertyWithValue("ClimbSpeed", m_ClimbSpeed);
+	writer.NewPropertyWithValue("RamSpeedScale", m_RamSpeedScale);
+	writer.NewPropertyWithValue("RamDamage", m_RamDamage);
+	writer.NewPropertyWithValue("RamSelfDamage", m_RamSelfDamage);
 
 	return 0;
 }
@@ -209,6 +227,7 @@ bool ACShip::TakeSeat(Actor* unit, int seat) {
 }
 
 bool ACShip::FlyTo(const Vector& spot) {
+	m_RamID = 0;
 	m_Route.clear();
 	m_EnginesOff = false;
 	return CanFly() && AutopilotGoTo(spot);
@@ -240,7 +259,21 @@ PathAgent ACShip::GetPathAgent() const {
 	return agent;
 }
 
+float ACShip::LowClearance() const {
+	return std::max(GetRadius() * 1.1F, 30.0F);
+}
+
+Vector ACShip::LowPoint(const Vector& spot, float extraAltitude) {
+	// Where it's sent, as it was clicked: only raised off the ground enough to clear it, not up to a drop ship's hover height.
+	Vector to = spot;
+	g_SceneMan.WrapPosition(to);
+	const float lowest = AutopilotGroundBelow(Vector(to.m_X, to.m_Y - 10.0F), LowClearance() + std::max(extraAltitude, 0.0F));
+	to.m_Y = std::max(std::min(to.m_Y, lowest), GetRadius());
+	return to;
+}
+
 bool ACShip::FlyRouteTo(const Vector& spot) {
+	m_RamID = 0;
 	m_EnginesOff = false;
 	if (!CanFly() || !AutopilotStarted()) {
 		m_Route.clear();
@@ -252,7 +285,7 @@ bool ACShip::FlyRouteTo(const Vector& spot) {
 	const float radius = GetRadius();
 	// A cautious order flies higher, up to half as high again over the ground, further from small arms below.
 	const float extra = AutopilotHoverHeight() * 0.5F * care;
-	const Vector goal = AutopilotHoverPoint(spot, extra);
+	const Vector goal = LowPoint(spot, extra);
 	// (Sent again where it is already going, as the standing orders do: the route it has goes on.)
 	if (!m_Route.empty() && m_AIMode == AIMODE_GOTO && g_SceneMan.ShortestDistance(m_Route.back(), goal).MagnitudeIsLessThan(24.0F)) {
 		return true;
@@ -290,7 +323,7 @@ bool ACShip::FlyRouteTo(const Vector& spot) {
 		return AutopilotGoTo(goal);
 	}
 	// Each point raised to its hover height over the ground there, as far as the room over it lets it.
-	const float want = AutopilotHoverHeight() + extra;
+	const float want = LowClearance() + 20.0F + extra;
 	std::vector<Vector> raised;
 	raised.reserve(path.size());
 	for (const Vector& node: path) {
@@ -389,6 +422,7 @@ bool ACShip::EngageTarget(const Actor* target) {
 		return false;
 	}
 	m_EnginesOff = false;
+	m_RamID = 0;
 	if (m_EngageID != target->GetUniqueID()) {
 		m_EngageID = target->GetUniqueID();
 		m_HasCombatSpot = false;
@@ -404,7 +438,7 @@ void ACShip::UpdateCombat() {
 		m_HitTimer.Reset();
 	}
 	m_CombatHealth = GetHealth();
-	if (!m_CombatTimer.IsPastSimMS(250)) {
+	if (m_RamID || !m_CombatTimer.IsPastSimMS(250)) {
 		return;
 	}
 	m_CombatTimer.Reset();
@@ -414,7 +448,8 @@ void ACShip::UpdateCombat() {
 	};
 	Vector suppressCentre;
 	float suppressRadius = 0.0F;
-	const bool holding = m_AIMode == AIMODE_SENTRY || m_AIMode == AIMODE_STAY || (m_AIMode == AIMODE_GOTO && m_HasCombatSpot);
+	// (Sent somewhere on a plain move, it stays where it was sent: its guns fight from there, it doesn't fly off after what they're on.)
+	const bool holding = (m_AIMode == AIMODE_SENTRY || m_AIMode == AIMODE_STAY || (m_AIMode == AIMODE_GOTO && m_HasCombatSpot)) && m_StandingOrder.Kind != ORDER_MOVE;
 	const Actor* target = enemyByID(m_EngageID);
 	if (!target) {
 		m_EngageID = 0;
@@ -521,7 +556,7 @@ void ACShip::UpdateCombat() {
 			for (float distance: {share, share * 0.7F, std::min(share * 1.3F, 0.8F)}) {
 				for (float lift: {0.0F, -60.0F, -120.0F}) {
 					Vector ground = keepNearPost(enemyPos + Vector(static_cast<float>(s) * distance * range, 0.0F));
-					Vector candidate = AutopilotHoverPoint(ground) + Vector(0.0F, lift);
+					Vector candidate = LowPoint(ground, 40.0F) + Vector(0.0F, lift);
 					candidate.m_Y = std::max(candidate.m_Y, radius);
 					if (fallback.IsZero()) {
 						fallback = candidate;
@@ -557,6 +592,174 @@ void ACShip::UpdateCombat() {
 	} else {
 		FlyRouteTo(spot);
 	}
+}
+
+bool ACShip::RamTarget(const Actor* target, bool automatic) {
+	if (!target || target->GetTeam() == m_Team || !CanFly() || !AutopilotStarted()) {
+		return false;
+	}
+	m_EnginesOff = false;
+	m_Route.clear();
+	m_EngageID = 0;
+	m_HasCombatSpot = false;
+	if (m_RamID != target->GetUniqueID()) {
+		m_RamID = target->GetUniqueID();
+		// (From the side it is on already.)
+		m_RamSide = g_SceneMan.ShortestDistance(target->GetPos(), m_Pos, g_SceneMan.SceneWrapsX()).m_X >= 0.0F ? 1.0F : -1.0F;
+		m_RamPhase = RamPhase::RunUp;
+		m_RamTimer.Reset();
+	}
+	m_RamAuto = automatic;
+	// (Its own flying meanwhile: once the ram is over it holds where it is.)
+	m_AIMode = AIMODE_SENTRY;
+	m_Autopilot.lastAIMode = AIMODE_SENTRY;
+	return true;
+}
+
+int ACShip::ArmedGunCount() const {
+	int armed = 0;
+	for (const Attachable* attachable: m_Attachables) {
+		if (const Turret* turret = dynamic_cast<const Turret*>(attachable); turret && turret->HasMountedDevice()) {
+			++armed;
+		}
+	}
+	return armed;
+}
+
+void ACShip::UpdateAutoRam() {
+	if (ArmedGunCount() > 0) {
+		m_HadGuns = true;
+		return;
+	}
+	if (!m_HadGuns || m_RamID || !m_RamLookTimer.IsPastSimMS(500) || m_Controller.IsPlayerControlled() || m_EnginesOff || m_StandingOrder.Hold || m_StandingOrder.Kind == ORDER_MOVE) {
+		return;
+	}
+	m_RamLookTimer.Reset();
+	const bool wraps = g_SceneMan.SceneWrapsX();
+	const Actor* target = m_EngageID ? dynamic_cast<const Actor*>(g_MovableMan.FindObjectByUniqueID(m_EngageID)) : nullptr;
+	if (!target || target->IsDead() || target->GetTeam() == m_Team) {
+		target = nullptr;
+		float nearest = m_GunRange;
+		for (const Actor* actor: g_MovableMan.GetActorList()) {
+			if (actor == this || actor->GetTeam() == m_Team || actor->GetTeam() == Activity::NoTeam || actor->IsDead() || actor->IsSetToDelete() || actor->GetHealth() <= 0.0F) {
+				continue;
+			}
+			if (float distance = g_SceneMan.ShortestDistance(m_Pos, actor->GetPos(), wraps).GetMagnitude(); distance < nearest) {
+				nearest = distance;
+				target = actor;
+			}
+		}
+	}
+	if (target) {
+		RamTarget(target, true);
+	}
+}
+
+bool ACShip::UpdateRam() {
+	if (!m_RamID) {
+		return false;
+	}
+	const bool wraps = g_SceneMan.SceneWrapsX();
+	const Actor* target = dynamic_cast<const Actor*>(g_MovableMan.FindObjectByUniqueID(m_RamID));
+	bool over = !target || target->IsDead() || target->IsSetToDelete() || target->GetTeam() == m_Team || m_Controller.IsPlayerControlled() || !CanFly();
+	if (!over && m_RamAuto && g_SceneMan.ShortestDistance(m_Pos, target->GetPos(), wraps).MagnitudeIsGreaterThan(m_GunRange * 1.5F)) {
+		over = true;
+	}
+	if (over) {
+		// Done: it holds where it is, for orders (or, guns gone, for the next enemy to come near).
+		m_RamID = 0;
+		m_HoldPoint = m_Pos;
+		m_HasHoldPoint = true;
+		m_AIMode = AIMODE_SENTRY;
+		m_Autopilot.lastAIMode = AIMODE_SENTRY;
+		return false;
+	}
+	const float radius = GetRadius();
+	const Vector enemyPos = target->GetPos();
+	const float runUp = std::max(radius * 4.0F, 260.0F);
+	const float above = std::max(radius, 60.0F);
+	// Where it strikes: the enemy's middle, but not so low its hull goes into the ground under it.
+	auto strikeAt = [&](const Vector& at) {
+		Vector point = at;
+		g_SceneMan.WrapPosition(point);
+		const float ground = g_SceneMan.MovePointToGround(point, 0.0F, 4).m_Y;
+		point.m_Y = std::max(std::min(point.m_Y, ground - radius * 0.6F), radius);
+		return point;
+	};
+	const float flightSpeed = m_FlightSpeed;
+	switch (m_RamPhase) {
+		case RamPhase::RunUp: {
+			// Off to its side and a little above, for the run at it.
+			const Vector spot = LowPoint(enemyPos + Vector(m_RamSide * runUp, -above));
+			SteerTo(spot, true);
+			if (g_SceneMan.ShortestDistance(m_Pos, spot, wraps).MagnitudeIsLessThan(std::max(radius, 50.0F)) || m_RamTimer.IsPastSimMS(6000)) {
+				m_RamPhase = RamPhase::Charge;
+				m_RamTimer.Reset();
+			}
+			break;
+		}
+		case RamPhase::Charge: {
+			// Flat out at where it will be when it gets there, and on through it, down near the ground if that's where it is.
+			const Vector toEnemy = g_SceneMan.ShortestDistance(m_Pos, enemyPos, wraps);
+			m_FlightSpeed = flightSpeed * std::max(m_RamSpeedScale, 1.0F);
+			const float time = std::min(toEnemy.GetMagnitude() / (m_FlightSpeed * c_PPM), 1.5F);
+			const Vector aim = strikeAt(enemyPos + target->GetVel() * (c_PPM * time));
+			const Vector through = aim + Vector(-m_RamSide * radius * 2.0F, 0.0F);
+			SteerTo(through, false, 0.5F);
+			m_FlightSpeed = flightSpeed;
+			// Past it, or too long at it: it pulls away beyond.
+			if (g_SceneMan.ShortestDistance(enemyPos, m_Pos, wraps).m_X * m_RamSide < -radius || m_RamTimer.IsPastSimMS(5000)) {
+				m_RamPhase = RamPhase::PullAway;
+				m_RamTimer.Reset();
+			}
+			break;
+		}
+		case RamPhase::PullAway: {
+			// Up and on beyond it, then round at it again from that side.
+			const Vector spot = LowPoint(enemyPos + Vector(-m_RamSide * runUp, -(radius * 3.0F + 80.0F)));
+			SteerTo(spot, true);
+			if (g_SceneMan.ShortestDistance(m_Pos, spot, wraps).MagnitudeIsLessThan(std::max(radius * 1.5F, 80.0F)) || m_RamTimer.IsPastSimMS(4000)) {
+				m_RamSide = -m_RamSide;
+				m_RamPhase = RamPhase::Charge;
+				m_RamTimer.Reset();
+			}
+			break;
+		}
+	}
+	return true;
+}
+
+void ACShip::UpdateRamHits() {
+	if (!m_RamID || !m_RamHitTimer.IsPastSimMS(500) || m_Status == DYING || m_Status == DEAD) {
+		return;
+	}
+	Actor* target = dynamic_cast<Actor*>(g_MovableMan.FindObjectByUniqueID(m_RamID));
+	if (!target || target->IsDead()) {
+		return;
+	}
+	const Vector toTarget = g_SceneMan.ShortestDistance(m_Pos, target->GetPos(), g_SceneMan.SceneWrapsX());
+	if (toTarget.MagnitudeIsGreaterThan(GetRadius() * 0.7F + target->GetRadius() * 0.5F) || toTarget.MagnitudeIsLessThan(0.01F)) {
+		return;
+	}
+	// How fast the hull closes on it, in m/s: under 4 it's a nudge, not a ram.
+	const Vector way = toTarget / toTarget.GetMagnitude();
+	const float speed = (m_Vel - target->GetVel()).Dot(way);
+	if (speed < 4.0F) {
+		return;
+	}
+	m_RamHitTimer.Reset();
+	const float share = std::clamp((speed - 4.0F) / 12.0F, 0.0F, 1.25F);
+	const float damage = share * m_RamDamage * target->GetMaxHealth();
+	target->AddHealth(-damage);
+	// It's thrown aside, as hard as the ship's weight and speed would throw it, up to 12 m/s more.
+	const float targetMass = std::max(target->GetMass(), 1.0F);
+	const float throwImpulse = std::min(GetMass() * speed * 0.4F, targetMass * 12.0F);
+	target->AddAbsImpulseForce((way + Vector(0.0F, -0.4F)) * throwImpulse, target->GetPos());
+	// The ship takes a share of it, and loses some of its speed.
+	AddHealth(-std::min(damage * m_RamSelfDamage, GetMaxHealth() / 12.0F));
+	m_Vel *= 0.8F;
+	m_RamPhase = RamPhase::PullAway;
+	m_RamTimer.Reset();
 }
 
 void ACShip::UpdateAutopilot() {
@@ -600,6 +803,7 @@ void ACShip::UpdateAutopilot() {
 		m_EnginesOff = false;
 	}
 	UpdateCraftAvoidance();
+	UpdateAutoRam();
 	UpdateCombat();
 	// Along its route (FlyRouteTo): on to the next point once near the one it is flying to. Any other order (it holds, or is sent somewhere
 	// else) or the player flying it ends the route.
@@ -620,6 +824,9 @@ void ACShip::UpdateAutopilot() {
 	}
 	if (m_AIMode == AIMODE_SCUTTLE) {
 		GibThis();
+		return;
+	}
+	if (UpdateRam()) {
 		return;
 	}
 	UpdateFlight();
@@ -683,7 +890,7 @@ void ACShip::UpdateFlight() {
 			m_HoldPoint = m_Pos;
 		} else {
 			if (!ai.hasWaypoint && !m_MovePath.empty()) {
-				ai.waypoint = AutopilotHoverPoint(m_MovePath.back());
+				ai.waypoint = LowPoint(m_MovePath.back());
 				ai.hasWaypoint = true;
 			}
 			if (ai.hasWaypoint) {
@@ -737,11 +944,11 @@ float ACShip::GroundTopAt(float x, float y) const {
 	return static_cast<float>(std::max(py, 0));
 }
 
-void ACShip::SteerTo(const Vector& target, bool stop) {
+void ACShip::SteerTo(const Vector& target, bool stop, float clearanceScale) {
 	const bool wraps = g_SceneMan.SceneWrapsX();
 	const float radius = GetRadius();
 	// How far over the ground it keeps on the way: its body and a little more.
-	const float clearance = std::max(radius * 1.2F, 30.0F);
+	const float clearance = LowClearance() * clearanceScale;
 	Vector aim = target + m_AvoidOffset;
 	Vector toAim = g_SceneMan.ShortestDistance(m_Pos, aim, wraps);
 
@@ -769,6 +976,10 @@ void ACShip::SteerTo(const Vector& target, bool stop) {
 		aim.m_Y = floor;
 		toAim = g_SceneMan.ShortestDistance(m_Pos, aim, wraps);
 	}
+	// (A new place, or not stopping at it: what it built up against drift starts again.)
+	if (!stop || g_SceneMan.ShortestDistance(m_FlightTarget, aim, wraps).MagnitudeIsGreaterThan(20.0F)) {
+		m_SteerTrim.Reset();
+	}
 	m_FlightTarget = aim;
 	m_FlightFloor = floor;
 
@@ -789,8 +1000,16 @@ void ACShip::SteerTo(const Vector& target, bool stop) {
 	float wantY = down < 0.0F ? -std::min(climbSpeed, std::abs(down) * 1.2F) : std::min({climbSpeed * 0.7F, std::sqrt(2.0F * gravity * 0.5F * down), down * 1.2F});
 
 	// The stick: up or down is a speed to hold (the drop ship's throttle, its range 7.5 m/s), across a tilt toward the speed wanted.
-	const float stickX = std::clamp((wantX - m_Vel.m_X) * 0.35F, -1.0F, 1.0F);
-	const float stickY = std::clamp((wantY + 0.5F * (wantY - m_Vel.m_Y)) / 7.5F, -1.0F, 1.0F);
+	// Near the place, what's left off it builds up on the stick, so the drop ship's hover trim (made for an empty one), a load, a lean or the
+	// stick's dead zone don't leave it held off to one side or hanging high or low of it.
+	if (stop && toAim.MagnitudeIsLessThan(std::max(radius * 3.0F, 120.0F))) {
+		const float deltaTime = g_TimerMan.GetDeltaTimeSecs();
+		m_SteerTrim += Vector(toAim.m_X, toAim.m_Y) * (deltaTime / c_PPM);
+		m_SteerTrim.m_X = std::clamp(m_SteerTrim.m_X, -3.0F, 3.0F);
+		m_SteerTrim.m_Y = std::clamp(m_SteerTrim.m_Y, -3.0F, 3.0F);
+	}
+	const float stickX = std::clamp((wantX - m_Vel.m_X) * 0.35F + m_SteerTrim.m_X * 0.15F, -1.0F, 1.0F);
+	const float stickY = std::clamp((wantY + 0.5F * (wantY - m_Vel.m_Y)) / 7.5F + m_SteerTrim.m_Y * 0.12F, -1.0F, 1.0F);
 	m_Controller.SetState(MOVE_UP, false);
 	m_Controller.SetState(MOVE_DOWN, false);
 	m_Controller.SetAnalogMove(Vector(stickX, stickY));
@@ -799,7 +1018,7 @@ void ACShip::SteerTo(const Vector& target, bool stop) {
 bool ACShip::AirRoute(const Vector& from, const Vector& to, std::deque<Vector>& route) const {
 	route.clear();
 	const float radius = GetRadius();
-	const float clearance = std::max(radius * 1.2F, 30.0F);
+	const float clearance = LowClearance();
 	const Vector way = g_SceneMan.ShortestDistance(from, to, g_SceneMan.SceneWrapsX());
 	auto clearLine = [radius](const Vector& a, const Vector& b) {
 		Vector line = g_SceneMan.ShortestDistance(a, b);
@@ -931,7 +1150,10 @@ void ACShip::Update() {
 	m_Crew.UpdateSeatedCrew();
 
 	// A knock hard enough in one update (a crash into a wall, a heavy hit) throws everyone out; going down, they bail out.
-	if (m_CrewThrowSpeed > 0.0F && !m_Crew.IsEmpty() && (m_Vel - m_Crew.GetLastVel()).MagnitudeIsGreaterThan(m_CrewThrowSpeed)) {
+	// (Ramming, they're braced for it: only a knock three times as hard throws them out.)
+	UpdateRamHits();
+	const float throwSpeed = m_RamID ? m_CrewThrowSpeed * 3.0F : m_CrewThrowSpeed;
+	if (m_CrewThrowSpeed > 0.0F && !m_Crew.IsEmpty() && (m_Vel - m_Crew.GetLastVel()).MagnitudeIsGreaterThan(throwSpeed)) {
 		m_Crew.EjectCrew(true);
 	} else if (m_Status == DYING && !m_Crew.IsEmpty()) {
 		m_Crew.EjectCrew(false);

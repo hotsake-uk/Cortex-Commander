@@ -151,4 +151,16 @@ namespace SandboxDetail {
 			drawList->AddLine(ImVec2(where.x - r * 0.7F, where.y + r * 0.7F), ImVec2(where.x + r * 0.7F, where.y - r * 0.7F), IM_COL32(160, 160, 160, 200), 1.5F);
 		}
 	}
+
+	void DrawFieldBrainOnMap(ImDrawList* drawList, const std::function<ImVec2(const Vector&)>& toMap, float mapScale) {
+		const Actor* brain = On() ? Brain() : nullptr;
+		if (!brain || (OnlySide() >= 0 && OnlySide() != s_BrainSide)) {
+			return;
+		}
+		// The command range as a faint ring (across a wrap seam it is cut at the map's edge), and the brain as a pink diamond.
+		const ImVec2 at = toMap(brain->GetPos());
+		drawList->AddCircle(at, Range() * mapScale, IM_COL32(255, 120, 210, 110), 0, 1.0F);
+		drawList->AddQuadFilled(ImVec2(at.x, at.y - 4.5F), ImVec2(at.x + 4.5F, at.y), ImVec2(at.x, at.y + 4.5F), ImVec2(at.x - 4.5F, at.y), IM_COL32(255, 120, 210, 255));
+		drawList->AddQuad(ImVec2(at.x, at.y - 4.5F), ImVec2(at.x + 4.5F, at.y), ImVec2(at.x, at.y + 4.5F), ImVec2(at.x - 4.5F, at.y), IM_COL32(0, 0, 0, 220), 1.0F);
+	}
 } // namespace SandboxDetail

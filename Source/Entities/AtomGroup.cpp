@@ -1272,7 +1272,7 @@ bool AtomGroup::PushAsLimb(const Vector& jointPos, const float limbRadius, const
 				return false;
 			}
 		}
-		pushImpulse = PushTravel(m_LimbPos, limbPath.GetCurrentVel(m_LimbPos), limbPath.GetEffectivePushForce(), didWrap, limbPath.GetNextTimeChunk(m_LimbPos), false, false);
+		pushImpulse = PushTravel(m_LimbPos, limbPath.GetCurrentVel(m_LimbPos), limbPath.GetEffectivePushForce() * g_SettingsMan.LegStrength(), didWrap, limbPath.GetNextTimeChunk(m_LimbPos), false, false);
 		limbPath.ReportProgress(m_LimbPos);
 	} while (!limbPath.FrameDone() && !limbPath.PathEnded());
 
