@@ -1657,11 +1657,16 @@ void ACShip::UpdateAIBoarding() {
 }
 
 bool ACShip::OffersRides() const {
-	if (IsDead() || m_Status == DYING || m_Controller.IsPlayerControlled() || m_Crew.GetPlayerSeat() >= 0 || IsRamming() || m_HasCombatSpot || m_EngageID != 0) {
+	if (IsDead() || m_Status == DYING || m_Controller.IsPlayerControlled() || m_Crew.GetPlayerSeat() >= 0 || IsRamming() || m_HasCombatSpot || m_EngageID != 0 || NumberValueExists("NoShipRides")) {
 		return false;
 	}
+	// (An empty ship that needs a pilot does nothing it is told: sent along with the units it stands by, its order is one it can't follow,
+	// and its AI mode is whatever it was placed or bought with. It is free for a ride, the first in flying it.)
+	if (Stranded()) {
+		return true;
+	}
 	// (Given an order by the player, or a battle mode: it is theirs, ride or not. Nor an airlift's ship, which has its own passengers.)
-	if (m_StandingOrder.Kind != ORDER_NONE || m_StandingOrder.Hold || m_StandingOrder.HasPost || m_StandingOrder.Attack || m_StandingOrder.TargetID != 0 || NumberValueExists("NoShipRides")) {
+	if (HasOrder()) {
 		return false;
 	}
 	// (Busy with something of its own: a delivery, a trip home. A go-to is only its own ride's.)
@@ -1670,6 +1675,10 @@ bool ACShip::OffersRides() const {
 	}
 	// (A crewed ship's crew all its own: anyone in it that isn't a rider is its AI crew, who fly or man the guns for whoever rides.)
 	return true;
+}
+
+bool ACShip::HasOrder() const {
+	return m_StandingOrder.Kind != ORDER_NONE || m_StandingOrder.Hold || m_StandingOrder.HasPost || m_StandingOrder.Attack || m_StandingOrder.TargetID != 0;
 }
 
 int ACShip::RiderCount() const {
@@ -1760,7 +1769,8 @@ void ACShip::UpdateAIRides() {
 
 	// Taken over by a player (flown, sat in, or given an order): the ride is off. Those coming walk on, and those in it ride along as the
 	// player's passengers, to be ordered out as they like.
-	const bool taken = m_Controller.IsPlayerControlled() || m_Crew.GetPlayerSeat() >= 0 || m_StandingOrder.Kind != ORDER_NONE || m_StandingOrder.Hold || m_StandingOrder.HasPost || m_StandingOrder.Attack || m_StandingOrder.TargetID != 0;
+	// (An order given to it while it stood empty, which it couldn't follow, was dropped when the ride began.)
+	const bool taken = m_Controller.IsPlayerControlled() || m_Crew.GetPlayerSeat() >= 0 || HasOrder();
 	if (taken) {
 		if (m_RideStage != RideStage::None) {
 			ReleaseRideRecruits();
@@ -1964,10 +1974,12 @@ void ACShip::UpdateAIRides() {
 		if (cost < 0.0F || cost >= 100000.0F) {
 			continue;
 		}
+		// (Planned from its flying height over where it stands: from a ship sat on the ground, the start had no room for its hull and the
+		// plan failed, so a parked ship never offered a ride. A route that only gets part way still does, if it ends near enough to walk.)
 		if (!gathering) {
 			std::deque<Vector> route;
 			bool reached = false;
-			if (!AirPath(m_Pos, LowPoint(goal), 0.0F, route, reached) || !reached) {
+			if (AirPath(LowPoint(m_Pos), LowPoint(goal), 0.0F, route, reached) && !reached && !route.empty() && g_SceneMan.ShortestDistance(route.back(), goal).MagnitudeIsGreaterThan(400.0F)) {
 				continue;
 			}
 		}
@@ -1982,6 +1994,10 @@ void ACShip::UpdateAIRides() {
 		m_RideRecruits.push_back({unit->GetUniqueID(), Timer()});
 		--room;
 		if (!gathering) {
+			// (Any order it was given standing empty goes: from now on it is flown for the ride.)
+			if (Stranded() && HasOrder()) {
+				ClearStandingOrder();
+			}
 			gathering = true;
 			m_RideGoal = goal;
 			m_RideTeam = unit->GetTeam();
