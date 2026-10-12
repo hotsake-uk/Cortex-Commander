@@ -1625,6 +1625,15 @@ void DebugMan::SettingsGUI() {
 		}
 		Toggle("AI units use vehicles", g_SettingsMan.AIUsesVehicles(), [](bool on) { g_SettingsMan.SetAIUsesVehicles(on); });
 		Tip("An AI unit sent a long way walks to a friendly vehicle near it that is going its way, gets in and rides (or drives it) there, then gets out and walks the rest. A vehicle with an AI driver drives itself to the place it is sent, and units sent to a vehicle get in. Off: they walk, and AI drivers sit still.");
+		Toggle("Get in from underneath or close by", g_SettingsMan.BoardFromBelow(), [](bool on) { g_SettingsMan.SetBoardFromBelow(on); });
+		Tip("Any unit, yours or the AI's, can get into a vehicle or flying ship from anywhere close round it, underneath included, not only right at a seat: jet up under a hovering ship and get in from below. Off: only beside a seat.");
+		{
+			float reach = g_SettingsMan.BoardFromBelowReach();
+			if (Slider("Get-in reach round a vehicle", &reach, Normal{24.0F}, 0.0F, 200.0F, "%.0f px")) {
+				g_SettingsMan.SetBoardFromBelowReach(reach);
+			}
+			Tip("How far beyond a vehicle's own size a unit can be and still get in, with getting in from underneath on. 24 px, as the game comes.");
+		}
 		Toggle("Vehicles wait for their passengers", g_SettingsMan.AIVehiclesWaitForRiders(), [](bool on) { g_SettingsMan.SetAIVehiclesWaitForRiders(on); });
 		Tip("An AI driver that has called units over to ride waits for them to get in before it drives off, for at most the ship ride wait below from when it has somewhere to go. Off: it drives off as soon as it knows where it's going, and those still walking over are left behind.");
 		Toggle("AI units ride flying ships", g_SettingsMan.AIRidesShips(), [](bool on) { g_SettingsMan.SetAIRidesShips(on); });

@@ -1954,7 +1954,8 @@ void ACShip::UpdateAIRides() {
 			}
 			goal = unit->GetLastAIWaypoint();
 			float walk = g_SceneMan.ShortestDistance(unit->GetPos(), goal).GetMagnitude();
-			if (walk < longWalk || g_SceneMan.ShortestDistance(m_Pos, goal).GetMagnitude() > walk + 100.0F) {
+			// (A ship a little way back, behind them, still: up to a quarter of the walk further from there than they are.)
+			if (walk < longWalk || g_SceneMan.ShortestDistance(m_Pos, goal).GetMagnitude() > walk + std::max(100.0F, walk * 0.25F)) {
 				continue;
 			}
 		}

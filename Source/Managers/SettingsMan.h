@@ -619,6 +619,13 @@ namespace RTE {
 		/// rather than leaving as soon as it has somewhere to go.
 		bool AIVehiclesWaitForRiders() const { return m_AIVehiclesWaitForRiders; }
 
+		/// Whether a unit (the player's or the AI's) can get into a vehicle or ship from anywhere close round it, from underneath too, as well
+		/// as at its seats: within its size and BoardFromBelowReach of its middle. So a unit can jet up under a hovering ship and get in.
+		bool BoardFromBelow() const { return m_BoardFromBelow; }
+
+		/// How far beyond a vehicle's size a unit can be and still get in with BoardFromBelow, in pixels.
+		float BoardFromBelowReach() const { return m_BoardFromBelowReach; }
+
 		/// Whether someone killed in an open vehicle's seat falls out of it (on, as the game comes), or slumps in the seat until the vehicle is
 		/// wrecked, thrown over or someone takes the seat. A player's own unit falls out either way, so its death is seen.
 		bool DeadCrewFallOut() const { return m_DeadCrewFallOut; }
@@ -1076,6 +1083,8 @@ namespace RTE {
 		void SetAIShipRideRange(float range) { m_AIShipRideRange = std::clamp(range, 200.0F, 5000.0F); }
 		void SetAIShipRideWait(float seconds) { m_AIShipRideWait = std::clamp(seconds, 0.0F, 120.0F); }
 		void SetAIVehiclesWaitForRiders(bool wait) { m_AIVehiclesWaitForRiders = wait; }
+		void SetBoardFromBelow(bool on) { m_BoardFromBelow = on; }
+		void SetBoardFromBelowReach(float reach) { m_BoardFromBelowReach = std::clamp(reach, 0.0F, 200.0F); }
 
 		/// Sets whether crew killed in a vehicle fall out of it; see DeadCrewFallOut.
 		void SetDeadCrewFallOut(bool fallOut) { m_DeadCrewFallOut = fallOut; }
@@ -1429,6 +1438,8 @@ namespace RTE {
 		float m_AIShipRideRange; //!< See AIShipRideRange.
 		float m_AIShipRideWait; //!< See AIShipRideWait.
 		bool m_AIVehiclesWaitForRiders; //!< See AIVehiclesWaitForRiders.
+		bool m_BoardFromBelow; //!< See BoardFromBelow.
+		float m_BoardFromBelowReach; //!< See BoardFromBelowReach.
 		bool m_DeadCrewFallOut; //!< Whether crew killed in a vehicle fall out of it (see DeadCrewFallOut).
 		bool m_PassengersFireFromVehicles; //!< Whether passengers shoot out of vehicles built to let them (see PassengersFireFromVehicles).
 		DirectOrderTuning m_DirectOrders; //!< How units behave on a direct order (see DirectOrders).

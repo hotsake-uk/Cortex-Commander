@@ -189,6 +189,8 @@ void SettingsMan::Clear() {
 	m_AIShipRideRange = 1500.0F;
 	m_AIShipRideWait = 20.0F;
 	m_AIVehiclesWaitForRiders = true;
+	m_BoardFromBelow = true;
+	m_BoardFromBelowReach = 24.0F;
 	m_AICoverDigs = true;
 	m_AICoverFallsBack = true;
 	m_AICoverLiesFlat = true;
@@ -930,6 +932,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AIShipRideRange", { float range = 0.0F; reader >> range; SetAIShipRideRange(range); });
 	MatchProperty("AIShipRideWait", { float seconds = 0.0F; reader >> seconds; SetAIShipRideWait(seconds); });
 	MatchProperty("AIVehiclesWaitForRiders", { reader >> m_AIVehiclesWaitForRiders; });
+	MatchProperty("BoardFromBelow", { reader >> m_BoardFromBelow; });
+	MatchProperty("BoardFromBelowReach", { float reach = 0.0F; reader >> reach; SetBoardFromBelowReach(reach); });
 	MatchProperty("AICoverDigs", { reader >> m_AICoverDigs; });
 	MatchProperty("AICoverFallsBack", { reader >> m_AICoverFallsBack; });
 	MatchProperty("AICoverLiesFlat", { reader >> m_AICoverLiesFlat; });
@@ -1595,6 +1599,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AIShipRideRange", m_AIShipRideRange);
 	writer.NewPropertyWithValue("AIShipRideWait", m_AIShipRideWait);
 	writer.NewPropertyWithValue("AIVehiclesWaitForRiders", m_AIVehiclesWaitForRiders);
+	writer.NewPropertyWithValue("BoardFromBelow", m_BoardFromBelow);
+	writer.NewPropertyWithValue("BoardFromBelowReach", m_BoardFromBelowReach);
 	writer.NewPropertyWithValue("AICoverDigs", m_AICoverDigs);
 	writer.NewPropertyWithValue("AICoverFallsBack", m_AICoverFallsBack);
 	writer.NewPropertyWithValue("AICoverLiesFlat", m_AICoverLiesFlat);
