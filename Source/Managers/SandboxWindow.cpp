@@ -4924,6 +4924,22 @@ namespace SandboxDetail {
 		}
 	}
 
+	/// A marker over the respawn point while the tools are open.
+	void DrawRespawnPoint() {
+		if (!s_RespawnSet) {
+			return;
+		}
+		ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+		float scale = ScenePixelsPerWindowPixel();
+		Vector onScreen = FromCamera(s_RespawnPoint);
+		ImVec2 at(ViewOrigin().x + onScreen.m_X / scale, ViewOrigin().y + onScreen.m_Y / scale);
+		ImU32 colour = c_SideColors[std::clamp(s_Player.Team, 0, c_Sides - 1)];
+		drawList->AddCircle(at, 12.0F, colour, 0, 2.0F);
+		drawList->AddLine(ImVec2(at.x - 18.0F, at.y), ImVec2(at.x + 18.0F, at.y), colour, 1.5F);
+		drawList->AddLine(ImVec2(at.x, at.y - 18.0F), ImVec2(at.x, at.y + 18.0F), colour, 1.5F);
+		drawList->AddText(ImVec2(at.x + 16.0F, at.y - 22.0F), colour, "Respawn");
+	}
+
 	void SideStatus() {
 		// The fighting units each side has, as the Battle Director counts them (Sandbox::CountUnits): not brains or craft, but a craft's passengers.
 		// ("Red 7" was one brain, one dropship and five soldiers.)

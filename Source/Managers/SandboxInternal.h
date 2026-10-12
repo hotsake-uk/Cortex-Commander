@@ -56,6 +56,7 @@
 #include <cstdlib>
 #include <algorithm>
 #include <array>
+#include <unordered_map>
 #include <cstring>
 #include <cctype>
 #include <cmath>
@@ -1411,8 +1412,19 @@ namespace SandboxDetail {
 		bool Neutral = false; //!< On no side as far as the AI goes: its units take no notice of the character.
 		bool InheritKit = false; //!< Whether the character also carries what a unit of its base class (Body) is spawned with, besides the kit.
 		bool RemoveOnLeave = true; //!< Leaving play mode takes the character away (P makes a new one). Off, it stays where you left it.
+		bool RespawnInstant = false; //!< When it dies with a respawn point set: back at the point at once. Off, the view stays where it died for a few seconds first.
 	};
 	inline PlayerSetup s_Player;
+
+	/// The respawn point for your character: it is made again here, and stepped into, when it dies while you are playing it.
+	inline bool s_RespawnSet = false;
+	inline Vector s_RespawnPoint;
+	constexpr float c_RespawnWaitSeconds = 4.0F; //!< How long the view stays where it died, when not respawning instantly.
+	inline bool s_PlayerWasPlaying = false; //!< Your character was last seen being played: if it is then lost, that was a death.
+	inline int s_PlayerGoneUpdates = 0; //!< Updates the character has been missing while it was being played (a moment's gap while it leaves a vehicle isn't a death).
+	inline float s_RespawnWait = -1.0F; //!< Seconds left until it respawns; negative when not waiting.
+	/// The joint strength and gib limits each part of your character had before it was made unbreakable, to put back when that is turned off.
+	inline std::unordered_map<long, std::array<float, 3>> s_PlayerPartLimits;
 
 	/// Whether there is a character of your own to step into: ticked on the You tab, and only in the Sandbox game mode itself (Battle Command
 	/// has none: you command a team from above, and take over its units with the Control tool).
@@ -2618,6 +2630,7 @@ namespace SandboxDetail {
 	Actor* PlayerHolder();
 	Actor* TakeOutPlayer();
 	void RemovePlayer();
+	void ClearRespawn();
 	void EnterPlayer(bool atPlace, const Vector& place);
 	void UpdatePlayer();
 	void SelectInBox(const Vector& cornerA, const Vector& cornerB);
@@ -3040,6 +3053,7 @@ namespace SandboxDetail {
 	void UnmarkSelection();
 	void DrawSelection();
 	void DrawRallyPoints();
+	void DrawRespawnPoint();
 	void SideStatus();
 	void TimeControls();
 	void BarDivider();

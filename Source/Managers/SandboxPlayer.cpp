@@ -101,6 +101,39 @@ namespace SandboxDetail {
 		s_PlayerUnit = UnitRef();
 		s_PlayerVehicle = UnitRef();
 		s_PlayerEnterPending = 0;
+		ClearRespawn();
+	}
+
+	/// Forgets any death in progress: the character was taken away on purpose, or is back, so nothing is to be respawned.
+	void ClearRespawn() {
+		s_PlayerWasPlaying = false;
+		s_PlayerGoneUpdates = 0;
+		s_RespawnWait = -1.0F;
+	}
+
+	/// Makes your unit's whole body unbreakable, or puts its parts back as they were. (Limbs come off at a joint's impulse limit or by wounds of their own,
+	/// which keeping health and wounds right on the whole unit doesn't stop.)
+	void SetBodyUnbreakable(MOSRotating* part, bool unbreakable) {
+		if (!part) {
+			return;
+		}
+		for (Attachable* attachable: part->GetAttachables()) {
+			long id = static_cast<long>(attachable->GetUniqueID());
+			if (unbreakable) {
+				if (!s_PlayerPartLimits.count(id)) {
+					s_PlayerPartLimits[id] = {attachable->GetJointStrength(), attachable->GetGibImpulseLimit(), static_cast<float>(attachable->GetGibWoundLimit(false, false, false))};
+				}
+				attachable->SetJointStrength(0.0F);
+				attachable->SetGibImpulseLimit(0.0F);
+				attachable->SetGibWoundLimit(0);
+			} else if (auto saved = s_PlayerPartLimits.find(id); saved != s_PlayerPartLimits.end()) {
+				attachable->SetJointStrength(saved->second[0]);
+				attachable->SetGibImpulseLimit(saved->second[1]);
+				attachable->SetGibWoundLimit(static_cast<int>(saved->second[2]));
+				s_PlayerPartLimits.erase(saved);
+			}
+			SetBodyUnbreakable(attachable, unbreakable);
+		}
 	}
 
 	void ReleaseControl() {
@@ -246,6 +279,28 @@ namespace SandboxDetail {
 		}
 		if (!actor) {
 			s_Flying = false;
+			// The character was being played and is gone, and nothing has it (a vehicle or craft it is in): it died. With a respawn point set it comes back there.
+			if (s_PlayerWasPlaying && !PlayerHolder() && s_PlayerEnterPending == 0) {
+				if (!HasCharacter()) {
+					ClearRespawn();
+				} else if (s_RespawnWait < 0.0F && ++s_PlayerGoneUpdates >= 3) {
+					if (s_RespawnSet) {
+						s_RespawnWait = s_Player.RespawnInstant ? 0.0F : c_RespawnWaitSeconds;
+					} else {
+						ClearRespawn();
+					}
+				}
+				if (s_RespawnWait >= 0.0F) {
+					s_RespawnWait -= g_TimerMan.GetDeltaTimeSecs();
+					if (s_RespawnWait <= 0.0F) {
+						ClearRespawn();
+						// (EnterPlayer makes nothing if there already is a character, in a vehicle or not, so there is never a second one.)
+						EnterPlayer(true, s_RespawnPoint);
+					}
+				}
+			} else if (s_PlayerWasPlaying && PlayerHolder()) {
+				s_PlayerGoneUpdates = 0;
+			}
 			// Sat in a vehicle's open seat, where shots can reach it: still kept from harm, if it is to be.
 			const Actor* ridden = GetRef(s_PlayerVehicle);
 			const AVehicle* vehicle = dynamic_cast<const AVehicle*>(ridden);
@@ -262,6 +317,11 @@ namespace SandboxDetail {
 			return;
 		}
 		bool playing = s_Possessed == actor;
+		if (playing) {
+			s_PlayerWasPlaying = true;
+			s_PlayerGoneUpdates = 0;
+			s_RespawnWait = -1.0F;
+		}
 		actor->SetIgnoredByAI(s_Player.Neutral);
 		if (s_Player.Unkillable) {
 			actor->SetHealth(actor->GetMaxHealth());
@@ -274,7 +334,10 @@ namespace SandboxDetail {
 				actor->SetGibImpulseLimit(0.0F);
 				actor->SetGibWoundLimit(0);
 			}
+			// Nor losing limbs, which health that never runs out doesn't stop on its own.
+			SetBodyUnbreakable(actor, true);
 		} else if (s_PlayerGibLimits.ID == static_cast<long>(actor->GetUniqueID())) {
+			SetBodyUnbreakable(actor, false);
 			actor->SetGibImpulseLimit(s_PlayerGibLimits.Impulse);
 			actor->SetGibWoundLimit(s_PlayerGibLimits.Wounds);
 			s_PlayerGibLimits = SavedGibLimits();
@@ -295,6 +358,8 @@ namespace SandboxDetail {
 			}
 		}
 		if (!playing) {
+			// (Not being played any more, so if it dies now it is not a death to come back from.)
+			ClearRespawn();
 			StopFlying();
 			s_KitKeyPending = -1;
 			return;

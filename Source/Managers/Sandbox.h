@@ -66,6 +66,8 @@ namespace RTE {
 		/// The play key (P) in the Sandbox game mode: from above, steps into your character; from a unit, goes back above with the tools still hidden.
 		/// @param atPointer Stepping in: put the character down where the mouse points first.
 		static void TogglePlay(bool atPointer);
+		/// Sets where your character comes back when it dies while you play it: where it stands, or from above where the mouse points. (Alt+P.)
+		static void SetRespawnPoint(bool atPointer);
 
 		/// Gets whether you're looking around the Sandbox game mode from above, in no unit, with or without the tools showing. The mouse then moves the view.
 		static bool IsLookingAround();
