@@ -154,6 +154,7 @@ void SettingsMan::Clear() {
 	m_AISpawnDiggerChance = 0.0F;
 	m_BleedOutChance = 0.0F;
 	m_WoundBleedTime = 1.0F;
+	m_ShipGroundClearance = 12.0F;
 	m_WeaponTerrainDamage = 1.0F;
 	m_AISpawnDiggerType = 1;
 	m_AISteadyBeforeJet = true;
@@ -847,6 +848,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AISpawnDiggerChance", { float percent = 0.0F; reader >> percent; SetAISpawnDiggerChance(percent); });
 	MatchProperty("BleedOutChance", { float percent = 0.0F; reader >> percent; SetBleedOutChance(percent); });
 	MatchProperty("WoundBleedTime", { float scale = 1.0F; reader >> scale; SetWoundBleedTime(scale); });
+	MatchProperty("ShipGroundClearance", { float gap = 12.0F; reader >> gap; SetShipGroundClearance(gap); });
 	MatchProperty("WeaponTerrainDamage", { float scale = 1.0F; reader >> scale; SetWeaponTerrainDamage(scale); });
 	MatchProperty("AISpawnDiggerType", { int type = 1; reader >> type; SetAISpawnDiggerType(type); });
 	MatchProperty("AISteadyBeforeJet", { reader >> m_AISteadyBeforeJet; });
@@ -1384,6 +1386,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AISpawnDiggerType", m_AISpawnDiggerType);
 	writer.NewPropertyWithValue("BleedOutChance", m_BleedOutChance);
 	writer.NewPropertyWithValue("WoundBleedTime", m_WoundBleedTime);
+	writer.NewPropertyWithValue("ShipGroundClearance", m_ShipGroundClearance);
 	writer.NewPropertyWithValue("WeaponTerrainDamage", m_WeaponTerrainDamage);
 	writer.NewPropertyWithValue("AIRecklessness", m_AIRecklessness);
 	writer.NewPropertyWithValue("AILadderGiveUpSeconds", m_AILadderGiveUpSeconds);

@@ -3452,7 +3452,9 @@ namespace SandboxDetail {
 				label = "Park here: " + std::to_string(cars) + (cars == 1 ? " vehicle" : " vehicles") + ", handbrake on";
 			} else if (mode == CommandMode::Ram) {
 				const int ships = static_cast<int>(std::count_if(units.begin(), units.end(), [](const Actor* unit) { return dynamic_cast<const ACShip*>(unit) != nullptr; }));
-				label = "Ram the enemy clicked: " + std::to_string(ships) + (ships == 1 ? " ship" : " ships") + ", run after run";
+				const ImU32 color = c_CommandModeColors[static_cast<int>(CommandMode::Ram)];
+				crosshair(point, color, pixel * 6.0F);
+				label = "Ram here: " + std::to_string(ships) + (ships == 1 ? " ship" : " ships") + ", run after run";
 			} else if (mode == CommandMode::Land) {
 				const ImU32 color = c_CommandModeColors[static_cast<int>(CommandMode::Land)];
 				crosshair(g_SceneMan.MovePointToGround(point, 0.0F, 4), color, pixel * 6.0F);
@@ -6063,7 +6065,7 @@ namespace SandboxDetail {
 				}
 				line.Next(pixel * 2.0F);
 				const int ram = static_cast<int>(CommandMode::Ram);
-				if (BarChip(c_CommandModeNames[ram], current == ram, c_CommandModeColors[ram], nullptr, "Ram the enemy clicked with the selected ships: each backs off for a run-up, charges it flat out and pulls up past\nit, then comes round and goes again, till it is dead or they are given another order. A hit hurts the ship a little too.\nOthers selected attack it. A ship whose guns are all shot off rams by itself.") == 1) {
+				if (BarChip(c_CommandModeNames[ram], current == ram, c_CommandModeColors[ram], nullptr, "Ram whatever is clicked, or just the place, with the selected ships: each backs off for a run-up, charges through it\nflat out and pulls up past it, then comes round and goes again, hitting anything not on your side that's there, till\nit's gone or they're given another order. A hit hurts the ship a little too. Others selected attack it or go there. A ship whose guns are all shot off rams by itself.") == 1) {
 					s_CommandMode = CommandMode::Ram;
 				}
 			}

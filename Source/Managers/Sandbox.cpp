@@ -847,6 +847,7 @@ void Sandbox::DrawGUI() {
 			s_CameraWarmupFrames = 30;
 			s_Possessed = nullptr;
 			s_PlayerUnit = UnitRef();
+			s_PlayerMade.clear();
 			s_PlayerEnterPending = 0;
 			s_RespawnSet = false;
 			ClearRespawn();
@@ -2659,6 +2660,7 @@ void Sandbox::OnActivityStarted() {
 	// auto battle started in a skirmish kept landing waves in the next game, and the selection, groups and rally points pointed into it.)
 	s_Possessed = nullptr;
 	s_PlayerUnit = UnitRef();
+	s_PlayerMade.clear();
 	s_PlayerEnterPending = 0;
 	s_RespawnSet = false;
 	ClearRespawn();
