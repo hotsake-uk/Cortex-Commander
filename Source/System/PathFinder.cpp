@@ -1,4 +1,5 @@
 #include "PathFinder.h"
+#include "TerrainCollapse.h"
 #include "SettingsMan.h"
 #include "FluidSim.h"
 #include <algorithm>
@@ -1057,6 +1058,22 @@ DigPlan PathFinder::PlanDig(const Vector& start, const Vector& target, PathAgent
 	return plan;
 }
 
+void PathFinder::CheckCaveIn(DigPlan& plan, float radius) {
+	plan.CavesIn = false;
+	if (plan.Result != DigPlan::Ok || plan.DigSteps == 0 || !g_SettingsMan.DigSafety().PreviewWarns) {
+		return;
+	}
+	// The dug steps: each from the point before it.
+	std::vector<std::pair<Vector, Vector>> legs;
+	auto kind = plan.Kinds.begin();
+	for (auto point = plan.Route.begin(); point != plan.Route.end() && std::next(point) != plan.Route.end() && kind != plan.Kinds.end(); ++point, ++kind) {
+		if (*kind == PathStepKind::Dig) {
+			legs.emplace_back(*point, *std::next(point));
+		}
+	}
+	plan.CavesIn = !legs.empty() && TerrainCollapse::TunnelWouldCaveIn(legs, radius).Falls;
+}
+
 std::string PathFinder::DescribeDigPlan(const DigPlan& plan, float digStrength) {
 	auto materialName = [](int id) {
 		const Material* material = id > 0 ? g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id)) : nullptr;
@@ -1071,6 +1088,9 @@ std::string PathFinder::DescribeDigPlan(const DigPlan& plan, float digStrength) 
 			std::string line = "Dig " + std::to_string(metres) + " m, hardest " + materialName(plan.HardestMaterial) + ", about " + std::to_string(std::max(1, static_cast<int>(std::round(plan.DigSeconds)))) + " s";
 			if (plan.Floods) {
 				line += "; floods (liquid next to the tunnel)";
+			}
+			if (plan.CavesIn) {
+				line += "; the roof will come down";
 			}
 			return line;
 		}

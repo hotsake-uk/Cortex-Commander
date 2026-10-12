@@ -1146,6 +1146,7 @@ namespace SandboxDetail {
 		if (!plans.empty()) {
 			preview.Plan = plans[lead >= 0 ? lead : 0];
 			preview.LeadStrength = units[lead >= 0 ? lead : 0]->EstimateDigStrength();
+			PathFinder::CheckCaveIn(preview.Plan, units[lead >= 0 ? lead : 0]->GetMoveHeight() * 0.45F);
 		}
 		return preview;
 	}

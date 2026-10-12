@@ -1624,6 +1624,7 @@ void GameActivity::Update() {
 				m_DigToPlanTimer[player].Reset();
 				m_DigToPlanAt[player] = m_ActorCursor[player];
 				m_DigToPlan[player] = scene->PlanDig(digger->GetPathStart(), m_ActorCursor[player], digger->GetPathAgent(), static_cast<Activity::Teams>(digger->GetTeam()));
+				PathFinder::CheckCaveIn(m_DigToPlan[player], digger->GetMoveHeight() * 0.45F);
 			}
 			const DigPlan& plan = m_DigToPlan[player];
 			g_FrameMan.SetScreenText("Dig to here: " + PathFinder::DescribeDigPlan(plan, digger->EstimateDigStrength()), ScreenOfPlayer(player));
