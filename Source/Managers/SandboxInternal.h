@@ -2666,7 +2666,11 @@ namespace SandboxDetail {
 	RunLayout LayOutRun(const Preset& preset, const Vector& start, const Vector& end, bool snap);
 	void TakeControl(const Vector& position);
 	void StopFlying();
-	void ReleaseControl();
+	/// Lets go of the unit you control and goes back above. @param leavingPlay Whether this is leaving play mode (not stepping from one unit into your character),
+	/// which takes your character away if "Remove it when I leave play" is ticked.
+	void ReleaseControl(bool leavingPlay = true);
+	/// Out of play mode with "Remove it when I leave play" ticked, takes away your character if one is left, in the world, a vehicle or a craft.
+	void RemovePlayerOutOfPlay();
 	const Preset* FindPreset(const std::vector<Preset>& list, const std::string& presetName);
 	Vector OpenAirAt(Vector place);
 	Vector StandingPlaceBelow(Vector place);

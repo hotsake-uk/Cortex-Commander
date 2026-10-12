@@ -2850,6 +2850,9 @@ void Sandbox::Update() {
 			}
 			game->SetViewState(Activity::ViewState::Observe, Players::PlayerOne);
 		}
+		// Out of play, no character of yours is left about, however play was left: Tab, P, build mode, the unit switched away from or lost,
+		// or anything later added. (Only Tab and P took it away, and only when the game still said it was the unit you controlled.)
+		RemovePlayerOutOfPlay();
 	}
 }
 
