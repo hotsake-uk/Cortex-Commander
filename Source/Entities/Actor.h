@@ -1983,6 +1983,25 @@ namespace RTE {
 		/// Moves a mantle on: up, then over, then done.
 		void UpdateMantle();
 
+		/// Whether a gravity lift (Base.rte's Automovers) has hold of this unit: its controller steers the units in its tubes towards the next
+		/// point of their route and holds them still where they have none, and marks each one it steers every update ("Automover_Holding").
+		/// The mark is taken here, so it is fresh; the hold is over a quarter of a second after the last one.
+		/// @return Whether a lift is steering this unit now.
+		bool HeldByAutomover();
+
+		/// The route-follower's part while a gravity lift steers (AHuman and ACrab MoveAlongRoute): the lift flies the body to the route's
+		/// next point, so all the follower does is keep the route for it. Points are dropped as they are reached or passed, a route is asked
+		/// for when there is none, and the time without getting nearer is told to the lift as "AI_StuckForTime", which its own unstick uses.
+		/// No keys are pressed: a jet, a leap, a step out of a pin or a new route from the stuck handling fought the lift, and a route
+		/// cleared for a new one had the lift hold the unit still in the tube until it came.
+		/// @param progressTimer The follower's timer since it last got nearer the next point.
+		/// @param bestGap The follower's nearest yet to the next point, -1 for none.
+		/// @return 0 on its way, 1 arrived (as MoveAlongRoute).
+		int RideAutomover(Timer& progressTimer, float& bestGap);
+
+		bool m_AutomoverHeld = false; //!< Whether a gravity lift has marked this unit as one it steers (see HeldByAutomover).
+		Timer m_AutomoverHoldTimer; //!< Since a gravity lift last marked this unit as one it steers.
+		bool m_AutomoverRiding = false; //!< Whether the route-follower handed the unit to a gravity lift on its last call (see RideAutomover).
 		bool m_RouteCheck = false; //!< The path request in flight is a route check (see RequestRouteCheck): its answer is only taken if reachable.
 		bool m_WaitingAtDoor = false; //!< At the end of a route cut short at a door: the route is asked for again every couple of seconds, until the door is open or gone.
 		// The minimum range to consider having reached a move target is considered

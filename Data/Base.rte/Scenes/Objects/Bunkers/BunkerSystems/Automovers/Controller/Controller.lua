@@ -260,6 +260,9 @@ automoverActorFunctions.actorMovementUpdate = function(self)
 					self:updateDirectionsFromActorControllerInput(actorData);
 				end
 
+				-- Marked as steered by a lift, so the engine's route-follower leaves the body to the lift and only keeps the route for it (Actor::HeldByAutomover).
+				actor:SetNumberValue("Automover_Holding", 1);
+
 				local actorController = actor:GetController();
 				actorController:SetState(Controller.MOVE_LEFT, false);
 				actorController:SetState(Controller.MOVE_RIGHT, false);

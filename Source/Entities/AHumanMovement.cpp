@@ -188,6 +188,11 @@ void AHuman::UpdateAIMotor() {
 	if (m_Controller.GetInputMode() != Controller::CIM_AI || m_Status == DYING || m_Status == DEAD) {
 		return;
 	}
+	// In a gravity lift: the lift moves the body, and sets its stance. (Carried down a tube faster than a fall the motor brakes, the jet was
+	// lit against the lift; in zero gravity the hold-still brake jetted against it.)
+	if (HeldByAutomover()) {
+		return;
+	}
 	// Zero gravity: no stance to stand in, no fall to brake, no sky to hover in (MoveAlongRouteWeightless flies it). A unit with nowhere to go
 	// that's drifting brakes on its jet, so it stays where it was put rather than floating off.
 	if (ZeroGravity::AIFlies() && ZeroGravity::UnitsWeightless()) {
@@ -2222,6 +2227,34 @@ int AHuman::MoveAlongRoute() {
 		ResetRouteMovement();
 	}
 	mover.lastCallTick = tick;
+	// In a gravity lift (Base.rte's Automovers): the lift has the body, and the follower only keeps the route for it (Actor::RideAutomover).
+	// Its flights, pins and stuck handling fought the lift, and units hung in the tubes.
+	if (HeldByAutomover()) {
+		if (!m_AutomoverRiding) {
+			// Whatever it was in the middle of in its own right ends here: a flight, a ladder, a step out of a pin.
+			if (m_Ladder.active) {
+				LetGoOfLadder(Vector());
+			}
+			ResetRouteMovement();
+			m_Mover.lastCallTick = tick;
+			m_AutomoverRiding = true;
+		}
+		// (Never pinned in the lift: the watch starts again when it lets go.)
+		m_PinAnchorSet = false;
+		m_PinWideAnchorSet = false;
+		int result = RideAutomover(m_Mover.progressTimer, m_Mover.bestGap);
+		if (result == RouteMover::Arrived) {
+			m_Mover.arrivedTick = tick;
+		}
+		return result;
+	}
+	if (m_AutomoverRiding) {
+		// Let go of by the lift: on along the route from here, the follower's timers started again.
+		m_AutomoverRiding = false;
+		RemoveNumberValue("AI_StuckForTime");
+		ResetRouteMovement();
+		m_Mover.lastCallTick = tick;
+	}
 	// Pinned where it is a long while, whatever it is doing: let go and step out (see WatchForPin).
 	{
 		const bool somewhere = !m_Waypoints.empty() || !m_MovePath.empty() || m_HasMovePathGoal || g_MovableMan.ValidMO(m_pMOMoveTarget);
