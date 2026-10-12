@@ -1116,6 +1116,14 @@ void DebugMan::SettingsGUI() {
 		Tip("Riders in an open vehicle (the cart, boats, buggy and Moonhopper) can be shot in their seats. On: someone killed there falls out of the vehicle. Off: the body slumps in its seat until the vehicle is wrecked or thrown over, or someone climbs into that seat. Your own unit falls out either way. Tank crews sit inside, out of reach.");
 		Toggle("Passengers fire from vehicles", g_SettingsMan.PassengersFireFromVehicles(), [](bool on) { g_SettingsMan.SetPassengersFireFromVehicles(on); });
 		Tip("Units riding in the passenger seats of the vehicles built for it (the cart, boats, buggy, Moonhopper and Gunship) shoot out with the guns they hold: the AI at the nearest enemy in sight, your own unit where you aim. Their shots go through their own vehicle and its crew. The driver never shoots, and gunners man the vehicle's gun as before.");
+		float shipClearance = g_SettingsMan.ShipGroundClearance();
+		if (Slider("Ship ground clearance", &shipClearance, 0.0F, 200.0F, "%.0f px")) {
+			g_SettingsMan.SetShipGroundClearance(shipClearance);
+		}
+		Tip("How close flying ships (the Gunship and Frigate) fly to the ground when they're sent down low: the gap kept between the bottom of the hull and the ground, on the way and where they stop, for the AI's ships and yours alike. They still climb over hills in their way and rise higher for a clear shot. A cautious order flies up to a hull's height higher. Dropping passengers off, they hover a little higher so there is room to get out. 12 px is normal: just clear of the ground.");
+		if (Plain() && ToolUI::Button("Normal ship clearance")) {
+			g_SettingsMan.SetShipGroundClearance(12.0F);
+		}
 		float terrainDamage = g_SettingsMan.WeaponTerrainDamage();
 		if (Slider("Weapon damage to terrain", &terrainDamage, 0.1F, 20.0F, "%.2fx", ImGuiSliderFlags_Logarithmic)) {
 			g_SettingsMan.SetWeaponTerrainDamage(terrainDamage);

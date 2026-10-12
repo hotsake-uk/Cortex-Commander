@@ -1662,9 +1662,10 @@ namespace SandboxDetail {
 	struct Dropoff {
 		UnitRef Unit;
 		Vector Place; //!< Where they get out.
-		int Stage = 0; //!< 0 on the way; 1 (a ship) coming down to set them down.
+		int Stage = 0; //!< 0 on the way; 1 (a ship) coming down to hover low for them, or to set down on a Land order.
 		long long Since = 0; //!< The sim update it got to that stage.
-		bool StayDown = false; //!< A Land or Park order: a ship stays down with its engines off, a vehicle with its handbrake on, everyone aboard, rather than letting them out (and a ship climbing back up).
+		bool StayDown = false; //!< A Land or Park order: a ship stays down with its engines off, a vehicle with its handbrake on, everyone aboard, rather than letting them out (which a ship does hovering low, without setting down).
+		Vector Hover; //!< Where a ship was sent to hover or set down for it, once on its way there (Stage 1).
 	};
 	inline std::map<long, Dropoff> s_Dropoffs; //!< Drop-offs under way, by the vehicle's unique ID. Any other order given it drops its own (DropPlan).
 	inline const char* s_MoveAnswer = nullptr; //!< While a group move is sent: the trigger its units answer with in place of a plain move's (unit speech).

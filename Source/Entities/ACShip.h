@@ -3,6 +3,7 @@
 #include "ACDropShip.h"
 #include "CrewSeats.h"
 
+#include <algorithm>
 #include <deque>
 
 namespace RTE {
@@ -22,6 +23,8 @@ namespace RTE {
 		SerializableOverrideMethods;
 		ClassInfoGetters;
 		DefaultPieMenuNameGetter("Default Ship Pie Menu");
+
+		static constexpr float c_DropOffRoom = 40.0F; //!< How much higher than LowPoint a ship hovers to let its passengers out (DropOffPoint).
 
 #pragma region Creation
 		/// Constructor method used to instantiate a ACShip object in system memory. Create() should be called before using the object.
@@ -135,12 +138,33 @@ namespace RTE {
 		/// autopilot hasn't started yet. @param spot The place. @return Whether it was sent.
 		bool FlyRouteTo(const Vector& spot);
 
-		/// Gets how far over the ground its middle keeps when sent down low: its body and a little more.
+		/// Gets how far over the ground its middle keeps when sent down low: how far its hull (and the guns under it) reaches below its
+		/// middle, and the gap the Ship ground clearance setting keeps under that.
 		float LowClearance() const;
+
+		/// Gets how far its hull reaches below its middle, level: the bottom of its picture, or of a gun or engine hung lower.
+		float HullUnderside() const;
+
+		/// Gets half the width of its hull, level: the further of its picture's two ends from its middle, or of an engine or gun out further.
+		float HullHalfWidth() const;
+
+		/// Gets how far its hull reaches above its middle, level: the top of its picture, or of an engine or gun up higher.
+		float HullTop() const;
+
+		/// Gets whether there's open air for its whole hull, engines and guns and all, flown straight from one place to another.
+		/// @param from Where it starts. @param to Where it goes. @return Whether nothing is in the way.
+		bool HullLineClear(const Vector& from, const Vector& to) const;
+
+		/// Gets the height of its hull's picture.
+		float HullHeight() const { return static_cast<float>(std::max(GetSpriteHeight(), 1)); }
 
 		/// Gets the place it flies to when sent to a spot: the spot itself, raised only as far as it must be to clear the ground under it.
 		/// @param spot The spot. @param extraAltitude How much higher than that to keep.
 		Vector LowPoint(const Vector& spot, float extraAltitude = 0.0F);
+
+		/// Gets the place it hovers at to let its passengers out over a spot, or to wait when it comes in: low over the ground there, with
+		/// room under it for them to drop out and land on their feet. @param spot The spot.
+		Vector DropOffPoint(const Vector& spot) { return LowPoint(spot, c_DropOffRoom); }
 
 		/// Gets the points of the route FlyRouteTo sent it along that it has still to fly to, the next first.
 		const std::deque<Vector>& GetRoute() const { return m_Route; }
