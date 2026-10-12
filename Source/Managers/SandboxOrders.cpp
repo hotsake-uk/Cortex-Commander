@@ -166,6 +166,10 @@ namespace SandboxDetail {
 				standing.Direct = s_DirectOrder;
 				standing.TargetID = attack && target && lock ? static_cast<long>(target->GetUniqueID()) : 0;
 			}
+			// (Ramming, the standing orders' resend leaves it to it.)
+			if (resend && ship->IsRamming()) {
+				return;
+			}
 			// After an enemy, it fights it from off to one side (ACShip::UpdateCombat), not from over it, where its side guns can't bear. Sent
 			// anywhere else, it drops that enemy (a standing orders resend, the way back to a post, leaves the fight to it).
 			bool going = false;
@@ -1274,6 +1278,9 @@ namespace SandboxDetail {
 			case CommandMode::Park:
 				ParkSelected(point, shift);
 				return;
+			case CommandMode::Ram:
+				RamSelected(EnemyNear(point, team));
+				return;
 			default: {
 				bool attackMove = s_CommandMode == CommandMode::AttackMove;
 				if (shift) {
@@ -1518,6 +1525,11 @@ namespace SandboxDetail {
 			if (modifier == 0) {
 				s_Selected.clear();
 			}
+			return;
+		}
+		if (s_CommandMode == CommandMode::Ram) {
+			// The enemy clicked, else the nearest to the click.
+			RamSelected(target && target->GetTeam() != SelectionTeam() && IsSoldier(target) ? target : EnemyNear(position, SelectionTeam()));
 			return;
 		}
 		if (s_CommandMode == CommandMode::Guard) {
@@ -1839,6 +1851,7 @@ namespace SandboxDetail {
 			case CommandMode::Dropoff:
 			case CommandMode::Land:
 			case CommandMode::Park:
+			case CommandMode::Ram:
 				return true;
 			default:
 				return false;
@@ -1918,6 +1931,20 @@ namespace SandboxDetail {
 			}
 		}
 		MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::Land)]);
+	}
+
+	void RamSelected(Actor* enemy) {
+		if (!enemy) {
+			return;
+		}
+		for (Actor* unit: UnitsToMove(0, true)) {
+			// (The attack order first, for all that it clears; then a ship rams instead of fighting from off to one side.)
+			SendUnit(unit, enemy->GetPos(), enemy, true, "attack (ram)", true);
+			if (ACShip* ship = dynamic_cast<ACShip*>(unit)) {
+				ship->RamTarget(enemy);
+			}
+		}
+		MarkOrder(enemy->GetPos(), c_CommandModeColors[static_cast<int>(CommandMode::Ram)]);
 	}
 
 	bool SelectionHasCar() {
