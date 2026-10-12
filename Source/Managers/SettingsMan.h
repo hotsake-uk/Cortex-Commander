@@ -334,6 +334,16 @@ namespace RTE {
 		/// move through (FluidSim::UnitsPassThrough); 2 that, and the path grid wades every flowing liquid, mud, tar, mercury and fuel among
 		/// them, as it does oil (it knew only water, oil, acid and lava, and took the rest for ground). 2 as the game comes.
 		int UnitWaterBehaviour() const { return m_UnitWaterBehaviour; }
+		/// Whether units' own senses (the walk's look ahead, getting up, leaps, landings, mantling, ducking) see through what their bodies push
+		/// through: grass and soft plants (integrity 5 or under, not flowing). Off as before: grass read as ground over the dirt the floor
+		/// rays find, and units ducked under hanging plants and mantled onto bushes. See Actor::SensesPassTerrain.
+		bool SensesPassPlants() const { return m_SensesPassPlants; }
+		/// Whether a living soldier's senses see through ladder rungs, which its body passes: off as before, they were floor under it in mid air,
+		/// a wall beside a walk and in the way of a flight, and a lip to mantle onto.
+		bool SensesPassRungs() const { return m_SensesPassRungs; }
+		/// Whether units' senses see through specks, the crumbs of four pixels or fewer their bodies brush through (Atom::IsTerrainSpeck): off as
+		/// before, they ducked, crawled and re-routed round crumbs left by blasts and digging, and mantled against them.
+		bool SensesPassSpecks() const { return m_SensesPassSpecks; }
 		/// How much a load slows a unit's walk and lowers its leap, 0 to 1 (0 as the game comes): this share of its speed is lost once what it
 		/// carries weighs as much as its own body, less below that (Actor::GetOverloadSpeedMultiplier).
 		float OverloadSlowdown() const { return m_OverloadSlowdown; }
@@ -847,6 +857,9 @@ namespace RTE {
 		void SetLegStrength(float strength) { m_LegStrength = std::clamp(strength, 0.25F, 3.0F); }
 		void SetJetpackWeightCompensation(int mode) { m_JetpackWeightCompensation = std::clamp(mode, 0, 2); }
 		void SetUnitWaterBehaviour(int mode) { m_UnitWaterBehaviour = std::clamp(mode, 0, 2); }
+		void SetSensesPassPlants(bool on) { m_SensesPassPlants = on; }
+		void SetSensesPassRungs(bool on) { m_SensesPassRungs = on; }
+		void SetSensesPassSpecks(bool on) { m_SensesPassSpecks = on; }
 		void SetOverloadSlowdown(float slowdown) { m_OverloadSlowdown = std::clamp(slowdown, 0.0F, 1.0F); }
 		void SetJetpackFuelMultiplier(float multiplier) { m_JetpackFuelMultiplier = std::clamp(multiplier, 0.25F, 5.0F); }
 		void SetInfiniteJetpackFuel(bool on) { m_InfiniteJetpackFuel = on; }
@@ -1192,6 +1205,9 @@ namespace RTE {
 		float m_LegStrength = 1.0F; //!< See LegStrength.
 		int m_JetpackWeightCompensation = 0; //!< See JetpackWeightCompensation.
 		int m_UnitWaterBehaviour = 2; //!< See UnitWaterBehaviour.
+		bool m_SensesPassPlants = true; //!< See SensesPassPlants.
+		bool m_SensesPassRungs = true; //!< See SensesPassRungs.
+		bool m_SensesPassSpecks = true; //!< See SensesPassSpecks.
 		float m_OverloadSlowdown = 0.0F; //!< See OverloadSlowdown.
 		float m_JetpackFuelMultiplier = 1.0F; //!< See JetpackFuelMultiplier.
 		bool m_InfiniteJetpackFuel = false; //!< See InfiniteJetpackFuel.
