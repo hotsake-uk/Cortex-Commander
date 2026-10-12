@@ -1646,7 +1646,16 @@ void Actor::UpdateMovePath() {
 	// If we're following someone/thing, then never advance waypoints until that thing disappears
 	if (g_MovableMan.ValidMO(m_pMOMoveTarget)) {
 		m_HasMovePathGoal = false;
-		m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, m_pMOMoveTarget->GetPos(), agent, static_cast<Activity::Teams>(m_Team));
+		// (On the ground under it, as any goal is: a vehicle's middle, or a ship's, is a body's height up in the air, and the route to a point
+		// there ended in a jump up to it, which the unit crouched to charge partway along, where the same walk to the ground there did not.)
+		// (Only for one on or near the ground, its middle within its own radius of it: a ship hovering higher is boarded from below, by a route
+		// up to it, which grounded would stop short beneath it.)
+		Vector followGoal = m_pMOMoveTarget->GetPos();
+		const Vector grounded = onGround(followGoal);
+		if (grounded.m_Y - followGoal.m_Y <= m_pMOMoveTarget->GetRadius()) {
+			followGoal = grounded;
+		}
+		m_PathRequest = g_SceneMan.GetScene()->CalculatePathAsync(start, followGoal, agent, static_cast<Activity::Teams>(m_Team));
 	} else {
 		// The place the route is asked for to is kept (m_MovePathGoal): a route cut short at an obstacle ends short of it, and taken from the
 		// route's last point, as it used to be, the next request went to the cut and the unit "arrived" there, at the foot of a hatch its

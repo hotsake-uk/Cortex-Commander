@@ -8,6 +8,7 @@
 #include "AVehicle.h"
 #include "Turret.h"
 
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <sstream>
@@ -2520,7 +2521,8 @@ namespace SandboxDetail {
 			return;
 		}
 		ActivateSide(stroke.Team);
-		int count = brain ? 1 : stroke.Count;
+		// (A swarm creature, CR-1: each one placed is its whole swarm.)
+		int count = brain ? 1 : stroke.Count * (random ? 1 : SpawnGroupSize(*chosen));
 		for (int i = 0; i < count; ++i) {
 			const Preset* preset = random ? RandomPick(pool) : chosen;
 			Actor* actor = preset ? dynamic_cast<Actor*>(CreateObject(preset->ClassName, preset->PresetName, preset->ModuleID)) : nullptr;
@@ -2546,6 +2548,15 @@ namespace SandboxDetail {
 		}
 	}
 
+
+	int SpawnGroupSize(const Preset& preset) {
+		const Entity* entity = g_PresetMan.GetEntityPreset(preset.ClassName, preset.PresetName, preset.ModuleID);
+		const MovableObject* object = dynamic_cast<const MovableObject*>(entity);
+		if (object && object->NumberValueExists("SpawnGroup")) {
+			return std::clamp(static_cast<int>(object->GetNumberValue("SpawnGroup")), 1, 32);
+		}
+		return 1;
+	}
 
 	/// The units random picks are made from: every faction's (turrets aside, as for FactionUnits), or one faction's (an index into
 	/// s_FactionModules, -1 for all, -2 for only the non-combatants: animals and civilians), and with favouritesOnly only those marked as favourites in the unit or drop lists. With none of those
