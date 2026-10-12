@@ -331,6 +331,8 @@ namespace RTE {
 		float OverloadSlowdown() const { return m_OverloadSlowdown; }
 		/// How much fuel every jetpack's tank holds, as a multiple of its own JumpTime, 0.25 to 5; 1 as the game comes.
 		float JetpackFuelMultiplier() const { return m_JetpackFuelMultiplier; }
+		/// Whether every jetpack's tank stays full however long it fires (AEJetpack::UpdateBurstState); off as the game comes.
+		bool InfiniteJetpackFuel() const { return m_InfiniteJetpackFuel; }
 		/// How many times units of a team must get stuck on the same ladder within a minute before the whole team avoids it, 1 to 5 (2 as the game
 		/// comes). Fewer, the unit stuck avoids it alone.
 		int AILadderTeamStalls() const { return m_AILadderTeamStalls; }
@@ -823,8 +825,9 @@ namespace RTE {
 		void SetJetpackWeightCompensation(int mode) { m_JetpackWeightCompensation = std::clamp(mode, 0, 2); }
 		void SetOverloadSlowdown(float slowdown) { m_OverloadSlowdown = std::clamp(slowdown, 0.0F, 1.0F); }
 		void SetJetpackFuelMultiplier(float multiplier) { m_JetpackFuelMultiplier = std::clamp(multiplier, 0.25F, 5.0F); }
+		void SetInfiniteJetpackFuel(bool on) { m_InfiniteJetpackFuel = on; }
 		/// Puts the Movement category's carry weight settings back as the game comes.
-		void ResetCarryWeightSettings() { m_CarriedWeightMultiplier = 1.0F; m_LegStrength = 1.0F; m_JetpackWeightCompensation = 0; m_OverloadSlowdown = 0.0F; m_JetpackFuelMultiplier = 1.0F; }
+		void ResetCarryWeightSettings() { m_CarriedWeightMultiplier = 1.0F; m_LegStrength = 1.0F; m_JetpackWeightCompensation = 0; m_OverloadSlowdown = 0.0F; m_JetpackFuelMultiplier = 1.0F; m_InfiniteJetpackFuel = false; }
 		/// Puts the Movement category's ladder settings back as the game comes.
 		void ResetLadderSettings() { m_AILadderGiveUpSeconds = 1.5F; m_AILadderTeamStalls = 2; m_AIGrabsLaddersOnPurpose = true; m_AIGrabsLaddersMidJet = true; m_RiskyOrdersFlyPastLadders = true; }
 		/// Sets the percentage of units handed a digger as they come into the scene; see AISpawnDiggerChance.
@@ -1159,6 +1162,7 @@ namespace RTE {
 		int m_JetpackWeightCompensation = 0; //!< See JetpackWeightCompensation.
 		float m_OverloadSlowdown = 0.0F; //!< See OverloadSlowdown.
 		float m_JetpackFuelMultiplier = 1.0F; //!< See JetpackFuelMultiplier.
+		bool m_InfiniteJetpackFuel = false; //!< See InfiniteJetpackFuel.
 		int m_AILadderTeamStalls; //!< See AILadderTeamStalls.
 		bool m_AIGrabsLaddersOnPurpose; //!< See AIGrabsLaddersOnPurpose.
 		bool m_AIGrabsLaddersMidJet; //!< See AIGrabsLaddersMidJet.

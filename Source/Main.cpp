@@ -234,6 +234,7 @@ void InitializeManagers() {
 /// </summary>
 void DestroyManagers() {
 	ControlLink::Stop();
+	Sandbox::Destroy();
 	g_MetaMan.Destroy();
 	g_PerformanceMan.Destroy();
 	g_MovableMan.Destroy();

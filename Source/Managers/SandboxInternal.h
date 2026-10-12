@@ -231,7 +231,12 @@ namespace SandboxDetail {
 		Woodcutter, //!< A colony woodcutter: its staff fell the trees round it and bring the wood home (Colony::Kind::Woodcutter).
 		// Appended, so the tools before keep their numbers.
 		HoldGround, //!< A box dragged out, or a polygon clicked out, where the ground never falls (TerrainCollapse::AddHoldZone; SandboxHold.cpp). Choice 1 takes away the zone at Position, 2 all of them.
-		RedoTerrain //!< Makes again the newest step the undo took back (see s_PaintRedo).
+		RedoTerrain, //!< Makes again the newest step the undo took back (see s_PaintRedo).
+		CopyArea, //!< Copy and paste (S-4): a box dragged out on the world is marked (s_CopyBox), Ctrl+C copies it and Ctrl+V gives a stamp of it to put down.
+		// Not tools, but queued the same way: appended, so the tools before keep their numbers.
+		SelectionAction, //!< Something done to the selected units (S-8): Count a SelectionDo, and Team the side for SelectionDo::ChangeSide.
+		CopyTake, //!< Copies the box from Position to Position2 to the clipboard (s_Clipboard); Choice 1 with the units wholly inside it.
+		PasteArea //!< Puts the clipboard down with its top left corner at Position, one step of the undo history; Choice 1 flipped left to right.
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -240,6 +245,16 @@ namespace SandboxDetail {
 		Liquids, //!< The liquids in Stroke::Materials; with Choice 1, the springs that pour them too.
 		Units, //!< Every unit of the side in Team, or of every side with -1. Not doors, nor your character.
 		Ground //!< The terrain materials in Stroke::Materials.
+	};
+
+	/// What the command strip's actions on the selection do to the selected units (Tool::SelectionAction's Count, S-8). None of them touch
+	/// your character, nor the unit you are in, but Heal and Refill.
+	enum class SelectionDo {
+		Remove, //!< Taken away, one step of the undo history (which puts them back as they were).
+		Heal, //!< Health full and every wound closed, as the Supply power and a Medkit do.
+		Refill, //!< Every gun they hold or carry full, an empty one reloaded, and their lost gun and grenades given back where that is known.
+		Duplicate, //!< A copy of each beside it, on its side with its kit, one step of the undo history; the copies are selected.
+		ChangeSide //!< Put on the side in the stroke's Team, their orders forgotten.
 	};
 
 	/// What bunkers and the things the sandbox builds are made of, cleared with the buildings.
@@ -379,6 +394,7 @@ namespace SandboxDetail {
 	    {Tool::BattlePickupZone, "Pickup zone", 0.0F, false},
 	    {Tool::Woodcutter, "Woodcutter", 0.0F, false},
 	    {Tool::HoldGround, "Hold ground", 0.0F, false},
+	    {Tool::CopyArea, "Copy area", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -1282,8 +1298,37 @@ namespace SandboxDetail {
 	constexpr int c_MaxDropSide = 800; //!< The biggest box "Make it fall" takes either way, in pixels.
 	inline std::vector<Vector> s_HoldDraft; //!< "Hold ground": the corners of the polygon being clicked out, each placed from the first.
 
-	/// Whether the tool in hand is used by dragging out a shape on the world: the terrain brushes with Brush type Shape, and "Make it fall"'s box.
-	inline bool DragsShape(Tool kind) { return (IsTerrainBrush(kind) && s_ShapeFill) || kind == Tool::CollapseArea; }
+	/// What Copy area copied (S-4): the ground of a box, pixel by pixel, and the units wholly inside it. Kept in memory only, until the
+	/// game is closed (a new game keeps it, so ground can be taken from one map to another).
+	struct Clipboard {
+		/// A unit copied: a copy as it was (never in the world), and where it was from the box's top left corner.
+		struct Unit {
+			std::shared_ptr<Actor> Copy;
+			Vector Offset;
+		};
+		int Width = 0;
+		int Height = 0;
+		std::vector<unsigned char> Material; //!< Width x Height, row by row; 0 is air.
+		std::vector<unsigned char> Foreground; //!< The 8 bit foreground colours.
+		std::vector<unsigned char> Background; //!< The 8 bit background colours.
+		std::vector<Unit> Units;
+		int Version = 0; //!< Counts up with each copy, so the window knows to draw its preview again.
+
+		bool Empty() const { return Width <= 0 || Height <= 0; }
+	};
+	inline Clipboard s_Clipboard; //!< The sim's: written by Tool::CopyTake, read by the window for the stamp's preview (between updates).
+	constexpr int c_MaxCopySide = 800; //!< The biggest box Copy area takes either way, in pixels.
+	inline bool s_CopyBoxSet = false; //!< A box is marked with Copy area, from s_CopyBoxA to s_CopyBoxB (scene positions).
+	inline Vector s_CopyBoxA;
+	inline Vector s_CopyBoxB;
+	inline bool s_Stamping = false; //!< Copy area: the clipboard follows the pointer as a stamp, to be put down with a click.
+	inline bool s_StampFlipped = false; //!< The stamp is flipped left to right (F while stamping).
+	inline bool s_CopyUnits = true; //!< Copy area's "Include units": a copy takes the units wholly inside the box as well.
+	inline bool s_PasteAir = false; //!< Copy area's "Paste the air too": the air in the clipboard clears what is under the stamp.
+
+	/// Whether the tool in hand is used by dragging out a shape on the world: the terrain brushes with Brush type Shape, "Make it fall"'s box,
+	/// and Copy area's box (not while it is stamping).
+	inline bool DragsShape(Tool kind) { return (IsTerrainBrush(kind) && s_ShapeFill) || kind == Tool::CollapseArea || (kind == Tool::CopyArea && !s_Stamping); }
 	/// What the Paint tab's brushes may paint over besides air (flags): Paint > Paint over.
 	namespace PaintOver {
 		constexpr int Liquids = 1; //!< Liquids and loose ground (sand, snow, rubble): replaced by what is painted.
@@ -1324,6 +1369,10 @@ namespace SandboxDetail {
 	inline bool s_SnapToGrid = true;
 	inline bool s_FreeCamera = false;
 	inline bool s_SlowMotion = false;
+	constexpr float c_EarthGravity = 20.0F; //!< The game's stock gravity (Scene GlobalAcceleration), m/s/s down, which the World tab's gravity calls Earth's.
+	constexpr float c_MoonGravity = 0.165F; //!< The Moon's gravity, as a share of Earth's.
+	inline Vector s_MapGravity; //!< The map's own gravity, as it was when the game started (the World tab's "Map's own" puts it back).
+	inline bool s_MapGravityKnown = false; //!< Whether s_MapGravity has been taken for the game under way: taken on its first sandbox update.
 	inline bool s_FreeCameraStarted = false;
 	inline int s_CameraWarmupFrames = 0; //!< Frames to leave the camera alone at the start of a game, while the game mode points it somewhere sensible.
 	inline Vector s_CameraCenter;
@@ -1664,8 +1713,10 @@ namespace SandboxDetail {
 	/// one stroke of a paint or build tool changed (a drag of the brush is one step: changes less than a quarter second apart run together),
 	/// pixel by pixel as it was before, the first change to each pixel only. A placing step is one click of the Spawn or Build tools: the
 	/// units, craft, items, doors and colony buildings it made (taken away again), and the ground a bunker piece or building drew over (put
-	/// back). The last 20 steps are kept, up to c_PaintUndoPixels pixels in all (the oldest go first), and a new game forgets them. A stroke
-	/// longer than a step holds goes on in a new step, so each Ctrl+Z takes back part of it rather than the rest being lost.
+	/// back). A paste (S-4) is a step of both: the ground it changed, and the units it put down. The selection's Remove and Duplicate (S-8)
+	/// are a step each: the units removed (put back) or the copies made (taken away). The last 20 steps are kept, up to c_PaintUndoPixels
+	/// pixels in all (the oldest go first), and a new game forgets them. A stroke longer than a step holds goes on in a new step, so each
+	/// Ctrl+Z takes back part of it rather than the rest being lost.
 	/// What only lands over the next moments (poured liquids and loose ground, boulders, the Boom tab's blasts) is kept as a box of the
 	/// ground round it, taken before it lands (RecordPaintBox): the undo puts the whole box back. A Remove click keeps a copy of what it
 	/// took, which the undo puts back; a spring step, the springs it put down or took away.
@@ -1895,7 +1946,7 @@ namespace SandboxDetail {
 
 	inline std::deque<std::string> s_StrokeLog; //!< The last tool uses applied, oldest first, for the stroke log (SettingsMan::ShowSandboxStrokeLog).
 
-	enum class Icon { Eye, Arrows, Target, Person, Cross, Flag, Jar, Gun, Wall, Down, Flame, Drop, Cloud, Grains, Chunk, Pick, Bomb, Rocket, Bolt, Star, Plant, Candle, Rope, Wheels };
+	enum class Icon { Eye, Arrows, Target, Person, Cross, Flag, Jar, Gun, Wall, Down, Flame, Drop, Cloud, Grains, Chunk, Pick, Bomb, Rocket, Bolt, Star, Plant, Candle, Rope, Wheels, Copy };
 
 	// Twelve by twelve pixels each: # in the tool's own colour, + a highlight.
 	constexpr const char* c_IconArt[] = {
@@ -2211,6 +2262,19 @@ namespace SandboxDetail {
 	    ".#++#..#++#."
 	    ".####..####."
 	    "..##....##..",
+	    // Copy
+	    "#######....."
+	    "#+.....#...."
+	    "#.......#..."
+	    "#....#######"
+	    "#....#+....#"
+	    "#....#.....#"
+	    "#....#.....#"
+	    "######.....#"
+	    ".....#.....#"
+	    ".....#.....#"
+	    ".....#.....#"
+	    ".....#######",
 	};
 
 	struct ToolLook {
@@ -2223,6 +2287,8 @@ namespace SandboxDetail {
 	inline std::string s_CurrentTab; //!< The tab of the sandbox window that is showing.
 
 	inline std::map<std::string, int> s_LastToolOfTab; //!< The tool last picked on each tab, so coming back to the tab from the bar picks it up again.
+
+	inline std::map<std::string, int> s_LastToolOfGroup; //!< The tool last taken from each group of the bar's shelf, taken again when the group is.
 
 	/// A thing kept to hand on the bar: a tool, or a tool with what it makes (a unit to spawn, a bunker piece to build).
 	struct Pin {
@@ -2381,6 +2447,23 @@ namespace SandboxDetail {
 	/// Scene pixels, inclusive; wrapped round a scene that wraps, and cut to the scene.
 	void RecordPaintBox(int left, int top, int right, int bottom);
 	void NotePlaced(const MovableObject* object);
+	/// Does one of the command strip's actions (SelectionDo) to the selected units: Tool::SelectionAction applied.
+	void DoToSelection(const Stroke& stroke);
+	/// Queues one of the command strip's actions on the selected units (SelectionDo), for the sim to do (DoToSelection).
+	/// @param team The side, for SelectionDo::ChangeSide.
+	void QueueSelectionAction(SelectionDo what, int team = 0);
+	inline int s_DeleteKeyTakenFrame = -1; //!< The ImGui frame Delete last removed something under the pointer (a battle zone, an effect, a spring): not the selection then.
+	/// Copy area's copy (Ctrl+C, or its Copy button): the marked box (s_CopyBox) to the clipboard, with its units if "Include units" is
+	/// ticked, for the sim to do (Tool::CopyTake).
+	void CopyMarkedBox();
+	/// Copy area's paste (Ctrl+V, or its Paste button): the Copy area tool taken up with the clipboard as a stamp on the pointer.
+	void TakeUpStamp();
+	/// Copy area's stamp and box, drawn on the world while the tool is in hand (see DrawCursor).
+	void DrawCopyArea();
+	/// Where the stamp's top left corner is for the pointer (held by its middle), in the scene: where a click puts the clipboard down.
+	Vector StampCorner();
+	/// Lets the stamp's preview go (ForgetPictures, and a new copy).
+	void ForgetStampPicture();
 	void NotePaint(const Box& area, const char* kind, const char* material, bool toldCollapse, bool toldLiquid, bool changed);
 	void PaintTerrain(const Vector& center, int radius, const char* materialName, BrushShape shape = BrushShape::Circle, float goldShare = 0.0F, int over = 0);
 	void FillTerrainShape(const Stroke& stroke);
@@ -2889,6 +2972,12 @@ namespace SandboxDetail {
 	void Eyedrop(const Vector& at);
 	void SideChooser();
 	void UndoButton(); //!< Undo and Redo: the newest step of the shared paint and placing undo taken back (Tool::UndoTerrain), as Ctrl+Z does, or made again (Tool::RedoTerrain), as Ctrl+Y does.
+	/// Asks whether the player is sure before something that can't be taken back, as the Reset button does: a click on the button opens the
+	/// question, and true comes back on the frame they say yes. A Ctrl+click skips the question (say so in the button's tooltip).
+	/// Called after the button, and outside any BeginDisabled, with the ID stack as it was for the button.
+	/// @param clicked Whether the button was clicked this frame. @param title The question's title, which is also its ID.
+	/// @param question What is lost, after "Are you sure?". @param yes The words on the button that goes ahead.
+	bool Confirmed(bool clicked, const char* title, const char* question, const char* yes);
 	void PresetList(Tool kind, const char* group = nullptr, float rows = 8.0F);
 	/// @param mine Whether your loadouts and squads (s_SpawnPick) are offered too: the Spawn tab's units and drops.
 	void LoadoutChooser(const char* label = "Loadout", bool mine = false);
