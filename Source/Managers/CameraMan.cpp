@@ -1,4 +1,5 @@
 #include "CameraMan.h"
+#include "SettingsMan.h"
 #include "ActivityMan.h"
 #include "TimerMan.h"
 #include "SceneLighting.h"
@@ -105,15 +106,16 @@ Vector CameraMan::ClampScrollCenter(const Vector& center, int screenId) {
 	Vector result(center);
 	if (!terrain->WrapsX()) {
 		float shift = static_cast<float>(g_FrameMan.GetPlayerScreenWidth() / 2) + screen.ScreenOcclusion.GetX() / 2.0F;
-		float side = std::floor(screen.SideOverscroll);
+		float side = std::floor(std::max(screen.SideOverscroll, g_SettingsMan.CameraOverscroll()));
 		float offset = std::max(center.GetX() - shift, -side);
 		offset = std::min(offset, static_cast<float>(terrain->GetBitmap()->w - frameSize.GetFloorIntX()) + side);
 		result.SetX(offset + shift);
 	}
 	if (!terrain->WrapsY()) {
 		float shift = static_cast<float>(g_FrameMan.GetPlayerScreenHeight() / 2) + screen.ScreenOcclusion.GetY() / 2.0F;
-		float offset = std::max(center.GetY() - shift, 0.0F);
-		offset = std::min(offset, static_cast<float>(terrain->GetBitmap()->h - frameSize.GetFloorIntY()) + std::floor(screen.BottomOverscroll));
+		float overscroll = std::floor(g_SettingsMan.CameraOverscroll());
+		float offset = std::max(center.GetY() - shift, -overscroll);
+		offset = std::min(offset, static_cast<float>(terrain->GetBitmap()->h - frameSize.GetFloorIntY()) + std::floor(std::max(screen.BottomOverscroll, overscroll)));
 		result.SetY(offset + shift);
 	}
 	return result;
@@ -161,14 +163,16 @@ void CameraMan::CheckOffset(int screenId) {
 
 	Screen& screen = m_Screens[screenId];
 
-	// The side limits go out by the side overscroll, so what's at the very edge of the map can be brought out from under the panels and bars.
-	int sideOverscroll = static_cast<int>(std::floor(screen.SideOverscroll));
+	// The side limits go out by the side overscroll, so what's at the very edge of the map can be brought out from under the panels and bars,
+	// or by the Camera scroll past map edges setting where that's further (as the top and bottom are).
+	const float overscroll = std::floor(g_SettingsMan.CameraOverscroll());
+	int sideOverscroll = static_cast<int>(std::floor(std::max(screen.SideOverscroll, overscroll)));
 	if (!terrain->WrapsX() && screen.Offset.GetX() < static_cast<float>(-sideOverscroll)) {
 		screen.Offset.SetX(static_cast<float>(-sideOverscroll));
 	}
 
-	if (!terrain->WrapsY() && screen.Offset.GetY() < 0) {
-		screen.Offset.SetY(0.0F);
+	if (!terrain->WrapsY() && screen.Offset.GetY() < -overscroll) {
+		screen.Offset.SetY(-overscroll);
 	}
 
 	Vector frameSize = GetFrameSize(screenId);
@@ -180,7 +184,7 @@ void CameraMan::CheckOffset(int screenId) {
 		screen.Offset.SetX(static_cast<float>(rightLimit));
 	}
 	// The bottom limit goes down by however much a bar along the foot of the screen covers, so the bottom of the map can be scrolled out from under it.
-	int bottomLimit = terrain->GetBitmap()->h - frameHeight + static_cast<int>(std::floor(screen.BottomOverscroll));
+	int bottomLimit = terrain->GetBitmap()->h - frameHeight + static_cast<int>(std::floor(std::max(screen.BottomOverscroll, overscroll)));
 	if (!terrain->WrapsY() && screen.Offset.GetFloorIntY() >= bottomLimit) {
 		screen.Offset.SetY(static_cast<float>(bottomLimit));
 	}

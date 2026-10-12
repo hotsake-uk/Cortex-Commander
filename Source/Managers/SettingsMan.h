@@ -364,6 +364,14 @@ namespace RTE {
 		/// sent down low, on its way and where it stops. 12, the default, is just clear of it.
 		float ShipGroundClearance() const { return m_ShipGroundClearance; }
 
+		/// Gets how far, in pixels, flying ships may go past the top of the map, and past its sides where it doesn't wrap, before they count as
+		/// gone to orbit: room to fly over and drop people onto buildings at the very top or ends of the map. Other craft are unaffected. 400 is
+		/// the default; 0 is the old line, just over the edge.
+		float ShipGraceZone() const { return m_ShipGraceZone; }
+
+		/// Gets how far, in pixels, the camera may scroll past the top, sides and bottom of a map that doesn't wrap. 400 is the default.
+		float CameraOverscroll() const { return m_CameraOverscroll; }
+
 		/// Gets how hard weapon fire (bullets, shrapnel and the other particles that hit units) strikes terrain and buildings, as a multiple
 		/// of the force it would: the impulse it meets each terrain pixel with is scaled by this, so it cuts stronger materials and slows less
 		/// going through them. 1, the default, is every weapon as it is defined.
@@ -844,6 +852,10 @@ namespace RTE {
 		void SetWoundBleedTime(float scale) { m_WoundBleedTime = std::clamp(scale, 0.1F, 10.0F); }
 		/// Sets the gap ships keep over the ground; see ShipGroundClearance.
 		void SetShipGroundClearance(float gap) { m_ShipGroundClearance = std::clamp(gap, 0.0F, 200.0F); }
+		/// Sets how far past the map's edges ships may fly; see ShipGraceZone. (Short of the 1000 px out of the scene where anything is deleted.)
+		void SetShipGraceZone(float zone) { m_ShipGraceZone = std::clamp(zone, 0.0F, 700.0F); }
+		/// Sets how far past the map's edges the camera may scroll; see CameraOverscroll.
+		void SetCameraOverscroll(float overscroll) { m_CameraOverscroll = std::clamp(overscroll, 0.0F, 2000.0F); }
 		/// Sets how hard weapon fire strikes terrain; see WeaponTerrainDamage.
 		void SetWeaponTerrainDamage(float scale) { m_WeaponTerrainDamage = std::clamp(scale, 0.1F, 20.0F); }
 		/// Sets which digger those units are handed; see AISpawnDiggerType.
@@ -1181,6 +1193,8 @@ namespace RTE {
 		float m_BleedOutChance; //!< Percentage of wounds that keep bleeding rather than stopping, 0 to 100 (see BleedOutChance).
 		float m_WoundBleedTime; //!< Multiple of how long wounds bleed for before they stop, 0.1 to 10 (see WoundBleedTime).
 		float m_ShipGroundClearance; //!< Pixels flying ships keep between their underside and the ground, 0 to 200 (see ShipGroundClearance).
+		float m_ShipGraceZone; //!< Pixels past the map's top and sides flying ships may go, 0 to 700 (see ShipGraceZone).
+		float m_CameraOverscroll; //!< Pixels past the map's edges the camera may scroll, 0 to 2000 (see CameraOverscroll).
 		float m_WeaponTerrainDamage; //!< Multiple of the force weapon fire strikes terrain with, 0.1 to 20 (see WeaponTerrainDamage).
 		int m_AISpawnDiggerType; //!< Which digger they're handed: 0 Light, 1 Medium, 2 Heavy, 3 random (see AISpawnDiggerType).
 		bool m_AISteadyBeforeJet; //!< Whether AI units steady themselves before they jet (see AISteadiesBeforeJet).

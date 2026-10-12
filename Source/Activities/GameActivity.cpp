@@ -1227,8 +1227,9 @@ void GameActivity::Update() {
 				m_PlayerController[player].RelativeCursorMovement(m_ObservationTarget[player], 1.2f);
 			}
 			// Set the view to the observation position
-			g_SceneMan.ForceBounds(m_ObservationTarget[player]);
-			// Held in where the view stops at a hard edge, so panning back moves the view straight away.
+			g_SceneMan.WrapPosition(m_ObservationTarget[player]);
+			// Held in where the view stops at a hard edge (past the map's edges by the Camera scroll past map edges setting), so panning back
+			// moves the view straight away.
 			m_ObservationTarget[player] = g_CameraMan.ClampScrollCenter(m_ObservationTarget[player], ScreenOfPlayer(player));
 			g_CameraMan.SetScrollTarget(m_ObservationTarget[player], 0.1, ScreenOfPlayer(player));
 		}
