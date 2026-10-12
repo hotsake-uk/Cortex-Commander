@@ -500,6 +500,11 @@ namespace RTE {
 		bool AICoverLiesFlat() const { return m_AICoverLiesFlat; }
 		/// Whether a unit whose nerve has gone (morale under 0.3) breaks and falls back, whatever its health.
 		bool AIBreaksWhenShaken() const { return m_AIBreaksWhenShaken; }
+		/// Whether an AI unit takes an enemy its team saw in the last few seconds (a teammate, a ship's gunner, a craft looking out for its
+		/// riders) as partly or wholly noticed already, rather than noticing it from scratch (see AISharedSpottingHeadStart).
+		bool AISharedSpotting() const { return m_AISharedSpotting; }
+		/// How much of the noticing is done already for such an enemy, 0 to 1 (1: it is noticed at once).
+		float AISharedSpottingHeadStart() const { return m_AISharedSpottingHeadStart; }
 		/// Whether armed AI units with nothing to fight go and pick up a loose gun clearly better than theirs, or a grenade when they have nothing to throw.
 		bool AIScavengesBetterWeapons() const { return m_AIScavengesBetterWeapons; }
 
@@ -1077,6 +1082,8 @@ namespace RTE {
 		void SetAICoverFallsBack(bool on) { m_AICoverFallsBack = on; }
 		void SetAICoverLiesFlat(bool on) { m_AICoverLiesFlat = on; }
 		void SetAIBreaksWhenShaken(bool on) { m_AIBreaksWhenShaken = on; }
+		void SetAISharedSpotting(bool on) { m_AISharedSpotting = on; }
+		void SetAISharedSpottingHeadStart(float headStart) { m_AISharedSpottingHeadStart = std::clamp(headStart, 0.0F, 1.0F); }
 		void SetAIScavengesBetterWeapons(bool on) { m_AIScavengesBetterWeapons = on; }
 		/// Sets whether AI units call lifts; see AIUnitsCallLifts.
 		void SetAIUnitsCallLifts(bool on) { m_AIUnitsCallLifts = on; }
@@ -1442,6 +1449,8 @@ namespace RTE {
 		bool m_AICoverFallsBack; //!< See AICoverFallsBack.
 		bool m_AICoverLiesFlat; //!< See AICoverLiesFlat.
 		bool m_AIBreaksWhenShaken; //!< See AIBreaksWhenShaken.
+		bool m_AISharedSpotting; //!< See AISharedSpotting.
+		float m_AISharedSpottingHeadStart; //!< See AISharedSpottingHeadStart.
 		bool m_AIScavengesBetterWeapons; //!< See AIScavengesBetterWeapons.
 		bool m_AIUnitsCallLifts; //!< See AIUnitsCallLifts.
 		bool m_AIWaitForFuel; //!< Whether AI units wait for fuel before they jet (see AIWaitsForFuel).

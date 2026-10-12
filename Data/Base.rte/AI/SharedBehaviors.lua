@@ -846,8 +846,8 @@ function SharedBehaviors.ScanForTargets(AI, Owner, skill, fovDegrees, budget)
 			local id = Target.UniqueID;
 			local entry = AI.Noticing[id];
 			if not entry then
-				-- (An enemy its team has just seen, for a unit just out of a craft or vehicle, is noticed already: see KnowsOf.)
-				entry = {progress = SharedBehaviors.KnowsOf(AI, Owner, id) and 1 or 0};
+				-- (An enemy its team has just seen is noticed already, wholly or in part: see KnowsOf.)
+				entry = {progress = SharedBehaviors.KnowsOf(AI, Owner, id)};
 				AI.Noticing[id] = entry;
 			end
 			-- (A target already being fought is known: no delay to keep it.)
@@ -3703,15 +3703,23 @@ function SharedBehaviors.LeftCarrierAt(Owner)
 	return at;
 end
 
--- Whether a unit knows of an enemy before it has noticed it for itself: it has just got out of a craft or vehicle, and its team saw that
--- enemy in the last three seconds (the craft's riders look out of it, and its gunners report what they shoot at), so it is not a stranger
--- to be noticed slowly but one it was watching from inside. @param id The enemy's unique ID.
+-- How far a unit has noticed an enemy before it sees it for itself, 0 to 1, from what its team saw of it in the last three seconds. One
+-- just out of a craft or vehicle has noticed it wholly (the craft's riders look out of it, and its gunners report what they shoot at), so it
+-- is not a stranger to be noticed slowly but one it was watching from inside. Any other, with Units act on teammates' sightings on, by
+-- the setting's head start (a teammate's word). @param id The enemy's unique ID.
 function SharedBehaviors.KnowsOf(AI, Owner, id)
-	if not CanAge() or not SharedBehaviors.LeftCarrierAt(Owner) then
-		return false;
+	if not CanAge() then
+		return 0;
+	end
+	local fromCarrier = SharedBehaviors.LeftCarrierAt(Owner) ~= nil;
+	if not fromCarrier and not SettingsMan.AISharedSpotting then
+		return 0;
 	end
 	local age = SceneMan:GetEnemySeenAgeMS(Owner.Team, id);
-	return age >= 0 and age <= KNOWN_SEEN_MS;
+	if age < 0 or age > KNOWN_SEEN_MS then
+		return 0;
+	end
+	return fromCarrier and 1 or SettingsMan.AISharedSpottingHeadStart;
 end
 
 -- Just out of a craft or vehicle, once: it turns to face the nearest enemy its team saw in the last three seconds, the one the craft was

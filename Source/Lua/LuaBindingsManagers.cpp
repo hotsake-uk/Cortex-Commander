@@ -476,6 +476,8 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SettingsMan) {
 	    .property("AICoverFallsBack", &SettingsMan::AICoverFallsBack, &SettingsMan::SetAICoverFallsBack)
 	    .property("AICoverLiesFlat", &SettingsMan::AICoverLiesFlat, &SettingsMan::SetAICoverLiesFlat)
 	    .property("AIBreaksWhenShaken", &SettingsMan::AIBreaksWhenShaken, &SettingsMan::SetAIBreaksWhenShaken)
+	    .property("AISharedSpotting", &SettingsMan::AISharedSpotting, &SettingsMan::SetAISharedSpotting)
+	    .property("AISharedSpottingHeadStart", &SettingsMan::AISharedSpottingHeadStart, &SettingsMan::SetAISharedSpottingHeadStart)
 	    .property("AIScavengesBetterWeapons", &SettingsMan::AIScavengesBetterWeapons, &SettingsMan::SetAIScavengesBetterWeapons)
 	    .property("AICombatAccuracy", &SettingsMan::AICombatAccuracy)
 	    .property("AICombatReaction", &SettingsMan::AICombatReaction)

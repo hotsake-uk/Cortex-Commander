@@ -1585,6 +1585,15 @@ void DebugMan::SettingsGUI() {
 		Tip("Stealth. At night the AI sees less far, a unit in the dark or under a roof is harder to spot, and one under a lamp or wearing a lit headlamp is easier. The AI also hears footsteps: running is loud, walking quieter and crawling quietest, and metal floors ring. Sneak past sentries by keeping to the shadows and walking.");
 		Toggle("AI remembers and shares sightings", ThreatMemory::IsEnabled(), [](bool on) { ThreatMemory::SetEnabled(on); });
 		Tip("A unit that spots an enemy tells its team: AI teammates close by turn to face it, and the team remembers where each enemy was last seen for a minute. Units that lost sight of an enemy look there, AI units on patrol go and check the last place they saw your units, and idle ones keep watch toward it. Off: each unit knows only what it sees.");
+		Toggle("Units act on teammates' sightings", g_SettingsMan.AISharedSpotting(), [](bool on) { g_SettingsMan.SetAISharedSpotting(on); });
+		Tip("An AI unit that comes to see an enemy its team saw in the last three seconds (a teammate, a ship's gunner, a craft looking out for those inside) has it noticed already, by the head start below, instead of taking its usual third of a second or more to notice it from scratch: squads open fire together. Off: only units just out of a craft or vehicle know their team's enemies this way. Needs AI remembers and shares sightings.");
+		{
+			float headStart = g_SettingsMan.AISharedSpottingHeadStart() * 100.0F;
+			if (Slider("Shared sighting head start", &headStart, Normal{100.0F}, 0.0F, 100.0F, "%.0f%%")) {
+				g_SettingsMan.SetAISharedSpottingHeadStart(headStart / 100.0F);
+			}
+			Tip("With Units act on teammates' sightings on, how much of the noticing is done already for an enemy the team has just seen. 100%: noticed at once. 50%: half the usual time. 0%: no head start.");
+		}
 		{
 			float suppression = g_SettingsMan.AISuppression();
 			if (Slider("AI suppression and morale", &suppression, Normal{1.0F}, 0.0F, 2.0F, "%.2fx")) {
