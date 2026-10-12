@@ -719,8 +719,8 @@ function HumanBehaviors.Sentry(AI, Owner, Abort)
 				AI.deviceState = AHuman.AIMING;
 			end
 			if Owner.AIMode ~= Actor.AIMODE_SQUAD then
-				if SceneMan:ShortestDistance(Owner.Pos, AI.SentryPos, false):MagnitudeIsGreaterThan(Owner.Height*0.7) then
-					AI.SentryPos = SceneMan:MovePointToGround(AI.SentryPos, Owner.Height*0.25, 3);
+				if SceneMan:ShortestDistance(Owner.Pos, AI.SentryPos, false):MagnitudeIsGreaterThan(Owner.MoveHeight*0.7) then
+					AI.SentryPos = SceneMan:MovePointToGround(AI.SentryPos, Owner.MoveHeight*0.25, 3);
 					Owner:ClearAIWaypoints();
 					Owner:AddAISceneWaypoint(AI.SentryPos);
 					AI:CreateGoToBehavior(Owner); -- try to return to the sentry pos
@@ -1041,7 +1041,7 @@ function HumanBehaviors.WeaponSearch(AI, Owner, Abort)
 				prevMoveTarget = Owner.MOMoveTarget;
 				Owner.MOMoveTarget = nil;
 			else
-				prevSceneWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.Height/5, 4); -- last wpt or current pos
+				prevSceneWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.MoveHeight/5, 4); -- last wpt or current pos
 			end
 
 			Owner:ClearAIWaypoints();
@@ -1135,7 +1135,7 @@ function HumanBehaviors.RetrieveThrown(AI, Owner, Abort)
 		prevMoveTarget = Owner.MOMoveTarget;
 		Owner.MOMoveTarget = nil;
 	else
-		prevSceneWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.Height/5, 4);
+		prevSceneWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.MoveHeight/5, 4);
 	end
 	Owner:ClearAIWaypoints();
 	Owner:AddAIMOWaypoint(AI.PickupHD);
@@ -1241,7 +1241,7 @@ function HumanBehaviors.ToolSearch(AI, Owner, Abort)
 				prevMoveTarget = Owner.MOMoveTarget;
 				Owner.MOMoveTarget = nil;
 			else
-				prevSceneWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.Height/5, 4); -- last wpt or current pos
+				prevSceneWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.MoveHeight/5, 4); -- last wpt or current pos
 			end
 
 			Owner:ClearAIWaypoints();
@@ -1282,17 +1282,17 @@ function HumanBehaviors.GoProne(AI, Owner, TargetPos, targetID)
 
 	-- only go prone if we can see the ground near the target
 	local AimPoint = SceneMan:MovePointToGround(TargetPos, 10, 3);
-	local ground = Owner.Pos.Y + Owner.Height * 0.25;
+	local ground = Owner.Pos.Y + Owner.MoveHeight * 0.25;
 	local Dist = SceneMan:ShortestDistance(Owner.Pos, AimPoint, false);
 	local PronePos;
 
 	-- check if there is room to go prone here
-	if Dist.X > Owner.Height then
+	if Dist.X > Owner.MoveHeight then
 		-- to the right
-		PronePos = Owner.EyePos + Vector(Owner.Height*0.3, 0);
+		PronePos = Owner.EyePos + Vector(Owner.MoveHeight*0.3, 0);
 
 		local x_pos = Owner.Pos.X + 10;
-		for _ = 1, math.ceil(Owner.Height/16) do
+		for _ = 1, math.ceil(Owner.MoveHeight/16) do
 			x_pos = x_pos + 7;
 			if SceneMan.SceneWrapsX and x_pos >= SceneMan.SceneWidth then
 				x_pos = SceneMan.SceneWidth - x_pos;
@@ -1302,12 +1302,12 @@ function HumanBehaviors.GoProne(AI, Owner, TargetPos, targetID)
 				return false;
 			end
 		end
-	elseif Dist.X < -Owner.Height then
+	elseif Dist.X < -Owner.MoveHeight then
 		-- to the left
-		PronePos = Owner.EyePos + Vector(-Owner.Height*0.3, 0);
+		PronePos = Owner.EyePos + Vector(-Owner.MoveHeight*0.3, 0);
 
 		local x_pos = Owner.Pos.X - 10;
-		for _ = 1, math.ceil(Owner.Height/16) do
+		for _ = 1, math.ceil(Owner.MoveHeight/16) do
 			x_pos = x_pos - 7;
 			if SceneMan.SceneWrapsX and x_pos < 0 then
 				x_pos = x_pos + SceneMan.SceneWidth;
@@ -1339,7 +1339,7 @@ function HumanBehaviors.GoProne(AI, Owner, TargetPos, targetID)
 	-- Down, and a crawl forward towards the target (the engine's motor does both; see SharedBehaviors.Stance and StepTo).
 	SharedBehaviors.Stance(AI, Owner, AHuman.PRONE, 2500);
 	if not Owner.EquippedBGItem then
-		SharedBehaviors.StepTo(AI, Owner, Owner.Pos + Vector(Dist.X > 0 and Owner.Height * 0.6 or -Owner.Height * 0.6, 0), 1500);
+		SharedBehaviors.StepTo(AI, Owner, Owner.Pos + Vector(Dist.X > 0 and Owner.MoveHeight * 0.6 or -Owner.MoveHeight * 0.6, 0), 1500);
 	end
 
 	return true;
@@ -1539,7 +1539,7 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 							-- the target is too far away: go after it, if the order allows (an attack, or the guard modes; never a move or a defence)
 							if SharedBehaviors.MayClose(AI, Owner) then
 								if not Owner.MOMoveTarget or not MovableMan:ValidMO(Owner.MOMoveTarget) or Owner.MOMoveTarget.RootID ~= AI.Target.RootID then	-- move towards the target
-									local OldWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.Height/5, 4); -- move back here later
+									local OldWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.MoveHeight/5, 4); -- move back here later
 									Owner:ClearAIWaypoints();
 									Owner:AddAIMOWaypoint(AI.Target);
 									Owner:AddAISceneWaypoint(OldWaypoint);
@@ -1573,7 +1573,7 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 					elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and SharedBehaviors.MayClose(AI, Owner) then -- target out of reach; move towards it
 						-- check if we are already moving towards an actor
 						if not Owner.MOMoveTarget or not MovableMan:ValidMO(Owner.MOMoveTarget) or Owner.MOMoveTarget.RootID ~= AI.Target.RootID then	-- move towards the target
-							local OldWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.Height/5, 4); -- move back here later
+							local OldWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.MoveHeight/5, 4); -- move back here later
 							Owner:ClearAIWaypoints();
 							Owner:AddAIMOWaypoint(AI.Target);
 							Owner:AddAISceneWaypoint(OldWaypoint);
@@ -1887,7 +1887,7 @@ function HumanBehaviors.HoldRange(AI, Owner, Weapon, PrjDat, range, Dist)
 		-- Too far for a good shot: closing in by the path, firing on the way (the move behaviour keeps the legs going while closingIn is set).
 		if not AI.closingIn then
 			if not Owner.MOMoveTarget or not MovableMan:ValidMO(Owner.MOMoveTarget) or Owner.MOMoveTarget.RootID ~= AI.Target.RootID then
-				local OldWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.Height/5, 4);
+				local OldWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.MoveHeight/5, 4);
 				Owner:ClearAIWaypoints();
 				Owner:AddAIMOWaypoint(AI.Target);
 				Owner:AddAISceneWaypoint(OldWaypoint);
@@ -1949,7 +1949,7 @@ function HumanBehaviors.TakeCover(AI, Owner, FromPos, why)
 		end
 		AI.CoverRestTimer = Timer();
 		-- Pinned down, a unit wants cover it can duck behind and peek out of to shoot back (AC-4); to reload or recover, cover it is hidden behind standing.
-		local Spot, coverKind = SharedBehaviors.FindCover(Owner, FromPos, kind == "defend" and Owner.Height * 0.5 or Owner.Height * 1.5, why == "suppressed");
+		local Spot, coverKind = SharedBehaviors.FindCover(Owner, FromPos, kind == "defend" and Owner.MoveHeight * 0.5 or Owner.MoveHeight * 1.5, why == "suppressed");
 		if not Spot then
 			return false;
 		end
@@ -1985,7 +1985,7 @@ function HumanBehaviors.UseTheWorld(AI, Owner)
 	end
 	-- Out of the fire, to whichever side is clear: a spot not burning, on much the same floor, with nothing solid between; the one tried last
 	-- (a wall the step ran into) left out the next time. Looked for four times a second.
-	local Feet = Owner.Pos + Vector(0, Owner.Height * 0.4);
+	local Feet = Owner.Pos + Vector(0, Owner.MoveHeight * 0.4);
 	if AI.FireStep then
 		if AI.FireStep.Timer:IsPastSimMS(1500) or not SharedBehaviors.StepTo(AI, Owner, AI.FireStep.Spot, 1500 - AI.FireStep.Timer.ElapsedSimTimeMS) then
 			AI.FireStepLast = AI.FireStep.dx;
@@ -1996,9 +1996,9 @@ function HumanBehaviors.UseTheWorld(AI, Owner)
 		AI.FireCheckTimer:Reset();
 		if SceneMan:IsBurningNear(Feet, 14) then
 			for _, dx in ipairs({48, -48, 96, -96}) do
-				local Spot = SceneMan:MovePointToGround(Owner.Pos + Vector(dx, -Owner.Height * 0.2), math.floor(Owner.Height * 0.2), 4);
+				local Spot = SceneMan:MovePointToGround(Owner.Pos + Vector(dx, -Owner.MoveHeight * 0.2), math.floor(Owner.MoveHeight * 0.2), 4);
 				local Way = SceneMan:ShortestDistance(Owner.Pos, Spot, false);
-				if dx ~= AI.FireStepLast and not SceneMan:IsBurningNear(Spot, 20) and math.abs(Way.Y) < Owner.Height * 0.5
+				if dx ~= AI.FireStepLast and not SceneMan:IsBurningNear(Spot, 20) and math.abs(Way.Y) < Owner.MoveHeight * 0.5
 					and SceneMan:CastObstacleRay(Owner.Pos, Way, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0 then
 					AI.FireStep = { Spot = Spot, Timer = Timer(), dx = dx };
 					SharedBehaviors.Trace(Owner, "fire underfoot: stepping out");
@@ -2494,7 +2494,7 @@ function HumanBehaviors.AttackTarget(AI, Owner, Abort)
 		PrevMOMoveTarget = Owner.MOMoveTarget;
 	else
 		Owner.MOMoveTarget = nil;
-		PrevSceneWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.Height/5, 4);
+		PrevSceneWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.MoveHeight/5, 4);
 	end
 
 	-- move towards the target
@@ -2842,7 +2842,7 @@ function HumanBehaviors.MedicUpdate(AI, Owner)
 			return false;
 		end
 		local ToPatient = SceneMan:ShortestDistance(Owner.Pos, Patient.Pos, false);
-		if math.abs(ToPatient.X) < 24 + Patient.Radius * 0.3 and math.abs(ToPatient.Y) < Owner.Height * 0.6 then
+		if math.abs(ToPatient.X) < 24 + Patient.Radius * 0.3 and math.abs(ToPatient.Y) < Owner.MoveHeight * 0.6 then
 			-- Close enough: the kit out, pointed at the friend, and pressed once a second (it is a single-shot device). The aim sweeps up
 			-- and down the friend a little so a press that missed (and found nobody hurt, which costs nothing) catches it the next time.
 			if not M.Close then
@@ -2857,7 +2857,7 @@ function HumanBehaviors.MedicUpdate(AI, Owner)
 				Owner:EquipNamedDevice("Medikit", true);
 				kitInHand = Owner.EquippedItem ~= nil and Owner.EquippedItem.PresetName == "Medikit";
 			end
-			local sweep = math.sin(M.Timer.ElapsedSimTimeMS * 0.004) * Patient.Height * 0.2;
+			local sweep = math.sin(M.Timer.ElapsedSimTimeMS * 0.004) * Patient.MoveHeight * 0.2;
 			local Aim = SceneMan:ShortestDistance(Owner.EyePos, Patient.Pos + Vector(0, sweep), false);
 			if Aim:MagnitudeIsGreaterThan(1) then
 				AI.Ctrl.AnalogAim = Aim.Normalized;
@@ -2875,7 +2875,7 @@ function HumanBehaviors.MedicUpdate(AI, Owner)
 			end
 			-- The friend moved on: the walk follows it.
 			if SceneMan:ShortestDistance(M.Spot, Patient.Pos, false):MagnitudeIsGreaterThan(60) then
-				M.Spot = SceneMan:MovePointToGround(Patient.Pos, math.floor(Owner.Height * 0.2), 4);
+				M.Spot = SceneMan:MovePointToGround(Patient.Pos, math.floor(Owner.MoveHeight * 0.2), 4);
 				Owner:ClearAIWaypoints();
 				Owner:AddAISceneWaypoint(M.Spot);
 				Owner.AIMode = Actor.AIMODE_GOTO;
@@ -2906,7 +2906,7 @@ function HumanBehaviors.MedicUpdate(AI, Owner)
 	if not Patient then
 		return false;
 	end
-	local Spot = SceneMan:MovePointToGround(Patient.Pos, math.floor(Owner.Height * 0.2), 4);
+	local Spot = SceneMan:MovePointToGround(Patient.Pos, math.floor(Owner.MoveHeight * 0.2), 4);
 	AI.Medic = { Keep = SharedBehaviors.RememberOrder(AI, Owner), Patient = Patient, Spot = Spot, Timer = Timer() };
 	Owner:SetNumberValue("AIMedic", 1);
 	Owner:SetNumberValue("AIMedicFor", Patient.UniqueID); -- (On itself: no unit's AI writes another's values, see SharedBehaviors.PeerValue.)

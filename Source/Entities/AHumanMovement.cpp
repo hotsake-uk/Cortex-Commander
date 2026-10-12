@@ -150,7 +150,7 @@ bool AHuman::NoteLadderStall(float ladderX, float y, bool slope) const {
 	// (How many it takes, this one counted, is the Movement settings' AILadderTeamStalls.)
 	const int before = static_cast<int>(std::count_if(s_Stalls.begin(), s_Stalls.end(), [&](const Stall& stall) {
 		Vector off = Towards(stall.at, at);
-		return stall.team == m_Team && stall.slope == slope && std::abs(off.m_X) < 12.0F && std::abs(off.m_Y) < m_CharHeight * 2.0F;
+		return stall.team == m_Team && stall.slope == slope && std::abs(off.m_X) < 12.0F && std::abs(off.m_Y) < GetMoveHeight() * 2.0F;
 	}));
 	s_Stalls.push_back({m_Team, at, now, slope});
 	return before + 1 >= g_SettingsMan.AILadderTeamStalls();
@@ -201,7 +201,7 @@ void AHuman::UpdateAIMotor() {
 		return;
 	}
 	Controller& ctrl = m_Controller;
-	const float h = m_CharHeight;
+	const float h = GetMoveHeight();
 	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : h * 0.2F;
 
 	// The stance held, for its while.
@@ -335,7 +335,7 @@ void AHuman::UpdateAIMotor() {
 
 float AHuman::GetLegJumpHeight() const {
 	// A little over half the standing body (0.44 of the character height): a soldier clears a knee-high crate or a node-wide gap at a run.
-	float height = m_LegJumpHeight >= 0.0F ? m_LegJumpHeight : std::max(16.0F, m_CharHeight * 0.44F) * 0.55F;
+	float height = m_LegJumpHeight >= 0.0F ? m_LegJumpHeight : std::max(16.0F, GetMoveHeight() * 0.44F) * 0.55F;
 	// The Carry weight settings: stronger legs leap higher, a load holds it down.
 	return height * g_SettingsMan.LegStrength() * GetOverloadSpeedMultiplier();
 }
@@ -398,14 +398,14 @@ bool AHuman::CanLeap() const {
 	if (!m_LeapTimer.IsPastSimMS(250)) {
 		return false;
 	}
-	const float h = m_CharHeight;
+	const float h = GetMoveHeight();
 	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : h * 0.2F;
 	return std::abs(m_Vel.m_Y) < 2.5F && FloorUnder(m_Pos, feet + 6.0F) >= 0.0F;
 }
 
 void AHuman::UpdateLeap() {
 	Controller& ctrl = m_Controller;
-	const float h = m_CharHeight;
+	const float h = GetMoveHeight();
 	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : h * 0.2F;
 	if (m_Leaping) {
 		// Down again (on the floor and no longer rising, after the push has had a moment), or knocked over, climbing, mantling: done.
@@ -451,12 +451,8 @@ void AHuman::UpdateLeap() {
 
 AHuman::Sensed AHuman::SenseAhead(float direction, float floorY, float standing) const {
 	Sensed sensed;
-	const float h = m_CharHeight;
-	float bodyWidth = static_cast<float>(GetSpriteWidth());
-	if (m_pHead) {
-		bodyWidth = std::max(bodyWidth, static_cast<float>(m_pHead->GetSpriteWidth()));
-	}
-	const float halfWidth = std::clamp(bodyWidth * 0.5F + 1.0F, 5.0F, 16.0F);
+	const float h = GetMoveHeight();
+	const float halfWidth = std::clamp(MoveBodyWidth() * 0.5F + 1.0F, 5.0F, MoveHalfWidthCap());
 	const float reach = h * 0.35F;
 	const float crawl = std::max(12.0F, h * 0.24F);
 	// (A plant ahead is walked through, not a wall or a step: sensed as one, every bush got a hop of the jet, or a leap from short of it.
@@ -507,7 +503,7 @@ AHuman::Sensed AHuman::SenseAhead(float direction, float floorY, float standing)
 // ---------------------------------------------------------------- Ladders
 
 bool AHuman::FindLadderNear(const Vector& at, float reachX, float& bodyX, float& gripX, int& wallSide, bool& material, int way) const {
-	const float h = m_CharHeight;
+	const float h = GetMoveHeight();
 	const unsigned char ladder = LadderMaterialID();
 	if (ladder != 0) {
 		// The nearest column with rungs in it, across from the point, over most of a body's height (the rungs are 3 px bars every 8 px,
@@ -654,13 +650,13 @@ float AHuman::HandReachTopY() const {
 			top = std::min(top, arm->GetJointPos().m_Y - arm->GetMaxLength());
 		}
 	}
-	return (top < std::numeric_limits<float>::max() ? top : m_Pos.m_Y - m_CharHeight * 0.25F) - 4.0F;
+	return (top < std::numeric_limits<float>::max() ? top : m_Pos.m_Y - GetMoveHeight() * 0.25F) - 4.0F;
 }
 
 bool AHuman::LadderRungInReach(float gripX, bool material) const {
-	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : m_CharHeight * 0.2F;
+	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : GetMoveHeight() * 0.2F;
 	std::vector<float> rungs;
-	LadderRungsAt(gripX, material, HandReachTopY(), m_Pos.m_Y + feet + m_CharHeight * 0.5F, rungs);
+	LadderRungsAt(gripX, material, HandReachTopY(), m_Pos.m_Y + feet + GetMoveHeight() * 0.5F, rungs);
 	return !rungs.empty();
 }
 
@@ -727,7 +723,7 @@ void AHuman::UpdateLadderInput() {
 		refused(m_Status != STABLE ? "not stable" : (m_Mantling ? "mantling" : (m_GettingUp ? "getting up" : (m_ProneState != NOTPRONE ? "prone" : (flying ? "flying" : "no arms")))));
 		return;
 	}
-	const float h = m_CharHeight;
+	const float h = GetMoveHeight();
 	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : h * 0.2F;
 	float bodyX = 0.0F;
 	float gripX = 0.0F;
@@ -805,7 +801,7 @@ void AHuman::UpdateLadder() {
 		ladder.active = false;
 		return;
 	}
-	const float h = m_CharHeight;
+	const float h = GetMoveHeight();
 	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : h * 0.2F;
 	const float dt = std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F);
 	const double now = g_TimerMan.GetSimTimeMS();
@@ -919,7 +915,7 @@ void AHuman::UpdateLadder() {
 
 void AHuman::UpdateLadderLimbs() {
 	LadderClimb& ladder = m_Ladder;
-	const float h = m_CharHeight;
+	const float h = GetMoveHeight();
 	const double now = g_TimerMan.GetSimTimeMS();
 	std::vector<float> rungs;
 	LadderRungs(m_Pos.m_Y - h * 1.2F, m_Pos.m_Y + h * 0.9F, rungs);
@@ -1036,12 +1032,12 @@ ADoor* AHuman::DoorAhead(const Vector& toPoint) const {
 			continue;
 		}
 		Vector toLeaf = Towards(m_Pos, door->GetDoor()->GetPos());
-		if (toLeaf.MagnitudeIsGreaterThan(m_CharHeight * 1.5F)) {
+		if (toLeaf.MagnitudeIsGreaterThan(GetMoveHeight() * 1.5F)) {
 			continue;
 		}
 		float t = length > 1.0F ? std::clamp(toLeaf.Dot(along) / (length * length), 0.0F, 1.0F) : 0.0F;
 		float distance = (toLeaf - along * t).GetMagnitude();
-		if (distance < m_CharHeight * 0.5F && distance < bestDistance) {
+		if (distance < GetMoveHeight() * 0.5F && distance < bestDistance) {
 			best = door;
 			bestDistance = distance;
 		}
@@ -1050,7 +1046,7 @@ ADoor* AHuman::DoorAhead(const Vector& toPoint) const {
 }
 
 Actor* AHuman::UnitAhead(float direction, float reach) const {
-	const float h = m_CharHeight;
+	const float h = GetMoveHeight();
 	Actor* nearest = nullptr;
 	float nearestAhead = std::min(h * 0.5F + 10.0F, reach);
 	// (The tests below only read, so the cheap ones go first: the side, the hits, where it is; the type checks last.)
@@ -1085,7 +1081,7 @@ Actor* AHuman::UnitAhead(float direction, float reach) const {
 }
 
 const MOSRotating* AHuman::VehicleAhead(float direction, float reach, float floorY) const {
-	const float h = m_CharHeight;
+	const float h = GetMoveHeight();
 	std::vector<MOID> ours;
 	GetMOIDs(ours);
 	Vector obstacle;
@@ -1130,7 +1126,7 @@ bool AHuman::BodyCollidesWith(const MovableObject* other) const {
 }
 
 const MOSRotating* AHuman::ObjectAhead(float direction, float reach, float floorY) const {
-	const float h = m_CharHeight;
+	const float h = GetMoveHeight();
 	std::vector<MOID> passed;
 	GetMOIDs(passed);
 	Vector obstacle;
@@ -1168,7 +1164,7 @@ const MOSRotating* AHuman::ObjectAhead(float direction, float reach, float floor
 }
 
 bool AHuman::MeasureHull(const MOSRotating* hull, float direction, float floorY, float& topY, float& nearX, float& farX) const {
-	const float h = m_CharHeight;
+	const float h = GetMoveHeight();
 	const MOID hullRoot = hull->GetRootID();
 	std::vector<MOID> ours;
 	GetMOIDs(ours);
@@ -1226,7 +1222,7 @@ bool AHuman::MeasureHull(const MOSRotating* hull, float direction, float floorY,
 
 bool AHuman::InDoorSweep() const {
 	for (ADoor* door: g_MovableMan.GetDoorList()) {
-		if ((door->GetTeam() == m_Team || door->GetTeam() == Activity::NoTeam) && door->GetDoor() && door->GetDoorState() != ADoor::CLOSED && Towards(m_Pos, door->GetPos()).MagnitudeIsLessThan(m_CharHeight * 1.2F) && door->SweepContains(m_Pos, m_CharHeight * 0.3F)) {
+		if ((door->GetTeam() == m_Team || door->GetTeam() == Activity::NoTeam) && door->GetDoor() && door->GetDoorState() != ADoor::CLOSED && Towards(m_Pos, door->GetPos()).MagnitudeIsLessThan(GetMoveHeight() * 1.2F) && door->SweepContains(m_Pos, GetMoveHeight() * 0.3F)) {
 			return true;
 		}
 	}
@@ -1275,7 +1271,7 @@ void AHuman::PushFree(float direction) {
 	if (m_pAtomGroup && m_pAtomGroup->InTerrain()) {
 		MoveOutOfTerrain(MaterialColorKeys::g_MaterialGrass);
 	}
-	const float h = m_CharHeight;
+	const float h = GetMoveHeight();
 	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : h * 0.2F;
 	// Away from what it is pressed against: the ground in a ring round the body, each solid point pushing the other way.
 	Vector away;
@@ -1463,7 +1459,7 @@ float AHuman::ClimbFuelPerPixel() const {
 // is hovered across to, 300 for straight up), or the burst for one that doesn't climb, and the crossing lit about half the time.
 float AHuman::FlightFuelNeeded(const Vector& landing, float landingFloorY, bool capped) const {
 	Vector to = Towards(m_Pos, landing);
-	float feetY = m_Pos.m_Y + (m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : m_CharHeight * 0.2F);
+	float feetY = m_Pos.m_Y + (m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : GetMoveHeight() * 0.2F);
 	float rise = feetY - landingFloorY + 12.0F;
 	float climb = rise > 16.0F ? ClimbFuelNeeded(rise, std::abs(to.m_X) >= 10.0F ? 450.0F : 300.0F) : 200.0F;
 	float needed = climb + std::abs(to.m_X) / (5.0F * c_PPM) * 0.5F * 1000.0F * 1.2F;
@@ -1474,7 +1470,7 @@ float AHuman::FlightFuelNeeded(const Vector& landing, float landingFloorY, bool 
 // team are no obstacle (they move, and a body flies past them): counted as walls, a group sent together saw each other in the way, and
 // whether a unit took off depended on where its friends stood.
 bool AHuman::FlightWayClear(const Vector& landing, float landingFloorY) const {
-	float h = m_CharHeight;
+	float h = GetMoveHeight();
 	float cruiseY = std::min(m_Pos.m_Y, landingFloorY - 12.0F - h * 0.5F);
 	Vector up(0.0F, cruiseY - m_Pos.m_Y - h * 0.3F);
 	Vector over = Towards(Vector(m_Pos.m_X, cruiseY), Vector(landing.m_X, cruiseY));
@@ -1504,7 +1500,7 @@ bool AHuman::FlightWayClear(const Vector& landing, float landingFloorY) const {
 // Whether a landing can be walked to: the floor followed from under us to under it, every 12 px, never up more than a step the legs take
 // or mantle (a quarter of the height) nor down more than a safe step (0.6 of it), with room to crawl all the way. Asked before any jet.
 bool AHuman::CanWalkTo(const Vector& landing, float landingFloorY) const {
-	float h = m_CharHeight;
+	float h = GetMoveHeight();
 	float stepUp = h * 0.24F;
 	float stepDown = h * 0.6F;
 	float room = h * 0.24F;
@@ -1543,7 +1539,7 @@ void AHuman::PopRouteToLanding(const Vector& landing, int pointsToLanding) {
 	// Up to and including the route's point nearest the landing, when one is near it: the route may have been replaced in the air (route
 	// checks run during flights, and an adopted one starts where the unit was), so the count of points to the landing the flight was
 	// planned with can belong to another route, and popping that many dropped the wrong points. The count is only the fallback.
-	const float reach = std::max(m_CharHeight * 0.75F, 24.0F);
+	const float reach = std::max(GetMoveHeight() * 0.75F, 24.0F);
 	int nearestIndex = -1;
 	float nearestDistance = reach;
 	int index = 0;
@@ -1570,7 +1566,7 @@ bool AHuman::FindLanding(Vector& landing, float& landingFloorY, int& pointsToLan
 }
 
 bool AHuman::FindLanding(Vector& landing, float& landingFloorY, int& pointsToLanding, Vector& takeOff) const {
-	float h = m_CharHeight;
+	float h = GetMoveHeight();
 	bool airborne = false;
 	int index = 0;
 	Vector last = m_Pos;
@@ -1669,7 +1665,7 @@ bool AHuman::ShaftColumn(float columnX, float topHeadY, float& middleX, float& w
 	// walls both sides within reach, the nearest faces bound the channel the body goes up, and the narrowest of them is the shaft. (Looked
 	// at only from where the unit stood, a shaft whose walls begin above the corridor's ceiling, or one beside the unit, wasn't seen, and
 	// a unit beside a 130 px shaft stood there the whole minute. 8.0's SharedBehaviors.ClimbPlan looked along the climb, as this does.)
-	float h = m_CharHeight;
+	float h = GetMoveHeight();
 	float headAbove = h * 0.24F;
 	float fromY = m_Pos.m_Y - headAbove;
 	float span = fromY - topHeadY;
@@ -1843,7 +1839,7 @@ bool AHuman::FollowLift(bool airborne) {
 	mover.progressTimer.Reset();
 	const bool callsLifts = g_SettingsMan.AIUnitsCallLifts();
 	const float deckHalf = lift->GetDeckHalfWidth();
-	const float bodyHalf = std::clamp(static_cast<float>(GetSpriteWidth()) * 0.5F + 2.0F, 6.0F, 16.0F);
+	const float bodyHalf = std::clamp(MoveBodyWidth() * 0.5F + 2.0F, 6.0F, MoveHalfWidthCap());
 	auto giveUp = [&](const std::string& why) {
 		MoverTrace(why);
 		AvoidPathLink(boardPoint, leavePoint, 30000.0F);
@@ -1994,7 +1990,7 @@ void AHuman::DrawMoverDebug() const {
 		}
 		if (record.tank > 0.0F) {
 			const float width = 30.0F;
-			Vector barLeft = m_Pos + Vector(-width * 0.5F, -m_CharHeight * 0.6F - 10.0F);
+			Vector barLeft = m_Pos + Vector(-width * 0.5F, -GetMoveHeight() * 0.6F - 10.0F);
 			float used = std::min(1.0F, record.fuelUsed / record.tank);
 			float predicted = std::min(1.0F, record.fuelPredicted / record.tank);
 			g_PrimitiveMan.DrawBoxPrimitive(barLeft, barLeft + Vector(width, 3.0F), barColor);
@@ -2009,7 +2005,7 @@ void AHuman::DrawMoverDebug() const {
 	if (flightsOnly && state == "walk") {
 		return;
 	}
-	g_PrimitiveMan.DrawTextPrimitive(m_Pos + Vector(0.0F, -m_CharHeight * 0.6F), state, true, 1);
+	g_PrimitiveMan.DrawTextPrimitive(m_Pos + Vector(0.0F, -GetMoveHeight() * 0.6F), state, true, 1);
 }
 
 void AHuman::RecordFlightDebug() {
@@ -2028,7 +2024,7 @@ void AHuman::RecordFlightDebug() {
 			if (flight.via) {
 				record.planned.push_back(flight.viaPoint);
 			}
-			float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : m_CharHeight * 0.2F;
+			float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : GetMoveHeight() * 0.2F;
 			record.planned.push_back(Vector(flight.landing.m_X, flight.floorY - feet));
 			record.fuelPredicted = FlightFuelNeeded(flight.landing, flight.floorY);
 			record.tank = m_pJetpack ? m_pJetpack->GetJetTimeTotal() : 0.0F;
@@ -2080,7 +2076,7 @@ void AHuman::GetDebugState(std::vector<DebugStateField>& fields) const {
 
 bool AHuman::WatchForPin(bool holding) {
 	RouteMover& mover = m_Mover;
-	const float h = m_CharHeight;
+	const float h = GetMoveHeight();
 	// Getting free: out to the side for a second (a little longer each time at the same spot), or until well clear of where it was pinned,
 	// then a route from there.
 	if (mover.unpinDir != 0) {
@@ -2143,7 +2139,7 @@ bool AHuman::WatchForPin(bool holding) {
 
 void AHuman::Unpin() {
 	RouteMover& mover = m_Mover;
-	const float h = m_CharHeight;
+	const float h = GetMoveHeight();
 	// Pinned at much the same spot again inside the minute: more each time.
 	if (m_PinCount > 0 && Towards(m_PinSpot, m_Pos).MagnitudeIsLessThan(h) && !m_PinSpotTimer.IsPastSimMS(60000)) {
 		++m_PinCount;
@@ -2277,7 +2273,7 @@ int AHuman::MoveAlongRoute() {
 		const bool somewhere = !m_Waypoints.empty() || !m_MovePath.empty() || m_HasMovePathGoal || g_MovableMan.ValidMO(m_pMOMoveTarget);
 		const bool arrived = mover.arrivedTick >= 0 && tick - mover.arrivedTick <= static_cast<long long>(std::max(1, g_SettingsMan.GetAIUpdateInterval()) * 2 + 1);
 		// (Nor beside a unit it follows, which may stand still as long as it likes.)
-		const bool atTarget = g_MovableMan.ValidMO(m_pMOMoveTarget) && Towards(m_Pos, m_pMOMoveTarget->GetPos()).MagnitudeIsLessThan(m_CharHeight * 1.5F);
+		const bool atTarget = g_MovableMan.ValidMO(m_pMOMoveTarget) && Towards(m_Pos, m_pMOMoveTarget->GetPos()).MagnitudeIsLessThan(GetMoveHeight() * 1.5F);
 		// (Nor while it waits on purpose: for fuel at a take-off, or for a lift at its stop or on its deck. Each wait has its own limit; taken
 		// for pinned at 8 s, a unit waiting for fuel stepped sideways off its take-off, and one waiting for a slow lift marked the lift's way
 		// avoided and went round.)
@@ -2304,7 +2300,7 @@ int AHuman::MoveAlongRoute() {
 		mover.begun = true;
 		mover.lastProgressPos = m_Pos;
 	}
-	const float h = m_CharHeight;
+	const float h = GetMoveHeight();
 	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : h * 0.2F;
 	const bool standardJet = m_pJetpack && m_pJetpack->GetJetpackType() == AEJetpack::JetpackType::Standard;
 	// On the ground: floor under the middle or under either side of the body (8.0's look; one standing on a ledge's very edge, or on a
@@ -4513,7 +4509,7 @@ int AHuman::MoveAlongRoute() {
 			// Something low on the floor, a step-over (LM-5) whether the route said so or not: leapt on the legs when the leap clears it, at its
 			// edge; pulled over by the mantle (pressing into it) when that reaches; only higher than both, hopped with the jet. (Every lump the
 			// legs didn't step was the jet's, and a unit with no jet stood at it till the stuck handling came.)
-			const float bodyHalf = std::clamp(static_cast<float>(GetSpriteWidth()) * 0.5F + 1.0F, 5.0F, 16.0F);
+			const float bodyHalf = std::clamp(MoveBodyWidth() * 0.5F + 1.0F, 5.0F, MoveHalfWidthCap());
 			if (sensed.rise <= GetLegJumpHeight() + 2.0F && CanLeap()) {
 				leapOver = sensed.distance <= bodyHalf + 8.0F;
 			} else if (sensed.rise > mantle + 2.0F && canHop) {

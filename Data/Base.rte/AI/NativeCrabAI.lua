@@ -180,7 +180,7 @@ function NativeCrabAI:Update(Owner)
 			if (Owner.AIMode ~= self.lastAIMode or ordered) and Owner.AIMode == Actor.AIMODE_SENTRY then
 				self.SentryFacing = Owner.HFlipped; -- store the direction in which we should be looking
 				-- (Back at its post after a fall-back (SharedBehaviors.RestoreOrder): the post's facing, not the way it walked in.)
-				if self.ReturnPost and self.ReturnPost.facing ~= nil and not SceneMan:ShortestDistance(Owner.Pos, self.ReturnPost.Pos, false):MagnitudeIsGreaterThan(Owner.Height) then
+				if self.ReturnPost and self.ReturnPost.facing ~= nil and not SceneMan:ShortestDistance(Owner.Pos, self.ReturnPost.Pos, false):MagnitudeIsGreaterThan(Owner.MoveHeight) then
 					self.SentryFacing = self.ReturnPost.facing;
 				end
 				self.ReturnPost = nil;
@@ -233,7 +233,7 @@ function NativeCrabAI:Update(Owner)
 			if Owner.AIMode == Actor.AIMODE_SQUAD then
 				-- look where the SL looks, if not moving
 				if not self.jump and self.lateralMoveState == Actor.LAT_STILL then
-					if Leader and Leader.EquippedItem and IsHDFirearm(Leader.EquippedItem) and SceneMan:ShortestDistance(Owner.Pos, Leader.Pos, false).Largest < (Leader.Height + Owner.Height) * 0.5 then
+					if Leader and Leader.EquippedItem and IsHDFirearm(Leader.EquippedItem) and SceneMan:ShortestDistance(Owner.Pos, Leader.Pos, false).Largest < (Leader.MoveHeight + Owner.MoveHeight) * 0.5 then
 						local LeaderWeapon = ToHDFirearm(Leader.EquippedItem);
 						if LeaderWeapon:IsWeapon() then
 							local AimDelta = SceneMan:ShortestDistance(Leader.Pos, Leader.ViewPoint, false);
@@ -287,7 +287,7 @@ function NativeCrabAI:Update(Owner)
 				-- look where the SL looks, if not moving
 				if not self.Target and self.lateralMoveState == Actor.LAT_STILL then
 					local Leader = ToActor(Owner.MOMoveTarget);
-					if Leader and SceneMan:ShortestDistance(Owner.Pos, Leader.Pos, false).Largest < Owner.Height then
+					if Leader and SceneMan:ShortestDistance(Owner.Pos, Leader.Pos, false).Largest < Owner.MoveHeight then
 						self.deviceState = AHuman.AIMING;
 						self.Ctrl.AnalogAim = SceneMan:ShortestDistance(Owner.EyePos, Leader.ViewPoint, false).Normalized;
 					end

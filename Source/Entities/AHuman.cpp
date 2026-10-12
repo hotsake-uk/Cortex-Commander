@@ -32,6 +32,9 @@
 #include "RenderMan.h"
 #include "Draw.h"
 
+#include <mutex>
+#include <unordered_set>
+
 #include "Sandbox.h"
 #include "tracy/Tracy.hpp"
 
@@ -1106,8 +1109,10 @@ PathAgent AHuman::GetPathAgent() const {
 	// The standing body: the feet are a fifth of the height under Pos and the top of the head about a quarter over it, so a Soldier Light
 	// (height 100) stands 44 px tall and a 48 px tunnel, the bunker modules' corridor, is walked upright. The movement script measures its
 	// head room by the same fraction (SharedBehaviors.StandingHeight), so the grid and the script agree about every corridor.
-	agent.StandHeight = std::max(16.0F, m_CharHeight * 0.44F);
-	agent.CrawlHeight = std::max(12.0F, m_CharHeight * 0.24F);
+	// (Of the measured body with SettingsMan::MeasuredBodySize on: see GetMoveHeight.)
+	const float moveHeight = GetMoveHeight();
+	agent.StandHeight = std::max(16.0F, moveHeight * 0.44F);
+	agent.CrawlHeight = std::max(12.0F, moveHeight * 0.24F);
 	// And crouched (see GetCrouchHeight): a low beam or a half-shut hatch with this much room under it is walked ducking, not crawled.
 	agent.CrouchHeight = GetCrouchHeight();
 	// The width from the body, not from the radius: the radius reaches to the farthest point of anything attached, so a soldier was as
@@ -1116,15 +1121,12 @@ PathAgent AHuman::GetPathAgent() const {
 	// And from the body itself, the torso and the head (the arms and legs are limbs that fold through a gap): a Soldier Light's are 12 px
 	// wide, so 8 px a side with 2 px to spare. Taken as 0.14 of the height, 14, it shut soldiers out of the 24 px shafts real maps are
 	// built with (Hemslock Hold's lift shaft alone cut 129 routes that the original pathfinder takes).
-	float bodyWidth = static_cast<float>(GetSpriteWidth());
-	if (m_pHead) {
-		bodyWidth = std::max(bodyWidth, static_cast<float>(m_pHead->GetSpriteWidth()));
-	}
-	agent.HalfWidth = std::clamp(bodyWidth * 0.5F + 2.0F, 6.0F, 16.0F);
+	// (Measured, with SettingsMan::MeasuredBodySize on, and then as wide as the grid measures round a node, as a BodyWidth may be.)
+	agent.HalfWidth = std::clamp(MoveBodyWidth() * 0.5F + 2.0F, 6.0F, MoveHalfWidthCap());
 	// The legs take stairs: a soldier walks the base game's steep stairs (6 px risers on 3 px treads) unaided in four seconds.
 	agent.WalksStairs = true;
 	// Ledges it pulls itself up onto from the ground (Actor::TryStartMantle), when the setting is on.
-	agent.MantleHeight = g_SettingsMan.MantlingEnabled() ? std::max(m_CharHeight, 20.0F) * 0.3F : 0.0F;
+	agent.MantleHeight = g_SettingsMan.MantlingEnabled() ? std::max(moveHeight, 20.0F) * 0.3F : 0.0F;
 	// The flight links (PathFinder::AddFlightLinks): for a standard jetpack, its full tank.
 	agent.JetTimeMS = (m_pJetpack && m_pJetpack->GetJetpackType() == AEJetpack::JetpackType::Standard) ? m_pJetpack->GetJetTimeTotal() : 0.0F;
 	// Ladders are a way up and down for anything with a hand to climb them with (see UpdateLadder), routed for now only where the jet
@@ -1820,7 +1822,7 @@ void AHuman::OnNewMovePath() {
 	if (!g_SceneMan.ShortestDistance(m_MovePathGoal, sky, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(4.0F)) {
 		return;
 	}
-	const float h = m_CharHeight;
+	const float h = GetMoveHeight();
 	auto seesSky = [this, &sky, h](const Vector& body) {
 		Vector obstacle;
 		Vector free;
@@ -1947,17 +1949,111 @@ void AHuman::UpdateWalkAngle(AHuman::Layer whichLayer) {
 	}
 }
 
+void AHuman::MeasureBody() {
+	// The feet: as learned standing (LearnFlight), else where the stand path puts them, under the legs' joints.
+	float feet = m_FeetBelowPos;
+	if (feet < 0.0F) {
+		for (const Leg* leg: {m_pFGLeg, m_pBGLeg}) {
+			if (leg) {
+				const LimbPath& stand = m_Paths[leg == m_pFGLeg ? FGROUND : BGROUND][STAND];
+				feet = std::max(feet, leg->GetParentOffset().m_Y + stand.GetLowestY() * stand.GetTotalScaleMultiplier().m_Y + 2.0F);
+			}
+		}
+	}
+	const std::array<const void*, 3> body{m_pHead, m_pFGLeg, m_pBGLeg};
+	// (And every few seconds regardless, as a body just made, or one changed by a script, may not have been in place the first time.)
+	if (m_BodyMeasured && body == m_MeasuredFor && std::abs(feet - m_MeasuredFeet) < 1.0F && !m_MeasureTimer.IsPastSimMS(3000)) {
+		return;
+	}
+	m_MeasureTimer.Reset();
+	m_BodyMeasured = true;
+	m_MeasuredFor = body;
+	m_MeasuredFeet = feet;
+
+	// The torso's own terrain atoms (subgroup 0: what's merged in from the head and the rest has its own), and the head's and whatever it
+	// wears that meets the terrain, each taken back into the torso's upright, unflipped frame.
+	float top = FLT_MAX;
+	float left = FLT_MAX;
+	float right = -FLT_MAX;
+	auto take = [&](const Vector& local) {
+		top = std::min(top, local.m_Y);
+		left = std::min(left, local.m_X);
+		right = std::max(right, local.m_X);
+	};
+	if (m_pAtomGroup) {
+		for (const Atom* atom: m_pAtomGroup->GetAtomList()) {
+			if (atom->GetSubID() == 0) {
+				take(atom->GetOffset());
+			}
+		}
+	}
+	auto takePart = [&](MOSRotating* part) {
+		if (!part || !part->GetAtomGroup()) {
+			return;
+		}
+		Vector at = g_SceneMan.ShortestDistance(m_Pos, part->GetPos(), g_SceneMan.SceneWrapsX());
+		// (Not where it isn't placed on the body yet, as on a frame it was only just attached: measured again when the feet are learned.)
+		if (at.MagnitudeIsGreaterThan(std::max(m_CharHeight, 100.0F) * 2.0F)) {
+			return;
+		}
+		for (const Atom* atom: part->GetAtomGroup()->GetAtomList()) {
+			take(UnRotateOffset(at + part->RotateOffset(atom->GetOffset())));
+		}
+	};
+	if (m_pHead) {
+		takePart(m_pHead);
+		for (Attachable* worn: m_pHead->GetAttachableList()) {
+			if (worn && worn->GetCollidesWithTerrainWhileAttached()) {
+				takePart(worn);
+			}
+		}
+	}
+	if (top == FLT_MAX || feet <= 0.0F) {
+		m_MeasuredMoveHeight = -1.0F;
+		m_MeasuredBodyWidth = -1.0F;
+		return;
+	}
+	// Into CharHeight's terms: a Soldier Light measures about 40 px from its helmet's atoms (set in two pixels from the sprite's edge; see the
+	// head's soft rim in Update) to the floor, against the 44 of its 100 the fractions take, so 0.4 of the movement height. (Held to sizes
+	// the path grid can tell apart: nothing under 8 px, nothing taller than it measures room over a node.)
+	float stand = std::clamp(feet - top, 8.0F, static_cast<float>(PathNode::c_ClearanceReach) / c_MoveStandFraction * c_MeasuredStandFraction);
+	m_MeasuredMoveHeight = stand / c_MeasuredStandFraction;
+	m_MeasuredBodyWidth = right - left + 2.0F;
+	// Said once a preset, with the setting on, where its CharHeight is a quarter or more off its body: the mod units it changes most.
+	if (g_SettingsMan.MeasuredBodySize() && m_MovementProfile.BodyHeight < 0.0F && std::abs(m_MeasuredMoveHeight - m_CharHeight) > std::max(m_CharHeight, 1.0F) * 0.25F) {
+		static std::mutex s_ToldMutex;
+		static std::unordered_set<std::string> s_Told;
+		std::scoped_lock lock(s_ToldMutex);
+		if (s_Told.insert(GetPresetName()).second) {
+			g_ConsoleMan.PrintString("Measured body: " + GetPresetName() + " moves as height " + std::to_string(static_cast<int>(m_MeasuredMoveHeight)) + ", width " + std::to_string(static_cast<int>(m_MeasuredBodyWidth)) + " (its CharHeight is " + std::to_string(static_cast<int>(m_CharHeight)) + ")");
+		}
+	}
+}
+
+float AHuman::MoveBodyWidth() const {
+	float measured = GetMoveBodyWidth();
+	if (measured > 0.0F) {
+		return measured;
+	}
+	float bodyWidth = static_cast<float>(GetSpriteWidth());
+	if (m_pHead) {
+		bodyWidth = std::max(bodyWidth, static_cast<float>(m_pHead->GetSpriteWidth()));
+	}
+	return bodyWidth;
+}
+
 float AHuman::GetCrouchHeight() const {
 	// Between the crawl and the standing heights the path grid uses (see GetPathAgent): a Soldier Light (height 100) crouches to 33 px.
-	const float standHeight = std::max(16.0F, m_CharHeight * 0.44F);
-	const float crawlHeight = std::max(12.0F, m_CharHeight * 0.24F);
-	return std::clamp(m_CharHeight * m_CrouchHeightFraction, crawlHeight, standHeight);
+	const float moveHeight = GetMoveHeight();
+	const float standHeight = std::max(16.0F, moveHeight * 0.44F);
+	const float crawlHeight = std::max(12.0F, moveHeight * 0.24F);
+	return std::clamp(moveHeight * m_CrouchHeightFraction, crawlHeight, standHeight);
 }
 
 float AHuman::GetCrouchShift() const {
 	// The full crouch lowers the body from its standing height to its crouched one (11 px for a Soldier Light), where it was 6 px whatever
 	// the body: a duck of a head's height, which got nothing under a 36 px pipe but lying down.
-	return std::max(m_MaxWalkPathCrouchShift, std::max(16.0F, m_CharHeight * 0.44F) - GetCrouchHeight());
+	return std::max(m_MaxWalkPathCrouchShift, std::max(16.0F, GetMoveHeight() * 0.44F) - GetCrouchHeight());
 }
 
 void AHuman::UpdateCrouching() {
@@ -3067,16 +3163,15 @@ void AHuman::Update() {
 		}
 	}
 
+	MeasureBody();
+
 	LearnFlight();
 
 	// Pulling up onto a ledge or over an obstacle (Actor::TryStartMantle): any humanoid, from its own sizes; the arms run their climb
 	// paths while it pulls.
 	if (!m_Mantling && !m_Ladder.active) {
 		bool rising = m_pJetpack && m_pJetpack->IsEmitting() && m_Vel.m_Y < 0.5F;
-		float bodyWidth = static_cast<float>(GetSpriteWidth());
-		if (m_pHead) {
-			bodyWidth = std::max(bodyWidth, static_cast<float>(m_pHead->GetSpriteWidth()));
-		}
+		float bodyWidth = MoveBodyWidth();
 		// (An AI unit only when it means to, WantMantle: pressing on along its route, it pulled itself up onto ledges the route never went to.)
 		if (MantleWanted()) {
 			TryStartMantle(m_pHead, rising, bodyWidth);
@@ -3089,7 +3184,7 @@ void AHuman::Update() {
 			const RouteMover::Flight& flight = m_Mover.flight;
 			if (!m_Controller.IsPlayerControlled() && flight.active && !flight.step && m_pJetpack && (flight.refuelling || m_pJetpack->GetJetTimeLeft() < 60.0F)) {
 				float toLanding = g_SceneMan.ShortestDistance(m_Pos, flight.landing).m_X;
-				if (std::abs(toLanding) < m_CharHeight) {
+				if (std::abs(toLanding) < GetMoveHeight()) {
 					catchDir = toLanding < 0.0F ? -1.0F : 1.0F;
 					lipNearY = flight.floorY;
 				}
@@ -3838,7 +3933,7 @@ void AHuman::LearnFlight() {
 	if (!m_pJetpack->IsEmitting() && m_Vel.MagnitudeIsLessThan(0.5F) && m_Status == STABLE) {
 		// (Through liquid, with the Water behaviour setting: standing in a puddle, its surface was learnt as the floor, and the leap, which looks
 		// for the floor at the feet through the water, found none there and was refused.)
-		for (int down = 0; down < static_cast<int>(m_CharHeight); down += 2) {
+		for (int down = 0; down < static_cast<int>(std::max(m_CharHeight, GetMoveHeight())); down += 2) {
 			if (!SensedOpen(m_Pos.GetFloorIntX(), m_Pos.GetFloorIntY() + down)) {
 				float feetHere = static_cast<float>(down);
 				m_FeetBelowPos = m_FeetBelowPos < 0.0F ? feetHere : m_FeetBelowPos + (feetHere - m_FeetBelowPos) * 0.1F;
@@ -3856,9 +3951,10 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 	const float g = g_SceneMan.GetGlobalAcc().GetY() * ppm; // px/s^2, down.
 	const float fullAccel = JetAccelNow(); // px/s^2 along the nozzle.
 	const float maxLean = c_HalfPI * m_pJetpack->GetJetAngleRange();
-	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : m_CharHeight * 0.2F;
+	const float moveHeight = GetMoveHeight();
+	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : moveHeight * 0.2F;
 	const bool landing = floorY >= 0.0F;
-	const float halfWidth = std::max(6.0F, static_cast<float>(GetSpriteWidth()) * 0.5F);
+	const float halfWidth = std::max(6.0F, (GetMoveBodyWidth() > 0.0F ? GetMoveBodyWidth() : static_cast<float>(GetSpriteWidth())) * 0.5F);
 	// The jet's reach sideways: its push at full lean, lit most of the time; and up, against gravity.
 	const float sideAccel = std::max(20.0F, fullAccel * std::sin(maxLean) * 0.7F);
 	const float upBrake = std::max(30.0F, (fullAccel - g) * 0.6F);
@@ -3962,7 +4058,7 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 		jet = vel.m_Y > want.m_Y || (std::abs(want.m_X - vel.m_X) > 30.0F && vel.m_Y > want.m_Y - 40.0F);
 	};
 	auto hits = [&](const Vector& pos) {
-		const Vector points[] = {pos, pos + Vector(0.0F, feet * 0.9F), pos + Vector(0.0F, -m_CharHeight * 0.3F), pos + Vector(-halfWidth, 0.0F), pos + Vector(halfWidth, 0.0F)};
+		const Vector points[] = {pos, pos + Vector(0.0F, feet * 0.9F), pos + Vector(0.0F, -moveHeight * 0.3F), pos + Vector(-halfWidth, 0.0F), pos + Vector(halfWidth, 0.0F)};
 		// (Liquid is no terrain to fly into, with the Water behaviour setting: taking off from a puddle, every way flown hit it at once, and
 		// a flight past a stream pouring off a ledge was steered clear of it.)
 		for (const Vector& point: points) {
@@ -4093,7 +4189,7 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 			const Material* ladder = g_SceneMan.GetMaterial("Ladder");
 			s_Ladder = ladder ? ladder->GetIndex() : 0;
 		}
-		float headTop = m_Pos.m_Y - m_CharHeight * 0.26F;
+		float headTop = m_Pos.m_Y - moveHeight * 0.26F;
 		for (float dx: {-4.0F, 0.0F, 4.0F}) {
 			for (float dy: {1.0F, 3.0F}) {
 				unsigned char id = g_SceneMan.GetTerrMatter(static_cast<int>(m_Pos.m_X + dx), static_cast<int>(headTop - dy));
@@ -4118,7 +4214,7 @@ void AHuman::UpdateGetUp(float& rot) {
 	if (disabled || m_Status == DYING || m_Status == DEAD || m_Status == INACTIVE) {
 		return;
 	}
-	const float h = std::max(m_CharHeight, 20.0F);
+	const float h = std::max(GetMoveHeight(), 20.0F);
 	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : h * 0.2F;
 	// The floor under the body's middle, within a body.
 	auto floorUnder = [&]() {

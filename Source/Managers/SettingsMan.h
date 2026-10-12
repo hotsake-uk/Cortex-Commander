@@ -349,6 +349,11 @@ namespace RTE {
 		/// stairs or scramble climb that stops gaining height given up on and routed round. Off: as before (any 51 to 68 degree rise was
 		/// stairs, any soft 68 to 73 degree face a scramble). See PathFinder::UpdateNodeCosts and AHuman::UpdateAIMotor.
 		bool StrictClimbLimits() const { return m_StrictClimbLimits; }
+		/// Whether a humanoid's route search and walk size it by its measured body (the top of its head and torso atoms down to its feet, and
+		/// their width) rather than by its CharHeight in fractions tuned on the Soldier Light (off as the game comes). A mod unit whose CharHeight
+		/// doesn't match its body is then routed and walked for the body it has. Movement only: the HUD, aim and the rest keep CharHeight. See
+		/// Actor::GetMoveHeight and AHuman::MeasureBody.
+		bool MeasuredBodySize() const { return m_MeasuredBodySize; }
 		/// How much what a unit carries (its inventory, the guns in its hands and its gold) weighs, as a multiple of the items' own mass,
 		/// 0 to 5; 1 as the game comes (Actor::GetMass).
 		float CarriedWeightMultiplier() const { return m_CarriedWeightMultiplier; }
@@ -879,6 +884,7 @@ namespace RTE {
 		/// Sets how reckless AI units are on the move, 0 to 1 (0.5 as designed).
 		void SetAIRecklessness(float recklessness) { m_AIRecklessness = std::clamp(recklessness, 0.0F, 1.0F); }
 		void SetStrictClimbLimits(bool on) { m_StrictClimbLimits = on; }
+		void SetMeasuredBodySize(bool on) { m_MeasuredBodySize = on; }
 		void SetAILadderGiveUpSeconds(float seconds) { m_AILadderGiveUpSeconds = std::clamp(seconds, 0.5F, 10.0F); }
 		void SetAILadderTeamStalls(int stalls) { m_AILadderTeamStalls = std::clamp(stalls, 1, 5); }
 		void SetAIGrabsLaddersOnPurpose(bool on) { m_AIGrabsLaddersOnPurpose = on; }
@@ -1236,6 +1242,7 @@ namespace RTE {
 		float m_AIRecklessness; //!< How reckless AI units are on the move, 0 to 1 (see AIRecklessness).
 		float m_AILadderGiveUpSeconds; //!< See AILadderGiveUpSeconds.
 		bool m_StrictClimbLimits = true; //!< See StrictClimbLimits.
+		bool m_MeasuredBodySize = false; //!< See MeasuredBodySize.
 		float m_CarriedWeightMultiplier = 1.0F; //!< See CarriedWeightMultiplier.
 		float m_LegStrength = 1.0F; //!< See LegStrength.
 		int m_JetpackWeightCompensation = 0; //!< See JetpackWeightCompensation.

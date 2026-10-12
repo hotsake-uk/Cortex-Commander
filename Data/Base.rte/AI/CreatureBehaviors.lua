@@ -94,7 +94,7 @@ function CreatureBehaviors.RouteStep(AI, Owner, Route, Target)
 	local reachX = math.max(Owner.Radius * 0.5, 12);
 	while #Route.points > 0 do
 		local To = SceneMan:ShortestDistance(Owner.Pos, Route.points[1], false);
-		if math.abs(To.X) < reachX and math.abs(To.Y) < Owner.Height * 0.6 then
+		if math.abs(To.X) < reachX and math.abs(To.Y) < Owner.MoveHeight * 0.6 then
 			table.remove(Route.points, 1);
 		else
 			break;
@@ -172,7 +172,7 @@ function CreatureBehaviors.HuntTarget(AI, Owner, Abort)
 		AI.deviceState = ACrab.STILL;
 		AI.Ctrl:SetState(Controller.BODY_LEAP, false);
 		-- (Back to its post, when it was on guard and the hunt took it away; not when another order ended the hunt.)
-		if not aborted and Keep and Keep.post and Owner.AIMode == Actor.AIMODE_SENTRY and SceneMan:ShortestDistance(Owner.Pos, Keep.post, false):MagnitudeIsGreaterThan(Owner.Height) then
+		if not aborted and Keep and Keep.post and Owner.AIMode == Actor.AIMODE_SENTRY and SceneMan:ShortestDistance(Owner.Pos, Keep.post, false):MagnitudeIsGreaterThan(Owner.MoveHeight) then
 			SharedBehaviors.RestoreOrder(AI, Owner, Keep);
 		end
 		return true;
@@ -213,7 +213,7 @@ function CreatureBehaviors.HuntTarget(AI, Owner, Abort)
 				if HeldTimer:IsPastSimMS(2000) then
 					break;
 				end
-			elseif pounceRange > 0 and gap < pounceRange and math.abs(ToTarget.Y) < Owner.Height * 0.5 and LeapTimer:IsPastSimMS(1800)
+			elseif pounceRange > 0 and gap < pounceRange and math.abs(ToTarget.Y) < Owner.MoveHeight * 0.5 and LeapTimer:IsPastSimMS(1800)
 				and SceneMan:CastStrengthSumRay(Owner.EyePos, Target.Pos, 4, rte.grassID) < 50 then
 				-- Close, level and nothing in the way: a leap at it.
 				AI.lateralMoveState = dir > 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
@@ -234,7 +234,7 @@ function CreatureBehaviors.HuntTarget(AI, Owner, Abort)
 					closest = gap;
 					ProgressTimer:Reset();
 				end
-				local climb = ToNext.Y < -Owner.Height * 0.3 and math.abs(ToNext.X) < Owner.Height;
+				local climb = ToNext.Y < -Owner.MoveHeight * 0.3 and math.abs(ToNext.X) < Owner.MoveHeight;
 				if (climb or ProgressTimer:IsPastSimMS(1500)) and LeapTimer:IsPastSimMS(700) then
 					AI.Ctrl:SetState(Controller.BODY_LEAP, true);
 					LeapTimer:Reset();
@@ -276,7 +276,7 @@ function CreatureBehaviors.ChargeTarget(AI, Owner, Abort)
 		PrevMOMoveTarget = Owner.MOMoveTarget;
 	elseif Owner.AIMode ~= Actor.AIMODE_SENTRY then
 		Owner.MOMoveTarget = nil;
-		PrevSceneWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.Height / 5, 4);
+		PrevSceneWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.MoveHeight / 5, 4);
 	end
 	Owner:ClearMovePath();
 	Owner:AddAIMOWaypoint(AI.Target);
@@ -294,7 +294,7 @@ function CreatureBehaviors.ChargeTarget(AI, Owner, Abort)
 		AI.deviceState = AHuman.STILL;
 		if not aborted then
 			AI.Target = nil;
-			if Keep and Keep.post and Owner.AIMode == Actor.AIMODE_SENTRY and SceneMan:ShortestDistance(Owner.Pos, Keep.post, false):MagnitudeIsGreaterThan(Owner.Height) then
+			if Keep and Keep.post and Owner.AIMode == Actor.AIMODE_SENTRY and SceneMan:ShortestDistance(Owner.Pos, Keep.post, false):MagnitudeIsGreaterThan(Owner.MoveHeight) then
 				SharedBehaviors.RestoreOrder(AI, Owner, Keep);
 			end
 		end
