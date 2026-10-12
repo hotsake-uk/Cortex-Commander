@@ -1,7 +1,7 @@
 // Battle Command: the after-battle report. While a battle is on, every unit in it is kept on record (its kind, its kills, whether it fell),
 // with each team's score every five seconds and the time each team spent on each objective; when the battle ends, the world is paused and the
 // report opens over it: who won, how long it took, the best of your units, kills and losses by kind, time on the objectives and the score
-// over time.
+// over time. It can be copied as text, or saved to Userdata/BattleReports/<map>-<date-time>.txt (B-15).
 
 #include "SandboxInternal.h"
 
@@ -42,6 +42,8 @@ namespace SandboxDetail {
 			std::vector<std::pair<std::string, std::array<float, c_Sides>>> Holds; //!< Seconds each team was alone on each objective.
 		};
 		Report s_Report;
+		std::string s_ReportScene; //!< The map the battle on record was fought on.
+		std::string s_ReportNote; //!< What the last copy or save did, under the buttons.
 		bool s_ReportOpen = false;
 		bool s_ReportJustOpened = false; //!< Opened in the sim: the world is paused at the next frame.
 		bool s_PausedByReport = false;
@@ -292,6 +294,91 @@ namespace SandboxDetail {
 			ImGui::TextDisabled("Time a team had units on it and the others none.");
 		}
 
+		/// The report as plain text, for the clipboard or a file: the result, the scores, the best of yours, kills and losses by kind, and time on
+		/// the objectives.
+		std::string ReportText() {
+			static constexpr const char* c_Ranks[] = {"Private", "Corporal", "Sergeant", "Veteran"};
+			std::string text = "After-battle report" + (s_ReportScene.empty() ? std::string() : ": " + s_ReportScene) + "\n" + ResultLine() + "\n";
+			const int mode = static_cast<int>(s_Report.Mode);
+			text += std::string(c_ModeNames[std::clamp(mode, 0, static_cast<int>(std::size(c_ModeNames)) - 1)]) + ", lasted " + Clock(Seconds(s_Report.EndAt - s_Report.StartAt)) + "\n\nScores:";
+			std::vector<int> sides;
+			for (int side = 0; side < c_Sides; ++side) {
+				if (s_Report.Plays[side]) {
+					sides.push_back(side);
+					text += std::string("  ") + c_SideNames[side] + " " + std::to_string(s_Report.Score[side]) + (side == s_Report.Yours ? " (you)" : "");
+				}
+			}
+			text += "\n\nBest of yours: ";
+			if (const ReportUnit* best = BestOfYours()) {
+				const std::string name = best->Name.empty() ? std::string("A ") + best->Kind : std::string(c_Ranks[std::clamp(best->Rank, 0, 3)]) + " " + best->Name;
+				text += name + " (" + best->Kind + "): " + std::to_string(best->Kills) + (best->Kills == 1 ? " kill, " : " kills, ") + (best->Fell ? "fell after " : "in for ") + Clock(Seconds(best->Until - best->Since)) + "\n";
+			} else {
+				text += "none of your units made a kill.\n";
+			}
+			if (!s_Report.Units.empty()) {
+				text += "\nKills and losses (kills / lost):\n";
+				for (const std::string& kind: Kinds()) {
+					text += "  " + kind + ":";
+					for (int side: sides) {
+						int kills = 0;
+						int lost = 0;
+						for (const auto& [id, unit]: s_Report.Units) {
+							if (unit.Kind == kind && unit.Team == side) {
+								kills += unit.Kills;
+								lost += unit.Fell ? 1 : 0;
+							}
+						}
+						text += std::string("  ") + c_SideNames[side] + " " + std::to_string(kills) + " / " + std::to_string(lost);
+					}
+					text += "\n";
+				}
+			}
+			if (!s_Report.Holds.empty()) {
+				text += "\nTime on the objectives (a team's units on it and the others' none):\n";
+				for (const auto& [name, seconds]: s_Report.Holds) {
+					text += "  " + name + ":";
+					for (int side: sides) {
+						text += std::string("  ") + c_SideNames[side] + " " + Clock(seconds[side]);
+					}
+					text += "\n";
+				}
+			}
+			if (!s_Report.Samples.empty()) {
+				text += "\nScore every " + std::to_string(static_cast<int>(c_SampleSeconds)) + " s:";
+				for (int side: sides) {
+					text += std::string("\n  ") + c_SideNames[side] + ":";
+					for (const auto& sample: s_Report.Samples) {
+						text += " " + std::to_string(sample[side]);
+					}
+				}
+				text += "\n";
+			}
+			return text;
+		}
+
+		/// Writes the report to Userdata/BattleReports/<map>-<date-time>.txt, saying where (or that it couldn't) under the buttons.
+		void SaveReport() {
+			std::string map = s_ReportScene.empty() ? std::string("Battle") : s_ReportScene;
+			for (char& c: map) {
+				if (std::strchr("<>:\"/\\|?*", c) || static_cast<unsigned char>(c) < 32) {
+					c = '_';
+				}
+			}
+			std::array<char, 32> stamp{};
+			const std::time_t now = std::time(nullptr);
+			std::strftime(stamp.data(), stamp.size(), "%Y-%m-%d_%H-%M-%S", std::localtime(&now));
+			const std::string path = "Userdata/BattleReports/" + map + "-" + stamp.data() + ".txt";
+			std::error_code error;
+			std::filesystem::create_directories("Userdata/BattleReports", error);
+			std::ofstream file(path, std::ios::trunc);
+			if (file << ReportText()) {
+				s_ReportNote = "Saved to " + path;
+				g_ConsoleMan.PrintString("BATTLE: after-battle report saved to " + path);
+			} else {
+				s_ReportNote = "Couldn't write " + path;
+			}
+		}
+
 		/// Each team's score over the battle, as lines.
 		void DrawScoreChart() {
 			if (s_Report.Samples.size() < 2) {
@@ -342,6 +429,8 @@ namespace SandboxDetail {
 
 	void ForgetBattleReport() {
 		s_Report = Report();
+		s_ReportNote.clear();
+		s_ReportScene = g_SceneMan.GetScene() ? g_SceneMan.GetScene()->GetPresetName() : "";
 		s_ReportOpen = false;
 		s_ReportJustOpened = false;
 		if (s_ModeRun.Running && !s_ModeRun.Over && Sandbox::IsBattleCommand()) {
@@ -450,9 +539,11 @@ namespace SandboxDetail {
 			return;
 		}
 		GameViewRect view = g_WindowMan.GetGameViewRect();
-		ImGui::SetNextWindowSize(ImVec2(620.0F, 0.0F), ImGuiCond_Appearing);
+		// (620 px wide to start with, as tall as it needs; then as you size it.)
+		ImGui::SetNextWindowSize(ImVec2(620.0F, 0.0F), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSizeConstraints(ImVec2(380.0F, 200.0F), ImVec2(FLT_MAX, FLT_MAX));
 		ImGui::SetNextWindowPos(ImVec2(view.x + view.w * 0.5F, view.y + view.h * 0.45F), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
-		if (ImGui::Begin("After-battle report###BattleReport", &s_ReportOpen, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
+		if (ImGui::Begin("After-battle report###BattleReport", &s_ReportOpen, ImGuiWindowFlags_NoCollapse)) {
 			const ImU32 resultColor = s_Report.Winner >= 0 ? c_SideColors[s_Report.Winner] : IM_COL32(255, 255, 255, 255);
 			ImGui::SetWindowFontScale(1.4F);
 			ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(resultColor), "%s", ResultLine().c_str());
@@ -505,6 +596,19 @@ namespace SandboxDetail {
 				s_ReportOpen = false;
 			}
 			ImGui::SetItemTooltip("Back to the battlefield as it ended (the world goes on). The report can be opened again from the battle panel.");
+			if (ToolUI::Button("Copy as text", ImVec2(half, 0.0F))) {
+				ImGui::SetClipboardText(ReportText().c_str());
+				s_ReportNote = "Copied: paste it anywhere.";
+			}
+			ImGui::SetItemTooltip("Puts the whole report on the clipboard as plain text, to paste into a message or a file.");
+			ImGui::SameLine();
+			if (ToolUI::Button("Save", ImVec2(-1.0F, 0.0F))) {
+				SaveReport();
+			}
+			ImGui::SetItemTooltip("Saves the report as a text file in Userdata/BattleReports, named after the map and the date and time.");
+			if (!s_ReportNote.empty()) {
+				ImGui::TextDisabled("%s", s_ReportNote.c_str());
+			}
 		}
 		ImGui::End();
 	}
