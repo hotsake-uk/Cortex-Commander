@@ -831,6 +831,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("EnableMantling", { reader >> m_EnableMantling; });
 	MatchProperty("CreaturesClimbWalls", { reader >> m_CreaturesClimbWalls; });
 	MatchProperty("CreatureClimbSpeed", { float speed = 1.0F; reader >> speed; SetCreatureClimbSpeed(speed); });
+	MatchProperty("CreaturesFly", { reader >> m_CreaturesFly; });
+	MatchProperty("CreatureFlySpeed", { float speed = 1.0F; reader >> speed; SetCreatureFlySpeed(speed); });
 	MatchProperty("EnableStuckPush", { reader >> m_EnableStuckPush; });
 	MatchProperty("BodyGearSettlesAsScraps", { reader >> m_BodyGearSettlesAsScraps; });
 	MatchProperty("GibChunkPercent", { reader >> m_GibChunks.CountPercent; ClampGibChunks(); });
@@ -1515,6 +1517,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
 	writer.NewPropertyWithValue("CreaturesClimbWalls", m_CreaturesClimbWalls);
 	writer.NewPropertyWithValue("CreatureClimbSpeed", m_CreatureClimbSpeed);
+	writer.NewPropertyWithValue("CreaturesFly", m_CreaturesFly);
+	writer.NewPropertyWithValue("CreatureFlySpeed", m_CreatureFlySpeed);
 	writer.NewPropertyWithValue("EnableStuckPush", m_EnableStuckPush);
 	writer.NewPropertyWithValue("BodyGearSettlesAsScraps", m_BodyGearSettlesAsScraps);
 	writer.NewPropertyWithValue("GibChunkPercent", m_GibChunks.CountPercent);

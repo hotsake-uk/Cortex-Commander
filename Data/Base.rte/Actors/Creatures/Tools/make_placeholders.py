@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Placeholder sprites for the creatures (CR-1, CR-6, phase 3), drawn or recoloured from the livestock's and the wildlife's.
+"""Placeholder sprites for the creatures (CR-1, CR-6, phases 3 and 4), drawn or recoloured from the livestock's and the wildlife's.
 
 Re-run from anywhere:
     python3 Data/Base.rte/Actors/Creatures/Tools/make_placeholders.py
@@ -195,6 +195,78 @@ def ogre_club(target):
 	image.save(target)
 
 
+# The fliers (phase 4). Each winged one has three frames, a wing beat: wings raised (also folded, at rest), spread level (also gliding),
+# and swept down.
+
+def bat_body(target, frame):
+	"""Draws a carrion bat, 30 x 18, facing right: a small furry body with big ears and red eyes, and leathery wings by the frame."""
+	image, draw, ink = new_sprite((30, 18))
+	fur, dark, wing = ink((70, 56, 50)), ink((28, 20, 18)), ink((96, 70, 64))
+	tips = [((2, 1), (9, 6), (28, 1), (21, 6)), ((0, 8), (9, 9), (29, 8), (21, 9)), ((3, 16), (10, 11), (27, 16), (20, 11))][frame]
+	for a, b in ((tips[0], tips[1]), (tips[2], tips[3])):
+		draw.polygon([(15, 8), a, b, (15, 11)], fill=wing, outline=dark)
+	draw.ellipse((11, 6, 19, 14), fill=fur, outline=dark)
+	draw.polygon([(16, 6), (17, 2), (18, 6)], fill=fur, outline=dark)
+	draw.polygon([(12, 6), (13, 2), (14, 6)], fill=fur, outline=dark)
+	draw.point((17, 9), fill=ink((230, 30, 30)))
+	draw.point((19, 12), fill=ink((230, 230, 220)))
+	image.save(target)
+
+
+def wasp_body(target, frame):
+	"""Draws a giant wasp, 30 x 22, facing right: a black and yellow banded abdomen ending in a sting behind, a thorax and head in front
+	with big dark eyes, and pale see-through wings above by the frame."""
+	image, draw, ink = new_sprite((30, 22))
+	yellow, black, wing = ink((230, 190, 30)), ink((20, 18, 12)), ink((200, 214, 226))
+	tip = [(8, 0), (6, 6), (9, 12)][frame]
+	draw.polygon([(14, 9), tip, (tip[0] + 6, tip[1] + 2), (17, 10)], fill=wing, outline=ink((140, 150, 160)))
+	draw.ellipse((2, 9, 16, 19), fill=yellow, outline=black)
+	for x in (5, 9, 13):
+		draw.line((x, 10, x, 18), fill=black)
+	draw.polygon([(2, 14), (0, 15), (2, 16)], fill=black)
+	draw.ellipse((15, 9, 22, 16), fill=black)
+	draw.ellipse((21, 8, 28, 15), fill=yellow, outline=black)
+	draw.ellipse((24, 9, 27, 13), fill=black)
+	for x in (17, 19):
+		draw.line((x, 15, x - 1, 20), fill=black)
+	image.save(target)
+
+
+def wyvern_body(target, frame):
+	"""Draws a wyvern, 84 x 48, facing right: a long scaly body with a barbed tail behind, a horned head on a curved neck in front, and
+	great bat-like wings by the frame."""
+	image, draw, ink = new_sprite((84, 48))
+	scale, dark, belly, wing = ink((60, 96, 56)), ink((20, 36, 20)), ink((150, 160, 100)), ink((90, 60, 50))
+	tips = [((26, 0), (52, 0)), ((10, 18), (70, 16)), ((22, 46), (56, 46))][frame]
+	for tip in tips:
+		draw.polygon([(36, 22), tip, (tip[0] + (8 if tip[0] < 40 else -8), tip[1] + 6), (46, 24)], fill=wing, outline=dark)
+	# Tail, body, neck and head.
+	draw.line((2, 30, 14, 28, 26, 26), fill=scale, width=4)
+	draw.polygon([(0, 30), (5, 26), (5, 34)], fill=dark)
+	draw.ellipse((22, 18, 54, 34), fill=scale, outline=dark)
+	draw.ellipse((28, 26, 50, 33), fill=belly)
+	draw.line((50, 24, 60, 16, 66, 14), fill=scale, width=5)
+	draw.ellipse((62, 9, 78, 19), fill=scale, outline=dark)
+	draw.polygon([(76, 13), (83, 15), (76, 17)], fill=scale, outline=dark)
+	draw.polygon([(64, 10), (60, 4), (67, 9)], fill=belly, outline=dark)
+	draw.point((72, 12), fill=ink((250, 200, 40)))
+	# Legs tucked under.
+	draw.line((34, 33, 32, 38), fill=dark, width=2)
+	draw.line((44, 33, 46, 38), fill=dark, width=2)
+	image.save(target)
+
+
+def wisp_body(target, frame):
+	"""Draws a wisp, 18 x 18: a glowing ball of pale blue light with a bright heart and a flickering halo (the second frame a pixel
+	bigger)."""
+	image, draw, ink = new_sprite((18, 18))
+	grow = frame
+	draw.ellipse((2 - grow, 2 - grow, 15 + grow, 15 + grow), fill=ink((70, 120, 220)))
+	draw.ellipse((4, 4, 13, 13), fill=ink((130, 190, 255)))
+	draw.ellipse((6, 6, 11, 11), fill=ink((230, 245, 255)))
+	image.save(target)
+
+
 def main():
 	goat = os.path.join(LIVESTOCK_DIR, "Goat")
 	hound = os.path.join(CREATURES_DIR, "Hound")
@@ -236,6 +308,13 @@ def main():
 	os.makedirs(ogre, exist_ok=True)
 	ogre_club(os.path.join(ogre, "OgreClub.png"))
 	print("wrote the ogre's club")
+
+	for name, draw_body, frames in (("CarrionBat", bat_body, 3), ("GiantWasp", wasp_body, 3), ("Wyvern", wyvern_body, 3), ("Wisp", wisp_body, 2)):
+		folder = os.path.join(CREATURES_DIR, name)
+		os.makedirs(folder, exist_ok=True)
+		for frame in range(frames):
+			draw_body(os.path.join(folder, "%sBodyA%03d.png" % (name, frame)), frame)
+		print("wrote the", name, "body")
 
 
 if __name__ == "__main__":

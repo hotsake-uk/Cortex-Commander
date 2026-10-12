@@ -2699,6 +2699,21 @@ namespace SandboxDetail {
 		}
 	}
 
+	void StartPatrolDraft(bool backAndForth) {
+		if (s_PatrolDraft.size() < 2) {
+			return;
+		}
+		Stroke stroke;
+		stroke.Kind = Tool::Command;
+		stroke.Count = backAndForth ? 21 : 20;
+		stroke.Position = s_PatrolDraft.front();
+		stroke.Points = s_PatrolDraft;
+		if (!TakeSpawnOrder(stroke)) {
+			s_Queue.push_back(stroke);
+		}
+		s_PatrolDraft.clear();
+	}
+
 	/// The order keys of the command tool (RC-6), each listed on the Keys page. None of them is WASD or the arrows, which move the view, and
 	/// none is read while you play a unit or with Ctrl or Alt held (the caller sees to that).
 	void CommandHotkeys() {
@@ -2732,6 +2747,21 @@ namespace SandboxDetail {
 			mode(CommandMode::Suppress);
 		} else if (pressed(ImGuiKey_J)) {
 			mode(CommandMode::JetpackHere);
+		}
+		// Enter: the patrol route clicked out set going, as a loop (Shift+Enter: back and forth), as the command row's Loop and Back and forth.
+		// Backspace takes back its last point.
+		if (s_CommandMode == CommandMode::Patrol && !s_PatrolDraft.empty()) {
+			if (pressed(ImGuiKey_Enter) || pressed(ImGuiKey_KeypadEnter)) {
+				if (s_PatrolDraft.size() < 2) {
+					Notices::Post("A patrol route needs two points or more");
+				} else if (s_Selected.empty() && !s_SpawnOrderArmed) {
+					Notices::Post("Select the units to patrol first");
+				} else {
+					StartPatrolDraft(io.KeyShift);
+				}
+			} else if (pressed(ImGuiKey_Backspace)) {
+				s_PatrolDraft.pop_back();
+			}
 		}
 		if (!s_Selected.empty() && (pressed(ImGuiKey_H) || pressed(ImGuiKey_C))) {
 			// Defend where they stand (with Shift, the last step of their plans), or cancel their orders: as the ring's slices.
@@ -2806,7 +2836,7 @@ namespace SandboxDetail {
 			const char* What;
 		};
 		static const Key camera[] = {{"WASD / arrows", "Move the view (Shift: faster)"}, {"Right drag", "Move the view (with a Paint tool in hand: dig)"}, {"Middle drag", "Move the view"}, {"Wheel", "Zoom"}, {"Tab", "Hide or show the tools (God mode: into your character with nothing in hand)"}, {"P", "Into your character and back out"}, {"Shift+Tab", "Put your character where the mouse points and go into it"}, {"F7", "The sandbox window"}, {"U", "Hide or show the bar along the bottom"}, {"Commander Toolbar key", "Swap the bar along the bottom for Battle Command's Commander Toolbar, and back (the key is picked below)"}, {"F9", "Commander view, outside the Sandbox game mode: your side from above, and back into your unit"}, {"Ctrl+Z", "Undo the last paint stroke or the last thing placed"}, {"Ctrl+Y / Ctrl+Shift+Z", "Redo what Ctrl+Z took back"}, {"Ctrl+P", "Pause the AI, or let it go again (in any game; the key can be changed in the AI settings)"}, {"- / =", "The game a step slower or faster, through the speed tile's speeds (Shift with either: back to 1x)"}, {"Ctrl+Shift+1 to 4", "Keep the view as bookmark 1 to 4, for this map (kept between games)"}, {"Ctrl+Alt+1 to 4", "Back to view bookmark 1 to 4"}};
-		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it. In Command mode the order fits what's under the pointer: an enemy attacked, an objective taken or held, open air flown to, else a move"}, {"Esc", "Back to Command mode, the mode other orders return to once placed (in Command mode: pause)"}, {"Left drag", "Select units in a box"}, {"Double click and drag", "Order with risk: normal at the click, fully direct at the full risk distance; they face the way dragged"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click a unit", "Every unit of that kind in view"}, {"Ctrl+double click a unit", "Every unit of that kind on the whole map"}, {"Clicks to order", "How urgent the order is: 1 cautious (walks round jumps, waits for fuel), 2 normal; drag the second click for risk up to the shortest way whatever it takes (a dig-to tunnels straight, moves take fast, reckless jet jumps); tuned in Battle Behavior settings"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"X", "Dig to: tunnel to the point, in the ground or not (the units with a digger that cuts the way)"}, {"Ctrl+X", "Breach: the diggers tunnel to the point and the rest follow them in; once through, they all attack"}, {"Ctrl+B", "Build: a selected unit with a Constructor puts up the piece picked on the command row (sandbags, a wall, a bunker, a turret)"}, {"Ctrl+L", "Airlift: a gunship comes down by the selected units, flies them to the place clicked and lets them out"}, {"J", "Jetpack here: fly to the point in the air and hover there (a move or attack-move clicked in open air flies there too)"}, {"Z", "Suppress: fire into a zone round the point and keep firing, whatever else is in sight"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends). With nothing selected, O pauses"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Ctrl+.", "Every idle unit of the side at once (Shift: add them)"}, {"Q", "Every unit in view of the kinds selected"}, {"Ctrl+Q", "Every unit on the whole map of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Shift+number", "Add the selection to the group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}, {"Delete", "Remove the selected units, with the sandbox's bar up (Ctrl+Z puts them back). A battle zone picked, or an effect or spring under the pointer with the effects overlay on, is removed instead"}, {"Space / Shift+Space", "Battle Command: look at the latest alert / step back to the one before, each press (the alert log lists them all)"}, {"Alt+1 to Alt+5", "Commander Toolbar: call in that reinforcement card, in the toolbar's order (any tool in hand)"}, {"Alt+Shift+1 to Alt+Shift+7", "Commander Toolbar: use that commander power, in the toolbar's order (any tool in hand)"}};
+		static const Key command[] = {{"Left click", "Order the selection, as the mode says; on a friend, select it. In Command mode the order fits what's under the pointer: an enemy attacked, an objective taken or held, open air flown to, else a move"}, {"Esc", "Back to Command mode, the mode other orders return to once placed (in Command mode: pause)"}, {"Left drag", "Select units in a box"}, {"Double click and drag", "Order with risk: normal at the click, fully direct at the full risk distance; they face the way dragged"}, {"Shift+click", "Add to the selection; with an order, add it to their plans"}, {"Double click a unit", "Every unit of that kind in view"}, {"Ctrl+double click a unit", "Every unit of that kind on the whole map"}, {"Clicks to order", "How urgent the order is: 1 cautious (walks round jumps, waits for fuel), 2 normal; drag the second click for risk up to the shortest way whatever it takes (a dig-to tunnels straight, moves take fast, reckless jet jumps); tuned in Battle Behavior settings"}, {"Right button", "The order ring (right click a plan's numbered step to drop it)"}, {"Click a red cross", "Send the units that had no route there again"}, {"Alt+drag", "Move or attack-move facing the way dragged"}, {"M / T / F / G", "Move, Attack, Attack-move (fight), Guard"}, {"B / R", "Defend at, Patrol"}, {"Enter / Shift+Enter", "Patrol: start the route clicked out, as a loop / back and forth (Backspace takes back its last point)"}, {"X", "Dig to: tunnel to the point, in the ground or not (the units with a digger that cuts the way)"}, {"Ctrl+X", "Breach: the diggers tunnel to the point and the rest follow them in; once through, they all attack"}, {"Ctrl+B", "Build: a selected unit with a Constructor puts up the piece picked on the command row (sandbags, a wall, a bunker, a turret)"}, {"Ctrl+L", "Airlift: a gunship comes down by the selected units, flies them to the place clicked and lets them out"}, {"J", "Jetpack here: fly to the point in the air and hover there (a move or attack-move clicked in open air flies there too)"}, {"Z", "Suppress: fire into a zone round the point and keep firing, whatever else is in sight"}, {"H", "Defend where they stand (Shift: last step of their plans)"}, {"C", "Cancel their orders"}, {"O", "Focus on objective: their team's job in the battle (a flag, a hill, the place it defends). With nothing selected, O pauses"}, {"V / Y", "Next weapons rule, next movement rule"}, {"L / K", "Next formation, keep together on or off"}, {". / ,", "Next or previous idle unit (Shift: add it)"}, {"Ctrl+.", "Every idle unit of the side at once (Shift: add them)"}, {"Q", "Every unit in view of the kinds selected"}, {"Ctrl+Q", "Every unit on the whole map of the kinds selected"}, {"N", "The map: click to look, drag to select, right click to order"}, {"Ctrl+number", "Keep the selection as a group"}, {"Shift+number", "Add the selection to the group"}, {"Number", "Bring a group back; twice quickly, look at it"}, {"Ctrl+A", "Everyone on the selection's side"}, {"Delete", "Remove the selected units, with the sandbox's bar up (Ctrl+Z puts them back). A battle zone picked, or an effect or spring under the pointer with the effects overlay on, is removed instead"}, {"Space / Shift+Space", "Battle Command: look at the latest alert / step back to the one before, each press (the alert log lists them all)"}, {"Alt+1 to Alt+5", "Commander Toolbar: call in that reinforcement card, in the toolbar's order (any tool in hand)"}, {"Alt+Shift+1 to Alt+Shift+7", "Commander Toolbar: use that commander power, in the toolbar's order (any tool in hand)"}};
 		static const Key brushes[] = {{"[ / ]", "With a Paint tool in hand: the brush smaller or bigger, a tenth at a time (Brush type Shape's line: its width)"}, {"Ctrl+wheel", "With a Paint tool in hand and the pointer over the world: the brush smaller or bigger (with anything else in hand: zoom)"}, {"Alt+click", "With a Paint or Spawn tool in hand: pick what's under the pointer. A liquid, loose ground or terrain takes up the Paint tool that makes it; a unit, vehicle or item, its tile in the Spawn tab's list"}};
 		static const Key plants[] = {{"E / Shift+E", "With a plant, cactus, mushroom, tree or candle brush in hand: the next of its pictures, or the one before (just one picked in its gallery: that pick moves on)"}, {"F", "Flip the next one the other way"}};
 		static const Key copying[] = {{"Left drag", "With Copy area in hand (Paint tab): mark a box to copy (Shift: square)"}, {"Ctrl+C", "Copy the marked box: its ground, and its units with \"Include units\""}, {"Ctrl+V", "Paste: a stamp of the copy on the pointer (Copy area taken up)"}, {"Left click", "While pasting: put the stamp down (one step for Ctrl+Z)"}, {"F", "While pasting: flip the stamp left to right"}, {"Esc", "Put the stamp away, or unmark the box"}};
@@ -3519,7 +3549,7 @@ namespace SandboxDetail {
 				const int ships = static_cast<int>(std::count_if(units.begin(), units.end(), [](const Actor* unit) { return dynamic_cast<const ACShip*>(unit) != nullptr; }));
 				label = "Land here: " + std::to_string(ships) + (ships == 1 ? " ship sets down" : " ships set down") + ", engines off";
 			} else if (mode == CommandMode::Patrol) {
-				label = s_PatrolDraft.empty() ? "Click the first point of the patrol route" : "Click point " + std::to_string(s_PatrolDraft.size() + 1) + " of the route, or start it on the command row";
+				label = s_PatrolDraft.empty() ? "Click the first point of the patrol route" : (s_PatrolDraft.size() < 2 ? "Click point 2 of the route" : "Click point " + std::to_string(s_PatrolDraft.size() + 1) + " of the route, or Enter to start it (Shift+Enter: back and forth)");
 			} else if (mode == CommandMode::Pen) {
 				label = s_PenDraft.empty() ? "Click the first corner of the pen, or drag a box for it" : (s_PenDraft.size() < 3 ? "Click corner " + std::to_string(s_PenDraft.size() + 1) + " of the pen" : "Click corner " + std::to_string(s_PenDraft.size() + 1) + " of the pen, or pen them on the command row");
 			} else if (mode == CommandMode::Guard) {
@@ -6076,7 +6106,7 @@ namespace SandboxDetail {
 		ImGui::AlignTextToFramePadding();
 		ImGui::TextColored(ToolTheme::Vec(ToolTheme::Gold), "Click to");
 		static const char* const keys[] = {"M", "T", "G", "F", "B", "R", "X", "Z", "J"};
-		static const char* const tips[] = {"Walk to the place clicked, in the formation set.", "Go after the enemy clicked, and keep after it while it lives.", "Stay by the friend, craft, crate or building clicked and fight off what comes at it.", "Walk to the place, fighting whatever they meet on the way.", "Hold a zone round the place clicked and go after any enemy that comes into it.", "Click out a route, point by point; then Loop or Back and forth sets them off.", "Tunnel to the place clicked, through the ground or not (the units with a digger cut the way).", "Fire into a zone round the place clicked, and keep firing, whatever else is in sight. They walk into range first.", "Fly to the place clicked, in the air itself, and hover there till the tank runs low, then come down. Those with no line to it walk under it first; those with no jetpack go to the ground under it."};
+		static const char* const tips[] = {"Walk to the place clicked, in the formation set.", "Go after the enemy clicked, and keep after it while it lives.", "Stay by the friend, craft, crate or building clicked and fight off what comes at it.", "Walk to the place, fighting whatever they meet on the way.", "Hold a zone round the place clicked and go after any enemy that comes into it.", "Click out a route, point by point; then Enter (or Loop) sets them off round it, Shift+Enter (or Back and forth) to and fro. Backspace takes back the last point.", "Tunnel to the place clicked, through the ground or not (the units with a digger cut the way).", "Fire into a zone round the place clicked, and keep firing, whatever else is in sight. They walk into range first.", "Fly to the place clicked, in the air itself, and hover there till the tank runs low, then come down. Those with no line to it walk under it first; those with no jetpack go to the ground under it."};
 		{
 			int current = static_cast<int>(s_CommandMode);
 			line.Next(pixel * 4.0F);
@@ -6244,16 +6274,8 @@ namespace SandboxDetail {
 				line.Next();
 				ImGui::BeginDisabled(s_PatrolDraft.size() < 2 || (s_Selected.empty() && !s_SpawnOrderArmed));
 				ImGui::PushID(backAndForth + 310);
-				if (BarChip(backAndForth ? "Back and forth" : "Loop", false, c_CommandModeColors[static_cast<int>(CommandMode::Patrol)], nullptr, backAndForth ? "Along the points to the last, then back the same way, again and again." : "Round the points and back to the first, again and again.") == 1) {
-					Stroke stroke;
-					stroke.Kind = Tool::Command;
-					stroke.Count = backAndForth ? 21 : 20;
-					stroke.Position = s_PatrolDraft.front();
-					stroke.Points = s_PatrolDraft;
-					if (!TakeSpawnOrder(stroke)) {
-						s_Queue.push_back(stroke);
-					}
-					s_PatrolDraft.clear();
+				if (BarChip(backAndForth ? "Back and forth" : "Loop", false, c_CommandModeColors[static_cast<int>(CommandMode::Patrol)], backAndForth ? "Shift+Enter" : "Enter", backAndForth ? "Along the points to the last, then back the same way, again and again." : "Round the points and back to the first, again and again.") == 1) {
+					StartPatrolDraft(backAndForth);
 				}
 				ImGui::PopID();
 				ImGui::EndDisabled();

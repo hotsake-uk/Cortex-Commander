@@ -253,6 +253,13 @@ namespace RTE {
 		/// How fast climbing creatures crawl on walls and ceilings, as a multiple of their own speed (Actor::GetCrawlSpeed); 1 as they come.
 		float CreatureClimbSpeed() const { return m_CreatureClimbSpeed; }
 
+		/// Whether creatures that fly (a bat, a wyvern, a wisp; Actor::GetFlight) take to the air, and are routed through it.
+		/// @return Whether they fly.
+		bool CreaturesFly() const { return m_CreaturesFly; }
+
+		/// How fast flying creatures fly, as a multiple of their own speed (Actor::GetFlySpeed); 1 as they come.
+		float CreatureFlySpeed() const { return m_CreatureFlySpeed; }
+
 		/// Whether an AI humanoid stuck on the ground, its own moves spent, is given a small nudge free (off by default).
 		bool StuckPushEnabled() const { return m_EnableStuckPush; }
 
@@ -995,6 +1002,8 @@ namespace RTE {
 		void SetMantlingEnabled(bool enable) { m_EnableMantling = enable; }
 		void SetCreaturesClimbWalls(bool climb) { m_CreaturesClimbWalls = climb; }
 		void SetCreatureClimbSpeed(float multiplier) { m_CreatureClimbSpeed = std::clamp(multiplier, 0.25F, 3.0F); }
+		void SetCreaturesFly(bool fly) { m_CreaturesFly = fly; }
+		void SetCreatureFlySpeed(float multiplier) { m_CreatureFlySpeed = std::clamp(multiplier, 0.25F, 3.0F); }
 		void SetStuckPushEnabled(bool enable) { m_EnableStuckPush = enable; }
 
 		/// Sets whether every scene is played without wrapping horizontally. Takes effect when a scene is next loaded.
@@ -1376,6 +1385,8 @@ namespace RTE {
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
 		bool m_CreaturesClimbWalls = true; //!< See CreaturesClimbWalls.
 		float m_CreatureClimbSpeed = 1.0F; //!< See CreatureClimbSpeed.
+		bool m_CreaturesFly = true; //!< See CreaturesFly.
+		float m_CreatureFlySpeed = 1.0F; //!< See CreatureFlySpeed.
 		bool m_EnableStuckPush; //!< Whether an AI humanoid stuck on the ground is nudged free once its own moves are spent (AHuman::PushFree).
 		bool m_NoSceneWrap; //!< Whether every scene is played with hard left and right edges instead of wrapping.
 		float m_Toughness[static_cast<int>(ToughnessKind::Count)]; //!< How tough each kind of actor is (see Toughness).

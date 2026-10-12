@@ -94,6 +94,20 @@ float Actor::GetPowerupSecondsLeft(PowerupEffect effect) const {
 	return left > 0 ? static_cast<float>(left) / 1000.0F : 0.0F;
 }
 
+bool Actor::AddPowerupSeconds(const std::string& effectName, float seconds) {
+	if (seconds <= 0.0F || m_Status == DEAD || m_Status == DYING) {
+		return false;
+	}
+	for (int effect = 0; effect < static_cast<int>(PowerupEffect::Count); ++effect) {
+		if (effectName == c_EffectNames[effect]) {
+			const long long now = g_TimerMan.GetSimTimeMS();
+			m_PowerupUntil[effect] = std::max(m_PowerupUntil[effect], now) + static_cast<long long>(seconds * 1000.0F);
+			return true;
+		}
+	}
+	return false;
+}
+
 bool Actor::CanUsePowerup(const HeldDevice* item) const {
 	if (!item || !item->IsPowerup() || item->GetPowerupUsesLeft() <= 0 || m_Status == DEAD || m_Status == DYING) {
 		return false;
@@ -286,6 +300,14 @@ void Actor::DrawPowerupsHUD(BITMAP* targetBitmap, const Vector& drawPos) {
 	for (int effect = 0; effect < static_cast<int>(PowerupEffect::Count); ++effect) {
 		if (float left = GetPowerupSecondsLeft(static_cast<PowerupEffect>(effect)); left > 0.0F) {
 			line += (line.empty() ? "" : "  ") + std::string(c_EffectNames[effect]) + " " + std::to_string(static_cast<int>(std::ceil(left)));
+		}
+	}
+	// The status effects on it (SE-1), with the seconds they have left; a passive one just by name.
+	const long long now = g_TimerMan.GetSimTimeMS();
+	for (const StatusEffect& effect: m_StatusEffects) {
+		line += (line.empty() ? "" : "  ") + effect.GetLabel();
+		if (effect.Until > 0) {
+			line += " " + std::to_string(static_cast<int>(std::ceil(static_cast<float>(std::max(effect.Until - now, 0LL)) / 1000.0F)));
 		}
 	}
 	GUIFont* font = g_FrameMan.GetSmallFont();

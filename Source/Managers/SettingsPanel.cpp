@@ -1314,6 +1314,15 @@ void DebugMan::SettingsGUI() {
 			}
 			Tip("How fast climbing creatures crawl on walls and ceilings, as a multiple of each one's own pace (a giant spider about 3 m/s, an ooze about 1.2). 1x is normal.");
 		}
+		Toggle("Creatures fly", g_SettingsMan.CreaturesFly(), [](bool on) { g_SettingsMan.SetCreaturesFly(on); });
+		Tip("Creatures that fly take to the air and the AI routes them through it, round and over what is in the way as a flying ship is: carrion bats swarm and dive, giant wasps hover and sting, a wyvern breathes fire from above, a wisp drifts and casts. Unticked, they keep to the ground.");
+		{
+			float flySpeed = g_SettingsMan.CreatureFlySpeed();
+			if (Slider("Creature flying speed", &flySpeed, Normal{1.0F}, 0.25F, 3.0F, "%.2fx")) {
+				g_SettingsMan.SetCreatureFlySpeed(flySpeed);
+			}
+			Tip("How fast flying creatures fly, as a multiple of each one's own pace (a carrion bat about 8 m/s, a wyvern about 6). 1x is normal.");
+		}
 		Check("Team colour on units", &settings.UnitTeamColorParts);
 		Tip("Parts of units that mods mark for it (a bandanna, a helmet stripe) are drawn in their side's colour: red, green, blue or yellow. Unticked, they take the mod's own default colour, or stay as painted.");
 		Heading("Unit outlines");

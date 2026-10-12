@@ -2131,9 +2131,201 @@ function HumanBehaviors.SpellUpdate(AI, Owner)
 		AI.SpellBackTimer = AI.SpellBackTimer or Timer();
 		if AI.SpellBackTimer:IsPastSimMS(500) then
 			AI.SpellBackTimer:Reset();
-			if Owner:EquipLoadedFirearmInGroup("Spells", "None", true) then
+			-- (An attack, a trick or a push: not a support spell, which is no weapon; SupportSpellUpdate casts those.)
+			if Owner:EquipLoadedFirearmInGroup("Spells - Attack", "None", true) or Owner:EquipLoadedFirearmInGroup("Spells - Utility", "None", true)
+				or Owner:EquipLoadedFirearmInGroup("Spells - Push", "None", true) then
 				SharedBehaviors.Trace(Owner, "spell: energy back, spell out again");
 			end
+		end
+	end
+end
+
+-- Support spells (SE-1). A unit carrying a spell in "Spells - Support" (Medieval.rte's heals, blessings, wards and tricks: no weapon, so the
+-- shooting rules never fire one at an enemy) casts it, while the AI casts spells (Magic & spells), by the spell's custom values: SupportKind
+-- (Heal, MassHeal, Buff, Shield, Dispel, Mirror; a spell without one is the player's alone), SupportEffect (the status effect a Buff puts on,
+-- so a friend who has it isn't buffed again) and SupportRange. Looked at twice a second: a friend in reach who needs it (hurt, burning,
+-- cursed, or in a fight without the blessing) is cast on, the caster itself when it is the one in need; the spell is taken out, aimed at the
+-- friend (or straight down, for a cast on itself) for a quarter of a second, cast once, and the weapon it had before taken back.
+-- Blessings wait for a fight and for half the energy to be in hand, so there is some left to heal with.
+local SUPPORT_CURSES = {"Grabbed", "Petrified", "Silenced", "Cursed", "Weakened", "Hexed", "Doomed", "Blighted"};
+
+local function supportCursed(Act)
+	if Act.IsEnvenomed or Act.IsEnsnared then
+		return true;
+	end
+	if Act:NumberValueExists("MedievalChillUntil") and Act:GetNumberValue("MedievalChillUntil") > TimerMan.SimTimeMS then
+		return true;
+	end
+	for _, name in ipairs(SUPPORT_CURSES) do
+		if Act:HasStatusEffect(name) then
+			return true;
+		end
+	end
+	return false;
+end
+
+-- The friend a support spell of a kind is for, within range, else whether it is for the caster itself: Friend, onSelf.
+function HumanBehaviors.SupportTargetFor(AI, Owner, Spell, kind, range)
+	local now = TimerMan.SimTimeMS;
+	local fight = AI.Target ~= nil or AI.UnseenTarget ~= nil or (AI.HitTimer and not AI.HitTimer:IsPastSimMS(6000));
+	local effect = Spell:StringValueExists("SupportEffect") and Spell:GetStringValue("SupportEffect") or "";
+	local reach = range * 0.85;
+	local burning = Owner:NumberValueExists("OnFire");
+	if kind == "MassHeal" then
+		local hurt = 0;
+		for Act in MovableMan.Actors do
+			if Act.Team == Owner.Team and Act.Health < Act.MaxHealth * 0.7 and Act.Status < Actor.DYING and SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false):MagnitudeIsLessThan(reach) then
+				hurt = hurt + 1;
+			end
+		end
+		return nil, hurt >= 2;
+	elseif kind == "Mirror" then
+		if fight and Owner.Health < Owner.MaxHealth * 0.8 and (not AI.MirrorAt or now - AI.MirrorAt > 20000) and not Owner:NumberValueExists("MedievalIllusion") then
+			AI.MirrorAt = now;
+			return nil, true;
+		end
+		return nil, false;
+	end
+	-- A friend: the nearest in need.
+	local Best, bestDist;
+	for Act in MovableMan.Actors do
+		if Act.Team == Owner.Team and Act.UniqueID ~= Owner.UniqueID and Act.Status < Actor.DYING and Act.Health > 0 and not Act:NumberValueExists("MedievalIllusion") then
+			local Away = SceneMan:ShortestDistance(Owner.EyePos, Act.Pos, false);
+			if Away:MagnitudeIsLessThan(reach) and (not bestDist or Away.Magnitude < bestDist) then
+				local needs = false;
+				if kind == "Heal" then
+					needs = Act.Health < Act.MaxHealth * 0.6;
+				elseif kind == "Shield" then
+					needs = fight and Act.Health < Act.MaxHealth * 0.7 and not Act.IsShielded;
+				elseif kind == "Dispel" then
+					needs = supportCursed(Act);
+				elseif kind == "Buff" then
+					if effect == "Fire Ward" then
+						needs = Act:NumberValueExists("OnFire");
+					else
+						needs = fight and Owner.Energy >= Owner.MaxEnergy * 0.5 and effect ~= "" and not Act:HasStatusEffect(effect);
+					end
+				end
+				if needs and SharedBehaviors.CanSee(Owner.EyePos, Act.Pos) then
+					Best, bestDist = Act, Away.Magnitude;
+				end
+			end
+		end
+	end
+	if Best then
+		return Best, false;
+	end
+	-- Itself.
+	if kind == "Heal" then
+		return nil, Owner.Health < Owner.MaxHealth * 0.5;
+	elseif kind == "Shield" then
+		return nil, fight and Owner.Health < Owner.MaxHealth * 0.5 and not Owner.IsShielded;
+	elseif kind == "Dispel" then
+		return nil, supportCursed(Owner);
+	elseif kind == "Buff" then
+		if effect == "Fire Ward" then
+			return nil, burning;
+		end
+		return nil, fight and Owner.Energy >= Owner.MaxEnergy * 0.6 and effect ~= "" and not Owner:HasStatusEffect(effect);
+	end
+	return nil, false;
+end
+
+local SUPPORT_ORDER = {Heal = 1, Dispel = 2, Shield = 3, MassHeal = 4, Buff = 5, Mirror = 6};
+
+function HumanBehaviors.SupportEnd(AI, Owner)
+	local S = AI.Support;
+	AI.Support = nil;
+	if not S then
+		return;
+	end
+	local Held = Owner.EquippedItem;
+	if S.Before and not (Held and Held.PresetName == S.Before) then
+		if not Owner:EquipNamedDevice(S.Before, true) then
+			Owner:EquipFirearm(true);
+		end
+	elseif not S.Before and Held and Held:HasObjectInGroup("Spells - Support") then
+		Owner:EquipFirearm(true);
+	end
+end
+
+function HumanBehaviors.SupportSpellUpdate(AI, Owner)
+	if not SceneMan.MagicAICasting or AI.Deflect or Owner:IsPlayerControlled() or not Owner:HasObjectInGroup("Spells - Support") then
+		if AI.Support then
+			HumanBehaviors.SupportEnd(AI, Owner);
+		end
+		return;
+	end
+
+	-- Casting: the spell out, aimed at the friend a moment, cast once; afterwards the weapon it had before.
+	local S = AI.Support;
+	if S then
+		local Held = Owner.EquippedItem;
+		if S.Timer:IsPastSimMS(900) or (S.Friend and (not MovableMan:ValidMO(S.Friend) or S.Friend.Status >= Actor.DYING)) then
+			HumanBehaviors.SupportEnd(AI, Owner);
+			return;
+		end
+		if not (Held and Held.PresetName == S.Spell) then
+			if S.cast or not Owner:EquipNamedDevice(S.Spell, true) then
+				HumanBehaviors.SupportEnd(AI, Owner);
+			end
+			return;
+		end
+		AI.deviceState = AHuman.AIMING;
+		AI.fire = false;
+		AI.lateralMoveState = Actor.LAT_STILL;
+		if S.Friend then
+			AI.Ctrl.AnalogAim = SceneMan:ShortestDistance(Owner.EyePos, S.Friend.Pos, false).Normalized;
+		else
+			-- On itself: aimed at its own feet, where the spell finds no friend and takes the caster.
+			AI.Ctrl.AnalogAim = Vector(Owner.HFlipped and -0.3 or 0.3, 1).Normalized;
+		end
+		-- (A quarter of a second to bring the hand round, a tenth with the trigger held: the spell casts on the first frame of it.)
+		if S.Timer:IsPastSimMS(250) and not S.Timer:IsPastSimMS(350) then
+			AI.spellCast = true;
+			S.cast = true;
+		end
+		return;
+	end
+
+	AI.SupportTimer = AI.SupportTimer or Timer();
+	if not AI.SupportTimer:IsPastSimMS(500) then
+		return;
+	end
+	AI.SupportTimer:Reset();
+	if AI.flying or Owner.Status ~= Actor.STABLE then
+		return;
+	end
+	local Held = Owner.EquippedItem;
+	if Held and IsHDFirearm(Held) and ToHDFirearm(Held):IsReloading() then
+		return;
+	end
+
+	-- The support spells it can pay for, the most pressing kind first, and the first with someone to cast on.
+	local Spells = {};
+	local function consider(Item)
+		if Item and IsHDFirearm(Item) and Item:HasObjectInGroup("Spells - Support") and Item:StringValueExists("SupportKind") and ToHDFirearm(Item):GetAffordableRoundsFor(Owner) > 0 then
+			local kind = Item:GetStringValue("SupportKind");
+			if SUPPORT_ORDER[kind] then
+				Spells[#Spells + 1] = {Item = ToHDFirearm(Item), kind = kind};
+			end
+		end
+	end
+	for Item in Owner.Inventory do
+		consider(Item);
+	end
+	consider(Held);
+	if #Spells == 0 then
+		return;
+	end
+	table.sort(Spells, function(a, b) return SUPPORT_ORDER[a.kind] < SUPPORT_ORDER[b.kind]; end);
+	for _, entry in ipairs(Spells) do
+		local range = entry.Item:NumberValueExists("SupportRange") and entry.Item:GetNumberValue("SupportRange") or 250;
+		local Friend, onSelf = HumanBehaviors.SupportTargetFor(AI, Owner, entry.Item, entry.kind, range);
+		if Friend or onSelf then
+			AI.Support = {Spell = entry.Item.PresetName, Friend = Friend, Timer = Timer(), Before = Held and Held.PresetName or nil};
+			SharedBehaviors.Trace(Owner, "spell: casting " .. entry.Item.PresetName .. (Friend and " on a friend" or " on itself"));
+			return;
 		end
 	end
 end

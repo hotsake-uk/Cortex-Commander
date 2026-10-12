@@ -219,6 +219,7 @@ namespace RTE {
 		LuaBindingRegisterFunctionDeclarationForType(ACRocket);
 		LuaBindingRegisterFunctionDeclarationForType(Actor);
 		LuaBindingRegisterFunctionDeclarationForType(ActorSighting);
+		LuaBindingRegisterFunctionDeclarationForType(StatusEffect);
 		LuaBindingRegisterFunctionDeclarationForType(ADoor);
 		LuaBindingRegisterFunctionDeclarationForType(AMover);
 		LuaBindingRegisterFunctionDeclarationForType(AVehicle);
