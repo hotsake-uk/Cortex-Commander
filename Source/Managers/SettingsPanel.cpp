@@ -16,6 +16,7 @@
 #include "FrameMan.h"
 #include "ModernHUD.h"
 #include "Notices.h"
+#include "PathFinder.h"
 #include "PostProcessMan.h"
 #include "RenderTarget.h"
 #include "Texture.h"
@@ -1103,6 +1104,14 @@ void DebugMan::SettingsGUI() {
 		}
 		Toggle("Mantle ledges and vault low obstacles", g_SettingsMan.MantlingEnabled(), [](bool on) { g_SettingsMan.SetMantlingEnabled(on); });
 		Tip("Units, players' included, pull themselves up onto a ledge or over a low obstacle they walk or jet into, rather than needing the jetpack to get the height exactly right.");
+		Toggle("Units step over objects in their way", g_SettingsMan.UnitsStepOverObjects(), [](bool on) { g_SettingsMan.SetUnitsStepOverObjects(on); });
+		Tip("An AI unit held up by a loose body it bumps into (a corpse, a gib, a limb, but not a gun lying still, which bodies pass, or a scrap light enough to shove aside) leaps over it, hops it with the jet, finds a way round or waits, as it does a wreck. Off, as before: it walks into it until it counts as stuck, which after a couple of seconds tries a leap or a hop.");
+		Toggle("Units see through grass and plants", g_SettingsMan.SensesPassPlants(), [](bool on) { g_SettingsMan.SetSensesPassPlants(on); });
+		Tip("Units' own checks (getting up, leaping, landing, ducking, mantling, the walk's look ahead) treat grass, bushes and hanging plants as the open ground their bodies push through. Off, as before: a unit lying on grass may not get up, leaps and landings on thick grass go wrong, units duck under hanging plants and mantle onto bushes.");
+		Toggle("Soldiers see through ladder rungs", g_SettingsMan.SensesPassRungs(), [](bool on) { g_SettingsMan.SetSensesPassRungs(on); });
+		Tip("A soldier's checks treat a ladder's rungs as open, as its body passes them. Off, as before: rungs read as a floor in mid air, a wall beside a walk and in the way of a flight, and a lip to mantle onto (then dropped through).");
+		Toggle("Units ignore loose crumbs", g_SettingsMan.SensesPassSpecks(), [](bool on) { g_SettingsMan.SetSensesPassSpecks(on); });
+		Tip("Units' checks ignore crumbs of four pixels or fewer left by blasts and digging, as their bodies brush through them. Off, as before: units duck and crawl under floating crumbs, route round them and mantle against them.");
 		Toggle("Push free when stuck", g_SettingsMan.StuckPushEnabled(), [](bool on) { g_SettingsMan.SetStuckPushEnabled(on); });
 		Tip("AI soldiers stuck on terrain, once crouching, backing off, leaping, hopping, crawling and mantling haven't got them moving, get a small nudge up and on. Players' own units are never pushed.");
 		Toggle("No map wrapping", g_SettingsMan.NoSceneWrap(), [](bool on) { g_SettingsMan.SetNoSceneWrap(on); });
@@ -1887,6 +1896,46 @@ void DebugMan::SettingsGUI() {
 		Tip("The right-hand end of the sandbox's bottom bar: each side's unit count, the AI on/paused button, the speed of time, the step (while the window is open), undo and redo. Off, the bar is shorter; undo is still Ctrl+Z, redo Ctrl+Y.");
 	};
 
+	auto performance = [&]() {
+		SettingsMan::SlowdownFixTuning& fixes = g_SettingsMan.SlowdownFixes();
+		Heading("Late-battle slowdown fixes");
+		Check("Liquid tells paths only where it moved", &fixes.LiquidTellsOnlyMoves);
+		Tip("The path grid is told only where liquid really moved, in separate boxes, and the liquid sweep wakes the end of a pool only for a drop its flow can reach.\nOff, as before: every pool's surface, woken now and then to look for a lower level, told the path grid again each time it settled, all in one box from the leftmost pool to the rightmost, so after a bloody battle most of the map was re-sampled every second, for good.");
+		SliderI("Wrecks settle after (s)", &fixes.WreckSettleSeconds, 0, 600, fixes.WreckSettleSeconds == 0 ? "Never" : "%d s");
+		Tip("How long a vehicle's or ship's wreck lies still before it settles into the ground, in its own material (metal, wood or military stuff). Once settled it can be dug and blown up like the rest of the terrain.\n0: never, as before: every wreck stays a live object for the whole battle, and the chunks lying on it never settle either.");
+		Check("Debris settles across cracks", &fixes.DebrisRestsAcrossGaps);
+		Tip("A piece lying still looks for ground under both sides as well as its middle, so one lying across a crack or a crater's lip settles.\nOff, as before: only under its middle, and a piece over a gap stays a live object for good, more of them the more the ground is blown up.");
+		Check("Gas area shrinks to the gas", &fixes.GasAreaShrinks);
+		Tip("The area the gas is worked out over draws in, every half second, to where gas still is.\nOff, as before: it only grows, until there is no gas left anywhere on the map, which with methane in an enclosed space can take half an hour.");
+		Check("Lighting handles each change on its own", &fixes.LightingSplitsChanges);
+		Tip("Where the terrain changed, the scorch and stain ground is worked out over each changed patch on its own.\nOff, as before: one box round every patch changed that frame, so two changes at the ends of the map read every material pixel between them.");
+		if (!Plain()) {
+			return;
+		}
+		ImGui::SeparatorText("Slowdown readout");
+		if (!g_ActivityMan.IsInActivity() || !g_SceneMan.GetScene()) {
+			ImGui::TextDisabled("Shown in a game.");
+			return;
+		}
+		int chunks = 0;
+		int wrecks = 0;
+		for (const MovableObject* particle: g_MovableMan.GetParticleList()) {
+			if (particle && particle->GetClassName() == "MOSRotating") {
+				++chunks;
+				if (particle->IsInGroup("Wrecks")) {
+					++wrecks;
+				}
+			}
+		}
+		ImGui::Text("%.0f frames a second", ImGui::GetIO().Framerate);
+		ImGui::Text("Loose objects: %ld (%d solid pieces, %d of them wrecks)", g_MovableMan.GetParticleCount(), chunks, wrecks);
+		ImGui::Text("Units: %d", static_cast<int>(g_MovableMan.GetActorList().size()));
+		ImGui::Text("Moving liquid pixels: %d (%.1f ms last update)", FluidSim::GetActiveCount(), FluidSim::GetLastUpdateMS());
+		ImGui::Text("Path grid nodes waiting to re-sample: %d", static_cast<int>(g_SceneMan.GetScene()->GetPathFinder(Activity::Teams::NoTeam).GetWaitingNodeCount()));
+		ImGui::Text("Gas area: %d cells", GasGrid::GetActiveCells());
+		Tip("What a long battle leaves behind that can cost frames. With nothing happening, the path grid's waiting count should sit at 0 and the solid pieces should go down as they settle.");
+	};
+
 	const std::pair<const char*, std::function<void()>> categories[] = {
 	    {"Time & weather", timeAndWeather},
 	    {"Sky & daylight", skyAndDaylight},
@@ -1906,6 +1955,7 @@ void DebugMan::SettingsGUI() {
 	    {"AI behaviour", aiBehaviour},
 	    {"Movement", movement},
 	    {"Battle Behavior", battleBehavior},
+	    {"Performance", performance},
 	    {"Debug", debug},
 	    {"AI debug", aiDebug},
 	    {"Render debug", renderDebug},

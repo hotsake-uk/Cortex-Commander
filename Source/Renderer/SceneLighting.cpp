@@ -22,6 +22,7 @@
 #include "RenderMan.h"
 #include "FrameMan.h"
 #include "DebugMan.h"
+#include "SettingsMan.h"
 #include <array>
 #include <optional>
 
@@ -31,6 +32,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <climits>
+#include <vector>
 #include <cstring>
 #include <limits>
 #include <cmath>
@@ -1784,7 +1787,28 @@ void SceneLighting::Update() {
 	// The changes come as tiles (SLTerrain::TakeChangedTiles), so two far-apart changes refresh two small areas, not the scene between them.
 	int changedTiles = 0;
 	glm::ivec4 terrainChangedArea(0); // Scene pixels: min x, min y, end x, end y, of the cells refreshed.
-	std::optional<glm::ivec4> pendingDecalGround; // Where the scorch and stain maps' ground is worked out again, in scene pixels: min x, min y, end x, end y.
+	// Where the scorch and stain maps' ground is worked out again, in scene pixels: min x, min y, end x, end y. Patches far apart are kept as boxes of their
+	// own (with the slowdown fix on): as one box round them all, two drying puddles at the ends of the map read every material pixel between them each frame.
+	std::vector<glm::ivec4> pendingDecalGround;
+	const bool splitDecalGround = g_SettingsMan.SlowdownFixes().LightingSplitsChanges;
+	auto addDecalGround = [&pendingDecalGround, splitDecalGround](const glm::ivec4& box) {
+		constexpr int c_JoinGap = 64;
+		constexpr size_t c_MaxBoxes = 8;
+		glm::ivec4* nearest = nullptr;
+		int nearestGap = INT_MAX;
+		for (glm::ivec4& pending: pendingDecalGround) {
+			int gap = std::max({pending.x - box.z, box.x - pending.z, pending.y - box.w, box.y - pending.w, 0});
+			if (gap < nearestGap) {
+				nearest = &pending;
+				nearestGap = gap;
+			}
+		}
+		if (!nearest || (splitDecalGround && nearestGap > c_JoinGap && pendingDecalGround.size() < c_MaxBoxes)) {
+			pendingDecalGround.push_back(box);
+		} else {
+			*nearest = glm::ivec4(std::min(nearest->x, box.x), std::min(nearest->y, box.y), std::max(nearest->z, box.z), std::max(nearest->w, box.w));
+		}
+	};
 	if (int tilesWide, tilesHigh; SLTerrain::TakeChangedTiles(m_ChangedTiles, tilesWide, tilesHigh)) {
 		const int tile = SLTerrain::c_ChangeTileSize;
 		// The cells refreshed, as one box, for the lamp cache below.
@@ -1801,7 +1825,7 @@ void SceneLighting::Update() {
 			changedEndColumn = m_GridWidth;
 			changedFirstRow = 0;
 			changedEndRow = m_GridHeight;
-			pendingDecalGround = glm::ivec4(0, 0, m_SceneWidth, m_SceneHeight);
+			pendingDecalGround.assign(1, glm::ivec4(0, 0, m_SceneWidth, m_SceneHeight));
 		} else {
 			auto changed = [this, tilesWide](int tileX, int tileY) {
 				size_t index = static_cast<size_t>(tileY) * tilesWide + tileX;
@@ -1823,9 +1847,9 @@ void SceneLighting::Update() {
 						++tileX;
 						++changedTiles;
 					}
-					// The decal ground over the changed tiles, as one box (a box across the seam takes the width between, which is only more work).
+					// The decal ground over the changed tiles (a box across the seam takes the width between, which is only more work).
 					glm::ivec4 runPixels(runStart * tile, tileY * tile, std::min(tileX * tile, m_SceneWidth), std::min((tileY + 1) * tile, m_SceneHeight));
-					pendingDecalGround = pendingDecalGround ? glm::ivec4(std::min(pendingDecalGround->x, runPixels.x), std::min(pendingDecalGround->y, runPixels.y), std::max(pendingDecalGround->z, runPixels.z), std::max(pendingDecalGround->w, runPixels.w)) : runPixels;
+					addDecalGround(runPixels);
 					int firstColumn = std::clamp((runStart * tile) / m_CellSize - 1, 0, m_GridWidth);
 					int endColumn = std::clamp((tileX * tile - 1) / m_CellSize + 2, 0, m_GridWidth);
 					if (endRow > firstRow && endColumn > firstColumn) {
@@ -1888,8 +1912,8 @@ void SceneLighting::Update() {
 		// Which materials flow changed (a new scene's liquids, or settings): what counts as ground is worked out afresh, without wiping anything for it.
 		RefreshDecalGround(0, 0, m_SceneWidth, m_SceneHeight, false);
 	}
-	if (pendingDecalGround) {
-		RefreshDecalGround(pendingDecalGround->x, pendingDecalGround->y, pendingDecalGround->z, pendingDecalGround->w);
+	for (const glm::ivec4& box: pendingDecalGround) {
+		RefreshDecalGround(box.x, box.y, box.z, box.w);
 	}
 	StampScorchMarks();
 	StampStains();

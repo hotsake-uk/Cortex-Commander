@@ -391,9 +391,18 @@ namespace RTE {
 		/// Whether a leap could begin now: on its feet on the floor, with a leg, not lying down, climbing, mantling or just landed.
 		/// @return Whether it can leap.
 		bool CanLeap() const;
-		/// Whether a pixel row is a landing's level floor at an x: ground under (y + 1) and open over it (y - 3). Liquid is neither ground nor
-		/// in the way while the Water behaviour setting says units pass it (a pool read as floor, a trickle over the landing as not level).
-		static bool LandingFloorAt(int x, int y);
+		/// Whether a pixel row is a landing's level floor at an x: ground under (y + 1) and open over it (y - 3), as this unit's senses have it
+		/// (SensedOpen: a pool, a bush, a rung or a crumb is neither ground nor in the way, by the settings).
+		bool LandingFloorAt(int x, int y) const;
+		/// Whether this body passes ladder rungs just now (a living soldier does).
+		bool PassesRungs() const;
+		/// Whether the terrain at a point is open to this unit's senses: air, or what its body passes (Actor::SensesPassTerrain).
+		bool SensedOpen(int x, int y) const;
+		/// SceneMan::CastStrengthRay as this unit's senses have it: carried on past whatever its body passes (Actor::SensesPassTerrain), so it
+		/// stops only on what the body would. Same arguments and result.
+		bool BodyRay(const Vector& start, const Vector& ray, float strength, Vector& result, int skip = 0, unsigned char ignoreMaterial = g_MaterialAir) const;
+		/// The floor under a point within so far, by BodyRay at strength 5: its y, or below zero for none.
+		float FloorUnder(const Vector& point, float reach) const;
 
 		/// The AI's motor (see UpdateAIMotor): what an AI script asks of the body, done by the engine. A script decides where to go and how to
 		/// hold itself; the engine walks, crawls, climbs and flies. (A script may still press the controls itself, as a mod's may.)
@@ -1222,6 +1231,13 @@ namespace RTE {
 		/// only and never sees them. @param direction -1 walking left, 1 right. @param reach How far ahead to look. @param floorY The floor here.
 		/// @return The hull's root body, or nullptr.
 		const MOSRotating* VehicleAhead(float direction, float reach, float floorY) const;
+		/// Any other loose body this one collides with in the walk's way (SettingsMan::UnitsStepOverObjects): a corpse, a gib or a limb that
+		/// Atom::IsIgnoringMOID doesn't let the body through, heavy enough not to be shoved aside. Looked for past what the body passes (a
+		/// teammate, a gun lying still), with the knee and chest rays VehicleAhead has. Not a living unit (UnitAhead's, or an enemy), a door
+		/// or a craft. Same arguments and result as VehicleAhead.
+		const MOSRotating* ObjectAhead(float direction, float reach, float floorY) const;
+		/// Whether this body collides with another's (the rules of Atom::IsIgnoringMOID, by the root bodies).
+		bool BodyCollidesWith(const MovableObject* other) const;
 		/// Measures a hull found by VehicleAhead along the walk's way, by rows of rays up from the floor: the top of it (y) and its near and far
 		/// ends (x). @return Whether any of it was seen.
 		bool MeasureHull(const MOSRotating* hull, float direction, float floorY, float& topY, float& nearX, float& farX) const;

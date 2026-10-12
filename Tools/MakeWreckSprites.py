@@ -359,7 +359,7 @@ def preset_ini(facts, rel_dir, body_stem, pieces, group):
             f"\t\tResolution = {facts['resolution'] if wreck else 4}",
             "\t\tDepth = 0",
             "\tDeepCheck = 0",
-            *(["\tRestThreshold = -1"] if wreck else []),
+            *(["\tRestThreshold = -1", "\tSettleMaterialDisabled = 1"] if wreck else []),
             f"\tAddToGroup = {group}",
             *(["\tAddToGroup = Wrecks"] if wreck else []),
             "\tBuyable = 0",

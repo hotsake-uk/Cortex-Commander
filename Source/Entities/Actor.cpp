@@ -1,6 +1,7 @@
 #include "Actor.h"
 #include "ActorWater.h"
 #include "ActorFire.h"
+#include "Atom.h"
 #include "FluidSim.h"
 #include "MagicEffects.h"
 #include "TerrainTrees.h"
@@ -1899,12 +1900,39 @@ bool Actor::BodyFitsShifted(const Vector& shift, MOSRotating* head) const {
 	return !head || !head->GetAtomGroup() || head->GetAtomGroup()->FitsAt(head->GetPos() + shift);
 }
 
+bool Actor::SensesPassTerrain(unsigned char id, int x, int y, bool passesRungs) {
+	if (id == MaterialColorKeys::g_MaterialAir || FluidSim::UnitsPassThrough(id)) {
+		return true;
+	}
+	if (g_SettingsMan.SensesPassPlants()) {
+		// (As the walk and the path grid have it: AHumanMovement's WalkedThrough, PathFinder::Open.)
+		const Material* material = g_SceneMan.GetMaterialFromID(id);
+		if (TerrainTrees::ActorsPass(id) || (material && material->GetIntegrity() <= 5.0F && material->GetBehaviour().Flows != 1)) {
+			return true;
+		}
+	}
+	if (passesRungs && g_SettingsMan.SensesPassRungs()) {
+		static const Material* s_Ladder = g_SceneMan.GetMaterial("Ladder");
+		if (s_Ladder && id == static_cast<unsigned char>(s_Ladder->GetIndex())) {
+			return true;
+		}
+	}
+	return g_SettingsMan.SensesPassSpecks() && Atom::IsTerrainSpeck(x, y);
+}
+
 namespace {
 	/// Ground to hold or stand on: terrain that is neither air nor liquid. (Liquid is no lip: a swimmer pressing towards a bank caught the
-	/// water's own surface and was pulled up onto it.)
-	bool IsGroundAt(int x, int y) {
+	/// water's own surface and was pulled up onto it. Nor, by the settings, a bush, a ladder's rung the body passes or a crumb: mantled onto,
+	/// the body went through it and dropped; see Actor::SensesPassTerrain.)
+	bool IsGroundAt(int x, int y, bool passesRungs) {
 		unsigned char id = g_SceneMan.GetTerrMatter(x, y);
-		return id != MaterialColorKeys::g_MaterialAir && !FluidSim::IsLiquid(id) && !TerrainTrees::ActorsPass(id);
+		return id != MaterialColorKeys::g_MaterialAir && !FluidSim::IsLiquid(id) && !TerrainTrees::ActorsPass(id) && !Actor::SensesPassTerrain(id, x, y, passesRungs);
+	}
+
+	/// Whether a body passes ladder rungs just now (a living humanoid does; MovableObject::SetPassMaterial).
+	bool PassesRungs(const Actor* actor) {
+		static const Material* s_Ladder = g_SceneMan.GetMaterial("Ladder");
+		return s_Ladder && actor->PassesMaterial(static_cast<unsigned char>(s_Ladder->GetIndex()));
 	}
 } // namespace
 
@@ -1948,7 +1976,7 @@ bool Actor::TryStartMantle(MOSRotating* head, bool rising, float bodyWidth) {
 		Vector target = m_Pos + end;
 		bool supported = false;
 		for (int down = 0; down <= static_cast<int>(height * 0.45F) && !supported; down += 2) {
-			supported = IsGroundAt(static_cast<int>(target.m_X), static_cast<int>(target.m_Y) + down);
+			supported = IsGroundAt(static_cast<int>(target.m_X), static_cast<int>(target.m_Y) + down, PassesRungs(this));
 		}
 		if (!supported) {
 			continue;
@@ -1999,7 +2027,7 @@ bool Actor::TryCatchLedge(MOSRotating* head, float bodyWidth, float wantDir, flo
 	const bool wading = FluidSim::IsLiquid(g_SceneMan.GetTerrMatter(static_cast<int>(m_Pos.m_X), static_cast<int>(m_Pos.m_Y)));
 	for (float side: {0.0F, -bodyWidth * 0.3F, bodyWidth * 0.3F}) {
 		for (int down = 0; !wading && down <= static_cast<int>(height * 0.6F); down += 2) {
-			if (IsGroundAt(static_cast<int>(m_Pos.m_X + side), static_cast<int>(m_Pos.m_Y) + down)) {
+			if (IsGroundAt(static_cast<int>(m_Pos.m_X + side), static_cast<int>(m_Pos.m_Y) + down, PassesRungs(this))) {
 				return false;
 			}
 		}
@@ -2015,7 +2043,7 @@ bool Actor::TryCatchLedge(MOSRotating* head, float bodyWidth, float wantDir, flo
 	int toY = static_cast<int>(m_Pos.m_Y + height * 0.1F);
 	int lipY = -1;
 	for (int y = fromY; y <= toY; ++y) {
-		if (IsGroundAt(handX, y)) {
+		if (IsGroundAt(handX, y, PassesRungs(this))) {
 			lipY = y;
 			break;
 		}
@@ -2031,7 +2059,7 @@ bool Actor::TryCatchLedge(MOSRotating* head, float bodyWidth, float wantDir, flo
 	Vector target = m_Pos + end;
 	bool supported = false;
 	for (int down = 0; down <= static_cast<int>(height * 0.45F) && !supported; down += 2) {
-		supported = IsGroundAt(static_cast<int>(target.m_X), static_cast<int>(target.m_Y) + down);
+		supported = IsGroundAt(static_cast<int>(target.m_X), static_cast<int>(target.m_Y) + down, PassesRungs(this));
 	}
 	if (!supported) {
 		return false;
@@ -2096,6 +2124,106 @@ void Actor::UpdateMantle() {
 		// On it walking, the way it was going: a vault over a low obstacle is this and the walk off the far side.
 		m_Vel.SetXY(m_MantleDir * 1.5F, 0.0F);
 	}
+}
+
+bool Actor::HeldByAutomover() {
+	static const std::string c_HoldingKey = "Automover_Holding";
+	if (NumberValueExists(c_HoldingKey)) {
+		RemoveNumberValue(c_HoldingKey);
+		m_AutomoverHeld = true;
+		m_AutomoverHoldTimer.Reset();
+	}
+	// (A quarter of a second: the lift marks its units every 15 ms or so, and the AI is called every few updates. A lift destroyed with the
+	// unit in it marks it no more, and the hold ends.)
+	if (m_AutomoverHeld && m_AutomoverHoldTimer.IsPastSimMS(250)) {
+		m_AutomoverHeld = false;
+	}
+	return m_AutomoverHeld;
+}
+
+int Actor::RideAutomover(Timer& progressTimer, float& bestGap) {
+	static const std::string c_StuckKey = "AI_StuckForTime";
+	// No keys: the lift moves the body. (It clears them too, but only when its own update comes round in the frame, and a unit updated before
+	// it walked, jetted or leapt on them first.)
+	for (ControlState state: {MOVE_LEFT, MOVE_RIGHT, MOVE_UP, MOVE_DOWN, MOVE_FAST, BODY_JUMPSTART, BODY_JUMP, BODY_LEAP}) {
+		m_Controller.SetState(state, false);
+	}
+	m_Mantling = false;
+
+	// Nothing to go to.
+	if (m_Waypoints.empty() && m_MovePath.empty() && !m_HasMovePathGoal && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
+		RemoveNumberValue(c_StuckKey);
+		return 1;
+	}
+	// No route: asked for, and the lift holds the unit where it is until it comes.
+	if (m_MovePath.empty()) {
+		if (!IsWaitingOnNewMovePath()) {
+			UpdateMovePath();
+		}
+		progressTimer.Reset();
+		bestGap = -1.0F;
+		return 0;
+	}
+
+	const float h = std::max(m_CharHeight, 20.0F);
+	// The end of the leg, or of the route: there, in the tube or out of it. (Held to the ground, as off the lift, a goal in the tube was never
+	// reached, and the unit was turned about in it for good.)
+	if (m_MovePath.size() <= 1 && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
+		Vector goal = m_HasMovePathGoal ? m_MovePathGoal : GetLastAIWaypoint();
+		if (g_SceneMan.ShortestDistance(m_Pos, goal).MagnitudeIsLessThan(std::max(h * 0.4F, 12.0F))) {
+			if (!m_Waypoints.empty() && m_HasMovePathGoal) {
+				// A leg done with more waypoints queued: the next call asks for the route to the next one (as AHuman::MoveAlongRoute).
+				m_MovePath.clear();
+				m_MovePathKinds.clear();
+				m_HasMovePathGoal = false;
+				bestGap = -1.0F;
+				progressTimer.Reset();
+				return 0;
+			}
+			RemoveNumberValue(c_StuckKey);
+			return 1;
+		}
+	}
+
+	// Points reached or passed are dropped, so the lift steers for the one after: the lift goes for the first point of the route, and the
+	// follower kept every point of a flight until the landing it never came down on in the tube, so the lift pulled the unit back to a point
+	// it had passed and held it there.
+	const float tolerance = std::max(m_MoveProximityLimit * 2.0F, 12.0F);
+	for (int guard = 0; guard < 6 && m_MovePath.size() > 1; ++guard) {
+		Vector toPoint = g_SceneMan.ShortestDistance(m_Pos, m_MovePath.front());
+		Vector toNext = g_SceneMan.ShortestDistance(m_Pos, *std::next(m_MovePath.begin()));
+		bool reached = toPoint.MagnitudeIsLessThan(tolerance);
+		Vector obstacle;
+		bool passed = !reached && toNext.MagnitudeIsLessThan(toPoint.GetMagnitude()) && !g_SceneMan.CastStrengthRay(m_Pos, toNext, 5.0F, obstacle, 4, MaterialColorKeys::g_MaterialDoor);
+		if (!reached && !passed) {
+			break;
+		}
+		m_PrevPathTarget = m_MovePath.front();
+		m_MovePath.pop_front();
+		if (!m_MovePathKinds.empty()) {
+			m_MovePathKinds.pop_front();
+		}
+		bestGap = -1.0F;
+	}
+
+	// Getting no nearer: told to the lift, which wiggles the unit about to free it; and after ten seconds of it a fresh route, the old one
+	// kept until it comes (cleared, the lift would hold the unit still meanwhile).
+	float gap = g_SceneMan.ShortestDistance(m_Pos, m_MovePath.front()).GetMagnitude();
+	if (bestGap < 0.0F || gap < bestGap - 4.0F) {
+		bestGap = gap;
+		progressTimer.Reset();
+		RemoveNumberValue(c_StuckKey);
+	} else if (progressTimer.IsPastSimMS(10000)) {
+		if (!IsWaitingOnNewMovePath()) {
+			UpdateMovePath();
+		}
+		bestGap = -1.0F;
+		progressTimer.Reset();
+		RemoveNumberValue(c_StuckKey);
+	} else if (progressTimer.IsPastSimMS(2500)) {
+		SetNumberValue(c_StuckKey, progressTimer.GetElapsedSimTimeMS());
+	}
+	return 0;
 }
 
 void Actor::RequestRouteCheck() {
@@ -3451,7 +3579,7 @@ int Actor::FlyRouteWeightless(AEJetpack* jetpack, float jetAccel) {
 		for (float t = 0.0F; t <= length; t += 4.0F) {
 			Vector point = from + step * t;
 			for (const Vector& probe: {point, point + side, point - side}) {
-				if (unsigned char id = g_SceneMan.GetTerrMatter(probe.GetFloorIntX(), probe.GetFloorIntY()); id != MaterialColorKeys::g_MaterialAir && !FluidSim::UnitsPassThrough(id)) {
+				if (unsigned char id = g_SceneMan.GetTerrMatter(probe.GetFloorIntX(), probe.GetFloorIntY()); id != MaterialColorKeys::g_MaterialAir && !SensesPassTerrain(id, probe.GetFloorIntX(), probe.GetFloorIntY(), PassesRungs(this))) {
 					return false;
 				}
 			}

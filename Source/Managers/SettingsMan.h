@@ -274,6 +274,19 @@ namespace RTE {
 		/// Clamps every gib chunk setting into its range (after reading them).
 		void ClampGibChunks();
 
+		/// The late-battle slowdown fixes ("Performance" in the settings panel), each with a switch so it can be tried against the old behaviour: things a battle
+		/// leaves behind (blood pools, wrecks, debris, gas, scattered terrain changes) that kept costing every frame after the fighting, all actors gone or not.
+		struct SlowdownFixTuning {
+			bool LiquidTellsOnlyMoves = true; //!< Liquid tells the path grid only where it moved, in separate boxes; off: every pixel coming to rest again, all in one box (re-sampling the grid over every pool on the map, for ever).
+			int WreckSettleSeconds = 20; //!< How long a vehicle's or ship's wreck lies still before it settles into the terrain as its own material, 0 to 600. 0: never (it stays a live object, as before).
+			bool DebrisRestsAcrossGaps = true; //!< A piece lying still looks for ground under both sides as well as its middle, so one across a crack or crater lip settles; off: the middle only.
+			bool GasAreaShrinks = true; //!< The gas grid's worked-out area draws in to where gas still is; off: it only grows until no gas is left anywhere.
+			bool LightingSplitsChanges = true; //!< The lighting handles each changed patch of terrain on its own; off: every patch changed in a frame as one box round them all.
+		};
+
+		/// Gets the late-battle slowdown fixes, to read or change.
+		SlowdownFixTuning& SlowdownFixes() { return m_SlowdownFixes; }
+
 		/// Whether every scene is played without wrapping horizontally, with hard left and right edges, whatever its terrain says (see Scene::LoadData).
 		/// Takes effect when a scene is next loaded.
 		bool NoSceneWrap() const { return m_NoSceneWrap; }
@@ -340,6 +353,19 @@ namespace RTE {
 		/// move through (FluidSim::UnitsPassThrough); 2 that, and the path grid wades every flowing liquid, mud, tar, mercury and fuel among
 		/// them, as it does oil (it knew only water, oil, acid and lava, and took the rest for ground). 2 as the game comes.
 		int UnitWaterBehaviour() const { return m_UnitWaterBehaviour; }
+		/// Whether the AI's walk sees loose bodies its own collides with in the way (a corpse, a gib, a limb: AHuman::ObjectAhead) and leaps
+		/// them, hops them with the jet, routes round or waits, as it does a wreck. Off as before: it pressed into them until the stuck handling.
+		bool UnitsStepOverObjects() const { return m_UnitsStepOverObjects; }
+		/// Whether units' own senses (the walk's look ahead, getting up, leaps, landings, mantling, ducking) see through what their bodies push
+		/// through: grass and soft plants (integrity 5 or under, not flowing). Off as before: grass read as ground over the dirt the floor
+		/// rays find, and units ducked under hanging plants and mantled onto bushes. See Actor::SensesPassTerrain.
+		bool SensesPassPlants() const { return m_SensesPassPlants; }
+		/// Whether a living soldier's senses see through ladder rungs, which its body passes: off as before, they were floor under it in mid air,
+		/// a wall beside a walk and in the way of a flight, and a lip to mantle onto.
+		bool SensesPassRungs() const { return m_SensesPassRungs; }
+		/// Whether units' senses see through specks, the crumbs of four pixels or fewer their bodies brush through (Atom::IsTerrainSpeck): off as
+		/// before, they ducked, crawled and re-routed round crumbs left by blasts and digging, and mantled against them.
+		bool SensesPassSpecks() const { return m_SensesPassSpecks; }
 		/// How much a load slows a unit's walk and lowers its leap, 0 to 1 (0 as the game comes): this share of its speed is lost once what it
 		/// carries weighs as much as its own body, less below that (Actor::GetOverloadSpeedMultiplier).
 		float OverloadSlowdown() const { return m_OverloadSlowdown; }
@@ -854,6 +880,10 @@ namespace RTE {
 		void SetLegStrength(float strength) { m_LegStrength = std::clamp(strength, 0.25F, 3.0F); }
 		void SetJetpackWeightCompensation(int mode) { m_JetpackWeightCompensation = std::clamp(mode, 0, 2); }
 		void SetUnitWaterBehaviour(int mode) { m_UnitWaterBehaviour = std::clamp(mode, 0, 2); }
+		void SetUnitsStepOverObjects(bool on) { m_UnitsStepOverObjects = on; }
+		void SetSensesPassPlants(bool on) { m_SensesPassPlants = on; }
+		void SetSensesPassRungs(bool on) { m_SensesPassRungs = on; }
+		void SetSensesPassSpecks(bool on) { m_SensesPassSpecks = on; }
 		void SetOverloadSlowdown(float slowdown) { m_OverloadSlowdown = std::clamp(slowdown, 0.0F, 1.0F); }
 		void SetJetpackFuelMultiplier(float multiplier) { m_JetpackFuelMultiplier = std::clamp(multiplier, 0.25F, 5.0F); }
 		void SetInfiniteJetpackFuel(bool on) { m_InfiniteJetpackFuel = on; }
@@ -1200,9 +1230,14 @@ namespace RTE {
 		float m_LegStrength = 1.0F; //!< See LegStrength.
 		int m_JetpackWeightCompensation = 0; //!< See JetpackWeightCompensation.
 		int m_UnitWaterBehaviour = 2; //!< See UnitWaterBehaviour.
+		bool m_UnitsStepOverObjects = true; //!< See UnitsStepOverObjects.
+		bool m_SensesPassPlants = true; //!< See SensesPassPlants.
+		bool m_SensesPassRungs = true; //!< See SensesPassRungs.
+		bool m_SensesPassSpecks = true; //!< See SensesPassSpecks.
 		float m_OverloadSlowdown = 0.0F; //!< See OverloadSlowdown.
 		float m_JetpackFuelMultiplier = 1.0F; //!< See JetpackFuelMultiplier.
 		bool m_InfiniteJetpackFuel = false; //!< See InfiniteJetpackFuel.
+		SlowdownFixTuning m_SlowdownFixes; //!< See SlowdownFixes.
 		int m_AILadderTeamStalls; //!< See AILadderTeamStalls.
 		bool m_AIGrabsLaddersOnPurpose; //!< See AIGrabsLaddersOnPurpose.
 		bool m_AIGrabsLaddersMidJet; //!< See AIGrabsLaddersMidJet.
