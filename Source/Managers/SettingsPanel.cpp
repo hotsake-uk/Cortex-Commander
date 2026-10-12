@@ -136,6 +136,7 @@ namespace {
 
 	bool AtNormal(float value, float normal) { return std::abs(value - normal) <= 0.0001F * std::max(1.0F, std::abs(normal)); }
 	bool AtNormal(int value, int normal) { return value == normal; }
+	bool AtNormal(bool value, bool normal) { return value == normal; }
 
 	/// A small Reset beside the slider just made, putting that one setting back as the game comes (greyed out while it is).
 	/// The slider stays the last item, so a Tip after it is still the slider's own.
@@ -198,6 +199,16 @@ namespace {
 	/// A checkbox for something that is read and set through functions.
 	template <typename Setter> void Toggle(const char* label, bool value, Setter set) {
 		if (Check(label, &value)) {
+			set(value);
+		}
+	}
+	/// The same, with a Reset beside it back to how the game comes.
+	template <typename Setter> void Toggle(const char* label, bool value, Normal<bool> normal, Setter set) {
+		if (!Shown(label)) {
+			return;
+		}
+		bool changed = ToolUI::Checkbox(label, &value);
+		if (ResetButton(label, &value, normal.Value) || changed) {
 			set(value);
 		}
 	}
@@ -1373,6 +1384,8 @@ void DebugMan::SettingsGUI() {
 			g_WindowMan.SetFrameCap(frameCap > 0 && frameCap < 30 ? 30 : frameCap);
 		}
 		Heading("Battle alerts and display (Battle Command)");
+		Toggle("No route markers", g_SettingsMan.ShowSandboxNoRouteMarkers(), Normal{true}, [](bool on) { g_SettingsMan.SetShowSandboxNoRouteMarkers(on); });
+		Tip("A red cross where units were sent and couldn't get to, with a dashed line from each and why; click it to send them again. Off: not drawn (the units still stand down and say so). Also in the sandbox window's display options.");
 		Toggle("Battle alerts", g_SettingsMan.ShowBattleAlerts(), [](bool on) { g_SettingsMan.SetShowBattleAlerts(on); });
 		Tip("What needs your eye in a battle (your units under attack or falling, a strike coming in, your flag taken...) listed at the top left of the view for a while, each to click and look there. Off: not listed, but still kept in the alert log, and Space and Shift+Space still look at them.");
 		if (int lines = g_SettingsMan.BattleAlertLines(); SliderI("Battle alert lines", &lines, Normal{6}, 1, 12)) {
@@ -1612,11 +1625,13 @@ void DebugMan::SettingsGUI() {
 				g_SettingsMan.SetAISpawnDiggerChance(spawnDiggers);
 			}
 			Tip("The share of units, every team's, that are handed a digger as they come into the scene, whether bought, dropped in or placed with it, if they don't carry one already. It goes in their inventory, so they keep their own guns in hand and get it out when a route calls for digging. 0 hands out none.");
+			// (The list puts the Mega Digger before "A random one", which the setting keeps at 3 so saved settings still mean what they did.)
 			int diggerType = g_SettingsMan.AISpawnDiggerType();
-			if (Combo("Digger they spawn with", &diggerType, "Light Digger\0Medium Digger\0Heavy Digger\0A random one\0")) {
-				g_SettingsMan.SetAISpawnDiggerType(diggerType);
+			int diggerItem = diggerType == 3 ? 4 : (diggerType == 4 ? 3 : diggerType);
+			if (Combo("Digger they spawn with", &diggerItem, "Light Digger\0Medium Digger\0Heavy Digger\0Mega Digger\0A random one\0")) {
+				g_SettingsMan.SetAISpawnDiggerType(diggerItem == 4 ? 3 : (diggerItem == 3 ? 4 : diggerItem));
 			}
-			Tip("Which digger those units are handed. The heavier the digger, the harder the ground it cuts through and the sooner they choose to dig.");
+			Tip("Which digger those units are handed. The heavier the digger, the harder the ground it cuts through and the sooner they choose to dig. The Mega Digger cuts stone and concrete easily, but not metal.");
 		}
 		Toggle("AI units use vehicles", g_SettingsMan.AIUsesVehicles(), [](bool on) { g_SettingsMan.SetAIUsesVehicles(on); });
 		Tip("An AI unit sent a long way walks to a friendly vehicle near it that is going its way, gets in and rides (or drives it) there, then gets out and walks the rest. A vehicle with an AI driver drives itself to the place it is sent, and units sent to a vehicle get in. Off: they walk, and AI drivers sit still.");

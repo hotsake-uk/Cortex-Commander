@@ -466,7 +466,7 @@ namespace RTE {
 		/// going through them. 1, the default, is every weapon as it is defined.
 		float WeaponTerrainDamage() const { return m_WeaponTerrainDamage; }
 
-		/// Gets which digger those units are handed: 0 Light, 1 Medium, 2 Heavy, 3 a random one of the three.
+		/// Gets which digger those units are handed: 0 Light, 1 Medium, 2 Heavy, 3 a random one of the four, 4 Mega.
 		int AISpawnDiggerType() const { return m_AISpawnDiggerType; }
 
 		/// The recklessness as a multiplier on the AI's movement caution: 2 at the careful end, 1 as designed, 0.5 at the reckless end.
@@ -727,6 +727,12 @@ namespace RTE {
 
 		/// Sets whether the sandbox pings where units of the selection's side come under fire.
 		void SetShowSandboxAttackPings(bool show) { m_SandboxAttackPings = show; }
+
+		/// Whether the sandbox shows its "no route" markers where units couldn't get to (RC-7).
+		bool ShowSandboxNoRouteMarkers() const { return m_SandboxNoRouteMarkers; }
+
+		/// Sets whether the sandbox shows its "no route" markers.
+		void SetShowSandboxNoRouteMarkers(bool show) { m_SandboxNoRouteMarkers = show; }
 
 		/// Whether the sandbox's map window is shown (RC-8).
 		bool ShowSandboxMinimap() const { return m_SandboxMinimap; }
@@ -990,7 +996,7 @@ namespace RTE {
 		/// Sets how hard weapon fire strikes terrain; see WeaponTerrainDamage.
 		void SetWeaponTerrainDamage(float scale) { m_WeaponTerrainDamage = std::clamp(scale, 0.1F, 20.0F); }
 		/// Sets which digger those units are handed; see AISpawnDiggerType.
-		void SetAISpawnDiggerType(int type) { m_AISpawnDiggerType = std::clamp(type, 0, 3); }
+		void SetAISpawnDiggerType(int type) { m_AISpawnDiggerType = std::clamp(type, 0, 4); }
 
 		/// Sets whether AI units steady themselves before they jet.
 		void SetAISteadiesBeforeJet(bool steady) { m_AISteadyBeforeJet = steady; }
@@ -1263,6 +1269,7 @@ namespace RTE {
 		int m_SandboxSpawnStats; //!< How the Spawn tab shows units' and items' stats (see SandboxSpawnStats).
 		int m_SandboxSpawnSort; //!< How the sandbox's picture lists are sorted (see SandboxSpawnSort).
 		bool m_SandboxAttackPings; //!< Whether units coming under fire are pinged (see ShowSandboxAttackPings).
+		bool m_SandboxNoRouteMarkers; //!< Whether "no route" markers are shown (see ShowSandboxNoRouteMarkers).
 		bool m_SandboxMinimap; //!< Whether the sandbox's map window is shown (see ShowSandboxMinimap).
 		bool m_BattleAlerts; //!< Whether Battle Command's alerts are listed (see ShowBattleAlerts).
 		int m_BattleAlertLines; //!< The most alerts listed at once (see BattleAlertLines).
@@ -1340,7 +1347,7 @@ namespace RTE {
 		float m_ShipGraceZone; //!< Pixels past the map's top and sides flying ships may go, 0 to 700 (see ShipGraceZone).
 		float m_CameraOverscroll; //!< Pixels past the map's edges the camera may scroll, 0 to 2000 (see CameraOverscroll).
 		float m_WeaponTerrainDamage; //!< Multiple of the force weapon fire strikes terrain with, 0.1 to 20 (see WeaponTerrainDamage).
-		int m_AISpawnDiggerType; //!< Which digger they're handed: 0 Light, 1 Medium, 2 Heavy, 3 random (see AISpawnDiggerType).
+		int m_AISpawnDiggerType; //!< Which digger they're handed: 0 Light, 1 Medium, 2 Heavy, 3 random, 4 Mega (see AISpawnDiggerType).
 		bool m_AISteadyBeforeJet; //!< Whether AI units steady themselves before they jet (see AISteadiesBeforeJet).
 		bool m_AICoverDigs; //!< See AICoverDigs.
 		bool m_AICoverFallsBack; //!< See AICoverFallsBack.
