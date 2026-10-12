@@ -1640,14 +1640,14 @@ void DebugMan::SettingsGUI() {
 		Tip("A unit of any side, yours too, that can't walk to where it was sent, or has a very long way to go, walks to an idle friendly flying ship near it, gets in (the first one in flies it, unless it has a pilot or flies itself) and is flown there with anyone else going the same way. The ship waits for everyone it called over, then flies them there, comes down low and lets them out. Never a ship a player flies, sits in or has given an order. Off: they walk, or stop with no route.");
 		Toggle("Ride when there's no route on foot", g_SettingsMan.AIShipRideNoRoute(), [](bool on) { g_SettingsMan.SetAIShipRideNoRoute(on); });
 		Tip("With ship rides on: a unit that finds no way on foot to where it was sent (a cliff it can't climb, ground it can't dig, across a chasm) looks for a ship to fly it. Off: it stops with no route, as before.");
-		Toggle("Ride on very long walks", g_SettingsMan.AIShipRideLongWalk(), [](bool on) { g_SettingsMan.SetAIShipRideLongWalk(on); });
-		Tip("With ship rides on: a unit sent further than the distance below looks for a ship to fly it, even though it could walk. Off: only units with no route ride.");
+		Toggle("Ride whenever a ship can get them there", g_SettingsMan.AIShipRideLongWalk(), [](bool on) { g_SettingsMan.SetAIShipRideLongWalk(on); });
+		Tip("With ship rides on: a unit sent further than the shortest walk below takes a ship near it that can fly it there, even though it could walk. Off: only units with no route ride.");
 		{
 			float longWalk = g_SettingsMan.AIShipRideLongWalkDistance();
-			if (Slider("Long walk for a ship ride", &longWalk, Normal{2000.0F}, 500.0F, 10000.0F, "%.0f px", ImGuiSliderFlags_Logarithmic)) {
+			if (Slider("Shortest walk worth a ride", &longWalk, Normal{500.0F}, 200.0F, 10000.0F, "%.0f px", ImGuiSliderFlags_Logarithmic)) {
 				g_SettingsMan.SetAIShipRideLongWalkDistance(longWalk);
 			}
-			Tip("How far away, in a straight line, the place a unit is sent to has to be for it to look for a ship ride. 2000 px, as the game comes.");
+			Tip("How far away, in a straight line, the place a unit is sent to has to be for it to take a ship or a land vehicle near it that can get it there; nearer, it walks. A ship or vehicle a little behind it counts too (up to a quarter of the walk). 500 px, as the game comes.");
 			float range = g_SettingsMan.AIShipRideRange();
 			if (Slider("Ship ride search range", &range, Normal{1500.0F}, 200.0F, 5000.0F, "%.0f px", ImGuiSliderFlags_Logarithmic)) {
 				g_SettingsMan.SetAIShipRideRange(range);

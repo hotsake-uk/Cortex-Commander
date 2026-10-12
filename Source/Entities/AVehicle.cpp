@@ -1391,6 +1391,7 @@ void AVehicle::UpdateAIBoarding() {
 	if (HasDriver() && !goingSomewhere) {
 		return;
 	}
+	int routeSearches = 2; // (Searched on the spot: a couple a look.)
 	for (Actor* unit: g_MovableMan.GetActorList()) {
 		if (unit->GetController()->IsPlayerControlled() || unit->GetAIMode() != AIMODE_GOTO || !CanCarry(unit)) {
 			continue;
@@ -1405,11 +1406,26 @@ void AVehicle::UpdateAIBoarding() {
 		if (toVehicle.MagnitudeIsGreaterThan(m_RecruitRange) || std::abs(toVehicle.m_Y) > 150.0F) {
 			continue;
 		}
-		// Going a long way, and the vehicle is no further from where it's going than it is (it isn't a walk back to get in).
+		// Going further than the shortest walk worth a ride, and the vehicle not much further from where it's going than it is (a little
+		// way back to get in, up to a quarter of the walk).
 		Vector destination = unit->GetLastAIWaypoint();
 		float walk = g_SceneMan.ShortestDistance(unit->GetPos(), destination).GetMagnitude();
-		if (walk < 700.0F || g_SceneMan.ShortestDistance(m_Pos, destination).GetMagnitude() > walk + 100.0F) {
+		if (walk < g_SettingsMan.AIShipRideLongWalkDistance() || g_SceneMan.ShortestDistance(m_Pos, destination).GetMagnitude() > walk + std::max(100.0F, walk * 0.25F)) {
 			continue;
+		}
+		// With nobody driving yet, only if it can drive there (or near enough to walk the rest): the route its driver would take.
+		if (!HasDriver()) {
+			if (routeSearches-- <= 0) {
+				break;
+			}
+			if (Scene* scene = g_SceneMan.GetScene()) {
+				std::list<Vector> path;
+				float cost = scene->CalculatePath(GetPathStart(), destination, path, GetPathAgent(), static_cast<Activity::Teams>(m_Team));
+				bool drives = cost >= 0.0F && cost < 100000.0F && !path.empty() && g_SceneMan.ShortestDistance(path.back(), destination).MagnitudeIsLessThan(300.0F);
+				if (!drives) {
+					continue;
+				}
+			}
 		}
 		// With a driver, only going where it's going.
 		if (HasDriver() && g_SceneMan.ShortestDistance(going, destination).GetMagnitude() > walk * 0.5F) {

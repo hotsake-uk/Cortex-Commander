@@ -603,10 +603,12 @@ namespace RTE {
 		/// Whether a unit with no route on foot to where it was sent looks for a ship to fly it there (with AIRidesShips).
 		bool AIShipRideNoRoute() const { return m_AIShipRideNoRoute; }
 
-		/// Whether a unit sent further than AIShipRideLongWalkDistance looks for a ship to fly it there (with AIRidesShips).
+		/// Whether a unit sent further than AIShipRideLongWalkDistance looks for a ship to fly it there (with AIRidesShips), though it could
+		/// walk: whenever a ship near it can get it there.
 		bool AIShipRideLongWalk() const { return m_AIShipRideLongWalk; }
 
-		/// How far a unit has to be sent, in pixels in a straight line, to count as a long walk worth a ship ride.
+		/// The shortest walk worth a ride, in pixels in a straight line: a unit sent further takes a ship (AIShipRideLongWalk) or a land
+		/// vehicle (AIUsesVehicles) near it that can get it there.
 		float AIShipRideLongWalkDistance() const { return m_AIShipRideLongWalkDistance; }
 
 		/// How far off an idle ship looks for units that want a ride, in pixels.
@@ -1079,7 +1081,7 @@ namespace RTE {
 		void SetAIRidesShips(bool ride) { m_AIRidesShips = ride; }
 		void SetAIShipRideNoRoute(bool ride) { m_AIShipRideNoRoute = ride; }
 		void SetAIShipRideLongWalk(bool ride) { m_AIShipRideLongWalk = ride; }
-		void SetAIShipRideLongWalkDistance(float distance) { m_AIShipRideLongWalkDistance = std::clamp(distance, 500.0F, 10000.0F); }
+		void SetAIShipRideLongWalkDistance(float distance) { m_AIShipRideLongWalkDistance = std::clamp(distance, 200.0F, 10000.0F); }
 		void SetAIShipRideRange(float range) { m_AIShipRideRange = std::clamp(range, 200.0F, 5000.0F); }
 		void SetAIShipRideWait(float seconds) { m_AIShipRideWait = std::clamp(seconds, 0.0F, 120.0F); }
 		void SetAIVehiclesWaitForRiders(bool wait) { m_AIVehiclesWaitForRiders = wait; }

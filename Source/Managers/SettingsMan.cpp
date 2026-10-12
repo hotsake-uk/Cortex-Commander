@@ -185,7 +185,7 @@ void SettingsMan::Clear() {
 	m_AIRidesShips = true;
 	m_AIShipRideNoRoute = true;
 	m_AIShipRideLongWalk = true;
-	m_AIShipRideLongWalkDistance = 2000.0F;
+	m_AIShipRideLongWalkDistance = 500.0F;
 	m_AIShipRideRange = 1500.0F;
 	m_AIShipRideWait = 20.0F;
 	m_AIVehiclesWaitForRiders = true;
