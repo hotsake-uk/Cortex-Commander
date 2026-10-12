@@ -786,6 +786,10 @@ namespace RTE {
 		/// @param radius How far it reaches, in pixels.
 		void IgniteArea(const Vector& position, float radius) const;
 
+		/// Puts out a burning unit (a Fire Ward, a dousing spell), with a puff of steam. Thread safe; applied on the next sim update.
+		/// @param object The unit, burning or not.
+		void Extinguish(MovableObject* object) const;
+
 		/// Puts a rope from one point to another, tied at each end to what is there: a unit or a thing, else the ground, else nothing (a loose
 		/// end). Thread safe; made on the next sim update.
 		/// @param type What it's made of: "Rope", "Thread", "Chain", "Steel cable" or "Bungee cord" (any other name is rope).

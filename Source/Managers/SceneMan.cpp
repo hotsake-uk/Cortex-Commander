@@ -1625,6 +1625,10 @@ void SceneMan::IgniteArea(const Vector& position, float radius) const {
 	TerrainFire::QueueIgniteArea(position, radius);
 }
 
+void SceneMan::Extinguish(MovableObject* object) const {
+	ActorFire::QueueDouse(object);
+}
+
 Vector SceneMan::GetAirFlow(const Vector& position) const {
 	return AirPressure::GetFlow(position);
 }

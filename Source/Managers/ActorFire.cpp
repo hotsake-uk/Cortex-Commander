@@ -156,6 +156,16 @@ void ActorFire::QueueIgniteArea(const Vector& position, float radius) {
 	}
 }
 
+void ActorFire::QueueDouse(MovableObject* object) {
+	if (!object) {
+		return;
+	}
+	std::scoped_lock lock(s_QueueMutex);
+	if (s_DouseQueue.size() < 512) {
+		s_DouseQueue.push_back(object);
+	}
+}
+
 void ActorFire::Update() {
 	if (g_SceneMan.GetScene() != s_Scene) {
 		Clear();
@@ -289,7 +299,8 @@ void ActorFire::Update() {
 		Burner& burner = s_Burners[i];
 		Actor* actor = g_MovableMan.ValidMO(burner.Object) && burner.Object->GetUniqueID() == burner.ID ? dynamic_cast<Actor*>(burner.Object) : nullptr;
 		if (!actor || !CanBurn(actor)) {
-			s_Burners.erase(s_Burners.begin() + static_cast<long>(i));
+			// (PutOut, not a bare erase: a unit that can no longer burn, warded against fire mid-blaze, has its burning tag taken off.)
+			PutOut(s_Burners.begin() + static_cast<long>(i), false);
 			continue;
 		}
 		const Vector& position = actor->GetPos();

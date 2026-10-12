@@ -170,6 +170,36 @@ UNITS = [
 		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
 		torsoWounds=14, inventory=[("HDFirearm", "Woodcutter's Axe")], metal=False, nature="Defensive",
 	),
+	# The Kingdom's support casters and champions (SE-1). The AI casts the support spells on friends who need them (HumanBehaviors.lua,
+	# SupportSpellUpdate) and fights with the mace, dagger or sword between casts.
+	dict(
+		key="Cleric", name="Cleric", groups=["Actors - Light"], gold=130, mass=44, heads=1,
+		desc="A hooded cleric in white with a mace, and the books of Heal, Blessing and Shield of Faith. Heals whoever is hurt near him, blesses the fighters and shields the one about to fall; keep him just behind the line.",
+		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=90, walk=4.2, run=5.2,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=14, inventory=[("HDFirearm", "Mace"), ("HDFirearm", "Heal"), ("HDFirearm", "Blessing"), ("HDFirearm", "Shield of Faith")], metal=False, energy=(120, 14),
+	),
+	dict(
+		key="Enchanter", name="Enchanter", groups=["Actors - Light"], gold=130, mass=42, heads=1,
+		desc="A purple-robed enchanter with Haste, Enchant Weapon, Stoneskin and Dispel, and a dagger. Makes the fighters round him faster, harder-hitting and tougher, and lifts curses; worth nothing alone, worth a squad with one.",
+		torsoMat="Flesh", headMat="Flesh", limbMat="Flesh", health=80, walk=4.2, run=5.2,
+		headImpact="Flesh Head Impact", torsoImpact="Flesh Torso Impact", foley="Foley Light Cloth Light", stride="Footstep Light Generic",
+		torsoWounds=12, inventory=[("HDFirearm", "Haste"), ("HDFirearm", "Enchant Weapon"), ("HDFirearm", "Stoneskin"), ("HDFirearm", "Dispel"), ("HDFirearm", "Dagger")], metal=False, energy=(120, 14),
+	),
+	dict(
+		key="Battlemage", name="Battlemage", groups=["Actors - Heavy"], gold=190, mass=60, heads=2,
+		desc="A knight in blue plate who fights with a longsword and casts between blows: Fireball at range, Telekinetic Grab to haul a man out of the line, and Blink to cross a wall or escape one. Plate makes him a slow caster, but a hard one to stop.",
+		torsoMat="Military Stuff", headMat="Military Stuff", limbMat="Kevlared Flesh", health=120, walk=3.8, run=4.6,
+		headImpact="Flesh Head Impact Armored", torsoImpact="Flesh Torso Impact Armored", foley="Foley Heavy Cloth Light", stride="Footstep Heavy Metal Generic",
+		torsoWounds=22, inventory=[("HDFirearm", "Longsword"), ("HDFirearm", "Fireball"), ("HDFirearm", "Telekinetic Grab"), ("HDFirearm", "Blink")], metal=True, energy=(100, 10),
+	),
+	dict(
+		key="Champion", name="Champion", groups=["Actors - Heavy"], gold=220, mass=64, heads=2,
+		desc="The king's champion in gold-trimmed plate with a greatsword, a Blessing on himself before he closes and Mirror Image to draw the arrows meant for him. The best sword in the realm, and he knows it.",
+		torsoMat="Military Stuff", headMat="Military Stuff", limbMat="Kevlared Flesh", health=150, walk=3.8, run=4.7,
+		headImpact="Flesh Head Impact Armored", torsoImpact="Flesh Torso Impact Armored", foley="Foley Heavy Cloth Light", stride="Footstep Heavy Metal Generic",
+		torsoWounds=24, inventory=[("HDFirearm", "Greatsword"), ("HDFirearm", "Blessing"), ("HDFirearm", "Mirror Image")], metal=True, energy=(80, 8),
+	),
 ]
 
 
