@@ -1216,6 +1216,8 @@ void DebugMan::SettingsGUI() {
 		Tip("Units, players' included, pull themselves up onto a ledge or over a low obstacle they walk or jet into, rather than needing the jetpack to get the height exactly right.");
 		Toggle("Units step over objects in their way", g_SettingsMan.UnitsStepOverObjects(), [](bool on) { g_SettingsMan.SetUnitsStepOverObjects(on); });
 		Tip("An AI unit held up by a loose body it bumps into (a corpse, a gib, a limb, but not a gun lying still, which bodies pass, or a scrap light enough to shove aside) leaps over it, hops it with the jet, finds a way round or waits, as it does a wreck. Off, as before: it walks into it until it counts as stuck, which after a couple of seconds tries a leap or a hop.");
+		Toggle("Units get over landed craft and vehicles", g_SettingsMan.UnitsCrossVehicles(), Normal{true}, [](bool on) { g_SettingsMan.SetUnitsCrossVehicles(on); });
+		Tip("An AI unit with a landed dropship or rocket, or a parked vehicle, in its way gets over it: leaps up onto a low one and walks across, hops it with the jet, or pulls itself up onto it and walks across (with mantling on), trying again before it looks for a way round. Off, as before: landed craft aren't seen at all, and a vehicle is only leapt clean over or hopped, else gone round.");
 		Toggle("Units push loose objects out of their way", g_SettingsMan.UnitsPushObjects(), [](bool on) { g_SettingsMan.SetUnitsPushObjects(on); });
 		Tip("An AI soldier held up by a loose object (a corpse, a gib that hasn't settled, a crate) no heavier than itself shoves it along ahead of it, gently, never onto a teammate or off a drop. One that is too heavy or won't budge is stepped over or gone round instead. Players' own units are never made to push.");
 		{
