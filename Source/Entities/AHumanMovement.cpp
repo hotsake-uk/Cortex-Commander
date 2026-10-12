@@ -3526,6 +3526,38 @@ int AHuman::MoveAlongRoute() {
 		EquipFirearm(true);
 	}
 
+	// A ladder hanging out of reach overhead (its foot blown away with the floor under it), the route up to it and on up its rungs: under its
+	// line, a hop on the jet, and the pilot (in the air, above) and the grab in the air (the route's ladder, above) take it from there. (The
+	// flight wants a floor to land on and the ladder's step a rung in reach, so a unit routed up to one stood under it pressing up, was
+	// stuck, and was given the same route again.)
+	if (standardJet && g_SettingsMan.AIGrabsLaddersMidJet() && (kind == PathStepKind::Ladder || (kind == PathStepKind::Jump && pointFloor < 0.0F)) && toPoint.m_Y < -h * 0.3F && RouteClimbsLadderNext()) {
+		float bodyX = 0.0F;
+		float gripX = 0.0F;
+		int wallSide = 0;
+		bool material = false;
+		const bool inReach = FindLadderNear(m_Pos, h * 0.3F, bodyX, gripX, wallSide, material, -1) && LadderRungInReach(gripX, material);
+		if (!inReach && FindLadderNear(point, h * 0.45F, bodyX, gripX, wallSide, material, -1) && m_pJetpack->GetJetTimeLeft() > JetRelightFuel() + 200.0F) {
+			// (Under a ceiling, not: the stuck handling below has it.)
+			const float dx = bodyX - m_Pos.m_X;
+			const bool under = std::abs(dx) <= h * 0.35F;
+			if (!under || ColumnOpen(m_Pos.m_X, m_Pos.m_Y - h * 0.45F, m_Pos.m_Y - h * 0.95F)) {
+				if (std::abs(dx) > h * 0.15F) {
+					ctrl.SetState(dx < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+				}
+				if (under) {
+					if (mover.traceTimer.IsPastSimMS(1000)) {
+						mover.traceTimer.Reset();
+						MoverTrace("a ladder hanging out of reach overhead; up to it on the jet");
+					}
+					ctrl.SetState(BODY_JUMPSTART, true);
+					ctrl.SetState(BODY_JUMP, true);
+					SetAimAngle(c_HalfPI);
+				}
+				return RouteMover::Moving;
+			}
+		}
+	}
+
 	// The route goes up or down a ladder from here: to the ladder's line first (a side key held is no grab), then up or down to take hold.
 	if (kind == PathStepKind::Ladder && std::abs(toPoint.m_Y) > h * 0.2F) {
 		if (std::abs(toPoint.m_X) > h * 0.25F) {
