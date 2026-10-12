@@ -190,11 +190,16 @@ namespace RTE {
 		/// @return Whether it can (false while it can't fly or its autopilot hasn't started).
 		bool RamTarget(const Actor* target, bool automatic = false);
 
-		/// Stops ramming: any other order.
-		void StopRam() { m_RamID = 0; }
+		/// Sends it to ram a place (a Ram order on no enemy, as a suppress is given): run after run through it, as RamTarget, striking whatever
+		/// that isn't its own side's it meets there, till it is given another order.
+		/// @param point The place. @return Whether it can.
+		bool RamPlace(const Vector& point);
 
-		/// Gets whether it is ramming an enemy (RamTarget).
-		bool IsRamming() const { return m_RamID != 0; }
+		/// Stops ramming: any other order.
+		void StopRam() { m_RamID = 0; m_RamAtPlace = false; }
+
+		/// Gets whether it is ramming an enemy or a place (RamTarget, RamPlace).
+		bool IsRamming() const { return m_RamID != 0 || m_RamAtPlace; }
 
 		/// Gets the unique ID of the enemy it is ramming, 0 for none.
 		long GetRamTargetID() const { return m_RamID; }
@@ -349,6 +354,8 @@ namespace RTE {
 		};
 		long m_RamID; //!< The unique ID of the enemy it is ramming, 0 for none.
 		bool m_RamAuto; //!< Whether it took the ram on itself, its guns gone.
+		bool m_RamAtPlace; //!< Whether it is ramming a place (RamPlace) rather than an enemy.
+		Vector m_RamPoint; //!< That place.
 		RamPhase m_RamPhase; //!< Where it is in the ram.
 		float m_RamSide; //!< Which side of the enemy it charges from: 1 its right, -1 its left.
 		Timer m_RamTimer; //!< Since this part of the ram began.
@@ -363,7 +370,7 @@ namespace RTE {
 		/// @return Whether it is ramming (and has been steered for it).
 		bool UpdateRam();
 
-		/// Strikes the enemy it rams if the hull has reached it going fast enough, each update.
+		/// Strikes whatever not of its own side the hull has reached going fast enough while it rams, each update.
 		void UpdateRamHits();
 
 		/// With all its guns shot off (and given no order to hold or a plain move), it rams the enemy it was sent after, or the nearest in reach.

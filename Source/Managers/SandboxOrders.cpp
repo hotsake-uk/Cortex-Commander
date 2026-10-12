@@ -1285,7 +1285,7 @@ namespace SandboxDetail {
 				ParkSelected(point, shift);
 				return;
 			case CommandMode::Ram:
-				RamSelected(EnemyNear(point, team));
+				RamSelected(nullptr, point);
 				return;
 			default: {
 				bool attackMove = s_CommandMode == CommandMode::AttackMove;
@@ -1534,8 +1534,8 @@ namespace SandboxDetail {
 			return;
 		}
 		if (s_CommandMode == CommandMode::Ram) {
-			// The enemy clicked, else the nearest to the click.
-			RamSelected(target && target->GetTeam() != SelectionTeam() && IsSoldier(target) ? target : EnemyNear(position, SelectionTeam()));
+			// Anything clicked not of their side, else the place itself (as a suppress is given).
+			RamSelected(target && target->GetTeam() != SelectionTeam() ? target : nullptr, position);
 			return;
 		}
 		if (s_CommandMode == CommandMode::Guard) {
@@ -1939,18 +1939,23 @@ namespace SandboxDetail {
 		MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::Land)]);
 	}
 
-	void RamSelected(Actor* enemy) {
-		if (!enemy) {
-			return;
-		}
+	void RamSelected(Actor* target, const Vector& point) {
 		for (Actor* unit: UnitsToMove(0, true)) {
-			// (The attack order first, for all that it clears; then a ship rams instead of fighting from off to one side.)
-			SendUnit(unit, enemy->GetPos(), enemy, true, "attack (ram)", true);
+			// (The order to go there first, for all that it clears; then a ship rams instead. Anyone else attacks what was clicked, or goes there.)
+			if (target) {
+				SendUnit(unit, target->GetPos(), target, true, "attack (ram)", true);
+			} else {
+				SendUnit(unit, point, nullptr, false, "move (ram)", true);
+			}
 			if (ACShip* ship = dynamic_cast<ACShip*>(unit)) {
-				ship->RamTarget(enemy);
+				if (target) {
+					ship->RamTarget(target);
+				} else {
+					ship->RamPlace(point);
+				}
 			}
 		}
-		MarkOrder(enemy->GetPos(), c_CommandModeColors[static_cast<int>(CommandMode::Ram)]);
+		MarkOrder(target ? target->GetPos() : point, c_CommandModeColors[static_cast<int>(CommandMode::Ram)]);
 	}
 
 	bool SelectionHasCar() {
