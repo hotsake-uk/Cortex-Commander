@@ -89,6 +89,10 @@ thread_local float s_LeapHeight = 0.0F; // How high a leap of the searcher's leg
 thread_local float s_LeapSpeed = 4.0F; // How fast a leap carries it forward, m/s (PathAgent::LeapSpeed).
 thread_local float s_MaxSafeFall = FLT_MAX; // The highest drop a searcher with no jet lands from unhurt, px (PathAgent::MaxSafeFall).
 thread_local bool s_Scrambles = false; // Whether the searcher scrambles up rough slopes (PathAgent::Scrambles).
+thread_local bool s_StrictClimb = true; // Whether the search keeps to the climbs a body can make (SettingsMan::StrictClimbLimits): the nodes' firm stairs and scrambles, and no lip in a walk.
+// A node's stairs or scramble up to one side, as this search reads them: the firm flags under the strict climb limits, the plain ones otherwise.
+inline bool StairsUp(const RTE::PathNode& node, bool right) { return s_StrictClimb ? (right ? node.StairsFirmUpRight : node.StairsFirmUpLeft) : (right ? node.StairsUpRight : node.StairsUpLeft); }
+inline bool ScrambleUp(const RTE::PathNode& node, bool right) { return s_StrictClimb ? (right ? node.ScrambleFirmUpRight : node.ScrambleFirmUpLeft) : (right ? node.ScrambleUpRight : node.ScrambleUpLeft); }
 thread_local bool s_Floats = false; // Whether the searcher floats and swims in deep water (PathAgent::Floats).
 thread_local float s_BreathSeconds = FLT_MAX; // How long it holds its breath under water, s (PathAgent::BreathSeconds).
 thread_local bool s_CrossesLava = false; // Whether it may be routed through lava (PathAgent::CrossesLava).
@@ -724,6 +728,7 @@ void PathFinder::ApplyAgent(const PathAgent& agent) {
 	s_LeapSpeed = agent.LeapSpeed;
 	s_MaxSafeFall = agent.MaxSafeFall;
 	s_Scrambles = agent.Scrambles;
+	s_StrictClimb = g_SettingsMan.StrictClimbLimits();
 	s_Floats = agent.Floats;
 	s_BreathSeconds = agent.BreathSeconds;
 	s_CrossesLava = agent.CrossesLava;
@@ -854,6 +859,7 @@ namespace {
 		float LeapSpeed = s_LeapSpeed;
 		float MaxSafeFall = s_MaxSafeFall;
 		bool Scrambles = s_Scrambles;
+		bool StrictClimb = s_StrictClimb;
 		bool Floats = s_Floats;
 		float BreathSeconds = s_BreathSeconds;
 		bool CrossesLava = s_CrossesLava;
@@ -897,6 +903,7 @@ namespace {
 			s_LeapSpeed = LeapSpeed;
 			s_MaxSafeFall = MaxSafeFall;
 			s_Scrambles = Scrambles;
+			s_StrictClimb = StrictClimb;
 			s_Floats = Floats;
 			s_BreathSeconds = BreathSeconds;
 			s_CrossesLava = CrossesLava;
@@ -1543,26 +1550,26 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 		// extra node of height, cheaper than the rungs it replaces; and down them likewise, which is cheaper than the falls it replaces.
 		if (s_WalksStairs && s_JumpHeight < FLT_MAX) {
 			const PathNode* upRight = node->Up ? node->Up->UpRight : nullptr;
-			if (node->StairsUpRight && upRight && upRight->m_Navigable) {
+			if (StairsUp(*node, true) && upRight && upRight->m_Navigable) {
 				adjCost.cost = (2.24F + extraUpCost * 2.0F + radiatedCost) * HeadRoomFactor(*node, *upRight);
 				adjCost.state = const_cast<PathNode*>(upRight);
 				adjacentList->push_back(adjCost);
 			}
 			const PathNode* upLeft = node->Up ? node->Up->LeftUp : nullptr;
-			if (node->StairsUpLeft && upLeft && upLeft->m_Navigable) {
+			if (StairsUp(*node, false) && upLeft && upLeft->m_Navigable) {
 				adjCost.cost = (2.24F + extraUpCost * 2.0F + radiatedCost) * HeadRoomFactor(*node, *upLeft);
 				adjCost.state = const_cast<PathNode*>(upLeft);
 				adjacentList->push_back(adjCost);
 			}
 			// Down: the node two down and one over whose stairs lead up to this one.
 			const PathNode* downRight = node->Down ? node->Down->RightDown : nullptr;
-			if (downRight && downRight->m_Navigable && downRight->StairsUpLeft) {
+			if (downRight && downRight->m_Navigable && StairsUp(*downRight, false)) {
 				adjCost.cost = (2.24F + radiatedCost) * HeadRoomFactor(*node, *downRight);
 				adjCost.state = const_cast<PathNode*>(downRight);
 				adjacentList->push_back(adjCost);
 			}
 			const PathNode* downLeft = node->Down ? node->Down->DownLeft : nullptr;
-			if (downLeft && downLeft->m_Navigable && downLeft->StairsUpRight) {
+			if (downLeft && downLeft->m_Navigable && StairsUp(*downLeft, true)) {
 				adjCost.cost = (2.24F + radiatedCost) * HeadRoomFactor(*node, *downLeft);
 				adjCost.state = const_cast<PathNode*>(downLeft);
 				adjacentList->push_back(adjCost);
@@ -1574,13 +1581,13 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 		// had no way up a rubble hillside at all: it was a jump it couldn't take.)
 		if (s_Scrambles && s_JumpHeight < FLT_MAX) {
 			const PathNode* upRight = node->Up && node->Up->Up ? node->Up->Up->UpRight : nullptr;
-			if (node->ScrambleUpRight && upRight && upRight->m_Navigable) {
+			if (ScrambleUp(*node, true) && upRight && upRight->m_Navigable) {
 				adjCost.cost = (9.5F + extraUpCost * 3.0F + radiatedCost) * HeadRoomFactor(*node, *upRight);
 				adjCost.state = const_cast<PathNode*>(upRight);
 				adjacentList->push_back(adjCost);
 			}
 			const PathNode* upLeft = node->Up && node->Up->Up ? node->Up->Up->LeftUp : nullptr;
-			if (node->ScrambleUpLeft && upLeft && upLeft->m_Navigable) {
+			if (ScrambleUp(*node, false) && upLeft && upLeft->m_Navigable) {
 				adjCost.cost = (9.5F + extraUpCost * 3.0F + radiatedCost) * HeadRoomFactor(*node, *upLeft);
 				adjCost.state = const_cast<PathNode*>(upLeft);
 				adjacentList->push_back(adjCost);
@@ -1912,6 +1919,7 @@ std::string PathFinder::DescribeNodeAt(const Vector& scenePos) {
 	text += node->StairsUpLeft ? " stairs-upleft" : "";
 	text += node->ScrambleUpRight ? " scramble-upright" : "";
 	text += node->ScrambleUpLeft ? " scramble-upleft" : "";
+	text += node->StairsFirmUpRight || node->StairsFirmUpLeft || node->ScrambleFirmUpRight || node->ScrambleFirmUpLeft ? std::string(" firm") + (node->StairsFirmUpRight ? " stairs-upright" : "") + (node->StairsFirmUpLeft ? " stairs-upleft" : "") + (node->ScrambleFirmUpRight ? " scramble-upright" : "") + (node->ScrambleFirmUpLeft ? " scramble-upleft" : "") : "";
 	text += node->Ladder ? " ladder" : "";
 	if (node->Liquid != PathLiquid::None) {
 		static const char* const liquidNames[] = {"none", "water", "oil", "acid", "lava"};
@@ -2152,12 +2160,12 @@ PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* t
 	if (std::abs(std::abs(dx) - nodeSize) < 1.0F && std::abs(std::abs(dy) - 2.0F * nodeSize) < 1.0F) {
 		const PathNode* lower = dy < 0.0F ? from : to;
 		bool rightwards = dy < 0.0F ? dx > 0.0F : dx < 0.0F; // From the lower node, which way the stairs go up.
-		if (rightwards ? lower->StairsUpRight : lower->StairsUpLeft) {
+		if (StairsUp(*lower, rightwards)) {
 			return PathStepKind::Stairs;
 		}
 	}
 	// A scramble up: three nodes of height for one of width, with the lower node's scramble flag set towards the upper.
-	if (s_Scrambles && dy < 0.0F && std::abs(std::abs(dx) - nodeSize) < 1.0F && std::abs(dy + 3.0F * nodeSize) < 1.0F && (dx > 0.0F ? from->ScrambleUpRight : from->ScrambleUpLeft)) {
+	if (s_Scrambles && dy < 0.0F && std::abs(std::abs(dx) - nodeSize) < 1.0F && std::abs(dy + 3.0F * nodeSize) < 1.0F && ScrambleUp(*from, dx > 0.0F)) {
 		return PathStepKind::Scramble;
 	}
 	// A leap's two floors, two or more nodes apart, where the search's edge between them was the leap (see s_LeapsTaken).
@@ -2312,6 +2320,10 @@ bool PathFinder::SurfaceWalkable(const PathNode& from, const PathNode& to) const
 	int top = static_cast<int>(std::min(from.Surface, to.Surface) - step);
 	int bottom = static_cast<int>(std::max(from.Surface, to.Surface) + step);
 	float last = from.Surface;
+	// (Under the strict climb limits, also no lip up the way: 2 px columns each rising more than 5 px on the one before (about 70 degrees
+	// and over), adding up to more than a step. Within the 40 degrees overall, a 20 px face could sit in the middle of the cell as two 10 px
+	// jumps, and the legs walked into it.)
+	float lip = 0.0F;
 	for (int d = 2; d <= static_cast<int>(std::abs(dx)); d += 2) {
 		int x = static_cast<int>(from.Pos.m_X + direction * static_cast<float>(d));
 		int y = top;
@@ -2320,6 +2332,13 @@ bool PathFinder::SurfaceWalkable(const PathNode& from, const PathNode& to) const
 		}
 		if (y > bottom || y == top || std::abs(static_cast<float>(y) - last) >= step) {
 			return false;
+		}
+		if (s_StrictClimb) {
+			const float rise = last - static_cast<float>(y);
+			lip = rise > 5.0F ? lip + rise : 0.0F;
+			if (lip > 10.0F) {
+				return false;
+			}
 		}
 		last = static_cast<float>(y);
 	}
@@ -2495,17 +2514,19 @@ void PathFinder::DrawDebug(const Box& area, const PathAgent& agent) {
 					}
 				}
 			}
-			if (node->StairsUpRight && node->Up && node->Up->UpRight) {
+			// (The ones the search reads: the firm stairs and scrambles under the strict climb limits.)
+			const bool strictClimb = g_SettingsMan.StrictClimbLimits();
+			if ((strictClimb ? node->StairsFirmUpRight : node->StairsUpRight) && node->Up && node->Up->UpRight) {
 				g_PrimitiveMan.DrawLinePrimitive(standing, node->Up->UpRight->Pos, stairsColor);
 			}
-			if (node->StairsUpLeft && node->Up && node->Up->LeftUp) {
+			if ((strictClimb ? node->StairsFirmUpLeft : node->StairsUpLeft) && node->Up && node->Up->LeftUp) {
 				g_PrimitiveMan.DrawLinePrimitive(standing, node->Up->LeftUp->Pos, stairsColor);
 			}
 			// (Scrambles in the stairs' colour too: a steeper way up on the legs.)
-			if (node->ScrambleUpRight && node->Up && node->Up->Up && node->Up->Up->UpRight) {
+			if ((strictClimb ? node->ScrambleFirmUpRight : node->ScrambleUpRight) && node->Up && node->Up->Up && node->Up->Up->UpRight) {
 				g_PrimitiveMan.DrawLinePrimitive(standing, node->Up->Up->UpRight->Pos, stairsColor);
 			}
-			if (node->ScrambleUpLeft && node->Up && node->Up->Up && node->Up->Up->LeftUp) {
+			if ((strictClimb ? node->ScrambleFirmUpLeft : node->ScrambleUpLeft) && node->Up && node->Up->Up && node->Up->Up->LeftUp) {
 				g_PrimitiveMan.DrawLinePrimitive(standing, node->Up->Up->LeftUp->Pos, stairsColor);
 			}
 			// Leap links (see AddLeapLinks), as an arc of two lines over the gap or up onto the lip, from the floors they can start from: the
@@ -2812,6 +2833,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	bool oldStairsUpLeft = node->StairsUpLeft;
 	bool oldScrambleUpRight = node->ScrambleUpRight;
 	bool oldScrambleUpLeft = node->ScrambleUpLeft;
+	std::array<bool, 4> oldFirm = {node->StairsFirmUpRight, node->StairsFirmUpLeft, node->ScrambleFirmUpRight, node->ScrambleFirmUpLeft};
 	PathLiquid oldLiquid = node->Liquid;
 	int oldLiquidDepth = node->LiquidDepth;
 	std::array<float, 2> oldStepOverRise = node->StepOverRise;
@@ -3049,6 +3071,32 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		}
 	}
 
+	// The ground's top in each column from this node's to one a node to the side whose floor is higher (for the strict climb limits): the
+	// first ground going down from a little over the higher floor to a little under this one. False where a column has none in that span (a
+	// gap) or is ground at its top (an overhang over the way up).
+	std::array<float, 64> climbTops{};
+	int climbColumns = 0;
+	auto climbProfile = [&](float highSurface, float side) -> bool {
+		const int top = static_cast<int>(highSurface) - 4;
+		const int bottom = static_cast<int>(node->Surface) + 4;
+		climbColumns = 0;
+		for (int d = 0; d <= static_cast<int>(m_NodeDimension) && climbColumns < static_cast<int>(climbTops.size()); ++d) {
+			const int x = static_cast<int>(node->Pos.m_X + side * static_cast<float>(d));
+			int y = top;
+			while (y <= bottom && (TerrNav(x, y) == MaterialColorKeys::g_MaterialAir || LiquidOf(TerrNav(x, y)) != PathLiquid::None)) {
+				++y;
+			}
+			if (y > bottom || y == top) {
+				return false;
+			}
+			climbTops[climbColumns++] = static_cast<float>(y);
+		}
+		return climbColumns > 2;
+	};
+	// The tallest a body steps up in one go on the strict climb limits: over the base game's 6 px stair risers with room, under the walk's
+	// half-node step.
+	constexpr float c_StrictRiser = 10.0F;
+
 	// Stairs: a steep walk, two nodes up for one over, that legs can take. Flagged when both nodes have a surface, the rise is between 30
 	// and 60 px over the 24 of width (about 50 to 70 degrees: the base game's steep stairs are 6 px risers on 3 px treads), and two lines a
 	// little over the slope between the two surfaces are clear, which is a staircase or a slope and not a wall with a ledge on it. Gentler
@@ -3072,6 +3120,27 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		};
 		node->StairsUpRight = stairsTo(node->Up ? node->Up->UpRight : nullptr);
 		node->StairsUpLeft = stairsTo(node->Up ? node->Up->LeftUp : nullptr);
+		// Firm stairs (the strict climb limits): footholds the whole way up. A foothold is a spot where the ground rises no more than 2 px over
+		// 2 px (about 45 to 50 degrees, as the pixels fall: the base game's 3 px treads are flat), and from one to the next, the floors at
+		// either end counted, the ground rises no more than a riser. A smooth slope over about 55 degrees has none: the walk's tilt stops at
+		// 40 and the feet only push into the face, and units clawed up it, stalled and hopped.
+		auto firmStairs = [&](const PathNode* target, float side) -> bool {
+			if (!climbProfile(SurfaceUnder(*target), side)) {
+				return false;
+			}
+			float lastFoot = climbTops[0];
+			for (int i = 0; i + 2 < climbColumns; ++i) {
+				if (climbTops[i] - climbTops[i + 2] <= 2.0F) {
+					if (lastFoot - climbTops[i] > c_StrictRiser) {
+						return false;
+					}
+					lastFoot = std::min(lastFoot, climbTops[i]);
+				}
+			}
+			return lastFoot - climbTops[climbColumns - 1] <= c_StrictRiser;
+		};
+		node->StairsFirmUpRight = node->StairsUpRight && firmStairs(node->Up->UpRight, 1.0F);
+		node->StairsFirmUpLeft = node->StairsUpLeft && firmStairs(node->Up->LeftUp, -1.0F);
 	}
 
 	// A scramble (LM-10): a rise of 60 to 80 px over the 24 of width (about 70 to 75 degrees, too steep for stairs) up a face that is rough,
@@ -3119,6 +3188,24 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		const PathNode* twoUp = node->Up ? node->Up->Up : nullptr;
 		node->ScrambleUpRight = scrambleTo(twoUp ? twoUp->UpRight : nullptr, 1.0F);
 		node->ScrambleUpLeft = scrambleTo(twoUp ? twoUp->LeftUp : nullptr, -1.0F);
+		// A firm scramble (the strict climb limits): no sheer section in the face, columns each rising 6 px or more on the one before (80
+		// degrees and over), adding up to more than a step. Hands and feet find holds on a steep rough face, not up a cliff in the middle of it.
+		auto firmScramble = [&](const PathNode* target, float side) -> bool {
+			if (!climbProfile(SurfaceUnder(*target), side)) {
+				return false;
+			}
+			float sheer = 0.0F;
+			for (int i = 1; i < climbColumns; ++i) {
+				const float rise = climbTops[i - 1] - climbTops[i];
+				sheer = rise >= 6.0F ? sheer + rise : 0.0F;
+				if (sheer > m_NodeDimension * 0.5F) {
+					return false;
+				}
+			}
+			return true;
+		};
+		node->ScrambleFirmUpRight = node->ScrambleUpRight && firmScramble(twoUp->UpRight, 1.0F);
+		node->ScrambleFirmUpLeft = node->ScrambleUpLeft && firmScramble(twoUp->LeftUp, -1.0F);
 	}
 
 	// Look at each existing adjacent node and calculate the cost for each. Start and end are offset to cover more terrain.
@@ -3202,7 +3289,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	}
 
 	// Stairs appearing or going count as a change.
-	if (node->StairsUpRight != oldStairsUpRight || node->StairsUpLeft != oldStairsUpLeft || node->ScrambleUpRight != oldScrambleUpRight || node->ScrambleUpLeft != oldScrambleUpLeft || node->Grounded != oldGrounded || node->StepOverRise != oldStepOverRise || node->StepOverRoom != oldStepOverRoom || node->StepOverRiseLeft != oldStepOverRiseLeft || node->StepOverRoomLeft != oldStepOverRoomLeft || node->Ladder != oldLadder || node->LadderBottom != oldLadderBottom) {
+	if (node->StairsUpRight != oldStairsUpRight || node->StairsUpLeft != oldStairsUpLeft || node->ScrambleUpRight != oldScrambleUpRight || node->ScrambleUpLeft != oldScrambleUpLeft || oldFirm != std::array<bool, 4>{node->StairsFirmUpRight, node->StairsFirmUpLeft, node->ScrambleFirmUpRight, node->ScrambleFirmUpLeft} || node->Grounded != oldGrounded || node->StepOverRise != oldStepOverRise || node->StepOverRoom != oldStepOverRoom || node->StepOverRiseLeft != oldStepOverRiseLeft || node->StepOverRoomLeft != oldStepOverRoomLeft || node->Ladder != oldLadder || node->LadderBottom != oldLadderBottom) {
 		return true;
 	}
 
@@ -3336,6 +3423,10 @@ bool PathFinder::CopyNodeSamples(const PathFinder& from, const std::vector<int>&
 		    node.StairsUpLeft = source.StairsUpLeft;
 		    node.ScrambleUpRight = source.ScrambleUpRight;
 		    node.ScrambleUpLeft = source.ScrambleUpLeft;
+		    node.StairsFirmUpRight = source.StairsFirmUpRight;
+		    node.StairsFirmUpLeft = source.StairsFirmUpLeft;
+		    node.ScrambleFirmUpRight = source.ScrambleFirmUpRight;
+		    node.ScrambleFirmUpLeft = source.ScrambleFirmUpLeft;
 		    node.Liquid = source.Liquid;
 		    node.LiquidDepth = source.LiquidDepth;
 		    node.StepOverRise = source.StepOverRise;

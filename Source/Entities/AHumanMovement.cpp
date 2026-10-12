@@ -132,12 +132,13 @@ bool AHuman::RouteClimbsLadderNext() const {
 	return false;
 }
 
-bool AHuman::NoteLadderStall(float ladderX, float y) const {
-	// (Per team, kept a minute; the AI's threads move several units at once.)
+bool AHuman::NoteLadderStall(float ladderX, float y, bool slope) const {
+	// (Per team, kept a minute; the AI's threads move several units at once. Stairs and scrambles that stalled, slope, are counted apart.)
 	struct Stall {
 		int team;
 		Vector at;
 		double when;
+		bool slope;
 	};
 	static std::mutex s_Mutex;
 	static std::vector<Stall> s_Stalls;
@@ -149,9 +150,9 @@ bool AHuman::NoteLadderStall(float ladderX, float y) const {
 	// (How many it takes, this one counted, is the Movement settings' AILadderTeamStalls.)
 	const int before = static_cast<int>(std::count_if(s_Stalls.begin(), s_Stalls.end(), [&](const Stall& stall) {
 		Vector off = Towards(stall.at, at);
-		return stall.team == m_Team && std::abs(off.m_X) < 12.0F && std::abs(off.m_Y) < m_CharHeight * 2.0F;
+		return stall.team == m_Team && stall.slope == slope && std::abs(off.m_X) < 12.0F && std::abs(off.m_Y) < m_CharHeight * 2.0F;
 	}));
-	s_Stalls.push_back({m_Team, at, now});
+	s_Stalls.push_back({m_Team, at, now, slope});
 	return before + 1 >= g_SettingsMan.AILadderTeamStalls();
 }
 
@@ -3990,6 +3991,32 @@ int AHuman::MoveAlongRoute() {
 		SetAimAngle(-c_HalfPI);
 		mover.progressTimer.Reset();
 		return RouteMover::Moving;
+	}
+
+	// Up stairs or a scramble that stops gaining height for a second and a half (the strict climb limits): given up on, that step made dearer
+	// for a while (for the team too, once units of it have stalled there as often as the ladder setting says), and a route from here. (On
+	// those steps the walk's look ahead is off, so a unit clawed at a face its body couldn't take until the stuck handling, and its hop.)
+	if (g_SettingsMan.StrictClimbLimits() && (kind == PathStepKind::Stairs || kind == PathStepKind::Scramble) && above > h * 0.1F) {
+		if (!mover.climbWatch || !Towards(mover.climbPoint, point).MagnitudeIsLessThan(2.0F)) {
+			mover.climbWatch = true;
+			mover.climbPoint = point;
+			mover.climbBestY = m_Pos.m_Y;
+			mover.climbTimer.Reset();
+		} else if (m_Pos.m_Y < mover.climbBestY - 2.0F) {
+			mover.climbBestY = m_Pos.m_Y;
+			mover.climbTimer.Reset();
+		} else if (mover.climbTimer.IsPastSimMS(1500)) {
+			const bool again = NoteLadderStall(m_Pos.m_X, m_Pos.m_Y, true);
+			MoverTrace(std::string(kind == PathStepKind::Stairs ? "stairs" : "scramble") + " stopped gaining height; another way" + (again ? " (the team avoids it now)" : ""));
+			AvoidPathLink(m_PrevPathTarget, point, 20000.0F, again);
+			mover.climbWatch = false;
+			mover.bestGap = -1.0F;
+			mover.progressTimer.Reset();
+			RefreshRoute();
+			return RouteMover::Moving;
+		}
+	} else {
+		mover.climbWatch = false;
 	}
 
 	// ---- The walk. ----

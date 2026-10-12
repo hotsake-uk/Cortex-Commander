@@ -333,6 +333,12 @@ namespace RTE {
 		/// How long, in seconds, an AI unit climbing a ladder that has stopped rising waits before letting go and finding another way (the rungs
 		/// shot away above, the ladder ending short, the way up it blocked). 1.5 s as the game comes.
 		float AILadderGiveUpSeconds() const { return m_AILadderGiveUpSeconds; }
+		/// Whether the route search and the AI's walk keep to the climbs a body can make (on as the game comes): stairs only where the slope has
+		/// footholds (spots no steeper than about 50 degrees every few pixels of height), a scramble only up a face with no sheer section taller
+		/// than a step and for a unit with a hand free to climb with, no walk step over a near-vertical lip hidden in a 40 degree cell, and a
+		/// stairs or scramble climb that stops gaining height given up on and routed round. Off: as before (any 51 to 68 degree rise was
+		/// stairs, any soft 68 to 73 degree face a scramble). See PathFinder::UpdateNodeCosts and AHuman::UpdateAIMotor.
+		bool StrictClimbLimits() const { return m_StrictClimbLimits; }
 		/// How much what a unit carries (its inventory, the guns in its hands and its gold) weighs, as a multiple of the items' own mass,
 		/// 0 to 5; 1 as the game comes (Actor::GetMass).
 		float CarriedWeightMultiplier() const { return m_CarriedWeightMultiplier; }
@@ -862,6 +868,7 @@ namespace RTE {
 		void SetAIThreatAvoidance(float scale) { m_AIThreatAvoidance = std::clamp(scale, 0.0F, 2.0F); }
 		/// Sets how reckless AI units are on the move, 0 to 1 (0.5 as designed).
 		void SetAIRecklessness(float recklessness) { m_AIRecklessness = std::clamp(recklessness, 0.0F, 1.0F); }
+		void SetStrictClimbLimits(bool on) { m_StrictClimbLimits = on; }
 		void SetAILadderGiveUpSeconds(float seconds) { m_AILadderGiveUpSeconds = std::clamp(seconds, 0.5F, 10.0F); }
 		void SetAILadderTeamStalls(int stalls) { m_AILadderTeamStalls = std::clamp(stalls, 1, 5); }
 		void SetAIGrabsLaddersOnPurpose(bool on) { m_AIGrabsLaddersOnPurpose = on; }
@@ -1218,6 +1225,7 @@ namespace RTE {
 		float m_AIThreatAvoidance; //!< How much safe-route units keep clear of enemies, 0 to 2 (see AIThreatAvoidance).
 		float m_AIRecklessness; //!< How reckless AI units are on the move, 0 to 1 (see AIRecklessness).
 		float m_AILadderGiveUpSeconds; //!< See AILadderGiveUpSeconds.
+		bool m_StrictClimbLimits = true; //!< See StrictClimbLimits.
 		float m_CarriedWeightMultiplier = 1.0F; //!< See CarriedWeightMultiplier.
 		float m_LegStrength = 1.0F; //!< See LegStrength.
 		int m_JetpackWeightCompensation = 0; //!< See JetpackWeightCompensation.

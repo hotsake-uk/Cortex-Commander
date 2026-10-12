@@ -996,6 +996,10 @@ namespace RTE {
 			bool ladderStalled = false; //!< A ladder climb stopped rising lately, at ladderStallSpot: that ladder isn't climbed again from there for a while (ladderStallTimer).
 			Vector ladderStallSpot;
 			Timer ladderStallTimer;
+			bool climbWatch = false; //!< On a stairs or scramble step under the strict climb limits: its top (climbPoint), the highest the body has got on it (climbBestY) and since when (climbTimer).
+			Vector climbPoint;
+			float climbBestY = 0.0F;
+			Timer climbTimer;
 			bool skyFlying = false; //!< Flying a sky order (Actor::StandingOrder::SkyGoal) to its point in the air (see UpdateAIMotor).
 			bool skyHovering = false; //!< Got there: hovering at it till the tank runs low.
 			bool skyClear = false; //!< Whether the line to the point was open when last looked (skyCheckTimer).
@@ -1199,7 +1203,7 @@ namespace RTE {
 		bool LadderRungInReach(float gripX, bool material) const;
 		/// Notes that a unit of this team got stuck climbing the ladder taken at ladderX, at height y. @return Whether units of the team have now
 		/// been stuck on the same ladder within a minute as often as SettingsMan::AILadderTeamStalls asks (then the team is told to avoid it).
-		bool NoteLadderStall(float ladderX, float y) const;
+		bool NoteLadderStall(float ladderX, float y, bool slope = false) const;
 		/// Whether the route's next step or the one after is up or down a ladder (PathStepKind::Ladder).
 		bool RouteClimbsLadderNext() const;
 		/// Before the jet: taking hold of a ladder (up or down pressed at one), and letting go (a side key, or the jet's key alone).
