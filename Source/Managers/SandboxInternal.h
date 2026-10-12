@@ -739,6 +739,7 @@ namespace SandboxDetail {
 		WaveDefence,
 		Escort,
 		Extraction,
+		ThePoint,
 		Count
 	};
 
@@ -823,6 +824,11 @@ namespace SandboxDetail {
 		int ExtractSide = 0; //!< Extraction: the side that gets its units out through the extraction zone (the mode's first zone), from Tickets units in all.
 		int ExtractToWin = 10; //!< Extraction: units it has to get out to win.
 		int ExtractSeconds = 3; //!< Extraction: seconds a unit stands in the zone to be lifted out.
+		int PointRadius = 200; //!< The point: how far its circle reaches round the point placed (the mode's first flag position), outer ring and all.
+		int BullseyeRadius = 70; //!< The point: how far its bullseye, in the middle of the circle, reaches.
+		int BullseyePoints = 3; //!< The point: points a second for holding the bullseye alone; the ring round it is held and scored apart.
+		int RingPoints = 1; //!< The point: points a second for holding the outer ring alone.
+		int PointsToWin = 300; //!< The point: points that win. 0 plays on for good.
 		std::array<bool, c_Sides> Commander = {true, true, true, true}; //!< Every mode but custom: each team an AI commander leads (UpdateCommanders),
 		                                                               //!< as a player would: splitting its units between objectives, sending some
 		                                                               //!< after a flag or to a VIP, picking who to go for. Not a team you command.

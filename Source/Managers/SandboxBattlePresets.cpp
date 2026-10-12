@@ -108,6 +108,11 @@ namespace SandboxDetail {
 			visit("WaveGrowth", mode.WaveGrowth);
 			visit("WaveBreak", mode.WaveBreak);
 			visit("EscortSide", mode.EscortSide);
+			visit("PointRadius", mode.PointRadius);
+			visit("BullseyeRadius", mode.BullseyeRadius);
+			visit("BullseyePoints", mode.BullseyePoints);
+			visit("RingPoints", mode.RingPoints);
+			visit("PointsToWin", mode.PointsToWin);
 			visit("ExtractSide", mode.ExtractSide);
 			visit("ExtractToWin", mode.ExtractToWin);
 			visit("ExtractSeconds", mode.ExtractSeconds);

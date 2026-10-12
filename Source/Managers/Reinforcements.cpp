@@ -58,6 +58,9 @@ namespace SandboxDetail {
 					return 0.0F;
 				case BattleMode::KingOfTheHill:
 					return static_cast<float>(scored) * (s_ModeRun.Settings.HillsToWin > 0 ? c_ObjectivePoints : c_HillSecondPoints);
+				case BattleMode::ThePoint:
+					// (Its score goes up by the second, as king of the hill's held for time does.)
+					return static_cast<float>(scored) * c_HillSecondPoints;
 				default:
 					return static_cast<float>(scored) * c_ObjectivePoints;
 			}

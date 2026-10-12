@@ -4109,6 +4109,15 @@ namespace SandboxDetail {
 			return;
 		}
 		if (kind == Tool::BattleModeFlag) {
+			if (s_ModeSetup.Mode == BattleMode::ThePoint) {
+				// The point: there's only the one, so a click puts it here (moving it if it was placed already), and the tool is done.
+				Vector at = position;
+				g_SceneMan.WrapPosition(at);
+				s_ModeSetup.FlagSpots.assign(1, at);
+				SendBattleMode();
+				PutDownBattleTool();
+				return;
+			}
 			// Another position the neutral flag (one flag) comes in at, after those placed already.
 			if (s_ModeSetup.FlagSpots.size() < c_MaxFlagSpots) {
 				Vector at = position;

@@ -31,7 +31,7 @@ namespace SandboxDetail {
 		constexpr int c_PictureVersion = 1; //!< Kept in the cached pictures' names: raise it when the way they're drawn changes, so they're drawn again.
 		constexpr const char* c_PictureFolder = "Userdata/MapPreviews/";
 
-		constexpr const char* c_ModeNames[] = {"Custom", "Capture the flag", "King of the hill", "Assault", "Last team standing", "VIP hunt", "One flag", "Capture the ship", "Wave defence", "Escort", "Extraction"};
+		constexpr const char* c_ModeNames[] = {"Custom", "Capture the flag", "King of the hill", "Assault", "Last team standing", "VIP hunt", "One flag", "Capture the ship", "Wave defence", "Escort", "Extraction", "The point"};
 		static_assert(std::size(c_ModeNames) == static_cast<size_t>(BattleMode::Count), "c_ModeNames must name each BattleMode.");
 
 		/// Where a map comes from.
@@ -893,6 +893,18 @@ namespace SandboxDetail {
 					if (labels) {
 						Tag(drawList, ImVec2(foot.x, foot.y + ImGui::GetFontSize() * 0.7F), color, std::string(c_SideNames[side]) + (mode.Mode == BattleMode::CaptureTheFlag ? " flag" : mode.Mode == BattleMode::VipHunt ? " VIP" : " base"));
 					}
+				}
+			}
+			if (mode.Mode == BattleMode::ThePoint && !mode.FlagSpots.empty()) {
+				// The point: its circle and bullseye, to scale.
+				const ImVec2 at = toScreen(mode.FlagSpots.front());
+				const float outer = std::max(static_cast<float>(mode.PointRadius) * scenePixel, 4.0F);
+				const float inner = std::max(static_cast<float>(mode.BullseyeRadius) * scenePixel, 2.0F);
+				drawList->AddCircleFilled(at, outer, IM_COL32(255, 255, 255, 50), 32);
+				drawList->AddCircle(at, outer, IM_COL32(255, 255, 255, 230), 32, 1.5F);
+				drawList->AddCircleFilled(at, inner, IM_COL32(255, 210, 80, 140), 24);
+				if (labels) {
+					Tag(drawList, ImVec2(at.x, at.y + outer + ImGui::GetFontSize() * 0.7F), IM_COL32(255, 255, 255, 255), "The point");
 				}
 			}
 			if ((mode.Mode == BattleMode::OneFlag && !mode.FlagByZones) || mode.Mode == BattleMode::CaptureTheShip) {
