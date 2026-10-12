@@ -1100,8 +1100,12 @@ namespace RTE {
 			float vehicleFarX = 0.0F;
 			float vehicleWay = 1.0F; //!< The way the walk was going when it met it.
 			Vector vehicleMeasuredAt; //!< Where it was when measured: the ends and top move with it.
-			bool vehicleHop = false; //!< Hopping it with the jet, held until the feet are past its far end.
+			bool vehicleHop = false; //!< Crossing it (a hop with the jet, a leap, a pull up onto it), held until the feet are past its far end.
 			Timer vehicleHopTimer;
+			bool vehicleJet = true; //!< The crossing uses the jet to get up.
+			bool vehicleAbove = false; //!< The feet have been over its top on this crossing: no more jet, it is walked.
+			float vehicleCrossMS = 3000.0F; //!< How long the crossing may take before it is judged failed (longer for a long hull).
+			int vehicleCrossFails = 0; //!< Crossings of the one in the way that fell back short of it.
 			bool vehicleRepathed = false; //!< A route round it was asked for.
 			long vehicleIgnoreID = 0; //!< One given up on: the ordinary walk and stuck handling have it for a while.
 			Timer vehicleIgnoreTimer;
@@ -1314,6 +1318,10 @@ namespace RTE {
 		/// Measures a hull found by VehicleAhead along the walk's way, by rows of rays up from the floor: the top of it (y) and its near and far
 		/// ends (x). @return Whether any of it was seen.
 		bool MeasureHull(const MOSRotating* hull, float direction, float floorY, float& topY, float& nearX, float& farX) const;
+		/// Pulls the body up onto a hull's top beside it (SettingsMan::UnitsCrossVehicles), the mantle's pull (Actor::UpdateMantle) with its
+		/// end on the hull rather than on terrain: up its side and a body onto it. @param direction -1 walking left, 1 right. @param topY The
+		/// hull's top. @param nearX Its near end. @param maxLift The highest pull, px. @return Whether the pull began.
+		bool MantleOntoHull(float direction, float topY, float nearX, float maxLift);
 		bool InDoorSweep() const;
 		float FlightFuelNeeded(const Vector& landing, float landingFloorY, bool capped = true) const; // (Capped at most of the tank unless told not to.)
 		/// The jet's push at a given fuel left, in px/s^2: the push now (as learned in flight) scaled by the throttle, which follows the tank.

@@ -82,6 +82,9 @@
     <ClInclude Include="Source\System\PathFinder.h">
       <Filter>System</Filter>
     </ClInclude>
+    <ClInclude Include="Source\System\AirRoute.h">
+      <Filter>System</Filter>
+    </ClInclude>
     <ClInclude Include="Source\System\Reader.h">
       <Filter>System</Filter>
     </ClInclude>
@@ -401,6 +404,9 @@
       <Filter>Entities</Filter>
     </ClInclude>
     <ClInclude Include="Source\Entities\Actor.h">
+      <Filter>Entities</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Entities\StatusEffect.h">
       <Filter>Entities</Filter>
     </ClInclude>
     <ClInclude Include="Source\Entities\ADoor.h">
@@ -841,6 +847,9 @@
     <ClCompile Include="Source\System\PathFinder.cpp">
       <Filter>System</Filter>
     </ClCompile>
+    <ClCompile Include="Source\System\AirRoute.cpp">
+      <Filter>System</Filter>
+    </ClCompile>
     <ClCompile Include="Source\System\Reader.cpp">
       <Filter>System</Filter>
     </ClCompile>
@@ -1220,6 +1229,9 @@
       <Filter>Entities</Filter>
     </ClCompile>
     <ClCompile Include="Source\Entities\ActorPowerups.cpp">
+      <Filter>Entities</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Entities\StatusEffect.cpp">
       <Filter>Entities</Filter>
     </ClCompile>
     <ClCompile Include="Source\Entities\ADoor.cpp">

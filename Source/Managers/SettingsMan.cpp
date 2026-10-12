@@ -149,6 +149,7 @@ void SettingsMan::Clear() {
 	m_MeasuredBodySize = false;
 	m_UnitWaterBehaviour = 2;
 	m_UnitsStepOverObjects = true;
+	m_UnitsCrossVehicles = true;
 	m_UnitsPushObjects = true;
 	m_ObjectPushStrength = 1.0F;
 	m_SensesPassPlants = true;
@@ -832,6 +833,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("EnableMantling", { reader >> m_EnableMantling; });
 	MatchProperty("CreaturesClimbWalls", { reader >> m_CreaturesClimbWalls; });
 	MatchProperty("CreatureClimbSpeed", { float speed = 1.0F; reader >> speed; SetCreatureClimbSpeed(speed); });
+	MatchProperty("CreaturesFly", { reader >> m_CreaturesFly; });
+	MatchProperty("CreatureFlySpeed", { float speed = 1.0F; reader >> speed; SetCreatureFlySpeed(speed); });
 	MatchProperty("EnableStuckPush", { reader >> m_EnableStuckPush; });
 	MatchProperty("BodyGearSettlesAsScraps", { reader >> m_BodyGearSettlesAsScraps; });
 	MatchProperty("GibChunkPercent", { reader >> m_GibChunks.CountPercent; ClampGibChunks(); });
@@ -896,6 +899,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("JetpackWeightCompensation", { int mode = 0; reader >> mode; SetJetpackWeightCompensation(mode); });
 	MatchProperty("UnitWaterBehaviour", { int mode = 2; reader >> mode; SetUnitWaterBehaviour(mode); });
 	MatchProperty("UnitsStepOverObjects", { reader >> m_UnitsStepOverObjects; });
+	MatchProperty("UnitsCrossVehicles", { reader >> m_UnitsCrossVehicles; });
 	MatchProperty("UnitsPushObjects", { reader >> m_UnitsPushObjects; });
 	MatchProperty("ObjectPushStrength", { float strength = 1.0F; reader >> strength; SetObjectPushStrength(strength); });
 	MatchProperty("SensesPassPlants", { reader >> m_SensesPassPlants; });
@@ -1517,6 +1521,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
 	writer.NewPropertyWithValue("CreaturesClimbWalls", m_CreaturesClimbWalls);
 	writer.NewPropertyWithValue("CreatureClimbSpeed", m_CreatureClimbSpeed);
+	writer.NewPropertyWithValue("CreaturesFly", m_CreaturesFly);
+	writer.NewPropertyWithValue("CreatureFlySpeed", m_CreatureFlySpeed);
 	writer.NewPropertyWithValue("EnableStuckPush", m_EnableStuckPush);
 	writer.NewPropertyWithValue("BodyGearSettlesAsScraps", m_BodyGearSettlesAsScraps);
 	writer.NewPropertyWithValue("GibChunkPercent", m_GibChunks.CountPercent);
@@ -1571,6 +1577,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("JetpackWeightCompensation", m_JetpackWeightCompensation);
 	writer.NewPropertyWithValue("UnitWaterBehaviour", m_UnitWaterBehaviour);
 	writer.NewPropertyWithValue("UnitsStepOverObjects", m_UnitsStepOverObjects);
+	writer.NewPropertyWithValue("UnitsCrossVehicles", m_UnitsCrossVehicles);
 	writer.NewPropertyWithValue("UnitsPushObjects", m_UnitsPushObjects);
 	writer.NewPropertyWithValue("ObjectPushStrength", m_ObjectPushStrength);
 	writer.NewPropertyWithValue("SensesPassPlants", m_SensesPassPlants);

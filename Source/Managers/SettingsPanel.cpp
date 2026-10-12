@@ -1216,6 +1216,8 @@ void DebugMan::SettingsGUI() {
 		Tip("Units, players' included, pull themselves up onto a ledge or over a low obstacle they walk or jet into, rather than needing the jetpack to get the height exactly right.");
 		Toggle("Units step over objects in their way", g_SettingsMan.UnitsStepOverObjects(), [](bool on) { g_SettingsMan.SetUnitsStepOverObjects(on); });
 		Tip("An AI unit held up by a loose body it bumps into (a corpse, a gib, a limb, but not a gun lying still, which bodies pass, or a scrap light enough to shove aside) leaps over it, hops it with the jet, finds a way round or waits, as it does a wreck. Off, as before: it walks into it until it counts as stuck, which after a couple of seconds tries a leap or a hop.");
+		Toggle("Units get over landed craft and vehicles", g_SettingsMan.UnitsCrossVehicles(), Normal{true}, [](bool on) { g_SettingsMan.SetUnitsCrossVehicles(on); });
+		Tip("An AI unit with a landed dropship or rocket, or a parked vehicle, in its way gets over it: leaps up onto a low one and walks across, hops it with the jet, or pulls itself up onto it and walks across (with mantling on), trying again before it looks for a way round. Off, as before: landed craft aren't seen at all, and a vehicle is only leapt clean over or hopped, else gone round.");
 		Toggle("Units push loose objects out of their way", g_SettingsMan.UnitsPushObjects(), [](bool on) { g_SettingsMan.SetUnitsPushObjects(on); });
 		Tip("An AI soldier held up by a loose object (a corpse, a gib that hasn't settled, a crate) no heavier than itself shoves it along ahead of it, gently, never onto a teammate or off a drop. One that is too heavy or won't budge is stepped over or gone round instead. Players' own units are never made to push.");
 		{
@@ -1311,6 +1313,15 @@ void DebugMan::SettingsGUI() {
 				g_SettingsMan.SetCreatureClimbSpeed(climbSpeed);
 			}
 			Tip("How fast climbing creatures crawl on walls and ceilings, as a multiple of each one's own pace (a giant spider about 3 m/s, an ooze about 1.2). 1x is normal.");
+		}
+		Toggle("Creatures fly", g_SettingsMan.CreaturesFly(), [](bool on) { g_SettingsMan.SetCreaturesFly(on); });
+		Tip("Creatures that fly take to the air and the AI routes them through it, round and over what is in the way as a flying ship is: carrion bats swarm and dive, giant wasps hover and sting, a wyvern breathes fire from above, a wisp drifts and casts. Unticked, they keep to the ground.");
+		{
+			float flySpeed = g_SettingsMan.CreatureFlySpeed();
+			if (Slider("Creature flying speed", &flySpeed, Normal{1.0F}, 0.25F, 3.0F, "%.2fx")) {
+				g_SettingsMan.SetCreatureFlySpeed(flySpeed);
+			}
+			Tip("How fast flying creatures fly, as a multiple of each one's own pace (a carrion bat about 8 m/s, a wyvern about 6). 1x is normal.");
 		}
 		Check("Team colour on units", &settings.UnitTeamColorParts);
 		Tip("Parts of units that mods mark for it (a bandanna, a helmet stripe) are drawn in their side's colour: red, green, blue or yellow. Unticked, they take the mod's own default colour, or stay as painted.");

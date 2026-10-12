@@ -28,6 +28,10 @@ namespace RTE {
 		/// @param radius How far it reaches, in pixels.
 		static void QueueIgniteArea(const Vector& position, float radius);
 
+		/// Queues a burning unit to be put out, with a puff of steam (a Fire Ward, a dousing spell). Thread safe.
+		/// @param object The unit (its root), burning or not.
+		static void QueueDouse(MovableObject* object);
+
 		/// Burns, spreads and puts out fire on units. Call once per sim update, from the main thread, after the terrain fire update.
 		static void Update();
 
