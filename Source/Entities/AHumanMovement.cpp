@@ -2364,7 +2364,7 @@ int AHuman::MoveAlongRoute() {
 			mover.repathTimer.Reset();
 			mover.noSightTimer.Reset();
 		}
-	} else if (airborne && mover.routeCheckTimer.IsPastSimMS(500)) {
+	} else if (airborne && mover.routeCheckTimer.IsPastSimMS(500) && !mover.flight.direct) {
 		mover.routeCheckTimer.Reset();
 		RequestRouteCheck();
 	}
@@ -2607,15 +2607,21 @@ int AHuman::MoveAlongRoute() {
 			flight.riseTimer.Reset();
 		}
 		const char* failed = nullptr;
-		if (climbingUp && airborne && flight.riseTimer.IsPastSimMS(1000)) {
+		// (A direct flight is flown as the Fly command flies: no rise or fall-back check, only the time and the tank. Its line was open and
+		// roomy, and the pilot's slow start up a long climb read as no rise.)
+		if (climbingUp && airborne && flight.riseTimer.IsPastSimMS(1000) && !flight.direct) {
 			failed = "no rise";
-		} else if (climbingUp && flight.stages == 0 && m_Pos.m_Y > flight.startY + h * 0.3F) {
+		} else if (climbingUp && flight.stages == 0 && m_Pos.m_Y > flight.startY + h * 0.3F && !flight.direct) {
 			failed = "fell back";
 		} else if (flight.totalTimer.IsPastSimMS(12000 + 4000 * flight.stages)) {
 			failed = "took too long";
 		}
 		if (failed) {
 			MoverTrace(std::string("flight failed (") + failed + "); new route");
+			if (flight.direct) {
+				mover.directBlocked = true;
+				mover.directBlockTimer.Reset();
+			}
 			// (This take-off for that landing is dearer for a while, for this unit and its team: the next try goes from elsewhere, or for
 			// another landing; see Actor::AvoidPathLink.)
 			AvoidPathLink(flight.takeOff, flight.landing, 20000.0F);
@@ -2679,6 +2685,11 @@ int AHuman::MoveAlongRoute() {
 			// Down again short of a landing above: the climb failed (fallen back down the hatch, or onto the wrong lip). A new route from
 			// here, not the rest of the old one followed from where it was never meant to start.
 			bool landingAbove = flight.floorY < feetY - h * 0.3F;
+			if (flight.direct && !onLanding) {
+				// (Short of it: the next climb goes landing by landing again, for a while.)
+				mover.directBlocked = true;
+				mover.directBlockTimer.Reset();
+			}
 			Vector takeOffWas = flight.takeOff;
 			Vector landingWas = flight.landing;
 			flight = RouteMover::Flight();
@@ -3369,6 +3380,7 @@ int AHuman::MoveAlongRoute() {
 	bool flightAhead = standardJet && FindLanding(landing, landingFloorY, pointsToLanding, takeOff);
 	mover.hasTakeOff = flightAhead;
 	mover.debugTakeOff = takeOff;
+	bool directFlight = false; // (See below: flown straight through open air, as the Fly command flies.)
 	if (flightAhead) {
 		Vector toTakeOff = Towards(m_Pos, takeOff);
 		Vector toLandingHere = Towards(m_Pos, landing);
@@ -3397,6 +3409,53 @@ int AHuman::MoveAlongRoute() {
 		if (!atTakeOff && !approach) {
 			flightAhead = false;
 			mover.fuelWaiting = false;
+		}
+		// Open air on the way up: a landing further along the route with a straight, roomy line to it from here is flown to directly, as the
+		// Fly command flies, rather than landing by landing on every ledge the route touches. (Point by point, a unit in a tall cave flew to a
+		// lip on one wall, then one on the other, and each leg's checks called the climb failed and asked for a new route; flown by hand
+		// with the Fly command the same unit went straight up.) Only where there is room: a body's width clear either side of the line all
+		// the way, so a shaft, a doorway or a lip keeps its careful flight. Not again for a while after one came down short.
+		if (mover.directBlocked && mover.directBlockTimer.IsPastSimMS(10000)) {
+			mover.directBlocked = false;
+		}
+		if (flightAhead && atTakeOff && !airborne && !mover.directBlocked && toLandingHere.m_Y < -h * 0.3F) {
+			const float tank = m_pJetpack->GetJetTimeTotal();
+			auto roomyLine = [&](const Vector& to) {
+				const Vector line = Towards(m_Pos, to);
+				Vector hit;
+				for (const Vector& offset: {Vector(0.0F, -h * 0.3F), Vector(0.0F, feet - 4.0F), Vector(-h * 0.5F, -h * 0.1F), Vector(h * 0.5F, -h * 0.1F)}) {
+					if (g_SceneMan.CastStrengthRay(m_Pos + offset, line, 5.0F, hit, 2, MaterialColorKeys::g_MaterialDoor)) {
+						return false;
+					}
+				}
+				return true;
+			};
+			int index = 0;
+			auto kindIt = m_MovePathKinds.begin();
+			for (const Vector& routePoint: m_MovePath) {
+				++index;
+				PathStepKind stepKind = kindIt != m_MovePathKinds.end() ? *kindIt++ : PathStepKind::Walk;
+				if (index > 30 || stepKind == PathStepKind::Ladder || stepKind == PathStepKind::Leap || stepKind == PathStepKind::Mantle || stepKind == PathStepKind::Scramble || stepKind == PathStepKind::Dig || stepKind == PathStepKind::Lift || stepKind == PathStepKind::Swim || stepKind == PathStepKind::Wade) {
+					break;
+				}
+				if (index <= pointsToLanding) {
+					continue;
+				}
+				const float floorY = FloorUnder(routePoint, h * 0.8F);
+				// (A floor no lower than the route's own first landing: a climb, not a drop back down.)
+				if (floorY < 0.0F || floorY > landingFloorY + h * 0.3F || FlightFuelNeeded(routePoint, floorY) > tank * 0.9F) {
+					continue;
+				}
+				if (roomyLine(Vector(routePoint.m_X, floorY - feet - 2.0F))) {
+					landing = routePoint;
+					landingFloorY = floorY;
+					pointsToLanding = index;
+					directFlight = true;
+				}
+			}
+			if (directFlight) {
+				toLandingHere = Towards(m_Pos, landing);
+			}
 		}
 		// Down is walked: a landing below is reached by walking off the edge (the drop step and the walk), the pilot braking in the air,
 		// as 8.0 did it. Only a long jump across, more across than down and more than a body and a half, is flown from the ground. (Flown
@@ -3468,7 +3527,7 @@ int AHuman::MoveAlongRoute() {
 		const float standingHeight = std::max(16.0F, h * 0.44F);
 		float shaftMiddle = 0.0F;
 		float shaftWidth = 0.0F;
-		bool inShaft = toLanding.m_Y < -h * 0.3F && ShaftColumn(columnX, landingFloorY - standingHeight, shaftMiddle, shaftWidth);
+		bool inShaft = !directFlight && toLanding.m_Y < -h * 0.3F && ShaftColumn(columnX, landingFloorY - standingHeight, shaftMiddle, shaftWidth);
 		if (inShaft && std::abs(shaftMiddle - m_Pos.m_X) > std::max(3.0F, h * 0.05F)) {
 			ctrl.SetState(shaftMiddle < m_Pos.m_X ? MOVE_LEFT : MOVE_RIGHT, true);
 			mover.progressTimer.Reset();
@@ -3504,7 +3563,7 @@ int AHuman::MoveAlongRoute() {
 		// landing that both legs are clear to, at the landing's height, or else the column over here (the way FlightWayClear tests).
 		bool cornerVia = false;
 		Vector cornerPoint;
-		if (!inShaft && toLanding.m_Y < -h * 0.3F) {
+		if (!inShaft && !directFlight && toLanding.m_Y < -h * 0.3F) {
 			// (The body's outline along the line: head, feet and both sides.)
 			auto bodyLineClear = [&](const Vector& from, const Vector& to) {
 				Vector line = Towards(from, to);
@@ -3539,7 +3598,7 @@ int AHuman::MoveAlongRoute() {
 				}
 			}
 		}
-		bool canTakeOff = (levelHop && edgeAhead) || inShaft || wayUpOpen || cornerVia;
+		bool canTakeOff = (levelHop && edgeAhead) || inShaft || wayUpOpen || cornerVia || directFlight;
 		// (Timed only within a node of the take-off (or the half body the steps about it go): walking the last node or two to it, the way up can be blocked from where the unit is
 		// yet open on arrival, and a good take-off was given up on the approach.)
 		Vector toTakeOffNow = Towards(m_Pos, takeOff);
@@ -3679,6 +3738,10 @@ int AHuman::MoveAlongRoute() {
 				mover.flight.bestY = m_Pos.m_Y;
 				mover.flight.takeOff = m_Pos;
 				mover.flight.via = inShaft || cornerVia;
+				mover.flight.direct = directFlight;
+				if (directFlight) {
+					MoverTrace("open air; straight for " + std::to_string(static_cast<int>(landing.m_X)) + "," + std::to_string(static_cast<int>(landingFloorY)) + ", " + std::to_string(pointsToLanding) + " points on");
+				}
 				if (cornerVia && !inShaft) {
 					mover.flight.viaPoint = cornerPoint;
 					MoverTrace("round the corner via " + std::to_string(static_cast<int>(cornerPoint.m_X)) + "," + std::to_string(static_cast<int>(cornerPoint.m_Y)));
