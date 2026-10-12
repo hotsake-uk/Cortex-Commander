@@ -890,6 +890,7 @@
     <ClInclude Include="Source\Managers\ControlLink.h" />
     <ClInclude Include="Source\Managers\Sandbox.h" />
     <ClInclude Include="Source\Managers\MapBrowser.h" />
+    <ClInclude Include="Source\Managers\MapGen.h" />
     <ClInclude Include="Source\Managers\SandboxInternal.h" />
     <ClInclude Include="Source\Managers\Colony.h" />
     <ClInclude Include="Source\Managers\WeatherEffects.h" />
@@ -1517,6 +1518,7 @@
     <ClCompile Include="Source\Managers\SandboxOrders.cpp" />
     <ClCompile Include="Source\Managers\SandboxMinimap.cpp" />
     <ClCompile Include="Source\Managers\SandboxMapBrowser.cpp" />
+    <ClCompile Include="Source\Managers\MapGen.cpp" />
     <ClCompile Include="Source\Managers\SandboxWorld.cpp" />
     <ClCompile Include="Source\Managers\SandboxLoadouts.cpp" />
     <ClCompile Include="Source\Managers\SandboxPlayer.cpp" />

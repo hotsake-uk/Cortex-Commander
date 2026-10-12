@@ -57,6 +57,7 @@ sources += files(
 'SandboxDebug.cpp',
 'SandboxMinimap.cpp',
 'SandboxMapBrowser.cpp',
+'MapGen.cpp',
 'Colony.cpp',
 'CommanderBar.cpp',
 'SpawnOrders.cpp',
