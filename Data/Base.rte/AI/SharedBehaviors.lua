@@ -1124,7 +1124,7 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 	local hadGoal = false;
 	while true do
 		local holding = false;
-		if AI.Target and AI.BehaviorName ~= "AttackTarget" and not AI.PickupHD and not SharedBehaviors.FightsOnTheMove(AI, Owner) then
+		if AI.Target and AI.BehaviorName ~= "AttackTarget" and AI.BehaviorName ~= "ChargeTarget" and not AI.PickupHD and not SharedBehaviors.FightsOnTheMove(AI, Owner) then
 			holding = true;
 		elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and (AI.BehaviorName == "ShootArea" or AI.BehaviorName == "FaceAlarm") and not SharedBehaviors.FightsOnTheMove(AI, Owner) then
 			holding = true;
@@ -2355,7 +2355,7 @@ end
 
 -- A target it may no longer have (NC-1): a Defensive unit calmed down, or a temperament changed. Dropped, with its fight; called once an
 -- update before targets are looked for. @return Whether it was dropped.
-local fightBehaviors = { ShootTarget = true, ThrowTarget = true, AttackTarget = true, ShootArea = true, PinArea = true, HuntTarget = true };
+local fightBehaviors = { ShootTarget = true, ThrowTarget = true, AttackTarget = true, ShootArea = true, PinArea = true, HuntTarget = true, ChargeTarget = true };
 function SharedBehaviors.DropForbiddenTarget(AI, Owner)
 	if not AI.Target or SharedBehaviors.MayTarget(AI, Owner, AI.Target) then
 		return false;
@@ -4683,7 +4683,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 										end
 									else
 										-- do we have a target we want to shoot at?
-										if Owner.Head and AI.Target and AI.canHitTarget and AI.BehaviorName ~= "AttackTarget" then
+										if Owner.Head and AI.Target and AI.canHitTarget and AI.BehaviorName ~= "AttackTarget" and AI.BehaviorName ~= "ChargeTarget" then
 											-- are we also flying
 											if AI.flying and Owner.Jetpack.JetpackType == AEJetpack.Standard then
 												-- predict jetpack movement when jumping and there is a target (check one direction)
@@ -5420,7 +5420,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 		end
 
 		-- movement commands
-		if (AI.Target and AI.BehaviorName ~= "AttackTarget" and not AI.PickupHD) or (Owner.AIMode ~= Actor.AIMODE_SQUAD and (AI.BehaviorName == "ShootArea" or AI.BehaviorName == "FaceAlarm")) then
+		if (AI.Target and AI.BehaviorName ~= "AttackTarget" and AI.BehaviorName ~= "ChargeTarget" and not AI.PickupHD) or (Owner.AIMode ~= Actor.AIMODE_SQUAD and (AI.BehaviorName == "ShootArea" or AI.BehaviorName == "FaceAlarm")) then
 			-- An enemy in sight. On a move order, with an aggressive script, or closing in on one out of reach, the waypoint is still
 			-- pursued and the shooting rules aim and fire on the way; otherwise the legs stop and the shooting rules have them.
 			if SharedBehaviors.FightsOnTheMove(AI, Owner) then

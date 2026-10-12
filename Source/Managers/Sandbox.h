@@ -45,6 +45,9 @@ namespace RTE {
 		/// The name of the key that swaps the sandbox's bar and the Commander Toolbar, as the hints show it ("F11").
 		static std::string CommanderBarKeyName();
 
+		/// Whether O is Focus on objective just now (the command tool in hand with units selected), so it doesn't also pause the world.
+		static bool TakesObjectiveKey();
+
 		/// Whether the sandbox holds the world still (god mode with its window open and "pause in menus" on), photo mode or not.
 		static bool WantsWorldPaused();
 
@@ -77,6 +80,12 @@ namespace RTE {
 		/// Gets whether the mouse wheel zooms the camera: the sandbox window is open in the god view and the mouse isn't over a debug window.
 		static bool WantsWheelZoom();
 
+		/// Ctrl+mouse wheel with a Paint tool in hand and the mouse over the world: the brush made a tenth bigger or smaller (as [ and ]),
+		/// instead of the camera zooming. Call for a turn of the wheel with Ctrl held.
+		/// @param up Whether the wheel turned up (bigger).
+		/// @return Whether it was taken for the brush; if not, it zooms as ever.
+		static bool TakeBrushWheel(bool up);
+
 		/// Draws the sandbox window, the brush outline and the free camera. Call from the ImGui frame.
 		static void DrawGUI();
 
@@ -96,7 +105,7 @@ namespace RTE {
 
 		/// Uses a sandbox tool from a script, as if clicked at a point (Lua: SandboxDo). Applied in the next sim update.
 		/// @param toolName The tool's name as shown in the window ("Units", "Brain", "Item", "Structure", "Fire", "Water", "Lightning", "Rally point", "Take control", "Remove"...), "Orders" to order a whole side,
-		/// or "Undo" to take back the newest paint stroke, placing click or drop (as Ctrl+Z). "Make it fall" and "Select" take a box of half-size count round the point.
+		/// "Undo" to take back the newest paint stroke, placing click or drop (as Ctrl+Z), or "Redo" to make again what it took back (as Ctrl+Y). "Make it fall" and "Select" take a box of half-size count round the point.
 		/// @param position Where to use it.
 		/// @param team The side: 0 Red, 1 Green, 2 Blue, 3 Yellow (the game's team colours).
 		/// @param order For units and "Orders": 0 hold, 1 attack nearest enemy, 2 hunt brains, 3 patrol, 4 go to rally point, 5 do nothing, 6 dig for gold.
@@ -150,6 +159,23 @@ namespace RTE {
 		/// @param teamSize Most units each team has alive at once.
 		/// @param byShip Whether they come in by ship over their widest spawn zone, rather than appearing in their zones.
 		static void StartBattleMode(int mode, int teamSize, bool byShip);
+
+		/// Whether a battle mode's game is on (won or not yet): the pause menu shows its battle entries then (B-14).
+		static bool IsBattleModeRunning();
+
+		/// Whether a battle mode's game is on and not yet over, with a team you command to give it up (the pause menu's Surrender).
+		static bool CanSurrenderBattle();
+
+		/// Starts the battle mode's game again from the start, set up as it is on the battle panel (the pause menu's Restart battle, as the
+		/// after-battle report's Play again). It happens when the game next runs.
+		static void RestartBattleMode();
+
+		/// The team you command gives up the battle mode's game: it ends as a loss for it and, in Battle Command, the after-battle report
+		/// opens. It happens when the game next runs.
+		static void SurrenderBattleMode();
+
+		/// Opens the sandbox window on its Keys page: every key the tools and the command tool answer to.
+		static void ShowKeys();
 
 		/// The old auto battle's calls, kept for one release for scripts that use them: a team attacking with one faction's units, or any
 		/// faction's (Lua: SandboxAutoBattleSide, SandboxAutoBattleRandom, SandboxStartAutoBattle). Use the SandboxBattle calls instead.

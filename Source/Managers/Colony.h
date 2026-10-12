@@ -203,6 +203,15 @@ namespace RTE {
 		/// Forgets every building and puts the supplies and wood back to what a game starts with.
 		static void Clear();
 
+		/// Gets the buildings, the sides' supply and wood and the colony settings as one line of text, for a saved game (ActivityMan::SaveCurrentGame).
+		/// Their brains, barracks units and staff are saved with the scene, marked with the building they belong to (number values), and found
+		/// again by LoadSaveState.
+		static std::string GetSaveState();
+
+		/// Puts back what a saved game held (GetSaveState), once its units are in the scene: each building with its brain, the units it trained
+		/// that are still alive and its staff, who start afresh on finding work. Nothing for an empty state (a game saved with no colony).
+		static void LoadSaveState(const std::string& state);
+
 		/// Gets the buildings, to show and change.
 		static std::vector<Building>& Buildings();
 

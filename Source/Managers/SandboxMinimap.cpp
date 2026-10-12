@@ -1,5 +1,6 @@
 // The sandbox's map (RC-8): the whole scene small, with every unit, the view, pings and "no route" markers, and it takes clicks: a click
-// looks there, a drag selects, a right click gives the selected units the order the command mode says, there.
+// looks there, a drag selects, a right click gives the selected units the order the command mode says, there. In a battle it shows the
+// battle too (B-7): the objectives, flags and their carriers, hills, spawn and mode zones, your brain's command range, and where alerts came.
 
 #include "SandboxInternal.h"
 #include "glad/gl.h"
@@ -109,6 +110,11 @@ namespace SandboxDetail {
 			};
 			drawList->PushClipRect(topLeft, ImVec2(topLeft.x + width, topLeft.y + height), true);
 
+			// The battle under the units (B-7): its spawn zones, mode zones and objectives, as the battle panel's "Show..." choices have them on
+			// the view, and your brain's command range.
+			DrawBattleModeOnMap(drawList, toMap);
+			DrawFieldBrainOnMap(drawList, toMap, width / sceneWidth);
+
 			// The view.
 			Vector viewTopLeft = g_CameraMan.GetOffset(0);
 			float scale = ScenePixelsPerWindowPixel();
@@ -157,6 +163,8 @@ namespace SandboxDetail {
 					drawList->AddCircle(toMap(ping.Position), 3.0F + pulse * 9.0F, IM_COL32(255, 70, 60, alpha), 0, 2.0F);
 				}
 			}
+			// Where Battle Command's alerts have just come, blinking.
+			DrawAlertsOnMap(drawList, toMap);
 			if (s_ActionSpotValid) {
 				drawList->AddCircle(toMap(s_ActionSpot), 4.0F + pulse * 6.0F, IM_COL32(248, 220, 90, static_cast<int>(180.0F * (1.0F - pulse))), 0, 1.5F);
 			}

@@ -1,6 +1,7 @@
 #include "SandboxInternal.h"
 #include "ActorWater.h"
 #include "MenuMan.h"
+#include "Notices.h"
 #include "Weather.h"
 #include "TerrainCandle.h"
 #include "ZeroGravity.h"
@@ -44,6 +45,11 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 	if (toolName == "Undo") {
 		// As Ctrl+Z: the newest paint stroke, placing click or drop taken back.
 		QueueSimChange(Tool::UndoTerrain);
+		return true;
+	}
+	if (toolName == "Redo") {
+		// As Ctrl+Y: the newest step the undo took back made again.
+		QueueSimChange(Tool::RedoTerrain);
 		return true;
 	}
 	if (toolName == "Effect") {
@@ -686,10 +692,11 @@ void Sandbox::ToggleCommanderBar() {
 }
 
 namespace {
-	/// The Commander Toolbar key from the settings, F11 if it names no key.
+	/// The Commander Toolbar key from the settings, F11 if it names no key, or F10 or F12 (picked before those were taken out of the
+	/// choices: they clear the console and take a screenshot).
 	SDL_Scancode CommanderBarScancode() {
 		SDL_Scancode key = SDL_GetScancodeFromName(g_SettingsMan.CommanderBarKey().c_str());
-		return key == SDL_SCANCODE_UNKNOWN ? SDL_SCANCODE_F11 : key;
+		return (key == SDL_SCANCODE_UNKNOWN || key == SDL_SCANCODE_F10 || key == SDL_SCANCODE_F12) ? SDL_SCANCODE_F11 : key;
 	}
 } // namespace
 
@@ -701,8 +708,20 @@ std::string Sandbox::CommanderBarKeyName() {
 	return SDL_GetScancodeName(CommanderBarScancode());
 }
 
+bool Sandbox::TakesObjectiveKey() {
+	// As CommandHotkeys is reached in DrawGUI: the command tool in hand, units selected, not playing one, no text box.
+	return InGame() && CurrentTool().Kind == Tool::Command && !s_Selected.empty() && !s_Possessed && !ImGui::GetIO().WantTextInput;
+}
+
 bool Sandbox::WantsWheelZoom() {
 	return IsLookingAround() && !ImGui::GetIO().WantCaptureMouse;
+}
+
+bool Sandbox::TakeBrushWheel(bool up) {
+	if (!CapturesWorldClicks() || s_Possessed || !IsPaintTool(CurrentTool().Kind)) {
+		return false;
+	}
+	return StepBrushSize(up ? 1 : -1);
 }
 
 void Sandbox::ToggleCommander() {
@@ -774,6 +793,11 @@ bool Sandbox::TakeEscape() {
 			s_ShapeDragging = false;
 			return true;
 		}
+	}
+	// (A hold zone being clicked out is dropped, not the game paused.)
+	if (CurrentTool().Kind == Tool::HoldGround && !s_HoldDraft.empty() && !ImGui::GetIO().WantTextInput) {
+		s_HoldDraft.clear();
+		return true;
 	}
 	if (!IsGodMode() || s_Possessed || !(s_Open || IsLookingAround()) || CurrentTool().Kind != Tool::Command || s_CommandMode == CommandMode::Command || ImGui::GetIO().WantTextInput) {
 		return false;
@@ -916,7 +940,7 @@ void Sandbox::DrawGUI() {
 			if (CurrentTool().Kind != Tool::None) {
 				hint += std::string("    In hand: ") + CurrentTool().Name;
 			}
-			hint += IsPaintTool(CurrentTool().Kind) ? "    Right button: dig    Middle drag / WASD: move    Wheel: zoom" : "    Right drag / WASD: move    Wheel: zoom";
+			hint += IsPaintTool(CurrentTool().Kind) ? "    Right button: dig    Middle drag / WASD: move    Wheel: zoom    [ ]: size    Alt+click: pick" : "    Right drag / WASD: move    Wheel: zoom";
 			hint += s_BarShown ? "    U: hide the bar" : "    U: show the bar";
 		} else {
 			hint += "    P: back above";
@@ -1023,7 +1047,8 @@ void Sandbox::DrawGUI() {
 			if (s_Possessed) {
 				SquadKeys();
 			} else if (ImGui::IsKeyPressed(ImGuiKey_Space, false)) {
-				JumpToLatestAlert();
+				// Space: the latest alert. Shift+Space: the one before, each press.
+				JumpToAlert(ImGui::GetIO().KeyShift);
 			}
 		}
 	}
@@ -1048,6 +1073,7 @@ void Sandbox::DrawGUI() {
 		DrawRallyPoints();
 		DrawSpawnOrders();
 		DrawBattleMarks();
+		DrawHoldZones();
 		if (IsBattleCommand()) {
 			DrawLandingSpot();
 			DrawFogGhosts();
@@ -1087,6 +1113,16 @@ void Sandbox::DrawGUI() {
 			FlipNextPlant(CurrentTool().Kind);
 		}
 	}
+	// [ and ]: the brush in hand smaller or bigger, a tenth at a time, held down to keep going (Ctrl+wheel over the world does the same: see
+	// TakeBrushWheel). So long as no text box has the keys.
+	if (InGame() && !s_Possessed && IsPaintTool(CurrentTool().Kind) && !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt) {
+		if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket)) {
+			StepBrushSize(-1);
+		}
+		if (ImGui::IsKeyPressed(ImGuiKey_RightBracket)) {
+			StepBrushSize(1);
+		}
+	}
 	// Enter: done with the Battle tab's defence point, drop line or spawn zone tool, which goes back to the one in hand before (PutDownBattleTool). Not
 	// part way through a drag, so the line being drawn isn't lost.
 	// With a spawn zone part drawn, Enter closes it instead (three corners or more; fewer are dropped), and Backspace takes back its last
@@ -1124,10 +1160,18 @@ void Sandbox::DrawGUI() {
 	}
 	// Ctrl+Z: the newest paint stroke or placing click undone (see UndoPaint), whichever tool is in hand, so long as no text box has the keys.
 	// Not while you play a unit: in the WASD layouts Ctrl is crouch, so crouching with Z down took back the last stroke.
-	if (InGame() && io.KeyCtrl && !io.WantTextInput && !s_Possessed && ImGui::IsKeyPressed(ImGuiKey_Z, false) && !s_PaintUndo.empty()) {
-		QueueSimChange(Tool::UndoTerrain);
-		// (A rope part put down is taken away whole, so the next click starts a new one.)
-		s_RopeDraft.clear();
+	if (InGame() && io.KeyCtrl && !io.KeyShift && !io.WantTextInput && !s_Possessed && ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
+		if (s_PaintUndo.empty()) {
+			Notices::Post("Nothing to undo");
+		} else {
+			QueueSimChange(Tool::UndoTerrain);
+			// (A rope part put down is taken away whole, so the next click starts a new one.)
+			s_RopeDraft.clear();
+		}
+	}
+	// Ctrl+Y, or Ctrl+Shift+Z: what Ctrl+Z took back made again (see RedoPaint), the same way.
+	if (InGame() && io.KeyCtrl && !io.WantTextInput && !s_Possessed && (ImGui::IsKeyPressed(ImGuiKey_Y, false) || (io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false))) && !s_PaintRedo.empty()) {
+		QueueSimChange(Tool::RedoTerrain);
 	}
 	// The rope being put down is finished with Enter or Escape, a right click (not a drag, which moves the view), or another tool taken up.
 	if (!s_RopeDraft.empty()) {
@@ -1152,17 +1196,38 @@ void Sandbox::DrawGUI() {
 			s_RopeRightDown = false;
 		}
 	}
-	// Control groups: Ctrl and a number keeps the selection under it, the number alone brings it back, and the number again straight after
-	// looks at them (RC-6); Ctrl+A takes the whole side. With the command tool in hand, wherever the pointer is, so long as no text box has
-	// the keys. (Only while the pointer was over the world, as these were, they did nothing with it resting on the window.) Not while you
-	// play a unit: those keys are its own then (its weapons, and Ctrl+A as A).
+	// - and =: the game a step slower or faster through the speed tile's speeds, Shift with either back to 1x (B-5). Above the world, so long
+	// as no text box has the keys; not while you play a unit.
+	if ((IsGodMode() || s_Commander) && InGame() && !s_Possessed && !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt) {
+		const bool slower = ImGui::IsKeyPressed(ImGuiKey_Minus, false);
+		const bool faster = ImGui::IsKeyPressed(ImGuiKey_Equal, false);
+		if (slower || faster) {
+			StepGameSpeed(io.KeyShift ? 0 : (faster ? 1 : -1));
+		}
+	}
+	// Ctrl+Shift and 1 to 4 keeps the view, Ctrl+Alt and the number goes back to it (B-10). Whichever tool is in hand.
+	if ((IsGodMode() || s_Commander) && InGame()) {
+		CameraBookmarkKeys();
+	}
+	// Control groups: Ctrl and a number keeps the selection under it, Shift and a number adds it to the group (B-3), the number alone brings
+	// it back, and the number again straight after looks at them (RC-6); Ctrl+A takes the whole side. With the command tool in hand, wherever
+	// the pointer is, so long as no text box has the keys. (Only while the pointer was over the world, as these were, they did nothing with it
+	// resting on the window.) Not while you play a unit: those keys are its own then (its weapons, and Ctrl+A as A). Alt and a number is the
+	// Commander Toolbar's (B-1), and Ctrl+Shift or Ctrl+Alt and a number the camera bookmarks' (B-10), so none of those touch the groups.
 	if (InGame() && CurrentTool().Kind == Tool::Command && !io.WantTextInput && !s_Possessed) {
 		static int lastNumber = -1;
 		static double lastNumberTime = -10.0;
 		for (int number = 0; number < 10; ++number) {
-			if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_0 + number), false)) {
+			if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_0 + number), false) && !io.KeyAlt && !(io.KeyCtrl && io.KeyShift)) {
 				if (io.KeyCtrl) {
 					s_Groups[number] = s_Selected;
+				} else if (io.KeyShift) {
+					// Added to the group, each unit once.
+					for (const UnitRef& ref: s_Selected) {
+						if (std::none_of(s_Groups[number].begin(), s_Groups[number].end(), [&ref](const UnitRef& member) { return member.ID == ref.ID; })) {
+							s_Groups[number].push_back(ref);
+						}
+					}
 				} else if (!s_Groups[number].empty()) {
 					s_Selected = s_Groups[number];
 					if (number == lastNumber && ImGui::GetTime() - lastNumberTime < 0.4) {
@@ -1189,6 +1254,14 @@ void Sandbox::DrawGUI() {
 				}
 				deletePressed = -1;
 			}
+		}
+		if (io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_Period, false)) {
+			// Every idle unit of the side at once (B-2); with Shift, added to the selection.
+			SelectAllIdle(io.KeyShift);
+		}
+		if (io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_Q, false)) {
+			// Every unit of the kinds selected on the whole map, not only in view (B-4).
+			SelectSameKinds(true);
 		}
 		if (io.KeyCtrl && !io.KeyAlt && !SelectionOnlyVehicles() && ImGui::IsKeyPressed(ImGuiKey_X, false)) {
 			// Breach: the clicks to come dig through to the point, then attack.
@@ -1217,10 +1290,25 @@ void Sandbox::DrawGUI() {
 	if (CapturesWorldClicks()) {
 		const ToolInfo& tool = CurrentTool();
 		Vector position = MouseScenePosition();
+		// Alt+click with a Paint or Spawn tool in hand: the eyedropper, what is under the pointer taken up (Eyedrop). The button held
+		// after it paints and places nothing until let go. (Alt+drag is the Command tool's facing, which isn't one of these.)
+		if (io.KeyAlt && !s_Possessed && CanEyedrop(tool.Kind) && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+			Eyedrop(position);
+			s_EyedropHeld = true;
+		}
+		if (s_EyedropHeld && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+			s_EyedropHeld = false;
+		}
+		// A tool its simulation is off for does nothing (it's greyed in the window): a click with it says why, rather than nothing happening.
+		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+			if (const char* unavailable = ToolUnavailableReason(tool.Kind)) {
+				Notices::Post(unavailable);
+			}
+		}
 		// With the battle panel showing, a click on one of the battle's zones or points selects and moves it (BattleEditMouse) rather than
 		// giving an order.
-		const bool battleEdit = tool.Kind == Tool::Command && BattleEditMouse();
-		if (battleEdit) {
+		const bool battleEdit = !s_EyedropHeld && tool.Kind == Tool::Command && BattleEditMouse();
+		if (battleEdit || s_EyedropHeld) {
 			// (Taken: no order, box or stroke from this click.)
 		} else if (tool.Kind == Tool::Command) {
 			// Drag a box to select units; click the ground to send them there, or an enemy to attack it. A click on a "no route" marker
@@ -1277,6 +1365,8 @@ void Sandbox::DrawGUI() {
 				stroke.Count = s_PasteAir ? 1 : 0;
 				s_Queue.push_back(stroke);
 			}
+		} else if (tool.Kind == Tool::HoldGround) {
+			// (Its clicks and drags: HoldGroundInput, below.)
 		} else if (DragsShape(tool.Kind)) {
 			// Brush type Shape: a drag marks out the shape, filled when the button is let go (below). "Make it fall" and Copy area drag their box
 			// the same way.
@@ -1338,6 +1428,15 @@ void Sandbox::DrawGUI() {
 		}
 		if (!s_RingOpen) {
 			DrawCursor();
+		}
+		// A word by the pointer for a moment: the brush's new size, or what the eyedropper picked. It fades over its last quarter second.
+		if (const double age = ImGui::GetTime() - s_PointerNoteAt; age < 1.2 && !s_PointerNote.empty()) {
+			const int alpha = static_cast<int>(255.0 * std::clamp((1.2 - age) / 0.25, 0.0, 1.0));
+			ImDrawList* drawList = ImGui::GetForegroundDrawList();
+			ImVec2 at(io.MousePos.x + 16.0F, io.MousePos.y - ImGui::GetTextLineHeight() - 14.0F);
+			ImVec2 size = ImGui::CalcTextSize(s_PointerNote.c_str());
+			drawList->AddRectFilled(ImVec2(at.x - 4.0F, at.y - 2.0F), ImVec2(at.x + size.x + 4.0F, at.y + size.y + 2.0F), IM_COL32(0, 0, 0, alpha * 150 / 255), 3.0F);
+			drawList->AddText(at, IM_COL32(255, 255, 255, alpha), s_PointerNote.c_str());
 		}
 	} else {
 		s_RingOpen = false;
@@ -1511,10 +1610,12 @@ void Sandbox::DrawGUI() {
 				} else if (stroke.Kind == Tool::Metal) {
 					stroke.Material = s_PaintMetal;
 				}
+				NoteRecent(stroke.Kind, stroke.Material);
 				s_Queue.push_back(stroke);
 			}
 		}
 	}
+	HoldGroundInput();
 	// A one-off order's mode back to Command once it's placed, when no second click of a double click can follow.
 	if (s_BackToCommandAt >= 0.0 && !s_Dragging && ImGui::GetTime() >= s_BackToCommandAt) {
 		if (s_CommandMode == s_BackToCommandFrom) {
@@ -1653,7 +1754,8 @@ void Sandbox::DrawGUI() {
 				stroke.Kind = Tool::Command;
 				stroke.Position = end;
 				g_SceneMan.WrapPosition(stroke.Position);
-				stroke.Count = io.KeyShift ? 1 : (s_DoubleClick ? 2 : 0);
+				// (Ctrl and a double click: 3, every unit of that kind on the whole map rather than in view, B-4.)
+				stroke.Count = io.KeyShift ? 1 : (s_DoubleClick ? (io.KeyCtrl ? 3 : 2) : 0);
 			}
 			if (give) {
 				// (One click places the order cautiously and two normally; a double click dragged carries its own risk.)
@@ -1676,6 +1778,7 @@ void Sandbox::DrawGUI() {
 		DrawMinimap();
 		if (!s_Possessed) {
 			LoadoutWindow();
+			DrawArmyOverview();
 		}
 	}
 
@@ -1718,7 +1821,7 @@ void Sandbox::DrawGUI() {
 		if (DrawTabRows()) {
 			if (IsGodMode() && SandboxTab("You")) {
 				s_CurrentTab = "You";
-				bool exists = GetRef(s_PlayerUnit) != nullptr;
+				bool exists = GetRef(s_PlayerUnit) || PlayerHolder();
 				if (ToolUI::Checkbox("Have a character of my own", &s_Player.EnterOnClose) && !s_Player.EnterOnClose) {
 					Stroke stroke;
 					stroke.Kind = Tool::PlayerRemove;
@@ -2018,6 +2121,7 @@ void Sandbox::DrawGUI() {
 			}
 			if (SandboxTab("Paint")) {
 				s_CurrentTab = "Paint";
+				RecentRow(Tool::PourOther);
 				ImGui::SeparatorText("Paint over");
 				ToolUI::Checkbox("Liquids", &s_PaintOverLiquids);
 				ImGui::SetItemTooltip("The liquid, loose-ground and terrain brushes replace water, lava, oil, sand, snow and the like, instead of only filling air. Dig is as it was.");
@@ -2078,8 +2182,19 @@ void Sandbox::DrawGUI() {
 					}
 					ImGui::EndDisabled();
 				}
-				if (ImGui::BeginCombo("Springs pour", s_SpringLiquid.c_str())) {
+				if (ImGui::BeginCombo("Springs pour", s_SpringLiquid.c_str(), ImGuiComboFlags_HeightLarge)) {
+					// A search over them, ready to type into as it opens: with mods' there can be dozens.
+					static char filter[64] = {};
+					if (ImGui::IsWindowAppearing()) {
+						ImGui::SetKeyboardFocusHere();
+					}
+					ImGui::SetNextItemWidth(-1.0F);
+					ImGui::InputTextWithHint("##springFilter", "Search...", filter, 64);
+					ImGui::SetItemTooltip("Only the liquids and loose ground whose names have this in them.");
 					for (const std::string& name: PourableNames()) {
+						if (!ContainsIgnoringCase(name, filter)) {
+							continue;
+						}
 						if (ImGui::Selectable(name.c_str(), name == s_SpringLiquid)) {
 							s_SpringLiquid = name;
 						}
@@ -2195,7 +2310,22 @@ void Sandbox::DrawGUI() {
 				}
 				ImGui::SeparatorText("Terrain");
 				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::TreeTrunk, Tool::Concrete});
-				ToolButtons({Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::CollapseArea});
+				ToolButtons({Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::CollapseArea, Tool::HoldGround});
+				if (CurrentTool().Kind == Tool::HoldGround) {
+					bool show = TerrainCollapse::ShowsHoldZones();
+					if (ToolUI::Checkbox("Show hold zones without the tool", &show)) {
+						TerrainCollapse::SetShowHoldZones(show);
+					}
+					ImGui::SetItemTooltip("On: the hold zones are outlined on the map whatever is in hand (also under Settings > Falling ground). Off: only while Hold ground is.");
+					ImGui::SameLine();
+					ImGui::BeginDisabled(TerrainCollapse::GetHoldZones().empty());
+					if (ImGui::SmallButton("Clear all hold zones")) {
+						QueueSimChange(Tool::HoldGround, 0);
+						s_Queue.back().Choice = 2;
+					}
+					ImGui::EndDisabled();
+					ImGui::SetItemTooltip("Takes every hold zone on this map away (Ctrl+Z puts them back).");
+				}
 				{
 					// The rest of the base game's ground, a button each, for the "Other terrain" tool. Those with buttons of their own (above, and
 					// under Metals) aren't repeated.
@@ -2307,10 +2437,23 @@ void Sandbox::DrawGUI() {
 			if (SandboxTab("Effects")) {
 				s_CurrentTab = "Effects";
 				ImGui::TextWrapped("Pick one, then click in the world to put it down. They keep running until removed.");
-				ImGui::SeparatorText("Lights");
-				auto effectButtons = [](std::initializer_list<EffectKind> kinds) {
+				RecentRow(Tool::Effect);
+				// A search over every effect, these and the ones you made.
+				char* filter = FilterFor(Tool::Effect, false);
+				ImGui::SetNextItemWidth(-1.0F);
+				ImGui::InputTextWithHint("##effectFilter", "Search...", filter, 64);
+				ImGui::SetItemTooltip("Only the effects whose names have this in them, the ones you made too.");
+				// Each heading with its effects, left out when the search lets none of them through.
+				auto effectButtons = [filter](const char* heading, std::initializer_list<EffectKind> kinds) {
+					if (std::none_of(kinds.begin(), kinds.end(), [filter](EffectKind kind) { return ContainsIgnoringCase(c_Effects[static_cast<int>(kind)].Name, filter); })) {
+						return;
+					}
+					ImGui::SeparatorText(heading);
 					int column = 0;
 					for (EffectKind kind: kinds) {
+						if (!ContainsIgnoringCase(c_Effects[static_cast<int>(kind)].Name, filter)) {
+							continue;
+						}
 						if (column++ % 3 != 0) {
 							ImGui::SameLine();
 						}
@@ -2323,12 +2466,10 @@ void Sandbox::DrawGUI() {
 						ImGui::SetItemTooltip("%s", c_Effects[index].Tip);
 					}
 				};
-				effectButtons({EffectKind::NuclearGlow, EffectKind::StormCell, EffectKind::RedAlarm, EffectKind::PoliceLights, EffectKind::BlueBeacon, EffectKind::Floodlight, EffectKind::Searchlight, EffectKind::Strobe, EffectKind::Disco,
+				effectButtons("Lights", {EffectKind::NuclearGlow, EffectKind::StormCell, EffectKind::RedAlarm, EffectKind::PoliceLights, EffectKind::BlueBeacon, EffectKind::Floodlight, EffectKind::Searchlight, EffectKind::Strobe, EffectKind::Disco,
 				               EffectKind::Candle, EffectKind::LavaGlow, EffectKind::Fireflies});
-				ImGui::SeparatorText("Lights with particles");
-				effectButtons({EffectKind::Campfire, EffectKind::WeldingArc, EffectKind::Portal, EffectKind::SparkFountain, EffectKind::FireJet, EffectKind::ToxicVent});
-				ImGui::SeparatorText("Particles and air");
-				effectButtons({EffectKind::EmberVent, EffectKind::SmokeStack, EffectKind::SmokePlume, EffectKind::MistVent, EffectKind::DustDevil, EffectKind::HeatShimmer, EffectKind::ShockwavePulse});
+				effectButtons("Lights with particles", {EffectKind::Campfire, EffectKind::WeldingArc, EffectKind::Portal, EffectKind::SparkFountain, EffectKind::FireJet, EffectKind::ToxicVent});
+				effectButtons("Particles and air", {EffectKind::EmberVent, EffectKind::SmokeStack, EffectKind::SmokePlume, EffectKind::MistVent, EffectKind::DustDevil, EffectKind::HeatShimmer, EffectKind::ShockwavePulse});
 				CustomEffectsUI();
 				ImGui::Separator();
 				ImGui::BeginDisabled(s_Effects.empty());
@@ -2356,6 +2497,8 @@ void Sandbox::DrawGUI() {
 				LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
 				ImGui::Combo("Weather", &settings.WeatherType, Weather::GetComboItems(settings.CustomWeather).c_str());
 				ImGui::SliderFloat("Intensity", &settings.WeatherIntensity, 0.0F, 1.0F);
+				ImGui::Checkbox("Weather everywhere", &settings.WeatherEverywhere);
+				ImGui::SetItemTooltip("The weather shows everywhere but over the terrain and its back walls, under roofs and overhangs too. The same as in the settings.");
 				ImGui::SliderFloat("Wind", &settings.Wind, -200.0F, 200.0F, "%.0f px/s");
 				ImGui::SliderFloat("Hour", &settings.TimeOfDay, 0.0F, 24.0F, "%.1f");
 				for (auto [name, hour]: {std::pair{"Dawn", 6.5F}, std::pair{"Day", 12.0F}, std::pair{"Dusk", 19.0F}, std::pair{"Night", 23.0F}}) {
@@ -2479,6 +2622,7 @@ void Sandbox::OnActivityStarted() {
 	s_PaintUndo.clear();
 	// (The new map's own gravity is taken on the first update, once its scene is loaded.)
 	s_MapGravityKnown = false;
+	s_PaintRedo.clear();
 	// The same random stream from the start of every game, so the same inputs give the same game.
 	s_Random = c_RandomSeed;
 	// And none of the last game's units, orders or battle: in any game, not only a Sandbox one. (Reset only when the god view opened, an
@@ -2614,6 +2758,7 @@ void Sandbox::Update() {
 		}
 		UpdatePlayer();
 		UpdatePlayerSquads();
+		UpdateLoadoutUnits();
 		if (game) {
 			for (int team = 0; team < c_Sides; ++team) {
 				if (game->GetTeamFunds(team) < 500000.0F) {

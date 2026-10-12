@@ -15,6 +15,7 @@
 #include "MagicEffects.h"
 #include "FrameMan.h"
 #include "ModernHUD.h"
+#include "Notices.h"
 #include "PostProcessMan.h"
 #include "RenderTarget.h"
 #include "Texture.h"
@@ -228,7 +229,9 @@ namespace {
 			for (const std::string& name: s_Presets) {
 				if (ImGui::Selectable(name.c_str(), name == s_PresetName)) {
 					std::snprintf(s_PresetName, sizeof(s_PresetName), "%s", name.c_str());
-					s_PresetMessage = g_SettingsMan.LoadPreset(name) ? "Loaded \"" + name + "\"." : "Could not load \"" + name + "\".";
+					bool loaded = g_SettingsMan.LoadPreset(name);
+					s_PresetMessage = loaded ? "Loaded \"" + name + "\"." : "Could not load \"" + name + "\".";
+					Notices::Post(loaded ? "Preset \"" + name + "\" loaded." : "Could not load the preset \"" + name + "\".");
 				}
 			}
 			ImGui::EndCombo();
@@ -255,6 +258,7 @@ namespace {
 		if (ToolUI::Button("Save")) {
 			std::string saved = g_SettingsMan.SavePreset(s_PresetName);
 			s_PresetMessage = saved.empty() ? "Could not save it." : "Saved \"" + saved + "\".";
+			Notices::Post(saved.empty() ? "Could not save the preset." : "Preset \"" + saved + "\" saved.");
 			std::snprintf(s_PresetName, sizeof(s_PresetName), "%s", saved.c_str());
 			s_PresetsListed = false;
 		}
@@ -332,6 +336,8 @@ void DebugMan::SettingsGUI() {
 		Slider("Weather intensity", &settings.WeatherIntensity, 0.0F, 1.0F);
 		Slider("Weather speed", &settings.WeatherSpeed, 0.1F, 3.0F, "%.2fx");
 		Tip("How fast the rain, snow, ash and dust move: their fall, how the wind carries them, and their sway, swirl and flicker. They keep their angle, so shelter and splashes still line up. 1: as the weather has it.");
+		Check("Weather everywhere", &settings.WeatherEverywhere);
+		Tip("The rain, snow, ash and dust show everywhere but over the terrain and its back walls: under roofs and overhangs and in cave mouths too, wherever the sky or the scenery behind shows. The ground still only gets wet or snowy where the weather reaches it.");
 		Slider("Wind", &settings.Wind, -400.0F, 400.0F, "%.0f px/s");
 		Tip("The wind's steady strength and way: negative blows left. The natural wind below makes it gust and wander around this.");
 		{
@@ -904,6 +910,8 @@ void DebugMan::SettingsGUI() {
 		Toggle("Units' metal and gear settle as scraps", g_SettingsMan.BodyGearSettlesAsScraps(), [](bool on) { g_SettingsMan.SetBodyGearSettlesAsScraps(on); });
 		Tip("Armour plating, robot parts and the rest of what comes off a unit keep their look when they come to rest in the ground, but become the same soft scraps as the flesh, so the remains of the fallen never leave lumps of metal nobody can dig through. Flesh and bone settle as scraps and ashes either way. Off: everything settles as its own material.");
 		Heading("What falls");
+		Toggle("Show hold zones on the map", TerrainCollapse::ShowsHoldZones(), [](bool on) { TerrainCollapse::SetShowHoldZones(on); });
+		Tip("Outlines the sandbox's hold zones (Paint > Terrain > Hold ground) on the map, where the ground never falls. Off: they show only while Hold ground is in hand.");
 		Check("Floating masses stay up when chipped", &tuning.FloatingStays);
 		Tip("On: a mass that was already hanging in the air before a blast stays; cut in two, the bigger part stays and the smaller falls. Off: anything touching nothing falls.");
 		SliderI("Thin neck that snaps (pixels)", &tuning.NeckWidth, 0, 16);
@@ -1102,6 +1110,8 @@ void DebugMan::SettingsGUI() {
 		}
 		Toggle("Crew killed in a vehicle fall out", g_SettingsMan.DeadCrewFallOut(), [](bool on) { g_SettingsMan.SetDeadCrewFallOut(on); });
 		Tip("Riders in an open vehicle (the cart, boats, buggy and Moonhopper) can be shot in their seats. On: someone killed there falls out of the vehicle. Off: the body slumps in its seat until the vehicle is wrecked or thrown over, or someone climbs into that seat. Your own unit falls out either way. Tank crews sit inside, out of reach.");
+		Toggle("Passengers fire from vehicles", g_SettingsMan.PassengersFireFromVehicles(), [](bool on) { g_SettingsMan.SetPassengersFireFromVehicles(on); });
+		Tip("Units riding in the passenger seats of the vehicles built for it (the cart, boats, buggy, Moonhopper and Gunship) shoot out with the guns they hold: the AI at the nearest enemy in sight, your own unit where you aim. Their shots go through their own vehicle and its crew. The driver never shoots, and gunners man the vehicle's gun as before.");
 		float terrainDamage = g_SettingsMan.WeaponTerrainDamage();
 		if (Slider("Weapon damage to terrain", &terrainDamage, 0.1F, 20.0F, "%.2fx", ImGuiSliderFlags_Logarithmic)) {
 			g_SettingsMan.SetWeaponTerrainDamage(terrainDamage);
@@ -1166,6 +1176,8 @@ void DebugMan::SettingsGUI() {
 		Toggle("Show FPS and version", g_SettingsMan.ShowFPSAndVersion(), [](bool on) { g_SettingsMan.SetShowFPSAndVersion(on); });
 		Tip("The frame rate and the game's version, small, in the top right of the window.");
 		Toggle("Modern HUD", ModernHUD::IsEnabled(), [](bool on) { ModernHUD::SetEnabled(on); });
+		Toggle("Notices at the top of the screen", g_SettingsMan.ShowNotices(), [](bool on) { g_SettingsMan.SetShowNotices(on); });
+		Tip("Short notes at the top of the screen for a few seconds when something is done that is hard to see otherwise: \"Game saved\", a preset loaded, \"Nothing to undo\", a camera spot kept, or a sandbox tool used while its simulation is off.");
 		Slider("UI lighting", &ToolLight::Strength, 0.0F, 2.0F);
 		Tip("The menus and HUD lit as if they were in the world: the light brightens the side of each panel facing it, shades the far side, catches the edges towards it and casts the panel's shadow away from it. They are never dimmed past reading. 0 turns it off.");
 		{
@@ -1204,6 +1216,47 @@ void DebugMan::SettingsGUI() {
 		if (SliderI("Frame cap (0 = none)", &frameCap, 0, 360)) {
 			g_WindowMan.SetFrameCap(frameCap > 0 && frameCap < 30 ? 30 : frameCap);
 		}
+		Heading("Battle alerts and display (Battle Command)");
+		Toggle("Battle alerts", g_SettingsMan.ShowBattleAlerts(), [](bool on) { g_SettingsMan.SetShowBattleAlerts(on); });
+		Tip("What needs your eye in a battle (your units under attack or falling, a strike coming in, your flag taken...) listed at the top left of the view for a while, each to click and look there. Off: not listed, but still kept in the alert log, and Space and Shift+Space still look at them.");
+		if (int lines = g_SettingsMan.BattleAlertLines(); SliderI("Battle alert lines", &lines, 1, 12)) {
+			g_SettingsMan.SetBattleAlertLines(lines);
+		}
+		Tip("The most alerts listed at once: a new one pushes the oldest off. 6 as before.");
+		if (int seconds = g_SettingsMan.BattleAlertSeconds(); SliderI("Battle alert time", &seconds, 3, 60, "%d s")) {
+			g_SettingsMan.SetBattleAlertSeconds(seconds);
+		}
+		Tip("How long an alert stays listed, the last two seconds fading. 12 s as before.");
+		Toggle("Battle alert sounds", g_SettingsMan.BattleAlertSounds(), [](bool on) { g_SettingsMan.SetBattleAlertSounds(on); });
+		Tip("A short sound as each alert comes, one for each kind (under attack, a unit lost, your brain or flag, a strike, reinforcements...), so you hear what needs you without looking. Several at once make one sound.");
+		if (float volume = g_SettingsMan.BattleAlertVolume() * 100.0F; Slider("Battle alert volume", &volume, 0.0F, 100.0F, "%.0f%%")) {
+			g_SettingsMan.SetBattleAlertVolume(volume / 100.0F);
+		}
+		Tip("How loud the alert sounds are, under the game's own sound volume.");
+		Toggle("Kill feed", g_SettingsMan.ShowBattleKillFeed(), [](bool on) { g_SettingsMan.SetShowBattleKillFeed(on); });
+		Tip("Who killed whom in a battle, listed at the top right of the view, each side in its colour.");
+		if (int lines = g_SettingsMan.BattleKillLines(); SliderI("Kill feed lines", &lines, 1, 12)) {
+			g_SettingsMan.SetBattleKillLines(lines);
+		}
+		Tip("The most kills listed at once: a new one pushes the oldest off. 6 as before.");
+		if (int seconds = g_SettingsMan.BattleKillSeconds(); SliderI("Kill feed time", &seconds, 3, 60, "%d s")) {
+			g_SettingsMan.SetBattleKillSeconds(seconds);
+		}
+		Tip("How long a kill stays listed, the last two seconds fading. 10 s as before.");
+		Toggle("Ask before losing a battle setup", g_SettingsMan.BattleAskFirst(), [](bool on) { g_SettingsMan.SetBattleAskFirst(on); });
+		Tip("The battle panel asks first before a saved setup is deleted or saved over, and before a battle that's on is started again or stopped. Ctrl+click skips the question either way. Off is the same as ticking \"Don't ask again\".");
+		Toggle("Show battle info", g_SettingsMan.ShowBattleInfo(), [](bool on) { g_SettingsMan.SetShowBattleInfo(on); });
+		Tip("While a battle is on, a panel under the score: each team's tally, units in and fallen, respawns left, and how many are waiting to come back and when the next does. The same as the box on the battle panel.");
+		Toggle("Show battle objectives", g_SettingsMan.ShowBattleObjectives(), [](bool on) { g_SettingsMan.SetShowBattleObjectives(on); });
+		Tip("What the game is about lit up on the map and the map window: flags, VIPs, hills, assault objectives and goals. The same as the box on the battle panel.");
+		if (int look = g_SettingsMan.BattleObjectiveLook(); Combo("Battle objective look", &look, "Each mode's own\0Glowing ring\0Glowing outline\0Glowing ground line\0Glowing terrain\0")) {
+			g_SettingsMan.SetBattleObjectiveLook(look);
+		}
+		Tip("How zone objectives (hills, assault objectives, goals) are lit up: as the mode has them, or all the same way. Flags and VIPs always get a ring.");
+		Toggle("Show spawn zones on the map", g_SettingsMan.ShowBattleSpawnZones(), [](bool on) { g_SettingsMan.SetShowBattleSpawnZones(on); });
+		Tip("The outline and shading of each team's spawn zones, on the map and the map window. Off, they're hidden (still shown while you draw one or place a point).");
+		Toggle("Show mode zones on the map", g_SettingsMan.ShowBattleModeZones(), [](bool on) { g_SettingsMan.SetShowBattleModeZones(on); });
+		Tip("The outline and shading of a mode's own zones (hills, assault objectives, goal zones), on the map and the map window. Off, they're hidden but for their names (still shown while you draw one).");
 		Heading("Unit speech");
 		Toggle("Unit speech", UnitSpeech::IsEnabled(), [](bool on) { UnitSpeech::SetEnabled(on); });
 		Tip("Units say short lines over their heads when their AI does something: \"Take cover!\", \"Reloading!\", \"Got one!\". The lines are in Base.rte/Speech.ini, and mods can add their own.");
@@ -1464,6 +1517,41 @@ void DebugMan::SettingsGUI() {
 				g_SettingsMan.ResetLadderSettings();
 			}
 			ImGui::SetItemTooltip("Puts the ladder settings back as the game comes.");
+		}
+		Heading("Carry weight");
+		{
+			float carried = g_SettingsMan.CarriedWeightMultiplier();
+			if (Slider("Carried weight", &carried, 0.0F, 5.0F, "%.2fx")) {
+				g_SettingsMan.SetCarriedWeightMultiplier(carried);
+			}
+			Tip("How much what a unit carries weighs: its inventory, the guns in its hands and its gold, as a multiple of their own mass. Heavier units get less from each step, fall harder and need more jetpack. 0x: carried things weigh nothing. 1x is normal.");
+			float legs = g_SettingsMan.LegStrength();
+			if (Slider("Leg strength", &legs, 0.25F, 3.0F, "%.2fx")) {
+				g_SettingsMan.SetLegStrength(legs);
+			}
+			Tip("How hard every unit's limbs push walking, crawling and climbing, and how high a leap of the legs goes. Weaker legs struggle more with weight, slopes and steps. 1x is normal.");
+			float slowdown = g_SettingsMan.OverloadSlowdown() * 100.0F;
+			if (Slider("Overload slowdown", &slowdown, 0.0F, 100.0F, "%.0f%%")) {
+				g_SettingsMan.SetOverloadSlowdown(slowdown / 100.0F);
+			}
+			Tip("A straight cut to the walk speed and leap height of a loaded unit, on top of the physics: this much once what it carries (at the Carried weight above) weighs as much as its own body, less for a lighter load. A tenth of the speed is always kept. 0% is normal.");
+			int compensation = g_SettingsMan.JetpackWeightCompensation();
+			if (Combo("Jetpacks make up for weight", &compensation, "As each jetpack says\0Always\0Never\0")) {
+				g_SettingsMan.SetJetpackWeightCompensation(compensation);
+			}
+			Tip("Whether a jetpack raises its thrust for the unit's load. Always: loaded units fly as well as light ones but burn fuel faster. Never: loaded units fly lower and slower on the usual fuel. As each jetpack says is normal (most do make up for it).");
+			float fuel = g_SettingsMan.JetpackFuelMultiplier();
+			if (Slider("Jetpack fuel", &fuel, 0.25F, 5.0F, "%.2fx")) {
+				g_SettingsMan.SetJetpackFuelMultiplier(fuel);
+			}
+			Tip("How much fuel every jetpack holds, as a multiple of its own. More lets units fly longer; a fuller tank also takes longer to refill. 1x is normal.");
+		}
+		if (Plain()) {
+			ImGui::Spacing();
+			if (ToolUI::Button("Reset carry weight to normal")) {
+				g_SettingsMan.ResetCarryWeightSettings();
+			}
+			ImGui::SetItemTooltip("Puts the carry weight settings back as the game comes.");
 		}
 	};
 
@@ -1762,7 +1850,7 @@ void DebugMan::SettingsGUI() {
 		Toggle("Stroke log", g_SettingsMan.ShowSandboxStrokeLog(), [](bool on) { g_SettingsMan.SetShowSandboxStrokeLog(on); });
 		Tip("The last 20 sandbox tool uses as they are applied, in the top right: the sim update, the tool, where, the side, the orders, and the choice and count. With the Sandbox lines ticked under Debug text in the console, each also goes to the console.");
 		Toggle("Bottom bar's counts, AI, speed and undo", g_SettingsMan.ShowSandboxBarRight(), [](bool on) { g_SettingsMan.SetShowSandboxBarRight(on); });
-		Tip("The right-hand end of the sandbox's bottom bar: each side's unit count, the AI on/paused button, the speed of time, the step (while the window is open) and undo. Off, the bar is shorter; undo is still Ctrl+Z.");
+		Tip("The right-hand end of the sandbox's bottom bar: each side's unit count, the AI on/paused button, the speed of time, the step (while the window is open), undo and redo. Off, the bar is shorter; undo is still Ctrl+Z, redo Ctrl+Y.");
 	};
 
 	const std::pair<const char*, std::function<void()>> categories[] = {

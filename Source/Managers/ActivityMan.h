@@ -131,6 +131,8 @@ namespace RTE {
 		bool LoadAndLaunchGame(const std::string& fileName);
 
 		static std::string s_PinsOfLoadedGame; //!< The sandbox pins an older saved game held, taken when there is no pins file yet.
+		static std::string s_ColonyOfLoadedGame; //!< The colony a saved game being loaded held (Colony::GetSaveState), put back once its units are in the scene.
+		static bool s_StartingSavedGame; //!< Whether the activity being started is a saved game's (LoadAndLaunchGame), whose units' IDs are remapped once placed.
 
 		/// Waits for the task that saves the game to complete.
 		void WaitForSaveGameTask() const {

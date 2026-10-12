@@ -335,6 +335,10 @@ void PollSDLEvents() {
 			ImGui_ImplSDL3_ProcessEvent(&sdlEvent);
 			continue;
 		}
+		// Ctrl + mouse wheel with a sandbox brush in hand over the world: the brush's size, not the zoom.
+		if (sdlEvent.type == SDL_EVENT_MOUSE_WHEEL && sdlEvent.wheel.y != 0.0F && g_ActivityMan.IsInActivity() && !inMenus && (SDL_GetModState() & SDL_KMOD_CTRL) && Sandbox::TakeBrushWheel(sdlEvent.wheel.y > 0.0F)) {
+			continue;
+		}
 		// Camera zoom: Ctrl + mouse wheel in any game, or the wheel alone in the sandbox's god view (where it isn't needed for switching weapons).
 		if (sdlEvent.type == SDL_EVENT_MOUSE_WHEEL && sdlEvent.wheel.y != 0.0F && g_ActivityMan.IsInActivity() && !inMenus && ((SDL_GetModState() & SDL_KMOD_CTRL) || Sandbox::WantsWheelZoom())) {
 			g_FrameMan.StepCameraZoom(sdlEvent.wheel.y > 0.0F);
@@ -394,9 +398,10 @@ void PollSDLEvents() {
 		    !ImGui::GetIO().WantTextInput && !g_SettingsMan.IsTakingKey() && g_SettingsMan.IsPauseAIKey(sdlEvent.key.scancode, sdlEvent.key.mod)) {
 			Controller::SetAIPaused(!Controller::IsAIPaused());
 		}
-		// Pause/Break, or O on keyboards without one: holds the world still until pressed again, with the sandbox tools open or closed.
+		// Pause/Break, or O on keyboards without one: holds the world still until pressed again, with the sandbox tools open or closed. (Not O
+		// while it orders the selection to focus on its objective.)
 		if (sdlEvent.type == SDL_EVENT_KEY_DOWN && !sdlEvent.key.repeat && g_ActivityMan.IsInActivity() && !g_MenuMan.GetIsInMenuScreen() &&
-		    (sdlEvent.key.scancode == SDL_SCANCODE_PAUSE || (sdlEvent.key.scancode == SDL_SCANCODE_O && !(sdlEvent.key.mod & (SDL_KMOD_ALT | SDL_KMOD_CTRL | SDL_KMOD_GUI)) && !g_ConsoleMan.IsEnabled() && !ImGui::GetIO().WantTextInput))) {
+		    (sdlEvent.key.scancode == SDL_SCANCODE_PAUSE || (sdlEvent.key.scancode == SDL_SCANCODE_O && !(sdlEvent.key.mod & (SDL_KMOD_ALT | SDL_KMOD_CTRL | SDL_KMOD_GUI)) && !g_ConsoleMan.IsEnabled() && !ImGui::GetIO().WantTextInput && !Sandbox::TakesObjectiveKey()))) {
 			g_DebugMan.ToggleUserPause();
 		}
 		if (sdlEvent.type == SDL_EVENT_KEY_DOWN && !sdlEvent.key.repeat && !(sdlEvent.key.mod & (SDL_KMOD_ALT | SDL_KMOD_CTRL | SDL_KMOD_SHIFT))) {

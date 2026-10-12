@@ -170,7 +170,7 @@ namespace SandboxDetail {
 		/// A spawn zone drawn on the map: its area shaded in its team's colour.
 		void DrawBase(ImDrawList* drawList, const std::vector<Vector>& base, ImU32 color) {
 			const Tool held = CurrentTool().Kind;
-			if (base.size() < 3 || (!s_ShowModeBases && held != Tool::BattleModeBase && held != Tool::BattleModePoint && held != Tool::BattleModeFlag)) {
+			if (base.size() < 3 || (!g_SettingsMan.ShowBattleSpawnZones() && held != Tool::BattleModeBase && held != Tool::BattleModePoint && held != Tool::BattleModeFlag)) {
 				return;
 			}
 			std::vector<ImVec2> corners = ZoneOnScreen(base, std::max(ScenePixelsPerWindowPixel(), 0.01F));
@@ -317,7 +317,7 @@ namespace SandboxDetail {
 			}
 			// (Hidden with "Show hills on the map" or the like off, but for its name, unless one is being drawn.)
 			const Tool held = CurrentTool().Kind;
-			if (s_ShowModeZones || held == Tool::BattleModeZone || held == Tool::BattleModeGoal) {
+			if (g_SettingsMan.ShowBattleModeZones() || held == Tool::BattleModeZone || held == Tool::BattleModeGoal) {
 				std::vector<ImVec2> corners = ZoneOnScreen(zone, std::max(ScenePixelsPerWindowPixel(), 0.01F));
 				drawList->AddConcavePolyFilled(corners.data(), static_cast<int>(corners.size()), (color & 0x00FFFFFF) | (static_cast<ImU32>(std::clamp(fill, 0, 255)) << 24));
 				drawList->AddPolyline(corners.data(), static_cast<int>(corners.size()), (color & 0x00FFFFFF) | (static_cast<ImU32>(std::clamp(line, 0, 255)) << 24), ImDrawFlags_Closed, thickness);
@@ -5007,11 +5007,11 @@ namespace SandboxDetail {
 
 	/// The mode's objectives lit up on the map, under the rest of what it draws, with "Show battle objectives" on.
 	static void DrawObjectives() {
-		if (!s_ShowObjectives) {
+		if (!g_SettingsMan.ShowBattleObjectives()) {
 			return;
 		}
 		ImDrawList* drawList = ImGui::GetBackgroundDrawList();
-		const int override = std::clamp(s_ObjectiveLook, 0, static_cast<int>(ObjectiveLook::Count));
+		const int override = std::clamp(g_SettingsMan.BattleObjectiveLook(), 0, static_cast<int>(ObjectiveLook::Count));
 		for (const BattleObjective& objective: BattleObjectives()) {
 			if (!objective.Shown) {
 				continue;
@@ -5042,6 +5042,9 @@ namespace SandboxDetail {
 
 	/// Sends the mode panel to the sim, as it now stands, with a start or stop if asked for.
 	void SendBattleMode(int command) {
+		if (command == BattleModeStart) {
+			RememberLastBattleSetup();
+		}
 		Stroke stroke;
 		stroke.Kind = Tool::BattleTeam;
 		stroke.Team = -1;
@@ -5183,6 +5186,101 @@ namespace SandboxDetail {
 	int BattleCommanderLevel() { return CommanderLevel(); }
 
 	void EndBattleGame(int winner, const std::string& result) { EndGame(winner, result); }
+
+	bool BattleModeReady(std::string& why) { return s_ModeSetup.Mode != BattleMode::Custom && ModeReady(s_ModeSetup, why); }
+
+	void SurrenderBattleGame(int side) {
+		const BattleModeSettings& settings = s_ModeRun.Settings;
+		if (!s_ModeRun.Running || s_ModeRun.Over || side < 0 || side >= c_Sides) {
+			return;
+		}
+		// Won by the only other team in the game; with more than one left, nobody.
+		int winner = -1;
+		int others = 0;
+		for (int other = 0; other < c_Sides; ++other) {
+			if (other != side && TeamIn(settings, other)) {
+				winner = other;
+				++others;
+			}
+		}
+		winner = others == 1 ? winner : -1;
+		EndGame(winner, SideName(side) + " surrendered" + (winner >= 0 ? ": " + SideName(winner) + " wins" : ""));
+	}
+
+	void DrawBattleModeOnMap(ImDrawList* drawList, const std::function<ImVec2(const Vector&)>& toMap) {
+		// (As on the view: the mode's game while it's on, else its setup while the battle panel or the Battle tab shows.)
+		const bool running = s_ModeRun.Running && s_ModeRun.Settings.Mode == s_ModeSetup.Mode;
+		const BattleModeInfo& mode = ModeOf(s_ModeSetup.Mode);
+		if (!mode.Draw || (!running && !BattleSetupShowing())) {
+			return;
+		}
+		const BattleModeSettings& settings = running ? s_ModeRun.Settings : s_ModeSetup;
+		auto zoneOnMap = [&](const std::vector<Vector>& zone, ImU32 color, unsigned fill, unsigned line, float thickness) {
+			if (zone.size() < 3) {
+				return;
+			}
+			std::vector<ImVec2> corners;
+			corners.reserve(zone.size());
+			for (const Vector& corner: zone) {
+				corners.push_back(toMap(corner));
+			}
+			drawList->AddConcavePolyFilled(corners.data(), static_cast<int>(corners.size()), (color & 0x00FFFFFF) | (fill << IM_COL32_A_SHIFT));
+			drawList->AddPolyline(corners.data(), static_cast<int>(corners.size()), (color & 0x00FFFFFF) | (line << IM_COL32_A_SHIFT), ImDrawFlags_Closed, thickness);
+		};
+		// The teams' spawn zones, faint.
+		if (g_SettingsMan.ShowBattleSpawnZones()) {
+			for (int side = 0; side < c_Sides; ++side) {
+				if (settings.Plays[side]) {
+					for (const std::vector<Vector>& zone: settings.SpawnZones[side]) {
+						zoneOnMap(zone, c_SideColors[side], 35, 150, 1.0F);
+					}
+				}
+			}
+		}
+		// The mode's own zones (hills, assault objectives) and goal zones.
+		if (g_SettingsMan.ShowBattleModeZones()) {
+			if (mode.ZoneName && (!mode.ZonesUsed || mode.ZonesUsed(settings))) {
+				for (const std::vector<Vector>& zone: settings.Zones) {
+					zoneOnMap(zone, IM_COL32(255, 255, 255, 255), 30, 130, 1.0F);
+				}
+			}
+			if (mode.Goals) {
+				for (int side = 0; side < c_Sides; ++side) {
+					if (TeamIn(settings, side)) {
+						zoneOnMap(settings.Goals[side], c_SideColors[side], 30, 130, 1.0F);
+					}
+				}
+			}
+		}
+		if (!g_SettingsMan.ShowBattleObjectives()) {
+			return;
+		}
+		// The objectives over them: a zone outlined in its colour (brighter while in play), a flag as a little flag, a carried flag over its
+		// carrier with a ring round it, anything else (a VIP, the ship) as a ring.
+		const float pulse = Pulse(5.0F);
+		auto flagAt = [&](ImVec2 foot, ImU32 color) {
+			drawList->AddLine(foot, ImVec2(foot.x, foot.y - 9.0F), IM_COL32(230, 230, 230, 230), 1.5F);
+			drawList->AddTriangleFilled(ImVec2(foot.x, foot.y - 9.0F), ImVec2(foot.x + 6.0F, foot.y - 7.0F), ImVec2(foot.x, foot.y - 5.0F), color);
+			drawList->AddTriangle(ImVec2(foot.x, foot.y - 9.0F), ImVec2(foot.x + 6.0F, foot.y - 7.0F), ImVec2(foot.x, foot.y - 5.0F), IM_COL32(20, 20, 20, 220), 1.0F);
+		};
+		for (const BattleObjective& objective: BattleObjectives()) {
+			if (objective.Zone.size() >= 3) {
+				zoneOnMap(objective.Zone, objective.Color, objective.Live ? 45 : 15, objective.Live ? 230 : 110, objective.Live ? 2.0F : 1.0F);
+				continue;
+			}
+			const ImVec2 at = toMap(objective.Pos);
+			if (!objective.Shown) {
+				// (A carried flag: over its carrier, with a ring round the carrier pulsing.)
+				drawList->AddCircle(at, 5.0F + pulse * 2.0F, (objective.Color & 0x00FFFFFF) | (230u << IM_COL32_A_SHIFT), 0, 1.5F);
+				flagAt(ImVec2(at.x, at.y - 4.0F), objective.Color);
+			} else if (objective.Name.find("flag") != std::string::npos) {
+				flagAt(at, objective.Color);
+			} else {
+				drawList->AddCircle(at, 5.0F, IM_COL32(0, 0, 0, 200), 0, 3.0F);
+				drawList->AddCircle(at, 5.0F, (objective.Color & 0x00FFFFFF) | ((objective.Live ? 240u : 120u) << IM_COL32_A_SHIFT), 0, 1.5F);
+			}
+		}
+	}
 
 	bool BattleTeamBase(int side, Vector& at) {
 		const BattleModeSettings& settings = s_ModeRun.Settings;
@@ -5468,7 +5566,11 @@ namespace SandboxDetail {
 		const bool ready = ModeReady(setup, why);
 		float half = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5F;
 		ImGui::BeginDisabled(!ready);
-		if (ToolUI::Button(running ? "Start again" : "Start", ImVec2(half, 0.0F))) {
+		const bool startClicked = ToolUI::Button(running ? "Start again" : "Start", ImVec2(half, 0.0F));
+		ImGui::EndDisabled();
+		ImGui::SetItemTooltip("%s", !ready ? why.c_str() : running ? "The game starts afresh, with the scores back to nothing. You're asked first (Ctrl+click: not)." : "The game starts afresh, with the scores back to nothing.");
+		// (With a game on, asked first: its scores are lost.)
+		if (running ? AskFirst(startClicked, "Start again?##battleStartAgain", "Start the battle again? The game on now ends and its scores go back to nothing.", "Yes, start again") : startClicked) {
 			if (IsBattleTool(CurrentTool().Kind)) {
 				PutDownBattleTool();
 			}
@@ -5478,15 +5580,14 @@ namespace SandboxDetail {
 			}
 			SendBattleMode(BattleModeStart);
 		}
-		ImGui::EndDisabled();
-		ImGui::SetItemTooltip("%s", ready ? "The game starts afresh, with the scores back to nothing." : why.c_str());
 		ImGui::SameLine();
 		ImGui::BeginDisabled(!running);
-		if (ToolUI::Button("Stop", ImVec2(-1.0F, 0.0F))) {
+		const bool stopClicked = ToolUI::Button("Stop", ImVec2(-1.0F, 0.0F));
+		ImGui::EndDisabled();
+		ImGui::SetItemTooltip("The game ends, and no more units come. Those already in stay. You're asked first (Ctrl+click: not).");
+		if (AskFirst(stopClicked, "Stop the battle?##battleStop", "Stop the battle? It ends here and no more units come.", "Yes, stop")) {
 			SendBattleMode(BattleModeStop);
 		}
-		ImGui::EndDisabled();
-		ImGui::SetItemTooltip("The game ends, and no more units come. Those already in stay.");
 		if (!ready) {
 			ImGui::TextColored(ImVec4(1.0F, 0.6F, 0.4F, 1.0F), "%s", why.c_str());
 		}
@@ -5509,25 +5610,35 @@ namespace SandboxDetail {
 			changed = true;
 		}
 		ImGui::SetItemTooltip("Each team's units come in by ship over their widest spawn zone (each team's card says which craft), rather than appearing in their zones.");
-		ToolUI::Checkbox("Show spawn zones on the map", &s_ShowModeBases);
+		if (bool show = g_SettingsMan.ShowBattleSpawnZones(); ToolUI::Checkbox("Show spawn zones on the map", &show)) {
+			g_SettingsMan.SetShowBattleSpawnZones(show);
+		}
 		ImGui::SetItemTooltip("The outline and shading of each team's spawn zones. Off, they're hidden (still shown while you draw one or place a point); flags, hills and the rest still show.");
 		BattleEditPanel();
 		// (Its own zones, if it uses them as set up: one flag's flag spawn zones only if the flag comes in in them.)
 		const char* zoneName = mode.ZoneName && (!mode.ZonesUsed || mode.ZonesUsed(setup)) ? mode.ZoneName : nullptr;
 		if (zoneName || mode.Goals) {
 			const std::string zones = zoneName ? std::string(zoneName) + "s" : std::string("goal zones");
-			ToolUI::Checkbox(("Show " + zones + " on the map").c_str(), &s_ShowModeZones);
+			if (bool show = g_SettingsMan.ShowBattleModeZones(); ToolUI::Checkbox(("Show " + zones + " on the map").c_str(), &show)) {
+				g_SettingsMan.SetShowBattleModeZones(show);
+			}
 			ImGui::SetItemTooltip("%s", ("The outline and shading of the " + zones + ". Off, they're hidden but for their names (still shown while you draw one); \"Show battle objectives\" lights them up apart from this.").c_str());
 		}
-		ToolUI::Checkbox("Show battle info", &s_ShowBattleInfo);
+		if (bool show = g_SettingsMan.ShowBattleInfo(); ToolUI::Checkbox("Show battle info", &show)) {
+			g_SettingsMan.SetShowBattleInfo(show);
+		}
 		ImGui::SetItemTooltip("While a battle is on, a panel under the score: each team's tally, units in and fallen, respawns left, and how many are waiting to come back and when the next does.");
-		ToolUI::Checkbox("Show battle objectives", &s_ShowObjectives);
+		if (bool show = g_SettingsMan.ShowBattleObjectives(); ToolUI::Checkbox("Show battle objectives", &show)) {
+			g_SettingsMan.SetShowBattleObjectives(show);
+		}
 		ImGui::SetItemTooltip("What the game is about lit up on the map, in each mode's own look: a glowing ring round each flag and VIP, the ground along a hill glowing, the terrain and buildings in an assault objective glowing, a glowing line round each goal.");
-		if (s_ShowObjectives) {
+		if (g_SettingsMan.ShowBattleObjectives()) {
 			static const char* const looks[] = {"Each mode's own", "Glowing ring", "Glowing outline", "Glowing ground line", "Glowing terrain"};
 			static_assert(std::size(looks) == static_cast<size_t>(ObjectiveLook::Count) + 1, "A name for each ObjectiveLook.");
 			ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0F);
-			ImGui::Combo("Objective look", &s_ObjectiveLook, looks, static_cast<int>(std::size(looks)));
+			if (int look = g_SettingsMan.BattleObjectiveLook(); ImGui::Combo("Objective look", &look, looks, static_cast<int>(std::size(looks)))) {
+				g_SettingsMan.SetBattleObjectiveLook(look);
+			}
 			ImGui::SetItemTooltip("How zone objectives (hills, assault objectives, goals) are lit up: as the mode has them, or all the same way. Flags and VIPs always get a ring.");
 		}
 		if (mode.Panel) {
@@ -5804,7 +5915,7 @@ namespace SandboxDetail {
 	/// stands now: the mode's own tally, its units in and fallen, its respawns left and when the next comes; or, in a custom battle, its
 	/// units in, sent and money left.
 	static void DrawBattleInfo() {
-		if (!s_ShowBattleInfo) {
+		if (!g_SettingsMan.ShowBattleInfo()) {
 			return;
 		}
 		const bool modeOn = s_ModeRun.Running;
@@ -5997,7 +6108,7 @@ namespace SandboxDetail {
 			switch (ref.Kind) {
 				case EditKind::Spawn:
 					// (Not while hidden, before the game; while it's on, yours are drawn for you to move, DrawBattleEdit.)
-					return ZoneOf(ref) && ZoneOf(ref)->size() >= 3 && SpawnsEditable(ref.Side) && (s_ShowModeBases || !setUp);
+					return ZoneOf(ref) && ZoneOf(ref)->size() >= 3 && SpawnsEditable(ref.Side) && (g_SettingsMan.ShowBattleSpawnZones() || !setUp);
 				case EditKind::ModeZone:
 					return setUp && ModeZonesUsed() && ZoneOf(ref) && ZoneOf(ref)->size() >= 3;
 				case EditKind::Goal:
@@ -6694,4 +6805,48 @@ void Sandbox::StartBattleMode(int mode, int teamSize, bool byShip) {
 	stroke.Count = settings.Mode == BattleMode::Custom ? BattleModeStop : BattleModeStart;
 	stroke.Mode = settings;
 	ApplyBattleMode(stroke);
+}
+
+bool Sandbox::IsBattleModeRunning() {
+	return SandboxDetail::InGame() && SandboxDetail::s_ModeRun.Running;
+}
+
+bool Sandbox::CanSurrenderBattle() {
+	using namespace SandboxDetail;
+	const int side = CommandedTeam();
+	return IsBattleModeRunning() && !s_ModeRun.Over && side >= 0 && TeamIn(s_ModeRun.Settings, side);
+}
+
+void Sandbox::RestartBattleMode() {
+	using namespace SandboxDetail;
+	if (!IsBattleModeRunning()) {
+		return;
+	}
+	// (As the after-battle report's Play again: the cards first, the teams' factions come from them.)
+	for (int side = 0; side < c_Sides; ++side) {
+		SendBattleSettings(side);
+	}
+	SendBattleMode(BattleModeStart);
+}
+
+void Sandbox::SurrenderBattleMode() {
+	using namespace SandboxDetail;
+	if (!CanSurrenderBattle()) {
+		return;
+	}
+	Stroke stroke;
+	stroke.Kind = Tool::BattleTeam;
+	stroke.Team = CommandedTeam();
+	stroke.Count = BattleSurrender;
+	s_Queue.push_back(stroke);
+}
+
+void Sandbox::ShowKeys() {
+	using namespace SandboxDetail;
+	if (!InGame()) {
+		return;
+	}
+	if (!s_Open || s_CurrentTab != "Keys") {
+		ToggleWindowTab("Keys");
+	}
 }

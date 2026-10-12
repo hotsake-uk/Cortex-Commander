@@ -4,8 +4,13 @@
 // default for Battle) and whether it's a favourite: favourites are starred on their cards, kept in Userdata/MapFavourites.txt and listed
 // first. The map picked shows bigger beside them with its saved battles: the one picked is drawn over the picture (its spawn zones, bases,
 // flags, goals and objectives), and Play starts the game on the map with it set up.
+// The first card makes a new map instead (MapGen): a style, a size, a seed and a few sliders, with a picture of the map that follows them,
+// and Play makes it and starts the game on it.
+// The last ten maps played are kept in Userdata/MapRecent.txt for the "Recently played" filter, the filters and order are kept in the
+// settings between launches, and Random map picks one of the maps shown (U-3).
 
 #include "MapBrowser.h"
+#include "MapGen.h"
 #include "SandboxInternal.h"
 #include "DataModule.h"
 #include "MenuMan.h"
@@ -14,6 +19,10 @@
 
 #include <SDL3_image/SDL_image.h>
 
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <random>
 #include <set>
 
 namespace SandboxDetail {
@@ -90,6 +99,8 @@ namespace SandboxDetail {
 			int Size = -1; //!< Only maps of this size; -1 for any.
 			bool OnlyWithBattles = false;
 			bool OnlyFavourites = false;
+			bool OnlyRecent = false; //!< Only the maps played lately, the latest first, whatever the sort.
+			bool QuickBattle = false; //!< Opened from the main menu's Quick Battle: Play starts the battle picked (MapBrowser::Choice::StartBattle).
 			SortBy Sort = SortBy::Name;
 			int Picked = -1; //!< Index into Maps of the map picked, or -1.
 			int PickedBattle = -1; //!< Index into its Battles of the battle picked, or -1 for none: the map as it is.
@@ -98,6 +109,19 @@ namespace SandboxDetail {
 			MapBrowser::Choice Choice;
 		};
 		Browser s_Browser;
+
+		/// The map maker's card: its recipe, and the picture of the map it would make.
+		struct Generator {
+			MapGen::Recipe Recipe;
+			bool Seeded = false;
+			char SeedText[9] = "";
+			std::string PictureOf; //!< The recipe (its code) the picture shows.
+			MapEntry Entry; //!< The map as a card shows one: its picture and size.
+			bool PlayWhenMade = false; //!< Play was pressed: the game starts on the map once it's made.
+			std::string Error;
+		};
+		Generator s_Generator;
+		constexpr int c_GeneratorPick = -2; //!< Picked: the map maker's card.
 
 		constexpr const char* c_FavouritesFile = "Userdata/MapFavourites.txt"; //!< The maps marked as favourites, by name, one to a line.
 		std::set<std::string> s_Favourites;
@@ -136,6 +160,59 @@ namespace SandboxDetail {
 				file << name << '\n';
 			}
 			s_Browser.FiltersChanged = true;
+		}
+
+		constexpr const char* c_RecentMapsFile = "Userdata/MapRecent.txt"; //!< The maps played lately, by name, the latest first, one to a line.
+		constexpr size_t c_RecentKept = 10; //!< How many maps the recently played list keeps.
+		std::vector<std::string> s_Recent;
+		bool s_RecentRead = false;
+
+		/// The maps played lately, the latest first, read from their file the first time.
+		std::vector<std::string>& RecentMaps() {
+			if (!s_RecentRead) {
+				s_RecentRead = true;
+				std::ifstream file(c_RecentMapsFile);
+				std::string line;
+				while (std::getline(file, line) && s_Recent.size() < c_RecentKept) {
+					if (!line.empty() && line.back() == '\r') {
+						line.pop_back();
+					}
+					if (!line.empty() && std::find(s_Recent.begin(), s_Recent.end(), line) == s_Recent.end()) {
+						s_Recent.push_back(line);
+					}
+				}
+			}
+			return s_Recent;
+		}
+
+		/// Where a map is in the recently played list: 0 for the latest, or -1 if it isn't in it.
+		int RecentRank(const std::string& mapName) {
+			const std::vector<std::string>& recent = RecentMaps();
+			auto found = std::find(recent.begin(), recent.end(), mapName);
+			return found == recent.end() ? -1 : static_cast<int>(found - recent.begin());
+		}
+
+		/// Puts the browser's filters and order as the settings keep them (U-3). The saved battles filter is set by the purpose instead.
+		void ReadKeptFilters() {
+			const SettingsMan::MapBrowserFilters& kept = g_SettingsMan.MapBrowserFilterSettings();
+			s_Browser.Module = kept.Mod.empty() ? -1 : g_PresetMan.GetModuleID(kept.Mod);
+			s_Browser.Source = kept.Source >= 0 && kept.Source < static_cast<int>(MapSource::Count) ? kept.Source : -1;
+			s_Browser.Size = kept.Size >= 0 && kept.Size < static_cast<int>(std::size(c_SizeNames)) ? kept.Size : -1;
+			s_Browser.OnlyFavourites = kept.OnlyFavourites;
+			s_Browser.OnlyRecent = kept.OnlyRecent;
+			s_Browser.Sort = kept.Sort >= 0 && kept.Sort < static_cast<int>(SortBy::Count) ? static_cast<SortBy>(kept.Sort) : SortBy::Name;
+		}
+
+		/// Keeps the browser's filters and order in the settings, for the next time it opens, after a restart too.
+		void KeepFilters() {
+			SettingsMan::MapBrowserFilters& kept = g_SettingsMan.MapBrowserFilterSettings();
+			const DataModule* module = s_Browser.Module >= 0 ? g_PresetMan.GetDataModule(s_Browser.Module) : nullptr;
+			kept.Mod = module ? module->GetFileName() : std::string();
+			kept.Source = s_Browser.Source;
+			kept.Size = s_Browser.Size;
+			kept.OnlyFavourites = s_Browser.OnlyFavourites;
+			kept.OnlyRecent = s_Browser.OnlyRecent;
+			kept.Sort = static_cast<int>(s_Browser.Sort);
 		}
 
 		/// A five-pointed star centred on a point: filled gold for a favourite, else an outline (brighter when hovered).
@@ -532,7 +609,7 @@ namespace SandboxDetail {
 					continue;
 				}
 				const std::string& name = scene->GetPresetName();
-				if (name == "Null Scene" || name == "Editor Scene") {
+				if (name == "Null Scene" || name == "Editor Scene" || MapGen::IsGenerated(name)) {
 					continue;
 				}
 				Vector dimensions = scene->GetDimensions();
@@ -564,7 +641,7 @@ namespace SandboxDetail {
 			for (int i = 0; i < static_cast<int>(s_Browser.Maps.size()); ++i) {
 				const MapEntry& map = s_Browser.Maps[i];
 				if ((s_Browser.Module >= 0 && map.ModuleID != s_Browser.Module) || (s_Browser.Source >= 0 && static_cast<int>(map.Source) != s_Browser.Source) || (s_Browser.Size >= 0 && map.Size != s_Browser.Size) ||
-				    (s_Browser.OnlyWithBattles && map.Battles.empty()) || (s_Browser.OnlyFavourites && !IsFavourite(map.Name))) {
+				    (s_Browser.OnlyWithBattles && map.Battles.empty()) || (s_Browser.OnlyFavourites && !IsFavourite(map.Name)) || (s_Browser.OnlyRecent && RecentRank(map.Name) < 0)) {
 					continue;
 				}
 				if (!search.empty() && Lowered(map.Name).find(search) == std::string::npos && Lowered(map.ModName).find(search) == std::string::npos) {
@@ -576,6 +653,10 @@ namespace SandboxDetail {
 			std::stable_sort(s_Browser.Shown.begin(), s_Browser.Shown.end(), [&maps](int a, int b) {
 				const MapEntry& first = maps[a];
 				const MapEntry& second = maps[b];
+				// Recently played: the latest first, whatever the order.
+				if (s_Browser.OnlyRecent) {
+					return RecentRank(first.Name) < RecentRank(second.Name);
+				}
 				// Favourites first, whatever the order.
 				if (bool favourite = IsFavourite(first.Name); favourite != IsFavourite(second.Name)) {
 					return favourite;
@@ -611,7 +692,21 @@ namespace SandboxDetail {
 			s_Browser.PickedBattle = index >= 0 ? DefaultBattle(s_Browser.Maps[index], s_Browser.For) : -1;
 		}
 
+		/// Starts making the map maker's map; the game starts on it once it's made (DrawGUI).
+		void MakeAndPlay() {
+			if (MapGen::Busy()) {
+				return;
+			}
+			s_Generator.Error.clear();
+			s_Generator.PlayWhenMade = true;
+			MapGen::Start(s_Generator.Recipe);
+		}
+
 		void Play() {
+			if (s_Browser.Picked == c_GeneratorPick) {
+				MakeAndPlay();
+				return;
+			}
 			if (s_Browser.Picked < 0) {
 				return;
 			}
@@ -621,6 +716,7 @@ namespace SandboxDetail {
 			choice.Play = true;
 			choice.For = s_Browser.For;
 			choice.Scene = map.Name;
+			choice.StartBattle = s_Browser.QuickBattle;
 			if (s_Browser.PickedBattle >= 0 && s_Browser.PickedBattle < static_cast<int>(map.Battles.size())) {
 				choice.Battle = map.Battles[s_Browser.PickedBattle].Name;
 			} else {
@@ -900,6 +996,9 @@ namespace SandboxDetail {
 			changed |= ToolUI::Checkbox("Favourites only", &s_Browser.OnlyFavourites);
 			ImGui::SetItemTooltip("Only the maps starred as favourites (click the star on a map's card). Favourites are listed first either way.");
 			ImGui::SameLine();
+			changed |= ToolUI::Checkbox("Recently played", &s_Browser.OnlyRecent);
+			ImGui::SetItemTooltip("Only the last ten maps played, in the Sandbox, Battle Command or any other game, the latest first.");
+			ImGui::SameLine();
 			ImGui::TextUnformatted("Sort");
 			ImGui::SameLine();
 			int sort = static_cast<int>(s_Browser.Sort);
@@ -908,21 +1007,234 @@ namespace SandboxDetail {
 				s_Browser.Sort = static_cast<SortBy>(sort);
 				changed = true;
 			}
+			ImGui::SetItemTooltip("Favourites are listed first in any order. With \"Recently played\" ticked, the latest played comes first instead.");
+			ImGui::SameLine();
+			ImGui::BeginDisabled(s_Browser.Shown.empty());
+			if (ToolUI::Button("Random map")) {
+				// One of the maps shown, not the one picked already if there's another; Play (or Enter) then starts it as usual.
+				static std::mt19937 s_Random(std::random_device{}());
+				std::vector<int> others;
+				for (int index: s_Browser.Shown) {
+					if (index != s_Browser.Picked) {
+						others.push_back(index);
+					}
+				}
+				if (!others.empty()) {
+					Pick(others[std::uniform_int_distribution<size_t>(0, others.size() - 1)(s_Random)]);
+					s_Browser.ScrollToPicked = true;
+				}
+			}
+			ImGui::EndDisabled();
+			ImGui::SetItemTooltip("Picks one of the maps shown, at random, with the filters as they are. Play (or Enter) starts it.");
 			if (changed) {
 				s_Browser.FiltersChanged = true;
+				KeepFilters();
 			}
 		}
+
+#pragma region Map maker
+		/// Draws the map maker's picture again if its recipe has changed since.
+		void RefreshGeneratorPicture() {
+			Generator& generator = s_Generator;
+			if (!generator.Seeded) {
+				generator.Seeded = true;
+				generator.Recipe.Seed = static_cast<uint32_t>(std::chrono::steady_clock::now().time_since_epoch().count() * 2654435761ULL);
+				std::snprintf(generator.SeedText, sizeof(generator.SeedText), "%08X", generator.Recipe.Seed);
+			}
+			std::string code = generator.Recipe.Code();
+			if (code == generator.PictureOf && generator.Entry.Picture.Texture != 0) {
+				return;
+			}
+			generator.PictureOf = code;
+			MapGen::Picture picture = MapGen::Preview(generator.Recipe);
+			UploadPicture(generator.Entry.Picture, picture.Pixels.data(), picture.Width, picture.Height, picture.Width);
+			generator.Entry.Width = picture.MapWidth;
+			generator.Entry.Height = picture.MapHeight;
+			generator.Entry.Name = MapGen::MapName(generator.Recipe);
+		}
+
+		/// The map maker's card, first among the maps.
+		void GeneratorCard(ImDrawList* drawList, float cardWidth, float cardHeight, float pictureHeight) {
+			const ImGuiStyle& style = ImGui::GetStyle();
+			const float lineHeight = ImGui::GetTextLineHeight();
+			ImGui::PushID("##generator");
+			ImVec2 from = ImGui::GetCursorScreenPos();
+			bool clicked = ImGui::InvisibleButton("##card", ImVec2(cardWidth, cardHeight));
+			bool hovered = ImGui::IsItemHovered();
+			bool picked = s_Browser.Picked == c_GeneratorPick;
+			if (clicked) {
+				Pick(c_GeneratorPick);
+			}
+			ImGui::SetItemTooltip("Make a new map: pick a style, a size and a seed, and play on it.");
+			ImVec2 to(from.x + cardWidth, from.y + cardHeight);
+			if (ImGui::IsRectVisible(from, to)) {
+				RefreshGeneratorPicture();
+				drawList->AddRectFilled(from, to, picked ? ToolTheme::WellHover : hovered ? IM_COL32(40, 46, 66, 255) : ToolTheme::Panel);
+				ImVec2 pictureFrom;
+				float scenePixel = 1.0F;
+				DrawPictureIn(drawList, s_Generator.Entry, ImVec2(from.x + style.FramePadding.y, from.y + style.FramePadding.y), ImVec2(to.x - style.FramePadding.y, from.y + style.FramePadding.y + pictureHeight), pictureFrom, scenePixel);
+				float textY = from.y + style.FramePadding.y * 2.0F + pictureHeight;
+				drawList->PushClipRect(from, to, true);
+				drawList->AddText(ImVec2(from.x + style.FramePadding.x, textY), ToolTheme::Gold, "Make a new map");
+				std::string details = std::string(MapGen::StyleName(s_Generator.Recipe.MapStyle)) + ", " + MapGen::SizeName(s_Generator.Recipe.MapSize);
+				drawList->AddText(ImVec2(from.x + style.FramePadding.x, textY + lineHeight), IM_COL32(190, 196, 220, 255), details.c_str());
+				const char* badge = "New";
+				ImVec2 size = ImGui::CalcTextSize(badge);
+				ImVec2 at(to.x - size.x - style.FramePadding.x * 2.0F - style.FramePadding.y, from.y + style.FramePadding.y * 2.0F);
+				drawList->AddRectFilled(at, ImVec2(at.x + size.x + style.FramePadding.x * 2.0F, at.y + size.y + 2.0F), IM_COL32(0, 0, 0, 190));
+				drawList->AddText(ImVec2(at.x + style.FramePadding.x, at.y + 1.0F), ToolTheme::Gold, badge);
+				drawList->PopClipRect();
+				drawList->AddRect(from, to, picked ? ToolTheme::Gold : ToolTheme::Edge, 0.0F, 0, picked ? 2.0F : 1.0F);
+			}
+			ImGui::PopID();
+		}
+
+		/// The map maker picked: its picture big, its choices, and the button that makes the map and plays it.
+		void GeneratorDetails(float width, float height) {
+			Generator& generator = s_Generator;
+			MapGen::Recipe& recipe = generator.Recipe;
+			RefreshGeneratorPicture();
+			const float font = ImGui::GetFontSize();
+			const float room = ImGui::GetContentRegionAvail().x;
+			const float pictureHeight = std::min(room * 0.6F, height * 0.42F);
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
+			ImVec2 from = ImGui::GetCursorScreenPos();
+			ImVec2 to(from.x + room, from.y + pictureHeight);
+			ImGui::Dummy(ImVec2(room, pictureHeight));
+			ImVec2 pictureFrom;
+			float scenePixel = 1.0F;
+			DrawPictureIn(drawList, generator.Entry, from, to, pictureFrom, scenePixel);
+			drawList->AddRect(from, to, ToolTheme::Edge);
+
+			ImGui::PushStyleColor(ImGuiCol_Text, ToolTheme::Vec(ToolTheme::Gold));
+			ImGui::TextUnformatted("Make a new map");
+			ImGui::PopStyleColor();
+			ImGui::TextDisabled("%d x %d m. The picture shows the map's layout; the map itself is finer.", generator.Entry.Width / static_cast<int>(c_PPM), generator.Entry.Height / static_cast<int>(c_PPM));
+
+			const float playHeight = ImGui::GetFrameHeight() * 1.6F;
+			ImGui::BeginChild("##generatorChoices", ImVec2(0.0F, -(playHeight + ImGui::GetStyle().ItemSpacing.y)), ImGuiChildFlags_None);
+			const float labelWidth = font * 6.0F;
+			const float fieldWidth = std::max(font * 8.0F, ImGui::GetContentRegionAvail().x - labelWidth);
+			auto label = [labelWidth](const char* text) {
+				ImGui::AlignTextToFramePadding();
+				ImGui::TextUnformatted(text);
+				ImGui::SameLine(labelWidth);
+			};
+
+			label("Style");
+			ImGui::SetNextItemWidth(fieldWidth);
+			if (ImGui::BeginCombo("##genStyle", MapGen::StyleName(recipe.MapStyle))) {
+				for (int i = 0; i < static_cast<int>(MapGen::Style::Count); ++i) {
+					MapGen::Style style = static_cast<MapGen::Style>(i);
+					if (ImGui::Selectable(MapGen::StyleName(style), recipe.MapStyle == style)) {
+						recipe.MapStyle = style;
+					}
+					ImGui::SetItemTooltip("%s", MapGen::StyleBlurb(style));
+				}
+				ImGui::EndCombo();
+			}
+			ImGui::Indent(labelWidth);
+			ImGui::PushTextWrapPos(0.0F);
+			ImGui::TextDisabled("%s", MapGen::StyleBlurb(recipe.MapStyle));
+			ImGui::PopTextWrapPos();
+			ImGui::Unindent(labelWidth);
+
+			label("Size");
+			ImGui::SetNextItemWidth(fieldWidth);
+			if (ImGui::BeginCombo("##genSize", MapGen::SizeName(recipe.MapSize))) {
+				for (int i = 0; i < static_cast<int>(MapGen::Size::Count); ++i) {
+					MapGen::Size size = static_cast<MapGen::Size>(i);
+					if (ImGui::Selectable(MapGen::SizeName(size), recipe.MapSize == size)) {
+						recipe.MapSize = size;
+					}
+				}
+				ImGui::EndCombo();
+			}
+			ImGui::SetItemTooltip("Sized like the game's own maps: small like Grasslands, medium like Fredeleig Plains, large like Alezer Canyon, extra large like Decision Day. The seed picks the exact size within that.");
+
+			label("Seed");
+			const float diceWidth = ImGui::CalcTextSize("New seed").x + ImGui::GetStyle().FramePadding.x * 4.0F;
+			ImGui::SetNextItemWidth(std::max(font * 5.0F, fieldWidth - diceWidth - ImGui::GetStyle().ItemSpacing.x));
+			if (ImGui::InputText("##genSeed", generator.SeedText, sizeof(generator.SeedText), ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase)) {
+				recipe.Seed = static_cast<uint32_t>(std::strtoul(generator.SeedText, nullptr, 16));
+			}
+			ImGui::SetItemTooltip("The same seed with the same choices always makes the same map.");
+			ImGui::SameLine();
+			if (ToolUI::Button("New seed", ImVec2(diceWidth, 0.0F))) {
+				recipe.Seed = recipe.Seed * 1664525U + 1013904223U + static_cast<uint32_t>(std::chrono::steady_clock::now().time_since_epoch().count());
+				std::snprintf(generator.SeedText, sizeof(generator.SeedText), "%08X", recipe.Seed);
+			}
+			ImGui::SetItemTooltip("Another map of the same style and size.");
+
+			label("Roughness");
+			ImGui::SetNextItemWidth(fieldWidth);
+			ImGui::SliderInt("##genRough", &recipe.Roughness, 0, 100, "%d%%");
+			ImGui::SetItemTooltip("How hilly, steep and broken the ground is.");
+			label("Caves");
+			ImGui::SetNextItemWidth(fieldWidth);
+			ImGui::SliderInt("##genCaves", &recipe.Caves, 0, 100, "%d%%");
+			ImGui::SetItemTooltip("How many caves and tunnels run through the ground (and how open the Caves and Honeycomb styles are).");
+			bool water = MapGen::HasGround(recipe.MapStyle) && recipe.MapStyle != MapGen::Style::Caves && recipe.MapStyle != MapGen::Style::Honeycomb;
+			ImGui::BeginDisabled(!water);
+			label("Water");
+			ImGui::SetNextItemWidth(fieldWidth);
+			ImGui::SliderInt("##genWater", &recipe.Water, 0, 100, "%d%%");
+			ImGui::EndDisabled();
+			ImGui::SetItemTooltip(water ? "How full the hollows of the ground are with water." : "This style has no hollows for water to lie in.");
+
+			ImGui::Indent(labelWidth);
+			ToolUI::Checkbox("Bunkers", &recipe.Bunkers);
+			ImGui::SetItemTooltip("A simple concrete bunker at each end, lit, with a doorway each side.");
+			ImGui::SameLine();
+			ToolUI::Checkbox("Wrap round", &recipe.WrapX);
+			ImGui::SetItemTooltip("The map wraps round: going off one end brings you in at the other.");
+			ImGui::Unindent(labelWidth);
+
+			if (!generator.Error.empty()) {
+				ImGui::Spacing();
+				ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(240, 110, 100, 255));
+				ImGui::TextWrapped("Couldn't make the map: %s", generator.Error.c_str());
+				ImGui::PopStyleColor();
+			}
+			ImGui::EndChild();
+
+			bool busy = MapGen::Busy();
+			ImGui::BeginDisabled(busy);
+			if (ToolUI::Button(busy ? "Making the map..." : "Make the map and play", ImVec2(-1.0F, playHeight))) {
+				MakeAndPlay();
+			}
+			ImGui::EndDisabled();
+			ImGui::SetItemTooltip(s_Browser.For == MapBrowser::Purpose::Battle ? "Makes the map and starts Battle Command on it." : "Makes the map and starts the Sandbox on it.");
+		}
+
+		/// Takes a map once it's made, and starts the game on it if Play asked for that.
+		void UpdateGenerator() {
+			std::string name;
+			std::string error;
+			if (!MapGen::Update(name, error)) {
+				return;
+			}
+			if (!error.empty()) {
+				s_Generator.Error = error;
+				s_Generator.PlayWhenMade = false;
+				return;
+			}
+			if (s_Generator.PlayWhenMade && s_Browser.Open) {
+				MapBrowser::Choice& choice = s_Browser.Choice;
+				choice = MapBrowser::Choice();
+				choice.Play = true;
+				choice.For = s_Browser.For;
+				choice.Scene = name;
+				choice.NoBattle = true;
+			}
+			s_Generator.PlayWhenMade = false;
+		}
+#pragma endregion
 
 		/// The grid of cards, in a scrolling area.
 		void Cards(float width, float height) {
 			const float font = ImGui::GetFontSize();
 			if (!ImGui::BeginChild("##mapCards", ImVec2(width, height), ImGuiChildFlags_None)) {
-				ImGui::EndChild();
-				return;
-			}
-			if (s_Browser.Shown.empty()) {
-				ImGui::Spacing();
-				ImGui::TextDisabled(s_Browser.OnlyFavourites && Favourites().empty() ? "No favourites yet. Click the star on a map's card to make it one." : s_Browser.OnlyWithBattles ? "No map matches. Untick \"With saved battles\" to see maps with no battles saved yet." : "No map matches.");
 				ImGui::EndChild();
 				return;
 			}
@@ -934,10 +1246,12 @@ namespace SandboxDetail {
 			const float lineHeight = ImGui::GetTextLineHeight();
 			const float cardHeight = pictureHeight + lineHeight * 2.0F + style.FramePadding.y * 3.0F;
 			ImDrawList* drawList = ImGui::GetWindowDrawList();
+			// The map maker's card first, whatever the filters.
+			GeneratorCard(drawList, cardWidth, cardHeight, pictureHeight);
 			for (int i = 0; i < static_cast<int>(s_Browser.Shown.size()); ++i) {
 				int index = s_Browser.Shown[i];
 				MapEntry& map = s_Browser.Maps[index];
-				if (i % columns != 0) {
+				if ((i + 1) % columns != 0) {
 					ImGui::SameLine();
 				}
 				ImGui::PushID(index);
@@ -998,12 +1312,21 @@ namespace SandboxDetail {
 				}
 				ImGui::PopID();
 			}
+			if (s_Browser.Shown.empty()) {
+				ImGui::Spacing();
+				ImGui::TextDisabled(s_Browser.OnlyFavourites && Favourites().empty() ? "No favourites yet. Click the star on a map's card to make it one." : s_Browser.OnlyRecent && RecentMaps().empty() ? "No maps played yet. The maps you play are listed here, the latest first." : s_Browser.OnlyWithBattles ? "No map matches. Untick \"With saved battles\" to see maps with no battles saved yet." : "No map matches.");
+			}
 			ImGui::EndChild();
 		}
 
 		/// The map picked, big, with its saved battles and the Play button.
 		void Details(float width, float height) {
 			if (!ImGui::BeginChild("##mapDetails", ImVec2(width, height), ImGuiChildFlags_Borders)) {
+				ImGui::EndChild();
+				return;
+			}
+			if (s_Browser.Picked == c_GeneratorPick) {
+				GeneratorDetails(width, height);
 				ImGui::EndChild();
 				return;
 			}
@@ -1087,7 +1410,7 @@ namespace SandboxDetail {
 			if (ToolUI::Button(play.c_str(), ImVec2(-1.0F, playHeight))) {
 				Play();
 			}
-			ImGui::SetItemTooltip(s_Browser.For == MapBrowser::Purpose::Battle ? "Starts Battle Command on this map, with the battle picked set up on the battle panel." : "Starts the Sandbox on this map, with the battle picked set up on the Battle tab.");
+			ImGui::SetItemTooltip("%s", s_Browser.QuickBattle ? "Starts Battle Command on this map with the battle picked, and the battle itself at once (if it's ready to start; else it waits on the battle panel)." : s_Browser.For == MapBrowser::Purpose::Battle ? "Starts Battle Command on this map, with the battle picked set up on the battle panel." : "Starts the Sandbox on this map, with the battle picked set up on the Battle tab.");
 			ImGui::EndChild();
 		}
 #pragma endregion
@@ -1096,16 +1419,19 @@ namespace SandboxDetail {
 
 using namespace SandboxDetail;
 
-void MapBrowser::Open(Purpose purpose) {
+void MapBrowser::Open(Purpose purpose, bool quickBattle) {
 	s_Browser.Open = true;
 	s_Browser.For = purpose;
+	s_Browser.QuickBattle = quickBattle && purpose == Purpose::Battle;
 	s_Browser.Choice = Choice();
+	ReadKeptFilters();
 	s_Browser.OnlyWithBattles = purpose == Purpose::Battle;
-	s_Browser.OnlyFavourites = false;
 	// Read afresh each time: battles may have been saved, or mods turned on, since it was last open.
 	std::string picked = s_Browser.Picked >= 0 && s_Browser.Picked < static_cast<int>(s_Browser.Maps.size()) ? s_Browser.Maps[s_Browser.Picked].Name : "";
+	bool generatorPicked = s_Browser.Picked == c_GeneratorPick;
+	s_Generator.PlayWhenMade = false;
 	ListMaps();
-	s_Browser.Picked = -1;
+	s_Browser.Picked = generatorPicked ? c_GeneratorPick : -1;
 	for (int i = 0; i < static_cast<int>(s_Browser.Maps.size()); ++i) {
 		if (s_Browser.Maps[i].Name == picked) {
 			Pick(i);
@@ -1114,7 +1440,7 @@ void MapBrowser::Open(Purpose purpose) {
 	}
 	FilterMaps();
 	// The map picked last time, if the filters still show it; else the first shown.
-	if (std::find(s_Browser.Shown.begin(), s_Browser.Shown.end(), s_Browser.Picked) == s_Browser.Shown.end()) {
+	if (!generatorPicked && std::find(s_Browser.Shown.begin(), s_Browser.Shown.end(), s_Browser.Picked) == s_Browser.Shown.end()) {
 		s_Browser.Picked = -1;
 		Pick(s_Browser.Shown.empty() ? -1 : s_Browser.Shown.front());
 	}
@@ -1125,6 +1451,9 @@ void MapBrowser::Close() {
 	for (MapEntry& map: s_Browser.Maps) {
 		FreePicture(map.Picture);
 	}
+	FreePicture(s_Generator.Entry.Picture);
+	s_Generator.PictureOf.clear();
+	s_Generator.PlayWhenMade = false;
 	s_Browser.ToDraw.clear();
 }
 
@@ -1143,10 +1472,32 @@ bool MapBrowser::SetStartChoice(const Choice& choice) {
 		return false;
 	}
 	LoadBattleOnStart(choice.Battle, choice.NoBattle);
+	StartBattleOnStart(choice.StartBattle && !choice.NoBattle);
 	return true;
 }
 
+void MapBrowser::NoteMapPlayed(const std::string& mapName) {
+	if (mapName.empty()) {
+		return;
+	}
+	g_SettingsMan.SetLastMap(mapName);
+	std::vector<std::string>& recent = RecentMaps();
+	std::erase(recent, mapName);
+	recent.insert(recent.begin(), mapName);
+	if (recent.size() > c_RecentKept) {
+		recent.resize(c_RecentKept);
+	}
+	std::error_code error;
+	std::filesystem::create_directories(std::filesystem::path(c_RecentMapsFile).parent_path(), error);
+	std::ofstream file(c_RecentMapsFile, std::ios::trunc);
+	for (const std::string& name: recent) {
+		file << name << '\n';
+	}
+	s_Browser.FiltersChanged = true;
+}
+
 void MapBrowser::DrawGUI() {
+	UpdateGenerator();
 	if (!s_Browser.Open || !g_MenuMan.GetIsInMenuScreen()) {
 		return;
 	}
@@ -1161,13 +1512,14 @@ void MapBrowser::DrawGUI() {
 	const float margin = std::floor(std::min(viewport->Size.x, viewport->Size.y) * 0.03F);
 	ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + margin, viewport->Pos.y + margin));
 	ImGui::SetNextWindowSize(ImVec2(viewport->Size.x - margin * 2.0F, viewport->Size.y - margin * 2.0F));
-	std::string title = std::string(s_Browser.For == Purpose::Battle ? "Battle Command: pick a map" : "Sandbox: pick a map") + "###MapBrowser";
+	std::string title = std::string(s_Browser.QuickBattle ? "Quick battle: pick a map and a saved battle" : s_Browser.For == Purpose::Battle ? "Battle Command: pick a map" : "Sandbox: pick a map") + "###MapBrowser";
 	if (ImGui::Begin(title.c_str(), nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar)) {
 		const ImGuiStyle& style = ImGui::GetStyle();
 		const float backWidth = ImGui::CalcTextSize("Back").x + style.FramePadding.x * 4.0F;
 		if (ToolUI::Button("Back", ImVec2(backWidth, 0.0F)) || (ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !ImGui::GetIO().WantTextInput)) {
 			s_Browser.Choice = Choice();
 			s_Browser.Choice.Back = true;
+			s_Generator.PlayWhenMade = false;
 		}
 		ImGui::SameLine();
 		Filters();

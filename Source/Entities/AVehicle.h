@@ -98,6 +98,18 @@ namespace RTE {
 		/// Gets how many of its wheels are on the ground.
 		int GetWheelsOnGround() const;
 
+		/// Gets how many wheels it keeps track of (for saving them), a bare strut whose wheel was shot off included.
+		int GetWheelCount() const { return static_cast<int>(m_Wheels.size()); }
+
+		/// Gets a wheel, its strut and where it is fixed (for saving them). Ownership is NOT transferred!
+		/// @param index The wheel, 0 to GetWheelCount. @return The wheel or its strut, either nullptr if it has none.
+		const Attachable* GetWheelPart(int index) const { return m_Wheels[index].Part; }
+		const Attachable* GetWheelStrut(int index) const { return m_Wheels[index].Strut; }
+		const Vector& GetWheelMount(int index) const { return m_Wheels[index].Mount; }
+
+		/// Gets its seats and who sits in them (for saving them).
+		const CrewSeats& GetCrewSeats() const { return m_Crew; }
+
 		/// Gets the unit driving this, if any. Ownership is NOT transferred!
 		Actor* GetDriver() const { return m_Crew.GetOccupant(0); }
 
@@ -281,6 +293,9 @@ namespace RTE {
 		/// @param gunAt Where the gun would be. @param aimAt The place.
 		bool CanHitFrom(const Vector& gunAt, const Vector& aimAt) const;
 
+		/// Gets how far above the way it faces its gun lifts, in radians: AimRangeUp, else as far as it swings down.
+		float GetAimRangeUp() const { return m_AimRangeUp >= 0.0F ? m_AimRangeUp : m_AimRange; }
+
 		/// Gets where across a commanded vehicle is driving to about a fight (UpdateAIManoeuvre), so others keep clear of it.
 		/// @param x Set to the place across. @return Whether it is driving to one.
 		bool GetManoeuvreGoal(float& x) const {
@@ -398,6 +413,7 @@ namespace RTE {
 		Turret* m_Turret; //!< The turret its gun is on, if it has one. Owned by this, as an attachable.
 		float m_GunRange; //!< How far a gunner looks for something to shoot, in pixels.
 		float m_GunTurnSpeed; //!< How fast a gunner swings the gun round, in radians a second.
+		float m_AimRangeUp; //!< How far above the way it faces its gun lifts, in radians, for aircraft; below 0, as far as AimRange.
 		long m_GunTargetID; //!< The unique ID of what the gunner is shooting at, or 0.
 		Timer m_GunTargetTimer; //!< Since the gunner last looked round for something to shoot.
 		float m_CrewThrowSpeed; //!< How hard a knock (a change in speed in one update, m/s) throws everyone out. 0 never does.
@@ -564,6 +580,13 @@ namespace RTE {
 		/// Finds what a gunner would shoot at: the nearest enemy unit in range and in sight, that the gun can swing to.
 		/// @return Its unique ID, or 0 if there is none.
 		long FindGunTarget() const;
+
+		/// Gets the enemy nearest behind it that its gun would bear on were it turned round, else 0.
+		long FindGunTargetBehind() const;
+
+		/// Gets the enemy its gun would go for, facing one way: the ordered one if it bears on it, else the nearest that it does.
+		/// @param flip 1 facing right, -1 facing left.
+		long FindGunTargetFacing(float flip) const;
 
 		/// Removes a wheel from the wheels this keeps track of, when it is shot off or otherwise taken away. Ownership passes to the caller.
 		void RemoveWheel(const Attachable* wheel);
