@@ -317,6 +317,20 @@ namespace RTE {
 		/// How long, in seconds, an AI unit climbing a ladder that has stopped rising waits before letting go and finding another way (the rungs
 		/// shot away above, the ladder ending short, the way up it blocked). 1.5 s as the game comes.
 		float AILadderGiveUpSeconds() const { return m_AILadderGiveUpSeconds; }
+		/// How much what a unit carries (its inventory, the guns in its hands and its gold) weighs, as a multiple of the items' own mass,
+		/// 0 to 5; 1 as the game comes (Actor::GetMass).
+		float CarriedWeightMultiplier() const { return m_CarriedWeightMultiplier; }
+		/// How hard every unit's limbs push along their paths walking, crawling and climbing, and how high a leap of the legs goes, 0.25 to 3;
+		/// 1 as the game comes.
+		float LegStrength() const { return m_LegStrength; }
+		/// Whether jetpacks raise their thrust for a unit's load, burning fuel faster: 0 as each jetpack says (AdjustsThrottleForWeight),
+		/// 1 always, 2 never.
+		int JetpackWeightCompensation() const { return m_JetpackWeightCompensation; }
+		/// How much a load slows a unit's walk and lowers its leap, 0 to 1 (0 as the game comes): this share of its speed is lost once what it
+		/// carries weighs as much as its own body, less below that (Actor::GetOverloadSpeedMultiplier).
+		float OverloadSlowdown() const { return m_OverloadSlowdown; }
+		/// How much fuel every jetpack's tank holds, as a multiple of its own JumpTime, 0.25 to 5; 1 as the game comes.
+		float JetpackFuelMultiplier() const { return m_JetpackFuelMultiplier; }
 		/// How many times units of a team must get stuck on the same ladder within a minute before the whole team avoids it, 1 to 5 (2 as the game
 		/// comes). Fewer, the unit stuck avoids it alone.
 		int AILadderTeamStalls() const { return m_AILadderTeamStalls; }
@@ -425,6 +439,10 @@ namespace RTE {
 		/// Whether someone killed in an open vehicle's seat falls out of it (on, as the game comes), or slumps in the seat until the vehicle is
 		/// wrecked, thrown over or someone takes the seat. A player's own unit falls out either way, so its death is seen.
 		bool DeadCrewFallOut() const { return m_DeadCrewFallOut; }
+
+		/// Whether units in the passenger seats of a vehicle or ship built to let them (PassengersCanFire) shoot out of it with the guns they
+		/// hold (on, as the game comes). Their shots never hit their own vehicle or anyone sat in it.
+		bool PassengersFireFromVehicles() const { return m_PassengersFireFromVehicles; }
 
 		/// Gets what the navigation debug overlay shows: 0 nothing, 1 the path grid in view (where a unit stands, crawls or doesn't fit, and the
 		/// step-overs, stairs and leaps between), 2 that and each flight's landing and the engine pilot's predicted path (see PathFinder::DrawDebug),
@@ -629,6 +647,11 @@ namespace RTE {
 
 		/// Sets ShowBattleModeZones; see there.
 		void SetShowBattleModeZones(bool show) { m_BattleShowModeZones = show; }
+		/// Whether the Army overview window is shown (B-6): your side's units by kind, with how many, their health and how many are idle.
+		bool ShowArmyOverview() const { return m_ArmyOverview; }
+
+		/// Sets whether the Army overview window is shown.
+		void SetShowArmyOverview(bool show) { m_ArmyOverview = show; }
 
 		/// Gets whether the lighting-by-source readout is on.
 		bool ShowLightsBySource() const { return m_LightsBySource; }
@@ -762,6 +785,13 @@ namespace RTE {
 		void SetAIMantlesOnPurpose(bool on) { m_AIMantlesOnPurpose = on; }
 		void SetAICatchesLedgesMidAir(bool on) { m_AICatchesLedgesMidAir = on; }
 		void SetRiskyOrdersFlyPastLadders(bool on) { m_RiskyOrdersFlyPastLadders = on; }
+		void SetCarriedWeightMultiplier(float multiplier) { m_CarriedWeightMultiplier = std::clamp(multiplier, 0.0F, 5.0F); }
+		void SetLegStrength(float strength) { m_LegStrength = std::clamp(strength, 0.25F, 3.0F); }
+		void SetJetpackWeightCompensation(int mode) { m_JetpackWeightCompensation = std::clamp(mode, 0, 2); }
+		void SetOverloadSlowdown(float slowdown) { m_OverloadSlowdown = std::clamp(slowdown, 0.0F, 1.0F); }
+		void SetJetpackFuelMultiplier(float multiplier) { m_JetpackFuelMultiplier = std::clamp(multiplier, 0.25F, 5.0F); }
+		/// Puts the Movement category's carry weight settings back as the game comes.
+		void ResetCarryWeightSettings() { m_CarriedWeightMultiplier = 1.0F; m_LegStrength = 1.0F; m_JetpackWeightCompensation = 0; m_OverloadSlowdown = 0.0F; m_JetpackFuelMultiplier = 1.0F; }
 		/// Puts the Movement category's ladder settings back as the game comes.
 		void ResetLadderSettings() { m_AILadderGiveUpSeconds = 1.5F; m_AILadderTeamStalls = 2; m_AIGrabsLaddersOnPurpose = true; m_AIGrabsLaddersMidJet = true; m_RiskyOrdersFlyPastLadders = true; }
 		/// Sets the percentage of units handed a digger as they come into the scene; see AISpawnDiggerChance.
@@ -796,6 +826,9 @@ namespace RTE {
 
 		/// Sets whether crew killed in a vehicle fall out of it; see DeadCrewFallOut.
 		void SetDeadCrewFallOut(bool fallOut) { m_DeadCrewFallOut = fallOut; }
+
+		/// Sets whether passengers shoot out of vehicles built to let them; see PassengersFireFromVehicles.
+		void SetPassengersFireFromVehicles(bool fire) { m_PassengersFireFromVehicles = fire; }
 
 		/// Sets whether the crab bomb effect is enabled or not.
 		/// @param enable Enable the crab bomb effect or not. False means releasing whatever number of crabs will do nothing except release whatever number of crabs.
@@ -1053,6 +1086,7 @@ namespace RTE {
 		int m_BattleObjectiveLook; //!< The look of zone objectives (see BattleObjectiveLook).
 		bool m_BattleShowSpawnZones; //!< Whether spawn zones are shown on the map (see ShowBattleSpawnZones).
 		bool m_BattleShowModeZones; //!< Whether a mode's own zones are shown on the map (see ShowBattleModeZones).
+		bool m_ArmyOverview; //!< Whether the Army overview window is shown (see ShowArmyOverview).
 		bool m_LightsBySource; //!< Whether the lighting-by-source readout is on (see ShowLightsBySource).
 		bool m_SandboxCharacterState; //!< Whether the sandbox's character state line is on (see ShowSandboxCharacterState).
 		bool m_SandboxAutoBattle; //!< Whether the sandbox's battle and colony readout is on (see ShowSandboxAutoBattle). (Named for the auto battle the Battle Director replaced, so settings files keep it.)
@@ -1083,6 +1117,11 @@ namespace RTE {
 		float m_AIThreatAvoidance; //!< How much safe-route units keep clear of enemies, 0 to 2 (see AIThreatAvoidance).
 		float m_AIRecklessness; //!< How reckless AI units are on the move, 0 to 1 (see AIRecklessness).
 		float m_AILadderGiveUpSeconds; //!< See AILadderGiveUpSeconds.
+		float m_CarriedWeightMultiplier = 1.0F; //!< See CarriedWeightMultiplier.
+		float m_LegStrength = 1.0F; //!< See LegStrength.
+		int m_JetpackWeightCompensation = 0; //!< See JetpackWeightCompensation.
+		float m_OverloadSlowdown = 0.0F; //!< See OverloadSlowdown.
+		float m_JetpackFuelMultiplier = 1.0F; //!< See JetpackFuelMultiplier.
 		int m_AILadderTeamStalls; //!< See AILadderTeamStalls.
 		bool m_AIGrabsLaddersOnPurpose; //!< See AIGrabsLaddersOnPurpose.
 		bool m_AIGrabsLaddersMidJet; //!< See AIGrabsLaddersMidJet.
@@ -1107,6 +1146,7 @@ namespace RTE {
 		bool m_AISquadFollowsYou; //!< See AISquadFollowsYou.
 		bool m_AIUsesVehicles; //!< Whether AI units use vehicles (see AIUsesVehicles).
 		bool m_DeadCrewFallOut; //!< Whether crew killed in a vehicle fall out of it (see DeadCrewFallOut).
+		bool m_PassengersFireFromVehicles; //!< Whether passengers shoot out of vehicles built to let them (see PassengersFireFromVehicles).
 		DirectOrderTuning m_DirectOrders; //!< How units behave on a direct order (see DirectOrders).
 		bool m_EnableCrabBombs; //!< Whether all actors (except Brains and Doors) should be annihilated if a number exceeding the crab bomb threshold is released at once.
 		int m_CrabBombThreshold; //!< The number of crabs needed to be released at once to trigger the crab bomb effect.

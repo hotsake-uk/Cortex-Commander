@@ -1101,6 +1101,9 @@ namespace SandboxDetail {
 	/// nothing left to walk) well short of it a second or more after the order. Old markers fade.
 	void UpdateMoveWatch() {
 		long long now = g_TimerMan.GetSimUpdateCount();
+		// (Those that stopped short are dealt with after the walk over the watch list: getting a vehicle's crew out holds the vehicle and sends
+		// the crew on, which takes the vehicle off the list and puts the crew on it, and the list can't change under the walk.)
+		std::vector<std::pair<Actor*, Vector>> stoppedShort;
 		for (auto watch = s_MoveWatch.begin(); watch != s_MoveWatch.end();) {
 			Actor* unit = nullptr;
 			for (Actor* actor: SandboxAccess::Actors()) {
@@ -1121,14 +1124,17 @@ namespace SandboxDetail {
 			if (distance < reach || unit->IsPlayerControlled()) {
 				watch = s_MoveWatch.erase(watch);
 			} else if (stopped) {
-				// A commanded vehicle that couldn't get there (VC-2): its crew get out and go on on foot, unless told to stay in or it was
-				// sent to attack; then it holds there, as any unit with no route does.
-				if (!CrewGoOnFoot(unit, watch->second.Destination)) {
-					AddNoRoute(unit, watch->second.Destination);
-				}
+				stoppedShort.emplace_back(unit, watch->second.Destination);
 				watch = s_MoveWatch.erase(watch);
 			} else {
 				++watch;
+			}
+		}
+		// A commanded vehicle that couldn't get there (VC-2): its crew get out and go on on foot, unless told to stay in or it was sent to
+		// attack; then it holds there, as any unit with no route does.
+		for (const auto& [unit, destination]: stoppedShort) {
+			if (!CrewGoOnFoot(unit, destination)) {
+				AddNoRoute(unit, destination);
 			}
 		}
 		s_NoRoutes.erase(std::remove_if(s_NoRoutes.begin(), s_NoRoutes.end(), [now](const NoRoute& marker) { return now - marker.At > c_NoRouteUpdates || std::none_of(marker.Units.begin(), marker.Units.end(), [](const UnitRef& ref) { return GetRef(ref) != nullptr; }); }), s_NoRoutes.end());
@@ -1479,7 +1485,7 @@ namespace SandboxDetail {
 
 
 	/// A click on the world with the command tool, as the mode says. Count: 0 a plain click, 1 with Shift held (add to the selection), 2 a double click
-	/// (select every unit of that kind in sight).
+	/// (select every unit of that kind in sight), 3 a double click with Ctrl held (every unit of that kind on the whole map, B-4).
 	void CommandSelected(const Vector& position, int modifier) {
 		if (s_CommandMode == CommandMode::Command) {
 			// Command mode: the order fits what's at the point. Selecting, and a friend, enemy or the ground, go as Select or Move would.
@@ -1618,15 +1624,17 @@ namespace SandboxDetail {
 		}
 		// Move: a friend is picked up into the selection, an enemy attacked, the ground gone to.
 		if (friendly && (selecting || modifier != 0 || !selected || s_Selected.size() == 1)) {
-			if (modifier == 2) {
-				// Every unit of that kind in sight.
+			if (modifier == 2 || modifier == 3) {
+				// Every unit of that kind in sight; with Ctrl (3), on the whole map (B-4).
+				const bool wholeMap = modifier == 3;
 				GameViewRect view = g_WindowMan.GetGameViewRect();
 				float scale = ScenePixelsPerWindowPixel();
 				Vector corner = g_CameraMan.GetOffset(0);
 				Vector far = corner + Vector(view.w * scale, view.h * scale);
 				for (Actor* actor: SandboxAccess::Actors()) {
 					Vector onScreen = FromCamera(actor->GetPos());
-					if (IsSelectable(actor) && actor->GetTeam() == target->GetTeam() && actor->GetPresetName() == target->GetPresetName() && onScreen.m_X >= 0.0F && onScreen.m_Y >= 0.0F && onScreen.m_X <= far.m_X - corner.m_X && onScreen.m_Y <= far.m_Y - corner.m_Y &&
+					const bool inSight = wholeMap || (onScreen.m_X >= 0.0F && onScreen.m_Y >= 0.0F && onScreen.m_X <= far.m_X - corner.m_X && onScreen.m_Y <= far.m_Y - corner.m_Y);
+					if (IsSelectable(actor) && actor->GetTeam() == target->GetTeam() && actor->GetPresetName() == target->GetPresetName() && inSight &&
 					    std::none_of(s_Selected.begin(), s_Selected.end(), [actor](const UnitRef& ref) { return RefersTo(ref, actor); })) {
 						s_Selected.push_back(MakeRef(actor));
 					}

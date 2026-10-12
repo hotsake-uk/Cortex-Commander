@@ -43,6 +43,7 @@ void ACrab::Clear() {
 	m_pLBGLeg = 0;
 	m_pRFGLeg = 0;
 	m_pRBGLeg = 0;
+	m_ExtraLegs.clear();
 	m_pLFGFootGroup = 0;
 	m_BackupLFGFootGroup = nullptr;
 	m_pLBGFootGroup = 0;
@@ -149,10 +150,17 @@ int ACrab::Create(const ACrab& reference) {
 	if (reference.m_pRFGLeg) {
 		m_ReferenceHardcodedAttachableUniqueIDs.insert(reference.m_pRFGLeg->GetUniqueID());
 	}
+	for (const ExtraLeg& extra: reference.m_ExtraLegs) {
+		m_ReferenceHardcodedAttachableUniqueIDs.insert(extra.Part->GetUniqueID());
+	}
 
 	Actor::Create(reference);
 
 	// Note - hardcoded attachable copying is organized based on desired draw order here.
+	// (The extra legs first, behind the four: a background one behind the body, a foreground one in front of it but behind the four's.)
+	for (const ExtraLeg& extra: reference.m_ExtraLegs) {
+		AddExtraLeg(dynamic_cast<Leg*>(extra.Part->Clone()), extra.Copies);
+	}
 	if (reference.m_pLBGLeg) {
 		SetLeftBGLeg(dynamic_cast<Leg*>(reference.m_pLBGLeg->Clone()));
 	}
@@ -241,7 +249,7 @@ int ACrab::ReadProperty(const std::string_view& propName, Reader& reader) {
 		float jumpTime;
 		reader >> jumpTime;
 		if (m_pJetpack) {
-			m_pJetpack->SetJetTimeTotal(jumpTime * 1000.0F);
+			m_pJetpack->SetBaseJetTimeTotal(jumpTime * 1000.0F);
 			m_pJetpack->SetJetTimeLeft(jumpTime * 1000.0F);
 		}
 	});
@@ -345,6 +353,11 @@ int ACrab::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("LockMouseAimInput", { reader >> m_LockMouseAimInput; });
 	MatchProperty("LegJumpHeight", { reader >> m_LegJumpHeight; });
 	MatchProperty("LegJumpSpeed", { reader >> m_LegJumpSpeed; });
+	// Extra legs (CR-5), each named for the leg whose stride it copies.
+	MatchProperty("AddLeftFGExtraLeg", { AddExtraLeg(dynamic_cast<Leg*>(g_PresetMan.ReadReflectedPreset(reader)), LegCopied::LeftFG); });
+	MatchProperty("AddLeftBGExtraLeg", { AddExtraLeg(dynamic_cast<Leg*>(g_PresetMan.ReadReflectedPreset(reader)), LegCopied::LeftBG); });
+	MatchProperty("AddRightFGExtraLeg", { AddExtraLeg(dynamic_cast<Leg*>(g_PresetMan.ReadReflectedPreset(reader)), LegCopied::RightFG); });
+	MatchProperty("AddRightBGExtraLeg", { AddExtraLeg(dynamic_cast<Leg*>(g_PresetMan.ReadReflectedPreset(reader)), LegCopied::RightBG); });
 
 	EndPropertyList;
 }
@@ -398,6 +411,11 @@ int ACrab::Save(Writer& writer) const {
 	writer << m_LegJumpHeight;
 	writer.NewProperty("LegJumpSpeed");
 	writer << m_LegJumpSpeed;
+	static const char* const c_ExtraLegProperties[] = {"AddLeftFGExtraLeg", "AddLeftBGExtraLeg", "AddRightFGExtraLeg", "AddRightBGExtraLeg"};
+	for (const ExtraLeg& extra: m_ExtraLegs) {
+		writer.NewProperty(c_ExtraLegProperties[static_cast<int>(extra.Copies)]);
+		writer << extra.Part;
+	}
 
 	return 0;
 }
@@ -486,6 +504,51 @@ void ACrab::SetJetpack(AEJetpack* newJetpack) {
 		}
 		m_pJetpack->SetApplyTransferredForcesAtOffset(false);
 		m_pJetpack->SetDeleteWhenRemovedFromParent(true);
+	}
+}
+
+void ACrab::AddExtraLeg(Leg* newLeg, LegCopied copies) {
+	if (!newLeg) {
+		return;
+	}
+	m_ExtraLegs.push_back({newLeg, copies});
+	AddAttachable(newLeg);
+
+	m_HardcodedAttachableUniqueIDsAndRemovers.insert({newLeg->GetUniqueID(), [](MOSRotating* parent, Attachable* attachable) {
+		                                                  dynamic_cast<ACrab*>(parent)->RemoveExtraLeg(attachable);
+	                                                  }});
+
+	if (newLeg->HasNoSetDamageMultiplier()) {
+		newLeg->SetDamageMultiplier(1.0F);
+	}
+	newLeg->SetInheritsHFlipped(-1);
+}
+
+void ACrab::RemoveExtraLeg(const Attachable* leg) {
+	std::erase_if(m_ExtraLegs, [leg](const ExtraLeg& extra) { return extra.Part == leg; });
+}
+
+void ACrab::UpdateExtraLegs() {
+	for (const ExtraLeg& extra: m_ExtraLegs) {
+		if (!extra.Part->IsAttached()) {
+			continue;
+		}
+		Leg* copied = nullptr;
+		const AtomGroup* foot = nullptr;
+		switch (extra.Copies) {
+			case LegCopied::LeftFG: copied = m_pLFGLeg; foot = m_pLFGFootGroup; break;
+			case LegCopied::LeftBG: copied = m_pLBGLeg; foot = m_pLBGFootGroup; break;
+			case LegCopied::RightFG: copied = m_pRFGLeg; foot = m_pRFGFootGroup; break;
+			case LegCopied::RightBG: copied = m_pRBGLeg; foot = m_pRBGFootGroup; break;
+		}
+		if (copied && copied->IsAttached() && foot) {
+			extra.Part->EnableIdle(m_Status != UNSTABLE);
+			extra.Part->SetTargetPosition(foot->GetLimbPos(m_HFlipped) + RotateOffset(extra.Part->GetParentOffset() - copied->GetParentOffset()));
+		} else {
+			// (The leg it copied is gone: it hangs, as a leg does with nothing to reach for.)
+			extra.Part->EnableIdle(true);
+			extra.Part->SetTargetPosition(extra.Part->GetJointPos() + RotateOffset(Vector(0.0F, extra.Part->GetMaxLength())));
+		}
 	}
 }
 
@@ -809,11 +872,10 @@ float ACrab::GetLegJumpHeight() const {
 	if (!m_pLFGLeg && !m_pLBGLeg && !m_pRFGLeg && !m_pRBGLeg) {
 		return 0.0F;
 	}
-	if (m_LegJumpHeight >= 0.0F) {
-		return m_LegJumpHeight;
-	}
 	// A third of the body, halved: a crab clears a kerb or a node-wide gap, not a human's knee-high crate.
-	return std::max(16.0F, m_CharHeight * 0.33F) * 0.5F;
+	float height = m_LegJumpHeight >= 0.0F ? m_LegJumpHeight : std::max(16.0F, m_CharHeight * 0.33F) * 0.5F;
+	// The Carry weight settings: stronger legs leap higher, a load holds it down.
+	return height * g_SettingsMan.LegStrength() * GetOverloadSpeedMultiplier();
 }
 
 bool ACrab::CanLeap() const {
@@ -1150,6 +1212,10 @@ void ACrab::PreControllerUpdate() {
 			if (const float fullSpeed = m_Paths[LEFTSIDE][FGROUND][WALK].GetTravelSpeed() * 0.5F; m_PaceLimit > 0.0F && fullSpeed > m_PaceLimit) {
 				paceMultiplier = m_PaceLimit / fullSpeed;
 			}
+			// A creature's venom slows it; its web all but stops it (CR-6).
+			paceMultiplier *= GetAfflictionSpeedMultiplier();
+			// A heavy load slows it (the Carry weight settings).
+			paceMultiplier *= GetOverloadSpeedMultiplier();
 			for (int side = 0; side < SIDECOUNT; ++side) {
 				for (int layer = 0; layer < LAYERCOUNT; ++layer) {
 					m_Paths[side][layer][WALK].SetTravelSpeedMultiplier(paceMultiplier);
@@ -1332,6 +1398,8 @@ void ACrab::PreControllerUpdate() {
 		m_pRBGLeg->EnableIdle(m_Status != UNSTABLE);
 		m_pRBGLeg->SetTargetPosition(m_pRBGFootGroup->GetLimbPos(m_HFlipped));
 	}
+
+	UpdateExtraLegs();
 }
 
 void ACrab::Update() {

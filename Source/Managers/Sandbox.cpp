@@ -614,10 +614,11 @@ void Sandbox::ToggleCommanderBar() {
 }
 
 namespace {
-	/// The Commander Toolbar key from the settings, F11 if it names no key.
+	/// The Commander Toolbar key from the settings, F11 if it names no key, or F10 or F12 (picked before those were taken out of the
+	/// choices: they clear the console and take a screenshot).
 	SDL_Scancode CommanderBarScancode() {
 		SDL_Scancode key = SDL_GetScancodeFromName(g_SettingsMan.CommanderBarKey().c_str());
-		return key == SDL_SCANCODE_UNKNOWN ? SDL_SCANCODE_F11 : key;
+		return (key == SDL_SCANCODE_UNKNOWN || key == SDL_SCANCODE_F10 || key == SDL_SCANCODE_F12) ? SDL_SCANCODE_F11 : key;
 	}
 } // namespace
 
@@ -627,6 +628,11 @@ bool Sandbox::IsCommanderBarKey(int scancode) {
 
 std::string Sandbox::CommanderBarKeyName() {
 	return SDL_GetScancodeName(CommanderBarScancode());
+}
+
+bool Sandbox::TakesObjectiveKey() {
+	// As CommandHotkeys is reached in DrawGUI: the command tool in hand, units selected, not playing one, no text box.
+	return InGame() && CurrentTool().Kind == Tool::Command && !s_Selected.empty() && !s_Possessed && !ImGui::GetIO().WantTextInput;
 }
 
 bool Sandbox::WantsWheelZoom() {
@@ -1047,17 +1053,38 @@ void Sandbox::DrawGUI() {
 			s_RopeRightDown = false;
 		}
 	}
-	// Control groups: Ctrl and a number keeps the selection under it, the number alone brings it back, and the number again straight after
-	// looks at them (RC-6); Ctrl+A takes the whole side. With the command tool in hand, wherever the pointer is, so long as no text box has
-	// the keys. (Only while the pointer was over the world, as these were, they did nothing with it resting on the window.) Not while you
-	// play a unit: those keys are its own then (its weapons, and Ctrl+A as A).
+	// - and =: the game a step slower or faster through the speed tile's speeds, Shift with either back to 1x (B-5). Above the world, so long
+	// as no text box has the keys; not while you play a unit.
+	if ((IsGodMode() || s_Commander) && InGame() && !s_Possessed && !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt) {
+		const bool slower = ImGui::IsKeyPressed(ImGuiKey_Minus, false);
+		const bool faster = ImGui::IsKeyPressed(ImGuiKey_Equal, false);
+		if (slower || faster) {
+			StepGameSpeed(io.KeyShift ? 0 : (faster ? 1 : -1));
+		}
+	}
+	// Ctrl+Shift and 1 to 4 keeps the view, Ctrl+Alt and the number goes back to it (B-10). Whichever tool is in hand.
+	if ((IsGodMode() || s_Commander) && InGame()) {
+		CameraBookmarkKeys();
+	}
+	// Control groups: Ctrl and a number keeps the selection under it, Shift and a number adds it to the group (B-3), the number alone brings
+	// it back, and the number again straight after looks at them (RC-6); Ctrl+A takes the whole side. With the command tool in hand, wherever
+	// the pointer is, so long as no text box has the keys. (Only while the pointer was over the world, as these were, they did nothing with it
+	// resting on the window.) Not while you play a unit: those keys are its own then (its weapons, and Ctrl+A as A). Alt and a number is the
+	// Commander Toolbar's (B-1), and Ctrl+Shift or Ctrl+Alt and a number the camera bookmarks' (B-10), so none of those touch the groups.
 	if (InGame() && CurrentTool().Kind == Tool::Command && !io.WantTextInput && !s_Possessed) {
 		static int lastNumber = -1;
 		static double lastNumberTime = -10.0;
 		for (int number = 0; number < 10; ++number) {
-			if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_0 + number), false)) {
+			if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_0 + number), false) && !io.KeyAlt && !(io.KeyCtrl && io.KeyShift)) {
 				if (io.KeyCtrl) {
 					s_Groups[number] = s_Selected;
+				} else if (io.KeyShift) {
+					// Added to the group, each unit once.
+					for (const UnitRef& ref: s_Selected) {
+						if (std::none_of(s_Groups[number].begin(), s_Groups[number].end(), [&ref](const UnitRef& member) { return member.ID == ref.ID; })) {
+							s_Groups[number].push_back(ref);
+						}
+					}
 				} else if (!s_Groups[number].empty()) {
 					s_Selected = s_Groups[number];
 					if (number == lastNumber && ImGui::GetTime() - lastNumberTime < 0.4) {
@@ -1070,6 +1097,14 @@ void Sandbox::DrawGUI() {
 		}
 		if (!io.KeyCtrl && !io.KeyAlt) {
 			CommandHotkeys();
+		}
+		if (io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_Period, false)) {
+			// Every idle unit of the side at once (B-2); with Shift, added to the selection.
+			SelectAllIdle(io.KeyShift);
+		}
+		if (io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_Q, false)) {
+			// Every unit of the kinds selected on the whole map, not only in view (B-4).
+			SelectSameKinds(true);
 		}
 		if (io.KeyCtrl && !io.KeyAlt && !SelectionOnlyVehicles() && ImGui::IsKeyPressed(ImGuiKey_X, false)) {
 			// Breach: the clicks to come dig through to the point, then attack.
@@ -1508,7 +1543,8 @@ void Sandbox::DrawGUI() {
 				stroke.Kind = Tool::Command;
 				stroke.Position = end;
 				g_SceneMan.WrapPosition(stroke.Position);
-				stroke.Count = io.KeyShift ? 1 : (s_DoubleClick ? 2 : 0);
+				// (Ctrl and a double click: 3, every unit of that kind on the whole map rather than in view, B-4.)
+				stroke.Count = io.KeyShift ? 1 : (s_DoubleClick ? (io.KeyCtrl ? 3 : 2) : 0);
 			}
 			if (give) {
 				// (One click places the order cautiously and two normally; a double click dragged carries its own risk.)
@@ -1531,6 +1567,7 @@ void Sandbox::DrawGUI() {
 		DrawMinimap();
 		if (!s_Possessed) {
 			LoadoutWindow();
+			DrawArmyOverview();
 		}
 	}
 

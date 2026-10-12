@@ -145,6 +145,12 @@ void Actor::Clear() {
 	m_Temperament = TEMPERAMENT_FIGHTER;
 	m_NonCombatant = -1;
 	m_MovementProfile = MovementProfile();
+	m_FireAuraRadius = 0.0F;
+	m_WaterWeakness = 0.0F;
+	m_VenomUntil = 0;
+	m_VenomDamagePerSecond = 0.0F;
+	m_VenomSlowTo = 1.0F;
+	m_SnareUntil = 0;
 	m_ToughnessKind = -2;
 	m_ToughnessHealth = std::numeric_limits<float>::quiet_NaN();
 	m_LastAttackerTeam = Activity::NoTeam;
@@ -353,6 +359,8 @@ int Actor::Create(const Actor& reference) {
 	m_Temperament = reference.m_Temperament;
 	m_NonCombatant = reference.m_NonCombatant;
 	m_MovementProfile = reference.m_MovementProfile;
+	m_FireAuraRadius = reference.m_FireAuraRadius;
+	m_WaterWeakness = reference.m_WaterWeakness;
 	m_Waypoints = reference.m_Waypoints;
 	m_DrawWaypoints = reference.m_DrawWaypoints;
 	m_MoveTarget = reference.m_MoveTarget;
@@ -578,6 +586,9 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 		reader >> fireProof;
 		m_MovementProfile.FireProof = fireProof ? 1 : 0;
 	});
+	// Elements (CR-7): what it sets alight round it, and what water does to it.
+	MatchProperty("FireAuraRadius", { reader >> m_FireAuraRadius; });
+	MatchProperty("WaterWeakness", { reader >> m_WaterWeakness; });
 
 	EndPropertyList;
 }
@@ -738,6 +749,12 @@ int Actor::Save(Writer& writer) const {
 	if (m_MovementProfile.FireProof >= 0) {
 		writer.NewPropertyWithValue("FireProof", m_MovementProfile.FireProof != 0);
 	}
+	if (m_FireAuraRadius > 0.0F) {
+		writer.NewPropertyWithValue("FireAuraRadius", m_FireAuraRadius);
+	}
+	if (m_WaterWeakness > 0.0F) {
+		writer.NewPropertyWithValue("WaterWeakness", m_WaterWeakness);
+	}
 
 	return 0;
 }
@@ -777,7 +794,28 @@ float Actor::GetInventoryMass() const {
 }
 
 float Actor::GetMass() const {
-	return MOSRotating::GetMass() + GetInventoryMass() + (m_GoldCarried * g_SceneMan.GetKgPerOz());
+	float inventoryAndGold = GetInventoryMass() + (m_GoldCarried * g_SceneMan.GetKgPerOz());
+	float mass = MOSRotating::GetMass() + inventoryAndGold;
+	// The Carry weight settings' multiplier: what it carries counts that many times over (the held guns are already in its attachables' mass once).
+	if (float multiplier = g_SettingsMan.CarriedWeightMultiplier(); multiplier != 1.0F) {
+		mass += (multiplier - 1.0F) * (inventoryAndGold + GetHeldMass());
+	}
+	return mass;
+}
+
+float Actor::GetCarriedMass() const {
+	return (GetInventoryMass() + (m_GoldCarried * g_SceneMan.GetKgPerOz()) + GetHeldMass()) * g_SettingsMan.CarriedWeightMultiplier();
+}
+
+float Actor::GetOverloadSpeedMultiplier() const {
+	float slowdown = g_SettingsMan.OverloadSlowdown();
+	if (slowdown <= 0.0F) {
+		return 1.0F;
+	}
+	// The load against the body that bears it: the full slowdown once it carries its own weight. (Never quite to a stop: a tenth of the speed is kept.)
+	float body = std::max(MOSRotating::GetMass() - GetHeldMass(), 1.0F);
+	float load = std::clamp(GetCarriedMass() / body, 0.0F, 1.0F);
+	return std::max(1.0F - slowdown * load, 0.1F);
 }
 
 float Actor::GetBaseMass() {
@@ -2684,6 +2722,7 @@ void Actor::Update() {
 
 	m_PieMenu->Update();
 	UpdatePowerups();
+	UpdateAfflictions();
 
 	// Update the viewpoint to be at least what the position is
 	m_ViewPoint = m_Pos;

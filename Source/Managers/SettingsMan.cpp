@@ -150,6 +150,7 @@ void SettingsMan::Clear() {
 	m_AIThreatAvoidance = 1.0F;
 	m_AIRecklessness = 0.5F;
 	ResetLadderSettings();
+	ResetCarryWeightSettings();
 	m_AISpawnDiggerChance = 0.0F;
 	m_BleedOutChance = 0.0F;
 	m_WoundBleedTime = 1.0F;
@@ -168,6 +169,7 @@ void SettingsMan::Clear() {
 	m_AIScavengesBetterWeapons = true;
 	m_AIUnitsCallLifts = true;
 	m_DeadCrewFallOut = true;
+	m_PassengersFireFromVehicles = true;
 	m_DirectOrders = DirectOrderTuning();
 	m_NavDebugOverlay = 0;
 	m_DebugTeam = 0;
@@ -202,6 +204,7 @@ void SettingsMan::Clear() {
 	m_BattleObjectiveLook = 0;
 	m_BattleShowSpawnZones = true;
 	m_BattleShowModeZones = true;
+	m_ArmyOverview = false;
 	m_LightsBySource = false;
 	m_SandboxCharacterState = false;
 	m_SandboxAutoBattle = false;
@@ -820,6 +823,11 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AIThreatAvoidance", { float scale = 1.0F; reader >> scale; SetAIThreatAvoidance(scale); });
 	MatchProperty("AIRecklessness", { float recklessness = 0.5F; reader >> recklessness; SetAIRecklessness(recklessness); });
 	MatchProperty("AILadderGiveUpSeconds", { float seconds = 1.5F; reader >> seconds; SetAILadderGiveUpSeconds(seconds); });
+	MatchProperty("CarriedWeightMultiplier", { float multiplier = 1.0F; reader >> multiplier; SetCarriedWeightMultiplier(multiplier); });
+	MatchProperty("LegStrength", { float strength = 1.0F; reader >> strength; SetLegStrength(strength); });
+	MatchProperty("JetpackWeightCompensation", { int mode = 0; reader >> mode; SetJetpackWeightCompensation(mode); });
+	MatchProperty("OverloadSlowdown", { float slowdown = 0.0F; reader >> slowdown; SetOverloadSlowdown(slowdown); });
+	MatchProperty("JetpackFuelMultiplier", { float multiplier = 1.0F; reader >> multiplier; SetJetpackFuelMultiplier(multiplier); });
 	MatchProperty("AILadderTeamStalls", { int stalls = 2; reader >> stalls; SetAILadderTeamStalls(stalls); });
 	MatchProperty("AIGrabsLaddersOnPurpose", { reader >> m_AIGrabsLaddersOnPurpose; });
 	MatchProperty("AIGrabsLaddersMidJet", { reader >> m_AIGrabsLaddersMidJet; });
@@ -844,6 +852,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AIScavengesBetterWeapons", { reader >> m_AIScavengesBetterWeapons; });
 	MatchProperty("AIUnitsCallLifts", { reader >> m_AIUnitsCallLifts; });
 	MatchProperty("DeadCrewFallOut", { reader >> m_DeadCrewFallOut; });
+	MatchProperty("PassengersFireFromVehicles", { reader >> m_PassengersFireFromVehicles; });
 	MatchProperty("DirectCaution", { reader >> m_DirectOrders.Caution; m_DirectOrders.Caution = std::clamp(m_DirectOrders.Caution, 0.0F, 1.0F); });
 	MatchProperty("DirectFlightCost", { reader >> m_DirectOrders.FlightCostScale; m_DirectOrders.FlightCostScale = std::clamp(m_DirectOrders.FlightCostScale, 0.2F, 1.0F); });
 	MatchProperty("DirectFuelShare", { reader >> m_DirectOrders.FuelShare; m_DirectOrders.FuelShare = std::clamp(m_DirectOrders.FuelShare, 0.1F, 1.2F); });
@@ -918,6 +927,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("BattleObjectiveLook", { int look = 0; reader >> look; SetBattleObjectiveLook(look); });
 	MatchProperty("BattleShowSpawnZones", { reader >> m_BattleShowSpawnZones; });
 	MatchProperty("BattleShowModeZones", { reader >> m_BattleShowModeZones; });
+	MatchProperty("ArmyOverview", { reader >> m_ArmyOverview; });
 	MatchProperty("LightsBySource", { reader >> m_LightsBySource; });
 	MatchProperty("SandboxCharacterState", { reader >> m_SandboxCharacterState; });
 	MatchProperty("SandboxAutoBattle", { reader >> m_SandboxAutoBattle; });
@@ -1354,6 +1364,11 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("WeaponTerrainDamage", m_WeaponTerrainDamage);
 	writer.NewPropertyWithValue("AIRecklessness", m_AIRecklessness);
 	writer.NewPropertyWithValue("AILadderGiveUpSeconds", m_AILadderGiveUpSeconds);
+	writer.NewPropertyWithValue("CarriedWeightMultiplier", m_CarriedWeightMultiplier);
+	writer.NewPropertyWithValue("LegStrength", m_LegStrength);
+	writer.NewPropertyWithValue("JetpackWeightCompensation", m_JetpackWeightCompensation);
+	writer.NewPropertyWithValue("OverloadSlowdown", m_OverloadSlowdown);
+	writer.NewPropertyWithValue("JetpackFuelMultiplier", m_JetpackFuelMultiplier);
 	writer.NewPropertyWithValue("AILadderTeamStalls", m_AILadderTeamStalls);
 	writer.NewPropertyWithValue("AIGrabsLaddersOnPurpose", m_AIGrabsLaddersOnPurpose);
 	writer.NewPropertyWithValue("AIGrabsLaddersMidJet", m_AIGrabsLaddersMidJet);
@@ -1373,6 +1388,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AIScavengesBetterWeapons", m_AIScavengesBetterWeapons);
 	writer.NewPropertyWithValue("AIUnitsCallLifts", m_AIUnitsCallLifts);
 	writer.NewPropertyWithValue("DeadCrewFallOut", m_DeadCrewFallOut);
+	writer.NewPropertyWithValue("PassengersFireFromVehicles", m_PassengersFireFromVehicles);
 	writer.NewPropertyWithValue("DirectCaution", m_DirectOrders.Caution);
 	writer.NewPropertyWithValue("DirectFlightCost", m_DirectOrders.FlightCostScale);
 	writer.NewPropertyWithValue("DirectFuelShare", m_DirectOrders.FuelShare);
@@ -1510,6 +1526,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 		writer.NewPropertyWithValue("BattleObjectiveLook", m_BattleObjectiveLook);
 		writer.NewPropertyWithValue("BattleShowSpawnZones", m_BattleShowSpawnZones);
 		writer.NewPropertyWithValue("BattleShowModeZones", m_BattleShowModeZones);
+		writer.NewPropertyWithValue("ArmyOverview", m_ArmyOverview);
 		writer.NewPropertyWithValue("SandboxBarRight", m_SandboxBarRight);
 		writer.NewPropertyWithValue("ScreenShakeStrength", g_CameraMan.m_ScreenShakeStrength);
 
@@ -1709,6 +1726,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("BattleObjectiveLook", m_BattleObjectiveLook);
 	writer.NewPropertyWithValue("BattleShowSpawnZones", m_BattleShowSpawnZones);
 	writer.NewPropertyWithValue("BattleShowModeZones", m_BattleShowModeZones);
+	writer.NewPropertyWithValue("ArmyOverview", m_ArmyOverview);
 	writer.NewPropertyWithValue("CrabBombThreshold", m_CrabBombThreshold);
 	writer.NewPropertyWithValue("ShowEnemyHUD", m_ShowEnemyHUD);
 	writer.NewPropertyWithValue("SmartBuyMenuNavigation", m_EnableSmartBuyMenuNavigation);

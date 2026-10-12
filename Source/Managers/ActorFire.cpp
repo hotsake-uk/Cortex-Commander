@@ -1,5 +1,6 @@
 #include "EffectsParticles.h"
 #include "ActorFire.h"
+#include "Activity.h"
 #include "ADoor.h"
 #include "AVehicle.h"
 #include "Actor.h"
@@ -13,6 +14,7 @@
 #include "WeatherEffects.h"
 
 #include <algorithm>
+#include <cmath>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -188,6 +190,17 @@ void ActorFire::Update() {
 			g_PostProcessMan.RegisterLight(burner.Object->GetPos(), glm::vec3(255.0F, 140.0F, 50.0F), 70.0F, 0.9F, LightSource::Fire);
 		}
 	}
+	// A unit wreathed in fire (CR-7) glows with it, lighting the dark round it, and licks of flame and embers come off it.
+	for (Actor* source: g_MovableMan.m_Actors) {
+		if (const float aura = source->GetFireAuraRadius(); aura > 0.0F && !source->IsDead()) {
+			const float flicker = 0.85F + 0.15F * std::sin(static_cast<float>(g_TimerMan.GetSimUpdateCount()) * 0.37F);
+			g_PostProcessMan.RegisterLight(source->GetPos(), glm::vec3(255.0F, 120.0F, 40.0F), aura * 2.5F, 0.9F * flicker, LightSource::Fire);
+			source->AddHeat(g_TimerMan.GetDeltaTimeSecs() * 2.0F);
+			if (g_TimerMan.GetSimUpdateCount() % 4 == 0) {
+				EffectsParticles::SpawnEmber(source->GetPos() + Vector((Random01() - 0.5F) * source->GetRadius(), (Random01() - 0.7F) * source->GetRadius()));
+			}
+		}
+	}
 	if (g_TimerMan.GetSimUpdateCount() % c_TickInterval != 0 && ignitions.empty() && douses.empty() && areas.empty()) {
 		return;
 	}
@@ -232,6 +245,28 @@ void ActorFire::Update() {
 	}
 	if (g_TimerMan.GetSimUpdateCount() % c_TickInterval != 0) {
 		return;
+	}
+
+	// Units wreathed in fire (CR-7, a Flame Fiend): the ground round them catches now and then, and so does anyone not of their side who stays
+	// close, a second or so on average. (Their own side is spared the touch; not the grass it lights.)
+	for (Actor* source: g_MovableMan.m_Actors) {
+		const float aura = source->GetFireAuraRadius();
+		if (aura <= 0.0F || source->IsDead()) {
+			continue;
+		}
+		const Vector& center = source->GetPos();
+		if (Random01() < 0.25F) {
+			Vector spot = center + Vector((Random01() - 0.5F) * aura * 2.0F, source->GetRadius() * 0.6F + Random01() * 6.0F);
+			TerrainFire::QueueIgnite(spot.GetFloorIntX(), spot.GetFloorIntY());
+		}
+		for (Actor* other: g_MovableMan.m_Actors) {
+			if (other == source || (other->GetTeam() == source->GetTeam() && source->GetTeam() != Activity::NoTeam) || !CanBurn(other) || FindBurner(other) != s_Burners.end()) {
+				continue;
+			}
+			if (g_SceneMan.ShortestDistance(center, other->GetPos(), g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(aura + other->GetRadius() * 0.5F) && Random01() < 0.06F) {
+				Ignite(other);
+			}
+		}
 	}
 
 	// Burning ground and lava set units standing in them alight.
