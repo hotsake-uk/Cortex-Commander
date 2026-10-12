@@ -940,7 +940,8 @@ void Sandbox::DrawGUI() {
 			if (s_Possessed) {
 				SquadKeys();
 			} else if (ImGui::IsKeyPressed(ImGuiKey_Space, false)) {
-				JumpToLatestAlert();
+				// Space: the latest alert. Shift+Space: the one before, each press.
+				JumpToAlert(ImGui::GetIO().KeyShift);
 			}
 		}
 	}

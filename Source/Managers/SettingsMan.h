@@ -564,6 +564,89 @@ namespace RTE {
 		/// Sets whether the sandbox's map window is shown.
 		void SetShowSandboxMinimap(bool show) { m_SandboxMinimap = show; }
 
+		/// Whether Battle Command's alerts (your units under attack, your flag taken...) are listed at the top left of the view.
+		bool ShowBattleAlerts() const { return m_BattleAlerts; }
+
+		/// Sets ShowBattleAlerts; see there.
+		void SetShowBattleAlerts(bool show) { m_BattleAlerts = show; }
+
+		/// The most Battle Command alerts listed at once.
+		int BattleAlertLines() const { return m_BattleAlertLines; }
+
+		/// Sets BattleAlertLines; see there.
+		void SetBattleAlertLines(int lines) { m_BattleAlertLines = std::clamp(lines, 1, 12); }
+
+		/// Seconds a Battle Command alert stays listed.
+		int BattleAlertSeconds() const { return m_BattleAlertSeconds; }
+
+		/// Sets BattleAlertSeconds; see there.
+		void SetBattleAlertSeconds(int seconds) { m_BattleAlertSeconds = std::clamp(seconds, 3, 60); }
+
+		/// Whether Battle Command's kill feed (who killed whom) is listed at the top right of the view.
+		bool ShowBattleKillFeed() const { return m_BattleKillFeed; }
+
+		/// Sets ShowBattleKillFeed; see there.
+		void SetShowBattleKillFeed(bool show) { m_BattleKillFeed = show; }
+
+		/// The most kills the kill feed lists at once.
+		int BattleKillLines() const { return m_BattleKillLines; }
+
+		/// Sets BattleKillLines; see there.
+		void SetBattleKillLines(int lines) { m_BattleKillLines = std::clamp(lines, 1, 12); }
+
+		/// Seconds a kill stays in the kill feed.
+		int BattleKillSeconds() const { return m_BattleKillSeconds; }
+
+		/// Sets BattleKillSeconds; see there.
+		void SetBattleKillSeconds(int seconds) { m_BattleKillSeconds = std::clamp(seconds, 3, 60); }
+
+		/// Whether each Battle Command alert plays a short sound, one for each kind.
+		bool BattleAlertSounds() const { return m_BattleAlertSounds; }
+
+		/// Sets BattleAlertSounds; see there.
+		void SetBattleAlertSounds(bool on) { m_BattleAlertSounds = on; }
+
+		/// How loud the alert sounds are, 0 to 1 (under the game's sound volume).
+		float BattleAlertVolume() const { return m_BattleAlertVolume; }
+
+		/// Sets BattleAlertVolume; see there.
+		void SetBattleAlertVolume(float volume) { m_BattleAlertVolume = std::clamp(volume, 0.0F, 1.0F); }
+
+		/// Whether the battle panel asks before something that loses a setup or a battle on: a saved setup deleted or saved over, a battle started again or stopped.
+		bool BattleAskFirst() const { return m_BattleAskFirst; }
+
+		/// Sets BattleAskFirst; see there.
+		void SetBattleAskFirst(bool ask) { m_BattleAskFirst = ask; }
+
+		/// Whether the battle info panel (each team's tally, units in and fallen, respawns) is shown under the score while a battle is on.
+		bool ShowBattleInfo() const { return m_BattleShowInfo; }
+
+		/// Sets ShowBattleInfo; see there.
+		void SetShowBattleInfo(bool show) { m_BattleShowInfo = show; }
+
+		/// Whether a battle mode's objectives (flags, hills, goals...) are lit up on the map.
+		bool ShowBattleObjectives() const { return m_BattleShowObjectives; }
+
+		/// Sets ShowBattleObjectives; see there.
+		void SetShowBattleObjectives(bool show) { m_BattleShowObjectives = show; }
+
+		/// The look of zone objectives: 0 each mode's own, else an objective look (plus one) for all of them.
+		int BattleObjectiveLook() const { return m_BattleObjectiveLook; }
+
+		/// Sets BattleObjectiveLook; see there.
+		void SetBattleObjectiveLook(int look) { m_BattleObjectiveLook = std::max(look, 0); }
+
+		/// Whether the teams' spawn zones are shaded and outlined on the map.
+		bool ShowBattleSpawnZones() const { return m_BattleShowSpawnZones; }
+
+		/// Sets ShowBattleSpawnZones; see there.
+		void SetShowBattleSpawnZones(bool show) { m_BattleShowSpawnZones = show; }
+
+		/// Whether a battle mode's own zones (hills, assault objectives, goal zones) are shaded and outlined on the map.
+		bool ShowBattleModeZones() const { return m_BattleShowModeZones; }
+
+		/// Sets ShowBattleModeZones; see there.
+		void SetShowBattleModeZones(bool show) { m_BattleShowModeZones = show; }
 		/// Whether the Army overview window is shown (B-6): your side's units by kind, with how many, their health and how many are idle.
 		bool ShowArmyOverview() const { return m_ArmyOverview; }
 
@@ -989,6 +1072,20 @@ namespace RTE {
 		int m_SandboxSpawnStats; //!< How the Spawn tab shows units' and items' stats (see SandboxSpawnStats).
 		bool m_SandboxAttackPings; //!< Whether units coming under fire are pinged (see ShowSandboxAttackPings).
 		bool m_SandboxMinimap; //!< Whether the sandbox's map window is shown (see ShowSandboxMinimap).
+		bool m_BattleAlerts; //!< Whether Battle Command's alerts are listed (see ShowBattleAlerts).
+		int m_BattleAlertLines; //!< The most alerts listed at once (see BattleAlertLines).
+		int m_BattleAlertSeconds; //!< Seconds an alert stays listed (see BattleAlertSeconds).
+		bool m_BattleKillFeed; //!< Whether the kill feed is listed (see ShowBattleKillFeed).
+		int m_BattleKillLines; //!< The most kills listed at once (see BattleKillLines).
+		int m_BattleKillSeconds; //!< Seconds a kill stays listed (see BattleKillSeconds).
+		bool m_BattleAlertSounds; //!< Whether alerts play a sound (see BattleAlertSounds).
+		float m_BattleAlertVolume; //!< How loud they are (see BattleAlertVolume).
+		bool m_BattleAskFirst; //!< Whether the battle panel asks before losing a setup or a battle (see BattleAskFirst).
+		bool m_BattleShowInfo; //!< Whether the battle info panel is shown (see ShowBattleInfo).
+		bool m_BattleShowObjectives; //!< Whether battle objectives are lit up on the map (see ShowBattleObjectives).
+		int m_BattleObjectiveLook; //!< The look of zone objectives (see BattleObjectiveLook).
+		bool m_BattleShowSpawnZones; //!< Whether spawn zones are shown on the map (see ShowBattleSpawnZones).
+		bool m_BattleShowModeZones; //!< Whether a mode's own zones are shown on the map (see ShowBattleModeZones).
 		bool m_ArmyOverview; //!< Whether the Army overview window is shown (see ShowArmyOverview).
 		bool m_LightsBySource; //!< Whether the lighting-by-source readout is on (see ShowLightsBySource).
 		bool m_SandboxCharacterState; //!< Whether the sandbox's character state line is on (see ShowSandboxCharacterState).
