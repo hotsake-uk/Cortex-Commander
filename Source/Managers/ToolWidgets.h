@@ -197,6 +197,30 @@ namespace RTE {
 			return pressed;
 		}
 
+		inline bool AtNormal(float value, float normal) { return std::abs(value - normal) <= 0.0001F * std::max(1.0F, std::abs(normal)); }
+		inline bool AtNormal(int value, int normal) { return value == normal; }
+		inline bool AtNormal(bool value, bool normal) { return value == normal; }
+
+		/// A small Reset beside the slider just made, putting that one value back to normal (greyed out while it is).
+		/// The slider stays the last item, so a tooltip after it is still the slider's own.
+		template <typename T> bool ResetButton(const char* label, T* value, T normal, const char* tip = "Puts this one setting back to the value the game comes with.") {
+			const ImGuiLastItemData slider = GImGui->LastItemData;
+			ImGui::SameLine();
+			ImGui::PushID(label);
+			ImGui::PushID("Reset");
+			ImGui::BeginDisabled(AtNormal(*value, normal));
+			bool reset = SmallButton("Reset");
+			ImGui::SetItemTooltip("%s", tip);
+			ImGui::EndDisabled();
+			ImGui::PopID();
+			ImGui::PopID();
+			GImGui->LastItemData = slider;
+			if (reset) {
+				*value = normal;
+			}
+			return reset;
+		}
+
 		/// The shared body of the tick-box and the radio button: a square socket with the label beside it. Returns whether it was clicked.
 		inline bool Socket(const char* label, bool filled, bool diamond) {
 			const ImGuiStyle& style = ImGui::GetStyle();

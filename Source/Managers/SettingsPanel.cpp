@@ -134,29 +134,7 @@ namespace {
 		T Value;
 	};
 
-	bool AtNormal(float value, float normal) { return std::abs(value - normal) <= 0.0001F * std::max(1.0F, std::abs(normal)); }
-	bool AtNormal(int value, int normal) { return value == normal; }
-	bool AtNormal(bool value, bool normal) { return value == normal; }
-
-	/// A small Reset beside the slider just made, putting that one setting back as the game comes (greyed out while it is).
-	/// The slider stays the last item, so a Tip after it is still the slider's own.
-	template <typename T> bool ResetButton(const char* label, T* value, T normal) {
-		const ImGuiLastItemData slider = GImGui->LastItemData;
-		ImGui::SameLine();
-		ImGui::PushID(label);
-		ImGui::PushID("Reset");
-		ImGui::BeginDisabled(AtNormal(*value, normal));
-		bool reset = ToolUI::SmallButton("Reset");
-		ImGui::SetItemTooltip("Puts this one setting back to the value the game comes with.");
-		ImGui::EndDisabled();
-		ImGui::PopID();
-		ImGui::PopID();
-		GImGui->LastItemData = slider;
-		if (reset) {
-			*value = normal;
-		}
-		return reset;
-	}
+	using ToolUI::ResetButton;
 
 	bool Slider(const char* label, float* value, Normal<float> normal, float low, float high, const char* format = "%.2f", ImGuiSliderFlags flags = 0) {
 		if (!Shown(label)) {
@@ -1108,6 +1086,8 @@ void DebugMan::SettingsGUI() {
 		Tip("A piece heavier than this many times the unit it hits hurts only as much as one this heavy. Higher: big boulders are deadlier than big rocks.");
 		Slider("How hard pieces knock units", &tuning.HitKnockback, 0.0F, 3.0F, "%.2fx");
 		Tip("How hard falling pieces shove the units and loose objects they hit. Units knocked flying into the ground take the usual impact damage on top.");
+		Toggle("AI units get out from under falling ground", g_SettingsMan.AIDodgesFallingGround(), [](bool on) { g_SettingsMan.SetAIDodgesFallingGround(on); });
+		Tip("An AI unit with a loose piece of ground coming down on it steps out from under it to the nearer side it can get to (not into a wall or off an edge), whatever brought it down. Grains and scraps too small to hurt are left to fall. Off: they carry on with what they were doing.");
 		if (Plain() && ToolUI::Button("Usual falling")) {
 			tuning = TerrainCollapse::Tuning();
 		}
@@ -1321,6 +1301,25 @@ void DebugMan::SettingsGUI() {
 				}
 				Tip((std::string(slider.Tip) + c_ToughnessHow).c_str());
 			}
+		}
+		Heading("Creatures");
+		Toggle("Creatures climb walls", g_SettingsMan.CreaturesClimbWalls(), [](bool on) { g_SettingsMan.SetCreaturesClimbWalls(on); });
+		Tip("Creatures that climb crawl up walls and along ceilings, and the AI routes them that way: a giant spider goes up a wall and across the ceiling, hangs there in wait and drops on whoever walks under it; an ooze creeps up walls. Unticked, they keep to the ground like other units.");
+		{
+			float climbSpeed = g_SettingsMan.CreatureClimbSpeed();
+			if (Slider("Creature climbing speed", &climbSpeed, Normal{1.0F}, 0.25F, 3.0F, "%.2fx")) {
+				g_SettingsMan.SetCreatureClimbSpeed(climbSpeed);
+			}
+			Tip("How fast climbing creatures crawl on walls and ceilings, as a multiple of each one's own pace (a giant spider about 3 m/s, an ooze about 1.2). 1x is normal.");
+		}
+		Toggle("Creatures fly", g_SettingsMan.CreaturesFly(), [](bool on) { g_SettingsMan.SetCreaturesFly(on); });
+		Tip("Creatures that fly take to the air and the AI routes them through it, round and over what is in the way as a flying ship is: carrion bats swarm and dive, giant wasps hover and sting, a wyvern breathes fire from above, a wisp drifts and casts. Unticked, they keep to the ground.");
+		{
+			float flySpeed = g_SettingsMan.CreatureFlySpeed();
+			if (Slider("Creature flying speed", &flySpeed, Normal{1.0F}, 0.25F, 3.0F, "%.2fx")) {
+				g_SettingsMan.SetCreatureFlySpeed(flySpeed);
+			}
+			Tip("How fast flying creatures fly, as a multiple of each one's own pace (a carrion bat about 8 m/s, a wyvern about 6). 1x is normal.");
 		}
 		Check("Team colour on units", &settings.UnitTeamColorParts);
 		Tip("Parts of units that mods mark for it (a bandanna, a helmet stripe) are drawn in their side's colour: red, green, blue or yellow. Unticked, they take the mod's own default colour, or stay as painted.");
@@ -1635,6 +1634,31 @@ void DebugMan::SettingsGUI() {
 		}
 		Toggle("AI units use vehicles", g_SettingsMan.AIUsesVehicles(), [](bool on) { g_SettingsMan.SetAIUsesVehicles(on); });
 		Tip("An AI unit sent a long way walks to a friendly vehicle near it that is going its way, gets in and rides (or drives it) there, then gets out and walks the rest. A vehicle with an AI driver drives itself to the place it is sent, and units sent to a vehicle get in. Off: they walk, and AI drivers sit still.");
+		Toggle("Vehicles wait for their passengers", g_SettingsMan.AIVehiclesWaitForRiders(), [](bool on) { g_SettingsMan.SetAIVehiclesWaitForRiders(on); });
+		Tip("An AI driver that has called units over to ride waits for them to get in before it drives off, for at most the ship ride wait below from when it has somewhere to go. Off: it drives off as soon as it knows where it's going, and those still walking over are left behind.");
+		Toggle("AI units ride flying ships", g_SettingsMan.AIRidesShips(), [](bool on) { g_SettingsMan.SetAIRidesShips(on); });
+		Tip("A unit of any side, yours too, that can't walk to where it was sent, or has a very long way to go, walks to an idle friendly flying ship near it, gets in (the first one in flies it, unless it has a pilot or flies itself) and is flown there with anyone else going the same way. The ship waits for everyone it called over, then flies them there, comes down low and lets them out. Never a ship a player flies, sits in or has given an order. Off: they walk, or stop with no route.");
+		Toggle("Ride when there's no route on foot", g_SettingsMan.AIShipRideNoRoute(), [](bool on) { g_SettingsMan.SetAIShipRideNoRoute(on); });
+		Tip("With ship rides on: a unit that finds no way on foot to where it was sent (a cliff it can't climb, ground it can't dig, across a chasm) looks for a ship to fly it. Off: it stops with no route, as before.");
+		Toggle("Ride on very long walks", g_SettingsMan.AIShipRideLongWalk(), [](bool on) { g_SettingsMan.SetAIShipRideLongWalk(on); });
+		Tip("With ship rides on: a unit sent further than the distance below looks for a ship to fly it, even though it could walk. Off: only units with no route ride.");
+		{
+			float longWalk = g_SettingsMan.AIShipRideLongWalkDistance();
+			if (Slider("Long walk for a ship ride", &longWalk, Normal{2000.0F}, 500.0F, 10000.0F, "%.0f px", ImGuiSliderFlags_Logarithmic)) {
+				g_SettingsMan.SetAIShipRideLongWalkDistance(longWalk);
+			}
+			Tip("How far away, in a straight line, the place a unit is sent to has to be for it to look for a ship ride. 2000 px, as the game comes.");
+			float range = g_SettingsMan.AIShipRideRange();
+			if (Slider("Ship ride search range", &range, Normal{1500.0F}, 200.0F, 5000.0F, "%.0f px", ImGuiSliderFlags_Logarithmic)) {
+				g_SettingsMan.SetAIShipRideRange(range);
+			}
+			Tip("How far an idle ship looks round for units that want a ride. Each must also have a way on foot to the ship, and the ship must be no further from where they're going than they are. 1500 px, as the game comes.");
+			float wait = g_SettingsMan.AIShipRideWait();
+			if (Slider("Ship ride wait", &wait, Normal{20.0F}, 0.0F, 120.0F, "%.0f s")) {
+				g_SettingsMan.SetAIShipRideWait(wait);
+			}
+			Tip("The longest a ship waits for the units it called over, counted from when the first of them gets in, before it flies with those aboard; it goes sooner once all are in or its seats are full, or when it's hit. Also how long a land vehicle waits for its passengers. 20 s, as the game comes.");
+		}
 		Heading("Take cover order");
 		Toggle("Dig a foxhole when there's no cover", g_SettingsMan.AICoverDigs(), [](bool on) { g_SettingsMan.SetAICoverDigs(on); });
 		Tip("Told to take cover with nothing to get behind within about 150 px, a unit carrying a digger on soft ground (sand, soil, earth) digs itself a foxhole where it stands and crouches in it. Off: it doesn't dig, and falls back or lies flat instead.");
@@ -1679,6 +1703,27 @@ void DebugMan::SettingsGUI() {
 				}
 				ImGui::SetItemTooltip("Puts every AI combat setting back to how the game comes, which is how the AI always fought.");
 			}
+		}
+	};
+
+	// How units with a digger keep from bringing the ground down on themselves (SettingsMan::DigSafety).
+	auto digging = [&]() {
+		SettingsMan::DigSafetyTuning& safety = g_SettingsMan.DigSafety();
+		Heading("Cave-ins");
+		Check("Diggers avoid cave-ins", &safety.AvoidCaveIns);
+		Tip("Before cutting each part of a tunnel, an AI digger looks whether it would leave ground hanging that then falls into the tunnel (the Falling ground rules: an overhang longer than the longest that holds, or a piece left on a thin neck), and if so looks for a way round, deeper, or through other ground. Off: they dig wherever the route goes, and may bring the roof down on themselves.");
+		Check("Dig on and back off when there's no way round", &safety.BackOff);
+		Tip("When the only way is a tunnel that will cave in (or three ways round all did), the digger digs it anyway, and when the ground starts coming down over the tunnel it backs out from under it the way it came, waits until nothing has moved for a second, then digs on through what fell. Off: it digs on and takes its chances.");
+		Check("Dig-to orders too", &safety.DigToOrders);
+		Tip("Units you send to dig to a place look out for cave-ins too, but never go round: you asked for that tunnel, so they dig it and back off from what comes down (with the setting above on). Off: they just dig.");
+		Check("Dig-to preview warns of cave-ins", &safety.PreviewWarns);
+		Tip("The dig-to line by the cursor adds \"the roof will come down\" when the planned tunnel would bring ground down into it.");
+		if (Plain()) {
+			ImGui::Spacing();
+			if (ToolUI::Button("Reset to defaults")) {
+				safety = SettingsMan::DigSafetyTuning();
+			}
+			ImGui::SetItemTooltip("Puts every Digging setting back to how the game comes.");
 		}
 	};
 
@@ -2287,6 +2332,7 @@ void DebugMan::SettingsGUI() {
 	    {"AI behaviour", aiBehaviour},
 	    {"Movement", movement},
 	    {"Battle Behavior", battleBehavior},
+	    {"Digging", digging},
 	    {"Pathfinding", pathfinding},
 	    {"Performance", performance},
 	    {"Debug", debug},

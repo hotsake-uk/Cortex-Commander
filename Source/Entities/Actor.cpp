@@ -160,6 +160,8 @@ void Actor::Clear() {
 	m_EffectFireProof = m_EffectHeld = m_EffectSilenced = false;
 	m_EffectShader.clear();
 	m_ShaderBeforeEffects.clear();
+	m_AcidUntil = 0;
+	m_AcidDamagePerSecond = 0.0F;
 	m_ToughnessKind = -2;
 	m_ToughnessHealth = std::numeric_limits<float>::quiet_NaN();
 	m_LastAttackerTeam = Activity::NoTeam;
@@ -167,6 +169,8 @@ void Actor::Clear() {
 	m_HurtTimer.Reset();
 	m_LastHurtFrom.Reset();
 	m_PaceLimit = 0.0F;
+	m_ToughnessMultiplier = 1.0F;
+	m_SpeedMultiplier = 1.0F;
 	m_Waypoints.clear();
 	m_DrawWaypoints = false;
 	m_MoveTarget.Reset();
@@ -181,6 +185,8 @@ void Actor::Clear() {
 	m_UpdateMovePath = false;
 	m_ImpossiblePaths = 0;
 	m_PathImpossible = false;
+	m_WantsShipRide = false;
+	m_ShipRideGoal.Reset();
 	m_PathRetryTimer.Reset();
 	m_MoveProximityLimit = 20.0F;
 	m_AIBaseDigStrength = c_PathFindingDefaultDigStrength;
@@ -369,6 +375,8 @@ int Actor::Create(const Actor& reference) {
 	m_NonCombatant = reference.m_NonCombatant;
 	m_MovementProfile = reference.m_MovementProfile;
 	m_FireAuraRadius = reference.m_FireAuraRadius;
+	m_ToughnessMultiplier = reference.m_ToughnessMultiplier;
+	m_SpeedMultiplier = reference.m_SpeedMultiplier;
 	m_WaterWeakness = reference.m_WaterWeakness;
 	m_PassiveEffects = reference.m_PassiveEffects;
 	m_Waypoints = reference.m_Waypoints;
@@ -600,6 +608,37 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 		reader >> fireProof;
 		m_MovementProfile.FireProof = fireProof ? 1 : 0;
 	});
+	MatchProperty("Climbs", {
+		std::string value;
+		reader >> value;
+		std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		if (value == "none" || value == "0") {
+			m_MovementProfile.Climbs = 0;
+		} else if (value == "walls" || value == "1") {
+			m_MovementProfile.Climbs = 1;
+		} else if (value == "wallsandceilings" || value == "2") {
+			m_MovementProfile.Climbs = 2;
+		} else {
+			reader.ReportError("Unknown Climbs \"" + value + "\": use None, Walls or WallsAndCeilings.");
+		}
+	});
+	MatchProperty("CrawlSpeed", { reader >> m_MovementProfile.CrawlSpeed; });
+	MatchProperty("Flies", {
+		std::string value;
+		reader >> value;
+		std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		if (value == "none" || value == "0") {
+			m_MovementProfile.Flies = 0;
+		} else if (value == "wings" || value == "1") {
+			m_MovementProfile.Flies = 1;
+		} else if (value == "free" || value == "2") {
+			m_MovementProfile.Flies = 2;
+		} else {
+			reader.ReportError("Unknown Flies \"" + value + "\": use None, Wings or Free.");
+		}
+	});
+	MatchProperty("FlySpeed", { reader >> m_MovementProfile.FlySpeed; });
+	MatchProperty("FlyStamina", { reader >> m_MovementProfile.FlyStamina; });
 	// Elements (CR-7): what it sets alight round it, and what water does to it.
 	MatchProperty("FireAuraRadius", { reader >> m_FireAuraRadius; });
 	MatchProperty("WaterWeakness", { reader >> m_WaterWeakness; });
@@ -612,6 +651,8 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 		}
 		m_PassiveEffects.push_back(effect);
 	});
+	MatchProperty("ToughnessMultiplier", { reader >> m_ToughnessMultiplier; });
+	MatchProperty("SpeedMultiplier", { reader >> m_SpeedMultiplier; });
 
 	EndPropertyList;
 }
@@ -724,6 +765,23 @@ int Actor::Save(Writer& writer) const {
 	if (m_MovementProfile.FireProof >= 0) {
 		writer.NewPropertyWithValue("FireProof", m_MovementProfile.FireProof != 0);
 	}
+	if (m_MovementProfile.Climbs >= 0) {
+		static const char* const c_ClimbNames[] = {"None", "Walls", "WallsAndCeilings"};
+		writer.NewPropertyWithValue("Climbs", std::string(c_ClimbNames[std::clamp(m_MovementProfile.Climbs, 0, 2)]));
+	}
+	if (m_MovementProfile.CrawlSpeed >= 0.0F) {
+		writer.NewPropertyWithValue("CrawlSpeed", m_MovementProfile.CrawlSpeed);
+	}
+	if (m_MovementProfile.Flies >= 0) {
+		static const char* const c_FlightNames[] = {"None", "Wings", "Free"};
+		writer.NewPropertyWithValue("Flies", std::string(c_FlightNames[std::clamp(m_MovementProfile.Flies, 0, 2)]));
+	}
+	if (m_MovementProfile.FlySpeed >= 0.0F) {
+		writer.NewPropertyWithValue("FlySpeed", m_MovementProfile.FlySpeed);
+	}
+	if (m_MovementProfile.FlyStamina >= 0.0F) {
+		writer.NewPropertyWithValue("FlyStamina", m_MovementProfile.FlyStamina);
+	}
 	if (m_FireAuraRadius > 0.0F) {
 		writer.NewPropertyWithValue("FireAuraRadius", m_FireAuraRadius);
 	}
@@ -732,6 +790,12 @@ int Actor::Save(Writer& writer) const {
 	}
 	for (const StatusEffect& effect: m_PassiveEffects) {
 		writer.NewPropertyWithValue("PassiveEffect", effect);
+	}
+	if (m_ToughnessMultiplier != 1.0F) {
+		writer.NewPropertyWithValue("ToughnessMultiplier", m_ToughnessMultiplier);
+	}
+	if (m_SpeedMultiplier != 1.0F) {
+		writer.NewPropertyWithValue("SpeedMultiplier", m_SpeedMultiplier);
 	}
 
 	return 0;
@@ -1207,7 +1271,9 @@ int Actor::GetToughnessKind() const {
 
 float Actor::GetToughness() const {
 	int kind = GetToughnessKind();
-	return kind < 0 ? 1.0F : g_SettingsMan.Toughness(static_cast<SettingsMan::ToughnessKind>(kind));
+	float toughness = kind < 0 ? 1.0F : g_SettingsMan.Toughness(static_cast<SettingsMan::ToughnessKind>(kind));
+	// (Its own on top, short of invincible: only the setting makes it that.)
+	return toughness >= SettingsMan::c_ToughnessInvincible || m_ToughnessMultiplier == 1.0F ? toughness : std::clamp(toughness * m_ToughnessMultiplier, SettingsMan::c_ToughnessMin, SettingsMan::c_ToughnessMax);
 }
 
 float Actor::GibToughness() const {
@@ -1689,6 +1755,30 @@ void Actor::ApplyMovementProfile(PathAgent& agent) const {
 	if (profile.FireProof > 0) {
 		agent.CrossesLava = true;
 	}
+	// Walls and ceilings (CR-10): the route search's Wall and Ceiling steps.
+	agent.Climbs = static_cast<int>(GetClimbing());
+}
+
+Actor::Climbing Actor::GetClimbing() const {
+	if (m_MovementProfile.Climbs <= 0 || !g_SettingsMan.CreaturesClimbWalls()) {
+		return Climbing::None;
+	}
+	return m_MovementProfile.Climbs >= 2 ? Climbing::WallsAndCeilings : Climbing::Walls;
+}
+
+float Actor::GetCrawlSpeed() const {
+	return (m_MovementProfile.CrawlSpeed >= 0.0F ? m_MovementProfile.CrawlSpeed : 3.0F) * g_SettingsMan.CreatureClimbSpeed();
+}
+
+Actor::Flight Actor::GetFlight() const {
+	if (m_MovementProfile.Flies <= 0 || !g_SettingsMan.CreaturesFly()) {
+		return Flight::None;
+	}
+	return m_MovementProfile.Flies >= 2 ? Flight::Free : Flight::Wings;
+}
+
+float Actor::GetFlySpeed() const {
+	return (m_MovementProfile.FlySpeed >= 0.0F ? m_MovementProfile.FlySpeed : 6.0F) * g_SettingsMan.CreatureFlySpeed();
 }
 
 int Actor::GetLiquidDepth() const {
@@ -2343,6 +2433,17 @@ void Actor::PreControllerUpdate() {
 		m_ImpossiblePaths = impossible ? m_ImpossiblePaths + 1 : 0;
 		// For the path display: a route with no way there, or one that only gets there through ground this unit can't dig, is shown in red.
 		m_PathImpossible = m_PathRequest->status != micropather::MicroPather::SOLVED || overStrength;
+		// No way there on foot: an idle ship near it may fly it there (ACShip::UpdateAIRides). Where it was sent is kept for that, as the
+		// stand-down below forgets it. (Not a dig-to, whose way is the digging, nor one following someone.)
+		if (m_PathImpossible && !digTo && !m_pMOMoveTarget && g_SettingsMan.AIRidesShips() && g_SettingsMan.AIShipRideNoRoute()) {
+			if (!m_WantsShipRide) {
+				m_ShipRideWantTimer.Reset();
+			}
+			m_WantsShipRide = true;
+			m_ShipRideGoal = GetLastAIWaypoint();
+		} else if (!m_PathImpossible) {
+			m_WantsShipRide = false;
+		}
 		const int cutMaterial = m_PathRequest->cutMaterial;
 		if (impossible) {
 			m_PathRetryTimer.Reset();

@@ -1309,12 +1309,13 @@ namespace SandboxDetail {
 			}
 			ImGui::SetItemTooltip("Every ship of this team taken off the map now, without a blast, with anyone still aboard.");
 
-			ImGui::SeparatorText("Spawn zones");
+			ImGui::SeparatorText("Where units come in");
 			changed |= ToolUI::Checkbox("Units appear anywhere on the map", &setup.AppearAnywhere);
 			ImGui::SetItemTooltip("Units appear anywhere on the map there's ground to stand on (caves too), with room above them and not in liquid, kept clear of enemies. They come on the zones' clock, as many each time as the zones would bring between them (at least one lot with no zones drawn). Instead of in the zones.");
 			if (setup.AppearAnywhere) {
 				changed |= KeepClearSlider(setup.KeepClear, "##appearclear");
 			}
+			ImGui::SeparatorText("Spawn zones");
 			bool zoning = CurrentTool().Kind == Tool::BattleSpawnZone && s_BattleEditTeam == side;
 			if (ToolUI::Button(zoning ? "Done##zones" : "Draw spawn zones")) {
 				if (zoning) {
