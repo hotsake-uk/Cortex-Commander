@@ -2098,6 +2098,106 @@ void Actor::UpdateMantle() {
 	}
 }
 
+bool Actor::HeldByAutomover() {
+	static const std::string c_HoldingKey = "Automover_Holding";
+	if (NumberValueExists(c_HoldingKey)) {
+		RemoveNumberValue(c_HoldingKey);
+		m_AutomoverHeld = true;
+		m_AutomoverHoldTimer.Reset();
+	}
+	// (A quarter of a second: the lift marks its units every 15 ms or so, and the AI is called every few updates. A lift destroyed with the
+	// unit in it marks it no more, and the hold ends.)
+	if (m_AutomoverHeld && m_AutomoverHoldTimer.IsPastSimMS(250)) {
+		m_AutomoverHeld = false;
+	}
+	return m_AutomoverHeld;
+}
+
+int Actor::RideAutomover(Timer& progressTimer, float& bestGap) {
+	static const std::string c_StuckKey = "AI_StuckForTime";
+	// No keys: the lift moves the body. (It clears them too, but only when its own update comes round in the frame, and a unit updated before
+	// it walked, jetted or leapt on them first.)
+	for (ControlState state: {MOVE_LEFT, MOVE_RIGHT, MOVE_UP, MOVE_DOWN, MOVE_FAST, BODY_JUMPSTART, BODY_JUMP, BODY_LEAP}) {
+		m_Controller.SetState(state, false);
+	}
+	m_Mantling = false;
+
+	// Nothing to go to.
+	if (m_Waypoints.empty() && m_MovePath.empty() && !m_HasMovePathGoal && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
+		RemoveNumberValue(c_StuckKey);
+		return 1;
+	}
+	// No route: asked for, and the lift holds the unit where it is until it comes.
+	if (m_MovePath.empty()) {
+		if (!IsWaitingOnNewMovePath()) {
+			UpdateMovePath();
+		}
+		progressTimer.Reset();
+		bestGap = -1.0F;
+		return 0;
+	}
+
+	const float h = std::max(m_CharHeight, 20.0F);
+	// The end of the leg, or of the route: there, in the tube or out of it. (Held to the ground, as off the lift, a goal in the tube was never
+	// reached, and the unit was turned about in it for good.)
+	if (m_MovePath.size() <= 1 && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
+		Vector goal = m_HasMovePathGoal ? m_MovePathGoal : GetLastAIWaypoint();
+		if (g_SceneMan.ShortestDistance(m_Pos, goal).MagnitudeIsLessThan(std::max(h * 0.4F, 12.0F))) {
+			if (!m_Waypoints.empty() && m_HasMovePathGoal) {
+				// A leg done with more waypoints queued: the next call asks for the route to the next one (as AHuman::MoveAlongRoute).
+				m_MovePath.clear();
+				m_MovePathKinds.clear();
+				m_HasMovePathGoal = false;
+				bestGap = -1.0F;
+				progressTimer.Reset();
+				return 0;
+			}
+			RemoveNumberValue(c_StuckKey);
+			return 1;
+		}
+	}
+
+	// Points reached or passed are dropped, so the lift steers for the one after: the lift goes for the first point of the route, and the
+	// follower kept every point of a flight until the landing it never came down on in the tube, so the lift pulled the unit back to a point
+	// it had passed and held it there.
+	const float tolerance = std::max(m_MoveProximityLimit * 2.0F, 12.0F);
+	for (int guard = 0; guard < 6 && m_MovePath.size() > 1; ++guard) {
+		Vector toPoint = g_SceneMan.ShortestDistance(m_Pos, m_MovePath.front());
+		Vector toNext = g_SceneMan.ShortestDistance(m_Pos, *std::next(m_MovePath.begin()));
+		bool reached = toPoint.MagnitudeIsLessThan(tolerance);
+		Vector obstacle;
+		bool passed = !reached && toNext.MagnitudeIsLessThan(toPoint.GetMagnitude()) && !g_SceneMan.CastStrengthRay(m_Pos, toNext, 5.0F, obstacle, 4, MaterialColorKeys::g_MaterialDoor);
+		if (!reached && !passed) {
+			break;
+		}
+		m_PrevPathTarget = m_MovePath.front();
+		m_MovePath.pop_front();
+		if (!m_MovePathKinds.empty()) {
+			m_MovePathKinds.pop_front();
+		}
+		bestGap = -1.0F;
+	}
+
+	// Getting no nearer: told to the lift, which wiggles the unit about to free it; and after ten seconds of it a fresh route, the old one
+	// kept until it comes (cleared, the lift would hold the unit still meanwhile).
+	float gap = g_SceneMan.ShortestDistance(m_Pos, m_MovePath.front()).GetMagnitude();
+	if (bestGap < 0.0F || gap < bestGap - 4.0F) {
+		bestGap = gap;
+		progressTimer.Reset();
+		RemoveNumberValue(c_StuckKey);
+	} else if (progressTimer.IsPastSimMS(10000)) {
+		if (!IsWaitingOnNewMovePath()) {
+			UpdateMovePath();
+		}
+		bestGap = -1.0F;
+		progressTimer.Reset();
+		RemoveNumberValue(c_StuckKey);
+	} else if (progressTimer.IsPastSimMS(2500)) {
+		SetNumberValue(c_StuckKey, progressTimer.GetElapsedSimTimeMS());
+	}
+	return 0;
+}
+
 void Actor::RequestRouteCheck() {
 	if (m_PathRequest || m_UpdateMovePath || m_MovePath.empty()) {
 		return;

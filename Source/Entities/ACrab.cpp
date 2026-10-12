@@ -974,8 +974,8 @@ void ACrab::PreControllerUpdate() {
 		}
 	}
 
-	// Zero gravity: a crab under AI with nowhere to go that's drifting brakes on its jet.
-	if (m_Controller.GetInputMode() == Controller::CIM_AI && m_Status != DYING && m_Status != DEAD && ZeroGravity::AIFlies() && ZeroGravity::UnitsWeightless()) {
+	// Zero gravity: a crab under AI with nowhere to go that's drifting brakes on its jet. (Not in a gravity lift, which moves the body.)
+	if (m_Controller.GetInputMode() == Controller::CIM_AI && m_Status != DYING && m_Status != DEAD && ZeroGravity::AIFlies() && ZeroGravity::UnitsWeightless() && !HeldByAutomover()) {
 		HoldStillWeightless(m_pJetpack);
 	}
 	UpdateLeap();
@@ -1739,6 +1739,22 @@ int ACrab::MoveAlongRoute() {
 		ResetRouteMovement();
 	}
 	mover.lastCallTick = tick;
+	// In a gravity lift (Base.rte's Automovers): the lift has the body, and the follower only keeps the route for it (see AHuman::MoveAlongRoute).
+	if (HeldByAutomover()) {
+		if (!m_AutomoverRiding) {
+			ResetRouteMovement();
+			m_CrabMover.lastCallTick = tick;
+			m_AutomoverRiding = true;
+		}
+		return RideAutomover(m_CrabMover.progressTimer, m_CrabMover.bestGap);
+	}
+	if (m_AutomoverRiding) {
+		// Let go of by the lift: on along the route from here, the follower's timers started again.
+		m_AutomoverRiding = false;
+		RemoveNumberValue("AI_StuckForTime");
+		ResetRouteMovement();
+		m_CrabMover.lastCallTick = tick;
+	}
 	if (!mover.begun) {
 		mover.begun = true;
 		mover.progressTimer.Reset();
