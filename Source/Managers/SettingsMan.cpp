@@ -189,6 +189,7 @@ void SettingsMan::Clear() {
 	m_AIShipRideLongWalkDistance = 500.0F;
 	m_AIShipRideRange = 1500.0F;
 	m_AIShipRideWait = 20.0F;
+	m_AIShipRideDropRing = 150.0F;
 	m_AIVehiclesWaitForRiders = true;
 	m_BoardFromBelow = true;
 	m_BoardFromBelowReach = 24.0F;
@@ -937,6 +938,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AIShipRideLongWalkDistance", { float distance = 0.0F; reader >> distance; SetAIShipRideLongWalkDistance(distance); });
 	MatchProperty("AIShipRideRange", { float range = 0.0F; reader >> range; SetAIShipRideRange(range); });
 	MatchProperty("AIShipRideWait", { float seconds = 0.0F; reader >> seconds; SetAIShipRideWait(seconds); });
+	MatchProperty("AIShipRideDropRing", { float range = 0.0F; reader >> range; SetAIShipRideDropRing(range); });
 	MatchProperty("AIVehiclesWaitForRiders", { reader >> m_AIVehiclesWaitForRiders; });
 	MatchProperty("BoardFromBelow", { reader >> m_BoardFromBelow; });
 	MatchProperty("BoardFromBelowReach", { float reach = 0.0F; reader >> reach; SetBoardFromBelowReach(reach); });
@@ -1609,6 +1611,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AIShipRideLongWalkDistance", m_AIShipRideLongWalkDistance);
 	writer.NewPropertyWithValue("AIShipRideRange", m_AIShipRideRange);
 	writer.NewPropertyWithValue("AIShipRideWait", m_AIShipRideWait);
+	writer.NewPropertyWithValue("AIShipRideDropRing", m_AIShipRideDropRing);
 	writer.NewPropertyWithValue("AIVehiclesWaitForRiders", m_AIVehiclesWaitForRiders);
 	writer.NewPropertyWithValue("BoardFromBelow", m_BoardFromBelow);
 	writer.NewPropertyWithValue("BoardFromBelowReach", m_BoardFromBelowReach);

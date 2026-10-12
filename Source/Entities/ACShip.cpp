@@ -1472,6 +1472,14 @@ void ACShip::UpdateAIRides() {
 	const bool ridesOn = g_SettingsMan.AIRidesShips();
 	const float radius = GetRadius();
 	auto down = [this, radius]() { return GetAltitude(1000, 4) < radius * 0.9F && m_Vel.MagnitudeIsLessThan(3.0F); };
+	// Inside the drop-off ring round where the riders are going (across from it, and not on ground far above or below it), and whether it's
+	// low enough there for them to jump without a long fall.
+	const float dropRing = g_SettingsMan.AIShipRideDropRing();
+	auto inDropRing = [this, radius, dropRing]() {
+		const Vector toGoal = g_SceneMan.ShortestDistance(m_Pos, m_RideGoal);
+		return std::abs(toGoal.m_X) < dropRing && std::abs(toGoal.m_Y) < dropRing + radius * 2.0F;
+	};
+	auto lowEnoughToJump = [this, radius]() { return GetAltitude(1000, 4) < radius * 1.5F + 60.0F; };
 
 	// Those called over get in once they're here, as riders keeping where they're going; or are let go if they've stopped coming (a new
 	// order, dead, or too long on the way), the seats have filled, or it has gone.
@@ -1587,11 +1595,15 @@ void ACShip::UpdateAIRides() {
 				SetRideStage(RideStage::Unloading);
 				break;
 			}
-			// There, or near enough to walk the rest: down low, and out.
-			Vector toGoal = g_SceneMan.ShortestDistance(m_Pos, m_RideGoal);
-			if (std::abs(toGoal.m_X) < std::max(150.0F, radius * 2.0F) && std::abs(toGoal.m_Y) < 250.0F) {
-				m_RideUnloadAt = DropOffPoint(m_RideGoal);
-				SetRideStage(RideStage::Unloading);
+			// Into the drop-off ring: out as soon as it's low enough, without slowing to settle on a spot; higher up, it comes down first.
+			if (inDropRing()) {
+				if (lowEnoughToJump()) {
+					LetRidersOut();
+					SetRideStage(RideStage::None);
+				} else {
+					m_RideUnloadAt = DropOffPoint(m_RideGoal);
+					SetRideStage(RideStage::Unloading);
+				}
 				break;
 			}
 			// Sent there by its air route (again whenever it stopped short: its go-to ended in a hold); it gives up after a few tries, or two
@@ -1618,9 +1630,8 @@ void ACShip::UpdateAIRides() {
 			if (CanFly() && AutopilotStarted() && !m_RideSent) {
 				m_RideSent = FlyTo(m_RideUnloadAt);
 			}
-			// Low and slow over the place (or settled wherever it set itself down, or it's taking too long): out.
-			const bool there = g_SceneMan.ShortestDistance(m_Pos, m_RideUnloadAt).MagnitudeIsLessThan(radius + 30.0F) && m_Vel.MagnitudeIsLessThan(3.0F);
-			if (there || down() || m_RideStageTimer.IsPastSimMS(15000)) {
+			// Low enough inside the drop-off ring (or settled wherever it set itself down, or it's taking too long): out.
+			if ((inDropRing() && lowEnoughToJump()) || down() || m_RideStageTimer.IsPastSimMS(6000)) {
 				LetRidersOut();
 				SetRideStage(RideStage::None);
 			}
