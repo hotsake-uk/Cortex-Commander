@@ -928,6 +928,8 @@ void DebugMan::SettingsGUI() {
 		Tip("Ground sticking out further than this from what holds it up (ground beneath it all the way down, bedrock, buildings) breaks off where it's that far out: a ledge dug or shot this long, or the middle of a cave roof dug twice this wide. 20 pixels is a metre. Overhangs already that long (the scenery) stay until they're cut further. 0: off.");
 		SliderI("Biggest piece that can fall (pixels)", &tuning.MaxPiecePixels, 500, 200000, "%d", ImGuiSliderFlags_Logarithmic);
 		Tip("Anything bigger counts as the world and never falls. 30,000 is about a 170 by 170 block. A tree's trunk and leaves don't count, so a big tree cut through still comes down whole.");
+		SliderI("Smallest piece that can fall (pixels)", &tuning.MinPiecePixels, 0, 20000, "%d", ImGuiSliderFlags_Logarithmic);
+		Tip("Loose pieces smaller than this stay where they are, hanging in the air, so only pieces between this and the biggest above fall. 400 is about a 20 by 20 block (a metre across). Trees still come down at any size. 0 (as the game comes): any size falls.");
 		SliderI("Smallest loose bit of building that falls", &tuning.MinFittingPixels, 0, 2000);
 		Tip("Smaller loose bits of building material stay put: lamps, signs and consoles are drawn hanging in mid-air.");
 		Slider("Force to trigger a collapse check", &tuning.CheckMinForce, 0.0F, 2000.0F, "%.0f", ImGuiSliderFlags_Logarithmic);

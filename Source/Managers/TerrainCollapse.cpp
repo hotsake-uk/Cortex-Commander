@@ -2438,7 +2438,8 @@ namespace {
 			std::sort(piece.Cut.begin(), piece.Cut.end());
 			piece.Cut.erase(std::unique(piece.Cut.begin(), piece.Cut.end()), piece.Cut.end());
 			// Nothing to cut means it's loose already; a lot to cut means it isn't held by a neck at all.
-			if (piece.Cut.empty() || static_cast<int>(piece.Cut.size()) > neckWidth * 4 + 6 || fixed || (building && !TerrainCollapse::BuildingsFall())) {
+			// (Too small to fall, it would only be left hanging with its neck gone.)
+			if (piece.Cut.empty() || static_cast<int>(piece.Cut.size()) > neckWidth * 4 + 6 || static_cast<int>(queue.size()) < TerrainCollapse::GetTuning().MinPiecePixels || fixed || (building && !TerrainCollapse::BuildingsFall())) {
 				continue;
 			}
 			for (int key: piece.Cut) {
@@ -2674,7 +2675,7 @@ namespace {
 				}
 			}
 			// Running off the window, it may be held further out than can be seen; too big, it would only hang there once cut, as the world.
-			if (reachesEdge || region.size() < 6 || static_cast<int>(region.size()) > maxPixels) {
+			if (reachesEdge || region.size() < 6 || static_cast<int>(region.size()) > maxPixels || static_cast<int>(region.size()) < TerrainCollapse::GetTuning().MinPiecePixels) {
 				continue;
 			}
 			HangingPiece piece;
@@ -2966,6 +2967,10 @@ namespace {
 						continue;
 					}
 					if (!FindFloatingPiece(materialBitmap, key, width, height, wrapX, piece, !(tuning.FloatingStays && check.Was), treeRules)) {
+						continue;
+					}
+					// Smaller than the smallest piece that falls, it stays where it is. (Trees aren't held to it, as they aren't to the biggest: a sapling cut through comes down.)
+					if (static_cast<int>(piece.size()) < tuning.MinPiecePixels && std::none_of(piece.begin(), piece.end(), [materialBitmap, width](int pieceKey) { int material = materialBitmap->line[pieceKey / width][pieceKey % width]; return s_TreeTrunk[material] || TerrainTrees::IsTreeMaterial(material); })) {
 						continue;
 					}
 					int origin = -1;

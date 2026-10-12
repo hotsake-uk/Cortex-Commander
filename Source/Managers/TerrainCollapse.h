@@ -21,6 +21,7 @@ namespace RTE {
 			int ThinNeckWidth = 3; //!< A second, narrower look for necks, for pieces too thin for NeckWidth's look to find (it pares them away whole): a thin ledge held on by a neck no wider than this snaps off. 0 turns this off.
 			int OverhangLength = 80; //!< Ground sticking out further than this many pixels from what holds it up (ground beneath it all the way down, bedrock, buildings) breaks off where it's that far out, as a ledge or cave roof dug or shot that long. What stuck out that far already stays. 0 turns this off.
 			int MaxPiecePixels = 16755; //!< A connected piece bigger than this counts as the world itself and never falls.
+			int MinPiecePixels = 0; //!< A loose piece smaller than this stays where it is instead of falling (trees aside). 0: any size falls.
 			int MinFittingPixels = 184; //!< Loose bits of a building smaller than this stay where they are (lamps, signs and consoles are drawn hanging in mid-air).
 			float CheckMinForce = 0.0F; //!< How hard (impulse, kg * m/s, as a material's StructuralIntegrity) a hit knocking terrain out has to be to start the ground around it being checked for collapse. Weaker hits on the same patch add up over a couple of seconds. 0: every hit counts. Explosions, digging and fire always count.
 			float BreakStrength = 0.67F; //!< How hard a landing pieces take before cracking: 2 is twice as tough, 0.5 half.
