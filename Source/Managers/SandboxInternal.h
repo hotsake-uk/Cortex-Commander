@@ -1023,10 +1023,11 @@ namespace SandboxDetail {
 		float FireRate = 1.0F; //!< Times the rate of fire of every gun it is made with.
 	};
 	inline UnitTuning s_UnitTuning;
-	constexpr float c_UnitTuneMin = 0.25F; //!< The least a unit stat multiplier goes down to.
-	constexpr float c_UnitTuneMax = 5.0F; //!< The most a unit stat multiplier goes up to.
-	constexpr float c_VehicleTuneMin = 0.25F; //!< The least a vehicle tuning multiplier goes down to.
-	constexpr float c_VehicleTuneMax = 5.0F; //!< The most a vehicle tuning multiplier goes up to.
+	constexpr float c_UnitTuneMin = 0.01F; //!< The least a unit stat multiplier goes down to.
+	constexpr float c_UnitTuneMax = 100.0F; //!< The most a unit stat multiplier's slider goes up to.
+	constexpr float c_TuneTypedMax = 1000.0F; //!< The most a unit or vehicle multiplier goes up to, typed in (Ctrl+click on its slider).
+	constexpr float c_VehicleTuneMin = 0.01F; //!< The least a vehicle tuning multiplier goes down to.
+	constexpr float c_VehicleTuneMax = 100.0F; //!< The most a vehicle tuning multiplier's slider goes up to.
 	constexpr float c_VehicleCrushMax = 500.0F; //!< The most the Terrain damage slider goes up to: past metal (400).
 
 	/// A unit of your own design (the Loadout Builder): a unit preset and exactly what it carries. Kept in c_LoadoutsFile, by name.

@@ -849,7 +849,7 @@ namespace RTE {
 
 		/// How much tougher than the rest of its kind this one is (the Sandbox's unit Stats), on top of the toughness setting; 1 as it comes.
 		float GetToughnessMultiplier() const { return m_ToughnessMultiplier; }
-		void SetToughnessMultiplier(float multiplier) { m_ToughnessMultiplier = std::max(multiplier, SettingsMan::c_ToughnessMin); }
+		void SetToughnessMultiplier(float multiplier) { m_ToughnessMultiplier = std::max(multiplier, 0.01F); }
 
 		/// How hard this is to blow apart, or to knock its head and limbs off: its toughness, and infinite when it is invincible.
 		float GibToughness() const override;

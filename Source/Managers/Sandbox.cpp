@@ -669,7 +669,7 @@ void Sandbox::SetVehicleSetup(const std::string& setup) {
 		if (!std::getline(numbers, number, ';')) {
 			break;
 		}
-		*value = std::clamp(static_cast<float>(std::atof(number.c_str())), c_VehicleTuneMin, c_VehicleTuneMax);
+		*value = std::clamp(static_cast<float>(std::atof(number.c_str())), c_VehicleTuneMin, c_TuneTypedMax);
 	}
 	s_VehicleTuning = tuning;
 }
@@ -700,7 +700,7 @@ void Sandbox::SetUnitSetup(const std::string& setup) {
 		if (!std::getline(numbers, number, ';')) {
 			break;
 		}
-		*value = std::clamp(static_cast<float>(std::atof(number.c_str())), c_UnitTuneMin, c_UnitTuneMax);
+		*value = std::clamp(static_cast<float>(std::atof(number.c_str())), c_UnitTuneMin, c_TuneTypedMax);
 	}
 	s_UnitTuning = tuning;
 }

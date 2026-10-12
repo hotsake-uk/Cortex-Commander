@@ -561,7 +561,7 @@ namespace SandboxDetail {
 		if (!actor || !tuning.Modified) {
 			return;
 		}
-		auto times = [](float multiplier) { return std::clamp(multiplier, c_UnitTuneMin, c_UnitTuneMax); };
+		auto times = [](float multiplier) { return std::clamp(multiplier, c_UnitTuneMin, c_TuneTypedMax); };
 		if (tuning.Health != 1.0F) {
 			actor->SetMaxHealth(std::max(1, static_cast<int>(std::round(actor->GetMaxHealth() * times(tuning.Health)))));
 			actor->SetHealth(actor->GetMaxHealth());
@@ -580,11 +580,11 @@ namespace SandboxDetail {
 		}
 		if (AEJetpack* jetpack = JetpackOf(actor)) {
 			if (tuning.JetFuel != 1.0F) {
-				jetpack->SetJetTimeTotal(jetpack->GetJetTimeTotal() * std::clamp(tuning.JetFuel, c_JetFuelMin, c_JetFuelMax));
+				jetpack->SetJetTimeTotal(jetpack->GetJetTimeTotal() * times(tuning.JetFuel));
 				jetpack->SetJetTimeLeft(jetpack->GetJetTimeTotal());
 			}
 			if (tuning.JetThrust != 1.0F) {
-				jetpack->SetThrustMultiplier(jetpack->GetThrustMultiplier() * std::clamp(tuning.JetThrust, c_JetThrustMin, c_JetThrustMax));
+				jetpack->SetThrustMultiplier(jetpack->GetThrustMultiplier() * times(tuning.JetThrust));
 			}
 			if (tuning.JetEndless) {
 				actor->SetNumberValue(c_EndlessJetKey, 1.0);

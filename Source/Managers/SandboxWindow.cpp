@@ -1638,7 +1638,7 @@ namespace SandboxDetail {
 		ImGui::SetItemTooltip("Units are made as they come.");
 		ImGui::SameLine();
 		ToolUI::RadioButton("Modified", &mode, 1);
-		ImGui::SetItemTooltip("Units are made with their stats tuned by the sliders: each is times the unit's own value. Units already out stay as they are.");
+		ImGui::SetItemTooltip("Units are made with their stats tuned by the sliders: each is times the unit's own value (Ctrl+click a slider to type any value, up to x1000). Units already out stay as they are.");
 		tuning.Modified = mode == 1;
 		if (!tuning.Modified) {
 			ImGui::PopID();
@@ -1654,13 +1654,16 @@ namespace SandboxDetail {
 				shown += value;
 			}
 			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.62F);
-			ImGui::SliderFloat(label, &multiplier, c_UnitTuneMin, c_UnitTuneMax, shown.c_str(), ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
+			// (Ctrl+click types a value: past the slider's top, up to c_TuneTypedMax.)
+			if (ImGui::SliderFloat(label, &multiplier, c_UnitTuneMin, c_UnitTuneMax, shown.c_str(), ImGuiSliderFlags_Logarithmic)) {
+				multiplier = std::clamp(multiplier, c_UnitTuneMin, c_TuneTypedMax);
+			}
 			ToolUI::ResetButton(label, &multiplier, 1.0F, "Back to x1: the unit's own value.");
 			ImGui::SetItemTooltip("%s", tip);
 			ImGui::PopID();
 		};
 		slider("Health", tuning.Health, unit ? unit->GetMaxHealth() : 0.0F, "hp", "How much health it has. It is made at full health.");
-		slider("Toughness", tuning.Toughness, 0.0F, "", "How much less harm it takes from everything, and how many more wounds and harder blows before it loses a limb or is blown apart. On top of the Unit toughness setting: 2x takes half the damage.");
+		slider("Toughness", tuning.Toughness, 0.0F, "", "How much less harm it takes from everything, and how many more wounds and harder blows before it loses a limb or is blown apart. On top of the Unit toughness setting: 2x takes half the damage. Past 10x altogether it is invincible.");
 		slider("Speed", tuning.Speed, 0.0F, "", "How fast it walks, runs and crawls.");
 		slider("Jump", tuning.Jump, 0.0F, "", "How high a leap of its legs lifts it.");
 		slider("Sight", tuning.Sight, unit ? unit->GetSightDistance() : 0.0F, "px", "How far it sees enemies.");
@@ -1712,7 +1715,7 @@ namespace SandboxDetail {
 		ImGui::SetItemTooltip("Put down as the vehicle comes.");
 		ImGui::SameLine();
 		ToolUI::RadioButton("Modified", &mode, 1);
-		ImGui::SetItemTooltip("Put down with the driving tuned by the sliders: each is times the vehicle's own value. Vehicles already out stay as they are.");
+		ImGui::SetItemTooltip("Put down with the driving tuned by the sliders: each is times the vehicle's own value (Ctrl+click a slider to type any value, up to x1000). Vehicles already out stay as they are.");
 		tuning.Modified = mode == 1;
 		if (!tuning.Modified) {
 			return;
@@ -1731,7 +1734,10 @@ namespace SandboxDetail {
 				shown += value;
 			}
 			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.62F);
-			ImGui::SliderFloat(label, &multiplier, c_VehicleTuneMin, c_VehicleTuneMax, shown.c_str(), ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
+			// (Ctrl+click types a value: past the slider's top, up to c_TuneTypedMax.)
+			if (ImGui::SliderFloat(label, &multiplier, c_VehicleTuneMin, c_VehicleTuneMax, shown.c_str(), ImGuiSliderFlags_Logarithmic)) {
+				multiplier = std::clamp(multiplier, c_VehicleTuneMin, c_TuneTypedMax);
+			}
 			ToolUI::ResetButton(label, &multiplier, 1.0F, "Back to x1: the vehicle's own value.");
 			ImGui::SetItemTooltip("%s Right-click to set it back to x1.", tip);
 			if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
