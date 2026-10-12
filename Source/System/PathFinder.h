@@ -40,7 +40,9 @@ namespace RTE {
 		Swim, //!< Along the surface of liquid too deep to wade, swum by a searcher that floats (PathAgent::Floats).
 		Wade, //!< Through liquid, walked: shallow enough to wade, or along the bottom of deep water for a searcher that sinks.
 		StepOver, //!< Over something low on the floor (a kerb, a sandbag, a body) to a floor level with this one, one or two nodes along, with room to stand over it: stepped, leapt or pulled over at a walk (LM-5).
-		Lift //!< Ridden on a lift's or moving platform's deck from one of its stops to another (LM-11; see LiftTable): the step's start is where the deck is boarded, its end where it is left.
+		Lift, //!< Ridden on a lift's or moving platform's deck from one of its stops to another (LM-11; see LiftTable): the step's start is where the deck is boarded, its end where it is left.
+		Wall, //!< Up, down or round onto the top of a wall, crawled with the body gripping it (CR-10; PathAgent::Climbs), or onto it from the floor or a ceiling.
+		Ceiling //!< Along under a ceiling, crawled hanging from it (CR-10; PathAgent::Climbs at 2).
 	};
 
 	/// What liquid fills a node's column under its surface (see PathNode::Liquid). Told by the material's name, the four FluidSim pours.
@@ -135,6 +137,7 @@ namespace RTE {
 		std::shared_ptr<const LiftTable> Lifts; //!< The lifts it rides (MovableMan::GetPublishedLifts; LM-11), for a humanoid. None for no lift steps.
 		bool CallsLifts = true; //!< Whether it calls a lift to its stop rather than waiting for the lift's own round (SettingsMan::AIUnitsCallLifts): the wait is priced by it.
 		float ClimbOnFootScale = 1.0F; //!< What walking, stairs and scrambling up a slope cost it, as a multiple: over 1 for a unit with a jetpack and fuel, which jets up instead (SettingsMan::PathTuning::JetOverClimb).
+		int Climbs = 0; //!< What it crawls on (CR-10; Actor::Climbing): 0 nothing, 1 walls (Wall steps), 2 walls and ceilings (Ceiling steps too).
 		unsigned RouteSeed = 0; //!< Its own taste in routes (Actor::GetRouteSeed): each part of the map costs it a little more or less, by the seed, so units with different seeds go different ways where the ways are near enough alike. 0 for none: the shortest.
 	};
 
@@ -369,7 +372,7 @@ namespace RTE {
 
 		/// Draws the grid in an area for the navigation debug overlay (SettingsMan::NavDebugOverlay): a dot over each node a body can stand on,
 		/// green where the searcher stands upright, yellow where it can only crawl, red where it doesn't fit; cyan lines for the step-overs,
-		/// magenta for the stairs, pale green arcs for the searcher's leaps.
+		/// magenta for the stairs, pale green arcs for the searcher's leaps; for a searcher that climbs, brown ticks up and down walls and pink along ceilings (CR-10).
 		/// @param area The part of the scene to draw, in scene coordinates.
 		/// @param agent The searcher whose sizes and leaps to show (the inspected unit's, or a soldier's).
 		void DrawDebug(const Box& area, const PathAgent& agent);
@@ -734,6 +737,24 @@ namespace RTE {
 		/// @param node The node the flights leave from.
 		/// @param adjacentList The list to add the links to.
 		void AddFlightLinks(const PathNode& node, std::vector<micropather::StateCost>* adjacentList);
+
+		/// Which side of a node a wall is on, for a crawl up it (CR-10): solid within a node of its middle to the left (-1) or right (1); 0
+		/// for neither.
+		int WallSide(const PathNode& node) const;
+
+		/// Whether a node is under a ceiling a crawler hangs from (CR-10): in the air, with solid ground within a node over its middle.
+		bool UnderCeiling(const PathNode& node) const;
+
+		/// Whether a crawler's body may be at a node (CR-10): one that can be navigated, with its middle in the open and out of any liquid.
+		bool CrawlSpace(const PathNode* node) const;
+
+		/// The crawls from a node for a searcher that climbs (CR-10; PathAgent::Climbs): up and down a wall beside it, over the wall's top
+		/// onto the floor there and from a floor's edge down onto the face below it, and, for one that hangs from ceilings, along under a
+		/// ceiling. Each link's kind (Wall or Ceiling) goes in kinds, one per link added.
+		/// @param node The node.
+		/// @param adjacentList The list to add the links to.
+		/// @param kinds Where each link's step kind goes.
+		void AddClimbLinks(const PathNode& node, std::vector<micropather::StateCost>* adjacentList, std::vector<PathStepKind>& kinds);
 
 		/// A flight link from a node (see CollectFlightLinks).
 		struct FlightLink {

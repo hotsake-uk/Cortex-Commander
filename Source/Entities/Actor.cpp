@@ -154,6 +154,8 @@ void Actor::Clear() {
 	m_VenomDamagePerSecond = 0.0F;
 	m_VenomSlowTo = 1.0F;
 	m_SnareUntil = 0;
+	m_AcidUntil = 0;
+	m_AcidDamagePerSecond = 0.0F;
 	m_ToughnessKind = -2;
 	m_ToughnessHealth = std::numeric_limits<float>::quiet_NaN();
 	m_LastAttackerTeam = Activity::NoTeam;
@@ -597,6 +599,21 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 		reader >> fireProof;
 		m_MovementProfile.FireProof = fireProof ? 1 : 0;
 	});
+	MatchProperty("Climbs", {
+		std::string value;
+		reader >> value;
+		std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		if (value == "none" || value == "0") {
+			m_MovementProfile.Climbs = 0;
+		} else if (value == "walls" || value == "1") {
+			m_MovementProfile.Climbs = 1;
+		} else if (value == "wallsandceilings" || value == "2") {
+			m_MovementProfile.Climbs = 2;
+		} else {
+			reader.ReportError("Unknown Climbs \"" + value + "\": use None, Walls or WallsAndCeilings.");
+		}
+	});
+	MatchProperty("CrawlSpeed", { reader >> m_MovementProfile.CrawlSpeed; });
 	// Elements (CR-7): what it sets alight round it, and what water does to it.
 	MatchProperty("FireAuraRadius", { reader >> m_FireAuraRadius; });
 	MatchProperty("WaterWeakness", { reader >> m_WaterWeakness; });
@@ -713,6 +730,13 @@ int Actor::Save(Writer& writer) const {
 	}
 	if (m_MovementProfile.FireProof >= 0) {
 		writer.NewPropertyWithValue("FireProof", m_MovementProfile.FireProof != 0);
+	}
+	if (m_MovementProfile.Climbs >= 0) {
+		static const char* const c_ClimbNames[] = {"None", "Walls", "WallsAndCeilings"};
+		writer.NewPropertyWithValue("Climbs", std::string(c_ClimbNames[std::clamp(m_MovementProfile.Climbs, 0, 2)]));
+	}
+	if (m_MovementProfile.CrawlSpeed >= 0.0F) {
+		writer.NewPropertyWithValue("CrawlSpeed", m_MovementProfile.CrawlSpeed);
 	}
 	if (m_FireAuraRadius > 0.0F) {
 		writer.NewPropertyWithValue("FireAuraRadius", m_FireAuraRadius);
@@ -1684,6 +1708,19 @@ void Actor::ApplyMovementProfile(PathAgent& agent) const {
 	if (profile.FireProof > 0) {
 		agent.CrossesLava = true;
 	}
+	// Walls and ceilings (CR-10): the route search's Wall and Ceiling steps.
+	agent.Climbs = static_cast<int>(GetClimbing());
+}
+
+Actor::Climbing Actor::GetClimbing() const {
+	if (m_MovementProfile.Climbs <= 0 || !g_SettingsMan.CreaturesClimbWalls()) {
+		return Climbing::None;
+	}
+	return m_MovementProfile.Climbs >= 2 ? Climbing::WallsAndCeilings : Climbing::Walls;
+}
+
+float Actor::GetCrawlSpeed() const {
+	return (m_MovementProfile.CrawlSpeed >= 0.0F ? m_MovementProfile.CrawlSpeed : 3.0F) * g_SettingsMan.CreatureClimbSpeed();
 }
 
 int Actor::GetLiquidDepth() const {

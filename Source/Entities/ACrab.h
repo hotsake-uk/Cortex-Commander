@@ -319,6 +319,24 @@ namespace RTE {
 		/// Forgets the follower's state (a new order).
 		void ResetRouteMovement() override;
 
+		/// Whether it is crawling on a surface with its body (CR-10): gripping a wall or a ceiling (Actor::GetClimbing), or, for a body born
+		/// with no legs (an ooze), on any ground. Gravity is held off while it grips.
+		bool IsClinging() const { return m_Clinging; }
+
+		/// The way out from the surface it grips (CR-10): up off a floor, out from a wall, down from a ceiling. Zero while not clinging.
+		const Vector& GetClingNormal() const { return m_ClingNormal; }
+
+		/// Whether it grips under a ceiling now (CR-10): clinging, with the surface over it.
+		bool IsOnCeiling() const { return m_Clinging && m_ClingNormal.m_Y > 0.5F; }
+
+		/// Lets go of the surface it grips (CR-10), pushed off it a little, and doesn't take hold again for a while: a spider dropping from a
+		/// ceiling onto its prey, or a player's leap off a wall.
+		/// @param seconds How long before it may grip again.
+		void LetGo(float seconds = 0.8F);
+
+		/// Whether it was made with no legs at all (CR-9, an ooze): it crawls on its body, and having none is no wound.
+		bool IsBornLegless() const { return m_BornLegless; }
+
 		/// Protected member variable and method declarations
 	protected:
 		/// Function that is called when we get a new movepath.
@@ -459,6 +477,26 @@ namespace RTE {
 
 		/// Sets each extra leg's foot where the leg it copies has its foot, moved along by how far apart their hips are (CR-5). Each update.
 		void UpdateExtraLegs();
+
+		bool m_Clinging = false; //!< Whether it grips a surface with its body (CR-10; see IsClinging).
+		Vector m_ClingNormal; //!< The way out from the surface it grips (see GetClingNormal).
+		float m_ClingGap = 0.0F; //!< How far its middle is from the surface it grips, in pixels, as last felt.
+		float m_HeldAccScalar = 1.0F; //!< Its gravity scalar from before it took hold, put back when it lets go.
+		Timer m_LetGoTimer; //!< Since it last let go (LetGo), for m_LetGoMS.
+		float m_LetGoMS = 0.0F; //!< How long after letting go it may not take hold again.
+		float m_CrawlStride = 0.0F; //!< How far through a stride its crawling legs are, for their step (0 to 1, round and round).
+		bool m_BornLegless = false; //!< Whether it was made with no legs (see IsBornLegless).
+
+		/// What it wants to crawl towards (CR-10), from its controls: the move stick when it is pushed, else the move keys (jump for up).
+		Vector CrawlIntent() const;
+
+		/// Takes hold of a wall or ceiling, crawls along it and lets go (CR-10): the surface felt for by rays round the body, gravity held off
+		/// while it grips, the body turned to the surface and moved along it by what it wants (CrawlIntent) at its crawl speed. Each update,
+		/// before the legs.
+		void UpdateCrawl();
+
+		/// Puts each foot of a crawling body on the surface it grips (CR-10), found by a ray from its hip, stepping as it moves.
+		void PlaceCrawlingFeet();
 
 		/// Clears all the member variables of this ACrab, effectively
 		/// resetting the members of this abstraction level only.

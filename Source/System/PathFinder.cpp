@@ -99,6 +99,10 @@ thread_local float s_BreathSeconds = FLT_MAX; // How long it holds its breath un
 thread_local bool s_CrossesLava = false; // Whether it may be routed through lava (PathAgent::CrossesLava).
 thread_local float s_JetClimbMSPerPx = 6.0F; // The fuel its climbs burn per pixel of height (PathAgent::JetClimbMSPerPx).
 thread_local float s_Caution = 1.0F; // How much the searcher shies from hard flights and long drops (PathAgent::Caution).
+thread_local int s_Climbs = 0; // What the searcher crawls on (PathAgent::Climbs): 0 nothing, 1 walls, 2 walls and ceilings.
+// The steps of this search whose cheapest edge was a crawl on a wall or a ceiling (CR-10; see AdjacentCost), and which: labelled so
+// (StepKindBetween), as the leaps are. By the geometry alone, a crawl up a wall was a jump and one along a ceiling a walk in the air.
+thread_local std::map<std::pair<const RTE::PathNode*, const RTE::PathNode*>, RTE::PathStepKind> s_ClimbStepsTaken;
 thread_local const RTE::PathNode* s_FlyingStart = nullptr; // The search's start node when the searcher is in the air with a jetpack (see AdjacentCost).
 thread_local const std::vector<std::pair<Vector, Vector>>* s_AvoidLinks = nullptr; // Flights the searcher's side has failed lately (PathAgent::AvoidLinks).
 // The steps of this search whose cheapest edge was a leap (see AdjacentCost): only those are labelled Leap (StepKindBetween). Labelled by
@@ -286,6 +290,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	s_LastSkyRoute = false;
 	s_LeapsTaken.clear();
 	s_LiftStepsTaken.clear();
+	s_ClimbStepsTaken.clear();
 	struct KeptLinks {
 		KeptLinks() { s_KeepLinks = true; }
 		~KeptLinks() {
@@ -736,6 +741,7 @@ void PathFinder::ApplyAgent(const PathAgent& agent) {
 	s_BreathSeconds = agent.BreathSeconds;
 	s_CrossesLava = agent.CrossesLava;
 	s_Caution = agent.Caution;
+	s_Climbs = agent.Climbs;
 	s_Avoid = agent.Avoid.empty() ? nullptr : &agent.Avoid;
 	s_ThreatWeight = agent.ThreatWeight;
 	s_Threats = (agent.Threats && agent.ThreatWeight > 0.0F && !agent.Threats->All.empty()) ? agent.Threats.get() : nullptr;
@@ -870,6 +876,8 @@ namespace {
 		bool CrossesLava = s_CrossesLava;
 		float JetClimbMSPerPx = s_JetClimbMSPerPx;
 		float Caution = s_Caution;
+		int Climbs = s_Climbs;
+		std::map<std::pair<const RTE::PathNode*, const RTE::PathNode*>, PathStepKind> ClimbStepsTaken = s_ClimbStepsTaken;
 		const RTE::PathNode* FlyingStart = s_FlyingStart;
 		const std::vector<std::pair<Vector, Vector>>* AvoidLinks = s_AvoidLinks;
 		const std::vector<Vector>* Avoid = s_Avoid;
@@ -915,6 +923,8 @@ namespace {
 			s_CrossesLava = CrossesLava;
 			s_JetClimbMSPerPx = JetClimbMSPerPx;
 			s_Caution = Caution;
+			s_Climbs = Climbs;
+			s_ClimbStepsTaken = std::move(ClimbStepsTaken);
 			s_FlyingStart = FlyingStart;
 			s_AvoidLinks = AvoidLinks;
 			s_Avoid = Avoid;
@@ -1796,6 +1806,14 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 		}
 	}
 
+	// Crawls up walls and along ceilings (CR-10), for a searcher that climbs (PathAgent::Climbs; a giant spider): see AddClimbLinks.
+	const size_t climbsBegin = adjacentList->size();
+	std::vector<PathStepKind> climbKinds;
+	if (s_Climbs > 0 && !isInNoGrav) {
+		AddClimbLinks(*node, adjacentList, climbKinds);
+	}
+	const size_t climbsEnd = adjacentList->size();
+
 	// Liquid under where a step goes (LM-4): waded, swum, walked along the bottom or kept out of, by what the searcher is (see LiquidCost).
 	// On every edge into such a node, whatever brought it there: a walk along the surface, a fall into it, a flight's landing on it.
 	for (micropather::StateCost& adjacent: *adjacentList) {
@@ -1878,6 +1896,23 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 			s_LeapsTaken.erase(key);
 		}
 	}
+	// Likewise the crawls: one that is the cheapest way to its node is labelled a wall's or a ceiling's.
+	for (size_t i = climbsBegin; i < climbsEnd; ++i) {
+		const micropather::StateCost& climb = (*adjacentList)[i];
+		bool taken = true;
+		for (size_t j = 0; j < adjacentList->size() && taken; ++j) {
+			const micropather::StateCost& other = (*adjacentList)[j];
+			if (j != i && other.state == climb.state && (j < i ? other.cost <= climb.cost : other.cost < climb.cost)) {
+				taken = false;
+			}
+		}
+		std::pair<const PathNode*, const PathNode*> key(node, static_cast<const PathNode*>(climb.state));
+		if (taken) {
+			s_ClimbStepsTaken[key] = climbKinds[i - climbsBegin];
+		} else {
+			s_ClimbStepsTaken.erase(key);
+		}
+	}
 	// Likewise the lift steps: one that is the cheapest way to its node is labelled a ride, or a walk on or off the deck.
 	if (liftsEnd > liftsBegin) {
 		const std::vector<LiftLink>& links = s_LiftLinks.find(node)->second;
@@ -1895,6 +1930,104 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 				s_LiftStepsTaken[key] = links[i - liftsBegin].Ride ? PathStepKind::Lift : PathStepKind::Walk;
 			} else {
 				s_LiftStepsTaken.erase(key);
+			}
+		}
+	}
+}
+
+int PathFinder::WallSide(const PathNode& node) const {
+	const int reach = static_cast<int>(m_NodeDimension);
+	if (node.ClearLeft < reach) {
+		return -1;
+	}
+	return node.ClearRight < reach ? 1 : 0;
+}
+
+bool PathFinder::UnderCeiling(const PathNode& node) const {
+	return !NodeIsOnSolidGround(node) && node.FreeHeight < static_cast<int>(m_NodeDimension);
+}
+
+bool PathFinder::CrawlSpace(const PathNode* node) const {
+	if (!node || !node->m_Navigable) {
+		return false;
+	}
+	unsigned char id = TerrNav(static_cast<int>(node->Pos.m_X), static_cast<int>(node->Pos.m_Y));
+	if (id == MaterialColorKeys::g_MaterialAir) {
+		return true;
+	}
+	const Material* material = g_SceneMan.GetMaterialFromID(id);
+	return material && Open(*material) && LiquidOf(id) == PathLiquid::None;
+}
+
+void PathFinder::AddClimbLinks(const PathNode& node, std::vector<micropather::StateCost>* adjacentList, std::vector<PathStepKind>& kinds) {
+	if (!CrawlSpace(&node)) {
+		return;
+	}
+	micropather::StateCost adjCost;
+	auto link = [&](const PathNode* to, float cost, PathStepKind kind) {
+		adjCost.cost = cost;
+		adjCost.state = const_cast<PathNode*>(to);
+		adjacentList->push_back(adjCost);
+		kinds.push_back(kind);
+	};
+	const bool ceilings = s_Climbs >= 2;
+	// (A careful order keeps off the ceilings where it can: a fall from one is a long way down. SettingsMan::AIMoveCaution.)
+	const float ceilingCost = 1.8F * std::max(1.0F, s_Caution);
+	const int side = WallSide(node);
+	// A node a crawler holds on at: against a wall, under a ceiling it may hang from, or on the floor.
+	auto holds = [&](const PathNode* n) { return CrawlSpace(n) && (WallSide(*n) != 0 || (ceilings && UnderCeiling(*n)) || NodeIsOnSolidGround(*n)); };
+
+	if (side != 0) {
+		// Up the wall, to a node against it still (or under the ceiling at its top, for one that hangs from ceilings), and down it to the
+		// next node against it or the floor at its foot. Priced over the walk, the climb a little dearer than the way down.
+		if (node.Up && Open(*node.UpMaterial) && CrawlSpace(node.Up) && (WallSide(*node.Up) != 0 || (ceilings && UnderCeiling(*node.Up)))) {
+			link(node.Up, 1.5F + s_Tune.UpCost * 0.5F, PathStepKind::Wall);
+		}
+		if (node.Down && Open(*node.DownMaterial) && CrawlSpace(node.Down) && (WallSide(*node.Down) != 0 || NodeIsOnSolidGround(*node.Down))) {
+			link(node.Down, 1.2F, PathStepKind::Wall);
+		}
+		// Up a leaning wall: diagonally, to a node against a wall on the same side.
+		for (const PathNode* to: {side < 0 ? node.LeftUp : node.UpRight, side < 0 ? node.DownLeft : node.RightDown}) {
+			if (to && to != node.Up && CrawlSpace(to) && WallSide(*to) == side && LineOpen(node.Pos, to->Pos)) {
+				link(to, 1.8F, PathStepKind::Wall);
+			}
+		}
+		// Over the top: onto the floor on the wall's top, beside the node over this one.
+		if (node.Up && Open(*node.UpMaterial) && CrawlSpace(node.Up)) {
+			const PathNode* top = side < 0 ? node.Up->Left : node.Up->Right;
+			const Material* across = side < 0 ? node.Up->LeftMaterial : node.Up->RightMaterial;
+			if (top && Open(*across) && CrawlSpace(top) && NodeIsOnSolidGround(*top)) {
+				link(top, 2.0F + s_Tune.UpCost * 0.5F, PathStepKind::Wall);
+			}
+		}
+	}
+	// Over the edge of a floor and down onto the face below it: from a floor whose neighbour is the open air over a drop, to the node under
+	// that, against the face.
+	if (NodeIsOnSolidGround(node)) {
+		for (int dir: {-1, 1}) {
+			const PathNode* out = dir < 0 ? node.Left : node.Right;
+			const Material* across = dir < 0 ? node.LeftMaterial : node.RightMaterial;
+			if (!out || !Open(*across) || !CrawlSpace(out) || NodeIsOnSolidGround(*out)) {
+				continue;
+			}
+			const PathNode* face = out->Down;
+			if (face && Open(*out->DownMaterial) && CrawlSpace(face) && WallSide(*face) == -dir) {
+				link(face, 2.0F, PathStepKind::Wall);
+			}
+		}
+	}
+	// Along the ceiling: to the node beside this one under it, level or a node up or down (a ceiling isn't flat), hanging all the way.
+	if (ceilings && UnderCeiling(node)) {
+		for (int dir: {-1, 1}) {
+			const PathNode* level = dir < 0 ? node.Left : node.Right;
+			const Material* across = dir < 0 ? node.LeftMaterial : node.RightMaterial;
+			if (level && Open(*across) && holds(level) && (UnderCeiling(*level) || WallSide(*level) != 0)) {
+				link(level, ceilingCost, PathStepKind::Ceiling);
+			}
+			for (const PathNode* to: {dir < 0 ? node.LeftUp : node.UpRight, dir < 0 ? node.DownLeft : node.RightDown}) {
+				if (to && CrawlSpace(to) && UnderCeiling(*to) && LineOpen(node.Pos, to->Pos)) {
+					link(to, ceilingCost * 1.4F, PathStepKind::Ceiling);
+				}
 			}
 		}
 	}
@@ -2110,6 +2243,12 @@ float PathFinder::HeadRoomFactor(const PathNode& from, const PathNode& to) const
 PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* to) const {
 	if (!from || !to) {
 		return PathStepKind::Walk;
+	}
+	// A crawl on a wall or a ceiling, where the search took the crawl's edge (CR-10; see s_ClimbStepsTaken).
+	if (!s_ClimbStepsTaken.empty()) {
+		if (auto taken = s_ClimbStepsTaken.find({from, to}); taken != s_ClimbStepsTaken.end()) {
+			return taken->second;
+		}
 	}
 	// A lift's ride, or a step on or off its deck, where the search took the lift's edge (see s_LiftStepsTaken).
 	if (!s_LiftStepsTaken.empty()) {
@@ -2503,6 +2642,8 @@ void PathFinder::DrawDebug(const Box& area, const PathAgent& agent) {
 	static const unsigned char channelColor = static_cast<unsigned char>(Color(150, 120, 255).GetIndex());
 	static const unsigned char ladderColor = static_cast<unsigned char>(Color(255, 150, 40).GetIndex());
 	static const unsigned char leapColor = static_cast<unsigned char>(Color(140, 255, 200).GetIndex());
+	static const unsigned char wallColor = static_cast<unsigned char>(Color(200, 140, 80).GetIndex());
+	static const unsigned char ceilingColor = static_cast<unsigned char>(Color(255, 130, 200).GetIndex());
 	// The grid is the same for every searcher; what fits is the searcher's: the inspected unit's sizes (see Scene::Update), or a soldier's.
 	const float stand = agent.StandHeight;
 	const float crawl = agent.CrawlHeight;
@@ -2530,6 +2671,16 @@ void PathFinder::DrawDebug(const Box& area, const PathAgent& agent) {
 			// (A node in the air whose anchor is off its centre, in a shaft or a hatch: a small dot where routes through it go.)
 			if (node && node->m_Navigable && node->Surface < 0.0F && std::abs(node->Anchor.m_X - node->Pos.m_X) >= 2.0F) {
 				g_PrimitiveMan.DrawCircleFillPrimitive(node->Anchor, 1, channelColor);
+			}
+			// (For a searcher that climbs, CR-10: its crawls out of every node, brown up and down walls and pink along ceilings.)
+			if (node && node->m_Navigable && s_Climbs > 0) {
+				std::vector<micropather::StateCost> climbs;
+				std::vector<PathStepKind> climbKinds;
+				AddClimbLinks(*node, &climbs, climbKinds);
+				for (size_t i = 0; i < climbs.size(); ++i) {
+					const PathNode* to = static_cast<const PathNode*>(climbs[i].state);
+					g_PrimitiveMan.DrawLinePrimitive(node->Pos, node->Pos + g_SceneMan.ShortestDistance(node->Pos, to->Pos) * 0.45F, climbKinds[i] == PathStepKind::Ceiling ? ceilingColor : wallColor);
+				}
 			}
 			if (!node || !node->m_Navigable || node->Surface < 0.0F || !NodeIsOnSolidGround(*node)) {
 				continue;

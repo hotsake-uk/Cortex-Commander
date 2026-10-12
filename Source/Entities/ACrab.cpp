@@ -75,6 +75,14 @@ void ACrab::Clear() {
 	m_LegJumpSpeed = 3.5F;
 	m_Leaping = false;
 	m_LeapTimer.Reset();
+	m_Clinging = false;
+	m_ClingNormal.Reset();
+	m_ClingGap = 0.0F;
+	m_HeldAccScalar = 1.0F;
+	m_LetGoTimer.Reset();
+	m_LetGoMS = 0.0F;
+	m_CrawlStride = 0.0F;
+	m_BornLegless = false;
 }
 
 int ACrab::Create() {
@@ -97,6 +105,9 @@ int ACrab::Create() {
 
 	// All ACrabs by default avoid hitting each other ont he same team
 	m_IgnoresTeamHits = true;
+
+	// (Made with no legs at all, CR-9: an ooze crawls on its body.)
+	m_BornLegless = !m_pLFGLeg && !m_pLBGLeg && !m_pRFGLeg && !m_pRBGLeg && m_ExtraLegs.empty();
 
 	// Check whether UpperLimit and LowerLimit are defined, if not, copy general AimRange value to preserve compatibility
 	if (m_AimRangeUpperLimit == -1 || m_AimRangeLowerLimit == -1) {
@@ -236,6 +247,7 @@ int ACrab::Create(const ACrab& reference) {
 	m_LockMouseAimInput = reference.m_LockMouseAimInput;
 	m_LegJumpHeight = reference.m_LegJumpHeight;
 	m_LegJumpSpeed = reference.m_LegJumpSpeed;
+	m_BornLegless = reference.m_BornLegless;
 
 	return 0;
 }
@@ -978,6 +990,7 @@ void ACrab::PreControllerUpdate() {
 	if (m_Controller.GetInputMode() == Controller::CIM_AI && m_Status != DYING && m_Status != DEAD && ZeroGravity::AIFlies() && ZeroGravity::UnitsWeightless() && !HeldByAutomover()) {
 		HoldStillWeightless(m_pJetpack);
 	}
+	UpdateCrawl();
 	UpdateLeap();
 	if (m_pJetpack && m_pJetpack->IsAttached()) {
 		m_pJetpack->UpdateBurstState(*this);
@@ -1184,7 +1197,9 @@ void ACrab::PreControllerUpdate() {
 
 	m_StrideFrame = false;
 
-	if (m_Status == STABLE && !m_LimbPushForcesAndCollisionsDisabled) {
+	if (m_Clinging) {
+		// (Crawling on a wall or ceiling, CR-10: the body is moved along the surface by UpdateCrawl, and the feet are put on it below.)
+	} else if (m_Status == STABLE && !m_LimbPushForcesAndCollisionsDisabled) {
 		// This exists to support disabling foot collisions if the limbpath has that flag set.
 		if ((m_pLFGFootGroup->GetAtomCount() == 0 && m_BackupLFGFootGroup->GetAtomCount() > 0) != m_Paths[LEFTSIDE][FGROUND][m_MovementState].FootCollisionsShouldBeDisabled()) {
 			m_BackupLFGFootGroup->SetLimbPos(m_pLFGFootGroup->GetLimbPos());
@@ -1402,6 +1417,9 @@ void ACrab::PreControllerUpdate() {
 	}
 
 	UpdateExtraLegs();
+	if (m_Clinging) {
+		PlaceCrawlingFeet();
+	}
 }
 
 void ACrab::Update() {
@@ -1410,7 +1428,7 @@ void ACrab::Update() {
 	Actor::Update();
 
 	// Up onto ledges and over low obstacles, as humanoids do (Actor::TryStartMantle).
-	if (!m_Mantling) {
+	if (!m_Mantling && !m_Clinging) {
 		bool rising = m_pJetpack && m_pJetpack->IsEmitting() && m_Vel.m_Y < 0.5F;
 		TryStartMantle(nullptr, rising, static_cast<float>(GetSpriteWidth()));
 	}
@@ -1466,48 +1484,69 @@ void ACrab::Update() {
 
 	// Get the rotation in radians.
 	float rot = m_Rotation.GetRadAngle();
-	//        rot = fabs(rot) < c_QuarterPI ? rot : (rot > 0 ? c_QuarterPI : -c_QuarterPI);
-	// Eliminate full rotations
-	while (fabs(rot) > c_TwoPI) {
-		rot -= rot > 0 ? c_TwoPI : -c_TwoPI;
-	}
-	// Eliminate rotations over half a turn
-	if (fabs(rot) > c_PI) {
-		rot = (rot > 0 ? -c_PI : c_PI) + (rot - (rot > 0 ? c_PI : -c_PI));
-		// If we're upside down, we're unstable damnit
-		if (m_Status == STABLE) {
-			m_Status = UNSTABLE;
+	// Crawling on a surface (CR-10): turned to it, its back to the open air, the way out from the surface its up. No falling over.
+	if (m_Clinging && m_Status == STABLE) {
+		float target = std::atan2(-m_ClingNormal.m_X, -m_ClingNormal.m_Y);
+		float diff = target - rot;
+		while (diff > c_PI) {
+			diff -= c_TwoPI;
 		}
-		m_StableRecoverTimer.Reset();
-	}
+		while (diff < -c_PI) {
+			diff += c_TwoPI;
+		}
+		rot += diff * std::min(1.0F, g_TimerMan.GetDeltaTimeSecs() * 10.0F);
+		while (rot > c_PI) {
+			rot -= c_TwoPI;
+		}
+		while (rot < -c_PI) {
+			rot += c_TwoPI;
+		}
+		m_AngularVel = 0.0F;
+		m_Rotation.SetRadAngle(rot);
+	} else {
+		//        rot = fabs(rot) < c_QuarterPI ? rot : (rot > 0 ? c_QuarterPI : -c_QuarterPI);
+		// Eliminate full rotations
+		while (fabs(rot) > c_TwoPI) {
+			rot -= rot > 0 ? c_TwoPI : -c_TwoPI;
+		}
+		// Eliminate rotations over half a turn
+		if (fabs(rot) > c_PI) {
+			rot = (rot > 0 ? -c_PI : c_PI) + (rot - (rot > 0 ? c_PI : -c_PI));
+			// If we're upside down, we're unstable damnit
+			if (m_Status == STABLE) {
+				m_Status = UNSTABLE;
+			}
+			m_StableRecoverTimer.Reset();
+		}
 
-	// Rotational balancing spring calc
-	if (m_Status == STABLE) {
-		// Upright body posture
-		m_AngularVel = m_AngularVel * 0.9F - (rot * 0.3F);
-	}
-	// While dying, pull body quickly toward down toward horizontal
-	else if (m_Status == DYING) {
-		float rotTarget = rot > 0 ? c_HalfPI : -c_HalfPI;
-		//        float rotTarget = m_HFlipped ? c_HalfPI : -c_HalfPI;
-		float rotDiff = rotTarget - rot;
-		if (!m_DeathTmr.IsPastSimMS(125) && fabs(rotDiff) > 0.1 && fabs(rotDiff) < c_PI) {
-			m_AngularVel += rotDiff * 0.5; // fabs(rotDiff);
-			//            m_Vel.m_X += (m_HFlipped ? -fabs(rotDiff) : fabs(rotDiff)) * 0.35;
-			m_Vel.m_X += (rotTarget > 0 ? -fabs(rotDiff) : fabs(rotDiff)) * 0.35;
-		} else
-			m_Status = DEAD;
+		// Rotational balancing spring calc
+		if (m_Status == STABLE) {
+			// Upright body posture
+			m_AngularVel = m_AngularVel * 0.9F - (rot * 0.3F);
+		}
+		// While dying, pull body quickly toward down toward horizontal
+		else if (m_Status == DYING) {
+			float rotTarget = rot > 0 ? c_HalfPI : -c_HalfPI;
+			//        float rotTarget = m_HFlipped ? c_HalfPI : -c_HalfPI;
+			float rotDiff = rotTarget - rot;
+			if (!m_DeathTmr.IsPastSimMS(125) && fabs(rotDiff) > 0.1 && fabs(rotDiff) < c_PI) {
+				m_AngularVel += rotDiff * 0.5; // fabs(rotDiff);
+				//            m_Vel.m_X += (m_HFlipped ? -fabs(rotDiff) : fabs(rotDiff)) * 0.35;
+				m_Vel.m_X += (rotTarget > 0 ? -fabs(rotDiff) : fabs(rotDiff)) * 0.35;
+			} else
+				m_Status = DEAD;
 
-		//        else if (fabs(m_AngularVel) > 0.1)
-		//            m_AngularVel *= 0.5;
+			//        else if (fabs(m_AngularVel) > 0.1)
+			//            m_AngularVel *= 0.5;
+		}
+		m_Rotation.SetRadAngle(rot);
 	}
-	m_Rotation.SetRadAngle(rot);
 
 	///////////////////////////////////////////////////
 	// Death detection and handling
 
-	// Losing all limbs should kill... eventually
-	if (!m_pLFGLeg && !m_pLBGLeg && !m_pRFGLeg && !m_pRBGLeg && m_Status != DYING && m_Status != DEAD)
+	// Losing all limbs should kill... eventually (but not a body made with none, CR-9)
+	if (!m_BornLegless && !m_pLFGLeg && !m_pLBGLeg && !m_pRFGLeg && !m_pRBGLeg && m_Status != DYING && m_Status != DEAD)
 		m_Health -= 0.1;
 
 	/////////////////////////////////////////
@@ -1728,6 +1767,189 @@ namespace {
 	}
 } // namespace
 
+Vector ACrab::CrawlIntent() const {
+	Vector intent = m_Controller.GetAnalogMove();
+	if (intent.MagnitudeIsGreaterThan(0.2F)) {
+		return intent.MagnitudeIsGreaterThan(1.0F) ? intent.GetNormalized() : intent;
+	}
+	intent.Reset();
+	if (m_Controller.IsState(MOVE_LEFT)) {
+		intent.m_X -= 1.0F;
+	}
+	if (m_Controller.IsState(MOVE_RIGHT)) {
+		intent.m_X += 1.0F;
+	}
+	if (m_Controller.IsState(MOVE_UP) || (m_Controller.IsPlayerControlled() && m_Controller.IsState(BODY_JUMP))) {
+		intent.m_Y -= 1.0F;
+	}
+	if (m_Controller.IsState(MOVE_DOWN)) {
+		intent.m_Y += 1.0F;
+	}
+	return intent.MagnitudeIsGreaterThan(1.0F) ? intent.GetNormalized() : intent;
+}
+
+void ACrab::LetGo(float seconds) {
+	m_LetGoTimer.Reset();
+	m_LetGoMS = std::max(0.0F, seconds) * 1000.0F;
+	if (!m_Clinging) {
+		return;
+	}
+	const bool fromCeiling = m_ClingNormal.m_Y > 0.5F;
+	m_Clinging = false;
+	SetGlobalAccScalar(m_HeldAccScalar);
+	// (Pushed off the surface a little; off a ceiling, turned the right way up on the way down, as a spider drops on a thread.)
+	m_Vel += m_ClingNormal * 1.5F;
+	if (fromCeiling) {
+		m_Rotation.SetRadAngle(0.0F);
+		m_AngularVel = 0.0F;
+	}
+	m_ClingNormal.Reset();
+	ForceDeepCheck();
+}
+
+void ACrab::UpdateCrawl() {
+	const Climbing climbing = GetClimbing();
+	auto release = [&](float seconds) {
+		if (m_Clinging) {
+			LetGo(seconds);
+		}
+	};
+	if ((climbing == Climbing::None && !m_BornLegless) || m_Status != STABLE || IsDead() || IsEnsnared() || HeldByAutomover() || m_Mantling) {
+		release(0.5F);
+		return;
+	}
+	// Knocked off by a hard blow (a blast, a ram): a speed change in one update no crawl makes.
+	if (m_Clinging && (m_Vel - m_PrevVel).MagnitudeIsGreaterThan(6.0F)) {
+		release(1.5F);
+		return;
+	}
+	// A leap off the wall or ceiling, on the leap key.
+	if (m_Clinging && m_Controller.IsState(BODY_LEAP)) {
+		release(0.8F);
+		m_Vel += CrawlIntent() * 2.0F;
+		return;
+	}
+
+	// The surface, felt for by rays all round the body: the way out from it is from the hits, the nearer the more. The floor under it is
+	// left out while it is off the floor and not heading down, and when it stands and wants up a wall: at the foot of a wall the floor
+	// and the wall together read as a slope, and it never took hold, or let go again at once.
+	const Vector intent = CrawlIntent();
+	Vector hit;
+	const float reach = std::max(GetRadius() * 0.8F, 12.0F);
+	const bool standing = !m_Clinging && g_SceneMan.CastStrengthRay(m_Pos, Vector(0.0F, reach * 1.4F), 5.0F, hit, 2);
+	const bool leaveFloor = !m_BornLegless && ((m_Clinging && m_ClingNormal.m_Y > -0.6F && intent.m_Y < 0.2F) || standing);
+	const float feel = reach * (m_Clinging ? 1.7F : 1.25F);
+	const float hold = reach * 0.6F;
+	Vector away;
+	float nearest = feel;
+	constexpr int c_Rays = 16;
+	for (int i = 0; i < c_Rays; ++i) {
+		const float angle = c_TwoPI * static_cast<float>(i) / static_cast<float>(c_Rays);
+		const Vector dir(std::cos(angle), std::sin(angle));
+		if (leaveFloor && dir.m_Y > 0.5F) {
+			continue;
+		}
+		if (g_SceneMan.CastStrengthRay(m_Pos, dir * feel, 5.0F, hit, 1, MaterialColorKeys::g_MaterialAir)) {
+			const float gap = g_SceneMan.ShortestDistance(m_Pos, hit).GetMagnitude();
+			away -= dir * (1.0F - gap / feel);
+			nearest = std::min(nearest, gap);
+		}
+	}
+	if (away.MagnitudeIsLessThan(0.05F)) {
+		// (Come up past the top of a wall: a little lift and on over it, for the legs to take it from there.)
+		if (m_Clinging && intent.m_Y < -0.2F) {
+			m_Vel += Vector(intent.m_X * 2.0F, -2.0F);
+		}
+		release(0.3F);
+		return;
+	}
+	const Vector normal = away.GetNormalized();
+	const bool floor = normal.m_Y < -0.6F;
+	const bool ceiling = normal.m_Y > 0.6F;
+
+	// What it may grip: walls when it climbs, ceilings when it climbs those too, and any ground for a body with no legs. A legged body on a
+	// floor walks on its legs.
+	const bool allowed = floor ? m_BornLegless : (ceiling ? climbing == Climbing::WallsAndCeilings : (climbing != Climbing::None || m_BornLegless));
+	if (!allowed) {
+		// (Come over the top of a wall onto its floor: a little lift and on, for the legs to take it from there.)
+		if (m_Clinging && floor && intent.m_Y < -0.2F) {
+			m_Vel += Vector(intent.m_X * 1.5F, -1.5F);
+		}
+		release(floor ? 0.2F : 0.5F);
+		return;
+	}
+	if (!m_Clinging) {
+		if (!m_LetGoTimer.IsPastSimMS(m_LetGoMS) || m_Leaping) {
+			return;
+		}
+		// Takes hold: a legless body on whatever it lies on; a climber falling past a wall or ceiling, or pressing into one or up.
+		const bool wants = intent.Dot(-normal) > 0.3F || intent.m_Y < -0.5F;
+		if (!m_BornLegless && standing && !wants) {
+			return;
+		}
+		if (!m_BornLegless && !standing && !wants && m_Vel.m_Y < 0.5F) {
+			return;
+		}
+		m_Clinging = true;
+		m_HeldAccScalar = GetGlobalAccScalar();
+		m_Leaping = false;
+	}
+	m_ClingNormal = normal;
+	m_ClingGap = nearest;
+	SetGlobalAccScalar(0.0F);
+
+	// Along the surface by what it wants; a player pushing into a wall goes up it. Held at its gap from the surface.
+	const Vector along(-normal.m_Y, normal.m_X);
+	float pace = intent.Dot(along);
+	if (!floor && !ceiling && std::abs(intent.m_Y) < 0.3F && intent.Dot(-normal) > 0.5F) {
+		pace = Vector(0.0F, -1.0F).Dot(along);
+	}
+	const float speed = GetCrawlSpeed() * GetAfflictionSpeedMultiplier() * GetOverloadSpeedMultiplier();
+	Vector wanted = along * (pace * speed) - normal * ((nearest - hold) * c_MPP * 8.0F);
+	m_Vel += (wanted - m_Vel) * std::min(1.0F, g_TimerMan.GetDeltaTimeSecs() * 10.0F);
+	m_MovementState = std::abs(pace) > 0.1F ? WALK : STAND;
+	if (std::abs(pace) > 0.1F) {
+		m_CrawlStride += g_TimerMan.GetDeltaTimeSecs() * speed * 0.6F;
+		m_CrawlStride -= std::floor(m_CrawlStride);
+		// (Facing the way it crawls along a floor or ceiling; on a wall it keeps its facing.)
+		if (std::abs(normal.m_Y) > 0.6F && std::abs(intent.m_X) > 0.2F) {
+			const bool left = (intent.m_X < 0.0F) != ceiling;
+			if (left != m_HFlipped) {
+				SetHFlipped(left);
+			}
+		}
+	}
+}
+
+void ACrab::PlaceCrawlingFeet() {
+	const Vector along(-m_ClingNormal.m_Y, m_ClingNormal.m_X);
+	int index = 0;
+	auto place = [&](Leg* leg) {
+		if (!leg || !leg->IsAttached()) {
+			return;
+		}
+		const Vector hip = leg->GetJointPos();
+		const float length = leg->GetMaxLength();
+		// Out from the body along the surface, by the hip's side, and on with the stride: alternate legs a half step apart.
+		const float side = g_SceneMan.ShortestDistance(m_Pos, hip).Dot(along) >= 0.0F ? 1.0F : -1.0F;
+		const float phase = m_CrawlStride + (index % 2 == 0 ? 0.0F : 0.5F);
+		const float step = m_MovementState == WALK ? std::sin(phase * c_TwoPI) * 0.35F : 0.0F;
+		Vector reach = (-m_ClingNormal + along * (side * 0.7F + step)).GetNormalized() * (length * 1.1F);
+		Vector hit;
+		Vector foot = g_SceneMan.CastStrengthRay(hip, reach, 5.0F, hit, 1) ? hit : hip + reach;
+		leg->EnableIdle(true);
+		leg->SetTargetPosition(foot);
+		++index;
+	};
+	place(m_pLFGLeg);
+	place(m_pRFGLeg);
+	place(m_pLBGLeg);
+	place(m_pRBGLeg);
+	for (const ExtraLeg& extra: m_ExtraLegs) {
+		place(extra.Part);
+	}
+}
+
 void ACrab::ResetRouteMovement() {
 	m_CrabMover = CrabMover();
 }
@@ -1910,6 +2132,15 @@ int ACrab::MoveAlongRoute() {
 		ctrl.SetState(BODY_JUMP, true);
 		ctrl.SetAnalogMove(Vector(std::clamp(lean, -1.0F, 1.0F) * 0.27F, -1.0F));
 	};
+
+	// ---- Crawling (CR-10): on a wall or ceiling, or on any ground for a body with no legs, or with a crawl up a wall next. The body is
+	// moved along the surface by UpdateCrawl, towards where the stick points: at the route's point. ----
+	if ((GetClimbing() != Climbing::None || m_BornLegless) && (m_Clinging || kind == PathStepKind::Wall || kind == PathStepKind::Ceiling)) {
+		if (toPoint.MagnitudeIsGreaterThan(2.0F)) {
+			ctrl.SetAnalogMove(toPoint.GetNormalized());
+		}
+		return 0;
+	}
 
 	// ---- In the air: a climb for a point above, held to a rate the coast just reaches it at; else the fall braked for its floor. ----
 	if (airborne) {

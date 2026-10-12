@@ -12,6 +12,10 @@
 --   CreatureSpitCooldown how long between spits, in ms (default 6000)
 --   CreatureSpitSpeed    how fast the spit flies, in m/s (default 18)
 --   CreatureAttackRange  for a creature on two legs (CR-7): how close it gets before it lets its prey have it, in pixels (default 110)
+--   CreatureLurks        1 for a creature that hangs from a ceiling in wait while on guard (CR-10, a giant spider; it must climb ceilings)
+--   CreatureLurkHeight   how far over its post it looks for a ceiling to lurk on, in pixels (default 300)
+--   CreatureLurkWait     how long it waits up there for prey it has seen to come under it before going after it, in ms (default 8000)
+--   CreatureDropReach    how far to one side of right under it its prey may be for it to drop on it, in pixels (default 40)
 -- and a string value:
 --   CreatureSpit         the preset of what it spits (an MOPixel in Base.rte)
 
@@ -108,11 +112,29 @@ local function HeldBySpit(Target)
 	return IsActor(Target) and ToActor(Target).IsEnsnared;
 end
 
--- Spits at its prey (CR-6, a giant spider's web) when it is in range, in the open and not held already, and the spit is ready: aimed a
--- little high for the drop on the way. @return Whether it spat.
+-- Whether it crawls with its body (CR-10): up walls (and along ceilings) for a climber, or on its belly for one with no legs.
+local function Crawls(Owner)
+	return Owner.ClassName == "ACrab" and (Owner.Climbs > 0 or ToACrab(Owner).IsBornLegless);
+end
+
+-- Steers a crawling body to a point (CR-10): the stick at it, which the body crawls along the surface it grips (ACrab::UpdateCrawl), and
+-- the walking keys towards it while it isn't gripping, to walk to the foot of the wall.
+local function CrawlTo(AI, Owner, To)
+	if To.Magnitude > 2 then
+		AI.Ctrl.AnalogMove = To.Normalized;
+	end
+	if ToACrab(Owner).IsClinging or math.abs(To.X) <= 3 then
+		AI.lateralMoveState = Actor.LAT_STILL;
+	else
+		AI.lateralMoveState = To.X > 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
+	end
+end
+
+-- Spits at its prey (CR-6, a giant spider's web) when it is in range, in the open and not held already, the spit is ready and it isn't
+-- webbed itself: aimed a little high for the drop on the way. @return Whether it spat.
 function CreatureBehaviors.SpitAt(AI, Owner, Target, gap, SpitTimer)
 	local range = Value(Owner, "CreatureSpitRange", 0);
-	if range <= 0 or gap > range or not Owner:StringValueExists("CreatureSpit") or HeldBySpit(Target)
+	if range <= 0 or gap > range or Owner.IsEnsnared or not Owner:StringValueExists("CreatureSpit") or HeldBySpit(Target)
 		or not SpitTimer:IsPastSimMS(Value(Owner, "CreatureSpitCooldown", 6000)) then
 		return false;
 	end
@@ -156,6 +178,8 @@ function CreatureBehaviors.HuntTarget(AI, Owner, Abort)
 	local SpitTimer = Timer();
 	SpitTimer.ElapsedSimTimeMS = 60000; -- (Ready at once.)
 	local HeldTimer = Timer(); -- How long the prey has been out of reach of one not let go after it.
+	-- (Seen from a ceiling it lurks on, CR-10: it waits up there a while for its prey to come under it.)
+	local LurkTimer = (Crawls(Owner) and ToACrab(Owner).IsOnCeiling) and Timer() or nil;
 	local ProgressTimer = Timer();
 	local closest = math.huge;
 	Owner:SetNumberValue("CreatureHuntID", AI.Target.UniqueID);
@@ -193,7 +217,27 @@ function CreatureBehaviors.HuntTarget(AI, Owner, Abort)
 		AI.Ctrl.AnalogAim = SceneMan:ShortestDistance(Owner.EyePos, Target.Pos, false).Normalized;
 		AI.Ctrl:SetState(Controller.BODY_LEAP, false);
 
-		if gap <= reach then
+		-- On a ceiling (CR-10): it drops on its prey once the prey is under it, and while it lurks it waits up there a while for that,
+		-- spitting at it, before going after it.
+		local waiting = false;
+		if Crawls(Owner) and ToACrab(Owner).IsOnCeiling then
+			local under = ToTarget.Y > 0 and math.abs(ToTarget.X) < Value(Owner, "CreatureDropReach", 40) + ToTarget.Y * 0.2;
+			if under and SceneMan:CastStrengthSumRay(Owner.Pos, Target.Pos, 4, rte.grassID) < 50 then
+				ToACrab(Owner):LetGo(1.5);
+				LurkTimer = nil;
+				SharedBehaviors.Trace(Owner, "hunt: drops on " .. Target.PresetName);
+			elseif LurkTimer and not LurkTimer:IsPastSimMS(Value(Owner, "CreatureLurkWait", 8000)) then
+				waiting = true;
+			end
+		end
+
+		if waiting then
+			AI.fire = false;
+			AI.lateralMoveState = Actor.LAT_STILL;
+			if gap > reach * 2 then
+				CreatureBehaviors.SpitAt(AI, Owner, Target, gap, SpitTimer);
+			end
+		elseif gap <= reach then
 			-- In reach: stand and bite.
 			AI.lateralMoveState = Actor.LAT_STILL;
 			Owner.HFlipped = dir < 0;
@@ -224,7 +268,11 @@ function CreatureBehaviors.HuntTarget(AI, Owner, Abort)
 				-- After it, along its route.
 				local Next = CreatureBehaviors.RouteStep(AI, Owner, Route, Target);
 				local ToNext = SceneMan:ShortestDistance(Owner.Pos, Next, false);
-				if math.abs(ToNext.X) > 3 then
+				if Crawls(Owner) and (ToACrab(Owner).IsClinging or ToNext.Y < -Owner.MoveHeight * 0.3) then
+					-- (Up a wall or along a ceiling, CR-10: crawled, not leapt.)
+					CrawlTo(AI, Owner, ToNext);
+					ProgressTimer:Reset();
+				elseif math.abs(ToNext.X) > 3 then
 					AI.lateralMoveState = ToNext.X > 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
 				else
 					AI.lateralMoveState = Actor.LAT_STILL;
@@ -370,4 +418,88 @@ function CreatureBehaviors.PackUpdate(AI, Owner)
 			end
 		end
 	end
+end
+
+-- Lurking (CR-10): a creature that climbs ceilings and lurks, left on guard with no prey, climbs to a ceiling over its post and hangs
+-- there in wait (its hunt then drops on prey that walks under it, HuntTarget). Called each update; it looks for a spot now and then, and
+-- gives a spot up that it can't reach.
+function CreatureBehaviors.LurkUpdate(AI, Owner)
+	local Lurk = AI.Lurk;
+	if AI.Target or Owner.AIMode ~= Actor.AIMODE_SENTRY or Value(Owner, "CreatureLurks", 0) <= 0 or Owner.ClassName ~= "ACrab" or Owner.Climbs < 2
+		or Owner:IsPlayerControlled() or not CreatureBehaviors.MayChase(AI, Owner) then
+		if Lurk and Lurk.Spot then
+			Lurk.Spot = nil;
+			Lurk.points = {};
+		end
+		return;
+	end
+	if not Lurk then
+		Lurk = {points = {}, Timer = Timer(), GiveUp = Timer(), Retry = Timer()};
+		Lurk.Retry.ElapsedSimTimeMS = 30000;
+		AI.Lurk = Lurk;
+	end
+	local Crab = ToACrab(Owner);
+
+	-- (Looking for a ceiling over its post: straight up, then a little to each side.)
+	if not Lurk.Spot then
+		if Crab.IsOnCeiling or not Lurk.Retry:IsPastSimMS(30000) then
+			return;
+		end
+		Lurk.Retry:Reset();
+		local height = Value(Owner, "CreatureLurkHeight", 300);
+		for _, offsetX in ipairs({0, 80, -80, 160, -160}) do
+			local Start = Vector(Owner.Pos.X + offsetX, Owner.Pos.Y - Owner.Radius);
+			local Hit = Vector();
+			if SceneMan:CastStrengthRay(Start, Vector(0, -height), 30, Hit, 3, rte.grassID, SceneMan.SceneWrapsX) then
+				local Spot = Vector(Hit.X, Hit.Y + Owner.Radius * 0.6);
+				if not SceneMan:CastStrengthRay(Owner.Pos, SceneMan:ShortestDistance(Owner.Pos, Spot, false), 30, Vector(), 3, rte.grassID, SceneMan.SceneWrapsX)
+					or offsetX == 0 then
+					Lurk.Spot = Spot;
+					break;
+				end
+			end
+		end
+		if not Lurk.Spot then
+			return;
+		end
+		Lurk.GiveUp:Reset();
+		Lurk.Timer.ElapsedSimTimeMS = 2000;
+		Lurk.points = {};
+		SharedBehaviors.Trace(Owner, "lurk: climbs up to wait on the ceiling");
+	end
+
+	-- (Up there: it holds still and waits.)
+	local To = SceneMan:ShortestDistance(Owner.Pos, Lurk.Spot, false);
+	if Crab.IsOnCeiling and not To:MagnitudeIsGreaterThan(40) then
+		AI.lateralMoveState = Actor.LAT_STILL;
+		return;
+	end
+	if Lurk.GiveUp:IsPastSimMS(20000) then
+		SharedBehaviors.Trace(Owner, "lurk: can't get up there, gives up");
+		Lurk.Spot = nil;
+		Lurk.points = {};
+		Lurk.Retry:Reset();
+		AI.lateralMoveState = Actor.LAT_STILL;
+		return;
+	end
+
+	-- (On the way: along a route to the spot, asked on the pathing threads, which keeps the goal on the ceiling where it is given.)
+	if not Lurk.pending and Lurk.Timer:IsPastSimMS(2000) then
+		Lurk.pending = true;
+		Lurk.Timer:Reset();
+		SceneMan.Scene:CalculatePathAsyncForActor(function(pathRequest)
+			local points = {};
+			if pathRequest.Status ~= PathRequest.NoSolution then
+				for Point in pathRequest.Path do
+					table.insert(points, Vector(Point.X, Point.Y));
+				end
+			end
+			Lurk.points = points;
+			Lurk.pending = false;
+		end, Owner, Owner.Pos, Lurk.Spot, Owner.Team);
+	end
+	while #Lurk.points > 0 and not SceneMan:ShortestDistance(Owner.Pos, Lurk.points[1], false):MagnitudeIsGreaterThan(14) do
+		table.remove(Lurk.points, 1);
+	end
+	CrawlTo(AI, Owner, SceneMan:ShortestDistance(Owner.Pos, Lurk.points[1] or Lurk.Spot, false));
 end
