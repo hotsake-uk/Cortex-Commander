@@ -428,6 +428,34 @@ namespace RTE {
 		/// @return A float with the approximate height, in pixels.
 		float GetHeight() const { return m_CharHeight; }
 
+		/// The height the movement code sizes this body by, in CharHeight's terms (the route search's standing, crouching and crawling heights,
+		/// the walk's look-ahead, mantles, leaps, ladders and flights all take their fractions of it). With SettingsMan::MeasuredBodySize on,
+		/// the body's own: its BodyHeight when set, else as measured (see AHuman::MeasureBody), scaled so a Soldier Light still comes out at
+		/// its 100. Otherwise, and for anything not measured, CharHeight.
+		float GetMoveHeight() const {
+			if (g_SettingsMan.MeasuredBodySize()) {
+				if (m_MovementProfile.BodyHeight >= 0.0F) {
+					return m_MovementProfile.BodyHeight / c_MoveStandFraction;
+				}
+				if (m_MeasuredMoveHeight > 0.0F) {
+					return m_MeasuredMoveHeight;
+				}
+			}
+			return m_CharHeight;
+		}
+
+		/// The body's width the movement code sizes this by, in pixels, with SettingsMan::MeasuredBodySize on: its BodyWidth when set, else as
+		/// measured (see AHuman::MeasureBody). Below zero when off or not measured, for the caller's own width.
+		float GetMoveBodyWidth() const {
+			if (!g_SettingsMan.MeasuredBodySize()) {
+				return -1.0F;
+			}
+			return m_MovementProfile.BodyWidth >= 0.0F ? m_MovementProfile.BodyWidth : m_MeasuredBodyWidth;
+		}
+
+		/// The share of CharHeight a body stands, top of the head to the feet, as the movement code has it (tuned on the Soldier Light).
+		static constexpr float c_MoveStandFraction = 0.44F;
+
 		/// Sets this Actor's new Controller input mode.
 		/// @param newMode The new input mode.
 		/// @param newPlayer The player which will control this if the input mode was set to player. (default: -1)
@@ -1803,6 +1831,8 @@ namespace RTE {
 		bool m_HiddenByFog; //!< Hidden from the player by a battle's fog of war: not drawn (SetHiddenByFog).
 		// About How tall is the Actor, in pixels?
 		float m_CharHeight;
+		float m_MeasuredMoveHeight = -1.0F; //!< The body's height as measured, in CharHeight's terms (see GetMoveHeight); below zero until measured.
+		float m_MeasuredBodyWidth = -1.0F; //!< The body's width as measured, in pixels (see GetMoveBodyWidth); below zero until measured.
 		// Speed at which the m_AimAngle will change, in radians/s.
 		//    float
 		// The offset position of the holster where this Actor draws his devices from.

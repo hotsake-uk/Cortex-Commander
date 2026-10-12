@@ -139,7 +139,7 @@ end
 
 -- A spot on the ground near a point: the ground under it, if there's open air there to stand in.
 local function GroundAt(Owner, Point)
-	local Spot = SceneMan:MovePointToGround(Point + Vector(0, -Owner.Height * 0.3), math.floor(Owner.Height * 0.2), 4);
+	local Spot = SceneMan:MovePointToGround(Point + Vector(0, -Owner.MoveHeight * 0.3), math.floor(Owner.MoveHeight * 0.2), 4);
 	if SceneMan:GetTerrMatter(Spot.X, Spot.Y) ~= rte.airID then
 		return nil;
 	end
@@ -382,7 +382,7 @@ local function DrawDebug(A, Owner, order)
 	end
 	local names = { [0] = "Roam free", "Penned", "Stay" };
 	local text = (names[order] or "?") .. ": " .. A.act .. string.format("  food %d%%  water %d%%  rest %d%%", math.floor(A.hunger * 100), math.floor(A.thirst * 100), math.floor(A.tired * 100));
-	PrimitiveMan:DrawTextPrimitive(Owner.Pos + Vector(0, -Owner.Height - 14), text, true, 1);
+	PrimitiveMan:DrawTextPrimitive(Owner.Pos + Vector(0, -Owner.MoveHeight - 14), text, true, 1);
 	if A.Spot then
 		PrimitiveMan:DrawLinePrimitive(Owner.Pos, A.Spot, 147);
 		PrimitiveMan:DrawCirclePrimitive(A.Spot, 3, 147);
@@ -492,7 +492,7 @@ function AnimalBehaviors.Update(AI, Owner)
 		if not A.Spot then
 			return;
 		end
-		local far = SceneMan:ShortestDistance(Owner.Pos, A.Spot, false):MagnitudeIsGreaterThan(Owner.Height + 10);
+		local far = SceneMan:ShortestDistance(Owner.Pos, A.Spot, false):MagnitudeIsGreaterThan(Owner.MoveHeight + 10);
 		local noRoute = A.ActTimer:IsPastSimMS(1500) and not Owner.IsWaitingOnNewMovePath and Owner.MovePathSize == 0 and far;
 		if noRoute or A.ActTimer:IsPastSimMS(A.moveLimitMS) then
 			SharedBehaviors.Trace(Owner, "animal: no way to " .. A.act, "AI");
@@ -507,7 +507,7 @@ function AnimalBehaviors.Update(AI, Owner)
 
 	-- Got there (the walk over: the engine makes it a sentry again): what it went for.
 	if A.act == "toFood" or A.act == "toWater" or A.act == "toPen" or A.act == "wander" then
-		local there = A.Spot and not SceneMan:ShortestDistance(Owner.Pos, A.Spot, false):MagnitudeIsGreaterThan(Owner.Height + 10);
+		local there = A.Spot and not SceneMan:ShortestDistance(Owner.Pos, A.Spot, false):MagnitudeIsGreaterThan(Owner.MoveHeight + 10);
 		if not there then
 			MarkBad(A, A.Spot);
 			Idle(A, Owner, 500);

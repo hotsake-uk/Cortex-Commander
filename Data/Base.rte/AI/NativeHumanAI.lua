@@ -301,7 +301,7 @@ function NativeHumanAI:Update(Owner)
 				self.SentryFacing = Owner.HFlipped; -- store the direction in which we should be looking
 				self.SentryPos = Vector(Owner.Pos.X, Owner.Pos.Y); -- store the pos on which we should be standing
 				-- (Back at its post after a fall-back (SharedBehaviors.RestoreOrder): the post's own place and facing, not where it stopped.)
-				if self.ReturnPost and not SceneMan:ShortestDistance(Owner.Pos, self.ReturnPost.Pos, false):MagnitudeIsGreaterThan(Owner.Height) then
+				if self.ReturnPost and not SceneMan:ShortestDistance(Owner.Pos, self.ReturnPost.Pos, false):MagnitudeIsGreaterThan(Owner.MoveHeight) then
 					self.SentryPos = Vector(self.ReturnPost.Pos.X, self.ReturnPost.Pos.Y);
 					if self.ReturnPost.facing ~= nil then
 						self.SentryFacing = self.ReturnPost.facing;
@@ -485,7 +485,7 @@ function NativeHumanAI:Update(Owner)
 				if not self.jump and self.lateralMoveState == Actor.LAT_STILL and not self.engineMover then
 					if Leader then
 						local dist = SceneMan:ShortestDistance(Owner.Pos, Leader.Pos, false).Largest;
-						local radius = (Leader.Height + Owner.Height) * 0.5;
+						local radius = (Leader.MoveHeight + Owner.MoveHeight) * 0.5;
 						if dist < radius then
 							-- (The keys only for the script's own mover. On the engine's, this is a follower held on its place (FollowStep), which
 							-- is when engineMover is off: copied, the leader's jet lit the held follower's, AI.flying broke the hold, and the
@@ -686,7 +686,7 @@ function NativeHumanAI:Update(Owner)
 		if self.PickupHD then
 			if not MovableMan:IsDevice(self.PickupHD) or self.PickupHD.ID ~= self.PickupHD.RootID then
 				self.PickupHD = nil; -- the HeldDevice has been destroyed or picked up
-			elseif SceneMan:ShortestDistance(Owner.Pos, self.PickupHD.Pos, false):MagnitudeIsLessThan(Owner.Height) then
+			elseif SceneMan:ShortestDistance(Owner.Pos, self.PickupHD.Pos, false):MagnitudeIsLessThan(Owner.MoveHeight) then
 				self.Ctrl:SetState(Controller.WEAPON_PICKUP, true);
 			end
 		end

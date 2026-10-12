@@ -502,7 +502,7 @@ function SharedBehaviors.PlanCoverOrder(AI, Owner, id)
 	if SettingsMan.AICoverFallsBack and (enemyDist < 250 or suppression > 0.5) then
 		-- Too hot to lie here: back away from the enemy, to cover there if there is any, else 200 px.
 		local away = SceneMan:ShortestDistance(Plan.From, Owner.Pos, SceneMan.SceneWrapsX).X >= 0 and 1 or -1;
-		local Back = SceneMan:MovePointToGround(Owner.Pos + Vector(away * 200, -Owner.Height), math.floor(Owner.Height * 0.2), 4);
+		local Back = SceneMan:MovePointToGround(Owner.Pos + Vector(away * 200, -Owner.MoveHeight), math.floor(Owner.MoveHeight * 0.2), 4);
 		Plan.FallBack = Back;
 		Plan.stance = flat;
 		SharedBehaviors.Trace(Owner, "take cover: none near, falling back");
@@ -517,7 +517,7 @@ end
 function SharedBehaviors.DigFoxhole(Owner)
 	local Ground = SceneMan:MovePointToGround(Owner.Pos, 0, 4);
 	local half = math.max(Owner.Radius, 10);
-	local depth = math.floor(Owner.Height * 0.5);
+	local depth = math.floor(Owner.MoveHeight * 0.5);
 	SceneMan:DislodgePixelBox(Vector(Ground.X - half, Ground.Y - 2), Vector(Ground.X + half, Ground.Y + depth), true);
 end
 
@@ -906,8 +906,8 @@ function SharedBehaviors.FollowStep(AI, Owner)
 		return false;
 	end
 	local TargetActor = ToActor(Target);
-	local H = Owner.Height;
-	local targetH = TargetActor.Height or 100;
+	local H = Owner.MoveHeight;
+	local targetH = TargetActor.MoveHeight or 100;
 	if Target.Team ~= Owner.Team then
 		local ToTarget = SceneMan:ShortestDistance(Owner.Pos, Target.Pos, false);
 		if ToTarget.Largest < H * 0.33 + targetH * 0.33 then
@@ -1013,7 +1013,7 @@ function SharedBehaviors.SquadTactics(AI, Owner)
 	if Target or (underFire and not AI.Cover) or (Owner.AIMode == Actor.AIMODE_SQUAD and not squadContact) then
 		-- (The unit's own values read once for the whole look, not again for every actor in the scene: each read is a call into the engine,
 		-- and nothing in the loop changes them.)
-		local team, ownID, OwnPos, halfHeight, dying = Owner.Team, Owner.UniqueID, Owner.Pos, Owner.Height * 0.5, Actor.DYING;
+		local team, ownID, OwnPos, halfHeight, dying = Owner.Team, Owner.UniqueID, Owner.Pos, Owner.MoveHeight * 0.5, Actor.DYING;
 		for Mate in MovableMan.Actors do
 			-- (Fighting men and crabs only: a craft or a door standing next to a unit made it step away under fire.)
 			local className = Mate.Team == team and Mate.UniqueID ~= ownID and Mate.Status < dying and not Mate:IsPlayerControlled() and Mate.ClassName;
@@ -1280,7 +1280,7 @@ function SharedBehaviors.CornerCheck(AI, Owner)
 	-- one it could before it, which is the corner.
 	local Eye = Owner.EyePos;
 	local chest = SharedBehaviors.HeadAbovePos(Owner) * 0.5;
-	local reach = Owner.Height * 1.6;
+	local reach = Owner.MoveHeight * 1.6;
 	local walked = 0;
 	local Prev = Vector(Owner.Pos.X, Owner.Pos.Y);
 	local Corner = nil;
@@ -1292,11 +1292,11 @@ function SharedBehaviors.CornerCheck(AI, Owner)
 		local Look = SceneMan:ShortestDistance(Eye, Point + Vector(0, -chest), false);
 		if SceneMan:CastObstacleRay(Eye, Look, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 4) >= 0 then
 			local At = Corner or Vector(Owner.Pos.X, Owner.Pos.Y);
-			if SceneMan:ShortestDistance(Owner.Pos, At, false):MagnitudeIsGreaterThan(Owner.Height * 0.5) then
+			if SceneMan:ShortestDistance(Owner.Pos, At, false):MagnitudeIsGreaterThan(Owner.MoveHeight * 0.5) then
 				return false; -- (Not there yet: walked on to a step short of it.)
 			end
 			for _, Checked in ipairs(AI.CornersChecked) do
-				if SceneMan:ShortestDistance(Checked.Pos, At, false):MagnitudeIsLessThan(Owner.Height * 0.8) then
+				if SceneMan:ShortestDistance(Checked.Pos, At, false):MagnitudeIsLessThan(Owner.MoveHeight * 0.8) then
 					return false;
 				end
 			end
@@ -1374,8 +1374,8 @@ end
 -- @return The point to steer for.
 function SharedBehaviors.FlightTarget(Owner, First)
 	local target = First;
-	local rise = Vector(0, -Owner.Height * 0.3);
-	local drop = Vector(0, Owner.Height * 0.3);
+	local rise = Vector(0, -Owner.MoveHeight * 0.3);
+	local drop = Vector(0, Owner.MoveHeight * 0.3);
 	local index = 0;
 	for pos in Owner.MovePath do
 		index = index + 1;
@@ -1384,7 +1384,7 @@ function SharedBehaviors.FlightTarget(Owner, First)
 		end
 		if index > 1 then
 			local To = SceneMan:ShortestDistance(Owner.Pos, pos, false);
-			if To:MagnitudeIsGreaterThan(Owner.Height * 4) then
+			if To:MagnitudeIsGreaterThan(Owner.MoveHeight * 4) then
 				break;
 			end
 			if SceneMan:CastObstacleRay(Owner.Pos + rise, To, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0
@@ -1408,7 +1408,7 @@ function SharedBehaviors.FindLanding(Owner)
 	-- (The furthest landing along the route that can be flown to straight, through open air and on one tank, not just the first: a route
 	-- across a gap too wide for the grid's jumps dropped into the valley and climbed out, and the unit dived after it instead of flying
 	-- across as a person would.)
-	local h = Owner.Height;
+	local h = Owner.MoveHeight;
 	local airborne = false;
 	local index = 0;
 	local first = nil;
@@ -1463,13 +1463,13 @@ end
 -- How far a landing is from the unit: the rise to just over its floor (px, up positive) and the distance across.
 function SharedBehaviors.FlightDistance(Owner, landing)
 	local To = SceneMan:ShortestDistance(Owner.Pos, landing.pos, false);
-	local feetY = Owner.Pos.Y + Owner.Height * 0.2;
+	local feetY = Owner.Pos.Y + Owner.MoveHeight * 0.2;
 	return { rise = feetY - landing.floorY + 12, across = To.X };
 end
 
 -- Whether the way to a landing is open air for the flight: up at the unit's column to over the landing's floor, then across.
 function SharedBehaviors.FlightWayClear(Owner, landing)
-	local h = Owner.Height;
+	local h = Owner.MoveHeight;
 	local cruiseY = math.min(Owner.Pos.Y, landing.floorY - 12 - h * 0.5);
 	local Up = Vector(0, cruiseY - Owner.Pos.Y - h * 0.3);
 	local Over = SceneMan:ShortestDistance(Vector(Owner.Pos.X, cruiseY), Vector(landing.pos.X, cruiseY), false);
@@ -1490,7 +1490,7 @@ end
 -- climbing more than a step a soldier takes or mantles (a quarter of its height) nor dropping more than a safe step down (0.6 of it), with
 -- room to crawl over it all the way. A person asks this before lighting a jetpack; the route's points can say "jump" for a few 20 px steps.
 function SharedBehaviors.CanWalkTo(Owner, landing)
-	local h = Owner.Height;
+	local h = Owner.MoveHeight;
 	local stepUp = h * 0.24;
 	local stepDown = h * 0.6;
 	local room = h * 0.24;
@@ -1531,7 +1531,7 @@ end
 -- @param plan Last tick's plan, or nil. @param wantsJet Whether the walking and climbing code below asked for the jet this tick.
 -- @return This tick's plan, or nil.
 function SharedBehaviors.UpdateFlightPlan(AI, Owner, plan, wantsJet)
-	local h = Owner.Height;
+	local h = Owner.MoveHeight;
 	local Pack = Owner.Jetpack;
 	if not Owner.Head or not Pack or Pack.JetpackType ~= AEJetpack.Standard or AI.proneState == AHuman.PRONE then
 		return nil;
@@ -1578,7 +1578,7 @@ function SharedBehaviors.UpdateFlightPlan(AI, Owner, plan, wantsJet)
 			end
 			if ahead then
 				local Floor = Vector();
-				if SceneMan:CastStrengthRay(ahead, Vector(0, Owner.Height * 0.8), 5, Floor, 2, rte.grassID, true) and SharedBehaviors.CanWalkTo(Owner, { pos = ahead, floorY = Floor.Y }) then
+				if SceneMan:CastStrengthRay(ahead, Vector(0, Owner.MoveHeight * 0.8), 5, Floor, 2, rte.grassID, true) and SharedBehaviors.CanWalkTo(Owner, { pos = ahead, floorY = Floor.Y }) then
 					return nil, true;
 				end
 			end
@@ -1629,7 +1629,7 @@ end
 function SharedBehaviors.FlightControl(AI, Owner, Target, state)
 	local ppm = GetPPM();
 	local g = SceneMan.GlobalAcc.Y * ppm;
-	local h = Owner.Height;
+	local h = Owner.MoveHeight;
 	local feetY = Owner.Pos.Y + h * 0.5;
 	local To = SceneMan:ShortestDistance(Owner.Pos, Target, false);
 	-- The floor under the point, looked for again when the point moves.
@@ -1718,7 +1718,7 @@ end
 -- A climb's plan from the route, or nil when this is no climb for the climber. @param Top The jump point well above (the route's first
 -- point). @param NextPos The route's point after it, if any.
 function SharedBehaviors.ClimbPlan(AI, Owner, Top, NextPos)
-	local H = Owner.Height;
+	local H = Owner.MoveHeight;
 	local feetBelowPos = H * 0.2;
 	local headAbovePos = SharedBehaviors.HeadAbovePos(Owner);
 	local plan = { stage = "align", top = Vector(Top.X, Top.Y), pops = 1, timer = Timer(), stageTimer = Timer() };
@@ -1752,9 +1752,9 @@ function SharedBehaviors.ClimbPlan(AI, Owner, Top, NextPos)
 		colX = (leftFace + rightFace) * 0.5;
 	elseif leftFace then
 		-- A wall on one side only (a cliff, a ledge): keep the body clear of it.
-		colX = math.max(Top.X, leftFace + Owner.Height * 0.16);
+		colX = math.max(Top.X, leftFace + Owner.MoveHeight * 0.16);
 	elseif rightFace then
-		colX = math.min(Top.X, rightFace - Owner.Height * 0.16);
+		colX = math.min(Top.X, rightFace - Owner.MoveHeight * 0.16);
 	end
 	plan.channelLeft, plan.channelRight = leftFace, rightFace;
 	-- A shaft or a hatch: walls both sides of the column, near enough that the body has to keep to its middle. That is what this climber is
@@ -1887,7 +1887,7 @@ end
 -- One tick of a climb. Sets the jet on AI. @return status ("run", "done" or "fail"), the lateral move, the aim angle, and a reason
 -- when it failed.
 function SharedBehaviors.ClimbUpdate(AI, Owner, plan)
-	local H = Owner.Height;
+	local H = Owner.MoveHeight;
 	local ppm = GetPPM();
 	local gravity = SceneMan.GlobalAcc.Y * ppm;
 	local feetBelowPos = H * 0.2;
@@ -2410,7 +2410,7 @@ function SharedBehaviors.FleeUpdate(AI, Owner)
 			AI.Flee = nil;
 			return false;
 		end
-		local there = SceneMan:ShortestDistance(Owner.Pos, AI.Flee.Spot, false):MagnitudeIsLessThan(Owner.Height + 20);
+		local there = SceneMan:ShortestDistance(Owner.Pos, AI.Flee.Spot, false):MagnitudeIsLessThan(Owner.MoveHeight + 20);
 		if there and not AI.Flee.There then
 			AI.Flee.There = true;
 			AI.Flee.Timer:Reset();
@@ -2470,7 +2470,7 @@ function SharedBehaviors.FleeUpdate(AI, Owner)
 	end
 	local Spot;
 	for _, run in ipairs({300, 180, 90}) do
-		local Try = SceneMan:MovePointToGround(Owner.Pos + Vector(dir * run, -Owner.Height * 0.3), math.floor(Owner.Height * 0.2), 4);
+		local Try = SceneMan:MovePointToGround(Owner.Pos + Vector(dir * run, -Owner.MoveHeight * 0.3), math.floor(Owner.MoveHeight * 0.2), 4);
 		if SceneMan:GetTerrMatter(Try.X, Try.Y) == rte.airID then
 			Spot = Try;
 			break;
@@ -2608,12 +2608,12 @@ end
 -- corridor: when they did, the grid routed a walk through the 48 px corridors of every bunker and this script, probing 55 px over the
 -- floor for the head, went prone in them and crawled at five pixels a second.
 function SharedBehaviors.StandingHeight(Owner)
-	return Owner.Height * 0.44;
+	return Owner.MoveHeight * 0.44;
 end
 
 -- How far the top of the head is over Pos when standing.
 function SharedBehaviors.HeadAbovePos(Owner)
-	return Owner.Height * 0.24;
+	return Owner.MoveHeight * 0.24;
 end
 
 -- The middle of a shaft a point is in: walls within reach both ways at that height. @return The middle's x, or nil in the open.
@@ -2631,7 +2631,7 @@ end
 -- An open column near the unit for a climb of a given height: the nearest sideways offset (within half a body either way) from which
 -- the way up is clear. @param Up The climb, as a vector. @return The offset, or nil.
 function SharedBehaviors.OpenColumnNear(Owner, Up)
-	for _, dx in ipairs({ 0, -Owner.Height * 0.25, Owner.Height * 0.25, -Owner.Height * 0.5, Owner.Height * 0.5 }) do
+	for _, dx in ipairs({ 0, -Owner.MoveHeight * 0.25, Owner.MoveHeight * 0.25, -Owner.MoveHeight * 0.5, Owner.MoveHeight * 0.5 }) do
 		if SceneMan:CastObstacleRay(Owner.Pos + Vector(dx, -SharedBehaviors.HeadAbovePos(Owner) + 2), Up, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0 then
 			return dx;
 		end
@@ -2653,7 +2653,7 @@ function SharedBehaviors.OurDoorAt(Owner, Point)
 	if SceneMan:GetTerrMatter(Point.X, Point.Y) ~= rte.doorID then
 		return nil;
 	end
-	for mo in MovableMan:GetMOsInRadius(Point, Owner.Height * 0.6) do
+	for mo in MovableMan:GetMOsInRadius(Point, Owner.MoveHeight * 0.6) do
 		if mo.ClassName == "ADoor" and (mo.Team == Owner.Team or mo.Team == Activity.NOTEAM) then
 			return ToADoor(mo);
 		end
@@ -2669,7 +2669,7 @@ function SharedBehaviors.DoorAhead(Owner, ToPos)
 	local bestDist = math.huge;
 	local Along = SceneMan:ShortestDistance(Owner.Pos, ToPos, false);
 	local length = Along.Magnitude;
-	for mo in MovableMan:GetMOsInRadius(Owner.Pos, Owner.Height * 1.5) do
+	for mo in MovableMan:GetMOsInRadius(Owner.Pos, Owner.MoveHeight * 1.5) do
 		if mo.ClassName == "ADoor" and (mo.Team == Owner.Team or mo.Team == Activity.NOTEAM) then
 			local door = ToADoor(mo);
 			local Leaf = door.Door;
@@ -2678,7 +2678,7 @@ function SharedBehaviors.DoorAhead(Owner, ToPos)
 				local ToLeaf = SceneMan:ShortestDistance(Owner.Pos, Leaf.Pos, false);
 				local t = length > 1 and math.max(0, math.min(1, ToLeaf:Dot(Along) / (length * length))) or 0;
 				local d = (ToLeaf - Along * t).Magnitude;
-				if d < Owner.Height * 0.5 and d < bestDist then
+				if d < Owner.MoveHeight * 0.5 and d < bestDist then
 					best = door;
 					bestDist = d;
 				end
@@ -2703,10 +2703,10 @@ function SharedBehaviors.SquadTrailUpdate(AI, Owner, Leader)
 	end
 	local trail = AI.squadTrail;
 	-- On the ground: something under the feet within a third of its height.
-	if not SceneMan:CastStrengthRay(Leader.Pos, Vector(0, Leader.Height * 0.35), 5, Vector(), 2, rte.grassID, true) then
+	if not SceneMan:CastStrengthRay(Leader.Pos, Vector(0, Leader.MoveHeight * 0.35), 5, Vector(), 2, rte.grassID, true) then
 		return nil;
 	end
-	local Ground = SceneMan:MovePointToGround(Leader.Pos, Leader.Height * 0.2, 4);
+	local Ground = SceneMan:MovePointToGround(Leader.Pos, Leader.MoveHeight * 0.2, 4);
 	if #trail == 0 or SceneMan:ShortestDistance(trail[1], Ground, false):MagnitudeIsGreaterThan(16) then
 		table.insert(trail, 1, Ground);
 		if #trail > 64 then
@@ -2756,7 +2756,7 @@ end
 function SharedBehaviors.SquadPoint(AI, Owner, Leader)
 	local Ground = SharedBehaviors.SquadTrailUpdate(AI, Owner, Leader);
 	local trail = AI.squadTrail;
-	local gap = (Leader.Height + Owner.Height) * 0.35;
+	local gap = (Leader.MoveHeight + Owner.MoveHeight) * 0.35;
 	local back = gap * SharedBehaviors.SquadSlot(AI, Owner, Leader);
 	local LeaderGround = Ground or trail[1] or Leader.Pos;
 	local From = LeaderGround;
@@ -2765,11 +2765,11 @@ function SharedBehaviors.SquadPoint(AI, Owner, Leader)
 		local To = trail[i];
 		local Seg = SceneMan:ShortestDistance(From, To, false);
 		local length = Seg.Magnitude;
-		if length > Leader.Height + Owner.Height then
+		if length > Leader.MoveHeight + Owner.MoveHeight then
 			return From, LeaderGround;
 		end
 		if length >= back then
-			return SceneMan:MovePointToGround(From + Seg * (back / math.max(1, length)), Owner.Height * 0.2, 4), LeaderGround;
+			return SceneMan:MovePointToGround(From + Seg * (back / math.max(1, length)), Owner.MoveHeight * 0.2, 4), LeaderGround;
 		end
 		back = back - length;
 		From = To;
@@ -2778,8 +2778,8 @@ function SharedBehaviors.SquadPoint(AI, Owner, Leader)
 		end
 	end
 	local Dir = LastSeg and LastSeg.Normalized or Vector(SceneMan:ShortestDistance(Leader.Pos, Owner.Pos, false).X < 0 and -1 or 1, 0);
-	local Beyond = SceneMan:MovePointToGround(From + Dir * back + Vector(0, -Owner.Height * 0.2), Owner.Height * 0.2, 4);
-	if SceneMan:GetTerrMatter(Beyond.X, Beyond.Y) == rte.airID and math.abs(Beyond.Y - From.Y) < Owner.Height * 0.5 then
+	local Beyond = SceneMan:MovePointToGround(From + Dir * back + Vector(0, -Owner.MoveHeight * 0.2), Owner.MoveHeight * 0.2, 4);
+	if SceneMan:GetTerrMatter(Beyond.X, Beyond.Y) == rte.airID and math.abs(Beyond.Y - From.Y) < Owner.MoveHeight * 0.5 then
 		return Beyond, LeaderGround;
 	end
 	return From, LeaderGround;
@@ -2841,10 +2841,10 @@ end
 
 -- The open door of the unit's side whose piece sweeps a place (the unit's own, or one it means to stand on), or nil.
 function SharedBehaviors.DoorSweptBy(Owner, Pos)
-	for mo in MovableMan:GetMOsInRadius(Pos, Owner.Height * 1.2) do
+	for mo in MovableMan:GetMOsInRadius(Pos, Owner.MoveHeight * 1.2) do
 		if mo.ClassName == "ADoor" and (mo.Team == Owner.Team or mo.Team == Activity.NOTEAM) then
 			local door = ToADoor(mo);
-			if door.Door and door:GetDoorState() ~= ADoor.CLOSED and door:SweepContains(Pos, Owner.Height * 0.3) then
+			if door.Door and door:GetDoorState() ~= ADoor.CLOSED and door:SweepContains(Pos, Owner.MoveHeight * 0.3) then
 				return door;
 			end
 		end
@@ -2860,7 +2860,7 @@ function SharedBehaviors.DoorSweepExit(Owner, Goal)
 	if not door then
 		return nil;
 	end
-	local H = Owner.Height;
+	local H = Owner.MoveHeight;
 	local first = SceneMan:ShortestDistance(Owner.Pos, Goal, false).X < 0 and -1 or 1;
 	for _, reach in ipairs({0.5, 0.8, 1.2}) do
 		for _, side in ipairs({first, -first}) do
@@ -2875,13 +2875,13 @@ end
 
 -- Whether a step sideways from here is onto ground, not off a drop or into a wall. @param dir -1 or 1.
 function SharedBehaviors.StepIsSafe(Owner, dir)
-	local reach = Owner.Height * 0.4;
+	local reach = Owner.MoveHeight * 0.4;
 	local Step = Vector(dir * reach, 0);
 	if SceneMan:CastObstacleRay(Owner.Pos, Step, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 then
 		return false; -- A wall.
 	end
 	local Foot = Owner.Pos + Step;
-	return SceneMan:CastObstacleRay(Foot, Vector(0, Owner.Height * 0.8), Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 4) >= 0; -- Ground within reach of the feet.
+	return SceneMan:CastObstacleRay(Foot, Vector(0, Owner.MoveHeight * 0.8), Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 4) >= 0; -- Ground within reach of the feet.
 end
 
 -- Whether a point can be seen from an eye: nothing much in the way for the ray. (The same measure the shooting rules use for a shot.)
@@ -2921,13 +2921,13 @@ end
 -- something low is in the way, so crouched it is hidden and standing it can see over to shoot (a sandbag, a low wall, a ridge), nil
 -- where it is in plain sight. Only a body that can crouch (a human) has low cover. @param Ground The spot on the ground.
 function SharedBehaviors.CoverAt(Owner, Ground, FromPos)
-	local Standing = Ground + Vector(0, -Owner.Height * 0.8);
+	local Standing = Ground + Vector(0, -Owner.MoveHeight * 0.8);
 	if not SharedBehaviors.CanSee(Standing, FromPos) then
 		return "full";
 	end
 	if IsAHuman(Owner) then
 		local crouched = ToAHuman(Owner).CrouchHeight;
-		if crouched and crouched > 0 and crouched < Owner.Height * 0.9 and not SharedBehaviors.CanSee(Ground + Vector(0, -crouched * 0.8), FromPos) then
+		if crouched and crouched > 0 and crouched < Owner.MoveHeight * 0.9 and not SharedBehaviors.CanSee(Ground + Vector(0, -crouched * 0.8), FromPos) then
 			return "low";
 		end
 	end
@@ -2948,11 +2948,11 @@ function SharedBehaviors.FindCover(Owner, FromPos, reach, wantLow)
 	local fallback, fallbackKind;
 	for step = 1, math.floor(reach / 8) do
 		for _, dir in ipairs({1, -1}) do
-			local Spot = Owner.Pos + Vector(dir * step * 8, -Owner.Height * 0.2);
-			Spot = SceneMan:MovePointToGround(Spot, math.floor(Owner.Height * 0.2), 4);
+			local Spot = Owner.Pos + Vector(dir * step * 8, -Owner.MoveHeight * 0.2);
+			Spot = SceneMan:MovePointToGround(Spot, math.floor(Owner.MoveHeight * 0.2), 4);
 			local Way = SceneMan:ShortestDistance(Owner.Pos, Spot, false);
 			-- (Not into fire: AC-12.)
-			if math.abs(Way.Y) < Owner.Height * 0.5 and not SceneMan:IsBurningNear(Spot, 16) and SceneMan:CastObstacleRay(Owner.Pos, Way, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0 then
+			if math.abs(Way.Y) < Owner.MoveHeight * 0.5 and not SceneMan:IsBurningNear(Spot, 16) and SceneMan:CastObstacleRay(Owner.Pos, Way, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0 then
 				local Ground = SceneMan:MovePointToGround(Spot, 0, 4);
 				local kind = SharedBehaviors.CoverAt(Owner, Ground, FromPos);
 				if kind and SharedBehaviors.CoverFacesThreat(Owner, Ground, FromPos) then
@@ -2971,16 +2971,16 @@ end
 -- Whether what hides a spot from a point is in front of it, toward the point, within a body's height: a wall or a lump to crouch behind,
 -- not a hill far off or the edge of a cave that happens to block the line.
 function SharedBehaviors.CoverFacesThreat(Owner, Ground, FromPos)
-	local Eye = Ground + Vector(0, -Owner.Height * 0.5);
+	local Eye = Ground + Vector(0, -Owner.MoveHeight * 0.5);
 	local Toward = SceneMan:ShortestDistance(Eye, FromPos, false);
-	local reach = math.min(Toward.Magnitude, Owner.Height * 1.2);
+	local reach = math.min(Toward.Magnitude, Owner.MoveHeight * 1.2);
 	if reach < 1 then
 		return false;
 	end
 	local Look = Toward:SetMagnitude(reach);
 	-- From the waist and from just above the ground: either one stopped close in front is cover between the unit and the threat.
-	for _, up in ipairs({0, Owner.Height * 0.35}) do
-		local From = Ground + Vector(0, -Owner.Height * 0.15 - up);
+	for _, up in ipairs({0, Owner.MoveHeight * 0.35}) do
+		local From = Ground + Vector(0, -Owner.MoveHeight * 0.15 - up);
 		if SceneMan:CastStrengthSumRay(From, From + Look, 4, rte.grassID) >= 120 then
 			return true;
 		end
@@ -2998,13 +2998,13 @@ function SharedBehaviors.FlankCandidates(AI, Owner, TargetPos, range)
 		local rad = math.rad(angle);
 		table.insert(candidates, TargetPos + Vector(math.cos(rad) * stand, -math.sin(rad) * stand));
 	end
-	table.insert(candidates, TargetPos + Vector(stand, -Owner.Height));
-	table.insert(candidates, TargetPos + Vector(-stand, -Owner.Height));
+	table.insert(candidates, TargetPos + Vector(stand, -Owner.MoveHeight));
+	table.insert(candidates, TargetPos + Vector(-stand, -Owner.MoveHeight));
 	local spots = {};
 	for _, Spot in ipairs(candidates) do
-		Spot = SceneMan:MovePointToGround(Spot, math.floor(Owner.Height * 0.2), 6);
+		Spot = SceneMan:MovePointToGround(Spot, math.floor(Owner.MoveHeight * 0.2), 6);
 		-- Somewhere else (a flank of ten pixels was the same spot with the same problem), seen from about where the gun would be held.
-		if SceneMan:GetTerrMatter(Spot.X, Spot.Y) == rte.airID and SceneMan:ShortestDistance(Owner.Pos, Spot, false):MagnitudeIsGreaterThan(Owner.Height * 1.5) and SharedBehaviors.CanSee(Spot + Vector(0, -Owner.Height * 0.1), TargetPos) then
+		if SceneMan:GetTerrMatter(Spot.X, Spot.Y) == rte.airID and SceneMan:ShortestDistance(Owner.Pos, Spot, false):MagnitudeIsGreaterThan(Owner.MoveHeight * 1.5) and SharedBehaviors.CanSee(Spot + Vector(0, -Owner.MoveHeight * 0.1), TargetPos) then
 			local Dist = SceneMan:ShortestDistance(Spot, TargetPos, false);
 			if Dist:MagnitudeIsGreaterThan(stand * 0.5) and Dist:MagnitudeIsLessThan(range) then
 				table.insert(spots, Spot);
@@ -3064,7 +3064,7 @@ function SharedBehaviors.RestoreOrder(AI, Owner, keep)
 		AI.SentryPos = Vector(keep.post.X, keep.post.Y);
 		AI.SentryFacing = keep.facing;
 		AI.ReturnPost = { Pos = keep.post, facing = keep.facing };
-		if SceneMan:ShortestDistance(Owner.Pos, keep.post, false):MagnitudeIsGreaterThan(Owner.Height * 0.7) then
+		if SceneMan:ShortestDistance(Owner.Pos, keep.post, false):MagnitudeIsGreaterThan(Owner.MoveHeight * 0.7) then
 			Owner:AddAISceneWaypoint(keep.post);
 			keep.mode = Actor.AIMODE_GOTO;
 		end
@@ -3286,7 +3286,7 @@ function SharedBehaviors.AttackOrderUpdate(AI, Owner)
 		if Act and result then
 			if result.solved then
 				-- (A route cut short at an obstacle ends somewhere else: not a way to the enemy.)
-				if not SceneMan:ShortestDistance(result.Last, Act.Pos, SceneMan.SceneWrapsX):MagnitudeIsGreaterThan(Owner.Height + 40) and result.length < bestLength then
+				if not SceneMan:ShortestDistance(result.Last, Act.Pos, SceneMan.SceneWrapsX):MagnitudeIsGreaterThan(Owner.MoveHeight + 40) and result.length < bestLength then
 					best, bestLength, bestIsBrain = Act, result.length, c.brain;
 				end
 			else
@@ -3333,7 +3333,7 @@ function SharedBehaviors.OrderChangedSince(Owner, Spot)
 	if Owner.AIMode ~= Actor.AIMODE_GOTO then
 		-- (Sentry at the spot with nothing more to go to is the walk's own end: the engine puts a unit whose GOTO is used up into
 		-- SENTRY once within 20 px of its last point. Any other mode, or sentry elsewhere, is someone's order.)
-		local arrived = Owner.AIMode == Actor.AIMODE_SENTRY and Owner:GetWaypointListSize() == 0 and not SceneMan:ShortestDistance(Owner.Pos, Spot, false):MagnitudeIsGreaterThan(Owner.Height);
+		local arrived = Owner.AIMode == Actor.AIMODE_SENTRY and Owner:GetWaypointListSize() == 0 and not SceneMan:ShortestDistance(Owner.Pos, Spot, false):MagnitudeIsGreaterThan(Owner.MoveHeight);
 		return not arrived;
 	end
 	return Owner:GetWaypointListSize() > 0 and SceneMan:ShortestDistance(Owner:GetLastAIWaypoint(), Spot, false):MagnitudeIsGreaterThan(48);
@@ -3499,7 +3499,7 @@ function SharedBehaviors.RetreatUpdate(AI, Owner)
 		if enemyDx * medicDx > 0 and math.abs(medicDx) > math.abs(enemyDx) - 100 then
 			Medic = nil; -- The medic is past the enemy.
 		else
-			Spot = SceneMan:MovePointToGround(Medic.Pos, math.floor(Owner.Height * 0.2), 4);
+			Spot = SceneMan:MovePointToGround(Medic.Pos, math.floor(Owner.MoveHeight * 0.2), 4);
 		end
 	end
 	local Friend = Medic;
@@ -3517,14 +3517,14 @@ function SharedBehaviors.RetreatUpdate(AI, Owner)
 		if enemyDx * friendDx > 0 and math.abs(friendDx) > math.abs(enemyDx) - 100 then
 			Friend = nil; -- The friend is past the enemy.
 		else
-			Spot = SceneMan:MovePointToGround(Friend.Pos + Vector(math.random(-60, 60), 0), math.floor(Owner.Height * 0.2), 4);
+			Spot = SceneMan:MovePointToGround(Friend.Pos + Vector(math.random(-60, 60), 0), math.floor(Owner.MoveHeight * 0.2), 4);
 		end
 	end
 	if not Spot then
 		if enemyDx == 0 then
 			return false;
 		end
-		Spot = SceneMan:MovePointToGround(Owner.Pos + Vector(enemyDx > 0 and -350 or 350, -Owner.Height * 0.3), math.floor(Owner.Height * 0.2), 4);
+		Spot = SceneMan:MovePointToGround(Owner.Pos + Vector(enemyDx > 0 and -350 or 350, -Owner.MoveHeight * 0.3), math.floor(Owner.MoveHeight * 0.2), 4);
 		if SceneMan:GetTerrMatter(Spot.X, Spot.Y) ~= rte.airID then
 			return false;
 		end
@@ -3564,7 +3564,7 @@ function SharedBehaviors.FlankUpdate(AI, Owner)
 		AI.FlankRestTimer = Timer();
 		return;
 	end
-	local arrived = SceneMan:ShortestDistance(Owner.Pos, AI.Flank.Spot, false):MagnitudeIsLessThan(Owner.Height * 0.5);
+	local arrived = SceneMan:ShortestDistance(Owner.Pos, AI.Flank.Spot, false):MagnitudeIsLessThan(Owner.MoveHeight * 0.5);
 	if arrived or AI.Flank.Timer:IsPastSimMS(15000) then
 		SharedBehaviors.Trace(Owner, "flank: " .. (arrived and "there" or "gave up"));
 		Owner:RemoveNumberValue("AIFlank");
@@ -3684,7 +3684,7 @@ function SharedBehaviors.InvestigateUpdate(AI, Owner)
 		AI.Investigate = nil;
 		return;
 	end
-	local arrived = SceneMan:ShortestDistance(Owner.Pos, AI.Investigate.Spot, false):MagnitudeIsLessThan(Owner.Height);
+	local arrived = SceneMan:ShortestDistance(Owner.Pos, AI.Investigate.Spot, false):MagnitudeIsLessThan(Owner.MoveHeight);
 	if arrived or AI.Target or AI.Investigate.Timer:IsPastSimMS(20000) then
 		SharedBehaviors.Trace(Owner, "investigate: " .. (arrived and "there" or (AI.Target and "found an enemy" or "gave up")));
 		AI.InvestigatedPos = AI.Investigate.Spot;
@@ -3801,7 +3801,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 	-- check if we have arrived
 	if not (Owner.AIMode == Actor.AIMODE_SQUAD or Owner:GetWaypointListSize() > 0) then
 		if not Owner.MOMoveTarget then
-			if SceneMan:ShortestDistance(Owner:GetLastAIWaypoint(), Owner.Pos, false).Largest < Owner.Height * 0.15 then
+			if SceneMan:ShortestDistance(Owner:GetLastAIWaypoint(), Owner.Pos, false).Largest < Owner.MoveHeight * 0.15 then
 				Owner:ClearAIWaypoints();
 				Owner:ClearMovePath();
 				Owner:DrawWaypoints(false);
@@ -3881,7 +3881,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 	ProneHoldTimer:SetSimTimeLimitMS(1200);
 	-- The body: where the feet and the top of the head are (see SharedBehaviors.StandingHeight). Rays that must start in the open under a
 	-- ceiling the body just fits start a couple of pixels under the head's top.
-	local feetBelowPos = Owner.Height * 0.2;
+	local feetBelowPos = Owner.MoveHeight * 0.2;
 	local standingHeight = SharedBehaviors.StandingHeight(Owner);
 	local headAbovePos = SharedBehaviors.HeadAbovePos(Owner);
 	local underHeadTop = headAbovePos - 2;
@@ -3945,7 +3945,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 			if Waypoint.Type ~= "drop" and Owner:HasObjectInGroup("Tools - Diggers") then
 				local PathSegRay = SceneMan:ShortestDistance(PrevWptPos, Waypoint.Pos, false); -- detect material blocking the path and start digging through it
 				if AI.teamBlockState ~= Actor.BLOCKED and SceneMan:CastStrengthRay(PrevWptPos, PathSegRay, 4, Free, 2, rte.doorID, true) then
-					if SceneMan:ShortestDistance(Owner.Pos, Free, false):MagnitudeIsLessThan(Owner.Height*0.4) then	-- check that we're close enough to start digging
+					if SceneMan:ShortestDistance(Owner.Pos, Free, false):MagnitudeIsLessThan(Owner.MoveHeight*0.4) then	-- check that we're close enough to start digging
 						digState = AHuman.STARTDIG;
 						AI.deviceState = AHuman.DIGGING;
 						obstacleState = Actor.DIGPAUSING;
@@ -3965,7 +3965,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 
 			if digState == AHuman.NOTDIGGING and AI.deviceState ~= AHuman.DIGGING then
 				-- if our path isn't blocked enough to dig, but the headroom is too little, start crawling to get through
-				local heading = SceneMan:ShortestDistance(Owner.Pos, Waypoint.Pos, false):SetMagnitude(Owner.Height*0.5);
+				local heading = SceneMan:ShortestDistance(Owner.Pos, Waypoint.Pos, false):SetMagnitude(Owner.MoveHeight*0.5);
 
 				-- This gets the angle of the heading vector relative to flat (i.e, straight along the X axis)
 				-- This gives a range of [0, 90]
@@ -3990,7 +3990,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 					-- which the grid rightly calls walkable, and units crawled the length of them.)
 					local Floor = Vector();
 					local floorY = Owner.Pos.Y + feetBelowPos;
-					if SceneMan:CastStrengthRay(Owner.Pos, Vector(0, Owner.Height * 0.5), 5, Floor, 2, rte.grassID, true) then
+					if SceneMan:CastStrengthRay(Owner.Pos, Vector(0, Owner.MoveHeight * 0.5), 5, Floor, 2, rte.grassID, true) then
 						-- (Never deeper than the standing feet: over the edge of a drop the floor is further down, and a probe taken from there sat
 						-- at chest height and read a knee-high step ahead as no head room.)
 						floorY = math.min(Floor.Y, Owner.Pos.Y + feetBelowPos);
@@ -4006,7 +4006,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 					-- first check up to the top of the head, and then from there forward
 					-- (A crawl step lays the unit down only once it is near: the step's point is where the low part is, and a route's points can be a
 					-- long way apart. Prone from 100 px out, a unit at the top of the tower lay at its start and never crawled to the hatch.)
-						local crawlStepNear = Waypoint.Kind == 1 and SceneMan:ShortestDistance(Owner.Pos, Waypoint.Pos, false):MagnitudeIsLessThan(Owner.Height * 0.65);
+						local crawlStepNear = Waypoint.Kind == 1 and SceneMan:ShortestDistance(Owner.Pos, Waypoint.Pos, false):MagnitudeIsLessThan(Owner.MoveHeight * 0.65);
 						if crawlStepNear or SceneMan:CastStrengthRay(Owner.Pos, topHeadPos - Owner.Pos, 5, Free, 4, rte.doorID, true) or SceneMan:CastStrengthRay(topHeadPos, heading, 5, Free, 4, rte.doorID, true) then
 							if Owner:IsAITracedOn("Climb") and AI.proneState ~= AHuman.PRONE then ConsoleMan:PrintString("AITRACE crawl: going prone, wpt dx " .. math.floor(heading.X) .. " dy " .. math.floor(heading.Y)); end
 							AI.proneState = AHuman.PRONE;
@@ -4122,7 +4122,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 				end
 				-- A jetpack is the usual way off whatever we're stuck on: one burst, when there's fuel and head room on the side we're heading.
 				-- Not when the goal is below us, though: a digger stuck in its own shaft was blown out of it.
-				local goalBelow = SceneMan:ShortestDistance(Owner.Pos, Owner:GetLastAIWaypoint(), false).Y > Owner.Height * 0.3;
+				local goalBelow = SceneMan:ShortestDistance(Owner.Pos, Owner:GetLastAIWaypoint(), false).Y > Owner.MoveHeight * 0.3;
 				if Owner.Jetpack and Owner.Jetpack.JetpackType == AEJetpack.Standard and Owner.Jetpack.JetTimeLeft >= AI.minBurstTime and not StuckJumped and not goalBelow then
 					local headRoom = (nextLatMove == Actor.LAT_LEFT and not Obstacles[Obst.L_UP]) or (nextLatMove ~= Actor.LAT_LEFT and not Obstacles[Obst.R_UP]);
 					if headRoom then
@@ -4148,18 +4148,18 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 						local Trace = SceneMan:ShortestDistance(Owner.Pos, Goal, false);
 						-- (In plain sight: the ray says whether something is in the way; read the other way round, it added the waypoint
 						-- only when something was.)
-						if Trace.Largest < Owner.Height * 0.5 + (Owner.MOMoveTarget.Height or 100) * 0.5 and
+						if Trace.Largest < Owner.MoveHeight * 0.5 + (Owner.MOMoveTarget.Height or 100) * 0.5 and
 							not SceneMan:CastStrengthRay(Owner.Pos, Trace, 5, Vector(), 4, rte.grassID, true)
 						then -- add a waypoint if the place is close and in LOS
-							Waypoint = {Pos=SceneMan:MovePointToGround(Goal, Owner.Height*0.2, 4)};
+							Waypoint = {Pos=SceneMan:MovePointToGround(Goal, Owner.MoveHeight*0.2, 4)};
 						else
 							NeedsNewPath = true; -- update the path
 							AI.jetClimb = false;
 						end
 					end
 				else	-- moving towards a scene point
-					local GroundPos = SharedBehaviors.WaypointOnGround(Owner:GetLastAIWaypoint(), Owner.Height);
-					if SceneMan:ShortestDistance(GroundPos, Owner.Pos, false).Largest < Owner.Height * 0.4 then
+					local GroundPos = SharedBehaviors.WaypointOnGround(Owner:GetLastAIWaypoint(), Owner.MoveHeight);
+					if SceneMan:ShortestDistance(GroundPos, Owner.Pos, false).Largest < Owner.MoveHeight * 0.4 then
 						if Owner.AIMode == Actor.AIMODE_GOTO then
 							AI.SentryFacing = Owner.HFlipped; -- guard this direction
 							AI.SentryPos = Vector(Owner.Pos.X, Owner.Pos.Y); -- guard this point
@@ -4195,9 +4195,9 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 							local ToGoal = SceneMan:ShortestDistance(Owner.Pos, Goal, false);
 							-- Straight at the place: near, level (a climb is the pather's) and nothing between, measured a fifth of a body up so
 							-- the line over the brow of a hill doesn't clip it.
-							local Lift = Vector(0, -Owner.Height * 0.2);
+							local Lift = Vector(0, -Owner.MoveHeight * 0.2);
 							local function StraightTo()
-								return ToGoal:MagnitudeIsLessThan(Owner.Height * 1.5) and math.abs(ToGoal.Y) < Owner.Height * 0.3 and SceneMan:CastObstacleRay(Owner.Pos + Lift, ToGoal, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 6) < 0;
+								return ToGoal:MagnitudeIsLessThan(Owner.MoveHeight * 1.5) and math.abs(ToGoal.Y) < Owner.MoveHeight * 0.3 and SceneMan:CastObstacleRay(Owner.Pos + Lift, ToGoal, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 6) < 0;
 							end
 							-- A place in line already stands off the leader, so its radius must be under half the gap between places, or two
 							-- places' "in place" overlap and two followers hold on the one spot; following a unit itself, the old radius.
@@ -4206,7 +4206,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 							-- (And no holding while the one followed is on the move: the place moves with it, and a follower that held until
 							-- it was 50 px off, then asked for a new route and walked back, lurched along in stops and starts.)
 							local moving = Owner.MOMoveTarget.Vel.Largest > 1;
-							if moving or ToGoal.Largest > Owner.Height * nearIn + (Owner.MOMoveTarget.Height or 100) * nearIn then
+							if moving or ToGoal.Largest > Owner.MoveHeight * nearIn + (Owner.MOMoveTarget.Height or 100) * nearIn then
 								if StraightTo() then
 									Waypoint.Pos = Goal;
 								end
@@ -4228,7 +4228,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 											Goal = AI.squadPoint or Owner.MOMoveTarget.Pos;
 											ToGoal = SceneMan:ShortestDistance(Owner.Pos, Goal, false);
 											-- (And not held in the way of a door's piece: see InDoorSweep.)
-											local off = ToGoal.Largest > Owner.Height * nearOut + (Owner.MOMoveTarget.Height or 100) * nearOut or Owner.MOMoveTarget.Vel.Largest > 1 or SharedBehaviors.InDoorSweep(Owner);
+											local off = ToGoal.Largest > Owner.MoveHeight * nearOut + (Owner.MOMoveTarget.Height or 100) * nearOut or Owner.MOMoveTarget.Vel.Largest > 1 or SharedBehaviors.InDoorSweep(Owner);
 											local Exit = SharedBehaviors.DoorSweepExit(Owner, Goal);
 											if Exit then
 												Waypoint.Pos = Exit; -- (Out of the sweep, not back to the place in it.)
@@ -4251,7 +4251,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 									end
 								end
 							end
-						elseif Trace.Largest < Owner.Height * 0.33 + (Owner.MOMoveTarget.Height or 100) * 0.33 then -- enemy MO
+						elseif Trace.Largest < Owner.MoveHeight * 0.33 + (Owner.MOMoveTarget.Height or 100) * 0.33 then -- enemy MO
 							Waypoint.Pos = Owner.MOMoveTarget.Pos;
 						end
 					end
@@ -4281,8 +4281,8 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 										end
 
 										-- check if we are close enough to dig
-										if SceneMan:ShortestDistance(PrevWptPos, Owner.Pos, false):MagnitudeIsGreaterThan(Owner.Height*0.5) and
-											 SceneMan:ShortestDistance(Owner.Pos, Waypoint.Pos, false):MagnitudeIsGreaterThan(Owner.Height*0.5)
+										if SceneMan:ShortestDistance(PrevWptPos, Owner.Pos, false):MagnitudeIsGreaterThan(Owner.MoveHeight*0.5) and
+											 SceneMan:ShortestDistance(Owner.Pos, Waypoint.Pos, false):MagnitudeIsGreaterThan(Owner.MoveHeight*0.5)
 										then
 											digState = AHuman.NOTDIGGING;
 											obstacleState = Actor.PROCEEDING;
@@ -4292,12 +4292,12 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 										else
 											-- see if we have dug out all that we can in the sweep area without moving closer
 											local centerAngle = CurrDist.AbsRadAngle;
-											local Ray = Vector(Owner.Height*0.3, 0):RadRotate(centerAngle); -- center
+											local Ray = Vector(Owner.MoveHeight*0.3, 0):RadRotate(centerAngle); -- center
 											if SceneMan:CastNotMaterialRay(Owner.Pos, Ray, 0, 3, false) < 0 then
 												-- now check the tunnel's thickness
-												Ray = Vector(Owner.Height*0.3, 0):RadRotate(centerAngle + sweepRange); -- up
+												Ray = Vector(Owner.MoveHeight*0.3, 0):RadRotate(centerAngle + sweepRange); -- up
 												if SceneMan:CastNotMaterialRay(Owner.Pos, Ray, rte.airID, 3, false) < 0 then
-													Ray = Vector(Owner.Height*0.3, 0):RadRotate(centerAngle - sweepRange); -- down
+													Ray = Vector(Owner.MoveHeight*0.3, 0):RadRotate(centerAngle - sweepRange); -- down
 													if SceneMan:CastNotMaterialRay(Owner.Pos, Ray, rte.airID, 3, false) < 0 then
 														obstacleState = Actor.PROCEEDING; -- ok the tunnel section is clear, so start walking forward while still digging
 													else
@@ -4321,9 +4321,9 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 											-- sweep the digger between the two endpoints of the obstacle
 											local DigTarget;
 											if sweepCW then
-												DigTarget = Vector(Owner.Height*0.4, 0):RadRotate(centerAngle + sweepRange);
+												DigTarget = Vector(Owner.MoveHeight*0.4, 0):RadRotate(centerAngle + sweepRange);
 											else
-												DigTarget = Vector(Owner.Height*0.4, 0):RadRotate(centerAngle - sweepRange);
+												DigTarget = Vector(Owner.MoveHeight*0.4, 0):RadRotate(centerAngle - sweepRange);
 											end
 
 											angDiff = math.asin(AimVec:Cross(DigTarget.Normalized)); -- The angle between DigTarget and AimVec
@@ -4338,7 +4338,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 
 											-- check if we are done when we get close enough to the waypoint
 											if Owner.AIMode == Actor.AIMODE_GOLDDIG then
-												Waypoint.Pos = SceneMan:MovePointToGround(Waypoint.Pos, Owner.Height*0.2, 4);
+												Waypoint.Pos = SceneMan:MovePointToGround(Waypoint.Pos, Owner.MoveHeight*0.2, 4);
 											end
 										end
 									end
@@ -4383,7 +4383,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 							-- Doubled in flight, but not for a jump's landing beside us once we are up at its height: that point is on the floor past the
 							-- hole's edge, and "near enough" from thirty pixels off, over the hole or on the other lip, dropped it, and the unit walked for
 							-- the point after it, across the hole, and fell in.
-							if AI.jump and not (Waypoint.Kind == 2 and CurrDist.Y > -Owner.Height * 0.2 and math.abs(CurrDist.X) > Owner.Height * 0.15) then
+							if AI.jump and not (Waypoint.Kind == 2 and CurrDist.Y > -Owner.MoveHeight * 0.2 and math.abs(CurrDist.X) > Owner.MoveHeight * 0.15) then
 								tolerance = tolerance * 2;
 							end
 
@@ -4393,7 +4393,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 							-- beside it and drove it under the floor slab. A jump point on the floor (a 24 px step, a landing) is for the legs and pops as
 							-- any other: held to its height, a prone unit at a step under a doorway, which may not jet, crept against it for five seconds.
 							local function IsApexPoint()
-								return Waypoint.Kind == 2 and not SceneMan:CastStrengthRay(Waypoint.Pos, Vector(0, Owner.Height * 0.6), 5, Vector(), 3, rte.grassID, true);
+								return Waypoint.Kind == 2 and not SceneMan:CastStrengthRay(Waypoint.Pos, Vector(0, Owner.MoveHeight * 0.6), 5, Vector(), 3, rte.grassID, true);
 							end
 							local apexPoint = IsApexPoint();
 							-- Under a low ceiling (a tunnel, or the slab over its mouth), a point above us is not reached, nor passed, however near: from
@@ -4402,7 +4402,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 							local function LowCeilingUnder(Point)
 								-- (Lying down only: a unit standing in a 48 px corridor touches its ceiling with this probe, and then no step up in the
 								-- corridor was ever reached.)
-								return AI.proneState == AHuman.PRONE and Point.Y < Owner.Pos.Y - 6 and SceneMan:CastStrengthRay(Owner.Pos, Vector(0, -Owner.Height * 0.3), 5, Vector(), 3, rte.grassID, true);
+								return AI.proneState == AHuman.PRONE and Point.Y < Owner.Pos.Y - 6 and SceneMan:CastStrengthRay(Owner.Pos, Vector(0, -Owner.MoveHeight * 0.3), 5, Vector(), 3, rte.grassID, true);
 							end
 
 							-- A waypoint behind us with the next one in plain sight is done with: the path's nodes are only 24 px apart, and waiting to stand on
@@ -4425,7 +4425,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 									-- its own terms, then steps off; "passed" for the landing from 90 px down the shaft, because the landing was the nearer
 									-- of the two, carried the climb state onto the landing and from there onto the next shaft's jump point, which was then
 									-- climbed with no look at the tank.)
-									local passed = ToNext:MagnitudeIsLessThan(CurrDist.Magnitude) or (CurrDist.X * ToNext.X < 0 and math.abs(CurrDist.X) > 6 and math.abs(CurrDist.X) < Owner.Height * 0.5 and math.abs(CurrDist.Y) < Owner.Height * 0.5);
+									local passed = ToNext:MagnitudeIsLessThan(CurrDist.Magnitude) or (CurrDist.X * ToNext.X < 0 and math.abs(CurrDist.X) > 6 and math.abs(CurrDist.X) < Owner.MoveHeight * 0.5 and math.abs(CurrDist.Y) < Owner.MoveHeight * 0.5);
 									if apexPoint and AI.jetClimb and CurrDist.Y < -6 then
 										passed = false;
 									end
@@ -4455,7 +4455,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 										-- A new jump point well above us is a new climb, with its own look at the way up and the tank (see the climb): with
 										-- the climb state carried over from the last one, a 320 px shaft was flown on the fuel the last one left. (A jump
 										-- point below, the landing beside a column's top, is the same climb's step off, and keeps the state.)
-										if AI.jetClimb and Waypoint.Kind == 2 and NextPos.Y < Owner.Pos.Y - Owner.Height * 0.3 then
+										if AI.jetClimb and Waypoint.Kind == 2 and NextPos.Y < Owner.Pos.Y - Owner.MoveHeight * 0.3 then
 											AI.jetClimb = false;
 										end
 									end
@@ -4490,8 +4490,8 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 								if Waypoint.Type == "last" then
 									if not AI.flying and Owner.Vel.Largest < 5 then
 										if not Owner.MOMoveTarget then
-											local ProxyWpt = SharedBehaviors.WaypointOnGround(Owner:GetLastAIWaypoint(), Owner.Height);
-											if SceneMan:ShortestDistance(Owner.Pos, ProxyWpt, false).Largest < Owner.Height*0.4 then
+											local ProxyWpt = SharedBehaviors.WaypointOnGround(Owner:GetLastAIWaypoint(), Owner.MoveHeight);
+											if SceneMan:ShortestDistance(Owner.Pos, ProxyWpt, false).Largest < Owner.MoveHeight*0.4 then
 												Owner:ClearAIWaypoints();
 												Owner:ClearMovePath();
 												Owner:DrawWaypoints(false);
@@ -4513,7 +4513,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 									-- A new jump point well above us is a new climb, looked at afresh (the way up, the tank); see the "passed" pop.
 									if AI.jetClimb and Owner.MovePathStepKind == 2 then
 										for pos in Owner.MovePath do
-											if pos.Y < Owner.Pos.Y - Owner.Height * 0.3 then
+											if pos.Y < Owner.Pos.Y - Owner.MoveHeight * 0.3 then
 												AI.jetClimb = false;
 											end
 											break;
@@ -4544,10 +4544,10 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 										else
 											local Sense = DoorAhead:NearestSensorPoint(Owner.Pos);
 											if Sense.Largest > 0 then
-												doorGoal = SceneMan:MovePointToGround(Sense, Owner.Height * 0.2, 4);
+												doorGoal = SceneMan:MovePointToGround(Sense, Owner.MoveHeight * 0.2, 4);
 											else
 												-- (A door with no sensors opens by other means; a wait short of its piece is the most that can be done.)
-												doorHold = SceneMan:ShortestDistance(Owner.Pos, DoorAhead.Door.Pos, false).Magnitude < Owner.Height * 0.8;
+												doorHold = SceneMan:ShortestDistance(Owner.Pos, DoorAhead.Door.Pos, false).Magnitude < Owner.MoveHeight * 0.8;
 											end
 										end
 										if doorHold or doorGoal then
@@ -4576,8 +4576,8 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 								local climbHandled = false;
 								-- (In the air, only from near the column: the climb's start in the air goes straight to the rise, and planned in a hop 90 px
 								-- short of the column it flew there at 11 m/s, past it, and ran dry. Further out the flight control takes the unit there.)
-								local farInAir = AI.flying and math.abs(CurrDist.X) > Owner.Height * 0.3;
-								if not Climb and not farInAir and not doorHold and not doorGoal and Waypoint.Kind == 2 and Owner.Jetpack and Owner.Jetpack.JetpackType == AEJetpack.Standard and CurrDist.Y < -Owner.Height * 0.3 and not (NotAShaft and SceneMan:ShortestDistance(NotAShaft, Waypoint.Pos, false):MagnitudeIsLessThan(4)) then
+								local farInAir = AI.flying and math.abs(CurrDist.X) > Owner.MoveHeight * 0.3;
+								if not Climb and not farInAir and not doorHold and not doorGoal and Waypoint.Kind == 2 and Owner.Jetpack and Owner.Jetpack.JetpackType == AEJetpack.Standard and CurrDist.Y < -Owner.MoveHeight * 0.3 and not (NotAShaft and SceneMan:ShortestDistance(NotAShaft, Waypoint.Pos, false):MagnitudeIsLessThan(4)) then
 									Climb = SharedBehaviors.ClimbPlan(AI, Owner, Waypoint.Pos, NextWptPos);
 									if not Climb.shaft and not Climb.ladder then
 										NotAShaft = Vector(Waypoint.Pos.X, Waypoint.Pos.Y);
@@ -4647,14 +4647,14 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 									-- What is in the way on that side, chest high and knee high, a body length ahead: a knee-high step is walked over, a wall
 									-- is hopped with the jetpack when there is head room, and crawled under when the gap is low.
 									-- (Not when crawling: the wall is the top of a doorway we're going under, and the way through is the path's.)
-									if nextLatMove ~= Actor.LAT_STILL and Waypoint.Pos.Y < Owner.Pos.Y + Owner.Height * 0.5 and AI.proneState ~= AHuman.PRONE then
+									if nextLatMove ~= Actor.LAT_STILL and Waypoint.Pos.Y < Owner.Pos.Y + Owner.MoveHeight * 0.5 and AI.proneState ~= AHuman.PRONE then
 										local side = nextLatMove == Actor.LAT_LEFT and -1 or 1;
-										local ahead = Vector(side * Owner.Height * 0.45, 0);
+										local ahead = Vector(side * Owner.MoveHeight * 0.45, 0);
 										-- The chest is a tenth of the height over Pos (thirty pixels over the feet) and the head ray just under the head's top: a step
 										-- of up to thirty pixels passes under both, one up to the head's height blocks the chest alone, and only something higher
 										-- than the body blocks both. (With the rays 40 and 50 px over the feet, the head's was in the ceiling of every 48 px
 										-- corridor, so a knee-high step in a corridor was a wall, and jetted at.)
-										local chest = Owner.Pos + Vector(0, -Owner.Height * 0.1);
+										local chest = Owner.Pos + Vector(0, -Owner.MoveHeight * 0.1);
 										local head = Owner.Pos + Vector(0, -underHeadTop);
 										local ChestHit = Vector();
 										local HeadHit = Vector();
@@ -4779,7 +4779,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												-- (And a dig is dug, never jetted: the shaft's walls looked like a wall ahead, and the digger was jetted out of its own hole.)
 												-- (Nor stairs: steeper than the legs' slope limit as the rise reads from their foot, but the pather only sends a unit up
 												-- stairs it can walk, and a soldier walks the base game's steepest.)
-												local wantsClimb = not doorHold and not doorGoal and AI.proneState ~= AHuman.PRONE and Waypoint.Kind ~= 4 and Waypoint.Kind ~= 6 and ((Waypoint.Kind == 2 and above < -Owner.Height * 0.3) or (above < -Owner.Height * 0.25 and steep) or (WallAhead and above < Owner.Height * 0.3));
+												local wantsClimb = not doorHold and not doorGoal and AI.proneState ~= AHuman.PRONE and Waypoint.Kind ~= 4 and Waypoint.Kind ~= 6 and ((Waypoint.Kind == 2 and above < -Owner.MoveHeight * 0.3) or (above < -Owner.MoveHeight * 0.25 and steep) or (WallAhead and above < Owner.MoveHeight * 0.3));
 											local climbRefused = false;
 											local stepToColumnDx = nil; -- A step to take first, to under the column the climb goes up.
 											if wantsClimb and not climbing then -- (In the air too: a unit passing a ledge on the way up from one jump couldn't start the next.)
@@ -4789,15 +4789,15 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												-- (As far as the head travels and a few pixels short of it, not over: the pather fits the head two pixels under the
 												-- ceiling at the top of a column, and a probe that went four pixels past where the head would be found that ceiling
 												-- at the top of every ceiling-limited shaft, and the climb was refused without a word for as long as the unit stood there.)
-												local Up = Vector(0, math.min(-Owner.Height * 0.2, above + 4));
+												local Up = Vector(0, math.min(-Owner.MoveHeight * 0.2, above + 4));
 												-- In a shaft the climb is up its middle, so that's where the way up is looked at from: a unit a few pixels off the middle
 												-- of a shaft two bodies wide had its ray up hit the wall's edge, and stood at the bottom for ever.
 												-- (Out to a body's height either way: a hub's opening is 96 px across, and from a column near one wall of it the far wall
 												-- was out of a shorter reach, so the opening wasn't a shaft and the climb drifted into its side.)
-												local shaftX, shaftWidth = SharedBehaviors.ShaftMiddle(Owner, Owner.Pos.X, Owner.Pos.Y - Owner.Height * 0.1, Owner.Height);
+												local shaftX, shaftWidth = SharedBehaviors.ShaftMiddle(Owner, Owner.Pos.X, Owner.Pos.Y - Owner.MoveHeight * 0.1, Owner.MoveHeight);
 												-- (A shaft, not a room: with both walls of a room within reach its middle was taken for a shaft's, and the way up looked at
 												-- from there, beside the hatch, found the ceiling every time.)
-												if shaftWidth and shaftWidth > Owner.Height * 1.2 then
+												if shaftWidth and shaftWidth > Owner.MoveHeight * 1.2 then
 													shaftX = nil;
 												end
 												local probeX = shaftX or Owner.Pos.X;
@@ -4815,7 +4815,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												end
 												-- Still under a ceiling: the route's own column, when it is open, before any other. (The nearest opening could be the other
 												-- way: a unit 48 px from the ladder its route went up walked 50 px away from it, to a gap that led nowhere, all minute.)
-												if ceiling and math.abs(towardsX) >= Owner.Height * 0.12 and OpenAbove(Waypoint.Pos.X) then
+												if ceiling and math.abs(towardsX) >= Owner.MoveHeight * 0.12 and OpenAbove(Waypoint.Pos.X) then
 													ceiling = false;
 													columnX = Waypoint.Pos.X;
 												end
@@ -4829,7 +4829,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												-- Then from the climb's seconds at 8 m/s, nine tenths lit, which let a 320 px climb go that the tank could not make.)
 												-- (Every climb the route asks for, not only the tall ones: the route is planned on a full tank, and a unit that set off on
 												-- whatever was left from the last one missed what a player, waiting a moment at the foot, makes easily.)
-												local tall = above < -Owner.Height * 0.3;
+												local tall = above < -Owner.MoveHeight * 0.3;
 												-- What the climb would leave at the top, flown from the tank as it is (see ClimbFuelLeft), must cover the hover and the step
 												-- off: 450 ms, since the jet is weak by then. A climb that no full tank makes by that reckoning is tried on a full one.
 												local tankIn;
@@ -4855,7 +4855,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												-- across, a unit burned half a tank pinned to the slab's underside before it was under the opening. On the ground the legs
 												-- go there first (see the refusal below); in the air, passing a ledge on the way up, the drift is all there is.
 												-- (And only on floor: over a hole, a landing inside a shaft, the climb starts here and drifts, as before.)
-												if not ceiling and tankIn and not AI.flying and math.abs(columnX - Owner.Pos.X) >= Owner.Height * 0.12 and SceneMan:CastObstacleRay(Vector(columnX, Owner.Pos.Y), Vector(0, Owner.Height * 0.5), Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 4) >= 0 then
+												if not ceiling and tankIn and not AI.flying and math.abs(columnX - Owner.Pos.X) >= Owner.MoveHeight * 0.12 and SceneMan:CastObstacleRay(Vector(columnX, Owner.Pos.Y), Vector(0, Owner.MoveHeight * 0.5), Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 4) >= 0 then
 													climbRefused = true;
 													stepToColumnDx = columnX - Owner.Pos.X;
 												elseif not ceiling and tankIn then
@@ -4877,7 +4877,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												if not AI.flying then
 													local dx = stepToColumnDx;
 													if not dx then
-														local Up = Vector(0, math.min(-Owner.Height * 0.2, above + 4));
+														local Up = Vector(0, math.min(-Owner.MoveHeight * 0.2, above + 4));
 														dx = SharedBehaviors.OpenColumnNear(Owner, Up);
 													end
 													if dx and math.abs(dx) > 2 then
@@ -4885,7 +4885,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 														if Owner:IsAITracedOn("Climb") and math.random() < 0.1 then ConsoleMan:PrintString("AITRACE climb: " .. (stepToColumnDx and ("stepping " .. math.floor(dx) .. " under the open column first") or ("under a ceiling, stepping " .. math.floor(dx) .. " to an open column"))); end
 													end
 												end
-											elseif (climbing or (AI.jetClimb and wantsClimb)) and ClimbTimer.ElapsedSimTimeMS > 1500 and not AI.flying and Owner.Vel.Y > -0.5 and above < -Owner.Height * 0.2 then
+											elseif (climbing or (AI.jetClimb and wantsClimb)) and ClimbTimer.ElapsedSimTimeMS > 1500 and not AI.flying and Owner.Vel.Y > -0.5 and above < -Owner.MoveHeight * 0.2 then
 												-- On the ground again, a second and a half into a climb, with the waypoint still well above: the climb has failed (fallen
 												-- back down the hatch, or come down on the wrong lip), so it ends, and a new route is asked for from here rather than the
 												-- rest of the old one followed from where it was never meant to start. (With the climb left "on", the unit stood under
@@ -4911,32 +4911,32 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												local chestClear = true;
 												local touchingWall = false;
 												if math.abs(stepX) >= 10 then
-													local reach = math.abs(stepX) + Owner.Height * 0.15; -- All the way to it: a ledge short of the ray's end was stepped off towards, and fallen short of.
+													local reach = math.abs(stepX) + Owner.MoveHeight * 0.15; -- All the way to it: a ledge short of the ray's end was stepped off towards, and fallen short of.
 													local Step = Vector(stepX > 0 and reach or -reach, 0);
 													-- (Height is about twice the sprite: the feet are a fifth of it under Pos.)
-													feetClear = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, Owner.Height * 0.2), Step, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0 and SceneMan:CastObstacleRay(Owner.Pos + Vector(0, Owner.Height * 0.1), Step, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0;
-													chestClear = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, -Owner.Height * 0.1), Step, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0;
+													feetClear = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, Owner.MoveHeight * 0.2), Step, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0 and SceneMan:CastObstacleRay(Owner.Pos + Vector(0, Owner.MoveHeight * 0.1), Step, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0;
+													chestClear = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, -Owner.MoveHeight * 0.1), Step, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) < 0;
 													-- Right up against it and not rising for all the jet: a unit pressed to a wall just burns, so that's a push away from it.
-													local Touch = Vector(stepX > 0 and Owner.Height * 0.15 or -Owner.Height * 0.15, 0);
-													touchingWall = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, -Owner.Height * 0.1), Touch, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 2) >= 0 or SceneMan:CastObstacleRay(Owner.Pos + Vector(0, Owner.Height * 0.1), Touch, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 2) >= 0;
+													local Touch = Vector(stepX > 0 and Owner.MoveHeight * 0.15 or -Owner.MoveHeight * 0.15, 0);
+													touchingWall = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, -Owner.MoveHeight * 0.1), Touch, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 2) >= 0 or SceneMan:CastObstacleRay(Owner.Pos + Vector(0, Owner.MoveHeight * 0.1), Touch, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 2) >= 0;
 												end
 												-- Up at the height with the way clear, but not yet near the landing sideways, it isn't over: the jet went out a hundred pixels
 													-- short of a ledge and the unit dropped below it on the way; now it hovers across (see below).
 													-- And floor under the feet, or the landing straight below: a hatch's landing is a node past the hole's edge, and the jet
 													-- cut with the feet merely level with the floor, a node short of it, dropped the unit back down the hole it had climbed
 													-- (in the air, with the jet out, nothing moves a unit sideways).
-													local groundUnderFeet = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, Owner.Height * 0.2), Vector(0, Owner.Height * 0.25), Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 2) >= 0;
+													local groundUnderFeet = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, Owner.MoveHeight * 0.2), Vector(0, Owner.MoveHeight * 0.25), Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 2) >= 0;
 													-- (Only a landing itself counts as reached by being under us; a top-of-column is over the hole by definition.)
-													local overLanding = groundUnderFeet or (not apexPoint and math.abs(stepX) < Owner.Height * 0.15);
+													local overLanding = groundUnderFeet or (not apexPoint and math.abs(stepX) < Owner.MoveHeight * 0.15);
 													-- (With a floor under the feet at the height, the climb is over wherever the point is sideways: the legs walk the rest. Held
 													-- in the air until within 40 px of a point 109 px along the corridor, a hover across the merged run of walk nodes after a
 													-- hatch's top burned the rest of the tank.)
-													local done = (above > -Owner.Height * 0.2 and feetClear and (groundUnderFeet or (overLanding and math.abs(stepX) < Owner.Height * 0.4))) or above > Owner.Height * 0.6 or Owner.Jetpack.JetTimeLeft < TimerMan.AIDeltaTimeMS * 4;
+													local done = (above > -Owner.MoveHeight * 0.2 and feetClear and (groundUnderFeet or (overLanding and math.abs(stepX) < Owner.MoveHeight * 0.4))) or above > Owner.MoveHeight * 0.6 or Owner.Jetpack.JetTimeLeft < TimerMan.AIDeltaTimeMS * 4;
 													-- A crab's climb is over at the height: it lands on legs either side, so there is no step off a lip to wait for, and a
 													-- slope ahead at foot level is not a floor that is fouled. Held to the human rules against the gym's hill it rose a
 													-- hundred pixels past a 23 px climb, burned the tank and fell for half its health.
 													if not Owner.Head then
-														done = above > -Owner.Height * 0.2 or Owner.Jetpack.JetTimeLeft < TimerMan.AIDeltaTimeMS * 4;
+														done = above > -Owner.MoveHeight * 0.2 or Owner.Jetpack.JetTimeLeft < TimerMan.AIDeltaTimeMS * 4;
 													end
 												if done then
 													AI.jetClimb = false;
@@ -4952,7 +4952,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													-- Up at the height but not yet over the landing, it hovers: lit whenever we start to drop.
 													-- The rate of climb comes down as the top nears: what it reaches the top at, it coasts on past it (eighty pixels, from five
 													-- metres a second), and that was fuel and height to come down again.
-													local toGo = -above - Owner.Height * 0.2;
+													local toGo = -above - Owner.MoveHeight * 0.2;
 													-- The rate allowed with a height still to go is the speed gravity alone brings to a stop a few pixels short of it, up to
 													-- the cap: so the tall part is flown at the cap, the jet goes out where the coast will just reach the top, and nothing is
 													-- spent fighting gravity on the way down from the cap. (A climb costs fuel by the second lit, not by the pixel, so the
@@ -4966,12 +4966,12 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													-- with them.
 													AI.jetSteady = ClimbTimer.ElapsedSimTimeMS > 400;
 													-- With some play in it: every relight can be a burst, at a burst's worth of fuel, so the fewer the better.
-													if Owner.Head and above > -Owner.Height * 0.2 and not feetClear and math.abs(stepX) >= 10 and not AI.climbClearY and above < Owner.Height * 0.5 then
+													if Owner.Head and above > -Owner.MoveHeight * 0.2 and not feetClear and math.abs(stepX) >= 10 and not AI.climbClearY and above < Owner.MoveHeight * 0.5 then
 														-- At the point's height but the feet still foul the floor we step onto (the point sits as low as the landing's
 														-- ceiling allows, and the feet hang a fifth of a body under it): a slow rise, a metre a second, until they clear.
 														-- Hovering here just burned the tank in the hatch.
 														AI.jump = Owner.Vel.Y > (AI.jump and -1.5 or -0.5);
-													elseif above > -Owner.Height * 0.2 then
+													elseif above > -Owner.MoveHeight * 0.2 then
 														AI.jump = Owner.Vel.Y > (AI.jump and -1.5 or 0.5);
 													else
 														-- (A metre a second either side of the rate: the jet goes out at the rate the coast is reckoned from, or the top is
@@ -4989,23 +4989,23 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													-- (A few pixels under the head's top there, not over it: over it was the ceiling the pather had just fitted the head
 													-- under, and the sky bunker's hatch still read it as a lip.)
 													local headAtWaypoint = Waypoint.Pos.Y - headAbovePos + 4;
-													local overTo = math.max(headAtWaypoint - (Owner.Pos.Y - underHeadTop), -Owner.Height * 0.6);
+													local overTo = math.max(headAtWaypoint - (Owner.Pos.Y - underHeadTop), -Owner.MoveHeight * 0.6);
 													local Over = Vector(0, math.min(-2, overTo));
 													local overOpen = overTo < -4;
-													if overOpen and above < -Owner.Height * 0.1 and SceneMan:CastObstacleRay(Owner.Pos + Vector(0, -underHeadTop), Over, Lip, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 then
+													if overOpen and above < -Owner.MoveHeight * 0.1 and SceneMan:CastObstacleRay(Owner.Pos + Vector(0, -underHeadTop), Over, Lip, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 then
 														-- Out from under it towards the nearest column that is open above (the mouth of a shaft in a corridor's ceiling is on
 														-- the waypoint's side; a cliff's lip is on the far side), and no further than a node or so from where the climb began:
 														-- indoors there is always a ceiling, and a push away from the waypoint every tick walked units the length of a corridor.
 														local startX = AI.climbStartX or Owner.Pos.X;
 														local openDx = SharedBehaviors.OpenColumnNear(Owner, Over);
-														local pushX = openDx and (Owner.Pos.X + openDx) or (Owner.Pos.X + (CurrDist.X > 0 and -1 or 1) * Owner.Height * 0.3);
-														AI.climbClearX = math.max(startX - Owner.Height * 0.6, math.min(startX + Owner.Height * 0.6, pushX));
+														local pushX = openDx and (Owner.Pos.X + openDx) or (Owner.Pos.X + (CurrDist.X > 0 and -1 or 1) * Owner.MoveHeight * 0.3);
+														AI.climbClearX = math.max(startX - Owner.MoveHeight * 0.6, math.min(startX + Owner.MoveHeight * 0.6, pushX));
 														AI.climbClearY = Lip.Y;
 														if Owner:IsAITracedOn("Climb") and math.random() < 0.1 then ConsoleMan:PrintString("AITRACE climb: under a ceiling at " .. math.floor(Lip.Y) .. ", keeping out from under it"); end
 													end
 													-- (Above it once the feet are: cleared at head height, the drift back for the waypoint took the unit straight back under
 													-- the lip, and the push out again cost the rest of the tank.)
-													if AI.climbClearY and Owner.Pos.Y + Owner.Height * 0.2 < AI.climbClearY - 4 then
+													if AI.climbClearY and Owner.Pos.Y + Owner.MoveHeight * 0.2 < AI.climbClearY - 4 then
 														AI.climbClearY = nil; -- Above it now.
 													end
 													-- Sideways it is flown by speed: a little drift towards the waypoint, more the further off it is, and none at all into a wall or
@@ -5017,8 +5017,8 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													local secondsToTop = math.max(1, -above / (climbRate * GetPPM()));
 													local wantVelX = math.max(-4, math.min(4, CurrDist.X / (secondsToTop * GetPPM())));
 													-- In a shaft, the middle of it is what's kept to, whatever side the waypoint is on; the walls come first.
-													local shaftNow, shaftNowWidth = SharedBehaviors.ShaftMiddle(Owner, Owner.Pos.X, Owner.Pos.Y - Owner.Height * 0.1, Owner.Height);
-													if shaftNowWidth and shaftNowWidth > Owner.Height * 1.2 then
+													local shaftNow, shaftNowWidth = SharedBehaviors.ShaftMiddle(Owner, Owner.Pos.X, Owner.Pos.Y - Owner.MoveHeight * 0.1, Owner.MoveHeight);
+													if shaftNowWidth and shaftNowWidth > Owner.MoveHeight * 1.2 then
 														shaftNow = nil; -- A room, not a shaft (see the climb's start).
 													end
 													if shaftNow then
@@ -5031,9 +5031,9 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 														wantVelX = math.max(-3, math.min(3, (AI.climbClearX - Owner.Pos.X) / 10));
 													elseif touchingWall and AI.jump and Owner.Vel.Y > -1 then
 														wantVelX = stepX > 0 and -1.5 or 1.5;
-													elseif not chestClear or math.abs(CurrDist.X) < Owner.Height * 0.15 then
+													elseif not chestClear or math.abs(CurrDist.X) < Owner.MoveHeight * 0.15 then
 														wantVelX = 0;
-													elseif overOpen and SceneMan:CastObstacleRay(Owner.Pos + Vector(wantVelX > 0 and Owner.Height * 0.25 or -Owner.Height * 0.25, -underHeadTop), Over, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 then
+													elseif overOpen and SceneMan:CastObstacleRay(Owner.Pos + Vector(wantVelX > 0 and Owner.MoveHeight * 0.25 or -Owner.MoveHeight * 0.25, -underHeadTop), Over, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 then
 														-- No drifting in under something: the column a little way over towards the waypoint has to be open above us as far as the
 														-- climb goes, or we climb straight here and drift once we're past it. (A cliff with a hollow under its lip drew units
 														-- in under the lip, where they burned the tank pinned.)
@@ -5042,13 +5042,13 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													-- Up at the height and clear to step across: at a walking pace at the least. The paced drift for a landing one node over
 													-- is 1.2 m/s, under the move keys' dead band below, so no key was ever pressed and the unit hovered in the hatch's mouth
 													-- until the tank was dry. (Not while a shaft's middle is being kept: that is the hole itself, and the walls come first.)
-													if Owner.Head and above > -Owner.Height * 0.2 and feetClear and chestClear and not AI.climbClearY and not shaftNow and math.abs(stepX) >= 10 then
+													if Owner.Head and above > -Owner.MoveHeight * 0.2 and feetClear and chestClear and not AI.climbClearY and not shaftNow and math.abs(stepX) >= 10 then
 														wantVelX = stepX > 0 and math.max(2, wantVelX) or math.min(-2, wantVelX);
 													end
 													-- The keys are pressed when the speed is off what's wanted by more than a band: a wide one in the open, so the nozzle
 													-- isn't flicked about, and a narrow one while climbing a column, where the walk speed carried in at the foot (1.5 m/s is
 													-- 30 px a second) took the unit forty pixels off a hatch's column in the time the climb took, into the slab beside it.
-													local band = (above < -Owner.Height * 0.2 and math.abs(CurrDist.X) < Owner.Height * 0.15) and 0.5 or 1.5;
+													local band = (above < -Owner.MoveHeight * 0.2 and math.abs(CurrDist.X) < Owner.MoveHeight * 0.15) and 0.5 or 1.5;
 													local offVelX = wantVelX - Owner.Vel.X;
 													if offVelX > band then
 														nextLatMove = Actor.LAT_RIGHT;
@@ -5065,7 +5065,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 														-- height, in screen terms, whichever way the crab faces: with lift alone the crab came down where it took off.
 														-- (Whether or not the chest ray is clear that way: on the slope it is climbing it never is, and gated on it the crab
 														-- rose straight up and came down where it took off.)
-														if math.abs(CurrDist.X) > Owner.Height * 0.15 then
+														if math.abs(CurrDist.X) > Owner.MoveHeight * 0.15 then
 															AI.jetLeanX = CurrDist.X > 0 and 1 or -1;
 														end
 													end
@@ -5105,8 +5105,8 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													-- A flight that would end in a ceiling or a wall is as bad as it gets: the hit point is where we'd really end up, and the score is doubled.
 													local Trace = SceneMan:ShortestDistance(Owner.Pos, JumpPos, false);
 													local Hit = Vector();
-													if SceneMan:CastObstacleRay(Owner.Pos + Vector(0, -Owner.Height * 0.4), Trace, Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 then
-														JumpPos = Hit + Vector(0, Owner.Height * 0.4);
+													if SceneMan:CastObstacleRay(Owner.Pos + Vector(0, -Owner.MoveHeight * 0.4), Trace, Hit, Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0 then
+														JumpPos = Hit + Vector(0, Owner.MoveHeight * 0.4);
 														Facings[k].range = SceneMan:ShortestDistance(Waypoint.Pos, JumpPos, false).Magnitude * 2 + 50;
 														Facings[k].blocked = true;
 													else
@@ -5124,7 +5124,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													-- standing, every jet looked better than a walk that was taken to go nowhere.
 													local walkSpeed = 2.5 * GetPPM(); -- pixels a second, about a soldier's walk
 													local Ahead = Vector((nextLatMove == Actor.LAT_LEFT and -1 or 1) * walkSpeed * t, 0);
-													FallPos = SceneMan:MovePointToGround(Owner.Pos + Ahead, Owner.Height * 0.4, 6);
+													FallPos = SceneMan:MovePointToGround(Owner.Pos + Ahead, Owner.MoveHeight * 0.4, 6);
 												end
 
 												-- check for obstacles when falling/walking
@@ -5139,23 +5139,23 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 												table.sort(Facings, function(A, B) return A.range < B.range end);
 												local delta = SceneMan:ShortestDistance(Waypoint.Pos, FallPos, false).Magnitude - Facings[1].range;
 												-- Going up, once the waypoint is no longer above the chest the climb is done: thrusting on from there is the hovering past the ledge.
-												local aboveWaypoint = Owner.Vel.Y < 0 and (Waypoint.Pos.Y - Owner.Pos.Y) > -Owner.Height * 0.3;
+												local aboveWaypoint = Owner.Vel.Y < 0 and (Waypoint.Pos.Y - Owner.Pos.Y) > -Owner.MoveHeight * 0.3;
 												-- On the ground, the jetpack is for what can't be walked: a wall in the way, or a waypoint well above us. A slope is walked.
-												local walkable = not AI.flying and not WallAhead and not hopping and (Waypoint.Pos.Y - Owner.Pos.Y) > -Owner.Height * 0.25;
+												local walkable = not AI.flying and not WallAhead and not hopping and (Waypoint.Pos.Y - Owner.Pos.Y) > -Owner.MoveHeight * 0.25;
 												-- Well above the waypoint already: whatever the scores say, more height is wasted fuel.
-												local tooHigh = (Waypoint.Pos.Y - Owner.Pos.Y) > Owner.Height;
+												local tooHigh = (Waypoint.Pos.Y - Owner.Pos.Y) > Owner.MoveHeight;
 												-- Already going fast enough sideways: more thrust only builds a speed that ends in a wall. Momentum is let carry.
 												local fastEnough = math.abs(Owner.Vel.X) > 5 and Owner.Vel.Y < 8;
 												-- Under an overhang with the waypoint above: every flight hits the ceiling. Step out from under it first, towards a side with ground
 												-- under it and open sky over it; with no such side, the usual choice is made and the stuck handling takes it from there.
 												-- (Not while crawling: the "overhang" is the top of the slot being crawled into, and stepping out of it is stepping back.)
-	local underOverhang = not AI.flying and AI.proneState ~= AHuman.PRONE and Facings[1].blocked and (Waypoint.Pos.Y - Owner.Pos.Y) < -Owner.Height * 0.25;
+	local underOverhang = not AI.flying and AI.proneState ~= AHuman.PRONE and Facings[1].blocked and (Waypoint.Pos.Y - Owner.Pos.Y) < -Owner.MoveHeight * 0.25;
 												local stepTo = Actor.LAT_STILL;
 												if underOverhang then
 													local function sideOpen(dir)
-														local foot = Owner.Pos + Vector(dir * Owner.Height * 0.35, 0);
-														local ground = SceneMan:CastStrengthRay(foot, Vector(0, Owner.Height * 0.7), 5, Vector(), 2, rte.grassID, true);
-														local sky = not SceneMan:CastStrengthRay(foot + Vector(0, -Owner.Height * 0.3), Vector(0, -Owner.Height * 1.4), 5, Vector(), 2, rte.grassID, true);
+														local foot = Owner.Pos + Vector(dir * Owner.MoveHeight * 0.35, 0);
+														local ground = SceneMan:CastStrengthRay(foot, Vector(0, Owner.MoveHeight * 0.7), 5, Vector(), 2, rte.grassID, true);
+														local sky = not SceneMan:CastStrengthRay(foot + Vector(0, -Owner.MoveHeight * 0.3), Vector(0, -Owner.MoveHeight * 1.4), 5, Vector(), 2, rte.grassID, true);
 														return ground and sky;
 													end
 													local towards = CurrDist.X < 0 and -1 or 1;
@@ -5172,7 +5172,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 													nextLatMove = stepTo;
 													if Owner:IsAITracedOn("Pilot") then ConsoleMan:PrintString("AITRACE overhang: stepping " .. (nextLatMove == Actor.LAT_LEFT and "left" or "right")); end
 												elseif delta < 1 or aboveWaypoint or walkable or tooHigh or fastEnough then
-													if Owner:IsAITracedOn("Pilot") and (Waypoint.Pos.Y - Owner.Pos.Y) < -Owner.Height * 0.25 and not AI.flying and math.random() < 0.1 then
+													if Owner:IsAITracedOn("Pilot") and (Waypoint.Pos.Y - Owner.Pos.Y) < -Owner.MoveHeight * 0.25 and not AI.flying and math.random() < 0.1 then
 														ConsoleMan:PrintString("AITRACE no jet: delta " .. math.floor(delta) .. " above " .. tostring(aboveWaypoint) .. " walkable " .. tostring(walkable) .. " tooHigh " .. tostring(tooHigh) .. " fast " .. tostring(fastEnough) .. " blocked " .. tostring(Facings[1].blocked) .. " range " .. math.floor(Facings[1].range) .. " wpt dx " .. math.floor(CurrDist.X) .. " dy " .. math.floor(CurrDist.Y) .. " lat " .. tostring(nextLatMove));
 													end
 													AI.jump = false;
@@ -5184,7 +5184,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 
 													if not Owner.Head then
 														-- A crab's facing doesn't lean its jet: it leans towards the waypoint when that is off to one side.
-														if math.abs(CurrDist.X) > Owner.Height * 0.15 then
+														if math.abs(CurrDist.X) > Owner.MoveHeight * 0.15 then
 															AI.jetLeanX = CurrDist.X > 0 and 1 or -1;
 														end
 													else
@@ -5238,9 +5238,9 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 
 			-- have we arrived?
 			if not Owner.MOMoveTarget then
-				local ProxyWpt = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.Height*0.2, 5);
+				local ProxyWpt = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.MoveHeight*0.2, 5);
 				local Trace = SceneMan:ShortestDistance(Owner.Pos, ProxyWpt, false);
-				if Trace.Largest < Owner.Height*0.25 and not SceneMan:CastStrengthRay(Owner.Pos, Trace, 6, Vector(), 3, rte.grassID, true) then
+				if Trace.Largest < Owner.MoveHeight*0.25 and not SceneMan:CastStrengthRay(Owner.Pos, Trace, 6, Vector(), 3, rte.grassID, true) then
 					if Owner.AIMode == Actor.AIMODE_GOTO then
 						AI.SentryPos = Vector(Owner.Pos.X, Owner.Pos.Y);
 						AI:CreateSentryBehavior(Owner);
@@ -5277,7 +5277,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 		end
 		-- Down a ladder: a waypoint well below, nearly straight down, and a ladder here. The ladder catches a slow fall and holds it, so a
 		-- unit that dropped down a laddered hatch was stopped half way; it is climbed down instead, aimed down with down pressed.
-		if not Climb and Waypoint and CurrDist and Owner.Head and CurrDist.Y > Owner.Height * 0.3 and math.abs(CurrDist.X) < Owner.Height * 0.4 and SharedBehaviors.LadderAt(Owner.Pos, Owner.Height * 0.2, Owner.Height * 0.3) then
+		if not Climb and Waypoint and CurrDist and Owner.Head and CurrDist.Y > Owner.MoveHeight * 0.3 and math.abs(CurrDist.X) < Owner.MoveHeight * 0.4 and SharedBehaviors.LadderAt(Owner.Pos, Owner.MoveHeight * 0.2, Owner.MoveHeight * 0.3) then
 			AI.ladderDown = true;
 			AI.jump = false;
 			nextLatMove = Actor.LAT_STILL;
@@ -5287,15 +5287,15 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 		-- A drop straight down from where we stand (a drop step, or a walk or crawl whose point is well below), and floor still under the feet: the route's point is a node's middle, which can sit on
 		-- the very edge of the slab beside the hole, and a unit counted that as reached and stood on the lip all minute. A step towards the
 		-- side where the floor falls away.
-		if not Climb and not AI.ladderDown and not AI.flying and Waypoint and CurrDist and (Waypoint.Kind == 3 or Waypoint.Kind == 0 or Waypoint.Kind == 1) and CurrDist.Y > Owner.Height * 0.3 and math.abs(CurrDist.X) < Owner.Height * 0.3 and math.abs(Owner.Vel.Y) < 1 then
+		if not Climb and not AI.ladderDown and not AI.flying and Waypoint and CurrDist and (Waypoint.Kind == 3 or Waypoint.Kind == 0 or Waypoint.Kind == 1) and CurrDist.Y > Owner.MoveHeight * 0.3 and math.abs(CurrDist.X) < Owner.MoveHeight * 0.3 and math.abs(Owner.Vel.Y) < 1 then
 			local function FloorAt(dx)
-				return SceneMan:CastStrengthRay(Vector(Owner.Pos.X + dx, Owner.Pos.Y), Vector(0, Owner.Height * 0.75), 5, Vector(), 2, rte.grassID, true);
+				return SceneMan:CastStrengthRay(Vector(Owner.Pos.X + dx, Owner.Pos.Y), Vector(0, Owner.MoveHeight * 0.75), 5, Vector(), 2, rte.grassID, true);
 			end
 			-- (Floor under either side of the body counts: a unit wedged on the hole's corner had its middle over the hole already, and stood
 			-- there with nothing under Pos.)
-			local side = Owner.Height * 0.12;
+			local side = Owner.MoveHeight * 0.12;
 			if FloorAt(0) or FloorAt(-side) or FloorAt(side) then
-				local reach = Owner.Height * 0.25;
+				local reach = Owner.MoveHeight * 0.25;
 				local towards = CurrDist.X < 0 and -1 or 1;
 				local holeSide = nil;
 				if not FloorAt(towards * reach) then
@@ -5330,9 +5330,9 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 			if Owner.Vel.Y > 3 and not digging then
 				local jet = SharedBehaviors.JetNumbers(AI, Owner);
 				local stop = jet.stopDistance(Owner.Vel.Y);
-				if stop > Owner.Height * 0.3 and stop < 4000 then
-					local drop = Vector(0, stop * 1.3 + Owner.Height * 0.3);
-					fallingOnGround = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, Owner.Height * 0.2), drop, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 4) >= 0;
+				if stop > Owner.MoveHeight * 0.3 and stop < 4000 then
+					local drop = Vector(0, stop * 1.3 + Owner.MoveHeight * 0.3);
+					fallingOnGround = SceneMan:CastObstacleRay(Owner.Pos + Vector(0, Owner.MoveHeight * 0.2), drop, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 4) >= 0;
 				end
 			end
 			if fastSideways and (AI.flying or Owner.Vel.Y > 6 or AI.jump) then
@@ -5351,7 +5351,7 @@ function SharedBehaviors.GoToWpt(AI, Owner, Abort)
 				nextAimAngle = math.pi * 0.5;
 				-- Leant a little towards the landing when that is off to one side: the brake is the last of the jet before the ground, and a
 				-- unit that came down a long drop with the walk speed it stepped off with landed sixty pixels past its point, outside the bunker.
-				if Waypoint and CurrDist and math.abs(CurrDist.X) > Owner.Height * 0.15 then
+				if Waypoint and CurrDist and math.abs(CurrDist.X) > Owner.MoveHeight * 0.15 then
 					nextLatMove = CurrDist.X > 0 and Actor.LAT_RIGHT or Actor.LAT_LEFT;
 					nextAimAngle = 0;
 					AI.jetLeanX = CurrDist.X > 0 and 1 or -1;

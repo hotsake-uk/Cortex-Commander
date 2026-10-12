@@ -128,6 +128,8 @@ void Actor::Clear() {
 	m_HiddenByFog = false;
 	m_Veterancy = 0;
 	m_CharHeight = 0;
+	m_MeasuredMoveHeight = -1.0F;
+	m_MeasuredBodyWidth = -1.0F;
 	m_HolsterOffset.Reset();
 	m_ReloadOffset.Reset();
 	m_ViewPoint.Reset();
@@ -1540,7 +1542,7 @@ void Actor::UpdateMovePath() {
 		if (g_SceneMan.GetTerrMatter(static_cast<int>(inScene.m_X), static_cast<int>(inScene.m_Y)) != MaterialColorKeys::g_MaterialAir) {
 			return inScene;
 		}
-		return g_SceneMan.MovePointToGround(inScene, m_CharHeight * 0.2F, 3);
+		return g_SceneMan.MovePointToGround(inScene, GetMoveHeight() * 0.2F, 3);
 	};
 	// But a sky order's point (Jetpack here, or a move clicked in open air: StandingOrder::SkyGoal) is kept as the goal, where it was clicked,
 	// for as long as the order lasts: only the route asked for goes to the ground under it, and the jet flies the rest (AHuman::UpdateAIMotor).
@@ -1613,8 +1615,8 @@ Vector Actor::GetPathStart() const {
 	if (g_SceneMan.GetTerrMatter(static_cast<int>(inScene.m_X), static_cast<int>(inScene.m_Y)) != MaterialColorKeys::g_MaterialAir) {
 		return inScene;
 	}
-	Vector start = g_SceneMan.MovePointToGround(inScene, m_CharHeight * 0.2F, 3);
-	if (start.m_Y - m_Pos.m_Y > m_CharHeight * 0.25F) {
+	Vector start = g_SceneMan.MovePointToGround(inScene, GetMoveHeight() * 0.2F, 3);
+	if (start.m_Y - m_Pos.m_Y > GetMoveHeight() * 0.25F) {
 		start = m_Pos;
 	}
 	return start;
@@ -1735,7 +1737,7 @@ PathAgent Actor::GetPathAgent() const {
 	agent.BreathSeconds = waterActs ? ActorWater::GetBreathSeconds(this) : FLT_MAX;
 	agent.CrossesLava = !ActorFire::IsEnabled() || ActorWater::GetBreathSeconds(this) == FLT_MAX;
 	// CharHeight is about twice the sprite's height; the body stands about 0.45 of it tall and lies about a quarter of it.
-	agent.StandHeight = std::max(16.0F, m_CharHeight * 0.42F);
+	agent.StandHeight = std::max(16.0F, GetMoveHeight() * 0.42F);
 	agent.CrawlHeight = agent.StandHeight;
 	// (Half the sprite's reach, near enough; at a third of it a soldier was sent down a shaft its own width, and stuck there.)
 	agent.HalfWidth = std::clamp(GetRadius() * 0.5F, 8.0F, 16.0F);
@@ -1865,7 +1867,7 @@ void Actor::OnNewMovePath() {
 			++kindItr;
 		}
 		if (!liftPoint) {
-			(*lItr) = g_SceneMan.MovePointToGround((*lItr), m_CharHeight * 0.2, 0, g_SettingsMan.GetPathFinderGridNodeSize() * 2.5f);
+			(*lItr) = g_SceneMan.MovePointToGround((*lItr), GetMoveHeight() * 0.2, 0, g_SettingsMan.GetPathFinderGridNodeSize() * 2.5f);
 		}
 	}
 }
@@ -1946,7 +1948,7 @@ bool Actor::TryStartMantle(MOSRotating* head, bool rising, float bodyWidth) {
 		return false;
 	}
 	float dir = right ? 1.0F : -1.0F;
-	float height = std::max(m_CharHeight, 20.0F);
+	float height = std::max(GetMoveHeight(), 20.0F);
 	// Not for an AI whose route goes down from here: pressing towards the wall of a hatch it was dropping through, a unit was pulled back
 	// up onto the ledge beside it, walked back to the hole, and did it again for twenty seconds. (Tested first, being cheap: the fit checks
 	// below only read the terrain.)
@@ -2019,7 +2021,7 @@ bool Actor::TryCatchLedge(MOSRotating* head, float bodyWidth, float wantDir, flo
 	if (std::abs(m_Vel.m_Y) > 7.0F) {
 		return false;
 	}
-	float height = std::max(m_CharHeight, 20.0F);
+	float height = std::max(GetMoveHeight(), 20.0F);
 	// Really in the air: no ground within the legs' reach under the body's middle or either side of it. (The torso fits 3 px lower with the
 	// legs standing on the ground, so a body walking up stairs or a slope found the ground beside its hand inside the lip window and was
 	// caught every frame: stopped, pulled up, dropped, caught again, which read as vibrating against the terrain.)
@@ -2165,7 +2167,7 @@ int Actor::RideAutomover(Timer& progressTimer, float& bestGap) {
 		return 0;
 	}
 
-	const float h = std::max(m_CharHeight, 20.0F);
+	const float h = std::max(GetMoveHeight(), 20.0F);
 	// The end of the leg, or of the route: there, in the tube or out of it. (Held to the ground, as off the lift, a goal in the tube was never
 	// reached, and the unit was turned about in it for good.)
 	if (m_MovePath.size() <= 1 && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
@@ -3552,7 +3554,7 @@ std::string Actor::DescribeDebugState(bool json) const {
 int Actor::FlyRouteWeightless(AEJetpack* jetpack, float jetAccel) {
 	ZeroGMover& mover = m_ZeroGMover;
 	Controller& ctrl = m_Controller;
-	const float h = std::max(m_CharHeight, 20.0F);
+	const float h = std::max(GetMoveHeight(), 20.0F);
 	const float ppm = c_PPM;
 	auto towards = [](const Vector& from, const Vector& to) { return g_SceneMan.ShortestDistance(from, to, g_SceneMan.SceneWrapsX()); };
 	auto popPoint = [this]() {

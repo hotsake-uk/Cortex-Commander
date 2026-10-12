@@ -142,6 +142,7 @@ void SettingsMan::Clear() {
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
 	m_StrictClimbLimits = true;
+	m_MeasuredBodySize = false;
 	m_UnitWaterBehaviour = 2;
 	m_UnitsStepOverObjects = true;
 	m_SensesPassPlants = true;
@@ -850,6 +851,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AIThreatAvoidance", { float scale = 1.0F; reader >> scale; SetAIThreatAvoidance(scale); });
 	MatchProperty("AIRecklessness", { float recklessness = 0.5F; reader >> recklessness; SetAIRecklessness(recklessness); });
 	MatchProperty("StrictClimbLimits", { reader >> m_StrictClimbLimits; });
+	MatchProperty("MeasuredBodySize", { reader >> m_MeasuredBodySize; });
 	MatchProperty("AILadderGiveUpSeconds", { float seconds = 1.5F; reader >> seconds; SetAILadderGiveUpSeconds(seconds); });
 	MatchProperty("CarriedWeightMultiplier", { float multiplier = 1.0F; reader >> multiplier; SetCarriedWeightMultiplier(multiplier); });
 	MatchProperty("LegStrength", { float strength = 1.0F; reader >> strength; SetLegStrength(strength); });
@@ -1424,6 +1426,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("WeaponTerrainDamage", m_WeaponTerrainDamage);
 	writer.NewPropertyWithValue("AIRecklessness", m_AIRecklessness);
 	writer.NewPropertyWithValue("StrictClimbLimits", m_StrictClimbLimits);
+	writer.NewPropertyWithValue("MeasuredBodySize", m_MeasuredBodySize);
 	writer.NewPropertyWithValue("AILadderGiveUpSeconds", m_AILadderGiveUpSeconds);
 	writer.NewPropertyWithValue("CarriedWeightMultiplier", m_CarriedWeightMultiplier);
 	writer.NewPropertyWithValue("LegStrength", m_LegStrength);

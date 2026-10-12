@@ -896,6 +896,20 @@ namespace RTE {
 		double m_JetLastLitSimMS = -1.0; //!< When the jet was last lit (sim ms), for passing the ladders' rungs while flying (see LearnFlight).
 		Timer m_FightAimTimer; //!< Since the unit last fired or aimed sharp: an AI unit's aim holds its facing (walking backwards) only in a fight.
 		const Attachable* m_HeadRimFor = nullptr; //!< The head given its soft rim (see Update), so a new head gets one too.
+		/// Measures the body for the movement code (Actor::GetMoveHeight and GetMoveBodyWidth; SettingsMan::MeasuredBodySize): from the top
+		/// of its torso's, head's and helmet's terrain atoms down to its feet, and across them. Done again when the body changes (a head
+		/// or a leg lost or gained), the feet are learned anew (m_FeetBelowPos), or every 3 s, so it costs a pass over a few dozen atoms now and then.
+		void MeasureBody();
+		static constexpr float c_MeasuredStandFraction = 0.4F; //!< The share of the movement height a body measures, atoms' top to floor (see MeasureBody).
+		std::array<const void*, 3> m_MeasuredFor{}; //!< The head and legs the body was last measured with (see MeasureBody).
+		float m_MeasuredFeet = -1.0F; //!< The feet's depth under Pos it was last measured with.
+		bool m_BodyMeasured = false; //!< Whether MeasureBody has run at all.
+		Timer m_MeasureTimer; //!< Since the body was last measured.
+		/// The body's width for the walk and the route search, in pixels: as measured with SettingsMan::MeasuredBodySize on (see
+		/// Actor::GetMoveBodyWidth), else the torso's or the head's sprite, whichever is wider.
+		float MoveBodyWidth() const;
+		/// The most half of that width counts for, in pixels: 16 as before, or with the measured body as wide as the grid measures round a node.
+		float MoveHalfWidthCap() const { return GetMoveBodyWidth() > 0.0F ? 48.0F : 16.0F; }
 		float m_LegJumpHeight = -1.0F; //!< How high a leap lifts the body, px (see GetLegJumpHeight); below zero for the default.
 		float m_LegJumpSpeed = 4.0F; //!< How fast a leap carries the body forward with a move key held, m/s.
 		bool m_Leaping = false; //!< In the air on a leap just now.

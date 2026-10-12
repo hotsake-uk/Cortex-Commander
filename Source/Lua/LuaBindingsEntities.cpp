@@ -259,6 +259,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("ItemInReach", &Actor::GetItemInReach, &Actor::SetItemInReach)
 	    .property("SharpAimProgress", &Actor::GetSharpAimProgress)
 	    .property("Height", &Actor::GetHeight)
+	    .property("MoveHeight", &Actor::GetMoveHeight)
 	    .property("AIMode", &Actor::GetAIMode, &Actor::SetAIMode)
 	    .property("RouteThreatAvoidance", &Actor::GetRouteThreatAvoidance, &Actor::SetRouteThreatAvoidance)
 	    .property("RouteSeed", &Actor::GetRouteSeed, &Actor::SetRouteSeed)

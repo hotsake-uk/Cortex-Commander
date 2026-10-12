@@ -133,7 +133,7 @@ function NativeTurretAI:Update(Owner)
 				-- look where the SL looks, if not moving
 				if not self.Target and self.lateralMoveState == Actor.LAT_STILL then
 					local Leader = ToActor(Owner.MOMoveTarget);
-					if SceneMan:ShortestDistance(Owner.Pos, Leader.Pos, false).Largest < Owner.Height then
+					if SceneMan:ShortestDistance(Owner.Pos, Leader.Pos, false).Largest < Owner.MoveHeight then
 						self.deviceState = ACrab.POINTING;
 						--self.deviceState = ACrab.AIMING;
 						self.Ctrl.AnalogAim = SceneMan:ShortestDistance(Owner.EyePos, Leader.ViewPoint, false).Normalized;
