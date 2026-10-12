@@ -428,6 +428,83 @@ function HumanBehaviors.ThrowSmoke(AI, Owner, Abort)
 	return true;
 end
 
+-- A healing draught thrown at a hurt friend (Medieval.rte's Healing Draught, "Bombs - Healing": a flask that heals whoever it breaks among):
+-- the same throw as the smoke, aimed at the friend's feet, a short lob.
+function HumanBehaviors.ThrowDraught(AI, Owner, Abort)
+	local Friend = AI.DraughtFriend;
+	AI.DraughtFriend = nil;
+	if not Friend or not MovableMan:ValidMO(Friend) or not Owner:EquipDeviceInGroup("Bombs - Healing", true) then
+		return true;
+	end
+	local Timer0 = Timer();
+	local aim, hold;
+	while true do
+		if not Owner.ThrowableIsReady or Timer0:IsPastSimMS(3000) or not MovableMan:ValidMO(Friend) then
+			break;
+		end
+		if not aim then
+			local Flask = ToThrownDevice(Owner.EquippedItem);
+			aim = HumanBehaviors.PlanThrow(Flask, Friend.Pos + Vector(0, 4), Friend.Vel, false);
+			if not aim then
+				break;
+			end
+			aim = aim - Owner.RotAngle;
+			hold = Owner.ThrowPrepTime * RangeRand(0.45, 0.55);
+			Timer0:Reset();
+			SharedBehaviors.Trace(Owner, "draught: a cordial for a hurt friend");
+		end
+		AI.Ctrl.AnalogAim = Vector(1, 0):RadRotate(aim);
+		if not Timer0:IsPastSimMS(hold) then
+			AI.fire = true;
+		else
+			AI.fire = false;
+			if HumanBehaviors.FinishThrow(AI, Owner, aim) then
+				return true;
+			end
+			break;
+		end
+		local _ai, _ownr, _abrt = coroutine.yield();
+		if _abrt then return true end
+	end
+	AI.fire = false;
+	Owner:EquipFirearm(true);
+	return true;
+end
+
+-- When to throw a healing draught, twice a second: a unit carrying one, with no enemy in sight and nothing else to do, with a friend
+-- within a dozen paces (or itself) under half health; at most every six seconds.
+function HumanBehaviors.DraughtUpdate(AI, Owner)
+	if AI.Target or AI.UnseenTarget or AI.NextBehavior or AI.flying or Owner:IsPlayerControlled() then
+		return;
+	end
+	AI.DraughtCheckTimer = AI.DraughtCheckTimer or Timer();
+	if not AI.DraughtCheckTimer:IsPastSimMS(500) then
+		return;
+	end
+	AI.DraughtCheckTimer:Reset();
+	if (AI.DraughtRestTimer and not AI.DraughtRestTimer:IsPastSimMS(6000)) or not Owner:HasObjectInGroup("Bombs - Healing") then
+		return;
+	end
+	local Best, bestDist;
+	for Act in MovableMan.Actors do
+		if Act.Team == Owner.Team and Act.Health < Act.MaxHealth * 0.5 and Act.Health > 0 and Act.Status < Actor.DYING then
+			local Dist = SceneMan:ShortestDistance(Owner.EyePos, Act.Pos, false);
+			local far = Dist.Magnitude;
+			if far < 240 and far > 30 and (not bestDist or far < bestDist) and SharedBehaviors.CanSee(Owner.EyePos, Act.Pos) then
+				Best, bestDist = Act, far;
+			end
+		end
+	end
+	if not Best then
+		return;
+	end
+	AI.DraughtRestTimer = Timer();
+	AI.DraughtFriend = Best;
+	AI.NextBehavior = coroutine.create(HumanBehaviors.ThrowDraught);
+	AI.NextCleanup = nil;
+	AI.NextBehaviorName = "ThrowDraught";
+end
+
 -- When to lob a grenade over cover (AC-5), every second: an AI that lost sight of its enemy in the last four seconds, where it was is
 -- 80 to 500 px off and out of sight, and the unit has a grenade; at most every eight seconds. Better AI does it more often.
 function HumanBehaviors.LobUpdate(AI, Owner)
