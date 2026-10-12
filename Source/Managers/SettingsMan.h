@@ -414,6 +414,10 @@ namespace RTE {
 		/// Whether the AI's walk sees loose bodies its own collides with in the way (a corpse, a gib, a limb: AHuman::ObjectAhead) and leaps
 		/// them, hops them with the jet, routes round or waits, as it does a wreck. Off as before: it pressed into them until the stuck handling.
 		bool UnitsStepOverObjects() const { return m_UnitsStepOverObjects; }
+		/// Whether the AI's walk gets over a landed craft (a dropship or rocket set down) or a parked vehicle in its way, not only round it: it
+		/// leaps up onto a low one and walks across, hops it with the jet, or pulls itself up onto it and walks across, and keeps trying a
+		/// little before giving up. Off as before: landed craft unseen, and a vehicle only leapt clean over or hopped. On as the game comes.
+		bool UnitsCrossVehicles() const { return m_UnitsCrossVehicles; }
 		/// Whether an AI soldier whose walk is held up by a loose object (a corpse, a gib, a crate) no heavier than itself shoves it along out of
 		/// the way (AHuman::PushObjectAhead), before stepping over it or going round. On as the game comes.
 		bool UnitsPushObjects() const { return m_UnitsPushObjects; }
@@ -1028,6 +1032,7 @@ namespace RTE {
 		void SetJetpackWeightCompensation(int mode) { m_JetpackWeightCompensation = std::clamp(mode, 0, 2); }
 		void SetUnitWaterBehaviour(int mode) { m_UnitWaterBehaviour = std::clamp(mode, 0, 2); }
 		void SetUnitsStepOverObjects(bool on) { m_UnitsStepOverObjects = on; }
+		void SetUnitsCrossVehicles(bool on) { m_UnitsCrossVehicles = on; }
 		void SetUnitsPushObjects(bool on) { m_UnitsPushObjects = on; }
 		void SetObjectPushStrength(float strength) { m_ObjectPushStrength = std::clamp(strength, 0.0F, 3.0F); }
 		void SetSensesPassPlants(bool on) { m_SensesPassPlants = on; }
@@ -1397,6 +1402,7 @@ namespace RTE {
 		int m_JetpackWeightCompensation = 0; //!< See JetpackWeightCompensation.
 		int m_UnitWaterBehaviour = 2; //!< See UnitWaterBehaviour.
 		bool m_UnitsStepOverObjects = true; //!< See UnitsStepOverObjects.
+		bool m_UnitsCrossVehicles = true; //!< See UnitsCrossVehicles.
 		bool m_UnitsPushObjects = true; //!< See UnitsPushObjects.
 		float m_ObjectPushStrength = 1.0F; //!< See ObjectPushStrength.
 		bool m_SensesPassPlants = true; //!< See SensesPassPlants.

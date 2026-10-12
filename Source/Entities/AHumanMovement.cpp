@@ -1217,12 +1217,50 @@ const MOSRotating* AHuman::VehicleAhead(float direction, float reach, float floo
 		if (dynamic_cast<const AVehicle*>(hull)) {
 			return hull;
 		}
+		// A landed craft (a dropship or rocket set down, near enough still), with Get over landed craft and vehicles on: as solid in the way as a
+		// parked vehicle, and the walk pushed into it as it did into those. (Not one flying: it moves on, and one hovering low is ducked.)
+		if (const ACraft* craft = dynamic_cast<const ACraft*>(hull); craft && g_SettingsMan.UnitsCrossVehicles() && craft->GetVel().MagnitudeIsLessThan(2.0F) && craft->GetStatus() != DYING && craft->GetStatus() != DEAD) {
+			return hull;
+		}
 		// A loose body as big as a vehicle's: a wreck, a crate. Not a unit, not a gun on the ground, not a gib or a scrap.
 		if (!dynamic_cast<const Actor*>(hull) && !dynamic_cast<const HeldDevice*>(hull) && hull->GetRadius() > h * 0.35F && hull->GetsHitByMOs()) {
 			return hull;
 		}
 	}
 	return nullptr;
+}
+
+bool AHuman::MantleOntoHull(float direction, float topY, float nearX, float maxLift) {
+	if (m_Mantling || m_Ladder.active || m_Status != STABLE || m_PinStrength > 0.0F || !m_pAtomGroup) {
+		return false;
+	}
+	const float h = GetMoveHeight();
+	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : h * 0.2F;
+	const float bodyWidth = MoveBodyWidth();
+	// Standing on its top a body's width in from the near end, the body's middle over it.
+	Vector end(nearX + direction * (bodyWidth * 0.5F + std::max(8.0F, bodyWidth * 0.6F)), topY - feet - 1.0F);
+	const float lift = m_Pos.m_Y - end.m_Y;
+	if (lift <= 2.0F || lift > maxLift) {
+		return false;
+	}
+	// Room in the terrain for the body all the way: up its side here, and standing over its top there. (The hull itself is what is climbed.)
+	const float headUp = h - feet;
+	if (!ColumnOpen(m_Pos.m_X, m_Pos.m_Y - headUp, end.m_Y - headUp - 2.0F) || !ColumnOpen(end.m_X, end.m_Y + feet - 2.0F, end.m_Y - headUp - 2.0F)) {
+		return false;
+	}
+	m_Mantling = true;
+	m_MantleDir = direction;
+	m_MantleStart = m_Pos;
+	// (A few pixels over the top before across, so the corner of the hull isn't cut.)
+	m_MantleUp = Vector(m_Pos.m_X, end.m_Y - 4.0F);
+	m_MantleEnd = end;
+	m_MantleLip = Vector(nearX, topY);
+	m_MantleProgress = 0.0F;
+	m_MantleDurationMS = 220.0F + lift * 5.0F;
+	m_MantleTimer.Reset();
+	m_Vel.Reset();
+	MoverTrace("pull up onto the vehicle");
+	return true;
 }
 
 bool AHuman::BodyCollidesWith(const MovableObject* other) const {
@@ -4612,7 +4650,11 @@ int AHuman::MoveAlongRoute() {
 	// followed; one driving at us is backed away from; one standing is leapt when the leap's arc clears it end to end, else hopped with the
 	// jet, held a little over its top until the feet are past its far end, else a route round it is asked for (this unit's only) and the
 	// unit waits. Not the one it is sent to (a move target: boarding, a charge). In the way for 8 s all told and it is left to the ordinary
-	// walk and the stuck handling for 8 s. Not climbed onto and walked over on purpose.
+	// walk and the stuck handling for 8 s.
+	// With Get over landed craft and vehicles on (UnitsCrossVehicles), a landed craft counts too, and the unit gets over rather than round:
+	// a hull too long to leap clean over is leapt onto and walked across, the jet only lifts it up onto the top (walked across, not skimmed),
+	// and with no jet or leap that reaches, it pulls itself up onto one a pull-up high (with mantling on) and walks across. A crossing that
+	// falls back short is tried again once from where it fell, then the way round is asked for.
 	if (mover.vehicleIgnoreID != 0 && mover.vehicleIgnoreTimer.IsPastSimMS(8000)) {
 		mover.vehicleIgnoreID = 0;
 	}
@@ -4621,11 +4663,27 @@ int AHuman::MoveAlongRoute() {
 		const float way = mover.vehicleWay;
 		Vector moved = hull ? Towards(mover.vehicleMeasuredAt, hull->GetPos()) : Vector();
 		const float past = Towards(Vector(mover.vehicleFarX + moved.m_X, m_Pos.m_Y), m_Pos).m_X * way;
-		bool jetLeft = m_pJetpack && m_pJetpack->GetJetTimeLeft() > 0.0F;
-		if (!hull || past > std::max(4.0F, h * 0.12F) + 2.0F || mover.vehicleHopTimer.IsPastSimMS(3000) || !jetLeft || m_Status != STABLE || m_Ladder.active) {
-			MoverTrace(past > 0.0F ? "over the vehicle" : "hop over the vehicle given up");
+		const float topY = mover.vehicleTopY + moved.m_Y;
+		const bool jetLeft = m_pJetpack && m_pJetpack->GetJetTimeLeft() > 0.0F;
+		const bool crossing = g_SettingsMan.UnitsCrossVehicles();
+		// Fell back short of it (Get over landed craft and vehicles): down on the ground again beside it, below its top, the leap or the pull done
+		// and no jet to lift it, a moment in. A second fall back and the way round is looked for.
+		const bool fellBack = crossing && past <= 0.0F && !m_Leaping && !m_Mantling && mover.vehicleHopTimer.IsPastSimMS(500) && m_Pos.m_Y + feet > topY + 6.0F && std::abs(m_Vel.m_Y) < 1.0F && (!mover.vehicleJet || !jetLeft);
+		const bool given = mover.vehicleHopTimer.IsPastSimMS(static_cast<double>(mover.vehicleCrossMS)) || m_Status != STABLE || m_Ladder.active || (!crossing && !jetLeft);
+		if (!hull || past > std::max(4.0F, h * 0.12F) + 2.0F || fellBack || given) {
+			MoverTrace(past > 0.0F ? "over the vehicle" : "getting over the vehicle given up");
 			mover.vehicleHop = false;
-			if (!hull || past <= 0.0F) {
+			if (past > 0.0F || !hull) {
+				mover.vehicleCrossFails = 0;
+			} else if (crossing && ++mover.vehicleCrossFails < 2) {
+				mover.vehicleTimer.Reset(); // (Another go at it, from where it fell.)
+			} else if (crossing && !mover.vehicleRepathed && !m_MovePath.empty()) {
+				MoverTrace("can't get over the vehicle; new route round it");
+				mover.vehicleRepathed = true;
+				AvoidPathLink(m_Pos, m_MovePath.front(), 8000.0F);
+				RefreshRoute();
+				return RouteMover::Moving;
+			} else {
 				mover.vehicleIgnoreID = mover.vehicle;
 				mover.vehicleIgnoreTimer.Reset();
 			}
@@ -4636,8 +4694,12 @@ int AHuman::MoveAlongRoute() {
 			ctrl.SetState(MOVE_FAST, false);
 			ctrl.SetState(BODY_CROUCH, false);
 			ctrl.SetState(BODY_PRONE, false);
-			// (The jet held while the feet are under a little over its top: up its side, then skimming it to the far end.)
-			if (m_Pos.m_Y + feet > mover.vehicleTopY + moved.m_Y - 5.0F) {
+			// (The jet held while the feet are under a little over its top: up its side, then skimming it to the far end. Getting over it, only
+			// up onto it: across its top it is walked.)
+			if (m_Pos.m_Y + feet <= topY - 2.0F) {
+				mover.vehicleAbove = true;
+			}
+			if (mover.vehicleJet && (crossing ? !mover.vehicleAbove : m_Pos.m_Y + feet > topY - 5.0F)) {
 				ctrl.SetState(BODY_JUMP, true);
 				SetAimAngle(c_HalfPI * 0.4F);
 			}
@@ -4687,6 +4749,7 @@ int AHuman::MoveAlongRoute() {
 				mover.vehicle = hull->GetUniqueID();
 				mover.vehicleTimer.Reset();
 				mover.vehicleRepathed = false;
+				mover.vehicleCrossFails = 0;
 				mover.vehicleActionTimer.SetElapsedSimTimeMS(10000.0);
 				measure = true;
 				MoverTrace("a vehicle in the way (" + hull->GetPresetName() + ")");
@@ -4724,9 +4787,12 @@ int AHuman::MoveAlongRoute() {
 				const bool grounded = floorHere >= 0.0F && m_Status == STABLE;
 				// The leap's arc (UpdateLeap: up to the leap's height, across at its speed): the feet are over the hull's top, with a little to
 				// spare, from d1 to d2 ahead. It clears the hull from here if the near end is at d1 or beyond and the far end at d2 or short of it.
+				// Getting over it (UnitsCrossVehicles), a hull too long for that is leapt onto, from d1 out, and walked across.
+				const bool crossing = g_SettingsMan.UnitsCrossVehicles();
 				bool leapFits = false;
 				bool leapNearer = false;
 				bool leapBack = false;
+				bool leapOnto = false;
 				const float legHeight = GetLegJumpHeight();
 				const float clearance = above + 3.0F;
 				if (legHeight > clearance) {
@@ -4742,10 +4808,29 @@ int AHuman::MoveAlongRoute() {
 						leapNearer = start > d2 - width;
 						leapBack = start < d1;
 						leapFits = !leapNearer && !leapBack;
+					} else if (crossing) {
+						leapOnto = true;
+						leapNearer = start > d1 + 8.0F;
+						leapBack = start < d1;
+						leapFits = !leapNearer && !leapBack;
 					}
 				}
 				const bool canLeap = legHeight > clearance && (leapFits || leapNearer || leapBack);
 				const bool hopFits = standardJet && !RouteClimbsLadderNext() && !mover.fuelWaiting && m_pJetpack->GetJetTimeLeft() > std::max(ClimbFuelNeeded(above + 6.0F, JetRelightFuel()), JetRelightFuel() + 150.0F) && ColumnOpen(m_Pos.m_X, topHeadY + 2.0F, topHeadY - above - 8.0F) && ColumnOpen(mover.vehicleFarX, mover.vehicleTopY - 2.0F, mover.vehicleTopY - standing - 6.0F);
+				// A pull up onto it (UnitsCrossVehicles, with mantling on): a pull-up's height at most, the mantle's from the jet (Actor::TryStartMantle).
+				const float pullReach = std::max(h, 20.0F) * 0.55F;
+				bool pullFits = crossing && g_SettingsMan.MantlingEnabled() && above > 2.0F && above <= pullReach;
+				// Begins a crossing: held until the feet are past its far end, for longer the longer it is.
+				auto beginCross = [&](bool jet) {
+					mover.vehicleHop = true;
+					mover.vehicleJet = jet;
+					mover.vehicleAbove = false;
+					mover.vehicleHopTimer.Reset();
+					if (crossing) {
+						mover.vehicleTimer.Reset();
+					}
+					mover.vehicleCrossMS = crossing ? std::min(10000.0F, 2500.0F + (farAhead - nearAhead) * 30.0F) : 3000.0F;
+				};
 				if (!grounded && !m_Leaping) {
 					// (Off its feet a moment, a bump or a knock: nothing judged till it is down again.)
 				} else if (std::abs(hull->GetVel().m_X) > 1.0F && along > 1.0F) {
@@ -4760,7 +4845,7 @@ int AHuman::MoveAlongRoute() {
 					release();
 					ctrl.SetState(way < 0.0F ? MOVE_RIGHT : MOVE_LEFT, true);
 					ctrl.SetState(MOVE_FAST, true);
-				} else if (canLeap) {
+				} else if (canLeap && !(leapOnto && hopFits)) {
 					if (leapBack) {
 						// (Too close for the arc to clear its near end: a step back first.)
 						release();
@@ -4768,20 +4853,36 @@ int AHuman::MoveAlongRoute() {
 					} else if (leapFits && CanLeap()) {
 						if (mover.vehicleActionTimer.IsPastSimMS(1000)) {
 							mover.vehicleActionTimer.Reset();
-							MoverTrace("a low vehicle in the way; leap over");
+							MoverTrace(leapOnto ? "a low vehicle in the way; leap onto it" : "a low vehicle in the way; leap over");
 						}
 						if (!mover.vehicleActionTimer.IsPastSimMS(200)) {
 							ctrl.SetState(BODY_LEAP, true);
+							if (crossing) {
+								beginCross(false);
+							}
 						}
 					}
 					// (Nearer: the walk on, as it was.)
 				} else if (hopFits && !m_Leaping) {
 					MoverTrace("a vehicle in the way; hop over");
-					mover.vehicleHop = true;
-					mover.vehicleHopTimer.Reset();
+					beginCross(true);
 					ctrl.SetState(BODY_JUMP, true);
 					SetAimAngle(c_HalfPI * 0.4F);
 					return RouteMover::Moving;
+				} else if (pullFits && !m_Leaping && mover.vehicleCrossFails < 2) {
+					// Up to its side, then pulled up onto it and walked across.
+					if (nearAhead - bodyHalf < 6.0F && MantleOntoHull(way, mover.vehicleTopY, mover.vehicleNearX, pullReach)) {
+						beginCross(false);
+						return RouteMover::Moving;
+					} else if (nearAhead - bodyHalf < 6.0F) {
+						pullFits = false; // (No room for it here: as if there were no pull.)
+					}
+					// (Further off: the walk on to it.)
+				}
+				if (!grounded && !m_Leaping) {
+					// (As above.)
+				} else if (std::abs(hull->GetVel().m_X) > 1.0F || canLeap || hopFits || pullFits) {
+					// (Being dealt with above.)
 				} else if (!m_Leaping && !mover.vehicleRepathed && !m_MovePath.empty()) {
 					MoverTrace("a vehicle in the way and no way over; new route round it");
 					mover.vehicleRepathed = true;
