@@ -127,6 +127,17 @@ namespace RTE {
 		/// @param newValue The new value for whether the angle of this jetpack can adjust while firing.
 		void SetCanAdjustAngleWhileFiring(bool newValue) { m_CanAdjustAngleWhileFiring = newValue; }
 
+		/// Gets how much harder than its emissions alone this jetpack pushes, at no extra fuel (1 as its game files make it).
+		/// @return The multiplier on its push.
+		float GetThrustMultiplier() const { return m_JetThrustBonusMultiplier; }
+
+		/// Sets how much harder than its emissions alone this jetpack pushes, at no extra fuel (the sandbox's loadouts).
+		/// @param newValue The multiplier on its push, 1 as its game files make it.
+		void SetThrustMultiplier(float newValue) { m_JetThrustBonusMultiplier = newValue; }
+
+		/// The multiplier on what this jetpack's emissions push it by: its thrust multiplier.
+		float GetPushMultiplier() const override { return m_JetThrustBonusMultiplier; }
+
 		/// Returns whether this jetpack adjusts it's throttle to balance for extra weight.
 		/// @return Whether this jetpack adjusts it's throttle to balance for extra weight.
 		bool GetAdjustsThrottleForWeight() const { return m_AdjustsThrottleForWeight; }
