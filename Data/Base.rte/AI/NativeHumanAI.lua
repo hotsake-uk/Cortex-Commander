@@ -497,15 +497,17 @@ function NativeHumanAI:Update(Owner)
 									self.Ctrl:SetState(control, state);
 								end
 							end
-							if Leader.EquippedItem then
+							-- (Read once: the leader runs on another thread and can drop or swap its item between two reads, which left ToHDFirearm nil.)
+							local LeaderItem = Leader.EquippedItem;
+							if LeaderItem then
 								local aimDelta = SceneMan:ShortestDistance(Leader.Pos, Leader.ViewPoint, false);
 								
-								if IsHDFirearm(Leader.EquippedItem) then
+								if IsHDFirearm(LeaderItem) then
 									local aimCorrectionRatio = Leader.SharpAimProgress * (dist/radius);
 									self.Ctrl.AnalogAim = (aimDelta * (1 - aimCorrectionRatio) + SceneMan:ShortestDistance(Owner.Pos, Leader.ViewPoint + aimDelta, false) * aimCorrectionRatio).Normalized;
 									
-									local LeaderWeapon = ToHDFirearm(Leader.EquippedItem);
-									if LeaderWeapon:IsWeapon() then
+									local LeaderWeapon = ToHDFirearm(LeaderItem);
+									if LeaderWeapon and LeaderWeapon:IsWeapon() then
 										self.deviceState = AHuman.POINTING;
 
 										-- check if the SL is shooting and if we have a similar weapon
@@ -542,7 +544,7 @@ function NativeHumanAI:Update(Owner)
 											end
 										end
 									end
-								elseif IsThrownDevice(Leader.EquippedItem) and Leader:IsPlayerControlled() and ToThrownDevice(Leader.EquippedItem):HasObjectInGroup("Bombs - Grenades") and Owner:HasObjectInGroup("Bombs - Grenades") then
+								elseif IsThrownDevice(LeaderItem) and Leader:IsPlayerControlled() and ToThrownDevice(LeaderItem):HasObjectInGroup("Bombs - Grenades") and Owner:HasObjectInGroup("Bombs - Grenades") then
 									-- throw grenades in unison with squad
 									self.Ctrl.AnalogAim = aimDelta.Normalized;
 									self.deviceState = AHuman.POINTING;

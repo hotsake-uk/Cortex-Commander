@@ -31,6 +31,10 @@ SoundContainer::~SoundContainer() {
 }
 
 void SoundContainer::Clear() {
+	// Sounds still playing outlive this SoundContainer's state, so their channels must stop pointing at it before it's reset or freed.
+	if (!m_PlayingChannels.empty()) {
+		g_AudioMan.DetachSoundContainerPlayingChannels(this);
+	}
 	m_TopLevelSoundSet = std::make_shared<SoundSet>();
 	m_TopLevelSoundSet->Destroy();
 
