@@ -521,6 +521,11 @@ void CrewSeats::UpdatePassengerFire() {
 			unit->UpdateFiringFromSeat(aim, controller->IsState(WEAPON_FIRE), controller->IsState(WEAPON_RELOAD), false, m_Host);
 			continue;
 		}
+		if (!Controller::AIMayAct()) {
+			// (The AI paused: they hold their aim and fire.)
+			unit->UpdateFiringFromSeat(unit->GetAimAngle(false), false, false, true, m_Host);
+			continue;
+		}
 		if (lookRound) {
 			m_Seats[seat].TargetID = FindPassengerTarget(unit);
 		}
