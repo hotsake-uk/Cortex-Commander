@@ -136,6 +136,7 @@ namespace {
 
 	bool AtNormal(float value, float normal) { return std::abs(value - normal) <= 0.0001F * std::max(1.0F, std::abs(normal)); }
 	bool AtNormal(int value, int normal) { return value == normal; }
+	bool AtNormal(bool value, bool normal) { return value == normal; }
 
 	/// A small Reset beside the slider just made, putting that one setting back as the game comes (greyed out while it is).
 	/// The slider stays the last item, so a Tip after it is still the slider's own.
@@ -198,6 +199,16 @@ namespace {
 	/// A checkbox for something that is read and set through functions.
 	template <typename Setter> void Toggle(const char* label, bool value, Setter set) {
 		if (Check(label, &value)) {
+			set(value);
+		}
+	}
+	/// The same, with a Reset beside it back to how the game comes.
+	template <typename Setter> void Toggle(const char* label, bool value, Normal<bool> normal, Setter set) {
+		if (!Shown(label)) {
+			return;
+		}
+		bool changed = ToolUI::Checkbox(label, &value);
+		if (ResetButton(label, &value, normal.Value) || changed) {
 			set(value);
 		}
 	}
@@ -1364,6 +1375,8 @@ void DebugMan::SettingsGUI() {
 			g_WindowMan.SetFrameCap(frameCap > 0 && frameCap < 30 ? 30 : frameCap);
 		}
 		Heading("Battle alerts and display (Battle Command)");
+		Toggle("No route markers", g_SettingsMan.ShowSandboxNoRouteMarkers(), Normal{true}, [](bool on) { g_SettingsMan.SetShowSandboxNoRouteMarkers(on); });
+		Tip("A red cross where units were sent and couldn't get to, with a dashed line from each and why; click it to send them again. Off: not drawn (the units still stand down and say so). Also in the sandbox window's display options.");
 		Toggle("Battle alerts", g_SettingsMan.ShowBattleAlerts(), [](bool on) { g_SettingsMan.SetShowBattleAlerts(on); });
 		Tip("What needs your eye in a battle (your units under attack or falling, a strike coming in, your flag taken...) listed at the top left of the view for a while, each to click and look there. Off: not listed, but still kept in the alert log, and Space and Shift+Space still look at them.");
 		if (int lines = g_SettingsMan.BattleAlertLines(); SliderI("Battle alert lines", &lines, Normal{6}, 1, 12)) {

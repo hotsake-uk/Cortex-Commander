@@ -723,6 +723,12 @@ namespace RTE {
 		/// Sets whether the sandbox pings where units of the selection's side come under fire.
 		void SetShowSandboxAttackPings(bool show) { m_SandboxAttackPings = show; }
 
+		/// Whether the sandbox shows its "no route" markers where units couldn't get to (RC-7).
+		bool ShowSandboxNoRouteMarkers() const { return m_SandboxNoRouteMarkers; }
+
+		/// Sets whether the sandbox shows its "no route" markers.
+		void SetShowSandboxNoRouteMarkers(bool show) { m_SandboxNoRouteMarkers = show; }
+
 		/// Whether the sandbox's map window is shown (RC-8).
 		bool ShowSandboxMinimap() const { return m_SandboxMinimap; }
 
@@ -1256,6 +1262,7 @@ namespace RTE {
 		int m_SandboxSpawnStats; //!< How the Spawn tab shows units' and items' stats (see SandboxSpawnStats).
 		int m_SandboxSpawnSort; //!< How the sandbox's picture lists are sorted (see SandboxSpawnSort).
 		bool m_SandboxAttackPings; //!< Whether units coming under fire are pinged (see ShowSandboxAttackPings).
+		bool m_SandboxNoRouteMarkers; //!< Whether "no route" markers are shown (see ShowSandboxNoRouteMarkers).
 		bool m_SandboxMinimap; //!< Whether the sandbox's map window is shown (see ShowSandboxMinimap).
 		bool m_BattleAlerts; //!< Whether Battle Command's alerts are listed (see ShowBattleAlerts).
 		int m_BattleAlertLines; //!< The most alerts listed at once (see BattleAlertLines).
