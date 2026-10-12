@@ -7,6 +7,9 @@
 #include "UInputMan.h"
 #include "SettingsMan.h"
 #include "Sandbox.h"
+#include "DebugMan.h"
+#include "MetaMan.h"
+#include "Notices.h"
 
 #include "SaveLoadMenuGUI.h"
 #include "SettingsGUI.h"
@@ -44,6 +47,7 @@ void PauseMenuGUI::Clear() {
 	m_SavingButtonsDisabled = false;
 	m_ModManagerButtonDisabled = false;
 	m_BattleButtonsShown = true;
+	m_RestartAsked = false;
 
 	m_PauseMenuBox = nullptr;
 	m_PauseMenuButtons.fill(nullptr);
@@ -62,6 +66,9 @@ void PauseMenuGUI::Create(AllegroScreen* guiScreen, GUIInputWrapper* guiInput) {
 	m_PauseMenuBox->CenterInParent(true, true);
 
 	m_PauseMenuButtons[PauseMenuButton::BackToMainButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonBackToMain"));
+	m_PauseMenuButtons[PauseMenuButton::QuickSaveButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonQuickSave"));
+	m_PauseMenuButtons[PauseMenuButton::SettingsPanelButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonSettingsPanel"));
+	m_PauseMenuButtons[PauseMenuButton::RestartButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonRestart"));
 	m_PauseMenuButtons[PauseMenuButton::SaveOrLoadGameButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonSaveOrLoadGame"));
 	m_PauseMenuButtons[PauseMenuButton::SettingsButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonSettings"));
 	m_PauseMenuButtons[PauseMenuButton::ModManagerButton] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonModManager"));
@@ -111,6 +118,16 @@ void PauseMenuGUI::SetBackButtonTargetName(const std::string& menuName) {
 }
 
 void PauseMenuGUI::EnableOrDisablePauseMenuFeatures() {
+	// The quick actions (U-4). Quick Save as F5, only where the game can be saved; the menu's font has no other way to show it greyed, so
+	// it says so. Restart as Ctrl+R, not in a campaign (where Ctrl+R doesn't either), and asking again each time the menu opens.
+	const Activity* currentActivity = g_ActivityMan.GetActivity();
+	const bool canQuickSave = currentActivity && currentActivity->CanBeUserSaved();
+	m_PauseMenuButtons[PauseMenuButton::QuickSaveButton]->SetEnabled(canQuickSave);
+	SetButtonText(PauseMenuButton::QuickSaveButton, canQuickSave ? "Quick Save" : "No Quick Save Here");
+	m_PauseMenuButtons[PauseMenuButton::RestartButton]->SetEnabled(currentActivity && !g_MetaMan.GameInProgress());
+	m_RestartAsked = false;
+	SetButtonText(PauseMenuButton::RestartButton, "Restart");
+
 	bool disableModManager = true;
 
 	if (const Activity* activity = g_ActivityMan.GetActivity(); activity) {
@@ -231,7 +248,35 @@ bool PauseMenuGUI::HandleInputEvents() {
 	GUIEvent guiEvent;
 	while (m_GUIControlManager->GetEvent(&guiEvent)) {
 		if (guiEvent.GetType() == GUIEvent::Command) {
+			// Any other button pressed puts Restart back from asking again.
+			if (m_RestartAsked && guiEvent.GetControl() != m_PauseMenuButtons[PauseMenuButton::RestartButton]) {
+				m_RestartAsked = false;
+				SetButtonText(PauseMenuButton::RestartButton, "Restart");
+			}
 			if (guiEvent.GetControl() == m_PauseMenuButtons[PauseMenuButton::ResumeButton]) {
+				return true;
+			} else if (guiEvent.GetControl() == m_PauseMenuButtons[PauseMenuButton::QuickSaveButton]) {
+				// As F5: saved over the quick-save, with a notice over the menu, which stays open.
+				if (const Activity* activity = g_ActivityMan.GetActivity(); activity && activity->CanBeUserSaved()) {
+					g_GUISound.ButtonPressSound()->Play();
+					Notices::Post(g_ActivityMan.SaveCurrentGame("QuickSave") ? "Game saved" : "Could not save the game");
+				}
+			} else if (guiEvent.GetControl() == m_PauseMenuButtons[PauseMenuButton::RestartButton]) {
+				// Pressed twice: the first asks, the second restarts the game as Ctrl+R does (the same map and setup, from the start), once
+				// the game is back.
+				if (!m_RestartAsked) {
+					g_GUISound.ButtonPressSound()->Play();
+					m_RestartAsked = true;
+					SetButtonText(PauseMenuButton::RestartButton, "Confirm Restart");
+				} else {
+					m_RestartAsked = false;
+					SetButtonText(PauseMenuButton::RestartButton, "Restart");
+					g_ActivityMan.SetRestartActivity();
+					return true;
+				}
+			} else if (guiEvent.GetControl() == m_PauseMenuButtons[PauseMenuButton::SettingsPanelButton]) {
+				// The settings panel (F6) over the game, rather than the old Settings menu.
+				g_DebugMan.ShowSettingsPanel();
 				return true;
 			} else if (guiEvent.GetControl() == m_PauseMenuButtons[PauseMenuButton::SaveOrLoadGameButton]) {
 				SetActiveMenuScreen(PauseMenuScreen::SaveOrLoadGameScreen);
@@ -281,6 +326,22 @@ void PauseMenuGUI::UpdateHoveredButton(const GUIButton* hoveredButton) {
 	} else {
 		m_HoveredButton = nullptr;
 	}
+}
+
+void PauseMenuGUI::SetButtonText(PauseMenuButton button, const std::string& text) {
+	std::string buttonText = text;
+	std::transform(buttonText.begin(), buttonText.end(), buttonText.begin(), ::toupper);
+	m_ButtonHoveredText[button] = buttonText;
+	std::transform(buttonText.begin(), buttonText.end(), buttonText.begin(), ::tolower);
+	m_ButtonUnhoveredText[button] = buttonText;
+
+	GUIButton* guiButton = m_PauseMenuButtons[button];
+	int wantedWidth = m_GUIControlManager->GetSkin()->GetFont("FontMainMenu.png")->CalculateWidth(m_ButtonHoveredText[button]) + 20;
+	if (wantedWidth > guiButton->GetWidth()) {
+		guiButton->SetSize(wantedWidth, guiButton->GetHeight());
+	}
+	guiButton->SetText(guiButton == m_HoveredButton ? m_ButtonHoveredText[button] : m_ButtonUnhoveredText[button]);
+	guiButton->CenterInParent(true, false);
 }
 
 void PauseMenuGUI::BlinkResumeButton() {
