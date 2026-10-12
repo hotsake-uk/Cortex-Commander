@@ -240,6 +240,10 @@ namespace RTE {
 
 		/// The share of its pace it walks at for what has hold of it: venom slows it, a web stops it. 1 when nothing has.
 		float GetAfflictionSpeedMultiplier() const;
+
+		/// How much faster or slower than its preset this one walks, runs and crawls (the Sandbox's unit Stats), 1 as it comes.
+		float GetSpeedMultiplier() const { return m_SpeedMultiplier; }
+		void SetSpeedMultiplier(float multiplier) { m_SpeedMultiplier = std::max(multiplier, 0.0F); }
 #pragma endregion
 
 		/// Gets whether this Actor is drawn with a bright glowing outline, whatever the unit outline settings (see LightingSettings::HighlightUnits).
@@ -791,8 +795,12 @@ namespace RTE {
 		/// Which of the toughness settings this actor follows (a SettingsMan::ToughnessKind), or -1 for none (doors, lifts).
 		int GetToughnessKind() const;
 
-		/// How tough this actor is set to be (SettingsMan::Toughness), 1 for an actor no toughness setting covers.
+		/// How tough this actor is set to be (SettingsMan::Toughness, times its own ToughnessMultiplier), 1 for an actor no toughness setting covers.
 		float GetToughness() const;
+
+		/// How much tougher than the rest of its kind this one is (the Sandbox's unit Stats), on top of the toughness setting; 1 as it comes.
+		float GetToughnessMultiplier() const { return m_ToughnessMultiplier; }
+		void SetToughnessMultiplier(float multiplier) { m_ToughnessMultiplier = std::max(multiplier, SettingsMan::c_ToughnessMin); }
 
 		/// How hard this is to blow apart, or to knock its head and limbs off: its toughness, and infinite when it is invincible.
 		float GibToughness() const override;
@@ -1905,6 +1913,8 @@ namespace RTE {
 		float m_WaterWeakness = 0.0F; //!< The share of its full health it loses a second deep in water (CR-7; see GetWaterWeakness).
 		mutable int m_ToughnessKind; //!< Which toughness setting this follows (see GetToughnessKind), -2 until it is first worked out.
 		float m_ToughnessHealth; //!< The health as ApplyToughness last left it, NaN before it is first called.
+		float m_ToughnessMultiplier; //!< Its own toughness on top of its kind's (see GetToughnessMultiplier).
+		float m_SpeedMultiplier; //!< Its own pace on top of its preset's (see GetSpeedMultiplier).
 		int m_LastAttackerTeam; //!< The side that last hurt this, Activity::NoTeam for none (see GetLastAttackerTeam). Not saved.
 		long m_LastAttackerID; //!< The unit that last hurt this, if it hit this itself, else 0 (see GetLastAttackerID). Not saved.
 		Timer m_HurtTimer; //!< Since this was last hurt by another side (see GetMSSinceHurt). Not saved.

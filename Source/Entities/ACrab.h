@@ -311,6 +311,8 @@ namespace RTE {
 		/// How high a leap of the legs lifts this crab, in pixels (LM-8): the INI's LegJumpHeight, or by default less than a human's for the
 		/// body (a crab is heavy and low). 0 with no legs.
 		float GetLegJumpHeight() const;
+		/// Sets how high a leap lifts this, in pixels; below zero for the default, zero for no leap.
+		void SetLegJumpHeight(float height) { m_LegJumpHeight = height; }
 
 		/// Whether the legs can leap just now: standing on a floor, steady, not mantling, a moment after the last landing.
 		bool CanLeap() const;

@@ -161,6 +161,8 @@ void Actor::Clear() {
 	m_HurtTimer.Reset();
 	m_LastHurtFrom.Reset();
 	m_PaceLimit = 0.0F;
+	m_ToughnessMultiplier = 1.0F;
+	m_SpeedMultiplier = 1.0F;
 	m_Waypoints.clear();
 	m_DrawWaypoints = false;
 	m_MoveTarget.Reset();
@@ -363,6 +365,8 @@ int Actor::Create(const Actor& reference) {
 	m_NonCombatant = reference.m_NonCombatant;
 	m_MovementProfile = reference.m_MovementProfile;
 	m_FireAuraRadius = reference.m_FireAuraRadius;
+	m_ToughnessMultiplier = reference.m_ToughnessMultiplier;
+	m_SpeedMultiplier = reference.m_SpeedMultiplier;
 	m_WaterWeakness = reference.m_WaterWeakness;
 	m_Waypoints = reference.m_Waypoints;
 	m_DrawWaypoints = reference.m_DrawWaypoints;
@@ -596,6 +600,8 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 	// Elements (CR-7): what it sets alight round it, and what water does to it.
 	MatchProperty("FireAuraRadius", { reader >> m_FireAuraRadius; });
 	MatchProperty("WaterWeakness", { reader >> m_WaterWeakness; });
+	MatchProperty("ToughnessMultiplier", { reader >> m_ToughnessMultiplier; });
+	MatchProperty("SpeedMultiplier", { reader >> m_SpeedMultiplier; });
 
 	EndPropertyList;
 }
@@ -713,6 +719,12 @@ int Actor::Save(Writer& writer) const {
 	}
 	if (m_WaterWeakness > 0.0F) {
 		writer.NewPropertyWithValue("WaterWeakness", m_WaterWeakness);
+	}
+	if (m_ToughnessMultiplier != 1.0F) {
+		writer.NewPropertyWithValue("ToughnessMultiplier", m_ToughnessMultiplier);
+	}
+	if (m_SpeedMultiplier != 1.0F) {
+		writer.NewPropertyWithValue("SpeedMultiplier", m_SpeedMultiplier);
 	}
 
 	return 0;
@@ -1188,7 +1200,9 @@ int Actor::GetToughnessKind() const {
 
 float Actor::GetToughness() const {
 	int kind = GetToughnessKind();
-	return kind < 0 ? 1.0F : g_SettingsMan.Toughness(static_cast<SettingsMan::ToughnessKind>(kind));
+	float toughness = kind < 0 ? 1.0F : g_SettingsMan.Toughness(static_cast<SettingsMan::ToughnessKind>(kind));
+	// (Its own on top, short of invincible: only the setting makes it that.)
+	return toughness >= SettingsMan::c_ToughnessInvincible || m_ToughnessMultiplier == 1.0F ? toughness : std::clamp(toughness * m_ToughnessMultiplier, SettingsMan::c_ToughnessMin, SettingsMan::c_ToughnessMax);
 }
 
 float Actor::GibToughness() const {
