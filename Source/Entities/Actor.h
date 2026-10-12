@@ -1370,6 +1370,9 @@ namespace RTE {
 			int FireProof = -1; //!< 1 for a body fire doesn't catch on, and that is routed through lava.
 			int Climbs = -1; //!< What it crawls up and along (CR-10; see Climbing): 0 none, 1 walls, 2 walls and ceilings.
 			float CrawlSpeed = -1.0F; //!< How fast it crawls on a wall or ceiling, or on any ground with no legs, in m/s (see GetCrawlSpeed).
+			int Flies = -1; //!< How it flies (C8; see Flight): 0 not at all, 1 on wings, 2 freely, as by magic.
+			float FlySpeed = -1.0F; //!< How fast it flies, in m/s (see GetFlySpeed).
+			float FlyStamina = -1.0F; //!< How long it flies before it must rest, in seconds; 0 (or not set) for one that never tires.
 		};
 
 		/// What a body crawls on (CR-10, a giant spider up a wall): its movement profile's Climbs.
@@ -1389,6 +1392,26 @@ namespace RTE {
 		/// Gets how fast this crawls on a wall or ceiling, in m/s: its movement profile's CrawlSpeed (3 when not set), times the creature
 		/// climbing speed setting (SettingsMan::CreatureClimbSpeed).
 		float GetCrawlSpeed() const;
+
+		/// How a body flies (C8, a bat or a wyvern on its wings, a wisp freely): its movement profile's Flies.
+		enum class Flight {
+			None = 0,
+			Wings, //!< Flapping: it climbs slower than it flies across, bobs with each beat, and glides down when it tires.
+			Free //!< As a flying vehicle does, with no wings: up, down and across alike, holding still in the air.
+		};
+
+		/// Gets how this flies (its movement profile's Flies), None while the creature flight setting is off (SettingsMan::CreaturesFly).
+		Flight GetFlight() const;
+
+		/// Gets how this flies as a number, for scripts (Lua's Flies): 0 not at all, 1 on wings, 2 freely.
+		int GetFliesValue() const { return static_cast<int>(GetFlight()); }
+
+		/// Gets how fast this flies, in m/s: its movement profile's FlySpeed (6 when not set), times the creature flying speed setting
+		/// (SettingsMan::CreatureFlySpeed).
+		float GetFlySpeed() const;
+
+		/// Gets how long this flies before it must rest, in seconds: its movement profile's FlyStamina; 0 for one that never tires.
+		float GetFlyStamina() const { return std::max(m_MovementProfile.FlyStamina, 0.0F); }
 
 		/// Gets this actor's movement profile (CR-2).
 		const MovementProfile& GetMovementProfile() const { return m_MovementProfile; }
