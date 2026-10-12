@@ -10,6 +10,7 @@
 #include "PerformanceMan.h"
 #include "DebugMan.h"
 #include "MenuMan.h"
+#include "Notices.h"
 #include "Icon.h"
 #include "GameActivity.h"
 #include "Sandbox.h"
@@ -17,6 +18,7 @@
 
 #include <SDL3/SDL.h>
 #include <array>
+#include <filesystem>
 #include <string>
 #include <unordered_map>
 
@@ -1205,14 +1207,20 @@ void UInputMan::HandleSpecialInput() {
 		} else if (KeyPressed(SDLK_F4)) {
 			g_ConsoleMan.SaveInputLog("Console.input.log");
 		} else if (KeyPressed(SDLK_F5)) {
+			// A notice either way (U-1), rather than a box to click away when this game can't be saved.
 			if (g_ActivityMan.GetActivity() && g_ActivityMan.GetActivity()->CanBeUserSaved()) {
-				g_ActivityMan.SaveCurrentGame("QuickSave");
+				Notices::Post(g_ActivityMan.SaveCurrentGame("QuickSave") ? "Game saved" : "Could not save the game");
 			} else {
-				RTEError::ShowMessageBox("Cannot Save Game - This Activity Does Not Allow QuickSaving!");
+				Notices::Post("This game can't be quick-saved");
 			}
 		} else if (KeyPressed(SDLK_F9) && FlagShiftState()) {
-			// Shift+F9: plain F9 is Commander view (Main.cpp), and loading over the game by mistake loses it.
-			g_ActivityMan.LoadAndLaunchGame("QuickSave");
+			// Shift+F9: plain F9 is Commander view (Main.cpp), and loading over the game by mistake loses it. With no quick-save yet, a notice
+			// says so rather than the failed load's box.
+			if (std::filesystem::exists(g_PresetMan.GetFullModulePath(c_UserScriptedSavesModuleName) + "/QuickSave.ccsave")) {
+				g_ActivityMan.LoadAndLaunchGame("QuickSave");
+			} else {
+				Notices::Post("No quick-save to load yet (F5 saves one)");
+			}
 		} else if (KeyPressed(SDLK_F10)) {
 			g_ConsoleMan.ClearLog();
 			// F12 to save a single ScreenDump - Note that F12 triggers a breakpoint when the VS debugger is attached, regardless of config - this is by design. Thanks Microsoft.

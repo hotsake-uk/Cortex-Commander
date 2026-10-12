@@ -31,6 +31,7 @@ sources += files(
 'TerrainGrazing.cpp',
 'FluidSim.cpp',
 'ModernHUD.cpp',
+'Notices.cpp',
 'ActionMenu.cpp',
 'SmokeGrid.cpp',
 'ActorFire.cpp',

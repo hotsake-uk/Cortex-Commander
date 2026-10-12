@@ -1,6 +1,7 @@
 #include "SandboxInternal.h"
 #include "ActorWater.h"
 #include "MenuMan.h"
+#include "Notices.h"
 #include "Weather.h"
 #include "TerrainCandle.h"
 
@@ -1024,10 +1025,14 @@ void Sandbox::DrawGUI() {
 	}
 	// Ctrl+Z: the newest paint stroke or placing click undone (see UndoPaint), whichever tool is in hand, so long as no text box has the keys.
 	// Not while you play a unit: in the WASD layouts Ctrl is crouch, so crouching with Z down took back the last stroke.
-	if (InGame() && io.KeyCtrl && !io.WantTextInput && !s_Possessed && ImGui::IsKeyPressed(ImGuiKey_Z, false) && !s_PaintUndo.empty()) {
-		QueueSimChange(Tool::UndoTerrain);
-		// (A rope part put down is taken away whole, so the next click starts a new one.)
-		s_RopeDraft.clear();
+	if (InGame() && io.KeyCtrl && !io.WantTextInput && !s_Possessed && ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
+		if (s_PaintUndo.empty()) {
+			Notices::Post("Nothing to undo");
+		} else {
+			QueueSimChange(Tool::UndoTerrain);
+			// (A rope part put down is taken away whole, so the next click starts a new one.)
+			s_RopeDraft.clear();
+		}
 	}
 	// The rope being put down is finished with Enter or Escape, a right click (not a drag, which moves the view), or another tool taken up.
 	if (!s_RopeDraft.empty()) {
@@ -1132,6 +1137,12 @@ void Sandbox::DrawGUI() {
 	if (CapturesWorldClicks()) {
 		const ToolInfo& tool = CurrentTool();
 		Vector position = MouseScenePosition();
+		// A tool its simulation is off for does nothing (it's greyed in the window): a click with it says why, rather than nothing happening.
+		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+			if (const char* unavailable = ToolUnavailableReason(tool.Kind)) {
+				Notices::Post(unavailable);
+			}
+		}
 		// With the battle panel showing, a click on one of the battle's zones or points selects and moves it (BattleEditMouse) rather than
 		// giving an order.
 		const bool battleEdit = tool.Kind == Tool::Command && BattleEditMouse();

@@ -3,6 +3,7 @@
 // starts: after a reset, or in a fresh game.
 
 #include "SandboxInternal.h"
+#include "Notices.h"
 
 namespace SandboxDetail {
 	namespace {
@@ -515,6 +516,7 @@ namespace SandboxDetail {
 		if (withMap != s_Presets.end()) {
 			UsePreset(*withMap);
 			g_ConsoleMan.PrintString("SANDBOX: Battle setup \"" + withMap->Name + "\" loaded with the map.");
+			Notices::Post("Battle setup \"" + withMap->Name + "\" loaded with the map");
 		}
 	}
 
@@ -552,6 +554,7 @@ namespace SandboxDetail {
 				s_PresetNote = "\"" + name + "\" saved.";
 			}
 			WritePresets();
+			Notices::Post("Battle setup \"" + name + "\" saved");
 			s_PresetName[0] = 0;
 		}
 		ImGui::EndDisabled();
@@ -577,6 +580,7 @@ namespace SandboxDetail {
 			if (ImGui::SmallButton("Load")) {
 				UsePreset(preset);
 				s_PresetNote = "\"" + preset.Name + "\" loaded.";
+				Notices::Post("Battle setup \"" + preset.Name + "\" loaded");
 			}
 			ImGui::SetItemTooltip("Puts this setup on the Battle tab. A battle that's on keeps going: start it again to play the setup.");
 			ImGui::SameLine();
@@ -584,6 +588,7 @@ namespace SandboxDetail {
 				preset.Cards = s_BattleSetup;
 				preset.Mode = s_ModeSetup;
 				s_PresetNote = "\"" + preset.Name + "\" saved over.";
+				Notices::Post("Battle setup \"" + preset.Name + "\" saved");
 				changed = true;
 			}
 			ImGui::SetItemTooltip("Saves the Battle tab as it is now in place of this setup.");

@@ -444,6 +444,12 @@ namespace RTE {
 		/// @param show Whether to show them.
 		void SetShowFPSAndVersion(bool show) { m_ShowFPSAndVersion = show; }
 
+		/// Gets whether short notices ("Game saved", "Nothing to undo") are shown at the top of the screen (see Notices; on by default).
+		bool ShowNotices() const { return m_ShowNotices; }
+
+		/// Sets whether short notices are shown at the top of the screen.
+		void SetShowNotices(bool show) { m_ShowNotices = show; }
+
 		/// The debug text channels: kinds of debug lines written to the console (and LogConsole.txt). Each keeps its line prefix (AITRACE, PATHLOG, SANDBOX, PERF), so log readers still match.
 		enum class DebugChannel { AI, Path, Pilot, Climb, Combat, Squad, Sandbox, Perf, Grid, Count };
 
@@ -956,6 +962,7 @@ namespace RTE {
 		bool m_TakingKey = false; //!< Whether the settings panel is waiting for a key to bind (see IsTakingKey).
 		bool m_EndlessMetaGameMode; //!< Endless MetaGame mode.
 		bool m_ShowFPSAndVersion; //!< Whether the frame rate and version are shown in the top right (see ShowFPSAndVersion).
+		bool m_ShowNotices; //!< Whether short notices are shown at the top of the screen (see ShowNotices).
 		int m_NavDebugOverlay; //!< What the navigation debug overlay shows (see NavDebugOverlay).
 		int m_DebugTeam; //!< The team whose view the debug overlays show (see DebugTeam).
 		int m_UnitInspector; //!< Which units the unit inspector overlay labels (see UnitInspector).

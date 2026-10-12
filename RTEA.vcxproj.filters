@@ -235,6 +235,9 @@
     <ClInclude Include="Source\Managers\ModernHUD.h">
       <Filter>Managers</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Managers\Notices.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Managers\ActionMenu.h">
       <Filter>Managers</Filter>
     </ClInclude>
@@ -1037,6 +1040,9 @@
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\ModernHUD.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\Notices.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\ActionMenu.cpp">

@@ -3,6 +3,7 @@
 #include "SandboxInternal.h"
 #include "ActionMenu.h"
 #include "ModernHUD.h"
+#include "Notices.h"
 #include "AVehicle.h"
 #include "GUISound.h"
 #include "TerrainCandle.h"
@@ -2093,15 +2094,15 @@ namespace SandboxDetail {
 				// The middle of the view as it is now.
 				Bookmarks()[key] = s_FreeCamera ? s_CameraCenter : g_CameraMan.GetOffset(0) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, static_cast<float>(g_FrameMan.GetPlayerScreenHeight()) * 0.5F);
 				WriteBookmarks();
-				ModernHUD::AddFeedLine("View " + name + " kept (Ctrl+Alt+" + name + " to come back)", SelectionTeam());
+				Notices::Post("View " + name + " kept (Ctrl+Alt+" + name + " to come back)");
 			} else if (auto found = Bookmarks().find(key); found != Bookmarks().end()) {
 				s_FreeCamera = true;
 				s_FollowTarget = UnitRef();
 				s_FollowAction = false;
 				s_CameraCenter = found->second;
-				ModernHUD::AddFeedLine("Back to view " + name, SelectionTeam());
+				Notices::Post("Back to view " + name);
 			} else {
-				ModernHUD::AddFeedLine("No view " + name + " kept on this map yet (Ctrl+Shift+" + name + " keeps one)", SelectionTeam());
+				Notices::Post("No view " + name + " kept on this map yet (Ctrl+Shift+" + name + " keeps one)");
 			}
 		}
 	}
@@ -6175,9 +6176,12 @@ namespace SandboxDetail {
 						    ImVec2 points[] = {ImVec2(at.x + room * 0.78F, at.y + room * 0.82F), ImVec2(at.x + room * 0.78F, at.y + room * 0.38F), ImVec2(at.x + room * 0.36F, at.y + room * 0.38F)};
 						    tileList->AddPolyline(points, 3, ink, ImDrawFlags_None, thick);
 						    tileList->AddTriangleFilled(ImVec2(at.x + room * 0.12F, at.y + room * 0.38F), ImVec2(at.x + room * 0.4F, at.y + room * 0.16F), ImVec2(at.x + room * 0.4F, at.y + room * 0.6F), ink);
-					    }) == 1 &&
-					    canUndo) {
-						QueueSimChange(Tool::UndoTerrain);
+					    }) == 1) {
+						if (canUndo) {
+							QueueSimChange(Tool::UndoTerrain);
+						} else {
+							Notices::Post("Nothing to undo");
+						}
 					}
 				}
 				rightWidth = ImGui::GetItemRectMax().x - rightStart;
