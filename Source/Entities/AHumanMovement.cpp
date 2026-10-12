@@ -1021,8 +1021,8 @@ void AHuman::UpdateLadderLimbs() {
 	}
 }
 
-// A door of ours, or no one's, whose moving part lies near the line from us to a point, within a body and a half.
-ADoor* AHuman::DoorAhead(const Vector& toPoint) const {
+// A door of ours, or no one's, whose moving part lies near the line from us to a point, within reach bodies (a body and a half by default).
+ADoor* AHuman::DoorAhead(const Vector& toPoint, float reach) const {
 	ADoor* best = nullptr;
 	float bestDistance = std::numeric_limits<float>::max();
 	Vector along = Towards(m_Pos, toPoint);
@@ -1032,7 +1032,7 @@ ADoor* AHuman::DoorAhead(const Vector& toPoint) const {
 			continue;
 		}
 		Vector toLeaf = Towards(m_Pos, door->GetDoor()->GetPos());
-		if (toLeaf.MagnitudeIsGreaterThan(GetMoveHeight() * 1.5F)) {
+		if (toLeaf.MagnitudeIsGreaterThan(GetMoveHeight() * reach)) {
 			continue;
 		}
 		float t = length > 1.0F ? std::clamp(toLeaf.Dot(along) / (length * length), 0.0F, 1.0F) : 0.0F;
@@ -1043,6 +1043,50 @@ ADoor* AHuman::DoorAhead(const Vector& toPoint) const {
 		}
 	}
 	return best;
+}
+
+// Where to wait for a door's sensor to see us. A sensor is a ray, and it opens the door for a body crossing it: a hatch's runs up and down
+// through the leaf, reaching about 50 px under it, so a unit waiting under a tall shaft, or hovering where the door first came near, was never
+// seen, gave up, and flew into the shut leaf. Sampled along each ray, with the body placed so its span from head
+// to feet crosses the sample; kept where the body is clear of terrain (the shut leaf is door material) and reached from here without passing
+// through the door. The nearest such place to us.
+bool AHuman::DoorSensorHoldPoint(const ADoor* door, Vector& point) const {
+	const float h = GetMoveHeight();
+	const float headAbove = h * 0.24F;
+	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : h * 0.2F;
+	const float halfWidth = std::clamp(MoveBodyWidth() * 0.5F, 4.0F, MoveHalfWidthCap());
+	float nearest = std::numeric_limits<float>::max();
+	bool found = false;
+	Vector hit;
+	for (const ADSensor& sensor: door->GetSensors()) {
+		Vector start = door->GetPos() + sensor.GetStartOffset().GetXFlipped(door->IsHFlipped()) * door->GetRotMatrix();
+		Vector ray = sensor.GetSensorRay().GetXFlipped(door->IsHFlipped()) * door->GetRotMatrix();
+		for (int i = 0; i <= 12; ++i) {
+			Vector sample = start + ray * (static_cast<float>(i) / 12.0F);
+			for (float offset: {0.0F, headAbove * 0.4F, headAbove * 0.8F, -feet * 0.4F, -feet * 0.8F}) {
+				Vector spot = sample + Vector(0.0F, offset);
+				float distance = Towards(m_Pos, spot).GetMagnitude();
+				if (distance >= nearest) {
+					continue;
+				}
+				// The body, head to feet, at both sides, clear of anything solid (the shut leaf included).
+				bool clear = true;
+				for (float side: {-halfWidth, halfWidth}) {
+					if (g_SceneMan.CastStrengthRay(spot + Vector(side, -headAbove), Vector(0.0F, headAbove + feet), 0.5F, hit, 2)) {
+						clear = false;
+						break;
+					}
+				}
+				// On our side of it: nothing solid (the door least of all) between us and there.
+				if (clear && !g_SceneMan.CastStrengthRay(m_Pos, Towards(m_Pos, spot), 0.5F, hit, 3)) {
+					nearest = distance;
+					point = spot;
+					found = true;
+				}
+			}
+		}
+	}
+	return found;
 }
 
 Actor* AHuman::UnitAhead(float direction, float reach) const {
@@ -2571,13 +2615,91 @@ int AHuman::MoveAlongRoute() {
 		RequestRouteCheck();
 	}
 
+	// AIWaitsAtDoors: a door of ours across the way, not yet fully open, waited for where its sensor sees us. (A unit under a hatch overhead
+	// waited out of its sensor's sight, gave up, flew into the shut leaf and fell; the door it then opened was shut again before the next
+	// take-off.) In the air, or on the ground with the sensor out of reach overhead and a jet to get there, a hover at the place (see
+	// DoorSensorHoldPoint), the jet cut early enough that the rise coasts to a stop under it rather than into the leaf; on the ground with
+	// the place at our height, a walk to it. Through only once the door is open: an opening leaf is still in the way (a Door Slide Long takes
+	// 1.5 s), and on the sensor it stays open while we climb through. Given up on (walked or flown into, as before) after 4 s seen by its
+	// sensor with the door still shut, or 10 s in all when the place can't be reached. @return Whether holding for it this tick.
+	auto holdOnDoorSensor = [&](ADoor* door, bool inAir) -> bool {
+		ADoor::DoorState state = door->GetDoorState();
+		if (state == ADoor::OPEN) {
+			mover.doorWaitID = 0;
+			mover.doorHoldValid = false;
+			return false;
+		}
+		if (door->GetUniqueID() == mover.doorIgnoreID) {
+			return false;
+		}
+		// (A wait broken off, the door out of the way for a while, starts afresh when it comes back: not given up on at once for the old one.)
+		if (door->GetUniqueID() != mover.doorWaitID || mover.doorHoldTickTimer.IsPastSimMS(1000)) {
+			mover.doorWaitID = door->GetUniqueID();
+			mover.doorWaitTimer.Reset();
+			mover.doorWaitTotalTimer.Reset();
+			mover.doorHoldValid = false;
+		}
+		mover.doorHoldTickTimer.Reset();
+		// The place, picked while the leaf is shut and drawn into the terrain (a moving one isn't, and a place in its travel would look clear),
+		// twice a second.
+		if (!mover.doorHoldValid || (state == ADoor::CLOSED && mover.doorPickTimer.IsPastSimMS(500))) {
+			mover.doorPickTimer.Reset();
+			Vector spot;
+			if (DoorSensorHoldPoint(door, spot)) {
+				mover.doorHoldPoint = spot;
+				mover.doorHoldValid = true;
+			} else if (!mover.doorHoldValid) {
+				mover.doorHoldPoint = door->NearestSensorPoint(m_Pos);
+				mover.doorHoldValid = true;
+			}
+		}
+		const Vector to = Towards(m_Pos, mover.doorHoldPoint);
+		const float h = GetMoveHeight();
+		const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : h * 0.2F;
+		bool seen = false;
+		for (float dy: {-h * 0.24F, -h * 0.12F, 0.0F, feet * 0.5F, feet}) {
+			seen = seen || door->SensesPoint(m_Pos + Vector(0.0F, dy), 6.0F);
+		}
+		if (!seen || state != ADoor::CLOSED) {
+			mover.doorWaitTimer.Reset();
+		}
+		if (mover.doorWaitTimer.IsPastSimMS(4000) || mover.doorWaitTotalTimer.IsPastSimMS(10000)) {
+			MoverTrace(inAir ? "door didn't open; flying into it" : "door didn't open; walking into it");
+			mover.doorIgnoreID = door->GetUniqueID();
+			mover.doorIgnoreTimer.Reset();
+			mover.doorHoldValid = false;
+			return false;
+		}
+		mover.progressTimer.Reset();
+		const bool hasJet = m_pJetpack && m_pJetpack->GetJetTimeLeft() > 0.0F;
+		if (inAir || (to.m_Y < -h * 0.2F && hasJet)) {
+			// The height: lit while below it, unless the rise already under way coasts there (v^2 / 2g); lit when sinking near it.
+			float error = -to.m_Y; // (Positive when below.)
+			float rising = std::max(0.0F, -m_Vel.m_Y);
+			float coast = rising * rising / (2.0F * std::max(0.1F, g_SceneMan.GetGlobalAcc().m_Y)) * c_PPM;
+			bool jet = (error - coast > 0.0F && m_Vel.m_Y > -3.0F) || (error > -6.0F && m_Vel.m_Y > 0.5F);
+			ctrl.SetState(BODY_JUMP, jet && hasJet);
+			// Sideways by speed to the place's column.
+			float wantVelX = std::clamp(to.m_X / 6.0F, -1.0F, 1.0F);
+			ctrl.SetAnalogMove(Vector(std::clamp((wantVelX - m_Vel.m_X) * 0.6F, -1.0F, 1.0F), -1.0F));
+			return true;
+		}
+		if (std::abs(to.m_X) > 6.0F) {
+			ctrl.SetState(to.m_X < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+		}
+		return true;
+	};
 	// A door of ours (or no one's) across the way to a point, not open: held short of it, on the ground at its sensor, in the air hovering
 	// (a hatch across a shaft: its leaves gib what is in their sweep, and a unit flown up into them died at full health). Given up on
 	// after a while (walked or flown into) for 5 s. @return Whether holding for it this tick.
 	auto holdForDoor = [&](const Vector& towards, bool inAir) -> bool {
-		ADoor* door = DoorAhead(towards);
+		// (AIWaitsAtDoors: looked for further off in the air, so a climb up a shaft has room to slow before the leaf.)
+		ADoor* door = DoorAhead(towards, g_SettingsMan.AIWaitsAtDoors() && inAir ? 3.0F : 1.5F);
 		if (!door) {
 			return false;
+		}
+		if (g_SettingsMan.AIWaitsAtDoors()) {
+			return holdOnDoorSensor(door, inAir);
 		}
 		ADoor::DoorState state = door->GetDoorState();
 		if (state == ADoor::OPEN || state == ADoor::OPENING) {

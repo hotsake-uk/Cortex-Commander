@@ -457,6 +457,10 @@ namespace RTE {
 
 		/// Whether AI units wait at a take-off for the fuel the flight needs (on, as designed), or go with what is in the tank.
 		bool AIWaitsForFuel() const { return m_AIWaitForFuel; }
+		/// Whether AI units wait for a door of their side on its sensor until it is fully open: hovering in a hatch's sensor under it, braking
+		/// short of the leaf, and giving up only after 4 s seen by the sensor with the door still shut (on). Off, as before: held wherever the
+		/// door came near, an opening door taken as open, and given up on after 2-3 s.
+		bool AIWaitsAtDoors() const { return m_AIWaitsAtDoors; }
 		/// Battle Command: whether an enemy team's AI commander spends its points on reinforcements, as you do.
 		bool AIEnemyBuysReinforcements() const { return m_AIEnemyBuysReinforcements; }
 		/// Battle Command: whether an enemy team's AI commander uses commander powers, as you do.
@@ -936,6 +940,7 @@ namespace RTE {
 
 		/// Sets whether AI units wait for fuel before they jet.
 		void SetAIWaitsForFuel(bool wait) { m_AIWaitForFuel = wait; }
+		void SetAIWaitsAtDoors(bool wait) { m_AIWaitsAtDoors = wait; }
 		void SetAIEnemyBuysReinforcements(bool on) { m_AIEnemyBuysReinforcements = on; }
 		void SetAIEnemyUsesPowers(bool on) { m_AIEnemyUsesPowers = on; }
 		void SetAISquadFollowsYou(bool on) { m_AISquadFollowsYou = on; }
@@ -1277,6 +1282,7 @@ namespace RTE {
 		bool m_AIScavengesBetterWeapons; //!< See AIScavengesBetterWeapons.
 		bool m_AIUnitsCallLifts; //!< See AIUnitsCallLifts.
 		bool m_AIWaitForFuel; //!< Whether AI units wait for fuel before they jet (see AIWaitsForFuel).
+		bool m_AIWaitsAtDoors = true; //!< See AIWaitsAtDoors.
 		bool m_AIEnemyBuysReinforcements; //!< See AIEnemyBuysReinforcements.
 		bool m_AIEnemyUsesPowers; //!< See AIEnemyUsesPowers.
 		bool m_AISquadFollowsYou; //!< See AISquadFollowsYou.

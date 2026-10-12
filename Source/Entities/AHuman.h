@@ -983,6 +983,11 @@ namespace RTE {
 			Timer doorIgnoreTimer;
 			long doorWaitID = 0;
 			long doorIgnoreID = 0;
+			Timer doorWaitTotalTimer; //!< Since the wait at doorWaitID began, seen or not (AIWaitsAtDoors: the cap on a wait that can't reach the sensor).
+			Vector doorHoldPoint; //!< Where the body waits on doorWaitID's sensor (AIWaitsAtDoors), picked while the leaf is shut and drawn.
+			bool doorHoldValid = false; //!< Whether doorHoldPoint is picked for doorWaitID.
+			Timer doorHoldTickTimer; //!< Since the last tick held for a door (AIWaitsAtDoors): a wait broken off for a second starts afresh.
+			Timer doorPickTimer; //!< Since doorHoldPoint was last picked.
 			long liftID = 0; //!< The lift (AMover) the route boards or rides next (LM-11; see FollowLift), 0 for none.
 			int liftBoard = -1; //!< The stop it is boarded at.
 			int liftLeave = -1; //!< The stop it is left at.
@@ -1234,7 +1239,10 @@ namespace RTE {
 		static std::optional<Vector> LadderNear(const Vector& point, float reachX, float reachY);
 		/// Drops the route's points up to a flight's landing: up to the one nearest the landing, or the planned count if none is near it.
 		void PopRouteToLanding(const Vector& landing, int pointsToLanding);
-		ADoor* DoorAhead(const Vector& toPoint) const;
+		ADoor* DoorAhead(const Vector& toPoint, float reach = 1.5F) const;
+		/// Where the body waits for a door's sensor to see it (AIWaitsAtDoors): a place whose height span crosses one of the door's sensor
+		/// rays, the body clear of terrain and the door's shut leaf, on our side of it, nearest us. @return Whether one was found.
+		bool DoorSensorHoldPoint(const ADoor* door, Vector& point) const;
 		/// The nearest unit of this side standing in the walk's way (LM-2): within half a body and a little ahead on the side it walks to (and
 		/// no further than reach) and about level; not a door, a craft, a unit with no legs (a turret), nor one whose body ours passes through
 		/// (both ignoring team hits, as every AHuman and ACrab does by default, or either ignoring actor hits). @param direction -1 walking left, 1
