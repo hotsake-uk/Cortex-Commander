@@ -494,7 +494,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, StatusEffect) {
 	    .def_readwrite("Silenced", &StatusEffect::Silenced)
 	    .def_readwrite("Shader", &StatusEffect::Shader)
 	    .def_readwrite("Priority", &StatusEffect::Priority)
-	    .def_readwrite("LightColor", &StatusEffect::LightColor)
+	    .def("SetLightColor", &StatusEffect::SetLightColor)
 	    .def_readwrite("LightRadius", &StatusEffect::LightRadius)
 	    .def_readwrite("LightIntensity", &StatusEffect::LightIntensity);
 }

@@ -48,6 +48,9 @@ namespace RTE {
 		/// What the HUD shows for it.
 		const std::string& GetLabel() const { return Label.empty() ? Name : Label; }
 
+		/// Sets the light's colour from its red, green and blue (0 to 255), for Lua, which has no Color of its own.
+		void SetLightColor(int r, int g, int b) { LightColor = Color(r, g, b); }
+
 	private:
 		static const std::string c_ClassName; //!< A string with the friendly-formatted type name of this.
 	};

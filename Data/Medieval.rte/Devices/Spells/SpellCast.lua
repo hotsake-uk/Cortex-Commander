@@ -2,8 +2,12 @@
 -- (a fireball, a sigil, shards...), or for the spells cast on the spot (Call Lightning, Earth Shatter, Tornado, Time Warp, Arcane Nova) the
 -- round is an invisible marker that only tells the AI how far the spell reaches, and this script makes the effect.
 -- Each cast: the caster says the spell's cast line (the engine's chance and cooldown apply), and the hand flashes in the spell's colour.
+-- The support spells (Heal, Blessing, Haste... Spells.ini's second half) are cast on the friend under the aim within reach, or on the caster
+-- when there is none; their effects are SpellEffects.lua's status effects, and what they leave behind (a light, a levitation, the mirror
+-- images, a grab) is a controller with a script of its own.
 
 local FX = dofile("Medieval.rte/Devices/Spells/SpellFX.lua");
+local Effects = dofile("Medieval.rte/Devices/Spells/SpellEffects.lua");
 
 -- Finds what a bolt from the hand along the aim strikes within reach: the first unit not of the caster's team (looking past friends), or
 -- the ground. Out of reach, the ground under the end of the aim. Returns the point and the unit struck, if one was.
@@ -52,6 +56,83 @@ local function groundInFront(caster, device, dirX, ahead)
 	return ground, found;
 end
 
+-- The friend a support spell is cast on: the first unit of the caster's team a bolt from the hand along the aim strikes within reach (looking
+-- past enemies and loose things in the way; a wall stops it), else the friend nearest the aim's line within reach and a few paces of it,
+-- else the caster. Returns the unit and whether it is the caster.
+local function friendUnderAim(self, caster, aim, reach)
+	local team = caster and caster.Team or self.Team;
+	local from = Vector(self.MuzzlePos.X, self.MuzzlePos.Y);
+	local left = reach;
+	local ignore = caster and caster.ID or FX.NoMOID;
+	for _ = 1, 4 do
+		local id = SceneMan:CastMORay(from, aim * left, ignore, -1, 0, false, 1);
+		if id == FX.NoMOID then
+			break;
+		end
+		local mo = MovableMan:GetMOFromID(id);
+		local root = mo and (MovableMan:GetMOFromID(mo.RootID) or mo);
+		local hit = SceneMan:GetLastRayHitPos();
+		if root and IsActor(root) and root.Team == team and root.UniqueID ~= (caster and caster.UniqueID or -1) and FX.Alive(ToActor(root)) then
+			return ToActor(root), false;
+		end
+		local gone = SceneMan:ShortestDistance(from, Vector(hit.X, hit.Y), true).Magnitude + 12;
+		left = left - gone;
+		if left <= 0 or not root then
+			break;
+		end
+		from = from + aim * gone;
+		ignore = root.ID;
+	end
+	-- Near the line of the aim: the friend closest to it, within reach.
+	local best, bestOff;
+	for _, near in ipairs(FX.ActorsNear(self.MuzzlePos, reach)) do
+		local a = near.actor;
+		if a.Team == team and a.UniqueID ~= (caster and caster.UniqueID or -1) and FX.Alive(a) then
+			local along = near.offset.X * aim.X + near.offset.Y * aim.Y;
+			if along > 0 then
+				local off = (near.offset - aim * along).Magnitude;
+				if off < 40 and (not bestOff or off < bestOff) then
+					best, bestOff = a, off;
+				end
+			end
+		end
+	end
+	if best then
+		return best, false;
+	end
+	return caster, true;
+end
+
+-- The glitter and light of a support spell landing on a unit.
+local function bless(target, hex, r, g, b, count)
+	if not target then
+		return;
+	end
+	FX.Ring("Sparks", target.Pos, count or 14, 5, hex, 10);
+	EmitVisualParticles("Sparks", target.Pos + Vector(0, -8), Vector(0, -3), 0.8, 8, hex);
+	PostProcessMan:AddLight(target.Pos, 120, r, g, b, 1.6);
+end
+
+-- The friend a support spell helps, from the spell's custom values: SupportRange, and the engine-chosen caster.
+local function supportTarget(self, caster, aim)
+	local reach = self:NumberValueExists("SupportRange") and self:GetNumberValue("SupportRange") or 250;
+	return friendUnderAim(self, caster, aim, reach);
+end
+
+-- Puts a status effect (SpellEffects.lua) on the friend under the aim, with its glitter, and has them say thanks. A Buff spell's whole cast.
+local function castBuff(self, caster, aim, effectName, hex, r, g, b, say)
+	local target, isSelf = supportTarget(self, caster, aim);
+	if not target then
+		return nil;
+	end
+	Effects.Apply(target, effectName);
+	bless(target, hex, r, g, b);
+	if not isSelf and say then
+		target:Say(say);
+	end
+	return target, isSelf;
+end
+
 local SPELLS = {
 	["Fireball"] = {speech = "CastFire", colour = {255, 140, 40}, hex = 0xFF9030},
 	["Dragon's Breath"] = {speech = "CastFire", colour = {255, 120, 30}, hex = 0xFF8020, channel = true},
@@ -66,6 +147,22 @@ local SPELLS = {
 	["Tornado"] = {speech = "CastWind", colour = {190, 230, 220}, hex = 0xC8E6DC},
 	["Time Warp"] = {speech = "CastTime", colour = {255, 200, 90}, hex = 0xFFD070},
 	["Arcane Nova"] = {speech = "CastArcane", colour = {190, 110, 255}, hex = 0xB070FF},
+	-- The support spells.
+	["Heal"] = {speech = "CastHoly", colour = {255, 230, 140}, hex = 0xFFE68C},
+	["Mass Heal"] = {speech = "CastHoly", colour = {255, 230, 140}, hex = 0xFFE68C},
+	["Blessing"] = {speech = "CastHoly", colour = {255, 220, 120}, hex = 0xFFDC78},
+	["Shield of Faith"] = {speech = "CastHoly", colour = {150, 200, 255}, hex = 0x96C8FF},
+	["Haste"] = {speech = "CastBuff", colour = {120, 240, 255}, hex = 0x78F0FF},
+	["Stoneskin"] = {speech = "CastBuff", colour = {160, 160, 150}, hex = 0xA0A096},
+	["Fire Ward"] = {speech = "CastBuff", colour = {255, 150, 60}, hex = 0xFF963C},
+	["Regeneration"] = {speech = "CastBuff", colour = {120, 255, 140}, hex = 0x78FF8C},
+	["Enchant Weapon"] = {speech = "CastBuff", colour = {200, 140, 255}, hex = 0xC88CFF},
+	["Levitate"] = {speech = "CastBuff", colour = {220, 230, 255}, hex = 0xDCE6FF},
+	["Mirror Image"] = {speech = "CastBlink", colour = {190, 150, 255}, hex = 0xBE96FF},
+	["Blink"] = {speech = "CastBlink", colour = {190, 150, 255}, hex = 0xBE96FF},
+	["Dispel"] = {speech = "CastHoly", colour = {255, 255, 255}, hex = 0xFFFFFF},
+	["Light"] = {speech = "CastBuff", colour = {255, 255, 230}, hex = 0xFFFFE6},
+	["Telekinetic Grab"] = {speech = "CastArcane", colour = {180, 120, 255}, hex = 0xB478FF},
 };
 local DEFAULT = {speech = "CastArcane", colour = {200, 200, 255}, hex = 0xFFFFFF};
 
@@ -145,6 +242,255 @@ SPELLS["Time Warp"].Cast = function(self, caster, aim)
 	local centre = caster and caster.Pos or self.Pos;
 	FX.Controller("Medieval Spell Time Warp Field", centre, caster and caster.Team or self.Team, caster and caster.UniqueID or 0);
 	FX.Ring("Sparks", centre, 30, 14, 0xFFD070, 6);
+end
+
+---------------------------------------------------------------------------------------------------------------------------------------
+-- The support spells.
+
+-- Heal: forty health and the three worst wounds, on the friend under the aim or the caster.
+SPELLS["Heal"].Cast = function(self, caster, aim)
+	local target, isSelf = supportTarget(self, caster, aim);
+	if not target or not FX.Alive(target) then
+		return;
+	end
+	target.Health = math.min(target.Health + 40, target.MaxHealth);
+	target:RemoveWounds(3);
+	bless(target, 0xFFE68C, 255, 230, 140, 18);
+	FX.Flash("Gold", target.Pos);
+	if not isSelf then
+		target:Say("Healed");
+	end
+end
+
+-- Mass Heal: twenty-five health and a wound on every friend within reach of the caster, and on the caster.
+SPELLS["Mass Heal"].Cast = function(self, caster, aim)
+	local centre = caster and caster.Pos or self.Pos;
+	local team = caster and caster.Team or self.Team;
+	local reach = self:NumberValueExists("SupportRange") and self:GetNumberValue("SupportRange") or 120;
+	local healed = 0;
+	for _, near in ipairs(FX.ActorsNear(centre, reach)) do
+		local a = near.actor;
+		if a.Team == team and FX.Alive(a) then
+			a.Health = math.min(a.Health + 25, a.MaxHealth);
+			a:RemoveWounds(1);
+			bless(a, 0xFFE68C, 255, 230, 140, 10);
+			if caster == nil or a.UniqueID ~= caster.UniqueID then
+				a:Say("Healed");
+			end
+			healed = healed + 1;
+		end
+	end
+	FX.Ring("Sparks", centre, 36, 30, 0xFFE68C, 12);
+	FX.Ring("Mist", centre, 16, 10, 0xFFF4C8, 8);
+	FX.Flash("Gold", centre);
+	PostProcessMan:AddLight(centre, 2 * reach, 255, 230, 140, 1.8);
+	PostProcessMan:AddShockwave(centre, 6000);
+end
+
+SPELLS["Blessing"].Cast = function(self, caster, aim)
+	local target = castBuff(self, caster, aim, "Blessed", 0xFFDC78, 255, 220, 120, "Blessed");
+	if target then
+		FX.Flash("Gold", target.Pos);
+		EmitVisualParticles("Sparks", target.Pos + Vector(0, -30), Vector(0, 3), 0.6, 12, 0xFFF0B0);
+	end
+end
+
+-- Shield of Faith: a shield powerup's bubble, six seconds, on the friend or the caster.
+SPELLS["Shield of Faith"].Cast = function(self, caster, aim)
+	local target, isSelf = supportTarget(self, caster, aim);
+	if not target or not FX.Alive(target) then
+		return;
+	end
+	target:AddPowerupSeconds("Shield", 6);
+	bless(target, 0x96C8FF, 150, 200, 255, 16);
+	FX.Flash("White", target.Pos);
+	if not isSelf then
+		target:Say("Blessed");
+	end
+end
+
+SPELLS["Haste"].Cast = function(self, caster, aim)
+	local target = castBuff(self, caster, aim, "Hasted", 0x78F0FF, 120, 240, 255, "Hasted");
+	if target then
+		EmitVisualParticles("Sparks", target.Pos, Vector(target.HFlipped and -12 or 12, 0), 0.3, 12, 0xC0F8FF);
+	end
+end
+
+SPELLS["Stoneskin"].Cast = function(self, caster, aim)
+	local target = castBuff(self, caster, aim, "Stoneskin", 0xA0A096, 160, 160, 150, "Blessed");
+	if target then
+		EmitVisualParticles("Dust", target.Pos, Vector(0, -2), 0.8, 16, 0x9C9890);
+		CameraMan:AddScreenShake(1, target.Pos);
+	end
+end
+
+-- Fire Ward: put out, and warded for fifteen seconds.
+SPELLS["Fire Ward"].Cast = function(self, caster, aim)
+	local target = castBuff(self, caster, aim, "Fire Ward", 0xFF963C, 255, 150, 60, "Blessed");
+	if target then
+		SceneMan:Extinguish(target);
+		FX.Ring("Embers", target.Pos, 14, 4, 0xFF9030, 12);
+		FX.Flash("Fire", target.Pos);
+	end
+end
+
+SPELLS["Regeneration"].Cast = function(self, caster, aim)
+	castBuff(self, caster, aim, "Regenerating", 0x78FF8C, 120, 255, 140, "Healed");
+end
+
+-- Enchant Weapon: half again the damage from everything the friend hits with, the weapon crackling.
+SPELLS["Enchant Weapon"].Cast = function(self, caster, aim)
+	local target = castBuff(self, caster, aim, "Enchanted Weapon", 0xC88CFF, 200, 140, 255, "Blessed");
+	if target and IsAHuman(target) then
+		local held = ToAHuman(target).EquippedItem;
+		if held then
+			EmitVisualParticles("Sparks", held.Pos, Vector(0, -2), 1, 14, 0xE0B0FF);
+			FX.Flash("Violet", held.Pos);
+		end
+	end
+end
+
+-- Levitate: a controller holds the friend's weight off for five seconds (Levitate.lua).
+SPELLS["Levitate"].Cast = function(self, caster, aim)
+	local target, isSelf = supportTarget(self, caster, aim);
+	if not target or not FX.Alive(target) then
+		return;
+	end
+	FX.Controller("Medieval Spell Levitation", target.Pos, target.Team, caster and caster.UniqueID or 0, {TargetUID = target.UniqueID});
+	bless(target, 0xDCE6FF, 220, 230, 255, 12);
+	EmitVisualParticles("Mist", target.Pos + Vector(0, 10), Vector(0, 1), 0.6, 8, 0xE8F0FF);
+	if not isSelf then
+		target:Say("Lifted");
+	end
+end
+
+-- Mirror Image: two copies of the caster step out to either side (MirrorImage.lua keeps them and pops them).
+SPELLS["Mirror Image"].Cast = function(self, caster, aim)
+	if not caster or not FX.Alive(caster) or not IsAHuman(caster) then
+		return;
+	end
+	for _, side in ipairs({-1, 1}) do
+		local image = ToAHuman(ToAHuman(caster):Clone());
+		if image then
+			image.Pos = caster.Pos + Vector(side * 14, -2);
+			image.Vel = Vector(side * 4, -2);
+			image.Team = caster.Team;
+			image.Health = image.MaxHealth;
+			image.AIMode = Actor.AIMODE_SENTRY;
+			image:SetNumberValue("MedievalIllusion", 1);
+			image:SetNumberValue("MedievalIllusionOf", caster.UniqueID);
+			-- (Its own spells and tricks are the real caster's business.)
+			image.MaxEnergy = 0;
+			image.Energy = 0;
+			Effects.Apply(image, "Illusion", 0);
+			MovableMan:AddActor(image);
+			FX.Controller("Medieval Spell Mirror Image", image.Pos, caster.Team, caster.UniqueID, {TargetUID = image.UniqueID, Seconds = 10});
+			FX.Flash("Violet", image.Pos);
+			EmitVisualParticles("Sparks", image.Pos, Vector(side * 3, -2), 0.8, 10, 0xBE96FF);
+		end
+	end
+	PostProcessMan:AddLight(caster.Pos, 120, 190, 150, 255, 1.5);
+end
+
+-- Blink: the caster is at once as far along the aim as there is room, a wall or a gap or a line crossed.
+SPELLS["Blink"].Cast = function(self, caster, aim)
+	if not caster or not FX.Alive(caster) then
+		return;
+	end
+	local reach = self:NumberValueExists("SupportRange") and self:GetNumberValue("SupportRange") or 160;
+	local from = Vector(caster.Pos.X, caster.Pos.Y);
+	local goal = from + aim * reach;
+	-- The furthest point along the aim with room for a body: stepped back from the far end until the spot is clear.
+	local dest;
+	for step = 0, 6 do
+		local at = goal - aim * (step * 16);
+		if SceneMan:ShortestDistance(from, at, true):MagnitudeIsLessThan(24) then
+			break;
+		end
+		local clear = true;
+		for _, off in ipairs({Vector(0, -14), Vector(0, 0), Vector(0, 12), Vector(-6, -6), Vector(6, -6)}) do
+			local probe = at + off;
+			if SceneMan:GetTerrMatter(math.floor(probe.X), math.floor(probe.Y)) ~= 0 then
+				clear = false;
+				break;
+			end
+		end
+		if clear then
+			dest = at;
+			break;
+		end
+	end
+	if not dest then
+		-- No room anywhere there: the spell fizzles, a flash and nothing.
+		FX.Flash("Violet", from);
+		return;
+	end
+	FX.Ring("Sparks", from, 16, 6, 0xBE96FF, 6);
+	EmitVisualParticles("Mist", from, Vector(0, -1), 0.6, 8, 0xD0C0FF);
+	PostProcessMan:AddLight(from, 100, 190, 150, 255, 1.6);
+	caster.Pos = dest;
+	caster.Vel = caster.Vel * 0.3;
+	-- (Whatever the caster carries comes with them; the engine moves the attached parts with the body.)
+	FX.Ring("Sparks", dest, 16, 6, 0xBE96FF, 6);
+	EmitVisualParticles("Mist", dest, Vector(0, -1), 0.6, 8, 0xD0C0FF);
+	PostProcessMan:AddLight(dest, 100, 190, 150, 255, 1.6);
+	FX.Flash("Violet", dest);
+end
+
+-- Dispel: every curse off the friend under the aim (or the caster), and every blessing off the enemies near them.
+SPELLS["Dispel"].Cast = function(self, caster, aim)
+	local target = supportTarget(self, caster, aim);
+	if not target or not FX.Alive(target) then
+		return;
+	end
+	target:RemoveStatusEffects(true, false);
+	-- The older afflictions too: Frost Shards' chill ends on its next look, and venom and snares are cured.
+	if target:NumberValueExists("MedievalChillUntil") then
+		target:SetNumberValue("MedievalChillUntil", 0);
+	end
+	if target.IsEnvenomed then
+		target:Envenom(0, 0, 1);
+	end
+	if target.IsEnsnared then
+		target:Ensnare(0);
+	end
+	bless(target, 0xFFFFFF, 255, 255, 255, 20);
+	FX.Flash("White", target.Pos);
+	local team = target.Team;
+	for _, near in ipairs(FX.ActorsNear(target.Pos, 60, team)) do
+		if FX.Alive(near.actor) then
+			near.actor:RemoveStatusEffects(false, true);
+			-- (A shield powerup too: a Shield of Faith on an enemy stripped.)
+			near.actor:AddPowerupSeconds("Shield", -1000);
+			EmitVisualParticles("Sparks", near.actor.Pos, Vector(0, 2), 0.8, 10, 0xFFFFFF);
+		end
+	end
+	PostProcessMan:AddShockwave(target.Pos, 3000);
+end
+
+-- Light: a ball of light over the caster's head for thirty seconds (LightOrb.lua).
+SPELLS["Light"].Cast = function(self, caster, aim)
+	local at = caster and caster.Pos + Vector(0, -40) or self.Pos + Vector(0, -30);
+	FX.Controller("Medieval Spell Light Orb", at, caster and caster.Team or self.Team, caster and caster.UniqueID or 0, {Seconds = 30});
+	EmitVisualParticles("Sparks", at, Vector(0, -1), 0.5, 10, 0xFFFFE6);
+	PostProcessMan:AddLight(at, 200, 255, 255, 230, 2);
+end
+
+-- Telekinetic Grab: the enemy under the aim is held and hauled to the caster's feet (TelekineticGrab.lua).
+SPELLS["Telekinetic Grab"].Cast = function(self, caster, aim)
+	local team = caster and caster.Team or self.Team;
+	local point, struck = strikePoint(self.MuzzlePos, aim, 300, caster, team);
+	if struck and FX.Alive(struck) then
+		Effects.Apply(struck, "Grabbed", 1.6);
+		FX.Controller("Medieval Spell Telekinetic Grab", struck.Pos, team, caster and caster.UniqueID or 0, {TargetUID = struck.UniqueID});
+		struck:Say("Lifted");
+		FX.Flash("Purple", struck.Pos);
+		EmitVisualParticles("Sparks", struck.Pos, Vector(0, -3), 1, 14, 0xB478FF);
+	else
+		-- Nothing there to seize: the hand closes on air.
+		EmitVisualParticles("Sparks", point, Vector(0, -1), 0.5, 6, 0xB478FF);
+	end
+	PostProcessMan:AddLight(self.MuzzlePos, 90, 180, 120, 255, 1.5);
 end
 
 function Create(self)

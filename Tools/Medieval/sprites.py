@@ -601,6 +601,20 @@ HEADS["Bombardier"] = swap(HEADS["Crossbowman"], {"W": "b", "w": "n"})
 HEADS["Skirmisher"] = swap(HEADS["Archer"], {"f": "b", "F": "n", "e": "N"})
 HEADS["Skirmisher B"] = swap(HEADS["Archer B"], {"f": "b", "F": "n", "e": "N"})
 
+# The Kingdom's support casters and champions (SE-1).
+# A cleric: a white robe with a gold stripe, hooded in white.
+TORSOS["Cleric"] = swap(TORSOS["Mage"], {"v": "B", "V": "A", "i": "g", "G": "G"})
+HEADS["Cleric"] = swap(HEADS["Archer"], {"f": "B", "F": "A", "e": "A"})
+# An enchanter: a purple robe and hat with a gold stripe.
+TORSOS["Enchanter"] = swap(TORSOS["Mage"], {"v": "p", "V": "P", "i": "q"})
+HEADS["Enchanter"] = swap(HEADS["Mage"], {"v": "p", "V": "P", "i": "q"})
+# A battlemage: a knight's plate with a blue surcoat, blue-plumed helm.
+TORSOS["Battlemage"] = swap(TORSOS["Knight"], {"r": "v", "R": "V", "o": "i"})
+HEADS["Battlemage"] = swap(HEADS["Knight"], {"r": "v", "R": "V", "o": "i"})
+# A champion: a knight's plate with a gold surcoat, gold-plumed helm.
+TORSOS["Champion"] = swap(TORSOS["Knight"], {"r": "y", "R": "g", "o": "G"})
+HEADS["Champion"] = swap(HEADS["Knight"], {"r": "y", "R": "g", "o": "G"})
+
 # The woodcutter (a colony woodcutter's staff): a green wool tunic with its sleeves rolled up, a leather belt and apron, and a red knitted cap
 # over brown hair and a beard.
 TORSOS["Woodcutter"] = swap(TORSOS["Skirmisher"], {"b": "f", "n": "F", "N": "e"})
@@ -842,6 +856,10 @@ def main():
 		"Skirmisher": ("Skirmisher", ["Skirmisher", "Skirmisher B"], "leather", "brown", "leather", None),
 		"Skeleton": ("Skeleton", ["Skeleton"], "bone", "bone", "bone", "bone"),
 		"Woodcutter": ("Woodcutter", ["Woodcutter"], "skin", "brown", "leather", None),
+		"Cleric": ("Cleric", ["Cleric"], "white", "white", "leather", None),
+		"Enchanter": ("Enchanter", ["Enchanter"], "purple", "purple", "leather", None),
+		"Battlemage": ("Battlemage", ["Battlemage", "Knight B"], "steel", "steel", "steel", "steel"),
+		"Champion": ("Champion", ["Champion", "Knight B"], "steel", "steel", "steel", "steel"),
 	}
 	for unit, (torso, heads, armRamp, legRamp, footRamp, handRamp) in units.items():
 		base = f"Actors/{unit}/"

@@ -380,6 +380,7 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SceneMan) {
 	    .def("AddAirGust", &SceneMan::AddAirGust)
 	    .def("MagicPush", &SceneMan::MagicPush)
 	    .def("IgniteArea", &SceneMan::IgniteArea)
+	    .def("Extinguish", &SceneMan::Extinguish)
 	    .property("MagicAICasting", &SceneMan::MagicAICasting)
 	    .def("AddRope", &SceneMan::AddRope)
 	    .def("AddRopePoint", &SceneMan::AddRopePoint)
