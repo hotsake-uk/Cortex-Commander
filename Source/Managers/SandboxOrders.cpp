@@ -330,6 +330,7 @@ namespace SandboxDetail {
 	const char* OrderTrigger(Order order) {
 		switch (order) {
 			case Order::Hold:
+			case Order::Sentry:
 				return "OrderHold";
 			case Order::Attack:
 			case Order::HuntBrains:
@@ -479,6 +480,10 @@ namespace SandboxDetail {
 			case Order::Hold:
 				actor->SetAIMode(Actor::AIMODE_SENTRY);
 				actor->SetOrderHold(true);
+				break;
+			case Order::Sentry:
+				// The base game's sentry, without Hold's flag: it may close on what it can't hit, fall back when hurt, fetch a better gun.
+				actor->SetAIMode(Actor::AIMODE_SENTRY);
 				break;
 			default:
 				actor->SetAIMode(Actor::AIMODE_SENTRY);
@@ -2948,7 +2953,7 @@ namespace SandboxDetail {
 				s_Plans.erase(unit->GetUniqueID());
 				if (!JoinBattleObjective(unit)) {
 					const Order order = static_cast<Order>(s_Order);
-					GiveOrder(unit, order == Order::MoveTo || order == Order::BattleObjective ? Order::Hold : order);
+					GiveOrder(unit, order == Order::MoveTo || order == Order::BattleObjective ? Order::Sentry : order);
 				}
 				AnswerOrder(unit, "OrderCancel");
 				MarkOrder(unit->GetPos(), IM_COL32(180, 140, 240, 255));
@@ -3036,16 +3041,16 @@ namespace SandboxDetail {
 				int mode = -1;
 				switch (unit->GetAIMode()) {
 					case Actor::AIMODE_SENTRY:
-						mode = 0;
+						mode = unit->GetOrderHold() ? 1 : 0;
 						break;
 					case Actor::AIMODE_BRAINHUNT:
-						mode = 1;
-						break;
-					case Actor::AIMODE_GOLDDIG:
 						mode = 2;
 						break;
+					case Actor::AIMODE_GOLDDIG:
+						mode = 3;
+						break;
 					case Actor::AIMODE_NONE:
-						mode = 4;
+						mode = 5;
 						break;
 					default:
 						break;
