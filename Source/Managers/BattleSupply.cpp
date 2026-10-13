@@ -51,6 +51,69 @@ namespace SandboxDetail {
 
 	void ForgetLoadouts() { s_Loadouts.clear(); }
 
+	namespace {
+		/// A list of kit by its names, the module by name too (its ID depends on the mods loaded), for a saved game.
+		void SaveKitList(std::ostream& out, const std::vector<Kit>& kits) {
+			out << ' ' << kits.size();
+			for (const Kit& kit: kits) {
+				SaveText(out, kit.ClassName);
+				SaveText(out, kit.PresetName);
+				SaveText(out, kit.ModuleID >= 0 && kit.ModuleID < g_PresetMan.GetTotalModuleCount() ? g_PresetMan.GetDataModuleName(kit.ModuleID) : std::string());
+				out << ' ' << kit.Count;
+			}
+		}
+
+		/// Reads one written by SaveKitList: kit from a mod not loaded now is left out.
+		std::vector<Kit> LoadKitList(std::istream& in) {
+			std::vector<Kit> kits;
+			size_t count = 0;
+			in >> count;
+			for (size_t i = 0; i < count && in; ++i) {
+				Kit kit;
+				kit.ClassName = LoadText(in);
+				kit.PresetName = LoadText(in);
+				const std::string module = LoadText(in);
+				in >> kit.Count;
+				kit.ModuleID = module.empty() ? -1 : g_PresetMan.GetModuleID(module);
+				if (kit.ModuleID >= 0) {
+					kits.push_back(kit);
+				}
+			}
+			return kits;
+		}
+	} // namespace
+
+	void SaveKits(std::ostream& out) {
+		// (Only those of units still about: the fallen are only forgotten now and then.)
+		std::vector<std::pair<long, const Loadout*>> kept;
+		for (const auto& [id, loadout]: s_Loadouts) {
+			if (g_MovableMan.FindObjectByUniqueID(id)) {
+				kept.emplace_back(id, &loadout);
+			}
+		}
+		out << ' ' << kept.size();
+		for (const auto& [id, loadout]: kept) {
+			out << ' ' << id;
+			SaveKitList(out, loadout->Guns);
+			SaveKitList(out, loadout->Thrown);
+		}
+	}
+
+	void LoadKits(std::istream& in, const LoadedIDs& ids) {
+		size_t count = 0;
+		in >> count;
+		for (size_t i = 0; i < count && in; ++i) {
+			long id = 0;
+			in >> id;
+			Loadout loadout;
+			loadout.Guns = LoadKitList(in);
+			loadout.Thrown = LoadKitList(in);
+			if (const long unit = ids(id); unit != 0) {
+				s_Loadouts[unit] = std::move(loadout);
+			}
+		}
+	}
+
 	void UpdateLoadouts() {
 		if (!Sandbox::IsBattleCommand() || !s_ModeRun.Running || g_TimerMan.GetSimUpdateCount() % 60 != 23) {
 			return;

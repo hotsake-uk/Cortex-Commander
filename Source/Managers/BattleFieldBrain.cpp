@@ -45,6 +45,17 @@ namespace SandboxDetail {
 		s_BrainHealth = 0.0F;
 	}
 
+	void SaveFieldBrain(std::ostream& out) {
+		out << ' ' << s_Brain.ID << ' ' << s_BrainSide << ' ' << s_BrainHealth;
+	}
+
+	void LoadFieldBrain(std::istream& in, const LoadedIDs& ids) {
+		long brain = 0;
+		in >> brain >> s_BrainSide >> s_BrainHealth;
+		// (Put down already: not put down again. One not in the loaded game has fallen, and the game is lost, as when it dies.)
+		s_Brain = ids.Ref(brain);
+	}
+
 	void UpdateFieldBrain() {
 		if (!On() || s_ModeRun.Over || g_TimerMan.GetSimUpdateCount() % 15 != 3) {
 			return;

@@ -85,6 +85,26 @@ namespace SandboxDetail {
 		s_Spent.fill(false);
 	}
 
+	void SaveArmy(std::ostream& out) {
+		for (int side = 0; side < c_Sides; ++side) {
+			out << ' ' << s_Armed[side] << ' ' << s_Spent[side];
+			for (int left: s_Left[side]) {
+				out << ' ' << left;
+			}
+		}
+	}
+
+	void LoadArmy(std::istream& in) {
+		// (Taken up already: not taken up whole again.)
+		for (int side = 0; side < c_Sides; ++side) {
+			in >> s_Armed[side] >> s_Spent[side];
+			for (int& left: s_Left[side]) {
+				in >> left;
+				left = std::clamp(left, 0, 99);
+			}
+		}
+	}
+
 	bool ArmyPicked(int side) { return Sandbox::IsBattleCommand() && s_ModeRun.Running && s_ModeRun.Settings.PickArmy && BattlePlayerCommands(side); }
 
 	std::vector<Actor*> ArmyWave(int side, int size) {

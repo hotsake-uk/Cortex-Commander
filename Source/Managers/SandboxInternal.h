@@ -1810,6 +1810,114 @@ namespace SandboxDetail {
 	void SaveBreaches(std::ostream& out);
 	void LoadBreaches(std::istream& in, const LoadedIDs& ids);
 
+	/// Writes a sim update as how long before now it was (below 0 for one still to come), for a saved game's sandbox state; "-" for the value
+	/// that stands for none (as -1 for "not yet", or 0 for "no time limit"), so it means none again once loaded.
+	inline void SaveUpdate(std::ostream& out, long long at, long long none = -1) {
+		if (at == none) {
+			out << " -";
+		} else {
+			out << ' ' << g_TimerMan.GetSimUpdateCount() - at;
+		}
+	}
+
+	/// Reads a sim update written by SaveUpdate, onto the loaded game's clock: none for "-".
+	inline long long LoadUpdate(std::istream& in, long long none = -1) {
+		std::string word;
+		in >> word;
+		if (word.empty() || word == "-") {
+			return none;
+		}
+		return g_TimerMan.GetSimUpdateCount() - std::atoll(word.c_str());
+	}
+
+	/// Writes text (a name, a note) as one word, with nothing a saved game's line would end at: spaces, tabs, line ends and "//" as %XX, and
+	/// nothing at all as "-".
+	inline void SaveText(std::ostream& out, const std::string& text) {
+		std::string word;
+		for (unsigned char letter: text) {
+			if (letter <= ' ' || letter == '%' || letter == '/' || (text == "-" && letter == '-')) {
+				char code[4];
+				std::snprintf(code, sizeof(code), "%%%02X", letter);
+				word += code;
+			} else {
+				word += static_cast<char>(letter);
+			}
+		}
+		out << ' ' << (word.empty() ? "-" : word);
+	}
+
+	/// Reads text written by SaveText.
+	inline std::string LoadText(std::istream& in) {
+		std::string word;
+		in >> word;
+		std::string text;
+		for (size_t at = 0; word != "-" && at < word.size(); ++at) {
+			if (word[at] == '%' && at + 2 < word.size()) {
+				text += static_cast<char>(std::strtol(word.substr(at + 1, 2).c_str(), nullptr, 16));
+				at += 2;
+			} else {
+				text += word[at];
+			}
+		}
+		return text;
+	}
+
+	/// Writes a Battle Director defender (one a player's order told to defend, or a battle's own) under its unit's unique ID, for a saved game.
+	void SaveDefender(std::ostream& out, long id, const BattleDefender& defender);
+	/// Reads one written by SaveDefender onto the loaded game's units. Its unit's new unique ID, 0 if it isn't in the loaded game.
+	long LoadDefender(std::istream& in, const LoadedIDs& ids, BattleDefender& defender);
+
+	/// Writes the battle under way for a saved game (SandboxBattle.cpp): the Battle tab's setup and the sim's (the mode, which teams you
+	/// command, the cards, zones and points), the mode's game (its score, clocks, flags, VIPs, waves...), the teams' waves and ships, the
+	/// battle's own defenders, rally points, and Battle Command's points, powers, enemy commanders, field brain, army, veterans and pickups.
+	void SaveBattle(std::ostream& out);
+	/// Reads it back, made by SaveBattle, so the battle goes on where it was rather than starting over: anything about a unit that isn't in
+	/// the loaded game is dropped. If what is read doesn't add up, the battle is forgotten, as for a save without one.
+	void LoadBattle(std::istream& in, const LoadedIDs& ids);
+	/// A saved game's battle was put back (LoadBattle) as the game started: the first frame's set-up keeps the rally points, and the battle
+	/// panel shut while its game is on, rather than opening as for a new game. Cleared by each game's start (Sandbox::OnActivityStarted).
+	inline bool s_BattleLoaded = false;
+
+	// The parts of the battle each kept in its own file, written and read in turn by SaveBattle and LoadBattle.
+	/// The Battle tab's cards and mode panel, the mode's settings in the sim and each team's (SandboxBattlePresets.cpp, as setups are saved),
+	/// and the linked battles' progress. The setup saved to load with the map isn't put in over them. False if they couldn't be read.
+	void SaveBattleSetups(std::ostream& out);
+	bool LoadBattleSetups(std::istream& in);
+	/// The mode's game (SandboxBattleModes.cpp): on or over, its score and clocks, and each mode's own: flags and their carriers, hills,
+	/// objectives, waves, VIPs, the ship; the runners, commanders, AI squads, rushers and units watched for being stuck.
+	void SaveBattleModes(std::ostream& out);
+	void LoadBattleModes(std::istream& in, const LoadedIDs& ids);
+	/// Battle Command's reinforcement points, and the scores they were last earned from (Reinforcements.cpp).
+	void SaveReinforcements(std::ostream& out);
+	void LoadReinforcements(std::istream& in);
+	/// The commander powers' cooldowns, and the Scan power's lifting of the fog (CommanderPowers.cpp).
+	void SavePowers(std::ostream& out);
+	void LoadPowers(std::istream& in);
+	/// The enemy commanders' strikes coming in, and when they next look to buy and to use a power (BattleEnemy.cpp).
+	void SaveEnemyCommander(std::ostream& out);
+	void LoadEnemyCommander(std::istream& in);
+	/// Your brain on the field, once put down (BattleFieldBrain.cpp).
+	void SaveFieldBrain(std::ostream& out);
+	void LoadFieldBrain(std::istream& in, const LoadedIDs& ids);
+	/// What's left of each side's picked army (BattleArmy.cpp).
+	void SaveArmy(std::ostream& out);
+	void LoadArmy(std::istream& in);
+	/// The units' kits noted for re-arming (BattleSupply.cpp).
+	void SaveKits(std::ostream& out);
+	void LoadKits(std::istream& in, const LoadedIDs& ids);
+	/// The veterans: each unit's name, kills, time in and rank (Veterancy.cpp).
+	void SaveVeterans(std::ostream& out);
+	void LoadVeterans(std::istream& in, const LoadedIDs& ids);
+	/// The pickups lying on the map, the units sent to fetch them, and when the next comes in (BattlePickups.cpp).
+	void SaveBattlePickups(std::ostream& out);
+	void LoadBattlePickups(std::istream& in, const LoadedIDs& ids);
+	/// The new units waiting for their spawn orders (SpawnOrders.cpp).
+	void SaveSpawnOrderUnits(std::ostream& out);
+	void LoadSpawnOrderUnits(std::istream& in, const LoadedIDs& ids);
+	/// Whose turn it is in a hot-seat game (BattleHotSeat.cpp): the loaded game hands the seat to that player.
+	void SaveHotSeat(std::ostream& out);
+	void LoadHotSeat(std::istream& in);
+
 	/// Commander mode (RC-9): your side's units commanded from above in an ordinary game.
 	inline bool s_Commander = false;
 	inline int s_CommanderTeam = 0; //!< The side you command: your own in the game.
