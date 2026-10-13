@@ -87,7 +87,10 @@ namespace {
 	    {"Glitch", &LightingSettings::RetroLayers::Glitch}, {"Curvature", &LightingSettings::RetroLayers::Curvature}, {"CRT", &LightingSettings::RetroLayers::CRT},
 	    {"Flicker", &LightingSettings::RetroLayers::Flicker}, {"Posterize", &LightingSettings::RetroLayers::Posterize}, {"Dither", &LightingSettings::RetroLayers::Dither},
 	    {"Pixelate", &LightingSettings::RetroLayers::Pixelate}, {"ASCII", &LightingSettings::RetroLayers::ASCII}, {"ASCIIBackground", &LightingSettings::RetroLayers::ASCIIBackground},
-	    {"Afterglow", &LightingSettings::RetroLayers::Afterglow}, {"TerminalOverlay", &LightingSettings::RetroLayers::TerminalOverlay}};
+	    {"Afterglow", &LightingSettings::RetroLayers::Afterglow}, {"TerminalOverlay", &LightingSettings::RetroLayers::TerminalOverlay}, {"CelShading", &LightingSettings::RetroLayers::CelShading},
+	    {"CelBands", &LightingSettings::RetroLayers::CelBands}, {"Halftone", &LightingSettings::RetroLayers::Halftone}, {"ColorHalftone", &LightingSettings::RetroLayers::ColorHalftone},
+	    {"PaperGrain", &LightingSettings::RetroLayers::PaperGrain}, {"Misregister", &LightingSettings::RetroLayers::Misregister}, {"ComicFX", &LightingSettings::RetroLayers::ComicFX},
+	    {"PanelFrame", &LightingSettings::RetroLayers::PanelFrame}};
 
 	/// Reads one retro layer setting, saved as its prefix ("Retro" for the player's own, "Synthwave" and so on for a screen style's, "Variant" for the chosen variant's, none in a filter preset file) and then field.
 	void ReadRetroField(LightingSettings::RetroLayers& layers, std::string_view field, const std::string& value) {
@@ -102,7 +105,7 @@ namespace {
 		} else {
 			for (const auto& [name, member]: c_RetroFloatFields) {
 				if (field == name) {
-					layers.*member = std::clamp(std::stof(value), 0.0F, 3.0F);
+					layers.*member = std::clamp(std::stof(value), 0.0F, 5.0F);
 				}
 			}
 		}
@@ -628,10 +631,6 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CRTStyle", { g_PostProcessMan.GetLightingSettings().CRTStyle = std::clamp(std::stoi(reader.ReadPropValue()), 0, 3); });
 	MatchProperty("ScreenStyle", { g_PostProcessMan.SetScreenStyle(std::stoi(reader.ReadPropValue())); });
 	MatchProperty("ScreenStyleStrength", { g_PostProcessMan.SetScreenStyleStrength(std::stof(reader.ReadPropValue())); });
-	MatchProperty("ScreenVariant", {
-		std::string name = reader.ReadPropValue();
-		g_PostProcessMan.GetLightingSettings().ScreenVariant = name == "None" ? std::string() : name;
-	});
 	MatchProperty("RetroLook", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Look", reader.ReadPropValue()); });
 	MatchProperty("RetroPalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Palette", reader.ReadPropValue()); });
 	MatchProperty("RetroInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "InkEdges", reader.ReadPropValue()); });
@@ -653,6 +652,14 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("RetroASCIIBackground", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "ASCIIBackground", reader.ReadPropValue()); });
 	MatchProperty("RetroAfterglow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Afterglow", reader.ReadPropValue()); });
 	MatchProperty("RetroTerminalOverlay", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "TerminalOverlay", reader.ReadPropValue()); });
+	MatchProperty("RetroCelShading", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "CelShading", reader.ReadPropValue()); });
+	MatchProperty("RetroCelBands", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "CelBands", reader.ReadPropValue()); });
+	MatchProperty("RetroHalftone", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Halftone", reader.ReadPropValue()); });
+	MatchProperty("RetroColorHalftone", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "ColorHalftone", reader.ReadPropValue()); });
+	MatchProperty("RetroPaperGrain", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "PaperGrain", reader.ReadPropValue()); });
+	MatchProperty("RetroMisregister", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Misregister", reader.ReadPropValue()); });
+	MatchProperty("RetroComicFX", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "ComicFX", reader.ReadPropValue()); });
+	MatchProperty("RetroPanelFrame", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "PanelFrame", reader.ReadPropValue()); });
 	MatchProperty("SynthwaveLook", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Look", reader.ReadPropValue()); });
 	MatchProperty("SynthwavePalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Palette", reader.ReadPropValue()); });
 	MatchProperty("SynthwaveInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "InkEdges", reader.ReadPropValue()); });
@@ -674,6 +681,14 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SynthwaveASCIIBackground", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "ASCIIBackground", reader.ReadPropValue()); });
 	MatchProperty("SynthwaveAfterglow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Afterglow", reader.ReadPropValue()); });
 	MatchProperty("SynthwaveTerminalOverlay", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "TerminalOverlay", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveCelShading", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "CelShading", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveCelBands", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "CelBands", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveHalftone", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Halftone", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveColorHalftone", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "ColorHalftone", reader.ReadPropValue()); });
+	MatchProperty("SynthwavePaperGrain", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "PaperGrain", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveMisregister", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Misregister", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveComicFX", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "ComicFX", reader.ReadPropValue()); });
+	MatchProperty("SynthwavePanelFrame", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "PanelFrame", reader.ReadPropValue()); });
 	MatchProperty("HackermanLook", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "Look", reader.ReadPropValue()); });
 	MatchProperty("HackermanPalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "Palette", reader.ReadPropValue()); });
 	MatchProperty("HackermanInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "InkEdges", reader.ReadPropValue()); });
@@ -695,6 +710,43 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("HackermanASCIIBackground", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "ASCIIBackground", reader.ReadPropValue()); });
 	MatchProperty("HackermanAfterglow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "Afterglow", reader.ReadPropValue()); });
 	MatchProperty("HackermanTerminalOverlay", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "TerminalOverlay", reader.ReadPropValue()); });
+	MatchProperty("HackermanCelShading", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "CelShading", reader.ReadPropValue()); });
+	MatchProperty("HackermanCelBands", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "CelBands", reader.ReadPropValue()); });
+	MatchProperty("HackermanHalftone", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "Halftone", reader.ReadPropValue()); });
+	MatchProperty("HackermanColorHalftone", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "ColorHalftone", reader.ReadPropValue()); });
+	MatchProperty("HackermanPaperGrain", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "PaperGrain", reader.ReadPropValue()); });
+	MatchProperty("HackermanMisregister", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "Misregister", reader.ReadPropValue()); });
+	MatchProperty("HackermanComicFX", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "ComicFX", reader.ReadPropValue()); });
+	MatchProperty("HackermanPanelFrame", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "PanelFrame", reader.ReadPropValue()); });
+	MatchProperty("ComicLook", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "Look", reader.ReadPropValue()); });
+	MatchProperty("ComicPalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "Palette", reader.ReadPropValue()); });
+	MatchProperty("ComicInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "InkEdges", reader.ReadPropValue()); });
+	MatchProperty("ComicGlitchOnBlasts", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "GlitchOnBlasts", reader.ReadPropValue()); });
+	MatchProperty("ComicPaletteStrength", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "PaletteStrength", reader.ReadPropValue()); });
+	MatchProperty("ComicNeonGlow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "NeonGlow", reader.ReadPropValue()); });
+	MatchProperty("ComicEdgeLines", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "EdgeLines", reader.ReadPropValue()); });
+	MatchProperty("ComicSky", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "Sky", reader.ReadPropValue()); });
+	MatchProperty("ComicGridSpeed", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "GridSpeed", reader.ReadPropValue()); });
+	MatchProperty("ComicVHS", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "VHS", reader.ReadPropValue()); });
+	MatchProperty("ComicGlitch", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "Glitch", reader.ReadPropValue()); });
+	MatchProperty("ComicCurvature", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "Curvature", reader.ReadPropValue()); });
+	MatchProperty("ComicCRT", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "CRT", reader.ReadPropValue()); });
+	MatchProperty("ComicFlicker", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "Flicker", reader.ReadPropValue()); });
+	MatchProperty("ComicPosterize", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "Posterize", reader.ReadPropValue()); });
+	MatchProperty("ComicDither", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "Dither", reader.ReadPropValue()); });
+	MatchProperty("ComicPixelate", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "Pixelate", reader.ReadPropValue()); });
+	MatchProperty("ComicASCII", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "ASCII", reader.ReadPropValue()); });
+	MatchProperty("ComicASCIIBackground", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "ASCIIBackground", reader.ReadPropValue()); });
+	MatchProperty("ComicAfterglow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "Afterglow", reader.ReadPropValue()); });
+	MatchProperty("ComicTerminalOverlay", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "TerminalOverlay", reader.ReadPropValue()); });
+	MatchProperty("ComicCelShading", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "CelShading", reader.ReadPropValue()); });
+	MatchProperty("ComicCelBands", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "CelBands", reader.ReadPropValue()); });
+	MatchProperty("ComicHalftone", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "Halftone", reader.ReadPropValue()); });
+	MatchProperty("ComicColorHalftone", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "ColorHalftone", reader.ReadPropValue()); });
+	MatchProperty("ComicPaperGrain", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "PaperGrain", reader.ReadPropValue()); });
+	MatchProperty("ComicMisregister", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "Misregister", reader.ReadPropValue()); });
+	MatchProperty("ComicComicFX", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "ComicFX", reader.ReadPropValue()); });
+	MatchProperty("ComicPanelFrame", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "PanelFrame", reader.ReadPropValue()); });
 	MatchProperty("VariantLook", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "Look", reader.ReadPropValue()); });
 	MatchProperty("VariantPalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "Palette", reader.ReadPropValue()); });
 	MatchProperty("VariantInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "InkEdges", reader.ReadPropValue()); });
@@ -716,6 +768,18 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("VariantASCIIBackground", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "ASCIIBackground", reader.ReadPropValue()); });
 	MatchProperty("VariantAfterglow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "Afterglow", reader.ReadPropValue()); });
 	MatchProperty("VariantTerminalOverlay", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "TerminalOverlay", reader.ReadPropValue()); });
+	MatchProperty("VariantCelShading", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "CelShading", reader.ReadPropValue()); });
+	MatchProperty("VariantCelBands", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "CelBands", reader.ReadPropValue()); });
+	MatchProperty("VariantHalftone", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "Halftone", reader.ReadPropValue()); });
+	MatchProperty("VariantColorHalftone", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "ColorHalftone", reader.ReadPropValue()); });
+	MatchProperty("VariantPaperGrain", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "PaperGrain", reader.ReadPropValue()); });
+	MatchProperty("VariantMisregister", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "Misregister", reader.ReadPropValue()); });
+	MatchProperty("VariantComicFX", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "ComicFX", reader.ReadPropValue()); });
+	MatchProperty("VariantPanelFrame", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "PanelFrame", reader.ReadPropValue()); });
+	MatchProperty("ScreenVariant", {
+		std::string name = reader.ReadPropValue();
+		g_PostProcessMan.GetLightingSettings().ScreenVariant = name == "None" ? std::string() : name;
+	});
 	MatchProperty("UpscaleSharpness", { g_PostProcessMan.GetLightingSettings().UpscaleSharpness = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("IntegerScaling", { g_WindowMan.SetIntegerScaling(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightingSpecular", { g_PostProcessMan.GetLightingSettings().Specular = std::stof(reader.ReadPropValue()); });
@@ -1421,6 +1485,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	WriteRetroLayers(writer, "Retro", lighting.Retro);
 	WriteRetroLayers(writer, "Synthwave", lighting.StyleRetro[LightingSettings::StyleSynthwave]);
 	WriteRetroLayers(writer, "Hackerman", lighting.StyleRetro[LightingSettings::StyleHackerman]);
+	WriteRetroLayers(writer, "Comic", lighting.StyleRetro[LightingSettings::StyleComic]);
 	writer.NewPropertyWithValue("ScreenVariant", lighting.ScreenVariant.empty() ? std::string("None") : lighting.ScreenVariant);
 	WriteRetroLayers(writer, "Variant", lighting.VariantRetro);
 	writer.NewPropertyWithValue("UpscaleSharpness", lighting.UpscaleSharpness);

@@ -255,6 +255,8 @@ namespace RTE {
 
 		float m_HitStopStrength = 1.0F; //!< How strong the hit-stop on big blasts is, 0 for none.
 		float m_BlastOnScreen = 0.0F; //!< Screen shake added by blasts since the last drawn frame, to judge whether something big just went off in view.
+		float m_BiggestBlastOnScreen = 0.0F; //!< The biggest single blast's shake among those, for the comic style's sound-effect words.
+		Vector m_BiggestBlastPosition; //!< Where in the scene it went off.
 		double m_LastHitStopTime = -10.0; //!< Real seconds when the last hit-stop happened, so they don't chain.
 		float m_ScreenShakeStrength; //!< A global multiplier applied to screen shaking strength.
 		float m_ScreenShakeDecay; //!< How quickly screen shake falls off.

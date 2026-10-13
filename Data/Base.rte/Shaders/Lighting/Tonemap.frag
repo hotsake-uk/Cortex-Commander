@@ -40,12 +40,19 @@ uniform vec3 rteOutlineColor; // In display (gamma) space.
 uniform vec3 rteOutlineSideColors[5]; // By slot - 1: no team, then teams 1 to 4. In display space.
 uniform float rteHighlightWidth; // A highlighted unit's glow (slot 6), in pixels; 0 for none.
 uniform float rteNeonGlow; // A screen style's neon glow, 0 to 1: the bloom turns hot pink from warm lights and cyan from cool ones.
-uniform int rteLook; // LightingSettings::ScreenStyles: whose colours the neon glow and the terminal readout take, 1 Synthwave's, 2 Hackerman's phosphor green.
+uniform int rteLook; // LightingSettings::ScreenStyles: whose colours the neon glow and the terminal readout take, 1 Synthwave's, 2 Hackerman's phosphor green, 3 Comic.
 uniform float rteTerminalOverlay; // Faint scrolling hex down the screen's edges and a blinking cursor, 0 to 1.
-uniform int rtePalette; // LightingSettings::RetroPalettes: 0 none, 1 synthwave, 2 vaporwave, 3 Miami, 4 Game Boy, 5 CGA, 6 sepia, 7 thermal, 8 night vision, 9 terminal green.
+uniform int rtePalette; // LightingSettings::RetroPalettes: 0 none, 1 synthwave, 2 vaporwave, 3 Miami, 4 Game Boy, 5 CGA, 6 sepia, 7 thermal, 8 night vision, 9 terminal green, 10 comic.
 uniform float rtePaletteStrength; // How far the picture is remapped onto the palette, 0 to 1.
 uniform float rtePosterize; // Fewer colour levels, 0 (as is) to 1 (four a channel).
 uniform float rteDither; // Ordered dithering across those levels (or a palette's bands), 0 to 1.
+uniform float rteColorHalftone; // The picture printed as cyan, magenta and yellow dot screens at angles, 0 to 1.
+uniform float rtePaperGrain; // A faint, still paper grain and off-white paper under the picture, 0 to 1.
+uniform float rteMisregister; // The red and blue plates printed a pixel or two out of line, 0 to 1.
+uniform float rteBurstStrength; // The comic sound-effect burst (PostProcessMan::KickComicBurst), 0 for none.
+uniform vec2 rteBurstScreen; // Where it went off, in screen pixels, y down.
+uniform float rteBurstAge; // Its age in real seconds.
+uniform int rteBurstWord; // 0 BOOM!, 1 KRAK!, 2 BLAM!, 3 WHAM!
 
 vec3 Shoulder(vec3 color) {
 	if (rteShoulderStart >= 0.999) {
@@ -110,6 +117,90 @@ float TerminalReadout(vec2 px) {
 	return float((c_HexGlyphs[clamp(glyph, 0, 15) * 7 + inCell.y] >> (4 - inCell.x)) & 1);
 }
 
+// Letters for the comic burst's words, 5x7 like the hex glyphs: B, O, M, K, R, A, L, W, H, !
+const int c_BurstGlyphs[70] = int[70](30, 17, 17, 30, 17, 17, 30, 14, 17, 17, 17, 17, 17, 14, 17, 27, 21, 21, 17, 17, 17, 17, 18, 20, 24, 20, 18, 17, 30, 17, 17, 30, 20, 18, 17, 14, 17, 17, 31, 17, 17, 17, 16, 16, 16, 16, 16, 16, 31, 17, 17, 17, 21, 21, 27, 17, 17, 17, 17, 31, 17, 17, 17, 4, 4, 4, 4, 4, 0, 4);
+// BOOM!, KRAK!, BLAM!, WHAM! as letters of c_BurstGlyphs.
+const int c_BurstWords[20] = int[20](0, 1, 1, 2, 9, 3, 4, 5, 3, 9, 0, 6, 5, 2, 9, 7, 8, 5, 2, 9);
+
+// Whether the burst word's letter pixel at q (in letter pixels, from the top left of the word) is inked.
+float BurstWordBit(vec2 q) {
+	if (q.x < 0.0 || q.y < 0.0 || q.x >= 30.0 || q.y >= 7.0) {
+		return 0.0;
+	}
+	int letter = int(q.x / 6.0);
+	int column = int(q.x) - letter * 6;
+	if (column > 4 || letter > 4) {
+		return 0.0;
+	}
+	int glyph = c_BurstWords[clamp(rteBurstWord, 0, 3) * 5 + letter];
+	return float((c_BurstGlyphs[glyph * 7 + int(q.y)] >> (4 - column)) & 1);
+}
+
+// The comic burst laid over the picture at screen pixel px (y down): speed lines out from the blast, a spiky white balloon with a black rim, and the
+// word on it in yellow running to red with a black outline. It pops in a little too big, settles, and fades.
+vec3 ComicBurst(vec3 color, vec2 px) {
+	float age = rteBurstAge;
+	float fade = 1.0 - smoothstep(1.0, 1.35, age);
+	vec2 fromBurst = px - rteBurstScreen;
+	float letterSize = mix(4.0, 7.0, clamp(rteBurstStrength, 0.0, 1.0));
+	float pop = age < 0.12 ? mix(0.3, 1.2, age / 0.12) : mix(1.2, 1.0, clamp((age - 0.12) / 0.15, 0.0, 1.0));
+	float scale = letterSize * pop;
+	// Speed lines: thin black wedges radiating from the blast, beyond the balloon, gone in under half a second.
+	float lines = 1.0 - smoothstep(0.05, 0.45, age);
+	if (lines > 0.0) {
+		float radius = length(fromBurst);
+		float angle = atan(fromBurst.y, fromBurst.x) / 6.28318 + 0.5;
+		float slot = floor(angle * 56.0);
+		float within = abs(fract(angle * 56.0) - 0.5) * 2.0;
+		float keep = step(0.45, GlyphHash(vec2(slot, float(rteBurstWord))));
+		float start = scale * (24.0 + 10.0 * GlyphHash(vec2(slot, 3.0))) * mix(0.7, 1.3, age / 0.45);
+		float width = clamp((radius - start) / 400.0, 0.0, 1.0) * 0.6;
+		float line = keep * step(start, radius) * step(within, width);
+		color = mix(color, vec3(0.02), line * lines * 0.85);
+	}
+	// Into the word's own frame: tilted a little, one unit per letter pixel, the word's middle at the origin.
+	float tilt = (float(rteBurstWord) - 1.5) * 0.09;
+	mat2 rotation = mat2(cos(tilt), sin(tilt), -sin(tilt), cos(tilt));
+	vec2 q = rotation * fromBurst / scale;
+	// The balloon: a spiky ellipse round the word.
+	float spikeAngle = atan(q.y, q.x * 0.45) / 6.28318;
+	float spike = abs(fract(spikeAngle * 13.0 + 0.25 * GlyphHash(vec2(floor(spikeAngle * 13.0), 9.0))) - 0.5) * 2.0;
+	float balloon = length(q / vec2(21.0, 8.5));
+	float edge = mix(1.0, 1.5, spike);
+	float rimWidth = 1.2 / 8.5;
+	if (balloon < edge + rimWidth) {
+		vec3 paper = vec3(1.0, 0.97, 0.82);
+		color = mix(color, balloon < edge ? paper : vec3(0.02), fade);
+	}
+	vec2 letter = q + vec2(14.5, 3.5);
+	float inked = BurstWordBit(letter);
+	float outline = 0.0;
+	for (int i = 0; i < 8; ++i) {
+		float a = float(i) * 0.785398;
+		outline = max(outline, BurstWordBit(letter + vec2(cos(a), sin(a)) * 0.7));
+	}
+	if (outline > 0.0 || inked > 0.0) {
+		vec3 fill = mix(vec3(1.0, 0.9, 0.12), vec3(0.95, 0.16, 0.08), clamp(letter.y / 7.0, 0.0, 1.0));
+		color = mix(color, inked > 0.0 ? fill : vec3(0.02), fade);
+	}
+	return color;
+}
+
+// The picture printed as cyan, magenta and yellow dot screens, each at its own angle, the dots growing with the ink each needs.
+vec3 ColorHalftone(vec3 color, vec2 px) {
+	vec3 ink = clamp(1.0 - color, 0.0, 1.0);
+	vec3 printed;
+	for (int plate = 0; plate < 3; ++plate) {
+		float angle = plate == 0 ? 0.2618 : (plate == 1 ? 1.309 : 0.0);
+		mat2 rotation = mat2(cos(angle), sin(angle), -sin(angle), cos(angle));
+		vec2 cell = rotation * px / 4.5;
+		float distance = length(fract(cell) - 0.5);
+		float radius = 0.75 * sqrt(ink[plate]);
+		printed[plate] = 1.0 - smoothstep(radius - 0.08, radius + 0.08, distance);
+	}
+	return 1.0 - printed;
+}
+
 // The picture (display space) remapped onto a retro palette by its brightness.
 vec3 RetroPalette(vec3 color, int palette, float dither) {
 	float luminance = clamp(dot(color, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
@@ -142,6 +233,13 @@ vec3 RetroPalette(vec3 color, int palette, float dither) {
 	} else if (palette == 8) {
 		float boosted = pow(luminance, 0.6);
 		return vec3(0.12, 1.0, 0.25) * boosted + vec3(0.0, 0.03, 0.0);
+	} else if (palette == 10) {
+		// Printed comic ink: the scene's own colours, punchier, with solid blacks, slightly cool shadows and clean paper-white highlights.
+		vec3 inked = clamp(mix(vec3(luminance), color, 1.4), 0.0, 1.0);
+		inked = mix(inked, smoothstep(0.0, 1.0, inked), 0.6);
+		inked = mix(inked, inked * vec3(0.85, 0.93, 1.1), 1.0 - smoothstep(0.1, 0.5, luminance));
+		inked = mix(inked, vec3(0.98, 0.96, 0.9), smoothstep(0.86, 1.0, luminance));
+		return mix(vec3(0.03, 0.03, 0.05), inked, smoothstep(0.03, 0.12, luminance));
 	}
 	return color;
 }
@@ -173,6 +271,12 @@ void main() {
 		color = vec3(texture(rteScene, sampleUV + fringe).r, texture(rteScene, sampleUV).g, texture(rteScene, sampleUV - fringe).b);
 	} else {
 		color = texture(rteScene, sampleUV).rgb;
+	}
+	if (rteMisregister > 0.0) {
+		// Cheap newsprint: the red and blue plates land a little out of line with the rest.
+		vec2 plateShift = vec2(1.5, 1.0) * rteMisregister / rteScreenSize;
+		color.r = texture(rteScene, sampleUV + plateShift).r;
+		color.b = texture(rteScene, sampleUV - plateShift).b;
 	}
 	vec3 bloom = texture(rteBloom, sampleUV).rgb;
 	if (rteNeonGlow > 0.0) {
@@ -222,6 +326,17 @@ void main() {
 			float levels = mix(32.0, 4.0, rtePosterize);
 			outputColor = clamp(floor(outputColor * (levels - 1.0) + 0.5 + ditherOffset) / (levels - 1.0), 0.0, 1.0);
 		}
+	}
+	if (rteColorHalftone > 0.0) {
+		outputColor = mix(outputColor, ColorHalftone(outputColor, gl_FragCoord.xy), rteColorHalftone);
+	}
+	if (rtePaperGrain > 0.0) {
+		// Paper: a still grain of fibres and blotches, and off-white stock under everything.
+		vec2 px = gl_FragCoord.xy;
+		float fibre = GlyphHash(floor(px)) - 0.5;
+		float blotch = GlyphHash(floor(px / 7.0)) * 0.6 + GlyphHash(floor(px / 23.0)) * 0.4 - 0.5;
+		outputColor *= mix(vec3(1.0), vec3(0.97, 0.95, 0.88), rtePaperGrain);
+		outputColor += (fibre * 0.05 + blotch * 0.04) * rtePaperGrain;
 	}
 	if (rteTerminalOverlay > 0.0) {
 		float lit = TerminalReadout(vec2(gl_FragCoord.x, rteScreenSize.y - gl_FragCoord.y));
@@ -290,6 +405,9 @@ void main() {
 				outputColor = mix(outputColor, stroke, coverage * rteOutlineOpacity);
 			}
 		}
+	}
+	if (rteBurstStrength > 0.0 && rteDebugView == 0) {
+		outputColor = ComicBurst(clamp(outputColor, 0.0, 1.0), vec2(gl_FragCoord.x, rteScreenSize.y - gl_FragCoord.y));
 	}
 	FragColor = vec4(clamp(outputColor, 0.0, 1.0), 1.0);
 }

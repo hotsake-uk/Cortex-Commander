@@ -20,6 +20,7 @@ uniform float rteGlitchKick; // A burst set off now (a big blast), 0 to 1.
 uniform float rteCurvature; // CRT glass bend, 0 to 1.
 uniform int rteGlitchKind; // 1 blocks torn sideways with the colours split (Synthwave), 2 blocks scrambled into green glyphs (Hackerman).
 uniform float rteFlicker; // A monitor's faint flicker and a brighter refresh band rolling down, 0 to 1.
+uniform float rtePanelFrame; // A comic panel's frame round the screen: a paper gutter and a thick black line, 0 to 1.
 
 float Hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -151,6 +152,13 @@ void main() {
 		color *= 1.0 - smoothstep(0.6, 1.0, corner);
 		color *= 1.0 - 0.35 * rteCurvature * smoothstep(0.5, 1.5, length(centered));
 		color *= 1.0 - outside;
+	}
+	if (rtePanelFrame > 0.0) {
+		// In source pixels from the nearest edge: paper out to 4, then a black line out to 7.
+		vec2 px = textureUV * textureSizePixels;
+		float fromEdge = min(min(px.x, textureSizePixels.x - px.x), min(px.y, textureSizePixels.y - px.y));
+		vec3 frame = fromEdge < 4.0 ? vec3(0.97, 0.95, 0.88) : vec3(0.02);
+		color = mix(color, frame, (1.0 - step(7.0, fromEdge)) * rtePanelFrame);
 	}
 	FragColor = vec4(color, 1.0);
 }

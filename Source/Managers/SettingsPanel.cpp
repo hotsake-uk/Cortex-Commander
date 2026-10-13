@@ -326,7 +326,7 @@ namespace {
 		if (!Shown("Screen style")) {
 			return;
 		}
-		static const char* const styleNames[LightingSettings::StyleCount] = {"Off", "Synthwave", "Hackerman"};
+		static const char* const styleNames[LightingSettings::StyleCount] = {"Off", "Synthwave", "Hackerman", "Comic"};
 		settings.ScreenStyle = std::clamp(settings.ScreenStyle, 0, static_cast<int>(LightingSettings::StyleCount) - 1);
 		std::string current = settings.ScreenVariant.empty() ? styleNames[settings.ScreenStyle] : settings.ScreenVariant + " (yours)";
 		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.55F);
@@ -1336,11 +1336,11 @@ void DebugMan::SettingsGUI() {
 			if (Plain()) {
 				ImGui::TextDisabled(!settings.ScreenStyleOn() ? "Your own retro filters:" : (settings.ScreenVariant.empty() ? "This style's filters:" : "This variant's filters (Save keeps them in it):"));
 			}
-			Combo("Look", &retro.Look, "Synthwave\0Hackerman\0");
-			Tip("Whose sky, glow and edge colours and kind of glitch the filters below use: Synthwave's sunset, grid and pink and cyan neon, or Hackerman's code rain, phosphor green and glitches that scramble into glyphs.");
+			Combo("Look", &retro.Look, "Synthwave\0Hackerman\0Comic\0");
+			Tip("Whose sky, glow and edge colours and kind of glitch the filters below use: Synthwave's sunset, grid and pink and cyan neon, Hackerman's code rain, phosphor green and glitches that scramble into glyphs, or Comic's printed sky and bold black ink.");
 			retro.Look = std::clamp(retro.Look, static_cast<int>(LightingSettings::StyleSynthwave), static_cast<int>(LightingSettings::StyleCount) - 1);
-			Combo("Palette", &retro.Palette, "Off\0Synthwave\0Vaporwave\0Miami\0Game Boy\0CGA\0Sepia\0Thermal\0Night vision\0Terminal green\0");
-			Tip("Remaps the picture's brightness onto a palette: Synthwave's indigo, magenta and cyan, Vaporwave's pastels, Miami's teal and coral, the Game Boy's four greens, CGA's black, cyan, magenta and white, sepia, a thermal camera, night vision or a green phosphor terminal.");
+			Combo("Palette", &retro.Palette, "Off\0Synthwave\0Vaporwave\0Miami\0Game Boy\0CGA\0Sepia\0Thermal\0Night vision\0Terminal green\0Comic\0");
+			Tip("Remaps the picture's brightness onto a palette: Synthwave's indigo, magenta and cyan, Vaporwave's pastels, Miami's teal and coral, the Game Boy's four greens, CGA's black, cyan, magenta and white, sepia, a thermal camera, night vision, a green phosphor terminal, or Comic's printed ink (the scene's own colours, punchier, with solid blacks and paper-white highlights).");
 			retro.Palette = std::clamp(retro.Palette, 0, static_cast<int>(LightingSettings::PaletteCount) - 1);
 			if (retro.Palette != LightingSettings::PaletteOff) {
 				Slider("Palette strength", &retro.PaletteStrength, 0.0F, 1.0F);
@@ -1351,10 +1351,29 @@ void DebugMan::SettingsGUI() {
 			Tip("Lines along the edges of terrain, units and buildings, strongest where the battlefield meets the sky.");
 			if (retro.EdgeLines > 0.0F) {
 				Check("Ink edges", &retro.InkEdges);
-				Tip("Black ink lines, for a comic look. Off: glowing, Synthwave's pink near the top of the screen to cyan near the bottom, or Hackerman's green.");
+				Tip("Black ink lines, for a comic look. Off: glowing, Synthwave's pink near the top of the screen to cyan near the bottom, or Hackerman's green. With the Comic look, every unit is also outlined in bold black ink, and the lines are bold at silhouettes and light inside the art.");
 			}
+			Slider("Cel shading", &retro.CelShading, 0.0F, 1.0F);
+			Tip("The light falling on things (sun, sky, lamps, fire) stepped into flat bands, like a cel-shaded cartoon. Only the light is stepped, so the art keeps every colour.");
+			if (retro.CelShading > 0.0F) {
+				Slider("Light bands", &retro.CelBands, 2.0F, 5.0F, "%.0f");
+				retro.CelBands = std::round(std::clamp(retro.CelBands, 2.0F, 5.0F));
+				Tip("How many flat bands of light, from 2 (lit and shadow) to 5.");
+				Slider("Halftone shadows", &retro.Halftone, 0.0F, 1.0F);
+				Tip("Ben-Day dots printed in the shadow bands, bigger as it gets darker.");
+			}
+			Slider("Colour halftone", &retro.ColorHalftone, 0.0F, 1.0F);
+			Tip("The whole picture printed as cyan, magenta and yellow dot screens at angles, for a pulp comic look.");
+			Slider("Paper grain", &retro.PaperGrain, 0.0F, 1.0F);
+			Tip("A faint paper grain and off-white paper under the picture.");
+			Slider("Misregistration", &retro.Misregister, 0.0F, 1.0F);
+			Tip("The colour plates printed a pixel or two out of line, as on cheap newsprint.");
+			Slider("Comic action FX", &retro.ComicFX, 0.0F, 1.0F);
+			Tip("A big explosion in view sets off speed lines and a sound-effect word (BOOM!, KRAK!, BLAM!, WHAM!) that pops up where it went off.");
+			Slider("Panel frame", &retro.PanelFrame, 0.0F, 1.0F);
+			Tip("A thick black frame round the screen with a paper gutter, like a comic panel.");
 			Slider("Retro sky", &retro.RetroSky, 0.0F, 1.0F);
-			Tip("Replaces the sky behind the terrain with the look's own. Synthwave: an Outrun sunset, a striped sun on the horizon, stars, and a neon grid racing towards it; distant hills become dark silhouettes with a glowing rim. Hackerman: columns of falling green code over a faint grid; distant hills become green wireframes. It still darkens at night.");
+			Tip("Replaces the sky behind the terrain with the look's own. Synthwave: an Outrun sunset, a striped sun on the horizon, stars, and a neon grid racing towards it; distant hills become dark silhouettes with a glowing rim. Hackerman: columns of falling green code over a faint grid; distant hills become green wireframes. Comic: keeps the original sky and hills, flattened into bold colour bands with a dot gradient up the sky and an ink line along the hill tops. It still darkens at night.");
 			if (retro.RetroSky > 0.0F) {
 				Slider("Sky speed", &retro.GridSpeed, 0.0F, 3.0F);
 				Tip("How fast Synthwave's grid races to the horizon, or Hackerman's code falls.");

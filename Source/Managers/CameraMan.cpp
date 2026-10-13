@@ -245,6 +245,10 @@ void CameraMan::AddScreenShake(float magnitude, const Vector& position) {
 		float screenShakeMultipler = std::max(1.0F - (closestDistanceFromScreen / screenDistance), 0.0F);
 		screen.ScreenShakeMagnitude += magnitude * screenShakeMultipler;
 		m_BlastOnScreen += magnitude * screenShakeMultipler;
+		if (magnitude * screenShakeMultipler > m_BiggestBlastOnScreen) {
+			m_BiggestBlastOnScreen = magnitude * screenShakeMultipler;
+			m_BiggestBlastPosition = position;
+		}
 	}
 }
 
@@ -286,6 +290,8 @@ void CameraMan::Update(int screenId) {
 		float maxShake = std::max(m_ScreenShakeDecay * m_MaxScreenShakeTime, 0.001F);
 		float blast = m_BlastOnScreen / maxShake;
 		m_BlastOnScreen = 0.0F;
+		float biggestBlast = m_BiggestBlastOnScreen;
+		m_BiggestBlastOnScreen = 0.0F;
 		double now = static_cast<double>(g_TimerMan.GetRealTickCount()) / static_cast<double>(g_TimerMan.GetTicksPerSecond());
 		if (blast > 0.45F && now - m_LastHitStopTime > 0.6 && g_ActivityMan.GetActivity()->GetActivityState() == Activity::ActivityState::Running) {
 			m_LastHitStopTime = now;
@@ -299,6 +305,10 @@ void CameraMan::Update(int screenId) {
 			// With a retro screen style (or the player's own glitch) that asks for it, the picture glitches with the blast.
 			if (const LightingSettings::RetroLayers retro = g_PostProcessMan.GetLightingSettings().ActiveRetro(); retro.GlitchOnBlasts && retro.Glitch > 0.0F) {
 				g_PostProcessMan.KickRetroGlitch(0.5F + 0.5F * strength);
+			}
+			// With the comic style's action FX, speed lines and a sound-effect word pop up where the biggest of them went off.
+			if (biggestBlast > 0.0F && g_PostProcessMan.GetLightingSettings().ActiveRetro().ComicFX > 0.0F) {
+				g_PostProcessMan.KickComicBurst(m_BiggestBlastPosition, (0.5F + 0.5F * strength) * std::min(g_PostProcessMan.GetLightingSettings().ActiveRetro().ComicFX, 1.0F));
 			}
 		}
 	}

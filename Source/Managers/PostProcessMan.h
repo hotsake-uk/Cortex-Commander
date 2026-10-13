@@ -492,6 +492,35 @@ namespace RTE {
 			m_RetroGlitchKickSeconds.store(now);
 		}
 
+		/// Sets off a comic sound-effect burst (LightingSettings::RetroLayers::ComicFX): speed lines and a word (BOOM!, KRAK!, BLAM!, WHAM!) popping up at a
+		/// scene position, strength 0 to 1, over about a second and a quarter of real time. From big blasts while the layers ask for it. Safe from any thread.
+		void KickComicBurst(const Vector& position, float strength) {
+			std::lock_guard<std::mutex> lock(m_ComicBurstMutex);
+			m_ComicBurstPosition = position;
+			m_ComicBurstStrength = std::clamp(strength, 0.0F, 1.0F);
+			m_ComicBurstSeconds = RealSeconds();
+			m_ComicBurstWord = (m_ComicBurstWord + 1 + static_cast<int>(RealSeconds() * 1000.0) % 3) % 4;
+		}
+
+		/// Gets the comic burst in play, if any.
+		/// @param position Set to where in the scene it went off.
+		/// @param age Set to its age in real seconds.
+		/// @param word Set to which word it shows, 0 to 3.
+		/// @param strength Set to its strength, 0 to 1.
+		/// @return Whether one is in play.
+		bool GetComicBurst(Vector& position, float& age, int& word, float& strength) const {
+			std::lock_guard<std::mutex> lock(m_ComicBurstMutex);
+			double since = RealSeconds() - m_ComicBurstSeconds;
+			if (since < 0.0 || since > 1.4) {
+				return false;
+			}
+			position = m_ComicBurstPosition;
+			age = static_cast<float>(since);
+			word = m_ComicBurstWord;
+			strength = m_ComicBurstStrength;
+			return true;
+		}
+
 		/// Gets how strong the glitch burst set off by KickRetroGlitch is now, 0 to 1.
 		float GetRetroGlitchKick() const {
 			double since = RealSeconds() - m_RetroGlitchKickSeconds.load();
@@ -666,6 +695,11 @@ namespace RTE {
 		std::mutex m_EventLookMutex;
 		std::atomic<float> m_RetroGlitchKick{0.0F}; //!< The last glitch burst's strength (KickRetroGlitch).
 		std::atomic<double> m_RetroGlitchKickSeconds{-10.0}; //!< Real seconds it was set off.
+		mutable std::mutex m_ComicBurstMutex; //!< Guards the comic burst (KickComicBurst).
+		Vector m_ComicBurstPosition; //!< Where in the scene the last comic burst went off.
+		float m_ComicBurstStrength = 0.0F; //!< Its strength, 0 to 1.
+		double m_ComicBurstSeconds = -10.0; //!< Real seconds it went off.
+		int m_ComicBurstWord = 0; //!< Which word it shows.
 
 		/// Gets real seconds on a steady clock, for effects that play through pauses and hit-stops.
 		static double RealSeconds() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
