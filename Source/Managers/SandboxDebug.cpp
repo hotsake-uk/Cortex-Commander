@@ -531,7 +531,7 @@ namespace {
 				hasPost = true;
 				tag = "SUPPRESS";
 			} else if (actor->GetAIMode() == Actor::AIMODE_SENTRY) {
-				tag = "HOLD";
+				tag = actor->GetOrderHold() ? "HOLD" : "SENTRY";
 			}
 			// And how many more steps its plan has queued after this (RC-3).
 			if (auto plan = s_Plans.find(actor->GetUniqueID()); plan != s_Plans.end() && plan->second.Route.empty() && !plan->second.Steps.empty()) {
