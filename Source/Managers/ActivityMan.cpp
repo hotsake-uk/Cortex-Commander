@@ -4,6 +4,7 @@
 #include "RopeSim.h"
 #include "FluidSim.h"
 #include "TerrainCollapse.h"
+#include "TerrainGrazing.h"
 #include "Activity.h"
 
 #include "CameraMan.h"
@@ -194,6 +195,16 @@ bool ActivityMan::SaveCurrentGame(const std::string& fileName) {
 		writer->NewPropertyWithValue("ColonyState", colony);
 	}
 	writer->NewPropertyWithValue("HoldZones", TerrainCollapse::GetHoldZonesSaveState());
+	// The plants grazed away, waiting to grow back.
+	if (std::string grazing = TerrainGrazing::GetSaveState(); !grazing.empty()) {
+		writer->NewPropertyWithValue("GrazingState", grazing);
+	}
+	// The time of day and weather as they were, so night stays night and the rain keeps falling: "1 hour dayLengthMinutes intensity wind weatherName".
+	{
+		std::ostringstream atmosphere;
+		atmosphere << std::fixed << std::setprecision(4) << 1 << ' ' << g_PostProcessMan.GetTimeOfDay() << ' ' << g_PostProcessMan.GetDayLengthMinutes() << ' ' << g_PostProcessMan.GetWeatherIntensity() << ' ' << g_PostProcessMan.GetWind() << ' ' << g_PostProcessMan.GetWeatherName();
+		writer->NewPropertyWithValue("AtmosphereState", atmosphere.str());
+	}
 	// The sandbox's orders under way (plans, patrols, drop-offs, guard posts...), kept by the sandbox, not on the units.
 	writer->NewPropertyWithValue("SandboxState", Sandbox::GetSaveState());
 	// The sim time saved at, so the times units keep in number values (ClubbedAt, AIContactMS...) can be moved onto the loaded game's clock.
@@ -307,20 +318,22 @@ bool ActivityMan::s_StartingSavedGame = false;
 std::string ActivityMan::s_ColonyOfLoadedGame;
 double ActivityMan::s_SimTimeOfLoadedGame = -1.0;
 std::string ActivityMan::s_SandboxOfLoadedGame;
+std::string ActivityMan::s_AtmosphereOfLoadedGame;
 
 namespace {
 	/// The number values on a unit that hold another unit's unique ID: an AI's target, the one its medic tends, a creature's prey, a squad's
 	/// target, a summoner.
-	constexpr std::array<const char*, 5> c_UniqueIDValueKeys = {"AITargetID", "AIMedicFor", "CreatureHuntID", "SandboxSquadTarget", "MedievalSummonerUID"};
+	constexpr std::array<const char*, 6> c_UniqueIDValueKeys = {"AITargetID", "AIMedicFor", "CreatureHuntID", "SandboxSquadTarget", "MedievalSummonerUID", "FellSummonerUID"};
 
 	/// The number values on a unit that hold a sim time (TimerMan::GetSimTimeMS): when it was clubbed, last saw an enemy, got out of a craft.
 	/// The loaded game runs on another clock, so they are moved by the difference, or dropped if the save didn't say when it was made.
 	constexpr std::array<const char*, 3> c_SimTimeValueKeys = {"ClubbedAt", "AIContactMS", "AILeftCarrierMS"};
 
 	/// The number values on a unit that only mean something while what set them is still at work, and that isn't kept in a saved game: the
-	/// fire burning it (ActorFire), the flag it carries or the rush it is on (the battle modes), a Levitate or Frost Shard spell on it. Kept, a
-	/// unit loaded on fire would never be put out (its AI half off, friends trying to douse it), a flag carrier or rusher would ignore cover
-	/// for good, and Levitate would never work on it again.
+	/// fire burning it (ActorFire), a Levitate or Frost Shard spell on it. Kept, a unit loaded on fire would never be put out (its AI half off,
+	/// friends trying to douse it), and Levitate would never work on it again. The flag it carries or the rush it is on (the battle modes) are
+	/// taken off too, and put back by the saved battle (Sandbox::LoadSaveState, after this) on those still carrying a flag or rushing in it:
+	/// one in a save without its battle would ignore cover for good.
 	constexpr std::array<const char*, 5> c_StaleValueKeys = {"OnFire", "SandboxObjective", "SandboxRush", "MedievalLevitating", "MedievalChillUntil"};
 
 	/// A loaded unit and every unit out of the scene with it: whoever sits in its seats (a vehicle's, a ship's) and whoever rides in it as
@@ -401,6 +414,28 @@ namespace {
 
 	/// @param savedSimTimeMS The sim time the game was saved at, or below 0 if the save doesn't say.
 	/// @return The units' unique IDs, from those they were saved with to those they have now.
+	/// Puts back the time of day and weather of a saved game, over the scene's own (AtmosphereState). A save from before it had them keeps the scene's.
+	void RestoreAtmosphere(const std::string& state) {
+		std::istringstream stream(state);
+		int version = 0;
+		float hour = 0.0F;
+		float dayLength = 0.0F;
+		float intensity = 0.0F;
+		float wind = 0.0F;
+		if (!(stream >> version >> hour >> dayLength >> intensity >> wind) || version != 1) {
+			return;
+		}
+		std::string weather;
+		std::getline(stream >> std::ws, weather);
+		g_PostProcessMan.SetTimeOfDay(hour);
+		g_PostProcessMan.SetDayLengthMinutes(dayLength);
+		if (!weather.empty()) {
+			g_PostProcessMan.SetWeatherName(weather);
+		}
+		g_PostProcessMan.SetWeatherIntensity(intensity);
+		g_PostProcessMan.SetWind(wind);
+	}
+
 	std::unordered_map<long, long> RemapLoadedUniqueIDs(double savedSimTimeMS) {
 		std::list<SceneObject*> placed;
 		g_MovableMan.GetAllActors(false, placed);
@@ -451,6 +486,11 @@ namespace {
 			}
 			if (unit->StringValueExists(c_SavedUnitWaypointsKey)) {
 				RestoreUnitWaypoints(unit, remapped);
+			}
+			// A Mirror Image: kept up by its spell's controller, which isn't saved (the group Not Saved), so it is gone as it would have
+			// burst. Kept, it was a real unit for good, hurting as the caster does.
+			if (unit->NumberValueExists("MedievalIllusionOf")) {
+				unit->SetToDelete(true);
 			}
 			// Its veteran's nerve, from the rank saved with it (Veterancy.cpp sets the two together).
 			if (unit->NumberValueExists("VeteranRank")) {
@@ -564,6 +604,8 @@ bool ActivityMan::LoadAndLaunchGame(const std::string& fileName) {
 	TerrainCollapse::SetHoldZonesLoadState(std::string());
 	s_SimTimeOfLoadedGame = -1.0;
 	s_SandboxOfLoadedGame.clear();
+	s_AtmosphereOfLoadedGame.clear();
+	TerrainGrazing::SetPendingLoadState(std::string());
 	while (reader.NextProperty()) {
 		std::string propName = reader.ReadPropName();
 		if (propName == "Activity") {
@@ -594,6 +636,10 @@ bool ActivityMan::LoadAndLaunchGame(const std::string& fileName) {
 			s_SandboxOfLoadedGame = reader.ReadPropValue();
 		} else if (propName == "SavedSimTimeMS") {
 			reader >> s_SimTimeOfLoadedGame;
+		} else if (propName == "GrazingState") {
+			TerrainGrazing::SetPendingLoadState(reader.ReadPropValue());
+		} else if (propName == "AtmosphereState") {
+			s_AtmosphereOfLoadedGame = reader.ReadPropValue();
 		}
 	}
 
@@ -724,9 +770,11 @@ int ActivityMan::StartActivity(Activity* activity) {
 		const std::unordered_map<long, long> newIDs = RemapLoadedUniqueIDs(s_SimTimeOfLoadedGame);
 		Colony::LoadSaveState(s_ColonyOfLoadedGame);
 		Sandbox::LoadSaveState(s_SandboxOfLoadedGame, newIDs);
+		RestoreAtmosphere(s_AtmosphereOfLoadedGame);
 	}
 	s_ColonyOfLoadedGame.clear();
 	s_SandboxOfLoadedGame.clear();
+	s_AtmosphereOfLoadedGame.clear();
 
 	if (error >= 0)
 		g_ConsoleMan.PrintString("SYSTEM: Activity \"" + m_Activity->GetPresetName() + "\" was successfully started");

@@ -61,6 +61,33 @@ namespace SandboxDetail {
 		s_Veterans.clear();
 	}
 
+	void SaveVeterans(std::ostream& out) {
+		out << ' ' << s_Veterans.size();
+		for (const auto& [id, veteran]: s_Veterans) {
+			out << ' ' << id << ' ' << veteran.Team << ' ' << veteran.Kills << ' ' << veteran.Rank;
+			SaveUpdate(out, veteran.Since);
+			SaveText(out, veteran.Name);
+		}
+	}
+
+	void LoadVeterans(std::istream& in, const LoadedIDs& ids) {
+		size_t count = 0;
+		in >> count;
+		for (size_t i = 0; i < count && in; ++i) {
+			long id = 0;
+			Veteran veteran;
+			in >> id >> veteran.Team >> veteran.Kills >> veteran.Rank;
+			veteran.Since = LoadUpdate(in);
+			veteran.Name = LoadText(in);
+			veteran.Rank = std::clamp(veteran.Rank, 0, static_cast<int>(std::size(c_RankNames)) - 1);
+			// (Its name kept, not made again from its new ID; and its steadier nerve, which a saved unit doesn't keep, given back.)
+			if (Actor* unit = ids.Unit(id)) {
+				unit->SetVeterancy(veteran.Rank);
+				s_Veterans[static_cast<long>(unit->GetUniqueID())] = veteran;
+			}
+		}
+	}
+
 	void NoteVeteranKill(long killerID, long victimID) {
 		if (!InBattle()) {
 			return;

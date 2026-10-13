@@ -222,6 +222,36 @@ namespace SandboxDetail {
 		s_NextPower.fill(0);
 	}
 
+	void SaveEnemyCommander(std::ostream& out) {
+		out << ' ' << s_Strikes.size();
+		for (const Strike& strike: s_Strikes) {
+			out << ' ' << strike.Side << ' ' << strike.Power << ' ' << strike.At.m_X << ' ' << strike.At.m_Y;
+			SaveUpdate(out, strike.Due);
+		}
+		for (int side = 0; side < c_Sides; ++side) {
+			SaveUpdate(out, s_NextBuy[side], 0);
+			SaveUpdate(out, s_NextPower[side], 0);
+		}
+	}
+
+	void LoadEnemyCommander(std::istream& in) {
+		size_t count = 0;
+		in >> count;
+		s_Strikes.clear();
+		for (size_t i = 0; i < count && in; ++i) {
+			Strike strike;
+			in >> strike.Side >> strike.Power >> strike.At.m_X >> strike.At.m_Y;
+			strike.Due = LoadUpdate(in);
+			if (strike.Side >= 0 && strike.Side < c_Sides && strike.Power >= 0 && strike.Power < static_cast<int>(CommanderPower::Count)) {
+				s_Strikes.push_back(strike);
+			}
+		}
+		for (int side = 0; side < c_Sides; ++side) {
+			s_NextBuy[side] = LoadUpdate(in, 0);
+			s_NextPower[side] = LoadUpdate(in, 0);
+		}
+	}
+
 	void UpdateEnemyCommander(bool aiPaused) {
 		if (!InBattle()) {
 			s_Strikes.clear();

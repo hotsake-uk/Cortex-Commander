@@ -15,6 +15,7 @@ namespace SandboxDetail {
 		SeatPhase s_Phase = SeatPhase::Off;
 		int s_Turn = 0; //!< Of the teams the players command, in side order.
 		long long s_TurnEndsAt = 0; //!< The sim update the turn ends on (it doesn't run on while paused).
+		int s_LoadedTurn = -1; //!< A saved hot-seat game loaded: the turn it was on, handed to that player when the game starts, not the first's.
 
 		/// The teams the players command, in side order.
 		std::vector<int> Seats() {
@@ -57,6 +58,18 @@ namespace SandboxDetail {
 		}
 	} // namespace
 
+	void SaveHotSeat(std::ostream& out) {
+		// (Saved in the hand-over, the seat goes to the next player: the turn was already passed on.)
+		out << ' ' << (s_Phase == SeatPhase::Off ? -1 : s_Turn);
+	}
+
+	void LoadHotSeat(std::istream& in) {
+		int turn = -1;
+		in >> turn;
+		s_Phase = SeatPhase::Off;
+		s_LoadedTurn = s_ModeRun.Running && !s_ModeRun.Over && s_ModeRun.Settings.HotSeat ? turn : -1;
+	}
+
 	int HotSeatSide() {
 		if (s_Phase == SeatPhase::Off || !On()) {
 			return -1;
@@ -77,8 +90,9 @@ namespace SandboxDetail {
 		}
 		const std::vector<int> seats = Seats();
 		if (s_Phase == SeatPhase::Off) {
-			// A new game: the first player's seat.
-			s_Turn = 0;
+			// A new game: the first player's seat (a loaded one's: the seat whose turn it was, from the start of the turn).
+			s_Turn = std::max(s_LoadedTurn, 0);
+			s_LoadedTurn = -1;
 			s_Selected.clear();
 			Pause(true);
 			s_Phase = SeatPhase::Handoff;

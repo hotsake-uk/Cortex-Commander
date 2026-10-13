@@ -65,6 +65,24 @@ namespace SandboxDetail {
 		}
 	}
 
+	void SavePowers(std::ostream& out) {
+		for (const auto& side: s_ReadyAt) {
+			for (long long readyAt: side) {
+				SaveUpdate(out, readyAt, 0);
+			}
+		}
+		SaveUpdate(out, s_ScanUntil);
+	}
+
+	void LoadPowers(std::istream& in) {
+		for (auto& side: s_ReadyAt) {
+			for (long long& readyAt: side) {
+				readyAt = LoadUpdate(in, 0);
+			}
+		}
+		s_ScanUntil = LoadUpdate(in);
+	}
+
 	void ApplyPower(const Stroke& stroke) {
 		if (BattlePlayerCommands(stroke.Team)) {
 			UsePowerAs(stroke.Team, stroke.Choice, stroke.Position);

@@ -873,7 +873,9 @@ void Sandbox::DrawGUI() {
 			// Automated test runs set CCCP_HIDE_PANELS, so the window (wherever the player last left it) doesn't cover what they capture.
 			// Battle Command opens on its own battle panel instead, with the Commander Toolbar: the sandbox's window is only for development there.
 			s_Open = std::getenv("CCCP_HIDE_PANELS") == nullptr && !IsBattleCommand();
-			s_BattlePanelOpen = IsBattleCommand() && std::getenv("CCCP_HIDE_PANELS") == nullptr;
+			// (A saved game whose battle is on goes on with it, the panel shut, as it was being played: LoadBattle.)
+			const bool battleGoesOn = s_BattleLoaded && s_ModeRun.Running && !s_ModeRun.Over;
+			s_BattlePanelOpen = IsBattleCommand() && std::getenv("CCCP_HIDE_PANELS") == nullptr && !battleGoesOn;
 			s_CommanderBar = IsBattleCommand();
 			s_FreeCamera = true;
 			s_FreeCameraStarted = false;
@@ -887,7 +889,11 @@ void Sandbox::DrawGUI() {
 			s_Flying = false;
 			s_StepsWanted = 0;
 			s_GodStartUpdate = g_TimerMan.GetSimUpdateCount();
-			s_RallySet.fill(false);
+			// (A saved game's rally points were put back with its battle.)
+			if (!s_BattleLoaded) {
+				s_RallySet.fill(false);
+			}
+			s_BattleLoaded = false;
 			s_Selected.clear();
 			s_FollowTarget = UnitRef();
 			s_ToolIndex = ToolIndex(IsBattleCommand() ? Tool::Command : Tool::Unit);
@@ -2725,8 +2731,10 @@ void Sandbox::OnActivityStarted() {
 	ForgetAirlifts();
 	ForgetLoadoutUnits();
 	ForgetBattle();
-	// (The setup saved to load with the map goes back in once it is loaded.)
+	// (The setup saved to load with the map goes back in once it is loaded, unless the game is a saved one with its battle: LoadSaveState
+	// puts that back after this.)
 	BattlePresetsNewGame();
+	s_BattleLoaded = false;
 	s_PendingOrders.clear();
 	s_Commander = false;
 	// (And clicks queued in the last game, not yet applied: they were applied to this one.)
@@ -2751,6 +2759,9 @@ std::string Sandbox::GetSaveState() {
 	SaveBuilds(state);
 	state << " breaches";
 	SaveBreaches(state);
+	// (Last, after the orders: a battle's defenders that a player told to defend are kept with those.)
+	state << " battle";
+	SaveBattle(state);
 	state << " end";
 	return state.str();
 }
@@ -2780,6 +2791,8 @@ void Sandbox::LoadSaveState(const std::string& state, const std::unordered_map<l
 			LoadBuilds(stream, ids);
 		} else if (section == "breaches") {
 			LoadBreaches(stream, ids);
+		} else if (section == "battle") {
+			LoadBattle(stream, ids);
 		} else {
 			break;
 		}

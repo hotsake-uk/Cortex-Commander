@@ -3192,10 +3192,27 @@ namespace SandboxDetail {
 		out << ' ' << commanded;
 		for (const auto& [id, defender]: s_BattleDefenders) {
 			if (defender.Commanded) {
-				out << ' ' << id << ' ' << defender.Team << ' ' << defender.Center.m_X << ' ' << defender.Center.m_Y << ' ' << defender.Radius << ' ' << defender.Chase << ' ' << defender.Post.m_X << ' ' << defender.Post.m_Y
-				    << ' ' << defender.RoamRoll << ' ' << defender.Roams << ' ' << (defender.IdleSince < 0 ? -1 : now - defender.IdleSince) << ' ' << defender.Dwell << ' ' << defender.ChasingID << ' ' << defender.Seen << ' ' << now - defender.Made;
+				SaveDefender(out, id, defender);
 			}
 		}
+	}
+
+	void SaveDefender(std::ostream& out, long id, const BattleDefender& defender) {
+		const long long now = g_TimerMan.GetSimUpdateCount();
+		out << ' ' << id << ' ' << defender.Team << ' ' << defender.Center.m_X << ' ' << defender.Center.m_Y << ' ' << defender.Radius << ' ' << defender.Chase << ' ' << defender.Post.m_X << ' ' << defender.Post.m_Y
+		    << ' ' << defender.RoamRoll << ' ' << defender.Roams << ' ' << (defender.IdleSince < 0 ? -1 : now - defender.IdleSince) << ' ' << defender.Dwell << ' ' << defender.ChasingID << ' ' << defender.Seen << ' ' << now - defender.Made;
+	}
+
+	long LoadDefender(std::istream& in, const LoadedIDs& ids, BattleDefender& defender) {
+		const long long now = g_TimerMan.GetSimUpdateCount();
+		long unit = 0;
+		long long idleAgo = 0;
+		long long madeAgo = 0;
+		in >> unit >> defender.Team >> defender.Center.m_X >> defender.Center.m_Y >> defender.Radius >> defender.Chase >> defender.Post.m_X >> defender.Post.m_Y >> defender.RoamRoll >> defender.Roams >> idleAgo >> defender.Dwell >> defender.ChasingID >> defender.Seen >> madeAgo;
+		defender.IdleSince = idleAgo < 0 ? -1 : now - idleAgo;
+		defender.Made = now - madeAgo;
+		defender.ChasingID = ids(defender.ChasingID);
+		return ids(unit);
 	}
 
 	void LoadOrders(std::istream& in, const LoadedIDs& ids) {
@@ -3261,16 +3278,10 @@ namespace SandboxDetail {
 		}
 		in >> count;
 		for (size_t i = 0; i < count && in; ++i) {
-			long unit = 0;
-			long long idleAgo = 0;
-			long long madeAgo = 0;
 			BattleDefender defender;
-			in >> unit >> defender.Team >> defender.Center.m_X >> defender.Center.m_Y >> defender.Radius >> defender.Chase >> defender.Post.m_X >> defender.Post.m_Y >> defender.RoamRoll >> defender.Roams >> idleAgo >> defender.Dwell >> defender.ChasingID >> defender.Seen >> madeAgo;
-			defender.IdleSince = idleAgo < 0 ? -1 : now - idleAgo;
-			defender.Made = now - madeAgo;
-			defender.ChasingID = ids(defender.ChasingID);
+			const long id = LoadDefender(in, ids, defender);
 			defender.Commanded = true;
-			if (const long id = ids(unit); id != 0) {
+			if (id != 0) {
 				s_BattleDefenders[id] = defender;
 			}
 		}

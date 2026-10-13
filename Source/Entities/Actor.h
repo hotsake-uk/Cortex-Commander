@@ -288,6 +288,9 @@ namespace RTE {
 		/// as long as something else holds them (a grab, a mirror image's illusion): what holds them isn't saved, and they would never end.
 		void SaveTimedEffects(Writer& writer) const;
 
+		/// Gets the shader it is drawn with of its own: the one it had before its status effects lent it theirs, while they do.
+		const std::string& GetShaderNameUnderEffects() const { return !m_EffectShader.empty() && m_ShaderName == m_EffectShader ? m_ShaderBeforeEffects : m_ShaderName; }
+
 		/// How much of the harm it takes reaches its health, for its status effects (Stoneskin 0.4, Curse of Weakness 1.5); 1 for none.
 		float GetDamageTakenMultiplier() const { return m_EffectDamageTaken; }
 
