@@ -2,6 +2,7 @@
 
 #include "Serializable.h"
 #include "Singleton.h"
+#include "LightingSettings.h"
 
 #include <list>
 #include <string>
@@ -64,6 +65,22 @@ namespace RTE {
 
 		/// Gets the names of the presets there are, in order.
 		std::vector<std::string> ListPresets() const;
+
+		/// Saves a screen style's filters (LightingSettings::RetroLayers) as the player's own variant, a file in Userdata/FilterPresets apart from the
+		/// whole-settings presets. Gets the file name it was saved under (the name made safe), empty if it couldn't be.
+		std::string SaveFilterPreset(const std::string& name, const LightingSettings::RetroLayers& layers) const;
+
+		/// Loads a filter preset saved by SaveFilterPreset into layers. False if there is none of that name.
+		bool LoadFilterPreset(const std::string& name, LightingSettings::RetroLayers& layers) const;
+
+		/// Deletes a filter preset. False if there was none of that name.
+		bool DeleteFilterPreset(const std::string& name) const;
+
+		/// Gets the names of the filter presets saved, sorted.
+		std::vector<std::string> ListFilterPresets() const;
+
+		/// Gets the name a filter preset of this name is saved under (made safe for a file name), empty if none can be.
+		std::string FilterPresetName(const std::string& name) const;
 
 		/// Gets the preset loaded every time the game starts, over Settings.ini.
 		/// @return The preset's name, or nothing for none.

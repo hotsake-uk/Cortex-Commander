@@ -502,7 +502,17 @@ namespace RTE {
 		int GetScreenStyle() const { return m_LightingSettings.ScreenStyle; }
 
 		/// Sets the screen style (LightingSettings::ScreenStyles; anything else is Off), as the player's setting: a scenario or mod can switch the synthwave look on.
-		void SetScreenStyle(int style) { m_LightingSettings.ScreenStyle = style > LightingSettings::StyleOff && style < LightingSettings::StyleCount ? style : LightingSettings::StyleOff; }
+		void SetScreenStyle(int style) {
+			m_LightingSettings.ScreenStyle = style > LightingSettings::StyleOff && style < LightingSettings::StyleCount ? style : LightingSettings::StyleOff;
+			m_LightingSettings.ScreenVariant.clear();
+		}
+
+		/// Gets the player's saved variant chosen as the screen style (a filter preset's name), empty for none.
+		std::string GetScreenVariant() const { return m_LightingSettings.ScreenVariant; }
+
+		/// Chooses one of the player's saved variants (a filter preset in Userdata/FilterPresets) as the screen style, loading its filters. Empty goes back
+		/// to the built-in ScreenStyle. False, changing nothing, if there's no such variant.
+		bool SetScreenVariant(const std::string& name);
 
 		/// Gets how strongly the screen style applies, 0 to 1.
 		float GetScreenStyleStrength() const { return m_LightingSettings.ScreenStyleStrength; }

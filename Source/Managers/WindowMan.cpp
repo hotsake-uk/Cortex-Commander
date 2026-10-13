@@ -617,6 +617,8 @@ void WindowMan::SetUpscaleUniforms() const {
 	m_ScreenUpscaleShader->SetFloat("rteGlitch", std::clamp(retro.Glitch, 0.0F, 1.0F));
 	m_ScreenUpscaleShader->SetFloat("rteGlitchKick", inGame && retro.Glitch > 0.0F ? g_PostProcessMan.GetRetroGlitchKick() : 0.0F);
 	m_ScreenUpscaleShader->SetFloat("rteCurvature", std::clamp(retro.Curvature, 0.0F, 1.0F));
+	m_ScreenUpscaleShader->SetInt("rteGlitchKind", retro.Look);
+	m_ScreenUpscaleShader->SetFloat("rteFlicker", std::clamp(retro.Flicker, 0.0F, 1.0F));
 }
 
 void WindowMan::SetReservedSpace(int left, int right) {

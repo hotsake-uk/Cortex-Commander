@@ -290,6 +290,11 @@ namespace RTE {
 		GLTarget m_HDRScene;
 		GLTarget m_ModPostScene; //!< A copy of the lit scene for a mod's post pass to read (LightingSettings::ModShaders). Made when one is first used.
 		GLTarget m_FocusScene; //!< A copy of the lit scene for depth of field and tilt-shift to read. Made when they're first used.
+		GLTarget m_AfterglowHistory[c_MaxScreens][2]; //!< Per player screen, the afterglow's fading history of bright things (LightingSettings::RetroLayers::Afterglow), read one and written the other.
+		bool m_AfterglowValid[c_MaxScreens] = {}; //!< Whether it holds the last frame's, else it starts afresh.
+		int m_AfterglowCurrent[c_MaxScreens] = {}; //!< Which of the two holds the latest.
+		glm::vec2 m_AfterglowOrigin[c_MaxScreens] = {}; //!< Where the screen's view was when it was written, so it follows the world as the camera moves.
+		double m_AfterglowLastSeconds[c_MaxScreens] = {}; //!< Game seconds it was last written.
 		GLTarget m_RetroScene; //!< A copy of the lit scene for the retro pass (a screen style's sky and edge lines) to read. Made when it's first used.
 		GLTarget m_WeatherDrops; //!< The weather's drops on their own, premultiplied, for Weather everywhere to lay over the scene but the terrain. Made when it's first used.
 		static constexpr int c_BloomMipCount = 5;
@@ -341,6 +346,7 @@ namespace RTE {
 		std::unique_ptr<Shader> m_GodRaysShader;
 		std::unique_ptr<Shader> m_DepthOfFieldShader;
 		std::unique_ptr<Shader> m_RetroSceneShader;
+		std::unique_ptr<Shader> m_AfterglowShader;
 		std::unique_ptr<Shader> m_GodRaysApplyShader;
 		std::unique_ptr<Shader> m_ScorchShader;
 		std::unique_ptr<Shader> m_StainShader;
