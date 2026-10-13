@@ -78,6 +78,9 @@ uniform float rteWaterReflection; // How strongly water mirrors the scene above 
 uniform sampler2D rteFog; // World grid, R = how thick mist or dust hangs in the air there (FogUpdate.frag).
 uniform float rteFogStrength; // How thick the fog volume is drawn, 0 for none.
 uniform float rteFogOpacity; // How much of what's behind the thickest fog it hides, 0 to 1 (LightingSettings::FogOpacity).
+uniform float rteCelShading; // How far the light is stepped into flat comic bands, 0 for none (LightingSettings::RetroLayers::CelShading).
+uniform float rteCelBands; // How many bands of light, 2 to 5.
+uniform float rteHalftone; // How strongly Ben-Day dots print in the shadow bands, 0 for none.
 uniform float rteWaterRefraction; // How much water's ripples bend what's seen through it and how much it darkens with depth, 0 for none.
 uniform bool rteWaterSoftReflection; // The reflection is softened with depth (a blur that widens, a fade that deepens), feathered where the open air above the pool ends, and not clipped hard where it leaves the screen or meets other water. Off: sharp and cut off, as before.
 uniform bool rteWaterMirrorSurface; // The reflection is wobbled by the tilt of the surface above each pixel (the terrain pass's normal there, which follows the flow), the whole column together. Off: by the pixel's own tilt, as before.
@@ -610,6 +613,28 @@ void main() {
 	} else if (rteDebugView == 4) {
 		FragColor = vec4(pow(texture(rteNormals, screenUV).rgb, vec3(2.2)), 1.0);
 		return;
+	}
+	if (rteCelShading > 0.0 && rteDebugView != 1 && skyLayer < 1.0) {
+		// Comic cel shading: the light (not the art) is stepped into flat, hue-true bands, so every pixel keeps its colour and sits in flat light.
+		float level = max(max(light.r, light.g), light.b);
+		if (level > 0.0005) {
+			float bands = clamp(rteCelBands, 2.0, 5.0);
+			float t = level / (level + 0.5); // 0..1 whatever the light's range.
+			float stepped = clamp(floor(t * bands + 0.5) / bands, 0.04, 0.96);
+			if (rteHalftone > 0.0 && stepped < 0.5) {
+				// Ben-Day dots on a 45 degree world grid, bigger in darker bands; between them the light is lifted towards the next band up.
+				vec2 worldPos = rteScreenOrigin + gl_FragCoord.xy;
+				vec2 grid = mat2(0.7071, -0.7071, 0.7071, 0.7071) * worldPos / 4.0;
+				float dotDistance = length(fract(grid) - 0.5);
+				float darkness = 1.0 - stepped * 2.0;
+				float radius = mix(0.18, 0.5, darkness);
+				float inDot = 1.0 - step(radius, dotDistance);
+				float lifted = min(stepped + 1.0 / bands, 0.96);
+				stepped = mix(stepped, mix(lifted, stepped, inDot), rteHalftone * (1.0 - skyLayer));
+			}
+			float newLevel = 0.5 * stepped / (1.0 - stepped);
+			light = mix(light, light * (newLevel / level), rteCelShading * (1.0 - skyLayer));
+		}
 	}
 	vec3 emissive = pow(texture(rteEmissive, screenUV).rgb, vec3(2.2)) * rteEmissiveIntensity;
 	vec3 litColor = mix(albedoLinear * light, rteAtmosphereColor, haze) + waterGlow;

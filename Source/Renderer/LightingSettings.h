@@ -254,6 +254,7 @@ namespace RTE {
 			StyleOff,
 			StyleSynthwave, //!< Neon: an Outrun sunset sky with a striped sun and a scrolling grid, pink and cyan glow, glowing edges, VHS tape and a curved CRT.
 			StyleHackerman, //!< Phosphor green on black: code rain for a sky, ASCII hills, green vector edges, afterglow trails, a terminal readout and a flickering monitor.
+			StyleComic, //!< The game's own art as an inked, printed comic: cel-shaded light, black ink lines, halftone shadows, flat bold backgrounds and BOOM! on big blasts.
 			StyleCount
 		};
 		/// What a palette filter maps the picture's brightness onto.
@@ -268,11 +269,12 @@ namespace RTE {
 			PaletteThermal, //!< A false-colour heat camera: black, blue, purple, red, orange, yellow, white.
 			PaletteNightVision, //!< Green and noisy.
 			PaletteTerminal, //!< A phosphor green monitor: black, deep green, bright green, near-white green.
+			PaletteComic, //!< The picture's own colours, printed punchier: richer, clean paper-white highlights, solid blacks, cool shadows.
 			PaletteCount
 		};
 		/// The retro filters one screen style (or the player's own, with no style, or a saved variant) sets. All 0 is the plain picture.
 		struct RetroLayers {
-			int Look = StyleSynthwave; //!< ScreenStyles: whose sky, edge and glow colours and kind of glitch these use (Synthwave's sunset or Hackerman's code rain).
+			int Look = StyleSynthwave; //!< ScreenStyles: whose sky, edge and glow colours and kind of glitch these use (Synthwave's sunset, Hackerman's code rain, or Comic's flat inked backgrounds).
 			int Palette = PaletteOff; //!< RetroPalettes.
 			float PaletteStrength = 0.0F; //!< How far the picture is remapped onto the palette, 0 to 1.
 			float NeonGlow = 0.0F; //!< Lower, stronger, wider bloom tinted in the look's colours, so lights, shots and blasts glow, 0 to 1.
@@ -293,6 +295,14 @@ namespace RTE {
 			float ASCIIBackground = 0.0F; //!< The same for the distant background only (the hills behind the battlefield), 0 to 1.
 			float Afterglow = 0.0F; //!< Bright moving things leave a fading trail, like an old monochrome monitor's phosphor, 0 to 1.
 			float TerminalOverlay = 0.0F; //!< Faint scrolling hex and log lines down the screen's edges and a blinking cursor, under the HUD, 0 to 1.
+			float CelShading = 0.0F; //!< The light falling on things stepped into flat bands, as in a cel-shaded cartoon, leaving the art's own colours alone, 0 to 1.
+			float CelBands = 3.0F; //!< How many bands of light, 2 to 5.
+			float Halftone = 0.0F; //!< Ben-Day dots in the shadows, bigger the darker it gets, 0 to 1.
+			float ColorHalftone = 0.0F; //!< The whole picture printed in cyan, magenta and yellow dot screens, 0 to 1.
+			float PaperGrain = 0.0F; //!< Newsprint: a faint paper grain and off-white highlights, 0 to 1.
+			float Misregister = 0.0F; //!< The colour plates printed a little out of line, up to 2 pixels, 0 to 1.
+			float ComicFX = 0.0F; //!< Big blasts get radial speed lines and a hand-lettered sound effect word (BOOM!, KRAK!, BLAM!, WHAM!), 0 to 1.
+			float PanelFrame = 0.0F; //!< A comic panel's frame round the screen: a paper gutter and a black ink line, 0 to 1.
 		};
 		/// Gets the layers a screen style comes with.
 		static RetroLayers StyleLayers(int style) {
@@ -328,6 +338,19 @@ namespace RTE {
 					layers.Afterglow = 0.6F;
 					layers.TerminalOverlay = 0.6F;
 					break;
+				case StyleComic:
+					layers.Look = StyleComic;
+					layers.Palette = PaletteComic;
+					layers.PaletteStrength = 0.8F;
+					layers.EdgeLines = 0.8F;
+					layers.InkEdges = true;
+					layers.RetroSky = 1.0F;
+					layers.CelShading = 0.85F;
+					layers.CelBands = 3.0F;
+					layers.Halftone = 0.7F;
+					layers.PaperGrain = 0.5F;
+					layers.ComicFX = 1.0F;
+					break;
 				default:
 					break;
 			}
@@ -337,7 +360,7 @@ namespace RTE {
 		std::string ScreenVariant; //!< The player's saved variant (a filter preset in Userdata/FilterPresets) chosen as the screen style, empty for none. Its layers are VariantRetro.
 		float ScreenStyleStrength = 1.0F; //!< How strongly the screen style applies, 0 to 1.
 		RetroLayers Retro; //!< The player's own retro filters, used with no screen style.
-		std::array<RetroLayers, StyleCount> StyleRetro = {StyleLayers(StyleOff), StyleLayers(StyleSynthwave), StyleLayers(StyleHackerman)}; //!< Each screen style's layers, as the player tuned them.
+		std::array<RetroLayers, StyleCount> StyleRetro = {StyleLayers(StyleOff), StyleLayers(StyleSynthwave), StyleLayers(StyleHackerman), StyleLayers(StyleComic)}; //!< Each screen style's layers, as the player tuned them.
 		RetroLayers VariantRetro; //!< The chosen variant's layers, as the player tuned them since loading or saving it.
 
 		/// Gets whether a screen style (built-in or a variant) is on, rather than the player's own filters.
@@ -351,7 +374,8 @@ namespace RTE {
 			RetroLayers layers = ScreenVariant.empty() ? StyleRetro[ScreenStyle] : VariantRetro;
 			float strength = ScreenStyleStrength < 0.0F ? 0.0F : (ScreenStyleStrength > 1.0F ? 1.0F : ScreenStyleStrength);
 			for (float* value: {&layers.PaletteStrength, &layers.NeonGlow, &layers.EdgeLines, &layers.RetroSky, &layers.VHS, &layers.Glitch, &layers.Curvature, &layers.CRT, &layers.Flicker,
-			                    &layers.Posterize, &layers.Dither, &layers.Pixelate, &layers.ASCII, &layers.ASCIIBackground, &layers.Afterglow, &layers.TerminalOverlay}) {
+			                    &layers.Posterize, &layers.Dither, &layers.Pixelate, &layers.ASCII, &layers.ASCIIBackground, &layers.Afterglow, &layers.TerminalOverlay, &layers.CelShading,
+			                    &layers.Halftone, &layers.ColorHalftone, &layers.PaperGrain, &layers.Misregister, &layers.ComicFX, &layers.PanelFrame}) {
 				*value *= strength;
 			}
 			return layers;

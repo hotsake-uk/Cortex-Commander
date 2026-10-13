@@ -4,7 +4,8 @@
 // striped sun sitting on the horizon, and a magenta grid racing towards it across the ground below. Distant background layers that scroll (hills,
 // mountains) turn to dark violet silhouettes with a glowing rim; the furthest ones (the sky art) are replaced outright.
 // Hackerman's sky: columns of green code falling over a faint grid, a bright glyph at the head of each, fading up its tail; distant hills become green
-// wireframes. Both can draw the distant background (or everything) as ASCII art: text characters picked by brightness.
+// wireframes. Comic keeps the original sky and hills, flattened into bold bands with a dot gradient up the sky and an ink line along the hill tops,
+// and its ink lines are bold at silhouettes and light inside them. Any style can draw the distant background (or everything) as ASCII art: text characters picked by brightness.
 #version 330 core
 
 in vec2 textureUV;
@@ -15,7 +16,7 @@ uniform sampler2D rteSceneDepth;
 uniform vec2 rteScreenSize;
 uniform vec2 rteScreenOrigin;
 uniform float rteTime;
-uniform int rteLook; // LightingSettings::ScreenStyles: 1 Synthwave's sky and neon, 2 Hackerman's code rain and phosphor green.
+uniform int rteLook; // LightingSettings::ScreenStyles: 1 Synthwave's sky and neon, 2 Hackerman's code rain and phosphor green, 3 Comic's printed sky and ink.
 uniform float rteSky; // How fully the sky is replaced, 0 to 1.
 uniform float rteGridSpeed; // How fast the grid scrolls, 0 to 3.
 uniform float rteDaylight; // The sky light's brightness now, 0 (night) to 1 (day).
@@ -174,7 +175,26 @@ void main() {
 	float depth = rteHasDepth ? texture(rteSceneDepth, uv).r : 0.0;
 	bool background = rteHasDepth && depth > rteBackgroundDepth;
 
-	if (rteSky > 0.0 && background) {
+	if (rteSky > 0.0 && background && rteLook == 3) {
+		// Comic: the original art, its light flattened into three hue-true bands, Ben-Day dots thickening up the sky, and a black ink line along the
+		// top of every hill where the sky shows above it.
+		float skyArt = SkyArt(depth);
+		vec2 px = screen * rteScreenSize;
+		float level = max(max(scene.r, scene.g), scene.b);
+		vec3 banded = scene.rgb;
+		if (level > 0.0005) {
+			float band = clamp(floor(level / (level + 0.5) * 3.0 + 0.5) / 3.0, 0.08, 0.85);
+			banded = scene.rgb * (0.5 * band / (1.0 - band) / level);
+		}
+		vec2 grid = mat2(0.7071, -0.7071, 0.7071, 0.7071) * px / 6.0;
+		float dotRadius = mix(0.04, 0.36, 1.0 - smoothstep(0.0, 0.7, screen.y)) * skyArt;
+		float printedDot = 1.0 - smoothstep(dotRadius - 0.06, dotRadius + 0.06, length(fract(grid) - 0.5));
+		banded *= 1.0 - 0.22 * printedDot;
+		vec2 pixel = 1.0 / rteScreenSize;
+		float above = max(SkyArt(texture(rteSceneDepth, uv + vec2(0.0, 1.5 * pixel.y)).r), SkyArt(texture(rteSceneDepth, uv + vec2(0.0, 3.0 * pixel.y)).r));
+		float rim = smoothstep(0.3, 0.9, above) * (1.0 - skyArt);
+		color = mix(color, mix(banded, vec3(0.005), rim), rteSky);
+	} else if (rteSky > 0.0 && background) {
 		float skyArt = SkyArt(depth);
 		vec2 px = screen * rteScreenSize;
 		vec3 sky = rteLook == 2 ? HackermanSky(px, rteScreenSize) : SynthwaveSky(screen, aspect);
@@ -209,6 +229,8 @@ void main() {
 	if (rteEdges > 0.0) {
 		// Edges in the scene's brightness (on its log, so dark and bright areas count alike), and where the battlefield meets the distant background.
 		vec2 pixel = 1.0 / rteScreenSize;
+		// Comic ink reaches further at the silhouettes, so they're bold.
+		vec2 nearStep = pixel * (rteLook == 3 ? 2.0 : 1.0);
 		float lum[9];
 		float near[9];
 		int i = 0;
@@ -216,13 +238,14 @@ void main() {
 			for (int x = -1; x <= 1; ++x) {
 				vec2 at = uv + vec2(x, y) * pixel;
 				lum[i] = log(1.0 + 4.0 * dot(texture(rteScene, at).rgb, vec3(0.2126, 0.7152, 0.0722)));
-				near[i] = rteHasDepth ? step(texture(rteSceneDepth, at).r, rteBackgroundDepth) : 1.0;
+				near[i] = rteHasDepth ? step(texture(rteSceneDepth, uv + vec2(x, y) * nearStep).r, rteBackgroundDepth) : 1.0;
 				++i;
 			}
 		}
 		float gx = (lum[2] + 2.0 * lum[5] + lum[8]) - (lum[0] + 2.0 * lum[3] + lum[6]);
 		float gy = (lum[6] + 2.0 * lum[7] + lum[8]) - (lum[0] + 2.0 * lum[1] + lum[2]);
-		float brightnessEdge = smoothstep(0.5, 1.1, length(vec2(gx, gy))) * 0.7;
+		// Comic keeps the lines inside sprites light, so the art doesn't get noisy.
+		float brightnessEdge = smoothstep(0.5, 1.1, length(vec2(gx, gy))) * (rteLook == 3 ? 0.35 : 0.7);
 		float dx = (near[2] + 2.0 * near[5] + near[8]) - (near[0] + 2.0 * near[3] + near[6]);
 		float dy = (near[6] + 2.0 * near[7] + near[8]) - (near[0] + 2.0 * near[1] + near[2]);
 		// Only the battlefield side of the boundary, so the line hugs the terrain and not the sky.

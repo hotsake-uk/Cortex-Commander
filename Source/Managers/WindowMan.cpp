@@ -619,6 +619,7 @@ void WindowMan::SetUpscaleUniforms() const {
 	m_ScreenUpscaleShader->SetFloat("rteCurvature", std::clamp(retro.Curvature, 0.0F, 1.0F));
 	m_ScreenUpscaleShader->SetInt("rteGlitchKind", retro.Look);
 	m_ScreenUpscaleShader->SetFloat("rteFlicker", std::clamp(retro.Flicker, 0.0F, 1.0F));
+	m_ScreenUpscaleShader->SetFloat("rtePanelFrame", std::clamp(retro.PanelFrame, 0.0F, 1.0F));
 }
 
 void WindowMan::SetReservedSpace(int left, int right) {

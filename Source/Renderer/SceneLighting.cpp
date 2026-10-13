@@ -2887,6 +2887,12 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetFloat("rteNightSky", m_Settings.Enabled ? m_NightSky * (1.0F - std::clamp(CurrentWeather() ? CurrentWeather()->GetParams().Overcast * m_Settings.WeatherIntensity * 1.5F : 0.0F, 0.0F, 1.0F)) : 0.0F);
 	m_CompositeShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
 	{
+		const LightingSettings::RetroLayers comicRetro = m_Settings.ActiveRetro();
+		m_CompositeShader->SetFloat("rteCelShading", std::clamp(comicRetro.CelShading, 0.0F, 1.0F));
+		m_CompositeShader->SetFloat("rteCelBands", std::clamp(comicRetro.CelBands, 2.0F, 5.0F));
+		m_CompositeShader->SetFloat("rteHalftone", std::clamp(comicRetro.Halftone, 0.0F, 1.0F));
+	}
+	{
 		// The moon follows the same arc as the sun, high in the sky behind everything. Player screens are drawn top down, so y 0 is the top.
 		float arc = (m_MoonHours - 12.0F) / 6.0F;
 		glm::vec2 moonPosition((0.5F + arc * 0.38F) * screenSize.x, (0.34F - 0.14F * (1.0F - arc * arc)) * screenSize.y);
@@ -3609,10 +3615,14 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	float outlineWidth = 0.0F;
 	float highlightWidth = 0.0F;
 	int outlineRadius = 0;
-	const bool outlines = m_Settings.UnitOutline && m_Settings.UnitOutlineOpacity > 0.0F;
+	// The comic style inks every unit in bold black, whether or not the player's own outlines are on.
+	const bool comicInk = retro.Look == LightingSettings::StyleComic && retro.InkEdges && retro.EdgeLines > 0.0F;
+	const float comicInkStrength = comicInk ? std::clamp(retro.EdgeLines, 0.0F, 1.0F) : 0.0F;
+	const bool outlines = (m_Settings.UnitOutline && m_Settings.UnitOutlineOpacity > 0.0F) || comicInk;
 	if ((outlines || m_Settings.HighlightUnits) && surface) {
 		float zoom = std::max(g_FrameMan.GetCurrentCameraZoom(), 0.1F);
-		outlineWidth = outlines ? std::min(std::clamp(m_Settings.UnitOutlineWidth, 1.0F, 4.0F) / std::min(zoom, 1.0F), 11.0F) : 0.0F;
+		float baseOutlineWidth = comicInk ? std::max(m_Settings.UnitOutline ? m_Settings.UnitOutlineWidth : 0.0F, 1.0F + 1.5F * comicInkStrength) : m_Settings.UnitOutlineWidth;
+		outlineWidth = outlines ? std::min(std::clamp(baseOutlineWidth, 1.0F, 4.0F) / std::min(zoom, 1.0F), 11.0F) : 0.0F;
 		// A highlighted unit's glow (Actor::SetHighlighted): five of the game's pixels, as far as the search reaches.
 		highlightWidth = m_Settings.HighlightUnits ? std::min(5.0F / std::min(zoom, 1.0F), 11.0F) : 0.0F;
 		outlineRadius = static_cast<int>(std::ceil(std::max(outlineWidth, highlightWidth) + 1.0F)) - 1;
@@ -3663,6 +3673,26 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_TonemapShader->SetFloat("rtePaletteStrength", retro.Palette > LightingSettings::PaletteOff ? std::clamp(retro.PaletteStrength, 0.0F, 1.0F) : 0.0F);
 	m_TonemapShader->SetFloat("rtePosterize", std::clamp(retro.Posterize, 0.0F, 1.0F));
 	m_TonemapShader->SetFloat("rteDither", std::clamp(retro.Dither, 0.0F, 1.0F));
+	m_TonemapShader->SetFloat("rteColorHalftone", std::clamp(retro.ColorHalftone, 0.0F, 1.0F));
+	m_TonemapShader->SetFloat("rtePaperGrain", std::clamp(retro.PaperGrain, 0.0F, 1.0F));
+	m_TonemapShader->SetFloat("rteMisregister", std::clamp(retro.Misregister, 0.0F, 1.0F));
+	{
+		// The comic style's sound-effect burst (PostProcessMan::KickComicBurst), where it went off on this screen.
+		Vector burstPosition;
+		float burstAge = 0.0F;
+		int burstWord = 0;
+		float burstStrength = 0.0F;
+		bool burst = m_Settings.DebugView == 0 && retro.ComicFX > 0.0F && g_PostProcessMan.GetComicBurst(burstPosition, burstAge, burstWord, burstStrength);
+		glm::vec2 burstScreen(-10000.0F);
+		if (burst) {
+			Vector fromOrigin = g_SceneMan.ShortestDistance(Vector(origin.x + screenSize.x * 0.5F, origin.y + screenSize.y * 0.5F), burstPosition, true);
+			burstScreen = screenSize * 0.5F + glm::vec2(fromOrigin.GetX(), fromOrigin.GetY());
+		}
+		m_TonemapShader->SetFloat("rteBurstStrength", burst ? burstStrength : 0.0F);
+		m_TonemapShader->SetVector2f("rteBurstScreen", burstScreen);
+		m_TonemapShader->SetFloat("rteBurstAge", burstAge);
+		m_TonemapShader->SetInt("rteBurstWord", burstWord);
+	}
 	// With lighting off, the image should be the classic one: no exposure, highlight compression, saturation or vignette (the player's own grade still applies).
 	m_TonemapShader->SetFloat("rteExposure", m_Settings.Enabled ? m_Settings.Exposure : 1.0F);
 	m_TonemapShader->SetFloat("rteShoulderStart", m_Settings.Enabled ? m_Settings.ShoulderStart : 1.0F);
@@ -3695,9 +3725,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_TonemapShader->SetFloat("rteOutlineWidth", outlineWidth);
 	m_TonemapShader->SetFloat("rteHighlightWidth", highlightWidth);
 	m_TonemapShader->SetInt("rteOutlineRadius", outlineRadius);
-	m_TonemapShader->SetFloat("rteOutlineOpacity", std::clamp(m_Settings.UnitOutlineOpacity, 0.0F, 1.0F));
-	m_TonemapShader->SetBool("rteOutlineTeamColor", m_Settings.UnitOutlineTeamColor);
-	m_TonemapShader->SetVector3f("rteOutlineColor", glm::clamp(m_Settings.UnitOutlineColor, glm::vec3(0.0F), glm::vec3(1.0F)));
+	m_TonemapShader->SetFloat("rteOutlineOpacity", comicInk ? std::max(m_Settings.UnitOutline ? std::clamp(m_Settings.UnitOutlineOpacity, 0.0F, 1.0F) : 0.0F, 0.85F * comicInkStrength) : std::clamp(m_Settings.UnitOutlineOpacity, 0.0F, 1.0F));
+	m_TonemapShader->SetBool("rteOutlineTeamColor", m_Settings.UnitOutlineTeamColor && !comicInk);
+	m_TonemapShader->SetVector3f("rteOutlineColor", comicInk ? glm::vec3(0.02F) : glm::clamp(m_Settings.UnitOutlineColor, glm::vec3(0.0F), glm::vec3(1.0F)));
 	// The sides' colours, as the headlamps use them (Actor.cpp), and white for no side.
 	static const glm::vec3 outlineSideColors[5] = {{0.92F, 0.92F, 0.92F}, {1.0F, 0.41F, 0.33F}, {0.41F, 1.0F, 0.47F}, {0.43F, 0.65F, 1.0F}, {1.0F, 0.88F, 0.37F}};
 	for (int slot = 0; slot < 5; ++slot) {
