@@ -872,7 +872,7 @@ bool MOSRotating::ParticlePenetration(HitData& hd) {
 			AEmitter* pEntryWound = dynamic_cast<AEmitter*>(m_pEntryWound->Clone());
 			pEntryWound->SetInheritedRotAngleOffset(dir.GetAbsRadAngle() + c_PI);
 			float damageMultiplier = pEntryWound->HasNoSetDamageMultiplier() ? 1.0F : pEntryWound->GetDamageMultiplier();
-			pEntryWound->SetDamageMultiplier(damageMultiplier * hd.Body[HITOR]->WoundDamageMultiplier());
+			pEntryWound->SetDamageMultiplier(damageMultiplier * hd.Body[HITOR]->WoundDamageMultiplier() * WeaponUnitDamageFrom(hd.Body[HITOR]));
 			// Adjust position so that it looks like the hole is actually *on* the Hitee.
 			entryPos[dom] += increment[dom] * (pEntryWound->GetSpriteWidth() / 2);
 			RollWoundBleedOut(pEntryWound);
@@ -891,7 +891,7 @@ bool MOSRotating::ParticlePenetration(HitData& hd) {
 				exitPos[dom] -= increment[dom] * (pExitWound->GetSpriteWidth() / 2);
 				pExitWound->SetInheritedRotAngleOffset(dir.GetAbsRadAngle());
 				float damageMultiplier = pExitWound->HasNoSetDamageMultiplier() ? 1.0F : pExitWound->GetDamageMultiplier();
-				pExitWound->SetDamageMultiplier(damageMultiplier * hd.Body[HITOR]->WoundDamageMultiplier());
+				pExitWound->SetDamageMultiplier(damageMultiplier * hd.Body[HITOR]->WoundDamageMultiplier() * WeaponUnitDamageFrom(hd.Body[HITOR]));
 				RollWoundBleedOut(pExitWound);
 				AddWoundExt(pExitWound, exitPos + m_SpriteOffset, true, false, true);
 				pExitWound = 0;

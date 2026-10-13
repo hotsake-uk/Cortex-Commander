@@ -1504,6 +1504,17 @@ void DebugMan::SettingsGUI() {
 		if (Plain() && ToolUI::Button("Normal terrain damage")) {
 			g_SettingsMan.SetWeaponTerrainDamage(1.0F);
 		}
+		float unitDamage = g_SettingsMan.WeaponUnitDamage();
+		if (Slider("Weapon damage to units", &unitDamage, Normal{1.0F}, 0.1F, 20.0F, "%.2fx", ImGuiSliderFlags_Logarithmic)) {
+			g_SettingsMan.SetWeaponUnitDamage(unitDamage);
+		}
+		Tip("How much damage bullets, shrapnel and other weapon fire do to the units, vehicles and craft they hit, as a multiple of normal: the wounds they leave hurt and bleed that much more or less. Falls, fire, drowning and crushing are unchanged (the Unit toughness sliders scale everything). 1x is normal.");
+		Toggle("Weapon damage scales blowing apart", g_SettingsMan.WeaponUnitDamageGibs(), Normal{false}, [](bool gibs) { g_SettingsMan.SetWeaponUnitDamageGibs(gibs); });
+		Tip("Off, Weapon damage to units changes only health: a heavy volley still blows units apart or takes limbs off as before. On, it also changes how many wounds and how hard a blow it takes to do that: at 0.5x twice as many, at 2x half. Blows from anything count, not just weapons, though nearly all of them are.");
+		if (Plain() && ToolUI::Button("Normal unit damage")) {
+			g_SettingsMan.SetWeaponUnitDamage(1.0F);
+			g_SettingsMan.SetWeaponUnitDamageGibs(false);
+		}
 		Heading("Unit toughness");
 		{
 			struct ToughnessSlider {
