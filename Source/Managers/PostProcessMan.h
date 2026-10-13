@@ -16,6 +16,7 @@
 #include <mutex>
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 
 #define g_PostProcessMan PostProcessMan::Instance()
 
@@ -482,6 +483,33 @@ namespace RTE {
 		/// @param look The look (LightingSettings::LookHurt, LookFlash, LookWarm; any other is always allowed).
 		bool EventLookAllowed(int look) const;
 
+		/// Sets off a retro glitch burst (LightingSettings::RetroLayers::Glitch), strength 0 to 1, fading over about half a second of real time. From big blasts
+		/// when the layers' GlitchOnBlasts is on, and from Lua. Safe from any thread.
+		void KickRetroGlitch(float strength) {
+			double now = RealSeconds();
+			float current = GetRetroGlitchKick();
+			m_RetroGlitchKick.store(std::max(current, std::clamp(strength, 0.0F, 1.0F)));
+			m_RetroGlitchKickSeconds.store(now);
+		}
+
+		/// Gets how strong the glitch burst set off by KickRetroGlitch is now, 0 to 1.
+		float GetRetroGlitchKick() const {
+			double since = RealSeconds() - m_RetroGlitchKickSeconds.load();
+			return since < 0.0 || since > 1.0 ? 0.0F : m_RetroGlitchKick.load() * static_cast<float>(std::exp(-since * 5.0));
+		}
+
+		/// Gets the screen style in effect (LightingSettings::ScreenStyles), for Lua.
+		int GetScreenStyle() const { return m_LightingSettings.ScreenStyle; }
+
+		/// Sets the screen style (LightingSettings::ScreenStyles; anything else is Off), as the player's setting: a scenario or mod can switch the synthwave look on.
+		void SetScreenStyle(int style) { m_LightingSettings.ScreenStyle = style > LightingSettings::StyleOff && style < LightingSettings::StyleCount ? style : LightingSettings::StyleOff; }
+
+		/// Gets how strongly the screen style applies, 0 to 1.
+		float GetScreenStyleStrength() const { return m_LightingSettings.ScreenStyleStrength; }
+
+		/// Sets how strongly the screen style applies, 0 to 1.
+		void SetScreenStyleStrength(float strength) { m_LightingSettings.ScreenStyleStrength = std::clamp(strength, 0.0F, 1.0F); }
+
 		/// Gets the grade to draw with: the player's (or a script's look blend), with the pulses playing now on top, each scaled by strength.
 		/// @param playerGrade The grade the player set.
 		/// @param strength LightingSettings::EventLookStrength.
@@ -626,6 +654,11 @@ namespace RTE {
 		int m_LookBlendTo = 0;
 		float m_LookBlendT = 0.0F;
 		std::mutex m_EventLookMutex;
+		std::atomic<float> m_RetroGlitchKick{0.0F}; //!< The last glitch burst's strength (KickRetroGlitch).
+		std::atomic<double> m_RetroGlitchKickSeconds{-10.0}; //!< Real seconds it was set off.
+
+		/// Gets real seconds on a steady clock, for effects that play through pauses and hit-stops.
+		static double RealSeconds() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
 
 		/// How bright a bolt is this long after it struck: a sharp first stroke and a weaker echo, as the sky's flash.
 		static float LightningFlash(float seconds) { return seconds < 0.0F || seconds > c_LightningBoltSeconds ? 0.0F : 1.6F * std::exp(-seconds * 18.0F) + 0.9F * std::exp(-std::abs(seconds - 0.2F) * 25.0F); }

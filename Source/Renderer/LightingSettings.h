@@ -246,6 +246,86 @@ namespace RTE {
 		int CRTStyle = 0; //!< What the CRT effect (Scanlines sets how strong) looks like: 0 scanlines, as before; 1 an aperture grille; 2 a shadow mask; 3 scanlines that bright pixels bloom across.
 		float UpscaleSharpness = 1.0F; //!< How crisp the picture is when scaled up to the window: 1 even, sharp pixels as before, down to 0 plainly smoothed.
 		float Scanlines = 0.39F; //!< CRT style scanlines on the final image, 0 (off) to 1.
+
+		/// Screen styles: a whole retro look laid over everything (the battlefield and the HUD in game), each very unlike the others. A style is a set of
+		/// RetroLayers of its own; Off uses the player's own RetroLayers (all off unless they turned some on).
+		enum ScreenStyles {
+			StyleOff,
+			StyleSynthwave, //!< Neon: an Outrun sunset sky with a striped sun and a scrolling grid, pink and cyan glow, glowing edges, VHS tape and a curved CRT.
+			StyleCount
+		};
+		/// What a palette filter maps the picture's brightness onto.
+		enum RetroPalettes {
+			PaletteOff,
+			PaletteSynthwave, //!< Indigo, violet, hot magenta, cyan and white.
+			PaletteVaporwave, //!< Pastel lavender, pink and mint.
+			PaletteMiami, //!< Teal and coral.
+			PaletteGameBoy, //!< The four greens.
+			PaletteCGA, //!< Black, cyan, magenta and white.
+			PaletteSepia,
+			PaletteThermal, //!< A false-colour heat camera: black, blue, purple, red, orange, yellow, white.
+			PaletteNightVision, //!< Green and noisy.
+			PaletteCount
+		};
+		/// The retro filters one screen style (or the player's own, with no style) sets. All 0 is the plain picture.
+		struct RetroLayers {
+			int Palette = PaletteOff; //!< RetroPalettes.
+			float PaletteStrength = 0.0F; //!< How far the picture is remapped onto the palette, 0 to 1.
+			float NeonGlow = 0.0F; //!< Lower, stronger, wider bloom tinted pink and cyan, so lights, shots and blasts glow, 0 to 1.
+			float EdgeLines = 0.0F; //!< Lines drawn along the edges of terrain, units and buildings, 0 to 1.
+			bool InkEdges = false; //!< The lines are black ink (a comic look). Off: glowing neon, pink above to cyan below.
+			float RetroSky = 0.0F; //!< How fully the sky behind the terrain is replaced by the style's own sky, 0 to 1.
+			float GridSpeed = 1.0F; //!< How fast the style's sky grid scrolls towards the horizon, 0 to 3.
+			float VHS = 0.0F; //!< Video tape: colour bleeding sideways, a rolling tracking band, wobble and tape noise, 0 to 1.
+			float Glitch = 0.0F; //!< Now and then a short burst of blocks torn sideways and the colours split, 0 to 1.
+			bool GlitchOnBlasts = false; //!< Big explosions set off a glitch burst too.
+			float Curvature = 0.0F; //!< The picture bends like a CRT tube's glass, with darkened rounded corners, 0 to 1.
+			float CRT = 0.0F; //!< CRT scanlines at least this strong (in the CRT style chosen), 0 to 1.
+			float Posterize = 0.0F; //!< Fewer colour levels, down to four per channel at 1.
+			float Dither = 0.0F; //!< Ordered dithering across the colour levels, 0 to 1.
+			float Pixelate = 0.0F; //!< Chunkier pixels, up to 8 game pixels a block at 1.
+		};
+		/// Gets the layers a screen style comes with.
+		static RetroLayers StyleLayers(int style) {
+			RetroLayers layers;
+			switch (style) {
+				case StyleSynthwave:
+					layers.Palette = PaletteSynthwave;
+					layers.PaletteStrength = 0.55F;
+					layers.NeonGlow = 0.8F;
+					layers.EdgeLines = 0.6F;
+					layers.RetroSky = 1.0F;
+					layers.GridSpeed = 1.0F;
+					layers.VHS = 0.35F;
+					layers.Glitch = 0.25F;
+					layers.GlitchOnBlasts = true;
+					layers.Curvature = 0.4F;
+					layers.CRT = 0.45F;
+					break;
+				default:
+					break;
+			}
+			return layers;
+		}
+		int ScreenStyle = StyleOff; //!< ScreenStyles: the retro look over everything, or Off for the player's own Retro layers.
+		float ScreenStyleStrength = 1.0F; //!< How strongly the screen style applies, 0 to 1.
+		RetroLayers Retro; //!< The player's own retro filters, used with no screen style.
+		std::array<RetroLayers, StyleCount> StyleRetro = {StyleLayers(StyleOff), StyleLayers(StyleSynthwave)}; //!< Each screen style's layers, as the player tuned them.
+
+		/// Gets the retro layers in effect now: the screen style's faded by its strength, or the player's own.
+		RetroLayers ActiveRetro() const {
+			if (ScreenStyle <= StyleOff || ScreenStyle >= StyleCount) {
+				return Retro;
+			}
+			RetroLayers layers = StyleRetro[ScreenStyle];
+			float strength = ScreenStyleStrength < 0.0F ? 0.0F : (ScreenStyleStrength > 1.0F ? 1.0F : ScreenStyleStrength);
+			for (float* value: {&layers.PaletteStrength, &layers.NeonGlow, &layers.EdgeLines, &layers.RetroSky, &layers.VHS, &layers.Glitch, &layers.Curvature, &layers.CRT, &layers.Posterize, &layers.Dither, &layers.Pixelate}) {
+				*value *= strength;
+			}
+			return layers;
+		}
+		/// Gets the retro layers the settings edit now: the chosen screen style's, or the player's own with none.
+		RetroLayers& EditedRetro() { return ScreenStyle > StyleOff && ScreenStyle < StyleCount ? StyleRetro[ScreenStyle] : Retro; }
 		float Specular = 1.0F; //!< Strength of the highlights lights throw on shiny surfaces (metal, concrete, wet ground, water), 0 for none.
 		bool UnitShineLights = false; //!< Lights (headlamps, fire, muzzle flashes, any light that moves) throw highlights on units and other solid objects and brighten their edges facing them. Off by default: a unit's own headlamp washed it out white.
 		bool UnitShineLamps = true; //!< Steady scenery lamps do the same.
