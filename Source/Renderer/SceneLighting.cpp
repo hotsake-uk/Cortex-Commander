@@ -139,6 +139,7 @@ void SceneLighting::LoadShaders() {
 	m_PrecipitationShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/Precipitation.vert", "Base.rte/Shaders/Lighting/Precipitation.frag");
 	m_GodRaysShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/GodRays.frag");
 	m_DepthOfFieldShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/DepthOfField.frag");
+	m_RetroSceneShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RetroScene.frag");
 	m_GodRaysApplyShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/GodRaysApply.frag");
 	m_RainSplashShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RainSplash.frag");
 	m_WeatherEverywhereShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/WeatherEverywhere.frag");
@@ -3364,6 +3365,45 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		DrawFullscreen();
 	}
 
+	logStages.Next("Lighting: retro");
+	// A screen style's sky and the edge lines (LightingSettings::RetroLayers): on the lit scene, before bloom so the sun, the grid and neon lines glow.
+	const LightingSettings::RetroLayers retro = m_Settings.ActiveRetro();
+	if ((retro.RetroSky > 0.0F && sceneDepth) || retro.EdgeLines > 0.0F) {
+		TracyGpuZone("Retro");
+		if (m_RetroScene.Width != width || m_RetroScene.Height != height || !m_RetroScene.Texture) {
+			m_RetroScene.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+		}
+		glDisable(GL_BLEND);
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_RetroScene.Framebuffer);
+		glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		glViewport(0, 0, width, height);
+		float skyLevel = glm::dot(m_EffectiveSky, glm::vec3(0.2126F, 0.7152F, 0.0722F));
+		m_RetroSceneShader->Enable();
+		m_RetroSceneShader->SetInt("rteScene", 0);
+		m_RetroSceneShader->SetInt("rteSceneDepth", 1);
+		m_RetroSceneShader->SetVector2f("rteScreenSize", screenSize);
+		m_RetroSceneShader->SetVector2f("rteScreenOrigin", origin);
+		m_RetroSceneShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
+		m_RetroSceneShader->SetInt("rteStyle", m_Settings.ScreenStyle);
+		m_RetroSceneShader->SetFloat("rteSky", sceneDepth ? std::clamp(retro.RetroSky, 0.0F, 1.0F) : 0.0F);
+		m_RetroSceneShader->SetFloat("rteGridSpeed", std::clamp(retro.GridSpeed, 0.0F, 3.0F));
+		m_RetroSceneShader->SetFloat("rteDaylight", std::clamp(skyLevel, 0.0F, 1.0F) * m_NightDim);
+		m_RetroSceneShader->SetFloat("rteEdges", std::clamp(retro.EdgeLines, 0.0F, 1.0F));
+		m_RetroSceneShader->SetBool("rteInkEdges", retro.InkEdges);
+		m_RetroSceneShader->SetBool("rteHasDepth", sceneDepth != nullptr);
+		m_RetroSceneShader->SetFloat("rteBackgroundDepth", backgroundThresholdNDC * 0.5F + 0.5F);
+		auto retroDepthForZ = [](float z) { return ((2.0F * z - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth)) * 0.5F + 0.5F; };
+		m_RetroSceneShader->SetFloat("rteBackgroundNearDepth", retroDepthForZ(c_BackgroundDepth));
+		m_RetroSceneShader->SetFloat("rteBackgroundFarDepth", retroDepthForZ(c_BackgroundDepth + c_BackgroundDepthRange));
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, sceneDepth ? sceneDepth->GetTextureId() : 0);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_RetroScene.Texture);
+		DrawFullscreen();
+	}
+
 	logStages.Next("Lighting: depth of field");
 	// Depth of field and tilt-shift: the player's (in photo mode only, unless they said otherwise) or a script's, whichever blurs more.
 	{
@@ -3459,11 +3499,13 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 
 	logStages.Next("Lighting: bloom");
 	// Bloom.
-	if (m_Settings.BloomEnabled) {
+	// Neon glow (a screen style's) blooms from much dimmer light, and runs even with the player's bloom off.
+	const float neonGlow = std::clamp(retro.NeonGlow, 0.0F, 1.0F);
+	if (m_Settings.BloomEnabled || neonGlow > 0.0F) {
 		TracyGpuZone("Bloom");
 		m_BloomDownsampleShader->Enable();
 		m_BloomDownsampleShader->SetInt("rteSource", 0);
-		m_BloomDownsampleShader->SetFloat("rteThreshold", m_Settings.BloomThreshold);
+		m_BloomDownsampleShader->SetFloat("rteThreshold", glm::mix(m_Settings.BloomEnabled ? m_Settings.BloomThreshold : 1.5F, 0.55F, neonGlow));
 		m_BloomDownsampleShader->SetFloat("rteKnee", m_Settings.BloomKnee);
 		glActiveTexture(GL_TEXTURE0);
 		for (int mip = 0; mip < c_BloomMipCount; ++mip) {
@@ -3547,7 +3589,12 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			grade = g_PostProcessMan.GetEventGrade(grade, std::clamp(m_Settings.EventLookStrength, 0.0F, 2.0F), extra);
 		}
 	}
-	m_TonemapShader->SetFloat("rteBloomIntensity", m_Settings.BloomEnabled ? grade.BloomIntensity : 0.0F);
+	m_TonemapShader->SetFloat("rteBloomIntensity", (m_Settings.BloomEnabled ? grade.BloomIntensity : 0.0F) + neonGlow * 0.45F);
+	m_TonemapShader->SetFloat("rteNeonGlow", neonGlow);
+	m_TonemapShader->SetInt("rtePalette", std::clamp(retro.Palette, 0, static_cast<int>(LightingSettings::PaletteCount) - 1));
+	m_TonemapShader->SetFloat("rtePaletteStrength", retro.Palette > LightingSettings::PaletteOff ? std::clamp(retro.PaletteStrength, 0.0F, 1.0F) : 0.0F);
+	m_TonemapShader->SetFloat("rtePosterize", std::clamp(retro.Posterize, 0.0F, 1.0F));
+	m_TonemapShader->SetFloat("rteDither", std::clamp(retro.Dither, 0.0F, 1.0F));
 	// With lighting off, the image should be the classic one: no exposure, highlight compression, saturation or vignette (the player's own grade still applies).
 	m_TonemapShader->SetFloat("rteExposure", m_Settings.Enabled ? m_Settings.Exposure : 1.0F);
 	m_TonemapShader->SetFloat("rteShoulderStart", m_Settings.Enabled ? m_Settings.ShoulderStart : 1.0F);
