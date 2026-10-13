@@ -194,7 +194,7 @@ namespace SandboxDetail {
 				longest = std::max(longest, static_cast<int>(run.size()));
 			}
 			columns = std::clamp(columns, 1, std::max(longest, 1));
-			std::uniform_real_distribution<float> jitter(0.0F, 0.35F);
+			std::uniform_real_distribution<float> jitter(0.0F, 1.2F);
 			Place best;
 			float bestScore = -std::numeric_limits<float>::max();
 			for (int r = 0; r < static_cast<int>(survey.Runs.size()); ++r) {
@@ -341,9 +341,12 @@ namespace SandboxDetail {
 					spots.push_back(std::fmod(first + width * static_cast<float>(i) / static_cast<float>(count), width));
 				}
 			} else {
-				const float margin = std::max(150.0F, width * 0.08F);
+				// (How far in from the ends, by the seed: the same both ends, so neither team is nearer the middle.)
+				const float margin = std::max(150.0F, width * std::uniform_real_distribution<float>(0.04F, 0.22F)(random));
+				std::uniform_real_distribution<float> nudge(-width * 0.04F, width * 0.04F);
 				for (int i = 0; i < count; ++i) {
-					spots.push_back(count == 1 ? width * 0.5F : margin + (width - margin * 2.0F) * static_cast<float>(i) / static_cast<float>(count - 1));
+					const bool end = i == 0 || i == count - 1;
+					spots.push_back(count == 1 ? width * 0.5F : margin + (width - margin * 2.0F) * static_cast<float>(i) / static_cast<float>(count - 1) + (end ? 0.0F : nudge(random)));
 				}
 			}
 			return spots;
@@ -369,7 +372,7 @@ namespace SandboxDetail {
 				float Score;
 			};
 			std::vector<Candidate> candidates;
-			std::uniform_real_distribution<float> jitter(0.0F, 0.08F);
+			std::uniform_real_distribution<float> jitter(0.0F, 0.35F);
 			for (int r = 0; r < static_cast<int>(survey.Runs.size()); ++r) {
 				const std::vector<Ground>& run = survey.Runs[r];
 				const int length = static_cast<int>(run.size());
@@ -404,9 +407,10 @@ namespace SandboxDetail {
 				return Place();
 			}
 			std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) { return a.Score > b.Score; });
-			candidates.resize(std::min(candidates.size(), size_t(5)));
+			candidates.resize(std::min(candidates.size(), size_t(8)));
 			Place best = candidates.front().At;
 			float bestScore = std::numeric_limits<float>::max();
+			std::vector<Place> fair; //!< Those every team reaches with routes within c_FairRatio: one of them is picked at random, by the seed.
 			for (const Candidate& candidate: candidates) {
 				const Vector at = Standing(MiddleOf(survey, candidate.At));
 				float low = std::numeric_limits<float>::max();
@@ -421,11 +425,18 @@ namespace SandboxDetail {
 					low = std::min(low, cost);
 					high = std::max(high, cost);
 				}
-				const float score = static_cast<float>(missing) * 1000.0F + (low > 0.0F && low < std::numeric_limits<float>::max() ? high / low : 1.0F) - candidate.Score * 0.1F;
+				const float ratio = low > 0.0F && low < std::numeric_limits<float>::max() ? high / low : 1.0F;
+				const float score = static_cast<float>(missing) * 1000.0F + ratio - candidate.Score * 0.1F;
+				if (missing == 0 && ratio <= c_FairRatio) {
+					fair.push_back(candidate.At);
+				}
 				if (score < bestScore) {
 					bestScore = score;
 					best = candidate.At;
 				}
+			}
+			if (!fair.empty()) {
+				return fair[std::uniform_int_distribution<size_t>(0, fair.size() - 1)(random)];
 			}
 			return best;
 		}
@@ -495,8 +506,63 @@ namespace SandboxDetail {
 			}
 		}
 
+		/// The middle of a zone drawn as a polygon (its corners' average).
+		Vector CornersMiddle(const std::vector<Vector>& zone) {
+			Vector middle;
+			for (const Vector& corner: zone) {
+				middle += corner / static_cast<float>(std::max(zone.size(), size_t(1)));
+			}
+			return middle;
+		}
+
+		/// More spawn zones for each team, up to so many a team: round its base, nearer it than any enemy base, apart from every zone
+		/// already drawn, that the team can walk from to its base. Out in the open mostly, now and then in a cave or under cover.
+		void ExtraZones(Made& made, const Survey& survey, const std::vector<int>& sides, int perTeam, std::mt19937& random) {
+			perTeam = std::clamp(perTeam, 1, 4);
+			const float width = static_cast<float>(survey.Width);
+			for (int side: sides) {
+				std::vector<std::vector<Vector>>& zones = made.Setup.SpawnZones[side];
+				if (zones.empty() || static_cast<int>(zones.size()) >= perTeam) {
+					continue;
+				}
+				const Vector base = made.Bases[side];
+				float nearestEnemy = width;
+				for (int other: sides) {
+					if (other != side && !made.Bases[other].IsZero()) {
+						nearestEnemy = std::min(nearestEnemy, Apart(base, made.Bases[other]));
+					}
+				}
+				std::uniform_real_distribution<float> distance(250.0F, std::max(400.0F, std::min(nearestEnemy * 0.35F, 900.0F)));
+				for (int tries = 0; tries < 30 && static_cast<int>(zones.size()) < perTeam; ++tries) {
+					const float dir = std::uniform_int_distribution<int>(0, 1)(random) == 0 ? -1.0F : 1.0F;
+					float x = base.m_X + dir * distance(random);
+					if (!survey.Wraps) {
+						x = std::clamp(x, 0.0F, width);
+					}
+					const bool open = std::uniform_real_distribution<float>(0.0F, 1.0F)(random) > 0.25F;
+					const Place place = PlaceNear(survey, x, ColumnsFor(BaseWidth(made.Setup, side) * 0.7F), open, 250.0F, random);
+					if (!place.Valid()) {
+						continue;
+					}
+					const Vector at = Standing(MiddleOf(survey, place));
+					bool clear = std::none_of(made.Targets.begin(), made.Targets.end(), [&at](const Target& target) { return Apart(target.At, at) < 250.0F; });
+					for (int other = 0; other < c_Sides && clear; ++other) {
+						for (const std::vector<Vector>& zone: made.Setup.SpawnZones[other]) {
+							clear &= Apart(CornersMiddle(zone), at) > 180.0F;
+						}
+						if (other != side && !made.Bases[other].IsZero() && std::find(sides.begin(), sides.end(), other) != sides.end()) {
+							clear &= Apart(at, base) < Apart(at, made.Bases[other]) * 0.6F;
+						}
+					}
+					if (clear && RouteReachable(RouteCostFor(side, at, base))) {
+						zones.push_back(ZoneOver(survey, place, 80.0F));
+					}
+				}
+			}
+		}
+
 		/// One layout of the mode on the map, with a seed. The teams' bases first, then the mode's own.
-		Made LayOut(const BattleModeSettings& start, const Survey& survey, const std::vector<int>& sides, unsigned seed) {
+		Made LayOut(const BattleModeSettings& start, const Survey& survey, const std::vector<int>& sides, unsigned seed, int zonesPerTeam) {
 			std::mt19937 random(seed);
 			Made made;
 			BattleModeSettings& setup = made.Setup;
@@ -742,6 +808,7 @@ namespace SandboxDetail {
 						break;
 				}
 			}
+			ExtraZones(made, survey, sides, zonesPerTeam, random);
 			// Pickups, if the battle has them: spots along the way between the first two bases.
 			if (setup.Pickups && sides.size() >= 2) {
 				std::list<Vector> route;
@@ -829,7 +896,7 @@ namespace SandboxDetail {
 		}
 	} // namespace
 
-	bool LayoutBattle(BattleModeSettings& setup, unsigned seed, std::string& note) {
+	bool LayoutBattle(BattleModeSettings& setup, unsigned seed, int zonesPerTeam, std::string& note) {
 		if (setup.Mode == BattleMode::Custom) {
 			note = "Pick a mode first.";
 			return false;
@@ -867,7 +934,7 @@ namespace SandboxDetail {
 		Made best;
 		bool any = false;
 		for (int attempt = 0; attempt < c_Tries; ++attempt) {
-			Made made = LayOut(setup, survey, sides, seed * 7919U + static_cast<unsigned>(attempt));
+			Made made = LayOut(setup, survey, sides, seed * 7919U + static_cast<unsigned>(attempt), zonesPerTeam);
 			Judge(made, sides);
 			if (!any || made.Badness() < best.Badness()) {
 				best = std::move(made);
@@ -885,6 +952,7 @@ namespace SandboxDetail {
 
 	void BattleLayoutPanel(BattleModeSettings& setup, bool& changed) {
 		static int s_Seed = 1;
+		static int s_ZonesPerTeam = 1;
 		static std::string s_Note;
 		static std::string s_NoteScene;
 		Scene* scene = g_SceneMan.GetScene();
@@ -899,6 +967,9 @@ namespace SandboxDetail {
 		s_Seed = std::max(s_Seed, 0);
 		ImGui::SetItemTooltip("The same seed on the same map lays the same mode out the same way.");
 		ImGui::SameLine();
+		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 6.0F);
+		ImGui::SliderInt("Spawn zones##layoutZones", &s_ZonesPerTeam, 1, 4, s_ZonesPerTeam == 1 ? "1 a team" : "%d a team");
+		ImGui::SetItemTooltip("Spawn zones each team gets: its base, and more round it (nearer it than any enemy, mostly out in the open, now and then in a cave or under cover).");
 		const bool regenerate = ToolUI::Button("New seed##layoutDice");
 		ImGui::SetItemTooltip("A new seed, picked at random, and the mode laid out with it.");
 		if (regenerate) {
@@ -917,7 +988,7 @@ namespace SandboxDetail {
 			if (IsBattleTool(CurrentTool().Kind)) {
 				PutDownBattleTool();
 			}
-			if (LayoutBattle(setup, static_cast<unsigned>(s_Seed), s_Note)) {
+			if (LayoutBattle(setup, static_cast<unsigned>(s_Seed), s_ZonesPerTeam, s_Note)) {
 				for (int side = 0; side < c_Sides; ++side) {
 					if (setup.Plays[side]) {
 						s_BattleSetup[side].SpawnZones = setup.SpawnZones[side];
@@ -933,7 +1004,7 @@ namespace SandboxDetail {
 	}
 } // namespace SandboxDetail
 
-bool Sandbox::LayoutBattleMode(int mode, int seed) {
+bool Sandbox::LayoutBattleMode(int mode, int seed, int zonesPerTeam) {
 	using namespace SandboxDetail;
 	if (!InGame() || s_ModeRun.Running) {
 		return false;
@@ -941,7 +1012,7 @@ bool Sandbox::LayoutBattleMode(int mode, int seed) {
 	BattleModeSettings settings = s_ModeRun.Settings;
 	settings.Mode = static_cast<BattleMode>(std::clamp(mode, 0, static_cast<int>(BattleMode::Count) - 1));
 	std::string note;
-	if (!LayoutBattle(settings, static_cast<unsigned>(std::max(seed, 0)), note)) {
+	if (!LayoutBattle(settings, static_cast<unsigned>(std::max(seed, 0)), zonesPerTeam, note)) {
 		return false;
 	}
 	for (int side = 0; side < c_Sides; ++side) {

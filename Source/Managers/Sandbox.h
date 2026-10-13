@@ -176,8 +176,9 @@ namespace RTE {
 		/// positions, replacing what was drawn. Start it with SandboxBattleMode. Not while a mode's game is on.
 		/// @param mode As SandboxBattleMode's.
 		/// @param seed The same seed on the same map lays the mode out the same way.
+		/// @param zonesPerTeam Spawn zones each team gets, 1 to 4: its base, and more round it where the map has room.
 		/// @return Whether it was laid out.
-		static bool LayoutBattleMode(int mode, int seed);
+		static bool LayoutBattleMode(int mode, int seed, int zonesPerTeam);
 
 		/// Whether a battle mode's game is on (won or not yet): the pause menu shows its battle entries then (B-14).
 		static bool IsBattleModeRunning();
