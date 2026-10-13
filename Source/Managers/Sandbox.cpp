@@ -36,6 +36,13 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		s_Effects.clear();
 		return true;
 	}
+	if (toolName == "Remove blobs") {
+		Stroke stroke;
+		stroke.Kind = Tool::GooBlob;
+		stroke.Choice = 2;
+		s_Queue.push_back(stroke);
+		return true;
+	}
 	if (toolName == "Finish rope" || toolName == "Remove ropes") {
 		// The rope a script is putting down a point at a time ("Rope") finished, or every rope taken away.
 		Stroke stroke;
@@ -189,6 +196,10 @@ bool Sandbox::Do(const std::string& toolName, const Vector& position, int team, 
 		stroke.RopeAnchor = s_RopeAnchor;
 		s_Queue.push_back(stroke);
 		return true;
+	}
+	if (stroke.Kind == Tool::GooBlob) {
+		// The preset name is its kind ("Jelly"); none, the one picked in the window.
+		stroke.Material = SoftBodySim::FindType(presetName) >= 0 ? presetName : std::string(SoftBodySim::GetType(s_GooType).Name);
 	}
 	if (stroke.Kind == Tool::TerrainOther || stroke.Kind == Tool::Metal) {
 		// The material to paint is the preset name; none, the one chosen in the window.
@@ -2381,6 +2392,29 @@ void Sandbox::DrawGUI() {
 					}
 					ImGui::EndDisabled();
 					ImGui::SetItemTooltip("Puts slack, strength and tie strength back to the kind's own (slack 10%%, strength x1, ties unbreakable).");
+				}
+				ImGui::SeparatorText("Soft bodies");
+				ToolButtons({Tool::GooBlob});
+				ImGui::SameLine();
+				ImGui::BeginDisabled(SoftBodySim::GetCount() == 0);
+				if (ToolUI::Button("Remove all blobs")) {
+					Stroke stroke;
+					stroke.Kind = Tool::GooBlob;
+					stroke.Choice = 2;
+					s_Queue.push_back(stroke);
+				}
+				ImGui::EndDisabled();
+				ImGui::SetItemTooltip("Takes away every blob of goo, jelly and gel on the map.");
+				for (int type = 0; type < SoftBodySim::GetTypeCount(); ++type) {
+					if (type != 0) {
+						ImGui::SameLine();
+					}
+					const SoftBodySim::TypeInfo& info = SoftBodySim::GetType(type);
+					if (ToolUI::RadioButton(info.Name, s_GooType == type)) {
+						s_GooType = type;
+						TookTool(ToolIndex(Tool::GooBlob));
+					}
+					ImGui::SetItemTooltip("%s", info.About);
 				}
 				ImGui::SeparatorText("Terrain");
 				ToolButtons({Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::TreeTrunk, Tool::Concrete});

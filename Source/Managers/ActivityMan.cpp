@@ -2,6 +2,7 @@
 #include "TerrainFire.h"
 #include "TerrainCandle.h"
 #include "RopeSim.h"
+#include "SoftBodySim.h"
 #include "FluidSim.h"
 #include "TerrainCollapse.h"
 #include "TerrainGrazing.h"
@@ -189,6 +190,7 @@ bool ActivityMan::SaveCurrentGame(const std::string& fileName) {
 	writer->NewPropertyWithValue("TerrainFireState", TerrainFire::GetSaveState());
 	writer->NewPropertyWithValue("TerrainCandleState", TerrainCandle::GetSaveState());
 	writer->NewPropertyWithValue("RopeState", RopeSim::GetSaveState());
+	writer->NewPropertyWithValue("SoftBodyState", SoftBodySim::GetSaveState());
 	writer->NewPropertyWithValue("FlowingLiquidState", FluidSim::GetSaveState());
 	// The colony's buildings (the sandbox's): their units are saved with the scene, marked with the building they belong to.
 	if (std::string colony = Colony::GetSaveState(); !colony.empty()) {
@@ -624,6 +626,8 @@ bool ActivityMan::LoadAndLaunchGame(const std::string& fileName) {
 			TerrainCandle::SetPendingLoadState(reader.ReadPropValue());
 		} else if (propName == "RopeState") {
 			RopeSim::SetPendingLoadState(reader.ReadPropValue());
+		} else if (propName == "SoftBodyState") {
+			SoftBodySim::SetPendingLoadState(reader.ReadPropValue());
 		} else if (propName == "FlowingLiquidState") {
 			FluidSim::SetPendingLoadState(reader.ReadPropValue());
 		} else if (propName == "ColonyState") {

@@ -275,6 +275,8 @@ namespace SandboxDetail {
 				return "Click to put down a rope of the kind picked under Ropes: each click is a point it's tied at, to the unit, thing or loose falling piece of ground clicked (which it then follows and pulls on), else the ground there; a click in the air leaves it loose there. Right click, Enter or Escape finishes it. It swings and sags, is pulled taut by what's tied to it, and can be cut by bullets and blasts or burnt (the kinds that burn). Ctrl+Z takes the whole rope away.";
 			case Tool::RopeCut:
 				return "Click on a rope to cut it there.";
+			case Tool::GooBlob:
+				return "Click to drop a round blob of the kind picked under Soft bodies, as big as the brush. It falls, squashes, wobbles and rolls, and units can stand on it: it dents under them and throws them back up as it springs back. Shoot right through it, or blow a big bite out of it, and it splits in two; what is knocked out drips as slime.";
 			case Tool::Metal:
 				return "Paints the metal chosen under Metals: the bunkers' plating, or gold, silver, bronze, brass, copper and chrome, which catch the sun and lamplight in their own colour.";
 			default:
@@ -436,6 +438,10 @@ namespace SandboxDetail {
 			}
 			case Tool::RopeCut:
 				return {Icon::Cross, IM_COL32(230, 120, 100, 255)};
+			case Tool::GooBlob: {
+				const SoftBodySim::TypeInfo& type = SoftBodySim::GetType(s_GooType);
+				return {Icon::Drop, IM_COL32(type.R, type.G, type.B, 255)};
+			}
 			case Tool::Metal:
 				for (const PaintMetal& metal: c_PaintMetals) {
 					if (s_PaintMetal == metal.Material) {
@@ -5445,6 +5451,7 @@ namespace SandboxDetail {
 		    {"Paint", "Terrain", {Tool::Dig, Tool::Earth, Tool::Sand, Tool::Ice, Tool::Grass, Tool::Wood, Tool::TreeTrunk, Tool::Concrete, Tool::Stone, Tool::DenseEarth, Tool::GoldEarth, Tool::Metal, Tool::TerrainOther, Tool::CollapseArea, Tool::HoldGround, Tool::CopyArea}},
 		    {"Paint", "Plants", {Tool::Plants, Tool::Cacti, Tool::Mushrooms, Tool::Trees, Tool::GrowGrass, Tool::Candles}},
 		    {"Paint", "Ropes", {Tool::Rope, Tool::RopeCut}},
+		    {"Paint", "Soft bodies", {Tool::GooBlob}},
 		    {"Boom", "Blasts", {Tool::Grenade, Tool::BigBomb, Tool::Napalm, Tool::Lightning, Tool::Demolition, Tool::BunkerBuster, Tool::Meteor}},
 		    {"Boom", "Force", {Tool::ForceBlast, Tool::HugeForceBlast, Tool::Implosion, Tool::Updraft, Tool::GustRight, Tool::GustLeft, Tool::SmokeBomb, Tool::Fireworks}},
 		    {"Boom", "From the sky", {Tool::RocketStrike, Tool::RocketBarrage, Tool::CarpetBomb, Tool::Artillery, Tool::NapalmRain, Tool::OrbitalBeam, Tool::BoulderRain, Tool::CrashRocket, Tool::CrashDropship}},
@@ -5740,6 +5747,27 @@ namespace SandboxDetail {
 				s_Queue.push_back(stroke);
 				s_RopeDraft.clear();
 			}
+		}
+		// Soft bodies.
+		if (kind == Tool::GooBlob) {
+			for (int type = 0; type < SoftBodySim::GetTypeCount(); ++type) {
+				next();
+				const SoftBodySim::TypeInfo& info = SoftBodySim::GetType(type);
+				ImGui::PushID(type + 900);
+				if (BarChip(info.Name, s_GooType == type, IM_COL32(info.R, info.G, info.B, 255), nullptr, info.About) == 1) {
+					s_GooType = type;
+				}
+				ImGui::PopID();
+			}
+			wide();
+			ImGui::BeginDisabled(SoftBodySim::GetCount() == 0);
+			if (BarChip("Remove all blobs", false, IM_COL32(239, 106, 91, 255), nullptr, "Takes away every blob of goo, jelly and gel on the map.") == 1) {
+				Stroke stroke;
+				stroke.Kind = Tool::GooBlob;
+				stroke.Choice = 2;
+				s_Queue.push_back(stroke);
+			}
+			ImGui::EndDisabled();
 		}
 		// Copy area.
 		if (kind == Tool::CopyArea) {
@@ -6701,7 +6729,7 @@ namespace SandboxDetail {
 		static const Part parts[] = {
 		    {"Spawn", Icon::Person, ToolTheme::Text, "Spawn: units, squads dropped from orbit, brains and items"},
 		    {"Build", Icon::Wall, IM_COL32(170, 170, 165, 255), "Build: bunker pieces and background lights, placed straight into the world"},
-		    {"Paint", Icon::Drop, IM_COL32(90, 170, 240, 255), "Paint: liquids, fire and gas, loose and solid ground, plants and ropes"},
+		    {"Paint", Icon::Drop, IM_COL32(90, 170, 240, 255), "Paint: liquids, fire and gas, loose and solid ground, plants, ropes and soft bodies"},
 		    {"Boom", Icon::Bomb, IM_COL32(239, 106, 91, 255), "Boom: blasts, force, strikes from the sky"},
 		    {"Effects", Icon::Star, IM_COL32(255, 220, 120, 255), "Effects: lights and particle effects to put down"},
 		    {"Orders", Icon::Flag, IM_COL32(242, 182, 61, 255), "Orders: orders for whole sides"},

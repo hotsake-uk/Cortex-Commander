@@ -37,6 +37,7 @@
 #include "TDExplosive.h"
 #include "TerrainCollapse.h"
 #include "RopeSim.h"
+#include "SoftBodySim.h"
 #include "ActorFire.h"
 #include "TerrainFire.h"
 #include "WeatherLightning.h"
@@ -237,7 +238,9 @@ namespace SandboxDetail {
 		// Not tools, but queued the same way: appended, so the tools before keep their numbers.
 		SelectionAction, //!< Something done to the selected units (S-8): Count a SelectionDo, and Team the side for SelectionDo::ChangeSide.
 		CopyTake, //!< Copies the box from Position to Position2 to the clipboard (s_Clipboard); Choice 1 with the units wholly inside it.
-		PasteArea //!< Puts the clipboard down with its top left corner at Position, one step of the undo history; Choice 1 flipped left to right.
+		PasteArea, //!< Puts the clipboard down with its top left corner at Position, one step of the undo history; Choice 1 flipped left to right.
+		// Appended, so the tools before keep their numbers.
+		GooBlob //!< A click puts down a round blob (SoftBodySim) of the brush's size; Choice 2 takes every blob away. Material: its kind.
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -378,6 +381,7 @@ namespace SandboxDetail {
 	    {Tool::CollapseArea, "Make it fall", 0.0F, false},
 	    {Tool::Rope, "Rope", 0.0F, false},
 	    {Tool::RopeCut, "Cut rope", 0.0F, false},
+	    {Tool::GooBlob, "Goo blob", 0.0F, true},
 	    {Tool::ForceBlast, "Force blast", 0.0F, false},
 	    {Tool::HugeForceBlast, "Huge force blast", 0.0F, false},
 	    {Tool::Implosion, "Implosion", 0.0F, false},
@@ -1327,6 +1331,7 @@ namespace SandboxDetail {
 		s_RopeStrength = 1.0F;
 		s_RopeAnchor = 0.0F;
 	}
+	inline int s_GooType = 0; //!< What the Goo blob tool puts down (SoftBodySim::GetType).
 	inline std::vector<Vector> s_RopeDraft; //!< The window's: the points of the rope being put down, clicked so far (the line to the pointer is drawn from the last).
 	inline ImVec2 s_RopeRightStart; //!< Where the right button went down with the Rope tool in hand: let go about there, it finishes the rope.
 	inline bool s_RopeRightDown = false;

@@ -7,6 +7,7 @@
 #include "AirPressure.h"
 #include "MagicEffects.h"
 #include "RopeSim.h"
+#include "SoftBodySim.h"
 #include "TerrainCollapse.h"
 #include "TerrainTrees.h"
 #include "TerrainGrazing.h"
@@ -1641,6 +1642,7 @@ void SceneMan::AddAirBlast(const Vector& position, float energy) const {
 	AirPressure::Blast(position, energy);
 	// Ropes near it are thrown out as by any blast.
 	RopeSim::QueueBlast(position, std::clamp(std::sqrt(std::max(energy, 0.0F)) * 0.9F + 20.0F, 40.0F, 170.0F), energy);
+	SoftBodySim::QueueBlast(position, std::clamp(std::sqrt(std::max(energy, 0.0F)) * 0.9F + 20.0F, 40.0F, 170.0F), energy);
 }
 
 int SceneMan::AddRope(const std::string& type, const Vector& from, const Vector& to, float slack) const {
@@ -1661,6 +1663,18 @@ void SceneMan::CutRopes(const Vector& position, float radius) const {
 
 int SceneMan::GetRopeCount() const {
 	return RopeSim::GetCount();
+}
+
+void SceneMan::AddSoftBody(const std::string& type, const Vector& position, float radius) const {
+	SoftBodySim::QueueBlob(std::max(SoftBodySim::FindType(type), 0), position, radius, Vector());
+}
+
+void SceneMan::RemoveSoftBodies() const {
+	SoftBodySim::QueueClear();
+}
+
+int SceneMan::GetSoftBodyCount() const {
+	return SoftBodySim::GetCount();
 }
 
 int SceneMan::GetBurningUnitCount() const {

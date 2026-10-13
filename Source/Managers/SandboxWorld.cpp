@@ -3720,6 +3720,14 @@ namespace SandboxDetail {
 			case Tool::RopeCut:
 				RopeSim::QueueCut(at, 4.0F);
 				break;
+			case Tool::GooBlob:
+				if (stroke.Choice == 2) {
+					SoftBodySim::Clear();
+				} else {
+					int type = SoftBodySim::FindType(stroke.Material);
+					SoftBodySim::Create(type >= 0 ? type : s_GooType, at, static_cast<float>(stroke.Radius), Vector());
+				}
+				break;
 			case Tool::BattleTeam:
 			case Tool::BattleDefendPoint:
 			case Tool::BattleDropLine:
@@ -4239,6 +4247,8 @@ namespace SandboxDetail {
 			stroke.RopeAnchor = s_RopeAnchor;
 			stroke.Choice = 0;
 			s_RopeDraft.push_back(position);
+		} else if (kind == Tool::GooBlob) {
+			stroke.Material = SoftBodySim::GetType(s_GooType).Name;
 		}
 		stroke.Shape = IsTerrainBrush(kind) ? s_BrushShape : BrushShape::Circle;
 		stroke.Over = CurrentPaintOver();
