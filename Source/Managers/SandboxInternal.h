@@ -558,6 +558,7 @@ namespace SandboxDetail {
 		Idle,
 		DigGold,
 		BattleObjective,
+		Sentry, //!< The game's own sentry: stands guard, and fights, chases and falls back as the base game's AI does. (After the others, so saved order numbers keep their meaning.)
 		MoveTo
 	};
 	/// What the sandbox says about an order, by Order: one table for the names and for where each may be given, in place of name lists and
@@ -575,6 +576,7 @@ namespace SandboxDetail {
 	    {"Do nothing", true},
 	    {"Dig for gold", true},
 	    {"Battle objective", true},
+	    {"Sentry", true},
 	    {"Move to a place", false},
 	};
 	constexpr int c_OrderCount = static_cast<int>(sizeof(c_Orders) / sizeof(c_Orders[0]));
@@ -596,10 +598,10 @@ namespace SandboxDetail {
 		return true;
 	}(), "The orders a unit can be made with must come first in c_Orders.");
 	inline const char* OrderName(void*, int order) { return c_Orders[order].Name; }
-	/// An order number from outside (a script, a saved barracks) as an order a unit can be made with: anything else holds its position.
+	/// An order number from outside (a script, a saved barracks) as an order a unit can be made with: anything else stands sentry.
 	/// (Offered all eight, a barracks told "Dig for gold" or "Move to a place" trained units that did nothing.)
 	inline Order UnitOrder(int order) {
-		return order >= 0 && order < c_OrderCount && c_Orders[order].ForUnit ? static_cast<Order>(order) : Order::Hold;
+		return order >= 0 && order < c_OrderCount && c_Orders[order].ForUnit ? static_cast<Order>(order) : Order::Sentry;
 	}
 	// (What a unit was told to do is its standing order, Actor::GetStandingOrder: attack, a target to keep after, the enemy picked for it, a place
 	// to attack towards, a post to defend, hold. Once six number values under string keys here and in the AI scripts.)
@@ -1104,7 +1106,7 @@ namespace SandboxDetail {
 		int Radius = 0;
 		int Choice = 0; //!< Index into the list the tool spawns from.
 		int Team = 0;
-		Order Orders = Order::Hold;
+		Order Orders = Order::Sentry;
 		int Loadout = 0; //!< 0 faction default, 1 unarmed, 2+ a weapon from s_Weapons.
 		int Count = 1;
 		bool LitGrenade = false;
@@ -1427,10 +1429,10 @@ namespace SandboxDetail {
 	inline std::map<int, std::array<char, 64>> s_Filters;
 	inline char* FilterFor(Tool kind, bool pictures) { return s_Filters[static_cast<int>(kind) * 2 + (pictures ? 1 : 0)].data(); }
 	inline int s_Team = 1;
-	inline int s_Order = static_cast<int>(Order::Hold); //!< Units placed hold their position, firing back, until told otherwise.
+	inline int s_Order = static_cast<int>(Order::Sentry); //!< Units placed stand sentry, as the base game's do, until told otherwise.
 
 	/// The order in hand, chosen from the orders a unit can be made with (OrderInfo::ForUnit), for the unit and barracks tools. The side orders share
-	/// it: "Move to a place" chosen there shows here as "Hold position", which is what a unit placed with it does, and stays as it is unless a
+	/// it: "Move to a place" chosen there shows here as "Sentry", which is what a unit placed with it does, and stays as it is unless a
 	/// choice is made here. (Offered all eight, "Move to a place" was there to pick and did nothing a hold doesn't.)
 	inline bool UnitOrderCombo(const char* label) {
 		int choice = static_cast<int>(UnitOrder(s_Order));

@@ -3964,7 +3964,7 @@ namespace SandboxDetail {
 			menu.Choices(VehicleCrew, {"Stay in vehicle", "Free to get out", "Everyone out", "Passengers out"}, stayIn == 1 ? 0 : (stayIn == 0 ? 1 : -1));
 		}
 		menu.Heading("AI mode", Kind::State);
-		menu.Choices(AIMode, {"Sentry", "Hunt brains", "Dig for gold", "Rally point", "Do nothing"}, SelectedAIMode(), 3);
+		menu.Choices(AIMode, {"Sentry", "Hold position", "Hunt brains", "Dig for gold", "Rally point", "Do nothing"}, SelectedAIMode(), 3);
 		// (With animals among them: their own orders. Penned and Follow pick the mode to click out the pen, or the unit to follow, with.)
 		if (const int animals = SelectedAnimalOrder(); animals != -2) {
 			menu.Heading("Animals", Kind::State);
@@ -4068,11 +4068,11 @@ namespace SandboxDetail {
 					return false;
 				}
 				case AIMode: {
-					static const Order orders[] = {Order::Hold, Order::HuntBrains, Order::DigGold, Order::Rally, Order::Idle};
+					static const Order orders[] = {Order::Sentry, Order::Hold, Order::HuntBrains, Order::DigGold, Order::Rally, Order::Idle};
 					Stroke stroke;
 					stroke.Kind = Tool::OrderSelected;
 					stroke.Position = s_RingScenePoint;
-					stroke.Orders = orders[std::clamp(cell.Value, 0, 4)];
+					stroke.Orders = orders[std::clamp(cell.Value, 0, static_cast<int>(std::size(orders)) - 1)];
 					s_Queue.push_back(stroke);
 					break;
 				}
@@ -4178,37 +4178,37 @@ namespace SandboxDetail {
 			// The game's own AI modes for the units picked, as the pie menu offers them when playing a unit. Up until a click, since the button
 			// that held the first ring open has been let go.
 			// (With the two modes of RC-4, Defend at and Patrol, and the formations of RC-5.)
-			static const std::vector<RingItem> modes = {{"Sentry", IM_COL32(242, 182, 61, 255), "Eye"}, {"Patrol", IM_COL32(120, 200, 220, 255), "Cycle"}, {"Hunt brains", IM_COL32(239, 106, 91, 255), "Brain"}, {"Dig for gold", IM_COL32(230, 200, 80, 255), "Dig"}, {"Rally point", IM_COL32(180, 140, 240, 255), "Flag"}, {"Do nothing", IM_COL32(150, 150, 140, 255), "Blank"}, {"Defend at", c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)], "Reorient"}, {"Formation...", IM_COL32(110, 180, 250, 255), "SubPieMenu1"}, {"Breach", c_CommandModeColors[static_cast<int>(CommandMode::Breach)], "Dig"}, {"Build", c_CommandModeColors[static_cast<int>(CommandMode::Build)], "Wrench"}, {"Airlift", c_CommandModeColors[static_cast<int>(CommandMode::Airlift)], "Launch"}, {"Back", IM_COL32(110, 180, 250, 255), "Return"}};
-			static const Order orders[] = {Order::Hold, Order::Patrol, Order::HuntBrains, Order::DigGold, Order::Rally, Order::Idle};
+			static const std::vector<RingItem> modes = {{"Sentry", IM_COL32(242, 182, 61, 255), "Eye"}, {"Hold position", IM_COL32(200, 200, 190, 255), "Land"}, {"Patrol", IM_COL32(120, 200, 220, 255), "Cycle"}, {"Hunt brains", IM_COL32(239, 106, 91, 255), "Brain"}, {"Dig for gold", IM_COL32(230, 200, 80, 255), "Dig"}, {"Rally point", IM_COL32(180, 140, 240, 255), "Flag"}, {"Do nothing", IM_COL32(150, 150, 140, 255), "Blank"}, {"Defend at", c_CommandModeColors[static_cast<int>(CommandMode::DefendAt)], "Reorient"}, {"Formation...", IM_COL32(110, 180, 250, 255), "SubPieMenu1"}, {"Breach", c_CommandModeColors[static_cast<int>(CommandMode::Breach)], "Dig"}, {"Build", c_CommandModeColors[static_cast<int>(CommandMode::Build)], "Wrench"}, {"Airlift", c_CommandModeColors[static_cast<int>(CommandMode::Airlift)], "Launch"}, {"Back", IM_COL32(110, 180, 250, 255), "Return"}};
+			static const Order orders[] = {Order::Sentry, Order::Hold, Order::Patrol, Order::HuntBrains, Order::DigGold, Order::Rally, Order::Idle};
 			int picked = DrawRing(modes, -1, true);
 			if (picked == -2) {
 				return;
 			}
-			if (picked == 1) {
+			if (picked == 2) {
 				// Patrol: a route of points clicked out, as the Patrol mode makes them (RC-4), rather than the game's own pacing to and fro.
 				s_CommandMode = CommandMode::Patrol;
 				s_PatrolDraft.clear();
-			} else if (picked >= 0 && picked < 6) {
+			} else if (picked >= 0 && picked < 7) {
 				Stroke stroke;
 				stroke.Kind = Tool::OrderSelected;
 				stroke.Position = s_RingScenePoint;
 				stroke.Orders = orders[picked];
 				s_Queue.push_back(stroke);
-			} else if (picked == 6) {
-				s_CommandMode = CommandMode::DefendAt;
 			} else if (picked == 7) {
+				s_CommandMode = CommandMode::DefendAt;
+			} else if (picked == 8) {
 				s_RingOpen = true;
 				s_RingPage = 5;
-			} else if (picked == 8) {
+			} else if (picked == 9) {
 				// Breach: the clicks to come dig through to the point, then attack.
 				s_CommandMode = CommandMode::Breach;
-			} else if (picked == 9) {
+			} else if (picked == 10) {
 				// Build: the clicks to come put up the piece picked on the command row.
 				s_CommandMode = CommandMode::Build;
-			} else if (picked == 10) {
+			} else if (picked == 11) {
 				// Airlift: the click to come is where they're flown.
 				s_CommandMode = CommandMode::Airlift;
-			} else if (picked == 11) {
+			} else if (picked == 12) {
 				s_RingOpen = true;
 				s_RingPage = 2;
 			}

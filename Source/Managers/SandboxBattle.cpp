@@ -14,7 +14,7 @@ namespace SandboxDetail {
 		/// Sim updates in a second of game time.
 		float UpdatesPerSecond() { return 1.0F / std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F); }
 
-		/// The order a team's units are made with. Defend is held here, and given its post as the units are bought (DefendPlace).
+		/// The order a team's units are made with. Defend stands sentry here, and is given its post as the units are bought (DefendPlace).
 		Order OrderOf(BattleStyle style) {
 			switch (style) {
 				case BattleStyle::Attack:
@@ -24,7 +24,7 @@ namespace SandboxDetail {
 				case BattleStyle::Patrol:
 					return Order::Patrol;
 				default:
-					return Order::Hold;
+					return Order::Sentry;
 			}
 		}
 
@@ -893,7 +893,7 @@ namespace SandboxDetail {
 				choices.resize(24);
 			}
 			const bool playerTeam = BattlePlayerCommands(side);
-			const Order order = playerTeam || Defends(settings) ? Order::Hold : OrderOf(settings.Style);
+			const Order order = playerTeam || Defends(settings) ? Order::Sentry : OrderOf(settings.Style);
 			// What each costs as bought (with its loadout), and the cheapest. A wave's budget is at least the cheapest unit, and picks are made
 			// only from what still fits: a faction whose cheapest unit cost more than a wave may spend (heavy mechs, some mods) never filled one
 			// and was called broke before buying anything (review S7).

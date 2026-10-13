@@ -13,7 +13,7 @@ namespace SandboxDetail {
 		struct PlayerSquad {
 			std::string Name;
 			int Team = 0;
-			Order Orders = Order::Hold; //!< What the leader was told: a new leader is told the same.
+			Order Orders = Order::Sentry; //!< What the leader was told: a new leader is told the same.
 			std::vector<UnitRef> Members; //!< In the squad's order. (Not all out in the world yet if a craft brings them.)
 			std::vector<bool> Seen; //!< Each member: has been out in the world.
 			std::vector<bool> Joined; //!< Each member: has been set to follow the leader (or is the leader).

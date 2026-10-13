@@ -121,7 +121,7 @@ namespace RTE {
 			int Team = 0;
 			Vector Ground; //!< The middle of its plot, at ground level.
 			std::string Unit; //!< Barracks: the unit it trains.
-			int Orders = 1; //!< Barracks: the orders its units get (the sandbox's: 0 hold, 1 attack, 2 hunt brains, 3 patrol, 4 rally, 5 nothing).
+			int Orders = 1; //!< Barracks: the orders its units get (the sandbox's: 0 hold position, 1 attack, 2 hunt brains, 3 patrol, 4 rally, 5 nothing, ... 8 sentry).
 			int KeepAlive = 4; //!< Barracks: it trains until this many of its units are alive, and again as they fall. Woodcutter: how many staff it keeps.
 			bool Paused = false;
 			bool Paid = false; //!< Barracks: the unit in training has been paid for.

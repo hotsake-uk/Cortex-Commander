@@ -119,7 +119,7 @@ namespace RTE {
 		/// "Undo" to take back the newest paint stroke, placing click or drop (as Ctrl+Z), or "Redo" to make again what it took back (as Ctrl+Y). "Make it fall" and "Select" take a box of half-size count round the point.
 		/// @param position Where to use it.
 		/// @param team The side: 0 Red, 1 Green, 2 Blue, 3 Yellow (the game's team colours).
-		/// @param order For units and "Orders": 0 hold, 1 attack nearest enemy, 2 hunt brains, 3 patrol, 4 go to rally point, 5 do nothing, 6 dig for gold.
+		/// @param order For units and "Orders": 0 hold position, 1 attack nearest enemy, 2 hunt brains, 3 patrol, 4 go to rally point, 5 do nothing, 6 dig for gold, 7 battle objective, 8 sentry; anything else, sentry.
 		/// @param count Squad size for units, brush size for painting.
 		/// @param presetName What to spawn, for units, brains, items and structures. For "Drop squad", "Random units" or "Random favourites" drops random units.
 		/// @return Whether the tool and preset were found.
