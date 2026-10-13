@@ -77,6 +77,39 @@ namespace {
 	constexpr int c_LightingSettingsVersion = 2;
 	int s_ReadLightingSettingsVersion = 0; //!< Version of the lighting settings in the file being read, 0 when it has none.
 	bool s_ReadingStartupPreset = false; //!< Whether the preset loaded at start is being read, when the panel's settings for the moment are passed over.
+
+	/// The retro layer settings (LightingSettings::RetroLayers) that are floats, by the name they're saved under after their prefix.
+	const std::pair<const char*, float LightingSettings::RetroLayers::*> c_RetroFloatFields[] = {
+	    {"PaletteStrength", &LightingSettings::RetroLayers::PaletteStrength}, {"NeonGlow", &LightingSettings::RetroLayers::NeonGlow}, {"EdgeLines", &LightingSettings::RetroLayers::EdgeLines},
+	    {"Sky", &LightingSettings::RetroLayers::RetroSky}, {"GridSpeed", &LightingSettings::RetroLayers::GridSpeed}, {"VHS", &LightingSettings::RetroLayers::VHS},
+	    {"Glitch", &LightingSettings::RetroLayers::Glitch}, {"Curvature", &LightingSettings::RetroLayers::Curvature}, {"CRT", &LightingSettings::RetroLayers::CRT},
+	    {"Posterize", &LightingSettings::RetroLayers::Posterize}, {"Dither", &LightingSettings::RetroLayers::Dither}, {"Pixelate", &LightingSettings::RetroLayers::Pixelate}};
+
+	/// Reads one retro layer setting, saved as its prefix ("Retro" for the player's own, "Synthwave" and so on for a screen style's) and then field.
+	void ReadRetroField(LightingSettings::RetroLayers& layers, std::string_view field, const std::string& value) {
+		if (field == "Palette") {
+			layers.Palette = std::clamp(std::stoi(value), 0, static_cast<int>(LightingSettings::PaletteCount) - 1);
+		} else if (field == "InkEdges") {
+			layers.InkEdges = std::stoi(value) != 0;
+		} else if (field == "GlitchOnBlasts") {
+			layers.GlitchOnBlasts = std::stoi(value) != 0;
+		} else {
+			for (const auto& [name, member]: c_RetroFloatFields) {
+				if (field == name) {
+					layers.*member = std::clamp(std::stof(value), 0.0F, 3.0F);
+				}
+			}
+		}
+	}
+
+	void WriteRetroLayers(Writer& writer, const std::string& prefix, const LightingSettings::RetroLayers& layers) {
+		writer.NewPropertyWithValue(prefix + "Palette", layers.Palette);
+		writer.NewPropertyWithValue(prefix + "InkEdges", layers.InkEdges);
+		writer.NewPropertyWithValue(prefix + "GlitchOnBlasts", layers.GlitchOnBlasts);
+		for (const auto& [name, member]: c_RetroFloatFields) {
+			writer.NewPropertyWithValue(prefix + name, layers.*member);
+		}
+	}
 } // namespace
 
 const std::string SettingsMan::c_ClassName = "SettingsMan";
@@ -583,6 +616,38 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("LightingIndirect", { g_PostProcessMan.GetLightingSettings().IndirectLight = std::stof(reader.ReadPropValue()); });
 	MatchProperty("PostScanlines", { g_PostProcessMan.GetLightingSettings().Scanlines = std::stof(reader.ReadPropValue()); });
 	MatchProperty("CRTStyle", { g_PostProcessMan.GetLightingSettings().CRTStyle = std::clamp(std::stoi(reader.ReadPropValue()), 0, 3); });
+	MatchProperty("ScreenStyle", { g_PostProcessMan.SetScreenStyle(std::stoi(reader.ReadPropValue())); });
+	MatchProperty("ScreenStyleStrength", { g_PostProcessMan.SetScreenStyleStrength(std::stof(reader.ReadPropValue())); });
+	MatchProperty("RetroPalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Palette", reader.ReadPropValue()); });
+	MatchProperty("RetroInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "InkEdges", reader.ReadPropValue()); });
+	MatchProperty("RetroGlitchOnBlasts", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "GlitchOnBlasts", reader.ReadPropValue()); });
+	MatchProperty("RetroPaletteStrength", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "PaletteStrength", reader.ReadPropValue()); });
+	MatchProperty("RetroNeonGlow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "NeonGlow", reader.ReadPropValue()); });
+	MatchProperty("RetroEdgeLines", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "EdgeLines", reader.ReadPropValue()); });
+	MatchProperty("RetroSky", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Sky", reader.ReadPropValue()); });
+	MatchProperty("RetroGridSpeed", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "GridSpeed", reader.ReadPropValue()); });
+	MatchProperty("RetroVHS", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "VHS", reader.ReadPropValue()); });
+	MatchProperty("RetroGlitch", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Glitch", reader.ReadPropValue()); });
+	MatchProperty("RetroCurvature", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Curvature", reader.ReadPropValue()); });
+	MatchProperty("RetroCRT", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "CRT", reader.ReadPropValue()); });
+	MatchProperty("RetroPosterize", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Posterize", reader.ReadPropValue()); });
+	MatchProperty("RetroDither", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Dither", reader.ReadPropValue()); });
+	MatchProperty("RetroPixelate", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Pixelate", reader.ReadPropValue()); });
+	MatchProperty("SynthwavePalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Palette", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "InkEdges", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveGlitchOnBlasts", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "GlitchOnBlasts", reader.ReadPropValue()); });
+	MatchProperty("SynthwavePaletteStrength", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "PaletteStrength", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveNeonGlow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "NeonGlow", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveEdgeLines", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "EdgeLines", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveSky", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Sky", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveGridSpeed", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "GridSpeed", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveVHS", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "VHS", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveGlitch", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Glitch", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveCurvature", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Curvature", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveCRT", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "CRT", reader.ReadPropValue()); });
+	MatchProperty("SynthwavePosterize", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Posterize", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveDither", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Dither", reader.ReadPropValue()); });
+	MatchProperty("SynthwavePixelate", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Pixelate", reader.ReadPropValue()); });
 	MatchProperty("UpscaleSharpness", { g_PostProcessMan.GetLightingSettings().UpscaleSharpness = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("IntegerScaling", { g_WindowMan.SetIntegerScaling(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightingSpecular", { g_PostProcessMan.GetLightingSettings().Specular = std::stof(reader.ReadPropValue()); });
@@ -954,6 +1019,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("PassengersFireFromVehicles", { reader >> m_PassengersFireFromVehicles; });
 	MatchProperty("PathLineWeight", { reader >> m_PathTuning.LineWeight; m_PathTuning.LineWeight = std::clamp(m_PathTuning.LineWeight, 0.0F, 2.0F); });
 	MatchProperty("PathLineWeightByRisk", { reader >> m_PathTuning.LineWeightByRisk; });
+	MatchProperty("PathFullRiskLineWeight", { reader >> m_PathTuning.FullRiskLineWeight; m_PathTuning.FullRiskLineWeight = std::clamp(m_PathTuning.FullRiskLineWeight, 0.0F, 4.0F); });
 	MatchProperty("PathUpCost", { reader >> m_PathTuning.UpCost; m_PathTuning.UpCost = std::clamp(m_PathTuning.UpCost, 0.0F, 5.0F); });
 	MatchProperty("PathFlightCost", { reader >> m_PathTuning.FlightCostScale; m_PathTuning.FlightCostScale = std::clamp(m_PathTuning.FlightCostScale, 0.2F, 1.0F); });
 	MatchProperty("PathJumpHeightCost", { reader >> m_PathTuning.JumpHeightCost; m_PathTuning.JumpHeightCost = std::clamp(m_PathTuning.JumpHeightCost, 0.0F, 2.0F); });
@@ -1272,6 +1338,10 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("LightingRelief", lighting.Relief);
 	writer.NewPropertyWithValue("PostScanlines", lighting.Scanlines);
 	writer.NewPropertyWithValue("CRTStyle", lighting.CRTStyle);
+	writer.NewPropertyWithValue("ScreenStyle", lighting.ScreenStyle);
+	writer.NewPropertyWithValue("ScreenStyleStrength", lighting.ScreenStyleStrength);
+	WriteRetroLayers(writer, "Retro", lighting.Retro);
+	WriteRetroLayers(writer, "Synthwave", lighting.StyleRetro[LightingSettings::StyleSynthwave]);
 	writer.NewPropertyWithValue("UpscaleSharpness", lighting.UpscaleSharpness);
 	writer.NewPropertyWithValue("IntegerScaling", g_WindowMan.GetIntegerScaling());
 	writer.NewPropertyWithValue("LightingIndirect", lighting.IndirectLight);
@@ -1628,6 +1698,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("PassengersFireFromVehicles", m_PassengersFireFromVehicles);
 	writer.NewPropertyWithValue("PathLineWeight", m_PathTuning.LineWeight);
 	writer.NewPropertyWithValue("PathLineWeightByRisk", m_PathTuning.LineWeightByRisk);
+	writer.NewPropertyWithValue("PathFullRiskLineWeight", m_PathTuning.FullRiskLineWeight);
 	writer.NewPropertyWithValue("PathUpCost", m_PathTuning.UpCost);
 	writer.NewPropertyWithValue("PathFlightCost", m_PathTuning.FlightCostScale);
 	writer.NewPropertyWithValue("PathJumpHeightCost", m_PathTuning.JumpHeightCost);
