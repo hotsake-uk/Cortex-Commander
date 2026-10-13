@@ -72,6 +72,11 @@ namespace RTE {
 		/// Gets whether it is sat on the ground with its engines off, waiting for a pilot.
 		bool IsParked() const { return m_Parked; }
 
+		/// Takes a unit back as one called over to ride in it, on its way here: a saved game's, whose way here (this as its waypoint, then
+		/// where it is going) was saved with it, but not the ride it was called for, which starts again gathering (ActivityMan::RemapLoadedUniqueIDs).
+		/// @param unit The unit coming.
+		void AddLoadedRideRecruit(const Actor* unit);
+
 		/// Gets whether its engines are shut off where it has landed (a Land order, as a vehicle's handbrake): it stays down till sent anywhere
 		/// or flown.
 		bool IsEnginesOff() const { return m_EnginesOff; }

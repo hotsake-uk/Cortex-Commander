@@ -2,6 +2,7 @@
 
 #include <deque>
 #include <string>
+#include <unordered_map>
 
 namespace RTE {
 	class Actor;
@@ -104,6 +105,14 @@ namespace RTE {
 		/// Forgets the last game's sandbox state (orders, selection, effects, battle, colonies, the AI pause) and has the god view set up
 		/// afresh. Called by ActivityMan::StartActivity for every game it starts, before the game's own start-up.
 		static void OnActivityStarted();
+
+		/// Gets what the sandbox keeps of the game under way that a saved game needs and its units don't carry themselves (orders under way:
+		/// plans, patrols, drop-offs, guard posts...), as one line of text for ActivityMan::SaveCurrentGame.
+		static std::string GetSaveState();
+
+		/// Puts back what GetSaveState saved, once the loaded game's units are in the scene with their new unique IDs.
+		/// @param state The line GetSaveState made. @param newIDs The units' unique IDs, from those they were saved with to those they have now.
+		static void LoadSaveState(const std::string& state, const std::unordered_map<long, long>& newIDs);
 
 		/// Uses a sandbox tool from a script, as if clicked at a point (Lua: SandboxDo). Applied in the next sim update.
 		/// @param toolName The tool's name as shown in the window ("Units", "Brain", "Item", "Structure", "Fire", "Water", "Lightning", "Rally point", "Take control", "Remove"...), "Orders" to order a whole side,

@@ -84,6 +84,27 @@ namespace SandboxDetail {
 
 	void ForgetBuilds() { s_Sites.clear(); }
 
+	void SaveBuilds(std::ostream& out) {
+		out << ' ' << s_Sites.size();
+		for (const Site& site: s_Sites) {
+			out << ' ' << site.Piece << ' ' << site.At.m_X << ' ' << site.At.m_Y << ' ' << site.Team << ' ' << site.Builder.ID << ' ' << site.Done << ' ' << site.Paid << ' ' << site.Started;
+		}
+	}
+
+	void LoadBuilds(std::istream& in, const LoadedIDs& ids) {
+		size_t count = 0;
+		in >> count;
+		for (size_t i = 0; i < count && in; ++i) {
+			Site site;
+			long builder = 0;
+			in >> site.Piece >> site.At.m_X >> site.At.m_Y >> site.Team >> builder >> site.Done >> site.Paid >> site.Started;
+			site.Builder = ids.Ref(builder);
+			if (site.Builder.Unit) {
+				s_Sites.push_back(site);
+			}
+		}
+	}
+
 	Actor* BuilderFor(const std::vector<Actor*>& units, const Vector& point) {
 		Actor* best = nullptr;
 		for (Actor* unit: units) {

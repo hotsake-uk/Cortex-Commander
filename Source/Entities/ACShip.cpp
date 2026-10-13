@@ -1458,6 +1458,18 @@ bool ACShip::RiderTakesControls() {
 	return false;
 }
 
+void ACShip::AddLoadedRideRecruit(const Actor* unit) {
+	if (m_RideStage == RideStage::None) {
+		m_RideGoal = unit->GetLastAIWaypoint();
+		m_RideTeam = unit->GetTeam();
+		m_RideHealth = GetHealth();
+		m_RideWaitStarted = RiderCount() > 0;
+		m_RideWaitTimer.Reset();
+		SetRideStage(RideStage::Gathering);
+	}
+	m_RideRecruits.push_back({unit->GetUniqueID(), Timer()});
+}
+
 void ACShip::SetRideStage(RideStage stage) {
 	m_RideStage = stage;
 	m_RideStageTimer.Reset();

@@ -42,7 +42,9 @@
 #include "tracy/Tracy.hpp"
 
 #include <cmath>
+#include <functional>
 #include <iomanip>
+#include <sstream>
 
 #include "SDL3/SDL_surface.h"
 #include <SDL3_image/SDL_image.h>
@@ -192,6 +194,8 @@ bool ActivityMan::SaveCurrentGame(const std::string& fileName) {
 		writer->NewPropertyWithValue("ColonyState", colony);
 	}
 	writer->NewPropertyWithValue("HoldZones", TerrainCollapse::GetHoldZonesSaveState());
+	// The sandbox's orders under way (plans, patrols, drop-offs, guard posts...), kept by the sandbox, not on the units.
+	writer->NewPropertyWithValue("SandboxState", Sandbox::GetSaveState());
 	// The sim time saved at, so the times units keep in number values (ClubbedAt, AIContactMS...) can be moved onto the loaded game's clock.
 	writer->NewPropertyWithValue("SavedSimTimeMS", static_cast<double>(g_TimerMan.GetSimTimeMS()));
 
@@ -302,6 +306,7 @@ std::string ActivityMan::s_PinsOfLoadedGame;
 bool ActivityMan::s_StartingSavedGame = false;
 std::string ActivityMan::s_ColonyOfLoadedGame;
 double ActivityMan::s_SimTimeOfLoadedGame = -1.0;
+std::string ActivityMan::s_SandboxOfLoadedGame;
 
 namespace {
 	/// The number values on a unit that hold another unit's unique ID: an AI's target, the one its medic tends, a creature's prey, a squad's
@@ -346,8 +351,57 @@ namespace {
 	/// what pointed at a unit by its old ID (an attack order's target, an AI's) is pointed at its new one, or let go of if it wasn't saved.
 	/// Without this an old ID could match a different unit in the new game, as the IDs count from 1 again. And the units' number values that
 	/// were only good in the game saved are fixed up: times moved onto this game's clock, tags of what wasn't saved taken off.
+	/// A loaded unit's waypoints made units again where they were (c_SavedUnitWaypointsKey, Scene::SaveSceneObject): it was saved with
+	/// every waypoint as a place, and which of them were units by their old IDs. Back in a squad if it was one's follower; and taken back
+	/// as called over to ride by the vehicle or ship it was on its way to, if it was going on from there.
+	void RestoreUnitWaypoints(Actor* unit, const std::function<long(long)>& remapped) {
+		std::istringstream saved(unit->GetStringValue(c_SavedUnitWaypointsKey));
+		unit->RemoveStringValue(c_SavedUnitWaypointsKey);
+		int count = 0;
+		std::string mode;
+		saved >> count >> mode;
+		std::unordered_map<int, Actor*> units;
+		for (std::string entry; saved >> entry;) {
+			const size_t colon = entry.find(':');
+			if (colon == std::string::npos) {
+				continue;
+			}
+			const long newID = remapped(std::atol(entry.c_str() + colon + 1));
+			Actor* waypointUnit = newID != 0 ? dynamic_cast<Actor*>(g_MovableMan.FindObjectByUniqueID(newID)) : nullptr;
+			// (Only one out in the world can be gone to: one seated in a vehicle stays a place.)
+			if (waypointUnit && g_MovableMan.ValidMO(waypointUnit)) {
+				units[std::atoi(entry.c_str())] = waypointUnit;
+			}
+		}
+		std::vector<Vector> places;
+		for (const auto& [place, object]: unit->GetWaypointList()) {
+			places.push_back(place);
+		}
+		if (units.empty() || static_cast<int>(places.size()) != count) {
+			return;
+		}
+		unit->ClearAIWaypoints();
+		for (int i = 0; i < count; ++i) {
+			if (auto found = units.find(i); found != units.end()) {
+				unit->AddAIMOWaypoint(found->second);
+			} else {
+				unit->AddAISceneWaypoint(places[i]);
+			}
+		}
+		Actor* first = units.count(0) ? units[0] : nullptr;
+		unit->SetAIMode(mode == "squad" && first ? Actor::AIMODE_SQUAD : Actor::AIMODE_GOTO);
+		if (first && count > 1 && first->GetTeam() == unit->GetTeam()) {
+			if (AVehicle* vehicle = dynamic_cast<AVehicle*>(first)) {
+				vehicle->AddLoadedRecruit(unit);
+			} else if (ACShip* ship = dynamic_cast<ACShip*>(first)) {
+				ship->AddLoadedRideRecruit(unit);
+			}
+		}
+	}
+
 	/// @param savedSimTimeMS The sim time the game was saved at, or below 0 if the save doesn't say.
-	void RemapLoadedUniqueIDs(double savedSimTimeMS) {
+	/// @return The units' unique IDs, from those they were saved with to those they have now.
+	std::unordered_map<long, long> RemapLoadedUniqueIDs(double savedSimTimeMS) {
 		std::list<SceneObject*> placed;
 		g_MovableMan.GetAllActors(false, placed);
 		std::vector<Actor*> units;
@@ -395,7 +449,11 @@ namespace {
 					unit->RemoveNumberValue(key);
 				}
 			}
+			if (unit->StringValueExists(c_SavedUnitWaypointsKey)) {
+				RestoreUnitWaypoints(unit, remapped);
+			}
 		}
+		return newIDs;
 	}
 } // namespace
 
@@ -501,6 +559,7 @@ bool ActivityMan::LoadAndLaunchGame(const std::string& fileName) {
 	// (A save from before hold zones had none: the loaded game starts with none, not those of the game played before.)
 	TerrainCollapse::SetHoldZonesLoadState(std::string());
 	s_SimTimeOfLoadedGame = -1.0;
+	s_SandboxOfLoadedGame.clear();
 	while (reader.NextProperty()) {
 		std::string propName = reader.ReadPropName();
 		if (propName == "Activity") {
@@ -527,6 +586,8 @@ bool ActivityMan::LoadAndLaunchGame(const std::string& fileName) {
 			TerrainCollapse::SetHoldZonesLoadState(reader.ReadPropValue());
 		} else if (propName == "SandboxPins") {
 			s_PinsOfLoadedGame = reader.ReadPropValue();
+		} else if (propName == "SandboxState") {
+			s_SandboxOfLoadedGame = reader.ReadPropValue();
 		} else if (propName == "SavedSimTimeMS") {
 			reader >> s_SimTimeOfLoadedGame;
 		}
@@ -656,10 +717,12 @@ int ActivityMan::StartActivity(Activity* activity) {
 	int error = m_Activity->Start();
 	// (A saved game's units are in the scene now, with new IDs.)
 	if (error >= 0 && s_StartingSavedGame) {
-		RemapLoadedUniqueIDs(s_SimTimeOfLoadedGame);
+		const std::unordered_map<long, long> newIDs = RemapLoadedUniqueIDs(s_SimTimeOfLoadedGame);
 		Colony::LoadSaveState(s_ColonyOfLoadedGame);
+		Sandbox::LoadSaveState(s_SandboxOfLoadedGame, newIDs);
 	}
 	s_ColonyOfLoadedGame.clear();
+	s_SandboxOfLoadedGame.clear();
 
 	if (error >= 0)
 		g_ConsoleMan.PrintString("SYSTEM: Activity \"" + m_Activity->GetPresetName() + "\" was successfully started");

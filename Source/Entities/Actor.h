@@ -40,6 +40,7 @@ namespace RTE {
 #define AILINEDOTSPACING 16
 
 	constexpr float c_StimSpeedMultiplier = 1.5F; //!< How much faster a unit stimmed by a powerup runs (Actor::IsStimmed).
+	constexpr const char* c_SavedUnitWaypointsKey = "SavedUnitWaypoints"; //!< The string value a saved game's unit keeps which of its waypoints were units in, till it is loaded: "count mode index:ID..." (Scene::SaveSceneObject, ActivityMan::RemapLoadedUniqueIDs).
 	constexpr const char* c_SavedUniqueIDKey = "SavedUniqueID"; //!< The number value a saved game's unit keeps its unique ID from when saved in, till it is loaded (ActivityMan::RemapLoadedUniqueIDs).
 
 	/// A sprite movable object that is autonomous.

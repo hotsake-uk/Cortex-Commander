@@ -5,6 +5,8 @@
 #include "Weather.h"
 #include "TerrainCandle.h"
 #include "ZeroGravity.h"
+#include <iomanip>
+#include <sstream>
 
 bool Sandbox::s_Open = false;
 
@@ -2730,6 +2732,54 @@ void Sandbox::OnActivityStarted() {
 	// (And clicks queued in the last game, not yet applied: they were applied to this one.)
 	s_Queue.clear();
 	s_GodViewPending = true;
+}
+
+std::string Sandbox::GetSaveState() {
+	// Sections, each a name and what it holds, so a section added later is skipped by a game that doesn't know it and an older save just
+	// lacks it. Numbers in full, as the rest of the save is.
+	std::ostringstream state;
+	state << std::fixed << std::setprecision(6);
+	state << 1 << " orders";
+	SaveOrders(state);
+	state << " squads";
+	SavePlayerSquads(state);
+	state << " airlifts";
+	SaveAirlifts(state);
+	state << " builds";
+	SaveBuilds(state);
+	state << " breaches";
+	SaveBreaches(state);
+	state << " end";
+	return state.str();
+}
+
+void Sandbox::LoadSaveState(const std::string& state, const std::unordered_map<long, long>& newIDs) {
+	if (state.empty()) {
+		return;
+	}
+	std::istringstream stream(state);
+	int version = 0;
+	stream >> version;
+	if (version != 1) {
+		return;
+	}
+	const LoadedIDs ids{newIDs};
+	std::string section;
+	while (stream >> section) {
+		if (section == "orders") {
+			LoadOrders(stream, ids);
+		} else if (section == "squads") {
+			LoadPlayerSquads(stream, ids);
+		} else if (section == "airlifts") {
+			LoadAirlifts(stream, ids);
+		} else if (section == "builds") {
+			LoadBuilds(stream, ids);
+		} else if (section == "breaches") {
+			LoadBreaches(stream, ids);
+		} else {
+			break;
+		}
+	}
 }
 
 void Sandbox::Update() {
