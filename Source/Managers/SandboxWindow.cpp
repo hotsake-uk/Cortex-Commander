@@ -3531,9 +3531,13 @@ namespace SandboxDetail {
 				const bool afford = !paid || (team >= 0 && team < c_Sides && s_CommandPoints[team].Points >= static_cast<float>(piece.Cost));
 				label = !builder ? std::string("Build: none of the selected units carries a Constructor") : std::string("Build ") + piece.Name + " here" + (paid ? " for " + std::to_string(piece.Cost) + " points" + (afford ? "" : " (not enough)") : std::string()) + ": " + builder->GetPresetName() + " builds it, " + std::to_string(piece.Seconds) + " s";
 			} else if (mode == CommandMode::Dropoff) {
-				// Drop off: where the vehicles stop and their passengers get out.
+				// Drop off: where the vehicles stop and their passengers get out; with a flying ship among them, the drop-off ring round it,
+				// which its passengers start jumping out in as soon as it's low enough.
 				const ImU32 color = c_CommandModeColors[static_cast<int>(CommandMode::Dropoff)];
 				crosshair(g_SceneMan.MovePointToGround(point, 0.0F, 4), color, pixel * 6.0F);
+				if (std::any_of(units.begin(), units.end(), [](const Actor* unit) { return dynamic_cast<const ACShip*>(unit) != nullptr; })) {
+					drawList->AddCircle(ToScreen(DropRingCentre(point)), g_SettingsMan.AIShipRideDropRing() / scale, (color & 0x00FFFFFF) | (170u << IM_COL32_A_SHIFT), 96, pixel * 1.5F);
+				}
 				int vehicles = 0;
 				int passengers = 0;
 				for (const Actor* unit: units) {
@@ -4826,6 +4830,21 @@ namespace SandboxDetail {
 				}
 			}
 		}
+		// The drop-off ring of each flying ship on its way to drop off (not to land), selected or not: its passengers jump out as soon as it is
+		// inside the ring and low enough.
+		{
+			const ImU32 ringColor = (c_CommandModeColors[static_cast<int>(CommandMode::Dropoff)] & 0x00FFFFFF) | (150u << IM_COL32_A_SHIFT);
+			const float ringRadius = g_SettingsMan.AIShipRideDropRing() / ScenePixelsPerWindowPixel();
+			for (const auto& [id, dropoff]: s_Dropoffs) {
+				const Actor* unit = GetRef(dropoff.Unit);
+				if (dropoff.StayDown || !dynamic_cast<const ACShip*>(unit) || HiddenFromCommander(unit)) {
+					continue;
+				}
+				const ImVec2 centre = ToScreen(DropRingCentre(dropoff.Place));
+				drawList->AddCircle(centre, ringRadius, ringColor, 96, 1.5F);
+				drawList->AddCircleFilled(centre, 3.0F, ringColor);
+			}
+		}
 		// The patrol route being clicked out (RC-4): its points joined up, and on to the pointer.
 		if (!s_PatrolDraft.empty() && s_CommandMode == CommandMode::Patrol && CurrentTool().Kind == Tool::Command) {
 			ImU32 color = c_CommandModeColors[static_cast<int>(CommandMode::Patrol)];
@@ -4901,9 +4920,14 @@ namespace SandboxDetail {
 				const Actor* target = GetRef(step.Target);
 				return target ? target->GetPos() : step.Place;
 			};
-			auto spread = [drawList, planScale](const PlanStep& step, ImVec2 at, ImU32 color) {
+			const bool isShip = dynamic_cast<const ACShip*>(unit) != nullptr;
+			auto spread = [drawList, planScale, isShip](const PlanStep& step, ImVec2 at, ImU32 color) {
 				if (step.Kind == PlanKind::Suppress && step.Radius > 0) {
 					drawList->AddCircle(at, static_cast<float>(step.Radius) / planScale, (color & 0x00FFFFFF) | (140u << IM_COL32_A_SHIFT), 0, 1.5F);
+				}
+				// (A ship's drop-off still to come: its drop-off ring, round the ground under the place.)
+				if (step.Kind == PlanKind::Dropoff && isShip) {
+					drawList->AddCircle(ToScreen(DropRingCentre(step.Place)), g_SettingsMan.AIShipRideDropRing() / planScale, (color & 0x00FFFFFF) | (140u << IM_COL32_A_SHIFT), 96, 1.5F);
 				}
 			};
 			std::string queue;

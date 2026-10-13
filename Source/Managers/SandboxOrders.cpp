@@ -2150,6 +2150,18 @@ namespace SandboxDetail {
 		dropoff.StayDown = stayDown;
 	}
 
+	Vector DropRingCentre(const Vector& place) {
+		return g_SceneMan.MovePointToGround(place, 0.0F, 4);
+	}
+
+	bool ReadyToDropOff(ACShip* ship, const Vector& place) {
+		// (The same ring and height as a ship giving AI units a ride lets them out at: ACShip::UpdateAIRides.)
+		const float ring = g_SettingsMan.AIShipRideDropRing();
+		const float radius = ship->GetRadius();
+		const Vector toPlace = g_SceneMan.ShortestDistance(ship->GetPos(), DropRingCentre(place), g_SceneMan.SceneWrapsX());
+		return std::abs(toPlace.m_X) < ring && std::abs(toPlace.m_Y) < ring + radius * 2.0F && ship->GetAltitude(1000, 4) < radius * 1.5F + 60.0F;
+	}
+
 	void UpdateDropoffs() {
 		if (s_Dropoffs.empty() || g_TimerMan.GetSimUpdateCount() % 10 != 6) {
 			return;
@@ -2182,6 +2194,14 @@ namespace SandboxDetail {
 			if (!ship) {
 				return true;
 			}
+			// Dropping off, with anyone to let out: as soon as it's inside the drop-off ring and low enough, they jump out, with no
+			// settling over the spot, and it holds where it is for orders.
+			if (!dropoff.StayDown && ship->GetCrewCount() > (ship->HasPilot() ? 1 : 0) && ReadyToDropOff(ship, dropoff.Place)) {
+				const Vector place = ship->GetPos();
+				EveryoneOut(ship, true);
+				ship->FlyRouteTo(place);
+				return true;
+			}
 			if (dropoff.Stage == 0) {
 				if (ship->GetAIMode() == Actor::AIMODE_GOTO) {
 					return false;
@@ -2200,10 +2220,10 @@ namespace SandboxDetail {
 				}
 				return false;
 			}
-			// Dropping off: once hovering low over the place (or as near as it gets), they jump out, and it holds there for orders.
+			// Dropping off, come down to hover low over the place: once there (or as near as it gets), they jump out, and it holds there for orders.
 			if (!dropoff.StayDown) {
 				const bool over = g_SceneMan.ShortestDistance(ship->GetPos(), dropoff.Hover, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(24.0F) && ship->GetVel().MagnitudeIsLessThan(2.0F);
-				if (!over && seconds < 8.0F) {
+				if (!over && seconds < 6.0F) {
 					return false;
 				}
 				const Vector place = ship->GetPos();

@@ -2875,6 +2875,11 @@ namespace SandboxDetail {
 	bool SelectionHasShip();
 	/// Moves the drop-offs under way along. Once a sim update.
 	void UpdateDropoffs();
+	/// Where a flying ship's drop-off ring is centred for a drop-off at a place: the ground under it.
+	Vector DropRingCentre(const Vector& place);
+	/// Whether a flying ship is inside the drop-off ring ("Ship drop-off ring", as for AI ship rides) round a drop-off at a place, and low
+	/// enough there for its passengers to jump out without a long fall (about a hull and a half off the ground).
+	bool ReadyToDropOff(ACShip* ship, const Vector& place);
 	int SelectedRule(bool weapons);
 	int SelectedAIMode();
 	void QueueRule(bool weapons, int rule);

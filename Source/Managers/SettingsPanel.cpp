@@ -1736,7 +1736,7 @@ void DebugMan::SettingsGUI() {
 			if (Slider("Ship drop-off ring", &dropRing, Normal{150.0F}, 30.0F, 1000.0F, "%.0f px", ImGuiSliderFlags_Logarithmic)) {
 				g_SettingsMan.SetAIShipRideDropRing(dropRing);
 			}
-			Tip("How far round the place its riders are going a ship lets them out: they start jumping as soon as it flies into this ring, low enough to land safely (within about a hull's height and a half of the ground). Higher up inside the ring, it comes down first. 150 px, as the game comes.");
+			Tip("How far round the place its riders are going a ship lets them out: they start jumping as soon as it flies into this ring, low enough to land safely (within about a hull's height and a half of the ground). Higher up inside the ring, it comes down first. The same ring for a ship given the Drop off order, drawn round the place as you give it and while the ship is on its way. 150 px, as the game comes.");
 		}
 		Heading("Take cover order");
 		Toggle("Dig a foxhole when there's no cover", g_SettingsMan.AICoverDigs(), [](bool on) { g_SettingsMan.SetAICoverDigs(on); });
