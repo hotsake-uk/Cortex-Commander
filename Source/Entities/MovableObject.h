@@ -279,6 +279,10 @@ namespace RTE {
 		/// A gib limit (wounds, impulse or joint strength) made tougher by GibToughness. A limit of 0 or less, meaning none, is left as it is.
 		float ToughenedGibLimit(float limit) const { return limit > 0.0F ? limit * GibToughness() : limit; }
 
+		/// The Weapon damage to units setting for damage done by hitor: weapon fire (anything that hits units, but jetpack exhaust) is scaled
+		/// by it, anything else not.
+		static float WeaponUnitDamageFrom(const MovableObject* hitor);
+
 		/// Gets the altitide of this' pos (or appropriate low point) over the
 		/// terrain, in pixels.
 		/// @param max The max altitude you care to check for. 0 Means check the whole scene's height. (default: 0)

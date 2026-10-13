@@ -321,7 +321,7 @@ bool Attachable::ParticlePenetration(HitData& hd) {
 		}
 
 		if (damageToAdd != 0) {
-			AddDamage(damageToAdd);
+			AddDamage(damageToAdd * WeaponUnitDamageFrom(hitor));
 		}
 
 		if (penetrated || damageToAdd != 0) {

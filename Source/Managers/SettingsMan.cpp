@@ -220,6 +220,8 @@ void SettingsMan::Clear() {
 	m_ShipGraceZone = 400.0F;
 	m_CameraOverscroll = 400.0F;
 	m_WeaponTerrainDamage = 1.0F;
+	m_WeaponUnitDamage = 1.0F;
+	m_WeaponUnitDamageGibs = false;
 	m_AISpawnDiggerType = 1;
 	m_AISteadyBeforeJet = true;
 	m_AIWaitForFuel = true;
@@ -1121,6 +1123,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("ShipGraceZone", { float zone = 400.0F; reader >> zone; SetShipGraceZone(zone); });
 	MatchProperty("CameraOverscroll", { float overscroll = 400.0F; reader >> overscroll; SetCameraOverscroll(overscroll); });
 	MatchProperty("WeaponTerrainDamage", { float scale = 1.0F; reader >> scale; SetWeaponTerrainDamage(scale); });
+	MatchProperty("WeaponUnitDamage", { float scale = 1.0F; reader >> scale; SetWeaponUnitDamage(scale); });
+	MatchProperty("WeaponUnitDamageGibs", { reader >> m_WeaponUnitDamageGibs; });
 	MatchProperty("AISpawnDiggerType", { int type = 1; reader >> type; SetAISpawnDiggerType(type); });
 	MatchProperty("AISteadyBeforeJet", { reader >> m_AISteadyBeforeJet; });
 	MatchProperty("AIWaitForFuel", { reader >> m_AIWaitForFuel; });
@@ -1813,6 +1817,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("ShipGraceZone", m_ShipGraceZone);
 	writer.NewPropertyWithValue("CameraOverscroll", m_CameraOverscroll);
 	writer.NewPropertyWithValue("WeaponTerrainDamage", m_WeaponTerrainDamage);
+	writer.NewPropertyWithValue("WeaponUnitDamage", m_WeaponUnitDamage);
+	writer.NewPropertyWithValue("WeaponUnitDamageGibs", m_WeaponUnitDamageGibs);
 	writer.NewPropertyWithValue("AIRecklessness", m_AIRecklessness);
 	writer.NewPropertyWithValue("StrictClimbLimits", m_StrictClimbLimits);
 	writer.NewPropertyWithValue("MeasuredBodySize", m_MeasuredBodySize);

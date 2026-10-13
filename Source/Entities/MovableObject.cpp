@@ -843,6 +843,10 @@ void MovableObject::SetTeam(int team) {
 	}
 }
 
+float MovableObject::WeaponUnitDamageFrom(const MovableObject* hitor) {
+	return (hitor && hitor->HitsMOs() && !hitor->IsJetpackExhaust()) ? g_SettingsMan.WeaponUnitDamage() : 1.0F;
+}
+
 float MovableObject::GetAltitude(int max, int accuracy) {
 	return g_SceneMan.FindAltitude(m_Pos, max, accuracy);
 }
