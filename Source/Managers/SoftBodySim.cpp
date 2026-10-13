@@ -509,8 +509,23 @@ namespace {
 		blob.Drawn.clear();
 	}
 
+	/// Whether a point is inside a blob's ring.
+	bool Inside(const Blob& blob, const glm::vec2& at) {
+		bool inside = false;
+		for (size_t i = 0, count = blob.Points.size(), j = count - 1; i < count; j = i++) {
+			const glm::vec2& a = blob.Points[i].Pos;
+			const glm::vec2& b = blob.Points[j].Pos;
+			if ((a.y > at.y) != (b.y > at.y) && at.x < a.x + (b.x - a.x) * (at.y - a.y) / (b.y - a.y)) {
+				inside = !inside;
+			}
+		}
+		return inside;
+	}
+
 	/// Draws a blob into the terrain where it is, as its material, shaded: a darker rim, a darker lower part and a shine up on one side. Only into
-	/// air, and not where a unit near it is (so a unit it grows into isn't buried in it).
+	/// air, and not over a unit whose middle is inside it (one it was put down on or that it fell over), which is left a hole of its own shape
+	/// to get out by. A unit standing on it or against it is drawn under like any ground, so it is held up (were its feet left a hole too, it
+	/// would sink through, its hole going down with it).
 	void Stamp(SLTerrain* terrain, Blob& blob) {
 		int material = s_Material[blob.Type];
 		if (material == 0 || blob.Points.size() < 3) {
@@ -529,6 +544,9 @@ namespace {
 			if (s_WrapX && s_Width > 0) {
 				float middle = (low.x + high.x) * 0.5F;
 				at.x = middle + std::remainder(at.x - middle, static_cast<float>(s_Width));
+			}
+			if (!Inside(blob, at)) {
+				continue;
 			}
 			float reach = actor->GetRadius() + 1.0F;
 			unitBoxes.push_back({at.x - reach, at.y - reach, at.x + reach, at.y + reach});
@@ -1007,6 +1025,35 @@ namespace {
 		}
 	}
 
+	/// Keeps a blob's points out of the units by it: a point inside a unit's body is drawn back into the blob until it is clear of it, so the blob
+	/// is pressed in round a unit standing or landing on it (or one it falls on) rather than closing over it.
+	void KeepOutOfUnits(Blob& blob, const std::vector<Actor*>& near, float groundKeep) {
+		if (near.empty()) {
+			return;
+		}
+		for (size_t i = 0; i < blob.Points.size(); ++i) {
+			Point& point = blob.Points[i];
+			if (!UnitAt(point.Pos, near)) {
+				continue;
+			}
+			glm::vec2 in = -Outward(blob, i);
+			for (int step = 0; step < 8; ++step) {
+				glm::vec2 next = point.Pos + in;
+				if (Solid(next)) {
+					break;
+				}
+				point.Pos = next;
+				if (!UnitAt(point.Pos, near)) {
+					break;
+				}
+			}
+			point.Prev = point.Pos - (point.Pos - point.Prev) * groundKeep;
+			if (!Solid(point.Pos)) {
+				point.Safe = point.Pos;
+			}
+		}
+	}
+
 	/// Moves a blob on one update: its points on at their speed with gravity, liquid and the wind's blasts on them, pressed by the units on it,
 	/// pulled back to its shape, its edges and area held, kept out of the ground, and the units on it thrown back as it springs out.
 	void Step(Blob& blob, float seconds, const glm::vec2& gravity) {
@@ -1045,6 +1092,7 @@ namespace {
 			}
 		}
 		ThrowUnits(blob, contacts, seconds);
+		KeepOutOfUnits(blob, near, type.GroundKeep);
 		if (blob.Cooldown > 0) {
 			--blob.Cooldown;
 		}
