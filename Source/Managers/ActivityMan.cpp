@@ -318,9 +318,10 @@ namespace {
 	constexpr std::array<const char*, 3> c_SimTimeValueKeys = {"ClubbedAt", "AIContactMS", "AILeftCarrierMS"};
 
 	/// The number values on a unit that only mean something while what set them is still at work, and that isn't kept in a saved game: the
-	/// fire burning it (ActorFire), the flag it carries or the rush it is on (the battle modes), a Levitate or Frost Shard spell on it. Kept, a
-	/// unit loaded on fire would never be put out (its AI half off, friends trying to douse it), a flag carrier or rusher would ignore cover
-	/// for good, and Levitate would never work on it again.
+	/// fire burning it (ActorFire), a Levitate or Frost Shard spell on it. Kept, a unit loaded on fire would never be put out (its AI half off,
+	/// friends trying to douse it), and Levitate would never work on it again. The flag it carries or the rush it is on (the battle modes) are
+	/// taken off too, and put back by the saved battle (Sandbox::LoadSaveState, after this) on those still carrying a flag or rushing in it:
+	/// one in a save without its battle would ignore cover for good.
 	constexpr std::array<const char*, 5> c_StaleValueKeys = {"OnFire", "SandboxObjective", "SandboxRush", "MedievalLevitating", "MedievalChillUntil"};
 
 	/// A loaded unit and every unit out of the scene with it: whoever sits in its seats (a vehicle's, a ship's) and whoever rides in it as

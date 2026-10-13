@@ -119,6 +119,23 @@ namespace SandboxDetail {
 		ForgetArmy();
 	}
 
+	void SaveReinforcements(std::ostream& out) {
+		for (int side = 0; side < c_Sides; ++side) {
+			const CommandPoints& points = s_CommandPoints[side];
+			out << ' ' << points.Points << ' ' << points.FromKills << ' ' << points.FromObjectives << ' ' << points.FromGold << ' ' << points.Kills << ' ' << points.Called << ' ' << points.Spent << ' ' << s_LastScore[side];
+		}
+		out << ' ' << s_HasLandingSpot << ' ' << s_LandingSpot.m_X << ' ' << s_LandingSpot.m_Y;
+	}
+
+	void LoadReinforcements(std::istream& in) {
+		// (The score each team's points were last earned from too, or the whole score so far would be paid again at the next look.)
+		for (int side = 0; side < c_Sides; ++side) {
+			CommandPoints& points = s_CommandPoints[side];
+			in >> points.Points >> points.FromKills >> points.FromObjectives >> points.FromGold >> points.Kills >> points.Called >> points.Spent >> s_LastScore[side];
+		}
+		in >> s_HasLandingSpot >> s_LandingSpot.m_X >> s_LandingSpot.m_Y;
+	}
+
 	void UpdateReinforcements() {
 		if (!s_ModeRun.Running || !AnyCommanded()) {
 			s_Seen.clear();

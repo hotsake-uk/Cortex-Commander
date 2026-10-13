@@ -461,18 +461,8 @@ namespace SandboxDetail {
 	void SavePlayerSquads(std::ostream& out) {
 		out << ' ' << s_PlayerSquads.size();
 		for (const PlayerSquad& squad: s_PlayerSquads) {
-			// (As one word, with nothing a saved game's line would end at: spaces, tabs, line ends and "//" written as %XX.)
-			std::string name;
-			for (unsigned char letter: squad.Name) {
-				if (letter <= ' ' || letter == '%' || letter == '/') {
-					char code[4];
-					std::snprintf(code, sizeof(code), "%%%02X", letter);
-					name += code;
-				} else {
-					name += static_cast<char>(letter);
-				}
-			}
-			out << ' ' << (name.empty() ? "-" : name) << ' ' << squad.Team << ' ' << static_cast<int>(squad.Orders) << ' ' << squad.Leader << ' ' << squad.Age << ' ' << squad.LeaderWait << ' ' << squad.Members.size();
+			SaveText(out, squad.Name);
+			out << ' ' << squad.Team << ' ' << static_cast<int>(squad.Orders) << ' ' << squad.Leader << ' ' << squad.Age << ' ' << squad.LeaderWait << ' ' << squad.Members.size();
 			for (size_t i = 0; i < squad.Members.size(); ++i) {
 				out << ' ' << squad.Members[i].ID << ' ' << squad.Seen[i] << ' ' << squad.Joined[i];
 			}
@@ -484,18 +474,10 @@ namespace SandboxDetail {
 		in >> count;
 		for (size_t i = 0; i < count && in; ++i) {
 			PlayerSquad squad;
-			std::string name;
 			int orders = 0;
 			size_t members = 0;
-			in >> name >> squad.Team >> orders >> squad.Leader >> squad.Age >> squad.LeaderWait >> members;
-			for (size_t at = 0; name != "-" && at < name.size(); ++at) {
-				if (name[at] == '%' && at + 2 < name.size()) {
-					squad.Name += static_cast<char>(std::strtol(name.substr(at + 1, 2).c_str(), nullptr, 16));
-					at += 2;
-				} else {
-					squad.Name += name[at];
-				}
-			}
+			squad.Name = LoadText(in);
+			in >> squad.Team >> orders >> squad.Leader >> squad.Age >> squad.LeaderWait >> members;
 			squad.Orders = static_cast<Order>(std::clamp(orders, 0, c_OrderCount - 1));
 			bool anyone = false;
 			for (size_t member = 0; member < members && in; ++member) {
