@@ -40,6 +40,7 @@ namespace {
 		float Keep; //!< How much of its points' speed is kept each update, against the air.
 		float GroundKeep; //!< How much of a point's speed is kept when it meets the ground.
 		float Bounce; //!< How much of the speed its surface springs back at it gives a unit standing on it: above 1 throws them higher.
+		float Give; //!< How deep a unit's weight dents it, at most, as a share of its radius.
 		std::array<unsigned char, 3> Light; //!< Its shine.
 		std::array<unsigned char, 3> Base;
 		std::array<unsigned char, 3> Shadow; //!< Its lower part.
@@ -48,9 +49,9 @@ namespace {
 
 	// Appended to only, so saved games keep their kinds.
 	const TypeData c_Types[] = {
-	    {{"Goo", "Green goo: soft and wobbly, squashes flat under a unit and throws it back up, and pulls itself round again after it's cut in two.", 96, 196, 72}, "Goo", 0.012F, 0.15F, 0.6F, 0.004F, true, 0.996F, 0.5F, 1.1F, {196, 250, 160}, {96, 196, 72}, {64, 150, 52}, {36, 96, 34}},
-	    {{"Jelly", "Pink jelly: firmer, holds its shape and wobbles back to it, and stays cut where it's cut.", 232, 96, 140}, "Jelly", 0.016F, 0.5F, 0.9F, 0.05F, false, 0.994F, 0.4F, 0.9F, {255, 200, 220}, {232, 96, 140}, {184, 64, 108}, {120, 36, 70}},
-	    {{"Bouncy gel", "Blue gel: a trampoline. It keeps nearly all its bounce, and throws whatever lands on it higher than it fell from.", 80, 170, 240}, "Bouncy Gel", 0.012F, 0.4F, 1.0F, 0.02F, true, 0.999F, 0.7F, 1.6F, {210, 240, 255}, {80, 170, 240}, {52, 124, 196}, {30, 76, 140}}};
+	    {{"Goo", "Green goo: soft and wobbly, squashes flat under a unit and throws it back up, and pulls itself round again after it's cut in two.", 96, 196, 72}, "Goo", 0.012F, 0.15F, 0.6F, 0.004F, true, 0.996F, 0.5F, 1.1F, 0.4F, {196, 250, 160}, {96, 196, 72}, {64, 150, 52}, {36, 96, 34}},
+	    {{"Jelly", "Pink jelly: firmer, holds its shape and wobbles back to it, and stays cut where it's cut.", 232, 96, 140}, "Jelly", 0.016F, 0.5F, 0.9F, 0.05F, false, 0.994F, 0.4F, 0.9F, 0.15F, {255, 200, 220}, {232, 96, 140}, {184, 64, 108}, {120, 36, 70}},
+	    {{"Bouncy gel", "Blue gel: a trampoline. It keeps nearly all its bounce, and throws whatever lands on it higher than it fell from.", 80, 170, 240}, "Bouncy Gel", 0.012F, 0.4F, 1.0F, 0.02F, true, 0.999F, 0.7F, 1.6F, 0.3F, {210, 240, 255}, {80, 170, 240}, {52, 124, 196}, {30, 76, 140}}};
 	constexpr int c_TypeCount = static_cast<int>(std::size(c_Types));
 
 	constexpr int c_MaxBlobs = 200;
@@ -509,23 +510,9 @@ namespace {
 		blob.Drawn.clear();
 	}
 
-	/// Whether a point is inside a blob's ring.
-	bool Inside(const Blob& blob, const glm::vec2& at) {
-		bool inside = false;
-		for (size_t i = 0, count = blob.Points.size(), j = count - 1; i < count; j = i++) {
-			const glm::vec2& a = blob.Points[i].Pos;
-			const glm::vec2& b = blob.Points[j].Pos;
-			if ((a.y > at.y) != (b.y > at.y) && at.x < a.x + (b.x - a.x) * (at.y - a.y) / (b.y - a.y)) {
-				inside = !inside;
-			}
-		}
-		return inside;
-	}
-
 	/// Draws a blob into the terrain where it is, as its material, shaded: a darker rim, a darker lower part and a shine up on one side. Only into
-	/// air, and not over a unit whose middle is inside it (one it was put down on or that it fell over), which is left a hole of its own shape
-	/// to get out by. A unit standing on it or against it is drawn under like any ground, so it is held up (were its feet left a hole too, it
-	/// would sink through, its hole going down with it).
+	/// air, and never over a unit's body (one drawn into would be stuck fast in the ground). Its points are kept out of the units by it and
+	/// a unit's weight dents it only so far, so a unit on it stands on its surface rather than in a hole of its own shape.
 	void Stamp(SLTerrain* terrain, Blob& blob) {
 		int material = s_Material[blob.Type];
 		if (material == 0 || blob.Points.size() < 3) {
@@ -544,9 +531,6 @@ namespace {
 			if (s_WrapX && s_Width > 0) {
 				float middle = (low.x + high.x) * 0.5F;
 				at.x = middle + std::remainder(at.x - middle, static_cast<float>(s_Width));
-			}
-			if (!Inside(blob, at)) {
-				continue;
 			}
 			float reach = actor->GetRadius() + 1.0F;
 			unitBoxes.push_back({at.x - reach, at.y - reach, at.x + reach, at.y + reach});
@@ -870,11 +854,8 @@ namespace {
 		return true;
 	}
 
-	/// Pulls the points towards its own shape, turned to how it lies now and at the size it keeps.
-	void MatchShape(Blob& blob, float stiffness) {
-		if (stiffness <= 0.0F) {
-			return;
-		}
+	/// Where its own shape, turned to how it lies now and at the size it keeps, puts each point.
+	void ShapeTargets(const Blob& blob, std::vector<glm::vec2>& targets) {
 		size_t count = blob.Points.size();
 		glm::vec2 middle = Middle(blob);
 		float dot = 0.0F;
@@ -888,10 +869,22 @@ namespace {
 		float c = std::cos(angle);
 		float s = std::sin(angle);
 		float scale = std::abs(blob.ShapeArea) > 1e-3F ? std::sqrt(std::abs(blob.RestArea) / std::abs(blob.ShapeArea)) : 1.0F;
+		targets.resize(count);
 		for (size_t i = 0; i < count; ++i) {
 			const glm::vec2& shape = blob.Shape[i];
-			glm::vec2 target = middle + glm::vec2(shape.x * c - shape.y * s, shape.x * s + shape.y * c) * scale;
-			blob.Points[i].Pos += (target - blob.Points[i].Pos) * stiffness;
+			targets[i] = middle + glm::vec2(shape.x * c - shape.y * s, shape.x * s + shape.y * c) * scale;
+		}
+	}
+
+	/// Pulls the points towards its own shape.
+	void MatchShape(Blob& blob, float stiffness) {
+		if (stiffness <= 0.0F) {
+			return;
+		}
+		static std::vector<glm::vec2> targets;
+		ShapeTargets(blob, targets);
+		for (size_t i = 0; i < blob.Points.size(); ++i) {
+			blob.Points[i].Pos += (targets[i] - blob.Points[i].Pos) * stiffness;
 		}
 	}
 
@@ -972,6 +965,13 @@ namespace {
 		size_t count = blob.Points.size();
 		float pointMass = std::max(std::abs(blob.RestArea) * TypeOf(blob).Density / static_cast<float>(count), 0.01F);
 		float perUpdate = seconds * c_PPM; // m/s to pixels per update.
+		// How far in from where its shape would have them its points may be pushed by weight: past that it holds the unit up. (The air inside
+		// only keeps its area, which a dent alone doesn't change much, so without this a unit would sink on through it.)
+		float give = std::max(std::sqrt(std::abs(blob.RestArea) / glm::pi<float>()) * TypeOf(blob).Give, 1.0F);
+		static std::vector<glm::vec2> targets;
+		if (!contacts.empty()) {
+			ShapeTargets(blob, targets);
+		}
 		for (const Contact& contact: contacts) {
 			float mass = contact.Unit->GetMass();
 			float share = 1.0F / static_cast<float>(contact.Points.size());
@@ -986,7 +986,9 @@ namespace {
 				if (!leaving) {
 					// Its weight, where it stands on top: a push down on the points under it, as much as their weight against its.
 					float onTop = std::max(-out.y, 0.0F);
-					float push = std::min(mass * share / pointMass, 40.0F) * onTop;
+					float dent = glm::dot(targets[index] - point.Pos, out);
+					float room = std::clamp(1.0F - dent / give, 0.0F, 1.0F);
+					float push = std::min(mass * share / pointMass, 40.0F) * onTop * room;
 					point.Pos += gravity * push * 0.15F;
 				}
 				if (coming > 0.05F) {
