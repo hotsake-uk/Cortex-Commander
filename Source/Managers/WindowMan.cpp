@@ -605,9 +605,18 @@ void WindowMan::SetIntegerScaling(bool integerScaling) {
 
 void WindowMan::SetUpscaleUniforms() const {
 	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
-	m_ScreenUpscaleShader->SetFloat("rteScanlines", g_ActivityMan.IsInActivity() ? lighting.Scanlines : 0.0F);
+	// The retro filters (a screen style's, or the player's own) cover the frame, HUD included, in a game only, so the menus stay legible.
+	const bool inGame = g_ActivityMan.IsInActivity();
+	const LightingSettings::RetroLayers retro = inGame ? lighting.ActiveRetro() : LightingSettings::RetroLayers();
+	m_ScreenUpscaleShader->SetFloat("rteScanlines", inGame ? std::max(lighting.Scanlines, std::clamp(retro.CRT, 0.0F, 1.0F)) : 0.0F);
 	m_ScreenUpscaleShader->SetInt("rteCRTStyle", std::clamp(lighting.CRTStyle, 0, 3));
 	m_ScreenUpscaleShader->SetFloat("rteSharpness", std::clamp(lighting.UpscaleSharpness, 0.0F, 1.0F));
+	m_ScreenUpscaleShader->SetFloat("rteTime", static_cast<float>(std::fmod(static_cast<double>(SDL_GetTicks()) / 1000.0, 4096.0)));
+	m_ScreenUpscaleShader->SetFloat("rtePixelate", 1.0F + std::round(std::clamp(retro.Pixelate, 0.0F, 1.0F) * 7.0F));
+	m_ScreenUpscaleShader->SetFloat("rteVHS", std::clamp(retro.VHS, 0.0F, 1.0F));
+	m_ScreenUpscaleShader->SetFloat("rteGlitch", std::clamp(retro.Glitch, 0.0F, 1.0F));
+	m_ScreenUpscaleShader->SetFloat("rteGlitchKick", inGame && retro.Glitch > 0.0F ? g_PostProcessMan.GetRetroGlitchKick() : 0.0F);
+	m_ScreenUpscaleShader->SetFloat("rteCurvature", std::clamp(retro.Curvature, 0.0F, 1.0F));
 }
 
 void WindowMan::SetReservedSpace(int left, int right) {

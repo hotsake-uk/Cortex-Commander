@@ -1172,7 +1172,7 @@ void DebugMan::SettingsGUI() {
 		Slider("Film grain", &settings.FilmGrain, 0.0F, 1.0F);
 		Slider("Chromatic aberration (px)", &settings.ChromaticAberration, 0.0F, 4.0F);
 		Slider("CRT scanlines", &settings.Scanlines, 0.0F, 1.0F);
-		if (settings.Scanlines > 0.0F) {
+		if (settings.Scanlines > 0.0F || settings.ActiveRetro().CRT > 0.0F) {
 			Combo("CRT style", &settings.CRTStyle, "Scanlines\0Aperture grille\0Shadow mask\0Scanlines with bloom\0");
 			Tip("What the CRT effect looks like: dark lines between rows (as before), the vertical colour stripes of a Trinitron-style tube, the dot triads of a shadow-mask tube, or scanlines that bright pixels bloom across.");
 		}
@@ -1185,6 +1185,60 @@ void DebugMan::SettingsGUI() {
 		if (settings.EventLooks) {
 			Slider("Event grade strength", &settings.EventLookStrength, 0.0F, 2.0F);
 			EventLookSwitches(settings);
+		}
+		Heading("Screen style");
+		Combo("Screen style", &settings.ScreenStyle, "Off\0Synthwave\0");
+		Tip("A whole retro look over everything in a game, the HUD included (the menus stay plain). Synthwave: an Outrun sunset sky with a striped sun and a neon grid racing to the horizon, pink and cyan glow, glowing edges, a neon palette, video tape wobble, glitches and a curved CRT. Each style keeps its own settings below, so switching back to Off gives you your own filters as they were.");
+		settings.ScreenStyle = std::clamp(settings.ScreenStyle, 0, static_cast<int>(LightingSettings::StyleCount) - 1);
+		if (settings.ScreenStyle != LightingSettings::StyleOff) {
+			Slider("Screen style strength", &settings.ScreenStyleStrength, 0.0F, 1.0F);
+			Tip("How strongly the style applies: 1 the full look, down to 0 the plain picture.");
+		}
+		{
+			LightingSettings::RetroLayers& retro = settings.EditedRetro();
+			if (Plain()) {
+				ImGui::TextDisabled(settings.ScreenStyle == LightingSettings::StyleOff ? "Your own retro filters:" : "This style's filters:");
+			}
+			Combo("Palette", &retro.Palette, "Off\0Synthwave\0Vaporwave\0Miami\0Game Boy\0CGA\0Sepia\0Thermal\0Night vision\0");
+			Tip("Remaps the picture's brightness onto a palette: Synthwave's indigo, magenta and cyan, Vaporwave's pastels, Miami's teal and coral, the Game Boy's four greens, CGA's black, cyan, magenta and white, sepia, a thermal camera or night vision.");
+			retro.Palette = std::clamp(retro.Palette, 0, static_cast<int>(LightingSettings::PaletteCount) - 1);
+			if (retro.Palette != LightingSettings::PaletteOff) {
+				Slider("Palette strength", &retro.PaletteStrength, 0.0F, 1.0F);
+			}
+			Slider("Neon glow", &retro.NeonGlow, 0.0F, 1.0F);
+			Tip("Bloom from much dimmer light, wider and brighter: warm lights (fire, blasts, the sun) glow hot pink and cool ones (lamps, lasers) cyan. Works with Bloom off.");
+			Slider("Edge lines", &retro.EdgeLines, 0.0F, 1.0F);
+			Tip("Lines along the edges of terrain, units and buildings, strongest where the battlefield meets the sky.");
+			if (retro.EdgeLines > 0.0F) {
+				Check("Ink edges", &retro.InkEdges);
+				Tip("Black ink lines, for a comic look. Off: glowing neon, pink near the top of the screen to cyan near the bottom.");
+			}
+			Slider("Retro sky", &retro.RetroSky, 0.0F, 1.0F);
+			Tip("Replaces the sky behind the terrain with an Outrun sunset: a striped sun on the horizon, stars, and a neon grid racing towards it. Distant hills become dark silhouettes with a glowing rim. It still darkens at night.");
+			if (retro.RetroSky > 0.0F) {
+				Slider("Grid speed", &retro.GridSpeed, 0.0F, 3.0F);
+			}
+			Slider("VHS tape", &retro.VHS, 0.0F, 1.0F);
+			Tip("Colour bleeding sideways, a tracking band rolling up the screen, a little wobble, tape noise and a slewed strip at the bottom.");
+			Slider("Glitch", &retro.Glitch, 0.0F, 1.0F);
+			Tip("Every so often a short burst of the picture torn sideways in blocks with its colours split. More: more often and longer.");
+			if (retro.Glitch > 0.0F) {
+				Check("Glitch on big explosions", &retro.GlitchOnBlasts);
+				Tip("A big blast in view sets off a glitch burst too.");
+			}
+			Slider("Screen curvature", &retro.Curvature, 0.0F, 1.0F);
+			Tip("The picture bends like the glass of a CRT tube, with darkened, rounded corners.");
+			Slider("CRT", &retro.CRT, 0.0F, 1.0F);
+			Tip("CRT scanlines at least this strong, in the CRT style chosen under Lens and screen. The CRT scanlines setting still applies if it's stronger.");
+			Slider("Posterize", &retro.Posterize, 0.0F, 1.0F);
+			Tip("Fewer colour levels, down to four per channel.");
+			Slider("Dither", &retro.Dither, 0.0F, 1.0F);
+			Tip("Ordered dithering between colour levels, for a cheap 80s computer look. Shows with Posterize, or the Game Boy and CGA palettes.");
+			Slider("Pixelate", &retro.Pixelate, 0.0F, 1.0F);
+			Tip("Chunkier pixels, up to 8 game pixels a block. Covers the HUD too.");
+			if (settings.ScreenStyle != LightingSettings::StyleOff && Plain() && ToolUI::Button("Reset style")) {
+				retro = LightingSettings::StyleLayers(settings.ScreenStyle);
+			}
 		}
 		Heading("Mods");
 		Check("Mod shaders", &settings.ModShaders);
@@ -1920,7 +1974,7 @@ void DebugMan::SettingsGUI() {
 			Slider("Dig straightness", &direct.LineWeight, 0.0F, 1.0F, "%.2f");
 			Tip("How hard a direct dig-to keeps to the straight line from where it starts to the point, rather than any route as short: the cost of each node off the line, in nodes walked. 0 doesn't care; 0.1 is normal.");
 			Slider("Route straightness", &direct.MoveLineWeight, 0.0F, 2.0F, "%.2f");
-			Tip("How hard a risky move or attack keeps to the straight line to the target, at full risk (less the lower the risk): what each step off the line costs, in steps walked. 0 routes as usual; 0.6 is normal.");
+			Tip("How hard a risky move or attack keeps to the straight line to the target, at full risk (less the lower the risk): what each step off the line costs, in steps walked. 0 routes as usual; 0.6 is normal. Only with Pathfinding's Straightness follows risk off; on, Full-risk straightness there sets it.");
 			Check("Ignore enemies on the route", &direct.IgnoreEnemies);
 			Tip("Whether their routes take no notice of enemies on the way (normal), even for a unit a game mode wants kept safe.");
 			Check("Groups keep together", &direct.KeepPace);
@@ -1978,10 +2032,15 @@ void DebugMan::SettingsGUI() {
 		Heading("Route choice");
 		{
 			Slider("Route straightness", &tuning.LineWeight, 0.0F, 2.0F, "%.2f");
-			Tip("How hard every unit's route keeps to the straight line from where it is to where it is sent: what each node off the line costs, in nodes walked. 0 takes the cheapest way however far it strays; around 0.5 cuts corners and takes jumps it would walk round; 1.75 is the default. Added to a dragged order's own Route straightness (Battle Behavior).");
+			Tip("How hard every unit's route keeps to the straight line from where it is to where it is sent: what each node off the line costs, in nodes walked. 0 takes the cheapest way however far it strays; around 0.5 cuts corners and takes jumps it would walk round; 1.75 is the default. With Straightness follows risk on, this is a normal order's; off, every order's, added to a dragged order's own Route straightness (Battle Behavior).");
 			resetItem("Route straightness", tuning.LineWeight, normal.LineWeight);
 			Check("Straightness follows risk", &tuning.LineWeightByRisk);
-			Tip("On (default): Route straightness follows each order's risk, as the battle modes' Least and Most risk give it too. A normal order keeps to the line by the value above, a cautious one less, down to not at all when fully cautious, and a risky one more (Battle Behavior's own Route straightness on top, up to close to a beeline at full risk). Off: the value above on every order alike.");
+			Tip("On (default): Route straightness follows each order's risk, as the battle modes' Least and Most risk give it too. A fully cautious order doesn't keep to the line at all, a normal one by Route straightness above, a full-risk one by Full-risk straightness below, and those between in between. Off: Route straightness on every order alike, a risky one adding Battle Behavior's own Route straightness.");
+			ImGui::BeginDisabled(!tuning.LineWeightByRisk);
+			Slider("Full-risk straightness", &tuning.FullRiskLineWeight, 0.0F, 4.0F, "%.2f");
+			Tip("With Straightness follows risk: how hard a full-risk order keeps to the straight line, the top of the scale (normal is Route straightness above). Around 2 is close to a beeline; past it the route leaves the line only where it can't get through. 2.35 is the default.");
+			resetItem("Full-risk straightness", tuning.FullRiskLineWeight, normal.FullRiskLineWeight);
+			ImGui::EndDisabled();
 			Slider("Uphill cost", &tuning.UpCost, 0.0F, 5.0F, "%.2f");
 			Tip("The extra cost of every node gone up, on foot or on the jet. Lower goes over hills and up through buildings; higher walks round them. 1.5 is the default.");
 			resetItem("Uphill cost", tuning.UpCost, normal.UpCost);
