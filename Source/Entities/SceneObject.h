@@ -225,7 +225,10 @@ namespace RTE {
 
 		/// Shows whether this should appear in teh buy menus at all.
 		/// @return Buyable or not.
-		bool IsBuyable() const { return m_Buyable; }
+		bool IsBuyable() const { return m_Buyable && !IsSwitchedOffMedievalUnit(); }
+
+		/// Shows whether this is a Kingdom or Fell Legion unit while the mod manager's Medieval units setting is off, so it can't be bought.
+		bool IsSwitchedOffMedievalUnit() const;
 
 		/// Gets the BuyableMode of this SceneObject.
 		/// @return The BuyableMode of this SceneObject

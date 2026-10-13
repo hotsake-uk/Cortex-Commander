@@ -111,9 +111,12 @@ namespace RTE {
 		/// @return A string with the description.
 		const std::string& GetDescription() const { return m_Description; }
 
-		/// Gets whether this DataModule is considered a faction.
+		/// Gets whether this DataModule is considered a faction. The Kingdom and the Fell Legion stop being factions while the mod manager's Medieval units setting is off.
 		/// @return Whether this DataModule is considered a faction or not.
-		bool IsFaction() const { return m_IsFaction; }
+		bool IsFaction() const { return m_IsFaction && !IsSwitchedOffMedievalFaction(); }
+
+		/// Gets whether this is the Kingdom (Medieval.rte) or the Fell Legion (FellLegion.rte) and the mod manager's Medieval units setting has them switched off.
+		bool IsSwitchedOffMedievalFaction() const;
 
 		/// Gets whether this DataModule is considered a merchant.
 		/// @return Whether this DataModule is considered a merchant or not.

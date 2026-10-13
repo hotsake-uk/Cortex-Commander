@@ -322,6 +322,7 @@ void SettingsMan::Clear() {
 	m_RecommendedMOIDCount = 512;
 	m_SceneBackgroundAutoScaleMode = 1;
 	m_DisableFactionBuyMenuThemes = false;
+	m_DisableMedievalUnits = false;
 	m_DisableFactionBuyMenuThemeCursors = false;
 	m_PathFinderGridNodeSize = SCENEGRIDSIZE;
 	m_AIUpdateInterval = 2;
@@ -1227,6 +1228,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("RecommendedMOIDCount", { reader >> m_RecommendedMOIDCount; });
 	MatchProperty("SceneBackgroundAutoScaleMode", { SetSceneBackgroundAutoScaleMode(std::stoi(reader.ReadPropValue())); });
 	MatchProperty("DisableFactionBuyMenuThemes", { reader >> m_DisableFactionBuyMenuThemes; });
+	MatchProperty("DisableMedievalUnits", { reader >> m_DisableMedievalUnits; });
 	MatchProperty("DisableFactionBuyMenuThemeCursors", { reader >> m_DisableFactionBuyMenuThemeCursors; });
 	MatchProperty("PathFinderGridNodeSize", { reader >> m_PathFinderGridNodeSize; });
 	MatchProperty("AIUpdateInterval", { reader >> m_AIUpdateInterval; });
@@ -2260,6 +2262,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("RecommendedMOIDCount", m_RecommendedMOIDCount);
 	writer.NewPropertyWithValue("SceneBackgroundAutoScaleMode", m_SceneBackgroundAutoScaleMode);
 	writer.NewPropertyWithValue("DisableFactionBuyMenuThemes", m_DisableFactionBuyMenuThemes);
+	writer.NewPropertyWithValue("DisableMedievalUnits", m_DisableMedievalUnits);
 	writer.NewPropertyWithValue("DisableFactionBuyMenuThemeCursors", m_DisableFactionBuyMenuThemeCursors);
 	writer.NewPropertyWithValue("PathFinderGridNodeSize", m_PathFinderGridNodeSize);
 	writer.NewPropertyWithValue("AIUpdateInterval", m_AIUpdateInterval);

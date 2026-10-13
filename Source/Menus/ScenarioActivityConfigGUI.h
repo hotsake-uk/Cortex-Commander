@@ -74,6 +74,7 @@ namespace RTE {
 
 		Timer m_StartGameButtonBlinkTimer; //!< Timer for blinking the start game button.
 
+		bool m_TechListMedievalUnitsDisabled {}; //!< The mod manager's Medieval units setting when the tech list was fetched, so it's fetched again when that changes.
 		bool m_TechListFetched {}; //!< Whether the tech list was fetched and each team's ComboBox was populated with it, even if no valid tech modules were added.
 
 		/// GUI elements that compose the Activity setup box.

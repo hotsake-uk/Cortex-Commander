@@ -1,5 +1,8 @@
 #include "SceneObject.h"
 #include "PresetMan.h"
+#include "Actor.h"
+#include "SettingsMan.h"
+#include "DataModule.h"
 #include "Matrix.h"
 #include "ActivityMan.h"
 #include "SceneMan.h"
@@ -253,4 +256,16 @@ void SceneObject::DrawTeamMark(BITMAP* pTargetBitmap, const Vector& targetPos) c
 		// Make team icon blink faster as the health goes down
 		masked_blit(teamIcon, pTargetBitmap, 0, 0, drawPos.m_X - teamIcon->h / 2, drawPos.m_Y - teamIcon->h * 2, teamIcon->w, teamIcon->h);
 	}
+}
+
+bool SceneObject::IsSwitchedOffMedievalUnit() const {
+	if (!m_Buyable || !g_SettingsMan.MedievalUnitsDisabled() || !dynamic_cast<const Actor*>(this)) {
+		return false;
+	}
+	int moduleID = GetModuleID();
+	if (moduleID < 0 || moduleID >= g_PresetMan.GetTotalModuleCount()) {
+		return false;
+	}
+	const DataModule* dataModule = g_PresetMan.GetDataModule(moduleID);
+	return dataModule && dataModule->IsSwitchedOffMedievalFaction();
 }
