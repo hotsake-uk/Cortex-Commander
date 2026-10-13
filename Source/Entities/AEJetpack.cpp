@@ -98,6 +98,13 @@ int AEJetpack::ReadProperty(const std::string_view& propName, Reader& reader) {
 		m_JetTimeTotal *= 1000.0f; // Convert to ms
 	});
 	MatchForwards("JumpReplenishRate") MatchProperty("JetReplenishRate", { reader >> m_JetReplenishRate; });
+	// A saved game's (Scene::SaveSceneObject).
+	MatchProperty("SpecialBehaviour_ThrustMultiplier", { reader >> m_JetThrustBonusMultiplier; });
+	MatchProperty("SpecialBehaviour_JetTimeLeft", {
+		float left = 0.0F;
+		reader >> left;
+		SetJetTimeLeft(left);
+	});
 	MatchProperty("MinimumFuelRatio", {
 		reader >> m_MinimumFuelRatio;
 		m_MinimumFuelRatio = std::clamp(m_MinimumFuelRatio, 0.0F, 1.0F);

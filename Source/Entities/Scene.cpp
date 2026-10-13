@@ -1391,6 +1391,9 @@ void Scene::SaveSceneObject(Writer& writer, const SceneObject* sceneObjectToSave
 			writer.NewPropertyWithValue("MinimumFuelRatio", jetpackToSave->GetMinimumFuelRatio());
 			writer.NewPropertyWithValue("JumpAngleRange", jetpackToSave->GetJetAngleRange());
 			writer.NewPropertyWithValue("CanAdjustAngleWhileFiring", jetpackToSave->GetCanAdjustAngleWhileFiring());
+			// Its thrust as a loadout or the sandbox's stats tuned it, and the fuel it had left.
+			writer.NewPropertyWithValue("SpecialBehaviour_ThrustMultiplier", jetpackToSave->GetThrustMultiplier());
+			writer.NewPropertyWithValue("SpecialBehaviour_JetTimeLeft", jetpackToSave->GetJetTimeLeft());
 		}
 
 		if (const Arm* armToSave = dynamic_cast<const Arm*>(sceneObjectToSave)) {
@@ -1415,6 +1418,7 @@ void Scene::SaveSceneObject(Writer& writer, const SceneObject* sceneObjectToSave
 		if (const HDFirearm* hdFirearmToSave = dynamic_cast<const HDFirearm*>(sceneObjectToSave)) {
 			WriteHardcodedAttachableOrNone("Magazine", hdFirearmToSave->GetMagazine());
 			WriteHardcodedAttachableOrNone("Flash", hdFirearmToSave->GetFlash());
+			writer.NewPropertyWithValue("RateOfFire", hdFirearmToSave->GetRateOfFire());
 		}
 
 		if (const Magazine* magazineToSave = dynamic_cast<const Magazine*>(sceneObjectToSave)) {
@@ -1477,8 +1481,18 @@ void Scene::SaveSceneObject(Writer& writer, const SceneObject* sceneObjectToSave
 			writer.NewPropertyWithValue("Morale", actorToSave->GetMorale());
 			writer.NewPropertyWithValue("Suppression", actorToSave->GetSuppression());
 			if (actorToSave->GetMaxEnergy() > 0.0F) {
+				// (Its most first, which a spell or the sandbox may have changed, so how much it has isn't cut to its preset's most.)
+				writer.NewPropertyWithValue("MaxEnergy", actorToSave->GetMaxEnergy());
 				writer.NewPropertyWithValue("Energy", actorToSave->GetEnergy());
 			}
+			// What the sandbox's unit stats (or a script) made of it, beyond its preset, and what has hold of it for a while.
+			writer.NewPropertyWithValue("SightDistance", actorToSave->GetSightDistance());
+			writer.NewPropertyWithValue("ToughnessMultiplier", actorToSave->GetToughnessMultiplier());
+			writer.NewPropertyWithValue("SpeedMultiplier", actorToSave->GetSpeedMultiplier());
+			if (actorToSave->GetPaceLimit() > 0.0F) {
+				writer.NewPropertyWithValue("SpecialBehaviour_PaceLimit", actorToSave->GetPaceLimit());
+			}
+			actorToSave->SaveTimedEffects(writer);
 			// Its unique ID as it was: a loaded unit gets a new one, and what pointed at it by the old (an attack order's target) is pointed at
 			// the new (ActivityMan::RemapLoadedUniqueIDs).
 			writer.NewProperty("AddCustomValue");
@@ -1506,7 +1520,9 @@ void Scene::SaveSceneObject(Writer& writer, const SceneObject* sceneObjectToSave
 				WriteHardcodedAttachableOrNone("BGArm", aHumanToSave->GetBGArm());
 				WriteHardcodedAttachableOrNone("FGLeg", aHumanToSave->GetFGLeg());
 				WriteHardcodedAttachableOrNone("BGLeg", aHumanToSave->GetBGLeg());
+				writer.NewPropertyWithValue("LegJumpHeight", aHumanToSave->GetLegJumpHeight());
 			} else if (const ACrab* aCrabToSave = dynamic_cast<const ACrab*>(sceneObjectToSave)) {
+				writer.NewPropertyWithValue("LegJumpHeight", aCrabToSave->GetLegJumpHeight());
 				WriteHardcodedAttachableOrNone("Turret", aCrabToSave->GetTurret());
 				WriteHardcodedAttachableOrNone("Jetpack", aCrabToSave->GetJetpack());
 				WriteHardcodedAttachableOrNone("LeftFGLeg", aCrabToSave->GetLeftFGLeg());
@@ -1533,6 +1549,7 @@ void Scene::SaveSceneObject(Writer& writer, const SceneObject* sceneObjectToSave
 				WriteHardcodedAttachableOrNone("UpLeftThruster", acDropShipToSave->GetULeftThruster());
 				WriteHardcodedAttachableOrNone("RightHatchDoor", acDropShipToSave->GetRightHatch());
 				WriteHardcodedAttachableOrNone("LeftHatchDoor", acDropShipToSave->GetLeftHatch());
+				writer.NewPropertyWithValue("HoverHeightModifier", acDropShipToSave->GetHoverHeightModifier());
 			}
 
 			// The parts the classes below keep track of themselves are cleared with the rest (SpecialBehaviour_ClearAllAttachables) and put back here.
@@ -1557,6 +1574,16 @@ void Scene::SaveSceneObject(Writer& writer, const SceneObject* sceneObjectToSave
 				writer.NewPropertyWithValue("Handbrake", vehicleToSave->IsHandbrakeOn());
 				writer.NewPropertyWithValue("SpecialBehaviour_Commanded", vehicleToSave->IsCommanded());
 				writer.NewPropertyWithValue("SpecialBehaviour_CrewStaysIn", vehicleToSave->GetCrewStaysIn());
+				// Its driving, as the sandbox's vehicle stats may have tuned it.
+				writer.NewPropertyWithValue("Acceleration", vehicleToSave->GetAcceleration());
+				writer.NewPropertyWithValue("MaxSpeed", vehicleToSave->GetMaxSpeed());
+				writer.NewPropertyWithValue("Grip", vehicleToSave->GetGrip());
+				writer.NewPropertyWithValue("BrakeStrength", vehicleToSave->GetBrakeStrength());
+				writer.NewPropertyWithValue("RollingResistance", vehicleToSave->GetRollingResistance());
+				writer.NewPropertyWithValue("HopSpeed", vehicleToSave->GetHopSpeed());
+				writer.NewPropertyWithValue("WaterThrust", vehicleToSave->GetWaterThrust());
+				writer.NewPropertyWithValue("WaterMaxSpeed", vehicleToSave->GetWaterMaxSpeed());
+				writer.NewPropertyWithValue("TerrainCrush", vehicleToSave->GetTerrainCrush());
 				WriteCrew(vehicleToSave->GetCrewSeats());
 			} else if (const ACShip* shipToSave = dynamic_cast<const ACShip*>(sceneObjectToSave)) {
 				WriteCrew(shipToSave->GetCrewSeats());

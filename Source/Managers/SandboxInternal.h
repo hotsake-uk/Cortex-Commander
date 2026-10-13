@@ -1800,6 +1800,10 @@ namespace SandboxDetail {
 	void SavePlayerSquads(std::ostream& out);
 	/// Reads them back, made by SavePlayerSquads.
 	void LoadPlayerSquads(std::istream& in, const LoadedIDs& ids);
+	/// Writes your character in the Sandbox game mode (which unit it is, the vehicle it sits in, its respawn point) for a saved game, and reads
+	/// it back: the loaded game's character is yours again, rather than a stray unit beside a new one made with P.
+	void SavePlayer(std::ostream& out);
+	void LoadPlayer(std::istream& in, const LoadedIDs& ids);
 	/// Writes the airlifts under way for a saved game, and reads them back.
 	void SaveAirlifts(std::ostream& out);
 	void LoadAirlifts(std::istream& in, const LoadedIDs& ids);

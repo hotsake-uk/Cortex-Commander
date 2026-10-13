@@ -346,6 +346,9 @@ namespace RTE {
 		/// Updates this MovableObject. Supposed to be done every frame.
 		void Update() override;
 
+		/// As Actor's, and those seated in it too: they are out of the scene, kept by it, and saved with it.
+		void OnSave() override;
+
 		/// Puts the IDs of this and its parts in a list, and of the crew sat in its open seats (whom bullets can hit there).
 		/// @param MOIDs The list to add them to.
 		void GetMOIDs(std::vector<MOID>& MOIDs) const override;

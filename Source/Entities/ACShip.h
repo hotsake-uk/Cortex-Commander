@@ -278,6 +278,9 @@ namespace RTE {
 		/// Updates this MovableObject. Supposed to be done every frame.
 		void Update() override;
 
+		/// As Actor's, and those seated in it too: they are out of the scene, kept by it, and saved with it.
+		void OnSave() override;
+
 		/// Tries to handle the activated PieSlice in this object's PieMenu, if there is one, based on its SliceType.
 		bool HandlePieCommand(PieSliceType pieSliceType) override;
 

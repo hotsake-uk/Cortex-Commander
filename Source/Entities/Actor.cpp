@@ -1,4 +1,5 @@
 #include "Actor.h"
+#include <sstream>
 #include "ThreatMemory.h"
 #include "ActorWater.h"
 #include "ActorFire.h"
@@ -654,6 +655,44 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 	});
 	MatchProperty("ToughnessMultiplier", { reader >> m_ToughnessMultiplier; });
 	MatchProperty("SpeedMultiplier", { reader >> m_SpeedMultiplier; });
+	// A saved game's: what it was as it played, beyond its preset (Scene::SaveSceneObject, SaveTimedEffects).
+	MatchProperty("SpecialBehaviour_PaceLimit", {
+		float pace = 0.0F;
+		reader >> pace;
+		SetPaceLimit(pace);
+	});
+	MatchProperty("SpecialBehaviour_StatusEffect", {
+		StatusEffect effect;
+		reader >> effect;
+		AddStatusEffect(effect, effect.Seconds);
+	});
+	MatchProperty("SpecialBehaviour_Venom", {
+		float seconds = 0.0F;
+		float damagePerSecond = 0.0F;
+		float slowTo = 1.0F;
+		std::istringstream values(reader.ReadPropValue());
+		values >> seconds >> damagePerSecond >> slowTo;
+		Envenom(damagePerSecond, seconds, slowTo);
+	});
+	MatchProperty("SpecialBehaviour_Snare", {
+		float seconds = 0.0F;
+		reader >> seconds;
+		Ensnare(seconds);
+	});
+	MatchProperty("SpecialBehaviour_Acid", {
+		float seconds = 0.0F;
+		float damagePerSecond = 0.0F;
+		std::istringstream values(reader.ReadPropValue());
+		values >> seconds >> damagePerSecond;
+		Corrode(damagePerSecond, seconds);
+	});
+	MatchProperty("SpecialBehaviour_Powerup", {
+		std::string name;
+		float seconds = 0.0F;
+		std::istringstream values(reader.ReadPropValue());
+		values >> name >> seconds;
+		AddPowerupSeconds(name, seconds);
+	});
 
 	EndPropertyList;
 }
@@ -1919,10 +1958,15 @@ PathAgent Actor::GetPathAgent() const {
 	const SettingsMan::PathTuning& tuning = g_SettingsMan.PathTunings();
 	agent.FlightCostScale *= tuning.FlightCostScale;
 	if (!agent.DigGoal) {
-		// Tied to the risk slider (PathTuning::LineWeightByRisk): all of it on a normal order, fading to none on a fully cautious one, which
-		// walks round as it likes; a risky one has its own on top, above.
-		const float cautiousShare = tuning.LineWeightByRisk ? std::max(-m_StandingOrder.Direct, 0.0F) : 0.0F;
-		agent.LineWeight += tuning.LineWeight * (1.0F - std::min(cautiousShare, 1.0F));
+		// Tied to the risk slider (PathTuning::LineWeightByRisk): none on a fully cautious order, which walks round as it likes, the set value
+		// on a normal one and the full-risk value on a full-risk one, in between by the risk (a risky order's own, above, gives way to it).
+		// Off: the set value on every order, on top of a risky order's own.
+		if (tuning.LineWeightByRisk) {
+			const float risk = std::clamp(m_StandingOrder.Direct, -1.0F, 1.0F);
+			agent.LineWeight = risk < 0.0F ? tuning.LineWeight * (1.0F + risk) : tuning.LineWeight + (tuning.FullRiskLineWeight - tuning.LineWeight) * risk;
+		} else {
+			agent.LineWeight += tuning.LineWeight;
+		}
 	}
 	for (const std::pair<Vector, double>& avoid: m_AvoidPoints) {
 		if (avoid.second > g_TimerMan.GetSimTimeMS()) {
@@ -3000,6 +3044,13 @@ void Actor::PostUpdate() {
 		m_pItemInReach = nullptr;
 	}
 	MOSRotating::PostUpdate();
+}
+
+void Actor::OnSave() {
+	for (MovableObject* item: m_Inventory) {
+		item->OnSave();
+	}
+	MOSRotating::OnSave();
 }
 
 void Actor::Update() {
