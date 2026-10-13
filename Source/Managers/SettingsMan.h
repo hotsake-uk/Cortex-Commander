@@ -598,6 +598,22 @@ namespace RTE {
 			float CautiousFlightSpeed = 0.75F; //!< How fast a cautious order flies, as a multiple of the usual speed limits.
 			float CautiousTouchdown = 3.5F; //!< How fast a cautious order comes down onto the floor, m/s.
 			float CautiousEnemyAvoidance = 1.0F; //!< How much a cautious order's route keeps clear of enemies (PathAgent::ThreatWeight, times the Safe routes setting), 0 to 2.
+			/// Which behaviours follow the order's risk (the "Recklessness" settings): each on as the game comes. Off, that behaviour is a normal
+			/// order's whatever the risk, and takes no notice of the AI movement recklessness setting either (see Follows).
+			struct RiskFollowTuning {
+				bool Steadying = true; //!< How long a unit steadies itself before a jetpack take-off (off: as long as a normal unit, always).
+				bool FuelWait = true; //!< How much of a flight's fuel it waits for at a take-off.
+				bool RouteCaution = true; //!< How much hard jumps and long drops put its route search off (PathAgent::Caution).
+				bool JetPreference = true; //!< How readily its route takes a jet flight over a walk (PathAgent::FlightCostScale).
+				bool FlightSpeed = true; //!< How fast it flies.
+				bool Landing = true; //!< How fast it comes down onto the floor.
+				bool StraightFlight = true; //!< Whether a full-risk order flies straight at the goal (StraightFlightRisk).
+				bool SkyRoute = true; //!< Whether a risky order's route may be a flight up into the sky and down (SkyRouteRisk).
+				bool EnemyAvoidance = true; //!< Whether a risky order's route ignores enemies, and a cautious one's keeps clear of them.
+				bool Running = true; //!< Whether a cautious order walks where others run.
+				bool Vehicles = true; //!< How far off a vehicle fights from, and how high a cautious dropship flies.
+			};
+			RiskFollowTuning Follows; //!< See RiskFollowTuning.
 		};
 
 		/// Gets the direct order tuning, to read or change ("Battle Behavior" settings).

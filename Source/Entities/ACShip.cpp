@@ -402,7 +402,7 @@ bool ACShip::FlyRouteTo(const Vector& spot) {
 		return false;
 	}
 	const SettingsMan::DirectOrderTuning& tuning = g_SettingsMan.DirectOrders();
-	const float direct = m_StandingOrder.Direct;
+	const float direct = g_SettingsMan.DirectOrders().Follows.Vehicles ? m_StandingOrder.Direct : 0.0F; // (Not following risk: a normal order's.)
 	const float care = std::clamp(-direct, 0.0F, 1.0F);
 	// A cautious order flies higher, up to a hull's height more over the ground, further from small arms below.
 	const float extra = HullHeight() * care;
@@ -555,7 +555,7 @@ void ACShip::UpdateCombat() {
 	const bool wraps = g_SceneMan.SceneWrapsX();
 	const float radius = GetRadius();
 	const float range = m_GunRange;
-	const float direct = std::clamp(m_StandingOrder.Direct, -1.0F, 1.0F);
+	const float direct = g_SettingsMan.DirectOrders().Follows.Vehicles ? std::clamp(m_StandingOrder.Direct, -1.0F, 1.0F) : 0.0F; // (Not following risk: a normal order's.)
 	// How far off to fight from, as a share of its range: half on a normal order, three quarters on a cautious one, under a third on a direct one.
 	const float share = direct < 0.0F ? 0.5F - 0.25F * direct : 0.5F - 0.2F * direct;
 	const Vector enemyPos = target->GetPos();

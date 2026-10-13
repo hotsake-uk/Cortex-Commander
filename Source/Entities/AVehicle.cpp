@@ -1058,7 +1058,7 @@ bool AVehicle::UpdateAIManoeuvre(const Actor* enemy) {
 	if (m_Status == DYING || m_Status == DEAD || (!m_Turret && !m_ThrowingArm)) {
 		return false;
 	}
-	const float direct = std::clamp(m_StandingOrder.Direct, -1.0F, 1.0F);
+	const float direct = g_SettingsMan.DirectOrders().Follows.Vehicles ? std::clamp(m_StandingOrder.Direct, -1.0F, 1.0F) : 0.0F; // (Not following risk: a normal order's.)
 	auto start = [this, wraps](float x) {
 		Vector to(x, m_Pos.m_Y);
 		g_SceneMan.WrapPosition(to);

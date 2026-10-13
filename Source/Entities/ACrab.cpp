@@ -2593,7 +2593,7 @@ void ACrab::UpdateMovePath() {
 	// The route, planned here and now (as a flying ship's is), on a cautious order kept off enemies.
 	std::deque<Vector> route;
 	bool reached = false;
-	const bool planned = AirRoute::Plan(body, m_Pos, goal, std::clamp(-m_StandingOrder.Direct, 0.0F, 1.0F), route, reached);
+	const bool planned = AirRoute::Plan(body, m_Pos, goal, g_SettingsMan.DirectOrders().Follows.Vehicles ? std::clamp(-m_StandingOrder.Direct, 0.0F, 1.0F) : 0.0F, route, reached);
 	m_PathRequest.reset();
 	m_UpdateMovePath = false;
 	m_MovePath.assign(route.begin(), route.end());

@@ -2175,9 +2175,80 @@ void DebugMan::SettingsGUI() {
 		if (Plain()) {
 			ImGui::Spacing();
 			if (ToolUI::Button("Reset to normal")) {
+				const SettingsMan::DirectOrderTuning::RiskFollowTuning follows = direct.Follows; // (The Recklessness page's own, kept.)
 				direct = SettingsMan::DirectOrderTuning();
+				direct.Follows = follows;
 			}
 			ImGui::SetItemTooltip("Puts every Battle Behavior setting back to the tuning cautious and direct orders were made with.");
+		}
+	};
+
+	// Which behaviours an order's risk (how far its double click is dragged, or one click for a cautious one) and the AI movement recklessness
+	// drive: each can be kept to a normal order's, whatever the risk (SettingsMan::DirectOrderTuning::RiskFollowTuning).
+	auto recklessness = [&]() {
+		SettingsMan::DirectOrderTuning& direct = g_SettingsMan.DirectOrders();
+		SettingsMan::DirectOrderTuning::RiskFollowTuning& follows = direct.Follows;
+		SettingsMan::PathTuning& tuning = g_SettingsMan.PathTunings();
+		if (Plain()) {
+			ImGui::TextWrapped("What an order's risk changes. One click is a cautious order, a double click a normal one, and a double click dragged gets riskier the further it goes. Each behaviour below follows that risk (and the AI movement recklessness) when ticked. Unticked, it is a normal order's on every order, careful or reckless, and the recklessness slider leaves it alone too. Everything else still follows the risk.");
+		}
+		Heading("AI movement");
+		{
+			float reckless = g_SettingsMan.AIRecklessness() * 100.0F;
+			if (Slider("AI movement recklessness", &reckless, Normal{50.0F}, 0.0F, 100.0F, "%.0f%%")) {
+				g_SettingsMan.SetAIRecklessness(reckless / 100.0F);
+			}
+			Tip("How many chances AI units take getting about, on every order. Lower: they steady themselves longer before a jetpack jump, wait for a little more fuel, and pick routes round hard jumps and long drops. Higher: quicker, riskier take-offs and routes. 50% is the designed behaviour. (The same setting as on the Movement page.)");
+		}
+		Heading("Jetpack take-offs");
+		{
+			Check("Steadying follows risk", &follows.Steadying);
+			Tip("On (normal): the riskier the order, the less a unit steadies itself (still and upright) before a jetpack climb or jump, down to almost not at all at full risk; a cautious order steadies longer. Off: always steady, as long as a normal unit does on every order.");
+			Check("Fuel wait follows risk", &follows.FuelWait);
+			Tip("On (normal): a risky order takes off with less than the flight's fuel (Battle Behavior's Fuel tolerance), a cautious one waits for more. Off: every order waits for what a normal unit does.");
+		}
+		Heading("Flying");
+		{
+			Check("Flight speed follows risk", &follows.FlightSpeed);
+			Tip("On (normal): risky orders fly faster, cautious ones slower (Battle Behavior's Flight speed). Off: every order flies at a normal unit's speed.");
+			Check("Landing speed follows risk", &follows.Landing);
+			Tip("On (normal): risky orders come down onto the floor harder, cautious ones softer (Battle Behavior's Landing speed). Off: every order lands at a normal unit's 5 m/s.");
+			Check("Straight flights at the goal", &follows.StraightFlight);
+			Tip("On (normal): from Battle Behavior's Straight flight risk, a unit with a jetpack flies straight at the place it was sent instead of taking the route. Off: never; every order takes its route.");
+			Check("Sky routes", &follows.SkyRoute);
+			Tip("On (normal): from Battle Behavior's Sky route risk, out in the open a unit may fly up into the sky and down onto the place it was sent. Off: never.");
+			Check("Units dive while flying", &direct.Dives);
+			Tip("Whether units on a risky order dive on flights across open ground. (The same setting as on the Battle Behavior page.)");
+			Toggle("Risky orders fly past ladders", g_SettingsMan.RiskyOrdersFlyPastLadders(), [](bool on) { g_SettingsMan.SetRiskyOrdersFlyPastLadders(on); });
+			Tip("On (normal): a risky order jets up past a ladder a careful route would climb, when the tank makes it. Off: every order climbs ladders. (The same setting as on the Movement page.)");
+		}
+		Heading("Route");
+		{
+			Check("Route caution follows risk", &follows.RouteCaution);
+			Tip("On (normal): the riskier the order, the less hard jumps and long drops put its route off (Battle Behavior's Risk taking); a cautious one shies from them more. Off: every order weighs them as a normal unit does.");
+			Check("Jetpack preference follows risk", &follows.JetPreference);
+			Tip("On (normal): risky orders jump where others walk round, cautious ones walk round where others jump (Battle Behavior's Jetpack preference and reluctance). Off: every order routes as a normal one; Pathfinding's Jetpack preference still applies.");
+			Check("Straightness follows risk", &tuning.LineWeightByRisk);
+			Tip("On (normal): how hard a route keeps to the straight line follows the order's risk. Off: Pathfinding's Route straightness on every order alike. (The same setting as on the Pathfinding page.)");
+			Check("Enemy avoidance follows risk", &follows.EnemyAvoidance);
+			Tip("On (normal): a risky order's route takes no notice of enemies (Battle Behavior's Ignore enemies), a cautious one's keeps clear of them. Off: every order's route treats enemies as a normal one's does.");
+			Check("Cautious orders walk", &follows.Running);
+			Tip("On (normal): a cautious order never runs. Off: it runs on long, level, open stretches as a normal order does.");
+		}
+		Heading("Vehicles");
+		{
+			Check("Vehicles follow risk", &follows.Vehicles);
+			Tip("On (normal): a risky order has a tank or dropship fight closer in and jink less, a cautious one further off, and a cautious dropship or flyer keep higher and clear of enemies. Off: every order as a normal one.");
+		}
+		if (Plain()) {
+			ImGui::Spacing();
+			if (ToolUI::Button("Reset to normal")) {
+				follows = SettingsMan::DirectOrderTuning::RiskFollowTuning();
+				direct.Dives = true;
+				g_SettingsMan.SetRiskyOrdersFlyPastLadders(true);
+				tuning.LineWeightByRisk = true;
+			}
+			ImGui::SetItemTooltip("Puts every Recklessness setting back to following the risk, as the game comes. The AI movement recklessness is left as it is.");
 		}
 	};
 
@@ -2591,6 +2662,7 @@ void DebugMan::SettingsGUI() {
 	    {Group::Gameplay, "AI behaviour", aiBehaviour},
 	    {Group::Gameplay, "Movement", movement},
 	    {Group::Gameplay, "Battle Behavior", battleBehavior},
+	    {Group::Gameplay, "Recklessness", recklessness},
 	    {Group::Gameplay, "Digging", digging},
 	    {Group::Gameplay, "Pathfinding", pathfinding},
 	    {Group::Gameplay, "Debug", debug},
