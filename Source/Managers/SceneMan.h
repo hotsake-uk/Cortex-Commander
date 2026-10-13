@@ -816,6 +816,19 @@ namespace RTE {
 		/// Gets how many ropes there are.
 		int GetRopeCount() const;
 
+		/// Puts down a round blob of goo, jelly or gel (SoftBodySim): it falls, wobbles, can be stood and bounced on, and splits when shot
+		/// through. Thread safe; made on the next sim update.
+		/// @param type What it's made of: "Goo", "Jelly" or "Bouncy gel" (any other name is goo).
+		/// @param position Where its middle is, in scene coordinates.
+		/// @param radius How big it is, in pixels (3 to 60).
+		void AddSoftBody(const std::string& type, const Vector& position, float radius) const;
+
+		/// Takes every blob away. Thread safe.
+		void RemoveSoftBodies() const;
+
+		/// Gets how many blobs there are.
+		int GetSoftBodyCount() const;
+
 		/// Gets how many units are on fire.
 		int GetBurningUnitCount() const;
 

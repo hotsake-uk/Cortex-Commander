@@ -15,6 +15,7 @@
 #include "TerrainFire.h"
 #include "TerrainCandle.h"
 #include "RopeSim.h"
+#include "SoftBodySim.h"
 #include "WeatherEffects.h"
 #include "PathFinder.h"
 #include "Scene.h"
@@ -641,6 +642,32 @@ void DebugOverlays::DrawWorldSim() {
 				}
 			}
 			std::snprintf(text, sizeof(text), "ropes: %d, %d points, %d links, %d ties, %d points burning", RopeSim::GetCount(), nodes, static_cast<int>(links.size()), static_cast<int>(anchors.size()), burning);
+			caption(text);
+			break;
+		}
+		case 7: {
+			// Soft bodies: each blob's ring, white at rest to red squashed or blue stretched, its points, and a ring at its middle as big as
+			// the units pressing on it.
+			std::vector<SoftBodySim::DebugBlob> blobs;
+			SoftBodySim::GetDebug(blobs);
+			float thickness = std::max(1.5F, 1.0F / perPixel);
+			int points = 0;
+			int contacts = 0;
+			for (const SoftBodySim::DebugBlob& blob: blobs) {
+				float squash = std::clamp(blob.Squash, 0.5F, 1.5F);
+				ImU32 color = squash < 1.0F ? IM_COL32(255, static_cast<int>(255.0F - (1.0F - squash) * 400.0F), static_cast<int>(255.0F - (1.0F - squash) * 400.0F), 230) : IM_COL32(static_cast<int>(255.0F - (squash - 1.0F) * 400.0F), static_cast<int>(255.0F - (squash - 1.0F) * 200.0F), 255, 230);
+				for (size_t i = 0; i < blob.Ring.size(); ++i) {
+					const glm::vec2& a = blob.Ring[i];
+					const glm::vec2& b = blob.Ring[(i + 1) % blob.Ring.size()];
+					drawList->AddLine(DebugDraw::ToScreen(Vector(a.x, a.y)), DebugDraw::ToScreen(Vector(b.x, b.y)), color, thickness);
+					drawList->AddCircleFilled(DebugDraw::ToScreen(Vector(a.x, a.y)), 2.0F, color);
+				}
+				ImVec2 middle = DebugDraw::ToScreen(Vector(blob.Center.x, blob.Center.y));
+				drawList->AddCircle(middle, 3.0F + static_cast<float>(blob.Contacts), blob.Contacts > 0 ? IM_COL32(255, 220, 90, 255) : IM_COL32(200, 200, 200, 160), 12, 2.0F);
+				points += static_cast<int>(blob.Ring.size());
+				contacts += blob.Contacts;
+			}
+			std::snprintf(text, sizeof(text), "soft bodies: %d, %d points, %d pressed on by units", static_cast<int>(blobs.size()), points, contacts);
 			caption(text);
 			break;
 		}

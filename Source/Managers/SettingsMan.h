@@ -795,7 +795,7 @@ namespace RTE {
 
 		/// Sets what the world simulation overlay shows; see WorldSimOverlay.
 		/// @param which 0 to 6.
-		void SetWorldSimOverlay(int which) { m_WorldSimOverlay = std::clamp(which, 0, 6); }
+		void SetWorldSimOverlay(int which) { m_WorldSimOverlay = std::clamp(which, 0, 7); }
 
 		/// Gets whether the sandbox's stroke log is on.
 		bool ShowSandboxStrokeLog() const { return m_SandboxStrokeLog; }

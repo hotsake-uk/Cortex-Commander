@@ -67,6 +67,7 @@
 #include "ActorFire.h"
 #include "ActorWater.h"
 #include "RopeSim.h"
+#include "SoftBodySim.h"
 #include "UnitSpeech.h"
 #include "UnitSpeechVoice.h"
 #include "PostProcessMan.h"
@@ -616,8 +617,14 @@ void RunGameLoop() {
 				TerrainGrazing::Update();
 				logStages.Next("Sim: burning units");
 				ActorFire::Update();
+				// Soft bodies are lifted out of the terrain while the falling ground is checked and moved (it would take their pixels for ground
+				// of its own), and drawn back in before the liquids and the objects move.
+				logStages.Next("Sim: soft bodies lift");
+				SoftBodySim::Lift();
 				logStages.Next("Sim: terrain collapse");
 				TerrainCollapse::Update();
+				logStages.Next("Sim: soft bodies");
+				SoftBodySim::Update();
 				logStages.Next("Sim: magic effects");
 				MagicEffects::Update();
 				logStages.Next("Sim: air pressure and wind");
