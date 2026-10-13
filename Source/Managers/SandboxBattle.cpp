@@ -1147,6 +1147,124 @@ namespace SandboxDetail {
 		ForgetReinforcements();
 	}
 
+	void SaveBattle(std::ostream& out) {
+		// In parts, each with a word before it that the loading looks for: if what is read has gone wrong, it stops there.
+		out << " setups";
+		SaveBattleSetups(out);
+		out << " teams";
+		for (const BattleTeam& team: s_BattleTeams) {
+			out << ' ' << team.Running << ' ' << team.Spent << ' ' << team.Sent << ' ' << team.Broke << ' ' << team.FillFirst;
+			SaveUpdate(out, team.NextWave);
+			SaveUpdate(out, team.NextZoneWave);
+		}
+		out << ' ' << s_BattleCraft.size();
+		for (const BattleCraft& craft: s_BattleCraft) {
+			out << ' ' << craft.Ship.ID;
+			SaveUpdate(out, craft.Emptied);
+		}
+		// (The battle's own defenders: those a player told to defend are saved with the orders, SaveOrders.)
+		const size_t own = std::count_if(s_BattleDefenders.begin(), s_BattleDefenders.end(), [](const auto& entry) { return !entry.second.Commanded; });
+		out << ' ' << own;
+		for (const auto& [id, defender]: s_BattleDefenders) {
+			if (!defender.Commanded) {
+				SaveDefender(out, id, defender);
+			}
+		}
+		for (int side = 0; side < c_Sides; ++side) {
+			out << ' ' << s_RallySet[side] << ' ' << s_RallyPoints[side].m_X << ' ' << s_RallyPoints[side].m_Y;
+		}
+		out << " modes";
+		SaveBattleModes(out);
+		out << " command";
+		SaveReinforcements(out);
+		SavePowers(out);
+		SaveEnemyCommander(out);
+		SaveFieldBrain(out);
+		SaveArmy(out);
+		SaveKits(out);
+		SaveVeterans(out);
+		SaveBattlePickups(out);
+		SaveSpawnOrderUnits(out);
+		SaveHotSeat(out);
+		out << " done";
+	}
+
+	namespace {
+		/// Whether the next word read is the one a part of a saved battle starts with.
+		bool PartStarts(std::istream& in, const char* part) {
+			std::string word;
+			in >> word;
+			return in && word == part;
+		}
+	} // namespace
+
+	void LoadBattle(std::istream& in, const LoadedIDs& ids) {
+		// (Those a player told to defend, put back by LoadOrders, are kept if the battle can't be read.)
+		const std::unordered_map<long, BattleDefender> commanded = s_BattleDefenders;
+		bool read = PartStarts(in, "setups") && LoadBattleSetups(in) && PartStarts(in, "teams");
+		if (read) {
+			for (BattleTeam& team: s_BattleTeams) {
+				in >> team.Running >> team.Spent >> team.Sent >> team.Broke >> team.FillFirst;
+				team.NextWave = LoadUpdate(in);
+				team.NextZoneWave = LoadUpdate(in);
+			}
+			size_t count = 0;
+			in >> count;
+			for (size_t i = 0; i < count && in; ++i) {
+				long ship = 0;
+				in >> ship;
+				BattleCraft craft{ids.Ref(ship), LoadUpdate(in)};
+				if (craft.Ship.Unit) {
+					s_BattleCraft.push_back(craft);
+				}
+			}
+			in >> count;
+			for (size_t i = 0; i < count && in; ++i) {
+				BattleDefender defender;
+				const long id = LoadDefender(in, ids, defender);
+				// (One a player has told to defend since keeps that order.)
+				if (id != 0 && !s_BattleDefenders.count(id)) {
+					s_BattleDefenders[id] = defender;
+				}
+			}
+			for (int side = 0; side < c_Sides; ++side) {
+				in >> s_RallySet[side] >> s_RallyPoints[side].m_X >> s_RallyPoints[side].m_Y;
+			}
+			read = PartStarts(in, "modes");
+		}
+		if (read) {
+			LoadBattleModes(in, ids);
+			read = PartStarts(in, "command");
+		}
+		if (read) {
+			LoadReinforcements(in);
+			LoadPowers(in);
+			LoadEnemyCommander(in);
+			LoadFieldBrain(in, ids);
+			LoadArmy(in);
+			LoadKits(in, ids);
+			LoadVeterans(in, ids);
+			LoadBattlePickups(in, ids);
+			LoadSpawnOrderUnits(in, ids);
+			LoadHotSeat(in);
+			read = PartStarts(in, "done");
+		}
+		if (!read) {
+			g_ConsoleMan.PrintString("SANDBOX: The saved game's battle couldn't be read: it starts with none.");
+			ForgetBattle();
+			s_BattleDefenders = commanded;
+			s_RallySet.fill(false);
+			return;
+		}
+		s_BattleLoaded = true;
+		// (The units to buy from are listed when a battle starts: this one started in the game saved.)
+		if ((s_ModeRun.Running || std::any_of(s_BattleTeams.begin(), s_BattleTeams.end(), [](const BattleTeam& team) { return team.Running; })) && !s_CatalogueBuilt) {
+			BuildCatalogue();
+		}
+		// The after-battle report keeps its record from here on.
+		ForgetBattleReport();
+	}
+
 	/// The card's factions: a list to tick, none ticked for any faction.
 	bool FactionPicker(BattleSettings& setup) {
 		bool changed = false;

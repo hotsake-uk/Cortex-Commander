@@ -165,6 +165,32 @@ namespace SandboxDetail {
 
 	void ForgetSpawnOrderUnits() { s_Waiting.clear(); }
 
+	void SaveSpawnOrderUnits(std::ostream& out) {
+		out << ' ' << s_Waiting.size();
+		for (const Waiting& waiting: s_Waiting) {
+			out << ' ' << waiting.Unit.ID << ' ' << waiting.Side;
+			SaveUpdate(out, waiting.MadeAt);
+			SaveUpdate(out, waiting.InAt);
+		}
+	}
+
+	void LoadSpawnOrderUnits(std::istream& in, const LoadedIDs& ids) {
+		size_t count = 0;
+		in >> count;
+		s_Waiting.clear();
+		for (size_t i = 0; i < count && in; ++i) {
+			long unit = 0;
+			Waiting waiting;
+			in >> unit >> waiting.Side;
+			waiting.MadeAt = LoadUpdate(in);
+			waiting.InAt = LoadUpdate(in);
+			waiting.Unit = ids.Ref(unit);
+			if (waiting.Unit.Unit) {
+				s_Waiting.push_back(waiting);
+			}
+		}
+	}
+
 	const SpawnOrder& SpawnOrderAt(const BattleModeSettings& settings, int side, const Vector& at) {
 		side = std::clamp(side, 0, c_Sides - 1);
 		const std::vector<std::vector<Vector>>& zones = settings.SpawnZones[side];

@@ -5986,6 +5986,270 @@ namespace SandboxDetail {
 		s_Rushers.clear();
 	}
 
+	namespace {
+		/// Writes a set of units by their unique IDs, for a saved game.
+		void SaveIDs(std::ostream& out, const std::unordered_set<long>& set) {
+			out << ' ' << set.size();
+			for (long id: set) {
+				out << ' ' << id;
+			}
+		}
+
+		/// Reads one written by SaveIDs onto the loaded game's units: those not in it are left out.
+		std::unordered_set<long> LoadIDs(std::istream& in, const LoadedIDs& ids) {
+			std::unordered_set<long> set;
+			size_t count = 0;
+			in >> count;
+			for (size_t i = 0; i < count && in; ++i) {
+				long id = 0;
+				in >> id;
+				if (const long newID = ids(id); newID != 0) {
+					set.insert(newID);
+				}
+			}
+			return set;
+		}
+
+		void SaveFlag(std::ostream& out, const Flag& flag) {
+			out << ' ' << static_cast<int>(flag.State) << ' ' << flag.Home.m_X << ' ' << flag.Home.m_Y << ' ' << flag.Pos.m_X << ' ' << flag.Pos.m_Y << ' ' << flag.Carrier.ID << ' ' << flag.Unreachable;
+			SaveUpdate(out, flag.DroppedAt);
+		}
+
+		/// A flag read back, its carrier (if it is in the loaded game) carrying it again: glowing, and tagged as running the objective.
+		void LoadFlag(std::istream& in, const LoadedIDs& ids, Flag& flag) {
+			int state = 0;
+			long carrier = 0;
+			flag = Flag();
+			in >> state >> flag.Home.m_X >> flag.Home.m_Y >> flag.Pos.m_X >> flag.Pos.m_Y >> carrier >> flag.Unreachable;
+			flag.DroppedAt = LoadUpdate(in);
+			flag.State = static_cast<FlagState>(std::clamp(state, 0, static_cast<int>(FlagState::Dropped)));
+			// (A carried flag whose carrier isn't there falls where it was, as when a carrier is lost: UpdateFlags.)
+			if (Actor* unit = flag.State == FlagState::Carried ? ids.Unit(carrier) : nullptr) {
+				SetCarrier(flag, unit);
+			}
+		}
+	} // namespace
+
+	void SaveBattleModes(std::ostream& out) {
+		out << ' ' << s_ModeRun.Running << ' ' << s_ModeRun.Over << ' ' << s_ModeRun.Winner;
+		for (int score: s_ModeRun.Score) {
+			out << ' ' << score;
+		}
+		SaveText(out, s_ModeRun.Result);
+		SaveText(out, s_ModeRun.Note);
+		SaveUpdate(out, s_ModeRun.NoteAt);
+		// Respawns: who was alive at the last look, when the fallen fell, and how many each team may have sent.
+		for (int side = 0; side < c_Sides; ++side) {
+			out << ' ' << s_Released[side] << ' ' << s_SizeReleased[side];
+			SaveIDs(out, s_Alive[side]);
+			out << ' ' << s_FellAt[side].size();
+			for (long long at: s_FellAt[side]) {
+				SaveUpdate(out, at);
+			}
+		}
+		// Capture the flag and one flag (the ship's hunters and the hunters of other modes are runners too).
+		for (const Flag& flag: s_Flags) {
+			SaveFlag(out, flag);
+		}
+		SaveFlag(out, s_OneFlag);
+		out << ' ' << s_FlagPlace << ' ' << s_Runners.size();
+		for (const auto& [id, runner]: s_Runners) {
+			out << ' ' << id << ' ' << runner.Team << ' ' << runner.Target << ' ' << runner.Sent.m_X << ' ' << runner.Sent.m_Y << ' ' << runner.HasSent << ' ' << runner.Fighting << ' ' << runner.Seen;
+			SaveUpdate(out, runner.SentAt);
+			SaveUpdate(out, runner.Made);
+		}
+		// Capture the ship.
+		out << ' ' << s_Ship.ID << ' ' << s_ShipPlace << ' ' << s_ShipSentTo.m_X << ' ' << s_ShipSentTo.m_Y << ' ' << s_ShipSentFor;
+		SaveUpdate(out, s_ShipGoneAt);
+		// King of the hill.
+		out << ' ' << s_Hill << ' ' << s_Holder;
+		SaveUpdate(out, s_HillSince);
+		for (float held: s_Held) {
+			out << ' ' << held;
+		}
+		// Assault.
+		out << ' ' << s_Objective << ' ' << s_Progress << ' ' << s_Contested;
+		SaveUpdate(out, s_Deadline, 0);
+		// Wave defence.
+		out << ' ' << s_Wave << ' ' << s_Overrun << ' ' << s_ZoneContested;
+		SaveUpdate(out, s_WaveBreakUntil, 0);
+		for (int sent: s_WaveSentBefore) {
+			out << ' ' << sent;
+		}
+		// Escort and extraction.
+		out << ' ' << s_EscortVip.ID << ' ' << s_EscortHasVip << ' ' << s_EscortCentre.m_X << ' ' << s_EscortCentre.m_Y;
+		SaveUpdate(out, s_ModeDeadline, 0);
+		out << ' ' << s_InExtraction.size();
+		for (const auto& [id, seconds]: s_InExtraction) {
+			out << ' ' << id << ' ' << seconds;
+		}
+		// The point.
+		for (float points: s_PointScore) {
+			out << ' ' << points;
+		}
+		for (int holder: s_BandHolder) {
+			out << ' ' << holder;
+		}
+		// Last team standing and VIP hunt.
+		for (bool gone: s_Out) {
+			out << ' ' << gone;
+		}
+		for (const Vip& vip: s_Vips) {
+			out << ' ' << vip.Unit.ID << ' ' << vip.Has << ' ' << vip.Pos.m_X << ' ' << vip.Pos.m_Y;
+			SaveUpdate(out, vip.NextAt, 0);
+		}
+		// The commanders (the jobs they give are given again at their next look) and their squads.
+		for (const Commander& commander: s_Commanders) {
+			out << ' ' << commander.Objective << ' ' << commander.FellBack << ' ' << commander.Next << ' ' << commander.OnNow << ' ' << commander.OnNext;
+			SaveUpdate(out, commander.NextLook, 0);
+		}
+		out << ' ' << s_NextSquadNumber << ' ' << s_AISquads.size();
+		for (const AISquad& squad: s_AISquads) {
+			out << ' ' << squad.Team << ' ' << squad.Number << ' ' << squad.Leader.ID;
+			SaveRefs(out, squad.Followers);
+			SaveUpdate(out, squad.WaitSince);
+		}
+		SaveIDs(out, s_SquadHeld);
+		// Units watched for being stuck, and the rushers.
+		out << ' ' << s_Stuck.size();
+		for (const auto& [id, watch]: s_Stuck) {
+			out << ' ' << id << ' ' << watch.Goal.m_X << ' ' << watch.Goal.m_Y << ' ' << watch.Best << ' ' << watch.From.m_X << ' ' << watch.From.m_Y << ' ' << watch.BestRoute << ' ' << watch.Route;
+			SaveUpdate(out, watch.Since);
+		}
+		SaveIDs(out, s_Rushers);
+		for (int side = 0; side < c_Sides; ++side) {
+			out << ' ' << s_RushMade[side] << ' ' << s_RushChosen[side];
+		}
+	}
+
+	void LoadBattleModes(std::istream& in, const LoadedIDs& ids) {
+		in >> s_ModeRun.Running >> s_ModeRun.Over >> s_ModeRun.Winner;
+		for (int& score: s_ModeRun.Score) {
+			in >> score;
+		}
+		s_ModeRun.Result = LoadText(in);
+		s_ModeRun.Note = LoadText(in);
+		s_ModeRun.NoteAt = LoadUpdate(in);
+		for (int side = 0; side < c_Sides; ++side) {
+			in >> s_Released[side] >> s_SizeReleased[side];
+			// (One not in the loaded game isn't counted as fallen: it wasn't seen to fall.)
+			s_Alive[side] = LoadIDs(in, ids);
+			size_t count = 0;
+			in >> count;
+			s_FellAt[side].clear();
+			for (size_t i = 0; i < count && in; ++i) {
+				s_FellAt[side].push_back(LoadUpdate(in));
+			}
+		}
+		for (Flag& flag: s_Flags) {
+			LoadFlag(in, ids, flag);
+		}
+		LoadFlag(in, ids, s_OneFlag);
+		size_t count = 0;
+		in >> s_FlagPlace >> count;
+		for (size_t i = 0; i < count && in; ++i) {
+			long id = 0;
+			FlagRunner runner;
+			in >> id >> runner.Team >> runner.Target >> runner.Sent.m_X >> runner.Sent.m_Y >> runner.HasSent >> runner.Fighting >> runner.Seen;
+			runner.SentAt = LoadUpdate(in);
+			runner.Made = LoadUpdate(in);
+			if (const long newID = ids(id); newID != 0) {
+				s_Runners[newID] = runner;
+			}
+		}
+		s_RunnersDue = true;
+		long ship = 0;
+		in >> ship >> s_ShipPlace >> s_ShipSentTo.m_X >> s_ShipSentTo.m_Y >> s_ShipSentFor;
+		s_Ship = ids.Ref(ship);
+		s_ShipSentFor = ids(s_ShipSentFor);
+		s_ShipGoneAt = LoadUpdate(in);
+		in >> s_Hill >> s_Holder;
+		s_HillSince = LoadUpdate(in);
+		for (float& held: s_Held) {
+			in >> held;
+		}
+		in >> s_Objective >> s_Progress >> s_Contested;
+		s_Deadline = LoadUpdate(in, 0);
+		in >> s_Wave >> s_Overrun >> s_ZoneContested;
+		s_WaveBreakUntil = LoadUpdate(in, 0);
+		for (int& sent: s_WaveSentBefore) {
+			in >> sent;
+		}
+		long escortVip = 0;
+		in >> escortVip >> s_EscortHasVip >> s_EscortCentre.m_X >> s_EscortCentre.m_Y;
+		s_EscortVip = ids.Ref(escortVip);
+		s_ModeDeadline = LoadUpdate(in, 0);
+		in >> count;
+		s_InExtraction.clear();
+		for (size_t i = 0; i < count && in; ++i) {
+			long id = 0;
+			float seconds = 0.0F;
+			in >> id >> seconds;
+			if (const long newID = ids(id); newID != 0) {
+				s_InExtraction[newID] = seconds;
+			}
+		}
+		for (float& points: s_PointScore) {
+			in >> points;
+		}
+		for (int& holder: s_BandHolder) {
+			in >> holder;
+		}
+		for (bool& gone: s_Out) {
+			in >> gone;
+		}
+		for (Vip& vip: s_Vips) {
+			long unit = 0;
+			in >> unit >> vip.Has >> vip.Pos.m_X >> vip.Pos.m_Y;
+			vip.NextAt = LoadUpdate(in, 0);
+			vip.Unit = ids.Ref(unit);
+		}
+		for (Commander& commander: s_Commanders) {
+			commander = Commander();
+			in >> commander.Objective >> commander.FellBack >> commander.Next >> commander.OnNow >> commander.OnNext;
+			commander.NextLook = LoadUpdate(in, 0);
+		}
+		in >> s_NextSquadNumber >> count;
+		s_AISquads.clear();
+		for (size_t i = 0; i < count && in; ++i) {
+			AISquad squad;
+			long leader = 0;
+			in >> squad.Team >> squad.Number >> leader;
+			squad.Leader = ids.Ref(leader);
+			squad.Followers = LoadRefs(in, ids);
+			squad.WaitSince = LoadUpdate(in);
+			if (squad.Leader.Unit) {
+				s_AISquads.push_back(std::move(squad));
+			}
+		}
+		s_SquadHeld = LoadIDs(in, ids);
+		in >> count;
+		s_Stuck.clear();
+		for (size_t i = 0; i < count && in; ++i) {
+			long id = 0;
+			StuckWatch watch;
+			in >> id >> watch.Goal.m_X >> watch.Goal.m_Y >> watch.Best >> watch.From.m_X >> watch.From.m_Y >> watch.BestRoute >> watch.Route;
+			watch.Since = LoadUpdate(in);
+			if (const long newID = ids(id); newID != 0) {
+				s_Stuck[newID] = watch;
+			}
+		}
+		// (Their SandboxRush tags, taken off as the game loaded, go back on at the rushers' next look: UpdateRushers.)
+		s_Rushers = LoadIDs(in, ids);
+		for (int side = 0; side < c_Sides; ++side) {
+			in >> s_RushMade[side] >> s_RushChosen[side];
+		}
+		// The VIPs glow again, as they did (a unit's glow isn't kept in a saved game).
+		for (const Vip& vip: s_Vips) {
+			if (Actor* unit = vip.Has ? GetRef(vip.Unit) : nullptr) {
+				unit->SetHighlighted(true, true);
+			}
+		}
+		if (Actor* unit = s_EscortHasVip ? GetRef(s_EscortVip) : nullptr) {
+			unit->SetHighlighted(true, true);
+		}
+	}
+
 	/// The mode list at the top of the Battle tab. Whether a mode (not the cards) is chosen.
 	bool BattleModeChooser(bool withCustom) {
 		// (Without custom, the list starts at the first mode proper: its index in the list is one less than the mode's.)

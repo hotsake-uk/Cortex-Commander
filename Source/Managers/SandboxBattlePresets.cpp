@@ -14,6 +14,7 @@ namespace SandboxDetail {
 		std::string s_PresetsScene; //!< The map they were read for ("" before any was).
 		bool s_PresetsRead = false;
 		bool s_PresetPending = false; //!< A game has started: its map's setup marked "with map" goes in on the next update.
+		bool s_PresetResumed = false; //!< The game started is a saved one, its battle setup put back (LoadBattleSetups): none goes in over it.
 		char s_PresetName[64] = "";
 		std::string s_PresetNote; //!< What the last save or load did, shown under the list.
 		std::string s_PresetOnStart; //!< The setup the map browser picked to go in when the next game starts, in place of the one with the map.
@@ -99,6 +100,7 @@ namespace SandboxDetail {
 			visit("HoldToWin", mode.HoldToWin);
 			visit("HillMoveSeconds", mode.HillMoveSeconds);
 			visit("MajorityScores", mode.MajorityScores);
+			visit("HillsToWin", mode.HillsToWin);
 			visit("Attacker", mode.Attacker);
 			visit("CaptureSeconds", mode.CaptureSeconds);
 			visit("TimeLimit", mode.TimeLimit);
@@ -319,6 +321,35 @@ namespace SandboxDetail {
 			return from == std::string::npos ? std::string() : text.substr(from, to - from + 1);
 		}
 
+		/// A team's card from the lines read, its fields under a prefix ("Team0."): a field not there keeps the value it has.
+		void ReadCard(const std::map<std::string, std::string>& lines, const std::string& prefix, BattleSettings& card) {
+			Loader load{lines, prefix};
+			VisitCard(card, load);
+			card.Craft = std::clamp(card.Craft, 0, static_cast<int>(std::size(c_Crafts)) - 1);
+		}
+
+		/// The mode panel from the lines read, as ReadCard.
+		void ReadMode(const std::map<std::string, std::string>& lines, const std::string& prefix, BattleModeSettings& mode) {
+			Loader load{lines, prefix};
+			// (Saved before each team had its own size: the one size, for every team.)
+			if (auto size = lines.find(prefix + "TeamSize"); size != lines.end()) {
+				int teamSize = mode.TeamSize[0];
+				FromText(size->second, teamSize);
+				mode.TeamSize.fill(teamSize);
+			}
+			VisitMode(mode, load);
+			mode.Attacker = std::clamp(mode.Attacker, 0, c_Sides - 1);
+			if (mode.FlagSpots.size() > c_MaxFlagSpots) {
+				mode.FlagSpots.resize(c_MaxFlagSpots);
+			}
+			if (mode.PickupSpots.size() > c_MaxPickupSpots) {
+				mode.PickupSpots.resize(c_MaxPickupSpots);
+			}
+			if (mode.PickupZones.size() > c_MaxPickupZones) {
+				mode.PickupZones.resize(c_MaxPickupZones);
+			}
+		}
+
 		/// A setup made from the lines read under its name.
 		BattlePreset ReadPreset(const std::string& name, const std::map<std::string, std::string>& lines) {
 			BattlePreset preset;
@@ -332,28 +363,9 @@ namespace SandboxDetail {
 				FromText(hold->second, preset.HoldZones);
 			}
 			for (int side = 0; side < c_Sides; ++side) {
-				Loader load{lines, "Team" + std::to_string(side) + "."};
-				VisitCard(preset.Cards[side], load);
-				preset.Cards[side].Craft = std::clamp(preset.Cards[side].Craft, 0, static_cast<int>(std::size(c_Crafts)) - 1);
+				ReadCard(lines, "Team" + std::to_string(side) + ".", preset.Cards[side]);
 			}
-			Loader load{lines, "Mode."};
-			// (Saved before each team had its own size: the one size, for every team.)
-			if (auto size = lines.find("Mode.TeamSize"); size != lines.end()) {
-				int teamSize = preset.Mode.TeamSize[0];
-				FromText(size->second, teamSize);
-				preset.Mode.TeamSize.fill(teamSize);
-			}
-			VisitMode(preset.Mode, load);
-			preset.Mode.Attacker = std::clamp(preset.Mode.Attacker, 0, c_Sides - 1);
-			if (preset.Mode.FlagSpots.size() > c_MaxFlagSpots) {
-				preset.Mode.FlagSpots.resize(c_MaxFlagSpots);
-			}
-			if (preset.Mode.PickupSpots.size() > c_MaxPickupSpots) {
-				preset.Mode.PickupSpots.resize(c_MaxPickupSpots);
-			}
-			if (preset.Mode.PickupZones.size() > c_MaxPickupZones) {
-				preset.Mode.PickupZones.resize(c_MaxPickupZones);
-			}
+			ReadMode(lines, "Mode.", preset.Mode);
 			return preset;
 		}
 
@@ -555,7 +567,59 @@ namespace SandboxDetail {
 
 	void BattlePresetsNewGame() {
 		s_PresetPending = true;
+		s_PresetResumed = false;
 		s_Linked = LinkedRun();
+	}
+
+	void SaveBattleSetups(std::ostream& out) {
+		// As a setup is saved to its file, a field a line ("Team0.Budget = 5000"), with the sim's copies besides the Battle tab's: the mode as
+		// its game runs ("Run.") and each team as it plays it ("Sim0.", a mode's teams being set up from their cards by the mode). All as one word.
+		std::ostringstream text;
+		for (int side = 0; side < c_Sides; ++side) {
+			Saver card{text, "Team" + std::to_string(side) + "."};
+			VisitCard(s_BattleSetup[side], card);
+			Saver team{text, "Sim" + std::to_string(side) + "."};
+			VisitCard(s_BattleTeams[side].Settings, team);
+		}
+		Saver mode{text, "Mode."};
+		VisitMode(s_ModeSetup, mode);
+		Saver run{text, "Run."};
+		VisitMode(s_ModeRun.Settings, run);
+		SaveText(out, text.str());
+		out << ' ' << s_Linked.On << ' ' << s_Linked.At << ' ' << s_Linked.Names.size();
+		for (const std::string& name: s_Linked.Names) {
+			SaveText(out, name);
+		}
+	}
+
+	bool LoadBattleSetups(std::istream& in) {
+		std::istringstream text(LoadText(in));
+		std::map<std::string, std::string> lines;
+		for (std::string line; std::getline(text, line);) {
+			if (size_t equals = line.find('='); equals != std::string::npos) {
+				lines[Trim(line.substr(0, equals))] = Trim(line.substr(equals + 1));
+			}
+		}
+		LinkedRun linked;
+		size_t names = 0;
+		in >> linked.On >> linked.At >> names;
+		for (size_t i = 0; i < names && in; ++i) {
+			linked.Names.push_back(LoadText(in));
+		}
+		if (!in || !lines.count("Mode.Mode") || !lines.count("Run.Mode")) {
+			return false;
+		}
+		for (int side = 0; side < c_Sides; ++side) {
+			ReadCard(lines, "Team" + std::to_string(side) + ".", s_BattleSetup[side]);
+			ReadCard(lines, "Sim" + std::to_string(side) + ".", s_BattleTeams[side].Settings);
+		}
+		ReadMode(lines, "Mode.", s_ModeSetup);
+		ReadMode(lines, "Run.", s_ModeRun.Settings);
+		s_Linked = linked;
+		// The setup saved with the game is the one it was played with: not the one marked to load with the map (BattlePresetsUpdate), nor one
+		// the map browser picked.
+		s_PresetResumed = true;
+		return true;
 	}
 
 	bool LinkedBattleControls() {
@@ -603,7 +667,8 @@ namespace SandboxDetail {
 		const bool start = s_StartOnStart;
 		LoadBattleOnStart("", false);
 		StartBattleOnStart(false);
-		if (none) {
+		if (none || s_PresetResumed) {
+			s_PresetResumed = false;
 			return;
 		}
 		auto withMap = std::find_if(s_Presets.begin(), s_Presets.end(), [&picked](const BattlePreset& preset) { return picked.empty() ? preset.WithMap : preset.Name == picked; });

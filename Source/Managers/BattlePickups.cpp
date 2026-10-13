@@ -382,6 +382,57 @@ namespace SandboxDetail {
 
 	void StopBattlePickups() { StartBattlePickups(); }
 
+	void SaveBattlePickups(std::ostream& out) {
+		out << ' ' << s_Pickups.size();
+		for (const Pickup& pickup: s_Pickups) {
+			out << ' ' << pickup.Id << ' ' << pickup.Kind << ' ' << pickup.Pos.m_X << ' ' << pickup.Pos.m_Y;
+			SaveUpdate(out, pickup.Born);
+			SaveText(out, pickup.Preset);
+			// (The module by its name: its ID depends on the mods loaded.)
+			SaveText(out, pickup.ModuleID >= 0 && pickup.ModuleID < g_PresetMan.GetTotalModuleCount() ? g_PresetMan.GetDataModuleName(pickup.ModuleID) : std::string());
+			SaveText(out, pickup.Name);
+		}
+		out << ' ' << s_Fetchers.size();
+		for (const auto& [id, fetch]: s_Fetchers) {
+			out << ' ' << id << ' ' << fetch.PickupId;
+			SaveUpdate(out, fetch.Since);
+		}
+		out << ' ' << s_PickupIds;
+		SaveUpdate(out, s_NextPickupAt);
+	}
+
+	void LoadBattlePickups(std::istream& in, const LoadedIDs& ids) {
+		size_t count = 0;
+		in >> count;
+		s_Pickups.clear();
+		for (size_t i = 0; i < count && in; ++i) {
+			Pickup pickup;
+			in >> pickup.Id >> pickup.Kind >> pickup.Pos.m_X >> pickup.Pos.m_Y;
+			pickup.Born = LoadUpdate(in);
+			pickup.Preset = LoadText(in);
+			const std::string module = LoadText(in);
+			pickup.Name = LoadText(in);
+			pickup.ModuleID = module.empty() ? -1 : g_PresetMan.GetModuleID(module);
+			// (One of a kind no longer known, or from a mod not loaded now, is left out.)
+			if (pickup.Kind >= 0 && pickup.Kind < c_PickupKindCount && (module.empty() || pickup.ModuleID >= 0)) {
+				s_Pickups.push_back(pickup);
+			}
+		}
+		in >> count;
+		s_Fetchers.clear();
+		for (size_t i = 0; i < count && in; ++i) {
+			long id = 0;
+			Fetch fetch;
+			in >> id >> fetch.PickupId;
+			fetch.Since = LoadUpdate(in);
+			if (const long unit = ids(id); unit != 0) {
+				s_Fetchers[unit] = fetch;
+			}
+		}
+		in >> s_PickupIds;
+		s_NextPickupAt = LoadUpdate(in);
+	}
+
 	void UpdateBattlePickups(bool aiPaused) {
 		if (!s_ModeRun.Running) {
 			return;
