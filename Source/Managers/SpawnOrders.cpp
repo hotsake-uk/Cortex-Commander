@@ -123,6 +123,8 @@ namespace SandboxDetail {
 		}
 	}
 
+	void GiveSpawnOrderTo(int side, const SpawnOrder& order, std::vector<Actor*> units) { GiveSpawnOrder(side, order, std::move(units)); }
+
 	int SpawnOrderSide() {
 		if (int side = CommandedTeam(); side >= 0) {
 			return side;

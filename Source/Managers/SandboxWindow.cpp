@@ -267,6 +267,8 @@ namespace SandboxDetail {
 				return "Drag out a box on the world: all the ground in it breaks loose and falls, rock, earth, sand, wood, buildings and all (not doors). Each piece lands as its material does: concrete and glass shatter, earth and stone crack, sand crumbles, wood splinters, metal bends. What only the box held up comes down too. A big box falls as rubble. Shift keeps it square, Escape drops it, Ctrl+Z puts it all back. Up to 800 px either way.";
 			case Tool::CopyArea:
 				return "Drag out a box on the world, then Ctrl+C (or Copy) copies its ground: the terrain, what's drawn on it and the background behind, and with \"Include units\" ticked the units wholly inside it too. Ctrl+V (or Paste) gives a stamp of it on the pointer: click to put it down (as often as you like), F flips it, Escape puts it away. Each one put down is a step Ctrl+Z takes back. Up to 800 px either way; the copy is kept until the game is closed.";
+			case Tool::SpawnPoint:
+				return "Click the map to put down a spawn point: units come in at it on their own, a lot every so often, as at a battle's spawn zone, with no battle running. Set its side, factions, how many each time, how often, how many alive at once and in all, whether they appear or come by ship, and the order they're given as they come in (Spawn panel). Click a point to pick it and change it, pause it or spawn now; right click one to take it away. Kept in a saved game.";
 			case Tool::HoldGround:
 				return "Marks out where the ground never falls, as if it were bedrock. Drag out a box, or click the corners of a polygon (click the first corner again, press Enter or right click to close it; Backspace takes back a corner, Escape drops it). Ground inside never breaks loose, and holds up the ground joined to it, which can still snap off at a thin neck or a long overhang as it would from bedrock. It can still be dug, shot and blasted away; ground put back there is held too. Right click a zone to take it away; Ctrl+Z undoes. Kept for this map until another starts, and saved with a battle setup when its Hold zones box is ticked.";
 			case Tool::TerrainOther:
@@ -316,6 +318,8 @@ namespace SandboxDetail {
 				return {Icon::Wall, IM_COL32(170, 170, 165, 255)};
 			case Tool::Drop:
 				return {Icon::Down, IM_COL32(232, 224, 190, 255)};
+			case Tool::SpawnPoint:
+				return {Icon::Target, IM_COL32(242, 182, 61, 255)};
 			case Tool::PlayCharacter:
 				return {Icon::Person, IM_COL32(130, 220, 120, 255)};
 			case Tool::Barracks:
@@ -5443,7 +5447,7 @@ namespace SandboxDetail {
 
 	const std::vector<BarShelf>& BarShelves() {
 		static const std::vector<BarShelf> shelves = {
-		    {"Spawn", "Spawn", {Tool::Unit, Tool::Vehicle, Tool::Drop, Tool::Brain, Tool::Item}},
+		    {"Spawn", "Spawn", {Tool::Unit, Tool::Vehicle, Tool::Drop, Tool::Brain, Tool::Item, Tool::SpawnPoint}},
 		    {"Build", "Build", {Tool::Structure, Tool::Decor}},
 		    {"Paint", "Liquids", {Tool::Water, Tool::Lava, Tool::Acid, Tool::Oil, Tool::Mud, Tool::Tar, Tool::Mercury, Tool::Fuel, Tool::Cryo, Tool::Blood, Tool::PourOther, Tool::WaterSpawner}},
 		    {"Paint", "Fire and gas", {Tool::Fire, Tool::Smoke, Tool::ToxicGas, Tool::Methane, Tool::Steam}},
@@ -5829,6 +5833,11 @@ namespace SandboxDetail {
 				ImGui::SetNextItemWidth(field * 0.7F);
 				ImGui::Combo("##craft", &s_Craft, "Dropship\0Rocket\0");
 			}
+		} else if (kind == Tool::SpawnPoint) {
+			std::string summary = SpawnPointSummary();
+			wide();
+			ImGui::AlignTextToFramePadding();
+			ImGui::TextUnformatted(summary.c_str());
 		} else if (kind == Tool::Item || kind == Tool::Brain || kind == Tool::Vehicle) {
 			const Preset* preset = ChosenPreset(kind, ChoiceFor(kind));
 			wide();

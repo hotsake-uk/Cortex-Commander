@@ -3728,6 +3728,9 @@ namespace SandboxDetail {
 					SoftBodySim::Create(type >= 0 ? type : s_GooType, at, static_cast<float>(stroke.Radius), Vector());
 				}
 				break;
+			case Tool::SpawnPoint:
+				ApplySpawnPointStroke(stroke);
+				break;
 			case Tool::BattleTeam:
 			case Tool::BattleDefendPoint:
 			case Tool::BattleDropLine:

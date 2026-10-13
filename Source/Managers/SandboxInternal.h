@@ -240,7 +240,9 @@ namespace SandboxDetail {
 		CopyTake, //!< Copies the box from Position to Position2 to the clipboard (s_Clipboard); Choice 1 with the units wholly inside it.
 		PasteArea, //!< Puts the clipboard down with its top left corner at Position, one step of the undo history; Choice 1 flipped left to right.
 		// Appended, so the tools before keep their numbers.
-		GooBlob //!< A click puts down a round blob (SoftBodySim) of the brush's size; Choice 2 takes every blob away. Material: its kind.
+		GooBlob, //!< A click puts down a round blob (SoftBodySim) of the brush's size; Choice 2 takes every blob away. Material: its kind.
+		// Appended, so the tools before keep their numbers.
+		SpawnPoint //!< A spawn point on its own (SandboxSpawnPoints.cpp): units come in at it on a clock, as at a battle's spawn zone. Count a SpawnPointDo.
 	};
 
 	/// What the World tab's Clear takes off the map (Tool::ClearMap's Count).
@@ -400,6 +402,7 @@ namespace SandboxDetail {
 	    {Tool::Woodcutter, "Woodcutter", 0.0F, false},
 	    {Tool::HoldGround, "Hold ground", 0.0F, false},
 	    {Tool::CopyArea, "Copy area", 0.0F, false},
+	    {Tool::SpawnPoint, "Spawn point", 0.0F, false},
 	};
 	constexpr int c_ToolCount = static_cast<int>(std::size(c_Tools));
 
@@ -790,6 +793,35 @@ namespace SandboxDetail {
 		int Roam = 0;
 	};
 
+	/// A spawn point's settings (Tool::SpawnPoint, SandboxSpawnPoints.cpp): a point on its own, not part of a battle, that units come in at on a
+	/// clock, picked as a battle team's are and put down as at its spawn zones (or brought in by ship over it).
+	struct SpawnPointSettings {
+		int Team = 1;
+		BattleSettings Units; //!< Who comes: only its Factions, FavouritesOnly, Crabs and JetpackOnly are used (as a battle team's card picks them).
+		int PerSpawn = 3; //!< Units each time.
+		int EverySeconds = 30; //!< Seconds of game time between one lot and the next.
+		bool FirstAtOnce = true; //!< The first lot as soon as it is put down, rather than after EverySeconds.
+		int MostAlive = 10; //!< Most of its units alive at once (those still in a ship counted): it only tops up to it. 0: no cap.
+		int TotalLimit = 0; //!< Units it makes in all, after which it stops. 0: no limit.
+		int Radius = 60; //!< How far round the point, in pixels, its units appear.
+		bool ByShip = false; //!< Brought in by ship over the point rather than appearing at it.
+		int Craft = 0; //!< Index into c_Crafts.
+		bool Invincible = false; //!< Its ships take no harm.
+		Order Behaviour = Order::Hold; //!< What its units are made to do (Order::Hold, Attack or HuntBrains), before any spawn order.
+		SpawnOrder Arrival; //!< The spawn order each is given once it's in and on its feet; Hold for none.
+	};
+
+	/// What a Tool::SpawnPoint stroke does (its Count). Choice is the point's ID, for all but SpawnPointPlace and SpawnPointRemoveAll.
+	enum SpawnPointDo {
+		SpawnPointPlace = 0, //!< A new point at Position, with the stroke's SpawnPoint settings.
+		SpawnPointEdit, //!< Its settings set to the stroke's.
+		SpawnPointRemove,
+		SpawnPointRemoveAll,
+		SpawnPointPause, //!< Stops it (Radius 0) or starts it again (Radius 1).
+		SpawnPointNow, //!< Its next lot comes now.
+		SpawnPointReset //!< The count of units it has made back to none, so a limit reached starts afresh.
+	};
+
 	struct BattleModeSettings {
 		BattleMode Mode = BattleMode::Custom;
 		std::array<int, c_Sides> TeamSize = {16, 16, 16, 16}; //!< Most units each team has alive at once, by side.
@@ -1120,6 +1152,7 @@ namespace SandboxDetail {
 		std::string SquadName; //!< With Customs from a squad: its name. They are spawned as that squad (FormSquad).
 		std::vector<CustomLoadout> DriverCustom; //!< Tool::Vehicle with Vehicle.Crewed: the driver is one of your loadouts (one entry), taken at the click.
 		std::vector<CustomLoadout> CrewCustom; //!< As DriverCustom, for the rest of the crew.
+		SpawnPointSettings SpawnPoint; //!< Tool::SpawnPoint: the point's settings, for SpawnPointPlace and SpawnPointEdit.
 	};
 
 	struct CraftChoice {
@@ -1820,6 +1853,9 @@ namespace SandboxDetail {
 	/// Writes the breaches under way for a saved game, and reads them back.
 	void SaveBreaches(std::ostream& out);
 	void LoadBreaches(std::istream& in, const LoadedIDs& ids);
+	/// Writes the spawn points (Tool::SpawnPoint) with the units each has made, for a saved game, and reads them back.
+	void SaveSpawnPoints(std::ostream& out);
+	void LoadSpawnPoints(std::istream& in, const LoadedIDs& ids);
 
 	/// Writes a sim update as how long before now it was (below 0 for one still to come), for a saved game's sandbox state; "-" for the value
 	/// that stands for none (as -1 for "not yet", or 0 for "no time limit"), so it means none again once loaded.
@@ -3117,6 +3153,28 @@ namespace SandboxDetail {
 	ImU32 SpawnOrderColor(SpawnOrderKind kind);
 	/// Where each spawn order of the team you command sends its units: a line from the zone (or every zone) to the place, in the order's colour.
 	void DrawSpawnOrders();
+	/// Gives units a spawn order now, as the order would be given the selection (with its urgency, and Defend at's zone as it was set).
+	void GiveSpawnOrderTo(int side, const SpawnOrder& order, std::vector<Actor*> units);
+
+	// Spawn points (SandboxSpawnPoints.cpp): points on their own that units come in at on a clock (Tool::SpawnPoint).
+	/// A Tool::SpawnPoint stroke, in the sim.
+	void ApplySpawnPointStroke(const Stroke& stroke);
+	/// Each point's clock, its units' spawn orders and its count of those alive. Held while the AI is paused.
+	void UpdateSpawnPoints(bool aiPaused);
+	/// Every point dropped (a new game, or none on).
+	void ForgetSpawnPoints();
+	/// The points on the map, each with its area, its order and how far it is to the next lot.
+	void DrawSpawnPoints();
+	/// The tool's clicks: put down a point, pick one to change, right click one away, or place the order of the one being set up.
+	void SpawnPointInput();
+	/// The tool's settings on the Spawn tab: for the next point put down, or the one picked.
+	void SpawnPointPanel();
+	/// A line about the tool in hand for the bar: the point picked, or what the next one will be.
+	std::string SpawnPointSummary();
+	/// The units a battle team's card picks from (its factions, favourites, crabs and jetpacks), as the battle buys them (SandboxBattle.cpp).
+	std::vector<const Preset*> BattleUnitsFor(const BattleSettings& settings);
+	/// Somewhere inside a zone on its ground for a unit that high, as a battle's spawn zones put units (SandboxBattle.cpp).
+	Vector SpawnSpotInZone(const std::vector<Vector>& zone, float height);
 
 	/// Whether a team is one the player commands in the mode's game that is on: its units get no orders from the mode or the Battle Director.
 	bool BattlePlayerCommands(int side);

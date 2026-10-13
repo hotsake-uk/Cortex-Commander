@@ -1140,6 +1140,7 @@ void Sandbox::DrawGUI() {
 		DrawSpawnOrders();
 		DrawBattleMarks();
 		DrawHoldZones();
+		DrawSpawnPoints();
 		if (IsBattleCommand()) {
 			DrawLandingSpot();
 			DrawFogGhosts();
@@ -1433,6 +1434,8 @@ void Sandbox::DrawGUI() {
 			}
 		} else if (tool.Kind == Tool::HoldGround) {
 			// (Its clicks and drags: HoldGroundInput, below.)
+		} else if (tool.Kind == Tool::SpawnPoint) {
+			// (Its clicks: SpawnPointInput, below.)
 		} else if (DragsShape(tool.Kind)) {
 			// Brush type Shape: a drag marks out the shape, filled when the button is let go (below). "Make it fall" and Copy area drag their box
 			// the same way.
@@ -1682,6 +1685,7 @@ void Sandbox::DrawGUI() {
 		}
 	}
 	HoldGroundInput();
+	SpawnPointInput();
 	// A one-off order's mode back to Command once it's placed, when no second click of a double click can follow.
 	if (s_BackToCommandAt >= 0.0 && !s_Dragging && ImGui::GetTime() >= s_BackToCommandAt) {
 		if (s_CommandMode == s_BackToCommandFrom) {
@@ -2038,7 +2042,7 @@ void Sandbox::DrawGUI() {
 			}
 			if (SandboxTab("Spawn")) {
 				s_CurrentTab = "Spawn";
-				ToolButtons({Tool::Unit, Tool::Vehicle, Tool::Drop, Tool::Brain, Tool::Item});
+				ToolButtons({Tool::Unit, Tool::Vehicle, Tool::Drop, Tool::Brain, Tool::Item, Tool::SpawnPoint});
 				if (CurrentTool().Kind == Tool::Structure) {
 					s_ToolIndex = ToolIndex(Tool::Unit);
 				}
@@ -2088,6 +2092,8 @@ void Sandbox::DrawGUI() {
 					UnitStatsOptions(shownUnit ? dynamic_cast<const Actor*>(g_PresetMan.GetEntityPreset(shownUnit->ClassName, shownUnit->PresetName, shownUnit->ModuleID)) : nullptr, "Stats");
 				} else if (kind == Tool::Vehicle) {
 					VehicleOptions();
+				} else if (kind == Tool::SpawnPoint) {
+					SpawnPointPanel();
 				} else if (kind == Tool::Item) {
 					ToolUI::Checkbox("Pull the pin (grenades)", &s_LitGrenade);
 				} else if (kind == Tool::Structure) {
@@ -2765,6 +2771,7 @@ void Sandbox::OnActivityStarted() {
 	ForgetAirlifts();
 	ForgetLoadoutUnits();
 	ForgetBattle();
+	ForgetSpawnPoints();
 	// (The setup saved to load with the map goes back in once it is loaded, unless the game is a saved one with its battle: LoadSaveState
 	// puts that back after this.)
 	BattlePresetsNewGame();
@@ -2796,6 +2803,8 @@ std::string Sandbox::GetSaveState() {
 	// (Last, after the orders: a battle's defenders that a player told to defend are kept with those.)
 	state << " battle";
 	SaveBattle(state);
+	state << " spawnpoints";
+	SaveSpawnPoints(state);
 	state << " end";
 	return state.str();
 }
@@ -2827,6 +2836,8 @@ void Sandbox::LoadSaveState(const std::string& state, const std::unordered_map<l
 			LoadBreaches(stream, ids);
 		} else if (section == "battle") {
 			LoadBattle(stream, ids);
+		} else if (section == "spawnpoints") {
+			LoadSpawnPoints(stream, ids);
 		} else {
 			break;
 		}
@@ -2842,6 +2853,7 @@ void Sandbox::Update() {
 		ForgetBreaches();
 		ForgetBuilds();
 		ForgetAirlifts();
+		ForgetSpawnPoints();
 		s_GuardPosts.clear();
 		s_Commander = false;
 		s_Paced.clear();
@@ -2901,6 +2913,7 @@ void Sandbox::Update() {
 	// (No sandbox-side watchdog for units that have stopped: getting unstuck, waiting for fuel before a tall climb, and giving up on a route that
 	// can't be had are the AI's own business now, and re-ordering a unit every three seconds only restarted whatever it was in the middle of.)
 	UpdateBattle(aiPaused);
+	UpdateSpawnPoints(aiPaused);
 	Colony::Update();
 	if (s_FollowAction && g_TimerMan.GetSimUpdateCount() % 30 == 0) {
 		FindAction();
