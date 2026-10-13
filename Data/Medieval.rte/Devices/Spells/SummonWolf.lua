@@ -44,6 +44,9 @@ local function summon(self)
 	end
 	wolf.Shader = SPECTRAL;
 	wolf:SetNumberValue("MedievalSummonerUID", self.casterUID);
+	-- Its time as its own lifetime too, a little past this mist's fading of it: a saved game keeps that (not this mist), so a wolf loaded
+	-- still goes when its time is up.
+	wolf.Lifetime = LIFESPAN + 1000;
 	MovableMan:AddActor(wolf);
 	self.summoned[#self.summoned + 1] = {uid = wolf.UniqueID, born = FX.Now(), done = false};
 	EmitVisualParticles("Mist", wolf.Pos, Vector(0, -0.8), 1, 14, 0xB8C8C0);

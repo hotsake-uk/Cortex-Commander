@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <vector>
 
 namespace RTE {
@@ -24,8 +25,14 @@ namespace RTE {
 		/// Sees which materials are food, for the current scene. Called when a scene starts.
 		static void BuildTables();
 
-		/// Forgets the plants waiting to grow back. Called when a scene starts.
+		/// Forgets the plants waiting to grow back, then takes up those of a saved game being loaded, if any. Called when a scene starts.
 		static void Clear();
+
+		/// Gets the plants waiting to grow back, with the time each has left, for a saved game. Empty when there are none.
+		static std::string GetSaveState();
+
+		/// Sets the plants waiting to grow back in a saved game being loaded, taken up when its scene starts.
+		static void SetPendingLoadState(const std::string& state);
 
 		/// Grows back the plants whose time has come. Call once per sim update.
 		static void Update();

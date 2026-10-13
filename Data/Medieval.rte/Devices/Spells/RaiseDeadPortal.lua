@@ -44,6 +44,10 @@ local function raise(self)
 	end
 	skeleton.Shader = SPECTRAL;
 	skeleton:SetNumberValue("MedievalSummonerUID", self.casterUID);
+	-- Its time as its own lifetime too, a little past this portal's crumbling: a saved game keeps that (not this portal), so a skeleton
+	-- loaded still crumbles when its time is up.
+	skeleton.Lifetime = LIFESPAN + 1000;
+	skeleton.GibAtEndOfLifetime = true;
 	MovableMan:AddActor(skeleton);
 	self.raised[#self.raised + 1] = {uid = skeleton.UniqueID, born = FX.Now(), greeted = false, warned = false};
 	-- Clawing out of the ground.

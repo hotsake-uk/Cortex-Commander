@@ -15,6 +15,7 @@
 #include <cmath>
 #include <deque>
 #include <mutex>
+#include <sstream>
 #include <string>
 
 using namespace RTE;
@@ -46,6 +47,10 @@ namespace {
 	long long s_LastCheckMS = -1;
 
 	constexpr int c_MaxWaiting = 200000; //!< More eaten than this waiting, and the oldest are let go (they stay eaten).
+	constexpr int c_MaxSaved = 50000; //!< The most eaten pixels a saved game keeps, the newest (the rest stay eaten).
+
+	std::string s_PendingLoadState; //!< The plants waiting to grow back in the saved game being loaded, taken up when its scene starts.
+	bool s_DueIsTimeLeft = false; //!< Whether the DueMS of the plants just loaded are still the time left, to put on the clock at the first update.
 
 	SLTerrain* Terrain() {
 		return g_SceneMan.GetScene() ? g_SceneMan.GetScene()->GetTerrain() : nullptr;
@@ -96,9 +101,45 @@ void TerrainGrazing::BuildTables() {
 
 void TerrainGrazing::Clear() {
 	s_Eaten.clear();
-	std::scoped_lock lock(s_BiteMutex);
-	s_Bites.clear();
+	s_DueIsTimeLeft = false;
+	{
+		std::scoped_lock lock(s_BiteMutex);
+		s_Bites.clear();
+	}
 	s_LastCheckMS = -1;
+	if (!s_PendingLoadState.empty()) {
+		// "1 x y material color msLeft" per plant, oldest first. The time left goes on the clock at the first update, once the activity's clock is running.
+		std::istringstream stream(s_PendingLoadState);
+		int version = 0;
+		stream >> version;
+		Eaten eaten;
+		while (version == 1 && stream >> eaten.X >> eaten.Y >> eaten.Material >> eaten.Color >> eaten.DueMS && static_cast<int>(s_Eaten.size()) < c_MaxSaved) {
+			eaten.DueMS = std::max(eaten.DueMS, 0LL);
+			s_Eaten.push_back(eaten);
+		}
+		s_DueIsTimeLeft = !s_Eaten.empty();
+	}
+	s_PendingLoadState.clear();
+}
+
+std::string TerrainGrazing::GetSaveState() {
+	if (s_Eaten.empty()) {
+		return std::string();
+	}
+	long long now = g_TimerMan.GetSimTimeMS();
+	std::ostringstream stream;
+	stream << 1;
+	size_t first = s_Eaten.size() > static_cast<size_t>(c_MaxSaved) ? s_Eaten.size() - c_MaxSaved : 0;
+	for (size_t i = first; i < s_Eaten.size(); ++i) {
+		const Eaten& eaten = s_Eaten[i];
+		long long left = s_DueIsTimeLeft ? eaten.DueMS : std::max(eaten.DueMS - now, 0LL);
+		stream << ' ' << eaten.X << ' ' << eaten.Y << ' ' << eaten.Material << ' ' << eaten.Color << ' ' << left;
+	}
+	return stream.str();
+}
+
+void TerrainGrazing::SetPendingLoadState(const std::string& state) {
+	s_PendingLoadState = state;
 }
 
 bool TerrainGrazing::IsFood(int materialID, int diet) {
@@ -114,6 +155,13 @@ void TerrainGrazing::Update() {
 	}
 	if (!terrain) {
 		return;
+	}
+	if (s_DueIsTimeLeft) {
+		long long start = g_TimerMan.GetSimTimeMS();
+		for (Eaten& eaten: s_Eaten) {
+			eaten.DueMS += start;
+		}
+		s_DueIsTimeLeft = false;
 	}
 	for (const Bite& bite: bites) {
 		TakeBite(terrain, bite.At, bite.Radius, bite.Diet, bite.Most);
