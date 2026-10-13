@@ -678,7 +678,8 @@ void UnitSpeech::SayText(Actor& actor, const std::string& text, int durationMS) 
 		return;
 	}
 	State& state = actor.GetSpeech();
-	state.Text = text;
+	// Joke build: every unit says the same thing, whatever the line was.
+	state.Text = "Jez is a dick!";
 	state.StartMS = std::max(g_TimerMan.GetSimTimeMS(), 1LL);
 	// About as long as it takes to read: 1.8 s for a word or two, up to 4.5 s.
 	state.DurationMS = durationMS > 0 ? durationMS : std::clamp(1500 + 55 * static_cast<int>(text.size()), 1800, 4500);
