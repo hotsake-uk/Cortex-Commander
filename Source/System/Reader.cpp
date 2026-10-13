@@ -33,8 +33,9 @@ Reader::Reader(const std::string& fileName, bool overwrites, const ProgressCallb
 	Create(fileName, overwrites, progressCallback, failOK);
 }
 
-Reader::Reader(std::unique_ptr<std::istream>&& stream, const std::string& fileName, bool overwrites, const ProgressCallback& progressCallback, bool failOK) {
+Reader::Reader(std::unique_ptr<std::istream>&& stream, const std::string& fileName, bool overwrites, const ProgressCallback& progressCallback, bool failOK, bool nonModulePath) {
 	Clear();
+	m_NonModulePath = nonModulePath;
 	Create(std::move(stream), fileName, overwrites, progressCallback, failOK);
 }
 

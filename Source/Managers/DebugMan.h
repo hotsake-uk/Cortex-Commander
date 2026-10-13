@@ -169,6 +169,7 @@ namespace RTE {
 		void FreeCamGUI();
 		int m_SettingsCategory{0}; //!< Which category of the settings panel is showing.
 		static constexpr int c_SettingsCategoryDebug = -1; //!< m_SettingsCategory asking for the Debug page, whatever its place in the list.
+		static constexpr int c_SettingsCategoryLook = -2; //!< m_SettingsCategory asking for the Sky & daylight page (the old graphics lab), whatever its place in the list.
 
 		/// Gets how wide the docked panel at a side is, in window pixels.
 		float GetPanelWidth(PanelSide side) const;

@@ -7,6 +7,8 @@
 #include <list>
 #include <string>
 #include <vector>
+#include <array>
+#include <unordered_map>
 #include <cmath>
 #include <algorithm>
 
@@ -50,21 +52,36 @@ namespace RTE {
 		/// Call once a frame; it looks at most once a second.
 		void SaveSettingsIfChanged() const;
 
-		/// Saves every setting in the settings panel (the look, time and weather, water, fire, falling ground, the AI, the HUD, the overlays) as a named preset, a file in Userdata/Presets.
+		/// What a preset holds: every setting, or only one of the settings panel's two groups. Each setting the panel saves is in one of the groups or
+		/// in Session (what is only for the moment or about the tool windows: game speed, the AI paused, debug views, the panels' layout), which only a full preset holds.
+		enum class PresetGroup {
+			Everything,
+			Gameplay,
+			Visual,
+			Session
+		};
+
+		/// Gets a group's name as the settings panel shows it.
+		static const char* PresetGroupName(PresetGroup group);
+
+		/// Saves the settings in the settings panel as a named preset: every one of them (a file in Userdata/Presets), or only one group's (in Userdata/Presets/Gameplay or Visual).
 		/// @param name The name. Characters that can't be in a file's name are dropped.
+		/// @param group Everything, Gameplay or Visual.
 		/// @return The name it was saved under, or nothing if it couldn't be.
-		std::string SavePreset(const std::string& name) const;
+		std::string SavePreset(const std::string& name, PresetGroup group = PresetGroup::Everything) const;
 
 		/// Loads a preset saved by SavePreset over the settings as they are.
+		/// @param from Which presets it is one of: Everything, Gameplay or Visual.
+		/// @param part Only this group's settings from it (Gameplay or Visual), the rest left as they are; Everything for all it holds.
 		/// @return Whether there was one of that name.
-		bool LoadPreset(const std::string& name);
+		bool LoadPreset(const std::string& name, PresetGroup from = PresetGroup::Everything, PresetGroup part = PresetGroup::Everything);
 
 		/// Deletes a preset.
 		/// @return Whether there was one of that name.
-		bool DeletePreset(const std::string& name) const;
+		bool DeletePreset(const std::string& name, PresetGroup group = PresetGroup::Everything) const;
 
-		/// Gets the names of the presets there are, in order.
-		std::vector<std::string> ListPresets() const;
+		/// Gets the names of the presets there are of a kind (Everything, Gameplay or Visual), in order.
+		std::vector<std::string> ListPresets(PresetGroup group = PresetGroup::Everything) const;
 
 		/// Saves a screen style's filters (LightingSettings::RetroLayers) as the player's own variant, a file in Userdata/FilterPresets apart from the
 		/// whole-settings presets. Gets the file name it was saved under (the name made safe), empty if it couldn't be.
@@ -82,15 +99,15 @@ namespace RTE {
 		/// Gets the name a filter preset of this name is saved under (made safe for a file name), empty if none can be.
 		std::string FilterPresetName(const std::string& name) const;
 
-		/// Gets the preset loaded every time the game starts, over Settings.ini.
+		/// Gets the preset loaded every time the game starts, over Settings.ini: the full one, or a group's, loaded after it.
 		/// @return The preset's name, or nothing for none.
-		const std::string& GetStartupPreset() const { return m_StartupPreset; }
+		const std::string& GetStartupPreset(PresetGroup group = PresetGroup::Everything) const { return m_StartupPresets[StartupSlot(group)]; }
 
 		/// Sets the preset loaded every time the game starts. Kept in Settings.ini.
 		/// @param name The preset's name, or nothing for none.
-		void SetStartupPreset(const std::string& name);
+		void SetStartupPreset(const std::string& name, PresetGroup group = PresetGroup::Everything);
 
-		/// Loads the preset set to load at start, if there is one. Call once at start-up, after the data modules are loaded.
+		/// Loads the presets set to load at start, if there are any: the full one, then the gameplay and visual ones over it. Call once at start-up, after the data modules are loaded.
 		/// The panel's settings for the moment (game speed, frozen, the AI paused, debug views) are left as they are, so the game doesn't start in them.
 		/// @return Whether a preset was loaded.
 		bool LoadStartupPreset();
@@ -1559,7 +1576,13 @@ namespace RTE {
 
 		std::string m_SettingsPath; //!< String containing the Path to the Settings.ini file.
 		mutable std::string m_LastWrittenSettings; //!< The settings file's text as this game last wrote it, to tell when a setting has changed since.
-		std::string m_StartupPreset; //!< The preset loaded every time the game starts, over Settings.ini. Nothing for none.
+		std::array<std::string, 3> m_StartupPresets; //!< The presets loaded every time the game starts, over Settings.ini: the full one, then the gameplay and visual ones. Nothing for none.
+
+		/// Gets where a kind of preset's startup preset is kept in m_StartupPresets.
+		static size_t StartupSlot(PresetGroup group) { return group == PresetGroup::Gameplay ? 1 : (group == PresetGroup::Visual ? 2 : 0); }
+
+		/// Gets which group each setting SaveTunables writes is in, by its name. What is written before the first group (the version) is in every one (Everything).
+		std::unordered_map<std::string, PresetGroup> TunableGroups() const;
 
 		/// Clears all the member variables of this SettingsMan, effectively resetting the members of this abstraction level only.
 		void Clear();

@@ -472,7 +472,7 @@ void DebugMan::DrawImGui() {
 	if (m_ShowGraphicsLab) {
 		m_ShowGraphicsLab = false;
 		m_ShowWorldDebug = true;
-		m_SettingsCategory = 1;
+		m_SettingsCategory = c_SettingsCategoryLook;
 	}
 	if (m_ShowDebugWindow) {
 		m_ShowDebugWindow = false;

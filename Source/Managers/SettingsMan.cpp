@@ -76,6 +76,8 @@ namespace {
 	/// 2: brighter ambient light in interiors and caves.
 	constexpr int c_LightingSettingsVersion = 2;
 	int s_ReadLightingSettingsVersion = 0; //!< Version of the lighting settings in the file being read, 0 when it has none.
+	bool s_MarkingGroups = false; //!< Whether SaveTunables marks where each group of settings starts, for TunableGroups.
+	const std::string c_GroupMarker = "PresetGroupStartsHere"; //!< The marker's name. Never in a file.
 	bool s_ReadingStartupPreset = false; //!< Whether the preset loaded at start is being read, when the panel's settings for the moment are passed over.
 
 	/// The retro layer settings (LightingSettings::RetroLayers) that are floats, by the name they're saved under after their prefix.
@@ -168,7 +170,9 @@ bool SettingsMan::TraceAllUnits() const {
 void SettingsMan::Clear() {
 	m_SettingsPath = System::GetUserdataDirectory() + "Settings.ini";
 	m_SettingsNeedOverwrite = false;
-	m_StartupPreset.clear();
+	for (std::string& startup: m_StartupPresets) {
+		startup.clear();
+	}
 	s_ReadLightingSettingsVersion = 0;
 
 	m_FlashOnBrainDamage = true;
@@ -1255,7 +1259,9 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DrawPixelCheckVisualizations", { reader >> g_SceneMan.m_DrawPixelCheckVisualizations; });
 	MatchProperty("PrintDebugInfo", { reader >> m_PrintDebugInfo; });
 	MatchProperty("EnableDebugMenus", { reader >> g_DebugMan.m_ShowDebugWindow; });
-	MatchProperty("StartupPreset", { m_StartupPreset = reader.ReadPropValue(); });
+	MatchProperty("StartupPreset", { m_StartupPresets[StartupSlot(PresetGroup::Everything)] = reader.ReadPropValue(); });
+	MatchProperty("StartupGameplayPreset", { m_StartupPresets[StartupSlot(PresetGroup::Gameplay)] = reader.ReadPropValue(); });
+	MatchProperty("StartupVisualPreset", { m_StartupPresets[StartupSlot(PresetGroup::Visual)] = reader.ReadPropValue(); });
 	MatchProperty("ControlLinkPort", { ControlLink::s_SettingsPort = std::stoi(reader.ReadPropValue()); });
 	MatchProperty("ShowGraphicsLab", { g_DebugMan.m_ShowGraphicsLab = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("ShowWorldDebug", { g_DebugMan.m_ShowWorldDebug = std::stoi(reader.ReadPropValue()) != 0; }); // Read only, for automated captures.
@@ -1337,7 +1343,14 @@ void SettingsMan::ClampAICombat() {
 }
 
 void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting, bool forPreset) const {
+	// Which group of presets the settings after it are in (see TunableGroups): written only while they are being sorted, never to a file.
+	auto group = [&writer](PresetGroup kind) {
+		if (s_MarkingGroups) {
+			writer.NewPropertyWithValue(c_GroupMarker, static_cast<int>(kind));
+		}
+	};
 	writer.NewPropertyWithValue("LightingSettingsVersion", c_LightingSettingsVersion);
+	group(PresetGroup::Visual);
 	writer.NewPropertyWithValue("GraphicsQuality", lighting.GraphicsQuality);
 	writer.NewPropertyWithValue("LightingEnabled", lighting.Enabled);
 	writer.NewPropertyWithValue("LightingAmbient", WriteVec3(lighting.Ambient));
@@ -1452,7 +1465,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("Puddles", lighting.Puddles);
 	writer.NewPropertyWithValue("LivingWorld", lighting.LivingWorld);
 	writer.NewPropertyWithValue("Headlamps", lighting.Headlamps);
+	group(PresetGroup::Gameplay);
 	writer.NewPropertyWithValue("NightAffectsAI", lighting.NightAffectsAI);
+	group(PresetGroup::Visual);
 	writer.NewPropertyWithValue("BloomEnabled", lighting.BloomEnabled);
 	writer.NewPropertyWithValue("BloomThreshold", lighting.BloomThreshold);
 	writer.NewPropertyWithValue("BloomKnee", lighting.BloomKnee);
@@ -1563,7 +1578,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("HeadlampDarkThreshold", lighting.HeadlampDarkThreshold);
 	writer.NewPropertyWithValue("HeadlampsOnlyInDark", lighting.HeadlampsOnlyInDark);
 	writer.NewPropertyWithValue("AimDotsLight", lighting.AimDotsLight);
+	group(PresetGroup::Session);
 	writer.NewPropertyWithValue("ShowAIPaths", Actor::ShowAIPaths());
+	group(PresetGroup::Visual);
 	writer.NewPropertyWithValue("BackgroundBlur", lighting.BackgroundBlur);
 	writer.NewPropertyWithValue("DepthOfField", lighting.DepthOfField);
 	writer.NewPropertyWithValue("DepthOfFieldFocus", lighting.DepthOfFieldFocus);
@@ -1578,6 +1595,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("SpriteMaps", lighting.SpriteMaps);
 	writer.NewPropertyWithValue("SpriteMapStrength", lighting.SpriteMapStrength);
 	writer.NewPropertyWithValue("PostSaturation", lighting.Saturation);
+	group(PresetGroup::Gameplay);
 	writer.NewPropertyWithValue("TerrainFire", TerrainFire::IsEnabled());
 	writer.NewPropertyWithValue("EmberIgniteChance", TerrainFire::GetEmberIgniteChance());
 	writer.NewPropertyWithValue("RopeReaction", RopeSim::GetReaction());
@@ -1605,7 +1623,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("ZeroGPushOff", ZeroGravity::PushOff());
 	writer.NewPropertyWithValue("ZeroGFlySpeed", ZeroGravity::FlySpeed());
 	writer.NewPropertyWithValue("ZeroGPushSpeed", ZeroGravity::PushSpeed());
+	group(PresetGroup::Visual);
 	writer.NewPropertyWithValue("UnitsInFrontOfTrees", TerrainTrees::DrawnBehindUnits());
+	group(PresetGroup::Gameplay);
 	writer.NewPropertyWithValue("CollapseFloatingStays", TerrainCollapse::GetTuning().FloatingStays);
 	writer.NewPropertyWithValue("CollapseNeckWidth", TerrainCollapse::GetTuning().NeckWidth);
 	writer.NewPropertyWithValue("CollapseThinNeckWidth", TerrainCollapse::GetTuning().ThinNeckWidth);
@@ -1635,7 +1655,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("SmokeBlocksSight", SmokeGrid::IsEnabled());
 	writer.NewPropertyWithValue("AIThreatMemory", ThreatMemory::IsEnabled());
 	writer.NewPropertyWithValue("Gas", GasGrid::IsEnabled());
+	group(PresetGroup::Visual);
 	writer.NewPropertyWithValue("GasShown", GasGrid::GetShown());
+	group(PresetGroup::Gameplay);
 	writer.NewPropertyWithValue("AirAndWind", AirPressure::IsOn());
 	writer.NewPropertyWithValue("WindGusts", AirPressure::GetTuning().Gusts);
 	writer.NewPropertyWithValue("WindShifts", AirPressure::GetTuning().Shifts);
@@ -1659,10 +1681,12 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("MagicAICasting", MagicEffects::GetTuning().AICasting);
 	writer.NewPropertyWithValue("BurningUnits", ActorFire::IsEnabled());
 	writer.NewPropertyWithValue("SwimmingAndDrowning", ActorWater::IsEnabled());
+	group(PresetGroup::Visual);
 	writer.NewPropertyWithValue("LightPropagationSteps", lighting.PropagationIterationsPerFrame);
 	writer.NewPropertyWithValue("HitStopStrength", g_CameraMan.m_HitStopStrength);
 
 	// The rest of the settings panel: the AI, the HUD and speech, the overlays, and the tool windows' own layout.
+	group(PresetGroup::Gameplay);
 	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
 	writer.NewPropertyWithValue("CreaturesClimbWalls", m_CreaturesClimbWalls);
 	writer.NewPropertyWithValue("CreatureClimbSpeed", m_CreatureClimbSpeed);
@@ -1811,6 +1835,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("CautiousFlightSpeed", m_DirectOrders.CautiousFlightSpeed);
 	writer.NewPropertyWithValue("CautiousTouchdown", m_DirectOrders.CautiousTouchdown);
 	writer.NewPropertyWithValue("CautiousEnemyAvoidance", m_DirectOrders.CautiousEnemyAvoidance);
+	group(PresetGroup::Visual);
 	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
 	writer.NewPropertyWithValue("ShowNotices", m_ShowNotices);
 	writer.NewPropertyWithValue("ModernHUD", ModernHUD::IsEnabled());
@@ -1856,6 +1881,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	for (const std::string& off: UnitSpeech::GetTriggersOff()) {
 		writer.NewPropertyWithValue("UnitSpeechOff", off);
 	}
+	group(PresetGroup::Session);
 	writer.NewPropertyWithValue("NavDebugOverlay", m_NavDebugOverlay);
 	writer.NewPropertyWithValue("DebugTeam", m_DebugTeam);
 	writer.NewPropertyWithValue("UnitInspector", m_UnitInspector);
@@ -1892,19 +1918,21 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 
 	if (forPreset) {
 		// The game's own settings from the Settings menu, so a preset loaded at start brings them back too. Settings.ini keeps them in its own sections.
+		group(PresetGroup::Gameplay);
 		writer.NewPropertyWithValue("ShowForeignItems", m_ShowForeignItems);
-		writer.NewPropertyWithValue("FlashOnBrainDamage", m_FlashOnBrainDamage);
-		writer.NewPropertyWithValue("BlipOnRevealUnseen", m_BlipOnRevealUnseen);
 		writer.NewPropertyWithValue("MaxUnheldItems", g_MovableMan.m_MaxDroppedItems);
-		writer.NewPropertyWithValue("UnheldItemsHUDDisplayRange", m_UnheldItemsHUDDisplayRange);
-		writer.NewPropertyWithValue("AlwaysDisplayUnheldItemsInStrategicMode", m_AlwaysDisplayUnheldItemsInStrategicMode);
-		writer.NewPropertyWithValue("SubPieMenuHoverOpenDelay", m_SubPieMenuHoverOpenDelay);
 		writer.NewPropertyWithValue("EndlessMetaGameMode", m_EndlessMetaGameMode);
 		writer.NewPropertyWithValue("EnableCrabBombs", m_EnableCrabBombs);
 		writer.NewPropertyWithValue("CrabBombThreshold", m_CrabBombThreshold);
+		writer.NewPropertyWithValue("AutomaticGoldDeposit", m_AutomaticGoldDeposit);
+		group(PresetGroup::Visual);
+		writer.NewPropertyWithValue("FlashOnBrainDamage", m_FlashOnBrainDamage);
+		writer.NewPropertyWithValue("BlipOnRevealUnseen", m_BlipOnRevealUnseen);
+		writer.NewPropertyWithValue("UnheldItemsHUDDisplayRange", m_UnheldItemsHUDDisplayRange);
+		writer.NewPropertyWithValue("AlwaysDisplayUnheldItemsInStrategicMode", m_AlwaysDisplayUnheldItemsInStrategicMode);
+		writer.NewPropertyWithValue("SubPieMenuHoverOpenDelay", m_SubPieMenuHoverOpenDelay);
 		writer.NewPropertyWithValue("ShowEnemyHUD", m_ShowEnemyHUD);
 		writer.NewPropertyWithValue("SmartBuyMenuNavigation", m_EnableSmartBuyMenuNavigation);
-		writer.NewPropertyWithValue("AutomaticGoldDeposit", m_AutomaticGoldDeposit);
 		writer.NewPropertyWithValue("SandboxGroupBadges", m_SandboxGroupBadges);
 		writer.NewPropertyWithValue("CommanderBarKey", m_CommanderBarKey);
 		writer.NewPropertyWithValue("SandboxOrderGlyphs", m_SandboxOrderGlyphs);
@@ -1932,6 +1960,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 		writer.NewPropertyWithValue("ScreenShakeStrength", g_CameraMan.m_ScreenShakeStrength);
 
 		// The panel's settings for the moment: kept in a preset, but not in Settings.ini, so the game doesn't start sped up, frozen, with the AI paused or in a debug view.
+	group(PresetGroup::Session);
 		writer.NewPropertyWithValue("GameSpeed", g_TimerMan.GetTimeScale());
 		writer.NewPropertyWithValue("PauseAI", Controller::IsAIPaused());
 		writer.NewPropertyWithValue("CameraZoom", g_FrameMan.GetCameraZoom());
@@ -1975,14 +2004,112 @@ namespace {
 	std::string BuiltInPresetFolder() { return System::GetDataDirectory() + "Presets/"; } //!< Presets that ship with the game. The player's own of the same name come first.
 } // namespace
 
-std::string SettingsMan::SavePreset(const std::string& name) const {
+const char* SettingsMan::PresetGroupName(PresetGroup group) {
+	switch (group) {
+		case PresetGroup::Gameplay:
+			return "Gameplay & physics";
+		case PresetGroup::Visual:
+			return "Visual & lighting";
+		case PresetGroup::Session:
+			return "For the moment";
+		default:
+			return "Everything";
+	}
+}
+
+namespace {
+	/// Where a kind of preset is kept: the full ones in the folder itself, a group's in a folder of its own inside it.
+	std::string PresetSubfolder(SettingsMan::PresetGroup group) {
+		switch (group) {
+			case SettingsMan::PresetGroup::Gameplay:
+				return "Gameplay/";
+			case SettingsMan::PresetGroup::Visual:
+				return "Visual/";
+			default:
+				return "";
+		}
+	}
+
+	/// Gets the name of the setting a line of a preset or settings file sets, or nothing if it sets none (the class's name at the top, a comment, a blank line).
+	std::string LineKey(const std::string& line) {
+		size_t start = line.find_first_not_of(" \t");
+		size_t equals = line.find(" = ");
+		if (start == std::string::npos || equals == std::string::npos || equals <= start) {
+			return "";
+		}
+		std::string key = line.substr(start, equals - start);
+		return std::all_of(key.begin(), key.end(), [](char letter) { return std::isalnum(static_cast<unsigned char>(letter)) || letter == '_'; }) ? key : "";
+	}
+
+	/// Keeps from a preset's text only the lines setting what is in one group (and what is in every group), and the class's name it starts with.
+	std::string KeepGroup(const std::string& text, SettingsMan::PresetGroup part, const std::unordered_map<std::string, SettingsMan::PresetGroup>& groups) {
+		std::istringstream lines(text);
+		std::string kept;
+		std::string line;
+		bool first = true;
+		while (std::getline(lines, line)) {
+			std::string key = LineKey(line);
+			bool keep = first;
+			if (!key.empty()) {
+				auto found = groups.find(key);
+				keep = found != groups.end() && (found->second == part || found->second == SettingsMan::PresetGroup::Everything);
+			}
+			if (keep) {
+				kept += line + "\n";
+			}
+			first = first && line.find_first_not_of(" \t\r") == std::string::npos;
+		}
+		return kept;
+	}
+} // namespace
+
+std::unordered_map<std::string, SettingsMan::PresetGroup> SettingsMan::TunableGroups() const {
+	auto stream = std::make_unique<std::ostringstream>();
+	std::ostringstream* text = stream.get();
+	Writer writer(std::move(stream));
+	s_MarkingGroups = true;
+	SaveTunables(writer, g_PostProcessMan.GetLightingSettings(), true);
+	s_MarkingGroups = false;
+
+	std::unordered_map<std::string, PresetGroup> groups;
+	PresetGroup group = PresetGroup::Everything;
+	std::istringstream lines(text->str());
+	std::string line;
+	while (std::getline(lines, line)) {
+		std::string key = LineKey(line);
+		if (key == c_GroupMarker) {
+			group = static_cast<PresetGroup>(std::stoi(line.substr(line.find(" = ") + 3)));
+		} else if (!key.empty()) {
+			groups.emplace(key, group);
+		}
+	}
+	return groups;
+}
+
+std::string SettingsMan::SavePreset(const std::string& name, PresetGroup group) const {
 	std::string safe = PresetFileName(name);
 	if (safe.empty()) {
 		return "";
 	}
+	std::string folder = PresetFolder() + PresetSubfolder(group);
 	std::error_code error;
-	std::filesystem::create_directories(PresetFolder(), error);
-	Writer writer(PresetFolder() + safe + ".ini");
+	std::filesystem::create_directories(folder, error);
+	if (group != PresetGroup::Everything) {
+		// Everything written as for a full preset, then only this group's lines kept.
+		auto stream = std::make_unique<std::ostringstream>();
+		std::ostringstream* text = stream.get();
+		Writer all(std::move(stream));
+		all.ObjectStart(GetClassName());
+		SaveTunables(all, g_PostProcessMan.GetLightingSettings(), true);
+		all.ObjectEnd();
+		std::ofstream file(folder + safe + ".ini");
+		if (!file) {
+			return "";
+		}
+		file << KeepGroup(text->str(), group, TunableGroups());
+		return file.good() ? safe : "";
+	}
+	Writer writer(folder + safe + ".ini");
 	if (!writer.WriterOK()) {
 		return "";
 	}
@@ -1994,48 +2121,68 @@ std::string SettingsMan::SavePreset(const std::string& name) const {
 	return safe;
 }
 
-bool SettingsMan::LoadPreset(const std::string& name) {
-	std::string path = PresetFolder() + PresetFileName(name) + ".ini";
+bool SettingsMan::LoadPreset(const std::string& name, PresetGroup from, PresetGroup part) {
+	std::string path = PresetFolder() + PresetSubfolder(from) + PresetFileName(name) + ".ini";
 	if (!std::filesystem::exists(path)) {
-		path = BuiltInPresetFolder() + PresetFileName(name) + ".ini";
+		path = BuiltInPresetFolder() + PresetSubfolder(from) + PresetFileName(name) + ".ini";
 		if (!std::filesystem::exists(path)) {
 			return false;
 		}
 	}
-	Reader reader(path, false, nullptr, true, true);
+	if (part == PresetGroup::Everything || part == from) {
+		Reader reader(path, false, nullptr, true, true);
+		if (!reader.ReaderOK()) {
+			return false;
+		}
+		// The same reading as the settings file gets, of a file that holds only the tunable settings.
+		return CreateSerializable(reader, true, false, false) >= 0;
+	}
+	// Only one group's half of a full preset: the other lines are left out before it is read.
+	std::ifstream file(path);
+	if (!file) {
+		return false;
+	}
+	std::ostringstream text;
+	text << file.rdbuf();
+	Reader reader(std::make_unique<std::istringstream>(KeepGroup(text.str(), part, TunableGroups())), path, false, nullptr, true, true);
 	if (!reader.ReaderOK()) {
 		return false;
 	}
-	// The same reading as the settings file gets, of a file that holds only the tunable settings.
 	return CreateSerializable(reader, true, false, false) >= 0;
 }
 
-void SettingsMan::SetStartupPreset(const std::string& name) {
-	m_StartupPreset = PresetFileName(name);
+void SettingsMan::SetStartupPreset(const std::string& name, PresetGroup group) {
+	m_StartupPresets[StartupSlot(group)] = PresetFileName(name);
 }
 
 bool SettingsMan::LoadStartupPreset() {
-	if (m_StartupPreset.empty()) {
-		return false;
-	}
+	bool loadedAny = false;
 	s_ReadingStartupPreset = true;
-	bool loaded = LoadPreset(m_StartupPreset);
-	s_ReadingStartupPreset = false;
-	if (!loaded) {
-		g_ConsoleMan.PrintString("WARNING: The preset to load at start, \"" + m_StartupPreset + "\", isn't in Userdata/Presets or Data/Presets. Settings.ini is used as it is.");
+	for (PresetGroup group: {PresetGroup::Everything, PresetGroup::Gameplay, PresetGroup::Visual}) {
+		const std::string& name = GetStartupPreset(group);
+		if (name.empty()) {
+			continue;
+		}
+		if (LoadPreset(name, group)) {
+			loadedAny = true;
+		} else {
+			std::string folder = PresetSubfolder(group);
+			g_ConsoleMan.PrintString("WARNING: The preset to load at start, \"" + name + "\", isn't in Userdata/Presets/" + folder + " or Data/Presets/" + folder + ". It is left out.");
+		}
 	}
-	return loaded;
+	s_ReadingStartupPreset = false;
+	return loadedAny;
 }
 
-bool SettingsMan::DeletePreset(const std::string& name) const {
+bool SettingsMan::DeletePreset(const std::string& name, PresetGroup group) const {
 	std::error_code error;
-	return std::filesystem::remove(PresetFolder() + PresetFileName(name) + ".ini", error);
+	return std::filesystem::remove(PresetFolder() + PresetSubfolder(group) + PresetFileName(name) + ".ini", error);
 }
 
-std::vector<std::string> SettingsMan::ListPresets() const {
+std::vector<std::string> SettingsMan::ListPresets(PresetGroup group) const {
 	std::vector<std::string> names;
 	std::error_code error;
-	for (const std::string& folder: {PresetFolder(), BuiltInPresetFolder()}) {
+	for (const std::string& folder: {PresetFolder() + PresetSubfolder(group), BuiltInPresetFolder() + PresetSubfolder(group)}) {
 		for (const auto& entry: std::filesystem::directory_iterator(folder, error)) {
 			if (entry.is_regular_file() && entry.path().extension() == ".ini") {
 				names.push_back(entry.path().stem().string());
@@ -2147,8 +2294,11 @@ int SettingsMan::Save(Writer& writer) const {
 	if (ControlLink::s_SettingsPort > 0) {
 		writer.NewPropertyWithValue("ControlLinkPort", ControlLink::s_SettingsPort);
 	}
-	if (!m_StartupPreset.empty()) {
-		writer.NewPropertyWithValue("StartupPreset", m_StartupPreset);
+	const std::pair<const char*, PresetGroup> startupKeys[] = {{"StartupPreset", PresetGroup::Everything}, {"StartupGameplayPreset", PresetGroup::Gameplay}, {"StartupVisualPreset", PresetGroup::Visual}};
+	for (const auto& [key, group]: startupKeys) {
+		if (!GetStartupPreset(group).empty()) {
+			writer.NewPropertyWithValue(key, GetStartupPreset(group));
+		}
 	}
 	SaveTunables(writer, lighting, false);
 

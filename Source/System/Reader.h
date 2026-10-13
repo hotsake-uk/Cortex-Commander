@@ -35,7 +35,8 @@ namespace RTE {
 		/// @param overwrites Whether object definitions read here overwrite existing ones with the same names.
 		/// @param progressCallback A function pointer to a function that will be called and sent a string with information about the progress of this Reader's reading.
 		/// @param failOK Whether it's ok for the file to not be there, ie we're only trying to open, and if it's not there, then fail silently.
-		Reader(std::unique_ptr<std::istream>&& stream, const std::string& fileName, bool overwrites = false, const ProgressCallback& progressCallback = nullptr, bool failOK = false);
+		/// @param nonModulePath Whether fileName is a path that is not in a DataModule and should just be taken as provided.
+		Reader(std::unique_ptr<std::istream>&& stream, const std::string& fileName, bool overwrites = false, const ProgressCallback& progressCallback = nullptr, bool failOK = false, bool nonModulePath = false);
 
 		/// Makes the Reader object ready for use.
 		/// @param fileName Path to the file to open for reading. If the file doesn't exist the stream will fail to open.
