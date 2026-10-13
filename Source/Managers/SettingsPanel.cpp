@@ -72,7 +72,10 @@ namespace {
 	char s_PresetName[64] = "";
 	char s_FilterPresetName[64] = ""; //!< The name box of the screen style's filter presets.
 	std::string s_FilterPresetMessage;
-	std::vector<std::string> s_Presets;
+	SettingsMan::PresetGroup s_PresetScope = SettingsMan::PresetGroup::Everything; //!< Which presets the preset row shows and saves: every setting, or one group's.
+	std::vector<std::string> s_Presets; //!< The presets of s_PresetScope.
+	std::vector<std::string> s_FullPresets; //!< With a group's presets: the full ones, to load only that group's half of.
+	bool s_PresetFromFull = false; //!< Whether s_PresetName is a full preset picked among a group's, so it isn't one of the group's own.
 	bool s_PresetsListed = false;
 	std::string s_PresetMessage;
 
@@ -404,62 +407,108 @@ namespace {
 	}
 
 	void DrawPresets() {
+		using Group = SettingsMan::PresetGroup;
 		if (!s_PresetsListed) {
-			s_Presets = g_SettingsMan.ListPresets();
+			s_Presets = g_SettingsMan.ListPresets(s_PresetScope);
+			s_FullPresets = s_PresetScope == Group::Everything ? std::vector<std::string>() : g_SettingsMan.ListPresets(Group::Everything);
 			s_PresetsListed = true;
 		}
+		// What the presets below hold: every setting, or one of the two groups the categories are under.
+		const Group scopes[] = {Group::Everything, Group::Gameplay, Group::Visual};
 		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.55F);
-		if (ImGui::BeginCombo("Preset", s_PresetName[0] ? s_PresetName : "Choose one to load...")) {
-			if (s_Presets.empty()) {
-				ImGui::TextDisabled("None saved yet. Type a name below and press Save.");
-			}
-			for (const std::string& name: s_Presets) {
-				if (ImGui::Selectable(name.c_str(), name == s_PresetName)) {
-					std::snprintf(s_PresetName, sizeof(s_PresetName), "%s", name.c_str());
-					bool loaded = g_SettingsMan.LoadPreset(name);
-					s_PresetMessage = loaded ? "Loaded \"" + name + "\"." : "Could not load \"" + name + "\".";
-					Notices::Post(loaded ? "Preset \"" + name + "\" loaded." : "Could not load the preset \"" + name + "\".");
+		if (ImGui::BeginCombo("Presets of", SettingsMan::PresetGroupName(s_PresetScope))) {
+			for (Group scope: scopes) {
+				if (ImGui::Selectable(SettingsMan::PresetGroupName(scope), scope == s_PresetScope) && scope != s_PresetScope) {
+					s_PresetScope = scope;
+					s_PresetName[0] = 0;
+					s_PresetFromFull = false;
+					s_PresetMessage.clear();
+					s_PresetsListed = false;
 				}
 			}
 			ImGui::EndCombo();
 		}
-		ImGui::SetItemTooltip("A preset holds every setting in this panel, from the look, the time and weather, water, fire and how the ground falls to the AI, the HUD, the overlays and the game speed, and the game's own settings from the Settings menu (items shown, map wrapping, screen shake...).\nThey are files in Userdata/Presets, so they can be copied and shared.");
+		ImGui::SetItemTooltip("Everything: presets that hold every setting in this panel.\nGameplay & physics, or Visual & lighting: presets that hold only the settings in the categories under that heading, so loading one leaves the others as they are. The full presets are listed with them too, to load only that half of one.");
+		const bool group = s_PresetScope != Group::Everything;
+
+		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.55F);
+		std::string shown = s_PresetName[0] ? std::string(s_PresetName) + (s_PresetFromFull ? " (full)" : "") : std::string("Choose one to load...");
+		if (ImGui::BeginCombo("Preset", shown.c_str())) {
+			if (s_Presets.empty()) {
+				ImGui::TextDisabled("None saved yet. Type a name below and press Save.");
+			}
+			auto pick = [](const std::string& name, bool full) {
+				std::snprintf(s_PresetName, sizeof(s_PresetName), "%s", name.c_str());
+				s_PresetFromFull = full;
+				bool loaded = full ? g_SettingsMan.LoadPreset(name, Group::Everything, s_PresetScope) : g_SettingsMan.LoadPreset(name, s_PresetScope);
+				std::string what = full ? std::string(" (only its ") + SettingsMan::PresetGroupName(s_PresetScope) + ")" : "";
+				s_PresetMessage = loaded ? "Loaded \"" + name + "\"" + what + "." : "Could not load \"" + name + "\".";
+				Notices::Post(loaded ? "Preset \"" + name + "\"" + what + " loaded." : "Could not load the preset \"" + name + "\".");
+			};
+			for (const std::string& name: s_Presets) {
+				if (ImGui::Selectable(name.c_str(), !s_PresetFromFull && name == s_PresetName)) {
+					pick(name, false);
+				}
+			}
+			if (!s_FullPresets.empty()) {
+				ImGui::SeparatorText("Full presets, this half only");
+				for (const std::string& name: s_FullPresets) {
+					std::string label = name + " (full)##Full";
+					if (ImGui::Selectable(label.c_str(), s_PresetFromFull && name == s_PresetName)) {
+						pick(name, true);
+					}
+				}
+			}
+			ImGui::EndCombo();
+		}
+		if (group) {
+			ImGui::SetItemTooltip("%s", (std::string("A preset of the ") + SettingsMan::PresetGroupName(s_PresetScope) + " settings only: the categories under that heading. Loading one leaves the rest as it is.\nPicking a full preset here loads only that half of it.\nThey are files in Userdata/Presets/" + (s_PresetScope == Group::Gameplay ? "Gameplay" : "Visual") + ", so they can be copied and shared.").c_str());
+		} else {
+			ImGui::SetItemTooltip("A preset holds every setting in this panel, from the look, the time and weather, water, fire and how the ground falls to the AI, the HUD, the overlays and the game speed, and the game's own settings from the Settings menu (items shown, map wrapping, screen shake...).\nThey are files in Userdata/Presets, so they can be copied and shared.");
+		}
 		ImGui::SameLine();
-		const std::string& startupPreset = g_SettingsMan.GetStartupPreset();
-		bool loadsAtStart = s_PresetName[0] && startupPreset == s_PresetName;
-		ImGui::BeginDisabled(s_PresetName[0] == 0 || (!loadsAtStart && std::find(s_Presets.begin(), s_Presets.end(), std::string(s_PresetName)) == s_Presets.end()));
+		const std::string& startupPreset = g_SettingsMan.GetStartupPreset(s_PresetScope);
+		bool loadsAtStart = s_PresetName[0] && !s_PresetFromFull && startupPreset == s_PresetName;
+		ImGui::BeginDisabled(s_PresetName[0] == 0 || s_PresetFromFull || (!loadsAtStart && std::find(s_Presets.begin(), s_Presets.end(), std::string(s_PresetName)) == s_Presets.end()));
 		if (ImGui::Checkbox("Load at start", &loadsAtStart)) {
-			g_SettingsMan.SetStartupPreset(loadsAtStart ? s_PresetName : "");
+			g_SettingsMan.SetStartupPreset(loadsAtStart ? s_PresetName : "", s_PresetScope);
 			g_SettingsMan.UpdateSettingsFile();
-			s_PresetMessage = loadsAtStart ? std::string("\"") + s_PresetName + "\" loads every time the game starts." : "No preset loads at start.";
+			s_PresetMessage = loadsAtStart ? std::string("\"") + s_PresetName + "\" loads every time the game starts." : "No preset of these loads at start.";
 		}
 		ImGui::EndDisabled();
-		ImGui::SetItemTooltip("Loads this preset every time the game starts, over Settings.ini, so you don't have to pick it each time.\nThe game speed, freezing, the AI pause and the debug views in it are left off at start.\nChanges made later are only kept in it if it is saved again.");
-		if (!startupPreset.empty()) {
-			ImGui::TextDisabled("Loads at start: %s", startupPreset.c_str());
+		ImGui::SetItemTooltip("Loads this preset every time the game starts, over Settings.ini, so you don't have to pick it each time.\nThe full one loads first, then the gameplay and visual ones over it.\nThe game speed, freezing, the AI pause and the debug views in it are left off at start.\nChanges made later are only kept in it if it is saved again.");
+		for (Group scope: scopes) {
+			if (!g_SettingsMan.GetStartupPreset(scope).empty()) {
+				ImGui::TextDisabled("Loads at start (%s): %s", SettingsMan::PresetGroupName(scope), g_SettingsMan.GetStartupPreset(scope).c_str());
+			}
 		}
 		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.55F);
-		ImGui::InputTextWithHint("##PresetName", "Name for a preset...", s_PresetName, sizeof(s_PresetName));
+		if (ImGui::InputTextWithHint("##PresetName", "Name for a preset...", s_PresetName, sizeof(s_PresetName))) {
+			s_PresetFromFull = false;
+		}
 		ImGui::SameLine();
 		ImGui::BeginDisabled(s_PresetName[0] == 0);
 		if (ToolUI::Button("Save")) {
-			std::string saved = g_SettingsMan.SavePreset(s_PresetName);
+			std::string saved = g_SettingsMan.SavePreset(s_PresetName, s_PresetScope);
 			s_PresetMessage = saved.empty() ? "Could not save it." : "Saved \"" + saved + "\".";
 			Notices::Post(saved.empty() ? "Could not save the preset." : "Preset \"" + saved + "\" saved.");
 			std::snprintf(s_PresetName, sizeof(s_PresetName), "%s", saved.c_str());
+			s_PresetFromFull = false;
 			s_PresetsListed = false;
 		}
-		ImGui::SetItemTooltip("Keeps every setting as it is now under this name. Saving under a name that exists replaces it.");
+		ImGui::SetItemTooltip("%s", group ? (std::string("Keeps the ") + SettingsMan::PresetGroupName(s_PresetScope) + " settings as they are now under this name. Saving under a name that exists replaces it.").c_str() : "Keeps every setting as it is now under this name. Saving under a name that exists replaces it.");
 		ImGui::SameLine();
+		ImGui::BeginDisabled(s_PresetFromFull);
 		if (ToolUI::Button("Delete")) {
-			s_PresetMessage = g_SettingsMan.DeletePreset(s_PresetName) ? std::string("Deleted \"") + s_PresetName + "\"." : "There is no preset of that name.";
-			if (g_SettingsMan.GetStartupPreset() == s_PresetName) {
-				g_SettingsMan.SetStartupPreset("");
+			s_PresetMessage = g_SettingsMan.DeletePreset(s_PresetName, s_PresetScope) ? std::string("Deleted \"") + s_PresetName + "\"." : "There is no preset of that name.";
+			if (g_SettingsMan.GetStartupPreset(s_PresetScope) == s_PresetName) {
+				g_SettingsMan.SetStartupPreset("", s_PresetScope);
 				g_SettingsMan.UpdateSettingsFile();
 			}
 			s_PresetName[0] = 0;
 			s_PresetsListed = false;
 		}
+		ImGui::EndDisabled();
 		ImGui::EndDisabled();
 		if (ToolUI::Button("Usual settings")) {
 			g_PostProcessMan.GetLightingSettings() = LightingSettings();
@@ -537,19 +586,7 @@ void DebugMan::SettingsGUI() {
 		Check("Weather over the background", &settings.WeatherOverBackground);
 		Tip("The rain, snow, ash and dust are drawn over the sky and the distant scenery. Off: they only show in front of the terrain's back walls, units and the rest of the scene, not painted over the background.");
 		Slider("Wind", &settings.Wind, -400.0F, 400.0F, "%.0f px/s");
-		Tip("The wind's steady strength and way: negative blows left. The natural wind below makes it gust and wander around this.");
-		{
-			AirPressure::Tuning& air = AirPressure::GetTuning();
-			Slider("Wind gusts", &air.Gusts, 0.0F, 3.0F, "%.2fx");
-			Tip("How much the wind gusts and lulls every few seconds: at 1 gusts blow about half again as hard, at 2 nearly twice. 0: a steady wind.");
-			Slider("Wind shifts", &air.Shifts, 0.0F, 3.0F, "%.2fx");
-			Tip("How much the wind's strength wanders over a minute or so, and the light breeze's way with it. 0: it stays as set.");
-			Slider("Light breeze", &air.Breeze, 0.0F, 100.0F, "%.0f px/s");
-			Tip("A breeze that blows even with the wind at 0, wandering in strength and now and then turning about. 0: still air is still.");
-			if (Plain()) {
-				ImGui::TextDisabled("Blowing now: %.0f px/s", AirPressure::GetNaturalWind());
-			}
-		}
+		Tip("The wind's steady strength and way: negative blows left. Natural wind (Air & wind) makes it gust and wander around this.");
 		Slider("Weather's own light", &settings.WeatherLight, 0.0F, 1.5F);
 		Tip("The least light rain, snow, ash and dust are drawn with, so they show on a dark night.");
 		Check("More weather types", &settings.CustomWeather);
@@ -812,7 +849,9 @@ void DebugMan::SettingsGUI() {
 		Slider("Palette pulse strength", &settings.PaletteAnimationStrength, 0.0F, 1.0F);
 	};
 
-	auto water = [&]() {
+	// The world's own simulations, apart from how they look: liquids and loose ground, fire, candles, ropes, smoke and gas.
+	auto worldPhysics = [&]() {
+		Heading("Liquids and loose ground");
 		Toggle("Flowing liquids", FluidSim::IsEnabled(), [](bool on) { FluidSim::SetEnabled(on); });
 		if (Plain()) {
 			ImGui::SameLine();
@@ -833,6 +872,38 @@ void DebugMan::SettingsGUI() {
 			g_SettingsMan.SetUnitWaterBehaviour(waterBehaviour);
 		}
 		Tip("How units, players' and the AI's, take liquid when they look where they're going. Their bodies move through it whichever you pick.\nAs terrain: as before. Wading reads as a step to leap or jet over, a deep pool or a stream pouring down in front as a wall to go round, water pouring off a ledge as a ceiling that puts the jet out, a puddle as ground that stops a take-off or a leap, and a unit knocked down in a puddle doesn't get up.\nOpen water: none of that; liquid is seen as the open water it is.\nEvery liquid waded: that, and routes wade mud, tar, mercury, fuel and the other liquids as they do oil, rather than walking along the top and sinking in. That part takes effect when the next map loads.");
+		Heading("Fire, smoke and gas");
+		Toggle("Spreading fire", TerrainFire::IsEnabled(), [](bool on) { TerrainFire::SetEnabled(on); });
+		if (Plain()) {
+			ImGui::SameLine();
+			ImGui::TextDisabled("(%d burning)", TerrainFire::GetCount());
+		}
+		if (float chance = TerrainFire::GetEmberIgniteChance(); Slider("Embers set things alight", &chance, Normal{0.1F}, 0.0F, 10.0F, "%.2f%% a second")) {
+			TerrainFire::SetEmberIgniteChance(chance);
+		}
+		Tip("The chance each second that smouldering charcoal (what's left glowing of burnt wood) sets alight each grass, wood or oil pixel touching it. Charcoal never relights other charcoal. 0 for never.");
+		Toggle("Candles burn forever", TerrainCandle::GetBurnMinutes() <= 0.0F, [](bool on) { TerrainCandle::SetBurnMinutes(on ? 0.0F : 2.0F); });
+		Tip("Lit candles (Paint > Plants > Candles) keep burning and never melt down. Off, they burn down in the time below.");
+		if (float minutes = TerrainCandle::GetBurnMinutes(); minutes > 0.0F && Slider("Candle burn time", &minutes, Normal{2.0F}, 0.5F, 60.0F, "%.1f minutes", ImGuiSliderFlags_Logarithmic)) {
+			TerrainCandle::SetBurnMinutes(minutes);
+		}
+		Tip("How long a lit candle 20 pixels tall takes to burn down, whatever its width; a taller one takes longer. 2 minutes as it comes.");
+		if (float reaction = RopeSim::GetReaction(); Slider("Ropes react to wind and blasts", &reaction, Normal{1.0F}, 0.0F, 3.0F, "%.2fx")) {
+			RopeSim::SetReaction(reaction);
+		}
+		Tip("How strongly ropes, threads, chains and cables blow about in the wind, ride the pressure of a passing blast wave and are thrown out from explosions. 1 as it comes, 0 they hang still.");
+		Toggle("Dropped ropes settle into the ground", RopeSim::GetSettleSeconds() > 0.0F, [](bool on) { RopeSim::SetSettleSeconds(on ? 5.0F : 0.0F); });
+		if (float settle = RopeSim::GetSettleSeconds(); settle > 0.0F && Slider("Rope settle time", &settle, Normal{5.0F}, 0.5F, 60.0F, "%.1f seconds", ImGuiSliderFlags_Logarithmic)) {
+			RopeSim::SetSettleSeconds(settle);
+		}
+		Tip("A rope, chain or cable that is no longer tied to anything and has stayed within a small area (about 6 pixels of room) this long, even if it is still swaying, turns into terrain where it lies (wood for rope, thread and bungee, metal for chain and cable), so it stops being simulated. Off, it stays a rope.");
+		Toggle("Units catch fire", ActorFire::IsEnabled(), [](bool on) { ActorFire::SetEnabled(on); });
+		Toggle("Smoke blocks sight", SmokeGrid::IsEnabled(), [](bool on) { SmokeGrid::SetEnabled(on); });
+		Toggle("Gas", GasGrid::IsEnabled(), [](bool on) { GasGrid::SetEnabled(on); });
+		Tip("Smoke, toxic gas, methane and steam spread through the air and stay in closed rooms: smoke builds up where it can't get out, toxic gas sinks and pools and hurts whoever breathes it, methane rises and goes up in a chain of blasts where it meets fire, steam rises, scalds and condenses away. Smoke, toxic gas and steam block sight.");
+	};
+
+	auto water = [&]() {
 		Slider("Light glowing through water", &settings.WaterLightGlow, 0.0F, 1.5F);
 		Tip("How much a lamp, fire or blast in or beside water shows as a glow in the water, in the light's own colour. 0: water is only lit like a surface.");
 		Check("Each liquid has its own look", &settings.DistinctLiquidLooks);
@@ -928,34 +999,6 @@ void DebugMan::SettingsGUI() {
 	};
 
 	auto fireAndSmoke = [&]() {
-		Toggle("Spreading fire", TerrainFire::IsEnabled(), [](bool on) { TerrainFire::SetEnabled(on); });
-		if (Plain()) {
-			ImGui::SameLine();
-			ImGui::TextDisabled("(%d burning)", TerrainFire::GetCount());
-		}
-		if (float chance = TerrainFire::GetEmberIgniteChance(); Slider("Embers set things alight", &chance, Normal{0.1F}, 0.0F, 10.0F, "%.2f%% a second")) {
-			TerrainFire::SetEmberIgniteChance(chance);
-		}
-		Tip("The chance each second that smouldering charcoal (what's left glowing of burnt wood) sets alight each grass, wood or oil pixel touching it. Charcoal never relights other charcoal. 0 for never.");
-		Toggle("Candles burn forever", TerrainCandle::GetBurnMinutes() <= 0.0F, [](bool on) { TerrainCandle::SetBurnMinutes(on ? 0.0F : 2.0F); });
-		Tip("Lit candles (Paint > Plants > Candles) keep burning and never melt down. Off, they burn down in the time below.");
-		if (float minutes = TerrainCandle::GetBurnMinutes(); minutes > 0.0F && Slider("Candle burn time", &minutes, Normal{2.0F}, 0.5F, 60.0F, "%.1f minutes", ImGuiSliderFlags_Logarithmic)) {
-			TerrainCandle::SetBurnMinutes(minutes);
-		}
-		Tip("How long a lit candle 20 pixels tall takes to burn down, whatever its width; a taller one takes longer. 2 minutes as it comes.");
-		if (float reaction = RopeSim::GetReaction(); Slider("Ropes react to wind and blasts", &reaction, Normal{1.0F}, 0.0F, 3.0F, "%.2fx")) {
-			RopeSim::SetReaction(reaction);
-		}
-		Tip("How strongly ropes, threads, chains and cables blow about in the wind, ride the pressure of a passing blast wave and are thrown out from explosions. 1 as it comes, 0 they hang still.");
-		Toggle("Dropped ropes settle into the ground", RopeSim::GetSettleSeconds() > 0.0F, [](bool on) { RopeSim::SetSettleSeconds(on ? 5.0F : 0.0F); });
-		if (float settle = RopeSim::GetSettleSeconds(); settle > 0.0F && Slider("Rope settle time", &settle, Normal{5.0F}, 0.5F, 60.0F, "%.1f seconds", ImGuiSliderFlags_Logarithmic)) {
-			RopeSim::SetSettleSeconds(settle);
-		}
-		Tip("A rope, chain or cable that is no longer tied to anything and has stayed within a small area (about 6 pixels of room) this long, even if it is still swaying, turns into terrain where it lies (wood for rope, thread and bungee, metal for chain and cable), so it stops being simulated. Off, it stays a rope.");
-		Toggle("Units catch fire", ActorFire::IsEnabled(), [](bool on) { ActorFire::SetEnabled(on); });
-		Toggle("Smoke blocks sight", SmokeGrid::IsEnabled(), [](bool on) { SmokeGrid::SetEnabled(on); });
-		Toggle("Gas", GasGrid::IsEnabled(), [](bool on) { GasGrid::SetEnabled(on); });
-		Tip("Smoke, toxic gas, methane and steam spread through the air and stay in closed rooms: smoke builds up where it can't get out, toxic gas sinks and pools and hurts whoever breathes it, methane rises and goes up in a chain of blasts where it meets fire, steam rises, scalds and condenses away. Smoke, toxic gas and steam block sight.");
 		if (GasGrid::IsEnabled()) {
 			if (float shown = GasGrid::GetShown(); Slider("Gas shown", &shown, Normal{1.0F}, 0.0F, 2.0F)) {
 				GasGrid::SetShown(shown);
@@ -1059,6 +1102,19 @@ void DebugMan::SettingsGUI() {
 		Slider("Wind carries gas", &tuning.WindGas, 0.0F, 5.0F, "%.2fx");
 		Tip("How fast the wind carries gas (smoke built up, toxic gas, methane, steam) along where it blows through; gas in the lee of ground stays. Gas blown past the edge of the map is gone. 0: the wind leaves gas be.");
 		ImGui::EndDisabled();
+		Heading("Natural wind");
+		{
+			AirPressure::Tuning& air = AirPressure::GetTuning();
+			Slider("Wind gusts", &air.Gusts, 0.0F, 3.0F, "%.2fx");
+			Tip("How much the wind gusts and lulls every few seconds: at 1 gusts blow about half again as hard, at 2 nearly twice. 0: a steady wind.");
+			Slider("Wind shifts", &air.Shifts, 0.0F, 3.0F, "%.2fx");
+			Tip("How much the wind's strength wanders over a minute or so, and the light breeze's way with it. 0: it stays as set.");
+			Slider("Light breeze", &air.Breeze, 0.0F, 100.0F, "%.0f px/s");
+			Tip("A breeze that blows even with the wind at 0, wandering in strength and now and then turning about. 0: still air is still.");
+			if (Plain()) {
+				ImGui::TextDisabled("Blowing now: %.0f px/s", AirPressure::GetNaturalWind());
+			}
+		}
 		if (Plain() && ToolUI::Button("Usual air and wind")) {
 			tuning = AirPressure::Tuning();
 		}
@@ -1353,7 +1409,7 @@ void DebugMan::SettingsGUI() {
 		}
 	};
 
-	auto gameAndHUD = [&]() {
+	auto gameRules = [&]() {
 		float timeScale = g_TimerMan.GetTimeScale();
 		if (Slider("Game speed", &timeScale, Normal{1.0F}, 0.1F, 4.0F, "%.2fx", ImGuiSliderFlags_Logarithmic)) {
 			g_TimerMan.SetTimeScale(timeScale);
@@ -1472,6 +1528,10 @@ void DebugMan::SettingsGUI() {
 			}
 			Tip("How fast flying creatures fly, as a multiple of each one's own pace (a carrion bat about 8 m/s, a wyvern about 6). 1x is normal.");
 		}
+	};
+
+	// How units and the screen around them look and talk: team colours, outlines, the HUD, battle alerts and speech.
+	auto hudAndInterface = [&]() {
 		Check("Team colour on units", &settings.UnitTeamColorParts);
 		Tip("Parts of units that mods mark for it (a bandanna, a helmet stripe) are drawn in their side's colour: red, green, blue or yellow. Unticked, they take the mod's own default colour, or stay as painted.");
 		Heading("Unit outlines");
@@ -2494,38 +2554,48 @@ void DebugMan::SettingsGUI() {
 		}
 	};
 
-	const std::pair<const char*, std::function<void()>> categories[] = {
-	    {"Time & weather", timeAndWeather},
-	    {"Sky & daylight", skyAndDaylight},
-	    {"Interiors & shadows", interiorsAndShadows},
-	    {"Lamps & lights", lampsAndLights},
-	    {"Surfaces", surfaces},
-	    {"Water", water},
-	    {"Fire, smoke & blast", fireAndSmoke},
-	    {"Effect layers", effectLayers},
-	    {"Air & wind", airAndWind},
-	    {"Falling ground", fallingGround},
-	    {"Zero G Settings", zeroG},
-	    {"Gibs", gibs},
-	    {"Magic & spells", magic},
-	    {"Camera & image", cameraAndImage},
-	    {"Game & HUD", gameAndHUD},
-	    {"AI behaviour", aiBehaviour},
-	    {"Movement", movement},
-	    {"Battle Behavior", battleBehavior},
-	    {"Digging", digging},
-	    {"Pathfinding", pathfinding},
-	    {"Performance", performance},
-	    {"Debug", debug},
-	    {"AI debug", aiDebug},
-	    {"Render debug", renderDebug},
-	    {"Sandbox debug", sandboxDebug},
+	// The categories, each under one of the two groups, which are also what the group presets hold (SettingsMan::PresetGroup).
+	struct Category {
+		SettingsMan::PresetGroup Group;
+		const char* Name;
+		std::function<void()> Draw;
+	};
+	using Group = SettingsMan::PresetGroup;
+	const Category categories[] = {
+	    {Group::Gameplay, "Game rules", gameRules},
+	    {Group::Gameplay, "World physics", worldPhysics},
+	    {Group::Gameplay, "Air & wind", airAndWind},
+	    {Group::Gameplay, "Falling ground", fallingGround},
+	    {Group::Gameplay, "Zero G Settings", zeroG},
+	    {Group::Gameplay, "Gibs", gibs},
+	    {Group::Gameplay, "Magic & spells", magic},
+	    {Group::Gameplay, "AI behaviour", aiBehaviour},
+	    {Group::Gameplay, "Movement", movement},
+	    {Group::Gameplay, "Battle Behavior", battleBehavior},
+	    {Group::Gameplay, "Digging", digging},
+	    {Group::Gameplay, "Pathfinding", pathfinding},
+	    {Group::Gameplay, "Debug", debug},
+	    {Group::Gameplay, "AI debug", aiDebug},
+	    {Group::Gameplay, "Sandbox debug", sandboxDebug},
+	    {Group::Visual, "Time & weather", timeAndWeather},
+	    {Group::Visual, "Sky & daylight", skyAndDaylight},
+	    {Group::Visual, "Interiors & shadows", interiorsAndShadows},
+	    {Group::Visual, "Lamps & lights", lampsAndLights},
+	    {Group::Visual, "Surfaces", surfaces},
+	    {Group::Visual, "Water", water},
+	    {Group::Visual, "Fire, smoke & blast", fireAndSmoke},
+	    {Group::Visual, "Effect layers", effectLayers},
+	    {Group::Visual, "Camera & image", cameraAndImage},
+	    {Group::Visual, "HUD & interface", hudAndInterface},
+	    {Group::Visual, "Performance", performance},
+	    {Group::Visual, "Render debug", renderDebug},
 	};
 	const int categoryCount = static_cast<int>(std::size(categories));
-	// Asked for the Debug page (c_SettingsCategoryDebug, by the old debug window's key): found by its name, so adding a page doesn't move it.
-	if (m_SettingsCategory == c_SettingsCategoryDebug) {
+	// Asked for a page by name (c_SettingsCategoryDebug, c_SettingsCategoryLook, by the old windows' keys): found by its name, so adding a page doesn't move it.
+	if (m_SettingsCategory < 0) {
+		std::string_view wanted = m_SettingsCategory == c_SettingsCategoryDebug ? "Debug" : "Sky & daylight";
 		for (int i = 0; i < categoryCount; ++i) {
-			if (std::string_view(categories[i].first) == "Debug") {
+			if (wanted == categories[i].Name) {
 				m_SettingsCategory = i;
 			}
 		}
@@ -2542,16 +2612,19 @@ void DebugMan::SettingsGUI() {
 	s_CategoryMatches = false;
 
 	if (s_Searching) {
+		// Every category of both groups, each headed with its group so it can be found again in the list.
 		ImGui::BeginChild("##Found");
 		ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.45F);
 		for (int i = 0; i < categoryCount; ++i) {
 			ImGui::PushID(i);
-			s_CategoryMatches = ContainsIgnoringCase(categories[i].first, s_Search);
-			s_PendingHeading = categories[i].first;
-			categories[i].second();
+			const char* groupName = SettingsMan::PresetGroupName(categories[i].Group);
+			std::string heading = std::string(groupName) + " > " + categories[i].Name;
+			s_CategoryMatches = ContainsIgnoringCase(categories[i].Name, s_Search) || ContainsIgnoringCase(groupName, s_Search);
+			s_PendingHeading = heading.c_str();
+			categories[i].Draw();
+			s_PendingHeading = nullptr;
 			ImGui::PopID();
 		}
-		s_PendingHeading = nullptr;
 		s_CategoryMatches = false;
 		if (s_ShownCount == 0) {
 			ImGui::TextDisabled("No setting has that in its name.");
@@ -2559,24 +2632,33 @@ void DebugMan::SettingsGUI() {
 		ImGui::PopItemWidth();
 		ImGui::EndChild();
 	} else {
-		// The categories down the left, the chosen one's controls beside them.
+		// The categories down the left under their groups' headings, the chosen one's controls beside them.
 		float listWidth = 0.0F;
-		for (const auto& category: categories) {
-			listWidth = std::max(listWidth, ImGui::CalcTextSize(category.first).x);
+		for (const Category& category: categories) {
+			listWidth = std::max({listWidth, ImGui::CalcTextSize(category.Name).x + ImGui::GetStyle().IndentSpacing, ImGui::CalcTextSize(SettingsMan::PresetGroupName(category.Group)).x});
 		}
 		listWidth += ImGui::GetStyle().FramePadding.x * 4.0F;
 		ImGui::BeginChild("##Categories", ImVec2(listWidth, 0.0F));
 		for (int i = 0; i < categoryCount; ++i) {
-			if (ImGui::Selectable(categories[i].first, m_SettingsCategory == i)) {
+			if (i == 0 || categories[i].Group != categories[i - 1].Group) {
+				if (i > 0) {
+					ImGui::Spacing();
+				}
+				ImGui::TextDisabled("%s", SettingsMan::PresetGroupName(categories[i].Group));
+				ImGui::Separator();
+			}
+			ImGui::Indent();
+			if (ImGui::Selectable(categories[i].Name, m_SettingsCategory == i)) {
 				m_SettingsCategory = i;
 			}
+			ImGui::Unindent();
 		}
 		ImGui::EndChild();
 		ImGui::SameLine();
 		ImGui::BeginChild("##Controls");
 		ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.45F);
 		ImGui::PushID(m_SettingsCategory);
-		categories[m_SettingsCategory].second();
+		categories[m_SettingsCategory].Draw();
 		ImGui::PopID();
 		ImGui::PopItemWidth();
 		ImGui::EndChild();
