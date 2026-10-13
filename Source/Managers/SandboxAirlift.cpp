@@ -70,6 +70,37 @@ namespace SandboxDetail {
 
 	void ForgetAirlifts() { s_Lifts.clear(); }
 
+	void SaveAirlifts(std::ostream& out) {
+		const long long now = g_TimerMan.GetSimUpdateCount();
+		out << ' ' << s_Lifts.size();
+		for (const Lift& lift: s_Lifts) {
+			out << ' ' << lift.Ship.ID;
+			SaveRefs(out, lift.Units);
+			out << ' ' << lift.To.m_X << ' ' << lift.To.m_Y << ' ' << lift.Team << ' ' << static_cast<int>(lift.At) << ' ' << now - lift.Since << ' ' << lift.SentTo.m_X << ' ' << lift.SentTo.m_Y;
+		}
+	}
+
+	void LoadAirlifts(std::istream& in, const LoadedIDs& ids) {
+		const long long now = g_TimerMan.GetSimUpdateCount();
+		size_t count = 0;
+		in >> count;
+		for (size_t i = 0; i < count && in; ++i) {
+			Lift lift;
+			long ship = 0;
+			int stage = 0;
+			long long ago = 0;
+			in >> ship;
+			lift.Units = LoadRefs(in, ids);
+			in >> lift.To.m_X >> lift.To.m_Y >> lift.Team >> stage >> ago >> lift.SentTo.m_X >> lift.SentTo.m_Y;
+			lift.At = static_cast<Stage>(std::clamp(stage, 0, static_cast<int>(Stage::Unloaded)));
+			lift.Since = now - ago;
+			lift.Ship = ids.Ref(ship);
+			if (lift.Ship.Unit) {
+				s_Lifts.push_back(std::move(lift));
+			}
+		}
+	}
+
 	int AirliftShipsFor(size_t units) { return std::min(static_cast<int>((units + 5) / 6), c_MostShips); }
 
 	void AirliftSelected(const std::vector<Actor*>& units, const Vector& point) {

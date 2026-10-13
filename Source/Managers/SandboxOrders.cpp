@@ -3124,4 +3124,135 @@ namespace SandboxDetail {
 			}
 		}
 	}
+
+	namespace {
+		void SaveStep(std::ostream& out, const PlanStep& step) {
+			out << ' ' << static_cast<int>(step.Kind) << ' ' << step.Place.m_X << ' ' << step.Place.m_Y << ' ' << step.Target.ID << ' ' << step.Facing << ' ' << step.Updates << ' ' << step.Radius << ' ' << step.Sky;
+		}
+
+		PlanStep LoadStep(std::istream& in, const LoadedIDs& ids) {
+			PlanStep step;
+			int kind = 0;
+			long target = 0;
+			in >> kind >> step.Place.m_X >> step.Place.m_Y >> target >> step.Facing >> step.Updates >> step.Radius >> step.Sky;
+			step.Kind = static_cast<PlanKind>(std::clamp(kind, 0, static_cast<int>(PlanKind::Park)));
+			step.Target = ids.Ref(target);
+			return step;
+		}
+	} // namespace
+
+	void SaveOrders(std::ostream& out) {
+		const long long now = g_TimerMan.GetSimUpdateCount();
+		out << ' ' << s_Plans.size();
+		for (const auto& [id, plan]: s_Plans) {
+			out << ' ' << plan.Unit.ID << ' ' << plan.Running << ' ' << now - plan.Started << ' ' << plan.BackAndForth << ' ' << plan.Forward << ' ' << plan.Route.size();
+			for (const Vector& point: plan.Route) {
+				out << ' ' << point.m_X << ' ' << point.m_Y;
+			}
+			SaveStep(out, plan.Current);
+			out << ' ' << plan.Steps.size();
+			for (const PlanStep& step: plan.Steps) {
+				SaveStep(out, step);
+			}
+		}
+		out << ' ' << s_Dropoffs.size();
+		for (const auto& [id, dropoff]: s_Dropoffs) {
+			out << ' ' << dropoff.Unit.ID << ' ' << dropoff.Place.m_X << ' ' << dropoff.Place.m_Y << ' ' << dropoff.Stage << ' ' << now - dropoff.Since << ' ' << dropoff.StayDown << ' ' << dropoff.Hover.m_X << ' ' << dropoff.Hover.m_Y;
+		}
+		out << ' ' << s_GuardPosts.size();
+		for (const auto& [id, post]: s_GuardPosts) {
+			out << ' ' << id << ' ' << post.ObjectID << ' ' << post.BuildingID << ' ' << post.Place.m_X << ' ' << post.Place.m_Y;
+		}
+		out << ' ' << s_ShipTeamOrders.size();
+		for (const auto& [id, order]: s_ShipTeamOrders) {
+			out << ' ' << id << ' ' << static_cast<int>(order.Kind) << ' ' << order.Centre.m_X << ' ' << order.Centre.m_Y << ' ' << order.Right;
+		}
+		// (Only those a player's order told to defend: a battle's own defenders go with its battle.)
+		const size_t commanded = std::count_if(s_BattleDefenders.begin(), s_BattleDefenders.end(), [](const auto& entry) { return entry.second.Commanded; });
+		out << ' ' << commanded;
+		for (const auto& [id, defender]: s_BattleDefenders) {
+			if (defender.Commanded) {
+				out << ' ' << id << ' ' << defender.Team << ' ' << defender.Center.m_X << ' ' << defender.Center.m_Y << ' ' << defender.Radius << ' ' << defender.Chase << ' ' << defender.Post.m_X << ' ' << defender.Post.m_Y
+				    << ' ' << defender.RoamRoll << ' ' << defender.Roams << ' ' << (defender.IdleSince < 0 ? -1 : now - defender.IdleSince) << ' ' << defender.Dwell << ' ' << defender.ChasingID << ' ' << defender.Seen << ' ' << now - defender.Made;
+			}
+		}
+	}
+
+	void LoadOrders(std::istream& in, const LoadedIDs& ids) {
+		const long long now = g_TimerMan.GetSimUpdateCount();
+		size_t count = 0;
+		in >> count;
+		for (size_t i = 0; i < count && in; ++i) {
+			Plan plan;
+			long unit = 0;
+			long long ago = 0;
+			size_t points = 0;
+			in >> unit >> plan.Running >> ago >> plan.BackAndForth >> plan.Forward >> points;
+			plan.Started = now - ago;
+			for (size_t point = 0; point < points && in; ++point) {
+				Vector place;
+				in >> place.m_X >> place.m_Y;
+				plan.Route.push_back(place);
+			}
+			plan.Current = LoadStep(in, ids);
+			size_t steps = 0;
+			in >> steps;
+			for (size_t step = 0; step < steps && in; ++step) {
+				plan.Steps.push_back(LoadStep(in, ids));
+			}
+			plan.Unit = ids.Ref(unit);
+			if (plan.Unit.Unit) {
+				s_Plans[plan.Unit.ID] = std::move(plan);
+			}
+		}
+		in >> count;
+		for (size_t i = 0; i < count && in; ++i) {
+			Dropoff dropoff;
+			long unit = 0;
+			long long ago = 0;
+			in >> unit >> dropoff.Place.m_X >> dropoff.Place.m_Y >> dropoff.Stage >> ago >> dropoff.StayDown >> dropoff.Hover.m_X >> dropoff.Hover.m_Y;
+			dropoff.Since = now - ago;
+			dropoff.Unit = ids.Ref(unit);
+			if (dropoff.Unit.Unit) {
+				s_Dropoffs[dropoff.Unit.ID] = dropoff;
+			}
+		}
+		in >> count;
+		for (size_t i = 0; i < count && in; ++i) {
+			long unit = 0;
+			GuardPost post;
+			in >> unit >> post.ObjectID >> post.BuildingID >> post.Place.m_X >> post.Place.m_Y;
+			// (A craft guarded is a unit, and comes back; a crate or other loose object has no ID kept, and the guard holds where it is.)
+			post.ObjectID = ids(post.ObjectID);
+			if (const long guard = ids(unit); guard != 0 && (post.ObjectID != 0 || post.BuildingID != 0)) {
+				s_GuardPosts[guard] = post;
+			}
+		}
+		in >> count;
+		for (size_t i = 0; i < count && in; ++i) {
+			long ship = 0;
+			int kind = 0;
+			ShipTeamOrder order;
+			in >> ship >> kind >> order.Centre.m_X >> order.Centre.m_Y >> order.Right;
+			order.Kind = static_cast<Order>(std::clamp(kind, 0, c_OrderCount - 1));
+			if (const long id = ids(ship); id != 0) {
+				s_ShipTeamOrders[id] = order;
+			}
+		}
+		in >> count;
+		for (size_t i = 0; i < count && in; ++i) {
+			long unit = 0;
+			long long idleAgo = 0;
+			long long madeAgo = 0;
+			BattleDefender defender;
+			in >> unit >> defender.Team >> defender.Center.m_X >> defender.Center.m_Y >> defender.Radius >> defender.Chase >> defender.Post.m_X >> defender.Post.m_Y >> defender.RoamRoll >> defender.Roams >> idleAgo >> defender.Dwell >> defender.ChasingID >> defender.Seen >> madeAgo;
+			defender.IdleSince = idleAgo < 0 ? -1 : now - idleAgo;
+			defender.Made = now - madeAgo;
+			defender.ChasingID = ids(defender.ChasingID);
+			defender.Commanded = true;
+			if (const long id = ids(unit); id != 0) {
+				s_BattleDefenders[id] = defender;
+			}
+		}
+	}
 } // namespace SandboxDetail

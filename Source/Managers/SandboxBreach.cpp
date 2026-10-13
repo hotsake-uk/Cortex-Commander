@@ -74,6 +74,33 @@ namespace SandboxDetail {
 
 	void ForgetBreaches() { s_Breaches.clear(); }
 
+	void SaveBreaches(std::ostream& out) {
+		const long long now = g_TimerMan.GetSimUpdateCount();
+		out << ' ' << s_Breaches.size();
+		for (const Breach& breach: s_Breaches) {
+			SaveRefs(out, breach.Diggers);
+			SaveRefs(out, breach.Followers);
+			out << ' ' << breach.Point.m_X << ' ' << breach.Point.m_Y << ' ' << breach.Team << ' ' << breach.Open << ' ' << now - breach.OpenAt;
+		}
+	}
+
+	void LoadBreaches(std::istream& in, const LoadedIDs& ids) {
+		const long long now = g_TimerMan.GetSimUpdateCount();
+		size_t count = 0;
+		in >> count;
+		for (size_t i = 0; i < count && in; ++i) {
+			Breach breach;
+			long long ago = 0;
+			breach.Diggers = LoadRefs(in, ids);
+			breach.Followers = LoadRefs(in, ids);
+			in >> breach.Point.m_X >> breach.Point.m_Y >> breach.Team >> breach.Open >> ago;
+			breach.OpenAt = now - ago;
+			if (!breach.Diggers.empty() || !breach.Followers.empty()) {
+				s_Breaches.push_back(std::move(breach));
+			}
+		}
+	}
+
 	void LeaveBreaches(const Actor* unit) { TakeOut(unit); }
 
 	void BreachSelected(const std::vector<Actor*>& units, const Vector& point) {

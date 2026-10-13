@@ -278,6 +278,11 @@ namespace RTE {
 		/// Sets whether its crew stays in (see GetCrewStaysIn). Being thrown out (a crash, a roll, a wreck) still throws them out.
 		void SetCrewStaysIn(bool staysIn) { m_CrewStaysIn = staysIn; }
 
+		/// Takes a unit back as one called over to ride in it, on its way here: a saved game's, whose way here (this as its waypoint) was
+		/// saved with it but not that this called it (ActivityMan::RemapLoadedUniqueIDs).
+		/// @param unit The unit coming.
+		void AddLoadedRecruit(const Actor* unit) { m_Recruits.push_back({unit->GetUniqueID(), Timer()}); }
+
 		/// Gets whether the player commands it as one unit, crew and all (command mode, VC-1): it drives where it is ordered whatever the AI
 		/// vehicles setting, and its crew stay aboard where it stops until they are ordered out, or until it can't get where it was sent
 		/// (the sandbox lets them out to go on on foot then, unless the crew is told to stay in).

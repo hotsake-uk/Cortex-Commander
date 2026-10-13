@@ -1429,20 +1429,43 @@ void Scene::SaveSceneObject(Writer& writer, const SceneObject* sceneObjectToSave
 			writer.NewPropertyWithValue("Status", actorToSave->GetStatus());
 			writer.NewPropertyWithValue("PlayerControllable", actorToSave->IsPlayerControllable());
 
-			int aiModeToSave = actorToSave->GetAIMode() == Actor::AIMode::AIMODE_SQUAD ? Actor::AIMode::AIMODE_GOTO : actorToSave->GetAIMode();
-			if (aiModeToSave == Actor::AIMode::AIMODE_GOTO && (!actorToSave->GetMOMoveTarget() && g_SceneMan.ShortestDistance(actorToSave->GetMovePathEnd(), actorToSave->GetPos(), g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(1.0F))) {
+			const bool squad = actorToSave->GetAIMode() == Actor::AIMode::AIMODE_SQUAD;
+			int aiModeToSave = squad ? Actor::AIMode::AIMODE_GOTO : actorToSave->GetAIMode();
+			if (aiModeToSave == Actor::AIMode::AIMODE_GOTO && (!actorToSave->GetMOMoveTarget() && actorToSave->GetWaypointList().empty() && g_SceneMan.ShortestDistance(actorToSave->GetMovePathEnd(), actorToSave->GetPos(), g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(1.0F))) {
 				aiModeToSave = Actor::AIMode::AIMODE_SENTRY;
 			}
 			writer.NewPropertyWithValue("AIMode", aiModeToSave);
 			if (aiModeToSave == Actor::AIMode::AIMODE_GOTO) {
+				// Every waypoint as a place, the one it is on its way to first, then those after it. Those that are units (a squad's
+				// leader, a friend to guard, a vehicle or ship to get in) are listed as "index:unique ID" too, to be made units again once
+				// loaded (ActivityMan::RemapLoadedUniqueIDs), with the squad mode if it was in one: places alone, followers walked to
+				// where their leader had stood and stopped, and units on their way to get in never got in.
 				const std::string addWaypointPropertyName = "SpecialBehaviour_AddAISceneWaypoint";
+				std::string unitWaypoints;
+				int index = 0;
+				auto noteUnit = [&unitWaypoints, &index](const MovableObject* object) {
+					if (const Actor* unit = dynamic_cast<const Actor*>(object)) {
+						unitWaypoints += " " + std::to_string(index) + ":" + std::to_string(unit->GetUniqueID());
+					}
+					++index;
+				};
 				if (const MovableObject* actorToSaveMOMoveTarget = actorToSave->GetMOMoveTarget()) {
 					writer.NewPropertyWithValue(addWaypointPropertyName, actorToSaveMOMoveTarget->GetPos());
-				} else {
+					noteUnit(actorToSaveMOMoveTarget);
+				} else if (g_SceneMan.ShortestDistance(actorToSave->GetMovePathEnd(), actorToSave->GetPos(), g_SceneMan.SceneWrapsX()).MagnitudeIsGreaterThan(1.0F)) {
 					writer.NewPropertyWithValue(addWaypointPropertyName, actorToSave->GetMovePathEnd());
-					for (auto& [waypointPosition, waypointObject]: actorToSave->GetWaypointList()) {
-						writer.NewPropertyWithValue(addWaypointPropertyName, waypointPosition);
-					}
+					noteUnit(nullptr);
+				}
+				for (auto& [waypointPosition, waypointObject]: actorToSave->GetWaypointList()) {
+					const MovableObject* object = waypointObject && g_MovableMan.ValidMO(waypointObject) ? waypointObject : nullptr;
+					writer.NewPropertyWithValue(addWaypointPropertyName, object ? object->GetPos() : waypointPosition);
+					noteUnit(object);
+				}
+				if (!unitWaypoints.empty()) {
+					writer.NewProperty("AddCustomValue");
+					writer.ObjectStart("StringValue");
+					writer.NewPropertyWithValue(c_SavedUnitWaypointsKey, std::to_string(index) + (squad ? " squad" : " goto") + unitWaypoints);
+					writer.ObjectEnd();
 				}
 			}
 		}
@@ -1533,6 +1556,7 @@ void Scene::SaveSceneObject(Writer& writer, const SceneObject* sceneObjectToSave
 				WriteHardcodedAttachableOrNone("Exhaust", vehicleToSave->GetExhaust());
 				writer.NewPropertyWithValue("Handbrake", vehicleToSave->IsHandbrakeOn());
 				writer.NewPropertyWithValue("SpecialBehaviour_Commanded", vehicleToSave->IsCommanded());
+				writer.NewPropertyWithValue("SpecialBehaviour_CrewStaysIn", vehicleToSave->GetCrewStaysIn());
 				WriteCrew(vehicleToSave->GetCrewSeats());
 			} else if (const ACShip* shipToSave = dynamic_cast<const ACShip*>(sceneObjectToSave)) {
 				WriteCrew(shipToSave->GetCrewSeats());

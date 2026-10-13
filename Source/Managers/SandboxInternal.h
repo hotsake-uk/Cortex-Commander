@@ -1747,6 +1747,69 @@ namespace SandboxDetail {
 	};
 	inline std::unordered_map<long, GuardPost> s_GuardPosts; //!< By the guarding unit's unique ID.
 
+	/// A saved game's units' unique IDs, from those they had when saved to those they have now it is loaded (ActivityMan::RemapLoadedUniqueIDs):
+	/// what the sandbox kept about units by ID (their plans, drop-offs, guard posts...) is put back on the same units.
+	struct LoadedIDs {
+		const std::unordered_map<long, long>& Map;
+
+		/// A unit's new unique ID, from its old one: 0 if it wasn't saved (or none was given).
+		long operator()(long oldID) const {
+			auto found = oldID != 0 ? Map.find(oldID) : Map.end();
+			return found != Map.end() ? found->second : 0;
+		}
+
+		/// The unit with that old unique ID, in the loaded game, or null.
+		Actor* Unit(long oldID) const {
+			const long newID = (*this)(oldID);
+			return newID != 0 ? dynamic_cast<Actor*>(g_MovableMan.FindObjectByUniqueID(newID)) : nullptr;
+		}
+
+		/// A reference to the unit with that old unique ID, empty if it isn't in the loaded game.
+		UnitRef Ref(long oldID) const { return MakeRef(Unit(oldID)); }
+	};
+
+	/// Writes a list of units by their unique IDs, for a saved game's sandbox state.
+	inline void SaveRefs(std::ostream& out, const std::vector<UnitRef>& refs) {
+		out << ' ' << refs.size();
+		for (const UnitRef& ref: refs) {
+			out << ' ' << ref.ID;
+		}
+	}
+
+	/// Reads a list written by SaveRefs, onto the loaded game's units: those not in it are left out.
+	inline std::vector<UnitRef> LoadRefs(std::istream& in, const LoadedIDs& ids) {
+		std::vector<UnitRef> refs;
+		size_t count = 0;
+		in >> count;
+		for (size_t i = 0; i < count && in; ++i) {
+			long id = 0;
+			in >> id;
+			if (UnitRef ref = ids.Ref(id); ref.Unit) {
+				refs.push_back(ref);
+			}
+		}
+		return refs;
+	}
+
+	/// Writes the orders under way that the sandbox keeps itself, not on the units (plans and patrols, drop-offs, guard posts, flying ships'
+	/// team orders, units told to defend a place), for a saved game (Sandbox::GetSaveState). Times as how long ago, by sim updates.
+	void SaveOrders(std::ostream& out);
+	/// Reads them back, made by SaveOrders, onto the loaded game's units; anything about a unit that isn't in it is dropped.
+	void LoadOrders(std::istream& in, const LoadedIDs& ids);
+	/// Writes your squads in the world (the Squad Builder's: who is in each and who leads) for a saved game.
+	void SavePlayerSquads(std::ostream& out);
+	/// Reads them back, made by SavePlayerSquads.
+	void LoadPlayerSquads(std::istream& in, const LoadedIDs& ids);
+	/// Writes the airlifts under way for a saved game, and reads them back.
+	void SaveAirlifts(std::ostream& out);
+	void LoadAirlifts(std::istream& in, const LoadedIDs& ids);
+	/// Writes the builds under way (engineers' sites) for a saved game, and reads them back.
+	void SaveBuilds(std::ostream& out);
+	void LoadBuilds(std::istream& in, const LoadedIDs& ids);
+	/// Writes the breaches under way for a saved game, and reads them back.
+	void SaveBreaches(std::ostream& out);
+	void LoadBreaches(std::istream& in, const LoadedIDs& ids);
+
 	/// Commander mode (RC-9): your side's units commanded from above in an ordinary game.
 	inline bool s_Commander = false;
 	inline int s_CommanderTeam = 0; //!< The side you command: your own in the game.

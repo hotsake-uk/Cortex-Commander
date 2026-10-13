@@ -436,6 +436,7 @@ int AVehicle::ReadProperty(const std::string_view& propName, Reader& reader) {
 		}
 	});
 	MatchProperty("SpecialBehaviour_Commanded", { reader >> m_Commanded; });
+	MatchProperty("SpecialBehaviour_CrewStaysIn", { reader >> m_CrewStaysIn; });
 	MatchForwards("SpecialBehaviour_CrewSeat") MatchProperty("SpecialBehaviour_RiderSeat", {
 		int seat;
 		reader >> seat;
