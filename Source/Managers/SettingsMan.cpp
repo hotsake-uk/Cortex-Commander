@@ -83,11 +83,15 @@ namespace {
 	    {"PaletteStrength", &LightingSettings::RetroLayers::PaletteStrength}, {"NeonGlow", &LightingSettings::RetroLayers::NeonGlow}, {"EdgeLines", &LightingSettings::RetroLayers::EdgeLines},
 	    {"Sky", &LightingSettings::RetroLayers::RetroSky}, {"GridSpeed", &LightingSettings::RetroLayers::GridSpeed}, {"VHS", &LightingSettings::RetroLayers::VHS},
 	    {"Glitch", &LightingSettings::RetroLayers::Glitch}, {"Curvature", &LightingSettings::RetroLayers::Curvature}, {"CRT", &LightingSettings::RetroLayers::CRT},
-	    {"Posterize", &LightingSettings::RetroLayers::Posterize}, {"Dither", &LightingSettings::RetroLayers::Dither}, {"Pixelate", &LightingSettings::RetroLayers::Pixelate}};
+	    {"Flicker", &LightingSettings::RetroLayers::Flicker}, {"Posterize", &LightingSettings::RetroLayers::Posterize}, {"Dither", &LightingSettings::RetroLayers::Dither},
+	    {"Pixelate", &LightingSettings::RetroLayers::Pixelate}, {"ASCII", &LightingSettings::RetroLayers::ASCII}, {"ASCIIBackground", &LightingSettings::RetroLayers::ASCIIBackground},
+	    {"Afterglow", &LightingSettings::RetroLayers::Afterglow}, {"TerminalOverlay", &LightingSettings::RetroLayers::TerminalOverlay}};
 
-	/// Reads one retro layer setting, saved as its prefix ("Retro" for the player's own, "Synthwave" and so on for a screen style's) and then field.
+	/// Reads one retro layer setting, saved as its prefix ("Retro" for the player's own, "Synthwave" and so on for a screen style's, "Variant" for the chosen variant's, none in a filter preset file) and then field.
 	void ReadRetroField(LightingSettings::RetroLayers& layers, std::string_view field, const std::string& value) {
-		if (field == "Palette") {
+		if (field == "Look") {
+			layers.Look = std::clamp(std::stoi(value), static_cast<int>(LightingSettings::StyleSynthwave), static_cast<int>(LightingSettings::StyleCount) - 1);
+		} else if (field == "Palette") {
 			layers.Palette = std::clamp(std::stoi(value), 0, static_cast<int>(LightingSettings::PaletteCount) - 1);
 		} else if (field == "InkEdges") {
 			layers.InkEdges = std::stoi(value) != 0;
@@ -103,6 +107,7 @@ namespace {
 	}
 
 	void WriteRetroLayers(Writer& writer, const std::string& prefix, const LightingSettings::RetroLayers& layers) {
+		writer.NewPropertyWithValue(prefix + "Look", layers.Look);
 		writer.NewPropertyWithValue(prefix + "Palette", layers.Palette);
 		writer.NewPropertyWithValue(prefix + "InkEdges", layers.InkEdges);
 		writer.NewPropertyWithValue(prefix + "GlitchOnBlasts", layers.GlitchOnBlasts);
@@ -618,6 +623,11 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CRTStyle", { g_PostProcessMan.GetLightingSettings().CRTStyle = std::clamp(std::stoi(reader.ReadPropValue()), 0, 3); });
 	MatchProperty("ScreenStyle", { g_PostProcessMan.SetScreenStyle(std::stoi(reader.ReadPropValue())); });
 	MatchProperty("ScreenStyleStrength", { g_PostProcessMan.SetScreenStyleStrength(std::stof(reader.ReadPropValue())); });
+	MatchProperty("ScreenVariant", {
+		std::string name = reader.ReadPropValue();
+		g_PostProcessMan.GetLightingSettings().ScreenVariant = name == "None" ? std::string() : name;
+	});
+	MatchProperty("RetroLook", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Look", reader.ReadPropValue()); });
 	MatchProperty("RetroPalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Palette", reader.ReadPropValue()); });
 	MatchProperty("RetroInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "InkEdges", reader.ReadPropValue()); });
 	MatchProperty("RetroGlitchOnBlasts", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "GlitchOnBlasts", reader.ReadPropValue()); });
@@ -630,9 +640,15 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("RetroGlitch", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Glitch", reader.ReadPropValue()); });
 	MatchProperty("RetroCurvature", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Curvature", reader.ReadPropValue()); });
 	MatchProperty("RetroCRT", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "CRT", reader.ReadPropValue()); });
+	MatchProperty("RetroFlicker", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Flicker", reader.ReadPropValue()); });
 	MatchProperty("RetroPosterize", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Posterize", reader.ReadPropValue()); });
 	MatchProperty("RetroDither", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Dither", reader.ReadPropValue()); });
 	MatchProperty("RetroPixelate", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Pixelate", reader.ReadPropValue()); });
+	MatchProperty("RetroASCII", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "ASCII", reader.ReadPropValue()); });
+	MatchProperty("RetroASCIIBackground", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "ASCIIBackground", reader.ReadPropValue()); });
+	MatchProperty("RetroAfterglow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Afterglow", reader.ReadPropValue()); });
+	MatchProperty("RetroTerminalOverlay", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "TerminalOverlay", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveLook", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Look", reader.ReadPropValue()); });
 	MatchProperty("SynthwavePalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Palette", reader.ReadPropValue()); });
 	MatchProperty("SynthwaveInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "InkEdges", reader.ReadPropValue()); });
 	MatchProperty("SynthwaveGlitchOnBlasts", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "GlitchOnBlasts", reader.ReadPropValue()); });
@@ -645,9 +661,56 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SynthwaveGlitch", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Glitch", reader.ReadPropValue()); });
 	MatchProperty("SynthwaveCurvature", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Curvature", reader.ReadPropValue()); });
 	MatchProperty("SynthwaveCRT", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "CRT", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveFlicker", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Flicker", reader.ReadPropValue()); });
 	MatchProperty("SynthwavePosterize", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Posterize", reader.ReadPropValue()); });
 	MatchProperty("SynthwaveDither", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Dither", reader.ReadPropValue()); });
 	MatchProperty("SynthwavePixelate", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Pixelate", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveASCII", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "ASCII", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveASCIIBackground", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "ASCIIBackground", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveAfterglow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Afterglow", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveTerminalOverlay", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "TerminalOverlay", reader.ReadPropValue()); });
+	MatchProperty("HackermanLook", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "Look", reader.ReadPropValue()); });
+	MatchProperty("HackermanPalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "Palette", reader.ReadPropValue()); });
+	MatchProperty("HackermanInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "InkEdges", reader.ReadPropValue()); });
+	MatchProperty("HackermanGlitchOnBlasts", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "GlitchOnBlasts", reader.ReadPropValue()); });
+	MatchProperty("HackermanPaletteStrength", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "PaletteStrength", reader.ReadPropValue()); });
+	MatchProperty("HackermanNeonGlow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "NeonGlow", reader.ReadPropValue()); });
+	MatchProperty("HackermanEdgeLines", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "EdgeLines", reader.ReadPropValue()); });
+	MatchProperty("HackermanSky", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "Sky", reader.ReadPropValue()); });
+	MatchProperty("HackermanGridSpeed", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "GridSpeed", reader.ReadPropValue()); });
+	MatchProperty("HackermanVHS", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "VHS", reader.ReadPropValue()); });
+	MatchProperty("HackermanGlitch", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "Glitch", reader.ReadPropValue()); });
+	MatchProperty("HackermanCurvature", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "Curvature", reader.ReadPropValue()); });
+	MatchProperty("HackermanCRT", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "CRT", reader.ReadPropValue()); });
+	MatchProperty("HackermanFlicker", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "Flicker", reader.ReadPropValue()); });
+	MatchProperty("HackermanPosterize", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "Posterize", reader.ReadPropValue()); });
+	MatchProperty("HackermanDither", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "Dither", reader.ReadPropValue()); });
+	MatchProperty("HackermanPixelate", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "Pixelate", reader.ReadPropValue()); });
+	MatchProperty("HackermanASCII", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "ASCII", reader.ReadPropValue()); });
+	MatchProperty("HackermanASCIIBackground", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "ASCIIBackground", reader.ReadPropValue()); });
+	MatchProperty("HackermanAfterglow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "Afterglow", reader.ReadPropValue()); });
+	MatchProperty("HackermanTerminalOverlay", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "TerminalOverlay", reader.ReadPropValue()); });
+	MatchProperty("VariantLook", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "Look", reader.ReadPropValue()); });
+	MatchProperty("VariantPalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "Palette", reader.ReadPropValue()); });
+	MatchProperty("VariantInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "InkEdges", reader.ReadPropValue()); });
+	MatchProperty("VariantGlitchOnBlasts", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "GlitchOnBlasts", reader.ReadPropValue()); });
+	MatchProperty("VariantPaletteStrength", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "PaletteStrength", reader.ReadPropValue()); });
+	MatchProperty("VariantNeonGlow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "NeonGlow", reader.ReadPropValue()); });
+	MatchProperty("VariantEdgeLines", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "EdgeLines", reader.ReadPropValue()); });
+	MatchProperty("VariantSky", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "Sky", reader.ReadPropValue()); });
+	MatchProperty("VariantGridSpeed", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "GridSpeed", reader.ReadPropValue()); });
+	MatchProperty("VariantVHS", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "VHS", reader.ReadPropValue()); });
+	MatchProperty("VariantGlitch", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "Glitch", reader.ReadPropValue()); });
+	MatchProperty("VariantCurvature", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "Curvature", reader.ReadPropValue()); });
+	MatchProperty("VariantCRT", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "CRT", reader.ReadPropValue()); });
+	MatchProperty("VariantFlicker", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "Flicker", reader.ReadPropValue()); });
+	MatchProperty("VariantPosterize", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "Posterize", reader.ReadPropValue()); });
+	MatchProperty("VariantDither", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "Dither", reader.ReadPropValue()); });
+	MatchProperty("VariantPixelate", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "Pixelate", reader.ReadPropValue()); });
+	MatchProperty("VariantASCII", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "ASCII", reader.ReadPropValue()); });
+	MatchProperty("VariantASCIIBackground", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "ASCIIBackground", reader.ReadPropValue()); });
+	MatchProperty("VariantAfterglow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "Afterglow", reader.ReadPropValue()); });
+	MatchProperty("VariantTerminalOverlay", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "TerminalOverlay", reader.ReadPropValue()); });
 	MatchProperty("UpscaleSharpness", { g_PostProcessMan.GetLightingSettings().UpscaleSharpness = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("IntegerScaling", { g_WindowMan.SetIntegerScaling(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightingSpecular", { g_PostProcessMan.GetLightingSettings().Specular = std::stof(reader.ReadPropValue()); });
@@ -1342,6 +1405,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("ScreenStyleStrength", lighting.ScreenStyleStrength);
 	WriteRetroLayers(writer, "Retro", lighting.Retro);
 	WriteRetroLayers(writer, "Synthwave", lighting.StyleRetro[LightingSettings::StyleSynthwave]);
+	WriteRetroLayers(writer, "Hackerman", lighting.StyleRetro[LightingSettings::StyleHackerman]);
+	writer.NewPropertyWithValue("ScreenVariant", lighting.ScreenVariant.empty() ? std::string("None") : lighting.ScreenVariant);
+	WriteRetroLayers(writer, "Variant", lighting.VariantRetro);
 	writer.NewPropertyWithValue("UpscaleSharpness", lighting.UpscaleSharpness);
 	writer.NewPropertyWithValue("IntegerScaling", g_WindowMan.GetIntegerScaling());
 	writer.NewPropertyWithValue("LightingIndirect", lighting.IndirectLight);
@@ -1977,6 +2043,83 @@ std::vector<std::string> SettingsMan::ListPresets() const {
 	std::sort(names.begin(), names.end());
 	names.erase(std::unique(names.begin(), names.end()), names.end());
 	return names;
+}
+
+namespace {
+	std::string FilterPresetFolder() { return System::GetUserdataDirectory() + "FilterPresets/"; }
+} // namespace
+
+std::string SettingsMan::SaveFilterPreset(const std::string& name, const LightingSettings::RetroLayers& layers) const {
+	std::string safe = PresetFileName(name);
+	if (safe.empty()) {
+		return "";
+	}
+	std::error_code error;
+	std::filesystem::create_directories(FilterPresetFolder(), error);
+	std::ofstream file(FilterPresetFolder() + safe + ".ini");
+	if (!file) {
+		return "";
+	}
+	// One "Field = value" a line, as the settings file has them without its prefix, read back by LoadFilterPreset.
+	file.imbue(std::locale::classic());
+	file << "// A screen style filter preset (Camera & image > Screen style), saved by the settings panel.\n";
+	file << "Look = " << layers.Look << "\n";
+	file << "Palette = " << layers.Palette << "\n";
+	file << "InkEdges = " << (layers.InkEdges ? 1 : 0) << "\n";
+	file << "GlitchOnBlasts = " << (layers.GlitchOnBlasts ? 1 : 0) << "\n";
+	for (const auto& [field, member]: c_RetroFloatFields) {
+		file << field << " = " << layers.*member << "\n";
+	}
+	return file ? safe : "";
+}
+
+bool SettingsMan::LoadFilterPreset(const std::string& name, LightingSettings::RetroLayers& layers) const {
+	std::ifstream file(FilterPresetFolder() + PresetFileName(name) + ".ini");
+	if (!file) {
+		return false;
+	}
+	// Fields missing from the file (one saved before they existed) keep how the game comes.
+	LightingSettings::RetroLayers loaded;
+	std::string line;
+	while (std::getline(file, line)) {
+		size_t equals = line.find('=');
+		if (line.rfind("//", 0) == 0 || equals == std::string::npos) {
+			continue;
+		}
+		auto trim = [](std::string text) {
+			size_t first = text.find_first_not_of(" \t\r");
+			size_t last = text.find_last_not_of(" \t\r");
+			return first == std::string::npos ? std::string() : text.substr(first, last - first + 1);
+		};
+		try {
+			ReadRetroField(loaded, trim(line.substr(0, equals)), trim(line.substr(equals + 1)));
+		} catch (const std::logic_error&) {
+			g_ConsoleMan.PrintString("ERROR: The filter preset \"" + name + "\" has a value this version can't read: " + line);
+		}
+	}
+	layers = loaded;
+	return true;
+}
+
+bool SettingsMan::DeleteFilterPreset(const std::string& name) const {
+	std::error_code error;
+	return std::filesystem::remove(FilterPresetFolder() + PresetFileName(name) + ".ini", error);
+}
+
+std::vector<std::string> SettingsMan::ListFilterPresets() const {
+	std::vector<std::string> names;
+	std::error_code error;
+	for (const auto& entry: std::filesystem::directory_iterator(FilterPresetFolder(), error)) {
+		if (entry.is_regular_file() && entry.path().extension() == ".ini") {
+			names.push_back(entry.path().stem().string());
+		}
+	}
+	std::sort(names.begin(), names.end());
+	return names;
+}
+
+std::string SettingsMan::FilterPresetName(const std::string& name) const {
+	return PresetFileName(name);
 }
 
 int SettingsMan::Save(Writer& writer) const {

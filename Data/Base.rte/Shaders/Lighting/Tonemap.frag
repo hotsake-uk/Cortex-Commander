@@ -40,7 +40,9 @@ uniform vec3 rteOutlineColor; // In display (gamma) space.
 uniform vec3 rteOutlineSideColors[5]; // By slot - 1: no team, then teams 1 to 4. In display space.
 uniform float rteHighlightWidth; // A highlighted unit's glow (slot 6), in pixels; 0 for none.
 uniform float rteNeonGlow; // A screen style's neon glow, 0 to 1: the bloom turns hot pink from warm lights and cyan from cool ones.
-uniform int rtePalette; // LightingSettings::RetroPalettes: 0 none, 1 synthwave, 2 vaporwave, 3 Miami, 4 Game Boy, 5 CGA, 6 sepia, 7 thermal, 8 night vision.
+uniform int rteLook; // LightingSettings::ScreenStyles: whose colours the neon glow and the terminal readout take, 1 Synthwave's, 2 Hackerman's phosphor green.
+uniform float rteTerminalOverlay; // Faint scrolling hex down the screen's edges and a blinking cursor, 0 to 1.
+uniform int rtePalette; // LightingSettings::RetroPalettes: 0 none, 1 synthwave, 2 vaporwave, 3 Miami, 4 Game Boy, 5 CGA, 6 sepia, 7 thermal, 8 night vision, 9 terminal green.
 uniform float rtePaletteStrength; // How far the picture is remapped onto the palette, 0 to 1.
 uniform float rtePosterize; // Fewer colour levels, 0 (as is) to 1 (four a channel).
 uniform float rteDither; // Ordered dithering across those levels (or a palette's bands), 0 to 1.
@@ -71,6 +73,43 @@ float Bayer4(ivec2 pixel) {
 	return matrix[index] / 16.0 - 0.46875;
 }
 
+// Hex glyphs 0 to F, 5 wide by 7 tall, a row to an int with the leftmost pixel in bit 4 (as RetroScene.frag's).
+const int c_HexGlyphs[112] = int[112](14, 17, 19, 21, 25, 17, 14, 4, 12, 4, 4, 4, 4, 14, 14, 17, 1, 2, 4, 8, 31, 31, 2, 4, 2, 1, 17, 14, 2, 6, 10, 18, 31, 2, 2, 31, 16, 30, 1, 1, 17, 14, 6, 8, 16, 30, 17, 17, 14, 31, 1, 2, 4, 8, 8, 8, 14, 17, 17, 14, 17, 17, 14, 14, 17, 17, 15, 1, 2, 12, 14, 17, 17, 31, 17, 17, 17, 30, 17, 17, 30, 17, 17, 30, 14, 17, 16, 16, 16, 17, 14, 28, 18, 17, 17, 17, 18, 28, 31, 16, 16, 30, 16, 16, 31, 31, 16, 16, 30, 16, 16, 16);
+
+float GlyphHash(vec2 p) {
+	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+// The terminal readout at screen pixel px (y down): how much of it is lit here, 0 to 1. Columns of hex scroll up the left and right edges, each line
+// its own length (the right side's ranged right), with a blinking block cursor near the bottom left.
+float TerminalReadout(vec2 px) {
+	vec2 cellSize = vec2(6.0, 9.0);
+	vec2 cell = floor(px / cellSize);
+	ivec2 inCell = ivec2(px - cell * cellSize);
+	float columns = floor(rteScreenSize.x / cellSize.x);
+	float rows = floor(rteScreenSize.y / cellSize.y);
+	if (cell.x == 1.0 && cell.y == rows - 2.0) {
+		return step(0.5, fract(rteTime * 1.6)) * step(float(inCell.y), 6.0) * step(float(inCell.x), 4.0);
+	}
+	bool left = cell.x >= 1.0 && cell.x < 15.0;
+	bool right = cell.x >= columns - 15.0 && cell.x < columns - 1.0;
+	if (!(left || right) || cell.y < 1.0 || cell.y > rows - 4.0) {
+		return 0.0;
+	}
+	float side = left ? 0.0 : 1.0;
+	float line = cell.y + floor(rteTime * 2.5);
+	float place = left ? cell.x - 1.0 : (columns - 2.0) - cell.x;
+	float lineLength = floor(mix(3.0, 14.0, GlyphHash(vec2(line, side))));
+	if (place >= lineLength || GlyphHash(vec2(line, side + 7.0)) < 0.2) {
+		return 0.0;
+	}
+	int glyph = int(GlyphHash(vec2(line * 16.0 + place, side + 3.0)) * 16.0);
+	if (inCell.x > 4 || inCell.y > 6) {
+		return 0.0;
+	}
+	return float((c_HexGlyphs[clamp(glyph, 0, 15) * 7 + inCell.y] >> (4 - inCell.x)) & 1);
+}
+
 // The picture (display space) remapped onto a retro palette by its brightness.
 vec3 RetroPalette(vec3 color, int palette, float dither) {
 	float luminance = clamp(dot(color, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
@@ -97,6 +136,9 @@ vec3 RetroPalette(vec3 color, int palette, float dither) {
 		return Ramp5(luminance, vec3(0.08, 0.05, 0.03), vec3(0.3, 0.2, 0.12), vec3(0.6, 0.45, 0.3), vec3(0.86, 0.74, 0.56), vec3(1.0, 0.96, 0.86));
 	} else if (palette == 7) {
 		return Ramp5(luminance, vec3(0.0, 0.0, 0.08), vec3(0.2, 0.0, 0.6), vec3(0.85, 0.05, 0.3), vec3(1.0, 0.6, 0.0), vec3(1.0, 1.0, 0.8));
+	} else if (palette == 9) {
+		// A green phosphor terminal.
+		return Ramp5(luminance, vec3(0.0, 0.02, 0.0), vec3(0.0, 0.2, 0.05), vec3(0.08, 0.62, 0.2), vec3(0.3, 1.0, 0.42), vec3(0.85, 1.0, 0.88));
 	} else if (palette == 8) {
 		float boosted = pow(luminance, 0.6);
 		return vec3(0.12, 1.0, 0.25) * boosted + vec3(0.0, 0.03, 0.0);
@@ -137,7 +179,7 @@ void main() {
 		// Neon: warm glows (fire, blasts, the sun) bloom hot pink, cool ones (lamps, lasers, sky) cyan, and all of it a little wider and brighter.
 		float bloomLuminance = dot(bloom, vec3(0.2126, 0.7152, 0.0722));
 		float warmth = smoothstep(-0.15, 0.25, (bloom.r - bloom.b) / max(bloomLuminance, 0.001));
-		vec3 neon = mix(vec3(0.2, 0.85, 1.0), vec3(1.0, 0.22, 0.72), warmth) * bloomLuminance * 1.4;
+		vec3 neon = (rteLook == 2 ? vec3(0.25, 1.0, 0.4) : mix(vec3(0.2, 0.85, 1.0), vec3(1.0, 0.22, 0.72), warmth)) * bloomLuminance * 1.4;
 		bloom = mix(bloom, neon, rteNeonGlow * 0.75);
 	}
 	color += bloom * rteBloomIntensity;
@@ -180,6 +222,11 @@ void main() {
 			float levels = mix(32.0, 4.0, rtePosterize);
 			outputColor = clamp(floor(outputColor * (levels - 1.0) + 0.5 + ditherOffset) / (levels - 1.0), 0.0, 1.0);
 		}
+	}
+	if (rteTerminalOverlay > 0.0) {
+		float lit = TerminalReadout(vec2(gl_FragCoord.x, rteScreenSize.y - gl_FragCoord.y));
+		vec3 ink = rteLook == 2 ? vec3(0.35, 1.0, 0.45) : vec3(0.4, 0.9, 1.0);
+		outputColor = mix(outputColor, ink, lit * rteTerminalOverlay * 0.55);
 	}
 	if (rteFilmGrain > 0.0) {
 		// Grain in gamma space, strongest in the mid tones, changing every frame.

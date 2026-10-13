@@ -1,4 +1,5 @@
 #include "PostProcessMan.h"
+#include "SettingsMan.h"
 #include "SceneLighting.h"
 #include "Weather.h"
 
@@ -200,6 +201,20 @@ void PostProcessMan::SetPostShader(const std::string& shaderName) {
 std::string PostProcessMan::GetPostShader() const {
 	std::scoped_lock lock(m_PostShaderMutex);
 	return m_PostShaderName;
+}
+
+bool PostProcessMan::SetScreenVariant(const std::string& name) {
+	if (name.empty()) {
+		m_LightingSettings.ScreenVariant.clear();
+		return true;
+	}
+	LightingSettings::RetroLayers layers;
+	if (!g_SettingsMan.LoadFilterPreset(name, layers)) {
+		return false;
+	}
+	m_LightingSettings.VariantRetro = layers;
+	m_LightingSettings.ScreenVariant = g_SettingsMan.FilterPresetName(name);
+	return true;
 }
 
 const Shader* PostProcessMan::GetActivePostShader() {

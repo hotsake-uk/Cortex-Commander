@@ -140,6 +140,7 @@ void SceneLighting::LoadShaders() {
 	m_GodRaysShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/GodRays.frag");
 	m_DepthOfFieldShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/DepthOfField.frag");
 	m_RetroSceneShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RetroScene.frag");
+	m_AfterglowShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/Afterglow.frag");
 	m_GodRaysApplyShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/GodRaysApply.frag");
 	m_RainSplashShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RainSplash.frag");
 	m_WeatherEverywhereShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/WeatherEverywhere.frag");
@@ -420,6 +421,12 @@ void SceneLighting::DestroyScreenResources() {
 	m_HDRScene.Destroy();
 	m_ModPostScene.Destroy();
 	m_FocusScene.Destroy();
+	m_RetroScene.Destroy();
+	for (int screen = 0; screen < c_MaxScreens; ++screen) {
+		m_AfterglowHistory[screen][0].Destroy();
+		m_AfterglowHistory[screen][1].Destroy();
+		m_AfterglowValid[screen] = false;
+	}
 	m_WeatherDrops.Destroy();
 	for (GLTarget& mip: m_BloomMips) {
 		mip.Destroy();
@@ -3368,7 +3375,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	logStages.Next("Lighting: retro");
 	// A screen style's sky and the edge lines (LightingSettings::RetroLayers): on the lit scene, before bloom so the sun, the grid and neon lines glow.
 	const LightingSettings::RetroLayers retro = m_Settings.ActiveRetro();
-	if ((retro.RetroSky > 0.0F && sceneDepth) || retro.EdgeLines > 0.0F) {
+	if ((retro.RetroSky > 0.0F && sceneDepth) || retro.EdgeLines > 0.0F || retro.ASCII > 0.0F || (retro.ASCIIBackground > 0.0F && sceneDepth)) {
 		TracyGpuZone("Retro");
 		if (m_RetroScene.Width != width || m_RetroScene.Height != height || !m_RetroScene.Texture) {
 			m_RetroScene.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
@@ -3386,7 +3393,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_RetroSceneShader->SetVector2f("rteScreenSize", screenSize);
 		m_RetroSceneShader->SetVector2f("rteScreenOrigin", origin);
 		m_RetroSceneShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
-		m_RetroSceneShader->SetInt("rteStyle", m_Settings.ScreenStyle);
+		m_RetroSceneShader->SetInt("rteLook", retro.Look);
+		m_RetroSceneShader->SetFloat("rteASCII", std::clamp(retro.ASCII, 0.0F, 1.0F));
+		m_RetroSceneShader->SetFloat("rteASCIIBackground", sceneDepth ? std::clamp(retro.ASCIIBackground, 0.0F, 1.0F) : 0.0F);
 		m_RetroSceneShader->SetFloat("rteSky", sceneDepth ? std::clamp(retro.RetroSky, 0.0F, 1.0F) : 0.0F);
 		m_RetroSceneShader->SetFloat("rteGridSpeed", std::clamp(retro.GridSpeed, 0.0F, 3.0F));
 		m_RetroSceneShader->SetFloat("rteDaylight", std::clamp(skyLevel, 0.0F, 1.0F) * m_NightDim);
@@ -3402,6 +3411,63 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, m_RetroScene.Texture);
 		DrawFullscreen();
+	}
+
+	logStages.Next("Lighting: afterglow");
+	// Afterglow (LightingSettings::RetroLayers): the bright parts of each frame linger in a history that fades, kept fixed to the world as the camera
+	// moves, and show through wherever they're brighter than the scene now, tinted in the look's colour, so moving lights leave trails.
+	if (retro.Afterglow > 0.0F && screenIndex >= 0 && screenIndex < c_MaxScreens) {
+		TracyGpuZone("Afterglow");
+		GLTarget(&history)[2] = m_AfterglowHistory[screenIndex];
+		bool fresh = !m_AfterglowValid[screenIndex];
+		m_AfterglowValid[screenIndex] = true;
+		for (GLTarget& target: history) {
+			if (target.Width != width || target.Height != height || !target.Texture) {
+				target.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+				fresh = true;
+			}
+		}
+		double nowSeconds = PostProcessMan::GetSmoothSimTimePrecise();
+		float deltaSeconds = fresh ? 0.0F : static_cast<float>(std::clamp(nowSeconds - m_AfterglowLastSeconds[screenIndex], 0.0, 0.25));
+		m_AfterglowLastSeconds[screenIndex] = nowSeconds;
+		glm::vec2 shift = fresh ? glm::vec2(0.0F) : origin - m_AfterglowOrigin[screenIndex];
+		m_AfterglowOrigin[screenIndex] = origin;
+		int previous = m_AfterglowCurrent[screenIndex];
+		int next = 1 - previous;
+		glDisable(GL_BLEND);
+		glBindFramebuffer(GL_FRAMEBUFFER, history[next].Framebuffer);
+		glViewport(0, 0, width, height);
+		m_AfterglowShader->Enable();
+		m_AfterglowShader->SetInt("rteScene", 0);
+		m_AfterglowShader->SetInt("rteHistory", 1);
+		m_AfterglowShader->SetInt("rteMode", 0);
+		m_AfterglowShader->SetVector2f("rteScreenSize", screenSize);
+		// The history is in screen space; a step of the camera to the right moves what it holds to the left.
+		m_AfterglowShader->SetVector2f("rteShift", glm::vec2(shift.x, -shift.y) / screenSize);
+		m_AfterglowShader->SetBool("rteFresh", fresh);
+		// Strength 1 keeps about a third of the trail after a quarter second.
+		m_AfterglowShader->SetFloat("rteKeep", std::exp(-deltaSeconds * glm::mix(14.0F, 4.0F, std::clamp(retro.Afterglow, 0.0F, 1.0F))));
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, history[previous].Texture);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_HDRScene.Texture);
+		DrawFullscreen();
+		m_AfterglowCurrent[screenIndex] = next;
+
+		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_MAX);
+		m_AfterglowShader->SetInt("rteMode", 1);
+		m_AfterglowShader->SetInt("rteLook", retro.Look);
+		m_AfterglowShader->SetFloat("rteStrength", std::clamp(retro.Afterglow, 0.0F, 1.0F));
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, history[next].Texture);
+		glActiveTexture(GL_TEXTURE0);
+		DrawFullscreen();
+		glBlendEquation(GL_FUNC_ADD);
+		glDisable(GL_BLEND);
+	} else if (screenIndex >= 0 && screenIndex < c_MaxScreens) {
+		m_AfterglowValid[screenIndex] = false;
 	}
 
 	logStages.Next("Lighting: depth of field");
@@ -3591,6 +3657,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	}
 	m_TonemapShader->SetFloat("rteBloomIntensity", (m_Settings.BloomEnabled ? grade.BloomIntensity : 0.0F) + neonGlow * 0.45F);
 	m_TonemapShader->SetFloat("rteNeonGlow", neonGlow);
+	m_TonemapShader->SetInt("rteLook", retro.Look);
+	m_TonemapShader->SetFloat("rteTerminalOverlay", m_Settings.DebugView == 0 ? std::clamp(retro.TerminalOverlay, 0.0F, 1.0F) : 0.0F);
 	m_TonemapShader->SetInt("rtePalette", std::clamp(retro.Palette, 0, static_cast<int>(LightingSettings::PaletteCount) - 1));
 	m_TonemapShader->SetFloat("rtePaletteStrength", retro.Palette > LightingSettings::PaletteOff ? std::clamp(retro.PaletteStrength, 0.0F, 1.0F) : 0.0F);
 	m_TonemapShader->SetFloat("rtePosterize", std::clamp(retro.Posterize, 0.0F, 1.0F));

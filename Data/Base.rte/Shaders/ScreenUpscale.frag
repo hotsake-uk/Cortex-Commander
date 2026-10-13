@@ -18,6 +18,8 @@ uniform float rteVHS; // Video tape, 0 to 1.
 uniform float rteGlitch; // How often and how hard glitch bursts come, 0 to 1.
 uniform float rteGlitchKick; // A burst set off now (a big blast), 0 to 1.
 uniform float rteCurvature; // CRT glass bend, 0 to 1.
+uniform int rteGlitchKind; // 1 blocks torn sideways with the colours split (Synthwave), 2 blocks scrambled into green glyphs (Hackerman).
+uniform float rteFlicker; // A monitor's faint flicker and a brighter refresh band rolling down, 0 to 1.
 
 float Hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -59,7 +61,7 @@ void main() {
 			float tick = floor(rteTime * 24.0);
 			float row = floor(uv.y * mix(10.0, 28.0, Hash(vec2(tick, 3.1))));
 			float tear = Hash(vec2(row, tick));
-			if (tear > 1.0 - 0.35 * glitchBurst) {
+			if (rteGlitchKind != 2 && tear > 1.0 - 0.35 * glitchBurst) {
 				uv.x += (Hash(vec2(row, tick + 9.0)) - 0.5) * 0.12 * glitchBurst;
 			}
 		}
@@ -78,9 +80,21 @@ void main() {
 		uv = (floor(uv * textureSizePixels / rtePixelate) + 0.5) * rtePixelate / textureSizePixels;
 	}
 	vec3 color = SampleSharp(uv, textureSizePixels, scale);
-	if (rteVHS > 0.0 || glitchBurst > 0.0) {
+	if (glitchBurst > 0.0 && rteGlitchKind == 2) {
+		// Decoding: blocks of the picture scrambled into green glyphs for a moment, changing many times a second.
+		float tick = floor(rteTime * 20.0);
+		vec2 sourcePixel = uv * textureSizePixels;
+		vec2 block = floor(sourcePixel / vec2(30.0, 18.0));
+		if (Hash(block + tick * 1.37) > 1.0 - 0.3 * glitchBurst) {
+			vec2 cell = floor(sourcePixel / vec2(6.0, 9.0));
+			ivec2 inCell = ivec2(sourcePixel - cell * vec2(6.0, 9.0));
+			float lit = inCell.x < 5 && inCell.y < 7 ? step(0.5, Hash(cell * 7.0 + vec2(inCell) * 0.37 + tick)) : 0.0;
+			color = vec3(0.25, 1.0, 0.4) * lit * mix(0.5, 1.0, Hash(cell + tick));
+		}
+	}
+	if (rteVHS > 0.0 || (glitchBurst > 0.0 && rteGlitchKind != 2)) {
 		// Colour bleeding sideways (tape smears its colour more than its brightness), and the channels split in a glitch.
-		vec2 shift = vec2((2.5 * rteVHS + 6.0 * glitchBurst) / textureSizePixels.x, 0.0);
+		vec2 shift = vec2((2.5 * rteVHS + (rteGlitchKind != 2 ? 6.0 * glitchBurst : 0.0)) / textureSizePixels.x, 0.0);
 		vec3 left = SampleSharp(uv - shift, textureSizePixels, scale);
 		vec3 right = SampleSharp(uv + shift, textureSizePixels, scale);
 		color = vec3(mix(color.r, left.r, 0.7), color.g, mix(color.b, right.b, 0.7));
@@ -122,6 +136,13 @@ void main() {
 			// Brightest along the middle of each source row, darkest between rows, with the lost brightness given back.
 			color *= (1.0 - rteScanlines * 0.5 * (1.0 - beam)) * (1.0 + rteScanlines * 0.18);
 		}
+	}
+	if (rteFlicker > 0.0) {
+		// A faint flicker, and the brighter band of a refresh rolling down the screen.
+		color *= 1.0 - 0.07 * rteFlicker * Hash(vec2(floor(rteTime * 30.0), 5.3));
+		float bandY = fract(rteTime * 0.22);
+		float band = exp(-pow((textureUV.y - bandY) * 9.0, 2.0));
+		color *= 1.0 + 0.12 * rteFlicker * band;
 	}
 	if (rteCurvature > 0.0) {
 		// Rounded, darkened corners of the glass.

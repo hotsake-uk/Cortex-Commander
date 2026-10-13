@@ -70,6 +70,8 @@ namespace {
 	int s_ShownCount = 0;
 	const char* s_PendingHeading = nullptr; //!< While searching: the category's name, drawn above the first of its controls that matches.
 	char s_PresetName[64] = "";
+	char s_FilterPresetName[64] = ""; //!< The name box of the screen style's filter presets.
+	std::string s_FilterPresetMessage;
 	std::vector<std::string> s_Presets;
 	bool s_PresetsListed = false;
 	std::string s_PresetMessage;
@@ -313,6 +315,91 @@ namespace {
 			ImGui::SetItemTooltip("Plays this look once, at the event grade strength.");
 			ImGui::EndDisabled();
 			ImGui::PopID();
+		}
+	}
+
+	/// The screen style chooser: Off, the built-in styles and the player's saved variants (filter presets), with Save, Save as new and Delete for them.
+	void DrawScreenStyle(LightingSettings& settings) {
+		if (!Shown("Screen style")) {
+			return;
+		}
+		static const char* const styleNames[LightingSettings::StyleCount] = {"Off", "Synthwave", "Hackerman"};
+		settings.ScreenStyle = std::clamp(settings.ScreenStyle, 0, static_cast<int>(LightingSettings::StyleCount) - 1);
+		std::string current = settings.ScreenVariant.empty() ? styleNames[settings.ScreenStyle] : settings.ScreenVariant + " (yours)";
+		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.55F);
+		if (ImGui::BeginCombo("Screen style", current.c_str())) {
+			for (int style = 0; style < LightingSettings::StyleCount; ++style) {
+				if (ImGui::Selectable(styleNames[style], settings.ScreenVariant.empty() && settings.ScreenStyle == style)) {
+					g_PostProcessMan.SetScreenStyle(style);
+				}
+			}
+			// Listed only while open, so the folder isn't read every frame.
+			std::vector<std::string> variants = g_SettingsMan.ListFilterPresets();
+			if (!variants.empty()) {
+				ImGui::Separator();
+				ImGui::TextDisabled("Yours:");
+			}
+			for (const std::string& name: variants) {
+				if (ImGui::Selectable((name + "##variant").c_str(), settings.ScreenVariant == name)) {
+					bool loaded = g_PostProcessMan.SetScreenVariant(name);
+					s_FilterPresetMessage = loaded ? "" : "Could not load \"" + name + "\".";
+					if (loaded) {
+						std::snprintf(s_FilterPresetName, sizeof(s_FilterPresetName), "%s", name.c_str());
+					}
+				}
+			}
+			ImGui::EndCombo();
+		}
+		s_LastShown = true;
+		Tip("A whole retro look over everything in a game, the HUD included (the menus stay plain). Synthwave: an Outrun sunset sky with a striped sun and a neon grid racing to the horizon, pink and cyan glow, glowing edges, a neon palette, video tape wobble, glitches and a curved CRT. Hackerman: phosphor green on black, code raining down the sky, ASCII hills, green vector edges, afterglow trails, a terminal readout and a flickering monitor. Each style keeps its own settings below, so switching back to Off gives you your own filters as they were. Your saved variants are listed under the built-in styles.");
+		if (settings.ScreenStyleOn()) {
+			Slider("Screen style strength", &settings.ScreenStyleStrength, 0.0F, 1.0F);
+			Tip("How strongly the style applies: 1 the full look, down to 0 the plain picture.");
+		}
+		if (!Plain()) {
+			return;
+		}
+		// Variants: the filters below saved under a name, apart from the rest of the settings.
+		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.55F);
+		ImGui::InputTextWithHint("##FilterPresetName", "Name for your variant...", s_FilterPresetName, sizeof(s_FilterPresetName));
+		ImGui::SameLine();
+		bool onVariant = !settings.ScreenVariant.empty();
+		ImGui::BeginDisabled(!onVariant);
+		if (ToolUI::Button("Save##FilterPreset")) {
+			std::string saved = g_SettingsMan.SaveFilterPreset(settings.ScreenVariant, settings.VariantRetro);
+			s_FilterPresetMessage = saved.empty() ? "Could not save it." : "Saved \"" + saved + "\".";
+		}
+		ImGui::SetItemTooltip("Keeps the filters below in the variant chosen as the screen style.");
+		ImGui::EndDisabled();
+		ImGui::SameLine();
+		ImGui::BeginDisabled(s_FilterPresetName[0] == 0);
+		if (ToolUI::Button("Save as new##FilterPreset")) {
+			// The filters as they are now, whichever style they came from, become the new variant, and it's chosen.
+			LightingSettings::RetroLayers layers = settings.EditedRetro();
+			std::string saved = g_SettingsMan.SaveFilterPreset(s_FilterPresetName, layers);
+			if (!saved.empty()) {
+				settings.VariantRetro = layers;
+				settings.ScreenVariant = saved;
+				std::snprintf(s_FilterPresetName, sizeof(s_FilterPresetName), "%s", saved.c_str());
+			}
+			s_FilterPresetMessage = saved.empty() ? "Could not save it." : "Saved \"" + saved + "\" and chose it.";
+		}
+		ImGui::SetItemTooltip("Saves the filters below as a variant of your own under this name (replacing one of the same name) and chooses it as the screen style. Variants are files in Userdata/FilterPresets, apart from the settings presets, so loading one changes nothing else.");
+		ImGui::SameLine();
+		if (ToolUI::Button("Delete##FilterPreset")) {
+			std::string name = g_SettingsMan.FilterPresetName(s_FilterPresetName);
+			bool deleted = g_SettingsMan.DeleteFilterPreset(name);
+			s_FilterPresetMessage = deleted ? "Deleted \"" + name + "\"." : "You have no variant of that name.";
+			if (deleted && settings.ScreenVariant == name) {
+				// Back to the built-in style it was based on.
+				int look = settings.VariantRetro.Look;
+				g_PostProcessMan.SetScreenStyle(look);
+			}
+			s_FilterPresetName[0] = 0;
+		}
+		ImGui::EndDisabled();
+		if (!s_FilterPresetMessage.empty()) {
+			ImGui::TextDisabled("%s", s_FilterPresetMessage.c_str());
 		}
 	}
 
@@ -1187,41 +1274,47 @@ void DebugMan::SettingsGUI() {
 			EventLookSwitches(settings);
 		}
 		Heading("Screen style");
-		Combo("Screen style", &settings.ScreenStyle, "Off\0Synthwave\0");
-		Tip("A whole retro look over everything in a game, the HUD included (the menus stay plain). Synthwave: an Outrun sunset sky with a striped sun and a neon grid racing to the horizon, pink and cyan glow, glowing edges, a neon palette, video tape wobble, glitches and a curved CRT. Each style keeps its own settings below, so switching back to Off gives you your own filters as they were.");
-		settings.ScreenStyle = std::clamp(settings.ScreenStyle, 0, static_cast<int>(LightingSettings::StyleCount) - 1);
-		if (settings.ScreenStyle != LightingSettings::StyleOff) {
-			Slider("Screen style strength", &settings.ScreenStyleStrength, 0.0F, 1.0F);
-			Tip("How strongly the style applies: 1 the full look, down to 0 the plain picture.");
-		}
+		DrawScreenStyle(settings);
 		{
 			LightingSettings::RetroLayers& retro = settings.EditedRetro();
 			if (Plain()) {
-				ImGui::TextDisabled(settings.ScreenStyle == LightingSettings::StyleOff ? "Your own retro filters:" : "This style's filters:");
+				ImGui::TextDisabled(!settings.ScreenStyleOn() ? "Your own retro filters:" : (settings.ScreenVariant.empty() ? "This style's filters:" : "This variant's filters (Save keeps them in it):"));
 			}
-			Combo("Palette", &retro.Palette, "Off\0Synthwave\0Vaporwave\0Miami\0Game Boy\0CGA\0Sepia\0Thermal\0Night vision\0");
-			Tip("Remaps the picture's brightness onto a palette: Synthwave's indigo, magenta and cyan, Vaporwave's pastels, Miami's teal and coral, the Game Boy's four greens, CGA's black, cyan, magenta and white, sepia, a thermal camera or night vision.");
+			Combo("Look", &retro.Look, "Synthwave\0Hackerman\0");
+			Tip("Whose sky, glow and edge colours and kind of glitch the filters below use: Synthwave's sunset, grid and pink and cyan neon, or Hackerman's code rain, phosphor green and glitches that scramble into glyphs.");
+			retro.Look = std::clamp(retro.Look, static_cast<int>(LightingSettings::StyleSynthwave), static_cast<int>(LightingSettings::StyleCount) - 1);
+			Combo("Palette", &retro.Palette, "Off\0Synthwave\0Vaporwave\0Miami\0Game Boy\0CGA\0Sepia\0Thermal\0Night vision\0Terminal green\0");
+			Tip("Remaps the picture's brightness onto a palette: Synthwave's indigo, magenta and cyan, Vaporwave's pastels, Miami's teal and coral, the Game Boy's four greens, CGA's black, cyan, magenta and white, sepia, a thermal camera, night vision or a green phosphor terminal.");
 			retro.Palette = std::clamp(retro.Palette, 0, static_cast<int>(LightingSettings::PaletteCount) - 1);
 			if (retro.Palette != LightingSettings::PaletteOff) {
 				Slider("Palette strength", &retro.PaletteStrength, 0.0F, 1.0F);
 			}
 			Slider("Neon glow", &retro.NeonGlow, 0.0F, 1.0F);
-			Tip("Bloom from much dimmer light, wider and brighter: warm lights (fire, blasts, the sun) glow hot pink and cool ones (lamps, lasers) cyan. Works with Bloom off.");
+			Tip("Bloom from much dimmer light, wider and brighter, in the look's colours: Synthwave's warm lights (fire, blasts, the sun) hot pink and cool ones (lamps, lasers) cyan, Hackerman's all phosphor green. Works with Bloom off.");
 			Slider("Edge lines", &retro.EdgeLines, 0.0F, 1.0F);
 			Tip("Lines along the edges of terrain, units and buildings, strongest where the battlefield meets the sky.");
 			if (retro.EdgeLines > 0.0F) {
 				Check("Ink edges", &retro.InkEdges);
-				Tip("Black ink lines, for a comic look. Off: glowing neon, pink near the top of the screen to cyan near the bottom.");
+				Tip("Black ink lines, for a comic look. Off: glowing, Synthwave's pink near the top of the screen to cyan near the bottom, or Hackerman's green.");
 			}
 			Slider("Retro sky", &retro.RetroSky, 0.0F, 1.0F);
-			Tip("Replaces the sky behind the terrain with an Outrun sunset: a striped sun on the horizon, stars, and a neon grid racing towards it. Distant hills become dark silhouettes with a glowing rim. It still darkens at night.");
+			Tip("Replaces the sky behind the terrain with the look's own. Synthwave: an Outrun sunset, a striped sun on the horizon, stars, and a neon grid racing towards it; distant hills become dark silhouettes with a glowing rim. Hackerman: columns of falling green code over a faint grid; distant hills become green wireframes. It still darkens at night.");
 			if (retro.RetroSky > 0.0F) {
-				Slider("Grid speed", &retro.GridSpeed, 0.0F, 3.0F);
+				Slider("Sky speed", &retro.GridSpeed, 0.0F, 3.0F);
+				Tip("How fast Synthwave's grid races to the horizon, or Hackerman's code falls.");
 			}
+			Slider("ASCII background", &retro.ASCIIBackground, 0.0F, 1.0F);
+			Tip("The distant background (the hills behind the battlefield) redrawn as text characters picked by brightness, so the battlefield stays as it is.");
+			Slider("ASCII everywhere", &retro.ASCII, 0.0F, 1.0F);
+			Tip("The whole battlefield redrawn as text characters picked by brightness. Hard to play in at full strength.");
+			Slider("Afterglow", &retro.Afterglow, 0.0F, 1.0F);
+			Tip("Bright moving things (shots, blasts, lamps on the move) leave a short fading trail, like an old monochrome monitor's phosphor.");
+			Slider("Terminal readout", &retro.TerminalOverlay, 0.0F, 1.0F);
+			Tip("Faint scrolling hex and log lines down the edges of the screen and a blinking cursor, under the HUD.");
 			Slider("VHS tape", &retro.VHS, 0.0F, 1.0F);
 			Tip("Colour bleeding sideways, a tracking band rolling up the screen, a little wobble, tape noise and a slewed strip at the bottom.");
 			Slider("Glitch", &retro.Glitch, 0.0F, 1.0F);
-			Tip("Every so often a short burst of the picture torn sideways in blocks with its colours split. More: more often and longer.");
+			Tip("Every so often a short burst of glitching: Synthwave's picture torn sideways in blocks with its colours split, Hackerman's blocks scrambled into glyphs. More: more often and longer.");
 			if (retro.Glitch > 0.0F) {
 				Check("Glitch on big explosions", &retro.GlitchOnBlasts);
 				Tip("A big blast in view sets off a glitch burst too.");
@@ -1230,13 +1323,15 @@ void DebugMan::SettingsGUI() {
 			Tip("The picture bends like the glass of a CRT tube, with darkened, rounded corners.");
 			Slider("CRT", &retro.CRT, 0.0F, 1.0F);
 			Tip("CRT scanlines at least this strong, in the CRT style chosen under Lens and screen. The CRT scanlines setting still applies if it's stronger.");
+			Slider("Monitor flicker", &retro.Flicker, 0.0F, 1.0F);
+			Tip("An old monitor's faint flicker, and a brighter band rolling down the screen as when a CRT is filmed.");
 			Slider("Posterize", &retro.Posterize, 0.0F, 1.0F);
 			Tip("Fewer colour levels, down to four per channel.");
 			Slider("Dither", &retro.Dither, 0.0F, 1.0F);
 			Tip("Ordered dithering between colour levels, for a cheap 80s computer look. Shows with Posterize, or the Game Boy and CGA palettes.");
 			Slider("Pixelate", &retro.Pixelate, 0.0F, 1.0F);
 			Tip("Chunkier pixels, up to 8 game pixels a block. Covers the HUD too.");
-			if (settings.ScreenStyle != LightingSettings::StyleOff && Plain() && ToolUI::Button("Reset style")) {
+			if (settings.ScreenStyleOn() && settings.ScreenVariant.empty() && Plain() && ToolUI::Button("Reset style")) {
 				retro = LightingSettings::StyleLayers(settings.ScreenStyle);
 			}
 		}

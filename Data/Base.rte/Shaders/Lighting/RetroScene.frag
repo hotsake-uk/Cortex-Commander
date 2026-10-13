@@ -3,6 +3,8 @@
 // Synthwave's sky: behind the terrain, an Outrun sunset (orange at the horizon through pink and purple to navy, darker and starrier at night), the big
 // striped sun sitting on the horizon, and a magenta grid racing towards it across the ground below. Distant background layers that scroll (hills,
 // mountains) turn to dark violet silhouettes with a glowing rim; the furthest ones (the sky art) are replaced outright.
+// Hackerman's sky: columns of green code falling over a faint grid, a bright glyph at the head of each, fading up its tail; distant hills become green
+// wireframes. Both can draw the distant background (or everything) as ASCII art: text characters picked by brightness.
 #version 330 core
 
 in vec2 textureUV;
@@ -13,7 +15,7 @@ uniform sampler2D rteSceneDepth;
 uniform vec2 rteScreenSize;
 uniform vec2 rteScreenOrigin;
 uniform float rteTime;
-uniform int rteStyle; // LightingSettings::ScreenStyles. The sky is Synthwave's for now, whatever the style.
+uniform int rteLook; // LightingSettings::ScreenStyles: 1 Synthwave's sky and neon, 2 Hackerman's code rain and phosphor green.
 uniform float rteSky; // How fully the sky is replaced, 0 to 1.
 uniform float rteGridSpeed; // How fast the grid scrolls, 0 to 3.
 uniform float rteDaylight; // The sky light's brightness now, 0 (night) to 1 (day).
@@ -23,8 +25,15 @@ uniform bool rteHasDepth;
 uniform float rteBackgroundDepth; // Depth beyond which pixels are distant background layers.
 uniform float rteBackgroundNearDepth; // The nearest and furthest background layers' depth.
 uniform float rteBackgroundFarDepth;
+uniform float rteASCII; // The whole picture as ASCII art, 0 to 1.
+uniform float rteASCIIBackground; // The distant background (not the replaced sky) as ASCII art, 0 to 1.
 
 const float c_SkyLevel = 0.5; // The sky's colours are made for display; this brings them to the scene's linear level before exposure.
+
+// Glyphs, 5 wide by 7 tall, a row to an int with the leftmost pixel in bit 4. Density: " .:-=+*#%@", sparse to dense. Hex: 0 to F.
+const int c_DensityGlyphs[70] = int[70](0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 4, 0, 0, 4, 0, 0, 0, 0, 14, 0, 0, 0, 0, 0, 31, 0, 31, 0, 0, 0, 4, 4, 31, 4, 4, 0, 0, 21, 14, 31, 14, 21, 0, 10, 31, 10, 10, 31, 10, 0, 24, 25, 2, 4, 8, 19, 3, 14, 17, 23, 21, 23, 16, 14);
+const int c_HexGlyphs[112] = int[112](14, 17, 19, 21, 25, 17, 14, 4, 12, 4, 4, 4, 4, 14, 14, 17, 1, 2, 4, 8, 31, 31, 2, 4, 2, 1, 17, 14, 2, 6, 10, 18, 31, 2, 2, 31, 16, 30, 1, 1, 17, 14, 6, 8, 16, 30, 17, 17, 14, 31, 1, 2, 4, 8, 8, 8, 14, 17, 17, 14, 17, 17, 14, 14, 17, 17, 15, 1, 2, 12, 14, 17, 17, 31, 17, 17, 17, 30, 17, 17, 30, 17, 17, 30, 14, 17, 16, 16, 16, 17, 14, 28, 18, 17, 17, 17, 18, 28, 31, 16, 16, 30, 16, 16, 31, 31, 16, 16, 30, 16, 16, 16);
+const vec2 c_GlyphCell = vec2(6.0, 9.0); // A glyph and the gap after it, in the game's pixels.
 
 float Hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -94,6 +103,68 @@ vec3 SynthwaveSky(vec2 p, float aspect) {
 	return color * c_SkyLevel;
 }
 
+// Whether the glyph's pixel at inCell (from its top left, y down) is lit.
+float DensityGlyph(int glyph, ivec2 inCell) {
+	if (inCell.x > 4 || inCell.y > 6) return 0.0;
+	return float((c_DensityGlyphs[clamp(glyph, 0, 9) * 7 + inCell.y] >> (4 - inCell.x)) & 1);
+}
+float HexGlyph(int glyph, ivec2 inCell) {
+	if (inCell.x > 4 || inCell.y > 6) return 0.0;
+	return float((c_HexGlyphs[clamp(glyph, 0, 15) * 7 + inCell.y] >> (4 - inCell.x)) & 1);
+}
+
+// Hackerman's sky at screen pixel px (y down): code raining down columns over a faint grid, in display colours.
+vec3 HackermanSky(vec2 px, vec2 size) {
+	float day = smoothstep(0.05, 0.6, rteDaylight);
+	vec3 color = mix(vec3(0.0, 0.006, 0.002), vec3(0.0, 0.05, 0.015), px.y / max(size.y, 1.0));
+	vec2 gridLine = step(fract(px / 24.0), vec2(1.0 / 24.0));
+	color += vec3(0.0, 0.06, 0.02) * max(gridLine.x, gridLine.y) * mix(0.6, 1.0, day);
+	vec2 cell = floor(px / c_GlyphCell);
+	ivec2 inCell = ivec2(px - cell * c_GlyphCell);
+	float rows = size.y / c_GlyphCell.y;
+	float brightness = 0.0;
+	float head = 0.0;
+	// Two streams to a column, each with its own speed, length and start.
+	for (int stream = 0; stream < 2; ++stream) {
+		vec2 seed = vec2(cell.x, float(stream) * 37.0);
+		float speed = mix(5.0, 16.0, Hash(seed)) * rteGridSpeed;
+		float tailLength = mix(6.0, 22.0, Hash(seed + 1.3));
+		float span = rows + tailLength + mix(0.0, 30.0, Hash(seed + 2.7));
+		float headRow = mod(rteTime * speed + Hash(seed + 4.1) * span, span);
+		float behind = headRow - cell.y;
+		if (behind >= 0.0 && behind < tailLength) {
+			head = max(head, behind < 1.0 ? 1.0 : 0.0);
+			brightness = max(brightness, behind < 1.0 ? 1.0 : pow(1.0 - behind / tailLength, 1.4) * 0.75);
+		}
+	}
+	if (brightness > 0.0) {
+		// Each glyph changes now and then, some faster than others.
+		float rate = mix(0.5, 6.0, Hash(cell + 9.0));
+		int glyph = int(Hash(cell + floor(rteTime * rate)) * 16.0);
+		float lit = HexGlyph(glyph, inCell);
+		vec3 ink = mix(vec3(0.08, 0.85, 0.28), vec3(0.8, 1.0, 0.85) * 2.2, head);
+		color += ink * lit * brightness;
+	}
+	return color * c_SkyLevel;
+}
+
+// The scene as ASCII art at screen pixel px: each cell one character picked by the brightness at its middle, in the look's colours.
+vec3 AsciiArt(vec2 px, vec2 size) {
+	vec2 cell = floor(px / c_GlyphCell);
+	ivec2 inCell = ivec2(px - cell * c_GlyphCell);
+	vec2 middle = (cell + 0.5) * c_GlyphCell;
+	vec3 source = texture(rteScene, vec2(middle.x, size.y - middle.y) / size).rgb;
+	float level = 1.0 - exp(-dot(source, vec3(0.2126, 0.7152, 0.0722)) * 3.0);
+	int glyph = int(clamp(level, 0.0, 0.999) * 10.0);
+	vec3 ink;
+	if (rteLook == 2) {
+		ink = vec3(0.15, 1.0, 0.35);
+	} else {
+		ink = mix(vec3(1.0, 0.25, 0.75), vec3(0.25, 0.9, 1.0), px.y / max(size.y, 1.0));
+	}
+	return ink * (0.15 + 0.85 * level) * mix(0.06, 1.0, DensityGlyph(glyph, inCell)) * c_SkyLevel * 1.4;
+}
+
 void main() {
 	vec2 uv = textureUV;
 	vec4 scene = texture(rteScene, uv);
@@ -105,15 +176,34 @@ void main() {
 
 	if (rteSky > 0.0 && background) {
 		float skyArt = SkyArt(depth);
-		vec3 sky = SynthwaveSky(screen, aspect);
-		// Nearer background layers: dark violet silhouettes keeping a trace of their shading, with a rim of light where the sky shows just above.
-		float shade = dot(scene.rgb, vec3(0.2126, 0.7152, 0.0722));
-		vec3 silhouette = vec3(0.07, 0.015, 0.14) * (0.4 + 0.8 * clamp(shade * 2.0, 0.0, 1.0));
+		vec2 px = screen * rteScreenSize;
+		vec3 sky = rteLook == 2 ? HackermanSky(px, rteScreenSize) : SynthwaveSky(screen, aspect);
+		// Nearer background layers: dark silhouettes keeping a trace of their shading, with a rim of light where the sky shows just above. Synthwave's
+		// are violet with a pink rim; Hackerman's green wireframes, filled with faint scan lines.
+		float shade = clamp(dot(scene.rgb, vec3(0.2126, 0.7152, 0.0722)) * 2.0, 0.0, 1.0);
 		vec2 pixel = 1.0 / rteScreenSize;
 		float above = SkyArt(texture(rteSceneDepth, uv + vec2(0.0, 2.0 * pixel.y)).r);
-		silhouette += vec3(1.0, 0.25, 0.75) * smoothstep(0.3, 0.9, above) * (1.0 - skyArt) * 1.6;
+		float rim = smoothstep(0.3, 0.9, above) * (1.0 - skyArt);
+		vec3 silhouette;
+		if (rteLook == 2) {
+			float scan = step(fract(px.y / 3.0), 0.34);
+			silhouette = vec3(0.0, 0.02, 0.006) + vec3(0.02, 0.22, 0.07) * scan * (0.3 + 0.7 * shade) + vec3(0.2, 1.0, 0.4) * rim * 1.4;
+		} else {
+			silhouette = vec3(0.07, 0.015, 0.14) * (0.4 + 0.8 * shade) + vec3(1.0, 0.25, 0.75) * rim * 1.6;
+		}
 		vec3 replaced = mix(silhouette, sky, skyArt);
 		color = mix(color, replaced, rteSky);
+	}
+
+	if ((rteASCII > 0.0 || rteASCIIBackground > 0.0)) {
+		// ASCII art: everywhere, or the distant background only (not a sky that was replaced, which has its own look).
+		float amount = rteASCII;
+		if (background) {
+			amount = max(amount, rteASCIIBackground * (1.0 - rteSky * SkyArt(depth)));
+		}
+		if (amount > 0.0) {
+			color = mix(color, AsciiArt(screen * rteScreenSize, rteScreenSize), amount);
+		}
 	}
 
 	if (rteEdges > 0.0) {
@@ -141,8 +231,8 @@ void main() {
 		if (rteInkEdges) {
 			color *= 1.0 - 0.92 * edge;
 		} else {
-			// Pink near the top of the screen to cyan near the bottom, bright enough to bloom.
-			vec3 neon = mix(vec3(1.0, 0.2, 0.75), vec3(0.2, 0.9, 1.0), smoothstep(0.15, 0.85, screen.y));
+			// Synthwave: pink near the top of the screen to cyan near the bottom. Hackerman: phosphor green. Bright enough to bloom.
+			vec3 neon = rteLook == 2 ? vec3(0.25, 1.0, 0.4) : mix(vec3(1.0, 0.2, 0.75), vec3(0.2, 0.9, 1.0), smoothstep(0.15, 0.85, screen.y));
 			color = mix(color, neon * 1.8, edge * 0.85);
 		}
 	}
