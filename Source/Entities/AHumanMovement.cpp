@@ -3516,15 +3516,15 @@ int AHuman::MoveAlongRoute() {
 	// A sky route (PathFinder's, on an order at the Battle Behavior's SkyRouteRisk: one flight up into open sky and down onto the goal,
 	// quicker than the ground) is flown the same way, for the goal only and on what the tank flies, its fuel waited for as above.
 	const bool skyOnly = m_MovePathSky && m_StandingOrder.Direct >= g_SettingsMan.DirectOrders().SkyRouteRisk && m_StandingOrder.Direct < g_SettingsMan.DirectOrders().StraightFlightRisk;
-	const bool fullRisk = standardJet && !IsDiggingTo() && !m_MovePath.empty() && (m_StandingOrder.Direct >= g_SettingsMan.DirectOrders().StraightFlightRisk || skyOnly);
+	const bool fullRisk = standardJet && !IsDiggingTo() && !m_MovePath.empty() && ((g_SettingsMan.DirectOrders().Follows.StraightFlight && m_StandingOrder.Direct >= g_SettingsMan.DirectOrders().StraightFlightRisk) || skyOnly);
 	if (!fullRisk) {
 		mover.straightHold = false;
 		mover.straightSteadying = false;
 	}
 	// Steadied first, as any take-off is: standing, still and upright, for a third of a second before the jet is lit, less by the Battle
 	// Behavior's RecklessSteadyCut in the order's share. (Lit mid-stride, the step's speed went into the flight and full-risk take-offs
-	// failed over and over.)
-	const float straightSteadyMS = 300.0F * (1.0F - g_SettingsMan.DirectOrders().RecklessSteadyCut * std::clamp(m_StandingOrder.Direct, 0.0F, 1.0F));
+	// failed over and over.) (With the Recklessness setting's steadying not following risk, the full third of a second whatever the order.)
+	const float straightSteadyMS = 300.0F * (1.0F - (g_SettingsMan.DirectOrders().Follows.Steadying ? g_SettingsMan.DirectOrders().RecklessSteadyCut * std::clamp(m_StandingOrder.Direct, 0.0F, 1.0F) : 0.0F));
 	const bool straightSteady = fullRisk && g_SettingsMan.AISteadiesBeforeJet() && straightSteadyMS > 1.0F;
 	if (fullRisk && (airborne || m_Status != STABLE || std::abs(m_Vel.m_X) > 0.4F || std::abs(m_Vel.m_Y) > 0.5F || std::abs(m_AngularVel) > 0.6F || std::abs(std::abs(GetRotAngle()) - std::abs(m_RotAngleTargets[STAND])) > 0.2F)) {
 		mover.straightStillTimer.Reset();
@@ -4401,11 +4401,19 @@ int AHuman::MoveAlongRoute() {
 		// (On a risky or direct order, StandingOrder::Direct over 0, as reckless as the Battle Behavior settings say, in the order's share:
 		// fully direct as tuned, off as soon as the tank has a little over half what the flight takes, and never steadied first. On a
 		// cautious one, under 0, as careful as they say: waits for more fuel and steadies longer.)
-		const float direct = std::max(m_StandingOrder.Direct, 0.0F);
-		const float care = std::max(-m_StandingOrder.Direct, 0.0F);
 		const SettingsMan::DirectOrderTuning& directTuning = g_SettingsMan.DirectOrders();
-		const float baseCaution = g_SettingsMan.AIMoveCaution();
-		const float caution = baseCaution + (std::min(baseCaution, directTuning.Caution) - baseCaution) * direct + (std::max(baseCaution, directTuning.CautiousCaution) - baseCaution) * care;
+		// (The Recklessness settings: a behaviour not following risk is a normal unit's on every order, the AI movement recklessness aside.)
+		auto cautionFor = [&directTuning, this](bool follows) {
+			if (!follows) {
+				return 1.0F;
+			}
+			const float baseCaution = g_SettingsMan.AIMoveCaution();
+			return baseCaution + (std::min(baseCaution, directTuning.Caution) - baseCaution) * std::max(m_StandingOrder.Direct, 0.0F) + (std::max(baseCaution, directTuning.CautiousCaution) - baseCaution) * std::max(-m_StandingOrder.Direct, 0.0F);
+		};
+		const bool fuelFollows = directTuning.Follows.FuelWait;
+		const float direct = fuelFollows ? std::max(m_StandingOrder.Direct, 0.0F) : 0.0F;
+		const float care = fuelFollows ? std::max(-m_StandingOrder.Direct, 0.0F) : 0.0F;
+		const float caution = cautionFor(fuelFollows);
 		float needed = std::min(FlightFuelNeeded(landing, landingFloorY) * std::clamp(0.8F + caution * 0.2F, 0.9F, 1.2F), m_pJetpack->GetJetTimeTotal() * 0.85F);
 		if (!g_SettingsMan.AIWaitsForFuel()) {
 			needed *= 0.1F;
@@ -4432,7 +4440,9 @@ int AHuman::MoveAlongRoute() {
 		// and upright for up to most of a second, by how far the landing is past three bodies off. A small error at take-off is a big one
 		// at the end of a long flight, and long flights were the ones missed and flown again.
 		float flightLength = toLanding.GetMagnitude();
-		float settleMS = std::clamp((flightLength - h * 3.0F) / h * 150.0F, 0.0F, 900.0F) * caution * (1.0F - directTuning.RecklessSteadyCut * direct);
+		const bool steadyFollows = directTuning.Follows.Steadying;
+		const float steadyDirect = steadyFollows ? std::max(m_StandingOrder.Direct, 0.0F) : 0.0F;
+		float settleMS = std::clamp((flightLength - h * 3.0F) / h * 150.0F, 0.0F, 900.0F) * cautionFor(steadyFollows) * (1.0F - directTuning.RecklessSteadyCut * steadyDirect);
 		// (Upright against its own standing pose, which leans for some bodies: measured against straight up, a soldier whose stance leans
 		// more than the tolerance never counted as settled, and stood at the foot of the ledge for good.)
 		float uprightError = std::abs(std::abs(GetRotAngle()) - std::abs(m_RotAngleTargets[STAND]));
@@ -4442,7 +4452,7 @@ int AHuman::MoveAlongRoute() {
 		}
 		// (Never more than a second and a half of it, whatever the body does: the wait resets the stuck handling, and unbounded, a unit that
 		// never quite settled stood at its take-off with nothing to move it on.)
-		bool wantsSettle = canTakeOff && !hop && (direct < 1.0F || directTuning.RecklessSteadyCut < 1.0F) && g_SettingsMan.AISteadiesBeforeJet() && (!still || m_Status != STABLE || !mover.steadyTimer.IsPastSimMS(static_cast<double>(settleMS)));
+		bool wantsSettle = canTakeOff && !hop && (steadyDirect < 1.0F || directTuning.RecklessSteadyCut < 1.0F) && g_SettingsMan.AISteadiesBeforeJet() && (!still || m_Status != STABLE || !mover.steadyTimer.IsPastSimMS(static_cast<double>(settleMS)));
 		if (wantsSettle && !mover.settling) {
 			mover.settling = true;
 			mover.settleWaitTimer.Reset();
@@ -4688,7 +4698,7 @@ int AHuman::MoveAlongRoute() {
 	// Running on a long, level, open stretch: the point two bodies or more away and no higher, head room to stand, no door near, and
 	// floor the whole way (a run off an edge or into a door is no way to arrive). The script used to roll a die for the run key.
 	// (Never on a cautious order, StandingOrder::Direct under 0: it walks.)
-	if (!prone && !crouch && m_StandingOrder.Direct >= 0.0F && std::abs(toPoint.m_X) > h * 2.0F && std::abs(toPoint.m_Y) < h * 0.25F && !noRoomAhead && !DoorAhead(point)) {
+	if (!prone && !crouch && (m_StandingOrder.Direct >= 0.0F || !g_SettingsMan.DirectOrders().Follows.Running) && std::abs(toPoint.m_X) > h * 2.0F && std::abs(toPoint.m_Y) < h * 0.25F && !noRoomAhead && !DoorAhead(point)) {
 		bool floorAllTheWay = true;
 		float stepDirection = toPoint.m_X > 0.0F ? 1.0F : -1.0F;
 		for (float ahead = 12.0F; ahead <= h * 1.5F && floorAllTheWay; ahead += 12.0F) {

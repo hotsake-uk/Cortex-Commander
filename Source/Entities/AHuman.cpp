@@ -4054,10 +4054,13 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 	// it comes in less under control.
 	// (A cautious one, single-clicked, the other way: slower, and down softer.)
 	const SettingsMan::DirectOrderTuning& tuning = g_SettingsMan.DirectOrders();
+	// (The Recklessness settings: flight speed or landing speed not following risk is a normal unit's on every order.)
 	const float direct = std::max(m_StandingOrder.Direct, 0.0F);
 	const float care = std::max(-m_StandingOrder.Direct, 0.0F);
-	const float rush = 1.0F + (tuning.FlightSpeed - 1.0F) * direct + (tuning.CautiousFlightSpeed - 1.0F) * care;
-	float touchdown = 5.0F + (tuning.Touchdown - 5.0F) * direct + (tuning.CautiousTouchdown - 5.0F) * care;
+	const float speedShare = tuning.Follows.FlightSpeed ? 1.0F : 0.0F;
+	const float landShare = tuning.Follows.Landing ? 1.0F : 0.0F;
+	const float rush = 1.0F + ((tuning.FlightSpeed - 1.0F) * direct + (tuning.CautiousFlightSpeed - 1.0F) * care) * speedShare;
+	float touchdown = 5.0F + ((tuning.Touchdown - 5.0F) * direct + (tuning.CautiousTouchdown - 5.0F) * care) * landShare;
 	// (With the safe landings setting on, a risky order's harder landing is never past what the body takes unhurt: the speed its impact
 	// damage starts at, as GetMaxSafeFallHeight reckons it, less a margin, and never slower than a normal unit's landing.)
 	if (tuning.SafeLandings && direct > 0.0F && m_TravelImpulseDamage > 0.0F) {

@@ -1885,7 +1885,9 @@ PathAgent Actor::GetPathAgent() const {
 	agent.DigStrength = EstimateDigStrength();
 	agent.BreachStrength = EstimateBreachStrength();
 	agent.Velocity = m_Vel;
-	agent.Caution = g_SettingsMan.AIMoveCaution();
+	// (With the Recklessness setting's route caution not following risk, a normal unit's, whatever the AI movement recklessness says.)
+	const SettingsMan::DirectOrderTuning::RiskFollowTuning& follows = g_SettingsMan.DirectOrders().Follows;
+	agent.Caution = follows.RouteCaution ? g_SettingsMan.AIMoveCaution() : 1.0F;
 	// For a unit a game mode wants kept safe (a flag carrier), where everyone stood when last published, so the route keeps clear of its
 	// enemies (see PathFinder::ThreatCost). Everyone else takes the shortest way.
 	agent.ThreatWeight = m_RouteThreatAvoidance * g_SettingsMan.AIThreatAvoidance();
@@ -1919,9 +1921,13 @@ PathAgent Actor::GetPathAgent() const {
 	if (const float care = -m_StandingOrder.Direct; care > 0.0F) {
 		const SettingsMan::DirectOrderTuning& cautious = g_SettingsMan.DirectOrders();
 		auto toward = [care](float from, float to) { return from + (to - from) * care; };
-		agent.Caution = toward(agent.Caution, std::max(agent.Caution, cautious.CautiousCaution));
-		agent.FlightCostScale = toward(1.0F, cautious.CautiousFlightCostScale);
-		if (float avoid = cautious.CautiousEnemyAvoidance * care * g_SettingsMan.AIThreatAvoidance(); avoid > agent.ThreatWeight) {
+		if (follows.RouteCaution) {
+			agent.Caution = toward(agent.Caution, std::max(agent.Caution, cautious.CautiousCaution));
+		}
+		if (follows.JetPreference) {
+			agent.FlightCostScale = toward(1.0F, cautious.CautiousFlightCostScale);
+		}
+		if (float avoid = cautious.CautiousEnemyAvoidance * care * g_SettingsMan.AIThreatAvoidance(); follows.EnemyAvoidance && avoid > agent.ThreatWeight) {
 			agent.ThreatWeight = avoid;
 			agent.Threats = g_MovableMan.GetPublishedThreats();
 			agent.ThreatTeam = m_Team;
@@ -1930,9 +1936,13 @@ PathAgent Actor::GetPathAgent() const {
 	if (const float share = m_StandingOrder.Direct; share > 0.0F) {
 		const SettingsMan::DirectOrderTuning& direct = g_SettingsMan.DirectOrders();
 		auto toward = [share](float from, float to) { return from + (to - from) * share; };
-		agent.Caution = toward(agent.Caution, std::min(agent.Caution, direct.Caution));
-		agent.FlightCostScale = toward(1.0F, direct.FlightCostScale);
-		if (direct.IgnoreEnemies) {
+		if (follows.RouteCaution) {
+			agent.Caution = toward(agent.Caution, std::min(agent.Caution, direct.Caution));
+		}
+		if (follows.JetPreference) {
+			agent.FlightCostScale = toward(1.0F, direct.FlightCostScale);
+		}
+		if (direct.IgnoreEnemies && follows.EnemyAvoidance) {
 			agent.ThreatWeight *= 1.0F - share;
 			if (agent.ThreatWeight <= 0.0F) {
 				agent.Threats.reset();
@@ -1940,10 +1950,10 @@ PathAgent Actor::GetPathAgent() const {
 		}
 		agent.RouteSeed = 0;
 		// From the straight-flight risk up (a full drag as tuned): straight there on the jet when the way is open (PathFinder::CalculatePath).
-		agent.StraightFlight = share >= direct.StraightFlightRisk;
+		agent.StraightFlight = follows.StraightFlight && share >= direct.StraightFlightRisk;
 		agent.StraightFlightReach = direct.FlightReach(share);
 		// From the sky-route risk up: out in the open, a flight up into the sky and down onto the goal when that is quicker.
-		agent.SkyRoute = share >= direct.SkyRouteRisk;
+		agent.SkyRoute = follows.SkyRoute && share >= direct.SkyRouteRisk;
 		if (agent.DigGoal) {
 			agent.DigCostScale = toward(agent.DigCostScale, std::min(agent.DigCostScale, direct.DigCostScale));
 			agent.LineWeight = direct.LineWeight * share;
