@@ -1021,6 +1021,9 @@
     <ClCompile Include="Source\Managers\SandboxBattlePresets.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Managers\BattleLayout.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Managers\SandboxBattleModes.cpp">
       <Filter>Managers</Filter>
     </ClCompile>

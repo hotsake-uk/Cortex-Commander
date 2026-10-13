@@ -5632,6 +5632,8 @@ namespace SandboxDetail {
 
 	bool BattleModeReady(std::string& why) { return s_ModeSetup.Mode != BattleMode::Custom && ModeReady(s_ModeSetup, why); }
 
+	bool BattleModeSetupReady(const BattleModeSettings& setup, std::string& why) { return setup.Mode != BattleMode::Custom && ModeReady(setup, why); }
+
 	void SurrenderBattleGame(int side) {
 		const BattleModeSettings& settings = s_ModeRun.Settings;
 		if (!s_ModeRun.Running || s_ModeRun.Over || side < 0 || side >= c_Sides) {
@@ -6320,6 +6322,9 @@ namespace SandboxDetail {
 		}
 		if (!ready) {
 			ImGui::TextColored(ImVec4(1.0F, 0.6F, 0.4F, 1.0F), "%s", why.c_str());
+		}
+		if (!running) {
+			BattleLayoutPanel(setup, changed);
 		}
 
 		ImGui::SeparatorText("Where units come in");

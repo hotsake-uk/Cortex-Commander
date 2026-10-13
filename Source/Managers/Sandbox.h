@@ -171,6 +171,14 @@ namespace RTE {
 		/// @param byShip Whether they come in by ship over their widest spawn zone, rather than appearing in their zones.
 		static void StartBattleMode(int mode, int teamSize, bool byShip);
 
+		/// Lays one of the Battle Director's modes out on the map loaded (Lua: SandboxBattleLayout), as the Battle tab's Generate layout does:
+		/// the spawn zones of the teams ticked (red and green, with fewer than two) and the mode's flags, hills, objectives, goals or ship
+		/// positions, replacing what was drawn. Start it with SandboxBattleMode. Not while a mode's game is on.
+		/// @param mode As SandboxBattleMode's.
+		/// @param seed The same seed on the same map lays the mode out the same way.
+		/// @return Whether it was laid out.
+		static bool LayoutBattleMode(int mode, int seed);
+
 		/// Whether a battle mode's game is on (won or not yet): the pause menu shows its battle entries then (B-14).
 		static bool IsBattleModeRunning();
 
