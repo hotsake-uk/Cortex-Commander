@@ -585,7 +585,8 @@ namespace RTE {
 		struct PathTuning {
 			// The search (PathFinder::AdjacentCost). Costs are in nodes walked: a node's walk costs about 1.
 			float LineWeight = 1.75F; //!< On every order, what each node off the straight line from start to goal costs, in nodes walked (PathFinder::LineCost), 0 to 2; added to a direct order's own.
-			bool LineWeightByRisk = true; //!< Whether LineWeight follows the order's risk (Actor::StandingOrder::Direct): all of it on a normal order, less the more cautious, down to none on a fully cautious one (a risky one adds DirectOrderTuning::MoveLineWeight as ever). Off: LineWeight on every order alike.
+			bool LineWeightByRisk = true; //!< Whether route straightness follows the order's risk (Actor::StandingOrder::Direct): none on a fully cautious order, LineWeight on a normal one, FullRiskLineWeight on a full-risk one, in between by the risk. Off: LineWeight on every order alike, a risky one adding DirectOrderTuning::MoveLineWeight in its share.
+			float FullRiskLineWeight = 2.35F; //!< With LineWeightByRisk: the straightness of a full-risk order, 0 to 4, the top of the risk scale.
 			float UpCost = 1.5F; //!< The extra cost of each node gone up, on foot or on the jet, 0 to 5 (extraUpCost): lower goes over hills, higher walks round them.
 			float FlightCostScale = 1.0F; //!< What a jet flight's time, take-off and fuel cost every unit, as a share of the usual (PathAgent::FlightCostScale), 0.2 to 1; a direct or cautious order's own scale multiplies it.
 			float JumpHeightCost = 0.5F; //!< How much dearer each node of a jet jump up a column is than the one below it, 0 to 2: higher keeps jumps short.

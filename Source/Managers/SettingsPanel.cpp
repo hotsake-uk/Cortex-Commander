@@ -1920,7 +1920,7 @@ void DebugMan::SettingsGUI() {
 			Slider("Dig straightness", &direct.LineWeight, 0.0F, 1.0F, "%.2f");
 			Tip("How hard a direct dig-to keeps to the straight line from where it starts to the point, rather than any route as short: the cost of each node off the line, in nodes walked. 0 doesn't care; 0.1 is normal.");
 			Slider("Route straightness", &direct.MoveLineWeight, 0.0F, 2.0F, "%.2f");
-			Tip("How hard a risky move or attack keeps to the straight line to the target, at full risk (less the lower the risk): what each step off the line costs, in steps walked. 0 routes as usual; 0.6 is normal.");
+			Tip("How hard a risky move or attack keeps to the straight line to the target, at full risk (less the lower the risk): what each step off the line costs, in steps walked. 0 routes as usual; 0.6 is normal. Only with Pathfinding's Straightness follows risk off; on, Full-risk straightness there sets it.");
 			Check("Ignore enemies on the route", &direct.IgnoreEnemies);
 			Tip("Whether their routes take no notice of enemies on the way (normal), even for a unit a game mode wants kept safe.");
 			Check("Groups keep together", &direct.KeepPace);
@@ -1978,10 +1978,15 @@ void DebugMan::SettingsGUI() {
 		Heading("Route choice");
 		{
 			Slider("Route straightness", &tuning.LineWeight, 0.0F, 2.0F, "%.2f");
-			Tip("How hard every unit's route keeps to the straight line from where it is to where it is sent: what each node off the line costs, in nodes walked. 0 takes the cheapest way however far it strays; around 0.5 cuts corners and takes jumps it would walk round; 1.75 is the default. Added to a dragged order's own Route straightness (Battle Behavior).");
+			Tip("How hard every unit's route keeps to the straight line from where it is to where it is sent: what each node off the line costs, in nodes walked. 0 takes the cheapest way however far it strays; around 0.5 cuts corners and takes jumps it would walk round; 1.75 is the default. With Straightness follows risk on, this is a normal order's; off, every order's, added to a dragged order's own Route straightness (Battle Behavior).");
 			resetItem("Route straightness", tuning.LineWeight, normal.LineWeight);
 			Check("Straightness follows risk", &tuning.LineWeightByRisk);
-			Tip("On (default): Route straightness follows each order's risk, as the battle modes' Least and Most risk give it too. A normal order keeps to the line by the value above, a cautious one less, down to not at all when fully cautious, and a risky one more (Battle Behavior's own Route straightness on top, up to close to a beeline at full risk). Off: the value above on every order alike.");
+			Tip("On (default): Route straightness follows each order's risk, as the battle modes' Least and Most risk give it too. A fully cautious order doesn't keep to the line at all, a normal one by Route straightness above, a full-risk one by Full-risk straightness below, and those between in between. Off: Route straightness on every order alike, a risky one adding Battle Behavior's own Route straightness.");
+			ImGui::BeginDisabled(!tuning.LineWeightByRisk);
+			Slider("Full-risk straightness", &tuning.FullRiskLineWeight, 0.0F, 4.0F, "%.2f");
+			Tip("With Straightness follows risk: how hard a full-risk order keeps to the straight line, the top of the scale (normal is Route straightness above). Around 2 is close to a beeline; past it the route leaves the line only where it can't get through. 2.35 is the default.");
+			resetItem("Full-risk straightness", tuning.FullRiskLineWeight, normal.FullRiskLineWeight);
+			ImGui::EndDisabled();
 			Slider("Uphill cost", &tuning.UpCost, 0.0F, 5.0F, "%.2f");
 			Tip("The extra cost of every node gone up, on foot or on the jet. Lower goes over hills and up through buildings; higher walks round them. 1.5 is the default.");
 			resetItem("Uphill cost", tuning.UpCost, normal.UpCost);
