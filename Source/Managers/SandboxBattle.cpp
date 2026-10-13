@@ -598,6 +598,10 @@ namespace SandboxDetail {
 		}
 	} // namespace
 
+	std::vector<const Preset*> BattleUnitsFor(const BattleSettings& settings) { return BattleUnitPool(settings); }
+
+	Vector SpawnSpotInZone(const std::vector<Vector>& zone, float height) { return ZoneSpawnSpot(zone, height); }
+
 	/// Gives a unit just bought a post in a place it defends, as a defending team's are given theirs (a mode's guards, by settings made for
 	/// them).
 	void MakeDefender(Actor* unit, const BattleSettings& settings) { DefendPlace(unit, settings); }
