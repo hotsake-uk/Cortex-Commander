@@ -2186,6 +2186,15 @@ float AVehicle::GetSunkFraction() const {
 	return static_cast<float>(sunk) / static_cast<float>(m_pAtomGroup->GetAtomList().size());
 }
 
+void AVehicle::OnSave() {
+	for (int seat = 0; seat < GetSeatCount(); ++seat) {
+		if (Actor* crew = GetSeatOccupant(seat)) {
+			crew->OnSave();
+		}
+	}
+	Actor::OnSave();
+}
+
 void AVehicle::Update() {
 	ZoneScoped;
 

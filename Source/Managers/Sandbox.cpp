@@ -2743,6 +2743,8 @@ std::string Sandbox::GetSaveState() {
 	SaveOrders(state);
 	state << " squads";
 	SavePlayerSquads(state);
+	state << " player";
+	SavePlayer(state);
 	state << " airlifts";
 	SaveAirlifts(state);
 	state << " builds";
@@ -2770,6 +2772,8 @@ void Sandbox::LoadSaveState(const std::string& state, const std::unordered_map<l
 			LoadOrders(stream, ids);
 		} else if (section == "squads") {
 			LoadPlayerSquads(stream, ids);
+		} else if (section == "player") {
+			LoadPlayer(stream, ids);
 		} else if (section == "airlifts") {
 			LoadAirlifts(stream, ids);
 		} else if (section == "builds") {

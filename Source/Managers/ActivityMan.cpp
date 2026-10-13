@@ -452,6 +452,10 @@ namespace {
 			if (unit->StringValueExists(c_SavedUnitWaypointsKey)) {
 				RestoreUnitWaypoints(unit, remapped);
 			}
+			// Its veteran's nerve, from the rank saved with it (Veterancy.cpp sets the two together).
+			if (unit->NumberValueExists("VeteranRank")) {
+				unit->SetVeterancy(static_cast<int>(std::lround(unit->GetNumberValue("VeteranRank"))));
+			}
 		}
 		return newIDs;
 	}
