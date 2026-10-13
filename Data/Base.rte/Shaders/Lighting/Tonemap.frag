@@ -39,6 +39,11 @@ uniform bool rteOutlineTeamColor; // Each outline in its side's colour, else all
 uniform vec3 rteOutlineColor; // In display (gamma) space.
 uniform vec3 rteOutlineSideColors[5]; // By slot - 1: no team, then teams 1 to 4. In display space.
 uniform float rteHighlightWidth; // A highlighted unit's glow (slot 6), in pixels; 0 for none.
+uniform float rteNeonGlow; // A screen style's neon glow, 0 to 1: the bloom turns hot pink from warm lights and cyan from cool ones.
+uniform int rtePalette; // LightingSettings::RetroPalettes: 0 none, 1 synthwave, 2 vaporwave, 3 Miami, 4 Game Boy, 5 CGA, 6 sepia, 7 thermal, 8 night vision.
+uniform float rtePaletteStrength; // How far the picture is remapped onto the palette, 0 to 1.
+uniform float rtePosterize; // Fewer colour levels, 0 (as is) to 1 (four a channel).
+uniform float rteDither; // Ordered dithering across those levels (or a palette's bands), 0 to 1.
 
 vec3 Shoulder(vec3 color) {
 	if (rteShoulderStart >= 0.999) {
@@ -48,6 +53,55 @@ vec3 Shoulder(vec3 color) {
 	float range = 1.0 - rteShoulderStart;
 	vec3 compressed = rteShoulderStart + range * (1.0 - exp(-over / range));
 	return mix(color, compressed, step(rteShoulderStart, color));
+}
+
+// A colour ramp through up to five stops, evenly spaced over t 0 to 1.
+vec3 Ramp5(float t, vec3 a, vec3 b, vec3 c, vec3 d, vec3 e) {
+	t = clamp(t, 0.0, 1.0) * 4.0;
+	if (t < 1.0) return mix(a, b, t);
+	if (t < 2.0) return mix(b, c, t - 1.0);
+	if (t < 3.0) return mix(c, d, t - 2.0);
+	return mix(d, e, t - 3.0);
+}
+
+// The 4x4 Bayer matrix, -0.5 to 0.5, for ordered dithering.
+float Bayer4(ivec2 pixel) {
+	int index = (pixel.x & 3) + (pixel.y & 3) * 4;
+	const float matrix[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+	return matrix[index] / 16.0 - 0.46875;
+}
+
+// The picture (display space) remapped onto a retro palette by its brightness.
+vec3 RetroPalette(vec3 color, int palette, float dither) {
+	float luminance = clamp(dot(color, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
+	if (palette == 1) {
+		// Synthwave: indigo blacks, violet shadows, hot magenta mids, cyan highlights, white-hot peaks. A little of the scene's own hue rides along.
+		vec3 ramp = Ramp5(luminance, vec3(0.04, 0.01, 0.12), vec3(0.24, 0.04, 0.42), vec3(0.92, 0.16, 0.62), vec3(0.22, 0.86, 1.0), vec3(1.0, 0.96, 1.0));
+		return mix(ramp, ramp * (0.6 + 0.8 * color / max(luminance, 0.05)), 0.25);
+	} else if (palette == 2) {
+		return Ramp5(luminance, vec3(0.12, 0.06, 0.24), vec3(0.46, 0.32, 0.78), vec3(0.98, 0.56, 0.82), vec3(0.62, 0.94, 0.92), vec3(1.0, 0.98, 0.96));
+	} else if (palette == 3) {
+		return Ramp5(luminance, vec3(0.02, 0.06, 0.1), vec3(0.0, 0.42, 0.48), vec3(0.06, 0.8, 0.78), vec3(1.0, 0.46, 0.44), vec3(1.0, 0.94, 0.84));
+	} else if (palette == 4) {
+		// Game Boy: four greens, banded, with the dither between bands.
+		float level = clamp(floor(luminance * 3.999 + dither), 0.0, 3.0);
+		vec3 shades[4] = vec3[4](vec3(0.06, 0.22, 0.06), vec3(0.19, 0.38, 0.19), vec3(0.55, 0.67, 0.06), vec3(0.61, 0.74, 0.06));
+		return shades[int(level)];
+	} else if (palette == 5) {
+		// CGA palette 1, high intensity: black, cyan, magenta, white. Bluish things go cyan and reddish ones magenta in the middle band.
+		float level = clamp(floor(luminance * 2.999 + dither), 0.0, 2.0);
+		if (level < 0.5) return vec3(0.0);
+		if (level > 1.5) return vec3(1.0);
+		return color.b + color.g > color.r * 1.6 ? vec3(0.33, 1.0, 1.0) : vec3(1.0, 0.33, 1.0);
+	} else if (palette == 6) {
+		return Ramp5(luminance, vec3(0.08, 0.05, 0.03), vec3(0.3, 0.2, 0.12), vec3(0.6, 0.45, 0.3), vec3(0.86, 0.74, 0.56), vec3(1.0, 0.96, 0.86));
+	} else if (palette == 7) {
+		return Ramp5(luminance, vec3(0.0, 0.0, 0.08), vec3(0.2, 0.0, 0.6), vec3(0.85, 0.05, 0.3), vec3(1.0, 0.6, 0.0), vec3(1.0, 1.0, 0.8));
+	} else if (palette == 8) {
+		float boosted = pow(luminance, 0.6);
+		return vec3(0.12, 1.0, 0.25) * boosted + vec3(0.0, 0.03, 0.0);
+	}
+	return color;
 }
 
 void main() {
@@ -78,7 +132,15 @@ void main() {
 	} else {
 		color = texture(rteScene, sampleUV).rgb;
 	}
-	color += texture(rteBloom, sampleUV).rgb * rteBloomIntensity;
+	vec3 bloom = texture(rteBloom, sampleUV).rgb;
+	if (rteNeonGlow > 0.0) {
+		// Neon: warm glows (fire, blasts, the sun) bloom hot pink, cool ones (lamps, lasers, sky) cyan, and all of it a little wider and brighter.
+		float bloomLuminance = dot(bloom, vec3(0.2126, 0.7152, 0.0722));
+		float warmth = smoothstep(-0.15, 0.25, (bloom.r - bloom.b) / max(bloomLuminance, 0.001));
+		vec3 neon = mix(vec3(0.2, 0.85, 1.0), vec3(1.0, 0.22, 0.72), warmth) * bloomLuminance * 1.4;
+		bloom = mix(bloom, neon, rteNeonGlow * 0.75);
+	}
+	color += bloom * rteBloomIntensity;
 	color *= rteExposure;
 	if (rteAutoExposure > 0.0) {
 		// Only scenes far outside the usual brightness range adapt, so the pixel art keeps its look the rest of the time.
@@ -102,6 +164,23 @@ void main() {
 	color *= 1.0 - rteVignette * smoothstep(0.35, 0.85, length(centered * vec2(rteScreenSize.x / rteScreenSize.y, 1.0)));
 
 	vec3 outputColor = pow(clamp(color, 0.0, 1.0), vec3(1.0 / 2.2));
+	if (rtePaletteStrength > 0.0 || rtePosterize > 0.0) {
+		float ditherOffset = Bayer4(ivec2(gl_FragCoord.xy)) * rteDither;
+		if (rtePaletteStrength > 0.0) {
+			// Night vision brings its own noise and a scope's dark rim.
+			vec3 mapped = RetroPalette(outputColor, rtePalette, ditherOffset);
+			if (rtePalette == 8) {
+				float noise = fract(sin(dot(gl_FragCoord.xy + fract(rteTime * 7.31) * 100.0, vec2(12.9898, 78.233))) * 43758.5453);
+				mapped *= 0.82 + 0.3 * noise;
+				mapped *= 1.0 - smoothstep(0.42, 0.75, length((uv - 0.5) * vec2(rteScreenSize.x / rteScreenSize.y, 1.0)));
+			}
+			outputColor = mix(outputColor, mapped, rtePaletteStrength);
+		}
+		if (rtePosterize > 0.0) {
+			float levels = mix(32.0, 4.0, rtePosterize);
+			outputColor = clamp(floor(outputColor * (levels - 1.0) + 0.5 + ditherOffset) / (levels - 1.0), 0.0, 1.0);
+		}
+	}
 	if (rteFilmGrain > 0.0) {
 		// Grain in gamma space, strongest in the mid tones, changing every frame.
 		float noise = fract(sin(dot(gl_FragCoord.xy + fract(rteTime * 13.17) * 100.0, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;

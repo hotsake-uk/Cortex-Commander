@@ -296,6 +296,10 @@ void CameraMan::Update(int screenId) {
 			}
 			// The grade flashes with it: washed out and warm at once, settling over a second (LightingSettings::EventLooks).
 			g_PostProcessMan.PulseGrade(LightingSettings::LookFlash, 0.4F + 0.6F * strength, 40.0F, 1100.0F);
+			// With a retro screen style (or the player's own glitch) that asks for it, the picture glitches with the blast.
+			if (const LightingSettings::RetroLayers retro = g_PostProcessMan.GetLightingSettings().ActiveRetro(); retro.GlitchOnBlasts && retro.Glitch > 0.0F) {
+				g_PostProcessMan.KickRetroGlitch(0.5F + 0.5F * strength);
+			}
 		}
 	}
 
