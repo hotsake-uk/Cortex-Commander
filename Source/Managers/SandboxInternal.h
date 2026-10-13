@@ -3138,8 +3138,9 @@ namespace SandboxDetail {
 	// Battle layouts (BattleLayout.cpp): a preset mode laid out on the map loaded, from a seed.
 	/// Lays the setup's mode out on the map: its playing teams' spawn zones and the mode's points, zones, goals and positions, replacing
 	/// those it had, from a seed (the same map, mode and seed give the same layout). False, with why in note, if it couldn't; true with
-	/// what it did in note, and any check it couldn't meet (a team that can't get to an objective, routes far from even).
-	bool LayoutBattle(BattleModeSettings& setup, unsigned seed, std::string& note);
+	/// what it did in note, and any check it couldn't meet (a team that can't get to an objective, routes far from even). Each playing
+	/// team gets zonesPerTeam spawn zones (1 to 4) where the map has room: its base and more round it.
+	bool LayoutBattle(BattleModeSettings& setup, unsigned seed, int zonesPerTeam, std::string& note);
 	/// The Battle tab's "Generate layout": a seed, and the mode laid out with it on the map (the teams' cards sent; changed set for the mode's).
 	void BattleLayoutPanel(BattleModeSettings& setup, bool& changed);
 	/// The battle mode's objectives, flags and their carriers, spawn zones and mode zones on the sandbox's map window (B-7), as the "Show..."
