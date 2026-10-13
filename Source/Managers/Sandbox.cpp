@@ -2710,6 +2710,18 @@ void Sandbox::OnActivityStarted() {
 	}
 	s_OrderMarks.clear();
 	s_FollowTarget = UnitRef();
+	// The last game's orders under way (loading a game from inside another never has a frame out of a game, where they were cleared).
+	s_Plans.clear();
+	s_Dropoffs.clear();
+	s_GuardPosts.clear();
+	s_Paced.clear();
+	s_MoveWatch.clear();
+	s_NoRoutes.clear();
+	s_SendNotes.clear();
+	ForgetBreaches();
+	ForgetBuilds();
+	ForgetAirlifts();
+	ForgetLoadoutUnits();
 	ForgetBattle();
 	// (The setup saved to load with the map goes back in once it is loaded.)
 	BattlePresetsNewGame();

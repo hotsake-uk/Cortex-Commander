@@ -3419,6 +3419,10 @@ namespace SandboxDetail {
 	/// Units made from loadouts with an endless jetpack kept topped up. Each sim update.
 	void UpdateLoadoutUnits();
 
+	/// A new game (ActivityMan::StartActivity, a saved one included): none of the last game's squads, and endless jetpacks looked for if it is
+	/// a saved game's, whose units may have them.
+	void ForgetLoadoutUnits();
+
 	/// A unit just made from the Spawn tab, its stats tuned as the Stats sliders say (nothing, unless Modified).
 	void TuneUnit(Actor* actor, const UnitTuning& tuning);
 

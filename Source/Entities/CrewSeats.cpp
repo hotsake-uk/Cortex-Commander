@@ -77,12 +77,23 @@ void CrewSeats::LoadSeated(Actor* unit) {
 	if (!unit) {
 		return;
 	}
-	if (seat < 0 || seat >= GetSeatCount() || m_Seats[seat].Occupant) {
-		delete unit;
-		return;
+	int into = seat;
+	if (into < 0 || into >= GetSeatCount() || m_Seats[into].Occupant) {
+		// (Its seat is gone or taken: the preset has changed since the game was saved. Any free seat will do, rather than lose the unit.)
+		into = -1;
+		for (int free = 0; free < GetSeatCount(); ++free) {
+			if (!m_Seats[free].Occupant) {
+				into = free;
+				break;
+			}
+		}
+		if (into < 0) {
+			delete unit;
+			return;
+		}
 	}
-	m_Seats[seat].Occupant = unit;
-	m_Seats[seat].Rider = m_RiderToLoad;
+	m_Seats[into].Occupant = unit;
+	m_Seats[into].Rider = m_RiderToLoad;
 }
 
 void CrewSeats::SetOccupant(int seat, Actor* unit) {

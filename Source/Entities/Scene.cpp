@@ -1502,7 +1502,7 @@ void Scene::SaveSceneObject(Writer& writer, const SceneObject* sceneObjectToSave
 				WriteHardcodedAttachableOrNone("RightThruster", acRocketToSave->GetRightThruster());
 				WriteHardcodedAttachableOrNone("LeftThruster", acRocketToSave->GetLeftThruster());
 				WriteHardcodedAttachableOrNone("UpRightThruster", acRocketToSave->GetURightThruster());
-				WriteHardcodedAttachableOrNone("UpRightThruster", acRocketToSave->GetULeftThruster());
+				WriteHardcodedAttachableOrNone("UpLeftThruster", acRocketToSave->GetULeftThruster());
 			} else if (const ACDropShip* acDropShipToSave = dynamic_cast<const ACDropShip*>(sceneObjectToSave)) {
 				WriteHardcodedAttachableOrNone("RightThruster", acDropShipToSave->GetRightThruster());
 				WriteHardcodedAttachableOrNone("LeftThruster", acDropShipToSave->GetLeftThruster());

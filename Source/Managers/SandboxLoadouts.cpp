@@ -557,6 +557,12 @@ namespace SandboxDetail {
 		}
 	}
 
+	void ForgetLoadoutUnits() {
+		s_PlayerSquads.clear();
+		// (A saved game's units may have endless jetpacks: their number value is saved, but not that one was made.)
+		s_AnyEndlessJet = ActivityMan::s_StartingSavedGame;
+	}
+
 	void TuneUnit(Actor* actor, const UnitTuning& tuning) {
 		if (!actor || !tuning.Modified) {
 			return;
