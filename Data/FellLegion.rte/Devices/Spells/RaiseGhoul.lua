@@ -43,6 +43,10 @@ local function raise(self)
 		ghoul.AIMode = Actor.AIMODE_BRAINHUNT;
 	end
 	ghoul:SetNumberValue("FellSummonerUID", self.casterUID);
+	-- Its time as its own lifetime too, a little past this grave's rotting of it: a saved game keeps that (not this grave), so a ghoul
+	-- loaded still rots when its time is up.
+	ghoul.Lifetime = LIFESPAN + 1000;
+	ghoul.GibAtEndOfLifetime = true;
 	MovableMan:AddActor(ghoul);
 	self.raised = {uid = ghoul.UniqueID, born = FX.Now(), greeted = false, warned = false};
 	-- Clawing out of the grave.

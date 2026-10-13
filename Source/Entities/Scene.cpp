@@ -1134,6 +1134,11 @@ int Scene::Save(Writer& writer) const {
 				// But for now, until we have a more effective writer that can remove redundant properties, we just skip this
 				continue;
 			}
+			// What keeps its work only in its script while it lasts (a spell's controller: a summoning that would summon again, an effect on a
+			// unit kept nowhere else) is left out of a saved game: what it was doing ends there.
+			if (doFullGameSave && placedObject->IsInGroup("Not Saved")) {
+				continue;
+			}
 
 			if (set == PlacedObjectSets::PLACEONLOAD) {
 				writer.NewProperty("PlaceSceneObject");
@@ -1327,6 +1332,9 @@ void Scene::SaveSceneObject(Writer& writer, const SceneObject* sceneObjectToSave
 			}
 		}
 
+		// Whether it bursts at the end of its lifetime rather than going quietly (a summon's crumbling, its time kept in its lifetime).
+		writer.NewPropertyWithValue("GibAtEndOfLifetime", mosRotatingToSave->GetGibAtEndOfLifetime());
+
 		for (auto& [key, value]: mosRotatingToSave->GetStringValueMap()) {
 			writer.NewProperty("AddCustomValue");
 			writer.ObjectStart("StringValue");
@@ -1491,6 +1499,10 @@ void Scene::SaveSceneObject(Writer& writer, const SceneObject* sceneObjectToSave
 			writer.NewPropertyWithValue("SpeedMultiplier", actorToSave->GetSpeedMultiplier());
 			if (actorToSave->GetPaceLimit() > 0.0F) {
 				writer.NewPropertyWithValue("SpecialBehaviour_PaceLimit", actorToSave->GetPaceLimit());
+			}
+			// Its own look (a summon's spectral one), not one its status effects lend it, which they give back as they're put on again.
+			if (const std::string& shader = actorToSave->GetShaderNameUnderEffects(); !shader.empty()) {
+				writer.NewPropertyWithValue("Shader", shader);
 			}
 			actorToSave->SaveTimedEffects(writer);
 			// Its unique ID as it was: a loaded unit gets a new one, and what pointed at it by the old (an attack order's target) is pointed at
