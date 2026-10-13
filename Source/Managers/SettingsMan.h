@@ -524,6 +524,14 @@ namespace RTE {
 		/// going through them. 1, the default, is every weapon as it is defined.
 		float WeaponTerrainDamage() const { return m_WeaponTerrainDamage; }
 
+		/// Gets how much damage weapon fire (bullets, shrapnel and the other particles that hit units) does to the units, vehicles and craft it
+		/// hits, as a multiple of what it would: the wounds it leaves (their hit and their bleeding) and the flat damage it carries are scaled by
+		/// this. 1, the default, is every weapon as it is defined.
+		float WeaponUnitDamage() const { return m_WeaponUnitDamage; }
+
+		/// Gets whether WeaponUnitDamage also scales how soon units are blown apart or lose limbs: their wound and blow limits are divided by it.
+		bool WeaponUnitDamageGibs() const { return m_WeaponUnitDamageGibs; }
+
 		/// Gets which digger those units are handed: 0 Light, 1 Medium, 2 Heavy, 3 a random one of the four, 4 Mega.
 		int AISpawnDiggerType() const { return m_AISpawnDiggerType; }
 
@@ -1134,6 +1142,10 @@ namespace RTE {
 		void SetCameraOverscroll(float overscroll) { m_CameraOverscroll = std::clamp(overscroll, 0.0F, 2000.0F); }
 		/// Sets how hard weapon fire strikes terrain; see WeaponTerrainDamage.
 		void SetWeaponTerrainDamage(float scale) { m_WeaponTerrainDamage = std::clamp(scale, 0.1F, 20.0F); }
+		/// Sets how much damage weapon fire does to units; see WeaponUnitDamage.
+		void SetWeaponUnitDamage(float scale) { m_WeaponUnitDamage = std::clamp(scale, 0.1F, 20.0F); }
+		/// Sets whether the weapon damage to units also scales blowing apart; see WeaponUnitDamageGibs.
+		void SetWeaponUnitDamageGibs(bool gibs) { m_WeaponUnitDamageGibs = gibs; }
 		/// Sets which digger those units are handed; see AISpawnDiggerType.
 		void SetAISpawnDiggerType(int type) { m_AISpawnDiggerType = std::clamp(type, 0, 4); }
 
@@ -1505,6 +1517,8 @@ namespace RTE {
 		float m_ShipGraceZone; //!< Pixels past the map's top and sides flying ships may go, 0 to 700 (see ShipGraceZone).
 		float m_CameraOverscroll; //!< Pixels past the map's edges the camera may scroll, 0 to 2000 (see CameraOverscroll).
 		float m_WeaponTerrainDamage; //!< Multiple of the force weapon fire strikes terrain with, 0.1 to 20 (see WeaponTerrainDamage).
+		float m_WeaponUnitDamage; //!< Multiple of the damage weapon fire does to units, 0.1 to 20 (see WeaponUnitDamage).
+		bool m_WeaponUnitDamageGibs; //!< Whether WeaponUnitDamage scales blowing apart too (see WeaponUnitDamageGibs).
 		int m_AISpawnDiggerType; //!< Which digger they're handed: 0 Light, 1 Medium, 2 Heavy, 3 random, 4 Mega (see AISpawnDiggerType).
 		bool m_AISteadyBeforeJet; //!< Whether AI units steady themselves before they jet (see AISteadiesBeforeJet).
 		bool m_AICoverDigs; //!< See AICoverDigs.

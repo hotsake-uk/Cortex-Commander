@@ -1322,7 +1322,11 @@ float Actor::GetToughness() const {
 
 float Actor::GibToughness() const {
 	float toughness = GetToughness();
-	return toughness >= SettingsMan::c_ToughnessInvincible ? std::numeric_limits<float>::infinity() : toughness;
+	if (toughness >= SettingsMan::c_ToughnessInvincible) {
+		return std::numeric_limits<float>::infinity();
+	}
+	// With Weapon damage scales blowing apart on, weapon damage x2 holds together half as long, x0.5 twice as long.
+	return g_SettingsMan.WeaponUnitDamageGibs() ? toughness / g_SettingsMan.WeaponUnitDamage() : toughness;
 }
 
 void Actor::ApplyToughness() {
@@ -1618,6 +1622,7 @@ bool Actor::ParticlePenetration(HitData& hd) {
 	}
 
 	if (damageToAdd != 0) {
+		damageToAdd *= WeaponUnitDamageFrom(hitor);
 		m_Health = std::min(m_Health - (damageToAdd * m_DamageMultiplier * GetDamageTakenMultiplier()), m_MaxHealth);
 	}
 	if ((penetrated || damageToAdd != 0) && m_Perceptiveness > 0 && m_Health > 0) {
