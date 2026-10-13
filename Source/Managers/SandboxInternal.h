@@ -3133,6 +3133,15 @@ namespace SandboxDetail {
 	void SurrenderBattleGame(int side);
 	/// Whether the mode set up on the Battle tab (not custom) can be started as it is, and if not, why.
 	bool BattleModeReady(std::string& why);
+	/// Whether a mode's setup (not necessarily the Battle tab's) can be started as it is, and if not, why.
+	bool BattleModeSetupReady(const BattleModeSettings& setup, std::string& why);
+	// Battle layouts (BattleLayout.cpp): a preset mode laid out on the map loaded, from a seed.
+	/// Lays the setup's mode out on the map: its playing teams' spawn zones and the mode's points, zones, goals and positions, replacing
+	/// those it had, from a seed (the same map, mode and seed give the same layout). False, with why in note, if it couldn't; true with
+	/// what it did in note, and any check it couldn't meet (a team that can't get to an objective, routes far from even).
+	bool LayoutBattle(BattleModeSettings& setup, unsigned seed, std::string& note);
+	/// The Battle tab's "Generate layout": a seed, and the mode laid out with it on the map (the teams' cards sent; changed set for the mode's).
+	void BattleLayoutPanel(BattleModeSettings& setup, bool& changed);
 	/// The battle mode's objectives, flags and their carriers, spawn zones and mode zones on the sandbox's map window (B-7), as the "Show..."
 	/// choices on the battle panel have them on the view.
 	void DrawBattleModeOnMap(ImDrawList* drawList, const std::function<ImVec2(const Vector&)>& toMap);
