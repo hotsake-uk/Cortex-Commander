@@ -14,6 +14,8 @@
 #include "GUIButton.h"
 #include "GUIListBox.h"
 
+#include <algorithm>
+
 using namespace RTE;
 
 ModManagerGUI::ModManagerGUI(AllegroScreen* guiScreen, GUIInputWrapper* guiInput, bool createForPauseMenu) {
@@ -50,6 +52,9 @@ ModManagerGUI::ModManagerGUI(AllegroScreen* guiScreen, GUIInputWrapper* guiInput
 
 	m_ToggleModButton = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonToggleMod"));
 	m_ToggleScriptButton = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonToggleScript"));
+	m_ToggleAllModsButton = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonToggleAllMods"));
+	m_ToggleMedievalUnitsButton = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonToggleMedievalUnits"));
+	m_ToggleMedievalUnitsButton->SetText(g_SettingsMan.MedievalUnitsDisabled() ? "Medieval Units: Off" : "Medieval Units: On");
 	m_ModOrScriptDescriptionLabel = dynamic_cast<GUILabel*>(m_GUIControlManager->GetControl("LabelDescription"));
 
 	m_ModsListFetched = false;
@@ -91,6 +96,7 @@ void ModManagerGUI::PopulateKnownModsList() {
 	}
 	m_ModsListBox->ScrollToTop();
 	m_ModsListFetched = true;
+	UpdateToggleAllModsButton();
 }
 
 //todo to fetch
@@ -188,10 +194,47 @@ void ModManagerGUI::ToggleMod() {
 			disabledModsList.at(modRecord.ModulePath) = false;
 		}
 		selectedItem->m_Name = modRecord.GetDisplayString();
+		UpdateToggleAllModsButton();
 		m_ModsListBox->SetSelectedIndex(index);
 		m_ModsListBox->Invalidate();
 		g_GUISound.ItemChangeSound()->Play();
 	}
+}
+
+void ModManagerGUI::UpdateToggleAllModsButton() {
+	bool anyEnabled = std::any_of(m_KnownMods.begin(), m_KnownMods.end(), [](const ModRecord& modRecord) { return !modRecord.Disabled; });
+	m_ToggleAllModsButton->SetText((anyEnabled || m_KnownMods.empty()) ? "Disable All Mods" : "Enable All Mods");
+}
+
+void ModManagerGUI::ToggleAllMods() {
+	if (m_KnownMods.empty()) {
+		return;
+	}
+	bool disable = std::any_of(m_KnownMods.begin(), m_KnownMods.end(), [](const ModRecord& modRecord) { return !modRecord.Disabled; });
+	std::unordered_map<std::string, bool>& disabledModsList = g_SettingsMan.GetDisabledModsMap();
+	for (ModRecord& modRecord: m_KnownMods) {
+		modRecord.Disabled = disable;
+		disabledModsList.insert_or_assign(modRecord.ModulePath, disable);
+	}
+	int index = m_ModsListBox->GetSelectedIndex();
+	m_ModsListBox->ClearList();
+	for (int i = 0; i < m_KnownMods.size(); i++) {
+		m_ModsListBox->AddItem(m_KnownMods.at(i).GetDisplayString(), std::string(), nullptr, nullptr, i);
+	}
+	if (index > -1) {
+		m_ModsListBox->SetSelectedIndex(index);
+		m_ToggleModButton->SetText(disable ? "Enable Mod" : "Disable Mod");
+	}
+	UpdateToggleAllModsButton();
+	m_ModOrScriptDescriptionLabel->SetText(disable ? "All mods disabled. Restart the game for it to take effect." : "All mods enabled. Restart the game for it to take effect.");
+	g_GUISound.ItemChangeSound()->Play();
+}
+
+void ModManagerGUI::ToggleMedievalUnits() {
+	g_SettingsMan.SetMedievalUnitsDisabled(!g_SettingsMan.MedievalUnitsDisabled());
+	m_ToggleMedievalUnitsButton->SetText(g_SettingsMan.MedievalUnitsDisabled() ? "Medieval Units: Off" : "Medieval Units: On");
+	m_ModOrScriptDescriptionLabel->SetText("Medieval units: the Kingdom and the Fell Legion. Switched off, neither can be picked as a faction and their units can't be bought, from the next battle. Their weapons and spells stay.");
+	g_GUISound.ItemChangeSound()->Play();
 }
 
 ModManagerGUI::ScriptRecord* ModManagerGUI::ScriptListExtraIndexToScriptRecord(int extraIndex) {
@@ -272,6 +315,10 @@ bool ModManagerGUI::HandleInputEvents() {
 				ToggleMod();
 			} else if (guiEvent.GetControl() == m_ToggleScriptButton) {
 				ToggleInScriptList();
+			} else if (guiEvent.GetControl() == m_ToggleAllModsButton) {
+				ToggleAllMods();
+			} else if (guiEvent.GetControl() == m_ToggleMedievalUnitsButton) {
+				ToggleMedievalUnits();
 			}
 		} 
 		

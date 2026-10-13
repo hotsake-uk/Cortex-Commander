@@ -12,6 +12,7 @@
 #include "Sandbox.h"
 #include "Scene.h"
 #include "SceneMan.h"
+#include "SettingsMan.h"
 #include "SLTerrain.h"
 #include "TerrainCollapse.h"
 #include "TerrainObject.h"
@@ -932,7 +933,9 @@ namespace {
 		// (One more for each level it is upgraded.)
 		if (running && static_cast<int>(building.Staff.size()) < building.KeepAlive + building.Level - 1 && now >= building.HireMS) {
 			// A new one, at the door, a second after the last.
-			if (Actor* unit = Sandbox::SpawnWorker(looks.Worker, looks.WorkerModule, building.Team, Door(building) + Vector(0.0F, -20.0F))) {
+			// With the Medieval units switched off in the mod manager, a fantasy woodcutter takes on the sci-fi Forester instead (still swinging its axe).
+			const Colony::Look& hires = (g_SettingsMan.MedievalUnitsDisabled() && building.Looks == Colony::Style::Fantasy) ? Colony::GetLook(building.What, Colony::Style::SciFi) : looks;
+			if (Actor* unit = Sandbox::SpawnWorker(hires.Worker, hires.WorkerModule, building.Team, Door(building) + Vector(0.0F, -20.0F))) {
 				Colony::Worker worker;
 				worker.Unit = unit;
 				worker.UnitID = static_cast<long>(unit->GetUniqueID());
@@ -943,7 +946,7 @@ namespace {
 				building.Staff.push_back(worker);
 				++building.Produced;
 			} else {
-				building.Status = std::string("Can not make ") + looks.Worker;
+				building.Status = std::string("Can not make ") + hires.Worker;
 				building.Paused = true;
 				return;
 			}

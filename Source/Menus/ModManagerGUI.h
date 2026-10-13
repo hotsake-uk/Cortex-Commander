@@ -104,6 +104,8 @@ namespace RTE {
 		GUIButton* m_BackToMainButton;
 		GUIButton* m_ToggleModButton;
 		GUIButton* m_ToggleScriptButton;
+		GUIButton* m_ToggleAllModsButton; //!< Disables every mod, or enables them all again when they're all disabled.
+		GUIButton* m_ToggleMedievalUnitsButton; //!< Switches the Kingdom and Fell Legion units on or off.
 		GUIListBox* m_ModsListBox;
 		GUIListBox* m_ScriptsListBox;
 		GUILabel* m_ModOrScriptDescriptionLabel;
@@ -138,6 +140,15 @@ namespace RTE {
 
 		/// todo Turns currently selected script on and off and changes GUI elements accordingly.
 		void ToggleInScriptList();
+
+		/// Disables every mod in the list, or enables them all when every one is already disabled.
+		void ToggleAllMods();
+
+		/// Sets the all mods button's text to what pressing it will do.
+		void UpdateToggleAllModsButton();
+
+		/// Switches the Kingdom and Fell Legion units on or off and updates the button's text.
+		void ToggleMedievalUnits();
 #pragma endregion
 
 		// Disallow the use of some implicit methods.
