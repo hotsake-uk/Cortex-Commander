@@ -1,4 +1,5 @@
 #include "Actor.h"
+#include <sstream>
 #include "ThreatMemory.h"
 #include "ActorWater.h"
 #include "ActorFire.h"
@@ -654,6 +655,44 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 	});
 	MatchProperty("ToughnessMultiplier", { reader >> m_ToughnessMultiplier; });
 	MatchProperty("SpeedMultiplier", { reader >> m_SpeedMultiplier; });
+	// A saved game's: what it was as it played, beyond its preset (Scene::SaveSceneObject, SaveTimedEffects).
+	MatchProperty("SpecialBehaviour_PaceLimit", {
+		float pace = 0.0F;
+		reader >> pace;
+		SetPaceLimit(pace);
+	});
+	MatchProperty("SpecialBehaviour_StatusEffect", {
+		StatusEffect effect;
+		reader >> effect;
+		AddStatusEffect(effect, effect.Seconds);
+	});
+	MatchProperty("SpecialBehaviour_Venom", {
+		float seconds = 0.0F;
+		float damagePerSecond = 0.0F;
+		float slowTo = 1.0F;
+		std::istringstream values(reader.ReadPropValue());
+		values >> seconds >> damagePerSecond >> slowTo;
+		Envenom(damagePerSecond, seconds, slowTo);
+	});
+	MatchProperty("SpecialBehaviour_Snare", {
+		float seconds = 0.0F;
+		reader >> seconds;
+		Ensnare(seconds);
+	});
+	MatchProperty("SpecialBehaviour_Acid", {
+		float seconds = 0.0F;
+		float damagePerSecond = 0.0F;
+		std::istringstream values(reader.ReadPropValue());
+		values >> seconds >> damagePerSecond;
+		Corrode(damagePerSecond, seconds);
+	});
+	MatchProperty("SpecialBehaviour_Powerup", {
+		std::string name;
+		float seconds = 0.0F;
+		std::istringstream values(reader.ReadPropValue());
+		values >> name >> seconds;
+		AddPowerupSeconds(name, seconds);
+	});
 
 	EndPropertyList;
 }
@@ -3005,6 +3044,13 @@ void Actor::PostUpdate() {
 		m_pItemInReach = nullptr;
 	}
 	MOSRotating::PostUpdate();
+}
+
+void Actor::OnSave() {
+	for (MovableObject* item: m_Inventory) {
+		item->OnSave();
+	}
+	MOSRotating::OnSave();
 }
 
 void Actor::Update() {

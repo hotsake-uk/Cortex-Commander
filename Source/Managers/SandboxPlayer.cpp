@@ -494,6 +494,33 @@ namespace SandboxDetail {
 			Sandbox::ToggleCommander();
 		}
 	}
+
+	void SavePlayer(std::ostream& out) {
+		out << ' ' << s_PlayerUnit.ID << ' ' << s_PlayerVehicle.ID << ' ' << s_RespawnSet << ' ' << s_RespawnPoint.m_X << ' ' << s_RespawnPoint.m_Y;
+	}
+
+	void LoadPlayer(std::istream& in, const LoadedIDs& ids) {
+		long unit = 0;
+		long vehicle = 0;
+		in >> unit >> vehicle >> s_RespawnSet >> s_RespawnPoint.m_X >> s_RespawnPoint.m_Y;
+		s_PlayerUnit = ids.Ref(unit);
+		s_PlayerVehicle = ids.Ref(vehicle);
+		s_PlayerMade.clear();
+		if (Actor* character = s_PlayerUnit.Unit) {
+			s_PlayerMade.push_back(s_PlayerUnit.ID);
+			// Its parts were saved unbreakable (joints that never give), as it is kept while it can't be hurt; what they had before is
+			// their presets', taken from those, so turning Unkillable off (or the unit being yours no more) puts them back.
+			std::function<void(MOSRotating*)> remember = [&remember](MOSRotating* part) {
+				for (Attachable* attachable: part->GetAttachables()) {
+					if (const Attachable* preset = dynamic_cast<const Attachable*>(g_PresetMan.GetEntityPreset(attachable->GetClassName(), attachable->GetPresetName(), attachable->GetModuleID()))) {
+						s_PlayerPartLimits[static_cast<long>(attachable->GetUniqueID())] = {preset->GetJointStrength(), preset->GetGibImpulseLimit(), static_cast<float>(preset->GetGibWoundLimit(false, false, false))};
+					}
+					remember(attachable);
+				}
+			};
+			remember(character);
+		}
+	}
 } // namespace SandboxDetail
 
 void Sandbox::OnUnitBoarded(const Actor* unit, Actor* vehicle) {

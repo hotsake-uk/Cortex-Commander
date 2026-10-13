@@ -13,6 +13,7 @@
 #include "PostProcessMan.h"
 #include "PrimitiveMan.h"
 #include "TimerMan.h"
+#include "Writer.h"
 
 #include <algorithm>
 #include <cfloat>
@@ -78,6 +79,34 @@ float Actor::GetAfflictionSpeedMultiplier() const {
 		return c_SnaredPace;
 	}
 	return (IsEnvenomed() ? m_VenomSlowTo : 1.0F) * m_EffectSpeed;
+}
+
+void Actor::SaveTimedEffects(Writer& writer) const {
+	const long long now = g_TimerMan.GetSimTimeMS();
+	auto secondsLeft = [now](long long until) { return static_cast<float>(until - now) / 1000.0F; };
+	for (const StatusEffect& effect: m_StatusEffects) {
+		if (effect.Until > now) {
+			StatusEffect saved = effect;
+			saved.Seconds = secondsLeft(effect.Until);
+			writer.NewPropertyWithValue("SpecialBehaviour_StatusEffect", saved);
+		}
+	}
+	if (m_VenomUntil > now) {
+		writer.NewPropertyWithValue("SpecialBehaviour_Venom", std::to_string(secondsLeft(m_VenomUntil)) + " " + std::to_string(m_VenomDamagePerSecond) + " " + std::to_string(m_VenomSlowTo));
+	}
+	if (m_SnareUntil > now) {
+		writer.NewPropertyWithValue("SpecialBehaviour_Snare", secondsLeft(m_SnareUntil));
+	}
+	if (m_AcidUntil > now) {
+		writer.NewPropertyWithValue("SpecialBehaviour_Acid", std::to_string(secondsLeft(m_AcidUntil)) + " " + std::to_string(m_AcidDamagePerSecond));
+	}
+	static const char* const c_PowerupNames[] = {"Shield", "Stim", "Overcharge", "Cloak"};
+	static_assert(std::size(c_PowerupNames) == static_cast<size_t>(PowerupEffect::Count), "A name for each powerup effect.");
+	for (int effect = 0; effect < static_cast<int>(PowerupEffect::Count); ++effect) {
+		if (const float left = GetPowerupSecondsLeft(static_cast<PowerupEffect>(effect)); left > 0.0F) {
+			writer.NewPropertyWithValue("SpecialBehaviour_Powerup", std::string(c_PowerupNames[effect]) + " " + std::to_string(left));
+		}
+	}
 }
 
 void Actor::AddStatusEffect(const StatusEffect& effect, float seconds) {

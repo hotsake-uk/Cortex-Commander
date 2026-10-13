@@ -283,6 +283,11 @@ namespace RTE {
 		/// The status effects on it now, in the order they were added.
 		const std::vector<StatusEffect>& GetStatusEffects() const { return m_StatusEffects; }
 
+		/// Writes what has hold of it for a while, for a saved game (Scene::SaveSceneObject): its timed status effects, venom, a web, acid and
+		/// powerup effects, each with the time it has left, read back by ReadProperty onto the loaded game's clock. Not those that last
+		/// as long as something else holds them (a grab, a mirror image's illusion): what holds them isn't saved, and they would never end.
+		void SaveTimedEffects(Writer& writer) const;
+
 		/// How much of the harm it takes reaches its health, for its status effects (Stoneskin 0.4, Curse of Weakness 1.5); 1 for none.
 		float GetDamageTakenMultiplier() const { return m_EffectDamageTaken; }
 
@@ -1505,6 +1510,10 @@ namespace RTE {
 
 		/// Updates this MovableObject. Supposed to be done every frame.
 		void Update() override;
+
+		/// Has its scripts, and those of everything it carries, write what they keep to the number and string values a saved game keeps
+		/// (their OnSave): not only its attachables', as MOSRotating's, but what is in its inventory too, a craft's passengers among them.
+		void OnSave() override;
 
 		/// Updates what still goes on for a unit sat out of the scene in a vehicle's open seat, where it can be shot: its wounds bleed, and
 		/// the damage to it and its limbs comes off its health.

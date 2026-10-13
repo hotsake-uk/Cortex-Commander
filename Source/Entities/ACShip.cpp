@@ -1309,6 +1309,15 @@ void ACShip::PreControllerUpdate() {
 	m_Controller.SetAnalogMove(analogMove);
 }
 
+void ACShip::OnSave() {
+	for (int seat = 0; seat < GetSeatCount(); ++seat) {
+		if (Actor* crew = GetSeatOccupant(seat)) {
+			crew->OnSave();
+		}
+	}
+	Actor::OnSave();
+}
+
 void ACShip::Update() {
 	ZoneScoped;
 
