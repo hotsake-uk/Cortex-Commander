@@ -17,6 +17,7 @@
 #include "PostProcessMan.h"
 #include "MetaMan.h"
 #include "ThreadMan.h"
+#include "TimerMan.h"
 
 #include "GAScripted.h"
 #include "SLTerrain.h"
@@ -39,6 +40,9 @@
 #endif
 
 #include "tracy/Tracy.hpp"
+
+#include <cmath>
+#include <iomanip>
 
 #include "SDL3/SDL_surface.h"
 #include <SDL3_image/SDL_image.h>
@@ -156,6 +160,9 @@ bool ActivityMan::SaveCurrentGame(const std::string& fileName) {
 	}
 
 	std::unique_ptr<std::stringstream> iniStream = std::make_unique<std::stringstream>();
+	// Numbers in full, as the INI files are written (Writer::Create for a file): a string stream's default is six significant digits, which
+	// wrote a unit ID of 1234567 as 1.23457e+06, so long games' orders came back pointing at no unit, or the wrong one.
+	*iniStream << std::fixed << std::setprecision(6);
 
 	// Block the main thread for a bit to let the Writer access the relevant data.
 	std::unique_ptr<Writer> writer(std::make_unique<Writer>(std::move(iniStream)));
@@ -185,6 +192,8 @@ bool ActivityMan::SaveCurrentGame(const std::string& fileName) {
 		writer->NewPropertyWithValue("ColonyState", colony);
 	}
 	writer->NewPropertyWithValue("HoldZones", TerrainCollapse::GetHoldZonesSaveState());
+	// The sim time saved at, so the times units keep in number values (ClubbedAt, AIContactMS...) can be moved onto the loaded game's clock.
+	writer->NewPropertyWithValue("SavedSimTimeMS", static_cast<double>(g_TimerMan.GetSimTimeMS()));
 
 	// Save a small little file with index info (activity and original scene name) so we can display info in the samegame menu without needing to decompress and read through the entire zip
 	std::unique_ptr<std::stringstream> indexStream = std::make_unique<std::stringstream>();
@@ -292,44 +301,65 @@ bool ActivityMan::SaveCurrentGame(const std::string& fileName) {
 std::string ActivityMan::s_PinsOfLoadedGame;
 bool ActivityMan::s_StartingSavedGame = false;
 std::string ActivityMan::s_ColonyOfLoadedGame;
+double ActivityMan::s_SimTimeOfLoadedGame = -1.0;
 
 namespace {
 	/// The number values on a unit that hold another unit's unique ID: an AI's target, the one its medic tends, a creature's prey, a squad's
 	/// target, a summoner.
 	constexpr std::array<const char*, 5> c_UniqueIDValueKeys = {"AITargetID", "AIMedicFor", "CreatureHuntID", "SandboxSquadTarget", "MedievalSummonerUID"};
 
+	/// The number values on a unit that hold a sim time (TimerMan::GetSimTimeMS): when it was clubbed, last saw an enemy, got out of a craft.
+	/// The loaded game runs on another clock, so they are moved by the difference, or dropped if the save didn't say when it was made.
+	constexpr std::array<const char*, 3> c_SimTimeValueKeys = {"ClubbedAt", "AIContactMS", "AILeftCarrierMS"};
+
+	/// The number values on a unit that only mean something while what set them is still at work, and that isn't kept in a saved game: the
+	/// fire burning it (ActorFire), the flag it carries or the rush it is on (the battle modes), a Levitate or Frost Shard spell on it. Kept, a
+	/// unit loaded on fire would never be put out (its AI half off, friends trying to douse it), a flag carrier or rusher would ignore cover
+	/// for good, and Levitate would never work on it again.
+	constexpr std::array<const char*, 5> c_StaleValueKeys = {"OnFire", "SandboxObjective", "SandboxRush", "MedievalLevitating", "MedievalChillUntil"};
+
+	/// A loaded unit and every unit out of the scene with it: whoever sits in its seats (a vehicle's, a ship's) and whoever rides in it as
+	/// cargo (a craft's inventory), and theirs in turn.
+	void GatherLoadedUnits(Actor* unit, std::vector<Actor*>& units) {
+		units.push_back(unit);
+		if (const AVehicle* vehicle = dynamic_cast<const AVehicle*>(unit)) {
+			for (int seat = 0; seat < vehicle->GetSeatCount(); ++seat) {
+				if (Actor* crew = vehicle->GetSeatOccupant(seat)) {
+					GatherLoadedUnits(crew, units);
+				}
+			}
+		} else if (const ACShip* ship = dynamic_cast<const ACShip*>(unit)) {
+			for (int seat = 0; seat < ship->GetSeatCount(); ++seat) {
+				if (Actor* crew = ship->GetSeatOccupant(seat)) {
+					GatherLoadedUnits(crew, units);
+				}
+			}
+		}
+		for (MovableObject* item: *unit->GetInventory()) {
+			if (Actor* cargo = dynamic_cast<Actor*>(item)) {
+				GatherLoadedUnits(cargo, units);
+			}
+		}
+	}
+
 	/// A saved game's units get new unique IDs when it is loaded. Each was saved with its old one (c_SavedUniqueIDKey, Scene::SaveSceneObject):
 	/// what pointed at a unit by its old ID (an attack order's target, an AI's) is pointed at its new one, or let go of if it wasn't saved.
-	/// Without this an old ID could match a different unit in the new game, as the IDs count from 1 again.
-	void RemapLoadedUniqueIDs() {
+	/// Without this an old ID could match a different unit in the new game, as the IDs count from 1 again. And the units' number values that
+	/// were only good in the game saved are fixed up: times moved onto this game's clock, tags of what wasn't saved taken off.
+	/// @param savedSimTimeMS The sim time the game was saved at, or below 0 if the save doesn't say.
+	void RemapLoadedUniqueIDs(double savedSimTimeMS) {
 		std::list<SceneObject*> placed;
 		g_MovableMan.GetAllActors(false, placed);
 		std::vector<Actor*> units;
 		for (SceneObject* object: placed) {
-			Actor* unit = dynamic_cast<Actor*>(object);
-			if (!unit) {
-				continue;
-			}
-			units.push_back(unit);
-			// (And whoever sits in a vehicle or a ship, out of the scene.)
-			if (const AVehicle* vehicle = dynamic_cast<const AVehicle*>(unit)) {
-				for (int seat = 0; seat < vehicle->GetSeatCount(); ++seat) {
-					if (Actor* crew = vehicle->GetSeatOccupant(seat)) {
-						units.push_back(crew);
-					}
-				}
-			} else if (const ACShip* ship = dynamic_cast<const ACShip*>(unit)) {
-				for (int seat = 0; seat < ship->GetSeatCount(); ++seat) {
-					if (Actor* crew = ship->GetSeatOccupant(seat)) {
-						units.push_back(crew);
-					}
-				}
+			if (Actor* unit = dynamic_cast<Actor*>(object)) {
+				GatherLoadedUnits(unit, units);
 			}
 		}
 		std::unordered_map<long, long> newIDs;
 		for (Actor* unit: units) {
 			if (unit->NumberValueExists(c_SavedUniqueIDKey)) {
-				newIDs[static_cast<long>(unit->GetNumberValue(c_SavedUniqueIDKey))] = unit->GetUniqueID();
+				newIDs[std::lround(unit->GetNumberValue(c_SavedUniqueIDKey))] = unit->GetUniqueID();
 				unit->RemoveNumberValue(c_SavedUniqueIDKey);
 			}
 		}
@@ -337,17 +367,32 @@ namespace {
 			auto found = newIDs.find(oldID);
 			return found != newIDs.end() ? found->second : 0L;
 		};
+		const double clockShift = static_cast<double>(g_TimerMan.GetSimTimeMS()) - savedSimTimeMS;
 		for (Actor* unit: units) {
 			Actor::StandingOrder& order = unit->GetStandingOrder();
 			order.TargetID = order.TargetID != 0 ? remapped(order.TargetID) : 0;
 			order.AutoTargetID = order.AutoTargetID != 0 ? remapped(order.AutoTargetID) : 0;
 			for (const char* key: c_UniqueIDValueKeys) {
 				if (unit->NumberValueExists(key)) {
-					if (long newID = remapped(static_cast<long>(unit->GetNumberValue(key))); newID != 0) {
+					if (long newID = remapped(std::lround(unit->GetNumberValue(key))); newID != 0) {
 						unit->SetNumberValue(key, static_cast<double>(newID));
 					} else {
 						unit->RemoveNumberValue(key);
 					}
+				}
+			}
+			for (const char* key: c_SimTimeValueKeys) {
+				if (unit->NumberValueExists(key)) {
+					if (savedSimTimeMS >= 0.0) {
+						unit->SetNumberValue(key, unit->GetNumberValue(key) + clockShift);
+					} else {
+						unit->RemoveNumberValue(key);
+					}
+				}
+			}
+			for (const char* key: c_StaleValueKeys) {
+				if (unit->NumberValueExists(key)) {
+					unit->RemoveNumberValue(key);
 				}
 			}
 		}
@@ -455,6 +500,7 @@ bool ActivityMan::LoadAndLaunchGame(const std::string& fileName) {
 	bool placeUnitsIfSceneIsRestarted = true;
 	// (A save from before hold zones had none: the loaded game starts with none, not those of the game played before.)
 	TerrainCollapse::SetHoldZonesLoadState(std::string());
+	s_SimTimeOfLoadedGame = -1.0;
 	while (reader.NextProperty()) {
 		std::string propName = reader.ReadPropName();
 		if (propName == "Activity") {
@@ -481,6 +527,8 @@ bool ActivityMan::LoadAndLaunchGame(const std::string& fileName) {
 			TerrainCollapse::SetHoldZonesLoadState(reader.ReadPropValue());
 		} else if (propName == "SandboxPins") {
 			s_PinsOfLoadedGame = reader.ReadPropValue();
+		} else if (propName == "SavedSimTimeMS") {
+			reader >> s_SimTimeOfLoadedGame;
 		}
 	}
 
@@ -608,7 +656,7 @@ int ActivityMan::StartActivity(Activity* activity) {
 	int error = m_Activity->Start();
 	// (A saved game's units are in the scene now, with new IDs.)
 	if (error >= 0 && s_StartingSavedGame) {
-		RemapLoadedUniqueIDs();
+		RemapLoadedUniqueIDs(s_SimTimeOfLoadedGame);
 		Colony::LoadSaveState(s_ColonyOfLoadedGame);
 	}
 	s_ColonyOfLoadedGame.clear();
