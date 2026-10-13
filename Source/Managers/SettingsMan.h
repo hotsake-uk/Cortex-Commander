@@ -146,6 +146,12 @@ namespace RTE {
 		/// @param disable Whether faction BuyMenu theme support is disabled or not.
 		void SetFactionBuyMenuThemesDisabled(bool disable) { m_DisableFactionBuyMenuThemes = disable; }
 
+		/// Gets whether the Kingdom (Medieval.rte) and Fell Legion (FellLegion.rte) units are switched off: the two stop being factions and their units can't be bought.
+		bool MedievalUnitsDisabled() const { return m_DisableMedievalUnits; }
+
+		/// Sets whether the Kingdom and Fell Legion units are switched off. Takes effect from the next activity.
+		void SetMedievalUnitsDisabled(bool disable) { m_DisableMedievalUnits = disable; }
+
 		/// Gets whether custom cursor support in faction BuyMenu themes is disabled.
 		/// @return Whether faction BuyMenu theme support is disabled.
 		bool FactionBuyMenuThemeCursorsDisabled() const { return m_DisableFactionBuyMenuThemeCursors; }
@@ -1539,6 +1545,7 @@ namespace RTE {
 		int m_RecommendedMOIDCount; //!< Recommended max MOID's before removing actors from scenes.
 		int m_SceneBackgroundAutoScaleMode; //!< Scene background layer auto-scaling mode. 0 for off, 1 for fit screen dimensions and 2 for always upscaled to x2.
 		bool m_DisableFactionBuyMenuThemes; //!< Whether faction BuyMenu theme support is disabled.
+		bool m_DisableMedievalUnits; //!< Whether the Kingdom and Fell Legion units are switched off (mod manager).
 		bool m_DisableFactionBuyMenuThemeCursors; //!< Whether custom cursor support in faction BuyMenu themes is disabled.
 		int m_PathFinderGridNodeSize; //!< The grid size used by the PathFinder, in pixels.
 		int m_AIUpdateInterval; //!< How often actor's AI should be updated, i.e. every n simulation updates.

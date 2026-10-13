@@ -5,6 +5,7 @@
 #include "LuaMan.h"
 #include "GameVersion.h"
 #include "System.h"
+#include "SettingsMan.h"
 
 #include <System/Semver200/semver200.h>
 
@@ -513,4 +514,8 @@ void DataModule::CheckSupportedGameVersion() const {
 	if (modulePrereleaseVersionMismatch || moduleBuildVersionMismatch || m_SupportedGameVersion->major() < 6 || *m_SupportedGameVersion > c_GameVersion) {
 		g_ConsoleMan.AddLoadWarningLogEntry(m_FileName + " was made for Cortex Command " + m_SupportedGameVersion->str() + " (this is " + c_GameVersion.str() + "). Loaded anyway; it may not work fully.");
 	}
+}
+
+bool DataModule::IsSwitchedOffMedievalFaction() const {
+	return g_SettingsMan.MedievalUnitsDisabled() && (m_FileName == "Medieval.rte" || m_FileName == "FellLegion.rte");
 }

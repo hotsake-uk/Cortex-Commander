@@ -3,6 +3,7 @@
 #include "PostProcessMan.h"
 
 #include "PresetMan.h"
+#include "SettingsMan.h"
 #include "UInputMan.h"
 #include "FrameMan.h"
 #include "SceneMan.h"
@@ -75,6 +76,7 @@ ScenarioActivityConfigGUI::ScenarioActivityConfigGUI(GUIControlManager* parentCo
 
 void ScenarioActivityConfigGUI::PopulateTechComboBoxes() {
 	for (int team = Activity::Teams::TeamOne; team < Activity::Teams::MaxTeamCount; ++team) {
+		m_TeamTechComboBoxes[team]->GetListPanel()->ClearList();
 		m_TeamTechComboBoxes[team]->GetListPanel()->AddItem("-All-", "", nullptr, nullptr, -2);
 		m_TeamTechComboBoxes[team]->GetListPanel()->AddItem("-Random-", "", nullptr, nullptr, -1);
 		m_TeamTechComboBoxes[team]->SetSelectedIndex(0);
@@ -91,6 +93,7 @@ void ScenarioActivityConfigGUI::PopulateTechComboBoxes() {
 	for (int team = Activity::Teams::TeamOne; team < Activity::Teams::MaxTeamCount; ++team) {
 		m_TeamTechComboBoxes[team]->GetListPanel()->ScrollToTop();
 	}
+	m_TechListMedievalUnitsDisabled = g_SettingsMan.MedievalUnitsDisabled();
 	m_TechListFetched = true;
 }
 
@@ -117,7 +120,7 @@ void ScenarioActivityConfigGUI::SetEnabled(bool enable, const Activity* selected
 		m_TeamTechComboBoxes[team]->SetVisible(enable);
 	}
 	if (enable && m_SelectedActivity && m_SelectedScene) {
-		if (!m_TechListFetched) {
+		if (!m_TechListFetched || m_TechListMedievalUnitsDisabled != g_SettingsMan.MedievalUnitsDisabled()) {
 			PopulateTechComboBoxes();
 		}
 
