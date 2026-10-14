@@ -8,7 +8,7 @@ function DummyAssault:StartActivity(isNewGame)
 
 	self.spawnTimer = Timer();
 	self.brainDead = {};
-	self.spawnTime = 30000 * math.exp(self.Difficulty * -0.011); -- Scale spawn time from 30s to 10s. Normal is ~17s
+	self.spawnTime = 30000 * math.exp(self.Difficulty * -0.011) * self:GetScenarioSettingOr("SpawnInterval", 1); -- Scale spawn time from 30s to 10s. Normal is ~17s (times the scenario setting)
 
 	self.CPUTeam = Activity.TEAM_2;
 	self.CPUTech = self:GetTeamTech(Activity.TEAM_2);

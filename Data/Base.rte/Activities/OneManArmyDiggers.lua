@@ -79,6 +79,13 @@ function OneManArmy:StartNewGame()
 		primaryGroup = "Weapons - Secondary";
 		secondaryGroup = "Tools";
 	end
+	-- Scenario settings (from the setup screen; their defaults play as before).
+	local surviveMinutes = self:GetScenarioSetting("TimeLimit");
+	if surviveMinutes >= 0 then
+		self.timeLimit = surviveMinutes * 60000 + 5000;
+		self.timeDisplay = surviveMinutes == 1 and "one minute" or (surviveMinutes .. " minutes");
+	end
+	self.baseSpawnTime = math.max(1, self.baseSpawnTime * self:GetScenarioSettingOr("SpawnInterval", 1));
 	self.enemySpawnTimeLimit = 500;
 	
 	MusicMan:PlayDynamicSong("Generic Battle Music");
@@ -381,7 +388,7 @@ function OneManArmy:UpdateActivity()
 			end
 
 			self.enemySpawnTimer:Reset();
-			self.enemySpawnTimeLimit = (self.baseSpawnTime + math.random(self.baseSpawnTime) * rte.SpawnIntervalScale);
+			self.enemySpawnTimeLimit = (self.baseSpawnTime + math.random(self.baseSpawnTime)) * rte.SpawnIntervalScale;
 		end
 	end
 end

@@ -73,6 +73,15 @@ function Survival:StartNewGame()
 		self.baseSpawnTime = 3500;
 		self.randomSpawnTime = 4000;
 	end
+	-- Scenario settings (from the setup screen; their defaults play as before).
+	local surviveMinutes = self:GetScenarioSetting("TimeLimit");
+	if surviveMinutes >= 0 then
+		self.timeLimit = surviveMinutes * 60000 + 5000;
+		self.timeDisplay = surviveMinutes == 1 and "one minute" or (surviveMinutes .. " minutes");
+	end
+	local spawnIntervalMultiplier = self:GetScenarioSettingOr("SpawnInterval", 1);
+	self.baseSpawnTime = self.baseSpawnTime * spawnIntervalMultiplier;
+	self.randomSpawnTime = math.max(1, self.randomSpawnTime * spawnIntervalMultiplier);
 	self.enemySpawnTimeLimit = (self.baseSpawnTime + math.random(self.randomSpawnTime)) * rte.SpawnIntervalScale;
 	
 	for actor in MovableMan.AddedActors do
@@ -116,7 +125,7 @@ function Survival:ResumeLoadedGame()
 	self.timeLimit = self:LoadNumber("timeLimit");
 	self.timeDisplay = self:LoadString("timeDisplay");
 	self.baseSpawnTime = self:LoadNumber("baseSpawnTime");
-	self.randomSpawnTime = self:LoadNumber("goldNeeded");
+	self.randomSpawnTime = self:LoadNumber("randomSpawnTime");
 	self.enemySpawnTimeLimit = self:LoadNumber("enemySpawnTimeLimit");
 end
 
@@ -344,7 +353,7 @@ function Survival:UpdateActivity()
 			end
 
 			self.enemySpawnTimer:Reset();
-			self.enemySpawnTimeLimit = (self.baseSpawnTime + math.random(self.randomSpawnTime) * rte.SpawnIntervalScale);
+			self.enemySpawnTimeLimit = (self.baseSpawnTime + math.random(self.randomSpawnTime)) * rte.SpawnIntervalScale;
 		end
 	else
 		self.startMessageTimer:Reset();

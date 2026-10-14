@@ -20,6 +20,10 @@ You should make sure the area's boxes fit properly in a hallway - specifically y
 
 function BunkerBreach:SetupAIVariables()
 	self.AI = {};
+	-- Scenario settings (from the setup screen; their defaults play as before).
+	self.AI.spawnIntervalMultiplier = self:GetScenarioSettingOr("SpawnInterval", 1);
+	local enemyFundsMultiplier = self:GetScenarioSettingOr("EnemyFunds", 1);
+	local majorAttackDelayMultiplier = self:GetScenarioSettingOr("MajorAttackDelay", 1);
 	self.AI.isAttackerTeam = self.CPUTeam == self.attackerTeam;
 	self.AI.isDefenderTeam = self.CPUTeam == self.defenderTeam;
 
@@ -29,12 +33,12 @@ function BunkerBreach:SetupAIVariables()
 		self.AI.spawnTimer = Timer();
 		self:CalculateAISpawnDelay(self.AI.isAttackerTeam); -- Make the first attacker spawn show up extra quickly, to minimize dead time at the start of the activity.
 
-		self:SetTeamFunds(4000 + ((8000 * math.floor(self.AI.difficultyRatio * (self.AI.isAttackerTeam and 8 or 4))) / 4), self.CPUTeam);
+		self:SetTeamFunds((4000 + ((8000 * math.floor(self.AI.difficultyRatio * (self.AI.isAttackerTeam and 8 or 4))) / 4)) * enemyFundsMultiplier, self.CPUTeam);
 
 		if self.AI.isAttackerTeam then
 			self.AI.maxCrabCount = 0;
 			self.AI.majorAttackTimer = Timer();
-			self.AI.initialMajorAttackDelay = self.Difficulty >= Activity.MEDIUMDIFFICULTY and (300000 - (self.AI.difficultyRatio * 200000)) or -1;  -- Only do major attacks if we're at or above medium difficulty.
+			self.AI.initialMajorAttackDelay = self.Difficulty >= Activity.MEDIUMDIFFICULTY and (300000 - (self.AI.difficultyRatio * 200000)) * majorAttackDelayMultiplier or -1;  -- Only do major attacks if we're at or above medium difficulty.
 			self.AI.majorAttackTimer:SetSimTimeLimitMS(self.AI.initialMajorAttackDelay * RangeRand(0.9, 1.1));
 			self.AI.isLaunchingMajorAttack = false;
 		else
@@ -492,7 +496,7 @@ function BunkerBreach:CalculateAISpawnDelay(useShorterDelay)
 		spawnDelayMultiplier = spawnDelayMultiplier - 0.25
 	end
 
-	self.AI.spawnTimer:SetSimTimeLimitMS(math.min(150000, math.floor((40000 - (self.AI.difficultyRatio * 20000) + (self.AI.friendlyUnitsToEnemyUnitsValueRatio * (self.AI.isDefenderTeam and 7500 or 10000)) + (self.AI.isAttackerTeam and 10000 or 0)) * rte.SpawnIntervalScale * spawnDelayMultiplier)));
+	self.AI.spawnTimer:SetSimTimeLimitMS(math.min(150000, math.floor((40000 - (self.AI.difficultyRatio * 20000) + (self.AI.friendlyUnitsToEnemyUnitsValueRatio * (self.AI.isDefenderTeam and 7500 or 10000)) + (self.AI.isAttackerTeam and 10000 or 0)) * rte.SpawnIntervalScale * spawnDelayMultiplier * (self.AI.spawnIntervalMultiplier or 1))));
 end
 
 function BunkerBreach:SendDefenderGuardsAtEnemiesInsideBunker()

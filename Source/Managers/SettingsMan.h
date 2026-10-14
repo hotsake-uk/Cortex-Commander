@@ -853,6 +853,19 @@ namespace RTE {
 		/// Sets the remembered scenario faction picks (see ScenarioFactionPicks).
 		void SetScenarioFactionPicks(const std::string& picks) { m_ScenarioFactionPicks = picks; }
 
+		/// The values last set on each scenario's "Scenario settings" panel, so they are there again next time:
+		/// "Maginot Defence|AttackersPerCraft=3|SpawnInterval=0.5;Wave Defense|WaveSize=2". Settings left at their defaults aren't kept.
+		const std::string& ScenarioSettingValues() const { return m_ScenarioSettingValues; }
+
+		/// Sets the remembered scenario setting values (see ScenarioSettingValues).
+		void SetScenarioSettingValues(const std::string& values) { m_ScenarioSettingValues = values; }
+
+		/// Whether the AI may use the flying ships (Gunship, Frigate) as delivery craft in scenarios. Off by default: it can't fly them well yet.
+		bool ScenarioFlyingCraft() const { return m_ScenarioFlyingCraft; }
+
+		/// Sets whether the AI may use the flying ships in scenarios (see ScenarioFlyingCraft).
+		void SetScenarioFlyingCraft(bool allowed) { m_ScenarioFlyingCraft = allowed; }
+
 		/// Which units in the sandbox show their order as a mark over them (RC-7): 0 none, 1 the selected ones, 2 all.
 		int SandboxOrderGlyphs() const { return m_SandboxOrderGlyphs; }
 
@@ -1444,6 +1457,8 @@ namespace RTE {
 		bool m_SandboxGroupBadges; //!< Whether control-group units show their group's number (see ShowSandboxGroupBadges).
 		std::string m_CommanderBarKey; //!< The key that swaps the sandbox's bar and the Commander Toolbar (see CommanderBarKey).
 		std::string m_ScenarioFactionPicks; //!< The factions last picked for each team in the scenario setup (see ScenarioFactionPicks).
+		std::string m_ScenarioSettingValues; //!< The values last set on each scenario's settings panel (see ScenarioSettingValues).
+		bool m_ScenarioFlyingCraft; //!< Whether the AI may use the flying ships in scenarios (see ScenarioFlyingCraft).
 		int m_SandboxOrderGlyphs; //!< Which units show their order as a mark (see SandboxOrderGlyphs).
 		int m_SandboxSpawnStats; //!< How the Spawn tab shows units' and items' stats (see SandboxSpawnStats).
 		int m_SandboxSpawnSort; //!< How the sandbox's picture lists are sorted (see SandboxSpawnSort).
