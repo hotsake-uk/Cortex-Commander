@@ -461,7 +461,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	                        luabind::value("ORDER_GUARD", Actor::OrderKind::ORDER_GUARD),
 	                        luabind::value("ORDER_DEFEND", Actor::OrderKind::ORDER_DEFEND),
 	                        luabind::value("ORDER_PATROL", Actor::OrderKind::ORDER_PATROL),
-	                        luabind::value("ORDER_DIGTO", Actor::OrderKind::ORDER_DIGTO)]
+	                        luabind::value("ORDER_DIGTO", Actor::OrderKind::ORDER_DIGTO),
+	                        luabind::value("ORDER_SENTRY", Actor::OrderKind::ORDER_SENTRY)]
 	    .enum_("OrderFailReason")[luabind::value("ORDERFAIL_NONE", Actor::OrderFailReason::ORDERFAIL_NONE),
 	                              luabind::value("ORDERFAIL_NOROUTE", Actor::OrderFailReason::ORDERFAIL_NOROUTE),
 	                              luabind::value("ORDERFAIL_NODIGGER", Actor::OrderFailReason::ORDERFAIL_NODIGGER),

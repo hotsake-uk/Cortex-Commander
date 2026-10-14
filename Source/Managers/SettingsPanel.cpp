@@ -576,8 +576,8 @@ void DebugMan::SettingsGUI() {
 			if (Combo("Precipitation", &settings.WeatherType, weatherItems.c_str())) {
 				// A pick made here wins over a saved custom weather still waiting for its preset to load.
 				settings.WeatherName.clear();
-				// And it's the player's own from now on, kept from map to map.
-				g_PostProcessMan.AdoptWeatherAsPlayers();
+				// And it's the player's own from now on, kept from map to map (the precipitation only: the intensity showing may be the map's).
+				g_PostProcessMan.AdoptWeatherAsPlayers(true, false);
 			}
 		}
 		if (bool overrideMap = settings.OverrideMapWeather; Check("Override the map's weather", &overrideMap)) {
@@ -585,7 +585,8 @@ void DebugMan::SettingsGUI() {
 		}
 		Tip("Every map has the precipitation and intensity set here, over the weather the map sets for itself. The map's wind stays its own. A game's weather picked on the scenario start screen, and a saved game's weather, still win. Off: a map with its own weather has it.");
 		if (Slider("Weather intensity", &settings.WeatherIntensity, 0.0F, 1.0F)) {
-			g_PostProcessMan.AdoptWeatherAsPlayers();
+			// The intensity only: the precipitation showing may be the map's own.
+			g_PostProcessMan.AdoptWeatherAsPlayers(false, true);
 		}
 		Slider("Weather speed", &settings.WeatherSpeed, 0.1F, 3.0F, "%.2fx");
 		Tip("How fast the rain, snow, ash and dust move: their fall, how the wind carries them, and their sway, swirl and flicker. They keep their angle, so shelter and splashes still line up. 1: as the weather has it.");
@@ -1422,10 +1423,6 @@ void DebugMan::SettingsGUI() {
 				Slider("Sky speed", &retro.GridSpeed, 0.0F, 3.0F);
 				Tip("How fast Synthwave's grid races to the horizon, or Hackerman's code falls.");
 			}
-			Slider("ASCII background", &retro.ASCIIBackground, 0.0F, 1.0F);
-			Tip("The distant background (the hills behind the battlefield) redrawn as text characters picked by brightness, so the battlefield stays as it is.");
-			Slider("ASCII everywhere", &retro.ASCII, 0.0F, 1.0F);
-			Tip("The whole battlefield redrawn as text characters picked by brightness. Hard to play in at full strength.");
 			Slider("Afterglow", &retro.Afterglow, 0.0F, 1.0F);
 			Tip("Bright moving things (shots, blasts, lamps on the move) leave a short fading trail, like an old monochrome monitor's phosphor.");
 			Slider("Terminal readout", &retro.TerminalOverlay, 0.0F, 1.0F);
@@ -1556,7 +1553,7 @@ void DebugMan::SettingsGUI() {
 		}
 		Tip("How much damage bullets, shrapnel and other weapon fire do to the units, vehicles and craft they hit, as a multiple of normal: the wounds they leave hurt and bleed that much more or less. Falls, fire, drowning and crushing are unchanged (the Unit toughness sliders scale everything). 1x is normal.");
 		Toggle("Weapon damage scales blowing apart", g_SettingsMan.WeaponUnitDamageGibs(), Normal{false}, [](bool gibs) { g_SettingsMan.SetWeaponUnitDamageGibs(gibs); });
-		Tip("Off, Weapon damage to units changes only health: a heavy volley still blows units apart or takes limbs off as before. On, it also changes how many wounds and how hard a blow it takes to do that: at 0.5x twice as many, at 2x half. Blows from anything count, not just weapons, though nearly all of them are.");
+		Tip("Off, Weapon damage to units changes only health: a heavy volley still blows units apart or takes limbs off as before. On, it also changes how many wounds it takes to blow them apart: at 0.5x twice as many, at 2x half. How hard a blow it takes is left as it is, so falls, landings and crashes break nothing more than usual.");
 		if (Plain() && ToolUI::Button("Normal unit damage")) {
 			g_SettingsMan.SetWeaponUnitDamage(1.0F);
 			g_SettingsMan.SetWeaponUnitDamageGibs(false);
@@ -1603,6 +1600,78 @@ void DebugMan::SettingsGUI() {
 				g_SettingsMan.SetCreatureFlySpeed(flySpeed);
 			}
 			Tip("How fast flying creatures fly, as a multiple of each one's own pace (a carrion bat about 8 m/s, a wyvern about 6). 1x is normal.");
+		}
+	};
+
+	// ASCII mode: the picture redrawn as text characters, with its own settings whatever screen style is on.
+	auto asciiMode = [&]() {
+		LightingSettings::AsciiModeSettings& ascii = settings.Ascii;
+		if (Plain()) {
+			ImGui::TextUnformatted("Presets:");
+			const std::pair<const char*, int> presets[] = {{"Terminal", LightingSettings::AsciiPresetTerminal},
+			                                               {"Matrix", LightingSettings::AsciiPresetMatrix},
+			                                               {"Colour ASCII", LightingSettings::AsciiPresetColour},
+			                                               {"Typewriter", LightingSettings::AsciiPresetTypewriter},
+			                                               {"Classic", LightingSettings::AsciiPresetClassic}};
+			for (const auto& [name, preset]: presets) {
+				ImGui::SameLine();
+				if (ToolUI::Button(name)) {
+					ascii = LightingSettings::AsciiPreset(preset, ascii);
+					// A preset picked with ASCII mode off turns it on, so it shows.
+					if (ascii.Everywhere <= 0.0F && ascii.Background <= 0.0F) {
+						ascii.Everywhere = 1.0F;
+					}
+				}
+				ImGui::SetItemTooltip("%s", preset == LightingSettings::AsciiPresetTerminal     ? "Green phosphor text with clean line characters along outlines."
+				    : preset == LightingSettings::AsciiPresetMatrix     ? "Glowing green, with the bright parts flickering through changing characters."
+				    : preset == LightingSettings::AsciiPresetColour     ? "Every character in the colour of what it stands for, on a tinted cell, like a colour terminal."
+				    : preset == LightingSettings::AsciiPresetTypewriter ? "Black typewriter ink on paper: the darker it is, the denser the characters."
+				                                                        : "The first ASCII filter: shading only, in the style's colours, fixed to the screen.");
+			}
+		}
+		Heading("How much");
+		Slider("ASCII everywhere", &ascii.Everywhere, 0.0F, 1.0F);
+		Tip("The whole battlefield redrawn as text characters. Hard to play in at full strength.");
+		Slider("ASCII background", &ascii.Background, 0.0F, 1.0F);
+		Tip("The distant background (the hills behind the battlefield) redrawn as text characters, so the battlefield stays as it is. A sky a screen style replaced keeps its own look.");
+		Heading("Characters");
+		SliderI("Character size", &ascii.Size, 1, 4, "%dx");
+		ascii.Size = std::clamp(ascii.Size, 1, 4);
+		Tip("How big the characters are: 1x is 6 by 9 game pixels a character, up to 4x.");
+		Slider("Outline characters", &ascii.EdgeGlyphs, 0.0F, 1.0F);
+		Tip("Outlines of terrain, units and hills drawn in line characters (| - / \\) running along them, so shapes read and not only shading. More: fainter outlines get them too. 0: shading only.");
+		Slider("Contrast", &ascii.Contrast, 0.5F, 2.0F);
+		Tip("How far the shading is spread between sparse characters (. - :) and dense ones (8 B # @).");
+		Slider("Exposure", &ascii.Exposure, 0.25F, 3.0F);
+		Tip("How bright the picture is read as before the characters are picked. More: denser characters all round.");
+		Check("Lock to the world", &ascii.WorldLocked);
+		Tip("The characters' grid moves with the battlefield, so panning doesn't make the text crawl. Off: the grid is fixed to the screen like a real terminal, and the picture slides under it.");
+		Heading("Colour");
+		Combo("Colours", &ascii.Colours, "Screen style's\0Scene's own\0Green phosphor\0Amber phosphor\0White phosphor\0Ink on paper\0");
+		ascii.Colours = std::clamp(ascii.Colours, 0, static_cast<int>(LightingSettings::AsciiColourCount) - 1);
+		Tip("Screen style's: Synthwave's pink to cyan (also with no style), Hackerman's green, Comic's ink on paper. Scene's own: each character in the colour of what it stands for. A phosphor colour, like an old monitor. Ink on paper: black typewriter characters, denser where it's darker.");
+		Slider("Cell background", &ascii.CellFill, 0.0F, 1.0F);
+		Tip("A faint tint behind each character in its own colour, so the picture shows between them. On paper, the paper shaded darker where the picture is dark.");
+		Slider("Character glow", &ascii.Glow, 0.0F, 1.0F);
+		Tip("Bright characters drawn brighter, so shots, blasts and lamps bloom. No effect on paper.");
+		Slider("Character churn", &ascii.Churn, 0.0F, 1.0F);
+		Tip("Bright parts flicker through changing characters, each at its own pace, like a terminal gone wild. Outlines stay put.");
+		if (settings.ScreenStyleOn()) {
+			LightingSettings::RetroLayers& retro = settings.EditedRetro();
+			Heading("The screen style's own ASCII");
+			if (Plain()) {
+				ImGui::TextDisabled("These come with the screen style (Hackerman's ASCII hills) and add to the amounts above.");
+			}
+			Slider("Style's ASCII background", &retro.ASCIIBackground, 0.0F, 1.0F);
+			Tip("This screen style's own ASCII background, kept with the style. Drawn the way this page sets.");
+			Slider("Style's ASCII everywhere", &retro.ASCII, 0.0F, 1.0F);
+			Tip("This screen style's own ASCII everywhere, kept with the style. Drawn the way this page sets.");
+		} else if (settings.Retro.ASCII > 0.0F || settings.Retro.ASCIIBackground > 0.0F) {
+			Heading("From before ASCII mode");
+			Slider("Earlier ASCII background", &settings.Retro.ASCIIBackground, 0.0F, 1.0F);
+			Tip("The ASCII background you set before ASCII mode had its own page. It adds to the amounts above; set it to 0 to use only those.");
+			Slider("Earlier ASCII everywhere", &settings.Retro.ASCII, 0.0F, 1.0F);
+			Tip("The ASCII everywhere you set before ASCII mode had its own page. It adds to the amounts above; set it to 0 to use only those.");
 		}
 	};
 
@@ -2736,6 +2805,7 @@ void DebugMan::SettingsGUI() {
 	    {Group::Visual, "Fire, smoke & blast", fireAndSmoke},
 	    {Group::Visual, "Effect layers", effectLayers},
 	    {Group::Visual, "Camera & image", cameraAndImage},
+	    {Group::Visual, "ASCII mode", asciiMode},
 	    {Group::Visual, "HUD & interface", hudAndInterface},
 	    {Group::Visual, "Performance", performance},
 	    {Group::Visual, "Render debug", renderDebug},

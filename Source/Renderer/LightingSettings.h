@@ -422,6 +422,88 @@ namespace RTE {
 			}
 			return layers;
 		}
+		/// What colours ASCII mode draws its characters in.
+		enum AsciiColours {
+			AsciiStyleColours, //!< The screen style's look: Synthwave's pink to cyan, Hackerman's phosphor green, Comic's black ink on paper.
+			AsciiSceneColours, //!< Each character in the colour of what it stands for, like a colour terminal.
+			AsciiGreen, //!< A green phosphor monitor.
+			AsciiAmber, //!< An amber phosphor monitor.
+			AsciiWhite, //!< A white phosphor monitor.
+			AsciiPaper, //!< Black typewriter ink on paper: the darker it is, the denser the characters.
+			AsciiColourCount
+		};
+		/// Ready-made ASCII mode looks. They set how it's drawn, not how much of the picture it covers.
+		enum AsciiPresets {
+			AsciiPresetTerminal, //!< Green phosphor text with clean outlines.
+			AsciiPresetMatrix, //!< Glowing green with the bright parts flickering through characters.
+			AsciiPresetColour, //!< The scene's own colours, on a tinted cell for each character.
+			AsciiPresetTypewriter, //!< Black ink on paper.
+			AsciiPresetClassic, //!< The first ASCII filter: shading only, fixed to the screen.
+			AsciiPresetCount
+		};
+		/// ASCII mode: the picture redrawn as text characters, on a settings page of its own and the same whatever screen style is on. A screen style's
+		/// own ASCII layers (RetroLayers::ASCII and ASCIIBackground) add to it and are drawn the same way.
+		struct AsciiModeSettings {
+			float Everywhere = 0.0F; //!< How fully the whole battlefield is redrawn as characters, 0 to 1.
+			float Background = 0.0F; //!< How fully the distant background (not a sky a screen style replaced) is, 0 to 1.
+			int Size = 1; //!< How big the characters are: 1 is 6 by 9 game pixels a character, up to 4.
+			float EdgeGlyphs = 0.6F; //!< How readily outlines are drawn in line characters (| - / \) along their direction, 0 (shading only) to 1.
+			float Contrast = 1.1F; //!< How far the shading is spread between sparse and dense characters, 0.5 to 2.
+			float Exposure = 1.0F; //!< How bright the picture is read as before picking characters, 0.25 to 3.
+			int Colours = AsciiStyleColours; //!< AsciiColours.
+			float CellFill = 0.2F; //!< A faint tint behind each character in its own colour (on paper, shading of the paper), 0 to 1.
+			float Glow = 0.3F; //!< Bright characters drawn brighter, so they bloom, 0 to 1.
+			float Churn = 0.0F; //!< Bright parts flicker through changing characters, 0 to 1.
+			bool WorldLocked = true; //!< The characters' grid moves with the battlefield. Off: fixed to the screen, so the picture slides under it.
+		};
+		/// Gets an ASCII mode preset's look, keeping how much of the picture the given settings cover.
+		static AsciiModeSettings AsciiPreset(int preset, const AsciiModeSettings& current) {
+			AsciiModeSettings ascii;
+			ascii.Everywhere = current.Everywhere;
+			ascii.Background = current.Background;
+			switch (preset) {
+				case AsciiPresetTerminal:
+					ascii.Colours = AsciiGreen;
+					ascii.EdgeGlyphs = 0.6F;
+					ascii.CellFill = 0.15F;
+					ascii.Glow = 0.4F;
+					break;
+				case AsciiPresetMatrix:
+					ascii.Colours = AsciiGreen;
+					ascii.EdgeGlyphs = 0.4F;
+					ascii.Contrast = 1.3F;
+					ascii.CellFill = 0.1F;
+					ascii.Glow = 0.75F;
+					ascii.Churn = 0.6F;
+					break;
+				case AsciiPresetColour:
+					ascii.Colours = AsciiSceneColours;
+					ascii.EdgeGlyphs = 0.7F;
+					ascii.CellFill = 0.35F;
+					ascii.Glow = 0.3F;
+					break;
+				case AsciiPresetTypewriter:
+					ascii.Colours = AsciiPaper;
+					ascii.EdgeGlyphs = 0.8F;
+					ascii.Contrast = 1.2F;
+					ascii.CellFill = 0.3F;
+					ascii.Glow = 0.0F;
+					break;
+				case AsciiPresetClassic:
+					ascii.Colours = AsciiStyleColours;
+					ascii.EdgeGlyphs = 0.0F;
+					ascii.Contrast = 1.0F;
+					ascii.CellFill = 0.17F;
+					ascii.Glow = 0.0F;
+					ascii.WorldLocked = false;
+					break;
+				default:
+					break;
+			}
+			return ascii;
+		}
+		AsciiModeSettings Ascii; //!< ASCII mode's own settings.
+
 		int ScreenStyle = StyleOff; //!< ScreenStyles: the retro look over everything, or Off for the player's own Retro layers. Ignored while a ScreenVariant is chosen.
 		std::string ScreenVariant; //!< The player's saved variant (a filter preset in Userdata/FilterPresets) chosen as the screen style, empty for none. Its layers are VariantRetro.
 		float ScreenStyleStrength = 1.0F; //!< How strongly the screen style applies, 0 to 1.

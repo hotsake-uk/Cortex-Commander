@@ -145,6 +145,7 @@ void Actor::Clear() {
 
 	m_AIMode = AIMODE_NONE;
 	m_AIOrderSerial = 0;
+	m_ScanCursor = 0;
 	m_StandingOrder = StandingOrder();
 	m_WeaponRule = WEAPONS_AT_WILL;
 	m_Temperament = TEMPERAMENT_FIGHTER;
@@ -1325,8 +1326,14 @@ float Actor::GibToughness() const {
 	if (toughness >= SettingsMan::c_ToughnessInvincible) {
 		return std::numeric_limits<float>::infinity();
 	}
-	// With Weapon damage scales blowing apart on, weapon damage x2 holds together half as long, x0.5 twice as long.
-	return g_SettingsMan.WeaponUnitDamageGibs() ? toughness / g_SettingsMan.WeaponUnitDamage() : toughness;
+	return toughness;
+}
+
+float Actor::WoundGibToughness() const {
+	// With Weapon damage scales blowing apart on, weapon damage x2 holds together for half as many wounds, x0.5 twice as many. (Not blows:
+	// a landing or a fall makes those as much as weapons do, and a craft at 5x broke up on touchdown.)
+	float toughness = GibToughness();
+	return g_SettingsMan.WeaponUnitDamageGibs() && std::isfinite(toughness) ? toughness / g_SettingsMan.WeaponUnitDamage() : toughness;
 }
 
 void Actor::ApplyToughness() {
@@ -2746,34 +2753,54 @@ std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range,
 
 	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
 	const float night = (lighting.Enabled && lighting.NightAffectsAI) ? GetNightAmount() : 0.0F;
-	for (const Candidate& candidate: candidates) {
-		if (budget <= 0) {
-			break;
+	// The looks: the likeliest enemy's body always, then, starting where the last scan stopped, the likeliest's head and each other
+	// enemy's body and head in turn. (Taken in rank order every time, an enemy near the aim but hidden behind a wall spent the whole
+	// budget, body then head, on every scan, and a second enemy in plain view beside it was never looked at.)
+	thread_local std::vector<bool> seenCandidate;
+	seenCandidate.assign(candidates.size(), false);
+	thread_local std::vector<std::pair<size_t, bool>> seenLooks; // Candidate index, and whether it was the head that was seen.
+	seenLooks.clear();
+	thread_local std::vector<Vector> seenHits;
+	seenHits.clear();
+	auto look = [&](size_t index, bool head) {
+		const Candidate& candidate = candidates[index];
+		Vector target = head ? candidate.actor->GetEyePos() : candidate.actor->GetPos();
+		if (seenCandidate[index] || (head && target == candidate.actor->GetPos())) {
+			return;
 		}
-		// The body, then the head when the body is hidden (over a wall, behind a crate).
-		bool seen = false;
-		bool head = false;
-		Vector hitPos;
-		for (int look = 0; look < 2 && budget > 0 && !seen; ++look) {
-			Vector target = look == 0 ? candidate.actor->GetPos() : candidate.actor->GetEyePos();
-			if (look == 1 && target == candidate.actor->GetPos()) {
-				break;
+		--budget;
+		Vector ray = g_SceneMan.ShortestDistance(eyes, target, wraps);
+		// (A little past the point, so a ray to a thin body's middle still lands on it.)
+		ray.SetMagnitude(ray.GetMagnitude() + 4.0F);
+		MOID hit = g_SceneMan.CastMORay(eyes, ray, m_MOID, IgnoresWhichTeam(), g_MaterialGrass, false, 5);
+		const MovableObject* hitMO = g_MovableMan.GetMOFromID(hit);
+		if (hitMO && hitMO->GetRootParent() == candidate.actor && !SmokeGrid::BlocksSight(eyes, target)) {
+			seenCandidate[index] = true;
+			seenLooks.emplace_back(index, head);
+			seenHits.push_back(g_SceneMan.GetLastRayHitPos());
+		}
+	};
+	if (!candidates.empty()) {
+		look(0, false);
+		// The rest of the looks, as a ring: 0 the likeliest's head, then 2i - 1 and 2i for candidate i's body and head.
+		const size_t ringSize = candidates.size() * 2 - 1;
+		const size_t first = m_ScanCursor % ringSize;
+		size_t taken = 0;
+		while (budget > 0 && taken < ringSize) {
+			size_t slot = (first + taken) % ringSize;
+			++taken;
+			if (slot == 0) {
+				look(0, true);
+			} else {
+				look((slot + 1) / 2, slot % 2 == 0);
 			}
-			--budget;
-			Vector ray = g_SceneMan.ShortestDistance(eyes, target, g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
-			// (A little past the point, so a ray to a thin body's middle still lands on it.)
-			ray.SetMagnitude(ray.GetMagnitude() + 4.0F);
-			MOID hit = g_SceneMan.CastMORay(eyes, ray, m_MOID, IgnoresWhichTeam(), g_MaterialGrass, false, 5);
-			const MovableObject* hitMO = g_MovableMan.GetMOFromID(hit);
-			if (hitMO && hitMO->GetRootParent() == candidate.actor && !SmokeGrid::BlocksSight(eyes, target)) {
-				seen = true;
-				head = look == 1;
-				hitPos = g_SceneMan.GetLastRayHitPos();
-			}
 		}
-		if (!seen) {
-			continue;
-		}
+		m_ScanCursor = static_cast<unsigned int>((first + taken) % ringSize);
+	}
+	for (size_t i = 0; i < seenLooks.size(); ++i) {
+		const Candidate& candidate = candidates[seenLooks[i].first];
+		const bool head = seenLooks[i].second;
+		const Vector& hitPos = seenHits[i];
 		// How plainly: off the middle of the field, far, in the dark (unless lit, by a lamp, its own headlamp or its gun going off), still,
 		// and small (lying down, crouched, only a head showing) each take some away. The script delays its notice by it.
 		float angle = 1.0F - 0.6F * std::clamp(candidate.off, 0.0F, 1.0F);
@@ -3681,7 +3708,7 @@ void Actor::GetDebugState(std::vector<DebugStateField>& fields) const {
 		}
 	}
 	flag("orderHold", order.Hold);
-	static const char* const orderKindNames[] = {"none", "move", "attack-move", "attack", "guard", "defend", "patrol", "dig to"};
+	static const char* const orderKindNames[] = {"none", "move", "attack-move", "attack", "guard", "defend", "patrol", "dig to", "sentry"};
 	if (order.Kind != ORDER_NONE) {
 		fields.push_back({"orderKind", order.Kind >= 0 && order.Kind < static_cast<int>(std::size(orderKindNames)) ? orderKindNames[order.Kind] : std::to_string(order.Kind), true});
 	}

@@ -759,6 +759,8 @@ void PostProcessMan::GetShockwavesWrapped(const Vector& boxPos, int boxWidth, in
 
 void PostProcessMan::ApplySceneAtmosphere(const Scene* scene) {
 	ResolveWeather();
+	// A new map, or the same one again: a saved game's weather is put back after this, if one is being loaded.
+	m_SavedGameWeatherSet = false;
 	if (!m_PlayerAtmosphereCaptured) {
 		m_PlayerAtmosphere = m_LightingSettings;
 		m_PlayerAtmosphereCaptured = true;
@@ -818,16 +820,24 @@ void PostProcessMan::ApplySceneWeather(const Scene* scene) {
 			m_LightingSettings.WeatherIntensity = std::max(m_LightingSettings.WeatherIntensity, 0.6F);
 		}
 	}
+	if (m_SavedGameWeatherSet) {
+		m_LightingSettings.WeatherType = std::clamp(m_SavedGameWeatherType, 0, Weather::GetSlotCount() - 1);
+		m_LightingSettings.WeatherIntensity = m_SavedGameWeatherIntensity;
+	}
 }
 
-void PostProcessMan::AdoptWeatherAsPlayers() {
+void PostProcessMan::AdoptWeatherAsPlayers(bool type, bool intensity) {
 	if (!m_PlayerAtmosphereCaptured) {
 		// Not captured yet: the first map takes the settings as they are now.
 		return;
 	}
-	m_PlayerAtmosphere.WeatherType = m_LightingSettings.WeatherType;
-	m_PlayerAtmosphere.WeatherName = m_LightingSettings.WeatherName;
-	m_PlayerAtmosphere.WeatherIntensity = m_LightingSettings.WeatherIntensity;
+	if (type) {
+		m_PlayerAtmosphere.WeatherType = m_LightingSettings.WeatherType;
+		m_PlayerAtmosphere.WeatherName = m_LightingSettings.WeatherName;
+	}
+	if (intensity) {
+		m_PlayerAtmosphere.WeatherIntensity = m_LightingSettings.WeatherIntensity;
+	}
 }
 
 void PostProcessMan::SetOverrideMapWeather(bool on) {

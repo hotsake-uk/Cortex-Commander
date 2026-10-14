@@ -364,6 +364,7 @@ namespace SandboxDetail {
 		unit->SetPaceLimit(0.0F);
 		unit->ClearAIWaypoints();
 		unit->SetAIMode(Actor::AIMODE_SENTRY);
+		unit->NoteAIOrder();
 		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); }), s_PendingOrders.end());
 	}
 
@@ -436,6 +437,7 @@ namespace SandboxDetail {
 		// And the old order's way there, queued or still to be applied: a unit told to hold (or patrol, hunt or idle) kept its waypoints, and
 		// anything that later put a GOTO back (a fall-back's RestoreOrder, the AI's own new-order check) walked it off along them.
 		actor->ClearAIWaypoints();
+		actor->NoteAIOrder();
 		s_PendingOrders.erase(std::remove_if(s_PendingOrders.begin(), s_PendingOrders.end(), [actor](const PendingOrder& pending) { return RefersTo(pending.Unit, actor); }), s_PendingOrders.end());
 		if (order == Order::BattleObjective) {
 			// Its team's job in the battle (a mode's game, or the place its Battle Director card defends); with none, as Attack.
@@ -483,10 +485,13 @@ namespace SandboxDetail {
 				break;
 			case Order::Sentry:
 				// The base game's sentry, without Hold's flag: it may close on what it can't hit, fall back when hurt, fetch a better gun.
+				// Its kind says it was told to, so it isn't taken for an idle unit on no order.
 				actor->SetAIMode(Actor::AIMODE_SENTRY);
+				actor->SetOrderKind(Actor::ORDER_SENTRY);
 				break;
 			default:
 				actor->SetAIMode(Actor::AIMODE_SENTRY);
+				actor->SetOrderKind(Actor::ORDER_SENTRY);
 				break;
 		}
 	}

@@ -676,6 +676,7 @@ namespace RTE {
 			ORDER_DEFEND, //!< Stand at a post and fight from it (RC-4).
 			ORDER_PATROL, //!< Walk a patrol route.
 			ORDER_DIGTO, //!< Dig to a place, which may be inside the ground (RC-11): the route keeps the buried target and tunnels rather than walks round.
+			ORDER_SENTRY, //!< Stand guard (the sandbox's Sentry order): told to, so not idle, unlike a unit left in the sentry AI mode with no order.
 			ORDERKINDCOUNT
 		};
 
@@ -863,6 +864,9 @@ namespace RTE {
 		/// How hard this is to blow apart, or to knock its head and limbs off: its toughness, and infinite when it is invincible.
 		float GibToughness() const override;
 
+		/// How hard this is to blow apart with wounds: GibToughness, divided by the Weapon damage to units setting when that scales blowing apart.
+		float WoundGibToughness() const override;
+
 		/// The side that last hurt this (NC-1): the team of the shot, blade or blast, Activity::NoTeam if none has yet.
 		int GetLastAttackerTeam() const { return m_LastAttackerTeam; }
 
@@ -892,8 +896,8 @@ namespace RTE {
 		/// Sets the pace this walks no faster than (m/s); 0 or less for none. Not saved: whoever sets it clears it when the march is over.
 		void SetPaceLimit(float pace) { m_PaceLimit = std::max(pace, 0.0F); }
 
-		/// Gets the order serial: a count bumped by every order given to this, a change of AI mode, a waypoint added or the waypoints
-		/// cleared. The AI compares it with the count it saw after its own last update, so an order given in between, even one to the
+		/// Gets the order serial: a count bumped by every order given to this, a change of AI mode, a waypoint added or
+		/// waypoints cleared (when there were any). The AI compares it with the count it saw after its own last update, so an order given in between, even one to the
 		/// mode it is already in, is seen as new without dropping the unit out of its mode for an update first.
 		/// @return The order serial of this.
 		unsigned int GetAIOrderSerial() const { return m_AIOrderSerial; }
@@ -942,6 +946,11 @@ namespace RTE {
 		/// Removes all AI waypoints and clears the current path to the current
 		/// waypoint. The AI Actor will stop in its tracks.
 		void ClearAIWaypoints() {
+			// (Only clearing something counts as an order: mission scripts (TacticsHandler) clear the waypoints of squads already standing
+			// sentry every few seconds, and each clear restarted the AI's fight, its aim and its post. NoteAIOrder for an order that must.)
+			if (!m_Waypoints.empty() || m_pMOMoveTarget || !m_MovePath.empty() || m_HasMovePathGoal) {
+				++m_AIOrderSerial;
+			}
 			m_WantsShipRide = false;
 			m_pMOMoveTarget = 0;
 			m_Waypoints.clear();
@@ -951,8 +960,11 @@ namespace RTE {
 			m_MoveVector.Reset();
 			m_HasMovePathGoal = false;
 			m_WaitingAtDoor = false;
-			++m_AIOrderSerial;
 		}
+
+		/// Counts an order given to this, as the AI sees orders (GetAIOrderSerial), when nothing else about it changed: told to stand where
+		/// it is in the mode it is already in, the AI still takes up its post and facing afresh.
+		void NoteAIOrder() { ++m_AIOrderSerial; }
 
 		/// Gets the last or furthest set AI waypoint of this: the last of its waypoints, else the place its route was asked for to, else
 		/// the route's last point. If none, this' pos is returned. (The route's last point is not the place when the route was cut short
@@ -1571,8 +1583,10 @@ namespace RTE {
 		float GetNightSightScale() const;
 
 		/// Looks for enemies the way a person would, for the AI's scripts: the enemy actors within range inside a wide field of view about the
-		/// facing (and a narrow, longer one about the aim when sharp-aiming), the likeliest first (nearest the aim, then nearest), looked at
-		/// with at most budget rays (body, then head), through terrain, other bodies and thick smoke. Nothing behind it is seen.
+		/// facing (and a narrow, longer one about the aim when sharp-aiming), looked at with at most budget rays through terrain, other bodies
+		/// and thick smoke: the likeliest enemy's body (nearest the aim, then nearest) every call, then the other looks (its head, each other
+		/// enemy's body and head) in turn from where the last call stopped, so every enemy in view is looked at within a few calls. Nothing
+		/// outside the field is seen.
 		/// @param fovDegrees The field of view about the facing, in degrees.
 		/// @param range How far it sees in daylight, in pixels; less at night and in dust (GetNightSightScale).
 		/// @param budget How many rays it may cast.
@@ -2102,6 +2116,7 @@ namespace RTE {
 		};
 		ZeroGMover m_ZeroGMover;
 		std::vector<ActorSighting> m_Sightings; //!< What the last ScanForEnemies saw.
+		unsigned int m_ScanCursor; //!< Where ScanForEnemies' next looks past the likeliest enemy start, so every enemy in view is looked at in turn.
 		float m_Suppression = 0.0F; //!< How pinned down by fire, 0 to 1 (see GetSuppression).
 		float m_Morale = 1.0F; //!< How steady its nerve is, 0 to 1 (see GetMorale).
 		float m_MoraleLevel = 0.7F; //!< What morale comes back towards: higher among friends and near the brain, lower when hurt.
