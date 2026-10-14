@@ -1326,15 +1326,17 @@ const MOSRotating* AHuman::ObjectAhead(float direction, float reach, float floor
 			}
 			const Actor* actor = dynamic_cast<const Actor*>(body);
 			const bool living = actor && actor->GetStatus() != DYING && actor->GetStatus() != DEAD;
-			// (Light enough to be shoved aside by the walk, a helmet, a hand: walked on into.)
-			const bool shoved = !light && body->GetMass() < GetMass() * 0.25F;
-			if (!living && !dynamic_cast<const ADoor*>(body) && !dynamic_cast<const ACraft*>(body) && !shoved && BodyCollidesWith(body)) {
-				return body;
-			}
 			if (living && BodyCollidesWith(body)) {
 				break; // (A unit in the way that ours meets: UnitAhead's, or a fight.)
 			}
-			body->GetMOIDs(passed);
+			// (Light enough to be shoved aside by the walk, a helmet, a hand: walked on into.) Never weighed for a living unit: its mass reads its inventory, which its own AI may be reordering on another thread.
+			if (!living && !dynamic_cast<const ADoor*>(body) && !dynamic_cast<const ACraft*>(body) && !(!light && body->GetMass() < GetMass() * 0.25F) && BodyCollidesWith(body)) {
+				return body;
+			}
+			// Looked past by its MOID range (the root's and its parts', handed out in a row by the main thread), never by walking its attachables: a teammate's AI on another thread may be swapping the gun in its hand.
+			for (int footprint = body->GetMOIDFootprint(), i = 0; i < footprint; ++i) {
+				passed.push_back(body->GetID() + i);
+			}
 		}
 	}
 	return nullptr;
