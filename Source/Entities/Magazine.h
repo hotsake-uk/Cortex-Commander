@@ -96,6 +96,16 @@ namespace RTE {
 		/// @return The material strength.
 		float EstimateDigStrength() const;
 
+		/// Estimates the strongest material the rounds in the magazine cut at all: the tracers too, the stronger round some diggers fire one
+		/// in RTTRatio of (the Heavy Digger's cuts Metal, which its regular rounds don't), so never less than EstimateDigStrength.
+		/// @return The material strength.
+		float EstimateSlowDigStrength() const;
+
+		/// Gets how many times slower than the regular rounds would the magazine cuts what only its tracers cut (EstimateSlowDigStrength):
+		/// one round in this many is a tracer. 1 when the tracers cut nothing more.
+		/// @return The slowdown, 1 or more.
+		float GetSlowDigFactor() const;
+
 		/// Tells the AI what muzzle velocity to assume when aiming this weapon.
 		/// @return Velocity in m/s.
 		float GetAIAimVel() const { return m_AIAimVel; }

@@ -3891,7 +3891,10 @@ int AHuman::MoveAlongRoute() {
 				mover.digTimer.Reset();
 				mover.digBestGap = gap;
 				float hardest = g_SceneMan.CastMaxStrengthRay(m_Pos, m_Pos + along, 2);
-				mover.digBudgetMS = std::max(8000.0, 3000.0 * static_cast<double>(PathFinder::DigSecondsPerNode(PathFinder::DigHardness(hardest, cuts))));
+				// (Ground only its digger's tracers cut takes as many times longer as it fires regular rounds to each tracer: DigSlowness.)
+				const float fast = EstimateFastDigStrength();
+				const float slowness = PathFinder::DigSlowness(hardest, fast, EstimateSlowDigFactor());
+				mover.digBudgetMS = std::max(8000.0, 3000.0 * static_cast<double>(PathFinder::DigSecondsPerNode(PathFinder::DigHardness(hardest, PathFinder::DigCutStrength(hardest, cuts, fast))) * slowness));
 				// (Told to dig there, RC-11, it is given twice as long before it looks for a way round: the player asked for the tunnel, and
 				// stone cut slower than the rate model has it sent a Heavy Digger off up a jet climb it then stood under for half a minute.)
 				if (IsDiggingTo()) {

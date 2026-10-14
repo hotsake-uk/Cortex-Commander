@@ -1420,6 +1420,16 @@ namespace RTE {
 		/// @return The actor's dig strength.
 		virtual float EstimateDigStrength() const;
 
+		/// Estimates what material strength this actor digs at its usual pace: the regular rounds of its digger, without the stronger tracers
+		/// some diggers fire one round in several of (EstimateDigStrength counts those, with the AI setting for it on). Default is the dig strength.
+		/// @return The strongest material dug at the usual pace.
+		virtual float EstimateFastDigStrength() const { return EstimateDigStrength(); }
+
+		/// Gets how many times slower than usual this actor digs material stronger than EstimateFastDigStrength, up to EstimateDigStrength
+		/// (cut only by its digger's tracers, one round in this many). Default is 1.
+		/// @return The slowdown, 1 or more.
+		virtual float EstimateSlowDigFactor() const { return 1.0F; }
+
 		/// Estimates what door this actor can get through: by digging, or by shooting it open with what it carries.
 		/// @return The strongest door material it can breach. Default is the dig strength.
 		virtual float EstimateBreachStrength() const { return EstimateDigStrength(); }

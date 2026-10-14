@@ -140,20 +140,38 @@ Round* Magazine::PopNextRound() {
 	return tempRound;
 }
 
-float Magazine::EstimateDigStrength() const {
-	auto penetration = [](const Round* round) {
+namespace {
+	/// What one round's particles cut: their impulse, as Atom strikes the terrain with (velocity, mass and sharpness).
+	float RoundDigStrength(const Round* round) {
 		const MovableObject* pBullet = round ? round->GetNextParticle() : nullptr;
 		if (!pBullet) {
 			return 0.0F;
 		}
 		float velocity = round->GetAIFireVel() > 0 ? round->GetAIFireVel() : round->GetFireVel();
 		return velocity * std::abs(pBullet->GetMass()) * std::max(pBullet->GetSharpness(), 0.0F);
-	};
+	}
+} // namespace
+
+float Magazine::EstimateDigStrength() const {
+	auto penetration = [](const Round* round) { return RoundDigStrength(round); };
 	// What the regular rounds cut, which is what the tool keeps cutting: the tracer, one round in ten, is only taken when there are no
 	// regular rounds. (Rated by the stronger of the two, a Light Digger was planned through dense earth and stone that only its tracers
-	// scratch, at a dozen pixels a second, and a Heavy Digger through metal; the unit stood at the face firing.)
+	// scratch, at a dozen pixels a second, and a Heavy Digger through metal; the unit stood at the face firing.) The tracers are rated on
+	// their own (EstimateSlowDigStrength), for the AI setting that digs what only they cut, priced as that much slower.
 	float regular = penetration(m_pRegularRound);
 	return std::max(1.0F, regular > 0.0F ? regular : penetration(m_pTracerRound));
+}
+
+float Magazine::EstimateSlowDigStrength() const {
+	float strength = EstimateDigStrength();
+	if (m_pTracerRound && m_RTTRatio > 0) {
+		strength = std::max(strength, RoundDigStrength(m_pTracerRound));
+	}
+	return strength;
+}
+
+float Magazine::GetSlowDigFactor() const {
+	return EstimateSlowDigStrength() > EstimateDigStrength() ? static_cast<float>(std::max(m_RTTRatio, 1)) : 1.0F;
 }
 
 float Magazine::GetBulletAccScalar() {
