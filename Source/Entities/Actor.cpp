@@ -1326,8 +1326,14 @@ float Actor::GibToughness() const {
 	if (toughness >= SettingsMan::c_ToughnessInvincible) {
 		return std::numeric_limits<float>::infinity();
 	}
-	// With Weapon damage scales blowing apart on, weapon damage x2 holds together half as long, x0.5 twice as long.
-	return g_SettingsMan.WeaponUnitDamageGibs() ? toughness / g_SettingsMan.WeaponUnitDamage() : toughness;
+	return toughness;
+}
+
+float Actor::WoundGibToughness() const {
+	// With Weapon damage scales blowing apart on, weapon damage x2 holds together for half as many wounds, x0.5 twice as many. (Not blows:
+	// a landing or a fall makes those as much as weapons do, and a craft at 5x broke up on touchdown.)
+	float toughness = GibToughness();
+	return g_SettingsMan.WeaponUnitDamageGibs() && std::isfinite(toughness) ? toughness / g_SettingsMan.WeaponUnitDamage() : toughness;
 }
 
 void Actor::ApplyToughness() {
@@ -3702,7 +3708,7 @@ void Actor::GetDebugState(std::vector<DebugStateField>& fields) const {
 		}
 	}
 	flag("orderHold", order.Hold);
-	static const char* const orderKindNames[] = {"none", "move", "attack-move", "attack", "guard", "defend", "patrol", "dig to"};
+	static const char* const orderKindNames[] = {"none", "move", "attack-move", "attack", "guard", "defend", "patrol", "dig to", "sentry"};
 	if (order.Kind != ORDER_NONE) {
 		fields.push_back({"orderKind", order.Kind >= 0 && order.Kind < static_cast<int>(std::size(orderKindNames)) ? orderKindNames[order.Kind] : std::to_string(order.Kind), true});
 	}

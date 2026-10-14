@@ -485,10 +485,13 @@ namespace SandboxDetail {
 				break;
 			case Order::Sentry:
 				// The base game's sentry, without Hold's flag: it may close on what it can't hit, fall back when hurt, fetch a better gun.
+				// Its kind says it was told to, so it isn't taken for an idle unit on no order.
 				actor->SetAIMode(Actor::AIMODE_SENTRY);
+				actor->SetOrderKind(Actor::ORDER_SENTRY);
 				break;
 			default:
 				actor->SetAIMode(Actor::AIMODE_SENTRY);
+				actor->SetOrderKind(Actor::ORDER_SENTRY);
 				break;
 		}
 	}

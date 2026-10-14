@@ -681,10 +681,10 @@ namespace SandboxDetail {
 		HuntBrains,
 		Defend,
 		Patrol,
-		Hold,
+		Hold, //!< Shown as Sentry: its units stand sentry (Order::Sentry). Kept by this name, and in this place, for saved setups.
 		Count
 	};
-	constexpr const char* c_BattleStyleNames[] = {"Attack nearest enemy", "Hunt brains", "Defend a place", "Patrol", "Hold position"};
+	constexpr const char* c_BattleStyleNames[] = {"Attack nearest enemy", "Hunt brains", "Defend a place", "Patrol", "Sentry"};
 	static_assert(std::size(c_BattleStyleNames) == static_cast<size_t>(BattleStyle::Count), "c_BattleStyleNames must name each BattleStyle.");
 
 	/// What the Battle tab's card for one team says: which units it buys, how it fights, and how its ships come in. The window keeps its own
@@ -807,7 +807,7 @@ namespace SandboxDetail {
 		bool ByShip = false; //!< Brought in by ship over the point rather than appearing at it.
 		int Craft = 0; //!< Index into c_Crafts.
 		bool Invincible = false; //!< Its ships take no harm.
-		Order Behaviour = Order::Hold; //!< What its units are made to do (Order::Hold, Attack or HuntBrains), before any spawn order.
+		Order Behaviour = Order::Sentry; //!< What its units are made to do (Order::Sentry, Hold, Attack or HuntBrains), before any spawn order.
 		SpawnOrder Arrival; //!< The spawn order each is given once it's in and on its feet; Hold for none.
 	};
 

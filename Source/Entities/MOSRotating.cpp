@@ -489,7 +489,7 @@ void MOSRotating::AddWoundExt(AEmitter* woundToAdd, const Vector& parentOffsetTo
 		if (const Material* struck = GetMaterial(); struck && struck->GetMetalness() + std::max(m_Metalness, 0.0F) > 0.25F) {
 			AddHeatAt(parentOffsetToSet, 0.55F, 5.0F);
 		}
-		if (checkGibWoundLimit && m_GibWoundLimit > 0 && static_cast<float>(m_Wounds.size() + 1) >= ToughenedGibLimit(static_cast<float>(m_GibWoundLimit))) {
+		if (checkGibWoundLimit && m_GibWoundLimit > 0 && static_cast<float>(m_Wounds.size() + 1) >= ToughenedGibWoundLimit(static_cast<float>(m_GibWoundLimit))) {
 			// Find and detach an attachable near the new wound before gibbing the object itself. TODO: Perhaps move this to Actor, since it's more relevant there?
 			if (Attachable* attachableToDetach = GetNearestDetachableAttachableToOffset(parentOffsetToSet); attachableToDetach && m_DetachAttachablesBeforeGibbingFromWounds) {
 				RemoveAttachable(attachableToDetach, true, true);

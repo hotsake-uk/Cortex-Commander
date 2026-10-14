@@ -676,6 +676,7 @@ namespace RTE {
 			ORDER_DEFEND, //!< Stand at a post and fight from it (RC-4).
 			ORDER_PATROL, //!< Walk a patrol route.
 			ORDER_DIGTO, //!< Dig to a place, which may be inside the ground (RC-11): the route keeps the buried target and tunnels rather than walks round.
+			ORDER_SENTRY, //!< Stand guard (the sandbox's Sentry order): told to, so not idle, unlike a unit left in the sentry AI mode with no order.
 			ORDERKINDCOUNT
 		};
 
@@ -862,6 +863,9 @@ namespace RTE {
 
 		/// How hard this is to blow apart, or to knock its head and limbs off: its toughness, and infinite when it is invincible.
 		float GibToughness() const override;
+
+		/// How hard this is to blow apart with wounds: GibToughness, divided by the Weapon damage to units setting when that scales blowing apart.
+		float WoundGibToughness() const override;
 
 		/// The side that last hurt this (NC-1): the team of the shot, blade or blast, Activity::NoTeam if none has yet.
 		int GetLastAttackerTeam() const { return m_LastAttackerTeam; }

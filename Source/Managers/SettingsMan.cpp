@@ -76,6 +76,7 @@ namespace {
 	/// 2: brighter ambient light in interiors and caves.
 	constexpr int c_LightingSettingsVersion = 2;
 	int s_ReadLightingSettingsVersion = 0; //!< Version of the lighting settings in the file being read, 0 when it has none.
+	bool s_OldPathLineWeight = false; //!< The settings file read had PathLineWeight at 0, the old default, from before PathLineWeightByRisk (written after it) existed.
 	bool s_MarkingGroups = false; //!< Whether SaveTunables marks where each group of settings starts, for TunableGroups.
 	const std::string c_GroupMarker = "PresetGroupStartsHere"; //!< The marker's name. Never in a file.
 	bool s_ReadingStartupPreset = false; //!< Whether the preset loaded at start is being read, when the panel's settings for the moment are passed over.
@@ -379,7 +380,13 @@ int SettingsMan::Initialize() {
 		return Serializable::Create(newSettingsReader);
 	}
 
+	s_OldPathLineWeight = false;
 	int failureCode = Serializable::Create(settingsReader);
+	if (s_OldPathLineWeight) {
+		// Saved before route straightness followed the risk slider, at the 0 it came with then: the new default, as a fresh install has.
+		m_PathTuning.LineWeight = PathTuning().LineWeight;
+		s_OldPathLineWeight = false;
+	}
 
 	if (GetAnyExperimentalSettingsEnabled()) {
 		// Show a message box to annoy people as much as possible while they're using experimental settings, so they can't leave it on accidentally
@@ -1184,8 +1191,15 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AIUnitsCallLifts", { reader >> m_AIUnitsCallLifts; });
 	MatchProperty("DeadCrewFallOut", { reader >> m_DeadCrewFallOut; });
 	MatchProperty("PassengersFireFromVehicles", { reader >> m_PassengersFireFromVehicles; });
-	MatchProperty("PathLineWeight", { reader >> m_PathTuning.LineWeight; m_PathTuning.LineWeight = std::clamp(m_PathTuning.LineWeight, 0.0F, 2.0F); });
-	MatchProperty("PathLineWeightByRisk", { reader >> m_PathTuning.LineWeightByRisk; });
+	MatchProperty("PathLineWeight", {
+		reader >> m_PathTuning.LineWeight;
+		m_PathTuning.LineWeight = std::clamp(m_PathTuning.LineWeight, 0.0F, 2.0F);
+		s_OldPathLineWeight = m_PathTuning.LineWeight == 0.0F;
+	});
+	MatchProperty("PathLineWeightByRisk", {
+		reader >> m_PathTuning.LineWeightByRisk;
+		s_OldPathLineWeight = false;
+	});
 	MatchProperty("PathFullRiskLineWeight", { reader >> m_PathTuning.FullRiskLineWeight; m_PathTuning.FullRiskLineWeight = std::clamp(m_PathTuning.FullRiskLineWeight, 0.0F, 4.0F); });
 	MatchProperty("PathUpCost", { reader >> m_PathTuning.UpCost; m_PathTuning.UpCost = std::clamp(m_PathTuning.UpCost, 0.0F, 5.0F); });
 	MatchProperty("PathFlightCost", { reader >> m_PathTuning.FlightCostScale; m_PathTuning.FlightCostScale = std::clamp(m_PathTuning.FlightCostScale, 0.2F, 1.0F); });
@@ -1499,6 +1513,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("WeatherSpeed", lighting.WeatherSpeed);
 	writer.NewPropertyWithValue("WeatherEverywhere", lighting.WeatherEverywhere);
 	writer.NewPropertyWithValue("WeatherOverBackground", lighting.WeatherOverBackground);
+	// (Both on the Time & weather page, under Visual & lighting: a preset holds what is under its heading.)
+	writer.NewPropertyWithValue("WaterFreezes", FluidSim::FreezingEnabled());
+	writer.NewPropertyWithValue("LightningStrikes", static_cast<int>(WeatherLightning::GetStrikes()));
 	writer.NewPropertyWithValue("Wind", lighting.Wind);
 	writer.NewPropertyWithValue("TimeOfDay", lighting.TimeOfDay);
 	writer.NewPropertyWithValue("DayLengthMinutes", lighting.DayLengthMinutes);
@@ -1728,8 +1745,6 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("TerrainCollapse", TerrainCollapse::IsEnabled());
 	writer.NewPropertyWithValue("FlowingLiquids", FluidSim::IsEnabled());
 	writer.NewPropertyWithValue("LoosePowders", FluidSim::PowdersEnabled());
-	writer.NewPropertyWithValue("WaterFreezes", FluidSim::FreezingEnabled());
-	writer.NewPropertyWithValue("LightningStrikes", static_cast<int>(WeatherLightning::GetStrikes()));
 	writer.NewPropertyWithValue("BloodFlows", FluidSim::BloodFlows());
 	writer.NewPropertyWithValue("LiquidsDrainBottom", FluidSim::DrainsBottom());
 	writer.NewPropertyWithValue("LiquidsDrainSides", FluidSim::DrainsSides());
@@ -1747,9 +1762,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("ZeroGPushOff", ZeroGravity::PushOff());
 	writer.NewPropertyWithValue("ZeroGFlySpeed", ZeroGravity::FlySpeed());
 	writer.NewPropertyWithValue("ZeroGPushSpeed", ZeroGravity::PushSpeed());
-	group(PresetGroup::Visual);
+	// (On the Falling ground page, under Gameplay & physics: a preset holds what is under its heading.)
 	writer.NewPropertyWithValue("UnitsInFrontOfTrees", TerrainTrees::DrawnBehindUnits());
-	group(PresetGroup::Gameplay);
 	writer.NewPropertyWithValue("CollapseFloatingStays", TerrainCollapse::GetTuning().FloatingStays);
 	writer.NewPropertyWithValue("CollapseNeckWidth", TerrainCollapse::GetTuning().NeckWidth);
 	writer.NewPropertyWithValue("CollapseThinNeckWidth", TerrainCollapse::GetTuning().ThinNeckWidth);
@@ -2099,7 +2113,6 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 		writer.NewPropertyWithValue("BattleShowSpawnZones", m_BattleShowSpawnZones);
 		writer.NewPropertyWithValue("BattleShowModeZones", m_BattleShowModeZones);
 		writer.NewPropertyWithValue("ArmyOverview", m_ArmyOverview);
-		writer.NewPropertyWithValue("SandboxBarRight", m_SandboxBarRight);
 		writer.NewPropertyWithValue("ScreenShakeStrength", g_CameraMan.m_ScreenShakeStrength);
 
 		// The panel's settings for the moment: kept in a preset, but not in Settings.ini, so the game doesn't start sped up, frozen, with the AI paused or in a debug view.
@@ -2226,6 +2239,13 @@ std::unordered_map<std::string, SettingsMan::PresetGroup> SettingsMan::TunableGr
 			groups.emplace(key, group);
 		}
 	}
+	// The lines written only some of the time, in the group of a line always written beside them: not written as things are now, they'd be
+	// missing here, and a preset's lines for them left out when one group's half of it is loaded.
+	for (const auto& [sometimes, beside]: {std::pair<const char*, const char*>{"WeatherName", "WeatherType"}, {"UnitSpeechOn", "UnitSpeechToneMix"}, {"UnitSpeechOff", "UnitSpeechToneMix"}}) {
+		if (auto found = groups.find(beside); found != groups.end()) {
+			groups.emplace(sometimes, found->second);
+		}
+	}
 	return groups;
 }
 
@@ -2272,31 +2292,39 @@ bool SettingsMan::LoadPreset(const std::string& name, PresetGroup from, PresetGr
 			return false;
 		}
 	}
-	if (part == PresetGroup::Everything || part == from) {
-		Reader reader(path, false, nullptr, true, true);
-		if (!reader.ReaderOK()) {
-			return false;
-		}
-		// The same reading as the settings file gets, of a file that holds only the tunable settings.
-		if (CreateSerializable(reader, true, false, false) < 0) {
-			return false;
-		}
-		// Its weather is the player's own from now on, kept from map to map, not only until the next one loads.
-		g_PostProcessMan.AdoptWeatherAsPlayers();
-		return true;
-	}
-	// Only one group's half of a full preset: the other lines are left out before it is read.
 	std::ifstream file(path);
 	if (!file) {
 		return false;
 	}
 	std::ostringstream text;
 	text << file.rdbuf();
-	Reader reader(std::make_unique<std::istringstream>(KeepGroup(text.str(), part, TunableGroups())), path, false, nullptr, true, true);
+	// The whole file, or only one group's half of a full preset: the other lines are left out before it is read.
+	std::string kept = part == PresetGroup::Everything || part == from ? text.str() : KeepGroup(text.str(), part, TunableGroups());
+	// The same reading as the settings file gets, of a file that holds only the tunable settings.
+	Reader reader(std::make_unique<std::istringstream>(kept), path, false, nullptr, true, true);
 	if (!reader.ReaderOK() || CreateSerializable(reader, true, false, false) < 0) {
 		return false;
 	}
-	g_PostProcessMan.AdoptWeatherAsPlayers();
+	// The weather the preset sets is the player's own from now on, kept from map to map, not only until the next one loads. Only what it
+	// sets: a preset with no weather lines (a Gameplay one, say) leaves the player's weather be, rather than taking the map's showing now.
+	bool setsType = false;
+	bool setsIntensity = false;
+	bool setsOverride = false;
+	std::istringstream lines(kept);
+	for (std::string line; std::getline(lines, line);) {
+		std::string key = LineKey(line);
+		setsType = setsType || key == "WeatherType" || key == "WeatherName";
+		setsIntensity = setsIntensity || key == "WeatherIntensity";
+		setsOverride = setsOverride || key == "OverrideMapWeather";
+	}
+	if (setsType || setsIntensity) {
+		g_PostProcessMan.AdoptWeatherAsPlayers(setsType, setsIntensity);
+	}
+	if (setsType || setsIntensity || setsOverride) {
+		// And the weather it means goes up now, not when the next map loads: the player's own, or the map's when the preset leaves the map
+		// its weather (or a game's or a saved game's pick, which still win).
+		g_PostProcessMan.SetOverrideMapWeather(g_PostProcessMan.GetLightingSettings().OverrideMapWeather);
+	}
 	return true;
 }
 
@@ -2365,6 +2393,7 @@ std::string SettingsMan::SaveFilterPreset(const std::string& name, const Lightin
 	file << "Palette = " << layers.Palette << "\n";
 	file << "InkEdges = " << (layers.InkEdges ? 1 : 0) << "\n";
 	file << "GlitchOnBlasts = " << (layers.GlitchOnBlasts ? 1 : 0) << "\n";
+	file << "PaperBackgroundOnly = " << (layers.PaperBackgroundOnly ? 1 : 0) << "\n";
 	for (const auto& [field, member]: c_RetroFloatFields) {
 		file << field << " = " << layers.*member << "\n";
 	}

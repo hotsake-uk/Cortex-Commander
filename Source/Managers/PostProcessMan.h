@@ -572,9 +572,12 @@ namespace RTE {
 			m_PlayerAtmosphereCaptured = true;
 		}
 
-		/// Makes the weather now (its type and intensity) the player's own, so it's kept from map to map and is what Settings.ini saves. For the
-		/// weather the player picks in the settings panel or loads with a preset, not a map's or a script's.
-		void AdoptWeatherAsPlayers();
+		/// Makes the weather now the player's own, so it's kept from map to map and is what Settings.ini saves. For the weather the player picks
+		/// in the settings panel or loads with a preset, not a map's or a script's: only what the player set is taken, so a map's own weather
+		/// showing at the time isn't taken with it.
+		/// @param type Whether to take the precipitation (its slot and name).
+		/// @param intensity Whether to take the intensity.
+		void AdoptWeatherAsPlayers(bool type = true, bool intensity = true);
 
 		/// Turns OverrideMapWeather on or off and puts the weather it means up now: the player's own when on, the map's (or the game's pick) when off.
 		void SetOverrideMapWeather(bool on);
@@ -651,6 +654,9 @@ namespace RTE {
 		std::vector<Shockwave> m_Shimmers; //!< Shimmers registered for the current frame (the start time isn't used).
 		float m_ActivityTimeOfDay = -1.0F; //!< Time of day chosen for the current activity, negative for none.
 		int m_ActivityWeather = -1; //!< Weather chosen for the current activity, negative for none.
+		bool m_SavedGameWeatherSet = false; //!< Whether the game under way was loaded from a save, whose weather wins over the player's and the map's until the next map loads.
+		int m_SavedGameWeatherType = 0; //!< That save's weather slot.
+		float m_SavedGameWeatherIntensity = 0.0F; //!< And its intensity.
 
 	public:
 		/// Gets the active shockwaves in scene coordinates, as xy position, z current wavefront radius, w remaining strength. For vegetation pushed by blasts.
@@ -665,6 +671,13 @@ namespace RTE {
 
 		/// Puts up the weather for a Scene: the player's own, then the Scene's own unless OverrideMapWeather is on, then the activity's pick.
 		void ApplySceneWeather(const Scene* scene);
+
+		/// Keeps the weather up now as a loaded saved game's, so putting the weather up again (OverrideMapWeather turned on or off) keeps it, until the next map loads.
+		void KeepSavedGameWeather() {
+			m_SavedGameWeatherSet = true;
+			m_SavedGameWeatherType = m_LightingSettings.WeatherType;
+			m_SavedGameWeatherIntensity = m_LightingSettings.WeatherIntensity;
+		}
 
 		void SetActivityAtmosphere(float timeOfDay, int weatherType) {
 			m_ActivityTimeOfDay = timeOfDay;
