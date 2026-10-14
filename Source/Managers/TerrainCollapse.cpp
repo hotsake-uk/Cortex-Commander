@@ -15,6 +15,7 @@
 #include "EffectsParticles.h"
 #include "FluidSim.h"
 #include "ZeroGravity.h"
+#include "AirPressure.h"
 
 #include "glm/glm.hpp"
 #include "PostProcessMan.h"
@@ -45,6 +46,8 @@ namespace {
 		std::vector<std::vector<int>> Floating; //!< Each mass that was already hanging in the air: its pixels, sorted.
 		std::vector<std::vector<int>> Hanging; //!< The middle of each piece that was already held on by only a thin neck: its pixels, sorted.
 		std::vector<std::vector<int>> Overhangs; //!< Each part of an overhang that already stuck out further than Tuning::OverhangLength from what holds it up: its pixels, sorted.
+		std::vector<std::vector<int>> BlastHanging; //!< As Hanging, at the wider necks an explosion's shockwave snaps (Tuning::BlastLoosens): only for an explosion's check.
+		std::vector<std::vector<int>> BlastOverhangs; //!< As Overhangs, at the shorter length an explosion's shockwave breaks (Tuning::BlastLoosens): only for an explosion's check.
 	};
 
 	struct Check {
@@ -53,6 +56,9 @@ namespace {
 		long long DueUpdate; //!< Sim update count when the check runs.
 		std::shared_ptr<Before> Was; //!< Null if nothing is known of how things were.
 		int Drop = 0; //!< The check after a sandbox drop (TerrainCollapse::DropArea): what it lets fall belongs to that drop, for its undo.
+		float BlastReach = 0.0F; //!< For an explosion's crater, centred on X and Y: how far the blast is felt, in pixels. 0 for any other check.
+		float BlastPush = 0.0F; //!< For an explosion's crater: how hard it throws loose pieces, in pixels per update, as BlastRequest::Push.
+		bool LateLook = false; //!< The second look after a blast (Tuning::BlastPushesLateLook).
 	};
 
 	constexpr int c_MinBodyPixels = 6; //!< Pieces smaller than this fall as loose particles.
@@ -2585,9 +2591,12 @@ namespace {
 	/// is how far it is through the ground from the nearest held up. A ledge's tip is as far as the ledge is long; the middle of a cave's roof half as far as the cave is wide.
 	/// Each part too far is given as a HangingPiece: its pixels, and the ground around it that has to go for it to come free.
 	/// @param cuts Pixels just knocked out (sorted keys) to count as still there, to see how things were before them; or none.
-	void FindOverhangs(const BITMAP* materialBitmap, const Check& check, std::vector<HangingPiece>& found, const std::vector<int>* cuts = nullptr) {
+	/// @param longest The longest overhang that holds, in pixels; -1 for Tuning::OverhangLength.
+	void FindOverhangs(const BITMAP* materialBitmap, const Check& check, std::vector<HangingPiece>& found, const std::vector<int>* cuts = nullptr, int longest = -1) {
 		found.clear();
-		int longest = TerrainCollapse::GetTuning().OverhangLength;
+		if (longest < 0) {
+			longest = TerrainCollapse::GetTuning().OverhangLength;
+		}
 		if (longest <= 0) {
 			return;
 		}
@@ -2746,6 +2755,79 @@ namespace {
 		return widths;
 	}
 
+	/// Whether a check is an explosion's whose shockwave loosens the ground near it (Tuning::BlastLoosens).
+	bool BlastLoosens(const Check& check) {
+		return check.BlastPush > 0.0F && check.BlastReach > 0.0F && TerrainCollapse::GetTuning().BlastLoosens;
+	}
+
+	/// The neck widths that snap close to an explosion: NeckWidths', wider by the blast's strength (Tuning::BlastLoosenStrength). None if it widens nothing.
+	std::vector<int> BlastNeckWidths(const Check& check) {
+		const TerrainCollapse::Tuning& tuning = TerrainCollapse::GetTuning();
+		int extra = static_cast<int>(std::round(check.BlastPush * std::max(tuning.BlastLoosenStrength, 0.0F)));
+		std::vector<int> widths;
+		if (extra <= 0) {
+			return widths;
+		}
+		int wide = tuning.NeckWidth > 0 ? std::min(tuning.NeckWidth + extra, 40) : 0;
+		if (wide > 0) {
+			widths.push_back(wide);
+		}
+		if (tuning.ThinNeckWidth > 0) {
+			int thin = std::min(tuning.ThinNeckWidth + (extra + 1) / 2, 40);
+			if (wide <= 0 || thin < wide) {
+				widths.push_back(thin);
+			}
+		}
+		return widths;
+	}
+
+	/// The longest overhang that holds close to an explosion: Tuning::OverhangLength, shorter by the blast's strength. 0 while overhangs never break.
+	int BlastOverhangLength(const Check& check) {
+		const TerrainCollapse::Tuning& tuning = TerrainCollapse::GetTuning();
+		if (tuning.OverhangLength <= 0) {
+			return 0;
+		}
+		float shorter = 1.0F + 0.1F * check.BlastPush * std::max(tuning.BlastLoosenStrength, 0.0F);
+		return std::max(8, static_cast<int>(std::round(static_cast<float>(tuning.OverhangLength) / shorter)));
+	}
+
+	/// Leaves only the pieces with some of their middle in an explosion's strong inner zone (half its reach), which its shockwave loosens.
+	void KeepNearBlast(std::vector<HangingPiece>& found, const Check& check) {
+		float zone = check.BlastReach * 0.5F;
+		found.erase(std::remove_if(found.begin(), found.end(), [&](const HangingPiece& piece) {
+			for (int key: piece.Core) {
+				float dx = static_cast<float>(std::abs(key % s_Width - check.X));
+				if (s_WrapX) {
+					dx = std::min(dx, static_cast<float>(s_Width) - dx);
+				}
+				float dy = static_cast<float>(key / s_Width - check.Y);
+				if (dx * dx + dy * dy <= zone * zone) {
+					return false;
+				}
+			}
+			return true;
+		}), found.end());
+	}
+
+	/// Throws a loose piece up and away from a blast, harder the closer it is and the lighter (scaled by Tuning::BlastPush).
+	/// @param from The middle of the blast.
+	/// @param reach How far the blast is felt, in pixels.
+	/// @param push How hard the blast throws, in pixels per update, before distance and weight.
+	void ThrowFromBlast(Body& body, const glm::vec2& from, float reach, float push) {
+		float distance = glm::length(body.Pos - from);
+		float falloff = std::clamp(1.0F - distance / (reach + body.Radius), 0.0F, 1.0F);
+		float strength = push * falloff * falloff * std::max(TerrainCollapse::GetTuning().BlastPush, 0.0F) / (1.0F + body.Mass / 500.0F);
+		if (strength <= 0.01F) {
+			return;
+		}
+		glm::vec2 away = body.Pos - from;
+		// Up and away rather than straight along the ground.
+		away.y -= 0.35F * glm::length(away) + 1.0F;
+		body.Vel += glm::normalize(away) * strength;
+		body.Spin += (Random01() - 0.5F) * 0.12F * std::min(strength, 3.0F);
+		body.Still = 0;
+	}
+
 	/// Notes how things are around a point before a blast digs its crater: which masses already hang in the air, and which pieces already hang by a thin neck.
 	/// @param cuts Pixels already knocked out by what's being looked before (sorted keys), when the look comes after the first of them; or none.
 	std::shared_ptr<Before> LookBefore(SLTerrain* terrain, const Check& check, const std::vector<int>* cuts = nullptr) {
@@ -2788,6 +2870,21 @@ namespace {
 		FindOverhangs(materialBitmap, check, hanging, cuts);
 		for (HangingPiece& found: hanging) {
 			was->Overhangs.push_back(std::move(found.Core));
+		}
+		// And at the wider necks and shorter overhangs an explosion's shockwave breaks, so it breaks only what the blast changed (unless Tuning::BlastSnapsScenery).
+		if (BlastLoosens(check) && !TerrainCollapse::GetTuning().BlastSnapsScenery) {
+			for (int neckWidth: BlastNeckWidths(check)) {
+				FindHangingPieces(materialBitmap, check, hanging, neckWidth, cuts);
+				for (HangingPiece& found: hanging) {
+					was->BlastHanging.push_back(std::move(found.Core));
+				}
+			}
+			if (int longest = BlastOverhangLength(check); longest > 0) {
+				FindOverhangs(materialBitmap, check, hanging, cuts, longest);
+				for (HangingPiece& found: hanging) {
+					was->BlastOverhangs.push_back(std::move(found.Core));
+				}
+			}
 		}
 		return was;
 	}
@@ -2964,6 +3061,24 @@ namespace {
 			FindOverhangs(materialBitmap, check, hanging);
 			snap(&check.Was->Overhangs);
 		}
+		// Close to an explosion its shockwave loosens the ground further: necks a little wider snap and overhangs a little shorter break (Tuning::BlastLoosens).
+		// Only what the blast changed, unless Tuning::BlastSnapsScenery, when in its strong inner zone the map's own ledges go too.
+		bool blastLoosens = BlastLoosens(check);
+		if (blastLoosens) {
+			bool scenery = tuning.BlastSnapsScenery;
+			for (int neckWidth: BlastNeckWidths(check)) {
+				FindHangingPieces(materialBitmap, check, hanging, neckWidth);
+				KeepNearBlast(hanging, check);
+				snap(scenery || !check.Was ? nullptr : &check.Was->BlastHanging);
+			}
+			if (int longest = BlastOverhangLength(check); longest > 0 && (scenery || check.Was)) {
+				FindOverhangs(materialBitmap, check, hanging, nullptr, longest);
+				KeepNearBlast(hanging, check);
+				snap(scenery ? nullptr : &check.Was->BlastOverhangs);
+			}
+		}
+		// What the blast cuts loose is thrown by it as it comes loose, not only by later blasts once it's already falling.
+		bool blastThrows = blastLoosens && (!check.LateLook || tuning.BlastPushesLateLook);
 
 		// Everything loose around the point, and for each, which mass that was already hanging in the air it came from (-1 for none: it was part of the world).
 		TerrainTrees::GetTrees(); // (Stale by up to a second, which is as wanted: the trees as they stood before a cut.)
@@ -3015,6 +3130,9 @@ namespace {
 				size_t before = s_Bodies.size();
 				LiftPiece(terrain, loose[i]);
 				s_LiftDrop = 0;
+				if (blastThrows && s_Bodies.size() > before) {
+					ThrowFromBlast(s_Bodies.back(), glm::vec2(static_cast<float>(check.X), static_cast<float>(check.Y)), check.BlastReach, check.BlastPush);
+				}
 				if (s_Bodies.size() > before && IsTree(s_Bodies.back())) {
 					std::array<int, 4> box = {width, height, -1, -1};
 					for (int key: loose[i]) {
@@ -3269,12 +3387,17 @@ void TerrainCollapse::NoteFootfall(int x, int y, int direction, float speed) {
 	}
 }
 
-void TerrainCollapse::QueueCheck(const Vector& position, float radius) {
+void TerrainCollapse::QueueCheck(const Vector& position, float radius, float blastReach, float blastEnergy) {
 	if (!s_Enabled) {
 		return;
 	}
+	Check check{static_cast<int>(position.m_X), static_cast<int>(position.m_Y), static_cast<int>(radius), 0};
+	if (blastReach > 0.0F) {
+		check.BlastReach = std::max(blastReach, 8.0F);
+		check.BlastPush = std::clamp(std::sqrt(std::max(blastEnergy, 0.0F)) * 0.055F, 1.2F, 9.0F);
+	}
 	std::scoped_lock lock(s_QueueMutex);
-	s_Pending.push_back({static_cast<int>(position.m_X), static_cast<int>(position.m_Y), static_cast<int>(radius), 0});
+	s_Pending.push_back(check);
 }
 
 void TerrainCollapse::Blast(const Vector& position, float reach, float energy) {
@@ -3595,8 +3718,14 @@ void TerrainCollapse::Update() {
 	for (const Check& check: pending) {
 		// The blast was this update or the last and its crater is only now being dug, so this is how things were before it.
 		std::shared_ptr<Before> was = check.Was ? check.Was : LookBefore(terrain, check);
-		s_Scheduled.push_back({check.X, check.Y, check.Radius, now + 30, was});
-		s_Scheduled.push_back({check.X, check.Y, check.Radius, now + 90, was});
+		Check first = check;
+		first.DueUpdate = now + 30;
+		first.Was = was;
+		Check late = first;
+		late.DueUpdate = now + 90;
+		late.LateLook = true;
+		s_Scheduled.push_back(std::move(first));
+		s_Scheduled.push_back(std::move(late));
 	}
 	for (const ChunkRequest& request: chunks) {
 		MakeChunk(terrain, request);
@@ -3627,18 +3756,7 @@ void TerrainCollapse::Update() {
 				float falloff = std::clamp(1.0F - distance / (blast.Reach + radius), 0.0F, 1.0F);
 				return blast.Push * falloff * falloff * std::max(TerrainCollapse::GetTuning().BlastPush, 0.0F);
 			};
-			auto throwBody = [&](Body& body) {
-				float push = pushAt(body.Pos, body.Radius) / (1.0F + body.Mass / 500.0F);
-				if (push <= 0.01F) {
-					return;
-				}
-				glm::vec2 away = body.Pos - from;
-				// Up and away rather than straight along the ground.
-				away.y -= 0.35F * glm::length(away) + 1.0F;
-				body.Vel += glm::normalize(away) * push;
-				body.Spin += (Random01() - 0.5F) * 0.12F * std::min(push, 3.0F);
-				body.Still = 0;
-			};
+			auto throwBody = [&](Body& body) { ThrowFromBlast(body, from, blast.Reach, blast.Push); };
 			for (Body& body: s_Bodies) {
 				if (!body.Done) {
 					throwBody(body);
@@ -3756,6 +3874,21 @@ void TerrainCollapse::Update() {
 				}
 			}
 			++watch;
+		}
+	}
+	// The air's blast waves push falling pieces as they pass over them (Tuning::AirWavePushesPieces), as they push loose objects.
+	if (s_Tuning.AirWavePushesPieces) {
+		for (Body& body: s_Bodies) {
+			if (body.Done) {
+				continue;
+			}
+			Vector push = AirPressure::GetPush(Vector(body.Pos.x, body.Pos.y));
+			if (push.MagnitudeIsLessThan(0.001F)) {
+				continue;
+			}
+			// m/s to pixels per update (20 pixels a metre, 60 updates a second), less for heavier pieces as an explosion's own throw.
+			body.Vel += glm::vec2(push.m_X, push.m_Y) * (std::max(s_Tuning.BlastPush, 0.0F) / (3.0F * (1.0F + body.Mass / 500.0F)));
+			body.Still = 0;
 		}
 	}
 	UpdateBodies(terrain);

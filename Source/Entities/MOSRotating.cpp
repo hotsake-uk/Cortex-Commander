@@ -1008,7 +1008,7 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 			}
 		}
 		TerrainFire::QueueIgniteArea(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.3F, 8.0F, 50.0F));
-		TerrainCollapse::QueueCheck(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.6F + 12.0F, 24.0F, 110.0F));
+		TerrainCollapse::QueueCheck(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.6F + 12.0F, 24.0F, 110.0F), std::clamp(std::sqrt(gibEnergy) * 0.9F + 20.0F, 40.0F, 170.0F), gibEnergy);
 		TerrainCollapse::Blast(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.9F + 20.0F, 40.0F, 170.0F), gibEnergy);
 		// Ropes near it are thrown out, and cut close to it.
 		RopeSim::QueueBlast(m_Pos, std::clamp(std::sqrt(gibEnergy) * 0.9F + 20.0F, 40.0F, 170.0F), gibEnergy);
