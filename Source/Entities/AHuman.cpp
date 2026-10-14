@@ -3228,9 +3228,16 @@ void AHuman::Update() {
 
 	LearnFlight();
 
+	// In a gravity lift (Base.rte's Automovers), player's unit or AI's: the lift has the body. No mantle, ledge catch or corner nudge of its
+	// own (the lift clears the move keys, but only when its update comes round in the frame, and a unit updated before it acted on them).
+	const bool heldByLift = HeldByAutomover();
+	if (heldByLift) {
+		m_Mantling = false;
+	}
+
 	// Pulling up onto a ledge or over an obstacle (Actor::TryStartMantle): any humanoid, from its own sizes; the arms run their climb
 	// paths while it pulls.
-	if (!m_Mantling && !m_Ladder.active) {
+	if (!m_Mantling && !m_Ladder.active && !heldByLift) {
 		bool rising = m_pJetpack && m_pJetpack->IsEmitting() && m_Vel.m_Y < 0.5F;
 		float bodyWidth = MoveBodyWidth();
 		// (An AI unit only when it means to, WantMantle: pressing on along its route, it pulled itself up onto ledges the route never went to.)
@@ -3265,7 +3272,7 @@ void AHuman::Update() {
 		UpdateMantle();
 	} else if (m_Ladder.active) {
 		UpdateLadder();
-	} else {
+	} else if (!heldByLift) {
 		CorrectCorners();
 	}
 
@@ -3376,14 +3383,14 @@ void AHuman::Update() {
 	// Eliminate rotations over half a turn
 	if (std::abs(rot) > c_PI) {
 		rot = (rot > 0 ? -c_PI : c_PI) + (rot - (rot > 0 ? c_PI : -c_PI));
-		// If we're upside down, we're unstable damnit
-		if (m_Status == STABLE) {
+		// If we're upside down, we're unstable damnit. (Not when a gravity lift turned it so, head first down its tube.)
+		if (m_Status == STABLE && !heldByLift) {
 			m_Status = UNSTABLE;
 		}
 		m_StableRecoverTimer.Reset();
 	}
 
-	UpdateGetUp(rot);
+	UpdateGetUp(rot, heldByLift);
 
 	// Rotational balancing spring calc
 	if (m_GettingUp) {
@@ -4276,10 +4283,17 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 	return Vector(stickX, jet ? 1.0F : 0.0F);
 }
 
-void AHuman::UpdateGetUp(float& rot) {
+void AHuman::UpdateGetUp(float& rot, bool heldByLift) {
 	// CCCP_NO_GETUP=1: the old way (a second's wait, then the spring), for measuring.
 	static const bool disabled = std::getenv("CCCP_NO_GETUP") != nullptr;
 	if (disabled || m_Status == DYING || m_Status == DEAD || m_Status == INACTIVE) {
+		return;
+	}
+	// In a gravity lift: it turns the body head first down its tube, or on its side along one, slowly at first, and with a floor under it
+	// that read as knocked over. The get-up stood the unit on the floor and stopped it, the lift turned it again, and so on: stuck at the
+	// foot of a tube, and barely moving sideways. Once the lift lets go, a unit left lying gets up as ever.
+	if (heldByLift) {
+		m_GettingUp = false;
 		return;
 	}
 	const float h = std::max(GetMoveHeight(), 20.0F);

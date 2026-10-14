@@ -769,6 +769,12 @@ void AHuman::UpdateLadderInput() {
 	const bool jump = ctrl.IsState(BODY_JUMP);
 	const bool side = left || right;
 	LadderClimb& ladder = m_Ladder;
+	// In a gravity lift: no ladder taken hold of, and one held let go of; the lift has the body. (A climb puts the body where it should be
+	// each frame, against the lift.)
+	if (HeldByAutomover()) {
+		ladder.active = false;
+		return;
+	}
 	if (ladder.active) {
 		if (m_Status != STABLE) {
 			ladder.active = false;
