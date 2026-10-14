@@ -416,6 +416,11 @@ namespace RTE {
 		/// way round), 2 twice as readily.
 		float AIDigWillingness() const { return m_AIDigWillingness; }
 
+		/// Whether units dig through ground that only their digger's tracers cut (the stronger round some diggers fire one in several: the Heavy
+		/// Digger's cuts Metal): routed through it, priced as that many times slower, where going round is far or there's no way round. Off,
+		/// they dig only what the regular rounds cut. On by default.
+		bool AIDigsWithTracers() const { return m_AIDigsWithTracers; }
+
 		/// How much the routes of units a game mode wants kept safe (Actor::GetRouteThreatAvoidance: a capture the flag carrier) keep clear of
 		/// enemies (PathFinder::ThreatCost): 0 not at all, 1 as designed (a way past a crowd of enemies loses to a longer one past none; one
 		/// sentry is skirted only when going round is short), 2 twice as much. Other units always take the shortest way.
@@ -1104,6 +1109,9 @@ namespace RTE {
 
 		/// Sets how readily units with a digger tunnel; see AIDigWillingness.
 		void SetAIDigWillingness(float scale) { m_AIDigWillingness = std::clamp(scale, 0.0F, 2.0F); }
+
+		/// Sets whether units dig through ground only their digger's tracers cut; see AIDigsWithTracers.
+		void SetAIDigsWithTracers(bool on) { m_AIDigsWithTracers = on; }
 		/// Sets how much safe-route units keep clear of enemies, 0 to 2; see AIThreatAvoidance.
 		void SetAIThreatAvoidance(float scale) { m_AIThreatAvoidance = std::clamp(scale, 0.0F, 2.0F); }
 		/// Sets how reckless AI units are on the move, 0 to 1 (0.5 as designed).
@@ -1498,6 +1506,7 @@ namespace RTE {
 		float m_Toughness[static_cast<int>(ToughnessKind::Count)]; //!< How tough each kind of actor is (see Toughness).
 		float m_AISuppression; //!< How strongly fire pins units down and shakes them, 0 to 2 (see AISuppression).
 		float m_AIDigWillingness; //!< How readily units with a digger tunnel rather than go round, 0 to 2 (see AIDigWillingness).
+		bool m_AIDigsWithTracers; //!< See AIDigsWithTracers.
 		float m_AIThreatAvoidance; //!< How much safe-route units keep clear of enemies, 0 to 2 (see AIThreatAvoidance).
 		float m_AIRecklessness; //!< How reckless AI units are on the move, 0 to 1 (see AIRecklessness).
 		float m_AILadderGiveUpSeconds; //!< See AILadderGiveUpSeconds.

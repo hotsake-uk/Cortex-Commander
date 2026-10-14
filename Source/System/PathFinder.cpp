@@ -71,6 +71,8 @@ thread_local int s_JumpHeightDiagonal = 0;
 thread_local float s_DigStrength = 0.0F;
 thread_local float s_DigWillingness = 1.0F; // The AI digging setting, as it was when this thread's search began (SettingsMan::AIDigWillingness).
 thread_local float s_DigCostScale = 1.0F; // The searcher's share of the dig price (PathAgent::DigCostScale): under 1 on a dig-to order.
+thread_local float s_FastDigStrength = -1.0F; // What the searcher digs at its usual pace (PathAgent::FastDigStrength); -1 for all it digs.
+thread_local float s_SlowDigFactor = 1.0F; // How many times slower it digs what's stronger than that (PathAgent::SlowDigFactor).
 
 // What door material the search can get through: dug, or shot open. Doors used to be open to everyone, so a unit with a rifle that couldn't
 // scratch a blast door was routed through it, and stood at it.
@@ -775,6 +777,8 @@ void PathFinder::ApplyAgent(const PathAgent& agent) {
 	s_BreachStrength = agent.BreachStrength < 0.0F ? agent.DigStrength : agent.BreachStrength;
 	s_DigWillingness = g_SettingsMan.AIDigWillingness();
 	s_DigCostScale = agent.DigCostScale;
+	s_FastDigStrength = agent.FastDigStrength;
+	s_SlowDigFactor = agent.SlowDigFactor;
 
 	BuildLiftLinks(agent.Lifts.get(), agent.CallsLifts);
 }
@@ -856,6 +860,8 @@ namespace {
 		int JumpHeightDiagonal = s_JumpHeightDiagonal;
 		float DigStrength = s_DigStrength;
 		float DigCostScale = s_DigCostScale;
+		float FastDigStrength = s_FastDigStrength;
+		float SlowDigFactor = s_SlowDigFactor;
 		float BreachStrength = s_BreachStrength;
 		float StandHeight = s_StandHeight;
 		float CrawlHeight = s_CrawlHeight;
@@ -903,6 +909,8 @@ namespace {
 			s_JumpHeightDiagonal = JumpHeightDiagonal;
 			s_DigStrength = DigStrength;
 			s_DigCostScale = DigCostScale;
+			s_FastDigStrength = FastDigStrength;
+			s_SlowDigFactor = SlowDigFactor;
 			s_BreachStrength = BreachStrength;
 			s_StandHeight = StandHeight;
 			s_CrawlHeight = CrawlHeight;
@@ -1048,7 +1056,7 @@ DigPlan PathFinder::PlanDig(const Vector& start, const Vector& target, PathAgent
 		++plan.DigSteps;
 		const Material* material = StrongestMaterialAlongLine(from, to);
 		float integrity = material ? material->GetIntegrity() : 0.0F;
-		plan.DigSeconds += DigSecondsPerNode(DigHardness(integrity, agent.DigStrength)) * std::max(1.0F, g_SceneMan.ShortestDistance(from, to).GetMagnitude() / static_cast<float>(m_NodeDimension));
+		plan.DigSeconds += DigSecondsPerNode(DigHardness(integrity, DigCutStrength(integrity, agent.DigStrength, agent.FastDigStrength))) * DigSlowness(integrity, agent.FastDigStrength, agent.SlowDigFactor) * std::max(1.0F, g_SceneMan.ShortestDistance(from, to).GetMagnitude() / static_cast<float>(m_NodeDimension));
 		if (material && integrity > hardest) {
 			hardest = integrity;
 			plan.HardestMaterial = material->GetIndex();
@@ -2942,7 +2950,9 @@ float PathFinder::GetMaterialTransitionCost(const Material& material) const {
 		// (Loose ground under the default dig strength too, for a searcher with a digger: blasted earth and stone settle as Earth Rubble, at
 		// 25, and priced at its integrity a node of it cost a digger more than a node of the red earth beside it, so it tunnelled round the
 		// pile through the solid ground. Searchers without a digger keep the old price.)
-		strength = DigNodeCost(strength, s_DigStrength, s_DigWillingness, s_DigCostScale);
+		// (Ground only the digger's tracers cut, one round in several, takes that many times longer: a Heavy Digger goes through Metal
+		// where going round is far or there's no way round, and round it otherwise.)
+		strength = DigNodeCost(strength, DigCutStrength(strength, s_DigStrength, s_FastDigStrength), s_DigWillingness, s_DigCostScale, DigSlowness(strength, s_FastDigStrength, s_SlowDigFactor));
 	}
 
 	return strength;

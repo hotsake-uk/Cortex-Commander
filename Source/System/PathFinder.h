@@ -102,6 +102,8 @@ namespace RTE {
 	struct PathAgent {
 		float JumpHeight = FLT_MAX; //!< How high it can get on a jump or a tank of jet fuel, in metres. FLT_MAX for anything that flies.
 		float DigStrength = 35.0F; //!< The strongest material it can dig through (c_PathFindingDefaultDigStrength).
+		float FastDigStrength = -1.0F; //!< The strongest it digs at its usual pace (Actor::EstimateFastDigStrength); -1 for the dig strength. Up to DigStrength it digs SlowDigFactor times slower.
+		float SlowDigFactor = 1.0F; //!< How many times slower it digs material stronger than FastDigStrength (Actor::EstimateSlowDigFactor).
 		float BreachStrength = -1.0F; //!< The strongest door it can get through; -1 for the dig strength.
 		float StandHeight = 40.0F; //!< Head room it needs to walk upright, in pixels.
 		float CrawlHeight = 22.0F; //!< Head room it needs to crawl; the same as StandHeight for something that can't.
@@ -510,6 +512,21 @@ namespace RTE {
 		/// integrity by). (Measured in a gym: three nodes of earth took a Heavy Digger about twenty seconds, cut, swept and walked into.)
 		static float DigSecondsPerNode(float hardness) { return 2.0F + 6.0F * hardness * hardness; }
 
+		/// How many times longer than DigSecondsPerNode a node of this integrity takes: its slowdown (PathAgent::SlowDigFactor) when only the
+		/// digger's tracers cut it, stronger than what its regular rounds do (PathAgent::FastDigStrength), and 1 otherwise.
+		/// @param integrity The material's integrity.
+		/// @param fastStrength What the digger cuts at its usual pace; under 0 for no slower material.
+		/// @param slowFactor The slowdown.
+		static float DigSlowness(float integrity, float fastStrength, float slowFactor) { return fastStrength >= 0.0F && integrity > fastStrength ? std::max(slowFactor, 1.0F) : 1.0F; }
+
+		/// What a node of this integrity is cut with, for its DigHardness: the regular rounds (PathAgent::FastDigStrength) for what they cut,
+		/// the tracers (PathAgent::DigStrength) for what only they do. (Measured against the tracers, earth looked a third as hard to a Heavy
+		/// Digger as it is.)
+		/// @param integrity The material's integrity.
+		/// @param digStrength The strongest material the digger cuts at all.
+		/// @param fastStrength What it cuts at its usual pace; under 0 for the same.
+		static float DigCutStrength(float integrity, float digStrength, float fastStrength) { return fastStrength >= 0.0F && integrity <= fastStrength ? fastStrength : digStrength; }
+
 		/// What a node dug through costs a searcher, in walked nodes, for a material it cuts: from the time it takes (DigSecondsPerNode), so a
 		/// short cut through soft ground beats a long way round and a cut close to the digger's limit only a much longer one; scaled by the
 		/// AI digging setting (SettingsMan::AIDigWillingness). Never more than the material's integrity, the price before.
@@ -517,12 +534,13 @@ namespace RTE {
 		/// @param digStrength What the searcher's digger cuts.
 		/// @param willingness The AI digging setting; 0 prices the node at its integrity.
 		/// @param scale The searcher's own share of that price (PathAgent::DigCostScale): under 1 for a dig-to order.
-		static float DigNodeCost(float integrity, float digStrength, float willingness, float scale = 1.0F) {
+		/// @param slowness How many times longer than usual the cut takes (DigSlowness).
+		static float DigNodeCost(float integrity, float digStrength, float willingness, float scale = 1.0F, float slowness = 1.0F) {
 			if (willingness <= 0.0F) {
 				return integrity * scale;
 			}
 			float hardness = DigHardness(integrity, digStrength);
-			return std::min(integrity, (2.0F + 2.0F * DigSecondsPerNode(hardness)) / willingness) * scale;
+			return std::min(integrity, (2.0F + 2.0F * DigSecondsPerNode(hardness) * slowness) / willingness) * scale;
 		}
 #pragma endregion
 

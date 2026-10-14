@@ -1968,8 +1968,10 @@ void DebugMan::SettingsGUI() {
 			if (Slider("AI digging", &dig, Normal{1.0F}, 0.0F, 2.0F, "%.2fx")) {
 				g_SettingsMan.SetAIDigWillingness(dig);
 			}
-			Tip("How readily units carrying a digger tunnel through ground instead of going round it: at 1 a short cut through a hill or a bank of earth beats a long walk round, the softer the ground and the stronger the digger the sooner. Units only dig what their digger's regular rounds cut, and give up and go round when a cut stops getting anywhere. 0 digs only when there is no other way.");
+			Tip("How readily units carrying a digger tunnel through ground instead of going round it: at 1 a short cut through a hill or a bank of earth beats a long walk round, the softer the ground and the stronger the digger the sooner. Units dig what their digger's regular rounds cut (and, with the setting below on, what its tracers cut), and give up and go round when a cut stops getting anywhere. 0 digs only when there is no other way.");
 		}
+		Toggle("Units dig through metal when their digger can", g_SettingsMan.AIDigsWithTracers(), [](bool on) { g_SettingsMan.SetAIDigsWithTracers(on); });
+		Tip("Some diggers fire a stronger round every few shots that cuts what the rest don't: the Heavy Digger's cuts Metal, the Light and Medium Diggers' the next hardest ground up. On: units with one plan through that ground too, knowing it's that many times slower, so they go through it when going round is far or there's no way round. Off: they only dig what the regular rounds cut.");
 		{
 			float threats = g_SettingsMan.AIThreatAvoidance();
 			if (Slider("Safe routes in game modes", &threats, Normal{1.0F}, 0.0F, 2.0F, "%.2fx")) {

@@ -1183,6 +1183,22 @@ float HDFirearm::EstimateDigStrength() const {
 	return m_pMagazine ? m_pMagazine->EstimateDigStrength() : m_pMagazineReference->EstimateDigStrength();
 }
 
+float HDFirearm::EstimateSlowDigStrength() const {
+	if (m_AIDigStrength > 0.0F) {
+		return m_AIDigStrength;
+	}
+	const Magazine* magazine = m_pMagazine ? m_pMagazine : m_pMagazineReference;
+	return magazine ? magazine->EstimateSlowDigStrength() : EstimateDigStrength();
+}
+
+float HDFirearm::GetSlowDigFactor() const {
+	if (m_AIDigStrength > 0.0F) {
+		return 1.0F;
+	}
+	const Magazine* magazine = m_pMagazine ? m_pMagazine : m_pMagazineReference;
+	return magazine ? magazine->GetSlowDigFactor() : 1.0F;
+}
+
 void HDFirearm::Draw(BITMAP* pTargetBitmap, const Vector& targetPos, DrawMode mode, bool onlyPhysical) const {
 	if (m_pFlash && m_FireFrame && !m_pFlash->IsDrawnAfterParent() && mode == g_DrawColor && !onlyPhysical) {
 		m_pFlash->Draw(pTargetBitmap, targetPos, mode, onlyPhysical);

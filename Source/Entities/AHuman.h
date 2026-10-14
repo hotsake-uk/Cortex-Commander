@@ -293,9 +293,26 @@ namespace RTE {
 		/// @return Whether or not the strongest digging tool was successfully equipped.
 		bool EquipDiggingTool(bool doEquip = true);
 
+		/// What the diggers this AHuman carries cut (at least its base dig strength): with their regular rounds, with their tracers too (with
+		/// SettingsMan::AIDigsWithTracers on; otherwise the same), and how many times slower the tracers alone cut.
+		struct DiggerRating {
+			float Fast; //!< The strongest material cut at the usual pace.
+			float Slow; //!< The strongest material cut at all.
+			float SlowFactor; //!< How many times slower than usual what lies between the two is cut.
+		};
+		DiggerRating RateDiggers() const;
+
 		/// Estimates what material strength any digger this AHuman is carrying can penetrate.
 		/// @return The maximum material strength this AHuman's digger can penetrate, or a default dig strength if they don't have a digger.
 		float EstimateDigStrength() const override;
+
+		/// Estimates what material strength this AHuman's diggers cut with their regular rounds; see Actor::EstimateFastDigStrength.
+		/// @return The strongest material dug at the usual pace.
+		float EstimateFastDigStrength() const override;
+
+		/// Gets how many times slower this AHuman digs what only its digger's tracers cut; see Actor::EstimateSlowDigFactor.
+		/// @return The slowdown, 1 or more.
+		float EstimateSlowDigFactor() const override;
 
 		/// Estimates what door this AHuman can get through: with a digger, or by shooting it open with the strongest firearm carried.
 		/// @return The strongest door material it can breach.

@@ -560,6 +560,14 @@ namespace RTE {
 		/// @return The strongest material the regular rounds (or, with none, the tracers) destroy, or AIDigStrength when that is set.
 		float EstimateDigStrength() const;
 
+		/// Estimates the strongest material this cuts at all, its tracers included (Magazine::EstimateSlowDigStrength), or AIDigStrength.
+		/// @return The material strength, never less than EstimateDigStrength.
+		float EstimateSlowDigStrength() const;
+
+		/// Gets how many times slower this cuts what only its tracers cut (Magazine::GetSlowDigFactor); 1 for a tool rated by AIDigStrength.
+		/// @return The slowdown, 1 or more.
+		float GetSlowDigFactor() const;
+
 		/// Gets what this says it digs, for a tool that cuts the ground in its own script rather than with its rounds (DG-3); 0 for none.
 		float GetAIDigStrength() const { return m_AIDigStrength; }
 

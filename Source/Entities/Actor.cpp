@@ -1895,6 +1895,8 @@ PathAgent Actor::GetPathAgent() const {
 		agent.MaxSafeFall = GetMaxSafeFallHeight();
 	}
 	agent.DigStrength = EstimateDigStrength();
+	agent.FastDigStrength = EstimateFastDigStrength();
+	agent.SlowDigFactor = EstimateSlowDigFactor();
 	agent.BreachStrength = EstimateBreachStrength();
 	agent.Velocity = m_Vel;
 	// (With the Recklessness setting's route caution not following risk, a normal unit's, whatever the AI movement recklessness says.)

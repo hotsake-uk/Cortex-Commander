@@ -1065,30 +1065,52 @@ bool AHuman::EquipDiggingTool(bool doEquip) {
 	return strongestDigger != nullptr;
 }
 
-float AHuman::EstimateDigStrength() const {
-	float maxPenetration = Actor::EstimateDigStrength();
-
+AHuman::DiggerRating AHuman::RateDiggers() const {
+	DiggerRating rating{Actor::EstimateDigStrength(), Actor::EstimateDigStrength(), 1.0F};
 	if (!(m_pFGArm && m_pFGArm->IsAttached())) {
-		return maxPenetration;
+		return rating;
 	}
-
+	// The tracers count with the setting on: some diggers fire a stronger round one in several (the Heavy Digger's cuts Metal, its regular
+	// rounds don't), so ground only those cut is dug, slowly, rather than routed round as if it couldn't be.
+	const bool tracers = g_SettingsMan.AIDigsWithTracers();
+	auto consider = [&rating, tracers](const HDFirearm* digger) {
+		rating.Fast = std::max(rating.Fast, digger->EstimateDigStrength());
+		if (float slow = tracers ? digger->EstimateSlowDigStrength() : digger->EstimateDigStrength(); slow > rating.Slow) {
+			rating.Slow = slow;
+			rating.SlowFactor = tracers ? digger->GetSlowDigFactor() : 1.0F;
+		}
+	};
 	if (const HDFirearm* heldDeviceAsHDFirearm = dynamic_cast<HDFirearm*>(m_pFGArm->GetHeldDevice()); heldDeviceAsHDFirearm && heldDeviceAsHDFirearm->IsInGroup("Tools - Diggers")) {
-		maxPenetration = std::max(heldDeviceAsHDFirearm->EstimateDigStrength(), maxPenetration);
+		consider(heldDeviceAsHDFirearm);
 	}
-
 	for (const MovableObject* inventoryItem: m_Inventory) {
 		if (const HDFirearm* inventoryItemAsFirearm = dynamic_cast<const HDFirearm*>(inventoryItem); inventoryItemAsFirearm && inventoryItemAsFirearm->IsInGroup("Tools - Diggers")) {
-			maxPenetration = std::max(inventoryItemAsFirearm->EstimateDigStrength(), maxPenetration);
+			consider(inventoryItemAsFirearm);
 		}
 	}
+	if (rating.Slow <= rating.Fast) {
+		rating.Slow = rating.Fast;
+		rating.SlowFactor = 1.0F;
+	}
+	return rating;
+}
 
-	return maxPenetration;
+float AHuman::EstimateDigStrength() const {
+	return RateDiggers().Slow;
+}
+
+float AHuman::EstimateFastDigStrength() const {
+	return RateDiggers().Fast;
+}
+
+float AHuman::EstimateSlowDigFactor() const {
+	return RateDiggers().SlowFactor;
 }
 
 float AHuman::EstimateBreachStrength() const {
 	// A door is shot open with anything that penetrates it (NativeHumanAI's rule: nine tenths of the firearm's penetration beats the door's
 	// integrity), so a unit with a rifle paths through doors the rifle can open, and round the ones it can't.
-	float breach = EstimateDigStrength();
+	float breach = EstimateFastDigStrength();
 	auto consider = [&breach](const MovableObject* item) {
 		if (const HDFirearm* firearm = dynamic_cast<const HDFirearm*>(item)) {
 			breach = std::max(breach, firearm->GetAIPenetration() * 0.9F);

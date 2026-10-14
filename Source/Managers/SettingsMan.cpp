@@ -246,6 +246,7 @@ void SettingsMan::Clear() {
 	std::fill(std::begin(m_Toughness), std::end(m_Toughness), 1.0F);
 	m_AISuppression = 1.0F;
 	m_AIDigWillingness = 1.0F;
+	m_AIDigsWithTracers = true;
 	m_AIThreatAvoidance = 1.0F;
 	m_AIRecklessness = 0.5F;
 	ResetLadderSettings();
@@ -1163,6 +1164,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 		m_AISuppression = std::clamp(m_AISuppression, 0.0F, 2.0F);
 	});
 	MatchProperty("AIDigWillingness", { float scale = 1.0F; reader >> scale; SetAIDigWillingness(scale); });
+	MatchProperty("AIDigsWithTracers", { reader >> m_AIDigsWithTracers; });
 	MatchProperty("AIThreatAvoidance", { float scale = 1.0F; reader >> scale; SetAIThreatAvoidance(scale); });
 	MatchProperty("AIRecklessness", { float recklessness = 0.5F; reader >> recklessness; SetAIRecklessness(recklessness); });
 	MatchProperty("StrictClimbLimits", { reader >> m_StrictClimbLimits; });
@@ -1907,6 +1909,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("CreatureToughness", Toughness(ToughnessKind::Creatures));
 	writer.NewPropertyWithValue("AISuppression", m_AISuppression);
 	writer.NewPropertyWithValue("AIDigWillingness", m_AIDigWillingness);
+	writer.NewPropertyWithValue("AIDigsWithTracers", m_AIDigsWithTracers);
 	writer.NewPropertyWithValue("AIThreatAvoidance", m_AIThreatAvoidance);
 	writer.NewPropertyWithValue("AISpawnDiggerChance", m_AISpawnDiggerChance);
 	writer.NewPropertyWithValue("AISpawnDiggerType", m_AISpawnDiggerType);
