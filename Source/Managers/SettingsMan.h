@@ -846,6 +846,13 @@ namespace RTE {
 		/// Sets the key that swaps the sandbox's bar and the Commander Toolbar (an SDL key name).
 		void SetCommanderBarKey(const std::string& key) { m_CommanderBarKey = key; }
 
+		/// The factions last ticked for each team on the scenario setup's "-Pick several-", and which teams used them, so they are there again
+		/// next time: "1:Coalition.rte|Ronin.rte;0:Imperatus.rte;0:;0:".
+		const std::string& ScenarioFactionPicks() const { return m_ScenarioFactionPicks; }
+
+		/// Sets the remembered scenario faction picks (see ScenarioFactionPicks).
+		void SetScenarioFactionPicks(const std::string& picks) { m_ScenarioFactionPicks = picks; }
+
 		/// Which units in the sandbox show their order as a mark over them (RC-7): 0 none, 1 the selected ones, 2 all.
 		int SandboxOrderGlyphs() const { return m_SandboxOrderGlyphs; }
 
@@ -1436,6 +1443,7 @@ namespace RTE {
 		bool m_SandboxSpotReach; //!< Whether move previews show each standing spot's reachability (see ShowSandboxSpotReach).
 		bool m_SandboxGroupBadges; //!< Whether control-group units show their group's number (see ShowSandboxGroupBadges).
 		std::string m_CommanderBarKey; //!< The key that swaps the sandbox's bar and the Commander Toolbar (see CommanderBarKey).
+		std::string m_ScenarioFactionPicks; //!< The factions last picked for each team in the scenario setup (see ScenarioFactionPicks).
 		int m_SandboxOrderGlyphs; //!< Which units show their order as a mark (see SandboxOrderGlyphs).
 		int m_SandboxSpawnStats; //!< How the Spawn tab shows units' and items' stats (see SandboxSpawnStats).
 		int m_SandboxSpawnSort; //!< How the sandbox's picture lists are sorted (see SandboxSpawnSort).

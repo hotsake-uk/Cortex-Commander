@@ -286,7 +286,27 @@ void GameActivity::SetTeamTech(int team, const std::string& tech) {
 	if (team >= Teams::TeamOne && team < Teams::MaxTeamCount) {
 		if (tech == "-All-" || tech == "-Random-")
 			m_TeamTech[team] = tech;
-		else {
+		else if (tech.find('|') != std::string::npos) {
+			// Several factions ("Coalition.rte|Ronin.rte"): those found are kept, and each time the team's tech is looked up one of them is used.
+			std::string kept;
+			size_t start = 0;
+			while (start <= tech.size()) {
+				size_t end = tech.find('|', start);
+				if (end == std::string::npos) {
+					end = tech.size();
+				}
+				std::string name = tech.substr(start, end - start);
+				if (!name.empty() && g_PresetMan.GetModuleID(name) != -1) {
+					kept += (kept.empty() ? "" : "|") + name;
+				} else if (!name.empty()) {
+					g_ConsoleMan.PrintString("ERR: " + name + " not found. Can't set it as one of the team's techs.");
+				}
+				start = end + 1;
+			}
+			if (!kept.empty()) {
+				m_TeamTech[team] = kept;
+			}
+		} else {
 			int id = g_PresetMan.GetModuleID(tech);
 			if (id != -1)
 				m_TeamTech[team] = tech;
@@ -742,9 +762,25 @@ int GameActivity::Start() {
 
 		// Load correct loadouts into buy menu if we're starting a non meta-game activity
 		if (m_pBuyGUI[player]->GetMetaPlayer() == Players::NoPlayer) {
-			int techModuleID = g_PresetMan.GetModuleID(GetTeamTech(GetTeamOfPlayer(player)));
+			// (With several factions picked for the team, the first is the menu's native tech and the others are shown alongside it.)
+			const std::string teamTech = GetTeamTech(GetTeamOfPlayer(player));
+			std::vector<int> techModuleIDs;
+			for (size_t start = 0; start <= teamTech.size();) {
+				size_t end = teamTech.find('|', start);
+				if (end == std::string::npos) {
+					end = teamTech.size();
+				}
+				if (int id = g_PresetMan.GetModuleID(teamTech.substr(start, end - start)); id >= 0) {
+					techModuleIDs.push_back(id);
+				}
+				start = end + 1;
+			}
+			int techModuleID = techModuleIDs.empty() ? -1 : techModuleIDs.front();
 
 			m_pBuyGUI[player]->SetNativeTechModule(techModuleID);
+			for (size_t other = 1; other < techModuleIDs.size(); ++other) {
+				m_pBuyGUI[player]->AddNativeTechModule(techModuleIDs[other]);
+			}
 			m_pBuyGUI[player]->SetForeignCostMultiplier(1.0);
 			m_pBuyGUI[player]->LoadAllLoadoutsFromFile();
 

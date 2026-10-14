@@ -239,6 +239,24 @@ const std::string PresetMan::GetDataModuleName(int whichModule) {
 }
 
 int PresetMan::GetModuleID(std::string moduleName) {
+	// Several factions picked for a team in the scenario setup ("Coalition.rte|Ronin.rte"): one of them, at random each time asked.
+	if (moduleName.find('|') != std::string::npos) {
+		std::vector<int> picked;
+		size_t start = 0;
+		while (start <= moduleName.size()) {
+			size_t end = moduleName.find('|', start);
+			if (end == std::string::npos) {
+				end = moduleName.size();
+			}
+			if (end > start) {
+				if (int id = GetModuleID(moduleName.substr(start, end - start)); id >= 0) {
+					picked.push_back(id);
+				}
+			}
+			start = end + 1;
+		}
+		return picked.empty() ? -1 : picked[RandomNum<int>(0, static_cast<int>(picked.size()) - 1)];
+	}
 	// Lower-case search name so we can match up against the already-lowercase names in m_DataModuleIDs
 	std::transform(moduleName.begin(), moduleName.end(), moduleName.begin(), ::tolower);
 
