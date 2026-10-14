@@ -35,6 +35,11 @@ namespace RTE {
 			float LeafBreakEase = 4.0F; //!< How much more easily leaves (and grass) come off a landing piece than the piece itself breaks: 1 as easily, 4 at a quarter of the speed.
 			float LeafLitter = 0.5F; //!< The share of the leaves (and grass) coming off a piece that are laid on the ground below as litter rather than thrown as loose particles, most of which are lost: 0 none, 1 all.
 			float BlastPush = 2.44F; //!< How hard explosions throw loose pieces: 0 not at all, 1 hard, 3 very hard. Lower also means fewer pieces lying at rest are picked up again.
+			bool BlastLoosens = false; //!< Explosions: the shockwave loosens ground near it. Pieces the blast cuts loose are thrown by it as they come loose, and close to it necks a little wider and overhangs a little shorter than the usual limits give way.
+			float BlastLoosenStrength = 1.0F; //!< Explosions: how much the shockwave widens the necks that snap and shortens the overhangs that hold near it: 0 not at all, 1 the biggest blasts snap necks 9 pixels wider and break overhangs at about half the length, 2 more.
+			bool BlastSnapsScenery = false; //!< Explosions: the shockwave also snaps necks and overhangs that were already like that before it (the map's own ledges), inside its strong inner zone. Off, only ground the blast itself changed.
+			bool BlastPushesLateLook = false; //!< Explosions: what the second look for loose ground (1.5 s after a blast, for what its last particles cut) lets fall is thrown by the blast too. Off, only the first look's (0.5 s after).
+			bool AirWavePushesPieces = false; //!< Explosions: the air's blast wave (AirPressure) pushes falling pieces as it passes over them, down corridors and round corners.
 			int CrushPixels = 149; //!< A falling piece goes through loose bits of ground of up to this many pixels (leftover scraps, nuggets, a few grains) and flattens them, instead of being held up by them. Never more than a quarter of its own size. 0 turns this off.
 			float ScuffStrength = 1.0F; //!< How much loose ground (sand and the like, per its Scuffs material property) is knocked loose and shoved along by units walking or running on it: 1 a few pixels a step, 2 more, 0 none.
 			float RestSeconds = 2.5F; //!< How long a piece lies still before it becomes ordinary ground again.
@@ -142,7 +147,9 @@ namespace RTE {
 		/// Queues a check for floating terrain around a crater. Thread safe.
 		/// @param position Centre of the crater, in scene coordinates.
 		/// @param radius How far around it to look.
-		static void QueueCheck(const Vector& position, float radius);
+		/// @param blastReach For an explosion's crater: how far the blast is felt, in pixels (as Blast's reach), for Tuning::BlastLoosens. 0 for none.
+		/// @param blastEnergy For an explosion's crater: how big the blast is (as Blast's energy).
+		static void QueueCheck(const Vector& position, float radius, float blastReach = 0.0F, float blastEnergy = 0.0F);
 
 		/// Makes a boulder of a material in the air at a point, which falls like any loose piece. Thread safe; applied on the next sim step.
 		/// @param position Its centre, in scene coordinates.

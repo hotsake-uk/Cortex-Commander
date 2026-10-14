@@ -576,9 +576,17 @@ void DebugMan::SettingsGUI() {
 			if (Combo("Precipitation", &settings.WeatherType, weatherItems.c_str())) {
 				// A pick made here wins over a saved custom weather still waiting for its preset to load.
 				settings.WeatherName.clear();
+				// And it's the player's own from now on, kept from map to map.
+				g_PostProcessMan.AdoptWeatherAsPlayers();
 			}
 		}
-		Slider("Weather intensity", &settings.WeatherIntensity, 0.0F, 1.0F);
+		if (bool overrideMap = settings.OverrideMapWeather; Check("Override the map's weather", &overrideMap)) {
+			g_PostProcessMan.SetOverrideMapWeather(overrideMap);
+		}
+		Tip("Every map has the precipitation and intensity set here, over the weather the map sets for itself. The map's wind stays its own. A game's weather picked on the scenario start screen, and a saved game's weather, still win. Off: a map with its own weather has it.");
+		if (Slider("Weather intensity", &settings.WeatherIntensity, 0.0F, 1.0F)) {
+			g_PostProcessMan.AdoptWeatherAsPlayers();
+		}
 		Slider("Weather speed", &settings.WeatherSpeed, 0.1F, 3.0F, "%.2fx");
 		Tip("How fast the rain, snow, ash and dust move: their fall, how the wind carries them, and their sway, swirl and flicker. They keep their angle, so shelter and splashes still line up. 1: as the weather has it.");
 		Check("Weather everywhere", &settings.WeatherEverywhere);
@@ -1184,9 +1192,20 @@ void DebugMan::SettingsGUI() {
 		Tip("Smaller loose bits of building material stay put: lamps, signs and consoles are drawn hanging in mid-air.");
 		Slider("Force to trigger a collapse check", &tuning.CheckMinForce, 0.0F, 2000.0F, "%.0f", ImGuiSliderFlags_Logarithmic);
 		Tip("How hard a bullet, thrown object or unit has to hit the ground (its impulse, in the same units as a material's strength: earth 70, concrete 1000) to start the ground around being checked for pieces cut loose. Weaker hits on the same patch add up over a couple of seconds, so steady fire still brings a ledge down. Weapon damage to terrain counts. Explosions, digging and fire always start a check. 0: every hit that knocks out terrain does.");
-		Heading("How it falls");
+		Heading("Explosions");
 		Slider("How hard explosions throw loose pieces", &tuning.BlastPush, 0.0F, 3.0F);
 		Tip("0: explosions don't move loose pieces at all. Higher: pieces still moving are thrown harder, and more of the pieces lying at rest near a blast are picked up and thrown.");
+		Check("Shockwave loosens ground", &tuning.BlastLoosens);
+		Tip("On: an explosion's shockwave works on the ground it leaves. What it cuts loose is thrown up and away by it as it comes loose (half a second after, once the crater is dug), instead of only dropping and being thrown by later blasts. And close to it, necks a little wider than the usual limit snap and overhangs a little shorter break. Off (as the game comes): what a blast cuts loose just drops.");
+		Slider("How much the shockwave loosens ground", &tuning.BlastLoosenStrength, 0.0F, 3.0F);
+		Tip("With the shockwave loosening ground: how much wider the necks that snap and how much shorter the overhangs that hold close to a blast, by its size. At 1 the biggest blasts snap necks 9 pixels wider and break overhangs at about half the usual length. 0: only the throw.");
+		Check("Shockwave snaps the map's own ledges", &tuning.BlastSnapsScenery);
+		Tip("With the shockwave loosening ground: on, necks and overhangs close to a blast (within half its reach) that were already like that before it, the map's own ledges and arches, snap too. Off: only ones the blast itself made.");
+		Check("Shockwave throws what the late look finds", &tuning.BlastPushesLateLook);
+		Tip("With the shockwave loosening ground: the ground is looked at again a second and a half after a blast, for what its last particles cut. On: what that look lets fall is thrown by the blast too. Off: it just drops.");
+		Check("Air blast waves push falling pieces", &tuning.AirWavePushesPieces);
+		Tip("On: the wave of air from an explosion (Air & wind, blast waves) pushes falling pieces as it passes over them, down corridors and round corners, as it pushes loose objects, less for heavy ones and scaled by how hard explosions throw loose pieces. Off (as the game comes): only the blast itself throws them.");
+		Heading("How it falls");
 		SliderI("Loose scraps it flattens (pixels)", &tuning.CrushPixels, 0, 300);
 		Tip("A falling piece goes through loose bits of ground up to this size instead of getting stuck on them. Never more than a quarter of its own size. 0: everything holds it up.");
 		Slider("Sand disturbed by walking", &tuning.ScuffStrength, 0.0F, 3.0F);
@@ -1366,6 +1385,10 @@ void DebugMan::SettingsGUI() {
 			Tip("The whole picture printed as cyan, magenta and yellow dot screens at angles, for a pulp comic look.");
 			Slider("Paper grain", &retro.PaperGrain, 0.0F, 1.0F);
 			Tip("A faint paper grain and off-white paper under the picture.");
+			if (retro.PaperGrain > 0.0F) {
+				Check("Paper on backdrop only", &retro.PaperBackgroundOnly);
+				Tip("The paper grain only on the backdrop behind the terrain (background walls, distant hills, the sky), so terrain, units and effects stay clean.");
+			}
 			Slider("Misregistration", &retro.Misregister, 0.0F, 1.0F);
 			Tip("The colour plates printed a pixel or two out of line, as on cheap newsprint.");
 			Slider("Comic action FX", &retro.ComicFX, 0.0F, 1.0F);
@@ -1383,7 +1406,9 @@ void DebugMan::SettingsGUI() {
 			Slider("Terminal readout", &retro.TerminalOverlay, 0.0F, 1.0F);
 			Tip("Faint scrolling hex and log lines down the edges of the screen and a blinking cursor, under the HUD.");
 			Slider("VHS tape", &retro.VHS, 0.0F, 1.0F);
-			Tip("Colour bleeding sideways, a tracking band rolling up the screen, a little wobble, tape noise and a slewed strip at the bottom.");
+			Tip("Colour bleeding sideways, a little wobble, tape noise and a slewed strip at the bottom.");
+			Slider("Tracking band", &retro.TrackingBand, 0.0F, 1.0F);
+			Tip("Video tape's tracking band: a torn, snowy strip rolling slowly up the screen.");
 			Slider("Glitch", &retro.Glitch, 0.0F, 1.0F);
 			Tip("Every so often a short burst of glitching: Synthwave's picture torn sideways in blocks with its colours split, Hackerman's blocks scrambled into glyphs. More: more often and longer.");
 			if (retro.Glitch > 0.0F) {
@@ -1676,6 +1701,8 @@ void DebugMan::SettingsGUI() {
 		Tip("Each unit's team icon and health number. In the Sandbox game mode every side's are shown; in other games, other sides' only where your side has seen and with \"Show enemy HUD\" (Options, Gameplay) on. Units of no side (training dummies) and those a mod hides never have them.");
 		Toggle("CPU units' aim reticles", g_SettingsMan.ShowCPUAimReticles(), [](bool on) { g_SettingsMan.SetShowCPUAimReticles(on); });
 		Tip("The yellow dots along the sights of a weapon a CPU-controlled unit is aiming, and of a turret's. Off: only your own units' are drawn. Your own aim is always shown.");
+		Toggle("Reticle passes through terrain", g_SettingsMan.FreeAimThroughTerrain(), [](bool on) { g_SettingsMan.SetFreeAimThroughTerrain(on); });
+		Tip("On: when you aim down the sights, the reticle and the camera stretch out to the weapon's full sharp-aim reach in any direction, through terrain and objects. Off: they stop at the first wall or object in the way. Only the unit you play (a soldier or a crab); CPU units always stop.");
 		Toggle("Alert mark over units", g_SettingsMan.ShowAlarmExclamation(), [](bool on) { g_SettingsMan.SetShowAlarmExclamation(on); });
 		Tip("The exclamation mark that pops up over a unit's head when it is alerted to an enemy or a noise.");
 		Toggle("Classic pie wheel", g_SettingsMan.ClassicPieWheel(), [](bool on) { g_SettingsMan.SetClassicPieWheel(on); });

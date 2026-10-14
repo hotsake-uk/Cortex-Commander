@@ -3335,17 +3335,20 @@ void AHuman::Update() {
 			if (heldDevice->IsRecoiled()) {
 				m_SharpAimProgress *= 1.0F - std::min(heldDevice->GetRecoilForce().GetMagnitude() / std::max(totalGripStrength * heldDevice->GetGripStrengthMultiplier(), 1.0F), 1.0F);
 			}
-			Vector notUsed;
-			Vector sharpAimVector(maxLength, 0);
-			sharpAimVector *= aimMatrix;
+			// The free-aim setting lets the player's own aim reach through terrain and objects; CPU units always stop at them.
+			if (!(g_SettingsMan.FreeAimThroughTerrain() && m_Controller.IsPlayerControlled())) {
+				Vector notUsed;
+				Vector sharpAimVector(maxLength, 0);
+				sharpAimVector *= aimMatrix;
 
-			SceneMan::LiquidsSeeThrough seeThrough(false, 6); // Aiming down the sights looks into water too.
-			// See how far along the sharp aim vector there is opaque air
-			float result = g_SceneMan.CastObstacleRay(heldDevice->GetMuzzlePos(), sharpAimVector, notUsed, notUsed, GetRootID(), IgnoresWhichTeam(), g_MaterialAir, 5);
-			// If we didn't find anything but air before the sharpdistance, then don't alter the sharp distance
-			if (result >= 0 && result < (maxLength * m_SharpAimProgress)) {
-				m_SharpAimProgress = result / maxLength;
-				m_SharpAimMaxedOut = true;
+				SceneMan::LiquidsSeeThrough seeThrough(false, 6); // Aiming down the sights looks into water too.
+				// See how far along the sharp aim vector there is opaque air
+				float result = g_SceneMan.CastObstacleRay(heldDevice->GetMuzzlePos(), sharpAimVector, notUsed, notUsed, GetRootID(), IgnoresWhichTeam(), g_MaterialAir, 5);
+				// If we didn't find anything but air before the sharpdistance, then don't alter the sharp distance
+				if (result >= 0 && result < (maxLength * m_SharpAimProgress)) {
+					m_SharpAimProgress = result / maxLength;
+					m_SharpAimMaxedOut = true;
+				}
 			}
 		}
 		if (m_SharpAimProgress > 0.9F) {

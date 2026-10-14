@@ -90,7 +90,7 @@ namespace {
 	    {"Afterglow", &LightingSettings::RetroLayers::Afterglow}, {"TerminalOverlay", &LightingSettings::RetroLayers::TerminalOverlay}, {"CelShading", &LightingSettings::RetroLayers::CelShading},
 	    {"CelBands", &LightingSettings::RetroLayers::CelBands}, {"Halftone", &LightingSettings::RetroLayers::Halftone}, {"ColorHalftone", &LightingSettings::RetroLayers::ColorHalftone},
 	    {"PaperGrain", &LightingSettings::RetroLayers::PaperGrain}, {"Misregister", &LightingSettings::RetroLayers::Misregister}, {"ComicFX", &LightingSettings::RetroLayers::ComicFX},
-	    {"PanelFrame", &LightingSettings::RetroLayers::PanelFrame}};
+	    {"PanelFrame", &LightingSettings::RetroLayers::PanelFrame}, {"TrackingBand", &LightingSettings::RetroLayers::TrackingBand}};
 
 	/// Reads one retro layer setting, saved as its prefix ("Retro" for the player's own, "Synthwave" and so on for a screen style's, "Variant" for the chosen variant's, none in a filter preset file) and then field.
 	void ReadRetroField(LightingSettings::RetroLayers& layers, std::string_view field, const std::string& value) {
@@ -102,6 +102,8 @@ namespace {
 			layers.InkEdges = std::stoi(value) != 0;
 		} else if (field == "GlitchOnBlasts") {
 			layers.GlitchOnBlasts = std::stoi(value) != 0;
+		} else if (field == "PaperBackgroundOnly") {
+			layers.PaperBackgroundOnly = std::stoi(value) != 0;
 		} else {
 			for (const auto& [name, member]: c_RetroFloatFields) {
 				if (field == name) {
@@ -116,6 +118,7 @@ namespace {
 		writer.NewPropertyWithValue(prefix + "Palette", layers.Palette);
 		writer.NewPropertyWithValue(prefix + "InkEdges", layers.InkEdges);
 		writer.NewPropertyWithValue(prefix + "GlitchOnBlasts", layers.GlitchOnBlasts);
+		writer.NewPropertyWithValue(prefix + "PaperBackgroundOnly", layers.PaperBackgroundOnly);
 		for (const auto& [name, member]: c_RetroFloatFields) {
 			writer.NewPropertyWithValue(prefix + name, layers.*member);
 		}
@@ -311,6 +314,7 @@ void SettingsMan::Clear() {
 	m_ShowEnemyHUD = true;
 	m_ShowUnitTags = false;
 	m_ShowCPUAimReticles = true;
+	m_FreeAimThroughTerrain = false;
 	m_ShowAlarmExclamation = true;
 	m_EnableSmartBuyMenuNavigation = true;
 	m_AutomaticGoldDeposit = true;
@@ -483,6 +487,11 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CollapseSplinterSpeed", { TerrainCollapse::GetTuning().SplinterSpeed = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 100.0F); });
 	MatchProperty("CollapseBendSpeed", { TerrainCollapse::GetTuning().BendSpeed = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 100.0F); });
 	MatchProperty("CollapseBlastPush", { TerrainCollapse::GetTuning().BlastPush = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
+	MatchProperty("CollapseBlastLoosens", { TerrainCollapse::GetTuning().BlastLoosens = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("CollapseBlastLoosenStrength", { TerrainCollapse::GetTuning().BlastLoosenStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 5.0F); });
+	MatchProperty("CollapseBlastSnapsScenery", { TerrainCollapse::GetTuning().BlastSnapsScenery = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("CollapseBlastPushesLateLook", { TerrainCollapse::GetTuning().BlastPushesLateLook = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("CollapseAirWavePushesPieces", { TerrainCollapse::GetTuning().AirWavePushesPieces = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("CollapseCrushPixels", { TerrainCollapse::GetTuning().CrushPixels = std::clamp(std::stoi(reader.ReadPropValue()), 0, 500); });
 	MatchProperty("CollapseScuffStrength", { TerrainCollapse::GetTuning().ScuffStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 3.0F); });
 	MatchProperty("CollapseRestSeconds", { TerrainCollapse::GetTuning().RestSeconds = std::clamp(std::stof(reader.ReadPropValue()), 0.1F, 30.0F); });
@@ -609,6 +618,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AtmosphereColor", { g_PostProcessMan.GetLightingSettings().AtmosphereColor = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().AtmosphereColor); });
 	MatchProperty("WeatherType", { g_PostProcessMan.GetLightingSettings().WeatherType = std::stoi(reader.ReadPropValue()); });
 	MatchProperty("WeatherName", { g_PostProcessMan.GetLightingSettings().WeatherName = reader.ReadPropValue(); });
+	MatchProperty("OverrideMapWeather", { g_PostProcessMan.GetLightingSettings().OverrideMapWeather = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("CustomWeather", { g_PostProcessMan.GetLightingSettings().CustomWeather = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WeatherGlow", { g_PostProcessMan.GetLightingSettings().WeatherGlow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WeatherIntensity", { g_PostProcessMan.GetLightingSettings().WeatherIntensity = std::stof(reader.ReadPropValue()); });
@@ -647,6 +657,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("RetroLook", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Look", reader.ReadPropValue()); });
 	MatchProperty("RetroPalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Palette", reader.ReadPropValue()); });
 	MatchProperty("RetroInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "InkEdges", reader.ReadPropValue()); });
+	MatchProperty("RetroPaperBackgroundOnly", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "PaperBackgroundOnly", reader.ReadPropValue()); });
 	MatchProperty("RetroGlitchOnBlasts", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "GlitchOnBlasts", reader.ReadPropValue()); });
 	MatchProperty("RetroPaletteStrength", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "PaletteStrength", reader.ReadPropValue()); });
 	MatchProperty("RetroNeonGlow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "NeonGlow", reader.ReadPropValue()); });
@@ -673,9 +684,11 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("RetroMisregister", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Misregister", reader.ReadPropValue()); });
 	MatchProperty("RetroComicFX", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "ComicFX", reader.ReadPropValue()); });
 	MatchProperty("RetroPanelFrame", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "PanelFrame", reader.ReadPropValue()); });
+	MatchProperty("RetroTrackingBand", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "TrackingBand", reader.ReadPropValue()); });
 	MatchProperty("SynthwaveLook", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Look", reader.ReadPropValue()); });
 	MatchProperty("SynthwavePalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Palette", reader.ReadPropValue()); });
 	MatchProperty("SynthwaveInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "InkEdges", reader.ReadPropValue()); });
+	MatchProperty("SynthwavePaperBackgroundOnly", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "PaperBackgroundOnly", reader.ReadPropValue()); });
 	MatchProperty("SynthwaveGlitchOnBlasts", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "GlitchOnBlasts", reader.ReadPropValue()); });
 	MatchProperty("SynthwavePaletteStrength", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "PaletteStrength", reader.ReadPropValue()); });
 	MatchProperty("SynthwaveNeonGlow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "NeonGlow", reader.ReadPropValue()); });
@@ -702,9 +715,11 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SynthwaveMisregister", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Misregister", reader.ReadPropValue()); });
 	MatchProperty("SynthwaveComicFX", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "ComicFX", reader.ReadPropValue()); });
 	MatchProperty("SynthwavePanelFrame", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "PanelFrame", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveTrackingBand", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "TrackingBand", reader.ReadPropValue()); });
 	MatchProperty("HackermanLook", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "Look", reader.ReadPropValue()); });
 	MatchProperty("HackermanPalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "Palette", reader.ReadPropValue()); });
 	MatchProperty("HackermanInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "InkEdges", reader.ReadPropValue()); });
+	MatchProperty("HackermanPaperBackgroundOnly", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "PaperBackgroundOnly", reader.ReadPropValue()); });
 	MatchProperty("HackermanGlitchOnBlasts", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "GlitchOnBlasts", reader.ReadPropValue()); });
 	MatchProperty("HackermanPaletteStrength", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "PaletteStrength", reader.ReadPropValue()); });
 	MatchProperty("HackermanNeonGlow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "NeonGlow", reader.ReadPropValue()); });
@@ -731,9 +746,11 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("HackermanMisregister", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "Misregister", reader.ReadPropValue()); });
 	MatchProperty("HackermanComicFX", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "ComicFX", reader.ReadPropValue()); });
 	MatchProperty("HackermanPanelFrame", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "PanelFrame", reader.ReadPropValue()); });
+	MatchProperty("HackermanTrackingBand", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "TrackingBand", reader.ReadPropValue()); });
 	MatchProperty("ComicLook", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "Look", reader.ReadPropValue()); });
 	MatchProperty("ComicPalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "Palette", reader.ReadPropValue()); });
 	MatchProperty("ComicInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "InkEdges", reader.ReadPropValue()); });
+	MatchProperty("ComicPaperBackgroundOnly", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "PaperBackgroundOnly", reader.ReadPropValue()); });
 	MatchProperty("ComicGlitchOnBlasts", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "GlitchOnBlasts", reader.ReadPropValue()); });
 	MatchProperty("ComicPaletteStrength", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "PaletteStrength", reader.ReadPropValue()); });
 	MatchProperty("ComicNeonGlow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "NeonGlow", reader.ReadPropValue()); });
@@ -760,9 +777,11 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("ComicMisregister", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "Misregister", reader.ReadPropValue()); });
 	MatchProperty("ComicComicFX", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "ComicFX", reader.ReadPropValue()); });
 	MatchProperty("ComicPanelFrame", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "PanelFrame", reader.ReadPropValue()); });
+	MatchProperty("ComicTrackingBand", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "TrackingBand", reader.ReadPropValue()); });
 	MatchProperty("VariantLook", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "Look", reader.ReadPropValue()); });
 	MatchProperty("VariantPalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "Palette", reader.ReadPropValue()); });
 	MatchProperty("VariantInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "InkEdges", reader.ReadPropValue()); });
+	MatchProperty("VariantPaperBackgroundOnly", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "PaperBackgroundOnly", reader.ReadPropValue()); });
 	MatchProperty("VariantGlitchOnBlasts", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "GlitchOnBlasts", reader.ReadPropValue()); });
 	MatchProperty("VariantPaletteStrength", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "PaletteStrength", reader.ReadPropValue()); });
 	MatchProperty("VariantNeonGlow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "NeonGlow", reader.ReadPropValue()); });
@@ -789,6 +808,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("VariantMisregister", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "Misregister", reader.ReadPropValue()); });
 	MatchProperty("VariantComicFX", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "ComicFX", reader.ReadPropValue()); });
 	MatchProperty("VariantPanelFrame", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "PanelFrame", reader.ReadPropValue()); });
+	MatchProperty("VariantTrackingBand", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "TrackingBand", reader.ReadPropValue()); });
 	MatchProperty("ScreenVariant", {
 		std::string name = reader.ReadPropValue();
 		g_PostProcessMan.GetLightingSettings().ScreenVariant = name == "None" ? std::string() : name;
@@ -1294,6 +1314,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("ShowEnemyHUD", { reader >> m_ShowEnemyHUD; });
 	MatchProperty("ShowUnitTags", { reader >> m_ShowUnitTags; });
 	MatchProperty("ShowCPUAimReticles", { reader >> m_ShowCPUAimReticles; });
+	MatchProperty("FreeAimThroughTerrain", { reader >> m_FreeAimThroughTerrain; });
 	MatchProperty("ShowAlarmExclamation", { reader >> m_ShowAlarmExclamation; });
 	MatchProperty("SmartBuyMenuNavigation", { reader >> m_EnableSmartBuyMenuNavigation; });
 	MatchProperty("ScrapCompactingHeight", { reader >> g_SceneMan.m_ScrapCompactingHeight; });
@@ -1471,6 +1492,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 			writer.NewPropertyWithValue("WeatherName", weather->GetPresetName());
 		}
 	}
+	writer.NewPropertyWithValue("OverrideMapWeather", lighting.OverrideMapWeather);
 	writer.NewPropertyWithValue("CustomWeather", lighting.CustomWeather);
 	writer.NewPropertyWithValue("WeatherGlow", lighting.WeatherGlow);
 	writer.NewPropertyWithValue("WeatherIntensity", lighting.WeatherIntensity);
@@ -1747,6 +1769,11 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("CollapseRestSeconds", TerrainCollapse::GetTuning().RestSeconds);
 	writer.NewPropertyWithValue("CollapseCrushPixels", TerrainCollapse::GetTuning().CrushPixels);
 	writer.NewPropertyWithValue("CollapseBlastPush", TerrainCollapse::GetTuning().BlastPush);
+	writer.NewPropertyWithValue("CollapseBlastLoosens", TerrainCollapse::GetTuning().BlastLoosens);
+	writer.NewPropertyWithValue("CollapseBlastLoosenStrength", TerrainCollapse::GetTuning().BlastLoosenStrength);
+	writer.NewPropertyWithValue("CollapseBlastSnapsScenery", TerrainCollapse::GetTuning().BlastSnapsScenery);
+	writer.NewPropertyWithValue("CollapseBlastPushesLateLook", TerrainCollapse::GetTuning().BlastPushesLateLook);
+	writer.NewPropertyWithValue("CollapseAirWavePushesPieces", TerrainCollapse::GetTuning().AirWavePushesPieces);
 	writer.NewPropertyWithValue("CollapseHitDamage", TerrainCollapse::GetTuning().HitDamage);
 	writer.NewPropertyWithValue("CollapseHitMinSpeed", TerrainCollapse::GetTuning().HitMinSpeed);
 	writer.NewPropertyWithValue("CollapseMaxDebrisPerUpdate", TerrainCollapse::GetTuning().MaxDebrisPerUpdate);
@@ -1965,6 +1992,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("UINearbyLights", ToolLight::NearbyLights);
 	writer.NewPropertyWithValue("ShowUnitTags", m_ShowUnitTags);
 	writer.NewPropertyWithValue("ShowCPUAimReticles", m_ShowCPUAimReticles);
+	writer.NewPropertyWithValue("FreeAimThroughTerrain", m_FreeAimThroughTerrain);
 	writer.NewPropertyWithValue("ShowAlarmExclamation", m_ShowAlarmExclamation);
 	writer.NewPropertyWithValue("ClassicPieWheel", m_ClassicPieWheel);
 	writer.NewPropertyWithValue("UnitMenuClickToOpen", m_UnitMenuClickToOpen);
@@ -2250,7 +2278,12 @@ bool SettingsMan::LoadPreset(const std::string& name, PresetGroup from, PresetGr
 			return false;
 		}
 		// The same reading as the settings file gets, of a file that holds only the tunable settings.
-		return CreateSerializable(reader, true, false, false) >= 0;
+		if (CreateSerializable(reader, true, false, false) < 0) {
+			return false;
+		}
+		// Its weather is the player's own from now on, kept from map to map, not only until the next one loads.
+		g_PostProcessMan.AdoptWeatherAsPlayers();
+		return true;
 	}
 	// Only one group's half of a full preset: the other lines are left out before it is read.
 	std::ifstream file(path);
@@ -2260,10 +2293,11 @@ bool SettingsMan::LoadPreset(const std::string& name, PresetGroup from, PresetGr
 	std::ostringstream text;
 	text << file.rdbuf();
 	Reader reader(std::make_unique<std::istringstream>(KeepGroup(text.str(), part, TunableGroups())), path, false, nullptr, true, true);
-	if (!reader.ReaderOK()) {
+	if (!reader.ReaderOK() || CreateSerializable(reader, true, false, false) < 0) {
 		return false;
 	}
-	return CreateSerializable(reader, true, false, false) >= 0;
+	g_PostProcessMan.AdoptWeatherAsPlayers();
+	return true;
 }
 
 void SettingsMan::SetStartupPreset(const std::string& name, PresetGroup group) {
