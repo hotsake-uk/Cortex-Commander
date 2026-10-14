@@ -4,14 +4,16 @@ HumanBehaviors = {};
 -- The scan's field of view and rays for ScanTargets. Worked out by SharedBehaviors.ScanForTargets only on the ticks it looks (out of a
 -- fight, one in three): the group lookups are calls into the engine. @return fov, budget.
 local function ScanField(AI, Owner, Skill)
-	local keen = Skill >= Activity.GOODSKILL or Owner:HasObjectInGroup("Brains") or Owner:HasObjectInGroup("Actors - Snipers") or Owner:HasObjectInGroup("Actors - Boss");
-	local fov = (keen and 180 or 120) * (0.6 + Skill / 250);
+	-- (Brains, snipers and bosses see all round them, as the game's own AI let them see every enemy near them whichever way it faced.)
+	local watchful = Owner:HasObjectInGroup("Brains") or Owner:HasObjectInGroup("Actors - Snipers") or Owner:HasObjectInGroup("Actors - Boss");
+	local keen = watchful or Skill >= Activity.GOODSKILL;
+	local fov = watchful and 360 or (keen and 180 or 120) * (0.6 + Skill / 250);
 	local budget = (keen and 4 or 2) + (AI.Target and 1 or 0);
 	return fov, budget;
 end
 
 -- spot targets with the engine's scan (see SharedBehaviors.ScanForTargets): a wide view about the facing, and down the aim when aiming.
--- Brains, snipers, bosses and top-skill (Good or Unfair) units no longer see every enemy on a screen: they look wider and with more rays.
+-- Top-skill (Good or Unfair) units look wider and with more rays; brains, snipers and bosses all round them, with more rays.
 function HumanBehaviors.ScanTargets(AI, Owner, Skill)
 	if AI.deviceState == AHuman.AIMING then
 		AI.Ctrl:SetState(Controller.AIM_SHARP, true); -- the scan's long, narrow look down the aim
