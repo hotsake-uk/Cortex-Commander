@@ -1622,6 +1622,8 @@ void DebugMan::SettingsGUI() {
 		Tip("Each unit's team icon and health number. In the Sandbox game mode every side's are shown; in other games, other sides' only where your side has seen and with \"Show enemy HUD\" (Options, Gameplay) on. Units of no side (training dummies) and those a mod hides never have them.");
 		Toggle("CPU units' aim reticles", g_SettingsMan.ShowCPUAimReticles(), [](bool on) { g_SettingsMan.SetShowCPUAimReticles(on); });
 		Tip("The yellow dots along the sights of a weapon a CPU-controlled unit is aiming, and of a turret's. Off: only your own units' are drawn. Your own aim is always shown.");
+		Toggle("Reticle passes through terrain", g_SettingsMan.FreeAimThroughTerrain(), [](bool on) { g_SettingsMan.SetFreeAimThroughTerrain(on); });
+		Tip("On: when you aim down the sights, the reticle and the camera stretch out to the weapon's full sharp-aim reach in any direction, through terrain and objects. Off: they stop at the first wall or object in the way. Only the unit you play (a soldier or a crab); CPU units always stop.");
 		Toggle("Alert mark over units", g_SettingsMan.ShowAlarmExclamation(), [](bool on) { g_SettingsMan.SetShowAlarmExclamation(on); });
 		Tip("The exclamation mark that pops up over a unit's head when it is alerted to an enemy or a noise.");
 		Toggle("Classic pie wheel", g_SettingsMan.ClassicPieWheel(), [](bool on) { g_SettingsMan.SetClassicPieWheel(on); });

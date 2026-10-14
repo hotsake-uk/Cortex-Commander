@@ -314,6 +314,7 @@ void SettingsMan::Clear() {
 	m_ShowEnemyHUD = true;
 	m_ShowUnitTags = false;
 	m_ShowCPUAimReticles = true;
+	m_FreeAimThroughTerrain = false;
 	m_ShowAlarmExclamation = true;
 	m_EnableSmartBuyMenuNavigation = true;
 	m_AutomaticGoldDeposit = true;
@@ -1297,6 +1298,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("ShowEnemyHUD", { reader >> m_ShowEnemyHUD; });
 	MatchProperty("ShowUnitTags", { reader >> m_ShowUnitTags; });
 	MatchProperty("ShowCPUAimReticles", { reader >> m_ShowCPUAimReticles; });
+	MatchProperty("FreeAimThroughTerrain", { reader >> m_FreeAimThroughTerrain; });
 	MatchProperty("ShowAlarmExclamation", { reader >> m_ShowAlarmExclamation; });
 	MatchProperty("SmartBuyMenuNavigation", { reader >> m_EnableSmartBuyMenuNavigation; });
 	MatchProperty("ScrapCompactingHeight", { reader >> g_SceneMan.m_ScrapCompactingHeight; });
@@ -1958,6 +1960,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("UINearbyLights", ToolLight::NearbyLights);
 	writer.NewPropertyWithValue("ShowUnitTags", m_ShowUnitTags);
 	writer.NewPropertyWithValue("ShowCPUAimReticles", m_ShowCPUAimReticles);
+	writer.NewPropertyWithValue("FreeAimThroughTerrain", m_FreeAimThroughTerrain);
 	writer.NewPropertyWithValue("ShowAlarmExclamation", m_ShowAlarmExclamation);
 	writer.NewPropertyWithValue("ClassicPieWheel", m_ClassicPieWheel);
 	writer.NewPropertyWithValue("UnitMenuClickToOpen", m_UnitMenuClickToOpen);

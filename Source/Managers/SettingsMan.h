@@ -1222,6 +1222,12 @@ namespace RTE {
 		/// Sets whether the aim reticles of CPU-controlled units' held weapons are drawn.
 		void SetShowCPUAimReticles(bool show) { m_ShowCPUAimReticles = show; }
 
+		/// Whether the sharp aim of the unit the player controls passes through terrain and objects instead of being cut short at the first one, so its reticle and the camera reach the weapon's full sharp-aim length in any direction. CPU units always stop at them.
+		bool FreeAimThroughTerrain() const { return m_FreeAimThroughTerrain; }
+
+		/// Sets whether the player's sharp aim passes through terrain and objects.
+		void SetFreeAimThroughTerrain(bool free) { m_FreeAimThroughTerrain = free; }
+
 		/// Whether the exclamation mark that pops up over a unit's head when it is alerted is drawn.
 		bool ShowAlarmExclamation() const { return m_ShowAlarmExclamation; }
 
@@ -1556,6 +1562,7 @@ namespace RTE {
 		bool m_ShowEnemyHUD; //!< Whether the HUD of enemy actors should be visible to the player.
 		bool m_ShowUnitTags; //!< Whether each unit's side and health are drawn beside it.
 		bool m_ShowCPUAimReticles; //!< Whether the aim reticles of CPU-controlled units' held weapons are drawn.
+		bool m_FreeAimThroughTerrain; //!< Whether the player's sharp aim passes through terrain and objects instead of stopping at them.
 		bool m_ShowAlarmExclamation; //!< Whether the exclamation mark over an alerted unit's head is drawn.
 		bool m_EnableSmartBuyMenuNavigation; //!< Whether swapping to equipment mode and back should change active tabs in the BuyMenu.
 		bool m_AutomaticGoldDeposit; //!< Whether gold gathered by Actors is automatically added into team funds. False means that gold needs to be manually transported into orbit via Craft.
