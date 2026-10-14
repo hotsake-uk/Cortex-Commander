@@ -77,6 +77,7 @@ void BuyMenuGUI::Clear() {
 	}
 	m_MetaPlayer = Players::NoPlayer;
 	m_NativeTechModule = 0;
+	m_OtherNativeTechModules.clear();
 	m_ForeignCostMult = 4.0;
 	int moduleCount = g_PresetMan.GetTotalModuleCount();
 	m_aExpandedModules = new bool[moduleCount];
@@ -546,6 +547,13 @@ void BuyMenuGUI::SetNativeTechModule(int whichModule) {
 				SetLogoImage(techBuyMenuTheme.LogoImagePath);
 			}
 		}
+	}
+}
+
+void BuyMenuGUI::AddNativeTechModule(int whichModule) {
+	if (whichModule > 0 && whichModule < g_PresetMan.GetTotalModuleCount() && whichModule != m_NativeTechModule && std::find(m_OtherNativeTechModules.begin(), m_OtherNativeTechModules.end(), whichModule) == m_OtherNativeTechModules.end()) {
+		m_OtherNativeTechModules.push_back(whichModule);
+		SetModuleExpanded(whichModule);
 	}
 }
 
@@ -2192,7 +2200,7 @@ void BuyMenuGUI::AddObjectsToItemList(std::vector<std::list<Entity*>>& moduleLis
 		moduleList.emplace_back();
 	}
 	for (int moduleID = 0; moduleID < g_PresetMan.GetTotalModuleCount(); ++moduleID) {
-		if ((g_SettingsMan.ShowForeignItems() || m_NativeTechModule <= 0) || (moduleID == 0 || moduleID == m_NativeTechModule || g_PresetMan.GetDataModule(moduleID)->IsMerchant())) {
+		if ((g_SettingsMan.ShowForeignItems() || m_NativeTechModule <= 0) || (moduleID == 0 || moduleID == m_NativeTechModule || std::find(m_OtherNativeTechModules.begin(), m_OtherNativeTechModules.end(), moduleID) != m_OtherNativeTechModules.end() || g_PresetMan.GetDataModule(moduleID)->IsMerchant())) {
 			if (groups.empty() || std::find(groups.begin(), groups.end(), "All") != groups.end()) {
 				g_PresetMan.GetAllOfType(moduleList[moduleID], type, moduleID);
 			} else {

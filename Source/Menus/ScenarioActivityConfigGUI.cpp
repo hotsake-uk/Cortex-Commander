@@ -21,8 +21,15 @@
 #include "GUIButton.h"
 #include "GUILabel.h"
 #include "GUISlider.h"
+#include "GUIListBox.h"
+
+#include <sstream>
 
 using namespace RTE;
+
+namespace {
+	constexpr int c_PickSeveralIndex = -3; //!< The ExtraIndex of the "-Pick several-" item in a team's Tech ComboBox.
+} // namespace
 
 ScenarioActivityConfigGUI::ScenarioActivityConfigGUI(GUIControlManager* parentControlManager) :
     m_GUIControlManager(parentControlManager) {
@@ -72,6 +79,113 @@ ScenarioActivityConfigGUI::ScenarioActivityConfigGUI(GUIControlManager* parentCo
 	m_CPULockLabel = dynamic_cast<GUILabel*>(m_GUIControlManager->GetControl("LabelCPUTeamLock"));
 	m_StartErrorLabel = dynamic_cast<GUILabel*>(m_GUIControlManager->GetControl("LabelStartError"));
 	m_StartGameButton = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonStartGame"));
+
+	// Optional in custom layouts: without it, a team picks one faction as before.
+	m_FactionPicksBox = dynamic_cast<GUICollectionBox*>(m_GUIControlManager->GetControl("CollectionBoxFactionPicks"));
+	m_FactionPicksLabel = dynamic_cast<GUILabel*>(m_GUIControlManager->GetControl("LabelFactionPicks"));
+	m_FactionPicksList = dynamic_cast<GUIListBox*>(m_GUIControlManager->GetControl("ListBoxFactionPicks"));
+	m_FactionPicksDoneButton = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonFactionPicksDone"));
+	if (!m_FactionPicksBox || !m_FactionPicksLabel || !m_FactionPicksList || !m_FactionPicksDoneButton) {
+		m_FactionPicksBox = nullptr;
+	} else {
+		m_FactionPicksBox->SetVisible(false);
+	}
+}
+
+void ScenarioActivityConfigGUI::LoadFactionPicks() {
+	if (m_FactionPicksLoaded) {
+		return;
+	}
+	m_FactionPicksLoaded = true;
+	// "1:Coalition.rte|Ronin.rte;0:Imperatus.rte;0:;0:"
+	std::istringstream teams(g_SettingsMan.ScenarioFactionPicks());
+	std::string entry;
+	for (int team = Activity::Teams::TeamOne; team < Activity::Teams::MaxTeamCount && std::getline(teams, entry, ';'); ++team) {
+		m_TeamUsedFactionPicks[team] = entry.size() >= 2 && entry[0] == '1' && entry[1] == ':';
+		std::istringstream names(entry.size() >= 2 ? entry.substr(2) : "");
+		std::string name;
+		while (std::getline(names, name, '|')) {
+			if (!name.empty()) {
+				m_TeamFactionPicks[team].push_back(name);
+			}
+		}
+	}
+}
+
+void ScenarioActivityConfigGUI::SaveFactionPicks() const {
+	std::string picks;
+	for (int team = Activity::Teams::TeamOne; team < Activity::Teams::MaxTeamCount; ++team) {
+		picks += (team > 0 ? ";" : "") + std::string(m_TeamUsedFactionPicks[team] ? "1:" : "0:");
+		for (size_t i = 0; i < m_TeamFactionPicks[team].size(); ++i) {
+			picks += (i > 0 ? "|" : "") + m_TeamFactionPicks[team][i];
+		}
+	}
+	g_SettingsMan.SetScenarioFactionPicks(picks);
+}
+
+void ScenarioActivityConfigGUI::UpdateSeveralItemText(int team) {
+	GUIListPanel* list = m_TeamTechComboBoxes.at(team)->GetListPanel();
+	for (int i = 0; i < static_cast<int>(list->GetItemList()->size()); ++i) {
+		GUIListPanel::Item* item = list->GetItem(i);
+		if (item->m_ExtraIndex == c_PickSeveralIndex) {
+			// (Only factions still loaded count.)
+			int ticked = 0;
+			for (const std::string& name: m_TeamFactionPicks[team]) {
+				const DataModule* dataModule = g_PresetMan.GetDataModule(g_PresetMan.GetModuleID(name));
+				ticked += dataModule && dataModule->IsFaction() ? 1 : 0;
+			}
+			GUIListPanel::Item changed = *item;
+			changed.m_Name = ticked == 0 ? "-Pick several-" : "-" + std::to_string(ticked) + (ticked == 1 ? " faction-" : " factions-");
+			list->SetItemValues(i, changed);
+			if (m_TeamTechComboBoxes.at(team)->GetSelectedIndex() == i) {
+				m_TeamTechComboBoxes.at(team)->SetSelectedIndex(i);
+			}
+			return;
+		}
+	}
+}
+
+void ScenarioActivityConfigGUI::FillFactionPicksList() {
+	if (!m_FactionPicksBox || m_FactionPicksTeam < 0) {
+		return;
+	}
+	int scroll = m_FactionPicksList->GetScrollVerticalValue();
+	m_FactionPicksList->ClearList();
+	const std::vector<std::string>& picks = m_TeamFactionPicks[m_FactionPicksTeam];
+	for (int moduleID = 0; moduleID < g_PresetMan.GetTotalModuleCount(); ++moduleID) {
+		if (const DataModule* dataModule = g_PresetMan.GetDataModule(moduleID); dataModule && dataModule->IsFaction()) {
+			bool ticked = std::find_if(picks.begin(), picks.end(), [moduleID](const std::string& name) { return g_PresetMan.GetModuleID(name) == moduleID; }) != picks.end();
+			m_FactionPicksList->AddItem(std::string(ticked ? "[X] " : "[  ] ") + dataModule->GetFriendlyName(), "", nullptr, nullptr, moduleID);
+		}
+	}
+	m_FactionPicksList->ScrollTo(scroll);
+}
+
+void ScenarioActivityConfigGUI::OpenFactionPicks(int team) {
+	if (!m_FactionPicksBox) {
+		return;
+	}
+	m_FactionPicksTeam = team;
+	m_FactionPicksLabel->SetText("Factions: " + m_SelectedActivity->GetTeamName(team));
+	// Beside the team's Tech ComboBox, to its left, kept on the screen.
+	const GUIComboBox* comboBox = m_TeamTechComboBoxes.at(team);
+	int x = std::max(0, comboBox->GetXPos() - m_FactionPicksBox->GetWidth() - 4);
+	int y = std::max(0, std::min(comboBox->GetYPos() - 20, m_ActivityConfigBox->GetYPos() + m_ActivityConfigBox->GetHeight() - m_FactionPicksBox->GetHeight()));
+	m_FactionPicksBox->Move(x, y);
+	m_FactionPicksBox->SetVisible(true);
+	m_FactionPicksList->ScrollToTop();
+	FillFactionPicksList();
+}
+
+void ScenarioActivityConfigGUI::CloseFactionPicks() {
+	if (!m_FactionPicksBox || m_FactionPicksTeam < 0) {
+		return;
+	}
+	int team = m_FactionPicksTeam;
+	m_FactionPicksTeam = -1;
+	m_FactionPicksBox->SetVisible(false);
+	UpdateSeveralItemText(team);
+	SaveFactionPicks();
 }
 
 void ScenarioActivityConfigGUI::PopulateTechComboBoxes() {
@@ -79,6 +193,9 @@ void ScenarioActivityConfigGUI::PopulateTechComboBoxes() {
 		m_TeamTechComboBoxes[team]->GetListPanel()->ClearList();
 		m_TeamTechComboBoxes[team]->GetListPanel()->AddItem("-All-", "", nullptr, nullptr, -2);
 		m_TeamTechComboBoxes[team]->GetListPanel()->AddItem("-Random-", "", nullptr, nullptr, -1);
+		if (m_FactionPicksBox) {
+			m_TeamTechComboBoxes[team]->GetListPanel()->AddItem("-Pick several-", "", nullptr, nullptr, c_PickSeveralIndex);
+		}
 		m_TeamTechComboBoxes[team]->SetSelectedIndex(0);
 	}
 	for (int moduleID = 0; moduleID < g_PresetMan.GetTotalModuleCount(); ++moduleID) {
@@ -92,6 +209,9 @@ void ScenarioActivityConfigGUI::PopulateTechComboBoxes() {
 	}
 	for (int team = Activity::Teams::TeamOne; team < Activity::Teams::MaxTeamCount; ++team) {
 		m_TeamTechComboBoxes[team]->GetListPanel()->ScrollToTop();
+		if (m_FactionPicksBox) {
+			UpdateSeveralItemText(team);
+		}
 	}
 	m_TechListMedievalUnitsDisabled = g_SettingsMan.MedievalUnitsDisabled();
 	m_TechListFetched = true;
@@ -119,7 +239,12 @@ void ScenarioActivityConfigGUI::SetEnabled(bool enable, const Activity* selected
 	for (int team = Activity::Teams::TeamOne; team < Activity::Teams::MaxTeamCount; ++team) {
 		m_TeamTechComboBoxes[team]->SetVisible(enable);
 	}
+	if (m_FactionPicksBox) {
+		m_FactionPicksTeam = -1;
+		m_FactionPicksBox->SetVisible(false);
+	}
 	if (enable && m_SelectedActivity && m_SelectedScene) {
+		LoadFactionPicks();
 		if (!m_TechListFetched || m_TechListMedievalUnitsDisabled != g_SettingsMan.MedievalUnitsDisabled()) {
 			PopulateTechComboBoxes();
 		}
@@ -213,6 +338,15 @@ void ScenarioActivityConfigGUI::ResetActivityConfigBox() {
 		} else {
 			m_TeamTechComboBoxes.at(team)->SetSelectedIndex(0);
 		}
+		// A team that last started on several factions is set to them again, where the activity lets its tech be changed.
+		if (m_FactionPicksBox && m_TeamUsedFactionPicks[team] && !m_TeamFactionPicks[team].empty() && m_SelectedActivity->GetTeamTechSwitchEnabled(team)) {
+			auto items = m_TeamTechComboBoxes.at(team)->GetListPanel()->GetItemList();
+			for (int i = 0; i < static_cast<int>(items->size()); i++) {
+				if (items->at(i)->m_ExtraIndex == c_PickSeveralIndex) {
+					m_TeamTechComboBoxes.at(team)->SetSelectedIndex(i);
+				}
+			}
+		}
 
 		m_TeamTechComboBoxes.at(team)->SetEnabled(m_SelectedActivity->GetTeamTechSwitchEnabled(team));
 
@@ -272,19 +406,51 @@ void ScenarioActivityConfigGUI::StartGame() {
 			if (techItem->m_ExtraIndex == -2) {
 				gameActivity->SetTeamTech(team, "-All-");
 			} else if (techItem->m_ExtraIndex == -1) {
-				gameActivity->SetTeamTech(team, g_PresetMan.GetDataModuleName(m_TeamTechComboBoxes.at(team)->GetItem(RandomNum<int>(2, m_TeamTechComboBoxes.at(team)->GetListPanel()->GetItemList()->size() - 1))->m_ExtraIndex));
+				// (The factions follow the -All-, -Random- and -Pick several- items.)
+				std::vector<int> factions;
+				for (const GUIListPanel::Item* item: *m_TeamTechComboBoxes.at(team)->GetListPanel()->GetItemList()) {
+					if (item->m_ExtraIndex >= 0) {
+						factions.push_back(item->m_ExtraIndex);
+					}
+				}
+				if (!factions.empty()) {
+					gameActivity->SetTeamTech(team, g_PresetMan.GetDataModuleName(factions[RandomNum<int>(0, static_cast<int>(factions.size()) - 1)]));
+				}
+			} else if (techItem->m_ExtraIndex == c_PickSeveralIndex) {
+				// Several factions: each time the team's tech is looked up (a delivery, a unit, the buy menu), one of them.
+				std::string several;
+				for (const std::string& name: m_TeamFactionPicks[team]) {
+					if (const DataModule* dataModule = g_PresetMan.GetDataModule(g_PresetMan.GetModuleID(name)); dataModule && dataModule->IsFaction()) {
+						several += (several.empty() ? "" : "|") + name;
+					}
+				}
+				if (several.empty()) {
+					gameActivity->SetTeamTech(team, "-All-");
+				} else {
+					gameActivity->SetTeamTech(team, several);
+				}
 			} else {
 				gameActivity->SetTeamTech(team, g_PresetMan.GetDataModuleName(techItem->m_ExtraIndex));
 			}
 		}
 		gameActivity->SetTeamAISkill(team, (m_TeamAISkillSliders.at(team)->IsEnabled()) ? m_TeamAISkillSliders.at(team)->GetValue() : Activity::AISkillSetting::DefaultSkill);
+		if (m_FactionPicksBox && m_SelectedActivity->TeamActive(team) && m_SelectedActivity->GetTeamTechSwitchEnabled(team)) {
+			const GUIListPanel::Item* techItem = m_TeamTechComboBoxes.at(team)->GetSelectedItem();
+			m_TeamUsedFactionPicks[team] = techItem && techItem->m_ExtraIndex == c_PickSeveralIndex;
+		}
+	}
+	if (m_FactionPicksBox) {
+		SaveFactionPicks();
 	}
 	g_LuaMan.FileCloseAll();
 	g_ActivityMan.SetStartActivity(gameActivity);
 }
 
 bool ScenarioActivityConfigGUI::Update(int mouseX, int mouseY) {
-	UpdatePlayerTeamSetupCell(mouseX, mouseY);
+	// (The tick-list of factions lies over the team rows: clicks on it aren't for them.)
+	if (m_FactionPicksTeam < 0) {
+		UpdatePlayerTeamSetupCell(mouseX, mouseY);
+	}
 
 	int teamsWithPlayers = 0;
 	bool teamWithHumans = false;
@@ -463,6 +629,9 @@ bool ScenarioActivityConfigGUI::HandleInputEvents() {
 				g_GUISound.ButtonPressSound()->Play();
 				m_WeatherChoice = (m_WeatherChoice + 1) % static_cast<int>(std::size(c_WeatherChoices));
 				UpdateAtmosphereButtons();
+			} else if (m_FactionPicksBox && guiEvent.GetControl() == m_FactionPicksDoneButton) {
+				g_GUISound.ButtonPressSound()->Play();
+				CloseFactionPicks();
 			} else if (guiEvent.GetControl() == m_StartGameButton) {
 				// Make sure all players have known input devices if multimouse is enabled.
 				g_GUISound.ButtonPressSound()->Play();
@@ -481,6 +650,31 @@ bool ScenarioActivityConfigGUI::HandleInputEvents() {
 					m_StartingGoldAdjustedManually = true;
 				}
 				UpdateStartingGoldSliderAndLabel();
+			} else if (m_FactionPicksBox && m_FactionPicksTeam >= 0 && guiEvent.GetControl() == m_FactionPicksList && guiEvent.GetMsg() == GUIListBox::Select) {
+				// A click ticks a faction, or unticks it.
+				if (const GUIListPanel::Item* item = m_FactionPicksList->GetSelected()) {
+					std::vector<std::string>& picks = m_TeamFactionPicks[m_FactionPicksTeam];
+					const int moduleID = item->m_ExtraIndex;
+					auto ticked = std::find_if(picks.begin(), picks.end(), [moduleID](const std::string& name) { return g_PresetMan.GetModuleID(name) == moduleID; });
+					if (ticked != picks.end()) {
+						picks.erase(ticked);
+					} else {
+						picks.push_back(g_PresetMan.GetDataModuleName(moduleID));
+					}
+					g_GUISound.ItemChangeSound()->Play();
+					FillFactionPicksList();
+				}
+			} else if (m_FactionPicksBox && guiEvent.GetMsg() == GUIComboBox::Closed) {
+				for (int team = Activity::Teams::TeamOne; team < Activity::Teams::MaxTeamCount; team++) {
+					if (guiEvent.GetControl() == m_TeamTechComboBoxes.at(team)) {
+						const GUIListPanel::Item* techItem = m_TeamTechComboBoxes.at(team)->GetSelectedItem();
+						if (techItem && techItem->m_ExtraIndex == c_PickSeveralIndex) {
+							OpenFactionPicks(team);
+						} else if (m_FactionPicksTeam == team) {
+							CloseFactionPicks();
+						}
+					}
+				}
 			} else if (guiEvent.GetMsg() == GUISlider::Changed) {
 				for (int team = Activity::Teams::TeamOne; team < Activity::Teams::MaxTeamCount; team++) {
 					if (guiEvent.GetControl() == m_TeamAISkillSliders.at(team)) {
@@ -542,5 +736,9 @@ void ScenarioActivityConfigGUI::Draw() {
 			m_TeamAISkillSliders.at(team)->Draw(m_GUIControlManager->GetScreen());
 			m_TeamAISkillLabels.at(team)->Draw(m_GUIControlManager->GetScreen());
 		}
+	}
+	// The tick-list of factions, over everything else.
+	if (m_FactionPicksBox && m_FactionPicksBox->GetVisible()) {
+		m_FactionPicksBox->Draw(m_GUIControlManager->GetScreen());
 	}
 }

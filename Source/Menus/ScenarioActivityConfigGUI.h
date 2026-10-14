@@ -15,6 +15,7 @@ namespace RTE {
 	class GUIButton;
 	class GUILabel;
 	class GUISlider;
+	class GUIListBox;
 	class GUIEvent;
 
 	/// Handling for the scenario Activity configuration screen composition and interaction.
@@ -105,9 +106,39 @@ namespace RTE {
 		std::array<GUILabel*, Activity::Teams::MaxTeamCount> m_TeamAISkillLabels;
 		std::array<GUISlider*, Activity::Teams::MaxTeamCount> m_TeamAISkillSliders;
 
+		/// The tick-list for a team's "-Pick several-" factions (optional in custom layouts).
+		GUICollectionBox* m_FactionPicksBox {};
+		GUILabel* m_FactionPicksLabel {};
+		GUIListBox* m_FactionPicksList {};
+		GUIButton* m_FactionPicksDoneButton {};
+		int m_FactionPicksTeam { -1 }; //!< The team whose factions the tick-list is picking, or -1 when it's shut.
+		std::array<std::vector<std::string>, Activity::Teams::MaxTeamCount> m_TeamFactionPicks; //!< The factions ticked for each team (module file names).
+		std::array<bool, Activity::Teams::MaxTeamCount> m_TeamUsedFactionPicks {}; //!< Whether each team last started with "-Pick several-".
+		bool m_FactionPicksLoaded {}; //!< Whether the remembered picks were read from the settings.
+
 #pragma region Activity Configuration Screen Handling
 		/// Fills each team's Tech ComboBox with all valid Tech DataModules.
 		void PopulateTechComboBoxes();
+
+		/// Reads the factions each team last had ticked from the settings, once.
+		void LoadFactionPicks();
+
+		/// Writes each team's ticked factions to the settings, so they're there next time.
+		void SaveFactionPicks() const;
+
+		/// Opens the tick-list of factions for a team, beside its Tech ComboBox.
+		/// @param team The team to pick factions for.
+		void OpenFactionPicks(int team);
+
+		/// Shuts the tick-list of factions.
+		void CloseFactionPicks();
+
+		/// Fills the tick-list with every faction, ticked or not for the team it's open for.
+		void FillFactionPicksList();
+
+		/// Sets the "-Pick several-" item of a team's Tech ComboBox to read how many factions are ticked.
+		/// @param team The team whose ComboBox to update.
+		void UpdateSeveralItemText(int team);
 
 		/// Helper function for multimouse support. Creates a list of human controlled players.
 		std::vector<int> GetHumanPlayers();

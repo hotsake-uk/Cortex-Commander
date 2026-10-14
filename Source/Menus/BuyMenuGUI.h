@@ -102,6 +102,10 @@ namespace RTE {
 		/// @param whichModule The module ID to set as the native one. 0 means everything is native.
 		void SetNativeTechModule(int whichModule);
 
+		/// Adds another DataModule ID whose items are shown as the native tech's are, for a team with several factions picked in the scenario setup.
+		/// @param whichModule The module ID to show alongside the native one.
+		void AddNativeTechModule(int whichModule);
+
 		/// Sets the multiplier of the cost of any foreign Tech items.
 		/// @param newMultiplier The scalar multiplier of the costs of foreign Tech items.
 		void SetForeignCostMultiplier(float newMultiplier) { m_ForeignCostMult = newMultiplier; }
@@ -410,6 +414,8 @@ namespace RTE {
 		int m_MetaPlayer;
 		// The ID of the DataModule that contains the native Tech of the Player using this menu
 		int m_NativeTechModule;
+		// Other factions picked for the team, shown alongside the native tech (AddNativeTechModule)
+		std::vector<int> m_OtherNativeTechModules;
 		// The multiplier of costs of any foreign tech items
 		float m_ForeignCostMult;
 		// Arry of bools showing which modules that have been expanded in the item list
