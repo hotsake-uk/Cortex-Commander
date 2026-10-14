@@ -576,9 +576,17 @@ void DebugMan::SettingsGUI() {
 			if (Combo("Precipitation", &settings.WeatherType, weatherItems.c_str())) {
 				// A pick made here wins over a saved custom weather still waiting for its preset to load.
 				settings.WeatherName.clear();
+				// And it's the player's own from now on, kept from map to map.
+				g_PostProcessMan.AdoptWeatherAsPlayers();
 			}
 		}
-		Slider("Weather intensity", &settings.WeatherIntensity, 0.0F, 1.0F);
+		if (bool overrideMap = settings.OverrideMapWeather; Check("Override the map's weather", &overrideMap)) {
+			g_PostProcessMan.SetOverrideMapWeather(overrideMap);
+		}
+		Tip("Every map has the precipitation and intensity set here, over the weather the map sets for itself. The map's wind stays its own. A game's weather picked on the scenario start screen, and a saved game's weather, still win. Off: a map with its own weather has it.");
+		if (Slider("Weather intensity", &settings.WeatherIntensity, 0.0F, 1.0F)) {
+			g_PostProcessMan.AdoptWeatherAsPlayers();
+		}
 		Slider("Weather speed", &settings.WeatherSpeed, 0.1F, 3.0F, "%.2fx");
 		Tip("How fast the rain, snow, ash and dust move: their fall, how the wind carries them, and their sway, swirl and flicker. They keep their angle, so shelter and splashes still line up. 1: as the weather has it.");
 		Check("Weather everywhere", &settings.WeatherEverywhere);
@@ -1614,6 +1622,8 @@ void DebugMan::SettingsGUI() {
 		Tip("Each unit's team icon and health number. In the Sandbox game mode every side's are shown; in other games, other sides' only where your side has seen and with \"Show enemy HUD\" (Options, Gameplay) on. Units of no side (training dummies) and those a mod hides never have them.");
 		Toggle("CPU units' aim reticles", g_SettingsMan.ShowCPUAimReticles(), [](bool on) { g_SettingsMan.SetShowCPUAimReticles(on); });
 		Tip("The yellow dots along the sights of a weapon a CPU-controlled unit is aiming, and of a turret's. Off: only your own units' are drawn. Your own aim is always shown.");
+		Toggle("Reticle passes through terrain", g_SettingsMan.FreeAimThroughTerrain(), [](bool on) { g_SettingsMan.SetFreeAimThroughTerrain(on); });
+		Tip("On: when you aim down the sights, the reticle and the camera stretch out to the weapon's full sharp-aim reach in any direction, through terrain and objects. Off: they stop at the first wall or object in the way. Only the unit you play (a soldier or a crab); CPU units always stop.");
 		Toggle("Alert mark over units", g_SettingsMan.ShowAlarmExclamation(), [](bool on) { g_SettingsMan.SetShowAlarmExclamation(on); });
 		Tip("The exclamation mark that pops up over a unit's head when it is alerted to an enemy or a noise.");
 		Toggle("Classic pie wheel", g_SettingsMan.ClassicPieWheel(), [](bool on) { g_SettingsMan.SetClassicPieWheel(on); });

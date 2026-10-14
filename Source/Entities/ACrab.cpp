@@ -1459,7 +1459,8 @@ void ACrab::Update() {
 		float maxLength = m_pTurret->GetFirstMountedDevice()->GetSharpLength();
 
 		// Use a non-terrain check ray to cap the magnitude, so we can't see into objects etc
-		if (m_SharpAimProgress > 0) {
+		// The free-aim setting lets the player's own aim reach through terrain and objects; CPU units always stop at them.
+		if (m_SharpAimProgress > 0 && !(g_SettingsMan.FreeAimThroughTerrain() && m_Controller.IsPlayerControlled())) {
 			Vector notUsed;
 			Vector sharpAimVector(maxLength, 0);
 			sharpAimVector *= aimMatrix;

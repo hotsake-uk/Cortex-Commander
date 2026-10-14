@@ -213,6 +213,7 @@ namespace RTE {
 
 		int WeatherType = 0; //!< The weather's slot (Weather.h): 0 clear, 1 rain, 2 snow, 3 ash fall, 4 dust storm, 5 on the other Weather presets, mods' included.
 		std::string WeatherName; //!< A custom weather (slot 5 on) asked for by name before the presets were loaded (saved settings); picked up into WeatherType once they are.
+		bool OverrideMapWeather = false; //!< The player's weather (WeatherType and WeatherIntensity) is used on every map, over the weather a map sets for itself. A game's own pick on the scenario start screen and a saved game's weather still win. Off: a map with its own weather has it, as before.
 		bool CustomWeather = true; //!< Weather types past the built-in four (data and mods' Weather presets) can be chosen. Off: they fall clear and the menu lists the built-in four.
 		float WeatherGlow = 1.0F; //!< How much light glowing weather (acid rain, embers) gives off, 0 to 2. Built-in weather doesn't glow.
 		float WeatherIntensity = 0.6F; //!< How heavy the rain or snow is, 0 to 1.
