@@ -90,7 +90,7 @@ namespace {
 	    {"Afterglow", &LightingSettings::RetroLayers::Afterglow}, {"TerminalOverlay", &LightingSettings::RetroLayers::TerminalOverlay}, {"CelShading", &LightingSettings::RetroLayers::CelShading},
 	    {"CelBands", &LightingSettings::RetroLayers::CelBands}, {"Halftone", &LightingSettings::RetroLayers::Halftone}, {"ColorHalftone", &LightingSettings::RetroLayers::ColorHalftone},
 	    {"PaperGrain", &LightingSettings::RetroLayers::PaperGrain}, {"Misregister", &LightingSettings::RetroLayers::Misregister}, {"ComicFX", &LightingSettings::RetroLayers::ComicFX},
-	    {"PanelFrame", &LightingSettings::RetroLayers::PanelFrame}};
+	    {"PanelFrame", &LightingSettings::RetroLayers::PanelFrame}, {"TrackingBand", &LightingSettings::RetroLayers::TrackingBand}};
 
 	/// Reads one retro layer setting, saved as its prefix ("Retro" for the player's own, "Synthwave" and so on for a screen style's, "Variant" for the chosen variant's, none in a filter preset file) and then field.
 	void ReadRetroField(LightingSettings::RetroLayers& layers, std::string_view field, const std::string& value) {
@@ -662,6 +662,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("RetroMisregister", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Misregister", reader.ReadPropValue()); });
 	MatchProperty("RetroComicFX", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "ComicFX", reader.ReadPropValue()); });
 	MatchProperty("RetroPanelFrame", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "PanelFrame", reader.ReadPropValue()); });
+	MatchProperty("RetroTrackingBand", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "TrackingBand", reader.ReadPropValue()); });
 	MatchProperty("SynthwaveLook", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Look", reader.ReadPropValue()); });
 	MatchProperty("SynthwavePalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Palette", reader.ReadPropValue()); });
 	MatchProperty("SynthwaveInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "InkEdges", reader.ReadPropValue()); });
@@ -691,6 +692,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SynthwaveMisregister", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Misregister", reader.ReadPropValue()); });
 	MatchProperty("SynthwaveComicFX", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "ComicFX", reader.ReadPropValue()); });
 	MatchProperty("SynthwavePanelFrame", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "PanelFrame", reader.ReadPropValue()); });
+	MatchProperty("SynthwaveTrackingBand", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "TrackingBand", reader.ReadPropValue()); });
 	MatchProperty("HackermanLook", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "Look", reader.ReadPropValue()); });
 	MatchProperty("HackermanPalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "Palette", reader.ReadPropValue()); });
 	MatchProperty("HackermanInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "InkEdges", reader.ReadPropValue()); });
@@ -720,6 +722,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("HackermanMisregister", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "Misregister", reader.ReadPropValue()); });
 	MatchProperty("HackermanComicFX", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "ComicFX", reader.ReadPropValue()); });
 	MatchProperty("HackermanPanelFrame", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "PanelFrame", reader.ReadPropValue()); });
+	MatchProperty("HackermanTrackingBand", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "TrackingBand", reader.ReadPropValue()); });
 	MatchProperty("ComicLook", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "Look", reader.ReadPropValue()); });
 	MatchProperty("ComicPalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "Palette", reader.ReadPropValue()); });
 	MatchProperty("ComicInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "InkEdges", reader.ReadPropValue()); });
@@ -749,6 +752,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("ComicMisregister", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "Misregister", reader.ReadPropValue()); });
 	MatchProperty("ComicComicFX", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "ComicFX", reader.ReadPropValue()); });
 	MatchProperty("ComicPanelFrame", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "PanelFrame", reader.ReadPropValue()); });
+	MatchProperty("ComicTrackingBand", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "TrackingBand", reader.ReadPropValue()); });
 	MatchProperty("VariantLook", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "Look", reader.ReadPropValue()); });
 	MatchProperty("VariantPalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "Palette", reader.ReadPropValue()); });
 	MatchProperty("VariantInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "InkEdges", reader.ReadPropValue()); });
@@ -778,6 +782,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("VariantMisregister", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "Misregister", reader.ReadPropValue()); });
 	MatchProperty("VariantComicFX", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "ComicFX", reader.ReadPropValue()); });
 	MatchProperty("VariantPanelFrame", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "PanelFrame", reader.ReadPropValue()); });
+	MatchProperty("VariantTrackingBand", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "TrackingBand", reader.ReadPropValue()); });
 	MatchProperty("ScreenVariant", {
 		std::string name = reader.ReadPropValue();
 		g_PostProcessMan.GetLightingSettings().ScreenVariant = name == "None" ? std::string() : name;

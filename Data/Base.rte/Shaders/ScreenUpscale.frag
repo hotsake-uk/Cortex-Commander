@@ -15,6 +15,7 @@ uniform float rteSharpness; // 1: even, sharp blocks; down to 0, plain bilinear 
 uniform float rteTime; // Real seconds, so tape and glitches keep moving through pauses.
 uniform float rtePixelate; // Block size in source pixels, 1 for none.
 uniform float rteVHS; // Video tape, 0 to 1.
+uniform float rteTrackingBand; // Tape's tracking band rolling up the screen, tearing and snowy, 0 to 1.
 uniform float rteGlitch; // How often and how hard glitch bursts come, 0 to 1.
 uniform float rteGlitchKick; // A burst set off now (a big blast), 0 to 1.
 uniform float rteCurvature; // CRT glass bend, 0 to 1.
@@ -68,14 +69,16 @@ void main() {
 		}
 	}
 	if (rteVHS > 0.0) {
-		// Tape: the picture wobbles a little side to side, a tracking band rolls slowly up the screen tearing what's inside it, and the bottom rows
-		// (head switching) slew sideways.
+		// Tape: the picture wobbles a little side to side and the bottom rows (head switching) slew sideways.
 		uv.x += sin(uv.y * 40.0 + rteTime * 2.3) * 0.0006 * rteVHS + (Hash(vec2(floor(rteTime * 30.0), floor(uv.y * 240.0))) - 0.5) * 0.0012 * rteVHS;
-		float band = fract(rteTime * 0.06);
-		float inBand = 1.0 - smoothstep(0.0, 0.035, abs(uv.y - (1.0 - band)));
-		uv.x += inBand * (Hash(vec2(floor(uv.y * 300.0), floor(rteTime * 20.0))) - 0.5) * 0.02 * rteVHS;
 		float headSwitch = 1.0 - smoothstep(0.0, 0.03, 1.0 - uv.y);
 		uv.x += headSwitch * 0.015 * rteVHS * (0.6 + 0.4 * sin(rteTime * 9.0));
+	}
+	float inBand = 0.0;
+	if (rteTrackingBand > 0.0) {
+		// The tracking band rolls slowly up the screen, tearing what's inside it.
+		inBand = 1.0 - smoothstep(0.0, 0.035, abs(uv.y - (1.0 - fract(rteTime * 0.06))));
+		uv.x += inBand * (Hash(vec2(floor(uv.y * 300.0), floor(rteTime * 20.0))) - 0.5) * 0.02 * rteTrackingBand;
 	}
 	if (rtePixelate > 1.0) {
 		uv = (floor(uv * textureSizePixels / rtePixelate) + 0.5) * rtePixelate / textureSizePixels;
@@ -103,14 +106,16 @@ void main() {
 	if (rteVHS > 0.0) {
 		float luminance = dot(color, vec3(0.299, 0.587, 0.114));
 		color = mix(color, vec3(luminance), 0.12 * rteVHS);
-		float band = fract(rteTime * 0.06);
-		float inBand = 1.0 - smoothstep(0.0, 0.035, abs(uv.y - (1.0 - band)));
 		vec2 cell = floor(gl_FragCoord.xy * vec2(0.5, 1.0)) + floor(rteTime * 30.0) * 13.0;
 		float noise = Hash(cell);
-		// Snow in the tracking band, and the odd white fleck of dropout anywhere.
-		color = mix(color, vec3(noise), inBand * 0.35 * rteVHS);
+		// The odd white fleck of dropout anywhere.
 		color += step(0.9992, Hash(vec2(floor(gl_FragCoord.y), floor(rteTime * 24.0)) + floor(gl_FragCoord.x / 40.0))) * 0.6 * rteVHS;
 		color += (noise - 0.5) * 0.05 * rteVHS;
+	}
+	if (inBand > 0.0) {
+		// Snow in the tracking band.
+		float snow = Hash(floor(gl_FragCoord.xy * vec2(0.5, 1.0)) + floor(rteTime * 30.0) * 13.0);
+		color = mix(color, vec3(snow), inBand * 0.35 * rteTrackingBand);
 	}
 	if (rteScanlines > 0.0) {
 		float row = fract(textureUV.y * textureSizePixels.y);
