@@ -3381,7 +3381,11 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	logStages.Next("Lighting: retro");
 	// A screen style's sky and the edge lines (LightingSettings::RetroLayers): on the lit scene, before bloom so the sun, the grid and neon lines glow.
 	const LightingSettings::RetroLayers retro = m_Settings.ActiveRetro();
-	if ((retro.RetroSky > 0.0F && sceneDepth) || retro.EdgeLines > 0.0F || retro.ASCII > 0.0F || (retro.ASCIIBackground > 0.0F && sceneDepth)) {
+	// ASCII mode's own amounts, with the screen style's ASCII layers adding to them.
+	const LightingSettings::AsciiModeSettings& ascii = m_Settings.Ascii;
+	float asciiEverywhere = std::clamp(std::max(ascii.Everywhere, retro.ASCII), 0.0F, 1.0F);
+	float asciiBackground = sceneDepth ? std::clamp(std::max(ascii.Background, retro.ASCIIBackground), 0.0F, 1.0F) : 0.0F;
+	if ((retro.RetroSky > 0.0F && sceneDepth) || retro.EdgeLines > 0.0F || asciiEverywhere > 0.0F || asciiBackground > 0.0F) {
 		TracyGpuZone("Retro");
 		if (m_RetroScene.Width != width || m_RetroScene.Height != height || !m_RetroScene.Texture) {
 			m_RetroScene.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
@@ -3400,8 +3404,17 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_RetroSceneShader->SetVector2f("rteScreenOrigin", origin);
 		m_RetroSceneShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
 		m_RetroSceneShader->SetInt("rteLook", retro.Look);
-		m_RetroSceneShader->SetFloat("rteASCII", std::clamp(retro.ASCII, 0.0F, 1.0F));
-		m_RetroSceneShader->SetFloat("rteASCIIBackground", sceneDepth ? std::clamp(retro.ASCIIBackground, 0.0F, 1.0F) : 0.0F);
+		m_RetroSceneShader->SetFloat("rteASCII", asciiEverywhere);
+		m_RetroSceneShader->SetFloat("rteASCIIBackground", asciiBackground);
+		m_RetroSceneShader->SetFloat("rteAsciiScale", static_cast<float>(std::clamp(ascii.Size, 1, 4)));
+		m_RetroSceneShader->SetFloat("rteAsciiEdges", std::clamp(ascii.EdgeGlyphs, 0.0F, 1.0F));
+		m_RetroSceneShader->SetFloat("rteAsciiContrast", std::clamp(ascii.Contrast, 0.5F, 2.0F));
+		m_RetroSceneShader->SetFloat("rteAsciiExposure", std::clamp(ascii.Exposure, 0.25F, 3.0F));
+		m_RetroSceneShader->SetInt("rteAsciiColours", std::clamp(ascii.Colours, 0, static_cast<int>(LightingSettings::AsciiColourCount) - 1));
+		m_RetroSceneShader->SetFloat("rteAsciiFill", std::clamp(ascii.CellFill, 0.0F, 1.0F));
+		m_RetroSceneShader->SetFloat("rteAsciiGlow", std::clamp(ascii.Glow, 0.0F, 1.0F));
+		m_RetroSceneShader->SetFloat("rteAsciiChurn", std::clamp(ascii.Churn, 0.0F, 1.0F));
+		m_RetroSceneShader->SetBool("rteAsciiWorldLocked", ascii.WorldLocked);
 		m_RetroSceneShader->SetFloat("rteSky", sceneDepth ? std::clamp(retro.RetroSky, 0.0F, 1.0F) : 0.0F);
 		m_RetroSceneShader->SetFloat("rteGridSpeed", std::clamp(retro.GridSpeed, 0.0F, 3.0F));
 		m_RetroSceneShader->SetFloat("rteDaylight", std::clamp(skyLevel, 0.0F, 1.0F) * m_NightDim);
