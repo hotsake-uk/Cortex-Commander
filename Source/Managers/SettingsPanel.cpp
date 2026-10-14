@@ -1387,7 +1387,9 @@ void DebugMan::SettingsGUI() {
 			Slider("Terminal readout", &retro.TerminalOverlay, 0.0F, 1.0F);
 			Tip("Faint scrolling hex and log lines down the edges of the screen and a blinking cursor, under the HUD.");
 			Slider("VHS tape", &retro.VHS, 0.0F, 1.0F);
-			Tip("Colour bleeding sideways, a tracking band rolling up the screen, a little wobble, tape noise and a slewed strip at the bottom.");
+			Tip("Colour bleeding sideways, a little wobble, tape noise and a slewed strip at the bottom.");
+			Slider("Tracking band", &retro.TrackingBand, 0.0F, 1.0F);
+			Tip("Video tape's tracking band: a torn, snowy strip rolling slowly up the screen.");
 			Slider("Glitch", &retro.Glitch, 0.0F, 1.0F);
 			Tip("Every so often a short burst of glitching: Synthwave's picture torn sideways in blocks with its colours split, Hackerman's blocks scrambled into glyphs. More: more often and longer.");
 			if (retro.Glitch > 0.0F) {

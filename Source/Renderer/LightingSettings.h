@@ -282,7 +282,7 @@ namespace RTE {
 			bool InkEdges = false; //!< The lines are black ink (a comic look). Off: glowing, in the look's colours.
 			float RetroSky = 0.0F; //!< How fully the sky behind the terrain is replaced by the look's own sky, 0 to 1.
 			float GridSpeed = 1.0F; //!< How fast the look's sky moves (Synthwave's grid, Hackerman's code rain), 0 to 3.
-			float VHS = 0.0F; //!< Video tape: colour bleeding sideways, a rolling tracking band, wobble and tape noise, 0 to 1.
+			float VHS = 0.0F; //!< Video tape: colour bleeding sideways, wobble and tape noise, 0 to 1 (the tracking band is TrackingBand).
 			float Glitch = 0.0F; //!< Now and then a short burst of glitching (blocks torn sideways, or in Hackerman's look scrambled into glyphs), 0 to 1.
 			bool GlitchOnBlasts = false; //!< Big explosions set off a glitch burst too.
 			float Curvature = 0.0F; //!< The picture bends like a CRT tube's glass, with darkened rounded corners, 0 to 1.
@@ -303,6 +303,7 @@ namespace RTE {
 			float Misregister = 0.0F; //!< The colour plates printed a little out of line, up to 2 pixels, 0 to 1.
 			float ComicFX = 0.0F; //!< Big blasts get radial speed lines and a hand-lettered sound effect word (BOOM!, KRAK!, BLAM!, WHAM!), 0 to 1.
 			float PanelFrame = 0.0F; //!< A comic panel's frame round the screen: a paper gutter and a black ink line, 0 to 1.
+			float TrackingBand = 0.0F; //!< Video tape's tracking band: a torn, snowy strip rolling slowly up the screen, 0 to 1. Apart from VHS so the rest of the tape look can be had without it.
 		};
 		/// Gets the layers a screen style comes with.
 		static RetroLayers StyleLayers(int style) {
@@ -375,7 +376,7 @@ namespace RTE {
 			float strength = ScreenStyleStrength < 0.0F ? 0.0F : (ScreenStyleStrength > 1.0F ? 1.0F : ScreenStyleStrength);
 			for (float* value: {&layers.PaletteStrength, &layers.NeonGlow, &layers.EdgeLines, &layers.RetroSky, &layers.VHS, &layers.Glitch, &layers.Curvature, &layers.CRT, &layers.Flicker,
 			                    &layers.Posterize, &layers.Dither, &layers.Pixelate, &layers.ASCII, &layers.ASCIIBackground, &layers.Afterglow, &layers.TerminalOverlay, &layers.CelShading,
-			                    &layers.Halftone, &layers.ColorHalftone, &layers.PaperGrain, &layers.Misregister, &layers.ComicFX, &layers.PanelFrame}) {
+			                    &layers.Halftone, &layers.ColorHalftone, &layers.PaperGrain, &layers.Misregister, &layers.ComicFX, &layers.PanelFrame, &layers.TrackingBand}) {
 				*value *= strength;
 			}
 			return layers;

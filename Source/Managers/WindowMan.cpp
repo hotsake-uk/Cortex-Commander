@@ -614,6 +614,7 @@ void WindowMan::SetUpscaleUniforms() const {
 	m_ScreenUpscaleShader->SetFloat("rteTime", static_cast<float>(std::fmod(static_cast<double>(SDL_GetTicks()) / 1000.0, 4096.0)));
 	m_ScreenUpscaleShader->SetFloat("rtePixelate", 1.0F + std::round(std::clamp(retro.Pixelate, 0.0F, 1.0F) * 7.0F));
 	m_ScreenUpscaleShader->SetFloat("rteVHS", std::clamp(retro.VHS, 0.0F, 1.0F));
+	m_ScreenUpscaleShader->SetFloat("rteTrackingBand", std::clamp(retro.TrackingBand, 0.0F, 1.0F));
 	m_ScreenUpscaleShader->SetFloat("rteGlitch", std::clamp(retro.Glitch, 0.0F, 1.0F));
 	m_ScreenUpscaleShader->SetFloat("rteGlitchKick", inGame && retro.Glitch > 0.0F ? g_PostProcessMan.GetRetroGlitchKick() : 0.0F);
 	m_ScreenUpscaleShader->SetFloat("rteCurvature", std::clamp(retro.Curvature, 0.0F, 1.0F));
