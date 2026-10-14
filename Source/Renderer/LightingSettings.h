@@ -300,6 +300,7 @@ namespace RTE {
 			float Halftone = 0.0F; //!< Ben-Day dots in the shadows, bigger the darker it gets, 0 to 1.
 			float ColorHalftone = 0.0F; //!< The whole picture printed in cyan, magenta and yellow dot screens, 0 to 1.
 			float PaperGrain = 0.0F; //!< Newsprint: a faint paper grain and off-white highlights, 0 to 1.
+			bool PaperBackgroundOnly = false; //!< The paper grain only on the backdrop behind the terrain (background walls, distant hills, sky), not on terrain, units or effects.
 			float Misregister = 0.0F; //!< The colour plates printed a little out of line, up to 2 pixels, 0 to 1.
 			float ComicFX = 0.0F; //!< Big blasts get radial speed lines and a hand-lettered sound effect word (BOOM!, KRAK!, BLAM!, WHAM!), 0 to 1.
 			float PanelFrame = 0.0F; //!< A comic panel's frame round the screen: a paper gutter and a black ink line, 0 to 1.
