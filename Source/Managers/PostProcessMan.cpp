@@ -8,6 +8,7 @@
 #include "WindowMan.h"
 #include "FrameMan.h"
 #include "Scene.h"
+#include "SceneMan.h"
 #include "ContentFile.h"
 #include "Matrix.h"
 #include "Rectangles.h"
@@ -785,19 +786,53 @@ void PostProcessMan::ApplySceneAtmosphere(const Scene* scene) {
 	if (atmosphere.DayLengthMinutes >= 0.0F) {
 		m_LightingSettings.DayLengthMinutes = atmosphere.DayLengthMinutes;
 	}
-	if (!atmosphere.WeatherName.empty() && Weather::FindSlot(atmosphere.WeatherName) >= 0) {
-		// A custom weather goes by name, since its slot depends on the mods loaded.
-		m_LightingSettings.WeatherType = Weather::FindSlot(atmosphere.WeatherName);
-	} else if (atmosphere.WeatherType >= 0) {
-		m_LightingSettings.WeatherType = std::clamp(atmosphere.WeatherType, 0, Weather::GetSlotCount() - 1);
-	}
-	if (atmosphere.WeatherIntensity >= 0.0F) {
-		m_LightingSettings.WeatherIntensity = std::clamp(atmosphere.WeatherIntensity, 0.0F, 1.0F);
-	}
+	ApplySceneWeather(scene);
+	// The map's wind stays its own either way.
 	if (atmosphere.Wind > -10000.0F) {
 		m_LightingSettings.Wind = atmosphere.Wind;
 	}
 	ApplyActivityAtmosphere();
+}
+
+void PostProcessMan::ApplySceneWeather(const Scene* scene) {
+	ResolveWeather();
+	if (m_PlayerAtmosphereCaptured) {
+		m_LightingSettings.WeatherType = m_PlayerAtmosphere.WeatherType;
+		m_LightingSettings.WeatherIntensity = m_PlayerAtmosphere.WeatherIntensity;
+	}
+	if (scene && !m_LightingSettings.OverrideMapWeather) {
+		const Scene::Atmosphere& atmosphere = scene->GetAtmosphere();
+		if (!atmosphere.WeatherName.empty() && Weather::FindSlot(atmosphere.WeatherName) >= 0) {
+			// A custom weather goes by name, since its slot depends on the mods loaded.
+			m_LightingSettings.WeatherType = Weather::FindSlot(atmosphere.WeatherName);
+		} else if (atmosphere.WeatherType >= 0) {
+			m_LightingSettings.WeatherType = std::clamp(atmosphere.WeatherType, 0, Weather::GetSlotCount() - 1);
+		}
+		if (atmosphere.WeatherIntensity >= 0.0F) {
+			m_LightingSettings.WeatherIntensity = std::clamp(atmosphere.WeatherIntensity, 0.0F, 1.0F);
+		}
+	}
+	if (m_ActivityWeather >= 0) {
+		m_LightingSettings.WeatherType = std::clamp(m_ActivityWeather, 0, Weather::GetSlotCount() - 1);
+		if (m_LightingSettings.WeatherType > 0) {
+			m_LightingSettings.WeatherIntensity = std::max(m_LightingSettings.WeatherIntensity, 0.6F);
+		}
+	}
+}
+
+void PostProcessMan::AdoptWeatherAsPlayers() {
+	if (!m_PlayerAtmosphereCaptured) {
+		// Not captured yet: the first map takes the settings as they are now.
+		return;
+	}
+	m_PlayerAtmosphere.WeatherType = m_LightingSettings.WeatherType;
+	m_PlayerAtmosphere.WeatherName = m_LightingSettings.WeatherName;
+	m_PlayerAtmosphere.WeatherIntensity = m_LightingSettings.WeatherIntensity;
+}
+
+void PostProcessMan::SetOverrideMapWeather(bool on) {
+	m_LightingSettings.OverrideMapWeather = on;
+	ApplySceneWeather(g_SceneMan.GetScene());
 }
 
 void PostProcessMan::ApplyActivityAtmosphere() {

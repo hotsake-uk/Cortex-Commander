@@ -576,9 +576,17 @@ void DebugMan::SettingsGUI() {
 			if (Combo("Precipitation", &settings.WeatherType, weatherItems.c_str())) {
 				// A pick made here wins over a saved custom weather still waiting for its preset to load.
 				settings.WeatherName.clear();
+				// And it's the player's own from now on, kept from map to map.
+				g_PostProcessMan.AdoptWeatherAsPlayers();
 			}
 		}
-		Slider("Weather intensity", &settings.WeatherIntensity, 0.0F, 1.0F);
+		if (bool overrideMap = settings.OverrideMapWeather; Check("Override the map's weather", &overrideMap)) {
+			g_PostProcessMan.SetOverrideMapWeather(overrideMap);
+		}
+		Tip("Every map has the precipitation and intensity set here, over the weather the map sets for itself. The map's wind stays its own. A game's weather picked on the scenario start screen, and a saved game's weather, still win. Off: a map with its own weather has it.");
+		if (Slider("Weather intensity", &settings.WeatherIntensity, 0.0F, 1.0F)) {
+			g_PostProcessMan.AdoptWeatherAsPlayers();
+		}
 		Slider("Weather speed", &settings.WeatherSpeed, 0.1F, 3.0F, "%.2fx");
 		Tip("How fast the rain, snow, ash and dust move: their fall, how the wind carries them, and their sway, swirl and flicker. They keep their angle, so shelter and splashes still line up. 1: as the weather has it.");
 		Check("Weather everywhere", &settings.WeatherEverywhere);
