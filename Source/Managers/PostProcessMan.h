@@ -572,6 +572,13 @@ namespace RTE {
 			m_PlayerAtmosphereCaptured = true;
 		}
 
+		/// Makes the weather now (its type and intensity) the player's own, so it's kept from map to map and is what Settings.ini saves. For the
+		/// weather the player picks in the settings panel or loads with a preset, not a map's or a script's.
+		void AdoptWeatherAsPlayers();
+
+		/// Turns OverrideMapWeather on or off and puts the weather it means up now: the player's own when on, the map's (or the game's pick) when off.
+		void SetOverrideMapWeather(bool on);
+
 		/// Gets the lighting and post-processing settings. These persist in Settings.ini and can be changed live.
 		/// @return The lighting settings.
 		LightingSettings& GetLightingSettings() { return m_LightingSettings; }
@@ -655,6 +662,9 @@ namespace RTE {
 		/// @param weatherType 0 clear, 1 rain, 2 snow, or negative for the default.
 		/// Applies the activity's chosen atmosphere, if any, over the current settings.
 		void ApplyActivityAtmosphere();
+
+		/// Puts up the weather for a Scene: the player's own, then the Scene's own unless OverrideMapWeather is on, then the activity's pick.
+		void ApplySceneWeather(const Scene* scene);
 
 		void SetActivityAtmosphere(float timeOfDay, int weatherType) {
 			m_ActivityTimeOfDay = timeOfDay;

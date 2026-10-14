@@ -128,6 +128,7 @@ void SceneLighting::LoadShaders() {
 	m_BloomUpsampleShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/BloomUpsample.frag");
 	m_TonemapShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/Tonemap.frag");
 	m_UnitOutlineRowShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/UnitOutlineRow.frag");
+	m_PaperMaskShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/PaperMask.frag");
 	m_LuminanceShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/Luminance.frag");
 	m_RCSceneShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RCScene.frag");
 	m_LitParticleShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/Emissive.vert", "Base.rte/Shaders/Lighting/LitParticle.frag");
@@ -355,6 +356,7 @@ void SceneLighting::EnsureScreenResources(int width, int height) {
 	m_Emissive.Create(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_Distortion.Create(width, height, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_OutlineRows.Create(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	m_PaperMask.Create(width, height, GL_R8, GL_RED, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_GodRays.Create(std::max(1, width / 2), std::max(1, height / 2), GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	int indirectWidth = width;
 	int indirectHeight = height;
@@ -410,6 +412,7 @@ void SceneLighting::DestroyScreenResources() {
 	m_Emissive.Destroy();
 	m_Distortion.Destroy();
 	m_OutlineRows.Destroy();
+	m_PaperMask.Destroy();
 	m_GodRays.Destroy();
 	for (GLTarget& mip: m_IndirectMips) {
 		mip.Destroy();
@@ -3642,6 +3645,20 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		DrawFullscreen();
 	}
 
+	// The paper grain on the backdrop only: where it may go, from the depth buffer, before the tonemap draws into the screen that owns it.
+	const bool paperMask = retro.PaperGrain > 0.0F && retro.PaperBackgroundOnly && sceneDepth;
+	if (paperMask) {
+		glDisable(GL_BLEND);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_PaperMask.Framebuffer);
+		glViewport(0, 0, width, height);
+		m_PaperMaskShader->Enable();
+		m_PaperMaskShader->SetInt("rteSceneDepth", 0);
+		m_PaperMaskShader->SetFloat("rteForegroundDepth", foregroundDepth);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, sceneDepth->GetTextureId());
+		DrawFullscreen();
+	}
+
 	logStages.Next("Lighting: tonemap");
 	// Tonemap back into the player screen.
 	playerScreen->Bind();
@@ -3675,9 +3692,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_TonemapShader->SetFloat("rteDither", std::clamp(retro.Dither, 0.0F, 1.0F));
 	m_TonemapShader->SetFloat("rteColorHalftone", std::clamp(retro.ColorHalftone, 0.0F, 1.0F));
 	m_TonemapShader->SetFloat("rtePaperGrain", std::clamp(retro.PaperGrain, 0.0F, 1.0F));
-	m_TonemapShader->SetBool("rtePaperBackgroundOnly", retro.PaperBackgroundOnly && sceneDepth);
-	m_TonemapShader->SetInt("rteSceneDepth", 6);
-	m_TonemapShader->SetFloat("rteForegroundDepth", foregroundDepth);
+	m_TonemapShader->SetBool("rtePaperBackgroundOnly", paperMask);
+	m_TonemapShader->SetInt("rtePaperMask", 6);
 	m_TonemapShader->SetFloat("rteMisregister", std::clamp(retro.Misregister, 0.0F, 1.0F));
 	{
 		// The comic style's sound-effect burst (PostProcessMan::KickComicBurst), where it went off on this screen.
@@ -3749,7 +3765,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	glActiveTexture(GL_TEXTURE5);
 	glBindTexture(GL_TEXTURE_2D, m_OutlineRows.Texture);
 	glActiveTexture(GL_TEXTURE6);
-	glBindTexture(GL_TEXTURE_2D, sceneDepth ? sceneDepth->GetTextureId() : 0);
+	glBindTexture(GL_TEXTURE_2D, paperMask ? m_PaperMask.Texture : 0);
 	DrawFullscreen();
 
 	glActiveTexture(GL_TEXTURE0);

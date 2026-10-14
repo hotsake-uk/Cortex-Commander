@@ -618,6 +618,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AtmosphereColor", { g_PostProcessMan.GetLightingSettings().AtmosphereColor = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().AtmosphereColor); });
 	MatchProperty("WeatherType", { g_PostProcessMan.GetLightingSettings().WeatherType = std::stoi(reader.ReadPropValue()); });
 	MatchProperty("WeatherName", { g_PostProcessMan.GetLightingSettings().WeatherName = reader.ReadPropValue(); });
+	MatchProperty("OverrideMapWeather", { g_PostProcessMan.GetLightingSettings().OverrideMapWeather = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("CustomWeather", { g_PostProcessMan.GetLightingSettings().CustomWeather = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WeatherGlow", { g_PostProcessMan.GetLightingSettings().WeatherGlow = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WeatherIntensity", { g_PostProcessMan.GetLightingSettings().WeatherIntensity = std::stof(reader.ReadPropValue()); });
@@ -1480,6 +1481,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 			writer.NewPropertyWithValue("WeatherName", weather->GetPresetName());
 		}
 	}
+	writer.NewPropertyWithValue("OverrideMapWeather", lighting.OverrideMapWeather);
 	writer.NewPropertyWithValue("CustomWeather", lighting.CustomWeather);
 	writer.NewPropertyWithValue("WeatherGlow", lighting.WeatherGlow);
 	writer.NewPropertyWithValue("WeatherIntensity", lighting.WeatherIntensity);
@@ -2254,7 +2256,12 @@ bool SettingsMan::LoadPreset(const std::string& name, PresetGroup from, PresetGr
 			return false;
 		}
 		// The same reading as the settings file gets, of a file that holds only the tunable settings.
-		return CreateSerializable(reader, true, false, false) >= 0;
+		if (CreateSerializable(reader, true, false, false) < 0) {
+			return false;
+		}
+		// Its weather is the player's own from now on, kept from map to map, not only until the next one loads.
+		g_PostProcessMan.AdoptWeatherAsPlayers();
+		return true;
 	}
 	// Only one group's half of a full preset: the other lines are left out before it is read.
 	std::ifstream file(path);
@@ -2264,10 +2271,11 @@ bool SettingsMan::LoadPreset(const std::string& name, PresetGroup from, PresetGr
 	std::ostringstream text;
 	text << file.rdbuf();
 	Reader reader(std::make_unique<std::istringstream>(KeepGroup(text.str(), part, TunableGroups())), path, false, nullptr, true, true);
-	if (!reader.ReaderOK()) {
+	if (!reader.ReaderOK() || CreateSerializable(reader, true, false, false) < 0) {
 		return false;
 	}
-	return CreateSerializable(reader, true, false, false) >= 0;
+	g_PostProcessMan.AdoptWeatherAsPlayers();
+	return true;
 }
 
 void SettingsMan::SetStartupPreset(const std::string& name, PresetGroup group) {
