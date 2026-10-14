@@ -276,8 +276,15 @@ namespace RTE {
 		/// more (see SettingsMan::Toughness). Infinite when it can't be blown apart at all.
 		virtual float GibToughness() const { return 1.0F; }
 
+		/// How many times harder than its preset this is to blow apart with wounds: GibToughness, and for a unit the Weapon damage to units
+		/// setting too when that scales blowing apart. (Wounds only: blows and joints aren't scaled by it, as falls and landings make those too.)
+		virtual float WoundGibToughness() const { return GibToughness(); }
+
 		/// A gib limit (wounds, impulse or joint strength) made tougher by GibToughness. A limit of 0 or less, meaning none, is left as it is.
 		float ToughenedGibLimit(float limit) const { return limit > 0.0F ? limit * GibToughness() : limit; }
+
+		/// The gib wound limit made tougher by WoundGibToughness. A limit of 0 or less, meaning none, is left as it is.
+		float ToughenedGibWoundLimit(float limit) const { return limit > 0.0F ? limit * WoundGibToughness() : limit; }
 
 		/// The Weapon damage to units setting for damage done by hitor: weapon fire (anything that hits units, but jetpack exhaust) is scaled
 		/// by it, anything else not.

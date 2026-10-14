@@ -820,14 +820,18 @@ void PostProcessMan::ApplySceneWeather(const Scene* scene) {
 	}
 }
 
-void PostProcessMan::AdoptWeatherAsPlayers() {
+void PostProcessMan::AdoptWeatherAsPlayers(bool type, bool intensity) {
 	if (!m_PlayerAtmosphereCaptured) {
 		// Not captured yet: the first map takes the settings as they are now.
 		return;
 	}
-	m_PlayerAtmosphere.WeatherType = m_LightingSettings.WeatherType;
-	m_PlayerAtmosphere.WeatherName = m_LightingSettings.WeatherName;
-	m_PlayerAtmosphere.WeatherIntensity = m_LightingSettings.WeatherIntensity;
+	if (type) {
+		m_PlayerAtmosphere.WeatherType = m_LightingSettings.WeatherType;
+		m_PlayerAtmosphere.WeatherName = m_LightingSettings.WeatherName;
+	}
+	if (intensity) {
+		m_PlayerAtmosphere.WeatherIntensity = m_LightingSettings.WeatherIntensity;
+	}
 }
 
 void PostProcessMan::SetOverrideMapWeather(bool on) {

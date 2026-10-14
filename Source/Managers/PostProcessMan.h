@@ -572,9 +572,12 @@ namespace RTE {
 			m_PlayerAtmosphereCaptured = true;
 		}
 
-		/// Makes the weather now (its type and intensity) the player's own, so it's kept from map to map and is what Settings.ini saves. For the
-		/// weather the player picks in the settings panel or loads with a preset, not a map's or a script's.
-		void AdoptWeatherAsPlayers();
+		/// Makes the weather now the player's own, so it's kept from map to map and is what Settings.ini saves. For the weather the player picks
+		/// in the settings panel or loads with a preset, not a map's or a script's: only what the player set is taken, so a map's own weather
+		/// showing at the time isn't taken with it.
+		/// @param type Whether to take the precipitation (its slot and name).
+		/// @param intensity Whether to take the intensity.
+		void AdoptWeatherAsPlayers(bool type = true, bool intensity = true);
 
 		/// Turns OverrideMapWeather on or off and puts the weather it means up now: the player's own when on, the map's (or the game's pick) when off.
 		void SetOverrideMapWeather(bool on);

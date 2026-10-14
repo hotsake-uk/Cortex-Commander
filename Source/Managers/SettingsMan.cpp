@@ -2250,31 +2250,32 @@ bool SettingsMan::LoadPreset(const std::string& name, PresetGroup from, PresetGr
 			return false;
 		}
 	}
-	if (part == PresetGroup::Everything || part == from) {
-		Reader reader(path, false, nullptr, true, true);
-		if (!reader.ReaderOK()) {
-			return false;
-		}
-		// The same reading as the settings file gets, of a file that holds only the tunable settings.
-		if (CreateSerializable(reader, true, false, false) < 0) {
-			return false;
-		}
-		// Its weather is the player's own from now on, kept from map to map, not only until the next one loads.
-		g_PostProcessMan.AdoptWeatherAsPlayers();
-		return true;
-	}
-	// Only one group's half of a full preset: the other lines are left out before it is read.
 	std::ifstream file(path);
 	if (!file) {
 		return false;
 	}
 	std::ostringstream text;
 	text << file.rdbuf();
-	Reader reader(std::make_unique<std::istringstream>(KeepGroup(text.str(), part, TunableGroups())), path, false, nullptr, true, true);
+	// The whole file, or only one group's half of a full preset: the other lines are left out before it is read.
+	std::string kept = part == PresetGroup::Everything || part == from ? text.str() : KeepGroup(text.str(), part, TunableGroups());
+	// The same reading as the settings file gets, of a file that holds only the tunable settings.
+	Reader reader(std::make_unique<std::istringstream>(kept), path, false, nullptr, true, true);
 	if (!reader.ReaderOK() || CreateSerializable(reader, true, false, false) < 0) {
 		return false;
 	}
-	g_PostProcessMan.AdoptWeatherAsPlayers();
+	// The weather the preset sets is the player's own from now on, kept from map to map, not only until the next one loads. Only what it
+	// sets: a preset with no weather lines (a Gameplay one, say) leaves the player's weather be, rather than taking the map's showing now.
+	bool setsType = false;
+	bool setsIntensity = false;
+	std::istringstream lines(kept);
+	for (std::string line; std::getline(lines, line);) {
+		std::string key = LineKey(line);
+		setsType = setsType || key == "WeatherType" || key == "WeatherName";
+		setsIntensity = setsIntensity || key == "WeatherIntensity";
+	}
+	if (setsType || setsIntensity) {
+		g_PostProcessMan.AdoptWeatherAsPlayers(setsType, setsIntensity);
+	}
 	return true;
 }
 
@@ -2343,6 +2344,7 @@ std::string SettingsMan::SaveFilterPreset(const std::string& name, const Lightin
 	file << "Palette = " << layers.Palette << "\n";
 	file << "InkEdges = " << (layers.InkEdges ? 1 : 0) << "\n";
 	file << "GlitchOnBlasts = " << (layers.GlitchOnBlasts ? 1 : 0) << "\n";
+	file << "PaperBackgroundOnly = " << (layers.PaperBackgroundOnly ? 1 : 0) << "\n";
 	for (const auto& [field, member]: c_RetroFloatFields) {
 		file << field << " = " << layers.*member << "\n";
 	}

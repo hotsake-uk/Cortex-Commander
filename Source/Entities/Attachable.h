@@ -79,6 +79,7 @@ namespace RTE {
 
 		/// A part is as hard to blow apart or knock off as the body it is attached to (a unit's head and limbs follow its toughness).
 		float GibToughness() const override { return m_Parent ? GetRootParent()->GibToughness() : 1.0F; }
+		float WoundGibToughness() const override { return m_Parent ? GetRootParent()->WoundGibToughness() : 1.0F; }
 
 		/// Gets the stored offset between this Attachable's parent's position and the joint position. This should be maintained by the parent.
 		/// @return A const reference Vector describing the offset from the parent's position to the joint position.

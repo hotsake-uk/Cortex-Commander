@@ -576,8 +576,8 @@ void DebugMan::SettingsGUI() {
 			if (Combo("Precipitation", &settings.WeatherType, weatherItems.c_str())) {
 				// A pick made here wins over a saved custom weather still waiting for its preset to load.
 				settings.WeatherName.clear();
-				// And it's the player's own from now on, kept from map to map.
-				g_PostProcessMan.AdoptWeatherAsPlayers();
+				// And it's the player's own from now on, kept from map to map (the precipitation only: the intensity showing may be the map's).
+				g_PostProcessMan.AdoptWeatherAsPlayers(true, false);
 			}
 		}
 		if (bool overrideMap = settings.OverrideMapWeather; Check("Override the map's weather", &overrideMap)) {
@@ -585,7 +585,8 @@ void DebugMan::SettingsGUI() {
 		}
 		Tip("Every map has the precipitation and intensity set here, over the weather the map sets for itself. The map's wind stays its own. A game's weather picked on the scenario start screen, and a saved game's weather, still win. Off: a map with its own weather has it.");
 		if (Slider("Weather intensity", &settings.WeatherIntensity, 0.0F, 1.0F)) {
-			g_PostProcessMan.AdoptWeatherAsPlayers();
+			// The intensity only: the precipitation showing may be the map's own.
+			g_PostProcessMan.AdoptWeatherAsPlayers(false, true);
 		}
 		Slider("Weather speed", &settings.WeatherSpeed, 0.1F, 3.0F, "%.2fx");
 		Tip("How fast the rain, snow, ash and dust move: their fall, how the wind carries them, and their sway, swirl and flicker. They keep their angle, so shelter and splashes still line up. 1: as the weather has it.");
@@ -1535,7 +1536,7 @@ void DebugMan::SettingsGUI() {
 		}
 		Tip("How much damage bullets, shrapnel and other weapon fire do to the units, vehicles and craft they hit, as a multiple of normal: the wounds they leave hurt and bleed that much more or less. Falls, fire, drowning and crushing are unchanged (the Unit toughness sliders scale everything). 1x is normal.");
 		Toggle("Weapon damage scales blowing apart", g_SettingsMan.WeaponUnitDamageGibs(), Normal{false}, [](bool gibs) { g_SettingsMan.SetWeaponUnitDamageGibs(gibs); });
-		Tip("Off, Weapon damage to units changes only health: a heavy volley still blows units apart or takes limbs off as before. On, it also changes how many wounds and how hard a blow it takes to do that: at 0.5x twice as many, at 2x half. Blows from anything count, not just weapons, though nearly all of them are.");
+		Tip("Off, Weapon damage to units changes only health: a heavy volley still blows units apart or takes limbs off as before. On, it also changes how many wounds it takes to blow them apart: at 0.5x twice as many, at 2x half. How hard a blow it takes is left as it is, so falls, landings and crashes break nothing more than usual.");
 		if (Plain() && ToolUI::Button("Normal unit damage")) {
 			g_SettingsMan.SetWeaponUnitDamage(1.0F);
 			g_SettingsMan.SetWeaponUnitDamageGibs(false);

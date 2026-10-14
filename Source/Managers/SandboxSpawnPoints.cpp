@@ -13,6 +13,7 @@ namespace SandboxDetail {
 		constexpr float c_GiveUpSeconds = 120.0F; //!< How long one still in its ship is waited for (and counted as alive).
 		constexpr float c_PickPixels = 14.0F; //!< How near a point, in window pixels, a click is to pick it.
 		constexpr float c_DragPixels = 6.0F; //!< How far the pointer goes with the right button down before it is a drag (the view), not a click.
+		constexpr int c_MostAliveCeiling = 100; //!< Most of a point's units alive at once with Most alive at "no cap": it would otherwise make units on its clock for good.
 
 		/// A unit a point made: counted against its cap while alive, and given its spawn order once in.
 		struct Made {
@@ -54,15 +55,16 @@ namespace SandboxDetail {
 			SpawnOrderKind Kind;
 		};
 		constexpr ArrivalChoice c_Arrivals[] = {
+		    {"Sentry where they land", Order::Sentry, SpawnOrderKind::Hold},
 		    {"Hold where they land", Order::Hold, SpawnOrderKind::Hold},
 		    {"Attack nearest enemy", Order::Attack, SpawnOrderKind::Hold},
 		    {"Hunt brains", Order::HuntBrains, SpawnOrderKind::Hold},
-		    {"Move", Order::Hold, SpawnOrderKind::Move},
-		    {"Attack-move", Order::Hold, SpawnOrderKind::AttackMove},
-		    {"Defend at", Order::Hold, SpawnOrderKind::DefendAt},
-		    {"Patrol", Order::Hold, SpawnOrderKind::Patrol},
-		    {"Jetpack here", Order::Hold, SpawnOrderKind::JetpackHere},
-		    {"Battle objective", Order::Hold, SpawnOrderKind::Objective},
+		    {"Move", Order::Sentry, SpawnOrderKind::Move},
+		    {"Attack-move", Order::Sentry, SpawnOrderKind::AttackMove},
+		    {"Defend at", Order::Sentry, SpawnOrderKind::DefendAt},
+		    {"Patrol", Order::Sentry, SpawnOrderKind::Patrol},
+		    {"Jetpack here", Order::Sentry, SpawnOrderKind::JetpackHere},
+		    {"Battle objective", Order::Sentry, SpawnOrderKind::Objective},
 		};
 
 		/// Which of c_Arrivals settings are, the first for none that fits.
@@ -75,10 +77,8 @@ namespace SandboxDetail {
 			return 0;
 		}
 
-		/// The name of what a point's units do, as the panel lists it. Hold's name is the battle's own (c_SpawnOrderNames), so it follows a change there.
-		const char* ArrivalName(int choice) {
-			return choice == 0 ? c_SpawnOrderNames[static_cast<int>(SpawnOrderKind::Hold)] : c_Arrivals[std::clamp(choice, 0, static_cast<int>(std::size(c_Arrivals)) - 1)].Name;
-		}
+		/// The name of what a point's units do, as the panel lists it.
+		const char* ArrivalName(int choice) { return c_Arrivals[std::clamp(choice, 0, static_cast<int>(std::size(c_Arrivals)) - 1)].Name; }
 
 		/// Whether an order needs a place on the map, and how many points: a patrol a route of two or more, the rest one.
 		bool NeedsPlace(SpawnOrderKind kind) { return kind == SpawnOrderKind::Move || kind == SpawnOrderKind::AttackMove || kind == SpawnOrderKind::DefendAt || kind == SpawnOrderKind::Patrol || kind == SpawnOrderKind::JetpackHere; }
@@ -100,12 +100,16 @@ namespace SandboxDetail {
 			return zone;
 		}
 
-		/// Its units alive now, or still on their way in a ship.
+		/// Whether a unit that was out in the world is riding in a craft now (a ship ride, a vehicle): out of the world's actors, but not gone.
+		/// (Only the pointer is compared, never followed: the object with its unique ID is still the one made.)
+		bool Riding(const Made& made) { return made.Unit.Unit && g_MovableMan.FindObjectByUniqueID(made.Unit.ID) == made.Unit.Unit; }
+
+		/// Its units alive now, or still on their way in a ship, or riding in one.
 		int Alive(const SpawnPoint& point) {
 			int alive = 0;
 			for (const Made& made: point.Units) {
 				const Actor* unit = GetRef(made.Unit);
-				alive += unit ? (unit->IsDead() ? 0 : 1) : (made.InAt < 0 ? 1 : 0);
+				alive += unit ? (unit->IsDead() ? 0 : 1) : (made.InAt < 0 || Riding(made) ? 1 : 0);
 			}
 			return alive;
 		}
@@ -118,8 +122,8 @@ namespace SandboxDetail {
 			for (auto made = point.Units.begin(); made != point.Units.end();) {
 				Actor* unit = GetRef(made->Unit);
 				if (!unit) {
-					// Gone, or not in yet (still in its ship): waited for a while, else dropped.
-					const bool gone = made->InAt >= 0 || static_cast<float>(now - made->MadeAt) > c_GiveUpSeconds * perSecond;
+					// Gone, or not in yet (still in its ship): waited for a while, else dropped. One riding in a craft since it came in is kept.
+					const bool gone = made->InAt >= 0 ? !Riding(*made) : static_cast<float>(now - made->MadeAt) > c_GiveUpSeconds * perSecond;
 					made = gone ? point.Units.erase(made) : std::next(made);
 					continue;
 				}
@@ -135,7 +139,8 @@ namespace SandboxDetail {
 					// (Not one you're playing, one that's changed side, nor one you have ordered already, selected as it came in: it keeps your order.)
 					const Actor::StandingOrder& standing = unit->GetStandingOrder();
 					const long id = unit->GetUniqueID();
-					if (point.Settings.Arrival.Kind != SpawnOrderKind::Hold && unit->GetTeam() == point.Settings.Team && !unit->IsPlayerControlled() && standing.Kind == Actor::ORDER_NONE && !standing.HasPost && standing.TargetID == 0 && !s_Plans.count(id) &&
+					// (The Sentry it was made with is the point's own, not an order of yours.)
+					if (point.Settings.Arrival.Kind != SpawnOrderKind::Hold && unit->GetTeam() == point.Settings.Team && !unit->IsPlayerControlled() && (standing.Kind == Actor::ORDER_NONE || standing.Kind == Actor::ORDER_SENTRY) && !standing.HasPost && standing.TargetID == 0 && !s_Plans.count(id) &&
 					    std::none_of(s_PendingOrders.begin(), s_PendingOrders.end(), [unit](const PendingOrder& order) { return RefersTo(order.Unit, unit); })) {
 						ready.push_back(unit);
 					}
@@ -151,9 +156,7 @@ namespace SandboxDetail {
 		void SpawnLot(SpawnPoint& point, long long now) {
 			const SpawnPointSettings& settings = point.Settings;
 			int room = std::clamp(settings.PerSpawn, 1, 20);
-			if (settings.MostAlive > 0) {
-				room = std::min(room, settings.MostAlive - Alive(point));
-			}
+			room = std::min(room, (settings.MostAlive > 0 ? std::min(settings.MostAlive, c_MostAliveCeiling) : c_MostAliveCeiling) - Alive(point));
 			if (settings.TotalLimit > 0) {
 				room = std::min(room, settings.TotalLimit - point.Count);
 			}
@@ -442,7 +445,7 @@ namespace SandboxDetail {
 			int behaviour = 0;
 			in >> settings.Units.FavouritesOnly >> settings.Units.Crabs >> settings.Units.JetpackOnly >> settings.PerSpawn >> settings.EverySeconds >> settings.FirstAtOnce >> settings.MostAlive >> settings.TotalLimit >> settings.Radius >> settings.ByShip >> settings.Craft >>
 			    settings.Invincible >> behaviour;
-			settings.Behaviour = static_cast<Order>(behaviour);
+			settings.Behaviour = UnitOrder(behaviour);
 			int kind = 0;
 			size_t points = 0;
 			in >> kind >> order.Facing >> order.Direct >> order.BackAndForth >> order.Radius >> order.Chase >> order.Roam >> points;
@@ -462,9 +465,8 @@ namespace SandboxDetail {
 				made.MadeAt = LoadUpdate(in);
 				made.InAt = LoadUpdate(in);
 				made.Unit = ids.Ref(id);
-				// (One still in its ship when saved isn't in the loaded game's world: it isn't counted.)
+				// (One still in its ship when saved is back in the ship's cargo: it stays not in yet, waited for and given its spawn order when out.)
 				if (made.Unit.Unit) {
-					made.InAt = made.InAt < 0 ? g_TimerMan.GetSimUpdateCount() : made.InAt;
 					point.Units.push_back(made);
 				}
 			}
@@ -672,8 +674,8 @@ namespace SandboxDetail {
 		changed |= ImGui::SliderInt("Units each time", &setup.PerSpawn, 1, 20);
 		changed |= ImGui::SliderInt("Every", &setup.EverySeconds, 2, 300, "%d s", ImGuiSliderFlags_Logarithmic);
 		ImGui::SetItemTooltip("Seconds of game time between one lot and the next. The clock stops while the AI is paused.");
-		changed |= ImGui::SliderInt("Most alive", &setup.MostAlive, 0, 100, setup.MostAlive > 0 ? "%d at once" : "no cap");
-		ImGui::SetItemTooltip("Most of this point's units alive at once, those still in a ship counted. At it, none come; below it, only enough to top it up. 0: no cap.");
+		changed |= ImGui::SliderInt("Most alive", &setup.MostAlive, 0, 100, setup.MostAlive > 0 ? "%d at once" : "100 at once (most)");
+		ImGui::SetItemTooltip("Most of this point's units alive at once, those still in a ship or riding in one counted. At it, none come; below it, only enough to top it up. 0: the most, 100.");
 		changed |= ImGui::SliderInt("Total limit", &setup.TotalLimit, 0, 500, setup.TotalLimit > 0 ? "%d in all" : "no limit");
 		ImGui::SetItemTooltip("Units it brings in, in all. Once it has, it stops (its marker goes hollow): Reset count starts it afresh. 0: no limit.");
 		if (s_Picked == 0) {

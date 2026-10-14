@@ -1374,6 +1374,10 @@ void Scene::SaveSceneObject(Writer& writer, const SceneObject* sceneObjectToSave
 			writer.NewPropertyWithValue("BurstScale", aemitterToSave->GetBurstScale());
 			writer.NewPropertyWithValue("BurstDamage", aemitterToSave->GetBurstDamage());
 			writer.NewPropertyWithValue("EmitterDamageMultiplier", aemitterToSave->GetEmitterDamageMultiplier());
+			// A wound's own damage multiplier: the shot's wound damage and the Weapon damage to units setting it was made under, which its bleeding goes by.
+			if (!aemitterToSave->HasNoSetDamageMultiplier()) {
+				writer.NewPropertyWithValue("DamageMultiplier", aemitterToSave->GetDamageMultiplier());
+			}
 			writer.NewPropertyWithValue("BurstSpacing", aemitterToSave->GetBurstSpacing());
 			writer.NewPropertyWithValue("BurstTriggered", aemitterToSave->IsSetToBurst());
 			writer.NewPropertyWithValue("EmissionAngle", aemitterToSave->GetEmitAngleMatrix());

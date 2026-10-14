@@ -1143,7 +1143,8 @@ namespace {
 					MakeRound(request.Type, ToGlm(request.Position), request.Radius, ToGlm(request.Velocity));
 					break;
 				case Request::Kind::Clear:
-					RemoveAll(false);
+					// Their pictures too, as Clear does: lifted out already, their materials are gone but their colours would stay painted on.
+					RemoveAll(true);
 					break;
 				case Request::Kind::Blast:
 					Blast(ToGlm(request.Position), request.Radius, request.Energy);

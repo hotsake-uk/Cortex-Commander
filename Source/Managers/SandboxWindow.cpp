@@ -2218,10 +2218,11 @@ namespace SandboxDetail {
 				if (!inView(at, 40.0F)) {
 					continue;
 				}
-				// What it is doing, as the sandbox gave it: its plan's patrol, an attack, a post, a guard, a move or an attack-move, or a hold.
+				// What it is doing, as the sandbox gave it: its plan's patrol, an attack, a post, a guard, a move or an attack-move, a hold or a sentry.
 				CommandMode kind = CommandMode::Move;
 				bool shown = true;
 				bool hold = false;
+				bool sentry = false;
 				bool hasGoal = false;
 				Vector goal;
 				float suppressRadius = 0.0F;
@@ -2267,13 +2268,15 @@ namespace SandboxDetail {
 					}
 				} else if (unit->GetOrderHold()) {
 					hold = true;
+				} else if (unit->GetOrderKind() == Actor::ORDER_SENTRY && unit->GetAIMode() == Actor::AIMODE_SENTRY) {
+					sentry = true;
 				} else {
 					shown = false;
 				}
 				if (!shown) {
 					continue;
 				}
-				ImU32 color = hold ? IM_COL32(200, 200, 190, 255) : c_CommandModeColors[static_cast<int>(kind)];
+				ImU32 color = hold || sentry ? IM_COL32(200, 200, 190, 255) : c_CommandModeColors[static_cast<int>(kind)];
 				if (hasGoal && isSelected) {
 					drawList->AddLine(at, ToScreen(goal), fade(color, 90), 1.0F);
 				}
@@ -2284,6 +2287,9 @@ namespace SandboxDetail {
 				float toward = hasGoal && g_SceneMan.ShortestDistance(unit->GetPos(), goal, g_SceneMan.SceneWrapsX()).m_X < 0.0F ? -1.0F : 1.0F;
 				if (hold) {
 					drawList->AddRectFilled(ImVec2(mark.x - r * 0.7F, mark.y - r * 0.7F), ImVec2(mark.x + r * 0.7F, mark.y + r * 0.7F), color);
+				} else if (sentry) {
+					// Hold's square, open: it stands guard but may move.
+					drawList->AddRect(ImVec2(mark.x - r * 0.7F, mark.y - r * 0.7F), ImVec2(mark.x + r * 0.7F, mark.y + r * 0.7F), color, 0.0F, 0, 1.5F);
 				} else if (kind == CommandMode::Move || kind == CommandMode::AttackMove) {
 					drawList->AddTriangleFilled(ImVec2(mark.x + toward * r, mark.y), ImVec2(mark.x - toward * r, mark.y - r), ImVec2(mark.x - toward * r, mark.y + r), color);
 					if (kind == CommandMode::AttackMove) {
@@ -2474,7 +2480,8 @@ namespace SandboxDetail {
 			return false;
 		}
 		int mode = unit->GetAIMode();
-		return (mode == Actor::AIMODE_SENTRY || mode == Actor::AIMODE_NONE) && !unit->GetOrderHasPost() && !unit->GetOrderHold();
+		// (A unit told to Sentry is on an order, though its AI mode is the same as one left standing with none.)
+		return (mode == Actor::AIMODE_SENTRY || mode == Actor::AIMODE_NONE) && !unit->GetOrderHasPost() && !unit->GetOrderHold() && unit->GetOrderKind() != Actor::ORDER_SENTRY;
 	}
 
 	/// The idle units of a side (RC-6): its fighting units on no order, not its ships.
