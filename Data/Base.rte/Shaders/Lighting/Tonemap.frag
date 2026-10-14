@@ -48,9 +48,8 @@ uniform float rtePosterize; // Fewer colour levels, 0 (as is) to 1 (four a chann
 uniform float rteDither; // Ordered dithering across those levels (or a palette's bands), 0 to 1.
 uniform float rteColorHalftone; // The picture printed as cyan, magenta and yellow dot screens at angles, 0 to 1.
 uniform float rtePaperGrain; // A faint, still paper grain and off-white paper under the picture, 0 to 1.
-uniform bool rtePaperBackgroundOnly; // The paper only on the backdrop behind the terrain (scene depth at or beyond rteForegroundDepth).
-uniform sampler2D rteSceneDepth;
-uniform float rteForegroundDepth; // Depth below which pixels are foreground terrain and objects.
+uniform bool rtePaperBackgroundOnly; // The paper only on the backdrop behind the terrain, where rtePaperMask is 1.
+uniform sampler2D rtePaperMask; // PaperMask.frag: 1 behind the terrain, 0 on terrain, objects and effects.
 uniform float rteMisregister; // The red and blue plates printed a pixel or two out of line, 0 to 1.
 uniform float rteBurstStrength; // The comic sound-effect burst (PostProcessMan::KickComicBurst), 0 for none.
 uniform vec2 rteBurstScreen; // Where it went off, in screen pixels, y down.
@@ -333,7 +332,7 @@ void main() {
 	if (rteColorHalftone > 0.0) {
 		outputColor = mix(outputColor, ColorHalftone(outputColor, gl_FragCoord.xy), rteColorHalftone);
 	}
-	if (rtePaperGrain > 0.0 && (!rtePaperBackgroundOnly || texture(rteSceneDepth, uv).r >= rteForegroundDepth)) {
+	if (rtePaperGrain > 0.0 && (!rtePaperBackgroundOnly || texture(rtePaperMask, uv).r > 0.5)) {
 		// Paper: a still grain of fibres and blotches, and off-white stock under everything (or under the backdrop only).
 		vec2 px = gl_FragCoord.xy;
 		float fibre = GlyphHash(floor(px)) - 0.5;
