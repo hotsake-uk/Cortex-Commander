@@ -654,6 +654,9 @@ namespace RTE {
 		std::vector<Shockwave> m_Shimmers; //!< Shimmers registered for the current frame (the start time isn't used).
 		float m_ActivityTimeOfDay = -1.0F; //!< Time of day chosen for the current activity, negative for none.
 		int m_ActivityWeather = -1; //!< Weather chosen for the current activity, negative for none.
+		bool m_SavedGameWeatherSet = false; //!< Whether the game under way was loaded from a save, whose weather wins over the player's and the map's until the next map loads.
+		int m_SavedGameWeatherType = 0; //!< That save's weather slot.
+		float m_SavedGameWeatherIntensity = 0.0F; //!< And its intensity.
 
 	public:
 		/// Gets the active shockwaves in scene coordinates, as xy position, z current wavefront radius, w remaining strength. For vegetation pushed by blasts.
@@ -668,6 +671,13 @@ namespace RTE {
 
 		/// Puts up the weather for a Scene: the player's own, then the Scene's own unless OverrideMapWeather is on, then the activity's pick.
 		void ApplySceneWeather(const Scene* scene);
+
+		/// Keeps the weather up now as a loaded saved game's, so putting the weather up again (OverrideMapWeather turned on or off) keeps it, until the next map loads.
+		void KeepSavedGameWeather() {
+			m_SavedGameWeatherSet = true;
+			m_SavedGameWeatherType = m_LightingSettings.WeatherType;
+			m_SavedGameWeatherIntensity = m_LightingSettings.WeatherIntensity;
+		}
 
 		void SetActivityAtmosphere(float timeOfDay, int weatherType) {
 			m_ActivityTimeOfDay = timeOfDay;

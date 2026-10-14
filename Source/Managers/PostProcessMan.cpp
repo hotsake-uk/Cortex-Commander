@@ -759,6 +759,8 @@ void PostProcessMan::GetShockwavesWrapped(const Vector& boxPos, int boxWidth, in
 
 void PostProcessMan::ApplySceneAtmosphere(const Scene* scene) {
 	ResolveWeather();
+	// A new map, or the same one again: a saved game's weather is put back after this, if one is being loaded.
+	m_SavedGameWeatherSet = false;
 	if (!m_PlayerAtmosphereCaptured) {
 		m_PlayerAtmosphere = m_LightingSettings;
 		m_PlayerAtmosphereCaptured = true;
@@ -817,6 +819,10 @@ void PostProcessMan::ApplySceneWeather(const Scene* scene) {
 		if (m_LightingSettings.WeatherType > 0) {
 			m_LightingSettings.WeatherIntensity = std::max(m_LightingSettings.WeatherIntensity, 0.6F);
 		}
+	}
+	if (m_SavedGameWeatherSet) {
+		m_LightingSettings.WeatherType = std::clamp(m_SavedGameWeatherType, 0, Weather::GetSlotCount() - 1);
+		m_LightingSettings.WeatherIntensity = m_SavedGameWeatherIntensity;
 	}
 }
 

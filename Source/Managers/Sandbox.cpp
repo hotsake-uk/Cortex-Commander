@@ -5,6 +5,7 @@
 #include "Weather.h"
 #include "TerrainCandle.h"
 #include "ZeroGravity.h"
+#include <functional>
 #include <iomanip>
 #include <sstream>
 
@@ -2820,26 +2821,36 @@ void Sandbox::LoadSaveState(const std::string& state, const std::unordered_map<l
 		return;
 	}
 	const LoadedIDs ids{newIDs};
+	// Each section by its name. One that can't be read (a format changed since the save, a value out of place) leaves the stream part way
+	// through it, and the words after aren't a section's name: those are skipped to the next name known, so the sections after it still load.
+	const std::unordered_map<std::string, std::function<void()>> sections = {
+	    {"orders", [&] { LoadOrders(stream, ids); }},
+	    {"squads", [&] { LoadPlayerSquads(stream, ids); }},
+	    {"player", [&] { LoadPlayer(stream, ids); }},
+	    {"airlifts", [&] { LoadAirlifts(stream, ids); }},
+	    {"builds", [&] { LoadBuilds(stream, ids); }},
+	    {"breaches", [&] { LoadBreaches(stream, ids); }},
+	    {"battle", [&] { LoadBattle(stream, ids); }},
+	    {"spawnpoints", [&] { LoadSpawnPoints(stream, ids); }},
+	};
 	std::string section;
-	while (stream >> section) {
-		if (section == "orders") {
-			LoadOrders(stream, ids);
-		} else if (section == "squads") {
-			LoadPlayerSquads(stream, ids);
-		} else if (section == "player") {
-			LoadPlayer(stream, ids);
-		} else if (section == "airlifts") {
-			LoadAirlifts(stream, ids);
-		} else if (section == "builds") {
-			LoadBuilds(stream, ids);
-		} else if (section == "breaches") {
-			LoadBreaches(stream, ids);
-		} else if (section == "battle") {
-			LoadBattle(stream, ids);
-		} else if (section == "spawnpoints") {
-			LoadSpawnPoints(stream, ids);
-		} else {
-			break;
+	while (stream >> section && section != "end") {
+		auto found = sections.find(section);
+		if (found == sections.end()) {
+			// Not a section known here: a later game's, or what's left of one that couldn't be read.
+			g_ConsoleMan.PrintString("WARNING: Sandbox: skipped part of the saved game's state it couldn't read, at \"" + section + "\".");
+			while (stream >> section && section != "end" && !sections.count(section)) {
+			}
+			if (!stream || section == "end") {
+				break;
+			}
+			found = sections.find(section);
+		}
+		found->second();
+		if (!stream) {
+			// It ran short or met a value it couldn't read: carry on from wherever it stopped.
+			g_ConsoleMan.PrintString("WARNING: Sandbox: the saved game's \"" + found->first + "\" couldn't be read in full; the rest of it is skipped.");
+			stream.clear();
 		}
 	}
 }

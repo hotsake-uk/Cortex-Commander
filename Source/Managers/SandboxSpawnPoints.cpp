@@ -441,7 +441,13 @@ namespace SandboxDetail {
 			in >> point.ID >> point.Pos.m_X >> point.Pos.m_Y >> point.Paused >> point.Count;
 			point.NextAt = LoadUpdate(in);
 			in >> settings.Team;
-			settings.Units.Factions = FactionIDs(LoadText(in));
+			const std::string factions = LoadText(in);
+			settings.Units.Factions = FactionIDs(factions);
+			if (!factions.empty() && settings.Units.Factions.empty()) {
+				// Its factions' mods aren't loaded now: none of them would mean any faction, so it waits, paused, rather than bring in others.
+				point.Paused = true;
+				g_ConsoleMan.PrintString("WARNING: Sandbox: a saved spawn point's factions (" + factions + ") aren't loaded; it's paused.");
+			}
 			int behaviour = 0;
 			in >> settings.Units.FavouritesOnly >> settings.Units.Crabs >> settings.Units.JetpackOnly >> settings.PerSpawn >> settings.EverySeconds >> settings.FirstAtOnce >> settings.MostAlive >> settings.TotalLimit >> settings.Radius >> settings.ByShip >> settings.Craft >>
 			    settings.Invincible >> behaviour;

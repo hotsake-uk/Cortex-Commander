@@ -436,6 +436,8 @@ namespace {
 		}
 		g_PostProcessMan.SetWeatherIntensity(intensity);
 		g_PostProcessMan.SetWind(wind);
+		// Kept as the save's, so turning Override the map's weather on or off while it plays doesn't put the map's or the player's up instead.
+		g_PostProcessMan.KeepSavedGameWeather();
 	}
 
 	std::unordered_map<long, long> RemapLoadedUniqueIDs(double savedSimTimeMS) {
