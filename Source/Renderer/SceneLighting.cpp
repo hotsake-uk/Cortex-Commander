@@ -3675,6 +3675,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_TonemapShader->SetFloat("rteDither", std::clamp(retro.Dither, 0.0F, 1.0F));
 	m_TonemapShader->SetFloat("rteColorHalftone", std::clamp(retro.ColorHalftone, 0.0F, 1.0F));
 	m_TonemapShader->SetFloat("rtePaperGrain", std::clamp(retro.PaperGrain, 0.0F, 1.0F));
+	m_TonemapShader->SetBool("rtePaperBackgroundOnly", retro.PaperBackgroundOnly && sceneDepth);
+	m_TonemapShader->SetInt("rteSceneDepth", 6);
+	m_TonemapShader->SetFloat("rteForegroundDepth", foregroundDepth);
 	m_TonemapShader->SetFloat("rteMisregister", std::clamp(retro.Misregister, 0.0F, 1.0F));
 	{
 		// The comic style's sound-effect burst (PostProcessMan::KickComicBurst), where it went off on this screen.
@@ -3745,6 +3748,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	glBindTexture(GL_TEXTURE_2D, m_Emissive.Texture);
 	glActiveTexture(GL_TEXTURE5);
 	glBindTexture(GL_TEXTURE_2D, m_OutlineRows.Texture);
+	glActiveTexture(GL_TEXTURE6);
+	glBindTexture(GL_TEXTURE_2D, sceneDepth ? sceneDepth->GetTextureId() : 0);
 	DrawFullscreen();
 
 	glActiveTexture(GL_TEXTURE0);

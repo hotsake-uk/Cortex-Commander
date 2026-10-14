@@ -102,6 +102,8 @@ namespace {
 			layers.InkEdges = std::stoi(value) != 0;
 		} else if (field == "GlitchOnBlasts") {
 			layers.GlitchOnBlasts = std::stoi(value) != 0;
+		} else if (field == "PaperBackgroundOnly") {
+			layers.PaperBackgroundOnly = std::stoi(value) != 0;
 		} else {
 			for (const auto& [name, member]: c_RetroFloatFields) {
 				if (field == name) {
@@ -116,6 +118,7 @@ namespace {
 		writer.NewPropertyWithValue(prefix + "Palette", layers.Palette);
 		writer.NewPropertyWithValue(prefix + "InkEdges", layers.InkEdges);
 		writer.NewPropertyWithValue(prefix + "GlitchOnBlasts", layers.GlitchOnBlasts);
+		writer.NewPropertyWithValue(prefix + "PaperBackgroundOnly", layers.PaperBackgroundOnly);
 		for (const auto& [name, member]: c_RetroFloatFields) {
 			writer.NewPropertyWithValue(prefix + name, layers.*member);
 		}
@@ -636,6 +639,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("RetroLook", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Look", reader.ReadPropValue()); });
 	MatchProperty("RetroPalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "Palette", reader.ReadPropValue()); });
 	MatchProperty("RetroInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "InkEdges", reader.ReadPropValue()); });
+	MatchProperty("RetroPaperBackgroundOnly", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "PaperBackgroundOnly", reader.ReadPropValue()); });
 	MatchProperty("RetroGlitchOnBlasts", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "GlitchOnBlasts", reader.ReadPropValue()); });
 	MatchProperty("RetroPaletteStrength", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "PaletteStrength", reader.ReadPropValue()); });
 	MatchProperty("RetroNeonGlow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().Retro, "NeonGlow", reader.ReadPropValue()); });
@@ -666,6 +670,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SynthwaveLook", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Look", reader.ReadPropValue()); });
 	MatchProperty("SynthwavePalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "Palette", reader.ReadPropValue()); });
 	MatchProperty("SynthwaveInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "InkEdges", reader.ReadPropValue()); });
+	MatchProperty("SynthwavePaperBackgroundOnly", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "PaperBackgroundOnly", reader.ReadPropValue()); });
 	MatchProperty("SynthwaveGlitchOnBlasts", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "GlitchOnBlasts", reader.ReadPropValue()); });
 	MatchProperty("SynthwavePaletteStrength", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "PaletteStrength", reader.ReadPropValue()); });
 	MatchProperty("SynthwaveNeonGlow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleSynthwave], "NeonGlow", reader.ReadPropValue()); });
@@ -696,6 +701,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("HackermanLook", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "Look", reader.ReadPropValue()); });
 	MatchProperty("HackermanPalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "Palette", reader.ReadPropValue()); });
 	MatchProperty("HackermanInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "InkEdges", reader.ReadPropValue()); });
+	MatchProperty("HackermanPaperBackgroundOnly", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "PaperBackgroundOnly", reader.ReadPropValue()); });
 	MatchProperty("HackermanGlitchOnBlasts", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "GlitchOnBlasts", reader.ReadPropValue()); });
 	MatchProperty("HackermanPaletteStrength", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "PaletteStrength", reader.ReadPropValue()); });
 	MatchProperty("HackermanNeonGlow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleHackerman], "NeonGlow", reader.ReadPropValue()); });
@@ -726,6 +732,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("ComicLook", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "Look", reader.ReadPropValue()); });
 	MatchProperty("ComicPalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "Palette", reader.ReadPropValue()); });
 	MatchProperty("ComicInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "InkEdges", reader.ReadPropValue()); });
+	MatchProperty("ComicPaperBackgroundOnly", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "PaperBackgroundOnly", reader.ReadPropValue()); });
 	MatchProperty("ComicGlitchOnBlasts", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "GlitchOnBlasts", reader.ReadPropValue()); });
 	MatchProperty("ComicPaletteStrength", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "PaletteStrength", reader.ReadPropValue()); });
 	MatchProperty("ComicNeonGlow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().StyleRetro[LightingSettings::StyleComic], "NeonGlow", reader.ReadPropValue()); });
@@ -756,6 +763,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("VariantLook", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "Look", reader.ReadPropValue()); });
 	MatchProperty("VariantPalette", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "Palette", reader.ReadPropValue()); });
 	MatchProperty("VariantInkEdges", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "InkEdges", reader.ReadPropValue()); });
+	MatchProperty("VariantPaperBackgroundOnly", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "PaperBackgroundOnly", reader.ReadPropValue()); });
 	MatchProperty("VariantGlitchOnBlasts", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "GlitchOnBlasts", reader.ReadPropValue()); });
 	MatchProperty("VariantPaletteStrength", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "PaletteStrength", reader.ReadPropValue()); });
 	MatchProperty("VariantNeonGlow", { ReadRetroField(g_PostProcessMan.GetLightingSettings().VariantRetro, "NeonGlow", reader.ReadPropValue()); });

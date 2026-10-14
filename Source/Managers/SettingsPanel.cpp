@@ -1366,6 +1366,10 @@ void DebugMan::SettingsGUI() {
 			Tip("The whole picture printed as cyan, magenta and yellow dot screens at angles, for a pulp comic look.");
 			Slider("Paper grain", &retro.PaperGrain, 0.0F, 1.0F);
 			Tip("A faint paper grain and off-white paper under the picture.");
+			if (retro.PaperGrain > 0.0F) {
+				Check("Paper on backdrop only", &retro.PaperBackgroundOnly);
+				Tip("The paper grain only on the backdrop behind the terrain (background walls, distant hills, the sky), so terrain, units and effects stay clean.");
+			}
 			Slider("Misregistration", &retro.Misregister, 0.0F, 1.0F);
 			Tip("The colour plates printed a pixel or two out of line, as on cheap newsprint.");
 			Slider("Comic action FX", &retro.ComicFX, 0.0F, 1.0F);
