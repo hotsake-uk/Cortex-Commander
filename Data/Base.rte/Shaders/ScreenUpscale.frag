@@ -22,9 +22,33 @@ uniform float rteCurvature; // CRT glass bend, 0 to 1.
 uniform int rteGlitchKind; // 1 blocks torn sideways with the colours split (Synthwave), 2 blocks scrambled into green glyphs (Hackerman).
 uniform float rteFlicker; // A monitor's faint flicker and a brighter refresh band rolling down, 0 to 1.
 uniform float rtePanelFrame; // A comic panel's frame round the screen: a paper gutter and a thick black line, 0 to 1.
+uniform float rteLCD; // A Game Boy screen: the whole frame in four shades, 0 to 1.
+uniform vec3 rteLCDShades[4]; // Its shades in display colours, the one the darkest things take first (LightingSettings::LCDShades).
+uniform float rteLCDGrid; // The LCD's dot matrix: thin light gaps between its pixels, 0 to 1.
+uniform float rteLCDBlock; // The battlefield's pixel size in source pixels (RetroLayers::ChunkyPixels), so the dot matrix lines up with its pixels.
+uniform float rteLCDFlash; // A big blast's flash, showing the shades inverted, 0 to 1 now.
+uniform float rteBezel; // The handheld round the screen: grey plastic and the dark glass surround with its stripes and power light, 0 to 1.
 
 float Hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+// Signed distance from a box of the given half size, its corners rounded by radius, centred on the origin.
+float RoundedBox(vec2 p, vec2 halfSize, float radius) {
+	vec2 q = abs(p) - halfSize + radius;
+	return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - radius;
+}
+
+// The Game Boy screen's shade (0 to 3) for a colour: the shade it already is (the battlefield arrives banded and dithered onto them), or else by its
+// brightness (the HUD, and anything drawn over the battlefield after).
+int LCDShade(vec3 color) {
+	for (int shade = 0; shade < 4; ++shade) {
+		vec3 difference = abs(color - rteLCDShades[shade]);
+		if (difference.r + difference.g + difference.b < 0.04) {
+			return shade;
+		}
+	}
+	return int(clamp(floor(dot(color, vec3(0.2126, 0.7152, 0.0722)) * 4.0), 0.0, 3.0));
 }
 
 // The frame at uv, "sharp bilinear". scale is fwidth of the texel position, taken once where the derivatives are smooth.
@@ -43,6 +67,11 @@ void main() {
 	vec2 scale = fwidth(textureUV * textureSizePixels);
 	vec2 uv = textureUV;
 	float outside = 0.0;
+	float aspect = textureSizePixels.x / max(textureSizePixels.y, 1.0);
+	// The handheld is laid over the edges of the picture rather than shrinking it, so the cursor and the menus drawn over the frame still line up.
+	// Measured in the frame's height from its middle, y down.
+	vec2 bezelPoint = (textureUV - 0.5) * vec2(aspect, 1.0);
+	float pictureScale = mix(1.0, 0.9, clamp(rteBezel, 0.0, 1.0));
 	if (rteCurvature > 0.0) {
 		// The tube's glass: the picture bulges, so the edges pull in, and what falls off the glass is black.
 		vec2 centered = uv * 2.0 - 1.0;
@@ -51,6 +80,8 @@ void main() {
 		vec2 overEdge = max(abs(bend) - 1.0, 0.0);
 		outside = step(0.0001, overEdge.x + overEdge.y);
 	}
+	// Where on the glass this is, before tape and glitches move the picture about, for the LCD's dot matrix.
+	vec2 glassUV = uv;
 	float glitchBurst = 0.0;
 	if (rteGlitch > 0.0 || rteGlitchKick > 0.0) {
 		// A short burst now and then (more often and longer with more glitch), or when a blast kicks one off.
@@ -102,6 +133,21 @@ void main() {
 		vec3 left = SampleSharp(uv - shift, textureSizePixels, scale);
 		vec3 right = SampleSharp(uv + shift, textureSizePixels, scale);
 		color = vec3(mix(color.r, left.r, 0.7), color.g, mix(color.b, right.b, 0.7));
+	}
+	if (rteLCD > 0.0) {
+		// The Game Boy screen: everything in its four shades, the HUD too. A big blast's flash shows them inverted for a blink or two.
+		int shade = LCDShade(color);
+		vec3 lcd = mix(rteLCDShades[shade], rteLCDShades[3 - shade], clamp(rteLCDFlash, 0.0, 1.0));
+		color = mix(color, lcd, rteLCD);
+	}
+	if (rteLCDGrid > 0.0) {
+		// The dot matrix: a screen pixel wide gap of the paler end of the shades along the top and left of each of the battlefield's pixels, only where
+		// they're big enough on screen to show one.
+		vec2 blockOnScreen = rteLCDBlock / max(scale, vec2(0.0001));
+		vec2 intoBlock = fract(glassUV * textureSizePixels / rteLCDBlock) * blockOnScreen;
+		float gap = max(step(intoBlock.x, 1.0), step(intoBlock.y, 1.0)) * smoothstep(2.5, 4.0, min(blockOnScreen.x, blockOnScreen.y));
+		vec3 paler = rteLCD > 0.0 ? (dot(rteLCDShades[3], vec3(1.0)) > dot(rteLCDShades[0], vec3(1.0)) ? rteLCDShades[3] : rteLCDShades[0]) : vec3(1.0);
+		color = mix(color, mix(color, paler, 0.45), gap * rteLCDGrid);
 	}
 	if (rteVHS > 0.0) {
 		float luminance = dot(color, vec3(0.299, 0.587, 0.114));
@@ -164,6 +210,44 @@ void main() {
 		float fromEdge = min(min(px.x, textureSizePixels.x - px.x), min(px.y, textureSizePixels.y - px.y));
 		vec3 frame = fromEdge < 4.0 ? vec3(0.97, 0.95, 0.88) : vec3(0.02);
 		color = mix(color, frame, (1.0 - step(7.0, fromEdge)) * rtePanelFrame);
+	}
+	if (rteBezel > 0.0) {
+		// The handheld round the picture. The glass surround: dark blue-grey with its lower right corner rounded right off, two thin stripes above the
+		// picture and the red power light to its left. Outside it, light grey plastic. The picture sits a touch recessed, shadowed along its top and left.
+		vec2 pictureHalf = vec2(aspect, 1.0) * 0.5 * pictureScale;
+		vec2 margin = vec2(0.6, 0.4) * (1.0 - pictureScale);
+		vec2 glassHalf = pictureHalf + margin;
+		vec2 glassCentre = vec2(0.0, 0.0);
+		float corner = bezelPoint.x > 0.0 && bezelPoint.y > 0.0 ? 0.1 : 0.02;
+		float inGlass = 1.0 - step(0.0, RoundedBox(bezelPoint - glassCentre, glassHalf, corner));
+		vec2 overPicture = abs(bezelPoint) - pictureHalf;
+		float inPicture = 1.0 - step(0.0, max(overPicture.x, overPicture.y));
+		if (inPicture > 0.5) {
+			vec2 fromTopLeft = bezelPoint + pictureHalf;
+			float recess = (1.0 - smoothstep(0.0, 0.012, fromTopLeft.y)) * 0.35 + (1.0 - smoothstep(0.0, 0.012, fromTopLeft.x)) * 0.25;
+			color *= 1.0 - recess * rteBezel;
+		} else if (inGlass > 0.5) {
+			vec3 glass = vec3(0.29, 0.3, 0.36) * (0.92 + 0.08 * (1.0 - textureUV.y));
+			// The stripes: plum over navy, across the top margin from the glass's left edge to two thirds of the way over.
+			float stripeTop = -pictureHalf.y - margin.y * 0.62;
+			float alongStripe = step(-glassHalf.x + margin.x * 0.35, bezelPoint.x) * step(bezelPoint.x, -glassHalf.x + (glassHalf.x * 2.0) * 0.66);
+			float stripeWidth = margin.y * 0.09;
+			float plum = step(stripeTop, bezelPoint.y) * step(bezelPoint.y, stripeTop + stripeWidth) * alongStripe;
+			float navy = step(stripeTop + stripeWidth * 2.0, bezelPoint.y) * step(bezelPoint.y, stripeTop + stripeWidth * 3.0) * alongStripe;
+			glass = mix(glass, vec3(0.45, 0.12, 0.32), plum);
+			glass = mix(glass, vec3(0.16, 0.17, 0.42), navy);
+			// The power light, lit, with a little glow on the glass round it.
+			vec2 lightCentre = vec2(-pictureHalf.x - margin.x * 0.5, -pictureHalf.y * 0.35);
+			float lightDistance = length(bezelPoint - lightCentre) / max(margin.x, 0.0001);
+			glass = mix(glass, vec3(1.0, 0.18, 0.12), 1.0 - smoothstep(0.1, 0.13, lightDistance));
+			glass += vec3(0.5, 0.05, 0.03) * (1.0 - smoothstep(0.1, 0.35, lightDistance)) * 0.5;
+			color = mix(color, glass, rteBezel);
+		} else {
+			// Plastic, a little shaded towards the bottom and darker right against the glass.
+			float nearGlass = 1.0 - smoothstep(0.0, 0.015, RoundedBox(bezelPoint - glassCentre, glassHalf, corner));
+			vec3 plastic = vec3(0.78, 0.77, 0.74) * (1.0 - 0.08 * textureUV.y) * (1.0 - 0.18 * nearGlass);
+			color = mix(color, plastic, rteBezel);
+		}
 	}
 	FragColor = vec4(color, 1.0);
 }

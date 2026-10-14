@@ -429,6 +429,9 @@ void SceneLighting::DestroyScreenResources() {
 		m_AfterglowHistory[screen][0].Destroy();
 		m_AfterglowHistory[screen][1].Destroy();
 		m_AfterglowValid[screen] = false;
+		m_GhostHistory[screen][0].Destroy();
+		m_GhostHistory[screen][1].Destroy();
+		m_GhostValid[screen] = false;
 	}
 	m_WeatherDrops.Destroy();
 	for (GLTarget& mip: m_BloomMips) {
@@ -3403,6 +3406,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_RetroSceneShader->SetVector2f("rteScreenOrigin", origin);
 		m_RetroSceneShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
 		m_RetroSceneShader->SetInt("rteLook", retro.Look);
+		m_RetroSceneShader->SetFloat("rteExposure", m_Settings.Enabled ? m_Settings.Exposure : 1.0F);
 		m_RetroSceneShader->SetFloat("rteASCII", std::clamp(retro.ASCII, 0.0F, 1.0F));
 		m_RetroSceneShader->SetFloat("rteASCIIBackground", sceneDepth ? std::clamp(retro.ASCIIBackground, 0.0F, 1.0F) : 0.0F);
 		m_RetroSceneShader->SetFloat("rteSky", sceneDepth ? std::clamp(retro.RetroSky, 0.0F, 1.0F) : 0.0F);
@@ -3477,6 +3481,54 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glDisable(GL_BLEND);
 	} else if (screenIndex >= 0 && screenIndex < c_MaxScreens) {
 		m_AfterglowValid[screenIndex] = false;
+	}
+
+	// The Game Boy LCD's ghosting: its pixels are slow to change, so what the screen shows only drifts towards the picture now. Kept in screen space,
+	// as the pixels are, so scrolling the view smears the whole picture.
+	if (retro.LCDGhosting > 0.0F && screenIndex >= 0 && screenIndex < c_MaxScreens) {
+		TracyGpuZone("LCD Ghosting");
+		GLTarget(&history)[2] = m_GhostHistory[screenIndex];
+		bool fresh = !m_GhostValid[screenIndex];
+		m_GhostValid[screenIndex] = true;
+		for (GLTarget& target: history) {
+			if (target.Width != width || target.Height != height || !target.Texture) {
+				target.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+				fresh = true;
+			}
+		}
+		// Real time, so the smear settles while paused or in a hit-stop, as a real screen would.
+		double nowSeconds = static_cast<double>(g_TimerMan.GetRealTickCount()) / static_cast<double>(g_TimerMan.GetTicksPerSecond());
+		float deltaSeconds = fresh ? 0.0F : static_cast<float>(std::clamp(nowSeconds - m_GhostLastSeconds[screenIndex], 0.0, 0.25));
+		m_GhostLastSeconds[screenIndex] = nowSeconds;
+		int previous = m_GhostCurrent[screenIndex];
+		int next = 1 - previous;
+		glDisable(GL_BLEND);
+		glBindFramebuffer(GL_FRAMEBUFFER, history[next].Framebuffer);
+		glViewport(0, 0, width, height);
+		m_AfterglowShader->Enable();
+		m_AfterglowShader->SetInt("rteScene", 0);
+		m_AfterglowShader->SetInt("rteHistory", 1);
+		m_AfterglowShader->SetInt("rteMode", 2);
+		m_AfterglowShader->SetVector2f("rteScreenSize", screenSize);
+		m_AfterglowShader->SetBool("rteFresh", fresh);
+		// Strength 1 keeps about half of the last picture after a twentieth of a second, a short smear rather than a trail.
+		m_AfterglowShader->SetFloat("rteKeep", std::exp(-deltaSeconds * glm::mix(40.0F, 14.0F, std::clamp(retro.LCDGhosting, 0.0F, 1.0F))));
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, history[previous].Texture);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_HDRScene.Texture);
+		DrawFullscreen();
+		m_GhostCurrent[screenIndex] = next;
+
+		// The smeared picture replaces the scene.
+		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		m_AfterglowShader->SetInt("rteMode", 3);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, history[next].Texture);
+		glActiveTexture(GL_TEXTURE0);
+		DrawFullscreen();
+	} else if (screenIndex >= 0 && screenIndex < c_MaxScreens) {
+		m_GhostValid[screenIndex] = false;
 	}
 
 	logStages.Next("Lighting: depth of field");
@@ -3618,13 +3670,15 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	float outlineWidth = 0.0F;
 	float highlightWidth = 0.0F;
 	int outlineRadius = 0;
-	// The comic style inks every unit in bold black, whether or not the player's own outlines are on.
-	const bool comicInk = retro.Look == LightingSettings::StyleComic && retro.InkEdges && retro.EdgeLines > 0.0F;
+	// The comic style inks every unit in bold black, whether or not the player's own outlines are on; the Game Boy style outlines them one pixel wide
+	// in its darkest shade, which is what keeps Game Boy sprites readable.
+	const bool gameBoyInk = retro.Look == LightingSettings::StyleGameBoy && retro.InkEdges && retro.EdgeLines > 0.0F;
+	const bool comicInk = (retro.Look == LightingSettings::StyleComic && retro.InkEdges && retro.EdgeLines > 0.0F) || gameBoyInk;
 	const float comicInkStrength = comicInk ? std::clamp(retro.EdgeLines, 0.0F, 1.0F) : 0.0F;
 	const bool outlines = (m_Settings.UnitOutline && m_Settings.UnitOutlineOpacity > 0.0F) || comicInk;
 	if ((outlines || m_Settings.HighlightUnits) && surface) {
 		float zoom = std::max(g_FrameMan.GetCurrentCameraZoom(), 0.1F);
-		float baseOutlineWidth = comicInk ? std::max(m_Settings.UnitOutline ? m_Settings.UnitOutlineWidth : 0.0F, 1.0F + 1.5F * comicInkStrength) : m_Settings.UnitOutlineWidth;
+		float baseOutlineWidth = comicInk ? std::max(m_Settings.UnitOutline ? m_Settings.UnitOutlineWidth : 0.0F, gameBoyInk ? 1.0F : 1.0F + 1.5F * comicInkStrength) : m_Settings.UnitOutlineWidth;
 		outlineWidth = outlines ? std::min(std::clamp(baseOutlineWidth, 1.0F, 4.0F) / std::min(zoom, 1.0F), 11.0F) : 0.0F;
 		// A highlighted unit's glow (Actor::SetHighlighted): five of the game's pixels, as far as the search reaches.
 		highlightWidth = m_Settings.HighlightUnits ? std::min(5.0F / std::min(zoom, 1.0F), 11.0F) : 0.0F;
@@ -3687,6 +3741,13 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_TonemapShader->SetInt("rteLook", retro.Look);
 	m_TonemapShader->SetFloat("rteTerminalOverlay", m_Settings.DebugView == 0 ? std::clamp(retro.TerminalOverlay, 0.0F, 1.0F) : 0.0F);
 	m_TonemapShader->SetInt("rtePalette", std::clamp(retro.Palette, 0, static_cast<int>(LightingSettings::PaletteCount) - 1));
+	{
+		const std::array<glm::vec3, 4> lcdShades = LightingSettings::LCDShades(retro.LCDPalette);
+		for (int shade = 0; shade < 4; ++shade) {
+			m_TonemapShader->SetVector3f("rteLCDShades[" + std::to_string(shade) + "]", lcdShades[shade]);
+		}
+	}
+	m_TonemapShader->SetFloat("rteChunkyBlock", LightingSettings::ChunkyBlock(retro.ChunkyPixels));
 	m_TonemapShader->SetFloat("rtePaletteStrength", retro.Palette > LightingSettings::PaletteOff ? std::clamp(retro.PaletteStrength, 0.0F, 1.0F) : 0.0F);
 	m_TonemapShader->SetFloat("rtePosterize", std::clamp(retro.Posterize, 0.0F, 1.0F));
 	m_TonemapShader->SetFloat("rteDither", std::clamp(retro.Dither, 0.0F, 1.0F));
@@ -3744,9 +3805,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_TonemapShader->SetFloat("rteOutlineWidth", outlineWidth);
 	m_TonemapShader->SetFloat("rteHighlightWidth", highlightWidth);
 	m_TonemapShader->SetInt("rteOutlineRadius", outlineRadius);
-	m_TonemapShader->SetFloat("rteOutlineOpacity", comicInk ? std::max(m_Settings.UnitOutline ? std::clamp(m_Settings.UnitOutlineOpacity, 0.0F, 1.0F) : 0.0F, 0.85F * comicInkStrength) : std::clamp(m_Settings.UnitOutlineOpacity, 0.0F, 1.0F));
+	m_TonemapShader->SetFloat("rteOutlineOpacity", comicInk ? std::max(m_Settings.UnitOutline ? std::clamp(m_Settings.UnitOutlineOpacity, 0.0F, 1.0F) : 0.0F, gameBoyInk ? std::min(2.0F * comicInkStrength, 1.0F) : 0.85F * comicInkStrength) : std::clamp(m_Settings.UnitOutlineOpacity, 0.0F, 1.0F));
 	m_TonemapShader->SetBool("rteOutlineTeamColor", m_Settings.UnitOutlineTeamColor && !comicInk);
-	m_TonemapShader->SetVector3f("rteOutlineColor", comicInk ? glm::vec3(0.02F) : glm::clamp(m_Settings.UnitOutlineColor, glm::vec3(0.0F), glm::vec3(1.0F)));
+	m_TonemapShader->SetVector3f("rteOutlineColor", gameBoyInk ? LightingSettings::LCDShades(retro.LCDPalette)[0] : comicInk ? glm::vec3(0.02F) : glm::clamp(m_Settings.UnitOutlineColor, glm::vec3(0.0F), glm::vec3(1.0F)));
 	// The sides' colours, as the headlamps use them (Actor.cpp), and white for no side.
 	static const glm::vec3 outlineSideColors[5] = {{0.92F, 0.92F, 0.92F}, {1.0F, 0.41F, 0.33F}, {0.41F, 1.0F, 0.47F}, {0.43F, 0.65F, 1.0F}, {1.0F, 0.88F, 0.37F}};
 	for (int slot = 0; slot < 5; ++slot) {
