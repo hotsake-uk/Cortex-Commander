@@ -941,8 +941,9 @@ namespace RTE {
 		float m_GetUpFromRot = 0.0F;
 		Vector m_GetUpFrom;
 		Vector m_GetUpTo;
-		/// Recovers early from being knocked over once the body lies still, and runs the get-up. Called from Update.
-		void UpdateGetUp(float& rot);
+		/// Recovers early from being knocked over once the body lies still, and runs the get-up. Called from Update. Not while a gravity lift
+		/// has the body (@param heldByLift), which turns it on its side or head first and read as knocked over.
+		void UpdateGetUp(float& rot, bool heldByLift);
 		bool m_PilotJetOn = false; //!< Whether PilotFlight last asked for the jet, and since when: a decision is held a moment (see PilotFlight).
 		Timer m_PilotJetTimer;
 		float m_PilotLean = 0.0F; //!< The lean PilotFlight last gave, which it moves towards the one chosen at a thumb's pace.
