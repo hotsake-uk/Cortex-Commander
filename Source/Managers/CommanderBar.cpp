@@ -120,7 +120,9 @@ namespace SandboxDetail {
 		GameViewRect view = g_WindowMan.GetGameViewRect();
 		const ImGuiStyle& style = ImGui::GetStyle();
 		float pixel = ToolUI::Pixel();
-		const int side = std::clamp(CommandedTeam(), 0, c_Sides - 1);
+		// (Outside the Sandbox game mode and Battle Command, commander mode's side: there are no battles, reinforcements or powers there.)
+		const bool battleGame = Sandbox::IsGodMode();
+		const int side = std::clamp(OnlySide(), 0, c_Sides - 1);
 		struct MainTool {
 			Tool Kind;
 			const char* Label;
@@ -184,7 +186,7 @@ namespace SandboxDetail {
 			}
 			BarDivider();
 			// The battle panel: setting the battle up, starting and stopping it.
-			{
+			if (battleGame) {
 				const bool running = s_ModeRun.Running;
 				std::string tip = running ? "Battle: the game on now, its teams and their scores; start it again or stop it." : "Battle: pick the mode, draw the teams' spawn zones and objectives, choose your team, and start.";
 				// (In the Sandbox game mode the battle is set up on the sandbox window's Battle tab.)
@@ -205,13 +207,13 @@ namespace SandboxDetail {
 						ToggleAlertLog();
 					}
 				}
+				BarDivider();
 			}
-			BarDivider();
 			// Your side, and its units: a click selects them all, a double click looks at them too.
 			{
 				int count = Sandbox::CountUnits(side);
 				std::string number = std::to_string(count);
-				std::string tip = std::string("You command ") + c_SideNames[side] + ": " + number + " fighting units in.\nClick: select them all. Double click: look at them too.\n" + (Sandbox::IsBattleCommand() ? "Which team is yours is set on the battle panel." : "Which team is yours is the side picked in the sandbox.");
+				std::string tip = std::string("You command ") + c_SideNames[side] + ": " + number + " fighting units in.\nClick: select them all. Double click: look at them too.\n" + (!battleGame ? "Your own team in this game." : Sandbox::IsBattleCommand() ? "Which team is yours is set on the battle panel." : "Which team is yours is the side picked in the sandbox.");
 				if (BarTile(
 				        "##yours", c_SideNames[side], tip.c_str(), false, [&](ImDrawList* tileList, ImVec2 at, float room) {
 					        float inset = room * 0.08F;
@@ -242,12 +244,14 @@ namespace SandboxDetail {
 				}
 			}
 
-			// Reinforcements: the points, the cards to call in, and where and how they come.
-			BarDivider();
-			ReinforcementTiles();
-			// Commander powers, each with its cooldown.
-			BarDivider();
-			PowerTiles();
+			if (battleGame) {
+				// Reinforcements: the points, the cards to call in, and where and how they come.
+				BarDivider();
+				ReinforcementTiles();
+				// Commander powers, each with its cooldown.
+				BarDivider();
+				PowerTiles();
+			}
 
 			// At the right: the speed of time and the pause.
 			ImGui::SameLine(0.0F, pixel * 10.0F);

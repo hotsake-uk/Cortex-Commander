@@ -1967,6 +1967,7 @@ namespace SandboxDetail {
 
 	/// Commander mode (RC-9): your side's units commanded from above in an ordinary game.
 	inline bool s_Commander = false;
+	inline bool s_CommanderToolbarView = false; //!< In commander mode (RC-9), the Commander Toolbar is up along the bottom instead of the sandbox window (the Commander Toolbar key).
 	inline int s_CommanderTeam = 0; //!< The side you command: your own in the game.
 	inline UnitRef s_CommanderReturnTo; //!< The unit you were playing, to go back into.
 
