@@ -795,6 +795,7 @@ void Sandbox::ToggleCommander() {
 		Actor* controlled = game->GetControlledActor(Players::PlayerOne);
 		s_CommanderReturnTo = controlled && g_MovableMan.IsActor(controlled) ? MakeRef(controlled) : UnitRef();
 		s_Commander = true;
+		s_CommanderToolbarView = false;
 		s_CommanderTeam = team;
 		s_Team = team;
 		s_Selected.erase(std::remove_if(s_Selected.begin(), s_Selected.end(), [team](const UnitRef& ref) { const Actor* unit = GetRef(ref); return !unit || unit->GetTeam() != team; }), s_Selected.end());
@@ -821,6 +822,30 @@ void Sandbox::ToggleCommander() {
 		game->SetViewState(Activity::ViewState::Normal, Players::PlayerOne);
 	} else {
 		game->SetViewState(Activity::ViewState::ActorSelect, Players::PlayerOne);
+	}
+}
+
+void Sandbox::ToggleCommanderToolbar() {
+	if (IsGodMode()) {
+		return;
+	}
+	if (s_Commander && s_CommanderToolbarView) {
+		ToggleCommander();
+		return;
+	}
+	// From your unit, into commander mode; from commander view with the sandbox window (F9), the window is swapped for the toolbar.
+	if (!s_Commander) {
+		ToggleCommander();
+		if (!s_Commander) {
+			return;
+		}
+	}
+	s_CommanderToolbarView = true;
+	s_Open = false;
+	const Tool inHand = CurrentTool().Kind;
+	if (inHand != Tool::Command && inHand != Tool::Follow && inHand != Tool::Possess) {
+		s_ToolIndex = ToolIndex(Tool::Command);
+		s_CommandMode = CommandMode::Command;
 	}
 }
 
@@ -1062,11 +1087,13 @@ void Sandbox::DrawGUI() {
 	// working. Only the window itself is left out.
 	bool hiddenButAbove = !s_Open && IsLookingAround();
 	// The bar is there whenever you're above the world and not playing a unit, whatever else is open or hidden, unless put away with U.
-	if (s_BarShown && IsGodMode() && InGame() && !s_Possessed && s_PlayerEnterPending == 0 && !g_DebugMan.IsPhotoModeHidingHUD()) {
+	// (In commander mode outside the Sandbox game mode, the Commander Toolbar when it was asked for with its key.)
+	const bool commanderToolbar = s_Commander && s_CommanderToolbarView && !IsGodMode();
+	if (((s_BarShown && IsGodMode()) || commanderToolbar) && InGame() && !s_Possessed && s_PlayerEnterPending == 0 && !g_DebugMan.IsPhotoModeHidingHUD()) {
 		if (!s_CatalogueBuilt) {
 			BuildCatalogue();
 		}
-		if (s_CommanderBar) {
+		if (s_CommanderBar || commanderToolbar) {
 			DrawCommanderBar();
 		} else {
 			DrawBar();
