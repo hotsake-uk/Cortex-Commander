@@ -428,6 +428,9 @@ void PollSDLEvents() {
 			} else if (Sandbox::IsCommanderBarKey(sdlEvent.key.scancode) && Sandbox::IsGodMode() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled() && !ImGui::GetIO().WantTextInput) {
 				// The Sandbox game mode, and Battle Command while it's in development: the Commander Toolbar or the sandbox's bar (F11 unless rebound).
 				Sandbox::ToggleCommanderBar();
+			} else if (Sandbox::IsCommanderBarKey(sdlEvent.key.scancode) && !Sandbox::IsGodMode() && g_ActivityMan.IsInActivity() && !g_MenuMan.GetIsInMenuScreen() && !g_ConsoleMan.IsEnabled() && !ImGui::GetIO().WantTextInput) {
+				// Any other game: command mode with the Commander Toolbar along the bottom, and back into your unit.
+				Sandbox::ToggleCommanderToolbar();
 			}
 		}
 		if (sdlEvent.type >= SDL_EVENT_WINDOW_FIRST && sdlEvent.type <= SDL_EVENT_WINDOW_LAST) {

@@ -261,6 +261,7 @@ void ConsoleMan::ShowShortcuts() {
 	    "F6 - World Debug window (time of day, weather, lighting, game speed)\n"
 	    "F8 - Photo mode (frozen time, free camera, look controls, screenshots)\n"
 	    "U - Sandbox game mode, from above: hide or show the bar along the bottom\n"
+	    "F11 (rebindable) - Any other game: command mode with the Commander Toolbar, and back into your unit\n"
 	    "Shift + F9 - Load latest quick-save\n"
 	    "RALT + F9 - Load latest auto-save\n"
 	    "F10 - Clear Console log\n"
