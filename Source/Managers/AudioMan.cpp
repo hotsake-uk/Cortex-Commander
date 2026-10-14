@@ -8,11 +8,78 @@
 #include "SoundContainer.h"
 #include "WindowMan.h"
 #include "SoundSet.h"
+#include "PostProcessMan.h"
 
+#include <algorithm>
 #include <array>
+#include <atomic>
+#include <cmath>
 #include <cstring>
 
 using namespace RTE;
+
+namespace {
+	/// How strong the handheld speaker filter is now, 0 to 1: set by the game each update, read by FMOD's mixer.
+	std::atomic<float> s_ChipSoundAmount{0.0F};
+
+	/// The filter's memory from one block of samples to the next, a slot per channel. Only FMOD's mixer touches it.
+	struct ChipSoundState {
+		static constexpr int c_MaxChannels = 8;
+		std::array<float, c_MaxChannels> HighPassIn{}; //!< The last sample into the high pass.
+		std::array<float, c_MaxChannels> HighPassOut{}; //!< The last sample out of it.
+		std::array<float, c_MaxChannels> LowPass{}; //!< The low pass's level.
+		std::array<float, c_MaxChannels> Held{}; //!< The sample held until the next one is taken, for the lower sample rate.
+		int SinceTaken = 0; //!< Output samples since one was last taken.
+	} s_ChipSoundState;
+
+	/// The handheld speaker: the mix folded towards mono, its bass cut and its treble rolled off as a tiny speaker would, then held at a lower sample
+	/// rate and crushed to fewer bits, all further the stronger it is.
+	FMOD_RESULT F_CALL ChipSoundRead(FMOD_DSP_STATE* dspState, float* inBuffer, float* outBuffer, unsigned int length, int inChannels, int* outChannels) {
+		*outChannels = inChannels;
+		float amount = std::clamp(s_ChipSoundAmount.load(std::memory_order_relaxed), 0.0F, 1.0F);
+		if (amount <= 0.0F || inChannels <= 0 || inChannels > ChipSoundState::c_MaxChannels) {
+			std::memcpy(outBuffer, inBuffer, sizeof(float) * length * static_cast<unsigned int>(std::max(inChannels, 0)));
+			return FMOD_OK;
+		}
+		int sampleRate = 48000;
+		if (dspState->functions && dspState->functions->getsamplerate) {
+			dspState->functions->getsamplerate(dspState, &sampleRate);
+		}
+		float secondsPerSample = 1.0F / static_cast<float>(std::max(sampleRate, 8000));
+		const float twoPi = 6.2831853F;
+		float highPassTime = 1.0F / (twoPi * (40.0F + 360.0F * amount));
+		float highPassKeep = highPassTime / (highPassTime + secondsPerSample);
+		float lowPassStep = 1.0F - std::exp(-twoPi * (20000.0F - 15500.0F * amount) * secondsPerSample);
+		int holdFor = 1 + static_cast<int>(std::round(amount * 5.0F));
+		float steps = std::pow(2.0F, 11.0F - 6.5F * amount);
+		ChipSoundState& state = s_ChipSoundState;
+		for (unsigned int frame = 0; frame < length; ++frame) {
+			const float* in = inBuffer + static_cast<size_t>(frame) * inChannels;
+			float* out = outBuffer + static_cast<size_t>(frame) * inChannels;
+			float mono = 0.0F;
+			for (int channel = 0; channel < inChannels; ++channel) {
+				mono += in[channel];
+			}
+			mono /= static_cast<float>(inChannels);
+			bool take = ++state.SinceTaken >= holdFor;
+			if (take) {
+				state.SinceTaken = 0;
+			}
+			for (int channel = 0; channel < inChannels; ++channel) {
+				float sample = in[channel] + (mono - in[channel]) * amount;
+				float highPassed = highPassKeep * (state.HighPassOut[channel] + sample - state.HighPassIn[channel]);
+				state.HighPassIn[channel] = sample;
+				state.HighPassOut[channel] = highPassed;
+				state.LowPass[channel] += (highPassed - state.LowPass[channel]) * lowPassStep;
+				if (take) {
+					state.Held[channel] = std::round(std::clamp(state.LowPass[channel], -1.0F, 1.0F) * steps) / steps;
+				}
+				out[channel] = state.Held[channel];
+			}
+		}
+		return FMOD_OK;
+	}
+} // namespace
 
 AudioMan::AudioMan() {
 	Clear();
@@ -38,6 +105,7 @@ AudioMan::SoundMixCategory AudioMan::GetSoundMixCategoryFromName(const std::stri
 void AudioMan::Clear() {
 	m_AudioEnabled = false;
 	m_UnitSpeechChannelGroup = nullptr;
+	m_ChipSoundDSP = nullptr;
 	m_CurrentActivityHumanPlayerPositions.clear();
 	m_SoundChannelMinimumAudibleDistances.clear();
 
@@ -104,6 +172,27 @@ bool AudioMan::Initialize() {
 	FMOD::DSP* dsp_limiter;
 	audioSystemSetupResult = (audioSystemSetupResult == FMOD_OK) ? m_AudioSystem->createDSPByType(FMOD_DSP_TYPE_LIMITER, &dsp_limiter) : audioSystemSetupResult;
 	audioSystemSetupResult = (audioSystemSetupResult == FMOD_OK) ? m_MasterChannelGroup->addDSP(0, dsp_limiter) : audioSystemSetupResult;
+
+	// The handheld speaker filter on the whole mix, just before the limiter, bypassed until a screen style asks for it. The game plays on without it.
+	if (audioSystemSetupResult == FMOD_OK) {
+		FMOD_DSP_DESCRIPTION chipSound{};
+		chipSound.pluginsdkversion = FMOD_PLUGIN_SDK_VERSION;
+		std::strncpy(chipSound.name, "Handheld speaker", sizeof(chipSound.name) - 1);
+		chipSound.version = 1;
+		chipSound.numinputbuffers = 1;
+		chipSound.numoutputbuffers = 1;
+		chipSound.read = ChipSoundRead;
+		FMOD_RESULT chipResult = m_AudioSystem->createDSP(&chipSound, &m_ChipSoundDSP);
+		chipResult = chipResult == FMOD_OK ? m_ChipSoundDSP->setBypass(true) : chipResult;
+		chipResult = chipResult == FMOD_OK ? m_MasterChannelGroup->addDSP(1, m_ChipSoundDSP) : chipResult;
+		if (chipResult != FMOD_OK) {
+			g_ConsoleMan.PrintString("ERROR: Could not set up the handheld speaker sound filter: " + std::string(FMOD_ErrorString(chipResult)));
+			if (m_ChipSoundDSP) {
+				m_ChipSoundDSP->release();
+			}
+			m_ChipSoundDSP = nullptr;
+		}
+	}
 
 	// Add a compressor to the SFX channel group, pre fader
 	// This is pretty heavy-handed, but it sounds great. Might need to be changed once we have sidechaining and fancier things going on.
@@ -198,6 +287,16 @@ void AudioMan::Update() {
 		globalPitch = timeScale + (1.0F - timeScale) * 0.35F;
 
 		SetGlobalPitch(globalPitch);
+
+		if (m_ChipSoundDSP) {
+			// A screen style's handheld speaker (LightingSettings::RetroLayers::ChipSound), in a game only, as the picture's filters are.
+			float chipSound = g_ActivityMan.IsInActivity() ? std::clamp(g_PostProcessMan.GetLightingSettings().ActiveRetro().ChipSound, 0.0F, 1.0F) : 0.0F;
+			s_ChipSoundAmount.store(chipSound, std::memory_order_relaxed);
+			bool bypassed = false;
+			if (m_ChipSoundDSP->getBypass(&bypassed) == FMOD_OK && bypassed != (chipSound <= 0.0F)) {
+				m_ChipSoundDSP->setBypass(chipSound <= 0.0F);
+			}
+		}
 
 		if (!g_ActivityMan.ActivityPaused()) {
 			const Activity* currentActivity = g_ActivityMan.GetActivity();

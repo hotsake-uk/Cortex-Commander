@@ -621,6 +621,15 @@ void WindowMan::SetUpscaleUniforms() const {
 	m_ScreenUpscaleShader->SetInt("rteGlitchKind", retro.Look);
 	m_ScreenUpscaleShader->SetFloat("rteFlicker", std::clamp(retro.Flicker, 0.0F, 1.0F));
 	m_ScreenUpscaleShader->SetFloat("rtePanelFrame", std::clamp(retro.PanelFrame, 0.0F, 1.0F));
+	m_ScreenUpscaleShader->SetFloat("rteLCD", std::clamp(retro.LCD, 0.0F, 1.0F));
+	const std::array<glm::vec3, 4> lcdShades = LightingSettings::LCDShades(retro.LCDPalette);
+	for (int shade = 0; shade < 4; ++shade) {
+		m_ScreenUpscaleShader->SetVector3f("rteLCDShades[" + std::to_string(shade) + "]", lcdShades[shade]);
+	}
+	m_ScreenUpscaleShader->SetFloat("rteLCDGrid", std::clamp(retro.LCDGrid, 0.0F, 1.0F));
+	m_ScreenUpscaleShader->SetFloat("rteLCDBlock", LightingSettings::ChunkyBlock(retro.ChunkyPixels));
+	m_ScreenUpscaleShader->SetFloat("rteLCDFlash", inGame && retro.LCD > 0.0F ? g_PostProcessMan.GetRetroFlash() : 0.0F);
+	m_ScreenUpscaleShader->SetFloat("rteBezel", std::clamp(retro.Bezel, 0.0F, 1.0F));
 }
 
 void WindowMan::SetReservedSpace(int left, int right) {

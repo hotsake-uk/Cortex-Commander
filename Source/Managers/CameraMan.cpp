@@ -306,6 +306,10 @@ void CameraMan::Update(int screenId) {
 			if (const LightingSettings::RetroLayers retro = g_PostProcessMan.GetLightingSettings().ActiveRetro(); retro.GlitchOnBlasts && retro.Glitch > 0.0F) {
 				g_PostProcessMan.KickRetroGlitch(0.5F + 0.5F * strength);
 			}
+			// The Game Boy style blinks its shades inverted, as Game Boy games do on a big hit.
+			if (const float blastFlash = g_PostProcessMan.GetLightingSettings().ActiveRetro().BlastFlash; blastFlash > 0.0F) {
+				g_PostProcessMan.KickRetroFlash(std::min(blastFlash, 1.0F));
+			}
 			// With the comic style's action FX, speed lines and a sound-effect word pop up where the biggest of them went off.
 			if (biggestBlast > 0.0F && g_PostProcessMan.GetLightingSettings().ActiveRetro().ComicFX > 0.0F) {
 				g_PostProcessMan.KickComicBurst(m_BiggestBlastPosition, (0.5F + 0.5F * strength) * std::min(g_PostProcessMan.GetLightingSettings().ActiveRetro().ComicFX, 1.0F));

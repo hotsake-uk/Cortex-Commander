@@ -296,6 +296,10 @@ namespace RTE {
 		int m_AfterglowCurrent[c_MaxScreens] = {}; //!< Which of the two holds the latest.
 		glm::vec2 m_AfterglowOrigin[c_MaxScreens] = {}; //!< Where the screen's view was when it was written, so it follows the world as the camera moves.
 		double m_AfterglowLastSeconds[c_MaxScreens] = {}; //!< Game seconds it was last written.
+		GLTarget m_GhostHistory[c_MaxScreens][2]; //!< Per player screen, the Game Boy LCD's ghosting (LightingSettings::RetroLayers::LCDGhosting): the picture as the slow pixels show it, read one and written the other.
+		bool m_GhostValid[c_MaxScreens] = {}; //!< Whether it holds the last frame's, else it starts afresh.
+		int m_GhostCurrent[c_MaxScreens] = {}; //!< Which of the two holds the latest.
+		double m_GhostLastSeconds[c_MaxScreens] = {}; //!< Real seconds it was last written.
 		GLTarget m_RetroScene; //!< A copy of the lit scene for the retro pass (a screen style's sky and edge lines) to read. Made when it's first used.
 		GLTarget m_WeatherDrops; //!< The weather's drops on their own, premultiplied, for Weather everywhere to lay over the scene but the terrain. Made when it's first used.
 		static constexpr int c_BloomMipCount = 5;

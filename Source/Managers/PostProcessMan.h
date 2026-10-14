@@ -521,6 +521,20 @@ namespace RTE {
 			return true;
 		}
 
+		/// Sets off a Game Boy blast flash (LightingSettings::RetroLayers::BlastFlash): the screen's shades shown inverted for a couple of quick blinks,
+		/// strength 0 to 1. From big blasts while the layers ask for it, and from Lua. Safe from any thread.
+		void KickRetroFlash(float strength) {
+			m_RetroFlashStrength.store(std::clamp(strength, 0.0F, 1.0F));
+			m_RetroFlashSeconds.store(RealSeconds());
+		}
+
+		/// Gets how far the blast flash inverts the screen now, 0 to 1: on, off for a moment, on again, then done after about a quarter second.
+		float GetRetroFlash() const {
+			double since = RealSeconds() - m_RetroFlashSeconds.load();
+			bool on = (since >= 0.0 && since < 0.07) || (since >= 0.13 && since < 0.22);
+			return on ? m_RetroFlashStrength.load() : 0.0F;
+		}
+
 		/// Gets how strong the glitch burst set off by KickRetroGlitch is now, 0 to 1.
 		float GetRetroGlitchKick() const {
 			double since = RealSeconds() - m_RetroGlitchKickSeconds.load();
@@ -718,6 +732,8 @@ namespace RTE {
 		std::mutex m_EventLookMutex;
 		std::atomic<float> m_RetroGlitchKick{0.0F}; //!< The last glitch burst's strength (KickRetroGlitch).
 		std::atomic<double> m_RetroGlitchKickSeconds{-10.0}; //!< Real seconds it was set off.
+		std::atomic<float> m_RetroFlashStrength{0.0F}; //!< The last blast flash's strength (KickRetroFlash).
+		std::atomic<double> m_RetroFlashSeconds{-10.0}; //!< Real seconds it was set off.
 		mutable std::mutex m_ComicBurstMutex; //!< Guards the comic burst (KickComicBurst).
 		Vector m_ComicBurstPosition; //!< Where in the scene the last comic burst went off.
 		float m_ComicBurstStrength = 0.0F; //!< Its strength, 0 to 1.

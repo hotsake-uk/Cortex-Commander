@@ -40,10 +40,12 @@ uniform vec3 rteOutlineColor; // In display (gamma) space.
 uniform vec3 rteOutlineSideColors[5]; // By slot - 1: no team, then teams 1 to 4. In display space.
 uniform float rteHighlightWidth; // A highlighted unit's glow (slot 6), in pixels; 0 for none.
 uniform float rteNeonGlow; // A screen style's neon glow, 0 to 1: the bloom turns hot pink from warm lights and cyan from cool ones.
-uniform int rteLook; // LightingSettings::ScreenStyles: whose colours the neon glow and the terminal readout take, 1 Synthwave's, 2 Hackerman's phosphor green, 3 Comic.
+uniform int rteLook; // LightingSettings::ScreenStyles: whose colours the neon glow and the terminal readout take, 1 Synthwave's, 2 Hackerman's phosphor green, 3 Comic, 4 Game Boy.
 uniform float rteTerminalOverlay; // Faint scrolling hex down the screen's edges and a blinking cursor, 0 to 1.
 uniform int rtePalette; // LightingSettings::RetroPalettes: 0 none, 1 synthwave, 2 vaporwave, 3 Miami, 4 Game Boy, 5 CGA, 6 sepia, 7 thermal, 8 night vision, 9 terminal green, 10 comic.
 uniform float rtePaletteStrength; // How far the picture is remapped onto the palette, 0 to 1.
+uniform vec3 rteLCDShades[4]; // The Game Boy palette's four shades (LightingSettings::LCDShades), the one the darkest things take first.
+uniform float rteChunkyBlock; // The battlefield's pixel size in screen pixels (LightingSettings::RetroLayers::ChunkyPixels), 1 for as is.
 uniform float rtePosterize; // Fewer colour levels, 0 (as is) to 1 (four a channel).
 uniform float rteDither; // Ordered dithering across those levels (or a palette's bands), 0 to 1.
 uniform float rteColorHalftone; // The picture printed as cyan, magenta and yellow dot screens at angles, 0 to 1.
@@ -215,10 +217,13 @@ vec3 RetroPalette(vec3 color, int palette, float dither) {
 	} else if (palette == 3) {
 		return Ramp5(luminance, vec3(0.02, 0.06, 0.1), vec3(0.0, 0.42, 0.48), vec3(0.06, 0.8, 0.78), vec3(1.0, 0.46, 0.44), vec3(1.0, 0.94, 0.84));
 	} else if (palette == 4) {
-		// Game Boy: four greens, banded, with the dither between bands.
+		// Game Boy: the screen's four shades, banded, with the dither between bands. In the Game Boy look the mid tones are spread first, so the
+		// battlefield uses all four shades rather than sitting mostly in one.
+		if (rteLook == 4) {
+			luminance = smoothstep(0.03, 0.8, pow(luminance, 0.85));
+		}
 		float level = clamp(floor(luminance * 3.999 + dither), 0.0, 3.0);
-		vec3 shades[4] = vec3[4](vec3(0.06, 0.22, 0.06), vec3(0.19, 0.38, 0.19), vec3(0.55, 0.67, 0.06), vec3(0.61, 0.74, 0.06));
-		return shades[int(level)];
+		return rteLCDShades[int(level)];
 	} else if (palette == 5) {
 		// CGA palette 1, high intensity: black, cyan, magenta, white. Bluish things go cyan and reddish ones magenta in the middle band.
 		float level = clamp(floor(luminance * 2.999 + dither), 0.0, 2.0);
@@ -247,7 +252,17 @@ vec3 RetroPalette(vec3 color, int palette, float dither) {
 }
 
 void main() {
-	vec2 uv = gl_FragCoord.xy / rteScreenSize;
+	// Chunky pixels: each block of the battlefield shows the colour at its middle. The blocks are counted from the top left, as the LCD's dot grid is
+	// (ScreenUpscale.frag), and the dither steps a block at a time.
+	vec2 fromTopLeft = vec2(gl_FragCoord.x, rteScreenSize.y - gl_FragCoord.y);
+	float block = max(rteChunkyBlock, 1.0);
+	ivec2 ditherCell = ivec2(floor(fromTopLeft / block));
+	vec2 fragCoord = gl_FragCoord.xy;
+	if (block > 1.0) {
+		vec2 middle = vec2(ditherCell) * block + floor(block * 0.5) + 0.5;
+		fragCoord = vec2(middle.x, rteScreenSize.y - middle.y);
+	}
+	vec2 uv = fragCoord / rteScreenSize;
 	vec2 offsetPixels = vec2(0.0);
 	if (rteDistortionEnabled) {
 		// Shockwaves push the scene outwards.
@@ -256,7 +271,7 @@ void main() {
 		vec4 glow = texture(rteEmissive, uv + vec2(0.0, 5.0) / rteScreenSize);
 		float heat = rteHazeFromHeat ? glow.a : dot(glow.rgb, vec3(0.3333));
 		if (heat > 0.01) {
-			vec2 p = gl_FragCoord.xy * vec2(0.21, 0.13) + vec2(0.0, rteTime * 4.0);
+			vec2 p = fragCoord * vec2(0.21, 0.13) + vec2(0.0, rteTime * 4.0);
 			vec2 wobble = vec2(sin(p.y * 1.7 + sin(p.x * 0.9) * 2.0), cos(p.x * 1.3 + sin(p.y * 1.1 + rteTime) * 2.0));
 			offsetPixels += wobble * min(heat, 1.0) * rteHeatHaze;
 		}
@@ -313,12 +328,12 @@ void main() {
 
 	vec3 outputColor = pow(clamp(color, 0.0, 1.0), vec3(1.0 / 2.2));
 	if (rtePaletteStrength > 0.0 || rtePosterize > 0.0) {
-		float ditherOffset = Bayer4(ivec2(gl_FragCoord.xy)) * rteDither;
+		float ditherOffset = Bayer4(ditherCell) * rteDither;
 		if (rtePaletteStrength > 0.0) {
 			// Night vision brings its own noise and a scope's dark rim.
 			vec3 mapped = RetroPalette(outputColor, rtePalette, ditherOffset);
 			if (rtePalette == 8) {
-				float noise = fract(sin(dot(gl_FragCoord.xy + fract(rteTime * 7.31) * 100.0, vec2(12.9898, 78.233))) * 43758.5453);
+				float noise = fract(sin(dot(fragCoord + fract(rteTime * 7.31) * 100.0, vec2(12.9898, 78.233))) * 43758.5453);
 				mapped *= 0.82 + 0.3 * noise;
 				mapped *= 1.0 - smoothstep(0.42, 0.75, length((uv - 0.5) * vec2(rteScreenSize.x / rteScreenSize.y, 1.0)));
 			}
@@ -330,31 +345,31 @@ void main() {
 		}
 	}
 	if (rteColorHalftone > 0.0) {
-		outputColor = mix(outputColor, ColorHalftone(outputColor, gl_FragCoord.xy), rteColorHalftone);
+		outputColor = mix(outputColor, ColorHalftone(outputColor, fragCoord), rteColorHalftone);
 	}
 	if (rtePaperGrain > 0.0 && (!rtePaperBackgroundOnly || texture(rtePaperMask, uv).r > 0.5)) {
 		// Paper: a still grain of fibres and blotches, and off-white stock under everything (or under the backdrop only).
-		vec2 px = gl_FragCoord.xy;
+		vec2 px = fragCoord;
 		float fibre = GlyphHash(floor(px)) - 0.5;
 		float blotch = GlyphHash(floor(px / 7.0)) * 0.6 + GlyphHash(floor(px / 23.0)) * 0.4 - 0.5;
 		outputColor *= mix(vec3(1.0), vec3(0.97, 0.95, 0.88), rtePaperGrain);
 		outputColor += (fibre * 0.05 + blotch * 0.04) * rtePaperGrain;
 	}
 	if (rteTerminalOverlay > 0.0) {
-		float lit = TerminalReadout(vec2(gl_FragCoord.x, rteScreenSize.y - gl_FragCoord.y));
+		float lit = TerminalReadout(vec2(fragCoord.x, rteScreenSize.y - fragCoord.y));
 		vec3 ink = rteLook == 2 ? vec3(0.35, 1.0, 0.45) : vec3(0.4, 0.9, 1.0);
 		outputColor = mix(outputColor, ink, lit * rteTerminalOverlay * 0.55);
 	}
 	if (rteFilmGrain > 0.0) {
 		// Grain in gamma space, strongest in the mid tones, changing every frame.
-		float noise = fract(sin(dot(gl_FragCoord.xy + fract(rteTime * 13.17) * 100.0, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+		float noise = fract(sin(dot(fragCoord + fract(rteTime * 13.17) * 100.0, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
 		float midtones = 1.0 - abs(dot(outputColor, vec3(0.333)) * 2.0 - 1.0);
 		outputColor += noise * rteFilmGrain * 0.12 * midtones;
 	}
 	if ((rteOutlineWidth > 0.0 || rteHighlightWidth > 0.0) && rteDebugView == 0) {
 		// Unit outlines: finish UnitOutlineRow.frag's search down this column for the nearest unit pixel. Not on the unit itself (its distance
 		// is 0) and only where the stroke may go (B). Full strength out to the width, then fading over one pixel, which softens the corners.
-		ivec2 pixel = ivec2(gl_FragCoord.xy);
+		ivec2 pixel = ivec2(fragCoord);
 		vec4 here = texelFetch(rteOutlineRows, pixel, 0);
 		if (here.b > 0.5 && here.r > 0.5 / 255.0) {
 			int rows = textureSize(rteOutlineRows, 0).y;
@@ -409,7 +424,7 @@ void main() {
 		}
 	}
 	if (rteBurstStrength > 0.0 && rteDebugView == 0) {
-		outputColor = ComicBurst(clamp(outputColor, 0.0, 1.0), vec2(gl_FragCoord.x, rteScreenSize.y - gl_FragCoord.y));
+		outputColor = ComicBurst(clamp(outputColor, 0.0, 1.0), vec2(fragCoord.x, rteScreenSize.y - fragCoord.y));
 	}
 	FragColor = vec4(clamp(outputColor, 0.0, 1.0), 1.0);
 }

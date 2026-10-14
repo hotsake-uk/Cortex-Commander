@@ -3,6 +3,7 @@
 #include "glm/glm.hpp"
 
 #include <array>
+#include <cmath>
 #include <string>
 
 namespace RTE {
@@ -256,6 +257,7 @@ namespace RTE {
 			StyleSynthwave, //!< Neon: an Outrun sunset sky with a striped sun and a scrolling grid, pink and cyan glow, glowing edges, VHS tape and a curved CRT.
 			StyleHackerman, //!< Phosphor green on black: code rain for a sky, ASCII hills, green vector edges, afterglow trails, a terminal readout and a flickering monitor.
 			StyleComic, //!< The game's own art as an inked, printed comic: cel-shaded light, black ink lines, halftone shadows, flat bold backgrounds and BOOM! on big blasts.
+			StyleGameBoy, //!< Played on a Game Boy: four shades of green over everything, chunky dithered pixels, an LCD's dot grid and smear, light in four steps, dark outlines and a flash on big blasts.
 			StyleCount
 		};
 		/// What a palette filter maps the picture's brightness onto.
@@ -273,6 +275,43 @@ namespace RTE {
 			PaletteComic, //!< The picture's own colours, printed punchier: richer, clean paper-white highlights, solid blacks, cool shadows.
 			PaletteCount
 		};
+		/// The four shades a Game Boy screen (RetroLayers::LCD) and the Game Boy palette show, darkest first: the original's greens, the Pocket's and Light's
+		/// screens, and the colourings the Game Boy Color gave old black and white games.
+		enum LCDPalettes {
+			LCDClassic, //!< The original's four greens.
+			LCDPocket, //!< The Pocket's greys with a hint of olive.
+			LCDLight, //!< The Light's backlit blue-green.
+			LCDColorBrown, //!< Game Boy Color: brown (up on the boot screen).
+			LCDColorRed, //!< Game Boy Color: red (up and A).
+			LCDColorDarkBrown, //!< Game Boy Color: dark brown and cream (up and B).
+			LCDColorBlue, //!< Game Boy Color: blue (left).
+			LCDColorGrey, //!< Game Boy Color: greyscale (left and B).
+			LCDColorPastel, //!< Game Boy Color: pastel (down).
+			LCDColorYellow, //!< Game Boy Color: yellow (down and B).
+			LCDColorGreen, //!< Game Boy Color: green and red (right).
+			LCDColorInverted, //!< Game Boy Color: inverted (right and B).
+			LCDPaletteCount
+		};
+		/// Gets a Game Boy screen palette's four shades in display colours, darkest first (for the inverted one, the shade the darkest things take first).
+		static std::array<glm::vec3, 4> LCDShades(int palette) {
+			auto rgb = [](int hex) { return glm::vec3(static_cast<float>((hex >> 16) & 0xFF), static_cast<float>((hex >> 8) & 0xFF), static_cast<float>(hex & 0xFF)) / 255.0F; };
+			switch (palette) {
+				case LCDPocket: return {rgb(0x1F1F1F), rgb(0x4D533C), rgb(0x8B956D), rgb(0xC4CFA1)};
+				case LCDLight: return {rgb(0x00303A), rgb(0x00626B), rgb(0x00A69B), rgb(0x31E1C0)};
+				case LCDColorBrown: return {rgb(0x000000), rgb(0x843100), rgb(0xFFAD63), rgb(0xFFFFFF)};
+				case LCDColorRed: return {rgb(0x000000), rgb(0x943A3A), rgb(0xFF8484), rgb(0xFFFFFF)};
+				case LCDColorDarkBrown: return {rgb(0x5A3108), rgb(0x846B29), rgb(0xCE9C84), rgb(0xFFE6C5)};
+				case LCDColorBlue: return {rgb(0x000000), rgb(0x0000FE), rgb(0x65A49B), rgb(0xFFFFFF)};
+				case LCDColorGrey: return {rgb(0x000000), rgb(0x525252), rgb(0xA5A5A5), rgb(0xFFFFFF)};
+				case LCDColorPastel: return {rgb(0x000000), rgb(0x9494FE), rgb(0xFE9494), rgb(0xFFFFA5)};
+				case LCDColorYellow: return {rgb(0x000000), rgb(0x7B4A00), rgb(0xFFFF00), rgb(0xFFFFFF)};
+				case LCDColorGreen: return {rgb(0x000000), rgb(0xFF4200), rgb(0x51FF00), rgb(0xFFFFFF)};
+				case LCDColorInverted: return {rgb(0xFFFFFF), rgb(0xFFDE00), rgb(0x008484), rgb(0x000000)};
+				default: return {rgb(0x0F380F), rgb(0x306230), rgb(0x8BAC0F), rgb(0x9BBC0F)};
+			}
+		}
+		/// Gets the battlefield's pixel size in game pixels for a ChunkyPixels setting: 1 (as is) at 0, up to 6 at 1.
+		static float ChunkyBlock(float chunkyPixels) { return 1.0F + std::round((chunkyPixels < 0.0F ? 0.0F : (chunkyPixels > 1.0F ? 1.0F : chunkyPixels)) * 5.0F); }
 		/// The retro filters one screen style (or the player's own, with no style, or a saved variant) sets. All 0 is the plain picture.
 		struct RetroLayers {
 			int Look = StyleSynthwave; //!< ScreenStyles: whose sky, edge and glow colours and kind of glitch these use (Synthwave's sunset, Hackerman's code rain, or Comic's flat inked backgrounds).
@@ -306,6 +345,14 @@ namespace RTE {
 			float ComicFX = 0.0F; //!< Big blasts get radial speed lines and a hand-lettered sound effect word (BOOM!, KRAK!, BLAM!, WHAM!), 0 to 1.
 			float PanelFrame = 0.0F; //!< A comic panel's frame round the screen: a paper gutter and a black ink line, 0 to 1.
 			float TrackingBand = 0.0F; //!< Video tape's tracking band: a torn, snowy strip rolling slowly up the screen, 0 to 1. Apart from VHS so the rest of the tape look can be had without it.
+			float LCD = 0.0F; //!< A Game Boy screen: the whole frame, HUD included, in the four shades of LCDPalette, 0 to 1.
+			int LCDPalette = LCDClassic; //!< LCDPalettes: which four shades the Game Boy screen (and the Game Boy palette) show.
+			float LCDGrid = 0.0F; //!< The LCD's dot matrix: thin gaps of the lightest shade between its pixels, 0 to 1.
+			float LCDGhosting = 0.0F; //!< The LCD's slow pixels: everything that moves leaves a short smear, and the whole picture smears when the view scrolls, 0 to 1.
+			float ChunkyPixels = 0.0F; //!< The battlefield drawn in bigger pixels, up to 6 game pixels a block at 1, leaving the HUD sharp.
+			float BlastFlash = 0.0F; //!< A big blast in view flashes the screen's shades inverted for a moment, as Game Boy games do on a big hit, 0 to 1.
+			float Bezel = 0.0F; //!< The handheld round the screen: grey plastic, the dark glass surround with its stripes and red power light, 0 to 1.
+			float ChipSound = 0.0F; //!< The sound comes out of a handheld's tiny mono speaker: no bass, crushed to fewer bits and a lower sample rate, 0 to 1.
 		};
 		/// Gets the layers a screen style comes with.
 		static RetroLayers StyleLayers(int style) {
@@ -353,6 +400,22 @@ namespace RTE {
 					layers.Halftone = 0.7F;
 					layers.PaperGrain = 0.5F;
 					layers.ComicFX = 1.0F;
+					break;
+				case StyleGameBoy:
+					layers.Look = StyleGameBoy;
+					layers.Palette = PaletteGameBoy;
+					layers.PaletteStrength = 1.0F;
+					layers.Dither = 0.7F;
+					layers.EdgeLines = 0.45F;
+					layers.InkEdges = true;
+					layers.RetroSky = 1.0F;
+					layers.CelShading = 0.8F;
+					layers.CelBands = 4.0F;
+					layers.LCD = 1.0F;
+					layers.LCDGrid = 0.5F;
+					layers.LCDGhosting = 0.45F;
+					layers.ChunkyPixels = 0.4F;
+					layers.BlastFlash = 1.0F;
 					break;
 				default:
 					break;
@@ -445,7 +508,7 @@ namespace RTE {
 		std::string ScreenVariant; //!< The player's saved variant (a filter preset in Userdata/FilterPresets) chosen as the screen style, empty for none. Its layers are VariantRetro.
 		float ScreenStyleStrength = 1.0F; //!< How strongly the screen style applies, 0 to 1.
 		RetroLayers Retro; //!< The player's own retro filters, used with no screen style.
-		std::array<RetroLayers, StyleCount> StyleRetro = {StyleLayers(StyleOff), StyleLayers(StyleSynthwave), StyleLayers(StyleHackerman), StyleLayers(StyleComic)}; //!< Each screen style's layers, as the player tuned them.
+		std::array<RetroLayers, StyleCount> StyleRetro = {StyleLayers(StyleOff), StyleLayers(StyleSynthwave), StyleLayers(StyleHackerman), StyleLayers(StyleComic), StyleLayers(StyleGameBoy)}; //!< Each screen style's layers, as the player tuned them.
 		RetroLayers VariantRetro; //!< The chosen variant's layers, as the player tuned them since loading or saving it.
 
 		/// Gets whether a screen style (built-in or a variant) is on, rather than the player's own filters.
@@ -460,7 +523,8 @@ namespace RTE {
 			float strength = ScreenStyleStrength < 0.0F ? 0.0F : (ScreenStyleStrength > 1.0F ? 1.0F : ScreenStyleStrength);
 			for (float* value: {&layers.PaletteStrength, &layers.NeonGlow, &layers.EdgeLines, &layers.RetroSky, &layers.VHS, &layers.Glitch, &layers.Curvature, &layers.CRT, &layers.Flicker,
 			                    &layers.Posterize, &layers.Dither, &layers.Pixelate, &layers.ASCII, &layers.ASCIIBackground, &layers.Afterglow, &layers.TerminalOverlay, &layers.CelShading,
-			                    &layers.Halftone, &layers.ColorHalftone, &layers.PaperGrain, &layers.Misregister, &layers.ComicFX, &layers.PanelFrame, &layers.TrackingBand}) {
+			                    &layers.Halftone, &layers.ColorHalftone, &layers.PaperGrain, &layers.Misregister, &layers.ComicFX, &layers.PanelFrame, &layers.TrackingBand,
+			                    &layers.LCD, &layers.LCDGrid, &layers.LCDGhosting, &layers.ChunkyPixels, &layers.BlastFlash, &layers.Bezel, &layers.ChipSound}) {
 				*value *= strength;
 			}
 			return layers;

@@ -377,6 +377,7 @@ namespace RTE {
 		std::array<FMOD::ChannelGroup*, MIX_CATEGORY_COUNT> m_SoundMixChannelGroups; //!< One FMOD ChannelGroup per SoundMixCategory. All are children of the SFX group, except the UI one which is a child of the UI group.
 		std::array<float, MIX_CATEGORY_COUNT> m_SoundMixVolumes; //!< The mixer volume of each SoundMixCategory, 0.0-1.0.
 		FMOD::ChannelGroup* m_UnitSpeechChannelGroup; //!< The FMOD ChannelGroup for unit speech voices, inside the mixer's Voices one (GetUnitSpeechChannelGroup); none until asked for.
+		FMOD::DSP* m_ChipSoundDSP; //!< The handheld speaker filter on the whole mix (LightingSettings::RetroLayers::ChipSound), bypassed while it's off.
 
 		bool m_AudioEnabled; //!< Bool to tell whether audio is enabled or not.
 		std::vector<std::unique_ptr<const Vector>> m_CurrentActivityHumanPlayerPositions; //!< The stored positions of each human player in the current activity. Only filled when there's an activity running.

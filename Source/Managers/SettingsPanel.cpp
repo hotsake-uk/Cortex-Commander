@@ -326,7 +326,7 @@ namespace {
 		if (!Shown("Screen style")) {
 			return;
 		}
-		static const char* const styleNames[LightingSettings::StyleCount] = {"Off", "Synthwave", "Hackerman", "Comic"};
+		static const char* const styleNames[LightingSettings::StyleCount] = {"Off", "Synthwave", "Hackerman", "Comic", "Game Boy"};
 		settings.ScreenStyle = std::clamp(settings.ScreenStyle, 0, static_cast<int>(LightingSettings::StyleCount) - 1);
 		std::string current = settings.ScreenVariant.empty() ? styleNames[settings.ScreenStyle] : settings.ScreenVariant + " (yours)";
 		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.55F);
@@ -354,7 +354,7 @@ namespace {
 			ImGui::EndCombo();
 		}
 		s_LastShown = true;
-		Tip("A whole retro look over everything in a game, the HUD included (the menus stay plain). Synthwave: an Outrun sunset sky with a striped sun and a neon grid racing to the horizon, pink and cyan glow, glowing edges, a neon palette, video tape wobble, glitches and a curved CRT. Hackerman: phosphor green on black, code raining down the sky, ASCII hills, green vector edges, afterglow trails, a terminal readout and a flickering monitor. Each style keeps its own settings below, so switching back to Off gives you your own filters as they were. Your saved variants are listed under the built-in styles.");
+		Tip("A whole retro look over everything in a game, the HUD included (the menus stay plain). Synthwave: an Outrun sunset sky with a striped sun and a neon grid racing to the horizon, pink and cyan glow, glowing edges, a neon palette, video tape wobble, glitches and a curved CRT. Hackerman: phosphor green on black, code raining down the sky, ASCII hills, green vector edges, afterglow trails, a terminal readout and a flickering monitor. Comic: the game's own art inked and printed, with cel-shaded light, halftone shadows and BOOM! on big blasts. Game Boy: everything in the four shades of a Game Boy screen (or a Pocket's, a Light's or one of the Game Boy Color's colourings), chunky dithered pixels, the LCD's dot grid and smear, light in four steps, dark outlines and a flash on big blasts. Each style keeps its own settings below, so switching back to Off gives you your own filters as they were. Your saved variants are listed under the built-in styles.");
 		if (settings.ScreenStyleOn()) {
 			Slider("Screen style strength", &settings.ScreenStyleStrength, 0.0F, 1.0F);
 			Tip("How strongly the style applies: 1 the full look, down to 0 the plain picture.");
@@ -1356,11 +1356,15 @@ void DebugMan::SettingsGUI() {
 			if (Plain()) {
 				ImGui::TextDisabled(!settings.ScreenStyleOn() ? "Your own retro filters:" : (settings.ScreenVariant.empty() ? "This style's filters:" : "This variant's filters (Save keeps them in it):"));
 			}
-			Combo("Look", &retro.Look, "Synthwave\0Hackerman\0Comic\0");
-			Tip("Whose sky, glow and edge colours and kind of glitch the filters below use: Synthwave's sunset, grid and pink and cyan neon, Hackerman's code rain, phosphor green and glitches that scramble into glyphs, or Comic's printed sky and bold black ink.");
+			// The list starts at Synthwave, the first look.
+			int lookChoice = std::clamp(retro.Look, static_cast<int>(LightingSettings::StyleSynthwave), static_cast<int>(LightingSettings::StyleCount) - 1) - LightingSettings::StyleSynthwave;
+			if (Combo("Look", &lookChoice, "Synthwave\0Hackerman\0Comic\0Game Boy\0")) {
+				retro.Look = lookChoice + LightingSettings::StyleSynthwave;
+			}
+			Tip("Whose sky, glow and edge colours and kind of glitch the filters below use: Synthwave's sunset, grid and pink and cyan neon, Hackerman's code rain, phosphor green and glitches that scramble into glyphs, Comic's printed sky and bold black ink, or the Game Boy's banded sky and one-pixel dark outlines.");
 			retro.Look = std::clamp(retro.Look, static_cast<int>(LightingSettings::StyleSynthwave), static_cast<int>(LightingSettings::StyleCount) - 1);
 			Combo("Palette", &retro.Palette, "Off\0Synthwave\0Vaporwave\0Miami\0Game Boy\0CGA\0Sepia\0Thermal\0Night vision\0Terminal green\0Comic\0");
-			Tip("Remaps the picture's brightness onto a palette: Synthwave's indigo, magenta and cyan, Vaporwave's pastels, Miami's teal and coral, the Game Boy's four greens, CGA's black, cyan, magenta and white, sepia, a thermal camera, night vision, a green phosphor terminal, or Comic's printed ink (the scene's own colours, punchier, with solid blacks and paper-white highlights).");
+			Tip("Remaps the picture's brightness onto a palette: Synthwave's indigo, magenta and cyan, Vaporwave's pastels, Miami's teal and coral, the Game Boy screen's four shades (as chosen under Game Boy screen palette), CGA's black, cyan, magenta and white, sepia, a thermal camera, night vision, a green phosphor terminal, or Comic's printed ink (the scene's own colours, punchier, with solid blacks and paper-white highlights).");
 			retro.Palette = std::clamp(retro.Palette, 0, static_cast<int>(LightingSettings::PaletteCount) - 1);
 			if (retro.Palette != LightingSettings::PaletteOff) {
 				Slider("Palette strength", &retro.PaletteStrength, 0.0F, 1.0F);
@@ -1396,8 +1400,25 @@ void DebugMan::SettingsGUI() {
 			Tip("A big explosion in view sets off speed lines and a sound-effect word (BOOM!, KRAK!, BLAM!, WHAM!) that pops up where it went off.");
 			Slider("Panel frame", &retro.PanelFrame, 0.0F, 1.0F);
 			Tip("A thick black frame round the screen with a paper gutter, like a comic panel.");
+			Slider("Game Boy screen", &retro.LCD, 0.0F, 1.0F);
+			Tip("The whole picture, the HUD too, shown in the four shades of a Game Boy screen. Best with the Game Boy palette (which dithers the battlefield onto the same shades) and the Game Boy look.");
+			Combo("Game Boy screen palette", &retro.LCDPalette, "Original (green)\0Pocket (grey)\0Light (backlit)\0Color: brown\0Color: red\0Color: dark brown\0Color: blue\0Color: greyscale\0Color: pastel\0Color: yellow\0Color: green and red\0Color: inverted\0");
+			Tip("Which four shades the Game Boy screen and the Game Boy palette show: the original's greens, the Pocket's greys, the Light's backlit blue-green, or one of the colourings the Game Boy Color gave old black and white games from its start-up screen.");
+			retro.LCDPalette = std::clamp(retro.LCDPalette, 0, static_cast<int>(LightingSettings::LCDPaletteCount) - 1);
+			Slider("Chunky pixels", &retro.ChunkyPixels, 0.0F, 1.0F);
+			Tip("The battlefield drawn in bigger pixels, up to 6 game pixels a block, with the dither stepping a block at a time. The HUD stays sharp.");
+			Slider("LCD dot grid", &retro.LCDGrid, 0.0F, 1.0F);
+			Tip("Thin pale gaps between the screen's pixels, like a Game Boy's dot matrix. Shows where the pixels are big enough on screen, so more with Chunky pixels.");
+			Slider("LCD ghosting", &retro.LCDGhosting, 0.0F, 1.0F);
+			Tip("The LCD's slow pixels: anything moving leaves a short smear, and the whole picture smears a little when the view scrolls.");
+			Slider("Big blast flash", &retro.BlastFlash, 0.0F, 1.0F);
+			Tip("A big explosion in view blinks the Game Boy screen's shades inverted twice, as Game Boy games do on a big hit. Needs the Game Boy screen.");
+			Slider("Handheld frame", &retro.Bezel, 0.0F, 1.0F);
+			Tip("The Game Boy itself round the picture: grey plastic, the dark glass with its two stripes and the red power light. It covers the very edges of the picture rather than shrinking it, so the cursor still lines up.");
+			Slider("Tiny speaker sound", &retro.ChipSound, 0.0F, 1.0F);
+			Tip("The sound comes out of a handheld's tiny mono speaker: no bass, the treble rolled off, and crushed to fewer bits at a lower sample rate.");
 			Slider("Retro sky", &retro.RetroSky, 0.0F, 1.0F);
-			Tip("Replaces the sky behind the terrain with the look's own. Synthwave: an Outrun sunset, a striped sun on the horizon, stars, and a neon grid racing towards it; distant hills become dark silhouettes with a glowing rim. Hackerman: columns of falling green code over a faint grid; distant hills become green wireframes. Comic: keeps the original sky and hills, flattened into bold colour bands with a dot gradient up the sky and an ink line along the hill tops. It still darkens at night.");
+			Tip("Replaces the sky behind the terrain with the look's own. Synthwave: an Outrun sunset, a striped sun on the horizon, stars, and a neon grid racing towards it; distant hills become dark silhouettes with a glowing rim. Hackerman: columns of falling green code over a faint grid; distant hills become green wireframes. Comic: keeps the original sky and hills, flattened into bold colour bands with a dot gradient up the sky and an ink line along the hill tops. Game Boy: flat bands of its shades with a checkered dither between them and stars at night; distant hills become two flat shades with a dark line along their tops. It still darkens at night.");
 			if (retro.RetroSky > 0.0F) {
 				Slider("Sky speed", &retro.GridSpeed, 0.0F, 3.0F);
 				Tip("How fast Synthwave's grid races to the horizon, or Hackerman's code falls.");

@@ -5,8 +5,10 @@
 // mountains) turn to dark violet silhouettes with a glowing rim; the furthest ones (the sky art) are replaced outright.
 // Hackerman's sky: columns of green code falling over a faint grid, a bright glyph at the head of each, fading up its tail; distant hills become green
 // wireframes. Comic keeps the original sky and hills, flattened into bold bands with a dot gradient up the sky and an ink line along the hill tops,
-// and its ink lines are bold at silhouettes and light inside them. ASCII mode (and any style) can draw the distant background or everything as ASCII art: text characters picked by
-// brightness, with line characters along outlines, in the look's colours, the scene's own, a phosphor's or as ink on paper.
+// and its ink lines are bold at silhouettes and light inside them. The Game Boy's sky is flat bands of its shades with a checkered dither between them,
+// a few stars at night, and the distant hills flattened to two shades with a dark line along their tops. ASCII mode (and any style) can draw the distant
+// background or everything as ASCII art: text characters picked by brightness, with line characters along outlines, in the look's colours, the scene's own,
+// a phosphor's or as ink on paper.
 #version 330 core
 
 in vec2 textureUV;
@@ -17,7 +19,8 @@ uniform sampler2D rteSceneDepth;
 uniform vec2 rteScreenSize;
 uniform vec2 rteScreenOrigin;
 uniform float rteTime;
-uniform int rteLook; // LightingSettings::ScreenStyles: 1 Synthwave's sky and neon, 2 Hackerman's code rain and phosphor green, 3 Comic's printed sky and ink.
+uniform int rteLook; // LightingSettings::ScreenStyles: 1 Synthwave's sky and neon, 2 Hackerman's code rain and phosphor green, 3 Comic's printed sky and ink, 4 Game Boy's banded sky.
+uniform float rteExposure; // The tonemap's exposure, so the Game Boy sky lands on the shades it means to.
 uniform float rteSky; // How fully the sky is replaced, 0 to 1.
 uniform float rteGridSpeed; // How fast the grid scrolls, 0 to 3.
 uniform float rteDaylight; // The sky light's brightness now, 0 (night) to 1 (day).
@@ -252,7 +255,29 @@ void main() {
 	float depth = rteHasDepth ? texture(rteSceneDepth, uv).r : 0.0;
 	bool background = rteHasDepth && depth > rteBackgroundDepth;
 
-	if (rteSky > 0.0 && background && rteLook == 3) {
+	if (rteSky > 0.0 && background && rteLook == 4) {
+		// Game Boy: the levels here are display brightness, which the Game Boy palette then bands into its four shades (Tonemap.frag): about 0.1,
+		// 0.29, 0.42 and 0.8 sit in the middle of each, and 0.494 on the line between the two lightest, where the dither checkers them evenly.
+		float skyArt = SkyArt(depth);
+		vec2 px = screen * rteScreenSize;
+		float day = smoothstep(0.15, 0.6, rteDaylight);
+		// The sky: a darker band along the top, a checkered band, then the lightest shade down to the hills; two shades darker at night, with stars.
+		float lower = step(0.3, screen.y);
+		float checker = mod(floor(px.x) + floor(px.y), 2.0);
+		float band = screen.y > 0.22 && screen.y < 0.3 ? checker : lower;
+		float sky = mix(mix(0.1, 0.29, band), mix(0.42, 0.8, band), day);
+		float star = step(0.9985, Hash(floor(px))) * (1.0 - day) * (1.0 - lower);
+		sky = mix(sky, 0.8, star);
+		// The hills: the brighter of their art the lighter of the two middle shades (the two darkest at night), and the darkest along their tops.
+		float level = dot(scene.rgb, vec3(0.2126, 0.7152, 0.0722)) * rteExposure;
+		float lit = step(0.18, level / (level + 0.15));
+		float hill = mix(mix(0.1, 0.29, lit), mix(0.29, 0.42, lit), day);
+		vec2 pixel = 1.0 / rteScreenSize;
+		float above = SkyArt(texture(rteSceneDepth, uv + vec2(0.0, 1.5 * pixel.y)).r);
+		hill = mix(hill, 0.04, smoothstep(0.3, 0.9, above) * (1.0 - skyArt));
+		float shown = mix(hill, sky, step(0.5, skyArt));
+		color = mix(color, vec3(pow(shown, 2.2) / max(rteExposure, 0.01)), rteSky);
+	} else if (rteSky > 0.0 && background && rteLook == 3) {
 		// Comic: the original art, its light flattened into three hue-true bands, Ben-Day dots thickening up the sky, and a black ink line along the
 		// top of every hill where the sky shows above it.
 		float skyArt = SkyArt(depth);

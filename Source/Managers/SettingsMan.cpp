@@ -91,7 +91,13 @@ namespace {
 	    {"Afterglow", &LightingSettings::RetroLayers::Afterglow}, {"TerminalOverlay", &LightingSettings::RetroLayers::TerminalOverlay}, {"CelShading", &LightingSettings::RetroLayers::CelShading},
 	    {"CelBands", &LightingSettings::RetroLayers::CelBands}, {"Halftone", &LightingSettings::RetroLayers::Halftone}, {"ColorHalftone", &LightingSettings::RetroLayers::ColorHalftone},
 	    {"PaperGrain", &LightingSettings::RetroLayers::PaperGrain}, {"Misregister", &LightingSettings::RetroLayers::Misregister}, {"ComicFX", &LightingSettings::RetroLayers::ComicFX},
-	    {"PanelFrame", &LightingSettings::RetroLayers::PanelFrame}, {"TrackingBand", &LightingSettings::RetroLayers::TrackingBand}};
+	    {"PanelFrame", &LightingSettings::RetroLayers::PanelFrame}, {"TrackingBand", &LightingSettings::RetroLayers::TrackingBand},
+	    {"LCD", &LightingSettings::RetroLayers::LCD}, {"LCDGrid", &LightingSettings::RetroLayers::LCDGrid}, {"LCDGhosting", &LightingSettings::RetroLayers::LCDGhosting},
+	    {"ChunkyPixels", &LightingSettings::RetroLayers::ChunkyPixels}, {"BlastFlash", &LightingSettings::RetroLayers::BlastFlash}, {"Bezel", &LightingSettings::RetroLayers::Bezel},
+	    {"ChipSound", &LightingSettings::RetroLayers::ChipSound}};
+
+	/// The retro layer settings that aren't floats, by the name they're saved under after their prefix.
+	const char* const c_RetroOtherFields[] = {"Look", "Palette", "LCDPalette", "InkEdges", "GlitchOnBlasts", "PaperBackgroundOnly"};
 
 	/// Reads one retro layer setting, saved as its prefix ("Retro" for the player's own, "Synthwave" and so on for a screen style's, "Variant" for the chosen variant's, none in a filter preset file) and then field.
 	void ReadRetroField(LightingSettings::RetroLayers& layers, std::string_view field, const std::string& value) {
@@ -99,6 +105,8 @@ namespace {
 			layers.Look = std::clamp(std::stoi(value), static_cast<int>(LightingSettings::StyleSynthwave), static_cast<int>(LightingSettings::StyleCount) - 1);
 		} else if (field == "Palette") {
 			layers.Palette = std::clamp(std::stoi(value), 0, static_cast<int>(LightingSettings::PaletteCount) - 1);
+		} else if (field == "LCDPalette") {
+			layers.LCDPalette = std::clamp(std::stoi(value), 0, static_cast<int>(LightingSettings::LCDPaletteCount) - 1);
 		} else if (field == "InkEdges") {
 			layers.InkEdges = std::stoi(value) != 0;
 		} else if (field == "GlitchOnBlasts") {
@@ -117,12 +125,37 @@ namespace {
 	void WriteRetroLayers(Writer& writer, const std::string& prefix, const LightingSettings::RetroLayers& layers) {
 		writer.NewPropertyWithValue(prefix + "Look", layers.Look);
 		writer.NewPropertyWithValue(prefix + "Palette", layers.Palette);
+		writer.NewPropertyWithValue(prefix + "LCDPalette", layers.LCDPalette);
 		writer.NewPropertyWithValue(prefix + "InkEdges", layers.InkEdges);
 		writer.NewPropertyWithValue(prefix + "GlitchOnBlasts", layers.GlitchOnBlasts);
 		writer.NewPropertyWithValue(prefix + "PaperBackgroundOnly", layers.PaperBackgroundOnly);
 		for (const auto& [name, member]: c_RetroFloatFields) {
 			writer.NewPropertyWithValue(prefix + name, layers.*member);
 		}
+	}
+
+	/// Reads a retro layer setting that has no property of its own below (the Game Boy style's, and the fields added since): its prefix picks whose
+	/// layers, the rest which field. False, reading nothing, if it isn't one.
+	bool ReadAnyRetroProperty(std::string_view propName, Reader& reader) {
+		LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+		const std::pair<std::string_view, LightingSettings::RetroLayers*> owners[] = {
+		    {"Retro", &lighting.Retro}, {"Synthwave", &lighting.StyleRetro[LightingSettings::StyleSynthwave]}, {"Hackerman", &lighting.StyleRetro[LightingSettings::StyleHackerman]},
+		    {"Comic", &lighting.StyleRetro[LightingSettings::StyleComic]}, {"GameBoy", &lighting.StyleRetro[LightingSettings::StyleGameBoy]}, {"Variant", &lighting.VariantRetro}};
+		for (const auto& [prefix, layers]: owners) {
+			if (!propName.starts_with(prefix)) {
+				continue;
+			}
+			std::string_view field = propName.substr(prefix.size());
+			bool known = std::find(std::begin(c_RetroOtherFields), std::end(c_RetroOtherFields), field) != std::end(c_RetroOtherFields);
+			for (const auto& [name, member]: c_RetroFloatFields) {
+				known = known || field == name;
+			}
+			if (known) {
+				ReadRetroField(*layers, field, reader.ReadPropValue());
+				return true;
+			}
+		}
+		return false;
 	}
 } // namespace
 
@@ -466,7 +499,7 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 }
 
 int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader& reader) {
-	StartPropertyList(return Serializable::ReadProperty(propName, reader));
+	StartPropertyList(if (ReadAnyRetroProperty(propName, reader)) { return 0; } return Serializable::ReadProperty(propName, reader));
 
 	MatchProperty("PaletteFile", { reader >> g_FrameMan.m_PaletteFile; });
 	MatchProperty("ResolutionX", { reader >> g_WindowMan.m_ResX; });
@@ -1551,6 +1584,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	WriteRetroLayers(writer, "Synthwave", lighting.StyleRetro[LightingSettings::StyleSynthwave]);
 	WriteRetroLayers(writer, "Hackerman", lighting.StyleRetro[LightingSettings::StyleHackerman]);
 	WriteRetroLayers(writer, "Comic", lighting.StyleRetro[LightingSettings::StyleComic]);
+	WriteRetroLayers(writer, "GameBoy", lighting.StyleRetro[LightingSettings::StyleGameBoy]);
 	writer.NewPropertyWithValue("ScreenVariant", lighting.ScreenVariant.empty() ? std::string("None") : lighting.ScreenVariant);
 	WriteRetroLayers(writer, "Variant", lighting.VariantRetro);
 	writer.NewPropertyWithValue("AsciiModeEverywhere", lighting.Ascii.Everywhere);
@@ -2391,6 +2425,7 @@ std::string SettingsMan::SaveFilterPreset(const std::string& name, const Lightin
 	file << "// A screen style filter preset (Camera & image > Screen style), saved by the settings panel.\n";
 	file << "Look = " << layers.Look << "\n";
 	file << "Palette = " << layers.Palette << "\n";
+	file << "LCDPalette = " << layers.LCDPalette << "\n";
 	file << "InkEdges = " << (layers.InkEdges ? 1 : 0) << "\n";
 	file << "GlitchOnBlasts = " << (layers.GlitchOnBlasts ? 1 : 0) << "\n";
 	file << "PaperBackgroundOnly = " << (layers.PaperBackgroundOnly ? 1 : 0) << "\n";
