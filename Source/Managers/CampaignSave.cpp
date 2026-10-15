@@ -14,7 +14,7 @@ namespace RTE::CampaignModel {
 	namespace {
 		constexpr const char* c_Folder = "Userdata/Campaigns/";
 		constexpr const char* c_Magic = "CortexCampaign";
-		constexpr int c_Version = 5; //!< 2: resources (deposits, stockpiles, the market). 3: diplomacy (relations, trade pacts). 4: armies' ships. 5: what armies do when attacked.
+		constexpr int c_Version = 6; //!< 2: resources (deposits, stockpiles, the market). 3: diplomacy (relations, trade pacts). 4: armies' ships. 5: what armies do when attacked. 6: AI attacks waiting for the player.
 
 		std::string FileNameFor(const std::string& name) {
 			std::string file;
@@ -162,6 +162,11 @@ namespace RTE::CampaignModel {
 		out << "Orders " << campaign.Armies.size() << '\n';
 		for (const Army& army: campaign.Armies) {
 			out << army.IfAttacked << '\n';
+		}
+		// Version 6: AI attacks on the player's armies waiting to be settled (the turn ends once they are).
+		out << "Defences " << campaign.Defences.size() << '\n';
+		for (const PendingDefence& defence: campaign.Defences) {
+			out << defence.Attacker << ' ' << defence.Planet << ' ' << defence.Point << ' ' << (defence.Overland ? 1 : 0) << '\n';
 		}
 		// Written to a spare file first, then swapped in, so a crash mid-save doesn't lose the campaign.
 		const std::string path = c_Folder + campaign.FileName;
@@ -402,6 +407,19 @@ namespace RTE::CampaignModel {
 				in >> army.IfAttacked;
 				army.IfAttacked = std::clamp(army.IfAttacked, 0, static_cast<int>(OnAttack::Count) - 1);
 			}
+		}
+		if (version >= 6) {
+			if (!section("Defences")) {
+				error = "Defences missing";
+				return false;
+			}
+			loaded.Defences.resize(std::min<size_t>(count, 64));
+			for (PendingDefence& defence: loaded.Defences) {
+				int overland = 0;
+				in >> defence.Attacker >> defence.Planet >> defence.Point >> overland;
+				defence.Overland = overland != 0;
+			}
+			// (Checked against the galaxy when each is settled.)
 		}
 		if (in.fail() && !in.eof()) {
 			error = fileName + " is damaged.";

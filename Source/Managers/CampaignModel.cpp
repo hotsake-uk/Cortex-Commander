@@ -514,6 +514,14 @@ namespace RTE::CampaignModel {
 					defenders.push_back(other);
 				}
 			}
+			// During the AI factions' turns, an attack on a human army waits for the player to settle it (ResolveDefence).
+			if (campaign.DeferDefences && !fought && !IsHuman(campaign, faction) && std::any_of(defenders.begin(), defenders.end(), [&campaign](int defender) { return IsHuman(campaign, campaign.Armies[defender].Faction); })) {
+				Army& attacker = campaign.Armies[armyIndex];
+				campaign.Defences.push_back(PendingDefence{attacker.Id, planetIndex, pointIndex, attacker.Planet == planetIndex});
+				attacker.Moves = 0;
+				attacker.Path.clear();
+				return false;
+			}
 			// An ally's point is walked onto, not taken.
 			const bool friendlyGround = owner == faction || Allied(campaign, faction, owner);
 			const float militia = friendlyGround ? 0.0F : PointDefence(campaign, planetIndex, pointIndex);
@@ -2607,12 +2615,65 @@ namespace RTE::CampaignModel {
 			return;
 		}
 		campaign.Offers.clear(); // Anything not answered by now lapses.
+		campaign.Defences.clear();
+		campaign.DeferDefences = true;
 		for (int faction = 0; faction < static_cast<int>(campaign.Factions.size()); ++faction) {
 			if (!campaign.Factions[faction].Human && campaign.Factions[faction].Alive) {
 				AITurn(campaign, faction);
 			}
 		}
-		NewTurn(campaign);
+		campaign.DeferDefences = false;
+		if (campaign.Defences.empty()) {
+			NewTurn(campaign);
+		}
+	}
+
+	int DefenceAttacker(const Campaign& campaign, const PendingDefence& defence) {
+		const int army = FindArmy(campaign, defence.Attacker);
+		if (army < 0 || defence.Planet < 0 || defence.Planet >= static_cast<int>(campaign.Planets.size()) || defence.Point < 0 || defence.Point >= static_cast<int>(campaign.Planets[defence.Planet].Points.size())) {
+			return -1;
+		}
+		const Army& attacker = campaign.Armies[army];
+		if (defence.Overland) {
+			if (attacker.Planet != defence.Planet || attacker.Point < 0) {
+				return -1;
+			}
+			const std::vector<int>& links = campaign.Planets[defence.Planet].Points[attacker.Point].Links;
+			return std::find(links.begin(), links.end(), defence.Point) != links.end() ? army : -1;
+		}
+		return attacker.Planet < 0 && attacker.System == campaign.Planets[defence.Planet].System ? army : -1;
+	}
+
+	bool ResolveDefence(Campaign& campaign, bool flee, const FoughtBattle* fought) {
+		if (campaign.Defences.empty()) {
+			return false;
+		}
+		const PendingDefence defence = campaign.Defences.front();
+		campaign.Defences.erase(campaign.Defences.begin());
+		bool happened = false;
+		if (const int attacker = DefenceAttacker(campaign, defence); attacker >= 0) {
+			// Fleeing: the human armies there go as if told to always flee (those with a move left), then back to their orders.
+			std::vector<std::pair<long, int>> orders;
+			if (flee) {
+				for (int army: ArmiesAt(campaign, defence.Planet, defence.Point)) {
+					if (IsHuman(campaign, campaign.Armies[army].Faction)) {
+						orders.emplace_back(campaign.Armies[army].Id, campaign.Armies[army].IfAttacked);
+						campaign.Armies[army].IfAttacked = static_cast<int>(OnAttack::Flee);
+					}
+				}
+			}
+			EnterPoint(campaign, attacker, defence.Planet, defence.Point, fought);
+			for (const auto& [id, order]: orders) {
+				if (const int army = FindArmy(campaign, id); army >= 0) {
+					campaign.Armies[army].IfAttacked = order;
+				}
+			}
+			happened = true;
+		}
+		if (campaign.Defences.empty() && campaign.Winner < 0) {
+			NewTurn(campaign);
+		}
+		return happened;
 	}
 #pragma endregion
 

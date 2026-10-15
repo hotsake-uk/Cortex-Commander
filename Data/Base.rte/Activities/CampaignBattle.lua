@@ -10,7 +10,7 @@ package.loaded.Constants = nil; require("Constants");
 --   CampaignAttackers, CampaignDefenders: "loadout|module|soldier id|health|reserve;..." for each soldier, reserve 1 for one held
 --   back as a reinforcement: they wait aboard until called in (R) or the first wave is spent.
 --   CampaignLocals: how many locals defend the point, CampaignLocalsTech: the module they come from.
---   CampaignPlayerAttacks: 1 when the player's side attacks.
+--   CampaignPlayerAttacks: 1 when the player's side attacks, 0 when the player defends the bunker against an AI attack.
 -- Back to the campaign:
 --   CampaignSurvivors: "soldier id|health;..." for each campaign soldier still standing (kept up to date, so a retreat counts too).
 --   CampaignLocalsLeft: the locals still standing. CampaignStarted: 1 once the battle has begun.
@@ -65,6 +65,7 @@ function CampaignBattle:StartActivity(isNewGame)
 	self.textTimer = Timer();
 	self.started = Timer();
 	self.deathWatch = {};
+	self.inSoldier = {};
 
 	for team = Activity.TEAM_1, Activity.MAXTEAMCOUNT - 1 do
 		if self:TeamActive(team) then
@@ -425,12 +426,17 @@ function CampaignBattle:UpdateActivity()
 			elseif view == Activity.OBSERVE then
 				lost = true;
 			end
+			-- At the start, in one of their soldiers (not the defenders' brain, or the drop ship).
+			if not self.inSoldier[player] then
+				lost = true;
+			end
 			if lost then
 				for actor in MovableMan.Actors do
 					if actor.Team == team and actor:NumberValueExists("CampaignSoldier") and not actor:IsDead() then
 						self:SwitchToActor(actor, player, team);
 						self:SetViewState(Activity.NORMAL, player);
 						self.deathWatch[player] = nil;
+						self.inSoldier[player] = true;
 						break;
 					end
 				end
@@ -439,11 +445,11 @@ function CampaignBattle:UpdateActivity()
 	end
 
 	-- Giving up: Backspace twice, a retreat (a defeat; whoever's still standing, or still aboard, lives).
-	if self.playerAttacks and UInputMan:KeyPressed(Key.BACKSPACE) then
+	if UInputMan:KeyPressed(Key.BACKSPACE) then
 		if self.retreatAsked and not self.retreatAsked:IsPastRealMS(3000) then
 			self:UpdateSoldiers();
 			self:WriteResult();
-			self.WinnerTeam = self.defenderTeam;
+			self.WinnerTeam = self.playerAttacks and self.defenderTeam or self.attackerTeam;
 			ActivityMan:EndActivity();
 			return;
 		end
@@ -483,9 +489,7 @@ function CampaignBattle:UpdateActivity()
 				if held > 0 then
 					extra = extra .. string.format("\nReserves: %d waiting aboard. Press R to call them in.", held);
 				end
-				if self.playerAttacks then
-					extra = extra .. "\nBackspace twice: retreat.";
-				end
+				extra = extra .. "\nBackspace twice: retreat.";
 				FrameMan:SetScreenText(string.format("%s\nYours: %d%s. %s.%s", lead, yours, reserve, enemy, extra), self:ScreenOfPlayer(player), 0, 1100, false);
 			end
 		end

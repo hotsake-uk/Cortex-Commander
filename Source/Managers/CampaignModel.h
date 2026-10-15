@@ -275,6 +275,15 @@ namespace RTE::CampaignModel {
 		int LocalsLeft = 0; //!< Locals defending the point still standing.
 	};
 
+	/// An AI faction's attack on a point where a human faction's army stands, held back during the AI's turn for the player to fight
+	/// themselves, auto-resolve or flee. The turn finishes once every one is settled.
+	struct PendingDefence {
+		long Attacker = 0; //!< The attacking army, by Id.
+		int Planet = -1;
+		int Point = -1;
+		bool Overland = false; //!< From a linked point (else landing from orbit).
+	};
+
 	/// A planet's state: who controls it (more than half its points) and whether it's invaded or contested.
 	struct PlanetControl {
 		int Controller = -1;
@@ -306,6 +315,8 @@ namespace RTE::CampaignModel {
 		std::vector<Offer> Offers; //!< What AI factions have put to the human factions, to answer (not saved).
 		std::vector<BattleOutcome> Reports; //!< Battles a human faction was in since the screen last showed them (not saved).
 		std::vector<BattleOutcome> Battles; //!< Every battle since the screen last drew them on the maps, the AI factions' too (not saved).
+		std::vector<PendingDefence> Defences; //!< AI attacks on the human factions' armies waiting for the player, oldest first.
+		bool DeferDefences = false; //!< While the AI factions take their turns: attacks on human armies go into Defences (not saved).
 	};
 
 #pragma region Names and looks
@@ -492,8 +503,15 @@ namespace RTE::CampaignModel {
 	void Disband(Campaign& campaign, int army);
 	/// Buys (amount above 0) or sells (below 0) a resource on the galaxy's market, a unit at a time as the price moves.
 	bool Trade(Campaign& campaign, int faction, Resource resource, int amount);
-	/// Ends the human factions' turn: the AI factions take theirs, then the new turn's income, healing and carried-on moves.
+	/// Ends the human factions' turn: the AI factions take theirs, then the new turn's income, healing and carried-on moves. Attacks on
+	/// the human factions' armies are held back (Defences); the new turn starts once ResolveDefence has settled them all.
 	void EndTurn(Campaign& campaign);
+	/// Settles the oldest held-back attack on a human army: auto-resolved (the defenders fleeing if flee, those with a move left), or
+	/// with the result of a battle fought for real. Starts the new turn once none are left. Returns whether the attack still happened
+	/// (its army can still get there).
+	bool ResolveDefence(Campaign& campaign, bool flee, const FoughtBattle* fought = nullptr);
+	/// Whether a held-back attack's army can still make it (it's alive, and in orbit over the planet or on a linked point), and its index.
+	int DefenceAttacker(const Campaign& campaign, const PendingDefence& defence);
 #pragma endregion
 
 #pragma region Saving
