@@ -7,7 +7,11 @@
 #include "Campaign.h"
 #include "CampaignModel.h"
 
+#include "ActivityMan.h"
+#include "GAScripted.h"
+#include "LuaMan.h"
 #include "MenuMan.h"
+#include "SceneMan.h"
 #include "ToolWidgets.h"
 
 #include <algorithm>
@@ -1190,6 +1194,151 @@ namespace {
 		if (const int broken = TreatyBroken(game, self.Faction, planet, point); broken >= 0) {
 			ImGui::TextColored(ImVec4(1.0F, 0.45F, 0.4F, 1.0F), "This breaks your treaty with %s.", FactionLabel(broken).c_str());
 		}
+	}
+#pragma endregion
+
+
+#pragma region Battles fought for real
+	/// A battle the player went off to fight on the battlefield (CampaignBattle.lua), applied when the campaign screen opens again.
+	struct FieldBattle {
+		bool Waiting = false; //!< Started, and its result not yet applied.
+		bool Launch = false; //!< Just set up: the main menu starts it.
+		long ArmyId = 0;
+		int Planet = -1;
+		int Point = -1;
+		bool Overland = false;
+	};
+	FieldBattle s_Field;
+
+	constexpr const char* c_BattleScene = "Maginot Mission"; //!< The one map every battle is fought on, for now.
+
+	/// The soldiers of some armies, for the battle script: "loadout|module|id|health;" each.
+	std::string SoldierList(const std::vector<int>& armies) {
+		const CampaignModel::Campaign& game = s_Screen.Game;
+		std::string list;
+		for (int army: armies) {
+			const Army& each = game.Armies[army];
+			const Faction& faction = game.Factions[each.Faction];
+			for (const Squad& squad: each.Squads) {
+				const std::string loadout = faction.Squads.empty() ? std::string() : faction.Squads[std::clamp(squad.Type, 0, static_cast<int>(faction.Squads.size()) - 1)].Loadout;
+				for (const Soldier& soldier: squad.Soldiers) {
+					char health[16];
+					std::snprintf(health, sizeof(health), "%.3f", soldier.Health);
+					list += loadout + "|" + faction.Module + "|" + std::to_string(soldier.Id) + "|" + health + ";";
+				}
+			}
+		}
+		return list;
+	}
+
+	/// The armies that would defend a point against an attacker: everyone there who isn't its ally.
+	std::vector<int> DefendersAt(int faction, int planet, int point) {
+		std::vector<int> defenders;
+		for (int other: ArmiesAt(s_Screen.Game, planet, point)) {
+			if (s_Screen.Game.Armies[other].Faction != faction && !Allied(s_Screen.Game, faction, s_Screen.Game.Armies[other].Faction)) {
+				defenders.push_back(other);
+			}
+		}
+		return defenders;
+	}
+
+	/// Whether an attack can be fought for real: the player's own army, against a point someone defends.
+	bool CanFight(int army, int planet, int point) {
+		const Army& self = s_Screen.Game.Armies[army];
+		return self.Faction == Player() && (!DefendersAt(self.Faction, planet, point).empty() || LocalSoldiers(s_Screen.Game, self.Faction, planet, point) > 0);
+	}
+
+	/// Sets up the battle for an attack, for the main menu to start: the attacker's soldiers against the defenders' and the locals'.
+	void StartFieldBattle(int army, int planet, int point, bool overland) {
+		CampaignModel::Campaign& game = s_Screen.Game;
+		const Army& self = game.Armies[army];
+		const std::vector<int> defenders = DefendersAt(self.Faction, planet, point);
+		const int owner = game.Planets[planet].Points[point].Owner;
+		// The defenders' side fights with the first defending army's faction's tech, or the point's owner's. Locals on nobody's ground come
+		// from another faction in the game.
+		int defending = !defenders.empty() ? game.Armies[defenders.front()].Faction : owner;
+		if (defending < 0 || defending == self.Faction) {
+			defending = (self.Faction + 1) % static_cast<int>(game.Factions.size());
+		}
+		SaveGame();
+		if (g_SceneMan.SetSceneToLoad(c_BattleScene, true, false) < 0) {
+			s_Screen.Note = std::string("The battle map (") + c_BattleScene + ") isn't installed, so this battle can only be auto-resolved.";
+			return;
+		}
+		GAScripted* battle = new GAScripted;
+		battle->Create("Base.rte/Activities/CampaignBattle.lua", "CampaignBattle");
+		battle->SetPresetName("Campaign Battle");
+		battle->SetSceneName(c_BattleScene);
+		battle->ClearPlayers(false);
+		battle->AddPlayer(Players::PlayerOne, true, Activity::TeamOne, 0.0F);
+		battle->SetCPUTeam(Activity::TeamTwo);
+		battle->SetTeamTech(Activity::TeamOne, game.Factions[self.Faction].Module);
+		battle->SetTeamTech(Activity::TeamTwo, game.Factions[defending].Module);
+		const int difficulty = game.Difficulty <= 0 ? Activity::EasyDifficulty : game.Difficulty >= 2 ? Activity::HardDifficulty : Activity::MediumDifficulty;
+		battle->SetDifficulty(difficulty);
+		battle->SetTeamAISkill(Activity::TeamTwo, game.Difficulty <= 0 ? Activity::InferiorSkill : game.Difficulty >= 2 ? Activity::GoodSkill : Activity::DefaultSkill);
+		battle->SetStartingGold(0);
+		battle->SetFogOfWarEnabled(false);
+		battle->SetRequireClearPathToOrbit(false);
+		battle->SaveString("CampaignAttackers", SoldierList({army}));
+		battle->SaveString("CampaignDefenders", SoldierList(defenders));
+		battle->SaveNumber("CampaignLocals", static_cast<float>(LocalSoldiers(game, self.Faction, planet, point)));
+		battle->SaveString("CampaignLocalsTech", game.Factions[defending].Module);
+		battle->SaveNumber("CampaignPlayerAttacks", 1.0F);
+		g_LuaMan.FileCloseAll();
+		g_ActivityMan.SetStartActivity(battle);
+		s_Field = FieldBattle{true, true, self.Id, planet, point, overland};
+	}
+
+	/// The battle just fought, applied through the same move auto-resolve takes: who won, and who's still standing. Leaving it before
+	/// the end is a retreat: a defeat, with whoever was still standing then.
+	void FinishFieldBattle() {
+		if (!s_Field.Waiting) {
+			return;
+		}
+		s_Field.Waiting = false;
+		s_Field.Launch = false;
+		CampaignModel::Campaign& game = s_Screen.Game;
+		Activity* done = g_ActivityMan.GetActivity();
+		if (!done || done->GetPresetName() != "Campaign Battle" || done->LoadNumber("CampaignStarted") < 0.5F) {
+			s_Screen.Note = "The battle didn't start, so nothing happened. Try again, or auto-resolve it.";
+			return;
+		}
+		const bool over = done->IsOver();
+		FoughtBattle fought;
+		const GameActivity* gameActivity = dynamic_cast<const GameActivity*>(done);
+		fought.AttackerWon = over && gameActivity && gameActivity->GetWinnerTeam() == Activity::TeamOne;
+		fought.LocalsLeft = static_cast<int>(std::lround(done->LoadNumber("CampaignLocalsLeft")));
+		const std::string survivors = done->LoadString("CampaignSurvivors");
+		size_t from = 0;
+		while (from < survivors.size()) {
+			size_t to = survivors.find(';', from);
+			if (to == std::string::npos) {
+				to = survivors.size();
+			}
+			const std::string entry = survivors.substr(from, to - from);
+			if (const size_t bar = entry.find('|'); bar != std::string::npos) {
+				fought.Survivors[std::atol(entry.substr(0, bar).c_str())] = static_cast<float>(std::atof(entry.substr(bar + 1).c_str()));
+			}
+			from = to + 1;
+		}
+		if (!over) {
+			g_ActivityMan.EndActivity();
+		}
+		const int army = FindArmy(game, s_Field.ArmyId);
+		if (army < 0) {
+			return;
+		}
+		if (!over) {
+			AddLog(game, game.Armies[army].Name + " pulled out of the battle.");
+		}
+		FollowNext(army);
+		if (s_Field.Overland) {
+			OrderOverland(game, army, s_Field.Point, &fought);
+		} else {
+			OrderLand(game, army, s_Field.Planet, s_Field.Point, &fought);
+		}
+		SaveGame();
 	}
 #pragma endregion
 
@@ -4218,10 +4367,18 @@ namespace {
 			ImGui::TextDisabled("You're neutral with %s: this starts a war, and others think a little less of you.", FactionLabel(point.Owner).c_str());
 		}
 		ImGui::Spacing();
-		ImGui::BeginDisabled(true);
-		ToolUI::Button("Fight it yourself", ImVec2(ImGui::GetFontSize() * 10.0F, 0.0F));
+		const bool canFight = CanFight(army, attack.Planet, attack.Point);
+		ImGui::BeginDisabled(!canFight);
+		if (ToolUI::Button("Fight it yourself", ImVec2(ImGui::GetFontSize() * 10.0F, 0.0F))) {
+			StartFieldBattle(army, attack.Planet, attack.Point, attack.Overland);
+			attack.Open = false;
+			ImGui::CloseCurrentPopup();
+			ImGui::EndDisabled();
+			ImGui::EndPopup();
+			return;
+		}
 		ImGui::EndDisabled();
-		ImGui::SetItemTooltip("Coming later: the battle played in Battle Command on a map of this point.");
+		ImGui::SetItemTooltip(canFight ? "Fight the battle yourself, on the battlefield: your soldiers come down by dropship outside the defenders' bunker. Each one is one of this army's soldiers; whoever falls is gone, and whoever's left comes back with their wounds. Leaving early is a retreat." : "Nobody defends this point, so there's no battle to fight.");
 		ImGui::SameLine();
 		if (ToolUI::Button("Auto-resolve", ImVec2(ImGui::GetFontSize() * 8.0F, 0.0F))) {
 			FollowNext(army);
@@ -4258,6 +4415,9 @@ namespace {
 		ImGui::TextColored(!playerIn ? ImVec4(1.0F, 1.0F, 1.0F, 1.0F) : won ? ImVec4(0.5F, 1.0F, 0.5F, 1.0F) : ImVec4(1.0F, 0.5F, 0.4F, 1.0F), "%s", !playerIn ? "Battle" : won ? "Victory" : "Defeat");
 		ImGui::SetWindowFontScale(1.0F);
 		ImGui::Text("Battle at %s", outcome.Where.c_str());
+		if (outcome.Fought) {
+			ImGui::TextDisabled("Fought on the battlefield.");
+		}
 		ImGui::Separator();
 		ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(FactionColor(outcome.Attacker)), "%s attacked", FactionLabel(outcome.Attacker).c_str());
 		ImGui::Text("  %d soldiers, strength %.0f: %d fell", outcome.AttackerSoldiers, outcome.AttackStrength, outcome.AttackerLost);
@@ -5017,6 +5177,7 @@ void RTE::Campaign::Open() {
 	s_Screen.At = s_Screen.HasGame ? Page::Playing : Page::Start;
 	s_Screen.Saves = ListSaves();
 	s_Screen.Note.clear();
+	FinishFieldBattle();
 }
 
 void RTE::Campaign::Close() {
@@ -5025,6 +5186,14 @@ void RTE::Campaign::Close() {
 }
 
 bool RTE::Campaign::IsOpen() { return s_Screen.Open; }
+
+bool RTE::Campaign::TakeBattleStart() {
+	const bool start = s_Field.Launch;
+	s_Field.Launch = false;
+	return start;
+}
+
+bool RTE::Campaign::BattleWaiting() { return s_Field.Waiting; }
 
 bool RTE::Campaign::TakeBack() {
 	const bool back = s_Screen.Back;

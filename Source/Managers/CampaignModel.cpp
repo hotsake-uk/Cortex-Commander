@@ -476,7 +476,24 @@ namespace RTE::CampaignModel {
 
 		/// An army moving onto a point: taken if nobody defends it, else an auto-resolved battle. Returns whether the army is there now.
 		/// army is an index; it may move in the list, so it's found again by ID afterwards.
-		bool EnterPoint(Campaign& campaign, int armyIndex, int planetIndex, int pointIndex) {
+		/// After a battle fought for real: the soldiers not among the survivors fall, the rest keep the health they ended on. Returns
+		/// how many fell.
+		int ApplySurvivors(Campaign& campaign, const std::vector<int>& armies, const std::unordered_map<long, float>& survivors) {
+			int fell = 0;
+			for (int army: armies) {
+				for (Squad& squad: campaign.Armies[army].Squads) {
+					fell += static_cast<int>(std::erase_if(squad.Soldiers, [&survivors](const Soldier& soldier) { return !survivors.contains(soldier.Id); }));
+					for (Soldier& soldier: squad.Soldiers) {
+						soldier.Health = std::clamp(survivors.at(soldier.Id), 0.1F, 1.0F);
+					}
+				}
+				std::erase_if(campaign.Armies[army].Squads, [](const Squad& squad) { return squad.Soldiers.empty(); });
+			}
+			return fell;
+		}
+
+		/// An army moving onto a point: a battle when it's defended, auto-resolved, or with the result of one fought for real.
+		bool EnterPoint(Campaign& campaign, int armyIndex, int planetIndex, int pointIndex, const FoughtBattle* fought) {
 			const long armyID = campaign.Armies[armyIndex].Id;
 			const int faction = campaign.Armies[armyIndex].Faction;
 			Planet& planet = campaign.Planets[planetIndex];
@@ -516,7 +533,7 @@ namespace RTE::CampaignModel {
 				return true;
 			}
 
-			// The battle, auto-resolved.
+			// The battle: auto-resolved, or as it was fought.
 			BattleOutcome outcome;
 			outcome.Happened = true;
 			outcome.Attacker = faction;
@@ -537,23 +554,40 @@ namespace RTE::CampaignModel {
 			outcome.AttackStrength = attack;
 			outcome.DefendStrength = defence;
 			outcome.PlayerInvolved = IsHuman(campaign, faction) || IsHuman(campaign, outcome.Defender);
-			const float rolledAttack = attack * (0.85F + 0.3F * Roll(campaign));
-			const float rolledDefence = defence * (0.85F + 0.3F * Roll(campaign));
-			outcome.AttackerWon = rolledAttack > rolledDefence;
-			const float ratio = std::clamp(outcome.AttackerWon ? rolledDefence / std::max(rolledAttack, 0.01F) : rolledAttack / std::max(rolledDefence, 0.01F), 0.0F, 1.0F);
-			const float winnerLoss = 0.08F + 0.45F * std::pow(ratio, 1.5F);
-			const float loserLoss = 0.5F + 0.35F * (1.0F - ratio);
 			const std::vector<int> attackers = {armyIndex};
-			if (outcome.AttackerWon) {
-				outcome.AttackerLost = TakeCasualties(campaign, attackers, winnerLoss);
-				outcome.DefenderLost = TakeCasualties(campaign, defenders, loserLoss) + militiaSoldiers;
-				ShareKills(campaign, attackers, outcome.DefenderLost, outcome.Promotions);
+			if (fought) {
+				// Fought for real: who fell and who won is what happened on the battlefield.
+				outcome.AttackerWon = fought->AttackerWon;
+				outcome.Fought = true;
+				outcome.AttackerLost = ApplySurvivors(campaign, attackers, fought->Survivors);
+				const int localsLost = std::clamp(militiaSoldiers - fought->LocalsLeft, 0, militiaSoldiers);
+				outcome.DefenderLost = ApplySurvivors(campaign, defenders, fought->Survivors) + (outcome.AttackerWon ? militiaSoldiers : localsLost);
+				if (outcome.AttackerWon) {
+					ShareKills(campaign, attackers, outcome.DefenderLost, outcome.Promotions);
+				} else {
+					ShareKills(campaign, defenders, outcome.AttackerLost, outcome.Promotions);
+					if (militia > 0.0F && militiaSoldiers > 0) {
+						point.Militia = std::max(0.0F, point.Militia * static_cast<float>(militiaSoldiers - localsLost) / static_cast<float>(militiaSoldiers));
+					}
+				}
 			} else {
-				outcome.AttackerLost = TakeCasualties(campaign, attackers, loserLoss);
-				outcome.DefenderLost = TakeCasualties(campaign, defenders, winnerLoss);
-				ShareKills(campaign, defenders, outcome.AttackerLost, outcome.Promotions);
-				if (militia > 0.0F) {
-					point.Militia = std::max(0.0F, point.Militia * (1.0F - winnerLoss));
+				const float rolledAttack = attack * (0.85F + 0.3F * Roll(campaign));
+				const float rolledDefence = defence * (0.85F + 0.3F * Roll(campaign));
+				outcome.AttackerWon = rolledAttack > rolledDefence;
+				const float ratio = std::clamp(outcome.AttackerWon ? rolledDefence / std::max(rolledAttack, 0.01F) : rolledAttack / std::max(rolledDefence, 0.01F), 0.0F, 1.0F);
+				const float winnerLoss = 0.08F + 0.45F * std::pow(ratio, 1.5F);
+				const float loserLoss = 0.5F + 0.35F * (1.0F - ratio);
+				if (outcome.AttackerWon) {
+					outcome.AttackerLost = TakeCasualties(campaign, attackers, winnerLoss);
+					outcome.DefenderLost = TakeCasualties(campaign, defenders, loserLoss) + militiaSoldiers;
+					ShareKills(campaign, attackers, outcome.DefenderLost, outcome.Promotions);
+				} else {
+					outcome.AttackerLost = TakeCasualties(campaign, attackers, loserLoss);
+					outcome.DefenderLost = TakeCasualties(campaign, defenders, winnerLoss);
+					ShareKills(campaign, defenders, outcome.AttackerLost, outcome.Promotions);
+					if (militia > 0.0F) {
+						point.Militia = std::max(0.0F, point.Militia * (1.0F - winnerLoss));
+					}
 				}
 			}
 			std::vector<long> defenderIDs;
@@ -1842,7 +1876,15 @@ namespace RTE::CampaignModel {
 		return defence > 0.01F;
 	}
 
-	bool OrderLand(Campaign& campaign, int army, int planet, int point) {
+	int LocalSoldiers(const Campaign& campaign, int faction, int planet, int point) {
+		const Point& here = campaign.Planets[planet].Points[point];
+		if (here.Owner == faction || Allied(campaign, faction, here.Owner) || PointDefence(campaign, planet, point) < 0.01F) {
+			return 0;
+		}
+		return static_cast<int>(std::ceil(here.Militia));
+	}
+
+	bool OrderLand(Campaign& campaign, int army, int planet, int point, const FoughtBattle* fought) {
 		if (army < 0 || army >= static_cast<int>(campaign.Armies.size()) || campaign.Winner >= 0) {
 			return false;
 		}
@@ -1852,11 +1894,11 @@ namespace RTE::CampaignModel {
 		}
 		landing.Path.clear();
 		--landing.Moves;
-		EnterPoint(campaign, army, planet, point);
+		EnterPoint(campaign, army, planet, point, fought);
 		return true;
 	}
 
-	bool OrderOverland(Campaign& campaign, int army, int point) {
+	bool OrderOverland(Campaign& campaign, int army, int point, const FoughtBattle* fought) {
 		if (army < 0 || army >= static_cast<int>(campaign.Armies.size()) || campaign.Winner >= 0) {
 			return false;
 		}
@@ -1870,7 +1912,7 @@ namespace RTE::CampaignModel {
 		}
 		moving.Path.clear();
 		--moving.Moves;
-		EnterPoint(campaign, army, moving.Planet, point);
+		EnterPoint(campaign, army, moving.Planet, point, fought);
 		return true;
 	}
 

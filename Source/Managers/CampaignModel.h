@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <random>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace RTE::CampaignModel {
@@ -233,6 +234,14 @@ namespace RTE::CampaignModel {
 		int DefenderSoldiers = 0;
 		std::vector<std::string> Promotions;
 		bool PlayerInvolved = false;
+		bool Fought = false; //!< Played out on the battlefield, not auto-resolved.
+	};
+
+	/// A ground battle the player fought for real (CampaignBattle.lua): who won, and who's still standing.
+	struct FoughtBattle {
+		bool AttackerWon = false;
+		std::unordered_map<long, float> Survivors; //!< Each campaign soldier alive at the end, by Id, with their health (0 to 1).
+		int LocalsLeft = 0; //!< Locals defending the point still standing.
 	};
 
 	/// A planet's state: who controls it (more than half its points) and whether it's invaded or contested.
@@ -404,9 +413,11 @@ namespace RTE::CampaignModel {
 	/// Moves an army toward a system along the lanes: as far as its moves go now, the rest at the start of later turns.
 	bool OrderMove(Campaign& campaign, int army, int system);
 	/// Lands an army in orbit on a point of a planet in its system. Onto an enemy point that is defended, it's a battle.
-	bool OrderLand(Campaign& campaign, int army, int planet, int point);
+	bool OrderLand(Campaign& campaign, int army, int planet, int point, const FoughtBattle* fought = nullptr);
 	/// Moves an army on a planet to a linked point (or attacks it).
-	bool OrderOverland(Campaign& campaign, int army, int point);
+	bool OrderOverland(Campaign& campaign, int army, int point, const FoughtBattle* fought = nullptr);
+	/// How many locals defend a point against a faction, as soldiers in a battle (none on its own or an ally's ground).
+	int LocalSoldiers(const Campaign& campaign, int faction, int planet, int point);
 	/// Takes an army off its planet into orbit.
 	bool OrderLaunch(Campaign& campaign, int army);
 	/// Whether a move onto a point would be a battle (an enemy army there, or defenders), and how strong they are.

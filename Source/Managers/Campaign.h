@@ -23,5 +23,13 @@ namespace RTE {
 
 		/// Whether Back to the main menu was asked for since the last call.
 		static bool TakeBack();
+
+		/// Whether a battle to fight on the battlefield was set up since the last call (ActivityMan's start activity): the main menu
+		/// starts it.
+		static bool TakeBattleStart();
+
+		/// Whether a battle is being fought, or has been and its result is waiting for the campaign screen. The menus go back to the
+		/// campaign after it, which applies the result when it opens.
+		static bool BattleWaiting();
 	};
 } // namespace RTE
