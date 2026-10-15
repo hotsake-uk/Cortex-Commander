@@ -963,6 +963,7 @@
     <ClInclude Include="Source\Entities\Icon.h" />
     <ClInclude Include="Source\Entities\Leg.h" />
     <ClInclude Include="Source\Entities\LimbPath.h" />
+    <ClInclude Include="Source\Entities\BackgroundSet.h" />
     <ClInclude Include="Source\Entities\Loadout.h" />
     <ClInclude Include="Source\Entities\Magazine.h" />
     <ClInclude Include="Source\Entities\Material.h" />
@@ -1625,6 +1626,7 @@
     <ClCompile Include="Source\Entities\Icon.cpp" />
     <ClCompile Include="Source\Entities\Leg.cpp" />
     <ClCompile Include="Source\Entities\LimbPath.cpp" />
+    <ClCompile Include="Source\Entities\BackgroundSet.cpp" />
     <ClCompile Include="Source\Entities\Loadout.cpp" />
     <ClCompile Include="Source\Entities\Magazine.cpp" />
     <ClCompile Include="Source\Entities\Material.cpp" />

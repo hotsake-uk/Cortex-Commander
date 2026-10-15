@@ -225,6 +225,7 @@ void SettingsMan::Clear() {
 	m_UnitMenuClickToOpen = true;
 	m_UnitMenuTimeScale = 0.25F;
 	m_PauseAIKey = "Ctrl+P";
+	m_DefaultBackground.clear();
 	m_EndlessMetaGameMode = false;
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
@@ -1107,6 +1108,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 		SetUnitMenuTimeScale(scale);
 	});
 	MatchProperty("PauseAIKey", { m_PauseAIKey = reader.ReadPropValue(); });
+	MatchProperty("DefaultBackground", { m_DefaultBackground = reader.ReadPropValue(); });
 	MatchProperty("EndlessMetaGameMode", { reader >> m_EndlessMetaGameMode; });
 	MatchProperty("EndlessMode", { reader >> m_EndlessMetaGameMode; }); // Legacy name, kept for old Settings.ini files.
 	MatchProperty("EnableCrabBombs", { reader >> m_EnableCrabBombs; });
@@ -2121,6 +2123,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("SandboxPanelPlacement", g_DebugMan.m_SandboxPlacement);
 	writer.NewPropertyWithValue("ToolScale", g_DebugMan.m_ToolScale);
 	writer.NewPropertyWithValue("PixelToolFont", g_DebugMan.m_PixelFont);
+	writer.NewPropertyWithValue("DefaultBackground", m_DefaultBackground);
 
 	if (forPreset) {
 		// The game's own settings from the Settings menu, so a preset loaded at start brings them back too. Settings.ini keeps them in its own sections.
