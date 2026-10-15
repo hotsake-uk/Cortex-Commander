@@ -150,6 +150,8 @@ namespace {
 		std::vector<long> Holding; //!< Armies told to stay put this turn, so Next skips them (cleared each turn).
 		int GalaxyHoverLast = -1; //!< The star under the mouse last frame, for the route preview drawn under the stars.
 		std::array<int, 8> NeedCycle{}; //!< Which of each kind of alert a click on the alert strip goes to next.
+		bool HelpOpen = false;
+		int HelpTopic = 0;
 		bool DiplomacyOpen = false;
 		int DealWith = -1; //!< The faction a deal is being put together for, in the diplomacy window.
 		Deal DealDraft;
@@ -1481,7 +1483,7 @@ namespace {
 			case Step::ReadPoint:
 				return {"Read a point", "Click one of your points. The panel on the right shows who holds it, the gold it pays each turn and what it produces.\n\nThe small icon by each point is its resource, with how much a turn."};
 			case Step::Resources:
-				return {"Your resources", "Your stores are now under your gold: water, food, metal, fuel, crystal and relics, each with its change a turn.\n\nArmies eat food, and burn fuel to jump between stars. Building takes metal and water. Hover one to see what it's for. One blinking red is running out."};
+				return {"Your resources", "Your stores are now under your gold: water, food, metal, fuel, crystal and relics. Green is rising, orange falling.\n\nArmies eat food, and burn fuel to jump between stars. Building takes metal and water. Hover one to see what it's for. One blinking red is running out."};
 			case Step::Recruit:
 				return {"Recruit a squad", "Click a settlement (a point with houses) and pick a squad under Recruit on the right. It joins the army there.\n\nEach button shows its cost. Every soldier costs upkeep each turn."};
 			case Step::TakeOff:
@@ -1611,6 +1613,180 @@ namespace {
 		ImGui::PopStyleColor(2);
 	}
 #pragma endregion
+
+	int TurnsLeftOf(const CampaignModel::Campaign& game, int faction, Resource resource);
+
+#pragma region First-time tips
+	/// Short advisor notes for things the first time they happen, once the walkthrough is out of the way.
+	enum class Tip { Start, Enemy, Battle, Invaded, Shortage, Offer, Count };
+
+	constexpr const char* c_TipsFile = "Userdata/Campaigns/Tips.ini";
+
+	struct TipState {
+		bool Loaded = false;
+		bool Off = false; //!< No tips at all.
+		std::array<bool, static_cast<size_t>(Tip::Count)> Seen{};
+		int Showing = -1; //!< The tip shown now, if any.
+		bool BattleWaiting = false; //!< A battle report is up: the battle tip comes once it's closed.
+	};
+	TipState s_Tips;
+
+	void LoadTips() {
+		s_Tips.Loaded = true;
+		std::ifstream in(c_TipsFile);
+		std::string onOff;
+		std::string seen;
+		in >> onOff >> seen;
+		s_Tips.Off = onOff == "Off";
+		for (size_t index = 0; index < s_Tips.Seen.size() && index < seen.size(); ++index) {
+			s_Tips.Seen[index] = seen[index] == '1';
+		}
+	}
+
+	void SaveTips() {
+		std::error_code code;
+		std::filesystem::create_directories("Userdata/Campaigns", code);
+		std::ofstream out(c_TipsFile);
+		out << (s_Tips.Off ? "Off" : "On") << "\n";
+		for (bool seen: s_Tips.Seen) {
+			out << (seen ? '1' : '0');
+		}
+		out << "\n";
+	}
+
+	struct TipText {
+		const char* Title;
+		const char* Text;
+	};
+
+	TipText TextOf(Tip tip) {
+		switch (tip) {
+			case Tip::Start:
+				return {"How a turn goes", "The bar above the map shows what needs you: red for the pressing things. Hover one to see what it's about, click it to go there.\n\nThe turn button reads Next while armies still have moves: press it (or Enter) to go to each. Hold (H) leaves one where it is. Once nothing's left it reads End turn. ? opens Help."};
+			case Tip::Enemy:
+				return {"An enemy army", "Armies you could fight sit on a red ring. Green rings are allies, blue ones factions at peace with you.\n\nBefore you attack, pick your army and hover where you'd go: the tooltip gives your chance of winning. Too strong? Merge armies (Take in, in an army's panel) or wait for more."};
+			case Tip::Battle:
+				return {"After a battle", "Winners lose soldiers too. Refill an army at one of your settlements (Refill in its panel, or the alert bar), and wounded soldiers heal each turn, fastest at a settlement.\n\nSoldiers who live through battles rank up and fight better."};
+			case Tip::Invaded:
+				return {"A planet invaded", "An enemy holds a point on one of your planets. Until you take it back the planet pays half its income and heals slower.\n\nThe red planet on the alert bar takes you there. Send an army to take the point back."};
+			case Tip::Shortage:
+				return {"Running short", "Armies eat food every turn and burn a fuel for every lane jump. Without food they go hungry, and without fuel they can't jump.\n\nClick a resource under your gold (or Trade) to buy some now. For a lasting fix, take points that produce it."};
+			case Tip::Offer:
+				return {"A faction wants to talk", "Factions put deals, peace and alliances to you between turns. You can propose your own in Diplomacy (D): gold and resources either way, trade pacts, peace or an alliance.\n\nGifts and kept deals raise their opinion of you. Breaking a treaty sours every faction on you."};
+			default:
+				return {"", ""};
+		}
+	}
+
+	void ShowTip(Tip tip) {
+		s_Tips.Showing = static_cast<int>(tip);
+		s_Tips.Seen[static_cast<size_t>(tip)] = true;
+		SaveTips();
+	}
+
+	/// Shows a tip the first time its moment comes. Not while the walkthrough runs: it covers the same ground.
+	void UpdateTips() {
+		if (!s_Tips.Loaded) {
+			LoadTips();
+		}
+		CampaignModel::Campaign& game = s_Screen.Game;
+		const int player = Player();
+		if (!game.Reports.empty()) {
+			s_Tips.BattleWaiting = true;
+		}
+		const bool walkthrough = s_Screen.Guide.On && s_Screen.Guide.At != Step::Count;
+		// The walkthrough's last steps cover how a turn goes.
+		if (s_Screen.Guide.On && s_Screen.Guide.At >= Step::Routine && !s_Tips.Seen[static_cast<size_t>(Tip::Start)]) {
+			s_Tips.Seen[static_cast<size_t>(Tip::Start)] = true;
+			SaveTips();
+		}
+		if (s_Tips.Off || s_Tips.Showing >= 0 || walkthrough || player < 0 || game.Winner >= 0 || game.Lost || Animating() || ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId)) {
+			return;
+		}
+		const auto due = [](Tip tip) { return !s_Tips.Seen[static_cast<size_t>(tip)]; };
+		if (due(Tip::Start)) {
+			ShowTip(Tip::Start);
+			return;
+		}
+		if (due(Tip::Battle) && s_Tips.BattleWaiting && game.Reports.empty()) {
+			ShowTip(Tip::Battle);
+			return;
+		}
+		if (due(Tip::Offer) && std::any_of(game.Offers.begin(), game.Offers.end(), [player](const Offer& offer) { return offer.To == player; })) {
+			ShowTip(Tip::Offer);
+			return;
+		}
+		if (due(Tip::Invaded)) {
+			for (int planet = 0; planet < static_cast<int>(game.Planets.size()); ++planet) {
+				const PlanetControl control = ControlOf(game, planet);
+				if (control.Controller == player && control.Invaded) {
+					ShowTip(Tip::Invaded);
+					return;
+				}
+			}
+		}
+		if (due(Tip::Shortage)) {
+			const int food = TurnsLeftOf(game, player, Resource::Food);
+			const bool noFuel = game.Factions[player].Resources[static_cast<size_t>(Resource::Fuel)] == 0 && std::any_of(game.Armies.begin(), game.Armies.end(), [player](const Army& army) { return army.Faction == player; });
+			if ((food >= 0 && food <= 3) || noFuel) {
+				ShowTip(Tip::Shortage);
+				return;
+			}
+		}
+		if (due(Tip::Enemy)) {
+			// A hostile army in a system where the player has an army or a point.
+			for (const Army& army: game.Armies) {
+				if (army.Faction == player || Friendly(game, player, army.Faction)) {
+					continue;
+				}
+				bool near = std::any_of(game.Armies.begin(), game.Armies.end(), [&army, player](const Army& own) { return own.Faction == player && own.System == army.System; });
+				for (int planet: game.Systems[army.System].Planets) {
+					for (const Point& point: game.Planets[planet].Points) {
+						near = near || point.Owner == player;
+					}
+				}
+				if (near) {
+					ShowTip(Tip::Enemy);
+					return;
+				}
+			}
+		}
+	}
+
+	/// The tip shown now, in the top left of the map where the guide sits when it's on.
+	void TipBox() {
+		if (s_Tips.Showing < 0 || s_Tips.Showing >= static_cast<int>(Tip::Count) || (s_Screen.Guide.On && s_Screen.Guide.At != Step::Count)) {
+			return;
+		}
+		const TipText text = TextOf(static_cast<Tip>(s_Tips.Showing));
+		const float width = std::min(ImGui::GetFontSize() * 20.0F, s_Screen.MapTo.x - s_Screen.MapFrom.x - 20.0F);
+		ImGui::SetCursorScreenPos(ImVec2(s_Screen.MapFrom.x + 10.0F, s_Screen.MapFrom.y + 10.0F));
+		ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.04F, 0.06F, 0.13F, 0.94F));
+		ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.45F, 0.7F, 1.0F, 0.7F));
+		if (ImGui::BeginChild("##tip", ImVec2(width, 0.0F), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY, ImGuiWindowFlags_NoScrollbar)) {
+			ImGui::TextDisabled("Tip");
+			ImGui::SameLine();
+			ImGui::TextColored(ImVec4(0.6F, 0.82F, 1.0F, 1.0F), "%s", text.Title);
+			ImGui::PushTextWrapPos(0.0F);
+			ImGui::TextUnformatted(text.Text);
+			ImGui::PopTextWrapPos();
+			ImGui::Spacing();
+			if (ToolUI::Button("Got it", ImVec2(ImGui::GetFontSize() * 5.0F, 0.0F))) {
+				s_Tips.Showing = -1;
+			}
+			ImGui::SameLine();
+			if (ToolUI::SmallButton("No more tips")) {
+				s_Tips.Showing = -1;
+				s_Tips.Off = true;
+				SaveTips();
+			}
+			ImGui::SetItemTooltip("Turns these tips off. Help (?) turns them back on.");
+		}
+		ImGui::EndChild();
+		ImGui::PopStyleColor(2);
+	}
+#pragma endregion
+
 
 #pragma region The galaxy map
 	/// The faction holding most of a system's points, -1 when nobody holds any or it's a tie.
@@ -2681,8 +2857,6 @@ namespace {
 		}
 	}
 
-	int TurnsLeftOf(const CampaignModel::Campaign& game, int faction, Resource resource);
-
 	/// The kinds of thing that need the player, in the order the alert strip shows them.
 	enum class Need { Invaded, Threat, Food, Fuel, Gold, Ready, Refill, Spend, Count };
 
@@ -2970,8 +3144,11 @@ namespace {
 		for (int army: own) {
 			soldiers += SoldierCount(game.Armies[army]);
 		}
-		const std::string title = "Your armies (" + std::to_string(own.size()) + ", " + std::to_string(soldiers) + " soldiers)";
-		ImGui::SeparatorText(title.c_str());
+		const std::string title = "Your armies (" + std::to_string(own.size()) + ", " + std::to_string(soldiers) + " soldiers)###roster";
+		if (!ImGui::CollapsingHeader(title.c_str())) {
+			ImGui::SetItemTooltip("Every army of yours, with its moves left. Military (M) has the full picture.");
+			return;
+		}
 		if (own.empty()) {
 			ImGui::TextDisabled("None. Recruit a squad at one of your settlements.");
 			return;
@@ -3084,12 +3261,13 @@ namespace {
 		ImGui::EndTooltip();
 	}
 
-	/// The player's stock of each resource and its change a turn, in two rows under their gold.
+	/// The player's stock of each resource in one row under their gold: green when it's rising, orange when falling, blinking red when
+	/// it's running out. Hover one for the detail, click it for the market.
 	void ResourceBar(int player) {
 		const CampaignModel::Campaign& game = s_Screen.Game;
 		const Stock made = ProductionOf(game, player);
 		const Stock used = UsageOf(game, player);
-		if (!ImGui::BeginTable("##resources", 3, ImGuiTableFlags_SizingStretchSame)) {
+		if (!ImGui::BeginTable("##resources", c_ResourceCount, ImGuiTableFlags_SizingStretchSame)) {
 			return;
 		}
 		for (int each = 0; each < c_ResourceCount; ++each) {
@@ -3106,16 +3284,10 @@ namespace {
 			if (low) {
 				const float blink = 0.6F + 0.4F * std::sin(static_cast<float>(ImGui::GetTime()) * 5.0F);
 				ImGui::TextColored(ImVec4(1.0F, 0.4F * blink, 0.3F * blink, 1.0F), "%d", stock);
+			} else if (net != 0) {
+				ImGui::TextColored(net > 0 ? ImVec4(0.6F, 1.0F, 0.6F, 1.0F) : ImVec4(1.0F, 0.7F, 0.4F, 1.0F), "%d", stock);
 			} else {
 				ImGui::Text("%d", stock);
-			}
-			if (net != 0) {
-				ImGui::SameLine(0.0F, 2.0F);
-				ImGui::TextColored(net > 0 ? ImVec4(0.5F, 1.0F, 0.5F, 1.0F) : ImVec4(1.0F, 0.55F, 0.45F, 1.0F), "%+d", net);
-			}
-			if (BonusTier(game, player, resource) > 0) {
-				ImGui::SameLine(0.0F, 2.0F);
-				ImGui::TextColored(ImVec4(0.55F, 1.0F, 0.55F, 1.0F), "*");
 			}
 			ImGui::EndGroup();
 			if (ImGui::IsItemHovered()) {
@@ -3844,10 +4016,6 @@ namespace {
 				ResourceBar(player);
 				BeaconItem(s_Screen.Lights.Resources);
 			}
-			if (Shown(Step::Routine)) {
-				ToDoList();
-			}
-			Roster();
 		}
 		ImGui::Separator();
 		const int army = SelectedArmyIndex();
@@ -3880,7 +4048,17 @@ namespace {
 			}
 		}
 		if (army < 0 && planet < 0 && s_Screen.SelectedSystem < 0) {
-			ImGui::TextWrapped("Click an army or a star. Double-click a star for its planets, and a planet for its points.\n\nWith one of your armies picked, right-click where it should go: a star to travel there along the lanes, a point on a planet to land or march there. Moving onto a defended point is a battle.\n\nHold more than half of a planet's points to control it.");
+			ImGui::TextDisabled("Nothing picked.");
+			ImGui::TextWrapped("Click an army or a star to see it here. Double-click a star for its planets, and a planet for its points.\n\nWith one of your armies picked, right-click where it should go. Hover first to see the route or the odds.");
+			ImGui::TextDisabled("Help (?) explains the rest.");
+		}
+		// What's less often needed, folded away below.
+		if (player >= 0) {
+			ImGui::Spacing();
+			Roster();
+			if (Shown(Step::Routine)) {
+				ToDoList();
+			}
 		}
 		ImGui::EndChild();
 	}
@@ -4106,6 +4284,76 @@ namespace {
 	}
 #pragma endregion
 
+#pragma region Help
+	/// Help: short topics on how the campaign works, and the hotkeys (? or Help in the top bar).
+	void HelpWindow() {
+		if (!s_Screen.HelpOpen) {
+			return;
+		}
+		ImGui::SetNextWindowSize(ImVec2(ImGui::GetFontSize() * 40.0F, ImGui::GetFontSize() * 26.0F), ImGuiCond_FirstUseEver);
+		if (!ImGui::Begin("Help###CampaignHelp", &s_Screen.HelpOpen, ImGuiWindowFlags_NoCollapse)) {
+			ImGui::End();
+			return;
+		}
+		struct Topic {
+			const char* Name;
+			const char* Text;
+		};
+		static const Topic topics[] = {
+			{"Each turn", "1. Check the bar above the map. Red icons are pressing: invaded planets, enemies near your points, food or fuel running out. Hover one for what to do and click it to go there.\n\n2. Give your armies orders. The turn button reads Next while any still have moves: press it (or Enter, or Tab) to go to each one. Hold (H) leaves an army where it is this turn.\n\n3. Spend your gold: recruit squads, found and grow settlements, put up buildings.\n\n4. End the turn: the button reads End turn once nothing's left, and Ctrl+Enter ends it at any time. The other factions move, then you collect gold and resources."},
+			{"Moving armies", "Click an army to pick it, then right-click where it should go.\n\nOn the galaxy map, right-click a star to travel there along the lanes. Before you click, hovering the star shows the route, the turn the army reaches each stop, the fuel it needs and any enemies there.\n\nOn a planet, right-click a point to land there from orbit or march to it overland (only along the roads joining points).\n\nAn army has 2 moves a turn. Taking off, landing and marching take 1 move each, and a jump between stars takes 2 and burns 1 fuel. A long route carries on by itself over the next turns."},
+			{"Battles", "Moving onto a point held by someone you're not allied with, or defended by locals, is a battle. Before you commit, hover the point with your army picked to see your chance of winning. The attack window shows it again with both sides' strength. Go for 60% or better.\n\nBattles are resolved for you. Afterwards the report shows who won and the losses.\n\nRefill an army's squads at one of your settlements. Wounded soldiers heal each turn, fastest at a settlement, and survivors rank up. Walls make a settlement much harder to take."},
+			{"Planets and income", "A planet has 3 or 5 points. Hold more than half of them to control it, which pays a bonus each turn.\n\nWhile an enemy holds any point on a planet you control, it's invaded: half income and slower healing until you drive them out.\n\nFound an outpost on a point you hold, then grow it into a colony and a city for more gold and more building slots. Barracks unlock better squads, a Market pays more, Walls help hold it and a Hospital heals.\n\nEvery soldier costs upkeep each turn."},
+			{"Resources and trade", "Every point produces one of six resources: water, food, metal, fuel, crystal or relics. Your stores show under your gold, green when rising and orange when falling. One blinking red is running out.\n\nArmies eat food every turn and burn fuel to jump between stars. Building takes metal and water. Having plenty of a resource earns a production bonus: hover it to see them.\n\nClick a resource, or Trade (T), to buy and sell on the galaxy market. Prices rise as you buy and drift back each turn."},
+			{"Diplomacy", "Each pair of factions is at War, Neutral, Peace or in an Alliance, and each faction has an opinion of you.\n\nNeutral factions can attack each other, but it sours relations. Peace and alliances are treaties: breaking one makes every faction trust you less. Allies fight beside you and win with you.\n\nOpen Diplomacy (D) to trade gold and resources, sign trade pacts, and ask for peace or an alliance. If they won't agree, they say why. A gift raises their opinion. Factions send you offers between turns too."},
+			{"Winning", "Wipe out the other factions to win, or outlast them together with your allies. You lose when you have no armies and no points left."},
+			{"Hotkeys", "Enter: Next army, or End turn once none are left\nCtrl+Enter: end the turn now\nTab: next army with moves left\nH: hold the picked army this turn (again to wake it)\nM: Military, all your armies\nT: Trade, the galaxy market\nD: Diplomacy\nG: the galaxy map\nEsc: back out (planet, then system, then galaxy)\n?: this Help\n\nMouse: click to pick, right-click to send the picked army, double-click a star or planet to open it, drag to pan and scroll to zoom the galaxy map."},
+		};
+		const int count = static_cast<int>(std::size(topics));
+		s_Screen.HelpTopic = std::clamp(s_Screen.HelpTopic, 0, count - 1);
+		ImGui::BeginChild("##topics", ImVec2(ImGui::GetFontSize() * 10.0F, 0.0F), ImGuiChildFlags_Borders);
+		for (int topic = 0; topic < count; ++topic) {
+			if (ImGui::Selectable(topics[topic].Name, s_Screen.HelpTopic == topic)) {
+				s_Screen.HelpTopic = topic;
+			}
+		}
+		ImGui::Separator();
+		if (!s_Tips.Loaded) {
+			LoadTips();
+		}
+		bool tips = !s_Tips.Off;
+		if (ImGui::Checkbox("First-time tips", &tips)) {
+			s_Tips.Off = !tips;
+			SaveTips();
+		}
+		ImGui::SetItemTooltip("Short notes the first time something happens: an enemy near, a battle, a shortage, an offer.");
+		if (ToolUI::SmallButton("Show tips again")) {
+			s_Tips.Seen = {};
+			s_Tips.Off = false;
+			SaveTips();
+		}
+		ImGui::SetItemTooltip("Every tip shows again the next time its moment comes.");
+		if (ToolUI::SmallButton("Restart the guide")) {
+			StartGuide();
+			s_Screen.HelpOpen = false;
+		}
+		ImGui::SetItemTooltip("The walkthrough from the start, in this campaign.");
+		ImGui::EndChild();
+		ImGui::SameLine();
+		ImGui::BeginChild("##topic", ImVec2(0.0F, 0.0F), ImGuiChildFlags_Borders);
+		ImGui::SetWindowFontScale(1.15F);
+		ImGui::TextColored(ToolTheme::Vec(ToolTheme::Gold), "%s", topics[s_Screen.HelpTopic].Name);
+		ImGui::SetWindowFontScale(1.0F);
+		ImGui::Spacing();
+		ImGui::PushTextWrapPos(0.0F);
+		ImGui::TextUnformatted(topics[s_Screen.HelpTopic].Text);
+		ImGui::PopTextWrapPos();
+		ImGui::EndChild();
+		ImGui::End();
+	}
+
+#pragma endregion
+
 #pragma region Armies in a system
 	/// Over the top right of the system map: every army in the system, other factions' first (threats at the top), so none goes unseen.
 	/// Click one to pick it; the mouse on one points it out on the map.
@@ -4219,6 +4467,7 @@ namespace {
 			}
 		}
 		UpdateGuide();
+		UpdateTips();
 		if (ToolUI::Button("Menu")) {
 			SaveGame();
 			s_Screen.HasGame = false;
@@ -4257,7 +4506,7 @@ namespace {
 				s_Screen.MarketOpen = !s_Screen.MarketOpen;
 			}
 			BeaconItem(s_Screen.Lights.Trade);
-			ImGui::SetItemTooltip("The galaxy market: buy and sell water, food, metal, fuel, crystal and relics for gold.");
+			ImGui::SetItemTooltip("The galaxy market: buy and sell water, food, metal, fuel, crystal and relics for gold (T).");
 		}
 		if (Shown(Step::Diplomacy)) {
 			ImGui::SameLine();
@@ -4265,8 +4514,13 @@ namespace {
 				s_Screen.DiplomacyOpen = !s_Screen.DiplomacyOpen;
 			}
 			BeaconItem(s_Screen.Lights.Diplomacy);
-			ImGui::SetItemTooltip("Where you stand with each faction: deals, trade pacts, peace, alliances and war.");
+			ImGui::SetItemTooltip("Where you stand with each faction: deals, trade pacts, peace, alliances and war (D).");
 		}
+		ImGui::SameLine();
+		if (ToolUI::Button("Help")) {
+			s_Screen.HelpOpen = !s_Screen.HelpOpen;
+		}
+		ImGui::SetItemTooltip("How the campaign works, and the hotkeys (?).");
 		ImGui::SameLine();
 		ImGui::TextDisabled("|");
 		ImGui::SameLine();
@@ -4274,6 +4528,7 @@ namespace {
 			s_Screen.Showing = View::Galaxy;
 		}
 		BeaconItem(s_Screen.Lights.Galaxy);
+		ImGui::SetItemTooltip("The galaxy map (G). Esc steps back out from a planet or a system.");
 		if (s_Screen.ViewSystem >= 0 && s_Screen.ViewSystem < static_cast<int>(game.Systems.size())) {
 			ImGui::SameLine();
 			const std::string label = game.Systems[s_Screen.ViewSystem].Name + "###systemCrumb";
@@ -4306,6 +4561,18 @@ namespace {
 		}
 		if (ImGui::IsKeyPressed(ImGuiKey_M, false) && keys && Shown(Step::Routine)) {
 			s_Screen.MilitaryOpen = !s_Screen.MilitaryOpen;
+		}
+		if (ImGui::IsKeyPressed(ImGuiKey_T, false) && keys && Shown(Step::Trade)) {
+			s_Screen.MarketOpen = !s_Screen.MarketOpen;
+		}
+		if (ImGui::IsKeyPressed(ImGuiKey_D, false) && keys && Shown(Step::Diplomacy)) {
+			s_Screen.DiplomacyOpen = !s_Screen.DiplomacyOpen;
+		}
+		if (ImGui::IsKeyPressed(ImGuiKey_G, false) && keys) {
+			s_Screen.Showing = View::Galaxy;
+		}
+		if (ImGui::IsKeyPressed(ImGuiKey_Slash, false) && keys) {
+			s_Screen.HelpOpen = !s_Screen.HelpOpen;
 		}
 		if (ImGui::IsKeyPressed(ImGuiKey_H, false) && keys) {
 			if (const int army = OwnSelectedArmy(); army >= 0 && game.Armies[army].Moves > 0 && game.Armies[army].Path.empty()) {
@@ -4381,6 +4648,7 @@ namespace {
 		ImGui::SameLine();
 		SidePanel(sideWidth, room.y);
 		GuideBox();
+		TipBox();
 		SystemArmiesBox();
 
 		// Esc steps back out: planet to system to galaxy.
@@ -4400,6 +4668,7 @@ namespace {
 		MilitaryWindow();
 		MarketWindow();
 		DiplomacyWindow();
+		HelpWindow();
 		WarWindow();
 		OfferWindow();
 		DisbandWindow();
