@@ -140,6 +140,13 @@ namespace {
 		int SelectedPoint = -1;
 		float GalaxyZoom = 1.0F;
 		ImVec2 GalaxyPan = ImVec2(0.0F, 0.0F);
+		// The system and planet maps' zoom, and their pan in pixels, kept while the same system or planet is shown.
+		float SystemZoom = 1.0F;
+		ImVec2 SystemPan = ImVec2(0.0F, 0.0F);
+		int ZoomedSystem = -1;
+		float PlanetZoom = 1.0F;
+		ImVec2 PlanetPan = ImVec2(0.0F, 0.0F);
+		int ZoomedPlanet = -1;
 		PendingAttack Attack;
 		bool ConfirmDisband = false;
 		bool ConfirmDelete = false;
@@ -619,6 +626,35 @@ namespace {
 	}
 
 	void EndCanvas() { ImGui::GetWindowDrawList()->PopClipRect(); }
+
+	constexpr float c_MinZoom = 0.7F;
+	constexpr float c_MaxZoom = 4.0F;
+
+	/// Zooms a map by a step, keeping what's at `about` (an offset from the map's middle) where it is.
+	void ZoomBy(float factor, ImVec2 about, float& zoom, ImVec2& pan) {
+		const float next = std::clamp(zoom * factor, c_MinZoom, c_MaxZoom);
+		pan.x = about.x - (about.x - pan.x) * next / zoom;
+		pan.y = about.y - (about.y - pan.y) * next / zoom;
+		zoom = next;
+	}
+
+	/// The system and planet maps' zoom and pan: scroll to zoom about the mouse, drag to pan (with the left button past a few pixels, or
+	/// the middle one). The pan is kept to where some of the map stays in sight.
+	void ZoomAndPan(bool hovered, ImVec2 from, ImVec2 to, float& zoom, ImVec2& pan) {
+		const ImGuiIO& io = ImGui::GetIO();
+		const ImVec2 middle((from.x + to.x) * 0.5F, (from.y + to.y) * 0.5F);
+		if (hovered && io.MouseWheel != 0.0F) {
+			ZoomBy(io.MouseWheel > 0.0F ? 1.15F : 1.0F / 1.15F, ImVec2(io.MousePos.x - middle.x, io.MousePos.y - middle.y), zoom, pan);
+		}
+		if (hovered && (ImGui::IsMouseDragging(ImGuiMouseButton_Middle) || ImGui::IsMouseDragging(ImGuiMouseButton_Left, 6.0F))) {
+			pan.x += io.MouseDelta.x;
+			pan.y += io.MouseDelta.y;
+		}
+		const float reachX = (to.x - from.x) * 0.5F * zoom;
+		const float reachY = (to.y - from.y) * 0.5F * zoom;
+		pan.x = std::clamp(pan.x, -reachX, reachX);
+		pan.y = std::clamp(pan.y, -reachY, reachY);
+	}
 #pragma endregion
 
 #pragma region Animations
@@ -2093,15 +2129,21 @@ namespace {
 		const bool hovered = BeginCanvas("##system", size, from, to);
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		const ImGuiIO& io = ImGui::GetIO();
-		DrawSpace(drawList, from, to, game.Seed + static_cast<std::uint32_t>(systemIndex) * 31u, ImVec2(0.0F, 0.0F));
-		const ImVec2 star((from.x + to.x) * 0.5F, (from.y + to.y) * 0.5F);
+		if (s_Screen.ZoomedSystem != systemIndex) {
+			s_Screen.ZoomedSystem = systemIndex;
+			s_Screen.SystemZoom = 1.0F;
+			s_Screen.SystemPan = ImVec2(0.0F, 0.0F);
+		}
+		ZoomAndPan(hovered, from, to, s_Screen.SystemZoom, s_Screen.SystemPan);
+		DrawSpace(drawList, from, to, game.Seed + static_cast<std::uint32_t>(systemIndex) * 31u, ImVec2(s_Screen.SystemPan.x * 0.3F, s_Screen.SystemPan.y * 0.3F));
+		const ImVec2 star((from.x + to.x) * 0.5F + s_Screen.SystemPan.x, (from.y + to.y) * 0.5F + s_Screen.SystemPan.y);
 		float outermost = 1.0F;
 		for (int planet: system.Planets) {
 			if (game.Planets[planet].Parent < 0) {
 				outermost = std::max(outermost, game.Planets[planet].Orbit);
 			}
 		}
-		const float room = std::min(to.x - from.x, (to.y - from.y) * 1.6F) * 0.45F;
+		const float room = std::min(to.x - from.x, (to.y - from.y) * 1.6F) * 0.45F * s_Screen.SystemZoom;
 		const float step = room / (outermost + 0.6F);
 		const ImU32 starColor = StarColor(system.StarColor);
 		for (int glow = 5; glow >= 1; --glow) {
@@ -2358,10 +2400,16 @@ namespace {
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		const ImGuiIO& io = ImGui::GetIO();
 		drawList->AddRectFilled(canvasFrom, canvasTo, IM_COL32(6, 8, 18, 255));
-		// The surface map: two wide for one high, as big as fits.
-		const float mapWidth = std::min(canvasTo.x - canvasFrom.x - 20.0F, (canvasTo.y - canvasFrom.y - 40.0F) * 2.0F);
+		if (s_Screen.ZoomedPlanet != planetIndex) {
+			s_Screen.ZoomedPlanet = planetIndex;
+			s_Screen.PlanetZoom = 1.0F;
+			s_Screen.PlanetPan = ImVec2(0.0F, 0.0F);
+		}
+		ZoomAndPan(hovered, canvasFrom, canvasTo, s_Screen.PlanetZoom, s_Screen.PlanetPan);
+		// The surface map: two wide for one high, as big as fits, then zoomed.
+		const float mapWidth = std::min(canvasTo.x - canvasFrom.x - 20.0F, (canvasTo.y - canvasFrom.y - 40.0F) * 2.0F) * s_Screen.PlanetZoom;
 		const float mapHeight = mapWidth * 0.5F;
-		const ImVec2 from((canvasFrom.x + canvasTo.x - mapWidth) * 0.5F, (canvasFrom.y + canvasTo.y - mapHeight) * 0.5F + 10.0F);
+		const ImVec2 from((canvasFrom.x + canvasTo.x - mapWidth) * 0.5F + s_Screen.PlanetPan.x, (canvasFrom.y + canvasTo.y - mapHeight) * 0.5F + 10.0F + s_Screen.PlanetPan.y);
 		const ImVec2 to(from.x + mapWidth, from.y + mapHeight);
 		const ImU32 base = PlanetColor(planet.Type);
 		drawList->AddRectFilled(from, to, Scale(base, 0.55F));
@@ -4354,6 +4402,56 @@ namespace {
 
 #pragma endregion
 
+#pragma region Zoom buttons
+	/// Zoom in, out and back over the bottom right of whichever map is shown, for those without a scroll wheel.
+	void ZoomButtons() {
+		float* zoom = &s_Screen.GalaxyZoom;
+		ImVec2* pan = nullptr;
+		if (s_Screen.Showing == View::System) {
+			zoom = &s_Screen.SystemZoom;
+			pan = &s_Screen.SystemPan;
+		} else if (s_Screen.Showing == View::Planet) {
+			zoom = &s_Screen.PlanetZoom;
+			pan = &s_Screen.PlanetPan;
+		}
+		const float button = ImGui::GetFrameHeight();
+		const float spacing = ImGui::GetStyle().ItemSpacing.x * 0.5F;
+		const float width = button * 3.0F + spacing * 2.0F;
+		const bool legend = s_Screen.Showing == View::Galaxy;
+		ImGui::SetCursorScreenPos(ImVec2(s_Screen.MapTo.x - width - 10.0F, s_Screen.MapTo.y - button - 10.0F));
+		ImGui::PushID("zoom");
+		ImGui::BeginGroup();
+		const auto step = [&](float factor) {
+			if (pan) {
+				ZoomBy(factor, ImVec2(0.0F, 0.0F), *zoom, *pan);
+			} else {
+				*zoom = std::clamp(*zoom * factor, 0.6F, 4.0F);
+			}
+		};
+		if (ToolUI::Button("+", ImVec2(button, button))) {
+			step(1.3F);
+		}
+		ImGui::SetItemTooltip("Zoom in (or scroll the mouse wheel over the map).");
+		ImGui::SameLine(0.0F, spacing);
+		if (ToolUI::Button("-", ImVec2(button, button))) {
+			step(1.0F / 1.3F);
+		}
+		ImGui::SetItemTooltip("Zoom out.");
+		ImGui::SameLine(0.0F, spacing);
+		if (ToolUI::Button("1:1", ImVec2(button, button))) {
+			*zoom = 1.0F;
+			if (pan) {
+				*pan = ImVec2(0.0F, 0.0F);
+			} else {
+				s_Screen.GalaxyPan = ImVec2(0.0F, 0.0F);
+			}
+		}
+		ImGui::SetItemTooltip(legend ? "The whole galaxy again. Drag the map to move around it." : "The whole map again. Drag the map to move around it.");
+		ImGui::EndGroup();
+		ImGui::PopID();
+	}
+#pragma endregion
+
 #pragma region Armies in a system
 	/// Over the top right of the system map: every army in the system, other factions' first (threats at the top), so none goes unseen.
 	/// Click one to pick it; the mouse on one points it out on the map.
@@ -4650,6 +4748,7 @@ namespace {
 		GuideBox();
 		TipBox();
 		SystemArmiesBox();
+		ZoomButtons();
 
 		// Esc steps back out: planet to system to galaxy.
 		if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId)) {
