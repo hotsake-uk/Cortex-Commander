@@ -12,13 +12,18 @@ namespace SandboxDetail {
 		if (!actor || !game || !actor->IsPlayerControllable()) {
 			return;
 		}
+		// (In commander mode, only your own side's units.)
+		if (s_Commander && actor->GetTeam() != s_CommanderTeam) {
+			g_ConsoleMan.PrintString("SANDBOX: In command mode you can only take control of your own team's units.");
+			return;
+		}
 		if (game->SwitchToActor(actor, Players::PlayerOne, actor->GetTeam())) {
 			game->SetViewState(Activity::ViewState::Normal, Players::PlayerOne);
 			SetPossessed(actor);
 			s_PlayHintSeconds = 9.0F;
 			// Every tool window goes away, not only the sandbox's: any left open would keep the mouse from the unit.
 			g_DebugMan.CloseTools();
-			g_ConsoleMan.PrintString("SANDBOX: You're controlling " + actor->GetPresetName() + ". Press Tab to go back to the god view.");
+			g_ConsoleMan.PrintString("SANDBOX: You're controlling " + actor->GetPresetName() + (s_Commander ? ". Press Tab to go back to the command view." : ". Press Tab to go back to the god view."));
 		} else {
 			// (The game refuses a unit another player controls, or another player's brain, with only its error sound.)
 			g_ConsoleMan.PrintString("SANDBOX: " + actor->GetPresetName() + " can't be taken over: another player has it, or it is their brain.");
@@ -451,7 +456,29 @@ namespace SandboxDetail {
 		if (!game || !InGame() || Sandbox::IsGodMode() || game->GetActivityState() == Activity::ActivityState::Over) {
 			s_Commander = false;
 			s_FreeCamera = false;
+			if (!Sandbox::IsGodMode()) {
+				s_Possessed = nullptr;
+			}
 			return;
+		}
+		// A unit taken over with the Control tool is played, not let go of, until Tab (or F9 or the toolbar key) brings you back up. If it
+		// dies, back to the command view rather than into whatever unit the game hands you next. A switch to another of your units with the
+		// game's own next/previous keys is followed.
+		if (s_Possessed) {
+			Actor* controlled = game->GetControlledActor(Players::PlayerOne);
+			const bool alive = g_MovableMan.IsActor(s_Possessed) && static_cast<long>(s_Possessed->GetUniqueID()) == s_PossessedID;
+			if (alive && controlled == s_Possessed) {
+				return;
+			}
+			if (alive && controlled && g_MovableMan.IsActor(controlled) && controlled->GetTeam() == s_CommanderTeam) {
+				SetPossessed(controlled);
+				return;
+			}
+			s_Possessed = nullptr;
+			Sandbox::SetOpen(!s_CommanderToolbarView);
+			if (!alive) {
+				g_ConsoleMan.PrintString("SANDBOX: The unit you were controlling is gone; back to the command view.");
+			}
 		}
 		const BuyMenuGUI* buy = game->GetBuyGUI(Players::PlayerOne);
 		Activity::ViewState view = game->GetViewState(Players::PlayerOne);
