@@ -181,8 +181,7 @@ partial class MainForm : Form
 		Controls.Add(actions);
 		Controls.Add(Row("World:", worldBox, worldsOpen, new Label { Text = "planet skin applied over Data/Base.rte on launch", AutoSize = true, Padding = new Padding(8, 8, 0, 0) }));
 		Controls.Add(Row("Presets:", presetsBox, presetsBrowse));
-		Controls.Add(Row("Add mods:", modLinksBox, addModsBtn));
-		Controls.Add(Row("Mods:", modsBox, modsBrowse, checkModsBtn, checkBeforeLaunch));
+		Controls.Add(Row("Mods:", modsBox, modsBrowse, addModsBtn, checkModsBtn, checkBeforeLaunch));
 		Controls.Add(Row("Settings:", iniBox, iniBrowse));
 		Controls.Add(new Label { Text = "Commit (latest is selected; pick an older one if you want):", AutoSize = true, Dock = DockStyle.Top, Padding = new Padding(4, 8, 0, 2) });
 		Controls.Add(Row("Branch:", branchBox, fetchBtn));
