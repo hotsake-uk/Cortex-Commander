@@ -144,6 +144,8 @@ namespace {
 		bool ConfirmDisband = false;
 		bool ConfirmDelete = false;
 		bool MarketOpen = false; //!< The galaxy market window is up.
+		bool MilitaryOpen = false; //!< The window of all the player's armies.
+		bool MilitaryReadyOnly = false;
 		bool DiplomacyOpen = false;
 		int DealWith = -1; //!< The faction a deal is being put together for, in the diplomacy window.
 		Deal DealDraft;
@@ -281,6 +283,7 @@ namespace {
 		s_Screen.FollowArmy = 0;
 		s_Screen.Alerts.clear();
 		s_Screen.MarketOpen = false;
+		s_Screen.MilitaryOpen = false;
 		s_Screen.DiplomacyOpen = false;
 		s_Screen.DealWith = s_Screen.ConfirmWar = -1;
 		s_Screen.DiplomacyNote.clear();
@@ -1296,7 +1299,7 @@ namespace {
 			case Step::Diplomacy:
 				return {"Diplomacy", "Every faction starts Neutral: either side can attack, but it sours relations. Press Diplomacy at the top to see where you stand with each one, then ask one for peace. If they won't, they say why.\n\nA gift (a deal where you only give) raises their opinion. Allies fight beside you and win with you."};
 			case Step::Routine:
-				return {"Each turn from here", "That's everything. Each turn: check the To do list on the right (most pressing first; click a line to go there), press Tab to pick each army with moves left, spend your gold, then End turn."};
+				return {"Each turn from here", "That's everything. Each turn: check the To do list on the right (most pressing first; click a line to go there), press Tab to pick each army with moves left, spend your gold, then End turn.\n\nMilitary (or M) lists all your armies: what each is made of and which have moved."};
 			case Step::Win:
 				return {"Conquer the galaxy", "Wipe out the other factions to win, or outlast them with your allies.\n\nGood luck, commander."};
 			default:
@@ -2216,12 +2219,15 @@ namespace {
 			health /= std::max(1.0F, static_cast<float>(members.Soldiers.size()));
 			ImGui::PushID(squad);
 			const std::string header = type.Name + "  " + std::to_string(members.Soldiers.size()) + "/" + std::to_string(type.Size) + "###squad";
-			const bool open = ImGui::TreeNodeEx(header.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth);
+			// (Overlap allowed, or the row takes the Split button's clicks.)
+			const bool open = ImGui::TreeNodeEx(header.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap);
 			if (own && self.Squads.size() > 1) {
 				ImGui::SameLine(ImGui::GetContentRegionMax().x - ImGui::CalcTextSize("Split").x - ImGui::GetStyle().FramePadding.x * 2.0F);
 				if (ToolUI::SmallButton("Split")) {
 					const long keep = self.Id;
-					SplitSquad(game, army, squad);
+					if (SplitSquad(game, army, squad)) {
+						s_Screen.Note = "The squad is now " + game.Armies.back().Name + ", on the same spot.";
+					}
 					s_Screen.SelectedArmy = keep;
 					if (open) {
 						ImGui::TreePop();
@@ -2694,6 +2700,229 @@ namespace {
 	}
 
 	/// The wider galaxy's market: buying and selling resources for gold, what's moving prices, and the production bonuses.
+	/// Every army of the player's in one place: what each is made of, where it is, whether it has moved this turn, and its squads and
+	/// soldiers, with splitting, refilling and going to it.
+	void MilitaryWindow() {
+		if (!s_Screen.MilitaryOpen) {
+			return;
+		}
+		CampaignModel::Campaign& game = s_Screen.Game;
+		const int player = Player();
+		if (player < 0) {
+			s_Screen.MilitaryOpen = false;
+			return;
+		}
+		ImGui::SetNextWindowSize(ImVec2(ImGui::GetFontSize() * 52.0F, ImGui::GetFontSize() * 30.0F), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
+		if (!ImGui::Begin("Military###CampaignMilitary", &s_Screen.MilitaryOpen, ImGuiWindowFlags_NoCollapse)) {
+			ImGui::End();
+			return;
+		}
+		const Faction& self = game.Factions[player];
+		std::vector<int> own;
+		int soldiers = 0;
+		int ready = 0;
+		int moving = 0;
+		int done = 0;
+		for (int army = 0; army < static_cast<int>(game.Armies.size()); ++army) {
+			const Army& each = game.Armies[army];
+			if (each.Faction != player) {
+				continue;
+			}
+			own.push_back(army);
+			soldiers += SoldierCount(each);
+			if (!each.Path.empty()) {
+				++moving;
+			} else if (each.Moves > 0) {
+				++ready;
+			} else {
+				++done;
+			}
+		}
+		ImGui::Text("%d armies, %d soldiers. Upkeep %d gold and %d food a turn.", static_cast<int>(own.size()), soldiers, UpkeepOf(game, player), UsageOf(game, player)[static_cast<size_t>(Resource::Food)]);
+		ImGui::TextColored(ImVec4(0.47F, 1.0F, 0.55F, 1.0F), "%d ready", ready);
+		ImGui::SameLine();
+		ImGui::TextColored(ImVec4(1.0F, 0.86F, 0.35F, 1.0F), "%d on the move", moving);
+		ImGui::SameLine();
+		ImGui::TextColored(ImVec4(0.6F, 0.6F, 0.65F, 1.0F), "%d done this turn", done);
+		ImGui::SameLine();
+		ImGui::Checkbox("Only ready armies", &s_Screen.MilitaryReadyOnly);
+		ImGui::SameLine();
+		ImGui::BeginDisabled(ready == 0);
+		if (ToolUI::SmallButton("Next ready army (Tab)")) {
+			NextArmy();
+		}
+		ImGui::EndDisabled();
+		if (own.empty()) {
+			ImGui::TextDisabled("You have no armies. Recruit a squad at one of your settlements.");
+			ImGui::End();
+			return;
+		}
+
+		// Changes wait until the table is drawn: they add and remove armies.
+		enum class Action { None, Split, Refill, Disband };
+		Action action = Action::None;
+		long actionArmy = 0;
+		int actionSquad = -1;
+
+		const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_Resizable;
+		if (ImGui::BeginTable("##military", 8, flags, ImVec2(0.0F, ImGui::GetContentRegionAvail().y - ImGui::GetTextLineHeightWithSpacing() * 1.4F))) {
+			ImGui::TableSetupScrollFreeze(0, 1);
+			ImGui::TableSetupColumn("Army", ImGuiTableColumnFlags_WidthStretch);
+			ImGui::TableSetupColumn("This turn");
+			ImGui::TableSetupColumn("Where");
+			ImGui::TableSetupColumn("Made of");
+			ImGui::TableSetupColumn("Soldiers");
+			ImGui::TableSetupColumn("Health");
+			ImGui::TableSetupColumn("Strength");
+			ImGui::TableSetupColumn("##do");
+			ImGui::TableHeadersRow();
+			for (int army: own) {
+				const Army& each = game.Armies[army];
+				const bool isMoving = !each.Path.empty();
+				if (s_Screen.MilitaryReadyOnly && (isMoving || each.Moves <= 0)) {
+					continue;
+				}
+				ImGui::PushID(static_cast<int>(each.Id));
+				ImGui::TableNextRow();
+				if (each.Id == s_Screen.SelectedArmy) {
+					ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg1, IM_COL32(90, 80, 30, 120));
+				}
+				// What it's made of, and how hurt it is.
+				std::vector<std::pair<int, int>> types; // Squad type, how many.
+				float health = 0.0F;
+				int men = 0;
+				for (const Squad& squad: each.Squads) {
+					auto found = std::find_if(types.begin(), types.end(), [&squad](const std::pair<int, int>& type) { return type.first == squad.Type; });
+					if (found == types.end()) {
+						types.emplace_back(squad.Type, 1);
+					} else {
+						++found->second;
+					}
+					for (const Soldier& soldier: squad.Soldiers) {
+						health += soldier.Health;
+						++men;
+					}
+				}
+				health = men > 0 ? health / static_cast<float>(men) : 0.0F;
+				std::string makeup;
+				for (const auto& [type, count]: types) {
+					const std::string name = self.Squads[std::clamp(type, 0, static_cast<int>(self.Squads.size()) - 1)].Name;
+					makeup += (makeup.empty() ? "" : ", ") + (count > 1 ? std::to_string(count) + "x " : std::string()) + name;
+				}
+
+				ImGui::TableNextColumn();
+				const bool open = ImGui::TreeNodeEx(each.Name.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap);
+				ImGui::SetItemTooltip("Open to see its squads and soldiers.");
+				ImGui::TableNextColumn();
+				if (isMoving) {
+					ImGui::TextColored(ImVec4(1.0F, 0.86F, 0.35F, 1.0F), "To %s", game.Systems[each.Path.back()].Name.c_str());
+					ImGui::SetItemTooltip("On its way: %d jump%s to go.", static_cast<int>(each.Path.size()), each.Path.size() == 1 ? "" : "s");
+				} else if (each.Moves > 0) {
+					ImGui::TextColored(ImVec4(0.47F, 1.0F, 0.55F, 1.0F), "Ready (%d move%s)", each.Moves, each.Moves == 1 ? "" : "s");
+				} else {
+					ImGui::TextDisabled("Done");
+				}
+				ImGui::TableNextColumn();
+				ImGui::TextUnformatted(WhereIs(each).c_str());
+				ImGui::TableNextColumn();
+				ImGui::TextUnformatted(makeup.c_str());
+				ImGui::TableNextColumn();
+				ImGui::Text("%d", men);
+				ImGui::TableNextColumn();
+				HealthBar(health, ImGui::GetFontSize() * 4.0F);
+				ImGui::SetItemTooltip("%d%% health on average.", static_cast<int>(std::round(health * 100.0F)));
+				ImGui::TableNextColumn();
+				ImGui::Text("%.0f", Strength(game, each));
+				ImGui::TableNextColumn();
+				if (ToolUI::SmallButton("Go to")) {
+					GoToArmy(each.Id);
+				}
+				ImGui::SetItemTooltip("Picks it and shows it on the map.");
+				const int refill = ReplenishCost(game, army);
+				const bool canRefill = refill > 0 && each.Planet >= 0 && game.Planets[each.Planet].Points[each.Point].Owner == player && game.Planets[each.Planet].Points[each.Point].Settlement > 0 && self.Gold >= refill;
+				if (canRefill) {
+					ImGui::SameLine();
+					const std::string label = "Refill (" + std::to_string(refill) + ")";
+					if (ToolUI::SmallButton(label.c_str())) {
+						action = Action::Refill;
+						actionArmy = each.Id;
+					}
+					ImGui::SetItemTooltip("Fills its squads back up with new soldiers here.");
+				}
+
+				if (open) {
+					for (int squad = 0; squad < static_cast<int>(each.Squads.size()); ++squad) {
+						const Squad& members = each.Squads[squad];
+						const SquadType& type = self.Squads[std::clamp(members.Type, 0, static_cast<int>(self.Squads.size()) - 1)];
+						float squadHealth = 0.0F;
+						for (const Soldier& soldier: members.Soldiers) {
+							squadHealth += soldier.Health;
+						}
+						squadHealth /= std::max(1.0F, static_cast<float>(members.Soldiers.size()));
+						ImGui::PushID(squad);
+						ImGui::TableNextRow();
+						ImGui::TableNextColumn();
+						ImGui::Indent();
+						const std::string header = type.Name + "###squad";
+						const bool squadOpen = ImGui::TreeNodeEx(header.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap);
+						ImGui::Unindent();
+						ImGui::TableNextColumn();
+						ImGui::TextDisabled("Tier %d", type.Tier);
+						ImGui::TableNextColumn();
+						ImGui::TableNextColumn();
+						ImGui::TableNextColumn();
+						ImGui::Text("%d/%d", static_cast<int>(members.Soldiers.size()), type.Size);
+						ImGui::TableNextColumn();
+						HealthBar(squadHealth, ImGui::GetFontSize() * 4.0F);
+						ImGui::TableNextColumn();
+						ImGui::TableNextColumn();
+						if (each.Squads.size() > 1) {
+							if (ToolUI::SmallButton("Split off")) {
+								action = Action::Split;
+								actionArmy = each.Id;
+								actionSquad = squad;
+							}
+							ImGui::SetItemTooltip("This squad leaves to be an army of its own, on the same spot, with the same moves left.");
+						}
+						if (squadOpen) {
+							for (const Soldier& soldier: members.Soldiers) {
+								ImGui::TableNextRow();
+								ImGui::TableNextColumn();
+								ImGui::Indent(ImGui::GetFontSize() * 2.0F);
+								ImGui::Text("%s %s", RankName(soldier.Rank), soldier.Name.c_str());
+								ImGui::Unindent(ImGui::GetFontSize() * 2.0F);
+								ImGui::TableNextColumn();
+								ImGui::TextDisabled("%d kills", soldier.Kills);
+								ImGui::TableNextColumn();
+								ImGui::TableNextColumn();
+								ImGui::TableNextColumn();
+								ImGui::TableNextColumn();
+								HealthBar(soldier.Health, ImGui::GetFontSize() * 4.0F);
+							}
+							ImGui::TreePop();
+						}
+						ImGui::PopID();
+					}
+					ImGui::TreePop();
+				}
+				ImGui::PopID();
+			}
+			ImGui::EndTable();
+		}
+		ImGui::TextDisabled("Click an army's name to open it. Split a squad off to send it somewhere else; to put armies together, pick one and use Take in on its panel.");
+		ImGui::End();
+
+		if (const int army = FindArmy(game, actionArmy); army >= 0) {
+			if (action == Action::Split && SplitSquad(game, army, actionSquad)) {
+				s_Screen.Note = "The squad is now " + game.Armies.back().Name + ", on the same spot.";
+				s_Screen.SelectedArmy = game.Armies.back().Id;
+			} else if (action == Action::Refill) {
+				Replenish(game, army);
+			}
+		}
+	}
+
 	void MarketWindow() {
 		if (!s_Screen.MarketOpen) {
 			return;
@@ -3505,6 +3734,13 @@ namespace {
 			}
 		}
 		ImGui::SetItemTooltip("Walks you through your first moves, step by step.");
+		if (Shown(Step::Routine)) {
+			ImGui::SameLine();
+			if (ToolUI::Button("Military")) {
+				s_Screen.MilitaryOpen = !s_Screen.MilitaryOpen;
+			}
+			ImGui::SetItemTooltip("All your armies: what each is made of, where it is and whether it has moved this turn (M).");
+		}
 		if (Shown(Step::Trade)) {
 			ImGui::SameLine();
 			if (ToolUI::Button("Trade")) {
@@ -3550,6 +3786,9 @@ namespace {
 			NextArmy();
 		}
 		ImGui::SetItemTooltip("Picks your next army that still has moves and nowhere to go (Tab).");
+		if (ImGui::IsKeyPressed(ImGuiKey_M, false) && !ImGui::GetIO().WantTextInput && Shown(Step::Routine)) {
+			s_Screen.MilitaryOpen = !s_Screen.MilitaryOpen;
+		}
 		ImGui::SameLine();
 		ImGui::BeginDisabled(game.Winner >= 0 || game.Lost);
 		if (ToolUI::Button("End turn", ImVec2(endWidth, 0.0F)) || (ImGui::IsKeyPressed(ImGuiKey_Enter, false) && !ImGui::GetIO().WantTextInput && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId))) {
@@ -3608,6 +3847,7 @@ namespace {
 		AttackWindow();
 		ReportWindow();
 		AlertWindow();
+		MilitaryWindow();
 		MarketWindow();
 		DiplomacyWindow();
 		WarWindow();
