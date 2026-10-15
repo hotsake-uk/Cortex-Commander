@@ -40,6 +40,7 @@ namespace {
 		int Planet = -1;
 		int Point = -1;
 		bool Overland = false;
+		std::vector<bool> Reserve; //!< For a battle fought for real: which of the army's squads wait aboard as reinforcements.
 	};
 
 	/// Where an army is, as the maps place it: a point on a planet, or in orbit in a system.
@@ -1249,19 +1250,22 @@ namespace {
 
 	constexpr const char* c_BattleScene = "Maginot Mission"; //!< The one map every battle is fought on, for now.
 
-	/// The soldiers of some armies, for the battle script: "loadout|module|id|health;" each.
-	std::string SoldierList(const std::vector<int>& armies) {
+	/// The soldiers of some armies, for the battle script: "loadout|module|id|health|reserve;" each, reserve 1 for a squad held back
+	/// as reinforcements (by squad, for the first army).
+	std::string SoldierList(const std::vector<int>& armies, const std::vector<bool>& reserve = {}) {
 		const CampaignModel::Campaign& game = s_Screen.Game;
 		std::string list;
 		for (int army: armies) {
 			const Army& each = game.Armies[army];
 			const Faction& faction = game.Factions[each.Faction];
-			for (const Squad& squad: each.Squads) {
+			for (size_t index = 0; index < each.Squads.size(); ++index) {
+				const Squad& squad = each.Squads[index];
 				const std::string loadout = faction.Squads.empty() ? std::string() : faction.Squads[std::clamp(squad.Type, 0, static_cast<int>(faction.Squads.size()) - 1)].Loadout;
+				const bool held = army == armies.front() && index < reserve.size() && reserve[index];
 				for (const Soldier& soldier: squad.Soldiers) {
 					char health[16];
 					std::snprintf(health, sizeof(health), "%.3f", soldier.Health);
-					list += loadout + "|" + faction.Module + "|" + std::to_string(soldier.Id) + "|" + health + ";";
+					list += loadout + "|" + faction.Module + "|" + std::to_string(soldier.Id) + "|" + health + (held ? "|1;" : "|0;");
 				}
 			}
 		}
@@ -1286,7 +1290,7 @@ namespace {
 	}
 
 	/// Sets up the battle for an attack, for the main menu to start: the attacker's soldiers against the defenders' and the locals'.
-	void StartFieldBattle(int army, int planet, int point, bool overland) {
+	void StartFieldBattle(int army, int planet, int point, bool overland, const std::vector<bool>& reserve) {
 		CampaignModel::Campaign& game = s_Screen.Game;
 		const Army& self = game.Armies[army];
 		const std::vector<int> defenders = DefendersAt(self.Faction, planet, point);
@@ -1317,7 +1321,7 @@ namespace {
 		battle->SetStartingGold(0);
 		battle->SetFogOfWarEnabled(false);
 		battle->SetRequireClearPathToOrbit(false);
-		battle->SaveString("CampaignAttackers", SoldierList({army}));
+		battle->SaveString("CampaignAttackers", SoldierList({army}, reserve));
 		battle->SaveString("CampaignDefenders", SoldierList(defenders));
 		battle->SaveNumber("CampaignLocals", static_cast<float>(LocalSoldiers(game, self.Faction, planet, point)));
 		battle->SaveString("CampaignLocalsTech", game.Factions[defending].Module);
@@ -2928,6 +2932,22 @@ namespace {
 			ImGui::SetItemTooltip("%s%s%s", ShipTip(self.Ship + 1), canUpgrade ? "" : "\n", canUpgrade ? "" : why.c_str());
 		}
 		if (own) {
+			ImGui::AlignTextToFramePadding();
+			ImGui::TextUnformatted("If attacked:");
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(-1.0F);
+			if (ImGui::BeginCombo("##IfAttacked", OnAttackName(self.IfAttacked))) {
+				for (int order = 0; order < static_cast<int>(OnAttack::Count); ++order) {
+					if (ImGui::Selectable(OnAttackName(order), self.IfAttacked == order)) {
+						self.IfAttacked = order;
+					}
+					ImGui::SetItemTooltip("%s", OnAttackTip(order));
+				}
+				ImGui::EndCombo();
+			}
+			ImGui::SetItemTooltip("%s\nFleeing, on the ground or in orbit, takes a move: with none left the army has to fight, so keep one in hand. It costs a quarter of its soldiers (less than losing would) and some hull in space, and the army goes to the nearest safe place: a point you or an ally hold, else up into orbit; from orbit, a system next door.", OnAttackTip(self.IfAttacked));
+		}
+		if (own) {
 			ImGui::Text("Moves left: %d of %d", self.Moves, c_MovesPerTurn);
 			if (self.Moves > 0 && self.Path.empty()) {
 				const bool holding = IsHolding(self.Id);
@@ -4433,10 +4453,40 @@ namespace {
 			ImGui::TextDisabled("You're neutral with %s: this starts a war, and others think a little less of you.", FactionLabel(point.Owner).c_str());
 		}
 		ImGui::Spacing();
-		const bool canFight = guards.empty() && CanFight(army, attack.Planet, attack.Point);
+		bool canFight = guards.empty() && CanFight(army, attack.Planet, attack.Point);
+		if (canFight) {
+			// Who lands first, and who waits aboard as reinforcements.
+			const std::vector<Squad>& squads = game.Armies[army].Squads;
+			const Faction& own = game.Factions[game.Armies[army].Faction];
+			attack.Reserve.resize(squads.size(), false);
+			ImGui::SeparatorText("If you fight it yourself");
+			ImGui::TextDisabled("Pick which squads land in the first wave. Reserves wait aboard\nuntil you call them in (R) or the first wave is spent.\nAny who never land come back unhurt.");
+			int firstWave = 0;
+			for (size_t index = 0; index < squads.size(); ++index) {
+				ImGui::PushID(static_cast<int>(index));
+				const bool held = attack.Reserve[index];
+				if (ToolUI::SmallButton(held ? "Reserve" : "First wave")) {
+					attack.Reserve[index] = !held;
+				}
+				ImGui::SetItemTooltip("Click to switch between the first wave and the reserve.");
+				ImGui::SameLine();
+				const SquadType& type = own.Squads[std::clamp(squads[index].Type, 0, static_cast<int>(own.Squads.size()) - 1)];
+				if (held) {
+					ImGui::TextDisabled("%s (%d)", type.Name.c_str(), static_cast<int>(squads[index].Soldiers.size()));
+				} else {
+					ImGui::Text("%s (%d)", type.Name.c_str(), static_cast<int>(squads[index].Soldiers.size()));
+				}
+				firstWave += attack.Reserve[index] ? 0 : 1;
+				ImGui::PopID();
+			}
+			if (firstWave == 0) {
+				ImGui::TextColored(ImVec4(1.0F, 0.6F, 0.4F, 1.0F), "Someone has to land first: put a squad in the first wave.");
+				canFight = false;
+			}
+		}
 		ImGui::BeginDisabled(!canFight);
 		if (ToolUI::Button("Fight it yourself", ImVec2(ImGui::GetFontSize() * 10.0F, 0.0F))) {
-			StartFieldBattle(army, attack.Planet, attack.Point, attack.Overland);
+			StartFieldBattle(army, attack.Planet, attack.Point, attack.Overland, attack.Reserve);
 			attack.Open = false;
 			ImGui::CloseCurrentPopup();
 			ImGui::EndDisabled();
@@ -4476,6 +4526,24 @@ namespace {
 		const BattleOutcome& outcome = game.Reports.front();
 		const int player = Player();
 		const bool won = (outcome.Attacker == player) == outcome.AttackerWon;
+		if (outcome.Fled) {
+			const bool fledFromPlayer = outcome.Attacker == player;
+			ImGui::SetWindowFontScale(1.3F);
+			ImGui::TextColored(fledFromPlayer ? ImVec4(0.5F, 1.0F, 0.5F, 1.0F) : ImVec4(1.0F, 0.85F, 0.35F, 1.0F), "%s", fledFromPlayer ? "They fled" : "Fled");
+			ImGui::SetWindowFontScale(1.0F);
+			ImGui::Text("%s attacked at %s, and the defenders fled.", FactionLabel(outcome.Attacker).c_str(), outcome.Where.c_str());
+			ImGui::Separator();
+			for (const std::string& line: outcome.Notes) {
+				ImGui::BulletText("%s", line.c_str());
+			}
+			ImGui::Spacing();
+			if (ToolUI::Button("Continue", ImVec2(-1.0F, 0.0F)) || ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+				game.Reports.erase(game.Reports.begin());
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::EndPopup();
+			return;
+		}
 		const bool playerIn = outcome.Attacker == player || outcome.Defender == player;
 		ImGui::SetWindowFontScale(1.3F);
 		ImGui::TextColored(!playerIn ? ImVec4(1.0F, 1.0F, 1.0F, 1.0F) : won ? ImVec4(0.5F, 1.0F, 0.5F, 1.0F) : ImVec4(1.0F, 0.5F, 0.4F, 1.0F), "%s", !playerIn ? "Battle" : won ? "Victory" : "Defeat");
@@ -4497,6 +4565,9 @@ namespace {
 			}
 		} else {
 			ImGui::Text("%s", outcome.AttackerWon ? "The attackers took the point." : "The defenders held.");
+			for (const std::string& line: outcome.Notes) {
+				ImGui::BulletText("%s", line.c_str());
+			}
 		}
 		if (!outcome.Promotions.empty()) {
 			ImGui::SeparatorText("Promotions");
@@ -4637,7 +4708,7 @@ namespace {
 		static const Topic topics[] = {
 			{"Each turn", "1. Check the bar above the map. Red icons are pressing: invaded planets, enemies near your points, food or fuel running out. Hover one for what to do and click it to go there.\n\n2. Give your armies orders. The turn button reads Next while any still have moves: press it (or Enter, or Tab) to go to each one. Hold (H) leaves an army where it is this turn.\n\n3. Spend your gold: recruit squads, found and grow settlements, put up buildings.\n\n4. End the turn: the button reads End turn once nothing's left, and Ctrl+Enter ends it at any time. The other factions move, then you collect gold and resources."},
 			{"Moving armies", "Click an army to pick it, then right-click where it should go.\n\nOn the galaxy map, right-click a star to travel there along the lanes. Before you click, hovering the star shows the route, the turn the army reaches each stop, the fuel it needs and any enemies there.\n\nOn a planet, right-click a point to land there from orbit or march to it overland (only along the roads joining points).\n\nAn army has 2 moves a turn. Taking off, landing and marching take 1 move each, and a jump between stars takes 2 and burns 1 fuel. A long route carries on by itself over the next turns."},
-			{"Battles", "Moving onto a point held by someone you're not allied with, or defended by locals, is a battle. Before you commit, hover the point with your army picked to see your chance of winning. The attack window shows it again with both sides' strength. Go for 60% or better.\n\nPress Auto-resolve to have the battle resolved for you, or Fight it yourself to play it on the battlefield with the army's own soldiers. Afterwards the report shows who won and the losses.\n\nRefill an army's squads at one of your settlements. Wounded soldiers heal each turn, fastest at a settlement, and survivors rank up. Walls make a settlement much harder to take."},
+			{"Battles", "Moving onto a point held by someone you're not allied with, or defended by locals, is a battle. Before you commit, hover the point with your army picked to see your chance of winning. The attack window shows it again with both sides' strength. Go for 60% or better.\n\nPress Auto-resolve to have the battle resolved for you, or Fight it yourself to play it on the battlefield with the army's own soldiers. Afterwards the report shows who won and the losses.\n\nRefill an army's squads at one of your settlements. Wounded soldiers heal each turn, fastest at a settlement, and survivors rank up. Walls make a settlement much harder to take.\n\nEach army has an order for when it's attacked (in its panel): Fight, Flee if losing, or Always flee. Fleeing takes a move, so an army with none left has to fight. It costs a quarter of the army's soldiers, less than losing would, and the army goes to the nearest point you or an ally hold, or up into orbit. Fleets flee to a system next door."},
 			{"Fleets", "Every army travels in a ship. A new army has a transport, which only carries it: it never fights in space, and it can't land where enemy warships guard the orbit.\n\nBuild a Shipyard at one of your settlements, then upgrade the ship of an army standing there (in its panel) to a frigate, then a cruiser. Warships cost upkeep each turn.\n\nWarships of factions at war fight when they meet in orbit, and guard the planets below: to land past them you have to win a space battle first. Ships lose hull in battle and repair a little each turn, fast over one of your Shipyards. A warship that's destroyed takes most of its army's soldiers with it, and the loser falls back to a system next door."},
 			{"Planets and income", "A planet has 3 or 5 points. Hold more than half of them to control it, which pays a bonus each turn.\n\nWhile an enemy holds any point on a planet you control, it's invaded: half income and slower healing until you drive them out.\n\nFound an outpost on a point you hold, then grow it into a colony and a city for more gold and more building slots. Barracks unlock better squads, a Market pays more, Walls help hold it and a Hospital heals.\n\nEvery soldier costs upkeep each turn."},
 			{"Resources and trade", "Every point produces one of six resources: water, food, metal, fuel, crystal or relics. Your stores show under your gold, green when rising and orange when falling. One blinking red is running out.\n\nArmies eat food every turn and burn fuel to jump between stars. Building takes metal and water. Having plenty of a resource earns a production bonus: hover it to see them.\n\nClick a resource, or Trade (T), to buy and sell on the galaxy market. Prices rise as you buy and drift back each turn."},

@@ -480,6 +480,9 @@ namespace RTE::CampaignModel {
 			campaign.Lost = std::none_of(campaign.Factions.begin(), campaign.Factions.end(), [](const Faction& faction) { return faction.Human && faction.Alive; });
 		}
 
+		bool WantsToFlee(const Campaign& campaign, const Army& army, float holdChance);
+		std::string Flee(Campaign& campaign, int index, int& lost);
+
 		/// An army moving onto a point: taken if nobody defends it, else an auto-resolved battle. Returns whether the army is there now.
 		/// army is an index; it may move in the list, so it's found again by ID afterwards.
 		/// After a battle fought for real: the soldiers not among the survivors fall, the rest keep the health they ended on. Returns
@@ -521,6 +524,29 @@ namespace RTE::CampaignModel {
 			for (int defender: defenders) {
 				DeclareWar(campaign, faction, campaign.Armies[defender].Faction);
 			}
+			// Defenders told to flee (with a move left) get away first, at a cost. Not from a battle already fought for real.
+			std::vector<std::string> fled;
+			int firstFled = -1;
+			if (!fought && !defenders.empty()) {
+				float holding = militia;
+				for (int defender: defenders) {
+					holding += Strength(campaign, campaign.Armies[defender]) * WallsFactor(campaign, point);
+				}
+				const float hold = 1.0F - WinChance(Strength(campaign, campaign.Armies[armyIndex]), holding);
+				std::vector<int> staying;
+				for (int defender: defenders) {
+					if (WantsToFlee(campaign, campaign.Armies[defender], hold)) {
+						int lost = 0;
+						const std::string where = Flee(campaign, defender, lost);
+						firstFled = firstFled < 0 ? campaign.Armies[defender].Faction : firstFled;
+						fled.push_back(campaign.Armies[defender].Name + " fled " + where + ", losing " + std::to_string(lost) + " soldier" + (lost == 1 ? "" : "s") + ".");
+						AddLog(campaign, campaign.Armies[defender].Name + " (" + campaign.Factions[campaign.Armies[defender].Faction].Name + ") fled from " + point.Name + " on " + planet.Name + ".");
+					} else {
+						staying.push_back(defender);
+					}
+				}
+				defenders = std::move(staying);
+			}
 			auto arrive = [&]() {
 				Army& army = campaign.Armies[FindArmy(campaign, armyID)];
 				army.Planet = planetIndex;
@@ -535,6 +561,26 @@ namespace RTE::CampaignModel {
 			};
 			if (defenders.empty() && militia < 0.01F) {
 				arrive();
+				if (!fled.empty()) {
+					// Nobody stayed to fight: a report of who fled, and no battle.
+					BattleOutcome outcome;
+					outcome.Happened = true;
+					outcome.Fled = true;
+					outcome.AttackerWon = true;
+					outcome.Attacker = faction;
+					outcome.Defender = firstFled;
+					outcome.Where = point.Name + " on " + planet.Name;
+					outcome.Planet = planetIndex;
+					outcome.Point = pointIndex;
+					outcome.Notes = fled;
+					outcome.PlayerInvolved = IsHuman(campaign, faction) || IsHuman(campaign, firstFled);
+					if (outcome.PlayerInvolved) {
+						campaign.Reports.push_back(outcome);
+					}
+					if (campaign.Battles.size() < 64) {
+						campaign.Battles.push_back(outcome);
+					}
+				}
 				CheckFactions(campaign);
 				return true;
 			}
@@ -547,6 +593,7 @@ namespace RTE::CampaignModel {
 			outcome.Where = point.Name + " on " + planet.Name;
 			outcome.Planet = planetIndex;
 			outcome.Point = pointIndex;
+			outcome.Notes = fled;
 			const float walls = WallsFactor(campaign, point);
 			float defence = militia;
 			for (int defender: defenders) {
@@ -671,10 +718,71 @@ namespace RTE::CampaignModel {
 			}
 		}
 
+		/// Whether an army that's attacked, with this chance of holding, flees: by its order, and only with a move left. AI factions flee
+		/// when they'd likely lose badly, but never from their home planet.
+		bool WantsToFlee(const Campaign& campaign, const Army& army, float holdChance) {
+			if (army.Moves < 1) {
+				return false;
+			}
+			if (!campaign.Factions[army.Faction].Human) {
+				return holdChance < 0.3F && (army.Planet < 0 || army.Planet != campaign.Factions[army.Faction].HomePlanet);
+			}
+			return army.IfAttacked == static_cast<int>(OnAttack::Flee) || (army.IfAttacked == static_cast<int>(OnAttack::FleeIfLosing) && holdChance < 0.4F);
+		}
+
+		/// An army fleeing: it loses c_FleeLoss of its soldiers (and some hull, in space), spends a move, and goes to the nearest safe
+		/// place. On a planet, that's the nearest point along the roads that it or an ally holds with no enemy on it, else up into orbit;
+		/// in orbit, a system next door (as FallBack). Returns where it went ("to X"), for the report.
+		std::string Flee(Campaign& campaign, int index, int& lost) {
+			lost = TakeCasualties(campaign, {index}, c_FleeLoss);
+			Army& army = campaign.Armies[index];
+			army.Moves = std::max(0, army.Moves - 1);
+			army.Path.clear();
+			if (army.Planet >= 0) {
+				const Planet& planet = campaign.Planets[army.Planet];
+				std::vector<bool> seen(planet.Points.size(), false);
+				std::queue<int> next;
+				next.push(army.Point);
+				seen[army.Point] = true;
+				while (!next.empty()) {
+					const int at = next.front();
+					next.pop();
+					if (at != army.Point) {
+						const Point& here = planet.Points[at];
+						bool safe = here.Owner == army.Faction || (here.Owner >= 0 && Allied(campaign, army.Faction, here.Owner));
+						for (int other: ArmiesAt(campaign, army.Planet, at)) {
+							safe = safe && Friendly(campaign, army.Faction, campaign.Armies[other].Faction);
+						}
+						if (safe) {
+							army.Point = at;
+							return "to " + here.Name;
+						}
+					}
+					for (int link: planet.Points[at].Links) {
+						if (link >= 0 && link < static_cast<int>(seen.size()) && !seen[link]) {
+							seen[link] = true;
+							next.push(link);
+						}
+					}
+				}
+				army.Planet = -1;
+				army.Point = -1;
+				return "up into orbit";
+			}
+			if (Armed(army)) {
+				army.Hull = std::max(0.05F, army.Hull - 0.2F);
+			}
+			const int moves = army.Moves;
+			const int from = army.System;
+			FallBack(campaign, index, -1);
+			campaign.Armies[index].Moves = moves;
+			return campaign.Armies[index].System != from ? "to " + campaign.Systems[campaign.Armies[index].System].Name : std::string("but had nowhere to go");
+		}
+
 		/// A space battle in orbit: an attacking warship against the warships it meets (all in the same system). Ships lose hull, the
 		/// winner less; a ship knocked out takes most of its army's soldiers with it, and the survivors carry on in a transport. The
 		/// losing side's fleets fall back to a system next door. Returns whether the attacker won (and is still there).
-		bool SpaceBattle(Campaign& campaign, int attackerIndex, const std::vector<int>& defenders, int cameFrom = -1) {
+		bool SpaceBattle(Campaign& campaign, int attackerIndex, std::vector<int> defenders, int cameFrom = -1) {
 			const long attackerID = campaign.Armies[attackerIndex].Id;
 			const int faction = campaign.Armies[attackerIndex].Faction;
 			const int system = campaign.Armies[attackerIndex].System;
@@ -689,6 +797,38 @@ namespace RTE::CampaignModel {
 				if (StanceOf(campaign, faction, campaign.Armies[defender].Faction) != Stance::War) {
 					DeclareWar(campaign, faction, campaign.Armies[defender].Faction);
 				}
+			}
+			// Fleets told to flee (with a move left) get away first, at a cost.
+			{
+				float holding = 0.0F;
+				for (int defender: defenders) {
+					holding += SpacePower(campaign.Armies[defender]);
+				}
+				const float hold = 1.0F - WinChance(SpacePower(campaign.Armies[attackerIndex]), holding);
+				std::vector<int> staying;
+				for (int defender: defenders) {
+					if (WantsToFlee(campaign, campaign.Armies[defender], hold)) {
+						int lost = 0;
+						const std::string name = campaign.Armies[defender].Name;
+						const std::string where = Flee(campaign, defender, lost);
+						outcome.Notes.push_back(name + " fled " + where + ", losing " + std::to_string(lost) + " soldier" + (lost == 1 ? "" : "s") + " and some hull.");
+						AddLog(campaign, name + " fled a space battle over " + campaign.Systems[system].Name + ".");
+					} else {
+						staying.push_back(defender);
+					}
+				}
+				defenders = std::move(staying);
+			}
+			if (defenders.empty()) {
+				outcome.Fled = true;
+				outcome.AttackerWon = true;
+				if (outcome.PlayerInvolved = IsHuman(campaign, faction) || IsHuman(campaign, outcome.Defender); outcome.PlayerInvolved) {
+					campaign.Reports.push_back(outcome);
+				}
+				if (campaign.Battles.size() < 64) {
+					campaign.Battles.push_back(outcome);
+				}
+				return true;
 			}
 			const float attack = SpacePower(campaign.Armies[attackerIndex]);
 			float defence = 0.0F;
@@ -1310,6 +1450,19 @@ namespace RTE::CampaignModel {
 	int BuildingCost(Building building) {
 		static constexpr int c_Costs[] = {500, 400, 600, 350, 600};
 		return c_Costs[std::clamp(static_cast<int>(building), 0, static_cast<int>(Building::Count) - 1)];
+	}
+
+	const char* OnAttackName(int order) {
+		static constexpr const char* c_Names[] = {"Fight", "Flee if losing", "Always flee"};
+		return c_Names[std::clamp(order, 0, static_cast<int>(OnAttack::Count) - 1)];
+	}
+
+	const char* OnAttackTip(int order) {
+		static constexpr const char* c_Tips[] = {
+		    "Stands and fights whoever attacks it.",
+		    "Flees when attacked by an army or fleet likely to beat it (under about 40% to hold).",
+		    "Flees whenever it's attacked."};
+		return c_Tips[std::clamp(order, 0, static_cast<int>(OnAttack::Count) - 1)];
 	}
 
 	const char* ShipName(int ship) {
@@ -2390,6 +2543,7 @@ namespace RTE::CampaignModel {
 		const Army source = campaign.Armies[army];
 		const int made = NewArmy(campaign, source.Faction, source.System, source.Planet, source.Point);
 		campaign.Armies[made].Moves = source.Moves;
+		campaign.Armies[made].IfAttacked = source.IfAttacked;
 		campaign.Armies[made].Squads.push_back(source.Squads[squad]);
 		campaign.Armies[army].Squads.erase(campaign.Armies[army].Squads.begin() + squad);
 		return true;

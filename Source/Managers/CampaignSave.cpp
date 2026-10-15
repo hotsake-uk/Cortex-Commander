@@ -14,7 +14,7 @@ namespace RTE::CampaignModel {
 	namespace {
 		constexpr const char* c_Folder = "Userdata/Campaigns/";
 		constexpr const char* c_Magic = "CortexCampaign";
-		constexpr int c_Version = 4; //!< 2: resources (deposits, stockpiles, the market). 3: diplomacy (relations, trade pacts). 4: armies' ships.
+		constexpr int c_Version = 5; //!< 2: resources (deposits, stockpiles, the market). 3: diplomacy (relations, trade pacts). 4: armies' ships. 5: what armies do when attacked.
 
 		std::string FileNameFor(const std::string& name) {
 			std::string file;
@@ -157,6 +157,11 @@ namespace RTE::CampaignModel {
 		out << "Ships " << campaign.Armies.size() << '\n';
 		for (const Army& army: campaign.Armies) {
 			out << army.Ship << ' ' << army.Hull << '\n';
+		}
+		// Version 5: each army's order for when it's attacked (OnAttack), in the armies' order.
+		out << "Orders " << campaign.Armies.size() << '\n';
+		for (const Army& army: campaign.Armies) {
+			out << army.IfAttacked << '\n';
 		}
 		// Written to a spare file first, then swapped in, so a crash mid-save doesn't lose the campaign.
 		const std::string path = c_Folder + campaign.FileName;
@@ -385,6 +390,17 @@ namespace RTE::CampaignModel {
 				in >> army.Ship >> army.Hull;
 				army.Ship = std::clamp(army.Ship, 0, static_cast<int>(Ship::Count) - 1);
 				army.Hull = std::clamp(army.Hull, 0.05F, 1.0F);
+			}
+		}
+		if (version >= 5) {
+			// (From before, every army fights.)
+			if (!section("Orders") || count != loaded.Armies.size()) {
+				error = "Orders missing";
+				return false;
+			}
+			for (Army& army: loaded.Armies) {
+				in >> army.IfAttacked;
+				army.IfAttacked = std::clamp(army.IfAttacked, 0, static_cast<int>(OnAttack::Count) - 1);
 			}
 		}
 		if (in.fail() && !in.eof()) {
