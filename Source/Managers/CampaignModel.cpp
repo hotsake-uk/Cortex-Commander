@@ -489,6 +489,8 @@ namespace RTE::CampaignModel {
 			outcome.Attacker = faction;
 			outcome.Defender = !defenders.empty() ? campaign.Armies[defenders.front()].Faction : owner;
 			outcome.Where = point.Name + " on " + planet.Name;
+			outcome.Planet = planetIndex;
+			outcome.Point = pointIndex;
 			const float walls = point.Built[static_cast<size_t>(Building::Walls)] && point.Settlement > 0 ? c_WallsBonus : 1.0F;
 			float defence = militia;
 			for (int defender: defenders) {
@@ -554,6 +556,9 @@ namespace RTE::CampaignModel {
 			}
 			if (outcome.PlayerInvolved) {
 				campaign.Reports.push_back(outcome);
+			}
+			if (campaign.Battles.size() < 64) {
+				campaign.Battles.push_back(outcome);
 			}
 			CheckFactions(campaign);
 			return there;

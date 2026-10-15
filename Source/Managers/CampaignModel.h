@@ -147,6 +147,8 @@ namespace RTE::CampaignModel {
 		int Attacker = -1;
 		int Defender = -1; //!< Faction, -1 for locals.
 		std::string Where;
+		int Planet = -1; //!< Where it was fought, for the maps.
+		int Point = -1;
 		float AttackStrength = 0.0F;
 		float DefendStrength = 0.0F;
 		bool AttackerWon = false;
@@ -183,6 +185,7 @@ namespace RTE::CampaignModel {
 		std::vector<Army> Armies;
 		std::vector<std::string> Log; //!< Newest last.
 		std::vector<BattleOutcome> Reports; //!< Battles a human faction was in since the screen last showed them (not saved).
+		std::vector<BattleOutcome> Battles; //!< Every battle since the screen last drew them on the maps, the AI factions' too (not saved).
 	};
 
 #pragma region Names and looks
