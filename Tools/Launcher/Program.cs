@@ -52,6 +52,8 @@ class Settings
 	public string ModsDir { get; set; } = "";
 	public string PresetsDir { get; set; } = "";
 	public string LastRef { get; set; } = "";
+	public bool CheckModsBeforeLaunch { get; set; } = true;
+	public string LastModCheckPassed { get; set; } = ""; // "sha|mods folder|files" last checked clean or launched anyway, so an unchanged setup isn't checked again
 	public string World { get; set; } = ""; // "" = stock Base.rte
 
 	static string FilePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CortexLauncher", "settings.json");
@@ -78,7 +80,7 @@ record CommitInfo(string Sha, string Date, string Author, string Subject)
 	public string Short => Sha[..10];
 }
 
-class MainForm : Form
+partial class MainForm : Form
 {
 	readonly Settings settings = Settings.Load();
 	readonly TextBox repoBox = new() { Width = 360 };
@@ -128,6 +130,7 @@ class MainForm : Form
 		modsBox.Text = settings.ModsDir;
 		presetsBox.Text = OldPath(settings.PresetsDir) ? Defaults.Presets : settings.PresetsDir;
 		LoadWorlds(settings.World);
+		SetUpModCheck();
 
 		// Dead simple: branch, commit, settings, mods, then Build & Launch.
 		static Control Row(string label, Control field, params Control[] extra)
@@ -172,7 +175,7 @@ class MainForm : Form
 		Controls.Add(actions);
 		Controls.Add(Row("World:", worldBox, worldsOpen, new Label { Text = "planet skin applied over Data/Base.rte on launch", AutoSize = true, Padding = new Padding(8, 8, 0, 0) }));
 		Controls.Add(Row("Presets:", presetsBox, presetsBrowse));
-		Controls.Add(Row("Mods:", modsBox, modsBrowse));
+		Controls.Add(Row("Mods:", modsBox, modsBrowse, checkModsBtn, checkBeforeLaunch));
 		Controls.Add(Row("Settings:", iniBox, iniBrowse));
 		Controls.Add(new Label { Text = "Commit (latest is selected; pick an older one if you want):", AutoSize = true, Dock = DockStyle.Top, Padding = new Padding(4, 8, 0, 2) });
 		Controls.Add(Row("Branch:", branchBox, fetchBtn));
@@ -235,14 +238,14 @@ class MainForm : Form
 	void SetBusy(bool b, string text = "")
 	{
 		busy = b;
-		foreach (var x in new Control[] { fetchBtn, buildBtn, runBtn, buildRunBtn, clearAllBtn, deleteBtn, openBtn, configBox, repoBox })
+		foreach (var x in new Control[] { fetchBtn, buildBtn, runBtn, buildRunBtn, clearAllBtn, deleteBtn, openBtn, configBox, repoBox, checkModsBtn })
 			x.Enabled = !b;
 		cancelBtn.Enabled = b;
 		status.Text = text;
 	}
 
 	// Runs a process, streaming output to the log. Returns the exit code.
-	async Task<int> Exec(string file, string args, string? cwd, CancellationToken ct = default, bool echo = true)
+	async Task<int> Exec(string file, string args, string? cwd, CancellationToken ct = default, bool echo = true, IDictionary<string, string>? env = null)
 	{
 		if (echo) Append($"> {Path.GetFileName(file)} {args}");
 		var psi = new ProcessStartInfo(file, args)
@@ -255,6 +258,7 @@ class MainForm : Form
 			StandardOutputEncoding = Encoding.UTF8,
 			StandardErrorEncoding = Encoding.UTF8,
 		};
+		if (env != null) foreach (var kv in env) psi.Environment[kv.Key] = kv.Value;
 		using var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
 		p.OutputDataReceived += (_, e) => { if (e.Data != null) Append(e.Data); };
 		p.ErrorDataReceived += (_, e) => { if (e.Data != null) Append(e.Data); };
@@ -481,7 +485,11 @@ class MainForm : Form
 				File.WriteAllText(BuiltMarker, $"{c.Sha} {settings.Configuration}");
 				MarkCached(c);
 			}
-			if (run) await Launch(c);
+			if (run)
+			{
+				if (IsBuilt(c) && !await CheckModsBeforeLaunch(c, ct)) { Append("Not launched: fix the mods or press Launch anyway in the mod check."); return; }
+				await Launch(c);
+			}
 		}
 		finally { SetBusy(false, currentRef); }
 	}
