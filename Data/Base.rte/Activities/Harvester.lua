@@ -74,6 +74,15 @@ function Harvester:StartNewGame()
 		self.baseSpawnTime = 7500;
 		self.randomSpawnTime = 4000;
 	end
+	-- Scenario settings (from the setup screen; their defaults play as before).
+	local goldNeeded = self:GetScenarioSetting("GoldNeeded");
+	if goldNeeded >= 0 then
+		self.goldNeeded = goldNeeded;
+		self.goldDisplay = tostring(math.floor(goldNeeded));
+	end
+	local spawnIntervalMultiplier = self:GetScenarioSettingOr("SpawnInterval", 1);
+	self.baseSpawnTime = self.baseSpawnTime * spawnIntervalMultiplier;
+	self.randomSpawnTime = math.max(1, self.randomSpawnTime * spawnIntervalMultiplier);
 	self.enemySpawnTimeLimit = (self.baseSpawnTime + math.random(self.randomSpawnTime)) * rte.SpawnIntervalScale;
 
 	self:SetupHumanPlayerBrains();
@@ -111,7 +120,7 @@ function Harvester:ResumeLoadedGame()
 	self.goldNeeded = self:LoadNumber("goldNeeded");
 	self.goldDisplay = self:LoadString("goldDisplay");
 	self.baseSpawnTime = self:LoadNumber("baseSpawnTime");
-	self.randomSpawnTime = self:LoadNumber("goldNeeded");
+	self.randomSpawnTime = self:LoadNumber("randomSpawnTime");
 	self.enemySpawnTimeLimit = self:LoadNumber("enemySpawnTimeLimit");
 
 	for player = Activity.PLAYER_1, Activity.MAXPLAYERCOUNT - 1 do

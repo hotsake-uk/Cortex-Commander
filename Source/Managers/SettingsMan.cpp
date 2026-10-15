@@ -308,6 +308,8 @@ void SettingsMan::Clear() {
 	m_SandboxGroupBadges = true;
 	m_CommanderBarKey = "F11";
 	m_ScenarioFactionPicks.clear();
+	m_ScenarioSettingValues.clear();
+	m_ScenarioFlyingCraft = false;
 	m_SandboxOrderGlyphs = 1;
 	m_SandboxSpawnStats = 1;
 	m_SandboxSpawnSort = 0;
@@ -1325,6 +1327,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("SandboxGroupBadges", { reader >> m_SandboxGroupBadges; });
 	MatchProperty("CommanderBarKey", { m_CommanderBarKey = reader.ReadPropValue(); });
 	MatchProperty("ScenarioFactionPicks", { m_ScenarioFactionPicks = reader.ReadPropValue(); });
+	MatchProperty("ScenarioSettingValues", { m_ScenarioSettingValues = reader.ReadPropValue(); });
+	MatchProperty("ScenarioFlyingCraft", { reader >> m_ScenarioFlyingCraft; });
 	MatchProperty("SandboxOrderGlyphs", { int which = 1; reader >> which; SetSandboxOrderGlyphs(which); });
 	MatchProperty("SandboxSpawnStats", { int which = 1; reader >> which; SetSandboxSpawnStats(which); });
 	MatchProperty("SandboxSpawnSort", { int which = 0; reader >> which; SetSandboxSpawnSort(which); });
@@ -2558,6 +2562,8 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("SandboxGroupBadges", m_SandboxGroupBadges);
 	writer.NewPropertyWithValue("CommanderBarKey", m_CommanderBarKey);
 	writer.NewPropertyWithValue("ScenarioFactionPicks", m_ScenarioFactionPicks);
+	writer.NewPropertyWithValue("ScenarioSettingValues", m_ScenarioSettingValues);
+	writer.NewPropertyWithValue("ScenarioFlyingCraft", m_ScenarioFlyingCraft);
 	writer.NewPropertyWithValue("SandboxOrderGlyphs", m_SandboxOrderGlyphs);
 	writer.NewPropertyWithValue("SandboxSpawnStats", m_SandboxSpawnStats);
 	writer.NewPropertyWithValue("SandboxSpawnSort", m_SandboxSpawnSort);

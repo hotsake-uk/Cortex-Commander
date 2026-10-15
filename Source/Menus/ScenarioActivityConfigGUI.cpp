@@ -23,6 +23,9 @@
 #include "GUISlider.h"
 #include "GUIListBox.h"
 
+#include <algorithm>
+#include <cmath>
+#include <iomanip>
 #include <sstream>
 
 using namespace RTE;
@@ -90,6 +93,208 @@ ScenarioActivityConfigGUI::ScenarioActivityConfigGUI(GUIControlManager* parentCo
 	} else {
 		m_FactionPicksBox->SetVisible(false);
 	}
+
+	// Optional in custom layouts: without it, scenarios run on their defaults and the AI may use flying craft.
+	m_ScenarioSettingsButton = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonScenarioSettings"));
+	m_ScenarioSettingsBox = dynamic_cast<GUICollectionBox*>(m_GUIControlManager->GetControl("CollectionBoxScenarioSettings"));
+	m_ScenarioSettingsLabel = dynamic_cast<GUILabel*>(m_GUIControlManager->GetControl("LabelScenarioSettings"));
+	m_ScenarioSettingsList = dynamic_cast<GUIListBox*>(m_GUIControlManager->GetControl("ListBoxScenarioSettings"));
+	m_ScenarioSettingValueLabel = dynamic_cast<GUILabel*>(m_GUIControlManager->GetControl("LabelScenarioSettingValue"));
+	m_ScenarioSettingSlider = dynamic_cast<GUISlider*>(m_GUIControlManager->GetControl("SliderScenarioSetting"));
+	m_ScenarioSettingsResetButton = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonScenarioSettingsReset"));
+	m_ScenarioSettingsDoneButton = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonScenarioSettingsDone"));
+	if (!m_ScenarioSettingsButton || !m_ScenarioSettingsBox || !m_ScenarioSettingsLabel || !m_ScenarioSettingsList || !m_ScenarioSettingValueLabel || !m_ScenarioSettingSlider || !m_ScenarioSettingsResetButton || !m_ScenarioSettingsDoneButton) {
+		if (m_ScenarioSettingsButton) {
+			m_ScenarioSettingsButton->SetVisible(false);
+		}
+		if (m_ScenarioSettingsBox) {
+			m_ScenarioSettingsBox->SetVisible(false);
+		}
+		m_ScenarioSettingsBox = nullptr;
+	} else {
+		m_ScenarioSettingsBox->SetVisible(false);
+	}
+}
+
+namespace {
+	constexpr int c_FlyingCraftItemIndex = -1; //!< The ExtraIndex of the flying craft switch in the scenario settings list (the scenario's settings are 0 and up).
+} // namespace
+
+void ScenarioActivityConfigGUI::LoadScenarioSettingValues() {
+	if (m_ScenarioSettingValuesLoaded) {
+		return;
+	}
+	m_ScenarioSettingValuesLoaded = true;
+	m_ScenarioFlyingCraft = g_SettingsMan.ScenarioFlyingCraft();
+	// "Maginot Defence|AttackersPerCraft=3|SpawnInterval=0.5;Wave Defense|WaveSize=2"
+	std::istringstream scenarios(g_SettingsMan.ScenarioSettingValues());
+	std::string scenario;
+	while (std::getline(scenarios, scenario, ';')) {
+		std::istringstream fields(scenario);
+		std::string scenarioName;
+		if (!std::getline(fields, scenarioName, '|') || scenarioName.empty()) {
+			continue;
+		}
+		std::string field;
+		while (std::getline(fields, field, '|')) {
+			if (size_t equals = field.find('='); equals != std::string::npos && equals > 0) {
+				try {
+					m_ScenarioSettingValues[scenarioName][field.substr(0, equals)] = std::stof(field.substr(equals + 1));
+				} catch (const std::exception&) {
+				}
+			}
+		}
+	}
+}
+
+void ScenarioActivityConfigGUI::SaveScenarioSettingValues() const {
+	std::string values;
+	for (const auto& [scenarioName, settings]: m_ScenarioSettingValues) {
+		if (settings.empty()) {
+			continue;
+		}
+		values += (values.empty() ? "" : ";") + scenarioName;
+		for (const auto& [key, value]: settings) {
+			std::ostringstream number;
+			number << value;
+			values += "|" + key + "=" + number.str();
+		}
+	}
+	g_SettingsMan.SetScenarioSettingValues(values);
+	g_SettingsMan.SetScenarioFlyingCraft(m_ScenarioFlyingCraft);
+}
+
+float ScenarioActivityConfigGUI::GetScenarioSettingValue(const GameActivity::ScenarioSetting& setting) const {
+	if (m_SelectedActivity) {
+		if (auto scenario = m_ScenarioSettingValues.find(m_SelectedActivity->GetPresetName()); scenario != m_ScenarioSettingValues.end()) {
+			if (auto value = scenario->second.find(setting.Key); value != scenario->second.end()) {
+				if (setting.AllowAuto && value->second == GameActivity::c_ScenarioSettingAuto) {
+					return value->second;
+				}
+				return std::clamp(value->second, setting.Minimum, setting.Maximum);
+			}
+		}
+	}
+	return setting.Default;
+}
+
+void ScenarioActivityConfigGUI::SetScenarioSettingValue(const GameActivity::ScenarioSetting& setting, float value) {
+	if (!m_SelectedActivity) {
+		return;
+	}
+	std::map<std::string, float>& settings = m_ScenarioSettingValues[m_SelectedActivity->GetPresetName()];
+	if (std::abs(value - setting.Default) < 0.0001F) {
+		settings.erase(setting.Key);
+	} else {
+		settings[setting.Key] = value;
+	}
+}
+
+std::string ScenarioActivityConfigGUI::ScenarioSettingValueText(const GameActivity::ScenarioSetting& setting, float value) {
+	if (setting.AllowAuto && value == GameActivity::c_ScenarioSettingAuto) {
+		return "Auto";
+	}
+	std::ostringstream text;
+	text << std::fixed;
+	if (setting.Unit == "Multiplier") {
+		text << std::setprecision(2) << "x" << value;
+	} else if (setting.Unit == "Toggle") {
+		return value > 0.5F ? "On" : "Off";
+	} else {
+		// Whole numbers without decimals, others with one.
+		const bool whole = std::abs(value - std::round(value)) < 0.001F;
+		text << std::setprecision(whole ? 0 : 1) << value;
+		if (setting.Unit == "Seconds") {
+			text << " s";
+		} else if (setting.Unit == "Minutes") {
+			text << " min";
+		} else if (setting.Unit == "Percent") {
+			text << "%";
+		}
+	}
+	return text.str();
+}
+
+void ScenarioActivityConfigGUI::FillScenarioSettingsList() {
+	if (!m_ScenarioSettingsBox || !m_SelectedActivity) {
+		return;
+	}
+	int scroll = m_ScenarioSettingsList->GetScrollVerticalValue();
+	m_ScenarioSettingsList->ClearList();
+	m_ScenarioSettingsList->AddItem("Flying craft for the AI", m_ScenarioFlyingCraft ? "On *" : "Off", nullptr, nullptr, c_FlyingCraftItemIndex);
+	const std::vector<GameActivity::ScenarioSetting>& settings = m_SelectedActivity->GetScenarioSettings();
+	for (int i = 0; i < static_cast<int>(settings.size()); ++i) {
+		float value = GetScenarioSettingValue(settings[i]);
+		bool changed = std::abs(value - settings[i].Default) >= 0.0001F;
+		m_ScenarioSettingsList->AddItem(settings[i].Label, ScenarioSettingValueText(settings[i], value) + (changed ? " *" : ""), nullptr, nullptr, i);
+	}
+	if (m_ScenarioSettingSelected >= 0) {
+		m_ScenarioSettingsList->SetSelectedIndex(m_ScenarioSettingSelected + 1);
+	}
+	m_ScenarioSettingsList->ScrollTo(scroll);
+}
+
+void ScenarioActivityConfigGUI::UpdateScenarioSettingSlider() {
+	if (!m_ScenarioSettingsBox || !m_SelectedActivity) {
+		return;
+	}
+	const std::vector<GameActivity::ScenarioSetting>& settings = m_SelectedActivity->GetScenarioSettings();
+	if (m_ScenarioSettingSelected < 0 || m_ScenarioSettingSelected >= static_cast<int>(settings.size())) {
+		m_ScenarioSettingSelected = -1;
+		m_ScenarioSettingSlider->SetVisible(false);
+		m_ScenarioSettingValueLabel->SetText(settings.empty() ? "This scenario has no settings of its own." : "Click a setting above to change it.");
+		return;
+	}
+	const GameActivity::ScenarioSetting& setting = settings[m_ScenarioSettingSelected];
+	const int steps = std::max(1, static_cast<int>(std::round((setting.Maximum - setting.Minimum) / setting.Step)));
+	const int autoNotch = setting.AllowAuto ? 1 : 0;
+	float value = GetScenarioSettingValue(setting);
+	int position = (setting.AllowAuto && value == GameActivity::c_ScenarioSettingAuto) ? 0 : autoNotch + std::clamp(static_cast<int>(std::round((value - setting.Minimum) / setting.Step)), 0, steps);
+	m_ScenarioSettingSlider->SetMinimum(0);
+	m_ScenarioSettingSlider->SetMaximum(steps + autoNotch);
+	m_ScenarioSettingSlider->SetValue(position);
+	m_ScenarioSettingSlider->SetVisible(true);
+	m_ScenarioSettingValueLabel->SetText(setting.Label + ": " + ScenarioSettingValueText(setting, value) + "   (default " + ScenarioSettingValueText(setting, setting.Default) + ")");
+}
+
+void ScenarioActivityConfigGUI::UpdateScenarioSettingsButton() {
+	if (!m_ScenarioSettingsBox || !m_SelectedActivity) {
+		return;
+	}
+	bool changed = m_ScenarioFlyingCraft;
+	if (auto scenario = m_ScenarioSettingValues.find(m_SelectedActivity->GetPresetName()); scenario != m_ScenarioSettingValues.end()) {
+		for (const GameActivity::ScenarioSetting& setting: m_SelectedActivity->GetScenarioSettings()) {
+			changed = changed || scenario->second.count(setting.Key) > 0;
+		}
+	}
+	m_ScenarioSettingsButton->SetText(changed ? "Scenario settings (changed)" : "Scenario settings...");
+}
+
+void ScenarioActivityConfigGUI::OpenScenarioSettings() {
+	if (!m_ScenarioSettingsBox || !m_SelectedActivity) {
+		return;
+	}
+	if (m_FactionPicksBox && m_FactionPicksTeam >= 0) {
+		CloseFactionPicks();
+	}
+	m_ScenarioSettingsLabel->SetText("Settings: " + m_SelectedActivity->GetPresetName());
+	// Over the middle of the setup box.
+	m_ScenarioSettingsBox->Move(m_ActivityConfigBox->GetXPos() + (m_ActivityConfigBox->GetWidth() - m_ScenarioSettingsBox->GetWidth()) / 2, m_ActivityConfigBox->GetYPos() + (m_ActivityConfigBox->GetHeight() - m_ScenarioSettingsBox->GetHeight()) / 2);
+	m_ScenarioSettingsBox->SetVisible(true);
+	m_ScenarioSettingSelected = -1;
+	m_ScenarioSettingsList->ScrollToTop();
+	FillScenarioSettingsList();
+	UpdateScenarioSettingSlider();
+}
+
+void ScenarioActivityConfigGUI::CloseScenarioSettings() {
+	if (!m_ScenarioSettingsBox || !m_ScenarioSettingsBox->GetVisible()) {
+		return;
+	}
+	m_ScenarioSettingsBox->SetVisible(false);
+	m_ScenarioSettingSelected = -1;
+	SaveScenarioSettingValues();
+	UpdateScenarioSettingsButton();
 }
 
 void ScenarioActivityConfigGUI::LoadFactionPicks() {
@@ -243,8 +448,16 @@ void ScenarioActivityConfigGUI::SetEnabled(bool enable, const Activity* selected
 		m_FactionPicksTeam = -1;
 		m_FactionPicksBox->SetVisible(false);
 	}
+	if (m_ScenarioSettingsBox) {
+		m_ScenarioSettingsBox->SetVisible(false);
+		m_ScenarioSettingSelected = -1;
+	}
 	if (enable && m_SelectedActivity && m_SelectedScene) {
 		LoadFactionPicks();
+		if (m_ScenarioSettingsBox) {
+			LoadScenarioSettingValues();
+			UpdateScenarioSettingsButton();
+		}
 		if (!m_TechListFetched || m_TechListMedievalUnitsDisabled != g_SettingsMan.MedievalUnitsDisabled()) {
 			PopulateTechComboBoxes();
 		}
@@ -442,13 +655,20 @@ void ScenarioActivityConfigGUI::StartGame() {
 	if (m_FactionPicksBox) {
 		SaveFactionPicks();
 	}
+	if (m_ScenarioSettingsBox) {
+		gameActivity->SetFlyingCraftAllowed(m_ScenarioFlyingCraft);
+		for (const GameActivity::ScenarioSetting& setting: m_SelectedActivity->GetScenarioSettings()) {
+			gameActivity->SetScenarioSetting(setting.Key, GetScenarioSettingValue(setting));
+		}
+		SaveScenarioSettingValues();
+	}
 	g_LuaMan.FileCloseAll();
 	g_ActivityMan.SetStartActivity(gameActivity);
 }
 
 bool ScenarioActivityConfigGUI::Update(int mouseX, int mouseY) {
 	// (The tick-list of factions lies over the team rows: clicks on it aren't for them.)
-	if (m_FactionPicksTeam < 0) {
+	if (m_FactionPicksTeam < 0 && !(m_ScenarioSettingsBox && m_ScenarioSettingsBox->GetVisible())) {
 		UpdatePlayerTeamSetupCell(mouseX, mouseY);
 	}
 
@@ -617,6 +837,11 @@ void ScenarioActivityConfigGUI::HandleClickOnPlayerTeamSetupCell(int clickedPlay
 bool ScenarioActivityConfigGUI::HandleInputEvents() {
 	GUIEvent guiEvent;
 	while (m_GUIControlManager->GetEvent(&guiEvent)) {
+		// While the scenario settings panel is open, only its own controls answer.
+		if (m_ScenarioSettingsBox && m_ScenarioSettingsBox->GetVisible()) {
+			HandleScenarioSettingsEvent(guiEvent);
+			continue;
+		}
 		if (guiEvent.GetType() == GUIEvent::Command) {
 			if (guiEvent.GetControl() == m_CancelConfigButton) {
 				g_GUISound.BackButtonPressSound()->Play();
@@ -687,6 +912,52 @@ bool ScenarioActivityConfigGUI::HandleInputEvents() {
 	return false;
 }
 
+void ScenarioActivityConfigGUI::HandleScenarioSettingsEvent(GUIEvent& guiEvent) {
+	const std::vector<GameActivity::ScenarioSetting>& settings = m_SelectedActivity->GetScenarioSettings();
+	if (guiEvent.GetType() == GUIEvent::Command) {
+		if (guiEvent.GetControl() == m_ScenarioSettingsDoneButton) {
+			g_GUISound.ButtonPressSound()->Play();
+			CloseScenarioSettings();
+		} else if (guiEvent.GetControl() == m_ScenarioSettingsResetButton) {
+			g_GUISound.ButtonPressSound()->Play();
+			m_ScenarioSettingValues.erase(m_SelectedActivity->GetPresetName());
+			m_ScenarioFlyingCraft = false;
+			FillScenarioSettingsList();
+			UpdateScenarioSettingSlider();
+		}
+	} else if (guiEvent.GetType() == GUIEvent::Notification) {
+		if (guiEvent.GetControl() == m_ScenarioSettingsList && guiEvent.GetMsg() == GUIListBox::Select) {
+			if (const GUIListPanel::Item* item = m_ScenarioSettingsList->GetSelected()) {
+				if (item->m_ExtraIndex == c_FlyingCraftItemIndex) {
+					// A click turns flying craft on or off.
+					m_ScenarioFlyingCraft = !m_ScenarioFlyingCraft;
+					m_ScenarioSettingSelected = -1;
+					g_GUISound.ItemChangeSound()->Play();
+					FillScenarioSettingsList();
+				} else if (item->m_ExtraIndex != m_ScenarioSettingSelected) {
+					m_ScenarioSettingSelected = item->m_ExtraIndex;
+					g_GUISound.SelectionChangeSound()->Play();
+				}
+				UpdateScenarioSettingSlider();
+			}
+		} else if (guiEvent.GetControl() == m_ScenarioSettingSlider && m_ScenarioSettingSelected >= 0 && m_ScenarioSettingSelected < static_cast<int>(settings.size())) {
+			const GameActivity::ScenarioSetting& setting = settings[m_ScenarioSettingSelected];
+			const int position = m_ScenarioSettingSlider->GetValue();
+			float value;
+			if (setting.AllowAuto && position == 0) {
+				value = GameActivity::c_ScenarioSettingAuto;
+			} else {
+				value = std::min(setting.Maximum, setting.Minimum + static_cast<float>(position - (setting.AllowAuto ? 1 : 0)) * setting.Step);
+			}
+			if (value != GetScenarioSettingValue(setting)) {
+				SetScenarioSettingValue(setting, value);
+				FillScenarioSettingsList();
+			}
+			UpdateScenarioSettingSlider();
+		}
+	}
+}
+
 std::vector<int> ScenarioActivityConfigGUI::GetHumanPlayers() {
 	std::vector<int> humanPlayers;
 	for (int player = Players::PlayerOne; player < PlayerColumns::PlayerColumnCount; ++player) {
@@ -740,5 +1011,9 @@ void ScenarioActivityConfigGUI::Draw() {
 	// The tick-list of factions, over everything else.
 	if (m_FactionPicksBox && m_FactionPicksBox->GetVisible()) {
 		m_FactionPicksBox->Draw(m_GUIControlManager->GetScreen());
+	}
+	// The scenario settings panel, over everything else too.
+	if (m_ScenarioSettingsBox && m_ScenarioSettingsBox->GetVisible()) {
+		m_ScenarioSettingsBox->Draw(m_GUIControlManager->GetScreen());
 	}
 }

@@ -237,17 +237,23 @@ function DecisionDay:StartActivity(isNewGame)
 	self.alliedData.actors.attackers = createNewActorDataTable();
 	self.alliedData.attackerLimit = 10;
 
+	-- Scenario settings (from the setup screen; their defaults play as before).
+	local attackersPerSpawnMultiplier = self:GetScenarioSettingOr("AttackersPerSpawn", 1);
+	local attackerLimitMultiplier = self:GetScenarioSettingOr("AttackerLimit", 1);
+	local externalSpawnIntervalMultiplier = self:GetScenarioSettingOr("ExternalSpawnInterval", 1);
+	local vaultIncomeMultiplier = self:GetScenarioSettingOr("VaultIncome", 1);
+
 	self.aiData = {};
 	self.aiData.externalSpawnsEnabled = false;
-	self.aiData.externalSpawnTimer = Timer(120000 / self.difficultyRatio);
+	self.aiData.externalSpawnTimer = Timer(120000 / self.difficultyRatio * externalSpawnIntervalMultiplier);
 	self.aiData.internalReinforcementsEnabled = false;
 	self.aiData.internalReinforcementsTimer = Timer(100000 / self.difficultyRatio);
 	self.aiData.internalReinforcementLimit = 12 * self.difficultyRatio;
 	self.aiData.numberOfInternalReinforcementsCreated = 0;
 	self.aiData.internalReinforcementPositionsCalculationCoroutines = {};
 	self.aiData.bunkerRegionDefenseRange = math.max(500, math.min(750 * self.difficultyRatio, 1000));
-	self.aiData.attackerLimit = 10 * self.difficultyRatio;
-	self.aiData.attackersPerSpawn = 4 * self.difficultyRatio;
+	self.aiData.attackerLimit = 10 * self.difficultyRatio * attackerLimitMultiplier;
+	self.aiData.attackersPerSpawn = 4 * self.difficultyRatio * attackersPerSpawnMultiplier;
 	self.aiData.attackTarget = nil;
 	self.aiData.attackRetargetTimer = Timer(15000);
 
@@ -269,8 +275,8 @@ function DecisionDay:StartActivity(isNewGame)
 		self.aiData.enemiesInsideBunkers[bunkerId] = {};
 	end
 
-	self.vaultCaptureIncome = 1500;
-	self.vaultTickIncome = 6;
+	self.vaultCaptureIncome = 1500 * vaultIncomeMultiplier;
+	self.vaultTickIncome = 6 * vaultIncomeMultiplier;
 
 	self.initialDropShipDestroyed = false;
 	self.anyHumanHasSeenObjectives = false;

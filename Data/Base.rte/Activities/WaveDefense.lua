@@ -36,8 +36,14 @@ function WaveDefense:StartActivity(isNewGame)
 
 	self.StartTimer = Timer();
 	self.NextWaveTimer = Timer();
+	-- Scenario settings (from the setup screen; their defaults play as before).
+	self.waveSizeMultiplier = self:GetScenarioSettingOr("WaveSize", 1);
+	self.waveGrowthMultiplier = self:GetScenarioSettingOr("WaveGrowth", 1);
+	self.waveRewardMultiplier = self:GetScenarioSettingOr("WaveReward", 1);
+	local spawnIntervalMultiplier = self:GetScenarioSettingOr("SpawnInterval", 1);
+
 	self.PrepareForNextWaveTimer = Timer();
-	self.PrepareForNextWaveTimer:SetRealTimeLimitMS(30000);
+	self.PrepareForNextWaveTimer:SetRealTimeLimitMS(self:GetScenarioSettingOr("BuildTime", 30) * 1000);
 	self.prepareForNextWave = false;
 
 	self.Fog = self:GetFogOfWarEnabled();
@@ -49,11 +55,11 @@ function WaveDefense:StartActivity(isNewGame)
 		self.AI.BombTimer = Timer();
 		self.AI.HuntTimer = Timer();
 
-		self.AI.bombChance = math.min(math.max(self.Difficulty/100+math.random(-0.1, 0.1), 0), 1);
+		self.AI.bombChance = math.min(math.max(self.Difficulty/100 + (math.random() * 0.2 - 0.1), 0), 1);
 		self.AI.timeToSpawn = 8000 - 50 * self.Difficulty; -- Time before the first AI spawn: from 8s to 3s
-		self.AI.timeToBomb = (42000 - 300 * self.Difficulty) * math.random(0.7, 1.1); -- From 42s to 12s
-		self.AI.baseSpawnTime = 4000 - 30 * self.Difficulty; -- From 4s to 2s
-		self.AI.randomSpawnTime = 3000 - 20 * self.Difficulty; -- From 3s to 1s
+		self.AI.timeToBomb = (42000 - 300 * self.Difficulty) * (0.7 + math.random() * 0.4); -- From 42s to 12s
+		self.AI.baseSpawnTime = (4000 - 30 * self.Difficulty) * spawnIntervalMultiplier; -- From 4s to 2s
+		self.AI.randomSpawnTime = math.max(1, (3000 - 20 * self.Difficulty) * spawnIntervalMultiplier); -- From 3s to 1s
 
 		-- Store data about terrain and enemy actors in the LZ map, use it to pick safe landing zones
 		self.AI.LZmap = require("Activities/Utility/LandingZoneMap");
@@ -183,12 +189,12 @@ function WaveDefense:InitWave()
 			handicap = handicap + 100 + 6 * self.Difficulty;
 		end
 
-		self.AI.lastWaveValue = 37 * self.Difficulty + self.wave * (4*self.Difficulty+1000) + handicap;
+		self.AI.lastWaveValue = 37 * self.Difficulty + self.wave * (4*self.Difficulty+1000) * self.waveGrowthMultiplier + handicap;
 	else
 		self.AI.lastWaveValue = 37 * self.Difficulty + 900; -- AI team gold: from 1k to 5k
 	end
 
-	self:SetTeamFunds(self.AI.lastWaveValue, self.CPUTeam);
+	self:SetTeamFunds(self.AI.lastWaveValue * self.waveSizeMultiplier, self.CPUTeam);
 end
 
 function WaveDefense:UpdateActivity()
@@ -367,7 +373,7 @@ function WaveDefense:UpdateActivity()
 				self.PrepareForNextWaveTimer:Reset();
 
 				-- Award some gold for defeating the wave
-				self:ChangeTeamFunds((500-5.5*self.Difficulty)*rte.StartingFundsScale, self.playerTeam);
+				self:ChangeTeamFunds((500-5.5*self.Difficulty)*rte.StartingFundsScale*self.waveRewardMultiplier, self.playerTeam);
 			else
 				for player = Activity.PLAYER_1, Activity.MAXPLAYERCOUNT - 1 do
 					if self:PlayerActive(player) and self:PlayerHuman(player) then

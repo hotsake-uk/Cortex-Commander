@@ -119,10 +119,15 @@ function SkirmishDefense:StartNewGame(aiTeams)
 		end
 	end
 
+	-- Scenario settings (from the setup screen; their defaults play as before).
+	local enemyFundsMultiplier = self:GetScenarioSettingOr("EnemyFunds", 1);
+	local spawnIntervalMultiplier = self:GetScenarioSettingOr("SpawnInterval", 1);
+	local bombChanceMultiplier = self:GetScenarioSettingOr("BombChance", 1);
+
 	-- Setup AI data variables
 	for _, team in ipairs(aiTeams) do
 		self.AI[team].defeated = false;
-		self.AI[team].bombChance = math.min(math.max(self.Difficulty/100, 0), 0.95);
+		self.AI[team].bombChance = math.min(math.max(self.Difficulty/100 * bombChanceMultiplier, 0), 0.95);
 		self.AI[team].SpawnTimer = Timer();
 		self.AI[team].BombTimer = Timer();
 		self.AI[team].HuntTimer = Timer();
@@ -130,8 +135,8 @@ function SkirmishDefense:StartNewGame(aiTeams)
 		self.AI[team].timeToSpawn = 8000 - 50 * self.Difficulty;			-- Time before the first AI spawn: from 8s to 3s
 		self.AI[team].timeToBomb = 60000 - 400 * self.Difficulty;			-- From 60s to 20s
 		self.AI[team].timeToEngineer = 60000 - 300 * self.Difficulty;		-- From 60s to 30s
-		self.AI[team].baseSpawnTime = 16000 - 50 * self.Difficulty;			-- From 16s to 10s
-		self.AI[team].randomSpawnTime = 8000 - 40 * self.Difficulty;		-- From 8s to 4s
+		self.AI[team].baseSpawnTime = (16000 - 50 * self.Difficulty) * spawnIntervalMultiplier;			-- From 16s to 10s
+		self.AI[team].randomSpawnTime = math.max(1, (8000 - 40 * self.Difficulty) * spawnIntervalMultiplier);		-- From 8s to 4s
 		self.AI[team].digToBrainProbability = 0;
 
 		if self.Difficulty > 55 then
@@ -143,7 +148,7 @@ function SkirmishDefense:StartNewGame(aiTeams)
 			self.endless = true;
 			self:SetTeamFunds(100000, team);
 		else
-			self:SetTeamFunds(80 * self.Difficulty + 2000, team); -- AI team gold: from 2k to 10k
+			self:SetTeamFunds((80 * self.Difficulty + 2000) * enemyFundsMultiplier, team); -- AI team gold: from 2k to 10k
 		end
 	end
 

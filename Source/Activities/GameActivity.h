@@ -12,7 +12,11 @@
 #include "Actor.h"
 
 #include <array>
+#include <map>
 #include <memory>
+#include <optional>
+#include <string>
+#include <vector>
 namespace RTE {
 
 #define OBJARROWFRAMECOUNT 4
@@ -458,6 +462,52 @@ namespace RTE {
 		/// @param newValue True to enable buy menu, false otherwise
 		void SetBuyMenuEnabled(bool newValue) { m_BuyMenuEnabled = newValue; }
 
+#pragma region Scenario Settings
+		/// One number a scenario lets the player tweak on the setup screen, declared in its .ini:
+		/// "AddScenarioSetting = Key | Label | Unit | Minimum | Maximum | Step | Default", where Unit is Count, Multiplier, Seconds or Minutes,
+		/// and Default may be "Auto" (the scenario works it out from the difficulty, as before) or a number.
+		struct ScenarioSetting {
+			std::string Key; //!< The name the scenario's script asks for it by.
+			std::string Label; //!< What the setup screen calls it.
+			std::string Unit; //!< How its value is shown: Count, Multiplier, Seconds or Minutes.
+			float Minimum = 0.0F; //!< The lowest value it can be set to.
+			float Maximum = 1.0F; //!< The highest value it can be set to.
+			float Step = 1.0F; //!< How far one notch of its slider moves it.
+			float Default = 1.0F; //!< Its value until changed, or c_ScenarioSettingAuto.
+			bool AllowAuto = false; //!< Whether it can be left to the scenario ("Auto"), which is then its default.
+		};
+		static constexpr float c_ScenarioSettingAuto = -1.0F; //!< The value of a setting left to the scenario.
+
+		/// Gets the settings this scenario offers on the setup screen.
+		const std::vector<ScenarioSetting>& GetScenarioSettings() const { return m_ScenarioSettings; }
+
+		/// Gets the value a setting is set to for this game: the chosen one, else its default. -1 means Auto (the scenario decides).
+		/// @param key The setting's key.
+		/// @return Its value, or -1 for Auto or for a setting the scenario doesn't declare.
+		float GetScenarioSetting(const std::string& key) const;
+
+		/// Gets a setting's value as GetScenarioSetting does, or the given fallback when it is Auto or undeclared.
+		float GetScenarioSettingOr(const std::string& key, float fallback) const {
+			float value = GetScenarioSetting(key);
+			return value == c_ScenarioSettingAuto ? fallback : value;
+		}
+
+		/// Sets the value a setting has for this game (as the setup screen does).
+		void SetScenarioSetting(const std::string& key, float value) { m_ScenarioSettingValues[key] = value; }
+
+		/// Gets whether the AI may pick the flying ships (Gunship, Frigate) as delivery craft in this game. True unless the setup screen turned them off.
+		bool GetFlyingCraftAllowed() const { return m_FlyingCraftAllowed; }
+
+		/// Sets whether the AI may pick the flying ships as delivery craft in this game.
+		void SetFlyingCraftAllowed(bool allowed) { m_FlyingCraftAllowed = allowed; }
+
+		/// Reads a setting from its "Key | Label | Unit | Minimum | Maximum | Step | Default" line, or nothing if the line is malformed.
+		static std::optional<ScenarioSetting> ParseScenarioSetting(const std::string& line);
+
+		/// Writes a setting as the line ParseScenarioSetting reads.
+		static std::string ScenarioSettingToString(const ScenarioSetting& setting);
+#pragma endregion
+
 		/// Returns network player name
 		/// @param player Player
 		/// @return Network player name
@@ -632,6 +682,9 @@ namespace RTE {
 		bool m_GoldSwitchEnabled;
 		bool m_RequireClearPathToOrbitSwitchEnabled;
 		bool m_BuyMenuEnabled;
+		std::vector<ScenarioSetting> m_ScenarioSettings; //!< The settings this scenario offers on the setup screen (see GetScenarioSettings).
+		std::map<std::string, float> m_ScenarioSettingValues; //!< The values chosen for this game's settings, by key (see GetScenarioSetting).
+		bool m_FlyingCraftAllowed; //!< Whether the AI may pick the flying ships as delivery craft (see GetFlyingCraftAllowed).
 
 		// The cursor animations for the LZ indicators
 		std::vector<BITMAP*> m_aLZCursor[4];

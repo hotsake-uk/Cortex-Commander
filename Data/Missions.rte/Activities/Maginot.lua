@@ -25,7 +25,12 @@ function MaginotMission:StartActivity(isNewGame)
 	self.spawnTimer = Timer();
 	self.evacuateCheckTimer = Timer(2500);
 
-	self.numberOfAttackersPerCraft = math.ceil(2 * (self.Difficulty / Activity.MEDIUMDIFFICULTY));
+	-- Scenario settings (from the setup screen; their defaults play as before).
+	self.numberOfAttackersPerCraft = self:GetScenarioSettingOr("AttackersPerCraft", math.ceil(2 * (self.Difficulty / Activity.MEDIUMDIFFICULTY)));
+	self.attackIntervalMultiplier = self:GetScenarioSettingOr("AttackInterval", 1);
+	self.sideAttackersEnabled = self:GetScenarioSettingOr("SideAttackers", 1) > 0.5;
+	self.firstStageLengthMultiplier = self:GetScenarioSettingOr("FirstStageLength", 1);
+	self.secondStageLengthMultiplier = self:GetScenarioSettingOr("SecondStageLength", 1);
 
 	self.brainDead = {};
 
@@ -56,7 +61,7 @@ function MaginotMission:StartNewGame()
 	self.currentFightStage = self.fightStage.beginFight;
 	self.evacuationRocketSpawned = false;
 
-	self.spawnTime = 30000 * math.exp(self.Difficulty * -0.014) * rte.SpawnIntervalScale; -- Scale spawn time from 20s to 5s. Normal = 10s
+	self.spawnTime = 30000 * math.exp(self.Difficulty * -0.014) * rte.SpawnIntervalScale * self.attackIntervalMultiplier; -- Scale spawn time from 20s to 5s. Normal = 10s
 
 	for actor in MovableMan.AddedActors do
 		actor.AIMode = Actor.AIMODE_SENTRY;
@@ -350,7 +355,7 @@ function MaginotMission:UpdateAttackerSpawns()
 			end
 		end
 
-		if self.currentFightStage >= self.fightStage.defendRight then
+		if self.currentFightStage >= self.fightStage.defendRight and self.sideAttackersEnabled then
 			local attackerActor;
 			if math.random() < self:GetCrabToHumanSpawnRatio(PresetMan:GetModuleID(self.attackerTech)) then
 				attackerActor = RandomACrab("Actors - Mecha", self.attackerTech);
@@ -397,11 +402,11 @@ function MaginotMission:UpdateActivity()
 		self.currentFightStage = self.fightStage.defendLeft;
 		self.screenTextTimer:Reset();
 		self.roundTimer:Reset();
-	elseif self.roundTimer:IsPastSimMS(240000 * difficultyTimeMultiplier) and self.currentFightStage == self.fightStage.defendLeft then
+	elseif self.roundTimer:IsPastSimMS(240000 * difficultyTimeMultiplier * self.firstStageLengthMultiplier) and self.currentFightStage == self.fightStage.defendLeft then
 		self.currentFightStage = self.fightStage.defendRight;
 		self.screenTextTimer:Reset();
 		self.roundTimer:Reset();
-	elseif enemyInsideBrainEvacuateArea or (self.roundTimer:IsPastSimMS(180000 * difficultyTimeMultiplier) and self.currentFightStage == self.fightStage.defendRight) then
+	elseif enemyInsideBrainEvacuateArea or (self.roundTimer:IsPastSimMS(180000 * difficultyTimeMultiplier * self.secondStageLengthMultiplier) and self.currentFightStage == self.fightStage.defendRight) then
 		self:SwapBrainsToRobots();
 		self.currentFightStage = self.fightStage.evacuateBrain;
 		self.screenTextTimer:Reset();
