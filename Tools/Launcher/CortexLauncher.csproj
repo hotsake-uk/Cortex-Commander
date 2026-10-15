@@ -8,6 +8,7 @@
     <AssemblyName>CortexLauncher</AssemblyName>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
+    <ApplicationIcon>Assets\launcher.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <!-- The default Settings.ini and settings presets travel inside the exe, so a distributed launcher starts with them. -->
