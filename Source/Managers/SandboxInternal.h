@@ -2017,6 +2017,7 @@ namespace SandboxDetail {
 		long long LastUpdate = 0;
 		std::vector<UndoBackgroundPixel> Background; //!< A bunker piece's: the background it drew over.
 		std::vector<long> Placed; //!< The unique IDs of what a placing step made.
+		std::vector<std::pair<long, long>> Given; //!< What an Item tool click gave a unit: the unit's unique ID and the item's, taken back off it.
 		std::vector<std::unique_ptr<MovableObject>> Removed; //!< Copies of what the step took out of the world (a Remove click; for the redo, what an undo took away), put back as they were.
 		std::vector<WaterSpawner> SpringsAdded; //!< Springs the step put down, taken away again.
 		std::vector<WaterSpawner> SpringsRemoved; //!< Springs the step took away, put back.
@@ -2028,7 +2029,7 @@ namespace SandboxDetail {
 		bool HoldZones = false; //!< A "Hold ground" step: the hold zones put back to HoldZonesBefore.
 		std::vector<std::vector<Vector>> HoldZonesBefore; //!< The hold zones before the step.
 
-		bool Empty() const { return Pixels.empty() && Placed.empty() && Removed.empty() && SpringsAdded.empty() && SpringsRemoved.empty() && ColonyBuilding < 0 && Drop == 0 && Rope == 0 && !HoldZones; }
+		bool Empty() const { return Pixels.empty() && Placed.empty() && Given.empty() && Removed.empty() && SpringsAdded.empty() && SpringsRemoved.empty() && ColonyBuilding < 0 && Drop == 0 && Rope == 0 && !HoldZones; }
 	};
 
 	inline std::deque<PaintUndoStep> s_PaintUndo;
@@ -2836,6 +2837,12 @@ namespace SandboxDetail {
 	const Preset* RandomPick(const std::vector<const Preset*>& pool);
 	void DropSquad(const Stroke& stroke);
 	void SpawnItem(const Stroke& stroke);
+	/// The unit an Item tool click at a place gives the item to, straight into its hands: a living one with a hand to hold it in, under
+	/// the pointer (as ObjectUnder finds it). None (null) for a unit without hands, or a beast and a weapon it can't carry; the item is
+	/// put down on the ground then.
+	AHuman* ItemTaker(const Vector& position, const Preset* item);
+	/// Takes an item an Item tool click gave a unit (PaintUndoStep::Given) back off it, for the undo.
+	void TakeBackGiven(long unitID, long itemID);
 	Vector StructureCorner(const Preset& preset, const Vector& center, bool snap);
 	Vector StructurePosition(const Preset& preset, const Vector& click, bool snap);
 	void PlaceStructure(const Stroke& stroke);

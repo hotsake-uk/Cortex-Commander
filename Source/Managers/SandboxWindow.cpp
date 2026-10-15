@@ -3354,6 +3354,12 @@ namespace SandboxDetail {
 			if (tool.Kind == Tool::Unit && s_SquadSize > 1) {
 				label += " x" + std::to_string(s_SquadSize);
 			}
+			// A click on a unit gives it the item, in its hands: which one, by the pointer.
+			if (tool.Kind == Tool::Item) {
+				if (const AHuman* taker = ItemTaker(MouseScenePosition(), preset)) {
+					label = "Give " + label + " to " + taker->GetPresetName();
+				}
+			}
 		}
 		float pixel = ToolUI::Pixel();
 		auto flag = [&](const Vector& spot, ImU32 color) {
