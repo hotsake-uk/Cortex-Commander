@@ -411,6 +411,37 @@ namespace {
 	/// The shield for one or more armies of one faction on the same spot. The player's own stand out: bigger, with a gold rim, a pip for
 	/// each move the readiest of them has left (and a glow while any can still move), and their name, or how many there are, beneath.
 	/// Returns whether the mouse is on it.
+	/// Whether the player could fight a faction's armies (at war, or neutral): those are drawn bigger and red, with a label.
+	bool Hostile(int faction) {
+		const int player = Player();
+		if (player < 0 || faction < 0 || faction == player) {
+			return false;
+		}
+		const Stance stance = StanceOf(s_Screen.Game, player, faction);
+		return stance == Stance::War || stance == Stance::Neutral;
+	}
+
+	/// A hostile group of armies' label: whose they are and how many soldiers.
+	std::string ThreatLabel(const std::vector<int>& armies) {
+		int soldiers = 0;
+		for (int army: armies) {
+			soldiers += SoldierCount(s_Screen.Game.Armies[army]);
+		}
+		return FactionLabel(s_Screen.Game.Armies[armies.front()].Faction) + " (" + std::to_string(soldiers) + ")";
+	}
+
+	/// How wide one faction's shield is in a row of them, its label included.
+	float GroupWidth(const std::vector<int>& group, float size) {
+		const int faction = s_Screen.Game.Armies[group.front()].Faction;
+		if (faction == Player()) {
+			return size * 4.0F;
+		}
+		if (Hostile(faction)) {
+			return std::max(size * 5.4F, ImGui::CalcTextSize(ThreatLabel(group).c_str()).x + 10.0F);
+		}
+		return size * 4.4F;
+	}
+
 	bool DrawArmies(ImDrawList* drawList, ImVec2 at, float size, const std::vector<int>& armies, bool labelAbove = false) {
 		const CampaignModel::Campaign& game = s_Screen.Game;
 		if (armies.empty()) {
@@ -433,17 +464,30 @@ namespace {
 		}
 		const int count = static_cast<int>(armies.size());
 		if (!own) {
-			// On a dark disc so it reads on any planet, with a ring: red (pulsing) for those the player could fight, blue for peace,
-			// green for allies.
-			size *= 1.2F;
+			// On a disc so it reads on any planet, with a ring: red (pulsing) for those the player could fight, blue for peace, green for
+			// allies. Those the player could fight are bigger, glow red and carry their faction and soldiers, so they're hard to miss.
 			const int player = Player();
 			const Stance stance = player >= 0 ? StanceOf(game, player, first.Faction) : Stance::Neutral;
 			const bool hostile = stance == Stance::War || stance == Stance::Neutral;
-			const float pulse = hostile ? 0.6F + 0.4F * std::sin(static_cast<float>(ImGui::GetTime()) * 4.0F) : 1.0F;
+			size *= hostile ? 1.45F : 1.2F;
+			const float time = static_cast<float>(ImGui::GetTime());
+			const float pulse = hostile ? 0.6F + 0.4F * std::sin(time * 4.0F) : 1.0F;
 			const ImU32 ring = stance == Stance::Alliance ? IM_COL32(110, 230, 120, 255) : stance == Stance::Peace ? IM_COL32(120, 180, 255, 255) : IM_COL32(255, 70, 55, 255);
-			drawList->AddCircleFilled(ImVec2(at.x, at.y + size * 0.1F), size * 1.75F, IM_COL32(6, 6, 14, 210), 24);
-			drawList->AddCircle(ImVec2(at.x, at.y + size * 0.1F), size * 1.75F, Alpha(ring, pulse), 24, hostile ? 2.5F : 2.0F);
+			const ImVec2 middle(at.x, at.y + size * 0.1F);
+			const float radius = size * 1.75F;
+			if (hostile) {
+				drawList->AddCircleFilled(middle, radius * (1.35F + 0.12F * std::sin(time * 4.0F)), Alpha(ring, 0.16F * pulse), 32);
+			}
+			drawList->AddCircleFilled(middle, radius, hostile ? IM_COL32(48, 8, 8, 230) : IM_COL32(6, 6, 14, 210), 24);
+			drawList->AddCircle(middle, radius, Alpha(ring, pulse), 24, hostile ? 3.0F : 2.0F);
 			const bool hovered = DrawArmyIcon(drawList, at, size, FactionColor(first.Faction), selected, count);
+			if (hostile) {
+				const std::string label = ThreatLabel(armies);
+				const ImVec2 textSize = ImGui::CalcTextSize(label.c_str());
+				const ImVec2 textAt(at.x - textSize.x * 0.5F, labelAbove ? middle.y - radius - textSize.y - 4.0F : middle.y + radius + 3.0F);
+				drawList->AddRectFilled(ImVec2(textAt.x - 4.0F, textAt.y - 1.0F), ImVec2(textAt.x + textSize.x + 4.0F, textAt.y + textSize.y + 1.0F), IM_COL32(110, 14, 10, 225), 3.0F);
+				drawList->AddText(textAt, IM_COL32(255, 225, 215, 255), label.c_str());
+			}
 			if (pointedAt) {
 				Beacon(drawList, at, size + 4.0F);
 			}
@@ -505,8 +549,7 @@ namespace {
 				group->push_back(army);
 			}
 		}
-		const int player = Player();
-		auto widthOf = [&game, player, size](const std::vector<int>& group) { return game.Armies[group.front()].Faction == player ? size * 4.0F : size * 4.4F; };
+		auto widthOf = [size](const std::vector<int>& group) { return GroupWidth(group, size); };
 		float total = 0.0F;
 		for (const std::vector<int>& group: groups) {
 			total += widthOf(group);
@@ -563,27 +606,32 @@ namespace {
 	ImVec2 ArmyRowSize(const std::vector<int>& armies, float size) {
 		const CampaignModel::Campaign& game = s_Screen.Game;
 		const int player = Player();
-		std::vector<int> factions;
-		float width = 0.0F;
-		bool own = false;
+		std::vector<std::vector<int>> groups;
 		float ownLabel = 0.0F;
 		int ownCount = 0;
+		bool hostile = false;
 		for (int army: armies) {
 			const Army& each = game.Armies[army];
 			if (each.Faction == player) {
-				own = true;
 				++ownCount;
 				ownLabel = ImGui::CalcTextSize(each.Name.c_str()).x;
 			}
-			if (std::find(factions.begin(), factions.end(), each.Faction) == factions.end()) {
-				factions.push_back(each.Faction);
-				width += each.Faction == player ? size * 4.0F : size * 4.4F;
+			hostile = hostile || Hostile(each.Faction);
+			auto group = std::find_if(groups.begin(), groups.end(), [&game, &each](const std::vector<int>& members) { return game.Armies[members.front()].Faction == each.Faction; });
+			if (group == groups.end()) {
+				groups.push_back({army});
+			} else {
+				group->push_back(army);
 			}
+		}
+		float width = 0.0F;
+		for (const std::vector<int>& group: groups) {
+			width += GroupWidth(group, size);
 		}
 		if (ownCount > 1) {
 			ownLabel = ImGui::CalcTextSize("9 armies").x;
 		}
-		return ImVec2(std::max(width, ownLabel + 8.0F), ImGui::GetTextLineHeight() + 14.0F + size * 4.4F);
+		return ImVec2(std::max(width, ownLabel + 8.0F), ImGui::GetTextLineHeight() + 14.0F + size * (hostile ? 5.4F : 4.4F));
 	}
 
 	/// Where a row of army shields given that room goes, for its top left corner.
@@ -2016,13 +2064,14 @@ namespace {
 					byFaction[game.Armies[army].Faction].push_back(army);
 				}
 			}
-			float offset = starSize + 16.0F;
+			float offset = starSize + 6.0F;
 			for (int faction = 0; faction < static_cast<int>(byFaction.size()); ++faction) {
 				if (byFaction[faction].empty()) {
 					continue;
 				}
-				armyMarks.push_back({ImVec2(at.x + offset, at.y - starSize), byFaction[faction]});
-				offset += faction == Player() ? 26.0F : 30.0F;
+				const float width = GroupWidth(byFaction[faction], 7.0F);
+				armyMarks.push_back({ImVec2(at.x + offset + width * 0.5F, at.y - starSize), byFaction[faction]});
+				offset += width;
 			}
 		}
 		// The route preview's turn numbers: where each turn's moves run out, and the end.
