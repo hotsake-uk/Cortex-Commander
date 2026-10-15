@@ -7,6 +7,7 @@ namespace RTE {
 	class GUICheckbox;
 	class GUILabel;
 	class GUISlider;
+	class GUIComboBox;
 	class GUIEvent;
 
 	/// Handling for misc settings through the game settings user interface.
@@ -44,6 +45,7 @@ namespace RTE {
 		GUICheckbox* m_DisableFactionBuyMenuThemeCursorsCheckbox;
 		GUILabel* m_SceneBackgroundAutoScaleLabel;
 		GUISlider* m_SceneBackgroundAutoScaleSlider;
+		GUIComboBox* m_UIThemeComboBox;
 
 #pragma region Misc Settings Handling
 		/// Updates the Scene background auto-scale label according to the setting.

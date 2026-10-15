@@ -718,6 +718,9 @@
     <ClInclude Include="Source\GUI\GUIWriter.h">
       <Filter>GUI</Filter>
     </ClInclude>
+    <ClInclude Include="Source\GUI\UITheme.h">
+      <Filter>GUI</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Lua\LuabindObjectWrapper.h">
       <Filter>Lua</Filter>
     </ClInclude>
@@ -1566,6 +1569,9 @@
       <Filter>GUI</Filter>
     </ClCompile>
     <ClCompile Include="Source\GUI\GUIWriter.cpp">
+      <Filter>GUI</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\GUI\UITheme.cpp">
       <Filter>GUI</Filter>
     </ClCompile>
     <ClCompile Include="Source\Lua\LuabindObjectWrapper.cpp">

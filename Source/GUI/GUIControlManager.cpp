@@ -291,7 +291,34 @@ void GUIControlManager::Draw() {
 	Draw(m_Screen);
 }
 
+void GUIControlManager::ReloadIfThemeChanged() {
+	if (!m_Skin || !m_Skin->IsThemeOutdated()) {
+		return;
+	}
+	// Copies, since loading again replaces what the skin holds.
+	std::string directory = m_Skin->GetLoadedDirectory();
+	std::string fileName = m_Skin->GetLoadedFileName();
+
+	// Menus give some controls fonts of their own, which taking the skin again would put back to the skin's. The skin keeps its fonts so those stay valid, and they're given back after.
+	std::vector<std::pair<GUIPanel*, GUIFont*>> fonts;
+	for (GUIControl* control: m_ControlList) {
+		if (GUIPanel* panel = control->GetPanel(); panel && panel->GetFont()) {
+			fonts.emplace_back(panel, panel->GetFont());
+		}
+	}
+	m_Skin->Load(directory, fileName, true);
+	for (GUIControl* control: m_ControlList) {
+		control->ChangeSkin(m_Skin);
+	}
+	for (const auto& [panel, font]: fonts) {
+		if (panel->GetFont() != font) {
+			panel->SetFont(font);
+		}
+	}
+}
+
 void GUIControlManager::Draw(GUIScreen* pScreen) {
+	ReloadIfThemeChanged();
 	// GUI controls keep their text in the bitmap, in drawing order with the other controls.
 	TextOverlay::SuspendCapture();
 	m_GUIManager->Draw(pScreen);

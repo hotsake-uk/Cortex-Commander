@@ -765,6 +765,7 @@
     <ClInclude Include="Source\Lua\LuabindDefinitions.h" />
     <ClInclude Include="Source\Lua\LuaBindingRegisterDefinitions.h" />
     <ClInclude Include="Source\GUI\GUIWriter.h" />
+    <ClInclude Include="Source\GUI\UITheme.h" />
     <ClInclude Include="Source\Managers\DebugMan.h" />
     <ClInclude Include="Source\Managers\CameraMan.h" />
     <ClInclude Include="Source\Managers\GLStateMan.h" />
@@ -1084,6 +1085,7 @@
     <ClCompile Include="Source\GUI\GUIReader.cpp" />
     <ClCompile Include="Source\GUI\GUISound.cpp" />
     <ClCompile Include="Source\GUI\GUIWriter.cpp" />
+    <ClCompile Include="Source\GUI\UITheme.cpp" />
     <ClCompile Include="Source\Managers\MenuMan.cpp" />
     <ClCompile Include="Source\Managers\PerformanceMan.cpp" />
     <ClCompile Include="Source\Managers\PostProcessMan.cpp" />

@@ -32,6 +32,7 @@
 #include "UnitSpeechVoice.h"
 #include "ModernHUD.h"
 #include "ToolWidgets.h"
+#include "UITheme.h"
 #include "ConsoleMan.h"
 #include "CameraMan.h"
 #include "MovableMan.h"
@@ -601,6 +602,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("RopeSettleSeconds", { RopeSim::SetSettleSeconds(std::stof(reader.ReadPropValue())); });
 	MatchProperty("CandleBurnMinutes", { TerrainCandle::SetBurnMinutes(std::stof(reader.ReadPropValue())); });
 	MatchProperty("ModernHUD", { ModernHUD::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("UITheme", { UITheme::Select(reader.ReadPropValue()); });
 	MatchProperty("UILight", { ToolLight::Strength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 2.0F); });
 	MatchProperty("UILightOwn", { ToolLight::Mode = std::stoi(reader.ReadPropValue()) != 0 ? ToolLight::Source::OwnLight : ToolLight::Source::FollowGame; });
 	MatchProperty("UILightAngle", { ToolLight::OwnAngle = std::clamp(std::stof(reader.ReadPropValue()), -90.0F, 90.0F); });
@@ -2041,6 +2043,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
 	writer.NewPropertyWithValue("ShowNotices", m_ShowNotices);
 	writer.NewPropertyWithValue("ModernHUD", ModernHUD::IsEnabled());
+	writer.NewPropertyWithValue("UITheme", UITheme::Current());
 	writer.NewPropertyWithValue("UILight", ToolLight::Strength);
 	writer.NewPropertyWithValue("UILightOwn", ToolLight::Mode == ToolLight::Source::OwnLight);
 	writer.NewPropertyWithValue("UILightAngle", ToolLight::OwnAngle);

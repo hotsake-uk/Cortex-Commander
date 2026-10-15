@@ -1,6 +1,7 @@
 #include "GUI.h"
 #include "GUIReader.h"
 #include "PresetMan.h"
+#include "UITheme.h"
 
 #include <cassert>
 
@@ -24,9 +25,18 @@ void GUISkin::Clear() {
 	m_Directory = "";
 }
 
-bool GUISkin::Load(const std::string& directory, const std::string& fileName) {
+bool GUISkin::Load(const std::string& directory, const std::string& fileName, bool keepFonts) {
 	// Destroy any previous instances
+	std::vector<GUIFont*> keptFonts;
+	if (keepFonts) {
+		keptFonts.swap(m_FontCache);
+	}
 	Destroy();
+	m_FontCache.swap(keptFonts);
+
+	m_LoadedDirectory = directory;
+	m_LoadedFileName = fileName;
+	m_ThemeGeneration = UITheme::Generation();
 
 	std::string dirTemp;
 
@@ -198,8 +208,8 @@ GUIBitmap* GUISkin::CreateBitmap(int Width, int Height) {
 }
 
 GUIBitmap* GUISkin::CreateBitmap(const std::string& Filename) {
-	// Add the filename onto the current directory
-	std::string File = m_Directory + Filename;
+	// Add the filename onto the current directory, and swap in the UI theme's image if it has one
+	std::string File = UITheme::Image(m_Directory + Filename);
 
 	// Check if the image is in our cache
 	std::vector<GUIBitmap*>::iterator it;
@@ -370,5 +380,9 @@ void GUISkin::BuildStandardRect(GUIBitmap* Dest, const std::string& Section, int
 }
 
 unsigned long GUISkin::ConvertColor(unsigned long color, int targetDepth) {
-	return m_Screen->ConvertColor(color, targetDepth);
+	return m_Screen->ConvertColor(UITheme::Color(color), targetDepth);
+}
+
+bool GUISkin::IsThemeOutdated() const {
+	return !m_LoadedFileName.empty() && m_ThemeGeneration != UITheme::Generation();
 }

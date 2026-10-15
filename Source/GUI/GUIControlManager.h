@@ -39,6 +39,9 @@ namespace RTE {
 		/// @param SkinDir Skin directory.
 		void ChangeSkin(const std::string& SkinDir, const std::string& SkinFilename = "skin.ini");
 
+		/// Loads the skin again if the UI theme has changed since it was loaded, so the controls take the new theme's look. Draw does this itself.
+		void ReloadIfThemeChanged();
+
 		/// Gets the Skin object currently in use.
 		/// @return A pointer to the currently used skin. Please don't mess it up.
 		GUISkin* GetSkin() { return m_Skin; }

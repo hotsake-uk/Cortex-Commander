@@ -9,14 +9,24 @@
 namespace RTE {
 	/// The colours of the tool windows, taken from the game's own menu skin (Base.rte/GUIs/Skins/Menus/SkinBlue.png and its lettering): navy wells with a
 	/// periwinkle edge, slate panels and the gold of the menu text. Everything the Sandbox and settings panel draw by hand takes them from here.
+	/// The UI theme (see UITheme.h) sets the panel, well and edge colours; ClassicTheme holds them as the game has them.
 	namespace ToolTheme {
-		constexpr ImU32 Panel = IM_COL32(59, 65, 83, 255);
-		constexpr ImU32 Well = IM_COL32(12, 20, 39, 255);
-		constexpr ImU32 WellHover = IM_COL32(27, 37, 58, 255);
-		constexpr ImU32 WellPressed = IM_COL32(12, 12, 28, 255);
-		constexpr ImU32 Edge = IM_COL32(108, 118, 168, 255);
-		constexpr ImU32 EdgeLight = IM_COL32(193, 172, 198, 255);
-		constexpr ImU32 EdgeDark = IM_COL32(24, 28, 55, 255);
+		namespace ClassicTheme {
+			constexpr ImU32 Panel = IM_COL32(59, 65, 83, 255);
+			constexpr ImU32 Well = IM_COL32(12, 20, 39, 255);
+			constexpr ImU32 WellHover = IM_COL32(27, 37, 58, 255);
+			constexpr ImU32 WellPressed = IM_COL32(12, 12, 28, 255);
+			constexpr ImU32 Edge = IM_COL32(108, 118, 168, 255);
+			constexpr ImU32 EdgeLight = IM_COL32(193, 172, 198, 255);
+			constexpr ImU32 EdgeDark = IM_COL32(24, 28, 55, 255);
+		} // namespace ClassicTheme
+		inline ImU32 Panel = ClassicTheme::Panel;
+		inline ImU32 Well = ClassicTheme::Well;
+		inline ImU32 WellHover = ClassicTheme::WellHover;
+		inline ImU32 WellPressed = ClassicTheme::WellPressed;
+		inline ImU32 Edge = ClassicTheme::Edge;
+		inline ImU32 EdgeLight = ClassicTheme::EdgeLight;
+		inline ImU32 EdgeDark = ClassicTheme::EdgeDark;
 		constexpr ImU32 Gold = IM_COL32(252, 209, 19, 255);
 		constexpr ImU32 GoldShadow = IM_COL32(72, 40, 10, 255);
 		constexpr ImU32 Text = IM_COL32(255, 255, 255, 255);
