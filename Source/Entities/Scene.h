@@ -350,6 +350,17 @@ namespace RTE {
 		/// Ownership is NOT transferred!
 		std::list<SLBackground*>& GetBackLayers() { return m_BackLayerList; }
 
+		/// The BackgroundSet put behind this map in place of its own backgrounds, by module and preset name, or empty for the map's own.
+		const std::string& GetBackgroundSet() const { return m_BackgroundSet; }
+
+		/// Whether a background has been picked for this map (its own included), so the default from the settings no longer applies to it.
+		bool IsBackgroundSetChosen() const { return m_BackgroundSetChosen; }
+
+		/// Puts a BackgroundSet's layers behind this map in place of the ones it has, keeping the map's own to go back to. Needs the map loaded (LoadData).
+		/// @param backgroundSet The BackgroundSet's module and preset name, or empty for the map's own backgrounds.
+		/// @return Whether it was done: false for a set that isn't loaded (its mod gone), which leaves the backgrounds as they were.
+		bool ApplyBackgroundSet(const std::string& backgroundSet);
+
 		/// Adds area to the list if this scene's areas.
 		/// @param m_AreaList.push_back(newArea Area to add.
 		void AddArea(Scene::Area& newArea) { m_AreaList.push_back(new Scene::Area(newArea)); }
@@ -812,6 +823,10 @@ namespace RTE {
 		std::list<SceneObject*> m_PlacedObjects[PLACEDSETSCOUNT];
 		// List of background layers, first is the closest to the terrain, last is closest to the back
 		std::list<SLBackground*> m_BackLayerList;
+		// The map's own background layers while a BackgroundSet is in their place (empty otherwise), to go back to and to be what an editor saves - OWNED HERE
+		std::list<SLBackground*> m_DefaultBackLayerList;
+		std::string m_BackgroundSet; //!< The BackgroundSet in place of the map's own backgrounds, empty for none. See ApplyBackgroundSet.
+		bool m_BackgroundSetChosen; //!< Whether a background was picked for this map, so the settings' default background doesn't apply. Kept in save games.
 		// Dimensions of the pixels of the unseen layers, when they are dynamically generated. If 0, the layer was not generated
 		Vector m_UnseenPixelSize[Activity::MaxTeamCount];
 		// Layers representing the unknown areas for each team

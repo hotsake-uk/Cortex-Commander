@@ -475,6 +475,9 @@
     <ClInclude Include="Source\Entities\LimbPath.h">
       <Filter>Entities</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Entities\BackgroundSet.h">
+      <Filter>Entities</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Entities\Loadout.h">
       <Filter>Entities</Filter>
     </ClInclude>
@@ -722,6 +725,9 @@
       <Filter>GUI</Filter>
     </ClInclude>
     <ClInclude Include="Source\GUI\GUIWriter.h">
+      <Filter>GUI</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\GUI\UITheme.h">
       <Filter>GUI</Filter>
     </ClInclude>
     <ClInclude Include="Source\Lua\LuabindObjectWrapper.h">
@@ -1318,6 +1324,9 @@
     <ClCompile Include="Source\Entities\LimbPath.cpp">
       <Filter>Entities</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Entities\BackgroundSet.cpp">
+      <Filter>Entities</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Entities\Loadout.cpp">
       <Filter>Entities</Filter>
     </ClCompile>
@@ -1581,6 +1590,9 @@
       <Filter>GUI</Filter>
     </ClCompile>
     <ClCompile Include="Source\GUI\GUIWriter.cpp">
+      <Filter>GUI</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\GUI\UITheme.cpp">
       <Filter>GUI</Filter>
     </ClCompile>
     <ClCompile Include="Source\Lua\LuabindObjectWrapper.cpp">

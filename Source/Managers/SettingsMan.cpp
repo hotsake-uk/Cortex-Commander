@@ -32,6 +32,7 @@
 #include "UnitSpeechVoice.h"
 #include "ModernHUD.h"
 #include "ToolWidgets.h"
+#include "UITheme.h"
 #include "ConsoleMan.h"
 #include "CameraMan.h"
 #include "MovableMan.h"
@@ -224,6 +225,7 @@ void SettingsMan::Clear() {
 	m_UnitMenuClickToOpen = true;
 	m_UnitMenuTimeScale = 0.25F;
 	m_PauseAIKey = "Ctrl+P";
+	m_DefaultBackground.clear();
 	m_EndlessMetaGameMode = false;
 	m_EnableCrabBombs = false;
 	m_EnableMantling = true;
@@ -601,6 +603,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("RopeSettleSeconds", { RopeSim::SetSettleSeconds(std::stof(reader.ReadPropValue())); });
 	MatchProperty("CandleBurnMinutes", { TerrainCandle::SetBurnMinutes(std::stof(reader.ReadPropValue())); });
 	MatchProperty("ModernHUD", { ModernHUD::SetEnabled(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("UITheme", { UITheme::Select(reader.ReadPropValue()); });
 	MatchProperty("UILight", { ToolLight::Strength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 2.0F); });
 	MatchProperty("UILightOwn", { ToolLight::Mode = std::stoi(reader.ReadPropValue()) != 0 ? ToolLight::Source::OwnLight : ToolLight::Source::FollowGame; });
 	MatchProperty("UILightAngle", { ToolLight::OwnAngle = std::clamp(std::stof(reader.ReadPropValue()), -90.0F, 90.0F); });
@@ -1105,6 +1108,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 		SetUnitMenuTimeScale(scale);
 	});
 	MatchProperty("PauseAIKey", { m_PauseAIKey = reader.ReadPropValue(); });
+	MatchProperty("DefaultBackground", { m_DefaultBackground = reader.ReadPropValue(); });
 	MatchProperty("EndlessMetaGameMode", { reader >> m_EndlessMetaGameMode; });
 	MatchProperty("EndlessMode", { reader >> m_EndlessMetaGameMode; }); // Legacy name, kept for old Settings.ini files.
 	MatchProperty("EnableCrabBombs", { reader >> m_EnableCrabBombs; });
@@ -2041,6 +2045,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("ShowFPSAndVersion", m_ShowFPSAndVersion);
 	writer.NewPropertyWithValue("ShowNotices", m_ShowNotices);
 	writer.NewPropertyWithValue("ModernHUD", ModernHUD::IsEnabled());
+	writer.NewPropertyWithValue("UITheme", UITheme::Current());
 	writer.NewPropertyWithValue("UILight", ToolLight::Strength);
 	writer.NewPropertyWithValue("UILightOwn", ToolLight::Mode == ToolLight::Source::OwnLight);
 	writer.NewPropertyWithValue("UILightAngle", ToolLight::OwnAngle);
@@ -2118,6 +2123,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("SandboxPanelPlacement", g_DebugMan.m_SandboxPlacement);
 	writer.NewPropertyWithValue("ToolScale", g_DebugMan.m_ToolScale);
 	writer.NewPropertyWithValue("PixelToolFont", g_DebugMan.m_PixelFont);
+	writer.NewPropertyWithValue("DefaultBackground", m_DefaultBackground);
 
 	if (forPreset) {
 		// The game's own settings from the Settings menu, so a preset loaded at start brings them back too. Settings.ini keeps them in its own sections.

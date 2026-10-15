@@ -37,6 +37,7 @@
 #include "MapBrowser.h"
 #include "Campaign.h"
 #include "ModernHUD.h"
+#include "UITheme.h"
 #include "ActionMenu.h"
 #include "TimerMan.h"
 #include "UInputMan.h"
@@ -61,7 +62,7 @@ float DebugMan::GetToolScale() const {
 }
 
 namespace {
-	/// Dresses the tool windows in the game's own menu skin (see ToolTheme): slate panels, navy wells, periwinkle edges and gold lettering, with square, hard-edged shapes.
+	/// Dresses the tool windows in the game's own menu skin (see ToolTheme): slate panels, navy wells, periwinkle edges and gold lettering (or the UI theme's colours), with square, hard-edged shapes.
 	void ApplyGameTheme(ImGuiStyle& style) {
 		using namespace ToolTheme;
 		const ImVec4 panel = Vec(Panel, 0.96F);
@@ -436,10 +437,12 @@ void DebugMan::DrawImGui() {
 		m_PixelFontInUse = pixelFont != nullptr && io.FontDefault == pixelFont;
 		float fontScale = pixelFont ? 1.0F : uiScale * g_WindowMan.GetImGuiFontBaseScale();
 		static float styledFor = 0.0F;
-		if (std::abs(io.FontGlobalScale - fontScale) > 0.001F || io.FontDefault != wanted || styledFor != uiScale) {
+		static int styledTheme = -1;
+		if (std::abs(io.FontGlobalScale - fontScale) > 0.001F || io.FontDefault != wanted || styledFor != uiScale || styledTheme != UITheme::Generation()) {
 			io.FontGlobalScale = fontScale;
 			io.FontDefault = wanted;
 			styledFor = uiScale;
+			styledTheme = UITheme::Generation();
 			ImGuiStyle& style = ImGui::GetStyle();
 			style = ImGuiStyle();
 			ImGui::StyleColorsDark(&style);

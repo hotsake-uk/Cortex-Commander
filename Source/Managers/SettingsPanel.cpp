@@ -26,6 +26,8 @@
 #include "Texture.h"
 #include "Sandbox.h"
 #include "Scene.h"
+#include "BackgroundSet.h"
+#include "PresetMan.h"
 #include "SceneLighting.h"
 #include "SceneMan.h"
 #include "SettingsMan.h"
@@ -38,6 +40,7 @@
 #include "TerrainCandle.h"
 #include "WeatherLightning.h"
 #include "TextOverlay.h"
+#include "UITheme.h"
 #include "TimerMan.h"
 #include "UnitSpeech.h"
 #include "UnitSpeechVoice.h"
@@ -54,6 +57,7 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <list>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -322,6 +326,54 @@ namespace {
 	}
 
 	/// The screen style chooser: Off, the built-in styles and the player's saved variants (filter presets), with Save, Save as new and Delete for them.
+	/// A BackgroundSet's name as the background pickers show it: its own, with its mod's after it when it isn't the game's.
+	std::string BackgroundSetLabel(const std::string& moduleAndPreset) {
+		if (moduleAndPreset.empty()) {
+			return "The map's own";
+		}
+		size_t slash = moduleAndPreset.find('/');
+		if (slash == std::string::npos) {
+			return moduleAndPreset;
+		}
+		std::string module = moduleAndPreset.substr(0, slash);
+		std::string name = moduleAndPreset.substr(slash + 1);
+		return module == "Base.rte" ? name : name + " (" + module.substr(0, module.size() - (module.ends_with(".rte") ? 4 : 0)) + ")";
+	}
+
+	/// A picker of every BackgroundSet loaded, the game's and the mods', with "The map's own" first. Calls pick with the one clicked (empty for the map's own).
+	template <typename Pick> void BackgroundSetCombo(const char* label, const std::string& current, Pick pick) {
+		if (!Shown(label)) {
+			return;
+		}
+		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.55F);
+		if (ImGui::BeginCombo(label, BackgroundSetLabel(current).c_str())) {
+			if (ImGui::Selectable("The map's own", current.empty())) {
+				pick(std::string());
+			}
+			// Listed only while open.
+			std::list<Entity*> sets;
+			g_PresetMan.GetAllOfType(sets, "BackgroundSet");
+			for (const Entity* set: sets) {
+				std::string name = set->GetModuleAndPresetName();
+				if (ImGui::Selectable((BackgroundSetLabel(name) + "##" + name).c_str(), current == name)) {
+					pick(name);
+				}
+			}
+			ImGui::EndCombo();
+		}
+	}
+
+	/// The backgrounds behind the map: this map's, which a save game keeps, and the one every map played fresh gets.
+	void DrawBackgrounds() {
+		Scene* scene = g_ActivityMan.IsInActivity() ? g_SceneMan.GetScene() : nullptr;
+		if (scene) {
+			BackgroundSetCombo("Background on this map", scene->GetBackgroundSet(), [scene](const std::string& name) { scene->ApplyBackgroundSet(name); });
+			Tip("The sky and scenery behind this map, in place of its own. Kept in save games. A map always starts with its own (or the default below) when played fresh.");
+		}
+		BackgroundSetCombo("Default background on every map", g_SettingsMan.GetDefaultBackground(), [](const std::string& name) { g_SettingsMan.SetDefaultBackground(name); });
+		Tip("Every map played fresh gets this background in place of its own. A save game keeps the one it was saved with, and the map editors show the map's own. The map's own: each map keeps its own, as before.");
+	}
+
 	void DrawScreenStyle(LightingSettings& settings) {
 		if (!Shown("Screen style")) {
 			return;
@@ -659,6 +711,7 @@ void DebugMan::SettingsGUI() {
 	};
 
 	auto skyAndDaylight = [&]() {
+		DrawBackgrounds();
 		int quality = settings.GraphicsQuality;
 		if (Combo("Quality", &quality, "Potato (classic)\0Low\0Medium\0High\0Ultra\0Custom\0")) {
 			settings.ApplyQualityPreset(quality);
@@ -1700,6 +1753,18 @@ void DebugMan::SettingsGUI() {
 		Toggle("Modern HUD", ModernHUD::IsEnabled(), [](bool on) { ModernHUD::SetEnabled(on); });
 		Toggle("Notices at the top of the screen", g_SettingsMan.ShowNotices(), [](bool on) { g_SettingsMan.SetShowNotices(on); });
 		Tip("Short notes at the top of the screen for a few seconds when something is done that is hard to see otherwise: \"Game saved\", a preset loaded, \"Nothing to undo\", a camera spot kept, or a sandbox tool used while its simulation is off.");
+		if (Shown("UI theme")) {
+			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.55F);
+			if (ImGui::BeginCombo("UI theme", UITheme::Current().c_str())) {
+				for (const std::string& name: UITheme::Names()) {
+					if (ImGui::Selectable(name.c_str(), name == UITheme::Current())) {
+						UITheme::Select(name);
+					}
+				}
+				ImGui::EndCombo();
+			}
+		}
+		Tip("The colours of the menus, the build menu, the inventory, the console, the loading screen, these windows and the HUD. Classic: the game's own, blue menus and a green build menu. Green: the build menu and inventory's greens everywhere. Grey and Brown: the game's own grey and brown skins everywhere. Mods can add more (Base.rte/GUIs/Themes shows how).");
 		Slider("UI lighting", &ToolLight::Strength, Normal{1.0F}, 0.0F, 2.0F);
 		Tip("The menus and HUD lit as if they were in the world: the light brightens the side of each panel facing it, shades the far side, catches the edges towards it and casts the panel's shadow away from it. They are never dimmed past reading. 0 turns it off.");
 		{

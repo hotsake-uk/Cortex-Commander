@@ -26,6 +26,7 @@
 #include "BunkerAssemblyScheme.h"
 #include "BunkerAssembly.h"
 #include "SLBackground.h"
+#include "BackgroundSet.h"
 #include "EditorActivity.h"
 
 #include "AEmitter.h"
@@ -366,6 +367,9 @@ void Scene::Clear() {
 	for (int set = PLACEONLOAD; set < PLACEDSETSCOUNT; ++set)
 		m_PlacedObjects[set].clear();
 	m_BackLayerList.clear();
+	m_DefaultBackLayerList.clear();
+	m_BackgroundSet.clear();
+	m_BackgroundSetChosen = false;
 	m_Deployments.clear();
 	for (int team = Activity::TeamOne; team < Activity::MaxTeamCount; ++team) {
 		m_UnseenPixelSize[team].Reset();
@@ -431,6 +435,11 @@ int Scene::Create(const Scene& reference) {
 
 	for (std::list<SLBackground*>::const_iterator lItr = reference.m_BackLayerList.begin(); lItr != reference.m_BackLayerList.end(); ++lItr)
 		m_BackLayerList.push_back(dynamic_cast<SLBackground*>((*lItr)->Clone()));
+	for (const SLBackground* layer: reference.m_DefaultBackLayerList) {
+		m_DefaultBackLayerList.push_back(dynamic_cast<SLBackground*>(layer->Clone()));
+	}
+	m_BackgroundSet = reference.m_BackgroundSet;
+	m_BackgroundSetChosen = reference.m_BackgroundSetChosen;
 
 	for (int team = Activity::TeamOne; team < Activity::MaxTeamCount; ++team) {
 		// If the Unseen layers are loaded, then copy them. If not, then copy the procedural param that is responsible for creating them
@@ -484,6 +493,14 @@ int Scene::LoadData(bool placeObjects, bool initPathfinding, bool placeUnits) {
 	}
 	for (SLBackground* backgroundLayer: m_BackLayerList) {
 		backgroundLayer->InitScaleFactors();
+	}
+	for (SLBackground* backgroundLayer: m_DefaultBackLayerList) {
+		backgroundLayer->InitScaleFactors();
+	}
+	// A map played fresh gets the background the settings put behind every map, if any; a save game keeps the one it had, and an editor shows the map's own.
+	if (!m_BackgroundSetChosen && !m_IsSavedGameInternal && !g_SettingsMan.GetDefaultBackground().empty() && !dynamic_cast<EditorActivity*>(g_ActivityMan.GetActivity())) {
+		ApplyBackgroundSet(g_SettingsMan.GetDefaultBackground());
+		m_BackgroundSetChosen = false;
 	}
 
 	///////////////////////////////////
@@ -771,6 +788,41 @@ int Scene::LoadData(bool placeObjects, bool initPathfinding, bool placeUnits) {
 	return 0;
 }
 
+bool Scene::ApplyBackgroundSet(const std::string& backgroundSet) {
+	if (backgroundSet.empty()) {
+		if (!m_DefaultBackLayerList.empty()) {
+			for (SLBackground* layer: m_BackLayerList) {
+				delete layer;
+			}
+			m_BackLayerList = std::move(m_DefaultBackLayerList);
+			m_DefaultBackLayerList.clear();
+		}
+		m_BackgroundSet.clear();
+		m_BackgroundSetChosen = true;
+		return true;
+	}
+	const BackgroundSet* set = dynamic_cast<const BackgroundSet*>(g_PresetMan.GetEntityPreset("BackgroundSet", backgroundSet));
+	if (!set || set->GetLayers().empty()) {
+		return false;
+	}
+	if (m_DefaultBackLayerList.empty()) {
+		m_DefaultBackLayerList = std::move(m_BackLayerList);
+	} else {
+		for (SLBackground* layer: m_BackLayerList) {
+			delete layer;
+		}
+	}
+	m_BackLayerList.clear();
+	for (const SLBackground* layer: set->GetLayers()) {
+		SLBackground* copy = dynamic_cast<SLBackground*>(layer->Clone());
+		copy->InitScaleFactors();
+		m_BackLayerList.push_back(copy);
+	}
+	m_BackgroundSet = backgroundSet;
+	m_BackgroundSetChosen = true;
+	return true;
+}
+
 int Scene::ExpandAIPlanAssemblySchemes() {
 	std::list<SceneObject*> newAIPlan;
 
@@ -1041,6 +1093,13 @@ int Scene::ReadProperty(const std::string_view& propName, Reader& reader) {
 		    m_PlacedObjects[AIPLAN].push_back(pSO);
 	    });
 	MatchProperty(
+	    "AddDefaultBackgroundLayer",
+	    if (SLBackground* layer = dynamic_cast<SLBackground*>(g_PresetMan.ReadReflectedPreset(reader))) {
+		    m_DefaultBackLayerList.push_back(layer);
+	    });
+	MatchProperty("BackgroundSet", { m_BackgroundSet = reader.ReadPropValue(); });
+	MatchProperty("BackgroundSetChosen", { reader >> m_BackgroundSetChosen; });
+	MatchProperty(
 	    "AddBackgroundLayer",
 	    SLBackground* pLayer = dynamic_cast<SLBackground*>(g_PresetMan.ReadReflectedPreset(reader));
 	    RTEAssert(pLayer, "Something went wrong with reading SceneLayer");
@@ -1153,9 +1212,23 @@ int Scene::Save(Writer& writer) const {
 		}
 	}
 
-	for (std::list<SLBackground*>::const_iterator slItr = m_BackLayerList.begin(); slItr != m_BackLayerList.end(); ++slItr) {
+	// A game saved keeps the background picked for it, and the map's own to go back to; an editor saves the map with its own backgrounds.
+	const std::list<SLBackground*>& savedLayers = doFullGameSave || m_DefaultBackLayerList.empty() ? m_BackLayerList : m_DefaultBackLayerList;
+	for (const SLBackground* layer: savedLayers) {
 		writer.NewProperty("AddBackgroundLayer");
-		(*slItr)->SavePresetCopy(writer);
+		layer->SavePresetCopy(writer);
+	}
+	if (doFullGameSave) {
+		for (const SLBackground* layer: m_DefaultBackLayerList) {
+			writer.NewProperty("AddDefaultBackgroundLayer");
+			layer->SavePresetCopy(writer);
+		}
+		if (!m_BackgroundSet.empty()) {
+			writer.NewPropertyWithValue("BackgroundSet", m_BackgroundSet);
+		}
+		if (m_BackgroundSetChosen) {
+			writer.NewPropertyWithValue("BackgroundSetChosen", m_BackgroundSetChosen);
+		}
 	}
 	if (!m_UnseenPixelSize[Activity::TeamOne].IsZero()) {
 		writer.NewProperty("AllUnseenPixelSizeTeam1");
@@ -1651,6 +1724,9 @@ void Scene::Destroy(bool notInherited) {
 	for (std::list<SLBackground*>::iterator slItr = m_BackLayerList.begin(); slItr != m_BackLayerList.end(); ++slItr) {
 		delete (*slItr);
 		*slItr = 0;
+	}
+	for (SLBackground* layer: m_DefaultBackLayerList) {
+		delete layer;
 	}
 
 	for (std::list<Deployment*>::iterator slItr = m_Deployments.begin(); slItr != m_Deployments.end(); ++slItr) {

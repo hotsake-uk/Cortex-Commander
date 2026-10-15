@@ -770,8 +770,8 @@ void AHuman::UpdateLadderInput() {
 	const bool side = left || right;
 	LadderClimb& ladder = m_Ladder;
 	// In a gravity lift: no ladder taken hold of, and one held let go of; the lift has the body. (A climb puts the body where it should be
-	// each frame, against the lift.)
-	if (HeldByAutomover()) {
+	// each frame, against the lift.) Unless it is stuck there (see LiftHasBody).
+	if (LiftHasBody()) {
 		ladder.active = false;
 		return;
 	}

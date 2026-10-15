@@ -251,6 +251,12 @@ namespace RTE {
 		/// Sets the key that pauses and resumes the AI; see GetPauseAIKey.
 		void SetPauseAIKey(const std::string& key) { m_PauseAIKey = key; }
 
+		/// The BackgroundSet (module and preset name) put behind every map played fresh in place of its own backgrounds, or empty for each map's own.
+		const std::string& GetDefaultBackground() const { return m_DefaultBackground; }
+
+		/// Sets the BackgroundSet put behind every map played fresh; see GetDefaultBackground.
+		void SetDefaultBackground(const std::string& backgroundSet) { m_DefaultBackground = backgroundSet; }
+
 		/// Whether a key press (an SDL_Scancode with the SDL_Keymod held) is the key that pauses and resumes the AI. Left and right modifiers count alike.
 		bool IsPauseAIKey(int scancode, unsigned int modifiers) const;
 
@@ -1453,6 +1459,7 @@ namespace RTE {
 		bool m_UnitMenuClickToOpen; //!< Whether a click opens the unit menu and leaves it up (see UnitMenuClickToOpen).
 		float m_UnitMenuTimeScale; //!< How fast time runs while the unit menu is up (see UnitMenuTimeScale).
 		std::string m_PauseAIKey; //!< The key that pauses and resumes the AI (see GetPauseAIKey).
+		std::string m_DefaultBackground; //!< The BackgroundSet behind every map played fresh, empty for each map's own (see GetDefaultBackground).
 		bool m_TakingKey = false; //!< Whether the settings panel is waiting for a key to bind (see IsTakingKey).
 		bool m_EndlessMetaGameMode; //!< Endless MetaGame mode.
 		bool m_ShowFPSAndVersion; //!< Whether the frame rate and version are shown in the top right (see ShowFPSAndVersion).
