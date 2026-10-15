@@ -21,6 +21,7 @@ sources += files(
 'Arm.cpp',
 'AtomGroup.cpp',
 'Attachable.cpp',
+'BackgroundSet.cpp',
 'BunkerAssembly.cpp',
 'BunkerAssemblyScheme.cpp',
 'Deployment.cpp',
