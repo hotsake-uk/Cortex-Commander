@@ -285,6 +285,7 @@ void SettingsMan::Clear() {
 	m_AISharedSpotting = false;
 	m_AISharedSpottingHeadStart = 1.0F;
 	m_AIScavengesBetterWeapons = true;
+	m_AIMaxUnitsPerSpot = 2;
 	m_AIUnitsCallLifts = true;
 	m_DeadCrewFallOut = true;
 	m_PassengersFireFromVehicles = true;
@@ -1224,6 +1225,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AISharedSpotting", { reader >> m_AISharedSpotting; });
 	MatchProperty("AISharedSpottingHeadStart", { float headStart = 1.0F; reader >> headStart; SetAISharedSpottingHeadStart(headStart); });
 	MatchProperty("AIScavengesBetterWeapons", { reader >> m_AIScavengesBetterWeapons; });
+	MatchProperty("AIMaxUnitsPerSpot", { int count; reader >> count; SetAIMaxUnitsPerSpot(count); });
 	MatchProperty("AIUnitsCallLifts", { reader >> m_AIUnitsCallLifts; });
 	MatchProperty("DeadCrewFallOut", { reader >> m_DeadCrewFallOut; });
 	MatchProperty("PassengersFireFromVehicles", { reader >> m_PassengersFireFromVehicles; });
@@ -1969,6 +1971,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AISharedSpotting", m_AISharedSpotting);
 	writer.NewPropertyWithValue("AISharedSpottingHeadStart", m_AISharedSpottingHeadStart);
 	writer.NewPropertyWithValue("AIScavengesBetterWeapons", m_AIScavengesBetterWeapons);
+	writer.NewPropertyWithValue("AIMaxUnitsPerSpot", m_AIMaxUnitsPerSpot);
 	writer.NewPropertyWithValue("AIUnitsCallLifts", m_AIUnitsCallLifts);
 	writer.NewPropertyWithValue("DeadCrewFallOut", m_DeadCrewFallOut);
 	writer.NewPropertyWithValue("PassengersFireFromVehicles", m_PassengersFireFromVehicles);

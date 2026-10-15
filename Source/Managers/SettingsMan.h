@@ -560,6 +560,8 @@ namespace RTE {
 		float AISharedSpottingHeadStart() const { return m_AISharedSpottingHeadStart; }
 		/// Whether armed AI units with nothing to fight go and pick up a loose gun clearly better than theirs, or a grenade when they have nothing to throw.
 		bool AIScavengesBetterWeapons() const { return m_AIScavengesBetterWeapons; }
+		/// How many AI units of one side may stand on the same spot; standing extras move to the nearest free spot along the floor. 0: no limit.
+		int AIMaxUnitsPerSpot() const { return m_AIMaxUnitsPerSpot; }
 
 		/// Whether AI units call a lift or moving platform (AMover) to the stop they wait at, and on to the stop they ride to (LM-11). Off, they
 		/// still ride lifts that shuttle, waiting for the deck's own round, and leave alone the ones that only come when called.
@@ -1173,6 +1175,7 @@ namespace RTE {
 		void SetAISharedSpotting(bool on) { m_AISharedSpotting = on; }
 		void SetAISharedSpottingHeadStart(float headStart) { m_AISharedSpottingHeadStart = std::clamp(headStart, 0.0F, 1.0F); }
 		void SetAIScavengesBetterWeapons(bool on) { m_AIScavengesBetterWeapons = on; }
+		void SetAIMaxUnitsPerSpot(int count) { m_AIMaxUnitsPerSpot = std::clamp(count, 0, 8); }
 		/// Sets whether AI units call lifts; see AIUnitsCallLifts.
 		void SetAIUnitsCallLifts(bool on) { m_AIUnitsCallLifts = on; }
 
@@ -1551,6 +1554,7 @@ namespace RTE {
 		bool m_AISharedSpotting; //!< See AISharedSpotting.
 		float m_AISharedSpottingHeadStart; //!< See AISharedSpottingHeadStart.
 		bool m_AIScavengesBetterWeapons; //!< See AIScavengesBetterWeapons.
+		int m_AIMaxUnitsPerSpot; //!< See AIMaxUnitsPerSpot.
 		bool m_AIUnitsCallLifts; //!< See AIUnitsCallLifts.
 		bool m_AIWaitForFuel; //!< Whether AI units wait for fuel before they jet (see AIWaitsForFuel).
 		bool m_AIWaitsAtDoors = true; //!< See AIWaitsAtDoors.

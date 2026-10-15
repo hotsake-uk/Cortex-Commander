@@ -1961,6 +1961,13 @@ void DebugMan::SettingsGUI() {
 		Tip("A unit whose nerve has gone (losses, wounds and fire wear it down) breaks and falls back, whatever its health, until it steadies or is rallied; in Battle Command yours show a \"!\" over them. Off: suppression still makes them duck and crawl, but nobody runs.");
 		Toggle("Units pick up better weapons", g_SettingsMan.AIScavengesBetterWeapons(), [](bool on) { g_SettingsMan.SetAIScavengesBetterWeapons(on); });
 		Tip("An armed unit with nothing to fight looks round every so often for a loose gun lying near that's clearly better than its best (worth a third more), or a grenade when it has nothing to throw, and goes to pick it up, then carries on. Not one told to hold its position, nor one following a squad. Units with no gun at all look for one whatever this is.");
+		{
+			int perSpot = g_SettingsMan.AIMaxUnitsPerSpot();
+			if (SliderI("Max units per spot", &perSpot, Normal{2}, 0, 8, perSpot == 0 ? "No limit" : "%d")) {
+				g_SettingsMan.SetAIMaxUnitsPerSpot(perSpot);
+			}
+			Tip("How many AI soldiers or crabs of one side may stand on the same spot. When more are standing there, the last to arrive step along the floor to the nearest free spot (one holding a post stays near it), so a group doesn't stack up on one pixel. Units on the move and ones you control aren't touched. 0: no limit.");
+		}
 		Toggle("Units call lifts", g_SettingsMan.AIUnitsCallLifts(), [](bool on) { g_SettingsMan.SetAIUnitsCallLifts(on); });
 		Tip("AI soldiers route by lifts and moving platforms. On: a unit waiting at a stop calls the deck to it, and a rider sends it on to the stop it wants; the deck then goes back to its own round. Off: they wait for a shuttling deck to come round on its own, and leave alone lifts that only come when called.");
 		{

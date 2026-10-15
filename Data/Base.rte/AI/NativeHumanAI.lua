@@ -753,6 +753,7 @@ function NativeHumanAI:Update(Owner)
 		HumanBehaviors.SmokeUpdate(self, Owner);
 		HumanBehaviors.DraughtUpdate(self, Owner);
 		SharedBehaviors.SquadTactics(self, Owner);
+		SharedBehaviors.CrowdingUpdate(self, Owner);
 		SharedBehaviors.FlankUpdate(self, Owner);
 		HumanBehaviors.ShotFromUnseen(self, Owner, hit and AlarmPoint);
 		HumanBehaviors.UseTheWorld(self, Owner);
