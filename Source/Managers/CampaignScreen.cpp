@@ -146,6 +146,7 @@ namespace {
 		bool MarketOpen = false; //!< The galaxy market window is up.
 		bool MilitaryOpen = false; //!< The window of all the player's armies.
 		bool MilitaryReadyOnly = false;
+		bool SystemBoxFolded = false; //!< The system map's list of armies there, folded away.
 		bool DiplomacyOpen = false;
 		int DealWith = -1; //!< The faction a deal is being put together for, in the diplomacy window.
 		Deal DealDraft;
@@ -403,6 +404,16 @@ namespace {
 		}
 		const int count = static_cast<int>(armies.size());
 		if (!own) {
+			// On a dark disc so it reads on any planet, with a ring: red (pulsing) for those the player could fight, blue for peace,
+			// green for allies.
+			size *= 1.2F;
+			const int player = Player();
+			const Stance stance = player >= 0 ? StanceOf(game, player, first.Faction) : Stance::Neutral;
+			const bool hostile = stance == Stance::War || stance == Stance::Neutral;
+			const float pulse = hostile ? 0.6F + 0.4F * std::sin(static_cast<float>(ImGui::GetTime()) * 4.0F) : 1.0F;
+			const ImU32 ring = stance == Stance::Alliance ? IM_COL32(110, 230, 120, 255) : stance == Stance::Peace ? IM_COL32(120, 180, 255, 255) : IM_COL32(255, 70, 55, 255);
+			drawList->AddCircleFilled(ImVec2(at.x, at.y + size * 0.1F), size * 1.75F, IM_COL32(6, 6, 14, 210), 24);
+			drawList->AddCircle(ImVec2(at.x, at.y + size * 0.1F), size * 1.75F, Alpha(ring, pulse), 24, hostile ? 2.5F : 2.0F);
 			const bool hovered = DrawArmyIcon(drawList, at, size, FactionColor(first.Faction), selected, count);
 			if (pointedAt) {
 				Beacon(drawList, at, size + 4.0F);
@@ -466,7 +477,7 @@ namespace {
 			}
 		}
 		const int player = Player();
-		auto widthOf = [&game, player, size](const std::vector<int>& group) { return game.Armies[group.front()].Faction == player ? size * 3.6F : size * 2.6F; };
+		auto widthOf = [&game, player, size](const std::vector<int>& group) { return game.Armies[group.front()].Faction == player ? size * 4.0F : size * 4.4F; };
 		float total = 0.0F;
 		for (const std::vector<int>& group: groups) {
 			total += widthOf(group);
@@ -489,6 +500,66 @@ namespace {
 		drawList->AddText(ImVec2(at.x - size.x * 0.5F + 1.0F, at.y + 1.0F), IM_COL32(0, 0, 0, 200), text.c_str());
 		drawList->AddText(ImVec2(at.x - size.x * 0.5F, at.y), color, text.c_str());
 	}
+
+	/// Room on a map for labels and markers: each one placed is kept, and a new one moves along until it overlaps none of them.
+	struct LabelSpace {
+		std::vector<ImVec4> Taken; //!< Each as its left, top, right and bottom.
+
+		void Take(ImVec2 from, ImVec2 to) { Taken.emplace_back(from.x, from.y, to.x, to.y); }
+
+		bool Free(ImVec2 from, ImVec2 size) const {
+			return std::none_of(Taken.begin(), Taken.end(), [&](const ImVec4& box) { return from.x < box.z + 2.0F && from.x + size.x > box.x - 2.0F && from.y < box.w + 1.0F && from.y + size.y > box.y - 1.0F; });
+		}
+
+		/// Where a box of this size goes: the first of the spots tried that's free, each tried where it is and then moved on by step,
+		/// a few times; the first spot if none is.
+		ImVec2 Place(const std::vector<ImVec2>& tries, ImVec2 size, float step) {
+			for (int shift = 0; shift < 7; ++shift) {
+				for (const ImVec2& spot: tries) {
+					const ImVec2 at(spot.x, spot.y + step * static_cast<float>(shift));
+					if (Free(at, size)) {
+						Take(at, ImVec2(at.x + size.x, at.y + size.y));
+						return at;
+					}
+				}
+			}
+			Take(tries.front(), ImVec2(tries.front().x + size.x, tries.front().y + size.y));
+			return tries.front();
+		}
+	};
+
+	constexpr float c_SystemArmySize = 8.0F; //!< Army shields on the system map.
+
+	/// How much room a row of army shields (DrawArmyRow) takes, the names over the player's own included.
+	ImVec2 ArmyRowSize(const std::vector<int>& armies, float size) {
+		const CampaignModel::Campaign& game = s_Screen.Game;
+		const int player = Player();
+		std::vector<int> factions;
+		float width = 0.0F;
+		bool own = false;
+		float ownLabel = 0.0F;
+		int ownCount = 0;
+		for (int army: armies) {
+			const Army& each = game.Armies[army];
+			if (each.Faction == player) {
+				own = true;
+				++ownCount;
+				ownLabel = ImGui::CalcTextSize(each.Name.c_str()).x;
+			}
+			if (std::find(factions.begin(), factions.end(), each.Faction) == factions.end()) {
+				factions.push_back(each.Faction);
+				width += each.Faction == player ? size * 4.0F : size * 4.4F;
+			}
+		}
+		if (ownCount > 1) {
+			ownLabel = ImGui::CalcTextSize("9 armies").x;
+		}
+		return ImVec2(std::max(width, ownLabel + 8.0F), ImGui::GetTextLineHeight() + 14.0F + size * 4.4F);
+	}
+
+	/// Where a row of army shields given that room goes, for its top left corner.
+	ImVec2 ArmyRowCenter(ImVec2 corner, ImVec2 row) { return ImVec2(corner.x + row.x * 0.5F, corner.y + ImGui::GetTextLineHeight() + 4.0F + (row.y - ImGui::GetTextLineHeight() - 14.0F) * 0.5F); }
+
 
 	/// A starfield and a few clouds of nebula, the same for the same seed, behind the galaxy and system maps.
 	void DrawSpace(ImDrawList* drawList, ImVec2 from, ImVec2 to, std::uint32_t seed, ImVec2 drift) {
@@ -1531,6 +1602,7 @@ namespace {
 		int hoveredSystem = -1;
 		long hoveredArmy = 0;
 		const float starSize = std::clamp(6.0F * s_Screen.GalaxyZoom, 4.0F, 12.0F);
+		std::vector<std::pair<ImVec2, std::vector<int>>> armyMarks;
 		for (int index = 0; index < static_cast<int>(game.Systems.size()); ++index) {
 			const StarSystem& system = game.Systems[index];
 			const ImVec2 at = toScreen(system.X, system.Y);
@@ -1578,18 +1650,21 @@ namespace {
 					byFaction[game.Armies[army].Faction].push_back(army);
 				}
 			}
-			float offset = starSize + 14.0F;
+			float offset = starSize + 16.0F;
 			for (int faction = 0; faction < static_cast<int>(byFaction.size()); ++faction) {
 				if (byFaction[faction].empty()) {
 					continue;
 				}
-				if (DrawArmies(drawList, ImVec2(at.x + offset, at.y - starSize), 7.0F, byFaction[faction]) && hovered) {
-					// The first of them, or the next after the one picked.
-					const std::vector<int>& armies = byFaction[faction];
-					auto picked = std::find_if(armies.begin(), armies.end(), [](int army) { return s_Screen.Game.Armies[army].Id == s_Screen.SelectedArmy; });
-					hoveredArmy = game.Armies[picked == armies.end() || picked + 1 == armies.end() ? armies.front() : *(picked + 1)].Id;
-				}
-				offset += faction == Player() ? 22.0F : 17.0F;
+				armyMarks.push_back({ImVec2(at.x + offset, at.y - starSize), byFaction[faction]});
+				offset += faction == Player() ? 26.0F : 30.0F;
+			}
+		}
+		// The armies after every star, so no star or name is drawn over them.
+		for (const auto& [where, armies]: armyMarks) {
+			if (DrawArmies(drawList, where, 7.0F, armies) && hovered) {
+				// The first of them, or the next after the one picked.
+				auto picked = std::find_if(armies.begin(), armies.end(), [](int army) { return s_Screen.Game.Armies[army].Id == s_Screen.SelectedArmy; });
+				hoveredArmy = game.Armies[picked == armies.end() || picked + 1 == armies.end() ? armies.front() : *(picked + 1)].Id;
 			}
 		}
 		const Placer place = [&](const Place& where, bool army, ImVec2& at) {
@@ -1713,12 +1788,14 @@ namespace {
 				continue;
 			}
 			const ImVec2 parent = where[planet.Parent];
-			const float parentRadius = step * 0.12F * game.Planets[planet.Parent].Size;
-			const float radius = parentRadius + step * 0.12F * planet.Orbit;
+			// (Well out from its planet, so the two and their names don't run together.)
+			const float parentRadius = std::max(step * 0.12F * game.Planets[planet.Parent].Size, 10.0F);
+			const float radius = parentRadius + step * (0.13F + 0.11F * planet.Orbit);
 			drawList->AddEllipse(parent, ImVec2(radius, radius * 0.62F), IM_COL32(120, 140, 200, 40), 0.0F, 48, 1.0F);
 			where[planetIndex] = ImVec2(parent.x + std::cos(planet.Angle) * radius, parent.y + std::sin(planet.Angle) * radius * 0.62F);
 		}
-		const ImVec2 orbitAt(star.x, star.y + step * 0.25F + 32.0F);
+		auto radiusOf = [&](int planet) { return std::max(step * 0.12F * game.Planets[planet].Size, game.Planets[planet].Parent >= 0 ? 6.0F : 10.0F); };
+		const ImVec2 orbitAt(star.x, star.y + step * 0.25F + 36.0F);
 		const Placer place = [&](const Place& at, bool army, ImVec2& out) {
 			if (at.System != systemIndex) {
 				// Off the map, at its edge toward that system along the lanes.
@@ -1737,14 +1814,29 @@ namespace {
 			}
 			out = where[at.Planet];
 			if (army) {
-				out.y -= step * 0.12F * game.Planets[at.Planet].Size + 16.0F;
+				out.y -= radiusOf(at.Planet) + 24.0F;
 			}
 			return true;
 		};
+		// Drawn in passes, so nothing drawn later hides what matters: every planet and moon first, then their names (moved apart where
+		// they'd overlap), then the armies on top of everything.
+		LabelSpace labels;
+		labels.Take(ImVec2(star.x - step * 0.3F, star.y - step * 0.3F), ImVec2(star.x + step * 0.3F, star.y + step * 0.3F));
+		std::vector<int> drawOrder;
 		for (int planetIndex: system.Planets) {
+			if (game.Planets[planetIndex].Parent < 0) {
+				drawOrder.push_back(planetIndex);
+			}
+		}
+		for (int planetIndex: system.Planets) {
+			if (game.Planets[planetIndex].Parent >= 0) {
+				drawOrder.push_back(planetIndex);
+			}
+		}
+		for (int planetIndex: drawOrder) {
 			const Planet& planet = game.Planets[planetIndex];
 			const ImVec2 at = where[planetIndex];
-			const float radius = step * 0.12F * planet.Size;
+			const float radius = radiusOf(planetIndex);
 			DrawPlanetBall(drawList, at, radius, planet, star);
 			// Who controls it: a ring in their colour, broken in red while it's invaded; a dashed grey ring while it's contested.
 			if (const PlanetControl held = ControlOf(game, planetIndex); held.Controller >= 0) {
@@ -1765,17 +1857,32 @@ namespace {
 				}
 			}
 			if (planetIndex == s_Screen.SelectedPlanet) {
-				drawList->AddCircle(at, radius + 6.0F, IM_COL32(255, 255, 255, 220), 48, 1.5F);
+				drawList->AddCircle(at, radius + 7.0F, IM_COL32(255, 255, 255, 220), 48, 1.5F);
 			}
 			// Its points round it, in their owners' colours.
 			const int count = static_cast<int>(planet.Points.size());
+			const float dotSize = planet.Parent >= 0 ? 3.0F : 4.0F;
 			for (int point = 0; point < count; ++point) {
 				const float angle = -c_Pi * 0.5F + 2.0F * c_Pi * static_cast<float>(point) / static_cast<float>(count);
-				const ImVec2 dot(at.x + std::cos(angle) * (radius + 9.0F), at.y + std::sin(angle) * (radius + 9.0F));
+				const ImVec2 dot(at.x + std::cos(angle) * (radius + dotSize + 5.0F), at.y + std::sin(angle) * (radius + dotSize + 5.0F));
 				const int owner = planet.Points[point].Owner;
-				drawList->AddCircleFilled(dot, 4.0F, owner >= 0 ? FactionColor(owner) : IM_COL32(90, 90, 100, 255), 12);
-				drawList->AddCircle(dot, 4.0F, IM_COL32(0, 0, 0, 220), 12, 1.0F);
+				drawList->AddCircleFilled(dot, dotSize, owner >= 0 ? FactionColor(owner) : IM_COL32(90, 90, 100, 255), 12);
+				drawList->AddCircle(dot, dotSize, IM_COL32(0, 0, 0, 220), 12, 1.0F);
 			}
+			const float pad = dotSize * 2.0F + 6.0F;
+			labels.Take(ImVec2(at.x - radius - pad, at.y - radius - pad), ImVec2(at.x + radius + pad, at.y + radius + pad));
+			if (hovered && std::hypot(io.MousePos.x - at.x, io.MousePos.y - at.y) < radius + 8.0F && (hoveredPlanet < 0 || planet.Parent >= 0)) {
+				hoveredPlanet = planetIndex; // (A moon over its planet wins.)
+			}
+		}
+		// Names, each with what its points produce in a row of icons under it, below a planet or beside a moon.
+		const float line = ImGui::GetTextLineHeight();
+		const float icon = 13.0F;
+		for (int planetIndex: drawOrder) {
+			const Planet& planet = game.Planets[planetIndex];
+			const ImVec2 at = where[planetIndex];
+			const float radius = radiusOf(planetIndex);
+			const bool moon = planet.Parent >= 0;
 			const PlanetControl control = ControlOf(game, planetIndex);
 			std::string label = planet.Name;
 			if (control.Invaded) {
@@ -1783,43 +1890,56 @@ namespace {
 			} else if (control.Contested) {
 				label += " (contested)";
 			}
-			CenteredText(drawList, ImVec2(at.x, at.y + radius + 15.0F), control.Controller >= 0 ? Scale(FactionColor(control.Controller), 1.2F) : IM_COL32(200, 205, 230, 230), label);
-			{
-				// What its points produce, an icon for each kind, under its name.
-				std::array<int, c_ResourceCount> yields{};
-				for (const Point& point: planet.Points) {
-					yields[static_cast<size_t>(std::clamp(point.Deposit, 0, c_ResourceCount - 1))] += point.Yield;
-				}
-				const int kinds = static_cast<int>(std::count_if(yields.begin(), yields.end(), [](int yield) { return yield > 0; }));
-				const float icon = 13.0F;
-				float x = at.x - static_cast<float>(kinds) * icon * 0.75F + icon * 0.75F;
-				const float y = at.y + radius + 15.0F + ImGui::GetTextLineHeight() + icon * 0.6F;
-				for (int each = 0; each < c_ResourceCount && Shown(Step::ReadPoint); ++each) {
-					if (yields[each] > 0) {
-						DrawResourceBadge(drawList, ImVec2(x, y), icon, static_cast<Resource>(each));
-						x += icon * 1.5F;
-					}
+			std::array<int, c_ResourceCount> yields{};
+			for (const Point& point: planet.Points) {
+				yields[static_cast<size_t>(std::clamp(point.Deposit, 0, c_ResourceCount - 1))] += point.Yield;
+			}
+			const int kinds = Shown(Step::ReadPoint) ? static_cast<int>(std::count_if(yields.begin(), yields.end(), [](int yield) { return yield > 0; })) : 0;
+			const ImVec2 textSize = ImGui::CalcTextSize(label.c_str());
+			const ImVec2 block(std::max(textSize.x, static_cast<float>(kinds) * icon * 1.5F), textSize.y + (kinds > 0 ? icon * 1.3F : 0.0F));
+			// A planet's name centred under it; a moon's to its right, or its left if the right is taken.
+			std::vector<ImVec2> tries;
+			if (moon) {
+				tries = {ImVec2(at.x + radius + 14.0F, at.y - line * 0.5F), ImVec2(at.x - radius - 14.0F - block.x, at.y - line * 0.5F), ImVec2(at.x - block.x * 0.5F, at.y + radius + 14.0F), ImVec2(at.x - block.x * 0.5F, at.y - radius - 14.0F - block.y)};
+			} else {
+				tries = {ImVec2(at.x - block.x * 0.5F, at.y + radius + 16.0F)};
+			}
+			const ImVec2 corner = labels.Place(tries, block, line);
+			const ImU32 color = control.Controller >= 0 ? Scale(FactionColor(control.Controller), 1.2F) : (moon ? IM_COL32(175, 180, 205, 220) : IM_COL32(205, 210, 235, 235));
+			drawList->AddRectFilled(ImVec2(corner.x - 3.0F, corner.y - 1.0F), ImVec2(corner.x + block.x + 3.0F, corner.y + block.y + 1.0F), IM_COL32(4, 6, 14, 150), 3.0F);
+			CenteredText(drawList, ImVec2(corner.x + block.x * 0.5F, corner.y), color, label);
+			float x = corner.x + block.x * 0.5F - static_cast<float>(kinds) * icon * 0.75F + icon * 0.75F;
+			for (int each = 0; each < c_ResourceCount && kinds > 0; ++each) {
+				if (yields[each] > 0) {
+					DrawResourceBadge(drawList, ImVec2(x, corner.y + textSize.y + icon * 0.65F), icon, static_cast<Resource>(each));
+					x += icon * 1.5F;
 				}
 			}
-			const bool onIt = hovered && std::hypot(io.MousePos.x - at.x, io.MousePos.y - at.y) < radius + 8.0F;
-			if (onIt) {
-				hoveredPlanet = planetIndex;
-			}
-			// Armies standing on it.
+		}
+		// Armies on each planet and moon, over everything else, above it (higher if that's taken).
+		for (int planetIndex: drawOrder) {
 			std::vector<int> armies;
 			for (int army = 0; army < static_cast<int>(game.Armies.size()); ++army) {
 				if (game.Armies[army].Planet == planetIndex && !IsMoving(game.Armies[army].Id)) {
 					armies.push_back(army);
 				}
 			}
-			if (const long onIt = DrawArmyRow(drawList, ImVec2(at.x, at.y - radius - 16.0F), 6.0F, armies, true); onIt && hovered) {
+			if (armies.empty()) {
+				continue;
+			}
+			const ImVec2 at = where[planetIndex];
+			const float radius = radiusOf(planetIndex);
+			const ImVec2 row = ArmyRowSize(armies, c_SystemArmySize);
+			const float pad = game.Planets[planetIndex].Parent >= 0 ? 12.0F : 14.0F;
+			const ImVec2 corner = labels.Place({ImVec2(at.x - row.x * 0.5F, at.y - radius - pad - row.y)}, row, -line);
+			if (const long onIt = DrawArmyRow(drawList, ArmyRowCenter(corner, row), c_SystemArmySize, armies, true); onIt && hovered) {
 				hoveredArmy = onIt;
 			}
 		}
 		// Armies in orbit, in a row under the star.
 		std::vector<int> orbiting = ArmiesInOrbit(game, systemIndex);
 		orbiting.erase(std::remove_if(orbiting.begin(), orbiting.end(), [&game](int army) { return IsMoving(game.Armies[army].Id); }), orbiting.end());
-		if (const long onIt = DrawArmyRow(drawList, orbitAt, 7.0F, orbiting, false); onIt && hovered) {
+		if (const long onIt = DrawArmyRow(drawList, orbitAt, c_SystemArmySize, orbiting, false); onIt && hovered) {
 			hoveredArmy = onIt;
 		}
 		if (!orbiting.empty()) {
@@ -1827,9 +1947,9 @@ namespace {
 		}
 		CenteredText(drawList, ImVec2(star.x, from.y + 8.0F), IM_COL32(255, 255, 255, 255), system.Name + " system");
 		DrawPulses(drawList, place);
-		DrawMotions(drawList, place, 7.0F);
+		DrawMotions(drawList, place, c_SystemArmySize);
 		if (const int beacon = s_Screen.Lights.Planet; beacon >= 0 && beacon < static_cast<int>(game.Planets.size()) && game.Planets[beacon].System == systemIndex) {
-			Beacon(drawList, where[beacon], step * 0.12F * game.Planets[beacon].Size + 6.0F);
+			Beacon(drawList, where[beacon], radiusOf(beacon) + 6.0F);
 		}
 
 		if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
@@ -3673,6 +3793,84 @@ namespace {
 	}
 #pragma endregion
 
+#pragma region Armies in a system
+	/// Over the top right of the system map: every army in the system, other factions' first (threats at the top), so none goes unseen.
+	/// Click one to pick it; the mouse on one points it out on the map.
+	void SystemArmiesBox() {
+		const CampaignModel::Campaign& game = s_Screen.Game;
+		const int system = s_Screen.ViewSystem;
+		if (s_Screen.Showing != View::System || system < 0 || system >= static_cast<int>(game.Systems.size())) {
+			return;
+		}
+		const int player = Player();
+		std::vector<int> armies;
+		for (int army = 0; army < static_cast<int>(game.Armies.size()); ++army) {
+			if (game.Armies[army].System == system) {
+				armies.push_back(army);
+			}
+		}
+		if (armies.empty()) {
+			return;
+		}
+		// Threats first, then friends, then the player's own.
+		auto rank = [&](int army) {
+			const int faction = game.Armies[army].Faction;
+			return faction == player ? 2 : Friendly(game, player, faction) ? 1 : 0;
+		};
+		std::stable_sort(armies.begin(), armies.end(), [&](int a, int b) { return rank(a) < rank(b); });
+		const float width = ImGui::GetFontSize() * 17.0F;
+		ImGui::SetCursorScreenPos(ImVec2(s_Screen.MapTo.x - width - 10.0F, s_Screen.MapFrom.y + 10.0F));
+		ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.04F, 0.05F, 0.11F, 0.88F));
+		ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.45F, 0.5F, 0.7F, 0.5F));
+		if (ImGui::BeginChild("##systemArmies", ImVec2(width, 0.0F), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY, ImGuiWindowFlags_NoScrollbar)) {
+			const int threats = static_cast<int>(std::count_if(armies.begin(), armies.end(), [&](int army) { return rank(army) == 0; }));
+			ImGui::TextDisabled("In this system");
+			if (threats > 0) {
+				ImGui::SameLine();
+				ImGui::TextColored(ImVec4(1.0F, 0.45F, 0.4F, 1.0F), "%d not friendly", threats);
+			}
+			ImGui::SameLine(ImGui::GetContentRegionMax().x - ImGui::CalcTextSize(s_Screen.SystemBoxFolded ? "Show" : "Hide").x - ImGui::GetStyle().FramePadding.x * 2.0F);
+			if (ToolUI::SmallButton(s_Screen.SystemBoxFolded ? "Show" : "Hide")) {
+				s_Screen.SystemBoxFolded = !s_Screen.SystemBoxFolded;
+			}
+			if (!s_Screen.SystemBoxFolded) {
+				const int shown = std::min(static_cast<int>(armies.size()), 8);
+				for (int index = 0; index < shown; ++index) {
+					const Army& each = game.Armies[armies[index]];
+					ImGui::PushID(static_cast<int>(each.Id));
+					const ImVec2 at = ImGui::GetCursorScreenPos();
+					const float line = ImGui::GetTextLineHeight();
+					if (ImGui::Selectable("##army", each.Id == s_Screen.SelectedArmy, 0, ImVec2(0.0F, line * 2.0F))) {
+						s_Screen.SelectedArmy = each.Id;
+						if (each.Planet >= 0) {
+							s_Screen.SelectedPlanet = each.Planet;
+							s_Screen.SelectedPoint = -1;
+						}
+					}
+					if (ImGui::IsItemHovered()) {
+						s_Screen.RosterHoverNext = each.Id;
+					}
+					ImDrawList* drawList = ImGui::GetWindowDrawList();
+					DrawArmyIcon(drawList, ImVec2(at.x + line * 0.6F, at.y + line * 0.8F), line * 0.45F, FactionColor(each.Faction), false, 1);
+					const int r = rank(armies[index]);
+					const ImU32 tag = r == 0 ? IM_COL32(255, 110, 95, 255) : r == 1 ? IM_COL32(130, 220, 140, 255) : ToolTheme::Gold;
+					const std::string top = each.Faction == player ? each.Name + " (yours)" : FactionLabel(each.Faction) + (r == 0 ? "" : Allied(game, player, each.Faction) ? " (ally)" : " (at peace)");
+					drawList->AddText(ImVec2(at.x + line * 1.4F, at.y), tag, top.c_str());
+					const std::string bottom = std::to_string(SoldierCount(each)) + " soldiers, " + (each.Planet >= 0 ? "on " + game.Planets[each.Planet].Name : std::string("in orbit"));
+					drawList->AddText(ImVec2(at.x + line * 1.4F, at.y + line), IM_COL32(170, 175, 195, 255), bottom.c_str());
+					ImGui::PopID();
+				}
+				if (static_cast<int>(armies.size()) > shown) {
+					ImGui::TextDisabled("and %d more", static_cast<int>(armies.size()) - shown);
+				}
+			}
+		}
+		ImGui::EndChild();
+		ImGui::PopStyleColor(2);
+	}
+
+#pragma endregion
+
 #pragma region Pages
 	/// The next of the player's armies with moves left and nowhere to go, after the one picked.
 	void NextArmy() {
@@ -3832,6 +4030,7 @@ namespace {
 		ImGui::SameLine();
 		SidePanel(sideWidth, room.y);
 		GuideBox();
+		SystemArmiesBox();
 
 		// Esc steps back out: planet to system to galaxy.
 		if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId)) {
