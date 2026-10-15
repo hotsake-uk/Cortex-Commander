@@ -137,6 +137,11 @@ namespace {
 		bool ConfirmDisband = false;
 		bool ConfirmDelete = false;
 		bool MarketOpen = false; //!< The galaxy market window is up.
+		bool DiplomacyOpen = false;
+		int DealWith = -1; //!< The faction a deal is being put together for, in the diplomacy window.
+		Deal DealDraft;
+		std::string DiplomacyNote; //!< The last answer a faction gave.
+		int ConfirmWar = -1; //!< The faction war is about to be declared on, to make sure.
 		std::string DeleteFile;
 		bool EndShown = false; //!< The victory or defeat window was shown for this campaign.
 		bool SetupGuide = true; //!< Whether the new campaign starts with the guide.
@@ -269,6 +274,9 @@ namespace {
 		s_Screen.FollowArmy = 0;
 		s_Screen.Alerts.clear();
 		s_Screen.MarketOpen = false;
+		s_Screen.DiplomacyOpen = false;
+		s_Screen.DealWith = s_Screen.ConfirmWar = -1;
+		s_Screen.DiplomacyNote.clear();
 		const int player = Player();
 		if (player >= 0) {
 			const int home = s_Screen.Game.Factions[player].HomePlanet;
@@ -816,7 +824,8 @@ namespace {
 	/// Opens the attack window for a move that's a battle, or makes the move at once when it isn't.
 	void TryEnter(int army, int planet, int point, bool overland) {
 		float defence = 0.0F;
-		if (WouldFight(s_Screen.Game, s_Screen.Game.Armies[army].Faction, planet, point, defence)) {
+		// A battle, or a move that breaks a treaty, asks first.
+		if (WouldFight(s_Screen.Game, s_Screen.Game.Armies[army].Faction, planet, point, defence) || TreatyBroken(s_Screen.Game, s_Screen.Game.Armies[army].Faction, planet, point) >= 0) {
 			s_Screen.Attack = PendingAttack{true, s_Screen.Game.Armies[army].Id, planet, point, overland};
 			return;
 		}
@@ -1209,7 +1218,7 @@ namespace {
 			case Step::Grow:
 				return {"Build up", "Click a point you hold. Found an outpost on it and grow it into a colony and a city for more gold and more building slots. A Market pays more, Barracks unlock better squads, Walls help hold it and a Hospital heals.\n\nEach point also produces a resource (its icon on the map). Growing and building cost water and metal as well as gold, armies eat food and jumps burn fuel. Trade buys what you're short of."};
 			case Step::Win:
-				return {"Conquer the galaxy", "Wipe out the other factions to win. The To do list on the right says what needs doing each turn, and Tab picks your next army with moves left.\n\nGood luck, commander."};
+				return {"Conquer the galaxy", "Wipe out the other factions to win, or outlast them with your allies: Diplomacy makes peace, alliances and trades. The To do list on the right says what needs doing each turn, and Tab picks your next army with moves left.\n\nGood luck, commander."};
 			default:
 				return {"", ""};
 		}
@@ -1335,7 +1344,9 @@ namespace {
 		float width = 0.0F;
 		std::vector<std::string> texts;
 		for (const Row& row: rows) {
-			texts.push_back(FactionLabel(row.Faction) + (row.Faction == player ? " (you)" : "") + ": " + std::to_string(row.Planets) + (row.Planets == 1 ? " planet, " : " planets, ") + std::to_string(row.Points) + " points");
+			const Stance stance = player >= 0 ? StanceOf(game, player, row.Faction) : Stance::Neutral;
+			const char* tag = row.Faction == player ? " (you)" : stance == Stance::Alliance ? " (ally)" : stance == Stance::Peace ? " (at peace)" : stance == Stance::War ? " (at war)" : "";
+			texts.push_back(FactionLabel(row.Faction) + tag + ": " + std::to_string(row.Planets) + (row.Planets == 1 ? " planet, " : " planets, ") + std::to_string(row.Points) + " points");
 			width = std::max(width, ImGui::CalcTextSize(texts.back().c_str()).x);
 		}
 		const ImVec2 from(corner.x, corner.y - line * static_cast<float>(rows.size()) - 12.0F);
@@ -2291,7 +2302,7 @@ namespace {
 		}
 		// Enemy armies where the player holds points.
 		for (const Army& army: game.Armies) {
-			if (army.Faction == player || items.size() >= 3) {
+			if (army.Faction == player || Friendly(game, player, army.Faction) || items.size() >= 3) {
 				continue;
 			}
 			bool threat = false;
@@ -2679,6 +2690,366 @@ namespace {
 		ImGui::End();
 	}
 
+	ImVec4 StanceColor(Stance stance) {
+		switch (stance) {
+			case Stance::War:
+				return ImVec4(1.0F, 0.45F, 0.4F, 1.0F);
+			case Stance::Peace:
+				return ImVec4(0.6F, 0.85F, 1.0F, 1.0F);
+			case Stance::Alliance:
+				return ImVec4(0.5F, 1.0F, 0.55F, 1.0F);
+			default:
+				return ImVec4(0.85F, 0.85F, 0.9F, 1.0F);
+		}
+	}
+
+	ImVec4 OpinionColor(int opinion) { return opinion < -40 ? ImVec4(1.0F, 0.4F, 0.35F, 1.0F) : opinion < 0 ? ImVec4(1.0F, 0.75F, 0.4F, 1.0F) : opinion < 40 ? ImVec4(0.85F, 0.9F, 1.0F, 1.0F) : ImVec4(0.5F, 1.0F, 0.55F, 1.0F); }
+
+	/// What a deal gives one way, as text: "100 gold, 3 water", or "nothing".
+	std::string DealSide(int gold, const Stock& stock) {
+		const bool any = gold > 0 || std::any_of(stock.begin(), stock.end(), [](int each) { return each > 0; });
+		if (!any) {
+			return "nothing";
+		}
+		std::string text = CostText(Cost{gold, stock});
+		if (gold <= 0) {
+			text.erase(0, text.find(", ") == std::string::npos ? text.size() : text.find(", ") + 2);
+		}
+		return text;
+	}
+
+	/// The resources a faction has plenty of (spare) or too little of (short), as a row of icons.
+	void ResourceIcons(int faction, bool spare) {
+		const CampaignModel::Campaign& game = s_Screen.Game;
+		const Stock made = ProductionOf(game, faction);
+		const Stock used = UsageOf(game, faction);
+		bool any = false;
+		for (int each = 0; each < c_ResourceCount; ++each) {
+			const int stock = game.Factions[faction].Resources[each];
+			const int net = made[each] - used[each];
+			const bool relics = each == static_cast<int>(Resource::Relics);
+			const bool show = spare ? stock >= (relics ? 2 : 12) : !relics && (stock < 2 || (net < 0 && stock < 6));
+			if (show) {
+				if (any) {
+					ImGui::SameLine(0.0F, 2.0F);
+				}
+				ResourceIcon(static_cast<Resource>(each));
+				ImGui::SetItemTooltip("%s: %d in store, %+d a turn", ResourceName(static_cast<Resource>(each)), stock, net);
+				any = true;
+			}
+		}
+		if (!any) {
+			ImGui::TextDisabled("-");
+		}
+	}
+
+	/// Factions: where you stand with each, deals and trade pacts, peace, alliances and war.
+	void DiplomacyWindow() {
+		if (!s_Screen.DiplomacyOpen) {
+			return;
+		}
+		CampaignModel::Campaign& game = s_Screen.Game;
+		const int player = Player();
+		if (player < 0) {
+			s_Screen.DiplomacyOpen = false;
+			return;
+		}
+		ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
+		if (!ImGui::Begin("Diplomacy###CampaignDiplomacy", &s_Screen.DiplomacyOpen, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
+			ImGui::End();
+			return;
+		}
+		ImGui::PushTextWrapPos(ImGui::GetFontSize() * 44.0F);
+		ImGui::TextDisabled("Opinion rises with trade, gifts, a shared enemy and long peace, and falls with attacks, broken treaties, borders that touch and your growing strength. Allies can stand on each other's points, defend together and win together.");
+		ImGui::PopTextWrapPos();
+		const float ours = MightOf(game, player);
+		if (ImGui::BeginTable("##factions", 7, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingFixedFit)) {
+			ImGui::TableSetupColumn("Faction");
+			ImGui::TableSetupColumn("Stance");
+			ImGui::TableSetupColumn("Opinion");
+			ImGui::TableSetupColumn("Strength");
+			ImGui::TableSetupColumn("Spare");
+			ImGui::TableSetupColumn("Short of");
+			ImGui::TableSetupColumn("##do");
+			ImGui::TableHeadersRow();
+			for (int faction = 0; faction < static_cast<int>(game.Factions.size()); ++faction) {
+				if (faction == player || !game.Factions[faction].Alive) {
+					continue;
+				}
+				const Stance stance = StanceOf(game, player, faction);
+				const Relation& relation = RelationOf(static_cast<const CampaignModel::Campaign&>(game), player, faction);
+				ImGui::PushID(faction);
+				ImGui::TableNextRow();
+				ImGui::TableNextColumn();
+				ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(FactionColor(faction)), "%s", FactionLabel(faction).c_str());
+				ImGui::TableNextColumn();
+				ImGui::TextColored(StanceColor(stance), "%s", StanceName(stance));
+				ImGui::SetItemTooltip("For %d turn%s.", relation.Turns, relation.Turns == 1 ? "" : "s");
+				ImGui::TableNextColumn();
+				ImGui::TextColored(OpinionColor(relation.Opinion), "%s (%+d)", OpinionWord(relation.Opinion), relation.Opinion);
+				ImGui::TableNextColumn();
+				const float theirs = MightOf(game, faction);
+				ImGui::Text("%.0f", theirs);
+				ImGui::SetItemTooltip("Their armies' strength. Yours: %.0f.", ours);
+				ImGui::TableNextColumn();
+				ResourceIcons(faction, true);
+				ImGui::TableNextColumn();
+				ResourceIcons(faction, false);
+				ImGui::TableNextColumn();
+				auto answer = [&](const std::string& reply, const std::string& yes) { s_Screen.DiplomacyNote = FactionLabel(faction) + ": " + (reply.empty() ? yes : reply); };
+				if (ToolUI::SmallButton("Trade")) {
+					s_Screen.DealWith = faction;
+					s_Screen.DealDraft = Deal();
+				}
+				ImGui::SetItemTooltip("Put a deal to them: gold and resources either way, once or every turn.");
+				ImGui::SameLine();
+				if (stance == Stance::War || stance == Stance::Neutral) {
+					if (ToolUI::SmallButton("Ask for peace")) {
+						answer(ProposeStance(game, player, faction, Stance::Peace), "Agreed. Peace it is.");
+					}
+					ImGui::SetItemTooltip("At peace, neither side may attack the other.");
+					ImGui::SameLine();
+				}
+				if (stance == Stance::Neutral || stance == Stance::Peace) {
+					if (ToolUI::SmallButton("Ask to ally")) {
+						answer(ProposeStance(game, player, faction, Stance::Alliance), "Agreed. We stand together.");
+					}
+					ImGui::SetItemTooltip("Needs them Friendly (opinion 50 or more).");
+					ImGui::SameLine();
+				}
+				if (stance == Stance::Peace || stance == Stance::Alliance) {
+					if (ToolUI::SmallButton("End treaty")) {
+						EndTreaty(game, player, faction);
+						s_Screen.DiplomacyNote = "You ended your " + std::string(stance == Stance::Alliance ? "alliance" : "peace") + " with " + FactionLabel(faction) + ".";
+					}
+					ImGui::SetItemTooltip("Back to Neutral, without attacking. They think less of you for it.");
+					ImGui::SameLine();
+				}
+				if (stance != Stance::War) {
+					if (ToolUI::SmallButton("Declare war")) {
+						s_Screen.ConfirmWar = faction;
+					}
+					ImGui::SetItemTooltip("%s", stance == Stance::Neutral ? "Their armies and yours will fight. Everyone thinks a little less of you." : "Breaks your treaty: they and everyone else will trust you much less.");
+				}
+				ImGui::PopID();
+			}
+			ImGui::EndTable();
+		}
+		if (!s_Screen.DiplomacyNote.empty()) {
+			ImGui::TextColored(ImVec4(1.0F, 0.88F, 0.45F, 1.0F), "%s", s_Screen.DiplomacyNote.c_str());
+		}
+
+		// The deal being put together.
+		const int with = s_Screen.DealWith;
+		if (with >= 0 && with < static_cast<int>(game.Factions.size()) && game.Factions[with].Alive && with != player) {
+			Deal& deal = s_Screen.DealDraft;
+			deal.From = player;
+			deal.To = with;
+			const std::string title = "A deal with " + FactionLabel(with);
+			ImGui::SeparatorText(title.c_str());
+			if (ImGui::BeginTable("##deal", 3, ImGuiTableFlags_SizingFixedFit)) {
+				ImGui::TableSetupColumn("##what");
+				ImGui::TableSetupColumn("You give", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFontSize() * 11.0F);
+				ImGui::TableSetupColumn("You get", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFontSize() * 11.0F);
+				ImGui::TableHeadersRow();
+				auto row = [&](const char* id, int& give, int& get, int mine, int theirs, int step) {
+					ImGui::PushID(id);
+					ImGui::TableNextColumn();
+					ImGui::SetNextItemWidth(ImGui::GetFontSize() * 6.0F);
+					ImGui::InputInt("##give", &give, step, step * 10);
+					give = std::clamp(give, 0, std::max(mine, 0));
+					ImGui::SameLine();
+					ImGui::TextDisabled("/%d", mine);
+					ImGui::TableNextColumn();
+					ImGui::SetNextItemWidth(ImGui::GetFontSize() * 6.0F);
+					ImGui::InputInt("##get", &get, step, step * 10);
+					get = std::clamp(get, 0, std::max(theirs, 0));
+					ImGui::SameLine();
+					ImGui::TextDisabled("/%d", theirs);
+					ImGui::PopID();
+				};
+				ImGui::TableNextRow();
+				ImGui::TableNextColumn();
+				ImGui::TextUnformatted("Gold");
+				row("gold", deal.GoldGive, deal.GoldGet, game.Factions[player].Gold, game.Factions[with].Gold, 10);
+				for (int each = 0; each < c_ResourceCount; ++each) {
+					ImGui::TableNextRow();
+					ImGui::TableNextColumn();
+					ResourceIcon(static_cast<Resource>(each));
+					ImGui::SameLine();
+					ImGui::TextUnformatted(ResourceName(static_cast<Resource>(each)));
+					row(ResourceName(static_cast<Resource>(each)), deal.Give[each], deal.Get[each], game.Factions[player].Resources[each], game.Factions[with].Resources[each], 1);
+				}
+				ImGui::EndTable();
+			}
+			ImGui::Checkbox("Every turn for 10 turns (a trade pact)", &deal.Pact);
+			ImGui::SetItemTooltip("The swap happens at the start of each turn while both sides can pay; it falls through if one can't.");
+			const bool empty = deal.GoldGive <= 0 && deal.GoldGet <= 0 && std::all_of(deal.Give.begin(), deal.Give.end(), [](int each) { return each <= 0; }) && std::all_of(deal.Get.begin(), deal.Get.end(), [](int each) { return each <= 0; });
+			if (!empty) {
+				// How they'd take it: the same sum they decide by.
+				const int leaning = DealValue(game, deal) + RelationOf(static_cast<const CampaignModel::Campaign&>(game), player, with).Opinion * 2;
+				if (StanceOf(game, player, with) == Stance::War) {
+					ImGui::TextColored(ImVec4(1.0F, 0.5F, 0.4F, 1.0F), "They won't trade while you're at war.");
+				} else if (leaning >= 0) {
+					ImGui::TextColored(ImVec4(0.5F, 1.0F, 0.55F, 1.0F), "They look willing.");
+				} else {
+					ImGui::TextColored(ImVec4(1.0F, 0.75F, 0.4F, 1.0F), "They'd want about %d gold's worth more.", (-leaning + 9) / 10 * 10);
+				}
+			}
+			ImGui::BeginDisabled(empty);
+			if (ToolUI::Button("Propose", ImVec2(ImGui::GetFontSize() * 7.0F, 0.0F))) {
+				const std::string reply = ProposeDeal(game, deal);
+				s_Screen.DiplomacyNote = FactionLabel(with) + ": " + (reply.empty() ? std::string(deal.Pact ? "Agreed. The pact starts next turn." : "Agreed.") : reply);
+				if (reply.empty()) {
+					s_Screen.DealDraft = Deal();
+				}
+			}
+			ImGui::EndDisabled();
+			ImGui::SameLine();
+			if (ToolUI::Button("Clear", ImVec2(ImGui::GetFontSize() * 5.0F, 0.0F))) {
+				s_Screen.DealDraft = Deal();
+			}
+			ImGui::SameLine();
+			if (ToolUI::Button("Close deal", ImVec2(ImGui::GetFontSize() * 6.0F, 0.0F))) {
+				s_Screen.DealWith = -1;
+			}
+		}
+
+		// Pacts running.
+		bool header = false;
+		for (int pact = 0; pact < static_cast<int>(game.Pacts.size()); ++pact) {
+			const Deal& terms = game.Pacts[pact].Terms;
+			if (terms.From != player && terms.To != player) {
+				continue;
+			}
+			if (!header) {
+				ImGui::SeparatorText("Trade pacts");
+				header = true;
+			}
+			const bool giving = terms.From == player;
+			const int other = giving ? terms.To : terms.From;
+			const std::string give = giving ? DealSide(terms.GoldGive, terms.Give) : DealSide(terms.GoldGet, terms.Get);
+			const std::string get = giving ? DealSide(terms.GoldGet, terms.Get) : DealSide(terms.GoldGive, terms.Give);
+			ImGui::PushID(pact);
+			ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(FactionColor(other)), "%s", FactionLabel(other).c_str());
+			ImGui::SameLine();
+			ImGui::Text("You give %s, you get %s each turn (%d more turns).", give.c_str(), get.c_str(), game.Pacts[pact].TurnsLeft);
+			ImGui::SameLine();
+			if (ToolUI::SmallButton("Cancel")) {
+				CancelPact(game, pact);
+				ImGui::PopID();
+				break;
+			}
+			ImGui::SetItemTooltip("Ends it now. They think less of you for it.");
+			ImGui::PopID();
+		}
+		ImGui::End();
+	}
+
+	/// Making sure about a declaration of war.
+	void WarWindow() {
+		CampaignModel::Campaign& game = s_Screen.Game;
+		if (s_Screen.ConfirmWar >= 0) {
+			ImGui::OpenPopup("Declare war?###CampaignWar");
+		}
+		if (!ImGui::BeginPopupModal("Declare war?###CampaignWar", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+			return;
+		}
+		const int player = Player();
+		const int target = s_Screen.ConfirmWar;
+		if (player < 0 || target < 0 || target >= static_cast<int>(game.Factions.size())) {
+			s_Screen.ConfirmWar = -1;
+			ImGui::CloseCurrentPopup();
+			ImGui::EndPopup();
+			return;
+		}
+		const Stance stance = StanceOf(game, player, target);
+		ImGui::Text("Declare war on %s?", FactionLabel(target).c_str());
+		if (stance == Stance::Peace || stance == Stance::Alliance) {
+			ImGui::TextColored(ImVec4(1.0F, 0.5F, 0.4F, 1.0F), "This breaks your %s. They and every other faction will trust you much less.", stance == Stance::Alliance ? "alliance" : "peace");
+		} else {
+			ImGui::TextDisabled("Every other faction will think a little less of you, and their allies may join in.");
+		}
+		if (ToolUI::Button("Declare war", ImVec2(ImGui::GetFontSize() * 7.0F, 0.0F))) {
+			DeclareWar(game, player, target);
+			s_Screen.DiplomacyNote = "You are at war with " + FactionLabel(target) + ".";
+			s_Screen.ConfirmWar = -1;
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::SameLine();
+		if (ToolUI::Button("Not now", ImVec2(ImGui::GetFontSize() * 6.0F, 0.0F)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+			s_Screen.ConfirmWar = -1;
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+
+	/// What the other factions put to the player between turns, one at a time after the battle reports.
+	void OfferWindow() {
+		CampaignModel::Campaign& game = s_Screen.Game;
+		const int player = Player();
+		int index = -1;
+		for (int offer = 0; offer < static_cast<int>(game.Offers.size()); ++offer) {
+			if (game.Offers[offer].To == player) {
+				index = offer;
+				break;
+			}
+		}
+		if (index < 0 || !game.Reports.empty() || !s_Screen.Alerts.empty() || s_Screen.Attack.Open || Animating() || game.Winner >= 0 || game.Lost) {
+			return;
+		}
+		ImGui::OpenPopup("A message###CampaignOffer");
+		if (!ImGui::BeginPopupModal("A message###CampaignOffer", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+			return;
+		}
+		const Offer offer = game.Offers[index];
+		const Stance stance = StanceOf(game, player, offer.From);
+		const int opinion = RelationOf(static_cast<const CampaignModel::Campaign&>(game), player, offer.From).Opinion;
+		ImGui::SetWindowFontScale(1.3F);
+		ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(FactionColor(offer.From)), "%s", FactionLabel(offer.From).c_str());
+		ImGui::SetWindowFontScale(1.0F);
+		ImGui::SameLine();
+		ImGui::TextColored(StanceColor(stance), "%s", StanceName(stance));
+		ImGui::SameLine();
+		ImGui::TextColored(OpinionColor(opinion), "%s", OpinionWord(opinion));
+		ImGui::PushTextWrapPos(ImGui::GetFontSize() * 26.0F);
+		ImGui::Text("\"%s\"", offer.Text.c_str());
+		std::string accept = "Accept";
+		switch (offer.What) {
+			case Offer::Kind::Deal:
+				ImGui::Text("They give: %s", DealSide(offer.Terms.GoldGive, offer.Terms.Give).c_str());
+				ImGui::Text("You give: %s", DealSide(offer.Terms.GoldGet, offer.Terms.Get).c_str());
+				if (offer.Terms.Pact) {
+					ImGui::TextDisabled("Every turn for %d turns, while both sides can pay.", c_PactTurns);
+				}
+				break;
+			case Offer::Kind::Peace:
+				ImGui::TextDisabled("At peace, neither side may attack the other.");
+				accept = "Make peace";
+				break;
+			case Offer::Kind::Alliance:
+				ImGui::TextDisabled("Allies don't fight, can stand on each other's points, defend together and win together.");
+				accept = "Ally with them";
+				break;
+			case Offer::Kind::JoinWar:
+				ImGui::TextDisabled("You would go to war with %s.%s", FactionLabel(offer.Against).c_str(), Friendly(game, player, offer.Against) ? " That breaks your treaty with them." : "");
+				accept = "Join the war";
+				break;
+		}
+		ImGui::PopTextWrapPos();
+		ImGui::Spacing();
+		if (ToolUI::Button(accept.c_str(), ImVec2(ImGui::GetFontSize() * 8.0F, 0.0F))) {
+			AnswerOffer(game, index, true);
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::SameLine();
+		if (ToolUI::Button("Decline", ImVec2(ImGui::GetFontSize() * 6.0F, 0.0F)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+			AnswerOffer(game, index, false);
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+
 	void SidePanel(float width, float height) {
 		CampaignModel::Campaign& game = s_Screen.Game;
 		ImGui::BeginChild("##side", ImVec2(width, height), ImGuiChildFlags_Borders);
@@ -2777,7 +3148,7 @@ namespace {
 		ImGui::Text("%s: strength %.0f (%d soldiers)", game.Armies[army].Name.c_str(), strength, SoldierCount(game.Armies[army]));
 		int defenders = 0;
 		for (int other: ArmiesAt(game, attack.Planet, attack.Point)) {
-			if (game.Armies[other].Faction != game.Armies[army].Faction) {
+			if (game.Armies[other].Faction != game.Armies[army].Faction && !Allied(game, game.Armies[other].Faction, game.Armies[army].Faction)) {
 				defenders += SoldierCount(game.Armies[other]);
 			}
 		}
@@ -2787,6 +3158,12 @@ namespace {
 		}
 		const ImVec4 color = chance >= 0.7F ? ImVec4(0.5F, 1.0F, 0.5F, 1.0F) : chance >= 0.4F ? ImVec4(1.0F, 0.85F, 0.35F, 1.0F) : ImVec4(1.0F, 0.5F, 0.4F, 1.0F);
 		ImGui::TextColored(color, "Chance of winning: about %d%%", static_cast<int>(std::round(chance * 100.0F)));
+		const int faction = game.Armies[army].Faction;
+		if (const int broken = TreatyBroken(game, faction, attack.Planet, attack.Point); broken >= 0) {
+			ImGui::TextColored(ImVec4(1.0F, 0.45F, 0.4F, 1.0F), "This breaks your %s with %s.\nThey and every other faction will trust you much less.", StanceOf(game, faction, broken) == Stance::Alliance ? "alliance" : "peace", FactionLabel(broken).c_str());
+		} else if (point.Owner >= 0 && point.Owner != faction && StanceOf(game, faction, point.Owner) == Stance::Neutral) {
+			ImGui::TextDisabled("You're neutral with %s: this starts a war, and others think a little less of you.", FactionLabel(point.Owner).c_str());
+		}
 		ImGui::Spacing();
 		ImGui::BeginDisabled(true);
 		ToolUI::Button("Fight it yourself", ImVec2(ImGui::GetFontSize() * 10.0F, 0.0F));
@@ -2927,8 +3304,12 @@ namespace {
 			return;
 		}
 		const bool won = game.Winner >= 0 && game.Factions[game.Winner].Human;
+		int alive = 0;
+		for (const Faction& faction: game.Factions) {
+			alive += faction.Alive ? 1 : 0;
+		}
 		ImGui::SetWindowFontScale(1.5F);
-		ImGui::TextColored(won ? ImVec4(0.5F, 1.0F, 0.5F, 1.0F) : ImVec4(1.0F, 0.5F, 0.4F, 1.0F), "%s", won ? "You rule the galaxy!" : "Your faction has fallen.");
+		ImGui::TextColored(won ? ImVec4(0.5F, 1.0F, 0.5F, 1.0F) : ImVec4(1.0F, 0.5F, 0.4F, 1.0F), "%s", won ? (alive > 1 ? "You and your allies rule the galaxy!" : "You rule the galaxy!") : "Your faction has fallen.");
 		ImGui::SetWindowFontScale(1.0F);
 		ImGui::Text("Turn %d", game.Turn);
 		if (ToolUI::Button("Look over the galaxy", ImVec2(-1.0F, 0.0F))) {
@@ -3013,6 +3394,11 @@ namespace {
 			s_Screen.MarketOpen = !s_Screen.MarketOpen;
 		}
 		ImGui::SetItemTooltip("The galaxy market: buy and sell water, food, metal, fuel, crystal and relics for gold.");
+		ImGui::SameLine();
+		if (ToolUI::Button("Diplomacy")) {
+			s_Screen.DiplomacyOpen = !s_Screen.DiplomacyOpen;
+		}
+		ImGui::SetItemTooltip("Where you stand with each faction: deals, trade pacts, peace, alliances and war.");
 		ImGui::SameLine();
 		ImGui::TextDisabled("|");
 		ImGui::SameLine();
@@ -3101,6 +3487,9 @@ namespace {
 		ReportWindow();
 		AlertWindow();
 		MarketWindow();
+		DiplomacyWindow();
+		WarWindow();
+		OfferWindow();
 		DisbandWindow();
 		EndWindow();
 	}

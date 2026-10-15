@@ -14,7 +14,7 @@ namespace RTE::CampaignModel {
 	namespace {
 		constexpr const char* c_Folder = "Userdata/Campaigns/";
 		constexpr const char* c_Magic = "CortexCampaign";
-		constexpr int c_Version = 2; //!< 2: resources (deposits, stockpiles, the market).
+		constexpr int c_Version = 3; //!< 2: resources (deposits, stockpiles, the market). 3: diplomacy (relations, trade pacts).
 
 		std::string FileNameFor(const std::string& name) {
 			std::string file;
@@ -132,6 +132,26 @@ namespace RTE::CampaignModel {
 		for (const GalaxyEvent& event: campaign.Events) {
 			out << event.Resource << ' ' << event.PriceFactor << ' ' << event.TurnsLeft << ' ';
 			Quoted(out, event.Text) << '\n';
+		}
+		// Version 3: each pair of factions' stance, opinion and turns in it (first faction below the second); the trade pacts.
+		out << "Relations " << campaign.Factions.size() << '\n';
+		for (int a = 0; a < static_cast<int>(campaign.Factions.size()); ++a) {
+			for (int b = a + 1; b < static_cast<int>(campaign.Factions.size()); ++b) {
+				const Relation& relation = RelationOf(static_cast<const Campaign&>(campaign), a, b);
+				out << relation.Stance << ' ' << relation.Opinion << ' ' << relation.Turns << '\n';
+			}
+		}
+		out << "Pacts " << campaign.Pacts.size() << '\n';
+		for (const Pact& pact: campaign.Pacts) {
+			const Deal& deal = pact.Terms;
+			out << deal.From << ' ' << deal.To << ' ' << deal.GoldGive << ' ' << deal.GoldGet << ' ' << pact.TurnsLeft;
+			for (int amount: deal.Give) {
+				out << ' ' << amount;
+			}
+			for (int amount: deal.Get) {
+				out << ' ' << amount;
+			}
+			out << '\n';
 		}
 		// Written to a spare file first, then swapped in, so a crash mid-save doesn't lose the campaign.
 		const std::string path = c_Folder + campaign.FileName;
@@ -314,6 +334,42 @@ namespace RTE::CampaignModel {
 			}
 			resources = true;
 		}
+		bool diplomacy = false;
+		if (version >= 3) {
+			if (!section("Relations") || count != loaded.Factions.size()) {
+				error = "Relations missing";
+				return false;
+			}
+			const int factions = static_cast<int>(count);
+			loaded.Relations.assign(count * count, Relation());
+			for (int a = 0; a < factions; ++a) {
+				for (int b = a + 1; b < factions; ++b) {
+					Relation& relation = loaded.Relations[static_cast<size_t>(a) * count + static_cast<size_t>(b)];
+					in >> relation.Stance >> relation.Opinion >> relation.Turns;
+					relation.Stance = std::clamp(relation.Stance, 0, static_cast<int>(Stance::Count) - 1);
+					relation.Opinion = std::clamp(relation.Opinion, -100, 100);
+					relation.Turns = std::max(relation.Turns, 0);
+				}
+			}
+			if (!section("Pacts")) {
+				error = "Pacts missing";
+				return false;
+			}
+			loaded.Pacts.resize(std::min<size_t>(count, 64));
+			for (Pact& pact: loaded.Pacts) {
+				Deal& deal = pact.Terms;
+				in >> deal.From >> deal.To >> deal.GoldGive >> deal.GoldGet >> pact.TurnsLeft;
+				for (int& amount: deal.Give) {
+					in >> amount;
+				}
+				for (int& amount: deal.Get) {
+					in >> amount;
+				}
+				deal.Pact = true;
+			}
+			std::erase_if(loaded.Pacts, [factions](const Pact& pact) { return pact.Terms.From < 0 || pact.Terms.From >= factions || pact.Terms.To < 0 || pact.Terms.To >= factions || pact.Terms.From == pact.Terms.To || pact.TurnsLeft <= 0; });
+			diplomacy = true;
+		}
 		if (in.fail() && !in.eof()) {
 			error = fileName + " is damaged.";
 			return false;
@@ -362,6 +418,10 @@ namespace RTE::CampaignModel {
 		if (!resources) {
 			// A save from before resources: deposits rolled from its seed, starting stock and normal prices.
 			AddResources(loaded);
+		}
+		if (!diplomacy) {
+			// From before diplomacy: everyone Neutral.
+			ResetRelations(loaded);
 		}
 		campaign = std::move(loaded);
 		return true;

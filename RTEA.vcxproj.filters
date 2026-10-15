@@ -1015,6 +1015,9 @@
     <ClCompile Include="Source\Managers\MapGen.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Managers\CampaignDiplomacy.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Managers\CampaignModel.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
