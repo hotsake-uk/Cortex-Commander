@@ -98,6 +98,7 @@ partial class MainForm : Form
 	readonly TextBox modsBox = new() { Width = 420, PlaceholderText = "optional folder of .rte mods to copy into each version's Mods folder" };
 	readonly ComboBox worldBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200 };
 	const string StockWorld = "Stock";
+	readonly ProgressBar busyBar = new() { Style = ProgressBarStyle.Marquee, MarqueeAnimationSpeed = 30, Width = 110, Height = 14, Visible = false, Margin = new Padding(8, 10, 0, 0) };
 	readonly Button clearAllBtn = new() { Text = "Delete build", AutoSize = true };
 	readonly Button runBtn = new() { Text = "Launch built", AutoSize = true };
 	readonly Button buildRunBtn = new() { Text = "Build && Run", AutoSize = true };
@@ -169,7 +170,7 @@ partial class MainForm : Form
 		buildRunBtn.Font = new Font(Font.FontFamily, 12f, FontStyle.Bold);
 		buildRunBtn.Padding = new Padding(20, 6, 20, 6);
 		var actions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(0, 6, 0, 6) };
-		actions.Controls.AddRange(new Control[] { buildRunBtn, runBtn, cancelBtn, clearAllBtn, new Label { Text = "Build type:", AutoSize = true, Padding = new Padding(16, 8, 0, 0) }, configBox, status });
+		actions.Controls.AddRange(new Control[] { buildRunBtn, runBtn, cancelBtn, clearAllBtn, busyBar, new Label { Text = "Build type:", AutoSize = true, Padding = new Padding(16, 8, 0, 0) }, configBox, status });
 
 		// Drag the bar between the commit list and the log to make either taller; the log keeps its height when the window resizes.
 		var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, FixedPanel = FixedPanel.Panel2, Panel1MinSize = 80, Panel2MinSize = 50, SplitterWidth = 6 };
@@ -249,6 +250,8 @@ partial class MainForm : Form
 		foreach (var x in new Control[] { fetchBtn, buildBtn, runBtn, buildRunBtn, clearAllBtn, deleteBtn, openBtn, configBox, repoBox, checkModsBtn, addModsBtn })
 			x.Enabled = !b;
 		cancelBtn.Enabled = b;
+		busyBar.Visible = b; // a moving bar whenever something is running, so a long job never looks like a hang
+		UseWaitCursor = b;
 		status.Text = text;
 	}
 

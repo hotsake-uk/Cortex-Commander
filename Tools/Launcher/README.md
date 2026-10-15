@@ -44,6 +44,9 @@ Set **Presets** to a shared folder (for example your main checkout's `Userdata\P
 ## Adding mods from links
 Press **Add mods...** (beside the Mods folder) to open a window, paste mod.io download links into it, one on each line, and press **Download & check**. The window picks up a link from your clipboard if it has one. On a mod's mod.io page, right-click **Download** and copy the link address; it looks like `https://g-508.modapi.io/v1/games/508/mods/<id>/files/<id>/download`. A mod's web-page address is not a download, and the launcher says so. For each link the launcher downloads the zip, unpacks it, puts every `.rte` folder it finds in your Mods folder (replacing an older copy of the same mod; with no Mods folder set it makes one under `%APPDATA%\CortexLauncher\Mods` and fills the box), then runs the mod check on just those mods. If there is nothing to report you get a "Mod compatible, no issues found" alert; otherwise the usual results window opens, where Fix and Open report work as before. Links from mod.io can expire, so use a fresh one if a download fails.
 
+## Progress
+Anything long-running shows a moving bar beside Cancel in the main window. While **Fix** is making changes, the results window stays up (not greyed out) with its own moving bar, the step it is on ("Making the fixes in your mods..." then "Checking the mods again...") and a running clock, so you can see it hasn't crashed.
+
 ## Where things go
 Each commit is a `git worktree` in `<repo parent>\CortexVersions\<first 10 chars of sha>`. Built versions stay runnable without rebuilding, and your main checkout is never switched. Settings live in `%APPDATA%\CortexLauncher\settings.json` (`VersionsDir` can relocate the cache).
 

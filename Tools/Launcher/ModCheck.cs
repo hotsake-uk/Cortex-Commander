@@ -199,15 +199,17 @@ partial class MainForm
 		$"Mods checked against {r.Version}: {r.Mods.Count} mod(s), {r.Errors} error(s), {r.Warnings} warning(s)" + (r.Fixable > 0 ? $", {r.Fixable} fixable" : "");
 
 	// Used by the results window: makes the fixes, then checks again so the window shows what's left.
-	internal async Task<ModCheckRun?> FixMods(string gameDir)
+	internal async Task<ModCheckRun?> FixMods(string gameDir, Action<string>? step = null)
 	{
 		cts = new CancellationTokenSource();
 		var wasBusy = busy;
 		if (!wasBusy) SetBusy(true, "Fixing mods...");
 		try
 		{
+			step?.Invoke("Making the fixes in your mods...");
 			if (await RunModCheck(gameDir, true, cts.Token) == null) return null;
 			settings.LastModCheckPassed = "";
+			step?.Invoke("Checking the mods again...");
 			var after = await RunModCheck(gameDir, false, cts.Token);
 			if (after != null) Append(Summary(after));
 			return after;
@@ -226,6 +228,10 @@ class ModCheckForm : Form
 	readonly ListView modList = new() { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HideSelection = false, MultiSelect = false };
 	readonly ListView findingList = new() { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HideSelection = false, MultiSelect = false };
 	readonly Label summary = new() { Dock = DockStyle.Top, AutoSize = false, Height = 44, Padding = new Padding(8, 8, 8, 0) };
+	readonly ProgressBar progress = new() { Style = ProgressBarStyle.Marquee, MarqueeAnimationSpeed = 30, Dock = DockStyle.Top, Height = 14 };
+	readonly Label progressText = new() { Dock = DockStyle.Top, AutoSize = false, Height = 22, Padding = new Padding(8, 4, 0, 0), Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold) };
+	readonly Panel progressPanel = new() { Dock = DockStyle.Top, Height = 40, Visible = false };
+	readonly System.Windows.Forms.Timer tick = new() { Interval = 500 };
 	readonly Button fixBtn = new() { Text = "Fix", AutoSize = true };
 	readonly Button reportBtn = new() { Text = "Open report", AutoSize = true };
 	readonly Button folderBtn = new() { Text = "Open mod folder", AutoSize = true };
@@ -268,8 +274,11 @@ class ModCheckForm : Form
 			CancelButton = close;
 		}
 
+		progressPanel.Controls.Add(progressText);
+		progressPanel.Controls.Add(progress);
 		Controls.Add(split);
 		Controls.Add(buttons);
+		Controls.Add(progressPanel);
 		Controls.Add(summary);
 
 		modList.SelectedIndexChanged += (_, _) => ShowFindings();
@@ -347,12 +356,26 @@ class ModCheckForm : Form
 		var list = string.Join("\n", changes.Take(25)) + (changes.Count > 25 ? $"\n...and {changes.Count - 25} more" : "");
 		if (MessageBox.Show(this, $"Make these {changes.Count} change(s) in your mods folder?\n\n{list}\n\nA .bak copy of each changed file is kept next to it.",
 			"Fix mods", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
-		UseWaitCursor = true; Enabled = false;
+		// The window stays alive (not greyed out) with a moving bar, the step it is on and a running clock, so a long fix doesn't look like a crash.
+		var started = DateTime.Now;
+		var stepText = "Working...";
+		void Show() => progressText.Text = $"{stepText}   {(DateTime.Now - started):mm\\:ss} elapsed. Please wait, the window will update when it's done.";
+		tick.Tick += (_, _) => Show();
+		progressPanel.Visible = true; Show(); tick.Start();
+		UseWaitCursor = true;
+		foreach (Control c in new Control[] { fixBtn, reportBtn, folderBtn, modList, findingList }) c.Enabled = false;
+		ControlBox = false; // no closing the window half-way through a fix
 		try
 		{
-			var after = await owner.FixMods(gameDir);
+			var after = await owner.FixMods(gameDir, t => { stepText = t; Show(); });
 			if (after != null) { run = after; Fill(); }
 		}
-		finally { UseWaitCursor = false; Enabled = true; }
+		finally
+		{
+			tick.Stop(); progressPanel.Visible = false; UseWaitCursor = false; ControlBox = true;
+			foreach (Control c in new Control[] { reportBtn, folderBtn, modList, findingList }) c.Enabled = true;
+			ShowFindings();
+			fixBtn.Enabled = run.Fixable > 0;
+		}
 	}
 }
