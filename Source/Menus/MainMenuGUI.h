@@ -70,6 +70,7 @@ namespace RTE {
 			EditorScreen,
 			SandboxScreen,
 			MapBrowserScreen,
+			CampaignScreen,
 			CreditsScreen,
 			QuitScreen,
 			ScreenCount
