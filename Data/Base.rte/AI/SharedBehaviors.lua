@@ -1001,6 +1001,116 @@ function SharedBehaviors.FollowStep(AI, Owner)
 	return false;
 end
 
+-- Crowding: at most SettingsMan.AIMaxUnitsPerSpot soldiers or crabs of one side stand on the same spot (within about a body's width, on the
+-- same floor). Once a second a unit standing still, with no route left to walk, counts the teammates standing on its spot; when the cap is
+-- full of ones made before it, it steps along the floor to the nearest spot that has room (left and right by body widths, up to five
+-- each way; floor all the way, no wall, no drop or climb), first away from the crowd. One holding a post stays within its reach of it
+-- (ReturnDefenders brings it back past 60 px). Nothing for a unit in cover, in the air, flanking or falling back, nor for one a player
+-- controls; with nowhere free it stays. 0 is no limit. Called every tick by the human and crab AIs.
+function SharedBehaviors.CrowdingUpdate(AI, Owner)
+	local cap = SettingsMan.AIMaxUnitsPerSpot or 0;
+	if AI.CrowdStep then
+		-- On the way: the engine's tactical move walks it there; without the engine's motor, the side key every tick till it's there.
+		local Step = AI.CrowdStep;
+		local done = Step.Timer:IsPastSimMS(3000) or cap <= 0 or Owner:IsPlayerControlled();
+		if SharedBehaviors.EngineMotor(Owner) then
+			done = done or not Owner.TacticalMoveActive;
+		else
+			done = done or not SharedBehaviors.StepTo(AI, Owner, Step.Place);
+		end
+		if done then
+			AI.CrowdStep = nil;
+			if not SharedBehaviors.EngineMotor(Owner) then
+				AI.lateralMoveState = Actor.LAT_STILL;
+			end
+		end
+		return;
+	end
+	if cap <= 0 then
+		return;
+	end
+	if not AI.CrowdingTimer then
+		AI.CrowdingTimer = Timer();
+		AI.CrowdingTimer.ElapsedSimTimeMS = SharedBehaviors.StaggerMS(Owner, 1000);
+	end
+	if not AI.CrowdingTimer:IsPastSimMS(1000) then
+		return;
+	end
+	AI.CrowdingTimer:Reset();
+	local className = Owner.ClassName;
+	if (className ~= "AHuman" and className ~= "ACrab") or Owner:IsPlayerControlled() or Owner.Status ~= Actor.STABLE or AI.flying or AI.Cover or AI.Flank
+		or AI.lateralMoveState ~= Actor.LAT_STILL or Owner.MovePathSize > 0 or Owner.Vel:MagnitudeIsGreaterThan(2)
+		or (SharedBehaviors.EngineMotor(Owner) and Owner.TacticalMoveActive) or Owner:NumberValueExists("AIRetreat") then
+		return;
+	end
+	-- The teammates standing near (moving ones aren't on a spot), read once for every spot looked at.
+	local team, ownID, OwnPos, height = Owner.Team, Owner.UniqueID, Owner.Pos, Owner.MoveHeight;
+	local halfWidth = math.max(8, height * 0.2);
+	local spacing = halfWidth * 2 + 4;
+	local reach = spacing * 5 + halfWidth;
+	local Near = {};
+	for Mate in MovableMan.Actors do
+		local mateClass = Mate.Team == team and Mate.UniqueID ~= ownID and Mate.Status < Actor.DYING and Mate.ClassName;
+		if (mateClass == "AHuman" or mateClass == "ACrab") and not Mate.Vel:MagnitudeIsGreaterThan(2) then
+			local Dist = SceneMan:ShortestDistance(OwnPos, Mate.Pos, false);
+			if math.abs(Dist.X) < reach and math.abs(Dist.Y) < height then
+				Near[#Near + 1] = {dx = Dist.X, dy = Dist.Y, earlier = Mate.UniqueID < ownID};
+			end
+		end
+	end
+	-- How many stand on the spot this far along from it (earlier ones only, for its own spot: the later ones are the extras, and move).
+	local function onSpot(offset, earlierOnly)
+		local count = 0;
+		for _, Mate in ipairs(Near) do
+			if math.abs(Mate.dx - offset) < halfWidth and math.abs(Mate.dy) < height * 0.5 and (Mate.earlier or not earlierOnly) then
+				count = count + 1;
+			end
+		end
+		return count;
+	end
+	if onSpot(0, true) < cap then
+		return;
+	end
+	-- Away from the crowd first: the side with fewer of them near.
+	local lean = 0;
+	for _, Mate in ipairs(Near) do
+		lean = lean + (Mate.dx > 0 and 1 or (Mate.dx < 0 and -1 or 0));
+	end
+	local first = lean > 0 and -1 or 1;
+	local down = Vector(0, height * 0.8);
+	local ownFloor = SceneMan:CastObstacleRay(OwnPos, down, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 2);
+	if ownFloor < 0 then
+		return;
+	end
+	local open = {[-1] = true, [1] = true};
+	for i = 1, 5 do
+		for _, dir in ipairs({first, -first}) do
+			if open[dir] then
+				local offset = dir * spacing * i;
+				local Place = OwnPos + Vector(offset, 0);
+				-- (The way from the last spot looked at: no wall, and floor under it within a step of its own, so no drop or climb.)
+				local From = OwnPos + Vector(dir * spacing * (i - 1), 0);
+				local floor = SceneMan:CastObstacleRay(Place, down, Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 2);
+				if SceneMan:CastObstacleRay(From, Vector(dir * spacing, 0), Vector(), Vector(), Owner.ID, Owner.IgnoresWhichTeam, rte.grassID, 3) >= 0
+					or floor < 0 or math.abs(floor - ownFloor) > height * 0.25 then
+					open[dir] = false;
+				elseif Owner.OrderHasPost and SceneMan:ShortestDistance(Owner.OrderPost, Place, false):MagnitudeIsGreaterThan(50) then
+					open[dir] = false;
+				elseif onSpot(offset, false) < cap then
+					SharedBehaviors.Trace(Owner, "crowding: moving to free spot");
+					AI.CrowdStep = {Place = Place, Timer = Timer()};
+					if SharedBehaviors.EngineMotor(Owner) then
+						Owner:TacticalMoveTo(Place, 3000);
+					else
+						SharedBehaviors.StepTo(AI, Owner, Place);
+					end
+					return;
+				end
+			end
+		end
+	end
+end
+
 -- Squad tactics (AC-6). Each unit tells its team, through number values on itself that every script can read, which enemy it is shooting
 -- at (AITargetID) and when it last had one (AIContactMS, in sim ms); once a second it looks at its teammates within 400 px and:
 -- * focus fire: switches to an enemy at least two of them are shooting at, if it can see it and it isn't much less of a threat than its own;

@@ -362,6 +362,7 @@ function NativeCrabAI:Update(Owner)
 		SharedBehaviors.FleeUpdate(self, Owner);
 		SharedBehaviors.GrazeUpdate(self, Owner);
 		SharedBehaviors.RememberUpdate(self, Owner);
+		SharedBehaviors.CrowdingUpdate(self, Owner);
 
 		if self.teamBlockState == Actor.IGNORINGBLOCK then
 			if self.BlockedTimer:IsPastSimMS(20000) then

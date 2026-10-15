@@ -489,6 +489,7 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SettingsMan) {
 	    .property("AISharedSpotting", &SettingsMan::AISharedSpotting, &SettingsMan::SetAISharedSpotting)
 	    .property("AISharedSpottingHeadStart", &SettingsMan::AISharedSpottingHeadStart, &SettingsMan::SetAISharedSpottingHeadStart)
 	    .property("AIScavengesBetterWeapons", &SettingsMan::AIScavengesBetterWeapons, &SettingsMan::SetAIScavengesBetterWeapons)
+	    .property("AIMaxUnitsPerSpot", &SettingsMan::AIMaxUnitsPerSpot, &SettingsMan::SetAIMaxUnitsPerSpot)
 	    .property("AICombatAccuracy", &SettingsMan::AICombatAccuracy)
 	    .property("AICombatReaction", &SettingsMan::AICombatReaction)
 	    .property("AICombatSpotting", &SettingsMan::AICombatSpotting)
