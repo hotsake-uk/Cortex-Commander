@@ -130,6 +130,14 @@ partial class MainForm
 		finally { SetBusy(false, currentRef); }
 		if (result == null) return;
 		Append(Summary(result));
+		// A clean result doesn't need the results window: just say so.
+		if (result.Mods.All(m => m.Errors == 0 && m.Warnings == 0 && m.Notes == 0))
+		{
+			var names = string.Join(", ", result.Mods.Select(m => m.Name));
+			System.Media.SystemSounds.Asterisk.Play();
+			MessageBox.Show(this, $"{names}{Environment.NewLine}{Environment.NewLine}Mod compatible. No issues found (checked against {result.Version}).", "Mod compatible", MessageBoxButtons.OK, MessageBoxIcon.Information);
+			return;
+		}
 		using var form = new ModCheckForm(this, result, gameDir, false);
 		form.ShowDialog(this);
 	}
