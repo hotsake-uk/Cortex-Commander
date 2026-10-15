@@ -141,6 +141,16 @@ namespace RTE::CampaignModel {
 		std::vector<Soldier> Soldiers;
 	};
 
+	/// What an army does when it's attacked: stand and fight, or flee. Fleeing takes a move (with none left it has to fight) and costs
+	/// a share of its soldiers (c_FleeLoss, less than losing would), and the army goes to the nearest safe place.
+	enum class OnAttack {
+		Fight,
+		FleeIfLosing, //!< Flees when its chance of holding is poor.
+		Flee, //!< Always flees, when it can.
+		Count
+	};
+	constexpr float c_FleeLoss = 0.25F; //!< The share of its soldiers an army loses fleeing.
+
 	/// An army: where it is, what's in it and what it's been told to do.
 	struct Army {
 		long Id = 0;
@@ -154,6 +164,7 @@ namespace RTE::CampaignModel {
 		std::vector<Squad> Squads;
 		int Ship = 0; //!< Its Ship.
 		float Hull = 1.0F; //!< Its ship's state, 0 to 1: what it fights with in space. Repaired a little each turn, fully at a Shipyard.
+		int IfAttacked = 0; //!< Its OnAttack order.
 	};
 
 	struct Faction {
@@ -249,7 +260,8 @@ namespace RTE::CampaignModel {
 		bool Fought = false; //!< Played out on the battlefield, not auto-resolved.
 		bool Space = false; //!< Between fleets in orbit: strengths are the ships' power, and the losses are soldiers lost with ships.
 		int System = -1; //!< Where a space battle was fought.
-		std::vector<std::string> Notes; //!< What happened to the ships, and who fell back where.
+		std::vector<std::string> Notes; //!< What happened to the ships, who fled, and who fell back where.
+		bool Fled = false; //!< No battle: the defenders all fled (see Notes).
 	};
 
 	/// A ground battle the player fought for real (CampaignBattle.lua): who won, and who's still standing.
@@ -301,6 +313,9 @@ namespace RTE::CampaignModel {
 	const char* BuildingTip(Building building);
 	int BuildingCost(Building building);
 	const char* SettlementName(int level);
+	const char* OnAttackName(int order);
+	/// What an OnAttack order does, one line.
+	const char* OnAttackTip(int order);
 	const char* ShipName(int ship);
 	/// What a ship is for, one line.
 	const char* ShipTip(int ship);

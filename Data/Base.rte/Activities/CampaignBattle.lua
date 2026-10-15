@@ -7,7 +7,8 @@ package.loaded.Constants = nil; require("Constants");
 -- defenders win when no attackers are left. The campaign reads back who won and who's still standing (CampaignSurvivors).
 --
 -- From the campaign, as saved strings and numbers on the activity:
---   CampaignAttackers, CampaignDefenders: "loadout|module|soldier id|health;..." for each soldier.
+--   CampaignAttackers, CampaignDefenders: "loadout|module|soldier id|health|reserve;..." for each soldier, reserve 1 for one held
+--   back as a reinforcement: they wait aboard until called in (R) or the first wave is spent.
 --   CampaignLocals: how many locals defend the point, CampaignLocalsTech: the module they come from.
 --   CampaignPlayerAttacks: 1 when the player's side attacks.
 -- Back to the campaign:
@@ -38,13 +39,14 @@ function CampaignBattle:StartActivity(isNewGame)
 	self.playerAttacks = self:LoadNumber("CampaignPlayerAttacks") > 0.5;
 	self.localsPlaced = 0;
 
-	-- What's become of each campaign soldier: "reserve" (not on the field yet), "flying" (in a dropship on its way), "field" or "dead".
+	-- What's become of each campaign soldier: "held" (a reinforcement not called in yet), "reserve" (not on the field yet), "flying"
+	-- (in a dropship on its way), "field" or "dead".
 	self.state = {};
 	self.launched = {};
 	self.seen = {};
 	self.health = {};
 	for _, soldier in ipairs(self.attackers) do
-		self.state[soldier.Id] = "reserve";
+		self.state[soldier.Id] = soldier.Held and "held" or "reserve";
 		self.health[soldier.Id] = soldier.Health;
 	end
 	for _, soldier in ipairs(self.defenders) do
@@ -95,9 +97,9 @@ function CampaignBattle:ParseSoldiers(text)
 		return soldiers;
 	end
 	for entry in string.gmatch(text, "([^;]+)") do
-		local loadout, module, id, health = string.match(entry, "^([^|]*)|([^|]*)|([^|]*)|([^|]*)$");
+		local loadout, module, id, health, held = string.match(entry, "^([^|]*)|([^|]*)|([^|]*)|([^|]*)|?([^|]*)$");
 		if id then
-			table.insert(soldiers, { Loadout = loadout, Module = module, Id = tonumber(id), Health = tonumber(health) or 1 });
+			table.insert(soldiers, { Loadout = loadout, Module = module, Id = tonumber(id), Health = tonumber(health) or 1, Held = held == "1" });
 		end
 	end
 	return soldiers;
@@ -341,6 +343,32 @@ function CampaignBattle:UpdateSoldiers()
 	end
 end
 
+-- The reinforcements called in: they come down with the next waves.
+function CampaignBattle:CallReserves()
+	local called = 0;
+	for _, soldier in ipairs(self.attackers) do
+		if self.state[soldier.Id] == "held" then
+			self.state[soldier.Id] = "reserve";
+			called = called + 1;
+		end
+	end
+	if called > 0 then
+		self.attackTimer:Reset();
+		self.firstWave = true;
+	end
+	return called;
+end
+
+function CampaignBattle:CountState(soldiers, state)
+	local count = 0;
+	for _, soldier in ipairs(soldiers) do
+		if self.state[soldier.Id] == state then
+			count = count + 1;
+		end
+	end
+	return count;
+end
+
 function CampaignBattle:SideLeft(soldiers)
 	local count = 0;
 	for _, soldier in ipairs(soldiers) do
@@ -359,6 +387,13 @@ function CampaignBattle:UpdateActivity()
 	if self.attackTimer:IsPastSimMS(self.firstWave and 2500 or self.attackInterval) then
 		self.attackTimer:Reset();
 		self:SendAttackers();
+	end
+	-- Reinforcements: when the player calls them (R), or once the first wave is all spent.
+	if self:CountState(self.attackers, "held") > 0 then
+		local spent = self:CountState(self.attackers, "reserve") + self:CountState(self.attackers, "flying") + self:Count(self.attackerTeam) == 0;
+		if spent or (self.playerAttacks and UInputMan:KeyPressed(Key.R)) then
+			self:CallReserves();
+		end
 	end
 	if self.defendTimer:IsPastSimMS(12000) then
 		self.defendTimer:Reset();
@@ -410,6 +445,10 @@ function CampaignBattle:UpdateActivity()
 				end
 				local lead = self.playerAttacks and "Take the bunker: kill the brain in its command room, or bring down every defender." or "Hold the bunker: keep your brain alive and bring down every attacker.";
 				local reserve = waiting > 0 and string.format(" (%d still to arrive)", waiting) or "";
+				local held = self.playerAttacks and self:CountState(self.attackers, "held") or 0;
+				if held > 0 then
+					reserve = reserve .. string.format("\nReserves: %d waiting aboard. Press R to call them in.", held);
+				end
 				FrameMan:SetScreenText(string.format("%s\nYours: %d%s. Enemy: %d.", lead, yours, reserve, theirs), self:ScreenOfPlayer(player), 0, 1100, false);
 			end
 		end
