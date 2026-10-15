@@ -114,6 +114,7 @@ partial class MainForm : Form
 
 	public MainForm()
 	{
+		Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); // the exe's own icon (Assets/launcher.ico)
 		Text = "Cortex Command Launcher";
 		Width = 1200; Height = 800;
 		StartPosition = FormStartPosition.CenterScreen;
