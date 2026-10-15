@@ -430,6 +430,14 @@ MainMenuGUI::MainMenuUpdateResult MainMenuGUI::Update() {
 
 	switch (m_ActiveMenuScreen) {
 		case MenuScreen::MainScreen:
+			if (Campaign::BattleWaiting() && !g_ActivityMan.ActivitySetToRestart()) {
+				// Back from a campaign battle: straight to the campaign, which applies its result.
+				if (const Activity* battle = g_ActivityMan.GetActivity(); battle && battle->GetPresetName() == "Campaign Battle") {
+					SetActiveMenuScreen(MenuScreen::CampaignScreen, false);
+					Campaign::Open();
+					break;
+				}
+			}
 			if (m_MenuScreenChange) {
 				ShowMainScreen();
 			}
@@ -470,6 +478,13 @@ MainMenuGUI::MainMenuUpdateResult MainMenuGUI::Update() {
 			break;
 		case MenuScreen::CampaignScreen:
 			m_MenuScreenChange = false;
+			if (Campaign::TakeBattleStart()) {
+				// The battle's set up as the start activity: start it, like a map picked in the map browser.
+				m_UpdateResult = MainMenuUpdateResult::ActivityStarted;
+				SetActiveMenuScreen(MenuScreen::MainScreen, false);
+				g_GUISound.ExitMenuSound()->Play();
+				break;
+			}
 			if (Campaign::TakeBack() || !Campaign::IsOpen()) {
 				SetActiveMenuScreen(MenuScreen::MainScreen, false);
 				g_GUISound.BackButtonPressSound()->Play();

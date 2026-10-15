@@ -1,4 +1,5 @@
 #include "MenuMan.h"
+#include "Campaign.h"
 #include "RenderMan.h"
 #include "SettingsMan.h"
 #include "WindowMan.h"
@@ -92,7 +93,9 @@ void MenuMan::SetActiveMenu() {
 				if (g_MetaMan.GameInProgress()) {
 					m_PauseMenu->SetBackButtonTargetName("Conquest");
 				} else {
-					if (const Activity* activity = g_ActivityMan.GetActivity(); activity && activity->GetPresetName() == "None") {
+					if (Campaign::BattleWaiting()) {
+						m_PauseMenu->SetBackButtonTargetName("Campaign");
+					} else if (const Activity* activity = g_ActivityMan.GetActivity(); activity && activity->GetPresetName() == "None") {
 						m_PauseMenu->SetBackButtonTargetName("Main");
 					} else {
 						m_PauseMenu->SetBackButtonTargetName("Scenario");
@@ -114,7 +117,14 @@ void MenuMan::HandleTransitionIntoMenuLoop() {
 		}
 	} else if (!g_ActivityMan.ActivitySetToRestart()) {
 		if (const Activity* activity = g_ActivityMan.GetActivity(); activity) {
-			if (activity->GetPresetName() == "None") {
+			if (Campaign::BattleWaiting()) {
+				// A campaign battle: back to the campaign once it's over, where the main menu opens it and its result is applied.
+				if (activity->IsOver() || g_ActivityMan.SkipPauseMenuWhenPausingActivity()) {
+					m_TitleScreen->SetTitleTransitionState(TitleScreen::TitleTransition::ScrollingFadeIn);
+				} else {
+					m_TitleScreen->SetTitleTransitionState(TitleScreen::TitleTransition::PauseMenu);
+				}
+			} else if (activity->GetPresetName() == "None") {
 				// If we're in the editors or in online multiplayer then return to main menu instead of scenario menu.
 				m_TitleScreen->SetTitleTransitionState(TitleScreen::TitleTransition::ScrollingFadeIn);
 			} else {
@@ -241,7 +251,12 @@ void MenuMan::UpdatePauseMenu() const {
 			g_ActivityMan.SetResumeActivity(true);
 			break;
 		case PauseMenuGUI::PauseMenuUpdateResult::BackToMain:
-			m_TitleScreen->SetTitleTransitionState(g_MetaMan.GameInProgress() ? TitleScreen::TitleTransition::MetaGameFadeIn : TitleScreen::TitleTransition::ScenarioFadeIn);
+			if (g_MetaMan.GameInProgress()) {
+				m_TitleScreen->SetTitleTransitionState(TitleScreen::TitleTransition::MetaGameFadeIn);
+			} else {
+				// Leaving a campaign battle goes back to the campaign, which counts it as a retreat.
+				m_TitleScreen->SetTitleTransitionState(Campaign::BattleWaiting() ? TitleScreen::TitleTransition::ScrollingFadeIn : TitleScreen::TitleTransition::ScenarioFadeIn);
+			}
 			break;
 		default:
 			break;
