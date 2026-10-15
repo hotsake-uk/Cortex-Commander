@@ -147,6 +147,9 @@ namespace {
 		bool MilitaryOpen = false; //!< The window of all the player's armies.
 		bool MilitaryReadyOnly = false;
 		bool SystemBoxFolded = false; //!< The system map's list of armies there, folded away.
+		std::vector<long> Holding; //!< Armies told to stay put this turn, so Next skips them (cleared each turn).
+		int GalaxyHoverLast = -1; //!< The star under the mouse last frame, for the route preview drawn under the stars.
+		std::array<int, 8> NeedCycle{}; //!< Which of each kind of alert a click on the alert strip goes to next.
 		bool DiplomacyOpen = false;
 		int DealWith = -1; //!< The faction a deal is being put together for, in the diplomacy window.
 		Deal DealDraft;
@@ -237,6 +240,23 @@ namespace {
 	int Player() { return PlayerFaction(s_Screen.Game); }
 
 	int SelectedArmyIndex() { return s_Screen.SelectedArmy ? FindArmy(s_Screen.Game, s_Screen.SelectedArmy) : -1; }
+
+	bool IsHolding(long id) { return std::find(s_Screen.Holding.begin(), s_Screen.Holding.end(), id) != s_Screen.Holding.end(); }
+
+	/// One of the player's armies still waiting for orders this turn: moves left, nowhere to go, and not told to hold.
+	bool IsReady(const Army& army) { return army.Faction == Player() && army.Moves > 0 && army.Path.empty() && !IsHolding(army.Id); }
+
+	void NextArmy();
+
+	/// Has an army stay put this turn, so Next skips it, and goes on to the next one; or wakes one that was holding.
+	void ToggleHold(long id) {
+		if (const auto found = std::find(s_Screen.Holding.begin(), s_Screen.Holding.end(), id); found != s_Screen.Holding.end()) {
+			s_Screen.Holding.erase(found);
+			return;
+		}
+		s_Screen.Holding.push_back(id);
+		NextArmy();
+	}
 
 	/// The selected army, if it's the player's own.
 	int OwnSelectedArmy() {
@@ -969,6 +989,122 @@ namespace {
 			s_Screen.Note = s_Screen.Game.Armies[army].Name + " will carry on next turn (" + std::to_string(s_Screen.Game.Armies[army].Path.size()) + " jumps to go).";
 		}
 	}
+	/// The turn an army gets to the end of a route of this many lane jumps: 1 for this turn, 2 for next, and so on.
+	int RouteTurns(const Army& army, int jumps) {
+		const CampaignModel::Campaign& game = s_Screen.Game;
+		const int jump = JumpMoves(game, army.Faction);
+		int moves = army.Moves;
+		bool landed = army.Planet >= 0;
+		int turns = 1;
+		for (int guard = 0; guard < 500 && jumps > 0; ++guard) {
+			if (landed) {
+				const int cost = TakeOffMoves(game, army.Faction);
+				if (moves >= std::max(cost, 1)) {
+					moves -= cost;
+					landed = false;
+					continue;
+				}
+			} else if (moves >= jump) {
+				moves -= jump;
+				--jumps;
+				continue;
+			}
+			++turns;
+			moves = c_MovesPerTurn;
+		}
+		return turns;
+	}
+
+	std::string WhenText(int turns) { return turns <= 1 ? std::string("gets there this turn") : turns == 2 ? std::string("gets there next turn") : "gets there in " + std::to_string(turns - 1) + " turns"; }
+
+	/// For a star's tooltip: what sending the picked army there would take.
+	void SystemPreview(int system) {
+		const CampaignModel::Campaign& game = s_Screen.Game;
+		const int army = OwnSelectedArmy();
+		if (army < 0) {
+			ImGui::TextDisabled("Pick one of your armies, then right-click here to send it.");
+			return;
+		}
+		const Army& self = game.Armies[army];
+		ImGui::Separator();
+		if (self.System == system) {
+			ImGui::TextDisabled("%s is here.", self.Name.c_str());
+			return;
+		}
+		const std::vector<int> path = LanePath(game, self.System, system);
+		if (path.empty()) {
+			ImGui::TextDisabled("No lane leads here from %s.", game.Systems[self.System].Name.c_str());
+			return;
+		}
+		const int jumps = static_cast<int>(path.size());
+		ImGui::Text("Right-click to send %s here", self.Name.c_str());
+		ImGui::TextDisabled("%d %s, %s", jumps, jumps == 1 ? "jump" : "jumps", WhenText(RouteTurns(self, jumps)).c_str());
+		const int fuel = game.Factions[self.Faction].Resources[static_cast<size_t>(Resource::Fuel)];
+		if (fuel < jumps) {
+			ImGui::TextColored(ImVec4(1.0F, 0.6F, 0.4F, 1.0F), "Needs %d fuel and you have %d: it waits when it runs out.", jumps, fuel);
+		} else {
+			ImGui::TextDisabled("Uses %d fuel (you have %d).", jumps, fuel);
+		}
+		int hostile = 0;
+		float strength = 0.0F;
+		for (const Army& other: game.Armies) {
+			if (other.System == system && other.Faction != self.Faction && !Friendly(game, self.Faction, other.Faction)) {
+				++hostile;
+				strength += Strength(game, other);
+			}
+		}
+		if (hostile > 0) {
+			ImGui::TextColored(ImVec4(1.0F, 0.5F, 0.4F, 1.0F), "%d hostile %s there, strength %.0f (yours %.0f)", hostile, hostile == 1 ? "army" : "armies", strength, Strength(game, self));
+		}
+	}
+
+	/// For a point's tooltip: what sending the picked army there would do, the battle's odds for a fight.
+	void PointPreview(int planet, int point) {
+		const CampaignModel::Campaign& game = s_Screen.Game;
+		const int army = OwnSelectedArmy();
+		if (army < 0) {
+			ImGui::TextDisabled("Pick one of your armies, then right-click here to send it.");
+			return;
+		}
+		const Army& self = game.Armies[army];
+		if (self.Planet == planet && self.Point == point) {
+			return;
+		}
+		ImGui::Separator();
+		const Planet& target = game.Planets[planet];
+		const char* how = nullptr;
+		if (self.Planet == planet) {
+			const std::vector<int>& links = target.Points[self.Point].Links;
+			if (std::find(links.begin(), links.end(), point) == links.end()) {
+				ImGui::TextDisabled("%s can't reach it overland: only points joined by a road. Take off and land instead.", self.Name.c_str());
+				return;
+			}
+			how = "overland, 1 move";
+		} else if (self.Planet < 0 && self.System == target.System) {
+			how = "landing, 1 move";
+		} else if (self.System == target.System) {
+			ImGui::TextDisabled("%s: take off first, then land here.", self.Name.c_str());
+			return;
+		} else {
+			ImGui::TextDisabled("%s: move it to this system first, from the galaxy map.", self.Name.c_str());
+			return;
+		}
+		ImGui::Text("Right-click to send %s here (%s)", self.Name.c_str(), how);
+		if (self.Moves < 1) {
+			ImGui::TextColored(ImVec4(1.0F, 0.6F, 0.4F, 1.0F), "It has no moves left this turn.");
+		}
+		float defence = 0.0F;
+		if (WouldFight(game, self.Faction, planet, point, defence)) {
+			const float chance = WinChance(Strength(game, self), defence);
+			const ImVec4 color = chance >= 0.7F ? ImVec4(0.5F, 1.0F, 0.5F, 1.0F) : chance >= 0.4F ? ImVec4(1.0F, 0.85F, 0.35F, 1.0F) : ImVec4(1.0F, 0.5F, 0.4F, 1.0F);
+			ImGui::TextColored(color, "A battle: about %d%% to win (strength %.0f against %.0f)", static_cast<int>(std::round(chance * 100.0F)), Strength(game, self), defence);
+		} else if (target.Points[point].Owner != self.Faction) {
+			ImGui::TextDisabled("Nobody defends it: it's yours when you get there.");
+		}
+		if (const int broken = TreatyBroken(game, self.Faction, planet, point); broken >= 0) {
+			ImGui::TextColored(ImVec4(1.0F, 0.45F, 0.4F, 1.0F), "This breaks your treaty with %s.", FactionLabel(broken).c_str());
+		}
+	}
 #pragma endregion
 
 
@@ -1370,7 +1506,7 @@ namespace {
 			case Step::Diplomacy:
 				return {"Diplomacy", "Every faction starts Neutral: either side can attack, but it sours relations. Press Diplomacy at the top to see where you stand with each one, then ask one for peace. If they won't, they say why.\n\nA gift (a deal where you only give) raises their opinion. Allies fight beside you and win with you."};
 			case Step::Routine:
-				return {"Each turn from here", "That's everything. Each turn: check the To do list on the right (most pressing first; click a line to go there), press Tab to pick each army with moves left, spend your gold, then End turn.\n\nMilitary (or M) lists all your armies: what each is made of and which have moved."};
+				return {"Each turn from here", "That's everything. Each turn: the bar above the map shows what needs you, red for the pressing things (hover one for what to do, click it to go there). The turn button reads Next while armies still have moves: press it (or Enter) to go to each in turn, or Hold one (H) to leave it. Once nothing's left it reads End turn. Ctrl+Enter ends the turn at any time.\n\nMilitary (or M) lists all your armies: what each is made of and which have moved."};
 			case Step::Win:
 				return {"Conquer the galaxy", "Wipe out the other factions to win, or outlast them with your allies.\n\nGood luck, commander."};
 			default:
@@ -1598,6 +1734,24 @@ namespace {
 			const ImVec2 end = toScreen(game.Systems[at].X, game.Systems[at].Y);
 			drawList->AddCircle(end, 14.0F + 2.0F * std::sin(time * 4.0F), IM_COL32(255, 220, 90, 200), 24, 2.0F);
 		}
+		// Where the picked army would go if sent to the star under the mouse: a dashed line, and the turn it reaches each star.
+		std::vector<std::pair<ImVec2, int>> routeTurns;
+		if (const int army = OwnSelectedArmy(); army >= 0 && s_Screen.GalaxyHoverLast >= 0 && s_Screen.GalaxyHoverLast < static_cast<int>(game.Systems.size()) && s_Screen.GalaxyHoverLast != game.Armies[army].System) {
+			const Army& self = game.Armies[army];
+			int at = self.System;
+			const std::vector<int> path = LanePath(game, self.System, s_Screen.GalaxyHoverLast);
+			for (size_t step = 0; step < path.size(); ++step) {
+				const ImVec2 a = toScreen(game.Systems[at].X, game.Systems[at].Y);
+				const ImVec2 b = toScreen(game.Systems[path[step]].X, game.Systems[path[step]].Y);
+				const float length = std::hypot(b.x - a.x, b.y - a.y);
+				for (float t = 0.0F; t < length; t += 12.0F) {
+					const float until = std::min(t + 7.0F, length);
+					drawList->AddLine(ImVec2(a.x + (b.x - a.x) * t / length, a.y + (b.y - a.y) * t / length), ImVec2(a.x + (b.x - a.x) * until / length, a.y + (b.y - a.y) * until / length), IM_COL32(235, 240, 255, 220), 2.0F);
+				}
+				routeTurns.push_back({b, RouteTurns(self, static_cast<int>(step) + 1)});
+				at = path[step];
+			}
+		}
 
 		int hoveredSystem = -1;
 		long hoveredArmy = 0;
@@ -1658,6 +1812,17 @@ namespace {
 				armyMarks.push_back({ImVec2(at.x + offset, at.y - starSize), byFaction[faction]});
 				offset += faction == Player() ? 26.0F : 30.0F;
 			}
+		}
+		// The route preview's turn numbers: where each turn's moves run out, and the end.
+		for (size_t step = 0; step < routeTurns.size(); ++step) {
+			if (step + 1 < routeTurns.size() && routeTurns[step + 1].second == routeTurns[step].second) {
+				continue;
+			}
+			const ImVec2 where(routeTurns[step].first.x - starSize - 10.0F, routeTurns[step].first.y - starSize - 10.0F);
+			const std::string turn = std::to_string(routeTurns[step].second);
+			drawList->AddCircleFilled(where, 9.0F, IM_COL32(20, 22, 36, 235), 16);
+			drawList->AddCircle(where, 9.0F, IM_COL32(235, 240, 255, 220), 16, 1.5F);
+			CenteredText(drawList, ImVec2(where.x, where.y - ImGui::GetTextLineHeight() * 0.5F), IM_COL32(255, 255, 255, 255), turn);
 		}
 		// The armies after every star, so no star or name is drawn over them.
 		for (const auto& [where, armies]: armyMarks) {
@@ -1725,12 +1890,14 @@ namespace {
 					ImGui::TextDisabled("%d", yields[each]);
 				}
 			}
-			ImGui::TextDisabled("Double-click to see it. Right-click to send the army picked.");
+			SystemPreview(hoveredSystem);
+			ImGui::TextDisabled("Double-click to see it.");
 			ImGui::EndTooltip();
 		} else if (hoveredArmy) {
 			const Army& army = game.Armies[FindArmy(game, hoveredArmy)];
 			ImGui::SetTooltip("%s (%s): %d soldiers, strength %.0f", army.Name.c_str(), FactionLabel(army.Faction).c_str(), SoldierCount(army), Strength(game, army));
 		}
+		s_Screen.GalaxyHoverLast = hovered ? hoveredSystem : -1;
 		DrawLegend(drawList, ImVec2(from.x + 8.0F, to.y - 8.0F));
 		EndCanvas();
 	}
@@ -2245,7 +2412,7 @@ namespace {
 			if (fight) {
 				ImGui::TextDisabled("Defended: strength %.0f", defence);
 			}
-			ImGui::TextDisabled("Right-click to send the army picked.");
+			PointPreview(planetIndex, hoveredPoint);
 			ImGui::EndTooltip();
 		}
 		EndCanvas();
@@ -2283,6 +2450,14 @@ namespace {
 		ImGui::Text("%d soldiers, %d squads, strength %.0f", SoldierCount(self), static_cast<int>(self.Squads.size()), Strength(game, self));
 		if (own) {
 			ImGui::Text("Moves left: %d of %d", self.Moves, c_MovesPerTurn);
+			if (self.Moves > 0 && self.Path.empty()) {
+				const bool holding = IsHolding(self.Id);
+				ImGui::SameLine();
+				if (ToolUI::SmallButton(holding ? "Holding: wake" : "Hold (H)")) {
+					ToggleHold(self.Id);
+				}
+				ImGui::SetItemTooltip(holding ? "It's staying put this turn, so Next skips it. Click to have Next stop at it again." : "Stays put this turn: Next skips it and the turn button stops counting it. Goes on to your next army (H).");
+			}
 			if (!self.Path.empty()) {
 				ImGui::TextColored(ImVec4(1.0F, 0.85F, 0.35F, 1.0F), "On its way to %s (%d jumps)", game.Systems[self.Path.back()].Name.c_str(), static_cast<int>(self.Path.size()));
 				ImGui::SameLine();
@@ -2506,34 +2681,37 @@ namespace {
 		}
 	}
 
-	void NextArmy();
 	int TurnsLeftOf(const CampaignModel::Campaign& game, int faction, Resource resource);
 
-	/// What needs doing this turn, most pressing first: each line takes the player to it when clicked.
-	void ToDoList() {
+	/// The kinds of thing that need the player, in the order the alert strip shows them.
+	enum class Need { Invaded, Threat, Food, Fuel, Gold, Ready, Refill, Spend, Count };
+
+	/// Something that needs doing this turn: a line of the To do list, and part of an icon on the alert strip.
+	struct ToDo {
+		Need Kind = Need::Ready;
+		std::string Text;
+		bool Urgent = false;
+		std::function<void()> Go;
+	};
+
+	/// What needs doing this turn, most pressing first.
+	std::vector<ToDo> ToDos() {
 		CampaignModel::Campaign& game = s_Screen.Game;
 		const int player = Player();
+		std::vector<ToDo> items;
 		if (player < 0 || game.Winner >= 0 || game.Lost) {
-			return;
+			return items;
 		}
-		struct Item {
-			std::string Text;
-			ImVec4 Color;
-			std::function<void()> Go;
-		};
-		std::vector<Item> items;
-		const ImVec4 urgent(1.0F, 0.55F, 0.45F, 1.0F);
-		const ImVec4 normal(0.85F, 0.88F, 1.0F, 1.0F);
 		// Planets of the player's that are invaded.
-		for (int planet = 0; planet < static_cast<int>(game.Planets.size()) && items.size() < 2; ++planet) {
+		for (int planet = 0; planet < static_cast<int>(game.Planets.size()); ++planet) {
 			const PlanetControl control = ControlOf(game, planet);
 			if (control.Controller == player && control.Invaded) {
-				items.push_back({"Drive the invaders off " + game.Planets[planet].Name, urgent, [planet]() { ShowPlanet(planet); }});
+				items.push_back({Need::Invaded, "Drive the invaders off " + game.Planets[planet].Name, true, [planet]() { ShowPlanet(planet); }});
 			}
 		}
 		// Enemy armies where the player holds points.
 		for (const Army& army: game.Armies) {
-			if (army.Faction == player || Friendly(game, player, army.Faction) || items.size() >= 3) {
+			if (army.Faction == player || Friendly(game, player, army.Faction)) {
 				continue;
 			}
 			bool threat = false;
@@ -2545,7 +2723,7 @@ namespace {
 			if (threat) {
 				const int system = army.System;
 				const long id = army.Id;
-				items.push_back({FactionLabel(army.Faction) + " army at " + game.Systems[system].Name, urgent, [system, id]() {
+				items.push_back({Need::Threat, FactionLabel(army.Faction) + " army at " + game.Systems[system].Name + " (" + std::to_string(SoldierCount(army)) + " soldiers)", true, [system, id]() {
 					ShowSystem(system);
 					s_Screen.SelectedArmy = id;
 				}});
@@ -2553,7 +2731,7 @@ namespace {
 		}
 		// Food running out, or no fuel to jump with.
 		if (const int turns = TurnsLeftOf(game, player, Resource::Food); turns >= 0 && turns <= 3) {
-			items.push_back({turns == 0 ? std::string("Out of food: armies go hungry. Buy food (Trade)") : "Food runs out in " + std::to_string(turns) + (turns == 1 ? " turn" : " turns") + ": buy some or take farms", urgent, []() { s_Screen.MarketOpen = true; }});
+			items.push_back({Need::Food, turns == 0 ? std::string("Out of food: armies go hungry. Buy food (Trade)") : "Food runs out in " + std::to_string(turns) + (turns == 1 ? " turn" : " turns") + ": buy some or take farms", true, []() { s_Screen.MarketOpen = true; }});
 		}
 		{
 			const size_t fuel = static_cast<size_t>(Resource::Fuel);
@@ -2562,21 +2740,21 @@ namespace {
 				jumping += army.Faction == player && army.Planet < 0 ? 1 : 0;
 			}
 			if (jumping > 0 && game.Factions[player].Resources[fuel] < jumping && ProductionOf(game, player)[fuel] < jumping) {
-				items.push_back({game.Factions[player].Resources[fuel] == 0 ? std::string("No fuel: armies can't jump lanes. Buy fuel (Trade)") : std::string("Fuel is low for your armies in space (Trade)"), urgent, []() { s_Screen.MarketOpen = true; }});
+				items.push_back({Need::Fuel, game.Factions[player].Resources[fuel] == 0 ? std::string("No fuel: armies can't jump lanes. Buy fuel (Trade)") : std::string("Fuel is low for your armies in space (Trade)"), true, []() { s_Screen.MarketOpen = true; }});
 			}
 		}
 		if (const int income = IncomeOf(game, player); income < 0) {
-			items.push_back({"Losing " + std::to_string(-income) + " gold a turn: take points, or disband", urgent, nullptr});
+			items.push_back({Need::Gold, "Losing " + std::to_string(-income) + " gold a turn: take points, or disband", true, nullptr});
 		}
 		int ready = 0;
 		for (const Army& army: game.Armies) {
-			ready += army.Faction == player && army.Moves > 0 && army.Path.empty() ? 1 : 0;
+			ready += IsReady(army) ? 1 : 0;
 		}
 		if (ready > 0) {
-			items.push_back({std::to_string(ready) + (ready == 1 ? " army" : " armies") + " can still move (Tab)", normal, []() { NextArmy(); }});
+			items.push_back({Need::Ready, std::to_string(ready) + (ready == 1 ? " army" : " armies") + " can still move (Tab)", false, []() { NextArmy(); }});
 		}
 		// Armies that can be refilled where they stand.
-		for (int army = 0; army < static_cast<int>(game.Armies.size()) && items.size() < 5; ++army) {
+		for (int army = 0; army < static_cast<int>(game.Armies.size()); ++army) {
 			const Army& each = game.Armies[army];
 			if (each.Faction != player || each.Planet < 0) {
 				continue;
@@ -2587,12 +2765,11 @@ namespace {
 				const long id = each.Id;
 				const int planet = each.Planet;
 				const int at = each.Point;
-				items.push_back({"Refill " + each.Name + " (" + std::to_string(cost) + " gold)", normal, [id, planet, at]() {
+				items.push_back({Need::Refill, "Refill " + each.Name + " (" + std::to_string(cost) + " gold)", false, [id, planet, at]() {
 					s_Screen.SelectedArmy = id;
 					ShowPlanet(planet);
 					s_Screen.SelectedPoint = at;
 				}});
-				break;
 			}
 		}
 		if (game.Factions[player].Gold >= 600) {
@@ -2602,7 +2779,7 @@ namespace {
 				const auto found = std::find_if(points.begin(), points.end(), [player](const Point& point) { return point.Owner == player && point.Settlement > 0; });
 				if (found != points.end()) {
 					const int at = static_cast<int>(found - points.begin());
-					items.push_back({std::to_string(game.Factions[player].Gold) + " gold to spend: recruit, settle or build", normal, [planet, at]() {
+					items.push_back({Need::Spend, std::to_string(game.Factions[player].Gold) + " gold to spend: recruit, settle or build", false, [planet, at]() {
 						ShowPlanet(planet);
 						s_Screen.SelectedPoint = at;
 					}});
@@ -2610,15 +2787,27 @@ namespace {
 				}
 			}
 		}
-		ImGui::SeparatorText("To do");
-		BeaconItem(s_Screen.Lights.ToDo);
+		return items;
+	}
+
+	/// The To do list in the side panel: every line of what needs doing, each taking the player to it when clicked.
+	void ToDoList() {
+		if (Player() < 0 || s_Screen.Game.Winner >= 0 || s_Screen.Game.Lost) {
+			return;
+		}
+		const std::vector<ToDo> items = ToDos();
+		const std::string header = "To do (" + std::to_string(items.size()) + ")###todo";
+		if (!ImGui::CollapsingHeader(header.c_str())) {
+			ImGui::SetItemTooltip("Every line of the alert bar above the map, in full.");
+			return;
+		}
 		if (items.empty()) {
 			ImGui::TextColored(ImVec4(0.5F, 1.0F, 0.5F, 1.0F), "All done: End turn (Enter)");
 		}
-		for (size_t index = 0; index < items.size() && index < 5; ++index) {
-			const Item& item = items[index];
+		for (size_t index = 0; index < items.size() && index < 10; ++index) {
+			const ToDo& item = items[index];
 			ImGui::PushID(static_cast<int>(index));
-			ImGui::PushStyleColor(ImGuiCol_Text, item.Color);
+			ImGui::PushStyleColor(ImGuiCol_Text, item.Urgent ? ImVec4(1.0F, 0.55F, 0.45F, 1.0F) : ImVec4(0.85F, 0.88F, 1.0F, 1.0F));
 			const std::string label = (item.Go ? "> " : "  ") + item.Text;
 			if (ImGui::Selectable(label.c_str(), false, item.Go ? 0 : ImGuiSelectableFlags_Disabled) && item.Go) {
 				item.Go();
@@ -2626,6 +2815,127 @@ namespace {
 			ImGui::PopStyleColor();
 			ImGui::PopID();
 		}
+	}
+
+	/// An icon for a kind of alert, drawn in a square.
+	void NeedIcon(ImDrawList* drawList, ImVec2 center, float size, Need kind, ImU32 color) {
+		const float r = size * 0.5F;
+		switch (kind) {
+			case Need::Invaded: // A planet with an arrow into it.
+				drawList->AddCircle(center, r * 0.75F, color, 16, 2.0F);
+				drawList->AddLine(ImVec2(center.x - r, center.y - r), ImVec2(center.x - r * 0.1F, center.y - r * 0.1F), color, 2.0F);
+				drawList->AddTriangleFilled(ImVec2(center.x, center.y), ImVec2(center.x - r * 0.55F, center.y - r * 0.15F), ImVec2(center.x - r * 0.15F, center.y - r * 0.55F), color);
+				break;
+			case Need::Threat: // Crossed swords, roughly.
+				drawList->AddLine(ImVec2(center.x - r * 0.8F, center.y - r * 0.8F), ImVec2(center.x + r * 0.8F, center.y + r * 0.8F), color, 2.5F);
+				drawList->AddLine(ImVec2(center.x + r * 0.8F, center.y - r * 0.8F), ImVec2(center.x - r * 0.8F, center.y + r * 0.8F), color, 2.5F);
+				drawList->AddLine(ImVec2(center.x - r * 0.75F, center.y + r * 0.25F), ImVec2(center.x - r * 0.25F, center.y + r * 0.75F), color, 2.0F);
+				drawList->AddLine(ImVec2(center.x + r * 0.75F, center.y + r * 0.25F), ImVec2(center.x + r * 0.25F, center.y + r * 0.75F), color, 2.0F);
+				break;
+			case Need::Food:
+			case Need::Fuel: { // The resource's own colour, as a drop.
+				const ImU32 fill = ResourceColor(kind == Need::Food ? Resource::Food : Resource::Fuel);
+				drawList->AddCircleFilled(ImVec2(center.x, center.y + r * 0.2F), r * 0.6F, fill, 16);
+				drawList->AddTriangleFilled(ImVec2(center.x, center.y - r * 0.9F), ImVec2(center.x - r * 0.52F, center.y - r * 0.05F), ImVec2(center.x + r * 0.52F, center.y - r * 0.05F), fill);
+				drawList->AddLine(ImVec2(center.x + r * 0.5F, center.y + r * 0.9F), ImVec2(center.x + r * 0.95F, center.y + r * 0.9F), color, 2.0F);
+				break;
+			}
+			case Need::Gold:
+			case Need::Spend: // A coin.
+				drawList->AddCircleFilled(center, r * 0.75F, IM_COL32(240, 200, 70, 255), 16);
+				drawList->AddCircle(center, r * 0.5F, IM_COL32(160, 120, 30, 255), 16, 1.5F);
+				if (kind == Need::Gold) {
+					drawList->AddLine(ImVec2(center.x - r * 0.9F, center.y + r * 0.9F), ImVec2(center.x + r * 0.9F, center.y - r * 0.9F), color, 2.0F);
+				}
+				break;
+			case Need::Ready: { // A shield with a forward arrow.
+				drawList->AddTriangleFilled(ImVec2(center.x - r * 0.5F, center.y - r * 0.8F), ImVec2(center.x + r * 0.8F, center.y), ImVec2(center.x - r * 0.5F, center.y + r * 0.8F), color);
+				break;
+			}
+			case Need::Refill: // A plus.
+				drawList->AddRectFilled(ImVec2(center.x - r * 0.2F, center.y - r * 0.8F), ImVec2(center.x + r * 0.2F, center.y + r * 0.8F), color);
+				drawList->AddRectFilled(ImVec2(center.x - r * 0.8F, center.y - r * 0.2F), ImVec2(center.x + r * 0.8F, center.y + r * 0.2F), color);
+				break;
+			default:
+				drawList->AddCircleFilled(center, r * 0.5F, color, 12);
+				break;
+		}
+	}
+
+	/// The alert strip under the top bar: an icon for each kind of thing that needs the player, with a count. Hover for what to do,
+	/// click to go there (again for the next one).
+	void AlertStrip() {
+		const std::vector<ToDo> items = ToDos();
+		const float line = ImGui::GetFrameHeight();
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		ImGui::BeginGroup();
+		bool any = false;
+		for (int kind = 0; kind < static_cast<int>(Need::Count); ++kind) {
+			std::vector<const ToDo*> these;
+			for (const ToDo& item: items) {
+				if (static_cast<int>(item.Kind) == kind) {
+					these.push_back(&item);
+				}
+			}
+			if (these.empty()) {
+				continue;
+			}
+			const bool urgent = these.front()->Urgent;
+			const char* names[] = {"Invaded", "Enemies near", "Food", "Fuel", "Losing gold", "Ready", "Refill", "Gold to spend"};
+			std::string label = names[kind];
+			if (static_cast<Need>(kind) == Need::Ready) {
+				int ready = 0;
+				for (const Army& army: s_Screen.Game.Armies) {
+					ready += IsReady(army) ? 1 : 0;
+				}
+				label = std::to_string(ready) + " ready";
+			} else if (these.size() > 1) {
+				label += " " + std::to_string(these.size());
+			}
+			if (any) {
+				ImGui::SameLine();
+			}
+			any = true;
+			ImGui::PushID(kind);
+			const ImVec2 textSize = ImGui::CalcTextSize(label.c_str());
+			const ImVec2 size(line + textSize.x + ImGui::GetStyle().FramePadding.x * 2.0F, line);
+			const ImVec2 at = ImGui::GetCursorScreenPos();
+			const bool clicked = ImGui::InvisibleButton("##need", size);
+			const bool hover = ImGui::IsItemHovered();
+			const ImU32 tint = urgent ? IM_COL32(255, 110, 90, 255) : IM_COL32(150, 200, 255, 255);
+			const float pulse = urgent ? 0.5F + 0.5F * std::sin(static_cast<float>(ImGui::GetTime()) * 4.0F) : 0.0F;
+			drawList->AddRectFilled(at, ImVec2(at.x + size.x, at.y + size.y), hover ? IM_COL32(60, 64, 90, 240) : IM_COL32(28, 30, 46, 230), 4.0F);
+			drawList->AddRect(at, ImVec2(at.x + size.x, at.y + size.y), Alpha(tint, 0.45F + 0.4F * pulse), 4.0F, 0, urgent ? 2.0F : 1.0F);
+			NeedIcon(drawList, ImVec2(at.x + line * 0.55F, at.y + line * 0.5F), line * 0.6F, static_cast<Need>(kind), tint);
+			drawList->AddText(ImVec2(at.x + line, at.y + (line - textSize.y) * 0.5F), urgent ? IM_COL32(255, 200, 190, 255) : IM_COL32(220, 228, 255, 255), label.c_str());
+			if (clicked) {
+				int& next = s_Screen.NeedCycle[static_cast<size_t>(kind)];
+				const ToDo* item = these[static_cast<size_t>(next) % these.size()];
+				next = (next + 1) % static_cast<int>(these.size());
+				if (item->Go) {
+					item->Go();
+				}
+			}
+			if (hover) {
+				ImGui::BeginTooltip();
+				for (size_t index = 0; index < these.size() && index < 6; ++index) {
+					ImGui::TextColored(urgent ? ImVec4(1.0F, 0.6F, 0.5F, 1.0F) : ImVec4(0.85F, 0.88F, 1.0F, 1.0F), "%s", these[index]->Text.c_str());
+				}
+				if (these.size() > 6) {
+					ImGui::TextDisabled("and %d more", static_cast<int>(these.size() - 6));
+				}
+				if (these.front()->Go) {
+					ImGui::TextDisabled(these.size() > 1 ? "Click to go there, again for the next." : "Click to go there.");
+				}
+				ImGui::EndTooltip();
+			}
+			ImGui::PopID();
+		}
+		if (!any) {
+			ImGui::AlignTextToFramePadding();
+			ImGui::TextColored(ImVec4(0.5F, 1.0F, 0.5F, 1.0F), "Nothing needs you. End the turn when you're ready (Enter).");
+		}
+		ImGui::EndGroup();
 	}
 
 	/// Picks an army and shows it on the map, at the closest view that has it.
@@ -2938,6 +3248,9 @@ namespace {
 				if (isMoving) {
 					ImGui::TextColored(ImVec4(1.0F, 0.86F, 0.35F, 1.0F), "To %s", game.Systems[each.Path.back()].Name.c_str());
 					ImGui::SetItemTooltip("On its way: %d jump%s to go.", static_cast<int>(each.Path.size()), each.Path.size() == 1 ? "" : "s");
+				} else if (each.Moves > 0 && IsHolding(each.Id)) {
+					ImGui::TextDisabled("Holding");
+					ImGui::SetItemTooltip("Told to stay put this turn (H, or Hold in its panel).");
 				} else if (each.Moves > 0) {
 					ImGui::TextColored(ImVec4(0.47F, 1.0F, 0.55F, 1.0F), "Ready (%d move%s)", each.Moves, each.Moves == 1 ? "" : "s");
 				} else {
@@ -3875,18 +4188,17 @@ namespace {
 	/// The next of the player's armies with moves left and nowhere to go, after the one picked.
 	void NextArmy() {
 		CampaignModel::Campaign& game = s_Screen.Game;
-		const int player = Player();
 		const int count = static_cast<int>(game.Armies.size());
 		const int current = std::max(SelectedArmyIndex(), -1);
 		for (int step = 1; step <= count; ++step) {
 			const int army = (current + step + count) % count;
 			const Army& each = game.Armies[army];
-			if (each.Faction == player && each.Moves > 0 && each.Path.empty()) {
+			if (IsReady(each)) {
 				GoToArmy(each.Id);
 				return;
 			}
 		}
-		s_Screen.Note = "Every army has moved.";
+		s_Screen.Note = s_Screen.Holding.empty() ? "Every army has moved." : "Every army has moved or is holding.";
 	}
 
 	void PlayingPage() {
@@ -3977,29 +4289,68 @@ namespace {
 		ImGui::TextDisabled("|");
 		ImGui::SameLine();
 		ImGui::Text("%s, turn %d", game.Name.c_str(), game.Turn);
+		// The turn button: Next while an army still waits for orders (Civilization's way), End turn once nothing does.
+		int ready = 0;
+		for (const Army& army: game.Armies) {
+			ready += IsReady(army) ? 1 : 0;
+		}
+		const bool over = game.Winner >= 0 || game.Lost;
+		const bool nextMode = ready > 0 && Shown(Step::Routine) && !over;
 		const float endWidth = ImGui::CalcTextSize("End turn").x + style.FramePadding.x * 4.0F;
-		const float nextWidth = ImGui::CalcTextSize("Next army").x + style.FramePadding.x * 4.0F;
-		ImGui::SameLine(ImGui::GetContentRegionMax().x - endWidth - nextWidth - style.ItemSpacing.x);
-		if (ToolUI::Button("Next army", ImVec2(nextWidth, 0.0F)) || (ImGui::IsKeyPressed(ImGuiKey_Tab, false) && !ImGui::GetIO().WantTextInput)) {
+		const float primaryWidth = std::max(endWidth, ImGui::CalcTextSize("Next: 99 armies ready").x + style.FramePadding.x * 4.0F);
+		const bool enter = ImGui::IsKeyPressed(ImGuiKey_Enter, false) && !ImGui::GetIO().WantTextInput && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
+		const bool keys = !ImGui::GetIO().WantTextInput && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
+		ImGui::SameLine(ImGui::GetContentRegionMax().x - primaryWidth - (nextMode ? endWidth + style.ItemSpacing.x : 0.0F));
+		if (ImGui::IsKeyPressed(ImGuiKey_Tab, false) && keys) {
 			NextArmy();
 		}
-		ImGui::SetItemTooltip("Picks your next army that still has moves and nowhere to go (Tab).");
-		if (ImGui::IsKeyPressed(ImGuiKey_M, false) && !ImGui::GetIO().WantTextInput && Shown(Step::Routine)) {
+		if (ImGui::IsKeyPressed(ImGuiKey_M, false) && keys && Shown(Step::Routine)) {
 			s_Screen.MilitaryOpen = !s_Screen.MilitaryOpen;
 		}
-		ImGui::SameLine();
-		ImGui::BeginDisabled(game.Winner >= 0 || game.Lost);
-		if (ToolUI::Button("End turn", ImVec2(endWidth, 0.0F)) || (ImGui::IsKeyPressed(ImGuiKey_Enter, false) && !ImGui::GetIO().WantTextInput && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId))) {
+		if (ImGui::IsKeyPressed(ImGuiKey_H, false) && keys) {
+			if (const int army = OwnSelectedArmy(); army >= 0 && game.Armies[army].Moves > 0 && game.Armies[army].Path.empty()) {
+				ToggleHold(game.Armies[army].Id);
+			}
+		}
+		bool endNow = enter && ImGui::GetIO().KeyCtrl;
+		if (nextMode) {
+			if (ToolUI::Button("End turn", ImVec2(endWidth, 0.0F))) {
+				endNow = true;
+			}
+			BeaconItem(s_Screen.Lights.EndTurn);
+			ImGui::SetItemTooltip("Ends the turn now, with armies still ready to move (Ctrl+Enter).");
+			ImGui::SameLine();
+			const std::string label = "Next: " + std::to_string(ready) + (ready == 1 ? " army ready" : " armies ready") + "###turnButton";
+			ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2F, 0.42F, 0.25F, 1.0F));
+			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.26F, 0.55F, 0.32F, 1.0F));
+			if (ToolUI::Button(label.c_str(), ImVec2(primaryWidth, 0.0F)) || (enter && !ImGui::GetIO().KeyCtrl)) {
+				NextArmy();
+			}
+			ImGui::PopStyleColor(2);
+			ImGui::SetItemTooltip("Goes to your next army with moves left and no orders (Enter or Tab). Hold one (H) to leave it this turn. Once none are left this reads End turn.");
+		} else {
+			ImGui::BeginDisabled(over);
+			if (ToolUI::Button("End turn###turnButton", ImVec2(primaryWidth, 0.0F)) || enter) {
+				endNow = true;
+			}
+			ImGui::EndDisabled();
+			BeaconItem(s_Screen.Lights.EndTurn);
+			ImGui::SetItemTooltip("The other factions take their turns, then the next turn starts: income, healing, and armies carry on their moves. Saves the campaign (Enter).");
+		}
+		if (endNow && !over) {
 			EndTurn(game);
 			SaveGame();
 			s_Screen.Note.clear();
+			s_Screen.Holding.clear();
+			s_Screen.NeedCycle = {};
 			if (FindArmy(game, s_Screen.SelectedArmy) < 0) {
 				s_Screen.SelectedArmy = 0;
 			}
 		}
-		ImGui::EndDisabled();
-		BeaconItem(s_Screen.Lights.EndTurn);
-		ImGui::SetItemTooltip("The other factions take their turns, then the next turn starts: income, healing, and armies carry on their moves. Saves the campaign (Enter).");
+		if (Shown(Step::Routine)) {
+			AlertStrip();
+			BeaconItem(s_Screen.Lights.ToDo);
+		}
 
 		const ImVec2 room = ImGui::GetContentRegionAvail();
 		const float sideWidth = std::floor(std::clamp(room.x * 0.27F, ImGui::GetFontSize() * 18.0F, ImGui::GetFontSize() * 28.0F));
