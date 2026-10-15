@@ -961,6 +961,17 @@ namespace RTE {
 		/// Recovers early from being knocked over once the body lies still, and runs the get-up. Called from Update. Not while a gravity lift
 		/// has the body (@param heldByLift), which turns it on its side or head first and read as knocked over.
 		void UpdateGetUp(float& rot, bool heldByLift);
+
+		/// Whether a gravity lift has the body to itself (Actor::HeldByAutomover): its own get-up, mantle, ledge catch, corner nudge and ladder
+		/// stand down. Not while it is stuck in the lift (see UpdateLiftStuck), when they are its way free.
+		bool LiftHasBody();
+		/// Watches a unit a gravity lift carries: one going somewhere that barely moves for half a second is caught on an edge, until it has
+		/// got clear of that spot (or stops meaning to go anywhere, or the lift lets go). Called from Update.
+		void UpdateLiftStuck();
+		bool m_LiftStuck = false; //!< Caught on an edge in a gravity lift (see UpdateLiftStuck).
+		bool m_LiftStuckWatching = false; //!< Whether m_LiftStuckPos and m_LiftStuckTimer are watching for it being caught.
+		Vector m_LiftStuckPos; //!< Where the watch began, or where it was caught.
+		Timer m_LiftStuckTimer; //!< Since then.
 		bool m_PilotJetOn = false; //!< Whether PilotFlight last asked for the jet, and since when: a decision is held a moment (see PilotFlight).
 		Timer m_PilotJetTimer;
 		float m_PilotLean = 0.0F; //!< The lean PilotFlight last gave, which it moves towards the one chosen at a thumb's pace.

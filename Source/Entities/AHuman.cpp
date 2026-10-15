@@ -3251,11 +3251,10 @@ void AHuman::Update() {
 	LearnFlight();
 
 	// In a gravity lift (Base.rte's Automovers), player's unit or AI's: the lift has the body. No mantle, ledge catch or corner nudge of its
-	// own (the lift clears the move keys, but only when its update comes round in the frame, and a unit updated before it acted on them).
-	const bool heldByLift = HeldByAutomover();
-	if (heldByLift) {
-		m_Mantling = false;
-	}
+	// own (the lift clears the move keys, but only when its update comes round in the frame, and a unit updated before it acted on them);
+	// unless it is stuck in the lift, when they are its way free (see LiftHasBody).
+	UpdateLiftStuck();
+	const bool heldByLift = LiftHasBody();
 
 	// Pulling up onto a ledge or over an obstacle (Actor::TryStartMantle): any humanoid, from its own sizes; the arms run their climb
 	// paths while it pulls.
@@ -4305,6 +4304,49 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 	return Vector(stickX, jet ? 1.0F : 0.0F);
 }
 
+bool AHuman::LiftHasBody() {
+	return HeldByAutomover() && !m_LiftStuck;
+}
+
+void AHuman::UpdateLiftStuck() {
+	if (!HeldByAutomover()) {
+		m_LiftStuck = false;
+		m_LiftStuckWatching = false;
+		return;
+	}
+	// Going somewhere: an AI unit with a route, a player's unit with a direction held (the lift goes by those, not the move keys it clears).
+	bool going;
+	if (m_Controller.IsPlayerControlled()) {
+		going = m_Controller.GetAnalogMove().MagnitudeIsGreaterThan(0.1F);
+		for (ControlState state: {HOLD_LEFT, HOLD_RIGHT, HOLD_UP, HOLD_DOWN}) {
+			going = going || m_Controller.IsState(state);
+		}
+	} else {
+		going = !m_MovePath.empty() || m_HasMovePathGoal;
+	}
+	if (m_LiftStuck) {
+		// Free when it has got clear of where it stuck, after a moment for the helpers to work; or when it no longer means to go anywhere.
+		if (!going || (m_LiftStuckTimer.IsPastSimMS(500) && g_SceneMan.ShortestDistance(m_LiftStuckPos, m_Pos).MagnitudeIsGreaterThan(8.0F))) {
+			m_LiftStuck = false;
+			m_LiftStuckWatching = false;
+		}
+		return;
+	}
+	if (!going) {
+		m_LiftStuckWatching = false;
+		return;
+	}
+	// Barely moved over half a second while the lift carries it on somewhere: caught on an edge.
+	if (!m_LiftStuckWatching || g_SceneMan.ShortestDistance(m_LiftStuckPos, m_Pos).MagnitudeIsGreaterThan(3.0F)) {
+		m_LiftStuckWatching = true;
+		m_LiftStuckPos = m_Pos;
+		m_LiftStuckTimer.Reset();
+	} else if (m_LiftStuckTimer.IsPastSimMS(500)) {
+		m_LiftStuck = true;
+		m_LiftStuckTimer.Reset();
+	}
+}
+
 void AHuman::UpdateGetUp(float& rot, bool heldByLift) {
 	// CCCP_NO_GETUP=1: the old way (a second's wait, then the spring), for measuring.
 	static const bool disabled = std::getenv("CCCP_NO_GETUP") != nullptr;
@@ -4314,8 +4356,8 @@ void AHuman::UpdateGetUp(float& rot, bool heldByLift) {
 	// In a gravity lift: it turns the body head first down its tube, or on its side along one, slowly at first, and with a floor under it
 	// that read as knocked over. The get-up stood the unit on the floor and stopped it, the lift turned it again, and so on: stuck at the
 	// foot of a tube, and barely moving sideways. Once the lift lets go, a unit left lying gets up as ever.
-	if (heldByLift) {
-		m_GettingUp = false;
+	// (A get-up begun while stuck in the lift runs to its end.)
+	if (heldByLift && !m_GettingUp) {
 		return;
 	}
 	const float h = std::max(GetMoveHeight(), 20.0F);
