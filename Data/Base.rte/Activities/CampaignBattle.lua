@@ -64,6 +64,7 @@ function CampaignBattle:StartActivity(isNewGame)
 	self.retargetTimer = Timer();
 	self.textTimer = Timer();
 	self.started = Timer();
+	self.deathWatch = {};
 
 	for team = Activity.TEAM_1, Activity.MAXTEAMCOUNT - 1 do
 		if self:TeamActive(team) then
@@ -410,20 +411,43 @@ function CampaignBattle:UpdateActivity()
 		end
 	end
 
-	-- The player always has someone of theirs to play once they're on the field.
+	-- The player always has someone of theirs to play once they're on the field. With no brain of their own, the game leaves them
+	-- watching when the soldier they play falls ("Lost control of remote body!"), so after a moment they're put in the next one.
 	for player = Activity.PLAYER_1, Activity.MAXPLAYERCOUNT - 1 do
 		if self:PlayerActive(player) and self:PlayerHuman(player) then
 			local team = self:GetTeamOfPlayer(player);
 			local controlled = self:GetControlledActor(player);
-			if not controlled or not MovableMan:IsActor(controlled) or controlled.Team ~= team or IsACraft(controlled) then
+			local view = self:GetViewState(player);
+			local lost = not controlled or not MovableMan:IsActor(controlled) or controlled.Team ~= team or IsACraft(controlled);
+			if view == Activity.DEATHWATCH then
+				self.deathWatch[player] = self.deathWatch[player] or Timer();
+				lost = self.deathWatch[player]:IsPastSimMS(1500);
+			elseif view == Activity.OBSERVE then
+				lost = true;
+			end
+			if lost then
 				for actor in MovableMan.Actors do
 					if actor.Team == team and actor:NumberValueExists("CampaignSoldier") and not actor:IsDead() then
 						self:SwitchToActor(actor, player, team);
+						self:SetViewState(Activity.NORMAL, player);
+						self.deathWatch[player] = nil;
 						break;
 					end
 				end
 			end
 		end
+	end
+
+	-- Giving up: Backspace twice, a retreat (a defeat; whoever's still standing, or still aboard, lives).
+	if self.playerAttacks and UInputMan:KeyPressed(Key.BACKSPACE) then
+		if self.retreatAsked and not self.retreatAsked:IsPastRealMS(3000) then
+			self:UpdateSoldiers();
+			self:WriteResult();
+			self.WinnerTeam = self.defenderTeam;
+			ActivityMan:EndActivity();
+			return;
+		end
+		self.retreatAsked = Timer();
 	end
 
 	if self.checkTimer:IsPastSimMS(1000) then
@@ -444,12 +468,25 @@ function CampaignBattle:UpdateActivity()
 					end
 				end
 				local lead = self.playerAttacks and "Take the bunker: kill the brain in its command room, or bring down every defender." or "Hold the bunker: keep your brain alive and bring down every attacker.";
+				if self.retreatAsked and not self.retreatAsked:IsPastRealMS(3000) then
+					lead = "Press Backspace again to retreat: a defeat, but whoever's still standing lives.";
+				end
 				local reserve = waiting > 0 and string.format(" (%d still to arrive)", waiting) or "";
+				-- The enemy: soldiers and locals, and how many of them are on the field now (the rest come as they fall).
+				local enemyTeam = self.playerAttacks and self.defenderTeam or self.attackerTeam;
+				local enemy = string.format("Enemy: %d, %d on the field", theirs, self:Count(enemyTeam));
+				if self.playerAttacks and locals > 0 then
+					enemy = enemy .. string.format(" (%d of them locals)", locals);
+				end
+				local extra = "";
 				local held = self.playerAttacks and self:CountState(self.attackers, "held") or 0;
 				if held > 0 then
-					reserve = reserve .. string.format("\nReserves: %d waiting aboard. Press R to call them in.", held);
+					extra = extra .. string.format("\nReserves: %d waiting aboard. Press R to call them in.", held);
 				end
-				FrameMan:SetScreenText(string.format("%s\nYours: %d%s. Enemy: %d.", lead, yours, reserve, theirs), self:ScreenOfPlayer(player), 0, 1100, false);
+				if self.playerAttacks then
+					extra = extra .. "\nBackspace twice: retreat.";
+				end
+				FrameMan:SetScreenText(string.format("%s\nYours: %d%s. %s.%s", lead, yours, reserve, enemy, extra), self:ScreenOfPlayer(player), 0, 1100, false);
 			end
 		end
 
