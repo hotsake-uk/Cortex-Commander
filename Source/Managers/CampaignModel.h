@@ -238,7 +238,11 @@ namespace RTE::CampaignModel {
 		int Size = 1; //!< 0 small, 1 medium, 2 large galaxy.
 		int Difficulty = 1; //!< 0 easy, 1 normal, 2 hard.
 		std::vector<FactionChoice> Factions;
+		bool StartFrigates = false; //!< For testing: every faction's starting army has a frigate, not a transport.
+		bool GodMode = false; //!< For testing: the human factions start with c_GodGold gold and c_GodStock of every resource.
 	};
+	constexpr int c_GodGold = 999999;
+	constexpr int c_GodStock = 9999;
 
 	/// How a battle went, for the report and the log.
 	struct BattleOutcome {
