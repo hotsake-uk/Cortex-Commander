@@ -174,6 +174,9 @@ namespace RTE {
 			m_ValidRegion = false;
 		}
 
+		/// Gets the font this panel is using. Ownership is NOT transferred!
+		GUIFont* GetFont() const { return m_Font; }
+
 		/// Sets the visibility of the panel.
 		/// @param Visible Visible.
 		void _SetVisible(bool Visible);

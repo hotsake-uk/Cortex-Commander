@@ -2,10 +2,12 @@
 #include "SettingsMan.h"
 #include "ConsoleMan.h"
 #include "PerformanceMan.h"
+#include "UITheme.h"
 
 #include "GUI.h"
 #include "GUICollectionBox.h"
 #include "GUICheckbox.h"
+#include "GUIComboBox.h"
 #include "GUILabel.h"
 #include "GUISlider.h"
 
@@ -44,11 +46,31 @@ SettingsMiscGUI::SettingsMiscGUI(GUIControlManager* parentControlManager) :
 
 	m_SceneBackgroundAutoScaleSlider = dynamic_cast<GUISlider*>(m_GUIControlManager->GetControl("SliderSceneBackgroundAutoScale"));
 	m_SceneBackgroundAutoScaleSlider->SetValue(g_SettingsMan.GetSceneBackgroundAutoScaleMode());
+
+	m_UIThemeComboBox = dynamic_cast<GUIComboBox*>(m_GUIControlManager->GetControl("ComboUITheme"));
+	if (m_UIThemeComboBox) {
+		std::vector<std::string> names = UITheme::Names();
+		for (int i = 0; i < static_cast<int>(names.size()); ++i) {
+			m_UIThemeComboBox->AddItem(names[i]);
+			if (names[i] == UITheme::Current()) {
+				m_UIThemeComboBox->SetSelectedIndex(i);
+			}
+		}
+	}
 }
 
 void SettingsMiscGUI::SetEnabled(bool enable) const {
 	m_MiscSettingsBox->SetVisible(enable);
 	m_MiscSettingsBox->SetEnabled(enable);
+
+	// The theme can also be changed from the settings panel, so show the one in use.
+	if (enable && m_UIThemeComboBox) {
+		for (int i = 0; i < m_UIThemeComboBox->GetCount(); ++i) {
+			if (const GUIListPanel::Item* item = m_UIThemeComboBox->GetItem(i); item && item->m_Name == UITheme::Current()) {
+				m_UIThemeComboBox->SetSelectedIndex(i);
+			}
+		}
+	}
 }
 
 void SettingsMiscGUI::UpdateSceneBackgroundAutoScaleLabel() {
@@ -67,6 +89,12 @@ void SettingsMiscGUI::UpdateSceneBackgroundAutoScaleLabel() {
 
 void SettingsMiscGUI::HandleInputEvents(GUIEvent& guiEvent) {
 	if (guiEvent.GetType() == GUIEvent::Notification) {
+		if (m_UIThemeComboBox && guiEvent.GetControl() == m_UIThemeComboBox && guiEvent.GetMsg() == GUIComboBox::Closed) {
+			if (const GUIListPanel::Item* item = m_UIThemeComboBox->GetSelectedItem()) {
+				UITheme::Select(item->m_Name);
+			}
+			return;
+		}
 		if (guiEvent.GetControl() == m_SkipIntroCheckbox) {
 			g_SettingsMan.SetSkipIntro(m_SkipIntroCheckbox->GetCheck());
 		} else if (guiEvent.GetControl() == m_ShowToolTipsCheckbox) {

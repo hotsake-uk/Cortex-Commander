@@ -38,6 +38,7 @@
 #include "TerrainCandle.h"
 #include "WeatherLightning.h"
 #include "TextOverlay.h"
+#include "UITheme.h"
 #include "TimerMan.h"
 #include "UnitSpeech.h"
 #include "UnitSpeechVoice.h"
@@ -1700,6 +1701,18 @@ void DebugMan::SettingsGUI() {
 		Toggle("Modern HUD", ModernHUD::IsEnabled(), [](bool on) { ModernHUD::SetEnabled(on); });
 		Toggle("Notices at the top of the screen", g_SettingsMan.ShowNotices(), [](bool on) { g_SettingsMan.SetShowNotices(on); });
 		Tip("Short notes at the top of the screen for a few seconds when something is done that is hard to see otherwise: \"Game saved\", a preset loaded, \"Nothing to undo\", a camera spot kept, or a sandbox tool used while its simulation is off.");
+		if (Shown("UI theme")) {
+			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.55F);
+			if (ImGui::BeginCombo("UI theme", UITheme::Current().c_str())) {
+				for (const std::string& name: UITheme::Names()) {
+					if (ImGui::Selectable(name.c_str(), name == UITheme::Current())) {
+						UITheme::Select(name);
+					}
+				}
+				ImGui::EndCombo();
+			}
+		}
+		Tip("The colours of the menus, the build menu, the inventory, the console, the loading screen, these windows and the HUD. Classic: the game's own, blue menus and a green build menu. Green: the build menu and inventory's greens everywhere. Grey and Brown: the game's own grey and brown skins everywhere. Mods can add more (Base.rte/GUIs/Themes shows how).");
 		Slider("UI lighting", &ToolLight::Strength, Normal{1.0F}, 0.0F, 2.0F);
 		Tip("The menus and HUD lit as if they were in the world: the light brightens the side of each panel facing it, shades the far side, catches the edges towards it and casts the panel's shadow away from it. They are never dimmed past reading. 0 turns it off.");
 		{

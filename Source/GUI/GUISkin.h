@@ -13,7 +13,8 @@ namespace RTE {
 
 		/// Loads a skin for a directory
 		/// @param directory Skin directory and the file within to use
-		bool Load(const std::string& directory, const std::string& fileName = "skin.ini");
+		/// @param keepFonts Whether to keep the fonts already loaded rather than free them, so fonts controls were given by hand stay valid.
+		bool Load(const std::string& directory, const std::string& fileName = "skin.ini", bool keepFonts = false);
 
 		/// Clears all the data
 		void Clear();
@@ -69,8 +70,20 @@ namespace RTE {
 		/// will be used as target.
 		unsigned long ConvertColor(unsigned long color, int targetDepth = 0);
 
+		/// Whether the UI theme has changed since this skin was loaded, so it should be loaded again (see ReloadIfThemeChanged in GUIControlManager).
+		bool IsThemeOutdated() const;
+
+		/// Gets the directory this skin was last loaded from, as passed to Load.
+		const std::string& GetLoadedDirectory() const { return m_LoadedDirectory; }
+
+		/// Gets the file name this skin was last loaded from, as passed to Load.
+		const std::string& GetLoadedFileName() const { return m_LoadedFileName; }
+
 	private:
 		std::string m_Directory;
+		std::string m_LoadedDirectory; //!< The directory this was last loaded from, as passed to Load.
+		std::string m_LoadedFileName; //!< The file this was last loaded from, as passed to Load.
+		int m_ThemeGeneration = 0; //!< The UI theme's generation when this was last loaded.
 		GUIScreen* m_Screen;
 		GUIBitmap* m_MousePointers[3];
 

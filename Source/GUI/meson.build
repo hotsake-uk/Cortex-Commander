@@ -32,7 +32,8 @@ sources += files(
 'GUITextBox.cpp',
 'GUITextPanel.cpp',
 'GUIUtil.cpp',
-'GUIWriter.cpp'
+'GUIWriter.cpp',
+'UITheme.cpp'
 )
 
 subdir('imgui')

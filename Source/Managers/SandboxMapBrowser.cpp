@@ -1084,7 +1084,7 @@ namespace SandboxDetail {
 			ImVec2 to(from.x + cardWidth, from.y + cardHeight);
 			if (ImGui::IsRectVisible(from, to)) {
 				RefreshGeneratorPicture();
-				drawList->AddRectFilled(from, to, picked ? ToolTheme::WellHover : hovered ? IM_COL32(40, 46, 66, 255) : ToolTheme::Panel);
+				drawList->AddRectFilled(from, to, picked ? ToolTheme::WellHover : hovered ? ImGui::GetColorU32(ImLerp(ToolTheme::Vec(ToolTheme::Panel), ToolTheme::Vec(ToolTheme::WellHover), 0.6F)) : ToolTheme::Panel);
 				ImVec2 pictureFrom;
 				float scenePixel = 1.0F;
 				DrawPictureIn(drawList, s_Generator.Entry, ImVec2(from.x + style.FramePadding.y, from.y + style.FramePadding.y), ImVec2(to.x - style.FramePadding.y, from.y + style.FramePadding.y + pictureHeight), pictureFrom, scenePixel);
@@ -1297,7 +1297,7 @@ namespace SandboxDetail {
 				ImVec2 to(from.x + cardWidth, from.y + cardHeight);
 				if (ImGui::IsRectVisible(from, to)) {
 					WantPicture(index, false);
-					drawList->AddRectFilled(from, to, picked ? ToolTheme::WellHover : hovered ? IM_COL32(40, 46, 66, 255) : ToolTheme::Panel);
+					drawList->AddRectFilled(from, to, picked ? ToolTheme::WellHover : hovered ? ImGui::GetColorU32(ImLerp(ToolTheme::Vec(ToolTheme::Panel), ToolTheme::Vec(ToolTheme::WellHover), 0.6F)) : ToolTheme::Panel);
 					ImVec2 pictureFrom;
 					float scenePixel = 1.0F;
 					ImVec2 pictureTo(to.x - style.FramePadding.y, from.y + style.FramePadding.y + pictureHeight);
