@@ -3673,8 +3673,9 @@ namespace SandboxDetail {
 			drawList->AddText(ImVec2(at.x + 1.0F, at.y + 1.0F), IM_COL32(0, 0, 0, 200), whose.c_str());
 			drawList->AddText(at, c_SideColors[s_Team], whose.c_str());
 		}
-		// A bunker piece is shown as itself, so its name would only be in the way; under the ring of sides nothing is.
-		if (tool.Kind != Tool::Structure && !s_RingOpen) {
+		// A bunker piece is shown as itself, so its name would only be in the way; under the ring of sides nothing is. The command
+		// pointer carries no words either: its marks on the ground show the order.
+		if (tool.Kind != Tool::Structure && tool.Kind != Tool::Command && !s_RingOpen) {
 			drawList->AddText(ImVec2(io.MousePos.x + 14.0F, io.MousePos.y - 8.0F), IM_COL32(255, 255, 255, 220), label.c_str());
 		}
 	}
