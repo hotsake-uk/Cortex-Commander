@@ -142,6 +142,8 @@ namespace {
 		Tracking Track;
 		GuideState Guide;
 		Highlights Lights;
+		long RosterHover = 0; //!< The army the mouse is on in the army list, shown on the maps.
+		long RosterHoverNext = 0;
 		ImVec2 MapFrom; //!< Where the map was drawn this frame.
 		ImVec2 MapTo;
 	};
@@ -291,6 +293,115 @@ namespace {
 		}
 		const ImVec2 mouse = ImGui::GetIO().MousePos;
 		return std::abs(mouse.x - at.x) <= size * 1.2F && std::abs(mouse.y - at.y) <= size * 1.3F;
+	}
+
+	/// A ring that pulses and an arrow that bobs above it, pointing something out on the maps.
+	void Beacon(ImDrawList* drawList, ImVec2 at, float radius);
+
+	/// The shield for one or more armies of one faction on the same spot. The player's own stand out: bigger, with a gold rim, a pip for
+	/// each move the readiest of them has left (and a glow while any can still move), and their name, or how many there are, beneath.
+	/// Returns whether the mouse is on it.
+	bool DrawArmies(ImDrawList* drawList, ImVec2 at, float size, const std::vector<int>& armies, bool labelAbove = false) {
+		const CampaignModel::Campaign& game = s_Screen.Game;
+		if (armies.empty()) {
+			return false;
+		}
+		const Army& first = game.Armies[armies.front()];
+		const bool own = first.Faction == Player();
+		bool selected = false;
+		bool pointedAt = false;
+		bool onRoute = false;
+		int moves = 0;
+		for (int army: armies) {
+			const Army& each = game.Armies[army];
+			selected = selected || each.Id == s_Screen.SelectedArmy;
+			pointedAt = pointedAt || (s_Screen.RosterHover != 0 && each.Id == s_Screen.RosterHover);
+			onRoute = onRoute || !each.Path.empty();
+			if (each.Path.empty()) {
+				moves = std::max(moves, each.Moves);
+			}
+		}
+		const int count = static_cast<int>(armies.size());
+		if (!own) {
+			const bool hovered = DrawArmyIcon(drawList, at, size, FactionColor(first.Faction), selected, count);
+			if (pointedAt) {
+				Beacon(drawList, at, size + 4.0F);
+			}
+			return hovered;
+		}
+		size *= 1.3F;
+		const float time = static_cast<float>(ImGui::GetTime());
+		if (moves > 0) {
+			drawList->AddCircleFilled(at, size * (1.9F + 0.15F * std::sin(time * 3.0F)), Alpha(IM_COL32(120, 255, 140, 255), 0.12F), 24);
+		}
+		// The gold rim: a bigger shield behind.
+		const float rim = size + 2.5F;
+		const ImVec2 back[] = {ImVec2(at.x - rim, at.y - rim), ImVec2(at.x + rim, at.y - rim), ImVec2(at.x + rim, at.y + rim * 0.3F), ImVec2(at.x, at.y + rim * 1.25F), ImVec2(at.x - rim, at.y + rim * 0.3F)};
+		drawList->AddConvexPolyFilled(back, 5, ToolTheme::Gold);
+		const bool hovered = DrawArmyIcon(drawList, at, size, FactionColor(first.Faction), selected, count);
+		// A star on it, so it reads as yours at a glance.
+		if (count <= 1) {
+			std::array<ImVec2, 10> star;
+			for (int corner = 0; corner < 10; ++corner) {
+				const float angle = -c_Pi * 0.5F + static_cast<float>(corner) * c_Pi / 5.0F;
+				const float reach = (corner % 2 == 0 ? 0.55F : 0.24F) * size;
+				star[corner] = ImVec2(at.x + std::cos(angle) * reach, at.y - size * 0.15F + std::sin(angle) * reach);
+			}
+			drawList->AddConcavePolyFilled(star.data(), 10, IM_COL32(255, 245, 200, 235));
+		}
+		// Pips for the moves left.
+		const float pipY = at.y + size * 1.25F + 6.0F;
+		for (int pip = 0; pip < c_MovesPerTurn; ++pip) {
+			const ImVec2 dot(at.x + (static_cast<float>(pip) - static_cast<float>(c_MovesPerTurn - 1) * 0.5F) * 7.0F, pipY);
+			drawList->AddCircleFilled(dot, 2.6F, pip < moves ? IM_COL32(120, 255, 140, 255) : IM_COL32(70, 70, 80, 255), 8);
+			drawList->AddCircle(dot, 2.6F, IM_COL32(0, 0, 0, 200), 8, 1.0F);
+		}
+		if (onRoute) {
+			// A little arrow: on its way somewhere.
+			const float x = at.x + size + 6.0F;
+			drawList->AddTriangleFilled(ImVec2(x, at.y - 4.0F), ImVec2(x, at.y + 4.0F), ImVec2(x + 6.0F, at.y), IM_COL32(255, 220, 90, 255));
+		}
+		const std::string label = count > 1 ? std::to_string(count) + " armies" : first.Name;
+		const ImVec2 textSize = ImGui::CalcTextSize(label.c_str());
+		const ImVec2 textAt(at.x - textSize.x * 0.5F, labelAbove ? at.y - rim - textSize.y - 3.0F : pipY + 4.0F);
+		drawList->AddRectFilled(ImVec2(textAt.x - 3.0F, textAt.y - 1.0F), ImVec2(textAt.x + textSize.x + 3.0F, textAt.y + textSize.y), IM_COL32(0, 0, 0, 150), 3.0F);
+		drawList->AddText(textAt, selected ? IM_COL32(255, 235, 140, 255) : IM_COL32(255, 255, 255, 235), label.c_str());
+		if (pointedAt) {
+			Beacon(drawList, at, size + 4.0F);
+		}
+		return hovered;
+	}
+
+	/// The armies on one spot in a row centred on it, a shield for each faction (DrawArmies). Returns the army the mouse is on: the
+	/// first of its faction's there, or the next after the one picked, so clicking again goes through them.
+	long DrawArmyRow(ImDrawList* drawList, ImVec2 center, float size, const std::vector<int>& armies, bool labelAbove) {
+		const CampaignModel::Campaign& game = s_Screen.Game;
+		std::vector<std::vector<int>> groups;
+		for (int army: armies) {
+			auto group = std::find_if(groups.begin(), groups.end(), [&game, army](const std::vector<int>& each) { return game.Armies[each.front()].Faction == game.Armies[army].Faction; });
+			if (group == groups.end()) {
+				groups.push_back({army});
+			} else {
+				group->push_back(army);
+			}
+		}
+		const int player = Player();
+		auto widthOf = [&game, player, size](const std::vector<int>& group) { return game.Armies[group.front()].Faction == player ? size * 3.6F : size * 2.6F; };
+		float total = 0.0F;
+		for (const std::vector<int>& group: groups) {
+			total += widthOf(group);
+		}
+		float x = center.x - total * 0.5F;
+		long hoveredArmy = 0;
+		for (const std::vector<int>& group: groups) {
+			const float width = widthOf(group);
+			if (DrawArmies(drawList, ImVec2(x + width * 0.5F, center.y), size, group, labelAbove)) {
+				auto picked = std::find_if(group.begin(), group.end(), [&game](int army) { return game.Armies[army].Id == s_Screen.SelectedArmy; });
+				hoveredArmy = game.Armies[picked == group.end() || picked + 1 == group.end() ? group.front() : *(picked + 1)].Id;
+			}
+			x += width;
+		}
+		return hoveredArmy;
 	}
 
 	void CenteredText(ImDrawList* drawList, ImVec2 at, ImU32 color, const std::string& text) {
@@ -511,7 +622,15 @@ namespace {
 			const ImVec2 at(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
 			const float alpha = (onA ? 1.0F - t : 0.0F) + (onB ? t : 0.0F);
 			drawList->AddLine(a, at, Alpha(color, 0.45F * alpha), 2.0F);
-			DrawArmyIcon(drawList, at, size, color, motion.Army == s_Screen.SelectedArmy, 1, std::max(alpha, 0.15F));
+			float shown = size;
+			if (motion.Faction == Player()) {
+				// The player's own, gold-rimmed as on the maps.
+				shown = size * 1.3F;
+				const float rim = shown + 2.5F;
+				const ImVec2 back[] = {ImVec2(at.x - rim, at.y - rim), ImVec2(at.x + rim, at.y - rim), ImVec2(at.x + rim, at.y + rim * 0.3F), ImVec2(at.x, at.y + rim * 1.25F), ImVec2(at.x - rim, at.y + rim * 0.3F)};
+				drawList->AddConvexPolyFilled(back, 5, Alpha(ToolTheme::Gold, std::max(alpha, 0.15F)));
+			}
+			DrawArmyIcon(drawList, at, shown, color, motion.Army == s_Screen.SelectedArmy, 1, std::max(alpha, 0.15F));
 		}
 	}
 
@@ -995,7 +1114,7 @@ namespace {
 		const std::string targetSystem = target >= 0 ? game.Systems[game.Planets[target].System].Name : std::string("a star nearby");
 		switch (step) {
 			case Step::Welcome:
-				return {"Welcome, commander", "You lead " + (player >= 0 ? game.Factions[player].Name : std::string("your faction")) + ". This is your home system. The shield is your first army, and your gold is at the top of the panel on the right.\n\nThis guide walks you through your first moves. Each step finishes itself when you've done it."};
+				return {"Welcome, commander", "You lead " + (player >= 0 ? game.Factions[player].Name : std::string("your faction")) + ". This is your home system. Your armies are the gold-rimmed shields with a star, each with a green pip for every move it has left this turn. They are all listed under Your armies on the right: click one to go to it. Your gold is at the top of that panel.\n\nThis guide walks you through your first moves. Each step finishes itself when you've done it."};
 			case Step::HomePlanet:
 				return {"Look at your home planet", "Double-click " + homeName + " to open its map.\n\nA planet has 3 or 5 points. Holding more than half of them controls the planet, and all of " + homeName + "'s are yours."};
 			case Step::Recruit:
@@ -1197,14 +1316,13 @@ namespace {
 				if (byFaction[faction].empty()) {
 					continue;
 				}
-				const bool selected = std::any_of(byFaction[faction].begin(), byFaction[faction].end(), [](int army) { return s_Screen.Game.Armies[army].Id == s_Screen.SelectedArmy; });
-				if (DrawArmyIcon(drawList, ImVec2(at.x + offset, at.y - starSize), 7.0F, FactionColor(faction), selected, static_cast<int>(byFaction[faction].size())) && hovered) {
+				if (DrawArmies(drawList, ImVec2(at.x + offset, at.y - starSize), 7.0F, byFaction[faction]) && hovered) {
 					// The first of them, or the next after the one picked.
 					const std::vector<int>& armies = byFaction[faction];
 					auto picked = std::find_if(armies.begin(), armies.end(), [](int army) { return s_Screen.Game.Armies[army].Id == s_Screen.SelectedArmy; });
 					hoveredArmy = game.Armies[picked == armies.end() || picked + 1 == armies.end() ? armies.front() : *(picked + 1)].Id;
 				}
-				offset += 17.0F;
+				offset += faction == Player() ? 22.0F : 17.0F;
 			}
 		}
 		const Placer place = [&](const Place& where, bool army, ImVec2& at) {
@@ -1314,7 +1432,7 @@ namespace {
 			drawList->AddEllipse(parent, ImVec2(radius, radius * 0.62F), IM_COL32(120, 140, 200, 40), 0.0F, 48, 1.0F);
 			where[planetIndex] = ImVec2(parent.x + std::cos(planet.Angle) * radius, parent.y + std::sin(planet.Angle) * radius * 0.62F);
 		}
-		const ImVec2 orbitAt(star.x, star.y + step * 0.25F + 18.0F);
+		const ImVec2 orbitAt(star.x, star.y + step * 0.25F + 32.0F);
 		const Placer place = [&](const Place& at, bool army, ImVec2& out) {
 			if (at.System != systemIndex) {
 				// Off the map, at its edge toward that system along the lanes.
@@ -1373,26 +1491,18 @@ namespace {
 					armies.push_back(army);
 				}
 			}
-			float offset = -static_cast<float>(armies.size() - 1) * 9.0F;
-			for (int army: armies) {
-				if (DrawArmyIcon(drawList, ImVec2(at.x + offset, at.y - radius - 16.0F), 6.0F, FactionColor(game.Armies[army].Faction), game.Armies[army].Id == s_Screen.SelectedArmy, 1) && hovered) {
-					hoveredArmy = game.Armies[army].Id;
-				}
-				offset += 18.0F;
+			if (const long onIt = DrawArmyRow(drawList, ImVec2(at.x, at.y - radius - 16.0F), 6.0F, armies, true); onIt && hovered) {
+				hoveredArmy = onIt;
 			}
 		}
 		// Armies in orbit, in a row under the star.
 		std::vector<int> orbiting = ArmiesInOrbit(game, systemIndex);
 		orbiting.erase(std::remove_if(orbiting.begin(), orbiting.end(), [&game](int army) { return IsMoving(game.Armies[army].Id); }), orbiting.end());
-		float offset = -static_cast<float>(static_cast<int>(orbiting.size()) - 1) * 10.0F;
-		for (int army: orbiting) {
-			if (DrawArmyIcon(drawList, ImVec2(star.x + offset, star.y + step * 0.25F + 18.0F), 7.0F, FactionColor(game.Armies[army].Faction), game.Armies[army].Id == s_Screen.SelectedArmy, 1) && hovered) {
-				hoveredArmy = game.Armies[army].Id;
-			}
-			offset += 20.0F;
+		if (const long onIt = DrawArmyRow(drawList, orbitAt, 7.0F, orbiting, false); onIt && hovered) {
+			hoveredArmy = onIt;
 		}
 		if (!orbiting.empty()) {
-			CenteredText(drawList, ImVec2(star.x, star.y + step * 0.25F + 30.0F), IM_COL32(180, 190, 220, 200), "In orbit");
+			CenteredText(drawList, ImVec2(star.x, star.y + step * 0.25F + 4.0F), IM_COL32(180, 190, 220, 200), "In orbit");
 		}
 		CenteredText(drawList, ImVec2(star.x, from.y + 8.0F), IM_COL32(255, 255, 255, 255), system.Name + " system");
 		DrawPulses(drawList, place);
@@ -1535,19 +1645,15 @@ namespace {
 			}
 			std::vector<int> armies = ArmiesAt(game, planetIndex, index);
 			armies.erase(std::remove_if(armies.begin(), armies.end(), [&game](int army) { return IsMoving(game.Armies[army].Id); }), armies.end());
-			float offset = -static_cast<float>(static_cast<int>(armies.size()) - 1) * 10.0F;
-			for (int army: armies) {
-				if (DrawArmyIcon(drawList, ImVec2(at.x + offset, at.y - radius - 14.0F), 7.0F, FactionColor(game.Armies[army].Faction), game.Armies[army].Id == s_Screen.SelectedArmy, 1) && hovered) {
-					hoveredArmy = game.Armies[army].Id;
-				}
-				offset += 20.0F;
+			if (const long onIt = DrawArmyRow(drawList, ImVec2(at.x, at.y - radius - 16.0F), 7.0F, armies, true); onIt && hovered) {
+				hoveredArmy = onIt;
 			}
 		}
 		const Placer place = [&](const Place& at, bool army, ImVec2& out) {
 			if (at.Planet == planetIndex && at.Point >= 0 && at.Point < static_cast<int>(planet.Points.size())) {
 				out = pointAt(planet.Points[at.Point]);
 				if (army) {
-					out.y -= radius + 14.0F;
+					out.y -= radius + 16.0F;
 				}
 				return true;
 			}
@@ -1949,6 +2055,110 @@ namespace {
 		}
 	}
 
+	/// Picks an army and shows it on the map, at the closest view that has it.
+	void GoToArmy(long id) {
+		const int army = FindArmy(s_Screen.Game, id);
+		if (army < 0) {
+			return;
+		}
+		const Army& each = s_Screen.Game.Armies[army];
+		s_Screen.SelectedArmy = id;
+		if (each.Planet >= 0) {
+			ShowPlanet(each.Planet);
+			s_Screen.SelectedPoint = each.Point;
+		} else {
+			ShowSystem(each.System);
+			s_Screen.SelectedPlanet = s_Screen.SelectedPoint = -1;
+		}
+	}
+
+	/// Every army of the player's, two lines each: its moves left, name, soldiers and health, then where it is and what it's doing.
+	/// Click one to pick it and go to it; the mouse on one points it out on the map.
+	void Roster() {
+		const CampaignModel::Campaign& game = s_Screen.Game;
+		const int player = Player();
+		std::vector<int> own;
+		for (int army = 0; army < static_cast<int>(game.Armies.size()); ++army) {
+			if (game.Armies[army].Faction == player) {
+				own.push_back(army);
+			}
+		}
+		int soldiers = 0;
+		for (int army: own) {
+			soldiers += SoldierCount(game.Armies[army]);
+		}
+		const std::string title = "Your armies (" + std::to_string(own.size()) + ", " + std::to_string(soldiers) + " soldiers)";
+		ImGui::SeparatorText(title.c_str());
+		if (own.empty()) {
+			ImGui::TextDisabled("None. Recruit a squad at one of your settlements.");
+			return;
+		}
+		const float line = ImGui::GetTextLineHeight();
+		const float rowHeight = line * 2.0F + 4.0F;
+		const float height = std::min(static_cast<float>(own.size()), 4.5F) * (rowHeight + ImGui::GetStyle().ItemSpacing.y);
+		ImGui::BeginChild("##roster", ImVec2(0.0F, height));
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		for (int army: own) {
+			const Army& each = game.Armies[army];
+			ImGui::PushID(static_cast<int>(each.Id));
+			const bool selected = each.Id == s_Screen.SelectedArmy;
+			if (ImGui::Selectable("##army", selected, 0, ImVec2(0.0F, rowHeight))) {
+				GoToArmy(each.Id);
+			}
+			if (ImGui::IsItemHovered()) {
+				s_Screen.RosterHoverNext = each.Id;
+				ImGui::SetTooltip("%s: %d squads, strength %.0f\nClick to go to it.", each.Name.c_str(), static_cast<int>(each.Squads.size()), Strength(game, each));
+			}
+			const ImVec2 from = ImGui::GetItemRectMin();
+			const ImVec2 to = ImGui::GetItemRectMax();
+			// Pips for its moves left.
+			const bool moving = !each.Path.empty();
+			for (int pip = 0; pip < c_MovesPerTurn; ++pip) {
+				const ImVec2 dot(from.x + 6.0F + static_cast<float>(pip) * 8.0F, from.y + 2.0F + line * 0.5F);
+				drawList->AddCircleFilled(dot, 3.0F, pip < each.Moves && !moving ? IM_COL32(120, 255, 140, 255) : IM_COL32(70, 70, 80, 255), 8);
+			}
+			const float textX = from.x + 8.0F + static_cast<float>(c_MovesPerTurn) * 8.0F;
+			drawList->AddText(ImVec2(textX, from.y + 2.0F), selected ? IM_COL32(255, 235, 140, 255) : IM_COL32(255, 255, 255, 255), each.Name.c_str());
+			// Soldiers and their health, on the right.
+			float health = 0.0F;
+			int count = 0;
+			for (const Squad& squad: each.Squads) {
+				for (const Soldier& soldier: squad.Soldiers) {
+					health += soldier.Health;
+					++count;
+				}
+			}
+			health = count > 0 ? health / static_cast<float>(count) : 0.0F;
+			const float barWidth = line * 2.5F;
+			const ImVec2 barFrom(to.x - barWidth - 4.0F, from.y + 2.0F + line * 0.3F);
+			drawList->AddRectFilled(barFrom, ImVec2(barFrom.x + barWidth, barFrom.y + line * 0.4F), IM_COL32(40, 40, 50, 255));
+			drawList->AddRectFilled(barFrom, ImVec2(barFrom.x + barWidth * health, barFrom.y + line * 0.4F), health > 0.66F ? IM_COL32(90, 200, 90, 255) : health > 0.33F ? IM_COL32(230, 190, 60, 255) : IM_COL32(220, 70, 60, 255));
+			const std::string men = std::to_string(count);
+			const ImVec2 menSize = ImGui::CalcTextSize(men.c_str());
+			drawList->AddText(ImVec2(barFrom.x - menSize.x - 6.0F, from.y + 2.0F), IM_COL32(220, 225, 240, 255), men.c_str());
+			// Where it is and what it's doing.
+			std::string status;
+			ImU32 statusColor;
+			if (moving) {
+				status = "on its way to " + game.Systems[each.Path.back()].Name;
+				statusColor = IM_COL32(255, 220, 90, 255);
+			} else if (each.Moves > 0) {
+				status = "ready";
+				statusColor = IM_COL32(120, 255, 140, 255);
+			} else {
+				status = "done this turn";
+				statusColor = IM_COL32(150, 150, 165, 255);
+			}
+			const std::string where = WhereIs(each) + ", ";
+			drawList->PushClipRect(from, to, true);
+			drawList->AddText(ImVec2(textX, from.y + 2.0F + line), IM_COL32(160, 165, 185, 255), where.c_str());
+			drawList->AddText(ImVec2(textX + ImGui::CalcTextSize(where.c_str()).x, from.y + 2.0F + line), statusColor, status.c_str());
+			drawList->PopClipRect();
+			ImGui::PopID();
+		}
+		ImGui::EndChild();
+	}
+
 	void SidePanel(float width, float height) {
 		CampaignModel::Campaign& game = s_Screen.Game;
 		ImGui::BeginChild("##side", ImVec2(width, height), ImGuiChildFlags_Borders);
@@ -1967,6 +2177,7 @@ namespace {
 			ImGui::TextColored(income >= 0 ? ImVec4(0.5F, 1.0F, 0.5F, 1.0F) : ImVec4(1.0F, 0.5F, 0.4F, 1.0F), "(%+d a turn)", income);
 			ImGui::SetItemTooltip("Income from your points and settlements, and %s, less upkeep of %d for your soldiers.", "60 for each planet you control and nobody has invaded", UpkeepOf(game, player));
 			ToDoList();
+			Roster();
 		}
 		ImGui::Separator();
 		const int army = SelectedArmyIndex();
@@ -2166,13 +2377,7 @@ namespace {
 			const int army = (current + step + count) % count;
 			const Army& each = game.Armies[army];
 			if (each.Faction == player && each.Moves > 0 && each.Path.empty()) {
-				s_Screen.SelectedArmy = each.Id;
-				if (each.Planet >= 0) {
-					ShowPlanet(each.Planet);
-					s_Screen.SelectedPoint = each.Point;
-				} else {
-					ShowSystem(each.System);
-				}
+				GoToArmy(each.Id);
 				return;
 			}
 		}
@@ -2182,6 +2387,8 @@ namespace {
 	void PlayingPage() {
 		CampaignModel::Campaign& game = s_Screen.Game;
 		const ImGuiStyle& style = ImGui::GetStyle();
+		s_Screen.RosterHover = s_Screen.RosterHoverNext;
+		s_Screen.RosterHoverNext = 0;
 		TrackChanges();
 		UpdateGuide();
 		if (ToolUI::Button("Menu")) {
