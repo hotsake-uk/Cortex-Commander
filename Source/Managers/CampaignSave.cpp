@@ -14,7 +14,7 @@ namespace RTE::CampaignModel {
 	namespace {
 		constexpr const char* c_Folder = "Userdata/Campaigns/";
 		constexpr const char* c_Magic = "CortexCampaign";
-		constexpr int c_Version = 1;
+		constexpr int c_Version = 2; //!< 2: resources (deposits, stockpiles, the market).
 
 		std::string FileNameFor(const std::string& name) {
 			std::string file;
@@ -107,6 +107,31 @@ namespace RTE::CampaignModel {
 		out << "Log " << campaign.Log.size() << '\n';
 		for (const std::string& line: campaign.Log) {
 			Quoted(out, line) << '\n';
+		}
+		// Version 2: each point's deposit and yield, planet by planet; each faction's stock; the market.
+		out << "Deposits " << campaign.Planets.size() << '\n';
+		for (const Planet& planet: campaign.Planets) {
+			out << planet.Points.size();
+			for (const Point& point: planet.Points) {
+				out << ' ' << point.Deposit << ' ' << point.Yield;
+			}
+			out << '\n';
+		}
+		out << "Stocks " << campaign.Factions.size() << '\n';
+		for (const Faction& faction: campaign.Factions) {
+			for (size_t resource = 0; resource < faction.Resources.size(); ++resource) {
+				out << (resource > 0 ? " " : "") << faction.Resources[resource];
+			}
+			out << '\n';
+		}
+		out << "Market " << campaign.Events.size() << '\n';
+		for (size_t resource = 0; resource < campaign.Prices.size(); ++resource) {
+			out << (resource > 0 ? " " : "") << campaign.Prices[resource];
+		}
+		out << '\n';
+		for (const GalaxyEvent& event: campaign.Events) {
+			out << event.Resource << ' ' << event.PriceFactor << ' ' << event.TurnsLeft << ' ';
+			Quoted(out, event.Text) << '\n';
 		}
 		// Written to a spare file first, then swapped in, so a crash mid-save doesn't lose the campaign.
 		const std::string path = c_Folder + campaign.FileName;
@@ -243,6 +268,52 @@ namespace RTE::CampaignModel {
 				in >> std::quoted(line);
 			}
 		}
+		bool resources = false;
+		if (version >= 2) {
+			if (!section("Deposits") || count != loaded.Planets.size()) {
+				error = "Deposits missing";
+				return false;
+			}
+			for (Planet& planet: loaded.Planets) {
+				size_t points = 0;
+				in >> points;
+				for (size_t point = 0; point < points && in && points < 64; ++point) {
+					int deposit = 0;
+					int yield = 1;
+					in >> deposit >> yield;
+					if (point < planet.Points.size()) {
+						planet.Points[point].Deposit = std::clamp(deposit, 0, c_ResourceCount - 1);
+						planet.Points[point].Yield = std::clamp(yield, 0, 9);
+					}
+				}
+			}
+			if (!section("Stocks") || count != loaded.Factions.size()) {
+				error = "Stocks missing";
+				return false;
+			}
+			for (Faction& faction: loaded.Factions) {
+				for (int& amount: faction.Resources) {
+					in >> amount;
+				}
+			}
+			if (!section("Market")) {
+				error = "Market missing";
+				return false;
+			}
+			for (float& price: loaded.Prices) {
+				in >> price;
+			}
+			loaded.Events.resize(std::min<size_t>(count, 16));
+			for (GalaxyEvent& event: loaded.Events) {
+				in >> event.Resource >> event.PriceFactor >> event.TurnsLeft >> std::quoted(event.Text);
+				event.Resource = std::clamp(event.Resource, 0, c_ResourceCount - 1);
+			}
+			for (int resource = 0; resource < c_ResourceCount; ++resource) {
+				const float base = BasePrice(static_cast<Resource>(resource));
+				loaded.Prices[resource] = std::clamp(loaded.Prices[resource], base * 0.3F, base * 4.0F);
+			}
+			resources = true;
+		}
 		if (in.fail() && !in.eof()) {
 			error = fileName + " is damaged.";
 			return false;
@@ -287,6 +358,10 @@ namespace RTE::CampaignModel {
 		if (!sound) {
 			error = fileName + " is damaged.";
 			return false;
+		}
+		if (!resources) {
+			// A save from before resources: deposits rolled from its seed, starting stock and normal prices.
+			AddResources(loaded);
 		}
 		campaign = std::move(loaded);
 		return true;
