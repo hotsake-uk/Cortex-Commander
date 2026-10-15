@@ -1245,6 +1245,7 @@ namespace {
 		int Planet = -1;
 		int Point = -1;
 		bool Overland = false;
+		bool Defence = false; //!< The player defends against an AI attack (Defences) rather than attacking.
 	};
 	FieldBattle s_Field;
 
@@ -1290,7 +1291,7 @@ namespace {
 	}
 
 	/// Sets up the battle for an attack, for the main menu to start: the attacker's soldiers against the defenders' and the locals'.
-	void StartFieldBattle(int army, int planet, int point, bool overland, const std::vector<bool>& reserve) {
+	void StartFieldBattle(int army, int planet, int point, bool overland, const std::vector<bool>& reserve, bool defence = false) {
 		CampaignModel::Campaign& game = s_Screen.Game;
 		const Army& self = game.Armies[army];
 		const std::vector<int> defenders = DefendersAt(self.Faction, planet, point);
@@ -1311,13 +1312,14 @@ namespace {
 		battle->SetPresetName("Campaign Battle");
 		battle->SetSceneName(c_BattleScene);
 		battle->ClearPlayers(false);
-		battle->AddPlayer(Players::PlayerOne, true, Activity::TeamOne, 0.0F);
-		battle->SetCPUTeam(Activity::TeamTwo);
+		// The player plays the attackers, or the defenders against an AI attack.
+		battle->AddPlayer(Players::PlayerOne, true, defence ? Activity::TeamTwo : Activity::TeamOne, 0.0F);
+		battle->SetCPUTeam(defence ? Activity::TeamOne : Activity::TeamTwo);
 		battle->SetTeamTech(Activity::TeamOne, game.Factions[self.Faction].Module);
 		battle->SetTeamTech(Activity::TeamTwo, game.Factions[defending].Module);
 		const int difficulty = game.Difficulty <= 0 ? Activity::EasyDifficulty : game.Difficulty >= 2 ? Activity::HardDifficulty : Activity::MediumDifficulty;
 		battle->SetDifficulty(difficulty);
-		battle->SetTeamAISkill(Activity::TeamTwo, game.Difficulty <= 0 ? Activity::InferiorSkill : game.Difficulty >= 2 ? Activity::GoodSkill : Activity::DefaultSkill);
+		battle->SetTeamAISkill(defence ? Activity::TeamOne : Activity::TeamTwo, game.Difficulty <= 0 ? Activity::InferiorSkill : game.Difficulty >= 2 ? Activity::GoodSkill : Activity::DefaultSkill);
 		battle->SetStartingGold(0);
 		battle->SetFogOfWarEnabled(false);
 		battle->SetRequireClearPathToOrbit(false);
@@ -1325,10 +1327,10 @@ namespace {
 		battle->SaveString("CampaignDefenders", SoldierList(defenders));
 		battle->SaveNumber("CampaignLocals", static_cast<float>(LocalSoldiers(game, self.Faction, planet, point)));
 		battle->SaveString("CampaignLocalsTech", game.Factions[defending].Module);
-		battle->SaveNumber("CampaignPlayerAttacks", 1.0F);
+		battle->SaveNumber("CampaignPlayerAttacks", defence ? 0.0F : 1.0F);
 		g_LuaMan.FileCloseAll();
 		g_ActivityMan.SetStartActivity(battle);
-		s_Field = FieldBattle{true, true, self.Id, planet, point, overland};
+		s_Field = FieldBattle{true, true, self.Id, planet, point, overland, defence};
 	}
 
 	/// The battle just fought, applied through the same move auto-resolve takes: who won, and who's still standing. Leaving it before
@@ -1348,7 +1350,8 @@ namespace {
 		const bool over = done->IsOver();
 		FoughtBattle fought;
 		const GameActivity* gameActivity = dynamic_cast<const GameActivity*>(done);
-		fought.AttackerWon = over && gameActivity && gameActivity->GetWinnerTeam() == Activity::TeamOne;
+		// Leaving before the end is a retreat: a loss for whichever side the player had.
+		fought.AttackerWon = over ? gameActivity && gameActivity->GetWinnerTeam() == Activity::TeamOne : s_Field.Defence;
 		fought.LocalsLeft = static_cast<int>(std::lround(done->LoadNumber("CampaignLocalsLeft")));
 		const std::string survivors = done->LoadString("CampaignSurvivors");
 		size_t from = 0;
@@ -1365,6 +1368,14 @@ namespace {
 		}
 		if (!over) {
 			g_ActivityMan.EndActivity();
+		}
+		if (s_Field.Defence) {
+			if (!over) {
+				AddLog(game, "You pulled your defenders out of the battle.");
+			}
+			ResolveDefence(game, false, &fought);
+			SaveGame();
+			return;
 		}
 		const int army = FindArmy(game, s_Field.ArmyId);
 		if (army < 0) {
@@ -4405,6 +4416,84 @@ namespace {
 		}
 	}
 
+	/// An AI attack on one of the player's armies, held back at the end of the turn: fight it yourself, auto-resolve it, or flee. The new
+	/// turn starts once every one is settled.
+	void DefenceWindow() {
+		CampaignModel::Campaign& game = s_Screen.Game;
+		// (One whose army can't get there any more just drops.)
+		while (!game.Defences.empty() && DefenceAttacker(game, game.Defences.front()) < 0) {
+			ResolveDefence(game, false);
+			SaveGame();
+		}
+		if (game.Defences.empty() || !game.Reports.empty() || s_Screen.Attack.Open || Animating()) {
+			return;
+		}
+		ImGui::OpenPopup("Under attack###CampaignDefence");
+		if (!ImGui::BeginPopupModal("Under attack###CampaignDefence", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+			return;
+		}
+		const PendingDefence defence = game.Defences.front();
+		const int attacker = DefenceAttacker(game, defence);
+		const Army& them = game.Armies[attacker];
+		const Point& point = game.Planets[defence.Planet].Points[defence.Point];
+		float holding = 0.0F;
+		WouldFight(game, them.Faction, defence.Planet, defence.Point, holding);
+		const float attack = Strength(game, them);
+		const float hold = 1.0F - WinChance(attack, holding);
+		ImGui::SetWindowFontScale(1.3F);
+		ImGui::TextColored(ImVec4(1.0F, 0.5F, 0.4F, 1.0F), "Under attack!");
+		ImGui::SetWindowFontScale(1.0F);
+		ImGui::Text("%s's %s attacks %s on %s.", FactionLabel(them.Faction).c_str(), them.Name.c_str(), point.Name.c_str(), game.Planets[defence.Planet].Name.c_str());
+		ImGui::Separator();
+		ImGui::Text("Attackers: strength %.0f (%d soldiers)", attack, SoldierCount(them));
+		int yours = 0;
+		bool canFlee = false;
+		std::vector<int> mine;
+		for (int army: ArmiesAt(game, defence.Planet, defence.Point)) {
+			if (game.Armies[army].Faction == Player()) {
+				mine.push_back(army);
+				yours += SoldierCount(game.Armies[army]);
+				canFlee = canFlee || game.Armies[army].Moves >= 1;
+			}
+		}
+		ImGui::Text("You hold: strength %.0f (%d soldiers%s)", holding, yours, point.Owner == Player() && point.Militia > 0.01F ? " and locals" : "");
+		if (point.Settlement > 0 && point.Built[static_cast<size_t>(Building::Walls)]) {
+			ImGui::TextDisabled("Walls: your defenders fight harder.");
+		}
+		const ImVec4 color = hold >= 0.7F ? ImVec4(0.5F, 1.0F, 0.5F, 1.0F) : hold >= 0.4F ? ImVec4(1.0F, 0.85F, 0.35F, 1.0F) : ImVec4(1.0F, 0.5F, 0.4F, 1.0F);
+		ImGui::TextColored(color, "Chance of holding: about %d%%", static_cast<int>(std::round(hold * 100.0F)));
+		if (game.Defences.size() > 1) {
+			ImGui::TextDisabled("%d more attacks after this one.", static_cast<int>(game.Defences.size()) - 1);
+		}
+		ImGui::Spacing();
+		const float width = ImGui::GetFontSize() * 9.0F;
+		bool done = false;
+		if (ToolUI::Button("Fight it yourself", ImVec2(width, 0.0F))) {
+			StartFieldBattle(attacker, defence.Planet, defence.Point, defence.Overland, {}, true);
+			done = s_Field.Launch;
+		}
+		ImGui::SetItemTooltip("Defend the bunker yourself, on the battlefield: your soldiers and the locals hold it, around your brain, against their drop ships. Whoever falls is gone. Leaving early is a retreat.");
+		ImGui::SameLine();
+		if (ToolUI::Button("Auto-resolve", ImVec2(width, 0.0F))) {
+			ResolveDefence(game, false);
+			SaveGame();
+			done = true;
+		}
+		ImGui::SameLine();
+		ImGui::BeginDisabled(!canFlee);
+		if (ToolUI::Button("Flee", ImVec2(width * 0.6F, 0.0F))) {
+			ResolveDefence(game, true);
+			SaveGame();
+			done = true;
+		}
+		ImGui::EndDisabled();
+		ImGui::SetItemTooltip("%s", canFlee ? "Your armies here get away before the battle: they lose a quarter of their soldiers and go to the nearest point you or an ally hold, else up into orbit. The point is theirs." : "None of your armies here has a move left, so they have to fight. (Keep a move in hand at the end of your turn to be able to flee.)");
+		if (done) {
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+
 	void AttackWindow() {
 		PendingAttack& attack = s_Screen.Attack;
 		if (attack.Open) {
@@ -4604,7 +4693,7 @@ namespace {
 	/// Points of the player's lost without a battle, one at a time after the battle reports.
 	void AlertWindow() {
 		CampaignModel::Campaign& game = s_Screen.Game;
-		if (s_Screen.Alerts.empty() || !game.Reports.empty() || s_Screen.Attack.Open || Animating()) {
+		if (s_Screen.Alerts.empty() || !game.Reports.empty() || !game.Defences.empty() || s_Screen.Attack.Open || Animating()) {
 			return;
 		}
 		ImGui::OpenPopup("Point lost###CampaignAlert");
@@ -4708,7 +4797,7 @@ namespace {
 		static const Topic topics[] = {
 			{"Each turn", "1. Check the bar above the map. Red icons are pressing: invaded planets, enemies near your points, food or fuel running out. Hover one for what to do and click it to go there.\n\n2. Give your armies orders. The turn button reads Next while any still have moves: press it (or Enter, or Tab) to go to each one. Hold (H) leaves an army where it is this turn.\n\n3. Spend your gold: recruit squads, found and grow settlements, put up buildings.\n\n4. End the turn: the button reads End turn once nothing's left, and Ctrl+Enter ends it at any time. The other factions move, then you collect gold and resources."},
 			{"Moving armies", "Click an army to pick it, then right-click where it should go.\n\nOn the galaxy map, right-click a star to travel there along the lanes. Before you click, hovering the star shows the route, the turn the army reaches each stop, the fuel it needs and any enemies there.\n\nOn a planet, right-click a point to land there from orbit or march to it overland (only along the roads joining points).\n\nAn army has 2 moves a turn. Taking off, landing and marching take 1 move each, and a jump between stars takes 2 and burns 1 fuel. A long route carries on by itself over the next turns."},
-			{"Battles", "Moving onto a point held by someone you're not allied with, or defended by locals, is a battle. Before you commit, hover the point with your army picked to see your chance of winning. The attack window shows it again with both sides' strength. Go for 60% or better.\n\nPress Auto-resolve to have the battle resolved for you, or Fight it yourself to play it on the battlefield with the army's own soldiers. Afterwards the report shows who won and the losses.\n\nRefill an army's squads at one of your settlements. Wounded soldiers heal each turn, fastest at a settlement, and survivors rank up. Walls make a settlement much harder to take.\n\nEach army has an order for when it's attacked (in its panel): Fight, Flee if losing, or Always flee. Fleeing takes a move, so an army with none left has to fight. It costs a quarter of the army's soldiers, less than losing would, and the army goes to the nearest point you or an ally hold, or up into orbit. Fleets flee to a system next door."},
+			{"Battles", "Moving onto a point held by someone you're not allied with, or defended by locals, is a battle. Before you commit, hover the point with your army picked to see your chance of winning. The attack window shows it again with both sides' strength. Go for 60% or better.\n\nPress Auto-resolve to have the battle resolved for you, or Fight it yourself to play it on the battlefield with the army's own soldiers. Afterwards the report shows who won and the losses.\n\nWhen another faction attacks one of your armies during its turn, an Under attack window asks what to do: fight it yourself (you hold the bunker around your brain), auto-resolve it, or flee if your army has a move left. The next turn starts once every attack is settled.\n\nRefill an army's squads at one of your settlements. Wounded soldiers heal each turn, fastest at a settlement, and survivors rank up. Walls make a settlement much harder to take.\n\nEach army has an order for when it's attacked (in its panel): Fight, Flee if losing, or Always flee. Fleeing takes a move, so an army with none left has to fight. It costs a quarter of the army's soldiers, less than losing would, and the army goes to the nearest point you or an ally hold, or up into orbit. Fleets flee to a system next door."},
 			{"Fleets", "Every army travels in a ship. A new army has a transport, which only carries it: it never fights in space, and it can't land where enemy warships guard the orbit.\n\nBuild a Shipyard at one of your settlements, then upgrade the ship of an army standing there (in its panel) to a frigate, then a cruiser. Warships cost upkeep each turn.\n\nWarships of factions at war fight when they meet in orbit, and guard the planets below: to land past them you have to win a space battle first. Ships lose hull in battle and repair a little each turn, fast over one of your Shipyards. A warship that's destroyed takes most of its army's soldiers with it, and the loser falls back to a system next door."},
 			{"Planets and income", "A planet has 3 or 5 points. Hold more than half of them to control it, which pays a bonus each turn.\n\nWhile an enemy holds any point on a planet you control, it's invaded: half income and slower healing until you drive them out.\n\nFound an outpost on a point you hold, then grow it into a colony and a city for more gold and more building slots. Barracks unlock better squads, a Market pays more, Walls help hold it and a Hospital heals.\n\nEvery soldier costs upkeep each turn."},
 			{"Resources and trade", "Every point produces one of six resources: water, food, metal, fuel, crystal or relics. Your stores show under your gold, green when rising and orange when falling. One blinking red is running out.\n\nArmies eat food every turn and burn fuel to jump between stars. Building takes metal and water. Having plenty of a resource earns a production bonus: hover it to see them.\n\nClick a resource, or Trade (T), to buy and sell on the galaxy market. Prices rise as you buy and drift back each turn."},
@@ -5061,7 +5150,7 @@ namespace {
 			BeaconItem(s_Screen.Lights.EndTurn);
 			ImGui::SetItemTooltip("The other factions take their turns, then the next turn starts: income, healing, and armies carry on their moves. Saves the campaign (Enter).");
 		}
-		if (endNow && !over) {
+		if (endNow && !over && game.Defences.empty()) {
 			EndTurn(game);
 			SaveGame();
 			s_Screen.Note.clear();
@@ -5122,6 +5211,7 @@ namespace {
 		}
 		AttackWindow();
 		ReportWindow();
+		DefenceWindow();
 		AlertWindow();
 		MilitaryWindow();
 		MarketWindow();
