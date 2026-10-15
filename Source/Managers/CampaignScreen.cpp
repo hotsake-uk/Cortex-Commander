@@ -140,6 +140,13 @@ namespace {
 		int SelectedPoint = -1;
 		float GalaxyZoom = 1.0F;
 		ImVec2 GalaxyPan = ImVec2(0.0F, 0.0F);
+		// The system and planet maps' zoom, and their pan in pixels, kept while the same system or planet is shown.
+		float SystemZoom = 1.0F;
+		ImVec2 SystemPan = ImVec2(0.0F, 0.0F);
+		int ZoomedSystem = -1;
+		float PlanetZoom = 1.0F;
+		ImVec2 PlanetPan = ImVec2(0.0F, 0.0F);
+		int ZoomedPlanet = -1;
 		PendingAttack Attack;
 		bool ConfirmDisband = false;
 		bool ConfirmDelete = false;
@@ -404,6 +411,37 @@ namespace {
 	/// The shield for one or more armies of one faction on the same spot. The player's own stand out: bigger, with a gold rim, a pip for
 	/// each move the readiest of them has left (and a glow while any can still move), and their name, or how many there are, beneath.
 	/// Returns whether the mouse is on it.
+	/// Whether the player could fight a faction's armies (at war, or neutral): those are drawn bigger and red, with a label.
+	bool Hostile(int faction) {
+		const int player = Player();
+		if (player < 0 || faction < 0 || faction == player) {
+			return false;
+		}
+		const Stance stance = StanceOf(s_Screen.Game, player, faction);
+		return stance == Stance::War || stance == Stance::Neutral;
+	}
+
+	/// A hostile group of armies' label: whose they are and how many soldiers.
+	std::string ThreatLabel(const std::vector<int>& armies) {
+		int soldiers = 0;
+		for (int army: armies) {
+			soldiers += SoldierCount(s_Screen.Game.Armies[army]);
+		}
+		return FactionLabel(s_Screen.Game.Armies[armies.front()].Faction) + " (" + std::to_string(soldiers) + ")";
+	}
+
+	/// How wide one faction's shield is in a row of them, its label included.
+	float GroupWidth(const std::vector<int>& group, float size) {
+		const int faction = s_Screen.Game.Armies[group.front()].Faction;
+		if (faction == Player()) {
+			return size * 4.0F;
+		}
+		if (Hostile(faction)) {
+			return std::max(size * 5.4F, ImGui::CalcTextSize(ThreatLabel(group).c_str()).x + 10.0F);
+		}
+		return size * 4.4F;
+	}
+
 	bool DrawArmies(ImDrawList* drawList, ImVec2 at, float size, const std::vector<int>& armies, bool labelAbove = false) {
 		const CampaignModel::Campaign& game = s_Screen.Game;
 		if (armies.empty()) {
@@ -426,17 +464,30 @@ namespace {
 		}
 		const int count = static_cast<int>(armies.size());
 		if (!own) {
-			// On a dark disc so it reads on any planet, with a ring: red (pulsing) for those the player could fight, blue for peace,
-			// green for allies.
-			size *= 1.2F;
+			// On a disc so it reads on any planet, with a ring: red (pulsing) for those the player could fight, blue for peace, green for
+			// allies. Those the player could fight are bigger, glow red and carry their faction and soldiers, so they're hard to miss.
 			const int player = Player();
 			const Stance stance = player >= 0 ? StanceOf(game, player, first.Faction) : Stance::Neutral;
 			const bool hostile = stance == Stance::War || stance == Stance::Neutral;
-			const float pulse = hostile ? 0.6F + 0.4F * std::sin(static_cast<float>(ImGui::GetTime()) * 4.0F) : 1.0F;
+			size *= hostile ? 1.45F : 1.2F;
+			const float time = static_cast<float>(ImGui::GetTime());
+			const float pulse = hostile ? 0.6F + 0.4F * std::sin(time * 4.0F) : 1.0F;
 			const ImU32 ring = stance == Stance::Alliance ? IM_COL32(110, 230, 120, 255) : stance == Stance::Peace ? IM_COL32(120, 180, 255, 255) : IM_COL32(255, 70, 55, 255);
-			drawList->AddCircleFilled(ImVec2(at.x, at.y + size * 0.1F), size * 1.75F, IM_COL32(6, 6, 14, 210), 24);
-			drawList->AddCircle(ImVec2(at.x, at.y + size * 0.1F), size * 1.75F, Alpha(ring, pulse), 24, hostile ? 2.5F : 2.0F);
+			const ImVec2 middle(at.x, at.y + size * 0.1F);
+			const float radius = size * 1.75F;
+			if (hostile) {
+				drawList->AddCircleFilled(middle, radius * (1.35F + 0.12F * std::sin(time * 4.0F)), Alpha(ring, 0.16F * pulse), 32);
+			}
+			drawList->AddCircleFilled(middle, radius, hostile ? IM_COL32(48, 8, 8, 230) : IM_COL32(6, 6, 14, 210), 24);
+			drawList->AddCircle(middle, radius, Alpha(ring, pulse), 24, hostile ? 3.0F : 2.0F);
 			const bool hovered = DrawArmyIcon(drawList, at, size, FactionColor(first.Faction), selected, count);
+			if (hostile) {
+				const std::string label = ThreatLabel(armies);
+				const ImVec2 textSize = ImGui::CalcTextSize(label.c_str());
+				const ImVec2 textAt(at.x - textSize.x * 0.5F, labelAbove ? middle.y - radius - textSize.y - 4.0F : middle.y + radius + 3.0F);
+				drawList->AddRectFilled(ImVec2(textAt.x - 4.0F, textAt.y - 1.0F), ImVec2(textAt.x + textSize.x + 4.0F, textAt.y + textSize.y + 1.0F), IM_COL32(110, 14, 10, 225), 3.0F);
+				drawList->AddText(textAt, IM_COL32(255, 225, 215, 255), label.c_str());
+			}
 			if (pointedAt) {
 				Beacon(drawList, at, size + 4.0F);
 			}
@@ -498,8 +549,7 @@ namespace {
 				group->push_back(army);
 			}
 		}
-		const int player = Player();
-		auto widthOf = [&game, player, size](const std::vector<int>& group) { return game.Armies[group.front()].Faction == player ? size * 4.0F : size * 4.4F; };
+		auto widthOf = [size](const std::vector<int>& group) { return GroupWidth(group, size); };
 		float total = 0.0F;
 		for (const std::vector<int>& group: groups) {
 			total += widthOf(group);
@@ -556,27 +606,32 @@ namespace {
 	ImVec2 ArmyRowSize(const std::vector<int>& armies, float size) {
 		const CampaignModel::Campaign& game = s_Screen.Game;
 		const int player = Player();
-		std::vector<int> factions;
-		float width = 0.0F;
-		bool own = false;
+		std::vector<std::vector<int>> groups;
 		float ownLabel = 0.0F;
 		int ownCount = 0;
+		bool hostile = false;
 		for (int army: armies) {
 			const Army& each = game.Armies[army];
 			if (each.Faction == player) {
-				own = true;
 				++ownCount;
 				ownLabel = ImGui::CalcTextSize(each.Name.c_str()).x;
 			}
-			if (std::find(factions.begin(), factions.end(), each.Faction) == factions.end()) {
-				factions.push_back(each.Faction);
-				width += each.Faction == player ? size * 4.0F : size * 4.4F;
+			hostile = hostile || Hostile(each.Faction);
+			auto group = std::find_if(groups.begin(), groups.end(), [&game, &each](const std::vector<int>& members) { return game.Armies[members.front()].Faction == each.Faction; });
+			if (group == groups.end()) {
+				groups.push_back({army});
+			} else {
+				group->push_back(army);
 			}
+		}
+		float width = 0.0F;
+		for (const std::vector<int>& group: groups) {
+			width += GroupWidth(group, size);
 		}
 		if (ownCount > 1) {
 			ownLabel = ImGui::CalcTextSize("9 armies").x;
 		}
-		return ImVec2(std::max(width, ownLabel + 8.0F), ImGui::GetTextLineHeight() + 14.0F + size * 4.4F);
+		return ImVec2(std::max(width, ownLabel + 8.0F), ImGui::GetTextLineHeight() + 14.0F + size * (hostile ? 5.4F : 4.4F));
 	}
 
 	/// Where a row of army shields given that room goes, for its top left corner.
@@ -619,6 +674,35 @@ namespace {
 	}
 
 	void EndCanvas() { ImGui::GetWindowDrawList()->PopClipRect(); }
+
+	constexpr float c_MinZoom = 0.7F;
+	constexpr float c_MaxZoom = 4.0F;
+
+	/// Zooms a map by a step, keeping what's at `about` (an offset from the map's middle) where it is.
+	void ZoomBy(float factor, ImVec2 about, float& zoom, ImVec2& pan) {
+		const float next = std::clamp(zoom * factor, c_MinZoom, c_MaxZoom);
+		pan.x = about.x - (about.x - pan.x) * next / zoom;
+		pan.y = about.y - (about.y - pan.y) * next / zoom;
+		zoom = next;
+	}
+
+	/// The system and planet maps' zoom and pan: scroll to zoom about the mouse, drag to pan (with the left button past a few pixels, or
+	/// the middle one). The pan is kept to where some of the map stays in sight.
+	void ZoomAndPan(bool hovered, ImVec2 from, ImVec2 to, float& zoom, ImVec2& pan) {
+		const ImGuiIO& io = ImGui::GetIO();
+		const ImVec2 middle((from.x + to.x) * 0.5F, (from.y + to.y) * 0.5F);
+		if (hovered && io.MouseWheel != 0.0F) {
+			ZoomBy(io.MouseWheel > 0.0F ? 1.15F : 1.0F / 1.15F, ImVec2(io.MousePos.x - middle.x, io.MousePos.y - middle.y), zoom, pan);
+		}
+		if (hovered && (ImGui::IsMouseDragging(ImGuiMouseButton_Middle) || ImGui::IsMouseDragging(ImGuiMouseButton_Left, 6.0F))) {
+			pan.x += io.MouseDelta.x;
+			pan.y += io.MouseDelta.y;
+		}
+		const float reachX = (to.x - from.x) * 0.5F * zoom;
+		const float reachY = (to.y - from.y) * 0.5F * zoom;
+		pan.x = std::clamp(pan.x, -reachX, reachX);
+		pan.y = std::clamp(pan.y, -reachY, reachY);
+	}
 #pragma endregion
 
 #pragma region Animations
@@ -1980,13 +2064,14 @@ namespace {
 					byFaction[game.Armies[army].Faction].push_back(army);
 				}
 			}
-			float offset = starSize + 16.0F;
+			float offset = starSize + 6.0F;
 			for (int faction = 0; faction < static_cast<int>(byFaction.size()); ++faction) {
 				if (byFaction[faction].empty()) {
 					continue;
 				}
-				armyMarks.push_back({ImVec2(at.x + offset, at.y - starSize), byFaction[faction]});
-				offset += faction == Player() ? 26.0F : 30.0F;
+				const float width = GroupWidth(byFaction[faction], 7.0F);
+				armyMarks.push_back({ImVec2(at.x + offset + width * 0.5F, at.y - starSize), byFaction[faction]});
+				offset += width;
 			}
 		}
 		// The route preview's turn numbers: where each turn's moves run out, and the end.
@@ -2093,15 +2178,21 @@ namespace {
 		const bool hovered = BeginCanvas("##system", size, from, to);
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		const ImGuiIO& io = ImGui::GetIO();
-		DrawSpace(drawList, from, to, game.Seed + static_cast<std::uint32_t>(systemIndex) * 31u, ImVec2(0.0F, 0.0F));
-		const ImVec2 star((from.x + to.x) * 0.5F, (from.y + to.y) * 0.5F);
+		if (s_Screen.ZoomedSystem != systemIndex) {
+			s_Screen.ZoomedSystem = systemIndex;
+			s_Screen.SystemZoom = 1.0F;
+			s_Screen.SystemPan = ImVec2(0.0F, 0.0F);
+		}
+		ZoomAndPan(hovered, from, to, s_Screen.SystemZoom, s_Screen.SystemPan);
+		DrawSpace(drawList, from, to, game.Seed + static_cast<std::uint32_t>(systemIndex) * 31u, ImVec2(s_Screen.SystemPan.x * 0.3F, s_Screen.SystemPan.y * 0.3F));
+		const ImVec2 star((from.x + to.x) * 0.5F + s_Screen.SystemPan.x, (from.y + to.y) * 0.5F + s_Screen.SystemPan.y);
 		float outermost = 1.0F;
 		for (int planet: system.Planets) {
 			if (game.Planets[planet].Parent < 0) {
 				outermost = std::max(outermost, game.Planets[planet].Orbit);
 			}
 		}
-		const float room = std::min(to.x - from.x, (to.y - from.y) * 1.6F) * 0.45F;
+		const float room = std::min(to.x - from.x, (to.y - from.y) * 1.6F) * 0.45F * s_Screen.SystemZoom;
 		const float step = room / (outermost + 0.6F);
 		const ImU32 starColor = StarColor(system.StarColor);
 		for (int glow = 5; glow >= 1; --glow) {
@@ -2358,10 +2449,16 @@ namespace {
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		const ImGuiIO& io = ImGui::GetIO();
 		drawList->AddRectFilled(canvasFrom, canvasTo, IM_COL32(6, 8, 18, 255));
-		// The surface map: two wide for one high, as big as fits.
-		const float mapWidth = std::min(canvasTo.x - canvasFrom.x - 20.0F, (canvasTo.y - canvasFrom.y - 40.0F) * 2.0F);
+		if (s_Screen.ZoomedPlanet != planetIndex) {
+			s_Screen.ZoomedPlanet = planetIndex;
+			s_Screen.PlanetZoom = 1.0F;
+			s_Screen.PlanetPan = ImVec2(0.0F, 0.0F);
+		}
+		ZoomAndPan(hovered, canvasFrom, canvasTo, s_Screen.PlanetZoom, s_Screen.PlanetPan);
+		// The surface map: two wide for one high, as big as fits, then zoomed.
+		const float mapWidth = std::min(canvasTo.x - canvasFrom.x - 20.0F, (canvasTo.y - canvasFrom.y - 40.0F) * 2.0F) * s_Screen.PlanetZoom;
 		const float mapHeight = mapWidth * 0.5F;
-		const ImVec2 from((canvasFrom.x + canvasTo.x - mapWidth) * 0.5F, (canvasFrom.y + canvasTo.y - mapHeight) * 0.5F + 10.0F);
+		const ImVec2 from((canvasFrom.x + canvasTo.x - mapWidth) * 0.5F + s_Screen.PlanetPan.x, (canvasFrom.y + canvasTo.y - mapHeight) * 0.5F + 10.0F + s_Screen.PlanetPan.y);
 		const ImVec2 to(from.x + mapWidth, from.y + mapHeight);
 		const ImU32 base = PlanetColor(planet.Type);
 		drawList->AddRectFilled(from, to, Scale(base, 0.55F));
@@ -4354,6 +4451,56 @@ namespace {
 
 #pragma endregion
 
+#pragma region Zoom buttons
+	/// Zoom in, out and back over the bottom right of whichever map is shown, for those without a scroll wheel.
+	void ZoomButtons() {
+		float* zoom = &s_Screen.GalaxyZoom;
+		ImVec2* pan = nullptr;
+		if (s_Screen.Showing == View::System) {
+			zoom = &s_Screen.SystemZoom;
+			pan = &s_Screen.SystemPan;
+		} else if (s_Screen.Showing == View::Planet) {
+			zoom = &s_Screen.PlanetZoom;
+			pan = &s_Screen.PlanetPan;
+		}
+		const float button = ImGui::GetFrameHeight();
+		const float spacing = ImGui::GetStyle().ItemSpacing.x * 0.5F;
+		const float width = button * 3.0F + spacing * 2.0F;
+		const bool legend = s_Screen.Showing == View::Galaxy;
+		ImGui::SetCursorScreenPos(ImVec2(s_Screen.MapTo.x - width - 10.0F, s_Screen.MapTo.y - button - 10.0F));
+		ImGui::PushID("zoom");
+		ImGui::BeginGroup();
+		const auto step = [&](float factor) {
+			if (pan) {
+				ZoomBy(factor, ImVec2(0.0F, 0.0F), *zoom, *pan);
+			} else {
+				*zoom = std::clamp(*zoom * factor, 0.6F, 4.0F);
+			}
+		};
+		if (ToolUI::Button("+", ImVec2(button, button))) {
+			step(1.3F);
+		}
+		ImGui::SetItemTooltip("Zoom in (or scroll the mouse wheel over the map).");
+		ImGui::SameLine(0.0F, spacing);
+		if (ToolUI::Button("-", ImVec2(button, button))) {
+			step(1.0F / 1.3F);
+		}
+		ImGui::SetItemTooltip("Zoom out.");
+		ImGui::SameLine(0.0F, spacing);
+		if (ToolUI::Button("1:1", ImVec2(button, button))) {
+			*zoom = 1.0F;
+			if (pan) {
+				*pan = ImVec2(0.0F, 0.0F);
+			} else {
+				s_Screen.GalaxyPan = ImVec2(0.0F, 0.0F);
+			}
+		}
+		ImGui::SetItemTooltip(legend ? "The whole galaxy again. Drag the map to move around it." : "The whole map again. Drag the map to move around it.");
+		ImGui::EndGroup();
+		ImGui::PopID();
+	}
+#pragma endregion
+
 #pragma region Armies in a system
 	/// Over the top right of the system map: every army in the system, other factions' first (threats at the top), so none goes unseen.
 	/// Click one to pick it; the mouse on one points it out on the map.
@@ -4650,6 +4797,7 @@ namespace {
 		GuideBox();
 		TipBox();
 		SystemArmiesBox();
+		ZoomButtons();
 
 		// Esc steps back out: planet to system to galaxy.
 		if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId)) {
