@@ -1,0 +1,1706 @@
+{
+	"about": "Names that changed or went away in the game's history, for Check-Mod.py. From CHANGELOG.md (Cortex Command Community Project releases v1.0.0 to v6.2.2 and after) plus renames made in Cortex Commander. kind: lua, ini, preset or file. class: where the name lives (a class, a manager, or a module for presets), or null. new: the replacement, written Base:Name when it moved to another manager or class, or null when nothing replaces it. mechanical: true when swapping the name is the whole fix, so Check-Mod.py --fix may do it.",
+	"changes": [
+		{
+			"kind": "lua",
+			"class": "AHuman",
+			"old": "GetLimbPathSpeed",
+			"new": "GetLimbPathTravelSpeed",
+			"mechanical": false,
+			"version": "Unreleased",
+			"note": "Renamed for AHuman and ACrab; now takes an Actor.MovementState argument instead of being walk-only."
+		},
+		{
+			"kind": "lua",
+			"class": "AHuman",
+			"old": "SetLimbPathSpeed",
+			"new": "SetLimbPathTravelSpeed",
+			"mechanical": false,
+			"version": "Unreleased",
+			"note": "Renamed for AHuman and ACrab; now takes (MovementState, newValue) and sets all layers and sides of that state."
+		},
+		{
+			"kind": "lua",
+			"class": "AHuman",
+			"old": "GetLimbPathPushForce",
+			"new": "GetLimbPathPushForce",
+			"mechanical": false,
+			"version": "Unreleased",
+			"note": "Signature changed for AHuman and ACrab: now takes an Actor.MovementState argument instead of being walk-only."
+		},
+		{
+			"kind": "lua",
+			"class": "AHuman",
+			"old": "SetLimbPathPushForce",
+			"new": "SetLimbPathPushForce",
+			"mechanical": false,
+			"version": "Unreleased",
+			"note": "Signature changed for AHuman and ACrab: now takes (MovementState, newValue)."
+		},
+		{
+			"kind": "ini",
+			"class": "LimbPath",
+			"old": "NormalTravelSpeed",
+			"new": "TravelSpeed",
+			"mechanical": true,
+			"version": "Unreleased",
+			"note": "Renamed; NormalTravelSpeed is deprecated but still accepted as a synonym of TravelSpeed."
+		},
+		{
+			"kind": "ini",
+			"class": "LimbPath",
+			"old": "SlowTravelSpeed",
+			"new": null,
+			"mechanical": false,
+			"version": "Unreleased",
+			"note": "Deprecated with no replacement; still accepted (will not crash) but use TravelSpeed with movement-state multipliers instead."
+		},
+		{
+			"kind": "ini",
+			"class": "LimbPath",
+			"old": "FastTravelSpeed",
+			"new": null,
+			"mechanical": false,
+			"version": "Unreleased",
+			"note": "Deprecated with no replacement; still accepted (will not crash) but use TravelSpeed with movement-state multipliers instead."
+		},
+		{
+			"kind": "lua",
+			"class": null,
+			"old": "SceneLayer",
+			"new": "StaticSceneLayer",
+			"mechanical": true,
+			"version": "Unreleased",
+			"note": "Lua class renamed because SLBackground's base class changed."
+		},
+		{
+			"kind": "lua",
+			"class": "Scene",
+			"old": "AddNavigatableArea",
+			"new": "AddNavigableArea",
+			"mechanical": true,
+			"version": "Unreleased",
+			"note": "Spelling corrected; same argument (areaName)."
+		},
+		{
+			"kind": "lua",
+			"class": "Scene",
+			"old": "ClearNavigatableAreas",
+			"new": "ClearNavigableAreas",
+			"mechanical": true,
+			"version": "Unreleased",
+			"note": "Spelling corrected."
+		},
+		{
+			"kind": "lua",
+			"class": null,
+			"old": "ACDropship",
+			"new": "ACDropShip",
+			"mechanical": true,
+			"version": "Unreleased",
+			"note": "Lua spelling fixed to ACDropShip (capital S), e.g. ToACDropship -> ToACDropShip."
+		},
+		{
+			"kind": "lua",
+			"class": null,
+			"old": "OriginalDoFile",
+			"new": null,
+			"mechanical": false,
+			"version": "Unreleased",
+			"note": "Internal global made inaccessible; use dofile instead."
+		},
+		{
+			"kind": "lua",
+			"class": null,
+			"old": "OriginalLoadFile",
+			"new": null,
+			"mechanical": false,
+			"version": "Unreleased",
+			"note": "Internal global made inaccessible; use loadfile instead."
+		},
+		{
+			"kind": "lua",
+			"class": null,
+			"old": "OriginalRequire",
+			"new": null,
+			"mechanical": false,
+			"version": "Unreleased",
+			"note": "Internal global made inaccessible; use require instead."
+		},
+		{
+			"kind": "lua",
+			"class": "AudioMan",
+			"old": "AudioMan music functions",
+			"new": "MusicMan:PlayDynamicSong",
+			"mechanical": false,
+			"version": "Unreleased",
+			"note": "All music functionality removed from AudioMan; use MusicMan, e.g. MusicMan:PlayDynamicSong(\"Generic Battle Music\") instead of queueing vanilla music."
+		},
+		{
+			"kind": "lua",
+			"class": "GAScripted",
+			"old": "SceneTest",
+			"new": "IsCompatibleScene",
+			"mechanical": false,
+			"version": "Unreleased",
+			"note": "SceneTest() removed; implement IsCompatibleScene(scene) returning a boolean instead."
+		},
+		{
+			"kind": "ini",
+			"class": "GAScripted",
+			"old": "Lua file scanning for required areas",
+			"new": "AddRequiredArea",
+			"mechanical": false,
+			"version": "Unreleased",
+			"note": "Required areas are no longer found by scanning the Lua script; list them with AddRequiredArea in the INI."
+		},
+		{
+			"kind": "lua",
+			"class": "Scene",
+			"old": "GetOptionalArea",
+			"new": "GetArea",
+			"mechanical": true,
+			"version": "Unreleased",
+			"note": "Removed; GetArea behaves identically."
+		},
+		{
+			"kind": "ini",
+			"class": "AHuman",
+			"old": "MaxCrouchRotation",
+			"new": "CrouchRotAngleTarget",
+			"mechanical": false,
+			"version": "Unreleased",
+			"note": "Removed; CrouchRotAngleTarget is now used instead (different meaning: a target angle, not a max rotation)."
+		},
+		{
+			"kind": "lua",
+			"class": "AHuman",
+			"old": "MaxCrouchRotation",
+			"new": "CrouchRotAngleTarget",
+			"mechanical": false,
+			"version": "Unreleased",
+			"note": "Removed from Lua; use GetRotAngleTarget/SetRotAngleTarget for the crouch state instead."
+		},
+		{
+			"kind": "lua",
+			"class": "Controller",
+			"old": "CROUCH",
+			"new": "PRONE",
+			"mechanical": true,
+			"version": "Unreleased",
+			"note": "CROUCH control state deprecated because it meant prone; use PRONE (WALKCROUCH is the new crouch state)."
+		},
+		{
+			"kind": "lua",
+			"class": "SceneMan",
+			"old": "CalculatePath",
+			"new": "CalculatePath",
+			"mechanical": false,
+			"version": "Unreleased",
+			"note": "Parameter movePathToGround replaced with jumpHeight (metres); also applies to CalculatePathAsync. Use GetPathFindingFlyingJumpHeight() for flying."
+		},
+		{
+			"kind": "ini",
+			"class": "SLBackground",
+			"old": "ScrollRatio",
+			"new": "ParallaxFactor",
+			"mechanical": false,
+			"version": "Unreleased",
+			"note": "ParallaxFactor (a Vector) replaces ScrollRatio for simply placed backdrops; check values since semantics may differ."
+		},
+		{
+			"kind": "lua",
+			"class": null,
+			"old": "LERP",
+			"new": "Lerp",
+			"mechanical": true,
+			"version": "v6.2.0",
+			"note": "LERP deprecated and renamed to Lerp (Lerp also works on Vectors and Matrices)."
+		},
+		{
+			"kind": "preset",
+			"class": "Base.rte",
+			"old": "Dent Metal Chest Plate",
+			"new": null,
+			"mechanical": false,
+			"version": "v6.0.0",
+			"note": "Base.rte wound preset removed; define the wound inline on the actor instead."
+		},
+		{
+			"kind": "preset",
+			"class": "Base.rte",
+			"old": "Dent Metal Helmet",
+			"new": null,
+			"mechanical": false,
+			"version": "v6.0.0",
+			"note": "Base.rte wound preset removed; define the wound inline on the actor instead."
+		},
+		{
+			"kind": "preset",
+			"class": "Base.rte",
+			"old": "Wound Clothed Flesh Head",
+			"new": null,
+			"mechanical": false,
+			"version": "v6.0.0",
+			"note": "Base.rte wound preset removed; define the wound inline on the actor instead."
+		},
+		{
+			"kind": "preset",
+			"class": "Base.rte",
+			"old": "Wound Clothed Flesh Limb",
+			"new": null,
+			"mechanical": false,
+			"version": "v6.0.0",
+			"note": "Base.rte wound preset removed; define the wound inline on the actor instead."
+		},
+		{
+			"kind": "preset",
+			"class": "Base.rte",
+			"old": "Wound Clothed Flesh Torso",
+			"new": null,
+			"mechanical": false,
+			"version": "v6.0.0",
+			"note": "Base.rte wound preset removed; define the wound inline on the actor instead."
+		},
+		{
+			"kind": "preset",
+			"class": "Base.rte",
+			"old": "Armored Flesh Limb Impact",
+			"new": null,
+			"mechanical": false,
+			"version": "v6.0.0",
+			"note": "Sound preset removed with no replacement."
+		},
+		{
+			"kind": "preset",
+			"class": "Base.rte",
+			"old": "Flesh Impact Exit Sweetener",
+			"new": "Flesh Exit Sweetener",
+			"mechanical": true,
+			"version": "v6.0.0",
+			"note": "Sound preset renamed; update CopyOf/CreateSoundContainer references."
+		},
+		{
+			"kind": "preset",
+			"class": "Base.rte",
+			"old": "Clothed Flesh Head Impact",
+			"new": "Flesh Head Impact",
+			"mechanical": true,
+			"version": "v6.0.0",
+			"note": "Sound preset renamed; update CopyOf/CreateSoundContainer references."
+		},
+		{
+			"kind": "preset",
+			"class": "Base.rte",
+			"old": "Clothed Flesh Torso Impact",
+			"new": "Flesh Torso Impact",
+			"mechanical": true,
+			"version": "v6.0.0",
+			"note": "Sound preset renamed; update CopyOf/CreateSoundContainer references."
+		},
+		{
+			"kind": "preset",
+			"class": "Base.rte",
+			"old": "Clothed Flesh Limb Impact",
+			"new": "Flesh Limb Impact",
+			"mechanical": true,
+			"version": "v6.0.0",
+			"note": "Sound preset renamed; update CopyOf/CreateSoundContainer references."
+		},
+		{
+			"kind": "preset",
+			"class": "Base.rte",
+			"old": "Armored Flesh Head Impact",
+			"new": "Flesh Head Impact Armored",
+			"mechanical": true,
+			"version": "v6.0.0",
+			"note": "Sound preset renamed; update CopyOf/CreateSoundContainer references."
+		},
+		{
+			"kind": "preset",
+			"class": "Base.rte",
+			"old": "Armored Flesh Torso Impact",
+			"new": "Flesh Torso Impact Armored",
+			"mechanical": true,
+			"version": "v6.0.0",
+			"note": "Sound preset renamed; update CopyOf/CreateSoundContainer references."
+		},
+		{
+			"kind": "preset",
+			"class": "Base.rte",
+			"old": "Metal Penetration Hit",
+			"new": "Metal Impact Generic",
+			"mechanical": true,
+			"version": "v6.0.0",
+			"note": "Sound preset renamed; update CopyOf/CreateSoundContainer references."
+		},
+		{
+			"kind": "lua",
+			"class": "Scene",
+			"old": "ScenePath",
+			"new": "GetScenePath",
+			"mechanical": false,
+			"version": "v6.0.0",
+			"note": "Property changed to a function: Scene.ScenePath -> Scene:GetScenePath()."
+		},
+		{
+			"kind": "lua",
+			"class": "CameraMan",
+			"old": "SetScrollTarget",
+			"new": "SetScrollTarget",
+			"mechanical": false,
+			"version": "v6.0.0",
+			"note": "targetWrapped parameter removed; signature is now SetScrollTarget(target, speed, screenId)."
+		},
+		{
+			"kind": "ini",
+			"class": "AHuman",
+			"old": "AEmitter",
+			"new": "AEJetpack",
+			"mechanical": false,
+			"version": "v6.0.0",
+			"note": "The Jetpack property of AHuman/ACrab now takes an AEJetpack instead of an AEmitter; move jet properties into it."
+		},
+		{
+			"kind": "ini",
+			"class": "AHuman",
+			"old": "JetTime",
+			"new": "AEJetpack.JetTime",
+			"mechanical": false,
+			"version": "v6.0.0",
+			"note": "JetTime moved from AHuman/ACrab to the AEJetpack definition."
+		},
+		{
+			"kind": "ini",
+			"class": "AHuman",
+			"old": "JetReplenishRate",
+			"new": "AEJetpack.JetReplenishRate",
+			"mechanical": false,
+			"version": "v6.0.0",
+			"note": "JetReplenishRate moved from AHuman/ACrab to the AEJetpack definition."
+		},
+		{
+			"kind": "ini",
+			"class": "AHuman",
+			"old": "JetAngleRange",
+			"new": "AEJetpack.JetAngleRange",
+			"mechanical": false,
+			"version": "v6.0.0",
+			"note": "JetAngleRange moved from AHuman/ACrab to the AEJetpack definition."
+		},
+		{
+			"kind": "lua",
+			"class": "AHuman",
+			"old": "JetTime",
+			"new": "AEJetpack.JetTime",
+			"mechanical": false,
+			"version": "v6.0.0",
+			"note": "JetTime moved from AHuman/ACrab to AEJetpack; access it via actor.Jetpack.JetTime."
+		},
+		{
+			"kind": "lua",
+			"class": "AHuman",
+			"old": "JetReplenishRate",
+			"new": "AEJetpack.JetReplenishRate",
+			"mechanical": false,
+			"version": "v6.0.0",
+			"note": "JetReplenishRate moved from AHuman/ACrab to AEJetpack; access it via actor.Jetpack.JetReplenishRate."
+		},
+		{
+			"kind": "lua",
+			"class": "AHuman",
+			"old": "JetAngleRange",
+			"new": "AEJetpack.JetAngleRange",
+			"mechanical": false,
+			"version": "v6.0.0",
+			"note": "JetAngleRange moved from AHuman/ACrab to AEJetpack; access it via actor.Jetpack.JetAngleRange."
+		},
+		{
+			"kind": "lua",
+			"class": "AHuman",
+			"old": "JetTimeTotal",
+			"new": "AEJetpack.JetTimeTotal",
+			"mechanical": false,
+			"version": "v6.0.0",
+			"note": "JetTimeTotal moved from AHuman/ACrab to AEJetpack; access it via actor.Jetpack.JetTimeTotal."
+		},
+		{
+			"kind": "lua",
+			"class": "AHuman",
+			"old": "JetTimeLeft",
+			"new": "AEJetpack.JetTimeLeft",
+			"mechanical": false,
+			"version": "v6.0.0",
+			"note": "JetTimeLeft moved from AHuman/ACrab to AEJetpack; access it via actor.Jetpack.JetTimeLeft."
+		},
+		{
+			"kind": "lua",
+			"class": "SceneObject",
+			"old": "IsBuyable",
+			"new": "Buyable",
+			"mechanical": true,
+			"version": "v6.0.0",
+			"note": "Property renamed."
+		},
+		{
+			"kind": "ini",
+			"class": "DataModule",
+			"old": "SupportedGameVersion",
+			"new": "SupportedGameVersion",
+			"mechanical": false,
+			"version": "v6.0.0",
+			"note": "Index.ini SupportedGameVersion must now be a semantic version X.Y.z matching the game's major version."
+		},
+		{
+			"kind": "ini",
+			"class": "DataModule",
+			"old": "SupportedGameVersion",
+			"new": "SupportedGameVersion",
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "New required Index.ini property; mods without it (or with a non-matching version) no longer load."
+		},
+		{
+			"kind": "ini",
+			"class": null,
+			"old": "ScriptFile",
+			"new": "ScriptPath",
+			"mechanical": true,
+			"version": "v5.0.0",
+			"note": "ScriptFile completely replaced with ScriptPath."
+		},
+		{
+			"kind": "lua",
+			"class": "Vector",
+			"old": "ClampMagnitude",
+			"new": "ClampMagnitude",
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "Parameter order changed to ClampMagnitude(lowerMagnitudeLimit, upperMagnitudeLimit); swap the arguments."
+		},
+		{
+			"kind": "ini",
+			"class": "Scene",
+			"old": "SceneLayer",
+			"new": "SLBackground",
+			"mechanical": true,
+			"version": "v5.0.0",
+			"note": "Scene background layer presets are now defined as SLBackground rather than SceneLayer."
+		},
+		{
+			"kind": "ini",
+			"class": "TerrainDebris",
+			"old": "OnlyOnSurface",
+			"new": "DebrisPlacementMode",
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "OnlyOnSurface = 0/1 replaced by DebrisPlacementMode = 0-6 (1 is OnSurfaceOnly)."
+		},
+		{
+			"kind": "ini",
+			"class": "Material",
+			"old": "TextureFile",
+			"new": "FGTextureFile",
+			"mechanical": true,
+			"version": "v5.0.0",
+			"note": "Renamed to make room for BGTextureFile."
+		},
+		{
+			"kind": "lua",
+			"class": "BuyMenuGUI",
+			"old": "SetHeaderImage",
+			"new": "SetBannerImage",
+			"mechanical": true,
+			"version": "v5.0.0",
+			"note": "Function renamed."
+		},
+		{
+			"kind": "lua",
+			"class": null,
+			"old": "OnPieMenu",
+			"new": "WhilePieMenuOpen",
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "OnPieMenu(self) event changed to WhilePieMenuOpen(self, openedPieMenu), which runs every frame the PieMenu is open; PieSlice functions now get (pieMenuOwner, pieMenu, pieSlice)."
+		},
+		{
+			"kind": "lua",
+			"class": "PieSlice",
+			"old": "PieSliceIndex",
+			"new": "SliceType",
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "Enum renamed and all its values renamed (new values NoType, Pickup, Drop, ... EditorTeam4); old value names are not listed in the changelog."
+		},
+		{
+			"kind": "lua",
+			"class": "SceneMan",
+			"old": "SetOffset",
+			"new": "CameraMan:SetOffset",
+			"mechanical": true,
+			"version": "v5.0.0",
+			"note": "Function moved from SceneMan to CameraMan."
+		},
+		{
+			"kind": "lua",
+			"class": "SceneMan",
+			"old": "GetScreenOcclusion",
+			"new": "CameraMan:GetScreenOcclusion",
+			"mechanical": true,
+			"version": "v5.0.0",
+			"note": "Function moved from SceneMan to CameraMan."
+		},
+		{
+			"kind": "lua",
+			"class": "SceneMan",
+			"old": "SetScreenOcclusion",
+			"new": "CameraMan:SetScreenOcclusion",
+			"mechanical": true,
+			"version": "v5.0.0",
+			"note": "Function moved from SceneMan to CameraMan."
+		},
+		{
+			"kind": "lua",
+			"class": "SceneMan",
+			"old": "GetScrollTarget",
+			"new": "CameraMan:GetScrollTarget",
+			"mechanical": true,
+			"version": "v5.0.0",
+			"note": "Function moved from SceneMan to CameraMan."
+		},
+		{
+			"kind": "lua",
+			"class": "SceneMan",
+			"old": "TargetDistanceScalar",
+			"new": "CameraMan:TargetDistanceScalar",
+			"mechanical": true,
+			"version": "v5.0.0",
+			"note": "Function moved from SceneMan to CameraMan."
+		},
+		{
+			"kind": "lua",
+			"class": "SceneMan",
+			"old": "CheckOffset",
+			"new": "CameraMan:CheckOffset",
+			"mechanical": true,
+			"version": "v5.0.0",
+			"note": "Function moved from SceneMan to CameraMan."
+		},
+		{
+			"kind": "lua",
+			"class": "SceneMan",
+			"old": "SetScroll",
+			"new": "CameraMan:SetScroll",
+			"mechanical": true,
+			"version": "v5.0.0",
+			"note": "Function moved from SceneMan to CameraMan."
+		},
+		{
+			"kind": "lua",
+			"class": "SceneMan",
+			"old": "SetScrollTarget",
+			"new": "CameraMan:SetScrollTarget",
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "Moved from SceneMan to CameraMan with signature SetScrollTarget(targetPosition, speed, screenId)."
+		},
+		{
+			"kind": "lua",
+			"class": "HDFirearm",
+			"old": "ReloadTime",
+			"new": "BaseReloadTime",
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "ReloadTime is no longer writable in Lua; write BaseReloadTime instead (reading ReloadTime still works)."
+		},
+		{
+			"kind": "ini",
+			"class": "HDFirearm",
+			"old": "ReloadTime",
+			"new": "BaseReloadTime",
+			"mechanical": true,
+			"version": "v5.0.0",
+			"note": "INI property renamed; ReloadTime is still accepted."
+		},
+		{
+			"kind": "ini",
+			"class": "GameActivity",
+			"old": "DefaultGoldCake",
+			"new": "DefaultGoldCakeDifficulty",
+			"mechanical": true,
+			"version": "v5.0.0",
+			"note": "Default gold properties renamed to end in Difficulty (old name inferred from that statement)."
+		},
+		{
+			"kind": "ini",
+			"class": "GameActivity",
+			"old": "DefaultGoldEasy",
+			"new": "DefaultGoldEasyDifficulty",
+			"mechanical": true,
+			"version": "v5.0.0",
+			"note": "Default gold properties renamed to end in Difficulty (old name inferred from that statement)."
+		},
+		{
+			"kind": "ini",
+			"class": "GameActivity",
+			"old": "DefaultGoldMedium",
+			"new": "DefaultGoldMediumDifficulty",
+			"mechanical": true,
+			"version": "v5.0.0",
+			"note": "Default gold properties renamed to end in Difficulty (old name inferred from that statement)."
+		},
+		{
+			"kind": "ini",
+			"class": "GameActivity",
+			"old": "DefaultGoldHard",
+			"new": "DefaultGoldHardDifficulty",
+			"mechanical": true,
+			"version": "v5.0.0",
+			"note": "Default gold properties renamed to end in Difficulty (old name inferred from that statement)."
+		},
+		{
+			"kind": "ini",
+			"class": "GameActivity",
+			"old": "DefaultGoldNuts",
+			"new": "DefaultGoldNutsDifficulty",
+			"mechanical": true,
+			"version": "v5.0.0",
+			"note": "Default gold properties renamed to end in Difficulty (old name inferred from that statement)."
+		},
+		{
+			"kind": "lua",
+			"class": "UInputMan",
+			"old": "KeyPressed",
+			"new": "KeyPressed",
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "Now takes SDL_Keycode values instead of Allegro scancodes; use ScancodePressed for physical keys."
+		},
+		{
+			"kind": "lua",
+			"class": "UInputMan",
+			"old": "KeyReleased",
+			"new": "KeyReleased",
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "Now takes SDL_Keycode values instead of Allegro scancodes; use ScancodeReleased for physical keys."
+		},
+		{
+			"kind": "lua",
+			"class": "UInputMan",
+			"old": "KeyHeld",
+			"new": "KeyHeld",
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "Now takes SDL_Keycode values instead of Allegro scancodes; use ScancodeHeld for physical keys."
+		},
+		{
+			"kind": "ini",
+			"class": "Arm",
+			"old": "IdleOffset",
+			"new": "HandIdleOffset",
+			"mechanical": true,
+			"version": "v5.0.0",
+			"note": "Renamed; IdleOffset is still accepted for compatibility."
+		},
+		{
+			"kind": "ini",
+			"class": "Arm",
+			"old": "Hand",
+			"new": "HandSprite",
+			"mechanical": true,
+			"version": "v5.0.0",
+			"note": "Renamed; Hand is still accepted for compatibility."
+		},
+		{
+			"kind": "ini",
+			"class": "SLTerrain",
+			"old": "Offset",
+			"new": null,
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "Removed from SLTerrain and SLBackground; internal and should not have been exposed."
+		},
+		{
+			"kind": "ini",
+			"class": "SLTerrain",
+			"old": "AddTerrainObject",
+			"new": "PlaceTerrainObject",
+			"mechanical": true,
+			"version": "v5.0.0",
+			"note": "Alt property removed; use PlaceTerrainObject."
+		},
+		{
+			"kind": "ini",
+			"class": "TerrainObject",
+			"old": "DisplayAsTerrain",
+			"new": null,
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "Removed; it did nothing."
+		},
+		{
+			"kind": "lua",
+			"class": "SceneMan",
+			"old": "AddTerrainObject",
+			"new": "SceneMan:AddSceneObject",
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "Removed; use SceneMan:AddSceneObject instead."
+		},
+		{
+			"kind": "lua",
+			"class": "Activity",
+			"old": "EnteredOrbit",
+			"new": null,
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "Removed; should never have been accessible to Lua."
+		},
+		{
+			"kind": "lua",
+			"class": "Activity",
+			"old": "OnPieMenu",
+			"new": null,
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "OnPieMenu listeners for Activities and GlobalScripts removed; modify PieMenus directly instead."
+		},
+		{
+			"kind": "lua",
+			"class": null,
+			"old": "ProvidesPieMenuContext",
+			"new": null,
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "ProvidesPieMenuContext concept removed; modify PieMenus directly instead."
+		},
+		{
+			"kind": "lua",
+			"class": "SceneMan",
+			"old": "SetOffsetX",
+			"new": "CameraMan:SetOffset",
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "Removed; use CameraMan:SetOffset(offsetVector, screenId)."
+		},
+		{
+			"kind": "lua",
+			"class": "SceneMan",
+			"old": "SetOffsetY",
+			"new": "CameraMan:SetOffset",
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "Removed; use CameraMan:SetOffset(offsetVector, screenId)."
+		},
+		{
+			"kind": "lua",
+			"class": "UInputMan",
+			"old": "JoyDirectionPressed",
+			"new": "JoyDirectionPressed",
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "whichStick parameter removed; drop that argument."
+		},
+		{
+			"kind": "lua",
+			"class": "UInputMan",
+			"old": "JoyDirectionReleased",
+			"new": "JoyDirectionReleased",
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "whichStick parameter removed; drop that argument."
+		},
+		{
+			"kind": "lua",
+			"class": "UInputMan",
+			"old": "JoyDirectionHeld",
+			"new": "JoyDirectionHeld",
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "whichStick parameter removed; drop that argument."
+		},
+		{
+			"kind": "lua",
+			"class": "UInputMan",
+			"old": "AnalogAxisValue",
+			"new": "AnalogAxisValue",
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "whichStick parameter removed; drop that argument."
+		},
+		{
+			"kind": "lua",
+			"class": "UInputMan",
+			"old": "WhichKeyHeld",
+			"new": null,
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "Removed with no replacement."
+		},
+		{
+			"kind": "file",
+			"class": null,
+			"old": "Base.rte",
+			"new": "Userdata",
+			"mechanical": false,
+			"version": "v5.0.0",
+			"note": "Player loadouts (BuyMenu presets) are now stored in Userdata instead of Base.rte."
+		},
+		{
+			"kind": "lua",
+			"class": "MOSprite",
+			"old": "LOOPWHENMOVING",
+			"new": "LOOPWHENACTIVE",
+			"mechanical": true,
+			"version": "v4.0.0",
+			"note": "SpriteAnimMode enum value renamed."
+		},
+		{
+			"kind": "lua",
+			"class": "Activity",
+			"old": "Running",
+			"new": "IsRunning",
+			"mechanical": true,
+			"version": "v4.0.0",
+			"note": "Activity property renamed (ActivityMan functions unchanged)."
+		},
+		{
+			"kind": "lua",
+			"class": "Activity",
+			"old": "Paused",
+			"new": "IsPaused",
+			"mechanical": true,
+			"version": "v4.0.0",
+			"note": "Activity property renamed (ActivityMan functions unchanged)."
+		},
+		{
+			"kind": "lua",
+			"class": "Activity",
+			"old": "ActivityOver",
+			"new": "IsOver",
+			"mechanical": true,
+			"version": "v4.0.0",
+			"note": "Activity property renamed (ActivityMan functions unchanged)."
+		},
+		{
+			"kind": "ini",
+			"class": "AEmitter",
+			"old": "MinThrottleRange",
+			"new": "NegativeThrottleMultiplier",
+			"mechanical": false,
+			"version": "v4.0.0",
+			"note": "Renamed for AEmitter and PEmitter with new throttle logic (multiplies emission rate); retune values."
+		},
+		{
+			"kind": "ini",
+			"class": "AEmitter",
+			"old": "MaxThrottleRange",
+			"new": "PositiveThrottleMultiplier",
+			"mechanical": false,
+			"version": "v4.0.0",
+			"note": "Renamed for AEmitter and PEmitter with new throttle logic (multiplies emission rate); retune values."
+		},
+		{
+			"kind": "lua",
+			"class": "MovableMan",
+			"old": "KillAllActors",
+			"new": "KillAllEnemyActors",
+			"mechanical": true,
+			"version": "v4.0.0",
+			"note": "Function renamed."
+		},
+		{
+			"kind": "lua",
+			"class": "MovableMan",
+			"old": "GetClosestActor",
+			"new": "GetClosestActor",
+			"mechanical": false,
+			"version": "v4.0.0",
+			"note": "Distance argument is now a Vector rather than a float."
+		},
+		{
+			"kind": "lua",
+			"class": "MovableMan",
+			"old": "GetClosestTeamActor",
+			"new": "GetClosestTeamActor",
+			"mechanical": false,
+			"version": "v4.0.0",
+			"note": "Distance argument is now a Vector rather than a float."
+		},
+		{
+			"kind": "lua",
+			"class": "Attachable",
+			"old": "DeleteWithParent",
+			"new": "DeleteWhenRemovedFromParent",
+			"mechanical": true,
+			"version": "v4.0.0",
+			"note": "Attachable.DeleteWithParent renamed to DeleteWhenRemovedFromParent."
+		},
+		{
+			"kind": "ini",
+			"class": "Attachable",
+			"old": "DeleteWithParent",
+			"new": "DeleteWhenRemovedFromParent",
+			"mechanical": true,
+			"version": "v4.0.0",
+			"note": "Attachable/AEmitter property DeleteWithParent renamed to DeleteWhenRemovedFromParent."
+		},
+		{
+			"kind": "lua",
+			"class": "Attachable",
+			"old": "OnlyLinearForces",
+			"new": "ApplyTransferredForcesAtOffset",
+			"mechanical": false,
+			"version": "v4.0.0",
+			"note": "Renamed and reversed: OnlyLinearForces == true now means ApplyTransferredForcesAtOffset == false."
+		},
+		{
+			"kind": "ini",
+			"class": "Attachable",
+			"old": "OnlyLinearForces",
+			"new": "ApplyTransferredForcesAtOffset",
+			"mechanical": false,
+			"version": "v4.0.0",
+			"note": "Renamed and reversed: invert the value (1 becomes 0)."
+		},
+		{
+			"kind": "lua",
+			"class": "Actor",
+			"old": "TotalWoundCount",
+			"new": "GetWoundCount",
+			"mechanical": false,
+			"version": "v4.0.0",
+			"note": "Removed; use MOSRotating GetWoundCount (or WoundCount), which by default counts differently over Attachables."
+		},
+		{
+			"kind": "lua",
+			"class": "Actor",
+			"old": "RemoveAnyRandomWounds",
+			"new": "RemoveWounds",
+			"mechanical": false,
+			"version": "v4.0.0",
+			"note": "Removed; use MOSRotating RemoveWounds."
+		},
+		{
+			"kind": "ini",
+			"class": "Turret",
+			"old": "MountedMO",
+			"new": "MountedDevice",
+			"mechanical": true,
+			"version": "v4.0.0",
+			"note": "Renamed; Turrets can only mount HeldDevices."
+		},
+		{
+			"kind": "lua",
+			"class": "ACrab",
+			"old": "LFGLeg",
+			"new": "LeftFGLeg",
+			"mechanical": true,
+			"version": "v4.0.0",
+			"note": "Lua property renamed (INI single-letter forms are still accepted)."
+		},
+		{
+			"kind": "lua",
+			"class": "ACrab",
+			"old": "LBGLeg",
+			"new": "LeftBGLeg",
+			"mechanical": true,
+			"version": "v4.0.0",
+			"note": "Lua property renamed (INI single-letter forms are still accepted)."
+		},
+		{
+			"kind": "lua",
+			"class": "ACrab",
+			"old": "RFGLeg",
+			"new": "RightFGLeg",
+			"mechanical": true,
+			"version": "v4.0.0",
+			"note": "Lua property renamed (INI single-letter forms are still accepted)."
+		},
+		{
+			"kind": "lua",
+			"class": "ACrab",
+			"old": "RBGLeg",
+			"new": "RightBGLeg",
+			"mechanical": true,
+			"version": "v4.0.0",
+			"note": "Lua property renamed (INI single-letter forms are still accepted)."
+		},
+		{
+			"kind": "ini",
+			"class": "Actor",
+			"old": "MaxMass",
+			"new": "MaxInventoryMass",
+			"mechanical": false,
+			"version": "v4.0.0",
+			"note": "Renamed and no longer includes the Actor's own Mass; subtract the craft/actor Mass from the old value."
+		},
+		{
+			"kind": "lua",
+			"class": "Actor",
+			"old": "MaxMass",
+			"new": "MaxInventoryMass",
+			"mechanical": false,
+			"version": "v4.0.0",
+			"note": "Renamed and no longer includes the Actor's own Mass."
+		},
+		{
+			"kind": "lua",
+			"class": "AudioMan",
+			"old": "FadeOutSound",
+			"new": "SoundContainer:FadeOut",
+			"mechanical": false,
+			"version": "v4.0.0",
+			"note": "AudioMan:FadeOutSound(fadeOutTime) replaced with soundContainer:FadeOut(fadeOutTime)."
+		},
+		{
+			"kind": "lua",
+			"class": "AudioMan",
+			"old": "StopSound",
+			"new": "SoundContainer:Stop",
+			"mechanical": false,
+			"version": "v4.0.0",
+			"note": "AudioMan:StopSound(soundContainer[, player]) replaced with soundContainer:Stop([player])."
+		},
+		{
+			"kind": "lua",
+			"class": "AHuman",
+			"old": "ReloadFirearm",
+			"new": "ReloadFirearms",
+			"mechanical": true,
+			"version": "v4.0.0",
+			"note": "Renamed; now also reloads offhand weapons where appropriate."
+		},
+		{
+			"kind": "lua",
+			"class": "ACrab",
+			"old": "ReloadFirearm",
+			"new": "ReloadFirearms",
+			"mechanical": true,
+			"version": "v4.0.0",
+			"note": "Renamed; now reloads all of the ACrab's weapons."
+		},
+		{
+			"kind": "lua",
+			"class": "Attachable",
+			"old": "IsDrawnAfterParent",
+			"new": "DrawnAfterParent",
+			"mechanical": false,
+			"version": "v4.0.0",
+			"note": "Method changed to an R/W property: attachable:IsDrawnAfterParent() -> attachable.DrawnAfterParent."
+		},
+		{
+			"kind": "lua",
+			"class": "Vector",
+			"old": "GetRadRotated",
+			"new": "GetRadRotatedCopy",
+			"mechanical": true,
+			"version": "v4.0.0",
+			"note": "Renamed for clarity."
+		},
+		{
+			"kind": "lua",
+			"class": "Vector",
+			"old": "GetDegRotated",
+			"new": "GetDegRotatedCopy",
+			"mechanical": true,
+			"version": "v4.0.0",
+			"note": "Renamed for clarity."
+		},
+		{
+			"kind": "ini",
+			"class": "DataModule",
+			"old": "Tech",
+			"new": "IsFaction",
+			"mechanical": false,
+			"version": "v4.0.0",
+			"note": "Putting \"Tech\" in ModuleName no longer makes a playable faction; set IsFaction = 1."
+		},
+		{
+			"kind": "ini",
+			"class": "Attachable",
+			"old": "CollidesWithTerrainWhenAttached",
+			"new": "CollidesWithTerrainWhileAttached",
+			"mechanical": true,
+			"version": "v4.0.0",
+			"note": "INI property renamed."
+		},
+		{
+			"kind": "lua",
+			"class": "Attachable",
+			"old": "AtomSubGroupID",
+			"new": null,
+			"mechanical": false,
+			"version": "v4.0.0",
+			"note": "Lua write access removed (still readable)."
+		},
+		{
+			"kind": "ini",
+			"class": "Leg",
+			"old": "MaxLength",
+			"new": "ContractedOffset",
+			"mechanical": false,
+			"version": "v4.0.0",
+			"note": "Removed; set ContractedOffset X = old MaxLength/2 and ExtendedOffset X = old MaxLength."
+		},
+		{
+			"kind": "lua",
+			"class": "Attachable",
+			"old": "RotTarget",
+			"new": null,
+			"mechanical": false,
+			"version": "v4.0.0",
+			"note": "Removed from Lua; it never worked."
+		},
+		{
+			"kind": "ini",
+			"class": "Attachable",
+			"old": "RotTarget",
+			"new": null,
+			"mechanical": false,
+			"version": "v4.0.0",
+			"note": "Removed from INI; it never worked."
+		},
+		{
+			"kind": "lua",
+			"class": "Attachable",
+			"old": "CollectDamage",
+			"new": null,
+			"mechanical": false,
+			"version": "v4.0.0",
+			"note": "Internal function removed from Lua."
+		},
+		{
+			"kind": "lua",
+			"class": "Attachable",
+			"old": "TransferJointForces",
+			"new": null,
+			"mechanical": false,
+			"version": "v4.0.0",
+			"note": "Internal function removed from Lua."
+		},
+		{
+			"kind": "lua",
+			"class": "Attachable",
+			"old": "TransferJointImpulses",
+			"new": null,
+			"mechanical": false,
+			"version": "v4.0.0",
+			"note": "Internal function removed from Lua."
+		},
+		{
+			"kind": "lua",
+			"class": "MOSRotating",
+			"old": "ApplyForces",
+			"new": null,
+			"mechanical": false,
+			"version": "v4.0.0",
+			"note": "Internal function removed from Lua."
+		},
+		{
+			"kind": "lua",
+			"class": "MOSRotating",
+			"old": "ApplyImpulses",
+			"new": null,
+			"mechanical": false,
+			"version": "v4.0.0",
+			"note": "Internal function removed from Lua."
+		},
+		{
+			"kind": "lua",
+			"class": "FrameMan",
+			"old": "GetPPM",
+			"new": "GetPPM",
+			"mechanical": true,
+			"version": "v3.0.0",
+			"note": "Moved to a global function: FrameMan:GetPPM() -> GetPPM()."
+		},
+		{
+			"kind": "lua",
+			"class": "FrameMan",
+			"old": "GetMPP",
+			"new": "GetMPP",
+			"mechanical": true,
+			"version": "v3.0.0",
+			"note": "Moved to a global function: FrameMan:GetMPP() -> GetMPP()."
+		},
+		{
+			"kind": "lua",
+			"class": "FrameMan",
+			"old": "GetPPL",
+			"new": "GetPPL",
+			"mechanical": true,
+			"version": "v3.0.0",
+			"note": "Moved to a global function: FrameMan:GetPPL() -> GetPPL()."
+		},
+		{
+			"kind": "lua",
+			"class": "FrameMan",
+			"old": "GetLPP",
+			"new": "GetLPP",
+			"mechanical": true,
+			"version": "v3.0.0",
+			"note": "Moved to a global function: FrameMan:GetLPP() -> GetLPP()."
+		},
+		{
+			"kind": "ini",
+			"class": "ADoor",
+			"old": "DrawWhenOpen",
+			"new": "DrawMaterialLayerWhenOpen",
+			"mechanical": true,
+			"version": "v3.0.0",
+			"note": "Renamed for clarity."
+		},
+		{
+			"kind": "ini",
+			"class": "ADoor",
+			"old": "DrawWhenClosed",
+			"new": "DrawMaterialLayerWhenClosed",
+			"mechanical": true,
+			"version": "v3.0.0",
+			"note": "Renamed for clarity."
+		},
+		{
+			"kind": "lua",
+			"class": null,
+			"old": "OnScriptRemoveOrDisable",
+			"new": "OnScriptDisable",
+			"mechanical": false,
+			"version": "v3.0.0",
+			"note": "Callback renamed and no longer receives the scriptWasRemoved parameter."
+		},
+		{
+			"kind": "lua",
+			"class": "UInputManager",
+			"old": "UInputManager.DEVICE_KEYB_ONLY",
+			"new": "InputDevice.DEVICE_KEYB_ONLY",
+			"mechanical": true,
+			"version": "v3.0.0",
+			"note": "Input enums moved to Constants and use their own enum name as prefix."
+		},
+		{
+			"kind": "lua",
+			"class": "UInputManager",
+			"old": "UInputManager.INPUT_L_UP",
+			"new": "InputElements.INPUT_L_UP",
+			"mechanical": true,
+			"version": "v3.0.0",
+			"note": "Input enums moved to Constants and use their own enum name as prefix (same for the other INPUT_ values)."
+		},
+		{
+			"kind": "ini",
+			"class": null,
+			"old": "CraftsOrbitAtTheEdge",
+			"new": "CraftOrbitAtTheEdge",
+			"mechanical": true,
+			"version": "v3.0.0",
+			"note": "Spelling corrected."
+		},
+		{
+			"kind": "lua",
+			"class": null,
+			"old": "CraftsOrbitAtTheEdge",
+			"new": "CraftOrbitAtTheEdge",
+			"mechanical": true,
+			"version": "v3.0.0",
+			"note": "Spelling corrected."
+		},
+		{
+			"kind": "lua",
+			"class": "Activity",
+			"old": "IsPlayerTeam",
+			"new": "IsHumanTeam",
+			"mechanical": true,
+			"version": "v3.0.0",
+			"note": "Function renamed."
+		},
+		{
+			"kind": "lua",
+			"class": "Arm",
+			"old": "HandPos",
+			"new": "HandPos",
+			"mechanical": false,
+			"version": "v3.0.0",
+			"note": "Now relative to the arm's joint position instead of the arm's center of mass."
+		},
+		{
+			"kind": "lua",
+			"class": "SoundContainer",
+			"old": "AddSound",
+			"new": "SoundSet:AddSound",
+			"mechanical": false,
+			"version": "v3.0.0",
+			"note": "Moved from SoundContainer to SoundSet and trimmed down; use soundContainer:GetTopLevelSoundSet():AddSound(...)."
+		},
+		{
+			"kind": "lua",
+			"class": "SoundContainer",
+			"old": "SelectNextSoundSet",
+			"new": "SoundSet:SelectNextSounds",
+			"mechanical": false,
+			"version": "v3.0.0",
+			"note": "Moved to SoundSet and renamed SelectNextSounds."
+		},
+		{
+			"kind": "lua",
+			"class": "MovableObject",
+			"old": "RemoveScript",
+			"new": null,
+			"mechanical": false,
+			"version": "v3.0.0",
+			"note": "Removing scripts from Lua is no longer possible; use DisableScript instead."
+		},
+		{
+			"kind": "ini",
+			"class": "MOSParticle",
+			"old": "Framerate",
+			"new": "SpriteAnimMode",
+			"mechanical": false,
+			"version": "v3.0.0",
+			"note": "Removed; Framerate = 0 behaviour is SpriteAnimMode = 7 (OVERLIFETIME)."
+		},
+		{
+			"kind": "lua",
+			"class": "MOSParticle",
+			"old": "Framerate",
+			"new": "SpriteAnimMode",
+			"mechanical": false,
+			"version": "v3.0.0",
+			"note": "Lua bindings removed; use SpriteAnimMode."
+		},
+		{
+			"kind": "lua",
+			"class": "ConsoleMan",
+			"old": "ForceVisibility",
+			"new": null,
+			"mechanical": false,
+			"version": "v3.0.0",
+			"note": "Lua binding removed."
+		},
+		{
+			"kind": "lua",
+			"class": "ConsoleMan",
+			"old": "ScreenSize",
+			"new": null,
+			"mechanical": false,
+			"version": "v3.0.0",
+			"note": "Lua binding removed."
+		},
+		{
+			"kind": "lua",
+			"class": "ActivityMan",
+			"old": "PlayerCount",
+			"new": null,
+			"mechanical": false,
+			"version": "v3.0.0",
+			"note": "Setter removed (obsolete and did nothing)."
+		},
+		{
+			"kind": "lua",
+			"class": "ActivityMan",
+			"old": "TeamCount",
+			"new": null,
+			"mechanical": false,
+			"version": "v3.0.0",
+			"note": "Setter removed (obsolete and did nothing)."
+		},
+		{
+			"kind": "ini",
+			"class": "Activity",
+			"old": "TeamCount",
+			"new": null,
+			"mechanical": false,
+			"version": "v3.0.0",
+			"note": "Removed; handled internally."
+		},
+		{
+			"kind": "ini",
+			"class": "Activity",
+			"old": "PlayerCount",
+			"new": null,
+			"mechanical": false,
+			"version": "v3.0.0",
+			"note": "Removed; handled internally."
+		},
+		{
+			"kind": "ini",
+			"class": "Activity",
+			"old": "FundsOfTeam#",
+			"new": "Team#Funds",
+			"mechanical": true,
+			"version": "v3.0.0",
+			"note": "Removed; use Team#Funds (# is the team number)."
+		},
+		{
+			"kind": "lua",
+			"class": "AudioMan",
+			"old": "SetSoundPosition",
+			"new": "SoundContainer.Pos",
+			"mechanical": false,
+			"version": "v3.0.0",
+			"note": "Removed; set soundContainer.Pos instead."
+		},
+		{
+			"kind": "lua",
+			"class": "AudioMan",
+			"old": "SetSoundPitch",
+			"new": "SoundContainer.Pitch",
+			"mechanical": false,
+			"version": "v3.0.0",
+			"note": "Removed; set soundContainer.Pitch instead."
+		},
+		{
+			"kind": "lua",
+			"class": "AudioMan",
+			"old": "PlaySound",
+			"new": "SoundContainer:Play",
+			"mechanical": false,
+			"version": "v3.0.0",
+			"note": "Removed; create a SoundContainer (CreateSoundContainer or SoundContainer()) and play it."
+		},
+		{
+			"kind": "ini",
+			"class": null,
+			"old": "Sound",
+			"new": "SoundContainer",
+			"mechanical": false,
+			"version": "v2.0.0",
+			"note": "Sounds renamed to SoundContainers; use ... = SoundContainer and add files with AddSound = ContentFile."
+		},
+		{
+			"kind": "lua",
+			"class": "Box",
+			"old": "WithinBox",
+			"new": "IsWithinBox",
+			"mechanical": true,
+			"version": "v2.0.0",
+			"note": "Renamed."
+		},
+		{
+			"kind": "lua",
+			"class": "Box",
+			"old": "WithinBoxX",
+			"new": "IsWithinBoxX",
+			"mechanical": true,
+			"version": "v2.0.0",
+			"note": "Renamed."
+		},
+		{
+			"kind": "lua",
+			"class": "Box",
+			"old": "WithinBoxY",
+			"new": "IsWithinBoxY",
+			"mechanical": true,
+			"version": "v2.0.0",
+			"note": "Renamed."
+		},
+		{
+			"kind": "lua",
+			"class": "FrameMan",
+			"old": "DrawLinePrimitive",
+			"new": "PrimitiveMan:DrawLinePrimitive",
+			"mechanical": true,
+			"version": "v2.0.0",
+			"note": "All Lua primitive draw calls moved from FrameMan to PrimitiveMan."
+		},
+		{
+			"kind": "lua",
+			"class": null,
+			"old": "PieMenuActor",
+			"new": null,
+			"mechanical": false,
+			"version": "v2.0.0",
+			"note": "Global removed; use the parameter of OnPieMenu(pieMenuActor)."
+		},
+		{
+			"kind": "lua",
+			"class": null,
+			"old": "OrbitedCraft",
+			"new": null,
+			"mechanical": false,
+			"version": "v2.0.0",
+			"note": "Global removed; use the parameter of CraftEnteredOrbit(orbitedCraft)."
+		},
+		{
+			"kind": "lua",
+			"class": "FrameMan",
+			"old": "ResetSplitScreens",
+			"new": null,
+			"mechanical": false,
+			"version": "v2.0.0",
+			"note": "Low-level FrameMan Lua binding removed."
+		},
+		{
+			"kind": "lua",
+			"class": "FrameMan",
+			"old": "PPM",
+			"new": null,
+			"mechanical": false,
+			"version": "v2.0.0",
+			"note": "Low-level FrameMan Lua binding removed (setter only)."
+		},
+		{
+			"kind": "lua",
+			"class": "FrameMan",
+			"old": "ResX",
+			"new": null,
+			"mechanical": false,
+			"version": "v2.0.0",
+			"note": "Low-level FrameMan Lua binding removed."
+		},
+		{
+			"kind": "lua",
+			"class": "FrameMan",
+			"old": "ResY",
+			"new": null,
+			"mechanical": false,
+			"version": "v2.0.0",
+			"note": "Low-level FrameMan Lua binding removed."
+		},
+		{
+			"kind": "lua",
+			"class": "FrameMan",
+			"old": "HSplit",
+			"new": null,
+			"mechanical": false,
+			"version": "v2.0.0",
+			"note": "Low-level FrameMan Lua binding removed."
+		},
+		{
+			"kind": "lua",
+			"class": "FrameMan",
+			"old": "VSplit",
+			"new": null,
+			"mechanical": false,
+			"version": "v2.0.0",
+			"note": "Low-level FrameMan Lua binding removed."
+		},
+		{
+			"kind": "lua",
+			"class": "FrameMan",
+			"old": "GetPlayerFrameBufferWidth",
+			"new": null,
+			"mechanical": false,
+			"version": "v2.0.0",
+			"note": "Low-level FrameMan Lua binding removed."
+		},
+		{
+			"kind": "lua",
+			"class": "FrameMan",
+			"old": "GetPlayerFrameBufferHeight",
+			"new": null,
+			"mechanical": false,
+			"version": "v2.0.0",
+			"note": "Low-level FrameMan Lua binding removed."
+		},
+		{
+			"kind": "lua",
+			"class": "FrameMan",
+			"old": "IsFullscreen",
+			"new": null,
+			"mechanical": false,
+			"version": "v2.0.0",
+			"note": "Low-level FrameMan Lua binding removed."
+		},
+		{
+			"kind": "lua",
+			"class": "FrameMan",
+			"old": "ToggleFullScreen",
+			"new": null,
+			"mechanical": false,
+			"version": "v2.0.0",
+			"note": "Low-level FrameMan Lua binding removed."
+		},
+		{
+			"kind": "lua",
+			"class": "FrameMan",
+			"old": "ClearBackbuffer8",
+			"new": null,
+			"mechanical": false,
+			"version": "v2.0.0",
+			"note": "Low-level FrameMan Lua binding removed."
+		},
+		{
+			"kind": "lua",
+			"class": "FrameMan",
+			"old": "ClearBackbuffer32",
+			"new": null,
+			"mechanical": false,
+			"version": "v2.0.0",
+			"note": "Low-level FrameMan Lua binding removed."
+		},
+		{
+			"kind": "lua",
+			"class": "FrameMan",
+			"old": "ClearPostEffects",
+			"new": null,
+			"mechanical": false,
+			"version": "v2.0.0",
+			"note": "Low-level FrameMan Lua binding removed."
+		},
+		{
+			"kind": "lua",
+			"class": "FrameMan",
+			"old": "ResetFrameTimer",
+			"new": null,
+			"mechanical": false,
+			"version": "v2.0.0",
+			"note": "Low-level FrameMan Lua binding removed."
+		},
+		{
+			"kind": "lua",
+			"class": "FrameMan",
+			"old": "ShowPerformanceStats",
+			"new": null,
+			"mechanical": false,
+			"version": "v2.0.0",
+			"note": "Low-level FrameMan Lua binding removed."
+		},
+		{
+			"kind": "lua",
+			"class": "Attachable",
+			"old": "Attach",
+			"new": "MOSRotating:AddAttachable",
+			"mechanical": false,
+			"version": "v1.0.0",
+			"note": "attachable:Attach(parent) replaced with parent:AddAttachable(attachable[, parentOffset])."
+		},
+		{
+			"kind": "lua",
+			"class": "TDExplosive",
+			"old": "ParticleNumberToAdd",
+			"new": null,
+			"mechanical": false,
+			"version": "v1.0.0",
+			"note": "Property removed."
+		},
+		{
+			"kind": "ini",
+			"class": "MOSRotating",
+			"old": "AddEmitter",
+			"new": null,
+			"mechanical": false,
+			"version": "v1.0.0",
+			"note": "Wounds can no longer be added via INI AddEmitter (emitters still can); add wounds with Lua AddWound."
+		},
+		{
+			"kind": "preset",
+			"class": "Imperatus.rte",
+			"old": "Imperatus Robot Walk Path",
+			"new": "Imperatus Combat Robot Walk Path",
+			"mechanical": true,
+			"version": "Cortex Commander",
+			"note": "The Imperatus robot's walk path was renamed in this game."
+		},
+		{
+			"kind": "preset",
+			"class": "Ronin.rte",
+			"old": "Ronin Kar98 Bolt Pull Sound",
+			"new": "Bolt Back Ronin Kar98",
+			"mechanical": true,
+			"version": "Cortex Commander",
+			"note": "The stock rifle's bolt sound was renamed in this game."
+		}
+	]
+}
