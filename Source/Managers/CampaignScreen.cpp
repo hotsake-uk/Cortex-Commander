@@ -826,6 +826,8 @@ namespace {
 		for (const BattleOutcome& battle: game.Battles) {
 			if (battle.Planet >= 0 && battle.Planet < static_cast<int>(game.Planets.size())) {
 				track.Pulses.push_back(Pulse{PulseKind::Battle, Place{game.Planets[battle.Planet].System, battle.Planet, battle.Point}, FactionColor(battle.Attacker), now});
+			} else if (battle.System >= 0 && battle.System < static_cast<int>(game.Systems.size())) {
+				track.Pulses.push_back(Pulse{PulseKind::Battle, Place{battle.System, -1, -1}, FactionColor(battle.Attacker), now});
 			}
 		}
 		game.Battles.clear();
@@ -1005,6 +1007,25 @@ namespace {
 	}
 #pragma endregion
 
+#pragma region Ships
+	/// An army's warship for its tooltips ("; frigate, hull 80%"), nothing for a transport.
+	std::string ShipText(const Army& army) {
+		if (!Armed(army)) {
+			return std::string();
+		}
+		return std::string("; ") + ShipName(army.Ship) + ", hull " + std::to_string(static_cast<int>(std::round(army.Hull * 100.0F))) + "%";
+	}
+
+	/// The total power of warships, for the screen.
+	float FleetPower(const std::vector<int>& armies) {
+		float power = 0.0F;
+		for (int army: armies) {
+			power += SpacePower(s_Screen.Game.Armies[army]);
+		}
+		return power;
+	}
+#pragma endregion
+
 #pragma region Orders from the maps
 	/// Has the view go to where an army ends up once it's moved there (after its glide), so a take-off shows the system and a landing
 	/// the planet. Call before giving the order.
@@ -1015,8 +1036,14 @@ namespace {
 	/// Opens the attack window for a move that's a battle, or makes the move at once when it isn't.
 	void TryEnter(int army, int planet, int point, bool overland) {
 		float defence = 0.0F;
-		// A battle, or a move that breaks a treaty, asks first.
-		if (WouldFight(s_Screen.Game, s_Screen.Game.Armies[army].Faction, planet, point, defence) || TreatyBroken(s_Screen.Game, s_Screen.Game.Armies[army].Faction, planet, point) >= 0) {
+		const Army& self = s_Screen.Game.Armies[army];
+		const std::vector<int> guards = overland ? std::vector<int>() : OrbitGuards(s_Screen.Game, self.Faction, planet, point);
+		if (!guards.empty() && !Armed(self)) {
+			s_Screen.Note = FactionLabel(s_Screen.Game.Armies[guards.front()].Faction) + "'s warships guard this orbit, and " + self.Name + " only has a transport. Upgrade its ship at a Shipyard to fight past them.";
+			return;
+		}
+		// A battle (on the ground or first in space), or a move that breaks a treaty, asks first.
+		if (!guards.empty() || WouldFight(s_Screen.Game, self.Faction, planet, point, defence) || TreatyBroken(s_Screen.Game, self.Faction, planet, point) >= 0) {
 			s_Screen.Attack = PendingAttack{true, s_Screen.Game.Armies[army].Id, planet, point, overland};
 			return;
 		}
@@ -1182,6 +1209,16 @@ namespace {
 		ImGui::Text("Right-click to send %s here (%s)", self.Name.c_str(), how);
 		if (self.Moves < 1) {
 			ImGui::TextColored(ImVec4(1.0F, 0.6F, 0.4F, 1.0F), "It has no moves left this turn.");
+		}
+		if (self.Planet != planet) {
+			if (const std::vector<int> guards = OrbitGuards(game, self.Faction, planet, point); !guards.empty()) {
+				if (!Armed(self)) {
+					ImGui::TextColored(ImVec4(1.0F, 0.5F, 0.4F, 1.0F), "Enemy warships guard the orbit: a transport can't land here.");
+				} else {
+					const float chance = SpaceWinChance(game, self, guards);
+					ImGui::TextColored(chance >= 0.5F ? ImVec4(1.0F, 0.85F, 0.35F, 1.0F) : ImVec4(1.0F, 0.5F, 0.4F, 1.0F), "First a space battle against the warships guarding the orbit: about %d%% to win (power %.0f against %.0f)", static_cast<int>(std::round(chance * 100.0F)), SpacePower(self), FleetPower(guards));
+				}
+			}
 		}
 		float defence = 0.0F;
 		if (WouldFight(game, self.Faction, planet, point, defence)) {
@@ -2305,7 +2342,7 @@ namespace {
 			ImGui::EndTooltip();
 		} else if (hoveredArmy) {
 			const Army& army = game.Armies[FindArmy(game, hoveredArmy)];
-			ImGui::SetTooltip("%s (%s): %d soldiers, strength %.0f", army.Name.c_str(), FactionLabel(army.Faction).c_str(), SoldierCount(army), Strength(game, army));
+			ImGui::SetTooltip("%s (%s): %d soldiers, strength %.0f%s", army.Name.c_str(), FactionLabel(army.Faction).c_str(), SoldierCount(army), Strength(game, army), ShipText(army).c_str());
 		}
 		s_Screen.GalaxyHoverLast = hovered ? hoveredSystem : -1;
 		DrawLegend(drawList, ImVec2(from.x + 8.0F, to.y - 8.0F));
@@ -2557,7 +2594,7 @@ namespace {
 		}
 		if (hoveredArmy) {
 			const Army& army = game.Armies[FindArmy(game, hoveredArmy)];
-			ImGui::SetTooltip("%s (%s): %d soldiers, strength %.0f", army.Name.c_str(), FactionLabel(army.Faction).c_str(), SoldierCount(army), Strength(game, army));
+			ImGui::SetTooltip("%s (%s): %d soldiers, strength %.0f%s", army.Name.c_str(), FactionLabel(army.Faction).c_str(), SoldierCount(army), Strength(game, army), ShipText(army).c_str());
 		} else if (hoveredPlanet >= 0) {
 			const Planet& planet = game.Planets[hoveredPlanet];
 			ImGui::BeginTooltip();
@@ -2816,7 +2853,7 @@ namespace {
 		}
 		if (hoveredArmy) {
 			const Army& army = game.Armies[FindArmy(game, hoveredArmy)];
-			ImGui::SetTooltip("%s (%s): %d soldiers, strength %.0f", army.Name.c_str(), FactionLabel(army.Faction).c_str(), SoldierCount(army), Strength(game, army));
+			ImGui::SetTooltip("%s (%s): %d soldiers, strength %.0f%s", army.Name.c_str(), FactionLabel(army.Faction).c_str(), SoldierCount(army), Strength(game, army), ShipText(army).c_str());
 		} else if (hoveredPoint >= 0) {
 			const Point& point = planet.Points[hoveredPoint];
 			float defence = 0.0F;
@@ -2870,6 +2907,26 @@ namespace {
 		ImGui::TextDisabled("%s", faction.Name.c_str());
 		ImGui::TextWrapped("%s", WhereIs(self).c_str());
 		ImGui::Text("%d soldiers, %d squads, strength %.0f", SoldierCount(self), static_cast<int>(self.Squads.size()), Strength(game, self));
+		if (Armed(self)) {
+			ImGui::Text("Ship: %s, hull", ShipName(self.Ship));
+			ImGui::SameLine();
+			HealthBar(self.Hull, ImGui::GetFontSize() * 4.0F);
+			ImGui::SetItemTooltip("%s\nPower in space: %.0f. Hull repairs a little each turn, fast over one of your Shipyards.", ShipTip(self.Ship), SpacePower(self));
+		} else {
+			ImGui::TextDisabled("Ship: transport");
+			ImGui::SetItemTooltip("%s", ShipTip(self.Ship));
+		}
+		if (own && self.Ship < static_cast<int>(CampaignModel::Ship::Count) - 1) {
+			std::string why;
+			const bool canUpgrade = CanUpgradeShip(game, army, why);
+			const std::string upgrade = std::string("Upgrade to a ") + ShipName(self.Ship + 1) + " (" + CostText(ShipCostFor(game, self.Faction, self.Ship + 1)) + ")";
+			ImGui::BeginDisabled(!canUpgrade);
+			if (ToolUI::Button(upgrade.c_str(), ImVec2(-1.0F, 0.0F))) {
+				UpgradeShip(game, army);
+			}
+			ImGui::EndDisabled();
+			ImGui::SetItemTooltip("%s%s%s", ShipTip(self.Ship + 1), canUpgrade ? "" : "\n", canUpgrade ? "" : why.c_str());
+		}
 		if (own) {
 			ImGui::Text("Moves left: %d of %d", self.Moves, c_MovesPerTurn);
 			if (self.Moves > 0 && self.Path.empty()) {
@@ -3676,6 +3733,10 @@ namespace {
 				}
 				ImGui::TableNextColumn();
 				ImGui::TextUnformatted(WhereIs(each).c_str());
+				if (Armed(each)) {
+					makeup = std::string(ShipName(each.Ship)) + "; " + makeup;
+					makeup[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(makeup[0])));
+				}
 				ImGui::TableNextColumn();
 				ImGui::TextUnformatted(makeup.c_str());
 				ImGui::TableNextColumn();
@@ -4358,6 +4419,11 @@ namespace {
 		if (point.Settlement > 0 && point.Built[static_cast<size_t>(Building::Walls)]) {
 			ImGui::TextDisabled("Walls: the defenders fight harder.");
 		}
+		const std::vector<int> guards = attack.Overland ? std::vector<int>() : OrbitGuards(game, game.Armies[army].Faction, attack.Planet, attack.Point);
+		if (!guards.empty()) {
+			const float spaceChance = SpaceWinChance(game, game.Armies[army], guards);
+			ImGui::TextColored(ImVec4(1.0F, 0.75F, 0.35F, 1.0F), "First, a space battle: %d warship%s guard the orbit (power %.0f against your %s's %.0f).\nAbout %d%% to win it. Lose it and your army falls back to a system next door.", static_cast<int>(guards.size()), guards.size() == 1 ? "" : "s", FleetPower(guards), ShipName(game.Armies[army].Ship), SpacePower(game.Armies[army]), static_cast<int>(std::round(spaceChance * 100.0F)));
+		}
 		const ImVec4 color = chance >= 0.7F ? ImVec4(0.5F, 1.0F, 0.5F, 1.0F) : chance >= 0.4F ? ImVec4(1.0F, 0.85F, 0.35F, 1.0F) : ImVec4(1.0F, 0.5F, 0.4F, 1.0F);
 		ImGui::TextColored(color, "Chance of winning: about %d%%", static_cast<int>(std::round(chance * 100.0F)));
 		const int faction = game.Armies[army].Faction;
@@ -4367,7 +4433,7 @@ namespace {
 			ImGui::TextDisabled("You're neutral with %s: this starts a war, and others think a little less of you.", FactionLabel(point.Owner).c_str());
 		}
 		ImGui::Spacing();
-		const bool canFight = CanFight(army, attack.Planet, attack.Point);
+		const bool canFight = guards.empty() && CanFight(army, attack.Planet, attack.Point);
 		ImGui::BeginDisabled(!canFight);
 		if (ToolUI::Button("Fight it yourself", ImVec2(ImGui::GetFontSize() * 10.0F, 0.0F))) {
 			StartFieldBattle(army, attack.Planet, attack.Point, attack.Overland);
@@ -4378,7 +4444,7 @@ namespace {
 			return;
 		}
 		ImGui::EndDisabled();
-		ImGui::SetItemTooltip(canFight ? "Fight the battle yourself, on the battlefield: your soldiers come down by dropship outside the defenders' bunker. Each one is one of this army's soldiers; whoever falls is gone, and whoever's left comes back with their wounds. Leaving early is a retreat." : "Nobody defends this point, so there's no battle to fight.");
+		ImGui::SetItemTooltip(canFight ? "Fight the battle yourself, on the battlefield: your soldiers come down by dropship outside the defenders' bunker. Each one is one of this army's soldiers; whoever falls is gone, and whoever's left comes back with their wounds. Leaving early is a retreat." : !guards.empty() ? "The space battle comes first and is auto-resolved: beat the warships guarding the orbit, then you can fight on the ground yourself." : "Nobody defends this point, so there's no battle to fight.");
 		ImGui::SameLine();
 		if (ToolUI::Button("Auto-resolve", ImVec2(ImGui::GetFontSize() * 8.0F, 0.0F))) {
 			FollowNext(army);
@@ -4414,16 +4480,24 @@ namespace {
 		ImGui::SetWindowFontScale(1.3F);
 		ImGui::TextColored(!playerIn ? ImVec4(1.0F, 1.0F, 1.0F, 1.0F) : won ? ImVec4(0.5F, 1.0F, 0.5F, 1.0F) : ImVec4(1.0F, 0.5F, 0.4F, 1.0F), "%s", !playerIn ? "Battle" : won ? "Victory" : "Defeat");
 		ImGui::SetWindowFontScale(1.0F);
-		ImGui::Text("Battle at %s", outcome.Where.c_str());
+		ImGui::Text("%s %s", outcome.Space ? "Space battle in" : "Battle at", outcome.Where.c_str());
 		if (outcome.Fought) {
 			ImGui::TextDisabled("Fought on the battlefield.");
 		}
 		ImGui::Separator();
+		const char* measure = outcome.Space ? "fleet power" : "strength";
 		ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(FactionColor(outcome.Attacker)), "%s attacked", FactionLabel(outcome.Attacker).c_str());
-		ImGui::Text("  %d soldiers, strength %.0f: %d fell", outcome.AttackerSoldiers, outcome.AttackStrength, outcome.AttackerLost);
+		ImGui::Text("  %d soldiers, %s %.0f: %d fell", outcome.AttackerSoldiers, measure, outcome.AttackStrength, outcome.AttackerLost);
 		ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(FactionColor(outcome.Defender)), "%s defended", outcome.Defender >= 0 ? FactionLabel(outcome.Defender).c_str() : "Locals");
-		ImGui::Text("  %d soldiers, strength %.0f: %d fell", outcome.DefenderSoldiers, outcome.DefendStrength, outcome.DefenderLost);
-		ImGui::Text("%s", outcome.AttackerWon ? "The attackers took the point." : "The defenders held.");
+		ImGui::Text("  %d soldiers, %s %.0f: %d fell", outcome.DefenderSoldiers, measure, outcome.DefendStrength, outcome.DefenderLost);
+		if (outcome.Space) {
+			ImGui::Text("%s", outcome.AttackerWon ? "The attackers won the orbit." : "The defenders held the orbit.");
+			for (const std::string& line: outcome.Notes) {
+				ImGui::BulletText("%s", line.c_str());
+			}
+		} else {
+			ImGui::Text("%s", outcome.AttackerWon ? "The attackers took the point." : "The defenders held.");
+		}
 		if (!outcome.Promotions.empty()) {
 			ImGui::SeparatorText("Promotions");
 			for (const std::string& line: outcome.Promotions) {
@@ -4433,9 +4507,13 @@ namespace {
 		ImGui::Spacing();
 		const std::string label = game.Reports.size() > 1 ? "Next report (" + std::to_string(game.Reports.size() - 1) + " more)" : std::string("Continue");
 		const float half = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5F;
-		ImGui::BeginDisabled(outcome.Planet < 0);
+		ImGui::BeginDisabled(outcome.Planet < 0 && outcome.System < 0);
 		if (ToolUI::Button("Take me there", ImVec2(std::max(half, ImGui::GetFontSize() * 7.0F), 0.0F))) {
-			TakeMeThere(outcome.Planet, outcome.Point, true);
+			if (outcome.Planet >= 0) {
+				TakeMeThere(outcome.Planet, outcome.Point, true);
+			} else {
+				ShowSystem(outcome.System);
+			}
 			game.Reports.erase(game.Reports.begin());
 			ImGui::CloseCurrentPopup();
 			ImGui::EndDisabled();
@@ -4559,7 +4637,8 @@ namespace {
 		static const Topic topics[] = {
 			{"Each turn", "1. Check the bar above the map. Red icons are pressing: invaded planets, enemies near your points, food or fuel running out. Hover one for what to do and click it to go there.\n\n2. Give your armies orders. The turn button reads Next while any still have moves: press it (or Enter, or Tab) to go to each one. Hold (H) leaves an army where it is this turn.\n\n3. Spend your gold: recruit squads, found and grow settlements, put up buildings.\n\n4. End the turn: the button reads End turn once nothing's left, and Ctrl+Enter ends it at any time. The other factions move, then you collect gold and resources."},
 			{"Moving armies", "Click an army to pick it, then right-click where it should go.\n\nOn the galaxy map, right-click a star to travel there along the lanes. Before you click, hovering the star shows the route, the turn the army reaches each stop, the fuel it needs and any enemies there.\n\nOn a planet, right-click a point to land there from orbit or march to it overland (only along the roads joining points).\n\nAn army has 2 moves a turn. Taking off, landing and marching take 1 move each, and a jump between stars takes 2 and burns 1 fuel. A long route carries on by itself over the next turns."},
-			{"Battles", "Moving onto a point held by someone you're not allied with, or defended by locals, is a battle. Before you commit, hover the point with your army picked to see your chance of winning. The attack window shows it again with both sides' strength. Go for 60% or better.\n\nBattles are resolved for you. Afterwards the report shows who won and the losses.\n\nRefill an army's squads at one of your settlements. Wounded soldiers heal each turn, fastest at a settlement, and survivors rank up. Walls make a settlement much harder to take."},
+			{"Battles", "Moving onto a point held by someone you're not allied with, or defended by locals, is a battle. Before you commit, hover the point with your army picked to see your chance of winning. The attack window shows it again with both sides' strength. Go for 60% or better.\n\nPress Auto-resolve to have the battle resolved for you, or Fight it yourself to play it on the battlefield with the army's own soldiers. Afterwards the report shows who won and the losses.\n\nRefill an army's squads at one of your settlements. Wounded soldiers heal each turn, fastest at a settlement, and survivors rank up. Walls make a settlement much harder to take."},
+			{"Fleets", "Every army travels in a ship. A new army has a transport, which only carries it: it never fights in space, and it can't land where enemy warships guard the orbit.\n\nBuild a Shipyard at one of your settlements, then upgrade the ship of an army standing there (in its panel) to a frigate, then a cruiser. Warships cost upkeep each turn.\n\nWarships of factions at war fight when they meet in orbit, and guard the planets below: to land past them you have to win a space battle first. Ships lose hull in battle and repair a little each turn, fast over one of your Shipyards. A warship that's destroyed takes most of its army's soldiers with it, and the loser falls back to a system next door."},
 			{"Planets and income", "A planet has 3 or 5 points. Hold more than half of them to control it, which pays a bonus each turn.\n\nWhile an enemy holds any point on a planet you control, it's invaded: half income and slower healing until you drive them out.\n\nFound an outpost on a point you hold, then grow it into a colony and a city for more gold and more building slots. Barracks unlock better squads, a Market pays more, Walls help hold it and a Hospital heals.\n\nEvery soldier costs upkeep each turn."},
 			{"Resources and trade", "Every point produces one of six resources: water, food, metal, fuel, crystal or relics. Your stores show under your gold, green when rising and orange when falling. One blinking red is running out.\n\nArmies eat food every turn and burn fuel to jump between stars. Building takes metal and water. Having plenty of a resource earns a production bonus: hover it to see them.\n\nClick a resource, or Trade (T), to buy and sell on the galaxy market. Prices rise as you buy and drift back each turn."},
 			{"Diplomacy", "Each pair of factions is at War, Neutral, Peace or in an Alliance, and each faction has an opinion of you.\n\nNeutral factions can attack each other, but it sours relations. Peace and alliances are treaties: breaking one makes every faction trust you less. Allies fight beside you and win with you.\n\nOpen Diplomacy (D) to trade gold and resources, sign trade pacts, and ask for peace or an alliance. If they won't agree, they say why. A gift raises their opinion. Factions send you offers between turns too."},
