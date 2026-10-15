@@ -385,6 +385,9 @@ void PollSDLEvents() {
 			// (Battle Command: from a unit you took over, back above it all. Its tool windows are F7 and F11, while it's in development.)
 			if (Sandbox::IsBattleCommand()) {
 				Sandbox::TogglePlay(false);
+			} else if (!Sandbox::IsGodMode()) {
+				// Any other game: command mode on and off (from a unit taken over in it, back up to the command view). The tool windows are F7.
+				Sandbox::ToggleCommandMode();
 			} else {
 				g_DebugMan.ToggleTools((sdlEvent.key.mod & SDL_KMOD_SHIFT) != 0);
 			}

@@ -44,6 +44,10 @@ namespace RTE {
 		/// sandbox window, or back into your unit (the Commander Toolbar key, F11 unless rebound).
 		static void ToggleCommanderToolbar();
 
+		/// Outside the Sandbox game mode and Battle Command, Tab: into commander mode with the Commander Toolbar, from a unit taken over
+		/// back up to the command view, or from the command view back into your unit.
+		static void ToggleCommandMode();
+
 		/// Whether a key (an SDL scancode) is the one set to swap the sandbox's bar and the Commander Toolbar (CommanderBarKey in the settings).
 		static bool IsCommanderBarKey(int scancode);
 
