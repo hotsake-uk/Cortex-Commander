@@ -142,6 +142,9 @@ namespace {
 		Tracking Track;
 		GuideState Guide;
 		Highlights Lights;
+		long FollowArmy = 0; //!< An army just ordered somewhere: the view goes to where it ends up once it gets there.
+		Place FollowFrom; //!< Where it was when ordered.
+		std::vector<std::pair<std::string, Place>> Alerts; //!< Points of the player's taken by another faction without a battle, to tell them of.
 		long RosterHover = 0; //!< The army the mouse is on in the army list, shown on the maps.
 		long RosterHoverNext = 0;
 		ImVec2 MapFrom; //!< Where the map was drawn this frame.
@@ -207,6 +210,8 @@ namespace {
 		s_Screen.Game.Reports.clear();
 		s_Screen.Track.Ready = false;
 		s_Screen.Guide.On = false;
+		s_Screen.FollowArmy = 0;
+		s_Screen.Alerts.clear();
 		const int player = Player();
 		if (player >= 0) {
 			const int home = s_Screen.Game.Factions[player].HomePlanet;
@@ -550,7 +555,14 @@ namespace {
 		for (size_t planet = 0; planet < owners.size() && planet < track.Owners.size(); ++planet) {
 			for (size_t point = 0; point < owners[planet].size() && point < track.Owners[planet].size(); ++point) {
 				if (owners[planet][point] != track.Owners[planet][point] && owners[planet][point] >= 0) {
-					track.Pulses.push_back(Pulse{PulseKind::Capture, Place{game.Planets[planet].System, static_cast<int>(planet), static_cast<int>(point)}, FactionColor(owners[planet][point]), now});
+					const Place where{game.Planets[planet].System, static_cast<int>(planet), static_cast<int>(point)};
+					track.Pulses.push_back(Pulse{PulseKind::Capture, where, FactionColor(owners[planet][point]), now});
+					// One of the player's taken with no battle (a battle has its own report): worth telling them.
+					const bool fought = std::any_of(game.Battles.begin(), game.Battles.end(), [&where](const BattleOutcome& battle) { return battle.Planet == where.Planet && battle.Point == where.Point; });
+					if (player >= 0 && track.Owners[planet][point] == player && !fought && s_Screen.Alerts.size() < 20) {
+						const Planet& lost = game.Planets[planet];
+						s_Screen.Alerts.emplace_back(FactionLabel(owners[planet][point]) + " took " + lost.Points[point].Name + " on " + lost.Name + ". Nobody was there to defend it.", where);
+					}
 				}
 			}
 		}
@@ -738,6 +750,12 @@ namespace {
 #pragma endregion
 
 #pragma region Orders from the maps
+	/// Has the view go to where an army ends up once it's moved there (after its glide), so a take-off shows the system and a landing
+	/// the planet. Call before giving the order.
+	void FollowNext(int army) {
+		s_Screen.FollowArmy = s_Screen.Game.Armies[army].Id;
+		s_Screen.FollowFrom = PlaceOf(s_Screen.Game.Armies[army]);
+	}
 	/// Opens the attack window for a move that's a battle, or makes the move at once when it isn't.
 	void TryEnter(int army, int planet, int point, bool overland) {
 		float defence = 0.0F;
@@ -745,6 +763,7 @@ namespace {
 			s_Screen.Attack = PendingAttack{true, s_Screen.Game.Armies[army].Id, planet, point, overland};
 			return;
 		}
+		FollowNext(army);
 		const bool done = overland ? OrderOverland(s_Screen.Game, army, point) : OrderLand(s_Screen.Game, army, planet, point);
 		if (!done) {
 			s_Screen.Note = "That army has no moves left this turn.";
@@ -796,6 +815,7 @@ namespace {
 		if (s_Screen.Game.Armies[army].System == system) {
 			return;
 		}
+		FollowNext(army);
 		if (!OrderMove(s_Screen.Game, army, system)) {
 			s_Screen.Note = "No lane leads there.";
 		} else if (!s_Screen.Game.Armies[army].Path.empty()) {
@@ -1212,6 +1232,64 @@ namespace {
 #pragma endregion
 
 #pragma region The galaxy map
+	/// The faction holding most of a system's points, -1 when nobody holds any or it's a tie.
+	int SystemOwner(int system) {
+		const CampaignModel::Campaign& game = s_Screen.Game;
+		std::vector<int> owned(game.Factions.size(), 0);
+		for (int planet: game.Systems[system].Planets) {
+			for (const Point& point: game.Planets[planet].Points) {
+				if (point.Owner >= 0) {
+					++owned[point.Owner];
+				}
+			}
+		}
+		int best = -1;
+		int most = 0;
+		bool tie = false;
+		for (int faction = 0; faction < static_cast<int>(owned.size()); ++faction) {
+			if (owned[faction] > most) {
+				best = faction;
+				most = owned[faction];
+				tie = false;
+			} else if (owned[faction] == most && most > 0) {
+				tie = true;
+			}
+		}
+		return tie ? -1 : best;
+	}
+
+	/// A key to the factions' colours in a corner of the map: each faction still in it, its planets and points, the player's marked.
+	void DrawLegend(ImDrawList* drawList, ImVec2 corner) {
+		const CampaignModel::Campaign& game = s_Screen.Game;
+		const int player = Player();
+		struct Row {
+			int Faction;
+			int Planets;
+			int Points;
+		};
+		std::vector<Row> rows;
+		for (int faction = 0; faction < static_cast<int>(game.Factions.size()); ++faction) {
+			if (game.Factions[faction].Alive) {
+				rows.push_back({faction, ControlledPlanets(faction), OwnedPoints(faction)});
+			}
+		}
+		std::sort(rows.begin(), rows.end(), [player](const Row& a, const Row& b) { return (a.Faction == player) != (b.Faction == player) ? a.Faction == player : a.Points > b.Points; });
+		const float line = ImGui::GetTextLineHeightWithSpacing();
+		float width = 0.0F;
+		std::vector<std::string> texts;
+		for (const Row& row: rows) {
+			texts.push_back(FactionLabel(row.Faction) + (row.Faction == player ? " (you)" : "") + ": " + std::to_string(row.Planets) + (row.Planets == 1 ? " planet, " : " planets, ") + std::to_string(row.Points) + " points");
+			width = std::max(width, ImGui::CalcTextSize(texts.back().c_str()).x);
+		}
+		const ImVec2 from(corner.x, corner.y - line * static_cast<float>(rows.size()) - 12.0F);
+		drawList->AddRectFilled(from, ImVec2(from.x + width + line + 14.0F, corner.y), IM_COL32(0, 0, 10, 170), 4.0F);
+		for (size_t index = 0; index < rows.size(); ++index) {
+			const ImVec2 at(from.x + 6.0F, from.y + 6.0F + line * static_cast<float>(index));
+			const ImU32 color = FactionColor(rows[index].Faction);
+			drawList->AddRectFilled(ImVec2(at.x, at.y + 2.0F), ImVec2(at.x + line - 6.0F, at.y + line - 4.0F), color, 2.0F);
+			drawList->AddText(ImVec2(at.x + line, at.y), rows[index].Faction == player ? ToolTheme::Gold : IM_COL32(230, 232, 245, 255), texts[index].c_str());
+		}
+	}
 	void GalaxyMap(ImVec2 size) {
 		CampaignModel::Campaign& game = s_Screen.Game;
 		ImVec2 from;
@@ -1234,6 +1312,18 @@ namespace {
 			}
 		}
 
+		// Territory: a wash of colour round each star, in the colour of whoever holds most of its points.
+		std::vector<int> systemOwners(game.Systems.size(), -1);
+		for (int index = 0; index < static_cast<int>(game.Systems.size()); ++index) {
+			systemOwners[index] = SystemOwner(index);
+			if (systemOwners[index] >= 0) {
+				const ImVec2 at = toScreen(game.Systems[index].X, game.Systems[index].Y);
+				const float reach = span * 0.075F;
+				for (int ring = 0; ring < 4; ++ring) {
+					drawList->AddCircleFilled(at, reach * (1.0F - 0.2F * static_cast<float>(ring)), Alpha(FactionColor(systemOwners[index]), 0.06F), 40);
+				}
+			}
+		}
 		// Lanes, and the selected army's route.
 		for (int a = 0; a < static_cast<int>(game.Systems.size()); ++a) {
 			for (int b: game.Systems[a].Lanes) {
@@ -1302,7 +1392,8 @@ namespace {
 				hoveredSystem = index;
 			}
 			if (s_Screen.GalaxyZoom >= 0.9F || onIt || index == s_Screen.SelectedSystem) {
-				CenteredText(drawList, ImVec2(at.x, at.y + starSize + 9.0F), onIt ? IM_COL32(255, 255, 255, 255) : IM_COL32(200, 205, 230, 220), system.Name);
+				const ImU32 nameColor = systemOwners[index] >= 0 ? Scale(FactionColor(systemOwners[index]), 1.3F) : IM_COL32(200, 205, 230, 220);
+				CenteredText(drawList, ImVec2(at.x, at.y + starSize + 9.0F), onIt ? IM_COL32(255, 255, 255, 255) : nameColor, system.Name);
 			}
 			// Armies here, one shield a faction, beside the star.
 			std::vector<std::vector<int>> byFaction(game.Factions.size());
@@ -1371,6 +1462,7 @@ namespace {
 			const Army& army = game.Armies[FindArmy(game, hoveredArmy)];
 			ImGui::SetTooltip("%s (%s): %d soldiers, strength %.0f", army.Name.c_str(), FactionLabel(army.Faction).c_str(), SoldierCount(army), Strength(game, army));
 		}
+		DrawLegend(drawList, ImVec2(from.x + 8.0F, to.y - 8.0F));
 		EndCanvas();
 	}
 #pragma endregion
@@ -1460,6 +1552,24 @@ namespace {
 			const ImVec2 at = where[planetIndex];
 			const float radius = step * 0.12F * planet.Size;
 			DrawPlanetBall(drawList, at, radius, planet, star);
+			// Who controls it: a ring in their colour, broken in red while it's invaded; a dashed grey ring while it's contested.
+			if (const PlanetControl held = ControlOf(game, planetIndex); held.Controller >= 0) {
+				drawList->AddCircle(at, radius + 3.0F, FactionColor(held.Controller), 64, 3.5F);
+				if (held.Invaded) {
+					const float blink = 0.5F + 0.5F * std::sin(static_cast<float>(ImGui::GetTime()) * 4.0F);
+					for (int dash = 0; dash < 8; dash += 2) {
+						const float start = static_cast<float>(dash) * c_Pi / 4.0F;
+						drawList->PathArcTo(at, radius + 3.0F, start, start + c_Pi / 4.0F, 12);
+						drawList->PathStroke(Alpha(IM_COL32(255, 70, 50, 255), blink), ImDrawFlags_None, 3.5F);
+					}
+				}
+			} else if (held.Contested) {
+				for (int dash = 0; dash < 16; dash += 2) {
+					const float start = static_cast<float>(dash) * c_Pi / 8.0F;
+					drawList->PathArcTo(at, radius + 3.0F, start, start + c_Pi / 8.0F, 6);
+					drawList->PathStroke(IM_COL32(170, 170, 180, 220), ImDrawFlags_None, 2.5F);
+				}
+			}
 			if (planetIndex == s_Screen.SelectedPlanet) {
 				drawList->AddCircle(at, radius + 6.0F, IM_COL32(255, 255, 255, 220), 48, 1.5F);
 			}
@@ -1538,6 +1648,7 @@ namespace {
 			const Planet& planet = game.Planets[hoveredPlanet];
 			ImGui::SetTooltip("%s, %s%s", planet.Name.c_str(), PlanetTypeName(planet.Type), planet.Points.empty() ? "" : "\nDouble-click for its map. Right-click to land the army picked.");
 		}
+		DrawLegend(drawList, ImVec2(from.x + 8.0F, to.y - 8.0F));
 		EndCanvas();
 	}
 #pragma endregion
@@ -1586,6 +1697,15 @@ namespace {
 				drawList->AddCircle(at, radius, Alpha(Scale(base, 0.4F), 0.7F), 24, 2.0F);
 			}
 		}
+		// Who holds which ground: a wash of each owner's colour round their points.
+		for (const Point& point: planet.Points) {
+			if (point.Owner >= 0) {
+				const ImVec2 at(from.x + point.X * mapWidth, from.y + point.Y * mapHeight);
+				for (int ring = 0; ring < 4; ++ring) {
+					drawList->AddCircleFilled(at, mapWidth * (0.17F - 0.035F * static_cast<float>(ring)), Alpha(FactionColor(point.Owner), 0.09F), 40);
+				}
+			}
+		}
 		// A faint grid, as a map has.
 		for (int line = 1; line < 8; ++line) {
 			const float x = from.x + mapWidth * static_cast<float>(line) / 8.0F;
@@ -1601,6 +1721,62 @@ namespace {
 		std::string title = planet.Name + ", " + PlanetTypeName(planet.Type) + ": ";
 		title += control.Controller >= 0 ? "controlled by " + FactionLabel(control.Controller) + (control.Invaded ? ", invaded" : "") : control.Contested ? "contested" : "unclaimed";
 		CenteredText(drawList, ImVec2((from.x + to.x) * 0.5F, from.y - 24.0F), control.Controller >= 0 ? Scale(FactionColor(control.Controller), 1.2F) : IM_COL32(230, 230, 240, 255), title);
+
+		{
+			// Control at a glance: a bar split by who holds the points, with a mark at half, and what it means.
+			const int total = static_cast<int>(planet.Points.size());
+			std::vector<int> owned(game.Factions.size(), 0);
+			int unclaimed = 0;
+			for (const Point& point: planet.Points) {
+				if (point.Owner >= 0) {
+					++owned[point.Owner];
+				} else {
+					++unclaimed;
+				}
+			}
+			std::vector<int> order;
+			if (control.Controller >= 0) {
+				order.push_back(control.Controller);
+			}
+			for (int faction = 0; faction < static_cast<int>(owned.size()); ++faction) {
+				if (owned[faction] > 0 && faction != control.Controller) {
+					order.push_back(faction);
+				}
+			}
+			const float line = ImGui::GetTextLineHeight();
+			const float barWidth = std::min(mapWidth * 0.35F, ImGui::GetFontSize() * 16.0F);
+			std::string caption;
+			if (control.Controller >= 0) {
+				caption = FactionLabel(control.Controller) + " controls it (" + std::to_string(owned[control.Controller]) + " of " + std::to_string(total) + " points)";
+				if (control.Invaded) {
+					caption += ", invaded";
+				}
+			} else {
+				caption = std::string(control.Contested ? "Contested" : "Unclaimed") + ": more than " + std::to_string(total / 2) + " of " + std::to_string(total) + " points controls it";
+			}
+			const float boxWidth = std::max(barWidth, ImGui::CalcTextSize(caption.c_str()).x) + 16.0F;
+			const ImVec2 boxFrom(from.x + 8.0F, to.y - line * 2.0F - 26.0F);
+			drawList->AddRectFilled(boxFrom, ImVec2(boxFrom.x + boxWidth, to.y - 8.0F), IM_COL32(0, 0, 10, 180), 4.0F);
+			const ImVec2 barFrom(boxFrom.x + 8.0F, boxFrom.y + 8.0F);
+			float x = barFrom.x;
+			auto segment = [&](int count, ImU32 color) {
+				const float width = barWidth * static_cast<float>(count) / static_cast<float>(std::max(total, 1));
+				drawList->AddRectFilled(ImVec2(x, barFrom.y), ImVec2(x + width, barFrom.y + line), color);
+				x += width;
+			};
+			for (int faction: order) {
+				segment(owned[faction], FactionColor(faction));
+			}
+			segment(unclaimed, IM_COL32(90, 90, 100, 255));
+			for (int point = 1; point < total; ++point) {
+				const float tick = barFrom.x + barWidth * static_cast<float>(point) / static_cast<float>(total);
+				drawList->AddLine(ImVec2(tick, barFrom.y), ImVec2(tick, barFrom.y + line), IM_COL32(0, 0, 0, 200), 1.0F);
+			}
+			const float half = barFrom.x + barWidth * 0.5F;
+			drawList->AddLine(ImVec2(half, barFrom.y - 4.0F), ImVec2(half, barFrom.y + line + 4.0F), IM_COL32(255, 255, 255, 255), 2.0F);
+			drawList->AddRect(barFrom, ImVec2(barFrom.x + barWidth, barFrom.y + line), IM_COL32(200, 200, 220, 200));
+			drawList->AddText(ImVec2(barFrom.x, barFrom.y + line + 6.0F), control.Controller >= 0 ? Scale(FactionColor(control.Controller), 1.3F) : IM_COL32(230, 230, 240, 255), caption.c_str());
+		}
 
 		auto pointAt = [&](const Point& point) { return ImVec2(from.x + point.X * mapWidth, from.y + point.Y * mapHeight); };
 		// Routes overland.
@@ -1640,6 +1816,9 @@ namespace {
 				label += " (locals)";
 			}
 			CenteredText(drawList, ImVec2(at.x, at.y + radius + 4.0F), IM_COL32(255, 255, 255, 240), label);
+			if (point.Owner >= 0) {
+				CenteredText(drawList, ImVec2(at.x, at.y + radius + 4.0F + ImGui::GetTextLineHeight()), Scale(FactionColor(point.Owner), 1.3F), FactionLabel(point.Owner) + (point.Owner == Player() ? " (you)" : ""));
+			}
 			if (hovered && std::hypot(io.MousePos.x - at.x, io.MousePos.y - at.y) < radius + 4.0F) {
 				hoveredPoint = index;
 			}
@@ -1753,6 +1932,7 @@ namespace {
 			const float half = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5F;
 			ImGui::BeginDisabled(self.Planet < 0 || self.Moves < 1);
 			if (ToolUI::Button("Take off", ImVec2(half, 0.0F))) {
+				FollowNext(army);
 				OrderLaunch(game, army);
 			}
 			ImGui::EndDisabled();
@@ -2217,6 +2397,19 @@ namespace {
 #pragma endregion
 
 #pragma region Windows over the game
+	/// Takes the view to a point on a planet, picks it, and (for a battle) flashes the battle there again.
+	void TakeMeThere(int planet, int point, bool battle) {
+		const CampaignModel::Campaign& game = s_Screen.Game;
+		if (planet < 0 || planet >= static_cast<int>(game.Planets.size())) {
+			return;
+		}
+		ShowPlanet(planet);
+		s_Screen.SelectedPoint = point;
+		if (battle) {
+			s_Screen.Track.Pulses.push_back(Pulse{PulseKind::Battle, Place{game.Planets[planet].System, planet, point}, IM_COL32(255, 200, 90, 255), ImGui::GetTime()});
+		}
+	}
+
 	void AttackWindow() {
 		PendingAttack& attack = s_Screen.Attack;
 		if (attack.Open) {
@@ -2260,6 +2453,7 @@ namespace {
 		ImGui::SetItemTooltip("Coming later: the battle played in Battle Command on a map of this point.");
 		ImGui::SameLine();
 		if (ToolUI::Button("Auto-resolve", ImVec2(ImGui::GetFontSize() * 8.0F, 0.0F))) {
+			FollowNext(army);
 			if (attack.Overland) {
 				OrderOverland(game, army, attack.Point);
 			} else {
@@ -2307,9 +2501,55 @@ namespace {
 		}
 		ImGui::Spacing();
 		const std::string label = game.Reports.size() > 1 ? "Next report (" + std::to_string(game.Reports.size() - 1) + " more)" : std::string("Continue");
+		const float half = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5F;
+		ImGui::BeginDisabled(outcome.Planet < 0);
+		if (ToolUI::Button("Take me there", ImVec2(std::max(half, ImGui::GetFontSize() * 7.0F), 0.0F))) {
+			TakeMeThere(outcome.Planet, outcome.Point, true);
+			game.Reports.erase(game.Reports.begin());
+			ImGui::CloseCurrentPopup();
+			ImGui::EndDisabled();
+			ImGui::EndPopup();
+			return;
+		}
+		ImGui::EndDisabled();
+		ImGui::SetItemTooltip("Shows the battle's point on its planet's map.");
+		ImGui::SameLine();
 		if (ToolUI::Button(label.c_str(), ImVec2(-1.0F, 0.0F)) || ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
 			game.Reports.erase(game.Reports.begin());
 			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+
+	/// Points of the player's lost without a battle, one at a time after the battle reports.
+	void AlertWindow() {
+		CampaignModel::Campaign& game = s_Screen.Game;
+		if (s_Screen.Alerts.empty() || !game.Reports.empty() || s_Screen.Attack.Open || Animating()) {
+			return;
+		}
+		ImGui::OpenPopup("Point lost###CampaignAlert");
+		if (!ImGui::BeginPopupModal("Point lost###CampaignAlert", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+			return;
+		}
+		const auto [text, where] = s_Screen.Alerts.front();
+		ImGui::SetWindowFontScale(1.3F);
+		ImGui::TextColored(ImVec4(1.0F, 0.5F, 0.4F, 1.0F), "Point lost");
+		ImGui::SetWindowFontScale(1.0F);
+		ImGui::PushTextWrapPos(ImGui::GetFontSize() * 24.0F);
+		ImGui::TextUnformatted(text.c_str());
+		ImGui::PopTextWrapPos();
+		ImGui::Spacing();
+		const std::string label = s_Screen.Alerts.size() > 1 ? "Next (" + std::to_string(s_Screen.Alerts.size() - 1) + " more)" : std::string("Continue");
+		if (ToolUI::Button("Take me there", ImVec2(ImGui::GetFontSize() * 8.0F, 0.0F))) {
+			TakeMeThere(where.Planet, where.Point, false);
+			s_Screen.Alerts.erase(s_Screen.Alerts.begin());
+			ImGui::CloseCurrentPopup();
+		} else {
+			ImGui::SameLine();
+			if (ToolUI::Button(label.c_str(), ImVec2(ImGui::GetFontSize() * 8.0F, 0.0F)) || ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+				s_Screen.Alerts.erase(s_Screen.Alerts.begin());
+				ImGui::CloseCurrentPopup();
+			}
 		}
 		ImGui::EndPopup();
 	}
@@ -2390,6 +2630,17 @@ namespace {
 		s_Screen.RosterHover = s_Screen.RosterHoverNext;
 		s_Screen.RosterHoverNext = 0;
 		TrackChanges();
+		if (s_Screen.FollowArmy) {
+			// An army just ordered somewhere: once it's got there, show where it is. Not for one still on a route (the galaxy map shows
+			// that best), nor one that didn't move.
+			const int army = FindArmy(game, s_Screen.FollowArmy);
+			if (army < 0 || PlaceOf(game.Armies[army]) == s_Screen.FollowFrom || !game.Armies[army].Path.empty()) {
+				s_Screen.FollowArmy = 0;
+			} else if (!IsMoving(s_Screen.FollowArmy)) {
+				GoToArmy(s_Screen.FollowArmy);
+				s_Screen.FollowArmy = 0;
+			}
+		}
 		UpdateGuide();
 		if (ToolUI::Button("Menu")) {
 			SaveGame();
@@ -2502,6 +2753,7 @@ namespace {
 		}
 		AttackWindow();
 		ReportWindow();
+		AlertWindow();
 		DisbandWindow();
 		EndWindow();
 	}
