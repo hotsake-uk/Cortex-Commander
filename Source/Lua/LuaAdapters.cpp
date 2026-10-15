@@ -463,6 +463,27 @@ void LuaAdaptersMOSRotating::GibThis(MOSRotating* luaSelfObject) {
 	luaSelfObject->GibThis();
 }
 
+std::list<Attachable*>* LuaAdaptersMOSRotating::GetAttachables(const MOSRotating* luaSelfObject) {
+	if (!MOSRotating::IsLive(luaSelfObject)) {
+		return new std::list<Attachable*>();
+	}
+	return new std::list<Attachable*>(luaSelfObject->GetAttachables());
+}
+
+std::vector<AEmitter*>* LuaAdaptersMOSRotating::GetWoundList(const MOSRotating* luaSelfObject) {
+	if (!MOSRotating::IsLive(luaSelfObject)) {
+		return new std::vector<AEmitter*>();
+	}
+	return new std::vector<AEmitter*>(luaSelfObject->GetWoundList());
+}
+
+std::list<Gib*>* LuaAdaptersMOSRotating::GetGibs(MOSRotating* luaSelfObject) {
+	if (!MOSRotating::IsLive(luaSelfObject)) {
+		return new std::list<Gib*>();
+	}
+	return new std::list<Gib*>(*luaSelfObject->GetGibList());
+}
+
 std::vector<AEmitter*>* LuaAdaptersMOSRotating::GetWounds1(const MOSRotating* luaSelfObject) {
 	return GetWounds2(luaSelfObject, true, false, false);
 }

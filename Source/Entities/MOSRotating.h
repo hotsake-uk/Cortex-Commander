@@ -139,6 +139,11 @@ namespace RTE {
 		/// @param under What holds it up (see GetMOUnderneath).
 		static bool ChunkMaySettleOn(const MovableObject* under);
 
+		/// Whether this address holds a MOSRotating that has not been deleted. Only compares the address, so it is safe to call with a pointer to a deleted object (a Lua script holding on to a unit that has since died, say).
+		/// @param mosRotating The address to check.
+		/// @return Whether a MOSRotating still lives at that address.
+		static bool IsLive(const MOSRotating* mosRotating);
+
 		/// Gets the main Material  of this MOSRotating.
 		/// @return The the Material of this MOSRotating.
 		Material const* GetMaterial() const override;
