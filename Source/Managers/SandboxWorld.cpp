@@ -358,7 +358,11 @@ namespace SandboxDetail {
 		PaintUndoStep back;
 		back.Sealed = true;
 		back.LastUpdate = g_TimerMan.GetSimUpdateCount();
-		const bool remade = step.ColonyBuilding < 0 && step.Drop == 0 && step.Rope == 0;
+		// (An item given to a unit isn't given again by a redo.)
+		const bool remade = step.ColonyBuilding < 0 && step.Drop == 0 && step.Rope == 0 && step.Given.empty();
+		for (const auto& [unitID, itemID]: step.Given) {
+			TakeBackGiven(unitID, itemID);
+		}
 		for (long id: step.Placed) {
 			MovableObject* object = g_MovableMan.FindObjectByUniqueID(id);
 			if (!object || object->IsSetToDelete() || object->GetRootParent() != object) {
@@ -2750,11 +2754,67 @@ namespace SandboxDetail {
 		GiveOrder(vehicle, crewed ? stroke.Orders : Order::Hold);
 	}
 
+	AHuman* ItemTaker(const Vector& position, const Preset* item) {
+		AHuman* human = dynamic_cast<AHuman*>(ObjectUnder(position, true));
+		if (!human || !item || human->GetStatus() == Actor::DYING || human->GetStatus() == Actor::DEAD || !human->GetFGArm() || !human->GetFGArm()->IsAttached()) {
+			return nullptr;
+		}
+		// (A beast holds nothing but its natural weapons.)
+		const MovableObject* preset = dynamic_cast<const MovableObject*>(g_PresetMan.GetEntityPreset(item->ClassName, item->PresetName, item->ModuleID));
+		if (!dynamic_cast<const HeldDevice*>(preset) || (human->IsBeast() && !preset->IsInGroup("Weapons - Natural"))) {
+			return nullptr;
+		}
+		return human;
+	}
+
+	/// Puts an item straight into a unit's hand, what it held going into its inventory; noted for the undo to take back off it.
+	void GiveItem(AHuman* human, HeldDevice* device) {
+		Arm* arm = human->GetFGArm();
+		if (HeldDevice* held = arm->GetHeldDevice()) {
+			held->Deactivate();
+			human->AddToInventoryBack(arm->RemoveAttachable(held));
+		}
+		arm->SetHeldDevice(device);
+		human->EquipShieldInBGArm();
+		if (s_RecordPlaced && !s_PaintUndo.empty() && !s_PaintUndo.back().Sealed) {
+			s_PaintUndo.back().Given.emplace_back(human->GetUniqueID(), device->GetUniqueID());
+		}
+	}
+
+	/// (Out of its hands or its inventory, wherever it is now.)
+	void TakeBackGiven(long unitID, long itemID) {
+		AHuman* human = dynamic_cast<AHuman*>(g_MovableMan.FindObjectByUniqueID(unitID));
+		if (!human || human->IsSetToDelete()) {
+			return;
+		}
+		for (Arm* arm: {human->GetFGArm(), human->GetBGArm()}) {
+			if (HeldDevice* held = arm ? arm->GetHeldDevice() : nullptr; held && held->GetUniqueID() == itemID) {
+				held->Deactivate();
+				delete arm->RemoveAttachable(held);
+				return;
+			}
+		}
+		const std::deque<MovableObject*>& inventory = *human->GetInventory();
+		for (size_t i = 0; i < inventory.size(); ++i) {
+			if (inventory[i] && inventory[i]->GetUniqueID() == itemID) {
+				delete human->RemoveInventoryItemAtIndex(static_cast<int>(i));
+				return;
+			}
+		}
+	}
+
 	void SpawnItem(const Stroke& stroke) {
 		const Preset* preset = ChosenPreset(Tool::Item, stroke.Choice);
 		MovableObject* item = preset ? CreateObject(preset->ClassName, preset->PresetName, preset->ModuleID) : nullptr;
 		if (!item) {
 			return;
+		}
+		// Clicked on a unit: the item is its, in its hands at once (unlit, whatever the pin chip says).
+		if (AHuman* human = ItemTaker(stroke.Position, preset)) {
+			if (HeldDevice* device = dynamic_cast<HeldDevice*>(item)) {
+				GiveItem(human, device);
+				return;
+			}
 		}
 		item->SetPos(stroke.Position);
 		if (stroke.LitGrenade) {

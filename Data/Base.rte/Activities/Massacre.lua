@@ -72,6 +72,15 @@ function Massacre:StartNewGame()
 		self.baseSpawnTime = 3500;
 		self.randomSpawnTime = 4000;
 	end
+	-- Scenario settings (from the setup screen; their defaults play as before).
+	local killsNeeded = self:GetScenarioSetting("KillsNeeded");
+	if killsNeeded >= 0 then
+		self.killsNeeded = math.floor(killsNeeded);
+		self.killsDisplay = tostring(self.killsNeeded);
+	end
+	local spawnIntervalMultiplier = self:GetScenarioSettingOr("SpawnInterval", 1);
+	self.baseSpawnTime = self.baseSpawnTime * spawnIntervalMultiplier;
+	self.randomSpawnTime = math.max(1, self.randomSpawnTime * spawnIntervalMultiplier);
 	self.enemySpawnTimeLimit = (self.baseSpawnTime + math.random(self.randomSpawnTime)) * rte.SpawnIntervalScale;
 
 	self:SetupHumanPlayerBrains();
@@ -365,7 +374,7 @@ function Massacre:UpdateActivity()
 			end
 
 			self.enemySpawnTimer:Reset();
-			self.enemySpawnTimeLimit = (self.baseSpawnTime + math.random(self.randomSpawnTime) * rte.SpawnIntervalScale);
+			self.enemySpawnTimeLimit = (self.baseSpawnTime + math.random(self.randomSpawnTime)) * rte.SpawnIntervalScale;
 		end
 	else
 		self.startMessageTimer:Reset();

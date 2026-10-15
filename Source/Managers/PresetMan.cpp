@@ -7,6 +7,8 @@
 #include "Loadout.h"
 #include "ACraft.h"
 #include "LuaMan.h"
+#include "ActivityMan.h"
+#include "GameActivity.h"
 // #include "AHuman.h"
 // #include "MOPixel.h"
 // #include "SLTerrain.h"
@@ -638,10 +640,12 @@ Entity* PresetMan::GetRandomBuyableOfGroupFromTech(std::string group, const std:
 			}
 		} else {
 			foundAny = false;
+			const GameActivity* gameActivity = dynamic_cast<const GameActivity*>(g_ActivityMan.GetActivity());
+			const bool flyingCraftAllowed = !gameActivity || gameActivity->GetFlyingCraftAllowed();
 			for (std::list<Entity*>::iterator oItr = tempList.begin(); oItr != tempList.end(); ++oItr) {
 				SceneObject* pSObject = dynamic_cast<SceneObject*>(*oItr);
-				// Buyable and not brain?
-				if (pSObject && pSObject->IsBuyable() && !pSObject->IsBuyableInObjectPickerOnly() && !pSObject->IsInGroup("Brains")) {
+				// Buyable and not brain? (And not a flying ship when the scenario setup turned them off: the AI can't fly them well yet.)
+				if (pSObject && pSObject->IsBuyable() && !pSObject->IsBuyableInObjectPickerOnly() && !pSObject->IsInGroup("Brains") && (flyingCraftAllowed || pSObject->GetClassName() != "ACShip")) {
 					entityList.push_back(*oItr);
 					foundAny = true;
 				}

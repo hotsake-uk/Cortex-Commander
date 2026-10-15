@@ -118,6 +118,7 @@ LuaBindingRegisterFunctionDefinitionForType(ActivityLuaBindings, GameActivity) {
 	    .property("CPUTeam", &GameActivity::GetCPUTeam, &GameActivity::SetCPUTeam)
 	    .property("DeliveryDelay", &GameActivity::GetDeliveryDelay, &GameActivity::SetDeliveryDelay)
 	    .property("BuyMenuEnabled", &GameActivity::GetBuyMenuEnabled, &GameActivity::SetBuyMenuEnabled)
+	    .property("FlyingCraftAllowed", &GameActivity::GetFlyingCraftAllowed, &GameActivity::SetFlyingCraftAllowed)
 	    .property("CraftsOrbitAtTheEdge", &GameActivity::GetCraftOrbitAtTheEdge, &GameActivity::SetCraftOrbitAtTheEdge)
 
 	    //.def_readwrite("ActorCursor", &GameActivity::m_ActorCursor)
@@ -166,6 +167,9 @@ LuaBindingRegisterFunctionDefinitionForType(ActivityLuaBindings, GameActivity) {
 	    .def("GetCrabToHumanSpawnRatio", &GameActivity::GetCrabToHumanSpawnRatio)
 	    .def("TeamIsCPU", &GameActivity::TeamIsCPU)
 	    .def("GetStartingGold", &GameActivity::GetStartingGold)
+	    .def("GetScenarioSetting", &GameActivity::GetScenarioSetting)
+	    .def("GetScenarioSettingOr", &GameActivity::GetScenarioSettingOr)
+	    .def("SetScenarioSetting", &GameActivity::SetScenarioSetting)
 	    .def("GetFogOfWarEnabled", &GameActivity::GetFogOfWarEnabled)
 	    .def("UpdateEditing", &GameActivity::UpdateEditing)
 	    .def("DisableAIs", &GameActivity::DisableAIs)

@@ -16,6 +16,8 @@ Activate fog of war during the build phase by adding areas:
 --]]
 
 function BrainvsBrain:StartActivity(isNewGame)
+	-- Scenario settings (from the setup screen; their defaults play as before).
+	self.spawnIntervalMultiplier = self:GetScenarioSettingOr("SpawnInterval", 1);
 	self.winTimer = Timer();
 
 	if self.CPUTeam ~= Activity.NOTEAM then
@@ -196,8 +198,8 @@ function BrainvsBrain:StartNewGame()
 			self:SetTeamFunds(self:GetStartingGold(), Activity.TEAM_1);
 		end
 
-		self:SetTeamFunds(self:GetStartingGold()*(self.Difficulty/100+0.5), self.CPUTeam);
-		self.bombChance = math.random(self.Difficulty*0.7, self.Difficulty) / 120;
+		self:SetTeamFunds(self:GetStartingGold()*(self.Difficulty/100+0.5)*self:GetScenarioSettingOr("EnemyFunds", 1), self.CPUTeam);
+		self.bombChance = math.random(self.Difficulty*0.7, self.Difficulty) / 120 * self:GetScenarioSettingOr("BombChance", 1);
 
 		local techID = PresetMan:GetModuleID(self:GetTeamTech(self.CPUTeam));
 		if techID ~= -1 then
@@ -241,7 +243,7 @@ function BrainvsBrain:StartNewGame()
 			MovableMan:AddActor(self.CPUBrain);
 		end
 
-		self.spawnDelay = (6500 - self.Difficulty * 60) * rte.SpawnIntervalScale;
+		self.spawnDelay = (6500 - self.Difficulty * 60) * rte.SpawnIntervalScale * self.spawnIntervalMultiplier;
 		self.hunterDelay = self.spawnDelay + 10000;
 
 		local spawnStartingActors = function(areaName, numberOfActorsToSpawn, team)
@@ -489,9 +491,9 @@ function BrainvsBrain:UpdateActivity()
 									self.spawnTimer:Reset();
 									if MovableMan:IsActor(self.CPUBrain) and SceneMan:ShortestDistance(self.AttackActor.Pos, self.CPUBrain.Pos, false):MagnitudeIsLessThan(1000) then
 										-- The player is close to the AI brain so spawn again soon
-										self.spawnDelay = (25000 - self.Difficulty * 150) * rte.SpawnIntervalScale;
+										self.spawnDelay = (25000 - self.Difficulty * 150) * rte.SpawnIntervalScale * self.spawnIntervalMultiplier;
 									else
-										self.spawnDelay = (40000 - self.Difficulty * 250) * rte.SpawnIntervalScale;
+										self.spawnDelay = (40000 - self.Difficulty * 250) * rte.SpawnIntervalScale * self.spawnIntervalMultiplier;
 									end
 
 									if obstacleHeight < 30 then
@@ -547,7 +549,7 @@ function BrainvsBrain:UpdateActivity()
 									local bombPosX = self.LZMap:FindBombTarget(self.CPUTeam);
 									if bombPosX then
 										self.spawnTimer:Reset();
-										self.spawnDelay = (10000 - self.Difficulty * 70) * rte.SpawnIntervalScale;
+										self.spawnDelay = (10000 - self.Difficulty * 70) * rte.SpawnIntervalScale * self.spawnIntervalMultiplier;
 										self.bombChance = math.max(self.bombChance*0.9, 0.05);
 										self:CreateBombDrop(bombPosX);
 									end

@@ -1,8 +1,11 @@
 #pragma once
 
 #include "Activity.h"
+#include "GameActivity.h"
 
 #include <array>
+#include <map>
+#include <string>
 
 namespace RTE {
 
@@ -116,6 +119,20 @@ namespace RTE {
 		std::array<bool, Activity::Teams::MaxTeamCount> m_TeamUsedFactionPicks {}; //!< Whether each team last started with "-Pick several-".
 		bool m_FactionPicksLoaded {}; //!< Whether the remembered picks were read from the settings.
 
+		/// The "Scenario settings" panel: the selected scenario's own settings and the flying craft switch (optional in custom layouts).
+		GUIButton* m_ScenarioSettingsButton {};
+		GUICollectionBox* m_ScenarioSettingsBox {};
+		GUILabel* m_ScenarioSettingsLabel {};
+		GUIListBox* m_ScenarioSettingsList {};
+		GUILabel* m_ScenarioSettingValueLabel {};
+		GUISlider* m_ScenarioSettingSlider {};
+		GUIButton* m_ScenarioSettingsResetButton {};
+		GUIButton* m_ScenarioSettingsDoneButton {};
+		int m_ScenarioSettingSelected { -1 }; //!< Which of the scenario's settings the slider is changing, or -1 for none.
+		std::map<std::string, std::map<std::string, float>> m_ScenarioSettingValues; //!< The values set for each scenario's settings (by scenario, then key). Defaults aren't kept.
+		bool m_ScenarioFlyingCraft {}; //!< Whether the AI may use the flying ships in scenarios.
+		bool m_ScenarioSettingValuesLoaded {}; //!< Whether the remembered values were read from the settings.
+
 #pragma region Activity Configuration Screen Handling
 		/// Fills each team's Tech ComboBox with all valid Tech DataModules.
 		void PopulateTechComboBoxes();
@@ -139,6 +156,42 @@ namespace RTE {
 		/// Sets the "-Pick several-" item of a team's Tech ComboBox to read how many factions are ticked.
 		/// @param team The team whose ComboBox to update.
 		void UpdateSeveralItemText(int team);
+
+		/// Reads the remembered scenario setting values and the flying craft switch from the settings, once.
+		void LoadScenarioSettingValues();
+
+		/// Writes the scenario setting values and the flying craft switch to the settings, so they're there next time.
+		void SaveScenarioSettingValues() const;
+
+		/// Gets the value one of the selected scenario's settings is set to: the one chosen, else its default.
+		/// @param setting The setting.
+		/// @return Its value, or GameActivity::c_ScenarioSettingAuto for Auto.
+		float GetScenarioSettingValue(const GameActivity::ScenarioSetting& setting) const;
+
+		/// Sets the value of one of the selected scenario's settings, forgetting it when it's the default.
+		void SetScenarioSettingValue(const GameActivity::ScenarioSetting& setting, float value);
+
+		/// Gets a setting's value as the panel shows it ("Auto", "x1.50", "3", "45 s", "5 min").
+		static std::string ScenarioSettingValueText(const GameActivity::ScenarioSetting& setting, float value);
+
+		/// Opens the "Scenario settings" panel over the setup box.
+		void OpenScenarioSettings();
+
+		/// Shuts the "Scenario settings" panel.
+		void CloseScenarioSettings();
+
+		/// Fills the panel's list with the flying craft switch and the selected scenario's settings, with their values.
+		void FillScenarioSettingsList();
+
+		/// Points the slider at the selected setting (or hides it), and shows that setting's value above it.
+		void UpdateScenarioSettingSlider();
+
+		/// Sets the "Scenario settings" button's text to say whether anything is changed from the defaults.
+		void UpdateScenarioSettingsButton();
+
+		/// Handles a GUI event while the scenario settings panel is open.
+		/// @param guiEvent The event.
+		void HandleScenarioSettingsEvent(GUIEvent& guiEvent);
 
 		/// Helper function for multimouse support. Creates a list of human controlled players.
 		std::vector<int> GetHumanPlayers();

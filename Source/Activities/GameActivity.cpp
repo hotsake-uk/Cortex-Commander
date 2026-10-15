@@ -32,6 +32,10 @@
 #include "SceneEditorGUI.h"
 #include "GUIBanner.h"
 
+#include <algorithm>
+#include <optional>
+#include <sstream>
+
 #define BRAINLZWIDTHDEFAULT 640
 
 using namespace RTE;
@@ -91,6 +95,9 @@ void GameActivity::Clear() {
 	m_GoldSwitchEnabled = true;
 	m_RequireClearPathToOrbitSwitchEnabled = true;
 	m_BuyMenuEnabled = true;
+	m_ScenarioSettings.clear();
+	m_ScenarioSettingValues.clear();
+	m_FlyingCraftAllowed = true;
 
 	for (int team = Teams::TeamOne; team < Teams::MaxTeamCount; ++team) {
 		m_Deliveries[team].clear();
@@ -181,6 +188,9 @@ int GameActivity::Create(const GameActivity& reference) {
 	m_GoldSwitchEnabled = reference.m_GoldSwitchEnabled;
 	m_RequireClearPathToOrbitSwitchEnabled = reference.m_RequireClearPathToOrbitSwitchEnabled;
 	m_BuyMenuEnabled = reference.m_BuyMenuEnabled;
+	m_ScenarioSettings = reference.m_ScenarioSettings;
+	m_ScenarioSettingValues = reference.m_ScenarioSettingValues;
+	m_FlyingCraftAllowed = reference.m_FlyingCraftAllowed;
 
 	m_DeliveryDelay = reference.m_DeliveryDelay;
 	//    m_CursorTimer = reference.m_CursorTimer;
@@ -239,6 +249,29 @@ int GameActivity::ReadProperty(const std::string_view& propName, Reader& reader)
 	                });
 	MatchProperty("SpecialBehaviour_StartingGold", { reader >> m_StartingGold; });
 	MatchProperty("SpecialBehaviour_FogOfWarEnabled", { reader >> m_FogOfWarEnabled; });
+	MatchProperty("AddScenarioSetting", {
+		std::string line = reader.ReadPropValue();
+		if (std::optional<ScenarioSetting> setting = ParseScenarioSetting(line)) {
+			auto existing = std::find_if(m_ScenarioSettings.begin(), m_ScenarioSettings.end(), [&setting](const ScenarioSetting& other) { return other.Key == setting->Key; });
+			if (existing != m_ScenarioSettings.end()) {
+				*existing = *setting;
+			} else {
+				m_ScenarioSettings.push_back(*setting);
+			}
+		} else {
+			reader.ReportError("AddScenarioSetting needs \"Key | Label | Unit | Minimum | Maximum | Step | Default\", got \"" + line + "\".");
+		}
+	});
+	MatchProperty("SpecialBehaviour_ScenarioSetting", {
+		// "Key value"
+		std::istringstream line(reader.ReadPropValue());
+		std::string key;
+		float value = c_ScenarioSettingAuto;
+		if (line >> key >> value) {
+			m_ScenarioSettingValues[key] = value;
+		}
+	});
+	MatchProperty("SpecialBehaviour_FlyingCraftAllowed", { reader >> m_FlyingCraftAllowed; });
 
 	EndPropertyList;
 }
@@ -253,12 +286,81 @@ int GameActivity::Save(Writer& writer) const {
 	// Note - these special behaviour properties are for saving and loading. Normally these fields are set by the Activity config GUI.
 	writer.NewPropertyWithValue("SpecialBehaviour_StartingGold", m_StartingGold);
 	writer.NewPropertyWithValue("SpecialBehaviour_FogOfWarEnabled", m_FogOfWarEnabled);
+	writer.NewPropertyWithValue("SpecialBehaviour_FlyingCraftAllowed", m_FlyingCraftAllowed);
+	for (const ScenarioSetting& setting: m_ScenarioSettings) {
+		writer.NewPropertyWithValue("AddScenarioSetting", ScenarioSettingToString(setting));
+	}
+	for (const auto& [key, value]: m_ScenarioSettingValues) {
+		writer.NewPropertyWithValue("SpecialBehaviour_ScenarioSetting", key + " " + std::to_string(value));
+	}
 
 	for (int team = Teams::TeamOne; team < Teams::MaxTeamCount; team++) {
 		writer.NewPropertyWithValue("Team" + std::to_string(team + 1) + "Tech", GetTeamTech(team));
 	}
 
 	return 0;
+}
+
+std::optional<GameActivity::ScenarioSetting> GameActivity::ParseScenarioSetting(const std::string& line) {
+	std::vector<std::string> fields;
+	std::istringstream stream(line);
+	std::string field;
+	while (std::getline(stream, field, '|')) {
+		size_t start = field.find_first_not_of(" \t");
+		size_t end = field.find_last_not_of(" \t");
+		fields.push_back(start == std::string::npos ? "" : field.substr(start, end - start + 1));
+	}
+	if (fields.size() < 7 || fields[0].empty() || fields[0].find(' ') != std::string::npos) {
+		return std::nullopt;
+	}
+	ScenarioSetting setting;
+	setting.Key = fields[0];
+	setting.Label = fields[1].empty() ? fields[0] : fields[1];
+	setting.Unit = fields[2];
+	try {
+		setting.Minimum = std::stof(fields[3]);
+		setting.Maximum = std::stof(fields[4]);
+		setting.Step = std::stof(fields[5]);
+		if (fields[6] == "Auto" || fields[6] == "auto") {
+			setting.AllowAuto = true;
+			setting.Default = c_ScenarioSettingAuto;
+		} else {
+			setting.Default = std::stof(fields[6]);
+		}
+	} catch (const std::exception&) {
+		return std::nullopt;
+	}
+	if (setting.Maximum < setting.Minimum) {
+		std::swap(setting.Minimum, setting.Maximum);
+	}
+	if (setting.Step <= 0.0F) {
+		setting.Step = 1.0F;
+	}
+	if (!setting.AllowAuto) {
+		setting.Default = std::clamp(setting.Default, setting.Minimum, setting.Maximum);
+	}
+	return setting;
+}
+
+std::string GameActivity::ScenarioSettingToString(const ScenarioSetting& setting) {
+	auto number = [](float value) {
+		std::ostringstream text;
+		text << value;
+		return text.str();
+	};
+	return setting.Key + " | " + setting.Label + " | " + setting.Unit + " | " + number(setting.Minimum) + " | " + number(setting.Maximum) + " | " + number(setting.Step) + " | " + (setting.AllowAuto ? std::string("Auto") : number(setting.Default));
+}
+
+float GameActivity::GetScenarioSetting(const std::string& key) const {
+	auto definition = std::find_if(m_ScenarioSettings.begin(), m_ScenarioSettings.end(), [&key](const ScenarioSetting& setting) { return setting.Key == key; });
+	if (auto chosen = m_ScenarioSettingValues.find(key); chosen != m_ScenarioSettingValues.end()) {
+		float value = chosen->second;
+		if (definition == m_ScenarioSettings.end() || (definition->AllowAuto && value == c_ScenarioSettingAuto)) {
+			return value;
+		}
+		return std::clamp(value, definition->Minimum, definition->Maximum);
+	}
+	return definition != m_ScenarioSettings.end() ? definition->Default : c_ScenarioSettingAuto;
 }
 
 void GameActivity::Destroy(bool notInherited) {

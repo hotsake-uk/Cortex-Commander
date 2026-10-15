@@ -10,11 +10,15 @@ namespace RTE {
 	/// The action menu (RC-12): what holding right click opens in place of a wheel. A list above the pointer, on one layer, in the sandbox and
 	/// settings style: headings across a panel, and under each its choices side by side, the one in use lit in gold.
 	///
-	/// On a unit the player is playing it stands in for the pie wheel as the unit menu: a square ring of boxes round the unit, which sits in an
-	/// empty square in the middle and is followed as it moves. The boxes nearest the unit are what it does (its quick actions, a vehicle's
-	/// handbrake, the wheel's slices and its sub-menus'), then what it carries (in hand, lit, then the rest, taken in hand when picked, with
-	/// the wheel's inventory slices), and furthest out its rules (weapons, movement, temperament: one box each, going on to the next choice when
-	/// picked). Each box has the slice's icon or the item's picture beside its label, and the one under the pointer is named in full over
+	/// On a unit the player is playing it stands in for the pie wheel as the unit menu: boxes round the unit, which sits in an empty square
+	/// in the middle and is followed as it moves. Every action has a fixed place, so the hand learns where things are; one the unit can't use
+	/// right now is still there, greyed out. The inner ring: Drop, Full Inventory and Pick Up above; Prev Item and Reload down the left; Next
+	/// Item and Form Squad down the right; Sentry, Go To and Patrol below (a vehicle's Get Out, Change Seat and handbrake, and a craft's Stay,
+	/// Return, Deliver and Scuttle, take the boxes of the soldier's they never have alongside). Above that a row of the less used orders
+	/// (Brain Hunt, Gold Dig, Dig To Here), below it the rules (weapons, movement, temperament: one box each, going on to the next choice when
+	/// picked). What it carries (in hand, lit, then the rest, taken in hand when picked) is a column down the left, and its powerups and any
+	/// other slices (a mod's, the buy menu, the map) one down the right, both growing downwards so they never move the fixed boxes.
+	/// Each box has the slice's icon or the item's picture beside its label, and the one under the pointer is named in full over
 	/// the ring. With the "Unit menu opens on a click" setting a right click leaves it up till a click off the boxes or another right click;
 	/// otherwise it is up while the button is held. Time runs at the "Time while the unit menu is up" speed. Moving the mouse moves the
 	/// menu's own pointer (the game keeps the mouse for aiming); a left click picks, and so does letting go of the right button over a box

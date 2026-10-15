@@ -184,6 +184,11 @@ function SignalHunt:SetupDifficultySettings()
 		self.numberOfLooseBombsPerBombMaker = 5;
 		self.numberOfAmbushingCraft = 5;
 	end
+
+	-- Scenario settings (from the setup screen; their defaults play as before).
+	self.zombieSpawnDifficultyMultiplier = self.zombieSpawnDifficultyMultiplier * self:GetScenarioSettingOr("ZombieRate", 1);
+	self.numberOfAmbushingCraft = math.floor(self:GetScenarioSettingOr("AmbushingCraft", self.numberOfAmbushingCraft));
+	self.numberOfLooseBombsPerBombMaker = math.floor(self:GetScenarioSettingOr("LooseBombs", self.numberOfLooseBombsPerBombMaker));
 end
 
 function SignalHunt:SetupHumanPlayerBrains()

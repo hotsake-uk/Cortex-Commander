@@ -68,6 +68,19 @@ function KeepieUppie:StartNewGame()
 		self.baseSpawnTime = 3500;
 		self.randomSpawnTime = 4000;
 	end
+	-- Scenario settings (from the setup screen; their defaults play as before).
+	local surviveSeconds = self:GetScenarioSetting("TimeLimit");
+	if surviveSeconds >= 0 then
+		self.timeLimit = surviveSeconds * 1000 + 5000;
+		if surviveSeconds % 60 == 0 then
+			self.timeDisplay = surviveSeconds == 60 and "one minute" or ((surviveSeconds / 60) .. " minutes");
+		else
+			self.timeDisplay = surviveSeconds .. " seconds";
+		end
+	end
+	local spawnIntervalMultiplier = self:GetScenarioSettingOr("SpawnInterval", 1);
+	self.baseSpawnTime = self.baseSpawnTime * spawnIntervalMultiplier;
+	self.randomSpawnTime = math.max(1, self.randomSpawnTime * spawnIntervalMultiplier);
 	self.enemySpawnTimeLimit = 2000;
 	
 	MusicMan:PlayDynamicSong("Generic Boss Fight Music");
@@ -274,7 +287,7 @@ function KeepieUppie:UpdateActivity()
 				MovableMan:AddActor(ship);
 
 				self.enemySpawnTimer:Reset();
-				self.enemySpawnTimeLimit = (self.baseSpawnTime + math.random(self.randomSpawnTime) * rte.SpawnIntervalScale);
+				self.enemySpawnTimeLimit = (self.baseSpawnTime + math.random(self.randomSpawnTime)) * rte.SpawnIntervalScale;
 			end
 		end
 	else

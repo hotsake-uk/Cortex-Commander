@@ -75,6 +75,13 @@ function OneManArmy:StartNewGame()
 		primaryGroup = "Weapons - Secondary";
 		secondaryGroup = "Weapons - Secondary";
 	end
+	-- Scenario settings (from the setup screen; their defaults play as before).
+	local surviveMinutes = self:GetScenarioSetting("TimeLimit");
+	if surviveMinutes >= 0 then
+		self.timeLimit = surviveMinutes * 60000 + 5000;
+		self.timeDisplay = surviveMinutes == 1 and "one minute" or (surviveMinutes .. " minutes");
+	end
+	self.baseSpawnTime = math.max(1, self.baseSpawnTime * self:GetScenarioSettingOr("SpawnInterval", 1));
 	self.enemySpawnTimeLimit = 500;
 	
 	MusicMan:PlayDynamicSong("Generic Battle Music");
@@ -128,7 +135,7 @@ function OneManArmy:SetupHumanPlayerBrains(actorGroup, primaryGroup, secondaryGr
 				local team = self:GetTeamOfPlayer(player);
 				local foundBrain = MovableMan:GetUnassignedBrain(team);
 
-				local brainToughnessMultiplier = math.ceil(11 - (self.Difficulty * 0.1));	--Med = 6, Max = 11, Min = 1
+				local brainToughnessMultiplier = self:GetScenarioSettingOr("BrainToughness", math.ceil(11 - (self.Difficulty * 0.1)));	--Med = 6, Max = 11, Min = 1
 
 				--If we can't find an unassigned brain in the scene to give the player, create one
 				if not foundBrain then

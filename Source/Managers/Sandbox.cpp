@@ -781,10 +781,27 @@ bool Sandbox::TakeBrushWheel(bool up) {
 	return StepBrushSize(up ? 1 : -1);
 }
 
+namespace {
+	/// In commander mode (RC-9), from a unit taken over with the Control tool back up to the command view as it was: the toolbar, or the
+	/// sandbox window. Returns whether there was a unit to come out of.
+	bool BackUpFromTakenUnit() {
+		if (!s_Commander || !s_Possessed) {
+			return false;
+		}
+		ReleaseControl(false);
+		s_FreeCameraStarted = false;
+		Sandbox::SetOpen(!s_CommanderToolbarView);
+		return true;
+	}
+} // namespace
+
 void Sandbox::ToggleCommander() {
 	GameActivity* game = CurrentGame();
 	if (!game || !InGame() || IsGodMode()) {
 		s_Commander = false;
+		return;
+	}
+	if (BackUpFromTakenUnit()) {
 		return;
 	}
 	if (!s_Commander) {
@@ -829,6 +846,9 @@ void Sandbox::ToggleCommanderToolbar() {
 	if (IsGodMode()) {
 		return;
 	}
+	if (BackUpFromTakenUnit()) {
+		return;
+	}
 	if (s_Commander && s_CommanderToolbarView) {
 		ToggleCommander();
 		return;
@@ -846,6 +866,21 @@ void Sandbox::ToggleCommanderToolbar() {
 	if (inHand != Tool::Command && inHand != Tool::Follow && inHand != Tool::Possess) {
 		s_ToolIndex = ToolIndex(Tool::Command);
 		s_CommandMode = CommandMode::Command;
+	}
+}
+
+void Sandbox::ToggleCommandMode() {
+	if (IsGodMode()) {
+		return;
+	}
+	// (From a unit taken over, back up to the command view; from the command view, with the toolbar or the window, back into your unit.)
+	if (BackUpFromTakenUnit()) {
+		return;
+	}
+	if (s_Commander) {
+		ToggleCommander();
+	} else {
+		ToggleCommanderToolbar();
 	}
 }
 
