@@ -394,6 +394,10 @@ namespace RTE {
 #pragma region MOSRotating Lua Adapters
 	struct LuaAdaptersMOSRotating {
 		static void GibThis(MOSRotating* luaSelfObject);
+		// Attachables, Wounds and Gibs hand Lua a copy of the list, so a script that removes an Attachable (or gibs, or is left holding a dead object) part way through a loop over one can't crash the game. A deleted object gives an empty list.
+		static std::list<Attachable*>* GetAttachables(const MOSRotating* luaSelfObject);
+		static std::vector<AEmitter*>* GetWoundList(const MOSRotating* luaSelfObject);
+		static std::list<Gib*>* GetGibs(MOSRotating* luaSelfObject);
 		static std::vector<AEmitter*>* GetWounds1(const MOSRotating* luaSelfObject);
 		static std::vector<AEmitter*>* GetWounds2(const MOSRotating* luaSelfObject, bool includePositiveDamageAttachables, bool includeNegativeDamageAttachables, bool includeNoDamageAttachables);
 		// Need a seperate implementation function without the return so we can safely recurse.

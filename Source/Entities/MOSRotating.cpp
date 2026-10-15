@@ -28,6 +28,8 @@
 #include "Draw.h"
 
 #include "glm/gtx/transform.hpp"
+
+#include <mutex>
 #include "glm/ext/matrix_transform.hpp"
 
 #include "tracy/Tracy.hpp"
@@ -69,11 +71,28 @@ BITMAP* MOSRotating::m_spTempBitmapS128 = 0;
 BITMAP* MOSRotating::m_spTempBitmapS256 = 0;
 BITMAP* MOSRotating::m_spTempBitmapS512 = 0;
 
+namespace {
+	// Every MOSRotating not yet deleted, so Lua can tell a dead object from a live one without reading its memory (see IsLive).
+	std::unordered_set<const MOSRotating*> s_LiveMOSRotatings;
+	std::mutex s_LiveMOSRotatingsMutex;
+} // namespace
+
+bool MOSRotating::IsLive(const MOSRotating* mosRotating) {
+	std::lock_guard<std::mutex> lock(s_LiveMOSRotatingsMutex);
+	return s_LiveMOSRotatings.contains(mosRotating);
+}
+
 MOSRotating::MOSRotating() {
 	Clear();
+	std::lock_guard<std::mutex> lock(s_LiveMOSRotatingsMutex);
+	s_LiveMOSRotatings.insert(this);
 }
 
 MOSRotating::~MOSRotating() {
+	{
+		std::lock_guard<std::mutex> lock(s_LiveMOSRotatingsMutex);
+		s_LiveMOSRotatings.erase(this);
+	}
 	Destroy(true);
 }
 

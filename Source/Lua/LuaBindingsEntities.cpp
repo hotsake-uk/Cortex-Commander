@@ -1227,9 +1227,9 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, MOSRotating) {
 	    .property("WoundCount", (int(MOSRotating::*)() const) & MOSRotating::GetWoundCount)
 	    .property("OrientToVel", &MOSRotating::GetOrientToVel, &MOSRotating::SetOrientToVel)
 
-	    .def_readonly("Attachables", &MOSRotating::m_Attachables, luabind::return_stl_iterator)
-	    .def_readonly("Wounds", &MOSRotating::m_Wounds, luabind::return_stl_iterator)
-	    .def_readonly("Gibs", &MOSRotating::m_Gibs, luabind::return_stl_iterator)
+	    .property("Attachables", &LuaAdaptersMOSRotating::GetAttachables, luabind::adopt(luabind::return_value) + luabind::return_stl_iterator)
+	    .property("Wounds", &LuaAdaptersMOSRotating::GetWoundList, luabind::adopt(luabind::return_value) + luabind::return_stl_iterator)
+	    .property("Gibs", &LuaAdaptersMOSRotating::GetGibs, luabind::adopt(luabind::return_value) + luabind::return_stl_iterator)
 
 	    .def("AddRecoil", &MOSRotating::AddRecoil)
 	    .def("SetRecoil", &MOSRotating::SetRecoil)
