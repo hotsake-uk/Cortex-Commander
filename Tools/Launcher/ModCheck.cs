@@ -54,6 +54,32 @@ partial class MainForm
 		return null;
 	}
 
+	// The checker lives in the repo, so a version older than 8.5.228 (or a checkout on an old branch) simply doesn't have it. Take Tools/Mods from the newest
+	// maindev on the remote instead, into the launcher's own folder. The checker only reads the game folder it is pointed at, so any version can use it.
+	async Task<string?> ExtractCheckerFromRemote()
+	{
+		var dest = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CortexLauncher", "ModTools");
+		foreach (var branch in new[] { "maindev", "dev-8.2" })
+		{
+			var rf = $"{settings.Remote}/{branch}";
+			var (c0, _) = await Git($"rev-parse --verify --quiet {rf}");
+			if (c0 != 0) continue;
+			var zip = Path.Combine(Path.GetTempPath(), "cortex-modtools.zip");
+			try { File.Delete(zip); } catch { }
+			var (c1, o1) = await Git($"archive --format=zip -o \"{zip}\" {rf} Tools/Mods");
+			if (c1 != 0 || !File.Exists(zip)) { Append($"Could not read Tools/Mods from {rf}: {o1.Trim()}"); continue; }
+			try
+			{
+				if (Directory.Exists(dest)) Directory.Delete(dest, true);
+				System.IO.Compression.ZipFile.ExtractToDirectory(zip, dest);
+			}
+			catch (Exception ex) { Append("Could not unpack the mod checker: " + ex.Message); continue; }
+			var script = Path.Combine(dest, "Tools", "Mods", "Check-Mod.py");
+			if (File.Exists(script) && File.ReadAllText(script).Contains("'--json'")) { Append($"Using the mod checker from {rf}"); return script; }
+		}
+		return null;
+	}
+
 	// py -3 (the Windows Python launcher), then python and python3 on PATH. The Microsoft Store's "python" stand-in fails --version, so it is skipped.
 	async Task<(string exe, string args)?> FindPython()
 	{
@@ -81,7 +107,8 @@ partial class MainForm
 		var py = await FindPython();
 		if (py == null) { Append("Python 3 wasn't found, so mods can't be checked. Install it from python.org (tick \"Add to PATH\")."); return null; }
 		var script = FindChecker(gameDir);
-		if (script == null) { Append("This version has no mod checker (Tools/Mods/Check-Mod.py came in 8.5.228), and neither does your repo checkout."); return null; }
+		script ??= await ExtractCheckerFromRemote();
+		if (script == null) { Append("No mod checker found: this version predates Tools/Mods/Check-Mod.py (8.5.228) and the latest maindev couldn't be fetched. Press Refresh and try again."); return null; }
 		// A single .rte picked as the mods folder is checked on its own, with its folder as the place other mods live.
 		var target = mods.EndsWith(".rte", StringComparison.OrdinalIgnoreCase) && Directory.GetDirectories(mods, "*.rte").Length == 0
 			? $"\"{mods}\" --mods \"{Path.GetDirectoryName(mods)}\""
