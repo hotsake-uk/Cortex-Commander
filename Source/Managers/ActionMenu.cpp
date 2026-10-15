@@ -8,6 +8,7 @@
 #include "UInputMan.h"
 #include "ToolWidgets.h"
 #include "AVehicle.h"
+#include "ACraft.h"
 #include "Arm.h"
 #include "HDFirearm.h"
 #include "HeldDevice.h"
@@ -236,12 +237,12 @@ namespace {
 		Handbrake, //!< A vehicle's handbrake set to Value: off (0) or on (1).
 		WeaponRule, //!< Sets the unit's weapons rule to Value (Actor::WeaponRule).
 		MovementRule, //!< Sets the unit's movement rule to Value (Actor::MovementRule).
-		TemperamentChoice //!< Sets the unit's temperament to Value (Actor::Temperament, NC-1).
+		TemperamentChoice, //!< Sets the unit's temperament to Value (Actor::Temperament, NC-1).
+		Empty //!< A fixed box the unit has nothing for (UnitSlot): greyed out, does nothing.
 	};
 
-	/// The unit's menu as a square ring round it: the unit in an empty square in the middle and boxes all round it, in rings, each round the
-	/// one inside it. The cells are given in order of how near they should be (what it does first, then what it carries, then its rules) and
-	/// take the free places nearest the unit in that order.
+	/// The unit's menu round it: the unit in an empty square in the middle and boxes all round it, each action in a fixed place (see
+	/// LayoutUnitRing).
 	struct UnitRing {
 		std::vector<ActionMenu::Cell> Cells; //!< The cells, in window pixels once placed.
 		ImVec2 Centre; //!< The unit's middle on screen, which the ring is round (moved in when the ring would go off screen).
@@ -267,21 +268,6 @@ namespace {
 	std::string SliceLabel(const PieSlice* slice) {
 		const std::string& description = slice->GetDescription();
 		return description.empty() ? slice->GetPresetName() : description;
-	}
-
-	/// Whether a slice is about what the unit carries, so it goes with the inventory rather than the actions.
-	bool IsInventorySlice(const PieSlice* slice) {
-		switch (slice->GetType()) {
-			case PieSliceType::Pickup:
-			case PieSliceType::Drop:
-			case PieSliceType::NextItem:
-			case PieSliceType::PreviousItem:
-			case PieSliceType::Reload:
-			case PieSliceType::FullInventory:
-				return true;
-			default:
-				return false;
-		}
 	}
 
 	ActionMenu::Cell MakeCell(int action, const std::string& label, ActionMenu::Kind kind, const void* data = nullptr, bool enabled = true, int value = 0, bool chosen = false, const void* picture = nullptr) {
@@ -341,38 +327,156 @@ namespace {
 		}
 	}
 
-	/// What the unit does: its quick actions (powerups), a vehicle's handbrake, the wheel's slices and its sub-menus' slices.
-	void AddActions(std::vector<ActionMenu::Cell>& cells, const Actor* actor, const PieMenu* pieMenu) {
-		AddQuickActions(cells, actor);
+	/// The fixed boxes of the unit's menu. Each is always in the same place round the unit, whatever it carries or can do right now, so the
+	/// hand learns where things are: one the unit can't use is there all the same, greyed out.
+	enum UnitSlot {
+		SlotDrop, //!< Inner ring, top row, left to right.
+		SlotInventory,
+		SlotPickup,
+		SlotPrevious, //!< Inner ring, the sides: upper left and right.
+		SlotNext,
+		SlotReload, //!< Inner ring, the sides: lower left and right.
+		SlotSquad,
+		SlotSentry, //!< Inner ring, bottom row, left to right.
+		SlotGoTo,
+		SlotPatrol,
+		SlotBrainHunt, //!< Outer top row, the less used orders, left to right.
+		SlotGoldDig,
+		SlotDigTo,
+		SlotWeapons, //!< Outer bottom row, the rules, left to right.
+		SlotMovement,
+		SlotTemperament,
+		SlotCount
+	};
+
+	/// The fixed box a slice of a type has, or -1 for one that goes with the other actions in the right column. A vehicle's and a craft's own
+	/// actions share the boxes of a soldier's that they never have alongside.
+	int SliceSlot(PieSliceType type) {
+		switch (type) {
+			case PieSliceType::Drop:
+				return SlotDrop;
+			case PieSliceType::FullInventory:
+				return SlotInventory;
+			case PieSliceType::Pickup:
+				return SlotPickup;
+			case PieSliceType::PreviousItem:
+			case PieSliceType::GetOut:
+				return SlotPrevious;
+			case PieSliceType::NextItem:
+			case PieSliceType::ChangeSeat:
+				return SlotNext;
+			case PieSliceType::Reload:
+				return SlotReload;
+			case PieSliceType::FormSquad:
+				return SlotSquad;
+			case PieSliceType::Sentry:
+			case PieSliceType::Stay:
+				return SlotSentry;
+			case PieSliceType::GoTo:
+				return SlotGoTo;
+			case PieSliceType::Patrol:
+			case PieSliceType::Return:
+				return SlotPatrol;
+			case PieSliceType::BrainHunt:
+			case PieSliceType::Deliver:
+				return SlotBrainHunt;
+			case PieSliceType::GoldDig:
+			case PieSliceType::Scuttle:
+				return SlotGoldDig;
+			case PieSliceType::DigTo:
+				return SlotDigTo;
+			default:
+				return -1;
+		}
+	}
+
+	/// What an empty fixed box is called, greyed out: what would be there for this kind of unit.
+	const char* EmptySlotLabel(int slot, bool vehicle, bool craft) {
+		switch (slot) {
+			case SlotDrop:
+				return "Drop";
+			case SlotInventory:
+				return "Full Inventory";
+			case SlotPickup:
+				return "Pick Up";
+			case SlotPrevious:
+				return vehicle ? "Get Out" : "Prev Item";
+			case SlotNext:
+				return vehicle ? "Change Seat" : "Next Item";
+			case SlotReload:
+				return vehicle ? "Handbrake" : "Reload";
+			case SlotSquad:
+				return "Form Squad";
+			case SlotSentry:
+				return craft ? "Stay" : "Sentry";
+			case SlotGoTo:
+				return "Go To";
+			case SlotPatrol:
+				return craft ? "Return" : "Patrol";
+			case SlotBrainHunt:
+				return craft ? "Deliver" : "Brain Hunt";
+			case SlotGoldDig:
+				return craft ? "Scuttle" : "Gold Dig";
+			case SlotDigTo:
+				return "Dig To Here";
+			case SlotWeapons:
+				return "Weapons";
+			case SlotMovement:
+				return "Movement";
+			default:
+				return "Temperament";
+		}
+	}
+
+	/// The unit's menu sorted into its places: the fixed boxes (empty where the unit has nothing for one), what it carries for the left
+	/// column and its other actions for the right.
+	struct UnitCells {
+		ActionMenu::Cell Fixed[SlotCount];
+		bool Filled[SlotCount] = {};
+		std::vector<ActionMenu::Cell> Carried; //!< In hand (lit), off hand, then the rest.
+		std::vector<ActionMenu::Cell> Others; //!< Powerups, then the slices with no fixed box (a mod's, the buy menu, the map...).
+
+		/// Puts a cell in its fixed box, or with the others if the box is taken already or it has none.
+		void Put(int slot, const ActionMenu::Cell& cell) {
+			if (slot >= 0 && !Filled[slot]) {
+				Fixed[slot] = cell;
+				Filled[slot] = true;
+			} else {
+				Others.push_back(cell);
+			}
+		}
+	};
+
+	/// What the unit does: a vehicle's handbrake, the wheel's slices and its sub-menus' slices, each in its fixed box or with the others
+	/// after its powerups.
+	void AddActions(UnitCells& cells, const Actor* actor, const PieMenu* pieMenu) {
+		AddQuickActions(cells.Others, actor);
 		if (const AVehicle* vehicle = dynamic_cast<const AVehicle*>(actor); vehicle && !vehicle->GetWheels().empty()) {
 			bool on = vehicle->IsHandbrakeOn();
-			cells.push_back(MakeCell(UnitAction::Handbrake, on ? "Handbrake: On" : "Handbrake: Off", ActionMenu::Kind::State, nullptr, true, on ? 0 : 1, on));
-		}
-		for (const PieSlice* slice: pieMenu->GetPieSlices()) {
-			if (!slice->GetSubPieMenu() && !IsInventorySlice(slice)) {
-				cells.push_back(SliceCell(slice));
-			}
+			cells.Put(SlotReload, MakeCell(UnitAction::Handbrake, on ? "Handbrake: On" : "Handbrake: Off", ActionMenu::Kind::State, nullptr, true, on ? 0 : 1, on));
 		}
 		for (const PieSlice* slice: pieMenu->GetPieSlices()) {
 			if (const PieMenu* subPieMenu = slice->GetSubPieMenu()) {
 				for (const PieSlice* subSlice: subPieMenu->GetPieSlices()) {
 					if (!subSlice->GetSubPieMenu()) {
-						cells.push_back(SliceCell(subSlice));
+						cells.Put(SliceSlot(subSlice->GetType()), SliceCell(subSlice));
 					}
 				}
+			} else {
+				cells.Put(SliceSlot(slice->GetType()), SliceCell(slice));
 			}
 		}
 	}
 
-	/// What the unit carries: what it has in hand (lit) and the rest, each taken in hand when picked; then the wheel's inventory slices.
-	void AddInventory(std::vector<ActionMenu::Cell>& cells, const Actor* actor, const PieMenu* pieMenu) {
+	/// What the unit carries: what it has in hand (lit) and the rest, each taken in hand when picked.
+	void AddInventory(UnitCells& cells, const Actor* actor) {
 		const AHuman* human = dynamic_cast<const AHuman*>(actor);
 		if (human) {
 			if (const HeldDevice* inHand = human->GetEquippedItem()) {
-				cells.push_back(MakeCell(UnitAction::Item, inHand->GetPresetName(), ActionMenu::Kind::State, nullptr, true, 0, true, ItemPicture(inHand)));
+				cells.Carried.push_back(MakeCell(UnitAction::Item, inHand->GetPresetName(), ActionMenu::Kind::State, nullptr, true, 0, true, ItemPicture(inHand)));
 			}
 			if (const HeldDevice* offHand = human->GetEquippedBGItem()) {
-				cells.push_back(MakeCell(UnitAction::Item, offHand->GetPresetName() + " (off hand)", ActionMenu::Kind::State, nullptr, true, 0, false, ItemPicture(offHand)));
+				cells.Carried.push_back(MakeCell(UnitAction::Item, offHand->GetPresetName() + " (off hand)", ActionMenu::Kind::State, nullptr, true, 0, false, ItemPicture(offHand)));
 			}
 		}
 		for (const MovableObject* item: *actor->GetInventory()) {
@@ -385,94 +489,80 @@ namespace {
 			std::string label = casts >= 0 ? item->GetPresetName() + " (" + std::to_string(casts) + (casts == 1 ? " cast)" : " casts)") : item->GetPresetName();
 			// (Only a unit with a hand to hold it takes an item in hand; others' inventories are shown, greyed.)
 			bool takeable = human && human->GetFGArm() && dynamic_cast<const HeldDevice*>(item);
-			cells.push_back(MakeCell(UnitAction::Item, label, ActionMenu::Kind::State, item, takeable, 0, false, ItemPicture(item)));
-		}
-		for (const PieSlice* slice: pieMenu->GetPieSlices()) {
-			if (!slice->GetSubPieMenu() && IsInventorySlice(slice)) {
-				cells.push_back(SliceCell(slice));
-			}
+			cells.Carried.push_back(MakeCell(UnitAction::Item, label, ActionMenu::Kind::State, item, takeable, 0, false, ItemPicture(item)));
 		}
 	}
 
 	/// The unit's rules, one box each that goes on to the next choice when picked.
-	void AddRules(std::vector<ActionMenu::Cell>& cells, const Actor* actor) {
+	void AddRules(UnitCells& cells, const Actor* actor) {
 		constexpr int weaponRules = static_cast<int>(std::size(c_WeaponRuleNames));
 		constexpr int movementRules = static_cast<int>(std::size(c_MovementRuleNames));
 		int weapon = std::clamp(actor->GetWeaponRule(), 0, weaponRules - 1);
 		int movement = std::clamp(actor->GetMovementRule(), 0, movementRules - 1);
-		cells.push_back(MakeCell(UnitAction::WeaponRule, std::string("Weapons: ") + c_WeaponRuleNames[weapon], ActionMenu::Kind::Setting, nullptr, true, (weapon + 1) % weaponRules));
-		cells.push_back(MakeCell(UnitAction::MovementRule, std::string("Movement: ") + c_MovementRuleNames[movement], ActionMenu::Kind::Setting, nullptr, true, (movement + 1) % movementRules));
+		cells.Put(SlotWeapons, MakeCell(UnitAction::WeaponRule, std::string("Weapons: ") + c_WeaponRuleNames[weapon], ActionMenu::Kind::Setting, nullptr, true, (weapon + 1) % weaponRules));
+		cells.Put(SlotMovement, MakeCell(UnitAction::MovementRule, std::string("Movement: ") + c_MovementRuleNames[movement], ActionMenu::Kind::Setting, nullptr, true, (movement + 1) % movementRules));
 		// (Not a vehicle's: it is how a unit behaves, and a vehicle's crew have their own.)
 		if (!dynamic_cast<const AVehicle*>(actor)) {
 			int temperament = std::clamp(actor->GetTemperament(), 0, Actor::TEMPERAMENTCOUNT - 1);
-			cells.push_back(MakeCell(UnitAction::TemperamentChoice, std::string(actor->IsNonCombatant() ? "Non-combatant: " : "Temperament: ") + Actor::TemperamentName(temperament), ActionMenu::Kind::Setting, nullptr, true, (temperament + 1) % Actor::TEMPERAMENTCOUNT));
+			cells.Put(SlotTemperament, MakeCell(UnitAction::TemperamentChoice, std::string(actor->IsNonCombatant() ? "Non-combatant: " : "Temperament: ") + Actor::TemperamentName(temperament), ActionMenu::Kind::Setting, nullptr, true, (temperament + 1) % Actor::TEMPERAMENTCOUNT));
 		}
 	}
 
-	/// Lays out the ring round the unit: an empty square the unit's size in the middle, then ring after ring of boxes round it, each ring a
-	/// column of boxes down each side and a row along the top and bottom of the one inside it. The cells take the places nearest the middle
-	/// in their order, so the first (what it does) are touching the unit's square and the last (its rules) furthest out.
+	/// Lays out the menu round the unit, every box in a fixed place: an empty square the unit's size in the middle (at least two boxes high
+	/// and one wide), the inner ring of ten fixed boxes round it (three above, two down each side, three below), a row of the less used
+	/// orders above that and a row of the rules below. What it carries is a column down the left and its other actions one down the right,
+	/// both growing downwards, so however many there are they never move the fixed boxes.
 	void LayoutUnitRing(const Actor* actor, const PieMenu* pieMenu) {
-		std::vector<ActionMenu::Cell> cells;
-		AddActions(cells, actor, pieMenu);
-		AddInventory(cells, actor, pieMenu);
-		AddRules(cells, actor);
+		UnitCells sorted;
+		AddActions(sorted, actor, pieMenu);
+		AddInventory(sorted, actor);
+		AddRules(sorted, actor);
 
 		const float boxWidth = 118.0F * s_Scale;
 		const float boxHeight = 26.0F * s_Scale;
 		const float gap = 3.0F * s_Scale;
-		// The unit's square: as big as the unit on screen (its radius), at least a box high.
+		// The unit's square: as big as the unit on screen (its radius), at least room for the boxes round it.
 		ImVec2 centre = DebugDraw::ToScreen(actor->GetPos());
 		float radius = std::abs(DebugDraw::ToScreen(actor->GetPos() + Vector(actor->GetRadius(), 0.0F)).x - centre.x);
-		float half = std::max(radius, boxHeight * 0.75F);
+		float halfWidth = std::max(radius, boxWidth * 0.5F);
+		float halfHeight = std::max(radius, boxHeight + gap * 0.5F);
 		UnitRing ring;
-		ring.HoleMin = ImVec2(-half, -half);
-		ring.HoleMax = ImVec2(half, half);
+		ring.HoleMin = ImVec2(-halfWidth, -halfHeight);
+		ring.HoleMax = ImVec2(halfWidth, halfHeight);
 
-		// The places, ring by ring, as offsets from the middle, each ring's nearest first, till there are enough.
+		// The columns and rows, as offsets from the middle.
+		const float leftX = -halfWidth - gap - boxWidth;
+		const float middleX = -boxWidth * 0.5F;
+		const float rightX = halfWidth + gap;
+		const float upperY = -boxHeight - gap * 0.5F;
+		const float lowerY = gap * 0.5F;
+		const float topY = -halfHeight - gap - boxHeight;
+		const float bottomY = halfHeight + gap;
+		const float outerTopY = topY - gap - boxHeight;
+		const float outerBottomY = bottomY + boxHeight + gap;
+		const ImVec2 fixedPlaces[SlotCount] = {
+		    {leftX, topY}, {middleX, topY}, {rightX, topY},
+		    {leftX, upperY}, {rightX, upperY},
+		    {leftX, lowerY}, {rightX, lowerY},
+		    {leftX, bottomY}, {middleX, bottomY}, {rightX, bottomY},
+		    {leftX, outerTopY}, {middleX, outerTopY}, {rightX, outerTopY},
+		    {leftX, outerBottomY}, {middleX, outerBottomY}, {rightX, outerBottomY}};
+
+		const bool vehicle = dynamic_cast<const AVehicle*>(actor) != nullptr;
+		const bool craft = dynamic_cast<const ACraft*>(actor) != nullptr;
+		std::vector<ActionMenu::Cell> cells;
 		std::vector<ImVec2> places;
-		ImVec2 inner = ring.HoleMin;
-		ImVec2 outer = ring.HoleMax;
-		while (places.size() < cells.size()) {
-			std::vector<ImVec2> ringPlaces;
-			// A column down each side, as many boxes as the inner square is high (one at least), centred on it.
-			float innerHeight = outer.y - inner.y;
-			int perSide = std::max(1, static_cast<int>((innerHeight + gap) / (boxHeight + gap)));
-			float columnTop = (inner.y + outer.y) * 0.5F - (static_cast<float>(perSide) * (boxHeight + gap) - gap) * 0.5F;
-			float leftX = inner.x - gap - boxWidth;
-			float rightX = outer.x + gap;
-			for (int i = 0; i < perSide; ++i) {
-				float y = columnTop + static_cast<float>(i) * (boxHeight + gap);
-				ringPlaces.emplace_back(leftX, y);
-				ringPlaces.emplace_back(rightX, y);
-			}
-			// A row along the top and the bottom, as many boxes as fit across the square and its columns, centred on it.
-			float columnBottom = columnTop + static_cast<float>(perSide) * (boxHeight + gap) - gap;
-			float rowLeft = leftX;
-			float rowWidth = rightX + boxWidth - leftX;
-			int perRow = std::max(1, static_cast<int>((rowWidth + gap) / (boxWidth + gap)));
-			float rowStart = rowLeft + (rowWidth - (static_cast<float>(perRow) * (boxWidth + gap) - gap)) * 0.5F;
-			float topY = std::min(inner.y, columnTop) - gap - boxHeight;
-			float bottomY = std::max(outer.y, columnBottom) + gap;
-			for (int i = 0; i < perRow; ++i) {
-				float x = rowStart + static_cast<float>(i) * (boxWidth + gap);
-				ringPlaces.emplace_back(x, topY);
-				ringPlaces.emplace_back(x, bottomY);
-			}
-			// Nearest the middle first (by the box's middle); level, the one above or to the right first, as the wheel starts at the top.
-			auto distance = [&](const ImVec2& place) {
-				float x = place.x + boxWidth * 0.5F;
-				float y = place.y + boxHeight * 0.5F;
-				return x * x + y * y;
-			};
-			std::stable_sort(ringPlaces.begin(), ringPlaces.end(), [&](const ImVec2& a, const ImVec2& b) {
-				float da = distance(a);
-				float db = distance(b);
-				return std::abs(da - db) > 1.0F ? da < db : (a.y != b.y ? a.y < b.y : a.x > b.x);
-			});
-			places.insert(places.end(), ringPlaces.begin(), ringPlaces.end());
-			inner = ImVec2(leftX, topY);
-			outer = ImVec2(rightX + boxWidth, bottomY + boxHeight);
+		for (int slot = 0; slot < SlotCount; ++slot) {
+			cells.push_back(sorted.Filled[slot] ? sorted.Fixed[slot] : MakeCell(UnitAction::Empty, EmptySlotLabel(slot, vehicle, craft), slot >= SlotWeapons ? ActionMenu::Kind::Setting : ActionMenu::Kind::Command, nullptr, false));
+			places.push_back(fixedPlaces[slot]);
+		}
+		for (size_t i = 0; i < sorted.Carried.size(); ++i) {
+			cells.push_back(sorted.Carried[i]);
+			places.emplace_back(leftX - gap - boxWidth, topY + static_cast<float>(i) * (boxHeight + gap));
+		}
+		for (size_t i = 0; i < sorted.Others.size(); ++i) {
+			cells.push_back(sorted.Others[i]);
+			places.emplace_back(rightX + boxWidth + gap, topY + static_cast<float>(i) * (boxHeight + gap));
 		}
 
 		// Placed, and the whole of it moved in from the edges of the game's picture if it would go off them.
