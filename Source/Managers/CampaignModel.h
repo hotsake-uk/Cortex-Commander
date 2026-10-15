@@ -34,6 +34,7 @@ namespace RTE::CampaignModel {
 		Market, //!< More income.
 		Walls, //!< Defenders fight harder.
 		Hospital, //!< Wounded soldiers here heal faster.
+		Shipyard, //!< Armies here can have their ship upgraded, and ships are repaired here.
 		Count
 	};
 
@@ -69,6 +70,15 @@ namespace RTE::CampaignModel {
 	constexpr int c_MaxSquadSize = 8; //!< Soldiers a squad can have.
 	constexpr int c_MovesPerTurn = 2; //!< An army's moves each turn: a lane jump takes 2, landing, taking off or going overland 1.
 	constexpr int c_MaxSettlement = 3; //!< Outpost, colony, city.
+
+	/// The ship an army travels in. A transport only carries it: it never fights in space and never stops anyone landing. Warships
+	/// (frigates and cruisers) fight other factions' warships in orbit, and guard the planets below.
+	enum class Ship {
+		Transport,
+		Frigate,
+		Cruiser,
+		Count
+	};
 
 	/// A place on a planet's surface that can be owned, settled and fought over.
 	struct Point {
@@ -142,6 +152,8 @@ namespace RTE::CampaignModel {
 		int Moves = c_MovesPerTurn; //!< Moves left this turn.
 		std::vector<int> Path; //!< Systems still to go through, next first: carried on with at the start of each turn.
 		std::vector<Squad> Squads;
+		int Ship = 0; //!< Its Ship.
+		float Hull = 1.0F; //!< Its ship's state, 0 to 1: what it fights with in space. Repaired a little each turn, fully at a Shipyard.
 	};
 
 	struct Faction {
@@ -235,6 +247,9 @@ namespace RTE::CampaignModel {
 		std::vector<std::string> Promotions;
 		bool PlayerInvolved = false;
 		bool Fought = false; //!< Played out on the battlefield, not auto-resolved.
+		bool Space = false; //!< Between fleets in orbit: strengths are the ships' power, and the losses are soldiers lost with ships.
+		int System = -1; //!< Where a space battle was fought.
+		std::vector<std::string> Notes; //!< What happened to the ships, and who fell back where.
 	};
 
 	/// A ground battle the player fought for real (CampaignBattle.lua): who won, and who's still standing.
@@ -286,6 +301,9 @@ namespace RTE::CampaignModel {
 	const char* BuildingTip(Building building);
 	int BuildingCost(Building building);
 	const char* SettlementName(int level);
+	const char* ShipName(int ship);
+	/// What a ship is for, one line.
+	const char* ShipTip(int ship);
 	const char* RankName(int rank);
 	/// The colour planets of a type are drawn in, as an ImU32.
 	std::uint32_t PlanetColor(PlanetType type);
@@ -320,6 +338,15 @@ namespace RTE::CampaignModel {
 	int SoldierCount(const Army& army);
 	/// How strong an army is in an auto-resolved battle.
 	float Strength(const Campaign& campaign, const Army& army);
+	/// Whether an army's ship is a warship: one that fights in space.
+	bool Armed(const Army& army);
+	/// How strong an army's ship is in a space battle: its kind, and its hull. 0 for a transport.
+	float SpacePower(const Army& army);
+	/// The warships in orbit that stop a faction's army landing on a point: those of factions at war with it, and those of the faction
+	/// it would attack there (the point's owner, and the armies on it) unless they're friends.
+	std::vector<int> OrbitGuards(const Campaign& campaign, int faction, int planet, int point);
+	/// The chance (0 to 1) a space battle against these guards is won, roughly.
+	float SpaceWinChance(const Campaign& campaign, const Army& army, const std::vector<int>& guards);
 	/// How strong a point's defence is without the armies on it: its locals and walls.
 	float PointDefence(const Campaign& campaign, int planet, int point);
 	/// The armies standing on a point.
@@ -355,6 +382,10 @@ namespace RTE::CampaignModel {
 	Cost SettleCostFor(const Campaign& campaign, int faction, int level);
 	Cost BuildingCostFor(const Campaign& campaign, int faction, Building building);
 	Cost RecruitCostFor(const Campaign& campaign, int faction, int type);
+	/// What upgrading an army's ship to this kind costs a faction, its bonuses counted.
+	Cost ShipCostFor(const Campaign& campaign, int faction, int ship);
+	/// Whether an army's ship can be upgraded to the next kind now, and why not.
+	bool CanUpgradeShip(const Campaign& campaign, int army, std::string& why);
 	/// Moves a lane jump takes the faction's armies, and whether taking off takes one.
 	int JumpMoves(const Campaign& campaign, int faction);
 	int TakeOffMoves(const Campaign& campaign, int faction);
@@ -412,12 +443,15 @@ namespace RTE::CampaignModel {
 #pragma region Commands (for the screen and the AI)
 	/// Moves an army toward a system along the lanes: as far as its moves go now, the rest at the start of later turns.
 	bool OrderMove(Campaign& campaign, int army, int system);
-	/// Lands an army in orbit on a point of a planet in its system. Onto an enemy point that is defended, it's a battle.
+	/// Lands an army in orbit on a point of a planet in its system. Onto an enemy point that is defended, it's a battle. With warships
+	/// guarding the orbit (OrbitGuards), a transport can't land, and a warship fights them first: it lands only if it wins.
 	bool OrderLand(Campaign& campaign, int army, int planet, int point, const FoughtBattle* fought = nullptr);
 	/// Moves an army on a planet to a linked point (or attacks it).
 	bool OrderOverland(Campaign& campaign, int army, int point, const FoughtBattle* fought = nullptr);
 	/// How many locals defend a point against a faction, as soldiers in a battle (none on its own or an ally's ground).
 	int LocalSoldiers(const Campaign& campaign, int faction, int planet, int point);
+	/// Upgrades an army's ship to the next kind (at a Shipyard of its faction's), and repairs it.
+	bool UpgradeShip(Campaign& campaign, int army);
 	/// Takes an army off its planet into orbit.
 	bool OrderLaunch(Campaign& campaign, int army);
 	/// Whether a move onto a point would be a battle (an enemy army there, or defenders), and how strong they are.

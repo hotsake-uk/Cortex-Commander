@@ -37,6 +37,12 @@ namespace RTE::CampaignModel {
 		constexpr float c_MilitiaPerLevel = 2.0F; //!< A settlement's locals, times its level; they come back at a quarter of that a turn.
 		constexpr float c_WallsBonusMetal = 1.6F; //!< Walls with the second Metal bonus.
 
+		// Ships.
+		constexpr float c_ShipPower[] = {0.0F, 10.0F, 25.0F}; //!< A ship's power in space at full hull, by kind.
+		constexpr int c_ShipUpkeep[] = {0, 25, 60}; //!< Gold a turn a ship costs, by kind.
+		constexpr float c_SunkLoss = 0.6F; //!< The share of its soldiers an army loses when its warship is destroyed.
+		constexpr float c_HullRepair = 0.1F; //!< Hull a ship gets back each turn anywhere, more in orbit over its faction's Shipyard.
+
 		// Resources.
 		constexpr float c_BasePrices[c_ResourceCount] = {40.0F, 30.0F, 50.0F, 45.0F, 120.0F, 400.0F};
 		constexpr Stock c_StartStock = {5, 10, 8, 6, 2, 0};
@@ -631,6 +637,148 @@ namespace RTE::CampaignModel {
 			return there;
 		}
 
+		/// A fleet that lost a space battle falls back into orbit of a system next door along the lanes: one with no warship hostile to
+		/// it, its own points first. With nowhere to go, it stays.
+		void FallBack(Campaign& campaign, int armyIndex, int from) {
+			Army& army = campaign.Armies[armyIndex];
+			int best = -1;
+			int bestScore = -1;
+			for (int next: campaign.Systems[army.System].Lanes) {
+				bool guarded = false;
+				for (int other: ArmiesInOrbit(campaign, next)) {
+					guarded = guarded || (Armed(campaign.Armies[other]) && StanceOf(campaign, army.Faction, campaign.Armies[other].Faction) == Stance::War);
+				}
+				if (guarded) {
+					continue;
+				}
+				int score = next == from ? 1 : 0;
+				for (int planet: campaign.Systems[next].Planets) {
+					for (const Point& point: campaign.Planets[planet].Points) {
+						score += point.Owner == army.Faction ? 2 : 0;
+					}
+				}
+				if (score > bestScore) {
+					bestScore = score;
+					best = next;
+				}
+			}
+			army.Planet = -1;
+			army.Point = -1;
+			army.Moves = 0;
+			army.Path.clear();
+			if (best >= 0) {
+				army.System = best;
+			}
+		}
+
+		/// A space battle in orbit: an attacking warship against the warships it meets (all in the same system). Ships lose hull, the
+		/// winner less; a ship knocked out takes most of its army's soldiers with it, and the survivors carry on in a transport. The
+		/// losing side's fleets fall back to a system next door. Returns whether the attacker won (and is still there).
+		bool SpaceBattle(Campaign& campaign, int attackerIndex, const std::vector<int>& defenders, int cameFrom = -1) {
+			const long attackerID = campaign.Armies[attackerIndex].Id;
+			const int faction = campaign.Armies[attackerIndex].Faction;
+			const int system = campaign.Armies[attackerIndex].System;
+			BattleOutcome outcome;
+			outcome.Happened = true;
+			outcome.Space = true;
+			outcome.System = system;
+			outcome.Attacker = faction;
+			outcome.Defender = campaign.Armies[defenders.front()].Faction;
+			outcome.Where = "the orbit of " + campaign.Systems[system].Name;
+			for (int defender: defenders) {
+				if (StanceOf(campaign, faction, campaign.Armies[defender].Faction) != Stance::War) {
+					DeclareWar(campaign, faction, campaign.Armies[defender].Faction);
+				}
+			}
+			const float attack = SpacePower(campaign.Armies[attackerIndex]);
+			float defence = 0.0F;
+			for (int defender: defenders) {
+				defence += SpacePower(campaign.Armies[defender]);
+				outcome.DefenderSoldiers += SoldierCount(campaign.Armies[defender]);
+			}
+			outcome.AttackerSoldiers = SoldierCount(campaign.Armies[attackerIndex]);
+			outcome.AttackStrength = attack;
+			outcome.DefendStrength = defence;
+			outcome.PlayerInvolved = IsHuman(campaign, faction) || IsHuman(campaign, outcome.Defender);
+			const float rolledAttack = attack * (0.85F + 0.3F * Roll(campaign));
+			const float rolledDefence = defence * (0.85F + 0.3F * Roll(campaign));
+			outcome.AttackerWon = rolledAttack > rolledDefence;
+			const float ratio = std::clamp(outcome.AttackerWon ? rolledDefence / std::max(rolledAttack, 0.01F) : rolledAttack / std::max(rolledDefence, 0.01F), 0.0F, 1.0F);
+			const float winnerDamage = 0.1F + 0.35F * std::pow(ratio, 1.5F);
+			const float loserDamage = 0.45F + 0.4F * (1.0F - ratio);
+			const std::vector<long> attackers = {attackerID};
+			std::vector<long> defenderIDs;
+			for (int defender: defenders) {
+				defenderIDs.push_back(campaign.Armies[defender].Id);
+			}
+			// Hull lost, and ships knocked out, side by side.
+			auto damage = [&](const std::vector<long>& ids, float amount, bool lost, int back, int& soldiersLost) {
+				for (long id: ids) {
+					const int index = FindArmy(campaign, id);
+					if (index < 0) {
+						continue;
+					}
+					Army& army = campaign.Armies[index];
+					army.Hull -= amount * (0.85F + 0.3F * Roll(campaign));
+					if (army.Hull <= 0.05F) {
+						const std::string ship = ShipName(army.Ship);
+						const int fell = TakeCasualties(campaign, {index}, c_SunkLoss);
+						soldiersLost += fell;
+						Army& after = campaign.Armies[index];
+						after.Ship = static_cast<int>(Ship::Transport);
+						after.Hull = 1.0F;
+						outcome.Notes.push_back(after.Name + "'s " + ship + " was destroyed: " + std::to_string(fell) + " soldiers went down with it, the rest got away in a transport.");
+					} else {
+						army.Hull = std::max(army.Hull, 0.05F);
+					}
+					if (lost) {
+						Army& loser = campaign.Armies[index];
+						const int from = loser.System;
+						FallBack(campaign, index, back);
+						if (campaign.Armies[index].System != from) {
+							outcome.Notes.push_back(loser.Name + " fell back to " + campaign.Systems[campaign.Armies[index].System].Name + ".");
+						}
+					}
+				}
+			};
+			damage(attackers, outcome.AttackerWon ? winnerDamage : loserDamage, !outcome.AttackerWon, cameFrom, outcome.AttackerLost);
+			damage(defenderIDs, outcome.AttackerWon ? loserDamage : winnerDamage, outcome.AttackerWon, -1, outcome.DefenderLost);
+			AddLog(campaign, "Space battle over " + campaign.Systems[system].Name + ": " + campaign.Factions[faction].Name + " attacked " + FactionName(campaign, outcome.Defender) + "'s fleet and " + (outcome.AttackerWon ? "won." : "lost."));
+			RemoveEmptyArmies(campaign);
+			if (outcome.PlayerInvolved) {
+				campaign.Reports.push_back(outcome);
+			}
+			if (campaign.Battles.size() < 64) {
+				campaign.Battles.push_back(outcome);
+			}
+			CheckFactions(campaign);
+			const int attacker = FindArmy(campaign, attackerID);
+			return outcome.AttackerWon && attacker >= 0 && campaign.Armies[attacker].System == system;
+		}
+
+		/// The warships in orbit of a system at war with a faction.
+		std::vector<int> EnemyWarships(const Campaign& campaign, int faction, int system) {
+			std::vector<int> enemies;
+			for (int other: ArmiesInOrbit(campaign, system)) {
+				if (Armed(campaign.Armies[other]) && StanceOf(campaign, faction, campaign.Armies[other].Faction) == Stance::War) {
+					enemies.push_back(other);
+				}
+			}
+			return enemies;
+		}
+
+		/// Whether a faction has a Shipyard on a settlement in a system.
+		bool ShipyardIn(const Campaign& campaign, int faction, int system) {
+			for (int planet: campaign.Systems[system].Planets) {
+				for (const Point& point: campaign.Planets[planet].Points) {
+					if (point.Owner == faction && point.Settlement > 0 && point.Built[static_cast<size_t>(Building::Shipyard)]) {
+						return true;
+					}
+				}
+			}
+			return false;
+		}
+
 		/// Spends an army's moves on its path: a lane jump at a time, while it has them. Taking off first, if it's on a planet.
 		void FollowPath(Campaign& campaign, int army) {
 			Army& moving = campaign.Armies[army];
@@ -662,10 +810,23 @@ namespace RTE::CampaignModel {
 					moving.Path.clear();
 					break;
 				}
+				const int from = moving.System;
 				moving.System = next;
 				moving.Path.erase(moving.Path.begin());
 				moving.Moves -= jump;
 				--faction.Resources[static_cast<size_t>(Resource::Fuel)];
+				// A warship jumping in on enemy warships fights them; losing, it falls back. (Transports slip past.)
+				if (Armed(moving)) {
+					if (const std::vector<int> enemies = EnemyWarships(campaign, moving.Faction, next); !enemies.empty()) {
+						const long id = moving.Id;
+						if (!SpaceBattle(campaign, army, enemies, from)) {
+							if (const int after = FindArmy(campaign, id); after >= 0) {
+								campaign.Armies[after].Path.clear();
+							}
+						}
+						return; // (The army list may have changed.)
+					}
+				}
 			}
 		}
 
@@ -832,6 +993,11 @@ namespace RTE::CampaignModel {
 						if (campaign.Armies[army].Faction == faction && ReplenishCost(campaign, army) > 0 && self.Gold - ReplenishCost(campaign, army) >= reserve) {
 							Replenish(campaign, army);
 						}
+						// A warship for armies at a Shipyard, with gold to spare.
+						std::string why;
+						if (campaign.Armies[army].Faction == faction && CanUpgradeShip(campaign, army, why) && self.Gold - ShipCostFor(campaign, faction, campaign.Armies[army].Ship + 1).Gold >= reserve * 3) {
+							UpgradeShip(campaign, army);
+						}
 					}
 				}
 			}
@@ -852,7 +1018,7 @@ namespace RTE::CampaignModel {
 						} else if (pass == 1) {
 							built = Settle(campaign, faction, planet, point);
 						} else if (pass == 2 && here.Settlement > 0) {
-							built = Build(campaign, faction, planet, point, Building::Walls);
+							built = Build(campaign, faction, planet, point, Building::Walls) || Build(campaign, faction, planet, point, Building::Shipyard);
 						}
 						builds -= built ? 1 : 0;
 					}
@@ -915,6 +1081,12 @@ namespace RTE::CampaignModel {
 							WouldFight(campaign, faction, planet, point, defence);
 							if (defence > 0.0F && WinChance(strength, defence) < nerve) {
 								continue;
+							}
+							// Landing past warships guarding the orbit takes a warship that can beat them.
+							if (planet != self_army.Planet) {
+								if (const std::vector<int> guards = OrbitGuards(campaign, faction, planet, point); !guards.empty() && (!Armed(self_army) || SpaceWinChance(campaign, self_army, guards) < nerve)) {
+									continue;
+								}
 							}
 							float distance = static_cast<float>(hop) * 2.0F;
 							if (hop == 0) {
@@ -1026,6 +1198,7 @@ namespace RTE::CampaignModel {
 			UpdateDiplomacy(campaign);
 			for (Army& army: campaign.Armies) {
 				army.Moves = c_MovesPerTurn;
+				army.Hull = std::min(1.0F, army.Hull + (ShipyardIn(campaign, army.Faction, army.System) ? 0.5F : c_HullRepair));
 				if (hungry[army.Faction]) {
 					continue; // No healing on an empty stomach.
 				}
@@ -1056,8 +1229,34 @@ namespace RTE::CampaignModel {
 					}
 				}
 			}
-			for (int army = 0; army < static_cast<int>(campaign.Armies.size()); ++army) {
-				FollowPath(campaign, army);
+			// By ID: a space battle on the way can take armies away.
+			std::vector<long> ids;
+			for (const Army& army: campaign.Armies) {
+				ids.push_back(army.Id);
+			}
+			for (long id: ids) {
+				if (const int army = FindArmy(campaign, id); army >= 0) {
+					FollowPath(campaign, army);
+				}
+			}
+			// Warships of factions at war in the same orbit fight, once a system a turn: the strongest of them attacks.
+			for (int system = 0; system < static_cast<int>(campaign.Systems.size()); ++system) {
+				int attacker = -1;
+				float best = 0.0F;
+				std::vector<int> enemies;
+				for (int army: ArmiesInOrbit(campaign, system)) {
+					if (!Armed(campaign.Armies[army]) || SpacePower(campaign.Armies[army]) <= best) {
+						continue;
+					}
+					if (std::vector<int> found = EnemyWarships(campaign, campaign.Armies[army].Faction, system); !found.empty()) {
+						attacker = army;
+						best = SpacePower(campaign.Armies[army]);
+						enemies = std::move(found);
+					}
+				}
+				if (attacker >= 0) {
+					SpaceBattle(campaign, attacker, enemies);
+				}
 			}
 			CheckFactions(campaign);
 		}
@@ -1094,7 +1293,7 @@ namespace RTE::CampaignModel {
 	}
 
 	const char* BuildingName(Building building) {
-		static constexpr const char* c_Names[] = {"Barracks", "Market", "Walls", "Hospital"};
+		static constexpr const char* c_Names[] = {"Barracks", "Market", "Walls", "Hospital", "Shipyard"};
 		return c_Names[std::clamp(static_cast<int>(building), 0, static_cast<int>(Building::Count) - 1)];
 	}
 
@@ -1103,13 +1302,27 @@ namespace RTE::CampaignModel {
 		    "Lets better squads be recruited here: second tier, and third in a city on a planet nobody has invaded.",
 		    "More gold every turn from this point.",
 		    "Armies and locals defending this point fight harder.",
-		    "Wounded soldiers resting here heal faster."};
+		    "Wounded soldiers resting here heal faster.",
+		    "Armies here can have their ship upgraded to a warship (a frigate, then a cruiser), and ships in orbit above are repaired faster."};
 		return c_Tips[std::clamp(static_cast<int>(building), 0, static_cast<int>(Building::Count) - 1)];
 	}
 
 	int BuildingCost(Building building) {
-		static constexpr int c_Costs[] = {500, 400, 600, 350};
+		static constexpr int c_Costs[] = {500, 400, 600, 350, 600};
 		return c_Costs[std::clamp(static_cast<int>(building), 0, static_cast<int>(Building::Count) - 1)];
+	}
+
+	const char* ShipName(int ship) {
+		static constexpr const char* c_Names[] = {"transport", "frigate", "cruiser"};
+		return c_Names[std::clamp(ship, 0, static_cast<int>(Ship::Count) - 1)];
+	}
+
+	const char* ShipTip(int ship) {
+		static constexpr const char* c_Tips[] = {
+		    "Only carries the army. It never fights in space, and can't land where enemy warships guard the orbit.",
+		    "A warship: fights enemy warships in orbit, guards the planets below, and can fight its way past a guarded orbit to land.",
+		    "A heavy warship: much stronger in space than a frigate."};
+		return c_Tips[std::clamp(ship, 0, static_cast<int>(Ship::Count) - 1)];
 	}
 
 	const char* SettlementName(int level) {
@@ -1481,7 +1694,7 @@ namespace RTE::CampaignModel {
 		if (BonusTier(campaign, army.Faction, Resource::Food) >= 1) {
 			upkeep *= 0.9F;
 		}
-		return static_cast<int>(upkeep);
+		return static_cast<int>(upkeep) + c_ShipUpkeep[std::clamp(army.Ship, 0, static_cast<int>(Ship::Count) - 1)];
 	}
 
 	int UpkeepOf(const Campaign& campaign, int faction) {
@@ -1509,6 +1722,46 @@ namespace RTE::CampaignModel {
 		}
 		income += c_RelicGold[BonusTier(campaign, faction, Resource::Relics)];
 		return income - UpkeepOf(campaign, faction);
+	}
+
+	bool Armed(const Army& army) { return army.Ship > static_cast<int>(Ship::Transport); }
+
+	float SpacePower(const Army& army) { return c_ShipPower[std::clamp(army.Ship, 0, static_cast<int>(Ship::Count) - 1)] * std::clamp(army.Hull, 0.1F, 1.0F); }
+
+	std::vector<int> OrbitGuards(const Campaign& campaign, int faction, int planet, int point) {
+		std::vector<int> guards;
+		if (planet < 0 || planet >= static_cast<int>(campaign.Planets.size())) {
+			return guards;
+		}
+		// Whoever the landing would attack.
+		std::vector<int> attacked;
+		const int owner = point >= 0 && point < static_cast<int>(campaign.Planets[planet].Points.size()) ? campaign.Planets[planet].Points[point].Owner : -1;
+		if (owner >= 0) {
+			attacked.push_back(owner);
+		}
+		if (point >= 0) {
+			for (int army: ArmiesAt(campaign, planet, point)) {
+				attacked.push_back(campaign.Armies[army].Faction);
+			}
+		}
+		for (int army: ArmiesInOrbit(campaign, campaign.Planets[planet].System)) {
+			const Army& each = campaign.Armies[army];
+			if (!Armed(each) || Friendly(campaign, faction, each.Faction)) {
+				continue;
+			}
+			if (StanceOf(campaign, faction, each.Faction) == Stance::War || std::find(attacked.begin(), attacked.end(), each.Faction) != attacked.end()) {
+				guards.push_back(army);
+			}
+		}
+		return guards;
+	}
+
+	float SpaceWinChance(const Campaign& campaign, const Army& army, const std::vector<int>& guards) {
+		float defence = 0.0F;
+		for (int guard: guards) {
+			defence += SpacePower(campaign.Armies[guard]);
+		}
+		return WinChance(SpacePower(army), defence);
 	}
 
 	int SoldierCount(const Army& army) {
@@ -1803,6 +2056,10 @@ namespace RTE::CampaignModel {
 				Of(cost.Resources, Resource::Metal) = 2;
 				Of(cost.Resources, Resource::Water) = 3;
 				break;
+			case Building::Shipyard:
+				Of(cost.Resources, Resource::Metal) = 6;
+				Of(cost.Resources, Resource::Fuel) = 2;
+				break;
 			default:
 				break;
 		}
@@ -1813,6 +2070,44 @@ namespace RTE::CampaignModel {
 			cost = Discounted(cost, 0.7F);
 		}
 		return cost;
+	}
+
+	Cost ShipCostFor(const Campaign& campaign, int faction, int ship) {
+		Cost cost;
+		if (ship == static_cast<int>(Ship::Frigate)) {
+			cost.Gold = 600;
+			Of(cost.Resources, Resource::Metal) = 5;
+			Of(cost.Resources, Resource::Fuel) = 3;
+		} else if (ship == static_cast<int>(Ship::Cruiser)) {
+			cost.Gold = 1500;
+			Of(cost.Resources, Resource::Metal) = 10;
+			Of(cost.Resources, Resource::Crystal) = 3;
+		}
+		if (BonusTier(campaign, faction, Resource::Metal) >= 1) {
+			cost = Discounted(cost, 0.75F);
+		}
+		return cost;
+	}
+
+	bool CanUpgradeShip(const Campaign& campaign, int army, std::string& why) {
+		if (army < 0 || army >= static_cast<int>(campaign.Armies.size())) {
+			return false;
+		}
+		const Army& self = campaign.Armies[army];
+		if (self.Ship >= static_cast<int>(Ship::Count) - 1) {
+			why = "It already has the best ship there is.";
+			return false;
+		}
+		if (self.Planet < 0 || campaign.Planets[self.Planet].Points[self.Point].Owner != self.Faction || campaign.Planets[self.Planet].Points[self.Point].Settlement == 0 || !campaign.Planets[self.Planet].Points[self.Point].Built[static_cast<size_t>(Building::Shipyard)]) {
+			why = "Only at one of your settlements with a Shipyard.";
+			return false;
+		}
+		const Cost cost = ShipCostFor(campaign, self.Faction, self.Ship + 1);
+		if (!CanAfford(campaign, self.Faction, cost)) {
+			why = "Needs " + CostText(cost) + ".";
+			return false;
+		}
+		return true;
 	}
 
 	Cost RecruitCostFor(const Campaign& campaign, int faction, int type) {
@@ -1893,8 +2188,34 @@ namespace RTE::CampaignModel {
 			return false;
 		}
 		landing.Path.clear();
-		--landing.Moves;
+		if (const std::vector<int> guards = OrbitGuards(campaign, landing.Faction, planet, point); !guards.empty()) {
+			// Warships guard the orbit: a transport can't get past them, a warship has to beat them first.
+			if (!Armed(landing)) {
+				return false;
+			}
+			const long id = landing.Id;
+			if (!SpaceBattle(campaign, army, guards)) {
+				return true;
+			}
+			army = FindArmy(campaign, id);
+		}
+		--campaign.Armies[army].Moves;
 		EnterPoint(campaign, army, planet, point, fought);
+		return true;
+	}
+
+	bool UpgradeShip(Campaign& campaign, int army) {
+		std::string why;
+		if (!CanUpgradeShip(campaign, army, why)) {
+			return false;
+		}
+		Army& self = campaign.Armies[army];
+		Pay(campaign, self.Faction, ShipCostFor(campaign, self.Faction, self.Ship + 1));
+		++self.Ship;
+		self.Hull = 1.0F;
+		if (IsHuman(campaign, self.Faction)) {
+			AddLog(campaign, self.Name + " now has a " + ShipName(self.Ship) + ".");
+		}
 		return true;
 	}
 
@@ -2053,6 +2374,11 @@ namespace RTE::CampaignModel {
 			source.Squads.erase(source.Squads.begin());
 		}
 		target.Moves = std::min(target.Moves, source.Moves);
+		// Everyone aboard: the better ship carries the army on.
+		if (source.Squads.empty() && (source.Ship > target.Ship || (source.Ship == target.Ship && source.Hull > target.Hull))) {
+			target.Ship = source.Ship;
+			target.Hull = source.Hull;
+		}
 		RemoveEmptyArmies(campaign);
 		return true;
 	}

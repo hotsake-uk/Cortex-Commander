@@ -3,7 +3,8 @@ package.loaded.Constants = nil; require("Constants");
 -- A campaign battle fought for real (Source/Managers/CampaignScreen.cpp starts it): an attack on a point, on the Maginot Mission map.
 -- Every campaign soldier on either side is one actor, made from their squad's Loadout. The defenders hold the bunker; the attackers come
 -- down by dropship in waves outside its West entrance, with some walking in through the East tunnel, and hunt the defenders down.
--- Whichever side has nobody left loses. The campaign reads back who won and who's still standing (CampaignSurvivors).
+-- The defenders' brain sits in the bunker's command room: the attackers win by killing it, or by bringing down every defender. The
+-- defenders win when no attackers are left. The campaign reads back who won and who's still standing (CampaignSurvivors).
 --
 -- From the campaign, as saved strings and numbers on the activity:
 --   CampaignAttackers, CampaignDefenders: "loadout|module|soldier id|health;..." for each soldier.
@@ -68,7 +69,8 @@ function CampaignBattle:StartActivity(isNewGame)
 		end
 	end
 
-	-- The defenders start in the bunker, holding their ground, the locals with them.
+	-- The defenders start in the bunker, holding their ground, the locals with them, guarding their brain.
+	self:PlaceBrain();
 	self:PlaceDefenders();
 
 	-- Players start looking at where the attack comes from (the attackers) or at the bunker (the defenders).
@@ -149,6 +151,25 @@ function CampaignBattle:RoomSpot()
 		end
 	end
 	return Vector(2200, 1180);
+end
+
+-- The defenders' brain, in the bunker's command room (where Maginot Defence puts it).
+function CampaignBattle:PlaceBrain()
+	local brain = CreateActor("Brain Case", "Base.rte");
+	brain.Team = self.defenderTeam;
+	brain.Pos = Vector(2328, 1170);
+	MovableMan:AddActor(brain);
+	self.brain = brain;
+	self.brainPos = Vector(brain.Pos.X, brain.Pos.Y);
+	for player = Activity.PLAYER_1, Activity.MAXPLAYERCOUNT - 1 do
+		if self:PlayerActive(player) and self:GetTeamOfPlayer(player) == self.defenderTeam then
+			self:SetPlayerBrain(brain, player);
+		end
+	end
+end
+
+function CampaignBattle:BrainAlive()
+	return self.brain ~= nil and MovableMan:IsActor(self.brain) and not self.brain:IsDead();
 end
 
 function CampaignBattle:Count(team)
@@ -248,8 +269,14 @@ function CampaignBattle:SendAttackers()
 	self.firstWave = false;
 end
 
--- An attacker sent at the defenders: to one of them, or into the bunker.
+-- An attacker sent at the defenders: about half go for the brain, the rest for the nearest defender, or into the bunker.
 function CampaignBattle:SendToFight(actor)
+	if self:BrainAlive() and math.random() < 0.5 then
+		actor:ClearAIWaypoints();
+		actor:AddAISceneWaypoint(self.brainPos);
+		actor.AIMode = Actor.AIMODE_GOTO;
+		return;
+	end
 	local target;
 	local best = math.huge;
 	for other in MovableMan.Actors do
@@ -381,18 +408,18 @@ function CampaignBattle:UpdateActivity()
 						waiting = waiting + 1;
 					end
 				end
-				local lead = self.playerAttacks and "Take the bunker: bring down every defender." or "Hold the bunker: bring down every attacker.";
+				local lead = self.playerAttacks and "Take the bunker: kill the brain in its command room, or bring down every defender." or "Hold the bunker: keep your brain alive and bring down every attacker.";
 				local reserve = waiting > 0 and string.format(" (%d still to arrive)", waiting) or "";
 				FrameMan:SetScreenText(string.format("%s\nYours: %d%s. Enemy: %d.", lead, yours, reserve, theirs), self:ScreenOfPlayer(player), 0, 1100, false);
 			end
 		end
 
 		if self.started:IsPastSimMS(4000) then
-			if attackersLeft == 0 then
-				self.WinnerTeam = self.defenderTeam;
-				ActivityMan:EndActivity();
-			elseif defendersLeft == 0 then
+			if not self:BrainAlive() or defendersLeft == 0 then
 				self.WinnerTeam = self.attackerTeam;
+				ActivityMan:EndActivity();
+			elseif attackersLeft == 0 then
+				self.WinnerTeam = self.defenderTeam;
 				ActivityMan:EndActivity();
 			end
 		end

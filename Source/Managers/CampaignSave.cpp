@@ -14,7 +14,7 @@ namespace RTE::CampaignModel {
 	namespace {
 		constexpr const char* c_Folder = "Userdata/Campaigns/";
 		constexpr const char* c_Magic = "CortexCampaign";
-		constexpr int c_Version = 3; //!< 2: resources (deposits, stockpiles, the market). 3: diplomacy (relations, trade pacts).
+		constexpr int c_Version = 4; //!< 2: resources (deposits, stockpiles, the market). 3: diplomacy (relations, trade pacts). 4: armies' ships.
 
 		std::string FileNameFor(const std::string& name) {
 			std::string file;
@@ -152,6 +152,11 @@ namespace RTE::CampaignModel {
 				out << ' ' << amount;
 			}
 			out << '\n';
+		}
+		// Version 4: each army's ship and its hull, in the armies' order.
+		out << "Ships " << campaign.Armies.size() << '\n';
+		for (const Army& army: campaign.Armies) {
+			out << army.Ship << ' ' << army.Hull << '\n';
 		}
 		// Written to a spare file first, then swapped in, so a crash mid-save doesn't lose the campaign.
 		const std::string path = c_Folder + campaign.FileName;
@@ -369,6 +374,18 @@ namespace RTE::CampaignModel {
 			}
 			std::erase_if(loaded.Pacts, [factions](const Pact& pact) { return pact.Terms.From < 0 || pact.Terms.From >= factions || pact.Terms.To < 0 || pact.Terms.To >= factions || pact.Terms.From == pact.Terms.To || pact.TurnsLeft <= 0; });
 			diplomacy = true;
+		}
+		if (version >= 4) {
+			// (From before ships, every army has a transport.)
+			if (!section("Ships") || count != loaded.Armies.size()) {
+				error = "Ships missing";
+				return false;
+			}
+			for (Army& army: loaded.Armies) {
+				in >> army.Ship >> army.Hull;
+				army.Ship = std::clamp(army.Ship, 0, static_cast<int>(Ship::Count) - 1);
+				army.Hull = std::clamp(army.Hull, 0.05F, 1.0F);
+			}
 		}
 		if (in.fail() && !in.eof()) {
 			error = fileName + " is damaged.";
