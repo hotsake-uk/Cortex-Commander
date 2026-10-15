@@ -11,14 +11,13 @@ namespace CortexLauncher;
 
 partial class MainForm
 {
-	readonly TextBox modLinksBox = new() { Width = 420, PlaceholderText = "paste mod.io download link(s) here" };
+	readonly TextBox modLinksBox = new() { Width = 420, Height = 80, Multiline = true, AcceptsReturn = true, ScrollBars = ScrollBars.Vertical, WordWrap = false, PlaceholderText = "paste mod.io download links here, one on each line" };
 	readonly Button addModsBtn = new() { Text = "Download && check", AutoSize = true };
 	static readonly HttpClient http = new(new HttpClientHandler { AllowAutoRedirect = true }) { Timeout = TimeSpan.FromMinutes(15) };
 
 	void SetUpModDownload()
 	{
 		addModsBtn.Click += async (_, _) => await AddModsFromLinks();
-		modLinksBox.KeyDown += async (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; await AddModsFromLinks(); } };
 	}
 
 	// The folder new mods go into: the Mods folder box (its parent if it names a single .rte), or a folder of the launcher's own when none is set.
