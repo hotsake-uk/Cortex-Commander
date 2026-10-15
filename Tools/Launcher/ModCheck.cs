@@ -100,7 +100,7 @@ partial class MainForm
 	}
 
 	// Runs the checker; fix=true makes its fixes first (it keeps a .bak of each file it changes). Returns null when it couldn't run.
-	async Task<ModCheckRun?> RunModCheck(string gameDir, bool fix, CancellationToken ct)
+	async Task<ModCheckRun?> RunModCheck(string gameDir, bool fix, CancellationToken ct, IReadOnlyList<string>? only = null)
 	{
 		var mods = modsBox.Text.Trim();
 		if (mods == "" || !Directory.Exists(mods)) { Append(mods == "" ? "Set a mods folder to check." : $"Mods folder not found: {mods}"); return null; }
@@ -110,7 +110,9 @@ partial class MainForm
 		script ??= await ExtractCheckerFromRemote();
 		if (script == null) { Append("No mod checker found: this version predates Tools/Mods/Check-Mod.py (8.5.228) and the latest maindev couldn't be fetched. Press Refresh and try again."); return null; }
 		// A single .rte picked as the mods folder is checked on its own, with its folder as the place other mods live.
-		var target = mods.EndsWith(".rte", StringComparison.OrdinalIgnoreCase) && Directory.GetDirectories(mods, "*.rte").Length == 0
+		var target = only is { Count: > 0 }
+			? string.Join(" ", only.Select(m => "\"" + m + "\"")) + " --mods \"" + mods + "\"" // just these mods; the rest of the folder is where other mods live
+			: mods.EndsWith(".rte", StringComparison.OrdinalIgnoreCase) && Directory.GetDirectories(mods, "*.rte").Length == 0
 			? $"\"{mods}\" --mods \"{Path.GetDirectoryName(mods)}\""
 			: $"--all --mods \"{mods}\"";
 		Directory.CreateDirectory(ModChecksDir);

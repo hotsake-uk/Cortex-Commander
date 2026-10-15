@@ -41,6 +41,9 @@ Set **Presets** to a shared folder (for example your main checkout's `Userdata\P
 ## Defaults and clearing builds
 `Defaults\` in this folder holds the default `Settings.ini` and settings presets. They are embedded in the exe, unpacked to `%APPDATA%\CortexLauncher\Defaults` on first run (existing files there are kept), and used as the starting values of the **Settings** and **Presets** boxes. Distributing the launcher therefore distributes these defaults. **Delete build** deletes the build and leaves the defaults, your presets and your mods alone.
 
+## Adding mods from links
+Paste one or more mod.io download links into **Add mods** (separate them with spaces) and press **Download & check** (or Enter). On a mod's mod.io page, right-click **Download** and copy the link address; it looks like `https://g-508.modapi.io/v1/games/508/mods/<id>/files/<id>/download`. A mod's web-page address is not a download, and the launcher says so. For each link the launcher downloads the zip, unpacks it, puts every `.rte` folder it finds in your Mods folder (replacing an older copy of the same mod; with no Mods folder set it makes one under `%APPDATA%\CortexLauncher\Mods` and fills the box), then runs the mod check on just those mods and shows the usual results window, where Fix and Open report work as before. Links from mod.io can expire, so use a fresh one if a download fails.
+
 ## Where things go
 Each commit is a `git worktree` in `<repo parent>\CortexVersions\<first 10 chars of sha>`. Built versions stay runnable without rebuilding, and your main checkout is never switched. Settings live in `%APPDATA%\CortexLauncher\settings.json` (`VersionsDir` can relocate the cache).
 

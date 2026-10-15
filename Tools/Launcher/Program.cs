@@ -134,6 +134,7 @@ partial class MainForm : Form
 		presetsBox.Text = OldPath(settings.PresetsDir) ? Defaults.Presets : settings.PresetsDir;
 		LoadWorlds(settings.World);
 		SetUpModCheck();
+		SetUpModDownload();
 
 		// Dead simple: branch, commit, settings, mods, then Build & Launch.
 		static Control Row(string label, Control field, params Control[] extra)
@@ -180,6 +181,7 @@ partial class MainForm : Form
 		Controls.Add(actions);
 		Controls.Add(Row("World:", worldBox, worldsOpen, new Label { Text = "planet skin applied over Data/Base.rte on launch", AutoSize = true, Padding = new Padding(8, 8, 0, 0) }));
 		Controls.Add(Row("Presets:", presetsBox, presetsBrowse));
+		Controls.Add(Row("Add mods:", modLinksBox, addModsBtn));
 		Controls.Add(Row("Mods:", modsBox, modsBrowse, checkModsBtn, checkBeforeLaunch));
 		Controls.Add(Row("Settings:", iniBox, iniBrowse));
 		Controls.Add(new Label { Text = "Commit (latest is selected; pick an older one if you want):", AutoSize = true, Dock = DockStyle.Top, Padding = new Padding(4, 8, 0, 2) });
@@ -245,7 +247,7 @@ partial class MainForm : Form
 	void SetBusy(bool b, string text = "")
 	{
 		busy = b;
-		foreach (var x in new Control[] { fetchBtn, buildBtn, runBtn, buildRunBtn, clearAllBtn, deleteBtn, openBtn, configBox, repoBox, checkModsBtn })
+		foreach (var x in new Control[] { fetchBtn, buildBtn, runBtn, buildRunBtn, clearAllBtn, deleteBtn, openBtn, configBox, repoBox, checkModsBtn, addModsBtn })
 			x.Enabled = !b;
 		cancelBtn.Enabled = b;
 		status.Text = text;
