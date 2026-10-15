@@ -35,6 +35,7 @@
 #include "Controller.h"
 #include "Sandbox.h"
 #include "MapBrowser.h"
+#include "Campaign.h"
 #include "ModernHUD.h"
 #include "UITheme.h"
 #include "ActionMenu.h"
@@ -496,6 +497,7 @@ void DebugMan::DrawImGui() {
 
 	Sandbox::DrawGUI();
 	MapBrowser::DrawGUI();
+	Campaign::DrawGUI();
 	UpdateFreeze();
 
 	if (m_ShowPhotoMode) {

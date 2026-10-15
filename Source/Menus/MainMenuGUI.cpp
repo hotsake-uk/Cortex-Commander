@@ -11,6 +11,7 @@
 
 #include "Scene.h"
 #include "MapBrowser.h"
+#include "Campaign.h"
 
 #include "GameVersion.h"
 
@@ -254,6 +255,9 @@ void MainMenuGUI::SetActiveMenuScreen(MenuScreen screenToShow, bool playButtonPr
 		if (m_ActiveMenuScreen == MenuScreen::MapBrowserScreen) {
 			MapBrowser::Close();
 		}
+		if (m_ActiveMenuScreen == MenuScreen::CampaignScreen) {
+			Campaign::Close();
+		}
 		HideAllScreens();
 		m_ActiveMenuScreen = screenToShow;
 		m_ActiveGUIControlManager = (m_ActiveMenuScreen == MenuScreen::MainScreen) ? m_MainMenuScreenGUIControlManager.get() : m_SubMenuScreenGUIControlManager.get();
@@ -464,6 +468,13 @@ MainMenuGUI::MainMenuUpdateResult MainMenuGUI::Update() {
 			m_MenuScreenChange = false;
 			HandleMapBrowserChoice();
 			break;
+		case MenuScreen::CampaignScreen:
+			m_MenuScreenChange = false;
+			if (Campaign::TakeBack() || !Campaign::IsOpen()) {
+				SetActiveMenuScreen(MenuScreen::MainScreen, false);
+				g_GUISound.BackButtonPressSound()->Play();
+			}
+			break;
 		case MenuScreen::CreditsScreen:
 			if (m_MenuScreenChange) {
 				ShowCreditsScreen();
@@ -486,8 +497,8 @@ MainMenuGUI::MainMenuUpdateResult MainMenuGUI::Update() {
 }
 
 void MainMenuGUI::HandleBackNavigation(bool backButtonPressed) {
-	// (The map browser has Esc for its own Back.)
-	if (m_ActiveMenuScreen == MenuScreen::MapBrowserScreen) {
+	// (The map browser and the campaign have Esc for their own Back.)
+	if (m_ActiveMenuScreen == MenuScreen::MapBrowserScreen || m_ActiveMenuScreen == MenuScreen::CampaignScreen) {
 		return;
 	}
 	if ((!m_ActiveDialogBox || m_ActiveDialogBox == m_MainMenuScreens[MenuScreen::QuitScreen]) && (backButtonPressed || g_UInputMan.KeyPressed(SDLK_ESCAPE))) {
@@ -554,12 +565,9 @@ bool MainMenuGUI::HandleInputEvents() {
 
 void MainMenuGUI::HandleMainScreenInputEvents(const GUIControl* guiEventControl) {
 	if (guiEventControl == m_MainMenuButtons[MenuButton::MetaGameButton]) {
-		if (!m_MetaGameNoticeShown) {
-			SetActiveMenuScreen(MenuScreen::MetaGameNoticeScreen);
-		} else {
-			m_UpdateResult = MainMenuUpdateResult::MetaGameStarted;
-			SetActiveMenuScreen(MenuScreen::MainScreen);
-		}
+		// Campaign mode, in place of Conquest: its own screen, drawn with ImGui like the map browser.
+		SetActiveMenuScreen(MenuScreen::CampaignScreen);
+		Campaign::Open();
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::ScenarioButton]) {
 		m_UpdateResult = MainMenuUpdateResult::ScenarioStarted;
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SandboxButton]) {
@@ -739,8 +747,8 @@ void MainMenuGUI::Draw() {
 		// Whatever this box may be at this point it's already been drawn by the owning GUIControlManager, but we need to draw it again on top of the overlay so it's not affected by it.
 		m_ActiveDialogBox->Draw(m_ActiveGUIControlManager->GetScreen());
 	}
-	// (The map browser draws its own pointer, over its window.)
-	if (m_ActiveMenuScreen != MenuScreen::MapBrowserScreen) {
+	// (The map browser and the campaign draw their own pointer, over their window.)
+	if (m_ActiveMenuScreen != MenuScreen::MapBrowserScreen && m_ActiveMenuScreen != MenuScreen::CampaignScreen) {
 		m_ActiveGUIControlManager->DrawMouse();
 	}
 }
