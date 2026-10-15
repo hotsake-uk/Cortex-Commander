@@ -92,7 +92,7 @@ namespace {
 	};
 
 	/// The guide's steps, in order.
-	enum class Step { Welcome, HomePlanet, Recruit, TakeOff, Travel, EndTurn, Land, Control, Grow, Win, Count };
+	enum class Step { Welcome, HomePlanet, ReadPoint, Resources, Recruit, TakeOff, Travel, EndTurn, Land, Battle, Control, Grow, Trade, Diplomacy, Routine, Win, Count };
 
 	struct GuideState {
 		bool On = false;
@@ -102,6 +102,9 @@ namespace {
 		int BaseTurn = 0;
 		int Target = -1; //!< The planet the guide suggests taking first.
 		double DoneAt = -1.0; //!< When the step was done: it shows as done for a moment, then the next one starts.
+		bool Fought = false; //!< The player has fought a battle since the guide started.
+		bool Traded = false; //!< Bought or sold on the market since the Trade step started.
+		bool Proposed = false; //!< Put something to a faction since the Diplomacy step started.
 	};
 
 	/// What the guide points at this frame, with a bouncing arrow and a pulsing ring.
@@ -112,6 +115,10 @@ namespace {
 		bool Galaxy = false; //!< The Galaxy button.
 		bool TakeOff = false;
 		bool EndTurn = false;
+		bool Resources = false; //!< The resource bar.
+		bool Trade = false; //!< The Trade button.
+		bool Diplomacy = false; //!< The Diplomacy button.
+		bool ToDo = false; //!< The To do list.
 	};
 
 	struct Screen {
@@ -954,6 +961,14 @@ namespace {
 		return home >= 0 && home < static_cast<int>(s_Screen.Game.Planets.size()) ? home : -1;
 	}
 
+	/// Whether a part of the screen is shown: always without the guide, and with it once the guide has got to the step that introduces
+	/// it, so a new player isn't shown everything at once.
+	bool Shown(Step introducedAt) { return !s_Screen.Guide.On || s_Screen.Guide.At >= introducedAt; }
+
+	/// Read and moved on from with a button, not done by playing. The battle step turns into one once the player has fought: it then
+	/// explains the battle they just had.
+	bool ManualStep(Step step) { return step == Step::Welcome || step == Step::Resources || step == Step::Control || step == Step::Routine || step == Step::Win || (step == Step::Battle && s_Screen.Guide.Fought); }
+
 	/// A planet worth taking first: the nearest along the lanes from the player's home with points the player doesn't hold, free ones
 	/// before enemy ones.
 	int FindTarget() {
@@ -1046,6 +1061,12 @@ namespace {
 			case Step::Grow:
 				guide.Base = Development(player);
 				break;
+			case Step::Trade:
+				guide.Traded = false;
+				break;
+			case Step::Diplomacy:
+				guide.Proposed = false;
+				break;
 			default:
 				break;
 		}
@@ -1058,6 +1079,7 @@ namespace {
 		s_Screen.Guide.On = true;
 		s_Screen.Guide.Folded = false;
 		s_Screen.Guide.Target = -1;
+		s_Screen.Guide.Fought = s_Screen.Guide.Traded = s_Screen.Guide.Proposed = false;
 		StartStep(Step::Welcome);
 	}
 
@@ -1074,6 +1096,14 @@ namespace {
 		switch (step) {
 			case Step::HomePlanet:
 				return s_Screen.Showing == View::Planet && s_Screen.ViewPlanet == HomePlanet();
+			case Step::ReadPoint:
+				return s_Screen.Showing == View::Planet && s_Screen.SelectedPoint >= 0 && s_Screen.SelectedPlanet >= 0 && s_Screen.SelectedPlanet < static_cast<int>(game.Planets.size()) && s_Screen.SelectedPoint < static_cast<int>(game.Planets[s_Screen.SelectedPlanet].Points.size()) && game.Planets[s_Screen.SelectedPlanet].Points[s_Screen.SelectedPoint].Owner == player;
+			case Step::Battle:
+				return !game.Reports.empty();
+			case Step::Trade:
+				return guide.Traded;
+			case Step::Diplomacy:
+				return guide.Proposed;
 			case Step::Recruit:
 				return OwnSquads(player) > guide.Base;
 			case Step::TakeOff:
@@ -1108,7 +1138,8 @@ namespace {
 			StopGuide();
 			return;
 		}
-		if (guide.DoneAt < 0.0 && StepDone(guide.At)) {
+		guide.Fought = guide.Fought || !game.Reports.empty();
+		if (guide.DoneAt < 0.0 && !ManualStep(guide.At) && StepDone(guide.At)) {
 			guide.DoneAt = now;
 		}
 		if (guide.DoneAt >= 0.0) {
@@ -1177,8 +1208,42 @@ namespace {
 					pointToPlanet(target);
 				}
 				break;
+			case Step::ReadPoint:
+				if (s_Screen.Showing == View::Planet && s_Screen.ViewPlanet == home) {
+					pointsOnShownPlanet([player](const Point& point) { return point.Owner == player; });
+				} else {
+					pointToPlanet(home);
+				}
+				break;
+			case Step::Resources:
+				lights.Resources = true;
+				break;
+			case Step::Battle:
+				if (!guide.Fought) {
+					if (s_Screen.Showing == View::Planet && s_Screen.ViewPlanet >= 0) {
+						const int shown = s_Screen.ViewPlanet;
+						for (int point = 0; point < static_cast<int>(game.Planets[shown].Points.size()); ++point) {
+							float defence = 0.0F;
+							if (game.Planets[shown].Points[point].Owner != player && WouldFight(game, player, shown, point, defence)) {
+								lights.Points.push_back(point);
+							}
+						}
+					} else {
+						pointToPlanet(target);
+					}
+				}
+				break;
 			case Step::Grow:
 				pointsOnShownPlanet([player](const Point& point) { return point.Owner == player; });
+				break;
+			case Step::Trade:
+				lights.Trade = true;
+				break;
+			case Step::Diplomacy:
+				lights.Diplomacy = true;
+				break;
+			case Step::Routine:
+				lights.ToDo = true;
 				break;
 			default:
 				break;
@@ -1200,29 +1265,68 @@ namespace {
 		const std::string targetSystem = target >= 0 ? game.Systems[game.Planets[target].System].Name : std::string("a star nearby");
 		switch (step) {
 			case Step::Welcome:
-				return {"Welcome, commander", "You lead " + (player >= 0 ? game.Factions[player].Name : std::string("your faction")) + ". This is your home system. Your armies are the gold-rimmed shields with a star, each with a green pip for every move it has left this turn. They are all listed under Your armies on the right: click one to go to it. Your gold is at the top of that panel.\n\nThis guide walks you through your first moves. Each step finishes itself when you've done it."};
+				return {"Welcome, commander", "You lead " + (player >= 0 ? game.Factions[player].Name : std::string("your faction")) + ". This guide plays your first turns with you, one small step at a time, and the rest of the screen appears as it gets there.\n\nYour armies are the gold-rimmed shields with a star. Each green pip is a move left this turn."};
 			case Step::HomePlanet:
-				return {"Look at your home planet", "Double-click " + homeName + " to open its map.\n\nA planet has 3 or 5 points. Holding more than half of them controls the planet, and all of " + homeName + "'s are yours."};
+				return {"Look at your home planet", "Double-click " + homeName + " to open its map.\n\nA planet has 3 or 5 points. Hold more than half of them to control it. All of " + homeName + "'s are yours."};
+			case Step::ReadPoint:
+				return {"Read a point", "Click one of your points. The panel on the right shows who holds it, the gold it pays each turn and what it produces.\n\nThe small icon by each point is its resource, with how much a turn."};
+			case Step::Resources:
+				return {"Your resources", "Your stores are now under your gold: water, food, metal, fuel, crystal and relics, each with its change a turn.\n\nArmies eat food, and burn fuel to jump between stars. Building takes metal and water. Hover one to see what it's for. One blinking red is running out."};
 			case Step::Recruit:
-				return {"Recruit a squad", "Click one of your settlements (the points with houses), then pick a squad under Recruit in the panel on the right. It joins the army there.\n\nBetter squads need Barracks. Every soldier costs upkeep each turn."};
+				return {"Recruit a squad", "Click a settlement (a point with houses) and pick a squad under Recruit on the right. It joins the army there.\n\nEach button shows its cost. Every soldier costs upkeep each turn."};
 			case Step::TakeOff:
-				return {"Take off", "Pick your army and press Take off in its panel. It lifts into orbit, ready to land somewhere else or travel to another star.\n\nAn army has 2 moves a turn: taking off, landing and marching take 1, a jump between stars takes 2."};
+				return {"Take off", "Pick your army and press Take off in its panel. It lifts into orbit, ready to travel.\n\nAn army has 2 moves a turn: taking off, landing and marching take 1, a jump between stars takes 2."};
 			case Step::Travel:
 				return {"Travel to " + targetSystem, targetName + " in the " + targetSystem + " system has points to take. Open the Galaxy map and right-click " + targetSystem + " to send your army along the lanes."};
 			case Step::EndTurn:
-				return {"End the turn", "Press End turn (or Enter) until your army is in orbit at " + targetSystem + " with a move left to land. Each turn the other factions move, you collect your income, and your armies get their moves back and carry on along their routes."};
+				return {"End the turn", "Press End turn (or Enter). The other factions move, you collect gold and resources, and your army carries on along its route.\n\nKeep ending turns until it is in orbit at " + targetSystem + " with a move left to land."};
 			case Step::Land:
-				return {"Land on " + targetName, "Open " + targetName + "'s map (double-click it in its system) and right-click a point that isn't yours to land there.\n\nGrey points are free. Ones marked (locals), or held by an enemy, fight back: the attack window shows your chance of winning before you commit."};
+				return {"Land on " + targetName, "Open " + targetName + "'s map (double-click it in its system) and right-click a point that isn't yours to land there.\n\nGrey points with nobody on them are free to take."};
+			case Step::Battle:
+				if (s_Screen.Guide.Fought) {
+					return {"Your first battle", "Before a fight, the attack window shows both sides' strength and your chance of winning. After it, the battle report shows who won and the losses, and Take me there shows where.\n\nWounded soldiers heal each turn, fastest at your settlements."};
+				}
+				return {"Fight a battle", "Points marked (locals), or held by another faction, fight back. Right-click one (they're pointed out on the planet map): the attack window shows your chance of winning before you commit. Go for 60% or better.\n\nAfterwards the battle report tells you how it went."};
 			case Step::Control:
 				return {"Control a planet", "Keep taking points: hold more than half of a planet's points to control it, which pays a bonus each turn.\n\nWhile an enemy holds any of its points, the planet is Invaded: half income and slower healing until you drive them out."};
 			case Step::Grow:
-				return {"Build up", "Click a point you hold. Found an outpost on it and grow it into a colony and a city for more gold and more building slots. A Market pays more, Barracks unlock better squads, Walls help hold it and a Hospital heals.\n\nEach point also produces a resource (its icon on the map). Growing and building cost water and metal as well as gold, armies eat food and jumps burn fuel. Trade buys what you're short of."};
+				return {"Build up", "Click a point you hold and found an outpost on it, then grow it into a colony and a city for more gold and more building slots.\n\nBarracks unlock better squads, a Market pays more, Walls help hold it and a Hospital heals."};
+			case Step::Trade:
+				return {"Trade", "Short of something? The galaxy market sells everything and buys what you have spare. Press Trade at the top and buy one of anything (food, say).\n\nPrices rise as you buy and drift back each turn."};
+			case Step::Diplomacy:
+				return {"Diplomacy", "Every faction starts Neutral: either side can attack, but it sours relations. Press Diplomacy at the top to see where you stand with each one, then ask one for peace. If they won't, they say why.\n\nA gift (a deal where you only give) raises their opinion. Allies fight beside you and win with you."};
+			case Step::Routine:
+				return {"Each turn from here", "That's everything. Each turn: check the To do list on the right (most pressing first; click a line to go there), press Tab to pick each army with moves left, spend your gold, then End turn."};
 			case Step::Win:
-				return {"Conquer the galaxy", "Wipe out the other factions to win, or outlast them with your allies: Diplomacy makes peace, alliances and trades. The To do list on the right says what needs doing each turn, and Tab picks your next army with moves left.\n\nGood luck, commander."};
+				return {"Conquer the galaxy", "Wipe out the other factions to win, or outlast them with your allies.\n\nGood luck, commander."};
 			default:
 				return {"", ""};
 		}
 	}
+
+	/// The guide's parts: each a few steps, played as a turn or two of the game.
+	struct Part {
+		const char* Name;
+		Step First;
+		Step Last;
+	};
+	constexpr Part c_Parts[] = {
+	    {"Your empire", Step::Welcome, Step::Recruit},
+	    {"Your first move", Step::TakeOff, Step::EndTurn},
+	    {"Taking ground", Step::Land, Step::Control},
+	    {"Running an empire", Step::Grow, Step::Diplomacy},
+	    {"Each turn from here", Step::Routine, Step::Win},
+	};
+
+	int PartOf(Step step) {
+		for (int part = 0; part < static_cast<int>(std::size(c_Parts)); ++part) {
+			if (step <= c_Parts[part].Last) {
+				return part;
+			}
+		}
+		return static_cast<int>(std::size(c_Parts)) - 1;
+	}
+
 
 	/// The guide's box, over the top left of the map.
 	void GuideBox() {
@@ -1239,13 +1343,14 @@ namespace {
 		const int count = static_cast<int>(Step::Count);
 		if (ImGui::BeginChild("##guide", ImVec2(guide.Folded ? 0.0F : width, 0.0F), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY | (guide.Folded ? ImGuiChildFlags_AutoResizeX : 0), ImGuiWindowFlags_NoScrollbar)) {
 			if (guide.Folded) {
-				const std::string label = "Guide " + std::to_string(number) + "/" + std::to_string(count) + ": " + text.Title;
+				const std::string label = "Guide, part " + std::to_string(PartOf(guide.At) + 1) + ": " + text.Title;
 				if (ToolUI::SmallButton(label.c_str())) {
 					guide.Folded = false;
 				}
 				ImGui::SetItemTooltip("Opens the guide again.");
 			} else {
-				ImGui::TextDisabled("Guide, step %d of %d", number, count);
+				const int part = PartOf(guide.At);
+				ImGui::TextDisabled("Part %d of %d: %s", part + 1, static_cast<int>(std::size(c_Parts)), c_Parts[part].Name);
 				ImGui::SameLine(ImGui::GetContentRegionMax().x - ImGui::CalcTextSize("Fold").x - ImGui::GetStyle().FramePadding.x * 2.0F);
 				if (ToolUI::SmallButton("Fold")) {
 					guide.Folded = true;
@@ -1265,11 +1370,11 @@ namespace {
 				ImGui::TextUnformatted(text.Text.c_str());
 				ImGui::PopTextWrapPos();
 				ImGui::Spacing();
-				const bool manual = guide.At == Step::Welcome || guide.At == Step::Control || guide.At == Step::Win;
+				const bool manual = ManualStep(guide.At);
 				if (guide.DoneAt >= 0.0) {
 					ImGui::TextColored(ImVec4(0.5F, 1.0F, 0.5F, 1.0F), "Done!");
 				} else if (manual) {
-					const char* next = guide.At == Step::Win ? "Finish" : guide.At == Step::Control ? "Got it" : "Next";
+					const char* next = guide.At == Step::Win ? "Finish" : guide.At == Step::Welcome ? "Start" : "Next";
 					if (ToolUI::Button(next, ImVec2(ImGui::GetFontSize() * 5.0F, 0.0F))) {
 						StartStep(static_cast<Step>(number));
 						if (guide.At == Step::Count) {
@@ -1686,7 +1791,7 @@ namespace {
 				const float icon = 13.0F;
 				float x = at.x - static_cast<float>(kinds) * icon * 0.75F + icon * 0.75F;
 				const float y = at.y + radius + 15.0F + ImGui::GetTextLineHeight() + icon * 0.6F;
-				for (int each = 0; each < c_ResourceCount; ++each) {
+				for (int each = 0; each < c_ResourceCount && Shown(Step::ReadPoint); ++each) {
 					if (yields[each] > 0) {
 						DrawResourceBadge(drawList, ImVec2(x, y), icon, static_cast<Resource>(each));
 						x += icon * 1.5F;
@@ -1930,7 +2035,7 @@ namespace {
 				drawList->AddRectFilled(ImVec2(x - 3.5F, y), ImVec2(x + 3.5F, y + 6.0F), IM_COL32(245, 240, 225, 255));
 				drawList->AddTriangleFilled(ImVec2(x - 4.5F, y), ImVec2(x + 4.5F, y), ImVec2(x, y - 4.5F), IM_COL32(245, 240, 225, 255));
 			}
-			{
+			if (Shown(Step::ReadPoint)) {
 				// What it produces: an icon and how much, at its top right.
 				const Resource deposit = static_cast<Resource>(std::clamp(point.Deposit, 0, c_ResourceCount - 1));
 				const float badge = std::max(radius * 0.8F, 11.0F);
@@ -2380,6 +2485,7 @@ namespace {
 			}
 		}
 		ImGui::SeparatorText("To do");
+		BeaconItem(s_Screen.Lights.ToDo);
 		if (items.empty()) {
 			ImGui::TextColored(ImVec4(0.5F, 1.0F, 0.5F, 1.0F), "All done: End turn (Enter)");
 		}
@@ -2648,6 +2754,7 @@ namespace {
 						const int before = self.Gold;
 						const int had = self.Resources[each];
 						if (Trade(game, player, resource, amount)) {
+							s_Screen.Guide.Traded = true;
 							const int units = std::abs(self.Resources[each] - had);
 							const int gold = std::abs(self.Gold - before);
 							s_Screen.Note = std::string(amount > 0 ? "Bought " : "Sold ") + std::to_string(units) + " " + ResourceName(resource) + " for " + std::to_string(gold) + " gold.";
@@ -2796,7 +2903,10 @@ namespace {
 				ImGui::TableNextColumn();
 				ResourceIcons(faction, false);
 				ImGui::TableNextColumn();
-				auto answer = [&](const std::string& reply, const std::string& yes) { s_Screen.DiplomacyNote = FactionLabel(faction) + ": " + (reply.empty() ? yes : reply); };
+				auto answer = [&](const std::string& reply, const std::string& yes) {
+					s_Screen.DiplomacyNote = FactionLabel(faction) + ": " + (reply.empty() ? yes : reply);
+					s_Screen.Guide.Proposed = true;
+				};
 				if (ToolUI::SmallButton("Trade")) {
 					s_Screen.DealWith = faction;
 					s_Screen.DealDraft = Deal();
@@ -2899,6 +3009,7 @@ namespace {
 			ImGui::BeginDisabled(empty);
 			if (ToolUI::Button("Propose", ImVec2(ImGui::GetFontSize() * 7.0F, 0.0F))) {
 				const std::string reply = ProposeDeal(game, deal);
+				s_Screen.Guide.Proposed = true;
 				s_Screen.DiplomacyNote = FactionLabel(with) + ": " + (reply.empty() ? std::string(deal.Pact ? "Agreed. The pact starts next turn." : "Agreed.") : reply);
 				if (reply.empty()) {
 					s_Screen.DealDraft = Deal();
@@ -3067,8 +3178,13 @@ namespace {
 			ImGui::SameLine();
 			ImGui::TextColored(income >= 0 ? ImVec4(0.5F, 1.0F, 0.5F, 1.0F) : ImVec4(1.0F, 0.5F, 0.4F, 1.0F), "(%+d a turn)", income);
 			ImGui::SetItemTooltip("Income from your points and settlements, and %s, less upkeep of %d for your soldiers.", "60 for each planet you control and nobody has invaded", UpkeepOf(game, player));
-			ResourceBar(player);
-			ToDoList();
+			if (Shown(Step::Resources)) {
+				ResourceBar(player);
+				BeaconItem(s_Screen.Lights.Resources);
+			}
+			if (Shown(Step::Routine)) {
+				ToDoList();
+			}
 			Roster();
 		}
 		ImGui::Separator();
@@ -3389,16 +3505,22 @@ namespace {
 			}
 		}
 		ImGui::SetItemTooltip("Walks you through your first moves, step by step.");
-		ImGui::SameLine();
-		if (ToolUI::Button("Trade")) {
-			s_Screen.MarketOpen = !s_Screen.MarketOpen;
+		if (Shown(Step::Trade)) {
+			ImGui::SameLine();
+			if (ToolUI::Button("Trade")) {
+				s_Screen.MarketOpen = !s_Screen.MarketOpen;
+			}
+			BeaconItem(s_Screen.Lights.Trade);
+			ImGui::SetItemTooltip("The galaxy market: buy and sell water, food, metal, fuel, crystal and relics for gold.");
 		}
-		ImGui::SetItemTooltip("The galaxy market: buy and sell water, food, metal, fuel, crystal and relics for gold.");
-		ImGui::SameLine();
-		if (ToolUI::Button("Diplomacy")) {
-			s_Screen.DiplomacyOpen = !s_Screen.DiplomacyOpen;
+		if (Shown(Step::Diplomacy)) {
+			ImGui::SameLine();
+			if (ToolUI::Button("Diplomacy")) {
+				s_Screen.DiplomacyOpen = !s_Screen.DiplomacyOpen;
+			}
+			BeaconItem(s_Screen.Lights.Diplomacy);
+			ImGui::SetItemTooltip("Where you stand with each faction: deals, trade pacts, peace, alliances and war.");
 		}
-		ImGui::SetItemTooltip("Where you stand with each faction: deals, trade pacts, peace, alliances and war.");
 		ImGui::SameLine();
 		ImGui::TextDisabled("|");
 		ImGui::SameLine();
