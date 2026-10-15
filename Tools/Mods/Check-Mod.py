@@ -7,7 +7,9 @@
 
 Other options: --mods DIR (where other mods live, for dependencies; default Mods/ and ModsParked/, or CCCP_MODS_DIR),
 --yes (don't ask before fixing), --quiet (summary only), --no-report (don't write ModChecks/<mod>.txt),
---all-scripts (check scripts nothing in the mod uses too: for a mod other mods borrow scripts from).
+--all-scripts (check scripts nothing in the mod uses too: for a mod other mods borrow scripts from),
+--game DIR (check against another checkout of the game instead of this one), --report-dir DIR (where the .txt reports go),
+--json FILE (also write every finding to FILE, for the launcher).
 
 What the game supports is read from this checkout's source (engine_surface.py), so the check matches the branch you're on.
 Each finding is an ERROR (it will break: the mod or a script won't load, or a script stops with an error), a WARNING (part of it won't work:
@@ -480,6 +482,11 @@ PATTERN_RULES = [
 
 # ---------------------------------------------------------------- fixing
 
+def describe_fix(fix):
+	kind, _, line, old, new = fix
+	return 'add the nil check (%s)' % old if kind == 'pattern' else '%s -> %s' % (old, new)
+
+
 def apply_fixes(findings, ask):
 	byFile = {}
 	for f in findings:
@@ -490,8 +497,7 @@ def apply_fixes(findings, ask):
 	print('\nFixes to make:')
 	for path, items in sorted(byFile.items()):
 		for f in items:
-			kind, _, line, old, new = f.fix
-			print('  %s:%d  %s' % (path, line, ('%s -> %s' % (old, new)) if kind != 'pattern' else 'add the nil check (%s)' % old))
+			print('  %s:%d  %s' % (path, f.fix[2], describe_fix(f.fix)))
 	if ask:
 		try:
 			answer = input('Make these %d change(s)? A .bak copy of each file is kept. [y/N] ' % sum(len(v) for v in byFile.values()))
@@ -541,7 +547,7 @@ def apply_fixes(findings, ask):
 
 # ---------------------------------------------------------------- output
 
-def report(name, modDir, findings, quiet, write):
+def report(name, modDir, findings, quiet, write, folder=None):
 	counts = {s: sum(1 for f in findings if f.severity == s) for s in ORDER}
 	fixable = sum(1 for f in findings if f.fix)
 	summary = '%-40s %3d error(s), %3d warning(s), %3d note(s)%s' % (name, counts['ERROR'], counts['WARNING'], counts['NOTE'], ', %d fixable by --fix' % fixable if fixable else '')
@@ -552,11 +558,29 @@ def report(name, modDir, findings, quiet, write):
 	text = '\n'.join(lines) + '\n'
 	print(summary if quiet else text)
 	if write:
-		folder = os.path.join(ROOT, 'ModChecks')
+		folder = folder or os.path.join(ROOT, 'ModChecks')
 		os.makedirs(folder, exist_ok=True)
 		with open(os.path.join(folder, name + '.txt'), 'w', encoding='utf-8') as out:
 			out.write(text)
 	return counts['ERROR']
+
+
+def as_json(name, modDir, findings):
+	"""One mod's findings as plain data, paths relative to the folder the mod is in (Some.rte/...)."""
+	base = os.path.dirname(modDir)
+	return {
+		'name': name,
+		'path': modDir,
+		'counts': {s: sum(1 for f in findings if f.severity == s) for s in ORDER},
+		'fixable': sum(1 for f in findings if f.fix),
+		'findings': [{
+			'severity': f.severity,
+			'file': (os.path.relpath(f.path, base) if f.path.startswith(base) else f.path).replace('\\', '/'),
+			'line': f.line or 0,
+			'message': f.message,
+			'fix': describe_fix(f.fix) if f.fix else None,
+		} for f in findings],
+	}
 
 
 def unpack(zipPath):
@@ -577,6 +601,13 @@ def unpack(zipPath):
 	return target, found
 
 
+def write_json(path, data):
+	folder = os.path.dirname(os.path.abspath(path))
+	os.makedirs(folder, exist_ok=True)
+	with open(path, 'w', encoding='utf-8') as out:
+		json.dump(data, out, indent='\t')
+
+
 def main():
 	parser = argparse.ArgumentParser(description='Checks mods against this version of the game, and fixes what can be fixed by rule.')
 	parser.add_argument('mods', nargs='*', help='.rte folders or .zip files')
@@ -587,7 +618,16 @@ def main():
 	parser.add_argument('--quiet', action='store_true', help='one summary line per mod')
 	parser.add_argument('--no-report', action='store_true', help="don't write ModChecks/<mod>.txt")
 	parser.add_argument('--all-scripts', action='store_true', help='check every script, not just the ones something loaded uses (for a mod other mods use scripts from)')
+	parser.add_argument('--game', help='check against this checkout of the game (its Source/ and Data/) instead of the one this script is in')
+	parser.add_argument('--report-dir', help='where to write the <mod>.txt reports (default ModChecks/ in the game checkout)')
+	parser.add_argument('--json', dest='jsonPath', help='also write every finding to this file as JSON')
 	args = parser.parse_args()
+	global ROOT
+	if args.game:
+		ROOT = os.path.abspath(args.game)
+		if not os.path.isfile(os.path.join(ROOT, 'Source', 'System', 'GameVersion.h')):
+			print('%s is not a checkout of the game (no Source/System/GameVersion.h).' % ROOT)
+			return 2
 	modsDirs = args.modsDirs or ([os.environ['CCCP_MODS_DIR']] if os.environ.get('CCCP_MODS_DIR') else [os.path.join(ROOT, 'Mods'), os.path.join(ROOT, 'ModsParked')])
 	targets = []
 	for value in args.mods:
@@ -608,23 +648,30 @@ def main():
 	if not targets:
 		if args.all:
 			print('No mods found in %s.' % ' or '.join(modsDirs))
+			if args.jsonPath:
+				write_json(args.jsonPath, {'version': engine_surface._version(ROOT), 'game': ROOT, 'mods': []})
 			return 0
 		parser.print_help()
 		return 2
-	checker = Checker(engine_surface.build(), modsDirs)
+	surface = engine_surface.build(ROOT)
+	checker = Checker(surface, modsDirs)
 	checker.allScripts = args.all_scripts
 	errors = 0
 	quiet = args.quiet or (args.all and not args.mods)
 	allFindings = []
+	results = []
 	for modDir, fixable in targets:
 		findings = checker.check(modDir)
-		errors += report(os.path.basename(modDir), modDir, findings, quiet, not args.no_report)
+		errors += report(os.path.basename(modDir), modDir, findings, quiet, not args.no_report, args.report_dir)
+		results.append(as_json(os.path.basename(modDir), modDir, findings))
 		if fixable:
 			allFindings += findings
+	if args.jsonPath:
+		write_json(args.jsonPath, {'version': surface['version'], 'game': ROOT, 'mods': results})
 	if args.fix:
 		apply_fixes(allFindings, ask=not args.yes)
 	if quiet and not args.no_report:
-		print('Details for each mod are in ModChecks/.')
+		print('Details for each mod are in %s.' % (args.report_dir or 'ModChecks/'))
 	return 1 if errors else 0
 
 

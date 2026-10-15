@@ -23,6 +23,15 @@ That produces a single self-contained `Tools\Launcher\dist\CortexLauncher.exe`. 
 
 Builds run `msbuild /m /p:Configuration=... /p:Platform=x64 RTEA.sln` after copying `fmod.dll` next to the exe. The repo is only used for `git fetch` and as the worktree source; its working tree is never touched.
 
+## Mod check
+**Check mods** (on the Mods row) checks every mod in the mods folder against a version of the game without starting it, using `Tools/Mods/Check-Mod.py`: Lua calls to engine functions that don't exist, INI properties and presets the game doesn't have, missing files and missing dependency mods. It checks against the build slot when it holds the selected commit, otherwise against your repo checkout. A window lists each mod's errors, warnings and notes; double-click a finding to open its file, or **Open report** for the full text report.
+
+**Fix N problems** makes the fixes that have one right answer (renamed functions and properties, letter case in file paths, the nil checks for `.Magazine` and `GetMOFromID`). It lists them and asks first, changes the files in your mods folder, keeps a `.bak` of each changed file next to it, then checks again.
+
+With **Check before launch** ticked (the default), Build & Launch and Launch built check the mods against the version being launched. If a mod has an error, the window opens with **Launch anyway** and **Don't launch**. An unchanged setup (same commit, same mod files) that already passed, or that you launched anyway, isn't checked again.
+
+The check needs Python 3 (`py -3`, `python` or `python3`; from python.org, with "Add to PATH" ticked). Without it the launcher says so and launches as normal. Versions older than 8.5.228 have no checker of their own, so the one in your repo checkout is used for them. Reports are kept in `%APPDATA%\CortexLauncher\ModChecks`.
+
 ## Worlds
 **World** picks a planet skin (backdrops, title-screen planet, scenery) for the next launch, or **Stock**. Skins live in `%APPDATA%\CortexLauncher\Worlds`, one folder per world laid out like `Data\Base.rte` (a `base.rte` folder inside it also works, which is how skin packs such as Cortex Command Worlds ship); **Open folder** opens it. On launch the version's `Data\Base.rte` is restored from git and the skin's files are copied over it. Files the version's Base.rte no longer has are skipped. The repo and your main checkout are never touched.
 
