@@ -155,6 +155,50 @@ namespace RTE::CampaignModel {
 		Stock Resources{}; //!< Stockpiled resources.
 	};
 
+	/// Where two factions stand with each other.
+	enum class Stance {
+		War, //!< Their armies fight.
+		Neutral, //!< The start: either can attack, but it angers everyone a little.
+		Peace, //!< No attacks while it lasts.
+		Alliance, //!< No attacks, their armies can stand on each other's points and defend together, and they can win together.
+		Count
+	};
+
+	/// How a pair of factions get on.
+	struct Relation {
+		int Stance = static_cast<int>(Stance::Neutral);
+		int Opinion = 0; //!< -100 to 100.
+		int Turns = 0; //!< Turns in the stance so far.
+	};
+
+	/// A trade between two factions: what From gives To, and what it gets back. Once, or every turn as a pact.
+	struct Deal {
+		int From = -1;
+		int To = -1;
+		int GoldGive = 0;
+		int GoldGet = 0;
+		Stock Give{};
+		Stock Get{};
+		bool Pact = false; //!< Every turn for c_PactTurns, not once.
+	};
+	constexpr int c_PactTurns = 10;
+
+	/// A trade pact running between two factions.
+	struct Pact {
+		Deal Terms;
+		int TurnsLeft = 0;
+	};
+
+	/// Something an AI faction puts to a human one, answered between turns.
+	struct Offer {
+		enum class Kind { Deal, Peace, Alliance, JoinWar } What = Kind::Deal;
+		int From = -1;
+		int To = -1;
+		Deal Terms; //!< For a deal.
+		int Against = -1; //!< For joining a war: the enemy.
+		std::string Text; //!< What they say.
+	};
+
 	/// A faction offered on the new campaign screen.
 	struct FactionChoice {
 		std::string Name;
@@ -217,6 +261,9 @@ namespace RTE::CampaignModel {
 		std::vector<std::string> Log; //!< Newest last.
 		std::array<float, c_ResourceCount> Prices{}; //!< The galaxy market's prices, gold a unit, before its cut either way.
 		std::vector<GalaxyEvent> Events; //!< What's moving prices now.
+		std::vector<Relation> Relations; //!< Every pair of factions, Factions.size() squared (see RelationOf).
+		std::vector<Pact> Pacts; //!< Trade pacts running.
+		std::vector<Offer> Offers; //!< What AI factions have put to the human factions, to answer (not saved).
 		std::vector<BattleOutcome> Reports; //!< Battles a human faction was in since the screen last showed them (not saved).
 		std::vector<BattleOutcome> Battles; //!< Every battle since the screen last drew them on the maps, the AI factions' too (not saved).
 	};
@@ -307,6 +354,50 @@ namespace RTE::CampaignModel {
 	int SellPrice(const Campaign& campaign, Resource resource);
 	/// A resource's normal price.
 	float BasePrice(Resource resource);
+#pragma endregion
+
+#pragma region Diplomacy
+	const char* StanceName(Stance stance);
+	/// An opinion as a word: Hostile, Wary, Cordial, Friendly.
+	const char* OpinionWord(int opinion);
+	/// Sizes the relations to the factions, every pair Neutral (for a new galaxy, and a save from before diplomacy).
+	void ResetRelations(Campaign& campaign);
+	Relation& RelationOf(Campaign& campaign, int a, int b);
+	const Relation& RelationOf(const Campaign& campaign, int a, int b);
+	Stance StanceOf(const Campaign& campaign, int a, int b);
+	/// Allied, or the same faction.
+	bool Allied(const Campaign& campaign, int a, int b);
+	/// At peace or allied, or the same faction: they don't fight.
+	bool Friendly(const Campaign& campaign, int a, int b);
+	/// The faction whose peace or alliance a move onto this point would break by attacking, or -1.
+	int TreatyBroken(const Campaign& campaign, int faction, int planet, int point);
+	/// A faction's armies' total strength.
+	float MightOf(const Campaign& campaign, int faction);
+	/// Changes opinion between two factions, both ways.
+	void ChangeOpinion(Campaign& campaign, int a, int b, int by);
+	/// Puts two factions at war: breaking a treaty costs opinion with everyone, attacking a neutral a little, and the attacked side's
+	/// allies may join in.
+	void DeclareWar(Campaign& campaign, int from, int to);
+	/// What a deal is worth to its To faction, in gold (above 0 it gains).
+	int DealValue(const Campaign& campaign, const Deal& deal);
+	/// Whether both sides of a deal can pay it now.
+	bool CanPay(const Campaign& campaign, const Deal& deal, std::string& why);
+	/// Puts a deal to an AI faction: carried out if it says yes. Returns "" for yes, else why not.
+	std::string ProposeDeal(Campaign& campaign, const Deal& deal);
+	/// Asks an AI faction for peace or an alliance. Returns "" for yes, else why not.
+	std::string ProposeStance(Campaign& campaign, int from, int to, Stance stance);
+	/// Ends an alliance or peace without attacking: back to Neutral, with some opinion lost.
+	void EndTreaty(Campaign& campaign, int from, int to);
+	/// Cancels a running pact early, with some opinion lost.
+	void CancelPact(Campaign& campaign, int pact);
+	/// Answers one of the offers to a human faction.
+	void AnswerOffer(Campaign& campaign, int offer, bool accept);
+	/// The diplomacy part of a new turn: opinions drift, stances age, and trade pacts swap their goods.
+	void UpdateDiplomacy(Campaign& campaign);
+	/// An AI faction's diplomacy for its turn: asking for peace or an alliance, ending treaties, offering trades to people.
+	void AIDiplomacy(Campaign& campaign, int faction);
+	/// Whether every faction still alive is allied with every other (two at least), and which of them to name the winner.
+	bool AlliedWin(const Campaign& campaign, int& winner);
 #pragma endregion
 
 #pragma region Commands (for the screen and the AI)

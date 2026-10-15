@@ -60,6 +60,7 @@ sources += files(
 'SandboxMinimap.cpp',
 'SandboxMapBrowser.cpp',
 'MapGen.cpp',
+'CampaignDiplomacy.cpp',
 'CampaignModel.cpp',
 'CampaignSave.cpp',
 'CampaignScreen.cpp',

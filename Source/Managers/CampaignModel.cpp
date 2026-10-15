@@ -463,6 +463,13 @@ namespace RTE::CampaignModel {
 			if (alive.size() == 1 && campaign.Winner < 0) {
 				campaign.Winner = alive.front();
 				AddLog(campaign, campaign.Factions[alive.front()].Name + " rules the galaxy!");
+			} else if (int winner = -1; campaign.Winner < 0 && AlliedWin(campaign, winner)) {
+				campaign.Winner = winner;
+				std::string names;
+				for (size_t index = 0; index < alive.size(); ++index) {
+					names += (index == 0 ? "" : index + 1 == alive.size() ? " and " : ", ") + campaign.Factions[alive[index]].Name;
+				}
+				AddLog(campaign, names + " rule the galaxy together!");
 			}
 			campaign.Lost = std::none_of(campaign.Factions.begin(), campaign.Factions.end(), [](const Faction& faction) { return faction.Human && faction.Alive; });
 		}
@@ -477,17 +484,26 @@ namespace RTE::CampaignModel {
 			const int owner = point.Owner;
 			std::vector<int> defenders;
 			for (int other: ArmiesAt(campaign, planetIndex, pointIndex)) {
-				if (campaign.Armies[other].Faction != faction) {
+				if (campaign.Armies[other].Faction != faction && !Allied(campaign, faction, campaign.Armies[other].Faction)) {
 					defenders.push_back(other);
 				}
 			}
-			const float militia = owner == faction ? 0.0F : PointDefence(campaign, planetIndex, pointIndex);
+			// An ally's point is walked onto, not taken.
+			const bool friendlyGround = owner == faction || Allied(campaign, faction, owner);
+			const float militia = friendlyGround ? 0.0F : PointDefence(campaign, planetIndex, pointIndex);
+			// Whoever this attacks is now at war with it.
+			if (!friendlyGround && owner >= 0) {
+				DeclareWar(campaign, faction, owner);
+			}
+			for (int defender: defenders) {
+				DeclareWar(campaign, faction, campaign.Armies[defender].Faction);
+			}
 			auto arrive = [&]() {
 				Army& army = campaign.Armies[FindArmy(campaign, armyID)];
 				army.Planet = planetIndex;
 				army.Point = pointIndex;
 				army.Path.clear();
-				if (point.Owner != faction) {
+				if (point.Owner != faction && !Allied(campaign, faction, point.Owner)) {
 					const int previous = point.Owner;
 					point.Owner = faction;
 					point.Militia = 0.0F;
@@ -742,6 +758,7 @@ namespace RTE::CampaignModel {
 				}
 			}
 
+			AIDiplomacy(campaign, faction);
 			AIMarket(campaign, faction);
 
 			// Recruiting at its settlements while its soldiers' upkeep stays under about half its income, keeping some gold back, and
@@ -833,7 +850,7 @@ namespace RTE::CampaignModel {
 					if (self_army.Planet >= 0 && self_army.Planet == self.HomePlanet) {
 						bool threat = false;
 						for (const Army& other: campaign.Armies) {
-							threat = threat || (other.Faction != faction && other.System == self_army.System);
+							threat = threat || (other.Faction != faction && !Friendly(campaign, faction, other.Faction) && other.System == self_army.System);
 						}
 						int mine = 0;
 						for (int other: ArmiesAt(campaign, self_army.Planet, self_army.Point)) {
@@ -855,7 +872,9 @@ namespace RTE::CampaignModel {
 							continue;
 						}
 						for (int point = 0; point < static_cast<int>(target.Points.size()); ++point) {
-							if (target.Points[point].Owner == faction) {
+							const int owner = target.Points[point].Owner;
+							// Not its own or an ally's, nobody it has a treaty with, and not a neutral it gets on with.
+							if (owner == faction || Allied(campaign, faction, owner) || TreatyBroken(campaign, faction, planet, point) >= 0 || (owner >= 0 && StanceOf(campaign, faction, owner) == Stance::Neutral && RelationOf(campaign, faction, owner).Opinion >= 40)) {
 								continue;
 							}
 							float defence = 0.0F;
@@ -970,6 +989,7 @@ namespace RTE::CampaignModel {
 			}
 			RemoveEmptyArmies(campaign);
 			UpdateMarket(campaign);
+			UpdateDiplomacy(campaign);
 			for (Army& army: campaign.Armies) {
 				army.Moves = c_MovesPerTurn;
 				if (hungry[army.Faction]) {
@@ -1296,6 +1316,7 @@ namespace RTE::CampaignModel {
 			}
 		}
 		AddResources(campaign);
+		ResetRelations(campaign);
 		AddLog(campaign, "The campaign begins. Take more than half of a planet's points to control it.");
 		return campaign;
 	}
@@ -1394,7 +1415,7 @@ namespace RTE::CampaignModel {
 			}
 		}
 		if (control.Controller >= 0) {
-			control.Invaded = std::any_of(points.begin(), points.end(), [&](const Point& point) { return point.Owner >= 0 && point.Owner != control.Controller; });
+			control.Invaded = std::any_of(points.begin(), points.end(), [&](const Point& point) { return point.Owner >= 0 && point.Owner != control.Controller && !Allied(campaign, point.Owner, control.Controller); });
 		} else {
 			control.Contested = anyOwned;
 		}
@@ -1811,11 +1832,11 @@ namespace RTE::CampaignModel {
 		const Point& here = campaign.Planets[planet].Points[point];
 		const float walls = WallsFactor(campaign, here);
 		for (int army: ArmiesAt(campaign, planet, point)) {
-			if (campaign.Armies[army].Faction != faction) {
+			if (campaign.Armies[army].Faction != faction && !Allied(campaign, faction, campaign.Armies[army].Faction)) {
 				defence += Strength(campaign, campaign.Armies[army]) * walls;
 			}
 		}
-		if (here.Owner != faction) {
+		if (here.Owner != faction && !Allied(campaign, faction, here.Owner)) {
 			defence += PointDefence(campaign, planet, point);
 		}
 		return defence > 0.01F;
@@ -2048,6 +2069,7 @@ namespace RTE::CampaignModel {
 		if (campaign.Winner >= 0) {
 			return;
 		}
+		campaign.Offers.clear(); // Anything not answered by now lapses.
 		for (int faction = 0; faction < static_cast<int>(campaign.Factions.size()); ++faction) {
 			if (!campaign.Factions[faction].Human && campaign.Factions[faction].Alive) {
 				AITurn(campaign, faction);

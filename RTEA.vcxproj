@@ -1529,6 +1529,7 @@
     <ClCompile Include="Source\Managers\SandboxMinimap.cpp" />
     <ClCompile Include="Source\Managers\SandboxMapBrowser.cpp" />
     <ClCompile Include="Source\Managers\MapGen.cpp" />
+    <ClCompile Include="Source\Managers\CampaignDiplomacy.cpp" />
     <ClCompile Include="Source\Managers\CampaignModel.cpp" />
     <ClCompile Include="Source\Managers\CampaignSave.cpp" />
     <ClCompile Include="Source\Managers\CampaignScreen.cpp" />
