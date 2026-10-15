@@ -51,6 +51,7 @@ class Settings
 	public string SettingsIni { get; set; } = "";
 	public string ModsDir { get; set; } = "";
 	public string PresetsDir { get; set; } = "";
+	public int LogHeight { get; set; } = 170;
 	public string LastRef { get; set; } = "";
 	public bool CheckModsBeforeLaunch { get; set; } = true;
 	public string LastModCheckPassed { get; set; } = ""; // "sha|mods folder|files" last checked clean or launched anyway, so an unchanged setup isn't checked again
@@ -87,6 +88,7 @@ partial class MainForm : Form
 	readonly ComboBox configBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 130 };
 	readonly ComboBox branchBox = new() { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDown, AutoCompleteMode = AutoCompleteMode.SuggestAppend, AutoCompleteSource = AutoCompleteSource.ListItems, MaxDropDownItems = 25 };
 	readonly Button repoBrowse = new() { Text = "...", AutoSize = true };
+	SplitContainer? logSplit;
 	readonly ListView commitList = new() { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HideSelection = false, MultiSelect = false };
 	readonly TextBox log = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false, Font = new Font("Consolas", 9f), BackColor = Color.FromArgb(24, 24, 24), ForeColor = Color.Gainsboro };
 	readonly Button fetchBtn = new() { Text = "Refresh", AutoSize = true };
@@ -168,11 +170,13 @@ partial class MainForm : Form
 		var actions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(0, 6, 0, 6) };
 		actions.Controls.AddRange(new Control[] { buildRunBtn, runBtn, cancelBtn, clearAllBtn, new Label { Text = "Build type:", AutoSize = true, Padding = new Padding(16, 8, 0, 0) }, configBox, status });
 
-		var logPanel = new Panel { Dock = DockStyle.Bottom, Height = 170 };
-		logPanel.Controls.Add(log);
+		// Drag the bar between the commit list and the log to make either taller; the log keeps its height when the window resizes.
+		var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, FixedPanel = FixedPanel.Panel2, Panel1MinSize = 80, Panel2MinSize = 50, SplitterWidth = 6 };
+		split.Panel1.Controls.Add(commitList);
+		split.Panel2.Controls.Add(log);
+		logSplit = split;
 
-		Controls.Add(commitList);
-		Controls.Add(logPanel);
+		Controls.Add(split);
 		Controls.Add(actions);
 		Controls.Add(Row("World:", worldBox, worldsOpen, new Label { Text = "planet skin applied over Data/Base.rte on launch", AutoSize = true, Padding = new Padding(8, 8, 0, 0) }));
 		Controls.Add(Row("Presets:", presetsBox, presetsBrowse));
@@ -191,6 +195,7 @@ partial class MainForm : Form
 		buildRunBtn.Click += async (_, _) => await BuildAndRun(true);
 		cancelBtn.Click += (_, _) => { cts?.Cancel(); try { running?.Kill(true); } catch { } };
 		FormClosing += (_, _) => { SaveSettings(); };
+		Shown += (_, _) => { if (logSplit != null) try { logSplit.SplitterDistance = Math.Max(logSplit.Panel1MinSize, logSplit.Height - settings.LogHeight); } catch { } };
 		Shown += async (_, _) => await FetchAsync();
 	}
 
@@ -199,6 +204,7 @@ partial class MainForm : Form
 		settings.RepoPath = repoBox.Text.Trim();
 		settings.Configuration = (string)configBox.SelectedItem!;
 		settings.SettingsIni = iniBox.Text.Trim();
+		if (logSplit != null && logSplit.Panel2.Height > 0) settings.LogHeight = logSplit.Panel2.Height;
 		settings.ModsDir = modsBox.Text.Trim();
 		settings.PresetsDir = presetsBox.Text.Trim();
 		settings.World = worldBox.SelectedItem is string w && w != StockWorld ? w : "";
