@@ -36,6 +36,34 @@ namespace RTE::CampaignModel {
 		Count
 	};
 
+	/// What points produce besides gold, stockpiled by each faction, spent on growing, building, recruiting, feeding armies and lane
+	/// jumps, and traded on the galaxy's market.
+	enum class Resource {
+		Water, //!< Growing settlements past an outpost, and Hospitals.
+		Food, //!< Feeding armies: one a squad a turn.
+		Metal, //!< Buildings, and second and third tier squads.
+		Fuel, //!< Lane jumps: one an army a jump.
+		Crystal, //!< Rare: third tier squads and Walls.
+		Relics, //!< Very rare: nothing to spend, but holding them pays.
+		Count
+	};
+	constexpr int c_ResourceCount = static_cast<int>(Resource::Count);
+	using Stock = std::array<int, c_ResourceCount>;
+
+	/// What something costs: gold, and resources.
+	struct Cost {
+		int Gold = 0;
+		Stock Resources{};
+	};
+
+	/// Something happening in the wider galaxy that moves a resource's price for a while.
+	struct GalaxyEvent {
+		int Resource = 0;
+		float PriceFactor = 1.0F; //!< Its price is pulled toward its normal price times this while the event lasts.
+		int TurnsLeft = 0;
+		std::string Text;
+	};
+
 	constexpr int c_MaxSquads = 12; //!< Squads an army can have.
 	constexpr int c_MaxSquadSize = 8; //!< Soldiers a squad can have.
 	constexpr int c_MovesPerTurn = 2; //!< An army's moves each turn: a lane jump takes 2, landing, taking off or going overland 1.
@@ -52,6 +80,8 @@ namespace RTE::CampaignModel {
 		std::array<bool, static_cast<size_t>(Building::Count)> Built{};
 		float Militia = 0.0F; //!< Strength of the locals who defend it with no army there (neutral points, and every settlement).
 		std::vector<int> Links; //!< Points on the same planet reached overland in one move.
+		int Deposit = 0; //!< The Resource it produces.
+		int Yield = 1; //!< How much of it a turn (1 to 3), one more with a settlement.
 	};
 
 	/// A planet or a moon.
@@ -122,6 +152,7 @@ namespace RTE::CampaignModel {
 		int Gold = 0;
 		int HomePlanet = -1;
 		std::vector<SquadType> Squads;
+		Stock Resources{}; //!< Stockpiled resources.
 	};
 
 	/// A faction offered on the new campaign screen.
@@ -184,6 +215,8 @@ namespace RTE::CampaignModel {
 		std::vector<Faction> Factions;
 		std::vector<Army> Armies;
 		std::vector<std::string> Log; //!< Newest last.
+		std::array<float, c_ResourceCount> Prices{}; //!< The galaxy market's prices, gold a unit, before its cut either way.
+		std::vector<GalaxyEvent> Events; //!< What's moving prices now.
 		std::vector<BattleOutcome> Reports; //!< Battles a human faction was in since the screen last showed them (not saved).
 		std::vector<BattleOutcome> Battles; //!< Every battle since the screen last drew them on the maps, the AI factions' too (not saved).
 	};
@@ -202,6 +235,11 @@ namespace RTE::CampaignModel {
 	std::uint32_t PlanetColor(PlanetType type);
 	/// A star's colour, as an ImU32.
 	std::uint32_t StarColor(int index);
+	const char* ResourceName(Resource resource);
+	/// What a resource is for, one line.
+	const char* ResourceUse(Resource resource);
+	/// A resource's colour on the screen, as an ImU32.
+	std::uint32_t ResourceColor(Resource resource);
 #pragma endregion
 
 #pragma region Starting a campaign
@@ -209,6 +247,9 @@ namespace RTE::CampaignModel {
 	std::vector<FactionChoice> AvailableFactions();
 	/// A new galaxy and its factions placed in it. Fails (empty Systems) with fewer than two factions picked.
 	Campaign Generate(const NewCampaign& setup, std::string& error);
+	/// Gives every point a deposit (from the campaign's seed), the market its normal prices and every faction its starting stock. For a
+	/// new galaxy, and a save from before resources.
+	void AddResources(Campaign& campaign);
 #pragma endregion
 
 #pragma region Reading the state
@@ -238,6 +279,34 @@ namespace RTE::CampaignModel {
 	bool CanRecruit(const Campaign& campaign, int faction, int planet, int point, int type, std::string& why);
 	/// The chance (0 to 1) an attack by these armies on a point is won, roughly, for the attack panel.
 	float WinChance(float attack, float defence);
+
+	/// What a point gives its owner of its deposit each turn (its yield, one more with a settlement, half on an invaded planet).
+	int PointYield(const Campaign& campaign, int planet, int point);
+	/// Resources a faction's points produce each turn.
+	Stock ProductionOf(const Campaign& campaign, int faction);
+	/// Resources a faction uses each turn whatever it does (food for its armies).
+	Stock UsageOf(const Campaign& campaign, int faction);
+	/// The production bonus a faction has from a resource: 0 none, 1 or 2 (see BonusThreshold).
+	int BonusTier(const Campaign& campaign, int faction, Resource resource);
+	/// The production a turn a bonus tier needs.
+	int BonusThreshold(Resource resource, int tier);
+	/// What a bonus tier does, one line.
+	const char* BonusText(Resource resource, int tier);
+	bool CanAfford(const Campaign& campaign, int faction, const Cost& cost);
+	/// A cost as text: "300 gold, 3 water".
+	std::string CostText(const Cost& cost);
+	/// What growing a point's settlement to the next level costs a faction, its bonuses counted.
+	Cost SettleCostFor(const Campaign& campaign, int faction, int level);
+	Cost BuildingCostFor(const Campaign& campaign, int faction, Building building);
+	Cost RecruitCostFor(const Campaign& campaign, int faction, int type);
+	/// Moves a lane jump takes the faction's armies, and whether taking off takes one.
+	int JumpMoves(const Campaign& campaign, int faction);
+	int TakeOffMoves(const Campaign& campaign, int faction);
+	/// What the market charges for one unit, and pays for one.
+	int BuyPrice(const Campaign& campaign, Resource resource);
+	int SellPrice(const Campaign& campaign, Resource resource);
+	/// A resource's normal price.
+	float BasePrice(Resource resource);
 #pragma endregion
 
 #pragma region Commands (for the screen and the AI)
@@ -266,6 +335,8 @@ namespace RTE::CampaignModel {
 	/// Splits a squad off an army into a new army on the same spot.
 	bool SplitSquad(Campaign& campaign, int army, int squad);
 	void Disband(Campaign& campaign, int army);
+	/// Buys (amount above 0) or sells (below 0) a resource on the galaxy's market, a unit at a time as the price moves.
+	bool Trade(Campaign& campaign, int faction, Resource resource, int amount);
 	/// Ends the human factions' turn: the AI factions take theirs, then the new turn's income, healing and carried-on moves.
 	void EndTurn(Campaign& campaign);
 #pragma endregion

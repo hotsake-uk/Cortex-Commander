@@ -35,6 +35,15 @@ namespace RTE::CampaignModel {
 		constexpr float c_InvadedIncome = 0.5F; //!< What an invaded planet's points give its controller.
 		constexpr float c_WallsBonus = 1.4F;
 		constexpr float c_MilitiaPerLevel = 2.0F; //!< A settlement's locals, times its level; they come back at a quarter of that a turn.
+		constexpr float c_WallsBonusMetal = 1.6F; //!< Walls with the second Metal bonus.
+
+		// Resources.
+		constexpr float c_BasePrices[c_ResourceCount] = {40.0F, 30.0F, 50.0F, 45.0F, 120.0F, 400.0F};
+		constexpr Stock c_StartStock = {5, 10, 8, 6, 2, 0};
+		constexpr float c_MarketCut = 0.1F; //!< The market buys this much under its price and sells this much over.
+		constexpr float c_PriceStep = 0.03F; //!< How far a price moves for each unit bought or sold.
+		constexpr float c_PriceDrift = 0.15F; //!< How far a price moves back toward normal each turn.
+		constexpr int c_RelicGold[3] = {0, 50, 150}; //!< Gold a turn from the Relics bonus tiers.
 
 		std::uint64_t SplitMix(std::uint64_t x) {
 			x += 0x9E3779B97F4A7C15ull;
@@ -340,6 +349,14 @@ namespace RTE::CampaignModel {
 			return static_cast<int>(campaign.Armies.size()) - 1;
 		}
 
+		/// How much harder a point's defenders fight for its walls (none: 1).
+		float WallsFactor(const Campaign& campaign, const Point& point) {
+			if (!point.Built[static_cast<size_t>(Building::Walls)] || point.Settlement <= 0) {
+				return 1.0F;
+			}
+			return point.Owner >= 0 && BonusTier(campaign, point.Owner, Resource::Metal) >= 2 ? c_WallsBonusMetal : c_WallsBonus;
+		}
+
 		float SoldierStrength(const SquadType& type, const Soldier& soldier) { return (type.SoldierCost / 100.0F) * std::max(soldier.Health, 0.1F) * (1.0F + 0.15F * static_cast<float>(soldier.Rank)); }
 
 		int RankForKills(int kills) { return kills >= 15 ? 3 : kills >= 8 ? 2 : kills >= 3 ? 1 : 0; }
@@ -491,7 +508,7 @@ namespace RTE::CampaignModel {
 			outcome.Where = point.Name + " on " + planet.Name;
 			outcome.Planet = planetIndex;
 			outcome.Point = pointIndex;
-			const float walls = point.Built[static_cast<size_t>(Building::Walls)] && point.Settlement > 0 ? c_WallsBonus : 1.0F;
+			const float walls = WallsFactor(campaign, point);
 			float defence = militia;
 			for (int defender: defenders) {
 				defence += Strength(campaign, campaign.Armies[defender]) * walls;
@@ -570,15 +587,25 @@ namespace RTE::CampaignModel {
 			if (moving.Path.empty()) {
 				return;
 			}
+			Faction& faction = campaign.Factions[moving.Faction];
+			if (faction.Resources[static_cast<size_t>(Resource::Fuel)] < 1) {
+				// Out of fuel: it waits where it is, on the planet or in orbit.
+				if (faction.Human && moving.Moves == c_MovesPerTurn) {
+					AddLog(campaign, moving.Name + " has no fuel to jump on. Buy some on the Market.");
+				}
+				return;
+			}
 			if (moving.Planet >= 0) {
-				if (moving.Moves < 1) {
+				const int moves = TakeOffMoves(campaign, moving.Faction);
+				if (moving.Moves < std::max(moves, 1)) {
 					return;
 				}
 				moving.Planet = -1;
 				moving.Point = -1;
-				--moving.Moves;
+				moving.Moves -= moves;
 			}
-			while (!moving.Path.empty() && moving.Moves >= 2) {
+			const int jump = JumpMoves(campaign, moving.Faction);
+			while (!moving.Path.empty() && moving.Moves >= jump && faction.Resources[static_cast<size_t>(Resource::Fuel)] >= 1) {
 				const int next = moving.Path.front();
 				const std::vector<int>& lanes = campaign.Systems[moving.System].Lanes;
 				if (std::find(lanes.begin(), lanes.end(), next) == lanes.end()) {
@@ -587,7 +614,8 @@ namespace RTE::CampaignModel {
 				}
 				moving.System = next;
 				moving.Path.erase(moving.Path.begin());
-				moving.Moves -= 2;
+				moving.Moves -= jump;
+				--faction.Resources[static_cast<size_t>(Resource::Fuel)];
 			}
 		}
 
@@ -611,6 +639,92 @@ namespace RTE::CampaignModel {
 			return value;
 		}
 
+		/// The market's turn: prices drift back toward normal (or toward where an event pulls them), events run down, and now and then
+		/// a new one starts.
+		void UpdateMarket(Campaign& campaign) {
+			for (GalaxyEvent& event: campaign.Events) {
+				--event.TurnsLeft;
+			}
+			std::erase_if(campaign.Events, [](const GalaxyEvent& event) { return event.TurnsLeft <= 0; });
+			if (campaign.Events.size() < 2 && Roll(campaign) < 0.08F) {
+				struct Kind {
+					Resource What;
+					float Factor;
+					const char* Text;
+				};
+				static constexpr Kind c_Kinds[] = {
+				    {Resource::Water, 2.0F, "Drought on the core worlds: water prices are up."},
+				    {Resource::Water, 0.6F, "Comet ice floods the markets: water is cheap."},
+				    {Resource::Food, 1.9F, "Blight in the farming belts: food prices are up."},
+				    {Resource::Food, 0.6F, "Bumper harvests across the galaxy: food is cheap."},
+				    {Resource::Metal, 1.8F, "A war in the far reaches is eating metal: prices are up."},
+				    {Resource::Metal, 0.6F, "A new asteroid field is being mined: metal is cheap."},
+				    {Resource::Fuel, 2.1F, "A fuel crisis grips the trade lanes: fuel prices are up."},
+				    {Resource::Fuel, 0.55F, "A gas giant rush floods the market: fuel is cheap."},
+				    {Resource::Crystal, 1.8F, "Collectors are hoarding crystal: prices are up."},
+				    {Resource::Relics, 1.7F, "Museums on the core worlds are bidding for relics."},
+				};
+				const Kind& kind = c_Kinds[std::min(static_cast<size_t>(Roll(campaign) * static_cast<float>(std::size(c_Kinds))), std::size(c_Kinds) - 1)];
+				if (std::none_of(campaign.Events.begin(), campaign.Events.end(), [&kind](const GalaxyEvent& event) { return event.Resource == static_cast<int>(kind.What); })) {
+					GalaxyEvent event;
+					event.Resource = static_cast<int>(kind.What);
+					event.PriceFactor = kind.Factor;
+					event.TurnsLeft = 4 + static_cast<int>(Roll(campaign) * 5.0F);
+					event.Text = kind.Text;
+					campaign.Events.push_back(event);
+					AddLog(campaign, std::string("Galaxy news: ") + kind.Text);
+				}
+			}
+			for (int resource = 0; resource < c_ResourceCount; ++resource) {
+				float target = c_BasePrices[resource];
+				for (const GalaxyEvent& event: campaign.Events) {
+					if (event.Resource == resource) {
+						target *= event.PriceFactor;
+					}
+				}
+				float& price = campaign.Prices[resource];
+				price += (target - price) * c_PriceDrift;
+				price = std::clamp(price, c_BasePrices[resource] * 0.3F, c_BasePrices[resource] * 4.0F);
+			}
+		}
+
+		/// An AI faction's trading: buying what it's short of (food and fuel first) and selling what it has too much of.
+		void AIMarket(Campaign& campaign, int faction) {
+			Faction& self = campaign.Factions[faction];
+			const Stock made = ProductionOf(campaign, faction);
+			const Stock used = UsageOf(campaign, faction);
+			int armies = 0;
+			for (const Army& army: campaign.Armies) {
+				armies += army.Faction == faction ? 1 : 0;
+			}
+			const size_t food = static_cast<size_t>(Resource::Food);
+			Stock want{};
+			want[static_cast<size_t>(Resource::Water)] = 6;
+			want[food] = std::max(0, (used[food] - made[food]) * 4) + used[food] + 2;
+			want[static_cast<size_t>(Resource::Metal)] = 8;
+			want[static_cast<size_t>(Resource::Fuel)] = 3 + armies * 2;
+			want[static_cast<size_t>(Resource::Crystal)] = 3;
+			static constexpr Resource c_Order[] = {Resource::Food, Resource::Fuel, Resource::Metal, Resource::Water, Resource::Crystal};
+			for (Resource resource: c_Order) {
+				const size_t index = static_cast<size_t>(resource);
+				const int missing = want[index] - self.Resources[index];
+				// Food and fuel bought even when gold is low; the rest only with gold to spare.
+				const int keep = (resource == Resource::Food || resource == Resource::Fuel) ? 100 : 600;
+				if (missing > 0 && self.Gold > keep) {
+					const int afford = (self.Gold - keep) / std::max(BuyPrice(campaign, resource), 1);
+					if (afford > 0) {
+						Trade(campaign, faction, resource, std::min(missing, afford));
+					}
+				}
+			}
+			for (int resource = 0; resource < c_ResourceCount; ++resource) {
+				const int surplus = resource == static_cast<int>(Resource::Relics) ? self.Resources[resource] - 1 : self.Resources[resource] - want[resource] * 3 - 10;
+				if (surplus > 0) {
+					Trade(campaign, faction, static_cast<Resource>(resource), -surplus);
+				}
+			}
+		}
+
 		/// One AI faction's turn: recruiting, building, then each army moving on the best target it can take.
 		void AITurn(Campaign& campaign, int faction) {
 			Faction& self = campaign.Factions[faction];
@@ -628,7 +742,10 @@ namespace RTE::CampaignModel {
 				}
 			}
 
-			// Recruiting at its settlements while its soldiers' upkeep stays under about half its income, keeping some gold back.
+			AIMarket(campaign, faction);
+
+			// Recruiting at its settlements while its soldiers' upkeep stays under about half its income, keeping some gold back, and
+			// while it can feed them.
 			const int reserve = 250;
 			for (int planet = 0; planet < static_cast<int>(campaign.Planets.size()); ++planet) {
 				for (int point = 0; point < static_cast<int>(campaign.Planets[planet].Points.size()); ++point) {
@@ -637,11 +754,16 @@ namespace RTE::CampaignModel {
 						continue;
 					}
 					for (int squads = 0; squads < 3; ++squads) {
+						const int foodMade = ProductionOf(campaign, faction)[static_cast<size_t>(Resource::Food)];
+						const int foodUsed = UsageOf(campaign, faction)[static_cast<size_t>(Resource::Food)];
+						if (foodUsed + 1 > foodMade + self.Resources[static_cast<size_t>(Resource::Food)] / 6) {
+							break;
+						}
 						const int upkeep = UpkeepOf(campaign, faction);
 						const int gross = IncomeOf(campaign, faction) + upkeep;
 						int best = -1;
 						for (int type = static_cast<int>(self.Squads.size()) - 1; type >= 0; --type) {
-							const float squadCost = self.Squads[type].SoldierCost * static_cast<float>(self.Squads[type].Size);
+							const float squadCost = static_cast<float>(RecruitCostFor(campaign, faction, type).Gold);
 							std::string why;
 							if (self.Gold - static_cast<int>(squadCost) >= reserve && static_cast<float>(upkeep) + squadCost * c_UpkeepRate <= static_cast<float>(gross) * 0.55F && CanRecruit(campaign, faction, planet, point, type, why)) {
 								best = type;
@@ -812,13 +934,52 @@ namespace RTE::CampaignModel {
 					}
 				}
 			}
+			// Resources: what the points produce, less the armies' food. Factions short of food go hungry.
+			std::vector<bool> hungry(campaign.Factions.size(), false);
+			std::vector<bool> healthy(campaign.Factions.size(), false);
+			for (int faction = 0; faction < static_cast<int>(campaign.Factions.size()); ++faction) {
+				Faction& each = campaign.Factions[faction];
+				if (!each.Alive) {
+					continue;
+				}
+				const Stock made = ProductionOf(campaign, faction);
+				const Stock used = UsageOf(campaign, faction);
+				for (int resource = 0; resource < c_ResourceCount; ++resource) {
+					each.Resources[resource] += made[resource] - used[resource];
+				}
+				int& food = each.Resources[static_cast<size_t>(Resource::Food)];
+				if (food < 0) {
+					food = 0;
+					hungry[faction] = true;
+					if (each.Human) {
+						AddLog(campaign, "Your armies are starving: no food to feed them. They weaken, and the weakest desert. Buy food on the Market, or take points with food.");
+					}
+				}
+				healthy[faction] = BonusTier(campaign, faction, Resource::Water) >= 2;
+			}
+			for (Army& army: campaign.Armies) {
+				if (hungry[army.Faction]) {
+					for (Squad& squad: army.Squads) {
+						std::erase_if(squad.Soldiers, [](const Soldier& soldier) { return soldier.Health <= 0.15F; });
+						for (Soldier& soldier: squad.Soldiers) {
+							soldier.Health = std::max(0.1F, soldier.Health - 0.15F);
+						}
+					}
+					std::erase_if(army.Squads, [](const Squad& squad) { return squad.Soldiers.empty(); });
+				}
+			}
+			RemoveEmptyArmies(campaign);
+			UpdateMarket(campaign);
 			for (Army& army: campaign.Armies) {
 				army.Moves = c_MovesPerTurn;
-				float heal = 0.05F;
+				if (hungry[army.Faction]) {
+					continue; // No healing on an empty stomach.
+				}
+				float heal = healthy[army.Faction] ? 0.15F : 0.05F;
 				if (army.Planet >= 0) {
 					const Point& point = campaign.Planets[army.Planet].Points[army.Point];
 					if (point.Owner == army.Faction) {
-						heal = point.Settlement > 0 ? 0.3F : 0.15F;
+						heal = (point.Settlement > 0 ? 0.3F : 0.15F) + (healthy[army.Faction] ? 0.1F : 0.0F);
 						if (point.Settlement > 0 && point.Built[static_cast<size_t>(Building::Hospital)]) {
 							heal += 0.25F;
 						}
@@ -915,6 +1076,27 @@ namespace RTE::CampaignModel {
 	std::uint32_t StarColor(int index) {
 		static constexpr std::uint32_t c_Colors[] = {Rgb(255, 240, 200), Rgb(255, 210, 120), Rgb(255, 150, 90), Rgb(180, 210, 255), Rgb(255, 255, 255), Rgb(255, 110, 80)};
 		return c_Colors[static_cast<size_t>(std::abs(index)) % std::size(c_Colors)];
+	}
+
+	const char* ResourceName(Resource resource) {
+		static constexpr const char* c_Names[] = {"Water", "Food", "Metal", "Fuel", "Crystal", "Relics"};
+		return c_Names[std::clamp(static_cast<int>(resource), 0, c_ResourceCount - 1)];
+	}
+
+	const char* ResourceUse(Resource resource) {
+		static constexpr const char* c_Uses[] = {
+		    "Grows settlements past an outpost, and builds Hospitals.",
+		    "Feeds armies: one a squad each turn. Starving armies weaken and desert.",
+		    "Builds, and recruits second and third tier squads.",
+		    "Lane jumps: one an army a jump. With none, armies can't jump.",
+		    "Rare. Recruits third tier squads, and builds Walls.",
+		    "Very rare. Nothing to spend, but producing them pays gold each turn."};
+		return c_Uses[std::clamp(static_cast<int>(resource), 0, c_ResourceCount - 1)];
+	}
+
+	std::uint32_t ResourceColor(Resource resource) {
+		static constexpr std::uint32_t c_Colors[] = {Rgb(80, 170, 255), Rgb(150, 210, 70), Rgb(175, 180, 190), Rgb(255, 150, 50), Rgb(200, 110, 255), Rgb(255, 210, 60)};
+		return c_Colors[std::clamp(static_cast<int>(resource), 0, c_ResourceCount - 1)];
 	}
 #pragma endregion
 
@@ -1113,8 +1295,81 @@ namespace RTE::CampaignModel {
 				campaign.Armies[army].Squads.push_back(NewSquad(campaign, made, type));
 			}
 		}
+		AddResources(campaign);
 		AddLog(campaign, "The campaign begins. Take more than half of a planet's points to control it.");
 		return campaign;
+	}
+
+	void AddResources(Campaign& campaign) {
+		// A stream of its own, so the galaxy's layout doesn't depend on it.
+		Dice dice(campaign.Seed ^ 0x5EEDC0DEu);
+		// What each planet type mostly has: (resource, weight) pairs.
+		static const std::vector<std::vector<std::pair<Resource, float>>> c_Deposits = {
+		    {{Resource::Food, 0.5F}, {Resource::Water, 0.35F}, {Resource::Metal, 0.15F}}, // Temperate
+		    {{Resource::Fuel, 0.55F}, {Resource::Metal, 0.35F}, {Resource::Crystal, 0.1F}}, // Desert
+		    {{Resource::Water, 0.65F}, {Resource::Crystal, 0.2F}, {Resource::Metal, 0.15F}}, // Ice
+		    {{Resource::Food, 0.7F}, {Resource::Water, 0.2F}, {Resource::Fuel, 0.1F}}, // Jungle
+		    {{Resource::Fuel, 0.45F}, {Resource::Crystal, 0.3F}, {Resource::Metal, 0.25F}}, // Volcanic
+		    {{Resource::Metal, 0.7F}, {Resource::Fuel, 0.2F}, {Resource::Crystal, 0.1F}}, // Barren
+		    {{Resource::Metal, 0.5F}, {Resource::Crystal, 0.35F}, {Resource::Water, 0.15F}}, // Caves
+		    {{Resource::Water, 0.55F}, {Resource::Food, 0.45F}}, // Ocean
+		    {{Resource::Fuel, 1.0F}}, // Gas giant (no points)
+		};
+		std::vector<std::pair<int, int>> candidates; // (planet, point) a relic could be on.
+		for (int planetIndex = 0; planetIndex < static_cast<int>(campaign.Planets.size()); ++planetIndex) {
+			Planet& planet = campaign.Planets[planetIndex];
+			const bool giantMoon = planet.Parent >= 0 && campaign.Planets[planet.Parent].Type == PlanetType::GasGiant;
+			const std::vector<std::pair<Resource, float>>& table = c_Deposits[std::clamp(static_cast<int>(planet.Type), 0, static_cast<int>(PlanetType::Count) - 1)];
+			for (int pointIndex = 0; pointIndex < static_cast<int>(planet.Points.size()); ++pointIndex) {
+				Point& point = planet.Points[pointIndex];
+				float roll = dice.Unit();
+				Resource deposit = table.front().first;
+				for (const auto& [resource, weight]: table) {
+					roll -= weight;
+					if (roll <= 0.0F) {
+						deposit = resource;
+						break;
+					}
+				}
+				if (giantMoon && dice.Chance(0.5F)) {
+					deposit = Resource::Fuel;
+				}
+				point.Deposit = static_cast<int>(deposit);
+				const float size = dice.Unit();
+				point.Yield = size < 0.55F ? 1 : size < 0.9F ? 2 : 3;
+				candidates.emplace_back(planetIndex, pointIndex);
+			}
+		}
+		// Home planets the same for everyone: enough food for the first army, a little of the rest.
+		static constexpr std::pair<Resource, int> c_Home[] = {{Resource::Food, 2}, {Resource::Food, 1}, {Resource::Water, 1}, {Resource::Metal, 1}, {Resource::Fuel, 1}};
+		std::set<int> homes;
+		for (const Faction& faction: campaign.Factions) {
+			if (faction.HomePlanet >= 0 && faction.HomePlanet < static_cast<int>(campaign.Planets.size())) {
+				homes.insert(faction.HomePlanet);
+				std::vector<Point>& points = campaign.Planets[faction.HomePlanet].Points;
+				for (size_t point = 0; point < points.size() && point < std::size(c_Home); ++point) {
+					points[point].Deposit = static_cast<int>(c_Home[point].first);
+					points[point].Yield = c_Home[point].second;
+				}
+			}
+		}
+		// A few relics, scattered away from the homes.
+		std::erase_if(candidates, [&homes](const std::pair<int, int>& each) { return homes.count(each.first) > 0; });
+		const int relics = std::max(2, static_cast<int>(campaign.Systems.size()) / 8);
+		for (int relic = 0; relic < relics && !candidates.empty(); ++relic) {
+			const size_t pick = static_cast<size_t>(dice.Int(0, static_cast<int>(candidates.size()) - 1));
+			Point& point = campaign.Planets[candidates[pick].first].Points[candidates[pick].second];
+			point.Deposit = static_cast<int>(Resource::Relics);
+			point.Yield = 1;
+			candidates.erase(candidates.begin() + static_cast<long>(pick));
+		}
+		for (int resource = 0; resource < c_ResourceCount; ++resource) {
+			campaign.Prices[resource] = c_BasePrices[resource];
+		}
+		campaign.Events.clear();
+		for (Faction& faction: campaign.Factions) {
+			faction.Resources = c_StartStock;
+		}
 	}
 #pragma endregion
 
@@ -1168,6 +1423,9 @@ namespace RTE::CampaignModel {
 		for (const Squad& squad: army.Squads) {
 			upkeep += faction.Squads[std::clamp(squad.Type, 0, static_cast<int>(faction.Squads.size()) - 1)].SoldierCost * c_UpkeepRate * static_cast<float>(squad.Soldiers.size());
 		}
+		if (BonusTier(campaign, army.Faction, Resource::Food) >= 1) {
+			upkeep *= 0.9F;
+		}
 		return static_cast<int>(upkeep);
 	}
 
@@ -1194,6 +1452,7 @@ namespace RTE::CampaignModel {
 				income += c_ControlBonus;
 			}
 		}
+		income += c_RelicGold[BonusTier(campaign, faction, Resource::Relics)];
 		return income - UpkeepOf(campaign, faction);
 	}
 
@@ -1214,12 +1473,15 @@ namespace RTE::CampaignModel {
 				strength += SoldierStrength(type, soldier);
 			}
 		}
+		if (strength > 0.0F && BonusTier(campaign, army.Faction, Resource::Crystal) >= 2) {
+			strength *= 1.1F;
+		}
 		return strength;
 	}
 
 	float PointDefence(const Campaign& campaign, int planet, int point) {
 		const Point& here = campaign.Planets[planet].Points[point];
-		const float walls = here.Built[static_cast<size_t>(Building::Walls)] && here.Settlement > 0 ? c_WallsBonus : 1.0F;
+		const float walls = WallsFactor(campaign, here);
 		return here.Militia * 1.2F * walls;
 	}
 
@@ -1319,9 +1581,9 @@ namespace RTE::CampaignModel {
 			why = "The army here is full (12 squads).";
 			return false;
 		}
-		const int cost = static_cast<int>(squad.SoldierCost * static_cast<float>(squad.Size));
-		if (self.Gold < cost) {
-			why = "Not enough gold.";
+		const Cost cost = RecruitCostFor(campaign, faction, type);
+		if (!CanAfford(campaign, faction, cost)) {
+			why = "Needs " + CostText(cost) + ".";
 			return false;
 		}
 		return true;
@@ -1343,6 +1605,190 @@ namespace RTE::CampaignModel {
 		}
 		return static_cast<float>(wins) / static_cast<float>(c_Steps * c_Steps);
 	}
+
+	int PointYield(const Campaign& campaign, int planet, int point) {
+		const Point& here = campaign.Planets[planet].Points[point];
+		if (here.Owner < 0) {
+			return 0;
+		}
+		int yield = here.Yield + (here.Settlement > 0 ? 1 : 0);
+		const PlanetControl control = ControlOf(campaign, planet);
+		if (control.Controller == here.Owner && control.Invaded) {
+			yield = (yield + 1) / 2;
+		}
+		return yield;
+	}
+
+	Stock ProductionOf(const Campaign& campaign, int faction) {
+		Stock made{};
+		for (int planet = 0; planet < static_cast<int>(campaign.Planets.size()); ++planet) {
+			const std::vector<Point>& points = campaign.Planets[planet].Points;
+			if (std::none_of(points.begin(), points.end(), [faction](const Point& point) { return point.Owner == faction; })) {
+				continue;
+			}
+			// (The planet's control worked out once, not for every point.)
+			const PlanetControl control = ControlOf(campaign, planet);
+			for (const Point& point: points) {
+				if (point.Owner == faction) {
+					int yield = point.Yield + (point.Settlement > 0 ? 1 : 0);
+					if (control.Controller == faction && control.Invaded) {
+						yield = (yield + 1) / 2;
+					}
+					made[std::clamp(point.Deposit, 0, c_ResourceCount - 1)] += yield;
+				}
+			}
+		}
+		return made;
+	}
+
+	Stock UsageOf(const Campaign& campaign, int faction) {
+		Stock used{};
+		for (const Army& army: campaign.Armies) {
+			if (army.Faction == faction) {
+				used[static_cast<size_t>(Resource::Food)] += static_cast<int>(army.Squads.size());
+			}
+		}
+		return used;
+	}
+
+	int BonusThreshold(Resource resource, int tier) {
+		const int step = resource == Resource::Relics ? 1 : resource == Resource::Crystal ? 2 : 3;
+		return tier <= 1 ? step : resource == Resource::Relics ? 3 : step * 2;
+	}
+
+	int BonusTier(const Campaign& campaign, int faction, Resource resource) {
+		if (faction < 0 || faction >= static_cast<int>(campaign.Factions.size())) {
+			return 0;
+		}
+		const int made = ProductionOf(campaign, faction)[static_cast<size_t>(resource)];
+		return made >= BonusThreshold(resource, 2) ? 2 : made >= BonusThreshold(resource, 1) ? 1 : 0;
+	}
+
+	const char* BonusText(Resource resource, int tier) {
+		static constexpr const char* c_Texts[c_ResourceCount][2] = {
+		    {"Hospitals cost 30% less", "Settlements grow for 30% less, and wounded heal faster"},
+		    {"Upkeep 10% lower", "New soldiers start as Corporals"},
+		    {"Buildings cost 25% less", "Walls are stronger"},
+		    {"Taking off takes no move", "Lane jumps take 1 move, not 2"},
+		    {"Third tier squads cost 20% less", "Your armies fight 10% harder"},
+		    {"50 gold a turn", "150 gold a turn"}};
+		return c_Texts[std::clamp(static_cast<int>(resource), 0, c_ResourceCount - 1)][std::clamp(tier, 1, 2) - 1];
+	}
+
+	bool CanAfford(const Campaign& campaign, int faction, const Cost& cost) {
+		const Faction& self = campaign.Factions[faction];
+		if (self.Gold < cost.Gold) {
+			return false;
+		}
+		for (int resource = 0; resource < c_ResourceCount; ++resource) {
+			if (self.Resources[resource] < cost.Resources[resource]) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	std::string CostText(const Cost& cost) {
+		std::string text = std::to_string(cost.Gold) + " gold";
+		for (int resource = 0; resource < c_ResourceCount; ++resource) {
+			if (cost.Resources[resource] > 0) {
+				std::string name = ResourceName(static_cast<Resource>(resource));
+				name[0] = static_cast<char>(std::tolower(static_cast<unsigned char>(name[0])));
+				text += ", " + std::to_string(cost.Resources[resource]) + " " + name;
+			}
+		}
+		return text;
+	}
+
+	namespace {
+		Cost Discounted(Cost cost, float factor) {
+			cost.Gold = static_cast<int>(std::round(static_cast<float>(cost.Gold) * factor));
+			for (int& amount: cost.Resources) {
+				if (amount > 0) {
+					amount = std::max(1, static_cast<int>(std::round(static_cast<float>(amount) * factor)));
+				}
+			}
+			return cost;
+		}
+
+		void Pay(Campaign& campaign, int faction, const Cost& cost) {
+			Faction& self = campaign.Factions[faction];
+			self.Gold -= cost.Gold;
+			for (int resource = 0; resource < c_ResourceCount; ++resource) {
+				self.Resources[resource] -= cost.Resources[resource];
+			}
+		}
+
+		int& Of(Stock& stock, Resource resource) { return stock[static_cast<size_t>(resource)]; }
+	} // namespace
+
+	Cost SettleCostFor(const Campaign& campaign, int faction, int level) {
+		Cost cost;
+		cost.Gold = SettleCost(level);
+		Of(cost.Resources, Resource::Water) = level <= 0 ? 0 : level == 1 ? 3 : 6;
+		Of(cost.Resources, Resource::Metal) = level >= 2 ? 3 : 0;
+		return BonusTier(campaign, faction, Resource::Water) >= 2 ? Discounted(cost, 0.7F) : cost;
+	}
+
+	Cost BuildingCostFor(const Campaign& campaign, int faction, Building building) {
+		Cost cost;
+		cost.Gold = BuildingCost(building);
+		switch (building) {
+			case Building::Barracks:
+				Of(cost.Resources, Resource::Metal) = 4;
+				break;
+			case Building::Market:
+				Of(cost.Resources, Resource::Metal) = 2;
+				break;
+			case Building::Walls:
+				Of(cost.Resources, Resource::Metal) = 4;
+				Of(cost.Resources, Resource::Crystal) = 1;
+				break;
+			case Building::Hospital:
+				Of(cost.Resources, Resource::Metal) = 2;
+				Of(cost.Resources, Resource::Water) = 3;
+				break;
+			default:
+				break;
+		}
+		if (BonusTier(campaign, faction, Resource::Metal) >= 1) {
+			cost = Discounted(cost, 0.75F);
+		}
+		if (building == Building::Hospital && BonusTier(campaign, faction, Resource::Water) >= 1) {
+			cost = Discounted(cost, 0.7F);
+		}
+		return cost;
+	}
+
+	Cost RecruitCostFor(const Campaign& campaign, int faction, int type) {
+		Cost cost;
+		const std::vector<SquadType>& squads = campaign.Factions[faction].Squads;
+		if (type < 0 || type >= static_cast<int>(squads.size())) {
+			return cost;
+		}
+		const SquadType& squad = squads[type];
+		cost.Gold = static_cast<int>(squad.SoldierCost * static_cast<float>(squad.Size));
+		if (squad.Tier == 2) {
+			Of(cost.Resources, Resource::Metal) = 2;
+		} else if (squad.Tier >= 3) {
+			Of(cost.Resources, Resource::Metal) = 3;
+			Of(cost.Resources, Resource::Crystal) = 2;
+			if (BonusTier(campaign, faction, Resource::Crystal) >= 1) {
+				cost.Gold = static_cast<int>(std::round(static_cast<float>(cost.Gold) * 0.8F));
+			}
+		}
+		return cost;
+	}
+
+	int JumpMoves(const Campaign& campaign, int faction) { return BonusTier(campaign, faction, Resource::Fuel) >= 2 ? 1 : 2; }
+
+	int TakeOffMoves(const Campaign& campaign, int faction) { return BonusTier(campaign, faction, Resource::Fuel) >= 1 ? 0 : 1; }
+
+	float BasePrice(Resource resource) { return c_BasePrices[std::clamp(static_cast<int>(resource), 0, c_ResourceCount - 1)]; }
+
+	int BuyPrice(const Campaign& campaign, Resource resource) { return std::max(1, static_cast<int>(std::round(campaign.Prices[static_cast<size_t>(resource)] * (1.0F + c_MarketCut)))); }
+
+	int SellPrice(const Campaign& campaign, Resource resource) { return std::max(1, static_cast<int>(std::round(campaign.Prices[static_cast<size_t>(resource)] * (1.0F - c_MarketCut)))); }
 #pragma endregion
 
 #pragma region Commands
@@ -1363,7 +1809,7 @@ namespace RTE::CampaignModel {
 	bool WouldFight(const Campaign& campaign, int faction, int planet, int point, float& defence) {
 		defence = 0.0F;
 		const Point& here = campaign.Planets[planet].Points[point];
-		const float walls = here.Built[static_cast<size_t>(Building::Walls)] && here.Settlement > 0 ? c_WallsBonus : 1.0F;
+		const float walls = WallsFactor(campaign, here);
 		for (int army: ArmiesAt(campaign, planet, point)) {
 			if (campaign.Armies[army].Faction != faction) {
 				defence += Strength(campaign, campaign.Armies[army]) * walls;
@@ -1412,12 +1858,13 @@ namespace RTE::CampaignModel {
 			return false;
 		}
 		Army& launching = campaign.Armies[army];
-		if (launching.Planet < 0 || launching.Moves < 1) {
+		const int moves = TakeOffMoves(campaign, launching.Faction);
+		if (launching.Planet < 0 || launching.Moves < std::max(moves, 1)) {
 			return false;
 		}
 		launching.Planet = -1;
 		launching.Point = -1;
-		--launching.Moves;
+		launching.Moves -= moves;
 		return true;
 	}
 
@@ -1427,7 +1874,7 @@ namespace RTE::CampaignModel {
 			return false;
 		}
 		Faction& self = campaign.Factions[faction];
-		self.Gold -= static_cast<int>(self.Squads[type].SoldierCost * static_cast<float>(self.Squads[type].Size));
+		Pay(campaign, faction, RecruitCostFor(campaign, faction, type));
 		int into = -1;
 		for (int army: ArmiesAt(campaign, planet, point)) {
 			if (campaign.Armies[army].Faction == faction && static_cast<int>(campaign.Armies[army].Squads.size()) < c_MaxSquads) {
@@ -1439,6 +1886,11 @@ namespace RTE::CampaignModel {
 			into = NewArmy(campaign, faction, campaign.Planets[planet].System, planet, point);
 		}
 		campaign.Armies[into].Squads.push_back(NewSquad(campaign, self, type));
+		if (BonusTier(campaign, faction, Resource::Food) >= 2) {
+			for (Soldier& soldier: campaign.Armies[into].Squads.back().Soldiers) {
+				soldier.Rank = std::max(soldier.Rank, 1);
+			}
+		}
 		return true;
 	}
 
@@ -1471,10 +1923,12 @@ namespace RTE::CampaignModel {
 			return false;
 		}
 		faction.Gold -= cost;
+		const int rank = BonusTier(campaign, self.Faction, Resource::Food) >= 2 ? 1 : 0;
 		for (Squad& squad: self.Squads) {
 			const SquadType& type = faction.Squads[std::clamp(squad.Type, 0, static_cast<int>(faction.Squads.size()) - 1)];
 			while (static_cast<int>(squad.Soldiers.size()) < type.Size) {
 				squad.Soldiers.push_back(NewSoldier(campaign));
+				squad.Soldiers.back().Rank = rank;
 			}
 		}
 		return true;
@@ -1490,11 +1944,11 @@ namespace RTE::CampaignModel {
 		if (here.Owner != faction || here.Settlement >= c_MaxSettlement) {
 			return false;
 		}
-		const int cost = SettleCost(here.Settlement);
-		if (campaign.Factions[faction].Gold < cost) {
+		const Cost cost = SettleCostFor(campaign, faction, here.Settlement);
+		if (!CanAfford(campaign, faction, cost)) {
 			return false;
 		}
-		campaign.Factions[faction].Gold -= cost;
+		Pay(campaign, faction, cost);
 		++here.Settlement;
 		if (IsHuman(campaign, faction)) {
 			AddLog(campaign, here.Name + " is now " + (here.Settlement == 1 ? "an " : "a ") + SettlementName(here.Settlement) + ".");
@@ -1505,7 +1959,8 @@ namespace RTE::CampaignModel {
 	bool Build(Campaign& campaign, int faction, int planet, int point, Building building) {
 		Point& here = campaign.Planets[planet].Points[point];
 		const size_t which = static_cast<size_t>(building);
-		if (here.Owner != faction || here.Settlement == 0 || here.Built[which] || campaign.Factions[faction].Gold < BuildingCost(building)) {
+		const Cost cost = BuildingCostFor(campaign, faction, building);
+		if (here.Owner != faction || here.Settlement == 0 || here.Built[which] || !CanAfford(campaign, faction, cost)) {
 			return false;
 		}
 		int built = 0;
@@ -1516,7 +1971,7 @@ namespace RTE::CampaignModel {
 		if (built >= here.Settlement + 1) {
 			return false;
 		}
-		campaign.Factions[faction].Gold -= BuildingCost(building);
+		Pay(campaign, faction, cost);
 		here.Built[which] = true;
 		return true;
 	}
@@ -1556,6 +2011,37 @@ namespace RTE::CampaignModel {
 			campaign.Armies.erase(campaign.Armies.begin() + army);
 			CheckFactions(campaign);
 		}
+	}
+
+	bool Trade(Campaign& campaign, int faction, Resource resource, int amount) {
+		if (faction < 0 || faction >= static_cast<int>(campaign.Factions.size()) || resource == Resource::Count || amount == 0) {
+			return false;
+		}
+		Faction& self = campaign.Factions[faction];
+		const size_t index = static_cast<size_t>(resource);
+		float& price = campaign.Prices[index];
+		bool traded = false;
+		for (int unit = 0; unit < std::abs(amount); ++unit) {
+			if (amount > 0) {
+				const int cost = BuyPrice(campaign, resource);
+				if (self.Gold < cost) {
+					break;
+				}
+				self.Gold -= cost;
+				++self.Resources[index];
+				price *= 1.0F + c_PriceStep;
+			} else {
+				if (self.Resources[index] < 1) {
+					break;
+				}
+				self.Gold += SellPrice(campaign, resource);
+				--self.Resources[index];
+				price *= 1.0F - c_PriceStep;
+			}
+			price = std::clamp(price, c_BasePrices[index] * 0.3F, c_BasePrices[index] * 4.0F);
+			traded = true;
+		}
+		return traded;
 	}
 
 	void EndTurn(Campaign& campaign) {

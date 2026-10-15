@@ -136,6 +136,7 @@ namespace {
 		PendingAttack Attack;
 		bool ConfirmDisband = false;
 		bool ConfirmDelete = false;
+		bool MarketOpen = false; //!< The galaxy market window is up.
 		std::string DeleteFile;
 		bool EndShown = false; //!< The victory or defeat window was shown for this campaign.
 		bool SetupGuide = true; //!< Whether the new campaign starts with the guide.
@@ -157,6 +158,61 @@ namespace {
 	ImU32 Scale(ImU32 color, float by) {
 		ImVec4 c = ImGui::ColorConvertU32ToFloat4(color);
 		return ImGui::ColorConvertFloat4ToU32(ImVec4(std::min(c.x * by, 1.0F), std::min(c.y * by, 1.0F), std::min(c.z * by, 1.0F), c.w));
+	}
+
+	/// A small drawn icon for a resource: a drop of water, grain for food, an ingot of metal, a flame of fuel, a cut crystal, a relic.
+	void DrawResourceIcon(ImDrawList* drawList, ImVec2 c, float size, Resource resource) {
+		const float r = size * 0.5F;
+		const ImU32 color = ResourceColor(resource);
+		const ImU32 dark = Scale(color, 0.45F);
+		switch (resource) {
+			case Resource::Water:
+				drawList->AddCircleFilled(ImVec2(c.x, c.y + r * 0.3F), r * 0.62F, color, 16);
+				drawList->AddTriangleFilled(ImVec2(c.x, c.y - r), ImVec2(c.x - r * 0.57F, c.y + r * 0.08F), ImVec2(c.x + r * 0.57F, c.y + r * 0.08F), color);
+				drawList->AddCircleFilled(ImVec2(c.x - r * 0.22F, c.y + r * 0.22F), r * 0.16F, IM_COL32(255, 255, 255, 170), 8);
+				break;
+			case Resource::Food:
+				drawList->AddLine(ImVec2(c.x, c.y + r), ImVec2(c.x, c.y - r * 0.2F), dark, std::max(1.0F, r * 0.22F));
+				for (int head = -1; head <= 1; ++head) {
+					drawList->AddEllipseFilled(ImVec2(c.x + static_cast<float>(head) * r * 0.42F, c.y - r * (head == 0 ? 0.5F : 0.25F)), ImVec2(r * 0.24F, r * 0.5F), color, static_cast<float>(head) * 0.45F, 10);
+				}
+				break;
+			case Resource::Metal:
+				drawList->AddQuadFilled(ImVec2(c.x - r * 0.55F, c.y - r * 0.4F), ImVec2(c.x + r * 0.55F, c.y - r * 0.4F), ImVec2(c.x + r, c.y + r * 0.45F), ImVec2(c.x - r, c.y + r * 0.45F), color);
+				drawList->AddLine(ImVec2(c.x - r * 0.55F, c.y - r * 0.4F), ImVec2(c.x + r * 0.55F, c.y - r * 0.4F), IM_COL32(255, 255, 255, 200), std::max(1.0F, r * 0.15F));
+				drawList->AddQuad(ImVec2(c.x - r * 0.55F, c.y - r * 0.4F), ImVec2(c.x + r * 0.55F, c.y - r * 0.4F), ImVec2(c.x + r, c.y + r * 0.45F), ImVec2(c.x - r, c.y + r * 0.45F), dark, 1.0F);
+				break;
+			case Resource::Fuel:
+				drawList->AddCircleFilled(ImVec2(c.x, c.y + r * 0.35F), r * 0.6F, color, 16);
+				drawList->AddTriangleFilled(ImVec2(c.x + r * 0.1F, c.y - r), ImVec2(c.x - r * 0.6F, c.y + r * 0.3F), ImVec2(c.x + r * 0.6F, c.y + r * 0.3F), color);
+				drawList->AddCircleFilled(ImVec2(c.x, c.y + r * 0.45F), r * 0.3F, IM_COL32(255, 240, 150, 255), 12);
+				break;
+			case Resource::Crystal:
+				drawList->AddQuadFilled(ImVec2(c.x, c.y - r), ImVec2(c.x + r * 0.65F, c.y - r * 0.1F), ImVec2(c.x, c.y + r), ImVec2(c.x - r * 0.65F, c.y - r * 0.1F), color);
+				drawList->AddTriangleFilled(ImVec2(c.x, c.y - r), ImVec2(c.x, c.y - r * 0.1F), ImVec2(c.x - r * 0.65F, c.y - r * 0.1F), Scale(color, 1.5F));
+				drawList->AddQuad(ImVec2(c.x, c.y - r), ImVec2(c.x + r * 0.65F, c.y - r * 0.1F), ImVec2(c.x, c.y + r), ImVec2(c.x - r * 0.65F, c.y - r * 0.1F), dark, 1.0F);
+				break;
+			default:
+				drawList->AddNgonFilled(c, r * 0.9F, color, 6);
+				drawList->AddNgon(c, r * 0.9F, dark, 6, 1.0F);
+				drawList->AddCircleFilled(c, r * 0.35F, dark, 10);
+				break;
+		}
+	}
+
+	/// A resource's icon on a dark disc, so it reads on any map.
+	void DrawResourceBadge(ImDrawList* drawList, ImVec2 c, float size, Resource resource) {
+		drawList->AddCircleFilled(c, size * 0.68F, IM_COL32(10, 10, 20, 220), 16);
+		drawList->AddCircle(c, size * 0.68F, Alpha(ResourceColor(resource), 0.8F), 16, 1.0F);
+		DrawResourceIcon(drawList, c, size * 0.85F, resource);
+	}
+
+	/// A resource's icon in line with text.
+	void ResourceIcon(Resource resource) {
+		const float size = ImGui::GetTextLineHeight();
+		const ImVec2 at = ImGui::GetCursorScreenPos();
+		ImGui::Dummy(ImVec2(size, size));
+		DrawResourceIcon(ImGui::GetWindowDrawList(), ImVec2(at.x + size * 0.5F, at.y + size * 0.5F), size * 0.9F, resource);
 	}
 
 	ImU32 FactionColor(int faction) { return faction >= 0 && faction < static_cast<int>(s_Screen.Game.Factions.size()) ? s_Screen.Game.Factions[faction].Color : IM_COL32(150, 150, 150, 255); }
@@ -212,6 +268,7 @@ namespace {
 		s_Screen.Guide.On = false;
 		s_Screen.FollowArmy = 0;
 		s_Screen.Alerts.clear();
+		s_Screen.MarketOpen = false;
 		const int player = Player();
 		if (player >= 0) {
 			const int home = s_Screen.Game.Factions[player].HomePlanet;
@@ -1150,7 +1207,7 @@ namespace {
 			case Step::Control:
 				return {"Control a planet", "Keep taking points: hold more than half of a planet's points to control it, which pays a bonus each turn.\n\nWhile an enemy holds any of its points, the planet is Invaded: half income and slower healing until you drive them out."};
 			case Step::Grow:
-				return {"Build up", "Click a point you hold. Found an outpost on it and grow it into a colony and a city for more gold and more building slots. A Market pays more, Barracks unlock better squads, Walls help hold it and a Hospital heals."};
+				return {"Build up", "Click a point you hold. Found an outpost on it and grow it into a colony and a city for more gold and more building slots. A Market pays more, Barracks unlock better squads, Walls help hold it and a Hospital heals.\n\nEach point also produces a resource (its icon on the map). Growing and building cost water and metal as well as gold, armies eat food and jumps burn fuel. Trade buys what you're short of."};
 			case Step::Win:
 				return {"Conquer the galaxy", "Wipe out the other factions to win. The To do list on the right says what needs doing each turn, and Tab picks your next army with moves left.\n\nGood luck, commander."};
 			default:
@@ -1456,6 +1513,24 @@ namespace {
 				const PlanetControl control = ControlOf(game, planet);
 				ImGui::TextDisabled("  %s, %s%s", game.Planets[planet].Name.c_str(), PlanetTypeName(game.Planets[planet].Type), control.Controller >= 0 ? (std::string(": ") + FactionLabel(control.Controller) + (control.Invaded ? " (invaded)" : "")).c_str() : control.Contested ? ": contested" : "");
 			}
+			std::array<int, c_ResourceCount> yields{};
+			for (int planet: system.Planets) {
+				for (const Point& point: game.Planets[planet].Points) {
+					yields[static_cast<size_t>(std::clamp(point.Deposit, 0, c_ResourceCount - 1))] += point.Yield;
+				}
+			}
+			bool first = true;
+			for (int each = 0; each < c_ResourceCount; ++each) {
+				if (yields[each] > 0) {
+					if (!first) {
+						ImGui::SameLine();
+					}
+					first = false;
+					ResourceIcon(static_cast<Resource>(each));
+					ImGui::SameLine(0.0F, 2.0F);
+					ImGui::TextDisabled("%d", yields[each]);
+				}
+			}
 			ImGui::TextDisabled("Double-click to see it. Right-click to send the army picked.");
 			ImGui::EndTooltip();
 		} else if (hoveredArmy) {
@@ -1590,6 +1665,23 @@ namespace {
 				label += " (contested)";
 			}
 			CenteredText(drawList, ImVec2(at.x, at.y + radius + 15.0F), control.Controller >= 0 ? Scale(FactionColor(control.Controller), 1.2F) : IM_COL32(200, 205, 230, 230), label);
+			{
+				// What its points produce, an icon for each kind, under its name.
+				std::array<int, c_ResourceCount> yields{};
+				for (const Point& point: planet.Points) {
+					yields[static_cast<size_t>(std::clamp(point.Deposit, 0, c_ResourceCount - 1))] += point.Yield;
+				}
+				const int kinds = static_cast<int>(std::count_if(yields.begin(), yields.end(), [](int yield) { return yield > 0; }));
+				const float icon = 13.0F;
+				float x = at.x - static_cast<float>(kinds) * icon * 0.75F + icon * 0.75F;
+				const float y = at.y + radius + 15.0F + ImGui::GetTextLineHeight() + icon * 0.6F;
+				for (int each = 0; each < c_ResourceCount; ++each) {
+					if (yields[each] > 0) {
+						DrawResourceBadge(drawList, ImVec2(x, y), icon, static_cast<Resource>(each));
+						x += icon * 1.5F;
+					}
+				}
+			}
 			const bool onIt = hovered && std::hypot(io.MousePos.x - at.x, io.MousePos.y - at.y) < radius + 8.0F;
 			if (onIt) {
 				hoveredPlanet = planetIndex;
@@ -1646,7 +1738,23 @@ namespace {
 			ImGui::SetTooltip("%s (%s): %d soldiers, strength %.0f", army.Name.c_str(), FactionLabel(army.Faction).c_str(), SoldierCount(army), Strength(game, army));
 		} else if (hoveredPlanet >= 0) {
 			const Planet& planet = game.Planets[hoveredPlanet];
-			ImGui::SetTooltip("%s, %s%s", planet.Name.c_str(), PlanetTypeName(planet.Type), planet.Points.empty() ? "" : "\nDouble-click for its map. Right-click to land the army picked.");
+			ImGui::BeginTooltip();
+			ImGui::Text("%s, %s", planet.Name.c_str(), PlanetTypeName(planet.Type));
+			std::array<int, c_ResourceCount> yields{};
+			for (const Point& point: planet.Points) {
+				yields[static_cast<size_t>(std::clamp(point.Deposit, 0, c_ResourceCount - 1))] += point.Yield;
+			}
+			for (int each = 0; each < c_ResourceCount; ++each) {
+				if (yields[each] > 0) {
+					ResourceIcon(static_cast<Resource>(each));
+					ImGui::SameLine();
+					ImGui::TextDisabled("%s %d", ResourceName(static_cast<Resource>(each)), yields[each]);
+				}
+			}
+			if (!planet.Points.empty()) {
+				ImGui::TextDisabled("Double-click for its map. Right-click to land the army picked.");
+			}
+			ImGui::EndTooltip();
 		}
 		DrawLegend(drawList, ImVec2(from.x + 8.0F, to.y - 8.0F));
 		EndCanvas();
@@ -1811,6 +1919,15 @@ namespace {
 				drawList->AddRectFilled(ImVec2(x - 3.5F, y), ImVec2(x + 3.5F, y + 6.0F), IM_COL32(245, 240, 225, 255));
 				drawList->AddTriangleFilled(ImVec2(x - 4.5F, y), ImVec2(x + 4.5F, y), ImVec2(x, y - 4.5F), IM_COL32(245, 240, 225, 255));
 			}
+			{
+				// What it produces: an icon and how much, at its top right.
+				const Resource deposit = static_cast<Resource>(std::clamp(point.Deposit, 0, c_ResourceCount - 1));
+				const float badge = std::max(radius * 0.8F, 11.0F);
+				const ImVec2 badgeAt(at.x + radius * 0.95F, at.y - radius * 0.95F);
+				DrawResourceBadge(drawList, badgeAt, badge, deposit);
+				const std::string amount = std::to_string(point.Owner >= 0 ? PointYield(game, planetIndex, index) : point.Yield);
+				drawList->AddText(ImVec2(badgeAt.x + badge * 0.7F + 1.0F, badgeAt.y - ImGui::GetTextLineHeight() * 0.5F), ResourceColor(deposit), amount.c_str());
+			}
 			std::string label = point.Name;
 			if (point.Owner < 0 && point.Militia > 0.01F) {
 				label += " (locals)";
@@ -1880,6 +1997,12 @@ namespace {
 			ImGui::BeginTooltip();
 			ImGui::Text("%s (%s)", point.Name.c_str(), FactionLabel(point.Owner).c_str());
 			ImGui::TextDisabled("%s%s", point.Settlement > 0 ? SettlementName(point.Settlement) : "No settlement", point.Owner >= 0 ? (", " + std::to_string(PointIncome(game, planetIndex, hoveredPoint)) + " gold a turn").c_str() : "");
+			{
+				const Resource deposit = static_cast<Resource>(std::clamp(point.Deposit, 0, c_ResourceCount - 1));
+				ResourceIcon(deposit);
+				ImGui::SameLine();
+				ImGui::TextDisabled("%s, %d a turn%s", ResourceName(deposit), point.Owner >= 0 ? PointYield(game, planetIndex, hoveredPoint) : point.Yield + 1, point.Owner >= 0 ? "" : " to its owner with an outpost");
+			}
 			if (fight) {
 				ImGui::TextDisabled("Defended: strength %.0f", defence);
 			}
@@ -2023,6 +2146,17 @@ namespace {
 		ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(FactionColor(here.Owner)), "%s", FactionLabel(here.Owner).c_str());
 		ImGui::TextDisabled("%s on %s", TerrainName(game.Planets[planet].Type, here.Terrain), game.Planets[planet].Name.c_str());
 		ImGui::Text("%s%s", here.Settlement > 0 ? SettlementName(here.Settlement) : "No settlement", here.Owner >= 0 ? (", " + std::to_string(PointIncome(game, planet, point)) + " gold a turn").c_str() : "");
+		{
+			const Resource deposit = static_cast<Resource>(std::clamp(here.Deposit, 0, c_ResourceCount - 1));
+			ResourceIcon(deposit);
+			ImGui::SameLine();
+			if (here.Owner >= 0) {
+				ImGui::Text("%d %s a turn", PointYield(game, planet, point), ResourceName(deposit));
+			} else {
+				ImGui::Text("%s deposit, %d a turn to its owner", ResourceName(deposit), here.Yield + 1);
+			}
+			ImGui::SetItemTooltip("%s\nIts yield is %d, one more with a settlement, half while its planet is invaded.", ResourceUse(deposit), here.Yield);
+		}
 		if (here.Militia > 0.01F) {
 			ImGui::TextDisabled("Locals defending: strength %.0f", PointDefence(game, planet, point));
 		}
@@ -2040,9 +2174,9 @@ namespace {
 		}
 		const Faction& self = game.Factions[player];
 		if (here.Settlement < c_MaxSettlement) {
-			const int cost = SettleCost(here.Settlement);
-			const std::string label = (here.Settlement == 0 ? std::string("Found an outpost") : std::string("Grow into a ") + SettlementName(here.Settlement + 1)) + " (" + std::to_string(cost) + ")";
-			ImGui::BeginDisabled(self.Gold < cost);
+			const Cost cost = SettleCostFor(game, player, here.Settlement);
+			const std::string label = (here.Settlement == 0 ? std::string("Found an outpost") : std::string("Grow into a ") + SettlementName(here.Settlement + 1)) + " (" + CostText(cost) + ")";
+			ImGui::BeginDisabled(!CanAfford(game, player, cost));
 			if (ToolUI::Button(label.c_str(), ImVec2(-1.0F, 0.0F))) {
 				Settle(game, player, planet, point);
 			}
@@ -2062,8 +2196,9 @@ namespace {
 					continue;
 				}
 				ImGui::PushID(b);
-				const std::string label = std::string(BuildingName(building)) + " (" + std::to_string(BuildingCost(building)) + ")";
-				ImGui::BeginDisabled(self.Gold < BuildingCost(building) || builtCount >= here.Settlement + 1);
+				const Cost cost = BuildingCostFor(game, player, building);
+				const std::string label = std::string(BuildingName(building)) + " (" + CostText(cost) + ")";
+				ImGui::BeginDisabled(!CanAfford(game, player, cost) || builtCount >= here.Settlement + 1);
 				if (ToolUI::Button(label.c_str(), ImVec2(-1.0F, 0.0F))) {
 					Build(game, player, planet, point, building);
 				}
@@ -2076,10 +2211,10 @@ namespace {
 				const SquadType& squad = self.Squads[type];
 				std::string why;
 				const bool can = CanRecruit(game, player, planet, point, type, why);
-				const int cost = static_cast<int>(squad.SoldierCost * static_cast<float>(squad.Size));
+				const Cost cost = RecruitCostFor(game, player, type);
 				ImGui::PushID(type);
 				ImGui::BeginDisabled(!can);
-				const std::string label = squad.Name + " x" + std::to_string(squad.Size) + "  (" + std::to_string(cost) + ")";
+				const std::string label = squad.Name + " x" + std::to_string(squad.Size) + "  (" + CostText(cost) + ")";
 				if (ToolUI::Button(label.c_str(), ImVec2(-1.0F, 0.0F))) {
 					Recruit(game, player, planet, point, type);
 					const std::vector<int> armies = ArmiesAt(game, planet, point);
@@ -2130,6 +2265,7 @@ namespace {
 	}
 
 	void NextArmy();
+	int TurnsLeftOf(const CampaignModel::Campaign& game, int faction, Resource resource);
 
 	/// What needs doing this turn, most pressing first: each line takes the player to it when clicked.
 	void ToDoList() {
@@ -2171,6 +2307,20 @@ namespace {
 					ShowSystem(system);
 					s_Screen.SelectedArmy = id;
 				}});
+			}
+		}
+		// Food running out, or no fuel to jump with.
+		if (const int turns = TurnsLeftOf(game, player, Resource::Food); turns >= 0 && turns <= 3) {
+			items.push_back({turns == 0 ? std::string("Out of food: armies go hungry. Buy food (Trade)") : "Food runs out in " + std::to_string(turns) + (turns == 1 ? " turn" : " turns") + ": buy some or take farms", urgent, []() { s_Screen.MarketOpen = true; }});
+		}
+		{
+			const size_t fuel = static_cast<size_t>(Resource::Fuel);
+			int jumping = 0;
+			for (const Army& army: game.Armies) {
+				jumping += army.Faction == player && army.Planet < 0 ? 1 : 0;
+			}
+			if (jumping > 0 && game.Factions[player].Resources[fuel] < jumping && ProductionOf(game, player)[fuel] < jumping) {
+				items.push_back({game.Factions[player].Resources[fuel] == 0 ? std::string("No fuel: armies can't jump lanes. Buy fuel (Trade)") : std::string("Fuel is low for your armies in space (Trade)"), urgent, []() { s_Screen.MarketOpen = true; }});
 			}
 		}
 		if (const int income = IncomeOf(game, player); income < 0) {
@@ -2339,6 +2489,196 @@ namespace {
 		ImGui::EndChild();
 	}
 
+	/// Turns until a faction runs out of a resource at its rate now, or -1 if it isn't running down.
+	int TurnsLeftOf(const CampaignModel::Campaign& game, int faction, Resource resource) {
+		const size_t index = static_cast<size_t>(resource);
+		const int net = ProductionOf(game, faction)[index] - UsageOf(game, faction)[index];
+		if (net >= 0) {
+			return -1;
+		}
+		return game.Factions[faction].Resources[index] / -net;
+	}
+
+	/// The two tiers of a resource's production bonus, lit where the faction has them.
+	void BonusLines(const CampaignModel::Campaign& game, int faction, Resource resource) {
+		const int tier = faction >= 0 ? BonusTier(game, faction, resource) : 0;
+		for (int each = 1; each <= 2; ++each) {
+			const std::string text = std::to_string(BonusThreshold(resource, each)) + "+ a turn: " + BonusText(resource, each);
+			if (tier >= each) {
+				ImGui::TextColored(ImVec4(0.55F, 1.0F, 0.55F, 1.0F), "* %s", text.c_str());
+			} else {
+				ImGui::TextDisabled("  %s", text.c_str());
+			}
+		}
+	}
+
+	/// Everything about one of the player's resources, for a tooltip.
+	void ResourceTooltip(int player, Resource resource) {
+		const CampaignModel::Campaign& game = s_Screen.Game;
+		const size_t index = static_cast<size_t>(resource);
+		const int made = ProductionOf(game, player)[index];
+		const int used = UsageOf(game, player)[index];
+		ImGui::BeginTooltip();
+		ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(ResourceColor(resource)), "%s", ResourceName(resource));
+		ImGui::TextUnformatted(ResourceUse(resource));
+		ImGui::Text("%d in store. Your points make %d a turn%s.", game.Factions[player].Resources[index], made, used > 0 ? (", your armies use " + std::to_string(used)).c_str() : "");
+		if (const int turns = TurnsLeftOf(game, player, resource); turns >= 0) {
+			ImGui::TextColored(ImVec4(1.0F, 0.5F, 0.4F, 1.0F), "Runs out in %d turn%s.", turns, turns == 1 ? "" : "s");
+		}
+		ImGui::SeparatorText("Production bonuses");
+		BonusLines(game, player, resource);
+		ImGui::TextDisabled("Buy and sell it on the galaxy market (Trade).");
+		ImGui::EndTooltip();
+	}
+
+	/// The player's stock of each resource and its change a turn, in two rows under their gold.
+	void ResourceBar(int player) {
+		const CampaignModel::Campaign& game = s_Screen.Game;
+		const Stock made = ProductionOf(game, player);
+		const Stock used = UsageOf(game, player);
+		if (!ImGui::BeginTable("##resources", 3, ImGuiTableFlags_SizingStretchSame)) {
+			return;
+		}
+		for (int each = 0; each < c_ResourceCount; ++each) {
+			const Resource resource = static_cast<Resource>(each);
+			const int stock = game.Factions[player].Resources[each];
+			const int net = made[each] - used[each];
+			const int turns = TurnsLeftOf(game, player, resource);
+			const bool low = turns >= 0 && turns <= 3;
+			ImGui::TableNextColumn();
+			ImGui::PushID(each);
+			ImGui::BeginGroup();
+			ResourceIcon(resource);
+			ImGui::SameLine(0.0F, 3.0F);
+			if (low) {
+				const float blink = 0.6F + 0.4F * std::sin(static_cast<float>(ImGui::GetTime()) * 5.0F);
+				ImGui::TextColored(ImVec4(1.0F, 0.4F * blink, 0.3F * blink, 1.0F), "%d", stock);
+			} else {
+				ImGui::Text("%d", stock);
+			}
+			if (net != 0) {
+				ImGui::SameLine(0.0F, 2.0F);
+				ImGui::TextColored(net > 0 ? ImVec4(0.5F, 1.0F, 0.5F, 1.0F) : ImVec4(1.0F, 0.55F, 0.45F, 1.0F), "%+d", net);
+			}
+			if (BonusTier(game, player, resource) > 0) {
+				ImGui::SameLine(0.0F, 2.0F);
+				ImGui::TextColored(ImVec4(0.55F, 1.0F, 0.55F, 1.0F), "*");
+			}
+			ImGui::EndGroup();
+			if (ImGui::IsItemHovered()) {
+				ResourceTooltip(player, resource);
+			}
+			if (ImGui::IsItemClicked()) {
+				s_Screen.MarketOpen = true;
+			}
+			ImGui::PopID();
+		}
+		ImGui::EndTable();
+	}
+
+	/// The wider galaxy's market: buying and selling resources for gold, what's moving prices, and the production bonuses.
+	void MarketWindow() {
+		if (!s_Screen.MarketOpen) {
+			return;
+		}
+		CampaignModel::Campaign& game = s_Screen.Game;
+		const int player = Player();
+		if (player < 0) {
+			s_Screen.MarketOpen = false;
+			return;
+		}
+		ImGui::SetNextWindowSize(ImVec2(ImGui::GetFontSize() * 40.0F, 0.0F), ImGuiCond_Appearing);
+		ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
+		if (!ImGui::Begin("Galaxy market###CampaignMarket", &s_Screen.MarketOpen, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
+			ImGui::End();
+			return;
+		}
+		Faction& self = game.Factions[player];
+		ImGui::Text("Gold %d", self.Gold);
+		ImGui::SameLine();
+		ImGui::TextDisabled("Traders take a cut both ways. Buying pushes a price up and selling pushes it down; prices drift back each turn.");
+		const Stock made = ProductionOf(game, player);
+		const Stock used = UsageOf(game, player);
+		if (ImGui::BeginTable("##market", 6, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingFixedFit)) {
+			ImGui::TableSetupColumn("Resource");
+			ImGui::TableSetupColumn("Stock");
+			ImGui::TableSetupColumn("A turn");
+			ImGui::TableSetupColumn("Buy");
+			ImGui::TableSetupColumn("Sell");
+			ImGui::TableSetupColumn("##trade");
+			ImGui::TableHeadersRow();
+			for (int each = 0; each < c_ResourceCount; ++each) {
+				const Resource resource = static_cast<Resource>(each);
+				ImGui::PushID(each);
+				ImGui::TableNextRow();
+				ImGui::TableNextColumn();
+				ResourceIcon(resource);
+				ImGui::SameLine();
+				ImGui::TextUnformatted(ResourceName(resource));
+				ImGui::SetItemTooltip("%s", ResourceUse(resource));
+				ImGui::TableNextColumn();
+				ImGui::Text("%d", self.Resources[each]);
+				ImGui::TableNextColumn();
+				const int net = made[each] - used[each];
+				ImGui::TextColored(net > 0 ? ImVec4(0.5F, 1.0F, 0.5F, 1.0F) : net < 0 ? ImVec4(1.0F, 0.55F, 0.45F, 1.0F) : ImVec4(0.6F, 0.6F, 0.65F, 1.0F), "%+d", net);
+				const int buy = BuyPrice(game, resource);
+				const int sell = SellPrice(game, resource);
+				const float against = game.Prices[each] / BasePrice(resource);
+				const ImVec4 priceColor = against > 1.15F ? ImVec4(1.0F, 0.6F, 0.45F, 1.0F) : against < 0.87F ? ImVec4(0.55F, 1.0F, 0.6F, 1.0F) : ImVec4(1.0F, 1.0F, 1.0F, 1.0F);
+				ImGui::TableNextColumn();
+				ImGui::TextColored(priceColor, "%d", buy);
+				ImGui::SetItemTooltip("Normally about %.0f gold. %s", BasePrice(resource), against > 1.15F ? "Dear now." : against < 0.87F ? "Cheap now." : "");
+				ImGui::TableNextColumn();
+				ImGui::TextColored(priceColor, "%d", sell);
+				ImGui::TableNextColumn();
+				auto tradeButton = [&](const char* label, int amount, bool can) {
+					ImGui::BeginDisabled(!can);
+					if (ToolUI::SmallButton(label)) {
+						const int before = self.Gold;
+						const int had = self.Resources[each];
+						if (Trade(game, player, resource, amount)) {
+							const int units = std::abs(self.Resources[each] - had);
+							const int gold = std::abs(self.Gold - before);
+							s_Screen.Note = std::string(amount > 0 ? "Bought " : "Sold ") + std::to_string(units) + " " + ResourceName(resource) + " for " + std::to_string(gold) + " gold.";
+						}
+					}
+					ImGui::EndDisabled();
+					ImGui::SameLine();
+				};
+				tradeButton("Buy 1", 1, self.Gold >= buy);
+				tradeButton("Buy 5", 5, self.Gold >= buy);
+				tradeButton("Sell 1", -1, self.Resources[each] > 0);
+				tradeButton("Sell 5", -5, self.Resources[each] > 0);
+				ImGui::NewLine();
+				ImGui::PopID();
+			}
+			ImGui::EndTable();
+		}
+		ImGui::SeparatorText("Galaxy news");
+		if (game.Events.empty()) {
+			ImGui::TextDisabled("Quiet: prices are near normal.");
+		}
+		for (const GalaxyEvent& event: game.Events) {
+			ResourceIcon(static_cast<Resource>(std::clamp(event.Resource, 0, c_ResourceCount - 1)));
+			ImGui::SameLine();
+			ImGui::Text("%s", event.Text.c_str());
+			ImGui::SameLine();
+			ImGui::TextDisabled("(%d more turn%s)", event.TurnsLeft, event.TurnsLeft == 1 ? "" : "s");
+		}
+		ImGui::SeparatorText("Production bonuses");
+		ImGui::TextDisabled("Making enough of a resource each turn, from points you hold, unlocks these. Lit ones are yours.");
+		for (int each = 0; each < c_ResourceCount; ++each) {
+			const Resource resource = static_cast<Resource>(each);
+			ResourceIcon(resource);
+			ImGui::SameLine();
+			ImGui::Text("%s (you make %d)", ResourceName(resource), made[each]);
+			ImGui::Indent();
+			BonusLines(game, player, resource);
+			ImGui::Unindent();
+		}
+		ImGui::End();
+	}
+
 	void SidePanel(float width, float height) {
 		CampaignModel::Campaign& game = s_Screen.Game;
 		ImGui::BeginChild("##side", ImVec2(width, height), ImGuiChildFlags_Borders);
@@ -2356,6 +2696,7 @@ namespace {
 			ImGui::SameLine();
 			ImGui::TextColored(income >= 0 ? ImVec4(0.5F, 1.0F, 0.5F, 1.0F) : ImVec4(1.0F, 0.5F, 0.4F, 1.0F), "(%+d a turn)", income);
 			ImGui::SetItemTooltip("Income from your points and settlements, and %s, less upkeep of %d for your soldiers.", "60 for each planet you control and nobody has invaded", UpkeepOf(game, player));
+			ResourceBar(player);
 			ToDoList();
 			Roster();
 		}
@@ -2668,6 +3009,11 @@ namespace {
 		}
 		ImGui::SetItemTooltip("Walks you through your first moves, step by step.");
 		ImGui::SameLine();
+		if (ToolUI::Button("Trade")) {
+			s_Screen.MarketOpen = !s_Screen.MarketOpen;
+		}
+		ImGui::SetItemTooltip("The galaxy market: buy and sell water, food, metal, fuel, crystal and relics for gold.");
+		ImGui::SameLine();
 		ImGui::TextDisabled("|");
 		ImGui::SameLine();
 		if (ToolUI::Button("Galaxy")) {
@@ -2754,6 +3100,7 @@ namespace {
 		AttackWindow();
 		ReportWindow();
 		AlertWindow();
+		MarketWindow();
 		DisbandWindow();
 		EndWindow();
 	}
