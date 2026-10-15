@@ -5252,6 +5252,13 @@ namespace {
 		ImGui::SameLine();
 		ToolUI::RadioButton("Hard", &setup.Difficulty, 2);
 		ImGui::SetItemTooltip("How much gold the other factions get, how strong the locals are, and how bold the other factions are.");
+		ImGui::TextUnformatted("Testing");
+		ImGui::SameLine(labelWidth);
+		ToolUI::Checkbox("Start with frigates", &setup.StartFrigates);
+		ImGui::SetItemTooltip("Every faction's starting army has a frigate instead of a transport, to try out space battles straight away.");
+		ImGui::SameLine();
+		ToolUI::Checkbox("God mode", &setup.GodMode);
+		ImGui::SetItemTooltip("You start with %d gold and %d of every resource. Only you: the other factions start as normal.", c_GodGold, c_GodStock);
 
 		ImGui::SeparatorText("Factions");
 		ImGui::TextDisabled("Tick the factions in this campaign (mods' too), and pick the one you play.");

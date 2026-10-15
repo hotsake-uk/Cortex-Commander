@@ -1717,6 +1717,21 @@ namespace RTE::CampaignModel {
 		}
 		AddResources(campaign);
 		ResetRelations(campaign);
+		// The testing options.
+		if (setup.StartFrigates) {
+			for (Army& army: campaign.Armies) {
+				army.Ship = static_cast<int>(Ship::Frigate);
+				army.Hull = 1.0F;
+			}
+		}
+		if (setup.GodMode) {
+			for (Faction& faction: campaign.Factions) {
+				if (faction.Human) {
+					faction.Gold = c_GodGold;
+					faction.Resources.fill(c_GodStock);
+				}
+			}
+		}
 		AddLog(campaign, "The campaign begins. Take more than half of a planet's points to control it.");
 		return campaign;
 	}
