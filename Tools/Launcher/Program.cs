@@ -22,6 +22,8 @@ static class Defaults
 	public static string Dir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CortexLauncher", "Defaults");
 	public static string Ini => Path.Combine(Dir, "Settings.ini");
 	public static string Presets => Path.Combine(Dir, "Presets");
+	// Planet skins: one folder per world holding files laid out like Data/Base.rte (or a base.rte folder inside it, as skin packs ship).
+	public static string Worlds => Path.Combine(Path.GetDirectoryName(Dir)!, "Worlds");
 
 	// Unpacks the embedded defaults next to the launcher's settings; files already there are kept, so presets saved in the game and edits survive.
 	public static void Extract()
@@ -50,6 +52,7 @@ class Settings
 	public string ModsDir { get; set; } = "";
 	public string PresetsDir { get; set; } = "";
 	public string LastRef { get; set; } = "";
+	public string World { get; set; } = ""; // "" = stock Base.rte
 
 	static string FilePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CortexLauncher", "settings.json");
 
@@ -89,6 +92,8 @@ class MainForm : Form
 	readonly TextBox iniBox = new() { Width = 420, PlaceholderText = "optional Settings.ini to copy into the version before it runs" };
 	readonly TextBox presetsBox = new() { Width = 420, PlaceholderText = "optional shared settings-presets folder, linked into every version" };
 	readonly TextBox modsBox = new() { Width = 420, PlaceholderText = "optional folder of .rte mods to copy into each version's Mods folder" };
+	readonly ComboBox worldBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200 };
+	const string StockWorld = "Stock";
 	readonly Button clearAllBtn = new() { Text = "Delete build", AutoSize = true };
 	readonly Button runBtn = new() { Text = "Launch built", AutoSize = true };
 	readonly Button buildRunBtn = new() { Text = "Build && Run", AutoSize = true };
@@ -122,6 +127,7 @@ class MainForm : Form
 		iniBox.Text = OldPath(settings.SettingsIni) ? Defaults.Ini : settings.SettingsIni;
 		modsBox.Text = settings.ModsDir;
 		presetsBox.Text = OldPath(settings.PresetsDir) ? Defaults.Presets : settings.PresetsDir;
+		LoadWorlds(settings.World);
 
 		// Dead simple: branch, commit, settings, mods, then Build & Launch.
 		static Control Row(string label, Control field, params Control[] extra)
@@ -141,6 +147,9 @@ class MainForm : Form
 		var modsBrowse = new Button { Text = "...", AutoSize = true };
 		modsBrowse.Click += (_, _) => { using var d = new FolderBrowserDialog { SelectedPath = modsBox.Text }; if (d.ShowDialog() == DialogResult.OK) modsBox.Text = d.SelectedPath; };
 		repoBrowse.Click += (_, _) => { using var d = new FolderBrowserDialog { SelectedPath = repoBox.Text }; if (d.ShowDialog() == DialogResult.OK) repoBox.Text = d.SelectedPath; };
+		var worldsOpen = new Button { Text = "Open folder", AutoSize = true };
+		worldsOpen.Click += (_, _) => { Directory.CreateDirectory(Defaults.Worlds); Process.Start(new ProcessStartInfo(Defaults.Worlds) { UseShellExecute = true }); };
+		worldBox.DropDown += (_, _) => LoadWorlds(worldBox.SelectedItem as string ?? StockWorld); // picks up worlds added while the launcher is open
 
 		commitList.Columns.Add("Commit", 90);
 		commitList.Columns.Add("Version", 70);
@@ -161,6 +170,7 @@ class MainForm : Form
 		Controls.Add(commitList);
 		Controls.Add(logPanel);
 		Controls.Add(actions);
+		Controls.Add(Row("World:", worldBox, worldsOpen, new Label { Text = "planet skin applied over Data/Base.rte on launch", AutoSize = true, Padding = new Padding(8, 8, 0, 0) }));
 		Controls.Add(Row("Presets:", presetsBox, presetsBrowse));
 		Controls.Add(Row("Mods:", modsBox, modsBrowse));
 		Controls.Add(Row("Settings:", iniBox, iniBrowse));
@@ -187,6 +197,7 @@ class MainForm : Form
 		settings.SettingsIni = iniBox.Text.Trim();
 		settings.ModsDir = modsBox.Text.Trim();
 		settings.PresetsDir = presetsBox.Text.Trim();
+		settings.World = worldBox.SelectedItem is string w && w != StockWorld ? w : "";
 		if (branchBox.Text.Trim() != "") settings.LastRef = branchBox.Text.Trim(); // empty at startup, before the saved branch is restored
 		settings.Save();
 	}
@@ -470,7 +481,7 @@ class MainForm : Form
 				File.WriteAllText(BuiltMarker, $"{c.Sha} {settings.Configuration}");
 				MarkCached(c);
 			}
-			if (run) Launch(c);
+			if (run) await Launch(c);
 		}
 		finally { SetBusy(false, currentRef); }
 	}
@@ -585,12 +596,62 @@ class MainForm : Form
 			it.SubItems[5].Text = IsBuilt((CommitInfo)it.Tag!) ? "yes" : "";
 	}
 
-	void Launch(CommitInfo c)
+	void LoadWorlds(string select)
+	{
+		var names = Directory.Exists(Defaults.Worlds) ? Directory.GetDirectories(Defaults.Worlds).Select(Path.GetFileName).OrderBy(n => n).ToArray() : Array.Empty<string?>();
+		worldBox.BeginUpdate();
+		worldBox.Items.Clear();
+		worldBox.Items.Add(StockWorld);
+		worldBox.Items.AddRange(names.Cast<object>().ToArray());
+		worldBox.EndUpdate();
+		worldBox.SelectedItem = select == "" ? StockWorld : select;
+		if (worldBox.SelectedIndex < 0) worldBox.SelectedIndex = 0; // the saved world's folder is gone
+	}
+
+	// Skins are copied over the slot's tracked Data/Base.rte, so going back to stock (or to another skin) is a `git checkout` of that folder.
+	// Only files the version's Base.rte still has are copied: older packs carry textures the game no longer reads, and leaving them out means
+	// the restore never has untracked leftovers to clean. The marker records the world on disk, so stock launches skip the checkout entirely.
+	const string WorldMarker = ".launcher-world";
+	async Task<bool> ApplyWorld(CommitInfo c)
+	{
+		var world = worldBox.SelectedItem is string w && w != StockWorld ? w : "";
+		var slot = WorktreePath(c);
+		var marker = Path.Combine(slot, WorldMarker);
+		var base_ = Path.Combine(slot, "Data", "Base.rte");
+		if (File.Exists(marker))
+		{
+			var (code, o) = await Git("checkout -f -- Data/Base.rte", slot);
+			if (code != 0) { Append("Could not restore stock Data/Base.rte: " + o.Trim()); return false; }
+			File.Delete(marker);
+		}
+		if (world == "") return true;
+		var src = Path.Combine(Defaults.Worlds, world);
+		if (!Directory.Exists(src)) { Append($"World folder not found: {src}"); return false; }
+		if (Directory.Exists(Path.Combine(src, "base.rte"))) src = Path.Combine(src, "base.rte"); // a skin pack's own layout
+		int copied = 0, skipped = 0;
+		try
+		{
+			File.WriteAllText(marker, world); // before copying, so a half-applied skin is still restored next time
+			foreach (var f in Directory.GetFiles(src, "*", SearchOption.AllDirectories))
+			{
+				var t = Path.Combine(base_, Path.GetRelativePath(src, f));
+				if (!File.Exists(t)) { skipped++; continue; }
+				File.Copy(f, t, true);
+				copied++;
+			}
+		}
+		catch (Exception ex) { Append($"Applying world {world} failed: {ex.Message}"); return false; }
+		Append($"World {world}: {copied} files over Data/Base.rte" + (skipped > 0 ? $" ({skipped} the game no longer uses skipped)" : ""));
+		return true;
+	}
+
+	async Task Launch(CommitInfo c)
 	{
 		var exe = ExePath(c);
 		if (!IsBuilt(c)) { Append(BuiltInfo() == "" ? "Nothing is built yet. Press Build & Launch." : $"Only one build is kept, and it is {BuiltInfo().Split(' ')[0][..10]} ({BuiltInfo().Split(' ', 2).ElementAtOrDefault(1)}), not {c.Short}. Press Build & Launch."); return; }
 		LinkMods(c);
 		LinkPresets(c);
+		if (!await ApplyWorld(c)) return;
 		var ini = iniBox.Text.Trim();
 		if (ini != "")
 		{

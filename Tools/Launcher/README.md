@@ -23,6 +23,9 @@ That produces a single self-contained `Tools\Launcher\dist\CortexLauncher.exe`. 
 
 Builds run `msbuild /m /p:Configuration=... /p:Platform=x64 RTEA.sln` after copying `fmod.dll` next to the exe. The repo is only used for `git fetch` and as the worktree source; its working tree is never touched.
 
+## Worlds
+**World** picks a planet skin (backdrops, title-screen planet, scenery) for the next launch, or **Stock**. Skins live in `%APPDATA%\CortexLauncher\Worlds`, one folder per world laid out like `Data\Base.rte` (a `base.rte` folder inside it also works, which is how skin packs such as Cortex Command Worlds ship); **Open folder** opens it. On launch the version's `Data\Base.rte` is restored from git and the skin's files are copied over it. Files the version's Base.rte no longer has are skipped. The repo and your main checkout are never touched.
+
 ## Presets
 Set **Presets** to a shared folder (for example your main checkout's `Userdata\Presets`). Before each run the launcher makes the version's `Userdata\Presets` a directory junction to it, so every version sees the same saved settings presets and presets you save in any version land in the shared folder. Presets already in a version's own folder are moved into the shared folder first.
 
