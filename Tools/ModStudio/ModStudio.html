@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cortex Mod Studio</title>
-<link rel="stylesheet" href="studio.css?v=17">
+<link rel="stylesheet" href="studio.css?v=18">
 </head>
 <body>
 <div id="app">
@@ -159,6 +159,8 @@
 	<footer id="status">
 		<span id="statusText">Open the game folder to begin.</span>
 		<span class="spacer"></span>
+		<button class="status-btn" id="btnStatusReload" title="Reload every script in the game (saving a script does this too)">↻ Reload scripts</button>
+		<button class="status-btn" id="btnStatusPanel" title="Show the console, problems and watch panel (Ctrl+J)">▴ Console <span class="badge-n bad" id="statusConsoleBadge" hidden></span></button>
 		<span id="statusCursor"></span>
 		<span id="statusLang"></span>
 		<span id="statusFiles"></span>
@@ -169,18 +171,18 @@
 <div id="modal" class="modal" hidden><div class="modal-card" id="modalCard"></div></div>
 <div id="toasts"></div>
 
-<script src="vendor/luaparse/luaparse.js?v=17"></script>
-<script src="js/ini.js?v=17"></script>
-<script src="js/gamefs.js?v=17"></script>
-<script src="js/library.js?v=17"></script>
-<script src="js/images.js?v=17"></script>
-<script src="js/rig.js?v=17"></script>
-<script src="js/viewport.js?v=17"></script>
-<script src="js/panels.js?v=17"></script>
-<script src="js/dialogs.js?v=17"></script>
-<script src="js/lua-intel.js?v=17"></script>
-<script src="js/ini-intel.js?v=17"></script>
-<script src="js/ide.js?v=17"></script>
-<script src="js/app.js?v=17"></script>
+<script src="vendor/luaparse/luaparse.js?v=18"></script>
+<script src="js/ini.js?v=18"></script>
+<script src="js/gamefs.js?v=18"></script>
+<script src="js/library.js?v=18"></script>
+<script src="js/images.js?v=18"></script>
+<script src="js/rig.js?v=18"></script>
+<script src="js/viewport.js?v=18"></script>
+<script src="js/panels.js?v=18"></script>
+<script src="js/dialogs.js?v=18"></script>
+<script src="js/lua-intel.js?v=18"></script>
+<script src="js/ini-intel.js?v=18"></script>
+<script src="js/ide.js?v=18"></script>
+<script src="js/app.js?v=18"></script>
 </body>
 </html>

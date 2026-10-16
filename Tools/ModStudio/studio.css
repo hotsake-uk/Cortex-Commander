@@ -250,7 +250,7 @@ pre.diff .del { color: var(--bad); }
 .mode-switch button:not(.sel):hover { color: var(--text); }
 
 /* Artist mode is the designer alone. */
-#app:not(.deep) #activity, #app:not(.deep) #side, #app:not(.deep) #tabbar, #app:not(.deep) #codeWrap, #app:not(.deep) #bottom, #app:not(.deep) #statusCursor, #app:not(.deep) #statusLang { display: none; }
+#app:not(.deep) #activity, #app:not(.deep) #side, #app:not(.deep) #tabbar, #app:not(.deep) #codeWrap, #app:not(.deep) #bottom, #app:not(.deep) #statusCursor, #app:not(.deep) #statusLang, #app:not(.deep) .status-btn { display: none; }
 
 /* ---- Deep mode: activity bar, side bar, tabs, the designer or an editor, the panel ---- */
 #app.deep {
@@ -372,3 +372,6 @@ pre.diff .del { color: var(--bad); }
 .qo-row.sel, .qo-row:hover { background: var(--panel3); }
 .setting-ro.file-link { color: var(--accent); cursor: pointer; text-decoration: underline; text-decoration-color: transparent; }
 .setting-ro.file-link:hover { text-decoration-color: currentColor; }
+.status-btn { background: none; border: 0; color: var(--dim); font: inherit; font-size: 12px; padding: 2px 6px; border-radius: 4px; cursor: pointer; }
+.status-btn:hover { color: var(--text); background: var(--line); }
+#app.deep:not(.no-panel) #btnStatusPanel { display: none; }

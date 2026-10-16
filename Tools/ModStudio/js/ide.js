@@ -60,6 +60,9 @@ window.MS = window.MS || {};
 		$('btnPanelToggle').onclick = () => ide.togglePanel();
 		$('btnConsoleClear').onclick = () => clearConsole();
 		$('btnReloadScripts').onclick = () => ide.requestScripts({ reload: true }, true);
+		// The status bar keeps these when the panel is hidden.
+		$('btnStatusReload').onclick = () => ide.requestScripts({ reload: true }, true);
+		$('btnStatusPanel').onclick = () => ide.showPanel(ide.panel || 'console');
 		const newIn = (kind) => {
 			const mod = app.actor && !app.fs.isOfficial(app.actor.path) ? app.actor.path.split('/')[0] : (app.lib && (app.lib.modules.find((m) => !m.official) || {}).name);
 			if (!mod) {
@@ -1022,10 +1025,12 @@ window.MS = window.MS || {};
 				}
 			}
 		}
-		if (kind === 'error' && ide.panel !== 'console') {
+		if (kind === 'error' && (ide.panel !== 'console' || $('app').classList.contains('no-panel'))) {
 			unseenErrors++;
 			$('consoleBadge').textContent = unseenErrors;
 			$('consoleBadge').hidden = false;
+			$('statusConsoleBadge').textContent = unseenErrors;
+			$('statusConsoleBadge').hidden = false;
 		}
 	}
 
@@ -1157,12 +1162,15 @@ window.MS = window.MS || {};
 		for (const id of ['console', 'problems', 'watch']) {
 			$(id + 'Pane').hidden = id !== panel;
 		}
-		if (!keepHidden) {
+		if (!keepHidden && $('app').classList.contains('no-panel')) {
 			$('app').classList.remove('no-panel');
+			app.writeLocal('ms.panelHidden', false);
+			app.requestDraw();
 		}
 		if (panel === 'console') {
 			unseenErrors = 0;
 			$('consoleBadge').hidden = true;
+			$('statusConsoleBadge').hidden = true;
 			const body = $('consoleBody');
 			body.scrollTop = body.scrollHeight;
 		}
