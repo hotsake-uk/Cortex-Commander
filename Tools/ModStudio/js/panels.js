@@ -46,8 +46,16 @@ window.MS = window.MS || {};
 		const frame = app.sprite(file, Math.max(1, Math.round(ent.num('FrameCount', 1))), 0);
 		const ctx = canvas.getContext('2d');
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
+		if (file && /(^|\/)null\.png$/i.test(file)) {
+			drawInvisible(canvas);
+			return true;
+		}
 		if (!frame) {
 			return !file || app.images.missing.has((MS.Images.framePaths(file, ent.num('FrameCount', 1))[0] || '').toLowerCase());
+		}
+		if (!hasPixels(frame.canvas)) {
+			drawInvisible(canvas);
+			return true;
 		}
 		const z = Math.max(1, Math.floor(Math.min(canvas.width / frame.width, canvas.height / frame.height)));
 		ctx.imageSmoothingEnabled = false;
@@ -55,6 +63,42 @@ window.MS = window.MS || {};
 		const h = frame.height * Math.min(z, 4);
 		ctx.drawImage(frame.canvas, Math.floor((canvas.width - w) / 2), Math.floor((canvas.height - h) / 2), w, h);
 		return true;
+	}
+
+	// Items with nothing to draw (Base.rte/Null.png, or a sprite with no visible pixels), like creatures' claws and jaws, which are
+	// invisible in the game on purpose: a dashed box with a crossed-out circle, so the empty thumbnail doesn't look like a failed load.
+	function drawInvisible(canvas) {
+		const ctx = canvas.getContext('2d');
+		const w = canvas.width;
+		const h = canvas.height;
+		const s = Math.min(w, h);
+		ctx.save();
+		ctx.strokeStyle = 'rgba(200, 205, 215, 0.45)';
+		ctx.lineWidth = Math.max(1, s / 24);
+		ctx.setLineDash([s / 10, s / 14]);
+		ctx.strokeRect(s * 0.12 + (w - s) / 2, s * 0.12 + (h - s) / 2, s * 0.76, s * 0.76);
+		ctx.setLineDash([]);
+		ctx.beginPath();
+		ctx.arc(w / 2, h / 2, s * 0.2, 0, Math.PI * 2);
+		ctx.moveTo(w / 2 - s * 0.14, h / 2 + s * 0.14);
+		ctx.lineTo(w / 2 + s * 0.14, h / 2 - s * 0.14);
+		ctx.stroke();
+		ctx.restore();
+		canvas.title = 'Invisible in the game: this item has no sprite (Base.rte/Null.png), on purpose';
+	}
+
+	function hasPixels(source) {
+		try {
+			const data = source.getContext('2d').getImageData(0, 0, source.width, source.height).data;
+			for (let i = 3; i < data.length; i += 4) {
+				if (data[i]) {
+					return true;
+				}
+			}
+			return false;
+		} catch (e) {
+			return true;
+		}
 	}
 
 	// Draws a list of posed items fitted into the canvas. Returns false while sprites are still loading.
