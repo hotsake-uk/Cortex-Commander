@@ -73,6 +73,11 @@ In Deep mode:
   expression's value is printed). Ctrl+Enter runs the selection. Errors in the game's console link to the line, and show
   underlined in the file. `StudioWatch("name", value)` in a script shows a value in the Watch panel, live.
   This works in games started from `Tools\ModStudio` (they pass `-modstudio`).
+- **Live values**, as in Quokka: end a line with `--?` and, once saved, the value it makes shows at the end of the line while the
+  game runs, with how many times it ran (hover for the last few). `--?.` shows how long the line takes, `--?+` shows tables wider,
+  `--? $.Health` shows any Lua with `$` as the line's value, and `--[[?]]` right after an expression shows just that expression.
+  Studio runs a copy of the script with the probes in it (`ModStudio/Live/`), never changing the script; errors still point at the
+  script's own lines. Needs a game built from 8.5.254 or later.
 - **Package**: Check looks for missing files, presets that don't exist, scripts with errors and unsaved changes; Export saves
   and zips the mod for sharing. Ctrl+P goes to any file.
 

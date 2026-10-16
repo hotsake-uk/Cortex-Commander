@@ -62,6 +62,24 @@ namespace RTE {
 		/// @param value The value, as text.
 		static void Watch(const std::string& name, const std::string& value);
 
+		/// Studio's live values (its Quokka-style "--?" comments): Studio writes a copy of a script with probes in it to
+		/// ModStudio/Live/<script path>, and a game started with -modstudio loads that copy in place of the script while it is newer
+		/// than the script and not empty. Errors still name the script's own file and lines, as the copy keeps every line in place.
+		/// @param filePath The script's path as the game names it, like MyMod.rte/Scripts/Gun.lua.
+		/// @param fullScriptPath The script's full path on disk.
+		/// @return The copy's full path, or empty to load the script itself.
+		static std::string LiveScriptFor(const std::string& filePath, const std::string& fullScriptPath);
+
+		/// _StudioLive(key, value) in Lua, called by the probes in a live copy: counts the probe's runs and keeps its last values, written
+		/// to ModStudio/Live.ini a few times a second for Studio to show beside the line.
+		/// @param key The probe: "<script path>|<line>:<column>".
+		/// @param value The value, as text.
+		static void Live(const std::string& key, const std::string& value);
+
+		/// _StudioClock() in Lua: seconds on a steady clock, for the timing probes ("--?."). Wall time, unlike os.clock, which is the
+		/// whole process's CPU time on some systems and so counts other threads' work.
+		static double Clock() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
+
 	private:
 		/// Puts a unit from Studio in the running game: your character in the sandbox, otherwise in place of the last one (or the player's unit).
 		/// @param request What to show.

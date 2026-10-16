@@ -16,6 +16,7 @@
 #include "System.h"
 
 #include <fstream>
+#include <deque>
 #include <map>
 #include <mutex>
 
@@ -59,6 +60,19 @@ namespace {
 	StudioWatched& Watched() {
 		static StudioWatched* watched = new StudioWatched();
 		return *watched;
+	}
+	struct StudioLiveValues {
+		struct Probe {
+			unsigned long long Count = 0; //!< How many times the probe ran.
+			std::deque<std::string> Recent; //!< Its last values, newest last.
+		};
+		std::mutex Mutex;
+		std::map<std::string, Probe> Probes; //!< By key, "<script path>|<line>:<column>".
+		bool Changed = false; //!< Whether a probe ran since Live.ini was last written.
+	};
+	StudioLiveValues& LiveValues() {
+		static StudioLiveValues* live = new StudioLiveValues();
+		return *live;
 	}
 } // namespace
 
@@ -234,6 +248,38 @@ void ModStudioPreview::Watch(const std::string& name, const std::string& value) 
 	}
 }
 
+std::string ModStudioPreview::LiveScriptFor(const std::string& filePath, const std::string& fullScriptPath) {
+	if (!s_InGame) {
+		return "";
+	}
+	const std::filesystem::path copy = StudioFolder() / "Live" / std::filesystem::path(filePath);
+	std::error_code error;
+	if (!std::filesystem::is_regular_file(copy, error) || std::filesystem::file_size(copy, error) == 0 || error) {
+		return "";
+	}
+	// A copy older than the script is from before the script last changed (saved in another editor, say), so the script wins.
+	const std::filesystem::file_time_type copyTime = std::filesystem::last_write_time(copy, error);
+	const std::filesystem::file_time_type scriptTime = std::filesystem::last_write_time(std::filesystem::path(fullScriptPath), error);
+	if (error || copyTime < scriptTime) {
+		return "";
+	}
+	return copy.string();
+}
+
+void ModStudioPreview::Live(const std::string& key, const std::string& value) {
+	StudioLiveValues& live = LiveValues();
+	std::scoped_lock<std::mutex> liveLock(live.Mutex);
+	StudioLiveValues::Probe& probe = live.Probes[key];
+	probe.Count++;
+	if (probe.Recent.empty() || probe.Recent.back() != value) {
+		probe.Recent.push_back(value);
+		if (probe.Recent.size() > 8) {
+			probe.Recent.pop_front();
+		}
+	}
+	live.Changed = true;
+}
+
 void ModStudioPreview::UpdateScripts() {
 	const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
 	if (!s_InGame || now - s_LastScriptCheck < std::chrono::milliseconds(250)) {
@@ -258,6 +304,22 @@ void ModStudioPreview::UpdateScripts() {
 			std::ofstream watchFile(StudioFolder() / "Watch.ini", std::ios::trunc);
 			for (const auto& [name, value]: watched.Values) {
 				watchFile << name << " = " << value << '\n';
+			}
+		}
+	}
+	{
+		// One line per probe: "<key> = <count>\t<oldest value>\t...\t<newest value>". The probes' text has no tabs or line breaks.
+		StudioLiveValues& live = LiveValues();
+		std::scoped_lock<std::mutex> liveLock(live.Mutex);
+		if (live.Changed) {
+			live.Changed = false;
+			std::ofstream liveFile(StudioFolder() / "Live.ini", std::ios::trunc);
+			for (const auto& [key, probe]: live.Probes) {
+				liveFile << key << " = " << probe.Count;
+				for (const std::string& value: probe.Recent) {
+					liveFile << '\t' << value;
+				}
+				liveFile << '\n';
 			}
 		}
 	}
@@ -321,6 +383,18 @@ void ModStudioPreview::UpdateScripts() {
 		}
 		if (lastUnitsMod && !s_LastRequest.PresetName.empty() && GameRunning()) {
 			Show(s_LastRequest);
+		}
+	}
+	if (!scriptsToReload.empty()) {
+		// A reloaded script's live values start afresh: its probes may have moved, and the old counts were for the old code.
+		StudioLiveValues& live = LiveValues();
+		std::scoped_lock<std::mutex> liveLock(live.Mutex);
+		for (const std::string& scriptPath: scriptsToReload) {
+			const std::string prefix = scriptPath + "|";
+			for (auto probe = live.Probes.lower_bound(prefix); probe != live.Probes.end() && probe->first.compare(0, prefix.size(), prefix) == 0;) {
+				probe = live.Probes.erase(probe);
+				live.Changed = true;
+			}
 		}
 	}
 	if (!reloadScripts && !scriptsToReload.empty() && g_ActivityMan.IsInActivity()) {

@@ -670,6 +670,10 @@ window.MS = window.MS || {};
 		model.ccTab = tab;
 		model.onDidChangeContent(() => onModelChange(tab));
 		checkSoon(tab);
+		if (lang === 'lua') {
+			// Live values (live.js): once the tab is in the list, its "--?" markers show their values or that they're waiting.
+			setTimeout(() => MS.live.noteOpen(path, text), 0);
+		}
 		return tab;
 	}
 
@@ -869,6 +873,7 @@ window.MS = window.MS || {};
 		for (const tab of tabs) {
 			if (await saveTab(tab) && tab.lang === 'lua') {
 				scripts.push(tab.path);
+				await MS.live.afterSave(tab.path, tab.savedText);
 			}
 		}
 		const inis = await app.save(true);

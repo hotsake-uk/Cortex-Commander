@@ -510,3 +510,7 @@ pre.diff .del { color: var(--bad); }
 .game-log-head { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--line); }
 .game-log-body { flex: 1; overflow: auto; padding: 6px 12px; font: 12px/1.45 Consolas, "SF Mono", monospace; white-space: pre-wrap; color: var(--dim); }
 @media (max-width: 700px) { .gm-choices { grid-template-columns: 1fr; } }
+
+/* Live values (live.js): text Monaco draws after a line with a "--?" marker */
+.monaco-editor .live-value { color: #8fd6a5 !important; font-style: normal; }
+.monaco-editor .live-waiting { color: #7d8594 !important; font-style: italic; }
