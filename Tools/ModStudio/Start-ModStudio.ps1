@@ -76,7 +76,7 @@ function Send-Text($response, [int]$status, [string]$text, [string]$type = 'text
 	Send-Bytes $response ([System.Text.Encoding]::UTF8.GetBytes($text)) $type
 }
 
-# System.Web's encoder is far faster than PowerShell string replaces, which matters for /api/inis (tens of MB).
+# System.Web's encoder escapes names and paths for the small JSON answers.
 Add-Type -AssemblyName System.Web
 function ConvertTo-JsonString([string]$s) {
 	return [System.Web.HttpUtility]::JavaScriptStringEncode($s, $true)
@@ -96,22 +96,22 @@ function Invoke-Api($context, [string]$action) {
 			Send-Text $response 200 ('{"name":' + (ConvertTo-JsonString (Split-Path -Leaf $GameDir)) + ',"path":' + (ConvertTo-JsonString $GameDir) + '}') 'application/json'
 		}
 		'inis' {
-			# Every .ini in Data and Mods in one answer, so the page doesn't ask for a thousand files one by one.
-			$json = New-Object System.Text.StringBuilder
-			[void]$json.Append('{')
-			$first = $true
+			# Every .ini in Data and Mods in one answer, so the page doesn't ask for two thousand files one by one. Each file is a
+			# header line "path<TAB>byte count<LF>" followed by its bytes as they are on disk: no text handling here, which keeps it fast.
+			$response.ContentType = 'application/octet-stream'
+			$response.SendChunked = $true
+			$out = $response.OutputStream
+			$utf8 = New-Object System.Text.UTF8Encoding $false
 			foreach ($top in 'Data', 'Mods') {
 				$folder = Join-Path $GameDir $top
 				if (-not [System.IO.Directory]::Exists($folder)) { continue }
 				foreach ($file in [System.IO.Directory]::EnumerateFiles($folder, '*.ini', [System.IO.SearchOption]::AllDirectories)) {
-					if (-not $first) { [void]$json.Append(',') }
-					$first = $false
-					$relative = $file.Substring($GameDir.Length + 1) -replace '\\', '/'
-					[void]$json.Append((ConvertTo-JsonString $relative)).Append(':').Append((ConvertTo-JsonString ([System.IO.File]::ReadAllText($file))))
+					$bytes = [System.IO.File]::ReadAllBytes($file)
+					$header = $utf8.GetBytes(($file.Substring($GameDir.Length + 1) -replace '\\', '/') + "`t" + $bytes.Length + "`n")
+					$out.Write($header, 0, $header.Length)
+					$out.Write($bytes, 0, $bytes.Length)
 				}
 			}
-			[void]$json.Append('}')
-			Send-Text $response 200 $json.ToString() 'application/json'
 		}
 		'list' {
 			if (-not [System.IO.Directory]::Exists($full)) { Send-Text $response 200 '[]' 'application/json'; return }

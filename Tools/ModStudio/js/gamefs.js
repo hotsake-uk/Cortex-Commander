@@ -68,7 +68,7 @@ window.MS = window.MS || {};
 				throw new Error('Mod Studio\'s window has closed. Start Mod Studio.bat (or the launcher\'s Mod Studio button) again.');
 			}
 			this.name = info.name;
-			this.texts = new Map(Object.entries(await (await this.api('GET', 'inis')).json()).map(([path, text]) => [lower(path), text]));
+			this.texts = parseBundle(new Uint8Array(await (await this.api('GET', 'inis')).arrayBuffer()));
 			await this.findModules();
 		}
 
@@ -345,6 +345,26 @@ window.MS = window.MS || {};
 			const entries = [...this.pendingWrites.values()].map((w) => ({ path: w.path, bytes: w.bytes }));
 			return entries.length ? makeZip(entries) : null;
 		}
+	}
+
+	// Start-ModStudio.ps1's /api/inis answer: for each file a "path<TAB>byte count<LF>" line, then its bytes. -> Map(lowercased path -> text)
+	function parseBundle(bytes) {
+		const texts = new Map();
+		const decoder = new TextDecoder();
+		let at = 0;
+		while (at < bytes.length) {
+			const lineEnd = bytes.indexOf(10, at);
+			if (lineEnd < 0) {
+				break;
+			}
+			const header = decoder.decode(bytes.subarray(at, lineEnd));
+			const tab = header.lastIndexOf('\t');
+			const size = Number(header.slice(tab + 1));
+			const start = lineEnd + 1;
+			texts.set(lower(header.slice(0, tab)), decoder.decode(bytes.subarray(start, start + size)));
+			at = start + size;
+		}
+		return texts;
 	}
 
 	// A zip with stored (uncompressed) entries: small enough to write by hand, readable by every unzip tool.
