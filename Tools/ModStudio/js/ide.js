@@ -576,6 +576,9 @@ window.MS = window.MS || {};
 		if (tab.kind === 'designer') {
 			return app.actor ? app.actor.name : 'Designer';
 		}
+		if (tab.kind === 'form') {
+			return tab.title;
+		}
 		return baseName(tab.path);
 	}
 
@@ -613,8 +616,8 @@ window.MS = window.MS || {};
 		bar.innerHTML = '';
 		for (const tab of ide.tabs) {
 			const dirty = tabDirty(tab);
-			const icon = el('span', { className: 'tab-icon ' + (tab.kind === 'designer' ? 'designer' : extOf(tab.path)), textContent: tab.kind === 'designer' ? '◆' : extOf(tab.path) });
-			const item = el('div', { className: 'tab' + (tab === ide.active ? ' sel' : '') + (dirty ? ' dirty' : '') + (tab.readOnly ? ' ro' : ''), title: tab.path || 'The unit designer' }, icon, el('span', { className: 'tab-name', textContent: tabTitle(tab) }));
+			const icon = el('span', { className: 'tab-icon ' + (tab.kind === 'designer' ? 'designer' : tab.kind === 'form' ? 'form' : extOf(tab.path)), textContent: tab.kind === 'designer' ? '◆' : tab.kind === 'form' ? tab.icon || '▦' : extOf(tab.path) });
+			const item = el('div', { className: 'tab' + (tab === ide.active ? ' sel' : '') + (dirty ? ' dirty' : '') + (tab.readOnly ? ' ro' : ''), title: tab.path || (tab.kind === 'form' ? tab.title : 'The unit designer') }, icon, el('span', { className: 'tab-name', textContent: tabTitle(tab) }));
 			if (tab.kind !== 'designer') {
 				const close = el('button', { className: 'tab-close', textContent: dirty ? '●' : '×', title: 'Close (Ctrl+W)' });
 				close.onclick = (e) => {
@@ -630,6 +633,10 @@ window.MS = window.MS || {};
 				}
 			};
 			bar.append(item);
+		}
+		const sel = bar.querySelector('.tab.sel');
+		if (sel) {
+			sel.scrollIntoView({ block: 'nearest', inline: 'nearest' }); // a tab opened past the end of a full bar comes into view
 		}
 	}
 
@@ -657,6 +664,7 @@ window.MS = window.MS || {};
 		const code = tab.kind !== 'designer';
 		$('app').classList.toggle('code-active', code && ide.mode === 'deep');
 		$('imageHost').hidden = tab.kind !== 'image';
+		$('formHost').hidden = tab.kind !== 'form';
 		$('codeHost').hidden = tab.kind !== 'code';
 		$('codeBanner').hidden = !(tab.kind === 'code' && tab.readOnly);
 		$('codeTools').hidden = tab.kind !== 'code';
@@ -679,11 +687,46 @@ window.MS = window.MS || {};
 		if (tab.kind === 'image') {
 			showImage(tab);
 		}
+		if (tab.kind === 'form') {
+			ide.refreshForm();
+		}
 		if (!code) {
 			app.requestDraw();
 		}
 		markExplorer();
 		renderTabs();
+	};
+
+	// A data editor (editors.js) in a tab: key says which one (opening it again comes back to it), render(host, tab) draws it.
+	ide.openForm = function (key, title, icon, render) {
+		if (ide.mode !== 'deep') {
+			ide.setMode('deep');
+		}
+		let tab = ide.tabs.find((t) => t.kind === 'form' && t.key === key);
+		if (!tab) {
+			tab = { id: nextTabId++, kind: 'form', key, title, icon, render };
+			ide.tabs.push(tab);
+		}
+		ide.activate(tab);
+	};
+
+	// Draws the open data editor again (after an edit, an undo or a reload), keeping the field you were in.
+	ide.refreshForm = function () {
+		const tab = ide.active;
+		if (!tab || tab.kind !== 'form' || $('formHost').hidden) {
+			return;
+		}
+		const host = $('formHost');
+		const focused = document.activeElement && host.contains(document.activeElement) ? document.activeElement.dataset.fk : null;
+		const scroll = host.scrollTop;
+		tab.render(host, tab);
+		host.scrollTop = scroll;
+		if (focused) {
+			const again = host.querySelector('[data-fk="' + CSS.escape(focused) + '"]');
+			if (again) {
+				again.focus();
+			}
+		}
 	};
 
 	ide.closeTab = function (tab, force) {
@@ -1608,7 +1651,7 @@ window.MS = window.MS || {};
 			b.classList.toggle('sel', b.dataset.view === view);
 		}
 		$('app').dataset.view = view;
-		for (const id of ['files', 'outline', 'search', 'package']) {
+		for (const id of ['files', 'outline', 'search', 'package', 'data']) {
 			$('view-' + id).hidden = id !== view;
 		}
 		app.requestDraw();
@@ -1621,6 +1664,9 @@ window.MS = window.MS || {};
 		}
 		if (view === 'package') {
 			renderPackage();
+		}
+		if (view === 'data') {
+			MS.editors.renderSide();
 		}
 	};
 

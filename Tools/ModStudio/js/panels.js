@@ -1539,6 +1539,12 @@ window.MS = window.MS || {};
 		refreshDeviceSelect();
 		markLibrary();
 		app.updateFileStatus();
+		if (MS.ide && MS.ide.refreshForm) {
+			MS.ide.refreshForm(); // an open data editor shows the change (an edit, an undo)
+		}
+		if (MS.editors && !$('view-data').hidden) {
+			MS.editors.renderSide(); // the Data view's counts
+		}
 	}
 
 	let valuesQueued = false;

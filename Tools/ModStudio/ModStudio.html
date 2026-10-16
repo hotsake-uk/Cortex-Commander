@@ -48,6 +48,7 @@
 		<button data-view="outline" title="The blocks and functions of the open file (Ctrl+Shift+O goes to one)">☰</button>
 		<button data-view="search" title="Search every INI file and script (Ctrl+Shift+F)">⌕</button>
 		<button data-view="package" title="Check and export a mod">⇪</button>
+		<button data-view="data" title="Data editors: buy menu, loadouts and sounds, without writing INI">▦</button>
 	</nav>
 
 	<aside id="side" class="panel">
@@ -73,6 +74,14 @@
 				<span class="spacer"></span><span id="searchCount"></span>
 			</div>
 			<div id="searchResults" class="results"></div>
+		</section>
+		<section id="view-data" class="side-view" hidden>
+			<div class="side-head">Data editors</div>
+			<div class="package-form">
+				<select id="dataModule" class="text" title="Which mod or module"></select>
+				<div id="dataEditors" class="data-editors"></div>
+				<p class="side-note">Each opens as a tab. Changes are saved with Save, and Undo works on them. The game's own modules are read only unless you unlock everything on the Game screen.</p>
+			</div>
 		</section>
 		<section id="view-package" class="side-view" hidden>
 			<div class="side-head">Package a mod</div>
@@ -164,6 +173,7 @@
 		</div>
 		<div id="codeHost"></div>
 		<div id="imageHost" hidden></div>
+		<div id="formHost" hidden></div>
 	</section>
 
 	<section id="bottom">

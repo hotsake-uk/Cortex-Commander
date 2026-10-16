@@ -37,6 +37,13 @@ Studio app does this itself).
 - **Every setting**: All settings lists everything the selected part has (from its own block or inherited), editable, with a filter
   and **Add a setting** offering every key that presets of its class use. **Discard unsaved changes** (in **Save ▾**) throws
   away unsaved changes.
+- **+ New…** in the top bar makes a soldier, crab, dropship or rocket, gun, grenade, or an empty mod: pick one in the game to start
+  from, name it and its mod, and change a few settings in plain words (health, weight, cost, passengers, rate of fire...). It's
+  a copy (`CopyOf`) of the original with only your changes written in, saved and opened in the designer.
+- **Data editors** (▦ in Script mode's activity bar), per module, as tabs: **Buy menu** (cost, buyable and groups of every unit,
+  craft and item), **Loadouts** (the craft each comes in and what it brings, picked from thumbnails; make your mod a faction;
+  copy a faction's loadouts into your mod) and **Sounds** (a sound's files to play, add and remove, and how it plays: volume,
+  pitch, range, overlap...). Edits undo and save like any other; the game's own modules are read only unless unlocked.
 - **Panels resize**: drag the edge of the list, the parts and properties panel, the line between the parts and the properties,
   or the console's top edge. Studio remembers the sizes; double-click an edge for the usual size.
 - **Modules** in the top bar picks which modules (.rte) the lists, files and search show (All, My mods, Base only, or any set).
