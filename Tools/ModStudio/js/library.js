@@ -420,7 +420,7 @@ window.MS = window.MS || {};
 				const index = new MS.IniDoc(moduleName + '/Index.ini');
 				const dm = index.root.add('DataModule', '');
 				dm.add('ModuleName', module.title);
-				dm.add('SupportedGameVersion', 'Pre-Release 6.0');
+				dm.add('SupportedGameVersion', '6.0.0');
 				dm.add('Version', '1');
 				dm.add('Description', 'Made with Cortex Mod Studio.');
 				this.adoptDoc(index);

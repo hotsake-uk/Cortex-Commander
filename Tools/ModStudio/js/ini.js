@@ -349,7 +349,8 @@ window.MS = window.MS || {};
 				if (node.raw !== null) {
 					out.push(node.raw);
 				} else {
-					let line = '\t'.repeat(depth) + node.key + ' = ' + node.value;
+					// A block with no value (DataModule) is written as its key alone: the game refuses "DataModule = ".
+					let line = '\t'.repeat(depth) + node.key + (node.value === '' && node.children.length ? '' : ' = ' + node.value);
 					if (node.comment) {
 						line += ' ' + node.comment;
 					}
