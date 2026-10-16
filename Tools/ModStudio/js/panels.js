@@ -178,7 +178,7 @@ window.MS = window.MS || {};
 		const wanted = TAB_CLASSES[tab];
 		const query = $('libSearch').value.trim().toLowerCase();
 		const mineOnly = $('libMineOnly').checked;
-		const candidates = app.lib.presets.filter((p) => wanted.has(p.cls) && (tab === 'attachments' || p.topLevel));
+		const candidates = app.lib.presets.filter((p) => wanted.has(p.cls) && (tab === 'attachments' || p.topLevel) && app.inScope(p.module));
 		fillLibSelects(candidates);
 		const type = $('libType').value;
 		const group = $('libGroup').value;

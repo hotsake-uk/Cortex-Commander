@@ -1287,53 +1287,105 @@ window.MS = window.MS || {};
 	const FILE_KINDS = { lua: /\.lua$/i, ini: /\.ini$/i, image: /\.(png|bmp|jpe?g|gif)$/i, sound: /\.(wav|ogg|flac|mp3)$/i };
 	let fileKind = '';
 	const moduleTrees = new Map();
+	let allFilesTried = false;
 	let filterRun = 0;
 
+	// Lua and INI files come from what Studio has already read (instant); pictures and sounds need the folder listings, which are fetched a
+	// module at a time and shown as they come, your mods first.
 	async function renderFiltered(box, mods, game, kind, text) {
 		const run = ++filterRun;
-		box.innerHTML = '';
-		box.append(el('div', { className: 'x-empty', textContent: 'Looking…' }));
 		const matches = (path) => (!kind || FILE_KINDS[kind].test(path)) && (!text || path.toLowerCase().includes(text));
-		const out = [];
-		let shown = 0;
+		const known = new Set();
+		for (const doc of app.lib.docs.values()) {
+			known.add(doc.path);
+		}
+		for (const sc of ide.lua.scripts.values()) {
+			known.add(sc.path);
+		}
+		const needListing = kind !== 'lua' && kind !== 'ini';
 		const LIMIT = 2000;
-		for (const [title, list, official] of [['Your mods', mods, false], ['Game (read only)', game, true]]) {
-			const rows = [];
-			for (const m of list) {
-				let files = moduleTrees.get(m.name);
-				if (!files) {
-					try {
-						files = (await app.fs.tree(app.fs.toDiskPath(m.name))).map((f) => f.path.replace(/\\/g, '/'));
-					} catch (e) {
-						files = [];
+		const draw = (pending) => {
+			const out = [];
+			let shown = 0;
+			for (const [title, list, official] of [['Your mods', mods, false], ['Game (read only)', game, true]]) {
+				const rows = [];
+				let count = 0;
+				for (const m of list) {
+					const prefix = m.name.toLowerCase() + '/';
+					const paths = new Set([...known].filter((p) => p.toLowerCase().startsWith(prefix)));
+					for (const rel of moduleTrees.get(m.name) || []) {
+						paths.add(m.name + '/' + rel);
 					}
-					moduleTrees.set(m.name, files);
+					let folder = null;
+					for (const path of [...paths].filter(matches).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))) {
+						if (shown >= LIMIT) {
+							break;
+						}
+						const dir = path.slice(0, path.lastIndexOf('/'));
+						if (dir !== folder) {
+							folder = dir;
+							rows.push(el('div', { className: 'x-dir', textContent: dir, title: dir }));
+						}
+						rows.push(fileRow(path, path.slice(path.lastIndexOf('/') + 1), 1, official));
+						shown++;
+						count++;
+					}
 				}
-				if (run !== filterRun) {
-					return;
+				out.push(groupHead(title, count), ...(rows.length ? rows : [el('div', { className: 'x-empty', textContent: pending ? 'Looking…' : 'Nothing matches.' })]));
+			}
+			if (pending) {
+				out.push(el('div', { className: 'x-empty', textContent: 'Reading ' + pending + '…' }));
+			} else if (shown >= LIMIT) {
+				out.push(el('div', { className: 'x-empty', textContent: 'Showing the first ' + LIMIT + ': type more of the name to narrow it.' }));
+			}
+			box.innerHTML = '';
+			box.append(...out);
+			markExplorer();
+		};
+		let missing = needListing ? [...mods, ...game].filter((m) => !moduleTrees.has(m.name)) : [];
+		if (missing.length && !allFilesTried) {
+			// One listing of everything (a newer Studio server), split by module; older servers are asked a module at a time below.
+			allFilesTried = true;
+			draw('the game folder');
+			let all = null;
+			try {
+				all = await app.fs.allFiles();
+			} catch (e) {
+				all = null;
+			}
+			if (all) {
+				const byModule = new Map(app.fs.modules().map((m) => [m.name.toLowerCase(), []]));
+				for (const path of all) {
+					const cut = path.indexOf('/');
+					const list = cut > 0 && byModule.get(path.slice(0, cut).toLowerCase());
+					if (list) {
+						list.push(path.slice(cut + 1));
+					}
 				}
-				let folder = null;
-				for (const rel of files.filter((f) => matches(m.name + '/' + f)).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))) {
-					if (shown >= LIMIT) {
-						break;
-					}
-					const dir = m.name + (rel.includes('/') ? '/' + rel.slice(0, rel.lastIndexOf('/')) : '');
-					if (dir !== folder) {
-						folder = dir;
-						rows.push(el('div', { className: 'x-dir', textContent: dir, title: dir }));
-					}
-					rows.push(fileRow(m.name + '/' + rel, rel.slice(rel.lastIndexOf('/') + 1), 1, official));
-					shown++;
+				for (const m of app.fs.modules()) {
+					moduleTrees.set(m.name, byModule.get(m.name.toLowerCase()));
 				}
 			}
-			out.push(groupHead(title, rows.filter((r) => r.classList.contains('file')).length), ...(rows.length ? rows : [el('div', { className: 'x-empty', textContent: 'Nothing matches.' })]));
+			if (run !== filterRun) {
+				return;
+			}
+			missing = missing.filter((m) => !moduleTrees.has(m.name));
 		}
-		if (shown >= LIMIT) {
-			out.push(el('div', { className: 'x-empty', textContent: 'Showing the first ' + LIMIT + ': type more of the name to narrow it.' }));
+		draw(missing.length ? missing[0].name : null);
+		for (let i = 0; i < missing.length; i++) {
+			const m = missing[i];
+			let files;
+			try {
+				files = (await app.fs.tree(app.fs.toDiskPath(m.name))).map((f) => f.path.replace(/\\/g, '/'));
+			} catch (e) {
+				files = [];
+			}
+			moduleTrees.set(m.name, files);
+			if (run !== filterRun) {
+				return; // the filter changed: the listing is kept for next time
+			}
+			draw(missing[i + 1] ? missing[i + 1].name : null);
 		}
-		box.innerHTML = '';
-		box.append(...out);
-		markExplorer();
 	}
 
 	function renderExplorer() {
@@ -1343,7 +1395,7 @@ window.MS = window.MS || {};
 		}
 		const text = ($('fileFilter').value || '').trim().toLowerCase();
 		if (fileKind || text) {
-			renderFiltered(box, app.fs.modules().filter((m) => m.home === 'Mods').sort((a, b) => a.name.localeCompare(b.name)), app.fs.modules().filter((m) => m.home === 'Data'), fileKind, text);
+			renderFiltered(box, app.fs.modules().filter((m) => m.home === 'Mods' && app.inScope(m.name)).sort((a, b) => a.name.localeCompare(b.name)), app.fs.modules().filter((m) => m.home === 'Data' && app.inScope(m.name)), fileKind, text);
 			return;
 		}
 		filterRun++;
@@ -1354,8 +1406,8 @@ window.MS = window.MS || {};
 			}
 		}
 		box.innerHTML = '';
-		const mods = app.fs.modules().filter((m) => m.home === 'Mods').sort((a, b) => a.name.localeCompare(b.name));
-		const game = app.fs.modules().filter((m) => m.home === 'Data');
+		const mods = app.fs.modules().filter((m) => m.home === 'Mods' && app.inScope(m.name)).sort((a, b) => a.name.localeCompare(b.name));
+		const game = app.fs.modules().filter((m) => m.home === 'Data' && app.inScope(m.name));
 		box.append(groupHead('Your mods', mods.length));
 		if (!mods.length) {
 			box.append(el('div', { className: 'x-empty', textContent: 'No mods yet. Make my own copy of a unit, or New mod, starts one.' }));
@@ -1503,9 +1555,18 @@ window.MS = window.MS || {};
 		]);
 	}
 
+	// The top bar's module choice changed.
+	ide.scopeChanged = function () {
+		renderExplorer();
+		if (ide.view === 'search' && $('searchInput').value) {
+			runSearch();
+		}
+	};
+
 	function refreshExplorer() {
 		app.fs.forgetListings();
 		moduleTrees.clear();
+		allFilesTried = false;
 		renderExplorer();
 	}
 
@@ -1801,7 +1862,7 @@ window.MS = window.MS || {};
 		const mine = $('searchMine').checked;
 		let hits = 0;
 		let fileCount = 0;
-		for (const file of searchableFiles().sort((a, b) => a.path.localeCompare(b.path))) {
+		for (const file of searchableFiles().filter((f) => app.inScope(f.path)).sort((a, b) => a.path.localeCompare(b.path))) {
 			if (mine && app.fs.isOfficial(file.path)) {
 				continue;
 			}
@@ -1925,7 +1986,7 @@ window.MS = window.MS || {};
 	function quickOpen() {
 		const input = el('input', { type: 'text', placeholder: 'Type part of a file name…' });
 		const list = el('div', { className: 'qo-list' });
-		const files = searchableFiles().map((f) => f.path);
+		const files = searchableFiles().map((f) => f.path).filter((p) => app.inScope(p));
 		let shown = [];
 		let index = 0;
 		const render = () => {

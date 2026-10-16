@@ -129,6 +129,7 @@ window.MS = window.MS || {};
 			app.toast(app.lib.warnings.length + ' files couldn\'t be read, for example: ' + app.lib.warnings[0], 'bad');
 		}
 		MS.panels.showLibrary();
+		updateScopeButton();
 		MS.ide.gameLoaded();
 		const last = readLocal('ms.lastActor');
 		const preset = last && app.lib.presets.find((p) => p.doc.path === last.path && p.name === last.name);
@@ -155,6 +156,111 @@ window.MS = window.MS || {};
 	app.hookDoc = hookDoc;
 
 	// ---- the unit being designed ----
+
+	// ---- which modules the lists show ----
+	// A view filter only: every module is still read, so CopyOf and inheritance across modules keep working.
+
+	app.scope = (() => {
+		const saved = readLocal('ms.scope');
+		return Array.isArray(saved) ? new Set(saved) : null; // lower-cased module names; null is all of them
+	})();
+
+	app.inScope = function (pathOrModule) {
+		return !app.scope || app.scope.has(String(pathOrModule).split('/')[0].toLowerCase());
+	};
+
+	function updateScopeButton() {
+		const total = app.fs ? app.fs.modules().length : 0;
+		const b = $('btnScope');
+		b.textContent = (!app.scope ? 'All modules' : app.scope.size === 1 ? [...app.scope][0].replace(/\.rte$/, '') : app.scope.size + (total ? ' of ' + total : '') + ' modules') + ' ▾';
+		b.classList.toggle('on', !!app.scope);
+	}
+
+	function setScope(names) {
+		const all = app.fs ? app.fs.modules().map((m) => m.name.toLowerCase()) : [];
+		app.scope = !names || names.size === 0 || all.every((n) => names.has(n)) ? null : names;
+		writeLocal('ms.scope', app.scope ? [...app.scope] : null);
+		updateScopeButton();
+		if (app.lib) {
+			MS.panels.showLibrary();
+		}
+		MS.ide.scopeChanged();
+	}
+
+	function scopeMenu() {
+		const old = $('scopeMenu');
+		if (old) {
+			old.remove();
+			return;
+		}
+		if (!app.fs) {
+			return;
+		}
+		const mods = app.fs.modules();
+		const menu = document.createElement('div');
+		menu.className = 'ctx-menu scope-menu';
+		menu.id = 'scopeMenu';
+		const chosen = new Set(app.scope || mods.map((m) => m.name.toLowerCase()));
+		const boxes = [];
+		const quick = document.createElement('div');
+		quick.className = 'scope-quick';
+		const quickBtn = (text, pick) => {
+			const b = document.createElement('button');
+			b.textContent = text;
+			b.onclick = () => {
+				chosen.clear();
+				for (const m of mods.filter(pick)) {
+					chosen.add(m.name.toLowerCase());
+				}
+				for (const box of boxes) {
+					box.checked = chosen.has(box.value);
+				}
+				setScope(new Set(chosen));
+			};
+			quick.append(b);
+		};
+		quickBtn('All', () => true);
+		quickBtn('My mods', (m) => m.home === 'Mods');
+		quickBtn('Base only', (m) => /^base\.rte$/i.test(m.name));
+		menu.append(quick);
+		for (const [title, home] of [['Your mods', 'Mods'], ['Game', 'Data']]) {
+			const list = mods.filter((m) => m.home === home).sort((a, b) => a.name.localeCompare(b.name));
+			if (!list.length) {
+				continue;
+			}
+			const head = document.createElement('div');
+			head.className = 'scope-head';
+			head.textContent = title;
+			menu.append(head);
+			for (const m of list) {
+				const label = document.createElement('label');
+				const box = document.createElement('input');
+				box.type = 'checkbox';
+				box.value = m.name.toLowerCase();
+				box.checked = chosen.has(box.value);
+				box.onchange = () => {
+					box.checked ? chosen.add(box.value) : chosen.delete(box.value);
+					setScope(new Set(chosen));
+				};
+				boxes.push(box);
+				const info = app.lib && app.lib.moduleOf(m.name + '/Index.ini');
+				label.append(box, ' ' + m.name + (info && info.title && info.title !== m.name ? '  ·  ' + info.title : ''));
+				menu.append(label);
+			}
+		}
+		document.body.append(menu);
+		const r = $('btnScope').getBoundingClientRect();
+		menu.style.left = Math.min(r.left, window.innerWidth - menu.offsetWidth - 8) + 'px';
+		menu.style.top = r.bottom + 4 + 'px';
+		const close = (e) => {
+			if (!menu.contains(e.target) && e.target !== $('btnScope')) {
+				menu.remove();
+				document.removeEventListener('pointerdown', close, true);
+			}
+		};
+		setTimeout(() => document.addEventListener('pointerdown', close, true), 0);
+	}
+	app.updateScopeButton = updateScopeButton;
 
 	app.openActor = function (preset) {
 		app.actor = { path: preset.doc.path, name: preset.name, cls: preset.cls };
@@ -874,6 +980,11 @@ window.MS = window.MS || {};
 		}
 		$('btnCopy').onclick = () => MS.dialogs.copyUnit();
 		$('btnHelp').onclick = () => MS.dialogs.help();
+		$('btnScope').onclick = (e) => {
+			e.stopPropagation();
+			scopeMenu();
+		};
+		updateScopeButton();
 		for (const btn of document.querySelectorAll('#poseButtons button')) {
 			btn.onclick = () => setPose(btn.dataset.pose);
 		}

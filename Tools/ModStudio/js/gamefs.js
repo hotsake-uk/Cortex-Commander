@@ -358,6 +358,19 @@ window.MS = window.MS || {};
 			return await (await this.api('GET', 'tree', diskDir)).json();
 		}
 
+		// Every file in Data and Mods as module paths ("Base.rte/Devices/x.png"), from one request; null when the server is older or
+		// there's no server.
+		async allFiles() {
+			if (!this.server) {
+				return this.files ? [...this.files.values()].map((f) => f.webkitRelativePath.split('/').slice(2).join('/')) : null;
+			}
+			const response = await fetch('/api/files?path=', { headers: { 'X-ModStudio-Token': this.server }, cache: 'no-store' });
+			if (!response.ok) {
+				return null;
+			}
+			return (await response.text()).split('\n').filter(Boolean).map((line) => line.slice(0, line.indexOf('\t')).replace(/^(Data|Mods)\//i, ''));
+		}
+
 		// The part of a growing file (ModStudio/Console.log) after byte "from": {text, size, from}. size < from means it started over.
 		async tail(disk, from) {
 			const response = await fetch('/api/tail?path=' + encodeURIComponent(disk) + '&from=' + from, { headers: { 'X-ModStudio-Token': this.server }, cache: 'no-store' });

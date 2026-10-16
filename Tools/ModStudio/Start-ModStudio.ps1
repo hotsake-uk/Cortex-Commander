@@ -115,6 +115,18 @@ function Invoke-Api($context, [string]$action) {
 				}
 			}
 		}
+		'files' {
+			# Every file in Data and Mods, one "path<TAB>size<LF>" line each: the Files list's type filter reads this once.
+			$text = New-Object System.Text.StringBuilder
+			foreach ($top in 'Data', 'Mods') {
+				$folder = New-Object System.IO.DirectoryInfo (Join-Path $GameDir $top)
+				if (-not $folder.Exists) { continue }
+				foreach ($file in $folder.EnumerateFiles('*', [System.IO.SearchOption]::AllDirectories)) {
+					[void]$text.Append($file.FullName.Substring($GameDir.Length + 1).Replace('\', '/')).Append("`t").Append($file.Length).Append("`n")
+				}
+			}
+			Send-Text $response 200 $text.ToString()
+		}
 		'list' {
 			if (-not [System.IO.Directory]::Exists($full)) { Send-Text $response 200 '[]' 'application/json'; return }
 			$items = foreach ($entry in [System.IO.Directory]::EnumerateFileSystemEntries($full)) {

@@ -37,6 +37,8 @@ zip of the changed files to unpack into the game folder.
   unit's own walk paths, limb lengths and arm reach.
 - **Every setting**: All settings lists everything the selected part has (from its own block or inherited), editable, with a filter
   and **Add a setting** offering every key that presets of its class use. **Discard** throws away unsaved changes.
+- **Modules** in the top bar picks which modules (.rte) the lists, files and search show (All, My mods, Base only, or any set).
+  Everything is still read, so copies and inheritance across modules keep working.
 - **Undo and redo** everything (Ctrl+Z, Ctrl+Y). Press **?** for all the keys.
 
 ## Artist and Deep modes
