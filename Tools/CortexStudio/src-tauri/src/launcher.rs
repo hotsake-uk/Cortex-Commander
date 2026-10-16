@@ -1167,44 +1167,48 @@ fn settings_values(path: &Path) -> Vec<(String, String)> {
 		.collect()
 }
 
-/// The game keeps the size its window was left at in Settings.ini (WindowWidth, WindowHeight) and opens the next one that size. Every launch
-/// starts from a fresh copy of your Settings.ini, which would put that back to nothing, so the size is carried from the last run's file into
-/// yours first. Returns the size carried, if there was one.
+/// The game keeps the size its window was left at in Settings.ini (WindowWidth, WindowHeight), and where it was on the desktop (WindowX, WindowY,
+/// which can be negative on a screen left of the main one), and opens the next one the same. Every launch starts from a fresh copy of your
+/// Settings.ini, which would put that back to nothing, so they are carried from the last run's file into yours first. Returns the size carried,
+/// if there was one.
 fn carry_window_size(last_run: &Path, master: &Path) -> Option<(u32, u32)> {
 	let values = settings_values(last_run);
-	let get = |key: &str| values.iter().find(|(k, _)| k == key).and_then(|(_, v)| v.parse::<u32>().ok());
-	let (width, height) = (get("WindowWidth")?, get("WindowHeight")?);
+	let find = |key: &str| values.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone());
+	let (width, height) = (find("WindowWidth")?.parse::<u32>().ok()?, find("WindowHeight")?.parse::<u32>().ok()?);
 	if width < 200 || height < 150 {
 		return None;
 	}
+	let mut wanted: Vec<(&str, String)> = vec![("WindowWidth", width.to_string()), ("WindowHeight", height.to_string())];
+	// The place is optional, and only carried when both halves are there.
+	if let (Some(Ok(x)), Some(Ok(y))) = (find("WindowX").map(|v| v.parse::<i32>()), find("WindowY").map(|v| v.parse::<i32>())) {
+		wanted.push(("WindowX", x.to_string()));
+		wanted.push(("WindowY", y.to_string()));
+	}
 	let text = fs::read_to_string(master).ok()?;
 	let newline = if text.contains("\r\n") { "\r\n" } else { "\n" };
-	let mut out = String::with_capacity(text.len() + 48);
-	let (mut has_width, mut has_height) = (false, false);
+	let has_line = |key: &str| text.lines().any(|l| l.trim().split_once('=').map(|(k, _)| k.trim()) == Some(key));
+	let mut out = String::with_capacity(text.len() + 96);
+	let mut placed = 0;
 	for line in text.split_inclusive('\n') {
 		let key = line.trim().split_once('=').map(|(k, _)| k.trim());
-		if key == Some("WindowWidth") {
-			out.push_str(&format!("\tWindowWidth = {width}{newline}"));
-			has_width = true;
-		} else if key == Some("WindowHeight") {
-			out.push_str(&format!("\tWindowHeight = {height}{newline}"));
-			has_height = true;
+		if let Some((name, value)) = wanted.iter().find(|(name, _)| Some(*name) == key) {
+			out.push_str(&format!("\t{name} = {value}{newline}"));
+			placed += 1;
 		} else {
 			out.push_str(line);
-			// A master that has none yet gets them under the resolution it already has.
+			// Any a master has none of yet go under the resolution it already has.
 			if key == Some("ResolutionMultiplier") {
-				if !text.contains("WindowWidth") {
-					out.push_str(&format!("\tWindowWidth = {width}{newline}"));
-					has_width = true;
+				if !line.ends_with('\n') {
+					out.push_str(newline);
 				}
-				if !text.contains("WindowHeight") {
-					out.push_str(&format!("\tWindowHeight = {height}{newline}"));
-					has_height = true;
+				for (name, value) in wanted.iter().filter(|(name, _)| !has_line(name)) {
+					out.push_str(&format!("\t{name} = {value}{newline}"));
+					placed += 1;
 				}
 			}
 		}
 	}
-	if !(has_width && has_height) {
+	if placed < wanted.len() {
 		return None; // no place to put them in this file; leave it alone
 	}
 	if out != text {
@@ -1602,6 +1606,22 @@ mod tests {
 		let master = temp("master-b", "Settings\n\tResolutionMultiplier = 1\n\tWindowWidth = 800\n\tWindowHeight = 600\n\tFullscreen = 0\n");
 		assert_eq!(carry_window_size(&last, &master), Some((1280, 720)));
 		assert_eq!(fs::read_to_string(&master).unwrap(), "Settings\n\tResolutionMultiplier = 1\n\tWindowWidth = 1280\n\tWindowHeight = 720\n\tFullscreen = 0\n");
+	}
+
+	#[test]
+	fn window_position_is_carried_with_the_size_and_can_be_negative() {
+		let last = temp("last-f", "Settings\n\tWindowWidth = 1280\n\tWindowHeight = 720\n\tWindowX = -1920\n\tWindowY = 40\n");
+		let master = temp("master-f", "Settings\n\tResolutionMultiplier = 1\n\tWindowX = 5\n\tFullscreen = 0\n");
+		assert_eq!(carry_window_size(&last, &master), Some((1280, 720)));
+		assert_eq!(
+			fs::read_to_string(&master).unwrap(),
+			"Settings\n\tResolutionMultiplier = 1\n\tWindowWidth = 1280\n\tWindowHeight = 720\n\tWindowY = 40\n\tWindowX = -1920\n\tFullscreen = 0\n"
+		);
+		// Half a place is no place: only the size goes.
+		let half = temp("last-g", "Settings\n\tWindowWidth = 1280\n\tWindowHeight = 720\n\tWindowX = 12\n");
+		let plain = temp("master-g", "Settings\n\tResolutionMultiplier = 1\n");
+		assert_eq!(carry_window_size(&half, &plain), Some((1280, 720)));
+		assert_eq!(fs::read_to_string(&plain).unwrap(), "Settings\n\tResolutionMultiplier = 1\n\tWindowWidth = 1280\n\tWindowHeight = 720\n");
 	}
 
 	#[test]

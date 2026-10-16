@@ -215,6 +215,11 @@ void WindowMan::CreatePrimaryWindow() {
 	}
 	int windowPosX = (windowWidth <= m_PrimaryWindowDisplayWidth) ? SDL_WINDOWPOS_CENTERED : (m_MaxResX - windowWidth) / 2;
 	int windowPosY = SDL_WINDOWPOS_CENTERED;
+	// Where it was left on the desktop, if that place is still on a display (a screen may have been unplugged or rearranged).
+	if (!m_Fullscreen && !m_Background && m_HasSavedWindowPosition && PlaceIsOnADisplay(m_SavedWindowX, m_SavedWindowY, windowWidth)) {
+		windowPosX = m_SavedWindowX;
+		windowPosY = m_SavedWindowY;
+	}
 
 	SDL_PropertiesID windowProps = SDL_CreateProperties();
 	RTEAssert(windowProps, "Unable to create window properties! " + std::string(SDL_GetError()));
@@ -590,6 +595,45 @@ bool WindowMan::GetOrdinaryWindowSize(int& width, int& height) const {
 	width = w;
 	height = h;
 	return true;
+}
+
+bool WindowMan::PlaceIsOnADisplay(int x, int y, int width) {
+	int displayCount = 0;
+	SDL_DisplayID* displays = SDL_GetDisplays(&displayCount);
+	if (!displays) {
+		return false;
+	}
+	bool onADisplay = false;
+	const int needed = std::min(width, 200);
+	for (int i = 0; i < displayCount && !onADisplay; ++i) {
+		SDL_Rect bounds = {0, 0, 0, 0};
+		SDL_GetDisplayBounds(displays[i], &bounds);
+		// The title bar strip (60 px from the top) must overlap this display by at least `needed` wide.
+		const int overlapW = std::min(x + width, bounds.x + bounds.w) - std::max(x, bounds.x);
+		const int overlapH = std::min(y + 60, bounds.y + bounds.h) - std::max(y, bounds.y);
+		onADisplay = bounds.w > 0 && overlapW >= needed && overlapH >= 30;
+	}
+	SDL_free(displays);
+	return onADisplay;
+}
+
+bool WindowMan::GetSettingsWindowPosition(int& x, int& y) const {
+	int width = 0;
+	int height = 0;
+	if (GetOrdinaryWindowSize(width, height)) {
+		int px = 0;
+		int py = 0;
+		SDL_GetWindowPosition(m_PrimaryWindow.get(), &px, &py);
+		x = px;
+		y = py;
+		return true;
+	}
+	if (m_HasSavedWindowPosition) {
+		x = m_SavedWindowX;
+		y = m_SavedWindowY;
+		return true;
+	}
+	return false;
 }
 
 int WindowMan::GetSettingsWindowWidth() const {
