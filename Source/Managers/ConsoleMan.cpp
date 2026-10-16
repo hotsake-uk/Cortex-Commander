@@ -80,7 +80,7 @@ int ConsoleMan::Initialize() {
 	m_ParentBox->SetEnabled(false);
 	m_ParentBox->SetVisible(false);
 
-	if (!g_WindowMan.ResolutionChanged()) {
+	if (!g_WindowMan.IsRebuildingForNewResolution()) {
 		m_OutputLog.emplace_back("- RTE Lua Console -\nSee the Data Realms Wiki for commands: http://www.datarealms.com/wiki/\nPress F1 for a list of helpful shortcuts\n-------------------------------------");
 	}
 
@@ -88,7 +88,7 @@ int ConsoleMan::Initialize() {
 }
 
 void ConsoleMan::Destroy() {
-	if (!g_WindowMan.ResolutionChanged()) {
+	if (!g_WindowMan.IsRebuildingForNewResolution()) {
 		SaveAllText(System::InstanceFile("LogConsole.txt"));
 	}
 
@@ -96,7 +96,7 @@ void ConsoleMan::Destroy() {
 	delete m_GUIInput;
 	delete m_GUIScreen;
 
-	if (g_WindowMan.ResolutionChanged()) {
+	if (g_WindowMan.IsRebuildingForNewResolution()) {
 		m_GUIScreen = nullptr;
 		m_GUIInput = nullptr;
 		m_GUIControlManager = nullptr;

@@ -865,6 +865,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	});
 	MatchProperty("UpscaleSharpness", { g_PostProcessMan.GetLightingSettings().UpscaleSharpness = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("IntegerScaling", { g_WindowMan.SetIntegerScaling(std::stoi(reader.ReadPropValue()) != 0); });
+	MatchProperty("MatchWindowSize", { g_WindowMan.SetMatchWindowSize(std::stoi(reader.ReadPropValue()) != 0); });
 	MatchProperty("LightingSpecular", { g_PostProcessMan.GetLightingSettings().Specular = std::stof(reader.ReadPropValue()); });
 	MatchProperty("UnitShineLights", { g_PostProcessMan.GetLightingSettings().UnitShineLights = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("UnitShineLamps", { g_PostProcessMan.GetLightingSettings().UnitShineLamps = std::stoi(reader.ReadPropValue()) != 0; });
@@ -1627,6 +1628,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AsciiModeWorldLocked", lighting.Ascii.WorldLocked);
 	writer.NewPropertyWithValue("UpscaleSharpness", lighting.UpscaleSharpness);
 	writer.NewPropertyWithValue("IntegerScaling", g_WindowMan.GetIntegerScaling());
+	writer.NewPropertyWithValue("MatchWindowSize", g_WindowMan.GetMatchWindowSize());
 	writer.NewPropertyWithValue("LightingIndirect", lighting.IndirectLight);
 	writer.NewPropertyWithValue("RadianceCascades", lighting.RadianceCascades);
 	writer.NewPropertyWithValue("GIStrength", lighting.GIStrength);

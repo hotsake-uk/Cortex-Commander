@@ -94,6 +94,9 @@ namespace RTE {
 		/// @param newPosX The new screen position of this entire GUI.
 		void SetPosOnScreen(int newPosX, int newPosY);
 
+		/// Fits this editor's picker to a resolution changed while it exists, keeping its contents and settings.
+		void FitToResolution();
+
 		/// Sets the absolute scene coordinates of the cursor of this Editor.
 		/// @param newCursorPos The new cursor position in absolute scene units.
 		void SetCursorPos(const Vector& newCursorPos) { m_CursorPos = newCursorPos; }

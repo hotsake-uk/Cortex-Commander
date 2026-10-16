@@ -472,6 +472,21 @@ void TestResolutionChange() {
 	}
 }
 
+/// After the resolution follows the window's size, fits the menus, the console and a running game's on-screen menus to it, so the game carries on.
+void FitToWindowResolution() {
+	if (!g_WindowMan.ResizedToWindow()) {
+		return;
+	}
+	g_MenuMan.RebuildForNewResolution();
+	g_ConsoleMan.Destroy();
+	g_ConsoleMan.Initialize();
+	g_LoadingScreen.CreateLoadingSplash();
+	if (Activity* activity = g_ActivityMan.GetActivity()) {
+		activity->OnResolutionChanged();
+	}
+	g_WindowMan.CompleteResizeToWindow();
+}
+
 /// <summary>
 /// Game menus loop.
 /// </summary>
@@ -490,6 +505,7 @@ void RunMenuLoop() {
 		PollSDLEvents();
 
 		g_WindowMan.Update();
+		FitToWindowResolution();
 		TestResolutionChange();
 
 		g_UInputMan.Update();
@@ -576,6 +592,7 @@ void RunGameLoop() {
 
 		PollSDLEvents();
 		g_WindowMan.Update();
+		FitToWindowResolution();
 		TestResolutionChange();
 		g_WindowMan.ClearBackbuffer();
 

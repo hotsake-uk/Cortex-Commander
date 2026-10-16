@@ -134,6 +134,7 @@ void WindowMan::Initialize() {
 	MapDisplays(false);
 
 	ValidateResolution(m_ResX, m_ResY, m_ResMultiplier);
+	m_PixelScale = std::max(1.0F, m_ResMultiplier);
 
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
@@ -594,6 +595,69 @@ void WindowMan::SetViewportLetterboxed() {
 	m_PrimaryWindowViewport = std::make_unique<SDL_Rect>(offsetX, windowH - offsetY - height, width, height);
 }
 
+bool WindowMan::GetWindowMatchedResolution(int& resX, int& resY) const {
+	if (!m_MatchWindowSize || !m_PrimaryWindow || m_Fullscreen || FullyCoversAllDisplays()) {
+		return false;
+	}
+	if (SDL_GetWindowFlags(m_PrimaryWindow.get()) & (SDL_WINDOW_MINIMIZED | SDL_WINDOW_HIDDEN)) {
+		return false;
+	}
+	int windowW, windowH;
+	SDL_GetWindowSizeInPixels(m_PrimaryWindow.get(), &windowW, &windowH);
+	int pointsW, pointsH;
+	SDL_GetWindowSize(m_PrimaryWindow.get(), &pointsW, &pointsH);
+	if (windowW <= 0 || windowH <= 0 || pointsW <= 0) {
+		return false;
+	}
+	// The part of the window the picture goes in, as in SetViewportLetterboxed, in the window's own units (on a high density display a window unit is several pixels), so the
+	// resolution is what the settings' multiplier of 1 gives.
+	int reservedLeft = std::clamp(m_ReservedLeft, 0, std::max(0, windowW / 2 - 40));
+	int reservedRight = std::clamp(m_ReservedRight, 0, std::max(0, windowW / 2 - 40));
+	int freeW = std::max(windowW - reservedLeft - reservedRight, 80);
+	float pixelsPerUnit = static_cast<float>(windowW) / static_cast<float>(pointsW);
+	float scale = std::max(pixelsPerUnit * m_PixelScale, 0.25F);
+	// Smaller than the smallest resolution, the picture is scaled down to fit with bars, as before.
+	resX = std::clamp(static_cast<int>(static_cast<float>(freeW) / scale), c_MinResX, 8192);
+	resY = std::clamp(static_cast<int>(static_cast<float>(windowH) / scale), c_MinResY, 8192);
+	return true;
+}
+
+void WindowMan::UpdateWindowMatchedResolution() {
+	int resX, resY;
+	if (!GetWindowMatchedResolution(resX, resY) || (resX == m_ResX && resY == m_ResY)) {
+		m_PendingWindowResX = 0;
+		m_PendingWindowResY = 0;
+		return;
+	}
+	unsigned long long now = SDL_GetTicks();
+	// Wait for the window to settle, so dragging its edge doesn't make everything again every frame.
+	if (resX != m_PendingWindowResX || resY != m_PendingWindowResY) {
+		m_PendingWindowResX = resX;
+		m_PendingWindowResY = resY;
+		m_PendingWindowResTicks = now;
+		return;
+	}
+	if (now - m_PendingWindowResTicks < 250) {
+		return;
+	}
+	m_PendingWindowResX = 0;
+	m_PendingWindowResY = 0;
+	ChangeResolutionInPlace(resX, resY);
+}
+
+void WindowMan::ChangeResolutionInPlace(int newResX, int newResY) {
+	SDL_GL_MakeCurrent(m_PrimaryWindow.get(), m_GLContext.get());
+	m_ResX = newResX;
+	m_ResY = newResY;
+	g_FrameMan.CreateBackBuffers();
+	g_PostProcessMan.CreateGLBackBuffers();
+	SetViewportLetterboxed();
+	CreateBackBufferTexture();
+	m_ResizedToWindow = true;
+	g_SettingsMan.UpdateSettingsFile();
+	g_ConsoleMan.PrintString("SYSTEM: Resolution set to " + std::to_string(m_ResX) + "x" + std::to_string(m_ResY) + " to fill the window.");
+}
+
 void WindowMan::SetIntegerScaling(bool integerScaling) {
 	if (integerScaling != m_IntegerScaling) {
 		m_IntegerScaling = integerScaling;
@@ -722,6 +786,7 @@ void WindowMan::ChangeResolution(int newResX, int newResY, float newResMultiplie
 		m_ResX = newResX;
 		m_ResY = newResY;
 		m_ResMultiplier = newResMultiplier;
+		m_PixelScale = std::max(1.0F, newResMultiplier);
 		m_Fullscreen = fullscreen;
 		g_SettingsMan.UpdateSettingsFile();
 	}
@@ -937,6 +1002,8 @@ void WindowMan::Update() {
 		}
 	}
 	m_EventQueue.clear();
+
+	UpdateWindowMatchedResolution();
 }
 
 void WindowMan::ClearBackbuffer(bool clearFrameMan) {

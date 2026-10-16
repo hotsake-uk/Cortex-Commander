@@ -5,12 +5,27 @@
 
 using namespace RTE;
 
+std::vector<AllegroScreen*> AllegroScreen::s_Instances;
+
 AllegroScreen::AllegroScreen(BITMAP* backBuffer) :
-	m_BackBufferBitmap(std::make_unique<AllegroBitmap>(backBuffer))
-{}
+	m_BackBufferBitmap(std::make_unique<AllegroBitmap>(backBuffer)) {
+	s_Instances.push_back(this);
+}
 
 AllegroScreen::~AllegroScreen() {
+	std::erase(s_Instances, this);
 	Destroy();
+}
+
+void AllegroScreen::RetargetBackBuffer(const BITMAP* oldBackBuffer, BITMAP* newBackBuffer) {
+	if (!oldBackBuffer || oldBackBuffer == newBackBuffer) {
+		return;
+	}
+	for (AllegroScreen* screen: s_Instances) {
+		if (screen->m_BackBufferBitmap && screen->m_BackBufferBitmap->GetBitmap() == oldBackBuffer) {
+			screen->m_BackBufferBitmap->SetBitmap(newBackBuffer);
+		}
+	}
 }
 
 GUIBitmap* AllegroScreen::CreateBitmap(const std::string& fileName) {

@@ -57,6 +57,29 @@ void MenuMan::Reinitialize() {
 	Initialize(false);
 }
 
+void MenuMan::RebuildForNewResolution() {
+	const TitleScreen::TitleTransition transition = m_TitleScreen->GetTitleTransitionState();
+
+	m_PauseMenu.reset();
+	m_ScenarioMenu.reset();
+	m_MainMenu.reset();
+	m_TitleScreen.reset();
+	m_ActiveMenu = ActiveMenu::MenusDisabled;
+
+	// The screen and input are kept: the screen already draws into the new back buffer. The conquest menu is left as it is, its game with it.
+	m_TitleScreen = std::make_unique<TitleScreen>(m_GUIScreen.get());
+	m_MainMenu = std::make_unique<MainMenuGUI>(m_GUIScreen.get(), m_GUIInput.get());
+	m_ScenarioMenu = std::make_unique<ScenarioGUI>(m_GUIScreen.get(), m_GUIInput.get());
+	m_PauseMenu = std::make_unique<PauseMenuGUI>(m_GUIScreen.get(), m_GUIInput.get());
+
+	if (transition == TitleScreen::TitleTransition::TransitionPending) {
+		// In a game: the next pause picks its menu as usual.
+		m_TitleScreen->SetTitlePendingTransition();
+	} else {
+		m_TitleScreen->SetTitleTransitionState(transition);
+	}
+}
+
 void MenuMan::SetActiveMenu() {
 	ActiveMenu newActiveMenu = ActiveMenu::MenusDisabled;
 

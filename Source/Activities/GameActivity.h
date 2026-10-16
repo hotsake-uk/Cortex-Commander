@@ -342,6 +342,13 @@ namespace RTE {
 		/// Forces the current game's end.
 		void End() override;
 
+		/// Fits the players' buy, build and inventory menus to a resolution changed while the game runs, keeping everything set on them.
+		void OnResolutionChanged() override;
+
+		/// Places a player's buy and build menus over the player's part of a split screen.
+		/// @param player The player whose menus to place.
+		void PositionPlayerMenusOnScreen(int player);
+
 		/// This is a special update step for when any player is still editing the
 		/// scene.
 		void UpdateEditing();

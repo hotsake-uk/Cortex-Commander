@@ -30,6 +30,9 @@ namespace RTE {
 
 		/// Reinitializes all the Main Menu GUIs after a resolution change. Must be done otherwise the GUIs retain the original resolution settings and become all screwy.
 		void Reinitialize();
+
+		/// Makes the menus again for a resolution that followed the window's size, returning to the same place in them (the main, scenario or pause menu), with a running game left running.
+		void RebuildForNewResolution();
 #pragma endregion
 
 #pragma region Concrete Methods
