@@ -37,7 +37,7 @@ Then:
   checkout" points it back.
 - **Versions** (Advanced): pick a commit, then **Build** or **Build & play**. The build's output shows at the bottom, with Cancel.
 - **Launch settings**: your Settings.ini (copied in before each launch), a shared presets folder (linked as `Userdata/Presets`),
-  your mods folder (each `.rte` linked into `Mods`, changed files only) and a world (planet skin). They start as the Windows
+  your mods folder (each `.rte` linked into `Mods`, changed files only; files Studio adds to or deletes from a linked mod in the version are added to or deleted from your mods folder too) and a world (planet skin). They start as the Windows
   launcher's settings if you used it, and are kept in `CortexStudio/launcher.json` in your config folder.
 - **Unlock everything** (Play): for messing about. Studio copies your mods folder into `CortexStudio/Backups/Mods <date> <time>`,
   notes the commit the version is at, then lets the designer and the code editor change anything in the built version where it
