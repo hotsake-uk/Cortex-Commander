@@ -307,6 +307,10 @@ void HandleMainArgs(int argCount, char** argValue) {
 				// An optional map name may follow.
 				g_ActivityMan.SetSandboxToLaunch(!lastArg && argValue[i + 1][0] != '-' ? argValue[++i] : "");
 				launchModeSet = true;
+			} else if (currentArg == "-test") {
+				// Mod Studio's test: a plain game on a map (Maginot unless one follows) with you in the unit from Studio, no sandbox.
+				g_ActivityMan.SetSandboxToLaunch(!lastArg && argValue[i + 1][0] != '-' ? argValue[++i] : "", "Mod Studio Test");
+				launchModeSet = true;
 			}
 		}
 		++i;

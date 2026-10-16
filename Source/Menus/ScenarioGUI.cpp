@@ -230,6 +230,10 @@ void ScenarioGUI::FetchActivitiesAndScenesLists() {
 	int index = 0;
 	for (Entity* presetEntity: presetList) {
 		if (GameActivity* presetActivity = dynamic_cast<GameActivity*>(presetEntity)) {
+			// Mod Studio's test is only started by Test In Game.bat (-modstudio -test), which brings the unit to play.
+			if (presetActivity->GetPresetName() == "Mod Studio Test") {
+				continue;
+			}
 			std::pair<Activity*, std::vector<Scene*>> activityAndCompatibleScenes(presetActivity, std::vector<Scene*>());
 			for (Scene* filteredScene: filteredScenes) {
 				if (presetActivity->SceneIsCompatible(filteredScene)) {

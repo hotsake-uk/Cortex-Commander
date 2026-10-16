@@ -12,7 +12,7 @@ namespace RTE {
 
 	/// Units sent from Cortex Mod Studio ("Preview in game"). Studio saves the unit's files, then writes ModStudio/Preview.ini in the game
 	/// folder naming the unit, the files to reload and the item to hold. The Actor Editor shows each new one; a game started with
-	/// -modstudio (Test In Sandbox.bat) makes it your character in the sandbox, or swaps the player's unit for it in other games.
+	/// -modstudio makes it your character in the sandbox (Test In Sandbox.bat), or puts you in it in other games (Test In Game.bat).
 	class ModStudioPreview {
 
 	public:
@@ -42,6 +42,9 @@ namespace RTE {
 		/// Makes in-game swapping happen (the -modstudio launch argument).
 		static void EnableInGame() { s_InGame = true; }
 
+		/// Whether the game was started with -modstudio: then the camera stays on the unit you play rather than leaning towards where it aims.
+		static bool IsInGame() { return s_InGame; }
+
 		/// In a running game started with -modstudio, makes each new unit from Studio your sandbox character (or the player's unit). Called every frame.
 		static void UpdateInGame();
 
@@ -49,5 +52,6 @@ namespace RTE {
 		static bool s_InGame; //!< Whether games swap in Studio's units.
 		static std::chrono::steady_clock::time_point s_LastCheck; //!< When the request file was last looked at. (Not a Timer: a static one would need TimerMan before it exists.)
 		static std::filesystem::file_time_type s_LastWriteTime; //!< When the last request handled in game was written.
+		static long s_LastUnitID; //!< The unique ID of the last unit put in a game outside the sandbox, which the next one replaces.
 	};
 } // namespace RTE

@@ -29,6 +29,8 @@ zip of the changed files to unpack into the game folder.
 - **Add helmets and gear** from the Attachments tab, and try items in the hand from the Items tab or the Held item list.
 - **Animate**: the pose buttons, Play, the aim slider, Sharp aim and Flip show how the unit moves in game, using the
   unit's own walk paths, limb lengths and arm reach.
+- **Every setting**: All settings lists everything the selected part has (from its own block or inherited), editable, with a filter
+  and **Add a setting** offering every key that presets of its class use. **Discard** throws away unsaved changes.
 - **Undo and redo** everything (Ctrl+Z, Ctrl+Y). Press **?** for all the keys.
 
 ## How files are written
@@ -43,12 +45,15 @@ zip of the changed files to unpack into the game folder.
 **Preview in game** saves, then writes `ModStudio/Preview.ini` in the game folder naming the unit, the files that changed and
 the held item. Two ways to see it, both started from `Tools\ModStudio` and left running:
 
-- **Actor Editor.bat** opens the game's Actor Editor (`-editor ActorEditor`), zoomed in on the unit. The mouse stays free, so you can use Studio
-  beside it (move the unit with the keyboard); Ctrl + mouse wheel zooms.
+- **Actor Editor.bat** opens the game's Actor Editor (`-editor ActorEditor`), zoomed in on the unit. Press **Alt** to let go of the mouse and use
+  Studio beside it; click the game to control the unit again. Ctrl + mouse wheel zooms.
+- **Test In Game.bat** opens the Maginot map (`-modstudio -test [map]`) as a plain game, no sandbox and none of the scenario's
+  attackers, with you in the unit. Add a map name to use another map.
 - **Test In Sandbox.bat** opens the sandbox (`-modstudio -sandbox [map]`) with the unit as your own sandbox character, the tools put away. Add a map name to use
   another map, for example `"Test In Sandbox.bat" "Ketanot Hills"`.
 
-Turn on **Live** (next to Preview in game) to send every change as you make it: a drag or a number scrub is sent when you let
+**◨ Hide list** (L) hides the list on the left, and **◧ Hide view** (V) hides Studio's own picture of the unit, so the parts and properties get the whole window while the game
+shows the unit beside it. Turn on **Live** (next to Preview in game) to send every change as you make it: a drag or a number scrub is sent when you let
 go, an undo, a new held item or another unit straight away.
 
 Either one checks the file about twice a second, reloads the changed files and sprites, and swaps in the new unit, holding the

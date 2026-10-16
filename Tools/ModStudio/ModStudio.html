@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cortex Mod Studio</title>
-<link rel="stylesheet" href="studio.css?v=9">
+<link rel="stylesheet" href="studio.css?v=15">
 </head>
 <body>
 <div id="app">
@@ -17,7 +17,10 @@
 		<button class="tb" id="btnRedo" title="Redo (Ctrl+Y)" disabled>↷ Redo</button>
 		<span class="sep"></span>
 		<button class="tb" id="btnCopy" title="Make your own unit from this one, in your mod" disabled>Make my own copy</button>
+		<button class="tb" id="btnDiscard" title="Throw away unsaved changes and go back to what's saved" disabled>Discard</button>
 		<button class="tb" id="btnSave" title="Save changed files (Ctrl+S)" disabled>Save</button>
+		<button class="tb" id="btnLib" title="Hide or show the list of units, attachments and items (L)">◨ Hide list</button>
+		<button class="tb" id="btnView" title="Hide or show the unit view, to give the properties the room while the game shows the unit (V)">◧ Hide view</button>
 		<button class="tb" id="btnLive" title="Live: send every change to the game as you make it (a drag is sent when you let go)" disabled>● Live</button>
 		<button class="tb primary" id="btnPreview" title="Save, then show this unit in the game's Actor Editor" disabled>▶ Preview in game</button>
 		<button class="tb icon" id="btnHelp" title="How to use Mod Studio">?</button>
@@ -99,14 +102,14 @@
 <div id="modal" class="modal" hidden><div class="modal-card" id="modalCard"></div></div>
 <div id="toasts"></div>
 
-<script src="js/ini.js?v=9"></script>
-<script src="js/gamefs.js?v=9"></script>
-<script src="js/library.js?v=9"></script>
-<script src="js/images.js?v=9"></script>
-<script src="js/rig.js?v=9"></script>
-<script src="js/viewport.js?v=9"></script>
-<script src="js/panels.js?v=9"></script>
-<script src="js/dialogs.js?v=9"></script>
-<script src="js/app.js?v=9"></script>
+<script src="js/ini.js?v=15"></script>
+<script src="js/gamefs.js?v=15"></script>
+<script src="js/library.js?v=15"></script>
+<script src="js/images.js?v=15"></script>
+<script src="js/rig.js?v=15"></script>
+<script src="js/viewport.js?v=15"></script>
+<script src="js/panels.js?v=15"></script>
+<script src="js/dialogs.js?v=15"></script>
+<script src="js/app.js?v=15"></script>
 </body>
 </html>

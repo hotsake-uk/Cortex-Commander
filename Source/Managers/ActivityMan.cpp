@@ -92,7 +92,7 @@ bool ActivityMan::Initialize() {
 		// Evaluate LaunchIntoEditor before LaunchIntoActivity so it takes priority when both are set, otherwise it is ignored and editor is never launched.
 		return SetStartEditorActivitySetToLaunchInto();
 	} else if (m_LaunchIntoSandbox) {
-		if (!SetStartSandboxActivity(m_SandboxSceneToLaunch)) {
+		if (!SetStartSandboxActivity(m_SandboxSceneToLaunch, m_SandboxActivityToLaunch)) {
 			return false;
 		}
 		m_ActivityNeedsRestart = true;
@@ -697,7 +697,9 @@ bool ActivityMan::SetStartSandboxActivity(const std::string& sceneName, const st
 		g_ConsoleMan.PrintString("ERROR: The " + activityName + " game mode isn't defined, so it can't be started.");
 		return false;
 	}
-	std::string sceneToLoad = !sceneName.empty() ? sceneName : (sandbox->GetSceneName().empty() ? "Ketanot Hills" : sandbox->GetSceneName());
+	// (The map named by the preset itself: a copy of an Activity doesn't carry its SceneName.)
+	const std::string& presetScene = static_cast<const Activity*>(preset)->GetSceneName();
+	std::string sceneToLoad = !sceneName.empty() ? sceneName : (presetScene.empty() ? "Ketanot Hills" : presetScene);
 	// The sandbox never starts with the map's own units: only its terrain, bunkers and doors. The player spawns every unit.
 	if (g_SceneMan.SetSceneToLoad(sceneToLoad, true, false) < 0) {
 		delete sandbox;

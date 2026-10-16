@@ -622,6 +622,7 @@ window.MS = window.MS || {};
 		el.textContent = n ? n + ' unsaved file' + (n > 1 ? 's' : '') : 'All saved';
 		el.className = n ? 'dirty' : '';
 		$('btnSave').disabled = !n && !(app.fs && !app.fs.writable && app.fs.pendingWrites.size);
+		$('btnDiscard').disabled = !n;
 	}
 	app.updateFileStatus = updateFileStatus;
 
@@ -662,6 +663,43 @@ window.MS = window.MS || {};
 	};
 
 	// quiet: sent by Live mode, so no messages beyond the status line.
+	// Throws away every unsaved change, after asking. Pictures Studio already wrote into the mod stay on disk, unused.
+	app.discard = function () {
+		const docs = app.dirtyDocs();
+		if (!docs.length) {
+			return;
+		}
+		const list = document.createElement('div');
+		const intro = document.createElement('p');
+		intro.textContent = 'Throw away the unsaved changes in ' + (docs.length === 1 ? 'this file' : 'these ' + docs.length + ' files') + '? They go back to what\'s saved on disk. This can\'t be undone.';
+		const files = document.createElement('p');
+		files.className = 'small';
+		files.textContent = docs.map((d) => d.path + (d.isNew ? ' (new, not saved yet)' : '')).join(', ');
+		list.append(intro, files);
+		MS.dialogs.open('Discard changes', list, [
+			{ text: 'Keep them' },
+			{ text: 'Discard', primary: true, action: () => {
+				for (const doc of docs) {
+					app.lib.discard(doc);
+				}
+				app.undo = [];
+				app.redo = [];
+				app.lib.reindex();
+				if (app.actor && !app.lib.docFor(app.actor.path)) {
+					app.actor = null;
+					app.selected = null;
+				}
+				app.rebuild();
+				MS.panels.refresh();
+				MS.panels.markLibrary && MS.panels.markLibrary();
+				updateUndo();
+				updateFileStatus();
+				app.status('Discarded the unsaved changes.');
+				app.liveChanged();
+			} },
+		]);
+	};
+
 	app.preview = async function (quiet) {
 		if (!app.actor) {
 			return;
@@ -755,6 +793,23 @@ window.MS = window.MS || {};
 		}
 	}
 
+	// The unit view can be hidden, to edit numbers with the game showing the unit beside Studio (Live mode).
+	function setViewShown(shown) {
+		$('app').classList.toggle('no-view', !shown);
+		$('btnView').textContent = shown ? '◧ Hide view' : '◧ Show view';
+		writeLocal('ms.viewHidden', !shown);
+		if (shown) {
+			app.requestDraw();
+		}
+	}
+
+	function setListShown(shown) {
+		$('app').classList.toggle('no-lib', !shown);
+		$('btnLib').textContent = shown ? '◨ Hide list' : '◨ Show list';
+		writeLocal('ms.listHidden', !shown);
+		app.requestDraw();
+	}
+
 	function download(blob, name) {
 		const a = document.createElement('a');
 		a.href = URL.createObjectURL(blob);
@@ -774,8 +829,17 @@ window.MS = window.MS || {};
 		$('btnUndo').onclick = () => app.doUndo();
 		$('btnRedo').onclick = () => app.doRedo();
 		$('btnSave').onclick = () => app.save();
+		$('btnDiscard').onclick = () => app.discard();
 		$('btnPreview').onclick = () => app.preview();
 		$('btnLive').onclick = () => setLive(!app.live);
+		$('btnView').onclick = () => setViewShown($('app').classList.contains('no-view'));
+		if (readLocal('ms.viewHidden')) {
+			setViewShown(false);
+		}
+		$('btnLib').onclick = () => setListShown($('app').classList.contains('no-lib'));
+		if (readLocal('ms.listHidden')) {
+			setListShown(false);
+		}
 		if (readLocal('ms.live')) {
 			setLive(true);
 		}
@@ -874,6 +938,10 @@ window.MS = window.MS || {};
 				nudge(d[0], d[1], e.shiftKey);
 			} else if (e.key === 'Delete' && app.selected) {
 				MS.panels.removeSelected();
+			} else if (e.key.toLowerCase() === 'l' && !ctrl) {
+				$('btnLib').click();
+			} else if (e.key.toLowerCase() === 'v' && !ctrl) {
+				$('btnView').click();
 			} else if (e.key.toLowerCase() === 'i' && !ctrl) {
 				app.isolate = !app.isolate;
 				app.requestDraw();

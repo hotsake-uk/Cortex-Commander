@@ -298,7 +298,7 @@ window.MS = window.MS || {};
 
 	// ---- inspector ----
 
-	const closedSections = new Set(['All properties']);
+	const closedSections = new Set();
 	let fieldUpdaters = [];
 
 	function section(parent, title, extra) {
@@ -560,8 +560,12 @@ window.MS = window.MS || {};
 	}
 
 	function renderInspector() {
-		const insp = $('inspector');
-		insp.innerHTML = '';
+		// Sections go in an inner box, which wide screens lay out in columns (the scrolling box itself can't be: its columns would run off sideways).
+		const box = $('inspector');
+		box.innerHTML = '';
+		const insp = document.createElement('div');
+		insp.className = 'insp-cols';
+		box.append(insp);
 		fieldUpdaters = [];
 		const part = app.selected;
 		if (!app.rig) {
@@ -724,34 +728,147 @@ window.MS = window.MS || {};
 			att.append(row);
 		}
 
-		// Everything the part holds, and where each value comes from.
-		const all = section(insp, 'All properties');
-		const table = document.createElement('table');
-		table.className = 'props-table';
+		allSettings(insp, part, ent, locked);
+	}
+
+	// Every setting the part has, editable: plain values as text, vectors as X and Y. Changing one writes it into this unit's own block
+	// (an inherited value is copied in first, so nothing else changes); × takes the unit's own value away again, back to what it inherits.
+	// Sub-objects and list entries (AddAttachable and the like) show where they come from but are changed elsewhere. "Add a setting" offers
+	// every key that presets of the same class use.
+	const keysOfClass = new Map();
+	function knownKeys(cls) {
+		if (!keysOfClass.has(cls)) {
+			const keys = new Set();
+			for (const preset of app.lib.presets) {
+				if (preset.cls === cls) {
+					for (const child of preset.node.children) {
+						if (child.key && child.key !== 'CopyOf' && child.key !== 'PresetName') {
+							keys.add(child.key);
+						}
+					}
+				}
+			}
+			keysOfClass.set(cls, [...keys].sort());
+		}
+		return keysOfClass.get(cls);
+	}
+
+	function allSettings(insp, part, ent, locked) {
+		const filter = document.createElement('input');
+		filter.type = 'search';
+		filter.className = 'text settings-filter';
+		filter.placeholder = 'Filter settings…';
+		const all = section(insp, 'All settings (' + ent.cls + ')');
+		all.append(filter);
+		const list = document.createElement('div');
+		all.append(list);
+
 		const lastOf = new Map();
 		ent.entries.forEach((e, i) => lastOf.set(e.key, i));
+		const shown = new Set();
 		ent.entries.forEach((e, i) => {
-			if (lastOf.get(e.key) !== i && !MS.LIST_KEYS.has(e.key)) {
+			// (List entries, and the name and base, which the Preset section and Make my own copy look after, aren't edited here.)
+			const isList = MS.LIST_KEYS.has(e.key) || e.key === 'PresetName' || e.key === 'CopyOf';
+			if (lastOf.get(e.key) !== i && !isList) {
 				return;
 			}
-			const tr = document.createElement('tr');
-			if (e.node.isWithin(part.anchor)) {
-				tr.className = 'own';
+			shown.add(e.key);
+			const row = document.createElement('div');
+			row.className = 'row setting';
+			row.dataset.key = e.key.toLowerCase();
+			const l = document.createElement('label');
+			l.textContent = e.key;
+			l.title = e.key;
+			const val = document.createElement('div');
+			val.className = 'val';
+			const own = e.node.isWithin(part.anchor);
+			const node = e.node;
+			if (node.value === 'Vector' && !isList) {
+				const v = MS.readVector(node);
+				const x = numberBox('X', v.x, (n) => app.setVector(part, e.key, n, MS.readVector(node).y), null, !!locked);
+				const y = numberBox('Y', v.y, (n) => app.setVector(part, e.key, MS.readVector(node).x, n), null, !!locked);
+				val.append(x.box, y.box);
+			} else if (!node.children.length && !isList) {
+				const input = document.createElement('input');
+				input.className = 'text';
+				input.value = node.value;
+				input.disabled = !!locked;
+				input.onchange = () => app.setValue(part, e.key, input.value.trim());
+				input.onkeydown = (k) => {
+					if (k.key === 'Enter') {
+						input.blur();
+					}
+				};
+				val.append(input);
+			} else {
+				const text = document.createElement('span');
+				text.className = 'setting-ro';
+				text.textContent = node.child('FilePath') ? node.child('FilePath').value : node.child('CopyOf') ? node.value + ' (' + node.child('CopyOf').value + ')' : node.child('PresetName') ? node.value + ' (' + node.child('PresetName').value + ')' : node.value;
+				text.title = isList ? 'A list entry: change it in its own part or section.' : 'A whole object: change it in its own section, or in the file.';
+				val.append(text);
 			}
-			const value = e.node.value === 'Vector' ? (() => {
-				const v = MS.readVector(e.node);
-				return v.x + ', ' + v.y;
-			})() : e.node.children.length && e.node.child('CopyOf') ? e.node.value + ' (' + e.node.child('CopyOf').value + ')' : e.node.child('FilePath') ? e.node.child('FilePath').value : e.node.value;
-			const top = e.node.topLevel;
-			const from = top.child('PresetName') ? top.child('PresetName').value : e.node.doc.path;
-			tr.innerHTML = '<td></td><td></td><td class="from"></td>';
-			tr.children[0].textContent = e.key;
-			tr.children[1].textContent = value;
-			tr.children[2].textContent = from;
-			tr.children[2].title = e.node.doc.path + ':' + e.node.line;
-			table.append(tr);
+			if (own && !isList && !locked && ent.entries.some((other) => other.key === e.key && other.node !== node)) {
+				// Set here over an inherited value: × goes back to that.
+				const back = document.createElement('button');
+				back.className = 'small-btn';
+				back.textContent = '×';
+				back.title = 'Use the inherited value again';
+				back.onclick = () => app.edit('reset ' + e.key, () => node.remove());
+				val.append(back);
+			}
+			const note = document.createElement('div');
+			const src = describeSource(part, e.key);
+			note.className = 'src ' + (own ? 'own' : '');
+			note.textContent = own ? src.text : 'from ' + (node.topLevel.child('PresetName') ? node.topLevel.child('PresetName').value : node.doc.path) + ' · ' + node.doc.module + (node.line ? ':' + node.line : '');
+			row.append(l, val, note);
+			list.append(row);
 		});
-		all.append(table);
+
+		// Adding one the part doesn't set (the game's default applies until then).
+		if (!locked) {
+			const add = document.createElement('div');
+			add.className = 'row setting-add';
+			const keyInput = document.createElement('input');
+			keyInput.className = 'text';
+			keyInput.placeholder = 'Add a setting…';
+			const listId = 'keys-' + ent.cls;
+			keyInput.setAttribute('list', listId);
+			const datalist = document.createElement('datalist');
+			datalist.id = listId;
+			for (const key of knownKeys(ent.cls)) {
+				if (!shown.has(key)) {
+					const o = document.createElement('option');
+					o.value = key;
+					datalist.append(o);
+				}
+			}
+			const val = document.createElement('div');
+			val.className = 'val';
+			const valueInput = document.createElement('input');
+			valueInput.className = 'text';
+			valueInput.placeholder = 'value';
+			const btn = document.createElement('button');
+			btn.className = 'small-btn';
+			btn.textContent = 'Add';
+			btn.onclick = () => {
+				const key = keyInput.value.trim();
+				if (!/^[A-Za-z][\w]*$/.test(key)) {
+					app.toast('A setting name is letters and numbers, like Mass or GibImpulseLimit.', 'bad');
+					return;
+				}
+				app.setValue(part, key, valueInput.value.trim(), 'add ' + key);
+			};
+			val.append(valueInput, btn);
+			add.append(keyInput, val, datalist);
+			all.append(add);
+		}
+
+		filter.oninput = () => {
+			const q = filter.value.trim().toLowerCase();
+			for (const row of list.children) {
+				row.hidden = !!q && !row.dataset.key.includes(q);
+			}
+		};
 	}
 
 	function canRemove(part) {

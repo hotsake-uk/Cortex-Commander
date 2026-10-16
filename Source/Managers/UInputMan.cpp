@@ -530,9 +530,6 @@ void UInputMan::TrapMousePos(bool trap, int whichPlayer) {
 	// While the mouse is released (the window isn't focused, or tool windows have it), the wish is only remembered: it is applied when the mouse is given back.
 	// The game asks for the trap every frame a unit is controlled, which used to take the pointer away from open tool windows.
 	bool released = IsMouseReleased();
-	if (trap && g_ActivityMan.GetActivity() && g_ActivityMan.GetActivity()->KeepsMouseFree()) {
-		trap = false;
-	}
 	if (whichPlayer == Players::NoPlayer) {
 		m_TrapMousePos = trap;
 		if (!g_WindowMan.IsBackground()) SDL_SetWindowRelativeMouseMode(g_WindowMan.GetWindow(), trap && !released);
@@ -1260,8 +1257,7 @@ void UInputMan::UpdateMouseInput() {
 	}
 
 	// Only mess with the mouse pos if the original mouse position is not above the screen and may be grabbing the title bar of the game window
-	const bool keepMouseFree = g_ActivityMan.GetActivity() && g_ActivityMan.GetActivity()->KeepsMouseFree();
-	if (g_WindowMan.AnyWindowHasFocus() && !m_DisableMouseMoving && !keepMouseFree && (!m_TrapMousePos || m_EnableMultiMouseKeyboard)) {
+	if (g_WindowMan.AnyWindowHasFocus() && !m_DisableMouseMoving && (!m_TrapMousePos || m_EnableMultiMouseKeyboard)) {
 		// The mouse cursor is visible and can move about the screen/window, but it should still be contained within the mouse player's part of the window
 		for (int player = PlayerOne; player < MaxPlayerCount; player++) {
 			if (m_ControlScheme[player].GetDevice() == InputDevice::DEVICE_MOUSE_KEYB) {
