@@ -770,3 +770,9 @@ pre.diff .del { color: var(--bad); }
 .prof-bar { height: 6px; background: var(--panel3); border-radius: 3px; overflow: hidden; }
 .prof-bar i { display: block; height: 100%; background: var(--accent); }
 .prof-num { text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; }
+
+/* Run configurations (launcher.js) */
+.run-label { color: var(--faint); font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; padding: 4px 10px 2px; }
+.run-card { margin-top: 12px; }
+.run-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 16px; margin-top: 10px; }
+.run-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--dim); }
