@@ -313,6 +313,7 @@ maindev
 - `ReloadProgress` on `HDFirearm` is now a writable property in Lua, and not only readable.
 
 - `RealTimeLimitProgress` and `SimTimeLimitProgress` on `Timer` are now both writable properties in Lua, and not only readable.
+- **Vehicles: soft tyres**: the Motor Buggy, Moonhopper, Wooden Cart and Catapult now ride on tyres that squash. Each wheel feels the ground across its whole width (not three single looks straight down), to a fraction of a pixel, so it rolls up kerbs and small steps instead of stopping dead or dropping onto them, and rides rough ground smoothly instead of jittering. Each wheel is a weight of its own between its spring and its tyre, so a landing is caught by the tyre, then the spring, instead of slamming onto a solid spring. Drive pushes along the ground under the wheels, so up the face of a kerb it lifts as well as pushes. A wall too high to roll up stops the wheel against it. Tyres are drawn squashed where they press on the ground. New vehicle settings `TyreGive` (how far a tyre squashes, in pixels; 0, the default, keeps hard wheels as before), `TyreStiffness` and `TyreDamping`; `TyreGive` is also on `AVehicle` in Lua. The **World simulation overlay** has **Vehicle tyres**: each wheel's outline coloured by how squashed it is, where and which way the ground pushes on it, its spring, and a red dot when it's against a wall.
 
 </details>
 

@@ -26,6 +26,7 @@
 #include "FrameMan.h"
 #include "DebugMan.h"
 #include "Draw.h"
+#include "DrawCall.h"
 
 #include "glm/gtx/transform.hpp"
 
@@ -139,6 +140,10 @@ void MOSRotating::Clear() {
 	m_CastsShadow = true;
 	m_FlashWhiteTimer.Reset();
 	m_FlashWhiteTimer.SetRealTimeLimitMS(0);
+	m_RenderSquash = 1.0F;
+	m_RenderSquashBulge = 1.0F;
+	m_RenderSquashAxis.SetXY(0.0F, 1.0F);
+	m_RenderSquashPivot.Reset();
 }
 
 int MOSRotating::Create() {
@@ -2188,7 +2193,19 @@ void MOSRotating::Draw(const Camera& camera) const {
 
 	Color tint = ApplyRenderBlendMode();
 	ApplySpriteMaps();
-	Draw::DrawTexture(m_Sprites[m_Frame].get(), spritePos, offset, -GetRenderRotMatrix().GetRadAngle(), scale, tint);
+	std::shared_ptr<DrawCall> spriteDraw = Draw::DrawTexture(m_Sprites[m_Frame].get(), spritePos, offset, -GetRenderRotMatrix().GetRadAngle(), scale, tint);
+	if (spriteDraw && m_RenderSquash != 1.0F) {
+		// Squashed (a soft tyre on the ground): each corner moved towards the pivot along the axis and away from it across, in the world.
+		glm::vec2 pivot(spritePos.m_X + m_RenderSquashPivot.m_X, spritePos.m_Y + m_RenderSquashPivot.m_Y);
+		glm::vec2 axis(m_RenderSquashAxis.m_X, m_RenderSquashAxis.m_Y);
+		glm::vec2 across(-axis.y, axis.x);
+		for (Vertex& vertex: spriteDraw->m_Vertices) {
+			glm::vec2 from = glm::vec2(vertex.m_Pos.x, vertex.m_Pos.y) - pivot;
+			glm::vec2 moved = pivot + axis * (glm::dot(from, axis) * m_RenderSquash) + across * (glm::dot(from, across) * m_RenderSquashBulge);
+			vertex.m_Pos.x = moved.x;
+			vertex.m_Pos.y = moved.y;
+		}
+	}
 	RestoreRenderBlendMode();
 
 	// Draw all the attached wound emitters, and only if the mode is g_DrawColor and not onlyphysical

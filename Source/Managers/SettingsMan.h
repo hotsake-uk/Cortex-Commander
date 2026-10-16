@@ -838,12 +838,13 @@ namespace RTE {
 		void SetCombatOverlay(int which) { m_CombatOverlay = std::clamp(which, 0, 2); }
 
 		/// Gets what the world simulation overlay shows: 0 nothing, 1 moving liquid, 2 burning ground, 3 smoke thick enough to hide things,
-		/// 4 loose falling pieces of terrain, 5 the weather (wind and what's falling), 6 ropes (how hard each is pulled, and where it's tied).
+		/// 4 loose falling pieces of terrain, 5 the weather (wind and what's falling), 6 ropes (how hard each is pulled, and where it's tied),
+		/// 7 soft bodies, 8 vehicle tyres (how squashed each is and where the ground pushes on it).
 		int WorldSimOverlay() const { return m_WorldSimOverlay; }
 
 		/// Sets what the world simulation overlay shows; see WorldSimOverlay.
-		/// @param which 0 to 6.
-		void SetWorldSimOverlay(int which) { m_WorldSimOverlay = std::clamp(which, 0, 7); }
+		/// @param which 0 to 8.
+		void SetWorldSimOverlay(int which) { m_WorldSimOverlay = std::clamp(which, 0, 8); }
 
 		/// Gets whether the sandbox's stroke log is on.
 		bool ShowSandboxStrokeLog() const { return m_SandboxStrokeLog; }
