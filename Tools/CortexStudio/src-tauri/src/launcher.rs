@@ -730,6 +730,102 @@ fn apply_world(config: &Config, slot: &Path, log: &mut Vec<String>) -> Result<()
 	Ok(())
 }
 
+// ---- what the Play and Launch settings screens show ----
+
+fn modified_secs(path: &Path) -> Option<u64> {
+	fs::metadata(path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs())
+}
+
+/// Files, bytes and the newest change in a folder, all the way down.
+fn folder_stats(dir: &Path) -> (u64, u64, u64) {
+	let (mut files, mut bytes, mut newest) = (0u64, 0u64, 0u64);
+	let mut stack = vec![dir.to_path_buf()];
+	while let Some(d) = stack.pop() {
+		for entry in fs::read_dir(&d).into_iter().flatten().flatten() {
+			let Ok(meta) = entry.metadata() else { continue };
+			if meta.is_dir() {
+				stack.push(entry.path());
+			} else {
+				files += 1;
+				bytes += meta.len();
+				let when = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+				newest = newest.max(when);
+			}
+		}
+	}
+	(files, bytes, newest)
+}
+
+/// The "Key = Value" lines of a Settings.ini, in order (nested blocks' lines too, with their indent dropped).
+fn settings_values(path: &Path) -> Vec<(String, String)> {
+	fs::read_to_string(path)
+		.unwrap_or_default()
+		.lines()
+		.filter(|l| l.starts_with('\t') && !l.trim_start().starts_with("//"))
+		.filter_map(|l| l.trim().split_once('=').map(|(k, v)| (k.trim().to_string(), v.trim().to_string())))
+		.filter(|(k, _)| !k.is_empty())
+		.take(1000)
+		.collect()
+}
+
+fn overview(config: &Config) -> Value {
+	let slot = config.slot_path();
+	let built = built_info(&slot);
+	let sha = built.split(' ').next().unwrap_or("").to_string();
+	let exe = exe_path(&slot, &config.configuration);
+	let mut build = json!({ "sha": sha, "exe": exe, "exeModified": modified_secs(&exe) });
+	if !sha.is_empty() && Path::new(&config.repo).join(".git").exists() {
+		if let Ok(text) = git(Path::new(&config.repo), &["show", "-s", "--format=%s%x00%ci%x00%an%x00%b", &sha]) {
+			let mut parts = text.splitn(4, '\0');
+			let (subject, date, author, body) = (parts.next().unwrap_or(""), parts.next().unwrap_or(""), parts.next().unwrap_or(""), parts.next().unwrap_or(""));
+			build["subject"] = json!(subject.trim());
+			build["date"] = json!(date.trim());
+			build["author"] = json!(author.trim());
+			build["version"] = json!(version_in(subject.trim(), body));
+		}
+	}
+
+	let settings_path = PathBuf::from(&config.settings_ini);
+	let settings = json!({
+		"exists": !config.settings_ini.is_empty() && settings_path.is_file(),
+		"modified": modified_secs(&settings_path),
+		"values": settings_values(&settings_path),
+	});
+
+	let presets_dir = PathBuf::from(&config.presets_dir);
+	let presets: Vec<String> = fs::read_dir(&presets_dir).into_iter().flatten().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+
+	let mut mods = Vec::new();
+	let mods_dir = PathBuf::from(&config.mods_dir);
+	if !config.mods_dir.is_empty() {
+		for entry in fs::read_dir(&mods_dir).into_iter().flatten().flatten() {
+			let name = entry.file_name().to_string_lossy().into_owned();
+			if !entry.path().is_dir() || !name.to_lowercase().ends_with(".rte") {
+				continue;
+			}
+			let (files, bytes, newest) = folder_stats(&entry.path());
+			let in_version = slot.join("Mods").join(&name);
+			let state = if !in_version.is_dir() {
+				"new"
+			} else if in_version.join(COPY_MARKER).exists() {
+				"linked"
+			} else {
+				"own"
+			};
+			mods.push(json!({ "name": name, "files": files, "bytes": bytes, "modified": newest, "state": state }));
+		}
+	}
+	mods.sort_by(|a, b| a["name"].as_str().unwrap_or("").to_lowercase().cmp(&b["name"].as_str().unwrap_or("").to_lowercase()));
+
+	json!({
+		"build": build,
+		"settings": settings,
+		"presets": { "exists": !config.presets_dir.is_empty() && presets_dir.is_dir(), "count": presets.len() },
+		"mods": { "exists": !config.mods_dir.is_empty() && mods_dir.is_dir(), "list": mods },
+		"worldsDir": config.worlds_dir(),
+	})
+}
+
 fn worlds(config: &Config) -> Vec<String> {
 	let mut names: Vec<String> =
 		fs::read_dir(config.worlds_dir()).into_iter().flatten().flatten().filter(|e| e.path().is_dir()).map(|e| e.file_name().to_string_lossy().into_owned()).collect();
@@ -866,6 +962,7 @@ pub fn handle(launcher: &Launcher, action: &str, query: &dyn Fn(&str) -> Option<
 			}))
 		}
 		"deps" => ok(dependencies()),
+		"overview" => ok(overview(&config)),
 		"refs" => match refs(&config) {
 			Ok(v) => ok(v),
 			Err(e) => fail(500, e),

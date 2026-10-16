@@ -233,6 +233,9 @@ window.MS = window.MS || {};
 		}
 		const body = $('gameBody');
 		body.innerHTML = '';
+		// The setup keeps its narrow column; the other screens use the window's width.
+		body.classList.toggle('wide', L.tab !== 'setup');
+		L.rendered = (L.rendered || 0) + 1;
 		const view = { play: renderPlay, versions: renderVersions, settings: renderSettings, setup: renderSetup }[L.tab] || renderPlay;
 		view(body);
 	}
@@ -277,15 +280,22 @@ window.MS = window.MS || {};
 			body.append(card('No game repo yet', el('p', { textContent: 'Cortex Studio builds the game from a git checkout of Cortex Command. Pick yours in Setup.' }), row(button('Open Setup', () => openTab('setup'), { primary: true }))));
 			return;
 		}
+		const details = el('dl', { className: 'gm-facts' });
 		const version = card(
 			simple ? 'Your game' : 'The version in Studio\'s slot',
 			el('p', {}, simple ? 'Keeps the newest ' : 'Built from the Versions tab. ', simple ? el('b', { textContent: s.config.remote + '/' + s.config.branch }) : null, simple ? ' built and ready. ' : '', builtLine()),
-			el('p', { className: 'gm-dim', textContent: s.slot }),
+			details,
 			row(
 				simple
 					? button('⟳ Update & build', () => startJob('update', {}), { primary: !s.builtExe, title: 'Fetch the newest ' + s.config.branch + ' and build it if it changed' })
 					: button('Pick a version…', () => openTab('versions')),
 				el('label', { className: 'gm-inline' }, 'Build type ', configurationSelect()),
+			),
+			el('h4', { textContent: 'What Studio is editing' }),
+			el('p', {}, el('code', { textContent: s.gameDir }), ' ', el('span', { className: 'gm-dim', textContent: s.editingSlot ? '(the built version)' : '(not the built version)' })),
+			row(
+				button('Edit the built version', () => editIn('slot'), { disabled: s.editingSlot || !s.builtExe }),
+				button('Edit the repo checkout', () => editIn('repo')),
 			),
 		);
 		const map = el('input', { type: 'text', value: s.config.map || '', placeholder: 'Maginot (the default)', className: 'gm-input' });
@@ -299,17 +309,63 @@ window.MS = window.MS || {};
 				launchButton('Actor Editor', 'editor', 'The game\'s Actor Editor, where Preview in game shows your unit'),
 			),
 			row(el('label', { className: 'gm-inline' }, 'Map for Test and Sandbox ', map)),
-			el('p', { className: 'gm-dim', textContent: 'Launching uses your launch settings (Settings.ini, presets, mods, world) and points Studio at the version that starts, so saves, Preview in game and the console talk to that game.' }),
+			el('p', { className: 'gm-dim', textContent: 'Launching applies your launch settings and points Studio at the version that starts, so saves, Preview in game and the console talk to that game.' }),
 		);
-		const editing = card(
-			'What Studio is editing',
-			el('p', {}, el('code', { textContent: s.gameDir })),
-			row(
-				button('Edit the built version', () => editIn('slot'), { disabled: s.editingSlot || !s.builtExe }),
-				button('Edit the repo checkout', () => editIn('repo')),
-			),
+		const using = card('Launch settings in use', el('p', { className: 'gm-dim', textContent: 'Reading…' }));
+		body.append(el('div', { className: 'gm-grid' }, version, launches), using);
+		withOverview((o) => {
+			fact(details, 'Commit', o.build.subject ? el('span', {}, el('code', { textContent: short(o.build.sha) }), ' ', o.build.subject) : null);
+			fact(details, 'Version', o.build.version);
+			fact(details, 'Committed', o.build.date ? when(o.build.date) + (o.build.author ? ' by ' + o.build.author : '') : null);
+			fact(details, 'Built', o.build.exeModified ? when(o.build.exeModified) : null);
+			fact(details, 'Game', el('code', { textContent: o.build.exe }));
+			using.replaceChildren(el('h3', {}, 'Launch settings in use ', el('button', { className: 'ico-btn', textContent: 'Change…', onclick: () => openTab('settings') })), summaryStrip(o));
+		});
+	}
+
+	// ---- the overview: details of the build and the launch settings, read on demand ----
+
+	async function withOverview(draw) {
+		const shown = L.rendered;
+		const o = await guarded(() => call('overview'));
+		if (o && shown === L.rendered) {
+			draw(o);
+		}
+	}
+
+	function fact(list, label, value) {
+		if (value === null || value === undefined || value === '') {
+			return;
+		}
+		list.append(el('dt', { textContent: label }), el('dd', {}, value));
+	}
+
+	function when(value) {
+		// Seconds since 1970, or git's "2026-10-16 14:11:05 +0100".
+		const d = typeof value === 'number' ? new Date(value * 1000) : new Date(String(value).replace(/^(\S+) (\S+) ([+-]\d\d)(\d\d)$/, '$1T$2$3:$4'));
+		if (isNaN(d)) {
+			return String(value);
+		}
+		const mins = Math.round((Date.now() - d) / 60000);
+		const ago = mins < 1 ? 'just now' : mins < 60 ? mins + ' min ago' : mins < 48 * 60 ? Math.round(mins / 60) + ' h ago' : Math.round(mins / 1440) + ' days ago';
+		return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) + ' (' + ago + ')';
+	}
+
+	function size(bytes) {
+		return bytes >= 1 << 30 ? (bytes / (1 << 30)).toFixed(1) + ' GB' : bytes >= 1 << 20 ? (bytes / (1 << 20)).toFixed(1) + ' MB' : Math.max(1, Math.round(bytes / 1024)) + ' KB';
+	}
+
+	function summaryStrip(o) {
+		const s = L.state;
+		const mods = o.mods.list;
+		const count = (state) => mods.filter((m) => m.state === state).length;
+		const tile = (label, main, sub, bad) => el('div', { className: 'gm-tile' }, el('span', { className: 'gm-dim', textContent: label }), el('b', { className: bad ? 'gm-bad' : '', textContent: main }), el('span', { className: 'gm-dim', textContent: sub || '' }));
+		return el('div', { className: 'gm-tiles' },
+			tile('Settings.ini', !s.config.settingsIni ? 'Not set' : o.settings.exists ? o.settings.values.length + ' settings' : 'Missing', o.settings.modified ? 'changed ' + when(o.settings.modified) : '', s.config.settingsIni && !o.settings.exists),
+			tile('Presets', !s.config.presetsDir ? 'Not shared' : o.presets.exists ? o.presets.count + ' shared' : 'Missing', s.config.presetsDir ? 'same in every version' : 'each version keeps its own', s.config.presetsDir && !o.presets.exists),
+			tile('Mods', !s.config.modsDir ? 'None' : o.mods.exists ? mods.length + ' mods' : 'Missing', mods.length ? count('linked') + ' linked, ' + count('new') + ' new, ' + count('own') + ' version\'s own' : '', s.config.modsDir && !o.mods.exists),
+			tile('World', s.config.world || 'Stock', s.config.world ? 'over Data/Base.rte' : 'the game\'s own'),
 		);
-		body.append(version, launches, editing);
 	}
 
 	function launchButton(text, mode, title) {
@@ -606,19 +662,25 @@ window.MS = window.MS || {};
 	function pathField(label, key, kind, note) {
 		const s = L.state;
 		const input = el('input', { type: 'text', value: s.config[key] || '', className: 'gm-input gm-wide', placeholder: 'Not set' });
-		input.onchange = () => saveConfig({ [key]: input.value.trim() });
+		// Each change re-reads the overview, so the Settings.ini and mods lists follow the new paths.
+		input.onchange = async () => {
+			await saveConfig({ [key]: input.value.trim() });
+			render();
+		};
 		const browse = button('Browse…', async () => {
 			const answer = await guarded(() => call('pick', undefined, { kind, title: label }));
 			if (answer && answer.path) {
 				input.value = answer.path;
 				await saveConfig({ [key]: answer.path });
+				render();
 			}
 		});
 		const clear = button('Clear', async () => {
 			input.value = '';
 			await saveConfig({ [key]: '' });
+			render();
 		});
-		return el('div', { className: 'gm-field' }, el('label', { textContent: label }), row(input, browse, clear), note ? el('div', { className: 'gm-dim', textContent: note }) : null);
+		return el('div', { className: 'gm-field gm-field-row' }, el('label', { textContent: label }), el('div', {}, row(input, browse, clear), note ? el('div', { className: 'gm-dim', textContent: note }) : null));
 	}
 
 	function renderSettings(body) {
@@ -628,14 +690,85 @@ window.MS = window.MS || {};
 			world.append(el('option', { value: w, textContent: w, selected: w === s.config.world }));
 		}
 		world.onchange = () => saveConfig({ world: world.value });
+		const worldNote = el('div', { className: 'gm-dim', textContent: s.worlds.length ? 'Copied over the version\'s Data/Base.rte; Stock puts the game\'s own back.' : 'No worlds found. Put planet skin folders in CortexLauncher/Worlds (shared with the Windows launcher) or CortexStudio/Worlds.' });
+		const settingsCard = card('Your Settings.ini', el('p', { className: 'gm-dim', textContent: 'Reading…' }));
+		const modsCard = card('Your mods', el('p', { className: 'gm-dim', textContent: 'Reading…' }));
 		body.append(
-			card(
-				'Used every time you launch',
-				pathField('Your Settings.ini', 'settingsIni', 'file', 'Copied into the version before each launch, so every version plays with your settings.'),
-				pathField('Shared presets folder', 'presetsDir', 'folder', 'Linked as the version\'s Userdata/Presets, so loadouts and presets are the same in every version.'),
-				pathField('Your mods folder', 'modsDir', 'folder', 'Each .rte in it is linked into the version\'s Mods before launching (changed files only).'),
-				el('div', { className: 'gm-field' }, el('label', { textContent: 'World (planet skin)' }), world, el('div', { className: 'gm-dim', textContent: s.worlds.length ? 'Copied over the version\'s Data/Base.rte; Stock puts the game\'s own back.' : 'No worlds found. Put planet skin folders in CortexLauncher/Worlds (shared with the Windows launcher) or CortexStudio/Worlds.' })),
+			el('div', { className: 'gm-grid' },
+				card(
+					'Used every time you launch',
+					pathField('Settings.ini', 'settingsIni', 'file', 'Copied into the version before each launch, so every version plays with your settings.'),
+					pathField('Presets folder', 'presetsDir', 'folder', 'Linked as the version\'s Userdata/Presets, so loadouts and presets are the same in every version.'),
+					pathField('Mods folder', 'modsDir', 'folder', 'Each .rte in it is linked into the version\'s Mods before launching (changed files only).'),
+					el('div', { className: 'gm-field gm-field-row' }, el('label', { textContent: 'World' }), el('div', {}, world, worldNote)),
+				),
+				settingsCard,
 			),
+			modsCard,
+		);
+		withOverview((o) => {
+			drawSettingsIni(settingsCard, o);
+			drawMods(modsCard, o);
+			worldNote.textContent += ' Worlds live in ' + o.worldsDir + '.';
+		});
+	}
+
+	// A filter box over a table, for the long lists.
+	function filtered(rows, placeholder, draw) {
+		const box = el('input', { type: 'search', className: 'gm-input gm-filter', placeholder });
+		const holder = el('div', { className: 'gm-table-wrap' });
+		const redraw = () => {
+			const q = box.value.trim().toLowerCase();
+			holder.replaceChildren(draw(q ? rows.filter((r) => JSON.stringify(r).toLowerCase().includes(q)) : rows));
+		};
+		box.oninput = redraw;
+		redraw();
+		return [box, holder];
+	}
+
+	function drawSettingsIni(target, o) {
+		const s = L.state;
+		if (!s.config.settingsIni || !o.settings.exists) {
+			target.replaceChildren(el('h3', { textContent: 'Your Settings.ini' }), el('p', { className: 'gm-dim', textContent: s.config.settingsIni ? 'That file doesn\'t exist.' : 'Not set: each version keeps its own Settings.ini.' }));
+			return;
+		}
+		const [box, table] = filtered(o.settings.values, 'Filter ' + o.settings.values.length + ' settings…', (rows) =>
+			el('table', { className: 'gm-table' }, rows.map(([k, v]) => el('tr', {}, el('td', { textContent: k }), el('td', { textContent: v }))))
+		);
+		target.replaceChildren(
+			el('h3', { textContent: 'Your Settings.ini' }),
+			el('div', { className: 'gm-row gm-tight' }, box, el('span', { className: 'gm-dim', textContent: 'Changed ' + when(o.settings.modified) })),
+			table,
+			el('p', { className: 'gm-dim', textContent: 'Read only here: change settings in the game, or edit the file. The game writes its changes back to this file.' }),
+		);
+	}
+
+	function drawMods(target, o) {
+		const s = L.state;
+		const list = o.mods.list;
+		if (!s.config.modsDir || !o.mods.exists) {
+			target.replaceChildren(el('h3', { textContent: 'Your mods' }), el('p', { className: 'gm-dim', textContent: s.config.modsDir ? 'The mods folder doesn\'t exist.' : 'No mods folder set: the version only has the mods in its own Mods folder.' }));
+			return;
+		}
+		const states = {
+			linked: ['Linked', 'gm-good', 'In the built version; changed files are linked again on each launch'],
+			new: ['On next launch', '', 'Not in the built version yet: linked when you next launch'],
+			own: ['Version\'s own', 'gm-bad', 'The built version has its own copy, so yours is skipped'],
+		};
+		const total = list.reduce((n, m) => n + m.bytes, 0);
+		const [box, table] = filtered(list, 'Filter ' + list.length + ' mods…', (rows) =>
+			el('table', { className: 'gm-table' },
+				el('tr', {}, ['Mod', 'Files', 'Size', 'Last changed', 'In the built version'].map((h) => el('th', { textContent: h }))),
+				rows.map((m) => {
+					const [label, cls, tip] = states[m.state] || [m.state, '', ''];
+					return el('tr', {}, el('td', { textContent: m.name }), el('td', { className: 'gm-num', textContent: m.files }), el('td', { className: 'gm-num', textContent: size(m.bytes) }), el('td', { textContent: m.modified ? when(m.modified) : '' }), el('td', { className: cls, textContent: label, title: tip }));
+				}),
+			)
+		);
+		target.replaceChildren(
+			el('h3', { textContent: 'Your mods (' + list.length + ', ' + size(total) + ')' }),
+			el('div', { className: 'gm-row gm-tight' }, box, el('code', { textContent: s.config.modsDir })),
+			table,
 		);
 	}
 
