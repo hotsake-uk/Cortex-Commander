@@ -57,7 +57,9 @@ In Script mode:
 
 - **Each item's files**: in the Units, Craft, Attachments and Items list, the ▸ beside an item shows the files it uses, one item
   at a time: the INI lines that make it (and what it copies), the scripts it runs, its pictures and sounds, its parts, and the
-  scripts that name it. Click one to open it (an INI at the right line, a picture in a tab, a sound plays).
+  scripts that name it, and **Related**: units (or items) that copy it or copy the same thing, run the same scripts, use the
+  same parts or pictures, rarest in common first. Click one to open it (an INI at the right line, a picture in a tab, a sound
+  plays, a related unit in the designer). Pictures zoom with the wheel, + − 0 1 or the buttons above them, and drag to move.
 - **Lua scripts** open in a code editor that knows the game's API: type `self.` or `self:` for what the object has, any
   manager (`MovableMan:`), `function ` for the functions the game calls (Create, Update, OnCollideWithMO…), and
   `CreateAHuman("` for preset names. Hover for help, Ctrl+click or F12 to go to a definition (a function in another script,

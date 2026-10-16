@@ -365,6 +365,82 @@ window.MS = window.MS || {};
 			return out;
 		}
 
+		// The preset a line belongs to: the top-level preset whose block it is in.
+		ownerPreset(node) {
+			if (!this.ensure()) {
+				return null;
+			}
+			for (let n = node; n; n = n.parent) {
+				const p = this.presetOfNode.get(n);
+				if (p && p.topLevel !== false) {
+					return p;
+				}
+			}
+			return null;
+		}
+
+		// Presets like this one: what copies it or copies the same thing, and what runs the same scripts, uses the same parts or the
+		// same pictures. Most in common first: [{preset, why: [reasons]}]. files is files(preset).
+		related(preset, files, limit) {
+			if (!this.ensure()) {
+				return [];
+			}
+			const found = new Map(); // preset -> Set of reasons
+			// Like for like: units with units, items with items (an arm that copies this unit's arm isn't a related unit).
+			const KINDS = [['AHuman', 'ACrab', 'Actor'], ['ACDropShip', 'ACRocket', 'ACraft'], ['HDFirearm', 'HeldDevice', 'TDExplosive', 'ThrownDevice']];
+			const kindOf = (cls) => KINDS.findIndex((k) => k.includes(cls));
+			const sameKind = (p) => (kindOf(preset.cls) >= 0 ? kindOf(p.cls) === kindOf(preset.cls) : p.cls === preset.cls);
+			const note = (p, why) => {
+				if (!p || p === preset || p.node === preset.node || !sameKind(p)) {
+					return;
+				}
+				if (!found.has(p)) {
+					found.set(p, new Set());
+				}
+				found.get(p).add(why);
+			};
+			for (const d of this.derived(preset)) {
+				note(d, 'copies it');
+			}
+			const base = this.base(preset);
+			if (base) {
+				note(base, 'it copies this');
+				for (const d of this.derived(base)) {
+					note(d, 'copies ' + base.name + ' too');
+				}
+			}
+			const users = (path) => this.fileUsers.get(path.replace(/\\/g, '/').toLowerCase()) || [];
+			for (const s of files.lua) {
+				for (const n of users(s.path)) {
+					note(this.ownerPreset(n), 'runs ' + s.path.split('/').pop());
+				}
+			}
+			for (const img of files.image) {
+				for (const n of users(img.path)) {
+					note(this.ownerPreset(n), 'same picture ' + img.path.split('/').pop());
+				}
+			}
+			for (const part of files.parts) {
+				for (const n of this.uses(part.preset)) {
+					note(this.ownerPreset(n), 'uses ' + part.preset.name);
+				}
+			}
+			// A thing few presets share says more than one nearly every unit has (HumanAI.lua): each reason counts 1 / how many share it,
+			// and copying (or being copied by) it counts most.
+			const shared = new Map();
+			for (const why of found.values()) {
+				for (const w of why) {
+					shared.set(w, (shared.get(w) || 0) + 1);
+				}
+			}
+			const score = (why) => why.reduce((sum, w) => sum + (/^copies it$|^it copies this$/.test(w) ? 2 : 1 / shared.get(w)), 0);
+			const mine = preset.module.toLowerCase();
+			return [...found.entries()]
+				.map(([p, why]) => ({ preset: p, why: [...why].sort((a, b) => shared.get(a) - shared.get(b)), score: score([...why]) }))
+				.sort((a, b) => b.score - a.score || (b.preset.module.toLowerCase() === mine) - (a.preset.module.toLowerCase() === mine) || a.preset.name.localeCompare(b.preset.name))
+				.slice(0, limit || 60);
+		}
+
 		// ---- the relationship graph ----
 
 		// The presets and scripts around a preset, and how they connect: {nodes, edges, truncated, moreCopies}.

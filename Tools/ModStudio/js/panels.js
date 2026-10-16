@@ -429,6 +429,7 @@ window.MS = window.MS || {};
 		['image', 'Pictures'],
 		['sound', 'Sounds'],
 		['parts', 'Parts'],
+		['related', 'Related'],
 		['named', 'Scripts that name it'],
 	];
 
@@ -440,6 +441,7 @@ window.MS = window.MS || {};
 			box.innerHTML = '<div class="lf-empty">Studio is still reading the game.</div>';
 			return box;
 		}
+		files.related = MS.nav.related(preset, files);
 		for (const [kind, title] of FILE_GROUPS) {
 			const items = files[kind];
 			if (!items.length) {
@@ -480,7 +482,23 @@ window.MS = window.MS || {};
 		name.className = 'lf-name';
 		const note = document.createElement('span');
 		note.className = 'lf-note';
-		if (kind === 'parts') {
+		if (kind === 'related') {
+			const p = item.preset;
+			const designable = Object.values(TAB_CLASSES).some((set) => set.has(p.cls));
+			icon.className = 'x-ext part';
+			icon.textContent = '≈';
+			name.textContent = p.name;
+			note.textContent = item.why.join(', ');
+			row.title = p.cls + ' · ' + p.doc.path + ':' + p.node.line + '\n' + item.why.join('\n') + '\n' + (designable ? 'Click to open it in the designer' : 'Click to open its lines');
+			row.onclick = () => {
+				if (designable) {
+					app.openActor(p);
+					MS.ide.activate(MS.ide.tabs.find((t) => t.kind === 'designer') || MS.ide.active);
+				} else {
+					MS.ide.openFile(p.doc.path, p.node.line);
+				}
+			};
+		} else if (kind === 'parts') {
 			icon.className = 'x-ext part';
 			icon.textContent = '◆';
 			name.textContent = item.preset.name;
