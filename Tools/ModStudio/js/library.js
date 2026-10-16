@@ -404,6 +404,23 @@ window.MS = window.MS || {};
 			return name;
 		}
 
+		// Throws away a file's unsaved changes: back to what's on disk, or gone if it was never saved (and its mod with it, if that's now empty).
+		discard(doc) {
+			if (!doc.isNew && doc.savedText !== null) {
+				doc.reset(doc.savedText);
+				doc.dirty = false;
+				return;
+			}
+			this.docs.delete(doc.path.toLowerCase());
+			const module = this.moduleOf(doc.path);
+			if (module) {
+				module.docs = module.docs.filter((d) => d !== doc);
+				if (!module.docs.length) {
+					this.modules = this.modules.filter((m) => m !== module);
+				}
+			}
+		}
+
 		// ---- new files and mods ----
 
 		docFor(path) {
