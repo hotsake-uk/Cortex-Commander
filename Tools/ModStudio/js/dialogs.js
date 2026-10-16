@@ -285,7 +285,8 @@ window.MS = window.MS || {};
 
 	// ---- sprite import ----
 
-	function importSprite(part) {
+	// options.files: pictures to start with (dropped on the guide); options.onDone: called once the sprite is in the unit.
+	function importSprite(part, options) {
 		const a = app();
 		const reason = a.lockReason(part);
 		if (reason) {
@@ -429,9 +430,21 @@ window.MS = window.MS || {};
 						}
 					});
 					a.toast('Saved ' + paths.length + ' frame' + (paths.length > 1 ? 's' : '') + ' to ' + dir + '. Save to keep the unit change.', 'good');
+					if (options && options.onDone) {
+						options.onDone(part);
+					}
 				},
 			},
 		]);
+		if (options && options.files && options.files.length) {
+			// Pictures that came with the request fill the picker as if they had been chosen in it.
+			const transfer = new DataTransfer();
+			for (const f of options.files) {
+				transfer.items.add(f);
+			}
+			input.files = transfer.files;
+			input.onchange();
+		}
 	}
 
 	// ---- help ----
