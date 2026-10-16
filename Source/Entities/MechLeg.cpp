@@ -1,5 +1,6 @@
 #include "MechLeg.h"
 #include "PresetMan.h"
+#include "SceneMan.h"
 
 using namespace RTE;
 
