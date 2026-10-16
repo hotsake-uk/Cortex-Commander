@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cortex Mod Studio</title>
-<link rel="stylesheet" href="studio.css?v=39">
+<link rel="stylesheet" href="studio.css?v=43">
 </head>
 <body>
 <div id="app">
@@ -39,6 +39,7 @@
 	<nav id="activity">
 		<button data-view="files" title="Files of your mods and the game">▤</button>
 		<button data-view="presets" title="Units, attachments and items, to design">◆</button>
+		<button data-view="outline" title="The blocks and functions of the open file (Ctrl+Shift+O goes to one)">☰</button>
 		<button data-view="search" title="Search every INI file and script (Ctrl+Shift+F)">⌕</button>
 		<button data-view="package" title="Check and export a mod">⇪</button>
 	</nav>
@@ -51,6 +52,10 @@
 				<div class="chips" id="fileKinds"><button data-kind="" class="sel">All</button><button data-kind="lua">Lua</button><button data-kind="ini">INI</button><button data-kind="image">Images</button><button data-kind="sound">Sounds</button></div>
 			</div>
 			<div id="explorer" class="explorer"></div>
+		</section>
+		<section id="view-outline" class="side-view" hidden>
+			<div class="side-head">Outline <span class="spacer"></span><span id="outlineCount" class="side-count"></span></div>
+			<div id="outlineTree" class="outline"></div>
 		</section>
 		<section id="view-search" class="side-view" hidden>
 			<div class="side-head">Search</div>
@@ -139,6 +144,13 @@
 	<section id="codeWrap">
 		<div id="codeBanner" class="code-banner" hidden>One of the game's own files: read only. Copy what you need into a file in your mod.</div>
 		<div id="codeUsers" class="code-users" hidden></div>
+		<div id="codeTools" class="code-tools" hidden>
+			<span class="ct-label">Fold</span>
+			<button class="ico-btn" data-fold="1" title="Fold every preset down to its first line (Ctrl+K Ctrl+1)">Presets</button>
+			<button class="ico-btn" data-fold="2" title="Fold the blocks inside each preset (Ctrl+K Ctrl+2)">Blocks</button>
+			<button class="ico-btn" data-fold="except" title="Fold everything except the block the cursor is in">Only this</button>
+			<button class="ico-btn" data-fold="unfold" title="Open every fold (Ctrl+K Ctrl+J)">Open all</button>
+		</div>
 		<div id="codeHost"></div>
 		<div id="imageHost" hidden></div>
 	</section>
@@ -163,7 +175,7 @@
 	</section>
 
 	<aside id="right" class="panel">
-		<div class="panel-head">Parts <span class="hint">click to select · drag in the view</span></div>
+		<div class="panel-head"><span title="Click to select. Double-click to open its code. The eye hides a part in the view only; Alt+click shows just that part.">Parts</span><span class="tree-tools"><button class="ico-btn" id="btnShowParts" title="Show every part again" hidden></button><button class="ico-btn" id="btnFoldParts" title="Fold every part's children away, or open them all again">Fold all</button></span></div>
 		<div id="tree" class="tree"></div>
 		<div class="panel-head" id="inspHead">Properties</div>
 		<div id="inspector" class="inspector"></div>
@@ -200,21 +212,22 @@
 <div id="modal" class="modal" hidden><div class="modal-card" id="modalCard"></div></div>
 <div id="toasts"></div>
 
-<script src="vendor/luaparse/luaparse.js?v=39"></script>
-<script src="js/ini.js?v=39"></script>
-<script src="js/gamefs.js?v=39"></script>
-<script src="js/library.js?v=39"></script>
-<script src="js/images.js?v=39"></script>
-<script src="js/rig.js?v=39"></script>
-<script src="js/viewport.js?v=39"></script>
-<script src="js/panels.js?v=39"></script>
-<script src="js/dialogs.js?v=39"></script>
-<script src="js/lua-intel.js?v=39"></script>
-<script src="js/ini-intel.js?v=39"></script>
-<script src="js/ide.js?v=39"></script>
-<script src="js/live.js?v=39"></script>
-<script src="js/history.js?v=39"></script>
-<script src="js/app.js?v=39"></script>
-<script src="js/launcher.js?v=39"></script>
+<script src="vendor/luaparse/luaparse.js?v=43"></script>
+<script src="js/ini.js?v=43"></script>
+<script src="js/gamefs.js?v=43"></script>
+<script src="js/library.js?v=43"></script>
+<script src="js/images.js?v=43"></script>
+<script src="js/rig.js?v=43"></script>
+<script src="js/viewport.js?v=43"></script>
+<script src="js/panels.js?v=43"></script>
+<script src="js/dialogs.js?v=43"></script>
+<script src="js/lua-intel.js?v=43"></script>
+<script src="js/ini-intel.js?v=43"></script>
+<script src="js/navigation.js?v=43"></script>
+<script src="js/ide.js?v=43"></script>
+<script src="js/live.js?v=43"></script>
+<script src="js/history.js?v=43"></script>
+<script src="js/app.js?v=43"></script>
+<script src="js/launcher.js?v=43"></script>
 </body>
 </html>

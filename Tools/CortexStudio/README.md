@@ -83,15 +83,24 @@ Installers aren't code-signed yet, so Windows SmartScreen and macOS Gatekeeper w
 - **Build Cortex Studio.bat** builds the release app with the page built in, plus the `.msi` and setup `.exe` installers, and
   opens the folder they're in (`src-tauri\target\release\bundle`). The app on its own is `src-tauri\target\release\cortex-studio.exe`.
 
-### Linux and macOS
+### macOS and Linux
 
-Install Rust from [rustup.rs](https://rustup.rs) and Node.js. On Linux also:
+Install Rust from [rustup.rs](https://rustup.rs) and Node.js (Node is only needed for the installers).
 
-    sudo apt install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+- **macOS:** `xcode-select --install` (Xcode's command line tools). To build and play the game from Studio's Game screen you also
+  need Homebrew's tools: the Game screen's setup check lists what is missing and shows the `brew install` command for it.
+- **Linux:** `sudo apt install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev`
 
-macOS needs Xcode's command line tools (`xcode-select --install`). Then in this folder:
+Then run Studio from source, in this folder:
 
     ./dev.sh [game folder] [--bridge]      # run from source, like Run Cortex Studio.bat
     npx @tauri-apps/cli@2 build            # the release app and its installers, in src-tauri/target/release/bundle
+
+On macOS you can double-click **Run Cortex Studio.command** instead (the first build takes a few minutes; later ones take seconds).
+`dev.sh` checks that Rust, Xcode's tools (macOS) and a game folder with `Data/Base.rte` are there, and says what to install if not.
+The app finds Homebrew's tools (`meson`, `ninja`, `gcc-13`) even when it was opened from the Finder, which gives programs a bare PATH.
+
+The Cortex Studio workflow also starts the built app with no window on macOS and Linux (`smoke.sh`) and asks it for its page, so a
+change that stops it running there fails the build.
 
 Both .bat files call `dev.ps1` or the Tauri command line, so the same commands work from a terminal on Windows too.

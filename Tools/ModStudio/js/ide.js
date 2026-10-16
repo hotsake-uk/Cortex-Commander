@@ -48,6 +48,7 @@ window.MS = window.MS || {};
 		app = theApp;
 		ide.lua = new MS.LuaIntel(app);
 		ide.ini = new MS.IniIntel(app);
+		MS.nav = new MS.Nav(app);
 		pollBridge();
 		for (const b of document.querySelectorAll('#modeSwitch button')) {
 			b.onclick = () => ide.setMode(b.dataset.mode);
@@ -238,6 +239,8 @@ window.MS = window.MS || {};
 		return monacoLoading;
 	}
 
+	ide.loadMonaco = loadMonaco;
+
 	const KIND = () => {
 		const k = ide.monaco.languages.CompletionItemKind;
 		return { method: k.Method, function: k.Function, property: k.Property, field: k.Field, constant: k.Constant, class: k.Class, module: k.Module, variable: k.Variable, keyword: k.Keyword, snippet: k.Snippet, value: k.Value, file: k.File, folder: k.Folder };
@@ -359,6 +362,31 @@ window.MS = window.MS || {};
 			},
 		});
 
+		// The outline: Ctrl+Shift+O lists a file's blocks or functions, and sticky scroll names the block you are in by it.
+		for (const language of ['ccini', 'lua']) {
+			monaco.languages.registerDocumentSymbolProvider(language, {
+				displayName: language === 'lua' ? 'Lua functions' : 'INI blocks',
+				provideDocumentSymbols: (model) => MS.nav.symbols(pathOf(model), model),
+			});
+		}
+
+		// Find all references (Shift+F12): what copies a preset, which scripts name it, which blocks use a file, where a Lua name is used.
+		for (const language of ['ccini', 'lua']) {
+			monaco.languages.registerReferenceProvider(language, {
+				async provideReferences(model, position, context) {
+					const refs = MS.nav.referencesAt(pathOf(model), model, position, context.includeDeclaration, 300);
+					const out = [];
+					for (const r of refs) {
+						const target = await ide.ensureModel(r.path);
+						if (target) {
+							out.push({ uri: target.uri, range: new monaco.Range(r.line || 1, r.col || 1, r.line || 1, r.endCol || 200) });
+						}
+					}
+					return out;
+				},
+			});
+		}
+
 		// Script paths in INI and Lua files are links: Ctrl+click opens the script.
 		const scriptLinks = {
 			provideLinks(model) {
@@ -426,9 +454,23 @@ window.MS = window.MS || {};
 			suggestLineHeight: 22,
 			quickSuggestions: { other: true, comments: false, strings: true },
 			glyphMargin: true, // Live values' logpoints (live.js): click left of a line number to log that line.
+			folding: true,
+			foldingStrategy: 'indentation', // INI blocks nest by their tabs, as do Lua's
+			showFoldingControls: 'always',
+			foldingHighlight: true,
+			stickyScroll: { enabled: true, maxLineCount: 5 }, // the blocks the cursor is inside stay pinned at the top
 			model: null,
 		});
 		MS.live.attach(ide.editor);
+		MS.nav.attach(ide.editor);
+		// Fold buttons: levels follow the file's indentation (in an INI file level 1 is each preset, level 2 the blocks inside it).
+		const foldActions = { 1: 'editor.foldLevel1', 2: 'editor.foldLevel2', except: 'editor.foldAllExcept', unfold: 'editor.unfoldAll' };
+		for (const b of document.querySelectorAll('#codeTools [data-fold]')) {
+			b.onclick = () => {
+				ide.editor.focus();
+				ide.editor.trigger('codeTools', foldActions[b.dataset.fold], null);
+			};
+		}
 		// The description beside the suggestion list shows from the start (Ctrl+Space still toggles it), and the list is wider and taller.
 		try {
 			const suggest = ide.editor.getContribution('editor.contrib.suggestController');
@@ -576,6 +618,7 @@ window.MS = window.MS || {};
 		$('imageHost').hidden = tab.kind !== 'image';
 		$('codeHost').hidden = tab.kind !== 'code';
 		$('codeBanner').hidden = !(tab.kind === 'code' && tab.readOnly);
+		$('codeTools').hidden = tab.kind !== 'code';
 		renderUsers(tab);
 		if (tab.kind === 'code' && ide.editor) {
 			ide.editor.setModel(tab.model);
@@ -1417,13 +1460,16 @@ window.MS = window.MS || {};
 			b.classList.toggle('sel', b.dataset.view === view);
 		}
 		$('app').dataset.view = view;
-		for (const id of ['files', 'search', 'package']) {
+		for (const id of ['files', 'outline', 'search', 'package']) {
 			$('view-' + id).hidden = id !== view;
 		}
 		app.requestDraw();
 		app.writeLocal('ms.deepView', view);
 		if (view === 'search') {
 			setTimeout(() => $('searchInput').focus(), 0);
+		}
+		if (view === 'outline') {
+			MS.nav.renderOutline();
 		}
 		if (view === 'package') {
 			renderPackage();
@@ -1818,10 +1864,11 @@ window.MS = window.MS || {};
 		if (made && made.cls === 'AHuman') {
 			app.openActor(made);
 		}
+		await app.save(true, [doc, lib.docFor(modName + '/Index.ini')].filter(Boolean));
 		app.updateFileStatus();
 		refreshExplorer();
 		await ide.openFile(path, 1);
-		app.toast('Made ' + name + ' in ' + modName + '. Save to write it to disk; the game loads new presets when it starts.', 'good');
+		app.toast('Made and saved ' + name + ' in ' + modName + '. The game loads new presets when it starts.', 'good');
 		return true;
 	}
 

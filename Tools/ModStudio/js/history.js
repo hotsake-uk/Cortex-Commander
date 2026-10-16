@@ -139,7 +139,79 @@ window.MS = window.MS || {};
 
 	// ---- the History window ----
 
+	// ---- the diff: Monaco's diff editor, with the file's own colouring ----
+
+	let diffEditor = null;
+	let diffModels = [];
+
+	function disposeDiff() {
+		if (diffEditor) {
+			diffEditor.dispose();
+			diffEditor = null;
+		}
+		diffModels.forEach((m) => m.dispose());
+		diffModels = [];
+	}
+
+	// What restoring would change: the file as it is now on the left, the version on the right. Built after it is on the page.
+	function diffHost(now, version, disk) {
+		const sideBySide = app().readLocal('ms.histSideBySide') !== false;
+		const host = el('div', { className: 'hist-diff-host' });
+		const status = el('span', { className: 'hist-diff-note', textContent: 'Loading the editor…' });
+		const mode = el('button', { className: 'ico-btn', textContent: sideBySide ? 'Side by side' : 'Inline', title: 'Switch between two columns and one' });
+		const prev = el('button', { className: 'ico-btn', textContent: '↑ Previous change' });
+		const next = el('button', { className: 'ico-btn', textContent: '↓ Next change' });
+		const tools = el('div', { className: 'hist-diff-tools' }, el('span', { className: 'hist-diff-key', textContent: 'Now → restored', title: 'Left (red): the file as it is now. Right (green): the file if you restore this version.' }), el('span', { className: 'spacer' }), status, prev, next, mode);
+		const wrap = el('div', { className: 'hist-diff-wrap' }, tools, host);
+		const start = async () => {
+			try {
+				await MS.ide.loadMonaco();
+			} catch (e) {
+				status.textContent = 'Couldn\'t load the editor: ' + e.message;
+				return;
+			}
+			const monaco = MS.ide.monaco;
+			disposeDiff();
+			const language = /\.ini$/i.test(disk) ? 'ccini' : /\.lua$/i.test(disk) ? 'lua' : 'plaintext';
+			let inline = !sideBySide;
+			diffEditor = monaco.editor.createDiffEditor(host, {
+				theme: 'cortex',
+				automaticLayout: true,
+				readOnly: true,
+				originalEditable: false,
+				renderSideBySide: !inline,
+				renderOverviewRuler: true,
+				ignoreTrimWhitespace: false,
+				hideUnchangedRegions: { enabled: true, contextLineCount: 3, minimumLineCount: 5, revealLineCount: 20 },
+				fontSize: 12.5,
+				minimap: { enabled: false },
+				scrollBeyondLastLine: false,
+				stickyScroll: { enabled: false },
+			});
+			diffModels = [monaco.editor.createModel(now, language), monaco.editor.createModel(version, language)];
+			diffEditor.setModel({ original: diffModels[0], modified: diffModels[1] });
+			const count = () => {
+				const changes = diffEditor && diffEditor.getLineChanges ? diffEditor.getLineChanges() : null;
+				status.textContent = changes ? changes.length + ' change' + (changes.length === 1 ? '' : 's') : '';
+			};
+			diffEditor.onDidUpdateDiff(count);
+			const go = (direction) => diffEditor && diffEditor.goToDiff && diffEditor.goToDiff(direction);
+			prev.onclick = () => go('previous');
+			next.onclick = () => go('next');
+			mode.onclick = () => {
+				inline = !inline;
+				diffEditor.updateOptions({ renderSideBySide: !inline });
+				mode.textContent = inline ? 'Inline' : 'Side by side';
+				app().writeLocal('ms.histSideBySide', !inline);
+			};
+			count();
+		};
+		setTimeout(start, 0);
+		return wrap;
+	}
+
 	H.open = async function (focusPath) {
+		disposeDiff();
 		if (!H.available()) {
 			app().toast('History needs Studio\'s server: open Studio with Mod Studio.bat or the Cortex Studio app.', 'bad');
 			return;
@@ -152,7 +224,7 @@ window.MS = window.MS || {};
 			el('p', { className: 'hist-intro', textContent: 'Every version of every file Studio changed in a mod, starting with the mod as it was before Studio first changed it. Restore puts a version back as a new save, so a restore can be undone too.' }),
 			el('div', { className: 'hist-cols' }, el('div', { className: 'hist-left' }, filter, fileList), versionList, view),
 		);
-		MS.dialogs.open('History', body, [{ text: 'Close' }], true);
+		MS.dialogs.open('History', body, [{ text: 'Close', action: () => disposeDiff() }], true);
 		$('modalCard').classList.add('hist-card');
 
 		let files = [];
@@ -228,7 +300,7 @@ window.MS = window.MS || {};
 					el('span', { className: 'spacer' }),
 					restoreBtn,
 				),
-				same || text === null ? '' : diffView(current || '', text),
+				same || text === null ? '' : diffHost(current || '', text, disk),
 			);
 		}
 	};

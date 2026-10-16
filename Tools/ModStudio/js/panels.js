@@ -7,6 +7,48 @@ window.MS = window.MS || {};
 	let app = null;
 	let tab = 'units';
 	const ROLE_ICONS = { body: '▣', head: '●', jetpack: '⬒', fgarm: '╲', bgarm: '╲', fgleg: '┃', bgleg: '┃', foot: '▂', device: '⌐', magazine: '▮', attachable: '◆', flash: '✶', leg: '┃', turret: '◘', mounted: '⌐', engine: '▼', thruster: '▿', door: '◧' };
+	// Small line icons (drawn here so they look the same everywhere and need no font).
+	const ICON_PATHS = {
+		eye: '<path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/>',
+		'eye-off': '<path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8z" opacity=".45"/><path d="M2.5 13.5l11-11"/>',
+		down: '<path d="M4 6l4 4 4-4"/>',
+		right: '<path d="M6 4l4 4-4 4"/>',
+		code: '<path d="M5 4L1 8l4 4M11 4l4 4-4 4"/>',
+	};
+
+	function icon(name) {
+		const span = document.createElement('span');
+		span.className = 'ico-svg';
+		span.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' + ICON_PATHS[name] + '</svg>';
+		return span;
+	}
+
+	// Text that opens its place in the code editor when clicked.
+	function codeLink(text, path, line, title) {
+		const a = document.createElement('span');
+		a.className = 'code-link';
+		a.textContent = text;
+		a.title = title || 'Open ' + path + (line ? ' at line ' + line : '') + ' in the code editor';
+		a.onclick = (e) => {
+			e.stopPropagation();
+			MS.ide.openFile(path, line);
+		};
+		return a;
+	}
+
+	const FILE_LINK = /\.(lua|ini|png|bmp|jpe?g|wav|ogg|flac|mp3)$/i;
+
+	// Fills a "set here / from ..." note: the place it names is a link to those lines.
+	function fillSource(note, src) {
+		note.className = 'src ' + src.cls;
+		note.textContent = '';
+		if (src.node && src.node.doc) {
+			note.append(codeLink(src.text, src.node.doc.path, src.node.line));
+		} else {
+			note.textContent = src.text;
+		}
+	}
+
 	const TAB_CLASSES = {
 		units: new Set(['AHuman', 'ACrab']),
 		craft: new Set(['ACDropShip', 'ACRocket']),
@@ -356,20 +398,92 @@ window.MS = window.MS || {};
 
 	// ---- parts tree ----
 
+	function allParts() {
+		return app.rig ? app.rig.parts : [];
+	}
+
+	function descendsFrom(part, ancestor) {
+		for (let p = part; p; p = p.parent) {
+			if (p === ancestor) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// The eye: shows or hides a part (and what hangs from it) in the view only. Alt+click shows just this part, and its parents.
+	function toggleEye(part, solo) {
+		if (solo) {
+			const others = allParts().filter((p) => !descendsFrom(p, part) && !descendsFrom(part, p));
+			const alone = others.length && others.every((p) => app.hidden.has(p.id));
+			app.hidden.clear();
+			if (!alone) {
+				for (const p of others) {
+					app.hidden.add(p.id);
+				}
+			}
+		} else if (app.hidden.has(part.id)) {
+			app.hidden.delete(part.id);
+		} else {
+			app.hidden.add(part.id);
+		}
+		renderTree();
+		app.requestDraw();
+	}
+
+	function updateTreeTools() {
+		const n = app.hidden.size;
+		const show = $('btnShowParts');
+		if (show) {
+			show.hidden = !n;
+			show.textContent = 'Show all (' + n + ' hidden)';
+		}
+		const fold = $('btnFoldParts');
+		if (fold) {
+			fold.textContent = app.collapsed.size ? 'Unfold all' : 'Fold all';
+		}
+	}
+
 	function renderTree() {
 		const tree = $('tree');
 		tree.innerHTML = '';
+		updateTreeTools();
 		if (!app.rig) {
 			return;
 		}
+		// A part picked in the view opens up the parts above it.
+		for (let p = app.selected && app.selected.parent; p; p = p.parent) {
+			app.collapsed.delete(p.id);
+		}
 		const addRow = (part, depth) => {
+			const hiddenSelf = app.hidden.has(part.id);
+			const hiddenAbove = !hiddenSelf && app.isHidden(part);
 			const row = document.createElement('div');
-			row.className = 'tree-row' + (part === app.selected ? ' sel' : '');
-			row.style.paddingLeft = 6 + depth * 14 + 'px';
+			row.className = 'tree-row' + (part === app.selected ? ' sel' : '') + (hiddenSelf ? ' off' : hiddenAbove ? ' dim' : '');
 			row._part = part;
-			const icon = document.createElement('span');
-			icon.className = 'role';
-			icon.textContent = ROLE_ICONS[part.role] || '·';
+			for (let i = 0; i < depth; i++) {
+				const guide = document.createElement('span');
+				guide.className = 'indent';
+				row.append(guide);
+			}
+			const folded = app.collapsed.has(part.id);
+			const twisty = document.createElement('button');
+			twisty.className = 'twisty';
+			if (part.children.length) {
+				twisty.append(icon(folded ? 'right' : 'down'));
+				twisty.title = (folded ? 'Show the ' : 'Fold the ') + part.children.length + ' part' + (part.children.length > 1 ? 's' : '') + ' on ' + part.name;
+				twisty.onclick = (e) => {
+					e.stopPropagation();
+					folded ? app.collapsed.delete(part.id) : app.collapsed.add(part.id);
+					renderTree();
+				};
+			} else {
+				twisty.disabled = true;
+			}
+			row.append(twisty);
+			const roleIcon = document.createElement('span');
+			roleIcon.className = 'role';
+			roleIcon.textContent = ROLE_ICONS[part.role] || '·';
 			const label = document.createElement('span');
 			label.className = 'label';
 			const preset = part.ent.presetName || (part.ent.node.child('CopyOf') ? part.ent.node.child('CopyOf').value : '');
@@ -379,7 +493,13 @@ window.MS = window.MS || {};
 				small.textContent = preset;
 				label.append(small);
 			}
-			row.append(icon, label);
+			if (folded) {
+				const count = document.createElement('small');
+				count.className = 'folded-count';
+				count.textContent = ' +' + part.children.length;
+				label.append(count);
+			}
+			row.append(roleIcon, label);
 			if (app.lockReason(part)) {
 				const lock = document.createElement('span');
 				lock.className = 'role';
@@ -387,7 +507,30 @@ window.MS = window.MS || {};
 				lock.title = app.lockReason(part);
 				row.append(lock);
 			}
+			const code = document.createElement('button');
+			code.className = 'row-btn';
+			code.append(icon('code'));
+			code.title = 'Open ' + part.ent.node.doc.path + (part.ent.node.line ? ' at line ' + part.ent.node.line : '') + ' in the code editor';
+			code.onclick = (e) => {
+				e.stopPropagation();
+				MS.ide.openFile(part.ent.node.doc.path, part.ent.node.line);
+			};
+			const eye = document.createElement('button');
+			eye.className = 'row-btn eye' + (hiddenSelf || hiddenAbove ? ' off' : '');
+			eye.append(icon(hiddenSelf || hiddenAbove ? 'eye-off' : 'eye'));
+			eye.title = hiddenAbove ? 'Hidden because a part above it is hidden' : (hiddenSelf ? 'Show' : 'Hide') + ' ' + part.name + ' in the view (the unit itself is not changed). Alt+click: show only this part.';
+			eye.onclick = (e) => {
+				e.stopPropagation();
+				toggleEye(part, e.altKey);
+			};
+			row.append(code, eye);
 			row.onclick = () => app.select(part);
+			row.ondblclick = (e) => {
+				// Quick clicks on the eye, the fold arrow or the code button are not a double-click on the row.
+				if (!e.target.closest('button')) {
+					MS.ide.openFile(part.ent.node.doc.path, part.ent.node.line);
+				}
+			};
 			row.onmouseenter = () => {
 				app.view.hover = part;
 				app.requestDraw();
@@ -397,8 +540,10 @@ window.MS = window.MS || {};
 				app.requestDraw();
 			};
 			tree.append(row);
-			for (const child of part.children) {
-				addRow(child, depth + 1);
+			if (!folded) {
+				for (const child of part.children) {
+					addRow(child, depth + 1);
+				}
 			}
 		};
 		addRow(app.rig.body, 0);
@@ -409,6 +554,18 @@ window.MS = window.MS || {};
 		if (sel) {
 			sel.scrollIntoView({ block: 'nearest' });
 		}
+	}
+
+	function foldAll(fold) {
+		app.collapsed.clear();
+		if (fold) {
+			for (const p of allParts()) {
+				if (p.children.length && p !== app.rig.body) {
+					app.collapsed.add(p.id);
+				}
+			}
+		}
+		renderTree();
 	}
 
 	function hoverTree(part) {
@@ -452,11 +609,11 @@ window.MS = window.MS || {};
 			return { text: 'not set: the game uses its default', cls: '' };
 		}
 		if (node.isWithin(part.anchor)) {
-			return { text: 'set here · ' + node.doc.path.split('/').pop() + ':' + (node.line || 'new'), cls: 'own' };
+			return { text: 'set here · ' + node.doc.path.split('/').pop() + ':' + (node.line || 'new'), cls: 'own', node };
 		}
 		const top = node.topLevel;
 		const name = top.child('PresetName') ? top.child('PresetName').value : node.doc.path;
-		return { text: 'from ' + name + ' · ' + node.doc.module + (node.line ? ':' + node.line : ''), cls: '' };
+		return { text: 'from ' + name + ' · ' + node.doc.module + (node.line ? ':' + node.line : ''), cls: '', node };
 	}
 
 	// A scrubbable number: drag its letter sideways to change it.
@@ -556,8 +713,7 @@ window.MS = window.MS || {};
 		}
 		val.append(x.box, y.box);
 		const note = document.createElement('div');
-		note.className = 'src ' + src.cls;
-		note.textContent = src.text;
+		fillSource(note, src);
 		row.append(l, val, note);
 		rows.append(row);
 		fieldUpdaters.push(() => {
@@ -586,8 +742,7 @@ window.MS = window.MS || {};
 		val.append(n.box);
 		const note = document.createElement('div');
 		const src = describeSource(part, key);
-		note.className = 'src ' + src.cls;
-		note.textContent = src.text;
+		fillSource(note, src);
 		row.append(l, val, note);
 		rows.append(row);
 	}
@@ -608,23 +763,23 @@ window.MS = window.MS || {};
 		val.append(box);
 		const note = document.createElement('div');
 		const src = describeSource(part, key);
-		note.className = 'src ' + src.cls;
-		note.textContent = src.text;
+		fillSource(note, src);
 		row.append(l, val, note);
 		rows.append(row);
 	}
 
-	function textRow(rows, label, text, title) {
+	// link: {path, line} makes the text open that place in the code editor.
+	function textRow(rows, label, text, title, link) {
 		const row = document.createElement('div');
 		row.className = 'row';
 		const l = document.createElement('label');
 		l.textContent = label;
 		const val = document.createElement('div');
 		val.className = 'val';
-		const span = document.createElement('span');
-		span.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)';
+		const span = link ? codeLink(text, link.path, link.line, title) : document.createElement('span');
+		span.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (link ? '' : 'color:var(--text)');
 		span.textContent = text;
-		span.title = title || text;
+		span.title = title || (link ? span.title : text);
 		val.append(span);
 		row.append(l, val);
 		rows.append(row);
@@ -678,6 +833,66 @@ window.MS = window.MS || {};
 			note.textContent = 'Showing frame ' + forced + ' (view only). Click it again to go back to the game\'s choice.';
 			rows.append(note);
 		}
+	}
+
+	// The Used by section: every place that copies this preset, each a link to those lines.
+	function usedBySection(insp, preset) {
+		const uses = MS.nav.uses(preset);
+		const count = document.createElement('span');
+		count.className = 'side-count';
+		count.textContent = uses.length ? String(uses.length) : 'none';
+		const rows = section(insp, 'Used by', count);
+		if (!uses.length) {
+			const none = document.createElement('div');
+			none.className = 'src';
+			none.textContent = 'Nothing in the mods or the game copies ' + preset.name + '.';
+			rows.append(none);
+		}
+		const list = document.createElement('div');
+		rows.append(list);
+		const addUse = (label, detail, path, line) => {
+			const row = document.createElement('div');
+			row.className = 'row use-row';
+			const link = codeLink(label, path, line);
+			const small = document.createElement('small');
+			small.textContent = detail;
+			row.append(link, small);
+			list.append(row);
+		};
+		const shown = 12;
+		uses.slice(0, shown).forEach((node) => {
+			const d = MS.nav.describeUse(node);
+			addUse(d.label, d.detail, d.path, d.line);
+		});
+		if (uses.length > shown) {
+			const more = document.createElement('button');
+			more.className = 'small-btn';
+			more.textContent = 'Show all ' + uses.length;
+			more.onclick = () => {
+				uses.slice(shown).forEach((node) => {
+					const d = MS.nav.describeUse(node);
+					addUse(d.label, d.detail, d.path, d.line);
+				});
+				more.remove();
+			};
+			rows.append(more);
+		}
+		const scripts = document.createElement('button');
+		scripts.className = 'small-btn';
+		scripts.textContent = 'Scripts that name it';
+		scripts.title = 'Look through the Lua scripts for "' + preset.name + '" in quotes, like CreateActor("' + preset.name + '")';
+		scripts.onclick = () => {
+			const found = MS.nav.luaMentions(preset.name, 60);
+			scripts.remove();
+			if (!found.length) {
+				const none = document.createElement('div');
+				none.className = 'src';
+				none.textContent = 'No script names ' + preset.name + ' in quotes.';
+				rows.append(none);
+			}
+			found.forEach((f) => addUse(f.path.split('/').pop() + ':' + f.line, f.path.split('/')[0], f.path, f.line));
+		};
+		rows.append(scripts);
 	}
 
 	function renderInspector() {
@@ -744,7 +959,17 @@ window.MS = window.MS || {};
 		textRow(where, 'Class', ent.cls);
 		const presetName = ent.presetName || (ent.node.child('CopyOf') ? 'copy of ' + ent.node.child('CopyOf').value : '(written in place)');
 		textRow(where, 'Preset', presetName);
-		textRow(where, 'Written in', ent.node.doc.path + (ent.node.line ? ':' + ent.node.line : ''));
+		textRow(where, 'Written in', ent.node.doc.path + (ent.node.line ? ':' + ent.node.line : ''), null, { path: ent.node.doc.path, line: ent.node.line });
+		const copyOf = ent.node.child('CopyOf');
+		const base = copyOf ? app.lib.find(copyOf.value, ent.cls, ent.node.doc.module) : null;
+		if (base) {
+			textRow(where, 'Based on', base.name + ' · ' + base.module + (base.node.line ? ':' + base.node.line : ''), 'Open ' + base.name + ' in the code editor', { path: base.doc.path, line: base.node.line });
+		}
+		const ownPreset = MS.nav ? MS.nav.presetOf(ent.node) : null;
+		if (ownPreset) {
+			closedSections.add('Used by'); // starts folded; its count is in the heading
+			usedBySection(insp, ownPreset);
+		}
 		const missing = app.lib.missingCopyOf(ent.node);
 		if (missing) {
 			const n = document.createElement('div');
@@ -763,7 +988,8 @@ window.MS = window.MS || {};
 			return b;
 		})());
 		const s = part.sprite;
-		textRow(sprite, 'File', s.file || '(none)');
+		const spriteFirst = s.file ? MS.Images.framePaths(s.file, s.frameCount)[0] : null;
+		textRow(sprite, 'File', s.file || '(none)', null, spriteFirst ? { path: spriteFirst, line: 0 } : null);
 		if (s.file && app.images.missing.has(MS.Images.framePaths(s.file, s.frameCount)[0].toLowerCase())) {
 			const n = document.createElement('div');
 			n.className = 'notice bad';
@@ -962,7 +1188,9 @@ window.MS = window.MS || {};
 			row.dataset.key = e.key.toLowerCase();
 			const l = document.createElement('label');
 			l.textContent = e.key;
-			l.title = e.key;
+			l.className = 'code-link';
+			l.title = e.key + ': open ' + e.node.doc.path + (e.node.line ? ' at line ' + e.node.line : '') + ' in the code editor';
+			l.onclick = () => MS.ide.openFile(e.node.doc.path, e.node.line);
 			const val = document.createElement('div');
 			val.className = 'val';
 			const own = e.node.isWithin(part.anchor);
@@ -984,11 +1212,11 @@ window.MS = window.MS || {};
 					}
 				};
 				val.append(input);
-				if (/\.lua$/i.test(node.value.trim())) {
+				if (FILE_LINK.test(node.value.trim())) {
 					const open = document.createElement('button');
 					open.className = 'small-btn';
 					open.textContent = 'Open';
-					open.title = 'Open this script in the Lua editor';
+					open.title = 'Open this file in the editor';
 					open.onclick = () => MS.ide.openFile(input.value.trim().replace(/\\/g, '/'));
 					val.append(open);
 				}
@@ -997,12 +1225,16 @@ window.MS = window.MS || {};
 				text.className = 'setting-ro';
 				text.textContent = node.child('FilePath') ? node.child('FilePath').value : node.child('CopyOf') ? node.value + ' (' + node.child('CopyOf').value + ')' : node.child('PresetName') ? node.value + ' (' + node.child('PresetName').value + ')' : node.value;
 				text.title = isList ? 'A list entry: change it in its own part or section.' : 'A whole object: change it in its own section, or in the file.';
-				if (/\.lua$/i.test(text.textContent.trim())) {
-					// A script: clicking it opens it in the Lua editor.
-					const script = text.textContent.trim().replace(/\\/g, '/');
-					text.classList.add('file-link');
-					text.title = 'Open ' + script + ' in the Lua editor';
-					text.onclick = () => MS.ide.openFile(script);
+				text.classList.add('file-link');
+				if (FILE_LINK.test(text.textContent.trim())) {
+					// A file: clicking it opens it.
+					const file = text.textContent.trim().replace(/\\/g, '/');
+					text.title = 'Open ' + file;
+					text.onclick = () => MS.ide.openFile(file);
+				} else if (node.doc) {
+					// An object or list entry: clicking it opens the lines it is written on.
+					text.title += ' Click to open it in the code editor.';
+					text.onclick = () => MS.ide.openFile(node.doc.path, node.line);
 				}
 				val.append(text);
 			}
@@ -1017,8 +1249,7 @@ window.MS = window.MS || {};
 			}
 			const note = document.createElement('div');
 			const src = describeSource(part, e.key);
-			note.className = 'src ' + (own ? 'own' : '');
-			note.textContent = own ? src.text : 'from ' + (node.topLevel.child('PresetName') ? node.topLevel.child('PresetName').value : node.doc.path) + ' · ' + node.doc.module + (node.line ? ':' + node.line : '');
+			fillSource(note, own ? src : { cls: '', node, text: 'from ' + (node.topLevel.child('PresetName') ? node.topLevel.child('PresetName').value : node.doc.path) + ' · ' + node.doc.module + (node.line ? ':' + node.line : '') });
 			row.append(l, val, note);
 			list.append(row);
 		});
@@ -1158,6 +1389,14 @@ window.MS = window.MS || {};
 
 	function init(theApp) {
 		app = theApp;
+		$('btnShowParts').onclick = () => {
+			app.hidden.clear();
+			renderTree();
+			app.requestDraw();
+		};
+		$('btnFoldParts').onclick = () => {
+			foldAll(!app.collapsed.size);
+		};
 		for (const b of document.querySelectorAll('#libTabs button')) {
 			b.onclick = () => {
 				tab = b.dataset.tab;
