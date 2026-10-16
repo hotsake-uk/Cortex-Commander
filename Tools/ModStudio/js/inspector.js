@@ -111,15 +111,14 @@ window.MS = window.MS || {};
 					I.modified = modified;
 					I.world = parse(await response.text());
 					noteChanges(I.world);
-					if (!typing()) {
-						render();
-					}
+					render();
 				}
 			}
 		} catch (e) {
 			// no game yet
 		}
-		if ((!I.modified || Date.now() - I.modified > 3000) && !typing()) {
+		// The panel only changes by itself when the game goes live or quiet.
+		if (isLive() !== I.shownLive) {
 			render();
 		}
 		I.timer = setTimeout(poll, 300);
@@ -172,12 +171,6 @@ window.MS = window.MS || {};
 
 	const teamName = (t) => (t >= 0 ? 'team ' + (t + 1) : 'no team');
 
-	// A number or team being changed in the panel: the next refresh waits, so it isn't thrown away.
-	function typing() {
-		const a = document.activeElement;
-		return !!a && $('inspectorBody').contains(a) && (a.tagName === 'INPUT' || a.tagName === 'SELECT') && !a.classList.contains('insp-filter');
-	}
-
 	function select(id) {
 		// Picking someone else stops following you; picking yourself starts it again.
 		const controlled = I.world ? I.world.controlled : 0;
@@ -199,68 +192,266 @@ window.MS = window.MS || {};
 
 	const fixed = (n, d) => (Number.isFinite(n) ? n.toFixed(d === undefined ? 0 : d) : '–');
 
+	// ---- drawing ----
+	//
+	// The panel is built once and then updated in place: rows, values and inputs are kept and only their text changes. It used to be rebuilt
+	// from nothing on every update (several a second), which made it flicker, threw away the scroll position, lost a click that landed
+	// while it happened, closed an open Team menu, and showed "left the game" for a moment after picking someone while the game caught up.
+
+	const V = { root: null, head: null, state: null, hint: null, follow: null, pause: null, step: null, filter: null, cols: null, list: null, rows: new Map(), feed: null, feedKey: '', note: null, detail: null, d: null, detailId: 0 };
+	I.shownLive = null;
+	const isLive = () => !!(I.modified && Date.now() - I.modified < 3000);
+	const setText = (node, text) => {
+		if (node.textContent !== text) {
+			node.textContent = text;
+		}
+	};
+
+	function build(body) {
+		V.root = body;
+		V.rows.clear();
+		V.feedKey = '';
+		V.detailId = 0;
+		V.d = null;
+		V.state = el('span', { className: 'prof-state off' });
+		V.hint = el('span', { className: 'prof-hint', textContent: 'Start one with ▶ Play ▾ › Test in game or Sandbox, then pick an actor here; it\'s ringed in the game.' });
+		V.follow = el('button', { className: 'ico-btn', textContent: '★ Follow me', title: 'Keep the unit you control selected, even when you switch to another', onclick: () => {
+			setFollow(!I.follow);
+			if (I.follow && I.world && I.world.controlled) {
+				select(I.world.controlled);
+			}
+			render();
+		} });
+		V.pause = el('button', { className: 'ico-btn', title: 'Hold the game still to look (it keeps drawing)', onclick: () => {
+			I.paused = !I.paused;
+			sendRequest(true);
+			render();
+		} });
+		V.step = el('button', { className: 'ico-btn', textContent: 'Step ▸', title: 'One simulation update (1/60 s), while paused', onclick: () => {
+			I.steps++;
+			sendRequest(true);
+		} });
+		const auto = el('label', { className: 'insp-auto', title: 'Open the Inspector when Test in game or Sandbox starts from Studio' }, el('input', { type: 'checkbox', checked: stored(AUTO_KEY, true), onchange: (e) => store(AUTO_KEY, e.target.checked) }), 'Open on Test/Sandbox');
+		V.filter = el('input', { type: 'search', placeholder: 'Filter…', value: I.filter, className: 'ed-input insp-filter' });
+		V.filter.oninput = () => {
+			I.filter = V.filter.value;
+			render();
+		};
+		V.head = el('div', { className: 'prof-head' }, V.state, V.hint, el('span', { className: 'spacer' }), auto, V.follow, V.pause, V.step, V.filter);
+		V.list = el('div', { className: 'insp-list' });
+		V.feed = el('div', { className: 'insp-feed' });
+		V.note = el('p', { className: 'pempty' });
+		V.detail = el('div', { className: 'insp-detail' }, V.note);
+		V.cols = el('div', { className: 'insp-cols', hidden: true }, el('div', { className: 'insp-left' }, V.list, el('div', { className: 'prof-list-head', textContent: 'What happened' }), V.feed), V.detail);
+		body.replaceChildren(V.head, V.cols);
+	}
+
 	function render() {
 		const body = $('inspectorBody');
 		if (!body) {
 			return;
 		}
+		if (V.root !== body) {
+			build(body);
+		}
 		const w = I.world;
-		const live = I.modified && Date.now() - I.modified < 3000;
-		const pause = el('button', { className: 'ico-btn', textContent: I.paused ? '▶ Resume' : '❚❚ Pause', title: 'Hold the game still to look (it keeps drawing)', onclick: () => { I.paused = !I.paused; sendRequest(true); render(); } });
-		const step = el('button', { className: 'ico-btn', textContent: 'Step ▸', title: 'One simulation update (1/60 s), while paused', disabled: !I.paused && !(I.world && I.world.paused), onclick: () => { I.steps++; sendRequest(true); } });
-		const mine = el('button', { className: 'ico-btn' + (I.follow ? ' on' : ''), textContent: '★ Follow me', title: 'Keep the unit you control selected, even when you switch to another', onclick: () => {
-			setFollow(!I.follow);
-			if (I.follow && w && w.controlled) {
-				select(w.controlled);
-			}
-			render();
-		} });
-		const auto = el('label', { className: 'insp-auto', title: 'Open the Inspector when Test in game or Sandbox starts from Studio' }, el('input', { type: 'checkbox', checked: stored(AUTO_KEY, true), onchange: (e) => store(AUTO_KEY, e.target.checked) }), 'Open on Test/Sandbox');
-		const filter = el('input', { type: 'search', placeholder: 'Filter…', value: I.filter, className: 'ed-input insp-filter' });
-		filter.oninput = () => {
-			I.filter = filter.value;
-			render();
-			const again = $('inspectorBody').querySelector('.insp-filter');
-			again.focus();
-			again.setSelectionRange(again.value.length, again.value.length);
-		};
-		const head = el('div', { className: 'prof-head' },
-			el('span', { className: live ? 'prof-state on' : 'prof-state off', textContent: live ? (w && w.paused ? (w.pausedByStudio ? '❚❚ Paused' : '❚❚ Paused by the game (its menu or the sandbox tools)') : '● Live') + ' · ' + (w ? w.actors.length : 0) + ' actors' : '○ No game running from Studio' }),
-			live ? null : el('span', { className: 'prof-hint', textContent: 'Start one with ▶ Play ▾ › Test in game or Sandbox, then pick an actor here; it\'s ringed in the game.' }),
-			el('span', { className: 'spacer' }), auto, mine, pause, step, filter);
-		if (!w || !live) {
-			body.replaceChildren(head);
+		const live = isLive();
+		I.shownLive = live;
+		V.state.className = live ? 'prof-state on' : 'prof-state off';
+		setText(V.state, live ? (w && w.paused ? (w.pausedByStudio ? '❚❚ Paused' : '❚❚ Paused by the game (its menu or the sandbox tools)') : '● Live') + ' · ' + (w ? w.actors.length : 0) + ' actors' : '○ No game running from Studio');
+		V.hint.hidden = live;
+		V.follow.classList.toggle('on', !!I.follow);
+		setText(V.pause, I.paused ? '▶ Resume' : '❚❚ Pause');
+		V.step.disabled = !I.paused && !(w && w.paused);
+		const showing = !!w && live;
+		V.cols.hidden = !showing;
+		if (!showing) {
 			return;
 		}
-		const q = I.filter.trim().toLowerCase();
-		const actors = w.actors.filter((a) => !q || a.preset.toLowerCase().includes(q) || a.cls.toLowerCase().includes(q) || String(a.id) === q);
-		const fresh = (id) => I.arrived.has(id) && Date.now() - I.arrived.get(id) < 8000;
-		const list = el('div', { className: 'insp-list' }, ...actors.map((a) => {
-			const ratio = a.max > 0 ? Math.max(0, Math.min(1, a.health / a.max)) : 0;
-			return el('button', { className: 'insp-actor' + (a.id === I.selected ? ' sel' : '') + (fresh(a.id) ? ' new' : ''), onclick: () => select(a.id), title: a.cls + ' #' + a.id + ' at (' + fixed(a.x) + ', ' + fixed(a.y) + ')' },
-				el('span', { className: 'insp-team t' + a.team, textContent: a.team >= 0 ? 'T' + (a.team + 1) : '–' }),
-				el('span', { className: 'insp-name' }, a.preset, a.id === w.controlled ? el('em', { className: 'insp-you', textContent: 'you' }) : null, fresh(a.id) ? el('em', { className: 'insp-new', textContent: 'new' }) : null),
-				el('span', { className: 'insp-health' }, el('i', { style: 'width:' + ratio * 100 + '%' })),
-				el('small', { textContent: fixed(a.health) }));
-		}));
-		const detail = el('div', { className: 'insp-detail' });
-		if (I.selected && w.selected === I.selected) {
-			detail.append(...detailOf(w));
-		} else if (I.selected) {
-			detail.append(el('p', { className: 'pempty', textContent: 'That actor has left the game. Pick another.' }));
-		} else {
-			detail.append(el('p', { className: 'pempty', textContent: 'Pick an actor to see its values; it\'s ringed in the game.' }));
-		}
-		const feed = el('div', { className: 'insp-feed' }, ...I.events.slice(0, 40).map((e) => el('div', { className: 'insp-event ' + e.kind }, el('small', { textContent: e.time }), e.text)));
-		body.replaceChildren(head, el('div', { className: 'insp-cols' }, el('div', { className: 'insp-left' }, list, el('div', { className: 'prof-list-head', textContent: 'What happened' }), feed), detail));
+		updateList(w);
+		updateFeed();
+		updateDetail(w);
 	}
 
-	function detailOf(w) {
-		const a = w.actors.find((x) => x.id === I.selected) || {};
-		const rows = w.values.map(([k, v]) => el('tr', {}, el('td', { textContent: k }), el('td', { textContent: v })));
+	const freshActor = (id) => I.arrived.has(id) && Date.now() - I.arrived.get(id) < 8000;
+
+	function makeRow(id) {
+		const team = el('span', { className: 'insp-team' });
+		const nameText = document.createTextNode('');
+		const you = el('em', { className: 'insp-you', textContent: 'you', hidden: true });
+		const isNew = el('em', { className: 'insp-new', textContent: 'new', hidden: true });
+		const bar = el('i');
+		const hp = el('small');
+		const row = el('button', { className: 'insp-actor', onclick: () => select(id) }, team, el('span', { className: 'insp-name' }, nameText, you, isNew), el('span', { className: 'insp-health' }, bar), hp);
+		row._r = { team, nameText, you, isNew, bar, hp };
+		return row;
+	}
+
+	function fillRow(row, a, w) {
+		const r = row._r;
+		const ratio = a.max > 0 ? Math.max(0, Math.min(1, a.health / a.max)) : 0;
+		const fresh = freshActor(a.id);
+		const className = 'insp-actor' + (a.id === I.selected ? ' sel' : '') + (fresh ? ' new' : '');
+		if (row.className !== className) {
+			row.className = className;
+		}
+		const title = a.cls + ' #' + a.id + ' at (' + fixed(a.x) + ', ' + fixed(a.y) + ')';
+		if (row.title !== title) {
+			row.title = title;
+		}
+		const teamClass = 'insp-team t' + a.team;
+		if (r.team.className !== teamClass) {
+			r.team.className = teamClass;
+		}
+		setText(r.team, a.team >= 0 ? 'T' + (a.team + 1) : '–');
+		if (r.nameText.data !== a.preset) {
+			r.nameText.data = a.preset;
+		}
+		r.you.hidden = a.id !== w.controlled;
+		r.isNew.hidden = !fresh;
+		const width = ratio * 100 + '%';
+		if (r.bar.style.width !== width) {
+			r.bar.style.width = width;
+		}
+		setText(r.hp, fixed(a.health));
+	}
+
+	// The actor rows, matched by id: the ones already there are updated, new ones added, and the order kept.
+	function updateList(w) {
+		const q = I.filter.trim().toLowerCase();
+		const actors = w.actors.filter((a) => !q || a.preset.toLowerCase().includes(q) || a.cls.toLowerCase().includes(q) || String(a.id) === q);
+		const keep = new Set();
+		let previous = null;
+		for (const a of actors) {
+			let row = V.rows.get(a.id);
+			if (!row) {
+				row = makeRow(a.id);
+				V.rows.set(a.id, row);
+			}
+			keep.add(a.id);
+			fillRow(row, a, w);
+			const expected = previous ? previous.nextSibling : V.list.firstChild;
+			if (row !== expected) {
+				V.list.insertBefore(row, expected);
+			}
+			previous = row;
+		}
+		for (const [id, row] of V.rows) {
+			if (!keep.has(id)) {
+				row.remove();
+				V.rows.delete(id);
+			}
+		}
+	}
+
+	function updateFeed() {
+		const first = I.events[0];
+		const key = I.events.length + '|' + (first ? first.time + first.text : '');
+		if (key === V.feedKey) {
+			return;
+		}
+		V.feedKey = key;
+		const top = V.feed.scrollTop;
+		V.feed.replaceChildren(...I.events.slice(0, 40).map((e) => el('div', { className: 'insp-event ' + e.kind }, el('small', { textContent: e.time }), e.text)));
+		V.feed.scrollTop = top;
+	}
+
+	function showNote(text) {
+		V.detail.classList.remove('stale');
+		setText(V.note, text);
+		V.note.hidden = false;
+		if (V.d) {
+			V.d.box.hidden = true;
+		}
+	}
+
+	function updateDetail(w) {
+		const a = w.actors.find((x) => x.id === I.selected);
+		if (!I.selected) {
+			showNote('Pick an actor to see its values; it\'s ringed in the game.');
+			return;
+		}
+		if (!a) {
+			showNote('That actor has left the game. Pick another.');
+			return;
+		}
+		V.note.hidden = true;
+		if (V.detailId !== I.selected) {
+			buildDetail(a);
+		}
+		V.d.box.hidden = false;
+		const current = w.selected === I.selected;
+		// Right after picking someone, the game still says it is looking at the one before: keep what is shown, dimmed, until it catches up.
+		V.detail.classList.toggle('stale', !current);
+		setText(V.d.name, a.preset || '#' + I.selected);
+		setText(V.d.cls, ' ' + (a.cls || '') + ' #' + I.selected);
+		V.d.health.placeholder = fixed(a.health);
+		if (document.activeElement !== V.d.team) {
+			V.d.team.value = String(a.team);
+		}
+		if (current) {
+			fillValues(w);
+			fillSide(w);
+		}
+	}
+
+	// The values, matched by name: a value's cell is updated, not its row replaced.
+	function fillValues(w) {
+		const d = V.d;
+		const keep = new Set();
+		let previous = null;
+		w.values.forEach(([k, v], i) => {
+			const key = k + '#' + i;
+			let entry = d.values.get(key);
+			if (!entry) {
+				const value = el('td');
+				entry = { tr: el('tr', {}, el('td', { textContent: k }), value), value };
+				d.values.set(key, entry);
+			}
+			keep.add(key);
+			setText(entry.value, v);
+			const expected = previous ? previous.nextSibling : d.table.firstChild;
+			if (entry.tr !== expected) {
+				d.table.insertBefore(entry.tr, expected);
+			}
+			previous = entry.tr;
+		});
+		for (const [key, entry] of d.values) {
+			if (!keep.has(key)) {
+				entry.tr.remove();
+				d.values.delete(key);
+			}
+		}
+	}
+
+	// Scripts, inventory and parts change rarely: they are redrawn only when they do.
+	function fillSide(w) {
+		const d = V.d;
+		const key = JSON.stringify([w.scripts, w.inventory, w.parts]);
+		if (key === d.sideKey) {
+			return;
+		}
+		d.sideKey = key;
+		const parts = w.parts.length
+			? el('table', { className: 'watch-table insp-parts' }, el('tr', {}, el('th', { textContent: 'Part' }), el('th', { textContent: 'Class' }), el('th', { textContent: 'Wounds' })),
+				...w.parts.map((p) => el('tr', { className: p.limit > 0 && p.wounds >= p.limit * 0.75 ? 'insp-hurt' : '' }, el('td', { textContent: p.preset }), el('td', { textContent: p.cls }), el('td', { textContent: p.wounds + (p.limit > 0 ? ' of ' + p.limit : '') }))))
+			: null;
+		d.side.replaceChildren(
+			w.scripts.length ? el('div', { className: 'prof-list-head', textContent: 'Scripts it runs' }) : null,
+			...w.scripts.map((path) => el('button', { className: 'insp-script', textContent: path.split('/').pop(), title: path + ' (click to open)', onclick: () => MS.ide.openFile(path) })),
+			w.inventory.length ? el('div', { className: 'prof-list-head', textContent: 'Inventory' }) : null, ...w.inventory.map((i) => el('div', { className: 'insp-inv', textContent: i })),
+			parts ? el('div', { className: 'prof-list-head', textContent: 'Parts' }) : null, parts);
+	}
+
+	// The detail for one actor: its title, the buttons and inputs (kept while you use them), and the places the values go.
+	function buildDetail(a) {
+		V.detailId = I.selected;
+		if (V.d) {
+			V.d.box.remove();
+		}
 		const preset = app().lib && app().lib.presets.find((p) => p.topLevel && p.name === a.preset && p.cls === a.cls);
-		const health = el('input', { type: 'number', className: 'ed-input num', placeholder: fixed(a.health), title: 'New health' });
-		const team = el('select', { className: 'ed-input', title: 'Team' }, ...[-1, 0, 1, 2, 3].map((t) => el('option', { value: t, textContent: t < 0 ? 'No team' : 'Team ' + (t + 1), selected: t === a.team })));
+		const health = el('input', { type: 'number', className: 'ed-input num', title: 'New health' });
+		const team = el('select', { className: 'ed-input', title: 'Team' }, ...[-1, 0, 1, 2, 3].map((t) => el('option', { value: t, textContent: t < 0 ? 'No team' : 'Team ' + (t + 1) })));
 		const actions = el('div', { className: 'insp-actions' },
 			el('label', {}, 'Health ', health, el('button', { className: 'ico-btn', textContent: 'Set', onclick: () => health.value !== '' && onActor('a.Health = ' + Number(health.value), 'Set health to ' + health.value) })),
 			el('button', { className: 'ico-btn', textContent: 'Heal', onclick: () => onActor('a.Health = a.MaxHealth\n\ta:RemoveWounds(a:GetWoundCount())', 'Healed') }),
@@ -273,21 +464,13 @@ window.MS = window.MS || {};
 			el('button', { className: 'ico-btn', textContent: 'Remove', onclick: () => onActor('a.ToDelete = true', 'Removed') }),
 			preset ? el('button', { className: 'ico-btn', textContent: 'Open in the designer', onclick: () => { app().openActor(preset); MS.ide.activate(MS.ide.tabs.find((t) => t.kind === 'designer')); } }) : null,
 			preset ? el('button', { className: 'ico-btn', textContent: 'Its lines', onclick: () => MS.ide.openFile(preset.doc.path, preset.node.line) }) : null);
-		const parts = w.parts.length
-			? el('table', { className: 'watch-table insp-parts' }, el('tr', {}, el('th', { textContent: 'Part' }), el('th', { textContent: 'Class' }), el('th', { textContent: 'Wounds' })),
-				...w.parts.map((p) => el('tr', { className: p.limit > 0 && p.wounds >= p.limit * 0.75 ? 'insp-hurt' : '' }, el('td', { textContent: p.preset }), el('td', { textContent: p.cls }), el('td', { textContent: p.wounds + (p.limit > 0 ? ' of ' + p.limit : '') }))))
-			: null;
-		return [
-			el('div', { className: 'insp-title' }, el('b', { textContent: a.preset || '#' + I.selected }), el('small', { textContent: ' ' + (a.cls || '') + ' #' + I.selected })),
-			actions,
-			el('div', { className: 'insp-tables' },
-				el('table', { className: 'watch-table' }, ...rows),
-				el('div', {},
-					w.scripts.length ? el('div', { className: 'prof-list-head', textContent: 'Scripts it runs' }) : null,
-					...w.scripts.map((path) => el('button', { className: 'insp-script', textContent: path.split('/').pop(), title: path + ' (click to open)', onclick: () => MS.ide.openFile(path) })),
-					w.inventory.length ? el('div', { className: 'prof-list-head', textContent: 'Inventory' }) : null, ...w.inventory.map((i) => el('div', { className: 'insp-inv', textContent: i })),
-					parts ? el('div', { className: 'prof-list-head', textContent: 'Parts' }) : null, parts)),
-		];
+		const name = el('b');
+		const cls = el('small');
+		const table = el('table', { className: 'watch-table' });
+		const side = el('div');
+		const box = el('div', {}, el('div', { className: 'insp-title' }, name, cls), actions, el('div', { className: 'insp-tables' }, table, side));
+		V.detail.append(box);
+		V.d = { box, name, cls, health, team, table, side, values: new Map(), sideKey: null };
 	}
 
 	function setFollow(on) {
