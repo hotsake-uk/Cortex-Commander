@@ -148,6 +148,10 @@ window.MS = window.MS || {};
 			if (!ide.view) {
 				ide.showView(app.readLocal('ms.deepView') || 'files');
 			}
+			// The left menu goes with you: a unit expanded in the library (to open one of its files, say) stays open when Script mode comes up.
+			if (MS.panels.filesOpen && MS.panels.filesOpen() && ide.view !== 'presets') {
+				ide.showView('presets');
+			}
 			if (app.lib) {
 				startDeep();
 			}

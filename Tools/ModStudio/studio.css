@@ -407,7 +407,7 @@ pre.diff .del { color: var(--bad); }
 #activity { grid-area: act; display: flex; flex-direction: column; gap: 2px; padding: 6px 0; background: var(--bg); border-right: 1px solid var(--line); align-items: center; }
 #activity button { width: 36px; height: 36px; background: none; border: 0; border-radius: 8px; color: var(--faint); font-size: 17px; cursor: pointer; }
 #activity button:hover { color: var(--text); background: var(--panel2); }
-#activity button.sel { color: var(--accent); background: var(--panel2); box-shadow: inset 2px 0 0 var(--accent); }
+#activity button.sel { color: var(--accent); background: var(--panel2); }
 
 .side-view { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 .side-head { display: flex; align-items: center; gap: 4px; padding: 9px 10px 7px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--faint); border-bottom: 1px solid var(--line); }

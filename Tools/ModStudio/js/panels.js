@@ -1649,6 +1649,7 @@ window.MS = window.MS || {};
 		drawRigThumb,
 		queueThumb,
 		forgetThumbs: () => thumbRigs.clear(),
+		filesOpen: () => openFiles !== null,
 		TAB_CLASSES,
 	};
 })();
