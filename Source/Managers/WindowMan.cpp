@@ -12,6 +12,7 @@
 #include "SettingsMan.h"
 #include "FrameMan.h"
 #include "ActivityMan.h"
+#include "MenuMan.h"
 #include "UInputMan.h"
 #include "ConsoleMan.h"
 #include "PresetMan.h"
@@ -135,6 +136,9 @@ void WindowMan::Initialize() {
 
 	ValidateResolution(m_ResX, m_ResY, m_ResMultiplier);
 	m_PixelScale = std::max(1.0F, m_ResMultiplier);
+	m_MenuResX = m_ResX;
+	m_MenuResY = m_ResY;
+	m_MenuResMultiplier = m_ResMultiplier;
 
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
@@ -588,6 +592,9 @@ void WindowMan::SetViewportLetterboxed() {
 	}
 
 	m_ResMultiplier = width / static_cast<float>(m_ResX);
+	if (m_ResX == m_MenuResX && m_ResY == m_MenuResY) {
+		m_MenuResMultiplier = m_ResMultiplier;
+	}
 
 	int offsetX = reservedLeft + (freeW / 2) - (width / 2);
 	int offsetY = (windowH / 2) - (height / 2);
@@ -623,25 +630,31 @@ bool WindowMan::GetWindowMatchedResolution(int& resX, int& resY) const {
 }
 
 void WindowMan::UpdateWindowMatchedResolution() {
-	int resX, resY;
-	if (!GetWindowMatchedResolution(resX, resY) || (resX == m_ResX && resY == m_ResY)) {
-		m_PendingWindowResX = 0;
-		m_PendingWindowResY = 0;
+	if (m_MenuResX <= 0 || m_MenuResY <= 0) {
 		return;
 	}
 	unsigned long long now = SDL_GetTicks();
-	// Wait for the window to settle, so dragging its edge doesn't make everything again every frame.
-	if (resX != m_PendingWindowResX || resY != m_PendingWindowResY) {
-		m_PendingWindowResX = resX;
-		m_PendingWindowResY = resY;
+	int windowResX = 0;
+	int windowResY = 0;
+	bool windowCanBeMatched = GetWindowMatchedResolution(windowResX, windowResY);
+	// When the window last changed what it asks for, so dragging its edge doesn't make everything again every frame. Watched in the menus too, so going back to the game
+	// in an unchanged window fills it at once.
+	if (windowResX != m_PendingWindowResX || windowResY != m_PendingWindowResY) {
+		m_PendingWindowResX = windowResX;
+		m_PendingWindowResY = windowResY;
 		m_PendingWindowResTicks = now;
+	}
+	// Only the game itself follows the window. The menus are laid out for the resolution in the settings, so they go straight back to it.
+	bool inGameplay = g_ActivityMan.IsInActivity() && !g_MenuMan.GetIsInMenuScreen();
+	bool follow = inGameplay && windowCanBeMatched;
+	int resX = follow ? windowResX : m_MenuResX;
+	int resY = follow ? windowResY : m_MenuResY;
+	if (resX == m_ResX && resY == m_ResY) {
 		return;
 	}
-	if (now - m_PendingWindowResTicks < 250) {
+	if (follow && now - m_PendingWindowResTicks < 250) {
 		return;
 	}
-	m_PendingWindowResX = 0;
-	m_PendingWindowResY = 0;
 	ChangeResolutionInPlace(resX, resY);
 }
 
@@ -654,8 +667,6 @@ void WindowMan::ChangeResolutionInPlace(int newResX, int newResY) {
 	SetViewportLetterboxed();
 	CreateBackBufferTexture();
 	m_ResizedToWindow = true;
-	g_SettingsMan.UpdateSettingsFile();
-	g_ConsoleMan.PrintString("SYSTEM: Resolution set to " + std::to_string(m_ResX) + "x" + std::to_string(m_ResY) + " to fill the window.");
 }
 
 void WindowMan::SetIntegerScaling(bool integerScaling) {
@@ -787,6 +798,9 @@ void WindowMan::ChangeResolution(int newResX, int newResY, float newResMultiplie
 		m_ResY = newResY;
 		m_ResMultiplier = newResMultiplier;
 		m_PixelScale = std::max(1.0F, newResMultiplier);
+		m_MenuResX = newResX;
+		m_MenuResY = newResY;
+		m_MenuResMultiplier = newResMultiplier;
 		m_Fullscreen = fullscreen;
 		g_SettingsMan.UpdateSettingsFile();
 	}

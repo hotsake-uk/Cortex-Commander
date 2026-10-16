@@ -131,7 +131,16 @@ namespace RTE {
 		/// Sets whether the picture is scaled by a whole number only. Off: it fills as much of the window as its shape allows, as before.
 		void SetIntegerScaling(bool integerScaling);
 
-		/// Gets whether the game's resolution follows the window's size, so the view fills the window at any size and shape instead of being scaled with bars around it.
+		/// Gets the resolution set in the settings, which the menus use and which is saved. During play it may differ from GetResX when the game follows the window's size.
+		int GetSettingsResX() const { return m_MenuResX > 0 ? m_MenuResX : m_ResX; }
+
+		/// The same, height.
+		int GetSettingsResY() const { return m_MenuResY > 0 ? m_MenuResY : m_ResY; }
+
+		/// The multiplier at the settings' resolution, which is saved.
+		float GetSettingsResMultiplier() const { return m_MenuResX > 0 ? m_MenuResMultiplier : m_ResMultiplier; }
+
+		/// Gets whether, during play, the game's resolution follows the window's size, so the view fills the window at any size and shape instead of being scaled with bars around it. The menus keep the settings' resolution.
 		bool GetMatchWindowSize() const { return m_MatchWindowSize; }
 
 		/// Sets whether the game's resolution follows the window's size. Off: the resolution stays as set in the settings and the picture is scaled to the window, as before.
@@ -321,9 +330,12 @@ namespace RTE {
 		bool m_IntegerScaling = false; //!< The picture is scaled to the window by a whole number only (SetIntegerScaling).
 		bool m_MatchWindowSize = true; //!< The game's resolution follows the window's size (SetMatchWindowSize).
 		float m_PixelScale = 1.0F; //!< How many window pixels a game pixel takes when the resolution follows the window's size: the multiplier last chosen in the settings, at least 1.
-		int m_PendingWindowResX = 0; //!< The resolution the window's size asks for, waiting for the window to stop changing. 0 when none.
+		int m_PendingWindowResX = 0; //!< The resolution the window's size last asked for, 0 when it can't be followed.
 		int m_PendingWindowResY = 0; //!< The same, height.
 		unsigned long long m_PendingWindowResTicks = 0; //!< When the window's size last asked for a different resolution.
+		int m_MenuResX = 0; //!< The resolution set in the settings, which the menus use and which is saved. The game itself may follow the window's size instead.
+		int m_MenuResY = 0; //!< The same, height.
+		float m_MenuResMultiplier = 1.0F; //!< The multiplier at the settings' resolution, which is saved.
 		bool m_ResizedToWindow = false; //!< The resolution was just changed to follow the window's size (ResizedToWindow).
 		long long m_LastPresentTicks = 0; //!< When the last frame was presented, for the frame cap.
 		bool m_EnableVSync; //!< Whether vertical synchronization is enabled.
@@ -351,7 +363,7 @@ namespace RTE {
 		/// @return Whether the resolution should follow the window now: matching is on and the window is a plain, visible window.
 		bool GetWindowMatchedResolution(int& resX, int& resY) const;
 
-		/// Changes the resolution to follow the window's size once the window has stopped changing for a moment.
+		/// During play, changes the resolution to follow the window's size once the window has stopped changing for a moment. In the menus, puts the settings' resolution back.
 		void UpdateWindowMatchedResolution();
 
 		/// Changes the resolution in place, without touching the window or ending a running game: the buffers are made again at the new size. The menus are fitted after, see ResizedToWindow.
