@@ -75,7 +75,9 @@ In Script mode:
 - **Profiler** and **Inspector** (bottom panel, with a game started from Studio's Play menu): the Profiler shows frames a second,
   update and draw time, what's in the world, where a frame's time goes and the costliest scripts. The Inspector lists every actor
   in the game; pick one to see its live values, parts and inventory (it's ringed in the game), pause and step the game, and
-  change it: health, team, stop, lift, take control, kill, gib, remove, or open it in the designer.
+  change it: health, team, stop, lift, take control, kill, gib, remove, or open it in the designer. Starting Test in game or
+  Sandbox from Studio opens it by itself (untick Open on Test/Sandbox to stop that); ★ Follow me keeps the unit you control
+  selected as you switch bodies; units that arrive are marked new, and What happened lists arrivals, deaths and departures.
 - **Lua scripts** open in a code editor that knows the game's API: type `self.` or `self:` for what the object has, any
   manager (`MovableMan:`), `function ` for the functions the game calls (Create, Update, OnCollideWithMO…), and
   `CreateAHuman("` for preset names. Hover for help, Ctrl+click or F12 to go to a definition (a function in another script,

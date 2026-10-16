@@ -827,3 +827,18 @@ pre.diff .del { color: var(--bad); }
 .insp-tables { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
 .insp-inv { color: var(--text); padding: 1px 0; }
 .insp-hurt td { color: var(--warn); }
+
+.insp-left { display: flex; flex-direction: column; min-height: 0; gap: 4px; }
+.insp-auto { display: inline-flex; align-items: center; gap: 4px; color: var(--dim); font-size: 11.5px; }
+.ico-btn.on { color: var(--accent); border-color: var(--accent); }
+.insp-you, .insp-new { font-style: normal; font-size: 10px; margin-left: 6px; padding: 0 5px; border-radius: 99px; }
+.insp-you { background: var(--accent); color: var(--accent-ink); }
+.insp-new { background: #1d3a26; color: var(--good); }
+.insp-actor.new { background: rgba(79,195,122,.12); }
+.insp-feed { max-height: 140px; overflow: auto; font-size: 11.5px; }
+.insp-event { padding: 1px 0; color: var(--dim); }
+.insp-event small { color: var(--faint); margin-right: 6px; font-variant-numeric: tabular-nums; }
+.insp-event.in { color: var(--good); }
+.insp-event.died { color: var(--bad); }
+.insp-script { display: block; background: none; border: 0; padding: 1px 0; color: var(--blue); cursor: pointer; text-align: left; font: inherit; }
+.insp-script:hover { text-decoration: underline; }

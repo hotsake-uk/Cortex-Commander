@@ -10,6 +10,8 @@
 #include "HeldDevice.h"
 #include "LuaMan.h"
 #include "Attachable.h"
+#include "ACrab.h"
+#include "AEJetpack.h"
 #include "AudioMan.h"
 #include "PrimitiveMan.h"
 #include "TimerMan.h"
@@ -422,6 +424,11 @@ namespace {
 		return nullptr;
 	}
 
+	const char* MovementName(int state) {
+		static const char* names[] = {"Still", "Crouching", "Standing", "Walking", "Running", "Jumping", "Dislodged", "Prone", "Crawling", "Arm crawling", "Climbing", "Walking crouched"};
+		return state >= 0 && state < static_cast<int>(std::size(names)) ? names[state] : "?";
+	}
+
 	const char* StatusName(int status) {
 		switch (status) {
 			case Actor::STABLE: return "Stable";
@@ -491,7 +498,7 @@ void ModStudioPreview::UpdateFrame() {
 		s_InspectPaused = pause;
 		g_TimerMan.PauseSim(pause, TimerMan::SimPauseStudio);
 	}
-	if (s_InspectSteps >= 0 && steps > s_InspectSteps && s_InspectPaused) {
+	if (s_InspectSteps >= 0 && steps > s_InspectSteps && g_TimerMan.IsSimPaused()) {
 		g_TimerMan.StepSim(static_cast<int>(std::min(steps - s_InspectSteps, 60L)));
 	}
 	s_InspectSteps = steps;
@@ -544,8 +551,21 @@ void ModStudioPreview::UpdateFrame() {
 	value("Gold carried", number(actor->GetGoldCarried()));
 	value("AI mode", std::to_string(actor->GetAIMode()));
 	value("Player controlled", actor->IsPlayerControlled() ? "yes" : "no");
+	value("Moving", MovementName(actor->GetMovementState()));
+	value("Aim", number(actor->GetAimAngle(false) * 180.0F / c_PI) + "°");
+	value("Age", number(static_cast<float>(actor->GetAge()) / 1000.0F) + " s");
+	const AEJetpack* jetpack = nullptr;
 	if (const AHuman* human = dynamic_cast<const AHuman*>(actor)) {
 		value("Holding", human->GetEquippedItem() ? human->GetEquippedItem()->GetPresetName() : "nothing");
+		jetpack = human->GetJetpack();
+	} else if (const ACrab* crab = dynamic_cast<const ACrab*>(actor)) {
+		jetpack = crab->GetJetpack();
+	}
+	if (jetpack && jetpack->GetJetTimeTotal() > 0) {
+		value("Jetpack fuel", number(100.0F * jetpack->GetJetTimeLeft() / jetpack->GetJetTimeTotal()) + "%");
+	}
+	for (const std::string& script: actor->GetLoadedScripts()) {
+		world << "Script = " << Clean(script) << '\n';
 	}
 	for (const MovableObject* item: *actor->GetInventory()) {
 		if (item) {

@@ -613,6 +613,9 @@ window.MS = window.MS || {};
 		}
 		showLog('Launch', answer.log);
 		app().toast(answer.log[answer.log.length - 1] || 'Launched.', 'good');
+		if (body.mode === 'test' || body.mode === 'sandbox') {
+			MS.inspector.launched(!!answer.switched);
+		}
 		follow(answer);
 	};
 

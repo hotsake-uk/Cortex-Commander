@@ -22,10 +22,34 @@ window.MS = window.MS || {};
 
 	const REQUEST = 'ModStudio/Inspect.ini';
 	const WORLD = 'ModStudio/World.ini';
-	const I = { timer: 0, selected: 0, paused: false, steps: 0, lastRequest: 0, requestText: '', world: null, modified: 0, filter: '', team: 'all' };
+	const stored = (key, fallback) => {
+		try {
+			const v = localStorage.getItem(key);
+			return v === null ? fallback : v === '1';
+		} catch (e) {
+			return fallback;
+		}
+	};
+	const store = (key, on) => {
+		try {
+			localStorage.setItem(key, on ? '1' : '0');
+		} catch (e) {
+			// for this visit only
+		}
+	};
+	const I = {
+		timer: 0, selected: 0, paused: false, steps: 0, lastRequest: 0, requestText: '', world: null, modified: 0, filter: '', team: 'all',
+		follow: stored('ms.inspectorFollow', true), // keep the unit you control selected, across switching bodies
+		seen: new Map(), // id -> the actor as last seen, to tell what arrived and what left
+		arrived: new Map(), // id -> when it arrived, to mark it new for a few seconds
+		events: [], // {time, text, kind}, newest first
+		lastLive: 0,
+	};
+	const AUTO_KEY = 'ms.inspectorAuto'; // open the Inspector when Test in game or Sandbox starts from Studio
+	const PENDING_KEY = 'ms.inspectorPending'; // set by a launch, taken by the page that loads after it
 
 	function parse(text) {
-		const w = { actors: [], values: [], inventory: [], parts: [], selected: 0, controlled: 0, paused: false };
+		const w = { actors: [], values: [], inventory: [], parts: [], scripts: [], selected: 0, controlled: 0, paused: false };
 		for (const line of text.split(/\r?\n/)) {
 			const at = line.indexOf(' = ');
 			if (at < 0 || line.startsWith('//')) {
@@ -38,6 +62,8 @@ window.MS = window.MS || {};
 				w.actors.push({ id: Number(f[0]), preset: f[1], cls: f[2], team: Number(f[3]), x: Number(f[4]), y: Number(f[5]), health: Number(f[6]), max: Number(f[7]), status: f[8] });
 			} else if (key === 'Value') {
 				w.values.push([f[0], f.slice(1).join('\t')]);
+			} else if (key === 'Script') {
+				w.scripts.push(v);
 			} else if (key === 'Inventory') {
 				w.inventory.push(v);
 			} else if (key === 'Part') {
@@ -84,6 +110,7 @@ window.MS = window.MS || {};
 				if (modified !== I.modified) {
 					I.modified = modified;
 					I.world = parse(await response.text());
+					noteChanges(I.world);
 					if (!typing()) {
 						render();
 					}
@@ -98,6 +125,53 @@ window.MS = window.MS || {};
 		I.timer = setTimeout(poll, 300);
 	}
 
+	// What arrived and what left since the last look, and following the unit you control.
+	function noteChanges(w) {
+		const now = Date.now();
+		const clock = new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+		const event = (text, kind) => {
+			I.events.unshift({ time: clock, text, kind });
+			I.events.length = Math.min(I.events.length, 60);
+		};
+		if (!I.lastLive || now - I.lastLive > 5000) {
+			// A game (re)started, or the panel opened on one: what's there now is the start, not arrivals.
+			I.seen.clear();
+			I.arrived.clear();
+			event('Watching the game: ' + w.actors.length + ' actor' + (w.actors.length === 1 ? '' : 's') + ' in it', 'info');
+			for (const a of w.actors) {
+				I.seen.set(a.id, a);
+			}
+		} else {
+			const ids = new Set(w.actors.map((a) => a.id));
+			for (const a of w.actors) {
+				if (!I.seen.has(a.id)) {
+					I.arrived.set(a.id, now);
+					event('Arrived: ' + a.preset + ' (' + teamName(a.team) + ')' + (a.id === w.controlled ? ', you' : ''), 'in');
+				}
+				I.seen.set(a.id, a);
+			}
+			for (const [id, a] of I.seen) {
+				if (!ids.has(id)) {
+					I.seen.delete(id);
+					I.arrived.delete(id);
+					const died = a.health <= 0 || a.status === 'Dying' || a.status === 'Dead';
+					event((died ? 'Died: ' : 'Left: ') + a.preset + ' (' + teamName(a.team) + ')', died ? 'died' : 'out');
+				}
+			}
+		}
+		I.lastLive = now;
+		if (I.follow && w.controlled && w.controlled !== I.selected) {
+			const you = w.actors.find((a) => a.id === w.controlled);
+			if (you && I.selected) {
+				event('You took control of ' + you.preset, 'info');
+			}
+			I.selected = w.controlled;
+			sendRequest(true);
+		}
+	}
+
+	const teamName = (t) => (t >= 0 ? 'team ' + (t + 1) : 'no team');
+
 	// A number or team being changed in the panel: the next refresh waits, so it isn't thrown away.
 	function typing() {
 		const a = document.activeElement;
@@ -105,6 +179,9 @@ window.MS = window.MS || {};
 	}
 
 	function select(id) {
+		// Picking someone else stops following you; picking yourself starts it again.
+		const controlled = I.world ? I.world.controlled : 0;
+		setFollow(!!controlled && id === controlled);
 		I.selected = id;
 		sendRequest(true);
 		render();
@@ -130,8 +207,15 @@ window.MS = window.MS || {};
 		const w = I.world;
 		const live = I.modified && Date.now() - I.modified < 3000;
 		const pause = el('button', { className: 'ico-btn', textContent: I.paused ? '▶ Resume' : '❚❚ Pause', title: 'Hold the game still to look (it keeps drawing)', onclick: () => { I.paused = !I.paused; sendRequest(true); render(); } });
-		const step = el('button', { className: 'ico-btn', textContent: 'Step ▸', title: 'One simulation update (1/60 s), while paused', disabled: !I.paused, onclick: () => { I.steps++; sendRequest(true); } });
-		const mine = el('button', { className: 'ico-btn', textContent: '★ The one I control', disabled: !w || !w.controlled, onclick: () => select(w.controlled) });
+		const step = el('button', { className: 'ico-btn', textContent: 'Step ▸', title: 'One simulation update (1/60 s), while paused', disabled: !I.paused && !(I.world && I.world.paused), onclick: () => { I.steps++; sendRequest(true); } });
+		const mine = el('button', { className: 'ico-btn' + (I.follow ? ' on' : ''), textContent: '★ Follow me', title: 'Keep the unit you control selected, even when you switch to another', onclick: () => {
+			setFollow(!I.follow);
+			if (I.follow && w && w.controlled) {
+				select(w.controlled);
+			}
+			render();
+		} });
+		const auto = el('label', { className: 'insp-auto', title: 'Open the Inspector when Test in game or Sandbox starts from Studio' }, el('input', { type: 'checkbox', checked: stored(AUTO_KEY, true), onchange: (e) => store(AUTO_KEY, e.target.checked) }), 'Open on Test/Sandbox');
 		const filter = el('input', { type: 'search', placeholder: 'Filter…', value: I.filter, className: 'ed-input insp-filter' });
 		filter.oninput = () => {
 			I.filter = filter.value;
@@ -143,18 +227,19 @@ window.MS = window.MS || {};
 		const head = el('div', { className: 'prof-head' },
 			el('span', { className: live ? 'prof-state on' : 'prof-state off', textContent: live ? (w && w.paused ? (w.pausedByStudio ? '❚❚ Paused' : '❚❚ Paused by the game (its menu or the sandbox tools)') : '● Live') + ' · ' + (w ? w.actors.length : 0) + ' actors' : '○ No game running from Studio' }),
 			live ? null : el('span', { className: 'prof-hint', textContent: 'Start one with ▶ Play ▾ › Test in game or Sandbox, then pick an actor here; it\'s ringed in the game.' }),
-			el('span', { className: 'spacer' }), mine, pause, step, filter);
+			el('span', { className: 'spacer' }), auto, mine, pause, step, filter);
 		if (!w || !live) {
 			body.replaceChildren(head);
 			return;
 		}
 		const q = I.filter.trim().toLowerCase();
 		const actors = w.actors.filter((a) => !q || a.preset.toLowerCase().includes(q) || a.cls.toLowerCase().includes(q) || String(a.id) === q);
+		const fresh = (id) => I.arrived.has(id) && Date.now() - I.arrived.get(id) < 8000;
 		const list = el('div', { className: 'insp-list' }, ...actors.map((a) => {
 			const ratio = a.max > 0 ? Math.max(0, Math.min(1, a.health / a.max)) : 0;
-			return el('button', { className: 'insp-actor' + (a.id === I.selected ? ' sel' : ''), onclick: () => select(a.id), title: a.cls + ' #' + a.id + ' at (' + fixed(a.x) + ', ' + fixed(a.y) + ')' },
+			return el('button', { className: 'insp-actor' + (a.id === I.selected ? ' sel' : '') + (fresh(a.id) ? ' new' : ''), onclick: () => select(a.id), title: a.cls + ' #' + a.id + ' at (' + fixed(a.x) + ', ' + fixed(a.y) + ')' },
 				el('span', { className: 'insp-team t' + a.team, textContent: a.team >= 0 ? 'T' + (a.team + 1) : '–' }),
-				el('span', { className: 'insp-name', textContent: (a.id === w.controlled ? '★ ' : '') + a.preset }),
+				el('span', { className: 'insp-name' }, a.preset, a.id === w.controlled ? el('em', { className: 'insp-you', textContent: 'you' }) : null, fresh(a.id) ? el('em', { className: 'insp-new', textContent: 'new' }) : null),
 				el('span', { className: 'insp-health' }, el('i', { style: 'width:' + ratio * 100 + '%' })),
 				el('small', { textContent: fixed(a.health) }));
 		}));
@@ -166,7 +251,8 @@ window.MS = window.MS || {};
 		} else {
 			detail.append(el('p', { className: 'pempty', textContent: 'Pick an actor to see its values; it\'s ringed in the game.' }));
 		}
-		body.replaceChildren(head, el('div', { className: 'insp-cols' }, list, detail));
+		const feed = el('div', { className: 'insp-feed' }, ...I.events.slice(0, 40).map((e) => el('div', { className: 'insp-event ' + e.kind }, el('small', { textContent: e.time }), e.text)));
+		body.replaceChildren(head, el('div', { className: 'insp-cols' }, el('div', { className: 'insp-left' }, list, el('div', { className: 'prof-list-head', textContent: 'What happened' }), feed), detail));
 	}
 
 	function detailOf(w) {
@@ -196,9 +282,24 @@ window.MS = window.MS || {};
 			actions,
 			el('div', { className: 'insp-tables' },
 				el('table', { className: 'watch-table' }, ...rows),
-				el('div', {}, w.inventory.length ? el('div', { className: 'prof-list-head', textContent: 'Inventory' }) : null, ...w.inventory.map((i) => el('div', { className: 'insp-inv', textContent: i })),
+				el('div', {},
+					w.scripts.length ? el('div', { className: 'prof-list-head', textContent: 'Scripts it runs' }) : null,
+					...w.scripts.map((path) => el('button', { className: 'insp-script', textContent: path.split('/').pop(), title: path + ' (click to open)', onclick: () => MS.ide.openFile(path) })),
+					w.inventory.length ? el('div', { className: 'prof-list-head', textContent: 'Inventory' }) : null, ...w.inventory.map((i) => el('div', { className: 'insp-inv', textContent: i })),
 					parts ? el('div', { className: 'prof-list-head', textContent: 'Parts' }) : null, parts)),
 		];
+	}
+
+	function setFollow(on) {
+		I.follow = on;
+		store('ms.inspectorFollow', on);
+	}
+
+	// Opens the panel (Script mode, bottom panel) for a game that has just started.
+	function open() {
+		MS.ide.setMode('deep');
+		MS.ide.showPanel('inspector');
+		setFollow(true);
 	}
 
 	MS.inspector = {
@@ -206,5 +307,31 @@ window.MS = window.MS || {};
 			render();
 			poll();
 		},
+		// A launch of Test in game or Sandbox (launcher.js): open the Inspector now, or on the page that loads when Studio moves to the
+		// version that started.
+		launched(reloading) {
+			if (!stored(AUTO_KEY, true)) {
+				return;
+			}
+			if (reloading) {
+				store(PENDING_KEY, true);
+			} else {
+				open();
+			}
+		},
 	};
+
+	// After a launch that moved Studio to another folder, this page opens the Inspector once Studio has read the game.
+	if (stored(PENDING_KEY, false)) {
+		store(PENDING_KEY, false);
+		const started = Date.now();
+		const wait = setInterval(() => {
+			if (MS.ide && MS.ide.showPanel && MS.app && MS.app.lib) {
+				clearInterval(wait);
+				open();
+			} else if (Date.now() - started > 30000) {
+				clearInterval(wait);
+			}
+		}, 300);
+	}
 })();
