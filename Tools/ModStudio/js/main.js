@@ -9,6 +9,8 @@ import './skeleton.js';
 import './panels.js';
 import './dialogs.js';
 import './wizard.js';
+import './guide.js';
+import './friendly.js';
 import './editors.js';
 import './lua-intel.js';
 import './ini-intel.js';

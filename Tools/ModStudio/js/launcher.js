@@ -535,7 +535,8 @@ window.MS = window.MS || {};
 		const s = L.state;
 		const select = el('select', { className: 'gm-input' });
 		for (const c of s.configurations) {
-			select.append(el('option', { value: c, textContent: c, selected: c === s.config.configuration }));
+			const WORDS = { Final: 'Normal (recommended)', release: 'Normal (recommended)', 'Debug Release': 'Debug, full speed', 'Debug Minimal': 'Debug, some checks', 'Debug Full': 'Debug, every check (slow)', debug: 'Debug (for the game\'s programmers)' };
+			select.append(el('option', { value: c, textContent: WORDS[c] || c, selected: c === s.config.configuration }));
 		}
 		select.onchange = async () => {
 			await saveConfig({ configuration: select.value });

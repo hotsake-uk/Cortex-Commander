@@ -49,11 +49,12 @@ button, input, select { font: inherit; color: inherit; }
 .tb.ghost:hover:not(:disabled) { color: var(--text); }
 .tb.ghost.attention { border-color: var(--accent); color: var(--accent); }
 .tb-pair { display: inline-flex; gap: 2px; }
-/* The designer's own buttons only show when a unit is open. */
-#topbar #btnCopy:disabled, #topbar #btnLive:disabled, #topbar #btnPreview:disabled { display: none; }
-#topbar .sep:has(+ #btnLive:disabled + #btnPreview:disabled) { display: none; }
-/* A code tab in front: the unit's buttons wait until the designer is back. */
-#app.code-active #btnCopy, #app.code-active #btnLive, #app.code-active #btnPreview, #app.code-active #topbar .sep:has(+ #btnLive) { display: none; }
+/* Make my own copy only shows when a unit is open. Live and Preview always show, dimmed when they can't be used, with a tooltip that says why
+   (a button that vanishes doesn't tell you what to do). */
+#topbar #btnCopy:disabled { display: none; }
+#topbar #btnLive:disabled, #topbar #btnPreview:disabled { opacity: .45; }
+/* A code tab in front: the copy button waits until the designer is back. */
+#app.code-active #btnCopy { display: none; }
 #topbar { min-width: 0; overflow: hidden; }
 #topbar > * { flex: none; }
 #topbar > .doc-title { flex: 0 1 auto; }
@@ -232,8 +233,8 @@ label.code-link:hover { color: var(--accent); }
 .notice button { margin-top: 8px; }
 .section { border-bottom: 1px solid var(--line); }
 .section > h3 { margin: 0; font-size: 12px; font-weight: 600; padding: 10px 12px 6px; color: var(--text); display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
-.section > h3::before { content: "▾"; color: var(--faint); margin-right: 6px; font-size: 10px; }
-.section.closed > h3::before { content: "▸"; }
+.section > h3::before { content: "â–¾"; color: var(--faint); margin-right: 6px; font-size: 10px; }
+.section.closed > h3::before { content: "â–¸"; }
 .section.closed > .rows { display: none; }
 .section > h3 span { flex: 1; }
 .rows { padding: 2px 12px 10px; }
@@ -354,7 +355,7 @@ pre.diff .del { color: var(--bad); }
 	.insp-cols > .notice, .insp-cols > .insp-empty, .insp-cols > .section:has(.settings-filter) { column-span: all; }
 }
 
-/* The unit view hidden (◧, V): the parts list and the properties take the whole width, laid out as on wide screens. */
+/* The unit view hidden (â—§, V): the parts list and the properties take the whole width, laid out as on wide screens. */
 #app.no-view { grid-template-columns: minmax(var(--lib-min, 160px), var(--lib-w, var(--lib-size, 260px))) minmax(0, 1fr); grid-template-areas: "top top" "left right" "status status"; }
 #app.no-view #center { display: none; }
 #app.no-view #right { display: grid; grid-template-columns: var(--tree-w, minmax(200px, 26%)) minmax(0, 1fr); grid-template-rows: auto 1fr; }
@@ -366,7 +367,7 @@ pre.diff .del { color: var(--bad); }
 #app.no-view .insp-cols > * { break-inside: avoid; }
 #app.no-view .insp-cols > .notice, #app.no-view .insp-cols > .insp-empty, #app.no-view .insp-cols > .section:has(.settings-filter) { column-span: all; }
 
-/* The library list hidden (◨, L): its column shrinks to nothing. */
+/* The library list hidden (â—¨, L): its column shrinks to nothing. */
 #app.no-lib { --lib-w: 0px; --lib-min: 0px; }
 #app.no-lib #left { display: none; }
 
@@ -648,11 +649,10 @@ pre.diff .del { color: var(--bad); }
 .rel-ginfo { display: flex; align-items: center; gap: 8px; min-height: 28px; font-size: 12.5px; color: var(--dim); }
 .rel-ginfo .spacer { flex: 1; }
 
-/* An item's files under its row in the library list (Script mode only; panels.js). */
+/* An item's files under its row in the library list (Design and Script mode; panels.js). */
 .lib-twist { flex: none; width: 16px; align-self: stretch; margin: 0 -4px 0 -6px; background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 11px; transition: transform .12s; }
 .lib-twist:hover { color: var(--text); }
 .lib-row.open .lib-twist { transform: rotate(90deg); color: var(--accent); }
-#app:not(.deep) .lib-twist, #app:not(.deep) .lib-files { display: none; }
 .lib-files { margin: 0 6px 6px 22px; padding: 4px 0 6px; border-left: 1px solid var(--line2); font-size: 12px; }
 .lf-head { padding: 6px 10px 2px; color: var(--faint); font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; }
 .lf-row { display: flex; align-items: center; gap: 6px; padding: 2px 10px; cursor: pointer; white-space: nowrap; min-width: 0; }
@@ -663,7 +663,7 @@ pre.diff .del { color: var(--bad); }
 .lf-more, .lf-empty { display: block; background: none; border: 0; color: var(--dim); font-size: 11.5px; padding: 2px 10px; cursor: pointer; }
 .lf-more:hover { color: var(--text); }
 
-/* New… (wizard.js) */
+/* Newâ€¦ (wizard.js) */
 .wiz { min-height: 360px; display: flex; flex-direction: column; }
 .wiz-steps { display: flex; gap: 14px; font-size: 12px; color: var(--faint); margin-bottom: 8px; }
 .wiz-steps .sel { color: var(--accent); font-weight: 650; }
@@ -842,3 +842,75 @@ pre.diff .del { color: var(--bad); }
 .insp-event.died { color: var(--bad); }
 .insp-script { display: block; background: none; border: 0; padding: 1px 0; color: var(--blue); cursor: pointer; text-align: left; font: inherit; }
 .insp-script:hover { text-decoration: underline; }
+.guide-btn { white-space: nowrap; }
+#viewWrap { position: relative; }
+#viewWrap.guide-drop::after { content: "Drop the picture to use it for this part"; position: absolute; inset: 8px; display: flex; align-items: center; justify-content: center; border: 2px dashed var(--accent); border-radius: 10px; background: rgba(16, 18, 22, .72); color: var(--text); font-size: 15px; z-index: 6; pointer-events: none; }
+.guide-card { flex: none; max-height: 42%; overflow: auto; background: var(--panel); border-bottom: 1px solid var(--line2); padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+.guide-head { display: flex; align-items: center; gap: 8px; }
+.guide-head .spacer { flex: 1; }
+.guide-progress { color: var(--faint); font-size: 12px; }
+.guide-x { background: none; border: 0; color: var(--faint); font-size: 18px; line-height: 1; cursor: pointer; padding: 0 4px; }
+.guide-x:hover { color: var(--text); }
+.guide-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.guide-chip { min-width: 24px; height: 24px; border-radius: 12px; border: 1px solid var(--line2); background: var(--panel2); color: var(--dim); font-size: 11.5px; cursor: pointer; padding: 0 6px; }
+.guide-chip.mine { background: rgba(79, 195, 122, .18); border-color: var(--good); color: var(--good); }
+.guide-chip.kept { color: var(--faint); }
+.guide-chip.cur { box-shadow: 0 0 0 2px var(--accent); color: var(--text); }
+.guide-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.guide-left, .guide-right { min-width: 0; }
+@media (max-width: 1250px) { .guide-cols { grid-template-columns: 1fr; gap: 8px; } }
+.guide-part h3 { margin: 0 0 4px; font-size: 15px; }
+.guide-part h3 small { color: var(--faint); font-weight: 400; font-size: 12px; }
+.guide-help { margin: 0 0 8px; color: var(--dim); font-size: 12.5px; line-height: 1.45; }
+.guide-now { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.guide-frames { display: flex; gap: 4px; flex-wrap: wrap; }
+.guide-frames canvas { background: #0d0f13; border: 1px solid var(--line); border-radius: 4px; image-rendering: pixelated; }
+.guide-more { color: var(--faint); align-self: center; font-size: 12px; }
+.guide-caption { color: var(--faint); font-size: 11.5px; }
+.guide-drop-zone { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 14px; border: 2px dashed var(--line2); border-radius: 8px; margin-bottom: 8px; }
+.guide-drop-zone.over { border-color: var(--accent); background: rgba(242, 182, 61, .08); }
+.guide-drop-zone span { color: var(--faint); font-size: 12px; }
+.guide-lock { color: var(--bad); font-size: 12.5px; }
+.guide-nav { display: flex; align-items: center; gap: 6px; }
+.guide-nav .spacer { flex: 1; }
+.guide-poses { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
+#app.guiding #skeletonHelp { display: none !important; }
+.wiz-plain { display: flex; align-items: center; gap: 12px; padding: 10px 12px; margin-bottom: 10px; border: 1px solid var(--accent); border-radius: 8px; background: rgba(242, 182, 61, .07); }
+.wiz-plain > div { flex: 1; color: var(--dim); font-size: 12.5px; line-height: 1.4; }
+.wiz-plain b { color: var(--text); }
+.start-card { position: absolute; inset: 0; margin: auto; width: min(640px, calc(100% - 32px)); height: fit-content; max-height: calc(100% - 32px); overflow: auto; padding: 22px 24px; background: var(--panel); border: 1px solid var(--line2); border-radius: 12px; text-align: center; z-index: 4; }
+.start-mark { color: var(--accent); font-size: 26px; }
+.start-card h1 { margin: 6px 0 4px; font-size: 20px; }
+.start-card p { margin: 0 0 16px; color: var(--dim); }
+.start-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: left; }
+.start-choice { display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; background: var(--panel2); border: 1px solid var(--line2); border-radius: 9px; color: var(--text); cursor: pointer; }
+.start-choice:hover { border-color: var(--accent); }
+.start-choice b { font-size: 14px; }
+.start-choice span:not(.start-icon) { color: var(--faint); font-size: 12px; line-height: 1.35; }
+.start-icon { color: var(--accent); font-size: 18px; }
+#left.attention { animation: attention 1.6s ease-out 1; }
+@keyframes attention { 0%, 40% { box-shadow: inset 0 0 0 2px var(--accent); } 100% { box-shadow: inset 0 0 0 2px transparent; } }
+.problem-badge { color: #ffc4bc; border-color: rgba(239, 106, 91, .5); }
+.prob-lead { color: var(--dim); margin: 0 0 8px; }
+.prob-list { display: flex; flex-direction: column; gap: 8px; }
+.prob-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); }
+.prob-text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.prob-text small { color: var(--faint); }
+.prob-actions { display: flex; gap: 6px; flex: none; }
+.prob-none { color: var(--good); }
+label.has-help { text-decoration: underline dotted var(--faint); text-underline-offset: 3px; cursor: help; }
+.prob-group { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--faint); }
+.prob-row.warn .prob-text b::before { content: "â€¢ "; color: var(--accent); }
+.prob-row.error .prob-text b::before { content: "â€¢ "; color: var(--bad); }
+.import-compare { display: flex; gap: 22px; align-items: flex-end; margin: 6px 0 8px; }
+.import-col { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.import-col b { font-size: 12px; color: var(--dim); font-weight: 600; }
+.import-col small { color: var(--faint); }
+.import-col canvas, .import-anim canvas { image-rendering: pixelated; background: #0d0f13; border: 1px solid var(--line); border-radius: 4px; }
+.import-none { color: var(--faint); font-size: 12px; }
+.import-notes { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.import-note { padding: 6px 10px; border-radius: 6px; font-size: 12.5px; line-height: 1.4; border-left: 3px solid var(--line2); background: var(--panel2); color: var(--dim); }
+.import-note.good { border-left-color: var(--good); color: var(--good); }
+.import-note.warn { border-left-color: var(--accent); color: var(--text); }
+.import-note.bad { border-left-color: var(--bad); color: #ffc4bc; }
+.import-note.info { border-left-color: #7fd1ff; }

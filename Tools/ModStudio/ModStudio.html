@@ -32,8 +32,8 @@
 			<button id="btnHistory" title="Every version of the files Studio changed in your mods, and Restore" hidden>History…</button>
 		</div>
 		<span class="sep"></span>
-		<button class="tb" id="btnLive" title="Live: send every change to the game as you make it (a drag is sent when you let go)" disabled>● Live</button>
-		<button class="tb" id="btnPreview" title="Save, then show this unit in the game's Actor Editor" disabled>Preview<span class="wide"> in game</span></button>
+		<button class="tb" id="btnLive" title="Live: send every change to the game as you make it. Open one of your own units to use it." disabled>● Live</button>
+		<button class="tb" id="btnPreview" title="Save, then show this unit in the game's Actor Editor. Open one of your own units to use it." disabled>Preview<span class="wide"> in game</span></button>
 		<span class="sep"></span>
 		<div class="split-btn" id="runSplit" hidden>
 			<button class="tb primary" id="btnRun"></button><button class="tb primary caret" id="btnRunMenu" title="Other ways to start the game">▾</button>
@@ -122,6 +122,7 @@
 			<label class="mini">Speed <input type="range" id="speed" min="0.1" max="2" step="0.05" value="1"></label>
 			<span class="sep"></span>
 			<button class="ico" id="btnFlip" title="Face left or right (F)">⇄</button>
+			<button class="tb guide-btn" id="btnGuide" title="Step through the parts of this unit and put your own pictures in">✦ Guide</button>
 			<label class="mini">Aim <input type="range" id="aim" min="-90" max="90" step="1" value="0"><span id="aimVal">0°</span></label>
 			<label class="mini"><input type="checkbox" id="sharp"> Sharp aim</label>
 			<span class="sep"></span>
@@ -219,6 +220,7 @@
 		<span id="statusLang"></span>
 		<span id="statusFiles"></span>
 		<span id="statusMode"></span>
+		<button class="status-btn problem-badge" id="statusProblems" title="Something in your mods needs a look" hidden></button>
 	</footer>
 </div>
 

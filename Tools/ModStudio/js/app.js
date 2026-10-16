@@ -123,17 +123,19 @@ window.MS = window.MS || {};
 			return;
 		}
 		$('welcome').hidden = true;
-		$('statusMode').textContent = fs.writable ? 'Saving into ' + fs.name : 'Read-only: saves download as a zip';
+		$('statusMode').textContent = fs.writable ? 'Saves go straight to disk' : 'Read-only: saves download as a zip';
+		$('statusMode').title = fs.writable ? 'Changes are written to your mod\'s files as soon as you save. The game folder: ' + fs.name : '';
 		const units = app.lib.presets.filter((p) => p.cls === 'AHuman' && p.topLevel).length;
 		const summary = 'Read ' + app.lib.presets.length + ' presets (' + units + ' units) from ' + app.lib.docs.size + ' files in ' + app.lib.modules.length + ' modules.';
 		app.status(summary);
 		if (app.lib.warnings.length) {
 			console.warn(app.lib.warnings.join('\n'));
-			app.toast(app.lib.warnings.length + ' files couldn\'t be read, for example: ' + app.lib.warnings[0], 'bad');
 		}
+		MS.friendly.afterLoad();
 		MS.panels.showLibrary();
 		updateScopeButton();
 		MS.ide.gameLoaded();
+		MS.friendly.update();
 		const last = readLocal('ms.lastActor');
 		const preset = last && app.lib.presets.find((p) => p.doc.path === last.path && p.name === last.name);
 		if (preset) {
@@ -437,6 +439,9 @@ window.MS = window.MS || {};
 		$('btnCopy').classList.toggle('attention', locked);
 		$('btnPreview').disabled = locked;
 		$('btnLive').disabled = locked || !app.fs || !app.fs.writable;
+		// Dimmed, not hidden: say what would make them work.
+		$('btnPreview').title = locked ? 'Make your own copy of this unit first, then you can see it in the game.' : 'Save, then show this unit in the game\'s Actor Editor';
+		$('btnLive').title = locked ? 'Make your own copy of this unit first, then every change can show in the game as you make it.' : 'Live: send every change to the game as you make it (a drag is sent when you let go)';
 	}
 
 	// A part is hidden when it, or a part it hangs from, has its eye off.
@@ -832,6 +837,9 @@ window.MS = window.MS || {};
 			}
 			return written;
 		}
+		if (written && MS.friendly) {
+			MS.friendly.afterSave(saved.map((x) => x.path));
+		}
 		if (written && !quiet) {
 			const undo = MS.history.available() ? { label: 'Undo', run: () => MS.history.undoSave(saved) } : null;
 			app.toast('Saved ' + written + ' file' + (written > 1 ? 's' : '') + '.', 'good', undo);
@@ -1164,6 +1172,13 @@ window.MS = window.MS || {};
 
 	// action: {label, run}, a button on the message (like Undo after a save), which then stays up a little longer.
 	app.toast = function (text, kind, action) {
+		// Plain wording for what the browser and the file system say, and the same message once, not three times in a row.
+		text = MS.friendly ? MS.friendly.say(text) : text;
+		const now = Date.now();
+		if (app.lastToast && app.lastToast.text === text && now - app.lastToast.at < 5000) {
+			return;
+		}
+		app.lastToast = { text, at: now };
 		const el = document.createElement('div');
 		el.className = 'toast ' + (kind || '');
 		el.textContent = text;

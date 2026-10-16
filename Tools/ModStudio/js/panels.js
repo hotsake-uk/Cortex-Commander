@@ -401,7 +401,7 @@ window.MS = window.MS || {};
 		markLibrary();
 	}
 
-	// ---- an item's files, under its row (Script mode) ----
+	// ---- an item's files, under its row (Design and Script mode) ----
 
 	let openFiles = null; // the preset whose files are showing; one at a time
 	const presetKey = (p) => p.doc.path + ':' + p.node.line;
@@ -1534,6 +1534,9 @@ window.MS = window.MS || {};
 	// ---- public ----
 
 	function refresh() {
+		if (MS.friendly) {
+			MS.friendly.update();
+		}
 		renderTree();
 		renderInspector();
 		refreshDeviceSelect();

@@ -56,6 +56,9 @@ window.MS = window.MS || {};
 		{ id: 'mod', title: 'Empty mod', sub: 'A new mod folder, to fill later' },
 	];
 
+	// The simplest thing of each kind, for someone drawing their own pictures: few pieces, nothing fancy to untangle.
+	const PLAIN = { soldier: ['Green Dummy', 'AHuman'], crab: ['Crab', 'ACrab'], craft: ['Dropship MK1', 'ACDropShip'], gun: ['Pistol', 'HDFirearm'], thrown: ['Frag Grenade', 'TDExplosive'] };
+
 	// A preset's Description: one line, or the lines of a MultiLineText.
 	function descriptionOf(entity) {
 		const entry = entity.last('Description');
@@ -116,6 +119,21 @@ window.MS = window.MS || {};
 			const thumb = state.kind.rig ? (c, p) => MS.panels.drawRigThumb(c, p) : (c, p) => MS.panels.drawSpriteThumb(c, p);
 			let picked = null;
 			const chosen = el('div', { className: 'wiz-chosen', textContent: 'Pick one to start from.' });
+			// Drawing your own pictures? The plain one has the fewest pieces to replace, and the guide then walks you through each.
+			const plainName = PLAIN[state.kind.id];
+			const plain = plainName ? a.lib.find(plainName[0], plainName[1]) : null;
+			const plainCard = plain
+				? el('div', { className: 'wiz-plain' },
+					el('div', {}, el('b', { textContent: 'Bringing your own pictures?' }), el('span', { textContent: ' Start from the plain ' + plain.name + '. It is simple, and next Studio shows you each part and asks for your picture for it.' })),
+					el('button', {
+						className: 'tb primary',
+						textContent: 'Use the plain ' + plain.name + ' →',
+						onclick: () => {
+							state.base = plain;
+							stepName();
+						},
+					}))
+				: null;
 			const grid = pickerGrid(presets, (p, tile) => {
 				picked = p;
 				for (const t of grid.querySelectorAll('.pick.sel')) {
@@ -124,7 +142,7 @@ window.MS = window.MS || {};
 				tile.classList.add('sel');
 				chosen.textContent = 'Starting from ' + p.name + ' (' + p.module + ').';
 			}, thumb, true);
-			body.replaceChildren(header(1), el('p', { className: 'wiz-lead', textContent: 'Which ' + state.kind.title.toLowerCase() + ' should it start as? It gets everything that one has: its look, parts, AI and sounds.' }), grid, chosen,
+			body.replaceChildren(header(1), el('p', { className: 'wiz-lead', textContent: 'Which ' + state.kind.title.toLowerCase() + ' should it start as? It gets everything that one has: its look, parts, AI and sounds.' }), plainCard, grid, chosen,
 				nav(stepKind, () => {
 					if (!picked) {
 						app().toast('Pick one to start from.', 'bad');
@@ -230,6 +248,8 @@ window.MS = window.MS || {};
 				a.openActor(a.lib.presets.find((p) => p.doc === preset.doc && p.name === state.name) || preset);
 				MS.panels.showLibrary();
 				a.updateFileStatus();
+				// Straight on to putting its own pictures in, part by part.
+				setTimeout(() => MS.guide && MS.guide.start(), 300);
 			});
 		}
 
