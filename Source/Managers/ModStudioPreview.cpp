@@ -46,6 +46,7 @@ std::chrono::steady_clock::time_point ModStudioPreview::s_LastProfileWrite = {};
 std::chrono::steady_clock::time_point ModStudioPreview::s_LastInspect = {};
 bool ModStudioPreview::s_Inspecting = false;
 long ModStudioPreview::s_InspectSelected = 0;
+long ModStudioPreview::s_InspectFollow = 0;
 bool ModStudioPreview::s_InspectPaused = false;
 long ModStudioPreview::s_InspectSteps = -1;
 ModStudioPreview::Request ModStudioPreview::s_LastRequest = {};
@@ -456,6 +457,15 @@ void ModStudioPreview::UpdateInspectorHighlight() {
 }
 
 void ModStudioPreview::UpdateFrame() {
+	// The camera stays on the unit the inspector was told to follow, every frame (the game points it at the unit you control each sim update, so
+	// a one-off move would be undone at once). It lets go when the unit is gone, or when Studio's inspector is no longer asking.
+	if (s_InGame && s_Inspecting && s_InspectFollow != 0) {
+		if (const Actor* followed = FindActor(s_InspectFollow)) {
+			g_CameraMan.SetScrollTarget(followed->GetPos(), 0.12F, 0);
+		} else {
+			s_InspectFollow = 0;
+		}
+	}
 	const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
 	if (!s_InGame || now - s_LastInspect < std::chrono::milliseconds(250)) {
 		return;
@@ -485,6 +495,8 @@ void ModStudioPreview::UpdateFrame() {
 			try {
 				if (key == "Selected") {
 					s_InspectSelected = std::stol(value);
+				} else if (key == "Follow") {
+					s_InspectFollow = std::stol(value);
 				} else if (key == "Pause") {
 					pause = value == "1";
 				} else if (key == "Step") {
@@ -496,6 +508,9 @@ void ModStudioPreview::UpdateFrame() {
 		}
 	}
 	s_Inspecting = fresh;
+	if (!fresh) {
+		s_InspectFollow = 0;
+	}
 	if (pause != s_InspectPaused) {
 		s_InspectPaused = pause;
 		g_TimerMan.PauseSim(pause, TimerMan::SimPauseStudio);
@@ -518,6 +533,8 @@ void ModStudioPreview::UpdateFrame() {
 	const Activity* activity = g_ActivityMan.GetActivity();
 	Actor* controlled = activity ? const_cast<Activity*>(activity)->GetControlledActor(0) : nullptr;
 	world << "Controlled = " << (controlled ? controlled->GetUniqueID() : 0) << '\n';
+	world << "Following = " << s_InspectFollow << '\n';
+	world << "Camera = " << g_CameraMan.GetScrollTarget(0).GetX() << '\t' << g_CameraMan.GetScrollTarget(0).GetY() << '\n';
 	// One line an actor: id, preset, class, team, x, y, health, max health, status.
 	for (const Actor* actor: g_MovableMan.GetActorList()) {
 		if (!actor) {
