@@ -78,6 +78,9 @@ window.MS = window.MS || {};
 		const button = $('btnGame');
 		button.hidden = false;
 		button.onclick = () => L.open();
+		$('runSplit').hidden = false;
+		$('btnRun').onclick = () => runLast();
+		$('btnRunMenu').onclick = () => toggleRunMenu();
 		$('gameClose').onclick = () => L.close();
 		document.addEventListener('keydown', (e) => {
 			if (e.key === 'Escape' && !$('game').hidden && $('modal').hidden) {
@@ -100,9 +103,96 @@ window.MS = window.MS || {};
 		const state = await guarded(() => call('config'));
 		if (state) {
 			L.state = state;
+			updateRunButton();
 		}
 		return state;
 	};
+
+	// ---- the Play button and its menu in Studio's top bar ----
+
+	const LAUNCHES = [
+		['play', '▶ Play', 'The game as players see it'],
+		['test', 'Test in game', 'A test map with Studio\'s unit: Preview in game and the console work with it'],
+		['sandbox', 'Sandbox', 'A sandbox map to try your mod in'],
+		['editor', 'Actor Editor', 'The game\'s Actor Editor, where Preview in game shows your unit'],
+	];
+
+	function lastLaunch() {
+		let mode = 'play';
+		try {
+			mode = localStorage.getItem('cortexStudio.lastLaunch') || 'play';
+		} catch (e) {}
+		return LAUNCHES.find((l) => l[0] === mode) || LAUNCHES[0];
+	}
+
+	function updateRunButton() {
+		const [, label, what] = lastLaunch();
+		const run = $('btnRun');
+		run.textContent = label.startsWith('▶') ? label : '▶ ' + label;
+		run.title = L.state && L.state.builtExe ? what + ' (the ▾ has the other ways to start it)' : 'Nothing is built yet: opens the Game screen to build the game';
+	}
+
+	function runLast() {
+		if (!L.state || !L.state.builtExe) {
+			L.open('play');
+			return;
+		}
+		L.launch(lastLaunch()[0]);
+	}
+
+	function toggleRunMenu() {
+		const open = $('runMenu');
+		if (open) {
+			open.remove();
+			return;
+		}
+		const s = L.state;
+		if (!s) {
+			return;
+		}
+		const menu = el('div', { className: 'ctx-menu run-menu', id: 'runMenu' });
+		const close = () => {
+			menu.remove();
+			document.removeEventListener('pointerdown', outside, true);
+		};
+		const outside = (e) => {
+			if (!menu.contains(e.target) && !$('runSplit').contains(e.target)) {
+				close();
+			}
+		};
+		const item = (main, sub, action, disabled) => {
+			const b = el('button', {}, el('b', { textContent: main }), sub ? el('span', { textContent: sub }) : null);
+			b.disabled = !!disabled;
+			b.onclick = () => {
+				close();
+				action();
+			};
+			return b;
+		};
+		const advanced = s.config.mode === 'advanced';
+		menu.append(el('div', { className: 'run-status' }, s.repoOk ? builtLine() : el('span', { className: 'gm-bad', textContent: 'No game repo yet' }), advanced || !s.repoOk ? null : el('span', { className: 'gm-dim', textContent: ' · ' + s.config.remote + '/' + s.config.branch })));
+		const last = lastLaunch()[0];
+		for (const [mode, label, what] of LAUNCHES) {
+			const b = item(label.replace('▶ ', ''), what, () => L.launch(mode), !s.builtExe);
+			if (mode === last) {
+				b.classList.add('current');
+			}
+			menu.append(b);
+		}
+		menu.append(el('div', { className: 'run-sep' }));
+		if (s.repoOk && !advanced) {
+			menu.append(item('⟳ Update & build', 'Fetch the newest ' + s.config.branch + ' and build it if it changed', () => L.open('play').then(() => startJob('update', {}))));
+		}
+		if (s.repoOk && advanced) {
+			menu.append(item('Versions…', 'Pick and build a branch, tag or commit', () => L.open('versions')));
+		}
+		menu.append(item('Launch settings…', 'Settings.ini, presets, mods folder and world', () => L.open('settings')));
+		document.body.append(menu);
+		const r = $('runSplit').getBoundingClientRect();
+		menu.style.left = Math.min(r.left, window.innerWidth - menu.offsetWidth - 8) + 'px';
+		menu.style.top = r.bottom + 4 + 'px';
+		setTimeout(() => document.addEventListener('pointerdown', outside, true), 0);
+	}
 
 	L.open = async function (tab) {
 		$('game').hidden = false;
@@ -294,6 +384,10 @@ window.MS = window.MS || {};
 	}
 
 	L.launch = async function (mode) {
+		// The top bar's Play button starts the way the game was last started, from its menu or the Game screen.
+		try {
+			localStorage.setItem('cortexStudio.lastLaunch', mode);
+		} catch (e) {}
 		await L.refresh();
 		if (!L.state.editingSlot && !(await readyToLeave())) {
 			return;

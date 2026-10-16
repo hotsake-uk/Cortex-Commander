@@ -5,13 +5,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cortex Mod Studio</title>
-<link rel="stylesheet" href="studio.css?v=27">
+<link rel="stylesheet" href="studio.css?v=28">
 </head>
 <body>
 <div id="app">
 	<header id="topbar">
 		<div class="brand"><span class="mark">◆</span> Cortex <b>Mod Studio</b></div>
-		<button class="tb primary" id="btnGame" title="Build, update and launch the game, and the setup (Cortex Studio)" hidden>▶ Game</button>
+		<button class="tb" id="btnGame" title="The Game screen: versions, builds, launch settings and the setup (Cortex Studio)" hidden>Game</button>
+		<div class="split-btn" id="runSplit" hidden>
+			<button class="tb primary" id="btnRun"></button><button class="tb primary caret" id="btnRunMenu" title="Other ways to start the game">▾</button>
+		</div>
 		<div class="mode-switch" id="modeSwitch" title="Artist: design units visually. Deep: the whole mod, with scripts, the game's console and search.">
 			<button data-mode="artist" class="sel">Artist</button>
 			<button data-mode="deep">Deep</button>
@@ -196,19 +199,19 @@
 <div id="modal" class="modal" hidden><div class="modal-card" id="modalCard"></div></div>
 <div id="toasts"></div>
 
-<script src="vendor/luaparse/luaparse.js?v=27"></script>
-<script src="js/ini.js?v=27"></script>
-<script src="js/gamefs.js?v=27"></script>
-<script src="js/library.js?v=27"></script>
-<script src="js/images.js?v=27"></script>
-<script src="js/rig.js?v=27"></script>
-<script src="js/viewport.js?v=27"></script>
-<script src="js/panels.js?v=27"></script>
-<script src="js/dialogs.js?v=27"></script>
-<script src="js/lua-intel.js?v=27"></script>
-<script src="js/ini-intel.js?v=27"></script>
-<script src="js/ide.js?v=27"></script>
-<script src="js/app.js?v=27"></script>
-<script src="js/launcher.js?v=27"></script>
+<script src="vendor/luaparse/luaparse.js?v=28"></script>
+<script src="js/ini.js?v=28"></script>
+<script src="js/gamefs.js?v=28"></script>
+<script src="js/library.js?v=28"></script>
+<script src="js/images.js?v=28"></script>
+<script src="js/rig.js?v=28"></script>
+<script src="js/viewport.js?v=28"></script>
+<script src="js/panels.js?v=28"></script>
+<script src="js/dialogs.js?v=28"></script>
+<script src="js/lua-intel.js?v=28"></script>
+<script src="js/ini-intel.js?v=28"></script>
+<script src="js/ide.js?v=28"></script>
+<script src="js/app.js?v=28"></script>
+<script src="js/launcher.js?v=28"></script>
 </body>
 </html>
