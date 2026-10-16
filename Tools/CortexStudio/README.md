@@ -75,7 +75,7 @@ Installers aren't code-signed yet, so Windows SmartScreen and macOS Gatekeeper w
 
 ### Windows: every day
 
-- **Run Cortex Studio.bat** builds the app from source and opens it on this checkout. The first build takes a few minutes and later
+- **Run Cortex Studio.bat** builds the app from source and opens it on the game folder it used last (this checkout the first time). The first build takes a few minutes and later
   ones take seconds. Mod Studio's page is served straight from `Tools\ModStudio`, so after editing the page press **Ctrl+R** or
   **F5** in the app to see it. After changing the Rust code in `src-tauri`, close the app and run the .bat again.
   - `"Run Cortex Studio.bat" -GameDir D:\Games\Cortex` uses another game folder.

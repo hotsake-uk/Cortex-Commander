@@ -541,7 +541,14 @@ fn build(ctx: &JobCtx, config: &Config, sha: &str) -> Result<(), String> {
 		)?;
 	} else {
 		let dir = format!("build-{configuration}");
-		let env: Vec<(&str, String)> = if cfg!(target_os = "macos") { vec![("CC", "gcc-13".into()), ("CXX", "g++-13".into())] } else { vec![] };
+		let mut env: Vec<(&str, String)> = if cfg!(target_os = "macos") { vec![("CC", "gcc-13".into()), ("CXX", "g++-13".into())] } else { vec![] };
+		// Homebrew's gcc looks for the SDK it was built against (CommandLineTools/SDKs/MacOSX15.sdk, say), which older or
+		// newer command line tools don't have ("ld: library 'System' not found"). Point it at the SDK this Mac has.
+		if cfg!(target_os = "macos") && std::env::var_os("SDKROOT").is_none() {
+			if let Ok(sdk) = capture("xcrun", &["--show-sdk-path"], None) {
+				env.push(("SDKROOT", sdk.trim().to_string()));
+			}
+		}
 		if !slot.join(&dir).join("build.ninja").is_file() {
 			let mut args = vec!["setup", dir.as_str(), "--buildtype", configuration];
 			if slot.join(&dir).is_dir() {

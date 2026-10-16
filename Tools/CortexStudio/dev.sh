@@ -4,9 +4,10 @@
 #
 #   ./dev.sh [game folder] [--bridge]
 #
-# Without a game folder it uses this checkout. On macOS you can also double-click "Run Cortex Studio.command".
+# Without a game folder it uses the one Studio used last (a version the Game screen launched, or this checkout after "Edit the repo
+# checkout"), else this checkout. On macOS you can also double-click "Run Cortex Studio.command".
 here=$(cd "$(dirname "$0")" && pwd)
-game="$here/../.."
+game=""
 case "$1" in --*|"") ;; *) game="$1"; shift ;; esac
 
 # A terminal opened before Rust was installed, or a double-click, may not have cargo on its PATH yet.
@@ -33,10 +34,13 @@ case "$(uname -s)" in
 		;;
 esac
 
-if [ ! -d "$game/Data/Base.rte" ]; then
+if [ -n "$game" ] && [ ! -d "$game/Data/Base.rte" ]; then
 	echo "$game has no Data/Base.rte, so it isn't a game folder. Pass the folder that has Data/Base.rte inside:  ./dev.sh /path/to/game" >&2
 	exit 1
 fi
 
 export CORTEX_STUDIO_PAGE="$here/../ModStudio"
-exec cargo run --manifest-path "$here/src-tauri/Cargo.toml" -- --game-dir "$game" "$@"
+if [ -n "$game" ]; then
+	set -- --game-dir "$game" "$@"
+fi
+exec cargo run --manifest-path "$here/src-tauri/Cargo.toml" -- "$@"

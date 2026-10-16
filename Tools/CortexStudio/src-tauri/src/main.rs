@@ -172,7 +172,7 @@ fn main() {
 				.title("Cortex Studio")
 				.inner_size(1500.0, 950.0)
 				.min_inner_size(900.0, 600.0)
-				.zoom_hotkeys_enabled(true) // Ctrl + and Ctrl - zoom, Ctrl 0 resets, as in a browser
+				.zoom_hotkeys_enabled(true) // Ctrl (Cmd on macOS) + and - zoom, 0 resets, as in a browser; capabilities/default.json allows it on macOS and Linux
 				.build()?;
 			Ok(())
 		})

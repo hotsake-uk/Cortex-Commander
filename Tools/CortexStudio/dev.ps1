@@ -3,15 +3,16 @@
 #
 #   .\dev.ps1 [-GameDir <game folder>] [-Bridge]
 #
-# Without -GameDir it uses this checkout as the game folder.
+# Without -GameDir it uses the game folder Studio used last (a version the Game screen launched, or this checkout after "Edit the repo
+# checkout"), else this checkout.
 param(
 	[string]$GameDir = '',
 	[switch]$Bridge
 )
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-if (-not $GameDir) { $GameDir = [System.IO.Path]::GetFullPath((Join-Path $here '..\..')) }
 $env:CORTEX_STUDIO_PAGE = [System.IO.Path]::GetFullPath((Join-Path $here '..\ModStudio'))
-$appArgs = @('--game-dir', $GameDir)
+$appArgs = @()
+if ($GameDir) { $appArgs += @('--game-dir', $GameDir) }
 if ($Bridge) { $appArgs += '--bridge' }
 cargo run --manifest-path (Join-Path $here 'src-tauri\Cargo.toml') -- @appArgs
