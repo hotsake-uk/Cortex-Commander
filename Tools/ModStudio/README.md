@@ -29,6 +29,8 @@ zip of the changed files to unpack into the game folder.
 - **Add helmets and gear** from the Attachments tab, and try items in the hand from the Items tab or the Held item list.
 - **Animate**: the pose buttons, Play, the aim slider, Sharp aim and Flip show how the unit moves in game, using the
   unit's own walk paths, limb lengths and arm reach.
+- **Every setting**: All settings lists everything the selected part has (from its own block or inherited), editable, with a filter
+  and **Add a setting** offering every key that presets of its class use. **Discard** throws away unsaved changes.
 - **Undo and redo** everything (Ctrl+Z, Ctrl+Y). Press **?** for all the keys.
 
 ## How files are written

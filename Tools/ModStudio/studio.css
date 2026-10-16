@@ -216,7 +216,7 @@ pre.diff .del { color: var(--bad); }
 	#right > #inspector { grid-column: 2; grid-row: 2; min-height: 0; }
 	.insp-cols { columns: 300px; column-gap: 0; column-rule: 1px solid var(--line); }
 	.insp-cols > * { break-inside: avoid; }
-	.insp-cols > .notice, .insp-cols > .insp-empty, .insp-cols > .section:has(.props-table) { column-span: all; }
+	.insp-cols > .notice, .insp-cols > .insp-empty, .insp-cols > .section:has(.settings-filter) { column-span: all; }
 }
 
 /* The unit view hidden (◧, V): the parts list and the properties take the whole width, laid out as on wide screens. */
@@ -229,8 +229,16 @@ pre.diff .del { color: var(--bad); }
 #app.no-view #right > #inspector { grid-column: 2; grid-row: 2; min-height: 0; }
 #app.no-view .insp-cols { columns: 300px; column-gap: 0; column-rule: 1px solid var(--line); }
 #app.no-view .insp-cols > * { break-inside: avoid; }
-#app.no-view .insp-cols > .notice, #app.no-view .insp-cols > .insp-empty, #app.no-view .insp-cols > .section:has(.props-table) { column-span: all; }
+#app.no-view .insp-cols > .notice, #app.no-view .insp-cols > .insp-empty, #app.no-view .insp-cols > .section:has(.settings-filter) { column-span: all; }
 
 /* The library list hidden (◨, L): its column shrinks to nothing. */
 #app.no-lib { --lib-w: 0px; }
 #app.no-lib #left { display: none; }
+
+/* All settings: one row per setting, in columns of their own when there's room. */
+.settings-filter { margin: 2px 0 8px; }
+.section:has(.settings-filter) .rows > div:not(.setting-add):not(.row) { columns: 360px; column-gap: 24px; }
+.row.setting { break-inside: avoid; }
+.row.setting .val .small-btn { flex: none; padding: 3px 7px; }
+.setting-ro { color: var(--dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row.setting-add { margin-top: 8px; }
