@@ -881,7 +881,9 @@ window.MS = window.MS || {};
 		scripts.className = 'small-btn';
 		scripts.textContent = 'Scripts that name it';
 		scripts.title = 'Look through the Lua scripts for "' + preset.name + '" in quotes, like CreateActor("' + preset.name + '")';
-		scripts.onclick = () => {
+		scripts.onclick = async () => {
+			scripts.textContent = 'Reading scripts…';
+			await MS.ide.ensureScripts();
 			const found = MS.nav.luaMentions(preset.name, 60);
 			scripts.remove();
 			if (!found.length) {
@@ -967,6 +969,22 @@ window.MS = window.MS || {};
 		}
 		const ownPreset = MS.nav ? MS.nav.presetOf(ent.node) : null;
 		if (ownPreset) {
+			const relRow = document.createElement('div');
+			relRow.className = 'row';
+			const relLabel = document.createElement('label');
+			relLabel.textContent = 'Relations';
+			const relVal = document.createElement('div');
+			relVal.className = 'val';
+			for (const [tab, text, title] of [['inheritance', 'Inheritance…', 'What it copies and what copies it'], ['graph', 'Graph…', 'A picture of the presets and scripts around it'], ['resolved', 'Resolved…', 'The lines the game ends up with, and where each comes from']]) {
+				const b = document.createElement('button');
+				b.className = 'small-btn';
+				b.textContent = text;
+				b.title = title;
+				b.onclick = () => MS.relations.open(ownPreset, tab);
+				relVal.append(b);
+			}
+			relRow.append(relLabel, relVal);
+			where.append(relRow);
 			closedSections.add('Used by'); // starts folded; its count is in the heading
 			usedBySection(insp, ownPreset);
 		}

@@ -210,6 +210,18 @@ window.MS = window.MS || {};
 		}
 	}
 
+	// Reads every Lua script once, for anything that looks inside scripts (the graph, Used by) before Script mode has been opened.
+	let scriptsPromise = null;
+	ide.ensureScripts = function () {
+		if (ide.scriptsLoaded) {
+			return Promise.resolve();
+		}
+		if (!scriptsPromise) {
+			scriptsPromise = loadScripts();
+		}
+		return scriptsPromise;
+	};
+
 	// ---- the editor (Monaco) ----
 
 	let monacoLoading = null;
@@ -463,6 +475,19 @@ window.MS = window.MS || {};
 		});
 		MS.live.attach(ide.editor);
 		MS.nav.attach(ide.editor);
+		// Inheritance and Resolved for the preset the cursor is in.
+		for (const b of document.querySelectorAll('#codeTools [data-rel]')) {
+			b.onclick = () => {
+				const tab = ide.active;
+				const pos = ide.editor.getPosition();
+				const preset = tab && tab.path && pos ? MS.nav.presetAtLine(tab.path, pos.lineNumber) : null;
+				if (!preset) {
+					app.toast('Put the cursor inside a preset first.', 'bad');
+					return;
+				}
+				MS.relations.open(preset, b.dataset.rel);
+			};
+		}
 		// Fold buttons: levels follow the file's indentation (in an INI file level 1 is each preset, level 2 the blocks inside it).
 		const foldActions = { 1: 'editor.foldLevel1', 2: 'editor.foldLevel2', except: 'editor.foldAllExcept', unfold: 'editor.unfoldAll' };
 		for (const b of document.querySelectorAll('#codeTools [data-fold]')) {

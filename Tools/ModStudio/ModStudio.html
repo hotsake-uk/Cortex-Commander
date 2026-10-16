@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cortex Mod Studio</title>
-<link rel="stylesheet" href="studio.css?v=43">
+<link rel="stylesheet" href="studio.css?v=50">
 </head>
 <body>
 <div id="app">
@@ -150,6 +150,11 @@
 			<button class="ico-btn" data-fold="2" title="Fold the blocks inside each preset (Ctrl+K Ctrl+2)">Blocks</button>
 			<button class="ico-btn" data-fold="except" title="Fold everything except the block the cursor is in">Only this</button>
 			<button class="ico-btn" data-fold="unfold" title="Open every fold (Ctrl+K Ctrl+J)">Open all</button>
+			<span class="ct-sep"></span>
+			<span class="ct-label">Preset</span>
+			<button class="ico-btn" data-rel="inheritance" title="What the preset under the cursor copies and what copies it">Inheritance</button>
+			<button class="ico-btn" data-rel="graph" title="A picture of the presets and scripts around the preset under the cursor">Graph</button>
+			<button class="ico-btn" data-rel="resolved"title="The lines the game ends up with for the preset under the cursor, and where each comes from">Resolved</button>
 		</div>
 		<div id="codeHost"></div>
 		<div id="imageHost" hidden></div>
@@ -212,22 +217,23 @@
 <div id="modal" class="modal" hidden><div class="modal-card" id="modalCard"></div></div>
 <div id="toasts"></div>
 
-<script src="vendor/luaparse/luaparse.js?v=43"></script>
-<script src="js/ini.js?v=43"></script>
-<script src="js/gamefs.js?v=43"></script>
-<script src="js/library.js?v=43"></script>
-<script src="js/images.js?v=43"></script>
-<script src="js/rig.js?v=43"></script>
-<script src="js/viewport.js?v=43"></script>
-<script src="js/panels.js?v=43"></script>
-<script src="js/dialogs.js?v=43"></script>
-<script src="js/lua-intel.js?v=43"></script>
-<script src="js/ini-intel.js?v=43"></script>
-<script src="js/navigation.js?v=43"></script>
-<script src="js/ide.js?v=43"></script>
-<script src="js/live.js?v=43"></script>
-<script src="js/history.js?v=43"></script>
-<script src="js/app.js?v=43"></script>
-<script src="js/launcher.js?v=43"></script>
+<script src="vendor/luaparse/luaparse.js?v=50"></script>
+<script src="js/ini.js?v=50"></script>
+<script src="js/gamefs.js?v=50"></script>
+<script src="js/library.js?v=50"></script>
+<script src="js/images.js?v=50"></script>
+<script src="js/rig.js?v=50"></script>
+<script src="js/viewport.js?v=50"></script>
+<script src="js/panels.js?v=50"></script>
+<script src="js/dialogs.js?v=50"></script>
+<script src="js/lua-intel.js?v=50"></script>
+<script src="js/ini-intel.js?v=50"></script>
+<script src="js/navigation.js?v=50"></script>
+<script src="js/relations.js?v=50"></script>
+<script src="js/ide.js?v=50"></script>
+<script src="js/live.js?v=50"></script>
+<script src="js/history.js?v=50"></script>
+<script src="js/app.js?v=50"></script>
+<script src="js/launcher.js?v=50"></script>
 </body>
 </html>
