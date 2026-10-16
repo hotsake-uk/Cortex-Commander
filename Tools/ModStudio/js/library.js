@@ -137,7 +137,7 @@ window.MS = window.MS || {};
 					try {
 						text = await this.fs.readText(path);
 					} catch (e) {
-						this.warnings.push(module.name + ': IncludeFile not found: ' + path);
+						this.warnings.push(module.name + ': couldn\'t read ' + path + ' (' + (e && (e.name + ': ' + e.message)) + ')');
 						return;
 					}
 					doc = new MS.IniDoc(path, text);

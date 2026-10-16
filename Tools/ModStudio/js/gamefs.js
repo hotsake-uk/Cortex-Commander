@@ -156,6 +156,25 @@ window.MS = window.MS || {};
 			return entry && entry.kind === 'file' ? entry : null;
 		}
 
+		// Asks the browser for each folder by name, for when a listing didn't have it. Names are tried as written, then as listed.
+		async walkToFile(diskPath) {
+			const parts = diskPath.split('/').filter(Boolean);
+			const fileName = parts.pop();
+			let dir = this.root;
+			let soFar = '';
+			try {
+				for (const part of parts) {
+					const listed = (await this.dirMap(soFar)).get(lower(part));
+					dir = await dir.getDirectoryHandle(listed ? listed.name : part);
+					soFar = soFar ? soFar + '/' + part : part;
+				}
+				const listed = (await this.dirMap(soFar)).get(lower(fileName));
+				return await dir.getFileHandle(listed ? listed.name : fileName);
+			} catch (e) {
+				return null;
+			}
+		}
+
 		async exists(modulePath) {
 			const disk = this.toDiskPath(modulePath);
 			if (this.pendingWrites.has(lower(disk))) {
@@ -171,7 +190,10 @@ window.MS = window.MS || {};
 				return new Blob([pending.bytes]);
 			}
 			if (this.root) {
-				const handle = await this.fileHandle(disk);
+				let handle = await this.fileHandle(disk);
+				if (!handle) {
+					handle = await this.walkToFile(disk);
+				}
 				if (!handle) {
 					throw new Error('File not found: ' + disk);
 				}
