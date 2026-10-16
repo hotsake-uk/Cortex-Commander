@@ -109,6 +109,14 @@ fn gather(root: PathBuf, mods_source: Option<PathBuf>, state: Arc<Mutex<State>>,
 				// A rename or a write reports the file as it is now; a path that is gone was deleted.
 				let deleted = deleted || !path.exists();
 				let from_mods_folder = mods_source.as_deref().and_then(|source| path.strip_prefix(source).ok().map(Path::to_path_buf));
+				if from_mods_folder.is_some() {
+					// Studio's own save passed on to your mods folder (launcher::mirror_to_mods): the version already has it.
+					let mut s = state.lock().unwrap();
+					if s.ours.get(&path).is_some_and(|when| when.elapsed() < Duration::from_secs(3)) {
+						continue;
+					}
+					s.ours.remove(&path);
+				}
 				let path = match from_mods_folder {
 					Some(relative) => match relink(&path, &root, &relative, deleted) {
 						Some(linked) => {
