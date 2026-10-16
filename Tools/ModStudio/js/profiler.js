@@ -21,7 +21,7 @@ window.MS = window.MS || {};
 
 	const FILE = 'ModStudio/Profile.ini';
 	const HISTORY = 120; // samples, at two a second: a minute
-	const P = { timer: 0, history: [], paused: false, last: null, lastModified: 0 };
+	const P = { timer: 0, history: [], paused: false, last: null, lastModified: 0, canvas: null, renderKey: '', quiet: false };
 
 	function parse(text) {
 		const out = { stages: [], scripts: [] };
@@ -65,8 +65,15 @@ window.MS = window.MS || {};
 					const modified = Number(response.headers.get('X-Last-Modified')) || 0;
 					if (modified !== P.lastModified) {
 						P.lastModified = modified;
-						P.last = parse(await response.text());
-						P.history.push({ frame: P.last.Frame, update: P.last.Update, draw: P.last.Draw });
+						const sample = parse(await response.text());
+						// The game writes no frame timing while it is paused or between games, and the file may be read half written: that is a gap in
+						// the graph, not a frame that took no time (which drew every line down to zero).
+						const good = Number.isFinite(sample.Frame) && sample.Frame > 0;
+						P.quiet = !good;
+						if (good) {
+							P.last = sample;
+						}
+						P.history.push(good ? { frame: sample.Frame, update: Number.isFinite(sample.Update) ? sample.Update : null, draw: Number.isFinite(sample.Draw) ? sample.Draw : null } : { frame: null, update: null, draw: null });
 						if (P.history.length > HISTORY) {
 							P.history.shift();
 						}
@@ -75,7 +82,13 @@ window.MS = window.MS || {};
 			} catch (e) {
 				// no file yet: the game isn't running from Studio
 			}
-			render();
+			// Redrawn when there is a new sample or the state changed, not twice a second whatever happens (which made it flicker).
+			const stale = !P.lastModified || Date.now() - P.lastModified > 3000;
+			const key = P.lastModified + '|' + P.paused + '|' + stale + '|' + P.history.length + '|' + P.quiet;
+			if (key !== P.renderKey) {
+				P.renderKey = key;
+				render();
+			}
 		}
 		P.timer = setTimeout(poll, 500);
 	}
@@ -86,11 +99,11 @@ window.MS = window.MS || {};
 		const body = $('profilerBody');
 		const d = P.last;
 		const stale = !P.lastModified || Date.now() - P.lastModified > 3000;
-		const pause = el('button', { className: 'ico-btn', textContent: P.paused ? '▶ Resume' : '❚❚ Pause', title: 'Hold the numbers still to read them', onclick: () => { P.paused = !P.paused; render(); if (!P.paused) poll(); } });
-		const clear = el('button', { className: 'ico-btn', textContent: 'Clear graph', onclick: () => { P.history = []; render(); } });
+		const pause = el('button', { className: 'ico-btn', textContent: P.paused ? '▶ Resume' : '❚❚ Pause', title: 'Hold the numbers still to read them', onclick: () => { P.paused = !P.paused; P.renderKey = ''; render(); if (!P.paused) poll(); } });
+		const clear = el('button', { className: 'ico-btn', textContent: 'Clear graph', onclick: () => { P.history = []; P.renderKey = ''; render(); } });
 		const head = el('div', { className: 'prof-head' },
 			el('span', { className: stale ? 'prof-state off' : 'prof-state on', textContent: stale ? '○ No game running from Studio' : '● Live' }),
-			stale ? el('span', { className: 'prof-hint', textContent: 'Start one with ▶ Play ▾ › Test in game or Sandbox (they add -modstudio); this fills in as it runs.' }) : null,
+			stale ? el('span', { className: 'prof-hint', textContent: 'Start one with ▶ Play ▾ › Test in game or Sandbox (they add -modstudio); this fills in as it runs.' }) : P.quiet ? el('span', { className: 'prof-hint', textContent: 'No timings in the last sample (paused or between games); the graph leaves a gap.' }) : null,
 			el('span', { className: 'spacer' }), pause, clear);
 		if (!d) {
 			body.replaceChildren(head);
@@ -106,7 +119,7 @@ window.MS = window.MS || {};
 			tile('particles', fixed(d.Particles, 0)),
 			tile('MOIDs', fixed(d.MOIDs, 0), 'of 255', d.MOIDs > 240),
 			tile('sounds playing', fixed(d.SoundChannels, 0)));
-		const graph = el('canvas', { className: 'prof-graph', height: 90 });
+		const graph = P.canvas || (P.canvas = el('canvas', { className: 'prof-graph', height: 90 }));
 		const maxStage = Math.max(0.001, ...d.stages.map((s) => s.ms));
 		const stages = el('div', { className: 'prof-list' }, el('div', { className: 'prof-list-head', textContent: 'Where a frame\'s time goes (ms)' }),
 			...d.stages.slice(0, 16).map((s) => el('div', { className: 'prof-row', title: s.name }, el('span', { className: 'prof-name', textContent: s.name }), el('span', { className: 'prof-bar' }, el('i', { style: 'width:' + (100 * s.ms) / maxStage + '%' })), el('span', { className: 'prof-num', textContent: fixed(s.ms, 2) }))));
@@ -117,7 +130,7 @@ window.MS = window.MS || {};
 					el('span', { className: 'prof-name', textContent: s.path.split('/').pop() }), el('span', { className: 'prof-bar' }, el('i', { style: 'width:' + (100 * s.ms) / maxScript + '%' })), el('span', { className: 'prof-num', textContent: fixed(s.ms, 3) + ' · ' + fixed(s.calls, 0) })))
 				: [el('div', { className: 'pempty', textContent: 'No scripts ran.' })]));
 		body.replaceChildren(head, tiles, graph, el('div', { className: 'prof-cols' }, stages, scripts));
-		requestAnimationFrame(() => drawGraph(graph));
+		drawGraph(graph); // at once: drawn a frame later, a fresh canvas showed as a blank flash
 	}
 
 	function drawGraph(canvas) {
@@ -146,10 +159,16 @@ window.MS = window.MS || {};
 			ctx.strokeStyle = colour;
 			ctx.lineWidth = 1.5 * devicePixelRatio;
 			ctx.beginPath();
+			let pen = false;
 			P.history.forEach((s, i) => {
+				const v = s[key];
+				if (!Number.isFinite(v)) {
+					pen = false; // a sample with no timing: lift the pen
+					return;
+				}
 				const x = w - ((P.history.length - 1 - i) / (HISTORY - 1)) * w;
-				const v = s[key] || 0;
-				i ? ctx.lineTo(x, y(v)) : ctx.moveTo(x, y(v));
+				pen ? ctx.lineTo(x, y(v)) : ctx.moveTo(x, y(v));
+				pen = true;
 			});
 			ctx.stroke();
 		};
