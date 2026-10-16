@@ -116,9 +116,12 @@ window.MS = window.MS || {};
 		}
 		$('welcome').hidden = true;
 		$('statusMode').textContent = fs.writable ? 'Saving into ' + fs.name : 'Read-only: saves download as a zip';
-		app.status('Read ' + app.lib.presets.length + ' presets from ' + app.lib.modules.length + ' modules.');
+		const units = app.lib.presets.filter((p) => p.cls === 'AHuman' && p.topLevel).length;
+		const summary = 'Read ' + app.lib.presets.length + ' presets (' + units + ' units) from ' + app.lib.docs.size + ' files in ' + app.lib.modules.length + ' modules.';
+		app.status(summary);
 		if (app.lib.warnings.length) {
 			console.warn(app.lib.warnings.join('\n'));
+			app.toast(app.lib.warnings.length + ' files couldn\'t be read, for example: ' + app.lib.warnings[0], 'bad');
 		}
 		MS.panels.showLibrary();
 		const last = readLocal('ms.lastActor');
@@ -126,7 +129,7 @@ window.MS = window.MS || {};
 		if (preset) {
 			app.openActor(preset);
 		} else {
-			app.status('Pick a unit on the left to start.');
+			app.status(summary + ' Pick a unit on the left to start.');
 		}
 	}
 
