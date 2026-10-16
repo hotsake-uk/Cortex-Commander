@@ -107,6 +107,7 @@ window.MS = window.MS || {};
 			app.lib = new MS.Library(fs);
 			app.lib.onDocDirty = () => updateFileStatus();
 			await app.lib.load(report);
+			report('Getting ready…', 1);
 			hookDocs();
 		} catch (e) {
 			progress.hidden = true;
