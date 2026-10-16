@@ -84,7 +84,11 @@ window.MS = window.MS || {};
 		const rebuild = app.rebuild;
 		app.rebuild = function (...args) {
 			const result = rebuild.apply(this, args);
+			usersFor = null;
 			ide.syncModels();
+			if (ide.active && ide.mode === 'deep') {
+				renderUsers(ide.active);
+			}
 			if (ide.ini) {
 				ide.ini.invalidate();
 			}
@@ -536,6 +540,7 @@ window.MS = window.MS || {};
 		$('imageHost').hidden = tab.kind !== 'image';
 		$('codeHost').hidden = tab.kind !== 'code';
 		$('codeBanner').hidden = !(tab.kind === 'code' && tab.readOnly);
+		renderUsers(tab);
 		if (tab.kind === 'code' && ide.editor) {
 			ide.editor.setModel(tab.model);
 			ide.editor.updateOptions({ readOnly: !!tab.readOnly });
@@ -1402,11 +1407,7 @@ window.MS = window.MS || {};
 		contextMenu(e, [
 			{ text: 'Open', action: () => ide.openFile(path) },
 			{ text: 'Copy path', action: () => navigator.clipboard.writeText(path) },
-			{ text: 'Find where it\'s used', action: () => {
-				ide.showView('search');
-				$('searchInput').value = baseName(path);
-				runSearch();
-			} },
+			{ text: 'Find where it\'s used', action: () => showUses(path) },
 			null,
 			{ text: 'Rename…', disabled: official, action: () => renameDialog(path) },
 			{ text: 'Delete…', disabled: official, action: () => deleteDialog(path) },
@@ -1633,6 +1634,94 @@ window.MS = window.MS || {};
 			}
 		}
 		$('searchCount').textContent = hits ? hits + ' in ' + fileCount + ' file' + (fileCount > 1 ? 's' : '') : 'No matches';
+	}
+
+	// The presets that name a file (a script, sprite or sound), anywhere in their blocks, with where.
+	let usersFor = null;
+	let usersIndex = null;
+	const fileKey = (p) => p.replace(/\\/g, '/').toLowerCase().replace(/^(data|mods)\//, '').replace(/(\D)\d{3}(\.(png|bmp))$/, '$1$2');
+	ide.fileUsers = function (path) {
+		const lib = app.lib;
+		if (!lib) {
+			return [];
+		}
+		if (usersFor !== lib.presets) {
+			usersFor = lib.presets;
+			usersIndex = new Map();
+			const byNode = new Map(lib.presets.map((pr) => [pr.node, pr]));
+			for (const doc of lib.docs.values()) {
+				for (const node of doc.walk()) {
+					if (!node.line || !/\.(lua|png|bmp|wav|ogg|flac|mp3)$/i.test(node.value)) {
+						continue;
+					}
+					let owner = node.parent;
+					while (owner && !byNode.has(owner)) {
+						owner = owner.parent;
+					}
+					if (!owner) {
+						continue;
+					}
+					const key = fileKey(node.value);
+					if (!usersIndex.has(key)) {
+						usersIndex.set(key, []);
+					}
+					const list = usersIndex.get(key);
+					if (!list.some((u) => u.preset === byNode.get(owner))) {
+						list.push({ preset: byNode.get(owner), key: node.parent && node.parent !== owner && node.key === 'FilePath' ? node.parent.key : node.key, line: node.line });
+					}
+				}
+			}
+		}
+		return usersIndex.get(fileKey(path)) || [];
+	};
+
+	function openUser(u) {
+		ide.openFile(u.preset.doc.path, u.line);
+	}
+
+	// Search view: the presets that use a file, then every line that names it.
+	function showUses(path) {
+		ide.showView('search');
+		$('searchInput').value = baseName(path).replace(/(\D)\d{3}(\.(png|bmp))$/i, '$1$2');
+		runSearch();
+		const users = ide.fileUsers(path);
+		const box = $('searchResults');
+		const head = [el('div', { className: 'pgroup', textContent: users.length ? 'Presets that use ' + baseName(path) + ' · ' + users.length : 'No preset uses ' + baseName(path) })];
+		for (const u of users) {
+			const row = el('div', { className: 'srow' }, el('span', { className: 'pline', textContent: u.preset.cls }), el('span', { textContent: u.preset.name + '  (' + u.key + ', ' + baseName(u.preset.doc.path) + ':' + u.line + ')' }));
+			row.title = u.preset.doc.path;
+			row.onclick = () => openUser(u);
+			head.push(row);
+		}
+		box.prepend(...head);
+	}
+	ide.showUses = showUses;
+
+	// The strip over a script or picture saying which presets use it.
+	function renderUsers(tab) {
+		const bar = $('codeUsers');
+		bar.innerHTML = '';
+		const show = tab && tab.path && (tab.kind === 'image' || /\.lua$/i.test(tab.path));
+		const users = show ? ide.fileUsers(tab.path) : [];
+		bar.hidden = !show;
+		if (!show) {
+			return;
+		}
+		if (!users.length) {
+			bar.append(el('span', { textContent: /\.lua$/i.test(tab.path) ? 'No preset uses this script yet. Add it to a part with + New script, or as a ScriptPath line.' : 'No preset uses this picture.' }));
+			return;
+		}
+		bar.append(el('span', { textContent: 'Used by' }));
+		for (const u of users.slice(0, 8)) {
+			const b = el('button', { className: 'user-chip', textContent: u.preset.name, title: u.preset.cls + ' in ' + u.preset.doc.path + ':' + u.line });
+			b.onclick = () => openUser(u);
+			bar.append(b);
+		}
+		if (users.length > 8) {
+			const more = el('button', { className: 'user-chip more', textContent: 'and ' + (users.length - 8) + ' more' });
+			more.onclick = () => showUses(tab.path);
+			bar.append(more);
+		}
 	}
 
 	// -- quick open (Ctrl+P) --
