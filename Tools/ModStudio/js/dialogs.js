@@ -285,6 +285,43 @@ window.MS = window.MS || {};
 
 	// ---- sprite import ----
 
+	// Writes a sprite's frames ({width, height, indices} each) as numbered PNGs beside filePath, then, when a part is given, points that part at
+	// them: its SpriteFile, FrameCount and, with centre, SpriteOffset. Returns the files written. Used by Replace the sprite and the pixel editor.
+	async function saveSprite(part, filePath, frames, centre) {
+		const a = app();
+		const paths = MS.Images.framePaths(filePath, frames.length);
+		for (let i = 0; i < frames.length; i++) {
+			const c = frames[i];
+			await a.fs.writeFile(paths[i], await a.images.encodePng(c.width, c.height, c.indices));
+		}
+		a.forgetSprites(paths);
+		MS.panels.forgetThumbs();
+		if (part) {
+			const w = frames[0].width;
+			const h = frames[0].height;
+			a.edit('change the sprite of ' + part.name, () => {
+				const node = a.ownBlock(part);
+				if (!node) {
+					return;
+				}
+				let sf = node.children.find((c) => c.key === 'SpriteFile');
+				if (!sf) {
+					sf = node.add('SpriteFile', 'ContentFile', node.insertIndexFor('SpriteFile'));
+				}
+				sf.setValue('ContentFile');
+				for (const old of sf.children.filter((c) => c.key === 'Path' || c.key === 'CopyOf')) {
+					old.remove();
+				}
+				sf.set('FilePath', filePath);
+				node.set('FrameCount', String(frames.length));
+				if (centre) {
+					node.setVector('SpriteOffset', -Math.floor(w / 2), -Math.floor(h / 2));
+				}
+			});
+		}
+		return paths;
+	}
+
 	// options.files: pictures to start with (dropped on the guide); options.onDone: called once the sprite is in the unit.
 	function importSprite(part, options) {
 		const a = app();
@@ -516,39 +553,13 @@ window.MS = window.MS || {};
 					}
 					const name = safeName(base.value);
 					const filePath = dir + '/' + name + '.png';
-					const paths = MS.Images.framePaths(filePath, converted.length);
+					let paths;
 					try {
-						for (let i = 0; i < converted.length; i++) {
-							const c = converted[i];
-							await a.fs.writeFile(paths[i], await a.images.encodePng(c.width, c.height, c.indices));
-						}
+						paths = await saveSprite(part, filePath, converted, centre.checked);
 					} catch (e) {
 						a.toast('Couldn\'t save the sprite: ' + e.message, 'bad');
 						return false;
 					}
-					a.forgetSprites(paths);
-					MS.panels.forgetThumbs();
-					const w = converted[0].width;
-					const h = converted[0].height;
-					a.edit('replace the sprite of ' + part.name, () => {
-						const node = a.ownBlock(part);
-						if (!node) {
-							return;
-						}
-						let sf = node.children.find((c) => c.key === 'SpriteFile');
-						if (!sf) {
-							sf = node.add('SpriteFile', 'ContentFile', node.insertIndexFor('SpriteFile'));
-						}
-						sf.setValue('ContentFile');
-						for (const old of sf.children.filter((c) => c.key === 'Path' || c.key === 'CopyOf')) {
-							old.remove();
-						}
-						sf.set('FilePath', filePath);
-						node.set('FrameCount', String(converted.length));
-						if (centre.checked) {
-							node.setVector('SpriteOffset', -Math.floor(w / 2), -Math.floor(h / 2));
-						}
-					});
 					a.toast('Saved ' + paths.length + ' frame' + (paths.length > 1 ? 's' : '') + ' to ' + dir + '. Save to keep the unit change.', 'good');
 					if (options && options.onDone) {
 						options.onDone(part);
@@ -636,7 +647,7 @@ window.MS = window.MS || {};
 		open('Preview in game', body, [{ text: 'Got it', primary: true }]);
 	}
 
-	MS.dialogs = { open, close, copyUnit, attach, pickItem, importSprite, help, previewHelp };
+	MS.dialogs = { open, close, copyUnit, attach, pickItem, importSprite, saveSprite, help, previewHelp };
 	// For the New… wizard (wizard.js) and the data editors (editors.js).
 	MS.dialogs.parts = { el, field, para, safeName, modChoices, modPicker, makeCopy, pickerGrid };
 })();

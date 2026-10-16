@@ -917,3 +917,50 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .import-note.warn { border-left-color: var(--accent); color: var(--text); }
 .import-note.bad { border-left-color: var(--bad); color: #ffc4bc; }
 .import-note.info { border-left-color: #7fd1ff; }
+.lf-edit { margin-left: auto; background: none; border: 0; color: var(--faint); cursor: pointer; padding: 0 4px; visibility: hidden; }
+.lf-row:hover .lf-edit { visibility: visible; }
+.lf-edit:hover { color: var(--accent); }
+
+.px-menu { position: fixed; z-index: 60; background: var(--panel); border: 1px solid var(--line2); border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0, 0, 0, .45); display: flex; flex-direction: column; min-width: 150px; }
+.px-menu-item { background: none; border: 0; color: var(--text); text-align: left; padding: 6px 10px; border-radius: 5px; cursor: pointer; font-size: 12.5px; }
+.px-menu-item:hover { background: var(--panel3); }
+
+.modal-card.px-card { width: min(1120px, 96vw); height: min(780px, 94vh); }
+.px-card .body { flex: 1; min-height: 0; display: flex; }
+.px { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; min-width: 0; }
+.px-main { flex: 1; min-height: 0; display: grid; grid-template-columns: 44px minmax(0, 1fr) 236px; gap: 10px; }
+.px-tools { display: flex; flex-direction: column; gap: 4px; }
+.px-tool { width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; color: var(--dim); cursor: pointer; }
+.px-tool:hover { color: var(--text); }
+.px-tool.sel { border-color: var(--accent); color: var(--accent); background: var(--panel3); }
+.px-center { display: flex; flex-direction: column; min-width: 0; min-height: 0; gap: 6px; }
+.px-top { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.px-top .spacer { flex: 1; }
+.px-sep { width: 1px; height: 16px; background: var(--line2); margin: 0 6px; }
+.px-zoom { min-width: 34px; text-align: center; color: var(--dim); font-size: 12px; }
+.ico-btn.on { color: var(--accent); border-color: var(--accent); }
+.px-wrap { flex: 1; min-height: 0; overflow: auto; background: #0d0f13; border: 1px solid var(--line); border-radius: 6px; padding: 12px; display: flex; }
+.px-canvas { margin: auto; image-rendering: pixelated; cursor: crosshair; touch-action: none; flex: none; }
+.px-bottom { min-height: 18px; color: var(--faint); font-size: 12px; }
+.px-side { display: flex; flex-direction: column; gap: 6px; overflow: auto; min-height: 0; padding-right: 2px; }
+.px-h { font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: .6px; margin-top: 6px; }
+.px-colour { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); }
+.px-swatch { width: 26px; height: 26px; border: 1px solid var(--line2); border-radius: 5px; flex: none; }
+.px-swatch.clear { background: repeating-conic-gradient(#262b36 0 25%, #1d212a 0 50%) 0 / 10px 10px; }
+.px-pal { image-rendering: pixelated; border: 1px solid var(--line2); border-radius: 4px; cursor: pointer; align-self: flex-start; }
+.px-recents { display: flex; flex-wrap: wrap; gap: 3px; min-height: 16px; }
+.px-recent { width: 16px; height: 16px; border: 1px solid var(--line2); border-radius: 3px; padding: 0; cursor: pointer; }
+.px-strip { display: flex; flex-wrap: wrap; gap: 4px; }
+.px-frame { position: relative; padding: 0; border: 2px solid var(--line); border-radius: 5px; background: none; cursor: pointer; line-height: 0; }
+.px-frame.sel { border-color: var(--accent); }
+.px-frame small { position: absolute; right: 2px; bottom: 1px; font-size: 9px; color: #fff; text-shadow: 0 0 2px #000; line-height: 1; }
+.px-frameinfo { font-size: 11.5px; color: var(--faint); }
+.px-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.px-size { width: 58px; }
+.px-preview { image-rendering: pixelated; border: 1px solid var(--line); border-radius: 4px; align-self: flex-start; max-width: 100%; }
+.px-save { display: flex; align-items: center; gap: 8px; padding-top: 6px; border-top: 1px solid var(--line); }
+.px-save .spacer { flex: 1; }
+.px-where { color: var(--dim); font-size: 12.5px; }
+.px-copy { padding: 10px 12px; border: 1px solid var(--line2); border-radius: 8px; background: var(--panel2); display: grid; gap: 8px; }
+.px-copy[hidden] { display: none; }
+.px-copy-nav { display: flex; gap: 8px; justify-content: flex-end; }

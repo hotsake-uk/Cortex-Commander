@@ -8,6 +8,7 @@ import './viewport.js';
 import './skeleton.js';
 import './panels.js';
 import './dialogs.js';
+import './pixel.js';
 import './wizard.js';
 import './guide.js';
 import './friendly.js';

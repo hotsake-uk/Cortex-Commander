@@ -14,6 +14,7 @@ window.MS = window.MS || {};
 		down: '<path d="M4 6l4 4 4-4"/>',
 		right: '<path d="M6 4l4 4-4 4"/>',
 		code: '<path d="M5 4L1 8l4 4M11 4l4 4-4 4"/>',
+		pencil: '<path d="M2 14l1-4 8-8 3 3-8 8z"/><path d="M9.5 3.5l3 3"/>',
 	};
 
 	function icon(name) {
@@ -513,6 +514,18 @@ window.MS = window.MS || {};
 			note.textContent = item.note;
 			row.title = item.path + (item.line > 1 ? ':' + item.line : '') + (item.where ? '\nNamed in ' + item.where : '');
 			row.onclick = () => openListedFile(kind, item);
+			if (kind === 'image') {
+				const edit = document.createElement('button');
+				edit.className = 'lf-edit';
+				edit.textContent = '✎';
+				edit.title = 'Edit this picture';
+				edit.onclick = (e) => {
+					e.stopPropagation();
+					MS.pixel.open({ file: item.path });
+				};
+				row.append(icon, name, note, edit);
+				return row;
+			}
 		}
 		row.append(icon, name, note);
 		return row;
@@ -673,7 +686,17 @@ window.MS = window.MS || {};
 				e.stopPropagation();
 				toggleEye(part, e.altKey);
 			};
-			row.append(code, eye);
+			const picture = document.createElement('button');
+			picture.className = 'row-btn';
+			picture.append(icon('pencil'));
+			picture.title = 'Edit this part\'s sprite, or swap it for another';
+			picture.disabled = !part.sprite.file;
+			picture.hidden = !part.sprite.file;
+			picture.onclick = (e) => {
+				e.stopPropagation();
+				MS.pixel.menu(picture, { part });
+			};
+			row.append(picture, code, eye);
 			row.onclick = () => app.select(part);
 			row.ondblclick = (e) => {
 				// Quick clicks on the eye, the fold arrow or the code button are not a double-click on the row.
@@ -976,6 +999,10 @@ window.MS = window.MS || {};
 			};
 			strip.append(c);
 		}
+		strip.oncontextmenu = (e) => {
+			e.preventDefault();
+			MS.pixel.menu(strip, { part });
+		};
 		rows.append(strip);
 		if (forced !== undefined) {
 			const note = document.createElement('div');
@@ -1147,13 +1174,21 @@ window.MS = window.MS || {};
 		}
 
 		const sprite = section(insp, 'Sprite', (() => {
+			const wrap = document.createElement('span');
+			const edit = document.createElement('button');
+			edit.className = 'small-btn';
+			edit.textContent = 'Edit…';
+			edit.title = 'Draw on this picture in the pixel editor';
+			edit.disabled = !part.sprite.file;
+			edit.onclick = () => MS.pixel.open({ part });
 			const b = document.createElement('button');
 			b.className = 'small-btn';
-			b.textContent = 'Replace…';
-			b.title = 'Use your own picture or sprite sheet for this part';
+			b.textContent = 'Swap…';
+			b.title = 'Use a different picture or sprite sheet for this part';
 			b.disabled = !!locked;
 			b.onclick = () => MS.dialogs.importSprite(part);
-			return b;
+			wrap.append(edit, ' ', b);
+			return wrap;
 		})());
 		const s = part.sprite;
 		const spriteFirst = s.file ? MS.Images.framePaths(s.file, s.frameCount)[0] : null;
