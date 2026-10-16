@@ -1463,6 +1463,45 @@ void MovableMan::ReloadLuaScripts() {
 	}
 }
 
+int reloadLuaScriptsUsingRecursive(MovableObject* mo, const std::string& scriptPath) {
+	int reloaded = 0;
+	if (MOSRotating* mosr = dynamic_cast<MOSRotating*>(mo)) {
+		// Stepped past before reloading, as in reloadLuaFunctionsOnMORecursive, because a reloaded script's Create can remove its own attachable.
+		for (auto attachableItr = mosr->GetAttachableList().begin(); attachableItr != mosr->GetAttachableList().end();) {
+			Attachable* attachable = *attachableItr;
+			++attachableItr;
+			reloaded += reloadLuaScriptsUsingRecursive(attachable, scriptPath);
+		}
+		for (auto woundItr = mosr->GetWoundList().begin(); woundItr != mosr->GetWoundList().end();) {
+			AEmitter* wound = *woundItr;
+			++woundItr;
+			reloaded += reloadLuaScriptsUsingRecursive(wound, scriptPath);
+		}
+	}
+	if (mo->HasScript(scriptPath)) {
+		mo->ReloadScripts();
+		++reloaded;
+	}
+	return reloaded;
+}
+
+int MovableMan::ReloadLuaScriptsUsing(const std::string& scriptPath) {
+	int reloaded = 0;
+	for (const std::deque<Actor*>* actors: {&m_AddedActors, &m_Actors}) {
+		const std::vector<Actor*> copy(actors->begin(), actors->end());
+		for (Actor* actor: copy) {
+			reloaded += reloadLuaScriptsUsingRecursive(actor, scriptPath);
+		}
+	}
+	for (const std::deque<MovableObject*>* objects: {&m_AddedItems, &m_Items, &m_AddedParticles, &m_Particles}) {
+		const std::vector<MovableObject*> copy(objects->begin(), objects->end());
+		for (MovableObject* object: copy) {
+			reloaded += reloadLuaScriptsUsingRecursive(object, scriptPath);
+		}
+	}
+	return reloaded;
+}
+
 void MovableMan::PublishThreats() {
 	ZoneScoped;
 

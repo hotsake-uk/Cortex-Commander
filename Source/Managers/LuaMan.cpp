@@ -1,5 +1,6 @@
 #include "LuaMan.h"
 #include "Sandbox.h"
+#include "ModStudioPreview.h"
 #include "EffectsParticles.h"
 
 #include "LuabindObjectWrapper.h"
@@ -9,6 +10,8 @@
 
 #include "tracy/Tracy.hpp"
 #include "tracy/TracyLua.hpp"
+
+#include <fstream>
 
 using namespace RTE;
 
@@ -143,6 +146,9 @@ void LuaStateWrapper::Initialize() {
 	                         luabind::def("GetPathFindingDefaultDigStrength", &LuaAdaptersUtility::GetPathFindingDefaultDigStrength),
 	                         luabind::def("RoundFloatToPrecision", &RoundFloatToPrecision),
 	                         luabind::def("RoundToNearestMultiple", &RoundToNearestMultiple),
+	                         luabind::def("_StudioWatch", &ModStudioPreview::Watch),
+	                         luabind::def("_StudioLive", &ModStudioPreview::Live),
+	                         luabind::def("_StudioClock", &ModStudioPreview::Clock),
 
 	                         RegisterLuaBindingsOfType(SystemLuaBindings, Vector),
 	                         RegisterLuaBindingsOfType(SystemLuaBindings, Box),
@@ -281,6 +287,8 @@ void LuaStateWrapper::Initialize() {
 	              "package.cpath = package.cpath .. \";Data/Base.rte/LuaIntegration/?.so;Data/Base.rte/LuaIntegration/?/?.so;\"\n"
 	              // Add cls() as a shortcut to ConsoleMan:Clear().
 	              "cls = function() ConsoleMan:Clear(); end\n"
+	              // StudioWatch(name, value) shows a value in Cortex Mod Studio's Watch panel (in games started with -modstudio).
+	              "StudioWatch = function(name, value) _StudioWatch(tostring(name), tostring(value)); end\n"
 	              // Override "print" in the lua state to output to the console.
 	              "print = function(stringToPrint) ConsoleMan:PrintString(\"PRINT: \" .. tostring(stringToPrint)); end\n"
 	              // Override random functions to appear global instead of under LuaMan
@@ -304,6 +312,120 @@ void LuaStateWrapper::Initialize() {
 	              "_AsyncPathCallbacks = {};\n"
 	              "_AddAsyncPathCallback = function(id, callback) _AsyncPathCallbacks[id] = callback; end\n"
 	              "_TriggerAsyncPathCallback = function(id, param) if _AsyncPathCallbacks[id] ~= nil then _AsyncPathCallbacks[id](param); _AsyncPathCallbacks[id] = nil; end end\n");
+
+	// The probes in Cortex Studio's live copies of scripts (its Quokka-style "--?" comments, see ModStudioPreview::LiveScriptFor). Each
+	// shows the values it is given as short text, passes them on unchanged, and never raises an error. __q is a value, __qx a value with
+	// tables shown wider, and __qt0/__qt1 time what runs between them. Only live copies call these.
+	luaL_dostring(m_State, R"lua(
+do
+	local format, floor, abs, huge, concat = string.format, math.floor, math.abs, math.huge, table.concat
+	local function clean(s, limit)
+		s = string.gsub(s, "%c", " ")
+		if #s > limit then
+			s = string.sub(s, 1, limit - 3) .. "..."
+		end
+		return s
+	end
+	local function number(v)
+		if v == floor(v) and abs(v) < 1e15 then
+			return format("%d", v)
+		end
+		return format("%.4g", v)
+	end
+	local show
+	local function showTable(t, depth, wide)
+		if depth > (wide and 2 or 1) then
+			return "{...}"
+		end
+		local parts, shown, limit, count = {}, 0, wide and 24 or 6, #t
+		for i = 1, count do
+			shown = shown + 1
+			if shown > limit then
+				parts[#parts + 1] = "..."
+				return "{" .. concat(parts, ", ") .. "}"
+			end
+			parts[#parts + 1] = show(t[i], depth + 1, wide)
+		end
+		for k, v in pairs(t) do
+			if not (type(k) == "number" and k >= 1 and k <= count and floor(k) == k) then
+				shown = shown + 1
+				if shown > limit then
+					parts[#parts + 1] = "..."
+					break
+				end
+				local key = type(k) == "string" and string.match(k, "^[%a_][%w_]*$") and k or ("[" .. show(k, depth + 1, false) .. "]")
+				parts[#parts + 1] = key .. " = " .. show(v, depth + 1, wide)
+			end
+		end
+		return "{" .. concat(parts, ", ") .. "}"
+	end
+	show = function(v, depth, wide)
+		local kind = type(v)
+		if kind == "number" then
+			return number(v)
+		elseif kind == "string" then
+			return '"' .. clean(v, wide and 200 or 60) .. '"'
+		elseif kind == "table" then
+			return showTable(v, depth, wide)
+		elseif kind == "userdata" then
+			local ok, x, y = pcall(function() return v.X, v.Y end)
+			if ok and type(x) == "number" and type(y) == "number" then
+				return "(" .. number(x) .. ", " .. number(y) .. ")"
+			end
+			local named, class, name = pcall(function() return v.ClassName, v.PresetName end)
+			if named and type(class) == "string" then
+				return class .. ((type(name) == "string" and name ~= "") and (' "' .. clean(name, 40) .. '"') or "")
+			end
+		end
+		return clean(tostring(v), 60)
+	end
+	local function send(key, wide, ...)
+		local n = select("#", ...)
+		local text
+		if n == 1 then
+			text = show((...), 0, wide)
+		elseif n == 0 then
+			text = "(nothing)"
+		else
+			local parts = {}
+			for i = 1, n do
+				parts[i] = show((select(i, ...)), 0, wide)
+			end
+			text = concat(parts, ", ")
+		end
+		_StudioLive(key, clean(text, wide and 2000 or 160))
+	end
+	function __q(key, ...)
+		pcall(send, key, false, ...)
+		return ...
+	end
+	function __qx(key, ...)
+		pcall(send, key, true, ...)
+		return ...
+	end
+	local started, stats = {}, {}
+	function __qt0(key)
+		started[key] = _StudioClock()
+	end
+	function __qt1(key, ...)
+		local t0 = started[key]
+		if t0 then
+			local ms = (_StudioClock() - t0) * 1000
+			local s = stats[key]
+			if not s then
+				s = { n = 0, total = 0, min = huge, max = 0 }
+				stats[key] = s
+			end
+			s.n, s.total = s.n + 1, s.total + ms
+			if ms < s.min then s.min = ms end
+			if ms > s.max then s.max = ms end
+			local text = s.n == 1 and format("%.3f ms", ms) or format("%.3f ms (average %.3f, min %.3f, max %.3f, total %.1f)", ms, s.total / s.n, s.min, s.max, s.total)
+			pcall(_StudioLive, key, text)
+		end
+		return ...
+	end
+end
+)lua");
 
 	if (g_SettingsMan.EnableLuaDebugging()) {
 		luaL_dostring(m_State, "require(\"mobdebug\").coro(); require(\"mobdebug\").start();");
@@ -795,9 +917,18 @@ int LuaStateWrapper::RunScriptFile(const std::string& filePath, bool consoleErro
 	lua_pushcfunction(m_State, &AddFileAndLineToError);
 	SetLuaPath(fullScriptPath);
 
-	// Load the script file's contents onto the stack
+	// Load the script file's contents onto the stack. In a game started from Cortex Studio, a live copy of the script (the same lines with
+	// Studio's value probes in them) loads in its place, named as the script itself so errors point at the script's own lines.
 	s_ScriptFilesCompiled.fetch_add(1, std::memory_order_relaxed);
-	if (luaL_loadfile(m_State, fullScriptPath.c_str())) {
+	int loadStatus = 0;
+	if (const std::string liveCopy = ModStudioPreview::LiveScriptFor(filePath, fullScriptPath); !liveCopy.empty()) {
+		std::ifstream liveFile(liveCopy, std::ios::binary);
+		const std::string liveCode((std::istreambuf_iterator<char>(liveFile)), std::istreambuf_iterator<char>());
+		loadStatus = luaL_loadbuffer(m_State, liveCode.data(), liveCode.size(), ("@" + fullScriptPath).c_str());
+	} else {
+		loadStatus = luaL_loadfile(m_State, fullScriptPath.c_str());
+	}
+	if (loadStatus) {
 		m_LastError = lua_tostring(m_State, -1);
 		lua_pop(m_State, 1);
 		if (consoleErrors) {

@@ -1,0 +1,65 @@
+name: Cortex Studio
+
+on:
+  # Builds the Cortex Studio app (Tools/CortexStudio, with Mod Studio's page inside) for every platform when either changes,
+  # and uploads the installers as build artefacts.
+  push:
+    branches: [maindev]
+    paths: ["Tools/CortexStudio/**", "Tools/ModStudio/**", ".github/workflows/cortex-studio.yml"]
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize]
+    paths: ["Tools/CortexStudio/**", "Tools/ModStudio/**", ".github/workflows/cortex-studio.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: cortex-studio-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Cortex Studio (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+          - name: macOS
+            os: macos-latest
+          - name: Linux
+            os: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: Tools/CortexStudio/src-tauri
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build the app and its installers
+        working-directory: Tools/CortexStudio
+        run: npx --yes @tauri-apps/cli@2 build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CortexStudio-${{ matrix.name }}
+          path: |
+            Tools/CortexStudio/src-tauri/target/release/bundle/msi/*.msi
+            Tools/CortexStudio/src-tauri/target/release/bundle/nsis/*.exe
+            Tools/CortexStudio/src-tauri/target/release/bundle/dmg/*.dmg
+            Tools/CortexStudio/src-tauri/target/release/bundle/deb/*.deb
+            Tools/CortexStudio/src-tauri/target/release/bundle/rpm/*.rpm
+            Tools/CortexStudio/src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error

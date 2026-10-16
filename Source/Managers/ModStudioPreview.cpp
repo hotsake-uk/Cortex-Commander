@@ -6,7 +6,9 @@
 #include "ConsoleMan.h"
 #include "FrameMan.h"
 #include "GameActivity.h"
+#include "GAScripted.h"
 #include "HeldDevice.h"
+#include "LuaMan.h"
 #include "MovableMan.h"
 #include "PresetMan.h"
 #include "RTEError.h"
@@ -16,6 +18,9 @@
 
 #include <algorithm>
 #include <fstream>
+#include <deque>
+#include <map>
+#include <mutex>
 
 using namespace RTE;
 
@@ -23,11 +28,53 @@ bool ModStudioPreview::s_InGame = false;
 std::chrono::steady_clock::time_point ModStudioPreview::s_LastCheck = {};
 long ModStudioPreview::s_LastUnitID = 0;
 std::filesystem::file_time_type ModStudioPreview::s_LastWriteTime = {};
+std::chrono::steady_clock::time_point ModStudioPreview::s_LastScriptCheck = {};
+std::filesystem::file_time_type ModStudioPreview::s_ScriptsWriteTime = {};
+bool ModStudioPreview::s_ScriptsLookedAt = false;
+ModStudioPreview::Request ModStudioPreview::s_LastRequest = {};
 
 namespace {
 	std::string TrimSpaces(const std::string& text) {
 		const size_t first = text.find_first_not_of(" \t\r\n");
 		return first == std::string::npos ? std::string() : text.substr(first, text.find_last_not_of(" \t\r\n") - first + 1);
+	}
+
+	std::filesystem::path StudioFolder() {
+		return std::filesystem::path(System::GetWorkingDirectory()) / "ModStudio";
+	}
+
+	// The console log and the watched values. Any thread can print or watch, so each has a lock. They are made on first use and never freed:
+	// the console can still print while the program shuts down, after ordinary statics are gone.
+	struct StudioLog {
+		std::mutex Mutex;
+		std::ofstream File; //!< ModStudio/Console.log, opened (emptied) on the first line printed.
+		bool Unflushed = false; //!< Whether lines were added since it was last flushed.
+	};
+	StudioLog& Log() {
+		static StudioLog* log = new StudioLog();
+		return *log;
+	}
+	struct StudioWatched {
+		std::mutex Mutex;
+		std::map<std::string, std::string> Values; //!< The values scripts watch, by name.
+		bool Changed = false; //!< Whether one changed since Watch.ini was last written.
+	};
+	StudioWatched& Watched() {
+		static StudioWatched* watched = new StudioWatched();
+		return *watched;
+	}
+	struct StudioLiveValues {
+		struct Probe {
+			unsigned long long Count = 0; //!< How many times the probe ran.
+			std::deque<std::string> Recent; //!< Its last values, newest last.
+		};
+		std::mutex Mutex;
+		std::map<std::string, Probe> Probes; //!< By key, "<script path>|<line>:<column>".
+		bool Changed = false; //!< Whether a probe ran since Live.ini was last written.
+	};
+	StudioLiveValues& LiveValues() {
+		static StudioLiveValues* live = new StudioLiveValues();
+		return *live;
 	}
 
 	std::string OneLine(std::string text) {
@@ -36,13 +83,13 @@ namespace {
 	}
 
 	/// Reloads a file Studio changed. Something wrong in it is caught the way a broken mod is at start-up: one ERROR line on the console (which Studio
-	/// shows), and the game carries on with what it had, rather than stopping on an assert dialog.
-	void ReloadFileFromStudio(const std::string& filePath) {
+	/// shows), and the game carries on with what it had, rather than stopping on an assert dialog. Returns whether it was read again.
+	bool ReloadFileFromStudio(const std::string& filePath) {
 		const std::string moduleName = g_PresetMan.GetModuleNameFromPath(filePath);
 		for (const auto& [failedName, failure]: g_PresetMan.GetFailedMods()) {
 			if (StringsEqualCaseInsensitive(failedName, moduleName)) {
 				g_ConsoleMan.PrintString("ERROR: Mod Studio couldn't reload \"" + filePath + "\": the mod " + failedName + " wasn't loaded when the game started, because: " + OneLine(failure) + " Fix that and restart the game.");
-				return;
+				return false;
 			}
 		}
 		bool reloaded = false;
@@ -57,8 +104,9 @@ namespace {
 		if (!failure.empty()) {
 			g_ConsoleMan.PrintString("ERROR: Mod Studio couldn't reload \"" + filePath + "\", so the game keeps what it had before: " + OneLine(failure));
 		} else if (!reloaded) {
-			g_ConsoleMan.PrintString("WARNING: Mod Studio preview couldn't reload \"" + filePath + "\". Its mod may not be loaded yet.");
+			g_ConsoleMan.PrintString("WARNING: Mod Studio couldn't reload \"" + filePath + "\". Its mod may not be loaded yet.");
 		}
+		return reloaded && failure.empty();
 	}
 } // namespace
 
@@ -143,26 +191,37 @@ void ModStudioPreview::UpdateInGame() {
 		return;
 	}
 	s_LastCheck = now;
-	GameActivity* game = dynamic_cast<GameActivity*>(g_ActivityMan.GetActivity());
-	if (!g_ActivityMan.IsInActivity() || !game || game->GetActivityState() != Activity::ActivityState::Running || !g_SceneMan.GetScene()) {
+	if (!GameRunning()) {
 		return;
 	}
 	Request request;
 	if (!Poll(s_LastWriteTime, request)) {
 		return;
 	}
+	Show(request);
+}
+
+bool ModStudioPreview::GameRunning() {
+	const GameActivity* game = dynamic_cast<GameActivity*>(g_ActivityMan.GetActivity());
+	return g_ActivityMan.IsInActivity() && game && game->GetActivityState() == Activity::ActivityState::Running && g_SceneMan.GetScene();
+}
+
+bool ModStudioPreview::Show(const Request& request) {
+	GameActivity* game = dynamic_cast<GameActivity*>(g_ActivityMan.GetActivity());
 	std::string problem;
 	Actor* unit = MakeUnit(request, problem);
 	if (!unit) {
 		g_FrameMan.SetScreenText(problem, 0, 0, 8000);
-		return;
+		return false;
 	}
+	s_LastRequest = request;
+	s_LastRequest.FilesToReload.clear();
 
 	const std::string shown = "Showing " + request.PresetName + " from Mod Studio. Press Preview in game again after a change.";
 	// In the sandbox it becomes your own character, so you play it as yourself, with the tools put away.
 	if (Sandbox::PlayAs(unit)) {
 		g_FrameMan.SetScreenText(shown, 0, 0, 4000);
-		return;
+		return true;
 	}
 
 	// In other games (Test In Game.bat's plain map, or any other) the new unit takes the place of the last one from Studio (or the unit the player
@@ -191,4 +250,224 @@ void ModStudioPreview::UpdateInGame() {
 		game->SetViewState(Activity::ViewState::Normal, player);
 	}
 	g_FrameMan.SetScreenText(shown, 0, 0, 4000);
+	return true;
+}
+
+void ModStudioPreview::OnConsoleLine(const std::string& line) {
+	if (!s_InGame) {
+		return;
+	}
+	StudioLog& log = Log();
+	std::scoped_lock<std::mutex> logLock(log.Mutex);
+	if (!log.File.is_open()) {
+		std::error_code error;
+		std::filesystem::create_directories(StudioFolder(), error);
+		log.File.open(StudioFolder() / "Console.log", std::ios::trunc);
+	}
+	if (log.File.is_open()) {
+		log.File << line << '\n';
+		log.Unflushed = true;
+	}
+}
+
+void ModStudioPreview::Watch(const std::string& name, const std::string& value) {
+	StudioWatched& watched = Watched();
+	std::scoped_lock<std::mutex> watchLock(watched.Mutex);
+	std::string& current = watched.Values[name];
+	if (current != value || current.empty()) {
+		current = value;
+		watched.Changed = true;
+	}
+}
+
+std::string ModStudioPreview::LiveScriptFor(const std::string& filePath, const std::string& fullScriptPath) {
+	if (!s_InGame) {
+		return "";
+	}
+	const std::filesystem::path copy = StudioFolder() / "Live" / std::filesystem::path(filePath);
+	std::error_code error;
+	if (!std::filesystem::is_regular_file(copy, error) || std::filesystem::file_size(copy, error) == 0 || error) {
+		return "";
+	}
+	// A copy older than the script is from before the script last changed (saved in another editor, say), so the script wins.
+	const std::filesystem::file_time_type copyTime = std::filesystem::last_write_time(copy, error);
+	const std::filesystem::file_time_type scriptTime = std::filesystem::last_write_time(std::filesystem::path(fullScriptPath), error);
+	if (error || copyTime < scriptTime) {
+		return "";
+	}
+	return copy.string();
+}
+
+void ModStudioPreview::Live(const std::string& key, const std::string& value) {
+	StudioLiveValues& live = LiveValues();
+	std::scoped_lock<std::mutex> liveLock(live.Mutex);
+	StudioLiveValues::Probe& probe = live.Probes[key];
+	probe.Count++;
+	if (probe.Recent.empty() || probe.Recent.back() != value) {
+		probe.Recent.push_back(value);
+		if (probe.Recent.size() > 8) {
+			probe.Recent.pop_front();
+		}
+	}
+	live.Changed = true;
+}
+
+void ModStudioPreview::UpdateScripts() {
+	const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+	if (!s_InGame || now - s_LastScriptCheck < std::chrono::milliseconds(250)) {
+		return;
+	}
+	s_LastScriptCheck = now;
+
+	// The log is flushed here rather than on every line, so a script that errors every frame doesn't write to the disk every frame.
+	{
+		StudioLog& log = Log();
+		std::scoped_lock<std::mutex> logLock(log.Mutex);
+		if (log.Unflushed) {
+			log.File.flush();
+			log.Unflushed = false;
+		}
+	}
+	{
+		StudioWatched& watched = Watched();
+		std::scoped_lock<std::mutex> watchLock(watched.Mutex);
+		if (watched.Changed) {
+			watched.Changed = false;
+			std::ofstream watchFile(StudioFolder() / "Watch.ini", std::ios::trunc);
+			for (const auto& [name, value]: watched.Values) {
+				watchFile << name << " = " << value << '\n';
+			}
+		}
+	}
+	{
+		// One line per probe: "<key> = <count>\t<oldest value>\t...\t<newest value>". The probes' text has no tabs or line breaks.
+		StudioLiveValues& live = LiveValues();
+		std::scoped_lock<std::mutex> liveLock(live.Mutex);
+		if (live.Changed) {
+			live.Changed = false;
+			std::ofstream liveFile(StudioFolder() / "Live.ini", std::ios::trunc);
+			for (const auto& [key, probe]: live.Probes) {
+				liveFile << key << " = " << probe.Count;
+				for (const std::string& value: probe.Recent) {
+					liveFile << '\t' << value;
+				}
+				liveFile << '\n';
+			}
+		}
+	}
+
+	const std::filesystem::path requestPath = StudioFolder() / "Scripts.ini";
+	std::error_code error;
+	std::filesystem::file_time_type writeTime = std::filesystem::last_write_time(requestPath, error);
+	if (error) {
+		writeTime = std::filesystem::file_time_type();
+	}
+	if (!s_ScriptsLookedAt) {
+		// A request left over from before the game started: the scripts it reloads were just loaded, and the Lua it runs was for that game.
+		s_ScriptsLookedAt = true;
+		s_ScriptsWriteTime = writeTime;
+		return;
+	}
+	if (error || writeTime == s_ScriptsWriteTime) {
+		return;
+	}
+	std::ifstream requestFile(requestPath);
+	if (!requestFile.good()) {
+		return;
+	}
+	s_ScriptsWriteTime = writeTime;
+
+	bool reloadScripts = false;
+	std::vector<std::string> scriptsToReload;
+	std::vector<std::string> filesToReload;
+	std::string runFile;
+	std::string line;
+	while (std::getline(requestFile, line)) {
+		const size_t equalsPos = line.find('=');
+		if (equalsPos == std::string::npos) {
+			continue;
+		}
+		const std::string key = TrimSpaces(line.substr(0, equalsPos));
+		const std::string value = TrimSpaces(line.substr(equalsPos + 1));
+		if (key == "ReloadScripts") {
+			reloadScripts = value == "1";
+		} else if (key == "ReloadScript" && !value.empty()) {
+			scriptsToReload.push_back(value);
+		} else if (key == "ReloadFile" && !value.empty()) {
+			filesToReload.push_back(value);
+		} else if (key == "Run") {
+			runFile = value;
+		}
+	}
+
+	if (!filesToReload.empty() && g_ActivityMan.IsInActivity()) {
+		// INI files saved outside Studio (Studio's file bridge watches the mods): their presets are read again, and the last unit from Studio
+		// comes back with the change when the file is in its mod (or its held item's).
+		bool lastUnitsMod = false;
+		for (const std::string& file: filesToReload) {
+			if (ReloadFileFromStudio(file)) {
+				g_ConsoleMan.PrintString("SYSTEM: Reloaded " + file + " from disk.");
+				const std::string module = file.substr(0, file.find('/'));
+				lastUnitsMod = lastUnitsMod || module == s_LastRequest.ModuleName || module == s_LastRequest.DeviceModule;
+			}
+		}
+		if (lastUnitsMod && !s_LastRequest.PresetName.empty() && GameRunning()) {
+			Show(s_LastRequest);
+		}
+	}
+	if (!scriptsToReload.empty()) {
+		// A reloaded script's live values start afresh: its probes may have moved, and the old counts were for the old code.
+		StudioLiveValues& live = LiveValues();
+		std::scoped_lock<std::mutex> liveLock(live.Mutex);
+		for (const std::string& scriptPath: scriptsToReload) {
+			const std::string prefix = scriptPath + "|";
+			for (auto probe = live.Probes.lower_bound(prefix); probe != live.Probes.end() && probe->first.compare(0, prefix.size(), prefix) == 0;) {
+				probe = live.Probes.erase(probe);
+				live.Changed = true;
+			}
+		}
+	}
+	if (!reloadScripts && !scriptsToReload.empty() && g_ActivityMan.IsInActivity()) {
+		// Just the saved scripts: the presets and objects using them reload (running their Create again), and every other object keeps its state.
+		// A script no object uses (a library other scripts load, or a module's global script) needs everything reloaded.
+		g_LuaMan.ClearUserModuleCache();
+		std::list<Entity*> presets;
+		g_PresetMan.GetAllOfType(presets, "MovableObject");
+		for (const std::string& scriptPath: scriptsToReload) {
+			const std::string fullPath = g_PresetMan.GetFullModulePath(scriptPath);
+			int users = 0;
+			for (Entity* preset: presets) {
+				if (MovableObject* presetObject = dynamic_cast<MovableObject*>(preset); presetObject && presetObject->HasScript(fullPath)) {
+					presetObject->ReloadScripts();
+					++users;
+				}
+			}
+			const int objects = g_MovableMan.ReloadLuaScriptsUsing(fullPath);
+			users += objects;
+			GAScripted* scriptedActivity = dynamic_cast<GAScripted*>(g_ActivityMan.GetActivity());
+			if (scriptedActivity && scriptedActivity->GetScriptPath() == fullPath) {
+				scriptedActivity->ReloadScripts();
+				++users;
+			}
+			if (users == 0) {
+				reloadScripts = true;
+				break;
+			}
+			g_ConsoleMan.PrintString("SYSTEM: Reloaded " + scriptPath + " (" + std::to_string(objects) + (objects == 1 ? " object" : " objects") + " in the scene).");
+		}
+	}
+	if (reloadScripts && g_ActivityMan.IsInActivity()) {
+		g_PresetMan.ReloadAllScripts();
+		// The running scripted activity is a copy of its preset, so it reloads on its own. Its state (its variables) stays.
+		if (GAScripted* scriptedActivity = dynamic_cast<GAScripted*>(g_ActivityMan.GetActivity())) {
+			scriptedActivity->ReloadScripts();
+		}
+	}
+	if (!runFile.empty()) {
+		std::ifstream codeFile(std::filesystem::path(System::GetWorkingDirectory()) / runFile);
+		const std::string code((std::istreambuf_iterator<char>(codeFile)), std::istreambuf_iterator<char>());
+		if (!code.empty()) {
+			g_LuaMan.GetMasterScriptState().RunScriptString(code);
+		}
+	}
 }

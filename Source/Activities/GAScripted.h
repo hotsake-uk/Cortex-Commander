@@ -54,6 +54,10 @@ namespace RTE {
 			return Create();
 		};
 
+		/// Gets the path of the script that defines this' Lua-defined derivation of this class.
+		/// @return The full module path of the script.
+		const std::string& GetScriptPath() const { return m_ScriptPath; }
+
 		/// Creates a GAScripted to be identical to another, by deep copy.
 		/// @param reference A reference to the GAScripted to deep copy.
 		/// @return An error return value signaling sucess or any particular failure.

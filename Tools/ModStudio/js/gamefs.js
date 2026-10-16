@@ -340,6 +340,66 @@ window.MS = window.MS || {};
 			}
 		}
 
+		// Every .lua in Data and Mods, for the script tools: Map(lowercased disk path -> {path, text}). Served mode only; null otherwise.
+		async luaBundle() {
+			if (!this.server) {
+				return null;
+			}
+			const bytes = new Uint8Array(await (await this.api('GET', 'luas')).arrayBuffer());
+			return parseBundle(bytes, true);
+		}
+
+		// Every file under a folder (a disk path like "Mods/MyMod.rte"), as [{path, size}] with paths from that folder. Served mode only.
+		async tree(diskDir) {
+			if (!this.server) {
+				const prefix = diskDir.toLowerCase().replace(/\/$/, '') + '/';
+				return this.files ? [...this.files.keys()].filter((p) => p.startsWith(prefix)).map((p) => ({ path: this.files.get(p).webkitRelativePath.split('/').slice(1).join('/').slice(prefix.length), size: this.files.get(p).size })) : [];
+			}
+			return await (await this.api('GET', 'tree', diskDir)).json();
+		}
+
+		// Every file in Data and Mods as module paths ("Base.rte/Devices/x.png"), from one request; null when the server is older or
+		// there's no server.
+		async allFiles() {
+			if (!this.server) {
+				return this.files ? [...this.files.values()].map((f) => f.webkitRelativePath.split('/').slice(2).join('/')) : null;
+			}
+			const response = await fetch('/api/files?path=', { headers: { 'X-ModStudio-Token': this.server }, cache: 'no-store' });
+			if (!response.ok) {
+				return null;
+			}
+			return (await response.text()).split('\n').filter(Boolean).map((line) => line.slice(0, line.indexOf('\t')).replace(/^(Data|Mods)\//i, ''));
+		}
+
+		// The part of a growing file (ModStudio/Console.log) after byte "from": {text, size, from}. size < from means it started over.
+		async tail(disk, from) {
+			const response = await fetch('/api/tail?path=' + encodeURIComponent(disk) + '&from=' + from, { headers: { 'X-ModStudio-Token': this.server }, cache: 'no-store' });
+			if (!response.ok) {
+				throw new Error(await response.text());
+			}
+			return { text: new TextDecoder().decode(await response.arrayBuffer()), size: Number(response.headers.get('X-Size')) || 0, from: Number(response.headers.get('X-From')) || 0 };
+		}
+
+		// Deletes a file in Mods (the server refuses anything else).
+		async deleteFile(modulePath) {
+			const disk = this.toDiskPath(modulePath);
+			if (!this.server) {
+				throw new Error('Deleting needs Studio started from Mod Studio.bat.');
+			}
+			await this.api('POST', 'delete', disk);
+			this.texts.delete(lower(disk));
+			const slash = disk.lastIndexOf('/');
+			const folder = this.dirCache.get(lower(disk.slice(0, slash)));
+			if (folder) {
+				folder.delete(lower(disk.slice(slash + 1)));
+			}
+		}
+
+		// Forgets cached folder listings, so the next look reads the disk again (after the game or another program changed files).
+		forgetListings() {
+			this.dirCache.clear();
+		}
+
 		// Read-only mode: everything saved so far, as a zip to unpack over the game folder.
 		pendingZip() {
 			const entries = [...this.pendingWrites.values()].map((w) => ({ path: w.path, bytes: w.bytes }));
@@ -348,7 +408,7 @@ window.MS = window.MS || {};
 	}
 
 	// Start-ModStudio.ps1's /api/inis answer: for each file a "path<TAB>byte count<LF>" line, then its bytes. -> Map(lowercased path -> text)
-	function parseBundle(bytes) {
+	function parseBundle(bytes, keepPaths) {
 		const texts = new Map();
 		const decoder = new TextDecoder();
 		let at = 0;
@@ -361,7 +421,8 @@ window.MS = window.MS || {};
 			const tab = header.lastIndexOf('\t');
 			const size = Number(header.slice(tab + 1));
 			const start = lineEnd + 1;
-			texts.set(lower(header.slice(0, tab)), decoder.decode(bytes.subarray(start, start + size)));
+			const text = decoder.decode(bytes.subarray(start, start + size));
+			texts.set(lower(header.slice(0, tab)), keepPaths ? { path: header.slice(0, tab), text } : text);
 			at = start + size;
 		}
 		return texts;
@@ -423,4 +484,5 @@ window.MS = window.MS || {};
 	}
 
 	MS.GameFS = GameFS;
+	MS.makeZip = makeZip;
 })();

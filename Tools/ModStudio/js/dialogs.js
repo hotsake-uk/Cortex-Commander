@@ -107,18 +107,31 @@ window.MS = window.MS || {};
 
 	// ---- make my own copy ----
 
-	function copyUnit() {
+	// Make my own copy: of the unit being designed, or of another preset (source: {name, cls, path}), like a held item or the
+	// preset an attachment is in. onMade(preset) runs with the new copy instead of opening it in the designer.
+	function copyUnit(source, onMade) {
 		const a = app();
-		if (!a.actor) {
+		source = source || a.actor;
+		if (!source) {
 			return;
 		}
 		const mod = modPicker();
-		const name = el('input', { type: 'text', value: a.actor.name + ' Custom' });
+		const thing = MS.Rig.DEVICE_CLASSES.has(source.cls) ? 'item' : 'unit';
+		if (onMade && a.actor) {
+			// A held item's copy goes in the unit's own mod unless you pick another.
+			const select = mod.node.querySelector('select');
+			const unitsMod = a.actor.path.split('/')[0];
+			if ([...select.options].some((o) => o.value === unitsMod)) {
+				select.value = unitsMod;
+				select.onchange();
+			}
+		}
+		const name = el('input', { type: 'text', value: source.name + ' Custom' });
 		const body = el('div', {},
-			para('Studio makes a new unit in your mod that starts as a copy of <b></b> (<code>CopyOf</code>). Everything you change is written into the copy; the original and the game\'s own files stay as they are.'),
+			para('Studio makes a new ' + thing + ' in your mod that starts as a copy of <b></b> (<code>CopyOf</code>). Everything you change is written into the copy; the original and the game\'s own files stay as they are.' + (onMade ? ' The unit you\'re designing then carries your copy instead.' : '')),
 			field('Your mod', mod.node, 'Mods live in the game\'s Mods folder. A new mod is made for you.'),
-			field('New unit\'s name', name, 'This is the name in the buy menu. It has to be different from every other unit\'s name.'));
-		body.querySelector('b').textContent = a.actor.name;
+			field('New ' + thing + '\'s name', name, 'This is the name in the buy menu. It has to be different from every other ' + thing + '\'s name.'));
+		body.querySelector('b').textContent = source.name;
 		open('Make my own copy', body, [
 			{ text: 'Cancel' },
 			{
@@ -131,20 +144,22 @@ window.MS = window.MS || {};
 						a.toast('Give the mod and the unit a name.', 'bad');
 						return false;
 					}
-					if (a.lib.find(unitName, a.actor.cls, modName) && a.lib.find(unitName, a.actor.cls, modName).name.toLowerCase() === unitName.toLowerCase()) {
-						a.toast('There is already a unit called ' + unitName + '.', 'bad');
+					const taken = a.lib.find(unitName, source.cls, modName);
+					if (taken && taken.name.toLowerCase() === unitName.toLowerCase()) {
+						a.toast('There is already a ' + source.cls + ' called ' + unitName + '.', 'bad');
 						return false;
 					}
-					await makeCopy(modName, unitName);
+					await makeCopy(modName, unitName, source, onMade);
 				},
 			},
 		]);
 	}
 
-	async function makeCopy(modName, unitName) {
+	async function makeCopy(modName, unitName, original, onMade) {
 		const a = app();
 		const lib = a.lib;
-		const path = modName + '/Actors/' + safeName(unitName) + '.ini';
+		const isItem = MS.Rig.DEVICE_CLASSES.has(original.cls);
+		const path = modName + (isItem ? '/Devices/' : '/Actors/') + safeName(unitName) + '.ini';
 		let doc = lib.docFor(path);
 		if (!doc) {
 			if (await a.fs.exists(path)) {
@@ -152,20 +167,26 @@ window.MS = window.MS || {};
 				return;
 			}
 			const hadModule = !!lib.moduleOf(path);
-			doc = await lib.newDoc(path);
+			// A held item's copy is read before the unit that carries it.
+			doc = await lib.newDoc(path, onMade && a.actor ? a.actor.path : null);
 			a.hookDoc(doc);
 			if (!hadModule) {
 				a.hookDoc(lib.docFor(modName + '/Index.ini'));
 				a.toast('Made the new mod ' + modName + '. The game loads new mods when it starts, so restart it once before previewing.', 'good');
 			}
 		}
-		const original = a.actor;
-		const block = doc.addTopLevel('AddActor', original.cls);
+		const block = doc.addTopLevel(isItem ? 'AddDevice' : 'AddActor', original.cls);
 		block.add('CopyOf', lib.reference(original.name, original.path.split('/')[0], modName));
 		block.add('PresetName', unitName);
 		lib.reindex();
 		a.writeLocal('ms.lastMod', modName);
 		const preset = lib.presets.find((p) => p.doc === doc && p.name === unitName);
+		a.updateFileStatus();
+		if (onMade) {
+			onMade(preset);
+			a.toast('Made ' + unitName + ' in ' + modName + '. Save to write it to disk.', 'good');
+			return;
+		}
 		a.undo = [];
 		a.redo = [];
 		a.openActor(preset);
@@ -428,6 +449,12 @@ window.MS = window.MS || {};
 			['L', 'hide or show the list of units, attachments and items'],
 			['Delete', 'remove the selected attachment'],
 			['Ctrl+Z, Ctrl+Y, Ctrl+S', 'undo, redo, save'],
+			['Ctrl+P', 'Script mode: go to any file'],
+			['Ctrl+Shift+F', 'Script mode: search every INI file and script'],
+			['Ctrl+J', 'Script mode: hide or show the console panel'],
+			['Ctrl+Enter', 'Script mode: run the selected Lua in the game'],
+			['F12, Ctrl+click', 'Script mode: go to where something is defined'],
+			['Ctrl+W', 'Script mode: close the file'],
 		];
 		const grid = el('div', { className: 'help-keys' });
 		for (const [k, v] of keys) {
@@ -439,6 +466,7 @@ window.MS = window.MS || {};
 			para('<b>Start</b> by picking a unit in the library. The game\'s own units can\'t be changed in place: press <b>Make my own copy</b> and Studio makes a unit in your mod that copies it, and writes your changes into that.'),
 			para('<b>Shared parts.</b> Units often share a head, arms or helmets with others. Changing or removing a shared part here copies it into your unit first, so the others are untouched. A lock in the parts list means the part can\'t be changed from this unit, and says why.'),
 			para('<b>Grey values</b> come from the preset this unit copies; <i>faint italic</i> ones aren\'t set and the game uses its default. Green notes mean the value is written in your unit.'),
+			para('<b>Design and Script.</b> Design mode is this designer. Script mode (the switch at the top left) is the whole mod: its files, Lua scripts with autocomplete from the game\'s own API, the game\'s console, search and packaging. Saving a script reloads it in a game started from Tools\\ModStudio.'),
 			para('<b>What you see</b> is placed the way the game places it, but without physics: in the game the body settles on its legs and walking feet push along the ground. <b>Preview in game</b> shows the real thing.'),
 			grid);
 		open('Using Mod Studio', body, [{ text: 'Close' }], true);

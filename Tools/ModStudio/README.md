@@ -1,9 +1,11 @@
 # Cortex Mod Studio
 
-A visual editor for Cortex Command units. Move a unit's parts, swap sprites, add helmets and gear, and watch it stand,
-walk, run, crouch and aim. Studio writes the INI for you and can show the unit in the game's Actor Editor while you work.
+A visual editor for Cortex Command units, and a modding IDE around it. Move a unit's parts, swap sprites, add helmets and gear,
+and watch it stand, walk, run, crouch and aim. Studio writes the INI for you and can show the unit in the game while you work.
+Script mode adds the mod's files, Lua scripts with autocomplete from the game's own API, the game's console and search.
 
-It is a web page plus a small PowerShell script, with nothing to install: no internet, no packages, no runtime.
+It is a web page plus a small PowerShell script, with nothing to install: no internet, no packages, no runtime. (The code
+editor, Monaco, and the Lua parser, luaparse, are shipped in `vendor/` with their licences.)
 
 ## Opening it
 
@@ -27,11 +29,59 @@ zip of the changed files to unpack into the game folder.
 - **Swap sprites**: select a part and click **Replace** in Sprite. Studio converts any PNG to the game palette, slices
   sprite sheets into frames and writes the files into your mod.
 - **Add helmets and gear** from the Attachments tab, and try items in the hand from the Items tab or the Held item list.
+- **Design guns, craft and crabs** too: the Craft tab opens dropships and rockets, the Units tab also has crabs, and **Design** on
+  an item opens the item itself. A gun turns with the aim about its grip, with dots for the grip, muzzle, shell ejection and
+  back hand; Preview puts it in the hands of the last unit you opened. Engines, thrusters, hatch doors, legs and turrets move
+  and turn like attachments.
 - **Animate**: the pose buttons, Play, the aim slider, Sharp aim and Flip show how the unit moves in game, using the
   unit's own walk paths, limb lengths and arm reach.
 - **Every setting**: All settings lists everything the selected part has (from its own block or inherited), editable, with a filter
   and **Add a setting** offering every key that presets of its class use. **Discard** throws away unsaved changes.
+- **Modules** in the top bar picks which modules (.rte) the lists, files and search show (All, My mods, Base only, or any set).
+  Everything is still read, so copies and inheritance across modules keep working.
 - **Undo and redo** everything (Ctrl+Z, Ctrl+Y). Press **?** for all the keys.
+
+## Design and Script modes
+
+The switch at the top left picks how much Studio shows.
+
+- **Design** is the unit designer on its own: pick a unit, move its parts, swap sprites. Nothing about scripts or files.
+- **Script** is the whole mod. The bar on the far left switches the side bar between **Files** (your mods, and the game's own
+  files read only), **Units** (the designer's list), **Search** (every INI file and script, Ctrl+Shift+F) and **Package**.
+  The designer is the first tab; files open in tabs beside it. The panel at the bottom (Ctrl+J) has the game's **Console**,
+  **Problems** and **Watch**.
+
+In Script mode:
+
+- **Lua scripts** open in a code editor that knows the game's API: type `self.` or `self:` for what the object has, any
+  manager (`MovableMan:`), `function ` for the functions the game calls (Create, Update, OnCollideWithMO…), and
+  `CreateAHuman("` for preset names. Hover for help, Ctrl+click or F12 to go to a definition (a function in another script,
+  a preset's INI). Mistakes are underlined as you type: syntax errors, functions a class doesn't have, callbacks the game will
+  never call (`update` for `Update`), presets that don't exist. "self" is the class of the presets that use the script;
+  `---@type` and `---@param` comments (as VS Code's Lua extension reads them) say what other values are.
+- **INI files** open as text with completion for the keys a block of that class takes, the values a key is given elsewhere,
+  presets for `CopyOf` and file paths, and checks for missing files and presets. The designer and the text are the same file:
+  a change in one shows in the other, and undo works across both.
+- **The Scripts section** of a part's properties lists its scripts; **New script** writes one from a template and adds it.
+  Script paths anywhere in the properties open the script when clicked, and in INI and Lua files with Ctrl+click. Over a
+  script or picture, **Used by** lists the presets that use it; **Find where it's used** in the file menu lists them too.
+- **New INI file** can start as a unit, gun or scene copied from one of the game's, or a scripted activity with its script.
+  The file is added to the mod's Index.ini.
+- **Saving a script** reloads just that script in the running game: the presets and objects that use it run its new code (their
+  Create runs again) and everything else keeps its state. A script no object uses (a library other scripts load) reloads
+  everything, as does the Reload scripts button. Lua typed in the console box runs in the game (an
+  expression's value is printed). Ctrl+Enter runs the selection. Errors in the game's console link to the line, and show
+  underlined in the file. `StudioWatch("name", value)` in a script shows a value in the Watch panel, live.
+  This works in games started from `Tools\ModStudio` (they pass `-modstudio`).
+- **Live values**, as in Quokka: end a line with `--?` and, once saved, the value it makes shows at the end of the line while the
+  game runs, with how many times it ran (hover for the last few). `--?.` shows how long the line takes, `--?+` shows tables wider,
+  `--? $.Health` shows any Lua with `$` as the line's value, and `--[[?]]` right after an expression shows just that expression.
+  `--? self.Pos` alone on a line shows that Lua's value at that point. Or click left of a line number for a logpoint: the line is
+  logged with nothing written in the script (the game's own scripts too), and it starts at once if the script is saved.
+  Studio runs a copy of the script with the probes in it (`ModStudio/Live/`), never changing the script; errors still point at the
+  script's own lines. Needs a game built from 8.5.252 or later.
+- **Package**: Check looks for missing files, presets that don't exist, scripts with errors and unsaved changes; Export saves
+  and zips the mod for sharing. Ctrl+P goes to any file.
 
 ## How files are written
 
@@ -39,6 +89,12 @@ zip of the changed files to unpack into the game folder.
 - Your mod's files are edited in place: only the lines you change are rewritten; comments, order and spacing stay.
 - Changing a part a unit inherits copies that part into the unit's own block first, so other units that share it don't change.
 - A new unit is saved as `<YourMod>.rte/Actors/<Name>.ini` and added to the mod's `Index.ini` (made for you if the mod is new).
+- The designer changes only your mods: ones Studio made, and ones you chose **Edit this mod** on. Other people's mods are locked
+  like the game's own until then (**Make my own copy** works on them too).
+- Every version is kept. The first time Studio changes a mod it keeps the mod as it was, then every save or delete is kept too, so
+  **History** in the top bar puts any file back, and **Undo** on the Saved message undoes that save. The Cortex Studio app keeps
+  each mod's history with git (built in, nothing to install) in `CortexStudio/History` in your config folder (`%APPDATA%` on
+  Windows); in a browser, Studio keeps copies there instead (the original and the newest 5 of each file).
 
 ## Preview in game
 
@@ -60,6 +116,20 @@ Either one checks the file about twice a second, reloads the changed files and s
 item picked under **Held item**. The game only finds new mod folders when it starts, so after making a brand-new mod, restart
 the game once.
 
+## Editing in your own editor (the file bridge)
+
+While Studio's window is open it watches `Data` and `Mods`. Save a `.lua` or `.ini` in any editor (VS Code, Notepad++, anything)
+and a game started from Studio reloads it, the same as saving inside Studio:
+
+- A script reloads on its own, so other objects keep their state (everything reloads when no object uses it).
+- An INI file is read again and the last unit from Studio comes back with the change, when the file is in its mod or its held item's.
+- An open Studio page takes the new text too: open tabs, the designer, and pictures you repainted. A file with unsaved edits in Studio
+  keeps yours, and Studio says so.
+
+**Mod Studio Bridge.bat** runs it without opening the page: leave the game and the bridge window open and work entirely in your own
+editor. The window lists each file it sends to the game, and prints Studio's address in case you want the page as well. Saves made by
+Studio itself aren't sent twice. Start Studio with `-NoBridge` to turn the watching off.
+
 ## Code layout
 
 All scripts are plain classic scripts (no modules), so the page works from `file://`.
@@ -76,6 +146,12 @@ All scripts are plain classic scripts (no modules), so the page works from `file
 | `js/panels.js` | Library list, parts tree and property inspector. |
 | `js/dialogs.js` | Make a copy, add attachments, pick items, import sprites, help. |
 | `js/app.js` | App state, editing with undo, dragging, saving and the preview request. |
+| `js/ide.js` | Script mode: tabs, the code editor, files, search, packaging, the game's console and watched values. |
+| `js/lua-intel.js` | Lua completion, hover, signature help, go to definition and checks. |
+| `js/ini-intel.js` | INI completion, hover, go to definition and checks, learned from every file Studio read. |
+| `data/lua-api.json` | The game's Lua API, written from `Source/Lua/LuaBindings*.cpp` by `tools/make-lua-api.js` (run it with Node after changing the bindings). `data/lua-api.d.lua` is the same API as LuaLS annotations, for VS Code: add it to `Lua.workspace.library`. |
 
 The engine side of the preview is `Source/Managers/ModStudioPreview.cpp` (reading the request, reloading files, making the unit,
-making it your sandbox character), used by `Source/Activities/ActorEditor.cpp`, plus `PresetMan::ReloadPresetFile`.
+making it your sandbox character), used by `Source/Activities/ActorEditor.cpp`, plus `PresetMan::ReloadPresetFile`. In games
+started with `-modstudio` it also writes the console to `ModStudio/Console.log`, carries out `ModStudio/Scripts.ini` (reload
+scripts, run `ModStudio/Run.lua`) and writes `StudioWatch` values to `ModStudio/Watch.ini`.

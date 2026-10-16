@@ -14,6 +14,7 @@
 #include "GUITextBox.h"
 #include "GUILabel.h"
 #include "System.h"
+#include "ModStudioPreview.h"
 
 using namespace RTE;
 
@@ -231,6 +232,7 @@ void ConsoleMan::PrintString(const std::string& stringToPrint) {
 	if (System::IsLoggingToCLI()) {
 		System::PrintToCLI(stringToPrint);
 	}
+	ModStudioPreview::OnConsoleLine(stringToPrint);
 }
 
 void ConsoleMan::ShowShortcuts() {

@@ -5,12 +5,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cortex Mod Studio</title>
-<link rel="stylesheet" href="studio.css?v=15">
+<link rel="stylesheet" href="studio.css?v=39">
 </head>
 <body>
 <div id="app">
 	<header id="topbar">
 		<div class="brand"><span class="mark">◆</span> Cortex <b>Mod Studio</b></div>
+		<button class="tb" id="btnGame" title="The Game screen: versions, builds, launch settings and the setup (Cortex Studio)" hidden>Game</button>
+		<div class="split-btn" id="runSplit" hidden>
+			<button class="tb primary" id="btnRun"></button><button class="tb primary caret" id="btnRunMenu" title="Other ways to start the game">▾</button>
+		</div>
+		<div class="mode-switch" id="modeSwitch" title="Design: units visually. Script: the whole mod, with scripts, the game's console and search.">
+			<button data-mode="artist" class="sel">Design</button>
+			<button data-mode="deep">Script</button>
+		</div>
+		<button class="tb scope-btn" id="btnScope" title="Which modules (.rte) the lists, files and search show. Everything is still read, so copies and inheritance keep working.">All modules ▾</button>
 		<div class="doc-title" id="docTitle"></div>
 		<div class="spacer"></div>
 		<button class="tb" id="btnUndo" title="Undo (Ctrl+Z)" disabled>↶ Undo</button>
@@ -23,16 +32,59 @@
 		<button class="tb" id="btnView" title="Hide or show the unit view, to give the properties the room while the game shows the unit (V)">◧ Hide view</button>
 		<button class="tb" id="btnLive" title="Live: send every change to the game as you make it (a drag is sent when you let go)" disabled>● Live</button>
 		<button class="tb primary" id="btnPreview" title="Save, then show this unit in the game's Actor Editor" disabled>▶ Preview in game</button>
+		<button class="tb" id="btnHistory" title="Every version of the files Studio changed in your mods, and Restore" hidden>⟲ History</button>
 		<button class="tb icon" id="btnHelp" title="How to use Mod Studio">?</button>
 	</header>
+
+	<nav id="activity">
+		<button data-view="files" title="Files of your mods and the game">▤</button>
+		<button data-view="presets" title="Units, attachments and items, to design">◆</button>
+		<button data-view="search" title="Search every INI file and script (Ctrl+Shift+F)">⌕</button>
+		<button data-view="package" title="Check and export a mod">⇪</button>
+	</nav>
+
+	<aside id="side" class="panel">
+		<section id="view-files" class="side-view">
+			<div class="side-head">Files <span class="spacer"></span><button class="ico-btn" id="btnNewScript" title="New Lua script in your mod">+ lua</button><button class="ico-btn" id="btnNewIni" title="New INI file in your mod">+ ini</button><button class="ico-btn" id="btnRefreshFiles" title="Read the folders again">↻</button></div>
+			<div class="file-filter">
+				<input type="search" id="fileFilter" placeholder="Filter by name…" autocomplete="off">
+				<div class="chips" id="fileKinds"><button data-kind="" class="sel">All</button><button data-kind="lua">Lua</button><button data-kind="ini">INI</button><button data-kind="image">Images</button><button data-kind="sound">Sounds</button></div>
+			</div>
+			<div id="explorer" class="explorer"></div>
+		</section>
+		<section id="view-search" class="side-view" hidden>
+			<div class="side-head">Search</div>
+			<div class="search"><input type="search" id="searchInput" placeholder="Search INI files and scripts…" autocomplete="off"></div>
+			<div class="search-opts">
+				<label title="Match case"><input type="checkbox" id="searchCase"> Aa</label>
+				<label title="Regular expression"><input type="checkbox" id="searchRegex"> .*</label>
+				<label><input type="checkbox" id="searchMine"> Only my mods</label>
+				<span class="spacer"></span><span id="searchCount"></span>
+			</div>
+			<div id="searchResults" class="results"></div>
+		</section>
+		<section id="view-package" class="side-view" hidden>
+			<div class="side-head">Package a mod</div>
+			<div class="package-form">
+				<select id="packageMod" class="text"></select>
+				<div class="btn-row"><button class="small-btn" id="btnCheckMod">Check it</button><button class="small-btn primary" id="btnExportMod" title="Save, then download the mod's folder as a zip to share">Export .zip</button></div>
+				<p class="side-note">Check looks for files the mod names that aren't there, CopyOf presets that don't exist, scripts with errors and unsaved changes. Export saves and zips the mod's folder: unzipped into another player's Mods folder it works as it does here.</p>
+			</div>
+			<div id="packageResults" class="results"></div>
+		</section>
+	</aside>
+
+	<div id="tabbar"></div>
 
 	<aside id="left" class="panel">
 		<div class="tabs" id="libTabs">
 			<button data-tab="units" class="sel">Units</button>
+			<button data-tab="craft">Craft</button>
 			<button data-tab="attachments">Attachments</button>
 			<button data-tab="items">Items</button>
 		</div>
 		<div class="search"><input type="search" id="libSearch" placeholder="Search presets…" autocomplete="off"></div>
+		<div class="lib-selects"><select id="libType" title="What kind"></select><select id="libGroup" title="Buy menu group (AddToGroup)"></select><select id="libModule" title="Which mod or module"></select></div>
 		<div class="lib-filter"><label><input type="checkbox" id="libMineOnly"> Only my mods</label><span id="libCount"></span></div>
 		<div id="libList" class="list"></div>
 	</aside>
@@ -84,6 +136,32 @@
 		</div>
 	</main>
 
+	<section id="codeWrap">
+		<div id="codeBanner" class="code-banner" hidden>One of the game's own files: read only. Copy what you need into a file in your mod.</div>
+		<div id="codeUsers" class="code-users" hidden></div>
+		<div id="codeHost"></div>
+		<div id="imageHost" hidden></div>
+	</section>
+
+	<section id="bottom">
+		<div id="panelResize" title="Drag to resize"></div>
+		<div id="bottomTabs">
+			<button data-panel="console" class="sel">Console <span class="badge-n bad" id="consoleBadge" hidden></span></button>
+			<button data-panel="problems">Problems <span class="badge-n" id="problemsBadge" hidden></span></button>
+			<button data-panel="watch">Watch</button>
+			<span class="spacer"></span>
+			<button class="ico-btn" id="btnReloadScripts" title="Reload every script in the game, which restarts every scripted object (saving a script reloads only that one)">↻ Reload scripts</button>
+			<button class="ico-btn" id="btnConsoleClear" title="Clear the console">Clear</button>
+			<button class="ico-btn" id="btnPanelToggle" title="Hide the panel (Ctrl+J)">▾</button>
+		</div>
+		<div id="consolePane" class="pane">
+			<div id="consoleBody" class="console-body"></div>
+			<div class="run-row"><span>&gt;</span><input id="runInput" type="text" placeholder="Lua to run in the game, like ActivityMan:GetActivity():GetTeamFunds(0)  (↑ for earlier ones)" autocomplete="off" spellcheck="false"></div>
+		</div>
+		<div id="problemsPane" class="pane" hidden><div id="problemsBody" class="results"></div></div>
+		<div id="watchPane" class="pane" hidden><div id="watchBody" class="results"></div></div>
+	</section>
+
 	<aside id="right" class="panel">
 		<div class="panel-head">Parts <span class="hint">click to select · drag in the view</span></div>
 		<div id="tree" class="tree"></div>
@@ -94,22 +172,49 @@
 	<footer id="status">
 		<span id="statusText">Open the game folder to begin.</span>
 		<span class="spacer"></span>
+		<button class="status-btn" id="btnStatusReload" title="Reload every script in the game, which restarts every scripted object (saving a script reloads only that one)">↻ Reload scripts</button>
+		<button class="status-btn" id="btnStatusPanel" title="Show the console, problems and watch panel (Ctrl+J)">▴ Console <span class="badge-n bad" id="statusConsoleBadge" hidden></span></button>
+		<span id="statusCursor"></span>
+		<span id="statusLang"></span>
 		<span id="statusFiles"></span>
 		<span id="statusMode"></span>
 	</footer>
 </div>
 
+<div id="game" class="game" hidden>
+	<div class="game-card">
+		<header class="game-head">
+			<div class="brand"><span class="mark">◆</span> Cortex <b>Studio</b></div>
+			<nav id="gameTabs" class="game-tabs"></nav>
+			<span class="spacer"></span>
+			<button class="tb" id="gameClose" title="Back to Mod Studio (Esc)">✕ Back to Studio</button>
+		</header>
+		<div id="gameBody" class="game-body"></div>
+		<div id="gameLogWrap" class="game-log" hidden>
+			<div class="game-log-head"><b id="gameLogTitle"></b><span class="spacer"></span><button class="ico-btn" id="gameCancel" hidden>Cancel</button><button class="ico-btn" id="gameLogHide" onclick="document.getElementById('gameLogWrap').hidden = true">Hide</button></div>
+			<div id="gameLog" class="game-log-body"></div>
+		</div>
+	</div>
+</div>
+
 <div id="modal" class="modal" hidden><div class="modal-card" id="modalCard"></div></div>
 <div id="toasts"></div>
 
-<script src="js/ini.js?v=15"></script>
-<script src="js/gamefs.js?v=15"></script>
-<script src="js/library.js?v=15"></script>
-<script src="js/images.js?v=15"></script>
-<script src="js/rig.js?v=15"></script>
-<script src="js/viewport.js?v=15"></script>
-<script src="js/panels.js?v=15"></script>
-<script src="js/dialogs.js?v=15"></script>
-<script src="js/app.js?v=15"></script>
+<script src="vendor/luaparse/luaparse.js?v=39"></script>
+<script src="js/ini.js?v=39"></script>
+<script src="js/gamefs.js?v=39"></script>
+<script src="js/library.js?v=39"></script>
+<script src="js/images.js?v=39"></script>
+<script src="js/rig.js?v=39"></script>
+<script src="js/viewport.js?v=39"></script>
+<script src="js/panels.js?v=39"></script>
+<script src="js/dialogs.js?v=39"></script>
+<script src="js/lua-intel.js?v=39"></script>
+<script src="js/ini-intel.js?v=39"></script>
+<script src="js/ide.js?v=39"></script>
+<script src="js/live.js?v=39"></script>
+<script src="js/history.js?v=39"></script>
+<script src="js/app.js?v=39"></script>
+<script src="js/launcher.js?v=39"></script>
 </body>
 </html>

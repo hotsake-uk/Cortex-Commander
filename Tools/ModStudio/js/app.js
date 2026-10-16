@@ -36,10 +36,11 @@ window.MS = window.MS || {};
 	app.init = function () {
 		app.view = new MS.Viewport($('view'), app);
 		MS.panels.init(app);
+		MS.ide.init(app);
 		bindToolbar();
 		bindKeys();
 		window.addEventListener('beforeunload', (e) => {
-			if (app.dirtyDocs().length) {
+			if (!MS.leaving && (app.dirtyDocs().length || MS.ide.dirtyCount())) {
 				e.preventDefault();
 				e.returnValue = '';
 			}
@@ -111,6 +112,8 @@ window.MS = window.MS || {};
 			app.lib = new MS.Library(fs);
 			app.lib.onDocDirty = () => updateFileStatus();
 			await app.lib.load(report);
+			await MS.history.loadEditable();
+			$('btnHistory').hidden = !MS.history.available();
 			report('Getting ready…', 1);
 			hookDocs();
 		} catch (e) {
@@ -128,6 +131,8 @@ window.MS = window.MS || {};
 			app.toast(app.lib.warnings.length + ' files couldn\'t be read, for example: ' + app.lib.warnings[0], 'bad');
 		}
 		MS.panels.showLibrary();
+		updateScopeButton();
+		MS.ide.gameLoaded();
 		const last = readLocal('ms.lastActor');
 		const preset = last && app.lib.presets.find((p) => p.doc.path === last.path && p.name === last.name);
 		if (preset) {
@@ -154,6 +159,111 @@ window.MS = window.MS || {};
 
 	// ---- the unit being designed ----
 
+	// ---- which modules the lists show ----
+	// A view filter only: every module is still read, so CopyOf and inheritance across modules keep working.
+
+	app.scope = (() => {
+		const saved = readLocal('ms.scope');
+		return Array.isArray(saved) ? new Set(saved) : null; // lower-cased module names; null is all of them
+	})();
+
+	app.inScope = function (pathOrModule) {
+		return !app.scope || app.scope.has(String(pathOrModule).split('/')[0].toLowerCase());
+	};
+
+	function updateScopeButton() {
+		const total = app.fs ? app.fs.modules().length : 0;
+		const b = $('btnScope');
+		b.textContent = (!app.scope ? 'All modules' : app.scope.size === 1 ? [...app.scope][0].replace(/\.rte$/, '') : app.scope.size + (total ? ' of ' + total : '') + ' modules') + ' ▾';
+		b.classList.toggle('on', !!app.scope);
+	}
+
+	function setScope(names) {
+		const all = app.fs ? app.fs.modules().map((m) => m.name.toLowerCase()) : [];
+		app.scope = !names || names.size === 0 || all.every((n) => names.has(n)) ? null : names;
+		writeLocal('ms.scope', app.scope ? [...app.scope] : null);
+		updateScopeButton();
+		if (app.lib) {
+			MS.panels.showLibrary();
+		}
+		MS.ide.scopeChanged();
+	}
+
+	function scopeMenu() {
+		const old = $('scopeMenu');
+		if (old) {
+			old.remove();
+			return;
+		}
+		if (!app.fs) {
+			return;
+		}
+		const mods = app.fs.modules();
+		const menu = document.createElement('div');
+		menu.className = 'ctx-menu scope-menu';
+		menu.id = 'scopeMenu';
+		const chosen = new Set(app.scope || mods.map((m) => m.name.toLowerCase()));
+		const boxes = [];
+		const quick = document.createElement('div');
+		quick.className = 'scope-quick';
+		const quickBtn = (text, pick) => {
+			const b = document.createElement('button');
+			b.textContent = text;
+			b.onclick = () => {
+				chosen.clear();
+				for (const m of mods.filter(pick)) {
+					chosen.add(m.name.toLowerCase());
+				}
+				for (const box of boxes) {
+					box.checked = chosen.has(box.value);
+				}
+				setScope(new Set(chosen));
+			};
+			quick.append(b);
+		};
+		quickBtn('All', () => true);
+		quickBtn('My mods', (m) => m.home === 'Mods');
+		quickBtn('Base only', (m) => /^base\.rte$/i.test(m.name));
+		menu.append(quick);
+		for (const [title, home] of [['Your mods', 'Mods'], ['Game', 'Data']]) {
+			const list = mods.filter((m) => m.home === home).sort((a, b) => a.name.localeCompare(b.name));
+			if (!list.length) {
+				continue;
+			}
+			const head = document.createElement('div');
+			head.className = 'scope-head';
+			head.textContent = title;
+			menu.append(head);
+			for (const m of list) {
+				const label = document.createElement('label');
+				const box = document.createElement('input');
+				box.type = 'checkbox';
+				box.value = m.name.toLowerCase();
+				box.checked = chosen.has(box.value);
+				box.onchange = () => {
+					box.checked ? chosen.add(box.value) : chosen.delete(box.value);
+					setScope(new Set(chosen));
+				};
+				boxes.push(box);
+				const info = app.lib && app.lib.moduleOf(m.name + '/Index.ini');
+				label.append(box, ' ' + m.name + (info && info.title && info.title !== m.name ? '  ·  ' + info.title : ''));
+				menu.append(label);
+			}
+		}
+		document.body.append(menu);
+		const r = $('btnScope').getBoundingClientRect();
+		menu.style.left = Math.min(r.left, window.innerWidth - menu.offsetWidth - 8) + 'px';
+		menu.style.top = r.bottom + 4 + 'px';
+		const close = (e) => {
+			if (!menu.contains(e.target) && e.target !== $('btnScope')) {
+				menu.remove();
+				document.removeEventListener('pointerdown', close, true);
+			}
+		};
+		setTimeout(() => document.addEventListener('pointerdown', close, true), 0);
+	}
+	app.updateScopeButton = updateScopeButton;
+
 	app.openActor = function (preset) {
 		app.actor = { path: preset.doc.path, name: preset.name, cls: preset.cls };
 		app.selected = null;
@@ -161,7 +271,11 @@ window.MS = window.MS || {};
 		app.poseState.frames = {};
 		app.poseState.time = 0;
 		writeLocal('ms.lastActor', { path: preset.doc.path, name: preset.name });
-		app.device = defaultDevice(preset.node);
+		// A unit shows the first gun it carries; anything else (an item, a craft) is designed on its own.
+		app.device = preset.cls === 'AHuman' ? defaultDevice(preset.node) : null;
+		if (preset.cls === 'AHuman') {
+			writeLocal('ms.lastHolder', { path: preset.doc.path, name: preset.name });
+		}
 		app.rebuild(true);
 		app.select(app.rig ? app.rig.body : null);
 		app.view.fit();
@@ -205,6 +319,31 @@ window.MS = window.MS || {};
 		return null;
 	}
 
+	// After Make my own copy of a held item: every AddInventory of the unit being designed that carries the original now carries the
+	// copy (an inherited one is taken into the unit's own block first, so other units are untouched), and the copy is held.
+	app.useOwnCopy = function (original, copy) {
+		const actorNode = app.actorNode;
+		const module = actorNode.doc.path.split('/')[0];
+		let replaced = 0;
+		app.edit('use my own copy of ' + original.name, () => {
+			const entries = app.lib.resolve(actorNode).all('AddInventory');
+			entries.forEach((entry, index) => {
+				const copyOf = entry.node.child('CopyOf');
+				const carried = copyOf && app.lib.find(copyOf.value, entry.node.value, entry.node.doc.module);
+				if (!carried || carried.node !== original.node) {
+					return;
+				}
+				const own = app.lib.ownBlock(actorNode, [{ key: 'AddInventory', index }]);
+				if (own.node) {
+					own.node.set('CopyOf', app.lib.reference(copy.name, copy.doc.path.split('/')[0], module));
+					replaced++;
+				}
+			});
+		});
+		app.setDevice(copy);
+		app.toast(replaced ? app.actor.name + ' now carries ' + copy.name + ' instead of ' + original.name + '. Save to keep it.' : app.actor.name + ' holds ' + copy.name + ' here. It doesn\'t carry ' + original.name + ' in its inventory, so nothing in the unit changed.', 'good');
+	};
+
 	app.setDevice = function (preset) {
 		app.device = preset ? { path: preset.doc.path, name: preset.name } : null;
 		app.rebuild();
@@ -241,6 +380,9 @@ window.MS = window.MS || {};
 	// Where the feet rest when standing: the lowest foot pixel.
 	function standingGround() {
 		const rig = app.rig;
+		if (rig.cls !== 'AHuman' && rig.cls !== 'ACrab') {
+			return null; // items and craft don't stand on anything
+		}
 		const poses = rig.pose(Object.assign({}, app.poseState, { pose: 'stand', time: 0 }));
 		let ground = null;
 		for (const role of ['foot']) {
@@ -266,15 +408,25 @@ window.MS = window.MS || {};
 			t.textContent = '';
 			return;
 		}
-		const locked = app.lib.isProtected(app.lib.docFor(app.actor.path));
+		const kind = app.lib.lockKind(app.lib.docFor(app.actor.path));
+		const locked = !!kind;
 		t.innerHTML = '';
 		const b = document.createElement('b');
 		b.textContent = app.actor.name;
 		t.append(b, ' · ' + app.actor.path);
 		const badge = document.createElement('span');
 		badge.className = 'badge ' + (locked ? 'lock' : 'own');
-		badge.textContent = locked ? 'built-in: make a copy to change it' : 'your mod';
+		badge.textContent = kind === 'game' ? 'built-in: make a copy to change it' : kind === 'mod' ? 'someone else\'s mod' : 'your mod';
 		t.append(badge);
+		if (kind === 'mod') {
+			const module = app.actor.path.split('/')[0];
+			const edit = document.createElement('button');
+			edit.className = 'badge-btn';
+			edit.textContent = 'Edit this mod';
+			edit.title = 'Studio keeps ' + module + ' as it is now, so History can put any file back, then lets you change it';
+			edit.onclick = () => MS.history.editMod(module);
+			t.append(edit);
+		}
 		$('btnCopy').disabled = false;
 		$('btnCopy').classList.toggle('attention', locked);
 		$('btnPreview').disabled = locked;
@@ -290,7 +442,7 @@ window.MS = window.MS || {};
 	app.onHover = function (part) {
 		MS.panels.hoverTree(part);
 		const hint = $('viewHint');
-		const turns = part && part.role === 'attachable' && part.ent.bool('InheritsRotAngle', true);
+		const turns = part && !MS.Rig.POSED_ROLES.has(part.role) && part.ent.bool('InheritsRotAngle', true);
 		hint.textContent = part ? part.name + ' — drag to move · Shift+drag to move the picture' + (turns ? ' · Ctrl+drag to rotate' : '') : 'Drag a part to move it · wheel to zoom · double-click to fit';
 	};
 
@@ -480,7 +632,8 @@ window.MS = window.MS || {};
 		const pose = poses.get(part);
 		const parentPose = part.parent ? poses.get(part.parent) : null;
 		const bodyPose = poses.get(app.rig.body);
-		const device = app.rig.device;
+		// The held item, or the object itself when it's an item designed on its own.
+		const device = app.rig.device || (app.rig.isDevice ? app.rig.body : null);
 		const devicePose = device ? poses.get(device) : null;
 		const local = (p) => (delta) => flipX(rotate(delta, -p.rot), p.flip);
 		const aimLocal = (delta) => flipX(rotate(delta, -app.poseState.aim * (app.poseState.flip ? -1 : 1)), app.poseState.flip);
@@ -514,7 +667,7 @@ window.MS = window.MS || {};
 				return [{ part, key: 'SpriteOffset', start: spriteStart(), convert: local(pose) }];
 			case 'rotate': {
 				// Attachments only, turning about their pivot. The angle is kept in degrees, mirrored like the game does when facing left.
-				if (part.role !== 'attachable' || !parentPose || !part.ent.bool('InheritsRotAngle', true)) {
+				if (MS.Rig.POSED_ROLES.has(part.role) || !parentPose || !part.ent.bool('InheritsRotAngle', true)) {
 					return null;
 				}
 				const startDegrees = (MS.Rig.rotationOffset(part.ent) * 180) / Math.PI;
@@ -547,6 +700,8 @@ window.MS = window.MS || {};
 				return device && devicePose ? [{ part: device, key: 'SupportOffset', start: vec(device, 'SupportOffset'), convert: local(devicePose) }] : null;
 			case 'muzzle':
 				return device && devicePose ? [{ part: device, key: 'MuzzleOffset', start: vec(device, 'MuzzleOffset'), convert: local(devicePose) }] : null;
+			case 'eject':
+				return device && devicePose ? [{ part: device, key: 'EjectionOffset', start: vec(device, 'EjectionOffset'), convert: local(devicePose) }] : null;
 		}
 		return null;
 	}
@@ -617,23 +772,26 @@ window.MS = window.MS || {};
 	};
 
 	function updateFileStatus() {
-		const n = app.dirtyDocs().length;
+		const n = app.dirtyDocs().length + MS.ide.dirtyCount();
 		const el = $('statusFiles');
 		el.textContent = n ? n + ' unsaved file' + (n > 1 ? 's' : '') : 'All saved';
 		el.className = n ? 'dirty' : '';
 		$('btnSave').disabled = !n && !(app.fs && !app.fs.writable && app.fs.pendingWrites.size);
 		$('btnDiscard').disabled = !n;
+		$('btnDiscard').title = MS.ide.dirtyCount() ? 'Throw away unsaved changes, scripts included, and go back to what\'s saved' : 'Throw away unsaved changes and go back to what\'s saved';
 	}
 	app.updateFileStatus = updateFileStatus;
 
 	app.save = async function (quiet) {
 		const docs = app.dirtyDocs();
 		let written = 0;
+		const saved = []; // For Undo on the Saved message: what each file now holds, and whether the save made it.
 		for (const doc of docs) {
 			if (app.lib.isProtected(doc)) {
-				app.toast('Not saving ' + doc.path + ': it is one of the game\'s own files.', 'bad');
+				app.toast('Not saving ' + doc.path + ': ' + app.lib.lockMessage(doc), 'bad');
 				continue;
 			}
+			const isNew = !!doc.isNew;
 			const text = doc.serialize();
 			try {
 				await app.fs.writeFile(doc.path, text);
@@ -645,6 +803,7 @@ window.MS = window.MS || {};
 			doc.dirty = false;
 			doc.isNew = false;
 			app.savedSinceLastPreview.add(doc.path);
+			saved.push({ path: doc.path, text, isNew });
 			written++;
 		}
 		updateFileStatus();
@@ -657,7 +816,8 @@ window.MS = window.MS || {};
 			return written;
 		}
 		if (written && !quiet) {
-			app.toast('Saved ' + written + ' file' + (written > 1 ? 's' : '') + '.', 'good');
+			const undo = MS.history.available() ? { label: 'Undo', run: () => MS.history.undoSave(saved) } : null;
+			app.toast('Saved ' + written + ' file' + (written > 1 ? 's' : '') + '.', 'good', undo);
 		}
 		return written;
 	};
@@ -666,15 +826,17 @@ window.MS = window.MS || {};
 	// Throws away every unsaved change, after asking. Pictures Studio already wrote into the mod stay on disk, unused.
 	app.discard = function () {
 		const docs = app.dirtyDocs();
-		if (!docs.length) {
+		const scripts = MS.ide.dirtyScripts();
+		if (!docs.length && !scripts.length) {
 			return;
 		}
 		const list = document.createElement('div');
 		const intro = document.createElement('p');
-		intro.textContent = 'Throw away the unsaved changes in ' + (docs.length === 1 ? 'this file' : 'these ' + docs.length + ' files') + '? They go back to what\'s saved on disk. This can\'t be undone.';
+		const count = docs.length + scripts.length;
+		intro.textContent = 'Throw away the unsaved changes in ' + (count === 1 ? 'this file' : 'these ' + count + ' files') + '? They go back to what\'s saved on disk. This can\'t be undone.';
 		const files = document.createElement('p');
 		files.className = 'small';
-		files.textContent = docs.map((d) => d.path + (d.isNew ? ' (new, not saved yet)' : '')).join(', ');
+		files.textContent = docs.map((d) => d.path + (d.isNew ? ' (new, not saved yet)' : '')).concat(scripts).join(', ');
 		list.append(intro, files);
 		MS.dialogs.open('Discard changes', list, [
 			{ text: 'Keep them' },
@@ -682,6 +844,7 @@ window.MS = window.MS || {};
 				for (const doc of docs) {
 					app.lib.discard(doc);
 				}
+				MS.ide.discardScripts();
 				app.undo = [];
 				app.redo = [];
 				app.lib.reindex();
@@ -707,6 +870,18 @@ window.MS = window.MS || {};
 		await app.save(quiet);
 		const files = new Set(app.savedSinceLastPreview);
 		files.add(app.actor.path);
+		// An item designed on its own goes to the game in the hands of the last unit opened (or a soldier of the game's).
+		const itemAlone = app.rig && app.rig.isDevice;
+		let holder = app.actor;
+		if (itemAlone) {
+			const last = readLocal('ms.lastHolder');
+			const found = (last && app.lib.presets.find((p) => p.cls === 'AHuman' && p.doc.path === last.path && p.name === last.name)) || app.lib.find('Soldier Light', 'AHuman', null) || app.lib.presets.find((p) => p.cls === 'AHuman' && p.topLevel);
+			if (!found) {
+				app.toast('Studio needs a unit to hold ' + app.actor.name + ' in the game, and found none.', 'bad');
+				return;
+			}
+			holder = { path: found.doc.path, name: found.name, cls: 'AHuman' };
+		}
 		const device = app.device && !app.fs.isOfficial(app.device.path) ? app.device.path : null;
 		if (device) {
 			files.add(device);
@@ -714,9 +889,9 @@ window.MS = window.MS || {};
 		const lines = [
 			'// Written by Cortex Mod Studio. The game\'s Actor Editor watches this file and shows the unit named here.',
 			'Stamp = ' + Date.now(),
-			'Class = ' + app.actor.cls,
-			'Preset = ' + app.actor.name,
-			'Module = ' + app.actor.path.split('/')[0],
+			'Class = ' + holder.cls,
+			'Preset = ' + holder.name,
+			'Module = ' + holder.path.split('/')[0],
 		];
 		for (const file of files) {
 			if (!/\/index\.ini$/i.test(file) && !app.fs.isOfficial(file)) {
@@ -724,7 +899,8 @@ window.MS = window.MS || {};
 			}
 		}
 		// The held item picked in Studio goes in the unit's hands in game.
-		const held = app.device && app.lib.presets.find((p) => p.doc.path === app.device.path && p.name === app.device.name);
+		const heldRef = itemAlone ? app.actor : app.device;
+		const held = heldRef && app.lib.presets.find((p) => p.doc.path === heldRef.path && p.name === heldRef.name);
 		if (held) {
 			lines.push('DeviceClass = ' + held.cls, 'DevicePreset = ' + held.name, 'DeviceModule = ' + held.module);
 		}
@@ -828,7 +1004,7 @@ window.MS = window.MS || {};
 	function bindToolbar() {
 		$('btnUndo').onclick = () => app.doUndo();
 		$('btnRedo').onclick = () => app.doRedo();
-		$('btnSave').onclick = () => app.save();
+		$('btnSave').onclick = () => (MS.ide.mode === 'deep' ? MS.ide.saveAll() : app.save());
 		$('btnDiscard').onclick = () => app.discard();
 		$('btnPreview').onclick = () => app.preview();
 		$('btnLive').onclick = () => setLive(!app.live);
@@ -845,6 +1021,12 @@ window.MS = window.MS || {};
 		}
 		$('btnCopy').onclick = () => MS.dialogs.copyUnit();
 		$('btnHelp').onclick = () => MS.dialogs.help();
+		$('btnHistory').onclick = () => MS.history.open(app.actor && app.actor.path);
+		$('btnScope').onclick = (e) => {
+			e.stopPropagation();
+			scopeMenu();
+		};
+		updateScopeButton();
 		for (const btn of document.querySelectorAll('#poseButtons button')) {
 			btn.onclick = () => setPose(btn.dataset.pose);
 		}
@@ -913,7 +1095,8 @@ window.MS = window.MS || {};
 				}
 				return;
 			}
-			if (typing || !$('modal').hidden) {
+			// (In Deep mode with a file open, keys belong to the editor and its tabs, not the designer.)
+			if (typing || !$('modal').hidden || $('app').classList.contains('code-active')) {
 				if (e.key === 'Escape' && !$('modal').hidden) {
 					MS.dialogs.close();
 				}
@@ -957,12 +1140,30 @@ window.MS = window.MS || {};
 		$('statusText').textContent = text;
 	};
 
-	app.toast = function (text, kind) {
+	// action: {label, run}, a button on the message (like Undo after a save), which then stays up a little longer.
+	app.toast = function (text, kind, action) {
 		const el = document.createElement('div');
 		el.className = 'toast ' + (kind || '');
 		el.textContent = text;
+		if (action) {
+			const b = document.createElement('button');
+			b.className = 'toast-btn';
+			b.textContent = action.label;
+			b.onclick = () => {
+				el.remove();
+				action.run();
+			};
+			el.append(b);
+		}
 		$('toasts').append(el);
-		setTimeout(() => el.remove(), kind === 'bad' ? 7000 : 4000);
+		setTimeout(() => el.remove(), action ? 9000 : kind === 'bad' ? 7000 : 4000);
+	};
+
+	// After Edit this mod: everything that shows what can be changed looks again.
+	app.refreshLocks = function () {
+		updateTitle();
+		MS.panels.refresh();
+		app.requestDraw();
 	};
 
 	function readLocal(key) {

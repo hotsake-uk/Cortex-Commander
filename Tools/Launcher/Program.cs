@@ -690,7 +690,7 @@ partial class MainForm : Form
 
 		if (built)
 		{
-			await Launch(c, "-editor \"ActorEditor\"");
+			await Launch(c, "-modstudio -editor \"ActorEditor\""); // -modstudio: the console and script reloads reach Studio
 			Append("Note: mods linked from your Mods folder are refreshed from it on each launch, so keep Studio work in a mod you made in Studio.");
 		}
 		else

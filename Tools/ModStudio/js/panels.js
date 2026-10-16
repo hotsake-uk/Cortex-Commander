@@ -6,9 +6,10 @@ window.MS = window.MS || {};
 	const $ = (id) => document.getElementById(id);
 	let app = null;
 	let tab = 'units';
-	const ROLE_ICONS = { body: '▣', head: '●', jetpack: '⬒', fgarm: '╲', bgarm: '╲', fgleg: '┃', bgleg: '┃', foot: '▂', device: '⌐', magazine: '▮', attachable: '◆' };
+	const ROLE_ICONS = { body: '▣', head: '●', jetpack: '⬒', fgarm: '╲', bgarm: '╲', fgleg: '┃', bgleg: '┃', foot: '▂', device: '⌐', magazine: '▮', attachable: '◆', flash: '✶', leg: '┃', turret: '◘', mounted: '⌐', engine: '▼', thruster: '▿', door: '◧' };
 	const TAB_CLASSES = {
-		units: new Set(['AHuman']),
+		units: new Set(['AHuman', 'ACrab']),
+		craft: new Set(['ACDropShip', 'ACRocket']),
 		attachments: new Set(['Attachable', 'AEmitter', 'AEJetpack', 'PEmitter']),
 		items: new Set(['HDFirearm', 'HeldDevice', 'TDExplosive', 'ThrownDevice']),
 	};
@@ -45,8 +46,16 @@ window.MS = window.MS || {};
 		const frame = app.sprite(file, Math.max(1, Math.round(ent.num('FrameCount', 1))), 0);
 		const ctx = canvas.getContext('2d');
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
+		if (file && /(^|\/)null\.png$/i.test(file)) {
+			drawInvisible(canvas);
+			return true;
+		}
 		if (!frame) {
 			return !file || app.images.missing.has((MS.Images.framePaths(file, ent.num('FrameCount', 1))[0] || '').toLowerCase());
+		}
+		if (!hasPixels(frame.canvas)) {
+			drawInvisible(canvas);
+			return true;
 		}
 		const z = Math.max(1, Math.floor(Math.min(canvas.width / frame.width, canvas.height / frame.height)));
 		ctx.imageSmoothingEnabled = false;
@@ -54,6 +63,42 @@ window.MS = window.MS || {};
 		const h = frame.height * Math.min(z, 4);
 		ctx.drawImage(frame.canvas, Math.floor((canvas.width - w) / 2), Math.floor((canvas.height - h) / 2), w, h);
 		return true;
+	}
+
+	// Items with nothing to draw (Base.rte/Null.png, or a sprite with no visible pixels), like creatures' claws and jaws, which are
+	// invisible in the game on purpose: a dashed box with a crossed-out circle, so the empty thumbnail doesn't look like a failed load.
+	function drawInvisible(canvas) {
+		const ctx = canvas.getContext('2d');
+		const w = canvas.width;
+		const h = canvas.height;
+		const s = Math.min(w, h);
+		ctx.save();
+		ctx.strokeStyle = 'rgba(200, 205, 215, 0.45)';
+		ctx.lineWidth = Math.max(1, s / 24);
+		ctx.setLineDash([s / 10, s / 14]);
+		ctx.strokeRect(s * 0.12 + (w - s) / 2, s * 0.12 + (h - s) / 2, s * 0.76, s * 0.76);
+		ctx.setLineDash([]);
+		ctx.beginPath();
+		ctx.arc(w / 2, h / 2, s * 0.2, 0, Math.PI * 2);
+		ctx.moveTo(w / 2 - s * 0.14, h / 2 + s * 0.14);
+		ctx.lineTo(w / 2 + s * 0.14, h / 2 - s * 0.14);
+		ctx.stroke();
+		ctx.restore();
+		canvas.title = 'Invisible in the game: this item has no sprite (Base.rte/Null.png), on purpose';
+	}
+
+	function hasPixels(source) {
+		try {
+			const data = source.getContext('2d').getImageData(0, 0, source.width, source.height).data;
+			for (let i = 3; i < data.length; i += 4) {
+				if (data[i]) {
+					return true;
+				}
+			}
+			return false;
+		} catch (e) {
+			return true;
+		}
 	}
 
 	// Draws a list of posed items fitted into the canvas. Returns false while sprites are still loading.
@@ -117,17 +162,78 @@ window.MS = window.MS || {};
 
 	// ---- library ----
 
+	// What each class is called in the Type list.
+	const CLASS_LABELS = {
+		AHuman: 'Humans', ACrab: 'Crabs', ACDropShip: 'Dropships', ACRocket: 'Rockets',
+		Attachable: 'Attachments', AEmitter: 'Emitters', AEJetpack: 'Jetpacks', PEmitter: 'Particle emitters',
+		HDFirearm: 'Guns', HeldDevice: 'Tools and shields', TDExplosive: 'Grenades and explosives', ThrownDevice: 'Thrown',
+	};
+
+	// A preset's buy menu groups, inherited ones too (cached until the presets are read again).
+	let groupCache = new Map();
+	let groupCacheFor = null;
+	function groupsOf(p) {
+		if (groupCacheFor !== app.lib.presets) {
+			groupCacheFor = app.lib.presets;
+			groupCache = new Map();
+		}
+		let groups = groupCache.get(p.node);
+		if (!groups) {
+			groups = app.lib.resolve(p.node).all('AddToGroup').map((e) => e.node.value.trim()).filter(Boolean);
+			groupCache.set(p.node, groups);
+		}
+		return groups;
+	}
+
+	// Fills the Type, Group and Mod lists from what's in the tab, keeping each choice while it still exists.
+	function fillLibSelects(candidates) {
+		const fill = (id, all, values, label) => {
+			const select = $(id);
+			const keep = select.value;
+			select.innerHTML = '';
+			select.append(new Option(all, ''));
+			for (const v of values) {
+				select.append(new Option(label ? label(v) : v, v));
+			}
+			select.value = values.includes(keep) ? keep : '';
+		};
+		const classes = [...new Set(candidates.map((p) => p.cls))].sort((a, b) => (CLASS_LABELS[a] || a).localeCompare(CLASS_LABELS[b] || b));
+		fill('libType', 'Every type', classes, (c) => CLASS_LABELS[c] || c);
+		$('libType').hidden = classes.length < 2;
+		const type = $('libType').value;
+		const groups = new Set();
+		for (const p of candidates) {
+			if (!type || p.cls === type) {
+				for (const g of groupsOf(p)) {
+					groups.add(g);
+				}
+			}
+		}
+		fill('libGroup', 'Every group', [...groups].sort());
+		$('libGroup').hidden = !groups.size;
+		const modules = [...new Set(candidates.map((p) => p.module))];
+		fill('libModule', 'Every mod', modules, (m) => {
+			const info = app.lib.moduleOf(m + '/Index.ini');
+			return (info ? info.title : m) + (app.fs.isOfficial(m) ? '' : ' (yours)');
+		});
+	}
+
 	function libraryPresets() {
 		const wanted = TAB_CLASSES[tab];
 		const query = $('libSearch').value.trim().toLowerCase();
 		const mineOnly = $('libMineOnly').checked;
+		const candidates = app.lib.presets.filter((p) => wanted.has(p.cls) && (tab === 'attachments' || p.topLevel) && app.inScope(p.module));
+		fillLibSelects(candidates);
+		const type = $('libType').value;
+		const group = $('libGroup').value;
+		const moduleName = $('libModule').value;
 		const seen = new Set();
 		const out = [];
-		for (const p of app.lib.presets) {
-			if (!wanted.has(p.cls) || (tab !== 'attachments' && !p.topLevel)) {
+		for (const p of candidates) {
+			if (mineOnly && app.fs.isOfficial(p.module)) {
 				continue;
 			}
-			if (mineOnly && app.fs.isOfficial(p.module)) {
+			if ((type && p.cls !== type) || (moduleName && p.module !== moduleName) || (group && !groupsOf(p).includes(group))) {
 				continue;
 			}
 			if (query && !(p.name.toLowerCase().includes(query) || p.module.toLowerCase().includes(query))) {
@@ -163,7 +269,7 @@ window.MS = window.MS || {};
 				if (e.isIntersecting && !e.target.dataset.drawn) {
 					e.target.dataset.drawn = '1';
 					const preset = e.target._preset;
-					queueThumb(e.target, () => (tab === 'units' ? drawRigThumb(e.target, preset) : drawSpriteThumb(e.target, preset)));
+					queueThumb(e.target, () => (tab === 'units' || tab === 'craft' ? drawRigThumb(e.target, preset) : drawSpriteThumb(e.target, preset)));
 				}
 			}
 		}, { root: list });
@@ -192,15 +298,29 @@ window.MS = window.MS || {};
 			txt.firstChild.textContent = p.name;
 			txt.lastChild.textContent = p.cls + ' · ' + p.doc.path.split('/').slice(1).join('/');
 			row.append(canvas, txt);
-			if (tab === 'units') {
+			if (tab === 'units' || tab === 'craft') {
 				row.onclick = () => app.openActor(p);
 				row.title = 'Open ' + p.name;
 			} else if (tab === 'items') {
-				row.onclick = () => {
-					app.setDevice(p);
-					app.toast(p.name + ' is now in the front hand.');
+				// With a unit open, an item goes in its hand; Design opens the item itself.
+				const design = document.createElement('button');
+				design.className = 'small-btn add';
+				design.textContent = 'Design';
+				design.title = 'Open ' + p.name + ' in the designer: its grip, muzzle, magazine and settings';
+				design.onclick = (e) => {
+					e.stopPropagation();
+					app.openActor(p);
 				};
-				row.title = 'Put ' + p.name + ' in the unit\'s hand';
+				row.append(design);
+				row.onclick = () => {
+					if (app.rig && app.rig.cls === 'AHuman') {
+						app.setDevice(p);
+						app.toast(p.name + ' is now in the front hand.');
+					} else {
+						app.openActor(p);
+					}
+				};
+				row.title = 'Put ' + p.name + ' in the unit\'s hand (Design opens the item itself)';
 			} else {
 				const add = document.createElement('button');
 				add.className = 'small-btn add';
@@ -228,7 +348,8 @@ window.MS = window.MS || {};
 	function markLibrary() {
 		for (const row of document.querySelectorAll('.lib-row')) {
 			const p = row._preset;
-			const selected = tab === 'units' ? app.actor && p.doc.path === app.actor.path && p.name === app.actor.name : tab === 'items' ? app.device && p.doc.path === app.device.path && p.name === app.device.name : false;
+			const isActor = app.actor && p.doc.path === app.actor.path && p.name === app.actor.name;
+			const selected = tab === 'units' || tab === 'craft' ? isActor : tab === 'items' ? isActor || (app.device && p.doc.path === app.device.path && p.name === app.device.name) : false;
 			row.classList.toggle('sel', !!selected);
 		}
 	}
@@ -584,12 +705,31 @@ window.MS = window.MS || {};
 			const n = document.createElement('div');
 			n.className = 'notice';
 			n.textContent = locked;
+			const heldPreset = !actorLocked && part.anchor !== app.actorNode ? app.lib.presets.find((p) => p.node === part.anchor) : null;
+			if (heldPreset) {
+				// A held item (or a part of one) from the game or someone else's mod: copy it into your mod, and the unit uses the copy.
+				const b = document.createElement('button');
+				b.className = 'small-btn primary';
+				b.textContent = 'Make my own copy of ' + heldPreset.name;
+				b.title = 'Makes ' + heldPreset.name + ' in your mod (CopyOf the original), and ' + app.actor.name + ' carries your copy instead';
+				b.onclick = () => MS.dialogs.copyUnit({ name: heldPreset.name, cls: heldPreset.cls, path: heldPreset.doc.path }, (copy) => app.useOwnCopy(heldPreset, copy));
+				n.append(document.createElement('br'), b);
+			}
 			if (actorLocked && part.anchor === app.actorNode) {
 				const b = document.createElement('button');
 				b.className = 'small-btn primary';
 				b.textContent = 'Make my own copy';
 				b.onclick = () => MS.dialogs.copyUnit();
 				n.append(document.createElement('br'), b);
+				if (app.lib.lockKind(app.actorNode.doc) === 'mod') {
+					const module = app.actorNode.doc.path.split('/')[0];
+					const edit = document.createElement('button');
+					edit.className = 'small-btn';
+					edit.textContent = 'Edit this mod';
+					edit.title = 'Studio keeps ' + module + ' as it is now, so History can put any file back, then lets you change it';
+					edit.onclick = () => MS.history.editMod(module);
+					n.append(' ', edit);
+				}
 			}
 			insp.append(n);
 		} else if (part.role !== 'body' && part.anchor === app.actorNode && !part.ent.node.isWithin(app.actorNode)) {
@@ -644,7 +784,7 @@ window.MS = window.MS || {};
 		if (!['body', 'fgarm', 'bgarm', 'bgleg', 'device'].includes(part.role)) {
 			boolRow(place, part, 'DrawAfterParent', 'In front of parent', true, locked);
 		}
-		if (part.role === 'attachable' || part.role === 'jetpack') {
+		if (!MS.Rig.POSED_ROLES.has(part.role)) {
 			boolRow(place, part, 'InheritsRotAngle', 'Turns with parent', true, locked);
 			if (part.ent.bool('InheritsRotAngle', true)) {
 				const degrees = Math.round((MS.Rig.rotationOffset(part.ent) * 180) / Math.PI * 100) / 100;
@@ -678,12 +818,55 @@ window.MS = window.MS || {};
 			boolRow(dev, part, 'OneHanded', 'One-handed', false, locked);
 			boolRow(dev, part, 'Supportable', 'Back hand helps', true, locked);
 		}
-		if (part.role === 'body') {
+		if (part.role === 'body' && app.rig.isDevice) {
+			const item = section(insp, 'Item');
+			numberRow(item, part, 'Mass', 'Mass (kg)', 0, locked);
+			numberRow(item, part, 'GoldValue', 'Cost', 0, locked);
+			const dev = section(insp, 'Holding');
+			vectorRow(dev, part, 'JointOffset', 'Grip (Joint)', locked);
+			vectorRow(dev, part, 'StanceOffset', 'Held at (Stance)', locked);
+			vectorRow(dev, part, 'SharpStanceOffset', 'Aiming (Sharp)', locked);
+			vectorRow(dev, part, 'SupportOffset', 'Back hand at', locked);
+			boolRow(dev, part, 'OneHanded', 'One-handed', false, locked);
+			boolRow(dev, part, 'Supportable', 'Back hand helps', true, locked);
+			if (ent.cls === 'HDFirearm') {
+				const gun = section(insp, 'Firing');
+				vectorRow(gun, part, 'MuzzleOffset', 'Muzzle', locked);
+				vectorRow(gun, part, 'EjectionOffset', 'Shell ejection', locked);
+				numberRow(gun, part, 'RateOfFire', 'Rounds a minute', 0, locked);
+				boolRow(gun, part, 'FullAuto', 'Full auto', false, locked);
+				numberRow(gun, part, 'ReloadTime', 'Reload (ms)', 0, locked);
+				numberRow(gun, part, 'ShakeRange', 'Spread (hip)', 0, locked);
+				numberRow(gun, part, 'SharpShakeRange', 'Spread (aiming)', 0, locked);
+				numberRow(gun, part, 'RecoilTransmission', 'Recoil passed on', 1, locked);
+			}
+		} else if (part.role === 'body' && /^AC(DropShip|Rocket)$/.test(ent.cls)) {
+			const craft = section(insp, 'Craft');
+			numberRow(craft, part, 'Mass', 'Mass (kg)', 0, locked);
+			numberRow(craft, part, 'Health', 'Health', 100, locked);
+			numberRow(craft, part, 'GoldValue', 'Cost', 0, locked);
+			numberRow(craft, part, 'MaxPassengers', 'Passengers', -1, locked);
+			numberRow(craft, part, 'HatchDelay', 'Hatch delay (ms)', 0, locked);
+			if (ent.cls === 'ACDropShip') {
+				numberRow(craft, part, 'MaxEngineAngle', 'Engine tilt (°)', 20, locked);
+				numberRow(craft, part, 'LateralControlSpeed', 'Sideways speed', 6, locked);
+				numberRow(craft, part, 'HoverHeightModifier', 'Hover height', 0, locked);
+			} else {
+				numberRow(craft, part, 'MaxGimbalAngle', 'Engine gimbal (°)', 0, locked);
+			}
+		} else if (part.role === 'body') {
 			const stats = section(insp, 'Unit');
 			numberRow(stats, part, 'Mass', 'Mass (kg)', 0, locked);
 			numberRow(stats, part, 'Health', 'Health', 100, locked);
 			numberRow(stats, part, 'GoldValue', 'Cost', 0, locked);
 			numberRow(stats, part, 'ImpulseDamageThreshold', 'Impact damage at', 0, locked);
+		}
+		if (part.role === 'body' && ent.cls === 'ACrab') {
+			const aim = section(insp, 'Aiming');
+			numberRow(aim, part, 'AimRangeUpperLimit', 'Aim up to', 0, locked);
+			numberRow(aim, part, 'AimRangeLowerLimit', 'Aim down to', 0, locked);
+		}
+		if (part.role === 'body' && ent.cls === 'AHuman') {
 			const move = section(insp, 'Posture');
 			numberRow(move, part, 'LookToAimRatio', 'Head follows aim', 0.7, locked);
 			numberRow(move, part, 'ArmSwingRate', 'Arm swing', 1, locked);
@@ -728,6 +911,7 @@ window.MS = window.MS || {};
 			att.append(row);
 		}
 
+		MS.ide.scriptsSection(insp, part, locked, section);
 		allSettings(insp, part, ent, locked);
 	}
 
@@ -800,11 +984,26 @@ window.MS = window.MS || {};
 					}
 				};
 				val.append(input);
+				if (/\.lua$/i.test(node.value.trim())) {
+					const open = document.createElement('button');
+					open.className = 'small-btn';
+					open.textContent = 'Open';
+					open.title = 'Open this script in the Lua editor';
+					open.onclick = () => MS.ide.openFile(input.value.trim().replace(/\\/g, '/'));
+					val.append(open);
+				}
 			} else {
 				const text = document.createElement('span');
 				text.className = 'setting-ro';
 				text.textContent = node.child('FilePath') ? node.child('FilePath').value : node.child('CopyOf') ? node.value + ' (' + node.child('CopyOf').value + ')' : node.child('PresetName') ? node.value + ' (' + node.child('PresetName').value + ')' : node.value;
 				text.title = isList ? 'A list entry: change it in its own part or section.' : 'A whole object: change it in its own section, or in the file.';
+				if (/\.lua$/i.test(text.textContent.trim())) {
+					// A script: clicking it opens it in the Lua editor.
+					const script = text.textContent.trim().replace(/\\/g, '/');
+					text.classList.add('file-link');
+					text.title = 'Open ' + script + ' in the Lua editor';
+					text.onclick = () => MS.ide.openFile(script);
+				}
 				val.append(text);
 			}
 			if (own && !isList && !locked && ent.entries.some((other) => other.key === e.key && other.node !== node)) {
@@ -962,6 +1161,8 @@ window.MS = window.MS || {};
 		for (const b of document.querySelectorAll('#libTabs button')) {
 			b.onclick = () => {
 				tab = b.dataset.tab;
+				$('libType').value = '';
+				$('libGroup').value = '';
 				for (const x of document.querySelectorAll('#libTabs button')) {
 					x.classList.toggle('sel', x === b);
 				}
@@ -976,6 +1177,9 @@ window.MS = window.MS || {};
 			searchTimer = setTimeout(() => app.lib && showLibrary(), 150);
 		};
 		$('libMineOnly').onchange = () => app.lib && showLibrary();
+		for (const id of ['libType', 'libGroup', 'libModule']) {
+			$(id).onchange = () => app.lib && showLibrary();
+		}
 		renderInspector();
 	}
 
