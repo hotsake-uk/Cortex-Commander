@@ -237,6 +237,20 @@ fn api(studio: &Studio, request: &mut Request, action: &str, query: &str) -> Res
 	};
 
 	match action {
+		// The window's zoom, kept between runs. Only in the app (a window to zoom); the page asks, and follows the answer.
+		"zoom" => {
+			if !crate::has_zoom_hook() {
+				return bytes(br#"{"native":false,"factor":1}"#.to_vec(), "application/json");
+			}
+			if matches!(request.method(), Method::Put | Method::Post) {
+				let mut raw = String::new();
+				let _ = request.as_reader().read_to_string(&mut raw);
+				if let Some(factor) = serde_json::from_str::<serde_json::Value>(&raw).ok().and_then(|v| v.get("factor").and_then(|f| f.as_f64())) {
+					crate::set_zoom(factor.clamp(0.5, 3.0));
+				}
+			}
+			bytes(format!("{{\"native\":true,\"factor\":{}}}", crate::zoom()).into_bytes(), "application/json")
+		}
 		"info" => {
 			let name = root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
 			let body = format!("{{\"name\":{},\"path\":{},\"app\":\"Cortex Studio\"}}", json_string(&name), json_string(&root.to_string_lossy()));
