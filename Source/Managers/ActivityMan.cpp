@@ -91,6 +91,12 @@ bool ActivityMan::Initialize() {
 	if (IsSetToLaunchIntoEditor()) {
 		// Evaluate LaunchIntoEditor before LaunchIntoActivity so it takes priority when both are set, otherwise it is ignored and editor is never launched.
 		return SetStartEditorActivitySetToLaunchInto();
+	} else if (m_LaunchIntoSandbox) {
+		if (!SetStartSandboxActivity(m_SandboxSceneToLaunch)) {
+			return false;
+		}
+		m_ActivityNeedsRestart = true;
+		return true;
 	} else if (IsSetToLaunchIntoActivity()) {
 		m_ActivityNeedsRestart = true;
 		return true;

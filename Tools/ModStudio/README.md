@@ -39,11 +39,16 @@ zip of the changed files to unpack into the game folder.
 
 ## Preview in game
 
-**Preview in game** saves, then writes `ModStudio/Preview.ini` in the game folder naming the unit and the files that
-changed. Start the game's Actor Editor (`Launch Actor Editor.bat`, or launch with `-editor ActorEditor`) and leave it
-running: it checks that file about twice a second, reloads the files and sprites, and shows the unit.
+**Preview in game** saves, then writes `ModStudio/Preview.ini` in the game folder naming the unit, the files that changed and
+the held item. Two ways to see it, both started from `Tools\ModStudio` and left running:
 
-The game only finds new mod folders when it starts, so after making a brand-new mod, restart the game once.
+- **Actor Editor.bat** opens the game's Actor Editor (`-editor ActorEditor`), zoomed in on the unit. Ctrl + mouse wheel zooms.
+- **Test In Sandbox.bat** opens the sandbox (`-modstudio -sandbox [map]`) with you in control of the unit. Add a map name to use
+  another map, for example `"Test In Sandbox.bat" "Ketanot Hills"`.
+
+Either one checks the file about twice a second, reloads the changed files and sprites, and swaps in the new unit, holding the
+item picked under **Held item**. The game only finds new mod folders when it starts, so after making a brand-new mod, restart
+the game once.
 
 ## Code layout
 
@@ -62,5 +67,5 @@ All scripts are plain classic scripts (no modules), so the page works from `file
 | `js/dialogs.js` | Make a copy, add attachments, pick items, import sprites, help. |
 | `js/app.js` | App state, editing with undo, dragging, saving and the preview request. |
 
-The engine side of the preview lives in `Source/Activities/ActorEditor.cpp` (`CheckModStudioPreview`) and
-`PresetMan::ReloadPresetFile`.
+The engine side of the preview is `Source/Managers/ModStudioPreview.cpp` (reading the request, reloading files, making the unit,
+the sandbox swap), used by `Source/Activities/ActorEditor.cpp`, plus `PresetMan::ReloadPresetFile`.

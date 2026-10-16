@@ -656,6 +656,11 @@ window.MS = window.MS || {};
 				lines.push('ReloadFile = ' + file);
 			}
 		}
+		// The held item picked in Studio goes in the unit's hands in game.
+		const held = app.device && app.lib.presets.find((p) => p.doc.path === app.device.path && p.name === app.device.name);
+		if (held) {
+			lines.push('DeviceClass = ' + held.cls, 'DevicePreset = ' + held.name, 'DeviceModule = ' + held.module);
+		}
 		try {
 			await app.fs.writeDisk(PREVIEW_FILE, lines.join('\r\n') + '\r\n');
 		} catch (e) {

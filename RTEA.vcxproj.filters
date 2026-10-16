@@ -1060,6 +1060,9 @@
     <ClCompile Include="Source\Managers\ControlLink.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Managers\ModStudioPreview.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Managers\ActorWater.cpp">
       <Filter>Managers</Filter>
     </ClCompile>

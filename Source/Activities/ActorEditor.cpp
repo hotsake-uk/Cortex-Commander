@@ -18,10 +18,7 @@
 #include "DataModule.h"
 
 #include "ObjectPickerGUI.h"
-#include "ConsoleMan.h"
-#include "System.h"
-
-#include <fstream>
+#include "ModStudioPreview.h"
 
 using namespace RTE;
 
@@ -40,6 +37,7 @@ void ActorEditor::Clear() {
 	m_pPicker = 0;
 	m_PreviewCheckTimer.Reset();
 	m_PreviewFileTime = {};
+	m_ZoomedIn = false;
 }
 
 int ActorEditor::Create() {
@@ -176,7 +174,7 @@ void ActorEditor::Update() {
 		}
 	} else {
 		g_FrameMan.ClearScreenText();
-		g_FrameMan.SetScreenText("Control the actor to see how he moves. Reload data with the pie menu.", 0, 0, 5000);
+		g_FrameMan.SetScreenText("Control the actor to see how it moves. Ctrl + mouse wheel zooms. Reload data with the pie menu.", 0, 0, 5000);
 	}
 
 	//////////////////////////////////////////////
@@ -237,6 +235,13 @@ bool ActorEditor::LoadActor(const Entity* pActorToLoad) {
 
 		m_EditorMode = EditorActivity::EDITINGOBJECT;
 		m_ModeChange = true;
+		// Units are small on a full screen; start close in. Ctrl + mouse wheel changes it.
+		if (!m_ZoomedIn) {
+			m_ZoomedIn = true;
+			if (g_FrameMan.GetCameraZoom() <= 1.0F) {
+				g_FrameMan.SetCameraZoom(3.0F);
+			}
+		}
 	} else {
 		g_FrameMan.ClearScreenText();
 		g_FrameMan.SetScreenText("There's something wrong with that picked Actor!?", 0, 333, 2000);
@@ -258,73 +263,23 @@ bool ActorEditor::ReloadActorData() {
 	return false;
 }
 
-namespace {
-	std::string TrimSpaces(const std::string& text) {
-		const size_t first = text.find_first_not_of(" \t\r\n");
-		return first == std::string::npos ? std::string() : text.substr(first, text.find_last_not_of(" \t\r\n") - first + 1);
-	}
-} // namespace
-
 void ActorEditor::CheckModStudioPreview() {
-	const std::filesystem::path requestPath = std::filesystem::path(System::GetWorkingDirectory()) / "ModStudio" / "Preview.ini";
-	std::error_code error;
-	const std::filesystem::file_time_type writeTime = std::filesystem::last_write_time(requestPath, error);
-	if (error || writeTime == m_PreviewFileTime) {
+	ModStudioPreview::Request request;
+	if (!ModStudioPreview::Poll(m_PreviewFileTime, request)) {
 		return;
 	}
-	m_PreviewFileTime = writeTime;
-
-	std::ifstream requestFile(requestPath);
-	if (!requestFile.good()) {
-		return;
-	}
-	std::string className;
-	std::string presetName;
-	std::string moduleName;
-	std::vector<std::string> filesToReload;
-	std::string line;
-	while (std::getline(requestFile, line)) {
-		if (const size_t commentStart = line.find("//"); commentStart != std::string::npos) {
-			line.erase(commentStart);
-		}
-		const size_t equalsPos = line.find('=');
-		if (equalsPos == std::string::npos) {
-			continue;
-		}
-		const std::string key = TrimSpaces(line.substr(0, equalsPos));
-		const std::string value = TrimSpaces(line.substr(equalsPos + 1));
-		if (key == "Class") {
-			className = value;
-		} else if (key == "Preset") {
-			presetName = value;
-		} else if (key == "Module") {
-			moduleName = value;
-		} else if (key == "ReloadFile" && !value.empty()) {
-			filesToReload.emplace_back(value);
-		}
-	}
-	if (className.empty() || presetName.empty()) {
-		return;
-	}
-
 	g_FrameMan.ClearScreenText();
-	if (!moduleName.empty() && g_PresetMan.GetModuleID(moduleName) < 0) {
-		// The game only learns about mod folders when it starts.
-		g_FrameMan.SetScreenText(moduleName + " is a new mod. Restart the game to load it, then press Preview in game again.", 0, 0, 8000);
+	std::string problem;
+	Actor* unit = ModStudioPreview::MakeUnit(request, problem);
+	if (!unit) {
+		g_FrameMan.SetScreenText(problem, 0, 0, 8000);
 		return;
 	}
-	for (const std::string& fileToReload: filesToReload) {
-		if (!g_PresetMan.ReloadPresetFile(fileToReload)) {
-			g_ConsoleMan.PrintString("WARNING: Mod Studio preview couldn't reload \"" + fileToReload + "\". Its mod may not be loaded yet.");
-		}
-	}
-
-	const Entity* preset = g_PresetMan.GetEntityPreset(className, presetName, moduleName.empty() ? -1 : g_PresetMan.GetModuleID(moduleName));
-	if (!preset || !LoadActor(preset)) {
-		g_FrameMan.SetScreenText("Mod Studio asked for \"" + presetName + "\", but the game can't find it. Check the console for errors.", 0, 0, 8000);
+	const bool loaded = LoadActor(unit);
+	delete unit; // LoadActor keeps a copy of its own.
+	if (!loaded) {
 		return;
 	}
 	m_pPicker->SetEnabled(false);
-	g_ConsoleMan.PrintString("SYSTEM: Showing \"" + presetName + "\" from Mod Studio.");
-	g_FrameMan.SetScreenText("Showing " + presetName + " from Mod Studio. Control it to see how it moves.", 0, 0, 5000);
+	g_FrameMan.SetScreenText("Showing " + request.PresetName + " from Mod Studio. Control it to see how it moves; Ctrl + mouse wheel zooms.", 0, 0, 5000);
 }

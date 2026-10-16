@@ -197,6 +197,7 @@ void FrameMan::UpdateCameraZoom() {
 	// Only running games zoom: menus, editors, the build phase and the buy menu lay their screens out for the real resolution, so the view eases back to normal for them.
 	const GameActivity* game = dynamic_cast<const GameActivity*>(g_ActivityMan.GetActivity());
 	bool canZoom = g_ActivityMan.IsInActivity() && game && game->GetActivityState() == Activity::ActivityState::Running && !game->AnyPlayerInScreenMenu();
+	canZoom = canZoom || (g_ActivityMan.IsInActivity() && g_ActivityMan.GetActivity()->AllowsCameraZoom());
 	float target = canZoom ? m_CameraZoomTarget : 1.0F;
 	if (canZoom && target < 1.0F && g_SceneMan.GetScene()) {
 		// Never so far out that the view is wider or taller than the scene: past that the sky repeats and lights, rays and effects no longer sit where they belong.
