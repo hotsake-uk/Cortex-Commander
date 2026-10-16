@@ -74,6 +74,23 @@ window.MS = window.MS || {};
 		$('btnNewScript').onclick = () => newIn('lua');
 		$('btnNewIni').onclick = () => newIn('ini');
 		$('btnRefreshFiles').onclick = () => refreshExplorer();
+		fileKind = app.readLocal('ms.fileKind') || '';
+		for (const b of document.querySelectorAll('#fileKinds button')) {
+			b.classList.toggle('sel', b.dataset.kind === fileKind);
+			b.onclick = () => {
+				fileKind = b.dataset.kind;
+				app.writeLocal('ms.fileKind', fileKind);
+				for (const x of document.querySelectorAll('#fileKinds button')) {
+					x.classList.toggle('sel', x === b);
+				}
+				renderExplorer();
+			};
+		}
+		let filterTimer = 0;
+		$('fileFilter').oninput = () => {
+			clearTimeout(filterTimer);
+			filterTimer = setTimeout(renderExplorer, 200);
+		};
 		bindRunBox();
 		bindPanelResize();
 		bindSearch();
@@ -1266,11 +1283,70 @@ window.MS = window.MS || {};
 	// -- files --
 
 	const expanded = new Set();
+	// The file type and name filter: with either set, the tree becomes the matching files under their folders.
+	const FILE_KINDS = { lua: /\.lua$/i, ini: /\.ini$/i, image: /\.(png|bmp|jpe?g|gif)$/i, sound: /\.(wav|ogg|flac|mp3)$/i };
+	let fileKind = '';
+	const moduleTrees = new Map();
+	let filterRun = 0;
+
+	async function renderFiltered(box, mods, game, kind, text) {
+		const run = ++filterRun;
+		box.innerHTML = '';
+		box.append(el('div', { className: 'x-empty', textContent: 'Looking…' }));
+		const matches = (path) => (!kind || FILE_KINDS[kind].test(path)) && (!text || path.toLowerCase().includes(text));
+		const out = [];
+		let shown = 0;
+		const LIMIT = 2000;
+		for (const [title, list, official] of [['Your mods', mods, false], ['Game (read only)', game, true]]) {
+			const rows = [];
+			for (const m of list) {
+				let files = moduleTrees.get(m.name);
+				if (!files) {
+					try {
+						files = (await app.fs.tree(app.fs.toDiskPath(m.name))).map((f) => f.path.replace(/\\/g, '/'));
+					} catch (e) {
+						files = [];
+					}
+					moduleTrees.set(m.name, files);
+				}
+				if (run !== filterRun) {
+					return;
+				}
+				let folder = null;
+				for (const rel of files.filter((f) => matches(m.name + '/' + f)).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))) {
+					if (shown >= LIMIT) {
+						break;
+					}
+					const dir = m.name + (rel.includes('/') ? '/' + rel.slice(0, rel.lastIndexOf('/')) : '');
+					if (dir !== folder) {
+						folder = dir;
+						rows.push(el('div', { className: 'x-dir', textContent: dir, title: dir }));
+					}
+					rows.push(fileRow(m.name + '/' + rel, rel.slice(rel.lastIndexOf('/') + 1), 1, official));
+					shown++;
+				}
+			}
+			out.push(groupHead(title, rows.filter((r) => r.classList.contains('file')).length), ...(rows.length ? rows : [el('div', { className: 'x-empty', textContent: 'Nothing matches.' })]));
+		}
+		if (shown >= LIMIT) {
+			out.push(el('div', { className: 'x-empty', textContent: 'Showing the first ' + LIMIT + ': type more of the name to narrow it.' }));
+		}
+		box.innerHTML = '';
+		box.append(...out);
+		markExplorer();
+	}
+
 	function renderExplorer() {
 		const box = $('explorer');
 		if (!box || !app || !app.fs || !app.lib) {
 			return;
 		}
+		const text = ($('fileFilter').value || '').trim().toLowerCase();
+		if (fileKind || text) {
+			renderFiltered(box, app.fs.modules().filter((m) => m.home === 'Mods').sort((a, b) => a.name.localeCompare(b.name)), app.fs.modules().filter((m) => m.home === 'Data'), fileKind, text);
+			return;
+		}
+		filterRun++;
 		const saved = app.readLocal('ms.expanded');
 		if (saved && !expanded.size) {
 			for (const p of saved) {
@@ -1344,19 +1420,23 @@ window.MS = window.MS || {};
 			if (entry.kind === 'directory') {
 				box.append(folderRow(child, entry.name, depth, official));
 			} else {
-				const ext = extOf(entry.name);
-				const row = el('div', { className: 'x-row file', title: child }, el('span', { className: 'x-ext ' + ext, textContent: ext || '·' }), el('span', { className: 'x-name', textContent: entry.name }));
-				row.style.paddingLeft = 6 + depth * 12 + 14 + 'px';
-				row.dataset.path = child;
-				row.onclick = () => ide.openFile(child);
-				row.oncontextmenu = (e) => {
-					e.preventDefault();
-					fileMenu(e, child, official);
-				};
-				box.append(row);
+				box.append(fileRow(child, entry.name, depth, official));
 			}
 		}
 		markExplorer();
+	}
+
+	function fileRow(path, name, depth, official) {
+		const ext = extOf(name);
+		const row = el('div', { className: 'x-row file', title: path }, el('span', { className: 'x-ext ' + ext, textContent: ext || '·' }), el('span', { className: 'x-name', textContent: name }));
+		row.style.paddingLeft = 6 + depth * 12 + 14 + 'px';
+		row.dataset.path = path;
+		row.onclick = () => ide.openFile(path);
+		row.oncontextmenu = (e) => {
+			e.preventDefault();
+			fileMenu(e, path, official);
+		};
+		return row;
 	}
 
 	function markExplorer() {
@@ -1425,6 +1505,7 @@ window.MS = window.MS || {};
 
 	function refreshExplorer() {
 		app.fs.forgetListings();
+		moduleTrees.clear();
 		renderExplorer();
 	}
 
