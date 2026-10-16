@@ -1456,17 +1456,120 @@ window.MS = window.MS || {};
 		ini: () => '// ' + 'Presets go here. Include this file from the mod\'s Index.ini (IncludeFile = ...).\n',
 	};
 
+	// INI files that start with a preset in them.
+	const INI_KINDS = {
+		blank: { label: 'Empty' },
+		unit: { label: 'Unit (a copy of one of the game\'s)', file: 'MyUnit', block: 'AddActor', base: ['AHuman', 'ACrab'], baseLabel: 'Starts as a copy of', suggest: 'Soldier Light' },
+		gun: { label: 'Gun (a copy of one of the game\'s)', file: 'MyGun', block: 'AddDevice', base: ['HDFirearm'], baseLabel: 'Starts as a copy of', suggest: 'Assault Rifle' },
+		activity: { label: 'Scripted activity (with its Lua script)', file: 'MyActivity', base: ['Scene'], baseLabel: 'Plays on the scene' },
+		scene: { label: 'Scene (a copy of one of the game\'s)', file: 'MyScene', block: 'AddScene', base: ['Scene'], baseLabel: 'Starts as a copy of' },
+	};
+
+	// Makes an INI file with one preset in it (included from the mod's Index.ini), and for an activity its script too.
+	async function makePresetFile(path, kindName, baseName_) {
+		const k = INI_KINDS[kindName];
+		const lib = app.lib;
+		const modName = path.split('/')[0];
+		const name = baseName(path).replace(/\.ini$/i, '').replace(/[_-]+/g, ' ');
+		const basePreset = baseName_ ? lib.presets.find((pr) => pr.topLevel && k.base.includes(pr.cls) && pr.name === baseName_) : null;
+		if (k.block && !basePreset) {
+			app.toast('Pick a preset to copy: "' + baseName_ + '" isn\'t one.', 'bad');
+			return false;
+		}
+		if (lib.find(name, null, modName) && lib.find(name, null, modName).name.toLowerCase() === name.toLowerCase()) {
+			app.toast('There is already a preset called ' + name + '. Pick another file name.', 'bad');
+			return false;
+		}
+		const doc = await lib.newDoc(path);
+		app.hookDoc(doc);
+		app.hookDoc(lib.docFor(modName + '/Index.ini'));
+		if (k.block) {
+			const block = doc.addTopLevel(k.block, basePreset.cls);
+			block.add('CopyOf', lib.reference(basePreset.name, basePreset.module, modName));
+			block.add('PresetName', name);
+		} else {
+			// A scripted activity: the preset and its script.
+			const cls = name.replace(/\W/g, '') || 'MyActivity';
+			const script = path.replace(/[^/]*$/, '') + cls + '.lua';
+			const block = doc.addTopLevel('AddActivity', 'GAScripted');
+			block.add('PresetName', name);
+			block.add('Description', 'Made with Cortex Mod Studio.');
+			if (basePreset) {
+				block.add('SceneName', basePreset.name);
+			}
+			block.add('ScriptPath', script);
+			block.add('LuaClassName', cls);
+			block.add('MinTeamsRequired', '1');
+			block.add('Team1Name', 'Players');
+			if (!(await app.fs.exists(script))) {
+				const text = TEMPLATES.activity(cls);
+				try {
+					await app.fs.writeFile(script, text);
+					ide.lua.updateScript(script, text);
+				} catch (e) {
+					app.toast('Couldn\'t make ' + script + ': ' + e.message, 'bad');
+				}
+			}
+		}
+		lib.reindex();
+		app.writeLocal('ms.lastMod', modName);
+		const made = lib.presets.find((pr) => pr.doc === doc && pr.name === name);
+		if (made && made.cls === 'AHuman') {
+			app.openActor(made);
+		}
+		app.updateFileStatus();
+		refreshExplorer();
+		await ide.openFile(path, 1);
+		app.toast('Made ' + name + ' in ' + modName + '. Save to write it to disk; the game loads new presets when it starts.', 'good');
+		return true;
+	}
+
 	function newFileDialog(folder, kind, preset, onMade) {
 		const name = el('input', { type: 'text', value: kind === 'lua' ? (preset ? preset.replace(/[^\w -]/g, '').replace(/\s+/g, '') : 'NewScript') + '.lua' : 'NewFile.ini' });
 		const template = el('select', {});
 		if (kind === 'lua') {
 			template.append(el('option', { value: 'entity', textContent: 'Object script (Create, Update, Destroy)' }), el('option', { value: 'activity', textContent: 'Activity script (StartActivity, UpdateActivity)' }), el('option', { value: 'blank', textContent: 'Empty' }));
+		} else {
+			for (const [value, text] of Object.entries(INI_KINDS).map(([k, v]) => [k, v.label])) {
+				template.append(el('option', { value, textContent: text }));
+			}
 		}
 		const where = el('input', { type: 'text', value: folder });
+		// INI: the preset the new one copies (or, for an activity, the scene it plays on).
+		const base = el('input', { type: 'text', placeholder: 'Type to pick from the game\'s presets' });
+		const baseList = el('datalist', { id: 'newBaseList' });
+		base.setAttribute('list', 'newBaseList');
+		const baseLabel = el('label', {});
+		const baseField = el('div', { className: 'field' }, baseLabel, base, baseList);
+		const syncBase = () => {
+			const k = kind === 'ini' && INI_KINDS[template.value];
+			baseField.hidden = !k || !k.base;
+			if (!k || !k.base) {
+				return;
+			}
+			baseLabel.textContent = k.baseLabel;
+			baseList.innerHTML = '';
+			const seen = new Set();
+			for (const pr of app.lib.presets) {
+				if (pr.topLevel && k.base.includes(pr.cls) && !seen.has(pr.name)) {
+					seen.add(pr.name);
+					baseList.append(el('option', { value: pr.name }));
+				}
+			}
+			if (!base.value || !seen.has(base.value)) {
+				base.value = k.suggest && seen.has(k.suggest) ? k.suggest : [...seen][0] || '';
+			}
+			if (name.value === 'NewFile.ini' || Object.values(INI_KINDS).some((o) => o.file && name.value === o.file + '.ini')) {
+				name.value = k.file + '.ini';
+			}
+		};
+		template.onchange = syncBase;
+		syncBase();
 		const body = el('div', {},
 			el('div', { className: 'field' }, el('label', { textContent: 'Name' }), name),
 			el('div', { className: 'field' }, el('label', { textContent: 'In folder' }), where),
-			kind === 'lua' ? el('div', { className: 'field' }, el('label', { textContent: 'Start from' }), template) : null);
+			el('div', { className: 'field' }, el('label', { textContent: 'Start from' }), template),
+			baseField);
 		MS.dialogs.open(kind === 'lua' ? 'New Lua script' : 'New INI file', body, [
 			{ text: 'Cancel' },
 			{ text: 'Make it', primary: true, action: async () => {
@@ -1485,6 +1588,9 @@ window.MS = window.MS || {};
 				if (await app.fs.exists(path)) {
 					app.toast(path + ' is already there.', 'bad');
 					return false;
+				}
+				if (kind === 'ini' && template.value !== 'blank') {
+					return makePresetFile(path, template.value, base.value.trim());
 				}
 				const text = kind === 'lua' ? TEMPLATES[template.value](file.replace(/\.lua$/i, ''), preset) : TEMPLATES.ini();
 				try {
