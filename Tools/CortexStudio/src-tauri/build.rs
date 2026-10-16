@@ -2,6 +2,7 @@
 // dist/ inside the app. Needs Node.js (nodejs.org); the first build also installs Vite into Tools/ModStudio/node_modules.
 use std::path::Path;
 use std::process::Command;
+use std::time::{Duration, SystemTime};
 
 fn main() {
 	build_page();
@@ -13,7 +14,12 @@ fn build_page() {
 	for input in ["js", "studio.css", "ModStudio.html", "vendor", "data", "package.json", "package-lock.json", "vite.config.js"] {
 		println!("cargo:rerun-if-changed={}", page.join(input).display());
 	}
+	// The built page too, so a deleted dist/ is built again. Its time is set back below: cargo would otherwise see it as changed
+	// after every build (it is written while this runs) and run this again each time.
+	let built = page.join("dist").join("ModStudio.html");
+	println!("cargo:rerun-if-changed={}", built.display());
 	println!("cargo:rerun-if-env-changed=CORTEX_STUDIO_SKIP_PAGE_BUILD");
+	let started = SystemTime::now() - Duration::from_secs(60);
 	if std::env::var_os("CORTEX_STUDIO_SKIP_PAGE_BUILD").is_some() && page.join("dist").join("ModStudio.html").is_file() {
 		return;
 	}
@@ -30,4 +36,7 @@ fn build_page() {
 		run(&["ci", "--no-audit", "--no-fund"]);
 	}
 	run(&["run", "build", "--silent"]);
+	if let Ok(file) = std::fs::File::options().write(true).open(&built) {
+		let _ = file.set_modified(started);
+	}
 }

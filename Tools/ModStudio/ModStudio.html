@@ -10,29 +10,34 @@
 <body>
 <div id="app">
 	<header id="topbar">
-		<div class="brand"><span class="mark">◆</span> Cortex <b>Mod Studio</b></div>
-		<button class="tb" id="btnGame" title="The Game screen: versions, builds, launch settings and the setup (Cortex Studio)" hidden>Game</button>
-		<div class="split-btn" id="runSplit" hidden>
-			<button class="tb primary" id="btnRun"></button><button class="tb primary caret" id="btnRunMenu" title="Other ways to start the game">▾</button>
-		</div>
+		<div class="brand"><span class="mark">◆</span><span class="brand-name"> Cortex <b>Mod Studio</b></span></div>
 		<div class="mode-switch" id="modeSwitch" title="Design: units visually. Script: the whole mod, with scripts, the game's console and search.">
 			<button data-mode="artist" class="sel">Design</button>
 			<button data-mode="deep">Script</button>
 		</div>
-		<button class="tb scope-btn" id="btnScope" title="Which modules (.rte) the lists, files and search show. Everything is still read, so copies and inheritance keep working.">All modules ▾</button>
+		<button class="tb ghost scope-btn" id="btnScope" title="Which modules (.rte) the lists, files and search show. Everything is still read, so copies and inheritance keep working.">All modules ▾</button>
 		<div class="doc-title" id="docTitle"></div>
+		<button class="tb ghost" id="btnCopy" title="Make your own unit from this one, in your mod" disabled><span class="wide">Make my own copy</span><span class="narrow">My copy</span></button>
 		<div class="spacer"></div>
-		<button class="tb" id="btnUndo" title="Undo (Ctrl+Z)" disabled>↶ Undo</button>
-		<button class="tb" id="btnRedo" title="Redo (Ctrl+Y)" disabled>↷ Redo</button>
+		<div class="tb-pair">
+			<button class="tb icon" id="btnUndo" title="Undo (Ctrl+Z)" disabled>↶</button>
+			<button class="tb icon" id="btnRedo" title="Redo (Ctrl+Y)" disabled>↷</button>
+		</div>
+		<div class="split-btn" id="saveSplit">
+			<button class="tb" id="btnSave" title="Save changed files (Ctrl+S)" disabled>Save</button><button class="tb caret" id="btnSaveMenu" title="Discard changes, History">▾</button>
+		</div>
+		<div class="ctx-menu tb-menu" id="saveMenu" hidden>
+			<button id="btnDiscard" title="Throw away unsaved changes and go back to what's saved" disabled>Discard unsaved changes</button>
+			<button id="btnHistory" title="Every version of the files Studio changed in your mods, and Restore" hidden>History…</button>
+		</div>
 		<span class="sep"></span>
-		<button class="tb" id="btnCopy" title="Make your own unit from this one, in your mod" disabled>Make my own copy</button>
-		<button class="tb" id="btnDiscard" title="Throw away unsaved changes and go back to what's saved" disabled>Discard</button>
-		<button class="tb" id="btnSave" title="Save changed files (Ctrl+S)" disabled>Save</button>
-		<button class="tb" id="btnLib" title="Hide or show the list of units, attachments and items (L)">◨ Hide list</button>
-		<button class="tb" id="btnView" title="Hide or show the unit view, to give the properties the room while the game shows the unit (V)">◧ Hide view</button>
 		<button class="tb" id="btnLive" title="Live: send every change to the game as you make it (a drag is sent when you let go)" disabled>● Live</button>
-		<button class="tb primary" id="btnPreview" title="Save, then show this unit in the game's Actor Editor" disabled>▶ Preview in game</button>
-		<button class="tb" id="btnHistory" title="Every version of the files Studio changed in your mods, and Restore" hidden>⟲ History</button>
+		<button class="tb" id="btnPreview" title="Save, then show this unit in the game's Actor Editor" disabled>Preview<span class="wide"> in game</span></button>
+		<span class="sep"></span>
+		<div class="split-btn" id="runSplit" hidden>
+			<button class="tb primary" id="btnRun"></button><button class="tb primary caret" id="btnRunMenu" title="Other ways to start the game">▾</button>
+		</div>
+		<button class="tb" id="btnGame" title="The Game screen: versions, builds, launch settings and the setup (Cortex Studio)" hidden>Game</button>
 		<button class="tb icon" id="btnHelp" title="How to use Mod Studio">?</button>
 	</header>
 
@@ -187,6 +192,8 @@
 	</aside>
 
 	<footer id="status">
+		<button class="layout-btn" id="btnLib" title="Hide or show the list of units, attachments and items (L)">◨ Hide list</button>
+		<button class="layout-btn" id="btnView" title="Hide or show the unit view, to give the properties the room while the game shows the unit (V)">◧ Hide view</button>
 		<span id="statusText">Open the game folder to begin.</span>
 		<span class="spacer"></span>
 		<button class="status-btn" id="btnStatusReload" title="Reload every script in the game, which restarts every scripted object (saving a script reloads only that one)">↻ Reload scripts</button>

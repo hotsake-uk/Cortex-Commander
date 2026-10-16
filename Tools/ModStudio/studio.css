@@ -27,7 +27,7 @@ button, input, select { font: inherit; color: inherit; }
 ::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 10px; border: 2px solid var(--panel); }
 ::-webkit-scrollbar-track { background: transparent; }
 
-#app { display: grid; height: 100vh; grid-template-columns: var(--lib-w, 280px) 1fr 350px; grid-template-rows: 46px 1fr 26px; grid-template-areas: "top top top" "left center right" "status status status"; }
+#app { display: grid; height: 100vh; grid-template-columns: minmax(var(--lib-min, 160px), var(--lib-w, var(--lib-size, 280px))) minmax(320px, 1fr) minmax(260px, var(--right-w, 350px)); grid-template-rows: 46px 1fr 26px; grid-template-areas: "top top top" "left center right" "status status status"; }
 #topbar { grid-area: top; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
 .brand { font-size: 14px; letter-spacing: .2px; white-space: nowrap; }
 .brand .mark { color: var(--accent); margin-right: 4px; }
@@ -45,8 +45,53 @@ button, input, select { font: inherit; color: inherit; }
 .tb.icon { width: 30px; padding: 5px 0; font-weight: 700; }
 .tb.attention { border-color: var(--accent); color: var(--accent); }
 .tb.live-on { background: #1d3a26; border-color: var(--good); color: var(--good); }
+.tb.ghost { background: none; border-color: transparent; color: var(--dim); }
+.tb.ghost:hover:not(:disabled) { color: var(--text); }
+.tb.ghost.attention { border-color: var(--accent); color: var(--accent); }
+.tb-pair { display: inline-flex; gap: 2px; }
+/* The designer's own buttons only show when a unit is open. */
+#topbar #btnCopy:disabled, #topbar #btnLive:disabled, #topbar #btnPreview:disabled { display: none; }
+#topbar .sep:has(+ #btnLive:disabled + #btnPreview:disabled) { display: none; }
+/* A code tab in front: the unit's buttons wait until the designer is back. */
+#app.code-active #btnCopy, #app.code-active #btnLive, #app.code-active #btnPreview, #app.code-active #topbar .sep:has(+ #btnLive) { display: none; }
+#topbar { min-width: 0; overflow: hidden; }
+#topbar > * { flex: none; }
+#topbar > .doc-title { flex: 0 1 auto; }
+#topbar .narrow { display: none; }
+@media (max-width: 1180px) {
+	#topbar .wide { display: none; }
+	#topbar .narrow { display: inline; }
+	#topbar #btnGame { max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
+	#topbar { gap: 5px; padding: 0 8px; }
+	#topbar .tb { padding: 5px 8px; }
+	#topbar .tb.icon { width: 26px; padding: 5px 0; }
+	#topbar .sep { margin: 0 1px; }
+	#topbar .doc-title { min-width: 90px; }
+}
+@media (max-width: 1280px) {
+	#topbar .brand-name { display: none; }
+	#topbar .mode-switch { margin-left: 4px; }
+	#topbar .doc-title { margin-left: 6px; }
+}
+#statusText { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#status > :not(#statusText):not(.spacer) { flex: none; white-space: nowrap; }
+.tb-menu button { white-space: nowrap; }
+.layout-btn { background: none; border: 0; color: var(--faint); font: inherit; font-size: 12px; padding: 2px 6px; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+.layout-btn:hover { color: var(--text); background: var(--line); }
 
-.panel { background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+.panel { position: relative; background: var(--panel); display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+
+/* Splitters (layout.js): drag a panel's edge to resize it, double-click for the usual size. */
+.splitter { position: absolute; top: 0; bottom: 0; width: 7px; cursor: col-resize; z-index: 6; }
+.splitter.right { right: -4px; }
+.splitter.left { left: -4px; }
+.splitter.tree { width: 7px; }
+.splitter::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 1px; background: transparent; transition: background .12s; }
+.splitter:hover::after, body.resizing .splitter::after { background: var(--accent); }
+body.resizing, body.resizing * { cursor: col-resize !important; user-select: none !important; }
+body.resizing iframe, body.resizing canvas { pointer-events: none; }
+#app.no-view #right > .splitter.left, #app.code-active #right > .splitter.left { display: none; }
+#panelResize:hover { background: var(--accent); opacity: .6; }
 #left { grid-area: left; border-right: 1px solid var(--line); }
 #right { grid-area: right; border-left: 1px solid var(--line); }
 #center { grid-area: center; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -292,14 +337,14 @@ pre.diff .del { color: var(--bad); }
 @keyframes toastIn { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
 
 @media (max-width: 1100px) {
-	#app { grid-template-columns: var(--lib-w, 230px) 1fr 300px; }
+	#app { grid-template-columns: minmax(var(--lib-min, 160px), var(--lib-w, var(--lib-size, 230px))) minmax(320px, 1fr) minmax(260px, var(--right-w, 300px)); }
 }
 
 /* Wide screens: the unit's picture needs little room, so the parts list and the properties take much more, side by side, and
    the property sections sit in columns instead of one long list to scroll. */
 @media (min-width: 1300px) {
-	#app { grid-template-columns: var(--lib-w, 260px) minmax(380px, 1fr) minmax(600px, 54vw); }
-	#right { display: grid; grid-template-columns: minmax(200px, 26%) 1fr; grid-template-rows: auto 1fr; }
+	#app { grid-template-columns: minmax(var(--lib-min, 160px), var(--lib-w, var(--lib-size, 260px))) minmax(320px, 1fr) minmax(260px, var(--right-w, max(600px, 54vw))); }
+	#right { display: grid; grid-template-columns: var(--tree-w, minmax(200px, 26%)) minmax(0, 1fr); grid-template-rows: auto 1fr; }
 	#right > .panel-head:first-child { grid-column: 1; grid-row: 1; border-right: 1px solid var(--line); }
 	#right > #tree { grid-column: 1; grid-row: 2; max-height: none; border-bottom: 0; border-right: 1px solid var(--line); min-height: 0; }
 	#right > #inspHead { grid-column: 2; grid-row: 1; }
@@ -310,9 +355,9 @@ pre.diff .del { color: var(--bad); }
 }
 
 /* The unit view hidden (◧, V): the parts list and the properties take the whole width, laid out as on wide screens. */
-#app.no-view { grid-template-columns: var(--lib-w, 260px) 1fr; grid-template-areas: "top top" "left right" "status status"; }
+#app.no-view { grid-template-columns: minmax(var(--lib-min, 160px), var(--lib-w, var(--lib-size, 260px))) minmax(0, 1fr); grid-template-areas: "top top" "left right" "status status"; }
 #app.no-view #center { display: none; }
-#app.no-view #right { display: grid; grid-template-columns: minmax(200px, 26%) 1fr; grid-template-rows: auto 1fr; }
+#app.no-view #right { display: grid; grid-template-columns: var(--tree-w, minmax(200px, 26%)) minmax(0, 1fr); grid-template-rows: auto 1fr; }
 #app.no-view #right > .panel-head:first-child { grid-column: 1; grid-row: 1; border-right: 1px solid var(--line); }
 #app.no-view #right > #tree { grid-column: 1; grid-row: 2; max-height: none; border-bottom: 0; border-right: 1px solid var(--line); min-height: 0; }
 #app.no-view #right > #inspHead { grid-column: 2; grid-row: 1; }
@@ -322,7 +367,7 @@ pre.diff .del { color: var(--bad); }
 #app.no-view .insp-cols > .notice, #app.no-view .insp-cols > .insp-empty, #app.no-view .insp-cols > .section:has(.settings-filter) { column-span: all; }
 
 /* The library list hidden (◨, L): its column shrinks to nothing. */
-#app.no-lib { --lib-w: 0px; }
+#app.no-lib { --lib-w: 0px; --lib-min: 0px; }
 #app.no-lib #left { display: none; }
 
 /* All settings: one row per setting, in columns of their own when there's room. */
@@ -344,7 +389,7 @@ pre.diff .del { color: var(--bad); }
 
 /* ---- Script mode: activity bar, side bar, tabs, the designer or an editor, the panel ---- */
 #app.deep {
-	grid-template-columns: 44px var(--lib-w, 270px) minmax(300px, 1fr) minmax(460px, 42vw);
+	grid-template-columns: 44px minmax(var(--lib-min, 160px), var(--lib-w, var(--lib-size, 270px))) minmax(320px, 1fr) minmax(260px, var(--right-w-script, max(460px, 42vw)));
 	grid-template-rows: 46px 34px minmax(0, 1fr) var(--bottom-h, 220px) 26px;
 	grid-template-areas: "top top top top" "act side tabs tabs" "act side center right" "act side bottom bottom" "status status status status";
 }

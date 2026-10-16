@@ -15,4 +15,5 @@ import './ide.js';
 import './live.js';
 import './history.js';
 import './app.js';
+import './layout.js';
 import './launcher.js';
