@@ -122,6 +122,10 @@ void Turret::AddMountedDevice(HeldDevice* newMountedDevice) {
 void Turret::Update() {
 	for (HeldDevice* mountedDevice: m_MountedDevices) {
 		mountedDevice->SetMountedRotAngleOffset(m_MountedDeviceRotationOffset);
+		// A mounted blade (a mech's chainsword) swings about its mount, as a held one does about the shoulder (Arm).
+		if (mountedDevice->GetMeleeSwingArc() > 0.0F) {
+			mountedDevice->SetInheritedRotAngleOffset(mountedDevice->GetMeleeSwingAngle());
+		}
 	}
 	Attachable::Update();
 }

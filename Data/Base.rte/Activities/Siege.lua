@@ -105,7 +105,7 @@ function Siege:StartActivity()
 		for actor in MovableMan.AddedActors do
 			if actor.Team == self.PlayerTeam and self.BrainChamber:IsInside(actor.Pos)
 			and SceneMan:ShortestDistance(actor.Pos, playerBrainsLocation, false):MagnitudeIsGreaterThan(200)
-			and not actor:HasObjectInGroup("Brains") and (actor.ClassName == "AHuman" or actor.ClassName == "ACrab") then
+			and not actor:HasObjectInGroup("Brains") and (actor.ClassName == "AHuman" or actor.ClassName == "ACrab" or actor.ClassName == "AMech") then
 				actor.ToDelete = true;
 			end
 		end
@@ -446,7 +446,7 @@ function Siege:UpdateActivity()
 
 		for actor in MovableMan.Actors do
 			if actor.Team == self.CPUTeam then
-				if actor.ClassName == "AHuman" or actor.ClassName == "ACrab" then
+				if actor.ClassName == "AHuman" or actor.ClassName == "ACrab" or actor.ClassName == "AMech" then
 					troops = troops + 1;
 					self:AddObjectivePoint("Terminate!", actor.AboveHUDPos, self.PlayerTeam, GameActivity.ARROWDOWN);
 				end

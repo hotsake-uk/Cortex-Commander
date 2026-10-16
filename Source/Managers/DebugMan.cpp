@@ -37,6 +37,7 @@
 #include "MapBrowser.h"
 #include "Campaign.h"
 #include "ModernHUD.h"
+#include "AIAwareness.h"
 #include "UITheme.h"
 #include "ActionMenu.h"
 #include "TimerMan.h"
@@ -467,6 +468,8 @@ void DebugMan::DrawImGui() {
 
 	// The modern HUD and the debug overlays, unless photo mode is hiding the HUD.
 	if (!IsPhotoModeHidingHUD()) {
+		// (First, so the sight cones lie under the rest.)
+		AIAwareness::Draw();
 		ModernHUD::Draw();
 		ActionMenu::Draw();
 		DrawOverlays();

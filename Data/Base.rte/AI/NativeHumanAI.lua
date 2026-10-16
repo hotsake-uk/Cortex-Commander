@@ -363,6 +363,8 @@ function NativeHumanAI:Update(Owner)
 		elseif FoundMO.Team ~= Owner.Team then	-- found an enemy
 			if FoundMO.ClassName == "AHuman" then
 				FoundMO = ToAHuman(FoundMO);
+			elseif FoundMO.ClassName == "AMech" then
+				FoundMO = ToAMech(FoundMO);
 			elseif FoundMO.ClassName == "ACrab" then
 				FoundMO = ToACrab(FoundMO);
 			elseif FoundMO.ClassName == "ACRocket" then
@@ -1110,7 +1112,7 @@ function NativeHumanAI:CreateAttackBehavior(Owner)
 
 			return;
 		else -- there are probably no weapons around here (in the vicinity of an area adjacent to a location)
-			if not (self.isPlayerOwned and Owner.AIMode == Actor.AIMODE_SENTRY) and (self.Target.ClassName == "AHuman" or self.Target.ClassName == "ACrab") then
+			if not (self.isPlayerOwned and Owner.AIMode == Actor.AIMODE_SENTRY) and (self.Target.ClassName == "AHuman" or self.Target.ClassName == "ACrab" or self.Target.ClassName == "AMech") then
 				self.NextBehavior = coroutine.create(HumanBehaviors.AttackTarget);
 				self.NextBehaviorName = "AttackTarget";
 			else

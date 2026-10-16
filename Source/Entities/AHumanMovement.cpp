@@ -10,6 +10,7 @@
 #include "AMover.h"
 #include "ACraft.h"
 #include "ACrab.h"
+#include "AMech.h"
 #include "AVehicle.h"
 #include "HeldDevice.h"
 #include "SoundContainer.h"
@@ -1515,8 +1516,8 @@ Actor* AHuman::UnitAhead(float direction, float reach) const {
 		if (dynamic_cast<ADoor*>(actor) || dynamic_cast<ACraft*>(actor) || dynamic_cast<AVehicle*>(actor)) {
 			continue;
 		}
-		// (Not something that never moves out of the way: a turret, a crab with no legs.)
-		if (const ACrab* crab = dynamic_cast<const ACrab*>(actor); crab && !crab->GetLeftFGLeg() && !crab->GetLeftBGLeg() && !crab->GetRightFGLeg() && !crab->GetRightBGLeg()) {
+		// (Not something that never moves out of the way: a turret, a crab with no legs. A mech walks on legs of its own, so it does.)
+		if (const ACrab* crab = dynamic_cast<const ACrab*>(actor); crab && !dynamic_cast<const AMech*>(crab) && !crab->GetLeftFGLeg() && !crab->GetLeftBGLeg() && !crab->GetRightFGLeg() && !crab->GetRightBGLeg()) {
 			continue;
 		}
 		nearest = actor;

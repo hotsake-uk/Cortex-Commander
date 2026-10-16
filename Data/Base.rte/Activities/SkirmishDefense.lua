@@ -97,7 +97,7 @@ function SkirmishDefense:StartNewGame(aiTeams)
 
 	-- Set all actors defined in the ini-file to sentry mode
 	for actor in MovableMan.AddedActors do
-		if actor.ClassName == "AHuman" or actor.ClassName == "ACrab" then
+		if actor.ClassName == "AHuman" or actor.ClassName == "ACrab" or actor.ClassName == "AMech" then
 			actor.AIMode = Actor.AIMODE_SENTRY;
 		end
 	end
@@ -256,7 +256,7 @@ function SkirmishDefense:UpdateActivity()
 		if not self.startTimer:IsPastSimMS(500) then
 			-- Make sure all actors are in sentry mode
 			for Act in MovableMan.Actors do
-				if Act.ClassName == "AHuman" or Act.ClassName == "ACrab" then
+				if Act.ClassName == "AHuman" or Act.ClassName == "ACrab" or Act.ClassName == "AMech" then
 					Act.AIMode = Actor.AIMODE_SENTRY;
 				end
 			end
@@ -405,7 +405,7 @@ function SkirmishDefense:UpdateActivity()
 						self.AI[team].HuntTimer:Reset();
 
 						for Act in MovableMan.Actors do
-							if Act.Team == team and Act.AIMode ~= Actor.AIMODE_GOLDDIG and (Act.ClassName == "AHuman" or Act.ClassName == "ACrab") then
+							if Act.Team == team and Act.AIMode ~= Actor.AIMODE_GOLDDIG and (Act.ClassName == "AHuman" or Act.ClassName == "ACrab" or Act.ClassName == "AMech") then
 								if (Act.AIMode == Actor.AIMODE_GOTO and SceneMan:ShortestDistance(Act:GetLastAIWaypoint(), Act.Pos, false).Largest < 100) or Act.AIMode == Actor.AIMODE_SENTRY or Act.Age > 80000 then
 									-- Destination reached: hunt for the brain
 									Act.AIMode = Actor.AIMODE_BRAINHUNT;
@@ -528,7 +528,7 @@ function SkirmishDefense:UpdateActivity()
 									else
 										local TargetActors = {};
 										for Act in MovableMan.Actors do
-											if self.AI[team].OnPlayerTeam[Act.Team] and (Act.ClassName == "AHuman" or Act.ClassName == "ACrab" or Act.ClassName == "Actor") then
+											if self.AI[team].OnPlayerTeam[Act.Team] and (Act.ClassName == "AHuman" or Act.ClassName == "ACrab" or Act.ClassName == "AMech" or Act.ClassName == "Actor") then
 												local distance = 20 * (SceneMan:ShortestDistance(Vector(safePosX, Act.Pos.Y), Act.Pos, false).Largest / SceneMan.SceneWidth);
 												table.insert(TargetActors, {Act=Act, score=self.LZmap:SurfaceProximity(Act.Pos)+distance});
 											end
@@ -606,7 +606,7 @@ function SkirmishDefense:UpdateActivity()
 											enemyPresent = true;
 
 											-- Add objective points
-											if Act.ClassName == "AHuman" or Act.ClassName == "ACrab" then
+											if Act.ClassName == "AHuman" or Act.ClassName == "ACrab" or Act.ClassName == "AMech" then
 												objectives = objectives + 1;
 												if objectives > maxObjectivesToShow then
 													break;

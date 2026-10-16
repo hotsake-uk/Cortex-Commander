@@ -15,6 +15,7 @@
 #include "MagicEffects.h"
 #include "FrameMan.h"
 #include "ModernHUD.h"
+#include "AIAwareness.h"
 #include "Notices.h"
 #include "PathFinder.h"
 #include "Material.h"
@@ -1625,6 +1626,7 @@ void DebugMan::SettingsGUI() {
 			    {"Flying craft toughness", SettingsMan::ToughnessKind::Craft, "How tough flying craft are: drop ships, rockets and flying ships. Crew keep their own unit toughness."},
 			    {"Animal toughness", SettingsMan::ToughnessKind::Animals, "How tough animals are: livestock and wildlife such as crabs."},
 			    {"Creature toughness", SettingsMan::ToughnessKind::Creatures, "How tough creatures are: monsters such as hounds."},
+			    {"Mech toughness", SettingsMan::ToughnessKind::Mechs, "How tough mechs are: big walking machines such as the Imperial Knight."},
 			};
 			for (const ToughnessSlider& slider: sliders) {
 				float toughness = g_SettingsMan.Toughness(slider.Kind);
@@ -1634,6 +1636,14 @@ void DebugMan::SettingsGUI() {
 				}
 				Tip((std::string(slider.Tip) + c_ToughnessHow).c_str());
 			}
+		}
+		Heading("Mechs");
+		{
+			float shake = g_SettingsMan.MechFootfallShake();
+			if (Slider("Mech footfall shake", &shake, Normal{1.0F}, 0.0F, 3.0F, "%.2fx")) {
+				g_SettingsMan.SetMechFootfallShake(shake);
+			}
+			Tip("How hard a mech's footsteps, landings and kicks shake the screen near them, as a multiple of each mech's own. 0 for none, 1x is normal.");
 		}
 		Heading("Creatures");
 		Toggle("Creatures climb walls", g_SettingsMan.CreaturesClimbWalls(), [](bool on) { g_SettingsMan.SetCreaturesClimbWalls(on); });
@@ -1729,6 +1739,24 @@ void DebugMan::SettingsGUI() {
 	};
 
 	// How units and the screen around them look and talk: team colours, outlines, the HUD, battle alerts and speech.
+	// What AI units can see and are aware of (AIAwareness): the marks over them, their sight cones and the meter by the unit you play.
+	auto aiAwareness = [&]() {
+		Combo("Awareness marks", &AIAwareness::Marks, "Off\0Enemy units\0All AI units\0");
+		Tip("A mark over each AI unit saying what it is aware of. A yellow ? that fills up: it has half seen someone and is noticing them (quicker the plainer they are). An orange ? with a ring going round: it is searching, having heard a noise or lost sight of an enemy. A red ! that pops up: it has spotted someone and is fighting. Nothing: it hasn't noticed anyone. Stands in for the old alert mark over AI units. Enemy units: other sides' (every side's in the Sandbox game mode), where your side can see them. All AI units: your own side's AI units too.");
+		Combo("Sight cones", &AIAwareness::Cones, "Off\0Enemy units\0All AI units\0");
+		Tip("Each AI unit's field of view drawn as a soft cone from its eyes: as far as it can see right now (shorter at night and in dust when Stealth is on), cut short by walls, and coloured by what it is aware of: pale calm, yellow noticing, orange searching, red fighting. Stay out of the cone, or in the dark at its far end, to stay unseen.");
+		if (AIAwareness::Cones != AIAwareness::NoUnits) {
+			Slider("Sight cone strength", &AIAwareness::ConeOpacity, Normal{0.5F}, 0.05F, 1.0F, "%.2f");
+			Tip("How strongly the sight cones are drawn: faint to bold.");
+		}
+		Combo("Visibility meter", &AIAwareness::Meter, "Off\0Always\0Only when hidden or watched\0");
+		Tip("An eye beside the unit you play: as open as you are visible to the AI right now, with a bar and the reasons under it. Cool reasons hide you (Dark, Under a roof, Crouched, Prone, Still, Dust, Cloaked), warm ones give you away (In the light, Headlamp on, Firing, Loud steps). It turns yellow with a ring filling round it while an enemy is noticing you, and red when one has spotted you. Only when hidden or watched: shown while it's dark, you are hidden or cloaked, or an enemy is noticing or fighting you.");
+		Slider("Mark and meter size", &AIAwareness::MarkScale, Normal{1.0F}, 0.5F, 2.0F, "%.2fx");
+		Tip("How big the awareness marks and the visibility meter are drawn.");
+		Check("Only when Stealth is on", &AIAwareness::OnlyWithStealth);
+		Tip("Show the marks, cones and meter only while \"Night, light and noise affect AI\" (Gameplay, AI behaviour) is on. Off: always, as AI units take a moment to notice you by day too.");
+	};
+
 	auto hudAndInterface = [&]() {
 		Check("Team colour on units", &settings.UnitTeamColorParts);
 		Tip("Parts of units that mods mark for it (a bandanna, a helmet stripe) are drawn in their side's colour: red, green, blue or yellow. Unticked, they take the mod's own default colour, or stay as painted.");
@@ -2900,6 +2928,7 @@ void DebugMan::SettingsGUI() {
 	    {Group::Visual, "Camera & image", cameraAndImage},
 	    {Group::Visual, "ASCII mode", asciiMode},
 	    {Group::Visual, "HUD & interface", hudAndInterface},
+	    {Group::Visual, "AI awareness", aiAwareness},
 	    {Group::Visual, "Performance", performance},
 	    {Group::Visual, "Render debug", renderDebug},
 	};

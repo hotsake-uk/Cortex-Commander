@@ -247,6 +247,9 @@
     <ClInclude Include="Source\Managers\ModernHUD.h">
       <Filter>Managers</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Managers\AIAwareness.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Managers\Notices.h">
       <Filter>Managers</Filter>
     </ClInclude>
@@ -470,6 +473,12 @@
       <Filter>Entities</Filter>
     </ClInclude>
     <ClInclude Include="Source\Entities\Leg.h">
+      <Filter>Entities</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Entities\MechLeg.h">
+      <Filter>Entities</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Entities\AMech.h">
       <Filter>Entities</Filter>
     </ClInclude>
     <ClInclude Include="Source\Entities\LimbPath.h">
@@ -1093,6 +1102,9 @@
     <ClCompile Include="Source\Managers\ModernHUD.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Managers\AIAwareness.cpp">
+      <Filter>Managers</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Managers\Notices.cpp">
       <Filter>Managers</Filter>
     </ClCompile>
@@ -1322,6 +1334,12 @@
       <Filter>Entities</Filter>
     </ClCompile>
     <ClCompile Include="Source\Entities\Leg.cpp">
+      <Filter>Entities</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Entities\MechLeg.cpp">
+      <Filter>Entities</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Entities\AMech.cpp">
       <Filter>Entities</Filter>
     </ClCompile>
     <ClCompile Include="Source\Entities\LimbPath.cpp">
