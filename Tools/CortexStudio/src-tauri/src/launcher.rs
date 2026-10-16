@@ -48,6 +48,8 @@ pub struct Config {
 	pub unlock_mods_dir: String,
 	pub unlock_commit: String,
 	pub unlock_time: String,
+	/// The mods linked into the version when you unlocked: Reset takes out only linked mods that came in after.
+	pub unlock_linked: Vec<String>,
 }
 
 pub fn config_dir() -> Option<PathBuf> {
@@ -945,6 +947,13 @@ fn unlock(config: &mut Config) -> Result<Value, String> {
 	config.unlock_mods_dir = config.mods_dir.clone();
 	config.unlock_commit = commit.clone();
 	config.unlock_time = now.to_rfc3339();
+	config.unlock_linked = fs::read_dir(slot.join("Mods"))
+		.into_iter()
+		.flatten()
+		.flatten()
+		.filter(|e| e.path().join(COPY_MARKER).exists())
+		.map(|e| e.file_name().to_string_lossy().into_owned())
+		.collect();
 	config.save();
 	Ok(json!({ "backup": backup, "files": files, "bytes": bytes, "commit": commit }))
 }
@@ -956,6 +965,7 @@ fn lock(config: &mut Config) -> Value {
 	config.unlock_mods_dir.clear();
 	config.unlock_commit.clear();
 	config.unlock_time.clear();
+	config.unlock_linked.clear();
 	config.save();
 	json!({ "backup": backup })
 }
@@ -1070,10 +1080,11 @@ fn reset(config: &Config) -> Result<Vec<String>, String> {
 		}
 		let n = restore_tree(&backup, Path::new(&config.unlock_mods_dir)).map_err(|e| format!("Couldn't put {} back: {e}", config.unlock_mods_dir))?;
 		log.push(format!("{} is as it was in {} ({n} files put back or removed).", config.unlock_mods_dir, backup.display()));
-		// The version's links follow, and mods that came in while unlocked leave it.
+		// The version's links follow, and mods linked in while unlocked (not in the version then, nor in your mods folder now) leave it.
 		let mods = slot.join("Mods");
 		for entry in fs::read_dir(&mods).into_iter().flatten().flatten() {
-			if entry.path().join(COPY_MARKER).exists() && !Path::new(&config.unlock_mods_dir).join(entry.file_name()).is_dir() {
+			let name = entry.file_name().to_string_lossy().into_owned();
+			if entry.path().join(COPY_MARKER).exists() && !config.unlock_linked.contains(&name) && !Path::new(&config.unlock_mods_dir).join(&name).is_dir() {
 				let _ = fs::remove_dir_all(entry.path());
 				log.push(format!("Removed {} from the version.", entry.file_name().to_string_lossy()));
 			}
