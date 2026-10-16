@@ -868,6 +868,7 @@ window.MS = window.MS || {};
 			btn('Fit', 'Fit in the window (0)', () => fit()),
 			btn('1:1', 'Actual size (1)', () => setZoom(1)),
 			el('span', { className: 'ct-sep' }),
+			btn('✎ Edit', 'Draw on this picture in the pixel editor', () => MS.pixel.open({ file: tab.path })),
 			info,
 			el('span', { className: 'spacer' }),
 			where);

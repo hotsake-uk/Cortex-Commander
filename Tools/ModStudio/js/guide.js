@@ -220,7 +220,8 @@ window.MS = window.MS || {};
 		const drop = el('div', { className: 'guide-drop-zone' },
 			el('b', { textContent: mine ? 'Drop a different picture to replace it' : 'Drop your picture here' }),
 			el('span', { textContent: 'a PNG, or a sprite sheet with the frames side by side' }),
-			el('button', { className: 'tb primary', textContent: 'Choose a picture…', onclick: () => choosePicture(part) }));
+			el('button', { className: 'tb primary', textContent: 'Choose a picture…', onclick: () => choosePicture(part) }),
+			el('button', { className: 'tb', textContent: 'or draw on it…', title: 'Edit this part\'s picture in the pixel editor', onclick: () => MS.pixel.open({ part, onSaved: () => { if (g) { g.skipped.delete(part.id); next(); } } }) }));
 		drop.ondragover = (e) => {
 			e.preventDefault();
 			drop.classList.add('over');
