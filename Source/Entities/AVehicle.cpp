@@ -101,6 +101,90 @@ namespace {
 		}
 	}
 
+	/// Where a round tyre coming down its spring's line first meets the ground, felt across its whole width (see CastTyre).
+	struct TyreCast {
+		float Lowest = 0.0F; //!< How far down the line from the top of the spring's travel its middle can come before its rim meets the ground, in pixels. Below 0: higher than the spring lets it go.
+		float Side = 0.0F; //!< Where across it, along the axle's line, the ground is met, in pixels from its middle.
+		bool Found = false; //!< Whether it meets the ground at all within reach.
+		float WallSide = 0.0F; //!< 1 or -1 if there is ground too high to roll up on that side of it (along the axle's line), else 0.
+	};
+
+	/// Feels for the ground under a round tyre coming down its spring's line, in columns across its whole width (not just under its middle),
+	/// each found to a fraction of a pixel. A kerb ahead is met by the front of the tyre first, so the wheel rides up it smoothly rather than
+	/// dropping onto it all at once; ground that would lift the middle more than a climb above the top of the travel is a wall, left out.
+	/// @param top Where its middle is with the spring all the way in. @param down The spring's line, a unit vector. @param along Across it.
+	/// @param radius How big it is. @param reach How far down to look, in pixels. @param climb How far above the top a wall begins, in pixels.
+	TyreCast CastTyre(const Vector& top, const Vector& down, const Vector& along, float radius, float reach, float climb) {
+		TyreCast cast;
+		cast.Lowest = reach;
+		// An odd number of columns about a pixel and a half apart, from the middle out, so the first ones bound how deep the rest need look.
+		int columns = std::clamp(static_cast<int>(radius * 1.4F), 7, 41) | 1;
+		float spacing = radius * 1.9F / static_cast<float>(columns - 1);
+		std::array<std::pair<float, float>, 41> hits{}; // Each column's side and how far down its middle comes there.
+		int hitCount = 0;
+		for (int column = 0; column < columns; ++column) {
+			float side = static_cast<float>((column + 1) / 2) * spacing * (column % 2 == 1 ? 1.0F : -1.0F);
+			float rim = std::sqrt(std::max(radius * radius - side * side, 0.0F));
+			Vector start = top + along * side;
+			float found = 0.0F;
+			bool hit = false;
+			if (HoldsWheel(start)) {
+				// Ground already at the top of the travel: how far up it goes, so a kerb is told from a wall.
+				float up = 0.0F;
+				while (up < radius * 2.0F && HoldsWheel(start - down * (up + 1.0F))) {
+					up += 1.0F;
+				}
+				found = -up;
+				hit = true;
+			} else {
+				float limit = std::min(reach, cast.Lowest + 1.0F) + rim;
+				for (float step = 1.0F; step <= limit; step += 1.0F) {
+					if (HoldsWheel(start + down * step)) {
+						// To a fraction of a pixel, so rolling over rough ground the wheel moves up and down smoothly, not in whole-pixel jolts.
+						float above = step - 1.0F;
+						float below = step;
+						for (int halving = 0; halving < 3; ++halving) {
+							float middle = (above + below) * 0.5F;
+							if (HoldsWheel(start + down * middle)) {
+								below = middle;
+							} else {
+								above = middle;
+							}
+						}
+						found = below;
+						hit = true;
+						break;
+					}
+				}
+			}
+			if (!hit) {
+				continue;
+			}
+			float depth = found - rim;
+			if (depth < -climb) {
+				if (side != 0.0F) {
+					cast.WallSide = side > 0.0F ? 1.0F : -1.0F;
+				}
+				continue;
+			}
+			hits[hitCount++] = {side, depth};
+			cast.Lowest = std::min(cast.Lowest, depth);
+		}
+		// Where it is met: the columns within about a pixel of the highest, weighted towards it, so the push turns smoothly as it rolls.
+		float sideSum = 0.0F;
+		float weightSum = 0.0F;
+		for (int i = 0; i < hitCount; ++i) {
+			float weight = 1.0F - (hits[i].second - cast.Lowest) / 0.75F;
+			if (weight > 0.0F) {
+				sideSum += hits[i].first * weight;
+				weightSum += weight;
+			}
+		}
+		cast.Found = weightSum > 0.0F && cast.Lowest < reach;
+		cast.Side = weightSum > 0.0F ? sideSum / weightSum : 0.0F;
+		return cast;
+	}
+
 	/// An angle brought into -pi to pi.
 	float Wrapped(float angle) {
 		angle = std::fmod(angle, c_TwoPI);
@@ -132,6 +216,9 @@ void AVehicle::Clear() {
 	m_RollingResistance = 0.25F;
 	m_MaxSpeed = 7.0F;
 	m_Grip = 0.8F;
+	m_TyreGive = 0.0F;
+	m_TyreStiffness = 250.0F;
+	m_TyreDamping = 12.0F;
 	m_NeedsDriver = true;
 	m_CrewStaysIn = false;
 	m_TerrainCrush = 0.0F;
@@ -301,6 +388,9 @@ int AVehicle::Create(const AVehicle& reference) {
 	m_RollingResistance = reference.m_RollingResistance;
 	m_MaxSpeed = reference.m_MaxSpeed;
 	m_Grip = reference.m_Grip;
+	m_TyreGive = reference.m_TyreGive;
+	m_TyreStiffness = reference.m_TyreStiffness;
+	m_TyreDamping = reference.m_TyreDamping;
 	m_NeedsDriver = reference.m_NeedsDriver;
 	m_CrewStaysIn = reference.m_CrewStaysIn;
 	// (A vehicle read from a saved game is copied into the scene: commanded as one unit, it still is.)
@@ -377,6 +467,13 @@ int AVehicle::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("RollingResistance", { reader >> m_RollingResistance; });
 	MatchProperty("MaxSpeed", { reader >> m_MaxSpeed; });
 	MatchProperty("Grip", { reader >> m_Grip; });
+	MatchProperty("TyreGive", {
+		float give;
+		reader >> give;
+		SetTyreGive(give);
+	});
+	MatchProperty("TyreStiffness", { reader >> m_TyreStiffness; });
+	MatchProperty("TyreDamping", { reader >> m_TyreDamping; });
 	MatchProperty("SeatOffset", {
 		Vector offset;
 		reader >> offset;
@@ -503,6 +600,9 @@ int AVehicle::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("RollingResistance", m_RollingResistance);
 	writer.NewPropertyWithValue("MaxSpeed", m_MaxSpeed);
 	writer.NewPropertyWithValue("Grip", m_Grip);
+	writer.NewPropertyWithValue("TyreGive", m_TyreGive);
+	writer.NewPropertyWithValue("TyreStiffness", m_TyreStiffness);
+	writer.NewPropertyWithValue("TyreDamping", m_TyreDamping);
 	writer.NewPropertyWithValue("SeatOffset", m_Crew.GetMainSeatOffset());
 	writer.NewPropertyWithValue("ExitOffset", m_Crew.GetExitOffset());
 	writer.NewPropertyWithValue("BoardingReach", m_Crew.GetBoardingReach());
@@ -757,6 +857,10 @@ void AVehicle::UpdateEngine(bool canDrive) {
 }
 
 void AVehicle::RemoveWheel(const Attachable* wheel) {
+	// (Off the vehicle it is drawn round again: nothing presses its tyre now.)
+	if (wheel) {
+		const_cast<Attachable*>(wheel)->SetRenderSquash(Vector(), Vector(0.0F, 1.0F), 1.0F, 1.0F);
+	}
 	std::erase_if(m_Wheels, [wheel](const Wheel& each) { return each.Part == wheel && !each.Strut; });
 	for (Wheel& each: m_Wheels) {
 		if (each.Part == wheel) {
@@ -788,6 +892,25 @@ std::vector<Attachable*> AVehicle::GetWheels() const {
 
 int AVehicle::GetWheelsOnGround() const {
 	return static_cast<int>(std::count_if(m_Wheels.begin(), m_Wheels.end(), [](const Wheel& wheel) { return wheel.OnGround; }));
+}
+
+void AVehicle::GetTyreDebug(std::vector<TyreDebug>& wheels) const {
+	for (const Wheel& wheel: m_Wheels) {
+		if (!wheel.Part) {
+			continue;
+		}
+		TyreDebug tyre;
+		tyre.Hub = wheel.Part->GetPos();
+		tyre.Radius = std::max(static_cast<float>(wheel.Part->GetSpriteWidth()) * 0.5F, 1.0F);
+		tyre.Squash = wheel.Squash;
+		tyre.Give = m_TyreGive;
+		tyre.Compression = m_SuspensionTravel > 0.0F ? wheel.Compression / m_SuspensionTravel : 0.0F;
+		tyre.Contact = wheel.Contact;
+		tyre.Normal = wheel.Normal;
+		tyre.OnGround = wheel.OnGround;
+		tyre.Wall = wheel.Wall;
+		wheels.push_back(tyre);
+	}
 }
 
 Vector AVehicle::GetEyePos() const {
@@ -1910,9 +2033,14 @@ void AVehicle::UpdateWheels() {
 	float bottomedShare = 0.0F; //!< How much of the cart's weight is on wheels that have bottomed out.
 	int wheelCount = static_cast<int>(std::count_if(m_Wheels.begin(), m_Wheels.end(), [](const Wheel& wheel) { return wheel.Part != nullptr; }));
 	float share = wheelCount == 0 ? 0.0F : 1.0F / static_cast<float>(wheelCount);
+	bool softTyres = m_TyreGive > 0.0F;
+	Vector groundAlong; //!< Soft tyres: the way along the ground under the wheels that are down, weighted by how hard each is pushed.
+	if (softTyres) {
+		UpdateSoftTyres(deltaTime, down, along, share, velocityChange, angularChange, pushingUp, onGround, bottomedOut, bottomedShare, groundAlong);
+	}
 
 	for (Wheel& wheel: m_Wheels) {
-		if (!wheel.Part) {
+		if (!wheel.Part || softTyres) {
 			continue;
 		}
 		float radius = std::max(static_cast<float>(wheel.Part->GetSpriteWidth()) * 0.5F, 1.0F);
@@ -1958,15 +2086,20 @@ void AVehicle::UpdateWheels() {
 		}
 	}
 
-	// Driving, braking and rolling along the ground, through the wheels that are on it, as far as they grip.
-	float speedAlong = m_Vel.Dot(along);
+	// Driving, braking and rolling along the ground, through the wheels that are on it, as far as they grip. (On soft tyres along the ground
+	// under them, not the body: up the face of a kerb the front tyre is on, the drive lifts it as well as pushing it on.)
+	Vector driveAlong = along;
+	if (softTyres && groundAlong.MagnitudeIsGreaterThan(0.001F)) {
+		driveAlong = groundAlong.GetNormalized();
+	}
+	float speedAlong = m_Vel.Dot(driveAlong);
 	if (onGround > 0) {
 		float onGroundShare = static_cast<float>(onGround) * share;
 		float grip = m_Grip * pushingUp;
 		float stopping = std::abs(speedAlong) / deltaTime; // (No more than brings it to a stop, so it doesn't rock back and forth on the spot.)
 		float direction = speedAlong >= 0.0F ? 1.0F : -1.0F;
 		// Gravity's pull along the ground, which it gets on its next move: braking takes that off as well as its speed, or it creeps downhill.
-		float slopePull = g_SceneMan.GetGlobalAcc().Dot(along) * m_GlobalAccScalar;
+		float slopePull = g_SceneMan.GetGlobalAcc().Dot(driveAlong) * m_GlobalAccScalar;
 		float brake = m_BrakeStrength * onGroundShare;
 		// Left alone and slow (parked, empty, or its driver idle), its wheels hold it where it stands, as far as the brake and grip go.
 		// (Faster than that it coasts on, slowed by its rolling resistance.)
@@ -1984,7 +2117,7 @@ void AVehicle::UpdateWheels() {
 		}
 		push = std::clamp(push, -grip, grip);
 		push -= direction * std::min(m_RollingResistance * onGroundShare, std::max(stopping - std::abs(push), 0.0F));
-		velocityChange += along * push * deltaTime;
+		velocityChange += driveAlong * push * deltaTime;
 		// The body steadies on its springs rather than rocking on and on.
 		m_AngularVel *= std::max(1.0F - 1.5F * onGroundShare * deltaTime, 0.0F);
 	}
@@ -2011,7 +2144,9 @@ void AVehicle::UpdateWheels() {
 		if (into > 0.0F) {
 			m_Vel -= down * into * std::min(bottomedShare, 1.0F);
 		}
-		m_Pos -= down * std::min(bottomedOut, 2.0F) * std::min(bottomedShare, 1.0F);
+		// (On soft tyres as fast as it rolls on, so a kerb taller than the spring takes is driven up, not ploughed into.)
+		float lift = softTyres ? 2.0F + std::abs(m_Vel.Dot(along)) * deltaTime * c_PPM * 2.5F : 2.0F;
+		m_Pos -= down * std::min(bottomedOut, lift) * std::min(bottomedShare, 1.0F);
 	}
 
 	// The wheels ride up on their springs and turn as far as they've rolled.
@@ -2037,7 +2172,7 @@ void AVehicle::UpdateWheels() {
 		}
 		float radius = std::max(static_cast<float>(wheel.Part->GetSpriteWidth()) * 0.5F, 1.0F);
 		if (wheel.OnGround) {
-			wheel.SpinSpeed = -speedAlong * c_PPM / radius;
+			wheel.SpinSpeed = -speedAlong * c_PPM / std::max(radius - wheel.Squash, 1.0F);
 		} else {
 			wheel.SpinSpeed *= std::max(1.0F - 0.6F * deltaTime, 0.0F);
 		}
@@ -2051,6 +2186,134 @@ void AVehicle::UpdateWheels() {
 			CrushPlants(m_Pos + RotateOffset(wheel.Mount - Vector(0.0F, wheel.Compression)), radius + 1.0F);
 		}
 		wheel.Part->SetInheritedRotAngleOffset(wheel.Spin * GetFlipFactor());
+		// A soft tyre is drawn squashed where it is pressed on the ground: shorter towards the ground, from the far side of it, and a little wider.
+		if (softTyres && wheel.Squash > 0.05F) {
+			float squash = std::max(1.0F - wheel.Squash / (radius * 2.0F), 0.5F);
+			wheel.Part->SetRenderSquash(wheel.Normal * radius, wheel.Normal, squash, 1.0F + (1.0F - squash) * 0.6F);
+		} else {
+			wheel.Part->SetRenderSquash(Vector(), Vector(0.0F, 1.0F), 1.0F, 1.0F);
+		}
+	}
+}
+
+void AVehicle::UpdateSoftTyres(float deltaTime, const Vector& down, const Vector& along, float share, Vector& velocityChange, float& angularChange, float& pushingUp, int& onGround, float& bottomedOut, float& bottomedShare, Vector& groundAlong) {
+	float mass = std::max(GetMass(), 1.0F);
+	float inertia = m_pAtomGroup ? m_pAtomGroup->GetMomentOfInertia() : mass;
+	float gravityDown = g_SceneMan.GetGlobalAcc().Dot(down) * m_GlobalAccScalar;
+	float travel = std::max(m_SuspensionTravel, 0.0F);
+	float give = m_TyreGive;
+
+	for (Wheel& wheel: m_Wheels) {
+		if (!wheel.Part) {
+			continue;
+		}
+		float radius = std::max(static_cast<float>(wheel.Part->GetSpriteWidth()) * 0.5F, 1.0F);
+		Vector arm = RotateOffset(wheel.Mount);
+		Vector top = m_Pos + arm - down * travel;
+		// How fast the top of the spring moves, the body's turning included (as MOSRotating gives gibs their share of it).
+		Vector mountVel = m_Vel + arm.GetPerpendicular() * (m_AngularVel * c_MPP);
+		float bodySpeed = mountVel.Dot(down);
+		float bodySpeedAlong = mountVel.Dot(along);
+		if (!wheel.HubSet) {
+			wheel.HubDepth = travel - wheel.Compression;
+			wheel.HubSpeed = bodySpeed;
+			wheel.HubSet = true;
+		}
+
+		// The ground under the whole tyre. Higher than half the tyre above the top of the spring's travel is a wall it can't roll up: it stops
+		// it going on into it (the body's own corners would, a moment later, with a jolt).
+		TyreCast cast = CastTyre(top, down, along, radius, travel + 1.0F, radius * 0.5F + give);
+		wheel.Wall = cast.WallSide != 0.0F;
+		if (wheel.Wall) {
+			Vector into = along * cast.WallSide;
+			float speedInto = (m_Vel + velocityChange).Dot(into);
+			if (speedInto > 0.0F) {
+				velocityChange -= into * (speedInto * std::min(share * 2.0F, 1.0F));
+			}
+		}
+		float lowest = cast.Lowest;
+		Vector normal = -down;
+		if (cast.Found) {
+			// From where the ground is met to the middle: up on the flat, leaning back against a kerb ahead.
+			float rimDrop = std::sqrt(std::max(radius * radius - cast.Side * cast.Side, 0.0F));
+			normal = (along * cast.Side + down * rimDrop) * (-1.0F / radius);
+			normal.Normalize();
+		}
+		// How fast the ground under it comes up its line as it rolls on (up a slope, onto a kerb), in m/s.
+		float normalDown = normal.Dot(down);
+		float slope = normalDown < -0.2F ? std::clamp(normal.Dot(along) / normalDown, -2.5F, 2.5F) : 0.0F;
+		float groundSpeed = -slope * bodySpeedAlong;
+
+		// The wheel's middle is a weight of its own between the spring above and the tyre below, moved in short steps so a stiff tyre stays
+		// steady: a bump is taken by the tyre and the wheel before the body feels it, and a landing is caught by the tyre, then the spring.
+		float wheelMass = std::max(wheel.Part->GetMass(), 1.0F);
+		float ratio = std::clamp(mass * share / wheelMass, 1.0F, 30.0F);
+		float frequency = std::sqrt(ratio * (std::max(m_TyreStiffness, 0.0F) + std::max(m_SuspensionStiffness, 0.0F)));
+		float damping = ratio * (std::max(m_TyreDamping, 0.0F) + std::max(m_SuspensionDamping, 0.0F));
+		int steps = std::clamp(static_cast<int>(std::ceil(std::max(deltaTime * frequency / 0.4F, deltaTime * damping / 0.8F))), 1, 24);
+		float step = deltaTime / static_cast<float>(steps);
+		float depth = std::clamp(wheel.HubDepth, 0.0F, travel);
+		float hubSpeed = wheel.HubSpeed;
+		float pushSum = 0.0F;
+		float overlap = 0.0F;
+		float groundAt = lowest;
+		for (int i = 0; i < steps; ++i) {
+			float spring = std::max(m_SuspensionStiffness * (travel - depth) * c_MPP + m_SuspensionDamping * (bodySpeed - hubSpeed), 0.0F);
+			float squash = cast.Found ? depth - groundAt : 0.0F;
+			float tyre = squash > 0.0F ? std::max(m_TyreStiffness * squash * c_MPP + m_TyreDamping * (hubSpeed - groundSpeed), 0.0F) : 0.0F;
+			hubSpeed += (gravityDown + ratio * (spring - tyre)) * step;
+			depth += (hubSpeed - bodySpeed) * c_PPM * step;
+			groundAt += (groundSpeed - bodySpeed) * c_PPM * step;
+			// The rim meets the ground: the middle goes no further into it.
+			if (cast.Found && depth - groundAt > give) {
+				depth = groundAt + give;
+				hubSpeed = std::min(hubSpeed, groundSpeed);
+			}
+			// All the way out, it hangs from the body; all the way in, it is up against the body, and what the tyre takes the body takes.
+			float bodyPush = spring;
+			overlap = 0.0F;
+			if (depth > travel) {
+				depth = travel;
+				hubSpeed = std::min(hubSpeed, bodySpeed);
+			} else if (depth < 0.0F) {
+				depth = 0.0F;
+				overlap = cast.Found ? std::max(depth - groundAt - give, 0.0F) : 0.0F;
+				hubSpeed = std::max(hubSpeed, bodySpeed);
+				bodyPush = std::max(spring, tyre);
+			}
+			pushSum += bodyPush;
+		}
+		wheel.HubDepth = depth;
+		wheel.HubSpeed = hubSpeed;
+		wheel.Compression = travel - depth;
+		float squash = cast.Found ? depth - groundAt : -1.0F;
+		wheel.Squash = std::clamp(squash, 0.0F, give);
+		wheel.OnGround = squash > -0.5F;
+		wheel.Normal = normal;
+		Vector hub = top + down * depth;
+		wheel.Contact = hub - normal * (radius - wheel.Squash);
+
+		float push = share * pushSum / static_cast<float>(steps);
+		if (push > 0.0F) {
+			pushingUp += push;
+			Vector acceleration = down * -push;
+			velocityChange += acceleration * deltaTime;
+			Vector leverArm = (hub - m_Pos) * c_MPP;
+			angularChange += (leverArm.m_Y * acceleration.m_X - leverArm.m_X * acceleration.m_Y) * mass / inertia * deltaTime;
+		}
+		// Driven in past its rim with the spring all the way in (a hard landing, a kerb taller than the spring takes): solid (UpdateWheels).
+		if (overlap > 0.0F) {
+			bottomedOut = std::max(bottomedOut, overlap);
+			bottomedShare += share;
+		}
+		if (wheel.OnGround) {
+			++onGround;
+			Vector tangent(-normal.m_Y, normal.m_X);
+			if (tangent.Dot(along) < 0.0F) {
+				tangent = -tangent;
+			}
+			groundAlong += tangent * std::max(push, 0.01F);
+		}
 	}
 }
 

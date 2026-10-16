@@ -4,6 +4,7 @@
 #include "DebugMan.h"
 #include "Actor.h"
 #include "ACShip.h"
+#include "AVehicle.h"
 #include "MovableMan.h"
 #include "PostProcessMan.h"
 #include "SceneLighting.h"
@@ -672,6 +673,48 @@ void DebugOverlays::DrawWorldSim() {
 				contacts += blob.Contacts;
 			}
 			std::snprintf(text, sizeof(text), "soft bodies: %d, %d points, %d pressed on by units", static_cast<int>(blobs.size()), points, contacts);
+			caption(text);
+			break;
+		}
+		case 8: {
+			// Tyres: each vehicle wheel's outline, green hanging free to red with its tyre pressed all the way in, where and which way the
+			// ground pushes on it (yellow), its spring as a bar beside it, and a red mark on the side of a wall it can't roll up.
+			int wheels = 0;
+			int down = 0;
+			int soft = 0;
+			float thickness = std::max(1.5F, 1.0F / perPixel);
+			for (const Actor* actor: g_MovableMan.GetActorList()) {
+				const AVehicle* vehicle = dynamic_cast<const AVehicle*>(actor);
+				if (!vehicle) {
+					continue;
+				}
+				std::vector<AVehicle::TyreDebug> tyres;
+				vehicle->GetTyreDebug(tyres);
+				for (const AVehicle::TyreDebug& tyre: tyres) {
+					++wheels;
+					down += tyre.OnGround ? 1 : 0;
+					soft += tyre.Give > 0.0F ? 1 : 0;
+					float pressed = tyre.Give > 0.0F ? std::clamp(tyre.Squash / tyre.Give, 0.0F, 1.0F) : (tyre.OnGround ? 0.5F : 0.0F);
+					ImU32 color = tyre.OnGround ? IM_COL32(static_cast<int>(80.0F + 175.0F * pressed), static_cast<int>(230.0F - 180.0F * pressed), 70, 230) : IM_COL32(150, 150, 150, 200);
+					ImVec2 hub = DebugDraw::ToScreen(tyre.Hub);
+					drawList->AddCircle(hub, tyre.Radius / perPixel, color, 24, thickness);
+					if (tyre.OnGround && tyre.Give > 0.0F) {
+						ImVec2 contact = DebugDraw::ToScreen(tyre.Contact);
+						drawList->AddCircleFilled(contact, 3.0F, IM_COL32(255, 220, 80, 255), 10);
+						Vector tip = tyre.Contact + tyre.Normal * (8.0F + 20.0F * pressed);
+						drawList->AddLine(contact, DebugDraw::ToScreen(tip), IM_COL32(255, 220, 80, 255), thickness);
+					}
+					// The spring: how far in it is pushed, as a bar up the wheel's side.
+					float barHeight = tyre.Radius * 2.0F / perPixel;
+					ImVec2 barBottom(hub.x + tyre.Radius / perPixel + 4.0F, hub.y + barHeight * 0.5F);
+					drawList->AddRect(ImVec2(barBottom.x, barBottom.y - barHeight), ImVec2(barBottom.x + 4.0F, barBottom.y), IM_COL32(200, 200, 200, 160));
+					drawList->AddRectFilled(ImVec2(barBottom.x, barBottom.y - barHeight * std::clamp(tyre.Compression, 0.0F, 1.0F)), ImVec2(barBottom.x + 4.0F, barBottom.y), IM_COL32(120, 190, 255, 220));
+					if (tyre.Wall) {
+						drawList->AddCircleFilled(hub, 4.0F, IM_COL32(255, 60, 50, 255), 10);
+					}
+				}
+			}
+			std::snprintf(text, sizeof(text), "vehicle wheels: %d, %d soft tyres, %d on the ground", wheels, soft, down);
 			caption(text);
 			break;
 		}

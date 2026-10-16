@@ -557,6 +557,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AVehicle) {
 	    .property("HopSpeed", &AVehicle::GetHopSpeed, &AVehicle::SetHopSpeed)
 	    .property("Acceleration", &AVehicle::GetAcceleration, &AVehicle::SetAcceleration)
 	    .property("Grip", &AVehicle::GetGrip, &AVehicle::SetGrip)
+	    .property("TyreGive", &AVehicle::GetTyreGive, &AVehicle::SetTyreGive)
 	    .property("BrakeStrength", &AVehicle::GetBrakeStrength, &AVehicle::SetBrakeStrength)
 	    .property("RollingResistance", &AVehicle::GetRollingResistance, &AVehicle::SetRollingResistance)
 	    .property("WaterThrust", &AVehicle::GetWaterThrust, &AVehicle::SetWaterThrust)

@@ -260,6 +260,30 @@ namespace RTE {
 		/// Gets roughly the steepest slope it can drive up, in degrees: as far as its power lifts it against gravity, and its grip holds.
 		float GetClimbAngle() const;
 
+		/// Gets how far its tyres squash before the rims meet the ground, in pixels. 0: hard wheels, felt for the ground by three looks straight
+		/// down. More: soft tyres, felt for the ground right round their lower half, that roll up steps, take landings and ride rough ground smoothly.
+		float GetTyreGive() const { return m_TyreGive; }
+
+		/// Sets how far its tyres squash before the rims meet the ground, in pixels. 0: hard wheels.
+		void SetTyreGive(float newGive) { m_TyreGive = std::max(newGive, 0.0F); }
+
+		/// What the tyres overlay draws of a wheel: where it is, how big, how squashed, and where and which way the ground pushes on it.
+		struct TyreDebug {
+			Vector Hub; //!< Its middle, in scene coordinates.
+			float Radius = 0.0F; //!< How big it is, in pixels.
+			float Squash = 0.0F; //!< How far its tyre is pressed in, in pixels.
+			float Give = 0.0F; //!< How far it can be pressed in before the rim meets the ground, in pixels.
+			float Compression = 0.0F; //!< How far its spring is pushed in, 0 to 1.
+			Vector Contact; //!< Where the ground pushes on it, in scene coordinates.
+			Vector Normal; //!< The way the ground pushes on it (a unit vector).
+			bool OnGround = false; //!< Whether it is on the ground.
+			bool Wall = false; //!< Whether it was up against ground too high to roll up this update.
+		};
+
+		/// Gets its wheels for the tyres debug overlay.
+		/// @param wheels Where its wheels are added.
+		void GetTyreDebug(std::vector<TyreDebug>& wheels) const;
+
 		/// Gets how hard it speeds up in water when driven, in m/s each second. 0: it doesn't drive in water (it isn't a boat).
 		float GetWaterThrust() const { return m_WaterThrust; }
 
@@ -387,6 +411,14 @@ namespace RTE {
 			float Spin = 0.0F; //!< How far it has turned, in radians, the way it turns on the ground (rolling right is negative).
 			float SpinSpeed = 0.0F; //!< How fast it turns, in radians a second.
 			bool OnGround = false; //!< Whether it touched the ground in the last update.
+			// Soft tyres (TyreGive over 0): the wheel is a weight of its own on its spring, on a tyre that squashes against the ground.
+			bool HubSet = false; //!< Whether HubDepth and HubSpeed have been worked out yet.
+			float HubDepth = 0.0F; //!< How far its middle is down its spring from the top of its travel, in pixels (the spring is in by travel less this).
+			float HubSpeed = 0.0F; //!< How fast its middle moves down its spring's line, in m/s, in the world (not against the body).
+			float Squash = 0.0F; //!< How far its tyre is pressed in, in pixels.
+			Vector Contact; //!< Where the ground pushes on its tyre, in scene coordinates.
+			Vector Normal; //!< The way the ground pushes on its tyre (a unit vector, up on flat ground).
+			bool Wall = false; //!< Whether it was up against ground too high to roll up this update.
 		};
 
 		std::vector<Wheel> m_Wheels; //!< The wheels it has left.
@@ -398,6 +430,9 @@ namespace RTE {
 		float m_RollingResistance; //!< How much rolling on its own slows it, in m/s each second (low: it coasts far).
 		float m_MaxSpeed; //!< The top speed it is driven at on the flat, in m/s.
 		float m_Grip; //!< How much of its weight on the wheels it can push or brake with before they slip, 0 to about 1.
+		float m_TyreGive; //!< How far its tyres squash before the rims meet the ground, in pixels. 0: hard wheels (see GetTyreGive).
+		float m_TyreStiffness; //!< How hard the tyres push back, as acceleration per metre squashed, shared between the wheels as the springs'.
+		float m_TyreDamping; //!< How much the tyres resist squashing, as acceleration per m/s, shared between the wheels.
 		float m_TerrainCrush; //!< How tough a material it smashes through driving into it (see GetTerrainCrush). 0 none.
 		bool m_CrewStaysIn; //!< Whether its crew stays in (the Stay in vehicle order; see GetCrewStaysIn).
 		bool m_NeedsDriver; //!< Whether it only drives with someone in the seat (a cart does; a drone vehicle wouldn't).
@@ -501,6 +536,11 @@ namespace RTE {
 	private:
 		/// Works out each wheel's spring against the ground and pushes the body by them, drives and brakes the wheels on the ground, and turns them.
 		void UpdateWheels();
+
+		/// Soft tyres' springs (TyreGive over 0), for UpdateWheels: each wheel a weight of its own between its spring and its tyre, the tyre felt
+		/// against the ground right round its lower half. Adds the springs' push on the body to the changes given, and notes how much is pushing up,
+		/// how many wheels are down, how far the deepest is driven in past its rim and how much weight is on those, and the way along the ground.
+		void UpdateSoftTyres(float deltaTime, const Vector& down, const Vector& along, float share, Vector& velocityChange, float& angularChange, float& pushingUp, int& onGround, float& bottomedOut, float& bottomedShare, Vector& groundAlong);
 
 		/// Smashes the ground it drives into, in front of it (behind, backing up) and above its axles, never under it: each pixel of a material
 		/// no tougher than TerrainCrush goes as rubble, slowing it by how tough it was. Only while it moves along or is driven into it.

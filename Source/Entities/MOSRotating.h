@@ -373,6 +373,19 @@ namespace RTE {
 		void Draw(BITMAP* pTargetBitmap, const Vector& targetPos = Vector(), DrawMode mode = g_DrawColor, bool onlyPhysical = false) const override;
 		void Draw(const Camera& camera) const override;
 
+		/// Sets this to be drawn squashed (in the GL renderer only; it is hit and collides as drawn unsquashed): shortened along a direction in
+		/// the world and widened across it, about a point, as a soft tyre pressed on the ground. A squash of 1 draws it as it is.
+		/// @param pivotOffset The point it is squashed towards, from its middle, in the world's directions.
+		/// @param axis The direction it is shortened along, in the world (a unit vector).
+		/// @param squash How long it is drawn along the axis, 1 as it is.
+		/// @param bulge How wide it is drawn across the axis, 1 as it is.
+		void SetRenderSquash(const Vector& pivotOffset, const Vector& axis, float squash, float bulge) {
+			m_RenderSquashPivot = pivotOffset;
+			m_RenderSquashAxis = axis;
+			m_RenderSquash = squash;
+			m_RenderSquashBulge = bulge;
+		}
+
 		/// Gets the gib impulse limit for this MOSRotating, i.e. the amount of impulse force required in a frame to gib this MOSRotating.
 		/// @return The gib impulse limit of this MOSRotating.
 		float GetGibImpulseLimit() const { return m_GibImpulseLimit; }
@@ -640,6 +653,10 @@ namespace RTE {
 		bool m_NoSetDamageMultiplier; //!< Whether or not the damage multiplier for this MOSRotating was set.
 
 		Timer m_FlashWhiteTimer; //!< The timer for timing white draw mode duration.
+		float m_RenderSquash; //!< How long it is drawn along m_RenderSquashAxis, 1 as it is (see SetRenderSquash).
+		float m_RenderSquashBulge; //!< How wide it is drawn across m_RenderSquashAxis, 1 as it is.
+		Vector m_RenderSquashAxis; //!< The direction it is drawn shortened along, in the world.
+		Vector m_RenderSquashPivot; //!< The point it is squashed towards, from its middle, in the world's directions.
 
 		// Intermediary drawing bitmap used to flip rotating bitmaps. Owned!
 		BITMAP* m_pFlipBitmap;
