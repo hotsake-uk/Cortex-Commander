@@ -2909,6 +2909,10 @@ namespace SandboxDetail {
 	Vector OpenAirAt(Vector place);
 	Vector StandingPlaceBelow(Vector place);
 	Actor* MakePlayer(const Vector& place);
+	/// Makes a unit your character: your side, counted as yours (any other character of yours is taken away), in the world at a place.
+	void PutPlayerInWorld(Actor* actor, const Vector& place);
+	/// Makes a unit your character in place of the one you have, where it stood, and steps into it.
+	void PlayAsUnit(Actor* unit);
 	Actor* PlayerHolder();
 	Actor* TakeOutPlayer();
 	void RemovePlayer();

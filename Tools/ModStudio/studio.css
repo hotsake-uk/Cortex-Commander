@@ -44,6 +44,7 @@ button, input, select { font: inherit; color: inherit; }
 .tb.primary:hover:not(:disabled) { background: #ffc85a; border-color: #ffc85a; }
 .tb.icon { width: 30px; padding: 5px 0; font-weight: 700; }
 .tb.attention { border-color: var(--accent); color: var(--accent); }
+.tb.live-on { background: #1d3a26; border-color: var(--good); color: var(--good); }
 
 .panel { background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
 #left { grid-area: left; border-right: 1px solid var(--line); }
@@ -202,4 +203,18 @@ pre.diff .del { color: var(--bad); }
 
 @media (max-width: 1100px) {
 	#app { grid-template-columns: 230px 1fr 300px; }
+}
+
+/* Wide screens: the unit's picture needs little room, so the parts list and the properties take much more, side by side, and
+   the property sections sit in columns instead of one long list to scroll. */
+@media (min-width: 1300px) {
+	#app { grid-template-columns: 260px minmax(380px, 1fr) minmax(600px, 54vw); }
+	#right { display: grid; grid-template-columns: minmax(200px, 26%) 1fr; grid-template-rows: auto 1fr; }
+	#right > .panel-head:first-child { grid-column: 1; grid-row: 1; border-right: 1px solid var(--line); }
+	#right > #tree { grid-column: 1; grid-row: 2; max-height: none; border-bottom: 0; border-right: 1px solid var(--line); min-height: 0; }
+	#right > #inspHead { grid-column: 2; grid-row: 1; }
+	#right > #inspector { grid-column: 2; grid-row: 2; min-height: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); align-content: start; align-items: start; padding: 0 0 30px; }
+	#inspector > .section { border-right: 1px solid var(--line); }
+	#inspector > .notice, #inspector > .insp-empty { grid-column: 1 / -1; }
+	#inspector > .section:has(.props-table), #inspector > .section.wide { grid-column: 1 / -1; }
 }

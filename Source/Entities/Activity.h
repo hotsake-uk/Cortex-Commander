@@ -154,6 +154,10 @@ namespace RTE {
 		/// @return Whether the views may be drawn zoomed.
 		virtual bool AllowsCameraZoom() const { return false; }
 
+		/// Whether the mouse is left free to leave the game's window (never trapped for aiming nor kept inside the view), for working in another program beside it.
+		/// @return Whether the game lets go of the mouse.
+		virtual bool KeepsMouseFree() const { return false; }
+
 		virtual bool SceneIsCompatible(Scene* scene, int teams = -1) { return scene && teams <= m_MinTeamsRequired; }
 
 		/// Shows in which stage of the Campaign this appears.

@@ -414,6 +414,7 @@ window.MS = window.MS || {};
 		const keys = [
 			['Drag a part', 'move it on its parent (ParentOffset)'],
 			['Shift + drag', 'move the picture around the part\'s pivot (SpriteOffset)'],
+			['Ctrl + drag', 'rotate an attachment about its pivot (InheritedRotAngleDegOffset); Alt for half degrees'],
 			['Drag the gold dot', 'move the pivot, keeping the picture still (JointOffset)'],
 			['Drag a hand', 'where it rests (IdleOffset) or holds the item (StanceOffset, SupportOffset)'],
 			['Drag the red dot', 'where shots come from (MuzzleOffset)'],
@@ -445,7 +446,8 @@ window.MS = window.MS || {};
 		const body = el('div', {},
 			para('Studio saved your unit and asked the game to show it. To see it:'),
 			para('1. Start the game with <b>Actor Editor.bat</b> or <b>Test In Sandbox.bat</b> in Tools\\ModStudio (the Actor Editor is also in the main menu under <b>Editors</b>).'),
-			para('2. It shows the unit Studio sent, holding the item picked under <b>Held item</b>, and swaps in the new version every time you press <b>Preview in game</b> again. Walk it, jump, shoot and get shot to see how it really behaves. In the Actor Editor, Ctrl + mouse wheel zooms.'),
+			para('2. It shows the unit Studio sent, holding the item picked under <b>Held item</b>, and swaps in the new version every time you press <b>Preview in game</b> again. Walk it, jump, shoot and get shot to see how it really behaves. In the Actor Editor the mouse stays free for Studio (move the unit with the keyboard) and Ctrl + mouse wheel zooms. In the sandbox the unit is your own character.'),
+			para('Turn on <b>Live</b> next to Preview in game and every change is sent by itself, a drag once you let go.'),
 			para('The game reads mods when it starts: after making a <b>new</b> mod, restart the game once. New sprites and changed values show straight away.'));
 		open('Preview in game', body, [{ text: 'Got it', primary: true }]);
 	}

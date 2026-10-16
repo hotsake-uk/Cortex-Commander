@@ -472,7 +472,7 @@ window.MS = window.MS || {};
 					if (part !== this.app.selected) {
 						this.app.select(part);
 					}
-					const kind = handle ? handle.kind : e.shiftKey ? 'sprite' : 'move';
+					const kind = handle ? handle.kind : e.ctrlKey || e.metaKey ? 'rotate' : e.shiftKey ? 'sprite' : 'move';
 					this.drag = { kind, part, start: this.toWorld(e.offsetX, e.offsetY), poses: this.poses, began: false };
 					return;
 				}

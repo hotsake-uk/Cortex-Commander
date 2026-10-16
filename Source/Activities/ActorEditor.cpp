@@ -37,6 +37,7 @@ void ActorEditor::Clear() {
 	m_pPicker = 0;
 	m_PreviewCheckTimer.Reset();
 	m_PreviewFileTime = {};
+	m_ShowingModStudio = false;
 	m_ZoomedIn = false;
 }
 
@@ -281,5 +282,7 @@ void ActorEditor::CheckModStudioPreview() {
 		return;
 	}
 	m_pPicker->SetEnabled(false);
-	g_FrameMan.SetScreenText("Showing " + request.PresetName + " from Mod Studio. Control it to see how it moves; Ctrl + mouse wheel zooms.", 0, 0, 5000);
+	m_ShowingModStudio = true;
+	g_UInputMan.TrapMousePos(false, Players::PlayerOne);
+	g_FrameMan.SetScreenText("Showing " + request.PresetName + " from Mod Studio. The mouse is free for Studio; move the unit with the keyboard. Ctrl + mouse wheel zooms.", 0, 0, 5000);
 }

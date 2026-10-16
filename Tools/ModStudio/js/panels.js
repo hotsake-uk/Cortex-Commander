@@ -642,6 +642,10 @@ window.MS = window.MS || {};
 		}
 		if (part.role === 'attachable' || part.role === 'jetpack') {
 			boolRow(place, part, 'InheritsRotAngle', 'Turns with parent', true, locked);
+			if (part.ent.bool('InheritsRotAngle', true)) {
+				const degrees = Math.round((MS.Rig.rotationOffset(part.ent) * 180) / Math.PI * 100) / 100;
+				numberRow(place, part, 'InheritedRotAngleDegOffset', 'Rotation (°)', degrees, locked);
+			}
 		}
 
 		if (part.role === 'fgarm' || part.role === 'bgarm') {

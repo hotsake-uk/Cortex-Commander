@@ -4,7 +4,7 @@ window.MS = window.MS || {};
 
 (function () {
 	const $ = (id) => document.getElementById(id);
-	const { rotate, flipX, sub } = MS.geom;
+	const { rotate, flipX, sub, add } = MS.geom;
 	const DEVICE_CLASSES = new Set(['HDFirearm', 'HeldDevice', 'TDExplosive', 'ThrownDevice']);
 	const PREVIEW_FILE = 'ModStudio/Preview.ini';
 
@@ -166,6 +166,7 @@ window.MS = window.MS || {};
 		app.select(app.rig ? app.rig.body : null);
 		app.view.fit();
 		MS.panels.markLibrary();
+		app.liveChanged();
 	};
 
 	app.findActorNode = function () {
@@ -208,6 +209,7 @@ window.MS = window.MS || {};
 		app.device = preset ? { path: preset.doc.path, name: preset.name } : null;
 		app.rebuild();
 		MS.panels.refresh();
+		app.liveChanged();
 	};
 
 	// Rebuilds the rig from the current files, keeping the selection.
@@ -276,6 +278,7 @@ window.MS = window.MS || {};
 		$('btnCopy').disabled = false;
 		$('btnCopy').classList.toggle('attention', locked);
 		$('btnPreview').disabled = locked;
+		$('btnLive').disabled = locked || !app.fs || !app.fs.writable;
 	}
 
 	app.select = function (part) {
@@ -287,7 +290,8 @@ window.MS = window.MS || {};
 	app.onHover = function (part) {
 		MS.panels.hoverTree(part);
 		const hint = $('viewHint');
-		hint.textContent = part ? part.name + ' — drag to move · Shift+drag to move the picture' : 'Drag a part to move it · wheel to zoom · double-click to fit';
+		const turns = part && part.role === 'attachable' && part.ent.bool('InheritsRotAngle', true);
+		hint.textContent = part ? part.name + ' — drag to move · Shift+drag to move the picture' + (turns ? ' · Ctrl+drag to rotate' : '') : 'Drag a part to move it · wheel to zoom · double-click to fit';
 	};
 
 	app.onZoom = function (z) {
@@ -374,6 +378,7 @@ window.MS = window.MS || {};
 		app.redo = [];
 		updateUndo();
 		updateFileStatus();
+		app.liveChanged();
 	};
 
 	// Runs fn as one undoable change.
@@ -412,6 +417,7 @@ window.MS = window.MS || {};
 			app.redo.push(entry);
 			app.status('Undid: ' + entry.label);
 			updateUndo();
+			app.liveChanged();
 		}
 	};
 
@@ -422,6 +428,7 @@ window.MS = window.MS || {};
 			app.undo.push(entry);
 			app.status('Redid: ' + entry.label);
 			updateUndo();
+			app.liveChanged();
 		}
 	};
 
@@ -505,6 +512,23 @@ window.MS = window.MS || {};
 				return parentPose ? [{ part, key: 'ParentOffset', start: vec(part, 'ParentOffset'), convert: local(parentPose) }] : null;
 			case 'sprite':
 				return [{ part, key: 'SpriteOffset', start: spriteStart(), convert: local(pose) }];
+			case 'rotate': {
+				// Attachments only, turning about their pivot. The angle is kept in degrees, mirrored like the game does when facing left.
+				if (part.role !== 'attachable' || !parentPose || !part.ent.bool('InheritsRotAngle', true)) {
+					return null;
+				}
+				const startDegrees = (MS.Rig.rotationOffset(part.ent) * 180) / Math.PI;
+				const from = sub(d.start, pose.joint);
+				const startAngle = Math.atan2(from.y, from.x);
+				const sign = parentPose.flip ? -1 : 1;
+				return [{ part, key: 'InheritedRotAngleDegOffset', start: startDegrees, angle: (delta) => {
+					const to = add(from, delta);
+					// Screen y points down, so a positive screen angle is clockwise; the game's positive angles are anticlockwise.
+					let turn = -(Math.atan2(to.y, to.x) - startAngle);
+					turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+					return (turn * 180) / Math.PI * sign;
+				} }];
+			}
 			case 'joint':
 				if (part.role === 'device') {
 					return [{ part, key: 'JointOffset', start: vec(part, 'JointOffset'), convert: local(pose) }, { part, key: stanceKey, start: vec(part, stanceKey), convert: aimLocal }];
@@ -539,8 +563,8 @@ window.MS = window.MS || {};
 				return false;
 			}
 		}
-		d.plan = plan.map((s) => ({ partId: s.part.id, key: s.key, start: s.start, convert: s.convert }));
-		app.begin('move ' + d.part.name);
+		d.plan = plan.map((s) => ({ partId: s.part.id, key: s.key, start: s.start, convert: s.convert, angle: s.angle }));
+		app.begin((d.kind === 'rotate' ? 'rotate ' : 'move ') + d.part.name);
 		return true;
 	};
 
@@ -550,10 +574,14 @@ window.MS = window.MS || {};
 			if (!part) {
 				continue;
 			}
-			const change = step.convert(delta);
 			const round = (v) => Math.round(v / snap) * snap;
 			const node = app.lib.ownBlock(part.anchor, part.path).node;
-			if (node) {
+			if (node && step.angle) {
+				// Whole degrees (half degrees with Alt).
+				const degrees = round(step.start + step.angle(delta));
+				node.set(step.key, MS.formatNumber(((degrees % 360) + 540) % 360 - 180));
+			} else if (node) {
+				const change = step.convert(delta);
 				node.setVector(step.key, round(step.start.x + change.x), round(step.start.y + change.y));
 			}
 		}
@@ -597,7 +625,7 @@ window.MS = window.MS || {};
 	}
 	app.updateFileStatus = updateFileStatus;
 
-	app.save = async function () {
+	app.save = async function (quiet) {
 		const docs = app.dirtyDocs();
 		let written = 0;
 		for (const doc of docs) {
@@ -627,17 +655,18 @@ window.MS = window.MS || {};
 			}
 			return written;
 		}
-		if (written) {
+		if (written && !quiet) {
 			app.toast('Saved ' + written + ' file' + (written > 1 ? 's' : '') + '.', 'good');
 		}
 		return written;
 	};
 
-	app.preview = async function () {
+	// quiet: sent by Live mode, so no messages beyond the status line.
+	app.preview = async function (quiet) {
 		if (!app.actor) {
 			return;
 		}
-		await app.save();
+		await app.save(quiet);
 		const files = new Set(app.savedSinceLastPreview);
 		files.add(app.actor.path);
 		const device = app.device && !app.fs.isOfficial(app.device.path) ? app.device.path : null;
@@ -668,13 +697,63 @@ window.MS = window.MS || {};
 			return;
 		}
 		app.savedSinceLastPreview.clear();
-		if (!readLocal('ms.previewExplained')) {
+		if (quiet) {
+			app.status('Live: sent ' + app.actor.name + ' to the game at ' + new Date().toLocaleTimeString() + '.');
+		} else if (!readLocal('ms.previewExplained')) {
 			MS.dialogs.previewHelp();
 			writeLocal('ms.previewExplained', true);
 		} else {
 			app.toast('Sent to the game. In the Actor Editor it updates within a second.', 'good');
 		}
 	};
+
+	// ---- Live mode: every change goes to the game as it's made ----
+
+	// A change made while a drag or scrub is still under way (an open transaction) waits until it's let go; changes close together go as one.
+	app.live = false;
+	let liveTimer = 0;
+	let liveBusy = false;
+	let liveAgain = false;
+	app.liveChanged = function () {
+		if (!app.live || !app.actor || !app.fs || !app.fs.writable) {
+			return;
+		}
+		clearTimeout(liveTimer);
+		liveTimer = setTimeout(sendLive, 250);
+	};
+	async function sendLive() {
+		if (app.txn) {
+			liveTimer = setTimeout(sendLive, 250);
+			return;
+		}
+		if (liveBusy) {
+			liveAgain = true;
+			return;
+		}
+		liveBusy = true;
+		try {
+			await app.preview(true);
+		} finally {
+			liveBusy = false;
+			if (liveAgain) {
+				liveAgain = false;
+				app.liveChanged();
+			}
+		}
+	}
+	function setLive(on) {
+		app.live = on;
+		const btn = $('btnLive');
+		btn.classList.toggle('live-on', on);
+		btn.textContent = on ? '● Live on' : '● Live';
+		writeLocal('ms.live', on);
+		if (on) {
+			app.status('Live: every change is sent to the game when you make it. Start the game with Actor Editor.bat or Test In Sandbox.bat.');
+			app.liveChanged();
+		} else {
+			app.status('Live off: press Preview in game to send changes.');
+		}
+	}
 
 	function download(blob, name) {
 		const a = document.createElement('a');
@@ -696,6 +775,10 @@ window.MS = window.MS || {};
 		$('btnRedo').onclick = () => app.doRedo();
 		$('btnSave').onclick = () => app.save();
 		$('btnPreview').onclick = () => app.preview();
+		$('btnLive').onclick = () => setLive(!app.live);
+		if (readLocal('ms.live')) {
+			setLive(true);
+		}
 		$('btnCopy').onclick = () => MS.dialogs.copyUnit();
 		$('btnHelp').onclick = () => MS.dialogs.help();
 		for (const btn of document.querySelectorAll('#poseButtons button')) {
