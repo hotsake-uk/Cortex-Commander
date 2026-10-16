@@ -1,6 +1,7 @@
 // The file bridge: watches Data and Mods, and when a .lua or .ini is saved by anything but Studio, asks a game started with -modstudio
 // to reload it (through ModStudio/Scripts.ini) and keeps a numbered list of changes for an open Studio page (the "changes" request).
-// The same rules as Start-ModStudio.ps1's StudioWatcher.
+// The same rules as Start-ModStudio.ps1's StudioWatcher. When the game folder is a version Studio launched, your own mods folder (whose
+// mods are hard-linked into the version's Mods) is watched too: a save there is linked into the version again and reloaded from there.
 
 use notify::{EventKind, RecursiveMode, Watcher};
 use std::collections::{BTreeMap, HashMap};
@@ -25,12 +26,12 @@ pub struct StudioWatcher {
 }
 
 impl StudioWatcher {
-	pub fn start(root: &Path) -> StudioWatcher {
+	pub fn start(root: &Path, mods_source: Option<PathBuf>) -> StudioWatcher {
 		let state = Arc::new(Mutex::new(State::default()));
 		let (notes, inbox) = channel::<(PathBuf, bool)>();
 		let mut watchers = Vec::new();
-		for top in ["Data", "Mods"] {
-			let folder = root.join(top);
+		let folders = [root.join("Data"), root.join("Mods")].into_iter().chain(mods_source.clone());
+		for folder in folders {
 			if !folder.is_dir() {
 				continue;
 			}
@@ -60,7 +61,7 @@ impl StudioWatcher {
 
 		let thread_root = root.to_path_buf();
 		let thread_state = state.clone();
-		std::thread::spawn(move || gather(thread_root, thread_state, inbox));
+		std::thread::spawn(move || gather(thread_root, mods_source, thread_state, inbox));
 		StudioWatcher { state, _watchers: watchers }
 	}
 
@@ -92,7 +93,7 @@ fn wanted(path: &Path) -> bool {
 }
 
 // A save fires several events (and editors save through temporary files), so changes are gathered for 300 ms and sent as one.
-fn gather(root: PathBuf, state: Arc<Mutex<State>>, inbox: std::sync::mpsc::Receiver<(PathBuf, bool)>) {
+fn gather(root: PathBuf, mods_source: Option<PathBuf>, state: Arc<Mutex<State>>, inbox: std::sync::mpsc::Receiver<(PathBuf, bool)>) {
 	let mut pending: BTreeMap<PathBuf, bool> = BTreeMap::new();
 	let mut due: Option<Instant> = None;
 	loop {
@@ -107,15 +108,27 @@ fn gather(root: PathBuf, state: Arc<Mutex<State>>, inbox: std::sync::mpsc::Recei
 				}
 				// A rename or a write reports the file as it is now; a path that is gone was deleted.
 				let deleted = deleted || !path.exists();
-				{
-					let mut s = state.lock().unwrap();
-					if let Some(when) = s.ours.get(&path) {
-						if when.elapsed() < Duration::from_secs(3) {
-							continue;
+				let from_mods_folder = mods_source.as_deref().and_then(|source| path.strip_prefix(source).ok().map(Path::to_path_buf));
+				let path = match from_mods_folder {
+					Some(relative) => match relink(&path, &root, &relative, deleted) {
+						Some(linked) => {
+							// Relinking it changes the version's copy too; that event is ours, not another save.
+							state.lock().unwrap().ours.insert(linked.clone(), Instant::now());
+							linked
 						}
-						s.ours.remove(&path);
+						None => continue,
+					},
+					None => {
+						let mut s = state.lock().unwrap();
+						if let Some(when) = s.ours.get(&path) {
+							if when.elapsed() < Duration::from_secs(3) {
+								continue;
+							}
+							s.ours.remove(&path);
+						}
+						path
 					}
-				}
+				};
 				pending.insert(path, deleted);
 				due = Some(Instant::now() + Duration::from_millis(300));
 			}
@@ -134,6 +147,26 @@ fn gather(root: PathBuf, state: Arc<Mutex<State>>, inbox: std::sync::mpsc::Recei
 			Err(RecvTimeoutError::Disconnected) => return,
 		}
 	}
+}
+
+/// A file saved (or deleted) in your mods folder: makes the version's copy match, a hard link again where it can be, and returns the
+/// version's path. None when that mod isn't linked into the version (it has its own) or the copy couldn't be made.
+fn relink(from: &Path, root: &Path, relative: &Path, deleted: bool) -> Option<PathBuf> {
+	let module = relative.components().next()?;
+	if !root.join("Mods").join(module).join(crate::launcher::COPY_MARKER).exists() {
+		return None;
+	}
+	let to = root.join("Mods").join(relative);
+	if to.exists() {
+		std::fs::remove_file(&to).ok()?;
+	}
+	if !deleted {
+		std::fs::create_dir_all(to.parent()?).ok()?;
+		if std::fs::hard_link(from, &to).is_err() {
+			std::fs::copy(from, &to).ok()?;
+		}
+	}
+	Some(to)
 }
 
 /// Logs the changes and writes the game's request. False when the page wrote a request moments ago: the game looks a few times a second,

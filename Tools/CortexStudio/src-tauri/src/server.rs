@@ -42,7 +42,7 @@ impl Studio {
 		let dir = PathBuf::from(dir.to_string_lossy().trim_start_matches(r"\\?\"));
 		*self.game_dir.write().unwrap() = dir.clone();
 		if self.watch {
-			*self.watcher.lock().unwrap() = Some(StudioWatcher::start(&dir));
+			*self.watcher.lock().unwrap() = Some(StudioWatcher::start(&dir, launcher::linked_mods_dir(&dir)));
 		}
 		crate::remember_game_dir(&dir);
 	}
@@ -54,7 +54,7 @@ pub fn start(game_dir: PathBuf, watch: bool, port: u16) -> Result<String, String
 	let port = server.server_addr().to_ip().map(|a| a.port()).unwrap_or(port);
 	let token = new_token();
 	let studio = Arc::new(Studio {
-		watcher: Mutex::new(if watch { Some(StudioWatcher::start(&game_dir)) } else { None }),
+		watcher: Mutex::new(if watch { Some(StudioWatcher::start(&game_dir, launcher::linked_mods_dir(&game_dir))) } else { None }),
 		watch,
 		launcher: Launcher::new(&game_dir),
 		game_dir: RwLock::new(game_dir),
