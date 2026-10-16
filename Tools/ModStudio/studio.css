@@ -175,7 +175,7 @@ body.resizing iframe, body.resizing canvas { pointer-events: none; }
 .tree-row .folded-count { color: var(--accent); }
 .tree-tools { display: flex; gap: 2px; text-transform: none; letter-spacing: 0; }
 .ico-svg { display: inline-flex; }
-.code-tools .ct-sep { width: 1px; height: 16px; background: var(--line); margin: 0 8px; }
+.code-tools .ct-sep, .image-tools .ct-sep { width: 1px; height: 16px; background: var(--line); margin: 0 8px; }
 .rel { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
 .rel-title { font-weight: 600; font-size: 14px; }
 .rel-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
@@ -466,9 +466,15 @@ pre.diff .del { color: var(--bad); }
 .code-tools { display: flex; align-items: center; gap: 2px; padding: 3px 8px; border-bottom: 1px solid var(--line); background: var(--panel); }
 .code-tools .ct-label { font-size: 11px; color: var(--faint); margin-right: 4px; text-transform: uppercase; letter-spacing: .6px; }
 .code-banner { padding: 6px 12px; background: #2a2214; color: #f4d79a; font-size: 12px; border-bottom: 1px solid #5a4416; }
-#imageHost { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; overflow: auto; background: repeating-conic-gradient(#14171c 0% 25%, #101216 0% 50%) 0 0 / 16px 16px; }
-.image-view { image-rendering: pixelated; box-shadow: 0 0 0 1px var(--line2); }
-.image-info { color: var(--dim); font-size: 12px; }
+#imageHost { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.image-tools { display: flex; align-items: center; gap: 4px; padding: 3px 8px; border-bottom: 1px solid var(--line); background: var(--panel); font-size: 12px; }
+.image-zoom { min-width: 42px; text-align: center; color: var(--text); font-variant-numeric: tabular-nums; }
+.image-info { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.image-where { color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.image-stage { flex: 1; min-height: 0; overflow: auto; outline: none; cursor: grab; background: repeating-conic-gradient(#14171c 0% 25%, #101216 0% 50%) 0 0 / 16px 16px; }
+.image-stage.dragging { cursor: grabbing; }
+.image-holder { box-sizing: border-box; min-width: 100%; min-height: 100%; width: max-content; height: max-content; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.image-view { display: block; flex: none; image-rendering: pixelated; box-shadow: 0 0 0 1px var(--line2); }
 
 #bottom { grid-area: bottom; position: relative; display: flex; flex-direction: column; min-height: 0; background: var(--panel); border-top: 1px solid var(--line); }
 #panelResize { position: absolute; left: 0; right: 0; top: -3px; height: 6px; cursor: ns-resize; z-index: 5; }
@@ -641,3 +647,18 @@ pre.diff .del { color: var(--bad); }
 .rel-graph { flex: 1; min-height: 380px; border: 1px solid var(--line); border-radius: 6px; background: #0d0f13; }
 .rel-ginfo { display: flex; align-items: center; gap: 8px; min-height: 28px; font-size: 12.5px; color: var(--dim); }
 .rel-ginfo .spacer { flex: 1; }
+
+/* An item's files under its row in the library list (Script mode only; panels.js). */
+.lib-twist { flex: none; width: 16px; align-self: stretch; margin: 0 -4px 0 -6px; background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 11px; transition: transform .12s; }
+.lib-twist:hover { color: var(--text); }
+.lib-row.open .lib-twist { transform: rotate(90deg); color: var(--accent); }
+#app:not(.deep) .lib-twist, #app:not(.deep) .lib-files { display: none; }
+.lib-files { margin: 0 6px 6px 22px; padding: 4px 0 6px; border-left: 1px solid var(--line2); font-size: 12px; }
+.lf-head { padding: 6px 10px 2px; color: var(--faint); font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; }
+.lf-row { display: flex; align-items: center; gap: 6px; padding: 2px 10px; cursor: pointer; white-space: nowrap; min-width: 0; }
+.lf-row:hover { background: var(--panel2); }
+.lf-name { color: var(--text); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.lf-note { color: var(--faint); font-size: 11px; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.x-ext.part { color: var(--accent); background: var(--panel3); }
+.lf-more, .lf-empty { display: block; background: none; border: 0; color: var(--dim); font-size: 11.5px; padding: 2px 10px; cursor: pointer; }
+.lf-more:hover { color: var(--text); }

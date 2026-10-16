@@ -805,24 +805,131 @@ window.MS = window.MS || {};
 		ide.editor.focus();
 	}
 
+	// A picture in a tab: zoom with the wheel (at the cursor), the buttons or + − 0 1, drag to move it, and the pixel under the cursor.
+	const IMAGE_ZOOMS = [0.25, 0.5, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64];
+
 	function showImage(tab) {
 		const host = $('imageHost');
 		host.innerHTML = '';
-		const info = el('div', { className: 'image-info', textContent: tab.path });
 		const canvas = el('canvas', { className: 'image-view' });
-		host.append(canvas, info);
-		app.images.get(tab.path).then((img) => {
+		const holder = el('div', { className: 'image-holder' }, canvas);
+		const stage = el('div', { className: 'image-stage', tabIndex: 0 }, holder);
+		const zoomText = el('span', { className: 'image-zoom' });
+		const where = el('span', { className: 'image-where' });
+		const info = el('span', { className: 'image-info', textContent: tab.path });
+		const btn = (text, title, action) => el('button', { className: 'ico-btn', textContent: text, title, onclick: action });
+		const tools = el('div', { className: 'image-tools' },
+			btn('−', 'Zoom out (−, or the wheel)', () => step(-1)),
+			zoomText,
+			btn('+', 'Zoom in (+, or the wheel)', () => step(1)),
+			btn('Fit', 'Fit in the window (0)', () => fit()),
+			btn('1:1', 'Actual size (1)', () => setZoom(1)),
+			el('span', { className: 'ct-sep' }),
+			info,
+			el('span', { className: 'spacer' }),
+			where);
+		host.append(tools, stage);
+		let img = null;
+
+		// Zooms keeping the picture's point under (x, y) in the stage where it is; without a point, about the middle.
+		function setZoom(zoom, x, y) {
 			if (!img) {
+				return;
+			}
+			zoom = Math.max(IMAGE_ZOOMS[0], Math.min(IMAGE_ZOOMS[IMAGE_ZOOMS.length - 1], zoom));
+			const old = tab.zoom || zoom;
+			const ax = x === undefined ? stage.clientWidth / 2 : x;
+			const ay = y === undefined ? stage.clientHeight / 2 : y;
+			const r = canvas.getBoundingClientRect();
+			const s = stage.getBoundingClientRect();
+			const px = (stage.scrollLeft + ax - (r.left - s.left + stage.scrollLeft)) / old;
+			const py = (stage.scrollTop + ay - (r.top - s.top + stage.scrollTop)) / old;
+			tab.zoom = zoom;
+			canvas.style.width = img.width * zoom + 'px';
+			canvas.style.height = img.height * zoom + 'px';
+			const r2 = canvas.getBoundingClientRect();
+			stage.scrollLeft += r2.left - s.left + px * zoom - ax;
+			stage.scrollTop += r2.top - s.top + py * zoom - ay;
+			zoomText.textContent = (zoom < 1 ? Math.round(zoom * 100) + '%' : zoom + '×');
+		}
+
+		function step(dir, x, y) {
+			const z = tab.zoom || 1;
+			const next = dir > 0 ? IMAGE_ZOOMS.find((v) => v > z + 1e-6) : [...IMAGE_ZOOMS].reverse().find((v) => v < z - 1e-6);
+			if (next) {
+				setZoom(next, x, y);
+			}
+		}
+
+		function fit() {
+			if (!img) {
+				return;
+			}
+			const room = Math.min((stage.clientWidth - 40) / img.width, (stage.clientHeight - 40) / img.height);
+			// Whole steps where it fits (pixels stay square), else the biggest smaller step.
+			const zoom = room >= 1 ? Math.min(64, Math.floor(room)) : [...IMAGE_ZOOMS].reverse().find((v) => v <= room) || IMAGE_ZOOMS[0];
+			setZoom(zoom);
+		}
+
+		stage.addEventListener('wheel', (e) => {
+			e.preventDefault();
+			const s = stage.getBoundingClientRect();
+			step(e.deltaY < 0 ? 1 : -1, e.clientX - s.left, e.clientY - s.top);
+		}, { passive: false });
+		stage.addEventListener('pointerdown', (e) => {
+			if (e.button !== 0 && e.button !== 1) {
+				return;
+			}
+			stage.focus();
+			const start = { x: e.clientX, y: e.clientY, left: stage.scrollLeft, top: stage.scrollTop };
+			stage.setPointerCapture(e.pointerId);
+			stage.classList.add('dragging');
+			const move = (ev) => {
+				stage.scrollLeft = start.left - (ev.clientX - start.x);
+				stage.scrollTop = start.top - (ev.clientY - start.y);
+			};
+			const up = () => {
+				stage.classList.remove('dragging');
+				stage.removeEventListener('pointermove', move);
+				stage.removeEventListener('pointerup', up);
+			};
+			stage.addEventListener('pointermove', move);
+			stage.addEventListener('pointerup', up);
+		});
+		canvas.addEventListener('pointermove', (e) => {
+			const r = canvas.getBoundingClientRect();
+			const x = Math.floor((e.clientX - r.left) / (tab.zoom || 1));
+			const y = Math.floor((e.clientY - r.top) / (tab.zoom || 1));
+			where.textContent = img && x >= 0 && y >= 0 && x < img.width && y < img.height ? 'x ' + x + ', y ' + y : '';
+		});
+		canvas.addEventListener('pointerleave', () => (where.textContent = ''));
+		stage.addEventListener('keydown', (e) => {
+			const keys = { '+': () => step(1), '=': () => step(1), '-': () => step(-1), '_': () => step(-1), '0': fit, '1': () => setZoom(1) };
+			if (keys[e.key] && !e.ctrlKey && !e.metaKey && !e.altKey) {
+				e.preventDefault();
+				keys[e.key]();
+			}
+		});
+
+		app.images.get(tab.path).then((picture) => {
+			if (!picture) {
 				info.textContent = tab.path + ' (couldn\'t read it)';
 				return;
 			}
-			const scale = Math.max(1, Math.min(8, Math.floor(Math.min((host.clientWidth - 40) / img.width, (host.clientHeight - 60) / img.height))));
-			canvas.width = img.width * scale;
-			canvas.height = img.height * scale;
+			img = picture;
+			canvas.width = img.width;
+			canvas.height = img.height;
 			const ctx = canvas.getContext('2d');
 			ctx.imageSmoothingEnabled = false;
-			ctx.drawImage(img.canvas || img, 0, 0, canvas.width, canvas.height);
-			info.textContent = tab.path + ' · ' + img.width + '×' + img.height + ' · shown ' + scale + '×';
+			ctx.drawImage(img.canvas || img, 0, 0);
+			info.textContent = tab.path + ' · ' + img.width + '×' + img.height;
+			if (tab.zoom) {
+				const z = tab.zoom;
+				tab.zoom = 0;
+				setZoom(z);
+			} else {
+				fit();
+			}
 		});
 	}
 

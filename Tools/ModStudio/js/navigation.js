@@ -13,6 +13,8 @@ window.MS = window.MS || {};
 	const VALUE_BLOCKS = new Set(['Vector', 'ContentFile', 'Material', 'AtomGroup', 'Atom', 'Color', 'Matrix']);
 	const FILE_VALUE = /\.(png|bmp|wav|ogg|flac|mp3|lua|ini)$/i;
 	const FILE_KEY = /^(FilePath|ScriptPath|IncludeFile|SpriteFile|IconFile|BitmapFile|PresetIconFile|ScenePreview|PreviewImage|Icon)$/;
+	// Blocks with a CopyOf that are settings, not parts you would build with (the files list under a preset).
+	const NOT_PARTS = new Set(['LimbPath', 'AtomGroup', 'Atom', 'Material', 'SoundContainer', 'Vector', 'Matrix', 'ContentFile', 'PieMenu', 'PieSlice']);
 
 	function lastLine(node) {
 		let last = node.line;
@@ -277,6 +279,166 @@ window.MS = window.MS || {};
 			lines.push({ text: preset.node.key + ' = ' + preset.node.value, node: preset.node, own: true, label: '' });
 			emit(lib.resolve(preset.node), 1);
 			return { lines };
+		}
+
+		// ---- the files a preset uses ----
+
+		// What the library list shows under a preset in Script mode: {ini, lua, image, sound, parts, named}, each a list of
+		// {path, line, note} (parts: {preset, note}). Inherited lines count: a picture the preset gets from what it copies is its picture.
+		files(preset) {
+			const lib = this.app.lib;
+			const out = { ini: [], lua: [], image: [], sound: [], parts: [], named: [] };
+			const seen = new Set();
+			const add = (kind, item) => {
+				const key = kind + '|' + (item.preset ? item.preset.doc.path + ':' + item.preset.node.line : item.path.toLowerCase() + ':' + (kind === 'ini' ? item.line : ''));
+				if (!seen.has(key)) {
+					seen.add(key);
+					out[kind].push(item);
+				}
+			};
+			add('ini', { path: preset.doc.path, line: preset.node.line, note: 'defined here' });
+			for (const base of this.ancestors(preset)) {
+				add('ini', { path: base.doc.path, line: base.node.line, note: 'copies ' + base.name });
+			}
+			const resolved = lib.resolve(preset.node);
+			const frames = Number(resolved.str('FrameCount', '1')) || 1;
+			const visit = (n, owner) => {
+				if (n.value && FILE_KEY.test(n.key) && FILE_VALUE.test(n.value)) {
+					const path = n.value.trim().replace(/\\/g, '/');
+					const ext = path.split('.').pop().toLowerCase();
+					const where = n.doc ? n.doc.path + ':' + n.line : '';
+					if (ext === 'lua') {
+						add('lua', { path, note: n.key === 'ScriptPath' ? 'runs it' : n.key, where });
+					} else if (ext === 'png' || ext === 'bmp') {
+						// A sprite with frames is X000.png, X001.png...: FilePath names X.png and FrameCount says how many.
+						const count = Number(owner && owner.child && owner.child('FrameCount') ? owner.child('FrameCount').value : owner === preset.node ? frames : 1) || 1;
+						add('image', { path, frames: count, note: (n.parent && n.parent !== owner && n.key === 'FilePath' ? n.parent.key : n.key) + (count > 1 ? ' · ' + count + ' frames' : ''), where });
+					} else if (ext === 'ini') {
+						add('ini', { path, line: 1, note: n.key });
+					} else {
+						add('sound', { path, note: n.parent && n.key === 'FilePath' ? n.parent.key : n.key, where });
+					}
+				}
+				for (const child of n.children) {
+					// A ContentFile or sound block belongs to the block it is in; any other block with lines is a part, with its own owner.
+					visit(child, VALUE_BLOCKS.has(child.value) || child.key === 'FilePath' || /Sound/i.test(child.key) ? owner : child);
+				}
+			};
+			const visitSound = (n, key) => {
+				if (n.value && /\.(wav|ogg|flac|mp3)$/i.test(n.value)) {
+					add('sound', { path: n.value.trim().replace(/\\/g, '/'), note: key, where: n.doc ? n.doc.path + ':' + n.line : '' });
+				}
+				for (const child of n.children) {
+					visitSound(child, key);
+				}
+			};
+			// One value counts for a key that isn't a list (the last: a copy's own SpriteFile replaces the one it copied), every one for lists.
+			const lastOf = new Map();
+			for (const entry of resolved.entries) {
+				lastOf.set(entry.key, entry);
+			}
+			const counted = resolved.entries.filter((e) => MS.LIST_KEYS.has(e.key) || /^Add/.test(e.key) || lastOf.get(e.key) === e);
+			for (const entry of counted) {
+				const n = entry.node;
+				visit(n, n.children.length && !VALUE_BLOCKS.has(n.value) && !/Sound/i.test(entry.key) ? n : preset.node);
+				const copy = n.children.length ? n.child('CopyOf') : null;
+				const target = copy ? lib.find(copy.value, n.value, preset.doc.module) : null;
+				if (!target || target.node === preset.node) {
+					continue;
+				}
+				if (target.cls === 'SoundContainer') {
+					// Sounds are presets of their own: the files are in the one it copies.
+					for (const sound of lib.resolve(target.node).entries) {
+						visitSound(sound.node, entry.key);
+					}
+				} else if (!NOT_PARTS.has(target.cls) && !/Wound|Gib|Effect|Emission|Screen/i.test(entry.key)) {
+					add('parts', { preset: target, note: entry.key });
+				}
+			}
+			const named = new Set();
+			for (const m of this.luaMentions(preset.name, 40)) {
+				if (!named.has(m.path) && named.size < 10) {
+					named.add(m.path);
+					add('named', { path: m.path, line: m.line, note: 'names it' });
+				}
+			}
+			return out;
+		}
+
+		// The preset a line belongs to: the top-level preset whose block it is in.
+		ownerPreset(node) {
+			if (!this.ensure()) {
+				return null;
+			}
+			for (let n = node; n; n = n.parent) {
+				const p = this.presetOfNode.get(n);
+				if (p && p.topLevel !== false) {
+					return p;
+				}
+			}
+			return null;
+		}
+
+		// Presets like this one: what copies it or copies the same thing, and what runs the same scripts, uses the same parts or the
+		// same pictures. Most in common first: [{preset, why: [reasons]}]. files is files(preset).
+		related(preset, files, limit) {
+			if (!this.ensure()) {
+				return [];
+			}
+			const found = new Map(); // preset -> Set of reasons
+			// Like for like: units with units, items with items (an arm that copies this unit's arm isn't a related unit).
+			const KINDS = [['AHuman', 'ACrab', 'Actor'], ['ACDropShip', 'ACRocket', 'ACraft'], ['HDFirearm', 'HeldDevice', 'TDExplosive', 'ThrownDevice']];
+			const kindOf = (cls) => KINDS.findIndex((k) => k.includes(cls));
+			const sameKind = (p) => (kindOf(preset.cls) >= 0 ? kindOf(p.cls) === kindOf(preset.cls) : p.cls === preset.cls);
+			const note = (p, why) => {
+				if (!p || p === preset || p.node === preset.node || !sameKind(p)) {
+					return;
+				}
+				if (!found.has(p)) {
+					found.set(p, new Set());
+				}
+				found.get(p).add(why);
+			};
+			for (const d of this.derived(preset)) {
+				note(d, 'copies it');
+			}
+			const base = this.base(preset);
+			if (base) {
+				note(base, 'it copies this');
+				for (const d of this.derived(base)) {
+					note(d, 'copies ' + base.name + ' too');
+				}
+			}
+			const users = (path) => this.fileUsers.get(path.replace(/\\/g, '/').toLowerCase()) || [];
+			for (const s of files.lua) {
+				for (const n of users(s.path)) {
+					note(this.ownerPreset(n), 'runs ' + s.path.split('/').pop());
+				}
+			}
+			for (const img of files.image) {
+				for (const n of users(img.path)) {
+					note(this.ownerPreset(n), 'same picture ' + img.path.split('/').pop());
+				}
+			}
+			for (const part of files.parts) {
+				for (const n of this.uses(part.preset)) {
+					note(this.ownerPreset(n), 'uses ' + part.preset.name);
+				}
+			}
+			// A thing few presets share says more than one nearly every unit has (HumanAI.lua): each reason counts 1 / how many share it,
+			// and copying (or being copied by) it counts most.
+			const shared = new Map();
+			for (const why of found.values()) {
+				for (const w of why) {
+					shared.set(w, (shared.get(w) || 0) + 1);
+				}
+			}
+			const score = (why) => why.reduce((sum, w) => sum + (/^copies it$|^it copies this$/.test(w) ? 2 : 1 / shared.get(w)), 0);
+			const mine = preset.module.toLowerCase();
+			return [...found.entries()]
+				.map(([p, why]) => ({ preset: p, why: [...why].sort((a, b) => shared.get(a) - shared.get(b)), score: score([...why]) }))
+				.sort((a, b) => b.score - a.score || (b.preset.module.toLowerCase() === mine) - (a.preset.module.toLowerCase() === mine) || a.preset.name.localeCompare(b.preset.name))
+				.slice(0, limit || 60);
 		}
 
 		// ---- the relationship graph ----

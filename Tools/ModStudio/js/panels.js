@@ -339,7 +339,15 @@ window.MS = window.MS || {};
 			txt.innerHTML = '<div class="name"></div><div class="meta"></div>';
 			txt.firstChild.textContent = p.name;
 			txt.lastChild.textContent = p.cls + ' · ' + p.doc.path.split('/').slice(1).join('/');
-			row.append(canvas, txt);
+			const twist = document.createElement('button');
+			twist.className = 'lib-twist';
+			twist.textContent = '▸';
+			twist.title = 'Its files: the INI that makes it, its scripts, pictures, sounds and parts';
+			twist.onclick = (e) => {
+				e.stopPropagation();
+				toggleFiles(row);
+			};
+			row.append(twist, canvas, txt);
 			if (tab === 'units' || tab === 'craft') {
 				row.onclick = () => app.openActor(p);
 				row.title = 'Open ' + p.name;
@@ -384,7 +392,149 @@ window.MS = window.MS || {};
 			more.textContent = (presets.length - limit) + ' more: search to narrow the list.';
 			list.append(more);
 		}
+		if (openFiles) {
+			const row = [...list.querySelectorAll('.lib-row')].find((r) => presetKey(r._preset) === openFiles);
+			if (row) {
+				toggleFiles(row, true);
+			}
+		}
 		markLibrary();
+	}
+
+	// ---- an item's files, under its row (Script mode) ----
+
+	let openFiles = null; // the preset whose files are showing; one at a time
+	const presetKey = (p) => p.doc.path + ':' + p.node.line;
+
+	function toggleFiles(row, keepOpen) {
+		const list = $('libList');
+		const shown = list.querySelector('.lib-files');
+		const shownRow = shown && shown.previousElementSibling;
+		if (shown) {
+			shown.remove();
+			shownRow.classList.remove('open');
+		}
+		if (shownRow === row && !keepOpen) {
+			openFiles = null;
+			return;
+		}
+		openFiles = presetKey(row._preset);
+		row.classList.add('open');
+		row.after(filesBox(row._preset));
+	}
+
+	const FILE_GROUPS = [
+		['ini', 'INI'],
+		['lua', 'Scripts it runs'],
+		['image', 'Pictures'],
+		['sound', 'Sounds'],
+		['parts', 'Parts'],
+		['related', 'Related'],
+		['named', 'Scripts that name it'],
+	];
+
+	function filesBox(preset) {
+		const box = document.createElement('div');
+		box.className = 'lib-files';
+		const files = MS.nav ? MS.nav.files(preset) : null;
+		if (!files) {
+			box.innerHTML = '<div class="lf-empty">Studio is still reading the game.</div>';
+			return box;
+		}
+		files.related = MS.nav.related(preset, files);
+		for (const [kind, title] of FILE_GROUPS) {
+			const items = files[kind];
+			if (!items.length) {
+				continue;
+			}
+			const head = document.createElement('div');
+			head.className = 'lf-head';
+			head.textContent = title;
+			box.append(head);
+			const SHOWN = 12;
+			const names = new Map();
+			for (const item of items) {
+				const name = item.path ? item.path.split('/').pop().toLowerCase() : '';
+				names.set(name, (names.get(name) || 0) + 1);
+			}
+			// Two files with one name (Pistol.png in two folders) show their folder too.
+			const rows = items.map((item) => fileRow(kind, item, item.path && names.get(item.path.split('/').pop().toLowerCase()) > 1));
+			box.append(...rows.slice(0, SHOWN));
+			if (rows.length > SHOWN) {
+				const more = document.createElement('button');
+				more.className = 'lf-more';
+				more.textContent = (rows.length - SHOWN) + ' more';
+				more.onclick = (e) => {
+					e.stopPropagation();
+					more.replaceWith(...rows.slice(SHOWN));
+				};
+				box.append(more);
+			}
+		}
+		return box;
+	}
+
+	function fileRow(kind, item, withFolder) {
+		const row = document.createElement('div');
+		row.className = 'lf-row';
+		const icon = document.createElement('span');
+		const name = document.createElement('span');
+		name.className = 'lf-name';
+		const note = document.createElement('span');
+		note.className = 'lf-note';
+		if (kind === 'related') {
+			const p = item.preset;
+			const designable = Object.values(TAB_CLASSES).some((set) => set.has(p.cls));
+			icon.className = 'x-ext part';
+			icon.textContent = '≈';
+			name.textContent = p.name;
+			note.textContent = item.why.join(', ');
+			row.title = p.cls + ' · ' + p.doc.path + ':' + p.node.line + '\n' + item.why.join('\n') + '\n' + (designable ? 'Click to open it in the designer' : 'Click to open its lines');
+			row.onclick = () => {
+				if (designable) {
+					app.openActor(p);
+					MS.ide.activate(MS.ide.tabs.find((t) => t.kind === 'designer') || MS.ide.active);
+				} else {
+					MS.ide.openFile(p.doc.path, p.node.line);
+				}
+			};
+		} else if (kind === 'parts') {
+			icon.className = 'x-ext part';
+			icon.textContent = '◆';
+			name.textContent = item.preset.name;
+			note.textContent = item.note;
+			row.title = item.preset.cls + ' in ' + item.preset.doc.path + ':' + item.preset.node.line + ' (click to open its lines)';
+			row.onclick = () => MS.ide.openFile(item.preset.doc.path, item.preset.node.line);
+		} else {
+			const ext = item.path.split('.').pop().toLowerCase();
+			icon.className = 'x-ext ' + ext;
+			icon.textContent = ext;
+			name.textContent = item.path.split('/').slice(withFolder ? -2 : -1).join('/') + (item.line > 1 ? ':' + item.line : '');
+			note.textContent = item.note;
+			row.title = item.path + (item.line > 1 ? ':' + item.line : '') + (item.where ? '\nNamed in ' + item.where : '');
+			row.onclick = () => openListedFile(kind, item);
+		}
+		row.append(icon, name, note);
+		return row;
+	}
+
+	async function openListedFile(kind, item) {
+		if (kind === 'sound') {
+			try {
+				const audio = new Audio(URL.createObjectURL(await app.fs.readFile(item.path)));
+				await audio.play();
+				app.status('Playing ' + item.path + '.');
+			} catch (e) {
+				app.toast('Couldn\'t play ' + item.path + ': ' + e.message, 'bad');
+			}
+			return;
+		}
+		let path = item.path;
+		if (kind === 'image' && !(await app.fs.exists(path))) {
+			// Frames are X000.png, X001.png...: open the first.
+			path = MS.Images.framePaths(path, Math.max(2, item.frames || 2))[0];
+		}
+		MS.ide.openFile(path, item.line);
 	}
 
 	function markLibrary() {
