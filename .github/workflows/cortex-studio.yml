@@ -52,6 +52,12 @@ jobs:
         working-directory: Tools/CortexStudio
         run: npx --yes @tauri-apps/cli@2 build
 
+      - name: Smoke test the run path (macOS and Linux)
+        if: runner.os != 'Windows'
+        working-directory: Tools/CortexStudio
+        # Starts the app with no window on a tiny game folder, the way dev.sh does, and asks it for /api/info and the page.
+        run: sh smoke.sh src-tauri/target/release/cortex-studio
+
       - uses: actions/upload-artifact@v4
         with:
           name: CortexStudio-${{ matrix.name }}

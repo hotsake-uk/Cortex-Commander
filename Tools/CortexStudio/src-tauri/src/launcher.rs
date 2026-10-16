@@ -159,7 +159,8 @@ fn exe_path(slot: &Path, configuration: &str) -> PathBuf {
 			_ => "Cortex Command.exe",
 		})
 	} else {
-		slot.join(format!("build-{configuration}")).join(if configuration == "debug" { "CortexCommand_debug" } else { "CortexCommand" })
+		// meson names the program CortexCommand for every build type; the build folder tells them apart.
+		slot.join(format!("build-{configuration}")).join("CortexCommand")
 	}
 }
 

@@ -4,9 +4,39 @@
 #
 #   ./dev.sh [game folder] [--bridge]
 #
-# Without a game folder it uses this checkout.
+# Without a game folder it uses this checkout. On macOS you can also double-click "Run Cortex Studio.command".
 here=$(cd "$(dirname "$0")" && pwd)
 game="$here/../.."
 case "$1" in --*|"") ;; *) game="$1"; shift ;; esac
+
+# A terminal opened before Rust was installed, or a double-click, may not have cargo on its PATH yet.
+if ! command -v cargo >/dev/null 2>&1 && [ -f "$HOME/.cargo/env" ]; then
+	. "$HOME/.cargo/env"
+fi
+if ! command -v cargo >/dev/null 2>&1; then
+	echo "Rust isn't installed (or this terminal doesn't know about it yet). Install it from https://rustup.rs, then open a new terminal." >&2
+	exit 1
+fi
+
+case "$(uname -s)" in
+	Darwin)
+		if ! xcode-select -p >/dev/null 2>&1; then
+			echo "Xcode's command line tools are missing. Install them with:  xcode-select --install" >&2
+			exit 1
+		fi
+		;;
+	Linux)
+		if command -v pkg-config >/dev/null 2>&1 && ! pkg-config --exists webkit2gtk-4.1 2>/dev/null; then
+			echo "The WebKitGTK development files look to be missing. On Debian or Ubuntu:" >&2
+			echo "  sudo apt install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev" >&2
+		fi
+		;;
+esac
+
+if [ ! -d "$game/Data/Base.rte" ]; then
+	echo "$game has no Data/Base.rte, so it isn't a game folder. Pass the folder that has Data/Base.rte inside:  ./dev.sh /path/to/game" >&2
+	exit 1
+fi
+
 export CORTEX_STUDIO_PAGE="$here/../ModStudio"
 exec cargo run --manifest-path "$here/src-tauri/Cargo.toml" -- --game-dir "$game" "$@"

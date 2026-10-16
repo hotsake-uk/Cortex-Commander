@@ -92,7 +92,27 @@ fn show_console() {
 #[cfg(not(windows))]
 fn show_console() {}
 
+/// An app opened from the Finder gets a bare PATH, without Homebrew, where meson, ninja and gcc-13 are. Add its folders so building
+/// the game and the setup check find them, as they do when Studio is started from a terminal.
+#[cfg(target_os = "macos")]
+fn add_tool_paths() {
+	let mut paths: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
+	for extra in ["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin", "/usr/local/sbin"] {
+		let dir = PathBuf::from(extra);
+		if dir.is_dir() && !paths.contains(&dir) {
+			paths.push(dir);
+		}
+	}
+	if let Ok(joined) = std::env::join_paths(paths) {
+		std::env::set_var("PATH", joined);
+	}
+}
+
+#[cfg(not(target_os = "macos"))]
+fn add_tool_paths() {}
+
 fn main() {
+	add_tool_paths();
 	let mut given = None;
 	let mut headless = false;
 	let mut watch = true;
