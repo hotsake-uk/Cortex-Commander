@@ -15,6 +15,7 @@ import './navigation.js';
 import './relations.js';
 import './ide.js';
 import './live.js';
+import './profiler.js';
 import './history.js';
 import './app.js';
 import './layout.js';

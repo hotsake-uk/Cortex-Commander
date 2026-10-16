@@ -81,6 +81,14 @@ namespace RTE {
 		/// Gets the average of the MSPF reading buffer, calculated each frame.
 		/// @return The average value of the MSPF reading buffer.
 		float GetMSPFAverage() const { return m_MSPFAverage; }
+
+		/// Gets the average of the MSPU reading buffer: the milliseconds a frame spends updating (all its sim updates).
+		/// @return The average value of the MSPU reading buffer.
+		float GetMSPUAverage() const { return m_MSPUAverage; }
+
+		/// Gets the average of the MSPD reading buffer: the milliseconds a frame spends drawing.
+		/// @return The average value of the MSPD reading buffer.
+		float GetMSPDAverage() const { return m_MSPDAverage; }
 #pragma endregion
 
 #pragma region Performance Counter Handling

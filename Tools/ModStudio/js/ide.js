@@ -1574,7 +1574,7 @@ window.MS = window.MS || {};
 		for (const b of document.querySelectorAll('#bottomTabs button[data-panel]')) {
 			b.classList.toggle('sel', b.dataset.panel === panel);
 		}
-		for (const id of ['console', 'problems', 'watch']) {
+		for (const id of ['console', 'problems', 'watch', 'profiler']) {
 			$(id + 'Pane').hidden = id !== panel;
 		}
 		if (!keepHidden && $('app').classList.contains('no-panel')) {
@@ -1594,6 +1594,9 @@ window.MS = window.MS || {};
 		}
 		if (panel === 'watch') {
 			pollWatch();
+		}
+		if (panel === 'profiler') {
+			MS.profiler.show();
 		}
 		app.writeLocal('ms.panel', panel);
 	};

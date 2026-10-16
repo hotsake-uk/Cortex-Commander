@@ -52,6 +52,12 @@ namespace RTE {
 		/// reloading INI files changed on disk (the last unit from Studio comes back with the change), and running Lua typed in Studio's console. Also writes the values scripts watch to ModStudio/Watch.ini. Called every frame.
 		static void UpdateScripts();
 
+		/// In a game started with -modstudio, adds up each sim update's Lua time per script and, twice a second, writes ModStudio/Profile.ini for
+		/// Mod Studio's profiler: frame, update and draw milliseconds, how many actors, particles and MOIDs there are, the named timings
+		/// (PerformanceMan's live timings) and each script's milliseconds and calls a sim update. Call once a sim update, before the script
+		/// timings are cleared.
+		static void UpdateProfile();
+
 		/// Called for every line the console prints. In a game started with -modstudio the line also goes to ModStudio/Console.log, where Studio shows
 		/// it, and points at the line of any script error.
 		/// @param line The line printed.
@@ -104,5 +110,6 @@ namespace RTE {
 		static std::chrono::steady_clock::time_point s_LastScriptCheck; //!< When Scripts.ini was last looked at.
 		static std::filesystem::file_time_type s_ScriptsWriteTime; //!< When the last script request handled was written.
 		static bool s_ScriptsLookedAt; //!< Whether Scripts.ini has been looked at yet. A request left from before the game started is skipped.
+		static std::chrono::steady_clock::time_point s_LastProfileWrite; //!< When Profile.ini was last written.
 	};
 } // namespace RTE

@@ -642,6 +642,7 @@ void RunGameLoop() {
 				Sandbox::Update();
 				ModStudioPreview::UpdateInGame();
 				ModStudioPreview::UpdateScripts();
+				ModStudioPreview::UpdateProfile();
 				logStages.Next("Sim: threat memory");
 				ThreatMemory::Update();
 				logStages.Next("Sim: smoke grid");

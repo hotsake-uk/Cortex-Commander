@@ -9,7 +9,9 @@
 #include "GAScripted.h"
 #include "HeldDevice.h"
 #include "LuaMan.h"
+#include "AudioMan.h"
 #include "MovableMan.h"
+#include "PerformanceMan.h"
 #include "PresetMan.h"
 #include "RTEError.h"
 #include "Sandbox.h"
@@ -21,6 +23,7 @@
 #include <deque>
 #include <map>
 #include <mutex>
+#include <unordered_map>
 
 using namespace RTE;
 
@@ -31,6 +34,7 @@ std::filesystem::file_time_type ModStudioPreview::s_LastWriteTime = {};
 std::chrono::steady_clock::time_point ModStudioPreview::s_LastScriptCheck = {};
 std::filesystem::file_time_type ModStudioPreview::s_ScriptsWriteTime = {};
 bool ModStudioPreview::s_ScriptsLookedAt = false;
+std::chrono::steady_clock::time_point ModStudioPreview::s_LastProfileWrite = {};
 ModStudioPreview::Request ModStudioPreview::s_LastRequest = {};
 
 namespace {
@@ -330,6 +334,66 @@ void ModStudioPreview::Live(const std::string& key, const std::string& value) {
 		}
 	}
 	live.Changed = true;
+}
+
+void ModStudioPreview::UpdateProfile() {
+	if (!s_InGame) {
+		return;
+	}
+	struct ScriptTotal {
+		long long Microseconds = 0;
+		long long Calls = 0;
+	};
+	static std::unordered_map<std::string, ScriptTotal> s_Scripts;
+	static int s_Updates = 0;
+	if (!PerformanceMan::LiveTimingsOn()) {
+		PerformanceMan::SetLiveTimings(true); // the named timings, for the profiler's list of where the time goes
+	}
+	// The last sim update's script timings (they're cleared just before the next MovableMan update).
+	for (const auto& [path, timing]: g_LuaMan.GetScriptTimings()) {
+		ScriptTotal& total = s_Scripts[path];
+		total.Microseconds += timing.m_Time;
+		total.Calls += timing.m_CallCount;
+	}
+	++s_Updates;
+
+	const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+	if (now - s_LastProfileWrite < std::chrono::milliseconds(500)) {
+		return;
+	}
+	s_LastProfileWrite = now;
+	std::vector<std::pair<std::string, ScriptTotal>> scripts(s_Scripts.begin(), s_Scripts.end());
+	std::sort(scripts.begin(), scripts.end(), [](const auto& left, const auto& right) { return left.second.Microseconds > right.second.Microseconds; });
+	const double updates = static_cast<double>(std::max(s_Updates, 1));
+	int virtualChannels = 0;
+	int realChannels = 0;
+	g_AudioMan.GetPlayingChannelCount(&virtualChannels, &realChannels);
+
+	std::error_code folderError;
+	std::filesystem::create_directories(StudioFolder(), folderError);
+	std::ofstream profile(StudioFolder() / "Profile.ini", std::ios::trunc);
+	profile << "// Written by the game for Cortex Mod Studio's profiler twice a second. Times are milliseconds; scripts' are a sim update.\n";
+	profile << "Frame = " << g_PerformanceMan.GetMSPFAverage() << '\n';
+	profile << "SimUpdate = " << g_PerformanceMan.GetMSPSUAverage() << '\n';
+	profile << "Update = " << g_PerformanceMan.GetMSPUAverage() << '\n';
+	profile << "Draw = " << g_PerformanceMan.GetMSPDAverage() << '\n';
+	profile << "SimUpdates = " << s_Updates << '\n';
+	profile << "Actors = " << g_MovableMan.GetActorCount() << '\n';
+	profile << "Particles = " << g_MovableMan.GetParticleCount() << '\n';
+	profile << "MOIDs = " << g_MovableMan.GetMOIDCount() << '\n';
+	profile << "SoundChannels = " << realChannels << '\n';
+	for (const auto& [name, ms]: PerformanceMan::GetLiveTimings()) {
+		profile << "Stage = " << name << '\t' << ms << '\n';
+	}
+	int written = 0;
+	for (const auto& [path, total]: scripts) {
+		if (++written > 40) {
+			break;
+		}
+		profile << "Script = " << path << '\t' << static_cast<double>(total.Microseconds) / 1000.0 / updates << '\t' << static_cast<double>(total.Calls) / updates << '\n';
+	}
+	s_Scripts.clear();
+	s_Updates = 0;
 }
 
 void ModStudioPreview::UpdateScripts() {
