@@ -147,6 +147,10 @@ namespace RTE {
 		/// The same, height.
 		int GetSettingsWindowHeight() const;
 
+		/// Gets where to save the window's top left corner on the desktop so the next start opens it there: the window as it is now while it is an ordinary
+		/// window, otherwise the place remembered from before. False when there is none (nothing is saved then).
+		bool GetSettingsWindowPosition(int& x, int& y) const;
+
 		/// Gets whether, during play, the game's resolution follows the window's size, so the view fills the window at any size and shape instead of being scaled with bars around it. The menus keep the settings' resolution.
 		bool GetMatchWindowSize() const { return m_MatchWindowSize; }
 
@@ -343,8 +347,16 @@ namespace RTE {
 		/// Gets the size of the window if it is an ordinary window (see GetSettingsWindowWidth). False otherwise, with the sizes left alone.
 		bool GetOrdinaryWindowSize(int& width, int& height) const;
 
+		/// Whether a window of this size at this desktop position would be on a display, with enough of its title bar showing to grab and drag.
+		static bool PlaceIsOnADisplay(int x, int y, int width);
+
 		int m_SavedWindowWidth = 0; //!< The window width remembered from the last run (Settings.ini's WindowWidth), which the window opens at; 0 for none.
 		int m_SavedWindowHeight = 0; //!< The same, height.
+		int m_SavedWindowX = 0; //!< The desktop position of the window's top left corner remembered from the last run (Settings.ini's WindowX), valid when m_HasSavedWindowPosition.
+		int m_SavedWindowY = 0; //!< The same, Y.
+		bool m_HasSavedWindowPosition = false; //!< Whether both WindowX and WindowY were read.
+		bool m_SavedWindowXRead = false; //!< Whether WindowX was read.
+		bool m_SavedWindowYRead = false; //!< Whether WindowY was read.
 		int m_MenuResX = 0; //!< The resolution set in the settings, which the menus use and which is saved. The game itself may follow the window's size instead.
 		int m_MenuResY = 0; //!< The same, height.
 		float m_MenuResMultiplier = 1.0F; //!< The multiplier at the settings' resolution, which is saved.
