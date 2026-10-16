@@ -4,8 +4,8 @@ A visual editor for Cortex Command units, and a modding IDE around it. Move a un
 and watch it stand, walk, run, crouch and aim. Studio writes the INI for you and can show the unit in the game while you work.
 Script mode adds the mod's files, Lua scripts with autocomplete from the game's own API, the game's console and search.
 
-It is a web page plus a small PowerShell script, with nothing to install: no internet, no packages, no runtime. (The code
-editor, Monaco, and the Lua parser, luaparse, are shipped in `vendor/` with their licences.)
+It is a web page, built with Vite into `dist/`, that the Cortex Studio app (`Tools/CortexStudio`) serves and builds in for you.
+(The code editor, Monaco, and the Lua parser, luaparse, are shipped in `vendor/` with their licences.)
 
 ## Opening it
 
@@ -14,10 +14,9 @@ with the game folder already loaded; keep its small window open while you work, 
 
 The .bat runs `Start-ModStudio.ps1` with Windows' built-in PowerShell: a tiny server on your own computer (localhost only) that
 lets the page read and save the game's files. It's needed because browsers refuse to let a web page open `.ini` files in a
-folder. If the .bat isn't inside a game folder, it asks which game folder to use; `-GameDir <folder>` picks one directly.
-
-Opening `ModStudio.html` straight from disk also works, read-only: you can look at and change units, and **Save** downloads a
-zip of the changed files to unpack into the game folder.
+folder. If the .bat isn't inside a game folder, it asks which game folder to use; `-GameDir <folder>` picks one directly. It
+serves the built page in `dist/`: with Node.js installed, run `npm ci` and `npm run build` in this folder first (the Cortex
+Studio app does this itself).
 
 ## What you can do
 
@@ -36,7 +35,10 @@ zip of the changed files to unpack into the game folder.
 - **Animate**: the pose buttons, Play, the aim slider, Sharp aim and Flip show how the unit moves in game, using the
   unit's own walk paths, limb lengths and arm reach.
 - **Every setting**: All settings lists everything the selected part has (from its own block or inherited), editable, with a filter
-  and **Add a setting** offering every key that presets of its class use. **Discard** throws away unsaved changes.
+  and **Add a setting** offering every key that presets of its class use. **Discard unsaved changes** (in **Save ▾**) throws
+  away unsaved changes.
+- **Panels resize**: drag the edge of the list, the parts and properties panel, the line between the parts and the properties,
+  or the console's top edge. Studio remembers the sizes; double-click an edge for the usual size.
 - **Modules** in the top bar picks which modules (.rte) the lists, files and search show (All, My mods, Base only, or any set).
   Everything is still read, so copies and inheritance across modules keep working.
 - **Undo and redo** everything (Ctrl+Z, Ctrl+Y). Press **?** for all the keys.
@@ -94,7 +96,7 @@ In Script mode:
 - In the Cortex Studio app, **Unlock everything** on the Game screen lifts all of that for the built version: the game's own files
   and every mod are changed in place, and Reset there puts them back.
 - Every version is kept. The first time Studio changes a mod it keeps the mod as it was, then every save or delete is kept too, so
-  **History** in the top bar puts any file back, and **Undo** on the Saved message undoes that save. The Cortex Studio app keeps
+  **History** (in **Save ▾**) puts any file back, and **Undo** on the Saved message undoes that save. The Cortex Studio app keeps
   each mod's history with git (built in, nothing to install) in `CortexStudio/History` in your config folder (`%APPDATA%` on
   Windows); in a browser, Studio keeps copies there instead (the original and the newest 5 of each file).
 
@@ -110,7 +112,7 @@ the held item. Two ways to see it, both started from `Tools\ModStudio` and left 
 - **Test In Sandbox.bat** opens the sandbox (`-modstudio -sandbox [map]`) with the unit as your own sandbox character, the tools put away. Add a map name to use
   another map, for example `"Test In Sandbox.bat" "Ketanot Hills"`.
 
-**◨ Hide list** (L) hides the list on the left, and **◧ Hide view** (V) hides Studio's own picture of the unit, so the parts and properties get the whole window while the game
+**◨ Hide list** (L) and **◧ Hide view** (V), at the bottom left, hide the list on the left and Studio's own picture of the unit, so the parts and properties get the whole window while the game
 shows the unit beside it. Turn on **Live** (next to Preview in game) to send every change as you make it: a drag or a number scrub is sent when you let
 go, an undo, a new held item or another unit straight away.
 
@@ -148,6 +150,8 @@ All scripts are plain classic scripts (no modules), so the page works from `file
 | `js/panels.js` | Library list, parts tree and property inspector. |
 | `js/dialogs.js` | Make a copy, add attachments, pick items, import sprites, help. |
 | `js/app.js` | App state, editing with undo, dragging, saving and the preview request. |
+| `js/layout.js` | Resizable panels (drag a panel's edge, double-click for the usual size) and the Save ▾ menu. |
+| `js/main.js` | The scripts in the order they load: Vite bundles from here (`npm run build`, see `vite.config.js`). |
 | `js/ide.js` | Script mode: tabs, the code editor, files, search, packaging, the game's console and watched values. |
 | `js/lua-intel.js` | Lua completion, hover, signature help, go to definition and checks. |
 | `js/ini-intel.js` | INI completion, hover, go to definition and checks, learned from every file Studio read. |

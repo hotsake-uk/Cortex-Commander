@@ -187,6 +187,12 @@ if ($watcher) { Write-Host 'Watching Data and Mods: scripts and INI files you sa
 Write-Host 'Close this window to stop it.'
 if (-not $NoBrowser) { Start-Process $url }
 
+# The page as Vite builds it (npm run build in this folder makes dist).
+$pageRoot = Join-Path $here 'dist'
+if (-not (Test-Path -LiteralPath (Join-Path $pageRoot 'ModStudio.html'))) {
+	Write-Host "Mod Studio's page isn't built yet. With Node.js installed (nodejs.org), run  npm ci  then  npm run build  in $here." -ForegroundColor Yellow
+}
+
 $contentTypes = @{
 	'.html' = 'text/html; charset=utf-8'; '.js' = 'text/javascript; charset=utf-8'; '.css' = 'text/css; charset=utf-8'
 	'.png' = 'image/png'; '.svg' = 'image/svg+xml'; '.ico' = 'image/x-icon'; '.json' = 'application/json'
@@ -428,7 +434,7 @@ function Invoke-Api($context, [string]$action) {
 function Send-Static($context) {
 	$relative = [Uri]::UnescapeDataString($context.Request.Url.AbsolutePath)
 	if ($relative -eq '/') { $relative = '/ModStudio.html' }
-	$full = Resolve-Inside $here $relative
+	$full = Resolve-Inside $pageRoot $relative
 	if (-not $full -or -not [System.IO.File]::Exists($full)) { Send-Text $context.Response 404 'Not found.'; return }
 	$type = $contentTypes[[System.IO.Path]::GetExtension($full).ToLowerInvariant()]
 	if (-not $type) { $type = 'application/octet-stream' }

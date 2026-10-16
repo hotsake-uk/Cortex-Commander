@@ -76,14 +76,15 @@ Installers aren't code-signed yet, so Windows SmartScreen and macOS Gatekeeper w
    `stable-x86_64-pc-windows-msvc` toolchain. Open a new terminal afterwards so `cargo` is on the PATH.
 2. Install **Visual Studio 2022** (or its Build Tools) with the **Desktop development with C++** workload. You already have it if
    you build the game.
-3. Install **Node.js** from [nodejs.org](https://nodejs.org) (only needed to build the installers).
+3. Install **Node.js** from [nodejs.org](https://nodejs.org): Mod Studio's page is built with it (Vite), and the build does that for
+   you.
 4. WebView2, which shows the window, comes with Windows 10 and 11.
 
 ### Windows: every day
 
 - **Run Cortex Studio.bat** builds the app from source and opens it on the game folder it used last (this checkout the first time). The first build takes a few minutes and later
-  ones take seconds. Mod Studio's page is served straight from `Tools\ModStudio`, so after editing the page press **Ctrl+R** or
-  **F5** in the app to see it. After changing the Rust code in `src-tauri`, close the app and run the .bat again.
+  ones take seconds. Mod Studio's page is built into `Tools\ModStudio\dist` and rebuilt as you edit it, so after editing the page
+  press **Ctrl+R** or **F5** in the app to see it. After changing the Rust code in `src-tauri`, close the app and run the .bat again.
   - `"Run Cortex Studio.bat" -GameDir D:\Games\Cortex` uses another game folder.
   - `"Run Cortex Studio.bat" -Bridge` runs only the file bridge, with no window, and prints Studio's address.
 - **Build Cortex Studio.bat** builds the release app with the page built in, plus the `.msi` and setup `.exe` installers, and
@@ -91,7 +92,7 @@ Installers aren't code-signed yet, so Windows SmartScreen and macOS Gatekeeper w
 
 ### macOS and Linux
 
-Install Rust from [rustup.rs](https://rustup.rs) and Node.js (Node is only needed for the installers).
+Install Rust from [rustup.rs](https://rustup.rs) and Node.js (Mod Studio's page is built with it).
 
 - **macOS:** `xcode-select --install` (Xcode's command line tools). To build and play the game from Studio's Game screen you also
   need Homebrew's tools: the Game screen's setup check lists what is missing and shows the `brew install` command for it.

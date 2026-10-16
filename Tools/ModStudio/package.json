@@ -1,0 +1,13 @@
+{
+	"name": "cortex-mod-studio",
+	"private": true,
+	"type": "module",
+	"description": "Mod Studio's page. `npm run build` makes dist/, which Cortex Studio serves (and builds into the app).",
+	"scripts": {
+		"build": "vite build",
+		"watch": "vite build --watch"
+	},
+	"devDependencies": {
+		"vite": "8.3.2"
+	}
+}

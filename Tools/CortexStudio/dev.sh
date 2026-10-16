@@ -1,6 +1,7 @@
 #!/bin/sh
-# Runs Cortex Studio from source for working on it: a debug build of the app, serving Mod Studio's page straight from
-# Tools/ModStudio, so a change to the page shows when you reload the window; a change to the Rust side needs this run again.
+# Runs Cortex Studio from source for working on it: a debug build of the app, serving Mod Studio's page from Tools/ModStudio/dist,
+# which Vite rebuilds whenever a file in Tools/ModStudio changes, so a change to the page shows when you reload the window; a change
+# to the Rust side needs this run again. Needs Node.js for Vite (the first run installs it into Tools/ModStudio/node_modules).
 #
 #   ./dev.sh [game folder] [--bridge]
 #
@@ -39,8 +40,18 @@ if [ -n "$game" ] && [ ! -d "$game/Data/Base.rte" ]; then
 	exit 1
 fi
 
-export CORTEX_STUDIO_PAGE="$here/../ModStudio"
+if ! command -v npm >/dev/null 2>&1; then
+	echo "Node.js isn't installed (Studio's page is built with it). Install it from https://nodejs.org, then open a new terminal." >&2
+	exit 1
+fi
+page="$here/../ModStudio"
+# cargo's build script builds the page once; Vite then rebuilds it on every change while Studio runs.
+(cd "$page" && { [ -d node_modules/vite ] || npm ci --no-audit --no-fund; } && exec npm run watch --silent -- --logLevel warn) &
+watcher=$!
+trap 'kill $watcher 2>/dev/null' EXIT INT TERM
+
+export CORTEX_STUDIO_PAGE="$page/dist"
 if [ -n "$game" ]; then
 	set -- --game-dir "$game" "$@"
 fi
-exec cargo run --manifest-path "$here/src-tauri/Cargo.toml" -- "$@"
+cargo run --manifest-path "$here/src-tauri/Cargo.toml" -- "$@"
