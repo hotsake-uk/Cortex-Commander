@@ -1143,6 +1143,8 @@ window.MS = window.MS || {};
 				$('btnLib').click();
 			} else if (e.key.toLowerCase() === 'v' && !ctrl) {
 				$('btnView').click();
+			} else if (e.key.toLowerCase() === 'k' && !ctrl) {
+				document.querySelector('#viewOptions [data-opt=skeleton]').click();
 			} else if (e.key.toLowerCase() === 'i' && !ctrl) {
 				app.isolate = !app.isolate;
 				app.requestDraw();

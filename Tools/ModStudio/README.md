@@ -34,6 +34,10 @@ Studio app does this itself).
   and turn like attachments.
 - **Animate**: the pose buttons, Play, the aim slider, Sharp aim and Flip show how the unit moves in game, using the
   unit's own walk paths, limb lengths and arm reach.
+- **Skeleton** (K, or the button above the view) shows how the unit is built: each part's bone from its parent to the joint where
+  it attaches and turns, each part's origin, where hands and ankles reach, and its name. The pictures fade so the bones read. The
+  box beside it says what each mark means and gives the selected part's ParentOffset, JointOffset and SpriteOffset in plain
+  words; **How a unit is put together…** explains the idea and lists the whole unit as a tree.
 - **Every setting**: All settings lists everything the selected part has (from its own block or inherited), editable, with a filter
   and **Add a setting** offering every key that presets of its class use. **Discard unsaved changes** (in **Save ▾**) throws
   away unsaved changes.

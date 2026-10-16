@@ -5,6 +5,7 @@ import './library.js';
 import './images.js';
 import './rig.js';
 import './viewport.js';
+import './skeleton.js';
 import './panels.js';
 import './dialogs.js';
 import './wizard.js';
