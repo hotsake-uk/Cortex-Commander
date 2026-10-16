@@ -24,7 +24,9 @@
 #include "System.h"
 
 #include <algorithm>
+#include <cmath>
 #include <fstream>
+#include <iterator>
 #include <deque>
 #include <map>
 #include <mutex>
