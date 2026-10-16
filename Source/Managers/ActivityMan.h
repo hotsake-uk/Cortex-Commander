@@ -107,6 +107,14 @@ namespace RTE {
 
 		/// Sets the name of the editor to launch directly into.
 		/// @param editorName
+		/// Sets the game to start straight in the sandbox (the -sandbox launch argument).
+		/// @param sceneName The map to open, or empty for the sandbox's own.
+		void SetSandboxToLaunch(const std::string& sceneName) {
+			m_SandboxSceneToLaunch = sceneName;
+			m_LaunchIntoSandbox = true;
+			m_LaunchIntoActivity = true;
+		}
+
 		void SetEditorToLaunch(const std::string_view& editorName) {
 			if (!editorName.empty()) {
 				m_EditorToLaunch = editorName;
@@ -228,6 +236,8 @@ namespace RTE {
 		bool m_SkipPauseMenuWhenPausingActivity; //!< Whether the pause menu should be skipped when the game simulation is paused.
 
 		bool m_LaunchIntoActivity; //!< Whether to skip the intro and main menu and launch directly into the set default Activity instead.
+		bool m_LaunchIntoSandbox = false; //!< Whether that Activity is the sandbox, started by SetStartSandboxActivity.
+		std::string m_SandboxSceneToLaunch; //!< The map the sandbox opens on, or empty for its own.
 		bool m_LaunchIntoEditor; //!< Whether to skip the intro and main menu and launch directly into the set editor Activity instead.
 		std::string_view m_EditorToLaunch; //!< The name of the editor Activity to launch directly into.
 

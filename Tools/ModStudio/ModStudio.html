@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!-- Bump ?v= on the files below when they change, so browsers don't keep running an old copy. -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cortex Mod Studio</title>
+<link rel="stylesheet" href="studio.css?v=6">
+</head>
+<body>
+<div id="app">
+	<header id="topbar">
+		<div class="brand"><span class="mark">◆</span> Cortex <b>Mod Studio</b></div>
+		<div class="doc-title" id="docTitle"></div>
+		<div class="spacer"></div>
+		<button class="tb" id="btnUndo" title="Undo (Ctrl+Z)" disabled>↶ Undo</button>
+		<button class="tb" id="btnRedo" title="Redo (Ctrl+Y)" disabled>↷ Redo</button>
+		<span class="sep"></span>
+		<button class="tb" id="btnCopy" title="Make your own unit from this one, in your mod" disabled>Make my own copy</button>
+		<button class="tb" id="btnSave" title="Save changed files (Ctrl+S)" disabled>Save</button>
+		<button class="tb primary" id="btnPreview" title="Save, then show this unit in the game's Actor Editor" disabled>▶ Preview in game</button>
+		<button class="tb icon" id="btnHelp" title="How to use Mod Studio">?</button>
+	</header>
+
+	<aside id="left" class="panel">
+		<div class="tabs" id="libTabs">
+			<button data-tab="units" class="sel">Units</button>
+			<button data-tab="attachments">Attachments</button>
+			<button data-tab="items">Items</button>
+		</div>
+		<div class="search"><input type="search" id="libSearch" placeholder="Search presets…" autocomplete="off"></div>
+		<div class="lib-filter"><label><input type="checkbox" id="libMineOnly"> Only my mods</label><span id="libCount"></span></div>
+		<div id="libList" class="list"></div>
+	</aside>
+
+	<main id="center">
+		<div id="viewTools" class="toolbar">
+			<div class="group" id="poseButtons">
+				<button data-pose="stand" class="sel" title="Stand (1)">Stand</button>
+				<button data-pose="walk" title="Walk (2)">Walk</button>
+				<button data-pose="run" title="Run (3)">Run</button>
+				<button data-pose="crouch" title="Crouch (4)">Crouch</button>
+				<button data-pose="jump" title="Jump (5)">Jump</button>
+			</div>
+			<button class="ico" id="btnPlay" title="Play or pause (Space)">❚❚</button>
+			<label class="mini">Speed <input type="range" id="speed" min="0.1" max="2" step="0.05" value="1"></label>
+			<span class="sep"></span>
+			<button class="ico" id="btnFlip" title="Face left or right (F)">⇄</button>
+			<label class="mini">Aim <input type="range" id="aim" min="-90" max="90" step="1" value="0"><span id="aimVal">0°</span></label>
+			<label class="mini"><input type="checkbox" id="sharp"> Sharp aim</label>
+			<span class="sep"></span>
+			<label class="mini">Held item <select id="deviceSelect"></select></label>
+			<div class="spacer"></div>
+			<div class="group small" id="viewOptions">
+				<button data-opt="joints" class="sel" title="Show pivots and labels">Pivots</button>
+				<button data-opt="reach" class="sel" title="Show how far arms and legs reach">Reach</button>
+				<button data-opt="ground" class="sel" title="Show the ground">Ground</button>
+				<button data-opt="ghosts" title="Show the moments before and after while animating">Ghosts</button>
+				<button data-opt="grid" class="sel" title="Pixel grid">Grid</button>
+			</div>
+			<span id="zoomVal" class="zoom" title="Zoom (wheel); double-click the view to fit">6×</span>
+		</div>
+		<div id="viewWrap">
+			<canvas id="view"></canvas>
+			<div id="viewHint" class="view-hint"></div>
+			<div id="welcome" class="welcome">
+				<div class="welcome-card">
+					<div class="welcome-mark">◆</div>
+					<h1>Cortex Mod Studio</h1>
+					<p>Design units visually: move their parts, swap sprites, add helmets and gear, and watch them walk. Studio writes the INI for you, and shows your unit in the game as you work.</p>
+					<div class="welcome-actions">
+						<button class="big primary" id="btnOpen">Open the game folder</button>
+						<button class="big" id="btnReopen" hidden></button>
+					</div>
+					<p class="small" id="openNote"></p>
+					<input type="file" id="folderInput" webkitdirectory directory multiple hidden>
+					<div class="progress" id="loadProgress" hidden><div class="bar"></div><span></span></div>
+				</div>
+			</div>
+		</div>
+	</main>
+
+	<aside id="right" class="panel">
+		<div class="panel-head">Parts <span class="hint">click to select · drag in the view</span></div>
+		<div id="tree" class="tree"></div>
+		<div class="panel-head" id="inspHead">Properties</div>
+		<div id="inspector" class="inspector"></div>
+	</aside>
+
+	<footer id="status">
+		<span id="statusText">Open the game folder to begin.</span>
+		<span class="spacer"></span>
+		<span id="statusFiles"></span>
+		<span id="statusMode"></span>
+	</footer>
+</div>
+
+<div id="modal" class="modal" hidden><div class="modal-card" id="modalCard"></div></div>
+<div id="toasts"></div>
+
+<script src="js/ini.js?v=6"></script>
+<script src="js/gamefs.js?v=6"></script>
+<script src="js/library.js?v=6"></script>
+<script src="js/images.js?v=6"></script>
+<script src="js/rig.js?v=6"></script>
+<script src="js/viewport.js?v=6"></script>
+<script src="js/panels.js?v=6"></script>
+<script src="js/dialogs.js?v=6"></script>
+<script src="js/app.js?v=6"></script>
+</body>
+</html>

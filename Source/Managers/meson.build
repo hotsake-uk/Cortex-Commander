@@ -88,6 +88,7 @@ sources += files(
 'BattleHotSeat.cpp',
 'BattleArmy.cpp',
 'ControlLink.cpp',
+'ModStudioPreview.cpp',
 'SettingsMan.cpp',
 'ThreadMan.cpp',
 'TimerMan.cpp',

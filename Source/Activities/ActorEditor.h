@@ -7,6 +7,9 @@
 /// Inclusions of header files
 #include "RTETools.h"
 #include "EditorActivity.h"
+#include "Timer.h"
+
+#include <filesystem>
 
 namespace RTE {
 
@@ -101,6 +104,9 @@ namespace RTE {
 		/// @param targetPos The absolute position of the target bitmap's upper left corner in the scene. (default: Vector())
 		void Draw(BITMAP* pTargetBitmap, const Vector& targetPos = Vector()) override;
 
+		/// The view zooms in on the unit being edited (Ctrl + mouse wheel), but not while the picker, which is laid out for the full screen, is open.
+		bool AllowsCameraZoom() const override { return m_pEditedActor && m_EditorMode != EditorActivity::LOADDIALOG; }
+
 		/// Protected member variable and method declarations
 	protected:
 		/// Reloads the Actor itself and sets up the pie menu to match its setup.
@@ -112,6 +118,10 @@ namespace RTE {
 		/// @return Whether the data file was successfully read.
 		bool ReloadActorData();
 
+		/// Checks whether Cortex Mod Studio has asked for a unit to be shown, and if so, reloads the files it saved and loads that unit.
+		/// Studio writes the request to ModStudio/Preview.ini in the game folder.
+		void CheckModStudioPreview();
+
 		// Member variables
 		static Entity::ClassInfo m_sClass;
 
@@ -119,6 +129,12 @@ namespace RTE {
 		Actor* m_pEditedActor;
 		// The picker for selecting which object to load
 		ObjectPickerGUI* m_pPicker;
+		// How often to look for a Mod Studio preview request.
+		Timer m_PreviewCheckTimer;
+		// When the last Mod Studio preview request we handled was written, to spot a new one.
+		std::filesystem::file_time_type m_PreviewFileTime;
+		// Whether the view has been zoomed in on the first unit loaded; after that the zoom is left as the user sets it.
+		bool m_ZoomedIn;
 
 		/// Private member variable and method declarations
 	private:

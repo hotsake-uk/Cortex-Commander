@@ -19,6 +19,7 @@
 /// </summary>
 
 #include "ControlLink.h"
+#include "ModStudioPreview.h"
 #include "SDL3/SDL_hints.h"
 #include "allegro.h"
 #include <SDL3/SDL.h>
@@ -295,9 +296,16 @@ void HandleMainArgs(int argCount, char** argValue) {
 				singleModuleSet = true;
 			}
 		}
+		if (currentArg == "-modstudio") {
+			ModStudioPreview::EnableInGame();
+		}
 		if (!launchModeSet) {
 			if (!lastArg && currentArg == "-editor") {
 				g_ActivityMan.SetEditorToLaunch(argValue[++i]);
+				launchModeSet = true;
+			} else if (currentArg == "-sandbox") {
+				// An optional map name may follow.
+				g_ActivityMan.SetSandboxToLaunch(!lastArg && argValue[i + 1][0] != '-' ? argValue[++i] : "");
 				launchModeSet = true;
 			}
 		}
@@ -611,6 +619,7 @@ void RunGameLoop() {
 				PerformanceMan::LogStages logStages;
 				logStages.Next("Sim: sandbox");
 				Sandbox::Update();
+				ModStudioPreview::UpdateInGame();
 				logStages.Next("Sim: threat memory");
 				ThreatMemory::Update();
 				logStages.Next("Sim: smoke grid");

@@ -23,6 +23,9 @@ That produces a single self-contained `Tools\Launcher\dist\CortexLauncher.exe`. 
 
 Builds run `msbuild /m /p:Configuration=... /p:Platform=x64 RTEA.sln` after copying `fmod.dll` next to the exe. The repo is only used for `git fetch` and as the worktree source; its working tree is never touched.
 
+## Mod Studio
+**Mod Studio** starts the visual unit editor (`Tools/ModStudio/Start-ModStudio.ps1`, which opens it in your browser) on the build slot when the selected commit is built, and also starts that build in the Actor Editor, so Studio's **Preview in game** shows your unit there. When nothing is built, Studio edits your repo checkout. Mods linked in from your mods folder are refreshed from it on each launch, so keep Studio work in a mod you made in Studio.
+
 ## Mod check
 **Check mods** (on the Mods row) checks every mod in the mods folder against a version of the game without starting it, using `Tools/Mods/Check-Mod.py`: Lua calls to engine functions that don't exist, INI properties and presets the game doesn't have, missing files and missing dependency mods. It checks against the build slot when it holds the selected commit, otherwise against your repo checkout. A window lists each mod's errors, warnings and notes; double-click a finding to open its file, or **Open report** for the full text report.
 

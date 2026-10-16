@@ -297,6 +297,11 @@ namespace RTE {
 		/// @return Whether reloading the preset was successful.
 		bool QuickReloadEntityPreset();
 
+		/// Re-reads every preset in one data file, adding new presets and replacing existing ones. Sprites they use are re-read from disk too.
+		/// @param filePath The module path of the file, like "MyMod.rte/Actors/Soldier.ini".
+		/// @return Whether the file's module is loaded and the file could be read.
+		bool ReloadPresetFile(const std::string& filePath);
+
 		/// Gets whether or not ReloadEntityPreset was called this update.
 		/// @return Whether or not ReloadEntityPreset was called this update.
 		bool GetReloadEntityPresetCalledThisUpdate() const { return m_ReloadEntityPresetCalledThisUpdate; }

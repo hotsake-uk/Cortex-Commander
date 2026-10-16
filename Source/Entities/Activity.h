@@ -150,6 +150,10 @@ namespace RTE {
 		/// @param scene The Scene to check if it supports this Activity. Ownership is NOT transferred!
 		/// @param teams How many teams we're checking for. Some scenes may support and Activity but only for a limited number of teams. If -1, not applicable.
 		/// @return Whether the Scene has the right stuff.
+		/// Whether the camera zoom applies right now. Game activities decide this in FrameMan (running, no screen menu open); other activities say so here.
+		/// @return Whether the views may be drawn zoomed.
+		virtual bool AllowsCameraZoom() const { return false; }
+
 		virtual bool SceneIsCompatible(Scene* scene, int teams = -1) { return scene && teams <= m_MinTeamsRequired; }
 
 		/// Shows in which stage of the Campaign this appears.

@@ -18,6 +18,7 @@
 #include "DataModule.h"
 
 #include "ObjectPickerGUI.h"
+#include "ModStudioPreview.h"
 
 using namespace RTE;
 
@@ -34,6 +35,9 @@ ActorEditor::~ActorEditor() {
 void ActorEditor::Clear() {
 	m_pEditedActor = 0;
 	m_pPicker = 0;
+	m_PreviewCheckTimer.Reset();
+	m_PreviewFileTime = {};
+	m_ZoomedIn = false;
 }
 
 int ActorEditor::Create() {
@@ -111,6 +115,11 @@ void ActorEditor::End() {
 }
 
 void ActorEditor::Update() {
+	if (m_PreviewCheckTimer.IsPastRealMS(400)) {
+		m_PreviewCheckTimer.Reset();
+		CheckModStudioPreview();
+	}
+
 	// And object hasn't been loaded yet, so get the loading picker going
 	if (!m_pEditedActor) {
 		m_NeedSave = false;
@@ -165,7 +174,7 @@ void ActorEditor::Update() {
 		}
 	} else {
 		g_FrameMan.ClearScreenText();
-		g_FrameMan.SetScreenText("Control the actor to see how he moves. Reload data with the pie menu.", 0, 0, 5000);
+		g_FrameMan.SetScreenText("Control the actor to see how it moves. Ctrl + mouse wheel zooms. Reload data with the pie menu.", 0, 0, 5000);
 	}
 
 	//////////////////////////////////////////////
@@ -226,6 +235,13 @@ bool ActorEditor::LoadActor(const Entity* pActorToLoad) {
 
 		m_EditorMode = EditorActivity::EDITINGOBJECT;
 		m_ModeChange = true;
+		// Units are small on a full screen; start close in. Ctrl + mouse wheel changes it.
+		if (!m_ZoomedIn) {
+			m_ZoomedIn = true;
+			if (g_FrameMan.GetCameraZoom() <= 1.0F) {
+				g_FrameMan.SetCameraZoom(3.0F);
+			}
+		}
 	} else {
 		g_FrameMan.ClearScreenText();
 		g_FrameMan.SetScreenText("There's something wrong with that picked Actor!?", 0, 333, 2000);
@@ -245,4 +261,25 @@ bool ActorEditor::ReloadActorData() {
 		return m_pEditedActor != nullptr;
 	}
 	return false;
+}
+
+void ActorEditor::CheckModStudioPreview() {
+	ModStudioPreview::Request request;
+	if (!ModStudioPreview::Poll(m_PreviewFileTime, request)) {
+		return;
+	}
+	g_FrameMan.ClearScreenText();
+	std::string problem;
+	Actor* unit = ModStudioPreview::MakeUnit(request, problem);
+	if (!unit) {
+		g_FrameMan.SetScreenText(problem, 0, 0, 8000);
+		return;
+	}
+	const bool loaded = LoadActor(unit);
+	delete unit; // LoadActor keeps a copy of its own.
+	if (!loaded) {
+		return;
+	}
+	m_pPicker->SetEnabled(false);
+	g_FrameMan.SetScreenText("Showing " + request.PresetName + " from Mod Studio. Control it to see how it moves; Ctrl + mouse wheel zooms.", 0, 0, 5000);
 }
