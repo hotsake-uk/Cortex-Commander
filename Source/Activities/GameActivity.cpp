@@ -1,4 +1,5 @@
 #include "GameActivity.h"
+#include "ModStudioPreview.h"
 
 #include "CameraMan.h"
 #include "PresetMan.h"
@@ -1793,7 +1794,8 @@ void GameActivity::Update() {
 		// But only if we're not editing something, because editor will scroll the screen himself
 		// and double scrolling will cause CC gitch when we'll cross the seam
 		else if (m_ControlledActor[player] && m_ActivityState != ActivityState::Editing && m_ActivityState != ActivityState::PreGame) {
-			g_CameraMan.SetScrollTarget(m_ControlledActor[player]->GetViewPoint(), 0.1, ScreenOfPlayer(player));
+			// (Started from Mod Studio, the camera stays on the unit being tested, not where it aims.)
+			g_CameraMan.SetScrollTarget(ModStudioPreview::IsInGame() ? m_ControlledActor[player]->GetPos() : m_ControlledActor[player]->GetViewPoint(), 0.1, ScreenOfPlayer(player));
 		}
 
 		if (m_ControlledActor[player] && m_ViewState[player] != ViewState::DeathWatch && m_ViewState[player] != ViewState::ActorSelect && m_ViewState[player] != ViewState::AIGoToPoint && m_ViewState[player] != ViewState::AIGoldDigPoint && m_ViewState[player] != ViewState::UnitSelectCircle) {

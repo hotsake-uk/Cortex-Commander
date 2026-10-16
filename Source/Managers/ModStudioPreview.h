@@ -42,6 +42,9 @@ namespace RTE {
 		/// Makes in-game swapping happen (the -modstudio launch argument).
 		static void EnableInGame() { s_InGame = true; }
 
+		/// Whether the game was started with -modstudio: then the camera stays on the unit you play rather than leaning towards where it aims.
+		static bool IsInGame() { return s_InGame; }
+
 		/// In a running game started with -modstudio, makes each new unit from Studio your sandbox character (or the player's unit). Called every frame.
 		static void UpdateInGame();
 
