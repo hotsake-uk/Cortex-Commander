@@ -8,6 +8,7 @@
 // Without --game-dir it uses the folder it last used, the game folder it sits in, or asks for one.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod launcher;
 mod server;
 mod watcher;
 
@@ -21,14 +22,7 @@ struct Settings {
 }
 
 fn settings_file() -> Option<PathBuf> {
-	let base = if cfg!(windows) {
-		std::env::var_os("APPDATA").map(PathBuf::from)
-	} else if cfg!(target_os = "macos") {
-		std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Library").join("Application Support"))
-	} else {
-		std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
-	};
-	base.map(|b| b.join("CortexStudio").join("settings.json"))
+	launcher::config_dir().map(|d| d.join("settings.json"))
 }
 
 fn load_settings() -> Settings {
@@ -40,6 +34,13 @@ fn save_settings(settings: &Settings) {
 		let _ = std::fs::create_dir_all(file.parent().unwrap());
 		let _ = std::fs::write(file, serde_json::to_string_pretty(settings).unwrap());
 	}
+}
+
+/// Studio moved to another game folder (a launch from Studio): start there next time.
+pub fn remember_game_dir(dir: &Path) {
+	let mut settings = load_settings();
+	settings.game_dir = Some(dir.to_path_buf());
+	save_settings(&settings);
 }
 
 fn is_game_dir(dir: &Path) -> bool {
@@ -142,6 +143,10 @@ fn main() {
 	let external: tauri::Url = url.parse().expect("Studio's own address");
 	tauri::Builder::default()
 		.setup(move |app| {
+			let handle = app.handle().clone();
+			launcher::set_main_thread(Box::new(move |work| {
+				let _ = handle.run_on_main_thread(work);
+			}));
 			tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::External(external.clone()))
 				.title("Cortex Studio")
 				.inner_size(1500.0, 950.0)

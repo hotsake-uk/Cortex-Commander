@@ -40,7 +40,7 @@ window.MS = window.MS || {};
 		bindToolbar();
 		bindKeys();
 		window.addEventListener('beforeunload', (e) => {
-			if (app.dirtyDocs().length || MS.ide.dirtyCount()) {
+			if (!MS.leaving && (app.dirtyDocs().length || MS.ide.dirtyCount())) {
 				e.preventDefault();
 				e.returnValue = '';
 			}

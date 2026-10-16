@@ -5,12 +5,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cortex Mod Studio</title>
-<link rel="stylesheet" href="studio.css?v=26">
+<link rel="stylesheet" href="studio.css?v=27">
 </head>
 <body>
 <div id="app">
 	<header id="topbar">
 		<div class="brand"><span class="mark">◆</span> Cortex <b>Mod Studio</b></div>
+		<button class="tb primary" id="btnGame" title="Build, update and launch the game, and the setup (Cortex Studio)" hidden>▶ Game</button>
 		<div class="mode-switch" id="modeSwitch" title="Artist: design units visually. Deep: the whole mod, with scripts, the game's console and search.">
 			<button data-mode="artist" class="sel">Artist</button>
 			<button data-mode="deep">Deep</button>
@@ -176,21 +177,38 @@
 	</footer>
 </div>
 
+<div id="game" class="game" hidden>
+	<div class="game-card">
+		<header class="game-head">
+			<div class="brand"><span class="mark">◆</span> Cortex <b>Studio</b></div>
+			<nav id="gameTabs" class="game-tabs"></nav>
+			<span class="spacer"></span>
+			<button class="tb" id="gameClose" title="Back to Mod Studio (Esc)">✕ Back to Studio</button>
+		</header>
+		<div id="gameBody" class="game-body"></div>
+		<div id="gameLogWrap" class="game-log" hidden>
+			<div class="game-log-head"><b id="gameLogTitle"></b><span class="spacer"></span><button class="ico-btn" id="gameCancel" hidden>Cancel</button><button class="ico-btn" id="gameLogHide" onclick="document.getElementById('gameLogWrap').hidden = true">Hide</button></div>
+			<div id="gameLog" class="game-log-body"></div>
+		</div>
+	</div>
+</div>
+
 <div id="modal" class="modal" hidden><div class="modal-card" id="modalCard"></div></div>
 <div id="toasts"></div>
 
-<script src="vendor/luaparse/luaparse.js?v=26"></script>
-<script src="js/ini.js?v=26"></script>
-<script src="js/gamefs.js?v=26"></script>
-<script src="js/library.js?v=26"></script>
-<script src="js/images.js?v=26"></script>
-<script src="js/rig.js?v=26"></script>
-<script src="js/viewport.js?v=26"></script>
-<script src="js/panels.js?v=26"></script>
-<script src="js/dialogs.js?v=26"></script>
-<script src="js/lua-intel.js?v=26"></script>
-<script src="js/ini-intel.js?v=26"></script>
-<script src="js/ide.js?v=26"></script>
-<script src="js/app.js?v=26"></script>
+<script src="vendor/luaparse/luaparse.js?v=27"></script>
+<script src="js/ini.js?v=27"></script>
+<script src="js/gamefs.js?v=27"></script>
+<script src="js/library.js?v=27"></script>
+<script src="js/images.js?v=27"></script>
+<script src="js/rig.js?v=27"></script>
+<script src="js/viewport.js?v=27"></script>
+<script src="js/panels.js?v=27"></script>
+<script src="js/dialogs.js?v=27"></script>
+<script src="js/lua-intel.js?v=27"></script>
+<script src="js/ini-intel.js?v=27"></script>
+<script src="js/ide.js?v=27"></script>
+<script src="js/app.js?v=27"></script>
+<script src="js/launcher.js?v=27"></script>
 </body>
 </html>

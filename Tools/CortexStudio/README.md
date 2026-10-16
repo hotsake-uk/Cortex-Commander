@@ -2,8 +2,8 @@
 
 Mod Studio as one desktop app for Windows, macOS and Linux, built with [Tauri](https://tauri.app). It shows Mod Studio's page
 (`Tools/ModStudio`, built into the app) in its own window and does the work a web page can't: reading and saving the game folder,
-and the file bridge that reloads scripts and INI files you save in any editor. This is phase 1 of the Cortex Studio plan; the
-launcher's jobs (versions, builds, launching, mod folders) come next.
+the file bridge that reloads scripts and INI files you save in any editor, and the Windows launcher's jobs on every platform:
+setting up, picking a version of the game, building it and launching it to play or to test mods.
 
 ## Using it
 
@@ -18,6 +18,28 @@ Install it from the build artefacts of the **Cortex Studio** workflow (`.msi` or
 - `--no-bridge` turns the file watching off.
 - The page also opens in any browser at the address printed, as with `Mod Studio.bat`.
 
+### The Game screen
+
+The **▶ Game** button at the top left (only in the app) opens it. The first time, the setup asks three things:
+
+1. **Simple or Advanced.** Simple keeps one branch (maindev unless you change it) built and ready: **Update & build** fetches the
+   newest commit and builds it if it changed. Advanced is the Windows launcher's version picker: any branch, tag, version or
+   commit, with the game version of each.
+2. **What to install.** It checks this computer for what building the game needs (Git, Visual Studio's C++ tools on Windows;
+   meson, ninja, g++ and the libraries on Linux and macOS) and shows the command that installs each missing one, with a Copy button.
+3. **Where the game's code is**: your git clone of the game. Studio only fetches from it. Versions are built in
+   `CortexVersions/Studio` next to it (the Windows launcher's `CortexVersions/Current` is left alone), so the next build is quick.
+
+Then:
+
+- **Play** launches the built version: Play, Test in game, Sandbox (with a map, Maginot if you leave it empty) or the Actor Editor.
+  Launching points Studio at that version, so saves, Preview in game and the console talk to the game you started. "Edit the repo
+  checkout" points it back.
+- **Versions** (Advanced): pick a commit, then **Build** or **Build & play**. The build's output shows at the bottom, with Cancel.
+- **Launch settings**: your Settings.ini (copied in before each launch), a shared presets folder (linked as `Userdata/Presets`),
+  your mods folder (each `.rte` linked into `Mods`, changed files only) and a world (planet skin). They start as the Windows
+  launcher's settings if you used it, and are kept in `CortexStudio/launcher.json` in your config folder.
+
 Installers aren't code-signed yet, so Windows SmartScreen and macOS Gatekeeper warn the first time it's opened ("More info",
 "Run anyway" on Windows; right-click, Open on macOS).
 
@@ -30,6 +52,8 @@ Installers aren't code-signed yet, so Windows SmartScreen and macOS Gatekeeper w
 - `src-tauri/src/watcher.rs`: the file bridge. A `.lua` or `.ini` saved outside Studio in `Data` or `Mods` is written to
   `ModStudio/Scripts.ini` as `ReloadScript` or `ReloadFile` for a game started with `-modstudio`, and listed for the page.
   Studio's own saves are left alone.
+- `src-tauri/src/launcher.rs`: the Game screen's work (setup check, versions, builds, launching), ported from `Tools/Launcher`,
+  answering the server's `launcher/...` requests. The screen itself is `Tools/ModStudio/js/launcher.js`.
 - `src-tauri/src/main.rs`: finds the game folder (remembered in `CortexStudio/settings.json` in the user's config folder),
   starts the server and opens the window.
 

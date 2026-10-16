@@ -1,12 +1,13 @@
 // Studio's local server, the same requests Start-ModStudio.ps1 answers, so Mod Studio's page works unchanged in the app and in a browser.
 // It only listens on this computer (127.0.0.1) and only answers API requests carrying the token it puts in the page's address.
 
+use crate::launcher::{self, Launcher};
 use crate::watcher::StudioWatcher;
 use include_dir::{include_dir, Dir};
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::UNIX_EPOCH;
 use tiny_http::{Header, Method, Request, Response, Server};
 
@@ -14,10 +15,36 @@ use tiny_http::{Header, Method, Request, Response, Server};
 static PAGE: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../../ModStudio");
 
 pub struct Studio {
-	pub game_dir: PathBuf,
+	/// The game folder Studio edits. It changes when you launch a version from Studio (the page then edits the game that's running).
+	pub game_dir: RwLock<PathBuf>,
 	pub token: String,
-	pub watcher: Option<StudioWatcher>,
+	pub watcher: Mutex<Option<StudioWatcher>>,
+	watch: bool,
+	launcher: Launcher,
 	page_dir: Option<PathBuf>,
+}
+
+impl Studio {
+	fn game_dir(&self) -> PathBuf {
+		self.game_dir.read().unwrap().clone()
+	}
+
+	fn wrote(&self, full: &Path) {
+		if let Some(w) = self.watcher.lock().unwrap().as_ref() {
+			w.wrote(full);
+		}
+	}
+
+	/// Points Studio at another game folder: the file bridge follows, and the app starts there next time.
+	fn switch_to(&self, dir: PathBuf) {
+		let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
+		let dir = PathBuf::from(dir.to_string_lossy().trim_start_matches(r"\\?\"));
+		*self.game_dir.write().unwrap() = dir.clone();
+		if self.watch {
+			*self.watcher.lock().unwrap() = Some(StudioWatcher::start(&dir));
+		}
+		crate::remember_game_dir(&dir);
+	}
 }
 
 /// Starts the server on a free port and returns the page's address.
@@ -26,8 +53,10 @@ pub fn start(game_dir: PathBuf, watch: bool, port: u16) -> Result<String, String
 	let port = server.server_addr().to_ip().map(|a| a.port()).unwrap_or(port);
 	let token = new_token();
 	let studio = Arc::new(Studio {
-		watcher: if watch { Some(StudioWatcher::start(&game_dir)) } else { None },
-		game_dir,
+		watcher: Mutex::new(if watch { Some(StudioWatcher::start(&game_dir)) } else { None }),
+		watch,
+		launcher: Launcher::new(&game_dir),
+		game_dir: RwLock::new(game_dir),
 		token: token.clone(),
 		page_dir: std::env::var_os("CORTEX_STUDIO_PAGE").map(PathBuf::from),
 	});
@@ -196,7 +225,10 @@ fn api(studio: &Studio, request: &mut Request, action: &str, query: &str) -> Res
 	if !token_ok {
 		return text(403, "Wrong or missing token.");
 	}
-	let root = &studio.game_dir;
+	if let Some(what) = action.strip_prefix("launcher/") {
+		return launcher_api(studio, request, what, query);
+	}
+	let root = &studio.game_dir();
 	let relative = query_value(query, "path").unwrap_or_default();
 	let Some(full) = resolve(root, &relative) else {
 		return text(400, "That path is outside the game folder.");
@@ -289,9 +321,7 @@ fn api(studio: &Studio, request: &mut Request, action: &str, query: &str) -> Res
 			if !full.starts_with(root.join("Mods")) || full == root.join("Mods") {
 				return text(403, "Only files in Mods can be deleted.");
 			}
-			if let Some(w) = &studio.watcher {
-				w.wrote(&full);
-			}
+			studio.wrote(&full);
 			if full.is_file() {
 				if let Err(e) = fs::remove_file(&full) {
 					return text(500, e.to_string());
@@ -308,9 +338,7 @@ fn api(studio: &Studio, request: &mut Request, action: &str, query: &str) -> Res
 				if let Some(parent) = full.parent() {
 					let _ = fs::create_dir_all(parent);
 				}
-				if let Some(w) = &studio.watcher {
-					w.wrote(&full);
-				}
+				studio.wrote(&full);
 				match fs::write(&full, body) {
 					Ok(()) => text(200, "ok"),
 					Err(e) => text(500, e.to_string()),
@@ -327,10 +355,28 @@ fn api(studio: &Studio, request: &mut Request, action: &str, query: &str) -> Res
 		}
 		"changes" => {
 			// Files saved outside Studio since the page last asked. 404 when the bridge is off, so the page stops asking.
-			let Some(w) = &studio.watcher else { return text(404, "The file bridge is off.") };
+			let watcher = studio.watcher.lock().unwrap();
+			let Some(w) = watcher.as_ref() else { return text(404, "The file bridge is off.") };
 			let since: i64 = query_value(query, "since").and_then(|v| v.parse().ok()).unwrap_or(-1);
 			text(200, w.since(since))
 		}
 		_ => text(404, "Unknown request."),
 	}
+}
+
+/// The launcher's requests (launcher.rs). A launch, or Edit this version, moves Studio to that game folder.
+fn launcher_api(studio: &Studio, request: &mut Request, action: &str, query: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+	let body = if matches!(request.method(), Method::Post | Method::Put) {
+		let mut raw = String::new();
+		let _ = request.as_reader().read_to_string(&mut raw);
+		if raw.trim().is_empty() { serde_json::Value::Object(Default::default()) } else { serde_json::from_str(&raw).unwrap_or(serde_json::Value::Null) }
+	} else {
+		serde_json::Value::Null
+	};
+	let lookup = |key: &str| query_value(query, key);
+	let answer = launcher::handle(&studio.launcher, action, &lookup, &body, &studio.game_dir());
+	if let Some(dir) = answer.switch_to {
+		studio.switch_to(dir);
+	}
+	bytes(answer.body.into_bytes(), "application/json").with_status_code(answer.status)
 }
