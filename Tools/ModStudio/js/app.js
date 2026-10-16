@@ -1038,6 +1038,7 @@ window.MS = window.MS || {};
 		}
 		$('btnCopy').onclick = () => MS.dialogs.copyUnit();
 		$('btnHelp').onclick = () => MS.dialogs.help();
+		$('btnNew').onclick = () => MS.wizard.open();
 		$('btnHistory').onclick = () => MS.history.open(app.actor && app.actor.path);
 		$('btnScope').onclick = (e) => {
 			e.stopPropagation();

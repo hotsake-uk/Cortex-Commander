@@ -7,6 +7,7 @@ import './rig.js';
 import './viewport.js';
 import './panels.js';
 import './dialogs.js';
+import './wizard.js';
 import './lua-intel.js';
 import './ini-intel.js';
 import './navigation.js';

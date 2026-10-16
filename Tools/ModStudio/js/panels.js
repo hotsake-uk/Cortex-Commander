@@ -1602,6 +1602,7 @@ window.MS = window.MS || {};
 		spriteLoaded: retryThumbs,
 		drawItems,
 		drawSpriteThumb,
+		drawRigThumb,
 		queueThumb,
 		forgetThumbs: () => thumbRigs.clear(),
 		TAB_CLASSES,

@@ -199,7 +199,8 @@ window.MS = window.MS || {};
 
 	// ---- pickers ----
 
-	function pickerGrid(presets, onPick, thumb) {
+	// keepOpen: the dialog stays (a step of a bigger dialog), else picking closes it.
+	function pickerGrid(presets, onPick, thumb, keepOpen) {
 		const grid = el('div', { className: 'pick-grid' });
 		const search = el('input', { type: 'search', placeholder: 'Search…' });
 		const render = () => {
@@ -210,8 +211,10 @@ window.MS = window.MS || {};
 				const canvas = el('canvas', { width: 64, height: 64 });
 				const tile = el('div', { className: 'pick', title: p.name + ' (' + p.module + ')' }, canvas, el('div', { textContent: p.name }), el('small', { textContent: p.module }));
 				tile.onclick = () => {
-					close();
-					onPick(p);
+					if (!keepOpen) {
+						close();
+					}
+					onPick(p, tile);
 				};
 				grid.append(tile);
 				MS.panels.queueThumb(canvas, () => thumb(canvas, p));
@@ -485,4 +488,6 @@ window.MS = window.MS || {};
 	}
 
 	MS.dialogs = { open, close, copyUnit, attach, pickItem, importSprite, help, previewHelp };
+	// For the New… wizard (wizard.js) and the data editors (editors.js).
+	MS.dialogs.parts = { el, field, para, safeName, modChoices, modPicker, makeCopy, pickerGrid };
 })();
