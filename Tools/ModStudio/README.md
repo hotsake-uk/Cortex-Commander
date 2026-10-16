@@ -79,7 +79,7 @@ In Script mode:
   `--? self.Pos` alone on a line shows that Lua's value at that point. Or click left of a line number for a logpoint: the line is
   logged with nothing written in the script (the game's own scripts too), and it starts at once if the script is saved.
   Studio runs a copy of the script with the probes in it (`ModStudio/Live/`), never changing the script; errors still point at the
-  script's own lines. Needs a game built from 8.5.255 or later.
+  script's own lines. Needs a game built from 8.5.252 or later.
 - **Package**: Check looks for missing files, presets that don't exist, scripts with errors and unsaved changes; Export saves
   and zips the mod for sharing. Ctrl+P goes to any file.
 
