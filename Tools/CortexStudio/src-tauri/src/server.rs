@@ -330,6 +330,10 @@ fn api(studio: &Studio, request: &mut Request, action: &str, query: &str) -> Res
 					return text(500, e.to_string());
 				}
 				history::after(root, &path, true);
+				if let Some(twin) = launcher::mods_twin(root, &full) {
+					studio.wrote(&twin);
+					launcher::mirror_to_mods(&full, &twin, true);
+				}
 			}
 			text(200, "ok")
 		}
@@ -349,6 +353,10 @@ fn api(studio: &Studio, request: &mut Request, action: &str, query: &str) -> Res
 				match fs::write(&full, body) {
 					Ok(()) => {
 						history::after(root, &path, false);
+						if let Some(twin) = launcher::mods_twin(root, &full) {
+							studio.wrote(&twin);
+							launcher::mirror_to_mods(&full, &twin, false);
+						}
 						text(200, "ok")
 					}
 					Err(e) => text(500, e.to_string()),
