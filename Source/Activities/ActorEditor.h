@@ -107,9 +107,6 @@ namespace RTE {
 		/// The view zooms in on the unit being edited (Ctrl + mouse wheel), but not while the picker, which is laid out for the full screen, is open.
 		bool AllowsCameraZoom() const override { return m_pEditedActor && m_EditorMode != EditorActivity::LOADDIALOG; }
 
-		/// Once it shows a unit from Mod Studio the mouse is left free, so Studio can be used beside the game. The unit is controlled with the keyboard.
-		bool KeepsMouseFree() const override { return m_ShowingModStudio; }
-
 		/// Protected member variable and method declarations
 	protected:
 		/// Reloads the Actor itself and sets up the pie menu to match its setup.
@@ -137,7 +134,7 @@ namespace RTE {
 		// When the last Mod Studio preview request we handled was written, to spot a new one.
 		std::filesystem::file_time_type m_PreviewFileTime;
 		// Whether the view has been zoomed in on the first unit loaded; after that the zoom is left as the user sets it.
-		bool m_ShowingModStudio; //!< Whether a unit from Mod Studio has been shown, which frees the mouse.
+		bool m_ShowingModStudio; //!< Whether a unit from Mod Studio has been shown: then Alt lets go of the mouse, for working in Studio beside the game, and a click on the game takes it back.
 		bool m_ZoomedIn;
 
 		/// Private member variable and method declarations

@@ -213,8 +213,8 @@ pre.diff .del { color: var(--bad); }
 	#right > .panel-head:first-child { grid-column: 1; grid-row: 1; border-right: 1px solid var(--line); }
 	#right > #tree { grid-column: 1; grid-row: 2; max-height: none; border-bottom: 0; border-right: 1px solid var(--line); min-height: 0; }
 	#right > #inspHead { grid-column: 2; grid-row: 1; }
-	#right > #inspector { grid-column: 2; grid-row: 2; min-height: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); align-content: start; align-items: start; padding: 0 0 30px; }
-	#inspector > .section { border-right: 1px solid var(--line); }
-	#inspector > .notice, #inspector > .insp-empty { grid-column: 1 / -1; }
-	#inspector > .section:has(.props-table), #inspector > .section.wide { grid-column: 1 / -1; }
+	#right > #inspector { grid-column: 2; grid-row: 2; min-height: 0; }
+	.insp-cols { columns: 300px; column-gap: 0; column-rule: 1px solid var(--line); }
+	.insp-cols > * { break-inside: avoid; }
+	.insp-cols > .notice, .insp-cols > .insp-empty, .insp-cols > .section:has(.props-table) { column-span: all; }
 }

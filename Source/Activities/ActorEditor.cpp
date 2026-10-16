@@ -5,6 +5,7 @@
 #include "FrameMan.h"
 #include "CameraMan.h"
 #include "UInputMan.h"
+#include "WindowMan.h"
 // #include "AHuman.h"
 // #include "MOPixel.h"
 #include "SLTerrain.h"
@@ -119,6 +120,20 @@ void ActorEditor::Update() {
 	if (m_PreviewCheckTimer.IsPastRealMS(400)) {
 		m_PreviewCheckTimer.Reset();
 		CheckModStudioPreview();
+	}
+	// Showing a unit from Mod Studio: Alt lets go of the mouse so it can leave the window for Studio, and a click on the game takes it back (as
+	// coming back to the game from another window does by itself). While the game has the mouse, it aims and fires as ever.
+	if (m_ShowingModStudio && m_EditorMode != EditorActivity::LOADDIALOG && !g_WindowMan.IsBackground()) {
+		if (!g_UInputMan.IsMouseReleased()) {
+			if (g_UInputMan.KeyPressed(SDL_SCANCODE_LALT) || g_UInputMan.KeyPressed(SDL_SCANCODE_RALT)) {
+				g_UInputMan.DisableMouseMoving(true);
+				SDL_ShowCursor();
+				g_FrameMan.SetScreenText("Mouse free for Studio. Click the game to control the unit again.", 0, 0, 3000);
+			}
+		} else if (g_WindowMan.AnyWindowHasFocus() && (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON_LMASK)) {
+			g_UInputMan.GiveMouseBackNow();
+			SDL_HideCursor();
+		}
 	}
 
 	// And object hasn't been loaded yet, so get the loading picker going
@@ -283,6 +298,5 @@ void ActorEditor::CheckModStudioPreview() {
 	}
 	m_pPicker->SetEnabled(false);
 	m_ShowingModStudio = true;
-	g_UInputMan.TrapMousePos(false, Players::PlayerOne);
-	g_FrameMan.SetScreenText("Showing " + request.PresetName + " from Mod Studio. The mouse is free for Studio; move the unit with the keyboard. Ctrl + mouse wheel zooms.", 0, 0, 5000);
+	g_FrameMan.SetScreenText("Showing " + request.PresetName + " from Mod Studio. Press Alt to let go of the mouse for Studio, click the game to take it back. Ctrl + mouse wheel zooms.", 0, 0, 6000);
 }

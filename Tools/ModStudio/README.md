@@ -43,8 +43,8 @@ zip of the changed files to unpack into the game folder.
 **Preview in game** saves, then writes `ModStudio/Preview.ini` in the game folder naming the unit, the files that changed and
 the held item. Two ways to see it, both started from `Tools\ModStudio` and left running:
 
-- **Actor Editor.bat** opens the game's Actor Editor (`-editor ActorEditor`), zoomed in on the unit. The mouse stays free, so you can use Studio
-  beside it (move the unit with the keyboard); Ctrl + mouse wheel zooms.
+- **Actor Editor.bat** opens the game's Actor Editor (`-editor ActorEditor`), zoomed in on the unit. Press **Alt** to let go of the mouse and use
+  Studio beside it; click the game to control the unit again. Ctrl + mouse wheel zooms.
 - **Test In Sandbox.bat** opens the sandbox (`-modstudio -sandbox [map]`) with the unit as your own sandbox character, the tools put away. Add a map name to use
   another map, for example `"Test In Sandbox.bat" "Ketanot Hills"`.
 

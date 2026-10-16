@@ -560,8 +560,12 @@ window.MS = window.MS || {};
 	}
 
 	function renderInspector() {
-		const insp = $('inspector');
-		insp.innerHTML = '';
+		// Sections go in an inner box, which wide screens lay out in columns (the scrolling box itself can't be: its columns would run off sideways).
+		const box = $('inspector');
+		box.innerHTML = '';
+		const insp = document.createElement('div');
+		insp.className = 'insp-cols';
+		box.append(insp);
 		fieldUpdaters = [];
 		const part = app.selected;
 		if (!app.rig) {
