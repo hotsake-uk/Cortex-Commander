@@ -107,18 +107,31 @@ window.MS = window.MS || {};
 
 	// ---- make my own copy ----
 
-	function copyUnit() {
+	// Make my own copy: of the unit being designed, or of another preset (source: {name, cls, path}), like a held item or the
+	// preset an attachment is in. onMade(preset) runs with the new copy instead of opening it in the designer.
+	function copyUnit(source, onMade) {
 		const a = app();
-		if (!a.actor) {
+		source = source || a.actor;
+		if (!source) {
 			return;
 		}
 		const mod = modPicker();
-		const name = el('input', { type: 'text', value: a.actor.name + ' Custom' });
+		const thing = MS.Rig.DEVICE_CLASSES.has(source.cls) ? 'item' : 'unit';
+		if (onMade && a.actor) {
+			// A held item's copy goes in the unit's own mod unless you pick another.
+			const select = mod.node.querySelector('select');
+			const unitsMod = a.actor.path.split('/')[0];
+			if ([...select.options].some((o) => o.value === unitsMod)) {
+				select.value = unitsMod;
+				select.onchange();
+			}
+		}
+		const name = el('input', { type: 'text', value: source.name + ' Custom' });
 		const body = el('div', {},
-			para('Studio makes a new unit in your mod that starts as a copy of <b></b> (<code>CopyOf</code>). Everything you change is written into the copy; the original and the game\'s own files stay as they are.'),
+			para('Studio makes a new ' + thing + ' in your mod that starts as a copy of <b></b> (<code>CopyOf</code>). Everything you change is written into the copy; the original and the game\'s own files stay as they are.' + (onMade ? ' The unit you\'re designing then carries your copy instead.' : '')),
 			field('Your mod', mod.node, 'Mods live in the game\'s Mods folder. A new mod is made for you.'),
-			field('New unit\'s name', name, 'This is the name in the buy menu. It has to be different from every other unit\'s name.'));
-		body.querySelector('b').textContent = a.actor.name;
+			field('New ' + thing + '\'s name', name, 'This is the name in the buy menu. It has to be different from every other ' + thing + '\'s name.'));
+		body.querySelector('b').textContent = source.name;
 		open('Make my own copy', body, [
 			{ text: 'Cancel' },
 			{
@@ -131,20 +144,21 @@ window.MS = window.MS || {};
 						a.toast('Give the mod and the unit a name.', 'bad');
 						return false;
 					}
-					if (a.lib.find(unitName, a.actor.cls, modName) && a.lib.find(unitName, a.actor.cls, modName).name.toLowerCase() === unitName.toLowerCase()) {
-						a.toast('There is already a unit called ' + unitName + '.', 'bad');
+					const taken = a.lib.find(unitName, source.cls, modName);
+					if (taken && taken.name.toLowerCase() === unitName.toLowerCase()) {
+						a.toast('There is already a ' + source.cls + ' called ' + unitName + '.', 'bad');
 						return false;
 					}
-					await makeCopy(modName, unitName);
+					await makeCopy(modName, unitName, source, onMade);
 				},
 			},
 		]);
 	}
 
-	async function makeCopy(modName, unitName) {
+	async function makeCopy(modName, unitName, original, onMade) {
 		const a = app();
 		const lib = a.lib;
-		const isItem = MS.Rig.DEVICE_CLASSES.has(a.actor.cls);
+		const isItem = MS.Rig.DEVICE_CLASSES.has(original.cls);
 		const path = modName + (isItem ? '/Devices/' : '/Actors/') + safeName(unitName) + '.ini';
 		let doc = lib.docFor(path);
 		if (!doc) {
@@ -153,20 +167,26 @@ window.MS = window.MS || {};
 				return;
 			}
 			const hadModule = !!lib.moduleOf(path);
-			doc = await lib.newDoc(path);
+			// A held item's copy is read before the unit that carries it.
+			doc = await lib.newDoc(path, onMade && a.actor ? a.actor.path : null);
 			a.hookDoc(doc);
 			if (!hadModule) {
 				a.hookDoc(lib.docFor(modName + '/Index.ini'));
 				a.toast('Made the new mod ' + modName + '. The game loads new mods when it starts, so restart it once before previewing.', 'good');
 			}
 		}
-		const original = a.actor;
 		const block = doc.addTopLevel(isItem ? 'AddDevice' : 'AddActor', original.cls);
 		block.add('CopyOf', lib.reference(original.name, original.path.split('/')[0], modName));
 		block.add('PresetName', unitName);
 		lib.reindex();
 		a.writeLocal('ms.lastMod', modName);
 		const preset = lib.presets.find((p) => p.doc === doc && p.name === unitName);
+		a.updateFileStatus();
+		if (onMade) {
+			onMade(preset);
+			a.toast('Made ' + unitName + ' in ' + modName + '. Save to write it to disk.', 'good');
+			return;
+		}
 		a.undo = [];
 		a.redo = [];
 		a.openActor(preset);

@@ -705,6 +705,16 @@ window.MS = window.MS || {};
 			const n = document.createElement('div');
 			n.className = 'notice';
 			n.textContent = locked;
+			const heldPreset = !actorLocked && part.anchor !== app.actorNode ? app.lib.presets.find((p) => p.node === part.anchor) : null;
+			if (heldPreset) {
+				// A held item (or a part of one) from the game or someone else's mod: copy it into your mod, and the unit uses the copy.
+				const b = document.createElement('button');
+				b.className = 'small-btn primary';
+				b.textContent = 'Make my own copy of ' + heldPreset.name;
+				b.title = 'Makes ' + heldPreset.name + ' in your mod (CopyOf the original), and ' + app.actor.name + ' carries your copy instead';
+				b.onclick = () => MS.dialogs.copyUnit({ name: heldPreset.name, cls: heldPreset.cls, path: heldPreset.doc.path }, (copy) => app.useOwnCopy(heldPreset, copy));
+				n.append(document.createElement('br'), b);
+			}
 			if (actorLocked && part.anchor === app.actorNode) {
 				const b = document.createElement('button');
 				b.className = 'small-btn primary';

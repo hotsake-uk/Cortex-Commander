@@ -457,8 +457,9 @@ window.MS = window.MS || {};
 			return this.docs.get(path.toLowerCase()) || null;
 		}
 
-		// A new INI file in a mod (made if needed), included from the mod's Index.ini.
-		async newDoc(path) {
+		// A new INI file in a mod (made if needed), included from the mod's Index.ini: at the end, or just before `before` (a file that
+		// will use presets from the new one, which the game must have read first).
+		async newDoc(path, before) {
 			const moduleName = path.split('/')[0];
 			let module = this.moduleOf(path);
 			if (!module) {
@@ -483,7 +484,8 @@ window.MS = window.MS || {};
 			if (index) {
 				const dm = index.root.children.find((n) => n.key === 'DataModule') || index.root;
 				if (!dm.children.some((c) => c.key === 'IncludeFile' && c.value.toLowerCase() === path.toLowerCase())) {
-					dm.add('IncludeFile', path);
+					const at = before ? dm.children.findIndex((c) => c.key === 'IncludeFile' && c.value.toLowerCase() === before.toLowerCase()) : -1;
+					dm.add('IncludeFile', path, at >= 0 ? at : undefined);
 				}
 			}
 			return doc;

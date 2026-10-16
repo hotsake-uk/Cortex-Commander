@@ -319,6 +319,31 @@ window.MS = window.MS || {};
 		return null;
 	}
 
+	// After Make my own copy of a held item: every AddInventory of the unit being designed that carries the original now carries the
+	// copy (an inherited one is taken into the unit's own block first, so other units are untouched), and the copy is held.
+	app.useOwnCopy = function (original, copy) {
+		const actorNode = app.actorNode;
+		const module = actorNode.doc.path.split('/')[0];
+		let replaced = 0;
+		app.edit('use my own copy of ' + original.name, () => {
+			const entries = app.lib.resolve(actorNode).all('AddInventory');
+			entries.forEach((entry, index) => {
+				const copyOf = entry.node.child('CopyOf');
+				const carried = copyOf && app.lib.find(copyOf.value, entry.node.value, entry.node.doc.module);
+				if (!carried || carried.node !== original.node) {
+					return;
+				}
+				const own = app.lib.ownBlock(actorNode, [{ key: 'AddInventory', index }]);
+				if (own.node) {
+					own.node.set('CopyOf', app.lib.reference(copy.name, copy.doc.path.split('/')[0], module));
+					replaced++;
+				}
+			});
+		});
+		app.setDevice(copy);
+		app.toast(replaced ? app.actor.name + ' now carries ' + copy.name + ' instead of ' + original.name + '. Save to keep it.' : app.actor.name + ' holds ' + copy.name + ' here. It doesn\'t carry ' + original.name + ' in its inventory, so nothing in the unit changed.', 'good');
+	};
+
 	app.setDevice = function (preset) {
 		app.device = preset ? { path: preset.doc.path, name: preset.name } : null;
 		app.rebuild();
