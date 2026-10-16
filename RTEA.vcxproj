@@ -877,6 +877,7 @@
     <ClInclude Include="Source\Managers\TerrainGrazing.h" />
     <ClInclude Include="Source\Managers\FluidSim.h" />
     <ClInclude Include="Source\Managers\ModernHUD.h" />
+    <ClInclude Include="Source\Managers\AIAwareness.h" />
     <ClInclude Include="Source\Managers\Notices.h" />
     <ClInclude Include="Source\Managers\ActionMenu.h" />
     <ClInclude Include="Source\Managers\DebugDraw.h" />
@@ -1513,6 +1514,7 @@
     <ClCompile Include="Source\Managers\TerrainGrazing.cpp" />
     <ClCompile Include="Source\Managers\FluidSim.cpp" />
     <ClCompile Include="Source\Managers\ModernHUD.cpp" />
+    <ClCompile Include="Source\Managers\AIAwareness.cpp" />
     <ClCompile Include="Source\Managers\Notices.cpp" />
     <ClCompile Include="Source\Managers\ActionMenu.cpp" />
     <ClCompile Include="Source\Managers\SmokeGrid.cpp" />

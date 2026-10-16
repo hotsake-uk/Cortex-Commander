@@ -39,6 +39,7 @@
 #include "PostProcessMan.h"
 #include "PieMenu.h"
 #include "SmokeGrid.h"
+#include "AIAwareness.h"
 
 #include "GUI.h"
 #include "AllegroBitmap.h"
@@ -2761,8 +2762,6 @@ std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range,
 	// The likeliest first: nearest the aim, then nearest, so the budget goes where a person would look.
 	std::sort(candidates.begin(), candidates.end(), [narrowReach](const Candidate& a, const Candidate& b) { return a.offAim / 90.0F + a.distance / narrowReach < b.offAim / 90.0F + b.distance / narrowReach; });
 
-	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
-	const float night = (lighting.Enabled && lighting.NightAffectsAI) ? GetNightAmount() : 0.0F;
 	// The looks: the likeliest enemy's body always, then, starting where the last scan stopped, the likeliest's head and each other
 	// enemy's body and head in turn. (Taken in rank order every time, an enemy near the aim but hidden behind a wall spent the whole
 	// budget, body then head, on every scan, and a second enemy in plain view beside it was never looked at.)
@@ -2815,25 +2814,56 @@ std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range,
 		// and small (lying down, crouched, only a head showing) each take some away. The script delays its notice by it.
 		float angle = 1.0F - 0.6F * std::clamp(candidate.off, 0.0F, 1.0F);
 		float far = 1.0F - 0.7F * std::clamp(candidate.distance / narrowReach, 0.0F, 1.0F);
-		float light = 1.0F;
-		if (night > 0.05F) {
-			float lit = g_PostProcessMan.GetDynamicLightAt(candidate.actor->GetPos());
-			// A lit headlamp gives its wearer away whichever way it points (AC-11).
-			if (candidate.actor->GetController()->IsState(WEAPON_FIRE) || candidate.actor->IsHeadlampLit()) {
-				lit = std::max(lit, candidate.actor->GetController()->IsState(WEAPON_FIRE) ? 1.0F : 0.6F);
-			}
-			// Under a roof (terrain within a few bodies straight up) there is no moon or starlight either: darker than in the open.
-			Vector roof;
-			bool roofed = g_SceneMan.CastNotMaterialRay(candidate.actor->GetEyePos(), Vector(0.0F, -std::max(120.0F, candidate.actor->GetHeight() * 3.0F)), g_MaterialAir, roof);
-			light = std::max(1.0F - night * (roofed ? 0.88F : 0.7F), std::min(1.0F, lit * 1.5F));
-		}
-		float moving = candidate.actor->GetVel().MagnitudeIsGreaterThan(1.0F) ? 1.0F : 0.75F;
-		float profile = std::clamp(candidate.actor->GetSightProfile(), 0.1F, 1.0F) * (head ? 0.7F : 1.0F);
-		float visibility = std::clamp(angle * far * light * moving * profile, 0.05F, 1.0F);
+		// (The dark, a roof, lights, keeping still and the stance: GetConcealment, which the player's visibility meter shows too.)
+		const ActorConcealment hidden = candidate.actor->GetConcealment();
+		float profile = hidden.Profile * (head ? 0.7F : 1.0F);
+		float visibility = std::clamp(angle * far * hidden.Light * hidden.Moving * profile, 0.05F, 1.0F);
 		m_Sightings.push_back({candidate.actor, hitPos, visibility, candidate.distance, head});
 	}
 	std::sort(m_Sightings.begin(), m_Sightings.end(), [](const ActorSighting& a, const ActorSighting& b) { return a.Visibility > b.Visibility; });
 	return m_Sightings;
+}
+
+ActorConcealment Actor::GetConcealment() const {
+	ActorConcealment hidden;
+	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+	hidden.Night = (lighting.Enabled && lighting.NightAffectsAI) ? GetNightAmount() : 0.0F;
+	hidden.Cloaked = IsIgnoredByAI();
+	hidden.Firing = m_Controller.IsState(WEAPON_FIRE);
+	if (hidden.Night > 0.05F) {
+		float lit = g_PostProcessMan.GetDynamicLightAt(m_Pos);
+		// A lit headlamp gives its wearer away whichever way it points (AC-11).
+		hidden.Headlamp = IsHeadlampLit();
+		if (hidden.Firing || hidden.Headlamp) {
+			lit = std::max(lit, hidden.Firing ? 1.0F : 0.6F);
+		}
+		// Under a roof (terrain within a few bodies straight up) there is no moon or starlight either: darker than in the open.
+		Vector roof;
+		hidden.Roofed = g_SceneMan.CastNotMaterialRay(GetEyePos(), Vector(0.0F, -std::max(120.0F, GetHeight() * 3.0F)), g_MaterialAir, roof);
+		const float dark = 1.0F - hidden.Night * (hidden.Roofed ? 0.88F : 0.7F);
+		const float lamp = std::min(1.0F, lit * 1.5F);
+		hidden.Lit = lamp > dark + 0.05F;
+		hidden.Light = std::max(dark, lamp);
+	}
+	hidden.Moving = m_Vel.MagnitudeIsGreaterThan(1.0F) ? 1.0F : 0.75F;
+	hidden.Profile = std::clamp(GetSightProfile(), 0.1F, 1.0F);
+	return hidden;
+}
+
+void Actor::ReportAwareness(int state, float level, long targetID, float fovDegrees, float range) {
+	const long long now = static_cast<long long>(g_TimerMan.GetSimTimeMS());
+	state = std::clamp(state, static_cast<int>(ActorAwareness::Unaware), static_cast<int>(ActorAwareness::Engaged));
+	// (Fighting again after a few seconds of not: the "!" pops up again.)
+	if (state == ActorAwareness::Engaged && (m_Awareness.StateNow != ActorAwareness::Engaged || now - m_Awareness.ReportedMS > 3000)) {
+		m_Awareness.EngagedSinceMS = now;
+	}
+	m_Awareness.StateNow = state;
+	m_Awareness.Level = std::clamp(level, 0.0F, 1.0F);
+	m_Awareness.TargetID = targetID;
+	m_Awareness.FovDegrees = std::clamp(fovDegrees, 10.0F, 360.0F);
+	m_Awareness.Range = std::max(range, 0.0F);
+	m_Awareness.ReportedMS = now;
+	AIAwareness::UpdateCone(*this);
 }
 
 float Actor::GetFootstepNoise() const {
@@ -3108,6 +3138,11 @@ void Actor::OnSave() {
 void Actor::Update() {
 	UpdateHeadlamp();
 	UpdateOutlineGlow();
+	// How well hidden the unit a player plays is, for the visibility meter (AIAwareness): looked at here in the sim, as the lights it reads
+	// are only steady while a sim update runs, a few times a second.
+	if (m_Controller.IsPlayerControlled() && AIAwareness::MeterWanted() && (g_TimerMan.GetSimUpdateCount() + GetUniqueID()) % 6 == 0) {
+		AIAwareness::StoreConcealment(*this, GetConcealment(), GetFootstepNoise());
+	}
 
 	ZoneScoped;
 
@@ -3412,7 +3447,8 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 	}
 
 	// Draw the alarm exclamation mark if we are alarmed!
-	if (g_SettingsMan.ShowAlarmExclamation() && m_AlarmTimer.GetSimTimeLimitProgress() < 0.25) {
+	// (Not over an AI unit with an awareness mark, which says as much and more: AIAwareness.)
+	if (g_SettingsMan.ShowAlarmExclamation() && m_AlarmTimer.GetSimTimeLimitProgress() < 0.25 && !AIAwareness::ReplacesAlertMark(*this)) {
 		draw_sprite(pTargetBitmap, m_apAlarmExclamation[m_AgeTimer.AlternateSim(100)], cpuPos.m_X - 3, EaseOut(drawPos.m_Y + m_HUDStack - 10, drawPos.m_Y + m_HUDStack - 25, m_AlarmTimer.GetSimTimeLimitProgress() / 0.25f));
 	}
 

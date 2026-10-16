@@ -37,6 +37,42 @@ namespace RTE {
 		bool Head = false; //!< Only its head was seen.
 	};
 
+	/// How well an actor is hidden from any enemy's eyes where it stands, whoever looks (see Actor::GetConcealment): the parts of ScanForEnemies'
+	/// visibility that don't depend on the looker's angle or distance.
+	struct ActorConcealment {
+		float Light = 1.0F; //!< 1 in plain light; less in the dark, by night and under a roof, unless lit.
+		float Moving = 1.0F; //!< 1 moving, 0.75 still.
+		float Profile = 1.0F; //!< How much of a target the body makes: 1 standing, less crouched or lying down.
+		float Night = 0.0F; //!< How dark it is from the time of day, 0 to 1, as far as the AI's sight is concerned (0 with stealth off).
+		bool Roofed = false; //!< Under a roof: no moon or starlight either.
+		bool Lit = false; //!< Lit up by a lamp, a fire or a flash, by its own headlamp or its gun going off.
+		bool Headlamp = false; //!< Its lit headlamp gives it away.
+		bool Firing = false; //!< Firing its weapon gives it away.
+		bool Cloaked = false; //!< Cloaked by a powerup: the AI doesn't see it at all.
+
+		/// How plainly it shows, 0 to 1, to an enemy looking straight at it from close by.
+		float Visibility() const { return Cloaked ? 0.0F : std::clamp(Light * Moving * Profile, 0.05F, 1.0F); }
+	};
+
+	/// What an AI-run unit is aware of, reported by its scripts' scan (SharedBehaviors.ScanForTargets), for the awareness marks over it and its
+	/// sight cone (AIAwareness).
+	struct ActorAwareness {
+		/// What it is doing about its enemies.
+		enum State : int {
+			Unaware = 0, //!< Noticed no one.
+			Noticing, //!< Half seen someone, and noticing them (Level).
+			Searching, //!< Heard something, or looking for an enemy it lost sight of.
+			Engaged //!< Fighting an enemy it has seen.
+		};
+		int StateNow = Unaware;
+		float Level = 0.0F; //!< How far noticing has got, 0 to 1 (1 for engaged).
+		long TargetID = 0; //!< The unique ID of who it is noticing or fighting, or 0.
+		float FovDegrees = 0.0F; //!< The field of view its scan looked with, about the facing.
+		float Range = 0.0F; //!< How far its scan looked in daylight, in pixels (night and dust cut it by GetNightSightScale).
+		long long ReportedMS = -1; //!< The sim time of the last report, ms; stale after a second.
+		long long EngagedSinceMS = -1; //!< The sim time it last went from not fighting to fighting, ms, for the "!" that pops up.
+	};
+
 #define AILINEDOTSPACING 16
 
 	constexpr float c_StimSpeedMultiplier = 1.5F; //!< How much faster a unit stimmed by a powerup runs (Actor::IsStimmed).
@@ -1624,6 +1660,21 @@ namespace RTE {
 		/// How much of a target this actor's body makes, for the sight of others (see ScanForEnemies): 1 standing.
 		virtual float GetSightProfile() const { return 1.0F; }
 
+		/// How well this actor is hidden where it stands from any enemy looking at it, as ScanForEnemies reckons it (the dark, a roof, lights,
+		/// keeping still, its stance, a cloak): for the player's visibility meter and for the scan itself.
+		ActorConcealment GetConcealment() const;
+
+		/// Reports what this AI-run unit is aware of (its scripts' scan does), for the awareness marks and sight cone drawn over it.
+		/// @param state An ActorAwareness::State. @param level How far noticing has got, 0 to 1. @param targetID Who it is about, by unique ID, or 0.
+		/// @param fovDegrees The field its scan looked with. @param range How far its scan looked in daylight, in pixels.
+		void ReportAwareness(int state, float level, long targetID, float fovDegrees, float range);
+
+		/// Gets what this unit last reported it is aware of (ReportAwareness). Stale (ReportedMS over a second old) once it stopped reporting.
+		const ActorAwareness& GetAwareness() const { return m_Awareness; }
+
+		/// Gets how long ago, in sim ms, this actor was last alarmed (a noise, footsteps, a hit; see AlarmPoint).
+		long long GetAlarmAgeMS() const { return static_cast<long long>(m_AlarmTimer.GetElapsedSimTimeMS()); }
+
 		/// How loud this actor's moving is, for the hearing of others (see HearFootsteps), as an alarm event's range: nothing standing still,
 		/// a little crawling, more walking and more again running, quieter bent double and louder on metal.
 		virtual float GetFootstepNoise() const;
@@ -2126,6 +2177,7 @@ namespace RTE {
 		};
 		ZeroGMover m_ZeroGMover;
 		std::vector<ActorSighting> m_Sightings; //!< What the last ScanForEnemies saw.
+		ActorAwareness m_Awareness; //!< What its scripts last reported it is aware of (ReportAwareness). Not copied or saved.
 		unsigned int m_ScanCursor; //!< Where ScanForEnemies' next looks past the likeliest enemy start, so every enemy in view is looked at in turn.
 		float m_Suppression = 0.0F; //!< How pinned down by fire, 0 to 1 (see GetSuppression).
 		float m_Morale = 1.0F; //!< How steady its nerve is, 0 to 1 (see GetMorale).
