@@ -111,7 +111,7 @@ button, input, select { font: inherit; color: inherit; }
 
 .panel-head { padding: 9px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--faint); border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
 .panel-head .hint { text-transform: none; letter-spacing: 0; color: var(--faint); font-size: 11px; }
-.tree { max-height: 38%; overflow: auto; padding: 6px; border-bottom: 1px solid var(--line); flex: none; }
+#tree.tree { max-height: 38%; overflow: auto; padding: 6px; border-bottom: 1px solid var(--line); flex: none; }
 .tree-row { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 5px; cursor: pointer; white-space: nowrap; }
 .tree-row:hover, .tree-row.hover { background: var(--panel2); }
 .tree-row.sel { background: var(--panel3); box-shadow: inset 2px 0 0 var(--accent); }

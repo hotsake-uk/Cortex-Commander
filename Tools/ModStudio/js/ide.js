@@ -420,10 +420,26 @@ window.MS = window.MS || {};
 			scrollBeyondLastLine: false,
 			smoothScrolling: true,
 			fixedOverflowWidgets: true,
-			suggest: { showStatusBar: true, preview: true },
+			suggest: { showStatusBar: true, preview: true, showInlineDetails: false },
+			suggestFontSize: 13,
+			suggestLineHeight: 22,
 			quickSuggestions: { other: true, comments: false, strings: true },
 			model: null,
 		});
+		// The description beside the suggestion list shows from the start (Ctrl+Space still toggles it), and the list is wider and taller.
+		try {
+			const suggest = ide.editor.getContribution('editor.contrib.suggestController');
+			const widget = suggest && suggest.widget && suggest.widget.value;
+			if (widget && widget._setDetailsVisible) {
+				widget._setDetailsVisible(true);
+			}
+			// About 14 rows and a wide list (dragging its corner still resizes it).
+			if (widget && widget._persistedSize && !widget._persistedSize.restore()) {
+				widget._persistedSize.store({ width: 520, height: 14 * 22 });
+			}
+		} catch (e) {
+			// Monaco's insides moved: the description stays a Ctrl+Space away.
+		}
 		ide.editor.addAction({
 			id: 'cortex.save', label: 'Save', keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
 			run: () => ide.saveAll(),
