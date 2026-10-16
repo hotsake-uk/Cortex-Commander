@@ -62,8 +62,9 @@ int Emission::ReadProperty(const std::string_view& propName, Reader& reader) {
 
 	MatchProperty("EmittedParticle",
 	              {
-		              m_pEmission = dynamic_cast<const MovableObject*>(g_PresetMan.GetEntityPreset(reader));
-		              RTEAssert(m_pEmission, "Stream suggests allocating an unallocatable type in AEmitter::Emission::Create!");
+		              const Entity* preset = g_PresetMan.GetEntityPreset(reader);
+		              m_pEmission = dynamic_cast<const MovableObject*>(preset);
+		              RTEAssert(m_pEmission, "Stream suggests allocating an unallocatable type in AEmitter::Emission::Create! " + g_PresetMan.DescribeUnusablePreset("EmittedParticle", "MovableObject", preset));
 	              });
 	MatchProperty("ParticlesPerMinute", { reader >> m_PPM; });
 	MatchProperty("BurstSize", { reader >> m_BurstSize; });

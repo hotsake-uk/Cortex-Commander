@@ -444,9 +444,16 @@ const Entity* PresetMan::GetEntityPreset(Reader& reader) {
 	const Entity::ClassInfo* pClass = 0;
 	Entity* pNewInstance = 0;
 	const Entity* pReturnPreset = 0;
+	// What was read, kept aside and stored at the end, since reading this preset reads any presets inside it first.
+	PresetRead presetRead;
+	presetRead.FilePath = reader.GetCurrentFilePath();
+	presetRead.Line = reader.GetCurrentFileLine();
 	// Load class name and then preset instance
 	reader >> ClassName;
 	pClass = Entity::ClassInfo::GetClass(ClassName);
+	presetRead.ClassName = ClassName;
+	presetRead.ClassKnown = pClass != nullptr;
+	presetRead.ClassConcrete = pClass && pClass->IsConcrete();
 
 	if (pClass && pClass->IsConcrete()) {
 		// Instantiate
@@ -456,7 +463,11 @@ const Entity* PresetMan::GetEntityPreset(Reader& reader) {
 		std::string entityFilePath = reader.GetCurrentFilePath();
 
 		// Try to read in the preset instance's data from the reader
-		if (pNewInstance && pNewInstance->Create(reader, false) < 0) {
+		const int createResult = pNewInstance ? pNewInstance->Create(reader, false) : 0;
+		if (pNewInstance) {
+			presetRead.PresetName = pNewInstance->GetPresetName();
+		}
+		if (pNewInstance && createResult < 0) {
 			// Abort loading if we can't create entity and it's not in a module that allows ignoring missing items.
 			if (!g_PresetMan.GetDataModule(whichModule)->GetIgnoreMissingItems())
 				RTEAbort("Reading of a preset instance \"" + pNewInstance->GetPresetName() + "\" of class " + pNewInstance->GetClassName() + " failed in file " + reader.GetCurrentFilePath() + ", shortly before line #" + reader.GetCurrentFileLine());
@@ -479,7 +490,23 @@ const Entity* PresetMan::GetEntityPreset(Reader& reader) {
 	} else
 		pReturnPreset = 0;
 
+	m_LastPresetRead = presetRead;
 	return pReturnPreset;
+}
+
+std::string PresetMan::DescribeUnusablePreset(const std::string& propertyName, const std::string& wantedType, const Entity* readPreset) const {
+	const PresetRead& read = m_LastPresetRead;
+	std::string why;
+	if (!read.ClassKnown) {
+		why = "there is no class called \"" + read.ClassName + "\" (a typo, or a class from another version of the game?)";
+	} else if (!read.ClassConcrete) {
+		why = "\"" + read.ClassName + "\" is a kind of class that can't be made on its own; use one of its concrete classes";
+	} else if (!readPreset) {
+		why = "the " + read.ClassName + " \"" + read.PresetName + "\" couldn't be read";
+	} else {
+		why = "\"" + readPreset->GetPresetName() + "\" is a " + readPreset->GetClassName() + ", and " + propertyName + " needs a " + wantedType;
+	}
+	return propertyName + " = " + read.ClassName + (read.PresetName.empty() ? "" : " \"" + read.PresetName + "\"") + " in " + read.FilePath + " at line " + read.Line + ": " + why + ".";
 }
 
 Entity* PresetMan::ReadReflectedPreset(Reader& reader) {
