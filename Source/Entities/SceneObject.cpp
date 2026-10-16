@@ -53,8 +53,9 @@ int SceneObject::SOPlacer::ReadProperty(const std::string_view& propName, Reader
 
 	MatchProperty("PlacedObject",
 	              {
-		              m_pObjectReference = dynamic_cast<const SceneObject*>(g_PresetMan.GetEntityPreset(reader));
-		              RTEAssert(m_pObjectReference, "Stream suggests allocating an unallocatable type in SOPlacer::Create!");
+		              const Entity* preset = g_PresetMan.GetEntityPreset(reader);
+		              m_pObjectReference = dynamic_cast<const SceneObject*>(preset);
+		              RTEAssert(m_pObjectReference, "Stream suggests allocating an unallocatable type in SOPlacer::Create! " + g_PresetMan.DescribeUnusablePreset("PlacedObject", "SceneObject", preset));
 	              });
 	MatchProperty("Offset", { reader >> m_Offset; });
 	MatchProperty("Rotation",

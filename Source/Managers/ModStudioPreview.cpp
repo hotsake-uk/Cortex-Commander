@@ -9,10 +9,12 @@
 #include "HeldDevice.h"
 #include "MovableMan.h"
 #include "PresetMan.h"
+#include "RTEError.h"
 #include "Sandbox.h"
 #include "SceneMan.h"
 #include "System.h"
 
+#include <algorithm>
 #include <fstream>
 
 using namespace RTE;
@@ -26,6 +28,37 @@ namespace {
 	std::string TrimSpaces(const std::string& text) {
 		const size_t first = text.find_first_not_of(" \t\r\n");
 		return first == std::string::npos ? std::string() : text.substr(first, text.find_last_not_of(" \t\r\n") - first + 1);
+	}
+
+	std::string OneLine(std::string text) {
+		std::replace(text.begin(), text.end(), '\n', ' ');
+		return text;
+	}
+
+	/// Reloads a file Studio changed. Something wrong in it is caught the way a broken mod is at start-up: one ERROR line on the console (which Studio
+	/// shows), and the game carries on with what it had, rather than stopping on an assert dialog.
+	void ReloadFileFromStudio(const std::string& filePath) {
+		const std::string moduleName = g_PresetMan.GetModuleNameFromPath(filePath);
+		for (const auto& [failedName, failure]: g_PresetMan.GetFailedMods()) {
+			if (StringsEqualCaseInsensitive(failedName, moduleName)) {
+				g_ConsoleMan.PrintString("ERROR: Mod Studio couldn't reload \"" + filePath + "\": the mod " + failedName + " wasn't loaded when the game started, because: " + OneLine(failure) + " Fix that and restart the game.");
+				return;
+			}
+		}
+		bool reloaded = false;
+		std::string failure;
+		RTEError::s_LoadingMod = true;
+		try {
+			reloaded = g_PresetMan.ReloadPresetFile(filePath);
+		} catch (const ModLoadFailure& modLoadFailure) {
+			failure = modLoadFailure.Description;
+		}
+		RTEError::s_LoadingMod = false;
+		if (!failure.empty()) {
+			g_ConsoleMan.PrintString("ERROR: Mod Studio couldn't reload \"" + filePath + "\", so the game keeps what it had before: " + OneLine(failure));
+		} else if (!reloaded) {
+			g_ConsoleMan.PrintString("WARNING: Mod Studio preview couldn't reload \"" + filePath + "\". Its mod may not be loaded yet.");
+		}
 	}
 } // namespace
 
@@ -80,9 +113,7 @@ Actor* ModStudioPreview::MakeUnit(const Request& request, std::string& problem) 
 		return nullptr;
 	}
 	for (const std::string& fileToReload: request.FilesToReload) {
-		if (!g_PresetMan.ReloadPresetFile(fileToReload)) {
-			g_ConsoleMan.PrintString("WARNING: Mod Studio preview couldn't reload \"" + fileToReload + "\". Its mod may not be loaded yet.");
-		}
+		ReloadFileFromStudio(fileToReload);
 	}
 	const Entity* preset = g_PresetMan.GetEntityPreset(request.ClassName, request.PresetName, request.ModuleName.empty() ? -1 : g_PresetMan.GetModuleID(request.ModuleName));
 	Actor* unit = preset ? dynamic_cast<Actor*>(preset->Clone()) : nullptr;
