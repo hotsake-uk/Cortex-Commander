@@ -835,6 +835,66 @@ window.MS = window.MS || {};
 		}
 	}
 
+	// The Used by section: every place that copies this preset, each a link to those lines.
+	function usedBySection(insp, preset) {
+		const uses = MS.nav.uses(preset);
+		const count = document.createElement('span');
+		count.className = 'side-count';
+		count.textContent = uses.length ? String(uses.length) : 'none';
+		const rows = section(insp, 'Used by', count);
+		if (!uses.length) {
+			const none = document.createElement('div');
+			none.className = 'src';
+			none.textContent = 'Nothing in the mods or the game copies ' + preset.name + '.';
+			rows.append(none);
+		}
+		const list = document.createElement('div');
+		rows.append(list);
+		const addUse = (label, detail, path, line) => {
+			const row = document.createElement('div');
+			row.className = 'row use-row';
+			const link = codeLink(label, path, line);
+			const small = document.createElement('small');
+			small.textContent = detail;
+			row.append(link, small);
+			list.append(row);
+		};
+		const shown = 12;
+		uses.slice(0, shown).forEach((node) => {
+			const d = MS.nav.describeUse(node);
+			addUse(d.label, d.detail, d.path, d.line);
+		});
+		if (uses.length > shown) {
+			const more = document.createElement('button');
+			more.className = 'small-btn';
+			more.textContent = 'Show all ' + uses.length;
+			more.onclick = () => {
+				uses.slice(shown).forEach((node) => {
+					const d = MS.nav.describeUse(node);
+					addUse(d.label, d.detail, d.path, d.line);
+				});
+				more.remove();
+			};
+			rows.append(more);
+		}
+		const scripts = document.createElement('button');
+		scripts.className = 'small-btn';
+		scripts.textContent = 'Scripts that name it';
+		scripts.title = 'Look through the Lua scripts for "' + preset.name + '" in quotes, like CreateActor("' + preset.name + '")';
+		scripts.onclick = () => {
+			const found = MS.nav.luaMentions(preset.name, 60);
+			scripts.remove();
+			if (!found.length) {
+				const none = document.createElement('div');
+				none.className = 'src';
+				none.textContent = 'No script names ' + preset.name + ' in quotes.';
+				rows.append(none);
+			}
+			found.forEach((f) => addUse(f.path.split('/').pop() + ':' + f.line, f.path.split('/')[0], f.path, f.line));
+		};
+		rows.append(scripts);
+	}
+
 	function renderInspector() {
 		// Sections go in an inner box, which wide screens lay out in columns (the scrolling box itself can't be: its columns would run off sideways).
 		const box = $('inspector');
@@ -904,6 +964,11 @@ window.MS = window.MS || {};
 		const base = copyOf ? app.lib.find(copyOf.value, ent.cls, ent.node.doc.module) : null;
 		if (base) {
 			textRow(where, 'Based on', base.name + ' · ' + base.module + (base.node.line ? ':' + base.node.line : ''), 'Open ' + base.name + ' in the code editor', { path: base.doc.path, line: base.node.line });
+		}
+		const ownPreset = MS.nav ? MS.nav.presetOf(ent.node) : null;
+		if (ownPreset) {
+			closedSections.add('Used by'); // starts folded; its count is in the heading
+			usedBySection(insp, ownPreset);
 		}
 		const missing = app.lib.missingCopyOf(ent.node);
 		if (missing) {

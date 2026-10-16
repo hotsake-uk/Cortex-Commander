@@ -130,6 +130,8 @@ button, input, select { font: inherit; color: inherit; }
 .tree-row .folded-count { color: var(--accent); }
 .tree-tools { display: flex; gap: 2px; text-transform: none; letter-spacing: 0; }
 .ico-svg { display: inline-flex; }
+.use-row { display: flex; gap: 8px; align-items: baseline; padding: 1px 0; }
+.use-row small { color: var(--faint); margin-left: auto; }
 .side-count { font-size: 11px; color: var(--faint); }
 .outline { overflow: auto; flex: 1; padding: 4px 0; }
 .ol-row { display: flex; align-items: baseline; gap: 6px; padding: 2px 8px; cursor: pointer; white-space: nowrap; border-left: 2px solid transparent; }

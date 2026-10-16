@@ -368,6 +368,23 @@ window.MS = window.MS || {};
 			});
 		}
 
+		// Find all references (Shift+F12): what copies a preset, which scripts name it, which blocks use a file, where a Lua name is used.
+		for (const language of ['ccini', 'lua']) {
+			monaco.languages.registerReferenceProvider(language, {
+				async provideReferences(model, position, context) {
+					const refs = MS.nav.referencesAt(pathOf(model), model, position, context.includeDeclaration, 300);
+					const out = [];
+					for (const r of refs) {
+						const target = await ide.ensureModel(r.path);
+						if (target) {
+							out.push({ uri: target.uri, range: new monaco.Range(r.line || 1, r.col || 1, r.line || 1, r.endCol || 200) });
+						}
+					}
+					return out;
+				},
+			});
+		}
+
 		// Script paths in INI and Lua files are links: Ctrl+click opens the script.
 		const scriptLinks = {
 			provideLinks(model) {

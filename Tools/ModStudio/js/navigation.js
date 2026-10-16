@@ -11,6 +11,7 @@ window.MS = window.MS || {};
 	const KIND = { class: 4, method: 5, function: 11, struct: 22, object: 18, namespace: 2 };
 	// Blocks that only hold a value (a position, a picture, a material): not worth a line in the outline.
 	const VALUE_BLOCKS = new Set(['Vector', 'ContentFile', 'Material', 'AtomGroup', 'Atom', 'Color', 'Matrix']);
+	const FILE_VALUE = /\.(png|bmp|wav|ogg|flac|mp3|lua|ini)$/i;
 	const FILE_KEY = /^(FilePath|ScriptPath|IncludeFile|SpriteFile|IconFile|BitmapFile|PresetIconFile|ScenePreview|PreviewImage|Icon)$/;
 
 	function lastLine(node) {
@@ -28,6 +29,8 @@ window.MS = window.MS || {};
 			this.baseOf = new Map(); // preset -> the preset its CopyOf names
 			this.derivedOf = new Map(); // preset -> [presets that CopyOf it]
 			this.fileUsers = new Map(); // lowercased path -> [nodes naming it]
+			this.usesOf = new Map(); // a preset's block -> [every CopyOf node that names it, in presets or inside other blocks]
+			this.presetOfNode = new Map(); // a preset's block -> the preset
 			this.buildMs = 0;
 			this.cache = new Map(); // model uri -> {version, symbols}
 		}
@@ -45,7 +48,12 @@ window.MS = window.MS || {};
 			this.baseOf.clear();
 			this.derivedOf.clear();
 			this.fileUsers.clear();
+			this.usesOf.clear();
+			this.presetOfNode.clear();
 			for (const preset of lib.presets) {
+				if (!this.presetOfNode.has(preset.node)) {
+					this.presetOfNode.set(preset.node, preset);
+				}
 				const copy = preset.node.child('CopyOf');
 				if (!copy) {
 					continue;
@@ -61,6 +69,15 @@ window.MS = window.MS || {};
 			}
 			for (const doc of lib.docs.values()) {
 				for (const node of doc.walk()) {
+					if (node.key === 'CopyOf' && node.value) {
+						const target = lib.find(node.value, node.parent && node.parent.value, doc.module);
+						if (target) {
+							if (!this.usesOf.has(target.node)) {
+								this.usesOf.set(target.node, []);
+							}
+							this.usesOf.get(target.node).push(node);
+						}
+					}
 					if (node.value && FILE_KEY.test(node.key)) {
 						const key = node.value.replace(/\\/g, '/').toLowerCase();
 						if (!this.fileUsers.has(key)) {
@@ -92,6 +109,124 @@ window.MS = window.MS || {};
 				list.push(p);
 			}
 			return list;
+		}
+
+		presetOf(node) {
+			return this.ensure() ? this.presetOfNode.get(node) || null : null;
+		}
+
+		uses(preset) {
+			return this.ensure() ? this.usesOf.get(preset.node) || [] : [];
+		}
+
+		// A CopyOf somewhere, described for a list: the preset it sits in (and the part, when it is a block inside one) and where.
+		describeUse(node) {
+			let owner = node.parent;
+			while (owner && !owner.child('PresetName')) {
+				owner = owner.parent;
+			}
+			const inside = node.parent && owner && node.parent !== owner ? node.parent.key : '';
+			const name = owner ? owner.child('PresetName').value : node.doc.path.split('/').pop();
+			return { label: name + (inside ? ' › ' + inside : ''), detail: node.doc.path.split('/').pop() + ':' + node.line, path: node.doc.path, line: node.line };
+		}
+
+		// Scripts that name a preset in quotes, like CreateActor("Green Dummy"): [{path, line, col, endCol}].
+		luaMentions(name, limit) {
+			const scripts = MS.ide && MS.ide.lua ? MS.ide.lua.scripts : null;
+			const found = [];
+			if (!scripts || !name) {
+				return found;
+			}
+			for (const { path, text } of scripts.values()) {
+				for (const quote of ['"', "'"]) {
+					const needle = quote + name + quote;
+					for (let at = text.indexOf(needle); at >= 0; at = text.indexOf(needle, at + needle.length)) {
+						const before = text.slice(0, at);
+						const line = before.split('\n').length;
+						const col = at - before.lastIndexOf('\n');
+						found.push({ path, line, col, endCol: col + needle.length });
+						if (found.length >= limit) {
+							return found;
+						}
+					}
+				}
+			}
+			return found;
+		}
+
+		// Scripts that use a name as a word (a function, a table, a field).
+		luaWord(word, limit) {
+			const scripts = MS.ide && MS.ide.lua ? MS.ide.lua.scripts : null;
+			const found = [];
+			if (!scripts || !word) {
+				return found;
+			}
+			const re = new RegExp('(?<![\\w])' + word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w])', 'g');
+			for (const { path, text } of scripts.values()) {
+				if (!text.includes(word)) {
+					continue;
+				}
+				const lines = text.split(/\r?\n/);
+				lines.forEach((line, i) => {
+					re.lastIndex = 0;
+					let m;
+					while (found.length < limit && (m = re.exec(line))) {
+						found.push({ path, line: i + 1, col: m.index + 1, endCol: m.index + 1 + word.length });
+					}
+				});
+				if (found.length >= limit) {
+					break;
+				}
+			}
+			return found;
+		}
+
+		// Everything that refers to what the cursor is on: [{path, line, col, endCol}].
+		referencesAt(path, model, position, includeDeclaration, limit) {
+			const lib = this.app.lib;
+			if (!lib || !this.ensure()) {
+				return [];
+			}
+			limit = limit || 300;
+			const module = (path || '').split('/')[0];
+			const lineText = model.getLineContent(position.lineNumber);
+			const presetRefs = (preset) => {
+				const out = [];
+				if (includeDeclaration && preset.node.line) {
+					out.push({ path: preset.doc.path, line: preset.node.line, col: 1, endCol: 200 });
+				}
+				for (const node of this.uses(preset)) {
+					out.push({ path: node.doc.path, line: node.line, col: 1, endCol: 200 });
+				}
+				return out.concat(this.luaMentions(preset.name, Math.max(0, limit - out.length)));
+			};
+			if (/\.lua$/i.test(path)) {
+				const strings = /(["'])((?:\\.|(?!\1).)*)\1/g;
+				let m;
+				while ((m = strings.exec(lineText))) {
+					if (position.column > m.index && position.column <= m.index + m[0].length) {
+						const preset = lib.find(m[2], null, module);
+						if (preset) {
+							return presetRefs(preset).slice(0, limit);
+						}
+					}
+				}
+				const word = model.getWordAtPosition(position);
+				return word ? this.luaWord(word.word, limit) : [];
+			}
+			const m = /^(\s*)([^=\s/]+)\s*=\s*([^\t/]*)/.exec(lineText);
+			if (!m) {
+				return [];
+			}
+			const value = m[3].trim();
+			if (FILE_VALUE.test(value)) {
+				const file = value.replace(/\\/g, '/');
+				const users = this.fileUsers.get(file.toLowerCase()) || [];
+				const out = users.map((n) => ({ path: n.doc.path, line: n.line, col: 1, endCol: 200 }));
+				return out.concat(/\.lua$/i.test(file) ? [] : this.luaMentions(file, limit)).slice(0, limit);
+			}
+			const preset = lib.find(value, null, module);
+			return preset ? presetRefs(preset).slice(0, limit) : [];
 		}
 
 		// ---- outline of an open file ----
