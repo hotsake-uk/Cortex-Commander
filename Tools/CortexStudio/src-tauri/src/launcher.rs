@@ -165,7 +165,7 @@ fn exe_path(slot: &Path, configuration: &str) -> PathBuf {
 }
 
 const BUILT_MARKER: &str = ".cortex-studio-built";
-const COPY_MARKER: &str = ".launcher-copy";
+pub const COPY_MARKER: &str = ".launcher-copy";
 const WORLD_MARKER: &str = ".launcher-world";
 
 /// "sha configuration" of the last good build in the slot.
@@ -635,6 +635,22 @@ fn sync_dir(src: &Path, dest: &Path) -> std::io::Result<u32> {
 	Ok(n)
 }
 
+/// Your mods folder from the launch settings, when its mods are linked into `game_dir` (a version Studio launched). The file bridge
+/// watches it as well: a save there changes the version's hard link without the version's Mods folder hearing of it.
+pub fn linked_mods_dir(game_dir: &Path) -> Option<PathBuf> {
+	let config = Config::load(game_dir);
+	if config.mods_dir.is_empty() {
+		return None;
+	}
+	let src = fs::canonicalize(&config.mods_dir).ok()?;
+	let mods = fs::canonicalize(game_dir.join("Mods")).ok()?;
+	if src == mods {
+		return None;
+	}
+	let linked = fs::read_dir(&src).ok()?.filter_map(|e| e.ok()).any(|e| mods.join(e.file_name()).join(COPY_MARKER).exists());
+	linked.then_some(src)
+}
+
 fn link_mods(config: &Config, slot: &Path, log: &mut Vec<String>) {
 	if config.mods_dir.is_empty() {
 		return;
@@ -873,7 +889,10 @@ fn launch(config: &Config, mode: &str, map: &str) -> Result<Vec<String>, String>
 	let slot = config.slot_path();
 	let exe = exe_path(&slot, &config.configuration);
 	if !exe.is_file() {
-		return Err("Nothing is built yet. Build a version first.".into());
+		return Err(match configurations().into_iter().find(|c| *c != config.configuration && exe_path(&slot, c).is_file()) {
+			Some(other) => format!("There's no {} build of this version yet. Press Update & build to make one, or set Build type back to {other}.", config.configuration),
+			None => "Nothing is built yet. Build a version first.".into(),
+		});
 	}
 	let mut log = Vec::new();
 	link_mods(config, &slot, &mut log);
@@ -900,6 +919,14 @@ fn launch(config: &Config, mode: &str, map: &str) -> Result<Vec<String>, String>
 	let fmod = if cfg!(target_os = "macos") { slot.join("external/lib/macOS") } else { slot.join("external/lib/linux/x86_64") };
 	if !cfg!(windows) {
 		command.env(if cfg!(target_os = "macos") { "DYLD_LIBRARY_PATH" } else { "LD_LIBRARY_PATH" }, fmod);
+	}
+	// What the game prints (asserts and crashes included, which reach no log of its own on macOS and Linux) goes to a file you can read.
+	let game_log = slot.join("ModStudio").join("Game.log");
+	if let Some(file) = fs::create_dir_all(game_log.parent().unwrap()).and_then(|_| fs::File::create(&game_log)).ok() {
+		if let Ok(copy) = file.try_clone() {
+			command.stdout(copy).stderr(file);
+			log.push(format!("The game's output goes to {}.", game_log.display()));
+		}
 	}
 	command.spawn().map_err(|e| format!("Couldn't start the game: {e}"))?;
 	log.push(format!("Launched {}{}.", exe.file_name().unwrap().to_string_lossy(), if args.is_empty() { String::new() } else { format!(" {}", args.join(" ")) }));

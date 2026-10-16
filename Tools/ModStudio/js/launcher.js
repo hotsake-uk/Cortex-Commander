@@ -245,7 +245,9 @@ window.MS = window.MS || {};
 	function builtLine() {
 		const s = L.state;
 		if (!s.builtExe) {
-			return el('span', { className: 'gm-bad', textContent: 'Nothing built yet' });
+			// Built, but as another build type: the Launch buttons wait for this one, so say which and how to get it.
+			const other = (s.built || '').split(' ')[1];
+			return el('span', { className: 'gm-bad', textContent: other && other !== s.config.configuration ? 'No ' + s.config.configuration + ' build yet (this version is built as ' + other + '): press Update & build, or set Build type back to ' + other : 'Nothing built yet' });
 		}
 		const [sha, configuration] = (s.built || '').split(' ');
 		return el('span', {}, el('span', { className: 'gm-good', textContent: '● Built ' }), el('code', { textContent: short(sha) || '?' }), ' (' + (configuration || s.config.configuration) + ')');
