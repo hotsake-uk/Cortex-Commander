@@ -633,6 +633,22 @@ window.MS = window.MS || {};
 		}
 	}
 
+	// After unlocking or locking (the Game screen): open code tabs of the game's own files follow.
+	ide.refreshReadOnly = function () {
+		for (const tab of ide.tabs) {
+			if (tab.kind === 'code') {
+				tab.readOnly = app.lockedGameFile(tab.path) || !app.fs.writable;
+			}
+		}
+		renderTabs();
+		if (ide.active && ide.active.kind === 'code') {
+			$('codeBanner').hidden = !ide.active.readOnly;
+			if (ide.editor) {
+				ide.editor.updateOptions({ readOnly: !!ide.active.readOnly });
+			}
+		}
+	};
+
 	ide.activate = function (tab) {
 		if (ide.active && ide.active.kind === 'code' && ide.editor && ide.editor.getModel() === ide.active.model) {
 			ide.active.viewState = ide.editor.saveViewState();
@@ -736,7 +752,7 @@ window.MS = window.MS || {};
 			old.dispose();
 		}
 		const model = monaco.editor.createModel(text, lang, uri);
-		const tab = { id: nextTabId++, kind: 'code', path, lang, model, doc, savedText: text, docText: doc ? text : null, readOnly: app.fs.isOfficial(path) || !app.fs.writable };
+		const tab = { id: nextTabId++, kind: 'code', path, lang, model, doc, savedText: text, docText: doc ? text : null, readOnly: app.lockedGameFile(path) || !app.fs.writable };
 		model.ccTab = tab;
 		model.onDidChangeContent(() => onModelChange(tab));
 		checkSoon(tab);
@@ -1528,7 +1544,7 @@ window.MS = window.MS || {};
 		const draw = (pending) => {
 			const out = [];
 			let shown = 0;
-			for (const [title, list, official] of [['Your mods', mods, false], ['Game (read only)', game, true]]) {
+			for (const [title, list, official] of [['Your mods', mods, false], [app.unlocked ? 'Game (unlocked)' : 'Game (read only)', game, true]]) {
 				const rows = [];
 				let count = 0;
 				for (const m of list) {
@@ -1636,7 +1652,7 @@ window.MS = window.MS || {};
 		for (const m of mods) {
 			box.append(folderRow(m.name, m.name, 0, false));
 		}
-		box.append(groupHead('Game (read only)', game.length));
+		box.append(groupHead(app.unlocked ? 'Game (unlocked)' : 'Game (read only)', game.length));
 		for (const m of game) {
 			box.append(folderRow(m.name, m.name, 0, true));
 		}
@@ -1954,7 +1970,7 @@ window.MS = window.MS || {};
 					file += '.' + kind;
 				}
 				const path = where.value.replace(/\\/g, '/').replace(/\/+$/, '') + '/' + file;
-				if (app.fs.isOfficial(path)) {
+				if (app.lockedGameFile(path)) {
 					app.toast('That folder is one of the game\'s own. Pick a folder in your mod.', 'bad');
 					return false;
 				}
