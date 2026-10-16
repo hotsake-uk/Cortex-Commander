@@ -37,6 +37,11 @@ namespace RTE {
 		/// Gets the bitmap representing the screen.
 		/// @return Pointer to the bitmap representing the screen. Ownership is NOT transferred!
 		GUIBitmap* GetBitmap() const override { return m_BackBufferBitmap.get(); }
+
+		/// Points every AllegroScreen drawing into one bitmap at another, for when a back buffer is made again at a new size.
+		/// @param oldBackBuffer The bitmap being replaced. Only compared, never read, so it may already be freed.
+		/// @param newBackBuffer The bitmap that replaces it. Ownership is NOT transferred!
+		static void RetargetBackBuffer(const BITMAP* oldBackBuffer, BITMAP* newBackBuffer);
 #pragma endregion
 
 #pragma region Drawing
@@ -65,6 +70,8 @@ namespace RTE {
 
 	private:
 		std::unique_ptr<AllegroBitmap> m_BackBufferBitmap; //!< The AllegroBitmap that makes this AllegroScreen.
+
+		static std::vector<AllegroScreen*> s_Instances; //!< Every AllegroScreen alive, so a resized back buffer can be handed to them all.
 
 		// Disallow the use of some implicit methods.
 		AllegroScreen& operator=(const AllegroScreen& rhs) = delete;

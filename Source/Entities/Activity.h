@@ -193,6 +193,9 @@ namespace RTE {
 		/// Updates the state of this Activity. Supposed to be done every frame before drawing.
 		virtual void Update();
 
+		/// Fits the Activity's on-screen menus to a resolution changed while it runs (the window resized with the game matching its size).
+		virtual void OnResolutionChanged() {}
+
 		/// Draws the currently active GUI of a screen to a BITMAP of choice.
 		/// @param targetBitmap A pointer to a screen-sized BITMAP to draw on.
 		/// @param targetPos The absolute position of the target bitmap's upper left corner in the scene.

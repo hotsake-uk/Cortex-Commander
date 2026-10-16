@@ -188,6 +188,12 @@ void SceneEditorGUI::SetPosOnScreen(int newPosX, int newPosY) {
 	m_pPicker->SetPosOnScreen(newPosX, newPosY);
 }
 
+void SceneEditorGUI::FitToResolution() {
+	if (m_pPicker) {
+		m_pPicker->FitToResolution();
+	}
+}
+
 bool SceneEditorGUI::SetCurrentObject(SceneObject* pNewObject) {
 	if (m_pCurrentObject == pNewObject)
 		return true;

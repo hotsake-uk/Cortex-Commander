@@ -58,6 +58,9 @@ namespace RTE {
 		/// @param newPosY The new Y position of this entire GUI on the screen.
 		void SetPosOnScreen(int newPosX, int newPosY) const { m_GUIControlManager->SetPosOnScreen(newPosX, newPosY); }
 
+		/// Fits this picker to a resolution changed while it exists, keeping its contents and settings.
+		void FitToResolution();
+
 		/// Sets which DataModule space to be picking objects from. If -1, then let the player pick from all loaded modules.
 		/// @param newModuleSpaceID The ID of the module to let the player pick objects from. All official module objects will always be presented, in addition to the one passed in here.
 		void SetModuleSpace(int newModuleSpaceID = -1) {
@@ -235,6 +238,9 @@ namespace RTE {
 		/// Player mouse input event handling of the GUIControls of this ObjectPickerGUI.
 		/// @return True if the picker was set to be closed by clicking off it or by making a selection from the objects list.
 		bool HandleMouseEvents();
+
+		/// Stretches the picker's height to the player's screen.
+		void StretchToPlayerScreen();
 
 		/// Open/close animation handling and GUI element enabling/disabling.
 		void AnimateOpenClose();

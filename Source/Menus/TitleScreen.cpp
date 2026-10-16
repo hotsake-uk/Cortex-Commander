@@ -92,7 +92,7 @@ void TitleScreen::Create(AllegroScreen* guiScreen) {
 
 	m_StationOrbitTimer.SetElapsedRealTimeS(15);
 
-	if (!g_WindowMan.ResolutionChanged()) {
+	if (!g_WindowMan.IsRebuildingForNewResolution()) {
 		if (!g_SettingsMan.SkipIntro() && !g_ActivityMan.IsSetToLaunchIntoActivity()) {
 			m_IntroTextFont = std::make_unique<GUIFont>("FontLarge");
 			m_IntroTextFont->Load(guiScreen, "Base.rte/GUIs/Skins/Menus/FontLarge.png");

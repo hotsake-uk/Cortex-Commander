@@ -98,12 +98,7 @@ int ObjectPickerGUI::Create(Controller* controller, int whichModuleSpace, const 
 	m_ObjectsList->SetAlternateDrawMode(true);
 	m_ObjectsList->SetMultiSelect(false);
 
-	int stretchAmount = g_FrameMan.GetPlayerScreenHeight() - m_ParentBox->GetHeight();
-	if (stretchAmount != 0) {
-		m_ParentBox->SetSize(m_ParentBox->GetWidth(), m_ParentBox->GetHeight() + stretchAmount);
-		m_GroupsList->SetSize(m_GroupsList->GetWidth(), m_GroupsList->GetHeight() + stretchAmount);
-		m_ObjectsList->SetSize(m_ObjectsList->GetWidth(), m_ObjectsList->GetHeight() + stretchAmount);
-	}
+	StretchToPlayerScreen();
 
 	if (!m_PopupBox) {
 		m_PopupBox = dynamic_cast<GUICollectionBox*>(m_GUIControlManager->GetControl("BuyGUIPopup"));
@@ -562,6 +557,30 @@ bool ObjectPickerGUI::HandleMouseEvents() {
 		}
 	}
 	return false;
+}
+
+void ObjectPickerGUI::StretchToPlayerScreen() {
+	int stretchAmount = g_FrameMan.GetPlayerScreenHeight() - m_ParentBox->GetHeight();
+	if (stretchAmount != 0) {
+		m_ParentBox->SetSize(m_ParentBox->GetWidth(), m_ParentBox->GetHeight() + stretchAmount);
+		m_GroupsList->SetSize(m_GroupsList->GetWidth(), m_GroupsList->GetHeight() + stretchAmount);
+		m_ObjectsList->SetSize(m_ObjectsList->GetWidth(), m_ObjectsList->GetHeight() + stretchAmount);
+	}
+}
+
+void ObjectPickerGUI::FitToResolution() {
+	if (!m_GUIControlManager || !m_ParentBox) {
+		return;
+	}
+	dynamic_cast<GUICollectionBox*>(m_GUIControlManager->GetControl("base"))->SetSize(g_WindowMan.GetResX(), g_WindowMan.GetResY());
+	StretchToPlayerScreen();
+	// Kept at the edge of the player's screen: just off it while closed, against it while open.
+	int playerScreenWidth = g_FrameMan.GetPlayerFrameBufferWidth(m_Controller->GetPlayer());
+	if (m_PickerState == PickerState::Disabled) {
+		m_ParentBox->SetPositionAbs(playerScreenWidth, 0);
+	} else if (m_PickerState == PickerState::Enabled) {
+		m_ParentBox->SetPositionAbs(playerScreenWidth - m_ParentBox->GetWidth(), 0);
+	}
 }
 
 void ObjectPickerGUI::AnimateOpenClose() {

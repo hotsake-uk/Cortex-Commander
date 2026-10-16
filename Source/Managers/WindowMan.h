@@ -131,6 +131,12 @@ namespace RTE {
 		/// Sets whether the picture is scaled by a whole number only. Off: it fills as much of the window as its shape allows, as before.
 		void SetIntegerScaling(bool integerScaling);
 
+		/// Gets whether the game's resolution follows the window's size, so the view fills the window at any size and shape instead of being scaled with bars around it.
+		bool GetMatchWindowSize() const { return m_MatchWindowSize; }
+
+		/// Sets whether the game's resolution follows the window's size. Off: the resolution stays as set in the settings and the picture is scaled to the window, as before.
+		void SetMatchWindowSize(bool matchWindowSize) { m_MatchWindowSize = matchWindowSize; }
+
 		/// Hands the upscaler the player's CRT and sharpness settings. With its shader begun.
 		void SetUpscaleUniforms() const;
 
@@ -203,6 +209,15 @@ namespace RTE {
 
 		/// Completes the resolution change by resetting the flag.
 		void CompleteResolutionChange() { m_ResolutionChanged = false; }
+
+		/// Gets whether the resolution was just changed to follow the window's size, and the menus need fitting to it (in or out of a game, which carries on).
+		bool ResizedToWindow() const { return m_ResizedToWindow; }
+
+		/// Completes fitting everything to a resolution that followed the window's size.
+		void CompleteResizeToWindow() { m_ResizedToWindow = false; }
+
+		/// Gets whether the menus and console are being made again for a new resolution, from the settings or the window's size, so they keep their logs and skip the intro.
+		bool IsRebuildingForNewResolution() const { return m_ResolutionChanged || m_ResizedToWindow; }
 #pragma endregion
 
 #pragma region Concrete Methods
@@ -304,6 +319,12 @@ namespace RTE {
 
 		int m_FrameCap = 0; //!< The most frames drawn per second, 0 for no limit.
 		bool m_IntegerScaling = false; //!< The picture is scaled to the window by a whole number only (SetIntegerScaling).
+		bool m_MatchWindowSize = true; //!< The game's resolution follows the window's size (SetMatchWindowSize).
+		float m_PixelScale = 1.0F; //!< How many window pixels a game pixel takes when the resolution follows the window's size: the multiplier last chosen in the settings, at least 1.
+		int m_PendingWindowResX = 0; //!< The resolution the window's size asks for, waiting for the window to stop changing. 0 when none.
+		int m_PendingWindowResY = 0; //!< The same, height.
+		unsigned long long m_PendingWindowResTicks = 0; //!< When the window's size last asked for a different resolution.
+		bool m_ResizedToWindow = false; //!< The resolution was just changed to follow the window's size (ResizedToWindow).
 		long long m_LastPresentTicks = 0; //!< When the last frame was presented, for the frame cap.
 		bool m_EnableVSync; //!< Whether vertical synchronization is enabled.
 		bool m_UseMultiDisplays; //!< Whether the multi-display arrangement should be ignored and only the display the main window is currently positioned at should be used for fullscreen.
@@ -323,6 +344,20 @@ namespace RTE {
 
 #pragma region Resolution Handling
 		void SetViewportLetterboxed();
+
+		/// Works out the resolution that fills the window at the chosen pixel scale, when the resolution follows the window's size.
+		/// @param resX Set to the width that fits.
+		/// @param resY Set to the height that fits.
+		/// @return Whether the resolution should follow the window now: matching is on and the window is a plain, visible window.
+		bool GetWindowMatchedResolution(int& resX, int& resY) const;
+
+		/// Changes the resolution to follow the window's size once the window has stopped changing for a moment.
+		void UpdateWindowMatchedResolution();
+
+		/// Changes the resolution in place, without touching the window or ending a running game: the buffers are made again at the new size. The menus are fitted after, see ResizedToWindow.
+		/// @param newResX The new width.
+		/// @param newResY The new height.
+		void ChangeResolutionInPlace(int newResX, int newResY);
 
 		/// Updates the stored info of the display the primary window is currently positioned at.
 		void UpdatePrimaryDisplayInfo();

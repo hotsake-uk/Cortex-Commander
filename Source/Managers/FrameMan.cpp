@@ -226,6 +226,9 @@ void FrameMan::UpdateCameraZoom() {
 int FrameMan::CreateBackBuffers() {
 	int resX = g_WindowMan.GetResX();
 	int resY = g_WindowMan.GetResY();
+	// When made again at a new size, the menus and fonts drawing into the old ones are pointed at the new ones. The old ones are kept until then, so no new one can take an old one's address.
+	auto oldBackBuffer8 = std::move(m_BackBuffer8);
+	auto oldBackBuffer32 = std::move(m_BackBuffer32);
 
 	// Create the back buffer, this is still in 8bpp, we will do any post-processing on the PostProcessing bitmap
 	m_BackBuffer8 = std::make_unique<BitmapTexture>(std::unique_ptr<BITMAP, BitmapDeleter>(create_bitmap_ex(8, resX, resY)));
@@ -234,6 +237,9 @@ int FrameMan::CreateBackBuffers() {
 	// Create the post-processing buffer, it'll be used for glow effects etc
 	m_BackBuffer32 = std::unique_ptr<BITMAP, BitmapDeleter>(create_bitmap_ex(c_BPP, resX, resY));
 	ClearBackBuffer32();
+
+	AllegroScreen::RetargetBackBuffer(oldBackBuffer8 ? oldBackBuffer8->GetBitmap() : nullptr, m_BackBuffer8->GetBitmap());
+	AllegroScreen::RetargetBackBuffer(oldBackBuffer32.get(), m_BackBuffer32.get());
 
 	m_BackBuffer = std::make_unique<RenderTarget>(FloatRect(0, 0, resX, resY), FloatRect(0, 0, resX, resY));
 

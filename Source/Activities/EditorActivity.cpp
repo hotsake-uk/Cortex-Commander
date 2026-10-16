@@ -3,6 +3,7 @@
 #include "PresetMan.h"
 #include "MovableMan.h"
 #include "FrameMan.h"
+#include "WindowMan.h"
 #include "UInputMan.h"
 #include "AudioMan.h"
 #include "SLTerrain.h"
@@ -169,6 +170,14 @@ int EditorActivity::Start() {
 void EditorActivity::SetPaused(bool pause) {
 	// Override the pause
 	m_Paused = false;
+}
+
+void EditorActivity::OnResolutionChanged() {
+	if (m_pGUIController) {
+		if (GUICollectionBox* rootBox = dynamic_cast<GUICollectionBox*>(m_pGUIController->GetControl("base"))) {
+			rootBox->SetSize(g_WindowMan.GetResX(), g_WindowMan.GetResY());
+		}
+	}
 }
 
 void EditorActivity::End() {

@@ -461,20 +461,7 @@ bool BuyMenuGUI::SaveAllLoadoutsToFile() {
 
 void BuyMenuGUI::SetEnabled(bool enable) {
 	if (enable && m_MenuEnabled != ENABLED && m_MenuEnabled != ENABLING) {
-		// If we're not split screen horizontally, then stretch out the layout for all the relevant controls
-		int stretchAmount = g_FrameMan.GetPlayerScreenHeight() - m_pParentBox->GetHeight();
-		if (stretchAmount != 0) {
-			m_pParentBox->SetSize(m_pParentBox->GetWidth(), m_pParentBox->GetHeight() + stretchAmount);
-			m_pShopList->SetSize(m_pShopList->GetWidth(), m_pShopList->GetHeight() + stretchAmount);
-			m_pCartList->SetSize(m_pCartList->GetWidth(), m_pCartList->GetHeight() + stretchAmount);
-			m_pCraftLabel->SetPositionAbs(m_pCraftLabel->GetXPos(), m_pCraftLabel->GetYPos() + stretchAmount);
-			m_pCraftBox->SetPositionAbs(m_pCraftBox->GetXPos(), m_pCraftBox->GetYPos() + stretchAmount);
-
-			m_pCraftCollectionBox->SetPositionAbs(m_pCraftCollectionBox->GetXPos(), m_pCraftCollectionBox->GetYPos() + stretchAmount);
-
-			m_pCostLabel->SetPositionAbs(m_pCostLabel->GetXPos(), m_pCostLabel->GetYPos() + stretchAmount);
-			m_pBuyButton->SetPositionAbs(m_pBuyButton->GetXPos(), m_pBuyButton->GetYPos() + stretchAmount);
-		}
+		StretchToPlayerScreen();
 
 		m_MenuEnabled = ENABLING;
 		// Reset repeat timers
@@ -511,6 +498,34 @@ void BuyMenuGUI::SetEnabled(bool enable) {
 
 void BuyMenuGUI::SetPosOnScreen(int newPosX, int newPosY) {
 	m_pGUIController->SetPosOnScreen(newPosX, newPosY);
+}
+
+void BuyMenuGUI::StretchToPlayerScreen() {
+	// If we're not split screen horizontally, then stretch out the layout for all the relevant controls
+	int stretchAmount = g_FrameMan.GetPlayerScreenHeight() - m_pParentBox->GetHeight();
+	if (stretchAmount != 0) {
+		m_pParentBox->SetSize(m_pParentBox->GetWidth(), m_pParentBox->GetHeight() + stretchAmount);
+		m_pShopList->SetSize(m_pShopList->GetWidth(), m_pShopList->GetHeight() + stretchAmount);
+		m_pCartList->SetSize(m_pCartList->GetWidth(), m_pCartList->GetHeight() + stretchAmount);
+		m_pCraftLabel->SetPositionAbs(m_pCraftLabel->GetXPos(), m_pCraftLabel->GetYPos() + stretchAmount);
+		m_pCraftBox->SetPositionAbs(m_pCraftBox->GetXPos(), m_pCraftBox->GetYPos() + stretchAmount);
+
+		m_pCraftCollectionBox->SetPositionAbs(m_pCraftCollectionBox->GetXPos(), m_pCraftCollectionBox->GetYPos() + stretchAmount);
+
+		m_pCostLabel->SetPositionAbs(m_pCostLabel->GetXPos(), m_pCostLabel->GetYPos() + stretchAmount);
+		m_pBuyButton->SetPositionAbs(m_pBuyButton->GetXPos(), m_pBuyButton->GetYPos() + stretchAmount);
+	}
+}
+
+void BuyMenuGUI::FitToResolution() {
+	if (!m_pGUIController || !m_pParentBox) {
+		return;
+	}
+	dynamic_cast<GUICollectionBox*>(m_pGUIController->GetControl("base"))->SetSize(g_WindowMan.GetResX(), g_WindowMan.GetResY());
+	// A closed menu is stretched as it opens.
+	if (m_MenuEnabled == ENABLED || m_MenuEnabled == ENABLING) {
+		StretchToPlayerScreen();
+	}
 }
 
 void BuyMenuGUI::SetMetaPlayer(int metaPlayer) {

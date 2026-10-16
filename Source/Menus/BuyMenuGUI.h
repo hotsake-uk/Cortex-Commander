@@ -89,6 +89,9 @@ namespace RTE {
 		/// @param newPosX The new screen position of this entire GUI.
 		void SetPosOnScreen(int newPosX, int newPosY);
 
+		/// Fits this menu to a resolution changed while it exists, keeping its contents and settings.
+		void FitToResolution();
+
 		/// Sets which MetaPlayer uses this menu, if any.
 		/// @param metaPlayer The index of the MetaPlayer that uses this menu.
 		void SetMetaPlayer(int metaPlayer);
@@ -342,6 +345,9 @@ namespace RTE {
 
 		/// Attempts to make a purchase with everything already set up.
 		void TryPurchase();
+
+		/// Stretches the menu's height to the player's screen.
+		void StretchToPlayerScreen();
 
 		enum MenuEnabled {
 			ENABLING = 0,
