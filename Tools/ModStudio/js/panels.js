@@ -525,7 +525,12 @@ window.MS = window.MS || {};
 			};
 			row.append(code, eye);
 			row.onclick = () => app.select(part);
-			row.ondblclick = () => MS.ide.openFile(part.ent.node.doc.path, part.ent.node.line);
+			row.ondblclick = (e) => {
+				// Quick clicks on the eye, the fold arrow or the code button are not a double-click on the row.
+				if (!e.target.closest('button')) {
+					MS.ide.openFile(part.ent.node.doc.path, part.ent.node.line);
+				}
+			};
 			row.onmouseenter = () => {
 				app.view.hover = part;
 				app.requestDraw();
