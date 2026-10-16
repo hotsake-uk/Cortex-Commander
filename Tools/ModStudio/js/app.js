@@ -837,6 +837,9 @@ window.MS = window.MS || {};
 			}
 			return written;
 		}
+		if (written && MS.friendly) {
+			MS.friendly.afterSave(saved.map((x) => x.path));
+		}
 		if (written && !quiet) {
 			const undo = MS.history.available() ? { label: 'Undo', run: () => MS.history.undoSave(saved) } : null;
 			app.toast('Saved ' + written + ' file' + (written > 1 ? 's' : '') + '.', 'good', undo);

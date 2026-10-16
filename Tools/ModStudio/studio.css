@@ -233,8 +233,8 @@ label.code-link:hover { color: var(--accent); }
 .notice button { margin-top: 8px; }
 .section { border-bottom: 1px solid var(--line); }
 .section > h3 { margin: 0; font-size: 12px; font-weight: 600; padding: 10px 12px 6px; color: var(--text); display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
-.section > h3::before { content: "▾"; color: var(--faint); margin-right: 6px; font-size: 10px; }
-.section.closed > h3::before { content: "▸"; }
+.section > h3::before { content: "â–¾"; color: var(--faint); margin-right: 6px; font-size: 10px; }
+.section.closed > h3::before { content: "â–¸"; }
 .section.closed > .rows { display: none; }
 .section > h3 span { flex: 1; }
 .rows { padding: 2px 12px 10px; }
@@ -355,7 +355,7 @@ pre.diff .del { color: var(--bad); }
 	.insp-cols > .notice, .insp-cols > .insp-empty, .insp-cols > .section:has(.settings-filter) { column-span: all; }
 }
 
-/* The unit view hidden (◧, V): the parts list and the properties take the whole width, laid out as on wide screens. */
+/* The unit view hidden (â—§, V): the parts list and the properties take the whole width, laid out as on wide screens. */
 #app.no-view { grid-template-columns: minmax(var(--lib-min, 160px), var(--lib-w, var(--lib-size, 260px))) minmax(0, 1fr); grid-template-areas: "top top" "left right" "status status"; }
 #app.no-view #center { display: none; }
 #app.no-view #right { display: grid; grid-template-columns: var(--tree-w, minmax(200px, 26%)) minmax(0, 1fr); grid-template-rows: auto 1fr; }
@@ -367,7 +367,7 @@ pre.diff .del { color: var(--bad); }
 #app.no-view .insp-cols > * { break-inside: avoid; }
 #app.no-view .insp-cols > .notice, #app.no-view .insp-cols > .insp-empty, #app.no-view .insp-cols > .section:has(.settings-filter) { column-span: all; }
 
-/* The library list hidden (◨, L): its column shrinks to nothing. */
+/* The library list hidden (â—¨, L): its column shrinks to nothing. */
 #app.no-lib { --lib-w: 0px; --lib-min: 0px; }
 #app.no-lib #left { display: none; }
 
@@ -649,11 +649,10 @@ pre.diff .del { color: var(--bad); }
 .rel-ginfo { display: flex; align-items: center; gap: 8px; min-height: 28px; font-size: 12.5px; color: var(--dim); }
 .rel-ginfo .spacer { flex: 1; }
 
-/* An item's files under its row in the library list (Script mode only; panels.js). */
+/* An item's files under its row in the library list (Design and Script mode; panels.js). */
 .lib-twist { flex: none; width: 16px; align-self: stretch; margin: 0 -4px 0 -6px; background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 11px; transition: transform .12s; }
 .lib-twist:hover { color: var(--text); }
 .lib-row.open .lib-twist { transform: rotate(90deg); color: var(--accent); }
-#app:not(.deep) .lib-twist, #app:not(.deep) .lib-files { display: none; }
 .lib-files { margin: 0 6px 6px 22px; padding: 4px 0 6px; border-left: 1px solid var(--line2); font-size: 12px; }
 .lf-head { padding: 6px 10px 2px; color: var(--faint); font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; }
 .lf-row { display: flex; align-items: center; gap: 6px; padding: 2px 10px; cursor: pointer; white-space: nowrap; min-width: 0; }
@@ -664,7 +663,7 @@ pre.diff .del { color: var(--bad); }
 .lf-more, .lf-empty { display: block; background: none; border: 0; color: var(--dim); font-size: 11.5px; padding: 2px 10px; cursor: pointer; }
 .lf-more:hover { color: var(--text); }
 
-/* New… (wizard.js) */
+/* Newâ€¦ (wizard.js) */
 .wiz { min-height: 360px; display: flex; flex-direction: column; }
 .wiz-steps { display: flex; gap: 14px; font-size: 12px; color: var(--faint); margin-bottom: 8px; }
 .wiz-steps .sel { color: var(--accent); font-weight: 650; }
@@ -899,3 +898,7 @@ pre.diff .del { color: var(--bad); }
 .prob-text small { color: var(--faint); }
 .prob-actions { display: flex; gap: 6px; flex: none; }
 .prob-none { color: var(--good); }
+label.has-help { text-decoration: underline dotted var(--faint); text-underline-offset: 3px; cursor: help; }
+.prob-group { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--faint); }
+.prob-row.warn .prob-text b::before { content: "â€¢ "; color: var(--accent); }
+.prob-row.error .prob-text b::before { content: "â€¢ "; color: var(--bad); }

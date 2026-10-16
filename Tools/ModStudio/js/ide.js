@@ -1646,6 +1646,11 @@ window.MS = window.MS || {};
 
 	// ---- the side bar: files, presets, search, package ----
 
+	ide.checkModule = (name) => {
+		const module = app.lib.moduleOf(name + '/Index.ini');
+		return module ? collectModProblems(name, module) : Promise.resolve([]);
+	};
+
 	ide.showView = function (view) {
 		if (!view) {
 			$('btnLib').click(); // hides the side bar (L)
@@ -2447,15 +2452,8 @@ window.MS = window.MS || {};
 	}
 
 	// Looks the mod over: files it names that aren't there, CopyOf presets that don't exist, scripts with errors, unsaved changes.
-	async function checkMod() {
-		const moduleName = $('packageMod').value;
-		const box = $('packageResults');
-		box.innerHTML = '';
-		const module = app.lib.moduleOf(moduleName + '/Index.ini');
-		if (!module) {
-			return;
-		}
-		box.append(el('div', { className: 'x-empty', textContent: 'Checking ' + moduleName + '…' }));
+	// What is wrong with a mod, as data: [{path, line, severity: 'error' | 'warn', message}]. Used by the Package check and by the check that runs after saves.
+	async function collectModProblems(moduleName, module) {
 		const problems = [];
 		for (const doc of module.docs) {
 			if (doc.dirty) {
@@ -2487,6 +2485,19 @@ window.MS = window.MS || {};
 				}
 			}
 		}
+		return problems;
+	}
+
+	async function checkMod() {
+		const moduleName = $('packageMod').value;
+		const box = $('packageResults');
+		box.innerHTML = '';
+		const module = app.lib.moduleOf(moduleName + '/Index.ini');
+		if (!module) {
+			return;
+		}
+		box.append(el('div', { className: 'x-empty', textContent: 'Checking ' + moduleName + '…' }));
+		const problems = await collectModProblems(moduleName, module);
 		box.innerHTML = '';
 		if (!problems.length) {
 			box.append(el('div', { className: 'pempty good', textContent: moduleName + ' looks ready to share.' }));

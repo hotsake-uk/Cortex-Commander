@@ -41,10 +41,52 @@ window.MS = window.MS || {};
 	// ---- what is wrong with your mods ----
 
 	let hidden = new Set(); // problems skipped for this session
+	const checks = new Map(); // module -> what the check after the last save found: [{path, line, severity, message}]
 
 	function problems() {
 		const lib = app().lib;
 		return lib && lib.problems ? lib.problems.filter((p) => !hidden.has(p.module + '|' + p.path)) : [];
+	}
+
+	function checkProblems() {
+		const all = [];
+		for (const [module, list] of checks) {
+			for (const p of list) {
+				if (!hidden.has(module + '|' + p.path + ':' + p.line + ':' + p.message)) {
+					all.push(Object.assign({ module }, p));
+				}
+			}
+		}
+		return all;
+	}
+
+	// What the mod check says, in everyday words.
+	function sayCheck(message) {
+		let m = /^CopyOf "(.+)" isn't a preset Studio can find/.exec(message);
+		if (m) {
+			return 'It copies "' + m[1] + '", but nothing has that name. The game would stop loading the mod here.';
+		}
+		m = /^(.+\.(png|bmp)) isn't in the game folder\.$/i.exec(message);
+		if (m) {
+			return 'The picture ' + m[1].split('/').pop() + ' is missing. Put it back, or choose another picture.';
+		}
+		m = /^(.+\.(wav|ogg|flac|mp3)) isn't in the game folder\.$/i.exec(message);
+		if (m) {
+			return 'The sound ' + m[1].split('/').pop() + ' is missing.';
+		}
+		m = /^(.+\.lua) isn't in the game folder\.$/i.exec(message);
+		if (m) {
+			return 'The script ' + m[1].split('/').pop() + ' is missing.';
+		}
+		m = /^(.+) isn't in the game folder\.$/.exec(message);
+		if (m) {
+			return 'The file ' + m[1].split('/').pop() + ' is missing.';
+		}
+		m = /^(.+) is in another mod, which players will need too\.$/.exec(message);
+		if (m) {
+			return 'It uses ' + m[1].split('/').pop() + ' from ' + m[1].split('/')[0] + '. Players will need that mod as well.';
+		}
+		return message;
 	}
 
 	function updateBadge() {
@@ -52,7 +94,7 @@ window.MS = window.MS || {};
 		if (!b) {
 			return;
 		}
-		const n = problems().length;
+		const n = problems().length + checkProblems().filter((p) => p.severity === 'error').length;
 		b.hidden = !n;
 		b.textContent = '⚠ ' + n + (n === 1 ? ' problem' : ' problems') + ' in your mods';
 	}
@@ -100,10 +142,14 @@ window.MS = window.MS || {};
 		const draw = () => {
 			list.replaceChildren();
 			const items = problems();
+			const found = checkProblems();
 			updateBadge();
-			if (!items.length) {
-				list.append(el('p', { className: 'prob-none', textContent: 'Nothing is wrong. All your mods loaded.' }));
+			if (!items.length && !found.length) {
+				list.append(el('p', { className: 'prob-none', textContent: 'Nothing is wrong. Your mods loaded and passed the check.' }));
 				return;
+			}
+			if (items.length) {
+				list.append(el('div', { className: 'prob-group', textContent: 'Files that couldn\'t be read' }));
 			}
 			for (const p of items) {
 				const actions = el('div', { className: 'prob-actions' });
@@ -116,6 +162,17 @@ window.MS = window.MS || {};
 				actions.append(el('button', { className: 'tb', textContent: 'Ignore', onclick: () => { hidden.add(p.module + '|' + p.path); draw(); } }));
 				list.append(el('div', { className: 'prob-row' }, el('div', { className: 'prob-text' }, el('b', { textContent: describe(p) }), el('small', { textContent: p.missing ? 'The game would stop loading this mod at that point. Either put the file back, or take it out of the list.' : p.message })), actions));
 			}
+			if (found.length) {
+				list.append(el('div', { className: 'prob-group', textContent: 'Worth fixing before you share it' }));
+				for (const p of found) {
+					const key = p.module + '|' + p.path + ':' + p.line + ':' + p.message;
+					list.append(el('div', { className: 'prob-row ' + p.severity },
+						el('div', { className: 'prob-text' }, el('b', { textContent: sayCheck(p.message) }), el('small', { textContent: p.module + ' · ' + p.path.split('/').slice(1).join('/') + (p.line ? ', line ' + p.line : '') })),
+						el('div', { className: 'prob-actions' },
+							el('button', { className: 'tb primary', textContent: 'Show me', title: 'Open the file at that line', onclick: () => { MS.dialogs.close(); MS.ide.openFile(p.path, p.line); } }),
+							el('button', { className: 'tb', textContent: 'Ignore', onclick: () => { hidden.add(key); draw(); } }))));
+				}
+			}
 		};
 		draw();
 		MS.dialogs.open('Problems in your mods', el('div', {}, el('p', { className: 'prob-lead', textContent: 'Studio found things in your mods that need a look.' }), list), [{ text: 'Close' }], true);
@@ -127,6 +184,81 @@ window.MS = window.MS || {};
 		updateBadge();
 		if (n) {
 			app().toast(n === 1 ? 'One of your mods has a problem.' : n + ' problems in your mods.', 'bad', { label: 'See what\'s wrong', run: showProblems });
+		}
+	}
+
+	// ---- the check after saving ----
+
+	let checkTimer = 0;
+	const pending = new Set();
+
+	// After a save, look over the mods it touched. Only the ones that are yours; it says something only when it finds something new.
+	function afterSave(paths) {
+		const a = app();
+		for (const p of paths) {
+			const module = p.split('/')[0];
+			if (module && /\.rte$/i.test(module) && !a.fs.isOfficial(module)) {
+				pending.add(module);
+			}
+		}
+		if (!pending.size) {
+			return;
+		}
+		clearTimeout(checkTimer);
+		checkTimer = setTimeout(async () => {
+			const modules = [...pending];
+			pending.clear();
+			for (const module of modules) {
+				let found = [];
+				try {
+					found = (await MS.ide.checkModule(module)).filter((p) => !/^Not saved yet/.test(p.message));
+				} catch (e) {
+					continue; // a check that can't run is not worth a message
+				}
+				const before = (checks.get(module) || []).filter((p) => p.severity === 'error').length;
+				checks.set(module, found);
+				const errors = found.filter((p) => p.severity === 'error').length;
+				if (errors > before) {
+					a.toast(module + ' has ' + (errors === 1 ? 'one thing' : errors + ' things') + ' to fix before it will work.', 'bad', { label: 'See what', run: showProblems });
+				}
+			}
+			updateBadge();
+		}, 1500);
+	}
+
+	// ---- what each setting does ----
+
+	let help = null; // key -> plain description, read once
+
+	async function loadHelp() {
+		if (help === null) {
+			try {
+				help = await (await fetch('data/property-help.json')).json();
+			} catch (e) {
+				help = {};
+			}
+		}
+		return help;
+	}
+
+	// Gives every labelled setting in the properties a plain-words tooltip (and a dotted underline, so it shows there is one).
+	async function decorate() {
+		const box = $('inspector');
+		if (!box) {
+			return;
+		}
+		const words = await loadHelp();
+		for (const label of box.querySelectorAll('.row > label')) {
+			if (label.dataset.helped) {
+				continue;
+			}
+			const link = label.classList.contains('code-link');
+			const key = link ? label.textContent.trim() : (label.title || '').trim();
+			if (words[key]) {
+				label.dataset.helped = '1';
+				label.classList.add('has-help');
+				label.title = words[key] + (link ? '\n\nClick to open it in the code editor.' : '\n\n(' + key + ' in the file)');
+			}
 		}
 	}
 
@@ -180,9 +312,18 @@ window.MS = window.MS || {};
 		}
 	}
 
-	MS.friendly = { say, showProblems, afterLoad, update, updateBadge };
+	MS.friendly = { say, showProblems, afterLoad, afterSave, update, updateBadge, decorate };
 	const badge = $('statusProblems');
 	if (badge) {
 		badge.onclick = showProblems;
+	}
+	// The properties are redrawn on every selection and edit: add the tooltips each time, once the redraw settles.
+	const inspector = $('inspector');
+	if (inspector) {
+		let queued = 0;
+		new MutationObserver(() => {
+			cancelAnimationFrame(queued);
+			queued = requestAnimationFrame(decorate);
+		}).observe(inspector, { childList: true, subtree: true });
 	}
 })();

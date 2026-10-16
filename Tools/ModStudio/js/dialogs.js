@@ -449,6 +449,19 @@ window.MS = window.MS || {};
 
 	// ---- help ----
 
+	const GLOSSARY = [
+		['Preset', 'is one named thing in the game: a unit, a gun, a helmet, a sound. Everything you make is a preset.'],
+		['Mod', 'is a folder (its name ends in .rte) that holds your presets and pictures. The game loads every mod when it starts.'],
+		['Copy of', 'means a preset starts as a copy of another and only changes what you tell it. That is how Make my own copy works, and why the original stays safe.'],
+		['Part', 'is a piece of a unit or gun that is fixed to another piece: the head on the body, an arm, a magazine.'],
+		['Pivot', 'is the spot a part turns around, where it joins the part it is fixed to.'],
+		['Sprite and frame', 'A sprite is a picture; a frame is one picture in a row of them, like the stages of an arm bending or a walk.'],
+		['Skeleton', 'shows the bones of a unit: how its parts are joined and where.'],
+		['Palette', 'is the fixed set of colours the game draws with. Studio moves your pictures to the nearest colours for you.'],
+		['Group', 'is a shelf in the buy menu, like Weapons or Actors.'],
+		['Script', 'is a Lua file that makes something do extra things while the game runs.'],
+	];
+
 	function help() {
 		const keys = [
 			['Drag a part', 'move it on its parent (ParentOffset)'],
@@ -486,6 +499,9 @@ window.MS = window.MS || {};
 			para('<b>Grey values</b> come from the preset this unit copies; <i>faint italic</i> ones aren\'t set and the game uses its default. Green notes mean the value is written in your unit.'),
 			para('<b>Design and Script.</b> Design mode is this designer. Script mode (the switch at the top left) is the whole mod: its files, Lua scripts with autocomplete from the game\'s own API, the game\'s console, search and packaging. Saving a script reloads it in a game started from Tools\\ModStudio.'),
 			para('<b>What you see</b> is placed the way the game places it, but without physics: in the game the body settles on its legs and walking feet push along the ground. <b>Preview in game</b> shows the real thing.'),
+			el('h4', { textContent: 'Words Studio uses' }),
+			...GLOSSARY.map(([word, meaning]) => para('<b>' + word + '</b> ' + meaning)),
+			el('h4', { textContent: 'Keys and the mouse' }),
 			grid);
 		open('Using Mod Studio', body, [{ text: 'Close' }], true);
 	}
