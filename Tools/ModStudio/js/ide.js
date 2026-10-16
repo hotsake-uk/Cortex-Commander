@@ -1818,10 +1818,11 @@ window.MS = window.MS || {};
 		if (made && made.cls === 'AHuman') {
 			app.openActor(made);
 		}
+		await app.save(true, [doc, lib.docFor(modName + '/Index.ini')].filter(Boolean));
 		app.updateFileStatus();
 		refreshExplorer();
 		await ide.openFile(path, 1);
-		app.toast('Made ' + name + ' in ' + modName + '. Save to write it to disk; the game loads new presets when it starts.', 'good');
+		app.toast('Made and saved ' + name + ' in ' + modName + '. The game loads new presets when it starts.', 'good');
 		return true;
 	}
 

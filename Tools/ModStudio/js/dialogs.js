@@ -181,10 +181,12 @@ window.MS = window.MS || {};
 		lib.reindex();
 		a.writeLocal('ms.lastMod', modName);
 		const preset = lib.presets.find((p) => p.doc === doc && p.name === unitName);
+		// A new mod and each new copy are written as soon as they're made: the copy's file and the mod's Index.ini that includes it.
+		await a.save(true, [doc, lib.docFor(modName + '/Index.ini')].filter(Boolean));
 		a.updateFileStatus();
 		if (onMade) {
 			onMade(preset);
-			a.toast('Made ' + unitName + ' in ' + modName + '. Save to write it to disk.', 'good');
+			a.toast('Made and saved ' + unitName + ' in ' + modName + '.', 'good');
 			return;
 		}
 		a.undo = [];
@@ -192,7 +194,7 @@ window.MS = window.MS || {};
 		a.openActor(preset);
 		MS.panels.showLibrary();
 		a.updateFileStatus();
-		a.toast('Made ' + unitName + ' in ' + modName + '. Save to write it to disk.', 'good');
+		a.toast('Made and saved ' + unitName + ' in ' + modName + '.', 'good');
 	}
 
 	// ---- pickers ----

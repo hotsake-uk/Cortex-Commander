@@ -782,8 +782,9 @@ window.MS = window.MS || {};
 	}
 	app.updateFileStatus = updateFileStatus;
 
-	app.save = async function (quiet) {
-		const docs = app.dirtyDocs();
+	// only: write just these documents (a new mod or unit is saved on its own, so unfinished edits elsewhere stay unsaved).
+	app.save = async function (quiet, only) {
+		const docs = app.dirtyDocs().filter((d) => !only || only.includes(d));
 		let written = 0;
 		const saved = []; // For Undo on the Saved message: what each file now holds, and whether the save made it.
 		for (const doc of docs) {
