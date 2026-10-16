@@ -130,6 +130,34 @@ button, input, select { font: inherit; color: inherit; }
 .tree-row .folded-count { color: var(--accent); }
 .tree-tools { display: flex; gap: 2px; text-transform: none; letter-spacing: 0; }
 .ico-svg { display: inline-flex; }
+.code-tools .ct-sep { width: 1px; height: 16px; background: var(--line); margin: 0 8px; }
+.rel { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+.rel-title { font-weight: 600; font-size: 14px; }
+.rel-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
+.rel-tabs button { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--dim); padding: 6px 12px; cursor: pointer; }
+.rel-tabs button.sel { color: var(--text); border-bottom-color: var(--accent); }
+.rel-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; overflow: auto; }
+.rel-pane[hidden] { display: none; }
+.rel-note { color: var(--faint); font-size: 12.5px; margin: 0; }
+.rel-tree { display: flex; flex-direction: column; }
+.rel-row { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 5px; cursor: pointer; }
+.rel-row:hover { background: var(--panel2); }
+.rel-row.focus { background: var(--panel3); box-shadow: inset 3px 0 var(--accent); cursor: default; }
+.rel-row.more { color: var(--faint); cursor: default; }
+.rel-row .spacer { flex: 1; }
+.rel-kind { width: 14px; color: var(--faint); font-size: 10px; text-align: center; flex: none; }
+.rel-row.focus .rel-kind { color: var(--accent); }
+.rel-name small, .rel-where { color: var(--faint); }
+.rel-where { font-size: 11.5px; }
+.rel-open, .rel-fold { background: none; border: 1px solid transparent; border-radius: 4px; color: var(--faint); cursor: pointer; padding: 0 5px; font-size: 11px; }
+.rel-open:hover, .rel-fold:hover { color: var(--text); border-color: var(--line2); }
+.rel-fold { color: var(--accent); }
+.rel-editor { flex: 1; min-height: 320px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.rel-key { padding: 0 6px; border-radius: 3px; background: var(--panel2); border-left: 3px solid var(--faint); }
+.rel-key.own { border-left-color: var(--accent); }
+.rel-gutter-own { border-left: 3px solid var(--accent); margin-left: 3px; }
+.rel-gutter-inherited { border-left: 3px solid #7a8499; margin-left: 3px; }
+.monaco-editor .rel-origin { color: #6a7486; font-style: italic; }
 .use-row { display: flex; gap: 8px; align-items: baseline; padding: 1px 0; }
 .use-row small { color: var(--faint); margin-left: auto; }
 .side-count { font-size: 11px; color: var(--faint); }

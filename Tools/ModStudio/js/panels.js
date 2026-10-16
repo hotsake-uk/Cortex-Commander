@@ -967,6 +967,22 @@ window.MS = window.MS || {};
 		}
 		const ownPreset = MS.nav ? MS.nav.presetOf(ent.node) : null;
 		if (ownPreset) {
+			const relRow = document.createElement('div');
+			relRow.className = 'row';
+			const relLabel = document.createElement('label');
+			relLabel.textContent = 'Relations';
+			const relVal = document.createElement('div');
+			relVal.className = 'val';
+			for (const [tab, text, title] of [['inheritance', 'Inheritance…', 'What it copies and what copies it'], ['resolved', 'Resolved…', 'The lines the game ends up with, and where each comes from']]) {
+				const b = document.createElement('button');
+				b.className = 'small-btn';
+				b.textContent = text;
+				b.title = title;
+				b.onclick = () => MS.relations.open(ownPreset, tab);
+				relVal.append(b);
+			}
+			relRow.append(relLabel, relVal);
+			where.append(relRow);
 			closedSections.add('Used by'); // starts folded; its count is in the heading
 			usedBySection(insp, ownPreset);
 		}

@@ -229,6 +229,56 @@ window.MS = window.MS || {};
 			return preset ? presetRefs(preset).slice(0, limit) : [];
 		}
 
+		// The preset whose block holds a line of a file (the innermost named block), or null.
+		presetAtLine(path, line) {
+			const doc = this.app.lib && this.app.lib.docs.get((path || '').toLowerCase());
+			if (!doc || !this.ensure()) {
+				return null;
+			}
+			let best = null;
+			for (const node of doc.walk()) {
+				if (node.line && node.line <= line && lastLine(node) >= line && this.presetOfNode.has(node)) {
+					best = node;
+				}
+			}
+			return best ? this.presetOfNode.get(best) : null;
+		}
+
+		// The block the game ends up with for a preset, every CopyOf followed: [{text, node, own, label}] per line. A key set again
+		// further down replaces the earlier value; list keys keep every entry.
+		resolved(preset) {
+			const lib = this.app.lib;
+			const lines = [];
+			const nameOf = (node) => {
+				for (let n = node.parent; n; n = n.parent) {
+					const name = n.child && n.child('PresetName');
+					if (name && name.value) {
+						return name.value;
+					}
+				}
+				return node.doc ? node.doc.path.split('/').pop() : '';
+			};
+			const where = (node) => (node.doc ? nameOf(node) + ' · ' + node.doc.path.split('/').pop() + ':' + node.line : '');
+			const emit = (entity, depth) => {
+				const last = new Map();
+				entity.entries.forEach((e, i) => last.set(e.key, i));
+				entity.entries.forEach((entry, i) => {
+					const isList = MS.LIST_KEYS.has(entry.key);
+					if (!isList && last.get(entry.key) !== i) {
+						return; // overridden further down
+					}
+					const node = entry.node;
+					lines.push({ text: '\t'.repeat(depth) + entry.key + (node.value !== '' ? ' = ' + node.value : ' ='), node, own: node.isWithin(preset.node), label: where(node) });
+					if (node.children.length) {
+						emit(lib.resolve(node), depth + 1);
+					}
+				});
+			};
+			lines.push({ text: preset.node.key + ' = ' + preset.node.value, node: preset.node, own: true, label: '' });
+			emit(lib.resolve(preset.node), 1);
+			return { lines };
+		}
+
 		// ---- outline of an open file ----
 
 		symbols(path, model) {
