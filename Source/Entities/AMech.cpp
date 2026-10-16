@@ -10,6 +10,7 @@
 #include "PresetMan.h"
 #include "SceneMan.h"
 #include "SettingsMan.h"
+#include "TimerMan.h"
 #include "Turret.h"
 #include "ZeroGravity.h"
 
@@ -709,6 +710,23 @@ void AMech::Update() {
 	ZoneScoped;
 
 	ACrab::Update();
+
+	// The hull is held upright (its gyros): on its feet hard, so a hit, a gun's kick or a knock to a leg never tips it over the way it
+	// would a crab (the crab's own righting only works while it's stable, and a fall leaves it unstable for a while); in the air more gently.
+	// Only once it's dying does it go over.
+	if (m_Status != DYING && m_Status != DEAD && HasLegsLeft()) {
+		float rot = m_Rotation.GetRadAngle();
+		while (rot > c_PI) {
+			rot -= c_TwoPI;
+		}
+		while (rot < -c_PI) {
+			rot += c_TwoPI;
+		}
+		const float rate = m_Airborne ? 3.0F : 12.0F;
+		rot -= rot * std::min(1.0F, rate * g_TimerMan.GetDeltaTimeSecs());
+		m_Rotation.SetRadAngle(rot);
+		m_AngularVel = 0.0F;
+	}
 
 	// Braced, it is hardly pushed about: what knocks it is mostly soaked by its planted feet.
 	if (m_Braced && !m_Airborne) {

@@ -11,10 +11,12 @@
 #include "LuaMan.h"
 #include "MovableMan.h"
 #include "PresetMan.h"
+#include "RTEError.h"
 #include "Sandbox.h"
 #include "SceneMan.h"
 #include "System.h"
 
+#include <algorithm>
 #include <fstream>
 #include <deque>
 #include <map>
@@ -74,6 +76,38 @@ namespace {
 		static StudioLiveValues* live = new StudioLiveValues();
 		return *live;
 	}
+
+	std::string OneLine(std::string text) {
+		std::replace(text.begin(), text.end(), '\n', ' ');
+		return text;
+	}
+
+	/// Reloads a file Studio changed. Something wrong in it is caught the way a broken mod is at start-up: one ERROR line on the console (which Studio
+	/// shows), and the game carries on with what it had, rather than stopping on an assert dialog. Returns whether it was read again.
+	bool ReloadFileFromStudio(const std::string& filePath) {
+		const std::string moduleName = g_PresetMan.GetModuleNameFromPath(filePath);
+		for (const auto& [failedName, failure]: g_PresetMan.GetFailedMods()) {
+			if (StringsEqualCaseInsensitive(failedName, moduleName)) {
+				g_ConsoleMan.PrintString("ERROR: Mod Studio couldn't reload \"" + filePath + "\": the mod " + failedName + " wasn't loaded when the game started, because: " + OneLine(failure) + " Fix that and restart the game.");
+				return false;
+			}
+		}
+		bool reloaded = false;
+		std::string failure;
+		RTEError::s_LoadingMod = true;
+		try {
+			reloaded = g_PresetMan.ReloadPresetFile(filePath);
+		} catch (const ModLoadFailure& modLoadFailure) {
+			failure = modLoadFailure.Description;
+		}
+		RTEError::s_LoadingMod = false;
+		if (!failure.empty()) {
+			g_ConsoleMan.PrintString("ERROR: Mod Studio couldn't reload \"" + filePath + "\", so the game keeps what it had before: " + OneLine(failure));
+		} else if (!reloaded) {
+			g_ConsoleMan.PrintString("WARNING: Mod Studio couldn't reload \"" + filePath + "\". Its mod may not be loaded yet.");
+		}
+		return reloaded && failure.empty();
+	}
 } // namespace
 
 bool ModStudioPreview::Poll(std::filesystem::file_time_type& lastWriteTime, Request& request) {
@@ -127,9 +161,7 @@ Actor* ModStudioPreview::MakeUnit(const Request& request, std::string& problem) 
 		return nullptr;
 	}
 	for (const std::string& fileToReload: request.FilesToReload) {
-		if (!g_PresetMan.ReloadPresetFile(fileToReload)) {
-			g_ConsoleMan.PrintString("WARNING: Mod Studio preview couldn't reload \"" + fileToReload + "\". Its mod may not be loaded yet.");
-		}
+		ReloadFileFromStudio(fileToReload);
 	}
 	const Entity* preset = g_PresetMan.GetEntityPreset(request.ClassName, request.PresetName, request.ModuleName.empty() ? -1 : g_PresetMan.GetModuleID(request.ModuleName));
 	Actor* unit = preset ? dynamic_cast<Actor*>(preset->Clone()) : nullptr;
@@ -373,12 +405,10 @@ void ModStudioPreview::UpdateScripts() {
 		// comes back with the change when the file is in its mod (or its held item's).
 		bool lastUnitsMod = false;
 		for (const std::string& file: filesToReload) {
-			if (g_PresetMan.ReloadPresetFile(file)) {
+			if (ReloadFileFromStudio(file)) {
 				g_ConsoleMan.PrintString("SYSTEM: Reloaded " + file + " from disk.");
 				const std::string module = file.substr(0, file.find('/'));
 				lastUnitsMod = lastUnitsMod || module == s_LastRequest.ModuleName || module == s_LastRequest.DeviceModule;
-			} else {
-				g_ConsoleMan.PrintString("WARNING: Mod Studio couldn't reload " + file + ". Its mod may not be loaded yet.");
 			}
 		}
 		if (lastUnitsMod && !s_LastRequest.PresetName.empty() && GameRunning()) {

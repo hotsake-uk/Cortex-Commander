@@ -58,6 +58,9 @@ namespace RTE {
 		void Destroy();
 #pragma endregion
 
+		/// Fits this menu to a resolution changed while it exists, keeping its contents and settings.
+		void FitToResolution();
+
 #pragma region Getters and Setters
 		/// Sets the controller used by this. The ownership of the controller is NOT transferred!
 		/// @param controller The new controller for this menu. Ownership is NOT transferred!

@@ -96,6 +96,9 @@ namespace RTE {
 		/// Forces the current game's end.
 		void End() override;
 
+		/// Stretches the editor's invisible root box over a resolution changed while it runs, so the mouse reaches the whole screen.
+		void OnResolutionChanged() override;
+
 		/// Updates the state of this ActivityMan. Supposed to be done every frame
 		/// before drawing.
 		void Update() override;

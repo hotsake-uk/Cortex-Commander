@@ -166,6 +166,13 @@ namespace RTE {
 		/// error, or the instance name was 'None'. Ownership is NOT transferred!
 		const Entity* GetEntityPreset(Reader& reader);
 
+		/// Says what the last GetEntityPreset(Reader&) read and where, and why it can't be used, for the error when a property got nothing it could use.
+		/// @param propertyName The property being read, such as "GibParticle".
+		/// @param wantedType The class the property needs, such as "MovableObject".
+		/// @param readPreset What GetEntityPreset returned, which may be null.
+		/// @return One line naming the class, the preset, the file and the line.
+		std::string DescribeUnusablePreset(const std::string& propertyName, const std::string& wantedType, const Entity* readPreset) const;
+
 		/// Reads a preset of an Entity and tries to add it to the list of
 		/// read-in instances. Regardless of whether there is a name collision,
 		/// the read-in preset will be returned, ownership TRANSFERRED!
@@ -365,6 +372,16 @@ namespace RTE {
 		std::vector<std::pair<std::string, long long>> m_ModuleLoadTimes; //!< How long each module took to load, in milliseconds (see GetModuleLoadTimes).
 		std::vector<DataModule*> m_FailedModules; //!< What was read of mods that failed to load. Not listed anywhere, but kept so anything that already points into them stays valid.
 		std::map<std::string, std::string> m_FailedMods; //!< The mods that failed to load, with what went wrong.
+
+		/// What the last GetEntityPreset(Reader&) read, for DescribeUnusablePreset.
+		struct PresetRead {
+			std::string ClassName; //!< The class name as written in the file.
+			std::string PresetName; //!< The preset's name (a CopyOf's own name, or the one it copies), if it got that far.
+			std::string FilePath; //!< The file it was read from.
+			std::string Line; //!< The line the property starts on.
+			bool ClassKnown = false; //!< Whether the game has a class of that name.
+			bool ClassConcrete = false; //!< Whether that class can be made (it isn't abstract).
+		} m_LastPresetRead;
 
 		// Names of all DataModule:s mapped to indices into the m_pDataModules vector.
 		// The names are all lowercase name so we can more easily find them in case-agnostic fashion

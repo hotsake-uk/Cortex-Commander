@@ -193,6 +193,14 @@ int InventoryMenuGUI::SetupCarouselMode() {
 	return 0;
 }
 
+void InventoryMenuGUI::FitToResolution() {
+	if (m_GUIControlManager) {
+		if (GUICollectionBox* base = dynamic_cast<GUICollectionBox*>(m_GUIControlManager->GetControl("base"))) {
+			base->SetSize(g_WindowMan.GetResX(), g_WindowMan.GetResY());
+		}
+	}
+}
+
 int InventoryMenuGUI::SetupFullOrTransferMode() {
 	if (!m_GUIControlManager) {
 		m_GUIControlManager = std::make_unique<GUIControlManager>();

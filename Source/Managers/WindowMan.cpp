@@ -12,6 +12,7 @@
 #include "SettingsMan.h"
 #include "FrameMan.h"
 #include "ActivityMan.h"
+#include "MenuMan.h"
 #include "UInputMan.h"
 #include "ConsoleMan.h"
 #include "PresetMan.h"
@@ -134,6 +135,10 @@ void WindowMan::Initialize() {
 	MapDisplays(false);
 
 	ValidateResolution(m_ResX, m_ResY, m_ResMultiplier);
+	m_PixelScale = std::max(1.0F, m_ResMultiplier);
+	m_MenuResX = m_ResX;
+	m_MenuResY = m_ResY;
+	m_MenuResMultiplier = m_ResMultiplier;
 
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
@@ -587,11 +592,81 @@ void WindowMan::SetViewportLetterboxed() {
 	}
 
 	m_ResMultiplier = width / static_cast<float>(m_ResX);
+	if (m_ResX == m_MenuResX && m_ResY == m_MenuResY) {
+		m_MenuResMultiplier = m_ResMultiplier;
+	}
 
 	int offsetX = reservedLeft + (freeW / 2) - (width / 2);
 	int offsetY = (windowH / 2) - (height / 2);
 	m_GameViewTop = offsetY;
 	m_PrimaryWindowViewport = std::make_unique<SDL_Rect>(offsetX, windowH - offsetY - height, width, height);
+}
+
+bool WindowMan::GetWindowMatchedResolution(int& resX, int& resY) const {
+	if (!m_MatchWindowSize || !m_PrimaryWindow || m_Fullscreen || FullyCoversAllDisplays()) {
+		return false;
+	}
+	if (SDL_GetWindowFlags(m_PrimaryWindow.get()) & (SDL_WINDOW_MINIMIZED | SDL_WINDOW_HIDDEN)) {
+		return false;
+	}
+	int windowW, windowH;
+	SDL_GetWindowSizeInPixels(m_PrimaryWindow.get(), &windowW, &windowH);
+	int pointsW, pointsH;
+	SDL_GetWindowSize(m_PrimaryWindow.get(), &pointsW, &pointsH);
+	if (windowW <= 0 || windowH <= 0 || pointsW <= 0) {
+		return false;
+	}
+	// The part of the window the picture goes in, as in SetViewportLetterboxed, in the window's own units (on a high density display a window unit is several pixels), so the
+	// resolution is what the settings' multiplier of 1 gives.
+	int reservedLeft = std::clamp(m_ReservedLeft, 0, std::max(0, windowW / 2 - 40));
+	int reservedRight = std::clamp(m_ReservedRight, 0, std::max(0, windowW / 2 - 40));
+	int freeW = std::max(windowW - reservedLeft - reservedRight, 80);
+	float pixelsPerUnit = static_cast<float>(windowW) / static_cast<float>(pointsW);
+	float scale = std::max(pixelsPerUnit * m_PixelScale, 0.25F);
+	// Smaller than the smallest resolution, the picture is scaled down to fit with bars, as before.
+	resX = std::clamp(static_cast<int>(static_cast<float>(freeW) / scale), c_MinResX, 8192);
+	resY = std::clamp(static_cast<int>(static_cast<float>(windowH) / scale), c_MinResY, 8192);
+	return true;
+}
+
+void WindowMan::UpdateWindowMatchedResolution() {
+	if (m_MenuResX <= 0 || m_MenuResY <= 0) {
+		return;
+	}
+	unsigned long long now = SDL_GetTicks();
+	int windowResX = 0;
+	int windowResY = 0;
+	bool windowCanBeMatched = GetWindowMatchedResolution(windowResX, windowResY);
+	// When the window last changed what it asks for, so dragging its edge doesn't make everything again every frame. Watched in the menus too, so going back to the game
+	// in an unchanged window fills it at once.
+	if (windowResX != m_PendingWindowResX || windowResY != m_PendingWindowResY) {
+		m_PendingWindowResX = windowResX;
+		m_PendingWindowResY = windowResY;
+		m_PendingWindowResTicks = now;
+	}
+	// Only the game itself follows the window. The menus are laid out for the resolution in the settings, so they go straight back to it.
+	bool inGameplay = g_ActivityMan.IsInActivity() && !g_MenuMan.GetIsInMenuScreen();
+	bool follow = inGameplay && windowCanBeMatched;
+	int resX = follow ? windowResX : m_MenuResX;
+	int resY = follow ? windowResY : m_MenuResY;
+	if (resX == m_ResX && resY == m_ResY) {
+		return;
+	}
+	if (follow && now - m_PendingWindowResTicks < 250) {
+		return;
+	}
+	ChangeResolutionInPlace(resX, resY);
+}
+
+void WindowMan::ChangeResolutionInPlace(int newResX, int newResY) {
+	SDL_GL_MakeCurrent(m_PrimaryWindow.get(), m_GLContext.get());
+	m_ResX = newResX;
+	m_ResY = newResY;
+	g_FrameMan.CreateBackBuffers();
+	g_PostProcessMan.CreateGLBackBuffers();
+	SetViewportLetterboxed();
+	CreateBackBufferTexture();
+	m_ResizedToWindow = true;
 }
 
 void WindowMan::SetIntegerScaling(bool integerScaling) {
@@ -722,6 +797,10 @@ void WindowMan::ChangeResolution(int newResX, int newResY, float newResMultiplie
 		m_ResX = newResX;
 		m_ResY = newResY;
 		m_ResMultiplier = newResMultiplier;
+		m_PixelScale = std::max(1.0F, newResMultiplier);
+		m_MenuResX = newResX;
+		m_MenuResY = newResY;
+		m_MenuResMultiplier = newResMultiplier;
 		m_Fullscreen = fullscreen;
 		g_SettingsMan.UpdateSettingsFile();
 	}
@@ -937,6 +1016,8 @@ void WindowMan::Update() {
 		}
 	}
 	m_EventQueue.clear();
+
+	UpdateWindowMatchedResolution();
 }
 
 void WindowMan::ClearBackbuffer(bool clearFrameMan) {

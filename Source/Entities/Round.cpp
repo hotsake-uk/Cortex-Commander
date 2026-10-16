@@ -75,8 +75,9 @@ int Round::ReadProperty(const std::string_view& propName, Reader& reader) {
 	StartPropertyList(return Entity::ReadProperty(propName, reader));
 
 	MatchProperty("Particle", {
-		m_Particle = dynamic_cast<const MovableObject*>(g_PresetMan.GetEntityPreset(reader));
-		RTEAssert(m_Particle, "Stream suggests allocating an unallocable type in Round::Create!");
+		const Entity* preset = g_PresetMan.GetEntityPreset(reader);
+		m_Particle = dynamic_cast<const MovableObject*>(preset);
+		RTEAssert(m_Particle, "Stream suggests allocating an unallocable type in Round::Create! " + g_PresetMan.DescribeUnusablePreset("Particle", "MovableObject", preset));
 	});
 	MatchProperty("ParticleCount", { reader >> m_ParticleCount; });
 	MatchProperty("FireVelocity", { reader >> m_FireVel; });
