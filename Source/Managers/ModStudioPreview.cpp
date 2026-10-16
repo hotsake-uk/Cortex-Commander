@@ -28,6 +28,7 @@ std::filesystem::file_time_type ModStudioPreview::s_LastWriteTime = {};
 std::chrono::steady_clock::time_point ModStudioPreview::s_LastScriptCheck = {};
 std::filesystem::file_time_type ModStudioPreview::s_ScriptsWriteTime = {};
 bool ModStudioPreview::s_ScriptsLookedAt = false;
+ModStudioPreview::Request ModStudioPreview::s_LastRequest = {};
 
 namespace {
 	std::string TrimSpaces(const std::string& text) {
@@ -144,26 +145,37 @@ void ModStudioPreview::UpdateInGame() {
 		return;
 	}
 	s_LastCheck = now;
-	GameActivity* game = dynamic_cast<GameActivity*>(g_ActivityMan.GetActivity());
-	if (!g_ActivityMan.IsInActivity() || !game || game->GetActivityState() != Activity::ActivityState::Running || !g_SceneMan.GetScene()) {
+	if (!GameRunning()) {
 		return;
 	}
 	Request request;
 	if (!Poll(s_LastWriteTime, request)) {
 		return;
 	}
+	Show(request);
+}
+
+bool ModStudioPreview::GameRunning() {
+	const GameActivity* game = dynamic_cast<GameActivity*>(g_ActivityMan.GetActivity());
+	return g_ActivityMan.IsInActivity() && game && game->GetActivityState() == Activity::ActivityState::Running && g_SceneMan.GetScene();
+}
+
+bool ModStudioPreview::Show(const Request& request) {
+	GameActivity* game = dynamic_cast<GameActivity*>(g_ActivityMan.GetActivity());
 	std::string problem;
 	Actor* unit = MakeUnit(request, problem);
 	if (!unit) {
 		g_FrameMan.SetScreenText(problem, 0, 0, 8000);
-		return;
+		return false;
 	}
+	s_LastRequest = request;
+	s_LastRequest.FilesToReload.clear();
 
 	const std::string shown = "Showing " + request.PresetName + " from Mod Studio. Press Preview in game again after a change.";
 	// In the sandbox it becomes your own character, so you play it as yourself, with the tools put away.
 	if (Sandbox::PlayAs(unit)) {
 		g_FrameMan.SetScreenText(shown, 0, 0, 4000);
-		return;
+		return true;
 	}
 
 	// In other games (Test In Game.bat's plain map, or any other) the new unit takes the place of the last one from Studio (or the unit the player
@@ -192,6 +204,7 @@ void ModStudioPreview::UpdateInGame() {
 		game->SetViewState(Activity::ViewState::Normal, player);
 	}
 	g_FrameMan.SetScreenText(shown, 0, 0, 4000);
+	return true;
 }
 
 void ModStudioPreview::OnConsoleLine(const std::string& line) {
@@ -272,6 +285,7 @@ void ModStudioPreview::UpdateScripts() {
 
 	bool reloadScripts = false;
 	std::vector<std::string> scriptsToReload;
+	std::vector<std::string> filesToReload;
 	std::string runFile;
 	std::string line;
 	while (std::getline(requestFile, line)) {
@@ -285,11 +299,30 @@ void ModStudioPreview::UpdateScripts() {
 			reloadScripts = value == "1";
 		} else if (key == "ReloadScript" && !value.empty()) {
 			scriptsToReload.push_back(value);
+		} else if (key == "ReloadFile" && !value.empty()) {
+			filesToReload.push_back(value);
 		} else if (key == "Run") {
 			runFile = value;
 		}
 	}
 
+	if (!filesToReload.empty() && g_ActivityMan.IsInActivity()) {
+		// INI files saved outside Studio (Studio's file bridge watches the mods): their presets are read again, and the last unit from Studio
+		// comes back with the change when the file is in its mod (or its held item's).
+		bool lastUnitsMod = false;
+		for (const std::string& file: filesToReload) {
+			if (g_PresetMan.ReloadPresetFile(file)) {
+				g_ConsoleMan.PrintString("SYSTEM: Reloaded " + file + " from disk.");
+				const std::string module = file.substr(0, file.find('/'));
+				lastUnitsMod = lastUnitsMod || module == s_LastRequest.ModuleName || module == s_LastRequest.DeviceModule;
+			} else {
+				g_ConsoleMan.PrintString("WARNING: Mod Studio couldn't reload " + file + ". Its mod may not be loaded yet.");
+			}
+		}
+		if (lastUnitsMod && !s_LastRequest.PresetName.empty() && GameRunning()) {
+			Show(s_LastRequest);
+		}
+	}
 	if (!reloadScripts && !scriptsToReload.empty() && g_ActivityMan.IsInActivity()) {
 		// Just the saved scripts: the presets and objects using them reload (running their Create again), and every other object keeps its state.
 		// A script no object uses (a library other scripts load, or a module's global script) needs everything reloaded.

@@ -2,13 +2,18 @@
 # and gives it the game folder: list a folder, read a file, save a file. It only answers this computer (localhost), and only
 # requests carrying the token it puts in the page's address. It uses nothing but Windows PowerShell, so there is nothing to install.
 #
-#   Start-ModStudio.ps1 [-GameDir <game folder>] [-Port <port>] [-NoBrowser]
+#   Start-ModStudio.ps1 [-GameDir <game folder>] [-Port <port>] [-NoBrowser] [-NoBridge]
 #
 # Without -GameDir it uses the game folder this file sits in (<game>\Tools\ModStudio), or asks for one.
+#
+# It is also a bridge for editing in your own editor: it watches Data and Mods, and when a .lua or .ini is saved by anything but Studio,
+# it asks a game started with -modstudio to reload it (through ModStudio/Scripts.ini) and tells an open Studio page, which reads it again.
+# -NoBrowser runs it without opening the page (Mod Studio Bridge.bat); -NoBridge turns the watching off.
 param(
 	[string]$GameDir = '',
 	[int]$Port = 0,
-	[switch]$NoBrowser
+	[switch]$NoBrowser,
+	[switch]$NoBridge
 )
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -46,9 +51,139 @@ $listener.Prefixes.Add("http://localhost:$Port/")
 $listener.Start()
 $url = "http://localhost:$Port/?token=$token"
 
+# The file bridge. FileSystemWatcher calls back on its own threads, so this is C#: it keeps working while the loop below waits for requests,
+# and with no page open at all.
+Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text;
+using System.Threading;
+
+public class StudioWatcher {
+	private readonly string root;
+	private readonly object gate = new object();
+	private readonly List<FileSystemWatcher> watchers = new List<FileSystemWatcher>();
+	private readonly List<KeyValuePair<long, string>> log = new List<KeyValuePair<long, string>>();
+	private readonly Dictionary<string, DateTime> ours = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+	private readonly Dictionary<string, bool> pending = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+	private readonly Timer timer;
+	private long seq;
+	private static readonly string[] Kinds = { ".lua", ".ini", ".png", ".bmp", ".wav", ".ogg", ".flac" };
+
+	public StudioWatcher(string gameDir) {
+		root = gameDir;
+		timer = new Timer(Flush);
+		foreach (string top in new[] { "Data", "Mods" }) {
+			string folder = Path.Combine(root, top);
+			if (!Directory.Exists(folder)) { continue; }
+			FileSystemWatcher watcher = new FileSystemWatcher(folder);
+			watcher.IncludeSubdirectories = true;
+			watcher.InternalBufferSize = 65536;
+			watcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size;
+			watcher.Changed += OnChanged;
+			watcher.Created += OnChanged;
+			watcher.Deleted += OnChanged;
+			watcher.Renamed += OnRenamed;
+			watcher.EnableRaisingEvents = true;
+			watchers.Add(watcher);
+		}
+	}
+
+	// Studio's own saves: the page already asks the game to reload those, so the bridge leaves them alone for a few seconds.
+	public void Wrote(string full) {
+		lock (gate) { ours[full] = DateTime.UtcNow; }
+	}
+
+	// The changes after number `since`, one "disk path<TAB>changed|deleted" line each, under a first line with the latest number.
+	// A negative `since` gives just the number, for a page that has only now opened.
+	public string Since(long since) {
+		StringBuilder text = new StringBuilder();
+		lock (gate) {
+			text.Append(seq).Append('\n');
+			if (since < 0) { return text.ToString(); }
+			foreach (KeyValuePair<long, string> entry in log) {
+				if (entry.Key > since) { text.Append(entry.Value).Append('\n'); }
+			}
+		}
+		return text.ToString();
+	}
+
+	private void OnRenamed(object sender, RenamedEventArgs e) {
+		Note(e.OldFullPath, true);
+		Note(e.FullPath, false);
+	}
+
+	private void OnChanged(object sender, FileSystemEventArgs e) {
+		Note(e.FullPath, e.ChangeType == WatcherChangeTypes.Deleted);
+	}
+
+	private void Note(string full, bool deleted) {
+		string extension = Path.GetExtension(full).ToLowerInvariant();
+		if (Array.IndexOf(Kinds, extension) < 0) { return; }
+		if (!deleted && !File.Exists(full)) { return; }
+		lock (gate) {
+			DateTime when;
+			if (ours.TryGetValue(full, out when)) {
+				if ((DateTime.UtcNow - when).TotalSeconds < 3) { return; }
+				ours.Remove(full);
+			}
+			pending[full] = deleted;
+			timer.Change(300, Timeout.Infinite);
+		}
+	}
+
+	// A save fires several events (and editors save through temporary files), so changes are gathered for 300 ms and sent as one.
+	private void Flush(object state) {
+		List<string> scripts = new List<string>();
+		List<string> inis = new List<string>();
+		lock (gate) {
+			string request = Path.Combine(root, "ModStudio\\Scripts.ini");
+			if (File.Exists(request) && (DateTime.UtcNow - File.GetLastWriteTimeUtc(request)).TotalMilliseconds < 400) {
+				// The page just wrote a request; the game looks a few times a second, so this one waits rather than replacing it.
+				timer.Change(400, Timeout.Infinite);
+				return;
+			}
+			foreach (KeyValuePair<string, bool> change in pending) {
+				string disk = change.Key.Substring(root.Length + 1).Replace('\\', '/');
+				log.Add(new KeyValuePair<long, string>(++seq, disk + "\t" + (change.Value ? "deleted" : "changed")));
+				Console.WriteLine(DateTime.Now.ToString("HH:mm:ss") + "  " + (change.Value ? "deleted " : "saved   ") + disk);
+				if (change.Value) { continue; }
+				// The game's paths start at the module: "Mods/My.rte/Unit.ini" is "My.rte/Unit.ini".
+				string modulePath = disk.Substring(disk.IndexOf('/') + 1);
+				string extension = Path.GetExtension(disk).ToLowerInvariant();
+				if (extension == ".lua") {
+					scripts.Add(modulePath);
+				} else if (extension == ".ini" && !modulePath.EndsWith("/Index.ini", StringComparison.OrdinalIgnoreCase)) {
+					inis.Add(modulePath);
+				}
+			}
+			pending.Clear();
+			if (log.Count > 2000) { log.RemoveRange(0, log.Count - 2000); }
+			if (scripts.Count == 0 && inis.Count == 0) { return; }
+			StringBuilder text = new StringBuilder();
+			text.Append("// Written by Cortex Mod Studio's file bridge for a game started with -modstudio.\r\n");
+			text.Append("Stamp = ").Append(DateTime.UtcNow.Ticks).Append("\r\n");
+			foreach (string file in inis) { text.Append("ReloadFile = ").Append(file).Append("\r\n"); }
+			foreach (string file in scripts) { text.Append("ReloadScript = ").Append(file).Append("\r\n"); }
+			try {
+				Directory.CreateDirectory(Path.GetDirectoryName(request));
+				File.WriteAllText(request, text.ToString());
+				Console.WriteLine("          asked the game to reload " + (inis.Count + scripts.Count) + " file" + (inis.Count + scripts.Count == 1 ? "" : "s") + ".");
+			} catch (Exception e) {
+				Console.WriteLine("          couldn't ask the game to reload: " + e.Message);
+			}
+		}
+	}
+}
+'@
+$watcher = $null
+if (-not $NoBridge) { $watcher = New-Object StudioWatcher $GameDir }
+
 $host.UI.RawUI.WindowTitle = 'Cortex Mod Studio'
 Write-Host "Cortex Mod Studio is running for $GameDir"
 Write-Host "Open: $url"
+if ($watcher) { Write-Host 'Watching Data and Mods: scripts and INI files you save in any editor reload in a game started from Studio.' }
 Write-Host 'Close this window to stop it.'
 if (-not $NoBrowser) { Start-Process $url }
 
@@ -174,8 +309,16 @@ function Invoke-Api($context, [string]$action) {
 			if ($request.HttpMethod -ne 'POST') { Send-Text $response 405 'Use POST.'; return }
 			$mods = Join-Path $GameDir 'Mods'
 			if (-not $full.StartsWith($mods + '\', [StringComparison]::OrdinalIgnoreCase)) { Send-Text $response 403 'Only files in Mods can be deleted.'; return }
+			if ($watcher) { $watcher.Wrote($full) }
 			if ([System.IO.File]::Exists($full)) { [System.IO.File]::Delete($full) }
 			Send-Text $response 200 'ok'
+		}
+		'changes' {
+			# Files saved outside Studio since the page last asked (see StudioWatcher). 404 when the bridge is off, so the page stops asking.
+			if (-not $watcher) { Send-Text $response 404 'The file bridge is off.'; return }
+			$since = [long]-1
+			[void][long]::TryParse([string]$request.QueryString['since'], [ref]$since)
+			Send-Text $response 200 $watcher.Since($since)
 		}
 		'file' {
 			if ($request.HttpMethod -eq 'PUT') {
@@ -183,6 +326,7 @@ function Invoke-Api($context, [string]$action) {
 				[void][System.IO.Directory]::CreateDirectory($folder)
 				$memory = New-Object System.IO.MemoryStream
 				$request.InputStream.CopyTo($memory)
+				if ($watcher) { $watcher.Wrote($full) }
 				[System.IO.File]::WriteAllBytes($full, $memory.ToArray())
 				Send-Text $response 200 'ok'
 			} elseif ([System.IO.File]::Exists($full)) {

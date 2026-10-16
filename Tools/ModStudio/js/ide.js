@@ -48,6 +48,7 @@ window.MS = window.MS || {};
 		app = theApp;
 		ide.lua = new MS.LuaIntel(app);
 		ide.ini = new MS.IniIntel(app);
+		pollBridge();
 		for (const b of document.querySelectorAll('#modeSwitch button')) {
 			b.onclick = () => ide.setMode(b.dataset.mode);
 		}
@@ -930,6 +931,123 @@ window.MS = window.MS || {};
 			}
 		}, wait);
 	};
+
+	// ---- the file bridge: files saved in another editor ----
+
+	// Start-ModStudio.ps1 watches Data and Mods. When a file is saved by anything but Studio it asks the game to reload it itself, and this
+	// keeps the page up to date: open scripts and INI files read the new text, and pictures are drawn again. Unsaved edits in Studio win.
+	let bridgeSeq = -1;
+	async function pollBridge() {
+		if (!app.fs || !app.fs.server || !app.lib) {
+			setTimeout(pollBridge, 2000);
+			return;
+		}
+		let text;
+		try {
+			const response = await fetch('/api/changes?since=' + bridgeSeq, { headers: { 'X-ModStudio-Token': app.fs.server }, cache: 'no-store' });
+			if (response.status === 404) {
+				return; // Started with -NoBridge, or a Studio window from before the bridge.
+			}
+			if (!response.ok) {
+				throw new Error(response.statusText);
+			}
+			text = await response.text();
+		} catch (e) {
+			setTimeout(pollBridge, 3000);
+			return;
+		}
+		const lines = text.split('\n');
+		const seq = Number(lines.shift()) || 0;
+		const changes = bridgeSeq < 0 ? [] : lines.filter(Boolean).map((line) => {
+			const [path, kind] = line.split('\t');
+			return { path, kind };
+		});
+		bridgeSeq = seq;
+		if (changes.length) {
+			try {
+				await takeOutsideChanges(changes);
+			} catch (e) {
+				console.warn('Couldn\'t read a file saved outside Studio: ' + e.message);
+			}
+		}
+		setTimeout(pollBridge, 1000);
+	}
+
+	async function takeOutsideChanges(changes) {
+		const names = [];
+		const kept = [];
+		const sprites = [];
+		let inisChanged = false;
+		for (const { path: disk, kind } of changes) {
+			const path = disk.replace(/^(Data|Mods)\//i, '');
+			const ext = extOf(path);
+			const deleted = kind === 'deleted';
+			names.push(baseName(path) + (deleted ? ' (deleted)' : ''));
+			if (ext === 'png' || ext === 'bmp') {
+				sprites.push(path);
+				continue;
+			}
+			if (ext === 'lua') {
+				const tab = ide.tabs.find((t) => t.kind === 'code' && !t.doc && t.path.toLowerCase() === path.toLowerCase());
+				if (deleted) {
+					ide.lua.scripts.delete(path.toLowerCase());
+					continue;
+				}
+				const fresh = await (await app.fs.readFile(disk)).text();
+				if (tab && tabDirty(tab)) {
+					kept.push(baseName(path));
+					tab.savedText = fresh; // Saving from Studio now would replace the outside change, as it should: it's what the tab shows.
+					continue;
+				}
+				ide.lua.updateScript(tab ? tab.path : path, fresh);
+				if (tab && tab.model && tab.model.getValue() !== fresh) {
+					tab.savedText = fresh;
+					tab.model.pushEditOperations([], [{ range: tab.model.getFullModelRange(), text: fresh }], () => null);
+					tab.savedText = fresh;
+					checkSoon(tab);
+				} else if (tab) {
+					tab.savedText = fresh;
+				}
+				continue;
+			}
+			if (ext === 'ini' && !deleted) {
+				const doc = app.lib.docFor(path);
+				app.fs.texts.delete(disk.toLowerCase());
+				if (!doc) {
+					continue; // A file no loaded mod includes yet: Reload in the File menu picks it up.
+				}
+				if (doc.dirty) {
+					kept.push(baseName(path));
+					continue;
+				}
+				doc.reset(await app.fs.readText(disk));
+				doc.savedText = doc.serialize();
+				doc.dirty = false;
+				inisChanged = true;
+			}
+		}
+		if (sprites.length) {
+			// The game's frames are "Name000.png", "Name001.png"...; the base name without the number is what INI files write.
+			app.forgetSprites(sprites.concat(sprites.map((p) => p.replace(/\d{3}(\.\w+)$/, '$1'))));
+			MS.panels.forgetThumbs();
+		}
+		if (inisChanged) {
+			ide.ini.invalidate();
+			app.lib.reindex();
+			app.rebuild();
+			MS.panels.refresh();
+			ide.syncModels();
+			app.updateFileStatus();
+		}
+		if (sprites.length) {
+			app.requestDraw();
+		}
+		renderTabs();
+		consoleLine('— saved outside Studio: ' + names.join(', ') + ' —', 'studio');
+		if (kept.length) {
+			app.toast(kept.join(', ') + (kept.length > 1 ? ' were' : ' was') + ' changed on disk, but has unsaved edits in Studio, so Studio kept yours. Saving replaces the outside change.', 'bad');
+		}
+	}
 
 	// Runs Lua in the game (the console box, or Ctrl+Enter on a selection). An expression's value is printed.
 	async function runLua(code) {

@@ -103,6 +103,20 @@ Either one checks the file about twice a second, reloads the changed files and s
 item picked under **Held item**. The game only finds new mod folders when it starts, so after making a brand-new mod, restart
 the game once.
 
+## Editing in your own editor (the file bridge)
+
+While Studio's window is open it watches `Data` and `Mods`. Save a `.lua` or `.ini` in any editor (VS Code, Notepad++, anything)
+and a game started from Studio reloads it, the same as saving inside Studio:
+
+- A script reloads on its own, so other objects keep their state (everything reloads when no object uses it).
+- An INI file is read again and the last unit from Studio comes back with the change, when the file is in its mod or its held item's.
+- An open Studio page takes the new text too: open tabs, the designer, and pictures you repainted. A file with unsaved edits in Studio
+  keeps yours, and Studio says so.
+
+**Mod Studio Bridge.bat** runs it without opening the page: leave the game and the bridge window open and work entirely in your own
+editor. The window lists each file it sends to the game, and prints Studio's address in case you want the page as well. Saves made by
+Studio itself aren't sent twice. Start Studio with `-NoBridge` to turn the watching off.
+
 ## Code layout
 
 All scripts are plain classic scripts (no modules), so the page works from `file://`.
