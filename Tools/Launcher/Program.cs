@@ -675,35 +675,32 @@ partial class MainForm : Form
 		Process.Start(new ProcessStartInfo(exe, args) { WorkingDirectory = WorktreePath(c), UseShellExecute = true });
 	}
 
-	// Mod Studio is a web page in the version's Tools/ModStudio. With the selected commit built, the game starts in its Actor Editor
-	// too, which shows whatever unit Studio's "Preview in game" sends it.
+	// Mod Studio is a web page in the version's Tools/ModStudio, served with the game folder by its Start-ModStudio.ps1 (browsers won't let
+	// a page open .ini files itself). With the selected commit built, the game starts in its Actor Editor too, which shows whatever unit
+	// Studio's "Preview in game" sends it.
 	async Task OpenModStudio()
 	{
 		var c = Selected();
 		if (c == null) return;
 		var slot = WorktreePath(c);
-		var page = Path.Combine(slot, "Tools", "ModStudio", "ModStudio.html");
-		if (!File.Exists(page)) page = Path.Combine(Repo, "Tools", "ModStudio", "ModStudio.html"); // nothing built yet: your checkout's copy
-		if (!File.Exists(page)) { Append("This version has no Mod Studio (Tools/ModStudio). Pick a newer commit."); return; }
+		var built = IsBuilt(c);
+		var gameDir = (built ? slot : Repo).TrimEnd('\\', '/'); // nothing built yet: edit your checkout's files
+		var script = Path.Combine(gameDir, "Tools", "ModStudio", "Start-ModStudio.ps1");
+		if (!File.Exists(script)) { Append("This version has no Mod Studio (Tools/ModStudio). Pick a newer commit."); return; }
 
-		if (IsBuilt(c))
+		if (built)
 		{
 			await Launch(c, "-editor \"ActorEditor\"");
-			Append($"In Mod Studio, choose this game folder: {slot}");
+			Append("Note: mods linked from your Mods folder are refreshed from it on each launch, so keep Studio work in a mod you made in Studio.");
 		}
 		else
-			Append("Opening Mod Studio. Build & Launch this commit first if you want Preview in game.");
-		Append("Note: mods linked from your Mods folder are refreshed from it on each launch, so save Studio work in a mod you made in Studio, or open your own game folder instead.");
-
-		// Studio needs a Chromium browser to save into the game folder; fall back to the default browser.
-		var url = new Uri(page).AbsoluteUri;
-		foreach (var browser in new[] { "msedge", "chrome" })
+			Append($"This commit isn't built, so Mod Studio edits your checkout ({Repo}). Build & Launch it first if you want Preview in game.");
+		Append($"Starting Mod Studio for {gameDir}");
+		try
 		{
-			try { Process.Start(new ProcessStartInfo(browser, $"\"{url}\"") { UseShellExecute = true }); return; }
-			catch { }
+			Process.Start(new ProcessStartInfo("powershell.exe", $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\" -GameDir \"{gameDir}\"") { UseShellExecute = true, WorkingDirectory = gameDir });
 		}
-		try { Process.Start(new ProcessStartInfo(page) { UseShellExecute = true }); }
-		catch (Exception ex) { Append("Could not open Mod Studio: " + ex.Message); }
+		catch (Exception ex) { Append("Could not start Mod Studio: " + ex.Message); }
 	}
 
 	// Deleting tens of thousands of files is slow on Windows, so rename the folder out of the way (instant), then let a hidden `rd /s /q` empty it

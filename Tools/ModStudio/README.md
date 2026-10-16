@@ -3,16 +3,19 @@
 A visual editor for Cortex Command units. Move a unit's parts, swap sprites, add helmets and gear, and watch it stand,
 walk, run, crouch and aim. Studio writes the INI for you and can show the unit in the game's Actor Editor while you work.
 
-It is a single web page with no install and no external dependencies: no server, no internet, no packages.
+It is a web page plus a small PowerShell script, with nothing to install: no internet, no packages, no runtime.
 
 ## Opening it
 
-1. Double-click `ModStudio.html`. Use **Chrome** or **Edge** (any recent version).
-2. Click **Open the game folder** and pick the folder that holds `Data` (and `Mods`, if you have one).
-3. Allow editing when the browser asks. Next time, **Reopen** brings you straight back.
+Double-click **Mod Studio.bat** in `Tools\ModStudio` (or press **Mod Studio** in the launcher). It opens Studio in your browser
+with the game folder already loaded; keep its small window open while you work, and close it to stop. Any browser works.
 
-Firefox and Safari can't save into a folder from a web page. Studio still opens there in read-only mode: you can look at
-and change units, and **Save** downloads a zip of the changed files to unzip into the game folder.
+The .bat runs `Start-ModStudio.ps1` with Windows' built-in PowerShell: a tiny server on your own computer (localhost only) that
+lets the page read and save the game's files. It's needed because browsers refuse to let a web page open `.ini` files in a
+folder. If the .bat isn't inside a game folder, it asks which game folder to use; `-GameDir <folder>` picks one directly.
+
+Opening `ModStudio.html` straight from disk also works, read-only: you can look at and change units, and **Save** downloads a
+zip of the changed files to unpack into the game folder.
 
 ## What you can do
 
@@ -49,7 +52,8 @@ All scripts are plain classic scripts (no modules), so the page works from `file
 | File | What it does |
 | --- | --- |
 | `js/ini.js` | Lossless INI reader and writer that keeps comments and untouched lines exactly. |
-| `js/gamefs.js` | Game folder access (File System Access API, or read-only with zip download). |
+| `Start-ModStudio.ps1` | The local server: serves the page and lists, reads and saves files in the game folder. |
+| `js/gamefs.js` | Game folder access (through the local server, or read-only with zip download). |
 | `js/library.js` | Loads every module, indexes presets, resolves `CopyOf`, decides where an edit can safely go. |
 | `js/images.js` | Indexed PNG and BMP decoding with the game palette, palette conversion, PNG writing. |
 | `js/rig.js` | The unit's skeleton and pose maths, matching the engine's arm, leg, limb path and attachable rules. |

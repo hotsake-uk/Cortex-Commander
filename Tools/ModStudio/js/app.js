@@ -45,10 +45,14 @@ window.MS = window.MS || {};
 			}
 		});
 		const note = $('openNote');
-		if (MS.GameFS.canWrite) {
-			note.textContent = 'Pick the folder that has the game\'s program in it (with Data and Mods inside). Studio saves your work straight into it.';
+		const token = MS.GameFS.serverToken;
+		if (token) {
+			// Started by Mod Studio.bat or the launcher: the game folder is already chosen.
+			$('btnOpen').hidden = true;
+			const fs = new MS.GameFS();
+			loadGame(() => fs.useServer(token), fs);
 		} else {
-			note.textContent = 'This browser can read the game folder but not save into it: your changes are downloaded as a zip to unpack over the game folder. Chrome or Edge can save in place.';
+			note.textContent = 'Opened straight from disk, Studio can read the game folder but not save into it: your changes download as a zip to unpack over it. To save straight into the game, start Mod Studio.bat in Tools\\ModStudio, or use the launcher\'s Mod Studio button.';
 		}
 		$('btnOpen').onclick = () => openFolder();
 		$('folderInput').onchange = async (e) => {

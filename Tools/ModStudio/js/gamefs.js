@@ -1,8 +1,8 @@
 // Cortex Mod Studio: reading and writing the game's folder from the browser, with nothing to install.
 //
-// In Chrome and Edge the page asks for the game folder once (the File System Access API) and then reads and saves files in place.
-// Other browsers can only read a folder the user picks; there, saved files are collected and downloaded as one zip to unpack over
-// the game folder.
+// Started from Mod Studio.bat or the launcher, the page is served by Start-ModStudio.ps1, which reads and saves the game folder
+// for it. Opened straight from disk, a page can only read a folder the user picks; saved files are then collected and downloaded
+// as one zip to unpack over the game folder. (Chrome and Edge's own folder access refuses .ini files, so it can't be used.)
 //
 // Paths are written the way the game's INI files write them: "Ronin.rte/Actors/Infantry/RoninLight/Torso000.png". The module
 // (the first part) is looked up in Data/ first, then Mods/, as PresetMan::GetFullModulePath does.
@@ -14,6 +14,8 @@ window.MS = window.MS || {};
 
 	class GameFS {
 		constructor() {
+			this.server = null; // Token for Start-ModStudio.ps1 (served mode).
+			this.texts = new Map(); // Served mode: lowercased path -> text of every .ini, read in one go.
 			this.root = null; // FileSystemDirectoryHandle of the game folder (writable mode).
 			this.files = null; // Map of lowercased relative path -> File (read-only mode).
 			this.dirCache = new Map(); // Lowercased relative directory path -> Map(lowercased name -> handle).
@@ -22,12 +24,52 @@ window.MS = window.MS || {};
 			this.name = '';
 		}
 
+		// The browsers' own folder access hides .ini files and refuses to open them ("Name is not allowed"), so it is never used.
 		static get canWrite() {
-			return typeof window.showDirectoryPicker === 'function';
+			return false;
+		}
+
+		// The token Start-ModStudio.ps1 put in the page's address, when the page came from it.
+		static get serverToken() {
+			const match = /[?&]token=([0-9a-f]+)/i.exec(location.search);
+			return /^https?:$/.test(location.protocol) && match ? match[1] : null;
 		}
 
 		get writable() {
-			return !!this.root;
+			return !!this.root || !!this.server;
+		}
+
+		async api(method, action, path, body) {
+			const response = await fetch('/api/' + action + '?path=' + encodeURIComponent(path || ''), {
+				method,
+				body,
+				headers: { 'X-ModStudio-Token': this.server },
+				cache: 'no-store',
+			});
+			if (response.status === 404 && action === 'file') {
+				return null;
+			}
+			if (!response.ok) {
+				throw new Error('Mod Studio\'s server said: ' + (await response.text()));
+			}
+			return response;
+		}
+
+		// Served mode: the game folder comes from Start-ModStudio.ps1.
+		async useServer(token) {
+			this.server = token;
+			this.root = null;
+			this.files = null;
+			this.dirCache.clear();
+			let info;
+			try {
+				info = await (await this.api('GET', 'info')).json();
+			} catch (e) {
+				throw new Error('Mod Studio\'s window has closed. Start Mod Studio.bat (or the launcher\'s Mod Studio button) again.');
+			}
+			this.name = info.name;
+			this.texts = new Map(Object.entries(await (await this.api('GET', 'inis')).json()).map(([path, text]) => [lower(path), text]));
+			await this.findModules();
 		}
 
 		// Writable mode: ask for the folder. Throws if the user cancels.
@@ -113,7 +155,11 @@ window.MS = window.MS || {};
 				return this.dirCache.get(key);
 			}
 			const map = new Map();
-			if (this.root) {
+			if (this.server) {
+				for (const entry of await (await this.api('GET', 'list', diskDir)).json()) {
+					map.set(lower(entry.name), entry);
+				}
+			} else if (this.root) {
 				let handle = this.root;
 				const parts = diskDir.split('/').filter(Boolean);
 				if (parts.length) {
@@ -189,6 +235,14 @@ window.MS = window.MS || {};
 			if (pending) {
 				return new Blob([pending.bytes]);
 			}
+			if (this.server) {
+				const response = await this.api('GET', 'file', disk);
+				if (!response) {
+					throw new Error('File not found: ' + disk);
+				}
+				const modified = Number(response.headers.get('X-Last-Modified')) || 0;
+				return new File([await response.arrayBuffer()], disk.split('/').pop(), { lastModified: modified });
+			}
 			if (this.root) {
 				let handle = await this.fileHandle(disk);
 				if (!handle) {
@@ -207,6 +261,10 @@ window.MS = window.MS || {};
 		}
 
 		async readText(modulePath) {
+			const text = this.texts.get(lower(this.toDiskPath(modulePath)));
+			if (text !== undefined) {
+				return text;
+			}
 			const file = await this.readFile(modulePath);
 			return await file.text();
 		}
@@ -232,6 +290,27 @@ window.MS = window.MS || {};
 		// Writes a file by its path from the game folder ("ModStudio/Preview.ini").
 		async writeDisk(disk, data) {
 			const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+			if (this.server) {
+				await this.api('PUT', 'file', disk, bytes);
+				this.texts.delete(lower(disk));
+				const parts = disk.split('/').filter(Boolean);
+				const fileName = parts.pop();
+				const folder = parts.join('/');
+				if (this.dirCache.has(lower(folder))) {
+					this.dirCache.get(lower(folder)).set(lower(fileName), { kind: 'file', name: fileName });
+				}
+				for (let i = 0; i < parts.length; i++) {
+					const parent = lower(parts.slice(0, i).join('/'));
+					if (this.dirCache.has(parent) && !this.dirCache.get(parent).has(lower(parts[i]))) {
+						this.dirCache.get(parent).set(lower(parts[i]), { kind: 'directory', name: parts[i] });
+						this.dirCache.delete(lower(parts.slice(0, i + 1).join('/')));
+					}
+				}
+				if (parts.length >= 2 && !this.moduleHome.has(lower(parts[1])) && lower(parts[1]).endsWith('.rte')) {
+					this.moduleHome.set(lower(parts[1]), { home: parts[0], name: parts[1] });
+				}
+				return;
+			}
 			if (!this.root) {
 				this.pendingWrites.set(lower(disk), { path: disk, bytes });
 				return;
