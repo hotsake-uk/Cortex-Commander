@@ -239,6 +239,8 @@ window.MS = window.MS || {};
 		return monacoLoading;
 	}
 
+	ide.loadMonaco = loadMonaco;
+
 	const KIND = () => {
 		const k = ide.monaco.languages.CompletionItemKind;
 		return { method: k.Method, function: k.Function, property: k.Property, field: k.Field, constant: k.Constant, class: k.Class, module: k.Module, variable: k.Variable, keyword: k.Keyword, snippet: k.Snippet, value: k.Value, file: k.File, folder: k.Folder };
