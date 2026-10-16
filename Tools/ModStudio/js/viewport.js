@@ -132,7 +132,8 @@ window.MS = window.MS || {};
 			}
 			const poses = app.rig.pose(app.poseState);
 			this.poses = poses;
-			this.drawList = MS.drawOrder(app.rig, poses);
+			const shown = (item) => !app.isHidden(item.part);
+			this.drawList = MS.drawOrder(app.rig, poses).filter(shown);
 
 			ctx.save();
 			ctx.translate(o.x, o.y);
@@ -144,7 +145,7 @@ window.MS = window.MS || {};
 				for (const dt of [-0.12, 0.12]) {
 					const ghost = app.rig.pose(Object.assign({}, app.poseState, { time: app.poseState.time + dt }));
 					ctx.globalAlpha = 0.22;
-					for (const item of MS.drawOrder(app.rig, ghost)) {
+					for (const item of MS.drawOrder(app.rig, ghost).filter(shown)) {
 						this.drawItem(ctx, item);
 					}
 				}

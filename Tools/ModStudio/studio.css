@@ -116,6 +116,25 @@ button, input, select { font: inherit; color: inherit; }
 .tree-row:hover, .tree-row.hover { background: var(--panel2); }
 .tree-row.sel { background: var(--panel3); box-shadow: inset 2px 0 0 var(--accent); }
 .tree-row .role { width: 16px; text-align: center; color: var(--faint); flex: none; }
+.tree-row { gap: 2px; }
+.tree-row .indent { width: 12px; align-self: stretch; flex: none; border-left: 1px solid var(--line); margin-left: 4px; }
+.tree-row .twisty { width: 16px; flex: none; background: none; border: 0; padding: 0; color: var(--dim); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.tree-row .twisty:disabled { cursor: default; }
+.tree-row .twisty:not(:disabled):hover { color: var(--text); }
+.tree-row .row-btn { flex: none; background: none; border: 0; padding: 0 3px; color: var(--faint); cursor: pointer; display: inline-flex; align-items: center; visibility: hidden; }
+.tree-row:hover .row-btn, .tree-row .row-btn.off { visibility: visible; }
+.tree-row .row-btn:hover { color: var(--text); }
+.tree-row .row-btn.off { color: var(--bad); }
+.tree-row.off .label, .tree-row.off .role { opacity: .45; text-decoration: line-through; }
+.tree-row.dim .label, .tree-row.dim .role { opacity: .45; }
+.tree-row .folded-count { color: var(--accent); }
+.tree-tools { display: flex; gap: 2px; text-transform: none; letter-spacing: 0; }
+.ico-svg { display: inline-flex; }
+.code-link { cursor: pointer; color: var(--accent); }
+.code-link:hover { text-decoration: underline; }
+label.code-link { color: inherit; }
+label.code-link:hover { color: var(--accent); }
+
 .tree-row .label { overflow: hidden; text-overflow: ellipsis; flex: 1; }
 .tree-row .label small { color: var(--faint); }
 .tree-row .eye { color: var(--faint); visibility: hidden; flex: none; background: none; border: 0; cursor: pointer; padding: 0 2px; }

@@ -17,7 +17,8 @@ window.MS = window.MS || {};
 		actorNode: null,
 		device: null, // {path, name} of the held item preset shown in the front hand
 		selected: null,
-		hidden: new Set(),
+		hidden: new Set(), // ids of parts hidden in the view (the view only: the unit's files are untouched)
+		collapsed: new Set(), // ids of parts whose children are folded away in the parts list
 		isolate: false,
 		poseState: { flip: false, aim: 0, pose: 'stand', time: 0, sharp: false, frames: {}, animateSprites: true },
 		playing: true,
@@ -268,6 +269,7 @@ window.MS = window.MS || {};
 		app.actor = { path: preset.doc.path, name: preset.name, cls: preset.cls };
 		app.selected = null;
 		app.hidden.clear();
+		app.collapsed.clear();
 		app.poseState.frames = {};
 		app.poseState.time = 0;
 		writeLocal('ms.lastActor', { path: preset.doc.path, name: preset.name });
@@ -432,6 +434,16 @@ window.MS = window.MS || {};
 		$('btnPreview').disabled = locked;
 		$('btnLive').disabled = locked || !app.fs || !app.fs.writable;
 	}
+
+	// A part is hidden when it, or a part it hangs from, has its eye off.
+	app.isHidden = function (part) {
+		for (let p = part; p; p = p.parent) {
+			if (app.hidden.has(p.id)) {
+				return true;
+			}
+		}
+		return false;
+	};
 
 	app.select = function (part) {
 		app.selected = part;
