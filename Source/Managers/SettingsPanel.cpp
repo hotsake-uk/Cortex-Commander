@@ -2261,6 +2261,25 @@ void DebugMan::SettingsGUI() {
 			}
 			ImGui::SetItemTooltip("Puts the ladder settings back as the game comes.");
 		}
+		Heading("Ropes");
+		Toggle("Units grab ropes", g_SettingsMan.UnitsGrabRopes(), [](bool on) { g_SettingsMan.SetUnitsGrabRopes(on); });
+		Tip("Humanoid units catch ropes, chains and cables: jumping, falling or jetpacking past one with up (or the jetpack) held, or pressing up under one that hangs in reach. They hang from it on the rope's own physics, swinging and kicking, and the rope takes their weight (a rope too weak snaps). Up and down climb it, left and right pump the swing, and the jetpack key with a side key lets go with a jump that way (the jetpack key alone on a gamepad). Thread is too thin to hold.");
+		Toggle("AI catches ropes when falling", g_SettingsMan.AICatchesRopes(), [](bool on) { g_SettingsMan.SetAICatchesRopes(on); });
+		Tip("An AI unit falling with no jetpack fuel to brake catches a rope it falls past and climbs it to the nearest floor. AI routes don't use ropes yet.");
+		{
+			float climbSpeed = g_SettingsMan.RopeClimbSpeed();
+			if (Slider("Rope climb speed", &climbSpeed, Normal{1.0F}, 0.25F, 3.0F, "%.2fx")) {
+				g_SettingsMan.SetRopeClimbSpeed(climbSpeed);
+			}
+			Tip("How fast units climb a rope hand over hand. 1x is normal.");
+		}
+		if (Plain()) {
+			ImGui::Spacing();
+			if (ToolUI::Button("Reset ropes to normal")) {
+				g_SettingsMan.ResetRopeHoldSettings();
+			}
+			ImGui::SetItemTooltip("Puts the rope settings back as the game comes.");
+		}
 		Heading("Carry weight");
 		{
 			float carried = g_SettingsMan.CarriedWeightMultiplier();
