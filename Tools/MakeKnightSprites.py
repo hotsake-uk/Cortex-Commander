@@ -10,9 +10,11 @@ The sheet is drawn at twice the game's size on a magenta background. Each part i
 - KnightThighFG/BG.png: the thigh bone with its armour plate over it, from the hip down to the knee. The far leg (BG) is shaded darker.
 - KnightShinFG/BG.png: the shin, from the knee down to the ankle.
 - KnightFootFG/BG.png: the armoured foot, the ankle at its top.
-- KnightBattleCannon.png: the red weapon pod, turned so its barrel points forward.
-- KnightHeavyStubber.png: the carapace gun, made from the black shoulder housing turned on its side.
+- KnightBattleCannon.png: a stand-in for the battle cannon until its art arrives (a blue and gold housing and a long grey barrel).
+- KnightHeavyStubber.png: a stand-in for the carapace gun until its art arrives (a small dark gun).
 - KnightChainsword.png: a stand-in for the reaper chainsword until its art arrives (a grey housing and a long toothed blade).
+
+The sheet has no weapon art: the red block on it (twice, by the side view and under the front views) isn't part of the knight, so it isn't used.
 - KnightIcon.png: the front view, shrunk to catalogue size.
 
 It prints the joints each part's INI offsets are worked out from (hip, knee, ankle, pivots and muzzles), in the shrunk pictures' pixels.
@@ -39,8 +41,6 @@ GROIN = (1045, 82, 57, 69)
 THIGH_BONE = (931, 1, 51, 99)
 THIGH_ARMOUR = (985, 22, 45, 90)
 SHIN_AND_FOOT = (805, 67, 81, 153)
-POD = (442, 409, 180, 181)
-SHOULDER_HOUSING = (364, 61, 45, 66)
 # Where the side view on the sheet has the pauldrons and the groin plate, against the hull's corner.
 PAULDRON_FAR_AT = (1162 - HULL[0], 136 - HULL[1])
 PAULDRON_NEAR_AT = (1345 - HULL[0], 136 - HULL[1])
@@ -155,6 +155,42 @@ def half(point):
     return (point[0] // 2, point[1] // 2)
 
 
+def battle_cannon():
+    """The stand-in battle cannon: a blue housing trimmed in gold at the shoulder end and a long grey barrel with a muzzle brake, pointing
+    right. Drawn at the game's size (the shoulder joint at (13, 13))."""
+    w, h = 72, 26
+    img = Image.new("RGB", (w, h), (255, 0, 255))
+    px = img.load()
+    for y in range(1, 25):
+        for x in range(0, 27):
+            edge = y in (1, 24) or x in (0, 26)
+            trim = y in (2, 23) or x in (1, 25)
+            px[x, y] = (30, 30, 40) if edge else (200, 150, 40) if trim else (40, 80, 190) if (x + y) % 11 else (30, 60, 150)
+    for y in range(8, 18):
+        for x in range(27, 64):
+            px[x, y] = (30, 30, 30) if y in (8, 17) else (130, 132, 138) if y < 13 else (96, 98, 104)
+    for y in range(5, 21):
+        for x in range(64, 72):
+            px[x, y] = (30, 30, 30) if y in (5, 20) or x in (64, 71) else (80, 82, 88)
+    for y in range(11, 15):
+        px[71, y] = (10, 10, 10)
+    return img
+
+
+def heavy_stubber():
+    """The stand-in heavy stubber: a small dark gun body and a thin barrel, pointing right. Drawn at the game's size (its mount at (6, 6))."""
+    w, h = 34, 12
+    img = Image.new("RGB", (w, h), (255, 0, 255))
+    px = img.load()
+    for y in range(1, 11):
+        for x in range(0, 18):
+            px[x, y] = (20, 20, 22) if y in (1, 10) or x in (0, 17) else (60, 62, 68) if y < 6 else (45, 46, 52)
+    for y in range(4, 8):
+        for x in range(18, 34):
+            px[x, y] = (20, 20, 22) if y in (4, 7) else (110, 112, 118)
+    return img
+
+
 def chainsword():
     """The stand-in reaper chainsword: a grey housing at the shoulder end and a long blade with yellow and black teeth, pointing right."""
     w, h = 136, 30
@@ -222,17 +258,13 @@ def main():
     joints["foot size"] = half(foot.size)
     joints["foot: ankle"] = half((40, 4))
 
-    # The battle cannon: the red pod, barrel forward.
-    pod = mirror(only_largest(cut(POD)))
-    to_palette(pod).save(OUT / "KnightBattleCannon.png")
-    joints["cannon size"] = half(pod.size)
-    joints["cannon: pivot (top of the pod)"] = half((pod.width // 2, 22))
-    joints["cannon: muzzle (barrel mouth)"] = half((pod.width - 2, 75))
+    cannon = battle_cannon()
+    to_palette(cannon, scale=1).save(OUT / "KnightBattleCannon.png")
+    joints["cannon size"] = cannon.size
 
-    # The heavy stubber: the shoulder housing on its side, pointing forward.
-    stubber = cut(SHOULDER_HOUSING).rotate(-90, expand=True, fillcolor=(255, 0, 255))
-    to_palette(stubber).save(OUT / "KnightHeavyStubber.png")
-    joints["stubber size"] = half(stubber.size)
+    stubber = heavy_stubber()
+    to_palette(stubber, scale=1).save(OUT / "KnightHeavyStubber.png")
+    joints["stubber size"] = stubber.size
 
     sword = chainsword()
     to_palette(sword, scale=1).save(OUT / "KnightChainsword.png")
