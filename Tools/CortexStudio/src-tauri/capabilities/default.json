@@ -1,0 +1,10 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "default",
+	"description": "Lets Studio's page (served by Studio's own server on this computer) zoom the window. On macOS and Linux, Tauri's zoom hotkeys (Cmd/Ctrl + - = 0) are a script in the page that asks the app to set the zoom.",
+	"windows": ["main"],
+	"remote": {
+		"urls": ["http://localhost:*", "http://127.0.0.1:*"]
+	},
+	"permissions": ["core:webview:allow-set-webview-zoom"]
+}
