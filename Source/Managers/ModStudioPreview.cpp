@@ -19,6 +19,7 @@ using namespace RTE;
 
 bool ModStudioPreview::s_InGame = false;
 std::chrono::steady_clock::time_point ModStudioPreview::s_LastCheck = {};
+long ModStudioPreview::s_LastUnitID = 0;
 std::filesystem::file_time_type ModStudioPreview::s_LastWriteTime = {};
 
 namespace {
@@ -133,19 +134,28 @@ void ModStudioPreview::UpdateInGame() {
 		return;
 	}
 
-	// In other games (Test In Game.bat's plain map, or any other) the new unit takes the place of the one the player is in (the last one from Studio, usually), or drops in where the player is looking.
+	// In other games (Test In Game.bat's plain map, or any other) the new unit takes the place of the last one from Studio (or the unit the player
+	// is in), or comes down where the player is looking. The old one goes, so there is only ever one.
 	const int player = Players::PlayerOne;
 	const int team = game->GetTeamOfPlayer(player);
-	Actor* current = game->GetControlledActor(player);
-	const bool replacing = current && g_MovableMan.ValidMO(current);
-	Vector position = replacing ? current->GetPos() : g_SceneMan.MovePointToGround(g_CameraMan.GetScrollTarget(player), 30, 2);
+	Actor* previous = s_LastUnitID != 0 ? dynamic_cast<Actor*>(g_MovableMan.FindObjectByUniqueID(s_LastUnitID)) : nullptr;
+	if (!previous) {
+		Actor* controlled = game->GetControlledActor(player);
+		previous = controlled && g_MovableMan.IsActor(controlled) ? controlled : nullptr;
+	}
+	const Vector position = previous ? previous->GetPos() : g_SceneMan.MovePointToGround(g_CameraMan.GetScrollTarget(player), 30, 2);
+	if (previous) {
+		if (game->GetControlledActor(player) == previous) {
+			game->LoseControlOfActor(player);
+		}
+		previous->SetToDelete(true);
+	}
 	unit->SetPos(position);
 	unit->SetTeam(team);
-	unit->SetControllerMode(Controller::CIM_PLAYER, player);
-	if (replacing) {
-		current->SetToDelete(true);
-	}
+	// (Left to the AI until the switch: the game won't switch to a unit that's already player-controlled.)
+	unit->SetControllerMode(Controller::CIM_AI);
 	g_MovableMan.AddActor(unit);
+	s_LastUnitID = unit->GetUniqueID();
 	if (game->SwitchToActor(unit, player, team)) {
 		game->SetViewState(Activity::ViewState::Normal, player);
 	}

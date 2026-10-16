@@ -49,5 +49,6 @@ namespace RTE {
 		static bool s_InGame; //!< Whether games swap in Studio's units.
 		static std::chrono::steady_clock::time_point s_LastCheck; //!< When the request file was last looked at. (Not a Timer: a static one would need TimerMan before it exists.)
 		static std::filesystem::file_time_type s_LastWriteTime; //!< When the last request handled in game was written.
+		static long s_LastUnitID; //!< The unique ID of the last unit put in a game outside the sandbox, which the next one replaces.
 	};
 } // namespace RTE
