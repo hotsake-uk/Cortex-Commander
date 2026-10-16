@@ -144,7 +144,8 @@ window.MS = window.MS || {};
 	async function makeCopy(modName, unitName) {
 		const a = app();
 		const lib = a.lib;
-		const path = modName + '/Actors/' + safeName(unitName) + '.ini';
+		const isItem = MS.Rig.DEVICE_CLASSES.has(a.actor.cls);
+		const path = modName + (isItem ? '/Devices/' : '/Actors/') + safeName(unitName) + '.ini';
 		let doc = lib.docFor(path);
 		if (!doc) {
 			if (await a.fs.exists(path)) {
@@ -160,7 +161,7 @@ window.MS = window.MS || {};
 			}
 		}
 		const original = a.actor;
-		const block = doc.addTopLevel('AddActor', original.cls);
+		const block = doc.addTopLevel(isItem ? 'AddDevice' : 'AddActor', original.cls);
 		block.add('CopyOf', lib.reference(original.name, original.path.split('/')[0], modName));
 		block.add('PresetName', unitName);
 		lib.reindex();

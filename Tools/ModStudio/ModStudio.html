@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cortex Mod Studio</title>
-<link rel="stylesheet" href="studio.css?v=20">
+<link rel="stylesheet" href="studio.css?v=21">
 </head>
 <body>
 <div id="app">
@@ -69,6 +69,7 @@
 	<aside id="left" class="panel">
 		<div class="tabs" id="libTabs">
 			<button data-tab="units" class="sel">Units</button>
+			<button data-tab="craft">Craft</button>
 			<button data-tab="attachments">Attachments</button>
 			<button data-tab="items">Items</button>
 		</div>
@@ -138,7 +139,7 @@
 			<button data-panel="problems">Problems <span class="badge-n" id="problemsBadge" hidden></span></button>
 			<button data-panel="watch">Watch</button>
 			<span class="spacer"></span>
-			<button class="ico-btn" id="btnReloadScripts" title="Reload every script in the game (saving a script does this too)">↻ Reload scripts</button>
+			<button class="ico-btn" id="btnReloadScripts" title="Reload every script in the game, which restarts every scripted object (saving a script reloads only that one)">↻ Reload scripts</button>
 			<button class="ico-btn" id="btnConsoleClear" title="Clear the console">Clear</button>
 			<button class="ico-btn" id="btnPanelToggle" title="Hide the panel (Ctrl+J)">▾</button>
 		</div>
@@ -160,7 +161,7 @@
 	<footer id="status">
 		<span id="statusText">Open the game folder to begin.</span>
 		<span class="spacer"></span>
-		<button class="status-btn" id="btnStatusReload" title="Reload every script in the game (saving a script does this too)">↻ Reload scripts</button>
+		<button class="status-btn" id="btnStatusReload" title="Reload every script in the game, which restarts every scripted object (saving a script reloads only that one)">↻ Reload scripts</button>
 		<button class="status-btn" id="btnStatusPanel" title="Show the console, problems and watch panel (Ctrl+J)">▴ Console <span class="badge-n bad" id="statusConsoleBadge" hidden></span></button>
 		<span id="statusCursor"></span>
 		<span id="statusLang"></span>
@@ -172,18 +173,18 @@
 <div id="modal" class="modal" hidden><div class="modal-card" id="modalCard"></div></div>
 <div id="toasts"></div>
 
-<script src="vendor/luaparse/luaparse.js?v=20"></script>
-<script src="js/ini.js?v=20"></script>
-<script src="js/gamefs.js?v=20"></script>
-<script src="js/library.js?v=20"></script>
-<script src="js/images.js?v=20"></script>
-<script src="js/rig.js?v=20"></script>
-<script src="js/viewport.js?v=20"></script>
-<script src="js/panels.js?v=20"></script>
-<script src="js/dialogs.js?v=20"></script>
-<script src="js/lua-intel.js?v=20"></script>
-<script src="js/ini-intel.js?v=20"></script>
-<script src="js/ide.js?v=20"></script>
-<script src="js/app.js?v=20"></script>
+<script src="vendor/luaparse/luaparse.js?v=21"></script>
+<script src="js/ini.js?v=21"></script>
+<script src="js/gamefs.js?v=21"></script>
+<script src="js/library.js?v=21"></script>
+<script src="js/images.js?v=21"></script>
+<script src="js/rig.js?v=21"></script>
+<script src="js/viewport.js?v=21"></script>
+<script src="js/panels.js?v=21"></script>
+<script src="js/dialogs.js?v=21"></script>
+<script src="js/lua-intel.js?v=21"></script>
+<script src="js/ini-intel.js?v=21"></script>
+<script src="js/ide.js?v=21"></script>
+<script src="js/app.js?v=21"></script>
 </body>
 </html>

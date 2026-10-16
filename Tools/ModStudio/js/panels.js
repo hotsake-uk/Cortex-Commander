@@ -6,9 +6,10 @@ window.MS = window.MS || {};
 	const $ = (id) => document.getElementById(id);
 	let app = null;
 	let tab = 'units';
-	const ROLE_ICONS = { body: '▣', head: '●', jetpack: '⬒', fgarm: '╲', bgarm: '╲', fgleg: '┃', bgleg: '┃', foot: '▂', device: '⌐', magazine: '▮', attachable: '◆' };
+	const ROLE_ICONS = { body: '▣', head: '●', jetpack: '⬒', fgarm: '╲', bgarm: '╲', fgleg: '┃', bgleg: '┃', foot: '▂', device: '⌐', magazine: '▮', attachable: '◆', flash: '✶', leg: '┃', turret: '◘', mounted: '⌐', engine: '▼', thruster: '▿', door: '◧' };
 	const TAB_CLASSES = {
-		units: new Set(['AHuman']),
+		units: new Set(['AHuman', 'ACrab']),
+		craft: new Set(['ACDropShip', 'ACRocket']),
 		attachments: new Set(['Attachable', 'AEmitter', 'AEJetpack', 'PEmitter']),
 		items: new Set(['HDFirearm', 'HeldDevice', 'TDExplosive', 'ThrownDevice']),
 	};
@@ -163,7 +164,7 @@ window.MS = window.MS || {};
 				if (e.isIntersecting && !e.target.dataset.drawn) {
 					e.target.dataset.drawn = '1';
 					const preset = e.target._preset;
-					queueThumb(e.target, () => (tab === 'units' ? drawRigThumb(e.target, preset) : drawSpriteThumb(e.target, preset)));
+					queueThumb(e.target, () => (tab === 'units' || tab === 'craft' ? drawRigThumb(e.target, preset) : drawSpriteThumb(e.target, preset)));
 				}
 			}
 		}, { root: list });
@@ -192,15 +193,29 @@ window.MS = window.MS || {};
 			txt.firstChild.textContent = p.name;
 			txt.lastChild.textContent = p.cls + ' · ' + p.doc.path.split('/').slice(1).join('/');
 			row.append(canvas, txt);
-			if (tab === 'units') {
+			if (tab === 'units' || tab === 'craft') {
 				row.onclick = () => app.openActor(p);
 				row.title = 'Open ' + p.name;
 			} else if (tab === 'items') {
-				row.onclick = () => {
-					app.setDevice(p);
-					app.toast(p.name + ' is now in the front hand.');
+				// With a unit open, an item goes in its hand; Design opens the item itself.
+				const design = document.createElement('button');
+				design.className = 'small-btn add';
+				design.textContent = 'Design';
+				design.title = 'Open ' + p.name + ' in the designer: its grip, muzzle, magazine and settings';
+				design.onclick = (e) => {
+					e.stopPropagation();
+					app.openActor(p);
 				};
-				row.title = 'Put ' + p.name + ' in the unit\'s hand';
+				row.append(design);
+				row.onclick = () => {
+					if (app.rig && app.rig.cls === 'AHuman') {
+						app.setDevice(p);
+						app.toast(p.name + ' is now in the front hand.');
+					} else {
+						app.openActor(p);
+					}
+				};
+				row.title = 'Put ' + p.name + ' in the unit\'s hand (Design opens the item itself)';
 			} else {
 				const add = document.createElement('button');
 				add.className = 'small-btn add';
@@ -228,7 +243,8 @@ window.MS = window.MS || {};
 	function markLibrary() {
 		for (const row of document.querySelectorAll('.lib-row')) {
 			const p = row._preset;
-			const selected = tab === 'units' ? app.actor && p.doc.path === app.actor.path && p.name === app.actor.name : tab === 'items' ? app.device && p.doc.path === app.device.path && p.name === app.device.name : false;
+			const isActor = app.actor && p.doc.path === app.actor.path && p.name === app.actor.name;
+			const selected = tab === 'units' || tab === 'craft' ? isActor : tab === 'items' ? isActor || (app.device && p.doc.path === app.device.path && p.name === app.device.name) : false;
 			row.classList.toggle('sel', !!selected);
 		}
 	}
@@ -644,7 +660,7 @@ window.MS = window.MS || {};
 		if (!['body', 'fgarm', 'bgarm', 'bgleg', 'device'].includes(part.role)) {
 			boolRow(place, part, 'DrawAfterParent', 'In front of parent', true, locked);
 		}
-		if (part.role === 'attachable' || part.role === 'jetpack') {
+		if (!MS.Rig.POSED_ROLES.has(part.role)) {
 			boolRow(place, part, 'InheritsRotAngle', 'Turns with parent', true, locked);
 			if (part.ent.bool('InheritsRotAngle', true)) {
 				const degrees = Math.round((MS.Rig.rotationOffset(part.ent) * 180) / Math.PI * 100) / 100;
@@ -678,12 +694,55 @@ window.MS = window.MS || {};
 			boolRow(dev, part, 'OneHanded', 'One-handed', false, locked);
 			boolRow(dev, part, 'Supportable', 'Back hand helps', true, locked);
 		}
-		if (part.role === 'body') {
+		if (part.role === 'body' && app.rig.isDevice) {
+			const item = section(insp, 'Item');
+			numberRow(item, part, 'Mass', 'Mass (kg)', 0, locked);
+			numberRow(item, part, 'GoldValue', 'Cost', 0, locked);
+			const dev = section(insp, 'Holding');
+			vectorRow(dev, part, 'JointOffset', 'Grip (Joint)', locked);
+			vectorRow(dev, part, 'StanceOffset', 'Held at (Stance)', locked);
+			vectorRow(dev, part, 'SharpStanceOffset', 'Aiming (Sharp)', locked);
+			vectorRow(dev, part, 'SupportOffset', 'Back hand at', locked);
+			boolRow(dev, part, 'OneHanded', 'One-handed', false, locked);
+			boolRow(dev, part, 'Supportable', 'Back hand helps', true, locked);
+			if (ent.cls === 'HDFirearm') {
+				const gun = section(insp, 'Firing');
+				vectorRow(gun, part, 'MuzzleOffset', 'Muzzle', locked);
+				vectorRow(gun, part, 'EjectionOffset', 'Shell ejection', locked);
+				numberRow(gun, part, 'RateOfFire', 'Rounds a minute', 0, locked);
+				boolRow(gun, part, 'FullAuto', 'Full auto', false, locked);
+				numberRow(gun, part, 'ReloadTime', 'Reload (ms)', 0, locked);
+				numberRow(gun, part, 'ShakeRange', 'Spread (hip)', 0, locked);
+				numberRow(gun, part, 'SharpShakeRange', 'Spread (aiming)', 0, locked);
+				numberRow(gun, part, 'RecoilTransmission', 'Recoil passed on', 1, locked);
+			}
+		} else if (part.role === 'body' && /^AC(DropShip|Rocket)$/.test(ent.cls)) {
+			const craft = section(insp, 'Craft');
+			numberRow(craft, part, 'Mass', 'Mass (kg)', 0, locked);
+			numberRow(craft, part, 'Health', 'Health', 100, locked);
+			numberRow(craft, part, 'GoldValue', 'Cost', 0, locked);
+			numberRow(craft, part, 'MaxPassengers', 'Passengers', -1, locked);
+			numberRow(craft, part, 'HatchDelay', 'Hatch delay (ms)', 0, locked);
+			if (ent.cls === 'ACDropShip') {
+				numberRow(craft, part, 'MaxEngineAngle', 'Engine tilt (°)', 20, locked);
+				numberRow(craft, part, 'LateralControlSpeed', 'Sideways speed', 6, locked);
+				numberRow(craft, part, 'HoverHeightModifier', 'Hover height', 0, locked);
+			} else {
+				numberRow(craft, part, 'MaxGimbalAngle', 'Engine gimbal (°)', 0, locked);
+			}
+		} else if (part.role === 'body') {
 			const stats = section(insp, 'Unit');
 			numberRow(stats, part, 'Mass', 'Mass (kg)', 0, locked);
 			numberRow(stats, part, 'Health', 'Health', 100, locked);
 			numberRow(stats, part, 'GoldValue', 'Cost', 0, locked);
 			numberRow(stats, part, 'ImpulseDamageThreshold', 'Impact damage at', 0, locked);
+		}
+		if (part.role === 'body' && ent.cls === 'ACrab') {
+			const aim = section(insp, 'Aiming');
+			numberRow(aim, part, 'AimRangeUpperLimit', 'Aim up to', 0, locked);
+			numberRow(aim, part, 'AimRangeLowerLimit', 'Aim down to', 0, locked);
+		}
+		if (part.role === 'body' && ent.cls === 'AHuman') {
 			const move = section(insp, 'Posture');
 			numberRow(move, part, 'LookToAimRatio', 'Head follows aim', 0.7, locked);
 			numberRow(move, part, 'ArmSwingRate', 'Arm swing', 1, locked);

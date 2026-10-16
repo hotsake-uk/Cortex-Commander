@@ -396,6 +396,18 @@ window.MS = window.MS || {};
 					dot(pose.support, '#7fd1ff', 4, 'support', 'Support');
 				}
 			}
+			if (role === 'body' && app.rig.isDevice) {
+				if (pose.muzzle) {
+					dot(pose.muzzle, '#ef6a5b', 5, 'muzzle', 'Muzzle (MuzzleOffset)');
+				}
+				if (pose.eject) {
+					dot(pose.eject, '#c9a0ff', 4, 'eject', 'Shells (EjectionOffset)');
+				}
+				if (pose.support) {
+					dot(pose.support, '#7fd1ff', 4, 'support', 'Support hand (SupportOffset)');
+				}
+				dot(pose.joint, accent, 6, 'joint', 'Grip (JointOffset)');
+			}
 			if (pose.joint && (sel.parent || role === 'device')) {
 				dot(pose.joint, accent, 6, 'joint', this.options.joints ? 'Pivot (JointOffset)' : null);
 			}

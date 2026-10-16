@@ -163,7 +163,11 @@ window.MS = window.MS || {};
 		app.poseState.frames = {};
 		app.poseState.time = 0;
 		writeLocal('ms.lastActor', { path: preset.doc.path, name: preset.name });
-		app.device = defaultDevice(preset.node);
+		// A unit shows the first gun it carries; anything else (an item, a craft) is designed on its own.
+		app.device = preset.cls === 'AHuman' ? defaultDevice(preset.node) : null;
+		if (preset.cls === 'AHuman') {
+			writeLocal('ms.lastHolder', { path: preset.doc.path, name: preset.name });
+		}
 		app.rebuild(true);
 		app.select(app.rig ? app.rig.body : null);
 		app.view.fit();
@@ -243,6 +247,9 @@ window.MS = window.MS || {};
 	// Where the feet rest when standing: the lowest foot pixel.
 	function standingGround() {
 		const rig = app.rig;
+		if (rig.cls !== 'AHuman' && rig.cls !== 'ACrab') {
+			return null; // items and craft don't stand on anything
+		}
 		const poses = rig.pose(Object.assign({}, app.poseState, { pose: 'stand', time: 0 }));
 		let ground = null;
 		for (const role of ['foot']) {
@@ -292,7 +299,7 @@ window.MS = window.MS || {};
 	app.onHover = function (part) {
 		MS.panels.hoverTree(part);
 		const hint = $('viewHint');
-		const turns = part && part.role === 'attachable' && part.ent.bool('InheritsRotAngle', true);
+		const turns = part && !MS.Rig.POSED_ROLES.has(part.role) && part.ent.bool('InheritsRotAngle', true);
 		hint.textContent = part ? part.name + ' — drag to move · Shift+drag to move the picture' + (turns ? ' · Ctrl+drag to rotate' : '') : 'Drag a part to move it · wheel to zoom · double-click to fit';
 	};
 
@@ -482,7 +489,8 @@ window.MS = window.MS || {};
 		const pose = poses.get(part);
 		const parentPose = part.parent ? poses.get(part.parent) : null;
 		const bodyPose = poses.get(app.rig.body);
-		const device = app.rig.device;
+		// The held item, or the object itself when it's an item designed on its own.
+		const device = app.rig.device || (app.rig.isDevice ? app.rig.body : null);
 		const devicePose = device ? poses.get(device) : null;
 		const local = (p) => (delta) => flipX(rotate(delta, -p.rot), p.flip);
 		const aimLocal = (delta) => flipX(rotate(delta, -app.poseState.aim * (app.poseState.flip ? -1 : 1)), app.poseState.flip);
@@ -516,7 +524,7 @@ window.MS = window.MS || {};
 				return [{ part, key: 'SpriteOffset', start: spriteStart(), convert: local(pose) }];
 			case 'rotate': {
 				// Attachments only, turning about their pivot. The angle is kept in degrees, mirrored like the game does when facing left.
-				if (part.role !== 'attachable' || !parentPose || !part.ent.bool('InheritsRotAngle', true)) {
+				if (MS.Rig.POSED_ROLES.has(part.role) || !parentPose || !part.ent.bool('InheritsRotAngle', true)) {
 					return null;
 				}
 				const startDegrees = (MS.Rig.rotationOffset(part.ent) * 180) / Math.PI;
@@ -549,6 +557,8 @@ window.MS = window.MS || {};
 				return device && devicePose ? [{ part: device, key: 'SupportOffset', start: vec(device, 'SupportOffset'), convert: local(devicePose) }] : null;
 			case 'muzzle':
 				return device && devicePose ? [{ part: device, key: 'MuzzleOffset', start: vec(device, 'MuzzleOffset'), convert: local(devicePose) }] : null;
+			case 'eject':
+				return device && devicePose ? [{ part: device, key: 'EjectionOffset', start: vec(device, 'EjectionOffset'), convert: local(devicePose) }] : null;
 		}
 		return null;
 	}
@@ -713,6 +723,18 @@ window.MS = window.MS || {};
 		await app.save(quiet);
 		const files = new Set(app.savedSinceLastPreview);
 		files.add(app.actor.path);
+		// An item designed on its own goes to the game in the hands of the last unit opened (or a soldier of the game's).
+		const itemAlone = app.rig && app.rig.isDevice;
+		let holder = app.actor;
+		if (itemAlone) {
+			const last = readLocal('ms.lastHolder');
+			const found = (last && app.lib.presets.find((p) => p.cls === 'AHuman' && p.doc.path === last.path && p.name === last.name)) || app.lib.find('Soldier Light', 'AHuman', null) || app.lib.presets.find((p) => p.cls === 'AHuman' && p.topLevel);
+			if (!found) {
+				app.toast('Studio needs a unit to hold ' + app.actor.name + ' in the game, and found none.', 'bad');
+				return;
+			}
+			holder = { path: found.doc.path, name: found.name, cls: 'AHuman' };
+		}
 		const device = app.device && !app.fs.isOfficial(app.device.path) ? app.device.path : null;
 		if (device) {
 			files.add(device);
@@ -720,9 +742,9 @@ window.MS = window.MS || {};
 		const lines = [
 			'// Written by Cortex Mod Studio. The game\'s Actor Editor watches this file and shows the unit named here.',
 			'Stamp = ' + Date.now(),
-			'Class = ' + app.actor.cls,
-			'Preset = ' + app.actor.name,
-			'Module = ' + app.actor.path.split('/')[0],
+			'Class = ' + holder.cls,
+			'Preset = ' + holder.name,
+			'Module = ' + holder.path.split('/')[0],
 		];
 		for (const file of files) {
 			if (!/\/index\.ini$/i.test(file) && !app.fs.isOfficial(file)) {
@@ -730,7 +752,8 @@ window.MS = window.MS || {};
 			}
 		}
 		// The held item picked in Studio goes in the unit's hands in game.
-		const held = app.device && app.lib.presets.find((p) => p.doc.path === app.device.path && p.name === app.device.name);
+		const heldRef = itemAlone ? app.actor : app.device;
+		const held = heldRef && app.lib.presets.find((p) => p.doc.path === heldRef.path && p.name === heldRef.name);
 		if (held) {
 			lines.push('DeviceClass = ' + held.cls, 'DevicePreset = ' + held.name, 'DeviceModule = ' + held.module);
 		}

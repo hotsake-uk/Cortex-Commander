@@ -46,13 +46,41 @@ window.MS = window.MS || {};
 	const rotOff = (obj, v) => rotate(flipX(v, obj.flip), obj.rot);
 
 	// Keys that hold one part each, and what they are.
+	// Craft, crabs and turrets have their own part keys (each with a short form the game also reads); their parts sit on their parent like
+	// any attachment.
 	const SINGLE_PARTS = {
 		AHuman: { Head: 'head', Jetpack: 'jetpack', FGArm: 'fgarm', BGArm: 'bgarm', FGLeg: 'fgleg', BGLeg: 'bgleg' },
 		Leg: { Foot: 'foot' },
-		HDFirearm: { Magazine: 'magazine' },
+		HDFirearm: { Magazine: 'magazine', Flash: 'flash' },
+		ACrab: { Turret: 'turret', Jetpack: 'jetpack', LeftFGLeg: 'leg', LFGLeg: 'leg', LeftBGLeg: 'leg', LBGLeg: 'leg', RightFGLeg: 'leg', RFGLeg: 'leg', RightBGLeg: 'leg', RBGLeg: 'leg' },
+		Turret: { MountedDevice: 'mounted' },
+		ACDropShip: { RightEngine: 'engine', RThruster: 'engine', RightThruster: 'engine', LeftEngine: 'engine', LThruster: 'engine', LeftThruster: 'engine', UpRightThruster: 'thruster', URThruster: 'thruster', UpLeftThruster: 'thruster', ULThruster: 'thruster', RightHatchDoor: 'door', RHatchDoor: 'door', LeftHatchDoor: 'door', LHatchDoor: 'door' },
+		ACRocket: { RightLeg: 'leg', RLeg: 'leg', LeftLeg: 'leg', LLeg: 'leg', MainThruster: 'engine', MThruster: 'engine', RightThruster: 'thruster', RThruster: 'thruster', LeftThruster: 'thruster', LThruster: 'thruster', UpRightThruster: 'thruster', URThruster: 'thruster', UpLeftThruster: 'thruster', ULThruster: 'thruster' },
 	};
-	const LIST_PARTS = ['AddAttachable', 'AddAEmitter', 'AddEmitter'];
-	const ROLE_NAMES = { body: 'Body', head: 'Head', jetpack: 'Jetpack', fgarm: 'Front arm', bgarm: 'Back arm', fgleg: 'Front leg', bgleg: 'Back leg', foot: 'Foot', magazine: 'Magazine', device: 'Held item', attachable: 'Attachment' };
+	const LIST_PARTS = ['AddAttachable', 'AddAEmitter', 'AddEmitter', 'AddMountedDevice'];
+	const ROLE_NAMES = { body: 'Body', head: 'Head', jetpack: 'Jetpack', fgarm: 'Front arm', bgarm: 'Back arm', fgleg: 'Front leg', bgleg: 'Back leg', foot: 'Foot', magazine: 'Magazine', flash: 'Muzzle flash', device: 'Held item', attachable: 'Attachment', leg: 'Leg', turret: 'Turret', mounted: 'Mounted gun', engine: 'Engine', thruster: 'Thruster', door: 'Hatch door' };
+	// Roles placed by their own rules (AHuman limbs, the held item); every other part hangs on its parent and can be turned.
+	const POSED_ROLES = new Set(['body', 'fgarm', 'bgarm', 'fgleg', 'bgleg', 'foot', 'device', 'head']);
+	// Objects held in a hand: designed on their own, they turn with the aim and show where they're held.
+	const DEVICE_CLASSES = new Set(['HDFirearm', 'HeldDevice', 'TDExplosive', 'ThrownDevice']);
+
+	// "UpRightThruster" or "URThruster" -> " (up right)".
+	function sideOf(key) {
+		let k = key.replace(/(Thruster|Engine|HatchDoor|Leg)$/, '');
+		const words = [];
+		const take = (re, word) => {
+			const m = re.exec(k);
+			if (m) {
+				words.push(word);
+				k = k.slice(m[0].length);
+			}
+			return !!m;
+		};
+		take(/^(Up|U)(?=[A-Z]|$)/, 'up');
+		take(/^(Right|R)(?=[A-Z]|$)/, 'right') || take(/^(Left|L)(?=[A-Z]|$)/, 'left') || take(/^(Main|M)(?=[A-Z]|$)/, 'main');
+		take(/^FG/, 'front') || take(/^BG/, 'back');
+		return words.length ? ' (' + words.join(' ') + ')' : '';
+	}
 
 	class Part {
 		constructor(rig, role, ent, path, parent, anchor) {
@@ -69,7 +97,10 @@ window.MS = window.MS || {};
 
 		get name() {
 			const preset = this.ent.presetName || (this.ent.node.child('CopyOf') ? this.ent.node.child('CopyOf').value : '');
-			return ROLE_NAMES[this.role] + (preset && this.role !== 'body' ? ' · ' + preset : '');
+			const step = this.path[this.path.length - 1];
+			// Parts that come in left and right pairs are told apart by their key.
+			const side = step && ['leg', 'engine', 'thruster', 'door'].includes(this.role) ? sideOf(step.key) : '';
+			return ROLE_NAMES[this.role] + side + (preset && this.role !== 'body' ? ' · ' + preset : '');
 		}
 
 		get sprite() {
@@ -114,6 +145,7 @@ window.MS = window.MS || {};
 			const ent = lib.resolve(this.actorNode);
 			this.ent = ent;
 			this.cls = ent.cls;
+			this.isDevice = DEVICE_CLASSES.has(ent.cls);
 			this.parts = [];
 			this.body = this.makePart('body', ent, [], null, this.actorNode);
 			this.byRole = {};
@@ -205,6 +237,14 @@ window.MS = window.MS || {};
 			const legInfo = this.legTargets(state, flip);
 			const body = { pos: { x: 0, y: legInfo.bodyDrop }, rot: bodyRot, flip, frame: this.frameOf(this.body, state) };
 			out.set(this.body, body);
+			if (this.isDevice) {
+				// A held item on its own: it turns with the aim about where it's held, and shows the points that matter for it.
+				body.rot = adjAim;
+				body.joint = add(body.pos, rotOff(body, ent.vec('JointOffset')));
+				body.muzzle = ent.cls === 'HDFirearm' ? add(body.pos, rotOff(body, ent.vec('MuzzleOffset'))) : null;
+				body.eject = ent.cls === 'HDFirearm' && ent.has('EjectionOffset') ? add(body.pos, rotOff(body, ent.vec('EjectionOffset'))) : null;
+				body.support = ent.bool('Supportable', true) && ent.has('SupportOffset') ? add(body.pos, rotOff(body, ent.vec('SupportOffset'))) : null;
+			}
 
 			const placeChildren = (part, parentPose) => {
 				for (const child of part.children) {
@@ -543,6 +583,8 @@ window.MS = window.MS || {};
 		return list;
 	}
 
+	Rig.POSED_ROLES = POSED_ROLES;
+	Rig.DEVICE_CLASSES = DEVICE_CLASSES;
 	MS.Rig = Rig;
 	MS.drawOrder = drawOrder;
 	MS.geom = { rotate, flipX, add, sub, scale, len, absAngle, rotOff };
