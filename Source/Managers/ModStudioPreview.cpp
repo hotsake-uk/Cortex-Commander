@@ -9,7 +9,10 @@
 #include "GAScripted.h"
 #include "HeldDevice.h"
 #include "LuaMan.h"
+#include "Attachable.h"
 #include "AudioMan.h"
+#include "PrimitiveMan.h"
+#include "TimerMan.h"
 #include "MovableMan.h"
 #include "PerformanceMan.h"
 #include "PresetMan.h"
@@ -23,6 +26,7 @@
 #include <deque>
 #include <map>
 #include <mutex>
+#include <sstream>
 #include <unordered_map>
 
 using namespace RTE;
@@ -35,6 +39,11 @@ std::chrono::steady_clock::time_point ModStudioPreview::s_LastScriptCheck = {};
 std::filesystem::file_time_type ModStudioPreview::s_ScriptsWriteTime = {};
 bool ModStudioPreview::s_ScriptsLookedAt = false;
 std::chrono::steady_clock::time_point ModStudioPreview::s_LastProfileWrite = {};
+std::chrono::steady_clock::time_point ModStudioPreview::s_LastInspect = {};
+bool ModStudioPreview::s_Inspecting = false;
+long ModStudioPreview::s_InspectSelected = 0;
+bool ModStudioPreview::s_InspectPaused = false;
+long ModStudioPreview::s_InspectSteps = -1;
 ModStudioPreview::Request ModStudioPreview::s_LastRequest = {};
 
 namespace {
@@ -340,6 +349,7 @@ void ModStudioPreview::UpdateProfile() {
 	if (!s_InGame) {
 		return;
 	}
+	UpdateInspectorHighlight();
 	struct ScriptTotal {
 		long long Microseconds = 0;
 		long long Calls = 0;
@@ -394,6 +404,160 @@ void ModStudioPreview::UpdateProfile() {
 	}
 	s_Scripts.clear();
 	s_Updates = 0;
+}
+
+namespace {
+	// A value for World.ini: no tabs or line breaks.
+	std::string Clean(std::string text) {
+		std::replace_if(text.begin(), text.end(), [](char c) { return c == '\t' || c == '\n' || c == '\r'; }, ' ');
+		return text;
+	}
+
+	Actor* FindActor(long uniqueID) {
+		for (Actor* actor: g_MovableMan.GetActorList()) {
+			if (actor && actor->GetUniqueID() == uniqueID) {
+				return actor;
+			}
+		}
+		return nullptr;
+	}
+
+	const char* StatusName(int status) {
+		switch (status) {
+			case Actor::STABLE: return "Stable";
+			case Actor::UNSTABLE: return "Unstable";
+			case Actor::INACTIVE: return "Inactive";
+			case Actor::DYING: return "Dying";
+			case Actor::DEAD: return "Dead";
+			default: return "?";
+		}
+	}
+} // namespace
+
+void ModStudioPreview::UpdateInspectorHighlight() {
+	if (!s_InGame || !s_Inspecting || s_InspectSelected == 0) {
+		return;
+	}
+	if (const Actor* actor = FindActor(s_InspectSelected)) {
+		const float radius = std::max(8.0F, actor->GetRadius());
+		g_PrimitiveMan.DrawCirclePrimitive(actor->GetPos(), static_cast<int>(radius) + 3, g_YellowGlowColor);
+		g_PrimitiveMan.DrawCirclePrimitive(actor->GetPos(), static_cast<int>(radius) + 4, g_YellowGlowColor);
+		g_PrimitiveMan.DrawTextPrimitive(actor->GetPos() + Vector(0, -radius - 18), actor->GetPresetName(), true, 1);
+	}
+}
+
+void ModStudioPreview::UpdateFrame() {
+	const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+	if (!s_InGame || now - s_LastInspect < std::chrono::milliseconds(250)) {
+		return;
+	}
+	s_LastInspect = now;
+
+	// The request: kept fresh by Studio while its Inspector is open, so a closed Studio stops the inspector (and lets go of the pause).
+	const std::filesystem::path requestPath = StudioFolder() / "Inspect.ini";
+	std::error_code error;
+	const std::filesystem::file_time_type written = std::filesystem::last_write_time(requestPath, error);
+	const bool fresh = !error && std::filesystem::file_time_type::clock::now() - written < std::chrono::seconds(5);
+	bool pause = false;
+	long steps = s_InspectSteps;
+	if (fresh) {
+		std::ifstream request(requestPath);
+		std::string line;
+		while (std::getline(request, line)) {
+			const size_t equals = line.find('=');
+			if (equals == std::string::npos) {
+				continue;
+			}
+			std::string key = line.substr(0, equals);
+			std::string value = line.substr(equals + 1);
+			key.erase(key.find_last_not_of(" \t\r") + 1);
+			value.erase(0, value.find_first_not_of(" \t"));
+			value.erase(value.find_last_not_of(" \t\r") + 1);
+			try {
+				if (key == "Selected") {
+					s_InspectSelected = std::stol(value);
+				} else if (key == "Pause") {
+					pause = value == "1";
+				} else if (key == "Step") {
+					steps = std::stol(value);
+				}
+			} catch (const std::exception&) {
+				// a half-written line: next time
+			}
+		}
+	}
+	s_Inspecting = fresh;
+	if (pause != s_InspectPaused) {
+		s_InspectPaused = pause;
+		g_TimerMan.PauseSim(pause, TimerMan::SimPauseStudio);
+	}
+	if (s_InspectSteps >= 0 && steps > s_InspectSteps && s_InspectPaused) {
+		g_TimerMan.StepSim(static_cast<int>(std::min(steps - s_InspectSteps, 60L)));
+	}
+	s_InspectSteps = steps;
+	if (g_TimerMan.IsSimPaused()) {
+		UpdateScripts(); // Studio's Lua (the inspector's changes, the console) runs while the world is held still, by Studio or the game
+	}
+	if (!s_Inspecting || !GameRunning()) {
+		return;
+	}
+
+	std::ofstream world(StudioFolder() / "World.ini", std::ios::trunc);
+	world << "// Written by the game for Cortex Mod Studio's inspector four times a second.\n";
+	world << "Paused = " << (g_TimerMan.IsSimPaused() ? 1 : 0) << '\n';
+	world << "PausedByStudio = " << (s_InspectPaused ? 1 : 0) << '\n';
+	const Activity* activity = g_ActivityMan.GetActivity();
+	Actor* controlled = activity ? const_cast<Activity*>(activity)->GetControlledActor(0) : nullptr;
+	world << "Controlled = " << (controlled ? controlled->GetUniqueID() : 0) << '\n';
+	// One line an actor: id, preset, class, team, x, y, health, max health, status.
+	for (const Actor* actor: g_MovableMan.GetActorList()) {
+		if (!actor) {
+			continue;
+		}
+		world << "Actor = " << actor->GetUniqueID() << '\t' << Clean(actor->GetPresetName()) << '\t' << actor->GetClassName() << '\t' << actor->GetTeam() << '\t'
+		      << actor->GetPos().GetX() << '\t' << actor->GetPos().GetY() << '\t' << actor->GetHealth() << '\t' << actor->GetMaxHealth() << '\t' << StatusName(actor->GetStatus()) << '\n';
+	}
+	const Actor* actor = s_InspectSelected ? FindActor(s_InspectSelected) : nullptr;
+	if (!actor) {
+		return;
+	}
+	// The selected actor's values: "Value = name<TAB>value", in the order Studio shows them.
+	auto value = [&world](const std::string& name, const std::string& text) { world << "Value = " << name << '\t' << Clean(text) << '\n'; };
+	auto number = [](float v) {
+		std::ostringstream out;
+		out << std::round(v * 100.0F) / 100.0F;
+		return out.str();
+	};
+	auto vec = [&number](const Vector& v) { return "(" + number(v.GetX()) + ", " + number(v.GetY()) + ")"; };
+	world << "Selected = " << actor->GetUniqueID() << '\n';
+	value("Preset", actor->GetPresetName());
+	value("Class", actor->GetClassName());
+	value("Module", actor->GetModuleName());
+	value("Team", std::to_string(actor->GetTeam()));
+	value("Health", number(actor->GetHealth()) + " / " + number(actor->GetMaxHealth()));
+	value("Status", StatusName(actor->GetStatus()));
+	value("Position", vec(actor->GetPos()));
+	value("Velocity", vec(actor->GetVel()) + "  speed " + number(actor->GetVel().GetMagnitude()));
+	value("Rotation", number(actor->GetRotAngle() * 180.0F / c_PI) + "°  turning " + number(actor->GetAngularVel()));
+	value("Mass", number(actor->GetMass()) + " kg");
+	value("Wounds", std::to_string(actor->GetWoundCount()) + " of " + std::to_string(actor->GetGibWoundLimit()) + " to gib");
+	value("Gold carried", number(actor->GetGoldCarried()));
+	value("AI mode", std::to_string(actor->GetAIMode()));
+	value("Player controlled", actor->IsPlayerControlled() ? "yes" : "no");
+	if (const AHuman* human = dynamic_cast<const AHuman*>(actor)) {
+		value("Holding", human->GetEquippedItem() ? human->GetEquippedItem()->GetPresetName() : "nothing");
+	}
+	for (const MovableObject* item: *actor->GetInventory()) {
+		if (item) {
+			world << "Inventory = " << Clean(item->GetPresetName()) << '\n';
+		}
+	}
+	// Its parts: preset, class, wounds and the wounds that gib it.
+	for (const Attachable* part: actor->GetAttachableList()) {
+		if (part) {
+			world << "Part = " << Clean(part->GetPresetName()) << '\t' << part->GetClassName() << '\t' << part->GetWoundCount() << '\t' << part->GetGibWoundLimit() << '\n';
+		}
+	}
 }
 
 void ModStudioPreview::UpdateScripts() {

@@ -1324,6 +1324,8 @@ window.MS = window.MS || {};
 		ide.requestScripts({ run: true });
 	}
 
+	ide.runLua = runLua;
+
 	function bindRunBox() {
 		const input = $('runInput');
 		const history = app.readLocal('ms.runHistory') || [];
@@ -1574,7 +1576,7 @@ window.MS = window.MS || {};
 		for (const b of document.querySelectorAll('#bottomTabs button[data-panel]')) {
 			b.classList.toggle('sel', b.dataset.panel === panel);
 		}
-		for (const id of ['console', 'problems', 'watch', 'profiler']) {
+		for (const id of ['console', 'problems', 'watch', 'profiler', 'inspector']) {
 			$(id + 'Pane').hidden = id !== panel;
 		}
 		if (!keepHidden && $('app').classList.contains('no-panel')) {
@@ -1597,6 +1599,9 @@ window.MS = window.MS || {};
 		}
 		if (panel === 'profiler') {
 			MS.profiler.show();
+		}
+		if (panel === 'inspector') {
+			MS.inspector.show();
 		}
 		app.writeLocal('ms.panel', panel);
 	};

@@ -72,6 +72,10 @@ In Script mode:
   scripts that name it, and **Related**: units (or items) that copy it or copy the same thing, run the same scripts, use the
   same parts or pictures, rarest in common first. Click one to open it (an INI at the right line, a picture in a tab, a sound
   plays, a related unit in the designer). Pictures zoom with the wheel, + − 0 1 or the buttons above them, and drag to move.
+- **Profiler** and **Inspector** (bottom panel, with a game started from Studio's Play menu): the Profiler shows frames a second,
+  update and draw time, what's in the world, where a frame's time goes and the costliest scripts. The Inspector lists every actor
+  in the game; pick one to see its live values, parts and inventory (it's ringed in the game), pause and step the game, and
+  change it: health, team, stop, lift, take control, kill, gib, remove, or open it in the designer.
 - **Lua scripts** open in a code editor that knows the game's API: type `self.` or `self:` for what the object has, any
   manager (`MovableMan:`), `function ` for the functions the game calls (Create, Update, OnCollideWithMO…), and
   `CreateAHuman("` for preset names. Hover for help, Ctrl+click or F12 to go to a definition (a function in another script,

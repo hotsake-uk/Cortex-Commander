@@ -17,6 +17,7 @@ import './relations.js';
 import './ide.js';
 import './live.js';
 import './profiler.js';
+import './inspector.js';
 import './history.js';
 import './app.js';
 import './layout.js';

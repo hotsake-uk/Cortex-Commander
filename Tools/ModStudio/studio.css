@@ -805,3 +805,25 @@ pre.diff .del { color: var(--bad); }
 .sk-pictures button { background: none; border: 1px solid var(--line); border-radius: 99px; color: var(--dim); padding: 1px 9px; cursor: pointer; font-size: 11.5px; }
 .sk-pictures button.sel { border-color: var(--accent); color: var(--accent); }
 .skeleton-help.closed .sk-pictures { margin: 4px 0 0; }
+
+/* Inspector panel (inspector.js) */
+.insp-filter { width: 160px; }
+.insp-cols { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); gap: 14px; min-height: 0; }
+.insp-list { display: flex; flex-direction: column; gap: 1px; max-height: 100%; overflow: auto; }
+.insp-actor { display: grid; grid-template-columns: 26px minmax(0, 1fr) 60px 34px; gap: 6px; align-items: center; background: none; border: 0; border-radius: 4px; padding: 3px 6px; text-align: left; color: var(--text); cursor: pointer; font-size: 12px; }
+.insp-actor:hover { background: var(--panel2); }
+.insp-actor.sel { background: var(--panel3); box-shadow: inset 2px 0 var(--accent); }
+.insp-actor small { color: var(--dim); text-align: right; font-variant-numeric: tabular-nums; }
+.insp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.insp-team { font-size: 10px; font-weight: 650; text-align: center; border-radius: 3px; padding: 1px 0; background: var(--panel3); color: var(--dim); }
+.insp-team.t0 { color: #7fd1ff; } .insp-team.t1 { color: #ef6a5b; } .insp-team.t2 { color: #4fc37a; } .insp-team.t3 { color: #f2b63d; }
+.insp-health { height: 5px; background: var(--panel3); border-radius: 3px; overflow: hidden; }
+.insp-health i { display: block; height: 100%; background: var(--good); }
+.insp-detail { min-width: 0; overflow: auto; }
+.insp-title { margin-bottom: 6px; }
+.insp-title small { color: var(--dim); }
+.insp-actions { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-bottom: 8px; }
+.insp-actions label { display: inline-flex; align-items: center; gap: 4px; color: var(--dim); }
+.insp-tables { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.insp-inv { color: var(--text); padding: 1px 0; }
+.insp-hurt td { color: var(--warn); }

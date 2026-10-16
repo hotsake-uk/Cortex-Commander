@@ -766,6 +766,8 @@ void RunGameLoop() {
 			}
 		}
 
+		ModStudioPreview::UpdateFrame();
+
 		updateEndAndDrawStartTime = g_TimerMan.GetAbsoluteTime();
 		updateTotalTime = updateEndAndDrawStartTime - updateStartTime;
 		drawStartTime = updateEndAndDrawStartTime;
