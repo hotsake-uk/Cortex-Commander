@@ -370,3 +370,5 @@ pre.diff .del { color: var(--bad); }
 .qo-row small { color: var(--faint); overflow: hidden; text-overflow: ellipsis; }
 .qo-row span:nth-child(2) { color: var(--text); }
 .qo-row.sel, .qo-row:hover { background: var(--panel3); }
+.setting-ro.file-link { color: var(--accent); cursor: pointer; text-decoration: underline; text-decoration-color: transparent; }
+.setting-ro.file-link:hover { text-decoration-color: currentColor; }

@@ -801,11 +801,26 @@ window.MS = window.MS || {};
 					}
 				};
 				val.append(input);
+				if (/\.lua$/i.test(node.value.trim())) {
+					const open = document.createElement('button');
+					open.className = 'small-btn';
+					open.textContent = 'Open';
+					open.title = 'Open this script in the Lua editor';
+					open.onclick = () => MS.ide.openFile(input.value.trim().replace(/\\/g, '/'));
+					val.append(open);
+				}
 			} else {
 				const text = document.createElement('span');
 				text.className = 'setting-ro';
 				text.textContent = node.child('FilePath') ? node.child('FilePath').value : node.child('CopyOf') ? node.value + ' (' + node.child('CopyOf').value + ')' : node.child('PresetName') ? node.value + ' (' + node.child('PresetName').value + ')' : node.value;
 				text.title = isList ? 'A list entry: change it in its own part or section.' : 'A whole object: change it in its own section, or in the file.';
+				if (/\.lua$/i.test(text.textContent.trim())) {
+					// A script: clicking it opens it in the Lua editor.
+					const script = text.textContent.trim().replace(/\\/g, '/');
+					text.classList.add('file-link');
+					text.title = 'Open ' + script + ' in the Lua editor';
+					text.onclick = () => MS.ide.openFile(script);
+				}
 				val.append(text);
 			}
 			if (own && !isList && !locked && ent.entries.some((other) => other.key === e.key && other.node !== node)) {

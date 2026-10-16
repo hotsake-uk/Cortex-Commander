@@ -334,6 +334,36 @@ window.MS = window.MS || {};
 			},
 		});
 
+		// Script paths in INI and Lua files are links: Ctrl+click opens the script.
+		const scriptLinks = {
+			provideLinks(model) {
+				const links = [];
+				const re = /[\w .'-]+\.rte[\\/][^\s"'=\t]*?\.lua\b/gi;
+				for (let n = 1; n <= model.getLineCount(); n++) {
+					const line = model.getLineContent(n);
+					for (const m of line.matchAll(re)) {
+						const start = m.index + (m[0].length - m[0].trimStart().length);
+						const path = m[0].trim().replace(/\\/g, '/');
+						links.push({ range: new monaco.Range(n, start + 1, n, m.index + m[0].length + 1), url: 'ccstudio://open/' + encodeURIComponent(path), tooltip: 'Open ' + path });
+					}
+				}
+				return { links };
+			},
+		};
+		monaco.languages.registerLinkProvider('ccini', scriptLinks);
+		monaco.languages.registerLinkProvider('lua', scriptLinks);
+		if (monaco.editor.registerLinkOpener) {
+			monaco.editor.registerLinkOpener({
+				open(uri) {
+					if (uri.scheme !== 'ccstudio') {
+						return false;
+					}
+					ide.openFile(uri.path.replace(/^\//, ''));
+					return true;
+				},
+			});
+		}
+
 		// Going to a definition in another file opens it in a tab.
 		if (monaco.editor.registerEditorOpener) {
 			monaco.editor.registerEditorOpener({
