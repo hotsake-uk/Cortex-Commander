@@ -11,6 +11,14 @@
 window.MS = window.MS || {};
 
 (function () {
+	function readPictures() {
+		try {
+			return localStorage.getItem('ms.skeletonPictures') || 'faded';
+		} catch (e) {
+			return 'faded';
+		}
+	}
+
 	const { rotate, flipX, add, sub, len } = MS.geom;
 
 	class Viewport {
@@ -26,7 +34,10 @@ window.MS = window.MS || {};
 			this.drawList = [];
 			this.poses = null;
 			this.masks = new WeakMap();
-			this.options = { grid: true, joints: true, ground: true, ghosts: false, reach: true, skeleton: false };
+			this.options = { grid: true, joints: true, ground: true, ghosts: false, reach: true, skeleton: false }
+			// With the skeleton on, the pictures are 'faded', 'hidden' or 'shown' (skeleton.js's Pictures switch).
+			this.skeletonPictures = readPictures();
+			this.skeletonHits = [];;
 			this.bind();
 		}
 
@@ -152,7 +163,7 @@ window.MS = window.MS || {};
 				ctx.globalAlpha = 1;
 			}
 			// With the skeleton on, the sprites fade so the bones read.
-			const fade = this.options.skeleton ? 0.3 : 1;
+			const fade = !this.options.skeleton ? 1 : this.skeletonPictures === 'hidden' ? 0 : this.skeletonPictures === 'shown' ? 1 : 0.3;
 			for (const item of this.drawList) {
 				ctx.globalAlpha = fade * (this.app.isolate && this.app.selected && item.part !== this.app.selected ? 0.35 : 1);
 				this.drawItem(ctx, item);
@@ -200,6 +211,7 @@ window.MS = window.MS || {};
 				ctx.strokeRect(p.x - size / 2, p.y - size / 2, size, size);
 			};
 			const labels = [];
+			this.skeletonHits = [];
 			for (const [part, pose] of poses) {
 				if (!pose || !pose.pos || app.isHidden(part)) {
 					continue;
@@ -227,6 +239,11 @@ window.MS = window.MS || {};
 					disc(ankle, 3.5, '#fff', colour);
 				}
 				square(at, part.role === 'body' ? 9 : 6, colour);
+				// Joints and origins can be clicked to pick the part (the pictures may be hidden).
+				this.skeletonHits.push({ part, at });
+				if (parentPose && pose.joint) {
+					this.skeletonHits.push({ part, at: this.toScreen(pose.joint) });
+				}
 				labels.push({ at: parentPose && pose.joint ? this.toScreen(pose.joint) : at, text: names[part.role] || part.role, colour, selected });
 			}
 			ctx.font = '11px system-ui, sans-serif';
@@ -534,6 +551,20 @@ window.MS = window.MS || {};
 		}
 
 		partAt(x, y) {
+			if (this.options.skeleton) {
+				let best = null;
+				let bestDist = 9;
+				for (const hit of this.skeletonHits) {
+					const d = Math.hypot(hit.at.x - x, hit.at.y - y);
+					if (d < bestDist) {
+						best = hit.part;
+						bestDist = d;
+					}
+				}
+				if (best || this.skeletonPictures === 'hidden') {
+					return best;
+				}
+			}
 			const world = this.toWorld(x, y);
 			for (let i = this.drawList.length - 1; i >= 0; i--) {
 				const item = this.drawList[i];

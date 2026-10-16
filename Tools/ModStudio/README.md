@@ -37,7 +37,8 @@ Studio app does this itself).
 - **Skeleton** (K, or the button above the view) shows how the unit is built: each part's bone from its parent to the joint where
   it attaches and turns, each part's origin, where hands and ankles reach, and its name. The pictures fade so the bones read. The
   box beside it says what each mark means and gives the selected part's ParentOffset, JointOffset and SpriteOffset in plain
-  words; **How a unit is put together…** explains the idea and lists the whole unit as a tree.
+  words; **How a unit is put together…** explains the idea and lists the whole unit as a tree. **Pictures** there (or Shift+K) fades,
+  hides or shows the sprites under the bones; with them hidden, click a joint or origin to pick a part.
 - **Every setting**: All settings lists everything the selected part has (from its own block or inherited), editable, with a filter
   and **Add a setting** offering every key that presets of its class use. **Discard unsaved changes** (in **Save ▾**) throws
   away unsaved changes.

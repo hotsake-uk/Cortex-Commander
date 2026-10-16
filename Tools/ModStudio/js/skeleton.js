@@ -70,6 +70,28 @@ window.MS = window.MS || {};
 	// Open shows the marks and the selected part's numbers; closed is one line, so the bones stay in view on a narrow screen.
 	let open = app() && app().readLocal ? app().readLocal('ms.skeletonHelpOpen') !== false : true;
 
+	function setPictures(id, box, part) {
+		app().view.skeletonPictures = id;
+		try {
+			localStorage.setItem('ms.skeletonPictures', id);
+		} catch (e) {
+			// remembered until the page reloads
+		}
+		app().requestDraw();
+		if (box) {
+			MS.skeletonHelp(box, part);
+		}
+	}
+
+	// Shift+K: faded, hidden, shown, faded...
+	MS.skeletonPictures = function () {
+		const order = ['faded', 'hidden', 'shown'];
+		const next = order[(order.indexOf(app().view.skeletonPictures) + 1) % order.length];
+		const box = document.getElementById('skeletonHelp');
+		setPictures(next, box, app().selected);
+		app().status('Skeleton pictures: ' + next + '.');
+	};
+
 	MS.skeletonHelp = function (box, part) {
 		if (app().readLocal('ms.skeletonHelpOpen') === false) {
 			open = false;
@@ -80,8 +102,13 @@ window.MS = window.MS || {};
 			MS.skeletonHelp(box, part);
 		} });
 		box.classList.toggle('closed', !open);
+		// The pictures under the bones: faded (the default), hidden (just the skeleton) or shown as they are.
+		const view = app().view;
+		const pictures = el('span', { className: 'sk-pictures', title: 'The pictures under the skeleton (Shift+K steps through these)' }, 'Pictures',
+			...[['faded', 'Faded'], ['hidden', 'Hidden'], ['shown', 'Shown']].map(([id, text]) => el('button', { className: view.skeletonPictures === id ? 'sel' : '', textContent: text, onclick: () => setPictures(id, box, part) })));
 		box.replaceChildren(
 			el('div', { className: 'sk-head' }, toggle, el('b', { textContent: 'Skeleton' }), part ? el('span', { className: 'sk-sel', textContent: '· ' + roleName(part) }) : null, el('span', { className: 'spacer' }), el('button', { className: 'ico-btn', textContent: 'How a unit is put together…', onclick: explain })),
+			pictures,
 			open ? legend() : null,
 			open ? (part ? el('div', { className: 'sk-part' }, ...partWords(part)) : el('p', { className: 'sk-tip', textContent: 'Click a part, here or in Parts, to see how it joins its parent.' })) : null);
 	};

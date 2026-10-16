@@ -800,3 +800,8 @@ pre.diff .del { color: var(--bad); }
 .sk-tree-row:hover { background: var(--panel2); }
 .sk-preset { color: var(--dim); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sk-tree-row code { color: var(--faint); font: 11px ui-monospace, Consolas, monospace; white-space: nowrap; }
+
+.sk-pictures { display: flex; align-items: center; gap: 4px; color: var(--dim); margin: 0 0 8px; }
+.sk-pictures button { background: none; border: 1px solid var(--line); border-radius: 99px; color: var(--dim); padding: 1px 9px; cursor: pointer; font-size: 11.5px; }
+.sk-pictures button.sel { border-color: var(--accent); color: var(--accent); }
+.skeleton-help.closed .sk-pictures { margin: 4px 0 0; }
