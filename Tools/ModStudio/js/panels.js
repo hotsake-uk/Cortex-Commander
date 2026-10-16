@@ -751,19 +751,17 @@ window.MS = window.MS || {};
 	}
 
 	function canRemove(part) {
-		if (part.role !== 'attachable') {
-			return false;
-		}
-		const node = part.ent.node;
-		return !app.lib.isProtected(node.doc) && (node.isWithin(part.anchor) || !app.fs.isOfficial(node.doc.path));
+		return part.role === 'attachable' && !app.lib.canEdit(part.anchor, part.path);
 	}
 
+	// Removes the attachment from this unit only: an inherited one is first made the unit's own (Library.adopt).
 	function removePart(part) {
-		const node = part.ent.node;
-		if (!node.isWithin(part.anchor) && !confirm('This attachment is written in ' + node.doc.path + ', which other units may share. Remove it there?')) {
-			return;
-		}
-		app.edit('remove ' + part.name, () => node.remove());
+		app.edit('remove ' + part.name, () => {
+			const node = app.ownBlock(part);
+			if (node) {
+				node.remove();
+			}
+		});
 		app.select(app.rig ? app.rig.body : null);
 	}
 

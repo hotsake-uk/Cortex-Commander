@@ -266,7 +266,8 @@ window.MS = window.MS || {};
 		//
 		// A part is reached from an actor's block by a path of steps, each {key, index}: index counts that key's entries in the
 		// resolved parent (it only matters for list keys like AddAttachable). Edits never touch the game's own files (Data/): a part the
-		// actor inherits is copied into the actor's block and changed there, so other units that share it are untouched.
+		// actor inherits is copied into the actor's block and changed there (an inherited listed attachment by adopting the lines of
+		// the presets above it), so other units that share it are untouched.
 
 		// Returns the block where a part's own properties can be written, copying inherited blocks in as needed, or
 		// {readOnly: reason} if the part can't be changed from this actor. With dryRun nothing is changed.
@@ -286,19 +287,19 @@ window.MS = window.MS || {};
 					anchor = entry.node;
 					continue;
 				}
-				if (LIST_KEYS.has(step.key)) {
-					// Each listed attachment is added once per block that lists it, so it can't be copied in without doubling it.
-					// It is changed where it is written, if that isn't the game's own data.
-					if (this.isProtected(entry.node.doc)) {
-						return { readOnly: 'This attachment comes from ' + entry.node.doc.module + ' (the game\'s own files), so it can\'t be moved from here. Add your own instead.' };
-					}
-					anchor = entry.node;
-					virtual = false;
-					continue;
-				}
 				if (dryRun) {
 					anchor = entry.node;
 					virtual = true;
+					continue;
+				}
+				if (LIST_KEYS.has(step.key)) {
+					// A listed attachment is added once per block that lists it, so copying it in would double it. Instead this block
+					// takes over the lines of the preset it copies (see adopt), which makes the attachment one of its own lines.
+					const own = this.adopt(anchor, entry.node);
+					if (!own) {
+						return { readOnly: 'This attachment couldn\'t be copied into this unit.' };
+					}
+					anchor = own;
 					continue;
 				}
 				// A single part (Head, FGArm...) inherited through CopyOf: copy its block into this one. The game reads the copy exactly
@@ -315,6 +316,59 @@ window.MS = window.MS || {};
 		canEdit(actorNode, path) {
 			const result = this.ownBlock(actorNode, path, true);
 			return result.readOnly || null;
+		}
+
+		// Makes an inherited line one of the block's own: the lines of the preset the block copies are written into the block, which
+		// then copies that preset's own base instead, a level at a time until the line is reached. The game builds the same unit as
+		// before, and other units that copy those presets are untouched. Returns the block's copy of the line, or null.
+		adopt(block, line) {
+			for (let level = 0; level < 32; level++) {
+				const copyOf = block.child('CopyOf');
+				const base = copyOf && this.find(copyOf.value, block.value, block.doc.module);
+				if (!base || base.node === block) {
+					return null;
+				}
+				const baseNode = base.node;
+				const fromModule = baseNode.doc.module;
+				const toModule = block.doc.module;
+				let at = block.children.indexOf(copyOf);
+				const baseCopyOf = baseNode.child('CopyOf');
+				if (baseCopyOf) {
+					copyOf.setValue(this.reference(baseCopyOf.value, fromModule, toModule));
+				} else {
+					copyOf.remove();
+					at--;
+				}
+				let found = null;
+				for (const child of baseNode.children) {
+					if (child.key === 'CopyOf' || child.key === 'PresetName') {
+						continue;
+					}
+					const copy = child.children.length ? this.inheritedCopy(child, toModule) : child.clone();
+					this.fixReferences(copy, fromModule, toModule);
+					block.add(copy, ++at);
+					if (child === line) {
+						found = copy;
+					}
+				}
+				this.invalidate();
+				if (found) {
+					return found;
+				}
+			}
+			return null;
+		}
+
+		// Rewrites every CopyOf in a copied block so it still names the same presets from its new module.
+		fixReferences(node, fromModule, toModule) {
+			const stack = [node];
+			while (stack.length) {
+				const n = stack.pop();
+				if (n.key === 'CopyOf' && n.value) {
+					n.setValue(this.reference(n.value, fromModule, toModule));
+				}
+				stack.push(...n.children);
+			}
 		}
 
 		// A copy of an inherited block for another block to own.
