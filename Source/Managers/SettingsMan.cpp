@@ -2535,9 +2535,9 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewLineString("// Display Settings", false);
 	writer.NewLine(false);
 	writer.NewPropertyWithValue("PaletteFile", g_FrameMan.m_PaletteFile);
-	writer.NewPropertyWithValue("ResolutionX", g_WindowMan.m_ResX);
-	writer.NewPropertyWithValue("ResolutionY", g_WindowMan.m_ResY);
-	writer.NewPropertyWithValue("ResolutionMultiplier", g_WindowMan.m_ResMultiplier);
+	writer.NewPropertyWithValue("ResolutionX", g_WindowMan.GetSettingsResX());
+	writer.NewPropertyWithValue("ResolutionY", g_WindowMan.GetSettingsResY());
+	writer.NewPropertyWithValue("ResolutionMultiplier", g_WindowMan.GetSettingsResMultiplier());
 	writer.NewPropertyWithValue("Fullscreen", g_WindowMan.m_Fullscreen);
 	writer.NewPropertyWithValue("EnableVSync", g_WindowMan.m_EnableVSync);
 	writer.NewPropertyWithValue("UseMultiDisplays", g_WindowMan.m_UseMultiDisplays);

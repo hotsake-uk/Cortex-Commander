@@ -1398,7 +1398,7 @@ void DebugMan::SettingsGUI() {
 		Toggle("Whole-number scaling", g_WindowMan.GetIntegerScaling(), [](bool on) { g_WindowMan.SetIntegerScaling(on); });
 		Tip("Scale the picture to the window by a whole number only, so every game pixel is exactly as many screen pixels, with bars around it. Off: fill as much of the window as fits.");
 		Toggle("Match window size", g_WindowMan.GetMatchWindowSize(), [](bool on) { g_WindowMan.SetMatchWindowSize(on); });
-		Tip("The game's view follows the window: resize it to any size or shape and the view fills it, showing more of the map in a bigger window, with the game carrying on. Off: the resolution stays as set in the video settings and the picture is scaled to the window with bars around it.");
+		Tip("During play the game's view follows the window: resize it to any size or shape and the view fills it, showing more of the map in a bigger window, with the game carrying on. The menus keep the resolution set in the video settings. Off: play uses that resolution too, scaled to the window with bars around it.");
 		Check("Grade answers events", &settings.EventLooks);
 		Tip("The colour grade reacts to what happens: it flashes washed-out and warm with a huge blast, drains and darkens at the edges when your unit is badly hurt, and warms by a fire. Scripts can pulse it and crossfade between looks. Off: the grade stays as you set it, as before.");
 		if (settings.EventLooks) {
