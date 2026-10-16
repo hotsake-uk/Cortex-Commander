@@ -2,7 +2,7 @@
 
 A visual editor for Cortex Command units, and a modding IDE around it. Move a unit's parts, swap sprites, add helmets and gear,
 and watch it stand, walk, run, crouch and aim. Studio writes the INI for you and can show the unit in the game while you work.
-Deep mode adds the mod's files, Lua scripts with autocomplete from the game's own API, the game's console and search.
+Script mode adds the mod's files, Lua scripts with autocomplete from the game's own API, the game's console and search.
 
 It is a web page plus a small PowerShell script, with nothing to install: no internet, no packages, no runtime. (The code
 editor, Monaco, and the Lua parser, luaparse, are shipped in `vendor/` with their licences.)
@@ -41,17 +41,17 @@ zip of the changed files to unpack into the game folder.
   Everything is still read, so copies and inheritance across modules keep working.
 - **Undo and redo** everything (Ctrl+Z, Ctrl+Y). Press **?** for all the keys.
 
-## Artist and Deep modes
+## Design and Script modes
 
 The switch at the top left picks how much Studio shows.
 
-- **Artist** is the unit designer on its own: pick a unit, move its parts, swap sprites. Nothing about scripts or files.
-- **Deep** is the whole mod. The bar on the far left switches the side bar between **Files** (your mods, and the game's own
+- **Design** is the unit designer on its own: pick a unit, move its parts, swap sprites. Nothing about scripts or files.
+- **Script** is the whole mod. The bar on the far left switches the side bar between **Files** (your mods, and the game's own
   files read only), **Units** (the designer's list), **Search** (every INI file and script, Ctrl+Shift+F) and **Package**.
   The designer is the first tab; files open in tabs beside it. The panel at the bottom (Ctrl+J) has the game's **Console**,
   **Problems** and **Watch**.
 
-In Deep mode:
+In Script mode:
 
 - **Lua scripts** open in a code editor that knows the game's API: type `self.` or `self:` for what the object has, any
   manager (`MovableMan:`), `function ` for the functions the game calls (Create, Update, OnCollideWithMO…), and
@@ -76,6 +76,8 @@ In Deep mode:
 - **Live values**, as in Quokka: end a line with `--?` and, once saved, the value it makes shows at the end of the line while the
   game runs, with how many times it ran (hover for the last few). `--?.` shows how long the line takes, `--?+` shows tables wider,
   `--? $.Health` shows any Lua with `$` as the line's value, and `--[[?]]` right after an expression shows just that expression.
+  `--? self.Pos` alone on a line shows that Lua's value at that point. Or click left of a line number for a logpoint: the line is
+  logged with nothing written in the script (the game's own scripts too), and it starts at once if the script is saved.
   Studio runs a copy of the script with the probes in it (`ModStudio/Live/`), never changing the script; errors still point at the
   script's own lines. Needs a game built from 8.5.255 or later.
 - **Package**: Check looks for missing files, presets that don't exist, scripts with errors and unsaved changes; Export saves
@@ -144,7 +146,7 @@ All scripts are plain classic scripts (no modules), so the page works from `file
 | `js/panels.js` | Library list, parts tree and property inspector. |
 | `js/dialogs.js` | Make a copy, add attachments, pick items, import sprites, help. |
 | `js/app.js` | App state, editing with undo, dragging, saving and the preview request. |
-| `js/ide.js` | Deep mode: tabs, the code editor, files, search, packaging, the game's console and watched values. |
+| `js/ide.js` | Script mode: tabs, the code editor, files, search, packaging, the game's console and watched values. |
 | `js/lua-intel.js` | Lua completion, hover, signature help, go to definition and checks. |
 | `js/ini-intel.js` | INI completion, hover, go to definition and checks, learned from every file Studio read. |
 | `data/lua-api.json` | The game's Lua API, written from `Source/Lua/LuaBindings*.cpp` by `tools/make-lua-api.js` (run it with Node after changing the bindings). `data/lua-api.d.lua` is the same API as LuaLS annotations, for VS Code: add it to `Lua.workspace.library`. |

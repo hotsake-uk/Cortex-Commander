@@ -157,12 +157,12 @@ window.MS = window.MS || {};
 				ide.activate(ide.active);
 			}
 			if (!quiet) {
-				app.status('Deep mode: the mod\'s files, scripts with autocomplete, the game\'s console. Artist mode goes back to just the designer.');
+				app.status('Script mode: the mod\'s files, scripts with autocomplete, the game\'s console. Design mode goes back to just the designer.');
 			}
 		} else {
 			$('app').classList.remove('code-active');
 			if (!quiet) {
-				app.status('Artist mode: design units visually. Deep mode has scripts and the mod\'s files.');
+				app.status('Design mode: design units visually. Script mode has scripts and the mod\'s files.');
 			}
 		}
 		MS.panels.refresh && app.lib && MS.panels.refresh();
@@ -425,8 +425,10 @@ window.MS = window.MS || {};
 			suggestFontSize: 13,
 			suggestLineHeight: 22,
 			quickSuggestions: { other: true, comments: false, strings: true },
+			glyphMargin: true, // Live values' logpoints (live.js): click left of a line number to log that line.
 			model: null,
 		});
+		MS.live.attach(ide.editor);
 		// The description beside the suggestion list shows from the start (Ctrl+Space still toggles it), and the list is wider and taller.
 		try {
 			const suggest = ide.editor.getContribution('editor.contrib.suggestController');

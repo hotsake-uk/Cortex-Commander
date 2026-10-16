@@ -269,16 +269,16 @@ pre.diff .del { color: var(--bad); }
 .setting-ro { color: var(--dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row.setting-add { margin-top: 8px; }
 
-/* ---- Artist / Deep switch ---- */
+/* ---- Design / Script switch ---- */
 .mode-switch { display: flex; margin-left: 14px; background: var(--panel2); border: 1px solid var(--line); border-radius: 99px; padding: 2px; }
 .mode-switch button { background: none; border: 0; border-radius: 99px; padding: 3px 13px; color: var(--dim); cursor: pointer; font-size: 12px; }
 .mode-switch button.sel { background: var(--accent); color: var(--accent-ink); font-weight: 650; }
 .mode-switch button:not(.sel):hover { color: var(--text); }
 
-/* Artist mode is the designer alone. */
+/* Design mode is the designer alone. */
 #app:not(.deep) #activity, #app:not(.deep) #side, #app:not(.deep) #tabbar, #app:not(.deep) #codeWrap, #app:not(.deep) #bottom, #app:not(.deep) #statusCursor, #app:not(.deep) #statusLang, #app:not(.deep) .status-btn { display: none; }
 
-/* ---- Deep mode: activity bar, side bar, tabs, the designer or an editor, the panel ---- */
+/* ---- Script mode: activity bar, side bar, tabs, the designer or an editor, the panel ---- */
 #app.deep {
 	grid-template-columns: 44px var(--lib-w, 270px) minmax(300px, 1fr) minmax(460px, 42vw);
 	grid-template-rows: 46px 34px minmax(0, 1fr) var(--bottom-h, 220px) 26px;
@@ -514,3 +514,5 @@ pre.diff .del { color: var(--bad); }
 /* Live values (live.js): text Monaco draws after a line with a "--?" marker */
 .monaco-editor .live-value { color: #8fd6a5 !important; font-style: normal; }
 .monaco-editor .live-waiting { color: #7d8594 !important; font-style: italic; }
+.monaco-editor .live-logpoint { background: radial-gradient(circle at 50% 50%, #e8b84a 0 4px, transparent 4.5px); cursor: pointer; }
+.monaco-editor .live-logpoint-hint { background: radial-gradient(circle at 50% 50%, rgba(232, 184, 74, .35) 0 4px, transparent 4.5px); cursor: pointer; }

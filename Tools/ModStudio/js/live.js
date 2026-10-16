@@ -5,6 +5,11 @@
 //   self:Update() --?.                          how long the line took (in a loop: average, min, max and total)
 //   local t = MakeTable() --?+                  the value with tables shown wider
 //   local actor = ToActor(mo) --? $.Health      any Lua, with $ the marked value
+//   --? self.Pos                                alone on a line: that Lua's value at that point (Quokka's bare expressions, which
+//                                               Lua itself wouldn't take)
+//
+// Or click left of a line number (a logpoint, as in VS Code): the line is logged as if it ended with --?, with nothing written in the
+// script, so the game's own read-only scripts can be logged too. A logpoint on an unchanged script takes effect at once.
 //
 // Saving a script with markers writes a copy of it with value probes in it to ModStudio/Live/<script path>, every line where it was,
 // and asks the game to reload the script; a game started from Studio (built from 8.5.255 on) loads the copy in its place, so errors
@@ -76,14 +81,16 @@ window.MS = window.MS || {};
 			rest = rest.slice(1);
 		}
 		rest = rest.trim();
-		return { block: raw.startsWith('--['), kind, expr: rest.includes('$') ? rest.replace(/\$/g, '__v') : '' };
+		return { block: raw.startsWith('--['), kind, expr: rest.includes('$') ? rest.replace(/\$/g, '__v') : '', text: rest };
 	}
 
 	const luaString = (s) => JSON.stringify(s);
 
-	// Instruments a script: {code, probes} with the probes it has, {probes: []} when it has no markers, or {error}.
-	L.instrument = function (path, text) {
-		if (!/--(\[=*\[)?\?/.test(text)) {
+	// Instruments a script: {code, probes} with the probes it has, {probes: []} when it has no markers, or {error}. logLines are the
+	// lines with a logpoint (clicked in the editor's gutter), each shown as if it ended with "--?".
+	L.instrument = function (path, text, logLines) {
+		logLines = logLines || [];
+		if (!logLines.length && !/--(\[=*\[)?\?/.test(text)) {
 			return { probes: [] };
 		}
 		let ast;
@@ -112,11 +119,26 @@ window.MS = window.MS || {};
 		const edits = []; // {at, end, text}: replace text[at, end) with text, all on the line they are on
 		const probes = [];
 		const src = (n) => text.slice(n.range[0], n.range[1]);
-		for (const comment of ast.comments || []) {
-			const marker = readMarker(comment);
-			if (!marker) {
+		const marked = (ast.comments || []).map((comment) => ({ comment, marker: readMarker(comment) })).filter((m) => m.marker);
+		// A logpoint is a "--?" just before any comment at the end of its line (or at the line's end), unless the line has a marker.
+		const lineStarts = [0];
+		for (let i = 0; i < text.length; i++) {
+			if (text[i] === '\n') {
+				lineStarts.push(i + 1);
+			}
+		}
+		for (const line of new Set(logLines)) {
+			if (line < 1 || line > lineStarts.length || marked.some((m) => !m.marker.block && m.comment.loc.start.line === line)) {
 				continue;
 			}
+			const trailing = (ast.comments || []).find((c) => c.loc.start.line === line);
+			let at = trailing ? trailing.range[0] : (lineStarts[line] !== undefined ? lineStarts[line] - 1 : text.length);
+			while (at > lineStarts[line - 1] && /[\r\n]/.test(text[at - 1])) {
+				at--;
+			}
+			marked.push({ comment: { range: [at, at], loc: { start: { line, column: -1 } } }, marker: { block: false, kind: '', expr: '' }, logpoint: true });
+		}
+		for (const { comment, marker, logpoint } of marked) {
 			const line = comment.loc.start.line;
 			const key = path + '|' + line + ':' + (comment.loc.start.column + 1);
 			const k = luaString(key);
@@ -143,10 +165,16 @@ window.MS = window.MS || {};
 					|| statements.filter((s) => s.loc.start.line === line && /^(If|While|ForNumeric|ForGeneric)Statement$/.test(s.type)).sort((a, b) => b.range[0] - a.range[0])[0];
 				if (target) {
 					done = lineProbe(target, marker, k, show, edits, text, line);
+				} else if (marker.text && !marker.text.includes('$') && /^[ \t]*$/.test(text.slice(text.lastIndexOf('\n', comment.range[0] - 1) + 1, comment.range[0]))
+					&& !expressions.some((e) => e.range[0] < comment.range[0] && e.range[1] > comment.range[0])) {
+					// (Not inside a table or a call's arguments spread over lines, where a probe would be one more value in it.)
+					// "--? speed" alone on a line, like a bare expression in Quokka (which Lua wouldn't allow): logs that Lua at that point.
+					edits.push({ at: comment.range[0], end: comment.range[0], text: `${fn}(${k}, (${marker.text})); ` });
+					done = true;
 				}
 			}
 			if (done) {
-				probes.push({ key, line, kind: marker.kind });
+				probes.push({ key, line, kind: marker.kind, logpoint: !!logpoint });
 			}
 		}
 		if (!probes.length) {
@@ -162,6 +190,13 @@ window.MS = window.MS || {};
 			}
 			code = code.slice(0, e.at) + e.text + code.slice(e.end);
 			limit = e.at;
+		}
+		// The copy has to load: a probe somewhere Lua can't take one (a "--? x" line inside a table, say) turns live values off for the
+		// script, with the reason, rather than breaking it in the game.
+		try {
+			window.luaparse.parse(code, { luaVersion: '5.2' });
+		} catch (e) {
+			return { error: 'a marker is somewhere a value can\'t be logged (' + e.message + ')' };
 		}
 		return { code, probes };
 	};
@@ -235,7 +270,7 @@ window.MS = window.MS || {};
 	// Writes the script's live copy (or an empty one when it has no markers, if it had a copy), before the game is asked to reload it.
 	L.afterSave = async function (path, text) {
 		const lower = path.toLowerCase();
-		const result = L.instrument(path, text);
+		const result = L.instrument(path, text, logLinesOf(path));
 		if (result.error) {
 			app().toast('Live values are off for ' + path.split('/').pop() + ' until it parses: ' + result.error, 'bad');
 			result.probes = [];
@@ -354,5 +389,82 @@ window.MS = window.MS || {};
 			const ids = tab.model.deltaDecorations(old.ids, decorations);
 			L.decorations.set(tab, { ids, keys });
 		}
+	};
+
+	// ---- logpoints: click left of a line number to log that line, with no comment in the file ----
+
+	const logpoints = new Map(); // tab -> decoration ids (Monaco moves them with the text as it's edited)
+	let hintIds = [];
+
+	function logLinesOf(path) {
+		const tab = MS.ide.tabs.find((t) => t.model && t.path && t.path.toLowerCase() === path.toLowerCase());
+		const ids = tab ? logpoints.get(tab) || [] : [];
+		return ids.map((id) => tab.model.getDecorationRange(id)).filter(Boolean).map((r) => r.startLineNumber);
+	}
+
+	function logpointDecoration(line) {
+		return {
+			range: new monaco.Range(line, 1, line, 1),
+			options: {
+				glyphMarginClassName: 'live-logpoint',
+				glyphMarginHoverMessage: { value: 'Logs this line\'s value while the game runs (click to remove)' },
+				stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+			},
+		};
+	}
+
+	L.toggleLogpoint = async function (tab, line) {
+		const ids = logpoints.get(tab) || [];
+		const at = ids.findIndex((id) => {
+			const r = tab.model.getDecorationRange(id);
+			return r && r.startLineNumber === line;
+		});
+		if (at >= 0) {
+			tab.model.deltaDecorations([ids[at]], []);
+			ids.splice(at, 1);
+		} else {
+			ids.push(...tab.model.deltaDecorations([], [logpointDecoration(line)]));
+		}
+		logpoints.set(tab, ids);
+		if (tab.model.getValue() !== tab.savedText) {
+			app().toast('Save the script to start logging that line in the game.', '');
+			return;
+		}
+		// Nothing unsaved: the live copy is written again from what's on disk, and the game reloads the script.
+		await L.afterSave(tab.path, tab.savedText);
+		MS.ide.requestScripts({ scripts: [tab.path] });
+	};
+
+	L.attach = function (editor) {
+		const glyph = monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN;
+		const luaTab = () => {
+			const model = editor.getModel();
+			const tab = model && model.ccTab;
+			return tab && tab.lang === 'lua' ? tab : null; // The game's own scripts too: the live copy never touches the file.
+		};
+		editor.onMouseDown((e) => {
+			const tab = luaTab();
+			if (tab && e.target.type === glyph && e.target.position) {
+				L.toggleLogpoint(tab, e.target.position.lineNumber);
+			}
+		});
+		// A faint dot where a click would add a logpoint, as VS Code shows for breakpoints.
+		editor.onMouseMove((e) => {
+			const tab = luaTab();
+			const line = tab && e.target.type === glyph && e.target.position ? e.target.position.lineNumber : 0;
+			const model = editor.getModel();
+			if (model) {
+				hintIds = model.deltaDecorations(hintIds, line ? [{ range: new monaco.Range(line, 1, line, 1), options: { glyphMarginClassName: 'live-logpoint-hint' } }] : []);
+			}
+		});
+		editor.onMouseLeave(() => {
+			const model = editor.getModel();
+			if (model) {
+				hintIds = model.deltaDecorations(hintIds, []);
+			}
+		});
+		editor.onDidChangeModel(() => {
+			hintIds = [];
+		});
 	};
 })();
