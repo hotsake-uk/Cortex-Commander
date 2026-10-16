@@ -92,6 +92,15 @@ window.MS = window.MS || {};
 	}
 
 	class Rig {
+		// An attachment's turn relative to its parent, in radians: InheritedRotAngleDegOffset, or the radians version
+		// (InheritedRotAngleOffset, once InheritedRotAngleRadOffset). Positive turns anticlockwise; mirrored when facing left.
+		static rotationOffset(ent) {
+			if (ent.has('InheritedRotAngleDegOffset')) {
+				return (ent.num('InheritedRotAngleDegOffset', 0) * Math.PI) / 180;
+			}
+			return ent.has('InheritedRotAngleOffset') ? ent.num('InheritedRotAngleOffset', 0) : ent.num('InheritedRotAngleRadOffset', 0);
+		}
+
 		constructor(library, actorNode) {
 			this.library = library;
 			this.actorNode = actorNode;
@@ -363,7 +372,7 @@ window.MS = window.MS || {};
 			const pose = {};
 			pose.flip = inheritsFlip === 1 ? parentPose.flip : inheritsFlip === 0 ? ent.bool('HFlipped', false) : !parentPose.flip;
 			if (ent.bool('InheritsRotAngle', true)) {
-				const offset = ent.has('InheritedRotAngleDegOffset') ? (ent.num('InheritedRotAngleDegOffset', 0) * Math.PI) / 180 : ent.num('InheritedRotAngleRadOffset', 0);
+				const offset = MS.Rig.rotationOffset(ent);
 				pose.rot = parentPose.rot + offset * (parentPose.flip ? -1 : 1);
 			} else {
 				pose.rot = 0;

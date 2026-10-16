@@ -21,7 +21,8 @@ zip of the changed files to unpack into the game folder.
 
 - **Pick a unit** from the Units list on the left. Official units are locked; click **Make my own copy** to make a new
   unit in your mod (`CopyOf` the original), then change anything.
-- **Drag parts** in the view to move them. Hold **Shift** to move the sprite instead of the part. Dots show pivots: drag
+- **Drag parts** in the view to move them. Hold **Shift** to move the sprite instead of the part, and
+  **Ctrl** to rotate an attachment (also under Placement > Rotation). Dots show pivots: drag
   a joint dot to change where a part turns, and the hand dots to change idle, aiming and support hand positions.
 - **Swap sprites**: select a part and click **Replace** in Sprite. Studio converts any PNG to the game palette, slices
   sprite sheets into frames and writes the files into your mod.

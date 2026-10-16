@@ -4,7 +4,7 @@ window.MS = window.MS || {};
 
 (function () {
 	const $ = (id) => document.getElementById(id);
-	const { rotate, flipX, sub } = MS.geom;
+	const { rotate, flipX, sub, add } = MS.geom;
 	const DEVICE_CLASSES = new Set(['HDFirearm', 'HeldDevice', 'TDExplosive', 'ThrownDevice']);
 	const PREVIEW_FILE = 'ModStudio/Preview.ini';
 
@@ -287,7 +287,8 @@ window.MS = window.MS || {};
 	app.onHover = function (part) {
 		MS.panels.hoverTree(part);
 		const hint = $('viewHint');
-		hint.textContent = part ? part.name + ' — drag to move · Shift+drag to move the picture' : 'Drag a part to move it · wheel to zoom · double-click to fit';
+		const turns = part && part.role === 'attachable' && part.ent.bool('InheritsRotAngle', true);
+		hint.textContent = part ? part.name + ' — drag to move · Shift+drag to move the picture' + (turns ? ' · Ctrl+drag to rotate' : '') : 'Drag a part to move it · wheel to zoom · double-click to fit';
 	};
 
 	app.onZoom = function (z) {
@@ -505,6 +506,23 @@ window.MS = window.MS || {};
 				return parentPose ? [{ part, key: 'ParentOffset', start: vec(part, 'ParentOffset'), convert: local(parentPose) }] : null;
 			case 'sprite':
 				return [{ part, key: 'SpriteOffset', start: spriteStart(), convert: local(pose) }];
+			case 'rotate': {
+				// Attachments only, turning about their pivot. The angle is kept in degrees, mirrored like the game does when facing left.
+				if (part.role !== 'attachable' || !parentPose || !part.ent.bool('InheritsRotAngle', true)) {
+					return null;
+				}
+				const startDegrees = (MS.Rig.rotationOffset(part.ent) * 180) / Math.PI;
+				const from = sub(d.start, pose.joint);
+				const startAngle = Math.atan2(from.y, from.x);
+				const sign = parentPose.flip ? -1 : 1;
+				return [{ part, key: 'InheritedRotAngleDegOffset', start: startDegrees, angle: (delta) => {
+					const to = add(from, delta);
+					// Screen y points down, so a positive screen angle is clockwise; the game's positive angles are anticlockwise.
+					let turn = -(Math.atan2(to.y, to.x) - startAngle);
+					turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+					return (turn * 180) / Math.PI * sign;
+				} }];
+			}
 			case 'joint':
 				if (part.role === 'device') {
 					return [{ part, key: 'JointOffset', start: vec(part, 'JointOffset'), convert: local(pose) }, { part, key: stanceKey, start: vec(part, stanceKey), convert: aimLocal }];
@@ -539,8 +557,8 @@ window.MS = window.MS || {};
 				return false;
 			}
 		}
-		d.plan = plan.map((s) => ({ partId: s.part.id, key: s.key, start: s.start, convert: s.convert }));
-		app.begin('move ' + d.part.name);
+		d.plan = plan.map((s) => ({ partId: s.part.id, key: s.key, start: s.start, convert: s.convert, angle: s.angle }));
+		app.begin((d.kind === 'rotate' ? 'rotate ' : 'move ') + d.part.name);
 		return true;
 	};
 
@@ -550,10 +568,14 @@ window.MS = window.MS || {};
 			if (!part) {
 				continue;
 			}
-			const change = step.convert(delta);
 			const round = (v) => Math.round(v / snap) * snap;
 			const node = app.lib.ownBlock(part.anchor, part.path).node;
-			if (node) {
+			if (node && step.angle) {
+				// Whole degrees (half degrees with Alt).
+				const degrees = round(step.start + step.angle(delta));
+				node.set(step.key, MS.formatNumber(((degrees % 360) + 540) % 360 - 180));
+			} else if (node) {
+				const change = step.convert(delta);
 				node.setVector(step.key, round(step.start.x + change.x), round(step.start.y + change.y));
 			}
 		}

@@ -414,6 +414,7 @@ window.MS = window.MS || {};
 		const keys = [
 			['Drag a part', 'move it on its parent (ParentOffset)'],
 			['Shift + drag', 'move the picture around the part\'s pivot (SpriteOffset)'],
+			['Ctrl + drag', 'rotate an attachment about its pivot (InheritedRotAngleDegOffset); Alt for half degrees'],
 			['Drag the gold dot', 'move the pivot, keeping the picture still (JointOffset)'],
 			['Drag a hand', 'where it rests (IdleOffset) or holds the item (StanceOffset, SupportOffset)'],
 			['Drag the red dot', 'where shots come from (MuzzleOffset)'],
