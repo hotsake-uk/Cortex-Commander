@@ -23,4 +23,5 @@ import './inspector.js';
 import './history.js';
 import './app.js';
 import './layout.js';
+import './zoom.js';
 import './launcher.js';

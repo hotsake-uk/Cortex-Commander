@@ -20,6 +20,9 @@ use std::path::{Path, PathBuf};
 struct Settings {
 	#[serde(default)]
 	game_dir: Option<PathBuf>,
+	/// The window's zoom (Ctrl + and -, Ctrl 0): 1.0 is normal. Kept so the window opens as you left it.
+	#[serde(default)]
+	zoom: Option<f64>,
 }
 
 fn settings_file() -> Option<PathBuf> {
@@ -42,6 +45,28 @@ pub fn remember_game_dir(dir: &Path) {
 	let mut settings = load_settings();
 	settings.game_dir = Some(dir.to_path_buf());
 	save_settings(&settings);
+}
+
+/// Sets the window to this zoom. Registered once the window exists; headless (--bridge) there is none, and the page leaves zooming to the browser.
+static ZOOM_HOOK: std::sync::OnceLock<Box<dyn Fn(f64) + Send + Sync>> = std::sync::OnceLock::new();
+
+pub fn has_zoom_hook() -> bool {
+	ZOOM_HOOK.get().is_some()
+}
+
+/// The zoom the window was left at (1.0 when never changed).
+pub fn zoom() -> f64 {
+	load_settings().zoom.filter(|z| z.is_finite() && *z > 0.0).unwrap_or(1.0)
+}
+
+/// Zooms the window and remembers it for the next start.
+pub fn set_zoom(factor: f64) {
+	let mut settings = load_settings();
+	settings.zoom = Some(factor);
+	save_settings(&settings);
+	if let Some(hook) = ZOOM_HOOK.get() {
+		hook(factor);
+	}
 }
 
 fn is_game_dir(dir: &Path) -> bool {
@@ -168,11 +193,24 @@ fn main() {
 			launcher::set_main_thread(Box::new(move |work| {
 				let _ = handle.run_on_main_thread(work);
 			}));
+			let zoom_handle = app.handle().clone();
+			let _ = ZOOM_HOOK.set(Box::new(move |factor| {
+				if let Some(window) = tauri::Manager::get_webview_window(&zoom_handle, "main") {
+					let _ = window.set_zoom(factor);
+				}
+			}));
 			tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::External(external.clone()))
 				.title("Cortex Studio")
 				.inner_size(1500.0, 950.0)
 				.min_inner_size(900.0, 600.0)
-				.zoom_hotkeys_enabled(true) // Ctrl (Cmd on macOS) + and - zoom, 0 resets, as in a browser; capabilities/default.json allows it on macOS and Linux
+				// Ctrl (Cmd on macOS) + and - zoom and 0 resets, as in a browser, but handled by the page (js/zoom.js), which tells Studio's server, so the
+				// zoom can be kept: the webview's own hotkeys can't be read back.
+				.zoom_hotkeys_enabled(false)
+				.on_page_load(|webview, payload| {
+					if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
+						let _ = webview.set_zoom(zoom());
+					}
+				})
 				.build()?;
 			Ok(())
 		})
