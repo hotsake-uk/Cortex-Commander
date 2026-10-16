@@ -1538,16 +1538,18 @@ namespace SandboxDetail {
 		      //!< down till given another order (LandSelected). (After Drop off, so the ring's slices keep their places.)
 		Park, //!< The selected ground vehicles drive to the point and put their handbrakes on there, everyone staying aboard, till given another
 		      //!< order (ParkSelected); ships among them land. (After Land, so the ring's slices keep their places.)
-		Ram //!< The selected flying ships ram what was clicked (anything not their side's) or the place itself, as a suppress is given: run after
+		Ram, //!< The selected flying ships ram what was clicked (anything not their side's) or the place itself, as a suppress is given: run after
 		    //!< run, striking whatever is there, till it is gone or they are given another order (RamSelected);
-		    //!< anyone else selected attacks it or goes there. (Last, so the ring's slices keep their places.)
+		    //!< anyone else selected attacks it or goes there. (After Park, so the ring's slices keep their places.)
+		Brace //!< The selected mechs walk to the point and brace there (AMech::SetBraced, MK-3): feet planted, aim steady, hardly pushed,
+		      //!< till given another order (BraceSelected). Anyone else selected goes there. (Last, so the ring's slices keep their places.)
 	};
 	inline CommandMode s_CommandMode = CommandMode::Command;
 	inline bool s_SpawnOrderArmed = false; //!< The next order placed sets the spawn order of your team (or of s_SpawnOrderZone) instead (TakeSpawnOrder).
 	inline double s_SpawnOrderDoneAt = -1.0; //!< When (ImGui time) setting it is over, once placed: after a second click of a double click can follow.
 	inline int s_SpawnOrderZone = -1; //!< Which of your team's spawn zones it is for, -1 for the team's own.
-	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Jetpack here", "Select units", "Command", "Breach", "Build", "Airlift", "Pen animals", "Drop off", "Land", "Park", "Ram"};
-	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(140, 230, 255, 255), IM_COL32(230, 230, 230, 255), IM_COL32(255, 214, 120, 255), IM_COL32(235, 110, 55, 255), IM_COL32(120, 210, 190, 255), IM_COL32(170, 190, 255, 255), IM_COL32(205, 175, 115, 255), IM_COL32(150, 225, 140, 255), IM_COL32(190, 170, 140, 255), IM_COL32(200, 200, 120, 255), IM_COL32(255, 95, 150, 255)};
+	constexpr const char* c_CommandModeNames[] = {"Move", "Attack", "Guard", "Attack-move", "Defend at", "Patrol", "Dig to", "Suppress", "Jetpack here", "Select units", "Command", "Breach", "Build", "Airlift", "Pen animals", "Drop off", "Land", "Park", "Ram", "Brace"};
+	constexpr ImU32 c_CommandModeColors[] = {IM_COL32(110, 180, 250, 255), IM_COL32(239, 106, 91, 255), IM_COL32(120, 220, 120, 255), IM_COL32(245, 150, 70, 255), IM_COL32(242, 182, 61, 255), IM_COL32(120, 200, 220, 255), IM_COL32(214, 160, 90, 255), IM_COL32(205, 120, 235, 255), IM_COL32(140, 230, 255, 255), IM_COL32(230, 230, 230, 255), IM_COL32(255, 214, 120, 255), IM_COL32(235, 110, 55, 255), IM_COL32(120, 210, 190, 255), IM_COL32(170, 190, 255, 255), IM_COL32(205, 175, 115, 255), IM_COL32(150, 225, 140, 255), IM_COL32(190, 170, 140, 255), IM_COL32(200, 200, 120, 255), IM_COL32(255, 95, 150, 255), IM_COL32(176, 196, 222, 255)};
 	/// A mode whose order is given once and then goes back to Command (s_BackToCommandAt): not Select, Command, Patrol or Pen (clicked out point by point).
 	inline bool OneOffMode(CommandMode mode) { return mode != CommandMode::Select && mode != CommandMode::Command && mode != CommandMode::Patrol && mode != CommandMode::Pen; }
 	inline double s_BackToCommandAt = -1.0; //!< When (ImGui time) the one-off mode in hand goes back to Command: once a double click can no longer follow.
@@ -1703,7 +1705,8 @@ namespace SandboxDetail {
 		Suppress, //!< Fire into a place from where the step before leaves it; never done, so it ends a plan, as a defend does.
 		Dropoff, //!< A vehicle or flying ship goes to the place and lets its passengers out there (StartDropoff); done once they are out.
 		Land, //!< A flying ship sets down at the place and turns its engines off (StartDropoff, staying down); done once it is down.
-		Park //!< A ground vehicle drives to the place and puts its handbrake on (StartDropoff, staying put); done once it is there.
+		Park, //!< A ground vehicle drives to the place and puts its handbrake on (StartDropoff, staying put); done once it is there.
+		Brace //!< A mech braces where the step before leaves it (AMech::SetBraced, MK-3); never done, so it ends a plan, as a defend does.
 	};
 
 	/// One step of a unit's plan: a shift-clicked order to carry out after the ones before it.
@@ -3028,6 +3031,11 @@ namespace SandboxDetail {
 	/// anyone else selected attacks it, or goes there.
 	/// @param target What was clicked, not of their side, or nullptr. @param point The place clicked.
 	void RamSelected(Actor* target, const Vector& point);
+	/// The Brace order (MK-3): the selected mechs walk to the point and brace there, staying braced till given another order (Shift: as
+	/// steps of their plans). Anyone else selected goes there.
+	void BraceSelected(const Vector& point, bool shift);
+	/// Whether a mech is among those selected.
+	bool SelectionHasMech();
 	/// Whether a ground vehicle (not a flying ship) is among those selected.
 	bool SelectionHasCar();
 	/// Whether a flying ship is among those selected.

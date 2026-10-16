@@ -110,7 +110,7 @@ local updateMinions = function(self)
 		
 		local enemyCount = 0;
 		for actor in MovableMan.Actors do
-			if actor.Team ~= self.Team and actor.Team ~= Activity.NOTEAM and (actor.ClassName == "AHuman" or actor.ClassName == "ACrab") then
+			if actor.Team ~= self.Team and actor.Team ~= Activity.NOTEAM and (actor.ClassName == "AHuman" or actor.ClassName == "ACrab" or actor.ClassName == "AMech") then
 				enemyCount = enemyCount + 1;
 			end
 		end

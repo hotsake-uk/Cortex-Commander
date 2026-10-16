@@ -610,13 +610,13 @@ function LandingZoneMap:FindStartLZ(team, OccupiedLZs)
 	-- store enemy actor locations
 	local EnemyLocations = {};
 	for Act in MovableMan.Actors do
-		if Act.Team ~= team and (Act.ClassName == "Actor" or Act.ClassName == "ACrab" or Act.ClassName == "AHuman") then
+		if Act.Team ~= team and (Act.ClassName == "Actor" or Act.ClassName == "ACrab" or Act.ClassName == "AMech" or Act.ClassName == "AHuman") then
 			table.insert(EnemyLocations, Vector(Act.Pos.X, Act.Pos.Y));
 		end
 	end
 
 	for Act in MovableMan.AddedActors do
-		if Act.Team ~= team and (Act.ClassName == "Actor" or Act.ClassName == "ACrab" or Act.ClassName == "AHuman") then
+		if Act.Team ~= team and (Act.ClassName == "Actor" or Act.ClassName == "ACrab" or Act.ClassName == "AMech" or Act.ClassName == "AHuman") then
 			table.insert(EnemyLocations, Vector(Act.Pos.X, Act.Pos.Y));
 		end
 	end

@@ -128,6 +128,8 @@ namespace SandboxDetail {
 				preset.Kind = "Non-combatants";
 			} else if (preset.ClassName == "AHuman") {
 				preset.Kind = object->IsInGroup("Brains") ? "Brains" : "Infantry";
+			} else if (preset.ClassName == "AMech") {
+				preset.Kind = "Mechs";
 			} else if (preset.ClassName == "ACrab") {
 				preset.Kind = object->IsInGroup("Turrets") ? "Turrets" : "Mecha";
 			} else if (preset.ClassName == "AVehicle") {

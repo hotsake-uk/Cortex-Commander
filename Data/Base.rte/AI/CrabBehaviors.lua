@@ -33,6 +33,8 @@ function CrabBehaviors.LookForTargets(AI, Owner)
 		elseif FoundMO.Team ~= Owner.Team then	-- found an enemy
 			if FoundMO.ClassName == "AHuman" then
 				FoundMO = ToAHuman(FoundMO);
+			elseif FoundMO.ClassName == "AMech" then
+				FoundMO = ToAMech(FoundMO);
 			elseif FoundMO.ClassName == "ACrab" then
 				FoundMO = ToACrab(FoundMO);
 			elseif FoundMO.ClassName == "ACRocket" then
@@ -454,6 +456,8 @@ function CrabBehaviors.ShootTarget(AI, Owner, Abort)
 			if ClosestEnemy and not ClosestEnemy:IsDead() then
 				if ClosestEnemy.ClassName == "AHuman" then
 					ClosestEnemy = ToAHuman(ClosestEnemy);
+				elseif ClosestEnemy.ClassName == "AMech" then
+					ClosestEnemy = ToAMech(ClosestEnemy);
 				elseif ClosestEnemy.ClassName == "ACrab" then
 					ClosestEnemy = ToACrab(ClosestEnemy);
 				elseif ClosestEnemy.ClassName == "AVehicle" then
@@ -564,7 +568,7 @@ function CrabBehaviors.ShootArea(AI, Owner, Abort)
 		if _abrt then return true end
 
 		if AI.UnseenTarget and CheckTargetTimer:IsPastSimMS(400) then
-			if MovableMan:ValidMO(AI.UnseenTarget) and (AI.UnseenTarget.ClassName == "AHuman" or AI.UnseenTarget.ClassName == "ACrab") then
+			if MovableMan:ValidMO(AI.UnseenTarget) and (AI.UnseenTarget.ClassName == "AHuman" or AI.UnseenTarget.ClassName == "ACrab" or AI.UnseenTarget.ClassName == "AMech") then
 				CheckTargetTimer:Reset();
 				if AI.UnseenTarget:GetController() and AI.UnseenTarget:GetController():IsState(Controller.WEAPON_FIRE) then
 					-- compare the enemy aim angle with the angle of the alarm vector

@@ -1038,7 +1038,7 @@ function SharedBehaviors.CrowdingUpdate(AI, Owner)
 	end
 	AI.CrowdingTimer:Reset();
 	local className = Owner.ClassName;
-	if (className ~= "AHuman" and className ~= "ACrab") or Owner:IsPlayerControlled() or Owner.Status ~= Actor.STABLE or AI.flying or AI.Cover or AI.Flank
+	if (className ~= "AHuman" and className ~= "ACrab" and className ~= "AMech") or Owner:IsPlayerControlled() or Owner.Status ~= Actor.STABLE or AI.flying or AI.Cover or AI.Flank
 		or AI.lateralMoveState ~= Actor.LAT_STILL or Owner.MovePathSize > 0 or Owner.Vel:MagnitudeIsGreaterThan(2)
 		or (SharedBehaviors.EngineMotor(Owner) and Owner.TacticalMoveActive) or Owner:NumberValueExists("AIRetreat") then
 		return;
@@ -1051,7 +1051,7 @@ function SharedBehaviors.CrowdingUpdate(AI, Owner)
 	local Near = {};
 	for Mate in MovableMan.Actors do
 		local mateClass = Mate.Team == team and Mate.UniqueID ~= ownID and Mate.Status < Actor.DYING and Mate.ClassName;
-		if (mateClass == "AHuman" or mateClass == "ACrab") and not Mate.Vel:MagnitudeIsGreaterThan(2) then
+		if (mateClass == "AHuman" or mateClass == "ACrab" or mateClass == "AMech") and not Mate.Vel:MagnitudeIsGreaterThan(2) then
 			local Dist = SceneMan:ShortestDistance(OwnPos, Mate.Pos, false);
 			if math.abs(Dist.X) < reach and math.abs(Dist.Y) < height then
 				Near[#Near + 1] = {dx = Dist.X, dy = Dist.Y, earlier = Mate.UniqueID < ownID};
@@ -1164,7 +1164,7 @@ function SharedBehaviors.SquadTactics(AI, Owner)
 		for Mate in MovableMan.Actors do
 			-- (Fighting men and crabs only: a craft or a door standing next to a unit made it step away under fire.)
 			local className = Mate.Team == team and Mate.UniqueID ~= ownID and Mate.Status < dying and not Mate:IsPlayerControlled() and Mate.ClassName;
-			if className == "AHuman" or className == "ACrab" then
+			if className == "AHuman" or className == "ACrab" or className == "AMech" then
 				local Dist = SceneMan:ShortestDistance(OwnPos, Mate.Pos, false);
 				if Dist:MagnitudeIsLessThan(400) then
 					if SharedBehaviors.PeerValueExists(Mate, "AITargetID") then
@@ -1242,6 +1242,8 @@ end
 function SharedBehaviors.ToActorClass(MO)
 	if MO.ClassName == "AHuman" then
 		return ToAHuman(MO);
+	elseif MO.ClassName == "AMech" then
+		return ToAMech(MO);
 	elseif MO.ClassName == "ACrab" then
 		return ToACrab(MO);
 	elseif MO.ClassName == "ACRocket" then
@@ -5687,7 +5689,7 @@ function SharedBehaviors.CalculateThreatLevel(MO, Owner)
 		else
 			priority = priority + 0.5;
 		end
-	elseif MO.ClassName == "ACrab" then
+	elseif MO.ClassName == "ACrab" or MO.ClassName == "AMech" then
 		if MO.FirearmIsReady then	-- prioritize armed targets
 			priority = priority + 0.7;
 		else
