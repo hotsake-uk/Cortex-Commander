@@ -98,6 +98,7 @@ partial class MainForm : Form
 	const string StockWorld = "Stock";
 	readonly Button clearAllBtn = new() { Text = "Delete build", AutoSize = true };
 	readonly Button runBtn = new() { Text = "Launch built", AutoSize = true };
+	readonly Button studioBtn = new() { Text = "Mod Studio", AutoSize = true };
 	readonly Button buildRunBtn = new() { Text = "Build && Run", AutoSize = true };
 	readonly Button deleteBtn = new() { Text = "Delete cached", AutoSize = true };
 	readonly Button openBtn = new() { Text = "Open folder", AutoSize = true };
@@ -166,7 +167,7 @@ partial class MainForm : Form
 		buildRunBtn.Font = new Font(Font.FontFamily, 12f, FontStyle.Bold);
 		buildRunBtn.Padding = new Padding(20, 6, 20, 6);
 		var actions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(0, 6, 0, 6) };
-		actions.Controls.AddRange(new Control[] { buildRunBtn, runBtn, cancelBtn, clearAllBtn, new Label { Text = "Build type:", AutoSize = true, Padding = new Padding(16, 8, 0, 0) }, configBox, status });
+		actions.Controls.AddRange(new Control[] { buildRunBtn, runBtn, studioBtn, cancelBtn, clearAllBtn, new Label { Text = "Build type:", AutoSize = true, Padding = new Padding(16, 8, 0, 0) }, configBox, status });
 
 		var logPanel = new Panel { Dock = DockStyle.Bottom, Height = 170 };
 		logPanel.Controls.Add(log);
@@ -188,6 +189,7 @@ partial class MainForm : Form
 		commitList.DoubleClick += async (_, _) => await BuildAndRun(true);
 		clearAllBtn.Click += async (_, _) => await ClearAllBuilds();
 		runBtn.Click += async (_, _) => await BuildAndRun(true, false);
+		studioBtn.Click += async (_, _) => await OpenModStudio();
 		buildRunBtn.Click += async (_, _) => await BuildAndRun(true);
 		cancelBtn.Click += (_, _) => { cts?.Cancel(); try { running?.Kill(true); } catch { } };
 		FormClosing += (_, _) => { SaveSettings(); };
@@ -239,7 +241,7 @@ partial class MainForm : Form
 	void SetBusy(bool b, string text = "")
 	{
 		busy = b;
-		foreach (var x in new Control[] { fetchBtn, buildBtn, runBtn, buildRunBtn, clearAllBtn, deleteBtn, openBtn, configBox, repoBox, checkModsBtn })
+		foreach (var x in new Control[] { fetchBtn, buildBtn, runBtn, studioBtn, buildRunBtn, clearAllBtn, deleteBtn, openBtn, configBox, repoBox, checkModsBtn })
 			x.Enabled = !b;
 		cancelBtn.Enabled = b;
 		status.Text = text;
@@ -654,7 +656,7 @@ partial class MainForm : Form
 		return true;
 	}
 
-	async Task Launch(CommitInfo c)
+	async Task Launch(CommitInfo c, string args = "")
 	{
 		var exe = ExePath(c);
 		if (!IsBuilt(c)) { Append(BuiltInfo() == "" ? "Nothing is built yet. Press Build & Launch." : $"Only one build is kept, and it is {BuiltInfo().Split(' ')[0][..10]} ({BuiltInfo().Split(' ', 2).ElementAtOrDefault(1)}), not {c.Short}. Press Build & Launch."); return; }
@@ -669,8 +671,39 @@ partial class MainForm : Form
 			try { Directory.CreateDirectory(Path.Combine(WorktreePath(c), "Userdata")); File.Copy(ini, Path.Combine(WorktreePath(c), "Userdata", "Settings.ini"), true); Append($"Using Settings.ini from {ini}"); }
 			catch (Exception ex) { Append("Could not copy Settings.ini: " + ex.Message); return; }
 		}
-		Append($"Launching {c.Short}");
-		Process.Start(new ProcessStartInfo(exe) { WorkingDirectory = WorktreePath(c), UseShellExecute = true });
+		Append($"Launching {c.Short}" + (args != "" ? " " + args : ""));
+		Process.Start(new ProcessStartInfo(exe, args) { WorkingDirectory = WorktreePath(c), UseShellExecute = true });
+	}
+
+	// Mod Studio is a web page in the version's Tools/ModStudio. With the selected commit built, the game starts in its Actor Editor
+	// too, which shows whatever unit Studio's "Preview in game" sends it.
+	async Task OpenModStudio()
+	{
+		var c = Selected();
+		if (c == null) return;
+		var slot = WorktreePath(c);
+		var page = Path.Combine(slot, "Tools", "ModStudio", "ModStudio.html");
+		if (!File.Exists(page)) page = Path.Combine(Repo, "Tools", "ModStudio", "ModStudio.html"); // nothing built yet: your checkout's copy
+		if (!File.Exists(page)) { Append("This version has no Mod Studio (Tools/ModStudio). Pick a newer commit."); return; }
+
+		if (IsBuilt(c))
+		{
+			await Launch(c, "-editor \"ActorEditor\"");
+			Append($"In Mod Studio, choose this game folder: {slot}");
+		}
+		else
+			Append("Opening Mod Studio. Build & Launch this commit first if you want Preview in game.");
+		Append("Note: mods linked from your Mods folder are refreshed from it on each launch, so save Studio work in a mod you made in Studio, or open your own game folder instead.");
+
+		// Studio needs a Chromium browser to save into the game folder; fall back to the default browser.
+		var url = new Uri(page).AbsoluteUri;
+		foreach (var browser in new[] { "msedge", "chrome" })
+		{
+			try { Process.Start(new ProcessStartInfo(browser, $"\"{url}\"") { UseShellExecute = true }); return; }
+			catch { }
+		}
+		try { Process.Start(new ProcessStartInfo(page) { UseShellExecute = true }); }
+		catch (Exception ex) { Append("Could not open Mod Studio: " + ex.Message); }
 	}
 
 	// Deleting tens of thousands of files is slow on Windows, so rename the folder out of the way (instant), then let a hidden `rd /s /q` empty it
