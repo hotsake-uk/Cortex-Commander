@@ -514,6 +514,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("ResolutionX", { reader >> g_WindowMan.m_ResX; });
 	MatchProperty("ResolutionY", { reader >> g_WindowMan.m_ResY; });
 	MatchProperty("ResolutionMultiplier", { reader >> g_WindowMan.m_ResMultiplier; });
+	MatchProperty("WindowWidth", { reader >> g_WindowMan.m_SavedWindowWidth; });
+	MatchProperty("WindowHeight", { reader >> g_WindowMan.m_SavedWindowHeight; });
 	MatchProperty("EnableVSync", { reader >> g_WindowMan.m_EnableVSync; });
 	MatchProperty("Fullscreen", { reader >> g_WindowMan.m_Fullscreen; });
 	MatchProperty("UseMultiDisplays", { reader >> g_WindowMan.m_UseMultiDisplays; });
@@ -2538,6 +2540,9 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("ResolutionX", g_WindowMan.GetSettingsResX());
 	writer.NewPropertyWithValue("ResolutionY", g_WindowMan.GetSettingsResY());
 	writer.NewPropertyWithValue("ResolutionMultiplier", g_WindowMan.GetSettingsResMultiplier());
+	// Where the window was left, so the next start opens one the same size (the settings are saved as they change, so this survives a crash too).
+	writer.NewPropertyWithValue("WindowWidth", g_WindowMan.GetSettingsWindowWidth());
+	writer.NewPropertyWithValue("WindowHeight", g_WindowMan.GetSettingsWindowHeight());
 	writer.NewPropertyWithValue("Fullscreen", g_WindowMan.m_Fullscreen);
 	writer.NewPropertyWithValue("EnableVSync", g_WindowMan.m_EnableVSync);
 	writer.NewPropertyWithValue("UseMultiDisplays", g_WindowMan.m_UseMultiDisplays);
