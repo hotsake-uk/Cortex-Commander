@@ -3527,8 +3527,8 @@ std::vector<int> PathFinder::GetNodeIdsInBox(Box box, bool samplingReach) {
 
 	// Get the extents of the box's potential influence on PathNodes and their connecting edges.
 	// With the sampling reach, also every node whose measures look into the box (see UpdateNodeCosts): the clearances and the step-overs
-	// two nodes either side, and from below, the head room 96 px up and a step-over's room up to 48 px over its floor and 96 px more, six
-	// rows. (Padded by one node, as it was when the grid only cast lines to its neighbours, a slab placed 60 px over a corridor left the
+	// two nodes either side, and from below, the head room c_ClearanceReach up and a step-over's room up to 48 px over its floor and c_ClearanceReach more
+	// (c_SamplingReachUpNodes rows). (Padded by one node, as it was when the grid only cast lines to its neighbours, a slab placed 60 px over a corridor left the
 	// floor under it with full head room, and a wall built on a stair's landing left the stair leading into it.)
 	const int padSide = samplingReach ? 1 + PathNode::c_SamplingReachSideNodes : 1;
 	const int padBelow = samplingReach ? 1 + PathNode::c_SamplingReachUpNodes : 1;

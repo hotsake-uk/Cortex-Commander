@@ -2,6 +2,7 @@
 
 #include "SandboxInternal.h"
 #include "AVehicle.h"
+#include "AMech.h"
 #include "Turret.h"
 
 namespace SandboxDetail {
@@ -215,6 +216,10 @@ namespace SandboxDetail {
 				car->SetHandbrake(false);
 			}
 		}
+		// (A new order lets go of a brace a Brace order put on.)
+		if (AMech* mech = dynamic_cast<AMech*>(unit); mech && !resend) {
+			mech->SetBraced(false);
+		}
 		if (dynamic_cast<const ACraft*>(unit)) {
 			return;
 		}
@@ -355,6 +360,9 @@ namespace SandboxDetail {
 		ClearSuppress(unit);
 		CancelErrands(unit);
 		ForgetNoRoutes(unit);
+		if (AMech* mech = dynamic_cast<AMech*>(unit)) {
+			mech->SetBraced(false);
+		}
 		s_MoveWatch.erase(unit->GetUniqueID());
 		s_GuardPosts.erase(unit->GetUniqueID());
 		s_BattleDefenders.erase(unit->GetUniqueID());
@@ -760,6 +768,10 @@ namespace SandboxDetail {
 	float WalkPace(Actor* unit) {
 		if (AHuman* human = dynamic_cast<AHuman*>(unit)) {
 			return human->GetLimbPathTravelSpeed(Actor::WALK) * 0.5F * human->GetSpeedMultiplier();
+		}
+		// (A mech walks by its own gait, not the crab's limb paths.)
+		if (const AMech* mech = dynamic_cast<const AMech*>(unit)) {
+			return mech->GetWalkSpeed() * 0.5F * mech->GetSpeedMultiplier();
 		}
 		if (ACrab* crab = dynamic_cast<ACrab*>(unit)) {
 			return crab->GetLimbPathTravelSpeed(Actor::WALK) * 0.5F * crab->GetSpeedMultiplier();
@@ -1408,6 +1420,9 @@ namespace SandboxDetail {
 			case CommandMode::Park:
 				ParkSelected(point, shift);
 				return;
+			case CommandMode::Brace:
+				BraceSelected(point, shift);
+				return;
 			case CommandMode::Ram:
 				RamSelected(nullptr, point);
 				return;
@@ -1747,6 +1762,10 @@ namespace SandboxDetail {
 		}
 		if (s_CommandMode == CommandMode::Park) {
 			ParkSelected(position, modifier == 1);
+			return;
+		}
+		if (s_CommandMode == CommandMode::Brace) {
+			BraceSelected(position, modifier == 1);
 			return;
 		}
 		if (s_CommandMode == CommandMode::AttackMove) {
@@ -2091,6 +2110,43 @@ namespace SandboxDetail {
 			}
 		}
 		MarkOrder(target ? target->GetPos() : point, c_CommandModeColors[static_cast<int>(CommandMode::Ram)]);
+	}
+
+	void BraceSelected(const Vector& point, bool shift) {
+		std::vector<Actor*> units = UnitsToMove(0, true);
+		std::vector<Actor*> mechs;
+		std::erase_if(units, [&mechs](Actor* unit) {
+			if (dynamic_cast<const AMech*>(unit)) {
+				mechs.push_back(unit);
+				return true;
+			}
+			return false;
+		});
+		// (Anyone else selected with them just goes there.)
+		if (!units.empty()) {
+			if (shift) {
+				PlanStepFor(units, PlanKind::Move, point, nullptr);
+			} else {
+				MoveUnitsTo(units, point);
+			}
+		}
+		if (!mechs.empty()) {
+			// There, then braced: the brace is the step after the walk (a unit still on its way starts it once it's there).
+			if (shift) {
+				PlanStepFor(mechs, PlanKind::Move, point, nullptr);
+			} else {
+				MoveUnitsTo(mechs, point);
+			}
+			PlanStepFor(mechs, PlanKind::Brace, point, nullptr);
+			for (Actor* mech: mechs) {
+				AnswerOrder(mech, "OrderMove");
+			}
+		}
+		MarkOrder(point, c_CommandModeColors[static_cast<int>(CommandMode::Brace)]);
+	}
+
+	bool SelectionHasMech() {
+		return std::any_of(s_Selected.begin(), s_Selected.end(), [](const UnitRef& ref) { return dynamic_cast<const AMech*>(GetRef(ref)) != nullptr; });
 	}
 
 	bool SelectionHasCar() {
@@ -2451,6 +2507,11 @@ namespace SandboxDetail {
 			case PlanKind::Park:
 				StartDropoff(unit, step.Place, step.Kind != PlanKind::Dropoff);
 				break;
+			case PlanKind::Brace:
+				if (AMech* mech = dynamic_cast<AMech*>(unit)) {
+					mech->SetBraced(true);
+				}
+				break;
 		}
 		s_FollowingPlan = false;
 		plan.Current = step;
@@ -2476,6 +2537,7 @@ namespace SandboxDetail {
 				return !target || target->IsDead();
 			case PlanKind::Defend:
 			case PlanKind::Suppress:
+			case PlanKind::Brace:
 				return false;
 			case PlanKind::Wait:
 				return g_TimerMan.GetSimUpdateCount() - plan.Started >= plan.Current.Updates;
@@ -3165,7 +3227,7 @@ namespace SandboxDetail {
 			int kind = 0;
 			long target = 0;
 			in >> kind >> step.Place.m_X >> step.Place.m_Y >> target >> step.Facing >> step.Updates >> step.Radius >> step.Sky;
-			step.Kind = static_cast<PlanKind>(std::clamp(kind, 0, static_cast<int>(PlanKind::Park)));
+			step.Kind = static_cast<PlanKind>(std::clamp(kind, 0, static_cast<int>(PlanKind::Brace)));
 			step.Target = ids.Ref(target);
 			return step;
 		}

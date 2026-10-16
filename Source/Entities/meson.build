@@ -1,6 +1,7 @@
 sources += files(
 'ACDropShip.cpp',
 'ACrab.cpp',
+'AMech.cpp',
 'ACraft.cpp',
 'ACRocket.cpp',
 'Activity.cpp',
@@ -33,6 +34,7 @@ sources += files(
 'HeldDevice.cpp',
 'Icon.cpp',
 'Leg.cpp',
+'MechLeg.cpp',
 'LimbPath.cpp',
 'Loadout.cpp',
 'Magazine.cpp',

@@ -363,13 +363,15 @@ namespace RTE {
 		/// @return The ratio.
 		float GetJetAccelRatio() const { return m_JetAccelRatio; }
 		/// Whether the body is flying on its jet just now (lit, or lit in the last 0.4 s): it passes the ladders' rungs, and a ladder lets it go.
-		bool IsJetFlying() const { return m_JetFlying && !m_Ladder.active; }
+		bool IsJetFlying() const { return m_JetFlying && !m_Ladder.active && !m_RopeHold.active; }
 		/// Whether the route-follower is flying a planned flight just now (take-off to landing; see MoveAlongRoute).
 		bool IsFlyingRoute() const { return m_Mover.flight.active; }
 		/// Whether the route-follower is digging along the route just now, the digger out and its trigger held (a Dig step; see MoveAlongRoute).
 		bool IsDiggingRoute() const { return m_Mover.digging; }
 		/// Whether the body is climbing a ladder, hand over hand (see UpdateLadder).
 		bool IsClimbingLadder() const { return m_Ladder.active; }
+		/// Whether the body hangs from a rope by its hands just now (see UpdateRopeHold).
+		bool IsHoldingRope() const { return m_RopeHold.active; }
 
 		/// The AI's grab-ladder control: an AI unit takes hold of a ladder (with up or down pressed at it, as a player does) only while this
 		/// was asked for in the last quarter second, and then even with its jet lit. Without it, an AI unit pressing up or down by a ladder
@@ -1250,6 +1252,28 @@ namespace RTE {
 			Timer stallTimer;
 		};
 		LadderClimb m_Ladder;
+		/// Hanging from a rope by the hands (see UpdateRopeHold). The body is the physics' own: RopeSim's pull hangs it.
+		struct RopeHold {
+			bool active = false;
+			int rope = 0; //!< The rope's id (RopeSim).
+			Vector gripLocal; //!< Where the hands hold, from the body's middle (RopeGripOffset when taken hold of).
+			Vector grip; //!< Where the held point is now.
+			Vector up = Vector(0.0F, -1.0F); //!< The way up the rope from the hands.
+			bool canClimbUp = false;
+			bool canClimbDown = false;
+			bool supported = false;
+			Timer climbTimer; //!< Since the hold last moved a point along.
+			Timer unsupportedTimer; //!< Since the rope above last held it.
+			Timer heldTimer; //!< Since it took hold.
+			int handOver = 0; //!< Which hand is the upper, swapped at each point climbed.
+			float kickPhase = 0.0F; //!< Where the legs' kicking is in its beat.
+			std::array<Vector, 2> footRel = {}; //!< Each foot from its hip, as the dangle has it (FG, BG).
+			std::array<Vector, 2> footVel = {}; //!< And its speed, in px/s.
+			bool feetSet = false;
+			int aiWay = 0; //!< The AI's climb: -1 up the rope, 1 down, 0 holding (see UpdateRopeHoldInput).
+		};
+		RopeHold m_RopeHold;
+		double m_RopeLetGoSimMS = -1.0; //!< When a rope was last let go of, so a jump off one isn't caught by it again at once.
 		double m_AIMantleSimMS = -1.0; //!< When the AI's mantle control was last asked for (see WantMantle).
 		double m_AIGrabLadderSimMS = -1.0; //!< When the AI's grab-ladder control was last asked for (see GrabLadder).
 		struct TacticalMove {
@@ -1311,6 +1335,21 @@ namespace RTE {
 		/// The hands and feet on the rungs.
 		void UpdateLadderLimbs();
 		void LetGoOfLadder(const Vector& velocity);
+		/// Before the jet: taking hold of a rope (RopeSim::TakeHold) in the air with up or the jet held, or pressing up under one; an AI unit
+		/// falling with no jet to save it, whatever it presses. Holding, the climb, the swing's pump and letting go (the jet's key with a side
+		/// key, or alone on a gamepad; down past the rope's end); the jet's key is kept from the jet meanwhile.
+		void UpdateRopeHoldInput();
+		/// The body on the rope, each frame. Nothing holds it in place: it hangs from the rope by the rope's own pull (RopeSim's), swinging under
+		/// gravity, and climbs by moving its hold along the rope a point at a time, which the rope's pull then takes up. The body rocks on a
+		/// loose spring towards the line of the rope, lagging the swing. Lets go when the rope snaps, burns or is cut above the hands.
+		void UpdateRopeHold();
+		/// The hands on the rope, hand over hand as it climbs, and the legs dangling and kicking: each foot a weight on its leg swung by the
+		/// body's swing and gravity, with a struggling kick, kept to the leg's reach and out of the ground.
+		void UpdateRopeHoldLimbs();
+		/// Lets go of the rope, with a push added to the swing's speed (m/s).
+		void LetGoOfRope(const Vector& push);
+		/// Where the hands hold a rope, from the body's middle, upright and unflipped.
+		Vector RopeGripOffset() const;
 		static std::vector<Vector> s_LadderNodes; //!< The scene's background ladder nodes, found now and then (see RefreshLadderNodes).
 		static double s_LadderNodesSimTimeMS; //!< When the nodes were last found, in sim ms; below zero until they have been. (A plain
 		                                      //!< number, not a Timer: a static Timer is built at program start, before the timing manager it

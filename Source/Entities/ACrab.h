@@ -15,6 +15,7 @@ struct BITMAP;
 namespace RTE {
 
 	class Turret;
+	class HeldDevice;
 	class AEJetpack;
 
 	/// A crab-like actor with four legs.
@@ -354,6 +355,23 @@ namespace RTE {
 
 		/// Protected member variable and method declarations
 	protected:
+		/// Sets whether it was made with no legs (see IsBornLegless): a mech's legs are its own (AMech), not the crab's four.
+		void SetBornLegless(bool legless) { m_BornLegless = legless; }
+
+		/// Whether any of the legs that carry it are left (a mech's are its own, AMech).
+		virtual bool HasLegsLeft() const { return m_pLFGLeg || m_pLBGLeg || m_pRFGLeg || m_pRBGLeg; }
+
+		/// Reloads, aims the turret's mounted devices (turning round when the aim goes behind it) and fires them, from the controller. Each
+		/// update, from PreControllerUpdate.
+		/// @param analogAim The controller's analog aim.
+		void UpdateAimAndFire(Vector analogAim);
+
+		/// Called when the aim turns it round (UpdateAimAndFire): a crab starts its strides afresh.
+		virtual void OnFlippedByAim();
+
+		/// Whether a mounted device fires with the trigger now: every one, for a crab (a mech swings its blade only at what it can reach, AMech).
+		virtual bool MountedDeviceMayFire(const HeldDevice* device) const { return true; }
+
 		/// Function that is called when we get a new movepath.
 		/// This processes and cleans up the movepath.
 		void OnNewMovePath() override;

@@ -5,6 +5,7 @@
 #include "ModernHUD.h"
 #include "Notices.h"
 #include "AVehicle.h"
+#include "AMech.h"
 #include "GUISound.h"
 #include "TerrainCandle.h"
 
@@ -3578,6 +3579,11 @@ namespace SandboxDetail {
 				crosshair(g_SceneMan.MovePointToGround(point, 0.0F, 4), color, pixel * 6.0F);
 				const int cars = static_cast<int>(std::count_if(units.begin(), units.end(), [](const Actor* unit) { return dynamic_cast<const AVehicle*>(unit) != nullptr; }));
 				label = "Park here: " + std::to_string(cars) + (cars == 1 ? " vehicle" : " vehicles") + ", handbrake on";
+			} else if (mode == CommandMode::Brace) {
+				const ImU32 color = c_CommandModeColors[static_cast<int>(CommandMode::Brace)];
+				crosshair(g_SceneMan.MovePointToGround(point, 0.0F, 4), color, pixel * 6.0F);
+				const int mechs = static_cast<int>(std::count_if(units.begin(), units.end(), [](const Actor* unit) { return dynamic_cast<const AMech*>(unit) != nullptr; }));
+				label = "Brace here: " + std::to_string(mechs) + (mechs == 1 ? " mech" : " mechs") + ", feet planted";
 			} else if (mode == CommandMode::Ram) {
 				const int ships = static_cast<int>(std::count_if(units.begin(), units.end(), [](const Actor* unit) { return dynamic_cast<const ACShip*>(unit) != nullptr; }));
 				const ImU32 color = c_CommandModeColors[static_cast<int>(CommandMode::Ram)];
@@ -3917,6 +3923,8 @@ namespace SandboxDetail {
 				return "Land";
 			case PlanKind::Park:
 				return "Park";
+			case PlanKind::Brace:
+				return "Brace";
 			default:
 				return "Move";
 		}
@@ -3941,6 +3949,8 @@ namespace SandboxDetail {
 				return c_CommandModeColors[static_cast<int>(CommandMode::Land)];
 			case PlanKind::Park:
 				return c_CommandModeColors[static_cast<int>(CommandMode::Park)];
+			case PlanKind::Brace:
+				return c_CommandModeColors[static_cast<int>(CommandMode::Brace)];
 			default:
 				return c_CommandModeColors[static_cast<int>(CommandMode::Move)];
 		}
@@ -4004,6 +4014,8 @@ namespace SandboxDetail {
 					can = SelectionHasCar();
 				} else if (each == CommandMode::Ram) {
 					can = SelectionHasShip();
+				} else if (each == CommandMode::Brace) {
+					can = SelectionHasMech();
 				}
 				canDo.push_back(can);
 			}
@@ -6251,6 +6263,14 @@ namespace SandboxDetail {
 				const int park = static_cast<int>(CommandMode::Park);
 				if (BarChip(c_CommandModeNames[park], current == park, c_CommandModeColors[park], nullptr, "Drive the selected vehicles to the place clicked and put their handbrakes on there. Everyone stays aboard,\nand they stay put till given another order (ships among them land). Shift adds it to their plans.") == 1) {
 					s_CommandMode = CommandMode::Park;
+				}
+			}
+			// A mech among them: walk to a place and brace there.
+			if (SelectionHasMech()) {
+				line.Next(pixel * 2.0F);
+				const int brace = static_cast<int>(CommandMode::Brace);
+				if (BarChip(c_CommandModeNames[brace], current == brace, c_CommandModeColors[brace], nullptr, "Walk the selected mechs to the place clicked and brace them there: feet planted, aim held steady, hardly\npushed by blasts. They stay braced till given another order. Shift adds it to their plans.") == 1) {
+					s_CommandMode = CommandMode::Brace;
 				}
 			}
 			if (!onlyVehicles) {
