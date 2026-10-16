@@ -104,6 +104,17 @@ window.MS = window.MS || {};
 		if (state) {
 			L.state = state;
 			updateRunButton();
+			// Unlocked applies to the version it unlocked: Studio editing anything else keeps the usual locks.
+			const unlocked = !!(state.config.unlocked && state.editingSlot);
+			const button = $('btnGame');
+			button.textContent = state.config.unlocked ? 'Game · 🔓 unlocked' : 'Game';
+			button.classList.toggle('unlocked', !!state.config.unlocked);
+			if (app() && app().unlocked !== unlocked) {
+				app().unlocked = unlocked;
+				if (app().lib) {
+					app().refreshLocks();
+				}
+			}
 		}
 		return state;
 	};
@@ -296,7 +307,7 @@ window.MS = window.MS || {};
 				own
 					? button('⚒ Build my copy', () => startJob('update', {}), { primary: !s.builtExe, title: 'Build ' + s.config.workDir + ' as it is now' })
 				: simple
-					? button('⟳ Update & build', () => startJob('update', {}), { primary: !s.builtExe, title: 'Fetch the newest ' + s.config.branch + ' and build it if it changed' })
+					? button('⟳ Update & build', () => startJob('update', {}), { primary: !s.builtExe, disabled: !!s.config.unlocked, title: s.config.unlocked ? 'Unlocked: Reset, or Lock again, first' : 'Fetch the newest ' + s.config.branch + ' and build it if it changed' })
 					: button('Pick a version…', () => openTab('versions')),
 				el('label', { className: 'gm-inline' }, 'Build type ', configurationSelect()),
 			),
@@ -321,7 +332,7 @@ window.MS = window.MS || {};
 			el('p', { className: 'gm-dim', textContent: 'Launching applies your launch settings and points Studio at the version that starts, so saves, Preview in game and the console talk to that game.' }),
 		);
 		const using = card('Launch settings in use', el('p', { className: 'gm-dim', textContent: 'Reading…' }));
-		body.append(el('div', { className: 'gm-grid' }, version, launches), using);
+		body.append(el('div', { className: 'gm-grid' }, version, launches), unlockCard(), using);
 		withOverview((o) => {
 			fact(details, 'Commit', o.build.subject ? el('span', {}, el('code', { textContent: short(o.build.sha) }), ' ', o.build.subject) : null);
 			fact(details, 'Version', o.build.version);
@@ -330,6 +341,117 @@ window.MS = window.MS || {};
 			fact(details, 'Game', el('code', { textContent: o.build.exe }));
 			using.replaceChildren(el('h3', {}, 'Launch settings in use ', el('button', { className: 'ico-btn', textContent: 'Change…', onclick: () => openTab('settings') })), summaryStrip(o));
 		});
+	}
+
+	// ---- Unlocked: change anything in place, Reset puts it back (launcher.rs) ----
+
+	function unlockCard() {
+		const s = L.state;
+		const c = s.config;
+		if (!c.unlocked) {
+			const own = !!c.workDir;
+			return card(
+				'Unlock everything',
+				el('p', { textContent: 'For messing about: the designer and the code editor change anything in the built version where it is, the game\'s own files in Data (Base.rte and the rest, Lua and INI) and every mod, with no copies and no Edit this mod.' }),
+				el('p', { className: 'gm-dim' }, 'Studio first copies your mods folder ', c.modsDir ? el('code', { textContent: c.modsDir }) : '(none set)', ' into a dated backup and notes the commit the version is at, so Reset puts both back exactly.'),
+				row(button('🔓 Unlock everything…', unlockAll, { disabled: own || !s.builtExe, title: own ? 'Your own copy is yours to manage with git' : !s.builtExe ? 'Build a version first' : '' })),
+			);
+		}
+		const facts = el('dl', { className: 'gm-facts' });
+		fact(facts, 'Since', c.unlockTime ? when(c.unlockTime) : null);
+		fact(facts, 'Version', el('span', {}, el('code', { textContent: s.slot }), ' at ', el('code', { textContent: short(c.unlockCommit) })));
+		fact(facts, 'Mods backup', c.unlockBackup ? el('code', { textContent: c.unlockBackup }) : 'None (no mods folder was set)');
+		fact(facts, 'Of', c.unlockModsDir ? el('code', { textContent: c.unlockModsDir }) : null);
+		return el('section', { className: 'gm-card gm-unlocked' },
+			el('h3', { textContent: '🔓 Unlocked: everything can be changed in place' }),
+			s.editingSlot ? null : el('p', { className: 'gm-bad', textContent: 'Studio is editing ' + s.gameDir + ', not the unlocked version, so the usual locks apply there. Press Edit the built version to change things in place.' }),
+			facts,
+			el('p', { className: 'gm-dim', textContent: 'Update & build waits until you Reset or Lock again, since it moves the version to another commit.' }),
+			row(
+				button('Reset…', resetAll, { primary: true, title: 'Put the version back at its commit and your mods folder back from the backup' }),
+				button('Lock again, keep changes', lockAgain, { title: 'Back to the usual locks; your changes and the backup stay' }),
+			),
+		);
+	}
+
+	async function unlockAll() {
+		if (!(await readyToLeave())) {
+			return;
+		}
+		const o = await guarded(() => call('overview'));
+		const mods = o && o.mods.exists ? o.mods.list : [];
+		const bytes = mods.reduce((n, m) => n + m.bytes, 0);
+		const go = await new Promise((resolve) => MS.dialogs.open('Unlock everything?', el('div', {},
+			el('p', {}, 'Studio copies ', L.state.config.modsDir ? el('span', {}, el('code', { textContent: L.state.config.modsDir }), ' (' + mods.length + ' mods, ' + size(bytes) + ')') : 'nothing (no mods folder is set)', ' into a backup in CortexStudio/Backups, named with today\'s date and time, then unlocks the version in ', el('code', { textContent: L.state.slot }), '.'),
+			el('p', { textContent: 'Saves then go straight into the game\'s own files and your mods (a version\'s mods are links to your mods folder, so they change there too). Reset puts it all back.' }),
+		), [{ text: 'Cancel', action: () => resolve(false) }, { text: 'Back up and unlock', primary: true, action: () => resolve(true) }]));
+		if (!go) {
+			return;
+		}
+		app().toast('Backing up your mods…', '');
+		const answer = await guarded(() => call('unlock', {}));
+		if (!answer) {
+			return;
+		}
+		app().toast(answer.backup ? 'Unlocked. Your mods (' + answer.files + ' files, ' + size(answer.bytes) + ') are backed up in ' + answer.backup + '.' : 'Unlocked.', 'good');
+		if (answer.switched) {
+			follow(answer);
+			return;
+		}
+		await L.refresh();
+		render();
+	}
+
+	async function lockAgain() {
+		const answer = await guarded(() => call('lock', {}));
+		if (!answer) {
+			return;
+		}
+		app().toast('Locked again. Your changes stay' + (answer.backup ? '; the backup is still in ' + answer.backup : '') + '.', 'good');
+		await L.refresh();
+		render();
+	}
+
+	function changeList(title, rows) {
+		const what = { changed: 'changed, goes back:', new: 'new, removed:', deleted: 'deleted, put back:' };
+		const shown = rows.slice(0, 300);
+		return el('div', {},
+			el('h4', { textContent: title }),
+			rows.length
+				? el('div', { className: 'gm-changes' }, shown.map((r) => el('div', {}, el('span', { className: 'gm-dim', textContent: (what[r.what] || r.what) + '  ' }), r.path)), rows.length > shown.length ? el('div', { className: 'gm-dim', textContent: '…and ' + (rows.length - shown.length) + ' more' }) : null)
+				: el('p', { className: 'gm-dim', textContent: 'Nothing changed.' }),
+		);
+	}
+
+	async function resetAll() {
+		const plan = await guarded(() => call('reset-plan'));
+		if (!plan) {
+			return;
+		}
+		const unsaved = app().dirtyDocs().length + MS.ide.dirtyCount();
+		const total = plan.version.length + plan.mods.length + (plan.moved ? 1 : 0);
+		const body = el('div', {},
+			el('p', { textContent: total ? 'Everything below is thrown away for good. Studio\'s History doesn\'t keep it.' : 'Nothing has changed since you unlocked. Reset anyway?' }),
+			plan.moved ? el('p', { className: 'gm-bad' }, 'The version has moved to ', el('code', { textContent: short(plan.head) }), ': it goes back to ', el('code', { textContent: short(plan.commit) }), '.') : null,
+			changeList('The version, ' + L.state.slot + ', back to ' + short(plan.commit) + ' (' + plan.version.length + ')', plan.version),
+			plan.backup ? changeList('Your mods folder, ' + plan.modsDir + ', back to the backup (' + plan.mods.length + ')', plan.mods) : null,
+			plan.world ? el('p', { className: 'gm-dim', textContent: 'The world skin over Data/Base.rte goes too; the next launch puts it back.' }) : null,
+			unsaved ? el('p', { className: 'gm-bad', textContent: 'Your ' + unsaved + ' unsaved file' + (unsaved > 1 ? 's go' : ' goes') + ' as well.' }) : null,
+			plan.backup ? el('p', { className: 'gm-dim' }, 'The backup stays in ', el('code', { textContent: plan.backup }), ', and Studio stays unlocked.') : null,
+		);
+		const go = await new Promise((resolve) => MS.dialogs.open('Reset everything?', body, [{ text: 'Cancel', action: () => resolve(false) }, { text: total ? 'Throw ' + total + ' change' + (total > 1 ? 's' : '') + ' away and reset' : 'Reset', primary: true, action: () => resolve(true) }], true));
+		if (!go) {
+			return;
+		}
+		const answer = await guarded(() => call('reset', {}));
+		if (!answer) {
+			return;
+		}
+		showLog('Reset', answer.log);
+		app().toast('Reset: the version and your mods are as they were. Reloading…', 'good');
+		// Studio reads everything again, and what was unsaved goes with the old files.
+		MS.leaving = true;
+		setTimeout(() => location.reload(), 900);
 	}
 
 	// ---- the overview: details of the build and the launch settings, read on demand ----

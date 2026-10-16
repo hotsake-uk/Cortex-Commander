@@ -176,8 +176,14 @@ window.MS = window.MS || {};
 			return !!this.lockKind(doc);
 		}
 
-		// '' (yours), 'game' (the game's own files) or 'mod' (someone else's mod, not chosen to edit).
+		// '' (yours), 'game' (the game's own files) or 'mod' (someone else's mod, not chosen to edit). Unlocked (the Game screen),
+		// nothing is locked: everything in the version is changed in place, and Reset there puts it back.
 		lockKind(doc) {
+			return MS.app && MS.app.unlocked ? '' : this.ownerKind(doc);
+		}
+
+		// lockKind, unlocked or not.
+		ownerKind(doc) {
 			if (!doc) {
 				return '';
 			}

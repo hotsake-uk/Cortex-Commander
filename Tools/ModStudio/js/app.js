@@ -412,13 +412,17 @@ window.MS = window.MS || {};
 		}
 		const kind = app.lib.lockKind(app.lib.docFor(app.actor.path));
 		const locked = !!kind;
+		const unlockedOther = app.unlocked && app.lib.ownerKind(app.lib.docFor(app.actor.path));
 		t.innerHTML = '';
 		const b = document.createElement('b');
 		b.textContent = app.actor.name;
 		t.append(b, ' · ' + app.actor.path);
 		const badge = document.createElement('span');
 		badge.className = 'badge ' + (locked ? 'lock' : 'own');
-		badge.textContent = kind === 'game' ? 'built-in: make a copy to change it' : kind === 'mod' ? 'someone else\'s mod' : 'your mod';
+		badge.textContent = kind === 'game' ? 'built-in: make a copy to change it' : kind === 'mod' ? 'someone else\'s mod' : unlockedOther ? 'unlocked: changed in place' : 'your mod';
+		if (unlockedOther) {
+			badge.className = 'badge unlocked';
+		}
 		t.append(badge);
 		if (kind === 'mod') {
 			const module = app.actor.path.split('/')[0];
@@ -1173,8 +1177,12 @@ window.MS = window.MS || {};
 	};
 
 	// After Edit this mod: everything that shows what can be changed looks again.
+	// The game's own files are read only, except while Studio is unlocked (the Game screen).
+	app.lockedGameFile = (path) => app.fs.isOfficial(path) && !app.unlocked;
+
 	app.refreshLocks = function () {
 		updateTitle();
+		MS.ide.refreshReadOnly();
 		MS.panels.refresh();
 		app.requestDraw();
 	};

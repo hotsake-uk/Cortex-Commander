@@ -40,6 +40,14 @@ pub struct Config {
 	pub mods_dir: String,
 	pub world: String,
 	pub map: String,
+	/// Unlocked: Studio edits everything in the version in place (the game's own Data, every mod), and Reset puts it all back.
+	pub unlocked: bool,
+	/// What Reset goes back to: the copy of the mods folder taken when you unlocked, that mods folder, the commit the version was
+	/// at, and when.
+	pub unlock_backup: String,
+	pub unlock_mods_dir: String,
+	pub unlock_commit: String,
+	pub unlock_time: String,
 }
 
 pub fn config_dir() -> Option<PathBuf> {
@@ -740,6 +748,13 @@ fn apply_world(config: &Config, slot: &Path, log: &mut Vec<String>) -> Result<()
 		return Ok(());
 	}
 	let marker = slot.join(WORLD_MARKER);
+	if config.unlocked {
+		// Putting stock Data/Base.rte back first would throw away your edits there.
+		if marker.exists() || !config.world.is_empty() {
+			log.push("Unlocked: the world skin is left as it is, so your edits in Data/Base.rte stay.".into());
+		}
+		return Ok(());
+	}
 	if marker.exists() {
 		git(slot, &["checkout", "-f", "--", "Data/Base.rte"]).map_err(|e| format!("Couldn't restore stock Data/Base.rte: {e}"))?;
 		let _ = fs::remove_file(&marker);
@@ -779,6 +794,250 @@ fn apply_world(config: &Config, slot: &Path, log: &mut Vec<String>) -> Result<()
 	}
 	log.push(format!("World {}: {copied} files over Data/Base.rte{}.", config.world, if skipped > 0 { format!(" ({skipped} the game no longer uses skipped)") } else { String::new() }));
 	Ok(())
+}
+
+// ---- unlocked: change anything in place, and Reset puts it all back ----
+//
+// Unlocking copies your mods folder into CortexStudio/Backups (real copies: a version's Mods are hard links to your mods, so a save
+// there changes your mods folder too) and notes the commit the version is at. Studio then lets the designer and the code editor
+// change the game's own files and every mod where they are. Reset checks the version out at that commit again (throwing away every
+// change to its files) and makes your mods folder the backup again, file for file.
+
+fn backups_dir() -> PathBuf {
+	config_dir().unwrap_or_default().join("Backups")
+}
+
+/// Copies a folder, all the way down. Files, bytes.
+fn copy_tree(from: &Path, to: &Path) -> std::io::Result<(u64, u64)> {
+	let (mut files, mut bytes) = (0, 0);
+	fs::create_dir_all(to)?;
+	for entry in fs::read_dir(from)? {
+		let entry = entry?;
+		let target = to.join(entry.file_name());
+		if entry.file_type()?.is_dir() {
+			let (f, b) = copy_tree(&entry.path(), &target)?;
+			files += f;
+			bytes += b;
+		} else if entry.file_type()?.is_file() {
+			bytes += fs::copy(entry.path(), &target)?;
+			files += 1;
+		}
+	}
+	Ok((files, bytes))
+}
+
+/// Every file under `dir`, as paths relative to it with "/" between folders.
+fn relative_files(dir: &Path) -> Vec<String> {
+	let mut found = Vec::new();
+	let mut stack = vec![dir.to_path_buf()];
+	while let Some(d) = stack.pop() {
+		for entry in fs::read_dir(&d).into_iter().flatten().flatten() {
+			let Ok(kind) = entry.file_type() else { continue };
+			if kind.is_dir() {
+				stack.push(entry.path());
+			} else if kind.is_file() {
+				if let Ok(rel) = entry.path().strip_prefix(dir) {
+					found.push(rel.to_string_lossy().replace('\\', "/"));
+				}
+			}
+		}
+	}
+	found.sort();
+	found
+}
+
+fn same_file(a: &Path, b: &Path) -> bool {
+	match (fs::metadata(a), fs::metadata(b)) {
+		(Ok(x), Ok(y)) if x.len() == y.len() => fs::read(a).ok() == fs::read(b).ok(),
+		_ => false,
+	}
+}
+
+fn unlock(config: &mut Config) -> Result<Value, String> {
+	if !config.work_dir.is_empty() {
+		return Err("Studio is set to your own copy of the game, where git is yours to manage. Unlocking is for the version Studio builds.".into());
+	}
+	if config.unlocked {
+		return Err("Already unlocked.".into());
+	}
+	let slot = config.slot_path();
+	if !slot.join(".git").exists() || !slot.join("Data").join("Base.rte").is_dir() {
+		return Err("Build a version first: unlocking edits the version Studio built.".into());
+	}
+	let commit = git(&slot, &["rev-parse", "HEAD"])?.trim().to_string();
+	let now = chrono::Local::now();
+	let mut backup = String::new();
+	let mut files = 0;
+	let mut bytes = 0;
+	if !config.mods_dir.is_empty() && Path::new(&config.mods_dir).is_dir() {
+		let mut target = backups_dir().join(format!("Mods {}", now.format("%Y-%m-%d %H.%M.%S")));
+		let mut n = 2;
+		while target.exists() {
+			target = backups_dir().join(format!("Mods {} ({n})", now.format("%Y-%m-%d %H.%M.%S")));
+			n += 1;
+		}
+		match copy_tree(Path::new(&config.mods_dir), &target) {
+			Ok((f, b)) => {
+				files = f;
+				bytes = b;
+			}
+			Err(e) => {
+				let _ = fs::remove_dir_all(&target);
+				return Err(format!("Couldn't back up {}, so nothing is unlocked: {e}", config.mods_dir));
+			}
+		}
+		backup = target.to_string_lossy().into_owned();
+	}
+	config.unlocked = true;
+	config.unlock_backup = backup.clone();
+	config.unlock_mods_dir = config.mods_dir.clone();
+	config.unlock_commit = commit.clone();
+	config.unlock_time = now.to_rfc3339();
+	config.save();
+	Ok(json!({ "backup": backup, "files": files, "bytes": bytes, "commit": commit }))
+}
+
+/// Locks again, keeping every change (the backup stays where it is).
+fn lock(config: &mut Config) -> Value {
+	let backup = std::mem::take(&mut config.unlock_backup);
+	config.unlocked = false;
+	config.unlock_mods_dir.clear();
+	config.unlock_commit.clear();
+	config.unlock_time.clear();
+	config.save();
+	json!({ "backup": backup })
+}
+
+/// What Reset would throw away: the version's changed and new files, and how your mods folder differs from the backup.
+fn reset_plan(config: &Config) -> Result<Value, String> {
+	if !config.unlocked {
+		return Err("Nothing to reset: Studio isn't unlocked.".into());
+	}
+	let slot = config.slot_path();
+	let head = git(&slot, &["rev-parse", "HEAD"])?.trim().to_string();
+	// Tracked files anywhere, and new files in Data (Reset's clean stays in Data, so Studio's own files and the build are kept).
+	let status = git(&slot, &["status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all"])?;
+	let mut version = Vec::new();
+	for record in status.split('\0').filter(|r| r.len() > 3) {
+		let (code, path) = record.split_at(3);
+		let code = code.trim();
+		if code == "??" && !path.starts_with("Data/") {
+			continue;
+		}
+		version.push(json!({ "path": path, "what": match code { "??" => "new", "D" => "deleted", _ => "changed" } }));
+	}
+	let mut mods = Vec::new();
+	let backup = PathBuf::from(&config.unlock_backup);
+	let mods_dir = PathBuf::from(&config.unlock_mods_dir);
+	if !config.unlock_backup.is_empty() {
+		if !backup.is_dir() {
+			return Err(format!("The mods backup {} is gone, so Reset can't put your mods back.", backup.display()));
+		}
+		let kept = relative_files(&backup);
+		let now = relative_files(&mods_dir);
+		let kept_set: std::collections::HashSet<&String> = kept.iter().collect();
+		for f in &now {
+			if !kept_set.contains(f) {
+				mods.push(json!({ "path": f, "what": "new" }));
+			} else if !same_file(&mods_dir.join(f), &backup.join(f)) {
+				mods.push(json!({ "path": f, "what": "changed" }));
+			}
+		}
+		let now_set: std::collections::HashSet<&String> = now.iter().collect();
+		for f in kept.iter().filter(|f| !now_set.contains(f)) {
+			mods.push(json!({ "path": f, "what": "deleted" }));
+		}
+	}
+	Ok(json!({
+		"commit": config.unlock_commit,
+		"head": head,
+		"moved": head != config.unlock_commit,
+		"world": slot.join(WORLD_MARKER).exists(),
+		"version": version,
+		"mods": mods,
+		"modsDir": config.unlock_mods_dir,
+		"backup": config.unlock_backup,
+	}))
+}
+
+/// Makes `dir` hold exactly what `backup` does. Changed files are written over in place, so hard links to them (a version's Mods)
+/// see the old contents too.
+fn restore_tree(backup: &Path, dir: &Path) -> std::io::Result<u32> {
+	let mut n = 0;
+	let kept = relative_files(backup);
+	let kept_set: std::collections::HashSet<&String> = kept.iter().collect();
+	for f in &kept {
+		let (from, to) = (backup.join(f), dir.join(f));
+		if to.is_file() && same_file(&from, &to) {
+			continue;
+		}
+		if let Some(parent) = to.parent() {
+			fs::create_dir_all(parent)?;
+		}
+		if to.is_dir() {
+			fs::remove_dir_all(&to)?;
+		}
+		fs::write(&to, fs::read(&from)?)?;
+		n += 1;
+	}
+	for f in relative_files(dir) {
+		if !kept_set.contains(&f) {
+			fs::remove_file(dir.join(&f))?;
+			n += 1;
+		}
+	}
+	// Folders that only the removed files were in.
+	fn prune(dir: &Path, backup: &Path) {
+		for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
+			if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+				let path = entry.path();
+				let twin = backup.join(entry.file_name());
+				if twin.is_dir() {
+					prune(&path, &twin);
+				} else {
+					let _ = fs::remove_dir_all(&path);
+				}
+			}
+		}
+	}
+	prune(dir, backup);
+	Ok(n)
+}
+
+fn reset(config: &Config) -> Result<Vec<String>, String> {
+	if !config.unlocked {
+		return Err("Nothing to reset: Studio isn't unlocked.".into());
+	}
+	let slot = config.slot_path();
+	let mut log = Vec::new();
+	// The mods first: if the backup can't be read, the version is left as it is too.
+	if !config.unlock_backup.is_empty() {
+		let backup = PathBuf::from(&config.unlock_backup);
+		if !backup.is_dir() {
+			return Err(format!("The mods backup {} is gone, so Reset can't put your mods back.", backup.display()));
+		}
+		let n = restore_tree(&backup, Path::new(&config.unlock_mods_dir)).map_err(|e| format!("Couldn't put {} back: {e}", config.unlock_mods_dir))?;
+		log.push(format!("{} is as it was in {} ({n} files put back or removed).", config.unlock_mods_dir, backup.display()));
+		// The version's links follow, and mods that came in while unlocked leave it.
+		let mods = slot.join("Mods");
+		for entry in fs::read_dir(&mods).into_iter().flatten().flatten() {
+			if entry.path().join(COPY_MARKER).exists() && !Path::new(&config.unlock_mods_dir).join(entry.file_name()).is_dir() {
+				let _ = fs::remove_dir_all(entry.path());
+				log.push(format!("Removed {} from the version.", entry.file_name().to_string_lossy()));
+			}
+		}
+		let linking = Config { mods_dir: config.unlock_mods_dir.clone(), ..config.clone() };
+		link_mods(&linking, &slot, &mut log);
+	}
+	let commit = if config.unlock_commit.is_empty() { built_info(&slot).split(' ').next().unwrap_or("").to_string() } else { config.unlock_commit.clone() };
+	if commit.is_empty() {
+		return Err("Studio doesn't know which commit to go back to.".into());
+	}
+	git(&slot, &["checkout", "-f", "--detach", &commit]).map_err(|e| format!("Couldn't check out {}: {e}", &commit[..10.min(commit.len())]))?;
+	git(&slot, &["clean", "-fdq", "--", "Data"]).map_err(|e| format!("Couldn't remove the new files in Data: {e}"))?;
+	let _ = fs::remove_file(slot.join(WORLD_MARKER)); // Data/Base.rte is stock now; the next launch puts the world back.
+	log.push(format!("{} is back at {} with no changes.", slot.display(), &commit[..10.min(commit.len())]));
+	Ok(log)
 }
 
 // ---- what the Play and Launch settings screens show ----
@@ -993,12 +1252,18 @@ pub fn handle(launcher: &Launcher, action: &str, query: &dyn Fn(&str) -> Option<
 	if needs_repo && !repo_ok {
 		return fail(400, format!("'{}' isn't a git checkout of the game. Set the repo folder in Settings.", config.repo));
 	}
+	if config.unlocked && matches!(action, "build" | "update" | "delete-build") {
+		return fail(400, "Studio is unlocked, and building moves the version to another commit, throwing away your changes in it. Reset, or Lock again to keep them, first.");
+	}
 	match action {
 		"config" if !body.is_null() => {
-			// PUT: the page's whole config back, merged over what's saved.
+			// PUT: the page's whole config back, merged over what's saved. Unlocking has requests of its own.
 			let mut merged = serde_json::to_value(&config).unwrap();
 			if let (Some(m), Some(b)) = (merged.as_object_mut(), body.as_object()) {
 				for (k, v) in b {
+					if k == "unlocked" || k.starts_with("unlock") {
+						continue;
+					}
 					m.insert(k.clone(), v.clone());
 				}
 			}
@@ -1104,6 +1369,35 @@ pub fn handle(launcher: &Launcher, action: &str, query: &dyn Fn(&str) -> Option<
 			let _ = git(Path::new(&config.repo), &["worktree", "prune"]);
 			ok(json!({ "ok": !slot.exists() }))
 		}
+		"unlock" => {
+			let mut next = config.clone();
+			match unlock(&mut next) {
+				Ok(v) => {
+					*launcher.config.lock().unwrap() = next.clone();
+					// Studio edits the version it unlocked.
+					let slot = next.slot_path();
+					let switch = fs::canonicalize(game_dir).ok() != fs::canonicalize(&slot).ok();
+					let mut v = v;
+					v["switched"] = json!(switch);
+					Answer { status: 200, body: v.to_string(), switch_to: switch.then_some(slot) }
+				}
+				Err(e) => fail(400, e),
+			}
+		}
+		"lock" => {
+			let mut next = config.clone();
+			let v = lock(&mut next);
+			*launcher.config.lock().unwrap() = next;
+			ok(v)
+		}
+		"reset-plan" => match reset_plan(&config) {
+			Ok(v) => ok(v),
+			Err(e) => fail(400, e),
+		},
+		"reset" => match reset(&config) {
+			Ok(log) => ok(json!({ "log": log })),
+			Err(e) => fail(500, e),
+		},
 		"pick" => ok(json!({ "path": pick(&query("kind").unwrap_or_default(), &query("title").unwrap_or_else(|| "Pick a folder".into())) })),
 		_ => fail(404, "Unknown request."),
 	}

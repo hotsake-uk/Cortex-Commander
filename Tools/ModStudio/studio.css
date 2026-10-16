@@ -208,6 +208,7 @@ input.text:focus { border-color: var(--accent); }
 .badge { display: inline-block; font-size: 10.5px; padding: 1px 7px; border-radius: 99px; background: var(--panel3); border: 1px solid var(--line2); color: var(--dim); }
 .badge.own { color: var(--good); border-color: #2b5d3f; }
 .badge.lock { color: var(--warn); border-color: #5a4416; }
+.badge.unlocked { color: #e07b5a; border-color: #6a3322; }
 .frames { display: flex; gap: 4px; flex-wrap: wrap; padding: 4px 0; }
 .frames canvas { width: 40px; height: 40px; background: var(--view-bg); border: 1px solid var(--line); border-radius: 4px; image-rendering: pixelated; cursor: pointer; }
 .frames canvas.sel { border-color: var(--accent); }
@@ -544,6 +545,10 @@ pre.diff .del { color: var(--bad); }
 .gm-dim { color: var(--faint); font-size: 12px; }
 .gm-good { color: var(--good); }
 .gm-bad { color: var(--bad); }
+.gm-card.gm-unlocked { border-color: #6a3322; }
+.gm-unlocked h3 { color: #e07b5a; }
+.gm-changes { max-height: 180px; overflow: auto; font: 12px/1.5 Consolas, "SF Mono", monospace; background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; word-break: break-all; }
+#btnGame.unlocked { color: #e07b5a; border-color: #6a3322; }
 .gm-card code, .gm-deps code { background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; font: 12px/1.5 Consolas, "SF Mono", monospace; word-break: break-all; }
 .gm-launch { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
 .big-launch { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; padding: 12px 14px; border-radius: 8px; border: 1px solid var(--line2); background: var(--panel2); cursor: pointer; }

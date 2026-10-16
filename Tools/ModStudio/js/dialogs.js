@@ -386,7 +386,7 @@ window.MS = window.MS || {};
 						return false;
 					}
 					const dir = folder.value.replace(/\\/g, '/').replace(/\/+$/, '');
-					if (!dir.split('/')[0].toLowerCase().endsWith('.rte') || a.fs.isOfficial(dir)) {
+					if (!dir.split('/')[0].toLowerCase().endsWith('.rte') || a.lockedGameFile(dir)) {
 						a.toast('Save the sprite inside your own mod\'s folder (it starts with YourMod.rte/).', 'bad');
 						return false;
 					}

@@ -39,6 +39,12 @@ Then:
 - **Launch settings**: your Settings.ini (copied in before each launch), a shared presets folder (linked as `Userdata/Presets`),
   your mods folder (each `.rte` linked into `Mods`, changed files only) and a world (planet skin). They start as the Windows
   launcher's settings if you used it, and are kept in `CortexStudio/launcher.json` in your config folder.
+- **Unlock everything** (Play): for messing about. Studio copies your mods folder into `CortexStudio/Backups/Mods <date> <time>`,
+  notes the commit the version is at, then lets the designer and the code editor change anything in the built version where it
+  is: the game's own Lua and INI in `Data` (Base.rte and the rest) and every mod, with no copies and no Edit this mod. A version's
+  mods are links to your mods folder, so saves there change your mods folder too. **Reset** lists every file it will throw away,
+  then checks the version out at that commit again (new files in `Data` go too) and makes your mods folder the backup again.
+  **Lock again** keeps your changes. Update & build waits while it's unlocked, since it moves the version to another commit.
 
 Installers aren't code-signed yet, so Windows SmartScreen and macOS Gatekeeper warn the first time it's opened ("More info",
 "Run anyway" on Windows; right-click, Open on macOS).
