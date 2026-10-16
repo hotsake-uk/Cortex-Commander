@@ -44,6 +44,7 @@ button, input, select { font: inherit; color: inherit; }
 .tb.primary:hover:not(:disabled) { background: #ffc85a; border-color: #ffc85a; }
 .tb.icon { width: 30px; padding: 5px 0; font-weight: 700; }
 .tb.attention { border-color: var(--accent); color: var(--accent); }
+.tb.live-on { background: #1d3a26; border-color: var(--good); color: var(--good); }
 
 .panel { background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
 #left { grid-area: left; border-right: 1px solid var(--line); }

@@ -48,6 +48,9 @@ the held item. Two ways to see it, both started from `Tools\ModStudio` and left 
 - **Test In Sandbox.bat** opens the sandbox (`-modstudio -sandbox [map]`) with the unit as your own sandbox character, the tools put away. Add a map name to use
   another map, for example `"Test In Sandbox.bat" "Ketanot Hills"`.
 
+Turn on **Live** (next to Preview in game) to send every change as you make it: a drag or a number scrub is sent when you let
+go, an undo, a new held item or another unit straight away.
+
 Either one checks the file about twice a second, reloads the changed files and sprites, and swaps in the new unit, holding the
 item picked under **Held item**. The game only finds new mod folders when it starts, so after making a brand-new mod, restart
 the game once.

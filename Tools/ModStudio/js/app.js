@@ -166,6 +166,7 @@ window.MS = window.MS || {};
 		app.select(app.rig ? app.rig.body : null);
 		app.view.fit();
 		MS.panels.markLibrary();
+		app.liveChanged();
 	};
 
 	app.findActorNode = function () {
@@ -208,6 +209,7 @@ window.MS = window.MS || {};
 		app.device = preset ? { path: preset.doc.path, name: preset.name } : null;
 		app.rebuild();
 		MS.panels.refresh();
+		app.liveChanged();
 	};
 
 	// Rebuilds the rig from the current files, keeping the selection.
@@ -276,6 +278,7 @@ window.MS = window.MS || {};
 		$('btnCopy').disabled = false;
 		$('btnCopy').classList.toggle('attention', locked);
 		$('btnPreview').disabled = locked;
+		$('btnLive').disabled = locked || !app.fs || !app.fs.writable;
 	}
 
 	app.select = function (part) {
@@ -375,6 +378,7 @@ window.MS = window.MS || {};
 		app.redo = [];
 		updateUndo();
 		updateFileStatus();
+		app.liveChanged();
 	};
 
 	// Runs fn as one undoable change.
@@ -413,6 +417,7 @@ window.MS = window.MS || {};
 			app.redo.push(entry);
 			app.status('Undid: ' + entry.label);
 			updateUndo();
+			app.liveChanged();
 		}
 	};
 
@@ -423,6 +428,7 @@ window.MS = window.MS || {};
 			app.undo.push(entry);
 			app.status('Redid: ' + entry.label);
 			updateUndo();
+			app.liveChanged();
 		}
 	};
 
@@ -619,7 +625,7 @@ window.MS = window.MS || {};
 	}
 	app.updateFileStatus = updateFileStatus;
 
-	app.save = async function () {
+	app.save = async function (quiet) {
 		const docs = app.dirtyDocs();
 		let written = 0;
 		for (const doc of docs) {
@@ -649,17 +655,18 @@ window.MS = window.MS || {};
 			}
 			return written;
 		}
-		if (written) {
+		if (written && !quiet) {
 			app.toast('Saved ' + written + ' file' + (written > 1 ? 's' : '') + '.', 'good');
 		}
 		return written;
 	};
 
-	app.preview = async function () {
+	// quiet: sent by Live mode, so no messages beyond the status line.
+	app.preview = async function (quiet) {
 		if (!app.actor) {
 			return;
 		}
-		await app.save();
+		await app.save(quiet);
 		const files = new Set(app.savedSinceLastPreview);
 		files.add(app.actor.path);
 		const device = app.device && !app.fs.isOfficial(app.device.path) ? app.device.path : null;
@@ -690,13 +697,63 @@ window.MS = window.MS || {};
 			return;
 		}
 		app.savedSinceLastPreview.clear();
-		if (!readLocal('ms.previewExplained')) {
+		if (quiet) {
+			app.status('Live: sent ' + app.actor.name + ' to the game at ' + new Date().toLocaleTimeString() + '.');
+		} else if (!readLocal('ms.previewExplained')) {
 			MS.dialogs.previewHelp();
 			writeLocal('ms.previewExplained', true);
 		} else {
 			app.toast('Sent to the game. In the Actor Editor it updates within a second.', 'good');
 		}
 	};
+
+	// ---- Live mode: every change goes to the game as it's made ----
+
+	// A change made while a drag or scrub is still under way (an open transaction) waits until it's let go; changes close together go as one.
+	app.live = false;
+	let liveTimer = 0;
+	let liveBusy = false;
+	let liveAgain = false;
+	app.liveChanged = function () {
+		if (!app.live || !app.actor || !app.fs || !app.fs.writable) {
+			return;
+		}
+		clearTimeout(liveTimer);
+		liveTimer = setTimeout(sendLive, 250);
+	};
+	async function sendLive() {
+		if (app.txn) {
+			liveTimer = setTimeout(sendLive, 250);
+			return;
+		}
+		if (liveBusy) {
+			liveAgain = true;
+			return;
+		}
+		liveBusy = true;
+		try {
+			await app.preview(true);
+		} finally {
+			liveBusy = false;
+			if (liveAgain) {
+				liveAgain = false;
+				app.liveChanged();
+			}
+		}
+	}
+	function setLive(on) {
+		app.live = on;
+		const btn = $('btnLive');
+		btn.classList.toggle('live-on', on);
+		btn.textContent = on ? '● Live on' : '● Live';
+		writeLocal('ms.live', on);
+		if (on) {
+			app.status('Live: every change is sent to the game when you make it. Start the game with Actor Editor.bat or Test In Sandbox.bat.');
+			app.liveChanged();
+		} else {
+			app.status('Live off: press Preview in game to send changes.');
+		}
+	}
 
 	function download(blob, name) {
 		const a = document.createElement('a');
@@ -718,6 +775,10 @@ window.MS = window.MS || {};
 		$('btnRedo').onclick = () => app.doRedo();
 		$('btnSave').onclick = () => app.save();
 		$('btnPreview').onclick = () => app.preview();
+		$('btnLive').onclick = () => setLive(!app.live);
+		if (readLocal('ms.live')) {
+			setLive(true);
+		}
 		$('btnCopy').onclick = () => MS.dialogs.copyUnit();
 		$('btnHelp').onclick = () => MS.dialogs.help();
 		for (const btn of document.querySelectorAll('#poseButtons button')) {
