@@ -210,6 +210,18 @@ window.MS = window.MS || {};
 		}
 	}
 
+	// Reads every Lua script once, for anything that looks inside scripts (the graph, Used by) before Script mode has been opened.
+	let scriptsPromise = null;
+	ide.ensureScripts = function () {
+		if (ide.scriptsLoaded) {
+			return Promise.resolve();
+		}
+		if (!scriptsPromise) {
+			scriptsPromise = loadScripts();
+		}
+		return scriptsPromise;
+	};
+
 	// ---- the editor (Monaco) ----
 
 	let monacoLoading = null;

@@ -581,3 +581,13 @@ pre.diff .del { color: var(--bad); }
 .monaco-editor .live-waiting { color: #7d8594 !important; font-style: italic; }
 .monaco-editor .live-logpoint { background: radial-gradient(circle at 50% 50%, #e8b84a 0 4px, transparent 4.5px); cursor: pointer; }
 .monaco-editor .live-logpoint-hint { background: radial-gradient(circle at 50% 50%, rgba(232, 184, 74, .35) 0 4px, transparent 4.5px); cursor: pointer; }
+.rel-gtools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 12px; }
+.rel-gtools .spacer { flex: 1; }
+.rel-check { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.rel-check i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
+.rel-gcount { color: var(--faint); }
+.rel-legend { display: inline-flex; gap: 10px; color: var(--faint); }
+.rel-legend .sq { display: inline-block; width: 10px; height: 10px; border: 2px solid; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+.rel-graph { flex: 1; min-height: 380px; border: 1px solid var(--line); border-radius: 6px; background: #0d0f13; }
+.rel-ginfo { display: flex; align-items: center; gap: 8px; min-height: 28px; font-size: 12.5px; color: var(--dim); }
+.rel-ginfo .spacer { flex: 1; }

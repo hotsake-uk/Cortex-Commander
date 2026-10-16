@@ -279,6 +279,133 @@ window.MS = window.MS || {};
 			return { lines };
 		}
 
+		// ---- the relationship graph ----
+
+		// The presets and scripts around a preset, and how they connect: {nodes, edges, truncated, moreCopies}.
+		//   copy:  a preset -> the preset it copies (CopyOf)
+		//   part:  a preset -> a preset it carries or is built from (an attachment, a held item, a limb), labelled by what it is
+		//   runs:  a preset -> a script it runs (ScriptPath)
+		//   names: a script -> a preset it names in quotes (CreateActor("...") and the like)
+		// depth is how many steps out from the preset to follow.
+		graph(preset, options) {
+			const o = Object.assign({ depth: 1, copies: true, parts: true, scripts: true, mentions: true }, options);
+			const lib = this.app.lib;
+			const nodes = new Map();
+			const edges = [];
+			const edgeSeen = new Set();
+			const MAX_NODES = 160;
+			const MAX_COPIES = 12;
+			const PART_NAMES = { AddAttachable: 'attachment', AddInventory: 'carries', AddDevice: 'holds', FGArm: 'front arm', BGArm: 'back arm', FGLeg: 'front leg', BGLeg: 'back leg', Head: 'head', Jetpack: 'jetpack', Turret: 'turret', Leg: 'leg', AddEmitter: 'emitter', AddAEmitter: 'emitter' };
+			const UNITS = new Set(['AHuman', 'ACrab', 'ACDropShip', 'ACRocket', 'Actor', 'ACraft', 'ADoor']);
+			const ITEMS = new Set(['HDFirearm', 'HeldDevice', 'TDExplosive', 'ThrownDevice', 'Magazine', 'Round']);
+			const ATTACH = new Set(['Attachable', 'AEmitter', 'AEJetpack', 'PEmitter', 'Leg', 'Arm', 'Turret']);
+			const groupOf = (cls) => (UNITS.has(cls) ? 'unit' : ITEMS.has(cls) ? 'item' : ATTACH.has(cls) ? 'attachment' : 'other');
+			const canon = (p) => this.presetOfNode.get(p.node) || p;
+			const truncated = { value: false };
+			let moreCopies = 0;
+
+			const presetId = (p) => 'p:' + p.doc.path + ':' + p.node.line;
+			const addPreset = (p) => {
+				p = canon(p);
+				const id = presetId(p);
+				if (!nodes.has(id)) {
+					if (nodes.size >= MAX_NODES) {
+						truncated.value = true;
+						return null;
+					}
+					nodes.set(id, { id, kind: 'preset', group: groupOf(p.cls), label: p.name, sub: p.cls + ' · ' + p.module, path: p.doc.path, line: p.node.line, preset: p, focus: p === canon(preset) });
+				}
+				return id;
+			};
+			const addScript = (path) => {
+				const clean = path.replace(/\\/g, '/');
+				const id = 's:' + clean.toLowerCase();
+				if (!nodes.has(id)) {
+					if (nodes.size >= MAX_NODES) {
+						truncated.value = true;
+						return null;
+					}
+					nodes.set(id, { id, kind: 'script', group: 'script', label: clean.split('/').pop(), sub: clean.split('/')[0], path: clean, line: 1 });
+				}
+				return id;
+			};
+			const addEdge = (from, to, kind, label) => {
+				if (!from || !to || from === to) {
+					return;
+				}
+				const key = from + '>' + to + '>' + kind + '>' + (label || '');
+				if (!edgeSeen.has(key)) {
+					edgeSeen.add(key);
+					edges.push({ id: 'e' + edges.length, source: from, target: to, kind, label: label || '' });
+				}
+			};
+
+			const first = canon(preset);
+			const rootId = addPreset(first);
+			const queue = [{ p: first, level: 0 }];
+			const expanded = new Set([rootId]);
+			const enqueue = (p, level) => {
+				const id = presetId(canon(p));
+				if (level <= o.depth && !expanded.has(id)) {
+					expanded.add(id);
+					queue.push({ p: canon(p), level });
+				}
+			};
+
+			while (queue.length) {
+				const { p, level } = queue.shift();
+				const from = addPreset(p);
+				if (level >= o.depth) {
+					continue; // shown as a node, not followed further
+				}
+				if (o.copies) {
+					const base = this.base(p);
+					if (base) {
+						addEdge(from, addPreset(base), 'copy', 'copies');
+						enqueue(base, level + 1);
+					}
+					if (level === 0) {
+						const derived = this.derived(p);
+						for (const d of derived.slice(0, MAX_COPIES)) {
+							addEdge(addPreset(d), from, 'copy', 'copies');
+							enqueue(d, level + 1);
+						}
+						moreCopies = Math.max(0, derived.length - MAX_COPIES);
+					}
+				}
+				if (o.parts || o.scripts) {
+					for (const entry of lib.resolve(p.node).entries) {
+						const n = entry.node;
+						if (o.parts && n.children.length) {
+							const copy = n.child('CopyOf');
+							const target = copy ? lib.find(copy.value, n.value, p.doc.module) : null;
+							// Only things you would build with: not wounds, gibs, sounds or effects, which are blocks with a CopyOf too.
+							if (target && target.node !== p.node && groupOf(target.cls) !== 'other' && !/Wound|Gib|Sound|Effect|Emission/i.test(entry.key)) {
+								addEdge(from, addPreset(target), 'part', PART_NAMES[entry.key] || entry.key);
+								enqueue(target, level + 1);
+							}
+						}
+						if (o.scripts && entry.key === 'ScriptPath' && n.value) {
+							addEdge(from, addScript(n.value), 'runs', 'runs');
+						}
+					}
+				}
+				if (o.mentions) {
+					const seenScripts = new Set();
+					for (const m of this.luaMentions(p.name, 200)) {
+						if (seenScripts.size >= 12) {
+							break;
+						}
+						if (!seenScripts.has(m.path)) {
+							seenScripts.add(m.path);
+							addEdge(addScript(m.path), from, 'names', 'names');
+						}
+					}
+				}
+			}
+			return { nodes: [...nodes.values()], edges, truncated: truncated.value, moreCopies };
+		}
+
 		// ---- outline of an open file ----
 
 		symbols(path, model) {
