@@ -203,6 +203,28 @@ bool PresetMan::LoadAllDataModules() {
 			}
 		}
 
+		// Mods load in name order, so one using another's presets (a CopyOf a unit from a mod named after it, as Mod Studio's copies do) fails
+		// when it comes first. Each such mod is tried again once the rest are in, as long as the last round got another one loaded.
+		for (bool loadedAnother = true; loadedAnother;) {
+			loadedAnother = false;
+			std::vector<std::string> waiting;
+			for (const auto& [failedName, failure]: m_FailedMods) {
+				if (failure.find("Couldn't find") != std::string::npos) {
+					waiting.emplace_back(failedName);
+				}
+			}
+			for (const std::string& failedName: waiting) {
+				const std::string failure = m_FailedMods[failedName];
+				m_FailedMods.erase(failedName);
+				if (LoadDataModule(failedName, false, false, LoadingScreen::LoadingSplashProgressReport)) {
+					g_ConsoleMan.AddLoadWarningLogEntry(failedName + " loaded on a second try, after the mods it uses. (The note above about it is from the first try.)");
+					loadedAnother = true;
+				} else if (m_FailedMods.find(failedName) == m_FailedMods.end()) {
+					m_FailedMods[failedName] = failure;
+				}
+			}
+		}
+
 		// Load userdata modules AFTER all other techs etc are loaded; might be referring to stuff in user mods.
 		for (const auto& [userdataModuleName, userdataModuleFriendlyName]: c_UserdataModules) {
 			if (!std::filesystem::exists(System::GetWorkingDirectory() + System::GetUserdataDirectory() + userdataModuleName)) {
