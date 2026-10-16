@@ -659,6 +659,58 @@ pub fn linked_mods_dir(game_dir: &Path) -> Option<PathBuf> {
 	linked.then_some(src)
 }
 
+/// True when two paths are the same file (hard links to one another).
+pub fn same_inode(a: &Path, b: &Path) -> bool {
+	#[cfg(unix)]
+	{
+		use std::os::unix::fs::MetadataExt;
+		match (fs::metadata(a), fs::metadata(b)) {
+			(Ok(x), Ok(y)) => x.dev() == y.dev() && x.ino() == y.ino(),
+			_ => false,
+		}
+	}
+	#[cfg(not(unix))]
+	{
+		let _ = (a, b);
+		false
+	}
+}
+
+/// A file Studio saved or deleted in a mod linked into this version: your mods folder gets the same. Saves to a file it already has
+/// change it through the hard link, but a new file would only be in the version, and the next launch's link_mods would delete it (and
+/// a deleted one would come back). `target` is mods_twin's answer, which the server tells the file bridge about first, so the bridge
+/// doesn't take this for a save of yours.
+pub fn mirror_to_mods(full: &Path, target: &Path, deleted: bool) {
+	if deleted {
+		let _ = fs::remove_file(target);
+		return;
+	}
+	if same_inode(full, target) {
+		return;
+	}
+	if target.exists() {
+		let _ = fs::remove_file(target);
+	}
+	if let Some(parent) = target.parent() {
+		let _ = fs::create_dir_all(parent);
+	}
+	if fs::hard_link(full, target).is_err() {
+		let _ = fs::copy(full, target);
+	}
+}
+
+/// The file in your mods folder that `full`, in a mod linked into the version at `game_dir`, stands for. None for the game's own
+/// files and mods the version has its own copy of.
+pub fn mods_twin(game_dir: &Path, full: &Path) -> Option<PathBuf> {
+	let src = linked_mods_dir(game_dir)?;
+	let relative = full.strip_prefix(game_dir.join("Mods")).ok()?;
+	let module = relative.components().next()?;
+	if !game_dir.join("Mods").join(module).join(COPY_MARKER).exists() || !src.join(module).is_dir() {
+		return None;
+	}
+	Some(src.join(relative))
+}
+
 fn link_mods(config: &Config, slot: &Path, log: &mut Vec<String>) {
 	if config.mods_dir.is_empty() {
 		return;
