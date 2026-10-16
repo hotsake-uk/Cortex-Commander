@@ -33,18 +33,36 @@ Installers aren't code-signed yet, so Windows SmartScreen and macOS Gatekeeper w
 - `src-tauri/src/main.rs`: finds the game folder (remembered in `CortexStudio/settings.json` in the user's config folder),
   starts the server and opens the window.
 
-## Building it
+## Building and running it on your PC
 
-Needs [Rust](https://rustup.rs) and Node.js (for the Tauri command line), plus on Linux:
+### Windows: first time
+
+1. Install **Rust** from [rustup.rs](https://rustup.rs) (or `winget install Rustlang.Rustup`), keeping the default
+   `stable-x86_64-pc-windows-msvc` toolchain. Open a new terminal afterwards so `cargo` is on the PATH.
+2. Install **Visual Studio 2022** (or its Build Tools) with the **Desktop development with C++** workload. You already have it if
+   you build the game.
+3. Install **Node.js** from [nodejs.org](https://nodejs.org) (only needed to build the installers).
+4. WebView2, which shows the window, comes with Windows 10 and 11.
+
+### Windows: every day
+
+- **Run Cortex Studio.bat** builds the app from source and opens it on this checkout. The first build takes a few minutes and later
+  ones take seconds. Mod Studio's page is served straight from `Tools\ModStudio`, so after editing the page press **Ctrl+R** or
+  **F5** in the app to see it. After changing the Rust code in `src-tauri`, close the app and run the .bat again.
+  - `"Run Cortex Studio.bat" -GameDir D:\Games\Cortex` uses another game folder.
+  - `"Run Cortex Studio.bat" -Bridge` runs only the file bridge, with no window, and prints Studio's address.
+- **Build Cortex Studio.bat** builds the release app with the page built in, plus the `.msi` and setup `.exe` installers, and
+  opens the folder they're in (`src-tauri\target\release\bundle`). The app on its own is `src-tauri\target\release\cortex-studio.exe`.
+
+### Linux and macOS
+
+Install Rust from [rustup.rs](https://rustup.rs) and Node.js. On Linux also:
 
     sudo apt install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
 
-Then in this folder:
+macOS needs Xcode's command line tools (`xcode-select --install`). Then in this folder:
 
-    .\dev.ps1          # Windows: a debug build, run on this checkout (-GameDir <folder> for another, -Bridge for headless)
-    ./dev.sh           # Linux and macOS: the same ([game folder] [--bridge])
-    npx @tauri-apps/cli@2 build     # the release app and its installers, in src-tauri/target/release/bundle
+    ./dev.sh [game folder] [--bridge]      # run from source, like Run Cortex Studio.bat
+    npx @tauri-apps/cli@2 build            # the release app and its installers, in src-tauri/target/release/bundle
 
-The dev scripts serve Mod Studio's page straight from `Tools/ModStudio` (by setting `CORTEX_STUDIO_PAGE`), so edit the page and
-reload the window (Ctrl+R or F5) to see it; a change to the Rust side needs the script run again. The release build has the page
-built in.
+Both .bat files call `dev.ps1` or the Tauri command line, so the same commands work from a terminal on Windows too.
