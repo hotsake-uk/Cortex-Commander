@@ -1534,6 +1534,9 @@ window.MS = window.MS || {};
 	// ---- public ----
 
 	function refresh() {
+		if (MS.friendly) {
+			MS.friendly.update();
+		}
 		renderTree();
 		renderInspector();
 		refreshDeviceSelect();

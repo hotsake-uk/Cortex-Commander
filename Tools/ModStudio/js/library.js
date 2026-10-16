@@ -101,6 +101,7 @@ window.MS = window.MS || {};
 			this.byName = new Map(); // lowercased name -> [preset]
 			this.cache = new Map();
 			this.warnings = [];
+			this.problems = []; // [{module, path, missing, message}]: files that could not be read, for the Problems window
 			this.onDocDirty = null;
 		}
 
@@ -137,7 +138,9 @@ window.MS = window.MS || {};
 					try {
 						text = await this.fs.readText(path);
 					} catch (e) {
-						this.warnings.push(module.name + ': couldn\'t read ' + path + ' (' + (e && (e.name + ': ' + e.message)) + ')');
+						const message = e && (e.name + ': ' + e.message);
+						this.warnings.push(module.name + ': couldn\'t read ' + path + ' (' + message + ')');
+						this.problems.push({ module: module.name, path, missing: /not found|404/i.test(String(message)), message: String(message) });
 						return;
 					}
 					doc = new MS.IniDoc(path, text);
