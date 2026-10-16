@@ -831,10 +831,10 @@ window.MS = window.MS || {};
 			return;
 		}
 		const tabs = ide.tabs.filter((t) => t.kind === 'code' && !t.doc && tabDirty(t));
-		let scripts = 0;
+		const scripts = [];
 		for (const tab of tabs) {
-			if (await saveTab(tab)) {
-				scripts += tab.lang === 'lua' ? 1 : 0;
+			if (await saveTab(tab) && tab.lang === 'lua') {
+				scripts.push(tab.path);
 			}
 		}
 		const inis = await app.save(true);
@@ -844,8 +844,9 @@ window.MS = window.MS || {};
 		if (total) {
 			app.toast('Saved ' + total + ' file' + (total > 1 ? 's' : '') + '.', 'good');
 		}
-		if (scripts) {
-			ide.requestScripts({ reload: true });
+		if (scripts.length) {
+			// Only the saved scripts reload, so other scripted objects keep their state. The game reloads everything when no object uses one.
+			ide.requestScripts({ scripts });
 		}
 	};
 
@@ -860,7 +861,11 @@ window.MS = window.MS || {};
 		if (!app.fs || !app.fs.writable) {
 			return;
 		}
-		pendingRequest = Object.assign(pendingRequest || {}, request);
+		const merged = Object.assign(pendingRequest || {}, request);
+		if (request.scripts && pendingRequest && pendingRequest.scripts) {
+			merged.scripts = [...new Set([...pendingRequest.scripts, ...request.scripts])];
+		}
+		pendingRequest = merged;
 		clearTimeout(requestTimer);
 		const wait = Math.max(0, 350 - (Date.now() - lastRequestAt));
 		requestTimer = setTimeout(async () => {
@@ -870,18 +875,22 @@ window.MS = window.MS || {};
 			const lines = ['// Written by Cortex Mod Studio for a game started with -modstudio (Test In Game, Test In Sandbox or Actor Editor in Tools\\ModStudio).', 'Stamp = ' + Date.now()];
 			if (req.reload) {
 				lines.push('ReloadScripts = 1');
+			} else if (req.scripts) {
+				for (const path of req.scripts) {
+					lines.push('ReloadScript = ' + path);
+				}
 			}
 			if (req.run) {
 				lines.push('Run = ' + RUN_FILE);
 			}
 			try {
 				await app.fs.writeDisk(SCRIPTS_FILE, lines.join('\r\n') + '\r\n');
-				if (req.reload) {
+				if (req.reload || req.scripts) {
 					clearGameProblems();
 					if (loud) {
 						app.toast('Asked the game to reload its scripts.', 'good');
 					}
-					consoleLine('— reload scripts sent —', 'studio');
+					consoleLine(req.reload ? '— reload all scripts sent —' : '— reload sent: ' + req.scripts.map(baseName).join(', ') + ' —', 'studio');
 				}
 			} catch (e) {
 				app.toast('Couldn\'t send that to the game: ' + e.message, 'bad');

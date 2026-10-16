@@ -639,6 +639,11 @@ namespace RTE {
 		/// Clears all cached lua functions on all MOs, including owned child MOs.
 		void ReloadLuaScripts();
 
+		/// Reloads the scripts of the MOs that use one script, including owned child MOs. Every other MO keeps its scripts and their state.
+		/// @param scriptPath The full module path of the script.
+		/// @return How many MOs were reloaded.
+		int ReloadLuaScriptsUsing(const std::string& scriptPath);
+
 		/// Protected member variable and method declarations
 	protected:
 		// All actors in the scene

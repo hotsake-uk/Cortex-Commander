@@ -29,6 +29,10 @@ zip of the changed files to unpack into the game folder.
 - **Swap sprites**: select a part and click **Replace** in Sprite. Studio converts any PNG to the game palette, slices
   sprite sheets into frames and writes the files into your mod.
 - **Add helmets and gear** from the Attachments tab, and try items in the hand from the Items tab or the Held item list.
+- **Design guns, craft and crabs** too: the Craft tab opens dropships and rockets, the Units tab also has crabs, and **Design** on
+  an item opens the item itself. A gun turns with the aim about its grip, with dots for the grip, muzzle, shell ejection and
+  back hand; Preview puts it in the hands of the last unit you opened. Engines, thrusters, hatch doors, legs and turrets move
+  and turn like attachments.
 - **Animate**: the pose buttons, Play, the aim slider, Sharp aim and Flip show how the unit moves in game, using the
   unit's own walk paths, limb lengths and arm reach.
 - **Every setting**: All settings lists everything the selected part has (from its own block or inherited), editable, with a filter
@@ -57,7 +61,13 @@ In Deep mode:
   presets for `CopyOf` and file paths, and checks for missing files and presets. The designer and the text are the same file:
   a change in one shows in the other, and undo works across both.
 - **The Scripts section** of a part's properties lists its scripts; **New script** writes one from a template and adds it.
-- **Saving a script** asks the running game to reload every script, and Lua typed in the console box runs in the game (an
+  Script paths anywhere in the properties open the script when clicked, and in INI and Lua files with Ctrl+click. Over a
+  script or picture, **Used by** lists the presets that use it; **Find where it's used** in the file menu lists them too.
+- **New INI file** can start as a unit, gun or scene copied from one of the game's, or a scripted activity with its script.
+  The file is added to the mod's Index.ini.
+- **Saving a script** reloads just that script in the running game: the presets and objects that use it run its new code (their
+  Create runs again) and everything else keeps its state. A script no object uses (a library other scripts load) reloads
+  everything, as does the Reload scripts button. Lua typed in the console box runs in the game (an
   expression's value is printed). Ctrl+Enter runs the selection. Errors in the game's console link to the line, and show
   underlined in the file. `StudioWatch("name", value)` in a script shows a value in the Watch panel, live.
   This works in games started from `Tools\ModStudio` (they pass `-modstudio`).

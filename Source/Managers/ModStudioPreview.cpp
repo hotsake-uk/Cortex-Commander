@@ -271,6 +271,7 @@ void ModStudioPreview::UpdateScripts() {
 	s_ScriptsWriteTime = writeTime;
 
 	bool reloadScripts = false;
+	std::vector<std::string> scriptsToReload;
 	std::string runFile;
 	std::string line;
 	while (std::getline(requestFile, line)) {
@@ -282,11 +283,42 @@ void ModStudioPreview::UpdateScripts() {
 		const std::string value = TrimSpaces(line.substr(equalsPos + 1));
 		if (key == "ReloadScripts") {
 			reloadScripts = value == "1";
+		} else if (key == "ReloadScript" && !value.empty()) {
+			scriptsToReload.push_back(value);
 		} else if (key == "Run") {
 			runFile = value;
 		}
 	}
 
+	if (!reloadScripts && !scriptsToReload.empty() && g_ActivityMan.IsInActivity()) {
+		// Just the saved scripts: the presets and objects using them reload (running their Create again), and every other object keeps its state.
+		// A script no object uses (a library other scripts load, or a module's global script) needs everything reloaded.
+		g_LuaMan.ClearUserModuleCache();
+		std::list<Entity*> presets;
+		g_PresetMan.GetAllOfType(presets, "MovableObject");
+		for (const std::string& scriptPath: scriptsToReload) {
+			const std::string fullPath = g_PresetMan.GetFullModulePath(scriptPath);
+			int users = 0;
+			for (Entity* preset: presets) {
+				if (MovableObject* presetObject = dynamic_cast<MovableObject*>(preset); presetObject && presetObject->HasScript(fullPath)) {
+					presetObject->ReloadScripts();
+					++users;
+				}
+			}
+			const int objects = g_MovableMan.ReloadLuaScriptsUsing(fullPath);
+			users += objects;
+			GAScripted* scriptedActivity = dynamic_cast<GAScripted*>(g_ActivityMan.GetActivity());
+			if (scriptedActivity && scriptedActivity->GetScriptPath() == fullPath) {
+				scriptedActivity->ReloadScripts();
+				++users;
+			}
+			if (users == 0) {
+				reloadScripts = true;
+				break;
+			}
+			g_ConsoleMan.PrintString("SYSTEM: Reloaded " + scriptPath + " (" + std::to_string(objects) + (objects == 1 ? " object" : " objects") + " in the scene).");
+		}
+	}
 	if (reloadScripts && g_ActivityMan.IsInActivity()) {
 		g_PresetMan.ReloadAllScripts();
 		// The running scripted activity is a copy of its preset, so it reloads on its own. Its state (its variables) stays.
