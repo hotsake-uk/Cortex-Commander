@@ -1038,6 +1038,7 @@ window.MS = window.MS || {};
 		}
 		$('btnCopy').onclick = () => MS.dialogs.copyUnit();
 		$('btnHelp').onclick = () => MS.dialogs.help();
+		$('btnNew').onclick = () => MS.wizard.open();
 		$('btnHistory').onclick = () => MS.history.open(app.actor && app.actor.path);
 		$('btnScope').onclick = (e) => {
 			e.stopPropagation();
@@ -1142,6 +1143,10 @@ window.MS = window.MS || {};
 				$('btnLib').click();
 			} else if (e.key.toLowerCase() === 'v' && !ctrl) {
 				$('btnView').click();
+			} else if (e.key.toLowerCase() === 'k' && !ctrl && e.shiftKey && app.view.options.skeleton) {
+				MS.skeletonPictures();
+			} else if (e.key.toLowerCase() === 'k' && !ctrl) {
+				document.querySelector('#viewOptions [data-opt=skeleton]').click();
 			} else if (e.key.toLowerCase() === 'i' && !ctrl) {
 				app.isolate = !app.isolate;
 				app.requestDraw();

@@ -34,9 +34,21 @@ Studio app does this itself).
   and turn like attachments.
 - **Animate**: the pose buttons, Play, the aim slider, Sharp aim and Flip show how the unit moves in game, using the
   unit's own walk paths, limb lengths and arm reach.
+- **Skeleton** (K, or the button above the view) shows how the unit is built: each part's bone from its parent to the joint where
+  it attaches and turns, each part's origin, where hands and ankles reach, and its name. The pictures fade so the bones read. The
+  box beside it says what each mark means and gives the selected part's ParentOffset, JointOffset and SpriteOffset in plain
+  words; **How a unit is put together…** explains the idea and lists the whole unit as a tree. **Pictures** there (or Shift+K) fades,
+  hides or shows the sprites under the bones; with them hidden, click a joint or origin to pick a part.
 - **Every setting**: All settings lists everything the selected part has (from its own block or inherited), editable, with a filter
   and **Add a setting** offering every key that presets of its class use. **Discard unsaved changes** (in **Save ▾**) throws
   away unsaved changes.
+- **+ New…** in the top bar makes a soldier, crab, dropship or rocket, gun, grenade, or an empty mod: pick one in the game to start
+  from, name it and its mod, and change a few settings in plain words (health, weight, cost, passengers, rate of fire...). It's
+  a copy (`CopyOf`) of the original with only your changes written in, saved and opened in the designer.
+- **Data editors** (▦ in Script mode's activity bar), per module, as tabs: **Buy menu** (cost, buyable and groups of every unit,
+  craft and item), **Loadouts** (the craft each comes in and what it brings, picked from thumbnails; make your mod a faction;
+  copy a faction's loadouts into your mod) and **Sounds** (a sound's files to play, add and remove, and how it plays: volume,
+  pitch, range, overlap...). Edits undo and save like any other; the game's own modules are read only unless unlocked.
 - **Panels resize**: drag the edge of the list, the parts and properties panel, the line between the parts and the properties,
   or the console's top edge. Studio remembers the sizes; double-click an edge for the usual size.
 - **Modules** in the top bar picks which modules (.rte) the lists, files and search show (All, My mods, Base only, or any set).
@@ -60,6 +72,12 @@ In Script mode:
   scripts that name it, and **Related**: units (or items) that copy it or copy the same thing, run the same scripts, use the
   same parts or pictures, rarest in common first. Click one to open it (an INI at the right line, a picture in a tab, a sound
   plays, a related unit in the designer). Pictures zoom with the wheel, + − 0 1 or the buttons above them, and drag to move.
+- **Profiler** and **Inspector** (bottom panel, with a game started from Studio's Play menu): the Profiler shows frames a second,
+  update and draw time, what's in the world, where a frame's time goes and the costliest scripts. The Inspector lists every actor
+  in the game; pick one to see its live values, parts and inventory (it's ringed in the game), pause and step the game, and
+  change it: health, team, stop, lift, take control, kill, gib, remove, or open it in the designer. Starting Test in game or
+  Sandbox from Studio opens it by itself (untick Open on Test/Sandbox to stop that); ★ Follow me keeps the unit you control
+  selected as you switch bodies; units that arrive are marked new, and What happened lists arrivals, deaths and departures.
 - **Lua scripts** open in a code editor that knows the game's API: type `self.` or `self:` for what the object has, any
   manager (`MovableMan:`), `function ` for the functions the game calls (Create, Update, OnCollideWithMO…), and
   `CreateAHuman("` for preset names. Hover for help, Ctrl+click or F12 to go to a definition (a function in another script,

@@ -467,22 +467,29 @@ window.MS = window.MS || {};
 
 		// A new INI file in a mod (made if needed), included from the mod's Index.ini: at the end, or just before `before` (a file that
 		// will use presets from the new one, which the game must have read first).
+		// A new mod in Mods: its Index.ini, not yet saved. Returns the module (an existing one as it is).
+		newModule(moduleName) {
+			let module = this.modules.find((m) => m.name.toLowerCase() === moduleName.toLowerCase());
+			if (module) {
+				return module;
+			}
+			module = { name: moduleName, home: 'Mods', official: false, docs: [], title: moduleName.replace(/\.rte$/i, '') };
+			this.modules.push(module);
+			const index = new MS.IniDoc(moduleName + '/Index.ini');
+			const dm = index.root.add('DataModule', '');
+			dm.add('ModuleName', module.title);
+			dm.add('SupportedGameVersion', '6.0.0');
+			dm.add('Version', '1');
+			dm.add('Description', 'Made with Cortex Mod Studio.');
+			this.adoptDoc(index);
+			module.docs.push(index);
+			index.markDirty();
+			return module;
+		}
+
 		async newDoc(path, before) {
 			const moduleName = path.split('/')[0];
-			let module = this.moduleOf(path);
-			if (!module) {
-				module = { name: moduleName, home: 'Mods', official: false, docs: [], title: moduleName.replace(/\.rte$/i, '') };
-				this.modules.push(module);
-				const index = new MS.IniDoc(moduleName + '/Index.ini');
-				const dm = index.root.add('DataModule', '');
-				dm.add('ModuleName', module.title);
-				dm.add('SupportedGameVersion', '6.0.0');
-				dm.add('Version', '1');
-				dm.add('Description', 'Made with Cortex Mod Studio.');
-				this.adoptDoc(index);
-				module.docs.push(index);
-				index.markDirty();
-			}
+			const module = this.moduleOf(path) || this.newModule(moduleName);
 			const doc = new MS.IniDoc(path);
 			this.adoptDoc(doc);
 			module.docs.push(doc);

@@ -128,11 +128,23 @@ window.MS = window.MS || {};
 		['editor', 'Actor Editor', 'The game\'s Actor Editor, where Preview in game shows your unit'],
 	];
 
+	// Run configurations: saved ways to start the game (launcher.rs RunConfig), in the Play menu as "cfg:<name>".
+	const runConfigs = () => (L.state && L.state.config.runConfigs) || [];
+	const findRun = (id) => (id && id.startsWith('cfg:') ? runConfigs().find((c) => 'cfg:' + c.name === id) : null);
+	function describeRun(c) {
+		const what = (LAUNCHES.find((l) => l[0] === c.mode) || LAUNCHES[0])[1].replace('▶ ', '');
+		return [what, (c.mode === 'test' || c.mode === 'sandbox') && c.map ? c.map : null, c.module ? 'only ' + c.module : null, c.timeScale ? c.timeScale + '× speed' : null, c.resolution || null].filter(Boolean).join(' · ');
+	}
+
 	function lastLaunch() {
 		let mode = 'play';
 		try {
 			mode = localStorage.getItem('cortexStudio.lastLaunch') || 'play';
 		} catch (e) {}
+		const run = findRun(mode);
+		if (run) {
+			return [mode, '▶ ' + run.name, describeRun(run)];
+		}
 		return LAUNCHES.find((l) => l[0] === mode) || LAUNCHES[0];
 	}
 
@@ -190,6 +202,17 @@ window.MS = window.MS || {};
 			}
 			menu.append(b);
 		}
+		if (runConfigs().length) {
+			menu.append(el('div', { className: 'run-sep' }), el('div', { className: 'run-label', textContent: 'Saved' }));
+			for (const c of runConfigs()) {
+				const b = item(c.name, describeRun(c), () => L.launch('cfg:' + c.name), !s.builtExe);
+				if ('cfg:' + c.name === last) {
+					b.classList.add('current');
+				}
+				menu.append(b);
+			}
+		}
+		menu.append(item('Run configurations…', 'Save ways to start it: a map, one mod only, faster, another window size', () => L.open('runs')));
 		menu.append(el('div', { className: 'run-sep' }));
 		if (s.config.workDir) {
 			menu.append(item('⚒ Build my copy', 'Build ' + s.config.workDir + ' as it is now', () => L.open('play').then(() => startJob('update', {}))));
@@ -234,6 +257,7 @@ window.MS = window.MS || {};
 			['play', 'Play'],
 			advanced ? ['versions', 'Versions'] : null,
 			['settings', 'Launch settings'],
+			['runs', 'Run configurations'],
 			['setup', 'Setup'],
 		].filter(Boolean);
 		for (const [id, label] of list) {
@@ -249,7 +273,7 @@ window.MS = window.MS || {};
 		// The setup keeps its narrow column; the other screens use the window's width.
 		body.classList.toggle('wide', L.tab !== 'setup');
 		L.rendered = (L.rendered || 0) + 1;
-		const view = { play: renderPlay, versions: renderVersions, settings: renderSettings, setup: renderSetup }[L.tab] || renderPlay;
+		const view = { play: renderPlay, versions: renderVersions, settings: renderSettings, runs: renderRuns, setup: renderSetup }[L.tab] || renderPlay;
 		view(body);
 	}
 
@@ -579,12 +603,19 @@ window.MS = window.MS || {};
 		if (!L.state.editingSlot && !(await readyToLeave())) {
 			return;
 		}
-		const answer = await guarded(() => call('launch', { mode, map: L.state.config.map || '' }));
+		const run = findRun(mode);
+		const body = run
+			? { mode: run.mode || 'play', map: run.map || L.state.config.map || '', module: run.module || '', timeScale: run.timeScale || '', resolution: run.resolution || '' }
+			: { mode, map: L.state.config.map || '' };
+		const answer = await guarded(() => call('launch', body));
 		if (!answer) {
 			return;
 		}
 		showLog('Launch', answer.log);
 		app().toast(answer.log[answer.log.length - 1] || 'Launched.', 'good');
+		if (body.mode === 'test' || body.mode === 'sandbox') {
+			MS.inspector.launched(!!answer.switched);
+		}
 		follow(answer);
 	};
 
@@ -786,6 +817,72 @@ window.MS = window.MS || {};
 		for (const line of lines) {
 			log.append(el('div', { textContent: line }));
 		}
+	}
+
+	// ---- Run configurations ----
+
+	function renderRuns(body) {
+		const list = runConfigs().map((c) => Object.assign({}, c));
+		const save = async () => {
+			await saveConfig({ runConfigs: list });
+			updateRunButton();
+		};
+		const mods = app() && app().lib ? app().lib.modules.filter((m) => !m.official).map((m) => m.name) : [];
+		const rows = list.map((c, i) => {
+			const input = (key, placeholder, width) => {
+				const box = el('input', { type: 'text', value: c[key] || '', placeholder, className: 'gm-input', style: width ? 'width:' + width : '' });
+				box.onchange = async () => {
+					const v = box.value.trim();
+					if (key === 'name' && (!v || list.some((o, j) => j !== i && o.name === v))) {
+						app().toast(v ? 'There is already one called ' + v + '.' : 'It needs a name.', 'bad');
+						box.value = c.name;
+						return;
+					}
+					c[key] = v;
+					await save();
+					render();
+				};
+				return box;
+			};
+			const what = el('select', { className: 'gm-input' }, ...LAUNCHES.map(([id, label]) => el('option', { value: id, textContent: label.replace('▶ ', ''), selected: id === (c.mode || 'play') })));
+			what.onchange = async () => {
+				c.mode = what.value;
+				await save();
+				render();
+			};
+			const only = el('select', { className: 'gm-input', title: 'Load the game\'s own modules and only this mod (-module), to try it on its own' },
+				el('option', { value: '', textContent: 'All my mods' }), ...mods.map((m) => el('option', { value: m, textContent: 'Only ' + m, selected: m === c.module })));
+			only.onchange = async () => {
+				c.module = only.value;
+				await save();
+			};
+			const usesMap = c.mode === 'test' || c.mode === 'sandbox';
+			return el('section', { className: 'gm-card run-card' },
+				el('div', { className: 'gm-row' }, input('name', 'Name', '220px'), what, el('span', { className: 'spacer' }),
+					button('▶ Run', () => L.launch('cfg:' + c.name), { primary: true, disabled: !L.state.builtExe }),
+					button('Delete', async () => {
+						list.splice(i, 1);
+						await save();
+						render();
+					})),
+				el('div', { className: 'run-grid' },
+					el('label', {}, el('span', { textContent: 'Map' }), usesMap ? input('map', 'Maginot (the default)') : el('span', { className: 'gm-dim', textContent: 'Test and Sandbox take a map' })),
+					el('label', {}, el('span', { textContent: 'Mods' }), only),
+					el('label', {}, el('span', { textContent: 'Speed' }), input('timeScale', '1 (normal)'), el('small', { className: 'gm-dim', textContent: '2 runs twice as fast, for soak tests' })),
+					el('label', {}, el('span', { textContent: 'Window size' }), input('resolution', 'Your settings (e.g. 1280x720)'))));
+		});
+		const add = button('+ New run configuration', async () => {
+			let n = 1;
+			while (list.some((c) => c.name === 'Run ' + n)) {
+				n++;
+			}
+			list.push({ name: 'Run ' + n, mode: 'test', map: '', module: '', timeScale: '', resolution: '' });
+			await save();
+			render();
+		}, { primary: !list.length });
+		body.append(card('Run configurations',
+			el('p', { className: 'gm-dim', textContent: 'Saved ways to start the game, in the ▶ Play menu. Each starts the built version with your launch settings, and the top bar\'s Play button repeats whichever you ran last.' }),
+			row(add)), ...rows);
 	}
 
 	// ---- Launch settings ----

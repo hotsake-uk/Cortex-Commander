@@ -50,6 +50,24 @@ pub struct Config {
 	pub unlock_time: String,
 	/// The mods linked into the version when you unlocked: Reset takes out only linked mods that came in after.
 	pub unlock_linked: Vec<String>,
+	/// Saved ways to start the game (the Play menu's run configurations).
+	pub run_configs: Vec<RunConfig>,
+}
+
+/// A saved way to start the game: what to start, on which map, and how.
+#[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(default, rename_all = "camelCase")]
+pub struct RunConfig {
+	pub name: String,
+	/// "play", "test", "sandbox" or "editor", as launch takes.
+	pub mode: String,
+	pub map: String,
+	/// Load only the game's own modules and this mod (-module), to try a mod on its own.
+	pub module: String,
+	/// Run the game this many times faster (CCCP_TIME_SCALE), "" for normal speed.
+	pub time_scale: String,
+	/// "WxH": change the resolution to this once the game is going (CCCP_TEST_RESOLUTION), "" for your settings.
+	pub resolution: String,
 }
 
 pub fn config_dir() -> Option<PathBuf> {
@@ -975,6 +993,10 @@ fn reset_plan(config: &Config) -> Result<Value, String> {
 	if !config.unlocked {
 		return Err("Nothing to reset: Studio isn't unlocked.".into());
 	}
+	if !config.work_dir.is_empty() {
+		// Reset checks the version out again: never on your own copy, where that would throw away your work. Unlocking was for the version.
+		return Err("Studio is set to your own copy of the game now, so Reset won't touch it. Clear Your own copy in Launch settings to reset the version, or Lock again.".into());
+	}
 	let slot = config.slot_path();
 	let head = git(&slot, &["rev-parse", "HEAD"])?.trim().to_string();
 	// Tracked files anywhere, and new files in Data (Reset's clean stays in Data, so Studio's own files and the build are kept).
@@ -1069,6 +1091,10 @@ fn restore_tree(backup: &Path, dir: &Path) -> std::io::Result<u32> {
 fn reset(config: &Config) -> Result<Vec<String>, String> {
 	if !config.unlocked {
 		return Err("Nothing to reset: Studio isn't unlocked.".into());
+	}
+	if !config.work_dir.is_empty() {
+		// Reset checks the version out again: never on your own copy, where that would throw away your work. Unlocking was for the version.
+		return Err("Studio is set to your own copy of the game now, so Reset won't touch it. Clear Your own copy in Launch settings to reset the version, or Lock again.".into());
 	}
 	let slot = config.slot_path();
 	let mut log = Vec::new();
@@ -1207,7 +1233,7 @@ fn worlds(config: &Config) -> Vec<String> {
 }
 
 /// Starts the built version: "play", "test" (the Maginot map with Studio's unit), "sandbox" or "editor" (the Actor Editor).
-fn launch(config: &Config, mode: &str, map: &str) -> Result<Vec<String>, String> {
+fn launch(config: &Config, mode: &str, map: &str, run: &RunConfig) -> Result<Vec<String>, String> {
 	let slot = config.slot_path();
 	let exe = exe_path(&slot, &config.configuration);
 	if !exe.is_file() {
@@ -1236,8 +1262,36 @@ fn launch(config: &Config, mode: &str, map: &str) -> Result<Vec<String>, String>
 	if (mode == "test" || mode == "sandbox") && !map.is_empty() {
 		args.push(map.into());
 	}
+	let module = run.module.trim();
+	if !module.is_empty() {
+		if !module.to_lowercase().ends_with(".rte") || module.contains(['/', '\\']) {
+			return Err(format!("'{module}' isn't a mod's folder name (like MyMod.rte)."));
+		}
+		args.push("-module".into());
+		args.push(module.into());
+		log.push(format!("Loading only the game's own modules and {module}."));
+	}
 	let mut command = Command::new(&exe);
 	command.args(&args).current_dir(&slot);
+	let scale = run.time_scale.trim();
+	if !scale.is_empty() {
+		match scale.parse::<f32>() {
+			Ok(v) if v > 0.1 && v < 20.0 => {
+				command.env("CCCP_TIME_SCALE", scale);
+				log.push(format!("Running {scale} times as fast."));
+			}
+			_ => return Err(format!("Speed '{scale}' should be a number from 0.1 to 20.")),
+		}
+	}
+	let resolution = run.resolution.trim();
+	if !resolution.is_empty() {
+		let ok = resolution.split_once(['x', 'X']).map(|(w, h)| w.parse::<u32>().is_ok() && h.parse::<u32>().is_ok()).unwrap_or(false);
+		if !ok {
+			return Err(format!("Window size '{resolution}' should be like 1280x720."));
+		}
+		command.env("CCCP_TEST_RESOLUTION", resolution);
+		log.push(format!("Switching to {resolution} once the game is going."));
+	}
 	let fmod = if cfg!(target_os = "macos") { slot.join("external/lib/macOS") } else { slot.join("external/lib/linux/x86_64") };
 	if !cfg!(windows) {
 		command.env(if cfg!(target_os = "macos") { "DYLD_LIBRARY_PATH" } else { "LD_LIBRARY_PATH" }, fmod);
@@ -1395,7 +1449,7 @@ pub fn handle(launcher: &Launcher, action: &str, query: &dyn Fn(&str) -> Option<
 			launcher.cancel();
 			ok(json!({ "ok": true }))
 		}
-		"launch" => match launch(&config, &arg(body, "mode"), &arg(body, "map")) {
+		"launch" => match launch(&config, &arg(body, "mode"), &arg(body, "map"), &serde_json::from_value::<RunConfig>(body.clone()).unwrap_or_default()) {
 			Ok(log) => {
 				// Studio follows the launch, so Preview in game and the console talk to the game that's running.
 				let slot = config.slot_path();

@@ -52,6 +52,21 @@ namespace RTE {
 		/// reloading INI files changed on disk (the last unit from Studio comes back with the change), and running Lua typed in Studio's console. Also writes the values scripts watch to ModStudio/Watch.ini. Called every frame.
 		static void UpdateScripts();
 
+		/// In a game started with -modstudio, adds up each sim update's Lua time per script and, twice a second, writes ModStudio/Profile.ini for
+		/// Mod Studio's profiler: frame, update and draw milliseconds, how many actors, particles and MOIDs there are, the named timings
+		/// (PerformanceMan's live timings) and each script's milliseconds and calls a sim update. Call once a sim update, before the script
+		/// timings are cleared.
+		static void UpdateProfile();
+
+		/// Once a frame in a game started with -modstudio: Mod Studio's inspector. While Studio's Inspector is open it writes ModStudio/Inspect.ini
+		/// every second or so (which actor is selected, whether to pause, a step count); this reads it, pauses or steps the simulation, and four
+		/// times a second writes ModStudio/World.ini: every actor in a line, and the selected one's values in detail. While paused it also runs
+		/// Studio's script requests (UpdateScripts), which otherwise wait for a sim update.
+		static void UpdateFrame();
+
+		/// Once a sim update: the inspector's highlight around the selected actor (drawn shapes are cleared each sim update, so it stays while paused).
+		static void UpdateInspectorHighlight();
+
 		/// Called for every line the console prints. In a game started with -modstudio the line also goes to ModStudio/Console.log, where Studio shows
 		/// it, and points at the line of any script error.
 		/// @param line The line printed.
@@ -104,5 +119,11 @@ namespace RTE {
 		static std::chrono::steady_clock::time_point s_LastScriptCheck; //!< When Scripts.ini was last looked at.
 		static std::filesystem::file_time_type s_ScriptsWriteTime; //!< When the last script request handled was written.
 		static bool s_ScriptsLookedAt; //!< Whether Scripts.ini has been looked at yet. A request left from before the game started is skipped.
+		static std::chrono::steady_clock::time_point s_LastProfileWrite; //!< When Profile.ini was last written.
+		static std::chrono::steady_clock::time_point s_LastInspect; //!< When Inspect.ini was last read and World.ini written.
+		static bool s_Inspecting; //!< Whether Studio's Inspector is open (Inspect.ini written in the last few seconds).
+		static long s_InspectSelected; //!< The unique ID of the actor the inspector shows in detail, 0 for none.
+		static bool s_InspectPaused; //!< Whether the inspector holds the simulation paused.
+		static long s_InspectSteps; //!< The step count last seen in Inspect.ini; each one more lets one sim update through.
 	};
 } // namespace RTE

@@ -59,7 +59,8 @@ namespace RTE {
 			SimPauseDebugFreeze = 2, //!< "Freeze simulation" on the Debug page.
 			SimPausePhotoMode = 4, //!< Photo mode's freeze.
 			SimPauseSandbox = 8, //!< The sandbox's tools while they're open.
-			SimPauseUser = 16 //!< The pause hotkey (Pause/Break): holds the world still, menus open or not.
+			SimPauseUser = 16, //!< The pause hotkey (Pause/Break): holds the world still, menus open or not.
+			SimPauseStudio = 32 //!< Mod Studio's inspector (ModStudioPreview::UpdateFrame), which can also step it.
 		};
 
 		/// Pauses the simulation for the menus, or unpauses it for every owner (as a game starts or the menus close: any owner still wanting

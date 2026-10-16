@@ -642,6 +642,7 @@ void RunGameLoop() {
 				Sandbox::Update();
 				ModStudioPreview::UpdateInGame();
 				ModStudioPreview::UpdateScripts();
+				ModStudioPreview::UpdateProfile();
 				logStages.Next("Sim: threat memory");
 				ThreatMemory::Update();
 				logStages.Next("Sim: smoke grid");
@@ -764,6 +765,8 @@ void RunGameLoop() {
 				updateStartTime = g_TimerMan.GetAbsoluteTime();
 			}
 		}
+
+		ModStudioPreview::UpdateFrame();
 
 		updateEndAndDrawStartTime = g_TimerMan.GetAbsoluteTime();
 		updateTotalTime = updateEndAndDrawStartTime - updateStartTime;

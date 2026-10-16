@@ -584,6 +584,7 @@ window.MS = window.MS || {};
 	}
 
 	Rig.POSED_ROLES = POSED_ROLES;
+	Rig.ROLE_NAMES = ROLE_NAMES;
 	Rig.DEVICE_CLASSES = DEVICE_CLASSES;
 	MS.Rig = Rig;
 	MS.drawOrder = drawOrder;

@@ -11,6 +11,14 @@
 window.MS = window.MS || {};
 
 (function () {
+	function readPictures() {
+		try {
+			return localStorage.getItem('ms.skeletonPictures') || 'faded';
+		} catch (e) {
+			return 'faded';
+		}
+	}
+
 	const { rotate, flipX, add, sub, len } = MS.geom;
 
 	class Viewport {
@@ -26,7 +34,10 @@ window.MS = window.MS || {};
 			this.drawList = [];
 			this.poses = null;
 			this.masks = new WeakMap();
-			this.options = { grid: true, joints: true, ground: true, ghosts: false, reach: true };
+			this.options = { grid: true, joints: true, ground: true, ghosts: false, reach: true, skeleton: false }
+			// With the skeleton on, the pictures are 'faded', 'hidden' or 'shown' (skeleton.js's Pictures switch).
+			this.skeletonPictures = readPictures();
+			this.skeletonHits = [];;
 			this.bind();
 		}
 
@@ -151,13 +162,126 @@ window.MS = window.MS || {};
 				}
 				ctx.globalAlpha = 1;
 			}
+			// With the skeleton on, the sprites fade so the bones read.
+			const fade = !this.options.skeleton ? 1 : this.skeletonPictures === 'hidden' ? 0 : this.skeletonPictures === 'shown' ? 1 : 0.3;
 			for (const item of this.drawList) {
-				ctx.globalAlpha = this.app.isolate && this.app.selected && item.part !== this.app.selected ? 0.35 : 1;
+				ctx.globalAlpha = fade * (this.app.isolate && this.app.selected && item.part !== this.app.selected ? 0.35 : 1);
 				this.drawItem(ctx, item);
 			}
 			ctx.globalAlpha = 1;
 			ctx.restore();
+			if (this.options.skeleton) {
+				this.drawSkeleton(ctx, poses);
+			}
 			this.drawOverlays(ctx, poses);
+			this.updateSkeletonHelp();
+		}
+
+		// The skeleton: for every part, the bone from its parent's origin (■) to where it joins (●, the parent's ParentOffset), and on to
+		// its own origin (its JointOffset, back from the joint). Arms reach to the hand, legs to the ankle. Each role has its colour and name.
+		drawSkeleton(ctx, poses) {
+			const app = this.app;
+			const COLOURS = { body: '#f2b63d', head: '#ff8f6b', jetpack: '#b48cff', fgarm: '#4fc37a', bgarm: '#2f8f57', fgleg: '#7fd1ff', bgleg: '#4a90b8', foot: '#a8e6ff', device: '#ef6a5b', magazine: '#e3a3ff', flash: '#ffd84f', turret: '#ff8f6b', mounted: '#ef6a5b', leg: '#7fd1ff', engine: '#b48cff', thruster: '#b48cff', door: '#c8ccd6' };
+			const colourOf = (part) => COLOURS[part.role] || '#c8ccd6';
+			const names = MS.Rig.ROLE_NAMES;
+			const line = (a, b, colour, width, dash) => {
+				ctx.strokeStyle = colour;
+				ctx.lineWidth = width;
+				ctx.setLineDash(dash || []);
+				ctx.beginPath();
+				ctx.moveTo(a.x, a.y);
+				ctx.lineTo(b.x, b.y);
+				ctx.stroke();
+				ctx.setLineDash([]);
+			};
+			const disc = (p, r, fill, stroke) => {
+				ctx.beginPath();
+				ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+				ctx.fillStyle = fill;
+				ctx.fill();
+				ctx.lineWidth = 1.5;
+				ctx.strokeStyle = stroke || 'rgba(0,0,0,.8)';
+				ctx.stroke();
+			};
+			const square = (p, size, fill) => {
+				ctx.fillStyle = fill;
+				ctx.fillRect(p.x - size / 2, p.y - size / 2, size, size);
+				ctx.strokeStyle = 'rgba(0,0,0,.8)';
+				ctx.lineWidth = 1;
+				ctx.strokeRect(p.x - size / 2, p.y - size / 2, size, size);
+			};
+			const labels = [];
+			this.skeletonHits = [];
+			for (const [part, pose] of poses) {
+				if (!pose || !pose.pos || app.isHidden(part)) {
+					continue;
+				}
+				const colour = colourOf(part);
+				const selected = part === app.selected;
+				const at = this.toScreen(pose.pos);
+				const parentPose = part.parent ? poses.get(part.parent) : null;
+				if (parentPose && pose.joint) {
+					const from = this.toScreen(parentPose.pos);
+					const joint = this.toScreen(pose.joint);
+					line(from, joint, 'rgba(0,0,0,.6)', selected ? 6 : 5);
+					line(from, joint, colour, selected ? 4 : 3);
+					line(joint, at, colour, 1.5, [3, 3]);
+					disc(joint, selected ? 6.5 : 5, colour, selected ? '#fff' : null);
+				}
+				if (pose.hand) {
+					const hand = this.toScreen(pose.hand);
+					line(this.toScreen(pose.joint || pose.pos), hand, colour, 2);
+					disc(hand, 3.5, '#fff', colour);
+				}
+				if (pose.ankle) {
+					const ankle = this.toScreen(pose.ankle);
+					line(this.toScreen(pose.joint || pose.pos), ankle, colour, 2);
+					disc(ankle, 3.5, '#fff', colour);
+				}
+				square(at, part.role === 'body' ? 9 : 6, colour);
+				// Joints and origins can be clicked to pick the part (the pictures may be hidden).
+				this.skeletonHits.push({ part, at });
+				if (parentPose && pose.joint) {
+					this.skeletonHits.push({ part, at: this.toScreen(pose.joint) });
+				}
+				labels.push({ at: parentPose && pose.joint ? this.toScreen(pose.joint) : at, text: names[part.role] || part.role, colour, selected });
+			}
+			ctx.font = '11px system-ui, sans-serif';
+			ctx.textBaseline = 'middle';
+			const taken = [];
+			for (const l of labels) {
+				const width = ctx.measureText(l.text).width + 8;
+				let x = l.at.x + 9;
+				let y = l.at.y - 10;
+				// Keep labels off each other: step down until this one has room.
+				while (taken.some((t) => x < t.x + t.w && x + width > t.x && Math.abs(y - t.y) < 15)) {
+					y += 15;
+				}
+				taken.push({ x, y, w: width });
+				ctx.fillStyle = l.selected ? 'rgba(242,182,61,.95)' : 'rgba(0,0,0,.7)';
+				ctx.fillRect(x, y - 7.5, width, 15);
+				ctx.fillStyle = l.selected ? '#1d1503' : l.colour;
+				ctx.fillText(l.text, x + 4, y);
+			}
+		}
+
+		// The words beside the skeleton: what the marks mean, and the selected part's numbers.
+		updateSkeletonHelp() {
+			const box = document.getElementById('skeletonHelp');
+			if (!box) {
+				return;
+			}
+			box.hidden = !this.options.skeleton || !this.app.rig;
+			if (box.hidden) {
+				return;
+			}
+			const sel = this.app.selected;
+			const key = sel ? sel.id + '|' + this.app.lib.generation : '-';
+			if (box.dataset.key === key) {
+				return;
+			}
+			box.dataset.key = key;
+			MS.skeletonHelp(box, sel);
 		}
 
 		drawGrid(ctx, o, z, w, h) {
@@ -427,6 +551,20 @@ window.MS = window.MS || {};
 		}
 
 		partAt(x, y) {
+			if (this.options.skeleton) {
+				let best = null;
+				let bestDist = 9;
+				for (const hit of this.skeletonHits) {
+					const d = Math.hypot(hit.at.x - x, hit.at.y - y);
+					if (d < bestDist) {
+						best = hit.part;
+						bestDist = d;
+					}
+				}
+				if (best || this.skeletonPictures === 'hidden') {
+					return best;
+				}
+			}
 			const world = this.toWorld(x, y);
 			for (let i = this.drawList.length - 1; i >= 0; i--) {
 				const item = this.drawList[i];

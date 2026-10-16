@@ -637,7 +637,7 @@ window.MS = window.MS || {};
 			const label = document.createElement('span');
 			label.className = 'label';
 			const preset = part.ent.presetName || (part.ent.node.child('CopyOf') ? part.ent.node.child('CopyOf').value : '');
-			label.textContent = { body: 'Body', head: 'Head', jetpack: 'Jetpack', fgarm: 'Front arm', bgarm: 'Back arm', fgleg: 'Front leg', bgleg: 'Back leg', foot: 'Foot', magazine: 'Magazine', device: 'Held item', attachable: 'Attachment' }[part.role] + ' ';
+			label.textContent = (MS.Rig.ROLE_NAMES[part.role] || part.role) + ' ';
 			if (preset) {
 				const small = document.createElement('small');
 				small.textContent = preset;
@@ -1539,6 +1539,12 @@ window.MS = window.MS || {};
 		refreshDeviceSelect();
 		markLibrary();
 		app.updateFileStatus();
+		if (MS.ide && MS.ide.refreshForm) {
+			MS.ide.refreshForm(); // an open data editor shows the change (an edit, an undo)
+		}
+		if (MS.editors && !$('view-data').hidden) {
+			MS.editors.renderSide(); // the Data view's counts
+		}
 	}
 
 	let valuesQueued = false;
@@ -1602,6 +1608,7 @@ window.MS = window.MS || {};
 		spriteLoaded: retryThumbs,
 		drawItems,
 		drawSpriteThumb,
+		drawRigThumb,
 		queueThumb,
 		forgetThumbs: () => thumbRigs.clear(),
 		TAB_CLASSES,
