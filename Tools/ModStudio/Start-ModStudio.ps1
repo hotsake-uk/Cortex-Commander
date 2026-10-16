@@ -76,10 +76,10 @@ function Send-Text($response, [int]$status, [string]$text, [string]$type = 'text
 	Send-Bytes $response ([System.Text.Encoding]::UTF8.GetBytes($text)) $type
 }
 
+# System.Web's encoder is far faster than PowerShell string replaces, which matters for /api/inis (tens of MB).
+Add-Type -AssemblyName System.Web
 function ConvertTo-JsonString([string]$s) {
-	$s = $s -replace '\\', '\\' -replace '"', '\"' -replace "`t", '\t' -replace "`r", '\r' -replace "`n", '\n'
-	$s = [regex]::Replace($s, '[\x00-\x1f]', { param($m) '\u{0:x4}' -f [int][char]$m.Value })
-	return '"' + $s + '"'
+	return [System.Web.HttpUtility]::JavaScriptStringEncode($s, $true)
 }
 
 function Invoke-Api($context, [string]$action) {
