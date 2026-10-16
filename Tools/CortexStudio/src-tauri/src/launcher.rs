@@ -993,6 +993,10 @@ fn reset_plan(config: &Config) -> Result<Value, String> {
 	if !config.unlocked {
 		return Err("Nothing to reset: Studio isn't unlocked.".into());
 	}
+	if !config.work_dir.is_empty() {
+		// Reset checks the version out again: never on your own copy, where that would throw away your work. Unlocking was for the version.
+		return Err("Studio is set to your own copy of the game now, so Reset won't touch it. Clear Your own copy in Launch settings to reset the version, or Lock again.".into());
+	}
 	let slot = config.slot_path();
 	let head = git(&slot, &["rev-parse", "HEAD"])?.trim().to_string();
 	// Tracked files anywhere, and new files in Data (Reset's clean stays in Data, so Studio's own files and the build are kept).
@@ -1087,6 +1091,10 @@ fn restore_tree(backup: &Path, dir: &Path) -> std::io::Result<u32> {
 fn reset(config: &Config) -> Result<Vec<String>, String> {
 	if !config.unlocked {
 		return Err("Nothing to reset: Studio isn't unlocked.".into());
+	}
+	if !config.work_dir.is_empty() {
+		// Reset checks the version out again: never on your own copy, where that would throw away your work. Unlocking was for the version.
+		return Err("Studio is set to your own copy of the game now, so Reset won't touch it. Clear Your own copy in Launch settings to reset the version, or Lock again.".into());
 	}
 	let slot = config.slot_path();
 	let mut log = Vec::new();
