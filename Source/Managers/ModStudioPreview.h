@@ -1,7 +1,6 @@
 #pragma once
 
-#include "Timer.h"
-
+#include <chrono>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -13,7 +12,7 @@ namespace RTE {
 
 	/// Units sent from Cortex Mod Studio ("Preview in game"). Studio saves the unit's files, then writes ModStudio/Preview.ini in the game
 	/// folder naming the unit, the files to reload and the item to hold. The Actor Editor shows each new one; a game started with
-	/// -modstudio (Test In Sandbox.bat) swaps the player's unit for it.
+	/// -modstudio (Test In Sandbox.bat) makes it your character in the sandbox, or swaps the player's unit for it in other games.
 	class ModStudioPreview {
 
 	public:
@@ -43,12 +42,12 @@ namespace RTE {
 		/// Makes in-game swapping happen (the -modstudio launch argument).
 		static void EnableInGame() { s_InGame = true; }
 
-		/// In a running game started with -modstudio, swaps the player's unit for each new unit from Studio. Called every frame.
+		/// In a running game started with -modstudio, makes each new unit from Studio your sandbox character (or the player's unit). Called every frame.
 		static void UpdateInGame();
 
 	private:
 		static bool s_InGame; //!< Whether games swap in Studio's units.
-		static Timer s_CheckTimer; //!< How often the request file is looked at.
+		static std::chrono::steady_clock::time_point s_LastCheck; //!< When the request file was last looked at. (Not a Timer: a static one would need TimerMan before it exists.)
 		static std::filesystem::file_time_type s_LastWriteTime; //!< When the last request handled in game was written.
 	};
 } // namespace RTE

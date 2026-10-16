@@ -234,6 +234,11 @@ namespace SandboxDetail {
 				}
 			}
 		}
+		PutPlayerInWorld(actor, place);
+		return actor;
+	}
+
+	void PutPlayerInWorld(Actor* actor, const Vector& place) {
 		int team = std::clamp(s_Player.Team, 0, c_Sides - 1);
 		ActivateSide(team);
 		actor->SetTeam(team);
@@ -244,7 +249,27 @@ namespace SandboxDetail {
 		s_PlayerUnit = {actor, static_cast<long>(actor->GetUniqueID())};
 		s_PlayerMade.push_back(s_PlayerUnit.ID);
 		RemoveStrayPlayers();
-		return actor;
+	}
+
+	void PlayAsUnit(Actor* unit) {
+		// Where the old character stands (got out of any vehicle or craft first), or the middle of the view if there is none.
+		Vector place;
+		if (Actor* old = TakeOutPlayer()) {
+			place = old->GetPos();
+			if (s_Possessed == old) {
+				ReleaseControl(false);
+			}
+			StopFlying();
+			old->SetToDelete(true);
+			s_PlayerUnit = UnitRef();
+		} else {
+			Vector viewMiddle = g_CameraMan.GetOffset(0) + Vector(static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F, static_cast<float>(g_FrameMan.GetPlayerScreenHeight()) * 0.4F);
+			g_SceneMan.WrapPosition(viewMiddle);
+			place = StandingPlaceBelow(viewMiddle);
+		}
+		ClearRespawn();
+		PutPlayerInWorld(unit, OpenAirAt(place));
+		s_PlayerEnterPending = 20;
 	}
 
 	/// Steps into your character, making it first if there isn't one. The stepping in itself happens in an update soon after, once the character is in the world.

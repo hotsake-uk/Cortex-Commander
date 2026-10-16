@@ -415,6 +415,15 @@ void Sandbox::OnToolsClosed(bool atPointer) {
 	s_Queue.push_back(stroke);
 }
 
+bool Sandbox::PlayAs(Actor* unit) {
+	GameActivity* game = CurrentGame();
+	if (!unit || !IsGodMode() || IsBattleCommand() || !game || game->IsFreeBuildMode()) {
+		return false;
+	}
+	PlayAsUnit(unit);
+	return true;
+}
+
 void Sandbox::SetRespawnPoint(bool atPointer) {
 	GameActivity* game = CurrentGame();
 	if (!IsGodMode() || !game || game->IsFreeBuildMode() || !HasCharacter()) {

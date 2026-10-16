@@ -9,6 +9,7 @@
 #include "HeldDevice.h"
 #include "MovableMan.h"
 #include "PresetMan.h"
+#include "Sandbox.h"
 #include "SceneMan.h"
 #include "System.h"
 
@@ -17,7 +18,7 @@
 using namespace RTE;
 
 bool ModStudioPreview::s_InGame = false;
-Timer ModStudioPreview::s_CheckTimer;
+std::chrono::steady_clock::time_point ModStudioPreview::s_LastCheck = {};
 std::filesystem::file_time_type ModStudioPreview::s_LastWriteTime = {};
 
 namespace {
@@ -105,10 +106,11 @@ Actor* ModStudioPreview::MakeUnit(const Request& request, std::string& problem) 
 }
 
 void ModStudioPreview::UpdateInGame() {
-	if (!s_InGame || !s_CheckTimer.IsPastRealMS(400)) {
+	const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+	if (!s_InGame || now - s_LastCheck < std::chrono::milliseconds(400)) {
 		return;
 	}
-	s_CheckTimer.Reset();
+	s_LastCheck = now;
 	GameActivity* game = dynamic_cast<GameActivity*>(g_ActivityMan.GetActivity());
 	if (!g_ActivityMan.IsInActivity() || !game || game->GetActivityState() != Activity::ActivityState::Running || !g_SceneMan.GetScene()) {
 		return;
@@ -124,7 +126,14 @@ void ModStudioPreview::UpdateInGame() {
 		return;
 	}
 
-	// The new unit takes the place of the one the player is in (the last one from Studio, usually), or drops in where the player is looking.
+	const std::string shown = "Showing " + request.PresetName + " from Mod Studio. Press Preview in game again after a change.";
+	// In the sandbox it becomes your own character, so you play it as yourself, with the tools put away.
+	if (Sandbox::PlayAs(unit)) {
+		g_FrameMan.SetScreenText(shown, 0, 0, 4000);
+		return;
+	}
+
+	// In other games the new unit takes the place of the one the player is in (the last one from Studio, usually), or drops in where the player is looking.
 	const int player = Players::PlayerOne;
 	const int team = game->GetTeamOfPlayer(player);
 	Actor* current = game->GetControlledActor(player);
@@ -138,5 +147,5 @@ void ModStudioPreview::UpdateInGame() {
 	}
 	g_MovableMan.AddActor(unit);
 	game->SwitchToActor(unit, player, team);
-	g_FrameMan.SetScreenText("Showing " + request.PresetName + " from Mod Studio. Press Preview in game again after a change.", 0, 0, 4000);
+	g_FrameMan.SetScreenText(shown, 0, 0, 4000);
 }

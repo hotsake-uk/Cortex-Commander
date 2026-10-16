@@ -270,6 +270,12 @@ namespace RTE {
 		/// @param fromOldSave The pins an older saved game held, taken instead when there is no pins file yet.
 		static void LoadPins(const std::string& fromOldSave);
 
+		/// In the Sandbox game mode, makes a unit your character for now, in place of the one you have (where it stood), and steps into it with
+		/// the tools put away. Your character's setup isn't changed, so P after it's gone makes the usual one. Used by Mod Studio's previews.
+		/// @param unit The unit, which the sandbox takes. Call from the main thread.
+		/// @return Whether it was taken: false (and the unit is still the caller's) outside the Sandbox game mode.
+		static bool PlayAs(Actor* unit);
+
 		/// Sets up your character in the Sandbox game mode from a line of text made by GetCharacterSetup.
 		static void SetCharacterSetup(const std::string& setup);
 
