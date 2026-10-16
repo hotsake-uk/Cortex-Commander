@@ -48,10 +48,28 @@ namespace RTE {
 		/// In a running game started with -modstudio, makes each new unit from Studio your sandbox character (or the player's unit). Called every frame.
 		static void UpdateInGame();
 
+		/// In a game started with -modstudio, carries out Studio's script requests (ModStudio/Scripts.ini): reloading scripts after one is saved, and
+		/// running Lua typed in Studio's console. Also writes the values scripts watch to ModStudio/Watch.ini. Called every frame.
+		static void UpdateScripts();
+
+		/// Called for every line the console prints. In a game started with -modstudio the line also goes to ModStudio/Console.log, where Studio shows
+		/// it, and points at the line of any script error.
+		/// @param line The line printed.
+		static void OnConsoleLine(const std::string& line);
+
+		/// StudioWatch(name, value) in Lua: shows a value in Studio's Watch panel, updated a few times a second.
+		/// @param name What the value is called.
+		/// @param value The value, as text.
+		static void Watch(const std::string& name, const std::string& value);
+
 	private:
 		static bool s_InGame; //!< Whether games swap in Studio's units.
 		static std::chrono::steady_clock::time_point s_LastCheck; //!< When the request file was last looked at. (Not a Timer: a static one would need TimerMan before it exists.)
 		static std::filesystem::file_time_type s_LastWriteTime; //!< When the last request handled in game was written.
 		static long s_LastUnitID; //!< The unique ID of the last unit put in a game outside the sandbox, which the next one replaces.
+
+		static std::chrono::steady_clock::time_point s_LastScriptCheck; //!< When Scripts.ini was last looked at.
+		static std::filesystem::file_time_type s_ScriptsWriteTime; //!< When the last script request handled was written.
+		static bool s_ScriptsLookedAt; //!< Whether Scripts.ini has been looked at yet. A request left from before the game started is skipped.
 	};
 } // namespace RTE

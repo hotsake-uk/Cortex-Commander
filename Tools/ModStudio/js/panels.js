@@ -728,6 +728,7 @@ window.MS = window.MS || {};
 			att.append(row);
 		}
 
+		MS.ide.scriptsSection(insp, part, locked, section);
 		allSettings(insp, part, ent, locked);
 	}
 

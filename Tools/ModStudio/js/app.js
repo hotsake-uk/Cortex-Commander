@@ -36,10 +36,11 @@ window.MS = window.MS || {};
 	app.init = function () {
 		app.view = new MS.Viewport($('view'), app);
 		MS.panels.init(app);
+		MS.ide.init(app);
 		bindToolbar();
 		bindKeys();
 		window.addEventListener('beforeunload', (e) => {
-			if (app.dirtyDocs().length) {
+			if (app.dirtyDocs().length || MS.ide.dirtyCount()) {
 				e.preventDefault();
 				e.returnValue = '';
 			}
@@ -128,6 +129,7 @@ window.MS = window.MS || {};
 			app.toast(app.lib.warnings.length + ' files couldn\'t be read, for example: ' + app.lib.warnings[0], 'bad');
 		}
 		MS.panels.showLibrary();
+		MS.ide.gameLoaded();
 		const last = readLocal('ms.lastActor');
 		const preset = last && app.lib.presets.find((p) => p.doc.path === last.path && p.name === last.name);
 		if (preset) {
@@ -617,12 +619,13 @@ window.MS = window.MS || {};
 	};
 
 	function updateFileStatus() {
-		const n = app.dirtyDocs().length;
+		const n = app.dirtyDocs().length + MS.ide.dirtyCount();
 		const el = $('statusFiles');
 		el.textContent = n ? n + ' unsaved file' + (n > 1 ? 's' : '') : 'All saved';
 		el.className = n ? 'dirty' : '';
 		$('btnSave').disabled = !n && !(app.fs && !app.fs.writable && app.fs.pendingWrites.size);
 		$('btnDiscard').disabled = !n;
+		$('btnDiscard').title = MS.ide.dirtyCount() ? 'Throw away unsaved changes, scripts included, and go back to what\'s saved' : 'Throw away unsaved changes and go back to what\'s saved';
 	}
 	app.updateFileStatus = updateFileStatus;
 
@@ -666,15 +669,17 @@ window.MS = window.MS || {};
 	// Throws away every unsaved change, after asking. Pictures Studio already wrote into the mod stay on disk, unused.
 	app.discard = function () {
 		const docs = app.dirtyDocs();
-		if (!docs.length) {
+		const scripts = MS.ide.dirtyScripts();
+		if (!docs.length && !scripts.length) {
 			return;
 		}
 		const list = document.createElement('div');
 		const intro = document.createElement('p');
-		intro.textContent = 'Throw away the unsaved changes in ' + (docs.length === 1 ? 'this file' : 'these ' + docs.length + ' files') + '? They go back to what\'s saved on disk. This can\'t be undone.';
+		const count = docs.length + scripts.length;
+		intro.textContent = 'Throw away the unsaved changes in ' + (count === 1 ? 'this file' : 'these ' + count + ' files') + '? They go back to what\'s saved on disk. This can\'t be undone.';
 		const files = document.createElement('p');
 		files.className = 'small';
-		files.textContent = docs.map((d) => d.path + (d.isNew ? ' (new, not saved yet)' : '')).join(', ');
+		files.textContent = docs.map((d) => d.path + (d.isNew ? ' (new, not saved yet)' : '')).concat(scripts).join(', ');
 		list.append(intro, files);
 		MS.dialogs.open('Discard changes', list, [
 			{ text: 'Keep them' },
@@ -682,6 +687,7 @@ window.MS = window.MS || {};
 				for (const doc of docs) {
 					app.lib.discard(doc);
 				}
+				MS.ide.discardScripts();
 				app.undo = [];
 				app.redo = [];
 				app.lib.reindex();
@@ -828,7 +834,7 @@ window.MS = window.MS || {};
 	function bindToolbar() {
 		$('btnUndo').onclick = () => app.doUndo();
 		$('btnRedo').onclick = () => app.doRedo();
-		$('btnSave').onclick = () => app.save();
+		$('btnSave').onclick = () => (MS.ide.mode === 'deep' ? MS.ide.saveAll() : app.save());
 		$('btnDiscard').onclick = () => app.discard();
 		$('btnPreview').onclick = () => app.preview();
 		$('btnLive').onclick = () => setLive(!app.live);
@@ -913,7 +919,8 @@ window.MS = window.MS || {};
 				}
 				return;
 			}
-			if (typing || !$('modal').hidden) {
+			// (In Deep mode with a file open, keys belong to the editor and its tabs, not the designer.)
+			if (typing || !$('modal').hidden || $('app').classList.contains('code-active')) {
 				if (e.key === 'Escape' && !$('modal').hidden) {
 					MS.dialogs.close();
 				}

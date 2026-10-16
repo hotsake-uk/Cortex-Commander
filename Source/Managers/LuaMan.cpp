@@ -1,5 +1,6 @@
 #include "LuaMan.h"
 #include "Sandbox.h"
+#include "ModStudioPreview.h"
 #include "EffectsParticles.h"
 
 #include "LuabindObjectWrapper.h"
@@ -143,6 +144,7 @@ void LuaStateWrapper::Initialize() {
 	                         luabind::def("GetPathFindingDefaultDigStrength", &LuaAdaptersUtility::GetPathFindingDefaultDigStrength),
 	                         luabind::def("RoundFloatToPrecision", &RoundFloatToPrecision),
 	                         luabind::def("RoundToNearestMultiple", &RoundToNearestMultiple),
+	                         luabind::def("_StudioWatch", &ModStudioPreview::Watch),
 
 	                         RegisterLuaBindingsOfType(SystemLuaBindings, Vector),
 	                         RegisterLuaBindingsOfType(SystemLuaBindings, Box),
@@ -281,6 +283,8 @@ void LuaStateWrapper::Initialize() {
 	              "package.cpath = package.cpath .. \";Data/Base.rte/LuaIntegration/?.so;Data/Base.rte/LuaIntegration/?/?.so;\"\n"
 	              // Add cls() as a shortcut to ConsoleMan:Clear().
 	              "cls = function() ConsoleMan:Clear(); end\n"
+	              // StudioWatch(name, value) shows a value in Cortex Mod Studio's Watch panel (in games started with -modstudio).
+	              "StudioWatch = function(name, value) _StudioWatch(tostring(name), tostring(value)); end\n"
 	              // Override "print" in the lua state to output to the console.
 	              "print = function(stringToPrint) ConsoleMan:PrintString(\"PRINT: \" .. tostring(stringToPrint)); end\n"
 	              // Override random functions to appear global instead of under LuaMan

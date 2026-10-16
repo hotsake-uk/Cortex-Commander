@@ -6,7 +6,9 @@
 #include "ConsoleMan.h"
 #include "FrameMan.h"
 #include "GameActivity.h"
+#include "GAScripted.h"
 #include "HeldDevice.h"
+#include "LuaMan.h"
 #include "MovableMan.h"
 #include "PresetMan.h"
 #include "Sandbox.h"
@@ -14,6 +16,8 @@
 #include "System.h"
 
 #include <fstream>
+#include <map>
+#include <mutex>
 
 using namespace RTE;
 
@@ -21,11 +25,39 @@ bool ModStudioPreview::s_InGame = false;
 std::chrono::steady_clock::time_point ModStudioPreview::s_LastCheck = {};
 long ModStudioPreview::s_LastUnitID = 0;
 std::filesystem::file_time_type ModStudioPreview::s_LastWriteTime = {};
+std::chrono::steady_clock::time_point ModStudioPreview::s_LastScriptCheck = {};
+std::filesystem::file_time_type ModStudioPreview::s_ScriptsWriteTime = {};
+bool ModStudioPreview::s_ScriptsLookedAt = false;
 
 namespace {
 	std::string TrimSpaces(const std::string& text) {
 		const size_t first = text.find_first_not_of(" \t\r\n");
 		return first == std::string::npos ? std::string() : text.substr(first, text.find_last_not_of(" \t\r\n") - first + 1);
+	}
+
+	std::filesystem::path StudioFolder() {
+		return std::filesystem::path(System::GetWorkingDirectory()) / "ModStudio";
+	}
+
+	// The console log and the watched values. Any thread can print or watch, so each has a lock. They are made on first use and never freed:
+	// the console can still print while the program shuts down, after ordinary statics are gone.
+	struct StudioLog {
+		std::mutex Mutex;
+		std::ofstream File; //!< ModStudio/Console.log, opened (emptied) on the first line printed.
+		bool Unflushed = false; //!< Whether lines were added since it was last flushed.
+	};
+	StudioLog& Log() {
+		static StudioLog* log = new StudioLog();
+		return *log;
+	}
+	struct StudioWatched {
+		std::mutex Mutex;
+		std::map<std::string, std::string> Values; //!< The values scripts watch, by name.
+		bool Changed = false; //!< Whether one changed since Watch.ini was last written.
+	};
+	StudioWatched& Watched() {
+		static StudioWatched* watched = new StudioWatched();
+		return *watched;
 	}
 } // namespace
 
@@ -160,4 +192,113 @@ void ModStudioPreview::UpdateInGame() {
 		game->SetViewState(Activity::ViewState::Normal, player);
 	}
 	g_FrameMan.SetScreenText(shown, 0, 0, 4000);
+}
+
+void ModStudioPreview::OnConsoleLine(const std::string& line) {
+	if (!s_InGame) {
+		return;
+	}
+	StudioLog& log = Log();
+	std::scoped_lock<std::mutex> logLock(log.Mutex);
+	if (!log.File.is_open()) {
+		std::error_code error;
+		std::filesystem::create_directories(StudioFolder(), error);
+		log.File.open(StudioFolder() / "Console.log", std::ios::trunc);
+	}
+	if (log.File.is_open()) {
+		log.File << line << '\n';
+		log.Unflushed = true;
+	}
+}
+
+void ModStudioPreview::Watch(const std::string& name, const std::string& value) {
+	StudioWatched& watched = Watched();
+	std::scoped_lock<std::mutex> watchLock(watched.Mutex);
+	std::string& current = watched.Values[name];
+	if (current != value || current.empty()) {
+		current = value;
+		watched.Changed = true;
+	}
+}
+
+void ModStudioPreview::UpdateScripts() {
+	const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+	if (!s_InGame || now - s_LastScriptCheck < std::chrono::milliseconds(250)) {
+		return;
+	}
+	s_LastScriptCheck = now;
+
+	// The log is flushed here rather than on every line, so a script that errors every frame doesn't write to the disk every frame.
+	{
+		StudioLog& log = Log();
+		std::scoped_lock<std::mutex> logLock(log.Mutex);
+		if (log.Unflushed) {
+			log.File.flush();
+			log.Unflushed = false;
+		}
+	}
+	{
+		StudioWatched& watched = Watched();
+		std::scoped_lock<std::mutex> watchLock(watched.Mutex);
+		if (watched.Changed) {
+			watched.Changed = false;
+			std::ofstream watchFile(StudioFolder() / "Watch.ini", std::ios::trunc);
+			for (const auto& [name, value]: watched.Values) {
+				watchFile << name << " = " << value << '\n';
+			}
+		}
+	}
+
+	const std::filesystem::path requestPath = StudioFolder() / "Scripts.ini";
+	std::error_code error;
+	std::filesystem::file_time_type writeTime = std::filesystem::last_write_time(requestPath, error);
+	if (error) {
+		writeTime = std::filesystem::file_time_type();
+	}
+	if (!s_ScriptsLookedAt) {
+		// A request left over from before the game started: the scripts it reloads were just loaded, and the Lua it runs was for that game.
+		s_ScriptsLookedAt = true;
+		s_ScriptsWriteTime = writeTime;
+		return;
+	}
+	if (error || writeTime == s_ScriptsWriteTime) {
+		return;
+	}
+	std::ifstream requestFile(requestPath);
+	if (!requestFile.good()) {
+		return;
+	}
+	s_ScriptsWriteTime = writeTime;
+
+	bool reloadScripts = false;
+	std::string runFile;
+	std::string line;
+	while (std::getline(requestFile, line)) {
+		const size_t equalsPos = line.find('=');
+		if (equalsPos == std::string::npos) {
+			continue;
+		}
+		const std::string key = TrimSpaces(line.substr(0, equalsPos));
+		const std::string value = TrimSpaces(line.substr(equalsPos + 1));
+		if (key == "ReloadScripts") {
+			reloadScripts = value == "1";
+		} else if (key == "Run") {
+			runFile = value;
+		}
+	}
+
+	if (reloadScripts && g_ActivityMan.IsInActivity()) {
+		g_PresetMan.ReloadAllScripts();
+		// The running scripted activity is a copy of its preset, so it reloads on its own. Its state (its variables) stays.
+		if (GAScripted* scriptedActivity = dynamic_cast<GAScripted*>(g_ActivityMan.GetActivity())) {
+			scriptedActivity->ReloadScripts();
+		}
+	}
+	if (!runFile.empty()) {
+		std::ifstream codeFile(std::filesystem::path(System::GetWorkingDirectory()) / runFile);
+		const std::string code((std::istreambuf_iterator<char>(codeFile)), std::istreambuf_iterator<char>());
+		if (!code.empty()) {
+			g_LuaMan.GetMasterScriptState().RunScriptString(code);
+		}
+	}
 }

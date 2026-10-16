@@ -55,6 +55,7 @@ if (-not $NoBrowser) { Start-Process $url }
 $contentTypes = @{
 	'.html' = 'text/html; charset=utf-8'; '.js' = 'text/javascript; charset=utf-8'; '.css' = 'text/css; charset=utf-8'
 	'.png' = 'image/png'; '.svg' = 'image/svg+xml'; '.ico' = 'image/x-icon'; '.json' = 'application/json'
+	'.ttf' = 'font/ttf'; '.lua' = 'text/plain; charset=utf-8'
 }
 
 # A path from the page, made absolute under $root; $null if it would leave $root.
@@ -95,9 +96,10 @@ function Invoke-Api($context, [string]$action) {
 		'info' {
 			Send-Text $response 200 ('{"name":' + (ConvertTo-JsonString (Split-Path -Leaf $GameDir)) + ',"path":' + (ConvertTo-JsonString $GameDir) + '}') 'application/json'
 		}
-		'inis' {
-			# Every .ini in Data and Mods in one answer, so the page doesn't ask for two thousand files one by one. Each file is a
+		{ $_ -in 'inis', 'luas' } {
+			# Every .ini (or .lua) in Data and Mods in one answer, so the page doesn't ask for two thousand files one by one. Each file is a
 			# header line "path<TAB>byte count<LF>" followed by its bytes as they are on disk: no text handling here, which keeps it fast.
+			$pattern = if ($action -eq 'luas') { '*.lua' } else { '*.ini' }
 			$response.ContentType = 'application/octet-stream'
 			$response.SendChunked = $true
 			$out = $response.OutputStream
@@ -105,7 +107,7 @@ function Invoke-Api($context, [string]$action) {
 			foreach ($top in 'Data', 'Mods') {
 				$folder = Join-Path $GameDir $top
 				if (-not [System.IO.Directory]::Exists($folder)) { continue }
-				foreach ($file in [System.IO.Directory]::EnumerateFiles($folder, '*.ini', [System.IO.SearchOption]::AllDirectories)) {
+				foreach ($file in [System.IO.Directory]::EnumerateFiles($folder, $pattern, [System.IO.SearchOption]::AllDirectories)) {
 					$bytes = [System.IO.File]::ReadAllBytes($file)
 					$header = $utf8.GetBytes(($file.Substring($GameDir.Length + 1) -replace '\\', '/') + "`t" + $bytes.Length + "`n")
 					$out.Write($header, 0, $header.Length)
@@ -120,6 +122,48 @@ function Invoke-Api($context, [string]$action) {
 				'{"name":' + (ConvertTo-JsonString ([System.IO.Path]::GetFileName($entry))) + ',"kind":"' + $kind + '"}'
 			}
 			Send-Text $response 200 ('[' + (@($items) -join ',') + ']') 'application/json'
+		}
+		'tree' {
+			# Every file under a folder, as paths from that folder with their sizes: for packaging a mod and the project tree's search.
+			if (-not [System.IO.Directory]::Exists($full)) { Send-Text $response 200 '[]' 'application/json'; return }
+			$items = foreach ($file in [System.IO.Directory]::EnumerateFiles($full, '*', [System.IO.SearchOption]::AllDirectories)) {
+				'{"path":' + (ConvertTo-JsonString ($file.Substring($full.Length + 1) -replace '\\', '/')) + ',"size":' + (New-Object System.IO.FileInfo $file).Length + '}'
+			}
+			Send-Text $response 200 ('[' + (@($items) -join ',') + ']') 'application/json'
+		}
+		'tail' {
+			# The end of a file the game keeps adding to (ModStudio/Console.log), from a byte offset. X-Size is the file's whole length, so the
+			# page can tell when the game started over and emptied it.
+			$from = [long]0
+			[void][long]::TryParse([string]$request.QueryString['from'], [ref]$from)
+			if (-not [System.IO.File]::Exists($full)) { $response.AddHeader('X-Size', '0'); Send-Bytes $response ([byte[]]@()) 'application/octet-stream'; return }
+			$stream = New-Object System.IO.FileStream($full, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
+			try {
+				$size = $stream.Length
+				if ($from -gt $size -or $from -lt 0) { $from = 0 }
+				$count = [int][Math]::Min($size - $from, 4MB)
+				$bytes = New-Object byte[] $count
+				[void]$stream.Seek($from, [System.IO.SeekOrigin]::Begin)
+				$read = 0
+				while ($read -lt $count) {
+					$n = $stream.Read($bytes, $read, $count - $read)
+					if ($n -le 0) { break }
+					$read += $n
+				}
+				$response.AddHeader('X-Size', [string]$size)
+				$response.AddHeader('X-From', [string]$from)
+				Send-Bytes $response $bytes 'application/octet-stream'
+			} finally {
+				$stream.Close()
+			}
+		}
+		'delete' {
+			# Only files in Mods: the game's own files stay as they are.
+			if ($request.HttpMethod -ne 'POST') { Send-Text $response 405 'Use POST.'; return }
+			$mods = Join-Path $GameDir 'Mods'
+			if (-not $full.StartsWith($mods + '\', [StringComparison]::OrdinalIgnoreCase)) { Send-Text $response 403 'Only files in Mods can be deleted.'; return }
+			if ([System.IO.File]::Exists($full)) { [System.IO.File]::Delete($full) }
+			Send-Text $response 200 'ok'
 		}
 		'file' {
 			if ($request.HttpMethod -eq 'PUT') {

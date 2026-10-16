@@ -428,6 +428,12 @@ window.MS = window.MS || {};
 			['L', 'hide or show the list of units, attachments and items'],
 			['Delete', 'remove the selected attachment'],
 			['Ctrl+Z, Ctrl+Y, Ctrl+S', 'undo, redo, save'],
+			['Ctrl+P', 'Deep mode: go to any file'],
+			['Ctrl+Shift+F', 'Deep mode: search every INI file and script'],
+			['Ctrl+J', 'Deep mode: hide or show the console panel'],
+			['Ctrl+Enter', 'Deep mode: run the selected Lua in the game'],
+			['F12, Ctrl+click', 'Deep mode: go to where something is defined'],
+			['Ctrl+W', 'Deep mode: close the file'],
 		];
 		const grid = el('div', { className: 'help-keys' });
 		for (const [k, v] of keys) {
@@ -439,6 +445,7 @@ window.MS = window.MS || {};
 			para('<b>Start</b> by picking a unit in the library. The game\'s own units can\'t be changed in place: press <b>Make my own copy</b> and Studio makes a unit in your mod that copies it, and writes your changes into that.'),
 			para('<b>Shared parts.</b> Units often share a head, arms or helmets with others. Changing or removing a shared part here copies it into your unit first, so the others are untouched. A lock in the parts list means the part can\'t be changed from this unit, and says why.'),
 			para('<b>Grey values</b> come from the preset this unit copies; <i>faint italic</i> ones aren\'t set and the game uses its default. Green notes mean the value is written in your unit.'),
+			para('<b>Artist and Deep.</b> Artist mode is this designer. Deep mode (the switch at the top left) is the whole mod: its files, Lua scripts with autocomplete from the game\'s own API, the game\'s console, search and packaging. Saving a script reloads it in a game started from Tools\\ModStudio.'),
 			para('<b>What you see</b> is placed the way the game places it, but without physics: in the game the body settles on its legs and walking feet push along the ground. <b>Preview in game</b> shows the real thing.'),
 			grid);
 		open('Using Mod Studio', body, [{ text: 'Close' }], true);
