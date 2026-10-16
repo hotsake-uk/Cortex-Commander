@@ -856,6 +856,23 @@ bool PresetMan::QuickReloadEntityPreset() {
 	return ReloadEntityPreset(m_LastReloadedEntityPresetInfo[0], m_LastReloadedEntityPresetInfo[1], m_LastReloadedEntityPresetInfo[2]);
 }
 
+bool PresetMan::ReloadPresetFile(const std::string& filePath) {
+	if (filePath.empty() || GetModuleID(GetModuleNameFromPath(filePath)) < 0 || !System::PathExistsCaseSensitive(GetFullModulePath(filePath))) {
+		return false;
+	}
+	m_ReloadEntityPresetCalledThisUpdate = true;
+
+	Reader reader(filePath, true, nullptr, true);
+	if (!reader.ReaderOK()) {
+		return false;
+	}
+	while (reader.NextProperty()) {
+		reader.ReadPropName();
+		GetEntityPreset(reader);
+	}
+	return true;
+}
+
 bool PresetMan::AddMaterialMapping(int fromID, int toID, int whichModule) {
 	RTEAssert(whichModule >= m_OfficialModuleCount && whichModule < m_pDataModules.size(), "Tried to make a material mapping in an offical or out-of-bounds DataModule!");
 

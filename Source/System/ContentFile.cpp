@@ -297,6 +297,11 @@ std::shared_ptr<BitmapTexture> ContentFile::GetAsTexture(int conversionMode, boo
 
 	std::string dataPathToLoad = dataPathToSpecificFrame.empty() ? m_DataPath : dataPathToSpecificFrame;
 
+	// A preset reload this frame means the picture may have changed on disk, so read it again.
+	if (g_PresetMan.GetReloadEntityPresetCalledThisUpdate() && !s_MemoryPNGs.count(dataPathToLoad)) {
+		s_LoadedTextures.erase(dataPathToLoad);
+	}
+
 	auto foundTexture = s_LoadedTextures.find(dataPathToLoad);
 	if (foundTexture != s_LoadedTextures.end()) {
 		if (storeBitmap) {
