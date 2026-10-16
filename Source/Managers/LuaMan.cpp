@@ -148,6 +148,7 @@ void LuaStateWrapper::Initialize() {
 	                         luabind::def("RoundToNearestMultiple", &RoundToNearestMultiple),
 	                         luabind::def("_StudioWatch", &ModStudioPreview::Watch),
 	                         luabind::def("_StudioLive", &ModStudioPreview::Live),
+	                         luabind::def("_StudioLiveCode", &ModStudioPreview::LiveCode),
 	                         luabind::def("_StudioClock", &ModStudioPreview::Clock),
 
 	                         RegisterLuaBindingsOfType(SystemLuaBindings, Vector),
@@ -305,6 +306,8 @@ void LuaStateWrapper::Initialize() {
 	              "_RequiredPackages = {};\n"
 	              "do local OriginalRequire = require; require = function(filePath) _RequiredPackages[filePath] = true; return OriginalRequire(filePath); end; end\n"
 	              "_ClearRequiredPackages = function() for k, v in pairs(_RequiredPackages) do package.loaded[k] = nil; end; _RequiredPackages = {}; end;\n"
+	              // In a game started from Cortex Studio, a script loaded with require uses Studio's live copy of it (with value probes) when there is one.
+	              "table.insert(package.loaders, 2, function(name) local file = package.searchpath(name, package.path); local code = file and _StudioLiveCode(file) or ''; if code ~= '' then return assert(loadstring(code, '@' .. file)); end end);\n"
 	              // The conversion functions (ToActor, ToMovableObject and so on) each have two forms, and nothing (nil) fits both equally, which the binding library handles by corrupting memory.
 	              // Scripts do pass nil, typically the result of MovableMan:GetMOFromID for an object that's gone. Nothing in gives nothing out, and never reaches the two forms.
 	              "for name, convert in pairs(_G) do if type(convert) == 'function' and string.match(name, '^To%u') then _G[name] = function(entity) if entity == nil then return nil; end return convert(entity); end end end\n"

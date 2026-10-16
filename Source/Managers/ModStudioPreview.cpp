@@ -284,7 +284,18 @@ std::string ModStudioPreview::LiveScriptFor(const std::string& filePath, const s
 	if (!s_InGame) {
 		return "";
 	}
-	const std::filesystem::path copy = StudioFolder() / "Live" / std::filesystem::path(filePath);
+	// Studio keeps copies by the module's path (MyMod.rte/...), and objects' scripts come here as full paths (Mods/MyMod.rte/...).
+	std::string modulePath = std::filesystem::path(filePath).generic_string();
+	if (modulePath.rfind("./", 0) == 0) {
+		modulePath.erase(0, 2);
+	}
+	for (const std::string& top: {System::GetDataDirectory(), System::GetModDirectory(), System::GetUserdataDirectory()}) {
+		if (modulePath.rfind(top, 0) == 0) {
+			modulePath.erase(0, top.size());
+			break;
+		}
+	}
+	const std::filesystem::path copy = StudioFolder() / "Live" / std::filesystem::path(modulePath);
 	std::error_code error;
 	if (!std::filesystem::is_regular_file(copy, error) || std::filesystem::file_size(copy, error) == 0 || error) {
 		return "";
@@ -296,6 +307,15 @@ std::string ModStudioPreview::LiveScriptFor(const std::string& filePath, const s
 		return "";
 	}
 	return copy.string();
+}
+
+std::string ModStudioPreview::LiveCode(const std::string& scriptPath) {
+	const std::string copy = LiveScriptFor(scriptPath, scriptPath);
+	if (copy.empty()) {
+		return "";
+	}
+	std::ifstream copyFile(copy, std::ios::binary);
+	return std::string((std::istreambuf_iterator<char>(copyFile)), std::istreambuf_iterator<char>());
 }
 
 void ModStudioPreview::Live(const std::string& key, const std::string& value) {
