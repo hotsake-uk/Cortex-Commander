@@ -133,7 +133,7 @@ void ModStudioPreview::UpdateInGame() {
 		return;
 	}
 
-	// In other games the new unit takes the place of the one the player is in (the last one from Studio, usually), or drops in where the player is looking.
+	// In other games (Test In Game.bat's plain map, or any other) the new unit takes the place of the one the player is in (the last one from Studio, usually), or drops in where the player is looking.
 	const int player = Players::PlayerOne;
 	const int team = game->GetTeamOfPlayer(player);
 	Actor* current = game->GetControlledActor(player);
@@ -146,6 +146,8 @@ void ModStudioPreview::UpdateInGame() {
 		current->SetToDelete(true);
 	}
 	g_MovableMan.AddActor(unit);
-	game->SwitchToActor(unit, player, team);
+	if (game->SwitchToActor(unit, player, team)) {
+		game->SetViewState(Activity::ViewState::Normal, player);
+	}
 	g_FrameMan.SetScreenText(shown, 0, 0, 4000);
 }

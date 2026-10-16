@@ -12,7 +12,7 @@ namespace RTE {
 
 	/// Units sent from Cortex Mod Studio ("Preview in game"). Studio saves the unit's files, then writes ModStudio/Preview.ini in the game
 	/// folder naming the unit, the files to reload and the item to hold. The Actor Editor shows each new one; a game started with
-	/// -modstudio (Test In Sandbox.bat) makes it your character in the sandbox, or swaps the player's unit for it in other games.
+	/// -modstudio makes it your character in the sandbox (Test In Sandbox.bat), or puts you in it in other games (Test In Game.bat).
 	class ModStudioPreview {
 
 	public:

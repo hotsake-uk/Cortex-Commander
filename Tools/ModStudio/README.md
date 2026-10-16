@@ -45,10 +45,12 @@ the held item. Two ways to see it, both started from `Tools\ModStudio` and left 
 
 - **Actor Editor.bat** opens the game's Actor Editor (`-editor ActorEditor`), zoomed in on the unit. Press **Alt** to let go of the mouse and use
   Studio beside it; click the game to control the unit again. Ctrl + mouse wheel zooms.
+- **Test In Game.bat** opens the Maginot map (`-modstudio -test [map]`) as a plain game, no sandbox and none of the scenario's
+  attackers, with you in the unit. Add a map name to use another map.
 - **Test In Sandbox.bat** opens the sandbox (`-modstudio -sandbox [map]`) with the unit as your own sandbox character, the tools put away. Add a map name to use
   another map, for example `"Test In Sandbox.bat" "Ketanot Hills"`.
 
-**◧ Hide view** (V) hides Studio's own picture of the unit, so the parts and properties get the whole window while the game
+**◨ Hide list** (L) hides the list on the left, and **◧ Hide view** (V) hides Studio's own picture of the unit, so the parts and properties get the whole window while the game
 shows the unit beside it. Turn on **Live** (next to Preview in game) to send every change as you make it: a drag or a number scrub is sent when you let
 go, an undo, a new held item or another unit straight away.
 

@@ -107,10 +107,12 @@ namespace RTE {
 
 		/// Sets the name of the editor to launch directly into.
 		/// @param editorName
-		/// Sets the game to start straight in the sandbox (the -sandbox launch argument).
-		/// @param sceneName The map to open, or empty for the sandbox's own.
-		void SetSandboxToLaunch(const std::string& sceneName) {
+		/// Sets the game to start straight in the sandbox (the -sandbox launch argument), or another game mode started the same way (-test).
+		/// @param sceneName The map to open, or empty for the game mode's own.
+		/// @param activityName The game mode (a GAScripted preset).
+		void SetSandboxToLaunch(const std::string& sceneName, const std::string& activityName = "Sandbox") {
 			m_SandboxSceneToLaunch = sceneName;
+			m_SandboxActivityToLaunch = activityName;
 			m_LaunchIntoSandbox = true;
 			m_LaunchIntoActivity = true;
 		}
@@ -173,7 +175,7 @@ namespace RTE {
 
 		/// Sets the Sandbox game mode (or Battle Command, which is built on it) as the Activity to start, with every side's AI at its hardest.
 		/// @param sceneName The map to play on. Empty for the map the game mode names.
-		/// @param activityName The game mode: "Sandbox" or "Battle Command".
+		/// @param activityName The game mode: "Sandbox", "Battle Command", or another started the same way ("Mod Studio Test").
 		/// @return Whether the game mode and the map exist to be started.
 		bool SetStartSandboxActivity(const std::string& sceneName = "", const std::string& activityName = "Sandbox");
 
@@ -238,6 +240,7 @@ namespace RTE {
 		bool m_LaunchIntoActivity; //!< Whether to skip the intro and main menu and launch directly into the set default Activity instead.
 		bool m_LaunchIntoSandbox = false; //!< Whether that Activity is the sandbox, started by SetStartSandboxActivity.
 		std::string m_SandboxSceneToLaunch; //!< The map the sandbox opens on, or empty for its own.
+		std::string m_SandboxActivityToLaunch = "Sandbox"; //!< The game mode started that way: the sandbox, or Mod Studio's test (-test).
 		bool m_LaunchIntoEditor; //!< Whether to skip the intro and main menu and launch directly into the set editor Activity instead.
 		std::string_view m_EditorToLaunch; //!< The name of the editor Activity to launch directly into.
 

@@ -27,7 +27,7 @@ button, input, select { font: inherit; color: inherit; }
 ::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 10px; border: 2px solid var(--panel); }
 ::-webkit-scrollbar-track { background: transparent; }
 
-#app { display: grid; height: 100vh; grid-template-columns: 280px 1fr 350px; grid-template-rows: 46px 1fr 26px; grid-template-areas: "top top top" "left center right" "status status status"; }
+#app { display: grid; height: 100vh; grid-template-columns: var(--lib-w, 280px) 1fr 350px; grid-template-rows: 46px 1fr 26px; grid-template-areas: "top top top" "left center right" "status status status"; }
 #topbar { grid-area: top; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
 .brand { font-size: 14px; letter-spacing: .2px; white-space: nowrap; }
 .brand .mark { color: var(--accent); margin-right: 4px; }
@@ -202,13 +202,13 @@ pre.diff .del { color: var(--bad); }
 @keyframes toastIn { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
 
 @media (max-width: 1100px) {
-	#app { grid-template-columns: 230px 1fr 300px; }
+	#app { grid-template-columns: var(--lib-w, 230px) 1fr 300px; }
 }
 
 /* Wide screens: the unit's picture needs little room, so the parts list and the properties take much more, side by side, and
    the property sections sit in columns instead of one long list to scroll. */
 @media (min-width: 1300px) {
-	#app { grid-template-columns: 260px minmax(380px, 1fr) minmax(600px, 54vw); }
+	#app { grid-template-columns: var(--lib-w, 260px) minmax(380px, 1fr) minmax(600px, 54vw); }
 	#right { display: grid; grid-template-columns: minmax(200px, 26%) 1fr; grid-template-rows: auto 1fr; }
 	#right > .panel-head:first-child { grid-column: 1; grid-row: 1; border-right: 1px solid var(--line); }
 	#right > #tree { grid-column: 1; grid-row: 2; max-height: none; border-bottom: 0; border-right: 1px solid var(--line); min-height: 0; }
@@ -220,7 +220,7 @@ pre.diff .del { color: var(--bad); }
 }
 
 /* The unit view hidden (◧, V): the parts list and the properties take the whole width, laid out as on wide screens. */
-#app.no-view { grid-template-columns: 260px 1fr; grid-template-areas: "top top" "left right" "status status"; }
+#app.no-view { grid-template-columns: var(--lib-w, 260px) 1fr; grid-template-areas: "top top" "left right" "status status"; }
 #app.no-view #center { display: none; }
 #app.no-view #right { display: grid; grid-template-columns: minmax(200px, 26%) 1fr; grid-template-rows: auto 1fr; }
 #app.no-view #right > .panel-head:first-child { grid-column: 1; grid-row: 1; border-right: 1px solid var(--line); }
@@ -230,3 +230,7 @@ pre.diff .del { color: var(--bad); }
 #app.no-view .insp-cols { columns: 300px; column-gap: 0; column-rule: 1px solid var(--line); }
 #app.no-view .insp-cols > * { break-inside: avoid; }
 #app.no-view .insp-cols > .notice, #app.no-view .insp-cols > .insp-empty, #app.no-view .insp-cols > .section:has(.props-table) { column-span: all; }
+
+/* The library list hidden (◨, L): its column shrinks to nothing. */
+#app.no-lib { --lib-w: 0px; }
+#app.no-lib #left { display: none; }

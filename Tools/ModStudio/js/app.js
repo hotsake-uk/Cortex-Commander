@@ -765,6 +765,13 @@ window.MS = window.MS || {};
 		}
 	}
 
+	function setListShown(shown) {
+		$('app').classList.toggle('no-lib', !shown);
+		$('btnLib').textContent = shown ? '◨ Hide list' : '◨ Show list';
+		writeLocal('ms.listHidden', !shown);
+		app.requestDraw();
+	}
+
 	function download(blob, name) {
 		const a = document.createElement('a');
 		a.href = URL.createObjectURL(blob);
@@ -789,6 +796,10 @@ window.MS = window.MS || {};
 		$('btnView').onclick = () => setViewShown($('app').classList.contains('no-view'));
 		if (readLocal('ms.viewHidden')) {
 			setViewShown(false);
+		}
+		$('btnLib').onclick = () => setListShown($('app').classList.contains('no-lib'));
+		if (readLocal('ms.listHidden')) {
+			setListShown(false);
 		}
 		if (readLocal('ms.live')) {
 			setLive(true);
@@ -888,6 +899,8 @@ window.MS = window.MS || {};
 				nudge(d[0], d[1], e.shiftKey);
 			} else if (e.key === 'Delete' && app.selected) {
 				MS.panels.removeSelected();
+			} else if (e.key.toLowerCase() === 'l' && !ctrl) {
+				$('btnLib').click();
 			} else if (e.key.toLowerCase() === 'v' && !ctrl) {
 				$('btnView').click();
 			} else if (e.key.toLowerCase() === 'i' && !ctrl) {
