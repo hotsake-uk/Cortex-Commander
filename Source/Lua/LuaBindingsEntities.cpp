@@ -330,6 +330,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .def("ScanForEnemies", &Actor::ScanForEnemies, luabind::return_stl_iterator)
 	    .property("FootstepNoise", &Actor::GetFootstepNoise)
 	    .def("HearFootsteps", &Actor::HearFootsteps)
+	    .def("ReportAwareness", &Actor::ReportAwareness)
 	    .property("Suppression", &Actor::GetSuppression)
 	    .property("Morale", &Actor::GetMorale)
 	    .def("Say", &Actor::Say)

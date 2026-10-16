@@ -29,6 +29,7 @@
 #include "ActorFire.h"
 #include "ActorWater.h"
 #include "UnitSpeech.h"
+#include "AIAwareness.h"
 #include "UnitSpeechVoice.h"
 #include "ModernHUD.h"
 #include "ToolWidgets.h"
@@ -1145,6 +1146,12 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 		}
 	});
 	MatchProperty("NoSceneWrap", { reader >> m_NoSceneWrap; });
+	MatchProperty("AIAwarenessMarks", { int units = AIAwareness::EnemyUnits; reader >> units; AIAwareness::Marks = std::clamp(units, 0, 2); });
+	MatchProperty("AIAwarenessCones", { int units = AIAwareness::EnemyUnits; reader >> units; AIAwareness::Cones = std::clamp(units, 0, 2); });
+	MatchProperty("AIAwarenessMeter", { int shown = AIAwareness::MeterAlways; reader >> shown; AIAwareness::Meter = std::clamp(shown, 0, 2); });
+	MatchProperty("AIAwarenessOnlyWithStealth", { reader >> AIAwareness::OnlyWithStealth; });
+	MatchProperty("AIAwarenessConeOpacity", { reader >> AIAwareness::ConeOpacity; AIAwareness::ConeOpacity = std::clamp(AIAwareness::ConeOpacity, 0.0F, 1.0F); });
+	MatchProperty("AIAwarenessMarkScale", { reader >> AIAwareness::MarkScale; AIAwareness::MarkScale = std::clamp(AIAwareness::MarkScale, 0.5F, 2.0F); });
 	MatchProperty("UnitSpeech", { bool on = true; reader >> on; UnitSpeech::SetEnabled(on); });
 	MatchProperty("UnitSpeechChance", { int percent = 40; reader >> percent; UnitSpeech::SetChance(percent); });
 	MatchProperty("UnitSpeechEnemies", { bool on = true; reader >> on; UnitSpeech::SetShowsEnemies(on); });
@@ -2065,6 +2072,12 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("PauseAIKey", m_PauseAIKey);
 	writer.NewPropertyWithValue("SmoothHUDText", TextOverlay::IsEnabled());
 	writer.NewPropertyWithValue("FrameCap", g_WindowMan.GetFrameCap());
+	writer.NewPropertyWithValue("AIAwarenessMarks", AIAwareness::Marks);
+	writer.NewPropertyWithValue("AIAwarenessCones", AIAwareness::Cones);
+	writer.NewPropertyWithValue("AIAwarenessMeter", AIAwareness::Meter);
+	writer.NewPropertyWithValue("AIAwarenessOnlyWithStealth", AIAwareness::OnlyWithStealth);
+	writer.NewPropertyWithValue("AIAwarenessConeOpacity", AIAwareness::ConeOpacity);
+	writer.NewPropertyWithValue("AIAwarenessMarkScale", AIAwareness::MarkScale);
 	writer.NewPropertyWithValue("UnitSpeech", UnitSpeech::IsEnabled());
 	writer.NewPropertyWithValue("UnitSpeechChance", UnitSpeech::GetChance());
 	writer.NewPropertyWithValue("UnitSpeechEnemies", UnitSpeech::ShowsEnemies());
