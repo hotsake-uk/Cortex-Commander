@@ -475,6 +475,12 @@
     <ClInclude Include="Source\Entities\Leg.h">
       <Filter>Entities</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Entities\MechLeg.h">
+      <Filter>Entities</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Entities\AMech.h">
+      <Filter>Entities</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Entities\LimbPath.h">
       <Filter>Entities</Filter>
     </ClInclude>
@@ -1328,6 +1334,12 @@
       <Filter>Entities</Filter>
     </ClCompile>
     <ClCompile Include="Source\Entities\Leg.cpp">
+      <Filter>Entities</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Entities\MechLeg.cpp">
+      <Filter>Entities</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Entities\AMech.cpp">
       <Filter>Entities</Filter>
     </ClCompile>
     <ClCompile Include="Source\Entities\LimbPath.cpp">

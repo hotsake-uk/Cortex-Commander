@@ -38,6 +38,7 @@
 #include "ACDropShip.h"
 #include "ACShip.h"
 #include "ACrab.h"
+#include "AMech.h"
 #include "ACraft.h"
 #include "ACRocket.h"
 #include "Actor.h"
@@ -57,6 +58,7 @@
 #include "HDFirearm.h"
 #include "HeldDevice.h"
 #include "Leg.h"
+#include "MechLeg.h"
 #include "LimbPath.h"
 #include "Magazine.h"
 #include "Material.h"
@@ -113,6 +115,7 @@ namespace RTE {
 		LuaEntityCreateFunctionsDeclarationsForType(Attachable);
 		LuaEntityCreateFunctionsDeclarationsForType(Arm);
 		LuaEntityCreateFunctionsDeclarationsForType(Leg);
+		LuaEntityCreateFunctionsDeclarationsForType(MechLeg);
 		LuaEntityCreateFunctionsDeclarationsForType(AEmitter);
 		LuaEntityCreateFunctionsDeclarationsForType(AEJetpack);
 		LuaEntityCreateFunctionsDeclarationsForType(Turret);
@@ -122,6 +125,7 @@ namespace RTE {
 		LuaEntityCreateFunctionsDeclarationsForType(AVehicle);
 		LuaEntityCreateFunctionsDeclarationsForType(AHuman);
 		LuaEntityCreateFunctionsDeclarationsForType(ACrab);
+		LuaEntityCreateFunctionsDeclarationsForType(AMech);
 		LuaEntityCreateFunctionsDeclarationsForType(ACraft);
 		LuaEntityCreateFunctionsDeclarationsForType(ACDropShip);
 		LuaEntityCreateFunctionsDeclarationsForType(ACShip);
@@ -154,6 +158,7 @@ namespace RTE {
 		LuaEntityCloneFunctionDeclarationForType(Attachable);
 		LuaEntityCloneFunctionDeclarationForType(Arm);
 		LuaEntityCloneFunctionDeclarationForType(Leg);
+		LuaEntityCloneFunctionDeclarationForType(MechLeg);
 		LuaEntityCloneFunctionDeclarationForType(Emission);
 		LuaEntityCloneFunctionDeclarationForType(AEmitter);
 		LuaEntityCloneFunctionDeclarationForType(AEJetpack);
@@ -164,6 +169,7 @@ namespace RTE {
 		LuaEntityCloneFunctionDeclarationForType(AVehicle);
 		LuaEntityCloneFunctionDeclarationForType(AHuman);
 		LuaEntityCloneFunctionDeclarationForType(ACrab);
+		LuaEntityCloneFunctionDeclarationForType(AMech);
 		LuaEntityCloneFunctionDeclarationForType(ACraft);
 		LuaEntityCloneFunctionDeclarationForType(ACDropShip);
 		LuaEntityCloneFunctionDeclarationForType(ACShip);
@@ -201,6 +207,7 @@ namespace RTE {
 		LuaEntityCastFunctionsDeclarationsForType(Attachable);
 		LuaEntityCastFunctionsDeclarationsForType(Arm);
 		LuaEntityCastFunctionsDeclarationsForType(Leg);
+		LuaEntityCastFunctionsDeclarationsForType(MechLeg);
 		LuaEntityCastFunctionsDeclarationsForType(Emission);
 		LuaEntityCastFunctionsDeclarationsForType(AEmitter);
 		LuaEntityCastFunctionsDeclarationsForType(AEJetpack);
@@ -211,6 +218,7 @@ namespace RTE {
 		LuaEntityCastFunctionsDeclarationsForType(AVehicle);
 		LuaEntityCastFunctionsDeclarationsForType(AHuman);
 		LuaEntityCastFunctionsDeclarationsForType(ACrab);
+		LuaEntityCastFunctionsDeclarationsForType(AMech);
 		LuaEntityCastFunctionsDeclarationsForType(ACraft);
 		LuaEntityCastFunctionsDeclarationsForType(ACDropShip);
 		LuaEntityCastFunctionsDeclarationsForType(ACShip);
@@ -279,6 +287,12 @@ namespace RTE {
 		LuaPropertyOwnershipSafetyFakerFunctionDeclaration(ACrab, Leg, SetRightFGLeg);
 		LuaPropertyOwnershipSafetyFakerFunctionDeclaration(ACrab, Leg, SetRightBGLeg);
 		LuaPropertyOwnershipSafetyFakerFunctionDeclaration(ACrab, SoundContainer, SetStrideSound);
+
+		LuaPropertyOwnershipSafetyFakerFunctionDeclaration(AMech, MechLeg, SetFGLeg);
+		LuaPropertyOwnershipSafetyFakerFunctionDeclaration(AMech, MechLeg, SetBGLeg);
+
+		LuaPropertyOwnershipSafetyFakerFunctionDeclaration(MechLeg, Attachable, SetShin);
+		LuaPropertyOwnershipSafetyFakerFunctionDeclaration(MechLeg, Attachable, SetFoot);
 		LuaPropertyOwnershipSafetyFakerFunctionDeclaration(Turret, HeldDevice, SetFirstMountedDevice);
 		LuaPropertyOwnershipSafetyFakerFunctionDeclaration(ACraft, SoundContainer, SetHatchOpenSound);
 		LuaPropertyOwnershipSafetyFakerFunctionDeclaration(ACraft, SoundContainer, SetHatchCloseSound);

@@ -34,7 +34,7 @@ local function spottedTrigger(Owner, Target)
 			return "EnemyVehicle";
 		elseif Target:IsInGroup("Brains") then
 			return "EnemyBrain";
-		elseif Target.ClassName == "ACrab" then
+		elseif Target.ClassName == "ACrab" or Target.ClassName == "AMech" then
 			return "EnemyWalker";
 		end
 	end

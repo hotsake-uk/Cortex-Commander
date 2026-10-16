@@ -47,12 +47,14 @@ namespace RTE {
 	/* Attachable-Derived */ \
 	PER_LUA_BINDING(Arm) \
 	PER_LUA_BINDING(Leg) \
+	PER_LUA_BINDING(MechLeg) \
 	PER_LUA_BINDING(AEmitter) \
 	PER_LUA_BINDING(HeldDevice) \
 	PER_LUA_BINDING(Magazine) \
 	PER_LUA_BINDING(Turret) \
 	/* Actor-Derived */ \
 	PER_LUA_BINDING(ACrab) \
+	PER_LUA_BINDING(AMech) \
 	PER_LUA_BINDING(ACraft) \
 	PER_LUA_BINDING(AHuman) \
 	PER_LUA_BINDING(ADoor) \
@@ -215,6 +217,7 @@ namespace RTE {
 		LuaBindingRegisterFunctionDeclarationForType(ACDropShip);
 		LuaBindingRegisterFunctionDeclarationForType(ACShip);
 		LuaBindingRegisterFunctionDeclarationForType(ACrab);
+		LuaBindingRegisterFunctionDeclarationForType(AMech);
 		LuaBindingRegisterFunctionDeclarationForType(ACraft);
 		LuaBindingRegisterFunctionDeclarationForType(ACRocket);
 		LuaBindingRegisterFunctionDeclarationForType(Actor);
@@ -235,6 +238,7 @@ namespace RTE {
 		LuaBindingRegisterFunctionDeclarationForType(HDFirearm);
 		LuaBindingRegisterFunctionDeclarationForType(HeldDevice);
 		LuaBindingRegisterFunctionDeclarationForType(Leg);
+		LuaBindingRegisterFunctionDeclarationForType(MechLeg);
 		LuaBindingRegisterFunctionDeclarationForType(LimbPath);
 		LuaBindingRegisterFunctionDeclarationForType(Magazine);
 		LuaBindingRegisterFunctionDeclarationForType(Material);

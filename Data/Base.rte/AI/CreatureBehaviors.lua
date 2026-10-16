@@ -49,6 +49,8 @@ local function AsActor(MO)
 	end
 	if MO.ClassName == "AHuman" then
 		return ToAHuman(MO);
+	elseif MO.ClassName == "AMech" then
+		return ToAMech(MO);
 	elseif MO.ClassName == "ACrab" then
 		return ToACrab(MO);
 	elseif MO.ClassName == "AVehicle" then

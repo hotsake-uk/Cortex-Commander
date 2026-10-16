@@ -1626,6 +1626,7 @@ void DebugMan::SettingsGUI() {
 			    {"Flying craft toughness", SettingsMan::ToughnessKind::Craft, "How tough flying craft are: drop ships, rockets and flying ships. Crew keep their own unit toughness."},
 			    {"Animal toughness", SettingsMan::ToughnessKind::Animals, "How tough animals are: livestock and wildlife such as crabs."},
 			    {"Creature toughness", SettingsMan::ToughnessKind::Creatures, "How tough creatures are: monsters such as hounds."},
+			    {"Mech toughness", SettingsMan::ToughnessKind::Mechs, "How tough mechs are: big walking machines such as the Imperial Knight."},
 			};
 			for (const ToughnessSlider& slider: sliders) {
 				float toughness = g_SettingsMan.Toughness(slider.Kind);
@@ -1635,6 +1636,14 @@ void DebugMan::SettingsGUI() {
 				}
 				Tip((std::string(slider.Tip) + c_ToughnessHow).c_str());
 			}
+		}
+		Heading("Mechs");
+		{
+			float shake = g_SettingsMan.MechFootfallShake();
+			if (Slider("Mech footfall shake", &shake, Normal{1.0F}, 0.0F, 3.0F, "%.2fx")) {
+				g_SettingsMan.SetMechFootfallShake(shake);
+			}
+			Tip("How hard a mech's footsteps, landings and kicks shake the screen near them, as a multiple of each mech's own. 0 for none, 1x is normal.");
 		}
 		Heading("Creatures");
 		Toggle("Creatures climb walls", g_SettingsMan.CreaturesClimbWalls(), [](bool on) { g_SettingsMan.SetCreaturesClimbWalls(on); });

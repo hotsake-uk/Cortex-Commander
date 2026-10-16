@@ -181,7 +181,7 @@ function BrainvsBrain:StartNewGame()
 
 	-- Set all actors defined in the ini-file to sentry mode
 	for actor in MovableMan.AddedActors do
-		if actor.ClassName == "AHuman" or actor.ClassName == "ACrab" then
+		if actor.ClassName == "AHuman" or actor.ClassName == "ACrab" or actor.ClassName == "AMech" then
 			if actor.AIMode ~= Actor.AIMODE_GOLDDIG then
 				actor.AIMode = Actor.AIMODE_SENTRY;
 			end
@@ -323,7 +323,7 @@ function BrainvsBrain:UpdateActivity()
 	elseif self.ActivityState == Activity.EDITING then
 		-- Set all actors to sentry mode
 		for actor in MovableMan.AddedActors do
-			if actor.ClassName == "AHuman" or actor.ClassName == "ACrab" then
+			if actor.ClassName == "AHuman" or actor.ClassName == "ACrab" or actor.ClassName == "AMech" then
 				if actor.AIMode ~= Actor.AIMODE_GOLDDIG then
 					actor.AIMode = Actor.AIMODE_SENTRY;
 				end
@@ -367,7 +367,7 @@ function BrainvsBrain:UpdateActivity()
 
 			-- Set all actors to sentry mode
 			for actor in MovableMan.AddedActors do
-				if actor.ClassName == "AHuman" or actor.ClassName == "ACrab" then
+				if actor.ClassName == "AHuman" or actor.ClassName == "ACrab" or actor.ClassName == "AMech" then
 					if actor.AIMode ~= Actor.AIMODE_GOLDDIG then
 						actor.AIMode = Actor.AIMODE_SENTRY;
 					end
@@ -528,7 +528,7 @@ function BrainvsBrain:UpdateActivity()
 							local Intruders = {};
 							local intruder_tally = 0;
 							for Act in MovableMan.Actors do
-								if self.OnPlayerTeam[Act.Team] and (Act.ClassName == "AHuman" or Act.ClassName == "ACrab" or Act.ClassName == "Actor") and not SceneMan:IsUnseen(Act.Pos.X, Act.Pos.Y, self.CPUTeam) then
+								if self.OnPlayerTeam[Act.Team] and (Act.ClassName == "AHuman" or Act.ClassName == "ACrab" or Act.ClassName == "AMech" or Act.ClassName == "Actor") and not SceneMan:IsUnseen(Act.Pos.X, Act.Pos.Y, self.CPUTeam) then
 									local distance = 20 * (SceneMan:ShortestDistance(self.CPUBrain.Pos, Act.Pos, false).Largest / SceneMan.SceneWidth);
 									table.insert(Intruders, {Act=Act, score=self.LZMap:SurfaceProximity(Act.Pos)+distance+math.random(300)});
 									intruder_tally = intruder_tally + 1;

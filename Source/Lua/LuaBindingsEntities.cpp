@@ -82,6 +82,25 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ACShip) {
 	    .def("ChangeSeat", &ACShip::ChangeSeat);
 }
 
+LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, AMech) {
+	return ConcreteTypeLuaClassDefinition(AMech, ACrab)
+
+	    .def(luabind::constructor<>())
+
+	    .property("FGLeg", &AMech::GetFGLeg, &LuaAdaptersPropertyOwnershipSafetyFaker::AMechSetFGLeg)
+	    .property("BGLeg", &AMech::GetBGLeg, &LuaAdaptersPropertyOwnershipSafetyFaker::AMechSetBGLeg)
+	    .property("WalkSpeed", &AMech::GetWalkSpeed, &AMech::SetWalkSpeed)
+	    .property("StrideLength", &AMech::GetStrideLength)
+	    .property("MaxStepUp", &AMech::GetMaxStepUp)
+	    .property("MaxStepDown", &AMech::GetMaxStepDown)
+	    .property("StandingHeight", &AMech::GetStandingHeight)
+	    .property("Braced", &AMech::IsBraced, &AMech::SetBraced)
+	    .property("BreachStrength", &AMech::GetBreachStrength, &AMech::SetBreachStrength)
+	    .property("IsTurning", &AMech::IsTurning)
+	    .property("IsStanding", &AMech::IsStanding)
+	    .property("IsBlocked", &AMech::IsBlocked);
+}
+
 LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, ACrab) {
 	return ConcreteTypeLuaClassDefinition(ACrab, Actor)
 
@@ -1004,6 +1023,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, HeldDevice) {
 	    .property("UseSupportOffsetWhileReloading", &HeldDevice::GetUseSupportOffsetWhileReloading, &HeldDevice::SetUseSupportOffsetWhileReloading)
 	    .property("HasPickupLimitations", &HeldDevice::HasPickupLimitations)
 	    .property("UnPickupable", &HeldDevice::IsUnPickupable, &HeldDevice::SetUnPickupable)
+	    .property("MechOnly", &HeldDevice::IsMechOnly, &HeldDevice::SetMechOnly)
 	    .property("GripStrengthMultiplier", &HeldDevice::GetGripStrengthMultiplier, &HeldDevice::SetGripStrengthMultiplier)
 	    .property("Supported", &HeldDevice::GetSupported, &HeldDevice::SetSupported)
 	    .property("GetsHitByMOsWhenHeld", &HeldDevice::GetsHitByMOsWhenHeld, &HeldDevice::SetGetsHitByMOsWhenHeld)
@@ -1079,6 +1099,19 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Leg) {
 
 	    .property("Foot", &Leg::GetFoot, &LuaAdaptersPropertyOwnershipSafetyFaker::LegSetFoot)
 	    .property("MoveSpeed", &Leg::GetMoveSpeed, &Leg::SetMoveSpeed);
+}
+
+LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, MechLeg) {
+	return ConcreteTypeLuaClassDefinition(MechLeg, Attachable)
+
+	    .property("Shin", &MechLeg::GetShin, &LuaAdaptersPropertyOwnershipSafetyFaker::MechLegSetShin)
+	    .property("Foot", &MechLeg::GetFoot, &LuaAdaptersPropertyOwnershipSafetyFaker::MechLegSetFoot)
+	    .property("ThighLength", &MechLeg::GetThighLength)
+	    .property("ShinLength", &MechLeg::GetShinLength)
+	    .property("Reach", &MechLeg::GetReach)
+	    .property("FootDrop", &MechLeg::GetFootDrop)
+	    .property("KneePos", &MechLeg::GetKneePos)
+	    .property("AnklePos", &MechLeg::GetAnklePos);
 }
 
 LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, LimbPath) {

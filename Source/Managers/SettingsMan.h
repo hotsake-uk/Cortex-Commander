@@ -296,6 +296,9 @@ namespace RTE {
 		/// Off, they keep to the ground as other units do.
 		bool CreaturesClimbWalls() const { return m_CreaturesClimbWalls; }
 
+		/// How hard a mech's footfalls shake the screen near them (MK-1), as a multiple of its own: 0 for none, 1 as designed.
+		float MechFootfallShake() const { return m_MechFootfallShake; }
+
 		/// How fast climbing creatures crawl on walls and ceilings, as a multiple of their own speed (Actor::GetCrawlSpeed); 1 as they come.
 		float CreatureClimbSpeed() const { return m_CreatureClimbSpeed; }
 
@@ -397,6 +400,7 @@ namespace RTE {
 			Craft, //!< Flying craft: drop ships, rockets and flying ships.
 			Animals, //!< Livestock and wildlife (Actor::IsAnimal).
 			Creatures, //!< Monsters (Actor::IsCreature, CR-1).
+			Mechs, //!< Mechs (AMech, MK-1): big walking machines such as the Imperial Knight.
 			Count
 		};
 
@@ -1117,6 +1121,7 @@ namespace RTE {
 		/// Sets whether actors mantle ledges and vault low obstacles.
 		void SetMantlingEnabled(bool enable) { m_EnableMantling = enable; }
 		void SetCreaturesClimbWalls(bool climb) { m_CreaturesClimbWalls = climb; }
+		void SetMechFootfallShake(float shake) { m_MechFootfallShake = std::clamp(shake, 0.0F, 3.0F); }
 		void SetCreatureClimbSpeed(float multiplier) { m_CreatureClimbSpeed = std::clamp(multiplier, 0.25F, 3.0F); }
 		void SetCreaturesFly(bool fly) { m_CreaturesFly = fly; }
 		void SetCreatureFlySpeed(float multiplier) { m_CreatureFlySpeed = std::clamp(multiplier, 0.25F, 3.0F); }
@@ -1523,6 +1528,7 @@ namespace RTE {
 		AICombatTuning m_AICombat; //!< How well AI units shoot, react, spot and throw (see AICombat).
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
 		bool m_CreaturesClimbWalls = true; //!< See CreaturesClimbWalls.
+		float m_MechFootfallShake = 1.0F; //!< See MechFootfallShake.
 		float m_CreatureClimbSpeed = 1.0F; //!< See CreatureClimbSpeed.
 		bool m_CreaturesFly = true; //!< See CreaturesFly.
 		float m_CreatureFlySpeed = 1.0F; //!< See CreatureFlySpeed.

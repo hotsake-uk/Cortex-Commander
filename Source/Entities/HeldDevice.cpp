@@ -5,6 +5,7 @@
 #include "AtomGroup.h"
 #include "Arm.h"
 #include "AHuman.h"
+#include "AMech.h"
 
 #include "GameActivity.h"
 
@@ -75,6 +76,7 @@ void HeldDevice::Clear() {
 	m_UseSupportOffsetWhileReloading = false;
 	m_SeenByPlayer.fill(false);
 	m_IsUnPickupable = false;
+	m_MechOnly = false;
 	m_PickupableByPresetNames.clear();
 	m_GripStrengthMultiplier = 1.0F;
 	m_BlinkTimer.Reset();
@@ -232,6 +234,7 @@ int HeldDevice::Create(const HeldDevice& reference) {
 	m_UseSupportOffsetWhileReloading = reference.m_UseSupportOffsetWhileReloading;
 	m_Supportable = reference.m_Supportable;
 	m_IsUnPickupable = reference.m_IsUnPickupable;
+	m_MechOnly = reference.m_MechOnly;
 	for (std::string referenceActorWhoCanPickThisUp: reference.m_PickupableByPresetNames) {
 		m_PickupableByPresetNames.insert(referenceActorWhoCanPickThisUp);
 	}
@@ -304,6 +307,7 @@ int HeldDevice::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("Supportable", { reader >> m_Supportable; });
 	MatchProperty("SupportOffset", { reader >> m_SupportOffset; });
 	MatchProperty("UseSupportOffsetWhileReloading", { reader >> m_UseSupportOffsetWhileReloading; });
+	MatchProperty("MechOnly", { reader >> m_MechOnly; });
 	MatchProperty("PickupableBy", {
 		std::string pickupableByValue = reader.ReadPropValue();
 		if (pickupableByValue == "PickupableByEntries") {
@@ -480,6 +484,7 @@ int HeldDevice::Save(Writer& writer) const {
 		writer.NewPropertyWithValue("CastPoseTime", m_CastPoseTime);
 	}
 	writer.NewPropertyWithValue("Supportable", m_Supportable);
+	writer.NewPropertyWithValue("MechOnly", m_MechOnly);
 	writer.NewProperty("SupportOffset");
 	writer << m_SupportOffset;
 	writer.NewPropertyWithValue("UseSupportOffsetWhileReloading", m_UseSupportOffsetWhileReloading);
@@ -606,6 +611,14 @@ Vector HeldDevice::GetMagazinePos() const {
 
 bool HeldDevice::IsBeingHeld() const {
 	return dynamic_cast<const Arm*>(m_Parent);
+}
+
+bool HeldDevice::IsPickupableBy(const Actor* actor) const {
+	// A mech's item (MK-2) is a mech's alone; a mech's own hands are its mounts, and it picks up nothing.
+	if (m_MechOnly || dynamic_cast<const AMech*>(actor)) {
+		return false;
+	}
+	return !HasPickupLimitations() || m_PickupableByPresetNames.find(actor->GetPresetName()) != m_PickupableByPresetNames.end();
 }
 
 void HeldDevice::RemovePickupableByPresetName(const std::string& actorPresetName) {

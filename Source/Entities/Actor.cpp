@@ -18,6 +18,7 @@
 #include "Singleton.h"
 #include "GameActivity.h"
 #include "ACrab.h"
+#include "AMech.h"
 #include "ACraft.h"
 #include "AHuman.h"
 #include "AVehicle.h"
@@ -1300,6 +1301,8 @@ int Actor::GetToughnessKind() const {
 			m_ToughnessKind = static_cast<int>(Kind::Animals);
 		} else if (dynamic_cast<const ACraft*>(this)) {
 			m_ToughnessKind = static_cast<int>(Kind::Craft);
+		} else if (dynamic_cast<const AMech*>(this)) {
+			m_ToughnessKind = static_cast<int>(Kind::Mechs);
 		} else if (dynamic_cast<const ACrab*>(this) || dynamic_cast<const AVehicle*>(this)) {
 			m_ToughnessKind = static_cast<int>(Kind::Vehicles);
 		} else if (dynamic_cast<const AHuman*>(this)) {
@@ -1351,6 +1354,11 @@ void Actor::ApplyToughness() {
 void Actor::AddInventoryItem(MovableObject* pItemToAdd) {
 	// A beast carries no weapons (nor tools, shields or grenades), but what it was born with (CR-1).
 	if (dynamic_cast<HeldDevice*>(pItemToAdd) && IsBeast() && !pItemToAdd->IsInGroup("Weapons - Natural")) {
+		delete pItemToAdd;
+		return;
+	}
+	// A mech's item (MK-2) only for a mech, and nothing else for a mech: its weapons are mounted, not carried.
+	if (const HeldDevice* device = dynamic_cast<HeldDevice*>(pItemToAdd); device && device->IsMechOnly() != (dynamic_cast<AMech*>(this) != nullptr)) {
 		delete pItemToAdd;
 		return;
 	}
