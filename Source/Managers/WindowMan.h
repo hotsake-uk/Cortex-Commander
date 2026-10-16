@@ -140,6 +140,13 @@ namespace RTE {
 		/// The multiplier at the settings' resolution, which is saved.
 		float GetSettingsResMultiplier() const { return m_MenuResX > 0 ? m_MenuResMultiplier : m_ResMultiplier; }
 
+		/// Gets the width, in window units, to save so the next start opens a window the same size: the window as it is now while it is an ordinary
+		/// window (not fullscreen, maximized, minimized or a background run), otherwise the size remembered from before; 0 when there is none.
+		int GetSettingsWindowWidth() const;
+
+		/// The same, height.
+		int GetSettingsWindowHeight() const;
+
 		/// Gets whether, during play, the game's resolution follows the window's size, so the view fills the window at any size and shape instead of being scaled with bars around it. The menus keep the settings' resolution.
 		bool GetMatchWindowSize() const { return m_MatchWindowSize; }
 
@@ -333,6 +340,11 @@ namespace RTE {
 		int m_PendingWindowResX = 0; //!< The resolution the window's size last asked for, 0 when it can't be followed.
 		int m_PendingWindowResY = 0; //!< The same, height.
 		unsigned long long m_PendingWindowResTicks = 0; //!< When the window's size last asked for a different resolution.
+		/// Gets the size of the window if it is an ordinary window (see GetSettingsWindowWidth). False otherwise, with the sizes left alone.
+		bool GetOrdinaryWindowSize(int& width, int& height) const;
+
+		int m_SavedWindowWidth = 0; //!< The window width remembered from the last run (Settings.ini's WindowWidth), which the window opens at; 0 for none.
+		int m_SavedWindowHeight = 0; //!< The same, height.
 		int m_MenuResX = 0; //!< The resolution set in the settings, which the menus use and which is saved. The game itself may follow the window's size instead.
 		int m_MenuResY = 0; //!< The same, height.
 		float m_MenuResMultiplier = 1.0F; //!< The multiplier at the settings' resolution, which is saved.

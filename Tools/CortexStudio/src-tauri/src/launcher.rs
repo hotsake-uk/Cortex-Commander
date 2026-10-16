@@ -1167,6 +1167,52 @@ fn settings_values(path: &Path) -> Vec<(String, String)> {
 		.collect()
 }
 
+/// The game keeps the size its window was left at in Settings.ini (WindowWidth, WindowHeight) and opens the next one that size. Every launch
+/// starts from a fresh copy of your Settings.ini, which would put that back to nothing, so the size is carried from the last run's file into
+/// yours first. Returns the size carried, if there was one.
+fn carry_window_size(last_run: &Path, master: &Path) -> Option<(u32, u32)> {
+	let values = settings_values(last_run);
+	let get = |key: &str| values.iter().find(|(k, _)| k == key).and_then(|(_, v)| v.parse::<u32>().ok());
+	let (width, height) = (get("WindowWidth")?, get("WindowHeight")?);
+	if width < 200 || height < 150 {
+		return None;
+	}
+	let text = fs::read_to_string(master).ok()?;
+	let newline = if text.contains("\r\n") { "\r\n" } else { "\n" };
+	let mut out = String::with_capacity(text.len() + 48);
+	let (mut has_width, mut has_height) = (false, false);
+	for line in text.split_inclusive('\n') {
+		let key = line.trim().split_once('=').map(|(k, _)| k.trim());
+		if key == Some("WindowWidth") {
+			out.push_str(&format!("\tWindowWidth = {width}{newline}"));
+			has_width = true;
+		} else if key == Some("WindowHeight") {
+			out.push_str(&format!("\tWindowHeight = {height}{newline}"));
+			has_height = true;
+		} else {
+			out.push_str(line);
+			// A master that has none yet gets them under the resolution it already has.
+			if key == Some("ResolutionMultiplier") {
+				if !text.contains("WindowWidth") {
+					out.push_str(&format!("\tWindowWidth = {width}{newline}"));
+					has_width = true;
+				}
+				if !text.contains("WindowHeight") {
+					out.push_str(&format!("\tWindowHeight = {height}{newline}"));
+					has_height = true;
+				}
+			}
+		}
+	}
+	if !(has_width && has_height) {
+		return None; // no place to put them in this file; leave it alone
+	}
+	if out != text {
+		fs::write(master, out).ok()?;
+	}
+	Some((width, height))
+}
+
 fn overview(config: &Config) -> Value {
 	let slot = config.slot_path();
 	let built = built_info(&slot);
@@ -1250,6 +1296,9 @@ fn launch(config: &Config, mode: &str, map: &str, run: &RunConfig) -> Result<Vec
 		// The game reads (and rewrites) Settings.ini, so each launch gets a fresh copy of yours.
 		let userdata = slot.join("Userdata");
 		let _ = fs::create_dir_all(&userdata);
+		if let Some((w, h)) = carry_window_size(&userdata.join("Settings.ini"), Path::new(&config.settings_ini)) {
+			log.push(format!("The game window opens at {w}×{h}, the size you left it at."));
+		}
 		fs::copy(&config.settings_ini, userdata.join("Settings.ini")).map_err(|e| format!("Couldn't copy Settings.ini: {e}"))?;
 		log.push(format!("Using Settings.ini from {}.", config.settings_ini));
 	}
@@ -1524,5 +1573,47 @@ fn job_answer(started: Result<u64, String>) -> Answer {
 	match started {
 		Ok(id) => ok(json!({ "job": id })),
 		Err(e) => fail(409, e),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	fn temp(name: &str, text: &str) -> PathBuf {
+		let dir = std::env::temp_dir().join(format!("cortex-studio-test-{}-{name}", std::process::id()));
+		let _ = fs::remove_file(&dir);
+		fs::write(&dir, text).unwrap();
+		dir
+	}
+
+	#[test]
+	fn window_size_is_carried_into_a_settings_file_that_has_none() {
+		let last = temp("last-a", "Settings\r\n\tResolutionX = 960\r\n\tResolutionMultiplier = 1\r\n\tWindowWidth = 1500\r\n\tWindowHeight = 900\r\n");
+		let master = temp("master-a", "Settings\r\n\tResolutionX = 960\r\n\tResolutionMultiplier = 1\r\n\tFullscreen = 0\r\n");
+		assert_eq!(carry_window_size(&last, &master), Some((1500, 900)));
+		let text = fs::read_to_string(&master).unwrap();
+		assert!(text.contains("\tWindowWidth = 1500\r\n\tWindowHeight = 900\r\n\tFullscreen = 0"), "{text:?}");
+	}
+
+	#[test]
+	fn window_size_replaces_the_old_one_and_keeps_the_rest() {
+		let last = temp("last-b", "Settings\n\tWindowWidth = 1280\n\tWindowHeight = 720\n");
+		let master = temp("master-b", "Settings\n\tResolutionMultiplier = 1\n\tWindowWidth = 800\n\tWindowHeight = 600\n\tFullscreen = 0\n");
+		assert_eq!(carry_window_size(&last, &master), Some((1280, 720)));
+		assert_eq!(fs::read_to_string(&master).unwrap(), "Settings\n\tResolutionMultiplier = 1\n\tWindowWidth = 1280\n\tWindowHeight = 720\n\tFullscreen = 0\n");
+	}
+
+	#[test]
+	fn nothing_is_carried_without_a_size_or_a_place_for_it() {
+		let none = temp("last-c", "Settings\n\tResolutionX = 960\n");
+		let tiny = temp("last-d", "Settings\n\tWindowWidth = 10\n\tWindowHeight = 10\n");
+		let master = temp("master-c", "Settings\n\tFullscreen = 0\n");
+		assert_eq!(carry_window_size(&none, &master), None);
+		assert_eq!(carry_window_size(&tiny, &master), None);
+		// A file with no resolution line has nowhere to put them, so it is left as it was.
+		let good = temp("last-e", "Settings\n\tWindowWidth = 1500\n\tWindowHeight = 900\n");
+		assert_eq!(carry_window_size(&good, &master), None);
+		assert_eq!(fs::read_to_string(&master).unwrap(), "Settings\n\tFullscreen = 0\n");
 	}
 }

@@ -206,7 +206,14 @@ void WindowMan::CreatePrimaryWindow() {
 	windowTitle += " (x86)";
 #endif
 
-	int windowPosX = (m_ResX * m_ResMultiplier <= m_PrimaryWindowDisplayWidth) ? SDL_WINDOWPOS_CENTERED : (m_MaxResX - (m_ResX * m_ResMultiplier)) / 2;
+	// The window opens at the size it was left at last time (an ordinary window only, and one that fits the desktop), otherwise the settings' size.
+	int windowWidth = m_ResX * m_ResMultiplier;
+	int windowHeight = m_ResY * m_ResMultiplier;
+	if (!m_Fullscreen && !m_Background && m_SavedWindowWidth >= c_MinResX && m_SavedWindowHeight >= c_MinResY && m_SavedWindowWidth <= m_MaxResX && m_SavedWindowHeight <= m_MaxResY) {
+		windowWidth = m_SavedWindowWidth;
+		windowHeight = m_SavedWindowHeight;
+	}
+	int windowPosX = (windowWidth <= m_PrimaryWindowDisplayWidth) ? SDL_WINDOWPOS_CENTERED : (m_MaxResX - windowWidth) / 2;
 	int windowPosY = SDL_WINDOWPOS_CENTERED;
 
 	SDL_PropertiesID windowProps = SDL_CreateProperties();
@@ -217,8 +224,8 @@ void WindowMan::CreatePrimaryWindow() {
 	SDL_SetBooleanProperty(windowProps, SDL_PROP_WINDOW_CREATE_FULLSCREEN_BOOLEAN, m_Fullscreen);
 	SDL_SetNumberProperty(windowProps, SDL_PROP_WINDOW_CREATE_X_NUMBER, windowPosX);
 	SDL_SetNumberProperty(windowProps, SDL_PROP_WINDOW_CREATE_Y_NUMBER, windowPosY);
-	SDL_SetNumberProperty(windowProps, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, m_ResX * m_ResMultiplier);
-	SDL_SetNumberProperty(windowProps, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, m_ResY * m_ResMultiplier);
+	SDL_SetNumberProperty(windowProps, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, windowWidth);
+	SDL_SetNumberProperty(windowProps, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, windowHeight);
 	// In the background (test runs): hidden and never focused, so the person at the machine keeps their mouse and keyboard.
 	if (m_Background) {
 		SDL_SetBooleanProperty(windowProps, SDL_PROP_WINDOW_CREATE_HIDDEN_BOOLEAN, true);
@@ -565,6 +572,36 @@ void WindowMan::ValidateResolution(int& resX, int& resY, float& resMultiplier) c
 		RTEError::ShowMessageBox("Resolution multiplier too high, overriding to fit!");
 		g_SettingsMan.SetSettingsNeedOverwrite();
 	}
+}
+
+bool WindowMan::GetOrdinaryWindowSize(int& width, int& height) const {
+	if (!m_PrimaryWindow || m_Fullscreen || m_Background) {
+		return false;
+	}
+	if (SDL_GetWindowFlags(m_PrimaryWindow.get()) & (SDL_WINDOW_MAXIMIZED | SDL_WINDOW_MINIMIZED | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_HIDDEN)) {
+		return false;
+	}
+	int w = 0;
+	int h = 0;
+	SDL_GetWindowSize(m_PrimaryWindow.get(), &w, &h);
+	if (w <= 0 || h <= 0) {
+		return false;
+	}
+	width = w;
+	height = h;
+	return true;
+}
+
+int WindowMan::GetSettingsWindowWidth() const {
+	int width = 0;
+	int height = 0;
+	return GetOrdinaryWindowSize(width, height) ? width : m_SavedWindowWidth;
+}
+
+int WindowMan::GetSettingsWindowHeight() const {
+	int width = 0;
+	int height = 0;
+	return GetOrdinaryWindowSize(width, height) ? height : m_SavedWindowHeight;
 }
 
 void WindowMan::SetViewportLetterboxed() {
