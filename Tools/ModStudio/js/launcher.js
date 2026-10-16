@@ -180,10 +180,12 @@ window.MS = window.MS || {};
 			menu.append(b);
 		}
 		menu.append(el('div', { className: 'run-sep' }));
-		if (s.repoOk && !advanced) {
+		if (s.config.workDir) {
+			menu.append(item('⚒ Build my copy', 'Build ' + s.config.workDir + ' as it is now', () => L.open('play').then(() => startJob('update', {}))));
+		} else if (s.repoOk && !advanced) {
 			menu.append(item('⟳ Update & build', 'Fetch the newest ' + s.config.branch + ' and build it if it changed', () => L.open('play').then(() => startJob('update', {}))));
 		}
-		if (s.repoOk && advanced) {
+		if (s.repoOk && advanced && !s.config.workDir) {
 			menu.append(item('Versions…', 'Pick and build a branch, tag or commit', () => L.open('versions')));
 		}
 		menu.append(item('Launch settings…', 'Settings.ini, presets, mods folder and world', () => L.open('settings')));
@@ -275,18 +277,23 @@ window.MS = window.MS || {};
 
 	function renderPlay(body) {
 		const s = L.state;
-		const simple = s.config.mode !== 'advanced';
-		if (!s.repoOk) {
+		const own = !!s.config.workDir;
+		const simple = s.config.mode !== 'advanced' || own;
+		if (!s.repoOk && !own) {
 			body.append(card('No game repo yet', el('p', { textContent: 'Cortex Studio builds the game from a git checkout of Cortex Command. Pick yours in Setup.' }), row(button('Open Setup', () => openTab('setup'), { primary: true }))));
 			return;
 		}
 		const details = el('dl', { className: 'gm-facts' });
 		const version = card(
-			simple ? 'Your game' : 'The version in Studio\'s slot',
-			el('p', {}, simple ? 'Keeps the newest ' : 'Built from the Versions tab. ', simple ? el('b', { textContent: s.config.remote + '/' + s.config.branch }) : null, simple ? ' built and ready. ' : '', builtLine()),
+			own ? 'Your own copy' : simple ? 'Your game' : 'The version in Studio\'s slot',
+			own
+				? el('p', {}, 'Built and played in ', el('code', { textContent: s.config.workDir }), ', with whatever is checked out there. ', builtLine())
+				: el('p', {}, simple ? 'Keeps the newest ' : 'Built from the Versions tab. ', simple ? el('b', { textContent: s.config.remote + '/' + s.config.branch }) : null, simple ? ' built and ready. ' : '', builtLine()),
 			details,
 			row(
-				simple
+				own
+					? button('⚒ Build my copy', () => startJob('update', {}), { primary: !s.builtExe, title: 'Build ' + s.config.workDir + ' as it is now' })
+				: simple
 					? button('⟳ Update & build', () => startJob('update', {}), { primary: !s.builtExe, title: 'Fetch the newest ' + s.config.branch + ' and build it if it changed' })
 					: button('Pick a version…', () => openTab('versions')),
 				el('label', { className: 'gm-inline' }, 'Build type ', configurationSelect()),
@@ -820,6 +827,7 @@ window.MS = window.MS || {};
 					pathField('Repo folder', 'repo', 'folder'),
 					status,
 					pathField('Versions folder', 'versionsDir', 'folder', 'Where built versions go. Empty means CortexVersions next to the repo. Studio uses CortexVersions/' + s.config.slot + ', so the Windows launcher\'s Current is left alone.'),
+					pathField('My own copy (optional)', 'workDir', 'folder', 'A checkout of the game you are working on, such as a git worktree. When set, Build and Play use it where it is, with whatever you have checked out, and Studio never fetches into it, moves it or deletes it. Empty uses the branch build above.'),
 					row(el('label', { className: 'gm-inline' }, 'Remote ', remote), s.config.mode !== 'advanced' ? el('label', { className: 'gm-inline' }, 'Branch to keep up to date ', branch) : null),
 				),
 				row(button('Back', () => next(1)), el('span', { className: 'spacer' }), button('Done', async () => {

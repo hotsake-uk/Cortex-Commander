@@ -30,6 +30,9 @@ pub struct Config {
 	pub slot: String,
 	/// The branch Simple mode keeps up to date.
 	pub branch: String,
+	/// Your own checkout of the game (a git worktree of your work). When set, it is the slot: built and launched in place, never
+	/// fetched into, moved to another commit or deleted. "" keeps the branch builds in `versions_dir`.
+	pub work_dir: String,
 	pub last_ref: String,
 	pub configuration: String,
 	pub settings_ini: String,
@@ -124,6 +127,9 @@ impl Config {
 	}
 
 	pub fn slot_path(&self) -> PathBuf {
+		if !self.work_dir.is_empty() {
+			return PathBuf::from(&self.work_dir);
+		}
 		self.versions_dir().join(&self.slot)
 	}
 
@@ -493,6 +499,10 @@ fn versions(config: &Config, shas: &[String]) -> Value {
 // ---- building ----
 
 fn ensure_worktree(ctx: &JobCtx, config: &Config, sha: &str) -> Result<(), String> {
+	if !config.work_dir.is_empty() {
+		// Your own copy is built where it is, at whatever you have checked out.
+		return Ok(());
+	}
 	let repo = PathBuf::from(&config.repo);
 	let slot = config.slot_path();
 	if slot.join(".git").exists() {
@@ -553,6 +563,16 @@ fn build(ctx: &JobCtx, config: &Config, sha: &str) -> Result<(), String> {
 
 /// Simple mode: fetch, and build the newest commit of the chosen branch if it isn't already the one built.
 fn update(ctx: &JobCtx, config: &Config) -> Result<(), String> {
+	if !config.work_dir.is_empty() {
+		// Your own copy: no fetch, just build what is there (the build tools only redo what changed).
+		let work = config.slot_path();
+		if !work.join("RTEA.sln").is_file() {
+			return Err(format!("{} doesn't look like a checkout of the game.", work.display()));
+		}
+		let sha = git(&work, &["rev-parse", "HEAD"]).map(|h| h.trim().to_string()).unwrap_or_else(|_| "working-copy".into());
+		ctx.log(format!("Building your copy in {}.", work.display()));
+		return build(ctx, config, &sha);
+	}
 	let repo = PathBuf::from(&config.repo);
 	ctx.run("git", &["fetch", &config.remote, "--prune"], &repo, &[])?;
 	let reference = format!("{}/{}", config.remote, config.branch);
@@ -688,6 +708,13 @@ fn merge_missing(from: &Path, to: &Path) -> std::io::Result<()> {
 
 /// Copies a planet skin over the version's Data/Base.rte (files it still has only); going back to stock is a git checkout of that folder.
 fn apply_world(config: &Config, slot: &Path, log: &mut Vec<String>) -> Result<(), String> {
+	if !config.work_dir.is_empty() {
+		// Skins are undone with a git checkout of Data/Base.rte, which would throw away edits in your own copy.
+		if !config.world.is_empty() {
+			log.push("World skins aren't applied to your own copy of the game.".into());
+		}
+		return Ok(());
+	}
 	let marker = slot.join(WORLD_MARKER);
 	if marker.exists() {
 		git(slot, &["checkout", "-f", "--", "Data/Base.rte"]).map_err(|e| format!("Couldn't restore stock Data/Base.rte: {e}"))?;
@@ -926,7 +953,8 @@ fn arg(body: &Value, key: &str) -> String {
 pub fn handle(launcher: &Launcher, action: &str, query: &dyn Fn(&str) -> Option<String>, body: &Value, game_dir: &Path) -> Answer {
 	let config = launcher.config.lock().unwrap().clone();
 	let repo_ok = Path::new(&config.repo).join(".git").exists();
-	let needs_repo = matches!(action, "refs" | "commits" | "versions" | "fetch" | "build" | "update");
+	let own_copy = !config.work_dir.is_empty();
+	let needs_repo = matches!(action, "refs" | "commits" | "versions" | "fetch" | "build" | "update") && !(own_copy && action == "update");
 	if needs_repo && !repo_ok {
 		return fail(400, format!("'{}' isn't a git checkout of the game. Set the repo folder in Settings.", config.repo));
 	}
@@ -980,6 +1008,9 @@ pub fn handle(launcher: &Launcher, action: &str, query: &dyn Fn(&str) -> Option<
 			job_answer(launcher.start_job("Fetching", move |ctx| ctx.run("git", &["fetch", &c.remote, "--tags", "--prune"], Path::new(&c.repo), &[])))
 		}
 		"build" => {
+			if own_copy {
+				return fail(400, "Studio is set to build your own copy of the game. Clear that in Launch settings to build a commit.");
+			}
 			let sha = arg(body, "sha");
 			if sha.len() < 7 {
 				return fail(400, "Pick a commit to build.");
@@ -1019,6 +1050,9 @@ pub fn handle(launcher: &Launcher, action: &str, query: &dyn Fn(&str) -> Option<
 			Answer { status: 200, body: json!({ "ok": true }).to_string(), switch_to: Some(target) }
 		}
 		"delete-build" => {
+			if own_copy {
+				return fail(400, "That is your own copy of the game, so Studio won't delete it.");
+			}
 			let slot = config.slot_path();
 			if !slot.exists() {
 				return ok(json!({ "ok": true }));
