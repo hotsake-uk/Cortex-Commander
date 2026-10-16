@@ -29,6 +29,7 @@
 #include "ActorFire.h"
 #include "ActorWater.h"
 #include "UnitSpeech.h"
+#include "AIAwareness.h"
 #include "UnitSpeechVoice.h"
 #include "ModernHUD.h"
 #include "ToolWidgets.h"
@@ -252,6 +253,7 @@ void SettingsMan::Clear() {
 	m_AIThreatAvoidance = 1.0F;
 	m_AIRecklessness = 0.5F;
 	ResetLadderSettings();
+	ResetRopeHoldSettings();
 	ResetCarryWeightSettings();
 	m_AISpawnDiggerChance = 0.0F;
 	m_BleedOutChance = 0.0F;
@@ -1114,6 +1116,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("EnableCrabBombs", { reader >> m_EnableCrabBombs; });
 	MatchProperty("EnableMantling", { reader >> m_EnableMantling; });
 	MatchProperty("CreaturesClimbWalls", { reader >> m_CreaturesClimbWalls; });
+	MatchProperty("MechFootfallShake", { float shake = 1.0F; reader >> shake; SetMechFootfallShake(shake); });
 	MatchProperty("CreatureClimbSpeed", { float speed = 1.0F; reader >> speed; SetCreatureClimbSpeed(speed); });
 	MatchProperty("CreaturesFly", { reader >> m_CreaturesFly; });
 	MatchProperty("CreatureFlySpeed", { float speed = 1.0F; reader >> speed; SetCreatureFlySpeed(speed); });
@@ -1145,6 +1148,12 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 		}
 	});
 	MatchProperty("NoSceneWrap", { reader >> m_NoSceneWrap; });
+	MatchProperty("AIAwarenessMarks", { int units = AIAwareness::EnemyUnits; reader >> units; AIAwareness::Marks = std::clamp(units, 0, 2); });
+	MatchProperty("AIAwarenessCones", { int units = AIAwareness::EnemyUnits; reader >> units; AIAwareness::Cones = std::clamp(units, 0, 2); });
+	MatchProperty("AIAwarenessMeter", { int shown = AIAwareness::MeterAlways; reader >> shown; AIAwareness::Meter = std::clamp(shown, 0, 2); });
+	MatchProperty("AIAwarenessOnlyWithStealth", { reader >> AIAwareness::OnlyWithStealth; });
+	MatchProperty("AIAwarenessConeOpacity", { reader >> AIAwareness::ConeOpacity; AIAwareness::ConeOpacity = std::clamp(AIAwareness::ConeOpacity, 0.0F, 1.0F); });
+	MatchProperty("AIAwarenessMarkScale", { reader >> AIAwareness::MarkScale; AIAwareness::MarkScale = std::clamp(AIAwareness::MarkScale, 0.5F, 2.0F); });
 	MatchProperty("UnitSpeech", { bool on = true; reader >> on; UnitSpeech::SetEnabled(on); });
 	MatchProperty("UnitSpeechChance", { int percent = 40; reader >> percent; UnitSpeech::SetChance(percent); });
 	MatchProperty("UnitSpeechEnemies", { bool on = true; reader >> on; UnitSpeech::SetShowsEnemies(on); });
@@ -1166,6 +1175,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CraftToughness", { float toughness = 1.0F; reader >> toughness; SetToughness(ToughnessKind::Craft, toughness); });
 	MatchProperty("AnimalToughness", { float toughness = 1.0F; reader >> toughness; SetToughness(ToughnessKind::Animals, toughness); });
 	MatchProperty("CreatureToughness", { float toughness = 1.0F; reader >> toughness; SetToughness(ToughnessKind::Creatures, toughness); });
+	MatchProperty("MechToughness", { float toughness = 1.0F; reader >> toughness; SetToughness(ToughnessKind::Mechs, toughness); });
 	MatchProperty("AISuppression", {
 		reader >> m_AISuppression;
 		m_AISuppression = std::clamp(m_AISuppression, 0.0F, 2.0F);
@@ -1194,6 +1204,9 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AILadderTeamStalls", { int stalls = 2; reader >> stalls; SetAILadderTeamStalls(stalls); });
 	MatchProperty("AIGrabsLaddersOnPurpose", { reader >> m_AIGrabsLaddersOnPurpose; });
 	MatchProperty("AIGrabsLaddersMidJet", { reader >> m_AIGrabsLaddersMidJet; });
+	MatchProperty("UnitsGrabRopes", { reader >> m_UnitsGrabRopes; });
+	MatchProperty("AICatchesRopes", { reader >> m_AICatchesRopes; });
+	MatchProperty("RopeClimbSpeed", { float speed; reader >> speed; SetRopeClimbSpeed(speed); });
 	MatchProperty("AIMantlesOnPurpose", { reader >> m_AIMantlesOnPurpose; });
 	MatchProperty("AICatchesLedgesMidAir", { reader >> m_AICatchesLedgesMidAir; });
 	MatchProperty("RiskyOrdersFlyPastLadders", { reader >> m_RiskyOrdersFlyPastLadders; });
@@ -1880,6 +1893,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	group(PresetGroup::Gameplay);
 	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
 	writer.NewPropertyWithValue("CreaturesClimbWalls", m_CreaturesClimbWalls);
+	writer.NewPropertyWithValue("MechFootfallShake", m_MechFootfallShake);
 	writer.NewPropertyWithValue("CreatureClimbSpeed", m_CreatureClimbSpeed);
 	writer.NewPropertyWithValue("CreaturesFly", m_CreaturesFly);
 	writer.NewPropertyWithValue("CreatureFlySpeed", m_CreatureFlySpeed);
@@ -1917,6 +1931,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("CraftToughness", Toughness(ToughnessKind::Craft));
 	writer.NewPropertyWithValue("AnimalToughness", Toughness(ToughnessKind::Animals));
 	writer.NewPropertyWithValue("CreatureToughness", Toughness(ToughnessKind::Creatures));
+	writer.NewPropertyWithValue("MechToughness", Toughness(ToughnessKind::Mechs));
 	writer.NewPropertyWithValue("AISuppression", m_AISuppression);
 	writer.NewPropertyWithValue("AIDigWillingness", m_AIDigWillingness);
 	writer.NewPropertyWithValue("AIDigsWithTracers", m_AIDigsWithTracers);
@@ -1952,6 +1967,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AILadderTeamStalls", m_AILadderTeamStalls);
 	writer.NewPropertyWithValue("AIGrabsLaddersOnPurpose", m_AIGrabsLaddersOnPurpose);
 	writer.NewPropertyWithValue("AIGrabsLaddersMidJet", m_AIGrabsLaddersMidJet);
+	writer.NewPropertyWithValue("UnitsGrabRopes", m_UnitsGrabRopes);
+	writer.NewPropertyWithValue("AICatchesRopes", m_AICatchesRopes);
+	writer.NewPropertyWithValue("RopeClimbSpeed", m_RopeClimbSpeed);
 	writer.NewPropertyWithValue("AIMantlesOnPurpose", m_AIMantlesOnPurpose);
 	writer.NewPropertyWithValue("AICatchesLedgesMidAir", m_AICatchesLedgesMidAir);
 	writer.NewPropertyWithValue("RiskyOrdersFlyPastLadders", m_RiskyOrdersFlyPastLadders);
@@ -2065,6 +2083,12 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("PauseAIKey", m_PauseAIKey);
 	writer.NewPropertyWithValue("SmoothHUDText", TextOverlay::IsEnabled());
 	writer.NewPropertyWithValue("FrameCap", g_WindowMan.GetFrameCap());
+	writer.NewPropertyWithValue("AIAwarenessMarks", AIAwareness::Marks);
+	writer.NewPropertyWithValue("AIAwarenessCones", AIAwareness::Cones);
+	writer.NewPropertyWithValue("AIAwarenessMeter", AIAwareness::Meter);
+	writer.NewPropertyWithValue("AIAwarenessOnlyWithStealth", AIAwareness::OnlyWithStealth);
+	writer.NewPropertyWithValue("AIAwarenessConeOpacity", AIAwareness::ConeOpacity);
+	writer.NewPropertyWithValue("AIAwarenessMarkScale", AIAwareness::MarkScale);
 	writer.NewPropertyWithValue("UnitSpeech", UnitSpeech::IsEnabled());
 	writer.NewPropertyWithValue("UnitSpeechChance", UnitSpeech::GetChance());
 	writer.NewPropertyWithValue("UnitSpeechEnemies", UnitSpeech::ShowsEnemies());

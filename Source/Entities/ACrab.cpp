@@ -891,7 +891,7 @@ PathAgent ACrab::GetPathAgent() const {
 }
 
 float ACrab::GetLegJumpHeight() const {
-	if (!m_pLFGLeg && !m_pLBGLeg && !m_pRFGLeg && !m_pRBGLeg) {
+	if (!HasLegsLeft()) {
 		return 0.0F;
 	}
 	// A third of the body, halved: a crab clears a kerb or a node-wide gap, not a human's knee-high crate.
@@ -985,7 +985,6 @@ void ACrab::PreControllerUpdate() {
 	float mass = GetMass();
 
 	Vector analogAim = m_Controller.GetAnalogAim();
-	const float analogAimDeadzone = 0.1F;
 
 	// Set Default direction of all the paths!
 	for (int side = 0; side < SIDECOUNT; ++side) {
@@ -1063,134 +1062,7 @@ void ACrab::PreControllerUpdate() {
 		}
 	}
 
-	////////////////////////////////////
-	// Reload held MO, if applicable
-
-	if (m_Controller.IsState(WEAPON_RELOAD) && !FirearmsAreFull() && m_Status != INACTIVE) {
-		ReloadFirearms();
-
-		if (m_DeviceSwitchSound) {
-			m_DeviceSwitchSound->Play(m_Pos);
-		}
-
-		// Interrupt sharp aiming
-		m_SharpAimTimer.Reset();
-		m_SharpAimProgress = 0;
-	}
-
-	////////////////////////////////////
-	// Aiming
-
-	// Get rotation angle of crab
-	float rotAngle = GetRotAngle();
-
-	// Adjust AimRange limits to crab rotation
-	float adjustedAimRangeUpperLimit = (m_HFlipped) ? m_AimRangeUpperLimit - rotAngle : m_AimRangeUpperLimit + rotAngle;
-	float adjustedAimRangeLowerLimit = (m_HFlipped) ? -m_AimRangeLowerLimit - rotAngle : -m_AimRangeLowerLimit + rotAngle;
-
-	if (m_Controller.IsState(AIM_UP) && m_Status != INACTIVE) {
-		// Set the timer to a base number so we don't get a sluggish feeling at start.
-		if (m_AimState != AIMUP) {
-			m_AimTmr.SetElapsedSimTimeMS(m_AimState == AIMSTILL ? 150 : 300);
-		}
-		m_AimState = AIMUP;
-		m_AimAngle += m_Controller.IsState(AIM_SHARP) ? std::min(static_cast<float>(m_AimTmr.GetElapsedSimTimeMS()) * 0.00005F, 0.05F) : std::min(static_cast<float>(m_AimTmr.GetElapsedSimTimeMS()) * 0.00015F, 0.15F) * m_Controller.GetDigitalAimSpeed();
-
-	} else if (m_Controller.IsState(AIM_DOWN) && m_Status != INACTIVE) {
-		// Set the timer to a base number so we don't get a sluggish feeling at start.
-		if (m_AimState != AIMDOWN) {
-			m_AimTmr.SetElapsedSimTimeMS(m_AimState == AIMSTILL ? 150 : 300);
-		}
-		m_AimState = AIMDOWN;
-		m_AimAngle -= m_Controller.IsState(AIM_SHARP) ? std::min(static_cast<float>(m_AimTmr.GetElapsedSimTimeMS()) * 0.00005F, 0.05F) : std::min(static_cast<float>(m_AimTmr.GetElapsedSimTimeMS()) * 0.00015F, 0.15F) * m_Controller.GetDigitalAimSpeed();
-
-	} else if (analogAim.MagnitudeIsGreaterThan(analogAimDeadzone) && m_Status != INACTIVE) {
-		// Hack to avoid the GetAbsRadAngle to mangle an aim angle straight down
-		if (analogAim.m_X == 0) {
-			analogAim.m_X += 0.01F * GetFlipFactor();
-		}
-		m_AimAngle = analogAim.GetAbsRadAngle();
-
-		// Check for flip change
-		if ((analogAim.m_X > 0 && m_HFlipped) || (analogAim.m_X < 0 && !m_HFlipped)) {
-			SetHFlipped(!m_HFlipped);
-			// Instead of simply carving out a silhouette of the now flipped actor, isntead disable any atoms which are embedded int eh terrain until they emerge again
-			// m_ForceDeepCheck = true;
-			m_CheckTerrIntersection = true;
-			MoveOutOfTerrain(g_MaterialGrass);
-			for (int side = 0; side < SIDECOUNT; ++side) {
-				for (int layer = 0; layer < LAYERCOUNT; ++layer) {
-					m_Paths[side][layer][m_MovementState].SetHFlip(m_HFlipped);
-					m_Paths[side][layer][WALK].Terminate();
-					m_Paths[side][layer][STAND].Terminate();
-				}
-				m_StrideStart[side] = true;
-			}
-		}
-		// Correct angle based on flip
-		m_AimAngle = FacingAngle(m_AimAngle);
-
-		// Clamp the analog aim too, so it doesn't feel "sticky" at the edges of the aim limit
-		if (m_Controller.IsPlayerControlled() && m_LockMouseAimInput) {
-			float mouseAngle = g_UInputMan.AnalogAimValues(m_Controller.GetPlayer()).GetAbsRadAngle();
-			Clamp(mouseAngle, FacingAngle(adjustedAimRangeUpperLimit), FacingAngle(adjustedAimRangeLowerLimit));
-			g_UInputMan.SetMouseValueAngle(mouseAngle, m_Controller.GetPlayer());
-		}
-	} else
-		m_AimState = AIMSTILL;
-
-	// Clamp aim angle so it's within adjusted limit ranges, for all control types
-	Clamp(m_AimAngle, adjustedAimRangeUpperLimit, adjustedAimRangeLowerLimit);
-
-	//////////////////////////////
-	// Sharp aim calculation
-
-	if (m_Controller.IsState(AIM_SHARP) && m_Status == STABLE && m_Vel.MagnitudeIsLessThan(5.0F)) {
-		float aimMag = analogAim.GetMagnitude();
-
-		// If aim sharp is being done digitally, then translate to full magnitude.
-		if (aimMag < 0.1F) {
-			aimMag = 1.0F;
-		}
-		if (m_MovementState == WALK) {
-			aimMag *= 0.3F;
-		}
-
-		if (m_SharpAimTimer.IsPastSimMS(m_SharpAimDelay)) {
-			// Only go slower outward.
-			if (m_SharpAimProgress < aimMag) {
-				m_SharpAimProgress += (aimMag - m_SharpAimProgress) * 0.035F;
-			} else {
-				m_SharpAimProgress = aimMag;
-			}
-		} else {
-			m_SharpAimProgress *= 0.95F;
-		}
-	} else {
-		m_SharpAimProgress = std::max(m_SharpAimProgress * 0.95F - 0.1F, 0.0F);
-	}
-
-	////////////////////////////////////
-	// Fire/Activate held devices
-
-	if (m_pTurret && m_pTurret->IsAttached() && m_Status != INACTIVE) {
-		for (HeldDevice* mountedDevice: m_pTurret->GetMountedDevices()) {
-			mountedDevice->SetSharpAim(m_SharpAimProgress);
-			if (m_Controller.IsState(WEAPON_FIRE)) {
-				mountedDevice->Activate();
-				if (mountedDevice->IsEmpty()) {
-					mountedDevice->Reload();
-				}
-			} else {
-				mountedDevice->Deactivate();
-			}
-			if (m_Controller.IsState(WEAPON_PRIMARY_HOTKEY)) {
-				mountedDevice->ActivateHotkeyAction(HeldDeviceHotkeyType::PRIMARYHOTKEY);
-			} else {
-				mountedDevice->DeactivateHotkeyAction(HeldDeviceHotkeyType::PRIMARYHOTKEY);
-			}
-		}
-	}
+	UpdateAimAndFire(analogAim);
 
 	// Controller disabled
 	if (m_Controller.IsDisabled()) {
@@ -1256,7 +1128,7 @@ void ACrab::PreControllerUpdate() {
 			float RBGLegProg = m_Paths[RIGHTSIDE][BGROUND][WALK].GetRegularProgress();
 
 			bool restarted = false;
-			Matrix walkAngle(rotAngle * 0.5F);
+			Matrix walkAngle(GetRotAngle() * 0.5F);
 
 			// Make sure we are starting a stride if we're basically stopped.
 			if (isStill) {
@@ -1433,6 +1305,143 @@ void ACrab::PreControllerUpdate() {
 	}
 }
 
+void ACrab::OnFlippedByAim() {
+	for (int side = 0; side < SIDECOUNT; ++side) {
+		for (int layer = 0; layer < LAYERCOUNT; ++layer) {
+			m_Paths[side][layer][m_MovementState].SetHFlip(m_HFlipped);
+			m_Paths[side][layer][WALK].Terminate();
+			m_Paths[side][layer][STAND].Terminate();
+		}
+		m_StrideStart[side] = true;
+	}
+}
+
+void ACrab::UpdateAimAndFire(Vector analogAim) {
+	const float analogAimDeadzone = 0.1F;
+
+	////////////////////////////////////
+	// Reload held MO, if applicable
+
+	if (m_Controller.IsState(WEAPON_RELOAD) && !FirearmsAreFull() && m_Status != INACTIVE) {
+		ReloadFirearms();
+
+		if (m_DeviceSwitchSound) {
+			m_DeviceSwitchSound->Play(m_Pos);
+		}
+
+		// Interrupt sharp aiming
+		m_SharpAimTimer.Reset();
+		m_SharpAimProgress = 0;
+	}
+
+	////////////////////////////////////
+	// Aiming
+
+	// Get rotation angle of crab
+	float rotAngle = GetRotAngle();
+
+	// Adjust AimRange limits to crab rotation
+	float adjustedAimRangeUpperLimit = (m_HFlipped) ? m_AimRangeUpperLimit - rotAngle : m_AimRangeUpperLimit + rotAngle;
+	float adjustedAimRangeLowerLimit = (m_HFlipped) ? -m_AimRangeLowerLimit - rotAngle : -m_AimRangeLowerLimit + rotAngle;
+
+	if (m_Controller.IsState(AIM_UP) && m_Status != INACTIVE) {
+		// Set the timer to a base number so we don't get a sluggish feeling at start.
+		if (m_AimState != AIMUP) {
+			m_AimTmr.SetElapsedSimTimeMS(m_AimState == AIMSTILL ? 150 : 300);
+		}
+		m_AimState = AIMUP;
+		m_AimAngle += m_Controller.IsState(AIM_SHARP) ? std::min(static_cast<float>(m_AimTmr.GetElapsedSimTimeMS()) * 0.00005F, 0.05F) : std::min(static_cast<float>(m_AimTmr.GetElapsedSimTimeMS()) * 0.00015F, 0.15F) * m_Controller.GetDigitalAimSpeed();
+
+	} else if (m_Controller.IsState(AIM_DOWN) && m_Status != INACTIVE) {
+		// Set the timer to a base number so we don't get a sluggish feeling at start.
+		if (m_AimState != AIMDOWN) {
+			m_AimTmr.SetElapsedSimTimeMS(m_AimState == AIMSTILL ? 150 : 300);
+		}
+		m_AimState = AIMDOWN;
+		m_AimAngle -= m_Controller.IsState(AIM_SHARP) ? std::min(static_cast<float>(m_AimTmr.GetElapsedSimTimeMS()) * 0.00005F, 0.05F) : std::min(static_cast<float>(m_AimTmr.GetElapsedSimTimeMS()) * 0.00015F, 0.15F) * m_Controller.GetDigitalAimSpeed();
+
+	} else if (analogAim.MagnitudeIsGreaterThan(analogAimDeadzone) && m_Status != INACTIVE) {
+		// Hack to avoid the GetAbsRadAngle to mangle an aim angle straight down
+		if (analogAim.m_X == 0) {
+			analogAim.m_X += 0.01F * GetFlipFactor();
+		}
+		m_AimAngle = analogAim.GetAbsRadAngle();
+
+		// Check for flip change
+		if ((analogAim.m_X > 0 && m_HFlipped) || (analogAim.m_X < 0 && !m_HFlipped)) {
+			SetHFlipped(!m_HFlipped);
+			// Instead of simply carving out a silhouette of the now flipped actor, isntead disable any atoms which are embedded int eh terrain until they emerge again
+			// m_ForceDeepCheck = true;
+			m_CheckTerrIntersection = true;
+			MoveOutOfTerrain(g_MaterialGrass);
+			OnFlippedByAim();
+		}
+		// Correct angle based on flip
+		m_AimAngle = FacingAngle(m_AimAngle);
+
+		// Clamp the analog aim too, so it doesn't feel "sticky" at the edges of the aim limit
+		if (m_Controller.IsPlayerControlled() && m_LockMouseAimInput) {
+			float mouseAngle = g_UInputMan.AnalogAimValues(m_Controller.GetPlayer()).GetAbsRadAngle();
+			Clamp(mouseAngle, FacingAngle(adjustedAimRangeUpperLimit), FacingAngle(adjustedAimRangeLowerLimit));
+			g_UInputMan.SetMouseValueAngle(mouseAngle, m_Controller.GetPlayer());
+		}
+	} else
+		m_AimState = AIMSTILL;
+
+	// Clamp aim angle so it's within adjusted limit ranges, for all control types
+	Clamp(m_AimAngle, adjustedAimRangeUpperLimit, adjustedAimRangeLowerLimit);
+
+	//////////////////////////////
+	// Sharp aim calculation
+
+	if (m_Controller.IsState(AIM_SHARP) && m_Status == STABLE && m_Vel.MagnitudeIsLessThan(5.0F)) {
+		float aimMag = analogAim.GetMagnitude();
+
+		// If aim sharp is being done digitally, then translate to full magnitude.
+		if (aimMag < 0.1F) {
+			aimMag = 1.0F;
+		}
+		if (m_MovementState == WALK) {
+			aimMag *= 0.3F;
+		}
+
+		if (m_SharpAimTimer.IsPastSimMS(m_SharpAimDelay)) {
+			// Only go slower outward.
+			if (m_SharpAimProgress < aimMag) {
+				m_SharpAimProgress += (aimMag - m_SharpAimProgress) * 0.035F;
+			} else {
+				m_SharpAimProgress = aimMag;
+			}
+		} else {
+			m_SharpAimProgress *= 0.95F;
+		}
+	} else {
+		m_SharpAimProgress = std::max(m_SharpAimProgress * 0.95F - 0.1F, 0.0F);
+	}
+
+	////////////////////////////////////
+	// Fire/Activate held devices
+
+	if (m_pTurret && m_pTurret->IsAttached() && m_Status != INACTIVE) {
+		for (HeldDevice* mountedDevice: m_pTurret->GetMountedDevices()) {
+			mountedDevice->SetSharpAim(m_SharpAimProgress);
+			if (m_Controller.IsState(WEAPON_FIRE) && MountedDeviceMayFire(mountedDevice)) {
+				mountedDevice->Activate();
+				if (mountedDevice->IsEmpty()) {
+					mountedDevice->Reload();
+				}
+			} else {
+				mountedDevice->Deactivate();
+			}
+			if (m_Controller.IsState(WEAPON_PRIMARY_HOTKEY)) {
+				mountedDevice->ActivateHotkeyAction(HeldDeviceHotkeyType::PRIMARYHOTKEY);
+			} else {
+				mountedDevice->DeactivateHotkeyAction(HeldDeviceHotkeyType::PRIMARYHOTKEY);
+			}
+		}
+	}
+}
+
 void ACrab::Update() {
 	ZoneScoped;
 
@@ -1569,7 +1578,7 @@ void ACrab::Update() {
 	}
 
 	// Losing all limbs should kill... eventually (but not a body made with none, CR-9)
-	if (!m_BornLegless && !m_pLFGLeg && !m_pLBGLeg && !m_pRFGLeg && !m_pRBGLeg && m_Status != DYING && m_Status != DEAD)
+	if (!m_BornLegless && !HasLegsLeft() && m_Status != DYING && m_Status != DEAD)
 		m_Health -= 0.1;
 
 	/////////////////////////////////////////

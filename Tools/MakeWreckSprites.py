@@ -38,6 +38,7 @@ VEHICLES = [
     ("Base.rte/Actors/Vehicles/RowingBoat/RowingBoat.ini", "RowingBoatHull.png", 107),
     ("Base.rte/Craft/Ships/Gunship/Gunship.ini", "GunshipHull.png", 108),
     ("Base.rte/Craft/Ships/Frigate/Frigate.ini", "FrigateHull.png", 109),
+    ("Base.rte/Actors/Mechs/ImperialKnight/ImperialKnight.ini", "KnightHull.png", 110),
 ]
 
 # The generic debris the wreck and its chunks stand in for, taken out of the body's gib list. The small and tiny bits, the explosions,
@@ -300,8 +301,8 @@ def save_piece(pixels, colours, path):
 
 
 def vehicle_block(lines):
-    """The first and one-past-last line of the vehicle's own block (the AVehicle or ACShip)."""
-    start = next(i for i, l in enumerate(lines) if re.match(r"AddActor = (AVehicle|ACShip)\s*$", l))
+    """The first and one-past-last line of the vehicle's own block (the AVehicle, ACShip or AMech)."""
+    start = next(i for i, l in enumerate(lines) if re.match(r"AddActor = (AVehicle|ACShip|AMech)\s*$", l))
     end = next((i for i in range(start + 1, len(lines)) if lines[i] and not lines[i].startswith(("\t", "//"))), len(lines))
     while lines[end - 1].strip() == "":
         end -= 1

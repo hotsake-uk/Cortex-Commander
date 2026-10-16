@@ -1238,7 +1238,7 @@ function MetaFight:SearchLZ(player)
 		if SafePos then
 			local TargetActors = {};
 			for actor in MovableMan.Actors do
-				if actor.Team ~= team and ((actor.ClassName == "AHuman" and actor.PresetName ~= "Find Path") or actor.ClassName == "ACrab" or actor.ClassName == "Actor") and not actor:IsDead() then
+				if actor.Team ~= team and ((actor.ClassName == "AHuman" and actor.PresetName ~= "Find Path") or actor.ClassName == "ACrab" or actor.ClassName == "AMech" or actor.ClassName == "Actor") and not actor:IsDead() then
 					local distance = SceneMan:ShortestDistance(SafePos, actor.Pos, false).Largest;
 					if actor:HasObjectInGroup("Brains") then
 						distance = distance * 0.7; -- Prioritize brains

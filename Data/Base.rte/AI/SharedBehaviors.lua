@@ -870,6 +870,7 @@ function SharedBehaviors.ScanForTargets(AI, Owner, skill, fovDegrees, budget)
 			AI.Noticing[id] = nil;
 		end
 	end
+	SharedBehaviors.ReportAwareness(AI, Owner, fovDegrees, range);
 	-- The enemy being fought, while in view, is what is answered (so the fight keeps it, TargetLostTimer and all), but every fourth scan
 	-- the plainest other one noticed, so a worse threat can take its place, as the old look's stray rays let it. (By UniqueID: luabind has no == for two Actor
 	-- userdata, and threw "No such operator defined" here.)
@@ -877,6 +878,38 @@ function SharedBehaviors.ScanForTargets(AI, Owner, skill, fovDegrees, budget)
 		return current, currentHit;
 	end
 	return noticed, noticedHit;
+end
+
+-- What a unit is aware of, told to the engine for the marks over it and its sight cone (Actor.ReportAwareness; AIAwareness in the engine):
+-- fighting an enemy, noticing one (how far the noticing has got, from AI.Noticing), searching (an enemy it lost sight of, a place it goes to
+-- check, a flank on one it can't see), or nothing; a noise heard the engine adds itself (Actor.GetAlarmAgeMS). Each scan; for a build
+-- without it (an older exe), nothing.
+local HasReportAwareness = MemberCache();
+local function GetReportAwareness(Owner) return Owner.ReportAwareness; end
+local AWARE_UNAWARE, AWARE_NOTICING, AWARE_SEARCHING, AWARE_ENGAGED = 0, 1, 2, 3;
+function SharedBehaviors.ReportAwareness(AI, Owner, fovDegrees, range)
+	if not HasMember(HasReportAwareness, Owner, GetReportAwareness) then
+		return;
+	end
+	local fov = type(fovDegrees) == "number" and fovDegrees or 120;
+	if AI.Target and MovableMan:ValidMO(AI.Target) then
+		Owner:ReportAwareness(AWARE_ENGAGED, 1, AI.Target.UniqueID, fov, range);
+		return;
+	end
+	local level, targetID = 0, 0;
+	for id, entry in pairs(AI.Noticing or {}) do
+		if entry.progress > level then
+			level, targetID = entry.progress, id;
+		end
+	end
+	if level > 0.02 then
+		Owner:ReportAwareness(AWARE_NOTICING, math.min(level, 1), targetID, fov, range);
+	elseif AI.UnseenTarget or AI.Investigate or AI.Flank then
+		local Lost = AI.UnseenTarget;
+		Owner:ReportAwareness(AWARE_SEARCHING, 0, Lost and MovableMan:ValidMO(Lost) and Lost.UniqueID or 0, fov, range);
+	else
+		Owner:ReportAwareness(AWARE_UNAWARE, 0, 0, fov, range);
+	end
 end
 
 -- The crouched stance for SharedBehaviors.Stance (the engine's stance 1): ducked behind low cover or made small, on its feet.
@@ -1038,7 +1071,7 @@ function SharedBehaviors.CrowdingUpdate(AI, Owner)
 	end
 	AI.CrowdingTimer:Reset();
 	local className = Owner.ClassName;
-	if (className ~= "AHuman" and className ~= "ACrab") or Owner:IsPlayerControlled() or Owner.Status ~= Actor.STABLE or AI.flying or AI.Cover or AI.Flank
+	if (className ~= "AHuman" and className ~= "ACrab" and className ~= "AMech") or Owner:IsPlayerControlled() or Owner.Status ~= Actor.STABLE or AI.flying or AI.Cover or AI.Flank
 		or AI.lateralMoveState ~= Actor.LAT_STILL or Owner.MovePathSize > 0 or Owner.Vel:MagnitudeIsGreaterThan(2)
 		or (SharedBehaviors.EngineMotor(Owner) and Owner.TacticalMoveActive) or Owner:NumberValueExists("AIRetreat") then
 		return;
@@ -1051,7 +1084,7 @@ function SharedBehaviors.CrowdingUpdate(AI, Owner)
 	local Near = {};
 	for Mate in MovableMan.Actors do
 		local mateClass = Mate.Team == team and Mate.UniqueID ~= ownID and Mate.Status < Actor.DYING and Mate.ClassName;
-		if (mateClass == "AHuman" or mateClass == "ACrab") and not Mate.Vel:MagnitudeIsGreaterThan(2) then
+		if (mateClass == "AHuman" or mateClass == "ACrab" or mateClass == "AMech") and not Mate.Vel:MagnitudeIsGreaterThan(2) then
 			local Dist = SceneMan:ShortestDistance(OwnPos, Mate.Pos, false);
 			if math.abs(Dist.X) < reach and math.abs(Dist.Y) < height then
 				Near[#Near + 1] = {dx = Dist.X, dy = Dist.Y, earlier = Mate.UniqueID < ownID};
@@ -1164,7 +1197,7 @@ function SharedBehaviors.SquadTactics(AI, Owner)
 		for Mate in MovableMan.Actors do
 			-- (Fighting men and crabs only: a craft or a door standing next to a unit made it step away under fire.)
 			local className = Mate.Team == team and Mate.UniqueID ~= ownID and Mate.Status < dying and not Mate:IsPlayerControlled() and Mate.ClassName;
-			if className == "AHuman" or className == "ACrab" then
+			if className == "AHuman" or className == "ACrab" or className == "AMech" then
 				local Dist = SceneMan:ShortestDistance(OwnPos, Mate.Pos, false);
 				if Dist:MagnitudeIsLessThan(400) then
 					if SharedBehaviors.PeerValueExists(Mate, "AITargetID") then
@@ -1242,6 +1275,8 @@ end
 function SharedBehaviors.ToActorClass(MO)
 	if MO.ClassName == "AHuman" then
 		return ToAHuman(MO);
+	elseif MO.ClassName == "AMech" then
+		return ToAMech(MO);
 	elseif MO.ClassName == "ACrab" then
 		return ToACrab(MO);
 	elseif MO.ClassName == "ACRocket" then
@@ -5687,7 +5722,7 @@ function SharedBehaviors.CalculateThreatLevel(MO, Owner)
 		else
 			priority = priority + 0.5;
 		end
-	elseif MO.ClassName == "ACrab" then
+	elseif MO.ClassName == "ACrab" or MO.ClassName == "AMech" then
 		if MO.FirearmIsReady then	-- prioritize armed targets
 			priority = priority + 0.7;
 		else

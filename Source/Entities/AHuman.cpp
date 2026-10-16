@@ -2285,6 +2285,7 @@ void AHuman::PreControllerUpdate() {
 	// The AI's motor (its stance, a tactical move, a fall braked), then a ladder taken hold of or let go of, before the jet reads its key.
 	UpdateAIMotor();
 	UpdateLadderInput();
+	UpdateRopeHoldInput();
 	UpdateLeap();
 
 	if (m_pJetpack && m_pJetpack->IsAttached()) {
@@ -2825,6 +2826,9 @@ void AHuman::PreControllerUpdate() {
 	if (m_Ladder.active) {
 		// On a ladder: hands and feet on the rungs (see UpdateLadderLimbs), not the walk's paths.
 		UpdateLadderLimbs();
+	} else if (m_RopeHold.active) {
+		// Hanging from a rope: the legs dangle and kick (see UpdateRopeHoldLimbs), the hands are on the rope with the arms'.
+		UpdateRopeHoldLimbs();
 	} else if (m_Status == STABLE && !m_LimbPushForcesAndCollisionsDisabled && m_MovementState != NOMOVE) {
 		// This exists to support disabling foot collisions if the limbpath has that flag set.
 		if ((m_pFGFootGroup->GetAtomCount() == 0 && m_BackupFGFootGroup->GetAtomCount() > 0) != m_Paths[FGROUND][m_MovementState].FootCollisionsShouldBeDisabled()) {
@@ -3101,12 +3105,12 @@ void AHuman::PreControllerUpdate() {
 	}
 
 	if (m_pFGLeg) {
-		m_pFGLeg->EnableIdle(m_ProneState == NOTPRONE && m_Status != UNSTABLE && !m_Ladder.active);
+		m_pFGLeg->EnableIdle(m_ProneState == NOTPRONE && m_Status != UNSTABLE && !m_Ladder.active && !m_RopeHold.active);
 		m_pFGLeg->SetTargetPosition(m_pFGFootGroup->GetLimbPos(m_HFlipped));
 	}
 
 	if (m_pBGLeg) {
-		m_pBGLeg->EnableIdle(m_ProneState == NOTPRONE && m_Status != UNSTABLE && !m_Ladder.active);
+		m_pBGLeg->EnableIdle(m_ProneState == NOTPRONE && m_Status != UNSTABLE && !m_Ladder.active && !m_RopeHold.active);
 		m_pBGLeg->SetTargetPosition(m_pBGFootGroup->GetLimbPos(m_HFlipped));
 	}
 
@@ -3129,6 +3133,10 @@ void AHuman::PreControllerUpdate() {
 			// On a ladder: the hand on its rung, a pixel in from the rung's end.
 			m_pFGArm->ClearHandTargets();
 			m_pFGArm->AddHandTarget("Ladder Rung", Vector(m_Ladder.gripX - 1.0F, m_Ladder.grip[0]));
+		} else if (m_RopeHold.active && !m_pFGArm->GetHeldDevice()) {
+			// On a rope: the hands one over the other on it, swapping at each point climbed.
+			m_pFGArm->ClearHandTargets();
+			m_pFGArm->AddHandTarget("Rope", m_RopeHold.grip + m_RopeHold.up * (m_RopeHold.handOver == 0 ? 2.0F : -2.0F));
 		} else if (m_Status == STABLE) {
 			if (m_ArmClimbing[FGROUND]) {
 				m_pFGArm->AddHandTarget("Hand AtomGroup Limb Pos", m_pFGHandGroup->GetLimbPos(m_HFlipped));
@@ -3151,6 +3159,9 @@ void AHuman::PreControllerUpdate() {
 		} else if (m_Ladder.active && !m_pBGArm->GetHeldDevice() && m_Ladder.gripped[1]) {
 			m_pBGArm->ClearHandTargets();
 			m_pBGArm->AddHandTarget("Ladder Rung", Vector(m_Ladder.gripX + 1.0F, m_Ladder.grip[1]));
+		} else if (m_RopeHold.active && !m_pBGArm->GetHeldDevice()) {
+			m_pBGArm->ClearHandTargets();
+			m_pBGArm->AddHandTarget("Rope", m_RopeHold.grip + m_RopeHold.up * (m_RopeHold.handOver == 0 ? -2.0F : 2.0F));
 		} else if (m_Status == STABLE) {
 			if (m_ArmClimbing[BGROUND]) {
 				// Can't climb or crawl with the shield
@@ -3259,6 +3270,7 @@ void AHuman::Update() {
 	// Pulling up onto a ledge or over an obstacle (Actor::TryStartMantle): any humanoid, from its own sizes; the arms run their climb
 	// paths while it pulls.
 	if (!m_Mantling && !m_Ladder.active && !heldByLift) {
+		// (On a rope too: at its top, a ledge beside is pulled up onto, and the rope let go of; see UpdateRopeHold.)
 		bool rising = m_pJetpack && m_pJetpack->IsEmitting() && m_Vel.m_Y < 0.5F;
 		float bodyWidth = MoveBodyWidth();
 		// (An AI unit only when it means to, WantMantle: pressing on along its route, it pulled itself up onto ledges the route never went to.)
@@ -3293,7 +3305,10 @@ void AHuman::Update() {
 		UpdateMantle();
 	} else if (m_Ladder.active) {
 		UpdateLadder();
-	} else if (!heldByLift) {
+	}
+	if (m_RopeHold.active) {
+		UpdateRopeHold();
+	} else if (!m_Mantling && !m_Ladder.active && !heldByLift) {
 		CorrectCorners();
 	}
 
@@ -3442,6 +3457,12 @@ void AHuman::Update() {
 					m_AngularVel = ExpDecay(m_AngularVel, 0, 10, g_TimerMan.GetDeltaTimeSecs());
 				}
 			}
+		} else if (m_RopeHold.active) {
+			// Hanging from a rope: the body swings on its hands, rocking on a loose spring towards the line of the rope and lagging behind
+			// the swing, rather than standing upright. (Body up is (-sin, -cos) of the angle, so the rope's way up gives the angle.)
+			float rotTarget = std::atan2(-m_RopeHold.up.m_X, -m_RopeHold.up.m_Y);
+			float rotDiff = NormalizeAngleBetweenNegativePIAndPI(rot - rotTarget);
+			m_AngularVel = m_AngularVel * 0.97F - rotDiff * 0.12F;
 		} else {
 			// Upright body posture
 			float rotTarget = (GetRotAngleTarget(m_MovementState) * (m_AimAngle > 0 ? 1.0F - (m_AimAngle / c_HalfPI) : 1.0F) * GetFlipFactor());

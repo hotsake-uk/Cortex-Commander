@@ -1500,6 +1500,8 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 			if ClosestEnemy and not ClosestEnemy:IsDead() then
 				if ClosestEnemy.ClassName == "AHuman" then
 					ClosestEnemy = ToAHuman(ClosestEnemy);
+				elseif ClosestEnemy.ClassName == "AMech" then
+					ClosestEnemy = ToAMech(ClosestEnemy);
 				elseif ClosestEnemy.ClassName == "ACrab" then
 					ClosestEnemy = ToACrab(ClosestEnemy);
 				elseif ClosestEnemy.ClassName == "AVehicle" then
@@ -2659,7 +2661,7 @@ function HumanBehaviors.ThrowTarget(AI, Owner, Abort)
 									if Legs then
 										AimPoint = Legs.Pos;
 									end
-								elseif MO.ClassName == "ACrab" then
+								elseif MO.ClassName == "ACrab" or MO.ClassName == "AMech" then
 									AI.Target = ToACrab(MO);
 									local Legs = AI.Target.LeftFGLeg or AI.Target.RightFGLeg or AI.Target.LeftBGLeg or AI.Target.RightFGLeg; -- the legs
 									if Legs then
@@ -2989,7 +2991,7 @@ function HumanBehaviors.ShootArea(AI, Owner, Abort)
 		if _abrt then return true end
 
 		if AI.UnseenTarget and CheckTargetTimer:IsPastRealMS(400*AI.aimSkill) then
-			if MovableMan:ValidMO(AI.UnseenTarget) and (AI.UnseenTarget.ClassName == "AHuman" or AI.UnseenTarget.ClassName == "ACrab") then
+			if MovableMan:ValidMO(AI.UnseenTarget) and (AI.UnseenTarget.ClassName == "AHuman" or AI.UnseenTarget.ClassName == "ACrab" or AI.UnseenTarget.ClassName == "AMech") then
 				CheckTargetTimer:Reset();
 				if AI.UnseenTarget:GetController() and AI.UnseenTarget:GetController():IsState(Controller.WEAPON_FIRE) then
 					-- compare the enemy aim angle with the angle to us
