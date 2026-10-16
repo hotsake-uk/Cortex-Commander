@@ -218,6 +218,67 @@ function ConvertTo-JsonString([string]$s) {
 	return [System.Web.HttpUtility]::JavaScriptStringEncode($s, $true)
 }
 
+# Studio's file history in a browser. (Cortex Studio, the app, keeps each mod's history with git instead: history.rs.) A copy of a
+# file is kept every time Studio is about to overwrite or delete it, in %APPDATA%\CortexStudio\History\Copies\<path in Mods>: the
+# first copy ever (the file before Studio first changed it) and the newest 5 others. The requests answer as the app's do.
+$historyRoot = Join-Path $env:APPDATA 'CortexStudio\History\Copies'
+
+# "Mods/X.rte/a.ini" -> the folder its copies go in; $null for anything outside Mods (the game's own Data is never written).
+function Get-HistoryFolder([string]$key) {
+	$parts = @($key -split '[\\/]')
+	if ($parts.Count -lt 3 -or $parts[0] -ne 'Mods' -or ($parts | Where-Object { $_ -eq '' -or $_ -eq '.' -or $_ -eq '..' })) { return $null }
+	return Join-Path $historyRoot (($parts | Select-Object -Skip 1) -join '\')
+}
+
+function Get-HistoryCopies([string]$folder) {
+	if (-not [System.IO.Directory]::Exists($folder)) { return @() }
+	return @([System.IO.Directory]::GetFiles($folder) | Sort-Object { [System.IO.Path]::GetFileName($_) } -Descending)
+}
+
+function Save-HistoryCopy([string]$diskPath, [string]$full) {
+	try {
+		$folder = Get-HistoryFolder ($diskPath -replace '\\', '/')
+		if (-not $folder -or -not [System.IO.File]::Exists($full)) { return }
+		$content = [System.IO.File]::ReadAllBytes($full)
+		$existing = @(Get-HistoryCopies $folder)
+		if ($existing.Count -gt 0) {
+			$newest = [System.IO.File]::ReadAllBytes($existing[0])
+			$sha = [System.Security.Cryptography.SHA1]::Create()
+			if ([Convert]::ToBase64String($sha.ComputeHash($newest)) -eq [Convert]::ToBase64String($sha.ComputeHash($content))) { return }
+		}
+		[void][System.IO.Directory]::CreateDirectory($folder)
+		$id = ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()).ToString('D15') + $(if ($existing.Count -eq 0) { '-original' } else { '' })
+		[System.IO.File]::WriteAllBytes((Join-Path $folder $id), $content)
+		Get-HistoryCopies $folder | Where-Object { -not $_.EndsWith('-original') } | Select-Object -Skip 5 | ForEach-Object { [System.IO.File]::Delete($_) }
+	} catch {}
+}
+
+function Get-HistoryJson([string]$key) {
+	if ($key) {
+		$folder = Get-HistoryFolder $key
+		if (-not $folder) { return '[]' }
+		$items = foreach ($file in @(Get-HistoryCopies $folder)) {
+			$id = [System.IO.Path]::GetFileName($file)
+			$original = $id.EndsWith('-original')
+			$message = if ($original) { 'The file before Studio first changed it' } else { 'The file before a save' }
+			'{"id":' + (ConvertTo-JsonString $id) + ',"time":' + [long]([long]($id -replace '-original$', '') / 1000) + ',"message":' + (ConvertTo-JsonString $message) + ',"original":' + $(if ($original) { 'true' } else { 'false' }) + ',"deleted":false}'
+		}
+		return '[' + ($items -join ',') + ']'
+	}
+	if (-not [System.IO.Directory]::Exists($historyRoot)) { return '[]' }
+	$rows = foreach ($dir in [System.IO.Directory]::GetDirectories($historyRoot, '*', 'AllDirectories')) {
+		$copies = @(Get-HistoryCopies $dir)
+		if ($copies.Count -eq 0) { continue }
+		[pscustomobject]@{
+			key = 'Mods/' + ($dir.Substring($historyRoot.Length + 1) -replace '\\', '/')
+			time = [long]([long]([System.IO.Path]::GetFileName($copies[0]) -replace '-original$', '') / 1000)
+			count = $copies.Count
+		}
+	}
+	$items = foreach ($row in @($rows | Sort-Object time -Descending)) { '{"key":' + (ConvertTo-JsonString $row.key) + ',"time":' + $row.time + ',"count":' + $row.count + '}' }
+	return '[' + ($items -join ',') + ']'
+}
+
 function Invoke-Api($context, [string]$action) {
 	$request = $context.Request
 	$response = $context.Response
@@ -310,8 +371,31 @@ function Invoke-Api($context, [string]$action) {
 			$mods = Join-Path $GameDir 'Mods'
 			if (-not $full.StartsWith($mods + '\', [StringComparison]::OrdinalIgnoreCase)) { Send-Text $response 403 'Only files in Mods can be deleted.'; return }
 			if ($watcher) { $watcher.Wrote($full) }
+			Save-HistoryCopy $path $full
 			if ([System.IO.File]::Exists($full)) { [System.IO.File]::Delete($full) }
 			Send-Text $response 200 'ok'
+		}
+		'history' {
+			# Without a key: every file Studio kept copies of. With one: that file's copies, newest first. With mods: the mods you edit
+			# (a folder in History\Copies each).
+			if ($request.QueryString['mods']) {
+				$names = if ([System.IO.Directory]::Exists($historyRoot)) { @([System.IO.Directory]::GetDirectories($historyRoot) | ForEach-Object { ConvertTo-JsonString ([System.IO.Path]::GetFileName($_)) }) } else { @() }
+				Send-Text $response 200 ('[' + ($names -join ',') + ']') 'application/json'
+				return
+			}
+			Send-Text $response 200 (Get-HistoryJson ([string]$request.QueryString['key'])) 'application/json'
+		}
+		'history-start' {
+			# "Edit this mod": lets Studio's designer change a mod it didn't make. Copies of each file are kept as it is changed.
+			if ($path -notmatch '^Mods/([^/\\]+\.rte)$') { Send-Text $response 400 'Only a mod in Mods can be edited.'; return }
+			[void][System.IO.Directory]::CreateDirectory((Join-Path $historyRoot $Matches[1]))
+			Send-Text $response 200 'ok'
+		}
+		'history-file' {
+			$id = [string]$request.QueryString['id']
+			$folder = Get-HistoryFolder ([string]$request.QueryString['key'])
+			if (-not $folder -or $id -match '[\\/]|\.\.' -or -not [System.IO.File]::Exists((Join-Path $folder $id))) { Send-Text $response 404 'No such copy.'; return }
+			Send-Bytes $response ([System.IO.File]::ReadAllBytes((Join-Path $folder $id))) 'application/octet-stream'
 		}
 		'changes' {
 			# Files saved outside Studio since the page last asked (see StudioWatcher). 404 when the bridge is off, so the page stops asking.
@@ -327,6 +411,7 @@ function Invoke-Api($context, [string]$action) {
 				$memory = New-Object System.IO.MemoryStream
 				$request.InputStream.CopyTo($memory)
 				if ($watcher) { $watcher.Wrote($full) }
+				Save-HistoryCopy $path $full
 				[System.IO.File]::WriteAllBytes($full, $memory.ToArray())
 				Send-Text $response 200 'ok'
 			} elseif ([System.IO.File]::Exists($full)) {

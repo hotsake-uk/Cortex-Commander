@@ -667,6 +667,15 @@ window.MS = window.MS || {};
 				b.textContent = 'Make my own copy';
 				b.onclick = () => MS.dialogs.copyUnit();
 				n.append(document.createElement('br'), b);
+				if (app.lib.lockKind(app.actorNode.doc) === 'mod') {
+					const module = app.actorNode.doc.path.split('/')[0];
+					const edit = document.createElement('button');
+					edit.className = 'small-btn';
+					edit.textContent = 'Edit this mod';
+					edit.title = 'Studio keeps ' + module + ' as it is now, so History can put any file back, then lets you change it';
+					edit.onclick = () => MS.history.editMod(module);
+					n.append(' ', edit);
+				}
 			}
 			insp.append(n);
 		} else if (part.role !== 'body' && part.anchor === app.actorNode && !part.ent.node.isWithin(app.actorNode)) {

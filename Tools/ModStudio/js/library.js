@@ -169,8 +169,38 @@ window.MS = window.MS || {};
 			return this.modules.find((m) => m.name.toLowerCase() === name) || null;
 		}
 
+		// The designer changes only your mods: ones Studio made, and ones you chose to edit (Edit this mod, which keeps the mod as it
+		// was in Studio's history first). The game's own files and other people's mods are locked until then. this.editable is the
+		// mods with a history, from the server; without a server (read only, saves download a zip) only the game's own are locked.
 		isProtected(doc) {
-			return !!doc && this.fs.isOfficial(doc.path);
+			return !!this.lockKind(doc);
+		}
+
+		// '' (yours), 'game' (the game's own files) or 'mod' (someone else's mod, not chosen to edit).
+		lockKind(doc) {
+			if (!doc) {
+				return '';
+			}
+			if (this.fs.isOfficial(doc.path)) {
+				return 'game';
+			}
+			if (!this.fs.server || !this.editable) {
+				return '';
+			}
+			const module = doc.path.split('/')[0].toLowerCase();
+			return this.editable.has(module) || this.madeInStudio(module) ? '' : 'mod';
+		}
+
+		madeInStudio(module) {
+			const index = this.docFor(module + '/Index.ini');
+			return !!index && /Made with Cortex Mod Studio/i.test(index.savedText || index.serialize());
+		}
+
+		lockMessage(doc) {
+			const module = doc.path.split('/')[0];
+			return this.lockKind(doc) === 'game'
+				? 'This is in ' + module + ', the game\'s own files. Make a copy in your mod to change it.'
+				: module + ' is someone else\'s mod. Choose Edit this mod (Studio keeps it as it is now, so you can go back), or make a copy in your mod.';
 		}
 
 		reindex() {
@@ -273,7 +303,7 @@ window.MS = window.MS || {};
 		// {readOnly: reason} if the part can't be changed from this actor. With dryRun nothing is changed.
 		ownBlock(actorNode, path, dryRun) {
 			if (this.isProtected(actorNode.doc)) {
-				return { readOnly: 'This unit is in ' + actorNode.doc.module + ', the game\'s own files. Make a copy in your mod to change it.' };
+				return { readOnly: this.lockMessage(actorNode.doc) };
 			}
 			let anchor = actorNode;
 			// In a dry run, an inherited block that would be copied in stands for its copy: its lines count as the copy's own.
@@ -308,7 +338,7 @@ window.MS = window.MS || {};
 				this.invalidate();
 			}
 			if (!virtual && this.isProtected(anchor.doc)) {
-				return { readOnly: 'This is in ' + anchor.doc.module + ', the game\'s own files.' };
+				return { readOnly: this.lockMessage(anchor.doc) };
 			}
 			return { node: anchor };
 		}

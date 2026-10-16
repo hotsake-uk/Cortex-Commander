@@ -112,6 +112,8 @@ window.MS = window.MS || {};
 			app.lib = new MS.Library(fs);
 			app.lib.onDocDirty = () => updateFileStatus();
 			await app.lib.load(report);
+			await MS.history.loadEditable();
+			$('btnHistory').hidden = !MS.history.available();
 			report('Getting ready…', 1);
 			hookDocs();
 		} catch (e) {
@@ -381,15 +383,25 @@ window.MS = window.MS || {};
 			t.textContent = '';
 			return;
 		}
-		const locked = app.lib.isProtected(app.lib.docFor(app.actor.path));
+		const kind = app.lib.lockKind(app.lib.docFor(app.actor.path));
+		const locked = !!kind;
 		t.innerHTML = '';
 		const b = document.createElement('b');
 		b.textContent = app.actor.name;
 		t.append(b, ' · ' + app.actor.path);
 		const badge = document.createElement('span');
 		badge.className = 'badge ' + (locked ? 'lock' : 'own');
-		badge.textContent = locked ? 'built-in: make a copy to change it' : 'your mod';
+		badge.textContent = kind === 'game' ? 'built-in: make a copy to change it' : kind === 'mod' ? 'someone else\'s mod' : 'your mod';
 		t.append(badge);
+		if (kind === 'mod') {
+			const module = app.actor.path.split('/')[0];
+			const edit = document.createElement('button');
+			edit.className = 'badge-btn';
+			edit.textContent = 'Edit this mod';
+			edit.title = 'Studio keeps ' + module + ' as it is now, so History can put any file back, then lets you change it';
+			edit.onclick = () => MS.history.editMod(module);
+			t.append(edit);
+		}
 		$('btnCopy').disabled = false;
 		$('btnCopy').classList.toggle('attention', locked);
 		$('btnPreview').disabled = locked;
@@ -748,11 +760,13 @@ window.MS = window.MS || {};
 	app.save = async function (quiet) {
 		const docs = app.dirtyDocs();
 		let written = 0;
+		const saved = []; // For Undo on the Saved message: what each file now holds, and whether the save made it.
 		for (const doc of docs) {
 			if (app.lib.isProtected(doc)) {
-				app.toast('Not saving ' + doc.path + ': it is one of the game\'s own files.', 'bad');
+				app.toast('Not saving ' + doc.path + ': ' + app.lib.lockMessage(doc), 'bad');
 				continue;
 			}
+			const isNew = !!doc.isNew;
 			const text = doc.serialize();
 			try {
 				await app.fs.writeFile(doc.path, text);
@@ -764,6 +778,7 @@ window.MS = window.MS || {};
 			doc.dirty = false;
 			doc.isNew = false;
 			app.savedSinceLastPreview.add(doc.path);
+			saved.push({ path: doc.path, text, isNew });
 			written++;
 		}
 		updateFileStatus();
@@ -776,7 +791,8 @@ window.MS = window.MS || {};
 			return written;
 		}
 		if (written && !quiet) {
-			app.toast('Saved ' + written + ' file' + (written > 1 ? 's' : '') + '.', 'good');
+			const undo = MS.history.available() ? { label: 'Undo', run: () => MS.history.undoSave(saved) } : null;
+			app.toast('Saved ' + written + ' file' + (written > 1 ? 's' : '') + '.', 'good', undo);
 		}
 		return written;
 	};
@@ -980,6 +996,7 @@ window.MS = window.MS || {};
 		}
 		$('btnCopy').onclick = () => MS.dialogs.copyUnit();
 		$('btnHelp').onclick = () => MS.dialogs.help();
+		$('btnHistory').onclick = () => MS.history.open(app.actor && app.actor.path);
 		$('btnScope').onclick = (e) => {
 			e.stopPropagation();
 			scopeMenu();
@@ -1098,12 +1115,30 @@ window.MS = window.MS || {};
 		$('statusText').textContent = text;
 	};
 
-	app.toast = function (text, kind) {
+	// action: {label, run}, a button on the message (like Undo after a save), which then stays up a little longer.
+	app.toast = function (text, kind, action) {
 		const el = document.createElement('div');
 		el.className = 'toast ' + (kind || '');
 		el.textContent = text;
+		if (action) {
+			const b = document.createElement('button');
+			b.className = 'toast-btn';
+			b.textContent = action.label;
+			b.onclick = () => {
+				el.remove();
+				action.run();
+			};
+			el.append(b);
+		}
 		$('toasts').append(el);
-		setTimeout(() => el.remove(), kind === 'bad' ? 7000 : 4000);
+		setTimeout(() => el.remove(), action ? 9000 : kind === 'bad' ? 7000 : 4000);
+	};
+
+	// After Edit this mod: everything that shows what can be changed looks again.
+	app.refreshLocks = function () {
+		updateTitle();
+		MS.panels.refresh();
+		app.requestDraw();
 	};
 
 	function readLocal(key) {

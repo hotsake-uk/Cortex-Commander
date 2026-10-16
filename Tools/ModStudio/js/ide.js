@@ -899,6 +899,9 @@ window.MS = window.MS || {};
 		if (request.scripts && pendingRequest && pendingRequest.scripts) {
 			merged.scripts = [...new Set([...pendingRequest.scripts, ...request.scripts])];
 		}
+		if (request.files && pendingRequest && pendingRequest.files) {
+			merged.files = [...new Set([...pendingRequest.files, ...request.files])];
+		}
 		pendingRequest = merged;
 		clearTimeout(requestTimer);
 		const wait = Math.max(0, 350 - (Date.now() - lastRequestAt));
@@ -913,6 +916,9 @@ window.MS = window.MS || {};
 				for (const path of req.scripts) {
 					lines.push('ReloadScript = ' + path);
 				}
+			}
+			for (const path of req.files || []) {
+				lines.push('ReloadFile = ' + path);
 			}
 			if (req.run) {
 				lines.push('Run = ' + RUN_FILE);
@@ -973,7 +979,10 @@ window.MS = window.MS || {};
 		setTimeout(pollBridge, 1000);
 	}
 
-	async function takeOutsideChanges(changes) {
+	// Also used by History's Restore (why says where the change came from, for the console line).
+	ide.reloadFromDisk = (changes, why) => takeOutsideChanges(changes, why);
+
+	async function takeOutsideChanges(changes, why) {
 		const names = [];
 		const kept = [];
 		const sprites = [];
@@ -1043,7 +1052,7 @@ window.MS = window.MS || {};
 			app.requestDraw();
 		}
 		renderTabs();
-		consoleLine('— saved outside Studio: ' + names.join(', ') + ' —', 'studio');
+		consoleLine('— ' + (why || 'saved outside Studio') + ': ' + names.join(', ') + ' —', 'studio');
 		if (kept.length) {
 			app.toast(kept.join(', ') + (kept.length > 1 ? ' were' : ' was') + ' changed on disk, but has unsaved edits in Studio, so Studio kept yours. Saving replaces the outside change.', 'bad');
 		}

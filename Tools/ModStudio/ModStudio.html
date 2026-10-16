@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cortex Mod Studio</title>
-<link rel="stylesheet" href="studio.css?v=30">
+<link rel="stylesheet" href="studio.css?v=31">
 </head>
 <body>
 <div id="app">
@@ -32,6 +32,7 @@
 		<button class="tb" id="btnView" title="Hide or show the unit view, to give the properties the room while the game shows the unit (V)">◧ Hide view</button>
 		<button class="tb" id="btnLive" title="Live: send every change to the game as you make it (a drag is sent when you let go)" disabled>● Live</button>
 		<button class="tb primary" id="btnPreview" title="Save, then show this unit in the game's Actor Editor" disabled>▶ Preview in game</button>
+		<button class="tb" id="btnHistory" title="Every version of the files Studio changed in your mods, and Restore" hidden>⟲ History</button>
 		<button class="tb icon" id="btnHelp" title="How to use Mod Studio">?</button>
 	</header>
 
@@ -199,19 +200,20 @@
 <div id="modal" class="modal" hidden><div class="modal-card" id="modalCard"></div></div>
 <div id="toasts"></div>
 
-<script src="vendor/luaparse/luaparse.js?v=30"></script>
-<script src="js/ini.js?v=30"></script>
-<script src="js/gamefs.js?v=30"></script>
-<script src="js/library.js?v=30"></script>
-<script src="js/images.js?v=30"></script>
-<script src="js/rig.js?v=30"></script>
-<script src="js/viewport.js?v=30"></script>
-<script src="js/panels.js?v=30"></script>
-<script src="js/dialogs.js?v=30"></script>
-<script src="js/lua-intel.js?v=30"></script>
-<script src="js/ini-intel.js?v=30"></script>
-<script src="js/ide.js?v=30"></script>
-<script src="js/app.js?v=30"></script>
-<script src="js/launcher.js?v=30"></script>
+<script src="vendor/luaparse/luaparse.js?v=31"></script>
+<script src="js/ini.js?v=31"></script>
+<script src="js/gamefs.js?v=31"></script>
+<script src="js/library.js?v=31"></script>
+<script src="js/images.js?v=31"></script>
+<script src="js/rig.js?v=31"></script>
+<script src="js/viewport.js?v=31"></script>
+<script src="js/panels.js?v=31"></script>
+<script src="js/dialogs.js?v=31"></script>
+<script src="js/lua-intel.js?v=31"></script>
+<script src="js/ini-intel.js?v=31"></script>
+<script src="js/ide.js?v=31"></script>
+<script src="js/history.js?v=31"></script>
+<script src="js/app.js?v=31"></script>
+<script src="js/launcher.js?v=31"></script>
 </body>
 </html>

@@ -8,6 +8,7 @@
 // Without --game-dir it uses the folder it last used, the game folder it sits in, or asks for one.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod history;
 mod launcher;
 mod server;
 mod watcher;

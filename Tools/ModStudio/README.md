@@ -82,6 +82,12 @@ In Deep mode:
 - Your mod's files are edited in place: only the lines you change are rewritten; comments, order and spacing stay.
 - Changing a part a unit inherits copies that part into the unit's own block first, so other units that share it don't change.
 - A new unit is saved as `<YourMod>.rte/Actors/<Name>.ini` and added to the mod's `Index.ini` (made for you if the mod is new).
+- The designer changes only your mods: ones Studio made, and ones you chose **Edit this mod** on. Other people's mods are locked
+  like the game's own until then (**Make my own copy** works on them too).
+- Every version is kept. The first time Studio changes a mod it keeps the mod as it was, then every save or delete is kept too, so
+  **History** in the top bar puts any file back, and **Undo** on the Saved message undoes that save. The Cortex Studio app keeps
+  each mod's history with git (built in, nothing to install) in `CortexStudio/History` in your config folder (`%APPDATA%` on
+  Windows); in a browser, Studio keeps copies there instead (the original and the newest 5 of each file).
 
 ## Preview in game
 
