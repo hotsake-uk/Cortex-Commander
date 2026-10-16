@@ -41,7 +41,10 @@ Needs [Rust](https://rustup.rs) and Node.js (for the Tauri command line), plus o
 
 Then in this folder:
 
-    npx @tauri-apps/cli@2 build     # the app and its installers, in src-tauri/target/release/bundle
-    cargo run --manifest-path src-tauri/Cargo.toml -- --game-dir <game folder>     # a quick debug run
+    .\dev.ps1          # Windows: a debug build, run on this checkout (-GameDir <folder> for another, -Bridge for headless)
+    ./dev.sh           # Linux and macOS: the same ([game folder] [--bridge])
+    npx @tauri-apps/cli@2 build     # the release app and its installers, in src-tauri/target/release/bundle
 
-Set `CORTEX_STUDIO_PAGE` to `Tools/ModStudio` to serve the page from disk while working on it, instead of the copy built in.
+The dev scripts serve Mod Studio's page straight from `Tools/ModStudio` (by setting `CORTEX_STUDIO_PAGE`), so edit the page and
+reload the window (Ctrl+R or F5) to see it; a change to the Rust side needs the script run again. The release build has the page
+built in.
