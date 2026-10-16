@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cortex Mod Studio</title>
-<link rel="stylesheet" href="studio.css?v=40">
+<link rel="stylesheet" href="studio.css?v=41">
 </head>
 <body>
 <div id="app">
@@ -139,6 +139,13 @@
 	<section id="codeWrap">
 		<div id="codeBanner" class="code-banner" hidden>One of the game's own files: read only. Copy what you need into a file in your mod.</div>
 		<div id="codeUsers" class="code-users" hidden></div>
+		<div id="codeTools" class="code-tools" hidden>
+			<span class="ct-label">Fold</span>
+			<button class="ico-btn" data-fold="1" title="Fold every preset down to its first line (Ctrl+K Ctrl+1)">Presets</button>
+			<button class="ico-btn" data-fold="2" title="Fold the blocks inside each preset (Ctrl+K Ctrl+2)">Blocks</button>
+			<button class="ico-btn" data-fold="except" title="Fold everything except the block the cursor is in">Only this</button>
+			<button class="ico-btn" data-fold="unfold" title="Open every fold (Ctrl+K Ctrl+J)">Open all</button>
+		</div>
 		<div id="codeHost"></div>
 		<div id="imageHost" hidden></div>
 	</section>
@@ -200,21 +207,21 @@
 <div id="modal" class="modal" hidden><div class="modal-card" id="modalCard"></div></div>
 <div id="toasts"></div>
 
-<script src="vendor/luaparse/luaparse.js?v=40"></script>
-<script src="js/ini.js?v=40"></script>
-<script src="js/gamefs.js?v=40"></script>
-<script src="js/library.js?v=40"></script>
-<script src="js/images.js?v=40"></script>
-<script src="js/rig.js?v=40"></script>
-<script src="js/viewport.js?v=40"></script>
-<script src="js/panels.js?v=40"></script>
-<script src="js/dialogs.js?v=40"></script>
-<script src="js/lua-intel.js?v=40"></script>
-<script src="js/ini-intel.js?v=40"></script>
-<script src="js/ide.js?v=40"></script>
-<script src="js/live.js?v=40"></script>
-<script src="js/history.js?v=40"></script>
-<script src="js/app.js?v=40"></script>
-<script src="js/launcher.js?v=40"></script>
+<script src="vendor/luaparse/luaparse.js?v=41"></script>
+<script src="js/ini.js?v=41"></script>
+<script src="js/gamefs.js?v=41"></script>
+<script src="js/library.js?v=41"></script>
+<script src="js/images.js?v=41"></script>
+<script src="js/rig.js?v=41"></script>
+<script src="js/viewport.js?v=41"></script>
+<script src="js/panels.js?v=41"></script>
+<script src="js/dialogs.js?v=41"></script>
+<script src="js/lua-intel.js?v=41"></script>
+<script src="js/ini-intel.js?v=41"></script>
+<script src="js/ide.js?v=41"></script>
+<script src="js/live.js?v=41"></script>
+<script src="js/history.js?v=41"></script>
+<script src="js/app.js?v=41"></script>
+<script src="js/launcher.js?v=41"></script>
 </body>
 </html>

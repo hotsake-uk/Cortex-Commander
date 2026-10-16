@@ -426,9 +426,22 @@ window.MS = window.MS || {};
 			suggestLineHeight: 22,
 			quickSuggestions: { other: true, comments: false, strings: true },
 			glyphMargin: true, // Live values' logpoints (live.js): click left of a line number to log that line.
+			folding: true,
+			foldingStrategy: 'indentation', // INI blocks nest by their tabs, as do Lua's
+			showFoldingControls: 'always',
+			foldingHighlight: true,
+			stickyScroll: { enabled: true, maxLineCount: 5 }, // the blocks the cursor is inside stay pinned at the top
 			model: null,
 		});
 		MS.live.attach(ide.editor);
+		// Fold buttons: levels follow the file's indentation (in an INI file level 1 is each preset, level 2 the blocks inside it).
+		const foldActions = { 1: 'editor.foldLevel1', 2: 'editor.foldLevel2', except: 'editor.foldAllExcept', unfold: 'editor.unfoldAll' };
+		for (const b of document.querySelectorAll('#codeTools [data-fold]')) {
+			b.onclick = () => {
+				ide.editor.focus();
+				ide.editor.trigger('codeTools', foldActions[b.dataset.fold], null);
+			};
+		}
 		// The description beside the suggestion list shows from the start (Ctrl+Space still toggles it), and the list is wider and taller.
 		try {
 			const suggest = ide.editor.getContribution('editor.contrib.suggestController');
@@ -576,6 +589,7 @@ window.MS = window.MS || {};
 		$('imageHost').hidden = tab.kind !== 'image';
 		$('codeHost').hidden = tab.kind !== 'code';
 		$('codeBanner').hidden = !(tab.kind === 'code' && tab.readOnly);
+		$('codeTools').hidden = tab.kind !== 'code';
 		renderUsers(tab);
 		if (tab.kind === 'code' && ide.editor) {
 			ide.editor.setModel(tab.model);
