@@ -118,17 +118,78 @@ window.MS = window.MS || {};
 
 	// ---- library ----
 
+	// What each class is called in the Type list.
+	const CLASS_LABELS = {
+		AHuman: 'Humans', ACrab: 'Crabs', ACDropShip: 'Dropships', ACRocket: 'Rockets',
+		Attachable: 'Attachments', AEmitter: 'Emitters', AEJetpack: 'Jetpacks', PEmitter: 'Particle emitters',
+		HDFirearm: 'Guns', HeldDevice: 'Tools and shields', TDExplosive: 'Grenades and explosives', ThrownDevice: 'Thrown',
+	};
+
+	// A preset's buy menu groups, inherited ones too (cached until the presets are read again).
+	let groupCache = new Map();
+	let groupCacheFor = null;
+	function groupsOf(p) {
+		if (groupCacheFor !== app.lib.presets) {
+			groupCacheFor = app.lib.presets;
+			groupCache = new Map();
+		}
+		let groups = groupCache.get(p.node);
+		if (!groups) {
+			groups = app.lib.resolve(p.node).all('AddToGroup').map((e) => e.node.value.trim()).filter(Boolean);
+			groupCache.set(p.node, groups);
+		}
+		return groups;
+	}
+
+	// Fills the Type, Group and Mod lists from what's in the tab, keeping each choice while it still exists.
+	function fillLibSelects(candidates) {
+		const fill = (id, all, values, label) => {
+			const select = $(id);
+			const keep = select.value;
+			select.innerHTML = '';
+			select.append(new Option(all, ''));
+			for (const v of values) {
+				select.append(new Option(label ? label(v) : v, v));
+			}
+			select.value = values.includes(keep) ? keep : '';
+		};
+		const classes = [...new Set(candidates.map((p) => p.cls))].sort((a, b) => (CLASS_LABELS[a] || a).localeCompare(CLASS_LABELS[b] || b));
+		fill('libType', 'Every type', classes, (c) => CLASS_LABELS[c] || c);
+		$('libType').hidden = classes.length < 2;
+		const type = $('libType').value;
+		const groups = new Set();
+		for (const p of candidates) {
+			if (!type || p.cls === type) {
+				for (const g of groupsOf(p)) {
+					groups.add(g);
+				}
+			}
+		}
+		fill('libGroup', 'Every group', [...groups].sort());
+		$('libGroup').hidden = !groups.size;
+		const modules = [...new Set(candidates.map((p) => p.module))];
+		fill('libModule', 'Every mod', modules, (m) => {
+			const info = app.lib.moduleOf(m + '/Index.ini');
+			return (info ? info.title : m) + (app.fs.isOfficial(m) ? '' : ' (yours)');
+		});
+	}
+
 	function libraryPresets() {
 		const wanted = TAB_CLASSES[tab];
 		const query = $('libSearch').value.trim().toLowerCase();
 		const mineOnly = $('libMineOnly').checked;
+		const candidates = app.lib.presets.filter((p) => wanted.has(p.cls) && (tab === 'attachments' || p.topLevel));
+		fillLibSelects(candidates);
+		const type = $('libType').value;
+		const group = $('libGroup').value;
+		const moduleName = $('libModule').value;
 		const seen = new Set();
 		const out = [];
-		for (const p of app.lib.presets) {
-			if (!wanted.has(p.cls) || (tab !== 'attachments' && !p.topLevel)) {
+		for (const p of candidates) {
+			if (mineOnly && app.fs.isOfficial(p.module)) {
 				continue;
 			}
-			if (mineOnly && app.fs.isOfficial(p.module)) {
+			if ((type && p.cls !== type) || (moduleName && p.module !== moduleName) || (group && !groupsOf(p).includes(group))) {
 				continue;
 			}
 			if (query && !(p.name.toLowerCase().includes(query) || p.module.toLowerCase().includes(query))) {
@@ -1037,6 +1098,8 @@ window.MS = window.MS || {};
 		for (const b of document.querySelectorAll('#libTabs button')) {
 			b.onclick = () => {
 				tab = b.dataset.tab;
+				$('libType').value = '';
+				$('libGroup').value = '';
 				for (const x of document.querySelectorAll('#libTabs button')) {
 					x.classList.toggle('sel', x === b);
 				}
@@ -1051,6 +1114,9 @@ window.MS = window.MS || {};
 			searchTimer = setTimeout(() => app.lib && showLibrary(), 150);
 		};
 		$('libMineOnly').onchange = () => app.lib && showLibrary();
+		for (const id of ['libType', 'libGroup', 'libModule']) {
+			$(id).onchange = () => app.lib && showLibrary();
+		}
 		renderInspector();
 	}
 
