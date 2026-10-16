@@ -48,7 +48,8 @@ the held item. Two ways to see it, both started from `Tools\ModStudio` and left 
 - **Test In Sandbox.bat** opens the sandbox (`-modstudio -sandbox [map]`) with the unit as your own sandbox character, the tools put away. Add a map name to use
   another map, for example `"Test In Sandbox.bat" "Ketanot Hills"`.
 
-Turn on **Live** (next to Preview in game) to send every change as you make it: a drag or a number scrub is sent when you let
+**◧ Hide view** (V) hides Studio's own picture of the unit, so the parts and properties get the whole window while the game
+shows the unit beside it. Turn on **Live** (next to Preview in game) to send every change as you make it: a drag or a number scrub is sent when you let
 go, an undo, a new held item or another unit straight away.
 
 Either one checks the file about twice a second, reloads the changed files and sprites, and swaps in the new unit, holding the

@@ -755,6 +755,16 @@ window.MS = window.MS || {};
 		}
 	}
 
+	// The unit view can be hidden, to edit numbers with the game showing the unit beside Studio (Live mode).
+	function setViewShown(shown) {
+		$('app').classList.toggle('no-view', !shown);
+		$('btnView').textContent = shown ? '◧ Hide view' : '◧ Show view';
+		writeLocal('ms.viewHidden', !shown);
+		if (shown) {
+			app.requestDraw();
+		}
+	}
+
 	function download(blob, name) {
 		const a = document.createElement('a');
 		a.href = URL.createObjectURL(blob);
@@ -776,6 +786,10 @@ window.MS = window.MS || {};
 		$('btnSave').onclick = () => app.save();
 		$('btnPreview').onclick = () => app.preview();
 		$('btnLive').onclick = () => setLive(!app.live);
+		$('btnView').onclick = () => setViewShown($('app').classList.contains('no-view'));
+		if (readLocal('ms.viewHidden')) {
+			setViewShown(false);
+		}
 		if (readLocal('ms.live')) {
 			setLive(true);
 		}
@@ -874,6 +888,8 @@ window.MS = window.MS || {};
 				nudge(d[0], d[1], e.shiftKey);
 			} else if (e.key === 'Delete' && app.selected) {
 				MS.panels.removeSelected();
+			} else if (e.key.toLowerCase() === 'v' && !ctrl) {
+				$('btnView').click();
 			} else if (e.key.toLowerCase() === 'i' && !ctrl) {
 				app.isolate = !app.isolate;
 				app.requestDraw();

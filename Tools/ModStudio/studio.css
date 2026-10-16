@@ -218,3 +218,15 @@ pre.diff .del { color: var(--bad); }
 	.insp-cols > * { break-inside: avoid; }
 	.insp-cols > .notice, .insp-cols > .insp-empty, .insp-cols > .section:has(.props-table) { column-span: all; }
 }
+
+/* The unit view hidden (◧, V): the parts list and the properties take the whole width, laid out as on wide screens. */
+#app.no-view { grid-template-columns: 260px 1fr; grid-template-areas: "top top" "left right" "status status"; }
+#app.no-view #center { display: none; }
+#app.no-view #right { display: grid; grid-template-columns: minmax(200px, 26%) 1fr; grid-template-rows: auto 1fr; }
+#app.no-view #right > .panel-head:first-child { grid-column: 1; grid-row: 1; border-right: 1px solid var(--line); }
+#app.no-view #right > #tree { grid-column: 1; grid-row: 2; max-height: none; border-bottom: 0; border-right: 1px solid var(--line); min-height: 0; }
+#app.no-view #right > #inspHead { grid-column: 2; grid-row: 1; }
+#app.no-view #right > #inspector { grid-column: 2; grid-row: 2; min-height: 0; }
+#app.no-view .insp-cols { columns: 300px; column-gap: 0; column-rule: 1px solid var(--line); }
+#app.no-view .insp-cols > * { break-inside: avoid; }
+#app.no-view .insp-cols > .notice, #app.no-view .insp-cols > .insp-empty, #app.no-view .insp-cols > .section:has(.props-table) { column-span: all; }

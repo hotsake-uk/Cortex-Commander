@@ -424,6 +424,7 @@ window.MS = window.MS || {};
 			['1–5', 'stand, walk, run, crouch, jump'],
 			['Space, F', 'play or pause, face the other way'],
 			['I', 'fade everything but the selected part'],
+			['V', 'hide or show the unit view, to edit numbers with the game beside Studio'],
 			['Delete', 'remove the selected attachment'],
 			['Ctrl+Z, Ctrl+Y, Ctrl+S', 'undo, redo, save'],
 		];
