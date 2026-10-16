@@ -130,6 +130,14 @@ button, input, select { font: inherit; color: inherit; }
 .tree-row .folded-count { color: var(--accent); }
 .tree-tools { display: flex; gap: 2px; text-transform: none; letter-spacing: 0; }
 .ico-svg { display: inline-flex; }
+.side-count { font-size: 11px; color: var(--faint); }
+.outline { overflow: auto; flex: 1; padding: 4px 0; }
+.ol-row { display: flex; align-items: baseline; gap: 6px; padding: 2px 8px; cursor: pointer; white-space: nowrap; border-left: 2px solid transparent; }
+.ol-row:hover { background: var(--panel2); }
+.ol-row.cur { background: var(--panel3); border-left-color: var(--accent); }
+.ol-glyph { width: 12px; flex: none; text-align: center; color: var(--faint); font-size: 11px; }
+.ol-row .ol-name { overflow: hidden; text-overflow: ellipsis; }
+.ol-row small { color: var(--faint); overflow: hidden; text-overflow: ellipsis; }
 .code-link { cursor: pointer; color: var(--accent); }
 .code-link:hover { text-decoration: underline; }
 label.code-link { color: inherit; }

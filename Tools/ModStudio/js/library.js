@@ -204,6 +204,7 @@ window.MS = window.MS || {};
 		}
 
 		reindex() {
+			this.generation = (this.generation || 0) + 1;
 			this.presets = [];
 			this.byName.clear();
 			this.cache.clear();
@@ -256,6 +257,7 @@ window.MS = window.MS || {};
 		}
 
 		invalidate() {
+			this.generation = (this.generation || 0) + 1;
 			this.cache.clear();
 		}
 

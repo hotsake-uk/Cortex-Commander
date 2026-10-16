@@ -39,6 +39,7 @@
 	<nav id="activity">
 		<button data-view="files" title="Files of your mods and the game">▤</button>
 		<button data-view="presets" title="Units, attachments and items, to design">◆</button>
+		<button data-view="outline" title="The blocks and functions of the open file (Ctrl+Shift+O goes to one)">☰</button>
 		<button data-view="search" title="Search every INI file and script (Ctrl+Shift+F)">⌕</button>
 		<button data-view="package" title="Check and export a mod">⇪</button>
 	</nav>
@@ -51,6 +52,10 @@
 				<div class="chips" id="fileKinds"><button data-kind="" class="sel">All</button><button data-kind="lua">Lua</button><button data-kind="ini">INI</button><button data-kind="image">Images</button><button data-kind="sound">Sounds</button></div>
 			</div>
 			<div id="explorer" class="explorer"></div>
+		</section>
+		<section id="view-outline" class="side-view" hidden>
+			<div class="side-head">Outline <span class="spacer"></span><span id="outlineCount" class="side-count"></span></div>
+			<div id="outlineTree" class="outline"></div>
 		</section>
 		<section id="view-search" class="side-view" hidden>
 			<div class="side-head">Search</div>
@@ -218,6 +223,7 @@
 <script src="js/dialogs.js?v=41"></script>
 <script src="js/lua-intel.js?v=41"></script>
 <script src="js/ini-intel.js?v=41"></script>
+<script src="js/navigation.js?v=41"></script>
 <script src="js/ide.js?v=41"></script>
 <script src="js/live.js?v=41"></script>
 <script src="js/history.js?v=41"></script>

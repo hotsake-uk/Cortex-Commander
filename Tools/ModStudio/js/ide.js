@@ -48,6 +48,7 @@ window.MS = window.MS || {};
 		app = theApp;
 		ide.lua = new MS.LuaIntel(app);
 		ide.ini = new MS.IniIntel(app);
+		MS.nav = new MS.Nav(app);
 		pollBridge();
 		for (const b of document.querySelectorAll('#modeSwitch button')) {
 			b.onclick = () => ide.setMode(b.dataset.mode);
@@ -359,6 +360,14 @@ window.MS = window.MS || {};
 			},
 		});
 
+		// The outline: Ctrl+Shift+O lists a file's blocks or functions, and sticky scroll names the block you are in by it.
+		for (const language of ['ccini', 'lua']) {
+			monaco.languages.registerDocumentSymbolProvider(language, {
+				displayName: language === 'lua' ? 'Lua functions' : 'INI blocks',
+				provideDocumentSymbols: (model) => MS.nav.symbols(pathOf(model), model),
+			});
+		}
+
 		// Script paths in INI and Lua files are links: Ctrl+click opens the script.
 		const scriptLinks = {
 			provideLinks(model) {
@@ -434,6 +443,7 @@ window.MS = window.MS || {};
 			model: null,
 		});
 		MS.live.attach(ide.editor);
+		MS.nav.attach(ide.editor);
 		// Fold buttons: levels follow the file's indentation (in an INI file level 1 is each preset, level 2 the blocks inside it).
 		const foldActions = { 1: 'editor.foldLevel1', 2: 'editor.foldLevel2', except: 'editor.foldAllExcept', unfold: 'editor.unfoldAll' };
 		for (const b of document.querySelectorAll('#codeTools [data-fold]')) {
@@ -1431,13 +1441,16 @@ window.MS = window.MS || {};
 			b.classList.toggle('sel', b.dataset.view === view);
 		}
 		$('app').dataset.view = view;
-		for (const id of ['files', 'search', 'package']) {
+		for (const id of ['files', 'outline', 'search', 'package']) {
 			$('view-' + id).hidden = id !== view;
 		}
 		app.requestDraw();
 		app.writeLocal('ms.deepView', view);
 		if (view === 'search') {
 			setTimeout(() => $('searchInput').focus(), 0);
+		}
+		if (view === 'outline') {
+			MS.nav.renderOutline();
 		}
 		if (view === 'package') {
 			renderPackage();
