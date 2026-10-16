@@ -307,23 +307,49 @@ vec3 SunDisc(vec2 fragCoord) {
 	return rteSunDisc * (disc * 2.2 + glow);
 }
 
-float StarHash(vec2 p) {
-	p = fract(p * vec2(123.34, 456.21));
-	p += dot(p, p + 45.32);
-	return fract(p.x * p.y);
+// An integer hash (PCG style) of a whole pixel, 0 to 1. The old fract(p * constants) hash repeated every 50 by 100 pixels on whole coordinates,
+// which drew the stars as a visible grid.
+uint StarHashBits(ivec2 p) {
+	uint v = uint(p.x) * 1597334673u ^ uint(p.y) * 3812015801u;
+	v = v * 747796405u + 2891336453u;
+	v = ((v >> ((v >> 28u) + 4u)) ^ v) * 277803737u;
+	return (v >> 22u) ^ v;
+}
+
+float StarHash(ivec2 p, uint salt) {
+	return float(StarHashBits(p + ivec2(int(salt) * 7919, int(salt) * 104729)) >> 8u) / 16777216.0;
+}
+
+// Smooth value noise over the sky, 0 to 1, for where stars gather and where the sky is emptier.
+float StarClumps(vec2 p) {
+	vec2 cell = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	ivec2 c = ivec2(cell);
+	float a = StarHash(c, 3u);
+	float b = StarHash(c + ivec2(1, 0), 3u);
+	float d = StarHash(c + ivec2(0, 1), 3u);
+	float e = StarHash(c + ivec2(1, 1), 3u);
+	return mix(mix(a, b, f.x), mix(d, e, f.x), f.y);
 }
 
 // Pixel stars with a slow twinkle, and a pixel-art moon with a soft halo. Linear, added on top of the lit sky.
 vec3 NightSky(vec2 fragCoord) {
 	// The sky barely moves with the camera, like the furthest parallax layers.
 	vec2 skyPixel = floor(fragCoord + rteScreenOrigin * vec2(0.03, -0.03));
-	float hash = StarHash(skyPixel);
+	ivec2 pixel = ivec2(skyPixel);
 	vec3 sky = vec3(0.0);
-	if (hash > 0.9965) {
-		float brightness = (hash - 0.9965) / 0.0035;
+	// Sparse, about 1 pixel in 1100 on average, and gathered: two scales of slow noise make richer patches and near-empty stretches instead of an even sprinkle.
+	float clumps = StarClumps(skyPixel / 260.0) * 0.7 + StarClumps(skyPixel / 70.0 + 31.7) * 0.3;
+	float chance = 0.0009 * mix(0.1, 2.6, smoothstep(0.2, 0.85, clumps));
+	float pick = StarHash(pixel, 0u);
+	if (pick < chance) {
+		float hash = StarHash(pixel, 1u);
+		// Most stars are faint; only a few are bright.
+		float brightness = hash * hash * hash;
 		float twinkle = 0.65 + 0.35 * sin(rteTime * (0.8 + brightness * 2.5) + hash * 300.0);
-		vec3 tint = mix(vec3(0.75, 0.82, 1.0), vec3(1.0, 0.9, 0.75), fract(hash * 97.0));
-		sky += tint * (0.15 + 0.85 * brightness * brightness) * twinkle * 0.9;
+		vec3 tint = mix(vec3(0.75, 0.82, 1.0), vec3(1.0, 0.9, 0.75), StarHash(pixel, 2u));
+		sky += tint * (0.12 + 0.88 * brightness) * twinkle * 0.9;
 	}
 	vec2 toMoon = fragCoord - rteMoonPosition;
 	float moonDistance = length(toMoon);
