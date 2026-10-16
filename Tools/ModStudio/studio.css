@@ -964,3 +964,4 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .px-copy { padding: 10px 12px; border: 1px solid var(--line2); border-radius: 8px; background: var(--panel2); display: grid; gap: 8px; }
 .px-copy[hidden] { display: none; }
 .px-copy-nav { display: flex; gap: 8px; justify-content: flex-end; }
+.insp-actor.cam .insp-name::after { content: " ◎"; color: var(--accent); }

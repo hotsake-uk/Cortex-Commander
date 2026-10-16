@@ -123,6 +123,7 @@ namespace RTE {
 		static std::chrono::steady_clock::time_point s_LastInspect; //!< When Inspect.ini was last read and World.ini written.
 		static bool s_Inspecting; //!< Whether Studio's Inspector is open (Inspect.ini written in the last few seconds).
 		static long s_InspectSelected; //!< The unique ID of the actor the inspector shows in detail, 0 for none.
+		static long s_InspectFollow; //!< The unique ID of the actor the camera follows because the inspector asked (a double-click on it), 0 for none.
 		static bool s_InspectPaused; //!< Whether the inspector holds the simulation paused.
 		static long s_InspectSteps; //!< The step count last seen in Inspect.ini; each one more lets one sim update through.
 	};

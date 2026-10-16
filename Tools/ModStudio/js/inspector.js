@@ -38,7 +38,7 @@ window.MS = window.MS || {};
 		}
 	};
 	const I = {
-		timer: 0, selected: 0, paused: false, steps: 0, lastRequest: 0, requestText: '', world: null, modified: 0, filter: '', team: 'all',
+		timer: 0, selected: 0, camera: 0, cameraSince: 0, paused: false, steps: 0, lastRequest: 0, requestText: '', world: null, modified: 0, filter: '', team: 'all',
 		follow: stored('ms.inspectorFollow', true), // keep the unit you control selected, across switching bodies
 		seen: new Map(), // id -> the actor as last seen, to tell what arrived and what left
 		arrived: new Map(), // id -> when it arrived, to mark it new for a few seconds
@@ -49,7 +49,7 @@ window.MS = window.MS || {};
 	const PENDING_KEY = 'ms.inspectorPending'; // set by a launch, taken by the page that loads after it
 
 	function parse(text) {
-		const w = { actors: [], values: [], inventory: [], parts: [], scripts: [], selected: 0, controlled: 0, paused: false };
+		const w = { actors: [], values: [], inventory: [], parts: [], scripts: [], selected: 0, controlled: 0, following: 0, camera: null, paused: false };
 		for (const line of text.split(/\r?\n/)) {
 			const at = line.indexOf(' = ');
 			if (at < 0 || line.startsWith('//')) {
@@ -72,6 +72,10 @@ window.MS = window.MS || {};
 				w.selected = Number(v);
 			} else if (key === 'Controlled') {
 				w.controlled = Number(v);
+			} else if (key === 'Following') {
+				w.following = Number(v);
+			} else if (key === 'Camera') {
+				w.camera = { x: Number(f[0]), y: Number(f[1]) };
 			} else if (key === 'Paused') {
 				w.paused = v === '1';
 			} else if (key === 'PausedByStudio') {
@@ -84,7 +88,7 @@ window.MS = window.MS || {};
 	// The request, written when it changes and every second as a heartbeat (the game stops inspecting, and lets go of a pause, when it
 	// hasn't been written for a few seconds).
 	async function sendRequest(force) {
-		const text = '// Written by Cortex Mod Studio\'s Inspector while it is open.\nSelected = ' + I.selected + '\nPause = ' + (I.paused ? 1 : 0) + '\nStep = ' + I.steps + '\n';
+		const text = '// Written by Cortex Mod Studio\'s Inspector while it is open.\nSelected = ' + I.selected + '\nFollow = ' + I.camera + '\nPause = ' + (I.paused ? 1 : 0) + '\nStep = ' + I.steps + '\n';
 		if (!force && text === I.requestText && Date.now() - I.lastRequest < 1000) {
 			return;
 		}
@@ -171,6 +175,33 @@ window.MS = window.MS || {};
 
 	const teamName = (t) => (t >= 0 ? 'team ' + (t + 1) : 'no team');
 
+	// The game's camera follows a unit until told to stop: a double-click on it in the list. The game keeps its camera on it every frame.
+	function followWithCamera(id) {
+		select(id);
+		I.camera = id;
+		I.cameraSince = Date.now();
+		sendRequest(true);
+		render();
+	}
+
+	function stopCamera() {
+		I.camera = 0;
+		sendRequest(true);
+		render();
+	}
+
+	// The chip in the head says who the camera is on; if the game says it is not following (the unit left), it clears.
+	function updateCamera(w) {
+		if (I.camera && w && Date.now() - I.cameraSince > 1500 && w.following !== I.camera) {
+			I.camera = 0;
+		}
+		V.camera.hidden = !I.camera;
+		if (I.camera) {
+			const a = w && w.actors.find((x) => x.id === I.camera);
+			setText(V.camera, '◎ Camera on ' + (a ? a.preset : '#' + I.camera) + ' ✕');
+		}
+	}
+
 	function select(id) {
 		// Picking someone else stops following you; picking yourself starts it again.
 		const controlled = I.world ? I.world.controlled : 0;
@@ -237,7 +268,8 @@ window.MS = window.MS || {};
 			I.filter = V.filter.value;
 			render();
 		};
-		V.head = el('div', { className: 'prof-head' }, V.state, V.hint, el('span', { className: 'spacer' }), auto, V.follow, V.pause, V.step, V.filter);
+		V.camera = el('button', { className: 'ico-btn on', hidden: true, title: 'The game\'s camera is following this unit. Click to let go.', onclick: () => stopCamera() });
+		V.head = el('div', { className: 'prof-head' }, V.state, V.hint, el('span', { className: 'spacer' }), V.camera, auto, V.follow, V.pause, V.step, V.filter);
 		V.list = el('div', { className: 'insp-list' });
 		V.feed = el('div', { className: 'insp-feed' });
 		V.note = el('p', { className: 'pempty' });
@@ -261,6 +293,7 @@ window.MS = window.MS || {};
 		setText(V.state, live ? (w && w.paused ? (w.pausedByStudio ? '❚❚ Paused' : '❚❚ Paused by the game (its menu or the sandbox tools)') : '● Live') + ' · ' + (w ? w.actors.length : 0) + ' actors' : '○ No game running from Studio');
 		V.hint.hidden = live;
 		V.follow.classList.toggle('on', !!I.follow);
+		updateCamera(w);
 		setText(V.pause, I.paused ? '▶ Resume' : '❚❚ Pause');
 		V.step.disabled = !I.paused && !(w && w.paused);
 		const showing = !!w && live;
@@ -282,7 +315,7 @@ window.MS = window.MS || {};
 		const isNew = el('em', { className: 'insp-new', textContent: 'new', hidden: true });
 		const bar = el('i');
 		const hp = el('small');
-		const row = el('button', { className: 'insp-actor', onclick: () => select(id) }, team, el('span', { className: 'insp-name' }, nameText, you, isNew), el('span', { className: 'insp-health' }, bar), hp);
+		const row = el('button', { className: 'insp-actor', onclick: () => select(id), ondblclick: () => followWithCamera(id), title: 'Double-click: the game\'s camera follows it' }, team, el('span', { className: 'insp-name' }, nameText, you, isNew), el('span', { className: 'insp-health' }, bar), hp);
 		row._r = { team, nameText, you, isNew, bar, hp };
 		return row;
 	}
@@ -291,11 +324,11 @@ window.MS = window.MS || {};
 		const r = row._r;
 		const ratio = a.max > 0 ? Math.max(0, Math.min(1, a.health / a.max)) : 0;
 		const fresh = freshActor(a.id);
-		const className = 'insp-actor' + (a.id === I.selected ? ' sel' : '') + (fresh ? ' new' : '');
+		const className = 'insp-actor' + (a.id === I.selected ? ' sel' : '') + (fresh ? ' new' : '') + (a.id === I.camera ? ' cam' : '');
 		if (row.className !== className) {
 			row.className = className;
 		}
-		const title = a.cls + ' #' + a.id + ' at (' + fixed(a.x) + ', ' + fixed(a.y) + ')';
+		const title = a.cls + ' #' + a.id + ' at (' + fixed(a.x) + ', ' + fixed(a.y) + ')\nDouble-click: the game\'s camera follows it';
 		if (row.title !== title) {
 			row.title = title;
 		}
