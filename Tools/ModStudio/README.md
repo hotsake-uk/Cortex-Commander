@@ -77,7 +77,7 @@ In Deep mode:
   game runs, with how many times it ran (hover for the last few). `--?.` shows how long the line takes, `--?+` shows tables wider,
   `--? $.Health` shows any Lua with `$` as the line's value, and `--[[?]]` right after an expression shows just that expression.
   Studio runs a copy of the script with the probes in it (`ModStudio/Live/`), never changing the script; errors still point at the
-  script's own lines. Needs a game built from 8.5.254 or later.
+  script's own lines. Needs a game built from 8.5.255 or later.
 - **Package**: Check looks for missing files, presets that don't exist, scripts with errors and unsaved changes; Export saves
   and zips the mod for sharing. Ctrl+P goes to any file.
 

@@ -7,7 +7,7 @@
 //   local actor = ToActor(mo) --? $.Health      any Lua, with $ the marked value
 //
 // Saving a script with markers writes a copy of it with value probes in it to ModStudio/Live/<script path>, every line where it was,
-// and asks the game to reload the script; a game started from Studio (built from 8.5.254 on) loads the copy in its place, so errors
+// and asks the game to reload the script; a game started from Studio (built from 8.5.255 on) loads the copy in its place, so errors
 // still point at the script's own lines. The probes' values come back through ModStudio/Live.ini and show at the end of each marked
 // line, with how many times it ran; hovering shows the last few values. Saving a script with no markers writes an empty copy, which
 // the game ignores. The script itself is never changed.
@@ -338,7 +338,7 @@ window.MS = window.MS || {};
 					hover = '**Ran ' + value.count + ' time' + (value.count === 1 ? '' : 's') + '.** Last values, newest last:\n\n' + value.recent.map((v) => '- `' + v.replace(/`/g, "'") + '`').join('\n');
 				} else {
 					content = '  … not run yet';
-					hover = 'Shows here when this line runs in a game started from Studio (Test in game, Sandbox or the Actor Editor), after saving. The game has to be built from 8.5.254 or later.';
+					hover = 'Shows here when this line runs in a game started from Studio (Test in game, Sandbox or the Actor Editor), after saving. The game has to be built from 8.5.255 or later.';
 				}
 				decorations.push({
 					range: new monaco.Range(line, end, line, end),
