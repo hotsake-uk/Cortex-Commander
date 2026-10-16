@@ -6,6 +6,7 @@
 
 namespace RTE {
 	class Camera;
+	class MovableObject;
 	class Vector;
 
 	/// Ropes, threads, chains and cables strung through the world: each a line of light points held a fixed length apart that swings, sags,
