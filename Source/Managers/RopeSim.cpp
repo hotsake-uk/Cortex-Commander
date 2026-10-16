@@ -109,6 +109,7 @@ namespace {
 		long ObjectID = 0; //!< A unit or thing: its unique ID. A loose piece: its ID (TerrainCollapse::FindPiece).
 		Vector Local; //!< A unit, thing or loose piece: where on it, from its middle, as it is upright and unflipped (a piece: unturned).
 		float Tension = 0.0F; //!< How hard it's pulled, in kg, smoothed over a few updates.
+		bool Hold = false; //!< A unit's hands holding the rope (RopeSim::TakeHold), rather than a tie made when the rope was put down.
 	};
 
 	struct Rope {
@@ -804,6 +805,8 @@ namespace {
 			Fastened self = FastenedTo(anchor);
 			float tension = 0.0F;
 			int worstLink = -1;
+			int slipWay = 0; //!< A unit's hold that the pull is too much for: the hands slide this way along the rope (away from the tie),
+			int slipSteps = 0; //!< by this many points (as much as the rope is stretched past its length, a few at most).
 			for (int direction: {-1, 1}) {
 				int node = anchor.Node;
 				int first = direction < 0 ? node - 1 : node;
@@ -879,6 +882,18 @@ namespace {
 								}
 							}
 						}
+						if (anchor.Hold && other >= 0) {
+							// A unit's hands hold only so hard: past four times its weight they slide down the rope, burning off a fall's speed
+							// over a stretch of it, rather than stopping it dead (which snapped any rope a falling unit caught).
+							float grip = massA * gravity * 4.0F;
+							if (force > grip) {
+								force = grip;
+								if (excess > type.Segment * 0.5F) {
+									slipWay = -direction;
+									slipSteps = std::clamp(static_cast<int>(excess / type.Segment + 0.5F), 1, 4);
+								}
+							}
+						}
 						if (force > 0.0F) {
 							// A unit is pulled at its middle (pulled at a hand or a foot it spun); a thing at the point it's tied.
 							if (self.Piece) {
@@ -907,6 +922,26 @@ namespace {
 					}
 				}
 			}
+			if (slipWay != 0) {
+				// The hold slides on along the rope, or off its end.
+				bool slidOff = false;
+				for (int step = 0; step < slipSteps; ++step) {
+					int next = anchor.Node + slipWay;
+					int link = slipWay < 0 ? anchor.Node - 1 : anchor.Node;
+					if (link < 0 || link >= static_cast<int>(rope.Links.size()) || rope.Links[link].Cut || rope.Nodes[next].Gone || rope.Nodes[next].Anchor >= 0) {
+						slidOff = true;
+						break;
+					}
+					rope.Nodes[anchor.Node].Anchor = -1;
+					anchor.Node = next;
+					rope.Nodes[next].Anchor = static_cast<short>(index);
+				}
+				if (slidOff) {
+					DropAnchor(rope, static_cast<int>(index));
+					--index;
+					continue;
+				}
+			}
 			// Smoothed over a few updates, so a single jolt's spike doesn't snap it but a real fall's does.
 			anchor.Tension += (tension - anchor.Tension) * 0.35F;
 			if (anchor.Tension > holds && worstLink >= 0) {
@@ -920,6 +955,84 @@ namespace {
 				--index;
 			}
 		}
+	}
+
+	/// The tie that is a unit's hold on a rope, -1 for none.
+	int HoldIndex(const Rope& rope, long unitID) {
+		for (size_t i = 0; i < rope.Anchors.size(); ++i) {
+			if (rope.Anchors[i].Hold && rope.Anchors[i].ObjectID == unitID) {
+				return static_cast<int>(i);
+			}
+		}
+		return -1;
+	}
+
+	/// Along a rope from a point one way, to the next tie (not one of the unit's own) before a cut or the end.
+	/// @return The tie's index in Rope::Anchors, -1 for none that way.
+	int TieAlong(const Rope& rope, int node, int direction, long unitID) {
+		int at = node;
+		for (int count = 0; count < c_MaxRopeNodes; ++count) {
+			int link = direction < 0 ? at - 1 : at;
+			if (link < 0 || link >= static_cast<int>(rope.Links.size()) || rope.Links[link].Cut) {
+				return -1;
+			}
+			at += direction;
+			if (rope.Nodes[at].Gone) {
+				return -1;
+			}
+			if (int tie = rope.Nodes[at].Anchor; tie >= 0) {
+				const Anchor& anchor = rope.Anchors[tie];
+				bool own = anchor.Object && (anchor.ObjectID == unitID || [&]() {
+					MovableObject* object = ObjectOf(anchor);
+					MovableObject* root = object ? object->GetRootParent() : nullptr;
+					return root && root->GetUniqueID() == unitID;
+				}());
+				if (!own) {
+					return tie;
+				}
+			}
+		}
+		return -1;
+	}
+
+	/// The way up a rope from a point: towards the higher of the ties it hangs from, else towards its higher neighbour. 0 for neither way.
+	int UpWay(const Rope& rope, int node, long unitID, bool& supported) {
+		int best = 0;
+		float bestY = 0.0F;
+		for (int direction: {-1, 1}) {
+			if (int tie = TieAlong(rope, node, direction, unitID); tie >= 0) {
+				float y = rope.Nodes[rope.Anchors[tie].Node].Pos.y;
+				if (best == 0 || y < bestY) {
+					best = direction;
+					bestY = y;
+				}
+			}
+		}
+		supported = best != 0;
+		if (best != 0) {
+			return best;
+		}
+		for (int direction: {-1, 1}) {
+			int link = direction < 0 ? node - 1 : node;
+			if (link >= 0 && link < static_cast<int>(rope.Links.size()) && !rope.Links[link].Cut) {
+				float y = rope.Nodes[node + direction].Pos.y;
+				if (best == 0 || y < bestY) {
+					best = direction;
+					bestY = y;
+				}
+			}
+		}
+		return best;
+	}
+
+	/// Whether a point can be stepped onto by a hold from its neighbour: there, uncut between, not burnt away and not tied itself.
+	bool CanStepTo(const Rope& rope, int node, int direction) {
+		int link = direction < 0 ? node - 1 : node;
+		if (link < 0 || link >= static_cast<int>(rope.Links.size()) || rope.Links[link].Cut) {
+			return false;
+		}
+		const Node& next = rope.Nodes[node + direction];
+		return !next.Gone && next.Anchor < 0;
 	}
 
 	/// Burns the points alight: they spread it to the next along, set burning what they touch, and burn through.
@@ -1119,6 +1232,108 @@ namespace {
 		return color;
 	}
 } // namespace
+
+int RopeSim::TakeHold(const MovableObject& unit, const Vector& center, float reach, float minKg, const Vector& gripLocal) {
+	if (s_Ropes.empty()) {
+		return 0;
+	}
+	const glm::vec2 at = ToGlm(center);
+	const long unitID = unit.GetUniqueID();
+	Rope* bestRope = nullptr;
+	int bestNode = -1;
+	float bestDistance = reach * reach;
+	for (Rope& rope: s_Ropes) {
+		const TypeData& type = TypeOf(rope);
+		if (type.StrengthKg * rope.StrengthMult < minKg || HoldIndex(rope, unitID) >= 0 || rope.Links.empty()) {
+			continue;
+		}
+		for (int node = 0; node < static_cast<int>(rope.Nodes.size()); ++node) {
+			const Node& point = rope.Nodes[node];
+			if (point.Gone || point.Anchor >= 0) {
+				continue;
+			}
+			glm::vec2 way = Between(at, point.Pos);
+			float distance = glm::dot(way, way);
+			if (distance >= bestDistance) {
+				continue;
+			}
+			// Only a rope that hangs from something: a loose one is no hold.
+			if (TieAlong(rope, node, -1, unitID) < 0 && TieAlong(rope, node, 1, unitID) < 0) {
+				continue;
+			}
+			bestDistance = distance;
+			bestRope = &rope;
+			bestNode = node;
+		}
+	}
+	if (!bestRope) {
+		return 0;
+	}
+	Anchor anchor;
+	anchor.Node = bestNode;
+	anchor.Object = true;
+	anchor.Hold = true;
+	anchor.ObjectID = unitID;
+	anchor.Local = gripLocal;
+	bestRope->Nodes[bestNode].Anchor = static_cast<short>(bestRope->Anchors.size());
+	bestRope->Anchors.push_back(anchor);
+	return bestRope->Id;
+}
+
+bool RopeSim::GetHold(int ropeID, long unitID, HoldInfo& info) {
+	Rope* rope = Find(ropeID);
+	int index = rope ? HoldIndex(*rope, unitID) : -1;
+	if (index < 0) {
+		return false;
+	}
+	const Anchor& anchor = rope->Anchors[index];
+	const int node = anchor.Node;
+	info.Grip = rope->Nodes[node].Pos;
+	info.Tension = anchor.Tension;
+	int up = UpWay(*rope, node, unitID, info.Supported);
+	info.Up = glm::vec2(0.0F, -1.0F);
+	if (up != 0) {
+		glm::vec2 way = rope->Nodes[node + up].Pos - rope->Nodes[node].Pos;
+		// Over a few points, so one kink at the hands doesn't swing the body about.
+		for (int step = 2, at = node + up; step <= 4 && CanStepTo(*rope, at, up); ++step, at += up) {
+			way = rope->Nodes[at + up].Pos - rope->Nodes[node].Pos;
+		}
+		if (float length = glm::length(way); length > 1e-3F) {
+			info.Up = way / length;
+		}
+	}
+	info.CanClimbUp = up != 0 && CanStepTo(*rope, node, up);
+	info.CanClimbDown = up != 0 && CanStepTo(*rope, node, -up);
+	return true;
+}
+
+bool RopeSim::ClimbHold(int ropeID, long unitID, int way) {
+	Rope* rope = Find(ropeID);
+	int index = rope ? HoldIndex(*rope, unitID) : -1;
+	if (index < 0 || way == 0) {
+		return false;
+	}
+	Anchor& anchor = rope->Anchors[index];
+	bool supported = false;
+	int up = UpWay(*rope, anchor.Node, unitID, supported);
+	int direction = way < 0 ? up : -up;
+	if (direction == 0 || !CanStepTo(*rope, anchor.Node, direction)) {
+		return false;
+	}
+	rope->Nodes[anchor.Node].Anchor = -1;
+	anchor.Node += direction;
+	rope->Nodes[anchor.Node].Anchor = static_cast<short>(index);
+	return true;
+}
+
+void RopeSim::LetGo(int ropeID, long unitID) {
+	if (Rope* rope = Find(ropeID)) {
+		if (int index = HoldIndex(*rope, unitID); index >= 0) {
+			// The point let go of keeps the speed the hands gave it.
+			DropAnchor(*rope, index);
+		}
+	}
+}
 
 float RopeSim::GetReaction() {
 	return s_Reaction;
@@ -1453,7 +1668,7 @@ void RopeSim::GetDebug(std::vector<DebugLink>& links, std::vector<DebugAnchor>& 
 			burning += node.Burn > 0.0F ? 1 : 0;
 		}
 		for (const Anchor& anchor: rope.Anchors) {
-			anchors.push_back({rope.Nodes[anchor.Node].Pos, anchor.Object || anchor.Piece ? 1 : 0});
+			anchors.push_back({rope.Nodes[anchor.Node].Pos, anchor.Hold ? 2 : (anchor.Object || anchor.Piece ? 1 : 0)});
 		}
 	}
 }

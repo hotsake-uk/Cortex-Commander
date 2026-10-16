@@ -252,6 +252,7 @@ void SettingsMan::Clear() {
 	m_AIThreatAvoidance = 1.0F;
 	m_AIRecklessness = 0.5F;
 	ResetLadderSettings();
+	ResetRopeHoldSettings();
 	ResetCarryWeightSettings();
 	m_AISpawnDiggerChance = 0.0F;
 	m_BleedOutChance = 0.0F;
@@ -1194,6 +1195,9 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AILadderTeamStalls", { int stalls = 2; reader >> stalls; SetAILadderTeamStalls(stalls); });
 	MatchProperty("AIGrabsLaddersOnPurpose", { reader >> m_AIGrabsLaddersOnPurpose; });
 	MatchProperty("AIGrabsLaddersMidJet", { reader >> m_AIGrabsLaddersMidJet; });
+	MatchProperty("UnitsGrabRopes", { reader >> m_UnitsGrabRopes; });
+	MatchProperty("AICatchesRopes", { reader >> m_AICatchesRopes; });
+	MatchProperty("RopeClimbSpeed", { float speed; reader >> speed; SetRopeClimbSpeed(speed); });
 	MatchProperty("AIMantlesOnPurpose", { reader >> m_AIMantlesOnPurpose; });
 	MatchProperty("AICatchesLedgesMidAir", { reader >> m_AICatchesLedgesMidAir; });
 	MatchProperty("RiskyOrdersFlyPastLadders", { reader >> m_RiskyOrdersFlyPastLadders; });
@@ -1952,6 +1956,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AILadderTeamStalls", m_AILadderTeamStalls);
 	writer.NewPropertyWithValue("AIGrabsLaddersOnPurpose", m_AIGrabsLaddersOnPurpose);
 	writer.NewPropertyWithValue("AIGrabsLaddersMidJet", m_AIGrabsLaddersMidJet);
+	writer.NewPropertyWithValue("UnitsGrabRopes", m_UnitsGrabRopes);
+	writer.NewPropertyWithValue("AICatchesRopes", m_AICatchesRopes);
+	writer.NewPropertyWithValue("RopeClimbSpeed", m_RopeClimbSpeed);
 	writer.NewPropertyWithValue("AIMantlesOnPurpose", m_AIMantlesOnPurpose);
 	writer.NewPropertyWithValue("AICatchesLedgesMidAir", m_AICatchesLedgesMidAir);
 	writer.NewPropertyWithValue("RiskyOrdersFlyPastLadders", m_RiskyOrdersFlyPastLadders);

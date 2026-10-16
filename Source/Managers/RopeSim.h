@@ -37,8 +37,40 @@ namespace RTE {
 		/// Where a rope is tied, as the debug overlay draws it.
 		struct DebugAnchor {
 			glm::vec2 Pos;
-			int Kind; //!< 0 the ground, 1 a unit or a thing.
+			int Kind; //!< 0 the ground, 1 a unit or a thing, 2 a unit's hands holding it.
 		};
+
+		/// A unit's hold on a rope (AHuman's rope hold), as it is now.
+		struct HoldInfo {
+			glm::vec2 Grip{0.0F, 0.0F}; //!< Where the held point of the rope is (the unit's hands).
+			glm::vec2 Up{0.0F, -1.0F}; //!< The way up the rope from the hands, a unit length: towards the tie it hangs from.
+			bool Supported = false; //!< Whether a tie up the rope holds it (the unit hangs from something), else it holds a loose rope.
+			bool CanClimbUp = false; //!< More rope above the hands before the tie.
+			bool CanClimbDown = false; //!< More rope below the hands before its end or a cut.
+			float Tension = 0.0F; //!< How hard the hold is pulled, in kg.
+		};
+
+		/// Takes hold of the nearest rope point within reach of a place for a unit: one strong enough for it, uncut on at least one side, not
+		/// itself tied, and hanging from a tie further along. The point is then tied to the unit at its hands (a point fixed on its body), so
+		/// the rope's own pull hangs and swings the unit (see Pull), and the unit's weight drags the rope. Call from the simulation.
+		/// @param unit The unit taking hold.
+		/// @param center Where its hands can reach about, and how far.
+		/// @param minKg How much the rope has to hold for the unit to trust it (Thread holds next to nothing).
+		/// @param gripLocal Where on the unit the hands hold, from its middle, as it is upright and unflipped.
+		/// @return The rope's id, or 0 for none in reach.
+		static int TakeHold(const MovableObject& unit, const Vector& center, float reach, float minKg, const Vector& gripLocal);
+
+		/// Gets how a unit's hold on a rope is.
+		/// @return Whether it still holds it: false once the rope is gone, burnt through at the hands, or the hold let go of.
+		static bool GetHold(int rope, long unitID, HoldInfo& info);
+
+		/// Moves a unit's hold a point along the rope, hand over hand: up (-1) towards the tie it hangs from, or down (1). Climbing up shortens
+		/// the rope above the hands, which the rope's pull then takes up, lifting the unit; climbing down lets it drop a point.
+		/// @return Whether it moved (there was rope that way).
+		static bool ClimbHold(int rope, long unitID, int way);
+
+		/// Lets go of a unit's hold on a rope.
+		static void LetGo(int rope, long unitID);
 
 		/// Gets how long a rope that is tied to nothing has to lie still before it settles into the terrain, in seconds; 0 when ropes never settle.
 		static float GetSettleSeconds();

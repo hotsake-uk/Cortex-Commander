@@ -506,6 +506,13 @@ namespace RTE {
 		/// Whether risky orders fly past ladders a careful route climbs: they jet up a background ladder's shaft when the tank makes it, and the
 		/// route search prices a ladder climb dearer as their flights are cheaper. On as the game comes.
 		bool RiskyOrdersFlyPastLadders() const { return m_RiskyOrdersFlyPastLadders; }
+		/// Whether humanoid units take hold of ropes (RopeSim): in the air with up or the jet held, or pressing up under one, they catch it
+		/// and hang from it, swinging on the rope's own physics (AHuman::UpdateRopeHold). On as the game comes.
+		bool UnitsGrabRopes() const { return m_UnitsGrabRopes; }
+		/// Whether an AI unit falling with no jet to save it catches a rope it falls past, and climbs it to the nearest floor. On as the game comes.
+		bool AICatchesRopes() const { return m_AICatchesRopes; }
+		/// How fast units climb a rope hand over hand, as a multiple of the normal pace, 0.25 to 3.
+		float RopeClimbSpeed() const { return m_RopeClimbSpeed; }
 
 		/// Gets the percentage, 0 to 100, of units that are handed a digger when they come into the scene without one.
 		float AISpawnDiggerChance() const { return m_AISpawnDiggerChance; }
@@ -1146,6 +1153,11 @@ namespace RTE {
 		void SetAIMantlesOnPurpose(bool on) { m_AIMantlesOnPurpose = on; }
 		void SetAICatchesLedgesMidAir(bool on) { m_AICatchesLedgesMidAir = on; }
 		void SetRiskyOrdersFlyPastLadders(bool on) { m_RiskyOrdersFlyPastLadders = on; }
+		void SetUnitsGrabRopes(bool on) { m_UnitsGrabRopes = on; }
+		void SetAICatchesRopes(bool on) { m_AICatchesRopes = on; }
+		void SetRopeClimbSpeed(float speed) { m_RopeClimbSpeed = std::clamp(speed, 0.25F, 3.0F); }
+		/// Puts the Movement category's rope settings back as the game comes.
+		void ResetRopeHoldSettings() { m_UnitsGrabRopes = true; m_AICatchesRopes = true; m_RopeClimbSpeed = 1.0F; }
 		void SetCarriedWeightMultiplier(float multiplier) { m_CarriedWeightMultiplier = std::clamp(multiplier, 0.0F, 5.0F); }
 		void SetLegStrength(float strength) { m_LegStrength = std::clamp(strength, 0.25F, 3.0F); }
 		void SetJetpackWeightCompensation(int mode) { m_JetpackWeightCompensation = std::clamp(mode, 0, 2); }
@@ -1558,6 +1570,9 @@ namespace RTE {
 		bool m_AIMantlesOnPurpose = true; //!< See AIMantlesOnPurpose.
 		bool m_AICatchesLedgesMidAir = true; //!< See AICatchesLedgesMidAir.
 		bool m_RiskyOrdersFlyPastLadders; //!< See RiskyOrdersFlyPastLadders.
+		bool m_UnitsGrabRopes = true; //!< See UnitsGrabRopes.
+		bool m_AICatchesRopes = true; //!< See AICatchesRopes.
+		float m_RopeClimbSpeed = 1.0F; //!< See RopeClimbSpeed.
 		float m_AISpawnDiggerChance; //!< Percentage of units handed a digger as they come into the scene, 0 to 100 (see AISpawnDiggerChance).
 		float m_BleedOutChance; //!< Percentage of wounds that keep bleeding rather than stopping, 0 to 100 (see BleedOutChance).
 		float m_WoundBleedTime; //!< Multiple of how long wounds bleed for before they stop, 0.1 to 10 (see WoundBleedTime).

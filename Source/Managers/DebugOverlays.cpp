@@ -622,7 +622,8 @@ void DebugOverlays::DrawWorldSim() {
 			break;
 		}
 		case 6: {
-			// Ropes: each link by how hard it's pulled (green slack, red about to snap; orange alight), and where each is tied.
+			// Ropes: each link by how hard it's pulled (green slack, red about to snap; orange alight), where each is tied, and units' holds
+			// on them (yellow).
 			std::vector<RopeSim::DebugLink> links;
 			std::vector<RopeSim::DebugAnchor> anchors;
 			int nodes = 0;
@@ -637,6 +638,9 @@ void DebugOverlays::DrawWorldSim() {
 				ImVec2 at = DebugDraw::ToScreen(Vector(anchor.Pos.x, anchor.Pos.y));
 				if (anchor.Kind == 0) {
 					drawList->AddRect(ImVec2(at.x - 4.0F, at.y - 4.0F), ImVec2(at.x + 4.0F, at.y + 4.0F), IM_COL32(255, 255, 255, 230), 0.0F, 0, 2.0F);
+				} else if (anchor.Kind == 2) {
+					// A unit's hands holding it.
+					drawList->AddCircleFilled(at, 5.0F, IM_COL32(255, 210, 70, 230), 12);
 				} else {
 					drawList->AddCircle(at, 5.0F, IM_COL32(110, 200, 255, 230), 12, 2.0F);
 				}

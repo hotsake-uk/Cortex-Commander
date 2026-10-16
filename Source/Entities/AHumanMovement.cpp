@@ -30,6 +30,7 @@
 #include "FluidSim.h"
 #include "TerrainTrees.h"
 #include "TerrainCollapse.h"
+#include "RopeSim.h"
 
 using namespace RTE;
 
@@ -1120,6 +1121,305 @@ void AHuman::UpdateLadderLimbs() {
 	if (m_pBGLeg && ladder.gripped[3]) {
 		m_pBGFootGroup->SetLimbPos(Vector(ladder.gripX + inward * 1.0F + 1.0F, ladder.grip[3] - 1.0F), m_HFlipped);
 	}
+}
+
+Vector AHuman::RopeGripOffset() const {
+	// Straight overhead, the arms most of the way out from the shoulders (a hang, not a reach).
+	const float h = GetMoveHeight();
+	float shoulderY = -h * 0.3F;
+	float armLength = h * 0.35F;
+	for (const Arm* arm: {m_pFGArm, m_pBGArm}) {
+		if (arm && arm->GetMaxLength() > 0.0F) {
+			shoulderY = arm->GetParentOffset().m_Y;
+			armLength = arm->GetMaxLength();
+			break;
+		}
+	}
+	return Vector(0.0F, std::clamp(shoulderY - armLength * 0.85F, -h * 0.95F, -h * 0.25F));
+}
+
+void AHuman::LetGoOfRope(const Vector& push) {
+	if (m_RopeHold.active) {
+		RopeSim::LetGo(m_RopeHold.rope, GetUniqueID());
+	}
+	m_RopeHold.active = false;
+	m_RopeHold.rope = 0;
+	m_RopeLetGoSimMS = g_TimerMan.GetSimTimeMS();
+	// The swing's own speed is kept: the push is added to it.
+	m_Vel += push;
+}
+
+void AHuman::UpdateRopeHoldInput() {
+	Controller& ctrl = m_Controller;
+	RopeHold& hold = m_RopeHold;
+	const double now = g_TimerMan.GetSimTimeMS();
+	const bool aiControlled = ctrl.GetInputMode() == Controller::CIM_AI;
+	const float h = GetMoveHeight();
+	const float feet = m_FeetBelowPos >= 0.0F ? m_FeetBelowPos : h * 0.2F;
+	auto floorUnder = [&](float depth) {
+		for (float dx: {-3.0F, 0.0F, 3.0F}) {
+			for (float dy = 1.0F; dy <= depth; dy += 1.0F) {
+				if (SolidNotLadder(m_Pos.m_X + dx, m_Pos.m_Y + feet + dy)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	};
+	auto clearJump = [&]() {
+		ctrl.SetState(BODY_JUMP, false);
+		ctrl.SetState(BODY_JUMPSTART, false);
+	};
+
+	if (hold.active) {
+		if (!g_SettingsMan.UnitsGrabRopes() || m_Status != STABLE || m_Mantling || m_Ladder.active || LiftHasBody() || (!m_pFGArm && !m_pBGArm)) {
+			MoverTrace("let go of the rope (no longer able to hold)");
+			LetGoOfRope(Vector());
+			return;
+		}
+		RopeSim::HoldInfo info;
+		if (!RopeSim::GetHold(hold.rope, GetUniqueID(), info)) {
+			// Burnt through at the hands, the rope taken away, or the hold pulled off it.
+			MoverTrace("lost the rope");
+			hold.active = false;
+			hold.rope = 0;
+			m_RopeLetGoSimMS = now;
+			return;
+		}
+		hold.grip = Vector(info.Grip.x, info.Grip.y);
+		hold.up = Vector(info.Up.x, info.Up.y);
+		hold.canClimbUp = info.CanClimbUp;
+		hold.canClimbDown = info.CanClimbDown;
+		hold.supported = info.Supported;
+		if (info.Supported) {
+			hold.unsupportedTimer.Reset();
+		} else if (hold.unsupportedTimer.IsPastSimMS(250)) {
+			// (Snapped or cut above the hands: what's held is a loose rope falling with the body. Let go, so the jet can save it.)
+			MoverTrace("the rope gave way above; letting go");
+			LetGoOfRope(Vector());
+			return;
+		}
+
+		bool up = ctrl.IsState(MOVE_UP);
+		bool down = ctrl.IsState(MOVE_DOWN);
+		bool left = ctrl.IsState(MOVE_LEFT);
+		bool right = ctrl.IsState(MOVE_RIGHT);
+		bool jump = ctrl.IsState(BODY_JUMP);
+		if (aiControlled) {
+			// The AI's own way off: a floor close under the feet is dropped onto; with one not far below it climbs down to it, else up to
+			// the tie (pulling itself up onto a ledge there if it can); and a tank that has filled again flies it off.
+			Vector hit;
+			float drop = g_SceneMan.CastStrengthRay(m_Pos + Vector(0.0F, feet), Vector(0.0F, h * 4.0F), 5.0F, hit, 2) ? hit.m_Y - (m_Pos.m_Y + feet) : h * 5.0F;
+			bool refuelled = m_pJetpack && m_pJetpack->GetJetTimeTotal() > 0.0F && m_pJetpack->GetJetTimeLeft() > m_pJetpack->GetJetTimeTotal() * 0.5F;
+			if (drop < h * 0.9F || refuelled || hold.heldTimer.IsPastSimMS(15000)) {
+				MoverTrace(drop < h * 0.9F ? "AI drops off the rope onto the floor below" : (refuelled ? "AI lets go of the rope to fly" : "AI gives up on the rope"));
+				LetGoOfRope(Vector());
+				return;
+			}
+			hold.aiWay = (drop < h * 4.0F && hold.canClimbDown) ? 1 : (hold.canClimbUp ? -1 : 0);
+			up = hold.aiWay < 0;
+			down = hold.aiWay > 0;
+			left = right = jump = false;
+			if (!hold.canClimbUp && hold.aiWay <= 0) {
+				// At the top: a ledge beside it is pulled up onto.
+				WantMantle();
+			}
+		}
+		const bool side = left || right;
+		const float sideDir = right ? 1.0F : (left ? -1.0F : 0.0F);
+
+		// Letting go: the jet's key with a side key (a jump off that way, the jet lit if the key stays held); the jet's key alone where it
+		// isn't also up (a gamepad); a side key with the feet on a floor (walking off it).
+		if (!aiControlled && jump && side) {
+			MoverTrace("jumped off the rope");
+			LetGoOfRope(Vector(sideDir * 2.5F, -3.0F));
+			return;
+		}
+		if (!aiControlled && jump && !up && !down) {
+			MoverTrace("let go of the rope");
+			LetGoOfRope(Vector());
+			return;
+		}
+		if (side && floorUnder(2.0F)) {
+			MoverTrace("stepped off the rope");
+			LetGoOfRope(Vector());
+			return;
+		}
+		clearJump();
+
+		// The climb: a point at a time, hand over hand. Climbing up shortens the rope above, and its pull lifts the body; down lets it drop.
+		const double interval = 170.0 / std::max(g_SettingsMan.RopeClimbSpeed(), 0.25F);
+		if ((up || down) && hold.climbTimer.IsPastSimMS(interval)) {
+			if (up && !down && hold.canClimbUp) {
+				if (RopeSim::ClimbHold(hold.rope, GetUniqueID(), -1)) {
+					hold.handOver ^= 1;
+					hold.climbTimer.Reset();
+				}
+			} else if (down && !up) {
+				if (floorUnder(3.0F)) {
+					MoverTrace("off the rope at its foot");
+					LetGoOfRope(Vector());
+					return;
+				}
+				if (!hold.canClimbDown) {
+					MoverTrace("past the rope's end; letting go");
+					LetGoOfRope(Vector(0.0F, 0.5F));
+					return;
+				}
+				if (RopeSim::ClimbHold(hold.rope, GetUniqueID(), 1)) {
+					hold.handOver ^= 1;
+					hold.climbTimer.Reset();
+				}
+			}
+		}
+
+		// The swing's pump: a push across the rope, the way pressed, as a body throws its weight. (Real force: the rope's pull turns it into
+		// the swing.)
+		if (side) {
+			Vector across(-hold.up.m_Y, hold.up.m_X);
+			if (across.m_X * sideDir < 0.0F) {
+				across = -across;
+			}
+			AddForce(across * (GetMass() * 4.5F));
+			if (!aiControlled) {
+				m_HFlipped = sideDir < 0.0F;
+			}
+		}
+		return;
+	}
+
+	// Taking hold.
+	if (!g_SettingsMan.UnitsGrabRopes() || RopeSim::GetCount() == 0) {
+		return;
+	}
+	if (m_Status != STABLE || m_Mantling || m_Ladder.active || m_GettingUp || m_ProneState != NOTPRONE || (!m_pFGArm && !m_pBGArm) || LiftHasBody()) {
+		return;
+	}
+	if (m_RopeLetGoSimMS >= 0.0 && now - m_RopeLetGoSimMS < (aiControlled ? 1500.0 : 450.0)) {
+		return;
+	}
+	const bool airborne = !floorUnder(3.0F);
+	bool wanted = false;
+	if (aiControlled) {
+		// An AI unit only to save itself: falling, with no jet left to brake the fall.
+		const bool noJet = !m_pJetpack || !m_pJetpack->IsAttached() || m_pJetpack->IsOutOfFuel() || m_pJetpack->GetJetTimeLeft() < 80.0F;
+		wanted = g_SettingsMan.AICatchesRopes() && airborne && m_Vel.m_Y > 5.0F && noJet;
+	} else {
+		// A player: up (or the jet's key) held and down not, in the air or standing under a rope that hangs in reach.
+		wanted = (ctrl.IsState(MOVE_UP) || ctrl.IsState(BODY_JUMP)) && !ctrl.IsState(MOVE_DOWN);
+	}
+	if (!wanted) {
+		return;
+	}
+	// Where the hands reach: above the shoulders, out to most of the arm's length; further for a body going fast, so a rope isn't passed
+	// between one frame and the next.
+	const Vector gripLocal = RopeGripOffset();
+	const float armLength = (m_pFGArm ? m_pFGArm : m_pBGArm)->GetMaxLength();
+	const Vector center = m_Pos + RotateOffset(gripLocal * 0.75F);
+	const float reach = std::max(armLength * 0.75F, 6.0F) + m_Vel.GetMagnitude() * c_PPM * std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F) * 0.5F;
+	int rope = RopeSim::TakeHold(*this, center, reach, GetMass() * 0.6F, gripLocal);
+	if (rope == 0) {
+		return;
+	}
+	hold = RopeHold();
+	hold.active = true;
+	hold.rope = rope;
+	hold.gripLocal = gripLocal;
+	hold.grip = m_Pos + RotateOffset(gripLocal);
+	hold.climbTimer.Reset();
+	hold.unsupportedTimer.Reset();
+	hold.heldTimer.Reset();
+	hold.kickPhase = static_cast<float>(GetUniqueID() % 628) * 0.01F;
+	// The jet out as the hands close on it (as on a ladder): the rope has the body now.
+	m_Mover.flight = RouteMover::Flight();
+	m_Mover.fuelWaiting = false;
+	m_JetFlying = false;
+	m_JetLastLitSimMS = -1.0;
+	clearJump();
+	MoverTrace(std::string("took hold of a rope") + (airborne ? " in the air" : ""));
+}
+
+void AHuman::UpdateRopeHold() {
+	RopeHold& hold = m_RopeHold;
+	if (!hold.active) {
+		return;
+	}
+	if (m_Mantling) {
+		// Pulled up onto a ledge at the top: the rope let go of.
+		LetGoOfRope(Vector());
+		return;
+	}
+	// Physics has the body: gravity and the rope's pull (RopeSim) swing it. All that's done here is keep the rungs of a ladder it swings
+	// through from catching it, and keep it from settling at rest while it hangs.
+	SetPassMaterial(LadderMaterialID());
+	m_RestTimer.Reset();
+	m_ToSettle = false;
+}
+
+void AHuman::UpdateRopeHoldLimbs() {
+	RopeHold& hold = m_RopeHold;
+	const float dt = std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F);
+	const bool climbing = m_Controller.IsState(MOVE_UP) || m_Controller.IsState(MOVE_DOWN) || hold.aiWay != 0;
+	const bool pumping = m_Controller.IsState(MOVE_LEFT) || m_Controller.IsState(MOVE_RIGHT);
+	// The struggle: a quicker, harder kick while climbing or pumping the swing, a slow paddle hanging still.
+	const float beat = climbing || pumping ? 11.0F : 5.5F;
+	hold.kickPhase += beat * dt;
+	if (hold.kickPhase > c_TwoPI * 8.0F) {
+		hold.kickPhase -= c_TwoPI * 8.0F;
+	}
+	const float kick = climbing || pumping ? 1.0F : 0.45F;
+	// The body's acceleration, which the feet lag behind (as weights on the legs do), and gravity on them.
+	const Vector bodyAccel = (m_Vel - m_PrevVel) * (c_PPM / dt);
+	const Vector gravity = g_SceneMan.GetGlobalAcc() * c_PPM;
+	Leg* legs[2] = {m_pFGLeg, m_pBGLeg};
+	AtomGroup* footGroups[2] = {m_pFGFootGroup, m_pBGFootGroup};
+	for (int i = 0; i < 2; ++i) {
+		Leg* leg = legs[i];
+		if (!leg || !footGroups[i]) {
+			continue;
+		}
+		const float reach = leg->GetMaxLength();
+		const Vector hip = m_Pos + RotateOffset(leg->GetParentOffset());
+		Vector& rel = hold.footRel[i];
+		Vector& vel = hold.footVel[i];
+		if (!hold.feetSet) {
+			rel = footGroups[i]->GetLimbPos(m_HFlipped) - hip;
+			vel = Vector();
+		}
+		// Each leg kicks out of time with the other, forward and back across the body and drawn up and down, with a little of the
+		// unit's own about it so a row of them don't kick in step.
+		const float phase = hold.kickPhase + (i == 0 ? 0.0F : c_PI);
+		const Vector down = RotateOffset(Vector(0.0F, 1.0F));
+		const Vector across(-down.m_Y, down.m_X);
+		Vector kickAccel = across * (std::sin(phase) * 900.0F * kick) + down * (std::cos(phase * 2.0F) * 350.0F * kick);
+		Vector accel = gravity - bodyAccel + kickAccel - vel * 4.0F;
+		vel += accel * dt;
+		Vector next = rel + vel * dt;
+		// Kept to the leg's length (not shorter than a bent knee), what's past it taken out of its speed.
+		float length = next.GetMagnitude();
+		if (length > reach && length > 1e-3F) {
+			Vector out = next / length;
+			next = out * reach;
+			float outward = vel.Dot(out);
+			if (outward > 0.0F) {
+				vel -= out * outward;
+			}
+		} else if (length < reach * 0.45F && length > 1e-3F) {
+			next = next * (reach * 0.45F / length);
+		}
+		// Not into the ground: a foot that meets it stops there, and kicks off it.
+		Vector world = hip + next;
+		if (SolidNotLadder(world.m_X, world.m_Y)) {
+			vel = -vel * 0.3F;
+			next = rel;
+			world = hip + next;
+		}
+		rel = next;
+		footGroups[i]->SetLimbPos(world, m_HFlipped);
+	}
+	hold.feetSet = true;
+	// The kicks rock the body a little on its hands.
+	m_AngularVel += std::sin(hold.kickPhase) * kick * 0.6F * dt;
 }
 
 // A door of ours, or no one's, whose moving part lies near the line from us to a point, within reach bodies (a body and a half by default).
