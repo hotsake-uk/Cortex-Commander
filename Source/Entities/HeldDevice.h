@@ -227,7 +227,13 @@ namespace RTE {
 		/// Checks whether the given Actor can pick up this HeldDevice.
 		/// @param actor The Actor to check. Ownership is NOT transferred.
 		/// @return Whether the given Actor can pick up this HeldDevice.
-		bool IsPickupableBy(const Actor* actor) const { return !HasPickupLimitations() || m_PickupableByPresetNames.find(actor->GetPresetName()) != m_PickupableByPresetNames.end(); }
+		bool IsPickupableBy(const Actor* actor) const;
+
+		/// Gets whether this is a mech's item (MK-2): only a mech (AMech) uses it, nothing else can pick it up or carry it, and a mech uses no other.
+		bool IsMechOnly() const { return m_MechOnly; }
+
+		/// Sets whether this is a mech's item.
+		void SetMechOnly(bool mechOnly) { m_MechOnly = mechOnly; }
 
 		/// Specify that objects with the given PresetName can pick up this HeldDevice.
 		/// @param presetName The PresetName of an object that should be able to pick up this HeldDevice.
@@ -658,6 +664,7 @@ namespace RTE {
 		bool m_Supported; //!< Whether or not this HeldDevice is currently being supported by another Arm.
 		bool m_SupportAvailable; //!< Whether or not this HeldDevice's parent has a second Arm available to provide support (or this is on a Turret).
 		bool m_IsUnPickupable; //!< Whether or not this HeldDevice should be able to be picked up at all.
+		bool m_MechOnly; //!< Whether this is a mech's item (see IsMechOnly).
 		// TODO: move this smelly thing elsewhere
 		std::array<bool, Players::MaxPlayerCount> m_SeenByPlayer; //!< An array of players that can currently see the pickup HUD of this HeldDevice.
 		std::unordered_set<std::string> m_PickupableByPresetNames; //!< The unordered set of PresetNames that can pick up this HeldDevice if it's dropped. An empty set means there are no PresetName limitations.

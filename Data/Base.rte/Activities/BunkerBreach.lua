@@ -108,7 +108,7 @@ function BunkerBreach:SetupDefenderBrains()
 		for _, unchosenDeploymentBrain in pairs(deploymentBrains) do
 			unchosenDeploymentBrain.ToDelete = true;
 			for actor in MovableMan.AddedActors do
-				if actor.Team == self.defenderTeam and math.random() < 0.75 and self.brainChamber:IsInside(actor.Pos) and (actor.ClassName == "AHuman" or actor.ClassName == "ACrab") and SceneMan:ShortestDistance(actor.Pos, defenderBrain.Pos, false):MagnitudeIsGreaterThan(200) then
+				if actor.Team == self.defenderTeam and math.random() < 0.75 and self.brainChamber:IsInside(actor.Pos) and (actor.ClassName == "AHuman" or actor.ClassName == "ACrab" or actor.ClassName == "AMech") and SceneMan:ShortestDistance(actor.Pos, defenderBrain.Pos, false):MagnitudeIsGreaterThan(200) then
 					actor.ToDelete = true;
 				end
 			end
@@ -428,7 +428,7 @@ function BunkerBreach:UpdateAIDecisionData()
 	local enemyUnitInsideBunkerTotalValue = 0;
 	local enemyUnitOutsideBunkerTotalValue = 0;
 	for actor in MovableMan.Actors do
-		if actor.ClassName == "AHuman" or actor.ClassName == "ACrab" then
+		if actor.ClassName == "AHuman" or actor.ClassName == "ACrab" or actor.ClassName == "AMech" then
 			if actor.Team == self.CPUTeam then
 				if self.mainBunkerArea:IsInside(actor.Pos) then
 					self.AI.friendlyUnitsInsideBunker[#self.AI.friendlyUnitsInsideBunker + 1] = actor;
@@ -437,7 +437,7 @@ function BunkerBreach:UpdateAIDecisionData()
 				end
 				friendlyUnitTotalValue = friendlyUnitTotalValue + actor:GetTotalValue(actor.ModuleID, 1);
 
-				if actor.ClassName == "ACrab" then
+				if actor.ClassName == "ACrab" or actor.ClassName == "AMech" then
 					self.AI.crabCount = self.AI.crabCount + 1;
 				elseif actor:HasObjectInGroup("Tools - Breaching") then
 					self.AI.breacherUnits[#self.AI.breacherUnits + 1] = actor;

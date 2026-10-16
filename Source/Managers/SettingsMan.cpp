@@ -1114,6 +1114,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("EnableCrabBombs", { reader >> m_EnableCrabBombs; });
 	MatchProperty("EnableMantling", { reader >> m_EnableMantling; });
 	MatchProperty("CreaturesClimbWalls", { reader >> m_CreaturesClimbWalls; });
+	MatchProperty("MechFootfallShake", { float shake = 1.0F; reader >> shake; SetMechFootfallShake(shake); });
 	MatchProperty("CreatureClimbSpeed", { float speed = 1.0F; reader >> speed; SetCreatureClimbSpeed(speed); });
 	MatchProperty("CreaturesFly", { reader >> m_CreaturesFly; });
 	MatchProperty("CreatureFlySpeed", { float speed = 1.0F; reader >> speed; SetCreatureFlySpeed(speed); });
@@ -1166,6 +1167,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CraftToughness", { float toughness = 1.0F; reader >> toughness; SetToughness(ToughnessKind::Craft, toughness); });
 	MatchProperty("AnimalToughness", { float toughness = 1.0F; reader >> toughness; SetToughness(ToughnessKind::Animals, toughness); });
 	MatchProperty("CreatureToughness", { float toughness = 1.0F; reader >> toughness; SetToughness(ToughnessKind::Creatures, toughness); });
+	MatchProperty("MechToughness", { float toughness = 1.0F; reader >> toughness; SetToughness(ToughnessKind::Mechs, toughness); });
 	MatchProperty("AISuppression", {
 		reader >> m_AISuppression;
 		m_AISuppression = std::clamp(m_AISuppression, 0.0F, 2.0F);
@@ -1880,6 +1882,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	group(PresetGroup::Gameplay);
 	writer.NewPropertyWithValue("EnableMantling", m_EnableMantling);
 	writer.NewPropertyWithValue("CreaturesClimbWalls", m_CreaturesClimbWalls);
+	writer.NewPropertyWithValue("MechFootfallShake", m_MechFootfallShake);
 	writer.NewPropertyWithValue("CreatureClimbSpeed", m_CreatureClimbSpeed);
 	writer.NewPropertyWithValue("CreaturesFly", m_CreaturesFly);
 	writer.NewPropertyWithValue("CreatureFlySpeed", m_CreatureFlySpeed);
@@ -1917,6 +1920,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("CraftToughness", Toughness(ToughnessKind::Craft));
 	writer.NewPropertyWithValue("AnimalToughness", Toughness(ToughnessKind::Animals));
 	writer.NewPropertyWithValue("CreatureToughness", Toughness(ToughnessKind::Creatures));
+	writer.NewPropertyWithValue("MechToughness", Toughness(ToughnessKind::Mechs));
 	writer.NewPropertyWithValue("AISuppression", m_AISuppression);
 	writer.NewPropertyWithValue("AIDigWillingness", m_AIDigWillingness);
 	writer.NewPropertyWithValue("AIDigsWithTracers", m_AIDigsWithTracers);
