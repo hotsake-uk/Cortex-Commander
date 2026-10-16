@@ -772,7 +772,16 @@ window.MS = window.MS || {};
 		const rows = document.createElement('div');
 		rows.className = 'rows';
 		s.append(h, rows);
-		parent.append(s);
+		// Properties sections have a fixed place: the same section is always in the same column and slot, whatever part is picked.
+		const column = parent.classList.contains('props-cols') ? parent.querySelector('.props-col[data-side="' + (/^(Sprite|Attachments|All settings)/.test(title) ? 'right' : 'left') + '"]') : null;
+		if (column) {
+			// One order for every section, so a narrow panel (one column) reads in the same sequence: Sprite is always second.
+			const rank = ['Preset', 'Sprite', 'Used by', 'Placement', 'Unit', 'Aiming', 'Posture', 'Attachments', 'Scripts'].indexOf(title);
+			s.style.order = String(rank < 0 ? (title.startsWith('All settings') ? 99 : 6) : rank);
+			column.append(s);
+		} else {
+			parent.append(s);
+		}
 		return rows;
 	}
 
@@ -1079,8 +1088,14 @@ window.MS = window.MS || {};
 		const box = $('inspector');
 		box.innerHTML = '';
 		const insp = document.createElement('div');
-		insp.className = 'insp-cols';
+		insp.className = 'props-cols';
 		box.append(insp);
+		for (const side of ['left', 'right']) {
+			const column = document.createElement('div');
+			column.className = 'props-col';
+			column.dataset.side = side;
+			insp.append(column);
+		}
 		fieldUpdaters = [];
 		const part = app.selected;
 		if (!app.rig) {
