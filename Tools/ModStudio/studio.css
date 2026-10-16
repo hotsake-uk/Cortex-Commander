@@ -902,3 +902,15 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .prob-group { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--faint); }
 .prob-row.warn .prob-text b::before { content: "â€¢ "; color: var(--accent); }
 .prob-row.error .prob-text b::before { content: "â€¢ "; color: var(--bad); }
+.import-compare { display: flex; gap: 22px; align-items: flex-end; margin: 6px 0 8px; }
+.import-col { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.import-col b { font-size: 12px; color: var(--dim); font-weight: 600; }
+.import-col small { color: var(--faint); }
+.import-col canvas, .import-anim canvas { image-rendering: pixelated; background: #0d0f13; border: 1px solid var(--line); border-radius: 4px; }
+.import-none { color: var(--faint); font-size: 12px; }
+.import-notes { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.import-note { padding: 6px 10px; border-radius: 6px; font-size: 12.5px; line-height: 1.4; border-left: 3px solid var(--line2); background: var(--panel2); color: var(--dim); }
+.import-note.good { border-left-color: var(--good); color: var(--good); }
+.import-note.warn { border-left-color: var(--accent); color: var(--text); }
+.import-note.bad { border-left-color: var(--bad); color: #ffc4bc; }
+.import-note.info { border-left-color: #7fd1ff; }

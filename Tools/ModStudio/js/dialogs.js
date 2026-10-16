@@ -303,21 +303,139 @@ window.MS = window.MS || {};
 		const base = el('input', { type: 'text', value: roleName });
 		const preview = el('div', { className: 'import-preview' });
 		const info = el('p', { className: 'small' });
+		const notes = el('div', { className: 'import-notes' });
+		const compare = el('div', { className: 'import-compare' });
 		let sources = []; // ImageData per file
 		let converted = [];
+
+		// What the part has now, to compare the new picture with.
+		const current = part.sprite;
+		const currentFirst = current.file ? a.sprite(current.file, current.frameCount, 0) : null;
+
+		const addNote = (level, text) => notes.append(el('div', { className: 'import-note ' + level, textContent: text }));
+
+		// The picture's likely problems, in everyday words.
+		const analyse = (frames, leftover, changedPixels) => {
+			notes.replaceChildren();
+			const first = converted[0];
+			let clear = 0;
+			let partial = 0;
+			let total = 0;
+			for (const f of frames) {
+				const d = f.data;
+				for (let i = 0; i < f.width * f.height; i++) {
+					const alpha = d[i * 4 + 3];
+					total++;
+					if (alpha < 128 || (d[i * 4] === 255 && d[i * 4 + 1] === 0 && d[i * 4 + 2] === 255)) {
+						clear++;
+					} else if (alpha < 255) {
+						partial++;
+					}
+				}
+			}
+			let fine = true;
+			const say = (level, text) => {
+				fine = false;
+				addNote(level, text);
+			};
+			if (clear === total) {
+				say('bad', 'Every pixel is see-through, so nothing would show. Check the picture has something drawn on it.');
+			} else if (clear === 0) {
+				say('warn', 'There is no see-through background, so it will draw as a solid box. Make the background transparent (or pink, 255 0 255).');
+			}
+			if (partial > total * 0.02) {
+				say('info', partial + ' pixels are partly see-through. The game only has solid or see-through, so Studio makes them solid.');
+			}
+			if (leftover) {
+				say('warn', 'The sheet is ' + sources[0].width + ' pixels wide, which doesn\'t divide evenly into ' + framesInput.value + ' frames. ' + leftover + ' pixel' + (leftover === 1 ? '' : 's') + ' on the right would be dropped.');
+			}
+			if (currentFirst) {
+				const big = first.width > currentFirst.width * 2.2 || first.height > currentFirst.height * 2.2;
+				const small = first.width < currentFirst.width * 0.45 || first.height < currentFirst.height * 0.45;
+				if (big || small) {
+					say('warn', 'It is much ' + (big ? 'bigger' : 'smaller') + ' than the original (' + first.width + '×' + first.height + ' against ' + currentFirst.width + '×' + currentFirst.height + '), so this part would look ' + (big ? 'huge' : 'tiny') + ' next to others.');
+				}
+			}
+			if ((part.role === 'fgarm' || part.role === 'bgarm' || part.role === 'fgleg' || part.role === 'bgleg') && converted.length < 2) {
+				say('info', 'Arms and legs bend by frame, so with one frame they stay stiff. A sheet of several frames, most bent first, looks right.');
+			}
+			if (part.role === 'foot' && converted.length < 4) {
+				say('info', 'Feet use up to four frames: flat, toes forward, heel back and far back. With fewer, the foot can\'t follow the ground.');
+			}
+			const solid = total - clear;
+			if (solid && changedPixels / solid > 0.4) {
+				say('info', 'Many colours were moved to the nearest game colour, so it may look a little different. The preview above is how the game will draw it.');
+			}
+			if (fine) {
+				addNote('good', 'Looks good: a see-through background and a sensible size.');
+			}
+		};
+
+		// The old picture beside the new one, and the new frames playing, so a walk or an arm bend can be judged before it goes in.
+		let animTimer = 0;
+		const showCompare = () => {
+			clearInterval(animTimer);
+			compare.replaceChildren();
+			if (!converted.length) {
+				return;
+			}
+			const zoomFor = (w, h) => Math.max(1, Math.min(6, Math.floor(96 / Math.max(w, h))));
+			const frameCanvas = (p) => {
+				const c = a.images.fromIndices(p.width, p.height, p.indices).canvas;
+				const z = zoomFor(p.width, p.height);
+				c.style.width = p.width * z + 'px';
+				c.style.height = p.height * z + 'px';
+				return c;
+			};
+			const col = (title, node, caption) => el('div', { className: 'import-col' }, el('b', { textContent: title }), node, el('small', { textContent: caption }));
+			let oldNode = el('span', { className: 'import-none', textContent: 'no picture yet' });
+			if (currentFirst) {
+				const c = document.createElement('canvas');
+				c.width = currentFirst.width;
+				c.height = currentFirst.height;
+				c.getContext('2d').drawImage(currentFirst.canvas, 0, 0);
+				const z = zoomFor(c.width, c.height);
+				c.style.width = c.width * z + 'px';
+				c.style.height = c.height * z + 'px';
+				oldNode = c;
+			}
+			const shown = el('div', { className: 'import-anim' });
+			let i = 0;
+			const draw = () => {
+				shown.replaceChildren(frameCanvas(converted[i % converted.length]));
+			};
+			draw();
+			if (converted.length > 1) {
+				animTimer = setInterval(() => {
+					if (!shown.isConnected) {
+						clearInterval(animTimer);
+						return;
+					}
+					i++;
+					draw();
+				}, 180);
+			}
+			compare.append(
+				col('Now', oldNode, currentFirst ? currentFirst.width + '×' + currentFirst.height + ', ' + current.frameCount + ' frame' + (current.frameCount > 1 ? 's' : '') : ''),
+				col('Yours' + (converted.length > 1 ? ' (playing)' : ''), shown, converted[0].width + '×' + converted[0].height + ', ' + converted.length + ' frame' + (converted.length > 1 ? 's' : '')));
+		};
 
 		const rebuild = () => {
 			converted = [];
 			preview.innerHTML = '';
 			if (!sources.length) {
 				info.textContent = '';
+				notes.replaceChildren();
+				compare.replaceChildren();
 				return;
 			}
 			let frames = [];
+			let leftover = 0;
 			if (sources.length === 1) {
 				const img = sources[0];
 				const n = Math.max(1, Math.min(64, parseInt(framesInput.value, 10) || 1));
 				const w = Math.floor(img.width / n);
+				leftover = img.width - w * n;
 				for (let i = 0; i < n; i++) {
 					const c = document.createElement('canvas');
 					c.width = w;
@@ -341,6 +459,8 @@ window.MS = window.MS || {};
 				preview.append(shown);
 			}
 			info.textContent = converted.length + ' frame' + (converted.length > 1 ? 's' : '') + ', ' + converted[0].width + '×' + converted[0].height + ' pixels. ' + (changed ? changed + ' pixels moved to the nearest game colour (shown above as the game will draw them).' : 'Every colour is already in the game palette.');
+			analyse(frames, leftover, changed);
+			showCompare();
 		};
 
 		input.onchange = async () => {
@@ -373,7 +493,7 @@ window.MS = window.MS || {};
 			para('Pick a picture (or several, one per frame, or one sprite sheet with the frames side by side). Studio turns it into the game\'s palette and saves the frames as numbered files the game can load.'),
 			field('Picture files', input),
 			field('Frames in a sprite sheet', framesInput, 'For one picture: how many equal frames it is cut into, left to right.'),
-			preview, info,
+			preview, info, compare, notes,
 			limbNote ? el('div', { className: 'notice info', textContent: limbNote }) : null,
 			field('Save into folder', folder),
 			field('File name', base, 'Frames are saved as ' + 'Name000.png, Name001.png… (one frame: Name.png).'),
