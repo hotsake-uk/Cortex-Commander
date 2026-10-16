@@ -6,7 +6,7 @@
 set -u
 exe="${1:?usage: smoke.sh <path to the cortex-studio program> [page folder]}"
 here=$(cd "$(dirname "$0")" && pwd)
-page="${2:-$here/../ModStudio}"
+page="${2:-$here/../ModStudio/dist}"
 
 work=$(mktemp -d)
 mkdir -p "$work/game/Data/Base.rte" "$work/game/Mods" "$work/config"

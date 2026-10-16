@@ -11,8 +11,21 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$env:CORTEX_STUDIO_PAGE = [System.IO.Path]::GetFullPath((Join-Path $here '..\ModStudio'))
+$page = [System.IO.Path]::GetFullPath((Join-Path $here '..\ModStudio'))
+if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+	Write-Error "Node.js isn't installed (Studio's page is built with it). Install it from https://nodejs.org, then open a new terminal."
+}
+if (-not (Test-Path (Join-Path $page 'node_modules\vite'))) {
+	Push-Location $page; npm ci --no-audit --no-fund; Pop-Location
+}
+# cargo's build script builds the page once; Vite then rebuilds it on every change while Studio runs.
+$watcher = Start-Process npm.cmd -ArgumentList 'run', 'watch', '--silent', '--', '--logLevel', 'warn' -WorkingDirectory $page -NoNewWindow -PassThru
+$env:CORTEX_STUDIO_PAGE = Join-Path $page 'dist'
 $appArgs = @()
 if ($GameDir) { $appArgs += @('--game-dir', $GameDir) }
 if ($Bridge) { $appArgs += '--bridge' }
-cargo run --manifest-path (Join-Path $here 'src-tauri\Cargo.toml') -- @appArgs
+try {
+	cargo run --manifest-path (Join-Path $here 'src-tauri\Cargo.toml') -- @appArgs
+} finally {
+	if ($watcher -and -not $watcher.HasExited) { taskkill /T /F /PID $watcher.Id | Out-Null }
+}

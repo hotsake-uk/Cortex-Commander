@@ -12,8 +12,9 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::time::UNIX_EPOCH;
 use tiny_http::{Header, Method, Request, Response, Server};
 
-// Mod Studio's page, built into the app so it is one file. CORTEX_STUDIO_PAGE (a folder) serves it from disk instead, for working on it.
-static PAGE: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../../ModStudio");
+// Mod Studio's page as Vite builds it (Tools/ModStudio/dist, made by build.rs), built into the app so it is one file. CORTEX_STUDIO_PAGE
+// (a folder) serves it from disk instead, for working on it (dev.sh points it at dist/ and keeps dist/ rebuilt).
+static PAGE: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../../ModStudio/dist");
 
 pub struct Studio {
 	/// The game folder Studio edits. It changes when you launch a version from Studio (the page then edits the game that's running).
