@@ -653,6 +653,7 @@ window.MS = window.MS || {};
 			item('Add attachment…', reason || 'Search everything and add it to ' + part.name + ' (a copy goes into your project)', () => MS.dialogs.attach(null, part), !!reason),
 			item('Edit sprite…', part.sprite && part.sprite.file ? 'Draw on ' + part.name + '\'s picture' : 'This part has no picture', () => MS.pixel.open({ part }), !(part.sprite && part.sprite.file)),
 			item('Resize sprite…', reason || 'Make the picture bigger or smaller on the grid, to the scale of the unit', () => MS.resize.open(part), !(part.sprite && part.sprite.file) || !!reason),
+			item('Make gibs…', reason || 'Cut the picture into gibs for when it is blown apart', () => MS.gibs.open(part), !(part.sprite && part.sprite.file) || !!reason),
 			item('Swap sprite…', reason || 'Put a different picture in ' + part.name, () => MS.dialogs.importSprite(part), !!reason),
 			item(app.hidden.has(part.id) ? 'Show layer' : 'Hide layer', 'Show or hide it in the view only', () => toggleEye(part, false)),
 			item('Its lines', 'Open its INI in the code editor', () => MS.ide.openFile(part.ent.node.doc.path, part.ent.node.line)));
@@ -1356,7 +1357,13 @@ window.MS = window.MS || {};
 			resize.title = 'Make this picture bigger or smaller on the grid, in the scale of the whole unit';
 			resize.disabled = !part.sprite.file;
 			resize.onclick = () => MS.resize.open(part);
-			wrap.append(edit, ' ', resize, ' ', b);
+			const gibs = document.createElement('button');
+			gibs.className = 'small-btn';
+			gibs.textContent = 'Gibs…';
+			gibs.title = 'Cut this picture into gibs that fly out when the part is blown apart';
+			gibs.disabled = !part.sprite.file;
+			gibs.onclick = () => MS.gibs.open(part);
+			wrap.append(edit, ' ', resize, ' ', gibs, ' ', b);
 			return wrap;
 		})());
 		const s = part.sprite;
