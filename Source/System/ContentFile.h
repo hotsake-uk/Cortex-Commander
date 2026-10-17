@@ -128,6 +128,10 @@ namespace RTE {
 		/// Reloads all BITMAPs in the cache from disk, allowing any changes to be reflected at runtime.
 		static void ReloadAllBitmaps();
 
+		/// Reloads one picture from disk wherever it is cached (8 and 32 bit), in place, so everything drawing it shows the new pixels. Does nothing if it was never loaded.
+		/// @param filePath The picture's data path, as in the INI (forward slashes).
+		static void ReloadBitmapFromDisk(const std::string& filePath);
+
 		/// Gets the data represented by this ContentFile object as an Allegro BITMAP, loading it into the static maps if it's not already loaded. Note that ownership of the BITMAP is NOT transferred!
 		/// @param conversionMode The Allegro color conversion mode to use when loading this bitmap.
 		/// @param storeBitmap Whether to store the BITMAP in the relevant static map after loading it or not. If this is false, ownership of the BITMAP IS transferred!

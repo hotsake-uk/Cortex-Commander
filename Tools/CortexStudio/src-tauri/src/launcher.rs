@@ -1573,7 +1573,16 @@ pub fn handle(launcher: &Launcher, action: &str, query: &dyn Fn(&str) -> Option<
 			launcher.cancel();
 			ok(json!({ "ok": true }))
 		}
-		"launch" => match launch(&config, &arg(body, "mode"), &arg(body, "map"), &serde_json::from_value::<RunConfig>(body.clone()).unwrap_or_default()) {
+		"launch" => {
+			// The unit open in Studio, as a Preview.ini in the version the game starts from, so the test map shows it from the start.
+			let request = arg(body, "preview");
+			if !request.trim().is_empty() {
+				let folder = config.slot_path().join("ModStudio");
+				if let Err(e) = fs::create_dir_all(&folder).and_then(|_| fs::write(folder.join("Preview.ini"), request)) {
+					return fail(400, format!("Couldn't write the unit for the game: {e}"));
+				}
+			}
+			match launch(&config, &arg(body, "mode"), &arg(body, "map"), &serde_json::from_value::<RunConfig>(body.clone()).unwrap_or_default()) {
 			Ok(log) => {
 				// Studio follows the launch, so Preview in game and the console talk to the game that's running.
 				let slot = config.slot_path();
@@ -1581,7 +1590,8 @@ pub fn handle(launcher: &Launcher, action: &str, query: &dyn Fn(&str) -> Option<
 				Answer { status: 200, body: json!({ "log": log, "switched": switch }).to_string(), switch_to: switch.then_some(slot) }
 			}
 			Err(e) => fail(400, e),
-		},
+			}
+		}
 		"edit" => {
 			// Edit this version (the built slot) or the repo checkout in Studio.
 			let target = if arg(body, "which") == "repo" { PathBuf::from(&config.repo) } else { config.slot_path() };

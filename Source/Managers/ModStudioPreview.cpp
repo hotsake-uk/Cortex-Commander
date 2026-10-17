@@ -117,6 +117,15 @@ namespace {
 	/// Reloads a file Studio changed. Something wrong in it is caught the way a broken mod is at start-up: one ERROR line on the console (which Studio
 	/// shows), and the game carries on with what it had, rather than stopping on an assert dialog. Returns whether it was read again.
 	bool ReloadFileFromStudio(const std::string& filePath) {
+		// A picture (a sprite Studio saved, or one changed in another editor): its pixels are read again in place, so every unit using it shows the
+		// new picture. (The presets using it are read again when their own file is, which fixes their sizes.)
+		const size_t dot = filePath.find_last_of('.');
+		std::string extension = dot == std::string::npos ? std::string() : filePath.substr(dot);
+		std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		if (extension == ".png" || extension == ".bmp") {
+			ContentFile::ReloadBitmapFromDisk(filePath);
+			return true;
+		}
 		const std::string moduleName = g_PresetMan.GetModuleNameFromPath(filePath);
 		for (const auto& [failedName, failure]: g_PresetMan.GetFailedMods()) {
 			if (StringsEqualCaseInsensitive(failedName, moduleName)) {
