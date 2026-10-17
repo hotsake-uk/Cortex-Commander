@@ -378,7 +378,47 @@ window.MS = window.MS || {};
 			return s.offset;
 		}
 
+		// The picture of a building piece's layer: the material map is shown in each material's colour (its pixels are material numbers).
+		layerImage(file, material) {
+			const frame = this.app.sprite(file, 1, 0);
+			if (!frame) {
+				return null;
+			}
+			if (!material || !frame.indices) {
+				return frame;
+			}
+			if (!this.materialImages) {
+				this.materialImages = new WeakMap();
+			}
+			let image = this.materialImages.get(frame);
+			if (!image) {
+				const colors = MS.materialColors();
+				const canvas = document.createElement('canvas');
+				canvas.width = frame.width;
+				canvas.height = frame.height;
+				const ctx = canvas.getContext('2d');
+				const data = ctx.createImageData(frame.width, frame.height);
+				for (let i = 0; i < frame.indices.length; i++) {
+					const c = colors.get(frame.indices[i]);
+					if (c && frame.indices[i] !== 0) {
+						data.data[i * 4] = c[0];
+						data.data[i * 4 + 1] = c[1];
+						data.data[i * 4 + 2] = c[2];
+						data.data[i * 4 + 3] = 255;
+					}
+				}
+				ctx.putImageData(data, 0, 0);
+				image = { canvas, width: frame.width, height: frame.height };
+				this.materialImages.set(frame, image);
+			}
+			return image;
+		}
+
 		drawItem(ctx, item, tint) {
+			if (item.kind === 'sprite' && !tint && item.part.layers) {
+				this.drawLayers(ctx, item);
+				return;
+			}
 			const frame = this.frameFor(item);
 			if (!frame) {
 				return;
@@ -408,6 +448,26 @@ window.MS = window.MS || {};
 				ctx.drawImage(image, so.x - pad, so.y - pad);
 			}
 			ctx.restore();
+		}
+
+		// A building piece: its background, then its foreground (or one of them, or the material map), as the layer switch says.
+		drawLayers(ctx, item) {
+			const show = this.terrainShow || 'both';
+			const files = item.part.layers.reduce((o, l) => Object.assign(o, { [l.key]: l.file }), {});
+			const order = show === 'mat' ? [['MaterialFile', true]] : show === 'fg' ? [['FGColorFile', false]] : show === 'bg' ? [['BGColorFile', false]] : [['BGColorFile', false], ['FGColorFile', false]];
+			for (const [key, material] of order) {
+				if (!files[key]) {
+					continue;
+				}
+				const frame = this.layerImage(files[key], material);
+				if (!frame) {
+					continue;
+				}
+				ctx.save();
+				ctx.translate(Math.floor(item.pose.pos.x), Math.floor(item.pose.pos.y));
+				ctx.drawImage(frame.canvas, -Math.floor(frame.width / 2), -Math.floor(frame.height / 2));
+				ctx.restore();
+			}
 		}
 
 		// A one pixel ring just outside a picture's solid pixels, in a colour (cached by picture and colour), for the part outlines.

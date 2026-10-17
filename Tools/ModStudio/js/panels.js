@@ -56,7 +56,7 @@ window.MS = window.MS || {};
 		attachments: new Set(['Attachable', 'AEmitter', 'AEJetpack', 'PEmitter']),
 		items: new Set(['HDFirearm', 'HeldDevice', 'TDExplosive', 'ThrownDevice']),
 		// Everything else with a picture: open it, edit its settings and its sprite like any other.
-		more: new Set(['MOSRotating', 'MOSParticle', 'Magazine', 'Turret', 'ADoor', 'Arm', 'Leg']),
+		more: new Set(['MOSRotating', 'MOSParticle', 'Magazine', 'Turret', 'ADoor', 'Arm', 'Leg', 'TerrainObject']),
 	};
 
 	// ---- drawing small pictures ----
@@ -87,7 +87,7 @@ window.MS = window.MS || {};
 
 	function drawSpriteThumb(canvas, preset) {
 		const ent = app.lib.resolve(preset.node);
-		const file = ent.file('SpriteFile');
+		const file = preset.cls === 'TerrainObject' ? ent.file('FGColorFile') || ent.file('BGColorFile') : ent.file('SpriteFile');
 		const frame = app.sprite(file, Math.max(1, Math.round(ent.num('FrameCount', 1))), 0);
 		const ctx = canvas.getContext('2d');
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1259,7 +1259,35 @@ window.MS = window.MS || {};
 			where.append(n);
 		}
 
-		const sprite = section(insp, 'Sprite', (() => {
+		if (part.layers) {
+			// A building piece: three pictures. Foreground and background can be drawn on or swapped; the material map can be swapped.
+			const layers = section(insp, 'Pictures');
+			for (const layer of part.layers) {
+				const row = document.createElement('div');
+				row.className = 'layer-row';
+				const name = document.createElement('b');
+				name.textContent = layer.label;
+				const file = document.createElement('span');
+				file.className = 'src';
+				file.textContent = layer.file ? layer.file.split('/').pop() : '(none)';
+				file.title = layer.file || '';
+				const edit = document.createElement('button');
+				edit.className = 'small-btn';
+				edit.textContent = 'Edit…';
+				edit.disabled = !layer.file || layer.key === 'MaterialFile';
+				edit.title = layer.key === 'MaterialFile' ? 'The material map\'s pixels are material numbers: swap it for another picture for now' : 'Draw on this picture';
+				edit.onclick = () => MS.pixel.open({ part, key: layer.key });
+				const swap = document.createElement('button');
+				swap.className = 'small-btn';
+				swap.textContent = 'Swap…';
+				swap.disabled = !!locked;
+				swap.onclick = () => MS.dialogs.importSprite(part, { key: layer.key });
+				row.append(name, file, edit, ' ', swap);
+				layers.append(row);
+			}
+		}
+		// (A building piece has no single sprite: the rows below go nowhere.)
+		const sprite = part.layers ? document.createElement('div') : section(insp, 'Sprite', (() => {
 			const wrap = document.createElement('span');
 			const edit = document.createElement('button');
 			edit.className = 'small-btn';

@@ -103,7 +103,19 @@ window.MS = window.MS || {};
 			return ROLE_NAMES[this.role] + side + (preset && this.role !== 'body' ? ' · ' + preset : '');
 		}
 
+		// A terrain object (a piece of a building) has three pictures instead of one: foreground, background and the material map.
+		get layers() {
+			if (this.ent.cls !== 'TerrainObject') {
+				return null;
+			}
+			return [['FGColorFile', 'Foreground'], ['BGColorFile', 'Background'], ['MaterialFile', 'Material']].map(([key, label]) => ({ key, label, file: this.ent.file(key) }));
+		}
+
 		get sprite() {
+			if (this.ent.cls === 'TerrainObject') {
+				const fg = this.ent.file('FGColorFile');
+				return { file: fg || this.ent.file('BGColorFile'), key: fg ? 'FGColorFile' : 'BGColorFile', frameCount: 1, offset: null };
+			}
 			return {
 				file: this.ent.file('SpriteFile'),
 				frameCount: Math.max(1, Math.round(this.ent.num('FrameCount', 1))),

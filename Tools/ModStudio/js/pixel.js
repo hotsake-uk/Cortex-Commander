@@ -695,7 +695,7 @@ window.MS = window.MS || {};
 		const a = app();
 		try {
 			const countChanged = E.frames.length !== E.frameCount;
-			await MS.dialogs.saveSprite(countChanged ? E.part : null, E.file, outFrames(), false);
+			await MS.dialogs.saveSprite(countChanged || E.layerKey ? E.part : null, E.file, outFrames(), false, E.layerKey);
 			await keepUnit();
 		} catch (e) {
 			a.toast('Couldn\'t save the picture: ' + e.message, 'bad');
@@ -722,7 +722,7 @@ window.MS = window.MS || {};
 		}
 		const linkable = E.part && !a.lockReason(E.part);
 		try {
-			await MS.dialogs.saveSprite(linkable ? E.part : null, path, outFrames(), false);
+			await MS.dialogs.saveSprite(linkable ? E.part : null, path, outFrames(), false, E.layerKey);
 			E.file = path;
 			if (E.tab) {
 				E.tab.key = spriteKey(path);
@@ -910,7 +910,7 @@ window.MS = window.MS || {};
 			return;
 		}
 		const part = target.part || null;
-		const file = part ? part.sprite.file : target.file || null;
+		const file = part ? (target.key ? part.ent.file(target.key) : part.sprite.file) : target.file || null;
 		const key = file ? spriteKey(file) : 'sprite:new' + ++newCount;
 		const existing = MS.ide.findSpriteTab(key);
 		if (existing) {
@@ -935,7 +935,7 @@ window.MS = window.MS || {};
 
 	async function openNew(target, part, file, key) {
 		const a = app();
-		const frameCount = part ? part.sprite.frameCount : target.frameCount || 1;
+		const frameCount = part ? (target.key ? 1 : part.sprite.frameCount) : target.frameCount || 1;
 		let frames = null;
 		if (file) {
 			frames = await loadFrames(file, frameCount);
@@ -953,7 +953,7 @@ window.MS = window.MS || {};
 			}
 		}
 		const common = [...counts.entries()].sort((x, y) => y[1] - x[1])[0];
-		E = { part, file, frameCount: file ? frames.length : 0, frames, cur: 0, tool: 'pencil', color: common ? common[0] : 1, recent: [], mirror: false, grid: true, onion: false, zoom: 8, undo: [], redo: [], pending: null, dirty: false, warned: false, drag: null, preview: null, hover: null, previewAt: 0, saved: false, onSaved: target.onSaved || null };
+		E = { layerKey: target.key || null, part, file, frameCount: file ? frames.length : 0, frames, cur: 0, tool: 'pencil', color: common ? common[0] : 1, recent: [], mirror: false, grid: true, onion: false, zoom: 8, undo: [], redo: [], pending: null, dirty: false, warned: false, drag: null, preview: null, hover: null, previewAt: 0, saved: false, onSaved: target.onSaved || null };
 		const body = build();
 		E.root = body;
 		const name = file ? file.split('/').pop() : 'a new picture';

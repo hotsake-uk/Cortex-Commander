@@ -308,7 +308,8 @@ window.MS = window.MS || {};
 
 	// Writes a sprite's frames ({width, height, indices} each) as numbered PNGs beside filePath, then, when a part is given, points that part at
 	// them: its SpriteFile, FrameCount and, with centre, SpriteOffset. Returns the files written. Used by Replace the sprite and the pixel editor.
-	async function saveSprite(part, filePath, frames, centre) {
+	async function saveSprite(part, filePath, frames, centre, key) {
+		key = key || 'SpriteFile';
 		const a = app();
 		const paths = MS.Images.framePaths(filePath, frames.length);
 		for (let i = 0; i < frames.length; i++) {
@@ -326,16 +327,18 @@ window.MS = window.MS || {};
 				if (!node) {
 					return;
 				}
-				let sf = node.children.find((c) => c.key === 'SpriteFile');
+				let sf = node.children.find((c) => c.key === key);
 				if (!sf) {
-					sf = node.add('SpriteFile', 'ContentFile', node.insertIndexFor('SpriteFile'));
+					sf = node.add(key, 'ContentFile', node.insertIndexFor(key));
 				}
 				sf.setValue('ContentFile');
 				for (const old of sf.children.filter((c) => c.key === 'Path' || c.key === 'CopyOf')) {
 					old.remove();
 				}
 				sf.set('FilePath', filePath);
-				node.set('FrameCount', String(frames.length));
+				if (key === 'SpriteFile') {
+					node.set('FrameCount', String(frames.length));
+				}
 				if (centre) {
 					node.setVector('SpriteOffset', -Math.floor(w / 2), -Math.floor(h / 2));
 				}
@@ -412,7 +415,8 @@ window.MS = window.MS || {};
 		let converted = [];
 
 		// What the part has now, to compare the new picture with.
-		const current = part.sprite;
+		const layerKey = options && options.key;
+		const current = layerKey ? { file: part.ent.file(layerKey), frameCount: 1 } : part.sprite;
 		const currentFirst = current.file ? a.sprite(current.file, current.frameCount, 0) : null;
 
 		const addNote = (level, text) => notes.append(el('div', { className: 'import-note ' + level, textContent: text }));
@@ -644,7 +648,7 @@ window.MS = window.MS || {};
 					const filePath = dir + '/' + name + '.png';
 					let paths;
 					try {
-						paths = await saveSprite(part, filePath, converted, centre.checked);
+						paths = await saveSprite(part, filePath, converted, centre.checked && !layerKey, layerKey);
 					} catch (e) {
 						a.toast('Couldn\'t save the sprite: ' + e.message, 'bad');
 						return false;

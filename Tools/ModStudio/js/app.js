@@ -443,6 +443,30 @@ window.MS = window.MS || {};
 		app.status((give ? 'Gave ' : 'Spawned ') + app.actor.name + ' to the game (sent). It only works in a game started from Studio (Test in game, Sandbox).');
 	};
 
+	// Material number -> [r, g, b], from the Materials the game loads (a material map picture's pixels are these numbers).
+	let materialCache = null;
+	let materialGeneration = -1;
+	MS.materialColors = function () {
+		if (materialCache && materialGeneration === app.lib.generation) {
+			return materialCache;
+		}
+		const map = new Map();
+		for (const p of app.lib.presets) {
+			if (p.cls !== 'Material' || !p.topLevel) {
+				continue;
+			}
+			const ent = app.lib.resolve(p.node);
+			const index = ent.num('Index', -1);
+			const color = ent.sub('Color');
+			if (index >= 0 && color) {
+				map.set(index, [color.num('R', 0), color.num('G', 0), color.num('B', 0)]);
+			}
+		}
+		materialCache = map;
+		materialGeneration = app.lib.generation;
+		return map;
+	};
+
 	app.findActorNode = function () {
 		if (!app.actor) {
 			return null;
@@ -585,6 +609,7 @@ window.MS = window.MS || {};
 		$('btnCopy').disabled = false;
 		$('btnCopy').classList.toggle('attention', locked);
 		$('btnPreview').disabled = locked;
+		$('layerBox').hidden = !(app.rig && app.rig.body.ent.cls === 'TerrainObject');
 		const spawn = spawnKind(app.actor && app.actor.cls);
 		$('btnSpawn').disabled = !spawn;
 		$('btnGive').hidden = spawn !== 'item';
@@ -1210,6 +1235,10 @@ window.MS = window.MS || {};
 		$('btnSave').onclick = () => MS.ide.saveMod();
 		$('btnDiscard').onclick = () => app.discard();
 		$('btnPreview').onclick = () => app.preview();
+		$('terrainLayer').onchange = () => {
+			app.view.terrainShow = $('terrainLayer').value;
+			app.requestDraw();
+		};
 		$('btnSpawn').onclick = () => app.spawnInGame(false);
 		$('btnGive').onclick = () => app.spawnInGame(true);
 		$('btnLive').onclick = () => setLive(!app.live);

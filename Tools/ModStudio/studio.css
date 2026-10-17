@@ -1038,3 +1038,6 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .rs-row input[type=range] { flex: 1; min-width: 80px; }
 .rs-info { color: var(--text); }
 .rs-info.dim, .rs-hint { color: var(--faint); }
+.layer-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+.layer-row b { width: 86px; font-weight: 600; }
+.layer-row .src { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
