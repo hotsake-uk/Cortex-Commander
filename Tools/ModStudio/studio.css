@@ -1440,3 +1440,16 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .ml-bar { row-gap: 4px; }
 .ml-bar .tb { padding: 3px 8px; }
 .ml-bar .ml-problems, .ml-bar .ml-ok { margin-left: auto; }
+/* the parts tree: a name runs to the end of its row; its buttons take room only while the row is hovered (or when one is switched off) */
+.tree-row .row-btn, .tree-row .eye { display: none; }
+.tree-row:hover .row-btn, .tree-row .row-btn.off, .tree-row:hover .eye, .tree-row .eye.off { display: inline-flex; }
+/* two designers side by side */
+#viewWrap.split #view { right: 50%; width: 50%; border-right: 1px solid var(--line); }
+#viewWrap.split #view2 { position: absolute; top: 0; bottom: 0; left: 50%; width: 50%; height: 100%; display: block; touch-action: none; }
+#view2[hidden] { display: none !important; }
+.pane-label { position: absolute; top: 6px; z-index: 4; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel2); color: var(--dim); font-size: 11.5px; cursor: pointer; }
+.pane-label.left { left: 8px; }
+.pane-label.on { color: var(--text); border-color: var(--accent); }
+.pane-label.right { left: calc(50% + 8px); }
+.tab.on-screen .tab-name::before { content: "◫ "; color: var(--faint); }
+#btnSplit.sel { border-color: var(--accent); color: var(--text); }

@@ -12,31 +12,62 @@ window.MS = window.MS || {};
 		fs: null,
 		lib: null,
 		images: null,
-		rig: null,
-		actor: null, // {path, name, cls}: found again by these after undo, since undo re-reads the file
-		actorNode: null,
-		device: null, // {path, name} of the held item preset shown in the front hand
-		selected: null,
-		hidden: new Set(), // ids of parts hidden in the view (the view only: the unit's files are untouched)
-		collapsed: new Set(), // ids of parts whose children are folded away in the parts list
-		isolate: false,
-		poseState: { flip: false, aim: 0, pose: 'stand', time: 0, sharp: false, frames: {}, animateSprites: true },
 		playing: true,
 		speed: 1,
 		undo: [],
 		redo: [],
 		txn: null,
 		frames: new Map(),
-		groundY: null,
 		savedSinceLastPreview: new Set(),
 	};
 	MS.app = app;
+
+	// ---- designers ----
+	// What one designer shows and how: the thing open and its rig, what is picked, hidden and folded, the pose. Each design tab has its own
+	// (ide.js); app.actor, app.rig, app.selected and the rest are the designer on show, so switching tabs points at another designer rather
+	// than copying one designer's state in and out. Two can be on screen at once, side by side (the views, below).
+	const DESIGNER_KEYS = ['rig', 'actor', 'actorNode', 'device', 'selected', 'selectedPiece', 'hidden', 'collapsed', 'isolate', 'poseState', 'groundY'];
+	app.newDesigner = () => ({
+		rig: null,
+		actor: null, // {path, name, cls}: found again by these after undo, since undo re-reads the file
+		actorNode: null,
+		device: null, // {path, name} of the held item preset shown in the front hand
+		selected: null,
+		selectedPiece: null,
+		hidden: new Set(), // ids of parts hidden in the view (the view only: the unit's files are untouched)
+		collapsed: new Set(), // ids of parts whose children are folded away in the parts list
+		isolate: false,
+		poseState: { flip: false, aim: 0, pose: 'stand', time: 0, sharp: false, frames: {}, animateSprites: true },
+		groundY: null,
+		viewState: null, // the zoom and pan it was last seen with
+	});
+	app.designer = app.newDesigner();
+	for (const key of DESIGNER_KEYS) {
+		Object.defineProperty(app, key, { get: () => app.designer[key], set: (v) => { app.designer[key] = v; }, enumerable: true, configurable: true });
+	}
+
+	// Runs fn with another designer (and its view) as the one on show: to draw it, or bring it up to date, while it is beside the one you edit.
+	app.withDesigner = function (designer, fn, view) {
+		const before = app.designer;
+		const beforeView = app.view;
+		app.designer = designer;
+		if (view) {
+			app.view = view;
+		}
+		try {
+			return fn();
+		} finally {
+			app.designer = before;
+			app.view = beforeView;
+		}
+	};
 
 	// ---- start-up ----
 
 	app.init = function () {
 		MS.popout.begin();
 		app.view = new MS.Viewport($('view'), app);
+		setUpPanes();
 		MS.panels.init(app);
 		MS.ide.init(app);
 		bindToolbar();
@@ -743,17 +774,33 @@ window.MS = window.MS || {};
 		app.liveChanged();
 	};
 
-	// Rebuilds the rig from the current files, keeping the selection.
+	// Rebuilds the rig from the current files, keeping the selection; and the other designer on screen, side by side, so a change made in one
+	// (a gun's grip) shows in the other (the unit holding the gun) as it is made.
 	app.rebuild = function (fresh) {
+		const built = rebuildRig(fresh);
+		if (!built) {
+			MS.panels.refresh();
+			app.requestDraw();
+			rebuildOthers();
+			return;
+		}
+		updateTitle();
+		if (fresh) {
+			MS.panels.refresh();
+		}
+		app.requestDraw();
+		rebuildOthers();
+	};
+
+	// The designer on show's rig from the current files (false when its thing is gone).
+	function rebuildRig(fresh) {
 		const selectedId = app.selected ? app.selected.id : null;
 		app.lib.invalidate();
-		app.actorNode = app.findActorNode();
+		app.actorNode = app.actor ? app.findActorNode() : null;
 		if (!app.actorNode) {
 			app.rig = null;
 			app.selected = null;
-			MS.panels.refresh();
-			app.requestDraw();
-			return;
+			return false;
 		}
 		app.rig = new MS.Rig(app.lib, app.actorNode);
 		const deviceNode = findDeviceNode();
@@ -762,12 +809,164 @@ window.MS = window.MS || {};
 		if (fresh || app.groundY === null) {
 			app.groundY = standingGround();
 		}
-		updateTitle();
-		if (fresh) {
-			MS.panels.refresh();
+		return true;
+	}
+
+	function rebuildOthers() {
+		if (!app.split) {
+			return;
 		}
+		for (const pane of app.panes) {
+			const d = pane.tab && pane.tab.designer;
+			if (d && d !== app.designer && d.actor) {
+				app.withDesigner(d, () => rebuildRig(false), pane.view);
+			}
+		}
+		drawPaneLabels();
+	}
+
+	// ---- the views: the designer on show, or two designers side by side ----
+	// Each view (a canvas with its own zoom and pan) shows one design tab. With two, the one you click becomes the one you edit; both are drawn
+	// every frame, and both rebuilt when the files change.
+	app.panes = [];
+	app.split = false;
+	function setUpPanes() {
+		const wrap = $('viewWrap');
+		const second = document.createElement('canvas');
+		second.id = 'view2';
+		second.hidden = true;
+		wrap.insertBefore(second, $('view').nextSibling);
+		const label = (i) => {
+			const b = document.createElement('button');
+			b.className = 'pane-label ' + (i ? 'right' : 'left');
+			b.hidden = true;
+			b.onclick = () => {
+				const pane = app.panes[i];
+				if (pane.tab && pane.tab !== MS.ide.currentDesigner) {
+					MS.ide.activate(pane.tab);
+				}
+			};
+			wrap.append(b);
+			return b;
+		};
+		app.panes = [{ view: app.view, tab: null, label: label(0) }, { view: new MS.Viewport(second, app), tab: null, label: label(1) }];
+		app.panes.forEach((pane) => {
+			// a view not being edited takes a click as "edit this one", and ignores the mouse passing over it
+			pane.view.isActive = () => !app.split || pane.view === app.view;
+			pane.view.activate = () => pane.tab && MS.ide.activate(pane.tab);
+		});
+		const button = document.createElement('button');
+		button.id = 'btnSplit';
+		button.className = 'tb';
+		button.textContent = '◫ Side by side';
+		button.title = 'Show two design tabs side by side: changes to one (a gun\'s grip) show in the other (the unit holding it) as you make them';
+		button.onclick = () => app.setSplit(!app.split);
+		$('viewTools').append(button);
+	}
+
+	// The design tab now on show (ide.js activates it): its designer becomes app's, in the view it is in (or the view being edited), with its
+	// own zoom and pan, and its rig rebuilt from the files as they are now.
+	app.recentDesigners = [];
+	app.focusDesigner = function (tab) {
+		const ide = MS.ide;
+		let pane = app.split ? app.panes.find((p) => p.tab === tab) : null;
+		if (!pane) {
+			pane = app.split ? app.panes.find((p) => p.view === app.view) || app.panes[0] : app.panes[0];
+			if (pane.tab && pane.tab !== tab && pane.tab.designer) {
+				pane.tab.designer.viewState = { zoom: pane.view.zoom, pan: Object.assign({}, pane.view.pan) };
+			}
+			pane.tab = tab;
+			if (tab.designer.viewState) {
+				pane.view.zoom = tab.designer.viewState.zoom;
+				pane.view.pan = Object.assign({}, tab.designer.viewState.pan);
+			}
+		}
+		ide.currentDesigner = tab;
+		app.designer = tab.designer;
+		app.view = pane.view;
+		app.recentDesigners = [tab, ...app.recentDesigners.filter((t) => t !== tab && ide.tabs.includes(t))];
+		if (app.actor) {
+			app.rebuild(false);
+		}
+		MS.panels.refresh();
+		MS.panels.markLibrary();
+		drawPaneLabels();
 		app.requestDraw();
 	};
+
+	// Two views on or off. On: the design tab on show and the one used before it (which has something open).
+	app.setSplit = function (on) {
+		const ide = MS.ide;
+		if (on) {
+			const current = ide.currentDesigner;
+			const other = app.recentDesigners.find((t) => t !== current && ide.tabs.includes(t) && t.designer && t.designer.actor)
+				|| ide.tabs.find((t) => t.kind === 'designer' && t !== current && t.designer && t.designer.actor);
+			if (!current || !other) {
+				app.toast('Open a second thing first (each opens in its own design tab), then show them side by side.', 'bad');
+				return;
+			}
+			app.split = true;
+			app.panes[0].tab = current;
+			app.panes[1].tab = other;
+			app.view = app.panes[0].view;
+			const second = app.panes[1].view;
+			if (other.designer.viewState) {
+				second.zoom = other.designer.viewState.zoom;
+				second.pan = Object.assign({}, other.designer.viewState.pan);
+			}
+			app.withDesigner(other.designer, () => rebuildRig(false), second);
+			// fitted once the second view is on screen and has its size (and only if it has no view of its own yet)
+			if (!other.designer.viewState) {
+				requestAnimationFrame(() => app.withDesigner(other.designer, () => second.fit(), second));
+			}
+		} else {
+			const shown = app.panes.find((p) => p.view === app.view);
+			if (shown && shown !== app.panes[0]) {
+				app.panes[0].view.zoom = shown.view.zoom;
+				app.panes[0].view.pan = Object.assign({}, shown.view.pan);
+			}
+			app.split = false;
+			app.panes[0].tab = ide.currentDesigner;
+			app.panes[1].tab = null;
+			app.view = app.panes[0].view;
+		}
+		$('viewWrap').classList.toggle('split', app.split);
+		$('view2').hidden = !app.split;
+		$('btnSplit').classList.toggle('sel', app.split);
+		drawPaneLabels();
+		ide.renderTabs();
+		app.requestDraw();
+	};
+
+	// A design tab closed: out of the views (two views become one if it was in one).
+	app.designerClosed = function (tab) {
+		app.recentDesigners = app.recentDesigners.filter((t) => t !== tab);
+		if (app.split && app.panes.some((p) => p.tab === tab)) {
+			const keep = app.panes.find((p) => p.tab !== tab);
+			app.panes.forEach((p) => {
+				if (p.tab === tab) {
+					p.tab = null;
+				}
+			});
+			if (keep && keep.tab) {
+				MS.ide.currentDesigner = keep.tab;
+				app.designer = keep.tab.designer;
+				app.view = keep.view;
+			}
+			app.setSplit(false);
+		}
+	};
+
+	function drawPaneLabels() {
+		app.panes.forEach((pane) => {
+			const d = pane.tab && pane.tab.designer;
+			pane.label.hidden = !app.split || !d;
+			if (d) {
+				pane.label.textContent = (d.actor ? d.actor.name : 'Designer') + (pane.view === app.view ? '' : '  (click to edit)');
+				pane.label.classList.toggle('on', pane.view === app.view);
+			}
+		});
+	}
 
 	// Where the feet rest when standing: the lowest foot pixel.
 	function standingGround() {
@@ -917,13 +1116,28 @@ window.MS = window.MS || {};
 		const now = performance.now();
 		const dt = Math.min((now - lastTime) / 1000, 0.1);
 		lastTime = now;
-		if (app.playing && app.rig) {
-			app.poseState.time += dt * app.speed;
-			drawQueued = true;
+		if (app.playing) {
+			for (const d of app.split ? app.panes.map((p) => p.tab && p.tab.designer).filter(Boolean) : [app.designer]) {
+				if (d.rig) {
+					d.poseState.time += dt * app.speed;
+					drawQueued = true;
+				}
+			}
 		}
 		if (drawQueued) {
 			drawQueued = false;
-			app.view.render();
+			if (app.split) {
+				for (const pane of app.panes) {
+					const d = pane.tab && pane.tab.designer;
+					if (d && d !== app.designer) {
+						app.withDesigner(d, () => pane.view.render(), pane.view);
+					} else if (d) {
+						pane.view.render();
+					}
+				}
+			} else {
+				app.view.render();
+			}
 		}
 		requestAnimationFrame(loop);
 	}
@@ -947,6 +1161,7 @@ window.MS = window.MS || {};
 			return;
 		}
 		app.undo.push({ label: txn.label, docs, at: Date.now() });
+		shareDocs(docs.map((d) => [d.doc.path, d.after]));
 		if (app.undo.length > 200) {
 			app.undo.shift();
 		}
@@ -954,6 +1169,32 @@ window.MS = window.MS || {};
 		updateUndo();
 		updateFileStatus();
 		app.liveChanged();
+	};
+
+	// ---- changes shared between Studio windows ----
+	// Each change made here goes to the other windows as it is made (the files' new text), and theirs come here: a designer in another window
+	// (a unit holding the gun you are changing) shows it straight away, before anything is saved.
+	function shareDocs(list) {
+		if (list.length && MS.popout && MS.popout.announce) {
+			MS.popout.announce('docs', { docs: list });
+		}
+	}
+	app.applySharedDocs = function (list) {
+		let changed = false;
+		for (const [path, text] of list || []) {
+			const doc = app.lib && app.lib.docFor(path);
+			if (doc && doc.serialize() !== text) {
+				doc.reset(text);
+				changed = true;
+			}
+		}
+		if (!changed) {
+			return;
+		}
+		app.lib.reindex();
+		app.rebuild();
+		MS.panels.refresh();
+		updateFileStatus();
 	};
 
 	// Runs fn as one undoable change.
@@ -978,6 +1219,7 @@ window.MS = window.MS || {};
 		for (const d of entry.docs) {
 			d.doc.reset(d[which]);
 		}
+		shareDocs(entry.docs.map((d) => [d.doc.path, d[which]]));
 		app.lib.reindex();
 		app.rebuild();
 		MS.panels.refresh();
