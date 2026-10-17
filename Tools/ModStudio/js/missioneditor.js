@@ -134,6 +134,10 @@ window.MS = window.MS || {};
 
 	// ---- the map ----
 
+	// The map's layers, in the areas list's order: [id (an area, or a mark's kind), name], and each one's colour in the list.
+	const MAP_LAYERS = [['areas', 'Areas'], ['line', 'Camera lines'], ['object', 'Objects placed'], ['screen', 'Screens'], ['terminal', 'Terminals']];
+	const LAYER_COLOURS = { line: '#ff6b9a', object: '#c8a35a', screen: '#5bc0eb', terminal: '#9bc53d' };
+
 	// A preset's picture for the map ("Name|Module"): a terrain object's foreground (or background), placed as the game places it (its
 	// BitmapOffset, or centred when it is over 24 pixels), or a particle's first frame (its SpriteOffset, or centred). Read once; onLoad is
 	// called when it comes in. Returns { img, offset } or null while it is being read (or if there is none).
@@ -733,7 +737,20 @@ window.MS = window.MS || {};
 			};
 			// the filter (the areas list's Show): all, unused (a clear map to draw on), used, in code, or what the nodes use them for
 			// and while a stage is picked beside the graph, only that stage's areas
+			// the map's layers, each shown or hidden, or soloed as on a mixing desk (while any layer is soloed, only the soloed ones show)
+			const layerState = (id) => {
+				s.map.layers = s.map.layers || {};
+				s.map.layers[id] = s.map.layers[id] || {};
+				return s.map.layers[id];
+			};
+			const layerOn = (id) => {
+				const all = s.map.layers || {};
+				return Object.values(all).some((x) => x.solo) ? !!layerState(id).solo : !layerState(id).hidden;
+			};
 			const shown = () => {
+				if (!layerOn('areas')) {
+					return [];
+				}
 				const focus = MS.missionLogic ? MS.missionLogic.stageFocus(scenarioByKey(key)) : null;
 				return byFilter().filter((r) => !focus || focus.areas.has(r.name));
 			};
@@ -769,6 +786,9 @@ window.MS = window.MS || {};
 						s.redrawQueued = false;
 						if (s.view) {
 							s.view.draw();
+						}
+						if (s.drawList) {
+							s.drawList(); // the layers' counts and lists, now their pictures are in
 						}
 					}, 40);
 				}
@@ -859,7 +879,7 @@ window.MS = window.MS || {};
 				setTimeout(() => document.addEventListener('pointerdown', close, true), 0);
 			};
 			const hooks = {
-				marks, pickMark, moveMark, emptyMenu,
+				marks: () => marks().filter((m) => layerOn(m.kind)), pickMark, moveMark, emptyMenu,
 				areas: shown, terrain: () => terrain(), usage, freshName, menu,
 				change: (name, boxes) => change(name, boxes),
 				picked: (name) => {
@@ -942,17 +962,38 @@ window.MS = window.MS || {};
 					drawList();
 				};
 				const focus = MS.missionLogic ? MS.missionLogic.stageFocus(scenarioByKey(key)) : null;
-				const showMarks = el('input', { type: 'checkbox', checked: s.map.marks !== false });
-				showMarks.onchange = () => {
-					s.map.marks = showMarks.checked;
-					view.draw();
+				// the layers: an eye to show or hide each, S to solo it, and how many things are on it
+				const raw = marks();
+				const itemsOf = (id) => {
+					const seen = new Set();
+					return raw.filter((m) => m.kind === id && !seen.has(m.id + '|' + m.label) && seen.add(m.id + '|' + m.label));
 				};
-				list.replaceChildren(el('div', { className: 'me-listhead' }, el('span', { textContent: 'Areas (' + (all.length === every.length ? every.length : all.length + ' of ' + every.length) + ')' }), filter,
-					el('label', { className: 'me-marks', title: 'Camera lines, objects placed, capture points\' screens and terminals' }, showMarks, 'Lines and objects'),
-					focus ? el('div', { className: 'me-stagefocus' }, el('span', { textContent: 'Only ' + focus.name, title: 'A stage is picked beside the graph: only its areas are shown' }),
-						el('button', { className: 'tb', textContent: 'Show all', onclick: () => MS.missionLogic.clearStage(scenarioByKey(key)) })) : null));
-				if (!all.length) {
-					list.append(el('p', { className: 'ed-note', textContent: every.length ? 'None of the areas is of this kind.' : 'None yet: drag on the map to draw one.' }));
+				const refresh = () => {
+					view.draw();
+					drawList();
+				};
+				const layerRow = ([id, label]) => {
+					const st = layerState(id);
+					return el('div', { className: 'me-layer' + (layerOn(id) ? '' : ' off') },
+						el('button', { className: 'me-eye' + (st.hidden ? ' hidden' : ''), textContent: st.hidden ? '○' : '●', title: st.hidden ? 'Show this layer' : 'Hide this layer', onclick: () => {
+							st.hidden = !st.hidden;
+							refresh();
+						} }),
+						el('button', { className: 'me-solo' + (st.solo ? ' on' : ''), textContent: 'S', title: 'Solo: while any layer is soloed, only the soloed ones show', onclick: () => {
+							st.solo = !st.solo;
+							refresh();
+						} }),
+						el('span', { className: 'me-layername', textContent: label }),
+						el('small', { textContent: String(id === 'areas' ? every.length : itemsOf(id).length) }));
+				};
+				list.replaceChildren(el('div', { className: 'me-listhead' }, el('span', { textContent: 'Layers' })), ...MAP_LAYERS.map(layerRow));
+				if (layerOn('areas')) {
+					list.append(el('div', { className: 'me-listhead' }, el('span', { textContent: 'Areas (' + (all.length === every.length ? every.length : all.length + ' of ' + every.length) + ')' }), filter,
+						focus ? el('div', { className: 'me-stagefocus' }, el('span', { textContent: 'Only ' + focus.name, title: 'A stage is picked beside the graph: only its areas are shown' }),
+							el('button', { className: 'tb', textContent: 'Show all', onclick: () => MS.missionLogic.clearStage(scenarioByKey(key)) })) : null));
+					if (!all.length) {
+						list.append(el('p', { className: 'ed-note', textContent: every.length ? 'None of the areas is of this kind.' : 'None yet: drag on the map to draw one.' }));
+					}
 				}
 				for (const r of all) {
 					const nodes = MS.missionLogic ? MS.missionLogic.areaUses(scenarioByKey(key), r.name) : [];
@@ -989,8 +1030,28 @@ window.MS = window.MS || {};
 						list.append(uses);
 					}
 				}
+				// the other layers' things: click one to see it on the map and its node in the graph
+				for (const [id, label] of MAP_LAYERS.slice(1)) {
+					const items = layerOn(id) ? itemsOf(id) : [];
+					if (!items.length) {
+						continue;
+					}
+					list.append(el('div', { className: 'me-listhead' }, el('span', { textContent: label + ' (' + items.length + ')' })));
+					for (const m of items) {
+						list.append(el('button', { className: 'me-area' + (s.map.markId === m.id ? ' sel' : ''), title: m.label + ': show it on the map, and its node', onclick: () => {
+							const r = view.root.getBoundingClientRect();
+							const cx = m.kind === 'line' ? m.x : m.x + (m.img ? m.img.width / 2 : 0);
+							const cy = m.kind === 'line' ? (s.map.panY || 0) + r.height / 2 / view.zoom : m.y + (m.img ? m.img.height / 2 : 0);
+							s.map.panX = cx - r.width / 2 / view.zoom;
+							s.map.panY = cy - r.height / 2 / view.zoom;
+							pickMark(m);
+							drawList();
+						} }, el('span', { className: 'me-swatch', style: 'background:' + LAYER_COLOURS[id] }), el('span', { className: 'me-areaname', textContent: m.label })));
+					}
+				}
 			};
 			drawList();
+			s.drawList = drawList;
 			const sidePicked = hooks.picked;
 			hooks.picked = (name) => {
 				sidePicked(name);
