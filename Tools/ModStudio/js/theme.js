@@ -1,14 +1,41 @@
 // Themes: recolour the whole of Studio. A theme is just values for the base colour tokens on :root (see studio.css); everything
-// else (tinted notices, the canvases, the code editor) is derived from those. The chosen theme is saved in localStorage, along
-// with its finished CSS, so the small script in ModStudio.html's <head> can apply it before the first paint.
+// else (tinted notices, the canvases, the code editor) is derived from those. The theme picker (the ◐ button) also tunes them:
+// a colour picker per token, text size, spacing, code size, your own saved themes, and export/import as JSON.
+// The choice is saved in localStorage, along with its finished CSS, so the small script in ModStudio.html's <head> can apply it
+// before the first paint.
 (function () {
 	const MS = (window.MS = window.MS || {});
 	const KEY = 'ms.theme';
 	const CSS_KEY = 'ms.theme.css';
+	const DEFAULT_UI = { font: 13, spacing: 'comfortable', code: 13 };
+	const SPACING = { compact: 1.2, comfortable: 1.4, roomy: 1.65 };
+
+	// The colours you can change: [token, plain name, help]. --sel and --focus fall back to --panel3 and --accent when not set.
+	const TOKENS = [
+		['--bg', 'Background', 'Behind everything'],
+		['--panel', 'Panels', 'Side lists, the top bar, dialogs'],
+		['--panel2', 'Buttons and inputs', 'Raised parts on a panel'],
+		['--panel3', 'Hover', 'What the mouse is over'],
+		['--sel', 'Selected row', 'The row you picked in a list'],
+		['--line', 'Lines', 'Dividers and borders'],
+		['--line2', 'Strong lines', 'Borders on dialogs and menus'],
+		['--text', 'Text', ''],
+		['--dim', 'Dim text', 'Less important words'],
+		['--faint', 'Faint text', 'Hints and disabled things'],
+		['--accent', 'Accent', 'Highlights, the Play button, the marks on the picture'],
+		['--accent-ink', 'Text on accent', ''],
+		['--focus', 'Focus', 'The box you are typing in'],
+		['--blue', 'Info blue', 'Notes and the Reach marks'],
+		['--good', 'Good', 'Saved, own, on'],
+		['--warn', 'Warning', ''],
+		['--bad', 'Problem', ''],
+		['--view-bg', 'Design view', 'Behind the picture, and the code editor'],
+	];
+	const TOKEN_SET = new Set(TOKENS.map((t) => t[0]));
 
 	const hsl = (h, s, l) => 'hsl(' + Math.round(((h % 360) + 360) % 360) + ' ' + Math.round(s * 100) + '% ' + Math.round(l * 100) + '%)';
 
-	// Builds every base token from a surface hue, an accent hue and a mode.
+	// Builds the base tokens from a surface hue, an accent hue and a mode.
 	function tokens(t) {
 		const sh = t.surface, ah = t.accent, ss = t.sat;
 		if (t.light) {
@@ -18,7 +45,7 @@
 				'--text': hsl(sh, ss * 1.5, 0.13), '--dim': hsl(sh, ss, 0.36), '--faint': hsl(sh, ss * 0.8, 0.5),
 				'--accent': hsl(ah, t.accentSat, 0.4), '--accent-ink': '#ffffff',
 				'--blue': hsl(205, 0.85, 0.38), '--good': hsl(145, 0.6, 0.3), '--bad': hsl(5, 0.7, 0.45), '--warn': hsl(33, 0.9, 0.36),
-				'--view-bg': hsl(sh, ss, 0.86), '--ov-rgb': '0,0,0', '--shade-rgb': '255,255,255', '--scheme': 'light',
+				'--view-bg': hsl(sh, ss, 0.86),
 			};
 		}
 		return {
@@ -27,7 +54,7 @@
 			'--text': hsl(sh, ss * 0.8, 0.92), '--dim': hsl(sh, ss * 0.6, 0.64), '--faint': hsl(sh, ss * 0.45, 0.45),
 			'--accent': hsl(ah, t.accentSat, 0.6), '--accent-ink': hsl(ah, 0.7, 0.08),
 			'--blue': hsl(200, 1, 0.75), '--good': hsl(145, 0.5, 0.52), '--bad': hsl(6, 0.82, 0.64), '--warn': hsl(38, 0.72, 0.55),
-			'--view-bg': hsl(sh, ss, 0.07), '--ov-rgb': '255,255,255', '--shade-rgb': '0,0,0', '--scheme': 'dark',
+			'--view-bg': hsl(sh, ss, 0.07),
 		};
 	}
 
@@ -50,62 +77,131 @@
 		}
 	}
 
-	const custom = (hue, light) => tokens({ surface: hue, accent: hue, sat: 0.18, accentSat: 0.85, light: !!light });
+	// ---- colours ----
+	let probe = null;
+	function probeEl() {
+		if (!probe) {
+			probe = document.createElement('i');
+			probe.style.cssText = 'position:fixed;left:-99px;top:0;width:0;height:0;visibility:hidden';
+			document.documentElement.appendChild(probe);
+		}
+		return probe;
+	}
+	// Any CSS colour (hsl(), var(--x), color-mix()) as [r, g, b] 0..255.
+	function toRGB(value) {
+		const el = probeEl();
+		el.style.color = '';
+		el.style.color = value;
+		const m = (getComputedStyle(el).color || '').match(/-?[\d.]+/g);
+		if (!m || m.length < 3) {
+			return [136, 136, 136];
+		}
+		const scale = /^color\(/.test(getComputedStyle(el).color) ? 255 : 1;
+		return m.slice(0, 3).map((n) => Math.max(0, Math.min(255, Math.round(Number(n) * scale))));
+	}
+	const toHex = (rgbArr) => '#' + rgbArr.map((n) => n.toString(16).padStart(2, '0')).join('');
+	const luminance = ([r, g, b]) => (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+	const validColour = (v) => typeof v === 'string' && v.length < 80 && !/var\(|url\(|;/.test(v) && window.CSS && CSS.supports('color', v);
 
-	let state = { preset: 'studio', hue: 40, light: false };
+	// ---- state ----
+	// active: a built-in id, a saved theme's id, or 'draft' (unsaved changes). user: [{ id, name, vars }].
+	let state = { active: 'studio', draft: null, user: [], ui: Object.assign({}, DEFAULT_UI) };
 	let cache = null;
 	const listeners = [];
 
+	function cleanVars(vars) {
+		const out = {};
+		for (const k of Object.keys(vars || {})) {
+			if (TOKEN_SET.has(k) && validColour(vars[k])) {
+				out[k] = vars[k];
+			}
+		}
+		return out;
+	}
+	function cleanUI(ui) {
+		const u = Object.assign({}, DEFAULT_UI, ui || {});
+		u.font = Math.max(10, Math.min(20, Number(u.font) || DEFAULT_UI.font));
+		u.code = Math.max(8, Math.min(32, Number(u.code) || DEFAULT_UI.code));
+		u.spacing = SPACING[u.spacing] ? u.spacing : DEFAULT_UI.spacing;
+		return u;
+	}
 	function load() {
 		try {
 			const s = JSON.parse(localStorage.getItem(KEY));
 			if (s && typeof s === 'object') {
-				state = { preset: String(s.preset || 'studio'), hue: Number(s.hue) || 0, light: !!s.light };
+				if (s.preset) { // the first version: a preset id or a generated hue
+					state.active = s.preset === 'custom' ? 'draft' : String(s.preset);
+					if (s.preset === 'custom') {
+						state.draft = { name: 'Custom', vars: generated(Number(s.hue) || 0, !!s.light) };
+					}
+				} else {
+					state.active = String(s.active || 'studio');
+					state.draft = s.draft && s.draft.vars ? { name: 'Custom', vars: cleanVars(s.draft.vars) } : null;
+					state.user = (Array.isArray(s.user) ? s.user : []).filter((u) => u && u.id && u.name).map((u) => ({ id: String(u.id), name: String(u.name).slice(0, 40), vars: cleanVars(u.vars) }));
+					state.ui = cleanUI(s.ui);
+				}
 			}
 		} catch (e) { /* no storage: the default theme */ }
-	}
-
-	function currentVars() {
-		if (state.preset === 'custom') {
-			return custom(state.hue, state.light);
+		if (!find(state.active) && !(state.active === 'draft' && state.draft)) {
+			state.active = 'studio';
 		}
-		const p = PRESETS.find((x) => x.id === state.preset) || PRESETS[0];
-		return p.vars;
+	}
+	const generated = (hue, light) => tokens({ surface: hue, accent: hue, sat: 0.18, accentSat: 0.85, light: !!light });
+	function find(id) {
+		return PRESETS.find((p) => p.id === id) || state.user.find((u) => u.id === id) || null;
+	}
+	const isBuiltin = (id) => PRESETS.some((p) => p.id === id);
+	function activeVars() {
+		if (state.active === 'draft') {
+			return state.draft ? state.draft.vars : null;
+		}
+		const t = find(state.active);
+		return t ? t.vars : null;
+	}
+	function activeName() {
+		if (state.active === 'draft') {
+			return 'Custom (not saved)';
+		}
+		const t = find(state.active);
+		return t ? t.name : 'Studio';
 	}
 
 	function apply(save) {
 		const root = document.documentElement;
-		const old = root.style.cssText;
 		root.style.cssText = '';
-		const vars = currentVars();
-		let text = '';
+		const vars = activeVars();
+		let dark = true;
 		if (vars) {
 			for (const k of Object.keys(vars)) {
-				if (k !== '--scheme') {
-					root.style.setProperty(k, vars[k]);
-				}
+				root.style.setProperty(k, vars[k]);
 			}
-			text = root.style.cssText;
+			dark = luminance(toRGB(vars['--bg'] || '#0d0f13')) < 0.5;
+			root.style.setProperty('--ov-rgb', dark ? '255,255,255' : '0,0,0');
+			root.style.setProperty('--shade-rgb', dark ? '0,0,0' : '255,255,255');
 		}
-		root.style.colorScheme = vars ? vars['--scheme'] : 'dark';
-		text = root.style.cssText;
+		root.style.colorScheme = dark ? 'dark' : 'light';
+		const ui = state.ui;
+		if (ui.font !== DEFAULT_UI.font) {
+			root.style.setProperty('--ui-font', ui.font + 'px');
+		}
+		if (ui.spacing !== DEFAULT_UI.spacing) {
+			root.style.setProperty('--ui-lh', String(SPACING[ui.spacing]));
+		}
 		cache = null;
 		if (save) {
 			try {
 				localStorage.setItem(KEY, JSON.stringify(state));
-				localStorage.setItem(CSS_KEY, text);
+				localStorage.setItem(CSS_KEY, root.style.cssText);
 			} catch (e) { /* not saved */ }
 		}
-		if (root.style.cssText !== old || save) {
-			defineMonaco();
-			for (const fn of listeners) {
-				try { fn(); } catch (e) { console.error(e); }
-			}
-			if (MS.app && MS.app.requestDraw) {
-				MS.app.requestDraw();
-			}
-			document.dispatchEvent(new CustomEvent('ms-theme'));
+		defineMonaco();
+		for (const fn of listeners) {
+			try { fn(); } catch (e) { console.error(e); }
 		}
+		if (MS.app && MS.app.requestDraw) {
+			MS.app.requestDraw();
+		}
+		document.dispatchEvent(new CustomEvent('ms-theme'));
 		syncPanel();
 	}
 
@@ -119,23 +215,10 @@
 		}
 		return cache.v[name];
 	}
-	// Computed colours can come back as hsl() or color-mix(); the canvas takes those as they are, but not alpha-adjusted, so
-	// the rgb forms below go through a 1px canvas to get channels.
-	let probe = null;
 	function rgb(name) {
 		const key = 'rgb:' + name;
 		css(name);
-		if (cache.v[key]) {
-			return cache.v[key];
-		}
-		probe = probe || document.createElement('canvas').getContext('2d', { willReadFrequently: true });
-		probe.canvas.width = probe.canvas.height = 1;
-		probe.clearRect(0, 0, 1, 1);
-		probe.fillStyle = '#888';
-		probe.fillStyle = css(name);
-		probe.fillRect(0, 0, 1, 1);
-		const d = probe.getImageData(0, 0, 1, 1).data;
-		return (cache.v[key] = d[0] + ',' + d[1] + ',' + d[2]);
+		return cache.v[key] || (cache.v[key] = toRGB('var(' + name + ')').join(','));
 	}
 	const theme = {
 		css,
@@ -150,47 +233,31 @@
 		ov: (a) => 'rgba(' + css('--ov-rgb') + ',' + a + ')',
 		// The opposite, for halos under labels.
 		shade: (a) => 'rgba(' + css('--shade-rgb') + ',' + a + ')',
-		isLight: () => css('color-scheme') === 'light' || css('--shade-rgb') === '255,255,255',
+		isLight: () => css('--shade-rgb') === '255,255,255',
+		codeSize: () => state.ui.code,
 		onChange: (fn) => listeners.push(fn),
 		presets: PRESETS,
 		get state() { return state; },
-		set(next) {
-			state = Object.assign({}, state, next);
-			apply(true);
-		},
 	};
 	MS.theme = theme;
 
 	// ---- the code editor ----
-	function hex(name) {
-		const c = rgb(name).split(',').map(Number);
-		return '#' + c.map((n) => n.toString(16).padStart(2, '0')).join('');
-	}
 	let flip = false;
 	function defineMonaco(monaco) {
 		monaco = monaco || (MS.ide && MS.ide.monaco) || window.monaco;
 		if (!monaco || !monaco.editor) {
 			return;
 		}
-		const light = theme.isLight();
-		const mix = (a, b, pct) => 'color-mix(in srgb, ' + css(a) + ' ' + pct + '%, ' + css(b) + ')';
-		const mixHex = (a, b, pct) => {
-			probe = probe || document.createElement('canvas').getContext('2d', { willReadFrequently: true });
-			probe.clearRect(0, 0, 1, 1);
-			probe.fillStyle = '#888';
-			probe.fillStyle = mix(a, b, pct);
-			probe.fillRect(0, 0, 1, 1);
-			const d = probe.getImageData(0, 0, 1, 1).data;
-			return '#' + [d[0], d[1], d[2]].map((n) => n.toString(16).padStart(2, '0')).join('');
-		};
+		const hex = (name) => toHex(toRGB('var(' + name + ')'));
+		const mixHex = (a, b, pct) => toHex(toRGB('color-mix(in srgb, var(' + a + ') ' + pct + '%, var(' + b + '))'));
 		const strip = (h) => h.slice(1);
 		const def = {
-			base: light ? 'vs' : 'vs-dark',
+			base: theme.isLight() ? 'vs' : 'vs-dark',
 			inherit: true,
 			rules: [
 				{ token: 'key', foreground: strip(hex('--blue')) },
 				{ token: 'type', foreground: strip(hex('--accent')) },
-				{ token: 'string.path', foreground: strip(mixHex('--good', '--text', light ? 100 : 75)) },
+				{ token: 'string.path', foreground: strip(mixHex('--good', '--text', theme.isLight() ? 100 : 75)) },
 				{ token: 'comment', foreground: strip(hex('--faint')), fontStyle: 'italic' },
 			],
 			colors: {
@@ -215,73 +282,368 @@
 		const live = flip ? 'cortex-a' : 'cortex-b';
 		monaco.editor.defineTheme(live, def);
 		monaco.editor.setTheme(live);
+		if (monaco.editor.getEditors) {
+			for (const ed of monaco.editor.getEditors()) {
+				ed.updateOptions({ fontSize: state.ui.code });
+			}
+		}
 	}
 	theme.defineMonaco = defineMonaco;
 
-	// ---- the picker ----
-	let panel = null, button = null, hueInput = null;
-	function syncPanel() {
-		if (!panel) {
+	// ---- changing things ----
+	function commit() {
+		apply(true);
+	}
+	theme.select = (id) => {
+		if (find(id)) {
+			state.active = id;
+			commit();
+		}
+	};
+	// Colours as they are on screen now, as hex: the start of any edit to a built-in theme.
+	function currentHexes() {
+		const out = {};
+		for (const [k] of TOKENS) {
+			if (k !== '--sel' && k !== '--focus') {
+				out[k] = toHex(toRGB('var(' + k + ')'));
+			}
+		}
+		return out;
+	}
+	// Edits go to your own theme in place, or to an unsaved "Custom" one forked from a built-in.
+	function editable() {
+		if (state.active === 'draft') {
+			return state.draft;
+		}
+		const saved = state.user.find((u) => u.id === state.active);
+		if (saved) {
+			return saved;
+		}
+		state.draft = { name: 'Custom', vars: currentHexes() };
+		state.active = 'draft';
+		return state.draft;
+	}
+	theme.setColour = (token, value) => {
+		if (!TOKEN_SET.has(token) || !validColour(value)) {
 			return;
 		}
-		for (const b of panel.querySelectorAll('.theme-preset')) {
-			b.classList.toggle('sel', b.dataset.id === state.preset);
+		editable().vars[token] = value;
+		commit();
+	};
+	theme.clearColour = (token) => {
+		if (token === '--sel' || token === '--focus') {
+			delete editable().vars[token];
+			commit();
 		}
-		hueInput.value = state.hue;
-		panel.querySelector('.theme-hue-box').classList.toggle('sel', state.preset === 'custom');
-		panel.querySelector('.theme-light').checked = state.light;
+	};
+	theme.generate = (hue, light) => {
+		state.draft = { name: 'Custom', vars: generated(hue, light) };
+		state.active = 'draft';
+		state.hue = hue;
+		state.light = !!light;
+		commit();
+	};
+	theme.setUI = (next) => {
+		state.ui = cleanUI(Object.assign({}, state.ui, next));
+		commit();
+	};
+	const newId = () => 'u' + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36);
+	function uniqueName(name) {
+		const base = (name || 'My theme').trim().slice(0, 40) || 'My theme';
+		const names = new Set(PRESETS.map((p) => p.name).concat(state.user.map((u) => u.name)));
+		let n = base, i = 2;
+		while (names.has(n)) {
+			n = base + ' ' + i++;
+		}
+		return n;
 	}
-	function build() {
-		const mk = (tag, cls, text) => {
-			const e = document.createElement(tag);
-			if (cls) { e.className = cls; }
-			if (text) { e.textContent = text; }
-			return e;
-		};
-		panel = mk('div', 'ctx-menu theme-panel');
-		panel.hidden = true;
-		panel.appendChild(mk('div', 'theme-head', 'Theme'));
-		const grid = mk('div', 'theme-grid');
-		for (const p of PRESETS) {
-			const b = mk('button', 'theme-preset');
-			b.dataset.id = p.id;
-			b.title = p.name;
+	// Saves the colours now showing as a theme of your own (also how a built-in theme is duplicated).
+	theme.saveAs = (name) => {
+		const vars = activeVars() ? cleanVars(activeVars()) : currentHexes();
+		const t = { id: newId(), name: uniqueName(name), vars };
+		state.user.push(t);
+		state.active = t.id;
+		state.draft = null;
+		commit();
+		return t;
+	};
+	theme.remove = (id) => {
+		const i = state.user.findIndex((u) => u.id === id);
+		if (i >= 0) {
+			state.user.splice(i, 1);
+			if (state.active === id) {
+				state.active = 'studio';
+			}
+			commit();
+		}
+	};
+	theme.rename = (id, name) => {
+		const t = state.user.find((u) => u.id === id);
+		if (t && name.trim()) {
+			t.name = name.trim().slice(0, 40);
+			commit();
+		}
+	};
+	theme.reset = () => {
+		state.active = 'studio';
+		state.draft = null;
+		state.ui = Object.assign({}, DEFAULT_UI);
+		commit();
+	};
+	theme.exportJSON = () => {
+		const vars = activeVars() ? cleanVars(activeVars()) : currentHexes();
+		return JSON.stringify({ cortexStudioTheme: 1, name: activeName().replace(/ \(not saved\)$/, ''), colours: vars, ui: state.ui }, null, 2);
+	};
+	// Adds a theme from JSON text; throws a sentence the person can read when it isn't one.
+	theme.importJSON = (text) => {
+		let data;
+		try {
+			data = JSON.parse(text);
+		} catch (e) {
+			throw new Error('That is not a theme: it is not JSON.');
+		}
+		if (!data || data.cortexStudioTheme !== 1 || typeof data.colours !== 'object') {
+			throw new Error('That is not a Studio theme (no "cortexStudioTheme" and "colours" in it).');
+		}
+		const vars = cleanVars(data.colours);
+		if (!vars['--bg'] || !vars['--text'] || !vars['--accent']) {
+			throw new Error('That theme is missing its background, text or accent colour.');
+		}
+		const t = { id: newId(), name: uniqueName(String(data.name || 'Imported')), vars };
+		state.user.push(t);
+		state.active = t.id;
+		state.draft = null;
+		if (data.ui) {
+			state.ui = cleanUI(data.ui);
+		}
+		commit();
+		return t;
+	};
+
+	// ---- the picker ----
+	let panel = null, button = null;
+	const mk = (tag, cls, text) => {
+		const e = document.createElement(tag);
+		if (cls) { e.className = cls; }
+		if (text) { e.textContent = text; }
+		return e;
+	};
+	function themeList() {
+		const list = PRESETS.map((p) => ({ id: p.id, name: p.name, swatch: p.swatch }));
+		for (const u of state.user) {
+			const v = u.vars;
+			list.push({ id: u.id, name: u.name, swatch: [v['--panel'] || v['--bg'], v['--accent']], mine: true });
+		}
+		if (state.draft && state.active === 'draft') {
+			const v = state.draft.vars;
+			list.push({ id: 'draft', name: 'Custom', swatch: [v['--panel'] || v['--bg'], v['--accent']], draft: true });
+		}
+		return list;
+	}
+	function syncPanel() {
+		if (!panel || panel.hidden) {
+			return;
+		}
+		// The theme grid
+		const grid = panel.querySelector('.theme-grid');
+		grid.replaceChildren();
+		for (const t of themeList()) {
+			const b = mk('button', 'theme-preset' + (t.id === state.active ? ' sel' : ''));
+			b.title = t.name + (t.mine ? ' (yours)' : '');
 			const sw = mk('span', 'theme-swatch');
-			sw.style.background = 'linear-gradient(135deg,' + p.swatch[0] + ' 55%,' + p.swatch[1] + ' 55%)';
-			b.append(sw, mk('span', 'theme-name', p.name));
-			b.onclick = () => theme.set({ preset: p.id });
+			sw.style.background = 'linear-gradient(135deg,' + t.swatch[0] + ' 55%,' + t.swatch[1] + ' 55%)';
+			b.append(sw, mk('span', 'theme-name', t.name));
+			b.onclick = () => theme.select(t.id);
 			grid.appendChild(b);
 		}
-		panel.appendChild(grid);
-		const box = mk('div', 'theme-hue-box');
-		box.appendChild(mk('div', 'theme-sub', 'Or step through the hues'));
+		const mine = state.user.find((u) => u.id === state.active);
+		panel.querySelector('.theme-current').textContent = activeName();
+		panel.querySelector('.theme-del').hidden = !mine;
+		panel.querySelector('.theme-rename').hidden = !mine;
+		panel.querySelector('.theme-light').checked = !!state.light;
+		if (typeof state.hue === 'number') {
+			panel.querySelector('.theme-hue').value = state.hue;
+		}
+		// Colour rows: only rebuild when the set of values changed from outside (not while dragging a picker)
+		for (const row of panel.querySelectorAll('.theme-colour')) {
+			const token = row.dataset.token;
+			const hex = toHex(toRGB('var(' + token + ')'));
+			const input = row.querySelector('input[type=color]');
+			if (input !== document.activeElement) {
+				input.value = hex;
+			}
+			row.querySelector('.theme-hex').textContent = hex;
+			const opt = token === '--sel' || token === '--focus';
+			const set = activeVars() && activeVars()[token];
+			row.querySelector('.theme-unset').hidden = !(opt && set);
+			row.classList.toggle('auto', opt && !set);
+		}
+		const ui = state.ui;
+		panel.querySelector('.theme-font').value = ui.font;
+		panel.querySelector('.theme-font-n').textContent = ui.font + ' px';
+		panel.querySelector('.theme-code').value = ui.code;
+		panel.querySelector('.theme-code-n').textContent = ui.code + ' px';
+		panel.querySelector('.theme-spacing').value = ui.spacing;
+	}
+	function section(title) {
+		const s = mk('div', 'theme-sec');
+		s.appendChild(mk('div', 'theme-sub', title));
+		return s;
+	}
+	function build() {
+		panel = mk('div', 'ctx-menu theme-panel');
+		panel.hidden = true;
+		const head = mk('div', 'theme-head');
+		head.append(mk('span', '', 'Theme: '), mk('b', 'theme-current'));
+		panel.appendChild(head);
+		const body = mk('div', 'theme-body');
+		panel.appendChild(body);
+
+		body.appendChild(mk('div', 'theme-grid'));
+
+		// Save, duplicate, rename, delete
+		const mgmt = mk('div', 'theme-sec theme-mgmt');
+		const nameIn = mk('input', 'theme-name-in text');
+		nameIn.placeholder = 'Name for a theme of your own';
+		nameIn.maxLength = 40;
+		const save = mk('button', 'tb', 'Save as new');
+		save.title = 'Keep the colours showing now as a theme of your own. From a built-in theme this makes a copy to change.';
+		save.onclick = () => {
+			theme.saveAs(nameIn.value || (state.active === 'draft' ? 'My theme' : activeName() + ' copy'));
+			nameIn.value = '';
+		};
+		const rename = mk('button', 'tb theme-rename', 'Rename');
+		rename.onclick = () => {
+			if (nameIn.value.trim()) {
+				theme.rename(state.active, nameIn.value);
+				nameIn.value = '';
+			} else {
+				nameIn.focus();
+			}
+		};
+		const del = mk('button', 'tb theme-del', 'Delete');
+		del.onclick = () => theme.remove(state.active);
+		mgmt.append(nameIn, save, rename, del);
+		body.appendChild(mgmt);
+
+		// Generate from a hue
+		const gen = section('Start from a hue');
 		const row = mk('div', 'theme-hue-row');
-		const step = (d) => theme.set({ preset: 'custom', hue: (((state.hue + d) % 360) + 360) % 360 });
+		const hueNow = () => (typeof state.hue === 'number' ? state.hue : 40);
+		const step = (d) => theme.generate((((hueNow() + d) % 360) + 360) % 360, !!state.light);
 		const prev = mk('button', 'tb icon', '◀');
 		prev.title = 'Previous hue';
 		prev.onclick = () => step(-15);
 		const next = mk('button', 'tb icon', '▶');
 		next.title = 'Next hue';
 		next.onclick = () => step(15);
-		hueInput = mk('input', 'theme-hue');
-		hueInput.type = 'range';
-		hueInput.min = 0;
-		hueInput.max = 359;
-		hueInput.oninput = () => theme.set({ preset: 'custom', hue: Number(hueInput.value) });
-		row.append(prev, hueInput, next);
-		box.appendChild(row);
+		const hue = mk('input', 'theme-hue');
+		hue.type = 'range';
+		hue.min = 0;
+		hue.max = 359;
+		hue.value = 40;
+		hue.oninput = () => theme.generate(Number(hue.value), !!state.light);
+		row.append(prev, hue, next);
+		gen.appendChild(row);
 		const lab = mk('label', 'theme-light-row');
 		const cb = mk('input', 'theme-light');
 		cb.type = 'checkbox';
-		cb.onchange = () => theme.set({ preset: 'custom', light: cb.checked });
+		cb.onchange = () => theme.generate(hueNow(), cb.checked);
 		lab.append(cb, document.createTextNode(' Light'));
-		box.appendChild(lab);
-		panel.appendChild(box);
+		gen.appendChild(lab);
+		body.appendChild(gen);
+
+		// Colours
+		const cols = section('Colours');
+		for (const [token, name, help] of TOKENS) {
+			const r = mk('div', 'theme-colour');
+			r.dataset.token = token;
+			r.title = help;
+			const input = mk('input');
+			input.type = 'color';
+			input.oninput = () => theme.setColour(token, input.value);
+			const un = mk('button', 'theme-unset', '↺');
+			un.title = 'Go back to following ' + (token === '--sel' ? 'the hover colour' : 'the accent');
+			un.onclick = () => theme.clearColour(token);
+			r.append(input, mk('span', 'theme-cname', name), mk('span', 'theme-hex'), un);
+			cols.appendChild(r);
+		}
+		body.appendChild(cols);
+
+		// Text and layout
+		const txt = section('Text and spacing');
+		const slider = (cls, label, min, max, onchange) => {
+			const l = mk('label', 'theme-range');
+			const i = mk('input', cls);
+			i.type = 'range';
+			i.min = min;
+			i.max = max;
+			i.step = 1;
+			i.oninput = () => onchange(Number(i.value));
+			l.append(mk('span', 'theme-rname', label), i, mk('span', cls + '-n theme-n'));
+			return l;
+		};
+		txt.appendChild(slider('theme-font', 'Text size', 11, 18, (v) => theme.setUI({ font: v })));
+		const sp = mk('label', 'theme-range');
+		const sel = mk('select', 'theme-spacing');
+		for (const [id, label] of [['compact', 'Compact'], ['comfortable', 'Comfortable'], ['roomy', 'Roomy']]) {
+			const o = mk('option', '', label);
+			o.value = id;
+			sel.appendChild(o);
+		}
+		sel.onchange = () => theme.setUI({ spacing: sel.value });
+		sp.append(mk('span', 'theme-rname', 'Spacing'), sel);
+		txt.appendChild(sp);
+		txt.appendChild(slider('theme-code', 'Code size', 9, 28, (v) => theme.setUI({ code: v })));
+		body.appendChild(txt);
+
+		// Share
+		const share = section('Share a theme');
+		const area = mk('textarea', 'theme-json');
+		area.rows = 4;
+		area.spellcheck = false;
+		area.placeholder = 'Export fills this with the theme. To import, paste a theme here.';
+		const msg = mk('div', 'theme-msg');
+		const ex = mk('button', 'tb', 'Export');
+		ex.title = 'Put the theme showing now into the box, and copy it';
+		ex.onclick = async () => {
+			area.value = theme.exportJSON();
+			area.select();
+			try {
+				await navigator.clipboard.writeText(area.value);
+				msg.textContent = 'Copied.';
+			} catch (e) {
+				msg.textContent = 'Select the text and copy it.';
+			}
+		};
+		const im = mk('button', 'tb', 'Import');
+		im.title = 'Add the theme pasted in the box to your themes';
+		im.onclick = () => {
+			try {
+				const t = theme.importJSON(area.value);
+				msg.textContent = 'Added "' + t.name + '".';
+				area.value = '';
+			} catch (e) {
+				msg.textContent = e.message;
+			}
+		};
+		const bar = mk('div', 'theme-share-bar');
+		bar.append(ex, im);
+		share.append(area, bar, msg);
+		body.appendChild(share);
+
+		const foot = mk('div', 'theme-sec theme-foot');
+		const reset = mk('button', 'tb', 'Reset to the default');
+		reset.title = 'Back to the Studio theme with the usual text size and spacing. Your saved themes stay.';
+		reset.onclick = () => theme.reset();
+		foot.appendChild(reset);
+		body.appendChild(foot);
+
 		document.body.appendChild(panel);
 
 		const close = () => { panel.hidden = true; };
 		document.addEventListener('mousedown', (e) => {
-			if (!panel.hidden && !panel.contains(e.target) && e.target !== button) {
+			if (!panel.hidden && !panel.contains(e.target) && !(button && button.contains(e.target))) {
 				close();
 			}
 		}, true);
@@ -290,7 +652,12 @@
 				close();
 			}
 		});
-		window.addEventListener('blur', close);
+		window.addEventListener('blur', (e) => {
+			// Native colour pickers take focus away from the page: stay open then.
+			if (!panel.contains(document.activeElement)) {
+				close();
+			}
+		});
 	}
 	function mountButton() {
 		const help = document.getElementById('btnHelp');
@@ -301,7 +668,7 @@
 		button = document.createElement('button');
 		button.className = 'tb icon';
 		button.id = 'btnTheme';
-		button.title = 'Theme: recolour Studio';
+		button.title = 'Theme: colours, text size and spacing';
 		button.textContent = '◐';
 		button.onclick = () => {
 			if (!panel.hidden) {
@@ -312,10 +679,10 @@
 			panel.hidden = false;
 			panel.style.top = r.bottom + 4 + 'px';
 			panel.style.left = Math.max(8, Math.min(r.right - panel.offsetWidth, innerWidth - panel.offsetWidth - 8)) + 'px';
+			panel.style.maxHeight = innerHeight - r.bottom - 16 + 'px';
 			syncPanel();
 		};
 		help.parentNode.insertBefore(button, help);
-		syncPanel();
 	}
 
 	load();
