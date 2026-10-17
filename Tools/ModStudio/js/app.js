@@ -112,7 +112,10 @@ window.MS = window.MS || {};
 			app.images = new MS.Images(fs);
 			await app.images.loadPalette();
 			app.lib = new MS.Library(fs);
-			app.lib.onDocDirty = () => updateFileStatus();
+			app.lib.onDocDirty = () => {
+				updateFileStatus();
+				scheduleAutosave();
+			};
 			await app.lib.load(report);
 			await MS.history.loadEditable();
 			$('btnHistory').hidden = !MS.history.available();
@@ -819,6 +822,28 @@ window.MS = window.MS || {};
 	app.updateFileStatus = updateFileStatus;
 
 	// only: write just these documents (a new mod or unit is saved on its own, so unfinished edits elsewhere stay unsaved).
+	// Changes to your own mods' files are saved by themselves a moment after the last one (not while a drag is in progress), so what the
+	// designer shows is what is on disk. The game's own files and other people's mods are never written (they can't be changed here).
+	let autosaveTimer = 0;
+	function scheduleAutosave() {
+		clearTimeout(autosaveTimer);
+		autosaveTimer = setTimeout(autosave, 1500);
+	}
+
+	async function autosave() {
+		if (!app.lib || !app.fs || !app.fs.writable) {
+			return;
+		}
+		if (app.txn || (app.view && app.view.drag)) {
+			scheduleAutosave();
+			return;
+		}
+		const docs = app.dirtyDocs().filter((d) => !app.lib.isProtected(d));
+		if (docs.length) {
+			await app.save(true, docs);
+		}
+	}
+
 	app.save = async function (quiet, only) {
 		const docs = app.dirtyDocs().filter((d) => !only || only.includes(d));
 		let written = 0;
