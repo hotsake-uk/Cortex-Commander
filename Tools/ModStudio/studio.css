@@ -1136,3 +1136,8 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .replace-list { max-height: 220px; overflow: auto; font-size: 12px; margin: 8px 0; color: var(--dim); }
 .replace-list b { display: inline-block; min-width: 28px; color: var(--accent); }
 #replaceAll { margin-left: 6px; }
+.scn-setting { flex-wrap: wrap; gap: 4px; }
+.scn-setting .ed-input { width: 90px; }
+.scn-setting .ed-input:nth-child(2) { width: 170px; }
+.scn-warn { color: #ef6a5b; }
+.ed-row.inherited { opacity: .7; }
