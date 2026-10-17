@@ -1093,3 +1093,19 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .scene-name { flex: 1; min-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scene-thumb { width: 56px; height: 34px; }
 .scene-swatch { width: 10px; height: 20px; border-radius: 3px; flex: none; }
+.chips button { background: none; border: 1px solid var(--line); border-radius: 99px; color: var(--dim); padding: 2px 10px; cursor: pointer; font-size: 12px; margin-right: 4px; }
+.chips button.sel { border-color: var(--accent); color: var(--accent); }
+.ed-detail.wide { grid-column: 1 / -1; }
+.wtable { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.wtable th { position: sticky; top: 0; background: var(--panel); color: var(--faint); font-weight: 500; text-align: left; padding: 4px 8px; cursor: pointer; white-space: nowrap; border-bottom: 1px solid var(--line); }
+.wtable td { padding: 3px 8px; border-bottom: 1px solid rgba(var(--ov-rgb), .04); white-space: nowrap; }
+.wtable .wn { text-align: right; font-variant-numeric: tabular-nums; }
+.wtable .dim { color: var(--faint); }
+.wtable tbody tr { cursor: pointer; }
+.wtable tbody tr:hover { background: var(--panel2); }
+.ballistic { width: 100%; max-width: 640px; display: block; border-radius: 6px; margin-bottom: 10px; }
+.chain { display: grid; gap: 12px; }
+.chain-link { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.chain-head { display: flex; gap: 10px; align-items: baseline; margin-bottom: 4px; }
+.chain-name { color: var(--faint); font-size: 12px; }
+.ed-split > .ed-detail { flex: 1; }
