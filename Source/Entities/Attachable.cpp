@@ -11,6 +11,7 @@
 #include "PieMenu.h"
 #include "Material.h"
 #include "TimerMan.h"
+#include "SettingsMan.h"
 
 using namespace RTE;
 
@@ -473,7 +474,7 @@ void Attachable::UpdateSeveredSquash() {
 	float hardness = knock.GetMagnitude();
 	if (hardness > 1.5F && softness > 0.0F) {
 		m_SquashAxis = knock / hardness;
-		m_SquashSpeed += std::min(hardness * 3.0F, 25.0F) * softness;
+		m_SquashSpeed += std::min(hardness * 3.0F, 25.0F) * softness * g_SettingsMan.SpringLimbSquash();
 	}
 	float omega = 2.0F * c_PI * 4.0F;
 	int steps = 4;

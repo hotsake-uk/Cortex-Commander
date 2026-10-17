@@ -737,7 +737,7 @@ void DebugOverlays::DrawWorldSim() {
 					continue;
 				}
 				++units;
-				float limit = std::max(springs.Height * 0.07F * springs.Softness, 0.01F);
+				float limit = std::max(springs.Height * g_SettingsMan.SpringReach() * springs.Softness, 0.01F);
 				float share = std::clamp(springs.Body.Value.GetLargest() / limit, 0.0F, 1.0F);
 				ImU32 bodyColor = IM_COL32(static_cast<int>(80.0F + 175.0F * share), static_cast<int>(230.0F - 180.0F * share), 70, 230);
 				Vector middle = actor->GetPos();

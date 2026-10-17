@@ -1550,19 +1550,6 @@ void DebugMan::SettingsGUI() {
 			}
 			Tip("How hard units shove loose objects, and so how heavy an object they can shift: 1 is about their own weight. Times each unit's own ObjectPushStrength, which mods can set. The shoved object's speed stays capped, so it is never thrown.");
 		}
-		Toggle("Units move on springs", g_SettingsMan.UnitSprings(), Normal{true}, [](bool on) { g_SettingsMan.SetUnitSprings(on); });
-		Tip("Units move the way soft tyres do. The upper body is a weight on a spring above the legs: it dips as the unit lands and with each step, leans as it starts and stops, and stays steady while the body under it jolts on rough ground. The head and the gun lag it a little. Feet are drawn on the ground they stand on, turned to its slope, and legs bend at the knee to reach them. Limbs torn off squash where they land and flop at the knee, and the unit lurches. Soldiers move subtly, creatures and monsters wobble more. Drawing only: units are hit where they really are.");
-		if (g_SettingsMan.UnitSprings()) {
-			float springStrength = g_SettingsMan.UnitSpringStrength();
-			if (Slider("Unit spring strength", &springStrength, Normal{1.0F}, 0.0F, 3.0F, "%.2fx")) {
-				g_SettingsMan.SetUnitSpringStrength(springStrength);
-			}
-			Tip("How strongly units move on their springs: how far the body dips and sways, how much the head and gun lag, how much torn-off limbs squash. Times each unit's own softness (a unit's Softness, else from its body: flesh soft, armour less, metal stiff, beasts and monsters more).");
-			Toggle("Units stand on sprung legs (physics)", g_SettingsMan.SprungLegs(), Normal{false}, [](bool on) { g_SettingsMan.SetSprungLegs(on); });
-			Tip("Units' legs hold them up through a spring, as a soft tyre holds a vehicle up: what the feet push up off the ground is passed on to the body smoothly rather than in a bump at each footfall, so walking over rough ground and stairs is smoother and heavier units settle onto their legs. Changes how units actually move, unlike the drawing above.");
-		}
-		Toggle("Big bodies gib into soft flesh", g_SettingsMan.FleshChunks(), Normal{true}, [](bool on) { g_SettingsMan.SetFleshChunks(on); });
-		Tip("A big fleshy unit or creature that gibs (and a limb torn off a big one) throws off soft chunks of meat as well as its gibs: they wobble, slide and pile up, can be stood on while they're big, bleed when shot and split where a shot goes through, and after a while burst into blood.");
 		Toggle("Units see through grass and plants", g_SettingsMan.SensesPassPlants(), [](bool on) { g_SettingsMan.SetSensesPassPlants(on); });
 		Tip("Units' own checks (getting up, leaping, landing, ducking, mantling, the walk's look ahead) treat grass, bushes and hanging plants as the open ground their bodies push through. Off, as before: a unit lying on grass may not get up, leaps and landings on thick grass go wrong, units duck under hanging plants and mantle onto bushes.");
 		Toggle("Soldiers see through ladder rungs", g_SettingsMan.SensesPassRungs(), [](bool on) { g_SettingsMan.SetSensesPassRungs(on); });
@@ -2226,6 +2213,51 @@ void DebugMan::SettingsGUI() {
 	};
 
 	// How units get about: the AI's moves and jetpack, and ladders.
+	auto springs = [&]() {
+		Heading("Unit springs");
+		Toggle("Units move on springs", g_SettingsMan.UnitSprings(), Normal{true}, [](bool on) { g_SettingsMan.SetUnitSprings(on); });
+		Tip("Units move the way soft tyres do. The upper body is a weight on a spring above the legs: it dips as the unit lands and with each step, leans as it starts and stops, and stays steady while the body under it jolts on rough ground. The head and the gun lag it a little. Feet are drawn on the ground they stand on, turned to its slope, and legs bend at the knee to reach them. Limbs torn off squash where they land and flop at the knee, and the unit lurches. Soldiers move subtly, creatures and monsters wobble more. Drawing only: units are hit where they really are.");
+		if (g_SettingsMan.UnitSprings()) {
+			auto springSlider = [&](const char* label, float value, float normal, float min, float max, const char* format, void (SettingsMan::*set)(float), const char* tip) {
+				if (Slider(label, &value, Normal{normal}, min, max, format)) {
+					(g_SettingsMan.*set)(value);
+				}
+				Tip(tip);
+			};
+			springSlider("Unit spring strength", g_SettingsMan.UnitSpringStrength(), 1.0F, 0.0F, 3.0F, "%.2fx", &SettingsMan::SetUnitSpringStrength, "How strongly units move on their springs: how far the body dips and sways, how much the head and gun lag, how much torn-off limbs squash. Times each unit's own softness (a unit's Softness, else from its body: flesh soft, armour less, metal stiff, beasts and monsters more).");
+			springSlider("Bounce", g_SettingsMan.SpringBounce(), 0.4F, 0.0F, 1.0F, "%.2f", &SettingsMan::SetSpringBounce, "How much a unit's body bounces back past rest after a dip or a lean while it moves: 0 settles straight back, 1 rings on. Standing still it always settles at once.");
+			springSlider("Spring speed", g_SettingsMan.SpringSpeed(), 1.0F, 0.4F, 2.5F, "%.2fx", &SettingsMan::SetSpringSpeed, "How fast the springs swing back: lower is slow and floaty, higher is quick and tight. Heavier units are slower anyway.");
+			springSlider("Ignore small knocks", g_SettingsMan.SpringKnockFloor(), 1.0F, 0.0F, 4.0F, "%.2f m/s", &SettingsMan::SetSpringKnockFloor, "On its feet, a unit's body only rides out pushes bigger than this in one update (a landing, a hit, a hard stop), not the little knocks the feet give it all the time. Lower makes units livelier but they can bounce about while standing; higher keeps them calm.");
+			springSlider("Step dip", g_SettingsMan.SpringStepDip(), 1.0F, 0.0F, 3.0F, "%.2fx", &SettingsMan::SetSpringStepDip, "How much the body dips as each foot comes down while walking. 0 for none.");
+			springSlider("Head and gun lag", g_SettingsMan.SpringLag(), 1.0F, 0.0F, 3.0F, "%.2fx", &SettingsMan::SetSpringLag, "How much the head and the held gun lag behind the body. 0 keeps them fixed to it.");
+			{
+				float reach = g_SettingsMan.SpringReach() * 100.0F;
+				if (Slider("Reach", &reach, Normal{5.0F}, 0.0F, 20.0F, "%.1f%%")) {
+					g_SettingsMan.SetSpringReach(reach / 100.0F);
+				}
+				Tip("How far the body may move from where the unit really is, as a share of its height (times its softness). Kept small so shots still land where units are seen.");
+			}
+			springSlider("Torn-off limb squash", g_SettingsMan.SpringLimbSquash(), 1.0F, 0.0F, 3.0F, "%.2fx", &SettingsMan::SetSpringLimbSquash, "How much limbs torn off squash and wobble as they land.");
+			springSlider("Corpse softness", g_SettingsMan.SpringCorpseSoftness(), 1.5F, 0.0F, 4.0F, "%.2fx", &SettingsMan::SetSpringCorpseSoftness, "How much softer a dying or dead body is than the living unit: it squashes where it lands and wobbles back.");
+		}
+		Heading("Sprung legs");
+		Toggle("Units stand on sprung legs (physics)", g_SettingsMan.SprungLegs(), Normal{false}, [](bool on) { g_SettingsMan.SetSprungLegs(on); });
+		Tip("Units' legs hold them up through a spring, as a soft tyre holds a vehicle up: what the feet push up off the ground is passed on to the body smoothly rather than in a bump at each footfall, so walking over rough ground and stairs is smoother and heavier units settle onto their legs. Changes how units actually move, unlike the drawing above. Needs units on springs on.");
+		if (g_SettingsMan.SprungLegs()) {
+			float stiffness = g_SettingsMan.SprungLegsStiffness();
+			if (Slider("Leg stiffness", &stiffness, Normal{10.0F}, 3.0F, 30.0F, "%.1f Hz")) {
+				g_SettingsMan.SetSprungLegsStiffness(stiffness);
+			}
+			Tip("How quickly the feet's push reaches the body. Lower is softer: the body sinks onto its legs at each step and on landing before they catch it. Higher is firmer, nearer how units stand without sprung legs.");
+		}
+		Heading("Soft flesh");
+		Toggle("Big bodies gib into soft flesh", g_SettingsMan.FleshChunks(), Normal{true}, [](bool on) { g_SettingsMan.SetFleshChunks(on); });
+		Tip("A big fleshy unit or creature that gibs (and a limb torn off a big one) throws off soft chunks of meat as well as its gibs: they wobble, slide and pile up, can be stood on while they're big, bleed when shot and split where a shot goes through, and after a while burst into blood.");
+		Heading("See it");
+		Toggle("Unit springs overlay", g_SettingsMan.WorldSimOverlay() == 9, [](bool on) { g_SettingsMan.SetWorldSimOverlay(on ? 9 : 0); });
+		Tip("Draws each unit's springs in view: its body nudge as a line from where it is to where it is drawn (green, turning red at its limit), its head's and gun's in yellow and blue, and a cyan tick under each foot set on the ground, turned to the slope. The same as Unit springs in Debug > World simulation overlay.");
+	};
+
 	auto movement = [&]() {
 		Heading("AI movement");
 		{
@@ -2925,6 +2957,7 @@ void DebugMan::SettingsGUI() {
 	    {Group::Gameplay, "Magic & spells", magic},
 	    {Group::Gameplay, "AI behaviour", aiBehaviour},
 	    {Group::Gameplay, "Movement", movement},
+	    {Group::Gameplay, "Springs", springs},
 	    {Group::Gameplay, "Battle Behavior", battleBehavior},
 	    {Group::Gameplay, "Recklessness", recklessness},
 	    {Group::Gameplay, "Digging", digging},

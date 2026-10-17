@@ -489,6 +489,24 @@ namespace RTE {
 		bool SprungLegs() const { return m_SprungLegs; }
 		/// Whether big fleshy bodies gib into soft chunks of meat (SoftBodySim's Flesh) that wobble, pile up and bleed. On as the game comes.
 		bool FleshChunks() const { return m_FleshChunks; }
+		/// Unit springs' finer settings (Settings > Springs; UnitSprings). How bouncy a unit's body is when it swings: 0 settles at once, 1 rings on.
+		float SpringBounce() const { return m_SpringBounce; }
+		/// How quickly a unit's body swings back, times its own (heavier units swing slower): 1 as the game comes, 0.4 to 2.5.
+		float SpringSpeed() const { return m_SpringSpeed; }
+		/// The smallest knock a unit on its feet rides on its springs, in m/s in an update: smaller ones (the walk's own) are ignored. 1 as the game comes.
+		float SpringKnockFloor() const { return m_SpringKnockFloor; }
+		/// How far the body dips with each footstep, times its own: 1 as the game comes, 0 to 3.
+		float SpringStepDip() const { return m_SpringStepDip; }
+		/// How far the head and gun lag the body, times their own: 1 as the game comes, 0 to 3.
+		float SpringLag() const { return m_SpringLag; }
+		/// How far the body may move on its springs, as a share of the unit's height at softness 1: 0.05 as the game comes.
+		float SpringReach() const { return m_SpringReach; }
+		/// How hard torn-off limbs and corpses squash where they land, times their own: 1 as the game comes, 0 to 3.
+		float SpringLimbSquash() const { return m_SpringLimbSquash; }
+		/// How much softer a dying or dead body is than a living one: 1.5 as the game comes, 0 to 4.
+		float SpringCorpseSoftness() const { return m_SpringCorpseSoftness; }
+		/// How quickly sprung legs pass the feet's push up on to the body, in swings a second: lower is softer and slower. 10 as the game comes.
+		float SprungLegsStiffness() const { return m_SprungLegsStiffness; }
 		/// Whether units' own senses (the walk's look ahead, getting up, leaps, landings, mantling, ducking) see through what their bodies push
 		/// through: grass and soft plants (integrity 5 or under, not flowing). Off as before: grass read as ground over the dirt the floor
 		/// rays find, and units ducked under hanging plants and mantled onto bushes. See Actor::SensesPassTerrain.
@@ -1188,6 +1206,15 @@ namespace RTE {
 		void SetUnitSpringStrength(float strength) { m_UnitSpringStrength = std::clamp(strength, 0.0F, 3.0F); }
 		void SetSprungLegs(bool on) { m_SprungLegs = on; }
 		void SetFleshChunks(bool on) { m_FleshChunks = on; }
+		void SetSpringBounce(float value) { m_SpringBounce = std::clamp(value, 0.0F, 1.0F); }
+		void SetSpringSpeed(float value) { m_SpringSpeed = std::clamp(value, 0.4F, 2.5F); }
+		void SetSpringKnockFloor(float value) { m_SpringKnockFloor = std::clamp(value, 0.0F, 4.0F); }
+		void SetSpringStepDip(float value) { m_SpringStepDip = std::clamp(value, 0.0F, 3.0F); }
+		void SetSpringLag(float value) { m_SpringLag = std::clamp(value, 0.0F, 3.0F); }
+		void SetSpringReach(float value) { m_SpringReach = std::clamp(value, 0.0F, 0.2F); }
+		void SetSpringLimbSquash(float value) { m_SpringLimbSquash = std::clamp(value, 0.0F, 3.0F); }
+		void SetSpringCorpseSoftness(float value) { m_SpringCorpseSoftness = std::clamp(value, 0.0F, 4.0F); }
+		void SetSprungLegsStiffness(float value) { m_SprungLegsStiffness = std::clamp(value, 3.0F, 30.0F); }
 		void SetSensesPassPlants(bool on) { m_SensesPassPlants = on; }
 		void SetSensesPassRungs(bool on) { m_SensesPassRungs = on; }
 		void SetSensesPassSpecks(bool on) { m_SensesPassSpecks = on; }
@@ -1584,6 +1611,15 @@ namespace RTE {
 		float m_UnitSpringStrength = 1.0F; //!< See UnitSpringStrength.
 		bool m_SprungLegs = false; //!< See SprungLegs.
 		bool m_FleshChunks = true; //!< See FleshChunks.
+		float m_SpringBounce = 0.4F; //!< See SpringBounce.
+		float m_SpringSpeed = 1.0F; //!< See SpringSpeed.
+		float m_SpringKnockFloor = 1.0F; //!< See SpringKnockFloor.
+		float m_SpringStepDip = 1.0F; //!< See SpringStepDip.
+		float m_SpringLag = 1.0F; //!< See SpringLag.
+		float m_SpringReach = 0.05F; //!< See SpringReach.
+		float m_SpringLimbSquash = 1.0F; //!< See SpringLimbSquash.
+		float m_SpringCorpseSoftness = 1.5F; //!< See SpringCorpseSoftness.
+		float m_SprungLegsStiffness = 10.0F; //!< See SprungLegsStiffness.
 		bool m_SensesPassPlants = true; //!< See SensesPassPlants.
 		bool m_SensesPassRungs = true; //!< See SensesPassRungs.
 		bool m_SensesPassSpecks = true; //!< See SensesPassSpecks.

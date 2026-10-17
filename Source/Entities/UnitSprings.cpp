@@ -137,30 +137,37 @@ void UnitSprings::PassOnSupport(MOSRotating& body, BodySprings& springs, bool ac
 	float deltaTime = g_TimerMan.GetDeltaTimeSecs();
 	if (!active || deltaTime <= 0.0F) {
 		// (Anything held back is pushed on straight away, so leaving the legs for a jump or a ladder loses none of it.)
-		if (springs.HeldPush != 0.0F || springs.SupportForce != 0.0F) {
-			body.AddImpulseForce(Vector(0.0F, springs.HeldPush + springs.SupportForce * deltaTime));
+		float owed = springs.HeldPush + springs.SupportOwed;
+		if (owed < 0.0F) {
+			body.AddImpulseForce(Vector(0.0F, owed));
 		}
 		springs.HeldPush = 0.0F;
+		springs.SupportOwed = 0.0F;
 		springs.SupportForce = 0.0F;
 		springs.SupportForceSpeed = 0.0F;
 		return;
 	}
-	// The push the feet gave this update, as a force, followed by the force passed on: a spring between them, a little under critically
-	// damped, so a footfall's bump reaches the body as a smooth rise and a landing is caught over a few updates rather than one.
+	// The push the feet gave this update, as a force, followed by the force passed on: a spring between them, critically damped so it never
+	// overshoots (an overshoot would lift the body and drop it again, bobbing it while it stands), so a footfall's bump reaches the body as a
+	// smooth rise and a landing is caught over a few updates rather than one. How stiff is a setting: stiffer feels firmer, softer sinks more.
 	float wanted = springs.HeldPush / deltaTime;
+	springs.SupportOwed += springs.HeldPush;
 	springs.HeldPush = 0.0F;
-	float omega = c_TwoPi * 7.0F;
+	float omega = c_TwoPi * g_SettingsMan.SprungLegsStiffness();
 	int steps = std::clamp(static_cast<int>(std::ceil(deltaTime * omega / c_StepAngle)), 1, 16);
 	float step = deltaTime / static_cast<float>(steps);
 	float passed = 0.0F;
 	for (int i = 0; i < steps; ++i) {
-		springs.SupportForceSpeed += (omega * omega * (wanted - springs.SupportForce) - 2.0F * 0.8F * omega * springs.SupportForceSpeed) * step;
+		springs.SupportForceSpeed += (omega * omega * (wanted - springs.SupportForce) - 2.0F * omega * springs.SupportForceSpeed) * step;
 		springs.SupportForce += springs.SupportForceSpeed * step;
 		passed += springs.SupportForce * step;
 	}
-	// Only ever up: the legs hold the body, they never pull it down.
+	// Only ever up, and never more than the feet gave: the legs hold the body, they never pull it down or throw it up. What is still owed is
+	// kept, and all of it pushed on when the unit leaves its legs.
+	passed = std::clamp(passed, std::min(springs.SupportOwed, 0.0F), 0.0F);
 	if (passed < 0.0F) {
 		body.AddImpulseForce(Vector(0.0F, passed));
+		springs.SupportOwed -= passed;
 	}
 }
 
@@ -197,14 +204,20 @@ void UnitSprings::UpdateActor(Actor& actor, BodySprings& springs, bool onGround,
 		return;
 	}
 
-	float softness = actor.GetSoftness() * Strength() * (corpse ? 1.5F : 1.0F);
+	float softness = actor.GetSoftness() * Strength() * (corpse ? g_SettingsMan.SpringCorpseSoftness() : 1.0F);
 	springs.Softness = softness;
 	springs.Height = std::clamp(actor.GetRadius() * 1.6F, 12.0F, 240.0F);
 	float mass = std::max(actor.GetMass(), 1.0F);
 	// Heavier swings slower: an ogre or a mech sways where a soldier bobs.
 	float heaviness = std::clamp(std::pow(mass / 80.0F, 0.18F), 0.6F, 2.2F);
-	float frequency = 4.5F / heaviness;
-	float damping = softness > 1.3F ? 0.32F : 0.42F;
+	float frequency = 4.5F * g_SettingsMan.SpringSpeed() / heaviness;
+	// Standing still it settles at once; moving or in the air it swings as freely as the bounce setting lets it (softer kinds a little more).
+	bool still = onGround && actor.GetVel().MagnitudeIsLessThan(0.5F);
+	float bounce = std::clamp(g_SettingsMan.SpringBounce() * (softness > 1.3F ? 1.25F : 1.0F), 0.0F, 1.0F);
+	float damping = 1.0F - 0.8F * bounce;
+	if (still) {
+		damping = std::max(damping, 0.9F);
+	}
 
 	// How hard the unit was pushed this update, gravity left out: the body on its spring takes the opposite (it lags behind a push, dips when
 	// the unit lands, stretches as it falls, and stays steady in the world while the body under it jolts on rough ground).
@@ -217,19 +230,29 @@ void UnitSprings::UpdateActor(Actor& actor, BodySprings& springs, bool onGround,
 		if (push.MagnitudeIsGreaterThan(9000.0F)) {
 			push.SetMagnitude(9000.0F);
 		}
+		// On its feet, the small knocks the walk's feet give the body every update (standing still too: they push it up a little, gravity
+		// pulls it back) are not pushes to ride, or it bounces about on the spot: only what is more than about a metre a second in an update
+		// gets through (a landing, a hit, a hard stop). Footfalls are given their own small dip below.
+		if (onGround) {
+			float floor = g_SettingsMan.SpringKnockFloor() * c_PPM / deltaTime;
+			float size = push.GetMagnitude();
+			push = size > floor ? push * ((size - floor) / size) : Vector();
+		}
 	}
 	springs.LastVel = vel;
 	springs.Started = true;
 
 	if (footfall && onGround) {
 		// A foot coming down: the body settles onto it, more the faster it goes and the softer it is.
-		springs.Body.Speed.m_Y += std::min(10.0F + 9.0F * std::abs(vel.m_X), 45.0F) * std::min(softness, 2.5F);
+		springs.Body.Speed.m_Y += std::min(6.0F + 6.0F * std::abs(vel.m_X), 30.0F) * std::min(softness, 2.5F) * g_SettingsMan.SpringStepDip();
 	}
 
-	float limit = springs.Height * 0.07F * softness;
+	float limit = springs.Height * g_SettingsMan.SpringReach() * softness;
+	float lag = g_SettingsMan.SpringLag();
+	float lagDamping = still ? 0.9F : std::min(damping + 0.05F, 1.0F);
 	springs.Body.Step(deltaTime, frequency, damping, push * -std::min(softness, 2.5F), limit);
-	springs.Head.Step(deltaTime, frequency * 1.6F, 0.5F, push * (-0.4F * softness), std::max(limit * 0.4F, 0.5F));
-	springs.Gun.Step(deltaTime, frequency * 1.25F, 0.45F, push * (-0.5F * softness), std::max(limit * 0.6F, 0.5F));
+	springs.Head.Step(deltaTime, frequency * 1.6F, lagDamping, push * (-0.4F * softness * lag), std::max(limit * 0.4F * lag, 0.5F));
+	springs.Gun.Step(deltaTime, frequency * 1.25F, lagDamping, push * (-0.5F * softness * lag), std::max(limit * 0.6F * lag, 0.5F));
 
 	Vector body = springs.Body.Value;
 	// Soft creatures squash and stretch with it too: down is squashed, up stretched. A legless body (an ooze) is all squash, its underside on the

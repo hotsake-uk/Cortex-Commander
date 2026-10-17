@@ -43,7 +43,8 @@ namespace RTE {
 			bool Started = false; //!< Whether LastVel has been set.
 			float SupportForce = 0.0F; //!< Sprung legs: the push up being passed on to the body, in newtons (see SupportFilter).
 			float SupportForceSpeed = 0.0F; //!< How fast SupportForce is changing.
-			float HeldPush = 0.0F; //!< Sprung legs: the feet's push up this update, held back to be passed on through the spring, in N s.
+			float SupportOwed = 0.0F; //!< Sprung legs: what the feet have pushed up that hasn't reached the body yet, in N s (negative is up).
+		float HeldPush = 0.0F; //!< Sprung legs: the feet's push up this update, held back to be passed on through the spring, in N s.
 			float Softness = 1.0F; //!< How soft it moves, from its kind (see Actor::GetSoftness), at the last update.
 			float Height = 24.0F; //!< How tall it is, in pixels, for how far its springs may go.
 		};
