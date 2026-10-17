@@ -541,6 +541,81 @@ window.MS = window.MS || {};
 		MS.panels.refresh();
 	};
 
+	// ---- a building piece's lights ----
+
+	// The light's own line in the piece (taking over one the piece inherits from what it copies, as for any list).
+	function ownLight(part, light) {
+		const block = app.ownBlock(part);
+		if (!block) {
+			return null;
+		}
+		return light.node.parent === block ? light.node : app.lib.adopt(block, light.node);
+	}
+
+	// A change to one light: key is Radius, Intensity, Offset (value {x, y}) or Color (value [r, g, b]).
+	app.setLight = function (part, index, key, value) {
+		if (!withEditable(() => app.setLight(app.rig.body, index, key, value))) {
+			return;
+		}
+		const light = app.rig.body.lights && app.rig.body.lights[index];
+		if (!light) {
+			return;
+		}
+		app.edit('change a light', () => {
+			const node = ownLight(app.rig.body, light);
+			if (!node) {
+				return;
+			}
+			if (key === 'Offset') {
+				node.setVector('Offset', Math.round(value.x * 2) / 2, Math.round(value.y * 2) / 2);
+			} else if (key === 'Color') {
+				const color = node.child('Color') || node.add('Color', 'Color');
+				color.setValue('Color');
+				['R', 'G', 'B'].forEach((k, i) => color.set(k, String(Math.round(value[i]))));
+			} else {
+				node.set(key, String(value));
+			}
+		});
+	};
+
+	app.addLight = function () {
+		if (!withEditable(() => app.addLight())) {
+			return;
+		}
+		const part = app.rig.body;
+		const frame = part.layers && part.layers.map((l) => (l.file ? app.sprite(l.file, 1, 0) : null)).find((f) => f);
+		app.edit('add a light', () => {
+			const block = app.ownBlock(part);
+			if (!block) {
+				return;
+			}
+			const light = block.add('AddLight', 'TerrainLight');
+			light.setVector('Offset', frame ? Math.round(frame.width / 2) : 24, frame ? Math.round(frame.height / 2) : 24);
+			const color = light.add('Color', 'Color');
+			color.add('R', '255');
+			color.add('G', '230');
+			color.add('B', '180');
+			light.add('Radius', '80');
+			light.add('Intensity', '1');
+		});
+	};
+
+	app.removeLight = function (index) {
+		if (!withEditable(() => app.removeLight(index))) {
+			return;
+		}
+		const light = app.rig.body.lights && app.rig.body.lights[index];
+		if (!light) {
+			return;
+		}
+		app.edit('take a light out', () => {
+			const node = ownLight(app.rig.body, light);
+			if (node) {
+				node.remove();
+			}
+		});
+	};
+
 	// Sets (or with null takes off) one of a placed piece's own lines: HFlipped, Team...
 	app.setPieceProp = function (index, key, value) {
 		if (!withEditable(() => app.setPieceProp(index, key, value))) {

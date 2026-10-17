@@ -372,6 +372,9 @@ window.MS = window.MS || {};
 				return this.resizePreview.offset();
 			}
 			const s = item.part.sprite;
+			if (item.part.ent.cls === 'TerrainObject' && s.offset) {
+				return s.offset; // an explicit BitmapOffset, even (0, 0), is the picture's top-left
+			}
 			if (!s.offset || (s.offset.x === 0 && s.offset.y === 0)) {
 				return { x: -frame.width / 2, y: -frame.height / 2 };
 			}
@@ -473,8 +476,9 @@ window.MS = window.MS || {};
 						image = frame;
 					}
 				}
-				const x = Math.floor(origin.x + at.x - w / 2);
-				const y = Math.floor(origin.y + at.y - h / 2);
+				const off = piece.bitmapOffset || { x: -w / 2, y: -h / 2 };
+				const x = Math.floor(origin.x + at.x + off.x);
+				const y = Math.floor(origin.y + at.y + off.y);
 				boxes.push({ piece, x, y, w, h, image });
 			}
 			return boxes;
@@ -549,9 +553,53 @@ window.MS = window.MS || {};
 				}
 				ctx.save();
 				ctx.translate(Math.floor(item.pose.pos.x), Math.floor(item.pose.pos.y));
-				ctx.drawImage(frame.canvas, -Math.floor(frame.width / 2), -Math.floor(frame.height / 2));
+				const off = item.part.bitmapOffset || { x: -Math.floor(frame.width / 2), y: -Math.floor(frame.height / 2) };
+				ctx.drawImage(frame.canvas, Math.floor(off.x), Math.floor(off.y));
 				ctx.restore();
 			}
+			this.drawBuildingExtras(ctx, item, files);
+		}
+
+		// A building piece's lights (a soft glow, with a ring at its reach when selected) and the doors and things placed with it (small markers).
+		drawBuildingExtras(ctx, item, files) {
+			const part = item.part;
+			const frame = this.app.sprite(files.FGColorFile || files.BGColorFile || files.MaterialFile, 1, 0);
+			const corner = part.bitmapOffset || (frame ? { x: -Math.floor(frame.width / 2), y: -Math.floor(frame.height / 2) } : { x: 0, y: 0 });
+			const origin = { x: Math.floor(item.pose.pos.x) + corner.x, y: Math.floor(item.pose.pos.y) + corner.y };
+			ctx.save();
+			if (this.options.lights !== false) {
+				ctx.globalCompositeOperation = 'lighter';
+				for (const light of part.lights || []) {
+					const x = origin.x + light.offset.x;
+					const y = origin.y + light.offset.y;
+					const grad = ctx.createRadialGradient(x, y, 0, x, y, Math.max(2, light.radius));
+					const rgb = light.color.join(',');
+					grad.addColorStop(0, 'rgba(' + rgb + ',' + Math.min(0.6, 0.35 * light.intensity) + ')');
+					grad.addColorStop(1, 'rgba(' + rgb + ',0)');
+					ctx.fillStyle = grad;
+					ctx.fillRect(x - light.radius, y - light.radius, light.radius * 2, light.radius * 2);
+				}
+				ctx.globalCompositeOperation = 'source-over';
+				for (const light of part.lights || []) {
+					ctx.fillStyle = 'rgb(' + light.color.join(',') + ')';
+					ctx.strokeStyle = 'rgba(0,0,0,.7)';
+					ctx.lineWidth = 0.6;
+					ctx.beginPath();
+					ctx.arc(origin.x + light.offset.x, origin.y + light.offset.y, 2, 0, Math.PI * 2);
+					ctx.fill();
+					ctx.stroke();
+				}
+			}
+			for (const child of part.childObjects || []) {
+				const x = origin.x + child.offset.x;
+				const y = origin.y + child.offset.y;
+				ctx.strokeStyle = '#78c8ff';
+				ctx.fillStyle = 'rgba(120, 200, 255, .3)';
+				ctx.lineWidth = 0.6;
+				ctx.fillRect(x - 3, y - 3, 6, 6);
+				ctx.strokeRect(x - 3, y - 3, 6, 6);
+			}
+			ctx.restore();
 		}
 
 		// A one pixel ring just outside a picture's solid pixels, in a colour (cached by picture and colour), for the part outlines.

@@ -1355,6 +1355,66 @@ window.MS = window.MS || {};
 				}
 			}
 		}
+		if (part.lights) {
+			// A building piece's lights: where they sit in the picture, their colour, how far they reach and how strong they are.
+			const add = document.createElement('button');
+			add.className = 'small-btn';
+			add.textContent = '+ Add light';
+			add.title = 'A light the piece puts in the terrain, lighting the room it is in';
+			add.disabled = !!locked && !app.needsCopy();
+			add.onclick = () => app.addLight();
+			const box = section(insp, 'Lights (' + part.lights.length + ')', add);
+			for (const light of part.lights) {
+				const own = light.node.isWithin(part.ent.node);
+				const row = document.createElement('div');
+				row.className = 'layer-row light-row' + (own ? '' : ' inherited');
+				const color = document.createElement('input');
+				color.type = 'color';
+				color.value = '#' + light.color.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+				color.title = 'The light\'s colour';
+				color.onchange = () => app.setLight(part, light.index, 'Color', [1, 3, 5].map((i) => parseInt(color.value.slice(i, i + 2), 16)));
+				const field = (label, value, step, on, title) => {
+					const input = document.createElement('input');
+					input.type = 'number';
+					input.step = step;
+					input.value = value;
+					input.className = 'ed-input num';
+					input.title = title;
+					input.onchange = () => on(Number(input.value) || 0);
+					const wrap = document.createElement('label');
+					wrap.className = 'ed-check';
+					wrap.append(label, input);
+					return wrap;
+				};
+				const del = document.createElement('button');
+				del.className = 'ico-btn';
+				del.textContent = '×';
+				del.title = 'Take the light out';
+				del.onclick = () => app.removeLight(light.index);
+				row.append(color,
+					field('x', light.offset.x, 1, (v) => app.setLight(part, light.index, 'Offset', { x: v, y: light.offset.y }), 'Pixels from the picture\'s left edge'),
+					field('y', light.offset.y, 1, (v) => app.setLight(part, light.index, 'Offset', { x: light.offset.x, y: v }), 'Pixels from the picture\'s top edge'),
+					field('reach', light.radius, 5, (v) => app.setLight(part, light.index, 'Radius', Math.max(1, v)), 'How far it lights, in pixels'),
+					field('strength', light.intensity, 0.1, (v) => app.setLight(part, light.index, 'Intensity', Math.max(0, v)), 'How bright'),
+					del);
+				box.append(row);
+			}
+		}
+		if (part.childObjects && part.childObjects.length) {
+			const box = section(insp, 'Placed with it (' + part.childObjects.length + ')');
+			for (const child of part.childObjects) {
+				const row = document.createElement('div');
+				row.className = 'layer-row';
+				const name = document.createElement('b');
+				name.textContent = child.name;
+				name.title = child.cls;
+				const where = document.createElement('span');
+				where.className = 'src';
+				where.textContent = child.cls + ' at ' + child.offset.x + ', ' + child.offset.y;
+				row.append(name, where);
+				box.append(row);
+			}
+		}
 		if (part.layers) {
 			// A building piece: three pictures. Foreground and background can be drawn on or swapped; the material map can be swapped.
 			const layers = section(insp, 'Pictures');

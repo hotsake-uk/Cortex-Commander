@@ -126,9 +126,55 @@ window.MS = window.MS || {};
 					team: resolved.num('Team', -2),
 					flipped: resolved.bool('HFlipped', false),
 					files: node.value === 'TerrainObject' ? { FGColorFile: resolved.file('FGColorFile'), BGColorFile: resolved.file('BGColorFile'), MaterialFile: resolved.file('MaterialFile') } : null,
+					bitmapOffset: node.value === 'TerrainObject' && resolved.has('BitmapOffset') ? resolved.vec('BitmapOffset') : null,
 				};
 			});
 			return this._pieces;
+		}
+
+		// The lights a building piece puts in the terrain (AddLight = TerrainLight), each at an offset from the pictures' top-left corner.
+		get lights() {
+			if (this.ent.cls !== 'TerrainObject') {
+				return null;
+			}
+			const lib = this.library || this.ent.library;
+			return this.ent.all('AddLight').map((entry, index) => {
+				const r = lib.resolve(entry.node);
+				const color = r.sub('Color');
+				return {
+					index,
+					node: entry.node,
+					offset: r.vec('Offset', { x: 0, y: 0 }),
+					color: color ? [color.num('R', 255), color.num('G', 255), color.num('B', 255)] : [255, 255, 255],
+					radius: r.num('Radius', 100),
+					intensity: r.num('Intensity', 1),
+				};
+			});
+		}
+
+		// What is placed along with a building piece (AddChildObject = SOPlacer): doors, emitters, turrets, at an offset from the same corner.
+		get childObjects() {
+			if (this.ent.cls !== 'TerrainObject') {
+				return null;
+			}
+			const lib = this.library || this.ent.library;
+			return this.ent.all('AddChildObject').map((entry, index) => {
+				const placed = entry.node.child('PlacedObject');
+				const r = placed ? lib.resolve(placed) : null;
+				const copy = placed && placed.child('CopyOf') ? placed.child('CopyOf').value : '';
+				return {
+					index,
+					node: entry.node,
+					cls: placed ? placed.value : '?',
+					name: (r && r.presetName) || copy.split('/').pop() || (placed ? placed.value : '?'),
+					offset: lib.resolve(entry.node).vec('Offset', { x: 0, y: 0 }),
+				};
+			});
+		}
+
+		// Where a terrain object's pictures start, from its position (the top-left corner). Unset, the pictures are centred on the position.
+		get bitmapOffset() {
+			return this.ent.cls === 'TerrainObject' && this.ent.has('BitmapOffset') ? this.ent.vec('BitmapOffset') : null;
 		}
 
 		// A terrain object (a piece of a building) has three pictures instead of one: foreground, background and the material map.
@@ -142,7 +188,7 @@ window.MS = window.MS || {};
 		get sprite() {
 			if (this.ent.cls === 'TerrainObject') {
 				const fg = this.ent.file('FGColorFile');
-				return { file: fg || this.ent.file('BGColorFile'), key: fg ? 'FGColorFile' : 'BGColorFile', frameCount: 1, offset: null };
+				return { file: fg || this.ent.file('BGColorFile'), key: fg ? 'FGColorFile' : 'BGColorFile', frameCount: 1, offset: this.bitmapOffset };
 			}
 			return {
 				file: this.ent.file('SpriteFile'),

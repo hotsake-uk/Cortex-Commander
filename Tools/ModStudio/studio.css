@@ -1129,3 +1129,7 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .limb-i { width: 16px; color: var(--faint); }
 .fx-canvas { width: 100%; max-width: 640px; display: block; border-radius: 6px; image-rendering: pixelated; }
 .fx-tools { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 8px 0 12px; }
+.light-row { gap: 8px; flex-wrap: wrap; }
+.light-row.inherited { opacity: .7; }
+.light-row input[type=color] { width: 30px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; }
+.light-row .ed-input.num { width: 64px; }
