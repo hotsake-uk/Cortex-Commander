@@ -451,6 +451,7 @@ window.MS = window.MS || {};
 		}
 		await a.fs.writeFile(path, await a.images.encodePng(GW, GH, out));
 		a.forgetSprites([path]);
+		a.savedSinceLastPreview.add(path); // the game reads it again with the next Preview or Live update
 		a.edit('glow of ' + part.name, () => {
 			const node = a.ownBlock(part);
 			if (!node) {
