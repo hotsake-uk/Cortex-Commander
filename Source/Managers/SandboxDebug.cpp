@@ -490,7 +490,8 @@ namespace {
 		float lineHeight = ImGui::GetTextLineHeight();
 		long long now = g_TimerMan.GetSimUpdateCount();
 		for (const Actor* actor: SandboxAccess::Actors()) {
-			if (!IsCombatant(actor)) {
+			// (Not over the unit you're playing: its orders don't steer it while you do.)
+			if (!IsCombatant(actor) || actor->IsPlayerControlled()) {
 				continue;
 			}
 			if (which == 1 && !actor->IsDebugInspected() && std::none_of(s_Selected.begin(), s_Selected.end(), [actor](const UnitRef& ref) { return GetRef(ref) == actor; })) {
