@@ -1324,6 +1324,16 @@ namespace SandboxDetail {
 		long long NoteAt = -1; //!< The sim update it happened on.
 	};
 	inline BattleModeRun s_ModeRun;
+
+	/// What has happened in the battle mode's game that a script may ask about (Sandbox::NextBattleEvent, Lua SandboxBattleEvent), oldest first, a line each:
+	/// "started MODE", "score SIDE TOTAL" (a capture, goal, landing or hill), "objective SIDE TAKEN" (assault), "ended WINNER" (-1: nobody).
+	inline std::deque<std::string> s_BattleEvents;
+	inline void PostBattleEvent(const std::string& what) {
+		if (s_BattleEvents.size() >= 64) {
+			s_BattleEvents.pop_front(); // a script that never asks does not make it grow
+		}
+		s_BattleEvents.push_back(what);
+	}
 	inline BattleModeSettings s_ModeSetup; //!< The Battle tab's mode panel, the window's copy (sent to the sim as it changes).
 	// What the battle shows on the map, kept between launches in the settings (B-12): ShowBattleModeZones (a mode's own zones: hills, assault
 	// objectives, goal zones; always while one is being drawn), ShowBattleInfo (the panel under the score), ShowBattleObjectives (each mode's
