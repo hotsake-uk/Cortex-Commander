@@ -49,6 +49,24 @@ window.MS = window.MS || {};
 		return v.x ? '(' + out + ' * studioDifficulty(self))' : out;
 	}
 	const key = (id) => luaStr(id);
+	// which units (flowmodel.js WHO_UNITS), as the three arguments studioMatch takes
+	const whoArgs = (a) => luaStr(a.which || 'any') + ', ' + luaStr(a.group || '') + ', ' + luaStr(a.named || '');
+	// players a step or event is about: all of them, or one (0 to 3)
+	const playerTest = (who) => (who === 'all' || who === undefined || who === '' ? 'true' : 'player == ' + luaNum(who));
+	const itemName = (item) => String(item || '').split('|')[1] || '';
+	// a value of the script's own (self.anyHumanHasDeployedABrain), tested as the settings say
+	const scriptTest = (a) => {
+		const v = 'studioField(self, ' + luaStr(a.field) + ')';
+		if (a.test === 'false') {
+			return '(' + v + ' == false)';
+		}
+		if (a.test === 'op') {
+			return '(type(' + v + ') == "number" and ' + v + ' ' + opOf(a.op) + ' ' + valueLua(a.value) + ')';
+		}
+		return '(' + v + ' == true)';
+	};
+	// text shown to players: {name} becomes the variable's value as it is then
+	const text = (s) => 'studioText(st, ' + luaStr(s) + ')';
 	const indent = (lines, n) => lines.map((l) => '\t'.repeat(n || 1) + l);
 	const itemCreate = (cls) => 'Create' + (['HeldDevice', 'TDExplosive', 'ThrownDevice'].includes(cls) ? cls : 'HDFirearm');
 
@@ -71,6 +89,12 @@ window.MS = window.MS || {};
 			case 'var': return '(st.vars[' + luaStr(c.name) + '] or 0) ' + opOf(c.op) + ' ' + valueLua(c.value);
 			case 'captureOwner': return 'studioOwner(st, ' + luaStr(c.target) + ') == ' + luaNum(c.team);
 			case 'group': return 'studioGroupCount(' + luaStr(c.group) + ') ' + opOf(c.op) + ' ' + luaNum(c.count);
+			case 'unitsWho': return 'studioCountWho(' + luaNum(c.team) + ', ' + (c.area ? area(c.area) : 'nil') + ', ' + whoArgs(c) + ') ' + opOf(c.op) + ' ' + luaNum(c.count);
+			case 'brain': return 'studioHasBrain(self, ' + (c.who === 'all' || c.who === undefined ? -1 : luaNum(c.who)) + ')';
+			case 'difficulty': return 'studioDifficulty(self) ' + opOf(c.op) + ' ' + luaNum(c.value === undefined ? 1 : c.value);
+			case 'holding': return 'studioHolds(' + luaNum(c.team) + ', ' + luaStr(itemName(c.item)) + ')';
+			case 'controlIn': return 'studioControlIn(self, ' + (c.who === 'all' || c.who === undefined ? -1 : luaNum(c.who)) + ', ' + area(c.area) + ')';
+			case 'script': return scriptTest(c);
 			default: return 'true';
 		}
 	}
@@ -82,7 +106,7 @@ window.MS = window.MS || {};
 		switch (n.kind) {
 			case 'message': {
 				const who = a.who === 'all' || a.who === undefined ? 'true' : 'player == ' + luaNum(a.who);
-				return ['for player = 0, 3 do', '\tif self:PlayerActive(player) and self:PlayerHuman(player) and (' + who + ') then', '\t\tlocal screen = self:ScreenOfPlayer(player)', '\t\tFrameMan:ClearScreenText(screen)', '\t\tFrameMan:SetScreenText(' + luaStr(a.text) + ', screen, 0, ' + luaNum(Number(a.seconds) * 1000) + ', false)', '\tend', 'end'];
+				return ['for player = 0, 3 do', '\tif self:PlayerActive(player) and self:PlayerHuman(player) and (' + who + ') then', '\t\tlocal screen = self:ScreenOfPlayer(player)', '\t\tFrameMan:ClearScreenText(screen)', '\t\tFrameMan:SetScreenText(' + text(a.text) + ', screen, 0, ' + luaNum(Number(a.seconds) * 1000) + ', false)', '\tend', 'end'];
 			}
 			case 'gold': return ['self:ChangeTeamFunds(' + valueLua(a.amount) + ', ' + luaNum(a.team) + ')'];
 			case 'spawn': return spawnLua(a);
@@ -139,13 +163,54 @@ window.MS = window.MS || {};
 				}
 				return a.target && F.find(g, a.target) ? ['st.stage = ' + luaStr(a.target), 'st.stageStarted = false'] : ['st.stage = nil', 'st.stageStarted = false'];
 			case 'win': {
-				const say = a.text ? ['for player = 0, 3 do', '\tif self:PlayerActive(player) and self:PlayerHuman(player) then', '\t\tlocal screen = self:ScreenOfPlayer(player)', '\t\tFrameMan:ClearScreenText(screen)', '\t\tFrameMan:SetScreenText(' + luaStr(a.text) + ', screen, 0, ' + luaNum(Math.max(1, Number(a.after) || 5) * 1000) + ', true)', '\tend', 'end'] : [];
+				const say = a.text ? ['for player = 0, 3 do', '\tif self:PlayerActive(player) and self:PlayerHuman(player) then', '\t\tlocal screen = self:ScreenOfPlayer(player)', '\t\tFrameMan:ClearScreenText(screen)', '\t\tFrameMan:SetScreenText(' + text(a.text) + ', screen, 0, ' + luaNum(Math.max(1, Number(a.after) || 5) * 1000) + ', true)', '\tend', 'end'] : [];
 				return Number(a.after) > 0
 					? [...say, 'st.ending = { team = ' + luaNum(a.team) + ', at = st.clock.ElapsedSimTimeS + ' + luaNum(a.after) + ' }']
 					: [...say, 'self.WinnerTeam = ' + luaNum(a.team), 'ActivityMan:EndActivity()'];
 			}
 			case 'end': return ['ActivityMan:EndActivity()'];
 			case 'call': return ['self:' + ident(a.fn) + '(actor)'];
+			case 'code': {
+				// your own Lua, run where the node is: self is the mission, st its state, actor the unit that set the chain off (or nil). An error in it
+				// is written to the console and the mission carries on.
+				const label = String(a.label || 'My code').replace(/[\r\n]+/g, ' ');
+				const body = String(a.code || '').replace(/\r\n/g, '\n').split('\n');
+				return ['-- ' + label, 'do', '\tlocal ok, err = pcall(function()', ...indent(body, 2), '\tend)', '\tif not ok then ConsoleMan:PrintString("Studio code (" .. ' + luaStr(label) + ' .. "): " .. tostring(err)) end', 'end'];
+			}
+			case 'placeItem': {
+				const parts = String(a.item || '').split('|');
+				return ['local where = ' + area(a.area), 'if where then', '\tfor i = 1, math.floor(' + valueLua(a.count) + ' + 0.5) do', '\t\tlocal item = ' + itemCreate(parts[0]) + '(' + luaStr(parts[1] || '') + ', ' + luaStr(parts[2] || 'Base.rte') + ')', '\t\tif item then', '\t\t\titem.Pos = where.RandomPoint', '\t\t\tMovableMan:AddItem(item)', '\t\tend', '\tend', 'end'];
+			}
+			case 'remove': {
+				const what = a.what || 'units';
+				const L = ['local zone = ' + area(a.area), 'if zone then'];
+				if (what !== 'items') {
+					L.push('\tlocal gone = {}', '\tfor actor in MovableMan.Actors do', '\t\tif (' + luaNum(a.team) + ' < 0 or actor.Team == ' + luaNum(a.team) + ') and zone:IsInside(actor.Pos) and studioMatch(actor, ' + whoArgs(a) + ') then gone[#gone + 1] = actor end', '\tend', '\tfor _, actor in ipairs(gone) do actor.ToDelete = true end');
+				}
+				if (what !== 'units') {
+					L.push('\tfor item in MovableMan.Items do', '\t\tif zone:IsInside(item.Pos) then item.ToDelete = true end', '\tend');
+				}
+				L.push('end');
+				return L;
+			}
+			case 'changeTeam': return ['local zone = ' + (a.area ? area(a.area) : 'nil'), 'local moving = {}', 'for actor in MovableMan.Actors do',
+				'\tif actor.Health > 0 and actor.Team == ' + luaNum(a.team) + ' and (zone == nil or zone:IsInside(actor.Pos)) and studioMatch(actor, ' + whoArgs(a) + ') then moving[#moving + 1] = actor end', 'end',
+				'for _, actor in ipairs(moving) do MovableMan:ChangeActorTeam(actor, ' + luaNum(a.to) + ') end'];
+			case 'control': {
+				const player = a.who === 'all' || a.who === undefined ? 0 : Number(a.who) || 0;
+				return ['local zone = ' + (a.area ? area(a.area) : 'nil'), 'for unit in MovableMan.Actors do',
+					'\tif unit.Health > 0 and unit.Team == ' + luaNum(a.team) + ' and (zone == nil or zone:IsInside(unit.Pos)) and studioMatch(unit, ' + whoArgs(a) + ') then',
+					'\t\tself:SwitchToActor(unit, ' + luaNum(player) + ', unit.Team)', '\t\tbreak', '\tend', 'end'];
+			}
+			case 'camera': {
+				const secs = Math.max(0, Number(a.seconds) || 0);
+				const speed = Math.min(1, Math.max(0.01, Number(a.speed) || 0.1));
+				return ['local zone = ' + area(a.area), 'if zone then',
+					'\tfor player = 0, 3 do', '\t\tif self:PlayerActive(player) and self:PlayerHuman(player) and (' + playerTest(a.who) + ') then CameraMan:SetScrollTarget(zone.Center, ' + luaNum(speed) + ', self:ScreenOfPlayer(player)) end', '\tend',
+					...(secs > 0 ? ['\tst.camera = { area = ' + luaStr(a.area) + ', untilT = st.clock.ElapsedSimTimeS + ' + luaNum(secs) + ', speed = ' + luaNum(speed) + ', who = ' + (a.who === 'all' || a.who === undefined ? -1 : luaNum(a.who)) + ' }'] : []), 'end'];
+			}
+			case 'tech': return ['self:SetTeamTech(' + luaNum(a.team) + ', ' + luaStr(a.tech) + ')'];
+			case 'scriptSet': return ['studioSetField(self, ' + luaStr(a.field) + ', ' + (a.to === 'false' ? 'false' : a.to === 'value' ? valueLua(a.value) : 'true') + ')'];
 			case 'battle': return [
 				'st.battle = { started = false, ended = false, winner = -1, scores = {} }',
 				'if SandboxBattleMode then',
@@ -249,7 +314,7 @@ window.MS = window.MS || {};
 				? ['local due = st.next[' + k + '] or ' + luaNum(a.seconds), 'if st.clock.ElapsedSimTimeS >= due then fire = true; st.next[' + k + '] = due + ' + luaNum(Math.max(0.1, Number(a.seconds))) + ' end']
 				: latch(['if st.clock.ElapsedSimTimeS >= ' + luaNum(a.seconds) + ' then fire = true end']);
 			case 'enter': case 'leave': case 'empty': {
-				const lines = ['local now, count = studioInside(' + luaStr(a.area) + ', ' + team + ')', 'local before = st.inside[' + k + '] or {}'];
+				const lines = ['local now, count = studioInside(' + luaStr(a.area) + ', ' + team + (n.kind === 'empty' ? '' : ', ' + whoArgs(a)) + ')', 'local before = st.inside[' + k + '] or {}'];
 				if (n.kind === 'enter') {
 					lines.push('for id in pairs(now) do if not before[id] then fire = true; st.who[' + k + '] = now[id] end end');
 				} else if (n.kind === 'leave') {
@@ -270,6 +335,47 @@ window.MS = window.MS || {};
 			case 'varReaches': return ['local reached = (st.vars[' + luaStr(a.name) + '] or 0) ' + opOf(a.op) + ' ' + valueLua(a.value), 'if reached and not st.prev[' + k + '] then fire = true end', 'st.prev[' + k + '] = reached'];
 			case 'captureChanged': return ['for _, e in ipairs(st.capNow) do if e.id == ' + luaStr(a.target) + ' and (' + team + ' < 0 or e.team == ' + team + ') then fire = true end end'];
 			case 'groupGone': return latch(['local alive = studioGroupCount(' + luaStr(a.group) + ')', 'if alive > 0 then st.seen[' + k + '] = true end', 'if st.seen[' + k + '] and alive == 0 then fire = true end']);
+			case 'unitDies': return [
+				'local zone = ' + (a.area ? area(a.area) : 'nil'), 'local now = {}',
+				'for actor in MovableMan.Actors do', '\tif actor.Health > 0 and (' + team + ' < 0 or actor.Team == ' + team + ') and studioMatch(actor, ' + whoArgs(a) + ') then now[actor.UniqueID] = Vector(actor.Pos.X, actor.Pos.Y) end', 'end',
+				'if st.alive[' + k + '] then', '\tfor id, pos in pairs(st.alive[' + k + ']) do', '\t\tif not now[id] and (zone == nil or zone:IsInside(pos)) then fire = true end', '\tend', 'end',
+				'st.alive[' + k + '] = now'];
+			case 'unitArrives': return [
+				'local zone = ' + (a.area ? area(a.area) : 'nil'), 'local now = {}', 'local known = st.known[' + k + ']',
+				'for actor in MovableMan.Actors do', '\tif actor.Health > 0 and (' + team + ' < 0 or actor.Team == ' + team + ') and studioMatch(actor, ' + whoArgs(a) + ') then',
+				'\t\tnow[actor.UniqueID] = true', '\t\tif known and not known[actor.UniqueID] and (zone == nil or zone:IsInside(actor.Pos)) then fire = true; st.who[' + k + '] = actor end', '\tend', 'end',
+				'st.known[' + k + '] = now'];
+			case 'hurt': return [
+				'st.marks[' + k + '] = st.marks[' + k + '] or {}',
+				'for actor in MovableMan.Actors do', '\tif actor.Health > 0 and actor.Health < ' + luaNum(a.below) + ' and (' + team + ' < 0 or actor.Team == ' + team + ') and not st.marks[' + k + '][actor.UniqueID] and studioMatch(actor, ' + whoArgs(a) + ') then',
+				'\t\tst.marks[' + k + '][actor.UniqueID] = true', '\t\tfire = true', '\t\tst.who[' + k + '] = actor', '\tend', 'end'];
+			case 'brainPlaced': return [
+				'st.marks[' + k + '] = st.marks[' + k + '] or {}',
+				'for player = 0, 3 do', '\tif self:PlayerActive(player) and self:PlayerHuman(player) and (' + playerTest(a.who) + ') then',
+				'\t\tlocal brain = self:GetPlayerBrain(player)', '\t\tlocal has = brain ~= nil and MovableMan:IsActor(brain)',
+				'\t\tif has and not st.marks[' + k + '][player] then fire = true; st.who[' + k + '] = brain end', '\t\tst.marks[' + k + '][player] = has', '\tend', 'end'];
+			case 'holdArea': return latch([
+				'local zone = ' + area(a.area), 'local now = st.clock.ElapsedSimTimeS',
+				'if zone and studioCount(' + team + ', zone) > 0 and studioEnemies(' + team + ', zone) == 0 then',
+				'\tst.hold[' + k + '] = st.hold[' + k + '] or now', '\tif now - st.hold[' + k + '] >= ' + luaNum(a.seconds) + ' then fire = true end',
+				'else', '\tst.hold[' + k + '] = nil', 'end']);
+			case 'controls': return [
+				'st.ctl[' + k + '] = st.ctl[' + k + '] or {}',
+				'for player = 0, 3 do', '\tif self:PlayerActive(player) and self:PlayerHuman(player) and (' + playerTest(a.who) + ') then',
+				'\t\tlocal unit = self:GetControlledActor(player)', '\t\tlocal id = unit and unit.UniqueID or -1', '\t\tlocal before = st.ctl[' + k + '][player]',
+				'\t\tif before ~= nil and id ~= before and unit and studioMatch(unit, ' + whoArgs(a) + ') then fire = true; st.who[' + k + '] = unit end',
+				'\t\tst.ctl[' + k + '][player] = id', '\tend', 'end'];
+			case 'selectView': return [
+				'local selecting = false',
+				'for player = 0, 3 do', '\tif self:PlayerActive(player) and self:PlayerHuman(player) and (' + playerTest(a.who) + ') and self:GetViewState(player) == Activity.ACTORSELECT then selecting = true end', 'end',
+				'if selecting and not st.prev[' + k + '] then fire = true end', 'st.prev[' + k + '] = selecting'];
+			case 'pickUp': return ['local reached = studioHolds(' + team + ', ' + luaStr(itemName(a.item)) + ')', 'if reached and not st.prev[' + k + '] then fire = true end', 'st.prev[' + k + '] = reached'];
+			case 'stageBegins': {
+				const on = F.isCodeStage(a.target) ? '(self.stages ~= nil and self.currentStage == self.stages[' + luaStr(a.target.slice(5)) + '])' : '(st.stage == ' + luaStr(a.target) + ' and st.stageStarted == true)';
+				return ['local reached = ' + on, 'if reached and not st.prev[' + k + '] then fire = true end', 'st.prev[' + k + '] = reached'];
+			}
+			case 'flagChanges': return ['local reached = (st.flags[' + luaStr(a.name) + '] == true) == ' + (a.value === false ? 'false' : 'true'), 'if reached and not st.prev[' + k + '] then fire = true end', 'st.prev[' + k + '] = reached'];
+			case 'scriptValue': return ['local reached = ' + scriptTest(a), 'if reached and not st.prev[' + k + '] then fire = true end', 'st.prev[' + k + '] = reached'];
 			default: return ['fire = true']; // always
 		}
 	}
@@ -293,7 +399,7 @@ window.MS = window.MS || {};
 		L.push(...wrap('started'), 'end');
 		L.push('function ' + cls + ':StudioStage_' + id + '_Done()', '\tlocal st = self.StudioState', ...wrap('done'), 'end');
 		L.push('function ' + cls + ':StudioStage_' + id + '_Fail()', '\tlocal st = self.StudioState', ...wrap('timeout'), 'end');
-		const text = luaStr(a.text || a.name || '');
+		const text = 'studioText(self.StudioState, ' + luaStr(a.text || a.name || '') + ')'; // {name} shows a variable's value
 		const viewer = luaNum(a.viewer);
 		L.push('function ' + cls + ':StudioStage_' + id + '_Mark()');
 		if (a.marker) {
@@ -334,7 +440,20 @@ window.MS = window.MS || {};
 		return [
 			'local function studioArea(name)', '\tif name ~= "" and SceneMan.Scene:HasArea(name) then return SceneMan.Scene:GetArea(name) end', '\treturn nil', 'end', '',
 			'local function studioCount(team, region)', '\tlocal n = 0', '\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and (team < 0 or actor.Team == team) and (region == nil or region:IsInside(actor.Pos)) then n = n + 1 end', '\tend', '\treturn n', 'end', '',
-			'local function studioInside(name, team)', '\tlocal region = studioArea(name)', '\tlocal now, count = {}, 0', '\tif region then', '\t\tfor actor in MovableMan.Actors do', '\t\t\tif actor.Health > 0 and (team < 0 or actor.Team == team) and region:IsInside(actor.Pos) then now[actor.UniqueID] = actor; count = count + 1 end', '\t\tend', '\tend', '\treturn now, count', 'end', '',
+			'-- Whether a unit is of the kind asked for: any, a brain, a craft, in a group, or of a name.',
+			'local function studioMatch(actor, which, group, named)', '\tif which == "brain" then return actor:IsInGroup("Brains")', '\telseif which == "craft" then return IsACraft(actor)',
+			'\telseif which == "group" then return actor:IsInGroup(group)', '\telseif which == "named" then return actor.PresetName == named end', '\treturn true', 'end', '',
+			'local function studioInside(name, team, which, group, named)', '\tlocal region = studioArea(name)', '\tlocal now, count = {}, 0', '\tif region then', '\t\tfor actor in MovableMan.Actors do', '\t\t\tif actor.Health > 0 and (team < 0 or actor.Team == team) and region:IsInside(actor.Pos) and (which == nil or studioMatch(actor, which, group, named)) then now[actor.UniqueID] = actor; count = count + 1 end', '\t\tend', '\tend', '\treturn now, count', 'end', '',
+			'local function studioCountWho(team, region, which, group, named)', '\tlocal n = 0', '\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and (team < 0 or actor.Team == team) and (region == nil or region:IsInside(actor.Pos)) and studioMatch(actor, which, group, named) then n = n + 1 end', '\tend', '\treturn n', 'end', '',
+			'local function studioHasBrain(act, who)', '\tfor player = 0, 3 do', '\t\tif act:PlayerActive(player) and act:PlayerHuman(player) and (who < 0 or who == player) then', '\t\t\tlocal brain = act:GetPlayerBrain(player)', '\t\t\tif brain ~= nil and MovableMan:IsActor(brain) then return true end', '\t\tend', '\tend', '\treturn false', 'end', '',
+			'local function studioControlIn(act, who, region)', '\tif not region then return false end', '\tfor player = 0, 3 do', '\t\tif act:PlayerActive(player) and act:PlayerHuman(player) and (who < 0 or who == player) then', '\t\t\tlocal unit = act:GetControlledActor(player)', '\t\t\tif unit and region:IsInside(unit.Pos) then return true end', '\t\tend', '\tend', '\treturn false', 'end', '',
+			'-- Whether a unit of a team (any team: -1) has an item of a name in its hands or its inventory.',
+			'local function studioHolds(team, itemName)', '\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and (team < 0 or actor.Team == team) then', '\t\t\tlocal held = actor.EquippedItem', '\t\t\tif held and held.PresetName == itemName then return true end', '\t\t\tfor item in actor.Inventory do', '\t\t\t\tif item.PresetName == itemName then return true end', '\t\t\tend', '\t\tend', '\tend', '\treturn false', 'end', '',
+			'-- The script\'s own values: self.name, or self.a.b for one inside a table.',
+			'local function studioField(act, path)', '\tlocal v = act', '\tfor part in path:gmatch("[^%.]+") do', '\t\tif type(v) ~= "table" and type(v) ~= "userdata" then return nil end', '\t\tv = v[part]', '\tend', '\treturn v', 'end',
+			'local function studioSetField(act, path, value)', '\tlocal at, last = act, nil', '\tfor part in path:gmatch("[^%.]+") do', '\t\tif last then at[last] = at[last] or {}; at = at[last] end', '\t\tlast = part', '\tend', '\tif last then at[last] = value end', 'end', '',
+			'-- Text shown to players: {name} becomes that variable\'s value.',
+			'local function studioText(st, text)', '\treturn (text:gsub("{([%w_]+)}", function(name)', '\t\tlocal v = st.vars and st.vars[name]', '\t\tif v == nil then return "{" .. name .. "}" end', '\t\treturn string.format("%g", v)', '\tend))', 'end', '',
 			'-- What the game\'s battle mode reports (an older game build has none): kept in st.battle, with this frame\'s events in st.battleNow.',
 			'local function studioPump(st)', '\tst.battleNow = {}', '\tif not SandboxBattleEvent then return end', '\tlocal line = SandboxBattleEvent()', '\twhile line ~= "" do',
 			'\t\tlocal parts = {}', '\t\tfor token in line:gmatch("%S+") do parts[#parts + 1] = token end', '\t\tlocal name, a, b = parts[1], tonumber(parts[2]) or -1, tonumber(parts[3]) or 0',
@@ -356,7 +475,7 @@ window.MS = window.MS || {};
 			'\t\tlocal rate = (st.dt or 0) / math.max(0.1, cfg.seconds)',
 			'\t\tif taking then c.progress = c.progress + rate elseif cfg.decays then c.progress = math.max(0, c.progress - rate) end', '\tend',
 			'\tif cfg.marker and c.owner ~= cfg.attackers then',
-			'\t\tself:AddObjectivePoint(cfg.text .. (c.progress > 0 and taker == cfg.attackers and (" " .. math.floor(c.progress * 100) .. "%") or ""), zone.Center, cfg.attackers, GameActivity.ARROWDOWN)', '\tend',
+			'\t\tself:AddObjectivePoint(studioText(st, cfg.text) .. (c.progress > 0 and taker == cfg.attackers and (" " .. math.floor(c.progress * 100) .. "%") or ""), zone.Center, cfg.attackers, GameActivity.ARROWDOWN)', '\tend',
 			'\tif c.progress >= 1 then', '\t\tc.owner = taker', '\t\tc.progress = 0', '\t\treturn taker', '\tend', '\treturn nil', 'end', '',
 			'-- Saving: the mission\'s state as one line of text (tables of numbers, text and true/false; the game\'s own objects are left out, and a unit',
 			'-- kept by its id is kept as true). Reading it back gives the same tables.',
@@ -370,7 +489,7 @@ window.MS = window.MS || {};
 			'\t\t\tfor i, part in ipairs(parts) do', '\t\t\t\tlocal k = part:sub(1, 1) == "#" and tonumber(part:sub(2)) or part',
 			'\t\t\t\tif i == #parts then at[k] = kind == "n" and tonumber(value) or kind == "b" and value == "1" or studioUnesc(value)', '\t\t\t\telse at[k] = at[k] or {}; at = at[k] end', '\t\t\tend', '\t\tend', '\tend', '\treturn root', 'end', '',
 			'-- Tables a state needs, also for one from an older save.',
-			'local function studioFill(st)', '\tfor _, k in ipairs({ "flags", "inside", "who", "seen", "prev", "next", "done", "once", "vars", "cap", "income", "incomeDue", "say" }) do st[k] = st[k] or {} end', 'end', '',
+			'local function studioFill(st)', '\tfor _, k in ipairs({ "flags", "inside", "who", "seen", "prev", "next", "done", "once", "vars", "cap", "income", "incomeDue", "say", "alive", "known", "marks", "hold", "ctl" }) do st[k] = st[k] or {} end', 'end', '',
 			'local function studioEnemies(team, region)', '\tlocal n = 0', '\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and actor.Team >= 0 and actor.Team ~= team and region:IsInside(actor.Pos) then n = n + 1 end', '\tend', '\treturn n', 'end', '',
 			'local function studioBrains(team)', '\tlocal n = 0', '\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and actor.Team == team and actor:IsInGroup("Brains") then n = n + 1 end', '\tend', '\treturn n', 'end', '',
 			'local function studioItemIn(areaName, itemName)', '\tlocal region = studioArea(areaName)', '\tif not region then return false end', '\tfor item in MovableMan.Items do', '\t\tif item.PresetName == itemName and region:IsInside(item.Pos) then return true end', '\tend', '\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and region:IsInside(actor.Pos) then', '\t\t\tlocal held = actor.EquippedItem', '\t\t\tif held and held.PresetName == itemName then return true end', '\t\t\tfor item in actor.Inventory do', '\t\t\t\tif item.PresetName == itemName then return true end', '\t\t\tend', '\t\tend', '\tend', '\treturn false', 'end', '',
@@ -400,7 +519,7 @@ window.MS = window.MS || {};
 		// saved games: the state goes into the save, and comes back when it is loaded
 		L.push('function ' + cls + ':StudioSave()', '\tlocal st = self.StudioState', '\tif not st then return end',
 			'\tst.clockS = st.clock.ElapsedSimTimeS', '\tst.stageS = st.stageClock and st.stageClock.ElapsedSimTimeS or nil',
-			'\tlocal keep = {}', '\tfor k, v in pairs(st) do if k ~= "clock" and k ~= "stageClock" and k ~= "battleNow" and k ~= "who" and k ~= "capNow" and k ~= "inside" then keep[k] = v end end',
+			'\tlocal keep = {}', '\tfor k, v in pairs(st) do if k ~= "clock" and k ~= "stageClock" and k ~= "battleNow" and k ~= "who" and k ~= "capNow" and k ~= "inside" and k ~= "alive" and k ~= "known" and k ~= "ctl" and k ~= "marks" then keep[k] = v end end',
 			'\tkeep.inside = {}', '\tfor k, units in pairs(st.inside or {}) do keep.inside[k] = {}; for id in pairs(units) do keep.inside[k][id] = true end end',
 			'\tself:SaveString("StudioFlow", table.concat(studioEncode(keep, nil, {}), ";"))', 'end',
 			'function ' + cls + ':StudioLoad()', '\tlocal text = self:LoadString("StudioFlow")', '\tif not text or text == "" then return end',
@@ -464,8 +583,16 @@ window.MS = window.MS || {};
 			'\t\tlocal line = table.remove(st.say, 1)',
 			'\t\tfor player = 0, 3 do',
 			'\t\t\tif self:PlayerActive(player) and self:PlayerHuman(player) and (line.who < 0 or line.who == player) then',
-			'\t\t\t\tlocal screen = self:ScreenOfPlayer(player)', '\t\t\t\tFrameMan:ClearScreenText(screen)', '\t\t\t\tFrameMan:SetScreenText(line.text, screen, 0, line.ms, true)',
+			'\t\t\t\tlocal screen = self:ScreenOfPlayer(player)', '\t\t\t\tFrameMan:ClearScreenText(screen)', '\t\t\t\tFrameMan:SetScreenText(studioText(st, line.text), screen, 0, line.ms, true)',
 			'\t\t\tend', '\t\tend', '\tend',
+			'\tif st.camera then',
+			'\t\tlocal zone = studioArea(st.camera.area)',
+			'\t\tif zone and now < st.camera.untilT then',
+			'\t\t\tfor player = 0, 3 do',
+			'\t\t\t\tif self:PlayerActive(player) and self:PlayerHuman(player) and (st.camera.who < 0 or st.camera.who == player) then CameraMan:SetScrollTarget(zone.Center, st.camera.speed, self:ScreenOfPlayer(player)) end',
+			'\t\t\tend',
+			'\t\telse st.camera = nil end',
+			'\tend',
 			'\tif st.ending and now >= st.ending.at then', '\t\tself.WinnerTeam = st.ending.team', '\t\tst.ending = nil', '\t\tActivityMan:EndActivity()', '\tend');
 		L.push('\tst.started = true', 'end', MARK_END);
 		return L.join('\n');

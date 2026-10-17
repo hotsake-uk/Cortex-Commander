@@ -264,6 +264,7 @@ window.MS = window.MS || {};
 			pickItem: (cb) => pickers.pickItem(cb),
 			highlight: (names) => ctx.highlight(names),
 			codeStages: () => scriptStages(path, ctx).map((c) => ({ name: c.name, label: words(c.name) })),
+			editCode: (code, set, ro) => codeDialog(path, cls, code, set, ro),
 			selected: (ids) => {
 				const names = new Set();
 				for (const id of ids) {
@@ -324,6 +325,121 @@ window.MS = window.MS || {};
 			doc.state.fitted = true;
 			requestAnimationFrame(() => view.fit());
 		}
+	}
+
+	// ---- your own code ----
+
+	// A "Run my own code" node's Lua, written in the code editor. The editor shows it as the body of one of the script's own methods (the first
+	// two lines and the last are hidden), so completions know self is the mission, and st and actor are there, as they are when it runs.
+	function codeDialog(path, cls, code, set, readOnly) {
+		const a = app();
+		const head = ['function ' + cls + ':StudioCode(actor)', '\tlocal st = self.StudioState'];
+		const body = String(code || '').split('\n').map((l) => '\t' + l);
+		const host = el('div', { className: 'ml-codehost' }, el('p', { className: 'ed-note', textContent: 'Opening the code editor…' }));
+		const status = el('div', { className: 'ml-codestatus' });
+		let editor = null;
+		let model = null;
+		const dispose = () => {
+			if (editor) {
+				editor.dispose();
+			}
+			if (model) {
+				model.dispose();
+			}
+			editor = null;
+			model = null;
+		};
+		// the body back out of the editor: the hidden lines dropped (also when a backspace has joined the first line on to one of them)
+		const taken = () => {
+			const lines = model.getValue().split('\n');
+			if (/StudioCode\(/.test(lines[0] || '')) {
+				lines.shift();
+			}
+			const st = /^\s*local st = self\.StudioState(.*)$/.exec(lines[0] || '');
+			if (st) {
+				lines[0] = st[1];
+				if (!lines[0].trim()) {
+					lines.shift();
+				}
+			}
+			if (lines.length && lines[lines.length - 1].trim() === 'end') {
+				lines.pop();
+			}
+			return lines.map((l) => l.replace(/^\t/, '')).join('\n').replace(/\s+$/, '');
+		};
+		MS.dialogs.open('Your own code', el('div', { className: 'ml-codebox' },
+			el('p', { className: 'ed-note', textContent: 'Lua, run where the node is. self is the mission, st its state (st.vars.name, st.flags.name) and actor the unit that set this chain off (nil when there is none). Ctrl+Space suggests what can go next. If it goes wrong as it runs, the error is written to the console and the mission carries on.' }),
+			host, status), [
+			{ text: readOnly ? 'Close' : 'Cancel', action: () => {
+				dispose();
+				return true;
+			} },
+			...(readOnly ? [] : [{ text: 'Use this code', primary: true, action: () => {
+				if (model) {
+					// Lua that does not read stops the whole script loading, not just this node
+					const broken = MS.ide.lua && MS.ide.lua.check ? MS.ide.lua.check(path, model.getValue()).find((p) => p.severity === 'error' && p.line > 2) : null;
+					if (broken) {
+						a.toast('Fix the code first: ' + broken.message + '. Code Lua cannot read stops the whole mission script.', 'bad');
+						return false;
+					}
+					set(taken());
+				}
+				dispose();
+				return true;
+			} }]),
+		], true);
+		MS.ide.loadMonaco().then(() => {
+			const monaco = MS.ide.monaco;
+			if (!host.isConnected) {
+				return; // the dialog was closed while the editor loaded
+			}
+			const uri = monaco.Uri.from({ scheme: 'studio-code', path: '/' + path });
+			const old = monaco.editor.getModel(uri);
+			if (old) {
+				old.dispose();
+			}
+			model = monaco.editor.createModel([...head, ...(body.length ? body : ['\t']), 'end'].join('\n'), 'lua', uri);
+			host.replaceChildren();
+			editor = monaco.editor.create(host, {
+				theme: 'cortex', automaticLayout: true, fontSize: 13, fontFamily: 'ui-monospace, Consolas, "Cascadia Mono", monospace',
+				minimap: { enabled: false }, tabSize: 4, insertSpaces: false, scrollBeyondLastLine: false, fixedOverflowWidgets: true,
+				suggest: { showStatusBar: true, preview: true }, quickSuggestions: { other: true, comments: false, strings: true }, readOnly, model,
+			});
+			const hide = () => {
+				const last = model.getLineCount();
+				if (editor && editor.setHiddenAreas) {
+					editor.setHiddenAreas([new monaco.Range(1, 1, 2, 1), new monaco.Range(last, 1, last, 1)]);
+				}
+			};
+			hide();
+			// problems as you type, from the same checks as the script editor
+			let timer = 0;
+			const check = () => {
+				if (!model || !MS.ide.lua || !MS.ide.lua.check) {
+					return;
+				}
+				const found = MS.ide.lua.check(path, model.getValue()).filter((p) => p.line > 2 && p.line < model.getLineCount());
+				const severity = monaco.MarkerSeverity;
+				monaco.editor.setModelMarkers(model, 'studio', found.map((p) => ({
+					startLineNumber: p.line, startColumn: p.col, endLineNumber: p.endLine || p.line, endColumn: p.endCol || p.col + 1,
+					severity: p.severity === 'error' ? severity.Error : p.severity === 'warning' ? severity.Warning : severity.Info, message: p.message,
+				})));
+				const errors = found.filter((p) => p.severity === 'error');
+				status.textContent = errors.length ? '✗ ' + errors[0].message + ' (line ' + (errors[0].line - 2) + ')' : '✓ no problems found';
+				status.classList.toggle('bad', !!errors.length);
+			};
+			model.onDidChangeContent(() => {
+				hide();
+				clearTimeout(timer);
+				timer = setTimeout(check, 300);
+			});
+			check();
+			editor.setPosition({ lineNumber: 3, column: model.getLineMaxColumn(3) });
+			editor.focus();
+		}).catch((e) => {
+			host.replaceChildren(el('p', { className: 'ed-banner', textContent: 'The code editor could not open: ' + e.message }));
+			a.toast('The code editor could not open.', 'bad');
+		});
 	}
 
 	// ---- stages ----
