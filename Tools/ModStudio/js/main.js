@@ -17,6 +17,7 @@ import './lua-intel.js';
 import './ini-intel.js';
 import './navigation.js';
 import './relations.js';
+import './popout.js';
 import './ide.js';
 import './live.js';
 import './profiler.js';

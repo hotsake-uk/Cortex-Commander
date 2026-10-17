@@ -35,6 +35,7 @@ window.MS = window.MS || {};
 	// ---- start-up ----
 
 	app.init = function () {
+		MS.popout.begin();
 		app.view = new MS.Viewport($('view'), app);
 		MS.panels.init(app);
 		MS.ide.init(app);
@@ -136,6 +137,10 @@ window.MS = window.MS || {};
 		updateScopeButton();
 		MS.ide.gameLoaded();
 		MS.friendly.update();
+		if (MS.popout.request) {
+			await MS.popout.run();
+			return;
+		}
 		const last = readLocal('ms.lastActor');
 		const preset = last && app.lib.presets.find((p) => p.doc.path === last.path && p.name === last.name);
 		if (preset) {

@@ -237,6 +237,16 @@ fn api(studio: &Studio, request: &mut Request, action: &str, query: &str) -> Res
 	};
 
 	match action {
+		// A tab into its own window. Only in the app; headless, the page opens a browser tab itself.
+		"popout" => {
+			let mut raw = String::new();
+			let _ = request.as_reader().read_to_string(&mut raw);
+			let what = serde_json::from_str::<serde_json::Value>(&raw).ok().and_then(|v| v.get("what").and_then(|w| w.as_str().map(String::from)));
+			match what {
+				Some(what) if !what.is_empty() && what.len() < 2000 && crate::open_popout(&what) => bytes(br#"{"native":true}"#.to_vec(), "application/json"),
+				_ => bytes(br#"{"native":false}"#.to_vec(), "application/json"),
+			}
+		}
 		// The window's zoom, kept between runs. Only in the app (a window to zoom); the page asks, and follows the answer.
 		"zoom" => {
 			if !crate::has_zoom_hook() {

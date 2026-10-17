@@ -296,6 +296,7 @@ window.MS = window.MS || {};
 		}
 		a.forgetSprites(paths);
 		MS.panels.forgetThumbs();
+		MS.popout.saved(paths);
 		if (part) {
 			const w = frames[0].width;
 			const h = frames[0].height;

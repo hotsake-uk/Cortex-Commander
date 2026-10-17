@@ -624,12 +624,20 @@ window.MS = window.MS || {};
 		const bar = $('tabbar');
 		bar.innerHTML = '';
 		// Design mode has tabs too, but only the designer and the sprite editors; Script mode has them all.
-		const shown = ide.tabs.filter((t) => ide.mode === 'deep' || t.kind === 'designer' || t.sprite);
+		const shown = ide.tabs.filter((t) => (!MS.popout.request || t.kind !== 'designer') && (ide.mode === 'deep' || t.kind === 'designer' || t.sprite));
 		$('app').classList.toggle('has-tabs', ide.mode === 'deep' || shown.some((t) => t.sprite));
 		for (const tab of shown) {
 			const dirty = tabDirty(tab) || !!(tab.sprite && tab.px && tab.px.dirty);
 			const icon = el('span', { className: 'tab-icon ' + (tab.kind === 'designer' ? 'designer' : tab.kind === 'form' ? 'form' : extOf(tab.path)), textContent: tab.kind === 'designer' ? '◆' : tab.kind === 'form' ? tab.icon || '▦' : extOf(tab.path) });
 			const item = el('div', { className: 'tab' + (tab === ide.active ? ' sel' : '') + (dirty ? ' dirty' : '') + (tab.readOnly ? ' ro' : ''), title: tab.path || (tab.kind === 'form' ? tab.title : 'The unit designer') }, icon, el('span', { className: 'tab-name', textContent: tabTitle(tab) }));
+			if (tab.sprite || (tab.kind === 'code' && !tab.doc)) {
+				const pop = el('button', { className: 'tab-pop', textContent: '⧉', title: 'Open in its own window' });
+				pop.onclick = (e) => {
+					e.stopPropagation();
+					MS.popout.pop(tab);
+				};
+				item.append(pop);
+			}
 			if (tab.kind !== 'designer') {
 				const close = el('button', { className: 'tab-close', textContent: dirty ? '●' : '×', title: 'Close (Ctrl+W)' });
 				close.onclick = (e) => {
@@ -669,6 +677,7 @@ window.MS = window.MS || {};
 	};
 
 	ide.renderTabs = renderTabs;
+	ide.tabIsDirty = (tab) => tabDirty(tab) || !!(tab.sprite && tab.px && tab.px.dirty);
 
 	ide.activate = function (tab) {
 		if (ide.active && ide.active.kind === 'code' && ide.editor && ide.editor.getModel() === ide.active.model) {
