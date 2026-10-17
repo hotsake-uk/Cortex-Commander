@@ -541,6 +541,31 @@ window.MS = window.MS || {};
 		MS.panels.refresh();
 	};
 
+	// Sets (or with null takes off) one of a placed piece's own lines: HFlipped, Team...
+	app.setPieceProp = function (index, key, value) {
+		if (!withEditable(() => app.setPieceProp(index, key, value))) {
+			return;
+		}
+		const piece = pieceOf(index);
+		if (!piece) {
+			return;
+		}
+		app.edit('change ' + piece.name, () => {
+			const node = ownPiece(piece);
+			if (!node) {
+				return;
+			}
+			if (value === null) {
+				const old = node.child(key);
+				if (old) {
+					old.remove();
+				}
+			} else {
+				node.set(key, String(value));
+			}
+		});
+	};
+
 	// Adds a terrain object (a preset) to the assembly, in the middle of what is there, and picks it.
 	app.addPiece = function (preset) {
 		if (!withEditable(() => app.addPiece(preset))) {

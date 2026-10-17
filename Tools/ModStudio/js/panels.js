@@ -1263,20 +1263,33 @@ window.MS = window.MS || {};
 		if (part.pieces) {
 			// A bunker assembly: the pieces it places. Click a row (or the piece in the view) to pick it; drag it in the view or type where it goes.
 			const pieces = part.pieces;
-			const box = section(insp, 'Pieces (' + pieces.length + ')', (() => {
+			const addButton = (text, title, dialogTitle, classes) => {
 				const add = document.createElement('button');
 				add.className = 'small-btn';
-				add.textContent = '+ Add piece…';
-				add.title = 'Search the building pieces (terrain objects) and add one';
+				add.textContent = text;
+				add.title = title;
 				add.onclick = () => {
-					const all = app.lib.presets.filter((p) => p.topLevel && p.cls === 'TerrainObject');
+					const all = app.lib.presets.filter((p) => p.topLevel && classes.includes(p.cls));
 					const modules = [...new Set(all.map((p) => p.module))].sort((x, y) => x.localeCompare(y));
-					MS.dialogs.open('Add a piece to ' + part.name, MS.dialogs.parts.pickerGrid(all, (p) => app.addPiece(p), (c, p) => drawSpriteThumb(c, p), false, [
+					MS.dialogs.open(dialogTitle + part.name, MS.dialogs.parts.pickerGrid(all, (p) => app.addPiece(p), (c, p) => drawSpriteThumb(c, p), false, [
 						{ label: 'Where it comes from', options: [['', 'Everything'], ...modules.map((m) => [m, m.replace(/\.rte$/i, '')])], test: (p, v) => p.module === v },
 					]), [{ text: 'Cancel' }], true);
 				};
 				return add;
-			})());
+			};
+			const adders = document.createElement('span');
+			adders.append(
+				addButton('+ Piece…', 'Search the building pieces (terrain objects) and add one', 'Add a piece to ', ['TerrainObject']), ' ',
+				addButton('+ Door…', 'Add a door', 'Add a door to ', ['ADoor']), ' ',
+				addButton('+ Units…', 'Add a deployment: what the AI puts in the room (a squad, a turret, a brain)', 'Add a deployment to ', ['Deployment']));
+			const box = section(insp, 'Pieces (' + pieces.length + ')', adders);
+			const scheme = part.ent.str ? part.ent.str('ParentScheme', '') : '';
+			if (scheme) {
+				const note = document.createElement('div');
+				note.className = 'small';
+				note.textContent = 'Fits the scheme: ' + scheme;
+				box.append(note);
+			}
 			for (const piece of pieces) {
 				const row = document.createElement('div');
 				row.className = 'piece-row' + (piece.index === app.selectedPiece ? ' sel' : '');
@@ -1307,6 +1320,29 @@ window.MS = window.MS || {};
 				row.append(kind, name, coord(piece.pos.x, 'x'), coord(piece.pos.y, 'y'), del);
 				row.onclick = () => app.selectPiece(piece.index);
 				box.append(row);
+				if (piece.index === app.selectedPiece) {
+					// The selected piece's other settings: which way it faces, and whose it is.
+					const flip = document.createElement('label');
+					flip.className = 'ed-check';
+					const flipBox = document.createElement('input');
+					flipBox.type = 'checkbox';
+					flipBox.checked = piece.flipped;
+					flipBox.onchange = () => app.setPieceProp(piece.index, 'HFlipped', flipBox.checked ? 1 : 0);
+					flip.append(flipBox, 'Faces left');
+					const team = document.createElement('select');
+					for (const [value, text] of [['', 'Any team'], ['-1', 'No team'], ['0', 'Team 1'], ['1', 'Team 2'], ['2', 'Team 3'], ['3', 'Team 4']]) {
+						const o = document.createElement('option');
+						o.value = value;
+						o.textContent = text;
+						team.append(o);
+					}
+					team.value = piece.team === -2 ? '' : String(piece.team);
+					team.onchange = () => app.setPieceProp(piece.index, 'Team', team.value === '' ? null : team.value);
+					const more = document.createElement('div');
+					more.className = 'piece-more';
+					more.append(flip, ' ', team);
+					box.append(more);
+				}
 			}
 		}
 		if (part.layers) {
@@ -1324,8 +1360,8 @@ window.MS = window.MS || {};
 				const edit = document.createElement('button');
 				edit.className = 'small-btn';
 				edit.textContent = 'Edit…';
-				edit.disabled = !layer.file || layer.key === 'MaterialFile';
-				edit.title = layer.key === 'MaterialFile' ? 'The material map\'s pixels are material numbers: swap it for another picture for now' : 'Draw on this picture';
+				edit.disabled = !layer.file;
+				edit.title = layer.key === 'MaterialFile' ? 'Paint what the piece is made of (each pixel is a material)' : 'Draw on this picture';
 				edit.onclick = () => MS.pixel.open({ part, key: layer.key });
 				const swap = document.createElement('button');
 				swap.className = 'small-btn';

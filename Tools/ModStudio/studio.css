@@ -1084,3 +1084,6 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .gib-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
 .px-side input[type=color] { width: 34px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; }
 .px-side input[type=range] { flex: 1; min-width: 70px; }
+.piece-more { display: flex; gap: 10px; align-items: center; padding: 2px 4px 8px 22px; }
+.size-row { display: flex; gap: 6px; align-items: center; }
+.size-row input { width: 90px; }
