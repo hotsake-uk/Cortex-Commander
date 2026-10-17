@@ -117,7 +117,6 @@ window.MS = window.MS || {};
 				scheduleAutosave();
 			};
 			await app.lib.load(report);
-			await MS.history.loadEditable();
 			$('btnHistory').hidden = !MS.history.available();
 			report('Getting ready…', 1);
 			hookDocs();
@@ -434,15 +433,6 @@ window.MS = window.MS || {};
 			badge.className = 'badge unlocked';
 		}
 		t.append(badge);
-		if (kind === 'mod') {
-			const module = app.actor.path.split('/')[0];
-			const edit = document.createElement('button');
-			edit.className = 'badge-btn';
-			edit.textContent = 'Edit this mod';
-			edit.title = 'Studio keeps ' + module + ' as it is now, so History can put any file back, then lets you change it';
-			edit.onclick = () => MS.history.editMod(module);
-			t.append(edit);
-		}
 		$('btnCopy').disabled = false;
 		$('btnCopy').classList.toggle('attention', locked);
 		$('btnPreview').disabled = locked;
@@ -743,16 +733,8 @@ window.MS = window.MS || {};
 		for (const step of plan) {
 			const reason = app.lockReason(step.part);
 			if (reason) {
-				// Say why, and offer the fix on the spot: a copy in your mod, or (for someone else's mod) editing it.
-				let action = null;
-				if (app.lib.isProtected(app.actorNode.doc)) {
-					if (app.lib.lockKind(app.actorNode.doc) === 'mod') {
-						const module = app.actorNode.doc.path.split('/')[0];
-						action = { label: 'Edit this mod', run: () => MS.history.editMod(module) };
-					} else {
-						action = { label: 'Make my own copy', run: () => MS.dialogs.copyUnit() };
-					}
-				}
+				// Say why, and offer the fix on the spot: a copy in your mod.
+				const action = app.lib.isProtected(app.actorNode.doc) ? { label: 'Make my own copy', run: () => MS.dialogs.copyUnit() } : null;
 				app.toast(reason, 'bad', action);
 				return false;
 			}
@@ -881,8 +863,7 @@ window.MS = window.MS || {};
 			MS.friendly.afterSave(saved.map((x) => x.path));
 		}
 		if (written && !quiet) {
-			const undo = MS.history.available() ? { label: 'Undo', run: () => MS.history.undoSave(saved) } : null;
-			app.toast('Saved ' + written + ' file' + (written > 1 ? 's' : '') + '.', 'good', undo);
+			app.toast('Saved ' + written + ' file' + (written > 1 ? 's' : '') + '.', 'good');
 		}
 		return written;
 	};
@@ -1069,7 +1050,7 @@ window.MS = window.MS || {};
 	function bindToolbar() {
 		$('btnUndo').onclick = () => app.doUndo();
 		$('btnRedo').onclick = () => app.doRedo();
-		$('btnSave').onclick = () => (MS.ide.mode === 'deep' ? MS.ide.saveAll() : app.save());
+		$('btnSave').onclick = () => MS.ide.saveMod();
 		$('btnDiscard').onclick = () => app.discard();
 		$('btnPreview').onclick = () => app.preview();
 		$('btnLive').onclick = () => setLive(!app.live);
@@ -1160,7 +1141,7 @@ window.MS = window.MS || {};
 			if (ctrl && e.key.toLowerCase() === 's') {
 				e.preventDefault();
 				if (app.lib) {
-					app.save();
+					MS.ide.saveMod();
 				}
 				return;
 			}

@@ -1,7 +1,7 @@
 // Studio's local server, the same requests Start-ModStudio.ps1 answers, so Mod Studio's page works unchanged in the app and in a browser.
 // It only listens on this computer (127.0.0.1) and only answers API requests carrying the token it puts in the page's address.
 
-use crate::history;
+use crate::backup;
 use crate::launcher::{self, Launcher};
 use crate::watcher::StudioWatcher;
 use include_dir::{include_dir, Dir};
@@ -349,12 +349,9 @@ fn api(studio: &Studio, request: &mut Request, action: &str, query: &str) -> Res
 			}
 			studio.wrote(&full);
 			if full.is_file() {
-				let path = disk_path(root, &full);
-				history::before(root, &path);
 				if let Err(e) = fs::remove_file(&full) {
 					return text(500, e.to_string());
 				}
-				history::after(root, &path, true);
 				if let Some(twin) = launcher::mods_twin(root, &full) {
 					studio.wrote(&twin);
 					launcher::mirror_to_mods(&full, &twin, true);
@@ -372,12 +369,8 @@ fn api(studio: &Studio, request: &mut Request, action: &str, query: &str) -> Res
 					let _ = fs::create_dir_all(parent);
 				}
 				studio.wrote(&full);
-				// Every save in a mod is a commit in the mod's history (history.rs), so it can be put back.
-				let path = disk_path(root, &full);
-				history::before(root, &path);
 				match fs::write(&full, body) {
 					Ok(()) => {
-						history::after(root, &path, false);
 						if let Some(twin) = launcher::mods_twin(root, &full) {
 							studio.wrote(&twin);
 							launcher::mirror_to_mods(&full, &twin, false);
@@ -396,23 +389,36 @@ fn api(studio: &Studio, request: &mut Request, action: &str, query: &str) -> Res
 				text(404, "Not found.")
 			}
 		}
-		"history" => {
-			// Without a key: every file Studio changed. With one: that file's versions, newest first. With mods: the mods you edit.
-			let answer = match (query_value(query, "key"), query_value(query, "mods")) {
-				(Some(key), _) => history::versions(&key),
-				(None, Some(_)) => history::mods(),
-				(None, None) => history::files(),
-			};
-			bytes(answer.to_string().into_bytes(), "application/json")
+		// Backups of a whole mod (backup.rs): GET lists them (?path=Mods/X.rte for one mod), POST makes one, restore puts one back.
+		"backups" => bytes(backup::list(query_value(query, "mod").as_deref()).to_string().into_bytes(), "application/json"),
+		"backup" => {
+			if *request.method() != Method::Post {
+				return text(405, "Use POST.");
+			}
+			match backup::create(root, &query_value(query, "mod").unwrap_or_default(), "") {
+				Ok(name) => text(200, name),
+				Err(e) => text(500, e),
+			}
 		}
-		"history-start" => match history::start(root, &relative) {
-			Ok(()) => text(200, "ok"),
-			Err(e) => text(500, e),
-		},
-		"history-file" => match history::read(&query_value(query, "key").unwrap_or_default(), &query_value(query, "id").unwrap_or_default()) {
-			Some(body) => bytes(body, "application/octet-stream"),
-			None => text(404, "No such copy."),
-		},
+		"backup-restore" => {
+			if *request.method() != Method::Post {
+				return text(405, "Use POST.");
+			}
+			match backup::restore(root, &query_value(query, "mod").unwrap_or_default(), &query_value(query, "name").unwrap_or_default()) {
+				Ok((safety, changes)) => {
+					// Each file written or taken out is Studio's own, passed on to the mods folder it is linked to.
+					for (path, deleted) in changes {
+						studio.wrote(&path);
+						if let Some(twin) = launcher::mods_twin(root, &path) {
+							studio.wrote(&twin);
+							launcher::mirror_to_mods(&path, &twin, deleted);
+						}
+					}
+					text(200, safety)
+				}
+				Err(e) => text(500, e),
+			}
+		}
 		"changes" => {
 			// Files saved outside Studio since the page last asked. 404 when the bridge is off, so the page stops asking.
 			let watcher = studio.watcher.lock().unwrap();

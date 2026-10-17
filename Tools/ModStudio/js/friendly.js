@@ -156,7 +156,7 @@ window.MS = window.MS || {};
 				if (p.missing) {
 					actions.append(el('button', { className: 'tb primary', textContent: 'Take it out of the list', title: 'Removes the line that names the missing file, so the mod loads without it', onclick: async () => { if (await removeFromList(p)) { draw(); } } }));
 					if (MS.history && MS.history.available()) {
-						actions.append(el('button', { className: 'tb', textContent: 'Look in History', title: 'If Studio kept a copy of this file, you can put it back', onclick: () => { MS.dialogs.close(); MS.history.open(p.path); } }));
+						actions.append(el('button', { className: 'tb', textContent: 'Look in Backups', title: 'If you took a backup of this mod, you can put it back', onclick: () => { MS.dialogs.close(); MS.history.open(p.path); } }));
 					}
 				}
 				actions.append(el('button', { className: 'tb', textContent: 'Ignore', onclick: () => { hidden.add(p.module + '|' + p.path); draw(); } }));
