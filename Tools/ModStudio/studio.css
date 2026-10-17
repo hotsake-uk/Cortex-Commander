@@ -974,3 +974,16 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .px-anchor-cell { width: 12px; height: 12px; padding: 0; border: 1px solid var(--line); background: var(--panel2, transparent); border-radius: 2px; cursor: pointer; }
 .px-anchor-cell.on { background: var(--accent); border-color: var(--accent); }
 .px-note { color: var(--dim); font-size: 11px; flex: 1; }
+.insp-overview { display: flex; flex-direction: column; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.insp-team-head { display: flex; gap: 10px; align-items: baseline; font-size: 12px; }
+.insp-team-head span { color: var(--dim); }
+.insp-team-head .insp-lost { color: #e0675f; }
+.insp-modes { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.insp-mode { font-size: 11px; padding: 1px 6px; border: 1px solid var(--line); border-left-width: 3px; border-radius: 3px; color: var(--dim); }
+.insp-mind { margin: 6px 0; }
+.insp-mindtable th { text-align: left; font-weight: normal; color: var(--dim); width: 64px; vertical-align: top; }
+.insp-link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-align: left; font: inherit; }
+.insp-link:hover { text-decoration: underline; }
+.insp-strip { display: block; width: 100%; height: 14px; margin-top: 6px; background: var(--panel2, rgba(255, 255, 255, .04)); border-radius: 2px; }
+.insp-event.hurt { color: #e0675f; }
+.insp-event.ai { color: var(--accent); }

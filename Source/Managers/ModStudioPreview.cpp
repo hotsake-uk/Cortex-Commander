@@ -508,6 +508,7 @@ void ModStudioPreview::UpdateFrame() {
 		}
 	}
 	s_Inspecting = fresh;
+	Actor::s_StudioWantsAIState = fresh && GameRunning();
 	if (!fresh) {
 		s_InspectFollow = 0;
 	}
@@ -543,9 +544,26 @@ void ModStudioPreview::UpdateFrame() {
 		world << "Actor = " << actor->GetUniqueID() << '\t' << Clean(actor->GetPresetName()) << '\t' << actor->GetClassName() << '\t' << actor->GetTeam() << '\t'
 		      << actor->GetPos().GetX() << '\t' << actor->GetPos().GetY() << '\t' << actor->GetHealth() << '\t' << actor->GetMaxHealth() << '\t' << StatusName(actor->GetStatus()) << '\n';
 	}
+	// What each unit's AI is doing (the scripts write it into their values while Studio's Inspector is open, see Actor::s_StudioWantsAIState):
+	// id, behaviour, target id (0 for none), 1 if the target is in sight, why it took cover, its squad leader's id (0 for none).
+	for (const Actor* mind: g_MovableMan.GetActorList()) {
+		if (mind && mind->StringValueExists("AI_Behavior")) {
+			world << "Mind = " << mind->GetUniqueID() << '\t' << Clean(mind->GetStringValue("AI_Behavior")) << '\t' << static_cast<long>(mind->NumberValueExists("AI_TargetID") ? mind->GetNumberValue("AI_TargetID") : 0) << '\t'
+			      << (mind->NumberValueExists("AI_TargetSeen") && mind->GetNumberValue("AI_TargetSeen") > 0 ? 1 : 0) << '\t' << (mind->StringValueExists("AI_CoverWhy") ? Clean(mind->GetStringValue("AI_CoverWhy")) : std::string()) << '\t'
+			      << static_cast<long>(mind->NumberValueExists("AI_SquadLeaderID") ? mind->GetNumberValue("AI_SquadLeaderID") : 0) << '\n';
+		}
+	}
 	const Actor* actor = s_InspectSelected ? FindActor(s_InspectSelected) : nullptr;
 	if (!actor) {
 		return;
+	}
+	// Everything the engine knows of the selected unit's mind and orders, as the debug overlay shows it: "State = name<TAB>value<TAB>1 if text".
+	{
+		std::vector<Actor::DebugStateField> fields;
+		actor->GetDebugState(fields);
+		for (const Actor::DebugStateField& field: fields) {
+			world << "State = " << field.Name << '\t' << Clean(field.Value) << '\t' << (field.Text ? 1 : 0) << '\n';
+		}
 	}
 	// The selected actor's values: "Value = name<TAB>value", in the order Studio shows them.
 	auto value = [&world](const std::string& name, const std::string& text) { world << "Value = " << name << '\t' << Clean(text) << '\n'; };
