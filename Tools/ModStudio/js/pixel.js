@@ -720,6 +720,9 @@ window.MS = window.MS || {};
 		try {
 			await MS.dialogs.saveSprite(linkable ? E.part : null, path, outFrames(), false);
 			E.file = path;
+			if (E.tab) {
+				E.tab.key = spriteKey(path);
+			}
 			await keepUnit();
 		} catch (e) {
 			a.toast('Couldn\'t save the picture: ' + e.message, 'bad');
@@ -888,12 +891,30 @@ window.MS = window.MS || {};
 		target = target || {};
 		const part = target.part || null;
 		const file = part ? part.sprite.file : target.file || null;
-		const key = 'sprite:' + (file || 'new' + ++newCount);
+		const key = file ? spriteKey(file) : 'sprite:new' + ++newCount;
 		const existing = MS.ide.findSpriteTab(key);
 		if (existing) {
 			MS.ide.activate(existing);
 			return;
 		}
+		// One picture, one editor: a second request while the first is still loading (a double click) or in another window comes back to it.
+		if (opening.has(key)) {
+			return;
+		}
+		if (file && (await MS.popout.elsewhere(key))) {
+			a.toast(file.split('/').pop() + ' is already open in another Studio window.', 'good');
+			return;
+		}
+		opening.add(key);
+		try {
+			await openNew(target, part, file, key);
+		} finally {
+			opening.delete(key);
+		}
+	}
+
+	async function openNew(target, part, file, key) {
+		const a = app();
 		const frameCount = part ? part.sprite.frameCount : target.frameCount || 1;
 		let frames = null;
 		if (file) {
@@ -948,6 +969,8 @@ window.MS = window.MS || {};
 	}
 
 	let newCount = 0;
+	const opening = new Set();
+	const spriteKey = (file) => 'sprite:' + file.replace(/\\/g, '/').toLowerCase();
 
 	const $modal = () => document.getElementById('modalCard');
 

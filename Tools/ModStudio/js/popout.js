@@ -15,11 +15,23 @@ window.MS = window.MS || {};
 	}
 
 	let channel = null;
+	const waiting = new Map(); // question id -> resolve
+	let asked = 0;
 	try {
 		channel = new BroadcastChannel('cortex-studio');
 		channel.onmessage = (e) => {
 			const m = e.data || {};
-			if (m.type === 'sprites' && Array.isArray(m.paths) && MS.app && MS.app.forgetSprites) {
+			// Another window asks who has a picture open: the one that does answers, and comes to the front.
+			if (m.type === 'has?' && MS.ide && MS.ide.findSpriteTab && MS.ide.findSpriteTab(m.key)) {
+				channel.postMessage({ type: 'has', key: m.key, id: m.id });
+				try {
+					window.focus();
+				} catch (err) {
+					// the window stays where it is
+				}
+			} else if (m.type === 'has' && waiting.has(m.id)) {
+				waiting.get(m.id)(true);
+			} else if (m.type === 'sprites' && Array.isArray(m.paths) && MS.app && MS.app.forgetSprites) {
 				MS.app.forgetSprites(m.paths);
 				MS.panels && MS.panels.forgetThumbs && MS.panels.forgetThumbs();
 				MS.app.requestDraw();
@@ -98,11 +110,27 @@ window.MS = window.MS || {};
 		MS.ide.closeTab(tab, true);
 	}
 
+	// Whether another window has this sprite tab open (it answers within a moment, or nobody has).
+	function elsewhere(key) {
+		if (!channel) {
+			return Promise.resolve(false);
+		}
+		const id = Date.now() + ':' + ++asked;
+		return new Promise((resolve) => {
+			waiting.set(id, resolve);
+			channel.postMessage({ type: 'has?', key, id });
+			setTimeout(() => {
+				waiting.delete(id);
+				resolve(false);
+			}, 200);
+		});
+	}
+
 	function saved(paths) {
 		if (channel && paths && paths.length) {
 			channel.postMessage({ type: 'sprites', paths });
 		}
 	}
 
-	MS.popout = { request, begin, run, pop, saved };
+	MS.popout = { request, begin, run, pop, saved, elsewhere };
 })();
