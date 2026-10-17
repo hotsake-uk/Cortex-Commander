@@ -212,7 +212,9 @@ window.MS = window.MS || {};
 				a.toast('Studio cannot find ' + req.name + ' in ' + req.path + ' to show it here.', 'bad');
 				return;
 			}
-			MS.ide.setMode('design', true);
+			if (!request) {
+				MS.ide.setMode('design', true); // a pop-out takes the designer's layout as the tab comes up
+			}
 			a.openActor(preset, { newTab: !request });
 		},
 	});
@@ -244,7 +246,7 @@ window.MS = window.MS || {};
 
 	// A tab whose work is now in another window closes here; the only designer stays (the window keeps its place).
 	function letGo(tab) {
-		if (tab.kind !== 'designer' || MS.ide.tabs.filter((t) => t.kind === 'designer').length > 1) {
+		if (tab.kind !== 'designer' || MS.ide.tabs.filter((t) => t.kind === 'designer').length > 1 || request) {
 			MS.ide.closeTab(tab, true);
 		}
 	}

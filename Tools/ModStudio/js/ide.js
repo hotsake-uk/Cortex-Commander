@@ -143,7 +143,9 @@ window.MS = window.MS || {};
 		for (const b of document.querySelectorAll('#modeSwitch button')) {
 			b.classList.toggle('sel', b.dataset.mode === mode);
 		}
-		app.writeLocal('ms.mode', mode);
+		if (!MS.popout.request) {
+			app.writeLocal('ms.mode', mode);
+		}
 		if (mode === 'deep') {
 			if (!ide.view) {
 				// the browser is the left menu, unless another view was chosen (the old Data editors view is in the browser now)
@@ -783,6 +785,16 @@ window.MS = window.MS || {};
 		renderTabs();
 	};
 
+	// Which tabs the bar shows. The main window: in Design mode the designer and the sprite editors, in Script mode them all. A pop-out: every
+	// tab it holds (dragged in from other windows too), whatever the mode, but not an empty designer it has only because every window has one.
+	function tabShown(t) {
+		if (MS.popout.request) {
+			return t.kind !== 'designer' || !!(t === ide.currentDesigner ? app.actor : t.state && t.state.actor);
+		}
+		return ide.mode === 'deep' || t.kind === 'designer' || !!t.sprite;
+	}
+	ide.tabShown = tabShown;
+
 	function renderTabs() {
 		const bar = $('tabbar');
 		bar.innerHTML = '';
@@ -807,7 +819,7 @@ window.MS = window.MS || {};
 			});
 		}
 		// Design mode has tabs too, but only the designer and the sprite editors; Script mode has them all.
-		const shown = ide.tabs.filter((t) => (!MS.popout.request || MS.popout.request.k === 'design' || t.kind !== 'designer') && (ide.mode === 'deep' || t.kind === 'designer' || t.sprite));
+		const shown = ide.tabs.filter(tabShown);
 		$('app').classList.toggle('has-tabs', ide.mode === 'deep' || shown.some((t) => t.sprite) || shown.filter((t) => t.kind === 'designer').length > 1);
 		for (const tab of shown) {
 			const dirty = tabDirty(tab) || !!(tab.sprite && tab.px && tab.px.dirty);
@@ -841,7 +853,7 @@ window.MS = window.MS || {};
 				};
 				item.append(pop);
 			}
-			if (tab.kind !== 'designer' || ide.tabs.filter((t) => t.kind === 'designer').length > 1) {
+			if (tab.kind !== 'designer' || ide.tabs.filter((t) => t.kind === 'designer').length > 1 || MS.popout.request) {
 				const close = el('button', { className: 'tab-close', textContent: dirty ? '●' : '×', title: 'Close (Ctrl+W)' });
 				close.onclick = (e) => {
 					e.stopPropagation();
@@ -851,7 +863,7 @@ window.MS = window.MS || {};
 			}
 			item.onclick = () => ide.activate(tab);
 			item.onauxclick = (e) => {
-				if (e.button === 1 && (tab.kind !== 'designer' || ide.tabs.filter((t) => t.kind === 'designer').length > 1)) {
+				if (e.button === 1 && (tab.kind !== 'designer' || ide.tabs.filter((t) => t.kind === 'designer').length > 1 || MS.popout.request)) {
 					ide.closeTab(tab);
 				}
 			};
@@ -884,6 +896,17 @@ window.MS = window.MS || {};
 	ide.tabIsDirty = (tab) => tabDirty(tab) || !!(tab.sprite && tab.px && tab.px.dirty);
 
 	ide.activate = function (tab) {
+		if (MS.popout.request) {
+			const deep = tab.kind === 'designer' ? false : tab.sprite ? ide.mode === 'deep' : true;
+			if ((ide.mode === 'deep') !== deep) {
+				ide.mode = deep ? 'deep' : 'artist';
+				$('app').classList.toggle('deep', deep);
+				if (deep && app.lib) {
+					startDeep();
+				}
+			}
+			$('app').classList.toggle('popout-design', tab.kind === 'designer');
+		}
 		if (ide.active && ide.active.kind === 'code' && ide.editor && ide.editor.getModel() === ide.active.model) {
 			ide.active.viewState = ide.editor.saveViewState();
 		}
@@ -1004,7 +1027,7 @@ window.MS = window.MS || {};
 			]);
 			return;
 		}
-		if (tab.kind === 'designer' && ide.tabs.filter((t) => t.kind === 'designer').length < 2) {
+		if (tab.kind === 'designer' && ide.tabs.filter((t) => t.kind === 'designer').length < 2 && !MS.popout.request) { // the main window keeps one designer; a pop-out can let its last one go
 			return;
 		}
 		const index = ide.tabs.indexOf(tab);
@@ -1021,7 +1044,7 @@ window.MS = window.MS || {};
 			tab.model = null;
 		}
 		// In a pop-out window, closing the last tab it shows closes the window.
-		if (MS.popout.request && !ide.tabs.some((t) => t.kind !== 'designer' || MS.popout.request.k === 'design')) {
+		if (MS.popout.request && !ide.tabs.some(tabShown)) {
 			MS.popout.closeWindow();
 			return;
 		}
