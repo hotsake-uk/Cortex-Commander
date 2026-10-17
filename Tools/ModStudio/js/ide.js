@@ -465,7 +465,7 @@ window.MS = window.MS || {};
 		ide.editor = monaco.editor.create($('codeHost'), {
 			theme: 'cortex',
 			automaticLayout: true,
-			fontSize: 13,
+			fontSize: MS.theme.codeSize(),
 			fontFamily: 'ui-monospace, Consolas, "Cascadia Mono", monospace',
 			minimap: { enabled: true, scale: 1, renderCharacters: false },
 			tabSize: 4,
