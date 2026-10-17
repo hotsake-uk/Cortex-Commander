@@ -176,9 +176,12 @@ void UnitSprings::UpdateActor(Actor& actor, BodySprings& springs, bool onGround,
 	ACrab* crab = human ? nullptr : dynamic_cast<ACrab*>(&actor);
 	Attachable* head = human ? human->GetHead() : nullptr;
 	HeldDevice* gun = human ? human->GetEquippedItem() : nullptr;
-	bool legless = crab && crab->IsBornLegless();
+	// A body dying or dead is soft all over: it squashes where it lands and wobbles back (as a legless ooze does), its parts too
+	// (Attachable::UpdateSeveredSquash), rather than its upper body riding on its legs.
+	bool corpse = actor.GetStatus() == Actor::DYING || actor.GetStatus() == Actor::DEAD;
+	bool legless = (crab && crab->IsBornLegless()) || corpse;
 
-	if (!Enabled() || deltaTime <= 0.0F || actor.GetStatus() == Actor::DEAD) {
+	if (!Enabled() || deltaTime <= 0.0F) {
 		springs.Body.Reset();
 		springs.Head.Reset();
 		springs.Gun.Reset();
@@ -194,7 +197,7 @@ void UnitSprings::UpdateActor(Actor& actor, BodySprings& springs, bool onGround,
 		return;
 	}
 
-	float softness = actor.GetSoftness() * Strength();
+	float softness = actor.GetSoftness() * Strength() * (corpse ? 1.5F : 1.0F);
 	springs.Softness = softness;
 	springs.Height = std::clamp(actor.GetRadius() * 1.6F, 12.0F, 240.0F);
 	float mass = std::max(actor.GetMass(), 1.0F);
@@ -241,6 +244,9 @@ void UnitSprings::UpdateActor(Actor& actor, BodySprings& springs, bool onGround,
 	}
 	if (legless) {
 		body.m_Y = 0.0F;
+	}
+	if (corpse) {
+		body.Reset();
 	}
 	actor.SetDrawNudge(body);
 	if (head) {

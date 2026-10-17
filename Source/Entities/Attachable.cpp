@@ -6,6 +6,8 @@
 #include "PerformanceMan.h"
 #include "AEmitter.h"
 #include "Actor.h"
+#include "ACrab.h"
+#include "AHuman.h"
 #include "PieMenu.h"
 #include "Material.h"
 #include "TimerMan.h"
@@ -417,8 +419,14 @@ void Attachable::Update() {
 
 	MOSRotating::Update();
 
+	// Torn off a unit, or still on one that's dying or dead (a corpse is soft all over): squashed where it lands (UnitSprings).
 	if (!m_Parent && m_Severed) {
 		UpdateSeveredSquash();
+	} else if (m_Parent && GetRootParent()->IsActor() && !IsWound()) {
+		const Actor* owner = dynamic_cast<const Actor*>(GetRootParent());
+		if (owner && (owner->GetStatus() == Actor::DYING || owner->GetStatus() == Actor::DEAD) && (dynamic_cast<const AHuman*>(owner) || dynamic_cast<const ACrab*>(owner))) {
+			UpdateSeveredSquash();
+		}
 	}
 
 	if (m_Parent && m_InheritsFrame) {
@@ -465,16 +473,16 @@ void Attachable::UpdateSeveredSquash() {
 	float hardness = knock.GetMagnitude();
 	if (hardness > 1.5F && softness > 0.0F) {
 		m_SquashAxis = knock / hardness;
-		m_SquashSpeed += std::min(hardness * 0.9F, 9.0F) * softness;
+		m_SquashSpeed += std::min(hardness * 3.0F, 25.0F) * softness;
 	}
-	float omega = 2.0F * c_PI * 6.0F;
+	float omega = 2.0F * c_PI * 4.0F;
 	int steps = 4;
 	float step = deltaTime / static_cast<float>(steps);
 	for (int i = 0; i < steps; ++i) {
-		m_SquashSpeed += (-omega * omega * m_Squash - 2.0F * 0.25F * omega * m_SquashSpeed) * step;
+		m_SquashSpeed += (-omega * omega * m_Squash - 2.0F * 0.22F * omega * m_SquashSpeed) * step;
 		m_Squash += m_SquashSpeed * step;
 	}
-	m_Squash = std::clamp(m_Squash, -0.25F, 0.35F);
+	m_Squash = std::clamp(m_Squash, -0.35F, 0.45F);
 	if (std::abs(m_Squash) < 0.005F && std::abs(m_SquashSpeed) < 0.05F) {
 		m_Squash = 0.0F;
 		m_SquashSpeed = 0.0F;

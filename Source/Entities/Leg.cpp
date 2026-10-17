@@ -370,7 +370,7 @@ void Leg::UpdateFlop() {
 	float steps = 4.0F;
 	float step = deltaTime / steps;
 	for (int i = 0; i < 4; ++i) {
-		m_FlopSpeed += (swing * 0.15F - 12.0F * m_Flop - 2.5F * m_FlopSpeed) * step;
+		m_FlopSpeed += (swing * 0.5F - 12.0F * m_Flop - 2.0F * m_FlopSpeed) * step;
 		m_Flop += m_FlopSpeed * step;
 	}
 	m_FlopSpeed -= m_AngularVel * 0.02F;
