@@ -34,6 +34,7 @@ import './navigation.js';
 import './relations.js';
 import './popout.js';
 import './external.js';
+import './settings.js';
 import './shortcuts.js';
 import './ide.js';
 import './live.js';
