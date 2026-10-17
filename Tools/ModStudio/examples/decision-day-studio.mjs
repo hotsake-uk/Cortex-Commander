@@ -10,8 +10,10 @@ for (const file of ['flowmodel.js', 'flowlua.js']) {
 	vm.runInThisContext(fs.readFileSync(new URL(file, JS), 'utf8'), { filename: file });
 }
 const F = window.MS.flow;
-// usage: node examples/decision-day-studio.mjs <your mod's Activities folder>  (then add IncludeFile = <mod>/Activities/DecisionDayStudio.ini to its Index.ini)
+// usage: node examples/decision-day-studio.mjs <your mod's Activities folder> [map]  (then add IncludeFile = <mod>/Activities/DecisionDayStudio.ini to its Index.ini)
 const out = process.argv[2] || '.';
+// the map it plays on: Decision Day, or a copy of it (one that CopyOf's it keeps every area), e.g. "Decision Day (1234)"
+const SCENE = process.argv[3] || 'Decision Day';
 const CLS = 'DecisionDayStudio';
 
 const g = F.create();
@@ -193,7 +195,7 @@ const script = F.apply(base, CLS, g);
 const ini = [
 	'AddActivity = GAScripted',
 	'\tPresetName = Decision Day (Studio)',
-	'\tSceneName = Decision Day',
+	'\tSceneName = ' + SCENE,
 	'\tDescription = Decision Day, remade with the Mission Editor: take the bunkers one by one, find the tunnel, bring down the shield and destroy the brain.',
 	'\tScriptPath = 123.rte/Activities/DecisionDayStudio.lua',
 	'\tLuaClassName = ' + CLS,
