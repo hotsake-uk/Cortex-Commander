@@ -269,28 +269,7 @@ window.MS = window.MS || {};
 
 	function setUpMonaco() {
 		const monaco = ide.monaco;
-		monaco.editor.defineTheme('cortex', {
-			base: 'vs-dark',
-			inherit: true,
-			rules: [
-				{ token: 'key', foreground: '7fd1ff' },
-				{ token: 'type', foreground: 'f2b63d' },
-				{ token: 'string.path', foreground: '9fd88a' },
-				{ token: 'comment', foreground: '6a7486', fontStyle: 'italic' },
-			],
-			colors: {
-				'editor.background': '#101216',
-				'editor.lineHighlightBackground': '#171b22',
-				'editorLineNumber.foreground': '#4a5262',
-				'editorLineNumber.activeForeground': '#8d96a8',
-				'editorCursor.foreground': '#f2b63d',
-				'editor.selectionBackground': '#2c3a52',
-				'editorWidget.background': '#1b1f27',
-				'editorSuggestWidget.background': '#1b1f27',
-				'editorSuggestWidget.selectedBackground': '#2a3142',
-				'editorHoverWidget.background': '#1b1f27',
-			},
-		});
+		MS.theme.defineMonaco(monaco);
 		monaco.languages.register({ id: 'ccini', extensions: ['.ini'] });
 		monaco.languages.setMonarchTokensProvider('ccini', MS.IniIntel.monarch);
 		monaco.languages.setLanguageConfiguration('ccini', { comments: { lineComment: '//', blockComment: ['/*', '*/'] } });

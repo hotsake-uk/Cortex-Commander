@@ -421,8 +421,8 @@ window.MS = window.MS || {};
 		if (!fixedMax) {
 			series.forEach((p) => p.teams.forEach((t) => { max = Math.max(max, pick(t)); }));
 		}
-		ctx.strokeStyle = 'rgba(255,255,255,.08)';
-		ctx.fillStyle = '#8b93a1';
+		ctx.strokeStyle = MS.theme.ov(0.08);
+		ctx.fillStyle = MS.theme.dim();
 		ctx.font = '10px sans-serif';
 		for (let i = 0; i <= 2; i++) {
 			const y = 4 + ((h - 18) * i) / 2;
@@ -455,7 +455,7 @@ window.MS = window.MS || {};
 			}
 			ctx.stroke();
 		}
-		ctx.fillStyle = '#8b93a1';
+		ctx.fillStyle = MS.theme.dim();
 		ctx.fillText(Math.round(span / 1000) + ' s of this watch  ·  ' + unit, 26, h - 3);
 	}
 

@@ -197,7 +197,7 @@ window.MS = window.MS || {};
 		// its own origin (its JointOffset, back from the joint). Arms reach to the hand, legs to the ankle. Each role has its colour and name.
 		drawSkeleton(ctx, poses) {
 			const app = this.app;
-			const COLOURS = { body: '#f2b63d', head: '#ff8f6b', jetpack: '#b48cff', fgarm: '#4fc37a', bgarm: '#2f8f57', fgleg: '#7fd1ff', bgleg: '#4a90b8', foot: '#a8e6ff', device: '#ef6a5b', magazine: '#e3a3ff', flash: '#ffd84f', turret: '#ff8f6b', mounted: '#ef6a5b', leg: '#7fd1ff', engine: '#b48cff', thruster: '#b48cff', door: '#c8ccd6' };
+			const COLOURS = { body: MS.theme.accent(), head: '#ff8f6b', jetpack: '#b48cff', fgarm: '#4fc37a', bgarm: '#2f8f57', fgleg: MS.theme.blue(), bgleg: '#4a90b8', foot: '#a8e6ff', device: '#ef6a5b', magazine: '#e3a3ff', flash: '#ffd84f', turret: '#ff8f6b', mounted: '#ef6a5b', leg: MS.theme.blue(), engine: '#b48cff', thruster: '#b48cff', door: '#c8ccd6' };
 			const colourOf = (part) => COLOURS[part.role] || '#c8ccd6';
 			const names = MS.Rig.ROLE_NAMES;
 			const line = (a, b, colour, width, dash) => {
@@ -274,9 +274,9 @@ window.MS = window.MS || {};
 					y += 15;
 				}
 				taken.push({ x, y, w: width });
-				ctx.fillStyle = l.selected ? 'rgba(242,182,61,.95)' : 'rgba(0,0,0,.7)';
+				ctx.fillStyle = l.selected ? MS.theme.accentA(0.95) : 'rgba(0,0,0,.7)';
 				ctx.fillRect(x, y - 7.5, width, 15);
-				ctx.fillStyle = l.selected ? '#1d1503' : l.colour;
+				ctx.fillStyle = l.selected ? MS.theme.css('--accent-ink') : l.colour;
 				ctx.fillText(l.text, x + 4, y);
 			}
 		}
@@ -302,7 +302,7 @@ window.MS = window.MS || {};
 
 		drawGrid(ctx, o, z, w, h) {
 			if (z >= 5) {
-				ctx.strokeStyle = 'rgba(255,255,255,0.035)';
+				ctx.strokeStyle = MS.theme.ov(0.035);
 				ctx.lineWidth = 1;
 				ctx.beginPath();
 				const startX = ((o.x % z) + z) % z;
@@ -318,7 +318,7 @@ window.MS = window.MS || {};
 				ctx.stroke();
 			}
 			// Every 10 pixels, and the actor's origin.
-			ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+			ctx.strokeStyle = MS.theme.ov(0.07);
 			ctx.beginPath();
 			const step = z * 10;
 			for (let x = ((o.x % step) + step) % step; x < w; x += step) {
@@ -534,7 +534,7 @@ window.MS = window.MS || {};
 			}
 			const screen = corners.map((p) => this.toScreen(p));
 			ctx.save();
-			ctx.strokeStyle = '#f2b63d';
+			ctx.strokeStyle = MS.theme.accent();
 			ctx.lineWidth = 1.5;
 			ctx.setLineDash([5, 4]);
 			ctx.beginPath();
@@ -543,7 +543,7 @@ window.MS = window.MS || {};
 			ctx.stroke();
 			ctx.setLineDash([]);
 			const h = screen[2];
-			ctx.fillStyle = '#f2b63d';
+			ctx.fillStyle = MS.theme.accent();
 			ctx.fillRect(h.x - 5, h.y - 5, 10, 10);
 			ctx.restore();
 			this.resizeHandle = { x: h.x, y: h.y, origin: screen[0] };
@@ -571,7 +571,7 @@ window.MS = window.MS || {};
 			if (this.hover && this.hover !== sel) {
 				for (const item of this.drawList) {
 					if (item.part === this.hover && item.kind === 'sprite') {
-						outline(item, 'rgba(255,255,255,0.35)', 1);
+						outline(item, MS.theme.ov(0.35), 1);
 					}
 				}
 			}
@@ -584,10 +584,10 @@ window.MS = window.MS || {};
 			}
 			for (const item of this.drawList) {
 				if (item.part === sel && item.kind === 'sprite') {
-					outline(item, 'rgba(242,182,61,0.95)', 1.5);
+					outline(item, MS.theme.accentA(0.95), 1.5);
 				}
 			}
-			const accent = '#f2b63d';
+			const accent = MS.theme.accent();
 			const dot = (p, color, r, kind, label) => {
 				const s = this.toScreen(p);
 				ctx.fillStyle = color;
@@ -602,7 +602,7 @@ window.MS = window.MS || {};
 					ctx.fillStyle = 'rgba(0,0,0,0.6)';
 					const tw = ctx.measureText(label).width;
 					ctx.fillRect(s.x + 8, s.y - 8, tw + 8, 16);
-					ctx.fillStyle = '#e8eaf0';
+					ctx.fillStyle = '#f2f4f8';
 					ctx.fillText(label, s.x + 12, s.y + 4);
 				}
 				if (kind) {
@@ -625,7 +625,7 @@ window.MS = window.MS || {};
 				if (parentPose && this.options.joints) {
 					const a = this.toScreen(parentPose.pos);
 					const b = this.toScreen(pose.joint);
-					ctx.strokeStyle = 'rgba(242,182,61,0.5)';
+					ctx.strokeStyle = MS.theme.accentA(0.5);
 					ctx.setLineDash([3, 3]);
 					ctx.beginPath();
 					ctx.moveTo(a.x, a.y);
@@ -635,7 +635,7 @@ window.MS = window.MS || {};
 				}
 			}
 			const origin = this.toScreen(pose.pos);
-			ctx.strokeStyle = '#7fd1ff';
+			ctx.strokeStyle = MS.theme.blue();
 			ctx.lineWidth = 1.5;
 			ctx.beginPath();
 			ctx.moveTo(origin.x - 5, origin.y);
@@ -647,24 +647,24 @@ window.MS = window.MS || {};
 			const role = sel.role;
 			if ((role === 'fgarm' || role === 'bgarm') && pose.hand) {
 				if (this.options.reach) {
-					ring(pose.joint, pose.reach.max, 'rgba(127,209,255,0.45)');
-					ring(pose.joint, pose.reach.min, 'rgba(127,209,255,0.3)', [3, 3]);
+					ring(pose.joint, pose.reach.max, MS.theme.blueA(0.45));
+					ring(pose.joint, pose.reach.min, MS.theme.blueA(0.3), [3, 3]);
 				}
 				const holding = role === 'fgarm' && app.rig.device;
 				const label = holding ? 'Grip (StanceOffset)' : pose.supporting ? 'Support (SupportOffset)' : 'Hand rest (IdleOffset)';
-				dot(pose.hand, '#7fd1ff', 5, holding ? 'stance' : pose.supporting ? 'support' : 'idle', label);
+				dot(pose.hand, MS.theme.blue(), 5, holding ? 'stance' : pose.supporting ? 'support' : 'idle', label);
 			}
 			if ((role === 'fgleg' || role === 'bgleg') && pose.ankle && this.options.reach) {
-				ring(pose.joint, pose.reach.max, 'rgba(127,209,255,0.45)');
-				ring(pose.joint, pose.reach.min, 'rgba(127,209,255,0.3)', [3, 3]);
-				dot(pose.ankle, '#7fd1ff', 3, null, null);
+				ring(pose.joint, pose.reach.max, MS.theme.blueA(0.45));
+				ring(pose.joint, pose.reach.min, MS.theme.blueA(0.3), [3, 3]);
+				dot(pose.ankle, MS.theme.blue(), 3, null, null);
 			}
 			if (role === 'device') {
 				if (pose.muzzle) {
 					dot(pose.muzzle, '#ef6a5b', 5, 'muzzle', 'Muzzle');
 				}
 				if (pose.support) {
-					dot(pose.support, '#7fd1ff', 4, 'support', 'Support');
+					dot(pose.support, MS.theme.blue(), 4, 'support', 'Support');
 				}
 			}
 			if (role === 'body' && app.rig.isDevice) {
@@ -675,7 +675,7 @@ window.MS = window.MS || {};
 					dot(pose.eject, '#c9a0ff', 4, 'eject', 'Shells (EjectionOffset)');
 				}
 				if (pose.support) {
-					dot(pose.support, '#7fd1ff', 4, 'support', 'Support hand (SupportOffset)');
+					dot(pose.support, MS.theme.blue(), 4, 'support', 'Support hand (SupportOffset)');
 				}
 				dot(pose.joint, accent, 6, 'joint', 'Grip (JointOffset)');
 			}
