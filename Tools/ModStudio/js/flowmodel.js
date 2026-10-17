@@ -166,6 +166,7 @@ window.MS = window.MS || {};
 	const relevant = (spec, p, key) => !spec.relevant || spec.relevant(p || {}, key);
 
 	const isStage = (k) => !!KINDS[k] && KINDS[k].category === 'stage';
+	const isCodeStage = (v) => typeof v === 'string' && v.startsWith('code:');
 	const defaults = (params) => Object.assign({}, ...params.map(([key, , , def]) => ({ [key]: def })));
 	const condDefaults = (name) => Object.assign({ kind: name }, defaults(CONDS[name].params));
 
@@ -340,6 +341,14 @@ window.MS = window.MS || {};
 	function problems(g, ctx) {
 		const found = [];
 		const areas = ctx && Array.isArray(ctx.areas) ? ctx.areas : null;
+		// a stage is one of the graph's, or one the script keeps in its own code ("code:attackBrain")
+		const codeStages = ctx && Array.isArray(ctx.codeStages) ? ctx.codeStages : null;
+		const stageOk = (v) => {
+			if (isCodeStage(v)) {
+				return !codeStages || codeStages.includes(v.slice(5));
+			}
+			return !!v && !!find(g, v) && isStage(find(g, v).kind);
+		};
 		const add = (id, level, message) => found.push({ id, level, message });
 		for (const n of g.nodes) {
 			const spec = KINDS[n.kind];
@@ -368,8 +377,8 @@ window.MS = window.MS || {};
 					}
 				} else if (type === 'fn' && !/^[A-Za-z_][A-Za-z0-9_ ]*$/.test(String(v || ''))) {
 					add(n.id, 'error', 'Give the function a name made of letters and numbers.');
-				} else if (type === 'stage' && (!v || !find(g, v) || !isStage(find(g, v).kind))) {
-					add(n.id, 'error', 'Pick which stage to jump to.');
+				} else if (type === 'stage' && !stageOk(v)) {
+					add(n.id, 'error', isCodeStage(v) ? 'The script has no stage called ' + v.slice(5) + '.' : 'Pick which stage to jump to.');
 				}
 			}
 			if (n.kind === 'branch') {
@@ -383,8 +392,8 @@ window.MS = window.MS || {};
 						if (type === 'area' && (!v || (areas && !areas.includes(v)))) {
 							add(n.id, v ? 'warn' : 'error', v ? 'The scene has no area called "' + v + '".' : 'A condition needs an area.');
 						}
-						if (type === 'stage' && (!v || !find(g, v))) {
-							add(n.id, 'error', 'A condition needs a stage.');
+						if (type === 'stage' && !stageOk(v)) {
+							add(n.id, 'error', isCodeStage(v) ? 'The script has no stage called ' + v.slice(5) + '.' : 'A condition needs a stage.');
 						}
 						if (type === 'capture' && (!v || !find(g, v))) {
 							add(n.id, 'error', 'A condition needs a capture point.');
@@ -647,6 +656,6 @@ window.MS = window.MS || {};
 	MS.flow = Object.assign(MS.flow || {}, {
 		KINDS, ORDER, CONDS, CATEGORIES, BATTLE_MODES, OPS, merge, LIST_ROWS, AI_MODES, VAR_OPS, relevant, V,
 		create, addNode, find, incoming, whyNot, connect, disconnect, removeNode, clone, addCondition, condDefaults,
-		chainFrom, entries, stages, firstStage, isStage, problems, layout, migrate, reaches,
+		chainFrom, entries, stages, firstStage, isStage, isCodeStage, problems, layout, migrate, reaches,
 	});
 })();

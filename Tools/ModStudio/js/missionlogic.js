@@ -241,7 +241,7 @@ window.MS = window.MS || {};
 		}
 		const doc = docFor(scenario);
 		doc.ctx = ctx;
-		const problems = () => F().problems(doc.g, { areas: ctx.areas() });
+		const problems = () => F().problems(doc.g, { areas: ctx.areas(), codeStages: scriptStages(path, ctx).map((c) => c.name) });
 		const pickers = MS.scenarios && MS.scenarios.missionHost;
 		const view = new MS.FlowView({
 			state: doc.state,
@@ -263,6 +263,7 @@ window.MS = window.MS || {};
 			pickUnit: (cb) => pickers.pickUnit(cb),
 			pickItem: (cb) => pickers.pickItem(cb),
 			highlight: (names) => ctx.highlight(names),
+			codeStages: () => scriptStages(path, ctx).map((c) => ({ name: c.name, label: words(c.name) })),
 			selected: (ids) => {
 				const names = new Set();
 				for (const id of ids) {
@@ -314,7 +315,8 @@ window.MS = window.MS || {};
 			el('b', { textContent: 'Build the mission here.' }), ' Right-click empty space to add a node, or right-click an area on the map to make it an objective or a trigger. ',
 			'Drag from a node\'s exit (the dots on its right) to wire what happens next. Or start from a ready-made mission.');
 		const stages = stagesPanel(doc, scenario, ctx, path, locked);
-		host.replaceChildren(...[locked ? el('div', { className: 'ed-banner', textContent: 'This scenario belongs to ' + scenario.module + ': its mission can be looked at, not changed.' }) : null, bar, stages, help, view.root].filter(Boolean));
+		host.replaceChildren(...[locked ? el('div', { className: 'ed-banner', textContent: 'This scenario belongs to ' + scenario.module + ': its mission can be looked at, not changed.' }) : null, bar,
+			el('div', { className: 'ml-body' }, stages, el('div', { className: 'ml-main' }, ...[help, view.root].filter(Boolean)))].filter(Boolean));
 		doc.hint = help;
 		view.render();
 		doc.refreshStages();
@@ -394,7 +396,7 @@ window.MS = window.MS || {};
 				if (studio.has(i) || !re.test(l) || /self\.stages\s*=/.test(l)) {
 					return;
 				}
-				uses.push({ line: i + 1, text: l.trim() });
+				uses.push({ line: i + 1, text: l.trim(), what: useOf(l, name) });
 				// "if/elseif self.currentStage == self.stages.name ... then": the code up to the next elseif/else/end at its depth runs for this stage
 				const quoted = [l];
 				if (/==\s*self\.stages\./.test(l) && /\bthen\s*$/.test(l)) {
@@ -419,89 +421,144 @@ window.MS = window.MS || {};
 		});
 	}
 
+	// What a line does with a stage, in words: moves to it, runs code on it, or checks for before or after it.
+	function useOf(line, name) {
+		const op = new RegExp('currentStage\\s*(==|~=|<=|>=|<|>|=)\\s*self\\.stages\\.' + name + '(?!\\w)').exec(line);
+		switch (op && op[1]) {
+			case '=': return 'moves to this stage';
+			case '==': return /\bthen\s*$/.test(line) ? 'code that runs on this stage' : 'checks it is on this stage';
+			case '~=': return 'checks it is not on this stage';
+			case '<': return 'checks it is before this stage';
+			case '<=': return 'checks it is up to this stage';
+			case '>': return 'checks it is past this stage';
+			case '>=': return 'checks it is at or past this stage';
+			default: return 'uses this stage';
+		}
+	}
+
 	// "attackFrontBunker" -> "Attack front bunker"
 	const words = (name) => {
 		const s = name.replace(/_/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase();
 		return s.charAt(0).toUpperCase() + s.slice(1);
 	};
 
-	// The strip above the graph: the stages in order, from the graph and from the script's own code. Picking one lights its nodes and its areas.
+	// The script's own stages, read once per version of its text.
+	let codeMemo = { text: null, areas: '', list: [] };
+	function scriptStages(path, ctx) {
+		const text = scriptText(path) || '';
+		const areaNames = ctx.areas();
+		const areaKey = areaNames.join('\n');
+		if (codeMemo.text !== text || codeMemo.areas !== areaKey) {
+			codeMemo = { text, areas: areaKey, list: codeStages(text, areaNames) };
+		}
+		return codeMemo.list;
+	}
+
+	// The list beside the graph: the mission's stages in order, then the ones the script keeps in its own code. Picking one lights its nodes in
+	// the graph and its areas on the map, and opens it to show what it is made of.
 	function stagesPanel(doc, scenario, ctx, path, locked) {
-		const box = el('div', { className: 'ml-stages' });
+		const box = el('div', { className: 'ml-side' });
+		const chip = (a) => el('button', { className: 'ml-chip', textContent: a, title: 'Show it on the map', onclick: (e) => {
+			e.stopPropagation();
+			ctx.highlight([a]);
+		} });
+		const addStage = (e) => {
+			doc.view.palette(e.clientX, e.clientY + 10, (k) => k.category === 'stage', (kind) => change(doc, 'add a stage', (g) => {
+				const count = F().stages(g).length;
+				// after the end of the chain that runs from the start
+				let last = F().firstStage(g);
+				for (const seen = new Set(); last && last.out && last.out.next && !seen.has(last.id); last = F().find(g, last.out.next)) {
+					seen.add(last.id);
+				}
+				const at = last ? { x: last.x + 360, y: last.y } : freeSpot(g, 0);
+				const n = F().addNode(g, kind, at.x, at.y, { name: 'Stage ' + (count + 1) });
+				if (last) {
+					last.out.next = n.id;
+				}
+				doc.stageSel = { id: n.id };
+			}));
+		};
 		const draw = () => {
 			const g = doc.g;
 			const view = doc.view;
-			const ordered = stageOrder(g);
-			const coded = codeStages(scriptText(path) || '', ctx.areas());
+			if (doc.state.stagesHidden) {
+				box.classList.add('closed');
+				box.replaceChildren(el('button', { className: 'ml-side-open', title: 'Show the stages', onclick: () => {
+					doc.state.stagesHidden = false;
+					draw();
+				} }, '›', el('span', { textContent: 'Stages' })));
+				return;
+			}
+			box.classList.remove('closed');
 			const sel = doc.stageSel || null;
-			const chips = [];
+			const ordered = stageOrder(g);
+			const coded = scriptStages(path, ctx);
+			const rows = [];
 			ordered.forEach((s, i) => {
 				const spec = F().KINDS[s.kind];
-				chips.push(el('button', { className: 'ml-stage' + (sel && sel.id === s.id ? ' on' : ''), title: spec ? spec.title : s.kind, onclick: () => {
-					doc.stageSel = { id: s.id };
-					const ids = stageNodes(g, s);
-					view.pick(ids);
+				const on = !!sel && sel.id === s.id;
+				const ids = stageNodes(g, s);
+				const areas = new Set();
+				ids.forEach((id) => areasOfNode(F().find(g, id)).forEach((a) => areas.add(a)));
+				rows.push(el('div', { className: 'ml-st' + (on ? ' on' : ''), onclick: () => {
+					doc.stageSel = on ? null : { id: s.id };
+					const lit = on ? [] : ids;
+					view.pick(lit);
 					for (const [id, e] of view.nodeEls) {
-						e.classList.toggle('lit', ids.includes(id));
+						e.classList.toggle('lit', lit.includes(id));
 					}
-					const r = view.root.getBoundingClientRect();
-					view.state.view.x = r.width / 2 - (s.x + 140) * view.state.view.z;
-					view.state.view.y = r.height / 3 - s.y * view.state.view.z;
-					view.place();
+					if (!on) {
+						const r = view.root.getBoundingClientRect();
+						view.state.view.x = r.width / 2 - (s.x + 140) * view.state.view.z;
+						view.state.view.y = r.height / 3 - s.y * view.state.view.z;
+						view.place();
+					}
 					draw();
-				} }, el('b', { textContent: String(i + 1) }), (s.p && s.p.name) || (spec ? spec.title : s.kind)));
+				} },
+				el('span', { className: 'ml-st-n', textContent: String(i + 1) }),
+				el('div', { className: 'ml-st-text' },
+					el('div', { className: 'ml-st-name', textContent: (s.p && s.p.name) || 'Stage ' + (i + 1) }),
+					el('div', { className: 'ml-st-sub', textContent: spec ? spec.title.replace(/^Goal: /, '') : s.kind }),
+					on ? el('div', { className: 'ml-st-more' },
+						el('div', { textContent: ids.length + ' node' + (ids.length === 1 ? '' : 's') + ' in this stage' + (areas.size ? ', using:' : ', no areas') }),
+						areas.size ? el('div', { className: 'ml-chips' }, ...[...areas].map(chip)) : null) : null)));
 			});
-			chips.push(el('button', { className: 'tb ml-add-stage', textContent: '+ Stage', disabled: locked, title: 'Add a stage after the last one', onclick: (e) => {
-				view.palette(e.clientX, e.clientY + 20, (k) => k.category === 'stage', (kind) => change(doc, 'add a stage', (gg) => {
-					const all = stageOrder(gg);
-					// the end of the chain that runs from the start
-					let last = F().firstStage(gg);
-					for (const seen = new Set(); last && last.out && last.out.next && !seen.has(last.id); last = F().find(gg, last.out.next)) {
-						seen.add(last.id);
-					}
-					const at = last ? { x: last.x + 360, y: last.y } : freeSpot(gg, 0);
-					const n = F().addNode(gg, kind, at.x, at.y, { name: 'Stage ' + (all.length + 1) });
-					if (last) {
-						last.out.next = n.id;
-					}
-					doc.stageSel = { id: n.id };
-				}));
-			} }));
-			const rows = [el('div', { className: 'ml-stage-row' }, el('span', { className: 'ml-stage-head', textContent: 'Stages' }), ...chips)];
-			if (coded.length) {
-				rows.push(el('div', { className: 'ml-stage-row' }, el('span', { className: 'ml-stage-head', textContent: 'In code', title: 'Stages the script runs in its own code (self.stages). Change them in the script.' }),
-					...coded.map((c, i) => el('button', { className: 'ml-stage code' + (sel && sel.code === c.name ? ' on' : ''), title: c.name + (c.areas.length ? '\nAreas: ' + c.areas.join(', ') : ''), onclick: () => {
-						doc.stageSel = { code: c.name };
-						ctx.highlight(c.areas);
-						if (view) {
-							view.pick([]);
-						}
+			const codeRows = coded.map((c, i) => {
+				const on = !!sel && sel.code === c.name;
+				return el('div', { className: 'ml-st code' + (on ? ' on' : ''), onclick: () => {
+					doc.stageSel = on ? null : { code: c.name };
+					ctx.highlight(on ? [] : c.areas);
+					view.pick([]);
+					draw();
+				} },
+				el('span', { className: 'ml-st-n', textContent: String(i + 1) }),
+				el('div', { className: 'ml-st-text' },
+					el('div', { className: 'ml-st-name', textContent: words(c.name), title: c.name }),
+					el('div', { className: 'ml-st-sub', textContent: (c.areas.length ? c.areas.length + ' area' + (c.areas.length === 1 ? '' : 's') + ' · ' : '') + c.uses.length + ' line' + (c.uses.length === 1 ? '' : 's') + ' of code' }),
+					on ? el('div', { className: 'ml-st-more' },
+						c.areas.length ? el('div', { className: 'ml-chips' }, ...c.areas.map(chip)) : el('div', { textContent: 'Its code names no scene areas.' }),
+						el('div', { className: 'ml-st-lines' }, ...c.uses.map((u) => el('button', { className: 'ml-line', title: u.text + '\n\nOpen the script here', onclick: (e) => {
+							e.stopPropagation();
+							MS.ide.openFile(path, u.line);
+						} }, el('span', { className: 'ml-ln', textContent: u.line }), u.what)))) : null));
+			});
+			box.replaceChildren(
+				el('div', { className: 'ml-side-head' },
+					el('b', { textContent: 'Stages' }),
+					el('span', { className: 'spacer' }),
+					el('button', { className: 'tb', textContent: '+ Add', disabled: locked, title: 'Add a stage after the last one', onclick: addStage }),
+					el('button', { className: 'ico-btn', textContent: '‹', title: 'Hide the stages', onclick: () => {
+						doc.state.stagesHidden = true;
 						draw();
-					} }, el('b', { textContent: String(i + 1) }), words(c.name)))));
-			}
-			// what the picked stage is made of
-			let detail = null;
-			if (sel && sel.code) {
-				const c = coded.find((x) => x.name === sel.code);
-				if (c) {
-					detail = el('div', { className: 'ml-stage-detail' },
-						el('div', {}, el('b', { textContent: words(c.name) }), ' · ', c.areas.length ? 'areas: ' : 'no scene areas named in its code',
-							...c.areas.map((a) => el('button', { className: 'ml-chip', textContent: a, title: 'Show it on the map', onclick: () => ctx.highlight([a]) }))),
-						el('div', { className: 'ml-stage-lines' }, ...c.uses.map((u) => el('button', { className: 'ml-line', title: 'Open the script here', onclick: () => MS.ide.openFile(path, u.line) },
-							el('span', { className: 'ml-ln', textContent: u.line }), u.text))));
-				}
-			} else if (sel && sel.id) {
-				const s = F().find(g, sel.id);
-				if (s) {
-					const ids = stageNodes(g, s);
-					const areas = new Set();
-					ids.forEach((id) => areasOfNode(F().find(g, id)).forEach((a) => areas.add(a)));
-					detail = el('div', { className: 'ml-stage-detail' },
-						el('div', {}, el('b', { textContent: (s.p && s.p.name) || s.kind }), ' · ', ids.length + ' node' + (ids.length === 1 ? '' : 's'), ' · ', areas.size ? 'areas: ' : 'no areas',
-							...[...areas].map((a) => el('button', { className: 'ml-chip', textContent: a, title: 'Show it on the map', onclick: () => ctx.highlight([a]) }))));
-				}
-			}
-			box.replaceChildren(...rows, ...(detail ? [detail] : []));
+					} })),
+				el('div', { className: 'ml-side-list' },
+					rows.length ? el('div', { className: 'ml-side-sec', textContent: 'Mission' }) : null,
+					...rows,
+					!rows.length ? el('p', { className: 'ml-side-empty', textContent: coded.length
+						? 'None built here yet. Add one to follow on from the script\'s stages, or use the script\'s stages below in conditions and jumps.'
+						: 'None yet. A stage is one step of the mission: a goal to meet, and what happens when it starts and when it is done. They run one after another.' }) : null,
+					coded.length ? el('div', { className: 'ml-side-sec', textContent: 'In the script', title: 'Stages the script runs in its own code (self.stages). Nodes can check them and jump to them; change what they do in the script.' }) : null,
+					...codeRows));
 		};
 		doc.refreshStages = draw;
 		return box;

@@ -226,8 +226,15 @@ window.MS = window.MS || {};
 			} else if (type === 'mode') {
 				input = select(F_.BATTLE_MODES, value, Number);
 			} else if (type === 'stage') {
+				// the graph's stages, and the ones the script runs in its own code
 				const stages = F_.stages(this.g);
-				input = select([['', '(pick a stage)'], ...stages.map((s) => [s.id, (s.p && s.p.name) || s.id])], value || '');
+				const coded = this.hooks.codeStages ? this.hooks.codeStages() : [];
+				const option = (v, t) => el('option', { value: v, textContent: t, selected: v === (value || '') });
+				input = el('select', { className: 'ed-input', disabled: ro },
+					option('', stages.length || coded.length ? '(pick a stage)' : '(no stages yet: add one)'),
+					stages.length ? el('optgroup', { label: 'Mission stages' }, ...stages.map((s) => option(s.id, (s.p && s.p.name) || s.id))) : null,
+					coded.length ? el('optgroup', { label: 'In the script' }, ...coded.map((c) => option('code:' + c.name, c.label))) : null);
+				input.onchange = () => set(input.value);
 			} else if (type === 'capture') {
 				const points = this.g.nodes.filter((x) => x.kind === 'capture');
 				input = select([['', points.length ? '(pick a capture point)' : '(add a capture point first)'], ...points.map((x) => [x.id, (x.p && x.p.name) || x.id])], value || '');

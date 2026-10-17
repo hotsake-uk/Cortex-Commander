@@ -377,6 +377,25 @@ test('stage conditions: a branch can ask which stage it is', () => {
 	assert.deepEqual(lines(m.step(0.6, 3)), ['msg On stage 2']);
 });
 
+test('the script\'s own stages: a branch can ask which one it is on, and a jump moves it', () => {
+	const g = graph([
+		['always', {}, { then: 1 }],
+		['branch', {}, { true: 2 }, []],
+		['doOnce', {}, { then: 3 }],
+		['message', { text: 'Bunker taken' }, { then: 4 }],
+		['jump', { target: 'code:attackBrain' }],
+	]);
+	g.nodes[1].lists.conds.push({ kind: 'stage', target: 'code:frontBunkerCaptured', is: true });
+	assert.deepEqual(F.problems(g, { codeStages: ['frontBunkerCaptured', 'attackBrain'] }), []);
+	assert.match(F.problems(g, { codeStages: ['frontBunkerCaptured'] }).map((p) => p.message).join(), /no stage called attackBrain/);
+	const m = game(g);
+	m.run('Act.stages = { frontBunkerCaptured = 4, attackBrain = 11 }; Act.currentStage = 1');
+	assert.equal(m.step(), '', 'not on that stage yet');
+	m.run('Act.currentStage = 4');
+	assert.deepEqual(lines(m.step()), ['msg Bunker taken']);
+	assert.equal(m.run('return tostring(Act.currentStage)'), '11', 'jumped to the script\'s stage');
+});
+
 // ---- battles ----
 
 test('battle events start rules and finish stages', () => {
