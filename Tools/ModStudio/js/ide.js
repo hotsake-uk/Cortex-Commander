@@ -2417,6 +2417,83 @@ window.MS = window.MS || {};
 		$('searchCase').addEventListener('change', go);
 		$('searchRegex').addEventListener('change', go);
 		$('searchMine').addEventListener('change', go);
+		$('replaceAll').addEventListener('click', replaceAll);
+	}
+
+	// Replaces every match of the search in the files that can be changed (your mods' INI files and scripts), after saying how many there are.
+	// INI changes are one undoable edit; scripts are written straight away (the open ones through their tab).
+	function replaceAll() {
+		const query = $('searchInput').value;
+		if (!query || !app.lib) {
+			return;
+		}
+		const replacement = $('replaceInput').value;
+		const regex = $('searchRegex').checked;
+		let re;
+		try {
+			re = new RegExp(regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $('searchCase').checked ? 'g' : 'gi');
+		} catch (e) {
+			app.toast('That pattern doesn\'t work: ' + e.message, 'bad');
+			return;
+		}
+		const todo = [];
+		let skipped = 0;
+		for (const file of searchableFiles().filter((f) => app.inScope(f.path))) {
+			re.lastIndex = 0;
+			const count = (file.text.match(re) || []).length;
+			if (!count) {
+				continue;
+			}
+			const doc = app.lib.docFor(file.path);
+			if (app.fs.isOfficial(file.path) || (doc && app.lib.isProtected(doc))) {
+				skipped += count;
+				continue;
+			}
+			todo.push({ file, doc, count });
+		}
+		const total = todo.reduce((n, t) => n + t.count, 0);
+		if (!total) {
+			app.toast(skipped ? 'The only matches are in the game\'s own files or other people\'s mods, which Studio won\'t change.' : 'Nothing to replace.', 'bad');
+			return;
+		}
+		const list = el('div', { className: 'replace-list' }, ...todo.slice(0, 40).map((t) => el('div', {}, el('b', { textContent: String(t.count) }), ' ' + t.file.path)));
+		MS.dialogs.open('Replace ' + total + ' match' + (total > 1 ? 'es' : '') + ' in ' + todo.length + ' file' + (todo.length > 1 ? 's' : '') + '?', el('div', {},
+			el('p', { textContent: '"' + query + '" becomes "' + replacement + '".' + (skipped ? ' ' + skipped + ' more in files that aren\'t yours are left alone.' : '') }), list,
+			el('p', { className: 'small', textContent: 'INI changes can be undone. Scripts are saved as they are changed; Backups can bring older versions back.' })), [
+			{ text: 'Cancel' },
+			{ text: 'Replace', primary: true, action: async () => {
+				const sub = (text) => text.replace(re, regex ? replacement : () => replacement);
+				const docs = todo.filter((t) => t.doc);
+				if (docs.length) {
+					app.edit('replace ' + query + ' with ' + replacement, () => {
+						for (const t of docs) {
+							if (t.doc.onWillChange) {
+								t.doc.onWillChange(t.doc);
+							}
+							t.doc.reset(sub(t.doc.serialize()));
+						}
+					});
+					ide.ini.invalidate();
+					ide.syncModels();
+				}
+				for (const t of todo.filter((x) => !x.doc)) {
+					const text = sub(t.file.text);
+					const tab = ide.tabs.find((x) => x.path === t.file.path && x.model);
+					try {
+						if (tab) {
+							tab.model.pushEditOperations([], [{ range: tab.model.getFullModelRange(), text }], () => null);
+						}
+						await app.fs.writeFile(t.file.path, text);
+						ide.lua.updateScript(t.file.path, text);
+					} catch (e) {
+						app.toast('Couldn\'t change ' + t.file.path + ': ' + e.message, 'bad');
+					}
+				}
+				runSearch();
+				app.toast('Replaced ' + total + ' match' + (total > 1 ? 'es' : '') + '.', 'good');
+				return true;
+			} },
+		]);
 	}
 
 	// Every INI file and script, as Studio has them now (unsaved changes included).

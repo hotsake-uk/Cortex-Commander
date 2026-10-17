@@ -1133,3 +1133,6 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .light-row.inherited { opacity: .7; }
 .light-row input[type=color] { width: 30px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; }
 .light-row .ed-input.num { width: 64px; }
+.replace-list { max-height: 220px; overflow: auto; font-size: 12px; margin: 8px 0; color: var(--dim); }
+.replace-list b { display: inline-block; min-width: 28px; color: var(--accent); }
+#replaceAll { margin-left: 6px; }
