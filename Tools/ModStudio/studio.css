@@ -1429,3 +1429,14 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 /* values at their own size: a number box is a number's width, a text box a sentence's, however wide the panel is */
 .row .val > .num { flex: 1 1 90px; max-width: 180px; }
 .row .val > input:not([type="checkbox"]):not([type="range"]), .row .val > select, .row .val > textarea { flex: 1 1 200px; max-width: 420px; }
+/* the Game screen's launch cards: two by two, never three and one left over */
+.gm-launch { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* the Mission Editor: the areas list and the stages list take a share of their pane (at most their usual width), so the map and the graph
+   keep most of the room when the window or the pane is narrow */
+.me-arealist { width: clamp(170px, 30%, 220px); }
+.ml-side { width: clamp(150px, 32%, 230px); }
+.ml-side:not(.closed) .ml-st-sub { overflow: hidden; text-overflow: ellipsis; }
+/* the Mission Editor's bar: the problems count stays on the first line; the buttons shrink their padding before they wrap */
+.ml-bar { row-gap: 4px; }
+.ml-bar .tb { padding: 3px 8px; }
+.ml-bar .ml-problems, .ml-bar .ml-ok { margin-left: auto; }

@@ -1986,6 +1986,9 @@ window.MS = window.MS || {};
 		for (const id of ['console', 'problems', 'watch', 'profiler', 'inspector']) {
 			$(id + 'Pane').hidden = id !== panel;
 		}
+		// the panel's buttons are for the tabs they work on: Clear the console's, Reload scripts the game's (not the file problems')
+		$('btnConsoleClear').hidden = panel !== 'console';
+		$('btnReloadScripts').hidden = panel === 'problems';
 		if (!keepHidden && $('app').classList.contains('no-panel')) {
 			$('app').classList.remove('no-panel');
 			app.writeLocal('ms.panelHidden', false);
