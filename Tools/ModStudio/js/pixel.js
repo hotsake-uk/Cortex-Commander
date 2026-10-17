@@ -403,7 +403,7 @@ window.MS = window.MS || {};
 				}
 			}
 		}
-		E.glowOverall = Math.round(part.ent.num('EffectStartStrength', 128));
+		E.glowOverall = Math.max(10, Math.min(255, Math.round(part.ent.num('EffectStartStrength', 0.5) * 255)));
 		E.hadGlow = true;
 		return g;
 	}
@@ -466,8 +466,8 @@ window.MS = window.MS || {};
 			}
 			se.set('FilePath', path);
 			node.set('EffectAlwaysShows', '1');
-			node.set('EffectStartStrength', String(E.glowOverall));
-			node.set('EffectStopStrength', String(E.glowOverall));
+			node.set('EffectStartStrength', String(+(E.glowOverall / 255).toFixed(3)));
+			node.set('EffectStopStrength', String(+(E.glowOverall / 255).toFixed(3)));
 		});
 		E.hadGlow = true;
 	}
