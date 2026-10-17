@@ -1190,7 +1190,9 @@ window.MS = window.MS || {};
 	// The request that makes the game show the open unit (Preview.ini): who, where it is, the files saved since, the held item. null when there is
 	// nothing to show.
 	function previewLines() {
-		if (!app.actor) {
+		// Only units and items can be shown in the game this way (not building pieces, assemblies, gibs...).
+		const kind = app.actor && spawnKind(app.actor.cls);
+		if (kind !== 'actor' && kind !== 'item') {
 			return null;
 		}
 		const files = new Set(app.savedSinceLastPreview);

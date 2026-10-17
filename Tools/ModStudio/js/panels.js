@@ -1336,7 +1336,7 @@ window.MS = window.MS || {};
 			}
 		}
 		// (A building piece has no single sprite: the rows below go nowhere.)
-		const sprite = part.layers ? document.createElement('div') : section(insp, 'Sprite', (() => {
+		const sprite = part.layers || part.pieces ? document.createElement('div') : section(insp, 'Sprite', (() => {
 			const wrap = document.createElement('span');
 			const edit = document.createElement('button');
 			edit.className = 'small-btn';
