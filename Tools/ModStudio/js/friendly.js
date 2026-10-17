@@ -62,7 +62,11 @@ window.MS = window.MS || {};
 
 	// What the mod check says, in everyday words.
 	function sayCheck(message) {
-		let m = /^CopyOf "(.+)" isn't a preset Studio can find/.exec(message);
+		let m = /^"(.+)" is read after the file that copies it/.exec(message);
+		if (m) {
+			return '"' + m[1] + '" is defined further down than the thing that copies it. The game reads files in order, so it would stop loading the mod here.';
+		}
+		m = /^CopyOf "(.+)" isn't a preset Studio can find/.exec(message);
 		if (m) {
 			return 'It copies "' + m[1] + '", but nothing has that name. The game would stop loading the mod here.';
 		}
@@ -199,7 +203,14 @@ window.MS = window.MS || {};
 					list.append(el('div', { className: 'prob-row ' + p.severity },
 						el('div', { className: 'prob-text' }, el('b', { textContent: sayCheck(p.message) }), el('small', { textContent: p.module + ' · ' + p.path.split('/').slice(1).join('/') + (p.line ? ', line ' + p.line : '') })),
 						el('div', { className: 'prob-actions' },
-							el('button', { className: 'tb primary', textContent: 'Show me', title: 'Open the file at that line', onclick: () => { MS.dialogs.close(); MS.ide.openFile(p.path, p.line); } }),
+							p.fix ? el('button', { className: 'tb primary', textContent: p.fix.label, title: 'Moves one file\'s line in the mod\'s list so it is read first', onclick: async () => {
+								if (await p.fix.run()) {
+									checks.set(p.module, (checks.get(p.module) || []).filter((q) => q !== p));
+									draw();
+									app().toast('Done: the mod reads them in the right order now.', 'good');
+								}
+							} }) : null,
+							el('button', { className: p.fix ? 'tb' : 'tb primary', textContent: 'Show me', title: 'Open the file at that line', onclick: () => { MS.dialogs.close(); MS.ide.openFile(p.path, p.line); } }),
 							el('button', { className: 'tb', textContent: 'Ignore', onclick: () => { hidden.add(key); draw(); } }))));
 				}
 			}
