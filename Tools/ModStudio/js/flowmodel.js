@@ -178,7 +178,8 @@ window.MS = window.MS || {};
 		['goTo', 'area', 'go to', ''],
 	], STEP, { relevant: (p, key) => (key === 'group' ? (p.who || 'group') === 'group' : key === 'team' ? p.who !== 'group' && p.who !== undefined : key === 'area' ? p.who === 'area' : key === 'goTo' ? (p.ai || 'goto') === 'goto' : true) });
 	kind('setVar', 'action', 'Set a variable', [['name', 'text', 'variable', 'count'], ['op', 'choice', '', 'set', VAR_OPS], ['value', 'value', 'value', V(1)]], STEP);
-	kind('captureSet', 'action', 'Switch a capture point', [['target', 'capture', 'capture point', ''], ['do', 'choice', '', 'on', [['on', 'switch it on'], ['off', 'switch it off'], ['own', 'give it to']]], ['team', 'team', 'team', 0]], STEP, { relevant: (p, key) => (key === 'team' ? p.do === 'own' : true) });
+	// one or more capture points at once (captures: a list of their ids; one id, from before, still reads)
+	kind('captureSet', 'action', 'Switch capture points', [['target', 'captures', 'capture points', []], ['do', 'choice', '', 'on', [['on', 'switch them on'], ['off', 'switch them off'], ['own', 'give them to']]], ['team', 'team', 'team', 0]], STEP, { relevant: (p, key) => (key === 'team' ? p.do === 'own' : true) });
 	kind('doors', 'action', 'Doors', [['area', 'area', 'the doors in', ''], ['do', 'choice', '', 'open', [['open', 'open them'], ['close', 'close them'], ['lock', 'lock them (they stop working)'], ['unlock', 'unlock them']]], ['team', 'team', 'and give them to (any team: leave them)', -1]], STEP);
 	kind('fog', 'action', 'Fog of war', [['do', 'choice', '', 'reveal', [['reveal', 'reveal an area'], ['hide', 'hide an area'], ['hideAll', 'hide the whole map'], ['surface', 'reveal everything above the ground']]], ['area', 'area', 'area', ''], ['team', 'team', 'for team', 0]], STEP, { relevant: (p, key) => (key === 'area' ? p.do !== 'hideAll' && p.do !== 'surface' : true) });
 	kind('placeObject', 'action', 'Place a map object', [
@@ -258,6 +259,12 @@ window.MS = window.MS || {};
 	const CATEGORIES = [['event', 'Events', 'How a chain begins'], ['stage', 'Stages', 'Goals, one after another'], ['point', 'Capture points', 'Places teams take and take back'], ['flow', 'Flow', 'Decide and gate'], ['action', 'Actions', 'What happens']];
 	const relevant = (spec, p, key) => !spec.relevant || spec.relevant(p || {}, key);
 
+	// Steps that can be done in several areas at once (spawn the same units in four places): their area setting takes a list, and the step runs
+	// once for each area.
+	const STACKS = { spawn: 'area', doors: 'area', fog: 'area', placeObject: 'area', placeItem: 'area', remove: 'area', overlay: 'area', changeTeam: 'area', order: 'area' };
+	const stacks = (kind, key) => STACKS[kind] === key;
+	// A list setting's ids: a list, or one id (as a single-choice setting it once was), or none.
+	const idsOf = (v) => (Array.isArray(v) ? v.filter(Boolean) : v ? [v] : []);
 	const isStage = (k) => !!KINDS[k] && KINDS[k].category === 'stage';
 	const isCodeStage = (v) => typeof v === 'string' && v.startsWith('code:');
 	const defaults = (params) => Object.assign({}, ...params.map(([key, , , def]) => ({ [key]: def })));
@@ -456,15 +463,18 @@ window.MS = window.MS || {};
 				}
 				if (type === 'capture' && (!v || !find(g, v) || find(g, v).kind !== 'capture')) {
 					add(n.id, 'error', 'Pick the ' + label + '.');
+				} else if (type === 'captures' && (!idsOf(v).length || idsOf(v).some((id) => !find(g, id) || find(g, id).kind !== 'capture'))) {
+					add(n.id, 'error', idsOf(v).length ? 'One of the capture points is not there any more.' : 'Pick the ' + label + '.');
 				} else if (type === 'text' && (key === 'name' || key === 'group') && ['varReaches', 'setVar', 'groupGone', 'order', 'pieAdd'].includes(n.kind) && !String(v || '').trim()) {
 					add(n.id, 'error', 'Give the ' + label + ' a name.');
 				} else if (key === 'label' && ['pieAdd', 'pieRemove', 'pieUsed'].includes(n.kind) && !String(v || '').trim()) {
 					add(n.id, 'error', 'Write the button\'s text: it is how the button is known.');
 				} else if (type === 'area') {
-					if (!v) {
+					const missing = idsOf(v).filter((x) => areas && !areas.includes(x));
+					if (!idsOf(v).length) {
 						add(n.id, 'error', 'Pick the ' + label + '.');
-					} else if (areas && !areas.includes(v)) {
-						add(n.id, 'warn', 'The scene has no area called "' + v + '".');
+					} else if (missing.length) {
+						add(n.id, 'warn', 'The scene has no area called "' + missing.join('", "') + '".');
 					}
 				} else if (type === 'item' || type === 'preset') {
 					if (!v) {
@@ -568,6 +578,7 @@ window.MS = window.MS || {};
 	// those with no place yet.
 	function layout(g, all, measure) {
 		const height = (n) => Math.max(40, (measure && measure(n)) || heightOf(n));
+		const width = (n) => Math.max(COL, ((measure && measure.width && measure.width(n)) || 0) + 80);
 		const GAP = 24; // between nodes in a column
 		const BAND = 64; // between one beginning's tree and the next
 		const placed = new Set();
@@ -591,7 +602,7 @@ window.MS = window.MS || {};
 				if (!to || pin === 'next' || placed.has(to)) {
 					continue;
 				}
-				const end = place(to, x + COL, next);
+				const end = place(to, x + width(n), next);
 				bottom = Math.max(bottom, end);
 				next = end + GAP;
 			}
@@ -761,6 +772,6 @@ window.MS = window.MS || {};
 	MS.flow = Object.assign(MS.flow || {}, {
 		KINDS, ORDER, CONDS, CATEGORIES, BATTLE_MODES, PIE_ICONS, SHADES, OPS, merge, LIST_ROWS, AI_MODES, VAR_OPS, relevant, V,
 		create, addNode, find, incoming, whyNot, connect, disconnect, removeNode, clone, addCondition, condDefaults,
-		chainFrom, entries, stages, firstStage, isStage, isCodeStage, problems, layout, migrate, reaches,
+		chainFrom, entries, stages, firstStage, isStage, isCodeStage, problems, layout, migrate, reaches, idsOf, stacks,
 	});
 })();

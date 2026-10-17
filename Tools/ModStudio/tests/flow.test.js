@@ -690,6 +690,32 @@ test('spawning by dropship puts the units in one craft', () => {
 	assert.deepEqual(lines(m.step()), ['spawn Dropship team 1 carrying 4']);
 });
 
+test('a spawn stacked over several areas spawns in each, and they count as used', () => {
+	const g = graph([['start', {}, { then: 1 }], ['spawn', { source: 'loadout', loadout: 'Infantry Heavy', team: 1, area: ['LZ', 'LZ2'], count: V(2), arrive: 'dropship', ai: 'brainhunt' }]]);
+	const m = game(g);
+	m.run('Areas["LZ"] = { x = 0, y = 0, w = 10, h = 10 }; Areas["LZ2"] = { x = 90, y = 0, w = 10, h = 10 }');
+	assert.deepEqual(lines(m.step()), ['spawn Dropship team 1 carrying 2', 'spawn Dropship team 1 carrying 2']);
+	assert.deepEqual(F.problems(g, { areas: ['LZ', 'LZ2'] }), []);
+	assert.match(F.problems(g, { areas: ['LZ'] })[0].message, /LZ2/);
+});
+
+test('switching several capture points with one step', () => {
+	const point = (name) => ['capture', { name, area: name, region: '', owner: 1, attackers: 0, seconds: V(1), decays: false, active: false, marker: false, text: '' }];
+	const g = graph([
+		[...point('A'), { taken: 2 }],
+		[...point('B'), { taken: 3 }],
+		['message', { text: 'A taken' }],
+		['message', { text: 'B taken' }],
+		['start', {}, { then: 5 }],
+		['captureSet', { target: [], do: 'on' }],
+	]);
+	g.nodes[5].p.target = [g.nodes[0].id, g.nodes[1].id];
+	assert.deepEqual(F.problems(g, {}).filter((p) => p.level === 'error'), []);
+	const m = game(g);
+	m.run('Areas["A"] = { x = 0, y = 0, w = 10, h = 10 }; Areas["B"] = { x = 0, y = 0, w = 10, h = 10 }; P = MakeActor(0, 5, 5)');
+	assert.deepEqual(lines(m.step(0.5, 4)).sort(), ['msg A taken', 'msg B taken']);
+});
+
 test('orders: a group, a whole team, or a team in an area', () => {
 	const g = graph([['start', {}, { then: 1 }], ['order', { who: 'area', team: 1, area: 'Room', ai: 'goto', goTo: 'Gate' }, { then: 2 }], ['order', { who: 'group', group: 'Hunters', ai: 'brainhunt' }]]);
 	const m = game(g);
