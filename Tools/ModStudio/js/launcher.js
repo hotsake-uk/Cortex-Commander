@@ -156,7 +156,7 @@ window.MS = window.MS || {};
 		const [, label, what] = lastLaunch();
 		const run = $('btnRun');
 		run.textContent = label.startsWith('▶') ? label : '▶ ' + label;
-		run.title = L.state && L.state.builtExe ? what + ' (the ▾ has the other ways to start it)' : 'Nothing is built yet: opens the Game screen to build the game';
+		run.title = L.state && L.state.builtExe ? what + ' (right-click for the other ways to start it)' : 'Nothing is built yet: opens the Game screen to build the game';
 	}
 
 	function runLast() {
