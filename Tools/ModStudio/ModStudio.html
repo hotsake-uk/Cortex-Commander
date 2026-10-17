@@ -4,13 +4,13 @@
 <!-- Built by Vite (npm run build) into dist/, which is what Studio serves: see vite.config.js. -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cortex Mod Studio</title>
+<title>Cortex Studio</title>
 <link rel="stylesheet" href="studio.css">
 </head>
 <body>
 <div id="app">
 	<header id="topbar">
-		<div class="brand"><span class="mark">◆</span><span class="brand-name"> Cortex <b>Mod Studio</b></span></div>
+		<div class="brand"><span class="mark">◆</span><span class="brand-name"> Cortex <b>Studio</b></span></div>
 		<div class="mode-switch" id="modeSwitch" title="Design: units visually. Script: the whole mod, with scripts, the game's console and search.">
 			<button data-mode="artist" class="sel">Design</button>
 			<button data-mode="deep">Script</button>
@@ -39,7 +39,7 @@
 			<button class="tb primary" id="btnRun"></button><button class="tb primary caret" id="btnRunMenu" title="Other ways to start the game">▾</button>
 		</div>
 		<button class="tb" id="btnGame" title="The Game screen: versions, builds, launch settings and the setup (Cortex Studio)" hidden>Game</button>
-		<button class="tb icon" id="btnHelp" title="How to use Mod Studio">?</button>
+		<button class="tb icon" id="btnHelp" title="How to use Studio">?</button>
 	</header>
 
 	<nav id="activity">
@@ -145,7 +145,7 @@
 			<div id="welcome" class="welcome">
 				<div class="welcome-card">
 					<div class="welcome-mark">◆</div>
-					<h1>Cortex Mod Studio</h1>
+					<h1>Cortex Studio</h1>
 					<p>Design units visually: move their parts, swap sprites, add helmets and gear, and watch them walk. Studio writes the INI for you, and shows your unit in the game as you work.</p>
 					<div class="welcome-actions">
 						<button class="big primary" id="btnOpen">Open the game folder</button>
@@ -230,7 +230,7 @@
 			<div class="brand"><span class="mark">◆</span> Cortex <b>Studio</b></div>
 			<nav id="gameTabs" class="game-tabs"></nav>
 			<span class="spacer"></span>
-			<button class="tb" id="gameClose" title="Back to Mod Studio (Esc)">✕ Back to Studio</button>
+			<button class="tb" id="gameClose" title="Back to Studio (Esc)">✕ Back to Studio</button>
 		</header>
 		<div id="gameBody" class="game-body"></div>
 		<div id="gameLogWrap" class="game-log" hidden>
