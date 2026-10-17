@@ -360,7 +360,7 @@ window.MS = window.MS || {};
 			if (item.kind === 'hand') {
 				return app.sprite(item.pose.handFile, 1, 0);
 			}
-			if (this.resizePreview && item.part === this.resizePreview.part) {
+			if (this.resizePreview && item.part.id === this.resizePreview.partId) {
 				return this.resizePreview.frameAt(item.pose.frame || 0);
 			}
 			const s = item.part.sprite;
@@ -368,8 +368,8 @@ window.MS = window.MS || {};
 		}
 
 		spriteOffset(item, frame) {
-			if (this.resizePreview && item.part === this.resizePreview.part) {
-				return this.resizePreview.offset() || { x: -frame.width / 2, y: -frame.height / 2 };
+			if (this.resizePreview && item.part.id === this.resizePreview.partId) {
+				return this.resizePreview.offset();
 			}
 			const s = item.part.sprite;
 			if (!s.offset || (s.offset.x === 0 && s.offset.y === 0)) {
@@ -615,33 +615,55 @@ window.MS = window.MS || {};
 			return local.map((p) => add(pose.pos, rotate(flipX(p, pose.flip), pose.rot)));
 		}
 
-		// While a picture is being resized: its new box (dashed) with a square on the corner to drag.
+		// While a picture is being transformed: its new box (dashed) with a square on each corner and edge.
 		drawResize(ctx) {
-			this.resizeHandle = null;
+			this.resizeHandles = null;
 			const rp = this.resizePreview;
 			if (!rp) {
 				return;
 			}
-			const item = this.drawList.find((i) => i.part === rp.part && i.kind === 'sprite');
+			const item = this.drawList.find((i) => i.part.id === rp.partId && i.kind === 'sprite');
 			const corners = item && this.itemRect(item);
 			if (!corners) {
 				return;
 			}
-			const screen = corners.map((p) => this.toScreen(p));
+			const sc = corners.map((p) => this.toScreen(p));
+			const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+			// Top-left, top, top-right, right, bottom-right, bottom, bottom-left, left: where the box is at its own axes (flips and turns follow the picture).
+			const handles = [
+				{ sx: -1, sy: -1, ...sc[0] }, { sx: 0, sy: -1, ...mid(sc[0], sc[1]) }, { sx: 1, sy: -1, ...sc[1] }, { sx: 1, sy: 0, ...mid(sc[1], sc[2]) },
+				{ sx: 1, sy: 1, ...sc[2] }, { sx: 0, sy: 1, ...mid(sc[2], sc[3]) }, { sx: -1, sy: 1, ...sc[3] }, { sx: -1, sy: 0, ...mid(sc[3], sc[0]) },
+			];
 			ctx.save();
 			ctx.strokeStyle = MS.theme.accent();
 			ctx.lineWidth = 1.5;
 			ctx.setLineDash([5, 4]);
 			ctx.beginPath();
-			screen.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+			sc.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
 			ctx.closePath();
 			ctx.stroke();
 			ctx.setLineDash([]);
-			const h = screen[2];
 			ctx.fillStyle = MS.theme.accent();
-			ctx.fillRect(h.x - 5, h.y - 5, 10, 10);
+			for (const h of handles) {
+				ctx.fillRect(h.x - 4, h.y - 4, 8, 8);
+			}
 			ctx.restore();
-			this.resizeHandle = { x: h.x, y: h.y, origin: screen[0] };
+			this.resizeHandles = handles;
+			this.resizeBox = corners; // world corners: top-left, top-right, bottom-right, bottom-left
+		}
+
+		// A point in the transform box's own axes (x along its width, y along its height, from its top-left), for a world point.
+		boxLocal(world) {
+			const c = this.resizeBox;
+			const ux = c[1].x - c[0].x;
+			const uy = c[1].y - c[0].y;
+			const vx = c[3].x - c[0].x;
+			const vy = c[3].y - c[0].y;
+			const wl = Math.hypot(ux, uy) || 1;
+			const hl = Math.hypot(vx, vy) || 1;
+			const dx = world.x - c[0].x;
+			const dy = world.y - c[0].y;
+			return { x: (dx * ux + dy * uy) / wl, y: (dx * vx + dy * vy) / hl };
 		}
 
 		drawOverlays(ctx, poses) {
@@ -856,8 +878,22 @@ window.MS = window.MS || {};
 
 		onDown(e) {
 			this.canvas.setPointerCapture(e.pointerId);
-			if (this.resizePreview && this.resizeHandle && e.button === 0 && Math.hypot(e.offsetX - this.resizeHandle.x, e.offsetY - this.resizeHandle.y) < 12) {
-				this.drag = { kind: 'resize' };
+			if (this.resizePreview && this.resizeHandles && e.button === 0) {
+				const handle = this.resizeHandles.find((h) => Math.hypot(e.offsetX - h.x, e.offsetY - h.y) < 9);
+				if (handle) {
+					const world = this.toWorld(e.offsetX, e.offsetY);
+					this.drag = { kind: 'resize', handle, start: this.resizePreview.start(), box: this.resizeBox.map((p) => ({ x: p.x, y: p.y })), grab: this.boxLocal(world) };
+					return;
+				}
+				const local = this.boxLocal(this.toWorld(e.offsetX, e.offsetY));
+				const rp = this.resizePreview;
+				const now = rp.start();
+				if (local.x >= 0 && local.y >= 0 && local.x <= now.W && local.y <= now.H) {
+					this.drag = { kind: 'resizeMove', start: now, box: this.resizeBox.map((p) => ({ x: p.x, y: p.y })), grab: local };
+					return;
+				}
+				// Anywhere else only pans: the other parts are not touched while a picture is being transformed.
+				this.drag = { kind: 'pan', sx: e.offsetX, sy: e.offsetY, pan: Object.assign({}, this.pan) };
 				return;
 			}
 			if (e.button === 0 && this.app.rig && this.app.rig.body.pieces) {
@@ -912,14 +948,19 @@ window.MS = window.MS || {};
 				this.app.requestDraw();
 				return;
 			}
-			if (d.kind === 'resize') {
-				// How far the pointer is from the picture's top-left corner, against how far the corner is at full size.
+			if (d.kind === 'resize' || d.kind === 'resizeMove') {
+				// The pointer in the box's own axes as it was when the drag began (the box moves while you drag, so the start is kept).
+				const saved = this.resizeBox;
+				this.resizeBox = d.box;
+				const local = this.boxLocal(this.toWorld(e.offsetX, e.offsetY));
+				this.resizeBox = saved;
 				const rp = this.resizePreview;
-				const o = this.resizeHandle && this.resizeHandle.origin;
-				if (rp && o) {
-					const now = Math.hypot(e.offsetX - o.x, e.offsetY - o.y);
-					const full = Math.hypot(rp.baseW(), rp.baseH()) * this.zoom;
-					rp.onDrag(Math.max(0.05, now / full));
+				if (rp) {
+					if (d.kind === 'resize') {
+						rp.onHandle(d.start, d.handle.sx, d.handle.sy, local, e.shiftKey);
+					} else {
+						rp.onMove(d.start, { x: local.x - d.grab.x, y: local.y - d.grab.y });
+					}
 				}
 				return;
 			}
