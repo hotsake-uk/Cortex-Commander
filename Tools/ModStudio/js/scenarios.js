@@ -168,18 +168,20 @@ window.MS = window.MS || {};
 				p.node.set(key, String(value));
 			}
 		});
+		const field = (label, input, help) => el('label', { className: 'sc-field', title: help || '' }, el('span', { className: 'sc-label', textContent: label }), input, help ? el('small', { textContent: help }) : null);
 		const text = (key, label, help, kind) => {
 			const own = p.node.child(key);
-			const input = el('input', { type: kind || 'text', step: 'any', className: 'ed-input' + (kind === 'number' ? ' num' : ''), value: own ? own.value : '', placeholder: e.str(key, ''), disabled: ro, title: help || '' });
+			const input = el('input', { type: kind || 'text', step: 'any', className: 'ed-input' + (kind === 'number' ? ' num' : ''), value: own ? own.value : '', placeholder: e.str(key, ''), disabled: ro });
 			input.onchange = () => set(label, key, input.value.trim());
 			input.dataset.fk = 'sc:' + key;
-			return el('div', { className: 'ed-row', title: help || '' }, el('span', { className: 'ed-label', textContent: label }), input, help ? el('small', { textContent: help }) : null);
+			return field(label, input, help);
 		};
 		const flag = (key, label, help, fallback) => {
 			const box = el('input', { type: 'checkbox', checked: e.bool(key, fallback), disabled: ro });
 			box.onchange = () => set(label, key, box.checked ? '1' : '0');
-			return el('label', { className: 'ed-check wide', title: help }, box, label);
+			return el('label', { className: 'sc-toggle', title: help }, box, el('span', { textContent: label }));
 		};
+		const card = (title, extra, ...children) => el('section', { className: 'sc-card' + (extra ? ' ' + extra : '') }, el('h4', { textContent: title }), ...children);
 
 		// story
 		const scenes = a.lib.presets.filter((x) => x.topLevel && x.cls === 'Scene').sort((x, y) => x.name.localeCompare(y.name));
@@ -191,23 +193,22 @@ window.MS = window.MS || {};
 		desc.onchange = () => set('the description', 'Description', desc.value.replace(/\r?\n/g, ' ').trim());
 
 		// teams
-		const teamRows = TEAMS.map((n) => el('div', { className: 'ed-row' }, el('span', { className: 'ed-label', textContent: 'Team ' + n }),
+		const teamRows = TEAMS.map((n) => el('div', { className: 'sc-team' }, el('span', { className: 'sc-label', textContent: 'Team ' + n }),
 			(() => {
 				const i = el('input', { type: 'text', className: 'ed-input', value: p.node.child('Team' + n + 'Name') ? p.node.child('Team' + n + 'Name').value : '', placeholder: e.str('Team' + n + 'Name', 'Team ' + n), disabled: ro, title: 'Its name' });
 				i.onchange = () => set('team ' + n + '\'s name', 'Team' + n + 'Name', i.value.trim());
 				return i;
 			})(),
 			(() => {
-				const i = el('input', { type: 'number', className: 'ed-input num', value: p.node.child('Team' + n + 'Funds') ? p.node.child('Team' + n + 'Funds').value : '', placeholder: e.str('Team' + n + 'Funds', ''), disabled: ro, title: 'Gold it starts with' });
+				const i = el('input', { type: 'number', className: 'ed-input num', value: p.node.child('Team' + n + 'Funds') ? p.node.child('Team' + n + 'Funds').value : '', placeholder: e.str('Team' + n + 'Funds', 'usual'), disabled: ro, title: 'Gold it starts with' });
 				i.onchange = () => set('team ' + n + '\'s funds', 'Team' + n + 'Funds', i.value.trim());
 				return i;
-			})(),
-			el('small', { textContent: 'name, starting gold' })));
+			})()));
 		const playerRows = TEAMS.map((n) => {
 			const select = el('select', { className: 'ed-input', disabled: ro, title: 'Which team this player is on' }, el('option', { value: '', textContent: 'usual' }),
 				...TEAMS.map((t) => el('option', { value: String(t - 1), textContent: 'Team ' + t, selected: p.node.child('TeamOfPlayer' + n) && p.node.child('TeamOfPlayer' + n).value === String(t - 1) })));
 			select.onchange = () => set('player ' + n + '\'s team', 'TeamOfPlayer' + n, select.value);
-			return el('div', { className: 'ed-row' }, el('span', { className: 'ed-label', textContent: 'Player ' + n }), select);
+			return field('Player ' + n, select);
 		});
 		const cpu = el('select', { className: 'ed-input', disabled: ro, title: 'The team the computer plays' }, el('option', { value: '', textContent: 'none unless the script says' }),
 			...TEAMS.map((t) => el('option', { value: String(t - 1), textContent: 'Team ' + t, selected: p.node.child('CPUTeam') && p.node.child('CPUTeam').value === String(t - 1) })));
@@ -217,13 +218,13 @@ window.MS = window.MS || {};
 		const settings = e.all('AddScenarioSetting').map((entry) => ({ node: entry.node, own: entry.node.isWithin(p.node), s: parseSetting(entry.node.value) })).filter((x) => x.s);
 		const settingRows = settings.map((x) => {
 			const editable = x.own && !ro;
-			const field = (key, width, title) => {
-				const input = el('input', { type: 'text', className: 'ed-input' + (width ? ' num' : ''), value: x.s[key], disabled: !editable, title });
+			const cell = (key, width, title) => {
+				const input = el('input', { type: 'text', className: 'ed-input', value: x.s[key], disabled: !editable, title });
 				input.onchange = () => change('Change setting ' + x.s.key, () => x.node.setValue(settingText(Object.assign({}, x.s, { [key]: input.value.trim() }))));
 				return input;
 			};
-			return el('div', { className: 'ed-row scn-setting' + (x.own ? '' : ' inherited') }, field('key', true, 'Its name in the script (no spaces): self:GetScenarioSetting("' + x.s.key + '")'), field('label', false, 'What the player sees'), field('unit', true, 'The unit shown beside the number'),
-				field('min', true, 'Smallest'), field('max', true, 'Largest'), field('step', true, 'Step'), field('def', true, 'Starting value (or Auto)'),
+			return el('div', { className: 'sc-setting' + (x.own ? '' : ' inherited') }, cell('key', true, 'Its name in the script (no spaces): self:GetScenarioSetting("' + x.s.key + '")'), cell('label', false, 'What the player sees'), cell('unit', true, 'The unit shown beside the number'),
+				cell('min', true, 'Smallest'), cell('max', true, 'Largest'), cell('step', true, 'Step'), cell('def', true, 'Starting value (or Auto)'),
 				el('button', { className: 'ico-btn', textContent: '×', title: 'Take it out', disabled: !editable, onclick: () => change('Take setting ' + x.s.key + ' out', () => x.node.remove()) }));
 		});
 		const addSetting = el('button', { className: 'tb', textContent: '+ Add a setting', disabled: ro, onclick: () => change('Add a setting to ' + p.name, () => p.node.add('AddScenarioSetting', 'Difficulty | Enemy strength | Multiplier | 0.25 | 3 | 0.25 | 1')) });
@@ -233,7 +234,7 @@ window.MS = window.MS || {};
 		const sceneEntity = scenes.find((x) => x.name === sceneName);
 		const sceneAreas = sceneEntity ? a.lib.resolve(sceneEntity.node).all('AddArea').map((x) => x.node.childValue('Name', '')) : [];
 		const areaChoice = el('select', { className: 'ed-input', disabled: ro }, ...[...new Set(sceneAreas)].map((n) => el('option', { value: n, textContent: n })));
-		const areaRows = areas.map((r) => el('div', { className: 'ed-row' + (r.own ? '' : ' inherited') }, el('span', { textContent: r.name }), sceneAreas.length && !sceneAreas.includes(r.name) ? el('small', { className: 'scn-warn', textContent: 'the scene has no area with this name' }) : null,
+		const areaRows = areas.map((r) => el('span', { className: 'sc-chip' + (r.own ? '' : ' inherited') + (sceneAreas.length && !sceneAreas.includes(r.name) ? ' bad' : ''), title: sceneAreas.length && !sceneAreas.includes(r.name) ? 'The scene has no area with this name' : r.own ? '' : 'From the scenario this one copies' }, r.name,
 			el('button', { className: 'ico-btn', textContent: '×', disabled: !r.own || ro, onclick: () => change('Take area ' + r.name + ' out', () => r.node.remove()) })));
 
 		// script
@@ -241,46 +242,53 @@ window.MS = window.MS || {};
 		const className = e.str('LuaClassName', '');
 		const code = scriptText(scriptPath);
 		const have = new Set(code ? [...code.matchAll(/function\s+[A-Za-z0-9_]+[:.]([A-Za-z0-9_]+)\s*\(/g)].map((m) => m[1]) : []);
-		const callbackRows = CALLBACKS.map(([name, args, help]) => el('div', { className: 'ed-row', title: help },
-			el('span', { className: 'ed-label', textContent: name }), have.has(name) ? el('b', { textContent: 'in the script' }) : el('button', { className: 'tb', textContent: 'Add it', disabled: ro || !code || !className, onclick: () => addCallback(scriptPath, className, [name, args]) }), el('small', { textContent: help })));
+		const callbackRows = CALLBACKS.map(([name, args, help]) => (have.has(name)
+			? el('span', { className: 'sc-chip ok', title: help }, '✓ ' + name)
+			: el('button', { className: 'sc-chip add', title: help + ' Click to add it to the script.', disabled: ro || !code || !className, onclick: () => addCallback(scriptPath, className, [name, args]) }, '+ ' + name)));
 		const play = el('button', { className: 'tb primary', textContent: '▶ Play in the game', title: 'Starts it in a game running from Studio (Test in game or Sandbox)', onclick: () => {
 			MS.ide.runLua('ActivityMan:StartActivity(' + JSON.stringify(p.cls) + ', ' + JSON.stringify(p.name) + ')');
 			a.status('Told the game to start ' + p.name + '. It only works in a game started from Studio.');
 		} });
 
-		return el('div', {},
-			el('div', { className: 'ed-card-head' }, el('h3', { textContent: p.name }), el('span', { className: 'spacer' }),
+		return el('div', { className: 'sc' },
+			el('div', { className: 'sc-head' }, el('h3', { textContent: p.name }), el('span', { className: 'spacer' }),
 				el('button', { className: 'tb primary', textContent: '⚑ Mission Editor', title: 'Draw the areas on the map and build what happens, side by side', onclick: () => MS.missionEditor.open(p) }), play,
 				scriptPath ? el('button', { className: 'tb', textContent: 'Open the script', onclick: () => MS.ide.openFile(scriptPath, 1) }) : null,
-				el('button', { className: 'ico-btn', textContent: 'Its lines', onclick: () => MS.ide.openFile(p.doc.path, p.node.line) })),
-			el('div', { className: 'ed-label', textContent: 'Story' }),
-			el('div', { className: 'ed-row' }, el('span', { className: 'ed-label', textContent: 'Plays on' }), scene),
-			el('div', { className: 'ed-row' }, el('span', { className: 'ed-label', textContent: 'Description' }), desc),
-			text('InCampaignStage', 'Campaign stage', 'The stage of the campaign it appears in (1 is the start)', 'number'),
-			el('div', { className: 'ed-label', textContent: 'Teams and players' }),
-			text('MinTeamsRequired', 'Teams needed', 'The fewest teams it can be played with', 'number'),
-			text('MaxPlayerSupport', 'Most players', 'How many human players it allows', 'number'),
-			...teamRows, ...playerRows, el('div', { className: 'ed-row' }, el('span', { className: 'ed-label', textContent: 'Computer plays' }), cpu),
-			el('div', { className: 'ed-label', textContent: 'Rules a player starts with' }),
-			el('div', { className: 'ed-settings' },
-				flag('DefaultFogOfWar', 'Fog of war on', 'Unexplored ground is hidden', false),
-				flag('DefaultRequireClearPathToOrbit', 'Units need a clear sky above them to be sent in', 'Craft need open air to land', true),
-				flag('DefaultDeployUnits', 'Deploy units placed in the scene', 'Pre-placed units go into the scene at the start', false),
-				flag('BuyMenuEnabled', 'The buy menu works', 'Players can buy units', true),
-				flag('FogOfWarSwitchEnabled', 'Players may change fog of war', '', true),
-				flag('DeployUnitsSwitchEnabled', 'Players may change unit deploying', '', false),
-				flag('RequireClearPathToOrbitSwitchEnabled', 'Players may change the clear sky rule', '', true),
-				flag('GoldSwitchEnabled', 'Players may change starting gold', '', true)),
-			el('div', { className: 'ed-label', textContent: 'Settings the player gets (' + settings.length + ')' }),
-			el('p', { className: 'ed-note', textContent: 'key, label, unit, smallest, largest, step, starting value. The script reads one with self:GetScenarioSetting("key").' }),
-			...settingRows, el('div', { className: 'ed-row' }, addSetting),
-			el('div', { className: 'ed-label', textContent: 'Areas the scene must have (' + areas.length + ')' }), ...areaRows,
-			el('div', { className: 'ed-row' }, areaChoice, el('button', { className: 'tb', textContent: '+ Require it', disabled: ro || !sceneAreas.length, onclick: () => areaChoice.value && change('Require the area ' + areaChoice.value, () => p.node.add('AddRequiredArea', areaChoice.value)) }), el('small', { textContent: sceneAreas.length ? 'areas of ' + sceneName : 'pick a scene to list its areas' })),
-			el('div', { className: 'ed-label', textContent: 'Mission' }), missionSummary(p),
-			el('div', { className: 'ed-label', textContent: 'Script' }),
-			text('ScriptPath', 'Script file', 'The Lua file that runs it'), text('LuaClassName', 'Script class', 'The name its functions start with (Class:StartActivity)'),
-			code === null && scriptPath ? el('p', { className: 'ed-note', textContent: 'Studio has not read ' + scriptPath + ' (it is not in a mod it knows, or is not there).' }) : null,
-			...(scriptPath && className ? callbackRows : []));
+				el('button', { className: 'tb', textContent: 'Its lines', onclick: () => MS.ide.openFile(p.doc.path, p.node.line) })),
+			ro ? el('div', { className: 'ed-banner', textContent: p.module + ' is read only here. Make a copy in your mod with + New scenario (as a copy of this one) to change it.' }) : null,
+			el('div', { className: 'sc-grid' },
+				card('Story', 'wide', field('Plays on', scene, 'The scene (map) it is played on'), field('Description', desc, 'What the player reads before choosing it'),
+					el('div', { className: 'sc-inline' }, text('InCampaignStage', 'Campaign stage', 'When it appears in the campaign (1 is the start)', 'number'))),
+				card('Mission', 'accent', missionSummary(p)),
+				card('Teams', '',
+					el('div', { className: 'sc-team sc-team-head' }, el('span', {}), el('span', { textContent: 'Name' }), el('span', { textContent: 'Starting gold' })),
+					...teamRows,
+					el('div', { className: 'sc-inline' }, text('MinTeamsRequired', 'Teams needed', 'The fewest it can be played with', 'number'), text('MaxPlayerSupport', 'Most players', 'Human players it allows', 'number'))),
+				card('Players', '', el('div', { className: 'sc-players' }, ...playerRows), field('Computer plays', cpu, 'The team the computer runs')),
+				card('Rules', '',
+					el('div', { className: 'sc-rules' },
+						el('div', {}, el('div', { className: 'sc-label', textContent: 'A game starts with' }),
+							flag('DefaultFogOfWar', 'Fog of war', 'Unexplored ground is hidden', false),
+							flag('DefaultRequireClearPathToOrbit', 'Clear sky needed to send units in', 'Craft need open air above to land', true),
+							flag('DefaultDeployUnits', 'Units placed in the scene deployed', 'Pre-placed units go in at the start', false),
+							flag('BuyMenuEnabled', 'The buy menu', 'Players can buy units', true)),
+						el('div', {}, el('div', { className: 'sc-label', textContent: 'Players may change' }),
+							flag('FogOfWarSwitchEnabled', 'Fog of war', '', true),
+							flag('RequireClearPathToOrbitSwitchEnabled', 'The clear sky rule', '', true),
+							flag('DeployUnitsSwitchEnabled', 'Deploying placed units', '', false),
+							flag('GoldSwitchEnabled', 'Starting gold', '', true)))),
+				card('Settings the player gets', 'wide',
+					el('p', { className: 'ed-note', textContent: 'Sliders on the scenario screen. The script reads one with self:GetScenarioSetting("its name").' }),
+					settings.length ? el('div', { className: 'sc-setting sc-setting-head' }, ...['Name in the script', 'What the player sees', 'Unit', 'Smallest', 'Largest', 'Step', 'Start', ''].map((t) => el('span', { textContent: t }))) : null,
+					...settingRows, el('div', {}, addSetting)),
+				card('Areas the scene must have', '',
+					el('div', { className: 'sc-chips' }, ...(areaRows.length ? areaRows : [el('span', { className: 'ed-note', textContent: 'None.' })])),
+					el('div', { className: 'sc-inline' }, areaChoice, el('button', { className: 'tb', textContent: '+ Require it', disabled: ro || !sceneAreas.length, onclick: () => areaChoice.value && change('Require the area ' + areaChoice.value, () => p.node.add('AddRequiredArea', areaChoice.value)) })),
+					el('small', { className: 'ed-note', textContent: sceneAreas.length ? 'From the areas of ' + sceneName + '. Draw new ones in the Mission Editor.' : 'Pick a scene to list its areas.' })),
+				card('Script', '',
+					text('ScriptPath', 'Script file', 'The Lua file that runs it'), text('LuaClassName', 'Script class', 'The name its functions start with (Class:StartActivity)'),
+					code === null && scriptPath ? el('p', { className: 'ed-note', textContent: 'Studio has not read ' + scriptPath + ' (it is not in a mod it knows, or is not there).' }) : null,
+					scriptPath && className ? el('div', {}, el('div', { className: 'sc-label', textContent: 'What the game calls' }), el('div', { className: 'sc-chips' }, ...callbackRows)) : null)));
 	}
 
 	// ---- a new scenario ----
