@@ -71,7 +71,8 @@ pub fn set_zoom(factor: f64) {
 
 /// Opens another window on Studio with this "popout" request (a tab torn off into its own window: the page reads it from its address). Registered once the
 /// app exists; headless (--bridge) there is none, and the page opens a browser tab instead.
-static POPOUT_HOOK: std::sync::OnceLock<Box<dyn Fn(&str) + Send + Sync>> = std::sync::OnceLock::new();
+type PopoutHook = Box<dyn Fn(&str) + Send + Sync>;
+static POPOUT_HOOK: std::sync::OnceLock<PopoutHook> = std::sync::OnceLock::new();
 
 
 /// Opens a window for `what`. False when there is no app to open one in.

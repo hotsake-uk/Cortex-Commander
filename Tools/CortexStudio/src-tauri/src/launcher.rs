@@ -1422,7 +1422,7 @@ fn launch(config: &Config, mode: &str, map: &str, run: &RunConfig) -> Result<Vec
 	}
 	// What the game prints (asserts and crashes included, which reach no log of its own on macOS and Linux) goes to a file you can read.
 	let game_log = slot.join("ModStudio").join("Game.log");
-	if let Some(file) = fs::create_dir_all(game_log.parent().unwrap()).and_then(|_| fs::File::create(&game_log)).ok() {
+	if let Ok(file) = fs::create_dir_all(game_log.parent().unwrap()).and_then(|_| fs::File::create(&game_log)) {
 		if let Ok(copy) = file.try_clone() {
 			command.stdout(copy).stderr(file);
 			log.push(format!("The game's output goes to {}.", game_log.display()));
