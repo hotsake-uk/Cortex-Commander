@@ -374,6 +374,48 @@ window.MS = window.MS || {};
 		return text;
 	}
 
+	// ---- ready-made missions ----
+	// Each template asks a few questions and builds stages (and sometimes rules) that can then be changed like any others.
+
+	const msg = (text, who) => ({ kind: 'message', text, who: who === undefined ? 'all' : who, seconds: 5 });
+	const win = (team) => ({ kind: 'win', team });
+	const stage = (name, goal, p, extra) => Object.assign({ name, goal, text: '', marker: true, viewer: Number(p.team) || 0, failAfter: 0, onStart: [], onDone: [], onFail: [] }, extra || {});
+	const battleStage = (name, mode, p) => stage(name, { kind: 'battle', team: Number(p.team) }, p, {
+		marker: false,
+		onStart: [msg(name + '!'), { kind: 'battle', mode, size: Number(p.size) || 12, byShip: false, layout: true, seed: Number(p.seed) || 1 }],
+		onDone: [msg('Victory!'), win(Number(p.team))],
+		failAfter: Math.max(0, Number(p.minutes) || 0) * 60,
+		onFail: [msg('Out of time.'), { kind: 'end' }],
+	});
+	const battleParams = [['team', 'team', 'you are', 0], ['size', 'number', 'units a side', 12], ['minutes', 'number', 'time limit in minutes (0: none)', 0], ['seed', 'number', 'layout seed (a different number lays the map out differently)', 1]];
+
+	const TEMPLATES = [
+		{ id: 'hold', name: 'Hold the hill', blurb: 'Reach an area and keep it, free of enemies, for a while.', params: [['area', 'area', 'the hill', ''], ['team', 'team', 'you are', 0], ['seconds', 'number', 'hold it for (seconds)', 120]],
+			build: (p) => ({ rules: [], stages: [
+				stage('Reach the hill', { kind: 'reach', area: p.area, team: Number(p.team) }, p, { text: 'Take the hill', onDone: [msg('Now hold it!')] }),
+				stage('Hold the hill', { kind: 'hold', area: p.area, team: Number(p.team), seconds: Number(p.seconds) }, p, { text: 'Hold it!', onDone: [msg('Hill held!'), win(Number(p.team))] })] }) },
+		{ id: 'brain', name: 'Destroy the enemy brain', blurb: 'Hunt down and destroy the other team\'s brain, before time runs out.', params: [['team', 'team', 'you are', 0], ['enemy', 'team', 'the enemy', 1], ['minutes', 'number', 'time limit in minutes (0: none)', 15]],
+			build: (p) => ({ rules: [], stages: [
+				stage('Destroy the brain', { kind: 'brain', team: Number(p.enemy) }, p, { text: 'Terminate!', failAfter: Math.max(0, Number(p.minutes) || 0) * 60, onStart: [msg('Find and destroy their brain.')], onDone: [msg('The brain is gone.'), win(Number(p.team))], onFail: [msg('Time is up.'), win(Number(p.enemy))] })] }) },
+		{ id: 'retrieve', name: 'Retrieve the item', blurb: 'An item appears in one area. Take it, and bring it to another.', params: [['item', 'item', 'the item', ''], ['from', 'area', 'it starts in', ''], ['area', 'area', 'bring it to', ''], ['team', 'team', 'you are', 0], ['minutes', 'number', 'time limit in minutes (0: none)', 0]],
+			build: (p) => ({ rules: [], stages: [
+				stage('Retrieve the item', { kind: 'fetch', item: p.item, from: p.from, area: p.area }, p, { text: 'Bring it here', failAfter: Math.max(0, Number(p.minutes) || 0) * 60, onStart: [msg('Find it and bring it back.')], onDone: [msg('Delivered.'), win(Number(p.team))], onFail: [msg('Too late.'), { kind: 'end' }] })] }) },
+		{ id: 'survive', name: 'Survive', blurb: 'Stay alive for a set time.', params: [['team', 'team', 'you are', 0], ['seconds', 'number', 'seconds', 300]],
+			build: (p) => ({ rules: [], stages: [stage('Survive', { kind: 'survive', seconds: Number(p.seconds) }, p, { marker: false, onStart: [msg('Survive!')], onDone: [msg('You made it.'), win(Number(p.team))] })] }) },
+		{ id: 'assault', name: 'Take the position, clear it, hold it', blurb: 'Reach one area, destroy the enemy team, then hold another area for a while.', params: [['area', 'area', 'first, reach', ''], ['hill', 'area', 'finally, hold', ''], ['team', 'team', 'you are', 0], ['enemy', 'team', 'the enemy', 1], ['seconds', 'number', 'hold it for (seconds)', 90]],
+			build: (p) => ({ rules: [], stages: [
+				stage('Reach the position', { kind: 'reach', area: p.area, team: Number(p.team) }, p, { text: 'Move up', onDone: [msg('Clear them out.')] }),
+				stage('Clear the enemy', { kind: 'destroy', team: Number(p.enemy) }, p, { text: 'Eliminate', onDone: [msg('All clear. Now take and hold the final position.')] }),
+				stage('Hold the position', { kind: 'hold', area: p.hill, team: Number(p.team), seconds: Number(p.seconds) }, p, { text: 'Hold!', onDone: [msg('Mission complete.'), win(Number(p.team))] })] }) },
+		{ id: 'ctf', name: 'Capture the flag match', blurb: 'The game\'s capture the flag, with a victory at the end. Needs a game with battle modes.', params: battleParams, build: (p) => ({ rules: [], stages: [battleStage('Capture the flag', 1, p)] }) },
+		{ id: 'koth', name: 'King of the hill match', blurb: 'The game\'s king of the hill. Needs a game with battle modes.', params: battleParams, build: (p) => ({ rules: [], stages: [battleStage('King of the hill', 2, p)] }) },
+		{ id: 'assaultmode', name: 'Assault match', blurb: 'The game\'s assault: take each objective in turn against the clock. Needs a game with battle modes.', params: battleParams, build: (p) => ({ rules: [], stages: [battleStage('Assault', 3, p)] }) },
+		{ id: 'campaign', name: 'Two battles in a row', blurb: 'Win capture the flag, then king of the hill, then the mission is won.', params: battleParams,
+			build: (p) => ({ rules: [], stages: [
+				Object.assign(battleStage('Capture the flag', 1, p), { onDone: [msg('Flag war won. Now hold the hill.')] }),
+				battleStage('King of the hill', 2, p)] }) },
+	];
+
 	// ---- the form ----
 
 	// Where the function a rule calls is in the script, to jump to it.
@@ -457,6 +499,41 @@ window.MS = window.MS || {};
 				item.kind === 'call' ? el('button', { className: 'ico-btn', textContent: '⧉', title: 'Edit the code beside this, in its own window', onclick: () => host.openBeside(path, lineOf(host.scriptText(path), cls, item.fn)) }) : null,
 				remove ? el('button', { className: 'ico-btn', textContent: '×', title: 'Take it out', disabled: ro, onclick: remove }) : null);
 		};
+		const templateDialog = () => {
+			const values = {};
+			const holder = el('div', {});
+			const pick = el('select', { className: 'ed-input' }, ...TEMPLATES.map((t) => el('option', { value: t.id, textContent: t.name })));
+			const draw = () => {
+				const t = TEMPLATES.find((x) => x.id === pick.value);
+				holder.replaceChildren(el('p', { className: 'ed-note', textContent: t.blurb }), ...t.params.map(([key, type, label, def]) => {
+					if (!(key in values)) {
+						values[key] = type === 'area' ? areaList[0] || '' : def;
+					}
+					return el('div', { className: 'ed-row' }, field(type, label, values[key], (v) => {
+						values[key] = v;
+						draw();
+					}));
+				}));
+			};
+			pick.onchange = () => {
+				Object.keys(values).forEach((k) => delete values[k]);
+				draw();
+			};
+			draw();
+			MS.dialogs.open('Start from a ready-made mission', el('div', {}, MS.dialogs.parts.field('Mission', pick, 'Its stages are added below any you have; change them like any others.'), holder), [
+				{ text: 'Cancel' },
+				{ text: 'Add to the mission', primary: true, action: async () => {
+					const t = TEMPLATES.find((x) => x.id === pick.value);
+					if (t.params.some(([key, type]) => (type === 'area' || type === 'item') && !values[key])) {
+						app().toast('Pick ' + (areaList.length ? 'an item' : 'an area') + ' for every choice first (the scene needs areas: add some in the Scenes editor).', 'bad');
+						return false;
+					}
+					const built = t.build(values);
+					await save(rules.concat(built.rules), stages.concat(built.stages));
+					return true;
+				} },
+			]);
+		};
 		const stageBox = el('div', { className: 'mission-stages' });
 		stages.forEach((st, i) => {
 			const name = el('input', { type: 'text', className: 'ed-input', value: st.name, disabled: ro, title: 'What this stage is called' });
@@ -488,7 +565,7 @@ window.MS = window.MS || {};
 					n++;
 				}
 				next.push({ name: 'Stage ' + n, goal: blank(GOAL, 'reach'), text: '', marker: true, viewer: 0, failAfter: 0, onStart: [], onDone: [{ kind: 'message', text: 'Objective complete.', who: 'all', seconds: 4 }], onFail: [] });
-			}) }), stages.length ? el('small', { textContent: 'When a stage is done the next begins. Make the last one end the mission with a win.' }) : null),
+			}) }), el('button', { className: 'tb', textContent: 'Start from a ready-made mission…', disabled: ro || code === null, onclick: templateDialog }), stages.length ? el('small', { textContent: 'When a stage is done the next begins. Make the last one end the mission with a win.' }) : null),
 			el('div', { className: 'ed-label', textContent: 'Rules that run alongside (' + rules.length + ')' }));
 		if (migrated) {
 			box.append(el('div', { className: 'ed-banner', textContent: 'These come from the older "Studio triggers" block. Change anything and they are converted to rules, each running the function it ran before.' }));
