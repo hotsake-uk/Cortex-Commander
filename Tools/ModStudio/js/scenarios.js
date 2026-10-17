@@ -79,182 +79,26 @@ window.MS = window.MS || {};
 		MS.ide.refreshForm();
 	}
 
-	// ---- area triggers ----
-	// A trigger runs one of your functions when a unit enters or leaves an area of the scene, or when it is emptied. Studio keeps the plumbing in a marked
-	// block of the script (the table and the loop that checks the areas each frame) and writes a function for each trigger outside it, which is yours: the
-	// editor jumps to it. Changing the list rewrites the marked block only; your functions are never touched or removed.
-
-	const MARK_BEGIN = '-- >>> Studio triggers';
-	const MARK_END = '-- <<< Studio triggers';
-	const EVENTS = [['enter', 'a unit enters'], ['leave', 'a unit leaves'], ['empty', 'it is emptied']];
-
-	const handlerName = (name) => 'OnTrigger_' + (name.replace(/[^A-Za-z0-9]/g, '') || 'Trigger');
-	const clean = (text) => text.replace(/["]/g, '').replace(/[^ -~]/g, '').trim();
-
-	function parseTriggers(code) {
-		if (!code) {
-			return [];
-		}
-		const begin = code.indexOf(MARK_BEGIN);
-		const end = code.indexOf(MARK_END);
-		if (begin < 0 || end < begin) {
-			return [];
-		}
-		const found = [];
-		const re = /\{ name = "([^"]*)", area = "([^"]*)", team = (-?\d+), event = "(\w+)", once = (true|false), handler = "(\w+)" \}/g;
-		for (const m of code.slice(begin, end).matchAll(re)) {
-			found.push({ name: m[1], area: m[2], team: Number(m[3]), event: m[4], once: m[5] === 'true', handler: m[6] });
-		}
-		return found;
-	}
-
-	// The marked block for a list of triggers.
-	function triggerBlock(cls, triggers) {
-		const lines = [
-			MARK_BEGIN + ': managed by Cortex Studio (the Scenarios editor). Change the list there; put your own code in the OnTrigger_ functions below.',
-			cls + '.StudioTriggers = {',
-			...triggers.map((t) => '\t{ name = "' + t.name + '", area = "' + t.area + '", team = ' + t.team + ', event = "' + t.event + '", once = ' + (t.once ? 'true' : 'false') + ', handler = "' + t.handler + '" },'),
-			'}',
-			'',
-			'function ' + cls + ':RunStudioTriggers()',
-			'\tlocal scene = SceneMan.Scene',
-			'\tself.StudioInside = self.StudioInside or {}',
-			'\tself.StudioDone = self.StudioDone or {}',
-			'\tfor index, trigger in ipairs(' + cls + '.StudioTriggers) do',
-			'\t\tif not self.StudioDone[index] and scene:HasArea(trigger.area) then',
-			'\t\t\tlocal area = scene:GetArea(trigger.area)',
-			'\t\t\tlocal now = {}',
-			'\t\t\tlocal count = 0',
-			'\t\t\tfor actor in MovableMan.Actors do',
-			'\t\t\t\tif (trigger.team < 0 or actor.Team == trigger.team) and actor.Health > 0 and area:IsInside(actor.Pos) then',
-			'\t\t\t\t\tnow[actor.UniqueID] = actor',
-			'\t\t\t\t\tcount = count + 1',
-			'\t\t\t\tend',
-			'\t\t\tend',
-			'\t\t\tlocal before = self.StudioInside[index] or {}',
-			'\t\t\tlocal fired = false',
-			'\t\t\tif trigger.event == "enter" then',
-			'\t\t\t\tfor id, actor in pairs(now) do',
-			'\t\t\t\t\tif not before[id] then',
-			'\t\t\t\t\t\tself[trigger.handler](self, actor)',
-			'\t\t\t\t\t\tfired = true',
-			'\t\t\t\t\tend',
-			'\t\t\t\tend',
-			'\t\t\telseif trigger.event == "leave" then',
-			'\t\t\t\tfor id in pairs(before) do',
-			'\t\t\t\t\tif not now[id] then',
-			'\t\t\t\t\t\tself[trigger.handler](self, nil)',
-			'\t\t\t\t\t\tfired = true',
-			'\t\t\t\t\tend',
-			'\t\t\t\tend',
-			'\t\t\telseif trigger.event == "empty" then',
-			'\t\t\t\tif count == 0 and next(before) ~= nil then',
-			'\t\t\t\t\tself[trigger.handler](self, nil)',
-			'\t\t\t\t\tfired = true',
-			'\t\t\t\tend',
-			'\t\t\tend',
-			'\t\t\tself.StudioInside[index] = now',
-			'\t\t\tif fired and trigger.once then',
-			'\t\t\t\tself.StudioDone[index] = true',
-			'\t\t\tend',
-			'\t\tend',
-			'\tend',
-			'end',
-			MARK_END,
-		];
-		return lines.join('\n');
-	}
-
-	// The script with its trigger block replaced (or added before UpdateActivity), UpdateActivity made to run the triggers, and a function for each
-	// trigger that has none yet.
-	function withTriggers(code, cls, triggers) {
-		let text = code.replace(/\r\n/g, '\n');
-		const begin = text.indexOf(MARK_BEGIN);
-		const end = text.indexOf(MARK_END);
-		if (begin >= 0 && end > begin) {
-			text = text.slice(0, begin).replace(/\s*$/, '') + '\n\n' + text.slice(end + MARK_END.length).replace(/^\n+/, '');
-		}
-		const block = triggerBlock(cls, triggers);
-		const update = new RegExp('function\\s+' + cls + ':UpdateActivity\\s*\\(\\s*\\)');
-		if (update.test(text)) {
-			text = text.replace(update, (m) => block + '\n\n' + m);
-		} else {
-			text = text.replace(/\s*$/, '') + '\n\n' + block + '\n\nfunction ' + cls + ':UpdateActivity()\n\tself:RunStudioTriggers()\nend\n';
-		}
-		if (!text.includes(':RunStudioTriggers()\n') || !new RegExp(cls + ':UpdateActivity\\s*\\(\\s*\\)[^]*?:RunStudioTriggers\\(\\)').test(text)) {
-			text = text.replace(update, (m) => m + '\n\tself:RunStudioTriggers()');
-		}
-		for (const t of triggers) {
-			if (!new RegExp('function\\s+' + cls + ':' + t.handler + '\\s*\\(').test(text)) {
-				text = text.replace(/\s*$/, '') + '\n\n-- ' + t.name + ': ' + (t.event === 'enter' ? 'a unit entered ' : t.event === 'leave' ? 'a unit left ' : 'every unit has gone from ') + t.area + '. actor is the unit that came in (nil for the others).\nfunction ' + cls + ':' + t.handler + '(actor)\n\t\nend\n';
+	// What the mission logic needs from this editor: the script's text and a way to change it, to jump to code or open it beside, and a unit picker.
+	const missionHost = {
+		scriptText,
+		saveText: async (path, text) => {
+			await writeScript(path, text);
+			MS.ide.refreshForm();
+		},
+		openLine: (path, line) => MS.ide.openFile(path, line),
+		openBeside: (path, line) => {
+			MS.ide.openFile(path, line);
+			const tab = MS.ide.tabs.find((t) => t.path === path);
+			if (tab && MS.popout && MS.popout.pop) {
+				MS.popout.pop(tab);
 			}
-		}
-		return text;
-	}
-
-	async function saveTriggers(path, cls, triggers) {
-		const current = scriptText(path) || (await app().fs.readText(path).catch(() => ''));
-		await writeScript(path, withTriggers(current, cls, triggers));
-		MS.ide.refreshForm();
-	}
-
-	// The script open beside the editor: in its own window, for putting the two side by side.
-	function openBeside(path, handler, cls) {
-		const code = scriptText(path) || '';
-		const line = Math.max(1, code.split('\n').findIndex((l) => l.includes(cls + ':' + handler + '(')) + 1);
-		MS.ide.openFile(path, line);
-		const tab = MS.ide.tabs.find((t) => t.path === path);
-		if (tab && MS.popout && MS.popout.pop) {
-			MS.popout.pop(tab);
-		}
-	}
-
-	function triggerSection(p, e, ro, sceneAreas) {
-		const path = e.str('ScriptPath', '');
-		const cls = e.str('LuaClassName', '');
-		const code = scriptText(path);
-		const box = el('div', {});
-		if (!path || !cls) {
-			box.append(el('p', { className: 'ed-note', textContent: 'Triggers need a script: give the scenario a script file and class (below) first.' }));
-			return box;
-		}
-		const triggers = parseTriggers(code);
-		const save = (list) => saveTriggers(path, cls, list).catch((err) => app().toast('Couldn\'t change the script: ' + err.message, 'bad'));
-		const areaList = [...new Set(sceneAreas)];
-		for (const [i, t] of triggers.entries()) {
-			const edit = (patch) => {
-				const next = triggers.map((x, k) => (k === i ? Object.assign({}, x, patch, patch.name !== undefined ? { handler: x.handler } : {}) : x));
-				return save(next);
-			};
-			const name = el('input', { type: 'text', className: 'ed-input', value: t.name, disabled: ro, title: 'What it is called' });
-			name.onchange = () => edit({ name: clean(name.value) || t.name });
-			const area = el('select', { className: 'ed-input', disabled: ro, title: 'Which area' }, ...[...new Set([...areaList, t.area])].map((n) => el('option', { value: n, textContent: n, selected: n === t.area })));
-			area.onchange = () => edit({ area: area.value });
-			const team = el('select', { className: 'ed-input', disabled: ro, title: 'Whose units count' }, el('option', { value: '-1', textContent: 'any unit', selected: t.team < 0 }), ...[0, 1, 2, 3].map((n) => el('option', { value: String(n), textContent: 'Team ' + (n + 1) + ' units', selected: t.team === n })));
-			team.onchange = () => edit({ team: Number(team.value) });
-			const event = el('select', { className: 'ed-input', disabled: ro, title: 'When it runs' }, ...EVENTS.map(([v, text]) => el('option', { value: v, textContent: 'when ' + text, selected: v === t.event })));
-			event.onchange = () => edit({ event: event.value });
-			const once = el('input', { type: 'checkbox', checked: t.once, disabled: ro });
-			once.onchange = () => edit({ once: once.checked });
-			box.append(el('div', { className: 'ed-row scn-trigger' }, name, el('span', { textContent: 'in' }), area, team, event,
-				el('label', { className: 'ed-check', title: 'Only the first time' }, once, 'once'),
-				el('button', { className: 'tb', textContent: 'Edit code', title: 'Jump to the function this runs', onclick: () => MS.ide.openFile(path, Math.max(1, (code || '').split('\n').findIndex((l) => l.includes(cls + ':' + t.handler + '(')) + 1)) }),
-				el('button', { className: 'ico-btn', textContent: '⧉', title: 'Edit the code beside this, in its own window', onclick: () => openBeside(path, t.handler, cls) }),
-				el('button', { className: 'ico-btn', textContent: '×', title: 'Take the trigger out (your function stays in the script)', disabled: ro, onclick: () => save(triggers.filter((_, k) => k !== i)) })));
-		}
-		if (!triggers.length) {
-			box.append(el('p', { className: 'ed-empty', textContent: 'No triggers yet.' }));
-		}
-		box.append(el('div', { className: 'ed-row' }, el('button', { className: 'tb', textContent: '+ Add a trigger', disabled: ro || code === null || !sceneAreas.length, title: sceneAreas.length ? '' : 'The scene needs areas first: add some in the Scenes editor', onclick: () => {
-			let n = triggers.length + 1;
-			while (triggers.some((t) => t.name === 'Trigger ' + n)) {
-				n++;
-			}
-			const name = 'Trigger ' + n;
-			save([...triggers, { name, area: areaList[0], team: -1, event: 'enter', once: false, handler: handlerName(name) }]);
-		} })));
-		return box;
-	}
+		},
+		pickUnit: (onPick) => {
+			const units = app().lib.presets.filter((x) => x.topLevel && (x.cls === 'AHuman' || x.cls === 'ACrab')).sort((x, y) => x.name.localeCompare(y.name));
+			MS.dialogs.open('Pick a unit', MS.dialogs.parts.pickerGrid(units, (chosen) => onPick(chosen), (c, x) => MS.panels.drawRigThumb(c, x), false, []), [{ text: 'Cancel' }], true);
+		},
+	};
 
 	// ---- the editor ----
 
@@ -411,7 +255,7 @@ window.MS = window.MS || {};
 			...settingRows, el('div', { className: 'ed-row' }, addSetting),
 			el('div', { className: 'ed-label', textContent: 'Areas the scene must have (' + areas.length + ')' }), ...areaRows,
 			el('div', { className: 'ed-row' }, areaChoice, el('button', { className: 'tb', textContent: '+ Require it', disabled: ro || !sceneAreas.length, onclick: () => areaChoice.value && change('Require the area ' + areaChoice.value, () => p.node.add('AddRequiredArea', areaChoice.value)) }), el('small', { textContent: sceneAreas.length ? 'areas of ' + sceneName : 'pick a scene to list its areas' })),
-			el('div', { className: 'ed-label', textContent: 'Area triggers (run your code when a unit enters or leaves an area)' }), triggerSection(p, e, ro, sceneAreas),
+			el('div', { className: 'ed-label', textContent: 'Mission logic: when this happens, and if these hold, do these things' }), MS.missions.section(p, e, ro, sceneAreas, missionHost),
 			el('div', { className: 'ed-label', textContent: 'Script' }),
 			text('ScriptPath', 'Script file', 'The Lua file that runs it'), text('LuaClassName', 'Script class', 'The name its functions start with (Class:StartActivity)'),
 			code === null && scriptPath ? el('p', { className: 'ed-note', textContent: 'Studio has not read ' + scriptPath + ' (it is not in a mod it knows, or is not there).' }) : null,

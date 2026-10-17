@@ -1143,3 +1143,18 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .ed-row.inherited { opacity: .7; }
 .scn-trigger { flex-wrap: wrap; gap: 6px; }
 .scn-trigger .ed-input { width: 130px; }
+.mission-rule { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
+.mission-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.mission-head .ed-input { flex: 1; min-width: 120px; font-weight: 600; }
+.mission-line { display: flex; align-items: flex-start; gap: 8px; margin: 4px 0; }
+.mission-word { flex: none; width: 48px; padding-top: 5px; font-size: 11px; letter-spacing: .5px; }
+.mission-word.when { color: #5bc0eb; }
+.mission-word.if { color: #f2b63d; }
+.mission-word.then { color: #9bc53d; }
+.mission-block { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; flex: 1; }
+.mission-field { gap: 4px; }
+.mission-add { display: flex; gap: 6px; margin: 6px 0 0 56px; }
+.mono { font-family: ui-monospace, Consolas, monospace; }
+.replace-row { display: flex; gap: 6px; align-items: center; }
+.replace-row input { flex: 1; min-width: 0; }
+#replaceAll { margin-left: 0; white-space: nowrap; }
