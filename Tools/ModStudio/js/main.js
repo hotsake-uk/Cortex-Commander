@@ -19,6 +19,7 @@ import './editors.js';
 import './scenes.js';
 import './weapons.js';
 import './materials.js';
+import './limbs.js';
 import './lua-intel.js';
 import './ini-intel.js';
 import './navigation.js';

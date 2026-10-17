@@ -1116,3 +1116,14 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .mat-map { width: 256px; height: 256px; display: block; image-rendering: pixelated; cursor: pointer; margin-bottom: 8px; border-radius: 4px; }
 .mat-look { display: flex; align-items: center; gap: 10px; margin: 4px 0; }
 .mat-tex { width: 64px; height: 64px; }
+.limb-dialog { display: grid; grid-template-columns: 160px minmax(0, 1fr) 230px; gap: 14px; min-width: 900px; }
+.limb-canvas { width: 100%; display: block; border-radius: 6px; cursor: crosshair; touch-action: none; }
+.limb-kinds { display: flex; flex-direction: column; gap: 2px; }
+.limb-kind { display: flex; justify-content: space-between; gap: 6px; background: none; border: 0; border-radius: 5px; padding: 5px 8px; color: var(--dim); cursor: pointer; text-align: left; font: inherit; }
+.limb-kind small { color: var(--faint); }
+.limb-kind:hover { background: var(--panel2); color: var(--text); }
+.limb-kind.sel { background: var(--panel3); color: var(--text); }
+.limb-kind.none { opacity: .6; }
+.limb-tools { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.limb-side { overflow: auto; max-height: 420px; }
+.limb-i { width: 16px; color: var(--faint); }
