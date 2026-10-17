@@ -21,6 +21,8 @@ import './weapons.js';
 import './materials.js';
 import './limbs.js';
 import './effects.js';
+import './flowmodel.js';
+import './flowlua.js';
 import './missions.js';
 import './scenarios.js';
 import './lua-intel.js';
