@@ -5,6 +5,43 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cortex Studio</title>
+<script>
+// Studio's page gets a new address each time it starts, and the browser keeps what a page saves per address: so its preferences (theme,
+// settings) are kept in a file by Studio's server too. They are read back here, before anything uses them, and written back as they change.
+(function () {
+	try {
+		var token = new URLSearchParams(location.search).get("token");
+		if (!token || !window.localStorage) { return; }
+		var mine = function (k) { return /^(ms\.|cortexStudio\.)/.test(k); };
+		var x = new XMLHttpRequest();
+		x.open("GET", "/api/prefs", false);
+		x.setRequestHeader("X-ModStudio-Token", token);
+		x.send();
+		var saved = null;
+		if (x.status === 200) {
+			saved = JSON.parse(x.responseText || "{}");
+			for (var k in saved) { if (mine(k) && typeof saved[k] === "string" && localStorage.getItem(k) === null) { localStorage.setItem(k, saved[k]); } }
+		}
+		var timer = 0;
+		var push = function () {
+			clearTimeout(timer);
+			timer = setTimeout(function () {
+				var all = {};
+				for (var i = 0; i < localStorage.length; i++) { var key = localStorage.key(i); if (mine(key)) { all[key] = localStorage.getItem(key); } }
+				var w = new XMLHttpRequest();
+				w.open("PUT", "/api/prefs");
+				w.setRequestHeader("X-ModStudio-Token", token);
+				w.send(JSON.stringify(all));
+			}, 400);
+		};
+		var set = Storage.prototype.setItem, remove = Storage.prototype.removeItem;
+		Storage.prototype.setItem = function (k, v) { set.call(this, k, v); if (this === window.localStorage && mine(k)) { push(); } };
+		Storage.prototype.removeItem = function (k) { remove.call(this, k); if (this === window.localStorage && mine(k)) { push(); } };
+		// anything this page has that the file doesn't yet (set before the file was kept) goes into it now
+		for (var j = 0; j < localStorage.length; j++) { var have = localStorage.key(j); if (mine(have) && !(x.status === 200 && saved && have in saved)) { push(); break; } }
+	} catch (e) {}
+})();
+</script>
 <script>try { var c = localStorage.getItem("ms.theme.css"); if (c) { document.documentElement.style.cssText = c; } } catch (e) {}</script>
 <link rel="stylesheet" href="studio.css">
 </head>
