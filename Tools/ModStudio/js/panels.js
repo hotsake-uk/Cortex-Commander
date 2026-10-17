@@ -388,6 +388,18 @@ window.MS = window.MS || {};
 				row.onclick = () => MS.dialogs.attach(p, app.selected);
 				row.title = 'Add ' + p.name + ' to the selected part';
 			}
+			if (app.libraryOn && app.project && p.module.toLowerCase() !== app.project.toLowerCase()) {
+				// In the Library: clone it into the project (a copy in your mod you can change), then open it.
+				const clone = document.createElement('button');
+				clone.className = 'small-btn add';
+				clone.textContent = 'Clone';
+				clone.title = 'Copy ' + p.name + ' into ' + app.project + ' and open the copy';
+				clone.onclick = (e) => {
+					e.stopPropagation();
+					MS.dialogs.copyUnit({ name: p.name, cls: p.cls, path: p.doc.path });
+				};
+				row.append(clone);
+			}
 			list.append(row);
 		}
 		if (presets.length > limit) {
@@ -597,6 +609,54 @@ window.MS = window.MS || {};
 		app.requestDraw();
 	}
 
+	// Right-click a layer (in the Parts list or in the view): what you can do with it.
+	let partMenuEl = null;
+	function closePartMenu() {
+		if (partMenuEl) {
+			partMenuEl.remove();
+			partMenuEl = null;
+		}
+		document.removeEventListener('pointerdown', outsidePartMenu, true);
+	}
+	function outsidePartMenu(e) {
+		if (partMenuEl && !partMenuEl.contains(e.target)) {
+			closePartMenu();
+		}
+	}
+	function showPartMenu(part, x, y) {
+		closePartMenu();
+		if (!part || !app.rig) {
+			return;
+		}
+		app.select(part);
+		// A unit that isn't yours gets copied into the project on the first change, so its layers are not greyed out.
+		const reason = app.needsCopy() ? null : app.lockReason(part);
+		const item = (text, title, run, disabled) => {
+			const b = document.createElement('button');
+			b.textContent = text;
+			b.title = title || '';
+			b.disabled = !!disabled;
+			b.onclick = () => {
+				closePartMenu();
+				run();
+			};
+			return b;
+		};
+		const menu = document.createElement('div');
+		menu.className = 'ctx-menu';
+		menu.append(
+			item('Add attachment…', reason || 'Search everything and add it to ' + part.name + ' (a copy goes into your project)', () => MS.dialogs.attach(null, part), !!reason),
+			item('Edit sprite…', part.sprite && part.sprite.file ? 'Draw on ' + part.name + '\'s picture' : 'This part has no picture', () => MS.pixel.open({ part }), !(part.sprite && part.sprite.file)),
+			item('Swap sprite…', reason || 'Put a different picture in ' + part.name, () => MS.dialogs.importSprite(part), !!reason),
+			item(app.hidden.has(part.id) ? 'Show layer' : 'Hide layer', 'Show or hide it in the view only', () => toggleEye(part, false)),
+			item('Its lines', 'Open its INI in the code editor', () => MS.ide.openFile(part.ent.node.doc.path, part.ent.node.line)));
+		document.body.append(menu);
+		partMenuEl = menu;
+		menu.style.left = Math.max(4, Math.min(x, window.innerWidth - menu.offsetWidth - 8)) + 'px';
+		menu.style.top = Math.max(4, Math.min(y, window.innerHeight - menu.offsetHeight - 8)) + 'px';
+		setTimeout(() => document.addEventListener('pointerdown', outsidePartMenu, true), 0);
+	}
+
 	function updateTreeTools() {
 		const n = app.hidden.size;
 		const show = $('btnShowParts');
@@ -708,6 +768,10 @@ window.MS = window.MS || {};
 			};
 			row.append(picture, code, eye);
 			row.onclick = () => app.select(part);
+			row.oncontextmenu = (e) => {
+				e.preventDefault();
+				showPartMenu(part, e.clientX, e.clientY);
+			};
 			row.ondblclick = (e) => {
 				// Quick clicks on the eye, the fold arrow or the code button are not a double-click on the row.
 				if (!e.target.closest('button')) {
@@ -1667,5 +1731,6 @@ window.MS = window.MS || {};
 		forgetThumbs: () => thumbRigs.clear(),
 		filesOpen: () => openFiles !== null,
 		TAB_CLASSES,
+		showPartMenu,
 	};
 })();

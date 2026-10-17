@@ -682,6 +682,8 @@ window.MS = window.MS || {};
 				}
 			}
 			this.drag = { kind: 'pan', sx: e.offsetX, sy: e.offsetY, pan: Object.assign({}, this.pan) };
+			// A right-click that isn't a drag opens the layer's menu (a right-drag pans, as before).
+			this.rightClick = e.button === 2 && this.app.rig ? { x: e.offsetX, y: e.offsetY, cx: e.clientX, cy: e.clientY, part: (this.handleAt(e.offsetX, e.offsetY) ? this.app.selected : null) || this.partAt(e.offsetX, e.offsetY) } : null;
 		}
 
 		onMove(e) {
@@ -721,6 +723,11 @@ window.MS = window.MS || {};
 		onUp(e) {
 			const d = this.drag;
 			this.drag = null;
+			const rc = this.rightClick;
+			this.rightClick = null;
+			if (rc && d && d.kind === 'pan' && Math.hypot(e.offsetX - rc.x, e.offsetY - rc.y) < 4 && rc.part) {
+				MS.panels.showPartMenu(rc.part, rc.cx, rc.cy);
+			}
 			if (d && d.began) {
 				this.app.endDrag(d);
 			}

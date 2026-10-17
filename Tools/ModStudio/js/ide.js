@@ -1153,7 +1153,7 @@ window.MS = window.MS || {};
 
 	// The mod Ctrl+S saves: the one the unit (or item) open in the designer is in, else the one the tab in front is in; none (all) if neither.
 	ide.currentMod = function () {
-		const path = (app.actor && app.actor.path) || (ide.active && (ide.active.path || (ide.active.px && ide.active.px.file))) || '';
+		const path = app.project ? app.project + '/' : (app.actor && app.actor.path) || (ide.active && (ide.active.path || (ide.active.px && ide.active.px.file))) || '';
 		const module = path.split('/')[0];
 		// The game's own modules can't be saved to: with one of those open, Save looks after everything changed.
 		return module && module.toLowerCase().endsWith('.rte') && !app.fs.isOfficial(module) ? module : '';

@@ -284,11 +284,7 @@ window.MS = window.MS || {};
 					setTimeout(() => left.classList.remove('attention'), 1600);
 				}),
 				choice('▤', 'Open one of my mods', mine ? 'You have ' + mine + ' mod' + (mine === 1 ? '' : 's') + ' on this computer' : 'Your mods will show here once you have some', () => {
-					const box = $('libMineOnly');
-					if (box && !box.checked) {
-						box.checked = true;
-						box.dispatchEvent(new Event('change', { bubbles: true }));
-					}
+					MS.app.setLibrary(false);
 					$('left').classList.add('attention');
 					setTimeout(() => $('left').classList.remove('attention'), 1600);
 				}),

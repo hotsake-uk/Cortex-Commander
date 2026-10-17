@@ -16,7 +16,7 @@
 			<button data-mode="deep">Script</button>
 		</div>
 		<button class="tb" id="btnNew" title="Make a new unit, craft, gun, grenade or mod, starting from one in the game">+ New…</button>
-		<button class="tb ghost scope-btn" id="btnScope" title="Which modules (.rte) the lists, files and search show. Everything is still read, so copies and inheritance keep working.">All modules ▾</button>
+		<button class="tb ghost scope-btn" id="btnScope" title="The mod you are working on (your project). The lists, files and search show just this mod; the Library shows everything.">Choose a project ▾</button>
 		<div class="doc-title" id="docTitle"></div>
 		<button class="tb ghost" id="btnCopy" title="Make your own unit from this one, in your mod" disabled><span class="wide">Make my own copy</span><span class="narrow">My copy</span></button>
 		<div class="spacer"></div>
@@ -54,6 +54,7 @@
 	<aside id="side" class="panel">
 		<section id="view-files" class="side-view">
 			<div class="side-head">Files <span class="spacer"></span><button class="ico-btn" id="btnNewScript" title="New Lua script in your mod">+ lua</button><button class="ico-btn" id="btnNewIni" title="New INI file in your mod">+ ini</button><button class="ico-btn" id="btnRefreshFiles" title="Read the folders again">↻</button></div>
+			<div class="scope-seg" title="Current project: just the mod you are working on. Everything: the game and every mod, to look through and clone from."><button data-lib="project" class="sel">Current project</button><button data-lib="all">Everything</button></div>
 			<div class="file-filter">
 				<input type="search" id="fileFilter" placeholder="Filter by name…" autocomplete="off">
 				<div class="chips" id="fileKinds"><button data-kind="" class="sel">All</button><button data-kind="lua">Lua</button><button data-kind="ini">INI</button><button data-kind="image">Images</button><button data-kind="sound">Sounds</button></div>
@@ -97,6 +98,7 @@
 	<div id="tabbar"></div>
 
 	<aside id="left" class="panel">
+		<div class="scope-seg" title="Current project: just the mod you are working on. Everything: the game and every mod, to look through and clone from."><button data-lib="project" class="sel">Current project</button><button data-lib="all">Everything</button></div>
 		<div class="tabs" id="libTabs">
 			<button data-tab="units" class="sel">Units</button>
 			<button data-tab="craft">Craft</button>
@@ -105,8 +107,8 @@
 			<button data-tab="more" title="Other things with pictures: gibs, particles, magazines, turrets, doors, arms and legs">More</button>
 		</div>
 		<div class="search"><input type="search" id="libSearch" placeholder="Search presets…" autocomplete="off"></div>
-		<div class="lib-selects"><select id="libType" title="What kind"></select><select id="libGroup" title="Buy menu group (AddToGroup)"></select><select id="libModule" title="Which mod or module"></select></div>
-		<div class="lib-filter"><label><input type="checkbox" id="libMineOnly"> Only my mods</label><span id="libCount"></span></div>
+		<div class="lib-selects"><select id="libType" title="What kind"></select><select id="libGroup" title="Buy menu group (AddToGroup)"></select><select id="libModule" title="Which mod or module" hidden></select></div>
+		<div class="lib-filter"><label hidden><input type="checkbox" id="libMineOnly"> Only my mods</label><span id="libCount"></span></div>
 		<div id="libList" class="list"></div>
 	</aside>
 
