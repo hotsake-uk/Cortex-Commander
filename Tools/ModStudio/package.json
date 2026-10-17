@@ -6,7 +6,7 @@
 	"scripts": {
 		"build": "vite build",
 		"watch": "vite build --watch",
-		"test": "node --test tests/flow.test.js"
+		"test": "node --test tests/flow.test.js tests/lua-intel.test.js"
 	},
 	"devDependencies": {
 		"fengari": "^0.1.5",

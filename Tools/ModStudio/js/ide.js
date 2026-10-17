@@ -275,14 +275,16 @@ window.MS = window.MS || {};
 		monaco.languages.setLanguageConfiguration('ccini', { comments: { lineComment: '//', blockComment: ['/*', '*/'] } });
 
 		const toRange = (model, position, length) => new monaco.Range(position.lineNumber, position.column - length, position.lineNumber, position.column);
-		const pathOf = (model) => (model.ccTab ? model.ccTab.path : decodeURIComponent(model.uri.path.replace(/^\//, '')));
+		// The script a model is: its tab's, the one model.ccLua names (a snippet of a script edited elsewhere: see ide.luaModel), or its URI's path.
+		const pathOf = (model) => (model.ccLua && model.ccLua.path) || (model.ccTab ? model.ccTab.path : decodeURIComponent(model.uri.path.replace(/^\//, '')));
+		const optsOf = (model) => (model.ccLua && model.ccLua.snippet !== undefined ? { snippet: model.ccLua.snippet } : undefined);
 
 		monaco.languages.registerCompletionItemProvider('lua', {
 			triggerCharacters: ['.', ':', '"', '\'', '/'],
 			provideCompletionItems(model, position) {
 				const text = model.getValue();
 				const offset = model.getOffsetAt(position);
-				const items = ide.lua.complete(pathOf(model), text, offset);
+				const items = ide.lua.complete(pathOf(model), text, offset, optsOf(model));
 				const lineBefore = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
 				const str = /(["'])([^"']*)$/.exec(lineBefore);
 				const inString = str && (lineBefore.slice(0, str.index).split(str[1]).length % 2 === 1);
@@ -295,7 +297,7 @@ window.MS = window.MS || {};
 			signatureHelpTriggerCharacters: ['(', ','],
 			signatureHelpRetriggerCharacters: [','],
 			provideSignatureHelp(model, position) {
-				const help = ide.lua.signatureAt(pathOf(model), model.getValue(), model.getOffsetAt(position));
+				const help = ide.lua.signatureAt(pathOf(model), model.getValue(), model.getOffsetAt(position), optsOf(model));
 				if (!help) {
 					return null;
 				}
@@ -317,17 +319,31 @@ window.MS = window.MS || {};
 				}
 				const start = model.getOffsetAt({ lineNumber: position.lineNumber, column: word.startColumn });
 				const end = model.getOffsetAt({ lineNumber: position.lineNumber, column: word.endColumn });
-				const md = ide.lua.hover(pathOf(model), model.getValue(), start, end);
-				return md ? { range: new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn), contents: [{ value: md }] } : null;
+				const md = ide.lua.hover(pathOf(model), model.getValue(), start, end, optsOf(model));
+				// Its links (open a preset, play a sound) run as a command: hovers only follow http, file and command links.
+				const value = md && md.replace(/\]\((ccstudio:\/\/[^)\s]+)\)/g, (m, url) => '](command:ccstudio.open?' + encodeURIComponent(JSON.stringify([url])) + ')');
+				return md ? { range: new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn), contents: [{ value, isTrusted: true }] } : null;
 			},
 		});
+		if (monaco.editor.registerCommand) {
+			monaco.editor.registerCommand('ccstudio.open', (accessor, url) => ide.openStudioLink(url));
+		}
 		monaco.languages.registerDefinitionProvider('lua', {
 			async provideDefinition(model, position) {
 				const word = model.getWordAtPosition(position);
 				const start = model.getOffsetAt({ lineNumber: position.lineNumber, column: word ? word.startColumn : position.column });
 				const end = model.getOffsetAt({ lineNumber: position.lineNumber, column: word ? word.endColumn : position.column });
-				const target = ide.lua.definition(pathOf(model), model.getValue(), start, end);
-				return target ? await toLocation(model, target) : null;
+				const text = model.getValue();
+				const target = ide.lua.definition(pathOf(model), text, start, end, optsOf(model));
+				const location = target ? await toLocation(model, target) : null;
+				// A name in a string ("Ronin Soldier") underlines the whole string, not one word of it.
+				const str = location && ide.lua.stringAt(text, start);
+				if (str) {
+					const a = model.getPositionAt(str.start);
+					const b = model.getPositionAt(str.end);
+					return [{ originSelectionRange: new monaco.Range(a.lineNumber, a.column, b.lineNumber, b.column), uri: location.uri, range: location.range }];
+				}
+				return location;
 			},
 		});
 
@@ -411,7 +427,7 @@ window.MS = window.MS || {};
 					if (uri.scheme !== 'ccstudio') {
 						return false;
 					}
-					ide.openFile(uri.path.replace(/^\//, ''));
+					ide.openStudioLink(uri.toString(true));
 					return true;
 				},
 			});
@@ -421,13 +437,19 @@ window.MS = window.MS || {};
 		if (monaco.editor.registerEditorOpener) {
 			monaco.editor.registerEditorOpener({
 				openCodeEditor(source, resource, selectionOrPosition) {
+					if (resource.scheme === 'ccgo') {
+						// A preset, picture or sound a string named: open it where it's made (see toLocation).
+						ide.openStudioLink('ccstudio:/' + resource.path + (resource.query ? '?' + resource.query : ''));
+						return true;
+					}
 					const tab = ide.tabs.find((t) => t.model && t.model.uri.toString() === resource.toString());
 					const line = selectionOrPosition ? selectionOrPosition.startLineNumber || selectionOrPosition.lineNumber : 1;
+					const column = selectionOrPosition ? selectionOrPosition.startColumn || selectionOrPosition.column : 1;
 					if (tab) {
 						ide.activate(tab);
-						reveal(line);
+						reveal(line, column);
 					} else {
-						ide.openFile(decodeURIComponent(resource.path.replace(/^\//, '')), line);
+						ide.openFile(decodeURIComponent(resource.path.replace(/^\//, '')), line, column);
 					}
 					return true;
 				},
@@ -534,18 +556,111 @@ window.MS = window.MS || {};
 	}
 
 	// A Monaco location for a definition target: in this model ({offset}) or another file's (made into a model so Monaco can go there).
+	// {asset} (a preset, picture or sound a string names) is a small read-only model saying what it is, under ccgo:, which the editor
+	// opener opens in the designer, Sounds, or a picture tab instead of going there.
 	async function toLocation(model, target) {
 		const monaco = ide.monaco;
 		if (target.offset !== undefined) {
 			const pos = model.getPositionAt(target.offset);
 			return { uri: model.uri, range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column) };
 		}
-		const other = await ide.ensureModel(target.path);
+		if (target.asset) {
+			const goModel = assetModel(target.asset);
+			return { uri: goModel.uri, range: new monaco.Range(1, 1, 1, 1) };
+		}
+		const other = target.api ? apiModel() : await ide.ensureModel(target.path);
 		if (!other) {
 			return null;
 		}
-		return { uri: other.uri, range: new monaco.Range(target.line || 1, 1, target.line || 1, 1) };
+		const column = target.column || 1;
+		return { uri: other.uri, range: new monaco.Range(target.line || 1, column, target.line || 1, column) };
 	}
+
+	// The game's API as Lua (data/lua-api.d.lua), for go to definition on a game name to peek at or open (read only) in a tab.
+	function apiModel() {
+		const monaco = ide.monaco;
+		const uri = monaco.Uri.from({ scheme: 'cortex', path: '/' + MS.LuaIntel.API_PATH });
+		return monaco.editor.getModel(uri) || monaco.editor.createModel(ide.lua.apiText || '-- The game\'s API has not loaded.', 'lua', uri);
+	}
+
+	function assetModel(asset) {
+		const monaco = ide.monaco;
+		let path;
+		let query = '';
+		let text;
+		if (asset.kind === 'preset') {
+			const p = asset.preset;
+			const how = MS.LuaIntel.openWith(p);
+			path = '/preset/' + p.doc.path;
+			query = 'name=' + encodeURIComponent(p.name) + '&line=' + (p.node.line || 1);
+			text = p.name + ' (' + p.cls + ') in ' + p.doc.path + ', line ' + (p.node.line || 1) + '\n'
+				+ (how === 'designer' ? 'Opens in the designer.' : how === 'sounds' ? 'Opens in Sounds.' : 'Opens its lines.');
+		} else {
+			path = (asset.kind === 'sound' ? '/play/' : '/open/') + asset.path;
+			text = (asset.kind === 'sound' ? 'The sound ' + asset.path + '\nPlays it.' : 'The picture ' + asset.path + '\nOpens it.');
+		}
+		const uri = monaco.Uri.from({ scheme: 'ccgo', path, query });
+		const old = monaco.editor.getModel(uri);
+		if (old) {
+			return old;
+		}
+		return monaco.editor.createModel(text, 'plaintext', uri);
+	}
+
+	// Follows a ccstudio://kind/path?query link (from a hover, a link in a file, or a ccgo: definition):
+	//   open/<path>?line=N     opens a file (a script, INI, picture) at a line
+	//   preset/<path>?name=X   opens a preset in the designer, in Sounds, or at its lines
+	//   play/<path>            plays a sound file
+	//   paint/<path>           edits a picture
+	ide.openStudioLink = function (url) {
+		const m = /^ccstudio:\/\/?([a-z]+)\/([^?]*)(?:\?(.*))?$/.exec(url || '');
+		if (!m) {
+			return;
+		}
+		const kind = m[1];
+		const path = decodeURIComponent(m[2]).replace(/\\/g, '/');
+		const query = new URLSearchParams(m[3] || '');
+		const line = Number(query.get('line')) || undefined;
+		if (kind === 'play') {
+			MS.editors.play(path);
+			app.status('Playing ' + path + '.');
+		} else if (kind === 'paint') {
+			MS.pixel.open({ file: path });
+		} else if (kind === 'preset') {
+			const name = query.get('name');
+			const preset = (app.lib && (app.lib.presets.find((p) => p.doc.path === path && p.name === name) || app.lib.find(name, null, null))) || null;
+			if (!preset) {
+				ide.openFile(path, line);
+				return;
+			}
+			const how = MS.LuaIntel.openWith(preset);
+			if (how === 'designer') {
+				app.openActor(preset);
+			} else if (how === 'sounds' && MS.editors) {
+				const tab = MS.editors.open('sounds', preset.module);
+				if (tab) {
+					tab.state = Object.assign(tab.state || { filter: '' }, { selected: preset.doc.path + ':' + preset.name });
+					ide.refreshForm();
+				}
+			} else {
+				ide.openFile(preset.doc.path, preset.node.line);
+			}
+		} else {
+			ide.openFile(path, line);
+		}
+	};
+
+	// A Monaco model of Lua that's part of a script but edited somewhere else (a flow node's own code, say): completion, hover, signature
+	// help and go to definition read it as the inside of one of that script's functions, so self is the script's activity (or object) and
+	// what the script defines is known. snippet: false reads it as a whole script of its own instead. Dispose of it when done.
+	let snippetCount = 0;
+	ide.luaModel = function (text, scriptPath, snippet) {
+		const monaco = ide.monaco;
+		const path = (scriptPath || '').replace(/\\/g, '/').replace(/^(Data|Mods)\//i, '');
+		const model = monaco.editor.createModel(text || '', 'lua', monaco.Uri.from({ scheme: 'cortex-snippet', path: '/' + path, query: 'n=' + ++snippetCount }));
+		model.ccLua = { path, snippet: snippet !== false };
+		return model;
+	};
 
 	// ---- tabs ----
 
@@ -891,6 +1006,14 @@ window.MS = window.MS || {};
 
 	async function makeCodeTab(path) {
 		const monaco = ide.monaco;
+		if (path === MS.LuaIntel.API_PATH) {
+			// The game's API (go to definition on a game name): read only, and not checked.
+			const model = apiModel();
+			const text = model.getValue();
+			const tab = { id: nextTabId++, kind: 'code', path, lang: 'lua', model, doc: null, savedText: text, docText: null, readOnly: true, virtual: true };
+			model.ccTab = tab;
+			return tab;
+		}
 		const ext = extOf(path);
 		const doc = ext === 'ini' ? app.lib.docFor(path) : null;
 		let text;
@@ -923,7 +1046,7 @@ window.MS = window.MS || {};
 	}
 
 	// Opens a file in a tab (or goes to its tab), at a line.
-	ide.openFile = async function (path, line) {
+	ide.openFile = async function (path, line, column) {
 		path = path.replace(/\\/g, '/').replace(/^(Data|Mods)\//i, '');
 		if (ide.mode !== 'deep') {
 			ide.setMode('deep');
@@ -951,16 +1074,16 @@ window.MS = window.MS || {};
 		}
 		ide.activate(tab);
 		if (line && tab.kind === 'code') {
-			setTimeout(() => reveal(line), 0);
+			setTimeout(() => reveal(line, column), 0);
 		}
 	};
 
-	function reveal(line) {
+	function reveal(line, column) {
 		if (!ide.editor) {
 			return;
 		}
 		ide.editor.revealLineInCenter(line);
-		ide.editor.setPosition({ lineNumber: line, column: 1 });
+		ide.editor.setPosition({ lineNumber: line, column: column || 1 });
 		ide.editor.focus();
 	}
 
@@ -1176,7 +1299,7 @@ window.MS = window.MS || {};
 
 	// Problems in a tab's text, as squiggles and in the Problems panel.
 	function check(tab) {
-		if (!tab.model || !ide.monaco) {
+		if (!tab.model || !ide.monaco || tab.virtual) {
 			return;
 		}
 		const text = tab.model.getValue();
