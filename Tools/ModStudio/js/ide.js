@@ -2640,8 +2640,101 @@ window.MS = window.MS || {};
 
 	// Looks the mod over: files it names that aren't there, CopyOf presets that don't exist, scripts with errors, unsaved changes.
 	// What is wrong with a mod, as data: [{path, line, severity: 'error' | 'warn', message}]. Used by the Package check and by the check that runs after saves.
+	// The order the game reads a module's presets in: Index.ini, and each file where its IncludeFile line is. A preset can only copy one read earlier.
+	function loadSequence(moduleName) {
+		const seq = new Map();
+		const seen = new Set();
+		let n = 0;
+		const visit = (path) => {
+			const key = path.toLowerCase();
+			const doc = app.lib.docFor(path);
+			if (seen.has(key) || !doc) {
+				return;
+			}
+			seen.add(key);
+			for (const c of doc.root.children) {
+				if (c.key === 'IncludeFile' && c.value) {
+					visit(c.value.replace(/\\/g, '/'));
+				} else if (c.key === 'DataModule') {
+					for (const inner of c.children.filter((x) => x.key === 'IncludeFile' && x.value)) {
+						visit(inner.value.replace(/\\/g, '/'));
+					}
+				} else {
+					seq.set(c, n++);
+				}
+			}
+		};
+		visit(moduleName + '/Index.ini');
+		return seq;
+	}
+
+	// An IncludeFile line for a file, wherever in the module it is.
+	function includeLine(module, path) {
+		const want = path.toLowerCase();
+		for (const doc of module.docs) {
+			for (const node of doc.walk()) {
+				if (node.key === 'IncludeFile' && node.value.replace(/\\/g, '/').toLowerCase() === want) {
+					return node;
+				}
+			}
+		}
+		return null;
+	}
+
+	// Puts the file that defines a preset ahead of the file that copies it, by moving its IncludeFile line up to just before the other's.
+	async function includeFirst(module, targetPath, sourcePath) {
+		const target = includeLine(module, targetPath);
+		const source = includeLine(module, sourcePath);
+		if (!target || !source || target === source) {
+			return false;
+		}
+		for (const node of [target, source]) {
+			if (app.lib.isProtected(node.doc)) {
+				app.toast('That mod isn\'t one of yours, so Studio won\'t change it.', 'bad');
+				return false;
+			}
+		}
+		const value = target.value;
+		const touched = new Set([target.doc, source.doc]);
+		target.remove();
+		source.parent.add('IncludeFile', value, source.parent.children.indexOf(source));
+		for (const doc of touched) {
+			doc.markDirty();
+		}
+		await app.save(true, [...touched]);
+		app.lib.reindex();
+		return true;
+	}
+	ide.includeFirst = includeFirst;
+
+	function* walkNodes(node) {
+		for (const c of node.children) {
+			yield c;
+			yield* walkNodes(c);
+		}
+	}
+
 	async function collectModProblems(moduleName, module) {
 		const problems = [];
+		// A copy of something read later: the game stops loading the whole mod at that line.
+		const seq = loadSequence(moduleName);
+		for (const doc of module.docs) {
+			for (const block of doc.root.children) {
+				if (!seq.has(block)) {
+					continue;
+				}
+				for (const node of walkNodes(block)) {
+					if (node.key !== 'CopyOf' || !node.value || node.value.includes('/')) {
+						continue;
+					}
+					const targets = (app.lib.byName.get(node.value.trim().toLowerCase()) || []).filter((t) => t.topLevel);
+					if (targets.length && targets.every((t) => t.module === moduleName && seq.has(t.node) && seq.get(t.node) > seq.get(block))) {
+						const t = targets[0];
+						problems.push({ path: doc.path, line: node.line, severity: 'error', message: '"' + t.name + '" is read after the file that copies it (' + t.doc.path + ').', fix: t.doc !== doc ? { label: 'Read ' + t.doc.path.split('/').pop() + ' first', run: () => includeFirst(module, t.doc.path, doc.path) } : null });
+					}
+				}
+			}
+		}
 		for (const doc of module.docs) {
 			if (doc.dirty) {
 				problems.push({ path: doc.path, line: 1, severity: 'warn', message: 'Not saved yet.' });
