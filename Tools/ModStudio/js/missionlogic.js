@@ -78,6 +78,12 @@ window.MS = window.MS || {};
 			if (current === null || !doc.cls) {
 				return;
 			}
+			// a mission with nodes this Studio doesn't know was made by a newer one: writing it would leave those nodes out of the script
+			const unknown = [...new Set(doc.g.nodes.filter((n) => !F().KINDS[n.kind]).map((n) => n.kind))];
+			if (unknown.length) {
+				app().toast('Not saved: this mission has nodes this Studio does not know (' + unknown.join(', ') + '), so it was made by a newer Studio. Restart Studio, then change it.', 'bad');
+				return;
+			}
 			const text = F().apply(current, doc.cls, doc.g, doc.path);
 			doc.text = text;
 			try {

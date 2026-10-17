@@ -145,13 +145,13 @@ wire(start, 'then', chain(
 
 // ---- stages ----
 const stage = (kind, p) => node(kind, Object.assign({ marker: false, viewer: 0, failAfter: 0 }, p));
-const s1 = stage('stageCapture', { name: 'Take the front bunker', target: R.frontOps.id, team: 0 });
-const sDeploy = stage('stageDeploy', { name: 'Deploy your brain', text: 'Deploy your brain here', area: FB + ' Operations', marker: true });
-const s2 = stage('stageCapture', { name: 'Take the middle bunker', target: R.middleOps.id, team: 0 });
+const s1 = stage('stageCapture', { name: 'Take the front bunker', text: 'Capture the operations room of the front bunker', target: R.frontOps.id, team: 0 });
+const sDeploy = stage('stageDeploy', { name: 'Deploy your brain', text: 'Deploy your brain in the operations room (from its pie menu)', area: FB + ' Operations', marker: true });
+const s2 = stage('stageCapture', { name: 'Take the middle bunker', text: 'Capture the operations room of the middle bunker', target: R.middleOps.id, team: 0 });
 const s3 = stage('stageReach', { name: 'Find the hidden tunnel', text: 'Find and enter the abandoned tunnel', area: 'Hidden Tunnel', team: 0, marker: true });
-const s4 = stage('stageCapture', { name: 'Open the main doors', target: R.doors.id, team: 0 });
-const s5 = stage('stageCapture', { name: 'Bring down the shield', target: R.shield.id, team: 0 });
-const s6 = stage('stageBrain', { name: 'Destroy the enemy brain', team: 1 });
+const s4 = stage('stageCapture', { name: 'Open the main doors', text: 'Capture the door controls to open the main bunker', target: R.doors.id, team: 0 });
+const s5 = stage('stageCapture', { name: 'Bring down the shield', text: 'Capture the shield generator', target: R.shield.id, team: 0 });
+const s6 = stage('stageBrain', { name: 'Destroy the enemy brain', text: 'Destroy the enemy brain in the command center', team: 1 });
 wire(s1, 'next', sDeploy);
 wire(sDeploy, 'next', s2);
 wire(s2, 'next', s3);

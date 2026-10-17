@@ -113,7 +113,7 @@ window.MS = window.MS || {};
 		switch (n.kind) {
 			case 'message': {
 				const who = a.who === 'all' || a.who === undefined ? 'true' : 'player == ' + luaNum(a.who);
-				return ['for player = 0, 3 do', '\tif self:PlayerActive(player) and self:PlayerHuman(player) and (' + who + ') then', '\t\tlocal screen = self:ScreenOfPlayer(player)', '\t\tFrameMan:ClearScreenText(screen)', '\t\tFrameMan:SetScreenText(' + text(a.text) + ', screen, ' + (a.blink ? 500 : 0) + ', ' + luaNum(Number(a.seconds) * 1000) + ', false)', '\tend', 'end'];
+				return ['studioShow(self, st, ' + (a.who === 'all' || a.who === undefined ? -1 : luaNum(a.who)) + ', ' + luaStr(a.text || '') + ', ' + (a.blink ? 500 : 0) + ', ' + luaNum(Number(a.seconds) || 0) + ', false)'];
 			}
 			case 'gold': return ['self:ChangeTeamFunds(' + valueLua(a.amount) + ', ' + luaNum(a.team) + ')'];
 			case 'spawn': return spawnLua(a);
@@ -195,7 +195,7 @@ window.MS = window.MS || {};
 				}
 				return a.target && F.find(g, a.target) ? ['st.stage = ' + luaStr(a.target), 'st.stageStarted = false'] : ['st.stage = nil', 'st.stageStarted = false'];
 			case 'win': {
-				const say = a.text ? ['for player = 0, 3 do', '\tif self:PlayerActive(player) and self:PlayerHuman(player) then', '\t\tlocal screen = self:ScreenOfPlayer(player)', '\t\tFrameMan:ClearScreenText(screen)', '\t\tFrameMan:SetScreenText(' + text(a.text) + ', screen, 0, ' + luaNum(Math.max(1, Number(a.after) || 5) * 1000) + ', true)', '\tend', 'end'] : [];
+				const say = a.text ? ['studioShow(self, st, -1, ' + luaStr(a.text) + ', 0, ' + luaNum(Math.max(1, Number(a.after) || 5)) + ', true)'] : [];
 				return Number(a.after) > 0
 					? [...say, 'st.ending = { team = ' + luaNum(a.team) + ', at = st.clock.ElapsedSimTimeS + ' + luaNum(a.after) + ' }']
 					: [...say, 'self.WinnerTeam = ' + luaNum(a.team), 'ActivityMan:EndActivity()'];
@@ -784,6 +784,51 @@ end
 			'\t\t\t\t\tlocal boxes = {}', '\t\t\t\t\tfor box in zone.Boxes do boxes[#boxes + 1] = BoxFillPrimitive(player, box.Corner, Vector(box.Corner.X + box.Width, box.Corner.Y + box.Height), o.color) end',
 			'\t\t\t\t\tPrimitiveMan:DrawPrimitives(75, boxes)', '\t\t\t\t\tif o.text ~= "" then PrimitiveMan:DrawTextPrimitive(player, zone.Center, studioText(st, o.text), false, 1) end',
 			'\t\t\t\tend', '\t\t\tend', '\t\tend', '\tend', 'end', '',
+			...String.raw`-- What is on each player's screen, set again every frame as the game's own missions do (so it stays up whatever else writes there): a
+-- message or dialogue line while it lasts, otherwise the objective of the stage it is on. who: a player, or -1 for all.
+local function studioShow(act, st, who, text, blink, seconds, centered)
+	st.shown = st.shown or {}
+	for player = 0, 3 do
+		if act:PlayerActive(player) and act:PlayerHuman(player) and (who < 0 or who == player) then
+			st.shown[player] = { text = text, blink = blink, untilT = st.clock.ElapsedSimTimeS + seconds, centered = centered }
+			-- on the screen now too (studioScreenText keeps it there)
+			local screen = act:ScreenOfPlayer(player)
+			st.shownText = st.shownText or {}
+			st.shownText[player] = studioText(st, text)
+			FrameMan:ClearScreenText(screen)
+			FrameMan:SetScreenText(st.shownText[player], screen, blink, 0, centered)
+		end
+	end
+end
+local function studioScreenText(act, st, objective)
+	st.shown = st.shown or {}
+	st.shownText = st.shownText or {}
+	local now = st.clock.ElapsedSimTimeS
+	for player = 0, 3 do
+		if act:PlayerActive(player) and act:PlayerHuman(player) then
+			local s = st.shown[player]
+			if s and now >= s.untilT then
+				st.shown[player] = nil
+				s = nil
+			end
+			local text, blink, centered = nil, 0, false
+			if s then
+				text, blink, centered = studioText(st, s.text), s.blink, s.centered
+			elseif objective and objective ~= "" then
+				text = studioText(st, objective)
+			end
+			local screen = act:ScreenOfPlayer(player)
+			if text then
+				if st.shownText[player] ~= text then FrameMan:ClearScreenText(screen) end
+				FrameMan:SetScreenText(text, screen, blink, 0, centered)
+			elseif st.shownText[player] then
+				FrameMan:ClearScreenText(screen)
+			end
+			st.shownText[player] = text
+		end
+	end
+end
+`.split('\n'),
 			'local function studioItemIn(areaName, itemName)', '\tlocal region = studioArea(areaName)', '\tif not region then return false end', '\tfor item in MovableMan.Items do', '\t\tif item.PresetName == itemName and region:IsInside(item.Pos) then return true end', '\tend', '\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and region:IsInside(actor.Pos) then', '\t\t\tlocal held = actor.EquippedItem', '\t\t\tif held and held.PresetName == itemName then return true end', '\t\t\tfor item in actor.Inventory do', '\t\t\t\tif item.PresetName == itemName then return true end', '\t\t\tend', '\t\tend', '\tend', '\treturn false', 'end', '',
 		];
 	}
@@ -812,7 +857,8 @@ end
 		}
 		const first = F.firstStage(g);
 		L.push(cls + '.StudioFirstStage = ' + (first ? luaStr(first.id) : 'nil'));
-		L.push(cls + '.StudioStages = {', ...stageNodes.map((n) => '\t[' + luaStr(n.id) + '] = { next = ' + ((n.out || {}).next && F.find(g, n.out.next) ? luaStr(n.out.next) : 'nil') + ', limit = ' + luaNum((n.p || {}).failAfter) + ' },'), '}', '');
+		L.push(cls + '.StudioStages = {', ...stageNodes.map((n) => '\t[' + luaStr(n.id) + '] = { next = ' + ((n.out || {}).next && F.find(g, n.out.next) ? luaStr(n.out.next) : 'nil') + ', limit = ' + luaNum((n.p || {}).failAfter) +
+			', objective = ' + ((n.p || {}).onScreen ? luaStr((n.p || {}).text || (n.p || {}).name || '') : 'nil') + ' },'), '}', '');
 		for (const c of captures) {
 			for (const pin of ['taken', 'retaken']) {
 				L.push('function ' + cls + ':StudioCapture_' + c.id + '_' + pin + '()', '\tlocal st = self.StudioState', '\tlocal actor = nil', ...indent(chainLua(g, (c.out || {})[pin], 0)), 'end');
@@ -899,8 +945,9 @@ end
 			'\t\tlocal line = table.remove(st.say, 1)',
 			'\t\tfor player = 0, 3 do',
 			'\t\t\tif self:PlayerActive(player) and self:PlayerHuman(player) and (line.who < 0 or line.who == player) then',
-			'\t\t\t\tlocal screen = self:ScreenOfPlayer(player)', '\t\t\t\tFrameMan:ClearScreenText(screen)', '\t\t\t\tFrameMan:SetScreenText(studioText(st, line.text), screen, 0, line.ms, true)',
+			'\t\t\t\tstudioShow(self, st, player, line.text, 0, line.ms / 1000, true)',
 			'\t\t\tend', '\t\tend', '\tend',
+			'\tstudioScreenText(self, st, st.stage and ' + cls + '.StudioStages and ' + cls + '.StudioStages[st.stage] and ' + cls + '.StudioStages[st.stage].objective or nil)',
 			'\tif st.camera then',
 			'\t\tlocal zone = studioArea(st.camera.area)',
 			'\t\tif zone and now < st.camera.untilT then',
