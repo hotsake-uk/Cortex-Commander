@@ -45,8 +45,7 @@ namespace {
 		explicit StudioFileOut(std::filesystem::path path, bool endMarker = false) : m_Path(std::move(path)), m_EndMarker(endMarker) {}
 		~StudioFileOut() override {
 			if (m_EndMarker) {
-				*this << "End = 1
-";
+				*this << "End = 1\n";
 			}
 			const std::string text = str();
 			std::filesystem::path temp = m_Path;
