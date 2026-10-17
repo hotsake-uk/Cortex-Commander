@@ -1453,3 +1453,8 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .pane-label.right { left: calc(50% + 8px); }
 .tab.on-screen .tab-name::before { content: "◫ "; color: var(--faint); }
 #btnSplit.sel { border-color: var(--accent); color: var(--text); }
+/* tabs: the name runs to the end of the tab; its buttons take room only while the tab is hovered (an unsaved ● and the game link stay) */
+.tab .tab-pop, .tab .tab-game:not(.on), .tab:not(.dirty) .tab-close { display: none; }
+.tab:hover .tab-pop, .tab:hover .tab-game, .tab:hover .tab-close { display: inline-flex; align-items: center; justify-content: center; visibility: visible; opacity: 1; }
+.tab.dirty .tab-close { visibility: visible; }
+.tab-name { flex: 1 1 auto; min-width: 0; }
