@@ -315,7 +315,22 @@ window.MS = window.MS || {};
 				const key = (equals >= 0 ? data.slice(0, equals) : data).trim();
 				const value = equals >= 0 ? data.slice(equals + 1).trim() : '';
 				if (equals < 0) {
-					this.problems.push({ line: index + 1, text: 'No "=" on this line: "' + content.trim() + '"' });
+					// A block header with nothing after it (the DataModule line at the top of Index.ini) is fine when what follows is indented under it.
+					let next = index + 1;
+					while (next < lines.length && lines[next].trim() === '') {
+						next++;
+					}
+					const depth = (text) => {
+						let d = 0;
+						for (let i = 0; i < text.length && (text[i] === '	' || text[i] === ' '); i++) {
+							d += text[i] === '	' ? 1 : 0.25;
+						}
+						return Math.floor(d);
+					};
+					const header = next < lines.length && depth(lines[next]) > indent;
+					if (!header) {
+						this.problems.push({ line: index + 1, text: 'No "=" on this line: "' + content.trim() + '"' });
+					}
 				}
 
 				const node = new IniNode(key, value);

@@ -222,6 +222,7 @@ window.MS = window.MS || {};
 		writeLocal('ms.project', name);
 		writeLocal('ms.lastMod', name); // new things default to it
 		refreshScope();
+		MS.friendly.repairProject(name);
 		if (app.actor && app.actor.path.split('/')[0].toLowerCase() !== name.toLowerCase() && !app.fs.isOfficial(app.actor.path)) {
 			app.status('Now working on ' + name + '.');
 		}
@@ -424,9 +425,9 @@ window.MS = window.MS || {};
 		const lua = [
 			'local act = ActivityMan:GetActivity()',
 			'local ctl = act and act:GetControlledActor(0)',
-			'local o = Create' + app.actor.cls + '(' + q(app.actor.name) + ', ' + q(module) + ')',
-			'if not o then',
-			'\tConsoleMan:PrintString("Studio: the game has not loaded ' + app.actor.name.replace(/["\\]/g, '') + ' (' + module + '). A new mod loads when the game starts.")',
+			'local made, o = pcall(Create' + app.actor.cls + ', ' + q(app.actor.name) + ', ' + q(module) + ')',
+			'if not made or not o then',
+			'\tConsoleMan:PrintString("Studio: the game has not loaded ' + app.actor.name.replace(/["\\]/g, '') + ' (' + module + '). Check the console in Studio: the mod may have failed to load, or it is new since the game started.")',
 			'\treturn',
 			'end',
 			'local ok, where = pcall(function() return CameraMan:GetScrollTarget(0) end)',
