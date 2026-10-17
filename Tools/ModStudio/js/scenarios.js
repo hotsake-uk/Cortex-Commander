@@ -113,7 +113,7 @@ window.MS = window.MS || {};
 			const all = activitiesOf(module);
 			const q = s.filter.trim().toLowerCase();
 			const list = all.filter((p) => !q || p.name.toLowerCase().includes(q));
-			const keyOf = (p) => p.doc.path + ':' + p.node.line + ':' + p.name;
+			const keyOf = (p) => p.doc.path + ':' + p.name;
 			const selected = all.find((p) => keyOf(p) === s.selected) || list[0] || null;
 			const filter = el('input', { type: 'search', placeholder: 'Filter ' + all.length + ' scenarios…', value: s.filter, className: 'ed-input' });
 			filter.dataset.fk = 'filter';
@@ -339,7 +339,7 @@ window.MS = window.MS || {};
 				});
 				const made = a.lib.presets.find((p) => p.doc === doc && p.name === n);
 				if (made) {
-					s.selected = made.doc.path + ':' + made.node.line + ':' + made.name;
+					s.selected = made.doc.path + ':' + made.name;
 				}
 				await a.save(true, [doc, a.lib.docFor(module + '/Index.ini')].filter(Boolean));
 				MS.ide.refreshForm();

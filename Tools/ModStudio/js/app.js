@@ -870,6 +870,9 @@ window.MS = window.MS || {};
 	};
 
 	app.forgetSprites = function (paths) {
+		if (MS.scenes && MS.scenes.forgetAsked) {
+			MS.scenes.forgetAsked(paths);
+		}
 		for (const path of paths) {
 			app.frames.delete(path.toLowerCase());
 			app.images.forget(path);

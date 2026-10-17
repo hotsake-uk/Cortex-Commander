@@ -186,7 +186,7 @@ window.MS = window.MS || {};
 			}
 			const s = tab.state || (tab.state = { filter: '', selected: null, view: 'table', sort: 'perSecond', desc: true });
 			const guns = a.lib.presets.filter((p) => p.topLevel && p.module === module && GUNS.has(p.cls)).sort((x, y) => x.name.localeCompare(y.name));
-			const keyOf = (p) => p.doc.path + ':' + p.node.line + ':' + p.name;
+			const keyOf = (p) => p.doc.path + ':' + p.name;
 			const q = s.filter.trim().toLowerCase();
 			const shown = guns.filter((p) => !q || p.name.toLowerCase().includes(q));
 			const filter = el('input', { type: 'search', placeholder: 'Filter ' + guns.length + ' guns…', value: s.filter, className: 'ed-input' });

@@ -192,7 +192,7 @@ window.MS = window.MS || {};
 			const all = a.lib.presets.filter((p) => p.topLevel && p.module === module && wanted.has(p.cls) && p.node.key === 'AddEffect').sort((x, y) => x.name.localeCompare(y.name));
 			const q = s.filter.trim().toLowerCase();
 			const list = all.filter((p) => !q || p.name.toLowerCase().includes(q));
-			const keyOf = (p) => p.doc.path + ':' + p.node.line + ':' + p.name;
+			const keyOf = (p) => p.doc.path + ':' + p.name;
 			const selected = all.find((p) => keyOf(p) === s.selected) || list[0] || null;
 			const filter = el('input', { type: 'search', placeholder: 'Filter ' + all.length + ' effects…', value: s.filter, className: 'ed-input' });
 			filter.dataset.fk = 'filter';

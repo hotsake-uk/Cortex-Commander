@@ -1381,6 +1381,10 @@ fn launch(config: &Config, mode: &str, map: &str, run: &RunConfig) -> Result<Vec
 		"test" => vec!["-modstudio".into(), "-test".into()],
 		"sandbox" => vec!["-modstudio".into(), "-sandbox".into()],
 		"editor" => vec!["-modstudio".into(), "-editor".into(), "ActorEditor".into()],
+		"sceneeditor" => vec!["-modstudio".into(), "-editor".into(), "SceneEditor".into()],
+		"areaeditor" => vec!["-modstudio".into(), "-editor".into(), "AreaEditor".into()],
+		"assemblyeditor" => vec!["-modstudio".into(), "-editor".into(), "AssemblyEditor".into()],
+		"gibeditor" => vec!["-modstudio".into(), "-editor".into(), "GibEditor".into()],
 		_ => vec![],
 	};
 	if (mode == "test" || mode == "sandbox") && !map.is_empty() {

@@ -1158,6 +1158,10 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .mission-field { gap: 4px; }
 .mission-add { display: flex; gap: 6px; margin: 6px 0 0 56px; }
 .mono { font-family: ui-monospace, Consolas, monospace; }
+.ed-menu { position: fixed; z-index: 60; min-width: 280px; background: var(--panel); border: 1px solid var(--line2); border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+.ed-menu-item { display: flex; flex-direction: column; align-items: flex-start; width: 100%; background: none; border: 0; border-radius: 6px; padding: 7px 10px; color: var(--text); text-align: left; cursor: pointer; font: inherit; }
+.ed-menu-item small { color: var(--faint); }
+.ed-menu-item:hover { background: var(--panel3); }
 .replace-row { display: flex; gap: 6px; align-items: center; }
 .replace-row input { flex: 1; min-width: 0; }
 #replaceAll { margin-left: 0; white-space: nowrap; }
