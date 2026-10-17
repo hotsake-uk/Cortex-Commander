@@ -1082,3 +1082,5 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .piece-row .ed-input { width: 100%; min-width: 0; padding: 2px 4px; }
 .gib-preview { display: block; image-rendering: pixelated; border: 1px solid var(--line); border-radius: 4px; max-width: 100%; }
 .gib-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.px-side input[type=color] { width: 34px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; }
+.px-side input[type=range] { flex: 1; min-width: 70px; }
