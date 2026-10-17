@@ -213,7 +213,8 @@ window.MS = window.MS || {};
 			};
 			const items = list.slice(0, 500).map((p) => el('button', { className: 'ed-item' + (p === selected ? ' sel' : ''), textContent: p.name, onclick: () => { s.selected = keyOf(p); s.view = { x: 0, y: 0 }; MS.ide.refreshForm(); } }));
 			host.replaceChildren(el('div', { className: 'ed ed-split' },
-				el('div', { className: 'ed-head' }, el('h2', { textContent: 'Scenes · ' + module })),
+				el('div', { className: 'ed-head' }, el('h2', { textContent: 'Scenes · ' + module }), el('span', { className: 'spacer' }),
+					el('button', { className: 'tb primary', textContent: '+ New scene…', title: "Make a scene: pick its terrain and backdrops, as the game's own scene editor does", disabled: !!(all[0] && locked(all[0].doc)), onclick: () => newScene(module, s) })),
 				all[0] && locked(all[0].doc) ? el('div', { className: 'ed-banner', textContent: module + ' is read only: its scenes can be looked at. Copy one into your mod (New… → Scene) to change it.' }) : null,
 				el('div', { className: 'ed-panes' },
 					el('div', { className: 'ed-list' }, filter, ...(items.length ? items : [el('p', { className: 'ed-empty', textContent: 'No scenes' + (q ? ' match.' : ' in this mod. Make one with New… → Scene.') })])),
@@ -352,8 +353,131 @@ window.MS = window.MS || {};
 			row('On the planet', 'x', numberField(loc.x, '0', ro, (v) => own('Move it on the planet', () => p.node.setVector('LocationOnPlanet', Number(v) || 0, loc.y))), 'y', numberField(loc.y, '0', ro, (v) => own('Move it on the planet', () => p.node.setVector('LocationOnPlanet', loc.x, Number(v) || 0)))),
 			row('Gravity (down)', numberField(gravity.y, '20', ro, (v) => own('Change gravity', () => p.node.setVector('GlobalAcceleration', gravity.x, Number(v) || 0))), el('small', { textContent: '20 is the usual, 0 floats' })),
 			row('', el('label', { className: 'ed-check' }, playable, 'Campaigns can use this scene')),
+			el('div', { className: 'ed-label', textContent: 'Sky and weather' }), ...atmosphere(p, info.ent, ro),
 			el('div', { className: 'ed-label', textContent: 'Backdrops, nearest first (' + info.layers.length + ')' }), ...layerRows, el('div', { className: 'ed-row' }, addLayer),
 			el('div', { className: 'ed-label', textContent: 'Areas (' + info.areas.length + ')' }), ...areaRows, el('div', { className: 'ed-row' }, addArea));
+	}
+
+	// Time of day, weather and wind: what the scene starts as. Blank is the game's usual (a day that follows its own clock, clear weather).
+	const ATMOSPHERE = [
+		['TimeOfDay', 'Hour of the day', 'The hour it starts at, 0 to 24', 'number'],
+		['DayLengthMinutes', 'Day length (minutes)', 'How long a whole day takes; 0 freezes the time', 'number'],
+		['Weather', 'Weather', 'The name of a weather preset, such as Diamond Dust', 'text'],
+		['WeatherIntensity', 'Weather strength', '0 to 1', 'number'],
+		['Wind', 'Wind', 'Pixels a second, sideways', 'number'],
+		['PostShader', 'Look (post shader)', 'The name of a screen look the scene starts with', 'text'],
+	];
+
+	function atmosphere(p, ent, ro) {
+		return ATMOSPHERE.map(([key, label, help, kind]) => {
+			const own = p.node.child(key);
+			const input = el('input', { type: kind === 'number' ? 'number' : 'text', step: 'any', className: 'ed-input' + (kind === 'number' ? ' num' : ''), value: own ? own.value : '', placeholder: ent.str(key, ''), disabled: ro });
+			input.onchange = () => change('Change ' + label.toLowerCase() + ' in ' + p.name, () => {
+				const v = input.value.trim();
+				if (v === '') {
+					if (own) {
+						own.remove();
+					}
+				} else {
+					p.node.set(key, v);
+				}
+			});
+			return el('div', { className: 'ed-row', title: help }, el('span', { className: 'ed-label', textContent: label }), input, el('small', { textContent: help }));
+		});
+	}
+
+	// ---- a new scene ----
+
+	// The game's own editor asks for a name, a terrain and three backdrops; so does this. The scene gets the usual landing zones across its width.
+	function newScene(module, s) {
+		const a = app();
+		const presets = (cls) => a.lib.presets.filter((p) => p.topLevel && p.cls === cls).sort((x, y) => x.name.localeCompare(y.name));
+		const terrains = presets('SLTerrain');
+		const backdrops = presets('SLBackground').filter((p) => a.lib.resolve(p.node).file('BitmapFile'));
+		const label = (p) => p.name + (p.module === module ? '' : ' (' + p.module.replace(/[.]rte$/i, '') + ')');
+		const pick = (list, none) => el('select', { className: 'ed-input' }, ...(none ? [el('option', { value: '', textContent: '(none)' })] : []), ...list.map((p, i) => el('option', { value: String(i), textContent: label(p) })));
+		const name = el('input', { type: 'text', className: 'ed-input', placeholder: 'My Scene' });
+		const terrain = pick(terrains, false);
+		const layers = [pick(backdrops, true), pick(backdrops, true), pick(backdrops, true)];
+		const sky = Math.max(backdrops.findIndex((p) => p.module === 'Base.rte' && /sky/i.test(p.name)), backdrops.findIndex((p) => /sky/i.test(p.name)));
+		if (sky >= 0) {
+			layers[2].value = String(sky);
+		}
+		const wrap = el('input', { type: 'checkbox', checked: true });
+		const { field } = MS.dialogs.parts;
+		MS.dialogs.open('New scene', el('div', {},
+			field('Name', name, 'What it is called in the game.'),
+			field('Terrain', terrain, 'The ground: its shape and what it is made of.'),
+			field('Nearest backdrop', layers[0]), field('Middle backdrop', layers[1]), field('Furthest backdrop (the sky)', layers[2]),
+			el('label', { className: 'ed-check' }, wrap, 'The map wraps round sideways')), [
+			{ text: 'Cancel' },
+			{ text: 'Make it', primary: true, action: async () => {
+				const n = name.value.trim();
+				if (!n) {
+					return false;
+				}
+				if (a.lib.presets.some((p) => p.cls === 'Scene' && p.name.toLowerCase() === n.toLowerCase())) {
+					a.toast('There is already a scene called ' + n + '.', 'bad');
+					return false;
+				}
+				const picked = terrains[Number(terrain.value)];
+				if (!picked) {
+					a.toast('Pick a terrain first.', 'bad');
+					return false;
+				}
+				const resolved = a.lib.resolve(picked.node);
+				const file = resolved.file('BitmapFile') || resolved.file('FGColorFile');
+				const loaded = file ? await a.images.get(file) : null;
+				const width = loaded ? loaded.width : 4800;
+				const path = module + '/Scenes/' + (n.replace(/[^A-Za-z0-9 _-]/g, '').trim().replace(/ +/g, '_') || 'NewScene') + '.ini';
+				if (await a.fs.exists(path)) {
+					a.toast(path + ' is already there.', 'bad');
+					return false;
+				}
+				const doc = await a.lib.newDoc(path);
+				a.hookDoc(doc);
+				a.hookDoc(a.lib.docFor(module + '/Index.ini'));
+				change('New scene ' + n, () => {
+					const block = doc.addTopLevel('AddScene', 'Scene');
+					block.add('PresetName', n);
+					block.add('Description', 'Made with Cortex Mod Studio.');
+					block.setVector('LocationOnPlanet', 0, 0);
+					block.add('MetagamePlayable', '0');
+					block.add('AutoDesigned', '0');
+					block.add('Terrain', 'SLTerrain').add('CopyOf', a.lib.reference(picked.name, picked.module, module));
+					block.setVector('GlobalAcceleration', 0, 20);
+					for (const layer of layers) {
+						const chosen = layer.value === '' ? null : backdrops[Number(layer.value)];
+						if (chosen) {
+							block.add('AddBackgroundLayer', 'SLBackground').add('CopyOf', a.lib.reference(chosen.name, chosen.module, module));
+						}
+					}
+					if (!wrap.checked) {
+						block.add('WrapX', '0');
+					}
+					const zone = (areaName, x, w, y) => {
+						const area = block.add('AddArea', 'Area');
+						const box = area.add('AddBox', 'Box');
+						box.setVector('Corner', Math.round(x), y);
+						box.add('Width', String(Math.round(w)));
+						box.add('Height', '60');
+						area.add('Name', areaName);
+					};
+					for (let i = 0; i < 4; i++) {
+						zone('LZ Team ' + (i + 1), (width / 4) * i, width / 4, 20);
+					}
+					zone('LZ All', 0, width, 10);
+				});
+				const made = a.lib.presets.find((p) => p.doc === doc && p.name === n);
+				if (made) {
+					s.selected = made.doc.path + ':' + made.node.line + ':' + made.name;
+				}
+				await a.save(true, [doc, a.lib.docFor(module + '/Index.ini')].filter(Boolean));
+				MS.ide.refreshForm();
+				a.toast('Made ' + n + ' in ' + module + '. The game loads new scenes when it starts.', 'good');
+				return true;
+			} },
+		]);
 	}
 
 	// Joins the Data view's list.
