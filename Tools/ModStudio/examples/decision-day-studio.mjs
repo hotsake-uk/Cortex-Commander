@@ -214,6 +214,8 @@ const ini = [
 	'\tDefaultRequireClearPathToOrbit = 1',
 	'\tDefaultFogOfWar = 1',
 	'\tDefaultDeployUnits = 1',
+	// offered only on maps that have these areas (Decision Day and its copies), as the game's own scenarios are
+	...['Initial Human Spawn', 'Front Bunker Operations Capture', 'Middle Bunker Operations Capture', 'Main Bunker Door Controls Capture', 'Main Bunker Shield Generator Capture', 'Main Bunker Command Center Brain'].map((a) => '\tAddRequiredArea = ' + a),
 	'',
 ].join('\n');
 fs.writeFileSync(out + '/DecisionDayStudio.lua', script.replace(/\n/g, '\r\n'));
