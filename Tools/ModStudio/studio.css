@@ -1458,3 +1458,8 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .tab:hover .tab-pop, .tab:hover .tab-game, .tab:hover .tab-close { display: inline-flex; align-items: center; justify-content: center; visibility: visible; opacity: 1; }
 .tab.dirty .tab-close { visibility: visible; }
 .tab-name { flex: 1 1 auto; min-width: 0; }
+/* the areas list's Show filter */
+.me-listhead { display: flex; flex-direction: column; gap: 4px; }
+.me-filter { width: 100%; font-size: 11.5px; text-transform: none; letter-spacing: 0; }
+.me-stagefocus { display: flex; align-items: center; gap: 6px; text-transform: none; letter-spacing: 0; color: var(--accent, #6af); }
+.me-stagefocus span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

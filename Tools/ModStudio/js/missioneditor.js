@@ -568,8 +568,35 @@ window.MS = window.MS || {};
 				};
 				setTimeout(() => document.addEventListener('pointerdown', close, true), 0);
 			};
+			// the filter (the areas list's Show): all, unused (a clear map to draw on), used, in code, or what the nodes use them for
+			// and while a stage is picked beside the graph, only that stage's areas
+			const shown = () => {
+				const focus = MS.missionLogic ? MS.missionLogic.stageFocus(scenarioByKey(key)) : null;
+				return byFilter().filter((r) => !focus || focus.areas.has(r.name));
+			};
+			const byFilter = () => {
+				const f = s.map.filter || 'all';
+				if (f === 'all') {
+					return areas();
+				}
+				const roles = MS.missionLogic ? MS.missionLogic.areaRoles(scenarioByKey(key)) : new Map();
+				return areas().filter((r) => {
+					const used = roles.has(r.name);
+					const code = codeUses(scenarioByKey(key), r.name).length > 0;
+					if (f === 'unused') {
+						return !used && !code;
+					}
+					if (f === 'used') {
+						return used || code;
+					}
+					if (f === 'code') {
+						return code;
+					}
+					return used && roles.get(r.name).has(f);
+				});
+			};
 			const hooks = {
-				areas, terrain: () => terrain(), usage, freshName, menu,
+				areas: shown, terrain: () => terrain(), usage, freshName, menu,
 				change: (name, boxes) => change(name, boxes),
 				picked: (name) => {
 					if (MS.missionLogic && MS.missionLogic.areaPicked) {
@@ -614,12 +641,25 @@ window.MS = window.MS || {};
 			// the areas list: every area of the scene, what uses it, and (for the one picked) each use, to jump to
 			const list = el('div', { className: 'me-arealist' });
 			const drawList = () => {
-				const all = areas();
-				const names = all.map((r) => r.name);
+				const every = areas();
+				const all = shown();
+				const names = every.map((r) => r.name);
 				const picked = s.map.area;
-				list.replaceChildren(el('div', { className: 'me-listhead', textContent: 'Areas (' + all.length + ')' }));
+				// Show: which areas the list and the map show
+				const roles = MS.missionLogic ? MS.missionLogic.AREA_ROLES : [];
+				const filter = el('select', { className: 'ed-input me-filter', title: 'Which areas the list and the map show' },
+					...[['all', 'All areas'], ['unused', 'Unused (a clear map to draw on)'], ['used', 'Used by the mission or the script'], ['code', 'Used in the script\'s own code'], ...roles].map(([v, t]) => el('option', { value: v, textContent: t, selected: v === (s.map.filter || 'all') })));
+				filter.onchange = () => {
+					s.map.filter = filter.value;
+					view.draw();
+					drawList();
+				};
+				const focus = MS.missionLogic ? MS.missionLogic.stageFocus(scenarioByKey(key)) : null;
+				list.replaceChildren(el('div', { className: 'me-listhead' }, el('span', { textContent: 'Areas (' + (all.length === every.length ? every.length : all.length + ' of ' + every.length) + ')' }), filter,
+					focus ? el('div', { className: 'me-stagefocus' }, el('span', { textContent: 'Only ' + focus.name, title: 'A stage is picked beside the graph: only its areas are shown' }),
+						el('button', { className: 'tb', textContent: 'Show all', onclick: () => MS.missionLogic.clearStage(scenarioByKey(key)) })) : null));
 				if (!all.length) {
-					list.append(el('p', { className: 'ed-note', textContent: 'None yet: drag on the map to draw one.' }));
+					list.append(el('p', { className: 'ed-note', textContent: every.length ? 'None of the areas is of this kind.' : 'None yet: drag on the map to draw one.' }));
 				}
 				for (const r of all) {
 					const nodes = MS.missionLogic ? MS.missionLogic.areaUses(scenarioByKey(key), r.name) : [];
@@ -666,6 +706,9 @@ window.MS = window.MS || {};
 				MS.missionLogic.render(logic, scenario, { areas: () => areas().map((r) => r.name), changed: () => {
 					view.draw();
 					drawSide();
+					drawList();
+				}, stageChanged: () => {
+					view.draw();
 					drawList();
 				}, highlight: (names) => {
 					s.map.lit = names;

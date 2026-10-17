@@ -543,83 +543,79 @@ window.MS = window.MS || {};
 
 	// ---- laying out ----
 
-	const COL = 330;
+	const COL = 360;
 	const ROW = 190;
 
 	// Places every node by following the wires: events on the left in rows, what they lead to going right, a branch's false side below its true side,
 	// stages in a row along the top with what they run hanging below. Moves only nodes that have no place yet unless all is true.
-	function layout(g, all) {
+	// How tall a node is drawn, near enough, from what it shows: its title, each setting these settings use, a branch's conditions, a list's rows, and
+	// its exits. (The editor passes the real heights when it has them.)
+	function heightOf(n) {
+		const spec = KINDS[n.kind];
+		if (!spec) {
+			return 80;
+		}
+		const shown = spec.params.filter(([key]) => relevant(spec, n.p, key)).length;
+		const conds = ((n.lists && n.lists.conds) || []).reduce((h, c) => h + 26 * (1 + ((CONDS[c.kind] || { params: [] }).params.length)), 0);
+		const rows = ((n.lists && n.lists.lines) || []).length * 30;
+		const lists = spec.lists ? 34 : 0;
+		return 34 + shown * 23 + conds + rows + lists + spec.exits.length * 18 + 14;
+	}
+
+	// Lays the graph out as trees, left to right: each beginning (the stages in their order, then capture points, then events) starts a band at
+	// the left, and what it leads to runs rightwards, a column a step, with a branch's or a stage's exits one under another. Each node gets the
+	// height it is drawn at (measure(n) from the editor, else an estimate), so nothing lands on anything else. all: lay out every node, not only
+	// those with no place yet.
+	function layout(g, all, measure) {
+		const height = (n) => Math.max(40, (measure && measure(n)) || heightOf(n));
+		const GAP = 24; // between nodes in a column
+		const BAND = 64; // between one beginning's tree and the next
 		const placed = new Set();
 		const needs = (n) => all || !Number.isFinite(n.x) || !Number.isFinite(n.y);
-		let top = 0;
-		// stages: a column each, in order of the next wires
-		const order = [];
-		const seen = new Set();
-		const first = firstStage(g);
-		for (let s = first; s && !seen.has(s.id); s = find(g, (s.out || {}).next)) {
-			seen.add(s.id);
-			order.push(s);
-		}
-		for (const s of stages(g)) {
-			if (!seen.has(s.id)) {
-				order.push(s);
-			}
-		}
-		let stageBottom = 0;
-		order.forEach((s, i) => {
-			const x = i * COL;
-			if (needs(s)) {
-				s.x = x;
-				s.y = 0;
-			}
-			placed.add(s.id);
-			let y = ROW * 1.25;
-			for (const pin of ['started', 'done', 'timeout']) {
-				const chain = chainFrom(g, (s.out || {})[pin]);
-				for (const n of chain) {
-					if (!placed.has(n.id) && needs(n)) {
-						n.x = x;
-						n.y = y;
-					}
-					placed.add(n.id);
-					y += ROW * 0.8;
-				}
-			}
-			stageBottom = Math.max(stageBottom, y);
-		});
-		top = order.length ? stageBottom + ROW * 0.4 : 0;
-		// events: a row each
-		let row = top;
+		// a node at (x, y) and everything after it to the right; returns the bottom of what it took
 		const place = (id, x, y) => {
 			const n = find(g, id);
 			if (!n || placed.has(n.id)) {
-				return y;
+				return y - GAP;
 			}
 			placed.add(n.id);
 			if (needs(n)) {
 				n.x = x;
 				n.y = y;
 			}
-			if (n.kind === 'branch') {
-				let end = place((n.out || {}).true, x + COL, y);
-				const falseTop = (n.out || {}).false ? Math.max(end, y + ROW * 0.9) : y;
-				end = Math.max(end, place((n.out || {}).false, x + COL, falseTop));
-				return Math.max(end, y + ROW * 0.9);
+			let bottom = y + height(n);
+			let next = y;
+			const spec = KINDS[n.kind];
+			for (const pin of spec ? spec.exits : []) {
+				const to = (n.out || {})[pin];
+				if (!to || pin === 'next' || placed.has(to)) {
+					continue;
+				}
+				const end = place(to, x + COL, next);
+				bottom = Math.max(bottom, end);
+				next = end + GAP;
 			}
-			return Math.max(place((n.out || {}).then, x + COL, y), y + ROW * 0.9);
+			return bottom;
 		};
-		for (const e of entries(g)) {
-			row = Math.max(row, place(e.id, 0, row)) + ROW * 0.15;
+		const roots = [];
+		const seen = new Set();
+		for (let st = firstStage(g); st && !seen.has(st.id); st = find(g, (st.out || {}).next)) {
+			seen.add(st.id);
+			roots.push(st);
 		}
-		// whatever is left (nothing wires to it): in a row at the bottom
-		let x = 0;
+		roots.push(...stages(g).filter((st) => !seen.has(st.id)));
+		roots.push(...g.nodes.filter((n) => n.kind === 'capture'));
+		roots.push(...entries(g));
+		let y = 0;
+		for (const root of roots) {
+			if (!placed.has(root.id)) {
+				y = place(root.id, 0, y) + BAND;
+			}
+		}
+		// whatever nothing leads to: its own trees, below
 		for (const n of g.nodes) {
 			if (!placed.has(n.id)) {
-				if (needs(n)) {
-					n.x = x;
-					n.y = row;
-				}
-				x += COL;
+				y = place(n.id, 0, y) + BAND;
 			}
 		}
 		return g;
