@@ -322,6 +322,24 @@ window.MS = window.MS || {};
 		return paths;
 	}
 
+	// An ImageData scaled by a factor: smoothed when it shrinks (so detail survives), crisp when it grows (so pixels stay square).
+	function scaleImage(img, factor) {
+		const w = Math.max(1, Math.round(img.width * factor));
+		const h = Math.max(1, Math.round(img.height * factor));
+		const from = document.createElement('canvas');
+		from.width = img.width;
+		from.height = img.height;
+		from.getContext('2d').putImageData(img, 0, 0);
+		const to = document.createElement('canvas');
+		to.width = w;
+		to.height = h;
+		const ctx = to.getContext('2d');
+		ctx.imageSmoothingEnabled = factor < 1;
+		ctx.imageSmoothingQuality = 'high';
+		ctx.drawImage(from, 0, 0, w, h);
+		return ctx.getImageData(0, 0, w, h);
+	}
+
 	// options.files: pictures to start with (dropped on the guide); options.onDone: called once the sprite is in the unit.
 	function importSprite(part, options) {
 		const a = app();
@@ -333,6 +351,10 @@ window.MS = window.MS || {};
 		const input = el('input', { type: 'file', accept: 'image/png,image/bmp,image/gif,image/webp,image/jpeg', multiple: true });
 		const framesInput = el('input', { type: 'number', min: 1, max: 64, value: 1 });
 		const centre = el('input', { type: 'checkbox', checked: true });
+		// Scaling: a picture much bigger or smaller than the part's own would break the unit's proportions, so by default it is fitted to the
+		// size of the picture it replaces (keeping its shape); or kept as it is; or scaled by a percentage.
+		const scaleMode = el('select', {}, el('option', { value: 'auto', textContent: 'Fit to the current picture' }), el('option', { value: 'keep', textContent: 'Keep its own size' }), el('option', { value: 'custom', textContent: 'Scale by a percentage' }));
+		const scalePct = el('input', { type: 'number', min: 1, max: 800, value: 100, hidden: true, style: 'width:70px', title: 'Percent of its own size' });
 		const actorName = safeName(a.actor.name);
 		const roleName = { body: 'Body', head: 'Head', jetpack: 'Jetpack', fgarm: 'ArmFG', bgarm: 'ArmBG', fgleg: 'LegFG', bgleg: 'LegBG', foot: 'Foot', magazine: 'Magazine', device: 'Item', attachable: 'Attachment' }[part.role] || 'Part';
 		const module = part.anchor.doc.module;
@@ -343,6 +365,7 @@ window.MS = window.MS || {};
 		const notes = el('div', { className: 'import-notes' });
 		const compare = el('div', { className: 'import-compare' });
 		let sources = []; // ImageData per file
+		let scaledBy = 1; // how much the pictures were scaled, for the note
 		let converted = [];
 
 		// What the part has now, to compare the new picture with.
@@ -484,6 +507,23 @@ window.MS = window.MS || {};
 			} else {
 				frames = sources;
 			}
+			// The factor: to fit the current picture (the shape kept), 1, or the percentage. Frames are scaled together so a sheet stays in step.
+			let factor = 1;
+			const first = frames[0];
+			if (scaleMode.value === 'auto' && currentFirst && first.width > 0 && first.height > 0) {
+				factor = Math.min(currentFirst.width / first.width, currentFirst.height / first.height);
+				// close enough is left alone, and a smaller picture is not blown up past twice
+				if (factor > 0.85 && factor < 1.25) {
+					factor = 1;
+				}
+				factor = Math.min(factor, 2);
+			} else if (scaleMode.value === 'custom') {
+				factor = Math.max(0.01, Math.min(8, (Number(scalePct.value) || 100) / 100));
+			}
+			scaledBy = factor;
+			if (factor !== 1) {
+				frames = frames.map((f) => scaleImage(f, factor));
+			}
 			let changed = 0;
 			for (const f of frames) {
 				const p = a.images.toPalette(f);
@@ -495,7 +535,7 @@ window.MS = window.MS || {};
 				shown.style.height = p.height * z + 'px';
 				preview.append(shown);
 			}
-			info.textContent = converted.length + ' frame' + (converted.length > 1 ? 's' : '') + ', ' + converted[0].width + '×' + converted[0].height + ' pixels. ' + (changed ? changed + ' pixels moved to the nearest game colour (shown above as the game will draw them).' : 'Every colour is already in the game palette.');
+			info.textContent = (scaledBy !== 1 ? 'Scaled to ' + Math.round(scaledBy * 100) + '% of its own size. ' : '') + converted.length + ' frame' + (converted.length > 1 ? 's' : '') + ', ' + converted[0].width + '×' + converted[0].height + ' pixels. ' + (changed ? changed + ' pixels moved to the nearest game colour (shown above as the game will draw them).' : 'Every colour is already in the game palette.');
 			analyse(frames, leftover, changed);
 			showCompare();
 		};
@@ -524,12 +564,18 @@ window.MS = window.MS || {};
 			rebuild();
 		};
 		framesInput.oninput = rebuild;
+		scaleMode.onchange = () => {
+			scalePct.hidden = scaleMode.value !== 'custom';
+			rebuild();
+		};
+		scalePct.oninput = rebuild;
 
 		const limbNote = part.role === 'fgarm' || part.role === 'bgarm' || part.role === 'fgleg' || part.role === 'bgleg' ? 'Arms and legs choose their frame by how far they stretch: the first frame is the most bent, the last the straightest. Feet use frames 0–3 for flat, toes forward, heel back and far back.' : null;
 		const body = el('div', {},
 			para('Pick a picture (or several, one per frame, or one sprite sheet with the frames side by side). Studio turns it into the game\'s palette and saves the frames as numbered files the game can load.'),
 			field('Picture files', input),
 			field('Frames in a sprite sheet', framesInput, 'For one picture: how many equal frames it is cut into, left to right.'),
+			field('Size', el('span', { className: 'px-row' }, scaleMode, scalePct, el('span', { textContent: scalePct.hidden ? '' : '%' })), 'Fit keeps the picture\'s shape and shrinks it to the size of the one it replaces, so a huge picture doesn\'t break the unit.'),
 			preview, info, compare, notes,
 			limbNote ? el('div', { className: 'notice info', textContent: limbNote }) : null,
 			field('Save into folder', folder),
