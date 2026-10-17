@@ -143,14 +143,14 @@ window.MS = window.MS || {};
 		// 60 and 30 frames a second
 		for (const [ms, label] of [[1000 / 60, '60 fps'], [1000 / 30, '30 fps']]) {
 			if (ms < top) {
-				ctx.strokeStyle = 'rgba(255,255,255,.12)';
+				ctx.strokeStyle = MS.theme.ov(0.12);
 				ctx.setLineDash([4, 4]);
 				ctx.beginPath();
 				ctx.moveTo(0, y(ms));
 				ctx.lineTo(w, y(ms));
 				ctx.stroke();
 				ctx.setLineDash([]);
-				ctx.fillStyle = 'rgba(255,255,255,.35)';
+				ctx.fillStyle = MS.theme.ov(0.35);
 				ctx.font = 10 * devicePixelRatio + 'px sans-serif';
 				ctx.fillText(label, 4, y(ms) - 3);
 			}
@@ -172,9 +172,9 @@ window.MS = window.MS || {};
 			});
 			ctx.stroke();
 		};
-		line('draw', '#7fd1ff');
+		line('draw', MS.theme.blue());
 		line('update', '#4fc37a');
-		line('frame', '#f2b63d');
+		line('frame', MS.theme.accent());
 	}
 
 	MS.profiler = {

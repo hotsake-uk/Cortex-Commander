@@ -224,13 +224,13 @@ window.MS = window.MS || {};
 	}
 
 	const GRAPH_STYLE = () => [
-		{ selector: 'node', style: { shape: 'round-rectangle', width: 'label', height: 'label', padding: '9px', label: 'data(text)', 'text-wrap': 'wrap', 'text-max-width': '190px', 'text-valign': 'center', 'text-halign': 'center', 'font-size': '11px', 'line-height': 1.25, color: '#e6e9ef', 'background-color': '#171b22', 'border-width': 1.5, 'border-color': NODE_COLOURS.other } },
+		{ selector: 'node', style: { shape: 'round-rectangle', width: 'label', height: 'label', padding: '9px', label: 'data(text)', 'text-wrap': 'wrap', 'text-max-width': '190px', 'text-valign': 'center', 'text-halign': 'center', 'font-size': '11px', 'line-height': 1.25, color: MS.theme.text(), 'background-color': MS.theme.css('--panel2'), 'border-width': 1.5, 'border-color': NODE_COLOURS.other } },
 		{ selector: 'node[group="unit"]', style: { 'border-color': NODE_COLOURS.unit } },
 		{ selector: 'node[group="item"]', style: { 'border-color': NODE_COLOURS.item } },
 		{ selector: 'node[group="attachment"]', style: { 'border-color': NODE_COLOURS.attachment } },
-		{ selector: 'node[group="script"]', style: { 'border-color': NODE_COLOURS.script, shape: 'cut-rectangle', 'background-color': '#1c1726' } },
-		{ selector: 'node[?focus]', style: { 'border-width': 3.5, 'background-color': '#26211a' } },
-		{ selector: 'node:selected', style: { 'overlay-color': '#f2b63d', 'overlay-opacity': 0.18, 'overlay-padding': 6 } },
+		{ selector: 'node[group="script"]', style: { 'border-color': NODE_COLOURS.script, shape: 'cut-rectangle', 'background-color': MS.theme.css('--panel3') } },
+		{ selector: 'node[?focus]', style: { 'border-width': 3.5, 'background-color': MS.theme.css('--panel3') } },
+		{ selector: 'node:selected', style: { 'overlay-color': MS.theme.accent(), 'overlay-opacity': 0.18, 'overlay-padding': 6 } },
 		{ selector: 'edge', style: { 'curve-style': 'bezier', width: 1.6, 'line-color': EDGE_COLOURS.copy, 'target-arrow-color': EDGE_COLOURS.copy, 'target-arrow-shape': 'triangle', label: 'data(label)', 'font-size': '9px', color: '#9aa3b5', 'text-background-color': '#0d0f13', 'text-background-opacity': 1, 'text-background-padding': '2px', 'text-rotation': 'autorotate' } },
 		{ selector: 'edge[kind="part"]', style: { 'line-color': EDGE_COLOURS.part, 'target-arrow-color': EDGE_COLOURS.part, 'line-style': 'dashed' } },
 		{ selector: 'edge[kind="runs"]', style: { 'line-color': EDGE_COLOURS.runs, 'target-arrow-color': EDGE_COLOURS.runs, 'line-style': 'dotted' } },

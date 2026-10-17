@@ -285,7 +285,7 @@ window.MS = window.MS || {};
 			ctx.stroke();
 		}
 		if (E.mirror) {
-			ctx.strokeStyle = 'rgba(242,182,61,.6)';
+			ctx.strokeStyle = MS.theme.accentA(0.6);
 			ctx.setLineDash([4, 4]);
 			ctx.beginPath();
 			ctx.moveTo(W / 2, 0);
@@ -294,7 +294,7 @@ window.MS = window.MS || {};
 			ctx.setLineDash([]);
 		}
 		if (E.hover && E.hover.inside) {
-			ctx.strokeStyle = '#f2b63d';
+			ctx.strokeStyle = MS.theme.accent();
 			ctx.lineWidth = 1;
 			ctx.strokeRect(E.hover.x * z + 0.5, E.hover.y * z + 0.5, z - 1, z - 1);
 		}

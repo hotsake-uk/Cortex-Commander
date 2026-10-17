@@ -1,4 +1,5 @@
 // Mod Studio's scripts, in the order they need each other. Each one adds itself to window.MS.
+import './theme.js';
 import './ini.js';
 import './gamefs.js';
 import './library.js';
