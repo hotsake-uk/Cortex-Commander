@@ -1091,11 +1091,12 @@ window.MS = window.MS || {};
 		]);
 	};
 
-	app.preview = async function (quiet) {
+	// The request that makes the game show the open unit (Preview.ini): who, where it is, the files saved since, the held item. null when there is
+	// nothing to show.
+	function previewLines() {
 		if (!app.actor) {
-			return;
+			return null;
 		}
-		await app.save(quiet);
 		const files = new Set(app.savedSinceLastPreview);
 		files.add(app.actor.path);
 		// An item designed on its own goes to the game in the hands of the last unit opened (or a soldier of the game's).
@@ -1106,7 +1107,7 @@ window.MS = window.MS || {};
 			const found = (last && app.lib.presets.find((p) => p.cls === 'AHuman' && p.doc.path === last.path && p.name === last.name)) || app.lib.find('Soldier Light', 'AHuman', null) || app.lib.presets.find((p) => p.cls === 'AHuman' && p.topLevel);
 			if (!found) {
 				app.toast('Studio needs a unit to hold ' + app.actor.name + ' in the game, and found none.', 'bad');
-				return;
+				return null;
 			}
 			holder = { path: found.doc.path, name: found.name, cls: 'AHuman' };
 		}
@@ -1131,6 +1132,25 @@ window.MS = window.MS || {};
 		const held = heldRef && app.lib.presets.find((p) => p.doc.path === heldRef.path && p.name === heldRef.name);
 		if (held) {
 			lines.push('DeviceClass = ' + held.cls, 'DevicePreset = ' + held.name, 'DeviceModule = ' + held.module);
+		}
+		return lines;
+	}
+
+	// The same request as text, for starting a game: Test in game, Sandbox and the Actor Editor then open with the unit you have open (the game
+	// has no Preview.ini of its own yet, so it showed a default soldier).
+	app.previewText = function () {
+		const lines = previewLines();
+		return lines ? lines.join('\r\n') + '\r\n' : null;
+	};
+
+	app.preview = async function (quiet) {
+		if (!app.actor) {
+			return;
+		}
+		await app.save(quiet);
+		const lines = previewLines();
+		if (!lines) {
+			return;
 		}
 		try {
 			await app.fs.writeDisk(PREVIEW_FILE, lines.join('\r\n') + '\r\n');
@@ -1183,12 +1203,15 @@ window.MS = window.MS || {};
 			}
 		}
 	}
-	function setLive(on) {
+	function setLive(on, quiet) {
 		app.live = on;
 		const btn = $('btnLive');
 		btn.classList.toggle('live-on', on);
 		btn.textContent = on ? '● Live on' : '● Live';
 		writeLocal('ms.live', on);
+		if (quiet) {
+			return;
+		}
 		if (on) {
 			app.status('Live: every change is sent to the game when you make it. Start the game with Actor Editor.bat or Test In Sandbox.bat.');
 			app.liveChanged();
@@ -1250,8 +1273,9 @@ window.MS = window.MS || {};
 		if (readLocal('ms.listHidden')) {
 			setListShown(false);
 		}
-		if (readLocal('ms.live')) {
-			setLive(true);
+		// Live is on unless you turned it off: a game started from Studio then follows every change (the unit, its sprites), with nothing to press.
+		if (readLocal('ms.live') !== false) {
+			setLive(true, true);
 		}
 		$('btnCopy').onclick = () => MS.dialogs.copyUnit();
 		$('btnHelp').onclick = () => MS.dialogs.help();

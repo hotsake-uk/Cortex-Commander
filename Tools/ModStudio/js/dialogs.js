@@ -319,6 +319,9 @@ window.MS = window.MS || {};
 		a.forgetSprites(paths);
 		MS.panels.forgetThumbs();
 		MS.popout.saved(paths);
+		for (const p of paths) {
+			a.savedSinceLastPreview.add(p); // the game reads these again with the next Preview or Live update
+		}
 		if (part) {
 			const w = frames[0].width;
 			const h = frames[0].height;

@@ -612,6 +612,18 @@ window.MS = window.MS || {};
 		const body = run
 			? { mode: run.mode || 'play', map: run.map || L.state.config.map || '', module: run.module || '', timeScale: run.timeScale || '', resolution: run.resolution || '' }
 			: { mode, map: L.state.config.map || '' };
+		// A test, sandbox or Actor Editor game starts with the unit that is open in the designer.
+		if (['test', 'sandbox', 'editor'].includes(body.mode) && app().actor) {
+			try {
+				await app().save(true);
+			} catch (e) {
+				// the launch still goes
+			}
+			const text = app().previewText();
+			if (text) {
+				body.preview = text;
+			}
+		}
 		const answer = await guarded(() => call('launch', body));
 		if (!answer) {
 			return;
