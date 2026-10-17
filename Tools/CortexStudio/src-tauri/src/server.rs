@@ -247,6 +247,14 @@ fn api(studio: &Studio, request: &mut Request, action: &str, query: &str) -> Res
 				_ => bytes(br#"{"native":false}"#.to_vec(), "application/json"),
 			}
 		}
+		// A pop-out window whose last tab was closed: it goes too.
+		"popout-close" => {
+			let mut raw = String::new();
+			let _ = request.as_reader().read_to_string(&mut raw);
+			let label = serde_json::from_str::<serde_json::Value>(&raw).ok().and_then(|v| v.get("win").and_then(|w| w.as_str().map(String::from))).unwrap_or_default();
+			let closed = crate::close_popout(&label);
+			bytes(format!("{{\"closed\":{closed}}}").into_bytes(), "application/json")
+		}
 		// The window's zoom, kept between runs. Only in the app (a window to zoom); the page asks, and follows the answer.
 		"zoom" => {
 			if !crate::has_zoom_hook() {

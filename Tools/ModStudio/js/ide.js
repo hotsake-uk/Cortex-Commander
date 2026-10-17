@@ -860,6 +860,11 @@ window.MS = window.MS || {};
 			tab.model.dispose();
 			tab.model = null;
 		}
+		// In a pop-out window, closing the last tab it shows closes the window.
+		if (MS.popout.request && !ide.tabs.some((t) => t.kind !== 'designer' || MS.popout.request.k === 'design')) {
+			MS.popout.closeWindow();
+			return;
+		}
 		if (ide.active === tab) {
 			ide.activate(ide.tabs[Math.max(0, index - 1)] || designerTab());
 		} else {

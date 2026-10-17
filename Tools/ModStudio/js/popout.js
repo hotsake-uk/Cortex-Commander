@@ -160,5 +160,21 @@ window.MS = window.MS || {};
 		}
 	}
 
-	MS.popout = { request, begin, run, pop, saved, elsewhere };
+	// A pop-out with nothing left in it closes: Studio's app closes its own window (named in the address); a browser tab closes itself.
+	async function closeWindow() {
+		const win = params.get('win');
+		try {
+			if (win && MS.app && MS.app.fs) {
+				const response = await MS.app.fs.api('POST', 'popout-close', '', JSON.stringify({ win }));
+				if (response && (await response.json()).closed) {
+					return;
+				}
+			}
+		} catch (e) {
+			// fall back to the browser's own
+		}
+		window.close();
+	}
+
+	MS.popout = { request, begin, run, pop, saved, elsewhere, closeWindow };
 })();
