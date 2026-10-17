@@ -1492,3 +1492,9 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .fv-arg .fv-argname { min-width: 72px; }
 .fv-flow.fv-script-node .fv-title { background: #e0a458; }
 .fv-node .fv-code-peek { max-width: 380px; text-overflow: ellipsis; }
+.me-marks { display: flex; align-items: center; gap: 5px; text-transform: none; letter-spacing: 0; font-size: 11.5px; color: var(--dim); cursor: pointer; }
+/* the handle on a side panel's edge (stages, areas): drag to resize */
+.ml-grip { flex: none; width: 5px; margin-left: -3px; cursor: ew-resize; position: relative; z-index: 2; }
+.ml-grip:hover, .ml-grip:active { background: var(--accent, #f2b63d); opacity: .5; }
+.ml-side.closed + .ml-grip { pointer-events: none; }
+.ml-side.closed { width: 26px !important; }
