@@ -166,10 +166,15 @@ fn relink(from: &Path, root: &Path, relative: &Path, deleted: bool) -> Option<Pa
 	}
 	let to = root.join("Mods").join(relative);
 	if deleted {
-		if to.exists() {
-			std::fs::remove_file(&to).ok()?;
+		// "Deleted" is often a save on its way (an editor that deletes and renames, or another program writing the same file): the file is
+		// looked for again a moment later, and only if it is still gone does the version's copy go.
+		std::thread::sleep(Duration::from_millis(250));
+		if !from.exists() {
+			if to.exists() {
+				std::fs::remove_file(&to).ok()?;
+			}
+			return Some(to);
 		}
-		return Some(to);
 	}
 	// An editor that saves by deleting and renaming leaves the file missing for a moment. The version's copy is left alone then (the save's own
 	// event follows), so a file is never taken out of both places.
@@ -177,8 +182,11 @@ fn relink(from: &Path, root: &Path, relative: &Path, deleted: bool) -> Option<Pa
 		return None;
 	}
 	std::fs::create_dir_all(to.parent()?).ok()?;
-	// The new link is made beside the old copy and renamed over it, so the version always has a file there.
-	let temp = to.with_extension("studio-link-tmp");
+	// The new link is made beside the old copy and renamed over it, so the version always has a file there. Its name is this process's own,
+	// so two Studios (a window and a bridge) relinking the same file at once never take each other's.
+	static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+	let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+	let temp = to.with_extension(format!("studio-link-{}-{n}", std::process::id()));
 	let _ = std::fs::remove_file(&temp);
 	if std::fs::hard_link(from, &temp).is_err() {
 		std::fs::copy(from, &temp).ok()?;
@@ -275,9 +283,17 @@ mod tests {
 		std::fs::remove_file(&source).unwrap();
 		assert_eq!(relink(&source, &version, &relative, false), None);
 		assert!(to.is_file());
+		// Reported deleted while a save puts it back: the copy stays, and follows the save.
+		std::fs::write(&source, "three").unwrap();
+		assert_eq!(relink(&source, &version, &relative, true), Some(to.clone()));
+		assert_eq!(std::fs::read_to_string(&to).unwrap(), "three");
 		// A real delete takes it away.
+		std::fs::remove_file(&source).unwrap();
 		relink(&source, &version, &relative, true);
 		assert!(!to.exists());
+		// No link files are left behind.
+		let left: Vec<_> = std::fs::read_dir(version.join("Mods").join("M.rte")).unwrap().filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).filter(|n| n.contains("studio-link")).collect();
+		assert!(left.is_empty(), "left behind: {left:?}");
 		let _ = std::fs::remove_dir_all(&temp);
 	}
 }

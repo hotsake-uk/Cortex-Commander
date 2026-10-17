@@ -24,6 +24,7 @@ window.MS = window.MS || {};
 		return e;
 	};
 	const locked = (doc) => app().lib.isProtected(doc);
+	const luaClassName = (name, fallback) => MS.flow.className(name, fallback);
 	const change = (label, fn) => app().edit(label, fn);
 	const activitiesOf = (module) => app().lib.presets.filter((p) => p.topLevel && p.module === module && p.node.key === 'AddActivity').sort((x, y) => x.name.localeCompare(y.name));
 	const TEAMS = [1, 2, 3, 4];
@@ -81,6 +82,10 @@ window.MS = window.MS || {};
 
 	// The mission in a line, and the way into the Mission Editor, where it is built (and its areas drawn).
 	function missionSummary(p) {
+		if (!MS.ide.scriptsLoaded) {
+			MS.ide.ensureScripts().then(() => MS.ide.refreshForm());
+			return el('div', { className: 'ed-row' }, el('span', { className: 'ed-note', textContent: 'Reading the scripts…' }));
+		}
 		const g = MS.missionLogic ? MS.missionLogic.docFor(p).g : null;
 		const count = (cat) => (g ? g.nodes.filter((n) => MS.flow.KINDS[n.kind] && MS.flow.KINDS[n.kind].category === cat).length : 0);
 		const stages = count('stage');
@@ -319,8 +324,8 @@ window.MS = window.MS || {};
 				const baseEnt = a.lib.resolve(base.node);
 				const oldClass = baseEnt.str('LuaClassName', '');
 				const oldScript = baseEnt.str('ScriptPath', '');
-				const newClass = n.replace(/[^A-Za-z0-9_]/g, '') || 'MyScenario';
-				const newScript = module + '/Activities/' + newClass + '.lua';
+				const newClass = luaClassName(n, 'MyScenario');
+				const newScript = module + '/Activities/' + (n.replace(/[^A-Za-z0-9_ -]/g, '').trim().replace(/ +/g, '_') || newClass) + '.lua';
 				let code = null;
 				if (oldScript) {
 					code = scriptText(oldScript);
@@ -333,7 +338,10 @@ window.MS = window.MS || {};
 					}
 				}
 				if (code !== null && oldClass) {
-					code = code.split(oldClass + ':').join(newClass + ':').split(oldClass + '.').join(newClass + '.');
+					// The class where the script uses it as one (Class:Method, Class.field), not inside a file name; and the script's own path, which
+					// it names for things like pie slices, becomes the copy's.
+					const asClass = new RegExp('(?<![A-Za-z0-9_/.])' + oldClass.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=[:.][A-Za-z_])', 'g');
+					code = code.replace(asClass, newClass).split(oldScript).join(newScript);
 					if (!(await a.fs.exists(newScript))) {
 						await writeScript(newScript, code);
 					}

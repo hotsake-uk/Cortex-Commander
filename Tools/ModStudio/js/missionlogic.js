@@ -20,6 +20,7 @@ window.MS = window.MS || {};
 	};
 	const keyOf = (p) => p.doc.path + '::' + p.name;
 	const docs = new Map(); // scenario key -> { g, undo, redo, text, path, cls, view state }
+	const reading = new Set(); // scripts asked for once, for a window that had not read them yet
 
 	// ---- the script ----
 
@@ -167,7 +168,7 @@ window.MS = window.MS || {};
 			a.toast('This scenario is not yours to change. Copy it into your mod first.', 'bad');
 			return;
 		}
-		const cls = scenario.name.replace(/[^A-Za-z0-9_]/g, '') || 'MyMission';
+		const cls = F().className(scenario.name, 'MyMission');
 		const path = scenario.module + '/Activities/' + cls + '.lua';
 		if (!(await a.fs.exists(path))) {
 			const text = ['-- ' + scenario.name + ': a scripted activity. The Mission Editor keeps its logic in the marked block it adds; your own code goes outside it.', '',
@@ -178,6 +179,19 @@ window.MS = window.MS || {};
 			scenario.node.set('ScriptPath', path);
 			scenario.node.set('LuaClassName', cls);
 		});
+	}
+
+	// A script class Lua cannot read ("1234": a name has to start with a letter) gets a name it can, in the script and in the scenario. Only where the
+	// script uses it as the class (Class:Method, Class.field), not in file names or text.
+	async function fixClassName(scenario) {
+		const a = app();
+		const { path, cls } = scriptOf(scenario);
+		const fixed = F().className(cls, 'MyMission');
+		const text = scriptText(path) || (await a.fs.readText(path));
+		const asClass = new RegExp('(?<![A-Za-z0-9_/.])' + cls.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=[:.][A-Za-z_])', 'g');
+		await writeScript(path, text.replace(asClass, fixed));
+		a.edit('Rename ' + scenario.name + '\'s script class to ' + fixed, () => scenario.node.set('LuaClassName', fixed));
+		a.toast('The script class is now ' + fixed + ', in the script and the scenario.', 'good');
 	}
 
 	// ---- the panel ----
@@ -198,8 +212,28 @@ window.MS = window.MS || {};
 				el('button', { className: 'tb primary', textContent: 'Give it a script', disabled: locked, onclick: () => giveScript(scenario) })));
 			return;
 		}
+		if (!F().isClassName(cls)) {
+			host.replaceChildren(el('div', { className: 'ml-empty' },
+				el('p', { textContent: 'The script class "' + cls + '" is not a name Lua can use (it has to start with a letter, and have only letters, digits and _), so the script cannot run.' }),
+				el('button', { className: 'tb primary', textContent: 'Rename it to ' + F().className(cls), disabled: locked, onclick: () => fixClassName(scenario).catch((e) => a.toast('Couldn\'t rename it: ' + e.message, 'bad')) })));
+			return;
+		}
 		if (scriptText(path) === null) {
-			host.replaceChildren(el('div', { className: 'ed-banner', textContent: 'Studio has not read ' + path + ': it is not in a mod Studio knows, or not there.' }));
+			// A window just opened (a pop-out) has not read the scripts yet: read them, or failing that this one file, and draw again.
+			if (!reading.has(path)) {
+				reading.add(path);
+				host.replaceChildren(el('p', { className: 'ed-note', textContent: 'Reading ' + path + '…' }));
+				MS.ide.ensureScripts()
+					.then(async () => {
+						if (scriptText(path) === null) {
+							MS.ide.lua.updateScript(path, await app().fs.readText(path));
+						}
+					})
+					.catch(() => {})
+					.finally(() => MS.ide.refreshForm());
+				return;
+			}
+			host.replaceChildren(el('div', { className: 'ed-banner', textContent: 'Studio could not read ' + path + ': it is not in a mod Studio knows, or not there.' }));
 			return;
 		}
 		const doc = docFor(scenario);
@@ -432,5 +466,36 @@ window.MS = window.MS || {};
 		return doc ? doc.g.nodes.filter((n) => areasOfNode(n).includes(name)).length : 0;
 	}
 
-	MS.missionLogic = { render, areaActions, areaPicked, renameArea, usage, docFor };
+	// The nodes that use an area: [{ id, title }], for the areas list.
+	function areaUses(scenario, name) {
+		const doc = docs.get(keyOf(scenario));
+		if (!doc) {
+			return [];
+		}
+		return doc.g.nodes.filter((n) => areasOfNode(n).includes(name)).map((n) => {
+			const spec = F().KINDS[n.kind];
+			const title = spec ? spec.title : n.kind;
+			return { id: n.id, title: (spec && spec.category === 'stage' && n.p.name ? n.p.name + ': ' : '') + title + (n.note ? ' (' + n.note + ')' : '') };
+		});
+	}
+
+	// Picks a node and brings it into the middle of the graph.
+	function focusNode(scenario, id) {
+		const doc = docs.get(keyOf(scenario));
+		if (!doc || !doc.view) {
+			return;
+		}
+		const n = F().find(doc.g, id);
+		if (!n) {
+			return;
+		}
+		const view = doc.view;
+		view.pick([id]);
+		const r = view.root.getBoundingClientRect();
+		view.state.view.x = r.width / 2 - (n.x + 140) * view.state.view.z;
+		view.state.view.y = r.height / 3 - n.y * view.state.view.z;
+		view.place();
+	}
+
+	MS.missionLogic = { render, areaActions, areaPicked, renameArea, usage, docFor, areaUses, focusNode };
 })();

@@ -1220,6 +1220,22 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .fv-palette-head.fv-action { background: #9bc53d; }
 .fv-palette-item { background: none; border: 0; text-align: left; padding: 5px 8px; border-radius: 5px; color: var(--text); cursor: pointer; font: inherit; }
 .fv-palette-item:hover { background: var(--panel3); }
+.me-mapwrap { flex: 1; min-height: 0; display: flex; }
+.me-mapwrap .me-map { flex: 1; }
+.me-arealist { width: 220px; flex: none; overflow: auto; border-right: 1px solid var(--line); padding: 4px; display: flex; flex-direction: column; gap: 1px; }
+.me-listhead { padding: 4px 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--faint); }
+.me-area { display: flex; align-items: center; gap: 6px; background: none; border: 0; border-radius: 5px; padding: 5px 6px; color: var(--dim); cursor: pointer; text-align: left; font: inherit; }
+.me-area:hover { background: var(--panel2); color: var(--text); }
+.me-area.sel { background: var(--panel3); color: var(--text); }
+.me-area small { margin-left: auto; color: var(--faint); white-space: nowrap; }
+.me-swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.me-areaname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.me-uses { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 6px 16px; padding-left: 6px; border-left: 2px solid var(--line2); }
+.me-use { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; background: none; border: 0; border-radius: 4px; padding: 3px 6px; color: var(--text); cursor: pointer; text-align: left; font: inherit; font-size: 12px; }
+.me-use:hover { background: var(--panel2); }
+.me-use-kind { color: #f2b63d; font-size: 11px; }
+.me-use-kind.code { color: #5bc0eb; }
+.me-use code { color: var(--dim); font-size: 11px; white-space: pre-wrap; word-break: break-all; }
 .me-pick { display: flex; flex-direction: column; gap: 2px; max-height: 380px; overflow: auto; min-width: 380px; }
 .ed-menu { position: fixed; z-index: 60; min-width: 280px; background: var(--panel); border: 1px solid var(--line2); border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
 .ed-menu-item { display: flex; flex-direction: column; align-items: flex-start; width: 100%; background: none; border: 0; border-radius: 6px; padding: 7px 10px; color: var(--text); text-align: left; cursor: pointer; font: inherit; }
