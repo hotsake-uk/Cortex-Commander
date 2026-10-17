@@ -866,8 +866,8 @@ window.MS = window.MS || {};
 		const n = app.hidden.size;
 		const show = $('btnShowParts');
 		if (show) {
-			show.hidden = !n;
-			show.textContent = 'Show all (' + n + ' hidden)';
+			show.hidden = !n && !app.soloed.size;
+			show.textContent = 'Show all (' + [n ? n + ' hidden' : '', app.soloed.size ? app.soloed.size + ' soloed' : ''].filter(Boolean).join(', ') + ')';
 		}
 		const fold = $('btnFoldParts');
 		if (fold) {
@@ -956,10 +956,26 @@ window.MS = window.MS || {};
 			const eye = document.createElement('button');
 			eye.className = 'row-btn eye' + (hiddenSelf || hiddenAbove ? ' off' : '');
 			eye.append(icon(hiddenSelf || hiddenAbove ? 'eye-off' : 'eye'));
-			eye.title = hiddenAbove ? 'Hidden because a part above it is hidden' : (hiddenSelf ? 'Show' : 'Hide') + ' ' + part.name + ' in the view (the unit itself is not changed). Alt+click: show only this part.';
+			eye.title = hiddenAbove && app.soloed.size && !app.hidden.size ? 'Hidden while other parts are soloed' : hiddenAbove ? 'Hidden because a part above it is hidden, or other parts are soloed' : (hiddenSelf ? 'Show' : 'Hide') + ' ' + part.name + ' in the view (the unit itself is not changed). Alt+click: show only this part.';
 			eye.onclick = (e) => {
 				e.stopPropagation();
 				toggleEye(part, e.altKey);
+			};
+			// S: solo it (and what hangs from it): while any part is soloed, only those show; the eyes keep what they had
+			const solo = document.createElement('button');
+			const soloed = app.soloed.has(part.id);
+			solo.className = 'row-btn solo' + (soloed ? ' on' : '');
+			solo.textContent = 'S';
+			solo.title = soloed ? 'Stop soloing ' + part.name : 'Solo ' + part.name + ': while any part is soloed, only the soloed ones (and what hangs from them) show';
+			solo.onclick = (e) => {
+				e.stopPropagation();
+				if (app.soloed.has(part.id)) {
+					app.soloed.delete(part.id);
+				} else {
+					app.soloed.add(part.id);
+				}
+				renderTree();
+				app.requestDraw();
 			};
 			const picture = document.createElement('button');
 			picture.className = 'row-btn';
@@ -971,7 +987,7 @@ window.MS = window.MS || {};
 				e.stopPropagation();
 				MS.pixel.menu(picture, { part });
 			};
-			row.append(picture, code, eye);
+			row.append(picture, code, solo, eye);
 			row.onclick = () => app.select(part);
 			row.oncontextmenu = (e) => {
 				e.preventDefault();
@@ -2091,6 +2107,7 @@ window.MS = window.MS || {};
 		app = theApp;
 		$('btnShowParts').onclick = () => {
 			app.hidden.clear();
+			app.soloed.clear();
 			renderTree();
 			app.requestDraw();
 		};

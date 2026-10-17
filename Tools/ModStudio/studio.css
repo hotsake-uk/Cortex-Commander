@@ -1506,3 +1506,6 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .me-eye, .me-solo { width: 20px; height: 18px; padding: 0; border: 1px solid var(--line); border-radius: 3px; background: var(--panel2); color: var(--dim); font-size: 10px; font-weight: 700; cursor: pointer; line-height: 1; }
 .me-eye.hidden { color: var(--faint); }
 .me-solo.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+/* the parts tree's solo button: shown while on (like the eye when off) */
+.tree-row .row-btn.solo { font-size: 10px; font-weight: 700; width: 16px; justify-content: center; }
+.tree-row .row-btn.solo.on { display: inline-flex; visibility: visible; color: var(--accent-ink); background: var(--accent); border-radius: 3px; }
