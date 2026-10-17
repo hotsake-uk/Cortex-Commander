@@ -925,6 +925,10 @@ window.MS = window.MS || {};
 		}
 
 		onDown(e) {
+			// side by side, a click in the view not being edited makes it the one being edited first (app.js)
+			if (this.isActive && !this.isActive() && this.activate) {
+				this.activate();
+			}
 			this.canvas.setPointerCapture(e.pointerId);
 			if (this.resizePreview && this.resizeHandles && e.button === 0) {
 				const handle = this.resizeHandles.find((h) => Math.hypot(e.offsetX - h.x, e.offsetY - h.y) < 9);
@@ -975,6 +979,9 @@ window.MS = window.MS || {};
 		}
 
 		onMove(e) {
+			if (this.isActive && !this.isActive()) {
+				return; // the mouse passing over the other view, side by side: nothing to hover there
+			}
 			const d = this.drag;
 			if (!d) {
 				const part = this.app.rig ? this.handleAt(e.offsetX, e.offsetY) ? this.app.selected : this.partAt(e.offsetX, e.offsetY) : null;

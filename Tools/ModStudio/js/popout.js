@@ -78,6 +78,8 @@ window.MS = window.MS || {};
 				}
 				answer(m, { req: packed.req, payload: packed.payload || null });
 				letGo(tab);
+			} else if (m.type === 'docs' && m.from !== winId && MS.app && MS.app.applySharedDocs) {
+				MS.app.applySharedDocs(m.docs); // another window's changes, as it makes them
 			} else if (m.type === 'game-link' && m.from !== winId && MS.ide && MS.ide.gameTakenElsewhere) {
 				MS.ide.gameTakenElsewhere();
 			} else if (m.type === 'dragging') {
@@ -465,9 +467,9 @@ window.MS = window.MS || {};
 	}
 
 	// Tells the other windows something (no answer wanted): 'game-link' when this window takes the game.
-	function announce(type) {
+	function announce(type, extra) {
 		if (channel) {
-			channel.postMessage({ type, from: winId });
+			channel.postMessage(Object.assign({}, extra || {}, { type, from: winId }));
 		}
 	}
 

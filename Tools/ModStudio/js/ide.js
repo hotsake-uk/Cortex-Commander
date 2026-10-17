@@ -672,10 +672,17 @@ window.MS = window.MS || {};
 
 	let nextTabId = 1;
 
+	// A design tab: it has a designer of its own (app.js), which tab.state also reads as. The first one takes the designer Studio started with.
+	function makeDesignerTab(adopt) {
+		const tab = { id: nextTabId++, kind: 'designer', designer: adopt ? app.designer : app.newDesigner() };
+		Object.defineProperty(tab, 'state', { get: () => tab.designer });
+		return tab;
+	}
+
 	function designerTab() {
 		let tab = ide.tabs.find((t) => t.kind === 'designer');
 		if (!tab) {
-			tab = { id: nextTabId++, kind: 'designer', state: null };
+			tab = makeDesignerTab(!ide.tabs.some((t) => t.kind === 'designer'));
 			ide.tabs.unshift(tab);
 		}
 		return tab;
@@ -683,46 +690,7 @@ window.MS = window.MS || {};
 
 	// ---- several designer tabs: a unit and an item (or more) open at once, each with its own place in the designer ----
 
-	// What a designer tab remembers while another one is showing: the thing open, what is picked, hidden and folded, the pose and the view.
-	function saveDesignerState(tab) {
-		if (!tab || !app.actor) {
-			return;
-		}
-		tab.state = {
-			actor: app.actor,
-			device: app.device,
-			selectedId: app.selected ? app.selected.id : null,
-			hidden: new Set(app.hidden),
-			collapsed: new Set(app.collapsed),
-			pose: Object.assign({}, app.poseState),
-			zoom: app.view.zoom,
-			pan: Object.assign({}, app.view.pan),
-			isolate: app.isolate,
-		};
-	}
-
-	function loadDesignerState(tab) {
-		const st = tab && tab.state;
-		if (!st) {
-			return;
-		}
-		app.actor = st.actor;
-		app.device = st.device;
-		app.hidden = new Set(st.hidden);
-		app.collapsed = new Set(st.collapsed);
-		Object.assign(app.poseState, st.pose);
-		app.view.zoom = st.zoom;
-		app.view.pan = Object.assign({}, st.pan);
-		app.isolate = st.isolate;
-		app.selected = null;
-		app.groundY = null;
-		app.rebuild(false);
-		if (app.rig && st.selectedId) {
-			app.selected = app.rig.parts.find((p) => p.id === st.selectedId) || app.rig.body;
-		}
-		MS.panels.refresh();
-		MS.panels.markLibrary();
-	}
+	// (Each design tab has its own designer, so nothing is copied in or out when another one comes up: app.focusDesigner points at it.)
 
 	const familyOf = (cls) => (MS.Rig.DEVICE_CLASSES.has(cls) ? 'item' : cls === 'AHuman' || cls === 'ACrab' || cls === 'ACDropShip' || cls === 'ACRocket' ? 'unit' : 'other');
 
@@ -739,7 +707,7 @@ window.MS = window.MS || {};
 			tab = designers.find((t) => !actorOf(t));
 		}
 		if (!tab) {
-			tab = { id: nextTabId++, kind: 'designer', state: null };
+			tab = makeDesignerTab(false);
 			ide.tabs.splice(ide.tabs.indexOf(designers[designers.length - 1]) + 1, 0, tab);
 		}
 		ide.activate(tab);
@@ -830,6 +798,9 @@ window.MS = window.MS || {};
 			const icon = el('span', { className: 'tab-icon ' + (tab.kind === 'designer' ? 'designer' : tab.kind === 'form' ? 'form' : extOf(tab.path)), textContent: tab.kind === 'designer' ? '◆' : tab.kind === 'form' ? tab.icon || '▦' : extOf(tab.path) });
 			const item = el('div', { className: 'tab' + (tab === ide.active ? ' sel' : '') + (dirty ? ' dirty' : '') + (tab.readOnly ? ' ro' : ''), title: tab.path || (tab.kind === 'form' ? tab.title : 'The unit designer') }, icon, el('span', { className: 'tab-name', textContent: tabTitle(tab) }));
 			// tabs drag along the bar, into another Studio window's bar, or out of the window into one of their own
+			if (tab.kind === 'designer' && app.split && app.panes.some((p) => p.tab === tab)) {
+				item.classList.add('on-screen'); // shown side by side
+			}
 			item.draggable = true;
 			item.ondragstart = (e) => MS.popout.dragStart(e, tab);
 			item.ondragend = (e) => MS.popout.dragEnd(e, tab);
@@ -951,11 +922,9 @@ window.MS = window.MS || {};
 		if (ide.active && ide.active.kind === 'code' && ide.editor && ide.editor.getModel() === ide.active.model) {
 			ide.active.viewState = ide.editor.saveViewState();
 		}
-		if (tab.kind === 'designer' && ide.currentDesigner !== tab) {
-			// Another designer tab: the one on show keeps its place, and this one's comes back.
-			saveDesignerState(ide.currentDesigner);
-			ide.currentDesigner = tab;
-			loadDesignerState(tab);
+		if (tab.kind === 'designer' && (ide.currentDesigner !== tab || app.designer !== tab.designer)) {
+			// Another design tab: its own designer comes up (in the view it is in, side by side, or the view being edited).
+			app.focusDesigner(tab);
 		}
 		ide.active = tab;
 		const code = tab.kind !== 'designer';
@@ -1078,6 +1047,9 @@ window.MS = window.MS || {};
 		ide.tabs.splice(index, 1);
 		if (ide.gameTab === tab) {
 			ide.gameTab = null;
+		}
+		if (tab.kind === 'designer') {
+			app.designerClosed(tab);
 		}
 		if (tab.kind === 'designer' && ide.currentDesigner === tab) {
 			ide.currentDesigner = null;
