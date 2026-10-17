@@ -396,6 +396,53 @@ window.MS = window.MS || {};
 		MS.ide.renderTabs();
 	};
 
+	// How a thing is put into a running game: units and craft are added as actors, held items and the like as items, gibs and particles loose.
+	function spawnKind(cls) {
+		if (!cls) {
+			return null;
+		}
+		if (['AHuman', 'ACrab', 'ACDropShip', 'ACRocket'].includes(cls)) {
+			return 'actor';
+		}
+		if (DEVICE_CLASSES.has(cls)) {
+			return 'item';
+		}
+		return ['MOSRotating', 'MOSParticle'].includes(cls) ? 'particle' : null;
+	}
+
+	// Spawn (or Give) the open thing in the game running from Studio: it appears beside the unit you control (or in view), on its team. The game must
+	// have loaded it already (a brand new mod needs one restart); Live and saving then show later changes.
+	app.spawnInGame = async function (give) {
+		const kind = spawnKind(app.actor && app.actor.cls);
+		if (!kind) {
+			return;
+		}
+		const module = app.actor.path.split('/')[0];
+		const q = (s) => JSON.stringify(String(s));
+		const add = kind === 'actor' ? 'o.Team = ctl and ctl.Team or 0\n\tMovableMan:AddActor(o)' : kind === 'item' ? (give ? 'if ctl then ctl:AddInventoryItem(o) else MovableMan:AddItem(o) end' : 'MovableMan:AddItem(o)') : 'MovableMan:AddParticle(o)';
+		const lua = [
+			'local act = ActivityMan:GetActivity()',
+			'local ctl = act and act:GetControlledActor(0)',
+			'local o = Create' + app.actor.cls + '(' + q(app.actor.name) + ', ' + q(module) + ')',
+			'if not o then',
+			'\tConsoleMan:PrintString("Studio: the game has not loaded ' + app.actor.name.replace(/["\\]/g, '') + ' (' + module + '). A new mod loads when the game starts.")',
+			'\treturn',
+			'end',
+			'local ok, where = pcall(function() return CameraMan:GetScrollTarget(0) end)',
+			'o.Pos = ctl and (ctl.Pos + Vector(ctl.HFlipped and -40 or 40, -20)) or (ok and where or Vector(0, 0))',
+			add,
+			'ConsoleMan:PrintString("Studio: put ' + app.actor.name.replace(/["\\]/g, '') + ' in the game.")',
+		].join('\n');
+		// What has been saved goes to disk first, so the game is not a step behind.
+		try {
+			await app.save(true, app.dirtyDocs().filter((d) => !app.lib.isProtected(d)));
+		} catch (e) {
+			// the spawn still goes
+		}
+		MS.ide.runLua(lua);
+		app.status((give ? 'Gave ' : 'Spawned ') + app.actor.name + ' to the game (sent). It only works in a game started from Studio (Test in game, Sandbox).');
+	};
+
 	app.findActorNode = function () {
 		if (!app.actor) {
 			return null;
@@ -538,6 +585,10 @@ window.MS = window.MS || {};
 		$('btnCopy').disabled = false;
 		$('btnCopy').classList.toggle('attention', locked);
 		$('btnPreview').disabled = locked;
+		const spawn = spawnKind(app.actor && app.actor.cls);
+		$('btnSpawn').disabled = !spawn;
+		$('btnGive').hidden = spawn !== 'item';
+		$('btnGive').disabled = spawn !== 'item';
 		$('btnLive').disabled = locked || !app.fs || !app.fs.writable;
 		// Dimmed, not hidden: say what would make them work.
 		$('btnPreview').title = locked ? 'Make your own copy of this unit first, then you can see it in the game.' : 'Save, then show this unit in the game\'s Actor Editor';
@@ -1159,6 +1210,8 @@ window.MS = window.MS || {};
 		$('btnSave').onclick = () => MS.ide.saveMod();
 		$('btnDiscard').onclick = () => app.discard();
 		$('btnPreview').onclick = () => app.preview();
+		$('btnSpawn').onclick = () => app.spawnInGame(false);
+		$('btnGive').onclick = () => app.spawnInGame(true);
 		$('btnLive').onclick = () => setLive(!app.live);
 		$('btnView').onclick = () => setViewShown($('app').classList.contains('no-view'));
 		if (readLocal('ms.viewHidden')) {
