@@ -1265,7 +1265,9 @@ namespace RTE {
 		const Vector& GetLastAlarmPos() const { return m_LastAlarmPos; }
 
 		Vector GetAlarmPoint() {
-			if (m_AlarmTimer.GetElapsedSimTimeMS() > g_TimerMan.GetDeltaTimeMS()) {
+			// (For one AI update interval and a frame, not one frame: the AI thinks only every so many frames, and a hit or near miss on a frame it
+			// didn't think was never seen.)
+			if (m_AlarmTimer.GetElapsedSimTimeMS() > g_TimerMan.GetAIDeltaTimeMS() + g_TimerMan.GetDeltaTimeMS()) {
 				return Vector();
 			}
 			return m_LastAlarmPos;
@@ -1678,6 +1680,9 @@ namespace RTE {
 		/// Gets how long ago, in sim ms, this actor was last alarmed (a noise, footsteps, a hit; see AlarmPoint).
 		long long GetAlarmAgeMS() const { return static_cast<long long>(m_AlarmTimer.GetElapsedSimTimeMS()); }
 
+		/// How long ago, in sim ms, this was shot at: hit, or a shot passing close by (Actor::ShotPassing). Large if never.
+		double GetShotAtAgeMS() const { return m_ShotAtTimer.GetElapsedSimTimeMS(); }
+
 		/// How loud this actor's moving is, for the hearing of others (see HearFootsteps), as an alarm event's range: nothing standing still,
 		/// a little crawling, more walking and more again running, quieter bent double and louder on metal.
 		virtual float GetFootstepNoise() const;
@@ -2046,6 +2051,7 @@ namespace RTE {
 		Timer m_AlarmTimer;
 		// Position of the last thing that alarmed us
 		Vector m_LastAlarmPos;
+		Timer m_ShotAtTimer; //!< Since this was last shot at (see GetShotAtAgeMS).
 		// How far this guy's AI can see when he's just looking ahead
 		float m_SightDistance;
 		// How perceptive this is of alarming events going on around him, 0.0 - 1.0

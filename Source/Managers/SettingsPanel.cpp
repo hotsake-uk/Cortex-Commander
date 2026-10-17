@@ -2181,6 +2181,11 @@ void DebugMan::SettingsGUI() {
 			Slider("Burst length", &combat.Burst, 0.5F, 2.0F, "%.2fx");
 			Tip("How long an AI unit with an automatic weapon holds the trigger in each burst at range (it already shortens them further out and when pinned down; close in it holds the trigger down whatever this is): multiplied by this. 1, as the game comes.");
 			ResetButton("Burst", &combat.Burst, defaults.Burst);
+			Slider("Hearing range", &combat.Hearing, 0.25F, 3.0F, "%.2fx", ImGuiSliderFlags_Logarithmic);
+			Tip("How far AI units hear gunfire, blasts and footsteps: multiplied by this. Shots through rock or round a corner are heard less far the more ground is in the way, and a unit that hears one turns that way and watches for a few seconds. 1, as the game comes.");
+			ResetButton("Hearing", &combat.Hearing, defaults.Hearing);
+			Check("Go and look at noises", &combat.InvestigateNoises);
+			Tip("An AI unit that hears fighting it can't see goes a short way toward it to look, carefully, then carries on. Sentries, units holding a position and units under a move order stay put and watch that way instead. Off: every unit stays put and watches.");
 			g_SettingsMan.ClampAICombat();
 			if (Plain()) {
 				if (ToolUI::Button("Reset AI combat to defaults")) {

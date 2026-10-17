@@ -103,6 +103,8 @@ function NativeCrabAI:Update(Owner)
 			self.Flank = nil;
 			self.Retreat = nil;
 			self.Investigate = nil;
+			self.HeardNoise = nil;
+			self.AlertTimer = nil;
 			Owner:RemoveNumberValue("AIRetreat");
 			Owner:RemoveNumberValue("AIFlank");
 			Owner:RemoveNumberValue("AIInvestigate");

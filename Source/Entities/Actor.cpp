@@ -117,6 +117,7 @@ void Actor::Clear() {
 	m_AlarmTimer.SetSimTimeLimitMS(3000);
 	m_AlarmTimer.SetElapsedSimTimeMS(4000);
 	m_LastAlarmPos.Reset();
+	m_ShotAtTimer.SetElapsedSimTimeMS(100000);
 	m_SightDistance = 450.0F;
 	m_Perceptiveness = 0.5F;
 	m_LookRandomState = 0;
@@ -1651,6 +1652,7 @@ bool Actor::ParticlePenetration(HitData& hd) {
 		extruded = m_Pos - extruded;
 		g_SceneMan.WrapPosition(extruded);
 		AlarmPoint(extruded);
+		m_ShotAtTimer.Reset();
 	}
 	if ((penetrated || damageToAdd > 0) && m_Health > 0) {
 		NoteHurtBy(hitor, hd.HitVel[HITOR]);
@@ -2910,7 +2912,8 @@ Vector Actor::HearFootsteps() const {
 		return Vector();
 	}
 	// (An alarm event's range is so much of a screen's width; see AlarmEvent. The loudest footsteps, a run on metal, are 0.675.)
-	const float scale = m_Perceptiveness * static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.51F;
+	// (Times the Hearing range setting.)
+	const float scale = m_Perceptiveness * static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.51F * g_SettingsMan.AICombatHearing();
 	const float farthest = 0.7F * scale;
 	const Vector ears = GetEyePos();
 	const bool wraps = g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY();
@@ -2963,9 +2966,10 @@ void Actor::ChangeMorale(float change) {
 }
 
 void Actor::ShotPassing(const MovableObject& shot) {
-	if (!shot.HitsMOs() || shot.GetSharpness() <= 0.0F || !shot.GetVel().MagnitudeIsGreaterThan(25.0F) || g_SettingsMan.AISuppression() <= 0.0F) {
+	if (!shot.HitsMOs() || shot.GetSharpness() <= 0.0F || !shot.GetVel().MagnitudeIsGreaterThan(25.0F)) {
 		return;
 	}
+	const bool suppresses = g_SettingsMan.AISuppression() > 0.0F;
 	// Only so many shots looked at a sim update: a minigun's stream pins a unit down as well with a few as with all of them. Which ones turns over
 	// from update to update: the particle loop calls this in list order, oldest first, and a first-come budget went every update to the
 	// long-lived shrapnel and ricochets at the front, so in a big firefight the shots just fired, at the back, were never looked at. The window
@@ -2991,11 +2995,13 @@ void Actor::ShotPassing(const MovableObject& shot) {
 	if (++s_Checks > c_Budget) {
 		return;
 	}
-	// Within two body widths of its last step, about 30 px: close enough to hear the crack.
+	// Within two body widths of its last step, about 30 px: close enough to hear the crack. Within 60 px (a shot smacking into the wall beside
+	// it, or going over its head) is close enough for an AI unit to know it's being shot at, and which way from.
 	constexpr float c_Reach = 30.0F;
+	constexpr float c_AlarmReach = 60.0F;
 	const Vector from = shot.GetPrevPos();
 	const Vector step = g_SceneMan.ShortestDistance(from, shot.GetPos(), g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
-	Box box(Vector(std::min(from.m_X, from.m_X + step.m_X) - c_Reach, std::min(from.m_Y, from.m_Y + step.m_Y) - c_Reach), std::abs(step.m_X) + c_Reach * 2.0F, std::abs(step.m_Y) + c_Reach * 2.0F);
+	Box box(Vector(std::min(from.m_X, from.m_X + step.m_X) - c_AlarmReach, std::min(from.m_Y, from.m_Y + step.m_Y) - c_AlarmReach), std::abs(step.m_X) + c_AlarmReach * 2.0F, std::abs(step.m_Y) + c_AlarmReach * 2.0F);
 	const float stepLengthSq = std::max(step.GetSqrMagnitude(), 0.0001F);
 	// The box finds every part of a body (head, torso, limbs, held gun); each unit counts once for this shot.
 	static thread_local std::vector<const Actor*> s_Counted;
@@ -3017,7 +3023,20 @@ void Actor::ShotPassing(const MovableObject& shot) {
 		float along = std::clamp((toActor.m_X * step.m_X + toActor.m_Y * step.m_Y) / stepLengthSq, 0.0F, 1.0F);
 		float distance = (toActor - step * along).GetMagnitude();
 		float bodyRadius = std::max(actor->GetRadius() * 0.5F, 6.0F);
-		if (distance <= bodyRadius || distance > bodyRadius + c_Reach) {
+		if (distance <= bodyRadius || distance > bodyRadius + c_AlarmReach) {
+			continue;
+		}
+		// Alarmed at a point a body's height back along the shot, toward the shooter, as a hit does (Actor::ParticlePenetration): the AI turns
+		// that way and gets into cover from it (HumanBehaviors.ShotFromUnseen).
+		if (actor->m_Perceptiveness > 0.0F && actor->m_Health > 0.0F && !actor->IsPlayerControlled() && actor->m_AlarmTimer.GetElapsedSimTimeMS() > 250.0) {
+			Vector back(shot.GetVel());
+			back.SetMagnitude(actor->m_CharHeight);
+			Vector alarmAt = actor->m_Pos - back;
+			g_SceneMan.WrapPosition(alarmAt);
+			actor->AlarmPoint(alarmAt);
+			actor->m_ShotAtTimer.Reset();
+		}
+		if (!suppresses || distance > bodyRadius + c_Reach) {
 			continue;
 		}
 		if (actor->m_NearMissUpdate != update) {

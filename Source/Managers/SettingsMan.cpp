@@ -1148,6 +1148,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AICombatTargetMemory", { reader >> m_AICombat.TargetMemory; ClampAICombat(); });
 	MatchProperty("AICombatGrenadeUse", { reader >> m_AICombat.GrenadeUse; ClampAICombat(); });
 	MatchProperty("AICombatBurst", { reader >> m_AICombat.Burst; ClampAICombat(); });
+	MatchProperty("AICombatHearing", { reader >> m_AICombat.Hearing; ClampAICombat(); });
+	MatchProperty("AICombatInvestigateNoises", { reader >> m_AICombat.InvestigateNoises; });
 	MatchProperty("FixLiquidTellsOnlyMoves", { reader >> m_SlowdownFixes.LiquidTellsOnlyMoves; });
 	MatchProperty("WreckSettleSeconds", { reader >> m_SlowdownFixes.WreckSettleSeconds; m_SlowdownFixes.WreckSettleSeconds = std::clamp(m_SlowdownFixes.WreckSettleSeconds, 0, 600); });
 	MatchProperty("FixDebrisRestsAcrossGaps", { reader >> m_SlowdownFixes.DebrisRestsAcrossGaps; });
@@ -1538,6 +1540,7 @@ void SettingsMan::ClampAICombat() {
 	m_AICombat.TargetMemory = std::clamp(m_AICombat.TargetMemory, 0.25F, 4.0F);
 	m_AICombat.GrenadeUse = std::clamp(m_AICombat.GrenadeUse, 0.0F, 1.0F);
 	m_AICombat.Burst = std::clamp(m_AICombat.Burst, 0.5F, 2.0F);
+	m_AICombat.Hearing = std::clamp(m_AICombat.Hearing, 0.25F, 3.0F);
 }
 
 void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting, bool forPreset) const {
@@ -1926,6 +1929,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AICombatTargetMemory", m_AICombat.TargetMemory);
 	writer.NewPropertyWithValue("AICombatGrenadeUse", m_AICombat.GrenadeUse);
 	writer.NewPropertyWithValue("AICombatBurst", m_AICombat.Burst);
+	writer.NewPropertyWithValue("AICombatHearing", m_AICombat.Hearing);
+	writer.NewPropertyWithValue("AICombatInvestigateNoises", m_AICombat.InvestigateNoises);
 	writer.NewPropertyWithValue("FixLiquidTellsOnlyMoves", m_SlowdownFixes.LiquidTellsOnlyMoves);
 	writer.NewPropertyWithValue("WreckSettleSeconds", m_SlowdownFixes.WreckSettleSeconds);
 	writer.NewPropertyWithValue("FixDebrisRestsAcrossGaps", m_SlowdownFixes.DebrisRestsAcrossGaps);
