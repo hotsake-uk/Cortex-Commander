@@ -17,10 +17,16 @@ window.MS = window.MS || {};
 (function () {
 	// ---- the kinds of setting ----
 	// A setting is [key, type, label, default]. Types: team, area, number, text, op, bool, player (all or 1-4), fn (a function name), preset (a unit),
-	// item, mode (a battle mode), stage (another stage node's id, picked by name).
+	// item, mode (a battle mode), stage (another stage node's id, picked by name), capture (a capture point node's id), choice (one of the options
+	// given as the setting's fifth element), value (a number worked out as the mission runs: { k: 'num', n } a number, { k: 'var', name } a
+	// variable, { k: 'setting', name } a scenario setting, { k: 'difficulty' } the difficulty as a multiplier from 0.5 to 2, { k: 'time' } the
+	// seconds since it began; each with x: true to multiply it by the difficulty too). A plain number is read as a value of that number.
 
 	const BATTLE_MODES = [[1, 'Capture the flag'], [2, 'King of the hill'], [3, 'Assault'], [4, 'Last team standing'], [5, 'VIP hunt'], [6, 'One flag'], [7, 'Capture the ship'], [8, 'Wave defence'], [9, 'Escort'], [10, 'Extraction'], [11, 'The point']];
 	const OPS = [['>=', 'is at least'], ['<=', 'is at most'], ['==', 'is exactly'], ['>', 'is more than'], ['<', 'is less than']];
+	const V = (n) => ({ k: 'num', n });
+	const VAR_OPS = [['set', 'set it to'], ['add', 'add'], ['sub', 'take away'], ['mul', 'multiply it by']];
+	const AI_MODES = [['sentry', 'stand guard'], ['goto', 'go to an area'], ['brainhunt', 'hunt the enemy brain'], ['patrol', 'patrol'], ['stay', 'stay put'], ['return', 'go back'], ['golddig', 'dig for gold']];
 
 	// ---- the registry ----
 
@@ -28,6 +34,8 @@ window.MS = window.MS || {};
 	const ORDER = []; // the order kinds are listed in, by category
 
 	function kind(name, category, title, params, pins, extra) {
+		// extra: lists (named lists of rows, e.g. a branch's conditions), relevant(p, key) (whether a setting matters for these settings: those that
+		// do not are hidden and not checked), optional (settings that may be left empty).
 		KINDS[name] = Object.assign({ name, category, title, params, entrance: pins.entrance !== false, exits: pins.exits }, extra || {});
 		ORDER.push(name);
 	}
@@ -49,6 +57,9 @@ window.MS = window.MS || {};
 	kind('battleScore', 'event', 'A team scores in the battle', [['team', 'team', 'team', -1]], EVENT);
 	kind('battleObjective', 'event', 'An objective is taken in the battle', [['team', 'team', 'team', -1]], EVENT);
 	kind('battleEnded', 'event', 'The battle ends', [['team', 'team', 'won by', -1]], EVENT);
+	kind('varReaches', 'event', 'A variable reaches a value', [['name', 'text', 'variable', 'count'], ['op', 'op', '', '>='], ['value', 'value', 'value', V(10)]], EVENT);
+	kind('captureChanged', 'event', 'A capture point changes hands', [['target', 'capture', 'capture point', ''], ['team', 'team', 'taken by', -1]], EVENT);
+	kind('groupGone', 'event', 'A group has no units left', [['group', 'text', 'group', ''], ['again', 'bool', 'run again every moment it still holds', false]], EVENT);
 
 	// stages: goals in a sequence. Every stage also has a name, an objective text and marker, whose screen shows it, and a time limit.
 	const STAGE_COMMON = [['name', 'text', 'name', 'Stage'], ['text', 'text', 'objective text', ''], ['marker', 'bool', 'show a marker', true], ['viewer', 'team', 'marker seen by', 0], ['failAfter', 'number', 'time limit (seconds, 0: none)', 0]];
@@ -62,6 +73,23 @@ window.MS = window.MS || {};
 	stage('stageSurvive', 'Goal: time passes', [['seconds', 'number', 'seconds', 120]]);
 	stage('stageBattle', 'Goal: the battle is won', [['team', 'team', 'by', -1]]);
 	stage('stageBattleScore', 'Goal: a team scores in the battle', [['team', 'team', 'team', 0], ['count', 'number', 'points', 1]]);
+	stage('stageCapture', 'Goal: a team holds a capture point', [['target', 'capture', 'capture point', ''], ['team', 'team', 'held by', 0]]);
+
+	// capture points: a place a team takes by standing in it while nobody of the side holding it is in the area around it, over some seconds;
+	// it can be taken back. They run all the time (while switched on), whatever stage it is, and have two exits: when the attackers take it,
+	// and when the side that held it first takes it back.
+	kind('capture', 'point', 'Capture point', [
+		['name', 'text', 'name', 'Point'],
+		['area', 'area', 'stand in', ''],
+		['region', 'area', 'defenders in this area stop it (optional)', ''],
+		['owner', 'team', 'held at first by', 1],
+		['attackers', 'team', 'taken by', 0],
+		['seconds', 'value', 'seconds to take', V(10)],
+		['decays', 'bool', 'progress drains while nobody is taking it', true],
+		['active', 'bool', 'switched on from the start', true],
+		['marker', 'bool', 'show an objective marker to the attackers', true],
+		['text', 'text', 'marker text', 'Capture'],
+	], { entrance: false, exits: ['taken', 'retaken'] }, { optional: ['region'] });
 
 	// flow control
 	kind('branch', 'flow', 'Branch: if these hold', [], { entrance: true, exits: ['true', 'false'] }, { lists: ['conds'] });
@@ -69,12 +97,47 @@ window.MS = window.MS || {};
 
 	// actions
 	kind('message', 'action', 'Show a message', [['text', 'text', 'text', 'Well done.'], ['who', 'player', 'to', 'all'], ['seconds', 'number', 'for seconds', 5]], STEP);
-	kind('gold', 'action', 'Give gold', [['team', 'team', 'to team', 0], ['amount', 'number', 'gold (negative takes it)', 500]], STEP);
-	kind('spawn', 'action', 'Spawn units', [['preset', 'preset', 'unit', ''], ['team', 'team', 'for team', 0], ['area', 'area', 'in area', ''], ['count', 'number', 'how many', 1]], STEP);
+	kind('gold', 'action', 'Give gold', [['team', 'team', 'to team', 0], ['amount', 'value', 'gold (negative takes it)', V(500)]], STEP);
+	kind('spawn', 'action', 'Spawn units', [
+		['source', 'choice', 'what', 'preset', [['preset', 'this unit'], ['group', 'a random unit of a group'], ['loadout', 'a loadout']]],
+		['preset', 'preset', 'unit', ''],
+		['group', 'text', 'group (of the team\'s tech)', 'Actors - Light'],
+		['loadout', 'text', 'loadout', 'Infantry Heavy'],
+		['team', 'team', 'for team', 0],
+		['area', 'area', 'in area', ''],
+		['perBox', 'bool', 'one in each box of the area', false],
+		['count', 'value', 'how many', V(1)],
+		['arrive', 'choice', 'arriving', 'appear', [['appear', 'there and then'], ['dropship', 'by dropship'], ['rocket', 'by rocket']]],
+		['facing', 'choice', 'facing', 'auto', [['auto', 'as they come'], ['left', 'left'], ['right', 'right']]],
+		['ai', 'choice', 'then they', 'sentry', AI_MODES],
+		['goTo', 'area', 'going to', ''],
+		['tag', 'text', 'put in the group', ''],
+	], STEP, {
+		optional: ['goTo', 'tag'],
+		relevant: (p, key) => (key === 'preset' ? (p.source || 'preset') === 'preset' : key === 'group' ? p.source === 'group' : key === 'loadout' ? p.source === 'loadout' : key === 'goTo' ? p.ai === 'goto' : key === 'count' ? !p.perBox : true),
+	});
+	kind('order', 'action', 'Give orders', [
+		['who', 'choice', 'who', 'group', [['group', 'a group'], ['team', 'a whole team'], ['area', 'a team in an area']]],
+		['group', 'text', 'group', ''],
+		['team', 'team', 'team', 1],
+		['area', 'area', 'in area', ''],
+		['ai', 'choice', 'to', 'goto', AI_MODES],
+		['goTo', 'area', 'go to', ''],
+	], STEP, { relevant: (p, key) => (key === 'group' ? (p.who || 'group') === 'group' : key === 'team' ? p.who !== 'group' && p.who !== undefined : key === 'area' ? p.who === 'area' : key === 'goTo' ? (p.ai || 'goto') === 'goto' : true) });
+	kind('setVar', 'action', 'Set a variable', [['name', 'text', 'variable', 'count'], ['op', 'choice', '', 'set', VAR_OPS], ['value', 'value', 'value', V(1)]], STEP);
+	kind('captureSet', 'action', 'Switch a capture point', [['target', 'capture', 'capture point', ''], ['do', 'choice', '', 'on', [['on', 'switch it on'], ['off', 'switch it off'], ['own', 'give it to']]], ['team', 'team', 'team', 0]], STEP, { relevant: (p, key) => (key === 'team' ? p.do === 'own' : true) });
+	kind('doors', 'action', 'Doors', [['area', 'area', 'the doors in', ''], ['do', 'choice', '', 'open', [['open', 'open them'], ['close', 'close them'], ['lock', 'lock them (they stop working)'], ['unlock', 'unlock them']]], ['team', 'team', 'and give them to (any team: leave them)', -1]], STEP);
+	kind('fog', 'action', 'Fog of war', [['do', 'choice', '', 'reveal', [['reveal', 'reveal an area'], ['hide', 'hide an area'], ['hideAll', 'hide the whole map']]], ['area', 'area', 'area', ''], ['team', 'team', 'for team', 0]], STEP, { relevant: (p, key) => (key === 'area' ? p.do !== 'hideAll' : true) });
+	kind('lz', 'action', 'Set a landing zone', [['team', 'team', 'team', 0], ['area', 'area', 'their craft land in', '']], STEP);
+	kind('buyMenu', 'action', 'Switch the buy menu', [['on', 'bool', 'players can buy', true]], STEP);
+	kind('setFunds', 'action', 'Set a team\'s gold', [['team', 'team', 'team', 0], ['amount', 'value', 'gold', V(0)]], STEP);
+	kind('income', 'action', 'Set an income', [['team', 'team', 'team', 0], ['amount', 'value', 'gold a second (0 stops it)', V(5)]], STEP);
+	kind('dialogue', 'action', 'Say lines, one after another', [['who', 'player', 'to', 'all']], STEP, { lists: ['lines'] });
+	kind('music', 'action', 'Play music', [['song', 'text', 'song', 'Generic Battle Music']], STEP);
 	kind('killAll', 'action', 'Destroy a team\'s units', [['team', 'team', 'team', 0]], STEP);
 	kind('flag', 'action', 'Set a flag', [['name', 'text', 'name', 'flag'], ['value', 'bool', 'to set', true]], STEP);
 	kind('jump', 'action', 'Jump to a stage', [['target', 'stage', 'stage', '']], STEP);
-	kind('win', 'action', 'End it: a team wins', [['team', 'team', 'team', 0]], STEP);
+	kind('win', 'action', 'End it: a team wins', [['team', 'team', 'team', 0], ['after', 'number', 'after seconds', 0], ['text', 'text', 'saying', '']], STEP, { optional: ['text'] });
 	kind('end', 'action', 'End it with no winner', [], STEP);
 	kind('call', 'action', 'Run my own function', [['fn', 'fn', 'function', 'MyFunction']], STEP);
 	kind('battle', 'action', 'Start a battle', [['mode', 'mode', 'mode', 2], ['size', 'number', 'units a side', 12], ['byShip', 'bool', 'they arrive by ship', false], ['layout', 'bool', 'lay the map out for me', true], ['seed', 'number', 'layout seed', 1]], STEP);
@@ -89,9 +152,18 @@ window.MS = window.MS || {};
 		flag: { title: 'a flag', params: [['name', 'text', 'name', 'flag'], ['value', 'bool', 'is set', true]] },
 		stage: { title: 'the stage it is on', params: [['target', 'stage', 'stage', ''], ['is', 'bool', 'is the current one', true]] },
 		battleScore: { title: 'a team\'s score in the battle', params: [['team', 'team', 'team', 0], ['op', 'op', '', '>='], ['count', 'number', 'points', 1]] },
+		var: { title: 'a variable', params: [['name', 'text', 'variable', 'count'], ['op', 'op', '', '>='], ['value', 'value', 'value', V(1)]] },
+		captureOwner: { title: 'who holds a capture point', params: [['target', 'capture', 'capture point', ''], ['team', 'team', 'is held by', 0]] },
+		group: { title: 'units in a group', params: [['group', 'text', 'group', ''], ['op', 'op', '', '>='], ['count', 'number', 'count', 1]] },
 	};
 
-	const CATEGORIES = [['event', 'Events', 'How a chain begins'], ['stage', 'Stages', 'Goals, one after another'], ['flow', 'Flow', 'Decide and gate'], ['action', 'Actions', 'What happens']];
+	// the rows of the lists some nodes have: a dialogue's lines
+	const LIST_ROWS = {
+		lines: [['text', 'text', '', ''], ['seconds', 'number', 'seconds', 5]],
+	};
+
+	const CATEGORIES = [['event', 'Events', 'How a chain begins'], ['stage', 'Stages', 'Goals, one after another'], ['point', 'Capture points', 'Places teams take and take back'], ['flow', 'Flow', 'Decide and gate'], ['action', 'Actions', 'What happens']];
+	const relevant = (spec, p, key) => !spec.relevant || spec.relevant(p || {}, key);
 
 	const isStage = (k) => !!KINDS[k] && KINDS[k].category === 'stage';
 	const defaults = (params) => Object.assign({}, ...params.map(([key, , , def]) => ({ [key]: def })));
@@ -116,7 +188,7 @@ window.MS = window.MS || {};
 		if (spec.lists) {
 			node.lists = {};
 			for (const l of spec.lists) {
-				node.lists[l] = [];
+				node.lists[l] = l === 'lines' ? [{ text: 'A line to say.', seconds: 5 }] : [];
 			}
 		}
 		g.nodes.push(node);
@@ -277,7 +349,14 @@ window.MS = window.MS || {};
 			}
 			for (const [key, type, label] of spec.params) {
 				const v = (n.p || {})[key];
-				if (type === 'area') {
+				if (!relevant(spec, n.p, key) || ((spec.optional || []).includes(key) && !v)) {
+					continue;
+				}
+				if (type === 'capture' && (!v || !find(g, v) || find(g, v).kind !== 'capture')) {
+					add(n.id, 'error', 'Pick the ' + label + '.');
+				} else if (type === 'text' && (key === 'name' || key === 'group') && ['varReaches', 'setVar', 'groupGone', 'order'].includes(n.kind) && !String(v || '').trim()) {
+					add(n.id, 'error', 'Give the ' + label + ' a name.');
+				} else if (type === 'area') {
 					if (!v) {
 						add(n.id, 'error', 'Pick the ' + label + '.');
 					} else if (areas && !areas.includes(v)) {
@@ -306,6 +385,9 @@ window.MS = window.MS || {};
 						}
 						if (type === 'stage' && (!v || !find(g, v))) {
 							add(n.id, 'error', 'A condition needs a stage.');
+						}
+						if (type === 'capture' && (!v || !find(g, v))) {
+							add(n.id, 'error', 'A condition needs a capture point.');
 						}
 					}
 				}
@@ -563,7 +645,7 @@ window.MS = window.MS || {};
 	}
 
 	MS.flow = Object.assign(MS.flow || {}, {
-		KINDS, ORDER, CONDS, CATEGORIES, BATTLE_MODES, OPS, merge,
+		KINDS, ORDER, CONDS, CATEGORIES, BATTLE_MODES, OPS, merge, LIST_ROWS, AI_MODES, VAR_OPS, relevant, V,
 		create, addNode, find, incoming, whyNot, connect, disconnect, removeNode, clone, addCondition, condDefaults,
 		chainFrom, entries, stages, firstStage, isStage, problems, layout, migrate, reaches,
 	});

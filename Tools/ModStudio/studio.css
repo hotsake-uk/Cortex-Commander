@@ -1282,3 +1282,26 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .sc-chip.ok { padding-right: 10px; color: #9bc53d; }
 .sc-chip.add { padding-right: 10px; cursor: pointer; background: none; border: 1px dashed var(--line2); color: var(--dim); font: inherit; font-size: 12px; }
 .sc-chip.add:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.fv-point .fv-title { background: #2ec4b6; }
+.fv-palette-head.fv-point { background: #2ec4b6; }
+.fv-value { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; flex: 1; min-width: 0; }
+.fv-value .ed-input { flex: 1; min-width: 70px; }
+.fv-times { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--faint); white-space: nowrap; }
+.ml-stages { display: flex; flex-direction: column; gap: 4px; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+.ml-stage-row { display: flex; gap: 4px; align-items: center; overflow-x: auto; scrollbar-width: thin; }
+.ml-stage-head { flex: none; width: 56px; font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--faint); }
+.ml-stage { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px 2px 3px; border: 1px solid #f2b63d66; border-radius: 12px; background: transparent; color: var(--text); font-size: 12px; cursor: pointer; white-space: nowrap; }
+.ml-stage b { display: inline-grid; place-items: center; min-width: 18px; height: 18px; border-radius: 9px; background: #f2b63d; color: #0d1117; font-size: 11px; }
+.ml-stage.code { border-color: #b48ead66; }
+.ml-stage.code b { background: #b48ead; }
+.ml-stage:hover { background: #ffffff10; }
+.ml-stage.on { background: #f2b63d33; border-color: #f2b63d; }
+.ml-stage.code.on { background: #b48ead33; border-color: #b48ead; }
+.ml-add-stage { flex: none; }
+.ml-stage-detail { font-size: 12px; color: var(--faint); display: flex; flex-direction: column; gap: 3px; }
+.ml-stage-detail b { color: var(--text); }
+.ml-chip { margin-left: 4px; padding: 0 6px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--text); font-size: 11px; cursor: pointer; }
+.ml-stage-lines { display: flex; flex-direction: column; max-height: 110px; overflow-y: auto; }
+.ml-line { display: flex; gap: 8px; text-align: left; border: 0; background: transparent; color: var(--text); font: 11px var(--mono, monospace); padding: 1px 2px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ml-line:hover { background: #ffffff10; }
+.ml-ln { color: var(--faint); min-width: 36px; text-align: right; }

@@ -21,8 +21,9 @@ window.MS = window.MS || {};
 		return e;
 	};
 	const SVG = 'http://www.w3.org/2000/svg';
-	const PIN_LABELS = { then: 'then', true: 'true', false: 'false', started: 'when it starts', done: 'when done', timeout: 'if time runs out', next: 'next stage' };
-	const PIN_COLORS = { then: '#d8dee9', true: '#9bc53d', false: '#e55934', started: '#5bc0eb', done: '#9bc53d', timeout: '#e55934', next: '#f2b63d' };
+	const PIN_LABELS = { then: 'then', true: 'true', false: 'false', started: 'when it starts', done: 'when done', timeout: 'if time runs out', next: 'next stage', taken: 'when taken', retaken: 'when taken back' };
+	const PIN_COLORS = { then: '#d8dee9', true: '#9bc53d', false: '#e55934', started: '#5bc0eb', done: '#9bc53d', timeout: '#e55934', next: '#f2b63d', taken: '#9bc53d', retaken: '#e55934' };
+	const VALUE_KINDS = [['num', 'a number'], ['var', 'a variable'], ['setting', 'a scenario setting'], ['difficulty', 'the difficulty (0.5 to 2)'], ['time', 'seconds since it began']];
 	const TEAM_NAMES = ['Team 1', 'Team 2', 'Team 3', 'Team 4'];
 
 	class FlowView {
@@ -116,13 +117,19 @@ window.MS = window.MS || {};
 			}
 			const body = el('div', { className: 'fv-body' });
 			if (spec) {
-				for (const [key, type, label] of spec.params) {
+				for (const [key, type, label, , options] of spec.params) {
+					if (!F().relevant(spec, n.p, key)) {
+						continue; // a setting these settings make no use of (a group's name when a unit is picked)
+					}
 					body.append(this.field(type, label, (n.p || {})[key], (value) => this.edit('change ' + (label || key), (g) => {
 						F().find(g, n.id).p[key] = value;
-					})));
+					}), options));
 				}
 				if (n.kind === 'branch') {
 					body.append(this.conditions(n));
+				}
+				if (spec.lists && spec.lists.includes('lines')) {
+					body.append(this.rows(n, 'lines', '+ Line'));
 				}
 			}
 			e.append(body);
@@ -145,6 +152,29 @@ window.MS = window.MS || {};
 			return e;
 		}
 
+		// A list of rows, each with the same settings (a dialogue's lines: what is said, and for how long).
+		rows(n, listName, addLabel) {
+			const F_ = F();
+			const params = F_.LIST_ROWS[listName] || [];
+			const box = el('div', { className: 'fv-conds' });
+			((n.lists && n.lists[listName]) || []).forEach((row, i) => {
+				box.append(el('div', { className: 'fv-cond' }, el('span', { className: 'fv-and', textContent: String(i + 1) }),
+					...params.map(([key, type, label, , options]) => this.field(type, label, row[key], (value) => this.edit('change a line', (g) => {
+						F_.find(g, n.id).lists[listName][i][key] = value;
+					}), options)),
+					el('button', { className: 'ico-btn', textContent: '×', title: 'Take it out', disabled: this.hooks.readOnly, onclick: () => this.edit('take a line out', (g) => {
+						F_.find(g, n.id).lists[listName].splice(i, 1);
+					}) })));
+			});
+			box.append(el('button', { className: 'tb fv-add-cond', textContent: addLabel, disabled: this.hooks.readOnly, onclick: () => this.edit('add a line', (g) => {
+				const node = F_.find(g, n.id);
+				node.lists = node.lists || {};
+				node.lists[listName] = node.lists[listName] || [];
+				node.lists[listName].push(Object.assign({}, ...params.map(([key, , , def]) => ({ [key]: def }))));
+			}) }));
+			return box;
+		}
+
 		// The settings of a branch: its conditions, each a kind and its settings, all of which must hold.
 		conditions(n) {
 			const F_ = F();
@@ -157,9 +187,9 @@ window.MS = window.MS || {};
 					F_.find(g, n.id).lists.conds[i] = F_.condDefaults(kind.value);
 				});
 				const row = el('div', { className: 'fv-cond' }, el('span', { className: 'fv-and', textContent: i ? 'and' : 'if' }), kind,
-					...(spec ? spec.params.map(([key, type, label]) => this.field(type, label, c[key], (value) => this.edit('change a condition', (g) => {
+					...(spec ? spec.params.map(([key, type, label, , options]) => this.field(type, label, c[key], (value) => this.edit('change a condition', (g) => {
 						F_.find(g, n.id).lists.conds[i][key] = value;
-					}))) : []),
+					}), options)) : []),
 					el('button', { className: 'ico-btn', textContent: '×', title: 'Take this condition out', disabled: this.hooks.readOnly, onclick: () => this.edit('take a condition out', (g) => {
 						F_.find(g, n.id).lists.conds.splice(i, 1);
 					}) }));
@@ -172,7 +202,7 @@ window.MS = window.MS || {};
 		}
 
 		// One setting, as a small input that edits the graph when it changes.
-		field(type, label, value, set) {
+		field(type, label, value, set, options) {
 			const ro = this.hooks.readOnly;
 			const F_ = F();
 			let input;
@@ -198,6 +228,13 @@ window.MS = window.MS || {};
 			} else if (type === 'stage') {
 				const stages = F_.stages(this.g);
 				input = select([['', '(pick a stage)'], ...stages.map((s) => [s.id, (s.p && s.p.name) || s.id])], value || '');
+			} else if (type === 'capture') {
+				const points = this.g.nodes.filter((x) => x.kind === 'capture');
+				input = select([['', points.length ? '(pick a capture point)' : '(add a capture point first)'], ...points.map((x) => [x.id, (x.p && x.p.name) || x.id])], value || '');
+			} else if (type === 'choice') {
+				input = select(options || [], value === undefined ? (options && options[0] ? options[0][0] : '') : value);
+			} else if (type === 'value') {
+				input = this.valueInput(value, set);
 			} else if (type === 'bool') {
 				input = el('input', { type: 'checkbox', checked: !!value, disabled: ro });
 				input.onchange = () => set(input.checked);
@@ -214,6 +251,34 @@ window.MS = window.MS || {};
 			input.addEventListener('pointerdown', (e) => e.stopPropagation());
 			input.addEventListener('keydown', (e) => e.stopPropagation());
 			return el('label', { className: 'fv-field' + (type === 'bool' ? ' fv-bool' : '') }, label ? el('span', { textContent: label }) : null, input);
+		}
+
+		// A value: what it is (a number, a variable, a scenario setting, the difficulty, the time), the number or name, and whether it is multiplied by
+		// the difficulty too.
+		valueInput(value, set) {
+			const ro = this.hooks.readOnly;
+			const v = value && typeof value === 'object' ? value : { k: 'num', n: Number(value) || 0 };
+			const box = el('span', { className: 'fv-value' });
+			const kind = el('select', { className: 'ed-input', disabled: ro }, ...VALUE_KINDS.map(([k, t]) => el('option', { value: k, textContent: t, selected: k === (v.k || 'num') })));
+			kind.onchange = () => set(Object.assign({}, v, { k: kind.value }));
+			box.append(kind);
+			if ((v.k || 'num') === 'num') {
+				const n = el('input', { type: 'number', step: 'any', className: 'ed-input num', value: v.n === undefined ? '' : v.n, disabled: ro });
+				n.onchange = () => set(Object.assign({}, v, { n: Number(n.value) || 0 }));
+				box.append(n);
+			} else if (v.k === 'var' || v.k === 'setting') {
+				const name = el('input', { type: 'text', className: 'ed-input', value: v.name || '', placeholder: v.k === 'var' ? 'variable' : 'setting name', disabled: ro });
+				name.onchange = () => set(Object.assign({}, v, { name: name.value.trim() }));
+				box.append(name);
+			}
+			const times = el('input', { type: 'checkbox', checked: !!v.x, disabled: ro, title: 'Multiply it by the difficulty (0.5 at the easiest, 2 at the hardest)' });
+			times.onchange = () => set(Object.assign({}, v, { x: times.checked }));
+			box.append(el('label', { className: 'fv-times', title: times.title }, times, '× difficulty'));
+			for (const c of box.querySelectorAll('input, select')) {
+				c.addEventListener('pointerdown', (e) => e.stopPropagation());
+				c.addEventListener('keydown', (e) => e.stopPropagation());
+			}
+			return box;
 		}
 
 		// The wires: a curve from each exit to the node it goes to.
