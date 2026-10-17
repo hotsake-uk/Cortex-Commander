@@ -69,6 +69,22 @@ pub fn set_zoom(factor: f64) {
 	}
 }
 
+/// Opens another window on Studio with this "popout" request (a tab torn off into its own window: the page reads it from its address). Registered once the
+/// app exists; headless (--bridge) there is none, and the page opens a browser tab instead.
+static POPOUT_HOOK: std::sync::OnceLock<Box<dyn Fn(&str) + Send + Sync>> = std::sync::OnceLock::new();
+
+
+/// Opens a window for `what`. False when there is no app to open one in.
+pub fn open_popout(what: &str) -> bool {
+	match POPOUT_HOOK.get() {
+		Some(hook) => {
+			hook(what);
+			true
+		}
+		None => false,
+	}
+}
+
 fn is_game_dir(dir: &Path) -> bool {
 	dir.join("Data").join("Base.rte").is_dir()
 }
@@ -198,6 +214,30 @@ fn main() {
 				if let Some(window) = tauri::Manager::get_webview_window(&zoom_handle, "main") {
 					let _ = window.set_zoom(factor);
 				}
+			}));
+			let popout_handle = app.handle().clone();
+			let popout_base = external.clone();
+			let popout_count = std::sync::atomic::AtomicUsize::new(0);
+			let _ = POPOUT_HOOK.set(Box::new(move |what| {
+				let mut url = popout_base.clone();
+				url.query_pairs_mut().append_pair("popout", what);
+				let n = popout_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+				let handle = popout_handle.clone();
+				let on_main = handle.clone();
+				// A window is made on the main thread, whichever thread (the server's) asked.
+				let _ = on_main.run_on_main_thread(move || {
+					let _ = tauri::WebviewWindowBuilder::new(&handle, format!("popout-{n}"), tauri::WebviewUrl::External(url))
+						.title("Cortex Studio")
+						.inner_size(1100.0, 800.0)
+						.min_inner_size(500.0, 400.0)
+						.zoom_hotkeys_enabled(false)
+						.on_page_load(|webview, payload| {
+							if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
+								let _ = webview.set_zoom(zoom());
+							}
+						})
+						.build();
+				});
 			}));
 			tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::External(external.clone()))
 				.title("Cortex Studio")

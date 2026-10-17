@@ -1004,3 +1004,11 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .px-frame.dragging { opacity: .4; }
 .px-frame.drop { outline: 2px solid var(--accent); }
 #formHost .px { height: 100%; }
+.tab-pop { background: none; border: 0; color: var(--faint); padding: 0 3px; margin-left: 4px; cursor: pointer; font-size: 11px; opacity: 0; }
+.tab:hover .tab-pop, .tab.sel .tab-pop { opacity: 1; }
+.tab-pop:hover { color: var(--accent); }
+/* A tab in its own window (popout.js): only the tab bar and the tab. */
+#app.popout { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: auto minmax(0, 1fr) 26px !important; grid-template-areas: "tabs" "code" "status" !important; }
+#app.popout > #topbar, #app.popout > #activity, #app.popout > #side, #app.popout > #left, #app.popout > #center, #app.popout > #right, #app.popout > #bottom { display: none !important; }
+#app.popout #tabbar { display: flex !important; }
+#app.popout #codeWrap { display: flex !important; grid-area: code !important; }
