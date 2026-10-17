@@ -78,6 +78,8 @@ window.MS = window.MS || {};
 				}
 				answer(m, { req: packed.req, payload: packed.payload || null });
 				letGo(tab);
+			} else if (m.type === 'game-link' && m.from !== winId && MS.ide && MS.ide.gameTakenElsewhere) {
+				MS.ide.gameTakenElsewhere();
 			} else if (m.type === 'dragging') {
 				lastDrag = { win: m.from, tab: m.tab, at: Date.now() };
 			}
@@ -462,5 +464,12 @@ window.MS = window.MS || {};
 		window.close();
 	}
 
-	MS.popout = { request, winId, begin, run, pop, restore, register, canMove, pack, saved, elsewhere, closeWindow, dragStart, dragEnd, drop, isTabDrag };
+	// Tells the other windows something (no answer wanted): 'game-link' when this window takes the game.
+	function announce(type) {
+		if (channel) {
+			channel.postMessage({ type, from: winId });
+		}
+	}
+
+	MS.popout = { announce, request, winId, begin, run, pop, restore, register, canMove, pack, saved, elsewhere, closeWindow, dragStart, dragEnd, drop, isTabDrag };
 })();

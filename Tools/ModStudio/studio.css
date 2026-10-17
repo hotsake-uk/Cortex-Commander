@@ -1342,3 +1342,8 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .lib-editors { display: flex; gap: 4px; }
 .lib-editors .small-btn { padding: 1px 7px; }
 .lib-row .lib-icon { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 6px; background: var(--panel3); color: var(--accent); font-size: 18px; }
+/* the game link on design tabs: shown on the linked one, and on the others when hovered */
+.tab-game { background: none; border: 0; padding: 0 2px; color: var(--faint); cursor: pointer; font-size: 12px; visibility: hidden; }
+.tab:hover .tab-game, .tab-game.on { visibility: visible; }
+.tab-game.on { color: #2ec4b6; }
+.tab.game-linked .tab-name { color: #2ec4b6; }
