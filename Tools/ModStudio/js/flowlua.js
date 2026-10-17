@@ -165,6 +165,14 @@ window.MS = window.MS || {};
 					...(a.at === 'every' ? [] : ['\t\tbreak']), '\tend', 'end'];
 			}
 			case 'cameraLimit': return ['st.cameraMinX = ' + luaNum(a.x)];
+			case 'brainDeploy': {
+				if (a.do === 'off') {
+					return ['if st.deploy then st.deploy.on = false end'];
+				}
+				const parts = String(a.case || '').split('|');
+				return ['st.deploy = { on = true, area = ' + luaStr(a.area || '') + ', case = ' + luaStr((parts[1] || 'Brain Case') + '|' + (parts[2] || 'Base.rte')) + ', buy = ' + (a.buy === false ? 'false' : 'true') +
+					', swap = ' + (a.swap === false ? 'false' : 'true') + ', allies = ' + luaStr(a.allies || '') + ', team = ' + luaNum(a.team) + ' }'];
+			}
 			case 'buyMenu': return ['self.BuyMenuEnabled = ' + (a.on ? 'true' : 'false')];
 			case 'setFunds': return ['self:SetTeamFunds(' + valueLua(a.amount) + ', ' + luaNum(a.team) + ')'];
 			case 'income': return ['st.income[' + luaNum(a.team) + '] = ' + valueLua(a.amount)];
@@ -418,6 +426,7 @@ window.MS = window.MS || {};
 				'st.marks[' + k + '] = st.marks[' + k + '] or {}',
 				'for actor in MovableMan.Actors do', '\tif actor.Health > 0 and actor.Health < ' + luaNum(a.below) + ' and (' + team + ' < 0 or actor.Team == ' + team + ') and not st.marks[' + k + '][actor.UniqueID] and studioMatch(actor, ' + whoArgs(a) + ') then',
 				'\t\tst.marks[' + k + '][actor.UniqueID] = true', '\t\tfire = true', '\t\tst.who[' + k + '] = actor', '\tend', 'end'];
+			case 'brainDeployed': return ['for _, player in ipairs(st.deployedNow or {}) do', '\tif ' + playerTest(a.who) + ' then fire = true; st.who[' + k + '] = self:GetPlayerBrain(player) end', 'end'];
 			case 'brainPlaced': return [
 				'st.marks[' + k + '] = st.marks[' + k + '] or {}',
 				'for player = 0, 3 do', '\tif self:PlayerActive(player) and self:PlayerHuman(player) and (' + playerTest(a.who) + ') then',
@@ -475,7 +484,7 @@ window.MS = window.MS || {};
 		if (a.marker) {
 			if (n.kind === 'stageCapture') {
 				L.push('\t-- (the capture point marks itself)');
-			} else if (['stageReach', 'stageHold', 'stageFetch'].includes(n.kind)) {
+			} else if (['stageReach', 'stageHold', 'stageFetch'].includes(n.kind) || (n.kind === 'stageDeploy' && a.area)) {
 				L.push('\tlocal where = ' + area(a.area), '\tif where then self:AddObjectivePoint(' + text + ', where.Center, ' + viewer + ', GameActivity.ARROWDOWN) end');
 			} else if (n.kind === 'stageDestroy' || n.kind === 'stageBrain') {
 				L.push('\tfor actor in MovableMan.Actors do', '\t\tif actor.Team == ' + luaNum(a.team) + ' and actor.Health > 0' + (n.kind === 'stageBrain' ? ' and actor:IsInGroup("Brains")' : '') + ' then self:AddObjectivePoint(' + text + ', actor.AboveHUDPos, ' + viewer + ', GameActivity.ARROWDOWN) end', '\tend');
@@ -493,6 +502,7 @@ window.MS = window.MS || {};
 				L.push('\tlocal region = ' + area(a.area), '\tlocal held = region ~= nil and studioCount(' + luaNum(a.team) + ', region) > 0 and studioEnemies(' + luaNum(a.team) + ', region) == 0', '\tif not held then st.holdFrom = nil elseif not st.holdFrom then st.holdFrom = elapsed end', '\treturn st.holdFrom ~= nil and elapsed - st.holdFrom >= ' + luaNum(a.seconds));
 				break;
 			case 'stageDestroy': L.push('\treturn elapsed > 1 and studioCount(' + luaNum(a.team) + ', nil) == 0'); break;
+			case 'stageDeploy': L.push('\treturn st.anyDeployed == true'); break;
 			case 'stageBrain': L.push('\treturn elapsed > 1 and studioBrains(' + luaNum(a.team) + ') == 0'); break;
 			case 'stageFetch': L.push('\treturn studioItemIn(' + luaStr(a.area) + ', ' + luaStr(String(a.item || '').split('|')[1] || '') + ')'); break;
 			case 'stageBattle': L.push('\treturn st.battle ~= nil and st.battle.ended and (' + luaNum(a.team) + ' < 0 or st.battle.winner == ' + luaNum(a.team) + ')'); break;
@@ -634,6 +644,140 @@ window.MS = window.MS || {};
 			'local function studioPieRemove(act, st, label)', '\tfor id, spec in pairs(st.pieGive) do if spec.label == label then st.pieGive[id] = nil end end',
 			'\tfor actor in MovableMan.Actors do if actor.PieMenu then actor.PieMenu:RemovePieSlicesByPresetName(label) end end',
 			'\tfor player = 0, 3 do', '\t\tlocal brain = act:PlayerActive(player) and act:GetPlayerBrain(player) or nil', '\t\tif brain and brain.PieMenu then brain.PieMenu:RemovePieSlicesByPresetName(label) end', '\tend', 'end', '',
+			...String.raw`-- Deploying a brain, as Decision Day: a Deploy Brain button on each player's brain (only usable in st.deploy.area, when it names one) plants
+-- it: a robot body is left standing, empty and fixed, and a brain case takes its place as the player's brain; any other brain is fixed where it
+-- stands. The buy menu comes on, and the brain gets Undeploy Brain (back into the body) and Swap Troop Control (the players take over the allies
+-- group, and their own units are left to the AI, or back).
+local studioDeployBrain, studioUndeployBrain, studioSwapControl
+local function studioDeploy(self, st)
+	st.deployedNow = {}
+	local d = st.deploy
+	if not d then return end
+	local deploySlice = studioPieSlice(self, { label = "Deploy Brain", icon = "Land", dir = "Up" })
+	local undeploySlice = studioPieSlice(self, { label = "Undeploy Brain", icon = "Launch", dir = "Left" })
+	local swapSlice = d.swap and studioPieSlice(self, { label = "Swap Troop Control", icon = "Cycle", dir = "Right" }) or nil
+	local zone = studioArea(d.area)
+	for player = 0, 3 do
+		if self:PlayerActive(player) and self:PlayerHuman(player) then
+			local brain = self:GetPlayerBrain(player)
+			if brain and MovableMan:ValidMO(brain) and brain.PieMenu then
+				if brain:IsInGroup("Deployed Brain " .. player) then
+					if undeploySlice then brain.PieMenu:AddPieSliceIfPresetNameIsUnique(undeploySlice, self) end
+					if swapSlice then brain.PieMenu:AddPieSliceIfPresetNameIsUnique(swapSlice, self) end
+				elseif d.on and deploySlice then
+					brain.PieMenu:AddPieSliceIfPresetNameIsUnique(deploySlice, self)
+					local s = brain.PieMenu:GetFirstPieSliceByPresetName("Deploy Brain")
+					if s then s.Enabled = zone == nil or zone:IsInside(brain.Pos) end
+				else
+					brain.PieMenu:RemovePieSlicesByPresetName("Deploy Brain")
+				end
+			end
+		end
+	end
+	for _, e in ipairs(st.piePressed or {}) do
+		local unit = e.actor
+		local player = unit and unit:GetController() and unit:GetController().Player or -1
+		if player >= 0 then
+			if e.label == "Deploy Brain" then studioDeployBrain(self, st, player)
+			elseif e.label == "Undeploy Brain" then studioUndeployBrain(self, st, player)
+			elseif e.label == "Swap Troop Control" then studioSwapControl(self, st) end
+		end
+	end
+	-- the allies take orders from the players only while they have them (and so do allies that come later)
+	if d.swap and d.allies ~= "" then
+		for actor in MovableMan.Actors do
+			if actor.Team == d.team and actor:IsInGroup(d.allies) and actor.PlayerControllable ~= (st.swapAllies == true) then
+				actor.PlayerControllable = st.swapAllies == true
+				actor.HUDVisible = st.swapAllies == true
+			end
+		end
+	end
+end
+studioDeployBrain = function(self, st, player)
+	local d = st.deploy or {}
+	local brain = self:GetPlayerBrain(player)
+	if not brain or brain:IsInGroup("Deployed Brain " .. player) then return end
+	local zone = studioArea(d.area or "")
+	if zone and not zone:IsInside(brain.Pos) then return end
+	if d.buy then self.BuyMenuEnabled = true end
+	brain.PieMenu:RemovePieSlicesByPresetName("Deploy Brain")
+	brain.PinStrength = 100
+	brain.Pos = SceneMan:MovePointToGround(brain.Pos, brain.Radius or 10, 0)
+	brain:FlashWhite(100)
+	if brain:IsMechanical() and IsAHuman(brain) then
+		local body = ToAHuman(brain)
+		if body.Head then body.Head.Scale = 0 end
+		body.PlayerControllable = false
+		body.HUDVisible = false
+		body:GetController().InputMode = Controller.CIM_DISABLED
+		body:AddToGroup("Empty Brain Body " .. player)
+		local name, module = studioPreset(d.case or "Brain Case|Base.rte")
+		local case = CreateActor(name, module)
+		if case then
+			local top = body.Pos.Y - 40
+			if zone then for box in zone.Boxes do if body.Pos.X >= box.Corner.X and body.Pos.X < box.Corner.X + box.Width then top = box.Corner.Y break end end end
+			case.Pos = Vector(body.Pos.X, top)
+			case.Team = body.Team
+			case:FlashWhite(100)
+			case:AddToGroup("Deployed Brain " .. player)
+			MovableMan:AddActor(case)
+			self:SetPlayerBrain(case, player)
+			self:SwitchToActor(case, player, case.Team)
+		end
+	else
+		brain.Status = Actor.INACTIVE
+		brain:GetController().InputMode = Controller.CIM_DISABLED
+		brain:AddToGroup("Deployed Brain " .. player)
+	end
+	st.anyDeployed = true
+	table.insert(st.deployedNow, player)
+end
+studioUndeployBrain = function(self, st, player)
+	local brain = self:GetPlayerBrain(player)
+	if not brain or not brain:IsInGroup("Deployed Brain " .. player) then return end
+	if st.swapAllies then studioSwapControl(self, st) end
+	local body
+	for actor in MovableMan.Actors do
+		if actor:IsInGroup("Empty Brain Body " .. player) and IsAHuman(actor) then body = ToAHuman(actor) break end
+	end
+	if body then
+		body.PinStrength = 0
+		if body.Head then body.Head.Scale = 1 end
+		body.PlayerControllable = true
+		body.HUDVisible = true
+		body:GetController().InputMode = Controller.CIM_AI
+		body:FlashWhite(100)
+		body:RemoveFromGroup("Empty Brain Body " .. player)
+		self:SetPlayerBrain(body, player)
+		self:SwitchToActor(body, player, body.Team)
+		brain.ToDelete = true
+	else
+		brain.Status = Actor.STABLE
+		brain.PinStrength = 0
+		brain:GetController().InputMode = Controller.CIM_AI
+		brain:FlashWhite(100)
+		brain.PieMenu:RemovePieSlicesByPresetName("Undeploy Brain")
+		brain.PieMenu:RemovePieSlicesByPresetName("Swap Troop Control")
+		brain:RemoveFromGroup("Deployed Brain " .. player)
+	end
+end
+-- the players take over the allies group (their own units left to the AI), or hand it back
+studioSwapControl = function(self, st)
+	local d = st.deploy or {}
+	st.swapAllies = not st.swapAllies
+	for actor in MovableMan.Actors do
+		if actor.Team == d.team and (IsAHuman(actor) or IsACrab(actor)) and not actor:IsInGroup("Brains") and not (d.allies ~= "" and actor:IsInGroup(d.allies)) then
+			local empty = false
+			for player = 0, 3 do if actor:IsInGroup("Empty Brain Body " .. player) then empty = true end end
+			if not empty then
+				actor.PlayerControllable = not st.swapAllies
+				actor.HUDVisible = not st.swapAllies
+				actor:GetController().InputMode = Controller.CIM_AI
+			end
+		end
+	end
+end
+`.split('\n'),
 			'-- Areas shaded for a team while its players choose a unit (the unit select view), with a line of text on each.',
 			'local function studioOverlays(act, st)', '\tfor _, o in pairs(st.overlays) do', '\t\tlocal zone = studioArea(o.area)', '\t\tif zone then', '\t\t\tfor player = 0, 3 do',
 			'\t\t\t\tif act:PlayerActive(player) and act:PlayerHuman(player) and (o.team < 0 or act:GetTeamOfPlayer(player) == o.team) and act:GetViewState(player) == Activity.ACTORSELECT then',
@@ -650,7 +794,7 @@ window.MS = window.MS || {};
 	// scriptPath: the scenario's script, as its ScriptPath says (Mod.rte/...): a pie menu button names it, so the game can find the function it runs.
 	function compile(g, cls, scriptPath) {
 		const L = [];
-		const pies = g.nodes.some((n) => n.kind === 'pieAdd' || n.kind === 'pieUsed');
+		const pies = g.nodes.some((n) => n.kind === 'pieAdd' || n.kind === 'pieUsed' || n.kind === 'brainDeploy');
 		const events = F.entries(g).filter((n) => (n.out || {}).then);
 		const stageNodes = F.stages(g);
 		const captures = g.nodes.filter((n) => n.kind === 'capture');
@@ -700,6 +844,8 @@ window.MS = window.MS || {};
 		}
 		// pie menu buttons used since the last frame, and buttons for units that have come since
 		L.push('\tst.piePressed = st.pieQueue', '\tst.pieQueue = {}', '\tfor _, spec in pairs(st.pieGive) do studioPieGive(self, spec) end');
+		// deploying brains: the buttons, and what was pressed
+		L.push('\tstudioDeploy(self, st)');
 		// capture points, every frame
 		L.push('\tst.capNow = {}');
 		for (const c of captures) {

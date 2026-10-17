@@ -82,6 +82,7 @@ window.MS = window.MS || {};
 	kind('unitDies', 'event', 'A unit dies', [['team', 'team', 'whose', -1], ...WHO_UNITS, ['area', 'area', 'in area (optional)', '']], EVENT, { relevant: relevantWho, optional: ['area'] });
 	kind('unitArrives', 'event', 'A unit arrives', [['team', 'team', 'whose', -1], ...WHO_UNITS, ['area', 'area', 'in area (optional)', '']], EVENT, { relevant: relevantWho, optional: ['area'] });
 	kind('hurt', 'event', 'A unit is badly hurt', [['team', 'team', 'whose', -1], ...WHO_UNITS, ['below', 'number', 'health below', 30]], EVENT, { relevant: relevantWho });
+	kind('brainDeployed', 'event', 'A player deploys their brain', [['who', 'player', 'whose', 'all']], EVENT);
 	kind('brainPlaced', 'event', 'A player\'s brain is placed', [['who', 'player', 'whose', 'all']], EVENT);
 	kind('holdArea', 'event', 'A team holds an area', [['area', 'area', 'area', ''], ['team', 'team', 'team', 0], ['seconds', 'number', 'with nobody else in it for seconds', 10], ['again', 'bool', 'run again every moment it still holds', false]], EVENT);
 	kind('controls', 'event', 'A player takes control of a unit', [['who', 'player', 'player', 'all'], ...WHO_UNITS], EVENT, { relevant: relevantWho });
@@ -95,11 +96,12 @@ window.MS = window.MS || {};
 	// stages: goals in a sequence. Every stage also has a name, an objective text and marker, whose screen shows it, and a time limit.
 	const STAGE_COMMON = [['name', 'text', 'name', 'Stage'], ['text', 'text', 'objective text', ''], ['marker', 'bool', 'show a marker', true], ['viewer', 'team', 'marker seen by', 0], ['failAfter', 'number', 'time limit (seconds, 0: none)', 0]];
 	const STAGE_PINS = { entrance: false, exits: ['started', 'done', 'timeout', 'next'] };
-	const stage = (name, title, goalParams) => kind(name, 'stage', title, goalParams.concat(STAGE_COMMON), STAGE_PINS);
+	const stage = (name, title, goalParams, extra) => kind(name, 'stage', title, goalParams.concat(STAGE_COMMON), STAGE_PINS, extra);
 	stage('stageReach', 'Goal: a unit reaches an area', [['area', 'area', 'area', ''], ['team', 'team', 'whose', 0]]);
 	stage('stageHold', 'Goal: hold an area for some seconds', [['area', 'area', 'area', ''], ['team', 'team', 'team', 0], ['seconds', 'number', 'seconds', 60]]);
 	stage('stageDestroy', 'Goal: a team has no units left', [['team', 'team', 'team', 1]]);
 	stage('stageBrain', 'Goal: a team\'s brain is destroyed', [['team', 'team', 'team', 1]]);
+	stage('stageDeploy', 'Goal: a player deploys their brain', [['area', 'area', 'marker on area (optional)', '']], { optional: ['area'] });
 	stage('stageFetch', 'Goal: an item is brought to an area', [['item', 'item', 'item', ''], ['from', 'area', 'put it in', ''], ['area', 'area', 'bring it to', '']]);
 	stage('stageSurvive', 'Goal: time passes', [['seconds', 'number', 'seconds', 120]]);
 	stage('stageBattle', 'Goal: the battle is won', [['team', 'team', 'by', -1]]);
@@ -189,6 +191,18 @@ window.MS = window.MS || {};
 	], STEP);
 	kind('cameraLimit', 'action', 'Keep the cameras right of a line', [['x', 'number', 'x (0: no limit)', 0]], STEP);
 	kind('lz', 'action', 'Set a landing zone', [['team', 'team', 'team', 0], ['area', 'area', 'their craft land in', '']], STEP);
+	// Deploying a brain, as Decision Day: a Deploy Brain button on each player's brain (working only in the area, when there is one) plants it. A
+	// robot body is left standing empty with a brain case in its place; any other brain is fixed where it stands. Then the buy menu comes on, and the
+	// brain gets an Undeploy Brain button (back into the body) and a Swap Troop Control button (the players take the allies over, or leave them).
+	kind('brainDeploy', 'action', 'Let players deploy their brain', [
+		['do', 'choice', '', 'on', [['on', 'let them'], ['off', 'stop them (the button goes)']]],
+		['area', 'area', 'only in area (optional)', ''],
+		['case', 'preset', 'brain case', 'Actor|Brain Case|Base.rte'],
+		['buy', 'bool', 'switch the buy menu on when one is deployed', true],
+		['swap', 'bool', 'and a button to take control of allies', true],
+		['allies', 'text', 'the allies (a group)', 'Allies'],
+		['team', 'team', 'players\' team', 0],
+	], STEP, { optional: ['area'], relevant: (p, key) => (key === 'do' ? true : p.do === 'off' ? false : key === 'allies' || key === 'team' ? p.swap !== false : true) });
 	kind('buyMenu', 'action', 'Switch the buy menu', [['on', 'bool', 'players can buy', true]], STEP);
 	kind('setFunds', 'action', 'Set a team\'s gold', [['team', 'team', 'team', 0], ['amount', 'value', 'gold', V(0)]], STEP);
 	kind('income', 'action', 'Set an income', [['team', 'team', 'team', 0], ['amount', 'value', 'gold a second (0 stops it)', V(5)]], STEP);
