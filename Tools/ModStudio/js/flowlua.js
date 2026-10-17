@@ -61,7 +61,12 @@ window.MS = window.MS || {};
 			case 'units': return 'studioCount(' + luaNum(c.team) + ', nil) ' + opOf(c.op) + ' ' + luaNum(c.count);
 			case 'inArea': return 'studioCount(' + luaNum(c.team) + ', ' + area(c.area) + ') ' + opOf(c.op) + ' ' + luaNum(c.count);
 			case 'flag': return '(st.flags[' + luaStr(c.name) + '] == true) == ' + (c.value ? 'true' : 'false');
-			case 'stage': return '(st.stage == ' + luaStr(c.target) + ') == ' + (c.is === false ? 'false' : 'true');
+			case 'stage':
+				if (F.isCodeStage(c.target)) {
+					// a stage the script runs in its own code (self.stages, self.currentStage)
+					return '(self.stages ~= nil and self.currentStage == self.stages[' + luaStr(c.target.slice(5)) + ']) == ' + (c.is === false ? 'false' : 'true');
+				}
+				return '(st.stage == ' + luaStr(c.target) + ') == ' + (c.is === false ? 'false' : 'true');
 			case 'battleScore': return '((st.battle and st.battle.scores[' + luaNum(c.team) + ']) or 0) ' + opOf(c.op) + ' ' + luaNum(c.count);
 			case 'var': return '(st.vars[' + luaStr(c.name) + '] or 0) ' + opOf(c.op) + ' ' + valueLua(c.value);
 			case 'captureOwner': return 'studioOwner(st, ' + luaStr(c.target) + ') == ' + luaNum(c.team);
@@ -128,7 +133,11 @@ window.MS = window.MS || {};
 			case 'music': return ['MusicMan:PlayDynamicSong(' + luaStr(a.song) + ')'];
 			case 'killAll': return ['local doomed = {}', 'for actor in MovableMan.Actors do', '\tif actor.Team == ' + luaNum(a.team) + ' then table.insert(doomed, actor) end', 'end', 'for _, actor in ipairs(doomed) do actor:GibThis() end'];
 			case 'flag': return ['st.flags[' + luaStr(a.name) + '] = ' + (a.value ? 'true' : 'false')];
-			case 'jump': return a.target && F.find(g, a.target) ? ['st.stage = ' + luaStr(a.target), 'st.stageStarted = false'] : ['st.stage = nil', 'st.stageStarted = false'];
+			case 'jump':
+				if (F.isCodeStage(a.target)) {
+					return ['if self.stages ~= nil and self.stages[' + luaStr(a.target.slice(5)) + '] ~= nil then self.currentStage = self.stages[' + luaStr(a.target.slice(5)) + '] end'];
+				}
+				return a.target && F.find(g, a.target) ? ['st.stage = ' + luaStr(a.target), 'st.stageStarted = false'] : ['st.stage = nil', 'st.stageStarted = false'];
 			case 'win': {
 				const say = a.text ? ['for player = 0, 3 do', '\tif self:PlayerActive(player) and self:PlayerHuman(player) then', '\t\tlocal screen = self:ScreenOfPlayer(player)', '\t\tFrameMan:ClearScreenText(screen)', '\t\tFrameMan:SetScreenText(' + luaStr(a.text) + ', screen, 0, ' + luaNum(Math.max(1, Number(a.after) || 5) * 1000) + ', true)', '\tend', 'end'] : [];
 				return Number(a.after) > 0
