@@ -472,7 +472,14 @@ window.MS = window.MS || {};
 			const s = tab.state || (tab.state = { map: {}, split: 0.58 });
 			const scene = sceneOf(scenario);
 			const terrainFile = scene && MS.scenes.terrainPicture ? MS.scenes.terrainPicture(scene, a.lib.resolve(scene.node)) : null;
-			const terrain = () => (terrainFile ? a.sprite(terrainFile, 1, 0) : null);
+			// the scene with its buildings and objects once they are read (the bare terrain until then)
+			let built = scene ? MS.scenes.picture(scene, (picture) => {
+				built = picture;
+				if (s.view) {
+					s.view.draw();
+				}
+			}) : null;
+			const terrain = () => built || (terrainFile ? a.sprite(terrainFile, 1, 0) : null);
 			if (terrainFile && !terrain() && !s.asked) {
 				s.asked = true;
 				a.images.get(terrainFile).then(() => setTimeout(() => {
