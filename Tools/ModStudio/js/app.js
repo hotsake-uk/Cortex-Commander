@@ -12,8 +12,7 @@ window.MS = window.MS || {};
 		fs: null,
 		lib: null,
 		images: null,
-		playing: true,
-		speed: 1,
+
 		undo: [],
 		redo: [],
 		txn: null,
@@ -46,6 +45,9 @@ window.MS = window.MS || {};
 	for (const key of DESIGNER_KEYS) {
 		Object.defineProperty(app, key, { get: () => app.designer[key], set: (v) => { app.designer[key] = v; }, enumerable: true, configurable: true });
 	}
+	// playing or paused, and how fast: each design tab's own, like its pose
+	Object.defineProperty(app, 'playing', { get: () => !app.designer.poseState.paused, set: (v) => { app.designer.poseState.paused = !v; }, enumerable: true, configurable: true });
+	Object.defineProperty(app, 'speed', { get: () => app.designer.poseState.speed || 1, set: (v) => { app.designer.poseState.speed = v; }, enumerable: true, configurable: true });
 
 	// Runs fn with another designer (and its view) as the one on show: to draw it, or bring it up to date, while it is beside the one you edit.
 	app.withDesigner = function (designer, fn, view) {
@@ -910,6 +912,7 @@ window.MS = window.MS || {};
 		MS.panels.refresh();
 		MS.panels.markLibrary();
 		drawPaneLabels();
+		app.syncTools();
 		app.requestDraw();
 	};
 
@@ -1008,6 +1011,7 @@ window.MS = window.MS || {};
 		}
 		$('btnSplit').classList.toggle('sel', !!pane.tab);
 		drawPaneLabels();
+		app.syncTools();
 		app.requestDraw();
 	};
 
@@ -1132,9 +1136,112 @@ window.MS = window.MS || {};
 		hint.textContent = part ? part.name + ' — drag to move · Shift+drag to move the picture' + (turns ? ' · Ctrl+drag to rotate' : '') : 'Drag a part to move it · wheel to zoom · double-click to fit';
 	};
 
-	app.onZoom = function (z) {
-		$('zoomVal').textContent = (Math.round(z * 10) / 10) + '×';
+	app.onZoom = function () {
+		app.syncTools();
 	};
+
+	// ---- the designer's toolbar, one for each design tab on screen ----
+	// The main toolbar (#viewTools) is the left group's designer's; with the tabs split, the right group's designer has its own (#g2Tools, a
+	// copy). Each shows its own designer and view: the pose, facing, aim, held item, playing, speed, the view's options and zoom. A control in
+	// the copy runs the main one's handler with its designer on show and its elements standing in for the main ones (the same ids), so one set
+	// of handlers serves both; after anything, both are shown again from their designers.
+	const TOOL_IDS = ['poseButtons', 'btnPlay', 'speed', 'btnFlip', 'aim', 'aimVal', 'sharp', 'deviceSelect', 'layerBox', 'terrainLayer', 'viewOptions', 'zoomVal'];
+	function rightTab() {
+		return app.split && app.panes[1] && app.panes[1].tab && app.panes[1].tab.designer ? app.panes[1].tab : null;
+	}
+	function withRightTools(fn) {
+		const swapped = TOOL_IDS.filter((id) => $(id) && $('g2-' + id));
+		for (const id of swapped) {
+			$(id).id = id + '__main';
+			$('g2-' + id).id = id;
+		}
+		try {
+			return fn();
+		} finally {
+			for (const id of swapped) {
+				$(id).id = 'g2-' + id;
+				$(id + '__main').id = id;
+			}
+		}
+	}
+	function showTools() {
+		const ps = app.poseState;
+		for (const b of document.querySelectorAll('#poseButtons button')) {
+			b.classList.toggle('sel', b.dataset.pose === ps.pose);
+		}
+		$('btnPlay').textContent = ps.paused ? '▶' : '❚❚';
+		$('btnPlay').classList.toggle('sel', !!ps.paused);
+		$('speed').value = String(ps.speed || 1);
+		$('btnFlip').classList.toggle('sel', !!ps.flip);
+		const deg = Math.round(((ps.aim || 0) * 180) / Math.PI);
+		$('aim').value = String(deg);
+		$('aimVal').textContent = deg + '°';
+		$('sharp').checked = !!ps.sharp;
+		for (const b of document.querySelectorAll('#viewOptions button')) {
+			b.classList.toggle('sel', !!app.view.options[b.dataset.opt]);
+		}
+		$('zoomVal').textContent = (Math.round(app.view.zoom * 10) / 10) + '×';
+		$('layerBox').hidden = !(app.rig && (app.rig.body.ent.cls === 'TerrainObject' || app.rig.body.ent.cls === 'BunkerAssembly'));
+		if (app.view.terrainShow) {
+			$('terrainLayer').value = app.view.terrainShow;
+		}
+		if (MS.panels && MS.panels.refreshDeviceSelect && app.lib) {
+			MS.panels.refreshDeviceSelect();
+		}
+	}
+	app.syncTools = function () {
+		const left = app.panes[0] && app.panes[0].tab;
+		const right = rightTab();
+		if (!right || !$('g2Tools').children.length) {
+			showTools();
+			return;
+		}
+		const as = (tab, pane) => (tab && tab.designer && tab.designer !== app.designer ? app.withDesigner(tab.designer, showTools, pane.view) : showTools());
+		as(left, app.panes[0]);
+		withRightTools(() => as(right, app.panes[1]));
+	};
+	// The right group's toolbar: a copy of the main one, its controls running the main ones' handlers for the right group's designer.
+	function setUpRightTools() {
+		const box = $('g2Tools');
+		const copy = $('viewTools').cloneNode(true);
+		for (const e of copy.querySelectorAll('[id]')) {
+			e.id = 'g2-' + e.id;
+		}
+		for (const e of copy.querySelectorAll('#g2-btnSplit, #g2-btnGuide')) {
+			e.remove(); // one Side by side, and one guide, for the window
+		}
+		box.replaceChildren(...copy.childNodes);
+		const mainOf = (e) => {
+			if (e.id && e.id.startsWith('g2-')) {
+				return $(e.id.slice(3));
+			}
+			const holder = e.parentElement && e.parentElement.id && e.parentElement.id.startsWith('g2-') ? $(e.parentElement.id.slice(3)) : null;
+			return holder ? [...holder.children][[...e.parentElement.children].indexOf(e)] : null;
+		};
+		const run = (e, kind) => {
+			const target = e.target.closest('button, input, select');
+			const main = target && mainOf(target);
+			const tab = rightTab();
+			if (!main || !tab) {
+				return;
+			}
+			if (MS.ide.currentDesigner !== tab) {
+				MS.ide.activate(tab); // its designer comes up first
+			}
+			if (kind === 'click' && main.tagName === 'BUTTON') {
+				withRightTools(() => main.onclick && main.onclick(e));
+			} else if (kind === 'input' || kind === 'change') {
+				main.value = target.value;
+				main.checked = target.checked;
+				const handler = kind === 'input' ? main.oninput : main.onchange;
+				withRightTools(() => handler && handler.call(main, { target: main }));
+			}
+			app.syncTools();
+		};
+		box.addEventListener('click', (e) => run(e, 'click'));
+		box.addEventListener('input', (e) => run(e, 'input'));
+		box.addEventListener('change', (e) => run(e, 'change'));
+	}
 
 	// ---- sprites ----
 
@@ -1183,12 +1290,10 @@ window.MS = window.MS || {};
 		const now = performance.now();
 		const dt = Math.min((now - lastTime) / 1000, 0.1);
 		lastTime = now;
-		if (app.playing) {
-			for (const d of app.split ? app.panes.map((p) => p.tab && p.tab.designer).filter(Boolean) : [app.designer]) {
-				if (d.rig) {
-					d.poseState.time += dt * app.speed;
-					drawQueued = true;
-				}
+		for (const d of app.split ? app.panes.map((p) => p.tab && p.tab.designer).filter(Boolean) : [app.designer]) {
+			if (d.rig && !d.poseState.paused) {
+				d.poseState.time += dt * (d.poseState.speed || 1);
+				drawQueued = true;
 			}
 		}
 		if (drawQueued) {
@@ -1867,7 +1972,8 @@ window.MS = window.MS || {};
 			btn.onclick = () => {
 				const opt = btn.dataset.opt;
 				app.view.options[opt] = !app.view.options[opt];
-				btn.classList.toggle('sel', app.view.options[opt]);
+				const shown = $('viewOptions').querySelector('[data-opt="' + opt + '"]'); // (the right group's toolbar's, when it is the one clicked)
+				shown.classList.toggle('sel', app.view.options[opt]);
 				if (opt === 'outlines') {
 					MS.panels.refresh();
 				}
@@ -1875,6 +1981,8 @@ window.MS = window.MS || {};
 			};
 		}
 		setPlaying(true);
+		setUpRightTools();
+		$('viewTools').addEventListener('click', () => requestAnimationFrame(app.syncTools));
 	}
 
 	function setPose(pose) {

@@ -224,7 +224,8 @@
 		<div id="tabbar2"></div>
 		<div id="g2Host">
 			<div id="g2View" hidden>
-				<div id="g2Canvas"></div>
+				<!-- the right group's designer: its own toolbar (a copy of the main one, made by app.js), view, parts and properties -->
+				<div id="g2Main"><div id="g2Tools" class="toolbar"></div><div id="g2Canvas"></div></div>
 				<!-- the right group's designer has its own parts and properties, as the main one has -->
 				<aside id="g2Panels" class="panel">
 					<div class="panel-head"><span>Parts</span><span class="tree-tools"><button class="ico-btn" id="g2-btnShowParts" title="Show every part again" hidden></button><button class="ico-btn" id="g2-btnFoldParts" title="Fold every part's children away, or open them all again">Fold all</button></span></div>
