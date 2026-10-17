@@ -424,7 +424,7 @@ window.MS = window.MS || {};
 			a.edit('remove the glow of ' + part.name, () => {
 				const node = a.ownBlock(part);
 				if (node) {
-					for (const key of ['ScreenEffect', 'EffectStartStrength', 'EffectStopStrength', 'EffectAlwaysShows']) {
+					for (const key of ['ScreenEffect', 'EffectStartStrength', 'EffectStopStrength', 'EffectAlwaysShows', 'PostEffectEnabled']) {
 						const c = node.child(key);
 						if (c) {
 							c.remove();
@@ -466,6 +466,7 @@ window.MS = window.MS || {};
 			}
 			se.set('FilePath', path);
 			node.set('EffectAlwaysShows', '1');
+			node.set('PostEffectEnabled', '1');
 			node.set('EffectStartStrength', String(+(E.glowOverall / 255).toFixed(3)));
 			node.set('EffectStopStrength', String(+(E.glowOverall / 255).toFixed(3)));
 		});
