@@ -700,7 +700,12 @@ pre.diff .del { color: var(--bad); }
 .data-editor span { color: var(--faint); font-size: 11.5px; }
 .tab-icon.form { color: var(--accent); font-size: 12px; }
 #formHost { flex: 1; min-height: 0; overflow: auto; background: var(--bg); }
-.ed { padding: 14px 18px 40px; max-width: 1200px; }
+.ed-buy-group .ed-cols.buy { grid-template-columns: 40px minmax(120px, 1.2fr) 80px 100px minmax(140px, 2fr); }
+.ed { padding: 14px 18px 40px; }
+#formHost { container-type: inline-size; }
+.ed-cards, .ed-buy-groups { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 18px; align-items: start; }
+@container (min-width: 1000px) { .ed-cards, .ed-buy-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (min-width: 1700px) { .ed-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .ed-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
 .ed-head h2 { margin: 0; font-size: 16px; font-weight: 650; }
 .ed-head .chips button { background: none; border: 1px solid var(--line); border-radius: 99px; color: var(--dim); padding: 2px 10px; cursor: pointer; font-size: 12px; }
