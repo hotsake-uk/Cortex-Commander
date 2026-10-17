@@ -2251,6 +2251,8 @@ window.MS = window.MS || {};
 		return true;
 	}
 
+	ide.makePresetFile = makePresetFile;
+
 	function newFileDialog(folder, kind, preset, onMade) {
 		const name = el('input', { type: 'text', value: kind === 'lua' ? (preset ? preset.replace(/[^\w -]/g, '').replace(/\s+/g, '') : 'NewScript') + '.lua' : 'NewFile.ini' });
 		const template = el('select', {});
