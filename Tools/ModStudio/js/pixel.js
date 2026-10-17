@@ -231,10 +231,51 @@ window.MS = window.MS || {};
 		renderPalette();
 	}
 
+	// A material map's pixels are material numbers, not colours: the "palette" is then the game's materials, each in its own colour.
+	function materialNames() {
+		const names = new Map();
+		for (const p of app().lib.presets) {
+			if (p.cls === 'Material' && p.topLevel) {
+				const index = app().lib.resolve(p.node).num('Index', -1);
+				if (index >= 0 && !names.has(index)) {
+					names.set(index, p.name);
+				}
+			}
+		}
+		return names;
+	}
+
 	const palette = (i) => {
+		if (E && E.materials) {
+			return MS.materialColors().get(i) || [58, 62, 74];
+		}
 		const p = app().images.palette;
 		return [p[i * 3], p[i * 3 + 1], p[i * 3 + 2]];
 	};
+
+	// A frame as a canvas: in the game's colours, or for a material map in the materials' colours.
+	function frameCanvas(f) {
+		const a = app();
+		if (!(E && E.materials)) {
+			return a.images.fromIndices(f.w, f.h, f.indices).canvas;
+		}
+		const canvas = document.createElement('canvas');
+		canvas.width = f.w;
+		canvas.height = f.h;
+		const ctx = canvas.getContext('2d');
+		const data = ctx.createImageData(f.w, f.h);
+		for (let i = 0; i < f.indices.length; i++) {
+			if (f.indices[i]) {
+				const [r, g, b] = palette(f.indices[i]);
+				data.data[i * 4] = r;
+				data.data[i * 4 + 1] = g;
+				data.data[i * 4 + 2] = b;
+				data.data[i * 4 + 3] = 255;
+			}
+		}
+		ctx.putImageData(data, 0, 0);
+		return canvas;
+	}
 
 	// ---- lights: a glow layer the game draws as emitted light ----
 	// One layer for the whole picture (the game takes one glow picture per part, whichever frame is showing). Each pixel holds the light colour it gives
@@ -512,14 +553,14 @@ window.MS = window.MS || {};
 			const before = E.frames[E.cur - 1];
 			if (before.w === f.w && before.h === f.h) {
 				ctx.globalAlpha = 0.35;
-				ctx.drawImage(a.images.fromIndices(before.w, before.h, before.indices).canvas, 0, 0, W, H);
+				ctx.drawImage(frameCanvas(before), 0, 0, W, H);
 				ctx.globalAlpha = 1;
 			}
 		}
 		if (E.dark) {
 			ctx.globalAlpha = 0.4;
 		}
-		ctx.drawImage(a.images.fromIndices(f.w, f.h, f.indices).canvas, 0, 0, W, H);
+		ctx.drawImage(frameCanvas(f), 0, 0, W, H);
 		ctx.globalAlpha = 1;
 		drawGlow(ctx, W, H, z);
 		if (E.preview) {
@@ -631,7 +672,7 @@ window.MS = window.MS || {};
 		const [r, g, b] = E.color ? palette(E.color) : [0, 0, 0];
 		E.swatch.style.background = E.color ? 'rgb(' + r + ',' + g + ',' + b + ')' : '';
 		E.swatch.classList.toggle('clear', !E.color);
-		E.swatchText.textContent = E.color ? 'Colour ' + E.color + ' · ' + r + ', ' + g + ', ' + b : 'See-through';
+		E.swatchText.textContent = E.materials ? (E.color ? (E.materialNames.get(E.color) || 'Material ' + E.color) + ' · number ' + E.color : 'Air (nothing)') : E.color ? 'Colour ' + E.color + ' · ' + r + ', ' + g + ', ' + b : 'See-through';
 		E.recentBox.replaceChildren(...E.recent.map((c) => {
 			const [rr, gg, bb] = palette(c);
 			return el('button', { className: 'px-recent', title: 'Colour ' + c, style: 'background:rgb(' + rr + ',' + gg + ',' + bb + ')', onclick: () => setColor(c) });
@@ -644,7 +685,7 @@ window.MS = window.MS || {};
 		ctx.imageSmoothingEnabled = false;
 		checker(ctx, size, size);
 		const z = Math.max(1, Math.floor(size / Math.max(f.w, f.h)));
-		const source = app().images.fromIndices(f.w, f.h, f.indices).canvas;
+		const source = frameCanvas(f);
 		ctx.drawImage(source, Math.floor((size - f.w * z) / 2), Math.floor((size - f.h * z) / 2), f.w * z, f.h * z);
 		return c;
 	}
@@ -692,7 +733,7 @@ window.MS = window.MS || {};
 		const ctx = pv.getContext('2d');
 		ctx.imageSmoothingEnabled = false;
 		checker(ctx, pv.width, pv.height);
-		ctx.drawImage(app().images.fromIndices(f.w, f.h, f.indices).canvas, 0, 0, pv.width, pv.height);
+		ctx.drawImage(frameCanvas(f), 0, 0, pv.width, pv.height);
 	}
 
 	function updateButtons() {
@@ -1209,7 +1250,15 @@ window.MS = window.MS || {};
 		const center = el('div', { className: 'px-center' }, top, E.wrap, el('div', { className: 'px-bottom' }, E.status));
 
 		// the side: colours, frames, the whole picture
-		E.pal = el('canvas', { className: 'px-pal', width: CELL * 16, height: CELL * 16, title: 'The game\'s colours: click one' });
+		E.pal = el('canvas', { className: 'px-pal', width: CELL * 16, height: CELL * 16, title: E.materials ? 'The game\'s materials: click one' : 'The game\'s colours: click one' });
+		E.pal.onpointermove = (e) => {
+			if (!E.materials) {
+				return;
+			}
+			const r = E.pal.getBoundingClientRect();
+			const i = Math.floor((e.clientY - r.top) / CELL) * 16 + Math.floor((e.clientX - r.left) / CELL);
+			E.pal.title = E.materialNames.get(i) ? E.materialNames.get(i) + ' (' + i + ')' : i ? 'Number ' + i + ': no material has it' : 'Air';
+		};
 		E.pal.onpointerdown = (e) => {
 			const r = E.pal.getBoundingClientRect();
 			const x = Math.floor((e.clientX - r.left) / CELL);
@@ -1359,7 +1408,7 @@ window.MS = window.MS || {};
 			}
 		}
 		const common = [...counts.entries()].sort((x, y) => y[1] - x[1])[0];
-		E = { layerKey: target.key || null, part, file, frameCount: file ? frames.length : 0, frames, cur: 0, tool: 'pencil', color: common ? common[0] : 1, recent: [], mirror: false, grid: true, onion: false, zoom: 8, undo: [], redo: [], pending: null, dirty: false, warned: false, drag: null, preview: null, hover: null, previewAt: 0, saved: false, onSaved: target.onSaved || null, mode: 'colour', glow: null, glowColor: [255, 200, 120], glowStrength: 1, glowOverall: 128, glowShow: true, dark: false, hadGlow: false };
+		E = { layerKey: target.key || null, part, file, frameCount: file ? frames.length : 0, frames, cur: 0, tool: 'pencil', color: common ? common[0] : 1, recent: [], mirror: false, grid: true, onion: false, zoom: 8, undo: [], redo: [], pending: null, dirty: false, warned: false, drag: null, preview: null, hover: null, previewAt: 0, saved: false, onSaved: target.onSaved || null, materials: target.key === 'MaterialFile', materialNames: target.key === 'MaterialFile' ? materialNames() : null, mode: 'colour', glow: null, glowColor: [255, 200, 120], glowStrength: 1, glowOverall: 128, glowShow: true, dark: false, hadGlow: false };
 		E.glow = await loadGlow(part);
 		const body = build();
 		E.root = body;

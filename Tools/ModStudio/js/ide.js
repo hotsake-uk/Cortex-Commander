@@ -2147,17 +2147,19 @@ window.MS = window.MS || {};
 		gun: { label: 'Gun (a copy of one of the game\'s)', file: 'MyGun', block: 'AddDevice', base: ['HDFirearm'], baseLabel: 'Starts as a copy of', suggest: 'Assault Rifle' },
 		activity: { label: 'Scripted activity (with its Lua script)', file: 'MyActivity', base: ['Scene'], baseLabel: 'Plays on the scene' },
 		scene: { label: 'Scene (a copy of one of the game\'s)', file: 'MyScene', block: 'AddScene', base: ['Scene'], baseLabel: 'Starts as a copy of' },
+		terrain: { label: 'Building piece (a new terrain object, with its three pictures)', file: 'MyBuildingPiece', make: 'terrain' },
+		assembly: { label: 'Bunker assembly (a room made of building pieces)', file: 'MyAssembly', make: 'assembly', base: ['BunkerAssemblyScheme'], baseLabel: 'Scheme it fits (its size and where it connects)', suggest: 'Generic 3x3' },
 	};
 
 	// Makes an INI file with one preset in it (included from the mod's Index.ini), and for an activity its script too.
-	async function makePresetFile(path, kindName, baseName_) {
+	async function makePresetFile(path, kindName, baseName_, extra) {
 		const k = INI_KINDS[kindName];
 		const lib = app.lib;
 		const modName = path.split('/')[0];
 		const name = baseName(path).replace(/\.ini$/i, '').replace(/[_-]+/g, ' ');
 		const basePreset = baseName_ ? lib.presets.find((pr) => pr.topLevel && k.base.includes(pr.cls) && pr.name === baseName_) : null;
-		if (k.block && !basePreset) {
-			app.toast('Pick a preset to copy: "' + baseName_ + '" isn\'t one.', 'bad');
+		if ((k.block || k.make === 'assembly') && !basePreset) {
+			app.toast('Pick a preset to ' + (k.make ? 'build on' : 'copy') + ': "' + baseName_ + '" isn\'t one.', 'bad');
 			return false;
 		}
 		if (lib.find(name, null, modName) && lib.find(name, null, modName).name.toLowerCase() === name.toLowerCase()) {
@@ -2167,7 +2169,47 @@ window.MS = window.MS || {};
 		const doc = await lib.newDoc(path);
 		app.hookDoc(doc);
 		app.hookDoc(lib.docFor(modName + '/Index.ini'));
-		if (k.block) {
+		if (k.make === 'terrain') {
+			// A building piece: foreground, background and material pictures of one size, ready to paint on.
+			const w = Math.max(12, Math.min(2400, Math.round(Number(extra && extra.width) || 96)));
+			const h = Math.max(12, Math.min(2400, Math.round(Number(extra && extra.height) || 96)));
+			const stem = path.replace(/\.ini$/i, '');
+			const files = { FGColorFile: stem + 'FG.png', BGColorFile: stem + 'BG.png', MaterialFile: stem + 'Mat.png' };
+			const concrete = [...MS.materialColors().keys()].length ? [...app.lib.presets].find((pr) => pr.cls === 'Material' && pr.topLevel && /^concrete$/i.test(pr.name)) : null;
+			const solid = concrete ? app.lib.resolve(concrete.node).num('Index', 0) : 0;
+			const grey = (() => {
+				const pal = app.images.palette;
+				let best = 1;
+				let bestD = Infinity;
+				for (let i = 1; i < 256; i++) {
+					const d = (pal[i * 3] - 110) ** 2 + (pal[i * 3 + 1] - 112) ** 2 + (pal[i * 3 + 2] - 118) ** 2;
+					if (d < bestD) {
+						bestD = d;
+						best = i;
+					}
+				}
+				return best;
+			})();
+			try {
+				await app.fs.writeFile(files.FGColorFile, await app.images.encodePng(w, h, new Uint8Array(w * h).fill(solid ? grey : 0)));
+				await app.fs.writeFile(files.BGColorFile, await app.images.encodePng(w, h, new Uint8Array(w * h)));
+				await app.fs.writeFile(files.MaterialFile, await app.images.encodePng(w, h, new Uint8Array(w * h).fill(solid)));
+			} catch (e) {
+				app.toast('Couldn\'t make the pictures: ' + e.message, 'bad');
+				return false;
+			}
+			const block = doc.addTopLevel('AddTerrainObject', 'TerrainObject');
+			block.add('PresetName', name);
+			block.add('AddToGroup', 'Bunker Modules');
+			for (const key of ['FGColorFile', 'MaterialFile', 'BGColorFile']) {
+				block.add(key, 'ContentFile').add('FilePath', files[key]);
+			}
+		} else if (k.make === 'assembly') {
+			const block = doc.addTopLevel('AddBunkerAssembly', 'BunkerAssembly');
+			block.add('PresetName', name);
+			block.add('AddToGroup', 'Assemblies');
+			block.add('ParentScheme', basePreset.name);
+		} else if (k.block) {
 			const block = doc.addTopLevel(k.block, basePreset.cls);
 			block.add('CopyOf', lib.reference(basePreset.name, basePreset.module, modName));
 			block.add('PresetName', name);
@@ -2198,7 +2240,7 @@ window.MS = window.MS || {};
 		lib.reindex();
 		app.writeLocal('ms.lastMod', modName);
 		const made = lib.presets.find((pr) => pr.doc === doc && pr.name === name);
-		if (made && made.cls === 'AHuman') {
+		if (made && (made.cls === 'AHuman' || made.cls === 'TerrainObject' || made.cls === 'BunkerAssembly')) {
 			app.openActor(made);
 		}
 		await app.save(true, [doc, lib.docFor(modName + '/Index.ini')].filter(Boolean));
@@ -2229,6 +2271,9 @@ window.MS = window.MS || {};
 		const syncBase = () => {
 			const k = kind === 'ini' && INI_KINDS[template.value];
 			baseField.hidden = !k || !k.base;
+			if (k && !k.base && k.file && (name.value === 'NewFile.ini' || Object.values(INI_KINDS).some((o) => o.file && name.value === o.file + '.ini'))) {
+				name.value = k.file + '.ini';
+			}
 			if (!k || !k.base) {
 				return;
 			}
@@ -2248,13 +2293,23 @@ window.MS = window.MS || {};
 				name.value = k.file + '.ini';
 			}
 		};
-		template.onchange = syncBase;
+		const width = el('input', { type: 'number', value: 96, min: 12, step: 12 });
+		const height = el('input', { type: 'number', value: 96, min: 12, step: 12 });
+		const sizeField = el('div', { className: 'field' }, el('label', { textContent: 'Size in pixels (width × height)' }), el('div', { className: 'size-row' }, width, ' × ', height));
+		const syncSize = () => {
+			sizeField.hidden = !(kind === 'ini' && template.value === 'terrain');
+		};
+		template.onchange = () => {
+			syncBase();
+			syncSize();
+		};
 		syncBase();
+		syncSize();
 		const body = el('div', {},
 			el('div', { className: 'field' }, el('label', { textContent: 'Name' }), name),
 			el('div', { className: 'field' }, el('label', { textContent: 'In folder' }), where),
 			el('div', { className: 'field' }, el('label', { textContent: 'Start from' }), template),
-			baseField);
+			baseField, sizeField);
 		MS.dialogs.open(kind === 'lua' ? 'New Lua script' : 'New INI file', body, [
 			{ text: 'Cancel' },
 			{ text: 'Make it', primary: true, action: async () => {
@@ -2275,7 +2330,7 @@ window.MS = window.MS || {};
 					return false;
 				}
 				if (kind === 'ini' && template.value !== 'blank') {
-					return makePresetFile(path, template.value, base.value.trim());
+					return makePresetFile(path, template.value, base.value.trim(), { width: width.value, height: height.value });
 				}
 				const text = kind === 'lua' ? TEMPLATES[template.value](file.replace(/\.lua$/i, ''), preset) : TEMPLATES.ini();
 				try {
