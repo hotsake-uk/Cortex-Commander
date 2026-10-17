@@ -9,6 +9,7 @@ namespace RTE {
 
 	class Actor;
 	class Entity;
+	class MovableObject;
 
 	/// Units sent from Cortex Mod Studio ("Preview in game"). Studio saves the unit's files, then writes ModStudio/Preview.ini in the game
 	/// folder naming the unit, the files to reload and the item to hold. The Actor Editor shows each new one; a game started with

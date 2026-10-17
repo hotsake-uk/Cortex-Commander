@@ -429,6 +429,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .def("AvoidPathPoint", &Actor::AvoidPathPoint)
 	    .def("SetAlarmPoint", &Actor::AlarmPoint)
 	    .def("GetAlarmPoint", &Actor::GetAlarmPoint)
+	    .property("ShotAtAgeMS", &Actor::GetShotAtAgeMS)
 	    .def("IsOrganic", &Actor::IsOrganic)
 	    .def("IsMechanical", &Actor::IsMechanical)
 

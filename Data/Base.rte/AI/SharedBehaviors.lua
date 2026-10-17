@@ -56,33 +56,61 @@ function SharedBehaviors.TakesThrow()
 	return use >= 1 or math.random() < use;
 end
 
+-- Whether a noise from a place is new to the unit: not the place it last heard one from (by where it is from the unit) within the last second.
+-- (It was any noise from the same place ever again: a shooter who kept firing from one spot was heard once, turned to for a moment, and then
+-- ignored for as long as it kept on.)
+local function NewNoise(AI, NoiseVec)
+	return not AI.LastAlarmVec or not AI.LastAlarmTimer or AI.LastAlarmTimer:IsPastSimMS(1000) or SceneMan:ShortestDistance(AI.LastAlarmVec, NoiseVec, false):MagnitudeIsGreaterThan(25);
+end
+
+local function NoteNoise(AI, NoiseVec)
+	AI.LastAlarmVec = NoiseVec;
+	AI.LastAlarmTimer = AI.LastAlarmTimer or Timer();
+	AI.LastAlarmTimer:Reset();
+end
+
+-- Heard a noise at a place: turns to it and watches that way a while (FaceAlarm), and, if it couldn't see the place, may go and look once
+-- the watch is over (NoiseUpdate).
+function SharedBehaviors.HeardNoise(AI, Owner, Pos, seen)
+	AI.AlarmPos = Vector(Pos.X, Pos.Y);
+	Owner:SetAlarmPoint(AI.AlarmPos);
+	AI.AlertTimer = AI.AlertTimer or Timer();
+	AI.AlertTimer:Reset();
+	if not seen then
+		AI.HeardNoise = { Pos = Vector(Pos.X, Pos.Y), Timer = Timer() };
+	end
+	AI:CreateFaceAlarmBehavior(Owner);
+end
+
+-- How long a unit that heard a noise or was shot at keeps watching that way, and scans for enemies every tick and quicker (ScanForTargets).
+local ALERT_MS = 3000;
+function SharedBehaviors.IsAlert(AI)
+	return AI.AlertTimer ~= nil and not AI.AlertTimer:IsPastSimMS(ALERT_MS);
+end
+
 function SharedBehaviors.ProcessAlarmEvent(AI, Owner)
 	AI.AlarmPos = nil;
 
 	local loudness, AlarmVec;
 	local canSupress = not AI.flying and Owner.FirearmIsReady and Owner.EquippedItem:HasObjectInGroup("Weapons - Explosive");
+	-- (Times the Hearing range setting.)
+	local hearing = SettingsMan.AICombatHearing;
 	for Event in MovableMan.AlarmEvents do
 		if Event.Team ~= Owner.Team then	-- caused by some other team's activities - alarming!
-			loudness = Owner.AimDistance + Owner.Perceptiveness * Event.Range;
+			loudness = (Owner.AimDistance + Owner.Perceptiveness * Event.Range) * hearing;
 			AlarmVec = SceneMan:ShortestDistance(Owner.EyePos, Event.ScenePos, false); -- see how far away the alarm situation is
 			if AlarmVec.Largest < loudness then	-- only react if the alarm is within hearing range
-				-- if our relative position to the alarm location is the same, don't repeat the signal
-				-- check if we have line of sight to the alarm point
-				if (not AI.LastAlarmVec or SceneMan:ShortestDistance(AI.LastAlarmVec, AlarmVec, false):MagnitudeIsGreaterThan(25)) then
-					AI.LastAlarmVec = AlarmVec;
+				-- if our relative position to the alarm location is the same, don't repeat the signal (unless it keeps on)
+				if NewNoise(AI, AlarmVec) then
+					NoteNoise(AI, AlarmVec);
 
-					if AlarmVec.Largest < 100 then
-						-- check more carfully at close range, and allow hearing of partially blocked alarm events
-						if SceneMan:CastStrengthSumRay(Owner.EyePos, Event.ScenePos, 4, rte.grassID) < 100 then
-							AI.AlarmPos = Vector(Event.ScenePos.X, Event.ScenePos.Y);
-						end
-					elseif not SceneMan:CastStrengthRay(Owner.EyePos, AlarmVec, 6, Vector(), 8, rte.grassID, true) then
-						AI.AlarmPos = Vector(Event.ScenePos.X, Event.ScenePos.Y);
-					end
-
-					if AI.AlarmPos then
-						Owner:SetAlarmPoint(AI.AlarmPos);
-						AI:CreateFaceAlarmBehavior(Owner);
+					-- Through rock or round a corner a noise is muffled: heard less far the more ground is in the way (about half as far through
+					-- a thin wall of earth, a fifth through a hill). (Beyond 100 px it had to have a clear line, so a shot round a corner was never
+					-- heard at all.)
+					local inTheWay = SceneMan:CastStrengthSumRay(Owner.EyePos, Event.ScenePos, 4, rte.grassID);
+					local distance = AlarmVec.Magnitude;
+					if distance < 100 and inTheWay < 100 or distance < loudness / (1 + inTheWay / 400) then
+						SharedBehaviors.HeardNoise(AI, Owner, Event.ScenePos, inTheWay < 100);
 						return true;
 					end
 				end
@@ -139,27 +167,31 @@ function SharedBehaviors.ProcessAlarmEvent(AI, Owner)
 	local Heard = Owner:HearFootsteps();
 	if Heard.Largest > 0 then
 		local HeardVec = SceneMan:ShortestDistance(Owner.EyePos, Heard, false);
-		if (not AI.LastAlarmVec or SceneMan:ShortestDistance(AI.LastAlarmVec, HeardVec, false):MagnitudeIsGreaterThan(25)) and SceneMan:CastStrengthSumRay(Owner.EyePos, Heard, 4, rte.grassID) < 100 then
-			AI.LastAlarmVec = HeardVec;
-			AI.AlarmPos = Vector(Heard.X, Heard.Y);
-			Owner:SetAlarmPoint(AI.AlarmPos);
-			AI:CreateFaceAlarmBehavior(Owner);
+		if NewNoise(AI, HeardVec) and SceneMan:CastStrengthSumRay(Owner.EyePos, Heard, 4, rte.grassID) < 100 then
+			NoteNoise(AI, HeardVec);
+			SharedBehaviors.HeardNoise(AI, Owner, Heard, true);
 			return true;
 		end
 	end
 end
 
--- look at the alarm event
+-- look at the alarm event: stop for a moment and turn to it, then keep watching that way, sweeping the aim a little up and down, for as long
+-- as the unit stays alert (ALERT_MS). (It was a fifth of a second's glance, less than the third of a second or more noticing an enemy takes, so a
+-- unit that heard a shot usually looked away again before it could see who fired.) A unit on its way somewhere stops only for the moment.
 function SharedBehaviors.FaceAlarm(AI, Owner, Abort)
 	if AI.AlarmPos then
 		local AlarmDist = SceneMan:ShortestDistance(Owner.EyePos, AI.AlarmPos, false);
 		AI.AlarmPos = nil;
-		for _ = 1, math.ceil(200/TimerMan.AIDeltaTimeMS) do
+		local Watch = Timer();
+		local holdMS = SharedBehaviors.OrderKind(Owner) == "move" and 200 or 800;
+		local base = AlarmDist.AbsRadAngle;
+		while not Watch:IsPastSimMS(ALERT_MS) and not AI.Target do
 			AI.deviceState = AHuman.AIMING;
-			if not Owner.aggressive then
+			if not Owner.aggressive and not Watch:IsPastSimMS(holdMS) then
 				AI.lateralMoveState = Actor.LAT_STILL;
 			end
-			AI.Ctrl.AnalogAim = AlarmDist.Normalized;
+			local sweep = Watch:IsPastSimMS(holdMS) and math.sin(Watch.ElapsedSimTimeMS / 500) * 0.15 or 0;
+			AI.Ctrl.AnalogAim = Vector(1, 0):RadRotate(base + sweep);
 			local _ai, _ownr, _abrt = coroutine.yield(); -- wait until next frame
 			if _abrt then return true end
 		end
@@ -765,6 +797,16 @@ local function HasMember(Cache, Object, getter)
 	end
 	return has;
 end
+-- How long ago the unit was shot at, hit or missed close by (Actor.ShotAtAgeMS); for a build without it (an older exe), never.
+local HasShotAtAge = MemberCache();
+local function GetShotAtAge(Owner) return Owner.ShotAtAgeMS; end
+function SharedBehaviors.ShotAtAgeMS(Owner)
+	if not HasMember(HasShotAtAge, Owner, GetShotAtAge) then
+		return math.huge;
+	end
+	return Owner.ShotAtAgeMS;
+end
+
 local HasMoveAlongRoute = MemberCache();
 local function GetMoveAlongRoute(Owner) return Owner.MoveAlongRoute; end
 function SharedBehaviors.UsesEngineMover(Owner)
@@ -811,7 +853,9 @@ function SharedBehaviors.ScanForTargets(AI, Owner, skill, fovDegrees, budget)
 	local fighting = AI.Target ~= nil;
 	-- (Started by the unit's unique ID, so units made together don't all scan on the same tick; see StaggerMS.)
 	AI.scanTick = (AI.scanTick or Owner.UniqueID % 12) + 1;
-	if not fighting and AI.scanTick % 3 ~= 0 then
+	-- (Every tick too while alert: a unit that heard a shot or was shot at is looking for who did it.)
+	local alert = not fighting and SharedBehaviors.IsAlert(AI);
+	if not fighting and not alert and AI.scanTick % 3 ~= 0 then
 		return nil;
 	end
 	-- (A field given as a function is worked out only now that the scan looks.)
@@ -835,6 +879,10 @@ function SharedBehaviors.ScanForTargets(AI, Owner, skill, fovDegrees, budget)
 	local spotting = SettingsMan.AICombatSpotting;
 	if spotting ~= 1 then
 		rate = rate * spotting;
+	end
+	-- (Half as quick again while alert: it knows something is out there.)
+	if alert then
+		rate = rate * 1.5;
 	end
 	local noticed, noticedHit, noticedVisibility, noticedID;
 	local current, currentHit, currentID;
@@ -3888,6 +3936,7 @@ end
 -- player owns (it is only turned to look), not one told to hold, and not while falling back or flanking.
 function SharedBehaviors.RememberUpdate(AI, Owner)
 	SharedBehaviors.InvestigateUpdate(AI, Owner);
+	SharedBehaviors.NoiseUpdate(AI, Owner);
 	SharedBehaviors.FaceKnownOnLeaving(AI, Owner);
 	if AI.Target or AI.UnseenTarget or AI.Flank or AI.Retreat or AI.Investigate or not SharedBehaviors.CanRemember() then
 		return;
@@ -3924,6 +3973,40 @@ function SharedBehaviors.RememberUpdate(AI, Owner)
 	SharedBehaviors.Trace(Owner, "investigate: to " .. math.floor(Last.X) .. "," .. math.floor(Last.Y));
 end
 
+-- Going to look at a noise it heard and couldn't see (the Go and look at noises setting): once its watch that way is over (FaceAlarm) with
+-- nothing found, a unit out on patrol or hunting goes carefully toward it, up to 10 seconds or until it is about 150 px off, then takes up its
+-- order again (InvestigateUpdate, as for checking a last sighting). Not a unit a player owns, a sentry, one told to hold or on a move order,
+-- one on the objective or busy fighting, falling back or flanking; those keep to watching. A noise not followed up within 8 seconds is let go.
+function SharedBehaviors.NoiseUpdate(AI, Owner)
+	local Noise = AI.HeardNoise;
+	if not Noise then
+		return;
+	end
+	if AI.Target or AI.UnseenTarget or Noise.Timer:IsPastSimMS(8000) then
+		AI.HeardNoise = nil;
+		return;
+	end
+	if SharedBehaviors.IsAlert(AI) then
+		return; -- still watching that way
+	end
+	AI.HeardNoise = nil;
+	if not SettingsMan.AICombatInvestigateNoises or AI.isPlayerOwned or Owner.OrderHold or AI.Flank or AI.Retreat or AI.Investigate or
+	   SharedBehaviors.OnObjective(Owner) or SharedBehaviors.Rushing(Owner) or
+	   not (Owner.AIMode == Actor.AIMODE_PATROL or Owner.AIMode == Actor.AIMODE_BRAINHUNT) or SharedBehaviors.OrderKind(Owner) == "move" then
+		return;
+	end
+	local distance = SceneMan:ShortestDistance(Owner.Pos, Noise.Pos, false).Magnitude;
+	if distance < 150 then
+		return;
+	end
+	AI.Investigate = { Keep = SharedBehaviors.RememberOrder(AI, Owner), Spot = Vector(Noise.Pos.X, Noise.Pos.Y), Timer = Timer(), MaxMS = 10000, Within = 150, Careful = true };
+	Owner:SetNumberValue("AIInvestigate", 1);
+	Owner:ClearAIWaypoints();
+	Owner:AddAISceneWaypoint(AI.Investigate.Spot);
+	Owner.AIMode = Actor.AIMODE_GOTO;
+	SharedBehaviors.Trace(Owner, "heard a noise: going to look at " .. math.floor(Noise.Pos.X) .. "," .. math.floor(Noise.Pos.Y));
+end
+
 -- Checking where a player's unit was last seen: over on arrival, after 20 seconds, on meeting an enemy (the fight takes over and the order
 -- comes back after), or on another order.
 function SharedBehaviors.InvestigateUpdate(AI, Owner)
@@ -3936,8 +4019,8 @@ function SharedBehaviors.InvestigateUpdate(AI, Owner)
 		AI.Investigate = nil;
 		return;
 	end
-	local arrived = SceneMan:ShortestDistance(Owner.Pos, AI.Investigate.Spot, false):MagnitudeIsLessThan(Owner.MoveHeight);
-	if arrived or AI.Target or AI.Investigate.Timer:IsPastSimMS(20000) then
+	local arrived = SceneMan:ShortestDistance(Owner.Pos, AI.Investigate.Spot, false):MagnitudeIsLessThan(AI.Investigate.Within or Owner.MoveHeight);
+	if arrived or AI.Target or AI.Investigate.Timer:IsPastSimMS(AI.Investigate.MaxMS or 20000) then
 		SharedBehaviors.Trace(Owner, "investigate: " .. (arrived and "there" or (AI.Target and "found an enemy" or "gave up")));
 		AI.InvestigatedPos = AI.Investigate.Spot;
 		Owner:RemoveNumberValue("AIInvestigate");

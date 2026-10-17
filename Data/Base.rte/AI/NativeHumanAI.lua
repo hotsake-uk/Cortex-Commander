@@ -155,6 +155,8 @@ function NativeHumanAI:Update(Owner)
 			self.Flank = nil;
 			self.Retreat = nil;
 			self.Investigate = nil;
+			self.HeardNoise = nil;
+			self.AlertTimer = nil;
 			Owner:RemoveNumberValue("AIRetreat");
 			Owner:RemoveNumberValue("AIFlank");
 			Owner:RemoveNumberValue("AIInvestigate");
@@ -436,7 +438,8 @@ function NativeHumanAI:Update(Owner)
 	-- We also have a small random chance to walk for a lil bit
 	local wasAlarmed = AlarmPoint.Largest > 0;
 	if wasAlarmed or self.RunStateTimer:IsPastSimTimeLimit() then
-		self.running = self.Target == nil and not wasAlarmed and math.random() < 0.6;
+		-- (Not while going to look at a noise: it goes carefully.)
+		self.running = self.Target == nil and not wasAlarmed and not (self.Investigate and self.Investigate.Careful) and math.random() < 0.6;
 		self.RunStateTimer:Reset();
 	end
 
@@ -698,6 +701,9 @@ function NativeHumanAI:Update(Owner)
 		elseif AlarmPoint.Largest > 0 then
 			if not self.Target and not self.UnseenTarget then
 				self.AlarmPos = Vector(AlarmPoint.X, AlarmPoint.Y);
+				-- (Alert a while, looking for who it was: see SharedBehaviors.IsAlert.)
+				self.AlertTimer = self.AlertTimer or Timer();
+				self.AlertTimer:Reset();
 				self:CreateFaceAlarmBehavior(Owner);
 			else
 				-- is the alarm generated from behind us?
@@ -725,9 +731,10 @@ function NativeHumanAI:Update(Owner)
 					self.useMedikit = false;
 					Owner:EquipFirearm(true);
 				end
-				if self.AlarmTimer:IsPastSimTimeLimit() and SharedBehaviors.ProcessAlarmEvent(self, Owner) then
-					self.AlarmTimer:Reset();
-				end
+			end
+			-- (Hurt ones too, unless patching themselves up: a unit under half its health never heard another shot.)
+			if not self.useMedikit and self.AlarmTimer:IsPastSimTimeLimit() and SharedBehaviors.ProcessAlarmEvent(self, Owner) then
+				self.AlarmTimer:Reset();
 			end
 		end
 	end
@@ -757,7 +764,9 @@ function NativeHumanAI:Update(Owner)
 		SharedBehaviors.SquadTactics(self, Owner);
 		SharedBehaviors.CrowdingUpdate(self, Owner);
 		SharedBehaviors.FlankUpdate(self, Owner);
-		HumanBehaviors.ShotFromUnseen(self, Owner, hit and AlarmPoint);
+		-- (Shot at counts as well as hit: a shot cracking past or smacking into the wall beside it, Actor::ShotPassing.)
+		local shotAt = hit or (SharedBehaviors.ShotAtAgeMS(Owner) <= TimerMan.AIDeltaTimeMS + TimerMan.DeltaTimeMS);
+		HumanBehaviors.ShotFromUnseen(self, Owner, shotAt and AlarmPoint);
 		HumanBehaviors.UseTheWorld(self, Owner);
 		HumanBehaviors.SpellUpdate(self, Owner);
 		HumanBehaviors.SupportSpellUpdate(self, Owner);

@@ -1643,12 +1643,19 @@ void MovableMan::Update() {
 		m_SortTeamRoster[team] = false;
 	}
 
-	// Move all last frame's alarm events into the proper buffer, and clear out the new one to fill up with this frame's
-	for (AlarmEvent* alarmEvent: m_AlarmEvents) {
-		delete alarmEvent;
-	}
-	m_AlarmEvents.clear();
+	// Move all last frame's alarm events into the proper buffer, and clear out the new one to fill up with this frame's.
+	// (Each stays for one AI update interval: AIs think only every so many frames, staggered, and a single shot heard for one frame was missed by
+	// every unit not thinking on that frame, half of them at the default interval of 2.)
+	std::erase_if(m_AlarmEvents, [](AlarmEvent* alarmEvent) {
+		if (--alarmEvent->m_FramesLeft <= 0) {
+			delete alarmEvent;
+			return true;
+		}
+		return false;
+	});
+	const int alarmFrames = std::max(1, g_SettingsMan.GetAIUpdateInterval());
 	for (std::vector<AlarmEvent*>::iterator aeItr = m_AddedAlarmEvents.begin(); aeItr != m_AddedAlarmEvents.end(); ++aeItr) {
+		(*aeItr)->m_FramesLeft = alarmFrames;
 		m_AlarmEvents.push_back(*aeItr);
 	}
 	m_AddedAlarmEvents.clear();

@@ -349,6 +349,8 @@ namespace RTE {
 			float TargetMemory = 1.0F; //!< How long they keep on a target after losing sight of it, 0.25 to 4: each behaviour's own time (about a second while shooting) is multiplied by it. 1: as the game comes.
 			float GrenadeUse = 1.0F; //!< The chance, 0 to 1, they take a grenade or thrown weapon throw the AI judges worth making. 1: every one, as the game comes.
 			float Burst = 1.0F; //!< How long an automatic stays on the trigger in each burst, 0.5 to 2. 1: as the game comes.
+			float Hearing = 1.0F; //!< How far they hear gunfire, blasts and footsteps, 0.25 to 3: the hearing range is multiplied by it. 1: as the game comes.
+			bool InvestigateNoises = true; //!< Whether a unit that hears fighting it can't see (and isn't a sentry or under orders) goes a short way toward it to look.
 		};
 
 		/// Gets the AI combat tuning, to read or change ("AI combat" settings).
@@ -365,6 +367,8 @@ namespace RTE {
 		float AICombatTargetMemory() const { return m_AICombat.TargetMemory; }
 		float AICombatGrenadeUse() const { return m_AICombat.GrenadeUse; }
 		float AICombatBurst() const { return m_AICombat.Burst; }
+		float AICombatHearing() const { return m_AICombat.Hearing; }
+		bool AICombatInvestigateNoises() const { return m_AICombat.InvestigateNoises; }
 
 		/// The late-battle slowdown fixes ("Performance" in the settings panel), each with a switch so it can be tried against the old behaviour: things a battle
 		/// leaves behind (blood pools, wrecks, debris, gas, scattered terrain changes) that kept costing every frame after the fighting, all actors gone or not.

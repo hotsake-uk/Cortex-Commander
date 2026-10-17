@@ -53,6 +53,8 @@ namespace RTE {
 		Activity::Teams m_Team;
 		// The range multiplier, that this alarming event can be heard
 		float m_Range;
+		// How many more sim frames it stays in AlarmEvents: one AI update interval, so every unit's AI (which thinks every so many frames, not every frame) gets to hear it.
+		int m_FramesLeft = 1;
 	};
 
 	/// The singleton manager of all movable objects in the RTE.
