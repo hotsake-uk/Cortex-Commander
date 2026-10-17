@@ -475,5 +475,7 @@ window.MS = window.MS || {};
 		}
 	}
 
-	MS.popout = { announce, request, winId, begin, run, pop, restore, register, canMove, pack, saved, elsewhere, closeWindow, dragStart, dragEnd, drop, isTabDrag };
+	// the tab being dragged in this window (to drop in the other group of tabs), or null
+	const draggingTab = () => (dragging ? dragging.tab : null);
+	MS.popout = { announce, draggingTab, request, winId, begin, run, pop, restore, register, canMove, pack, saved, elsewhere, closeWindow, dragStart, dragEnd, drop, isTabDrag };
 })();

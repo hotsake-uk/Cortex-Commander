@@ -861,7 +861,25 @@ window.MS = window.MS || {};
 		button.className = 'tb';
 		button.textContent = '◫ Side by side';
 		button.title = 'Show two design tabs side by side: changes to one (a gun\'s grip) show in the other (the unit holding it) as you make them';
-		button.onclick = () => app.setSplit(!app.split);
+		button.onclick = () => {
+			// the other design tab into the right group of tabs, or the right group's design tabs back
+			const ide = MS.ide;
+			const right = ide.tabs.filter((t) => t.kind === 'designer' && t.group === 1);
+			if (right.length) {
+				right.forEach((t) => ide.moveToGroup(t, 0, true));
+				ide.renderTabs();
+				return;
+			}
+			const current = ide.currentDesigner;
+			const other = app.recentDesigners.find((t) => t !== current && ide.tabs.includes(t) && t.designer && t.designer.actor)
+				|| ide.tabs.find((t) => t.kind === 'designer' && t !== current && t.designer && t.designer.actor);
+			if (!current || !other) {
+				app.toast('Open a second thing first (each opens in its own design tab), then show them side by side.', 'bad');
+				return;
+			}
+			ide.moveToGroup(other, 1);
+			ide.activate(current);
+		};
 		$('viewTools').append(button);
 	}
 
@@ -872,7 +890,7 @@ window.MS = window.MS || {};
 		const ide = MS.ide;
 		let pane = app.split ? app.panes.find((p) => p.tab === tab) : null;
 		if (!pane) {
-			pane = app.split ? app.panes.find((p) => p.view === app.view) || app.panes[0] : app.panes[0];
+			pane = app.split ? app.panes[tab.group === 1 ? 1 : 0] : app.panes[0];
 			if (pane.tab && pane.tab !== tab && pane.tab.designer) {
 				pane.tab.designer.viewState = { zoom: pane.view.zoom, pan: Object.assign({}, pane.view.pan) };
 			}
@@ -939,29 +957,74 @@ window.MS = window.MS || {};
 		app.requestDraw();
 	};
 
+	// The right group of tabs' designer (or null: none): drawn in its own view, the second one, which moves into the right group, beside the
+	// main group's designer in the first.
+	app.secondPane = function (tab) {
+		const pane = app.panes[1];
+		if (!pane) {
+			return;
+		}
+		const view = pane.view;
+		const canvas = $('view2');
+		const keep = (t) => {
+			if (t && t.designer) {
+				t.designer.viewState = { zoom: view.zoom, pan: Object.assign({}, view.pan) };
+			}
+		};
+		if (tab) {
+			if (canvas.parentNode !== $('g2View')) {
+				$('g2View').append(canvas);
+			}
+			canvas.hidden = false;
+			$('viewWrap').classList.remove('split');
+			if (pane.tab !== tab) {
+				keep(pane.tab);
+				pane.tab = tab;
+				if (tab.designer.viewState) {
+					view.zoom = tab.designer.viewState.zoom;
+					view.pan = Object.assign({}, tab.designer.viewState.pan);
+				}
+				app.split = true;
+				if (tab.designer.actor) {
+					app.withDesigner(tab.designer, () => rebuildRig(false), view);
+				}
+				if (!tab.designer.viewState) {
+					requestAnimationFrame(() => app.withDesigner(tab.designer, () => view.fit(), view));
+				}
+			}
+			app.split = true;
+		} else if (pane.tab) {
+			keep(pane.tab);
+			pane.tab = null;
+			app.split = false;
+			if (app.view === view) {
+				const main = app.panes[0].tab;
+				app.view = app.panes[0].view;
+				if (main && main.designer) {
+					MS.ide.currentDesigner = main;
+					app.designer = main.designer;
+				}
+			}
+		}
+		$('btnSplit').classList.toggle('sel', !!pane.tab);
+		drawPaneLabels();
+		app.requestDraw();
+	};
+
 	// A design tab closed: out of the views (two views become one if it was in one).
 	app.designerClosed = function (tab) {
 		app.recentDesigners = app.recentDesigners.filter((t) => t !== tab);
-		if (app.split && app.panes.some((p) => p.tab === tab)) {
-			const keep = app.panes.find((p) => p.tab !== tab);
-			app.panes.forEach((p) => {
-				if (p.tab === tab) {
-					p.tab = null;
-				}
-			});
-			if (keep && keep.tab) {
-				MS.ide.currentDesigner = keep.tab;
-				app.designer = keep.tab.designer;
-				app.view = keep.view;
-			}
-			app.setSplit(false);
+		if (app.panes[1] && app.panes[1].tab === tab) {
+			app.secondPane(null); // the right group's designer: its view goes
+		} else if (app.panes[0] && app.panes[0].tab === tab) {
+			app.panes[0].tab = null;
 		}
 	};
 
 	function drawPaneLabels() {
 		app.panes.forEach((pane) => {
 			const d = pane.tab && pane.tab.designer;
-			pane.label.hidden = !app.split || !d;
+			pane.label.hidden = true; // each group of tabs has its own bar, which says what it shows
 			if (d) {
 				pane.label.textContent = (d.actor ? d.actor.name : 'Designer') + (pane.view === app.view ? '' : '  (click to edit)');
 				pane.label.classList.toggle('on', pane.view === app.view);
