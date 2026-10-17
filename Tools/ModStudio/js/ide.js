@@ -23,6 +23,8 @@ window.MS = window.MS || {};
 	const extOf = (p) => (/\.([^./]+)$/.exec(p) || [])[1] ? /\.([^./]+)$/.exec(p)[1].toLowerCase() : '';
 	const CONSOLE_FILE = 'ModStudio/Console.log';
 	const WATCH_FILE = 'ModStudio/Watch.ini';
+	let watchText = null; // what the watch panel shows, to draw it again only when it changes
+	let watchEmpty = 0; // reads in a row that found the file empty
 	const SCRIPTS_FILE = 'ModStudio/Scripts.ini';
 	const RUN_FILE = 'ModStudio/Run.lua';
 	const TEXT_EXT = new Set(['lua', 'ini', 'txt', 'cfg', 'md', 'json', 'xml', 'csv']);
@@ -1950,6 +1952,13 @@ window.MS = window.MS || {};
 		try {
 			const response = await app.fs.api('GET', 'file', WATCH_FILE);
 			const text = response ? await response.text() : '';
+			// An empty read is most often the game rewriting the file: the values on screen stay, unless it stays empty (the game stopped).
+			watchEmpty = text.trim() ? 0 : watchEmpty + 1;
+			if (text === watchText || (!text.trim() && watchEmpty < 8)) {
+				watchTimer = setTimeout(pollWatch, 400);
+				return;
+			}
+			watchText = text;
 			const rows = text.split(/\r?\n/).filter((l) => l.includes(' = '));
 			body.innerHTML = '';
 			if (!rows.length) {

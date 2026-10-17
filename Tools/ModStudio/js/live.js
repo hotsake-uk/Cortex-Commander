@@ -321,9 +321,10 @@ window.MS = window.MS || {};
 		try {
 			const response = await app().fs.api('GET', 'file', VALUES_FILE);
 			const text = response ? await response.text() : '';
-			if (text !== lastText) {
+			// The game rewrites the file as values come in: a read that lands while it is being written (empty, or cut short) changes nothing
+			// on screen, and values are updated in place rather than wiped and drawn again (which made them flash).
+			if (text.trim() && text !== lastText) {
 				lastText = text;
-				L.values.clear();
 				for (const line of text.split('\n')) {
 					const at = line.indexOf(' = ');
 					if (at < 0) {
