@@ -199,9 +199,9 @@ window.MS = window.MS || {};
 			const chip = (id, text) => el('button', { className: s.view === id ? 'sel' : '', textContent: text, onclick: () => { s.view = id; MS.ide.refreshForm(); } });
 			const selected = guns.find((p) => keyOf(p) === s.selected) || shown[0] || null;
 			host.replaceChildren(el('div', { className: 'ed ed-split' },
-				el('div', { className: 'ed-head' }, el('h2', { textContent: 'Weapons · ' + module }), el('span', { className: 'chips' }, chip('table', 'Balance table'), chip('gun', 'One gun')), el('span', { className: 'spacer' }), filter),
+				el('div', { className: 'ed-head' }, el('h2', { textContent: 'Weapons · ' + module }), el('span', { className: 'chips' }, chip('table', 'Balance table'), chip('sounds', 'Sounds'), chip('gun', 'One gun')), el('span', { className: 'spacer' }), filter),
 				guns[0] && locked(guns[0].doc) ? el('div', { className: 'ed-banner', textContent: module + ' is read only: guns can be compared here. Make my own copy of one to change it.' }) : null,
-				s.view === 'table' ? table(shown, s, keyOf) : gunView(shown, selected, s, keyOf, module)));
+				s.view === 'table' ? table(shown, s, keyOf) : s.view === 'sounds' ? soundTable(shown, s, keyOf) : gunView(shown, selected, s, keyOf, module)));
 		};
 	}
 
@@ -241,6 +241,84 @@ window.MS = window.MS || {};
 			})));
 		return el('div', { className: 'ed-detail wide' },
 			el('p', { className: 'ed-note', textContent: 'Estimates from each gun\'s numbers, for comparing guns. Click a heading to sort, a row to open the gun. Warmer cells are the bigger numbers.' }),
+			guns.length ? el('table', { className: 'wtable' }, el('thead', {}, head), el('tbody', {}, ...body)) : el('p', { className: 'ed-empty', textContent: 'No guns in this mod.' }));
+	}
+
+	// ---- the sounds of every gun side by side ----
+
+	const SOUND_SLOTS = [['FireSound', 'Fire'], ['EmptySound', 'Empty'], ['ReloadStartSound', 'Reload start'], ['ReloadEndSound', 'Reload end']];
+
+	// One gun's sounds: for each slot the container (or null), its files, and the numbers that say how it is heard.
+	function soundsOf(p) {
+		const gun = app().lib.resolve(p.node);
+		const out = {};
+		for (const [key] of SOUND_SLOTS) {
+			const sound = gun.sub(key);
+			out[key] = sound ? { sound, files: MS.editors.soundFiles(sound) } : null;
+		}
+		const fire = out.FireSound && out.FireSound.sound;
+		return {
+			slots: out,
+			variants: out.FireSound ? out.FireSound.files.length : 0,
+			reach: fire ? Number(fire.str('AttenuationStartDistance', '0')) || 0 : 0,
+			volume: fire ? Number(fire.str('Volume', '1')) || 1 : 0,
+			pitch: fire ? Number(fire.str('Pitch', '1')) || 1 : 0,
+			pitchVar: fire ? Number(fire.str('PitchVariation', '0')) || 0 : 0,
+			priority: fire ? Number(fire.str('Priority', '128')) || 0 : 0,
+		};
+	}
+
+	const SOUND_COLUMNS = [
+		['variants', 'Fire variants', 'Different recordings the fire sound picks from'],
+		['reach', 'Heard from', 'Pixels it carries at full volume before it fades (AttenuationStartDistance)'],
+		['volume', 'Volume', '1 is as recorded'],
+		['pitch', 'Pitch', '1 is as recorded'],
+		['pitchVar', 'Pitch var', 'Random change each shot'],
+		['priority', 'Priority', '0 is most important, 256 least'],
+	];
+
+	function soundTable(guns, s, keyOf) {
+		const rows = guns.map((p) => ({ p, snd: soundsOf(p) }));
+		const key = s.soundSort || 'reach';
+		const value = (r) => (key === 'name' ? 0 : r.snd[key] || 0);
+		rows.sort((x, y) => (key === 'name' ? x.p.name.localeCompare(y.p.name) : value(x) - value(y)) * (s.soundDesc === false ? 1 : -1));
+		const sort = (k) => {
+			s.soundDesc = s.soundSort === k ? !(s.soundDesc !== false) : k !== 'name';
+			s.soundSort = k;
+			MS.ide.refreshForm();
+		};
+		const max = {};
+		for (const [k] of SOUND_COLUMNS) {
+			max[k] = Math.max(1e-9, ...rows.map((r) => r.snd[k] || 0));
+		}
+		const head = el('tr', {}, el('th', { textContent: 'Gun', onclick: () => sort('name') }),
+			...SOUND_COLUMNS.map(([k, text, help]) => el('th', { textContent: text + (key === k ? (s.soundDesc === false ? ' ▲' : ' ▼') : ''), title: help, className: 'wn', onclick: () => sort(k) })),
+			...SOUND_SLOTS.map(([k, text]) => el('th', { textContent: text, className: 'wn', title: 'Click ▶ to hear it' })));
+		const body = rows.map((r) => el('tr', { onclick: () => { s.selected = keyOf(r.p); s.view = 'gun'; MS.ide.refreshForm(); } },
+			el('td', { textContent: r.p.name }),
+			...SOUND_COLUMNS.map(([k]) => {
+				const v = r.snd[k];
+				const cell = el('td', { className: 'wn', textContent: v ? (v % 1 ? v.toFixed(2) : String(v)) : '·' });
+				if (v > 0) {
+					cell.style.background = 'rgba(91, 192, 235, ' + (0.05 + 0.3 * (v / max[k])).toFixed(2) + ')';
+				}
+				return cell;
+			}),
+			...SOUND_SLOTS.map(([k]) => {
+				const slot = r.snd.slots[k];
+				const cell = el('td', { className: 'wn' });
+				if (slot && slot.files.length) {
+					cell.append(el('button', { className: 'ico-btn', textContent: '▶', title: slot.files.length + ' file' + (slot.files.length > 1 ? 's' : '') + ': click to hear one', onclick: (e) => {
+						e.stopPropagation();
+						MS.editors.play(slot.files[Math.floor(Math.random() * slot.files.length)].path, slot.sound);
+					} }));
+				} else {
+					cell.textContent = '·';
+				}
+				return cell;
+			})));
+		return el('div', { className: 'ed-detail wide' },
+			el('p', { className: 'ed-note', textContent: 'How each gun sounds. Bluer cells are bigger numbers; ▶ plays one of the recordings with its volume and pitch. Click a row to open the gun.' }),
 			guns.length ? el('table', { className: 'wtable' }, el('thead', {}, head), el('tbody', {}, ...body)) : el('p', { className: 'ed-empty', textContent: 'No guns in this mod.' }));
 	}
 
