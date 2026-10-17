@@ -106,7 +106,7 @@ window.MS = window.MS || {};
 		switch (n.kind) {
 			case 'message': {
 				const who = a.who === 'all' || a.who === undefined ? 'true' : 'player == ' + luaNum(a.who);
-				return ['for player = 0, 3 do', '\tif self:PlayerActive(player) and self:PlayerHuman(player) and (' + who + ') then', '\t\tlocal screen = self:ScreenOfPlayer(player)', '\t\tFrameMan:ClearScreenText(screen)', '\t\tFrameMan:SetScreenText(' + text(a.text) + ', screen, 0, ' + luaNum(Number(a.seconds) * 1000) + ', false)', '\tend', 'end'];
+				return ['for player = 0, 3 do', '\tif self:PlayerActive(player) and self:PlayerHuman(player) and (' + who + ') then', '\t\tlocal screen = self:ScreenOfPlayer(player)', '\t\tFrameMan:ClearScreenText(screen)', '\t\tFrameMan:SetScreenText(' + text(a.text) + ', screen, ' + (a.blink ? 500 : 0) + ', ' + luaNum(Number(a.seconds) * 1000) + ', false)', '\tend', 'end'];
 			}
 			case 'gold': return ['self:ChangeTeamFunds(' + valueLua(a.amount) + ', ' + luaNum(a.team) + ')'];
 			case 'spawn': return spawnLua(a);
@@ -137,10 +137,24 @@ window.MS = window.MS || {};
 				if (a.do === 'hideAll') {
 					return ['SceneMan:MakeAllUnseen(Vector(4, 4), ' + luaNum(a.team) + ')'];
 				}
+				if (a.do === 'surface') {
+					return ['local height = SceneMan.Scene.Height', 'for x = 0, SceneMan.Scene.Width - 1, 4 do', '\tlocal altitude = Vector()',
+						'\tSceneMan:CastTerrainPenetrationRay(Vector(x, 0), Vector(0, height), altitude, 50, 0)',
+						'\tif altitude.Y > 1 then SceneMan:RevealUnseenBox(x - 10, 0, 24, altitude.Y + 10, ' + luaNum(a.team) + ') end', 'end'];
+				}
 				const fn = a.do === 'hide' ? 'RestoreUnseenBox' : 'RevealUnseenBox';
 				return ['local zone = ' + area(a.area), 'if zone then', '\tfor box in zone.Boxes do', '\t\tSceneMan:' + fn + '(box.Corner.X, box.Corner.Y, box.Width, box.Height, ' + luaNum(a.team) + ')', '\tend', 'end'];
 			}
 			case 'lz': return ['local zone = ' + area(a.area), 'if zone then self:SetLZArea(' + luaNum(a.team) + ', zone) end'];
+			case 'placeObject': {
+				const parts = String(a.object || '').split('|');
+				const spot = a.at === 'centre' ? 'box.Center' : 'box.Corner';
+				return ['local zone = ' + area(a.area), 'if zone then', '\tfor box in zone.Boxes do',
+					'\t\tlocal object = CreateTerrainObject(' + luaStr(parts[0]) + ', ' + luaStr(parts[1] || 'Base.rte') + ')',
+					'\t\tif object then', '\t\t\tobject.Pos = SceneMan:SnapPosition(' + spot + ', true)', '\t\t\tSceneMan:AddSceneObject(object)', '\t\tend',
+					...(a.at === 'every' ? [] : ['\t\tbreak']), '\tend', 'end'];
+			}
+			case 'cameraLimit': return ['st.cameraMinX = ' + luaNum(a.x)];
 			case 'buyMenu': return ['self.BuyMenuEnabled = ' + (a.on ? 'true' : 'false')];
 			case 'setFunds': return ['self:SetTeamFunds(' + valueLua(a.amount) + ', ' + luaNum(a.team) + ')'];
 			case 'income': return ['st.income[' + luaNum(a.team) + '] = ' + valueLua(a.amount)];
@@ -262,7 +276,7 @@ window.MS = window.MS || {};
 		const parts = String(a.preset || '').split('|');
 		const make = source === 'group' ? 'studioUnit(' + luaStr(a.group) + ', tech)'
 			: source === 'loadout' ? 'PresetMan:GetLoadout(' + luaStr(a.loadout) + ', tech, false)'
-			: 'Create' + (parts[0] === 'ACrab' ? 'ACrab' : 'AHuman') + '(' + luaStr(parts[1] || '') + ', ' + luaStr(parts[2] || 'Base.rte') + ')';
+			: 'Create' + (['ACrab', 'Actor', 'ADoor', 'AHuman'].includes(parts[0]) ? parts[0] : 'AHuman') + '(' + luaStr(parts[1] || '') + ', ' + luaStr(parts[2] || 'Base.rte') + ')'; // the preset's own class (a Brain Case is an Actor)
 		const mode = a.ai || 'sentry';
 		const L = [
 			'local where = ' + area(a.area),
@@ -273,6 +287,11 @@ window.MS = window.MS || {};
 			a.perBox ? '\tfor box in where.Boxes do spots[#spots + 1] = box.Center end' : '\tfor i = 1, math.floor(' + valueLua(a.count) + ' + 0.5) do spots[#spots + 1] = where.RandomPoint end',
 		];
 		const ship = a.arrive === 'dropship' || a.arrive === 'rocket';
+		const door = a.arrive === 'door';
+		if (door) {
+			// one door per box of the area (stamped into the wall the first time), the units shared out among them and stepping out once it has opened
+			L.push('\tlocal doors = {}', '\tfor box in where.Boxes do doors[#doors + 1] = studioDoor(st, box) end', '\tlocal n = 0');
+		}
 		if (ship) {
 			const kind = a.arrive === 'rocket' ? 'RandomACRocket' : 'RandomACDropShip';
 			L.push('\tlocal craft = ' + kind + '("Craft", tech) or ' + kind + '("Craft", "Base.rte")', '\tif craft then', '\t\tcraft.Team = ' + luaNum(a.team), '\t\tcraft.Pos = Vector(where.Center.X, -50)', '\t\tcraft.AIMode = Actor.AIMODE_DELIVER');
@@ -284,6 +303,8 @@ window.MS = window.MS || {};
 		}
 		if (a.facing === 'left' || a.facing === 'right') {
 			L.push(pre + '\t\tunit.HFlipped = ' + (a.facing === 'left' ? 'true' : 'false'));
+		} else if (a.facing === 'middle') {
+			L.push(pre + '\t\tunit.HFlipped = spot.X > where.Center.X');
 		}
 		if (mode === 'goto') {
 			L.push(pre + '\t\tif target then unit:AddAISceneWaypoint(target.Center) end');
@@ -291,7 +312,7 @@ window.MS = window.MS || {};
 		if (a.tag) {
 			L.push(pre + '\t\tunit:AddToGroup(' + luaStr(a.tag) + ')');
 		}
-		L.push(...(ship ? [pre + '\t\tcraft:AddInventoryItem(unit)'] : [pre + '\t\tunit.Pos = spot', pre + '\t\tMovableMan:AddActor(unit)']), pre + '\tend', pre + 'end');
+		L.push(...(ship ? [pre + '\t\tcraft:AddInventoryItem(unit)'] : door ? [pre + '\t\tn = n + 1', pre + '\t\tlocal d = doors[(n - 1) % #doors + 1]', pre + '\t\ttable.insert(d.units, unit)'] : [pre + '\t\tunit.Pos = spot', pre + '\t\tMovableMan:AddActor(unit)']), pre + '\tend', pre + 'end');
 		if (ship) {
 			L.push('\t\tMovableMan:AddActor(craft)', '\tend');
 		}
@@ -366,6 +387,11 @@ window.MS = window.MS || {};
 			case 'battleObjective': return ['if studioBattleEvent(st, "objective", ' + team + ') then fire = true end'];
 			case 'battleEnded': return ['if studioBattleEvent(st, "ended", ' + team + ') then fire = true end'];
 			case 'varReaches': return ['local reached = (st.vars[' + luaStr(a.name) + '] or 0) ' + opOf(a.op) + ' ' + valueLua(a.value), 'if reached and not st.prev[' + k + '] then fire = true end', 'st.prev[' + k + '] = reached'];
+			case 'captureAttacked': return [
+				'local c = st.cap[' + luaStr(a.target) + ']', 'local now = st.clock.ElapsedSimTimeS',
+				'local attacked = c ~= nil and c.active and c.progress > 0',
+				'if attacked and not st.prev[' + k + '] and now >= (st.next[' + k + '] or 0) then fire = true; st.next[' + k + '] = now + ' + valueLua(a.cooldown) + ' end',
+				'st.prev[' + k + '] = attacked'];
 			case 'captureChanged': return ['for _, e in ipairs(st.capNow) do if e.id == ' + luaStr(a.target) + ' and (' + team + ' < 0 or e.team == ' + team + ') then fire = true end end'];
 			case 'groupGone': return latch(['local alive = studioGroupCount(' + luaStr(a.group) + ')', 'if alive > 0 then st.seen[' + k + '] = true end', 'if st.seen[' + k + '] and alive == 0 then fire = true end']);
 			case 'unitDies': return [
@@ -481,7 +507,9 @@ window.MS = window.MS || {};
 				'-- What a unit carries: a random unit of a group comes with nothing, so it is given weapons of its tech (as the game\'s missions do).',
 				'local function studioItem(make, group, tech)', '\tlocal item = make(group, tech)', '\tif not item then item = make(group, "Base.rte") end', '\treturn item', 'end',
 				'local function studioArm(unit, arm, tech)', '\tif not unit or arm == "none" then return end',
-				'\tlocal first = studioItem(RandomHDFirearm, arm == "heavy" and "Weapons - Heavy" or "Weapons - Primary", tech) or studioItem(RandomHDFirearm, "Weapons - Light", tech)',
+				'\tif arm == "mix" then local kinds = { "light", "sniper", "heavy", "cqb" }; arm = kinds[math.random(1, 4)] end',
+				'\tlocal firstGroup = ({ heavy = "Weapons - Heavy", sniper = "Weapons - Sniper", cqb = "Weapons - CQB" })[arm] or "Weapons - Primary"',
+				'\tlocal first = studioItem(RandomHDFirearm, firstGroup, tech) or studioItem(RandomHDFirearm, "Weapons - Light", tech)',
 				'\tif first then unit:AddInventoryItem(first) end', '\tlocal second = studioItem(RandomHDFirearm, "Weapons - Secondary", tech)', '\tif second then unit:AddInventoryItem(second) end',
 				'\tif arm == "heavy" then local bomb = studioItem(RandomTDExplosive, "Bombs - Grenades", tech); if bomb then unit:AddInventoryItem(bomb) end end', 'end',
 				'-- A point on the ground below (x, y), for a unit to stand on.',
@@ -513,6 +541,8 @@ window.MS = window.MS || {};
 			'local function studioOwner(st, id)', '\tlocal c = st.cap and st.cap[id]', '\treturn c and c.owner or -2', 'end', '',
 			'-- A capture point, a frame on: progress grows while the side taking it stands in it (and, to start, nobody of the side holding it is in the',
 			'-- area round it), drains when they have gone (if it drains), and the point changes hands when it is full. Returns the new owner when it does.',
+			'-- Whether any human player of a team is choosing a unit (the unit select view), where Decision Day shows its objectives.',
+			'local function studioChoosing(act, team)', '\tfor player = 0, 3 do', '\t\tif act:PlayerActive(player) and act:PlayerHuman(player) and (team < 0 or act:GetTeamOfPlayer(player) == team) and act:GetViewState(player) == Activity.ACTORSELECT then return true end', '\tend', '\treturn false', 'end',
 			'local function studioCaptureStep(self, st, id, cfg)', '\tlocal c = st.cap[id]', '\tif not c then',
 			'\t\tc = { owner = cfg.owner, progress = 0, active = cfg.active }', '\t\tst.cap[id] = c', '\tend', '\tif not c.active then return nil end',
 			'\tlocal zone = studioArea(cfg.area)', '\tif not zone then return nil end', '\tlocal around = studioArea(cfg.region) or zone',
@@ -520,9 +550,50 @@ window.MS = window.MS || {};
 			'\tif c.progress > 0 or (taking and studioCount(c.owner, around) == 0) then',
 			'\t\tlocal rate = (st.dt or 0) / math.max(0.1, cfg.seconds)',
 			'\t\tif taking then c.progress = c.progress + rate elseif cfg.decays then c.progress = math.max(0, c.progress - rate) end', '\tend',
-			'\tif cfg.marker and c.owner ~= cfg.attackers then',
+			'\tif cfg.marker and c.owner ~= cfg.attackers and (cfg.markerWhen ~= "select" or studioChoosing(self, cfg.attackers)) then',
 			'\t\tself:AddObjectivePoint(studioText(st, cfg.text) .. (c.progress > 0 and taker == cfg.attackers and (" " .. math.floor(c.progress * 100) .. "%") or ""), zone.Center, cfg.attackers, GameActivity.ARROWDOWN)', '\tend',
 			'\tif c.progress >= 1 then', '\t\tc.owner = taker', '\t\tc.progress = 0', '\t\treturn taker', '\tend', '\treturn nil', 'end', '',
+			'-- A screen (a particle) in each box of an area, kept by st.screens[key]; made when missing.',
+			'local function studioPreset(text)', '\tlocal name, module = text:match("^([^|]*)|?(.*)$")', '\treturn name, (module ~= "" and module or "Base.rte")', 'end',
+			'local function studioScreens(st, key, areaName, preset)', '\tlocal zone = studioArea(areaName)', '\tif not zone or preset == "" then return {} end', '\tst.screens[key] = st.screens[key] or {}', '\tlocal list = st.screens[key]', '\tlocal i = 0',
+			'\tfor box in zone.Boxes do', '\t\ti = i + 1', '\t\tif not (list[i] and MovableMan:ValidMO(list[i])) then', '\t\t\tlocal name, module = studioPreset(preset)', '\t\t\tlocal screen = CreateMOSParticle(name, module)',
+			'\t\t\tif screen then screen.Pos = box.Center; MovableMan:AddParticle(screen) end', '\t\t\tlist[i] = screen', '\t\tend', '\tend', '\treturn list', 'end',
+			'local function studioScreensGone(st, key, linger)', '\tfor _, screen in ipairs(st.screens[key] or {}) do', '\t\tif MovableMan:ValidMO(screen) then if linger then screen.Lifetime = linger else screen.ToDelete = true end end', '\tend', '\tst.screens[key] = nil', 'end',
+			'-- How a capture point looks in the world, each frame: a screen filling up while it is being taken, a looping screen while the first side holds',
+			'-- it, a terminal stamped on it when it changes hands, and its area painted for the attackers while they choose a unit (over the fog).',
+			'local function studioCaptureLook(self, st, id, cfg, changed)', '\tlocal c = st.cap[id]', '\tif not c then return end', '\tlocal zone = studioArea(cfg.area)',
+			'\tif cfg.progressDisplay ~= "" then',
+			'\t\tif c.active and c.progress > 0 then', '\t\t\tfor _, screen in ipairs(studioScreens(st, id .. "/p", cfg.progressDisplay, cfg.progressScreen)) do',
+			'\t\t\t\tif screen and MovableMan:ValidMO(screen) then screen.Frame = math.min(screen.FrameCount - 1, math.floor(c.progress * screen.FrameCount)); screen.Age = 0 end', '\t\t\tend',
+			'\t\telseif st.screens[id .. "/p"] then studioScreensGone(st, id .. "/p", changed and 2000 or nil) end', '\tend',
+			'\tif cfg.idleDisplay ~= "" then',
+			'\t\tif c.active and c.owner == cfg.owner and c.progress == 0 then studioScreens(st, id .. "/i", cfg.idleDisplay, cfg.idleScreen)',
+			'\t\telseif st.screens[id .. "/i"] then studioScreensGone(st, id .. "/i") end', '\tend',
+			'\tif changed and zone then', '\t\tlocal pick = c.owner == cfg.attackers and cfg.terminalOn or cfg.terminalOff', '\t\tif pick ~= "" then',
+			'\t\t\tlocal around = studioArea(cfg.region) or zone', '\t\t\tlocal side = zone.Center.X >= around.Center.X and "Left" or "Right"', '\t\t\tlocal name, module = studioPreset(pick:gsub("{side}", side))',
+			'\t\t\tlocal terminal = CreateTerrainObject(name, module)', '\t\t\tif terminal then terminal.Pos = SceneMan:SnapPosition(zone.Center, true); SceneMan:AddSceneObject(terminal) end', '\t\tend', '\tend',
+			'\tif cfg.paint and c.active then', '\t\tlocal around = studioArea(cfg.region) or zone',
+			'\t\tif around then', '\t\t\tfor player = 0, 3 do',
+			'\t\t\t\tif self:PlayerActive(player) and self:PlayerHuman(player) and self:GetTeamOfPlayer(player) == cfg.attackers and self:GetViewState(player) == Activity.ACTORSELECT then',
+			'\t\t\t\t\tlocal boxes = {}', '\t\t\t\t\tfor box in around.Boxes do boxes[#boxes + 1] = BoxFillPrimitive(player, box.Corner, Vector(box.Corner.X + box.Width, box.Corner.Y + box.Height), c.owner == cfg.attackers and 147 or 13) end',
+			'\t\t\t\t\tPrimitiveMan:DrawPrimitives(75, boxes)',
+			'\t\t\t\t\tif c.owner == cfg.attackers and cfg.ownedText ~= "" then PrimitiveMan:DrawTextPrimitive(player, around.Center, studioText(st, cfg.ownedText), false, 1) end',
+			'\t\t\t\tend', '\t\t\tend', '\t\tend', '\tend', 'end',
+			'-- Units that come through a door: the door is stamped into the wall the first time (a back wall piece), and each time it opens (a door',
+			'-- particle) the units waiting for it step out once it has finished opening.',
+			'local function studioDoor(st, box)', '\tlocal key = math.floor(box.Corner.X) .. "," .. math.floor(box.Corner.Y)', '\tst.doors[key] = st.doors[key] or { units = {} }', '\tlocal d = st.doors[key]',
+			'\tif not d.built then', '\t\td.built = true', '\t\tlocal wall = CreateTerrainObject("Module Back Middle E", "Base.rte")', '\t\tif wall then wall.Pos = SceneMan:SnapPosition(box.Corner, true); SceneMan:AddSceneObject(wall) end', '\tend',
+			'\tlocal at = SceneMan:SnapPosition(box.Corner, true)', '\td.pos = Vector(at.X + 24, at.Y + 24)', '\treturn d', 'end',
+			'local function studioDoors(self, st)', '\tfor _, d in pairs(st.doors) do',
+			'\t\tif #d.units > 0 and not (d.particle and MovableMan:ValidMO(d.particle)) and not d.opened then',
+			'\t\t\tlocal particle = CreateMOSRotating("Background Door", "Base.rte")', '\t\t\tif particle then particle.Pos = d.pos; particle.Team = d.units[1].Team; MovableMan:AddParticle(particle) end', '\t\t\td.particle = particle', '\t\t\td.opened = true', '\t\tend',
+			'\t\tif #d.units > 0 and d.opened and (not (d.particle and MovableMan:ValidMO(d.particle)) or d.particle.Frame >= d.particle.FrameCount - 1) then',
+			'\t\t\tlocal n = #d.units', '\t\t\tfor i, unit in ipairs(d.units) do', '\t\t\t\tunit.Pos = Vector(d.pos.X + (n > 1 and (-20 + 40 * (i - 1) / (n - 1)) or 0), d.pos.Y)', '\t\t\t\tMovableMan:AddActor(unit)', '\t\t\tend',
+			'\t\t\td.units = {}', '\t\t\td.opened = false', '\t\t\td.particle = nil', '\t\tend', '\tend', 'end',
+			'-- The cameras kept right of a line (Decision Day\'s, which moves left as the attack moves in).',
+			'local function studioCameraLimit(self, st)', '\tif not st.cameraMinX or st.cameraMinX <= 0 then return end', '\tlocal least = st.cameraMinX + 0.5 * (FrameMan.PlayerScreenWidth - 960)',
+			'\tfor player = 0, 3 do', '\t\tif self:PlayerActive(player) and self:PlayerHuman(player) then', '\t\t\tlocal screen = self:ScreenOfPlayer(player)', '\t\t\tlocal at = CameraMan:GetScrollTarget(screen)',
+			'\t\t\tif at.X < least then CameraMan:SetScrollTarget(Vector(least, at.Y), 0.25, screen) end', '\t\tend', '\tend', 'end', '',
 			'-- Saving: the mission\'s state as one line of text (tables of numbers, text and true/false; the game\'s own objects are left out, and a unit',
 			'-- kept by its id is kept as true). Reading it back gives the same tables.',
 			'local function studioEsc(s) return (tostring(s):gsub("[%%;=/]", function(c) return string.format("%%%02X", c:byte()) end)) end',
@@ -535,7 +606,7 @@ window.MS = window.MS || {};
 			'\t\t\tfor i, part in ipairs(parts) do', '\t\t\t\tlocal k = part:sub(1, 1) == "#" and tonumber(part:sub(2)) or part',
 			'\t\t\t\tif i == #parts then at[k] = kind == "n" and tonumber(value) or kind == "b" and value == "1" or studioUnesc(value)', '\t\t\t\telse at[k] = at[k] or {}; at = at[k] end', '\t\t\tend', '\t\tend', '\tend', '\treturn root', 'end', '',
 			'-- Tables a state needs, also for one from an older save.',
-			'local function studioFill(st)', '\tfor _, k in ipairs({ "flags", "inside", "who", "seen", "prev", "next", "done", "once", "vars", "cap", "income", "incomeDue", "say", "alive", "known", "marks", "hold", "ctl", "pieGive", "pieQueue", "piePressed", "overlays" }) do st[k] = st[k] or {} end', 'end', '',
+			'local function studioFill(st)', '\tfor _, k in ipairs({ "flags", "inside", "who", "seen", "prev", "next", "done", "once", "vars", "cap", "income", "incomeDue", "say", "alive", "known", "marks", "hold", "ctl", "pieGive", "pieQueue", "piePressed", "overlays", "screens", "doors" }) do st[k] = st[k] or {} end', 'end', '',
 			'local function studioEnemies(team, region)', '\tlocal n = 0', '\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and actor.Team >= 0 and actor.Team ~= team and region:IsInside(actor.Pos) then n = n + 1 end', '\tend', '\treturn n', 'end', '',
 			'local function studioBrains(team)', '\tlocal n = 0', '\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and actor.Team == team and actor:IsInGroup("Brains") then n = n + 1 end', '\tend', '\treturn n', 'end', '',
 			'-- Pie menu buttons: one slice made per button (CreatePieSlice) and kept on the mission, which the game copies into each unit\'s menu. Using it',
@@ -597,7 +668,7 @@ window.MS = window.MS || {};
 		// saved games: the state goes into the save, and comes back when it is loaded
 		L.push('function ' + cls + ':StudioSave()', '\tlocal st = self.StudioState', '\tif not st then return end',
 			'\tst.clockS = st.clock.ElapsedSimTimeS', '\tst.stageS = st.stageClock and st.stageClock.ElapsedSimTimeS or nil',
-			'\tlocal keep = {}', '\tfor k, v in pairs(st) do if k ~= "clock" and k ~= "stageClock" and k ~= "battleNow" and k ~= "who" and k ~= "capNow" and k ~= "inside" and k ~= "alive" and k ~= "known" and k ~= "ctl" and k ~= "marks" and k ~= "pieQueue" and k ~= "piePressed" then keep[k] = v end end',
+			'\tlocal keep = {}', '\tfor k, v in pairs(st) do if k ~= "clock" and k ~= "stageClock" and k ~= "battleNow" and k ~= "who" and k ~= "capNow" and k ~= "inside" and k ~= "alive" and k ~= "known" and k ~= "ctl" and k ~= "marks" and k ~= "pieQueue" and k ~= "piePressed" and k ~= "screens" and k ~= "doors" then keep[k] = v end end',
 			'\tkeep.inside = {}', '\tfor k, units in pairs(st.inside or {}) do keep.inside[k] = {}; for id in pairs(units) do keep.inside[k][id] = true end end',
 			'\tself:SaveString("StudioFlow", table.concat(studioEncode(keep, nil, {}), ";"))', 'end',
 			'function ' + cls + ':StudioLoad()', '\tlocal text = self:LoadString("StudioFlow")', '\tif not text or text == "" then return end',
@@ -624,7 +695,9 @@ window.MS = window.MS || {};
 		for (const c of captures) {
 			const a = c.p || {};
 			L.push('\tdo -- capture point ' + c.id + ': ' + String(a.name || '').replace(/[\r\n]+/g, ' '),
-				'\t\tlocal taken = studioCaptureStep(self, st, ' + luaStr(c.id) + ', { area = ' + luaStr(a.area) + ', region = ' + luaStr(a.region || '') + ', owner = ' + luaNum(a.owner) + ', attackers = ' + luaNum(a.attackers) + ', seconds = ' + valueLua(a.seconds) + ', decays = ' + (a.decays ? 'true' : 'false') + ', active = ' + (a.active === false ? 'false' : 'true') + ', marker = ' + (a.marker ? 'true' : 'false') + ', text = ' + luaStr(a.text || a.name || 'Capture') + ' })',
+				'\t\tlocal cfg = { area = ' + luaStr(a.area) + ', region = ' + luaStr(a.region || '') + ', owner = ' + luaNum(a.owner) + ', attackers = ' + luaNum(a.attackers) + ', seconds = ' + valueLua(a.seconds) + ', decays = ' + (a.decays ? 'true' : 'false') + ', active = ' + (a.active === false ? 'false' : 'true') + ', marker = ' + (a.marker !== false ? 'true' : 'false') + ', text = ' + luaStr(a.text || a.name || 'Capture') + ', markerWhen = ' + luaStr(a.markerWhen || 'always') + ', paint = ' + (a.paint ? 'true' : 'false') + ', ownedText = ' + luaStr(a.ownedText || '') + ', progressDisplay = ' + luaStr(a.progressDisplay || '') + ', progressScreen = ' + luaStr(a.progressScreen || '') + ', idleDisplay = ' + luaStr(a.idleDisplay || '') + ', idleScreen = ' + luaStr(a.idleScreen || '') + ', terminalOn = ' + luaStr(a.terminalOn || '') + ', terminalOff = ' + luaStr(a.terminalOff || '') + ' }',
+				'\t\tlocal taken = studioCaptureStep(self, st, ' + luaStr(c.id) + ', cfg)',
+				'\t\tstudioCaptureLook(self, st, ' + luaStr(c.id) + ', cfg, taken ~= nil)',
 				'\t\tif taken then',
 				'\t\t\ttable.insert(st.capNow, { id = ' + luaStr(c.id) + ', team = taken })',
 				'\t\t\tif taken == ' + luaNum(a.attackers) + ' then self:StudioCapture_' + c.id + '_taken() else self:StudioCapture_' + c.id + '_retaken() end',
@@ -660,6 +733,7 @@ window.MS = window.MS || {};
 		}
 		// after the events (which may just have said something, or won): steady income, dialogue lines as they come due, areas shaded in the unit
 		// select view, and a win that waits
+		L.push('\tstudioDoors(self, st)', '\tstudioCameraLimit(self, st)');
 		L.push('\tfor team, perSecond in pairs(st.income) do',
 			'\t\tst.incomeDue[team] = (st.incomeDue[team] or 0) + perSecond * st.dt',
 			'\t\tlocal whole = math.floor(st.incomeDue[team])',
