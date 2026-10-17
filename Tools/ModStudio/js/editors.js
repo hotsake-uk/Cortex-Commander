@@ -474,12 +474,13 @@ window.MS = window.MS || {};
 			renderSide();
 		};
 		const module = select.value;
-		$('dataEditors').replaceChildren(...EDITORS.map(([id, title, sub, icon, render]) => {
-			const count = id === 'loadouts' ? presetsOf(module, (p) => p.cls === 'Loadout').length : id === 'sounds' ? presetsOf(module, (p) => p.cls === 'SoundContainer').length : presetsOf(module, (p) => UNITS.has(p.cls) || CRAFT.has(p.cls) || ITEMS.has(p.cls)).length;
+		$('dataEditors').replaceChildren(...EDITORS.map(([id, title, sub, icon, render, counter]) => {
+			const count = counter ? counter(module) : id === 'loadouts' ? presetsOf(module, (p) => p.cls === 'Loadout').length : id === 'sounds' ? presetsOf(module, (p) => p.cls === 'SoundContainer').length : presetsOf(module, (p) => UNITS.has(p.cls) || CRAFT.has(p.cls) || ITEMS.has(p.cls)).length;
 			return el('button', { className: 'data-editor', onclick: () => MS.ide.openForm(id + ':' + module, title + ' · ' + module.replace(/\.rte$/i, ''), icon, render(module)) },
 				el('b', {}, icon + '  ' + title, el('span', { className: 'badge-n', textContent: count })), el('span', { textContent: sub }));
 		}));
 	}
 
-	MS.editors = { renderSide, renderBuyMenu, renderLoadouts, renderSounds };
+	// Editors in their own files join the list: [id, title, what it is, icon, render(module), count(module)].
+	MS.editors = { renderSide, renderBuyMenu, renderLoadouts, renderSounds, register: (entry) => EDITORS.push(entry) };
 })();
