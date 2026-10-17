@@ -352,7 +352,7 @@ window.MS = window.MS || {};
 			};
 			row.append(twist, canvas, txt);
 			if (tab === 'units' || tab === 'craft') {
-				row.onclick = () => app.openActor(p);
+				row.onclick = (e) => app.openActor(p, { newTab: e.ctrlKey || e.metaKey });
 				row.title = 'Open ' + p.name;
 			} else if (tab === 'items') {
 				// A click opens the item in the designer (its grip, muzzle, magazine, settings and sprite); with a unit open, Hold puts it in the unit's hand.
@@ -362,6 +362,11 @@ window.MS = window.MS || {};
 				hold.title = 'Put ' + p.name + ' in the open unit\'s front hand';
 				hold.onclick = (e) => {
 					e.stopPropagation();
+					// The unit may be in another designer tab: Hold goes to it.
+					const unitTab = MS.ide.designerOfFamily('unit');
+					if (unitTab && unitTab !== MS.ide.active) {
+						MS.ide.activate(unitTab);
+					}
 					if (app.rig && app.rig.cls === 'AHuman') {
 						app.setDevice(p);
 						app.toast(p.name + ' is now in the front hand.');
@@ -370,10 +375,10 @@ window.MS = window.MS || {};
 					}
 				};
 				row.append(hold);
-				row.onclick = () => app.openActor(p);
+				row.onclick = (e) => app.openActor(p, { newTab: e.ctrlKey || e.metaKey });
 				row.title = 'Open ' + p.name + ' in the designer';
 			} else if (tab === 'more') {
-				row.onclick = () => app.openActor(p);
+				row.onclick = (e) => app.openActor(p, { newTab: e.ctrlKey || e.metaKey });
 				row.title = 'Open ' + p.name + ' in the designer';
 			} else {
 				const add = document.createElement('button');
