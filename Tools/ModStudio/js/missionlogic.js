@@ -77,7 +77,7 @@ window.MS = window.MS || {};
 			if (current === null || !doc.cls) {
 				return;
 			}
-			const text = F().apply(current, doc.cls, doc.g);
+			const text = F().apply(current, doc.cls, doc.g, doc.path);
 			doc.text = text;
 			try {
 				await writeScript(doc.path, text);

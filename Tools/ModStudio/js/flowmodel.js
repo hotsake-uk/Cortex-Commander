@@ -36,6 +36,12 @@ window.MS = window.MS || {};
 	const relevantWho = (p, key) => (key === 'group' ? p.which === 'group' : key === 'named' ? p.which === 'named' : true);
 	const SCRIPT_TESTS = [['true', 'is true'], ['false', 'is false'], ['op', 'is a number that']];
 	const relevantScript = (p, key) => (key === 'op' || key === 'value' ? p.test === 'op' : true);
+	// pie menu buttons: the icon (a pie slice of Base.rte's), where in the menu it goes, and which units get it
+	const PIE_ICONS = ['Land', 'Launch', 'Cycle', 'Brain', 'Eye', 'Checkmark', 'White Flag', 'Map', 'Go To', 'Follow', 'Return', 'Circuit Board', 'Mine', 'Death', 'Stats'].map((n) => [n, n]);
+	const PIE_DIRECTIONS = [['Up', 'at the top'], ['Down', 'at the bottom'], ['Left', 'on the left'], ['Right', 'on the right'], ['Any', 'wherever there is room']];
+	const PIE_WHO = [['brain', 'a player\'s brain'], ['team', 'a team\'s units'], ['group', 'units in a group']];
+	// colours for shading an area (indices into the game's palette)
+	const SHADES = [['13', 'red'], ['147', 'green'], ['210', 'blue'], ['122', 'yellow'], ['48', 'orange'], ['254', 'white']];
 	const AI_MODES = [['sentry', 'stand guard'], ['goto', 'go to an area'], ['brainhunt', 'hunt the enemy brain'], ['patrol', 'patrol'], ['stay', 'stay put'], ['return', 'go back'], ['golddig', 'dig for gold']];
 
 	// ---- the registry ----
@@ -80,6 +86,7 @@ window.MS = window.MS || {};
 	kind('pickUp', 'event', 'A unit picks up an item', [['item', 'item', 'item', ''], ['team', 'team', 'whose', -1]], EVENT);
 	kind('stageBegins', 'event', 'A stage begins', [['target', 'stage', 'stage', '']], EVENT);
 	kind('flagChanges', 'event', 'A flag is set', [['name', 'text', 'flag', 'flag'], ['value', 'bool', 'set (off: cleared)', true]], EVENT);
+	kind('pieUsed', 'event', 'A player uses a pie menu button', [['label', 'text', 'button', 'My button']], EVENT);
 	kind('scriptValue', 'event', 'A value in the script changes', [['field', 'text', 'the script\'s value (self.…)', 'anyHumanHasDeployedABrain'], ['test', 'choice', 'when it', 'true', SCRIPT_TESTS], ['op', 'op', '', '>='], ['value', 'value', 'value', V(1)]], EVENT, { relevant: relevantScript });
 
 	// stages: goals in a sequence. Every stage also has a name, an objective text and marker, whose screen shows it, and a time limit.
@@ -171,6 +178,24 @@ window.MS = window.MS || {};
 	kind('camera', 'action', 'Move a player\'s camera', [['who', 'player', 'player', 'all'], ['area', 'area', 'to look at', ''], ['seconds', 'number', 'and stay for seconds (0: just move it)', 3], ['speed', 'number', 'speed (0.01 slow to 1 instant)', 0.1]], STEP);
 	kind('tech', 'action', 'Set a team\'s tech', [['team', 'team', 'team', 1], ['tech', 'text', 'tech (a mod, e.g. Coalition.rte)', 'Coalition.rte']], STEP);
 	kind('scriptSet', 'action', 'Set a value in the script', [['field', 'text', 'the script\'s value (self.…)', 'myValue'], ['to', 'choice', 'to', 'true', [['true', 'true'], ['false', 'false'], ['value', 'a number']]], ['value', 'value', 'number', V(0)]], STEP, { relevant: (p, key) => (key === 'value' ? p.to === 'value' : true) });
+	kind('pieAdd', 'action', 'Add a pie menu button', [
+		['label', 'text', 'button text', 'My button'],
+		['icon', 'choice', 'icon', 'Land', PIE_ICONS],
+		['dir', 'choice', 'in the menu', 'Up', PIE_DIRECTIONS],
+		['to', 'choice', 'give it to', 'brain', PIE_WHO],
+		['who', 'player', 'player', 'all'],
+		['team', 'team', 'team', 0],
+		['group', 'text', 'group', ''],
+		['keep', 'bool', 'and to units that come later', true],
+	], STEP, { relevant: (p, key) => (key === 'who' ? (p.to || 'brain') === 'brain' : key === 'team' ? p.to === 'team' : key === 'group' ? p.to === 'group' : true) });
+	kind('pieRemove', 'action', 'Remove a pie menu button', [['label', 'text', 'button text', 'My button']], STEP);
+	kind('overlay', 'action', 'Shade an area in unit select', [
+		['do', 'choice', '', 'show', [['show', 'shade it'], ['hide', 'stop shading it']]],
+		['area', 'area', 'area', ''],
+		['team', 'team', 'seen by team', 0],
+		['color', 'choice', 'colour', '147', SHADES],
+		['text', 'text', 'text on it', ''],
+	], STEP, { optional: ['text'], relevant: (p, key) => (key === 'color' || key === 'text' ? p.do !== 'hide' : true) });
 	kind('battle', 'action', 'Start a battle', [['mode', 'mode', 'mode', 2], ['size', 'number', 'units a side', 12], ['byShip', 'bool', 'they arrive by ship', false], ['layout', 'bool', 'lay the map out for me', true], ['seed', 'number', 'layout seed', 1]], STEP);
 	kind('battleStop', 'action', 'Stop the battle', [], STEP);
 
@@ -400,8 +425,10 @@ window.MS = window.MS || {};
 				}
 				if (type === 'capture' && (!v || !find(g, v) || find(g, v).kind !== 'capture')) {
 					add(n.id, 'error', 'Pick the ' + label + '.');
-				} else if (type === 'text' && (key === 'name' || key === 'group') && ['varReaches', 'setVar', 'groupGone', 'order'].includes(n.kind) && !String(v || '').trim()) {
+				} else if (type === 'text' && (key === 'name' || key === 'group') && ['varReaches', 'setVar', 'groupGone', 'order', 'pieAdd'].includes(n.kind) && !String(v || '').trim()) {
 					add(n.id, 'error', 'Give the ' + label + ' a name.');
+				} else if (key === 'label' && ['pieAdd', 'pieRemove', 'pieUsed'].includes(n.kind) && !String(v || '').trim()) {
+					add(n.id, 'error', 'Write the button\'s text: it is how the button is known.');
 				} else if (type === 'area') {
 					if (!v) {
 						add(n.id, 'error', 'Pick the ' + label + '.');
@@ -705,7 +732,7 @@ window.MS = window.MS || {};
 	}
 
 	MS.flow = Object.assign(MS.flow || {}, {
-		KINDS, ORDER, CONDS, CATEGORIES, BATTLE_MODES, OPS, merge, LIST_ROWS, AI_MODES, VAR_OPS, relevant, V,
+		KINDS, ORDER, CONDS, CATEGORIES, BATTLE_MODES, PIE_ICONS, SHADES, OPS, merge, LIST_ROWS, AI_MODES, VAR_OPS, relevant, V,
 		create, addNode, find, incoming, whyNot, connect, disconnect, removeNode, clone, addCondition, condDefaults,
 		chainFrom, entries, stages, firstStage, isStage, isCodeStage, problems, layout, migrate, reaches,
 	});

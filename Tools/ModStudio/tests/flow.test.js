@@ -40,7 +40,8 @@ local ActorMeta = { __index = function(a, k)
 	elseif k == "CloseDoor" then return function(self) log("close door " .. self.UniqueID) end
 	elseif k == "GibThis" then return function(self) self.Health = 0; log("gib " .. self.UniqueID) end
 	elseif k == "Inventory" then return iter(rawget(a, "inv"))
-	elseif k == "AboveHUDPos" then return rawget(a, "Pos") end
+	elseif k == "AboveHUDPos" then return rawget(a, "Pos")
+	elseif k == "PieMenu" then local m = NewPieMenu(a); rawset(a, "PieMenu", m); return m end
 end }
 NextID = 0
 function MakeActor(team, x, y, extra)
@@ -107,7 +108,9 @@ GameActivity = { ARROWDOWN = 0 }
 BattleQueue = {}
 Marks = 0
 Test = {}
-Act = setmetatable({ Funds = {} }, { __index = Test })
+-- the mission: in the game the class table is the activity itself (self in its functions), so it is here too
+Test.Funds = {}
+Act = Test
 function Test:GetTeamFunds(t) return self.Funds[t] or 0 end
 function Test:ChangeTeamFunds(amount, t) self.Funds[t] = (self.Funds[t] or 0) + amount; log("gold " .. amount .. " to " .. t) end
 function Test:PlayerActive(p) return p == 0 end
@@ -137,6 +140,34 @@ function Test:SetTeamTech(t, tech) log("tech " .. t .. " " .. tech) end
 CameraMan = { SetScrollTarget = function(self, v, speed, screen) log("camera " .. v.X .. "," .. v.Y) end }
 -- a unit gone from the game (dead and removed)
 function Remove(a) for i, x in ipairs(Actors) do if x == a then table.remove(Actors, i) return end end end
+-- pie menus: slices made from a preset, copied into a unit's menu when no slice there has the name; using one calls the function it names
+PieSlice = { NoType = 0 }
+Directions = { None = -1, Up = 0, Down = 1, Left = 2, Right = 3, Any = 4 }
+SlicesMade = 0
+function CreatePieSlice(name, module) SlicesMade = SlicesMade + 1; return { PresetName = name, Icon = name, Module = module } end
+function NewPieMenu(owner) return {
+	slices = {},
+	AddPieSliceIfPresetNameIsUnique = function(self, s, source)
+		for _, x in ipairs(self.slices) do if x.PresetName == s.PresetName then return false end end
+		local copy = {}
+		for k, v in pairs(s) do copy[k] = v end
+		self.slices[#self.slices + 1] = copy
+		log("pie " .. copy.PresetName .. " to " .. owner.UniqueID)
+		return true
+	end,
+	RemovePieSlicesByPresetName = function(self, name)
+		for i = #self.slices, 1, -1 do if self.slices[i].PresetName == name then table.remove(self.slices, i); log("pie " .. name .. " off " .. owner.UniqueID) end end
+	end,
+} end
+-- a player uses the slice of a name in a unit's menu
+function UsePie(unit, name) for _, s in ipairs(unit.PieMenu.slices) do if s.PresetName == name then _G[s.FunctionName](unit, unit.PieMenu, s) end end end
+-- what is drawn: boxes and text, for a player
+function BoxFillPrimitive(player, a, b, color) return { player = player, x = a.X, y = a.Y, x2 = b.X, y2 = b.Y, color = color } end
+PrimitiveMan = {
+	DrawPrimitives = function(self, trans, list) for _, p in ipairs(list) do log("shade " .. p.x .. "," .. p.y .. "-" .. p.x2 .. "," .. p.y2 .. " in " .. p.color .. " for " .. p.player) end end,
+	DrawTextPrimitive = function(self, player, pos, text, small, align) log("label " .. text .. " for " .. player) end,
+}
+function Test:GetTeamOfPlayer(p) return 0 end
 `;
 
 const BATTLE = String.raw`
@@ -160,7 +191,7 @@ function game(graph, opts) {
 		return out;
 	};
 	run(GAME + (opts && opts.noBattle ? '' : BATTLE));
-	const block = F.compile(graph, 'Test');
+	const block = F.compile(graph, 'Test', opts && 'scriptPath' in opts ? opts.scriptPath : 'Test.rte/Scenes/Test.lua');
 	run(block);
 	return {
 		run,
@@ -836,4 +867,85 @@ test('placing items, removing units, changing team, control, the camera and tech
 	assert.equal(m.run('return tostring(T.Team)'), '0');
 	assert.ok(lines(m.step(0.5)).some((l) => /^camera 50(\.0)?,50(\.0)?$/.test(l)), 'the camera stays on the area');
 	assert.equal(lines(m.step(1)).filter((l) => l.startsWith('camera')).length, 0, 'until its time is up');
+});
+
+test('a pie menu button: given to a player\'s brain, used, and taken away', () => {
+	const m = game(graph([
+		['start', {}, { then: 1 }],
+		['pieAdd', { label: 'Deploy Brain', icon: 'Land', dir: 'Up', to: 'brain', who: 'all' }],
+		['pieUsed', { label: 'Deploy Brain' }, { then: 3 }],
+		['code', { label: 'Who', code: 'log("used by " .. actor.UniqueID)' }, { then: 4 }],
+		['pieRemove', { label: 'Deploy Brain' }],
+	]));
+	m.run('B = MakeActor(0, 0, 0); Brains[0] = B');
+	const id = m.run('return tostring(B.UniqueID)');
+	assert.deepEqual(lines(m.step()), ['pie Deploy Brain to ' + id]);
+	assert.equal(m.step(0.1, 3), '', 'given once');
+	assert.equal(m.run('local s = B.PieMenu.slices[1]; return s.Icon .. " " .. s.Module .. " " .. s.Direction .. " " .. s.Type .. " " .. s.Description'), 'Land Base.rte 0 0 Deploy Brain');
+	assert.equal(m.run('local s = B.PieMenu.slices[1]; return s.ScriptPath .. " " .. s.FunctionName'), 'Test.rte/Scenes/Test.lua StudioPieSlice_Test', 'the slice runs the mission\'s own function');
+	m.run('UsePie(B, "Deploy Brain")');
+	assert.deepEqual(lines(m.step()), ['used by ' + id, 'pie Deploy Brain off ' + id]);
+	assert.equal(m.step(0.1, 3), '', 'a press is read once, and the button stays off');
+	m.run('B2 = MakeActor(0, 0, 0); Brains[0] = B2');
+	assert.equal(m.step(), '', 'a new brain does not get it back');
+	assert.equal(m.run('return tostring(SlicesMade)'), '1', 'one slice made, copied into menus');
+});
+
+test('a pie menu button for a team or a group reaches units that come later; once only does not', () => {
+	const m = game(graph([
+		['start', {}, { then: 1 }],
+		['pieAdd', { label: 'Swap', icon: 'Cycle', dir: 'Left', to: 'team', team: 1 }, { then: 2 }],
+		['pieAdd', { label: 'Signal', icon: 'Eye', to: 'group', group: 'Scouts', keep: false }],
+	]));
+	m.run('A = MakeActor(1, 0, 0); E = MakeActor(0, 0, 0); S = MakeActor(0, 0, 0); S.groups.Scouts = true');
+	assert.deepEqual(lines(m.step()).sort(), ['pie Signal to ' + m.run('return tostring(S.UniqueID)'), 'pie Swap to ' + m.run('return tostring(A.UniqueID)')].sort());
+	m.run('A2 = MakeActor(1, 0, 0); S2 = MakeActor(0, 0, 0); S2.groups.Scouts = true');
+	assert.deepEqual(lines(m.step()), ['pie Swap to ' + m.run('return tostring(A2.UniqueID)')]);
+	assert.equal(m.run('return tostring(A.PieMenu.slices[1].Direction)'), '2');
+	// a saved game keeps who gets the button, but not presses waiting to be read
+	m.run('Act.StudioState.pieQueue = { { label = "Swap", actor = A } }; Act:StudioSave()');
+	assert.doesNotMatch(m.run('return Saved.StudioFlow'), /pieQueue/);
+	assert.match(m.run('return Saved.StudioFlow'), /pieGive/);
+});
+
+test('a pie menu button with no script path says so instead of failing', () => {
+	const m = game(graph([['start', {}, { then: 1 }], ['pieAdd', { label: 'Go', to: 'team', team: 0 }]]), { scriptPath: '' });
+	m.run('A = MakeActor(0, 0, 0)');
+	assert.deepEqual(lines(m.step()), ['console Studio: the pie menu button Go does nothing: the mission does not know its script\'s path.', 'pie Go to ' + m.run('return tostring(A.UniqueID)')]);
+	assert.equal(m.run('return tostring(A.PieMenu.slices[1].FunctionName)'), 'nil');
+	const g = graph([['start', {}, { then: 1 }], ['pieAdd', { label: 'Go' }]]);
+	assert.match(F.compile(g, 'Test', ''), /local studioPieScript, studioPieFunction = "", "StudioPieSlice_Test"/);
+	assert.match(F.apply('function Test:UpdateActivity()\nend\n', 'Test', g, 'My.rte\\Scenes\\My.lua'), /studioPieScript, studioPieFunction = "My.rte\/Scenes\/My.lua"/);
+	assert.doesNotMatch(F.compile(graph([['start', {}, { then: 1 }], ['message', {}]]), 'Test', 'x.lua'), /function StudioPieSlice_/, 'no global function for a mission without buttons');
+	const p = F.problems(graph([['start', {}, { then: 1 }], ['pieAdd', { label: ' ' }]]), {});
+	assert.ok(p.some((x) => /button's text/.test(x.message)));
+});
+
+test('an area shaded for a team in the unit select view, then no longer', () => {
+	const m = game(graph([
+		['start', {}, { then: 1 }],
+		['overlay', { do: 'show', area: 'Vault', team: 0, color: '13', text: 'Gold here: {gold}' }],
+		['timer', { seconds: 1 }, { then: 3 }],
+		['overlay', { do: 'hide', area: 'Vault', team: 0 }],
+		['start', {}, { then: 5 }],
+		['overlay', { do: 'show', area: 'Vault', team: 1, color: '147' }],
+	]));
+	m.run('Areas["Vault"] = { x = 0, y = 0, w = 50, h = 20, more = { { x = 60, y = 0, w = 10, h = 10 } } }; Act.StudioState = nil');
+	assert.equal(m.step(), '', 'not while playing');
+	m.run('ViewState[0] = Activity.ACTORSELECT; Act.StudioState.vars.gold = 300');
+	assert.deepEqual(lines(m.step()), ['shade 0,0-50,20 in 13 for 0', 'shade 60,0-70,10 in 13 for 0', 'label Gold here: 300 for 0'], 'only team 0\'s, both boxes, with the text');
+	m.run('ViewState[0] = 0');
+	assert.equal(m.step(), '');
+	m.run('ViewState[0] = Activity.ACTORSELECT');
+	assert.equal(m.step(1), '', 'hidden after a second');
+});
+
+test('any team: a pie menu button for every team\'s units, an area shaded for every player', () => {
+	const m = game(graph([
+		['start', {}, { then: 1 }],
+		['pieAdd', { label: 'All', to: 'team', team: -1 }, { then: 2 }],
+		['overlay', { area: 'Yard', team: -1, color: '210' }],
+	]));
+	m.run('Areas["Yard"] = { x = 0, y = 0, w = 10, h = 10 }; A = MakeActor(0, 0, 0); B = MakeActor(1, 0, 0); ViewState[0] = Activity.ACTORSELECT');
+	assert.deepEqual(lines(m.step()), ['pie All to ' + m.run('return tostring(A.UniqueID)'), 'pie All to ' + m.run('return tostring(B.UniqueID)'), 'shade 0,0-10,10 in 210 for 0']);
 });

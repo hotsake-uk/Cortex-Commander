@@ -211,6 +211,18 @@ window.MS = window.MS || {};
 			}
 			case 'tech': return ['self:SetTeamTech(' + luaNum(a.team) + ', ' + luaStr(a.tech) + ')'];
 			case 'scriptSet': return ['studioSetField(self, ' + luaStr(a.field) + ', ' + (a.to === 'false' ? 'false' : a.to === 'value' ? valueLua(a.value) : 'true') + ')'];
+			case 'pieAdd': {
+				// what the button is and who gets it, kept in the state so units that come later get it too (studioPieGive, every frame)
+				const to = a.to || 'brain';
+				const spec = '{ label = ' + luaStr(a.label) + ', icon = ' + luaStr(a.icon || 'Land') + ', dir = ' + luaStr(a.dir || 'Up') + ', to = ' + luaStr(to)
+					+ ', player = ' + (a.who === 'all' || a.who === undefined ? -1 : luaNum(a.who)) + ', team = ' + luaNum(a.team) + ', group = ' + luaStr(a.group || '') + ' }';
+				return a.keep === false ? ['studioPieGive(self, ' + spec + ')'] : ['st.pieGive[' + key(n.id) + '] = ' + spec, 'studioPieGive(self, st.pieGive[' + key(n.id) + '])'];
+			}
+			case 'pieRemove': return ['studioPieRemove(self, st, ' + luaStr(a.label) + ')'];
+			case 'overlay': {
+				const k = luaStr(String(a.area || '') + '|' + luaNum(a.team));
+				return a.do === 'hide' ? ['st.overlays[' + k + '] = nil'] : ['st.overlays[' + k + '] = { area = ' + luaStr(a.area) + ', team = ' + luaNum(a.team) + ', color = ' + luaNum(a.color === undefined ? 147 : a.color) + ', text = ' + luaStr(a.text || '') + ' }'];
+			}
 			case 'battle': return [
 				'st.battle = { started = false, ended = false, winner = -1, scores = {} }',
 				'if SandboxBattleMode then',
@@ -375,6 +387,7 @@ window.MS = window.MS || {};
 				return ['local reached = ' + on, 'if reached and not st.prev[' + k + '] then fire = true end', 'st.prev[' + k + '] = reached'];
 			}
 			case 'flagChanges': return ['local reached = (st.flags[' + luaStr(a.name) + '] == true) == ' + (a.value === false ? 'false' : 'true'), 'if reached and not st.prev[' + k + '] then fire = true end', 'st.prev[' + k + '] = reached'];
+			case 'pieUsed': return ['for _, e in ipairs(st.piePressed) do if e.label == ' + luaStr(a.label) + ' then fire = true; st.who[' + k + '] = e.actor end end'];
 			case 'scriptValue': return ['local reached = ' + scriptTest(a), 'if reached and not st.prev[' + k + '] then fire = true end', 'st.prev[' + k + '] = reached'];
 			default: return ['fire = true']; // always
 		}
@@ -489,21 +502,53 @@ window.MS = window.MS || {};
 			'\t\t\tfor i, part in ipairs(parts) do', '\t\t\t\tlocal k = part:sub(1, 1) == "#" and tonumber(part:sub(2)) or part',
 			'\t\t\t\tif i == #parts then at[k] = kind == "n" and tonumber(value) or kind == "b" and value == "1" or studioUnesc(value)', '\t\t\t\telse at[k] = at[k] or {}; at = at[k] end', '\t\t\tend', '\t\tend', '\tend', '\treturn root', 'end', '',
 			'-- Tables a state needs, also for one from an older save.',
-			'local function studioFill(st)', '\tfor _, k in ipairs({ "flags", "inside", "who", "seen", "prev", "next", "done", "once", "vars", "cap", "income", "incomeDue", "say", "alive", "known", "marks", "hold", "ctl" }) do st[k] = st[k] or {} end', 'end', '',
+			'local function studioFill(st)', '\tfor _, k in ipairs({ "flags", "inside", "who", "seen", "prev", "next", "done", "once", "vars", "cap", "income", "incomeDue", "say", "alive", "known", "marks", "hold", "ctl", "pieGive", "pieQueue", "piePressed", "overlays" }) do st[k] = st[k] or {} end', 'end', '',
 			'local function studioEnemies(team, region)', '\tlocal n = 0', '\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and actor.Team >= 0 and actor.Team ~= team and region:IsInside(actor.Pos) then n = n + 1 end', '\tend', '\treturn n', 'end', '',
 			'local function studioBrains(team)', '\tlocal n = 0', '\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and actor.Team == team and actor:IsInGroup("Brains") then n = n + 1 end', '\tend', '\treturn n', 'end', '',
+			'-- Pie menu buttons: one slice made per button (CreatePieSlice) and kept on the mission, which the game copies into each unit\'s menu. Using it',
+			'-- runs the global function the block defines (the slice names this script and that function), which queues the press for the next frame.',
+			'local function studioPieSlice(act, spec)', '\tact.StudioPieSlices = act.StudioPieSlices or {}', '\tlocal k = spec.label .. "|" .. spec.icon .. "|" .. spec.dir', '\tlocal slice = act.StudioPieSlices[k]',
+			'\tif slice == nil then', '\t\tslice = CreatePieSlice(spec.icon, "Base.rte")', '\t\tif slice == nil then return nil end',
+			'\t\tslice.PresetName = spec.label', '\t\tslice.Description = spec.label', '\t\tslice.Type = PieSlice.NoType', '\t\tslice.Direction = Directions[spec.dir] or Directions.Any',
+			'\t\tif studioPieScript ~= "" then', '\t\t\tslice.ScriptPath = studioPieScript', '\t\t\tslice.FunctionName = studioPieFunction',
+			'\t\telse', '\t\t\tConsoleMan:PrintString("Studio: the pie menu button " .. spec.label .. " does nothing: the mission does not know its script\'s path.")', '\t\tend',
+			'\t\tact.StudioPieSlices[k] = slice', '\tend', '\treturn slice', 'end',
+			'local function studioPieGive(act, spec)', '\tlocal slice = studioPieSlice(act, spec)', '\tif not slice then return end',
+			'\tlocal function give(unit) if unit and unit.PieMenu then unit.PieMenu:AddPieSliceIfPresetNameIsUnique(slice, act) end end',
+			'\tif spec.to == "brain" then', '\t\tfor player = 0, 3 do', '\t\t\tif act:PlayerActive(player) and act:PlayerHuman(player) and (spec.player < 0 or spec.player == player) then give(act:GetPlayerBrain(player)) end', '\t\tend',
+			'\telse', '\t\tfor actor in MovableMan.Actors do', '\t\t\tif actor.Health > 0 and ((spec.to == "team" and (spec.team < 0 or actor.Team == spec.team)) or (spec.to == "group" and actor:IsInGroup(spec.group))) then give(actor) end', '\t\tend', '\tend', 'end',
+			'local function studioPieRemove(act, st, label)', '\tfor id, spec in pairs(st.pieGive) do if spec.label == label then st.pieGive[id] = nil end end',
+			'\tfor actor in MovableMan.Actors do if actor.PieMenu then actor.PieMenu:RemovePieSlicesByPresetName(label) end end',
+			'\tfor player = 0, 3 do', '\t\tlocal brain = act:PlayerActive(player) and act:GetPlayerBrain(player) or nil', '\t\tif brain and brain.PieMenu then brain.PieMenu:RemovePieSlicesByPresetName(label) end', '\tend', 'end', '',
+			'-- Areas shaded for a team while its players choose a unit (the unit select view), with a line of text on each.',
+			'local function studioOverlays(act, st)', '\tfor _, o in pairs(st.overlays) do', '\t\tlocal zone = studioArea(o.area)', '\t\tif zone then', '\t\t\tfor player = 0, 3 do',
+			'\t\t\t\tif act:PlayerActive(player) and act:PlayerHuman(player) and (o.team < 0 or act:GetTeamOfPlayer(player) == o.team) and act:GetViewState(player) == Activity.ACTORSELECT then',
+			'\t\t\t\t\tlocal boxes = {}', '\t\t\t\t\tfor box in zone.Boxes do boxes[#boxes + 1] = BoxFillPrimitive(player, box.Corner, Vector(box.Corner.X + box.Width, box.Corner.Y + box.Height), o.color) end',
+			'\t\t\t\t\tPrimitiveMan:DrawPrimitives(75, boxes)', '\t\t\t\t\tif o.text ~= "" then PrimitiveMan:DrawTextPrimitive(player, zone.Center, studioText(st, o.text), false, 1) end',
+			'\t\t\t\tend', '\t\t\tend', '\t\tend', '\tend', 'end', '',
 			'local function studioItemIn(areaName, itemName)', '\tlocal region = studioArea(areaName)', '\tif not region then return false end', '\tfor item in MovableMan.Items do', '\t\tif item.PresetName == itemName and region:IsInside(item.Pos) then return true end', '\tend', '\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and region:IsInside(actor.Pos) then', '\t\t\tlocal held = actor.EquippedItem', '\t\t\tif held and held.PresetName == itemName then return true end', '\t\t\tfor item in actor.Inventory do', '\t\t\t\tif item.PresetName == itemName then return true end', '\t\t\tend', '\t\tend', '\tend', '\treturn false', 'end', '',
 		];
 	}
 
-	function compile(g, cls) {
+	// The global function a pie menu button runs (the game looks it up by name in the script): StudioPieSlice_<class>.
+	const pieFunction = (cls) => 'StudioPieSlice_' + cls;
+
+	// scriptPath: the scenario's script, as its ScriptPath says (Mod.rte/...): a pie menu button names it, so the game can find the function it runs.
+	function compile(g, cls, scriptPath) {
 		const L = [];
+		const pies = g.nodes.some((n) => n.kind === 'pieAdd' || n.kind === 'pieUsed');
 		const events = F.entries(g).filter((n) => (n.out || {}).then);
 		const stageNodes = F.stages(g);
 		const captures = g.nodes.filter((n) => n.kind === 'capture');
 		L.push(MARK_BEGIN + ': managed by Cortex Studio (the Scenarios editor, Mission logic). Change the mission there; this block is rewritten. Your own functions go outside it.');
 		L.push(DATA + JSON.stringify(g));
+		L.push('local studioPieScript, studioPieFunction = ' + luaStr(String(scriptPath || '').replace(/\\/g, '/')) + ', ' + luaStr(pieFunction(cls)));
 		L.push(...helpers());
+		if (pies) {
+			L.push('-- A pie menu button was used: the button and the unit whose menu it was wait in the mission\'s state for the next frame.',
+				'function ' + pieFunction(cls) + '(pieMenuOwner, pieMenu, pieSlice)', '\tlocal st = ' + cls + ' and ' + cls + '.StudioState', '\tif st and pieSlice then',
+				'\t\tst.pieQueue = st.pieQueue or {}', '\t\ttable.insert(st.pieQueue, { label = pieSlice.PresetName, actor = pieMenuOwner })', '\tend', 'end', '');
+		}
 		for (const n of stageNodes) {
 			L.push(...stageLua(g, cls, n));
 		}
@@ -519,7 +564,7 @@ window.MS = window.MS || {};
 		// saved games: the state goes into the save, and comes back when it is loaded
 		L.push('function ' + cls + ':StudioSave()', '\tlocal st = self.StudioState', '\tif not st then return end',
 			'\tst.clockS = st.clock.ElapsedSimTimeS', '\tst.stageS = st.stageClock and st.stageClock.ElapsedSimTimeS or nil',
-			'\tlocal keep = {}', '\tfor k, v in pairs(st) do if k ~= "clock" and k ~= "stageClock" and k ~= "battleNow" and k ~= "who" and k ~= "capNow" and k ~= "inside" and k ~= "alive" and k ~= "known" and k ~= "ctl" and k ~= "marks" then keep[k] = v end end',
+			'\tlocal keep = {}', '\tfor k, v in pairs(st) do if k ~= "clock" and k ~= "stageClock" and k ~= "battleNow" and k ~= "who" and k ~= "capNow" and k ~= "inside" and k ~= "alive" and k ~= "known" and k ~= "ctl" and k ~= "marks" and k ~= "pieQueue" and k ~= "piePressed" then keep[k] = v end end',
 			'\tkeep.inside = {}', '\tfor k, units in pairs(st.inside or {}) do keep.inside[k] = {}; for id in pairs(units) do keep.inside[k][id] = true end end',
 			'\tself:SaveString("StudioFlow", table.concat(studioEncode(keep, nil, {}), ";"))', 'end',
 			'function ' + cls + ':StudioLoad()', '\tlocal text = self:LoadString("StudioFlow")', '\tif not text or text == "" then return end',
@@ -534,6 +579,8 @@ window.MS = window.MS || {};
 		L.push('function ' + cls + ':RunStudioFlow()');
 		L.push('\tself.StudioState = self.StudioState or { clock = Timer(), flags = {}, inside = {}, who = {}, seen = {}, prev = {}, next = {}, done = {}, once = {}, started = false }');
 		L.push('\tlocal st = self.StudioState', '\tstudioFill(st)', '\tlocal now = st.clock.ElapsedSimTimeS', '\tst.dt = now - (st.lastT or now)', '\tst.lastT = now', '\tstudioPump(st)');
+		// pie menu buttons used since the last frame, and buttons for units that have come since
+		L.push('\tst.piePressed = st.pieQueue', '\tst.pieQueue = {}', '\tfor _, spec in pairs(st.pieGive) do studioPieGive(self, spec) end');
 		// capture points, every frame
 		L.push('\tst.capNow = {}');
 		for (const c of captures) {
@@ -573,7 +620,8 @@ window.MS = window.MS || {};
 		for (const n of events) {
 			L.push('\tdo -- ' + n.id, '\t\tlocal fire = false', ...indent(eventLua(n), 2), '\t\tif fire then self:StudioFlow_' + n.id + '(st.who[' + key(n.id) + ']) end', '\tend');
 		}
-		// after the events (which may just have said something, or won): steady income, dialogue lines as they come due, and a win that waits
+		// after the events (which may just have said something, or won): steady income, dialogue lines as they come due, areas shaded in the unit
+		// select view, and a win that waits
 		L.push('\tfor team, perSecond in pairs(st.income) do',
 			'\t\tst.incomeDue[team] = (st.incomeDue[team] or 0) + perSecond * st.dt',
 			'\t\tlocal whole = math.floor(st.incomeDue[team])',
@@ -593,6 +641,7 @@ window.MS = window.MS || {};
 			'\t\t\tend',
 			'\t\telse st.camera = nil end',
 			'\tend',
+			'\tstudioOverlays(self, st)',
 			'\tif st.ending and now >= st.ending.at then', '\t\tself.WinnerTeam = st.ending.team', '\t\tst.ending = nil', '\t\tActivityMan:EndActivity()', '\tend');
 		L.push('\tst.started = true', 'end', MARK_END);
 		return L.join('\n');
@@ -632,7 +681,7 @@ window.MS = window.MS || {};
 
 	// The script with the flow block replaced (or added before UpdateActivity), UpdateActivity running it, and a function written for each of your own
 	// functions the graph calls that the script does not have yet.
-	function apply(code, cls, g) {
+	function apply(code, cls, g, scriptPath) {
 		let text = String(code || '').replace(/\r\n/g, '\n');
 		for (const [begin, end] of [[MARK_BEGIN, MARK_END], ...LEGACY.map(([b, e]) => [b, e])]) {
 			const from = text.indexOf(begin);
@@ -641,7 +690,7 @@ window.MS = window.MS || {};
 				text = text.slice(0, from).replace(/\s*$/, '') + '\n\n' + text.slice(to + end.length).replace(/^\n+/, '');
 			}
 		}
-		const block = compile(g, cls);
+		const block = compile(g, cls, scriptPath);
 		const update = new RegExp('function\\s+' + cls + ':UpdateActivity\\s*\\(\\s*\\)');
 		if (update.test(text)) {
 			text = text.replace(update, (m) => block + '\n\n' + m);
