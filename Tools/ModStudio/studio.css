@@ -970,3 +970,7 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .px-copy[hidden] { display: none; }
 .px-copy-nav { display: flex; gap: 8px; justify-content: flex-end; }
 .insp-actor.cam .insp-name::after { content: " ◎"; color: var(--accent); }
+.px-anchor { display: grid; grid-template-columns: repeat(3, 12px); gap: 2px; }
+.px-anchor-cell { width: 12px; height: 12px; padding: 0; border: 1px solid var(--line); background: var(--panel2, transparent); border-radius: 2px; cursor: pointer; }
+.px-anchor-cell.on { background: var(--accent); border-color: var(--accent); }
+.px-note { color: var(--dim); font-size: 11px; flex: 1; }
