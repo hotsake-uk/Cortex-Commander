@@ -136,7 +136,7 @@ wire(start, 'then', chain(
 	node('cameraLimit', { x: 6245 }),
 	node('placeObject', { object: 'Metal Crate Small A FG|Base.rte', area: 'Hidden Tunnel Blocking Crate', at: 'corner' }),
 	node('lz', { team: 0, area: 'Initial Human Spawn' }),
-	node('buyMenu', { on: true }),
+	node('buyMenu', { on: false }), // until a brain is deployed
 	node('playerStart', { team: 0, area: 'Initial Human Spawn', squad: num(6), group: 'Actors - Heavy', arm: 'mix' }),
 	bunkerDefenders(FB, [FB + ' Operations', FB + ' Small Vault'], false),
 	say('Finally, the time has come for revenge. The Defenders have dug in across three bunkers.', 8),
@@ -146,22 +146,30 @@ wire(start, 'then', chain(
 // ---- stages ----
 const stage = (kind, p) => node(kind, Object.assign({ marker: false, viewer: 0, failAfter: 0 }, p));
 const s1 = stage('stageCapture', { name: 'Take the front bunker', target: R.frontOps.id, team: 0 });
+const sDeploy = stage('stageDeploy', { name: 'Deploy your brain', text: 'Deploy your brain here', area: FB + ' Operations', marker: true });
 const s2 = stage('stageCapture', { name: 'Take the middle bunker', target: R.middleOps.id, team: 0 });
 const s3 = stage('stageReach', { name: 'Find the hidden tunnel', text: 'Find and enter the abandoned tunnel', area: 'Hidden Tunnel', team: 0, marker: true });
 const s4 = stage('stageCapture', { name: 'Open the main doors', target: R.doors.id, team: 0 });
 const s5 = stage('stageCapture', { name: 'Bring down the shield', target: R.shield.id, team: 0 });
 const s6 = stage('stageBrain', { name: 'Destroy the enemy brain', team: 1 });
-wire(s1, 'next', s2);
+wire(s1, 'next', sDeploy);
+wire(sDeploy, 'next', s2);
 wire(s2, 'next', s3);
 wire(s3, 'next', s4);
 wire(s4, 'next', s5);
 wire(s5, 'next', s6);
-// the middle bunker: its defenders, its region, and the camera's line moves in
-wire(s2, 'started', chain(
+// deploy the brain in the front bunker's operations room (that brings the buy menu); meanwhile the middle bunker's defenders come, the
+// camera's line moves in, and allied reinforcements start landing
+wire(sDeploy, 'started', chain(
+	node('brainDeploy', { do: 'on', area: FB + ' Operations', case: 'Actor|Brain Case|Base.rte', buy: true, swap: true, allies: 'Allies', team: 0 }),
 	node('cameraLimit', { x: 4200 }),
 	bunkerDefenders(MB, [MB + ' Operations'], false),
-	on(R.middleOps),
 	node('setVar', { name: 'allies', op: 'set', value: num(1) }),
+	say('Bring your brain into the operations room and deploy it from its pie menu. Then you can buy reinforcements.', 10),
+));
+// the middle bunker: its region comes on
+wire(s2, 'started', chain(
+	on(R.middleOps),
 	say('Your reinforcements are landing at the front bunker. Next: the middle bunker.', 8),
 ));
 // once it falls: the main bunker's defenders and turrets, the tunnel opens, the camera is free

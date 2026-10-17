@@ -42,7 +42,12 @@ local ActorMeta = { __index = function(a, k)
 	elseif k == "GibThis" then return function(self) self.Health = 0; log("gib " .. self.UniqueID) end
 	elseif k == "Inventory" then return iter(rawget(a, "inv"))
 	elseif k == "AboveHUDPos" then return rawget(a, "Pos")
-	elseif k == "PieMenu" then local m = NewPieMenu(a); rawset(a, "PieMenu", m); return m end
+	elseif k == "PieMenu" then local m = NewPieMenu(a); rawset(a, "PieMenu", m); return m
+	elseif k == "RemoveFromGroup" then return function(self, g) self.groups[g] = nil end
+	elseif k == "FlashWhite" then return function(self, ms) end
+	elseif k == "IsMechanical" then return function(self) return rawget(self, "mech") == true end
+	elseif k == "GetController" then return function(self) local c = rawget(self, "ctrl"); if not c then c = { Player = -1 }; rawset(self, "ctrl", c) end return c end
+	end
 end }
 NextID = 0
 function MakeActor(team, x, y, extra)
@@ -136,7 +141,7 @@ MovableMan.IsActor = function(self, a) for _, x in ipairs(Actors) do if x == a t
 function Test:GetPlayerBrain(p) return Brains[p] end
 function Test:GetControlledActor(p) return Controlled[p] end
 function Test:GetViewState(p) return ViewState[p] or 0 end
-function Test:SwitchToActor(a, p, t) Controlled[p] = a; log("control " .. a.UniqueID .. " by " .. p) end
+function Test:SwitchToActor(a, p, t) Controlled[p] = a; a:GetController().Player = p; log("control " .. a.UniqueID .. " by " .. p) end
 function Test:SetTeamTech(t, tech) log("tech " .. t .. " " .. tech) end
 CameraMan = { SetScrollTarget = function(self, v, speed, screen) log("camera " .. v.X .. "," .. v.Y) end }
 -- objective markers cleared each frame; the players' brains; weapons of a group; the ground under a point
@@ -181,6 +186,7 @@ function NewPieMenu(owner) return {
 		log("pie " .. copy.PresetName .. " to " .. owner.UniqueID)
 		return true
 	end,
+	GetFirstPieSliceByPresetName = function(self, name) for _, x in ipairs(self.slices) do if x.PresetName == name then return x end end return nil end,
 	RemovePieSlicesByPresetName = function(self, name)
 		for i = #self.slices, 1, -1 do if self.slices[i].PresetName == name then table.remove(self.slices, i); log("pie " .. name .. " off " .. owner.UniqueID) end end
 	end,
@@ -194,6 +200,12 @@ PrimitiveMan = {
 	DrawTextPrimitive = function(self, player, pos, text, small, align) log("label " .. text .. " for " .. player) end,
 }
 function Test:GetTeamOfPlayer(p) return 0 end
+-- robot bodies and brain cases (deploying a brain)
+Controller = { CIM_DISABLED = 0, CIM_AI = 1 }
+function IsAHuman(a) return rawget(a, "human") == true end
+function ToAHuman(a) return a end
+function IsACrab(a) return false end
+CreateActor = function(name, module) return made(name) end
 `;
 
 const BATTLE = String.raw`
@@ -672,6 +684,44 @@ test('a capture point that is switched off does nothing until it is switched on;
 	m.run('Areas["Ops"] = { x = 0, y = 0, w = 10, h = 10 }; A = MakeActor(0, 5, 5)');
 	assert.equal(m.step(0.5, 4), '', 'switched off');
 	assert.deepEqual(lines(m.step(0.5, 4)), ['msg Stage done'], 'switched on at 2 s, taken a second later');
+});
+
+// ---- deploying a brain ----
+
+test('deploying a brain: the button works in its area, a robot leaves its body for a brain case, then undeploy and swap control', () => {
+	const g = graph([
+		['start', {}, { then: 1 }],
+		['brainDeploy', { do: 'on', area: 'Ops', case: 'Actor|Brain Case|Base.rte', buy: true, swap: true, allies: 'Allies', team: 0 }],
+		['stageDeploy', { name: 'Deploy', area: '', marker: false, viewer: 0, failAfter: 0 }, { done: 3 }],
+		['message', { text: 'Stage done' }],
+		['brainDeployed', { who: 'all' }, { then: 5 }],
+		['message', { text: 'Deployed' }],
+	]);
+	const m = game(g);
+	m.run('Areas["Ops"] = { x = 0, y = 0, w = 10, h = 10 }; B = MakeActor(0, 50, 5, { human = true, mech = true, Head = { Scale = 1 }, PresetName = "Brain Robot" }); B:GetController().Player = 0; Brains[0] = B; Act.BuyMenuEnabled = false; A = MakeActor(0, 80, 5, { human = true }); Ally = MakeActor(0, 90, 5, { human = true }); Ally.groups["Allies"] = true');
+	m.step();
+	m.step(); // the button comes on the frame after the step that lets them
+	assert.equal(m.run('local s = B.PieMenu:GetFirstPieSliceByPresetName("Deploy Brain"); return s.Icon .. " " .. tostring(s.Enabled)'), 'Land false', 'outside its area the button is there but greyed');
+	assert.equal(m.run('return tostring(Ally.PlayerControllable)'), 'false', 'the allies stay with the AI until swapped');
+	m.run('B.Pos = { X = 5, Y = 5 }');
+	m.step();
+	assert.equal(m.run('return tostring(B.PieMenu:GetFirstPieSliceByPresetName("Deploy Brain").Enabled)'), 'true');
+	m.run('UsePie(B, "Deploy Brain")');
+	const out = lines(m.step());
+	assert.ok(out.includes('spawn Brain Case team 0') && out.includes('brain for 0: Brain Case'), out.join(' / '));
+	assert.ok(out.includes('msg Deployed') && out.includes('msg Stage done'), 'the event and the stage');
+	assert.equal(m.run('return tostring(Act.BuyMenuEnabled) .. " " .. B.Head.Scale .. " " .. tostring(B.PlayerControllable) .. " " .. tostring(B.groups["Empty Brain Body 0"])'), 'true 0 false true');
+	// the case is the brain now: it has undeploy and swap
+	m.run('C = PlayerBrains[0]; Brains[0] = C');
+	m.step();
+	assert.equal(m.run('local n = {} for _, s in ipairs(C.PieMenu.slices) do n[#n + 1] = s.PresetName end return table.concat(n, ",")'), 'Undeploy Brain,Swap Troop Control');
+	m.run('UsePie(C, "Swap Troop Control")');
+	m.step();
+	assert.equal(m.run('return tostring(Ally.PlayerControllable) .. " " .. tostring(A.PlayerControllable)'), 'true false', 'the players have the allies, their own units go to the AI');
+	m.run('UsePie(C, "Undeploy Brain")');
+	const back = lines(m.step());
+	assert.ok(back.includes('brain for 0: Brain Robot'), back.join(' / '));
+	assert.equal(m.run('return tostring(C.ToDelete) .. " " .. B.Head.Scale .. " " .. tostring(B.PlayerControllable) .. " " .. tostring(Ally.PlayerControllable) .. " " .. tostring(A.PlayerControllable)'), 'true 1 true false true', 'back in the body, control handed back');
 });
 
 // ---- spawning and orders ----
