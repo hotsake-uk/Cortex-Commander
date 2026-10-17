@@ -94,7 +94,7 @@ window.MS = window.MS || {};
 	kind('scriptValue', 'event', 'A value in the script changes', [['field', 'text', 'the script\'s value (self.…)', 'anyHumanHasDeployedABrain'], ['test', 'choice', 'when it', 'true', SCRIPT_TESTS], ['op', 'op', '', '>='], ['value', 'value', 'value', V(1)]], EVENT, { relevant: relevantScript });
 
 	// stages: goals in a sequence. Every stage also has a name, an objective text and marker, whose screen shows it, and a time limit.
-	const STAGE_COMMON = [['name', 'text', 'name', 'Stage'], ['text', 'text', 'objective text', ''], ['marker', 'bool', 'show a marker', true], ['viewer', 'team', 'marker seen by', 0], ['failAfter', 'number', 'time limit (seconds, 0: none)', 0]];
+	const STAGE_COMMON = [['name', 'text', 'name', 'Stage'], ['text', 'text', 'objective text', ''], ['onScreen', 'bool', 'keep the objective at the top of the screen', true], ['marker', 'bool', 'show a marker', true], ['viewer', 'team', 'marker seen by', 0], ['failAfter', 'number', 'time limit (seconds, 0: none)', 0]];
 	const STAGE_PINS = { entrance: false, exits: ['started', 'done', 'timeout', 'next'] };
 	const stage = (name, title, goalParams, extra) => kind(name, 'stage', title, goalParams.concat(STAGE_COMMON), STAGE_PINS, extra);
 	stage('stageReach', 'Goal: a unit reaches an area', [['area', 'area', 'area', ''], ['team', 'team', 'whose', 0]]);
@@ -692,6 +692,7 @@ window.MS = window.MS || {};
 			const goal = st.goal || {};
 			const p = Object.assign({}, goal, { name: st.name, text: st.text || '', marker: !!st.marker, viewer: Number(st.viewer) || 0, failAfter: Number(st.failAfter) || 0 });
 			delete p.kind;
+			p.onScreen = false; // as they were: older stages showed their objective only as a marker
 			stageNodes.push(addNode(g, goalKinds[goal.kind] || 'stageSurvive', 0, 0, p));
 		}
 		stageList.forEach((st, i) => {

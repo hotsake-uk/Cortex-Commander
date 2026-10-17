@@ -107,7 +107,9 @@ MusicMan = { PlayDynamicSong = function(self, name) log("music " .. name) end }
 Doors = {}
 function IsADoor(mo) return mo.isDoor == true end
 function ToADoor(mo) return mo end
-FrameMan = { ClearScreenText = function(self, s) end, SetScreenText = function(self, text, screen, blink, ms, centred) log("msg " .. text) end }
+-- the text on each screen: a line is logged when what a screen shows changes (missions set it again every frame)
+ShownText = {}
+FrameMan = { ClearScreenText = function(self, s) ShownText[s] = nil end, SetScreenText = function(self, text, screen, blink, ms, centred) if ShownText[screen] ~= text then log("msg " .. text) end ShownText[screen] = text end }
 ConsoleMan = { PrintString = function(self, s) log("console " .. s) end }
 ActivityMan = { EndActivity = function(self) log("end winner " .. tostring(Act.WinnerTeam)) end }
 GameActivity = { ARROWDOWN = 0 }
@@ -246,7 +248,8 @@ function game(graph, opts) {
 // A graph made by a small description: [kind, params, {pin: index}] for each node, in order (ids n1, n2...).
 function graph(nodes) {
 	const g = F.create();
-	const made = nodes.map(([kind, p]) => F.addNode(g, kind, 0, 0, p));
+	// a stage keeps its objective on the screen only when a test says so (its own test below), so the others' logs show just what they test
+	const made = nodes.map(([kind, p]) => F.addNode(g, kind, 0, 0, F.isStage(kind) ? Object.assign({ onScreen: false }, p) : p));
 	nodes.forEach(([, , out, conds], i) => {
 		for (const [pin, j] of Object.entries(out || {})) {
 			const why = F.connect(g, made[i].id, pin, made[j].id);
@@ -684,6 +687,23 @@ test('a capture point that is switched off does nothing until it is switched on;
 	m.run('Areas["Ops"] = { x = 0, y = 0, w = 10, h = 10 }; A = MakeActor(0, 5, 5)');
 	assert.equal(m.step(0.5, 4), '', 'switched off');
 	assert.deepEqual(lines(m.step(0.5, 4)), ['msg Stage done'], 'switched on at 2 s, taken a second later');
+});
+
+// ---- what is on the screen ----
+
+test('a stage keeps its objective at the top of the screen; a message shows over it for its seconds, then the objective comes back', () => {
+	const g = graph([
+		['stageReach', { name: 'Get in', text: 'Reach the {count} doors', area: 'Door', team: 0, marker: false, viewer: 0, failAfter: 0, onScreen: true }, { started: 1 }],
+		['message', { text: 'Go!', who: 'all', seconds: 2 }],
+	]);
+	const m = game(g);
+	m.run('Areas["Door"] = { x = 100, y = 0, w = 10, h = 10 }; Test.StudioState = nil');
+	assert.deepEqual(lines(m.step()), ['msg Go!'], 'the message first');
+	assert.deepEqual(lines(m.step(0.5, 3)), [], 'it stays up (set again each frame, nothing new)');
+	assert.deepEqual(lines(m.step(1, 1)), ['msg Reach the {count} doors'], 'then the objective');
+	assert.equal(m.run('return ShownText[0]'), 'Reach the {count} doors');
+	m.run('ShownText[0] = "something else wrote here"');
+	assert.deepEqual(lines(m.step()), ['msg Reach the {count} doors'], 'put back the next frame');
 });
 
 // ---- deploying a brain ----
