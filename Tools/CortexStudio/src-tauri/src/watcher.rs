@@ -165,14 +165,27 @@ fn relink(from: &Path, root: &Path, relative: &Path, deleted: bool) -> Option<Pa
 		return None;
 	}
 	let to = root.join("Mods").join(relative);
-	if to.exists() {
-		std::fs::remove_file(&to).ok()?;
-	}
-	if !deleted {
-		std::fs::create_dir_all(to.parent()?).ok()?;
-		if std::fs::hard_link(from, &to).is_err() {
-			std::fs::copy(from, &to).ok()?;
+	if deleted {
+		if to.exists() {
+			std::fs::remove_file(&to).ok()?;
 		}
+		return Some(to);
+	}
+	// An editor that saves by deleting and renaming leaves the file missing for a moment. The version's copy is left alone then (the save's own
+	// event follows), so a file is never taken out of both places.
+	if !from.is_file() {
+		return None;
+	}
+	std::fs::create_dir_all(to.parent()?).ok()?;
+	// The new link is made beside the old copy and renamed over it, so the version always has a file there.
+	let temp = to.with_extension("studio-link-tmp");
+	let _ = std::fs::remove_file(&temp);
+	if std::fs::hard_link(from, &temp).is_err() {
+		std::fs::copy(from, &temp).ok()?;
+	}
+	if std::fs::rename(&temp, &to).is_err() {
+		let _ = std::fs::remove_file(&temp);
+		return None;
 	}
 	Some(to)
 }
@@ -232,4 +245,39 @@ fn flush(root: &Path, state: &Arc<Mutex<State>>, pending: &BTreeMap<PathBuf, boo
 		Err(e) => println!("          couldn't ask the game to reload: {e}"),
 	}
 	true
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn a_save_that_leaves_the_file_missing_for_a_moment_never_takes_the_versions_copy_away() {
+		let temp = std::env::temp_dir().join(format!("cs-relink-test-{}", std::process::id()));
+		let _ = std::fs::remove_dir_all(&temp);
+		let version = temp.join("version");
+		let mods = temp.join("mods");
+		std::fs::create_dir_all(version.join("Mods").join("M.rte")).unwrap();
+		std::fs::create_dir_all(mods.join("M.rte")).unwrap();
+		std::fs::write(version.join("Mods").join("M.rte").join(crate::launcher::COPY_MARKER), "").unwrap();
+		let source = mods.join("M.rte").join("a.ini");
+		std::fs::write(&source, "one").unwrap();
+		let relative = Path::new("M.rte").join("a.ini");
+		let to = version.join("Mods").join(&relative);
+
+		assert_eq!(relink(&source, &version, &relative, false), Some(to.clone()));
+		assert_eq!(std::fs::read_to_string(&to).unwrap(), "one");
+		// Saved again: the copy follows, replaced in one step.
+		std::fs::write(&source, "two").unwrap();
+		relink(&source, &version, &relative, false);
+		assert_eq!(std::fs::read_to_string(&to).unwrap(), "two");
+		// The source missing for a moment (delete-and-rename saving): the version's copy stays.
+		std::fs::remove_file(&source).unwrap();
+		assert_eq!(relink(&source, &version, &relative, false), None);
+		assert!(to.is_file());
+		// A real delete takes it away.
+		relink(&source, &version, &relative, true);
+		assert!(!to.exists());
+		let _ = std::fs::remove_dir_all(&temp);
+	}
 }
