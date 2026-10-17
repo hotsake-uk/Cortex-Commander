@@ -111,18 +111,16 @@ window.MS = window.MS || {};
 				groups.get(first).push(r);
 			}
 			const banner = lockBanner(all[0] && all[0].doc, module);
+			const colHeads = () => el('div', { className: 'ed-cols buy' }, el('span'), el('span', { textContent: 'Name' }), el('span', { textContent: 'Cost' }), el('span', { textContent: 'In the buy menu' }), el('span', { textContent: 'Groups' }));
 			const body = [];
 			for (const [group, list] of [...groups.entries()].sort((x, y) => x[0].localeCompare(y[0]))) {
-				body.push(el('div', { className: 'ed-group' }, group + ' · ' + list.length));
-				for (const { p, e } of list.sort((x, y) => x.p.name.localeCompare(y.p.name))) {
-					body.push(buyRow(p, e, module));
-				}
+				body.push(el('section', { className: 'ed-buy-group' }, el('div', { className: 'ed-group' }, group + ' · ' + list.length), colHeads(),
+					...list.sort((x, y) => x.p.name.localeCompare(y.p.name)).map(({ p, e }) => buyRow(p, e, module))));
 			}
 			host.replaceChildren(el('div', { className: 'ed' },
 				el('div', { className: 'ed-head' }, el('h2', { textContent: 'Buy menu · ' + module }), el('span', { className: 'spacer' }), chips, el('label', { className: 'ed-check' }, buyableBox, 'Only buyable'), filter),
 				banner,
-				el('div', { className: 'ed-cols buy' }, el('span'), el('span', { textContent: 'Name' }), el('span', { textContent: 'Cost' }), el('span', { textContent: 'In the buy menu' }), el('span', { textContent: 'Groups' })),
-				...(body.length ? body : [el('p', { className: 'ed-empty', textContent: 'Nothing here' + (q ? ' matches.' : '.') })])));
+				body.length ? el('div', { className: 'ed-buy-groups' }, ...body) : el('p', { className: 'ed-empty', textContent: 'Nothing here' + (q ? ' matches.' : '.') })));
 		});
 	}
 
@@ -177,7 +175,7 @@ window.MS = window.MS || {};
 				el('div', { className: 'ed-head' }, el('h2', { textContent: 'Loadouts · ' + module }), el('span', { className: 'spacer' }), faction, copyBtn, newBtn),
 				lockBanner(index, module),
 				el('p', { className: 'ed-note', textContent: 'A loadout is what a team orders in one go: the craft it arrives in and what it brings. The AI and the buy menu\'s Loadouts use them; one called Default is the team\'s usual order.' }),
-				...(loadouts.length ? loadouts.map((l) => loadoutCard(l, module)) : [el('p', { className: 'ed-empty', textContent: module + ' has no loadouts yet.' })])));
+				loadouts.length ? el('div', { className: 'ed-cards' }, ...loadouts.map((l) => loadoutCard(l, module))) : el('p', { className: 'ed-empty', textContent: module + ' has no loadouts yet.' })));
 		});
 	}
 
