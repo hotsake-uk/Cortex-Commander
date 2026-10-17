@@ -439,11 +439,32 @@ window.MS = window.MS || {};
 	}
 
 	// The kinds of thing to browse, each with how many there are in the scope; and above the list, the editors for that kind.
+	// How they show is a setting (Studio settings): all as buttons, one dropdown, or the ticked ones as buttons and the rest in a dropdown.
 	function renderCategories() {
 		const bar = $('libTabs');
-		bar.className = 'lib-cats';
-		bar.replaceChildren(...CATEGORIES.map((c) => {
-			const n = inCategory(c).length;
+		const layout = MS.settings ? MS.settings.browseLayout() : { mode: 'grid', pinned: [] };
+		const pick = (id) => {
+			tab = id;
+			app.writeLocal('ms.browse', tab);
+			$('libType').value = '';
+			$('libGroup').value = '';
+			showLibrary();
+		};
+		const counted = CATEGORIES.map((c) => ({ c, n: inCategory(c).length }));
+		const menu = (list, placeholder) => {
+			const select = document.createElement('select');
+			select.className = 'ed-input lib-cat-menu';
+			if (placeholder) {
+				select.append(new Option(placeholder, ''));
+			}
+			for (const { c, n } of list) {
+				select.append(new Option(c.icon + '  ' + c.title + '  (' + (n > 999 ? '999+' : n) + ')', c.id));
+			}
+			select.value = list.some(({ c }) => c.id === tab) ? tab : '';
+			select.onchange = () => select.value && pick(select.value);
+			return select;
+		};
+		const buttons = (list) => list.map(({ c, n }) => {
 			const b = document.createElement('button');
 			b.className = (c.id === tab ? 'sel' : '') + (n ? '' : ' none');
 			b.title = c.hint + ' (' + n + ')';
@@ -451,15 +472,21 @@ window.MS = window.MS || {};
 			b.children[0].textContent = c.icon;
 			b.children[1].textContent = c.title;
 			b.children[2].textContent = n > 999 ? '999+' : n;
-			b.onclick = () => {
-				tab = c.id;
-				app.writeLocal('ms.browse', tab);
-				$('libType').value = '';
-				$('libGroup').value = '';
-				showLibrary();
-			};
+			b.onclick = () => pick(c.id);
 			return b;
-		}));
+		});
+		if (layout.mode === 'menu') {
+			bar.className = 'lib-cats as-menu';
+			bar.replaceChildren(menu(counted));
+		} else if (layout.mode === 'mix') {
+			const pinned = counted.filter(({ c }) => layout.pinned.includes(c.id));
+			const rest = counted.filter(({ c }) => !layout.pinned.includes(c.id));
+			bar.className = 'lib-cats as-mix';
+			bar.replaceChildren(...buttons(pinned), ...(rest.length ? [menu(rest, 'More…')] : []));
+		} else {
+			bar.className = 'lib-cats';
+			bar.replaceChildren(...buttons(counted));
+		}
 		const c = categoryOf(tab);
 		$('libSearch').placeholder = 'Search ' + c.title.toLowerCase() + '…';
 		const tools = $('libEditors');
@@ -2071,6 +2098,9 @@ window.MS = window.MS || {};
 			foldAll(!app.collapsed.size);
 		};
 		tab = app.readLocal('ms.browse') || tab;
+		if (MS.settings) {
+			MS.settings.on('browseLayout', () => app.lib && showLibrary());
+		}
 		let searchTimer = null;
 		$('libSearch').oninput = () => {
 			clearTimeout(searchTimer);

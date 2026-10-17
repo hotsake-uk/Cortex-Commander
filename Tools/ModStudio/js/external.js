@@ -1,4 +1,4 @@
-// Cortex Studio: opening files in other programs. A setting (⚙ in the top bar) says, for each kind of file, which program opens it: Studio's
+// Cortex Studio: opening files in other programs. A setting (⚙ Studio settings in the top bar, or Ctrl+,) says, for each kind of file, which program opens it: Studio's
 // own editor, a program on this computer (the ones installed in the usual places are offered), or the system's default. Opening a file of that
 // kind anywhere in Studio (the sprite editor, a file in the explorer or the browser, a search result) then starts that program on it, through
 // Studio's server (/api/open-with). Programs with ways of their own are used that way (the server knows them): Aseprite gets a sprite's frames
@@ -140,19 +140,7 @@ window.MS = window.MS || {};
 		MS.dialogs.open('Settings: open files in other programs', el('div', { className: 'ext-settings' }, el('p', { className: 'ed-note', textContent: 'Each kind of file can open in a program of your choice instead of Studio\'s own editor. What you save there shows in Studio straight away.' }), ...rows, el('p', { className: 'ed-note', textContent: hint })), [{ text: 'Done', primary: true }]);
 	}
 
-	function mountButton() {
-		const help = document.getElementById('btnHelp');
-		if (!help || document.getElementById('btnSettings')) {
-			return;
-		}
-		const button = el('button', { className: 'tb icon', id: 'btnSettings', title: 'Settings: open pictures, scripts and sounds in other programs (Aseprite, VS Code…)', textContent: '⚙', onclick: () => dialog() });
-		help.parentNode.insertBefore(button, help);
-	}
-	if (document.readyState === 'loading') {
-		document.addEventListener('DOMContentLoaded', mountButton);
-	} else {
-		setTimeout(mountButton, 0);
-	}
+	// (Its button is in the Studio settings menu, settings.js.)
 
 	MS.external = { open, openSprite, wants, kindOf, programFor, dialog };
 })();
