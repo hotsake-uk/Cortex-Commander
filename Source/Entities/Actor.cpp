@@ -1,4 +1,5 @@
 #include "Actor.h"
+#include "ModStudioPreview.h"
 #include <sstream>
 #include "ThreatMemory.h"
 #include "ActorWater.h"
@@ -1615,6 +1616,9 @@ void Actor::NoteHurtBy(const MovableObject* hitor, const Vector& hitVelocity) {
 		return;
 	}
 	m_LastAttackerTeam = team;
+	if (s_StudioWantsAIState) {
+		ModStudioPreview::RecordHit(this, hitor);
+	}
 	const Actor* attacker = dynamic_cast<const Actor*>(root);
 	m_LastAttackerID = attacker ? attacker->GetUniqueID() : 0;
 	Vector from(hitVelocity);

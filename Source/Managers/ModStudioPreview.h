@@ -67,6 +67,11 @@ namespace RTE {
 		/// Once a sim update: the inspector's highlight around the selected actor (drawn shapes are cleared each sim update, so it stays while paused).
 		static void UpdateInspectorHighlight();
 
+		/// Called when a unit is hit by another side (Actor::NoteHurtBy) while Studio's Inspector is open: remembers who hit whom, with what, for the Inspector's combat log.
+		/// @param victim The unit hit.
+		/// @param hitor What hit it (a shot, a blade, a body).
+		static void RecordHit(const Actor* victim, const MovableObject* hitor);
+
 		/// Called for every line the console prints. In a game started with -modstudio the line also goes to ModStudio/Console.log, where Studio shows
 		/// it, and points at the line of any script error.
 		/// @param line The line printed.
