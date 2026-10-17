@@ -193,11 +193,7 @@ window.MS = window.MS || {};
 			if (this.fs.isOfficial(doc.path)) {
 				return 'game';
 			}
-			if (!this.fs.server || !this.editable) {
-				return '';
-			}
-			const module = doc.path.split('/')[0].toLowerCase();
-			return this.editable.has(module) || this.madeInStudio(module) ? '' : 'mod';
+			return '';
 		}
 
 		madeInStudio(module) {
@@ -209,7 +205,7 @@ window.MS = window.MS || {};
 			const module = doc.path.split('/')[0];
 			return this.lockKind(doc) === 'game'
 				? 'This is in ' + module + ', the game\'s own files. Make a copy in your mod to change it.'
-				: module + ' is someone else\'s mod. Choose Edit this mod (Studio keeps it as it is now, so you can go back), or make a copy in your mod.';
+				: module + ' can\'t be changed here.';
 		}
 
 		reindex() {

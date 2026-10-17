@@ -962,6 +962,21 @@ window.MS = window.MS || {};
 		}, 30);
 	}
 
+	// Ctrl+S on a picture being edited: written in place when it is in a mod of yours; a game picture needs Save a copy, which asks for a name.
+	async function saveTab(px) {
+		const before = E;
+		E = px;
+		try {
+			if (!canOverwrite()) {
+				return false;
+			}
+			await saveInPlace();
+			return !px.dirty;
+		} finally {
+			E = before === px ? px : before;
+		}
+	}
+
 	function forget(px) {
 		if (E === px) {
 			E = null;
@@ -1019,5 +1034,5 @@ window.MS = window.MS || {};
 		}
 	}, 160);
 
-	MS.pixel = { open, menu, close: closeMenu, forget };
+	MS.pixel = { open, menu, close: closeMenu, forget, saveTab };
 })();

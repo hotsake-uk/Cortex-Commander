@@ -521,7 +521,7 @@ window.MS = window.MS || {};
 		}
 		ide.editor.addAction({
 			id: 'cortex.save', label: 'Save', keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
-			run: () => ide.saveAll(),
+			run: () => ide.saveMod(),
 		});
 		ide.editor.addAction({
 			id: 'cortex.quickOpen', label: 'Go to file…', keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP],
@@ -1151,12 +1151,24 @@ window.MS = window.MS || {};
 		return true;
 	}
 
-	// Saves the open scripts and every changed INI file; saved scripts are reloaded in a game started from Studio.
-	ide.saveAll = async function () {
+	// The mod Ctrl+S saves: the one the unit (or item) open in the designer is in, else the one the tab in front is in; none (all) if neither.
+	ide.currentMod = function () {
+		const path = (app.actor && app.actor.path) || (ide.active && (ide.active.path || (ide.active.px && ide.active.px.file))) || '';
+		const module = path.split('/')[0];
+		// The game's own modules can't be saved to: with one of those open, Save looks after everything changed.
+		return module && module.toLowerCase().endsWith('.rte') && !app.fs.isOfficial(module) ? module : '';
+	};
+
+	// Ctrl/Cmd+S and the Save button: every changed file in the current mod (INI files, scripts and pictures being edited).
+	ide.saveMod = () => ide.saveAll(ide.currentMod());
+
+	// Saves the open scripts and every changed INI file (of one mod, when given); saved scripts are reloaded in a game started from Studio.
+	ide.saveAll = async function (module) {
 		if (!app.lib) {
 			return;
 		}
-		const tabs = ide.tabs.filter((t) => t.kind === 'code' && !t.doc && tabDirty(t));
+		const inMod = (path) => !module || String(path || '').split('/')[0].toLowerCase() === module.toLowerCase();
+		const tabs = ide.tabs.filter((t) => t.kind === 'code' && !t.doc && tabDirty(t) && inMod(t.path));
 		const scripts = [];
 		for (const tab of tabs) {
 			if (await saveTab(tab) && tab.lang === 'lua') {
@@ -1164,10 +1176,17 @@ window.MS = window.MS || {};
 				await MS.live.afterSave(tab.path, tab.savedText);
 			}
 		}
-		const inis = await app.save(true);
+		const inis = await app.save(true, module ? app.dirtyDocs().filter((d) => inMod(d.path)) : undefined);
+		// Pictures being edited in a sprite tab, when they are in this mod and can be written there.
+		let pictures = 0;
+		for (const tab of ide.tabs.filter((t) => t.sprite && t.px && t.px.dirty && t.px.file && inMod(t.px.file))) {
+			if (await MS.pixel.saveTab(tab.px)) {
+				pictures++;
+			}
+		}
 		renderTabs();
 		app.updateFileStatus();
-		const total = tabs.length + inis;
+		const total = tabs.length + inis + pictures;
 		if (total) {
 			app.toast('Saved ' + total + ' file' + (total > 1 ? 's' : '') + '.', 'good');
 		}
@@ -2629,7 +2648,7 @@ window.MS = window.MS || {};
 		if (ctrl && k === 's') {
 			e.preventDefault();
 			e.stopPropagation();
-			ide.saveAll();
+			ide.saveMod();
 		} else if (ctrl && k === 'p') {
 			e.preventDefault();
 			e.stopPropagation();
