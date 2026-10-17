@@ -662,6 +662,13 @@ window.MS = window.MS || {};
 				count.textContent = ' +' + part.children.length;
 				label.append(count);
 			}
+			if (app.view && app.view.options.outlines) {
+				const swatch = document.createElement('span');
+				swatch.className = 'swatch';
+				swatch.style.background = MS.partColor(part);
+				swatch.title = 'This part\'s outline colour in the view';
+				row.append(swatch);
+			}
 			row.append(roleIcon, label);
 			if (app.lockReason(part)) {
 				const lock = document.createElement('span');
