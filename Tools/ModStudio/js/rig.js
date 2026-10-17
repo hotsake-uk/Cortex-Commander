@@ -423,7 +423,9 @@ window.MS = window.MS || {};
 		}
 
 		reposition(part, parentPose, pose) {
-			pose.joint = add(parentPose.pos, rotOff(parentPose, part.ent.vec('ParentOffset')));
+			// The game puts a gun's muzzle flash at the gun's MuzzleOffset (HDFirearm sets the flash's ParentOffset from it), so that is where it shows.
+			const onParent = part.role === 'flash' && part.parent ? part.parent.ent.vec('MuzzleOffset') : part.ent.vec('ParentOffset');
+			pose.joint = add(parentPose.pos, rotOff(parentPose, onParent));
 			pose.pos = sub(pose.joint, rotOff(pose, part.ent.vec('JointOffset')));
 		}
 

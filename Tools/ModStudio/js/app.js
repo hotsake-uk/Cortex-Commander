@@ -783,6 +783,10 @@ window.MS = window.MS || {};
 				if (part.role === 'foot') {
 					return [{ part, key: 'JointOffset', start: vec(part, 'JointOffset'), convert: negate(local(pose)) }];
 				}
+				// A muzzle flash is where the gun's muzzle is: moving it moves the gun's MuzzleOffset (its own ParentOffset is overwritten by the game).
+				if (part.role === 'flash' && part.parent && parentPose) {
+					return [{ part: part.parent, key: 'MuzzleOffset', start: vec(part.parent, 'MuzzleOffset'), convert: local(parentPose) }];
+				}
 				return parentPose ? [{ part, key: 'ParentOffset', start: vec(part, 'ParentOffset'), convert: local(parentPose) }] : null;
 			case 'sprite':
 				return [{ part, key: 'SpriteOffset', start: spriteStart(), convert: local(pose) }];
@@ -807,7 +811,7 @@ window.MS = window.MS || {};
 				if (part.role === 'device') {
 					return [{ part, key: 'JointOffset', start: vec(part, 'JointOffset'), convert: local(pose) }, { part, key: stanceKey, start: vec(part, stanceKey), convert: aimLocal }];
 				}
-				if (part.role === 'foot' || !parentPose) {
+				if (part.role === 'foot' || part.role === 'flash' || !parentPose) {
 					return [{ part, key: 'JointOffset', start: vec(part, 'JointOffset'), convert: local(pose) }];
 				}
 				return [{ part, key: 'JointOffset', start: vec(part, 'JointOffset'), convert: local(pose) }, { part, key: 'ParentOffset', start: vec(part, 'ParentOffset'), convert: local(parentPose) }];

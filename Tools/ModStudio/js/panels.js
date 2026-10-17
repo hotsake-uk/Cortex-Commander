@@ -1296,7 +1296,15 @@ window.MS = window.MS || {};
 		vectorRow(sprite, part, 'SpriteOffset', 'Picture offset', locked);
 
 		const place = section(insp, 'Placement');
-		if (part.role !== 'body' && part.role !== 'foot' && part.role !== 'device') {
+		if (part.role === 'flash' && part.parent) {
+			// The game ignores a flash's own ParentOffset and puts it at the gun's muzzle, so this is the gun's Muzzle setting.
+			vectorRow(place, part.parent, 'MuzzleOffset', 'At the muzzle', locked);
+			const hint = document.createElement('div');
+			hint.className = 'src';
+			hint.style.gridColumn = 'auto';
+			hint.textContent = 'The game puts the flash on the gun\'s muzzle (the gun\'s Muzzle setting), whatever ParentOffset the flash has.';
+			place.append(hint);
+		} else if (part.role !== 'body' && part.role !== 'foot' && part.role !== 'device') {
 			vectorRow(place, part, 'ParentOffset', 'On parent at', locked);
 		}
 		if (part.role !== 'body') {
