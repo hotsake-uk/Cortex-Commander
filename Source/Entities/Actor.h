@@ -1410,8 +1410,11 @@ namespace RTE {
 		/// Off unless an overlay that reads them is on, so the scripts write nothing in normal play.
 		bool WantsDebugExport() const {
 			int inspector = std::max(g_SettingsMan.UnitInspector(), g_SettingsMan.CombatOverlay());
-			return inspector == 2 || (inspector == 1 && IsDebugInspected());
+			return s_StudioWantsAIState || inspector == 2 || (inspector == 1 && IsDebugInspected());
 		}
+
+		/// Set by Mod Studio's Inspector while it is open: every unit's AI scripts then write their state (see WantsDebugExport), which the Inspector reads.
+		static inline bool s_StudioWantsAIState = false;
 
 		/// Destroys this MOSRotating and creates its specified Gibs in its place with appropriate velocities.
 		/// Any Attachables are removed and also given appropriate velocities.

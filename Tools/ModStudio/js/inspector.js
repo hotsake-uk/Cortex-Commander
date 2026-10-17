@@ -44,12 +44,15 @@ window.MS = window.MS || {};
 		arrived: new Map(), // id -> when it arrived, to mark it new for a few seconds
 		events: [], // {time, text, kind}, newest first
 		lastLive: 0,
+		hist: new Map(), // id -> { runs: [{t, b}] what the unit's AI did, newest last; totals: Map behaviour -> ms; target }
+		damage: [], // {t, team, amount}: health lost, for the battle summary
+		lastTrack: 0,
 	};
 	const AUTO_KEY = 'ms.inspectorAuto'; // open the Inspector when Test in game or Sandbox starts from Studio
 	const PENDING_KEY = 'ms.inspectorPending'; // set by a launch, taken by the page that loads after it
 
 	function parse(text) {
-		const w = { actors: [], values: [], inventory: [], parts: [], scripts: [], selected: 0, controlled: 0, following: 0, camera: null, paused: false };
+		const w = { actors: [], mind: new Map(), state: [], values: [], inventory: [], parts: [], scripts: [], selected: 0, controlled: 0, following: 0, camera: null, paused: false };
 		for (const line of text.split(/\r?\n/)) {
 			const at = line.indexOf(' = ');
 			if (at < 0 || line.startsWith('//')) {
@@ -60,6 +63,10 @@ window.MS = window.MS || {};
 			const f = v.split('\t');
 			if (key === 'Actor') {
 				w.actors.push({ id: Number(f[0]), preset: f[1], cls: f[2], team: Number(f[3]), x: Number(f[4]), y: Number(f[5]), health: Number(f[6]), max: Number(f[7]), status: f[8] });
+			} else if (key === 'Mind') {
+				w.mind.set(Number(f[0]), { behavior: f[1], target: Number(f[2]), seen: f[3] === '1', why: f[4] || '', leader: Number(f[5]) || 0 });
+			} else if (key === 'State') {
+				w.state.push([f[0], f[1]]);
 			} else if (key === 'Value') {
 				w.values.push([f[0], f.slice(1).join('\t')]);
 			} else if (key === 'Script') {
@@ -114,7 +121,9 @@ window.MS = window.MS || {};
 				if (modified !== I.modified) {
 					I.modified = modified;
 					I.world = parse(await response.text());
+					trackDamage(I.world);
 					noteChanges(I.world);
+					trackMinds(I.world);
 					render();
 				}
 			}
@@ -174,6 +183,185 @@ window.MS = window.MS || {};
 	}
 
 	const teamName = (t) => (t >= 0 ? 'team ' + (t + 1) : 'no team');
+
+	// ---- combat and minds ----
+	const HIST_MS = 120000;
+	const DAMAGE_MS = 30000;
+	const clockNow = () => new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+	function logEvent(text, kind) {
+		I.events.unshift({ time: clockNow(), text, kind });
+		I.events.length = Math.min(I.events.length, 60);
+	}
+
+	// Health lost since the last look (before noteChanges updates what was seen), for the battle summary and the feed.
+	function trackDamage(w) {
+		const now = Date.now();
+		if (!I.lastLive || now - I.lastLive > 5000) {
+			I.damage = [];
+			return;
+		}
+		for (const a of w.actors) {
+			const before = I.seen.get(a.id);
+			if (before && before.health - a.health >= 1 && a.health > 0) {
+				const lost = before.health - a.health;
+				I.damage.push({ t: now, team: a.team, amount: lost });
+				if (lost >= 5 || (a.id === I.selected && lost >= 2)) {
+					logEvent('Hurt: ' + a.preset + ' (' + teamName(a.team) + ') lost ' + Math.round(lost) + ', ' + Math.round(a.health) + ' left', 'hurt');
+				}
+			}
+		}
+		I.damage = I.damage.filter((d) => now - d.t < DAMAGE_MS);
+	}
+
+	// What each AI unit is doing, as a history: when its behaviour changed, how long it has spent in each, and who it has been after.
+	function trackMinds(w) {
+		const now = Date.now();
+		const dt = I.lastTrack && now - I.lastTrack < 1500 ? now - I.lastTrack : 0;
+		I.lastTrack = now;
+		const name = (id) => {
+			const a = w.actors.find((x) => x.id === id);
+			return a ? a.preset + ' #' + id : '#' + id;
+		};
+		for (const [id, m] of w.mind) {
+			let h = I.hist.get(id);
+			if (!h) {
+				h = { runs: [], totals: new Map(), target: 0 };
+				I.hist.set(id, h);
+			}
+			const last = h.runs[h.runs.length - 1];
+			if (!last || last.b !== m.behavior) {
+				h.runs.push({ t: now, b: m.behavior });
+				if (id === I.selected && last) {
+					logEvent(name(id) + ': ' + last.b + ' → ' + m.behavior, 'ai');
+				}
+			}
+			h.totals.set(m.behavior, (h.totals.get(m.behavior) || 0) + dt);
+			if (m.target !== h.target) {
+				if (id === I.selected) {
+					logEvent(m.target ? name(id) + ' ' + (m.seen ? 'sees' : 'is after') + ' ' + name(m.target) : name(id) + ' lost its target', 'ai');
+				}
+				h.target = m.target;
+			}
+			while (h.runs.length > 1 && now - h.runs[1].t > HIST_MS) {
+				h.runs.shift();
+			}
+		}
+		const ids = new Set(w.actors.map((a) => a.id));
+		for (const id of [...I.hist.keys()]) {
+			if (!ids.has(id)) {
+				I.hist.delete(id);
+			}
+		}
+	}
+
+	// One colour a behaviour, the same each time.
+	function behaviorColor(name) {
+		let hash = 0;
+		for (let i = 0; i < name.length; i++) {
+			hash = (hash * 31 + name.charCodeAt(i)) % 360;
+		}
+		return 'hsl(' + hash + ', 55%, 52%)';
+	}
+
+	// The battle at a glance: each team's units, health, health lost in the last 30 s, and what they are all doing.
+	function updateOverview(w) {
+		const now = Date.now();
+		const teams = new Map();
+		for (const a of w.actors) {
+			let t = teams.get(a.team);
+			if (!t) {
+				t = { units: 0, health: 0, max: 0, lost: 0, modes: new Map() };
+				teams.set(a.team, t);
+			}
+			t.units++;
+			t.health += Math.max(0, a.health);
+			t.max += a.max;
+			const m = w.mind.get(a.id);
+			if (m) {
+				t.modes.set(m.behavior, (t.modes.get(m.behavior) || 0) + 1);
+			}
+		}
+		for (const d of I.damage) {
+			if (teams.has(d.team) && now - d.t < DAMAGE_MS) {
+				teams.get(d.team).lost += d.amount;
+			}
+		}
+		const rows = [...teams].sort((x, y) => x[0] - y[0]).map(([team, t]) => ({ team, ...t }));
+		const key = JSON.stringify(rows.map((r) => [r.team, r.units, Math.round(r.health), Math.round(r.lost), [...r.modes]]));
+		if (key === V.overviewKey) {
+			return;
+		}
+		V.overviewKey = key;
+		V.overview.replaceChildren(...rows.map((r) => el('div', { className: 'insp-team' },
+			el('div', { className: 'insp-team-head' }, el('b', { textContent: teamName(r.team) }), el('span', { textContent: r.units + ' unit' + (r.units === 1 ? '' : 's') }),
+				el('span', { textContent: r.max ? Math.round((100 * r.health) / r.max) + '% health' : '' }), el('span', { className: r.lost > 0 ? 'insp-lost' : '', title: 'Health lost in the last 30 seconds', textContent: r.lost > 0 ? '−' + Math.round(r.lost) + ' in 30 s' : 'no damage' })),
+			r.modes.size ? el('div', { className: 'insp-modes' }, ...[...r.modes].sort((x, y) => y[1] - x[1]).map(([b, n]) => el('span', { className: 'insp-mode', style: 'border-color:' + behaviorColor(b), title: n + ' unit' + (n === 1 ? '' : 's') + ' doing ' + b, textContent: n + ' ' + b }))) : null)));
+		V.overview.hidden = rows.length === 0;
+	}
+
+	// The selected unit's mind: what it is doing, after whom, why it took cover, its orders and route; and a strip of what it has done lately.
+	function fillMind(w) {
+		const d = V.d;
+		const m = w.mind.get(I.selected);
+		const state = new Map(w.state);
+		const st = (k) => state.get(k);
+		const self = w.actors.find((a) => a.id === I.selected);
+		const who = (id) => {
+			const a = w.actors.find((x) => x.id === id);
+			return a ? a.preset + ' #' + id + ' (' + teamName(a.team) + (self ? ', ' + Math.round(Math.hypot(a.x - self.x, a.y - self.y)) + ' px away' : '') + ')' : '#' + id + ' (gone)';
+		};
+		const link = (cell, id) => {
+			cell.replaceChildren(el('button', { className: 'insp-link', textContent: who(id), title: 'Look at it', onclick: () => select(id) }));
+		};
+		const set = (row, text, id) => {
+			row.tr.hidden = !text;
+			if (!text) {
+				return;
+			}
+			if (id) {
+				if (row.id !== id || row.text !== text) {
+					link(row.cell, id);
+				}
+			} else {
+				setText(row.cell, text);
+			}
+			row.id = id || 0;
+			row.text = text;
+		};
+		d.mindBox.hidden = !m && !w.state.length;
+		const R = d.mind;
+		set(R.behavior, m ? m.behavior + (st('AI_ClimbStage') ? ' (climb: ' + st('AI_ClimbStage') + ')' : '') : '');
+		set(R.target, m && m.target ? (m.seen ? 'In sight: ' : 'Last seen: ') + who(m.target) : m ? 'no target' : '', m && m.target ? m.target : 0);
+		set(R.squad, m && m.leader ? 'Follows ' + who(m.leader) : '', m && m.leader ? m.leader : 0);
+		set(R.cover, m && m.why ? 'Took cover: ' + m.why + (st('AI_CoverMs') ? ' (' + (Number(st('AI_CoverMs')) / 1000).toFixed(1) + ' s)' : '') : st('AI_HoldRange') ? 'Keeping ' + st('AI_HoldRange') + ' px off its target' : '');
+		const order = [st('orderKind') && st('orderKind') !== 'none' ? st('orderKind') : '', st('orderFailed') ? 'failed: ' + st('orderFailed') : ''].filter(Boolean).join(', ');
+		set(R.order, [st('aiMode'), order].filter(Boolean).join(' · ') + (st('weaponRule') ? ' · weapons: ' + st('weaponRule') : '') + (st('temperament') ? ' · ' + st('temperament') : ''));
+		set(R.route, st('routePoints') !== undefined ? (Number(st('routePoints')) ? st('routePoints') + ' points' + (st('step') && st('step') !== 'none' ? ', now ' + st('step') + (st('nextStep') && st('nextStep') !== 'none' ? ' then ' + st('nextStep') : '') : '') + (st('routeCost') ? ', cost ' + st('routeCost') : '') : 'no route') + (st('routeAsked') === 'true' ? ' (asking for a new one)' : '') : '');
+		set(R.hurt, st('sinceHurtMS') ? 'Last hurt ' + (Number(st('sinceHurtMS')) / 1000).toFixed(1) + ' s ago, by ' + teamName(Number(st('lastAttackerTeam'))) : '');
+		// the strip: the last two minutes, one colour a behaviour
+		const h = I.hist.get(I.selected);
+		const cv = d.strip;
+		const width = cv.clientWidth || 300;
+		if (cv.width !== width) {
+			cv.width = width;
+		}
+		const ctx = cv.getContext('2d');
+		ctx.clearRect(0, 0, cv.width, cv.height);
+		d.legend.replaceChildren();
+		if (h && h.runs.length) {
+			const now = Date.now();
+			const t0 = now - HIST_MS;
+			h.runs.forEach((run, i) => {
+				const start = Math.max(run.t, t0);
+				const end = i + 1 < h.runs.length ? h.runs[i + 1].t : now;
+				ctx.fillStyle = behaviorColor(run.b);
+				ctx.fillRect(((start - t0) / HIST_MS) * cv.width, 0, Math.max(1, ((end - start) / HIST_MS) * cv.width), cv.height);
+			});
+			const total = [...h.totals.values()].reduce((a, b) => a + b, 0) || 1;
+			d.legend.replaceChildren(...[...h.totals].sort((x, y) => y[1] - x[1]).map(([b, ms]) => el('span', { className: 'insp-mode', style: 'border-color:' + behaviorColor(b), title: 'Time since the Inspector started watching it', textContent: b + ' ' + Math.round((100 * ms) / total) + '%' })));
+		}
+		d.stripBox.hidden = !(h && h.runs.length);
+	}
 
 	// The game's camera follows a unit until told to stop: a double-click on it in the list. The game keeps its camera on it every frame.
 	function followWithCamera(id) {
@@ -270,11 +458,13 @@ window.MS = window.MS || {};
 		};
 		V.camera = el('button', { className: 'ico-btn on', hidden: true, title: 'The game\'s camera is following this unit. Click to let go.', onclick: () => stopCamera() });
 		V.head = el('div', { className: 'prof-head' }, V.state, V.hint, el('span', { className: 'spacer' }), V.camera, auto, V.follow, V.pause, V.step, V.filter);
+		V.overview = el('div', { className: 'insp-overview', hidden: true });
+		V.overviewKey = '';
 		V.list = el('div', { className: 'insp-list' });
 		V.feed = el('div', { className: 'insp-feed' });
 		V.note = el('p', { className: 'pempty' });
 		V.detail = el('div', { className: 'insp-detail' }, V.note);
-		V.cols = el('div', { className: 'insp-cols', hidden: true }, el('div', { className: 'insp-left' }, V.list, el('div', { className: 'prof-list-head', textContent: 'What happened' }), V.feed), V.detail);
+		V.cols = el('div', { className: 'insp-cols', hidden: true }, el('div', { className: 'insp-left' }, V.overview, V.list, el('div', { className: 'prof-list-head', textContent: 'What happened' }), V.feed), V.detail);
 		body.replaceChildren(V.head, V.cols);
 	}
 
@@ -301,6 +491,7 @@ window.MS = window.MS || {};
 		if (!showing) {
 			return;
 		}
+		updateOverview(w);
 		updateList(w);
 		updateFeed();
 		updateDetail(w);
@@ -423,6 +614,7 @@ window.MS = window.MS || {};
 			V.d.team.value = String(a.team);
 		}
 		if (current) {
+			fillMind(w);
 			fillValues(w);
 			fillSide(w);
 		}
@@ -501,9 +693,18 @@ window.MS = window.MS || {};
 		const cls = el('small');
 		const table = el('table', { className: 'watch-table' });
 		const side = el('div');
-		const box = el('div', {}, el('div', { className: 'insp-title' }, name, cls), actions, el('div', { className: 'insp-tables' }, table, side));
+		const mindRow = (label, title) => {
+			const cell = el('td');
+			return { tr: el('tr', { hidden: true }, el('th', { textContent: label, title }), cell), cell, id: 0, text: '' };
+		};
+		const mind = { behavior: mindRow('Doing', 'What its AI is doing now'), target: mindRow('Target', 'Who it is after; click to look at them'), squad: mindRow('Squad', 'The leader it follows'), cover: mindRow('Cover', 'Why it took cover, or the range it keeps'), order: mindRow('Orders', 'Its AI mode, order and rules'), route: mindRow('Route', 'The path it is following'), hurt: mindRow('Hurt', 'When it was last hit') };
+		const strip = el('canvas', { className: 'insp-strip', height: 14, title: 'The last two minutes of what its AI did, one colour a behaviour' });
+		const legend = el('div', { className: 'insp-modes' });
+		const stripBox = el('div', {}, strip, legend);
+		const mindBox = el('div', { className: 'insp-mind' }, el('div', { className: 'prof-list-head', textContent: 'Its mind' }), el('table', { className: 'watch-table insp-mindtable' }, ...Object.values(mind).map((r) => r.tr)), stripBox);
+		const box = el('div', {}, el('div', { className: 'insp-title' }, name, cls), actions, mindBox, el('div', { className: 'insp-tables' }, table, side));
 		V.detail.append(box);
-		V.d = { box, name, cls, health, team, table, side, values: new Map(), sideKey: null };
+		V.d = { box, name, cls, health, team, table, side, mind, mindBox, strip, legend, stripBox, values: new Map(), sideKey: null };
 	}
 
 	function setFollow(on) {
