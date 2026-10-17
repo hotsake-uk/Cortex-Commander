@@ -138,10 +138,9 @@ window.MS = window.MS || {};
 			return;
 		}
 		const frame = frames[0];
-		S = { part, frame, count: 4, seed: 1, replace: false, shards: [] };
+		S = { part, frame, count: 4, seed: 1, shards: [] };
 		const canvas = el('canvas', { className: 'gib-preview' });
 		const count = el('input', { type: 'number', min: 2, max: 10, value: S.count, className: 'ed-input num' });
-		const replace = el('input', { type: 'checkbox' });
 		const info = el('div', { className: 'small' });
 		const palette = (k) => 'hsl(' + ((k * 137.5 + 20) % 360) + ', 80%, 60%)';
 		const draw = () => {
@@ -173,16 +172,13 @@ window.MS = window.MS || {};
 			S.count = Math.max(2, Math.min(10, Number(count.value) || 4));
 			draw();
 		};
-		replace.onchange = () => {
-			S.replace = replace.checked;
-		};
 		const again = el('button', { className: 'tb', textContent: 'Different cuts', onclick: () => { S.seed++; draw(); } });
 		const body = el('div', {},
 			el('p', { textContent: 'Cuts ' + part.name + '\'s picture, as it is now, into gibs that fly out when it is blown apart.' }),
 			el('div', { className: 'gib-row' }, canvas),
 			el('div', { className: 'gib-row' }, 'Pieces', count, again),
 			info,
-			el('label', { className: 'ed-check' }, replace, 'Replace its current gibs (otherwise these are added to them)'));
+			el('p', { className: 'small', textContent: 'They are added to the gibs it already has.' }));
 		MS.dialogs.open('Make gibs from ' + part.name, body, [
 			{ text: 'Cancel' },
 			{ text: 'Make the gibs', primary: true, action: () => apply() },
@@ -190,10 +186,29 @@ window.MS = window.MS || {};
 		draw();
 	}
 
+	// Makes sure the mod's Index.ini lists the gib file before the unit's file (an earlier run may have put it after).
+	function listBefore(mod, file, unitFile) {
+		const a = app();
+		const index = a.lib.docFor(mod + '/Index.ini');
+		if (!index) {
+			return;
+		}
+		const dm = index.root.children.find((n) => n.key === 'DataModule') || index.root;
+		const same = (n, path) => n.key === 'IncludeFile' && n.value.split(String.fromCharCode(92)).join('/').toLowerCase() === path.toLowerCase();
+		const gib = dm.children.find((n) => same(n, file));
+		const unit = dm.children.find((n) => same(n, unitFile));
+		if (gib && unit && dm.children.indexOf(gib) > dm.children.indexOf(unit)) {
+			a.edit('list the gibs before the unit', () => {
+				gib.remove();
+				dm.add('IncludeFile', file, dm.children.indexOf(unit));
+			});
+		}
+	}
+
 	// The gib pictures and presets in the project, and the part's gib lines.
 	async function apply() {
 		const a = app();
-		const { part, shards, replace, frame } = S;
+		const { part, shards, frame } = S;
 		if (!shards.length) {
 			a.toast('Nothing to cut.', 'bad');
 			return;
@@ -226,10 +241,12 @@ window.MS = window.MS || {};
 		a.forgetSprites(shards.map((s, i) => folder + '/' + partName + 'Gib' + (i + 1) + '.png'));
 		let doc = a.lib.docFor(docPath);
 		if (!doc) {
-			doc = await a.lib.newDoc(docPath);
+			// Read before the unit that carries the gibs: a CopyOf needs its preset to exist already, or the game refuses the whole mod.
+			doc = await a.lib.newDoc(docPath, part.anchor.doc.module.toLowerCase() === mod.toLowerCase() ? part.anchor.doc.path : null);
 			a.hookDoc(doc);
 			a.hookDoc(a.lib.docFor(mod + '/Index.ini'));
 		}
+		listBefore(mod, docPath, part.anchor.doc.path);
 		const names = shards.map((s, i) => prefix + (i + 1));
 		a.edit('make gibs for ' + part.name, () => {
 			// The shards of an earlier run come out first, so running it again makes them afresh.
@@ -264,23 +281,13 @@ window.MS = window.MS || {};
 				return;
 			}
 			const refs = names.map((n) => a.lib.reference(n, mod, own.doc.module));
-			if (replace) {
-				// Every gib it has now goes (an inherited one is taken over first, as for any list), then these.
-				for (const entry of [...part.ent.all('AddGib')]) {
-					const mine = entry.node.parent === own ? entry.node : a.lib.adopt(own, entry.node);
-					if (mine) {
-						mine.remove();
-					}
-				}
-			} else {
-				// An earlier run's lines are replaced, other gibs stay.
-				for (const node of [...own.children]) {
-					if (node.key === 'AddGib') {
-						const p = node.child('GibParticle');
-						const c = p && p.child('CopyOf');
-						if (c && c.value.split('/').pop().startsWith(prefix)) {
-							node.remove();
-						}
+			// An earlier run's lines are replaced; every other gib the part has stays as it is.
+			for (const node of [...own.children]) {
+				if (node.key === 'AddGib') {
+					const p = node.child('GibParticle');
+					const c = p && p.child('CopyOf');
+					if (c && c.value.split('/').pop().startsWith(prefix)) {
+						node.remove();
 					}
 				}
 			}
@@ -297,7 +304,7 @@ window.MS = window.MS || {};
 		} catch (e) {
 			// autosave will try again
 		}
-		a.toast('Made ' + shards.length + ' gibs for ' + part.name + ' in ' + mod + (replace ? ' (its old gibs are gone)' : '') + '.', 'good');
+		a.toast('Made ' + shards.length + ' gibs for ' + part.name + ' in ' + mod + '.', 'good');
 		S = null;
 	}
 
