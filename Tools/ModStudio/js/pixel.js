@@ -357,6 +357,28 @@ window.MS = window.MS || {};
 				E.cur = i;
 				renderAll();
 			};
+			// Drag a frame to a new place in the sequence.
+			b.draggable = true;
+			b.ondragstart = (e) => {
+				e.dataTransfer.setData('text/plain', String(i));
+				e.dataTransfer.effectAllowed = 'move';
+				b.classList.add('dragging');
+			};
+			b.ondragend = () => b.classList.remove('dragging');
+			b.ondragover = (e) => {
+				e.preventDefault();
+				e.dataTransfer.dropEffect = 'move';
+				b.classList.add('drop');
+			};
+			b.ondragleave = () => b.classList.remove('drop');
+			b.ondrop = (e) => {
+				e.preventDefault();
+				b.classList.remove('drop');
+				const from = Number(e.dataTransfer.getData('text/plain'));
+				if (Number.isInteger(from) && from !== i && from >= 0 && from < E.frames.length) {
+					moveFrameTo(from, i);
+				}
+			};
 			return b;
 		}));
 		E.frameInfo.textContent = 'Frame ' + (E.cur + 1) + ' of ' + E.frames.length + ' · ' + frame().w + '×' + frame().h;
@@ -519,6 +541,16 @@ window.MS = window.MS || {};
 		});
 	}
 
+	// Takes a frame out and puts it back at another place; the frame you were on stays selected.
+	function moveFrameTo(from, to) {
+		edit(() => {
+			const current = E.frames[E.cur];
+			const [f] = E.frames.splice(from, 1);
+			E.frames.splice(to, 0, f);
+			E.cur = E.frames.indexOf(current);
+		});
+	}
+
 	function moveFrame(by) {
 		const to = E.cur + by;
 		if (to < 0 || to >= E.frames.length) {
@@ -637,8 +669,14 @@ window.MS = window.MS || {};
 		a.toast(message, 'good');
 		const done = E.onSaved;
 		E.saved = true;
-		MS.dialogs.close();
-		E = null;
+		E.dirty = false;
+		E.frameCount = E.frames.length;
+		if (E.tab) {
+			E.tab.title = 'Sprite · ' + (E.file ? E.file.split('/').pop() : 'a new picture');
+			if (MS.ide) {
+				MS.ide.renderTabs && MS.ide.renderTabs();
+			}
+		}
 		if (done) {
 			done();
 		}
@@ -681,6 +719,7 @@ window.MS = window.MS || {};
 		const linkable = E.part && !a.lockReason(E.part);
 		try {
 			await MS.dialogs.saveSprite(linkable ? E.part : null, path, outFrames(), false);
+			E.file = path;
 			await keepUnit();
 		} catch (e) {
 			a.toast('Couldn\'t save the picture: ' + e.message, 'bad');
@@ -849,6 +888,12 @@ window.MS = window.MS || {};
 		target = target || {};
 		const part = target.part || null;
 		const file = part ? part.sprite.file : target.file || null;
+		const key = 'sprite:' + (file || 'new' + ++newCount);
+		const existing = MS.ide.findSpriteTab(key);
+		if (existing) {
+			MS.ide.activate(existing);
+			return;
+		}
 		const frameCount = part ? part.sprite.frameCount : target.frameCount || 1;
 		let frames = null;
 		if (file) {
@@ -869,39 +914,40 @@ window.MS = window.MS || {};
 		const common = [...counts.entries()].sort((x, y) => y[1] - x[1])[0];
 		E = { part, file, frameCount: file ? frames.length : 0, frames, cur: 0, tool: 'pencil', color: common ? common[0] : 1, recent: [], mirror: false, grid: true, onion: false, zoom: 8, undo: [], redo: [], pending: null, dirty: false, warned: false, drag: null, preview: null, hover: null, previewAt: 0, saved: false, onSaved: target.onSaved || null };
 		const body = build();
+		E.root = body;
 		const name = file ? file.split('/').pop() : 'a new picture';
-		MS.dialogs.open('Edit sprite · ' + name, body, [{
-			text: 'Close',
-			action: () => {
-				if (E && E.dirty && !E.saved && !E.warned) {
-					E.warned = true;
-					app().toast('You have changes that aren\'t saved. Press Close again to throw them away.', 'bad');
-					return false;
-				}
-				E = null;
-			},
-		}], true);
-		$modal().classList.add('px-card');
-		document.addEventListener('keydown', onKey, true);
+		const px = E;
+		const tab = MS.ide.openSpriteTab(key, 'Sprite · ' + name, px, (host, t) => mount(host, t));
+		px.tab = tab;
+	}
+
+	// Puts a sprite tab's editor in the page (the tab's own state becomes the current one).
+	function mount(host, tab) {
+		const px = tab.px;
+		E = px;
+		if (host.firstElementChild !== px.root) {
+			host.replaceChildren(px.root);
+		}
 		setTimeout(() => {
-			if (!E) {
+			if (E !== px || !px.cv.isConnected) {
 				return;
 			}
-			fit();
+			if (!px.fitted) {
+				px.fitted = true;
+				fit();
+			}
 			renderPalette();
 			renderAll();
 		}, 30);
-		const timer = setInterval(() => {
-			if (!E || !E.cv.isConnected) {
-				clearInterval(timer);
-				return;
-			}
-			if (E.frames.length > 1) {
-				E.previewAt++;
-				renderPreview();
-			}
-		}, 160);
 	}
+
+	function forget(px) {
+		if (E === px) {
+			E = null;
+		}
+	}
+
+	let newCount = 0;
 
 	const $modal = () => document.getElementById('modalCard');
 
@@ -937,5 +983,18 @@ window.MS = window.MS || {};
 		setTimeout(() => document.addEventListener('pointerdown', outside, true), 0);
 	}
 
-	MS.pixel = { open, menu, close: closeMenu };
+	// One key handler and one preview timer for every sprite tab: they act on the editor that is showing.
+	document.addEventListener('keydown', (e) => {
+		if (E && E.cv && E.cv.isConnected && E.cv.offsetParent) {
+			onKey(e);
+		}
+	}, true);
+	setInterval(() => {
+		if (E && E.cv && E.cv.isConnected && E.cv.offsetParent && E.frames.length > 1) {
+			E.previewAt++;
+			renderPreview();
+		}
+	}, 160);
+
+	MS.pixel = { open, menu, close: closeMenu, forget };
 })();
