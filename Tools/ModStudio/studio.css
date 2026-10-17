@@ -125,7 +125,7 @@ body.resizing iframe, body.resizing canvas { pointer-events: none; }
 .group { display: flex; background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
 .group button { background: none; border: 0; padding: 5px 10px; color: var(--dim); cursor: pointer; border-right: 1px solid var(--line); }
 .group button:last-child { border-right: 0; }
-.group button.sel { background: var(--panel3); color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
+.group button.sel { background: var(--panel3); color: var(--accent); }
 .group button:hover { color: var(--text); }
 .group.small button { padding: 4px 8px; font-size: 12px; }
 .ico { background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius); width: 30px; height: 28px; cursor: pointer; }
