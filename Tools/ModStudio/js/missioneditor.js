@@ -453,30 +453,8 @@ window.MS = window.MS || {};
 				}, 30));
 			}
 			const areas = () => areasOf(sceneOf(scenarioByKey(key)));
-			// the mission's script, to count which areas its logic uses
-			const ent = a.lib.resolve(scenario.node);
-			const scriptPath = ent.str('ScriptPath', '');
-			const scriptText = () => {
-				const want = scriptPath.toLowerCase();
-				for (const sc of MS.ide.lua.scripts.values()) {
-					if (sc.path.toLowerCase() === want) {
-						return sc.text;
-					}
-				}
-				return '';
-			};
-			const usage = (name) => {
-				const text = scriptText();
-				if (!text) {
-					return 0;
-				}
-				const g = MS.flow.parse(text);
-				if (g) {
-					return g.nodes.filter((n) => Object.values(n.p || {}).includes(name) || ((n.lists && n.lists.conds) || []).some((c) => c.area === name)).length;
-				}
-				const m = text.match(new RegExp('"' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '"', 'g'));
-				return m ? m.length : 0;
-			};
+			const scriptPath = a.lib.resolve(scenario.node).str('ScriptPath', '');
+			const usage = (name) => (MS.missionLogic ? MS.missionLogic.usage(scenarioByKey(key), name) : 0);
 			const change = async (name, boxes) => {
 				const target = await editableScene(scenarioByKey(key));
 				if (target) {
@@ -597,7 +575,10 @@ window.MS = window.MS || {};
 			const mapPane = el('div', { className: 'me-left' }, side, view.root);
 			const logic = el('div', { className: 'me-right' });
 			if (MS.missionLogic && MS.missionLogic.render) {
-				MS.missionLogic.render(logic, scenario, { areas: () => areas().map((r) => r.name), highlight: (names) => {
+				MS.missionLogic.render(logic, scenario, { areas: () => areas().map((r) => r.name), changed: () => {
+					view.draw();
+					drawSide();
+				}, highlight: (names) => {
 					s.map.lit = names;
 					view.draw();
 				}, pickArea: (name) => {
@@ -606,8 +587,6 @@ window.MS = window.MS || {};
 					view.draw();
 					drawSide();
 				} });
-			} else if (MS.missions && MS.scenarios && MS.scenarios.missionHost) {
-				logic.append(el('h3', { textContent: 'Mission logic' }), MS.missions.section(scenario, ent, locked(scenario), areas().map((r) => r.name), MS.scenarios.missionHost));
 			}
 			const splitter = el('div', { className: 'me-splitter', title: 'Drag to share the room between the map and the logic' });
 			const body = el('div', { className: 'me-body' }, mapPane, splitter, logic);

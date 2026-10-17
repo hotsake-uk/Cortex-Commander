@@ -528,8 +528,42 @@ window.MS = window.MS || {};
 		return g;
 	}
 
+	// Adds another graph's nodes to this one (a ready-made mission), with new ids and the wires and stage references between them kept, below what is
+	// there. Returns the old id -> new id map.
+	function merge(g, other) {
+		const map = {};
+		const top = g.nodes.length ? g.nodes.reduce((m, n) => Math.max(m, (Number(n.y) || 0) + 260), 0) : 0;
+		const minY = other.nodes.length ? Math.min(...other.nodes.map((n) => Number(n.y) || 0)) : 0;
+		for (const n of other.nodes) {
+			g.seq = (Number(g.seq) || 0) + 1;
+			map[n.id] = 'n' + g.seq;
+		}
+		for (const n of other.nodes) {
+			const copy = clone(n);
+			copy.id = map[n.id];
+			copy.x = Number(n.x) || 0;
+			copy.y = (Number(n.y) || 0) - minY + top;
+			copy.out = {};
+			for (const [pin, to] of Object.entries(n.out || {})) {
+				if (map[to]) {
+					copy.out[pin] = map[to];
+				}
+			}
+			if (copy.p && copy.p.target && map[copy.p.target]) {
+				copy.p.target = map[copy.p.target];
+			}
+			for (const c of (copy.lists && copy.lists.conds) || []) {
+				if (c.target && map[c.target]) {
+					c.target = map[c.target];
+				}
+			}
+			g.nodes.push(copy);
+		}
+		return map;
+	}
+
 	MS.flow = Object.assign(MS.flow || {}, {
-		KINDS, ORDER, CONDS, CATEGORIES, BATTLE_MODES, OPS,
+		KINDS, ORDER, CONDS, CATEGORIES, BATTLE_MODES, OPS, merge,
 		create, addNode, find, incoming, whyNot, connect, disconnect, removeNode, clone, addCondition, condDefaults,
 		chainFrom, entries, stages, firstStage, isStage, problems, layout, migrate, reaches,
 	});
