@@ -1329,3 +1329,16 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .tab.drop-before { box-shadow: inset 3px 0 0 var(--accent, #f2b63d); }
 .tab.drop-after { box-shadow: inset -3px 0 0 var(--accent, #f2b63d); }
 .tab[draggable="true"] { -webkit-user-drag: element; }
+/* the browser's kinds of thing: a grid of small buttons, each with how many there are */
+.lib-cats { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 3px; padding: 8px 10px 6px; border-bottom: 1px solid var(--line); flex: none; }
+.lib-cats button { display: flex; align-items: center; gap: 5px; min-width: 0; padding: 4px 6px; background: none; border: 1px solid transparent; border-radius: 5px; color: var(--dim); cursor: pointer; font-size: 12px; text-align: left; }
+.lib-cats button:hover { background: var(--panel3); color: var(--text); }
+.lib-cats button.sel { background: var(--panel3); border-color: var(--accent); color: var(--text); }
+.lib-cats button.none { opacity: .45; }
+.lib-cats .cat-icon { flex: none; width: 14px; text-align: center; color: var(--accent); }
+.lib-cats .cat-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-cats .cat-n { flex: none; font-size: 10.5px; color: var(--faint); }
+.lib-filter .spacer { flex: 1; }
+.lib-editors { display: flex; gap: 4px; }
+.lib-editors .small-btn { padding: 1px 7px; }
+.lib-row .lib-icon { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 6px; background: var(--panel3); color: var(--accent); font-size: 18px; }

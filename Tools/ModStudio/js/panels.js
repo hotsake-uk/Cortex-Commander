@@ -50,14 +50,128 @@ window.MS = window.MS || {};
 		}
 	}
 
-	const TAB_CLASSES = {
-		units: new Set(['AHuman', 'ACrab']),
-		craft: new Set(['ACDropShip', 'ACRocket']),
-		attachments: new Set(['Attachable', 'AEmitter', 'AEJetpack', 'PEmitter']),
-		items: new Set(['HDFirearm', 'HeldDevice', 'TDExplosive', 'ThrownDevice']),
-		// Everything else with a picture: open it, edit its settings and its sprite like any other.
-		more: new Set(['MOSRotating', 'MOSParticle', 'Magazine', 'Turret', 'ADoor', 'Arm', 'Leg', 'TerrainObject', 'BunkerAssembly']),
+	// ---- what the browser on the left lists: kinds of thing, each a category ----
+	// A category: id, title, icon, hint, match(p) (which presets), allLevels (list nested blocks too, not just top-level ones), thumb ('rig' a unit
+	// drawn whole, 'sprite' its picture, 'scene' the scene's preview, or none: the icon), open(p, e) (a click), actions(p) (buttons on the row),
+	// editors (buttons above the list: [label, editor id]), extra(p) (more sections in its relationships box: [[title, rows]], a row being
+	// { icon, name, note, title, onclick }), isOpen(p) (marks the row of what is open). register() adds one: a new editor adds its category and
+	// is browsed like everything else.
+	const CATEGORIES = [];
+	const categoryOf = (id) => CATEGORIES.find((c) => c.id === id) || CATEGORIES[0];
+	const byClass = (...names) => {
+		const set = new Set(names);
+		const match = (p) => set.has(p.cls);
+		match.classes = set;
+		return match;
 	};
+	const keyOfPreset = (p) => p.doc.path + ':' + p.name;
+	// Opens one of the data editors (editors.js) on a preset's mod, with that preset picked.
+	function openInEditor(id, p, extraState) {
+		MS.editors.open(id, p.module);
+		const t = MS.ide.tabs.find((x) => x.kind === 'form' && x.editor && x.editor.id === id && x.editor.module === p.module);
+		if (t) {
+			t.state = Object.assign(t.state || {}, { selected: keyOfPreset(p) }, extraState || {});
+			MS.ide.refreshForm();
+			markLibrary();
+		}
+	}
+	const editorShows = (id, p) => {
+		const t = MS.ide && MS.ide.active;
+		return !!(t && t.kind === 'form' && t.editor && t.editor.id === id && t.editor.module === p.module && t.state && t.state.selected === keyOfPreset(p));
+	};
+	const isActor = (p) => !!(app.actor && p.doc.path === app.actor.path && p.name === app.actor.name);
+	const openDesigner = (p, e) => app.openActor(p, { newTab: !!(e && (e.ctrlKey || e.metaKey)) });
+	const presetRow = (p, note, onclick) => ({ icon: '◆', name: p.name, note, title: p.cls + ' · ' + p.doc.path, onclick });
+
+	function register(category) {
+		const at = CATEGORIES.findIndex((c) => c.id === category.id);
+		if (at >= 0) {
+			CATEGORIES[at] = category;
+		} else {
+			CATEGORIES.push(category);
+		}
+		if (app && app.lib) {
+			showLibrary();
+		}
+	}
+
+	register({ id: 'units', title: 'Units', icon: '☻', hint: 'Humans and crabs', match: byClass('AHuman', 'ACrab'), thumb: 'rig', open: openDesigner, isOpen: isActor, editors: [['Buy menu', 'buy'], ['Loadouts', 'loadouts']] });
+	register({ id: 'craft', title: 'Craft', icon: '✈', hint: 'Dropships and rockets', match: byClass('ACDropShip', 'ACRocket'), thumb: 'rig', open: openDesigner, isOpen: isActor, editors: [['Buy menu', 'buy']] });
+	register({
+		id: 'items', title: 'Items', icon: '⌖', hint: 'Guns, tools, shields, grenades', match: byClass('HDFirearm', 'HeldDevice', 'TDExplosive', 'ThrownDevice'), thumb: 'sprite', open: openDesigner,
+		isOpen: (p) => isActor(p) || !!(app.device && p.doc.path === app.device.path && p.name === app.device.name),
+		editors: [['Weapons', 'weapons'], ['Buy menu', 'buy']],
+		actions: (p) => [smallButton('Hold', 'Put ' + p.name + ' in the open unit\'s front hand', () => {
+			// the unit may be in another designer tab: Hold goes to it
+			const unitTab = MS.ide.designerOfFamily('unit');
+			if (unitTab && unitTab !== MS.ide.active) {
+				MS.ide.activate(unitTab);
+			}
+			if (app.rig && app.rig.cls === 'AHuman') {
+				app.setDevice(p);
+				app.toast(p.name + ' is now in the front hand.');
+			} else {
+				app.toast('Open a unit first, then Hold puts this in its hand.', 'bad');
+			}
+		})],
+	});
+	register({
+		id: 'attachments', title: 'Attachments', icon: '⊕', hint: 'Parts to add to the selected part', match: byClass('Attachable', 'AEmitter', 'AEJetpack', 'PEmitter'), allLevels: true, thumb: 'sprite', dedupe: true,
+		open: (p) => MS.dialogs.attach(p, app.selected),
+		actions: (p) => [smallButton('+ Add', 'Add to the selected part', () => MS.dialogs.attach(p, app.selected))],
+	});
+	register({
+		id: 'effects', title: 'Effects', icon: '✺', hint: 'Emitters and particles', match: (p) => p.node.key === 'AddEffect' && ['AEmitter', 'MOPixel', 'MOSParticle', 'MOSRotating'].includes(p.cls), thumb: 'sprite',
+		open: (p) => openInEditor('effects', p, { kind: p.cls === 'AEmitter' ? 'emitters' : 'particles' }), isOpen: (p) => editorShows('effects', p), editors: [['Effects', 'effects']],
+	});
+	register({
+		id: 'missions', title: 'Missions', icon: '⚑', hint: 'Scenarios and their mission logic', match: (p) => p.node.key === 'AddActivity',
+		open: (p) => MS.missionEditor.open(p),
+		isOpen: (p) => {
+			const t = MS.ide && MS.ide.active;
+			return !!(t && t.editor && t.editor.id === 'mission' && t.editor.module === p.doc.path + '::' + p.name);
+		},
+		editors: [['Scenarios', 'scenarios']],
+		actions: (p) => [smallButton('Settings', 'Its settings: scene, teams, gold, difficulty', () => openInEditor('scenarios', p))],
+		extra: (p) => {
+			const scene = MS.missionEditor && MS.missionEditor.sceneOf ? MS.missionEditor.sceneOf(p) : null;
+			return scene ? [['Scene', [presetRow(scene, 'its map', () => openInEditor('scenes', scene))]]] : [];
+		},
+	});
+	register({
+		id: 'scenes', title: 'Scenes', icon: '▤', hint: 'Maps: terrain, backdrops and areas', match: byClass('Scene'), thumb: 'scene',
+		open: (p) => openInEditor('scenes', p), isOpen: (p) => editorShows('scenes', p), editors: [['Scenes', 'scenes']],
+		extra: (p) => {
+			if (!MS.missionEditor || !MS.missionEditor.sceneOf) {
+				return [];
+			}
+			const missions = app.lib.presets.filter((m) => m.topLevel && m.node.key === 'AddActivity' && (() => {
+				const s = MS.missionEditor.sceneOf(m);
+				return s && s.name === p.name;
+			})());
+			return missions.length ? [['Missions on it', missions.map((m) => presetRow(m, m.module, () => MS.missionEditor.open(m)))]] : [];
+		},
+	});
+	register({ id: 'sounds', title: 'Sounds', icon: '♪', hint: 'Sound containers', match: byClass('SoundContainer'), open: (p) => openInEditor('sounds', p), isOpen: (p) => editorShows('sounds', p), editors: [['Sounds', 'sounds']] });
+	register({ id: 'loadouts', title: 'Loadouts', icon: '⇣', hint: 'Sets of units and gear', match: byClass('Loadout'), open: (p) => openInEditor('loadouts', p), isOpen: (p) => editorShows('loadouts', p), editors: [['Loadouts', 'loadouts']] });
+	register({ id: 'materials', title: 'Materials', icon: '▦', hint: 'What terrain and objects are made of', match: byClass('Material'), open: (p) => openInEditor('materials', p), isOpen: (p) => editorShows('materials', p), editors: [['Materials', 'materials']] });
+	// everything else with a picture: open it, edit its settings and its sprite like any other
+	register({ id: 'more', title: 'More', icon: '⋯', hint: 'Gibs, particles, magazines, turrets, doors, arms, legs, bunker pieces', match: byClass('MOSRotating', 'MOSParticle', 'Magazine', 'Turret', 'ADoor', 'Arm', 'Leg', 'TerrainObject', 'BunkerAssembly'), thumb: 'sprite', open: openDesigner, isOpen: isActor });
+
+	// The kinds the rest of Studio asks about by name (the attach dialog, the script editor).
+	const TAB_CLASSES = new Proxy({}, { get: (_, id) => (categoryOf(id).match.classes || new Set()) });
+
+	function smallButton(text, title, run) {
+		const b = document.createElement('button');
+		b.className = 'small-btn add';
+		b.textContent = text;
+		b.title = title;
+		b.onclick = (e) => {
+			e.stopPropagation();
+			run(e);
+		};
+		return b;
+	}
 
 	// ---- drawing small pictures ----
 
@@ -107,6 +221,30 @@ window.MS = window.MS || {};
 		const w = frame.width * Math.min(z, 4);
 		const h = frame.height * Math.min(z, 4);
 		ctx.drawImage(frame.canvas, Math.floor((canvas.width - w) / 2), Math.floor((canvas.height - h) / 2), w, h);
+		return true;
+	}
+
+	// A scene: its preview picture ("Name.preview.png" beside its INI, as the game makes them), or else its terrain, scaled down to fit.
+	function drawSceneThumb(canvas, preset) {
+		const dir = preset.doc.path.split('/').slice(0, -1).join('/');
+		const preview = dir + '/' + preset.name + '.preview.png';
+		const terrain = MS.scenes && MS.scenes.terrainPicture ? MS.scenes.terrainPicture(preset, app.lib.resolve(preset.node)) : null;
+		const missing = (f) => app.images.missing.has(f.toLowerCase());
+		const file = !missing(preview) ? preview : terrain;
+		if (!file) {
+			return true;
+		}
+		const frame = app.sprite(file, 1, 0);
+		if (!frame) {
+			return file === terrain ? missing(terrain) : false; // the preview not there: the terrain is tried next time round
+		}
+		const ctx = canvas.getContext('2d');
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+		const z = Math.min(canvas.width / frame.width, canvas.height / frame.height);
+		ctx.imageSmoothingEnabled = true;
+		const w = frame.width * z;
+		const h = frame.height * z;
+		ctx.drawImage(frame.canvas, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
 		return true;
 	}
 
@@ -263,11 +401,14 @@ window.MS = window.MS || {};
 		});
 	}
 
+	// What a category has in the scope (the project, or the whole library).
+	const inCategory = (c) => app.lib.presets.filter((p) => (c.allLevels || p.topLevel) && app.inScope(p.module) && c.match(p));
+
 	function libraryPresets() {
-		const wanted = TAB_CLASSES[tab];
+		const c = categoryOf(tab);
 		const query = $('libSearch').value.trim().toLowerCase();
 		const mineOnly = $('libMineOnly').checked;
-		const candidates = app.lib.presets.filter((p) => wanted.has(p.cls) && (tab === 'attachments' || p.topLevel) && app.inScope(p.module));
+		const candidates = inCategory(c);
 		fillLibSelects(candidates);
 		const type = $('libType').value;
 		const group = $('libGroup').value;
@@ -285,7 +426,7 @@ window.MS = window.MS || {};
 				continue;
 			}
 			// Attachments: only ones with a picture, and each name once.
-			if (tab === 'attachments') {
+			if (c.dedupe) {
 				const key = p.module + '/' + p.name;
 				if (seen.has(key) || !app.lib.resolve(p.node).file('SpriteFile')) {
 					continue;
@@ -297,9 +438,49 @@ window.MS = window.MS || {};
 		return out;
 	}
 
+	// The kinds of thing to browse, each with how many there are in the scope; and above the list, the editors for that kind.
+	function renderCategories() {
+		const bar = $('libTabs');
+		bar.className = 'lib-cats';
+		bar.replaceChildren(...CATEGORIES.map((c) => {
+			const n = inCategory(c).length;
+			const b = document.createElement('button');
+			b.className = (c.id === tab ? 'sel' : '') + (n ? '' : ' none');
+			b.title = c.hint + ' (' + n + ')';
+			b.innerHTML = '<span class="cat-icon"></span><span class="cat-name"></span><span class="cat-n"></span>';
+			b.children[0].textContent = c.icon;
+			b.children[1].textContent = c.title;
+			b.children[2].textContent = n > 999 ? '999+' : n;
+			b.onclick = () => {
+				tab = c.id;
+				app.writeLocal('ms.browse', tab);
+				$('libType').value = '';
+				$('libGroup').value = '';
+				showLibrary();
+			};
+			return b;
+		}));
+		const c = categoryOf(tab);
+		$('libSearch').placeholder = 'Search ' + c.title.toLowerCase() + '…';
+		const tools = $('libEditors');
+		tools.replaceChildren(...(c.editors || []).map(([label, id]) => smallButton(label, 'Open the ' + label + ' editor for ' + (app.project || 'the project'), () => {
+			const module = app.project || (inCategory(c)[0] || {}).module;
+			if (module) {
+				MS.editors.open(id, module);
+			} else {
+				app.toast('Pick a project first (the button at the top).', 'bad');
+			}
+		})));
+	}
+
 	function showLibrary() {
 		const list = $('libList');
 		list.innerHTML = '';
+		if (!CATEGORIES.some((c) => c.id === tab)) {
+			tab = CATEGORIES[0].id;
+		}
+		const category = categoryOf(tab);
+		renderCategories();
 		const presets = libraryPresets();
 		$('libCount').textContent = presets.length + ' shown';
 		if (!presets.length) {
@@ -314,7 +495,7 @@ window.MS = window.MS || {};
 				if (e.isIntersecting && !e.target.dataset.drawn) {
 					e.target.dataset.drawn = '1';
 					const preset = e.target._preset;
-					queueThumb(e.target, () => (tab === 'units' || tab === 'craft' ? drawRigThumb(e.target, preset) : drawSpriteThumb(e.target, preset)));
+					queueThumb(e.target, () => (category.thumb === 'rig' ? drawRigThumb(e.target, preset) : category.thumb === 'scene' ? drawSceneThumb(e.target, preset) : drawSpriteThumb(e.target, preset)));
 				}
 			}
 		}, { root: list });
@@ -332,11 +513,18 @@ window.MS = window.MS || {};
 			const row = document.createElement('div');
 			row.className = 'lib-row';
 			row._preset = p;
-			const canvas = document.createElement('canvas');
-			canvas.width = 40;
-			canvas.height = 40;
-			canvas._preset = p;
-			observer.observe(canvas);
+			let canvas;
+			if (category.thumb) {
+				canvas = document.createElement('canvas');
+				canvas.width = 40;
+				canvas.height = 40;
+				canvas._preset = p;
+				observer.observe(canvas);
+			} else {
+				canvas = document.createElement('span');
+				canvas.className = 'lib-icon';
+				canvas.textContent = category.icon;
+			}
 			const txt = document.createElement('div');
 			txt.className = 'txt';
 			txt.innerHTML = '<div class="name"></div><div class="meta"></div>';
@@ -351,49 +539,12 @@ window.MS = window.MS || {};
 				toggleFiles(row);
 			};
 			row.append(twist, canvas, txt);
-			if (tab === 'units' || tab === 'craft') {
-				row.onclick = (e) => app.openActor(p, { newTab: e.ctrlKey || e.metaKey });
-				row.title = 'Open ' + p.name;
-			} else if (tab === 'items') {
-				// A click opens the item in the designer (its grip, muzzle, magazine, settings and sprite); with a unit open, Hold puts it in the unit's hand.
-				const hold = document.createElement('button');
-				hold.className = 'small-btn add';
-				hold.textContent = 'Hold';
-				hold.title = 'Put ' + p.name + ' in the open unit\'s front hand';
-				hold.onclick = (e) => {
-					e.stopPropagation();
-					// The unit may be in another designer tab: Hold goes to it.
-					const unitTab = MS.ide.designerOfFamily('unit');
-					if (unitTab && unitTab !== MS.ide.active) {
-						MS.ide.activate(unitTab);
-					}
-					if (app.rig && app.rig.cls === 'AHuman') {
-						app.setDevice(p);
-						app.toast(p.name + ' is now in the front hand.');
-					} else {
-						app.toast('Open a unit first, then Hold puts this in its hand.', 'bad');
-					}
-				};
-				row.append(hold);
-				row.onclick = (e) => app.openActor(p, { newTab: e.ctrlKey || e.metaKey });
-				row.title = 'Open ' + p.name + ' in the designer';
-			} else if (tab === 'more') {
-				row.onclick = (e) => app.openActor(p, { newTab: e.ctrlKey || e.metaKey });
-				row.title = 'Open ' + p.name + ' in the designer';
-			} else {
-				const add = document.createElement('button');
-				add.className = 'small-btn add';
-				add.textContent = '+ Add';
-				add.title = 'Add to the selected part';
-				add.onclick = (e) => {
-					e.stopPropagation();
-					MS.dialogs.attach(p, app.selected);
-				};
-				row.append(add);
-				row.onclick = () => MS.dialogs.attach(p, app.selected);
-				row.title = 'Add ' + p.name + ' to the selected part';
+			row.onclick = (e) => category.open(p, e);
+			row.title = 'Open ' + p.name;
+			for (const button of category.actions ? category.actions(p) : []) {
+				row.append(button);
 			}
-			if (app.libraryOn && app.project && p.module.toLowerCase() !== app.project.toLowerCase()) {
+			if (app.libraryOn && app.project && p.module.toLowerCase() !== app.project.toLowerCase() && (category.thumb === 'rig' || category.id === 'items' || category.id === 'more')) {
 				// In the Library: clone it into the project (a copy in your mod you can change), then open it.
 				const clone = document.createElement('button');
 				clone.className = 'small-btn add';
@@ -463,6 +614,23 @@ window.MS = window.MS || {};
 			return box;
 		}
 		files.related = MS.nav.related(preset, files);
+		const category = CATEGORIES.find((c) => c.match(preset)) || null;
+		for (const [title, rows] of category && category.extra ? category.extra(preset) : []) {
+			const head = document.createElement('div');
+			head.className = 'lf-head';
+			head.textContent = title;
+			box.append(head, ...rows.map((r) => {
+				const row = document.createElement('div');
+				row.className = 'lf-row';
+				row.title = r.title || '';
+				row.innerHTML = '<span class="x-ext part"></span><span class="lf-name"></span><span class="lf-note"></span>';
+				row.children[0].textContent = r.icon || '◆';
+				row.children[1].textContent = r.name;
+				row.children[2].textContent = r.note || '';
+				row.onclick = r.onclick;
+				return row;
+			}));
+		}
 		for (const [kind, title] of FILE_GROUPS) {
 			const items = files[kind];
 			if (!items.length) {
@@ -505,16 +673,16 @@ window.MS = window.MS || {};
 		note.className = 'lf-note';
 		if (kind === 'related') {
 			const p = item.preset;
-			const designable = Object.values(TAB_CLASSES).some((set) => set.has(p.cls));
+			const own = CATEGORIES.find((c) => c.match(p));
+			const designable = !!own;
 			icon.className = 'x-ext part';
 			icon.textContent = '≈';
 			name.textContent = p.name;
 			note.textContent = item.why.join(', ');
-			row.title = p.cls + ' · ' + p.doc.path + ':' + p.node.line + '\n' + item.why.join('\n') + '\n' + (designable ? 'Click to open it in the designer' : 'Click to open its lines');
+			row.title = p.cls + ' · ' + p.doc.path + ':' + p.node.line + '\n' + item.why.join('\n') + '\n' + (designable ? 'Click to open it' : 'Click to open its lines');
 			row.onclick = () => {
-				if (designable) {
-					app.openActor(p);
-					MS.ide.activate(MS.ide.tabs.find((t) => t.kind === 'designer') || MS.ide.active);
+				if (own) {
+					own.open(p);
 				} else {
 					MS.ide.openFile(p.doc.path, p.node.line);
 				}
@@ -573,9 +741,8 @@ window.MS = window.MS || {};
 	function markLibrary() {
 		for (const row of document.querySelectorAll('.lib-row')) {
 			const p = row._preset;
-			const isActor = app.actor && p.doc.path === app.actor.path && p.name === app.actor.name;
-			const selected = tab === 'units' || tab === 'craft' || tab === 'more' ? isActor : tab === 'items' ? isActor || (app.device && p.doc.path === app.device.path && p.name === app.device.name) : false;
-			row.classList.toggle('sel', !!selected);
+			const c = categoryOf(tab);
+			row.classList.toggle('sel', !!(c.isOpen && c.isOpen(p)));
 		}
 	}
 
@@ -1899,19 +2066,7 @@ window.MS = window.MS || {};
 		$('btnFoldParts').onclick = () => {
 			foldAll(!app.collapsed.size);
 		};
-		for (const b of document.querySelectorAll('#libTabs button')) {
-			b.onclick = () => {
-				tab = b.dataset.tab;
-				$('libType').value = '';
-				$('libGroup').value = '';
-				for (const x of document.querySelectorAll('#libTabs button')) {
-					x.classList.toggle('sel', x === b);
-				}
-				if (app.lib) {
-					showLibrary();
-				}
-			};
-		}
+		tab = app.readLocal('ms.browse') || tab;
 		let searchTimer = null;
 		$('libSearch').oninput = () => {
 			clearTimeout(searchTimer);
@@ -1941,6 +2096,8 @@ window.MS = window.MS || {};
 		forgetThumbs: () => thumbRigs.clear(),
 		filesOpen: () => openFiles !== null,
 		TAB_CLASSES,
+		register,
+		categories: () => CATEGORIES.slice(),
 		showPartMenu,
 	};
 })();
