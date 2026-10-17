@@ -33,7 +33,7 @@ const chain = (...steps) => {
 };
 
 // ---- the opening ----
-const defenders = (area, group) => node('spawn', { source: 'group', group: group || 'Actors - Heavy', team: 1, area, perBox: true, arrive: 'appear', facing: 'auto', ai: 'sentry', tag: 'Defenders' });
+const defenders = (area, group) => node('spawn', { source: 'group', group: group || 'Actors - Heavy', team: 1, area, perBox: true, arrive: 'appear', facing: 'auto', ai: 'sentry', tag: 'Defenders', arm: group ? 'light' : 'heavy' });
 const start = node('start', {});
 wire(start, 'then', chain(
 	node('fog', { do: 'hideAll', team: 0 }),
@@ -41,6 +41,8 @@ wire(start, 'then', chain(
 	node('fog', { do: 'reveal', area: 'Initial Extra FOW Reveal', team: 0 }),
 	node('lz', { team: 0, area: 'Initial Human Spawn' }),
 	node('buyMenu', { on: true }),
+	// each player's brain, made theirs, and a squad beside it (Decision Day flies them in; here they start on the ground)
+	node('playerStart', { team: 0, area: 'Initial Human Spawn', squad: num(4), group: 'Actors - Light', arm: 'light' }),
 	defenders('Front Bunker Left Defenders', 'Actors - Light'),
 	defenders('Front Bunker Right Defenders', 'Actors - Light'),
 	defenders('Front Bunker Operations Defenders'),

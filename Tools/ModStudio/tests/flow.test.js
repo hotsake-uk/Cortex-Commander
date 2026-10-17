@@ -35,7 +35,8 @@ local ActorMeta = { __index = function(a, k)
 	elseif k == "AddToGroup" then return function(self, g) self.groups[g] = true end
 	elseif k == "ClearAIWaypoints" then return function(self) self.waypoints = {} end
 	elseif k == "AddAISceneWaypoint" then return function(self, p) self.waypoints = self.waypoints or {}; self.waypoints[#self.waypoints + 1] = p end
-	elseif k == "AddInventoryItem" then return function(self, item) self.cargo[#self.cargo + 1] = item end
+	elseif k == "AddInventoryItem" then return function(self, item) self.cargo = self.cargo or {}; self.cargo[#self.cargo + 1] = item end
+	elseif k == "RemoveInventoryItem" then return function(self, name) log("removed " .. name .. " from " .. self.PresetName) end
 	elseif k == "OpenDoor" then return function(self) log("open door " .. self.UniqueID) end
 	elseif k == "CloseDoor" then return function(self) log("close door " .. self.UniqueID) end
 	elseif k == "GibThis" then return function(self) self.Health = 0; log("gib " .. self.UniqueID) end
@@ -138,6 +139,14 @@ function Test:GetViewState(p) return ViewState[p] or 0 end
 function Test:SwitchToActor(a, p, t) Controlled[p] = a; log("control " .. a.UniqueID .. " by " .. p) end
 function Test:SetTeamTech(t, tech) log("tech " .. t .. " " .. tech) end
 CameraMan = { SetScrollTarget = function(self, v, speed, screen) log("camera " .. v.X .. "," .. v.Y) end }
+-- objective markers cleared each frame; the players' brains; weapons of a group; the ground under a point
+function Test:ClearObjectivePoints() Marks = 0 end
+PlayerBrains = {}
+function Test:SetPlayerBrain(a, p) PlayerBrains[p] = a; log("brain for " .. p .. ": " .. a.PresetName) end
+function Test:SetObservationTarget(pos, p) end
+RandomHDFirearm = function(group, tech) return { PresetName = group } end
+RandomTDExplosive = function(group, tech) return { PresetName = group } end
+SceneMan.MovePointToGround = function(self, p, radius, step) return { X = p.X, Y = 200 } end
 -- a unit gone from the game (dead and removed)
 function Remove(a) for i, x in ipairs(Actors) do if x == a then table.remove(Actors, i) return end end end
 -- pie menus: slices made from a preset, copied into a unit's menu when no slice there has the name; using one calls the function it names
@@ -654,7 +663,7 @@ test('spawning a random unit of a group in each box of an area, tagged and sent 
 	const g = graph([['start', {}, { then: 1 }], ['spawn', { source: 'group', group: 'Actors - Heavy', team: 1, area: 'Posts', perBox: true, ai: 'goto', goTo: 'Gate', tag: 'Guards', arrive: 'appear', facing: 'left' }]]);
 	const m = game(g);
 	m.run('Areas["Posts"] = { x = 0, y = 0, w = 10, h = 10, more = { { x = 50, y = 0, w = 10, h = 10 }, { x = 90, y = 0, w = 10, h = 10 } } }; Areas["Gate"] = { x = 500, y = 0, w = 10, h = 10 }');
-	assert.equal(lines(m.step()).filter((l) => l === 'spawn Random Actors - Heavy team 1').length, 3);
+	assert.equal(lines(m.step()).filter((l) => l.startsWith('spawn Random Actors - Heavy team 1')).length, 3, 'one in each box (each armed)');
 	assert.equal(m.run('local n = 0 for a in MovableMan.Actors do if a.groups["Guards"] and a.AIMode == Actor.AIMODE_GOTO and a.waypoints and a.waypoints[1].X == 505 and a.HFlipped then n = n + 1 end end return tostring(n)'), '3');
 });
 
@@ -948,4 +957,27 @@ test('any team: a pie menu button for every team\'s units, an area shaded for ev
 	]));
 	m.run('Areas["Yard"] = { x = 0, y = 0, w = 10, h = 10 }; A = MakeActor(0, 0, 0); B = MakeActor(1, 0, 0); ViewState[0] = Activity.ACTORSELECT');
 	assert.deepEqual(lines(m.step()), ['pie All to ' + m.run('return tostring(A.UniqueID)'), 'pie All to ' + m.run('return tostring(B.UniqueID)'), 'shade 0,0-10,10 in 210 for 0']);
+});
+
+test('the players start with a brain each and an armed squad on the ground; spawned units are armed', () => {
+	const m = game(graph([
+		['start', {}, { then: 1 }],
+		['playerStart', { team: 0, area: 'Start', squad: { k: 'num', n: 2 }, group: 'Actors - Light', arm: 'light' }, { then: 2 }],
+		['spawn', { source: 'group', group: 'Actors - Heavy', team: 1, area: 'Start', count: { k: 'num', n: 1 }, arrive: 'appear', ai: 'sentry', arm: 'heavy' }],
+	]));
+	m.run('Areas["Start"] = { x = 0, y = 0, w = 100, h = 100 }');
+	const out = lines(m.step());
+	assert.ok(out.includes('brain for 0: Loadout Infantry Brain'), 'the brain is the player\'s');
+	assert.ok(out.includes('control ' + m.run('return tostring(PlayerBrains[0].UniqueID)') + ' by 0'), 'and the player controls it');
+	assert.equal(m.run('return tostring(PlayerBrains[0].Pos.Y)'), '200', 'standing on the ground');
+	assert.equal(out.filter((l) => /^spawn Random Actors - Light team 0/.test(l)).length, 2, 'a squad of two');
+	assert.equal(m.run('local n = 0; for _, a in ipairs(Actors) do if a.Team == 0 and a.cargo and #a.cargo == 2 then n = n + 1 end end; return tostring(n)'), '2', 'each with a rifle and a pistol');
+	assert.equal(m.run('for _, a in ipairs(Actors) do if a.Team == 1 then return tostring(#a.cargo) end end'), '3', 'a heavy one with grenades too');
+});
+
+test('objective markers are cleared each frame, not piled up', () => {
+	const m = game(graph([['stageReach', { area: 'Far', team: 0, name: 'Go', text: 'Go there', marker: true, viewer: 0 }]]));
+	m.run('Areas["Far"] = { x = 900, y = 0, w = 10, h = 10 }');
+	m.step(0.1, 20);
+	assert.equal(m.run('return tostring(Marks)'), '1');
 });
