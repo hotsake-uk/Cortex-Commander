@@ -634,7 +634,7 @@ window.MS = window.MS || {};
 			...GLOSSARY.map(([word, meaning]) => para('<b>' + word + '</b> ' + meaning)),
 			el('h4', { textContent: 'Keys and the mouse' }),
 			grid);
-		open('Using Mod Studio', body, [{ text: 'Close' }], true);
+		open('Using Studio', body, [{ text: 'Close' }], true);
 	}
 
 	function previewHelp() {
