@@ -21,6 +21,7 @@ import './weapons.js';
 import './materials.js';
 import './limbs.js';
 import './effects.js';
+import './missions.js';
 import './scenarios.js';
 import './lua-intel.js';
 import './ini-intel.js';
