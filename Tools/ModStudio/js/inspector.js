@@ -128,9 +128,14 @@ window.MS = window.MS || {};
 			const response = await app().fs.api('GET', 'file', WORLD);
 			if (response) {
 				const modified = Number(response.headers.get('X-Last-Modified')) || 0;
-				if (modified !== I.modified) {
+				const text = modified !== I.modified ? await response.text() : '';
+				// The game rewrites the file four times a second: a read that lands while it is being written (empty, or cut short) is left, and
+				// what is on screen stays until the next whole one (a game that ends the file with End = 1 says when it is whole).
+				const whole = /^Paused = /m.test(text) && (!I.endMarked || /^End = 1\s*$/m.test(text));
+				if (modified !== I.modified && whole) {
+					I.endMarked = I.endMarked || /^End = 1\s*$/m.test(text);
 					I.modified = modified;
-					I.world = parse(await response.text());
+					I.world = parse(text);
 					trackDamage(I.world);
 					noteChanges(I.world);
 					trackMinds(I.world);

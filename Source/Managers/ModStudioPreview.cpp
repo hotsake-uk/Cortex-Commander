@@ -35,6 +35,41 @@
 
 using namespace RTE;
 
+namespace {
+	// A file Studio reads while the game runs (World.ini, Live.ini, Watch.ini, Profile.ini): written to a temporary file and swapped in when
+	// it is done, so Studio never reads one half written (an empty or cut-short read made its panels flash). With endMarker, the file ends
+	// with "End = 1", so Studio can tell a whole one. Where the swap can't be made (Studio's reader has the file open just then, on Windows)
+	// it is written in place, as before.
+	class StudioFileOut : public std::ostringstream {
+	public:
+		explicit StudioFileOut(std::filesystem::path path, bool endMarker = false) : m_Path(std::move(path)), m_EndMarker(endMarker) {}
+		~StudioFileOut() override {
+			if (m_EndMarker) {
+				*this << "End = 1
+";
+			}
+			const std::string text = str();
+			std::filesystem::path temp = m_Path;
+			temp += ".tmp";
+			{
+				std::ofstream out(temp, std::ios::binary | std::ios::trunc);
+				out << text;
+			}
+			std::error_code error;
+			std::filesystem::rename(temp, m_Path, error);
+			if (error) {
+				std::ofstream out(m_Path, std::ios::binary | std::ios::trunc);
+				out << text;
+				std::filesystem::remove(temp, error);
+			}
+		}
+
+	private:
+		std::filesystem::path m_Path;
+		bool m_EndMarker;
+	};
+} // namespace
+
 bool ModStudioPreview::s_InGame = false;
 std::chrono::steady_clock::time_point ModStudioPreview::s_LastCheck = {};
 long ModStudioPreview::s_LastUnitID = 0;
@@ -409,7 +444,7 @@ void ModStudioPreview::UpdateProfile() {
 
 	std::error_code folderError;
 	std::filesystem::create_directories(StudioFolder(), folderError);
-	std::ofstream profile(StudioFolder() / "Profile.ini", std::ios::trunc);
+	StudioFileOut profile(StudioFolder() / "Profile.ini");
 	profile << "// Written by the game for Cortex Mod Studio's profiler twice a second. Times are milliseconds; scripts' are a sim update.\n";
 	profile << "Frame = " << g_PerformanceMan.GetMSPFAverage() << '\n';
 	profile << "SimUpdate = " << g_PerformanceMan.GetMSPSUAverage() << '\n';
@@ -550,7 +585,7 @@ void ModStudioPreview::UpdateFrame() {
 		return;
 	}
 
-	std::ofstream world(StudioFolder() / "World.ini", std::ios::trunc);
+	StudioFileOut world(StudioFolder() / "World.ini", true);
 	world << "// Written by the game for Cortex Mod Studio's inspector four times a second.\n";
 	world << "Paused = " << (g_TimerMan.IsSimPaused() ? 1 : 0) << '\n';
 	world << "PausedByStudio = " << (s_InspectPaused ? 1 : 0) << '\n';
@@ -696,7 +731,7 @@ void ModStudioPreview::UpdateScripts() {
 		std::scoped_lock<std::mutex> watchLock(watched.Mutex);
 		if (watched.Changed) {
 			watched.Changed = false;
-			std::ofstream watchFile(StudioFolder() / "Watch.ini", std::ios::trunc);
+			StudioFileOut watchFile(StudioFolder() / "Watch.ini");
 			for (const auto& [name, value]: watched.Values) {
 				watchFile << name << " = " << value << '\n';
 			}
@@ -708,7 +743,7 @@ void ModStudioPreview::UpdateScripts() {
 		std::scoped_lock<std::mutex> liveLock(live.Mutex);
 		if (live.Changed) {
 			live.Changed = false;
-			std::ofstream liveFile(StudioFolder() / "Live.ini", std::ios::trunc);
+			StudioFileOut liveFile(StudioFolder() / "Live.ini");
 			for (const auto& [key, probe]: live.Probes) {
 				liveFile << key << " = " << probe.Count;
 				for (const std::string& value: probe.Recent) {
