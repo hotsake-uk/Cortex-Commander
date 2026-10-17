@@ -670,13 +670,13 @@ window.MS = window.MS || {};
 		const bar = $('tabbar');
 		bar.innerHTML = '';
 		// Design mode has tabs too, but only the designer and the sprite editors; Script mode has them all.
-		const shown = ide.tabs.filter((t) => (!MS.popout.request || t.kind !== 'designer') && (ide.mode === 'deep' || t.kind === 'designer' || t.sprite));
+		const shown = ide.tabs.filter((t) => (!MS.popout.request || MS.popout.request.k === 'design' || t.kind !== 'designer') && (ide.mode === 'deep' || t.kind === 'designer' || t.sprite));
 		$('app').classList.toggle('has-tabs', ide.mode === 'deep' || shown.some((t) => t.sprite) || shown.filter((t) => t.kind === 'designer').length > 1);
 		for (const tab of shown) {
 			const dirty = tabDirty(tab) || !!(tab.sprite && tab.px && tab.px.dirty);
 			const icon = el('span', { className: 'tab-icon ' + (tab.kind === 'designer' ? 'designer' : tab.kind === 'form' ? 'form' : extOf(tab.path)), textContent: tab.kind === 'designer' ? '◆' : tab.kind === 'form' ? tab.icon || '▦' : extOf(tab.path) });
 			const item = el('div', { className: 'tab' + (tab === ide.active ? ' sel' : '') + (dirty ? ' dirty' : '') + (tab.readOnly ? ' ro' : ''), title: tab.path || (tab.kind === 'form' ? tab.title : 'The unit designer') }, icon, el('span', { className: 'tab-name', textContent: tabTitle(tab) }));
-			if (tab.sprite || (tab.kind === 'code' && !tab.doc)) {
+			if (tab.sprite || tab.kind === 'designer' || (tab.kind === 'form' && tab.editor) || (tab.kind === 'code' && !tab.doc)) {
 				const pop = el('button', { className: 'tab-pop', textContent: '⧉', title: 'Open in its own window' });
 				pop.onclick = (e) => {
 					e.stopPropagation();
@@ -775,16 +775,17 @@ window.MS = window.MS || {};
 	};
 
 	// A data editor (editors.js) in a tab: key says which one (opening it again comes back to it), render(host, tab) draws it.
-	ide.openForm = function (key, title, icon, render) {
+	ide.openForm = function (key, title, icon, render, editor) {
 		if (ide.mode !== 'deep') {
 			ide.setMode('deep');
 		}
 		let tab = ide.tabs.find((t) => t.kind === 'form' && t.key === key);
 		if (!tab) {
-			tab = { id: nextTabId++, kind: 'form', key, title, icon, render };
+			tab = { id: nextTabId++, kind: 'form', key, title, icon, render, editor: editor || null };
 			ide.tabs.push(tab);
 		}
 		ide.activate(tab);
+		return tab;
 	};
 
 	// The sprite editor (pixel.js) in a tab, in either mode: key says which picture (opening it again comes back to it), px is its state,

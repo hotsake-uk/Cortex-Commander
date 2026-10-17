@@ -1030,6 +1030,9 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 #app.popout > #topbar, #app.popout > #activity, #app.popout > #side, #app.popout > #left, #app.popout > #center, #app.popout > #right, #app.popout > #bottom { display: none !important; }
 #app.popout #tabbar { display: flex !important; }
 #app.popout #codeWrap { display: flex !important; grid-area: code !important; }
+#app.popout.popout-design { grid-template-columns: minmax(300px, 1fr) minmax(260px, var(--right-w, 350px)) !important; grid-template-rows: 0 minmax(0, 1fr) 26px !important; grid-template-areas: "tabs tabs" "center right" "status status" !important; }
+#app.popout.popout-design > #center, #app.popout.popout-design > #right { display: flex !important; }
+#app.popout.popout-design #tabbar { display: none !important; }
 .tree-row .swatch { width: 8px; height: 8px; border-radius: 2px; flex: none; margin: 0 4px 0 2px; }
 .bk-head { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
 .bk-list { display: flex; flex-direction: column; gap: 4px; max-height: 46vh; overflow: auto; }

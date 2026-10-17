@@ -45,6 +45,7 @@ window.MS = window.MS || {};
 	function begin() {
 		if (request) {
 			document.getElementById('app').classList.add('popout');
+			document.getElementById('app').classList.toggle('popout-design', request.k === 'design');
 			document.title = 'Cortex Studio';
 		}
 	}
@@ -58,6 +59,17 @@ window.MS = window.MS || {};
 			} else if (request.k === 'file') {
 				MS.ide.setMode('deep', true);
 				await MS.ide.openFile(request.path, request.line);
+			} else if (request.k === 'editor') {
+				MS.editors.open(request.id, request.module);
+			} else if (request.k === 'design') {
+				const preset = a.lib.presets.find((p) => p.topLevel && p.doc.path === request.path && p.name === request.name && p.cls === request.cls);
+				if (!preset) {
+					a.toast('Studio cannot find ' + request.name + ' in ' + request.path + ' to show it here.', 'bad');
+				} else {
+					MS.ide.setMode('design', true);
+					a.openActor(preset);
+					document.title = request.name + ' · Cortex Studio';
+				}
 			}
 			const tab = MS.ide.active;
 			if (tab && tab.title) {
@@ -90,8 +102,21 @@ window.MS = window.MS || {};
 				return;
 			}
 			what = { k: 'file', path: tab.path };
+		} else if (tab.kind === 'form' && tab.editor) {
+			what = { k: 'editor', id: tab.editor.id, module: tab.editor.module };
+		} else if (tab.kind === 'designer') {
+			const current = tab === MS.ide.currentDesigner ? a.actor : tab.state && tab.state.actor;
+			if (!current) {
+				a.toast('Open something in the designer first.', 'bad');
+				return;
+			}
+			if (a.dirtyDocs().length) {
+				a.toast('Save first (Ctrl+S): the other window reads the files, and would not have your changes.', 'bad');
+				return;
+			}
+			what = { k: 'design', path: current.path, name: current.name, cls: current.cls };
 		} else {
-			a.toast('This tab can\'t go in its own window yet. Sprite and file tabs can.', 'bad');
+			a.toast('This tab can\'t go in its own window.', 'bad');
 			return;
 		}
 		const text = JSON.stringify(what);
@@ -107,7 +132,10 @@ window.MS = window.MS || {};
 			url.searchParams.set('popout', text);
 			window.open(url.toString(), '_blank');
 		}
-		MS.ide.closeTab(tab, true);
+		// The designer stays if it is the only one (the window must keep its place); everything else moves.
+		if (tab.kind !== 'designer' || MS.ide.tabs.filter((t) => t.kind === 'designer').length > 1) {
+			MS.ide.closeTab(tab, true);
+		}
 	}
 
 	// Whether another window has this sprite tab open (it answers within a moment, or nobody has).

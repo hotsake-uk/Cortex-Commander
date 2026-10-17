@@ -266,7 +266,7 @@ window.MS = window.MS || {};
 							doc.root.add(copy);
 						}
 					});
-					MS.ide.openForm('loadouts:' + target, 'Loadouts · ' + target, '▦', renderLoadouts(target));
+					openEditor('loadouts', target);
 				},
 			},
 		]);
@@ -449,6 +449,16 @@ window.MS = window.MS || {};
 
 	// ---- the Data view in the activity bar ----
 
+	// Opens one of the editors below for a module, in a tab (or, from a pop-out window's address, as that window's only tab).
+	function openEditor(id, module) {
+		const entry = EDITORS.find((e) => e[0] === id);
+		if (!entry || !module) {
+			return null;
+		}
+		const [, title, , icon, render] = entry;
+		return MS.ide.openForm(id + ':' + module, title + ' · ' + module.replace(/[.]rte$/i, ''), icon, render(module), { id, module });
+	}
+
 	const EDITORS = [
 		['buy', 'Buy menu', 'Cost, buy menu and groups of every unit, craft and item', '$', renderBuyMenu],
 		['loadouts', 'Loadouts', 'What a team orders: the craft and what it brings', '⇣', renderLoadouts],
@@ -476,11 +486,11 @@ window.MS = window.MS || {};
 		const module = select.value;
 		$('dataEditors').replaceChildren(...EDITORS.map(([id, title, sub, icon, render, counter]) => {
 			const count = counter ? counter(module) : id === 'loadouts' ? presetsOf(module, (p) => p.cls === 'Loadout').length : id === 'sounds' ? presetsOf(module, (p) => p.cls === 'SoundContainer').length : presetsOf(module, (p) => UNITS.has(p.cls) || CRAFT.has(p.cls) || ITEMS.has(p.cls)).length;
-			return el('button', { className: 'data-editor', onclick: () => MS.ide.openForm(id + ':' + module, title + ' · ' + module.replace(/\.rte$/i, ''), icon, render(module)) },
+			return el('button', { className: 'data-editor', onclick: () => openEditor(id, module) },
 				el('b', {}, icon + '  ' + title, el('span', { className: 'badge-n', textContent: count })), el('span', { textContent: sub }));
 		}));
 	}
 
 	// Editors in their own files join the list: [id, title, what it is, icon, render(module), count(module)].
-	MS.editors = { renderSide, renderBuyMenu, renderLoadouts, renderSounds, register: (entry) => EDITORS.push(entry), docFor, play, soundFiles };
+	MS.editors = { renderSide, renderBuyMenu, renderLoadouts, renderSounds, register: (entry) => EDITORS.push(entry), docFor, play, soundFiles, open: openEditor };
 })();
