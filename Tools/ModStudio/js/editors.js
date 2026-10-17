@@ -45,12 +45,12 @@ window.MS = window.MS || {};
 	// An editor opened while Studio is still reading the game waits for it (the next refresh draws it).
 	const whenRead = (render) => (host, tab) => (app().lib && app().lib.presets.length ? render(host, tab) : host.replaceChildren(el('p', { className: 'ed ed-empty', textContent: 'Studio is still reading the game…' })));
 
-	function lockBanner(doc, module) {
+	function lockBanner(doc, module, extra) {
 		if (!doc || !locked(doc)) {
 			return null;
 		}
 		return el('div', { className: 'ed-banner' }, app().lib.lockKind(doc) === 'game'
-			? module + ' is one of the game\'s own modules, so this is read only. Use New… to make your own things, or Unlock everything on the Game screen to change it in place.'
+			? module + ' is one of the game\'s own modules, so this is read only. ' + (extra || 'Use New… to make your own things') + ', or Unlock everything on the Game screen to change it in place.'
 			: module + ' is someone else\'s mod: read only until you choose Edit this mod on one of its units.');
 	}
 
@@ -173,7 +173,7 @@ window.MS = window.MS || {};
 			const copyBtn = loadouts.length && ro ? el('button', { className: 'tb', textContent: 'Copy them into my mod…', onclick: () => copyLoadouts(module, loadouts) }) : null;
 			host.replaceChildren(el('div', { className: 'ed' },
 				el('div', { className: 'ed-head' }, el('h2', { textContent: 'Loadouts · ' + module }), el('span', { className: 'spacer' }), faction, copyBtn, newBtn),
-				lockBanner(index, module),
+				lockBanner(index, module, 'Press Copy them into my mod… above to get copies of these you can change'),
 				el('p', { className: 'ed-note', textContent: 'A loadout is what a team orders in one go: the craft it arrives in and what it brings. The AI and the buy menu\'s Loadouts use them; one called Default is the team\'s usual order.' }),
 				loadouts.length ? el('div', { className: 'ed-cards' }, ...loadouts.map((l) => loadoutCard(l, module))) : el('p', { className: 'ed-empty', textContent: module + ' has no loadouts yet.' })));
 		});
