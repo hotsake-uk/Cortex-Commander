@@ -28,6 +28,7 @@ window.MS = window.MS || {};
 		pick: '<path d="M10 2l4 4-2 2-4-4z"/><path d="M8 6l-5 5v3h3l5-5"/>',
 		line: '<path d="M3 13L13 3"/>',
 		rect: '<path d="M3 4h10v8H3z"/>',
+		adjust: '<circle cx="8" cy="8" r="2.5"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"/>',
 	};
 	const TOOLS = [
 		['pencil', 'Pencil (B)', 'b'],
@@ -36,6 +37,7 @@ window.MS = window.MS || {};
 		['pick', 'Pick a colour (I); Alt+click does it with any tool', 'i'],
 		['line', 'Line (L)', 'l'],
 		['rect', 'Rectangle (R): hold Shift for a solid one', 'r'],
+		['adjust', 'Brighten the glow (H): drag over lit pixels, right-click or Shift to dim them (Lights mode)', 'h'],
 	];
 
 	let E = null; // the editor that is open
@@ -89,9 +91,10 @@ window.MS = window.MS || {};
 
 	// ---- undo ----
 
-	const snapshot = () => ({ cur: E.cur, frames: E.frames.map(copyFrame) });
+	const snapshot = () => ({ cur: E.cur, frames: E.frames.map(copyFrame), glow: E.glow ? { w: E.glow.w, h: E.glow.h, rgb: Uint8ClampedArray.from(E.glow.rgb) } : null });
 
 	function restore(s) {
+		E.glow = s.glow ? { w: s.glow.w, h: s.glow.h, rgb: Uint8ClampedArray.from(s.glow.rgb) } : null;
 		E.frames = s.frames.map(copyFrame);
 		E.cur = Math.min(s.cur, E.frames.length - 1);
 		renderAll();
@@ -178,6 +181,10 @@ window.MS = window.MS || {};
 
 	// Paints points with a palette number, and their mirror image when mirror drawing is on.
 	function plot(points, index) {
+		if (E.mode === 'light') {
+			plotGlow(points, index === 0);
+			return;
+		}
 		const f = frame();
 		for (const [x, y] of points) {
 			if (x >= 0 && y >= 0 && x < f.w && y < f.h) {
@@ -193,6 +200,10 @@ window.MS = window.MS || {};
 	}
 
 	function floodFill(x, y, index) {
+		if (E.mode === 'light') {
+			floodGlow(x, y, index === 0);
+			return;
+		}
 		const f = frame();
 		if (x < 0 || y < 0 || x >= f.w || y >= f.h) {
 			return;
@@ -225,6 +236,242 @@ window.MS = window.MS || {};
 		return [p[i * 3], p[i * 3 + 1], p[i * 3 + 2]];
 	};
 
+	// ---- lights: a glow layer the game draws as emitted light ----
+	// One layer for the whole picture (the game takes one glow picture per part, whichever frame is showing). Each pixel holds the light colour it gives
+	// off; a brighter colour is a stronger glow, black is none. It is saved as its own picture beside the sprite and named in the part's ScreenEffect.
+
+	const lit = (g, i) => g.rgb[i * 3] + g.rgb[i * 3 + 1] + g.rgb[i * 3 + 2] > 0;
+
+	function ensureGlow() {
+		const f = E.frames[0];
+		if (!E.glow || E.glow.w !== f.w || E.glow.h !== f.h) {
+			E.glow = { w: f.w, h: f.h, rgb: new Uint8ClampedArray(f.w * f.h * 3) };
+		}
+		return E.glow;
+	}
+
+	const litCount = () => {
+		const g = E.glow;
+		let n = 0;
+		for (let i = 0; g && i < g.w * g.h; i++) {
+			if (lit(g, i)) {
+				n++;
+			}
+		}
+		return n;
+	};
+
+	// The game colour nearest to a light colour (never the see-through number, so a faint glow still shows).
+	function nearestIndex(r, g, b) {
+		const p = app().images.palette;
+		let best = 1;
+		let bestDist = Infinity;
+		for (let i = 1; i < 256; i++) {
+			const d = (p[i * 3] - r) ** 2 + (p[i * 3 + 1] - g) ** 2 + (p[i * 3 + 2] - b) ** 2;
+			if (d < bestDist) {
+				bestDist = d;
+				best = i;
+			}
+		}
+		return best;
+	}
+
+	const glowColour = () => E.glowColor.map((c) => Math.round(c * E.glowStrength));
+
+	function setGlowAt(x, y, rgb) {
+		const g = ensureGlow();
+		if (x < 0 || y < 0 || x >= g.w || y >= g.h) {
+			return;
+		}
+		const i = (y * g.w + x) * 3;
+		g.rgb[i] = rgb ? rgb[0] : 0;
+		g.rgb[i + 1] = rgb ? rgb[1] : 0;
+		g.rgb[i + 2] = rgb ? rgb[2] : 0;
+	}
+
+	function plotGlow(points, erase) {
+		const g = ensureGlow();
+		const rgb = erase ? null : glowColour();
+		for (const [x, y] of points) {
+			setGlowAt(x, y, rgb);
+			if (E.mirror) {
+				setGlowAt(g.w - 1 - x, y, rgb);
+			}
+		}
+	}
+
+	function floodGlow(x, y, erase) {
+		const g = ensureGlow();
+		if (x < 0 || y < 0 || x >= g.w || y >= g.h) {
+			return;
+		}
+		const rgb = erase ? [0, 0, 0] : glowColour();
+		const at = (px, py) => (py * g.w + px) * 3;
+		const same = (a, b) => g.rgb[a] === g.rgb[b] && g.rgb[a + 1] === g.rgb[b + 1] && g.rgb[a + 2] === g.rgb[b + 2];
+		const start = at(x, y);
+		const target = [g.rgb[start], g.rgb[start + 1], g.rgb[start + 2]];
+		if (target[0] === rgb[0] && target[1] === rgb[1] && target[2] === rgb[2]) {
+			return;
+		}
+		const stack = [[x, y]];
+		while (stack.length) {
+			const [px, py] = stack.pop();
+			if (px < 0 || py < 0 || px >= g.w || py >= g.h) {
+				continue;
+			}
+			const i = at(px, py);
+			if (g.rgb[i] !== target[0] || g.rgb[i + 1] !== target[1] || g.rgb[i + 2] !== target[2]) {
+				continue;
+			}
+			g.rgb[i] = rgb[0];
+			g.rgb[i + 1] = rgb[1];
+			g.rgb[i + 2] = rgb[2];
+			stack.push([px + 1, py], [px - 1, py], [px, py + 1], [px, py - 1]);
+		}
+	}
+
+	// Brighter or dimmer glow on the pixels under the brush (only ones that already glow).
+	function adjustGlow(points, direction) {
+		const g = ensureGlow();
+		const factor = direction > 0 ? 1.15 : 0.87;
+		for (const [x, y] of points) {
+			for (const px of E.mirror ? [x, g.w - 1 - x] : [x]) {
+				if (px < 0 || y < 0 || px >= g.w || y >= g.h) {
+					continue;
+				}
+				const i = (y * g.w + px) * 3;
+				if (lit(g, i / 3)) {
+					for (let k = 0; k < 3; k++) {
+						g.rgb[i + k] = Math.max(direction > 0 ? g.rgb[i + k] + 1 : 0, Math.round(g.rgb[i + k] * factor));
+					}
+				}
+			}
+		}
+	}
+
+	// Every pixel of the picture painted this colour gets the glow, at the strength set: lights a group in one go (every red lamp, say).
+	function glowWhereColour(index) {
+		const f = E.frames[0];
+		const g = ensureGlow();
+		const rgb = index ? glowColour() : null;
+		for (let i = 0; i < f.indices.length; i++) {
+			if (f.indices[i] === index && index) {
+				g.rgb[i * 3] = rgb[0];
+				g.rgb[i * 3 + 1] = rgb[1];
+				g.rgb[i * 3 + 2] = rgb[2];
+			}
+		}
+	}
+
+	function scaleGlow(factor) {
+		const g = ensureGlow();
+		for (let i = 0; i < g.rgb.length; i++) {
+			g.rgb[i] = Math.min(255, Math.round(g.rgb[i] * factor));
+		}
+	}
+
+	// Where the picture's top-left sits on the part's origin (an unset offset is centred), for placing the glow picture's centre on the part.
+	function spriteOrigin(part, f) {
+		const o = part && part.sprite.offset && (part.sprite.offset.x || part.sprite.offset.y) ? part.sprite.offset : null;
+		return o ? { x: Math.round(o.x), y: Math.round(o.y) } : { x: -Math.floor(f.w / 2), y: -Math.floor(f.h / 2) };
+	}
+
+	// A part that already has a ScreenEffect picture: its pixels come back onto the sprite's grid.
+	async function loadGlow(part) {
+		const a = app();
+		const file = part && part.ent.file('ScreenEffect');
+		if (!file) {
+			return null;
+		}
+		const loaded = await a.images.get(file).catch(() => null);
+		if (!loaded || !loaded.indices) {
+			return null;
+		}
+		const f0 = E.frames[0];
+		const so = spriteOrigin(part, f0);
+		const g = { w: f0.w, h: f0.h, rgb: new Uint8ClampedArray(f0.w * f0.h * 3) };
+		for (let y = 0; y < f0.h; y++) {
+			for (let x = 0; x < f0.w; x++) {
+				const gx = Math.floor(loaded.width / 2) + so.x + x;
+				const gy = Math.floor(loaded.height / 2) + so.y + y;
+				if (gx >= 0 && gy >= 0 && gx < loaded.width && gy < loaded.height) {
+					const idx = loaded.indices[gy * loaded.width + gx];
+					if (idx) {
+						const c = palette(idx);
+						g.rgb.set(c, (y * f0.w + x) * 3);
+					}
+				}
+			}
+		}
+		E.glowOverall = Math.round(part.ent.num('EffectStartStrength', 128));
+		E.hadGlow = true;
+		return g;
+	}
+
+	// The glow picture, centred on the part's origin as the game draws screen effects, and the part's ScreenEffect lines to match.
+	async function saveGlow() {
+		const a = app();
+		const part = E.part;
+		if (!part || (!litCount() && !E.hadGlow)) {
+			return;
+		}
+		const g = ensureGlow();
+		const f0 = E.frames[0];
+		const dir = E.file.slice(0, E.file.lastIndexOf('/'));
+		const stem = safe(E.file.split('/').pop().replace(/\.[^.]+$/, '').replace(/\d+$/, ''));
+		const path = dir + '/' + stem + 'Glow.png';
+		if (!litCount()) {
+			a.edit('remove the glow of ' + part.name, () => {
+				const node = a.ownBlock(part);
+				if (node) {
+					for (const key of ['ScreenEffect', 'EffectStartStrength', 'EffectStopStrength', 'EffectAlwaysShows']) {
+						const c = node.child(key);
+						if (c) {
+							c.remove();
+						}
+					}
+				}
+			});
+			E.hadGlow = false;
+			return;
+		}
+		const so = spriteOrigin(part, f0);
+		const halfW = Math.max(1, Math.ceil(Math.max(Math.abs(so.x), Math.abs(so.x + f0.w))));
+		const halfH = Math.max(1, Math.ceil(Math.max(Math.abs(so.y), Math.abs(so.y + f0.h))));
+		const GW = halfW * 2;
+		const GH = halfH * 2;
+		const out = new Uint8Array(GW * GH);
+		for (let y = 0; y < f0.h; y++) {
+			for (let x = 0; x < f0.w; x++) {
+				const i = y * f0.w + x;
+				if (lit(g, i)) {
+					out[(halfH + so.y + y) * GW + (halfW + so.x + x)] = nearestIndex(g.rgb[i * 3], g.rgb[i * 3 + 1], g.rgb[i * 3 + 2]);
+				}
+			}
+		}
+		await a.fs.writeFile(path, await a.images.encodePng(GW, GH, out));
+		a.forgetSprites([path]);
+		a.edit('glow of ' + part.name, () => {
+			const node = a.ownBlock(part);
+			if (!node) {
+				return;
+			}
+			let se = node.child('ScreenEffect');
+			if (!se) {
+				se = node.add('ScreenEffect', 'ContentFile');
+			}
+			se.setValue('ContentFile');
+			for (const old of se.children.filter((c) => c.key === 'Path' || c.key === 'CopyOf')) {
+				old.remove();
+			}
+			se.set('FilePath', path);
+			node.set('EffectAlwaysShows', '1');
+			node.set('EffectStartStrength', String(E.glowOverall));
+			node.set('EffectStopStrength', String(E.glowOverall));
+		});
+		E.hadGlow = true;
+	}
+
 	// ---- the picture ----
 
 	function checker(ctx, w, h) {
@@ -251,6 +498,11 @@ window.MS = window.MS || {};
 		const ctx = cv.getContext('2d');
 		ctx.imageSmoothingEnabled = false;
 		checker(ctx, W, H);
+		if (E.dark) {
+			// In the dark: what the lights do shows best with nothing else lit.
+			ctx.fillStyle = 'rgba(4, 5, 8, .92)';
+			ctx.fillRect(0, 0, W, H);
+		}
 		if (E.onion && E.cur > 0) {
 			const before = E.frames[E.cur - 1];
 			if (before.w === f.w && before.h === f.h) {
@@ -259,7 +511,12 @@ window.MS = window.MS || {};
 				ctx.globalAlpha = 1;
 			}
 		}
+		if (E.dark) {
+			ctx.globalAlpha = 0.4;
+		}
 		ctx.drawImage(a.images.fromIndices(f.w, f.h, f.indices).canvas, 0, 0, W, H);
+		ctx.globalAlpha = 1;
+		drawGlow(ctx, W, H, z);
 		if (E.preview) {
 			const [r, g, b] = palette(E.preview.index);
 			ctx.fillStyle = E.preview.index ? 'rgb(' + r + ',' + g + ',' + b + ')' : 'rgba(239,106,91,.55)';
@@ -298,6 +555,40 @@ window.MS = window.MS || {};
 			ctx.lineWidth = 1;
 			ctx.strokeRect(E.hover.x * z + 0.5, E.hover.y * z + 0.5, z - 1, z - 1);
 		}
+	}
+
+	// The glow over the picture: each lit pixel in its colour, and a soft bloom round it, added to what is there, as the game's lighting would.
+	function drawGlow(ctx, W, H, z) {
+		const g = E.glow;
+		if (!g || !(E.glowShow || E.mode === 'light') || !litCount()) {
+			return;
+		}
+		const canvas = document.createElement('canvas');
+		canvas.width = g.w;
+		canvas.height = g.h;
+		const gctx = canvas.getContext('2d');
+		const data = gctx.createImageData(g.w, g.h);
+		for (let i = 0; i < g.w * g.h; i++) {
+			if (lit(g, i)) {
+				data.data[i * 4] = g.rgb[i * 3];
+				data.data[i * 4 + 1] = g.rgb[i * 3 + 1];
+				data.data[i * 4 + 2] = g.rgb[i * 3 + 2];
+				data.data[i * 4 + 3] = 255;
+			}
+		}
+		gctx.putImageData(data, 0, 0);
+		ctx.save();
+		ctx.globalCompositeOperation = 'lighter';
+		ctx.imageSmoothingEnabled = false;
+		ctx.globalAlpha = E.mode === 'light' ? 0.55 : 0.4;
+		ctx.drawImage(canvas, 0, 0, W, H);
+		ctx.globalAlpha = 1;
+		for (const blur of [z * 0.9, z * 2.2, z * 4]) {
+			ctx.filter = 'blur(' + Math.round(blur) + 'px)';
+			ctx.globalAlpha = 0.55;
+			ctx.drawImage(canvas, 0, 0, W, H);
+		}
+		ctx.restore();
 	}
 
 	function renderPalette() {
@@ -410,6 +701,13 @@ window.MS = window.MS || {};
 		E.gridBtn.classList.toggle('on', E.grid);
 		E.onionBtn.classList.toggle('on', E.onion);
 		E.mirrorBtn.classList.toggle('on', E.mirror);
+		E.lightBtn.classList.toggle('on', E.mode === 'light');
+		E.glowBtn.classList.toggle('on', E.glowShow);
+		E.toolButtons.adjust.hidden = E.mode !== 'light';
+		E.lightBox.hidden = E.mode !== 'light';
+		if (E.mode !== 'light' && E.tool === 'adjust') {
+			E.tool = 'pencil';
+		}
 		E.zoomText.textContent = E.zoom + '×';
 	}
 
@@ -446,9 +744,25 @@ window.MS = window.MS || {};
 	}
 
 	function pickAt(p) {
-		if (p.inside) {
-			setColor(frame().indices[p.y * frame().w + p.x]);
+		if (!p.inside) {
+			return;
 		}
+		if (E.mode === 'light') {
+			// The light takes the colour of the picture's pixel (or, over see-through, of the glow already there).
+			const index = frame().indices[p.y * frame().w + p.x];
+			const g = ensureGlow();
+			const i = p.y * g.w + p.x;
+			const c = index ? palette(index) : lit(g, i) ? [g.rgb[i * 3], g.rgb[i * 3 + 1], g.rgb[i * 3 + 2]] : null;
+			if (c) {
+				const top = Math.max(1, c[0], c[1], c[2]);
+				// Kept as a full-strength colour; the strength slider is the amount.
+				E.glowColor = c.map((v) => Math.round((v * 255) / top));
+				E.glowStrength = Math.max(0.1, Math.min(1, top / 255));
+				syncLights();
+			}
+			return;
+		}
+		setColor(frame().indices[p.y * frame().w + p.x]);
 	}
 
 	function onDown(e) {
@@ -464,6 +778,16 @@ window.MS = window.MS || {};
 		const p = pixelAt(e);
 		if (e.altKey || E.tool === 'pick') {
 			pickAt(p);
+			return;
+		}
+		if (E.tool === 'adjust') {
+			if (E.mode !== 'light') {
+				return;
+			}
+			begin();
+			E.drag = { last: p, adjust: e.button === 2 || e.shiftKey ? -1 : 1 };
+			adjustGlow([[p.x, p.y]], E.drag.adjust);
+			render();
 			return;
 		}
 		const index = E.tool === 'eraser' || e.button === 2 ? 0 : E.color;
@@ -489,7 +813,10 @@ window.MS = window.MS || {};
 		E.hover = p;
 		describe(p);
 		if (E.drag) {
-			if (E.drag.last) {
+			if (E.drag.adjust) {
+				adjustGlow(linePoints(E.drag.last.x, E.drag.last.y, p.x, p.y), E.drag.adjust);
+				E.drag.last = p;
+			} else if (E.drag.last) {
 				plot(linePoints(E.drag.last.x, E.drag.last.y, p.x, p.y), E.drag.index);
 				E.drag.last = p;
 			} else if (E.tool === 'line') {
@@ -509,6 +836,7 @@ window.MS = window.MS || {};
 			plot(E.preview.points, E.drag.index);
 			E.preview = null;
 		}
+		E.dirty = true;
 		E.drag = null;
 		commit();
 		renderAll();
@@ -691,11 +1019,25 @@ window.MS = window.MS || {};
 		}
 	}
 
+	// The glow is part of the unit (its ScreenEffect lines), so it is saved when the part can be changed; otherwise it waits for a copy of the unit.
+	async function saveGlowIfEditable() {
+		const a = app();
+		if (!E.part || (!litCount() && !E.hadGlow)) {
+			return;
+		}
+		if (a.lockReason(E.part)) {
+			a.toast('The glow is part of the unit, which isn\'t yours yet: clone it into your project, then save again to keep the glow.', 'bad');
+			return;
+		}
+		await saveGlow();
+	}
+
 	async function saveInPlace() {
 		const a = app();
 		try {
 			const countChanged = E.frames.length !== E.frameCount;
 			await MS.dialogs.saveSprite(countChanged || E.layerKey ? E.part : null, E.file, outFrames(), false, E.layerKey);
+			await saveGlowIfEditable();
 			await keepUnit();
 		} catch (e) {
 			a.toast('Couldn\'t save the picture: ' + e.message, 'bad');
@@ -727,6 +1069,7 @@ window.MS = window.MS || {};
 			if (E.tab) {
 				E.tab.key = spriteKey(path);
 			}
+			await saveGlowIfEditable();
 			await keepUnit();
 		} catch (e) {
 			a.toast('Couldn\'t save the picture: ' + e.message, 'bad');
@@ -769,6 +1112,57 @@ window.MS = window.MS || {};
 
 	// ---- the window ----
 
+	// The Lights controls: the light's colour and strength, the strength the game gives it, and ways to change a whole group at once.
+	function buildLights() {
+		const hex = (c) => '#' + c.map((v) => v.toString(16).padStart(2, '0')).join('');
+		const color = el('input', { type: 'color', value: hex(E.glowColor), title: 'The light\'s colour (Pick, with Alt, takes it from the picture)' });
+		const strength = el('input', { type: 'range', min: 10, max: 100, value: Math.round(E.glowStrength * 100), title: 'How strongly the pixels you paint glow' });
+		const strengthText = el('span', { className: 'px-note' });
+		const overall = el('input', { type: 'range', min: 10, max: 255, value: E.glowOverall, title: 'How strongly the game draws the whole glow (EffectStartStrength)' });
+		const overallText = el('span', { className: 'px-note' });
+		E.lightUi = { color, strength, strengthText, overall, overallText };
+		color.oninput = () => {
+			E.glowColor = [parseInt(color.value.slice(1, 3), 16), parseInt(color.value.slice(3, 5), 16), parseInt(color.value.slice(5, 7), 16)];
+			syncLights();
+		};
+		strength.oninput = () => {
+			E.glowStrength = Number(strength.value) / 100;
+			syncLights();
+		};
+		overall.oninput = () => {
+			E.glowOverall = Number(overall.value);
+			E.dirty = true;
+			syncLights();
+		};
+		const act = (text, title, run) => el('button', { className: 'ico-btn', textContent: text, title, onclick: () => { begin(); run(); commit(); renderAll(); } });
+		const dark = el('label', { className: 'ed-check' }, el('input', { type: 'checkbox', onchange: (e) => { E.dark = e.target.checked; render(); } }), 'See it in the dark');
+		const box = el('div', { hidden: true },
+			el('div', { className: 'px-h' }, 'Lights'),
+			el('div', { className: 'px-row' }, 'Colour', color, 'Strength', strength, strengthText),
+			el('div', { className: 'px-row' }, 'In the game', overall, overallText),
+			el('div', { className: 'px-row' },
+				act('Light this colour', 'Every pixel of the picture painted the colour picked in the palette gets the glow, at the strength set', () => glowWhereColour(E.color)),
+				act('Brighter', 'Make every light stronger', () => scaleGlow(1.2)),
+				act('Dimmer', 'Make every light weaker', () => scaleGlow(0.8)),
+				act('Clear lights', 'Take all the glow off', () => { E.glow = null; })),
+			dark,
+			el('p', { className: 'px-note', textContent: 'Paint with any tool: it lights pixels instead of colouring them. Brighten (H) strengthens lit pixels, right-click dims. The game uses one glow picture for the whole part, whichever frame shows.' }));
+		syncLights();
+		return box;
+	}
+
+	function syncLights() {
+		const u = E.lightUi;
+		if (!u) {
+			return;
+		}
+		u.color.value = '#' + E.glowColor.map((v) => v.toString(16).padStart(2, '0')).join('');
+		u.strength.value = Math.round(E.glowStrength * 100);
+		u.strengthText.textContent = Math.round(E.glowStrength * 100) + '%';
+		u.overall.value = E.glowOverall;
+		u.overallText.textContent = E.glowOverall + ' of 255';
+	}
+
 	function build() {
 		const toolButtons = {};
 		const toolColumn = el('div', { className: 'px-tools' }, ...TOOLS.map(([id, title]) => {
@@ -781,11 +1175,14 @@ window.MS = window.MS || {};
 		E.gridBtn = toggle('Grid', 'Show the pixel grid (when zoomed in)', 'grid');
 		E.onionBtn = toggle('Onion', 'Show the frame before, faintly, to line frames up', 'onion');
 		E.mirrorBtn = toggle('Mirror', 'Draw on both sides of the middle at once (M)', 'mirror');
+		E.lightBtn = el('button', { className: 'ico-btn', textContent: '💡 Lights', title: 'Paint where the picture gives off light: the game draws it as real glow. Every tool then paints the light instead of the colours.', onclick: () => { E.mode = E.mode === 'light' ? 'colour' : 'light'; updateButtons(); render(); } });
+		E.glowBtn = toggle('Glow', 'Show the glow on the picture', 'glowShow');
+		E.lightBox = buildLights();
 		E.undoBtn = el('button', { className: 'ico-btn', textContent: '↶ Undo', title: 'Undo (Ctrl+Z)', onclick: undo });
 		E.redoBtn = el('button', { className: 'ico-btn', textContent: '↷ Redo', title: 'Redo (Ctrl+Y)', onclick: redo });
 		E.zoomText = el('span', { className: 'px-zoom' });
 		const zoomBy = (d) => () => { E.zoom = Math.max(1, Math.min(40, E.zoom + d * (E.zoom >= 8 ? 2 : 1))); renderAll(); };
-		const top = el('div', { className: 'px-top' }, E.undoBtn, E.redoBtn, el('span', { className: 'px-sep' }), E.gridBtn, E.onionBtn, E.mirrorBtn, el('span', { className: 'spacer' }),
+		const top = el('div', { className: 'px-top' }, E.undoBtn, E.redoBtn, el('span', { className: 'px-sep' }), E.gridBtn, E.onionBtn, E.mirrorBtn, el('span', { className: 'px-sep' }), E.lightBtn, E.glowBtn, el('span', { className: 'spacer' }),
 			el('button', { className: 'ico-btn', textContent: '−', title: 'Zoom out (-)', onclick: zoomBy(-1) }), E.zoomText, el('button', { className: 'ico-btn', textContent: '+', title: 'Zoom in (+)', onclick: zoomBy(1) }),
 			el('button', { className: 'ico-btn', textContent: 'Fit', title: 'Fit the picture in the window', onclick: () => { fit(); renderAll(); } }));
 		E.cv = el('canvas', { className: 'px-canvas' });
@@ -847,6 +1244,7 @@ window.MS = window.MS || {};
 			E.previewCv,
 			el('div', { className: 'px-h' }, 'This frame'),
 			el('div', { className: 'px-row' }, small('Flip ⇄', 'Flip left to right', () => flip(true)), small('Flip ⇅', 'Flip top to bottom', () => flip(false)), small('Clear', 'Make it all see-through', clearFrame)),
+			E.lightBox,
 			el('div', { className: 'px-h' }, 'Canvas size (all frames)'),
 			el('div', { className: 'px-row' }, E.sizeW, '×', E.sizeH, small('Apply', 'Make the canvas this size: bigger adds see-through room, smaller crops. The picture stays where the square points.', () => resize(Number(E.sizeW.value), Number(E.sizeH.value)))),
 			el('div', { className: 'px-row' }, anchorGrid, el('span', { className: 'px-note', textContent: 'Picture stays here' }), small('Trim', 'Cut away the see-through border, so the canvas is just big enough for the art', trim)));
@@ -953,7 +1351,8 @@ window.MS = window.MS || {};
 			}
 		}
 		const common = [...counts.entries()].sort((x, y) => y[1] - x[1])[0];
-		E = { layerKey: target.key || null, part, file, frameCount: file ? frames.length : 0, frames, cur: 0, tool: 'pencil', color: common ? common[0] : 1, recent: [], mirror: false, grid: true, onion: false, zoom: 8, undo: [], redo: [], pending: null, dirty: false, warned: false, drag: null, preview: null, hover: null, previewAt: 0, saved: false, onSaved: target.onSaved || null };
+		E = { layerKey: target.key || null, part, file, frameCount: file ? frames.length : 0, frames, cur: 0, tool: 'pencil', color: common ? common[0] : 1, recent: [], mirror: false, grid: true, onion: false, zoom: 8, undo: [], redo: [], pending: null, dirty: false, warned: false, drag: null, preview: null, hover: null, previewAt: 0, saved: false, onSaved: target.onSaved || null, mode: 'colour', glow: null, glowColor: [255, 200, 120], glowStrength: 1, glowOverall: 128, glowShow: true, dark: false, hadGlow: false };
+		E.glow = await loadGlow(part);
 		const body = build();
 		E.root = body;
 		const name = file ? file.split('/').pop() : 'a new picture';
