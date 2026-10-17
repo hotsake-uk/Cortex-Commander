@@ -482,5 +482,5 @@ window.MS = window.MS || {};
 	}
 
 	// Editors in their own files join the list: [id, title, what it is, icon, render(module), count(module)].
-	MS.editors = { renderSide, renderBuyMenu, renderLoadouts, renderSounds, register: (entry) => EDITORS.push(entry) };
+	MS.editors = { renderSide, renderBuyMenu, renderLoadouts, renderSounds, register: (entry) => EDITORS.push(entry), docFor };
 })();

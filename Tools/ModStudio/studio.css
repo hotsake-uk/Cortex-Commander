@@ -1109,3 +1109,10 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .chain-head { display: flex; gap: 10px; align-items: baseline; margin-bottom: 4px; }
 .chain-name { color: var(--faint); font-size: 12px; }
 .ed-split > .ed-detail { flex: 1; }
+.mat-item { display: flex; align-items: center; gap: 8px; }
+.mat-chip { width: 14px; height: 14px; border-radius: 3px; flex: none; border: 1px solid rgba(255,255,255,.15); }
+.mat-num { width: 28px; color: var(--faint); font-variant-numeric: tabular-nums; flex: none; }
+.mat-clash { margin-left: auto; color: #ef6a5b; }
+.mat-map { width: 256px; height: 256px; display: block; image-rendering: pixelated; cursor: pointer; margin-bottom: 8px; border-radius: 4px; }
+.mat-look { display: flex; align-items: center; gap: 10px; margin: 4px 0; }
+.mat-tex { width: 64px; height: 64px; }

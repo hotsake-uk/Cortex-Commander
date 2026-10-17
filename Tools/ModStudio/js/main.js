@@ -18,6 +18,7 @@ import './friendly.js';
 import './editors.js';
 import './scenes.js';
 import './weapons.js';
+import './materials.js';
 import './lua-intel.js';
 import './ini-intel.js';
 import './navigation.js';
