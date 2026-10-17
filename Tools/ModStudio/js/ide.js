@@ -575,15 +575,82 @@ window.MS = window.MS || {};
 	function designerTab() {
 		let tab = ide.tabs.find((t) => t.kind === 'designer');
 		if (!tab) {
-			tab = { id: nextTabId++, kind: 'designer' };
+			tab = { id: nextTabId++, kind: 'designer', state: null };
 			ide.tabs.unshift(tab);
 		}
 		return tab;
 	}
 
+	// ---- several designer tabs: a unit and an item (or more) open at once, each with its own place in the designer ----
+
+	// What a designer tab remembers while another one is showing: the thing open, what is picked, hidden and folded, the pose and the view.
+	function saveDesignerState(tab) {
+		if (!tab || !app.actor) {
+			return;
+		}
+		tab.state = {
+			actor: app.actor,
+			device: app.device,
+			selectedId: app.selected ? app.selected.id : null,
+			hidden: new Set(app.hidden),
+			collapsed: new Set(app.collapsed),
+			pose: Object.assign({}, app.poseState),
+			zoom: app.view.zoom,
+			pan: Object.assign({}, app.view.pan),
+			isolate: app.isolate,
+		};
+	}
+
+	function loadDesignerState(tab) {
+		const st = tab && tab.state;
+		if (!st) {
+			return;
+		}
+		app.actor = st.actor;
+		app.device = st.device;
+		app.hidden = new Set(st.hidden);
+		app.collapsed = new Set(st.collapsed);
+		Object.assign(app.poseState, st.pose);
+		app.view.zoom = st.zoom;
+		app.view.pan = Object.assign({}, st.pan);
+		app.isolate = st.isolate;
+		app.selected = null;
+		app.groundY = null;
+		app.rebuild(false);
+		if (app.rig && st.selectedId) {
+			app.selected = app.rig.parts.find((p) => p.id === st.selectedId) || app.rig.body;
+		}
+		MS.panels.refresh();
+		MS.panels.markLibrary();
+	}
+
+	const familyOf = (cls) => (MS.Rig.DEVICE_CLASSES.has(cls) ? 'item' : cls === 'AHuman' || cls === 'ACrab' || cls === 'ACDropShip' || cls === 'ACRocket' ? 'unit' : 'other');
+
+	// The designer tab a thing opens in: one for units and craft, one for items, one for the rest, unless a new tab is asked for (Ctrl/Cmd+click).
+	// Picks it (and brings it to the front); openActor then puts the thing in it.
+	ide.designerFor = function (cls, newTab) {
+		const family = familyOf(cls);
+		const designers = ide.tabs.filter((t) => t.kind === 'designer');
+		const stateOf = (t) => (t === ide.currentDesigner ? { actor: app.actor } : t.state);
+		let tab = newTab ? null : designers.find((t) => stateOf(t) && stateOf(t).actor && familyOf(stateOf(t).actor.cls) === family);
+		if (!tab && !newTab) {
+			tab = designers.find((t) => !stateOf(t) || !stateOf(t).actor);
+		}
+		if (!tab) {
+			tab = { id: nextTabId++, kind: 'designer', state: null };
+			ide.tabs.splice(ide.tabs.indexOf(designers[designers.length - 1]) + 1, 0, tab);
+		}
+		ide.activate(tab);
+		return tab;
+	};
+
+	// The designer tab holding a family's thing, if any (to put a held item in the unit's hand, say).
+	ide.designerOfFamily = (family) => ide.tabs.find((t) => t.kind === 'designer' && ((t === ide.currentDesigner ? app.actor : t.state && t.state.actor) ? familyOf((t === ide.currentDesigner ? app.actor : t.state.actor).cls) === family : false)) || null;
+
 	function tabTitle(tab) {
 		if (tab.kind === 'designer') {
-			return app.actor ? app.actor.name : 'Designer';
+			const actor = tab === ide.currentDesigner ? app.actor : tab.state && tab.state.actor;
+			return actor ? actor.name : 'Designer';
 		}
 		if (tab.kind === 'form') {
 			return tab.title;
@@ -625,7 +692,7 @@ window.MS = window.MS || {};
 		bar.innerHTML = '';
 		// Design mode has tabs too, but only the designer and the sprite editors; Script mode has them all.
 		const shown = ide.tabs.filter((t) => (!MS.popout.request || t.kind !== 'designer') && (ide.mode === 'deep' || t.kind === 'designer' || t.sprite));
-		$('app').classList.toggle('has-tabs', ide.mode === 'deep' || shown.some((t) => t.sprite));
+		$('app').classList.toggle('has-tabs', ide.mode === 'deep' || shown.some((t) => t.sprite) || shown.filter((t) => t.kind === 'designer').length > 1);
 		for (const tab of shown) {
 			const dirty = tabDirty(tab) || !!(tab.sprite && tab.px && tab.px.dirty);
 			const icon = el('span', { className: 'tab-icon ' + (tab.kind === 'designer' ? 'designer' : tab.kind === 'form' ? 'form' : extOf(tab.path)), textContent: tab.kind === 'designer' ? '◆' : tab.kind === 'form' ? tab.icon || '▦' : extOf(tab.path) });
@@ -638,7 +705,7 @@ window.MS = window.MS || {};
 				};
 				item.append(pop);
 			}
-			if (tab.kind !== 'designer') {
+			if (tab.kind !== 'designer' || ide.tabs.filter((t) => t.kind === 'designer').length > 1) {
 				const close = el('button', { className: 'tab-close', textContent: dirty ? '●' : '×', title: 'Close (Ctrl+W)' });
 				close.onclick = (e) => {
 					e.stopPropagation();
@@ -648,7 +715,7 @@ window.MS = window.MS || {};
 			}
 			item.onclick = () => ide.activate(tab);
 			item.onauxclick = (e) => {
-				if (e.button === 1 && tab.kind !== 'designer') {
+				if (e.button === 1 && (tab.kind !== 'designer' || ide.tabs.filter((t) => t.kind === 'designer').length > 1)) {
 					ide.closeTab(tab);
 				}
 			};
@@ -677,11 +744,18 @@ window.MS = window.MS || {};
 	};
 
 	ide.renderTabs = renderTabs;
+	ide.currentDesigner = null;
 	ide.tabIsDirty = (tab) => tabDirty(tab) || !!(tab.sprite && tab.px && tab.px.dirty);
 
 	ide.activate = function (tab) {
 		if (ide.active && ide.active.kind === 'code' && ide.editor && ide.editor.getModel() === ide.active.model) {
 			ide.active.viewState = ide.editor.saveViewState();
+		}
+		if (tab.kind === 'designer' && ide.currentDesigner !== tab) {
+			// Another designer tab: the one on show keeps its place, and this one's comes back.
+			saveDesignerState(ide.currentDesigner);
+			ide.currentDesigner = tab;
+			loadDesignerState(tab);
 		}
 		ide.active = tab;
 		const code = tab.kind !== 'designer';
@@ -790,8 +864,14 @@ window.MS = window.MS || {};
 			]);
 			return;
 		}
+		if (tab.kind === 'designer' && ide.tabs.filter((t) => t.kind === 'designer').length < 2) {
+			return;
+		}
 		const index = ide.tabs.indexOf(tab);
 		ide.tabs.splice(index, 1);
+		if (tab.kind === 'designer' && ide.currentDesigner === tab) {
+			ide.currentDesigner = null;
+		}
 		if (tab.sprite && MS.pixel && MS.pixel.forget) {
 			MS.pixel.forget(tab.px);
 		}

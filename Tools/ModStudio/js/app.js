@@ -372,7 +372,10 @@ window.MS = window.MS || {};
 	}
 	app.updateScopeButton = updateScopeButton;
 
-	app.openActor = function (preset) {
+	// opts.newTab: open it in a designer tab of its own (Ctrl/Cmd+click); otherwise units and craft share one tab, items another, the rest a third.
+	app.openActor = function (preset, opts) {
+		const tab = MS.ide.designerFor(preset.cls, !!(opts && opts.newTab));
+		MS.ide.currentDesigner = tab;
 		app.actor = { path: preset.doc.path, name: preset.name, cls: preset.cls };
 		app.selected = null;
 		app.hidden.clear();
@@ -390,6 +393,7 @@ window.MS = window.MS || {};
 		app.view.fit();
 		MS.panels.markLibrary();
 		app.liveChanged();
+		MS.ide.renderTabs();
 	};
 
 	app.findActorNode = function () {
