@@ -90,7 +90,7 @@ window.MS = window.MS || {};
 				// with no BitmapOffset of its own, the game centres a picture over 24 pixels on its position (by the widest and tallest of its
 				// colour, background and material pictures): offset null here, worked out once they are read
 				const given = !!r.last('BitmapOffset');
-				look = fg || bg ? { fg, bg, mat: given ? null : r.file('MaterialFile'), offset: given ? r.vec('BitmapOffset', { x: 0, y: 0 }) : null } : null;
+				look = fg || bg ? { fg, bg, mat: r.file('MaterialFile'), offset: given ? r.vec('BitmapOffset', { x: 0, y: 0 }) : null } : null;
 			} else {
 				const sprite = r.file('SpriteFile');
 				look = sprite ? { sprite, frames: Math.max(1, Math.round(r.num('FrameCount', 1))), offset: r.vec('SpriteOffset', { x: 0, y: 0 }) } : null;
@@ -98,6 +98,63 @@ window.MS = window.MS || {};
 			found.set(cacheKey, look);
 		}
 		return found.get(cacheKey);
+	}
+
+	// As the game does once a scene is built (SLTerrain::CleanAir): the material layer is the terrain's (its picture is the material map) with
+	// each piece's material stamped over it in turn (colour 0 is see-through), cavity (1) becomes air (0), and wherever there is air the
+	// foreground is wiped. That is how pieces carve rooms and shafts out of the ground. mats: [{ img (with indices), x, y }] in placing order.
+	function cleanAir(ctx, terrain, mats) {
+		if (!terrain.indices) {
+			return; // a terrain given as a colour picture: no material map to go by
+		}
+		const w = terrain.width;
+		const h = terrain.height;
+		const mat = new Uint8Array(terrain.indices);
+		let x0 = w;
+		let y0 = h;
+		let x1 = -1;
+		let y1 = -1;
+		for (const m of mats) {
+			if (!m.img || !m.img.indices) {
+				continue;
+			}
+			const ox = Math.floor(m.x);
+			const oy = Math.floor(m.y);
+			for (let y = 0; y < m.img.height; y++) {
+				const ty = oy + y;
+				if (ty < 0 || ty >= h) {
+					continue;
+				}
+				for (let x = 0; x < m.img.width; x++) {
+					const c = m.img.indices[y * m.img.width + x];
+					const tx = ox + x;
+					if (c !== 0 && tx >= 0 && tx < w) {
+						mat[ty * w + tx] = c;
+					}
+				}
+			}
+			x0 = Math.max(0, Math.min(x0, ox));
+			y0 = Math.max(0, Math.min(y0, oy));
+			x1 = Math.min(w - 1, Math.max(x1, ox + m.img.width - 1));
+			y1 = Math.min(h - 1, Math.max(y1, oy + m.img.height - 1));
+		}
+		// only where pieces went can the foreground differ from the terrain's own (which is see-through wherever it is air)
+		if (x1 < x0 || y1 < y0) {
+			return;
+		}
+		const bw = x1 - x0 + 1;
+		const bh = y1 - y0 + 1;
+		const data = ctx.getImageData(x0, y0, bw, bh);
+		const px = data.data;
+		for (let y = 0; y < bh; y++) {
+			const row = (y0 + y) * w + x0;
+			for (let x = 0; x < bw; x++) {
+				if (mat[row + x] <= 1) {
+					px[(y * bw + x) * 4 + 3] = 0;
+				}
+			}
+		}
+		ctx.putImageData(data, x0, y0);
 	}
 
 	// The scene's picture with what is placed in it, or null until its pictures are read (onReady is called then). Built once per scene and
@@ -152,7 +209,7 @@ window.MS = window.MS || {};
 			const canvas = document.createElement('canvas');
 			canvas.width = terrain.width;
 			canvas.height = terrain.height;
-			const ctx = canvas.getContext('2d');
+			let ctx = canvas.getContext('2d');
 			// drawn where it goes, and again across the edge for a scene that wraps
 			const stamp = (img, x, y, flip) => {
 				for (const dx of [0, x < 0 ? canvas.width : 0, x + img.width > canvas.width ? -canvas.width : 0].filter((v, i) => i === 0 || v)) {
@@ -184,6 +241,12 @@ window.MS = window.MS || {};
 					stamp(img, it.pos.x + offsetOf(it.look).x, it.pos.y + offsetOf(it.look).y);
 				}
 			}
+			// the terrain and the pieces' foregrounds on a layer of their own, as the game keeps them, to be cleaned below
+			const fg = document.createElement('canvas');
+			fg.width = canvas.width;
+			fg.height = canvas.height;
+			const main = ctx;
+			ctx = fg.getContext('2d');
 			ctx.drawImage(terrain.canvas, 0, 0);
 			for (const it of items) {
 				const img = it.look.fg && loaded.get(it.look.fg);
@@ -191,6 +254,9 @@ window.MS = window.MS || {};
 					stamp(img, it.pos.x + offsetOf(it.look).x, it.pos.y + offsetOf(it.look).y);
 				}
 			}
+			cleanAir(ctx, terrain, items.map((it) => ({ img: it.look.mat && loaded.get(it.look.mat), x: it.pos.x + offsetOf(it.look).x, y: it.pos.y + offsetOf(it.look).y })));
+			main.drawImage(fg, 0, 0);
+			ctx = main;
 			for (const it of items) {
 				const img = it.look.sprite && loaded.get(MS.Images.framePaths(it.look.sprite, it.look.frames)[0]);
 				if (img) {
