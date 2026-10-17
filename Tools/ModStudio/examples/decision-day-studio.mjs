@@ -169,6 +169,7 @@ wire(sDeploy, 'started', chain(
 ));
 // the middle bunker: its region comes on
 wire(s2, 'started', chain(
+	node('cameraLimit', { x: 3660 }), // as the original: far enough left to reach the middle bunker's operations room (3289)
 	on(R.middleOps),
 	say('Your reinforcements are landing at the front bunker. Next: the middle bunker.', 8),
 ));
