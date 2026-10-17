@@ -322,10 +322,27 @@ window.MS = window.MS || {};
 		return paths;
 	}
 
-	// An ImageData scaled by a factor: smoothed when it shrinks (so detail survives), crisp when it grows (so pixels stay square).
+	// An ImageData scaled by a factor. Pixel art (few colours, often an enlarged picture with big square "pixels") is sampled at the middle of
+	// each new pixel, so it stays crisp and a stray pixel in a corner is dropped; photos and smooth art are smoothed when they shrink.
 	function scaleImage(img, factor) {
 		const w = Math.max(1, Math.round(img.width * factor));
 		const h = Math.max(1, Math.round(img.height * factor));
+		const src = new Uint32Array(img.data.buffer, img.data.byteOffset, img.width * img.height);
+		const colours = new Set();
+		for (let i = 0; i < src.length && colours.size <= 64; i++) {
+			colours.add(src[i]);
+		}
+		if (colours.size <= 64) {
+			const out = new ImageData(w, h);
+			const dst = new Uint32Array(out.data.buffer);
+			for (let y = 0; y < h; y++) {
+				const sy = Math.min(img.height - 1, Math.floor((y + 0.5) / factor));
+				for (let x = 0; x < w; x++) {
+					dst[y * w + x] = src[sy * img.width + Math.min(img.width - 1, Math.floor((x + 0.5) / factor))];
+				}
+			}
+			return out;
+		}
 		const from = document.createElement('canvas');
 		from.width = img.width;
 		from.height = img.height;

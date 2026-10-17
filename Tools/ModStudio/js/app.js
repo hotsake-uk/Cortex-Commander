@@ -735,7 +735,17 @@ window.MS = window.MS || {};
 		for (const step of plan) {
 			const reason = app.lockReason(step.part);
 			if (reason) {
-				app.toast(reason, 'bad');
+				// Say why, and offer the fix on the spot: a copy in your mod, or (for someone else's mod) editing it.
+				let action = null;
+				if (app.lib.isProtected(app.actorNode.doc)) {
+					if (app.lib.lockKind(app.actorNode.doc) === 'mod') {
+						const module = app.actorNode.doc.path.split('/')[0];
+						action = { label: 'Edit this mod', run: () => MS.history.editMod(module) };
+					} else {
+						action = { label: 'Make my own copy', run: () => MS.dialogs.copyUnit() };
+					}
+				}
+				app.toast(reason, 'bad', action);
 				return false;
 			}
 		}
