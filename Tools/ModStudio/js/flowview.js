@@ -187,7 +187,7 @@ window.MS = window.MS || {};
 					F_.find(g, n.id).lists.conds[i] = F_.condDefaults(kind.value);
 				});
 				const row = el('div', { className: 'fv-cond' }, el('span', { className: 'fv-and', textContent: i ? 'and' : 'if' }), kind,
-					...(spec ? spec.params.map(([key, type, label, , options]) => this.field(type, label, c[key], (value) => this.edit('change a condition', (g) => {
+					...(spec ? spec.params.filter(([key]) => !spec.relevant || spec.relevant(c, key)).map(([key, type, label, , options]) => this.field(type, label, c[key], (value) => this.edit('change a condition', (g) => {
 						F_.find(g, n.id).lists.conds[i][key] = value;
 					}), options)) : []),
 					el('button', { className: 'ico-btn', textContent: '×', title: 'Take this condition out', disabled: this.hooks.readOnly, onclick: () => this.edit('take a condition out', (g) => {
@@ -242,6 +242,13 @@ window.MS = window.MS || {};
 				input = select(options || [], value === undefined ? (options && options[0] ? options[0][0] : '') : value);
 			} else if (type === 'value') {
 				input = this.valueInput(value, set);
+			} else if (type === 'lua') {
+				// your own code: its first lines, and a button to write it in the code editor (with the script's completions)
+				const code = String(value || '');
+				const lines = code.split('\n').filter((l) => l.trim());
+				input = el('div', { className: 'fv-code' },
+					el('pre', { className: 'fv-code-peek', textContent: lines.length ? lines.slice(0, 4).join('\n') + (lines.length > 4 ? '\n…' : '') : '-- no code yet' }),
+					el('button', { className: 'tb', textContent: ro ? 'Read the code…' : 'Write the code…', onclick: () => (this.hooks.editCode ? this.hooks.editCode(code, set, ro) : null) }));
 			} else if (type === 'bool') {
 				input = el('input', { type: 'checkbox', checked: !!value, disabled: ro });
 				input.onchange = () => set(input.checked);

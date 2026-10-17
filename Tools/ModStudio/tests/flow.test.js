@@ -124,6 +124,19 @@ Settings = {}
 Saved = {}
 function Step(seconds) Clock = Clock + (seconds or 0.1); Act:RunStudioFlow() end
 function Logged() local s = table.concat(Log, "\n"); Log = {}; return s end
+-- players' brains, the units they control and what they are looking at; crafts, the camera and tech
+Activity.ACTORSELECT = 3
+Brains, Controlled, ViewState = {}, {}, {}
+function IsACraft(a) return a.isCraft == true end
+MovableMan.IsActor = function(self, a) for _, x in ipairs(Actors) do if x == a then return true end end return false end
+function Test:GetPlayerBrain(p) return Brains[p] end
+function Test:GetControlledActor(p) return Controlled[p] end
+function Test:GetViewState(p) return ViewState[p] or 0 end
+function Test:SwitchToActor(a, p, t) Controlled[p] = a; log("control " .. a.UniqueID .. " by " .. p) end
+function Test:SetTeamTech(t, tech) log("tech " .. t .. " " .. tech) end
+CameraMan = { SetScrollTarget = function(self, v, speed, screen) log("camera " .. v.X .. "," .. v.Y) end }
+-- a unit gone from the game (dead and removed)
+function Remove(a) for i, x in ipairs(Actors) do if x == a then table.remove(Actors, i) return end end end
 `;
 
 const BATTLE = String.raw`
@@ -707,4 +720,120 @@ test('the script saves and loads the mission: OnSave and StartActivity are hooke
 	const bare = F.apply('function Test:UpdateActivity()\nend\n', 'Test', g);
 	assert.match(bare, /function Test:OnSave\(\)\n\tself:StudioSave\(\)/);
 	assert.match(bare, /function Test:StartActivity\(isNewGame\)\n\tif not isNewGame then self:StudioLoad\(\) end/);
+});
+
+// ---- more events ----
+
+test('a unit dies: of a kind, in an area if one is given', () => {
+	const m = game(graph([['unitDies', { team: 1, which: 'group', group: 'Guards', area: 'Yard' }, { then: 1 }], ['message', { text: 'A guard fell' }]]));
+	m.run('Areas["Yard"] = { x = 0, y = 0, w = 100, h = 100 }');
+	m.run('G = MakeActor(1, 10, 10); G.groups.Guards = true; F = MakeActor(1, 500, 10); F.groups.Guards = true; O = MakeActor(1, 20, 10)');
+	assert.equal(m.step(), '');
+	m.run('Remove(O)');
+	assert.equal(m.step(), '', 'not in the group');
+	m.run('Remove(F)');
+	assert.equal(m.step(), '', 'not in the area');
+	m.run('G.Health = 0');
+	assert.deepEqual(lines(m.step()), ['msg A guard fell']);
+});
+
+test('a unit arrives (not the ones there at the start), and a unit badly hurt', () => {
+	const m = game(graph([
+		['unitArrives', { team: 0, which: 'craft' }, { then: 1 }], ['message', { text: 'Craft in' }],
+		['hurt', { team: 0, below: 30 }, { then: 3 }], ['message', { text: 'Hurt' }],
+	]));
+	m.run('MakeActor(0, 0, 0, { isCraft = true })');
+	assert.equal(m.step(), '', 'there from the start');
+	m.run('MakeActor(0, 0, 0)');
+	assert.equal(m.step(), '', 'not a craft');
+	m.run('MakeActor(0, 0, 0, { isCraft = true })');
+	assert.deepEqual(lines(m.step()), ['msg Craft in']);
+	m.run('W = MakeActor(1, 0, 0); U = MakeActor(0, 0, 0); U.Health = 20');
+	assert.deepEqual(lines(m.step()), ['msg Hurt']);
+	assert.equal(m.step(0.1, 3), '', 'once per unit');
+});
+
+test('a player\'s brain is placed, takes control of a unit, opens unit select', () => {
+	const m = game(graph([
+		['brainPlaced', { who: 'all' }, { then: 1 }], ['message', { text: 'Brain down' }],
+		['controls', { who: 0, which: 'named', named: 'Sniper' }, { then: 3 }], ['message', { text: 'Sniper' }],
+		['selectView', { who: 'all' }, { then: 5 }], ['message', { text: 'Selecting' }],
+	]));
+	assert.equal(m.step(), '');
+	m.run('B = MakeActor(0, 0, 0); Brains[0] = B; Controlled[0] = B');
+	assert.deepEqual(lines(m.step()), ['msg Brain down']);
+	m.run('Controlled[0] = MakeActor(0, 0, 0, { PresetName = "Sniper" })');
+	assert.deepEqual(lines(m.step()), ['msg Sniper']);
+	m.run('ViewState[0] = Activity.ACTORSELECT');
+	assert.deepEqual(lines(m.step()), ['msg Selecting']);
+	assert.equal(m.step(), '', 'once while it stays open');
+});
+
+test('a team holds an area: with nobody else in it, for the seconds', () => {
+	const m = game(graph([['holdArea', { area: 'Hill', team: 0, seconds: 2 }, { then: 1 }], ['message', { text: 'Held' }]]));
+	m.run('Areas["Hill"] = { x = 0, y = 0, w = 100, h = 100 }; A = MakeActor(0, 10, 10); E = MakeActor(1, 20, 10)');
+	assert.equal(m.step(1, 3), '', 'an enemy is there too');
+	m.run('Remove(E)');
+	assert.equal(m.step(1, 2), '', 'held for a second so far');
+	assert.deepEqual(lines(m.step(1.1)), ['msg Held']);
+});
+
+test('a value in the script: an event when it becomes true, a condition, and setting one', () => {
+	const m = game(graph([
+		['scriptValue', { field: 'anyHumanHasDeployedABrain', test: 'true' }, { then: 1 }], ['message', { text: 'Deployed' }, { then: 2 }],
+		['scriptSet', { field: 'reinforcements.left', to: 'value', value: { k: 'num', n: 3 } }],
+		['always', {}, { then: 4 }], ['branch', {}, { true: 5 }, [{ kind: 'script', field: 'reinforcements.left', test: 'op', op: '>=', value: { k: 'num', n: 3 } }]], ['doOnce', {}, { then: 6 }], ['message', { text: 'Three left' }],
+	]));
+	m.run('Act.anyHumanHasDeployedABrain = false');
+	assert.equal(m.step(), '');
+	m.run('Act.anyHumanHasDeployedABrain = true');
+	// the value set as it was deployed is seen by the condition in the same moment
+	assert.deepEqual(lines(m.step()), ['msg Deployed', 'msg Three left']);
+	assert.equal(m.run('return tostring(Act.reinforcements.left)'), '3');
+	assert.match(F.problems(graph([['scriptValue', { field: 'bad name' }]]), {}).map((p) => p.message).join(), /Name the script/);
+});
+
+test('a stage begins (the script\'s own), a flag is set, a unit picks up an item', () => {
+	const m = game(graph([
+		['stageBegins', { target: 'code:findTunnel' }, { then: 1 }], ['message', { text: 'Find the tunnel' }],
+		['flagChanges', { name: 'alarm' }, { then: 3 }], ['message', { text: 'Alarm' }],
+		['pickUp', { item: 'HDFirearm|Data Chip|Base.rte', team: 0 }, { then: 5 }], ['message', { text: 'Got it' }],
+	]));
+	m.run('Act.stages = { findTunnel = 8 }; Act.currentStage = 7');
+	assert.equal(m.step(), '');
+	m.run('Act.currentStage = 8; Act.StudioState.flags.alarm = true; U = MakeActor(0, 0, 0); U.EquippedItem = { PresetName = "Data Chip" }');
+	assert.deepEqual(lines(m.step()).sort(), ['msg Alarm', 'msg Find the tunnel', 'msg Got it']);
+	assert.equal(m.step(), '');
+});
+
+test('my own code runs with self, st and actor; an error in it is reported and the chain goes on', () => {
+	const m = game(graph([
+		['start', {}, { then: 1 }],
+		['code', { label: 'Count', code: 'st.vars.count = 41 + 1\nself.fromCode = true' }, { then: 2 }],
+		['code', { label: 'Broken', code: 'local x = nil\nx.y = 1' }, { then: 3 }],
+		['message', { text: 'Count is {count}, {missing}' }],
+	]));
+	const out = lines(m.step());
+	assert.match(out[0], /^console Studio code \(Broken\): .*/);
+	assert.equal(out[1], 'msg Count is 42, {missing}');
+	assert.equal(m.run('return tostring(Act.fromCode)'), 'true');
+});
+
+test('placing items, removing units, changing team, control, the camera and tech', () => {
+	const m = game(graph([
+		['start', {}, { then: 1 }],
+		['placeItem', { item: 'HDFirearm|Crate Key|Base.rte', area: 'Yard', count: { k: 'num', n: 2 } }, { then: 2 }],
+		['remove', { area: 'Yard', what: 'units', team: 1, which: 'any' }, { then: 3 }],
+		['changeTeam', { team: 2, which: 'any', to: 0 }, { then: 4 }],
+		['control', { who: 0, team: 0, which: 'named', named: 'Hero' }, { then: 5 }],
+		['camera', { who: 'all', area: 'Yard', seconds: 1, speed: 0.2 }, { then: 6 }],
+		['tech', { team: 1, tech: 'Ronin.rte' }],
+	]));
+	m.run('Areas["Yard"] = { x = 0, y = 0, w = 100, h = 100 }; E = MakeActor(1, 10, 10); T = MakeActor(2, 500, 0); H = MakeActor(0, 0, 0, { PresetName = "Hero" })');
+	const out = lines(m.step());
+	assert.deepEqual(out.filter((l) => !l.startsWith('camera')), ['item Crate Key', 'item Crate Key', 'control ' + m.run('return tostring(H.UniqueID)') + ' by 0', 'tech 1 Ronin.rte']);
+	assert.equal(m.run('return tostring(E.ToDelete)'), 'true');
+	assert.equal(m.run('return tostring(T.Team)'), '0');
+	assert.ok(lines(m.step(0.5)).some((l) => /^camera 50(\.0)?,50(\.0)?$/.test(l)), 'the camera stays on the area');
+	assert.equal(lines(m.step(1)).filter((l) => l.startsWith('camera')).length, 0, 'until its time is up');
 });

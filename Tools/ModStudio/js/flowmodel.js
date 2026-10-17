@@ -26,6 +26,16 @@ window.MS = window.MS || {};
 	const OPS = [['>=', 'is at least'], ['<=', 'is at most'], ['==', 'is exactly'], ['>', 'is more than'], ['<', 'is less than']];
 	const V = (n) => ({ k: 'num', n });
 	const VAR_OPS = [['set', 'set it to'], ['add', 'add'], ['sub', 'take away'], ['mul', 'multiply it by']];
+	// Which units an event, condition or action is about: any, a brain, a craft, the units of a group, or units of one name. relevantWho hides the
+	// settings the choice makes no use of.
+	const WHO_UNITS = [
+		['which', 'choice', 'which units', 'any', [['any', 'any unit'], ['brain', 'a brain'], ['craft', 'a craft (dropship or rocket)'], ['group', 'units in a group'], ['named', 'a unit called']]],
+		['group', 'text', 'group', ''],
+		['named', 'text', 'called', ''],
+	];
+	const relevantWho = (p, key) => (key === 'group' ? p.which === 'group' : key === 'named' ? p.which === 'named' : true);
+	const SCRIPT_TESTS = [['true', 'is true'], ['false', 'is false'], ['op', 'is a number that']];
+	const relevantScript = (p, key) => (key === 'op' || key === 'value' ? p.test === 'op' : true);
 	const AI_MODES = [['sentry', 'stand guard'], ['goto', 'go to an area'], ['brainhunt', 'hunt the enemy brain'], ['patrol', 'patrol'], ['stay', 'stay put'], ['return', 'go back'], ['golddig', 'dig for gold']];
 
 	// ---- the registry ----
@@ -46,8 +56,8 @@ window.MS = window.MS || {};
 	// events: how a chain begins
 	kind('start', 'event', 'The mission starts', [], EVENT);
 	kind('timer', 'event', 'After some seconds', [['seconds', 'number', 'seconds', 30], ['repeat', 'bool', 'and then again every time', false], ['again', 'bool', 'run again every moment it still holds', false]], EVENT);
-	kind('enter', 'event', 'A unit enters an area', [['area', 'area', 'area', ''], ['team', 'team', 'whose', -1]], EVENT);
-	kind('leave', 'event', 'A unit leaves an area', [['area', 'area', 'area', ''], ['team', 'team', 'whose', -1]], EVENT);
+	kind('enter', 'event', 'A unit enters an area', [['area', 'area', 'area', ''], ['team', 'team', 'whose', -1], ...WHO_UNITS], EVENT, { relevant: relevantWho });
+	kind('leave', 'event', 'A unit leaves an area', [['area', 'area', 'area', ''], ['team', 'team', 'whose', -1], ...WHO_UNITS], EVENT, { relevant: relevantWho });
 	kind('empty', 'event', 'An area is emptied', [['area', 'area', 'area', ''], ['team', 'team', 'of', -1]], EVENT);
 	kind('teamGone', 'event', 'A team has no units left', [['team', 'team', 'team', 0], ['again', 'bool', 'run again every moment it still holds', false]], EVENT);
 	kind('brainGone', 'event', 'A team\'s brain is destroyed', [['team', 'team', 'team', 0], ['again', 'bool', 'run again every moment it still holds', false]], EVENT);
@@ -60,6 +70,17 @@ window.MS = window.MS || {};
 	kind('varReaches', 'event', 'A variable reaches a value', [['name', 'text', 'variable', 'count'], ['op', 'op', '', '>='], ['value', 'value', 'value', V(10)]], EVENT);
 	kind('captureChanged', 'event', 'A capture point changes hands', [['target', 'capture', 'capture point', ''], ['team', 'team', 'taken by', -1]], EVENT);
 	kind('groupGone', 'event', 'A group has no units left', [['group', 'text', 'group', ''], ['again', 'bool', 'run again every moment it still holds', false]], EVENT);
+	kind('unitDies', 'event', 'A unit dies', [['team', 'team', 'whose', -1], ...WHO_UNITS, ['area', 'area', 'in area (optional)', '']], EVENT, { relevant: relevantWho, optional: ['area'] });
+	kind('unitArrives', 'event', 'A unit arrives', [['team', 'team', 'whose', -1], ...WHO_UNITS, ['area', 'area', 'in area (optional)', '']], EVENT, { relevant: relevantWho, optional: ['area'] });
+	kind('hurt', 'event', 'A unit is badly hurt', [['team', 'team', 'whose', -1], ...WHO_UNITS, ['below', 'number', 'health below', 30]], EVENT, { relevant: relevantWho });
+	kind('brainPlaced', 'event', 'A player\'s brain is placed', [['who', 'player', 'whose', 'all']], EVENT);
+	kind('holdArea', 'event', 'A team holds an area', [['area', 'area', 'area', ''], ['team', 'team', 'team', 0], ['seconds', 'number', 'with nobody else in it for seconds', 10], ['again', 'bool', 'run again every moment it still holds', false]], EVENT);
+	kind('controls', 'event', 'A player takes control of a unit', [['who', 'player', 'player', 'all'], ...WHO_UNITS], EVENT, { relevant: relevantWho });
+	kind('selectView', 'event', 'A player opens unit select', [['who', 'player', 'player', 'all']], EVENT);
+	kind('pickUp', 'event', 'A unit picks up an item', [['item', 'item', 'item', ''], ['team', 'team', 'whose', -1]], EVENT);
+	kind('stageBegins', 'event', 'A stage begins', [['target', 'stage', 'stage', '']], EVENT);
+	kind('flagChanges', 'event', 'A flag is set', [['name', 'text', 'flag', 'flag'], ['value', 'bool', 'set (off: cleared)', true]], EVENT);
+	kind('scriptValue', 'event', 'A value in the script changes', [['field', 'text', 'the script\'s value (self.…)', 'anyHumanHasDeployedABrain'], ['test', 'choice', 'when it', 'true', SCRIPT_TESTS], ['op', 'op', '', '>='], ['value', 'value', 'value', V(1)]], EVENT, { relevant: relevantScript });
 
 	// stages: goals in a sequence. Every stage also has a name, an objective text and marker, whose screen shows it, and a time limit.
 	const STAGE_COMMON = [['name', 'text', 'name', 'Stage'], ['text', 'text', 'objective text', ''], ['marker', 'bool', 'show a marker', true], ['viewer', 'team', 'marker seen by', 0], ['failAfter', 'number', 'time limit (seconds, 0: none)', 0]];
@@ -140,6 +161,16 @@ window.MS = window.MS || {};
 	kind('win', 'action', 'End it: a team wins', [['team', 'team', 'team', 0], ['after', 'number', 'after seconds', 0], ['text', 'text', 'saying', '']], STEP, { optional: ['text'] });
 	kind('end', 'action', 'End it with no winner', [], STEP);
 	kind('call', 'action', 'Run my own function', [['fn', 'fn', 'function', 'MyFunction']], STEP);
+	kind('code', 'action', 'Run my own code', [['label', 'text', 'what it does', 'My code'], ['code', 'lua', 'code', '']], STEP);
+	kind('placeItem', 'action', 'Place an item', [['item', 'item', 'item', ''], ['area', 'area', 'in area', ''], ['count', 'value', 'how many', V(1)]], STEP);
+	kind('remove', 'action', 'Remove units or items', [['area', 'area', 'in area', ''], ['what', 'choice', 'remove', 'units', [['units', 'units'], ['items', 'items lying there'], ['both', 'units and items']]], ['team', 'team', 'whose units', -1], ...WHO_UNITS], STEP, {
+		relevant: (p, key) => (['team', 'which', 'group', 'named'].includes(key) ? p.what !== 'items' && relevantWho(p, key) : true),
+	});
+	kind('changeTeam', 'action', 'Change units\' team', [['team', 'team', 'units of', 1], ...WHO_UNITS, ['area', 'area', 'in area (optional)', ''], ['to', 'team', 'join team', 0]], STEP, { relevant: relevantWho, optional: ['area'] });
+	kind('control', 'action', 'Put a player in control of a unit', [['who', 'player', 'player', 0], ['team', 'team', 'a unit of', 0], ...WHO_UNITS, ['area', 'area', 'in area (optional)', '']], STEP, { relevant: relevantWho, optional: ['area'] });
+	kind('camera', 'action', 'Move a player\'s camera', [['who', 'player', 'player', 'all'], ['area', 'area', 'to look at', ''], ['seconds', 'number', 'and stay for seconds (0: just move it)', 3], ['speed', 'number', 'speed (0.01 slow to 1 instant)', 0.1]], STEP);
+	kind('tech', 'action', 'Set a team\'s tech', [['team', 'team', 'team', 1], ['tech', 'text', 'tech (a mod, e.g. Coalition.rte)', 'Coalition.rte']], STEP);
+	kind('scriptSet', 'action', 'Set a value in the script', [['field', 'text', 'the script\'s value (self.…)', 'myValue'], ['to', 'choice', 'to', 'true', [['true', 'true'], ['false', 'false'], ['value', 'a number']]], ['value', 'value', 'number', V(0)]], STEP, { relevant: (p, key) => (key === 'value' ? p.to === 'value' : true) });
 	kind('battle', 'action', 'Start a battle', [['mode', 'mode', 'mode', 2], ['size', 'number', 'units a side', 12], ['byShip', 'bool', 'they arrive by ship', false], ['layout', 'bool', 'lay the map out for me', true], ['seed', 'number', 'layout seed', 1]], STEP);
 	kind('battleStop', 'action', 'Stop the battle', [], STEP);
 
@@ -155,6 +186,12 @@ window.MS = window.MS || {};
 		var: { title: 'a variable', params: [['name', 'text', 'variable', 'count'], ['op', 'op', '', '>='], ['value', 'value', 'value', V(1)]] },
 		captureOwner: { title: 'who holds a capture point', params: [['target', 'capture', 'capture point', ''], ['team', 'team', 'is held by', 0]] },
 		group: { title: 'units in a group', params: [['group', 'text', 'group', ''], ['op', 'op', '', '>='], ['count', 'number', 'count', 1]] },
+		unitsWho: { title: 'units of a kind', params: [['team', 'team', 'of team', -1], ...WHO_UNITS, ['area', 'area', 'in area (optional)', ''], ['op', 'op', '', '>='], ['count', 'number', 'count', 1]], relevant: relevantWho, optional: ['area'] },
+		brain: { title: 'a player has a brain', params: [['who', 'player', 'player', 'all']] },
+		difficulty: { title: 'the difficulty', params: [['op', 'op', '', '>='], ['value', 'choice', '', '1', [['0.5', 'easiest'], ['0.75', 'easy'], ['1', 'medium'], ['1.5', 'hard'], ['1.75', 'nuts'], ['2', 'maximum']]]] },
+		holding: { title: 'a team carries an item', params: [['team', 'team', 'team', 0], ['item', 'item', 'item', '']] },
+		controlIn: { title: 'a player\'s unit is in an area', params: [['who', 'player', 'player', 'all'], ['area', 'area', 'area', '']] },
+		script: { title: 'a value in the script', params: [['field', 'text', 'self.…', 'anyHumanHasDeployedABrain'], ['test', 'choice', '', 'true', SCRIPT_TESTS], ['op', 'op', '', '>='], ['value', 'value', 'value', V(1)]], relevant: relevantScript },
 	};
 
 	// the rows of the lists some nodes have: a dialogue's lines
@@ -375,6 +412,10 @@ window.MS = window.MS || {};
 					if (!v) {
 						add(n.id, 'error', 'Pick the ' + label + '.');
 					}
+				} else if (key === 'field' && !/^[A-Za-z_][A-Za-z0-9_.]*$/.test(String(v || ''))) {
+					add(n.id, 'error', 'Name the script\'s value: letters, digits and _ (self.' + (v || '…') + ').');
+				} else if (type === 'lua' && !String(v || '').trim()) {
+					add(n.id, 'warn', 'There is no code in it yet.');
 				} else if (type === 'fn' && !/^[A-Za-z_][A-Za-z0-9_ ]*$/.test(String(v || ''))) {
 					add(n.id, 'error', 'Give the function a name made of letters and numbers.');
 				} else if (type === 'stage' && !stageOk(v)) {
@@ -387,8 +428,18 @@ window.MS = window.MS || {};
 					add(n.id, 'warn', 'A branch with no conditions always takes the true side.');
 				}
 				for (const c of conds) {
-					for (const [key, type, label] of (CONDS[c.kind] ? CONDS[c.kind].params : [])) {
+					const cspec = CONDS[c.kind];
+					for (const [key, type, label] of (cspec ? cspec.params : [])) {
 						const v = c[key];
+						if ((cspec.relevant && !cspec.relevant(c, key)) || ((cspec.optional || []).includes(key) && !v)) {
+							continue;
+						}
+						if (type === 'item' && !v) {
+							add(n.id, 'error', 'A condition needs an item.');
+						}
+						if (key === 'field' && !/^[A-Za-z_][A-Za-z0-9_.]*$/.test(String(v || ''))) {
+							add(n.id, 'error', 'Name the script\'s value: letters, digits and _ (self.' + (v || '…') + ').');
+						}
 						if (type === 'area' && (!v || (areas && !areas.includes(v)))) {
 							add(n.id, v ? 'warn' : 'error', v ? 'The scene has no area called "' + v + '".' : 'A condition needs an area.');
 						}

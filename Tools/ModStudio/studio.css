@@ -1318,3 +1318,9 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .ml-line:hover { background: #ffffff10; }
 .ml-ln { color: var(--faint); min-width: 36px; text-align: right; }
 .ml-st-lines .ml-line { font: 11.5px system-ui, sans-serif; }
+.ml-codebox { display: flex; flex-direction: column; gap: 8px; }
+.ml-codehost { height: 55vh; min-height: 280px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.ml-codestatus { font-size: 12px; color: #9bc53d; }
+.ml-codestatus.bad { color: #ef6a5b; }
+.fv-code { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.fv-code-peek { margin: 0; padding: 4px 6px; max-height: 70px; overflow: hidden; font: 11px ui-monospace, Consolas, monospace; color: var(--dim); background: #0b0e14; border: 1px solid var(--line); border-radius: 3px; white-space: pre; }
