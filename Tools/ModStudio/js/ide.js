@@ -167,18 +167,12 @@ window.MS = window.MS || {};
 			} else {
 				ide.activate(ide.active);
 			}
-			if (!quiet) {
-				app.status('Script mode: the mod\'s files, scripts with autocomplete, the game\'s console. Design mode goes back to just the designer.');
-			}
 		} else {
 			$('app').classList.remove('code-active');
 			if (!ide.active || (ide.active.kind !== 'designer' && !ide.active.sprite)) {
 				ide.activate(designerTab());
 			} else {
 				ide.activate(ide.active);
-			}
-			if (!quiet) {
-				app.status('Design mode: design units visually. Script mode has scripts and the mod\'s files.');
 			}
 		}
 		MS.panels.refresh && app.lib && MS.panels.refresh();
