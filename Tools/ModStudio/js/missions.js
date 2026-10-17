@@ -7,6 +7,11 @@
 //   Then   show a message, give or take gold, spawn units in an area, set a flag, kill a team's units, end with a winner or a draw, call your function
 // The rules are kept in the script inside a marked block, as data on one comment line, with the Lua generated from it. Change the rules here, not in
 // the block (it is rewritten each time); your own functions outside it are never touched. Older "Studio triggers" blocks are turned into rules.
+//
+// Stages chain objectives into a mission: each stage has a goal (reach an area, hold it, destroy a team or its brain, bring an item to an area, survive),
+// an objective marker for the players, what happens when it starts, when it is done (the next stage then begins), and optionally a time limit with
+// what happens when it runs out. "Reach the bunker, then hold the hill for two minutes, then bring the case back, then win" is four stages. Rules run
+// alongside the stages and can look at which stage it is.
 'use strict';
 window.MS = window.MS || {};
 
@@ -42,6 +47,7 @@ window.MS = window.MS || {};
 		leave: { label: 'a unit leaves an area', params: [['area', 'area', 'area', ''], ['team', 'team', 'whose', -1]] },
 		empty: { label: 'an area is emptied', params: [['area', 'area', 'area', ''], ['team', 'team', 'of', -1]] },
 		teamGone: { label: 'a team has no units left', params: [['team', 'team', 'team', 0]] },
+		brainGone: { label: 'a team\'s brain is destroyed', params: [['team', 'team', 'team', 0]] },
 		funds: { label: 'a team\'s gold reaches', params: [['team', 'team', 'team', 0], ['op', 'op', '', '>='], ['amount', 'number', 'gold', 1000]] },
 		always: { label: 'every moment (use conditions)', params: [] },
 	};
@@ -52,6 +58,17 @@ window.MS = window.MS || {};
 		units: { label: 'units of a team', params: [['team', 'team', 'team', 0], ['op', 'op', '', '>='], ['count', 'number', 'count', 1]] },
 		inArea: { label: 'units of a team in an area', params: [['team', 'team', 'team', 0], ['area', 'area', 'area', ''], ['op', 'op', '', '>='], ['count', 'number', 'count', 1]] },
 		flag: { label: 'a flag', params: [['name', 'text', 'name', 'flag'], ['value', 'bool', 'is set', true]] },
+		stage: { label: 'the stage it is on', params: [['op', 'op', '', '=='], ['n', 'number', 'stage number', 1]] },
+	};
+
+	// What finishes a stage.
+	const GOAL = {
+		reach: { label: 'a unit reaches an area', params: [['area', 'area', 'area', ''], ['team', 'team', 'whose', 0]] },
+		hold: { label: 'a team holds an area, with no enemy in it, for some seconds', params: [['area', 'area', 'area', ''], ['team', 'team', 'team', 0], ['seconds', 'number', 'seconds', 60]] },
+		destroy: { label: 'a team has no units left', params: [['team', 'team', 'team', 1]] },
+		brain: { label: 'a team\'s brain is destroyed', params: [['team', 'team', 'team', 1]] },
+		fetch: { label: 'an item is brought to an area', params: [['item', 'item', 'item', ''], ['from', 'area', 'put it in', ''], ['area', 'area', 'bring it to', '']] },
+		survive: { label: 'time passes', params: [['seconds', 'number', 'seconds', 120]] },
 	};
 
 	const THEN = {
@@ -63,6 +80,7 @@ window.MS = window.MS || {};
 		win: { label: 'end it: a team wins', params: [['team', 'team', 'team', 0]] },
 		end: { label: 'end it with no winner', params: [] },
 		call: { label: 'run my own function', params: [['fn', 'fn', 'function', 'MyFunction']] },
+		stage: { label: 'jump to a stage', params: [['n', 'number', 'stage number', 1]] },
 	};
 
 	let defaultArea = ''; // the scene's first area, for new blocks that need one
@@ -83,6 +101,7 @@ window.MS = window.MS || {};
 			case 'units': return 'studioCount(' + luaNum(c.team) + ', nil) ' + opOf(c.op) + ' ' + luaNum(c.count);
 			case 'inArea': return 'studioCount(' + luaNum(c.team) + ', ' + area(c.area) + ') ' + opOf(c.op) + ' ' + luaNum(c.count);
 			case 'flag': return '(st.flags[' + luaStr(c.name) + '] == true) == ' + (c.value ? 'true' : 'false');
+			case 'stage': return '(st.stage or 1) ' + opOf(c.op) + ' ' + luaNum(c.n);
 			default: return 'true';
 		}
 	}
@@ -104,6 +123,7 @@ window.MS = window.MS || {};
 			case 'win': return ['self.WinnerTeam = ' + luaNum(a.team), 'ActivityMan:EndActivity()'];
 			case 'end': return ['ActivityMan:EndActivity()'];
 			case 'call': return ['self:' + ident(a.fn) + '()'];
+			case 'stage': return ['st.stage = ' + luaNum(a.n), 'st.stageStarted = false'];
 			default: return [];
 		}
 	}
@@ -129,24 +149,83 @@ window.MS = window.MS || {};
 				return lines;
 			}
 			case 'teamGone': return ['local alive = studioCount(' + team + ', nil)', 'if alive > 0 then st.seen[' + i + '] = true end', 'if st.seen[' + i + '] and alive == 0 then fire = true end'];
+			case 'brainGone': return ['local alive = studioBrains(' + team + ')', 'if alive > 0 then st.seen[' + i + '] = true end', 'if st.seen[' + i + '] and alive == 0 then fire = true end'];
 			case 'funds': return ['local reached = self:GetTeamFunds(' + team + ') ' + opOf(w.op) + ' ' + luaNum(w.amount), 'if reached and not st.prev[' + i + '] then fire = true end', 'st.prev[' + i + '] = reached'];
 			default: return ['fire = true'];
 		}
 	}
 
 	// A rule fires once if it says so, and always for events that stay true (a team gone, a timer that does not repeat, the start).
-	const once = (r) => r.once || ['start', 'teamGone'].includes(r.when.kind) || (r.when.kind === 'timer' && !r.when.repeat);
+	const once = (r) => r.once || ['start', 'teamGone', 'brainGone'].includes(r.when.kind) || (r.when.kind === 'timer' && !r.when.repeat);
 
-	function generate(cls, rules) {
+	const itemCreate = (cls) => 'Create' + (['HeldDevice', 'TDExplosive', 'ThrownDevice'].includes(cls) ? cls : 'HDFirearm');
+
+	// The lua for one stage: what it does when it begins, how it is known to be done, its marker, and what happens when it is done or time runs out.
+	function stageLua(cls, stage, n) {
+		const L = [];
+		const g = stage.goal;
+		const body = (actions) => (actions.length ? actions.flatMap((a) => actionLua(a).map((line) => '\t' + line)) : ['\t-- (nothing)']);
+		L.push('-- Stage ' + n + ': ' + stage.name.replace(/[\r\n]+/g, ' '));
+		L.push('function ' + cls + ':StudioStage' + n + 'Start()', '\tlocal st = self.StudioState');
+		if (g.kind === 'fetch' && g.item && g.from) {
+			const parts = String(g.item).split('|');
+			L.push('\tlocal where = ' + area(g.from), '\tlocal item = ' + itemCreate(parts[0]) + '(' + luaStr(parts[1] || '') + ', ' + luaStr(parts[2] || 'Base.rte') + ')', '\tif item and where then', '\t\titem.Pos = where.RandomPoint', '\t\tMovableMan:AddItem(item)', '\tend');
+		}
+		L.push(...body(stage.onStart), 'end');
+		L.push('function ' + cls + ':StudioStage' + n + 'Done()', '\tlocal st = self.StudioState', ...body(stage.onDone), 'end');
+		L.push('function ' + cls + ':StudioStage' + n + 'Fail()', '\tlocal st = self.StudioState', ...body(stage.onFail), 'end');
+		// each frame: the objective marker
+		const text = luaStr(stage.text || stage.name);
+		const viewer = luaNum(stage.viewer);
+		L.push('function ' + cls + ':StudioStage' + n + 'Mark()');
+		if (stage.marker) {
+			if (['reach', 'hold'].includes(g.kind)) {
+				L.push('\tlocal where = ' + area(g.area), '\tif where then self:AddObjectivePoint(' + text + ', where.Center, ' + viewer + ', GameActivity.ARROWDOWN) end');
+			} else if (g.kind === 'fetch') {
+				L.push('\tlocal where = ' + area(g.area), '\tif where then self:AddObjectivePoint(' + text + ', where.Center, ' + viewer + ', GameActivity.ARROWDOWN) end');
+			} else if (g.kind === 'destroy' || g.kind === 'brain') {
+				L.push('\tfor actor in MovableMan.Actors do', '\t\tif actor.Team == ' + luaNum(g.team) + ' and actor.Health > 0' + (g.kind === 'brain' ? ' and actor:IsInGroup("Brains")' : '') + ' then self:AddObjectivePoint(' + text + ', actor.AboveHUDPos, ' + viewer + ', GameActivity.ARROWDOWN) end', '\tend');
+			} else {
+				L.push('\t-- (no marker for this goal)');
+			}
+		} else {
+			L.push('\t-- (no marker)');
+		}
+		L.push('end');
+		// is it done
+		L.push('function ' + cls + ':StudioStage' + n + 'Check()', '\tlocal st = self.StudioState', '\tlocal elapsed = st.stageClock.ElapsedSimTimeS');
+		switch (g.kind) {
+			case 'reach': L.push('\treturn studioCount(' + luaNum(g.team) + ', ' + area(g.area) + ') > 0'); break;
+			case 'hold':
+				L.push('\tlocal region = ' + area(g.area), '\tlocal held = region ~= nil and studioCount(' + luaNum(g.team) + ', region) > 0 and studioEnemies(' + luaNum(g.team) + ', region) == 0', '\tif not held then st.holdFrom = nil elseif not st.holdFrom then st.holdFrom = elapsed end', '\treturn st.holdFrom ~= nil and elapsed - st.holdFrom >= ' + luaNum(g.seconds));
+				break;
+			case 'destroy': L.push('\treturn elapsed > 1 and studioCount(' + luaNum(g.team) + ', nil) == 0'); break;
+			case 'brain': L.push('\treturn elapsed > 1 and studioBrains(' + luaNum(g.team) + ') == 0'); break;
+			case 'fetch': L.push('\treturn studioItemIn(' + luaStr(g.area) + ', ' + luaStr(String(g.item).split('|')[1] || '') + ')'); break;
+			default: L.push('\treturn elapsed >= ' + luaNum(g.seconds));
+		}
+		L.push('end', '');
+		return L;
+	}
+
+	function generate(cls, rules, stages) {
+		stages = stages || [];
 		const L = [];
 		L.push(MARK_BEGIN + ': managed by Cortex Studio (the Scenarios editor, Mission logic). Change the rules there; this block is rewritten. Your own functions go outside it.');
-		L.push(DATA + JSON.stringify(rules));
+		L.push(DATA + JSON.stringify({ v: 2, rules, stages }));
 		L.push('local function studioArea(name)', '\tif name ~= "" and SceneMan.Scene:HasArea(name) then return SceneMan.Scene:GetArea(name) end', '\treturn nil', 'end', '');
 		L.push('local function studioCount(team, region)', '\tlocal n = 0', '\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and (team < 0 or actor.Team == team) and (region == nil or region:IsInside(actor.Pos)) then n = n + 1 end', '\tend', '\treturn n', 'end', '');
 		L.push('local function studioInside(name, team)', '\tlocal region = studioArea(name)', '\tlocal now, count = {}, 0', '\tif region then', '\t\tfor actor in MovableMan.Actors do', '\t\t\tif actor.Health > 0 and (team < 0 or actor.Team == team) and region:IsInside(actor.Pos) then now[actor.UniqueID] = actor; count = count + 1 end', '\t\tend', '\tend', '\treturn now, count', 'end', '');
+		L.push('local function studioEnemies(team, region)', '\tlocal n = 0', '\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and actor.Team >= 0 and actor.Team ~= team and region:IsInside(actor.Pos) then n = n + 1 end', '\tend', '\treturn n', 'end', '');
+		L.push('local function studioBrains(team)', '\tlocal n = 0', '\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and actor.Team == team and actor:IsInGroup("Brains") then n = n + 1 end', '\tend', '\treturn n', 'end', '');
+		L.push('local function studioItemIn(areaName, itemName)', '\tlocal region = studioArea(areaName)', '\tif not region then return false end', '\tfor item in MovableMan.Items do', '\t\tif item.PresetName == itemName and region:IsInside(item.Pos) then return true end', '\tend', '\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and region:IsInside(actor.Pos) then', '\t\t\tlocal held = actor.EquippedItem', '\t\t\tif held and held.PresetName == itemName then return true end', '\t\t\tfor item in actor.Inventory do', '\t\t\t\tif item.PresetName == itemName then return true end', '\t\t\tend', '\t\tend', '\tend', '\treturn false', 'end', '');
+		stages.forEach((st, i) => L.push(...stageLua(cls, st, i + 1)));
+		if (stages.length) {
+			L.push(cls + '.StudioStageLimit = { ' + stages.map((st) => luaNum(st.failAfter)).join(', ') + ' }', '');
+		}
 		rules.forEach((r, i) => {
 			L.push('-- Rule ' + (i + 1) + ': ' + r.name.replace(/[\r\n]+/g, ' '));
-			L.push('function ' + cls + ':StudioRule' + (i + 1) + '(actor)');
+			L.push('function ' + cls + ':StudioRule' + (i + 1) + '(actor)', '\tlocal st = self.StudioState');
 			if (!r.then.length) {
 				L.push('\t-- (no actions)');
 			}
@@ -158,6 +237,15 @@ window.MS = window.MS || {};
 		L.push('function ' + cls + ':RunStudioRules()');
 		L.push('\tself.StudioState = self.StudioState or { clock = Timer(), flags = {}, inside = {}, who = {}, seen = {}, prev = {}, next = {}, done = {}, started = false }');
 		L.push('\tlocal st = self.StudioState');
+		if (stages.length) {
+			L.push('\tst.stage = st.stage or 1');
+			L.push('\tif st.stage <= ' + stages.length + ' then');
+			L.push('\t\tlocal n = st.stage');
+			L.push('\t\tif not st.stageStarted then', '\t\t\tst.stageStarted = true', '\t\t\tst.stageClock = Timer()', '\t\t\tst.holdFrom = nil', '\t\t\tself["StudioStage" .. n .. "Start"](self)', '\t\tend');
+			L.push('\t\tself["StudioStage" .. n .. "Mark"](self)');
+			L.push('\t\tif self["StudioStage" .. n .. "Check"](self) then', '\t\t\tself["StudioStage" .. n .. "Done"](self)', '\t\t\tif st.stage == n then st.stage = n + 1; st.stageStarted = false end');
+			L.push('\t\telseif ' + cls + '.StudioStageLimit[n] > 0 and st.stageClock.ElapsedSimTimeS >= ' + cls + '.StudioStageLimit[n] then', '\t\t\tself["StudioStage" .. n .. "Fail"](self)', '\t\t\tif st.stage == n then st.stage = n + 1; st.stageStarted = false end', '\t\tend', '\tend');
+		}
 		rules.forEach((r, i) => {
 			L.push('\tdo -- Rule ' + (i + 1));
 			L.push('\t\tlocal fire = false');
@@ -185,7 +273,10 @@ window.MS = window.MS || {};
 			const end = code.indexOf('\n', at);
 			try {
 				const data = JSON.parse(code.slice(at + DATA.length, end < 0 ? undefined : end));
-				return Array.isArray(data) ? data : null;
+				if (Array.isArray(data)) {
+					return { rules: data, stages: [] };
+				}
+				return data && Array.isArray(data.rules) ? { rules: data.rules, stages: Array.isArray(data.stages) ? data.stages : [] } : null;
 			} catch (e) {
 				return null;
 			}
@@ -205,7 +296,7 @@ window.MS = window.MS || {};
 	}
 
 	// The script with its rules block replaced (or added before UpdateActivity), UpdateActivity running the rules, and a stub for each function called.
-	function withRules(code, cls, rules) {
+	function withRules(code, cls, rules, stages) {
 		let text = code.replace(/\r\n/g, '\n');
 		for (const [b, e] of [[MARK_BEGIN, MARK_END], [OLD_BEGIN, OLD_END]]) {
 			const begin = text.indexOf(b);
@@ -214,7 +305,7 @@ window.MS = window.MS || {};
 				text = text.slice(0, begin).replace(/\s*$/, '') + '\n\n' + text.slice(end + e.length).replace(/^\n+/, '');
 			}
 		}
-		const block = generate(cls, rules);
+		const block = generate(cls, rules, stages || []);
 		const update = new RegExp('function\\s+' + cls + ':UpdateActivity\\s*\\(\\s*\\)');
 		if (update.test(text)) {
 			text = text.replace(update, (m) => block + '\n\n' + m);
@@ -257,7 +348,9 @@ window.MS = window.MS || {};
 			box.append(el('p', { className: 'ed-note', textContent: 'Mission logic needs a script: give the scenario a script file and class (below) first.' }));
 			return box;
 		}
-		let rules = parseRules(code);
+		const parsed = parseRules(code);
+		let rules = parsed ? parsed.rules : null;
+		let stages = parsed ? parsed.stages : [];
 		let migrated = false;
 		if (rules === null) {
 			rules = code ? oldTriggers(code) : [];
@@ -265,11 +358,16 @@ window.MS = window.MS || {};
 		}
 		const areaList = [...new Set(sceneAreas)];
 		defaultArea = areaList[0] || '';
-		const save = (next) => host.saveText(path, withRules(host.scriptText(path) || '', cls, next)).catch((err) => app().toast('Couldn\'t change the script: ' + err.message, 'bad'));
+		const save = (nextRules, nextStages) => host.saveText(path, withRules(host.scriptText(path) || '', cls, nextRules, nextStages)).catch((err) => app().toast('Couldn\'t change the script: ' + err.message, 'bad'));
 		const edit = (mutate) => {
 			const next = JSON.parse(JSON.stringify(rules));
 			mutate(next);
-			return save(next);
+			return save(next, stages);
+		};
+		const editStages = (mutate) => {
+			const next = JSON.parse(JSON.stringify(stages));
+			mutate(next);
+			return save(rules, next);
 		};
 		const team = (value, on, anyOk) => el('select', { className: 'ed-input', disabled: ro }, ...(anyOk ? [el('option', { value: '-1', textContent: 'any team', selected: Number(value) < 0 })] : []), ...[0, 1, 2, 3].map((n) => el('option', { value: String(n), textContent: 'Team ' + (n + 1), selected: Number(value) === n })));
 		const field = (type, label, value, set) => {
@@ -292,6 +390,9 @@ window.MS = window.MS || {};
 			} else if (type === 'number') {
 				input = el('input', { type: 'number', step: 'any', className: 'ed-input num', value, disabled: ro });
 				input.onchange = () => set(Number(input.value) || 0);
+			} else if (type === 'item') {
+				const name = String(value).split('|')[1] || '(pick one)';
+				input = el('button', { className: 'tb', textContent: name, disabled: ro, onclick: () => host.pickItem((chosen) => set(chosen.cls + '|' + chosen.name + '|' + chosen.module)) });
 			} else if (type === 'preset') {
 				const name = String(value).split('|')[1] || '(pick one)';
 				input = el('button', { className: 'tb', textContent: name, disabled: ro, onclick: () => host.pickUnit((chosen) => set(chosen.cls + '|' + chosen.name + '|' + chosen.module)) });
@@ -310,6 +411,39 @@ window.MS = window.MS || {};
 				item.kind === 'call' ? el('button', { className: 'ico-btn', textContent: '⧉', title: 'Edit the code beside this, in its own window', onclick: () => host.openBeside(path, lineOf(host.scriptText(path), cls, item.fn)) }) : null,
 				remove ? el('button', { className: 'ico-btn', textContent: '×', title: 'Take it out', disabled: ro, onclick: remove }) : null);
 		};
+		const stageBox = el('div', { className: 'mission-stages' });
+		stages.forEach((st, i) => {
+			const name = el('input', { type: 'text', className: 'ed-input', value: st.name, disabled: ro, title: 'What this stage is called' });
+			name.onchange = () => editStages((next) => { next[i].name = name.value.trim() || st.name; });
+			const text = el('input', { type: 'text', className: 'ed-input', value: st.text || '', placeholder: 'Objective text, shown on the marker', disabled: ro });
+			text.onchange = () => editStages((next) => { next[i].text = text.value; });
+			const marker = el('input', { type: 'checkbox', checked: !!st.marker, disabled: ro });
+			marker.onchange = () => editStages((next) => { next[i].marker = marker.checked; });
+			const viewer = el('select', { className: 'ed-input', disabled: ro, title: 'Whose screen shows the marker' }, ...[0, 1, 2, 3].map((n) => el('option', { value: String(n), textContent: 'Team ' + (n + 1), selected: Number(st.viewer) === n })));
+			viewer.onchange = () => editStages((next) => { next[i].viewer = Number(viewer.value); });
+			const limit = el('input', { type: 'number', className: 'ed-input num', value: st.failAfter || 0, disabled: ro, title: 'Seconds before it fails (0 for no limit)' });
+			limit.onchange = () => editStages((next) => { next[i].failAfter = Math.max(0, Number(limit.value) || 0); });
+			const move = (d) => el('button', { className: 'ico-btn', textContent: d < 0 ? '▲' : '▼', disabled: ro || i + d < 0 || i + d >= stages.length, title: d < 0 ? 'Earlier' : 'Later', onclick: () => editStages((next) => { next.splice(i + d, 0, next.splice(i, 1)[0]); }) });
+			const list = (key, label, table, fallbackKind) => [
+				el('div', { className: 'mission-line' }, el('b', { className: 'mission-word then', textContent: label })),
+				...st[key].map((a, k) => el('div', { className: 'mission-line' }, el('b', { className: 'mission-word then', textContent: '' }), block(table, null, a, (fn) => editStages((next) => { next[i][key][k] = fn(next[i][key][k]); }), () => editStages((next) => { next[i][key].splice(k, 1); })))),
+				el('div', { className: 'mission-add' }, el('button', { className: 'tb', textContent: '+ Action', disabled: ro, onclick: () => editStages((next) => { next[i][key].push(blank(THEN, fallbackKind)); }) })),
+			];
+			stageBox.append(el('div', { className: 'mission-rule mission-stage' },
+				el('div', { className: 'mission-head' }, el('b', { className: 'mission-num', textContent: String(i + 1) }), name, move(-1), move(1), el('button', { className: 'ico-btn', textContent: '×', title: 'Take the stage out', disabled: ro, onclick: () => editStages((next) => { next.splice(i, 1); }) })),
+				el('div', { className: 'mission-line' }, el('b', { className: 'mission-word when', textContent: 'GOAL' }), block(GOAL, null, st.goal, (fn) => editStages((next) => { next[i].goal = fn(next[i].goal); }))),
+				el('div', { className: 'mission-line' }, el('b', { className: 'mission-word if', textContent: 'SHOW' }), el('div', { className: 'mission-block' }, el('label', { className: 'ed-check' }, marker, 'a marker'), text, viewer, el('label', { className: 'ed-check', title: 'Seconds before it fails' }, 'time limit', limit))),
+				...list('onStart', 'WHEN IT STARTS', THEN, 'message'), ...list('onDone', 'WHEN DONE', THEN, 'message'), ...(st.failAfter > 0 || st.onFail.length ? list('onFail', 'IF TIME RUNS OUT', THEN, 'end') : [])));
+		});
+		box.append(el('div', { className: 'ed-label', textContent: 'Stages: one goal after another (' + stages.length + ')' }), stageBox,
+			el('div', { className: 'ed-row' }, el('button', { className: 'tb primary', textContent: '+ Add a stage', disabled: ro || code === null, onclick: () => editStages((next) => {
+				let n = next.length + 1;
+				while (next.some((x) => x.name === 'Stage ' + n)) {
+					n++;
+				}
+				next.push({ name: 'Stage ' + n, goal: blank(GOAL, 'reach'), text: '', marker: true, viewer: 0, failAfter: 0, onStart: [], onDone: [{ kind: 'message', text: 'Objective complete.', who: 'all', seconds: 4 }], onFail: [] });
+			}) }), stages.length ? el('small', { textContent: 'When a stage is done the next begins. Make the last one end the mission with a win.' }) : null),
+			el('div', { className: 'ed-label', textContent: 'Rules that run alongside (' + rules.length + ')' }));
 		if (migrated) {
 			box.append(el('div', { className: 'ed-banner', textContent: 'These come from the older "Studio triggers" block. Change anything and they are converted to rules, each running the function it ran before.' }));
 		}
