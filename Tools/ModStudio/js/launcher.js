@@ -924,6 +924,10 @@ window.MS = window.MS || {};
 		}
 		world.onchange = () => saveConfig({ world: world.value });
 		const worldNote = el('div', { className: 'gm-dim', textContent: s.worlds.length ? 'Copied over the version\'s Data/Base.rte; Stock puts the game\'s own back.' : 'No worlds found. Put planet skin folders in CortexLauncher/Worlds (shared with the Windows launcher) or CortexStudio/Worlds.' });
+		// The settings preset every game launched from Studio loads at start (a file in the Presets folder; the game's own "load at start").
+		const preset = el('select', { className: 'gm-input' }, el('option', { value: '', textContent: 'None: Settings.ini as it is' }));
+		preset.onchange = () => saveConfig({ defaultPreset: preset.value });
+		const presetNote = el('div', { className: 'gm-dim', textContent: 'Loaded by the game over Settings.ini each time Studio starts it (Play, Test, Sandbox, Actor Editor).' });
 		const settingsCard = card('Your Settings.ini', el('p', { className: 'gm-dim', textContent: 'Reading…' }));
 		const modsCard = card('Your mods', el('p', { className: 'gm-dim', textContent: 'Reading…' }));
 		body.append(
@@ -933,6 +937,7 @@ window.MS = window.MS || {};
 					pathField('Settings.ini', 'settingsIni', 'file', 'Copied into the version before each launch, so every version plays with your settings.'),
 					pathField('Presets folder', 'presetsDir', 'folder', 'Linked as the version\'s Userdata/Presets, so loadouts and presets are the same in every version.'),
 					pathField('Mods folder', 'modsDir', 'folder', 'Each .rte in it is linked into the version\'s Mods before launching (changed files only).'),
+					el('div', { className: 'gm-field gm-field-row' }, el('label', { textContent: 'Settings preset' }), el('div', {}, preset, presetNote)),
 					el('div', { className: 'gm-field gm-field-row' }, el('label', { textContent: 'World' }), el('div', {}, world, worldNote)),
 				),
 				settingsCard,
@@ -940,6 +945,12 @@ window.MS = window.MS || {};
 			modsCard,
 		);
 		withOverview((o) => {
+			const names = (o.presets && o.presets.names) || [];
+			const current = s.config.defaultPreset || '';
+			for (const n of names.includes(current) || !current ? names : [current, ...names]) {
+				preset.append(el('option', { value: n, textContent: n + (names.includes(n) ? '' : ' (not found)'), selected: n === current }));
+			}
+			preset.value = current;
 			drawSettingsIni(settingsCard, o);
 			drawMods(modsCard, o);
 			worldNote.textContent += ' Worlds live in ' + o.worldsDir + '.';

@@ -37,6 +37,8 @@ pub struct Config {
 	pub configuration: String,
 	pub settings_ini: String,
 	pub presets_dir: String,
+	/// The settings preset (a file in the Presets folder, by name) every game launched from Studio loads at start, over Settings.ini. "" for none.
+	pub default_preset: String,
 	pub mods_dir: String,
 	pub world: String,
 	pub map: String,
@@ -1217,6 +1219,62 @@ fn carry_window_size(last_run: &Path, master: &Path) -> Option<(u32, u32)> {
 	Some((width, height))
 }
 
+/// Sets one line of a Settings.ini (replacing the value if it is there, else adding it under ResolutionMultiplier, or at the end), keeping
+/// the file's own line endings.
+fn set_setting_line(text: &str, key: &str, value: &str) -> String {
+	let newline = if text.contains("\r\n") { "\r\n" } else { "\n" };
+	let line_key = |line: &str| line.trim().split_once('=').map(|(k, _)| k.trim().to_string());
+	let mut out = String::with_capacity(text.len() + 48);
+	let mut done = false;
+	let wanted = format!("\t{key} = {value}{newline}");
+	for line in text.split_inclusive('\n') {
+		if line_key(line).as_deref() == Some(key) {
+			if !done {
+				out.push_str(&wanted);
+				done = true;
+			}
+			continue;
+		}
+		out.push_str(line);
+		if !done && line_key(line).as_deref() == Some("ResolutionMultiplier") {
+			if !line.ends_with('\n') {
+				out.push_str(newline);
+			}
+			out.push_str(&wanted);
+			done = true;
+		}
+	}
+	if !done {
+		if !out.is_empty() && !out.ends_with('\n') {
+			out.push_str(newline);
+		}
+		out.push_str(&wanted);
+	}
+	out
+}
+
+/// The settings presets there are to pick from: the files in your Presets folder and the ones that ship with the game.
+fn preset_names(config: &Config, slot: &Path) -> Vec<String> {
+	let mut names: Vec<String> = Vec::new();
+	let mut folders = vec![slot.join("Userdata").join("Presets"), slot.join("Data").join("Presets")];
+	if !config.presets_dir.is_empty() {
+		folders.insert(0, PathBuf::from(&config.presets_dir));
+	}
+	for folder in folders {
+		for entry in fs::read_dir(&folder).into_iter().flatten().flatten() {
+			let path = entry.path();
+			if path.is_file() && path.extension().map(|e| e.eq_ignore_ascii_case("ini")).unwrap_or(false) {
+				if let Some(stem) = path.file_stem() {
+					names.push(stem.to_string_lossy().into_owned());
+				}
+			}
+		}
+	}
+	names.sort_by_key(|n| n.to_lowercase());
+	names.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+	names
+}
+
 fn overview(config: &Config) -> Value {
 	let slot = config.slot_path();
 	let built = built_info(&slot);
@@ -1269,7 +1327,7 @@ fn overview(config: &Config) -> Value {
 	json!({
 		"build": build,
 		"settings": settings,
-		"presets": { "exists": !config.presets_dir.is_empty() && presets_dir.is_dir(), "count": presets.len() },
+		"presets": { "exists": !config.presets_dir.is_empty() && presets_dir.is_dir(), "count": presets.len(), "names": preset_names(config, &slot) },
 		"mods": { "exists": !config.mods_dir.is_empty() && mods_dir.is_dir(), "list": mods },
 		"worldsDir": config.worlds_dir(),
 	})
@@ -1305,6 +1363,19 @@ fn launch(config: &Config, mode: &str, map: &str, run: &RunConfig) -> Result<Vec
 		}
 		fs::copy(&config.settings_ini, userdata.join("Settings.ini")).map_err(|e| format!("Couldn't copy Settings.ini: {e}"))?;
 		log.push(format!("Using Settings.ini from {}.", config.settings_ini));
+	}
+	// The default settings preset: the game's own "load a preset at start" setting, written into the Settings.ini this launch uses.
+	let preset = config.default_preset.trim();
+	if !preset.is_empty() {
+		let userdata = slot.join("Userdata");
+		let _ = fs::create_dir_all(&userdata);
+		let path = userdata.join("Settings.ini");
+		let text = fs::read_to_string(&path).unwrap_or_else(|_| "Settings\n".into());
+		let updated = set_setting_line(&text, "StartupPreset", preset);
+		if updated != text {
+			fs::write(&path, updated).map_err(|e| format!("Couldn't write the default preset into Settings.ini: {e}"))?;
+		}
+		log.push(format!("The game loads the settings preset {preset} at start."));
 	}
 	let mut args: Vec<String> = match mode {
 		"test" => vec!["-modstudio".into(), "-test".into()],
@@ -1606,6 +1677,13 @@ mod tests {
 		let master = temp("master-b", "Settings\n\tResolutionMultiplier = 1\n\tWindowWidth = 800\n\tWindowHeight = 600\n\tFullscreen = 0\n");
 		assert_eq!(carry_window_size(&last, &master), Some((1280, 720)));
 		assert_eq!(fs::read_to_string(&master).unwrap(), "Settings\n\tResolutionMultiplier = 1\n\tWindowWidth = 1280\n\tWindowHeight = 720\n\tFullscreen = 0\n");
+	}
+
+	#[test]
+	fn the_startup_preset_line_is_set_or_replaced() {
+		assert_eq!(set_setting_line("Settings\n\tResolutionMultiplier = 1\n\tFullscreen = 0\n", "StartupPreset", "Mine"), "Settings\n\tResolutionMultiplier = 1\n\tStartupPreset = Mine\n\tFullscreen = 0\n");
+		assert_eq!(set_setting_line("Settings\r\n\tStartupPreset = Old\r\n\tFullscreen = 0\r\n", "StartupPreset", "New"), "Settings\r\n\tStartupPreset = New\r\n\tFullscreen = 0\r\n");
+		assert_eq!(set_setting_line("Settings\n\tFullscreen = 0", "StartupPreset", "P"), "Settings\n\tFullscreen = 0\n\tStartupPreset = P\n");
 	}
 
 	#[test]
