@@ -69,7 +69,7 @@ window.MS = window.MS || {};
 	function modChoices() {
 		const a = app();
 		const mods = a.lib.modules.filter((m) => !m.official).map((m) => m.name);
-		const last = a.readLocal('ms.lastMod');
+		const last = a.project || a.readLocal('ms.lastMod');
 		if (last && !mods.includes(last)) {
 			mods.unshift(last);
 		}
@@ -90,7 +90,8 @@ window.MS = window.MS || {};
 		const sync = () => {
 			name.style.display = select.value === '__new' ? '' : 'none';
 		};
-		select.value = a.readLocal('ms.lastMod') && mods.includes(a.readLocal('ms.lastMod')) ? a.readLocal('ms.lastMod') : mods[0] || '__new';
+		const preferred = a.project || a.readLocal('ms.lastMod');
+		select.value = preferred && mods.includes(preferred) ? preferred : mods[0] || '__new';
 		select.onchange = sync;
 		sync();
 		return {
@@ -200,13 +201,22 @@ window.MS = window.MS || {};
 	// ---- pickers ----
 
 	// keepOpen: the dialog stays (a step of a bigger dialog), else picking closes it.
-	function pickerGrid(presets, onPick, thumb, keepOpen) {
+	// filters (optional): [{ label, options: [[value, text]...], test(p, value) }], shown as drop-downs beside the search.
+	function pickerGrid(presets, onPick, thumb, keepOpen, filters) {
 		const grid = el('div', { className: 'pick-grid' });
 		const search = el('input', { type: 'search', placeholder: 'Search…' });
+		const selects = (filters || []).map((f) => {
+			const select = el('select', { className: 'ed-input', title: f.label }, ...f.options.map(([value, text]) => el('option', { value, textContent: text })));
+			if (f.initial !== undefined) {
+				select.value = f.initial;
+			}
+			select.onchange = () => render();
+			return select;
+		});
 		const render = () => {
 			grid.innerHTML = '';
 			const q = search.value.trim().toLowerCase();
-			const list = presets.filter((p) => !q || p.name.toLowerCase().includes(q) || p.module.toLowerCase().includes(q)).slice(0, 240);
+			const list = presets.filter((p) => (!q || p.name.toLowerCase().includes(q) || p.module.toLowerCase().includes(q) || p.cls.toLowerCase().includes(q)) && selects.every((sel, i) => !sel.value || filters[i].test(p, sel.value))).slice(0, 240);
 			for (const p of list) {
 				const canvas = el('canvas', { width: 64, height: 64 });
 				const tile = el('div', { className: 'pick', title: p.name + ' (' + p.module + ')' }, canvas, el('div', { textContent: p.name }), el('small', { textContent: p.module }));
@@ -226,7 +236,7 @@ window.MS = window.MS || {};
 			t = setTimeout(render, 120);
 		};
 		render();
-		return el('div', {}, field('Search', search), grid);
+		return el('div', {}, el('div', { className: 'pick-filters' }, search, ...selects), grid);
 	}
 
 	function attachablePresets() {
@@ -251,7 +261,18 @@ window.MS = window.MS || {};
 		}
 		part = part || a.selected || a.rig.body;
 		if (!preset) {
-			open('Add an attachment to ' + part.name, pickerGrid(attachablePresets(), (p) => attach(p, part), (c, p) => MS.panels.drawSpriteThumb(c, p)), [{ text: 'Cancel' }], true);
+			const all = attachablePresets();
+			const modules = [...new Set(all.map((p) => p.module))].sort((x, y) => x.localeCompare(y));
+			const kinds = [...new Set(all.map((p) => p.cls))].sort();
+			const filters = [
+				{ label: 'Where it comes from', initial: a.project || '', options: [['', 'Everything'], ...modules.map((m) => [m, m.replace(/\.rte$/i, '')])], test: (p, v) => p.module === v },
+				{ label: 'What kind', options: [['', 'Any kind'], ...kinds.map((k) => [k, k])], test: (p, v) => p.cls === v },
+			];
+			open('Add an attachment to ' + part.name, pickerGrid(all, (p) => attach(p, part), (c, p) => MS.panels.drawSpriteThumb(c, p), false, filters), [{ text: 'Cancel' }], true);
+			return;
+		}
+		if (a.needsCopy()) {
+			a.copyThen(part, (copied) => attach(preset, copied));
 			return;
 		}
 		const reason = a.lockReason(part);
@@ -361,6 +382,10 @@ window.MS = window.MS || {};
 	// options.files: pictures to start with (dropped on the guide); options.onDone: called once the sprite is in the unit.
 	function importSprite(part, options) {
 		const a = app();
+		if (a.needsCopy()) {
+			a.copyThen(part, (copied) => importSprite(copied, options));
+			return;
+		}
 		const reason = a.lockReason(part);
 		if (reason) {
 			a.toast(reason, 'bad');
@@ -711,7 +736,7 @@ window.MS = window.MS || {};
 		open('Preview in game', body, [{ text: 'Got it', primary: true }]);
 	}
 
-	MS.dialogs = { open, close, copyUnit, attach, pickItem, importSprite, saveSprite, help, previewHelp };
+	MS.dialogs = { makeCopy, open, close, copyUnit, attach, pickItem, importSprite, saveSprite, help, previewHelp };
 	// For the New… wizard (wizard.js) and the data editors (editors.js).
 	MS.dialogs.parts = { el, field, para, safeName, modChoices, modPicker, makeCopy, pickerGrid };
 })();

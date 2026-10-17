@@ -662,11 +662,11 @@ window.MS = window.MS || {};
 
 	const outFrames = () => E.frames.map((f) => ({ width: f.w, height: f.h, indices: f.indices }));
 
-	function finished(message) {
+	function finished(message, action) {
 		const a = app();
 		a.requestDraw();
 		MS.panels.refresh();
-		a.toast(message, 'good');
+		a.toast(message, 'good', action);
 		const done = E.onSaved;
 		E.saved = true;
 		E.dirty = false;
@@ -704,10 +704,14 @@ window.MS = window.MS || {};
 		finished('Saved ' + E.file.split('/').pop() + '.');
 	}
 
-	async function saveCopy(mod, name) {
+	async function saveCopy(mod, name, unique) {
 		const a = app();
 		const folder = mod + '/Sprites/' + safe(a.actor ? a.actor.name : 'Pictures');
-		const path = folder + '/' + safe(name) + '.png';
+		let path = folder + '/' + safe(name) + '.png';
+		// An automatic copy takes a free name (Torso, then Torso2...) rather than overwrite a picture that is already there.
+		for (let n = 2; unique && path !== E.file && (await a.fs.exists(path)); n++) {
+			path = folder + '/' + safe(name) + n + '.png';
+		}
 		if (MS.Images.framePaths(path, E.frames.length).some((p) => a.fs.isOfficial(p))) {
 			a.toast('Save it inside your own mod\'s folder.', 'bad');
 			return;
@@ -728,7 +732,19 @@ window.MS = window.MS || {};
 			a.toast('Couldn\'t save the picture: ' + e.message, 'bad');
 			return;
 		}
-		finished('Saved ' + path + (E.part && !linkable ? '. Make your own copy of the unit, then use Swap sprite to put it in.' : '.'));
+		const clone = E.part && !linkable && a.actor && a.project ? { label: 'Clone ' + a.actor.name + ' into ' + a.project.replace(/\.rte$/i, ''), run: () => MS.dialogs.copyUnit() } : null;
+		finished('Saved ' + path + (E.part && !linkable ? '. The unit is not yours yet: clone it into your project, then Swap sprite puts this in.' : '.'), clone);
+	}
+
+	// A picture that isn't in your mod saves as a copy in the project, named after the original (nothing to fill in).
+	async function saveAuto() {
+		const a = app();
+		if (!a.project) {
+			copyForm();
+			return;
+		}
+		const stem = E.file ? safe(E.file.split('/').pop().replace(/\.[^.]+$/, '').replace(/\d+$/, '')) : 'Picture';
+		await saveCopy(a.project, stem || 'Picture', true);
 	}
 
 	function copyForm() {
@@ -839,10 +855,10 @@ window.MS = window.MS || {};
 		E.copyBox = el('div', { className: 'px-copy', hidden: true });
 		const own = canOverwrite();
 		const saveRow = el('div', { className: 'px-save' },
-			el('span', { className: 'px-where', textContent: E.file ? (own ? 'Saves over ' : 'This is ' + (app().fs.isOfficial(E.file.split('/')[0]) ? 'one of the game\'s pictures, so it saves as a copy in your mod: ' : 'in someone else\'s mod, so it saves as a copy in yours: ')) + E.file.split('/').pop() : 'A new picture: it saves in your mod.' }),
+			el('span', { className: 'px-where', textContent: E.file ? (own ? 'Saves over ' + E.file.split('/').pop() : app().project ? 'Saves as a copy in ' + app().project + ' (this is ' + E.file.split('/').pop() + ' from ' + E.file.split('/')[0] + ')' : 'This is in ' + E.file.split('/')[0] + ', so it saves as a copy in your mod: ' + E.file.split('/').pop()) : 'A new picture: it saves in your mod.' }),
 			el('span', { className: 'spacer' }),
-			own ? el('button', { className: 'tb primary', textContent: 'Save', onclick: saveInPlace }) : null,
-			el('button', { className: 'tb' + (own ? '' : ' primary'), textContent: own ? 'Save a copy…' : 'Save a copy in my mod…', onclick: copyForm }));
+			own ? el('button', { className: 'tb primary', textContent: 'Save', onclick: saveInPlace }) : app().project ? el('button', { className: 'tb primary', textContent: 'Save', title: 'Saves a copy in ' + app().project + ', named after this picture', onclick: saveAuto }) : null,
+			el('button', { className: 'tb' + (own || app().project ? '' : ' primary'), textContent: own ? 'Save a copy…' : app().project ? 'Save as…' : 'Save a copy in my mod…', onclick: copyForm }));
 		return el('div', { className: 'px' }, el('div', { className: 'px-main' }, toolColumn, center, side), E.copyBox, saveRow);
 	}
 
@@ -889,6 +905,10 @@ window.MS = window.MS || {};
 	async function open(target) {
 		const a = app();
 		target = target || {};
+		if (target.part && a.needsCopy()) {
+			a.copyThen(target.part, (copied) => open(Object.assign({}, target, { part: copied })));
+			return;
+		}
 		const part = target.part || null;
 		const file = part ? part.sprite.file : target.file || null;
 		const key = file ? spriteKey(file) : 'sprite:new' + ++newCount;
@@ -968,7 +988,11 @@ window.MS = window.MS || {};
 		E = px;
 		try {
 			if (!canOverwrite()) {
-				return false;
+				if (!app().project) {
+					return false;
+				}
+				await saveAuto();
+				return !px.dirty;
 			}
 			await saveInPlace();
 			return !px.dirty;

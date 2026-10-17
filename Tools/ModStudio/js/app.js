@@ -143,6 +143,7 @@ window.MS = window.MS || {};
 			await MS.popout.run();
 			return;
 		}
+		app.chooseProject(true);
 		const last = readLocal('ms.lastActor');
 		const preset = last && app.lib.presets.find((p) => p.doc.path === last.path && p.name === last.name);
 		if (preset) {
@@ -172,26 +173,37 @@ window.MS = window.MS || {};
 	// ---- which modules the lists show ----
 	// A view filter only: every module is still read, so CopyOf and inheritance across modules keep working.
 
-	app.scope = (() => {
-		const saved = readLocal('ms.scope');
-		return Array.isArray(saved) ? new Set(saved) : null; // lower-cased module names; null is all of them
-	})();
+	// ---- the project: the one mod you are working on ----
+	// The lists, files and search show just the project's mod. The Library switch (top of the left bar) shows everything instead, to look
+	// through and clone from; things you add go into the project. A view filter only: every module is still read, so CopyOf and inheritance
+	// across modules keep working.
+
+	app.project = readLocal('ms.project') || null; // a mod's folder name, e.g. MyMod.rte
+	app.libraryOn = false;
+	app.scope = null; // lower-cased module names the lists show; null is all of them
+
+	function applyScope() {
+		app.scope = app.libraryOn || !app.project ? null : new Set([app.project.toLowerCase()]);
+	}
+	applyScope();
 
 	app.inScope = function (pathOrModule) {
 		return !app.scope || app.scope.has(String(pathOrModule).split('/')[0].toLowerCase());
 	};
 
 	function updateScopeButton() {
-		const total = app.fs ? app.fs.modules().length : 0;
 		const b = $('btnScope');
-		b.textContent = (!app.scope ? 'All modules' : app.scope.size === 1 ? [...app.scope][0].replace(/\.rte$/, '') : app.scope.size + (total ? ' of ' + total : '') + ' modules') + ' ▾';
-		b.classList.toggle('on', !!app.scope);
+		b.textContent = (app.project ? 'Project: ' + app.project.replace(/\.rte$/i, '') : 'Choose a project') + ' ▾';
+		b.classList.toggle('on', !!app.project);
+		for (const seg of document.querySelectorAll('.scope-seg')) {
+			for (const btn of seg.querySelectorAll('button')) {
+				btn.classList.toggle('sel', (btn.dataset.lib === 'all') === app.libraryOn);
+			}
+		}
 	}
 
-	function setScope(names) {
-		const all = app.fs ? app.fs.modules().map((m) => m.name.toLowerCase()) : [];
-		app.scope = !names || names.size === 0 || all.every((n) => names.has(n)) ? null : names;
-		writeLocal('ms.scope', app.scope ? [...app.scope] : null);
+	function refreshScope() {
+		applyScope();
 		updateScopeButton();
 		if (app.lib) {
 			MS.panels.showLibrary();
@@ -199,78 +211,164 @@ window.MS = window.MS || {};
 		MS.ide.scopeChanged();
 	}
 
-	function scopeMenu() {
+	app.setLibrary = function (on) {
+		app.libraryOn = !!on;
+		refreshScope();
+	};
+
+	app.setProject = function (name) {
+		app.project = name;
+		app.libraryOn = false;
+		writeLocal('ms.project', name);
+		writeLocal('ms.lastMod', name); // new things default to it
+		refreshScope();
+		if (app.actor && app.actor.path.split('/')[0].toLowerCase() !== name.toLowerCase() && !app.fs.isOfficial(app.actor.path)) {
+			app.status('Now working on ' + name + '.');
+		}
+	};
+
+	// Your mods with what is in each, for the project picker.
+	function projectChoices() {
+		const mods = app.fs ? app.fs.modules().filter((m) => m.home === 'Mods').sort((x, y) => x.name.localeCompare(y.name)) : [];
+		return mods.map((m) => {
+			const own = app.lib.presets.filter((p) => p.module === m.name && p.topLevel);
+			const units = own.filter((p) => p.cls === 'AHuman' || p.cls === 'ACrab').length;
+			return { name: m.name, text: units + ' unit' + (units === 1 ? '' : 's') + ', ' + (own.length - units) + ' other thing' + (own.length - units === 1 ? '' : 's') };
+		});
+	}
+
+	async function makeProject(name) {
+		const n = MS.dialogs.parts.safeName(name || '').replace(/\.?rte$/i, '');
+		if (!n) {
+			app.toast('Give the mod a name.', 'bad');
+			return null;
+		}
+		const modName = n + '.rte';
+		if (app.lib.modules.some((m) => m.name.toLowerCase() === modName.toLowerCase()) || (await app.fs.exists(modName + '/Index.ini'))) {
+			app.toast('There is already a mod called ' + modName + '.', 'bad');
+			return null;
+		}
+		app.lib.newModule(modName);
+		const index = app.lib.docFor(modName + '/Index.ini');
+		app.hookDoc(index);
+		await app.save(true, [index]);
+		app.lib.reindex();
+		return modName;
+	}
+
+	// "Which mod are you working on?": your mods, or a new one. At start (startup) it can also be skipped to just look through the library.
+	app.chooseProject = function (startup) {
+		if (!app.lib || !app.fs) {
+			return;
+		}
+		const el = MS.dialogs.parts.el;
+		const choices = projectChoices();
+		let picked = choices.find((c) => app.project && c.name.toLowerCase() === app.project.toLowerCase()) ? app.project : choices[0] ? choices[0].name : null;
+		const list = el('div', { className: 'proj-list' });
+		const draw = () => {
+			list.replaceChildren(...choices.map((c) => el('button', { className: 'proj-row' + (c.name === picked ? ' sel' : ''), onclick: () => { picked = c.name; draw(); }, ondblclick: () => go(c.name) },
+				el('b', { textContent: c.name.replace(/\.rte$/i, '') }), el('small', { textContent: c.text }))));
+		};
+		const go = async (name) => {
+			MS.dialogs.close();
+			app.setProject(name);
+		};
+		const newName = el('input', { type: 'text', placeholder: 'A new mod: its name', className: 'ed-input' });
+		const make = el('button', { className: 'tb', textContent: 'Start it', onclick: async () => {
+			const made = await makeProject(newName.value);
+			if (made) {
+				MS.dialogs.close();
+				app.setProject(made);
+			}
+		} });
+		draw();
+		const body = el('div', {},
+			el('p', { textContent: 'Everything on the left, saving and backups are for this one mod. You can still look through the whole game and every mod in the Library, and clone units or add parts from there; they are copied into your project.' }),
+			choices.length ? list : el('p', { className: 'small', textContent: 'You have no mods yet. Start one below.' }),
+			el('div', { className: 'proj-new' }, newName, make));
+		const buttons = [];
+		if (startup) {
+			buttons.push({ text: 'Just browse the Library', action: () => { app.setLibrary(true); } });
+		} else {
+			buttons.push({ text: 'Cancel' });
+		}
+		if (choices.length) {
+			buttons.push({ text: 'Work on this mod', primary: true, action: () => { if (picked) { app.setProject(picked); } } });
+		}
+		MS.dialogs.open('Which mod are you working on?', body, buttons);
+	};
+
+	// The open unit (or item) isn't yours: the game's, or another mod's. With a project, the first change to it copies it into the project
+	// (named after it, with Custom) and carries on with the copy, so there is nothing to ask. needsCopy says whether that would happen;
+	// copyThen makes the copy, opens it, finds the same part again, and calls then(thatPart).
+	app.needsCopy = function () {
+		return !!(app.project && app.actor && app.actorNode && app.lib.isProtected(app.actorNode.doc) && !app.unlocked);
+	};
+
+	app.copyThen = async function (part, then) {
+		const original = app.actor;
+		const role = part ? part.role : null;
+		const nth = part ? app.rig.parts.filter((p) => p.role === role).indexOf(part) : 0;
+		const taken = new Set(app.lib.presets.filter((p) => p.module.toLowerCase() === app.project.toLowerCase()).map((p) => p.name.toLowerCase()));
+		let name = original.name + ' Custom';
+		for (let n = 2; taken.has(name.toLowerCase()); n++) {
+			name = original.name + ' Custom ' + n;
+		}
+		await MS.dialogs.makeCopy(app.project, name, original);
+		if (!app.actor || app.actor.name !== name) {
+			return; // the copy didn't happen (it said why)
+		}
+		const same = part ? app.rig.parts.filter((p) => p.role === role)[Math.max(0, nth)] || app.rig.body : app.rig.body;
+		app.select(same);
+		then(same);
+	};
+
+	function projectMenu() {
 		const old = $('scopeMenu');
 		if (old) {
 			old.remove();
 			return;
 		}
-		if (!app.fs) {
+		if (!app.lib) {
 			return;
 		}
-		const mods = app.fs.modules();
 		const menu = document.createElement('div');
 		menu.className = 'ctx-menu scope-menu';
 		menu.id = 'scopeMenu';
-		const chosen = new Set(app.scope || mods.map((m) => m.name.toLowerCase()));
-		const boxes = [];
-		const quick = document.createElement('div');
-		quick.className = 'scope-quick';
-		const quickBtn = (text, pick) => {
-			const b = document.createElement('button');
-			b.textContent = text;
-			b.onclick = () => {
-				chosen.clear();
-				for (const m of mods.filter(pick)) {
-					chosen.add(m.name.toLowerCase());
-				}
-				for (const box of boxes) {
-					box.checked = chosen.has(box.value);
-				}
-				setScope(new Set(chosen));
-			};
-			quick.append(b);
+		const close = () => {
+			menu.remove();
+			document.removeEventListener('pointerdown', outside, true);
 		};
-		quickBtn('All', () => true);
-		quickBtn('My mods', (m) => m.home === 'Mods');
-		quickBtn('Base only', (m) => /^base\.rte$/i.test(m.name));
-		menu.append(quick);
-		for (const [title, home] of [['Your mods', 'Mods'], ['Game', 'Data']]) {
-			const list = mods.filter((m) => m.home === home).sort((a, b) => a.name.localeCompare(b.name));
-			if (!list.length) {
-				continue;
+		const outside = (e) => {
+			if (!menu.contains(e.target) && e.target !== $('btnScope')) {
+				close();
 			}
-			const head = document.createElement('div');
-			head.className = 'scope-head';
-			head.textContent = title;
-			menu.append(head);
-			for (const m of list) {
-				const label = document.createElement('label');
-				const box = document.createElement('input');
-				box.type = 'checkbox';
-				box.value = m.name.toLowerCase();
-				box.checked = chosen.has(box.value);
-				box.onchange = () => {
-					box.checked ? chosen.add(box.value) : chosen.delete(box.value);
-					setScope(new Set(chosen));
-				};
-				boxes.push(box);
-				const info = app.lib && app.lib.moduleOf(m.name + '/Index.ini');
-				label.append(box, ' ' + m.name + (info && info.title && info.title !== m.name ? '  ·  ' + info.title : ''));
-				menu.append(label);
-			}
+		};
+		const head = document.createElement('div');
+		head.className = 'scope-head';
+		head.textContent = 'Work on';
+		menu.append(head);
+		for (const c of projectChoices()) {
+			const b = document.createElement('button');
+			b.textContent = (app.project && c.name.toLowerCase() === app.project.toLowerCase() ? '● ' : '   ') + c.name.replace(/\.rte$/i, '');
+			b.onclick = () => {
+				close();
+				app.setProject(c.name);
+			};
+			menu.append(b);
 		}
+		const more = document.createElement('button');
+		more.textContent = 'Another mod, or a new one…';
+		more.onclick = () => {
+			close();
+			app.chooseProject(false);
+		};
+		menu.append(more);
 		document.body.append(menu);
 		const r = $('btnScope').getBoundingClientRect();
 		menu.style.left = Math.min(r.left, window.innerWidth - menu.offsetWidth - 8) + 'px';
 		menu.style.top = r.bottom + 4 + 'px';
-		const close = (e) => {
-			if (!menu.contains(e.target) && e.target !== $('btnScope')) {
-				menu.remove();
-				document.removeEventListener('pointerdown', close, true);
-			}
-		};
-		setTimeout(() => document.addEventListener('pointerdown', close, true), 0);
+		setTimeout(() => document.addEventListener('pointerdown', outside, true), 0);
 	}
 	app.updateScopeButton = updateScopeButton;
 
@@ -1071,8 +1169,11 @@ window.MS = window.MS || {};
 		$('btnHistory').onclick = () => MS.history.open(app.actor && app.actor.path);
 		$('btnScope').onclick = (e) => {
 			e.stopPropagation();
-			scopeMenu();
+			projectMenu();
 		};
+		for (const btn of document.querySelectorAll('.scope-seg button')) {
+			btn.onclick = () => app.setLibrary(btn.dataset.lib === 'all');
+		}
 		updateScopeButton();
 		for (const btn of document.querySelectorAll('#poseButtons button')) {
 			btn.onclick = () => setPose(btn.dataset.pose);

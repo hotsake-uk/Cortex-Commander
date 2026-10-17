@@ -60,7 +60,7 @@ window.MS = window.MS || {};
 			return;
 		}
 		const mods = yourMods();
-		const startMod = path ? path.split('/')[0] : a.actor ? a.actor.path.split('/')[0] : '';
+		const startMod = a.project || (path ? path.split('/')[0] : a.actor ? a.actor.path.split('/')[0] : '');
 		const pick = el('select', { className: 'ed-input' }, ...mods.map((m) => el('option', { value: m, textContent: m })));
 		pick.value = mods.includes(startMod) ? startMod : mods[0] || '';
 		const list = el('div', { className: 'bk-list' });
