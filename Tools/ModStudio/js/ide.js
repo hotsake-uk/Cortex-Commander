@@ -166,6 +166,11 @@ window.MS = window.MS || {};
 			}
 		} else {
 			$('app').classList.remove('code-active');
+			if (!ide.active || (ide.active.kind !== 'designer' && !ide.active.sprite)) {
+				ide.activate(designerTab());
+			} else {
+				ide.activate(ide.active);
+			}
 			if (!quiet) {
 				app.status('Design mode: design units visually. Script mode has scripts and the mod\'s files.');
 			}
@@ -618,8 +623,11 @@ window.MS = window.MS || {};
 	function renderTabs() {
 		const bar = $('tabbar');
 		bar.innerHTML = '';
-		for (const tab of ide.tabs) {
-			const dirty = tabDirty(tab);
+		// Design mode has tabs too, but only the designer and the sprite editors; Script mode has them all.
+		const shown = ide.tabs.filter((t) => ide.mode === 'deep' || t.kind === 'designer' || t.sprite);
+		$('app').classList.toggle('has-tabs', ide.mode === 'deep' || shown.some((t) => t.sprite));
+		for (const tab of shown) {
+			const dirty = tabDirty(tab) || !!(tab.sprite && tab.px && tab.px.dirty);
 			const icon = el('span', { className: 'tab-icon ' + (tab.kind === 'designer' ? 'designer' : tab.kind === 'form' ? 'form' : extOf(tab.path)), textContent: tab.kind === 'designer' ? '◆' : tab.kind === 'form' ? tab.icon || '▦' : extOf(tab.path) });
 			const item = el('div', { className: 'tab' + (tab === ide.active ? ' sel' : '') + (dirty ? ' dirty' : '') + (tab.readOnly ? ' ro' : ''), title: tab.path || (tab.kind === 'form' ? tab.title : 'The unit designer') }, icon, el('span', { className: 'tab-name', textContent: tabTitle(tab) }));
 			if (tab.kind !== 'designer') {
@@ -660,6 +668,8 @@ window.MS = window.MS || {};
 		}
 	};
 
+	ide.renderTabs = renderTabs;
+
 	ide.activate = function (tab) {
 		if (ide.active && ide.active.kind === 'code' && ide.editor && ide.editor.getModel() === ide.active.model) {
 			ide.active.viewState = ide.editor.saveViewState();
@@ -667,6 +677,7 @@ window.MS = window.MS || {};
 		ide.active = tab;
 		const code = tab.kind !== 'designer';
 		$('app').classList.toggle('code-active', code && ide.mode === 'deep');
+		$('app').classList.toggle('sprite-tab', !!tab.sprite && ide.mode !== 'deep');
 		$('imageHost').hidden = tab.kind !== 'image';
 		$('formHost').hidden = tab.kind !== 'form';
 		$('codeHost').hidden = tab.kind !== 'code';
@@ -714,6 +725,23 @@ window.MS = window.MS || {};
 		ide.activate(tab);
 	};
 
+	// The sprite editor (pixel.js) in a tab, in either mode: key says which picture (opening it again comes back to it), px is its state,
+	// render(host, tab) puts it in the page.
+	ide.openSpriteTab = function (key, title, px, render) {
+		designerTab();
+		let tab = ide.tabs.find((t) => t.kind === 'form' && t.key === key);
+		if (!tab) {
+			tab = { id: nextTabId++, kind: 'form', sprite: true, key, title, icon: '▨', render, px };
+			ide.tabs.push(tab);
+		}
+		ide.activate(tab);
+		return tab;
+	};
+
+	ide.findSpriteTab = function (key) {
+		return ide.tabs.find((t) => t.kind === 'form' && t.sprite && t.key === key) || null;
+	};
+
 	// Draws the open data editor again (after an edit, an undo or a reload), keeping the field you were in.
 	ide.refreshForm = function () {
 		const tab = ide.active;
@@ -734,6 +762,13 @@ window.MS = window.MS || {};
 	};
 
 	ide.closeTab = function (tab, force) {
+		if (!force && tab.sprite && tab.px && tab.px.dirty) {
+			MS.dialogs.open('Close ' + tab.title, el('p', { textContent: 'The picture has changes that aren\'t saved.' }), [
+				{ text: 'Cancel' },
+				{ text: 'Close without saving', action: () => ide.closeTab(tab, true) },
+			]);
+			return;
+		}
 		if (!force && tab.kind === 'code' && !tab.doc && tabDirty(tab)) {
 			const body = el('div', {}, el('p', { textContent: baseName(tab.path) + ' has unsaved changes.' }));
 			MS.dialogs.open('Close ' + baseName(tab.path), body, [
@@ -748,6 +783,9 @@ window.MS = window.MS || {};
 		}
 		const index = ide.tabs.indexOf(tab);
 		ide.tabs.splice(index, 1);
+		if (tab.sprite && MS.pixel && MS.pixel.forget) {
+			MS.pixel.forget(tab.px);
+		}
 		if (tab.model) {
 			tab.model.ccTab = null;
 			tab.model.dispose();
