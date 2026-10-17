@@ -71,6 +71,129 @@ window.MS = window.MS || {};
 		return file;
 	}
 
+	// ---- the scene as the game builds it: terrain with the placed buildings and objects ----
+
+	const pictures = new Map(); // scene key -> { sig, picture, pending }
+
+	// What a placed object looks like: a terrain object's background and foreground pictures (stamped behind and onto the terrain), or a
+	// sprite's first frame (actors, doors, other objects). Offsets are from its position.
+	function placedLook(entry, found) {
+		const a = app();
+		const ref = entry.node.child('CopyOf') ? entry.node.child('CopyOf').value.trim() : '';
+		const cacheKey = entry.node.value + '|' + ref;
+		if (!found.has(cacheKey)) {
+			const r = a.lib.resolve(entry.node);
+			let look = null;
+			if (entry.node.value === 'TerrainObject') {
+				const fg = r.file('FGColorFile');
+				const bg = r.file('BGColorFile');
+				look = fg || bg ? { fg, bg, offset: r.vec('BitmapOffset', { x: 0, y: 0 }) } : null;
+			} else {
+				const sprite = r.file('SpriteFile');
+				look = sprite ? { sprite, frames: Math.max(1, Math.round(r.num('FrameCount', 1))), offset: r.vec('SpriteOffset', { x: 0, y: 0 }) } : null;
+			}
+			found.set(cacheKey, look);
+		}
+		return found.get(cacheKey);
+	}
+
+	// The scene's picture with what is placed in it, or null until its pictures are read (onReady is called then). Built once per scene and
+	// built again when what is placed in it changes.
+	function picture(p, onReady) {
+		const a = app();
+		const ent = a.lib.resolve(p.node);
+		const terrainFile = terrainPicture(p, ent);
+		if (!terrainFile) {
+			return null;
+		}
+		const placed = ent.all('PlaceSceneObject');
+		let hash = 0;
+		for (const e of placed) {
+			const pos = e.node.vector('Position') || { x: 0, y: 0 };
+			for (const ch of e.node.childValue('CopyOf', '') + pos.x + ',' + pos.y + e.node.childValue('HFlipped', '')) {
+				hash = (hash * 31 + ch.charCodeAt(0)) | 0;
+			}
+		}
+		const sig = terrainFile + '|' + placed.length + '|' + hash;
+		const key = p.doc.path + '::' + p.name;
+		const known = pictures.get(key);
+		if (known && known.sig === sig) {
+			if (!known.picture && onReady) {
+				known.waiting.add(onReady);
+			}
+			return known.picture;
+		}
+		const job = { sig, picture: null, waiting: new Set(onReady ? [onReady] : []) };
+		pictures.set(key, job);
+		const found = new Map();
+		const items = [];
+		for (const entry of placed) {
+			const look = placedLook(entry, found);
+			if (look) {
+				items.push({ look, pos: entry.node.vector('Position') || { x: 0, y: 0 }, flip: entry.node.childValue('HFlipped', '0').trim() === '1' });
+			}
+		}
+		const files = new Set([terrainFile]);
+		for (const { look } of items) {
+			[look.fg, look.bg, look.sprite && MS.Images.framePaths(look.sprite, look.frames)[0]].forEach((f) => f && files.add(f));
+		}
+		const loaded = new Map();
+		Promise.all([...files].map((f) => a.images.get(f).then((img) => loaded.set(f, img), () => loaded.set(f, null)))).then(() => {
+			if (pictures.get(key) !== job) {
+				return; // the scene changed while its pictures were read
+			}
+			const terrain = loaded.get(terrainFile);
+			if (!terrain) {
+				return;
+			}
+			const canvas = document.createElement('canvas');
+			canvas.width = terrain.width;
+			canvas.height = terrain.height;
+			const ctx = canvas.getContext('2d');
+			// drawn where it goes, and again across the edge for a scene that wraps
+			const stamp = (img, x, y, flip) => {
+				for (const dx of [0, x < 0 ? canvas.width : 0, x + img.width > canvas.width ? -canvas.width : 0].filter((v, i) => i === 0 || v)) {
+					if (flip) {
+						ctx.save();
+						ctx.translate(x + dx + img.width, y);
+						ctx.scale(-1, 1);
+						ctx.drawImage(img.canvas, 0, 0);
+						ctx.restore();
+					} else {
+						ctx.drawImage(img.canvas, Math.round(x + dx), Math.round(y));
+					}
+				}
+			};
+			const at = (it, img) => [it.pos.x + (it.flip ? -it.look.offset.x - img.width : it.look.offset.x), it.pos.y + it.look.offset.y];
+			for (const it of items) {
+				const img = it.look.bg && loaded.get(it.look.bg);
+				if (img) {
+					stamp(img, it.pos.x + it.look.offset.x, it.pos.y + it.look.offset.y);
+				}
+			}
+			ctx.drawImage(terrain.canvas, 0, 0);
+			for (const it of items) {
+				const img = it.look.fg && loaded.get(it.look.fg);
+				if (img) {
+					stamp(img, it.pos.x + it.look.offset.x, it.pos.y + it.look.offset.y);
+				}
+			}
+			for (const it of items) {
+				const img = it.look.sprite && loaded.get(MS.Images.framePaths(it.look.sprite, it.look.frames)[0]);
+				if (img) {
+					const [x, y] = at(it, img);
+					stamp(img, x, y, it.flip);
+				}
+			}
+			job.picture = { canvas, width: canvas.width, height: canvas.height };
+			for (const fn of job.waiting) {
+				fn(job.picture);
+			}
+			job.waiting.clear();
+		});
+		return null;
+	}
+
 	// The scene's layers, areas and terrain picture, as resolved, with which of them the scene itself holds (the rest come from a scene it copies).
 	function read(p) {
 		const a = app();
@@ -112,7 +235,7 @@ window.MS = window.MS || {};
 	// The whole map: terrain, areas and the camera's frame. Click or drag to move the camera.
 	function drawOverview(canvas, info, view, onMove) {
 		const ctx = canvas.getContext('2d');
-		const terrain = info.terrainFile ? app().sprite(info.terrainFile, 1, 0) : null;
+		const terrain = info.built || (info.terrainFile ? app().sprite(info.terrainFile, 1, 0) : null);
 		const worldW = view.worldW;
 		const worldH = view.worldH;
 		const scale = canvas.width / worldW;
@@ -183,7 +306,7 @@ window.MS = window.MS || {};
 				ctx.drawImage(frame.canvas, dx, y, w, h);
 			}
 		}
-		const terrain = info.terrainFile ? app().sprite(info.terrainFile, 1, 0) : null;
+		const terrain = info.built || (info.terrainFile ? app().sprite(info.terrainFile, 1, 0) : null);
 		if (terrain) {
 			ctx.drawImage(terrain.canvas, view.x, view.y, CAMERA.w, CAMERA.h, 0, 0, canvas.width, canvas.height);
 		}
@@ -248,6 +371,11 @@ window.MS = window.MS || {};
 			});
 			drawCamera(camera, info, view);
 		};
+		// the buildings and objects placed in it are drawn in once their pictures are read
+		info.built = picture(p, (built) => {
+			info.built = built;
+			redraw();
+		});
 		redraw();
 		// Pictures arrive a little after the editor opens (the map's size comes with the terrain's): draw the editor again once they have, once.
 		const waiting = [info.terrainFile, ...info.layers.map((l) => l.file)].filter((f) => f && !a.sprite(f, 1, 0) && !asked.has(f.toLowerCase()));
@@ -511,5 +639,5 @@ window.MS = window.MS || {};
 	if (MS.editors && MS.editors.register) {
 		MS.editors.register(['scenes', 'Scenes', 'Maps: terrain, backdrop layers and areas', '▤', renderScenes, (module) => app().lib.presets.filter((p) => p.topLevel && p.module === module && p.cls === 'Scene').length]);
 	}
-	MS.scenes = { renderScenes, terrainPicture, forgetAsked: (paths) => paths.forEach((p) => asked.delete(String(p).toLowerCase())) };
+	MS.scenes = { renderScenes, terrainPicture, picture, forgetAsked: (paths) => paths.forEach((p) => asked.delete(String(p).toLowerCase())) };
 })();
