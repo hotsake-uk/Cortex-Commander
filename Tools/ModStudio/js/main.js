@@ -25,6 +25,7 @@ import './flowmodel.js';
 import './flowlua.js';
 import './missions.js';
 import './scenarios.js';
+import './missioneditor.js';
 import './lua-intel.js';
 import './ini-intel.js';
 import './navigation.js';

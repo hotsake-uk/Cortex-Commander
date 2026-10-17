@@ -233,7 +233,8 @@ window.MS = window.MS || {};
 		} });
 
 		return el('div', {},
-			el('div', { className: 'ed-card-head' }, el('h3', { textContent: p.name }), el('span', { className: 'spacer' }), play,
+			el('div', { className: 'ed-card-head' }, el('h3', { textContent: p.name }), el('span', { className: 'spacer' }),
+				el('button', { className: 'tb primary', textContent: '⚑ Mission Editor', title: 'Draw the areas on the map and build what happens, side by side', onclick: () => MS.missionEditor.open(p) }), play,
 				scriptPath ? el('button', { className: 'tb', textContent: 'Open the script', onclick: () => MS.ide.openFile(scriptPath, 1) }) : null,
 				el('button', { className: 'ico-btn', textContent: 'Its lines', onclick: () => MS.ide.openFile(p.doc.path, p.node.line) })),
 			el('div', { className: 'ed-label', textContent: 'Story' }),
@@ -356,5 +357,5 @@ window.MS = window.MS || {};
 	if (MS.editors && MS.editors.register) {
 		MS.editors.register(['scenarios', 'Scenarios', 'Ways to play: scene, teams, rules, settings and script', '⚑', render, (module) => activitiesOf(module).length]);
 	}
-	MS.scenarios = { render };
+	MS.scenarios = { render, missionHost };
 })();

@@ -511,5 +511,5 @@ window.MS = window.MS || {};
 	if (MS.editors && MS.editors.register) {
 		MS.editors.register(['scenes', 'Scenes', 'Maps: terrain, backdrop layers and areas', '▤', renderScenes, (module) => app().lib.presets.filter((p) => p.topLevel && p.module === module && p.cls === 'Scene').length]);
 	}
-	MS.scenes = { renderScenes, forgetAsked: (paths) => paths.forEach((p) => asked.delete(String(p).toLowerCase())) };
+	MS.scenes = { renderScenes, terrainPicture, forgetAsked: (paths) => paths.forEach((p) => asked.delete(String(p).toLowerCase())) };
 })();
