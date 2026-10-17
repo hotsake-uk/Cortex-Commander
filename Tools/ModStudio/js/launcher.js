@@ -80,7 +80,11 @@ window.MS = window.MS || {};
 		button.onclick = () => L.open();
 		$('runSplit').hidden = false;
 		$('btnRun').onclick = () => runLast();
-		$('btnRunMenu').onclick = () => toggleRunMenu();
+		// The other ways to start the game: right-click Play.
+		$('btnRun').oncontextmenu = (e) => {
+			e.preventDefault();
+			toggleRunMenu();
+		};
 		$('gameClose').onclick = () => L.close();
 		document.addEventListener('keydown', (e) => {
 			if (e.key === 'Escape' && !$('game').hidden && $('modal').hidden) {
