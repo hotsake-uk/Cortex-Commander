@@ -130,7 +130,7 @@ window.MS = window.MS || {};
 		$('statusMode').title = fs.writable ? 'Changes are written to your mod\'s files as soon as you save. The game folder: ' + fs.name : '';
 		const units = app.lib.presets.filter((p) => p.cls === 'AHuman' && p.topLevel).length;
 		const summary = 'Read ' + app.lib.presets.length + ' presets (' + units + ' units) from ' + app.lib.docs.size + ' files in ' + app.lib.modules.length + ' modules.';
-		app.status(summary);
+		app.status(summary, 5000);
 		if (app.lib.warnings.length) {
 			console.warn(app.lib.warnings.join('\n'));
 		}
@@ -149,7 +149,7 @@ window.MS = window.MS || {};
 		if (preset) {
 			app.openActor(preset);
 		} else {
-			app.status(summary + ' Pick a unit on the left to start.');
+			app.status(summary + ' Pick a unit on the left to start.', 5000);
 		}
 	}
 
@@ -1291,8 +1291,25 @@ window.MS = window.MS || {};
 
 	// ---- small things ----
 
-	app.status = function (text) {
-		$('statusText').textContent = text;
+	// A line in the status bar. fadeMs (optional): it fades away after that long (the "read N presets" line at start), unless something replaces it first.
+	let statusFade = 0;
+	app.status = function (text, fadeMs) {
+		const el = $('statusText');
+		clearTimeout(statusFade);
+		el.style.transition = 'none';
+		el.style.opacity = '1';
+		el.textContent = text;
+		if (fadeMs) {
+			statusFade = setTimeout(() => {
+				el.style.transition = 'opacity 1.2s';
+				el.style.opacity = '0';
+				statusFade = setTimeout(() => {
+					el.textContent = '';
+					el.style.transition = 'none';
+					el.style.opacity = '1';
+				}, 1300);
+			}, fadeMs);
+		}
 	};
 
 	// action: {label, run}, a button on the message (like Undo after a save), which then stays up a little longer.
