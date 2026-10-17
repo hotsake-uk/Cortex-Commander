@@ -146,7 +146,9 @@ window.MS = window.MS || {};
 		app.writeLocal('ms.mode', mode);
 		if (mode === 'deep') {
 			if (!ide.view) {
-				ide.showView(app.readLocal('ms.deepView') || 'files');
+				// the browser is the left menu, unless another view was chosen (the old Data editors view is in the browser now)
+				const saved = app.readLocal('ms.deepView');
+				ide.showView(saved && saved !== 'data' ? saved : 'presets');
 			}
 			// The left menu goes with you: a unit expanded in the library (to open one of its files, say) stays open when Script mode comes up.
 			if (MS.panels.filesOpen && MS.panels.filesOpen() && ide.view !== 'presets') {
@@ -927,6 +929,9 @@ window.MS = window.MS || {};
 		}
 		markExplorer();
 		renderTabs();
+		if (MS.panels && MS.panels.markLibrary && app.lib) {
+			MS.panels.markLibrary(); // the browser marks what is open now
+		}
 	};
 
 	// A data editor (editors.js) in a tab: key says which one (opening it again comes back to it), render(host, tab) draws it.
