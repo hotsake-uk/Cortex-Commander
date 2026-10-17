@@ -247,6 +247,7 @@ namespace SandboxDetail {
 			s_ModeRun.Over = true;
 			s_ModeRun.Winner = winner;
 			s_ModeRun.Result = result;
+			PostBattleEvent("ended " + std::to_string(winner));
 			ClearHighlights();
 			for (BattleTeam& team: s_BattleTeams) {
 				team.Running = false;
@@ -1084,6 +1085,7 @@ namespace SandboxDetail {
 						// Brought to its own flag, with that at home: a capture.
 						carrier->Say("FlagCaptured");
 						++s_ModeRun.Score[team];
+						PostBattleEvent("score " + std::to_string(team) + " " + std::to_string(s_ModeRun.Score[team]));
 						SendHome(side);
 						if (settings.ScoreToWin > 0 && s_ModeRun.Score[team] >= settings.ScoreToWin) {
 							EndGame(team, SideName(team) + " wins, " + std::to_string(s_ModeRun.Score[team]) + " captures");
@@ -1710,6 +1712,7 @@ namespace SandboxDetail {
 					// Brought into its team's goal: a score, and the next flag comes in somewhere new.
 					carrier->Say("FlagCaptured");
 					++s_ModeRun.Score[team];
+					PostBattleEvent("score " + std::to_string(team) + " " + std::to_string(s_ModeRun.Score[team]));
 					OneFlagHome(true);
 					if (settings.ScoreToWin > 0 && s_ModeRun.Score[team] >= settings.ScoreToWin) {
 						EndGame(team, SideName(team) + " wins, " + std::to_string(s_ModeRun.Score[team]) + " goals");
@@ -2114,6 +2117,7 @@ namespace SandboxDetail {
 					pilot->Say("FlagCaptured");
 				}
 				++s_ModeRun.Score[team];
+				PostBattleEvent("score " + std::to_string(team) + " " + std::to_string(s_ModeRun.Score[team]));
 				ShipOut();
 				ShipIn();
 				if (settings.ScoreToWin > 0 && s_ModeRun.Score[team] >= settings.ScoreToWin) {
@@ -2490,6 +2494,7 @@ namespace SandboxDetail {
 				} else if (s_Held[holder] >= static_cast<float>(hold)) {
 					// Taken: a hill to its name, and the next comes into play (one hill: the same one, everyone's time on it started again).
 					const int taken = ++s_ModeRun.Score[holder];
+					PostBattleEvent("score " + std::to_string(holder) + " " + std::to_string(taken));
 					const std::string hillName = settings.Zones.size() > 1 ? "hill " + std::to_string(s_Hill + 1) : "the hill";
 					if (taken >= settings.HillsToWin) {
 						EndGame(holder, SideName(holder) + " is king of the hill, " + std::to_string(taken) + (taken == 1 ? " hill" : " hills") + " taken!");
@@ -2718,6 +2723,7 @@ namespace SandboxDetail {
 			}
 			if (s_Progress >= static_cast<float>(std::max(settings.CaptureSeconds, 1))) {
 				++s_ModeRun.Score[attacker];
+				PostBattleEvent("objective " + std::to_string(attacker) + " " + std::to_string(s_ModeRun.Score[attacker]));
 				++s_Objective;
 				s_Progress = 0.0F;
 				s_Contested = false;
@@ -5568,6 +5574,7 @@ namespace SandboxDetail {
 			s_ModeRun.Note.clear();
 			s_ModeRun.NoteAt = -1;
 			s_ModeRun.Result.clear();
+			PostBattleEvent("started " + std::to_string(static_cast<int>(s_ModeRun.Settings.Mode)));
 			// (Not those a player told to defend somewhere: their order stands.)
 			std::erase_if(s_BattleDefenders, [](const auto& entry) { return !entry.second.Commanded; });
 			ClearHighlights();
@@ -7556,6 +7563,16 @@ void Sandbox::StartBattleMode(int mode, int teamSize, bool byShip) {
 	stroke.Count = settings.Mode == BattleMode::Custom ? BattleModeStop : BattleModeStart;
 	stroke.Mode = settings;
 	ApplyBattleMode(stroke);
+}
+
+std::string Sandbox::NextBattleEvent() {
+	using namespace SandboxDetail;
+	if (s_BattleEvents.empty()) {
+		return std::string();
+	}
+	std::string next = std::move(s_BattleEvents.front());
+	s_BattleEvents.pop_front();
+	return next;
 }
 
 bool Sandbox::IsBattleModeRunning() {
