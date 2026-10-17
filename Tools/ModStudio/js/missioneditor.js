@@ -262,10 +262,11 @@ window.MS = window.MS || {};
 					ctx.setLineDash(picked ? [] : [6, 3]);
 					ctx.strokeRect(a.x + 0.5, a.y + 0.5, bw, bh);
 					ctx.setLineDash([]);
-					if (i === 0) {
-						const uses = this.hooks.usage(area.name);
-						const label = area.name + (uses ? '  ⚑' + uses : '');
-						const tw = ctx.measureText(label).width;
+					const uses = i === 0 ? this.hooks.usage(area.name) : 0;
+					const label = area.name + (uses ? '  ⚑' + uses : '');
+					const tw = i === 0 ? ctx.measureText(label).width : 0;
+					// a name is written where it fits in its box, or for the area picked or lit: with many areas, the map stays readable
+					if (i === 0 && (picked || lit.has(area.name) || tw + 10 <= bw)) {
 						ctx.fillStyle = 'rgba(0,0,0,.65)';
 						ctx.fillRect(a.x, a.y - 18, tw + 10, 17);
 						ctx.fillStyle = color;
@@ -426,6 +427,34 @@ window.MS = window.MS || {};
 		}
 	}
 
+	// ---- where scripts name an area ----
+
+	// Lines in the mod's scripts that name an area (in quotes), outside the block Studio writes: [{ path, line, text }]. The mission's own nodes are
+	// listed separately, so the generated code is not counted twice.
+	function codeUses(scenario, name) {
+		const found = [];
+		const module = scenario.module.toLowerCase() + '/';
+		const quoted = new RegExp('["\']' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '["\']');
+		for (const sc of MS.ide.lua.scripts.values()) {
+			if (!sc.path.toLowerCase().startsWith(module) || !sc.text.includes(name)) {
+				continue;
+			}
+			let inside = false;
+			sc.text.split('\n').forEach((text, i) => {
+				if (text.startsWith(MS.flow.MARK_BEGIN) || text.startsWith('-- >>> Studio rules') || text.startsWith('-- >>> Studio triggers')) {
+					inside = true;
+				}
+				if (!inside && quoted.test(text)) {
+					found.push({ path: sc.path, line: i + 1, text: text.trim() });
+				}
+				if (text.startsWith(MS.flow.MARK_END) || text.startsWith('-- <<< Studio rules') || text.startsWith('-- <<< Studio triggers')) {
+					inside = false;
+				}
+			});
+		}
+		return found;
+	}
+
 	// ---- the editor tab ----
 
 	function render(key) {
@@ -572,12 +601,62 @@ window.MS = window.MS || {};
 					MS.ide.runLua('ActivityMan:StartActivity(' + JSON.stringify(scenario.cls) + ', ' + JSON.stringify(scenario.name) + ')');
 					a.status('Told the game to start ' + scenario.name + '. It only works in a game started from Studio.');
 				} }));
-			const mapPane = el('div', { className: 'me-left' }, side, view.root);
+			// the areas list: every area of the scene, what uses it, and (for the one picked) each use, to jump to
+			const list = el('div', { className: 'me-arealist' });
+			const drawList = () => {
+				const all = areas();
+				const names = all.map((r) => r.name);
+				const picked = s.map.area;
+				list.replaceChildren(el('div', { className: 'me-listhead', textContent: 'Areas (' + all.length + ')' }));
+				if (!all.length) {
+					list.append(el('p', { className: 'ed-note', textContent: 'None yet: drag on the map to draw one.' }));
+				}
+				for (const r of all) {
+					const nodes = MS.missionLogic ? MS.missionLogic.areaUses(scenarioByKey(key), r.name) : [];
+					const code = codeUses(scenarioByKey(key), r.name);
+					const row = el('button', { className: 'me-area' + (r.name === picked ? ' sel' : ''), title: 'Show it on the map, and what uses it', onclick: () => {
+						s.map.area = r.name;
+						s.map.box = 0;
+						view.draw();
+						if (MS.missionLogic) {
+							MS.missionLogic.areaPicked(r.name);
+						}
+						drawSide();
+						drawList();
+					} },
+					el('span', { className: 'me-swatch', style: 'background:' + colorOf(r.name, names) }),
+					el('span', { className: 'me-areaname', textContent: r.name }),
+					el('small', { textContent: (nodes.length ? nodes.length + ' ⚑' : '') + (nodes.length && code.length ? ' · ' : '') + (code.length ? code.length + ' in code' : '') || 'unused' }));
+					list.append(row);
+					if (r.name === picked) {
+						const uses = el('div', { className: 'me-uses' });
+						for (const n of nodes) {
+							uses.append(el('button', { className: 'me-use', title: 'Show this node in the graph', onclick: () => MS.missionLogic.focusNode(scenarioByKey(key), n.id) }, el('span', { className: 'me-use-kind', textContent: '⚑' }), n.title));
+						}
+						for (const c of code) {
+							uses.append(el('button', { className: 'me-use', title: c.path + ', line ' + c.line + ': open it there', onclick: () => MS.ide.openFile(c.path, c.line) }, el('span', { className: 'me-use-kind code', textContent: c.path.split('/').pop() + ':' + c.line }), el('code', { textContent: c.text.slice(0, 90) })));
+						}
+						if (!nodes.length && !code.length) {
+							uses.append(el('p', { className: 'ed-note', textContent: 'Nothing uses it yet. Right-click it on the map to make it an objective or a trigger.' }));
+						}
+						list.append(uses);
+					}
+				}
+			};
+			drawList();
+			const sidePicked = hooks.picked;
+			hooks.picked = (name) => {
+				sidePicked(name);
+				drawList();
+			};
+			Object.assign(view.hooks, { picked: hooks.picked });
+			const mapPane = el('div', { className: 'me-left' }, side, el('div', { className: 'me-mapwrap' }, list, view.root));
 			const logic = el('div', { className: 'me-right' });
 			if (MS.missionLogic && MS.missionLogic.render) {
 				MS.missionLogic.render(logic, scenario, { areas: () => areas().map((r) => r.name), changed: () => {
 					view.draw();
 					drawSide();
+					drawList();
 				}, highlight: (names) => {
 					s.map.lit = names;
 					view.draw();

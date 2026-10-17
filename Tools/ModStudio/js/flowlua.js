@@ -22,6 +22,12 @@ window.MS = window.MS || {};
 	const luaStr = (s) => '"' + String(s === undefined || s === null ? '' : s).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]+/g, ' ') + '"';
 	const luaNum = (n) => String(Number.isFinite(Number(n)) ? Number(n) : 0);
 	const ident = (s) => (String(s || '').replace(/[^A-Za-z0-9_]/g, '') || 'MyFunction').replace(/^[0-9]/, 'F$&');
+	// A name a script's class can have: letters, digits and _, not starting with a digit ("1234" becomes "Mission1234").
+	const className = (s, fallback) => {
+		const c = String(s || '').replace(/[^A-Za-z0-9_]/g, '') || fallback || 'MyMission';
+		return /^[0-9]/.test(c) ? 'Mission' + c : c;
+	};
+	const isClassName = (s) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(String(s || ''));
 	const opOf = (o) => (F.OPS.some(([v]) => v === o) ? o : '>=');
 	const area = (name) => 'studioArea(' + luaStr(name) + ')';
 	const key = (id) => luaStr(id);
@@ -338,5 +344,5 @@ window.MS = window.MS || {};
 		return text;
 	}
 
-	MS.flow = Object.assign(MS.flow || {}, { compile, parse, apply, luaStr, ident, MARK_BEGIN, MARK_END });
+	MS.flow = Object.assign(MS.flow || {}, { compile, parse, apply, luaStr, ident, className, isClassName, MARK_BEGIN, MARK_END });
 })();
