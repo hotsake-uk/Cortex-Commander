@@ -92,6 +92,22 @@ window.MS = window.MS || {};
 
 	// ---- changing the graph (undo, redo) ----
 
+	// Undo or redo for a mission tab (Ctrl+Z): its graph's history when the graph changed last, else false (Studio's own then undoes the
+	// changes to the mod's files, such as areas drawn on the map).
+	function historyStep(scenario, forward) {
+		const doc = docs.get(keyOf(scenario));
+		if (!doc || !(forward ? doc.redo : doc.undo).length) {
+			return false;
+		}
+		const appStack = forward ? app().redo : app().undo;
+		const appLast = appStack.length ? appStack[appStack.length - 1].at || 0 : 0;
+		if (appLast > (doc.lastAt || 0)) {
+			return false;
+		}
+		forward ? redo(doc) : undo(doc);
+		return true;
+	}
+
 	function change(doc, label, fn) {
 		const before = JSON.stringify(doc.g);
 		fn(doc.g);
@@ -108,6 +124,7 @@ window.MS = window.MS || {};
 	}
 
 	function after(doc) {
+		doc.lastAt = Date.now(); // when the graph last changed (Ctrl+Z picks the newer history: the graph's or the files')
 		if (doc.hint && doc.g.nodes.length) {
 			doc.hint.remove(); // the how-to goes once there is something to show
 			doc.hint = null;
@@ -858,5 +875,5 @@ window.MS = window.MS || {};
 		view.place();
 	}
 
-	MS.missionLogic = { render, areaActions, areaPicked, renameArea, usage, docFor, areaUses, focusNode };
+	MS.missionLogic = { historyStep, render, areaActions, areaPicked, renameArea, usage, docFor, areaUses, focusNode };
 })();

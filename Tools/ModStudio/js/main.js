@@ -33,6 +33,8 @@ import './ini-intel.js';
 import './navigation.js';
 import './relations.js';
 import './popout.js';
+import './external.js';
+import './shortcuts.js';
 import './ide.js';
 import './live.js';
 import './profiler.js';

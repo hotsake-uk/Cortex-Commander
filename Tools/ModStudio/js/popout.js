@@ -144,7 +144,7 @@ window.MS = window.MS || {};
 			}
 			return { req: { k: 'sprite', file: tab.px.file, frames: tab.px.frames.length } };
 		},
-		restore: (req) => MS.pixel.open({ file: req.file, frameCount: req.frames || 1 }),
+		restore: (req) => MS.pixel.open({ file: req.file, frameCount: req.frames || 1, inStudio: true }),
 	});
 
 	register('file', {
@@ -158,7 +158,7 @@ window.MS = window.MS || {};
 		restore: async (req, payload) => {
 			MS.ide.setMode('deep', true);
 			await MS.ide.loadMonaco(); // a window just opened has no code editor yet (opening would only be put off)
-			await MS.ide.openFile(req.path, req.line);
+			await MS.ide.openFile(req.path, req.line, undefined, { inStudio: true });
 			const tab = MS.ide.tabs.find((t) => t.kind === 'code' && t.path && t.path.toLowerCase() === req.path.toLowerCase().replace(/\\/g, '/').replace(/^(data|mods)\//, ''));
 			if (payload && tab && tab.model && typeof payload.text === 'string') {
 				tab.model.pushEditOperations([], [{ range: tab.model.getFullModelRange(), text: payload.text }], () => null);
@@ -177,7 +177,7 @@ window.MS = window.MS || {};
 	register('image', {
 		match: (tab) => tab.kind === 'image',
 		pack: (tab) => ({ req: { k: 'image', path: tab.path } }),
-		restore: (req) => MS.ide.openFile(req.path),
+		restore: (req) => MS.ide.openFile(req.path, undefined, undefined, { inStudio: true }),
 	});
 
 	register('editor', {

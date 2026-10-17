@@ -1366,6 +1366,11 @@ window.MS = window.MS || {};
 		}
 		const part = target.part || null;
 		const file = part ? (target.key ? part.ent.file(target.key) : part.sprite.file) : target.file || null;
+		// pictures set to open in another program (Settings) go there, with all their frames
+		if (file && !target.inStudio && MS.external && MS.external.wants('image')) {
+			MS.external.openSprite(file, part ? (target.key ? 1 : part.sprite.frameCount) : target.frameCount);
+			return;
+		}
 		const key = file ? spriteKey(file) : 'sprite:new' + ++newCount;
 		const existing = MS.ide.findSpriteTab(key);
 		if (existing) {

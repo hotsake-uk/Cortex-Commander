@@ -1069,6 +1069,9 @@ window.MS = window.MS || {};
 		if (tab.kind === 'designer' && ide.tabs.filter((t) => t.kind === 'designer').length < 2 && !MS.popout.request) { // the main window keeps one designer; a pop-out can let its last one go
 			return;
 		}
+		if (MS.shortcuts) {
+			MS.shortcuts.remember(tab); // Ctrl+Shift+T opens it again
+		}
 		const index = ide.tabs.indexOf(tab);
 		ide.tabs.splice(index, 1);
 		if (ide.gameTab === tab) {
@@ -1156,8 +1159,13 @@ window.MS = window.MS || {};
 	}
 
 	// Opens a file in a tab (or goes to its tab), at a line.
-	ide.openFile = async function (path, line, column) {
+	ide.openFile = async function (path, line, column, opts) {
 		path = path.replace(/\\/g, '/').replace(/^(Data|Mods)\//i, '');
+		// a kind of file set to open in another program (Settings) goes there, unless Studio's own is asked for (a tab moved between windows)
+		if (!(opts && opts.inStudio) && path !== MS.LuaIntel.API_PATH && MS.external && MS.external.wants(MS.external.kindOf(path))) {
+			await MS.external.open(path, { line });
+			return;
+		}
 		if (ide.mode !== 'deep') {
 			ide.setMode('deep');
 		}
@@ -3207,17 +3215,7 @@ window.MS = window.MS || {};
 			e.preventDefault();
 			e.stopPropagation();
 			ide.showView('search');
-		} else if (ctrl && k === 'w' && ide.active && ide.active.kind !== 'designer') {
-			e.preventDefault();
-			e.stopPropagation();
-			ide.closeTab(ide.active);
-		} else if (ide.active && ide.active.kind !== 'designer' && !e.target.closest('#modal') && /^(z|y)$/.test(k) && ctrl && !e.target.closest('.monaco-editor')) {
-			// Undo on a code tab, from outside the editor, goes to the editor.
-			e.preventDefault();
-			e.stopPropagation();
-			if (ide.editor) {
-				ide.editor.trigger('keyboard', k === 'z' && !e.shiftKey ? 'undo' : 'redo', null);
-			}
 		}
+		// (Undo, redo and closing a tab are shortcuts.js's, for every kind of tab.)
 	}
 })();

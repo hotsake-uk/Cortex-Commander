@@ -720,6 +720,10 @@ window.MS = window.MS || {};
 	}
 
 	async function openListedFile(kind, item) {
+		if (kind === 'sound' && MS.external && MS.external.wants('sound')) {
+			MS.external.open(item.path);
+			return;
+		}
 		if (kind === 'sound') {
 			try {
 				const audio = new Audio(URL.createObjectURL(await app.fs.readFile(item.path)));

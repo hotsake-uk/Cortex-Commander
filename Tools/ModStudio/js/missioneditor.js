@@ -470,6 +470,9 @@ window.MS = window.MS || {};
 				return;
 			}
 			const s = tab.state || (tab.state = { map: {}, split: 0.58 });
+			// Ctrl+Z on this tab: the mission graph's history when it changed last, else Studio's (areas drawn on the map)
+			tab.undo = () => !!(MS.missionLogic && MS.missionLogic.historyStep(scenarioByKey(key), false));
+			tab.redo = () => !!(MS.missionLogic && MS.missionLogic.historyStep(scenarioByKey(key), true));
 			const scene = sceneOf(scenario);
 			const terrainFile = scene && MS.scenes.terrainPicture ? MS.scenes.terrainPicture(scene, a.lib.resolve(scene.node)) : null;
 			// the scene with its buildings and objects once they are read (the bare terrain until then)
