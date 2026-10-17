@@ -293,7 +293,7 @@ wire(allyDoors, 'false', allyMiddle);
 wire(allyMiddle, 'true', allyDrop(MB + ' LZ', XB + ' Front Doors'));
 wire(allyMiddle, 'false', allyDrop(FB + ' LZ', MB + ' LZ'));
 
-F.layout(g);
+F.layout(g, true);
 const problems = F.problems(g, {});
 if (problems.some((p) => p.level === 'error')) {
 	console.error(problems.filter((p) => p.level === 'error'));

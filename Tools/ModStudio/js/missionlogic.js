@@ -180,6 +180,73 @@ window.MS = window.MS || {};
 		return names;
 	}
 
+	// What an area is for, from the nodes that use it (for the map's filter): spawning units, landing (craft and landing zones), capture points,
+	// objectives (stages), triggers (events and conditions about an area), orders (where units are sent), doors and map objects, and the view
+	// (fog, painting, the camera).
+	const AREA_ROLES = [['spawn', 'Spawning'], ['landing', 'Landing (craft and LZs)'], ['capture', 'Capture points'], ['objective', 'Objectives (stages)'], ['trigger', 'Triggers (events and conditions)'], ['orders', 'Where units are sent'], ['objects', 'Doors and map objects'], ['view', 'Fog and painting']];
+	function rolesOfNode(n) {
+		const roles = []; // [area name, role]
+		const p = n.p || {};
+		const spec = F().KINDS[n.kind];
+		const cat = spec ? spec.category : '';
+		for (const [key, type] of spec ? spec.params : []) {
+			const name = p[key];
+			if (type !== 'area' || !name || !F().relevant(spec, p, key)) {
+				continue;
+			}
+			let role = 'trigger';
+			if (key === 'goTo') {
+				role = 'orders';
+			} else if (n.kind === 'spawn') {
+				role = p.arrive === 'dropship' || p.arrive === 'rocket' ? 'landing' : 'spawn';
+			} else if (n.kind === 'playerStart') {
+				role = 'spawn';
+			} else if (n.kind === 'lz') {
+				role = 'landing';
+			} else if (n.kind === 'capture') {
+				role = 'capture';
+			} else if (cat === 'stage') {
+				role = 'objective';
+			} else if (['doors', 'placeObject', 'remove', 'placeItem', 'changeTeam'].includes(n.kind)) {
+				role = 'objects';
+			} else if (['fog', 'overlay', 'camera'].includes(n.kind)) {
+				role = 'view';
+			} else if (n.kind === 'order' || n.kind === 'control') {
+				role = 'orders';
+			}
+			roles.push([name, role]);
+		}
+		for (const c of (n.lists && n.lists.conds) || []) {
+			if (c.area) {
+				roles.push([c.area, 'trigger']);
+			}
+		}
+		return roles;
+	}
+	// Each area's roles: name -> Set of role ids.
+	function areaRoles(scenario) {
+		const doc = docs.get(keyOf(scenario));
+		const out = new Map();
+		const add = (name, role) => {
+			if (!out.has(name)) {
+				out.set(name, new Set());
+			}
+			out.get(name).add(role);
+		};
+		for (const n of doc ? doc.g.nodes : []) {
+			rolesOfNode(n).forEach(([name, role]) => add(name, role));
+			// a stage about a capture point makes that point's areas objectives too
+			const spec = F().KINDS[n.kind];
+			if (spec && spec.category === 'stage') {
+				spec.params.forEach(([key, type]) => {
+					const point = type === 'capture' && n.p && F().find(doc.g, n.p[key]);
+					(point ? rolesOfNode(point) : []).forEach(([name]) => add(name, 'objective'));
+				});
+			}
+		}
+		return out;
+	}
+
 	// ---- a script for a scenario that has none ----
 
 	async function giveScript(scenario) {
@@ -315,6 +382,15 @@ window.MS = window.MS || {};
 				} }),
 				el('button', { className: 'tb', textContent: 'Ready-made mission…', disabled: locked, onclick: () => templateDialog(doc, ctx) }),
 				el('button', { className: 'tb', textContent: 'Fit', title: 'Show the whole graph (F)', onclick: () => view.fit() }),
+				el('button', { className: 'tb', textContent: 'Tidy up', disabled: locked, title: 'Lay the whole graph out: each beginning (stages, capture points, events) in its own band, what it leads to running to the right, nothing on top of anything (Ctrl+Z puts it back)', onclick: () => {
+					// each node's real height, as drawn (the layout's estimate when it isn't drawn)
+					const measure = (n) => {
+						const e = view.nodeEls.get(n.id);
+						return e ? e.offsetHeight : 0;
+					};
+					change(doc, 'tidy up the graph', (g) => F().layout(g, true, measure));
+					requestAnimationFrame(() => view.fit());
+				} }),
 				el('span', { className: 'spacer' }),
 				found.length ? el('button', { className: 'tb ml-problems' + (errors ? ' bad' : ''), textContent: (errors ? errors + ' to fix' : '') + (errors && warns ? ', ' : '') + (warns ? warns + ' to check' : ''), title: found.map((p) => '• ' + p.message).join('\n'), onclick: () => {
 					const first = found.find((p) => p.level === 'error') || found[0];
@@ -336,6 +412,7 @@ window.MS = window.MS || {};
 		host.replaceChildren(...[locked ? el('div', { className: 'ed-banner', textContent: 'This scenario belongs to ' + scenario.module + ': its mission can be looked at, not changed.' }) : null, bar,
 			el('div', { className: 'ml-body' }, stages, el('div', { className: 'ml-main' }, ...[help, view.root].filter(Boolean)))].filter(Boolean));
 		doc.hint = help;
+		view.only = focusIds(doc);
 		view.render();
 		doc.refreshStages();
 		if (!doc.state.fitted) {
@@ -461,21 +538,32 @@ window.MS = window.MS || {};
 
 	// ---- stages ----
 
-	// The nodes that belong to a stage: it, what runs from its exits (up to another stage), and the nodes that name it (a jump to it, a check of it).
+	// The nodes that belong to a stage: it, what runs from its exits (up to another stage), the capture points it or they name (the one it is
+	// about, those it turns on) and what those lead to, and the nodes that name it (a jump to it, a check of it).
 	function stageNodes(g, stage) {
 		const ids = new Set([stage.id]);
+		const points = (n) => {
+			const spec = F().KINDS[n.kind];
+			if (spec && spec.category !== 'event') {
+				spec.params.forEach(([key, type]) => type === 'capture' && n.p && walk(n.p[key]));
+			}
+		};
 		const walk = (id) => {
 			const n = F().find(g, id);
 			if (!n || ids.has(id) || F().isStage(n.kind)) {
 				return;
 			}
 			ids.add(id);
+			points(n);
 			Object.values(n.out || {}).forEach(walk);
 		};
+		points(stage);
 		Object.entries(stage.out || {}).forEach(([pin, to]) => pin !== 'next' && walk(to));
+		// and the events about those capture points (one coming under attack, changing hands)
+		const own = new Set([...ids].filter((id) => (F().find(g, id) || {}).kind === 'capture'));
 		for (const n of g.nodes) {
 			const spec = F().KINDS[n.kind];
-			const named = (spec ? spec.params : []).some(([key, type]) => type === 'stage' && n.p && n.p[key] === stage.id) ||
+			const named = (spec ? spec.params : []).some(([key, type]) => n.p && ((type === 'stage' && n.p[key] === stage.id) || (type === 'capture' && spec.category === 'event' && own.has(n.p[key])))) ||
 				((n.lists && n.lists.conds) || []).some((c) => c.stage === stage.id);
 			if (named) {
 				ids.add(n.id);
@@ -483,6 +571,50 @@ window.MS = window.MS || {};
 			}
 		}
 		return [...ids];
+	}
+
+	// The nodes to show while a stage is picked: its own, and any made since it was picked (so a new node doesn't vanish as it is added). null: all.
+	function focusIds(doc) {
+		const sel = doc.stageSel;
+		const st = sel && sel.id && F().find(doc.g, sel.id);
+		if (!st) {
+			return null;
+		}
+		const ids = new Set(stageNodes(doc.g, st));
+		doc.g.nodes.forEach((n) => !(sel.seen || []).includes(n.id) && ids.add(n.id));
+		return ids;
+	}
+
+	// What the map shows while a stage is picked: { name, areas } (the areas its nodes use, or a script stage's), or null for the whole mission.
+	function stageFocus(scenario) {
+		const doc = docs.get(keyOf(scenario));
+		const sel = doc && doc.stageSel;
+		if (!sel) {
+			return null;
+		}
+		if (sel.code) {
+			const c = doc.ctx && doc.path ? scriptStages(doc.path, doc.ctx).find((x) => x.name === sel.code) : null;
+			return c ? { name: words(c.name), areas: new Set(c.areas) } : null;
+		}
+		const st = F().find(doc.g, sel.id);
+		if (!st) {
+			return null;
+		}
+		const areas = new Set();
+		[...focusIds(doc)].forEach((id) => areasOfNode(F().find(doc.g, id)).forEach((a) => areas.add(a)));
+		const i = stageOrder(doc.g).indexOf(st);
+		return { name: (st.p && st.p.name) || 'Stage ' + (i + 1), areas };
+	}
+
+	// Back to the whole mission (the map's "Show all").
+	function clearStage(scenario) {
+		const doc = docs.get(keyOf(scenario));
+		if (doc && doc.stageSel) {
+			doc.stageSel = null;
+			if (doc.focus) {
+				doc.focus(null);
+			}
+		}
 	}
 
 	// The graph's stages in the order they run: the first, then each one's next, then any not chained in.
@@ -608,8 +740,21 @@ window.MS = window.MS || {};
 				if (last) {
 					last.out.next = n.id;
 				}
-				doc.stageSel = { id: n.id };
+				doc.stageSel = { id: n.id, seen: g.nodes.map((x) => x.id) };
 			}));
+		};
+		// pick a stage (sel) or the whole mission (null): the graph shows only its nodes, the map only its areas
+		doc.focus = (sel) => {
+			const view = doc.view;
+			doc.stageSel = sel ? Object.assign({ seen: doc.g.nodes.map((n) => n.id) }, sel) : null;
+			view.pick([]);
+			view.only = focusIds(doc);
+			view.render();
+			requestAnimationFrame(() => view.fit());
+			if (ctx.stageChanged) {
+				ctx.stageChanged();
+			}
+			draw();
 		};
 		const draw = () => {
 			const g = doc.g;
@@ -633,21 +778,7 @@ window.MS = window.MS || {};
 				const ids = stageNodes(g, s);
 				const areas = new Set();
 				ids.forEach((id) => areasOfNode(F().find(g, id)).forEach((a) => areas.add(a)));
-				rows.push(el('div', { className: 'ml-st' + (on ? ' on' : ''), onclick: () => {
-					doc.stageSel = on ? null : { id: s.id };
-					const lit = on ? [] : ids;
-					view.pick(lit);
-					for (const [id, e] of view.nodeEls) {
-						e.classList.toggle('lit', lit.includes(id));
-					}
-					if (!on) {
-						const r = view.root.getBoundingClientRect();
-						view.state.view.x = r.width / 2 - (s.x + 140) * view.state.view.z;
-						view.state.view.y = r.height / 3 - s.y * view.state.view.z;
-						view.place();
-					}
-					draw();
-				} },
+				rows.push(el('div', { className: 'ml-st' + (on ? ' on' : ''), title: on ? 'Showing only this stage: click again (or Whole mission) to show everything' : 'Show only this stage\'s nodes, and its areas on the map', onclick: () => doc.focus(on ? null : { id: s.id }) },
 				el('span', { className: 'ml-st-n', textContent: String(i + 1) }),
 				el('div', { className: 'ml-st-text' },
 					el('div', { className: 'ml-st-name', textContent: (s.p && s.p.name) || 'Stage ' + (i + 1) }),
@@ -658,12 +789,7 @@ window.MS = window.MS || {};
 			});
 			const codeRows = coded.map((c, i) => {
 				const on = !!sel && sel.code === c.name;
-				return el('div', { className: 'ml-st code' + (on ? ' on' : ''), onclick: () => {
-					doc.stageSel = on ? null : { code: c.name };
-					ctx.highlight(on ? [] : c.areas);
-					view.pick([]);
-					draw();
-				} },
+				return el('div', { className: 'ml-st code' + (on ? ' on' : ''), title: 'Show only the areas its code names on the map', onclick: () => doc.focus(on ? null : { code: c.name }) },
 				el('span', { className: 'ml-st-n', textContent: String(i + 1) }),
 				el('div', { className: 'ml-st-text' },
 					el('div', { className: 'ml-st-name', textContent: words(c.name), title: c.name }),
@@ -685,6 +811,10 @@ window.MS = window.MS || {};
 						draw();
 					} })),
 				el('div', { className: 'ml-side-list' },
+					rows.length || coded.length ? el('div', { className: 'ml-st all' + (sel ? '' : ' on'), title: 'Show every node and every area', onclick: () => sel && doc.focus(null) },
+						el('span', { className: 'ml-st-n', textContent: '∗' }),
+						el('div', { className: 'ml-st-text' }, el('div', { className: 'ml-st-name', textContent: 'Whole mission' }),
+							el('div', { className: 'ml-st-sub', textContent: g.nodes.length + ' node' + (g.nodes.length === 1 ? '' : 's') }))) : null,
 					rows.length ? el('div', { className: 'ml-side-sec', textContent: 'Mission' }) : null,
 					...rows,
 					!rows.length ? el('p', { className: 'ml-side-empty', textContent: coded.length
@@ -875,5 +1005,5 @@ window.MS = window.MS || {};
 		view.place();
 	}
 
-	MS.missionLogic = { historyStep, render, areaActions, areaPicked, renameArea, usage, docFor, areaUses, focusNode };
+	MS.missionLogic = { AREA_ROLES, areaRoles, stageFocus, clearStage, historyStep, render, areaActions, areaPicked, renameArea, usage, docFor, areaUses, focusNode };
 })();

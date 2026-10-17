@@ -62,7 +62,8 @@ window.MS = window.MS || {};
 
 		fit() {
 			const g = this.g;
-			if (!g.nodes.length) {
+			const nodes = this.only ? g.nodes.filter((n) => this.only.has(n.id)) : g.nodes;
+			if (!nodes.length) {
 				return;
 			}
 			const r = this.root.getBoundingClientRect();
@@ -70,7 +71,7 @@ window.MS = window.MS || {};
 			let minY = Infinity;
 			let maxX = -Infinity;
 			let maxY = -Infinity;
-			for (const n of g.nodes) {
+			for (const n of nodes) {
 				const e = this.nodeEls.get(n.id);
 				minX = Math.min(minX, n.x);
 				minY = Math.min(minY, n.y);
@@ -91,7 +92,8 @@ window.MS = window.MS || {};
 				e.remove();
 			}
 			this.nodeEls.clear();
-			for (const n of g.nodes) {
+			// only: when set, the ids of the nodes to draw (a stage picked in the list beside the graph); the rest, and their wires, are left out
+			for (const n of this.only ? g.nodes.filter((x) => this.only.has(x.id)) : g.nodes) {
 				const e = this.nodeEl(n, problems.filter((p) => p.id === n.id));
 				this.world.append(e);
 				this.nodeEls.set(n.id, e);
