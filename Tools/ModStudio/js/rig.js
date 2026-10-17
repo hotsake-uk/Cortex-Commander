@@ -103,6 +103,34 @@ window.MS = window.MS || {};
 			return ROLE_NAMES[this.role] + side + (preset && this.role !== 'body' ? ' · ' + preset : '');
 		}
 
+		// A bunker assembly is a set of placed pieces (PlaceObject lines): terrain objects, doors, deployments... each at a position.
+		get pieces() {
+			if (this.ent.cls !== 'BunkerAssembly') {
+				return null;
+			}
+			if (this._pieces) {
+				return this._pieces; // the unit is rebuilt after every edit, so this stays right
+			}
+			const lib = this.library || this.ent.library;
+			this._pieces = this.ent.all('PlaceObject').map((entry, index) => {
+				const node = entry.node;
+				const resolved = lib.resolve(node);
+				const ref = node.child('CopyOf') ? node.child('CopyOf').value : '';
+				return {
+					index,
+					node,
+					cls: node.value,
+					name: resolved.presetName || ref.split('/').pop(),
+					ref,
+					pos: resolved.vec('Position', { x: 0, y: 0 }),
+					team: resolved.num('Team', -2),
+					flipped: resolved.bool('HFlipped', false),
+					files: node.value === 'TerrainObject' ? { FGColorFile: resolved.file('FGColorFile'), BGColorFile: resolved.file('BGColorFile'), MaterialFile: resolved.file('MaterialFile') } : null,
+				};
+			});
+			return this._pieces;
+		}
+
 		// A terrain object (a piece of a building) has three pictures instead of one: foreground, background and the material map.
 		get layers() {
 			if (this.ent.cls !== 'TerrainObject') {

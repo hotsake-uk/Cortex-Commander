@@ -56,7 +56,7 @@ window.MS = window.MS || {};
 		attachments: new Set(['Attachable', 'AEmitter', 'AEJetpack', 'PEmitter']),
 		items: new Set(['HDFirearm', 'HeldDevice', 'TDExplosive', 'ThrownDevice']),
 		// Everything else with a picture: open it, edit its settings and its sprite like any other.
-		more: new Set(['MOSRotating', 'MOSParticle', 'Magazine', 'Turret', 'ADoor', 'Arm', 'Leg', 'TerrainObject']),
+		more: new Set(['MOSRotating', 'MOSParticle', 'Magazine', 'Turret', 'ADoor', 'Arm', 'Leg', 'TerrainObject', 'BunkerAssembly']),
 	};
 
 	// ---- drawing small pictures ----
@@ -1259,6 +1259,55 @@ window.MS = window.MS || {};
 			where.append(n);
 		}
 
+		if (part.pieces) {
+			// A bunker assembly: the pieces it places. Click a row (or the piece in the view) to pick it; drag it in the view or type where it goes.
+			const pieces = part.pieces;
+			const box = section(insp, 'Pieces (' + pieces.length + ')', (() => {
+				const add = document.createElement('button');
+				add.className = 'small-btn';
+				add.textContent = '+ Add piece…';
+				add.title = 'Search the building pieces (terrain objects) and add one';
+				add.onclick = () => {
+					const all = app.lib.presets.filter((p) => p.topLevel && p.cls === 'TerrainObject');
+					const modules = [...new Set(all.map((p) => p.module))].sort((x, y) => x.localeCompare(y));
+					MS.dialogs.open('Add a piece to ' + part.name, MS.dialogs.parts.pickerGrid(all, (p) => app.addPiece(p), (c, p) => drawSpriteThumb(c, p), false, [
+						{ label: 'Where it comes from', options: [['', 'Everything'], ...modules.map((m) => [m, m.replace(/\.rte$/i, '')])], test: (p, v) => p.module === v },
+					]), [{ text: 'Cancel' }], true);
+				};
+				return add;
+			})());
+			for (const piece of pieces) {
+				const row = document.createElement('div');
+				row.className = 'piece-row' + (piece.index === app.selectedPiece ? ' sel' : '');
+				const kind = document.createElement('small');
+				kind.textContent = piece.cls === 'TerrainObject' ? '' : piece.cls;
+				const name = document.createElement('span');
+				name.className = 'piece-name';
+				name.textContent = piece.name;
+				name.title = piece.ref + (piece.team !== -2 ? ' · team ' + piece.team : '') + (piece.flipped ? ' · flipped' : '');
+				const coord = (value, which) => {
+					const input = document.createElement('input');
+					input.type = 'number';
+					input.step = 12;
+					input.value = value;
+					input.className = 'ed-input num';
+					input.onclick = (e) => e.stopPropagation();
+					input.onchange = () => app.movePiece(piece.index, which === 'x' ? Number(input.value) : piece.pos.x, which === 'y' ? Number(input.value) : piece.pos.y);
+					return input;
+				};
+				const del = document.createElement('button');
+				del.className = 'ico-btn';
+				del.textContent = '×';
+				del.title = 'Take it out of the assembly';
+				del.onclick = (e) => {
+					e.stopPropagation();
+					app.removePiece(piece.index);
+				};
+				row.append(kind, name, coord(piece.pos.x, 'x'), coord(piece.pos.y, 'y'), del);
+				row.onclick = () => app.selectPiece(piece.index);
+				box.append(row);
+			}
+		}
 		if (part.layers) {
 			// A building piece: three pictures. Foreground and background can be drawn on or swapped; the material map can be swapped.
 			const layers = section(insp, 'Pictures');
@@ -1287,7 +1336,7 @@ window.MS = window.MS || {};
 			}
 		}
 		// (A building piece has no single sprite: the rows below go nowhere.)
-		const sprite = part.layers ? document.createElement('div') : section(insp, 'Sprite', (() => {
+		const sprite = part.layers || part.pieces ? document.createElement('div') : section(insp, 'Sprite', (() => {
 			const wrap = document.createElement('span');
 			const edit = document.createElement('button');
 			edit.className = 'small-btn';

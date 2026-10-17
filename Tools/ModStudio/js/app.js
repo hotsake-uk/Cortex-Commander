@@ -376,6 +376,7 @@ window.MS = window.MS || {};
 	app.openActor = function (preset, opts) {
 		const tab = MS.ide.designerFor(preset.cls, !!(opts && opts.newTab));
 		MS.ide.currentDesigner = tab;
+		app.selectedPiece = null;
 		app.actor = { path: preset.doc.path, name: preset.name, cls: preset.cls };
 		app.selected = null;
 		app.hidden.clear();
@@ -465,6 +466,101 @@ window.MS = window.MS || {};
 		materialCache = map;
 		materialGeneration = app.lib.generation;
 		return map;
+	};
+
+	// ---- bunker assemblies: the pieces they place ----
+
+	app.selectedPiece = null;
+
+	app.selectPiece = function (index) {
+		app.selectedPiece = index === undefined ? null : index;
+		MS.panels.refresh();
+		app.requestDraw();
+	};
+
+	// The piece's own line in the assembly (taking over a line the assembly inherits from the one it copies, as for any list), or null.
+	function ownPiece(piece) {
+		const part = app.rig.body;
+		const block = app.ownBlock(part);
+		if (!block) {
+			return null;
+		}
+		return piece.node.parent === block ? piece.node : app.lib.adopt(block, piece.node);
+	}
+
+	function pieceOf(index) {
+		return app.rig.body.pieces.find((p) => p.index === index) || null;
+	}
+
+	// Changes to a locked assembly go to a copy in the project first, like anything else, then carry on with the same piece.
+	function withEditable(then) {
+		if (app.needsCopy()) {
+			app.copyThen(app.rig.body, () => then());
+			return false;
+		}
+		const reason = app.lockReason(app.rig.body);
+		if (reason) {
+			app.toast(reason, 'bad');
+			return false;
+		}
+		return true;
+	}
+
+	app.movePiece = function (index, x, y) {
+		if (!withEditable(() => app.movePiece(index, x, y))) {
+			return;
+		}
+		const piece = pieceOf(index);
+		if (!piece) {
+			return;
+		}
+		app.edit('move ' + piece.name, () => {
+			const node = ownPiece(piece);
+			if (node) {
+				node.setVector('Position', Math.round(x), Math.round(y));
+			}
+		});
+	};
+
+	app.removePiece = function (index) {
+		if (!withEditable(() => app.removePiece(index))) {
+			return;
+		}
+		const piece = pieceOf(index);
+		if (!piece) {
+			return;
+		}
+		app.edit('take ' + piece.name + ' out', () => {
+			const node = ownPiece(piece);
+			if (node) {
+				node.remove();
+			}
+		});
+		app.selectedPiece = null;
+		MS.panels.refresh();
+	};
+
+	// Adds a terrain object (a preset) to the assembly, in the middle of what is there, and picks it.
+	app.addPiece = function (preset) {
+		if (!withEditable(() => app.addPiece(preset))) {
+			return;
+		}
+		const boxes = app.view.pieceBoxes(app.view.drawList.find((i) => i.part.pieces) || { part: app.rig.body, pose: { pos: { x: 0, y: 0 } } });
+		const mid = boxes.length ? { x: Math.round((Math.min(...boxes.map((b) => b.piece.pos.x)) + Math.max(...boxes.map((b) => b.piece.pos.x))) / 24) * 12, y: Math.round((Math.min(...boxes.map((b) => b.piece.pos.y)) + Math.max(...boxes.map((b) => b.piece.pos.y))) / 24) * 12 } : { x: 0, y: 0 };
+		let added = null;
+		app.edit('add ' + preset.name, () => {
+			const block = app.ownBlock(app.rig.body);
+			if (!block) {
+				return;
+			}
+			added = block.add('PlaceObject', preset.cls);
+			added.add('CopyOf', app.lib.reference(preset.name, preset.module, block.doc.module));
+			added.setVector('Position', mid.x, mid.y);
+		});
+		const pieces = app.rig.body.pieces;
+		if (pieces.length) {
+			app.selectPiece(pieces.length - 1);
+		}
 	};
 
 	app.findActorNode = function () {
@@ -609,7 +705,7 @@ window.MS = window.MS || {};
 		$('btnCopy').disabled = false;
 		$('btnCopy').classList.toggle('attention', locked);
 		$('btnPreview').disabled = locked;
-		$('layerBox').hidden = !(app.rig && app.rig.body.ent.cls === 'TerrainObject');
+		$('layerBox').hidden = !(app.rig && (app.rig.body.ent.cls === 'TerrainObject' || app.rig.body.ent.cls === 'BunkerAssembly'));
 		const spawn = spawnKind(app.actor && app.actor.cls);
 		$('btnSpawn').disabled = !spawn;
 		$('btnGive').hidden = spawn !== 'item';
@@ -1094,7 +1190,9 @@ window.MS = window.MS || {};
 	// The request that makes the game show the open unit (Preview.ini): who, where it is, the files saved since, the held item. null when there is
 	// nothing to show.
 	function previewLines() {
-		if (!app.actor) {
+		// Only units and items can be shown in the game this way (not building pieces, assemblies, gibs...).
+		const kind = app.actor && spawnKind(app.actor.cls);
+		if (kind !== 'actor' && kind !== 'item') {
 			return null;
 		}
 		const files = new Set(app.savedSinceLastPreview);
