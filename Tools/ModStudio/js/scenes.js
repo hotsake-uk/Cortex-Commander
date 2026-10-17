@@ -87,7 +87,10 @@ window.MS = window.MS || {};
 			if (entry.node.value === 'TerrainObject') {
 				const fg = r.file('FGColorFile');
 				const bg = r.file('BGColorFile');
-				look = fg || bg ? { fg, bg, offset: r.vec('BitmapOffset', { x: 0, y: 0 }) } : null;
+				// with no BitmapOffset of its own, the game centres a picture over 24 pixels on its position (by the widest and tallest of its
+				// colour, background and material pictures): offset null here, worked out once they are read
+				const given = !!r.last('BitmapOffset');
+				look = fg || bg ? { fg, bg, mat: given ? null : r.file('MaterialFile'), offset: given ? r.vec('BitmapOffset', { x: 0, y: 0 }) : null } : null;
 			} else {
 				const sprite = r.file('SpriteFile');
 				look = sprite ? { sprite, frames: Math.max(1, Math.round(r.num('FrameCount', 1))), offset: r.vec('SpriteOffset', { x: 0, y: 0 }) } : null;
@@ -135,7 +138,7 @@ window.MS = window.MS || {};
 		}
 		const files = new Set([terrainFile]);
 		for (const { look } of items) {
-			[look.fg, look.bg, look.sprite && MS.Images.framePaths(look.sprite, look.frames)[0]].forEach((f) => f && files.add(f));
+			[look.fg, look.bg, look.mat, look.sprite && MS.Images.framePaths(look.sprite, look.frames)[0]].forEach((f) => f && files.add(f));
 		}
 		const loaded = new Map();
 		Promise.all([...files].map((f) => a.images.get(f).then((img) => loaded.set(f, img), () => loaded.set(f, null)))).then(() => {
@@ -165,17 +168,27 @@ window.MS = window.MS || {};
 				}
 			};
 			const at = (it, img) => [it.pos.x + (it.flip ? -it.look.offset.x - img.width : it.look.offset.x), it.pos.y + it.look.offset.y];
+			// a terrain object's offset: its own, or the game's default (see placedLook)
+			const offsetOf = (look) => {
+				if (!look.offset) {
+					const imgs = [look.fg, look.bg, look.mat].map((f) => f && loaded.get(f)).filter(Boolean);
+					const w = Math.max(0, ...imgs.map((i) => i.width));
+					const h = Math.max(0, ...imgs.map((i) => i.height));
+					look.offset = { x: w > 24 ? -Math.floor(w / 2) : 0, y: h > 24 ? -Math.floor(h / 2) : 0 };
+				}
+				return look.offset;
+			};
 			for (const it of items) {
 				const img = it.look.bg && loaded.get(it.look.bg);
 				if (img) {
-					stamp(img, it.pos.x + it.look.offset.x, it.pos.y + it.look.offset.y);
+					stamp(img, it.pos.x + offsetOf(it.look).x, it.pos.y + offsetOf(it.look).y);
 				}
 			}
 			ctx.drawImage(terrain.canvas, 0, 0);
 			for (const it of items) {
 				const img = it.look.fg && loaded.get(it.look.fg);
 				if (img) {
-					stamp(img, it.pos.x + it.look.offset.x, it.pos.y + it.look.offset.y);
+					stamp(img, it.pos.x + offsetOf(it.look).x, it.pos.y + offsetOf(it.look).y);
 				}
 			}
 			for (const it of items) {
