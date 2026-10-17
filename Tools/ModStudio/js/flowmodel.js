@@ -94,6 +94,7 @@ window.MS = window.MS || {};
 	kind('scriptValue', 'event', 'A value in the script changes', [['field', 'text', 'the script\'s value (self.…)', 'anyHumanHasDeployedABrain'], ['test', 'choice', 'when it', 'true', SCRIPT_TESTS], ['op', 'op', '', '>='], ['value', 'value', 'value', V(1)]], EVENT, { relevant: relevantScript });
 
 	// stages: goals in a sequence. Every stage also has a name, an objective text and marker, whose screen shows it, and a time limit.
+	const SCRIPT_START = '-- args: this node\'s settings (args.value). vars: the mission\'s variables (vars.count = vars.count + 1).\n-- Give it exits below, and return the name of the one to take.\n';
 	const STAGE_COMMON = [['name', 'text', 'name', 'Stage'], ['text', 'text', 'objective text', ''], ['onScreen', 'bool', 'keep the objective at the top of the screen', true], ['marker', 'bool', 'show a marker', true], ['viewer', 'team', 'marker seen by', 0], ['failAfter', 'number', 'time limit (seconds, 0: none)', 0]];
 	const STAGE_PINS = { entrance: false, exits: ['started', 'done', 'timeout', 'next'] };
 	const stage = (name, title, goalParams, extra) => kind(name, 'stage', title, goalParams.concat(STAGE_COMMON), STAGE_PINS, extra);
@@ -215,6 +216,13 @@ window.MS = window.MS || {};
 	kind('end', 'action', 'End it with no winner', [], STEP);
 	kind('call', 'action', 'Run my own function', [['fn', 'fn', 'function', 'MyFunction']], STEP);
 	kind('code', 'action', 'Run my own code', [['label', 'text', 'what it does', 'My code'], ['code', 'lua', 'code', '']], STEP);
+	// Your own Lua as a node: settings of your own (each typed on the node, or a mission variable, a scenario setting...), and exits of your own,
+	// the code returning the name of the one to take. With no exits of its own it goes on through then. args.<name> are its settings, vars.<name>
+	// the mission's variables (set them there too), self the mission, st its state, actor the unit that set the chain off.
+	kind('script', 'flow', 'Script', [['label', 'text', 'what it does', 'My script'], ['code', 'lua', 'code', SCRIPT_START]], STEP, { lists: ['args', 'outs'], dynamicExits: (n) => {
+		const outs = ((n.lists && n.lists.outs) || []).map((o) => String(o.name || '').trim()).filter(Boolean);
+		return outs.length ? [...new Set(outs)] : ['then'];
+	} });
 	kind('placeItem', 'action', 'Place an item', [['item', 'item', 'item', ''], ['area', 'area', 'in area', ''], ['count', 'value', 'how many', V(1)]], STEP);
 	kind('remove', 'action', 'Remove units or items', [['area', 'area', 'in area', ''], ['what', 'choice', 'remove', 'units', [['units', 'units'], ['items', 'items lying there'], ['both', 'units and items']]], ['team', 'team', 'whose units', -1], ...WHO_UNITS], STEP, {
 		relevant: (p, key) => (['team', 'which', 'group', 'named'].includes(key) ? p.what !== 'items' && relevantWho(p, key) : true),
@@ -265,9 +273,11 @@ window.MS = window.MS || {};
 		script: { title: 'a value in the script', params: [['field', 'text', 'self.…', 'anyHumanHasDeployedABrain'], ['test', 'choice', '', 'true', SCRIPT_TESTS], ['op', 'op', '', '>='], ['value', 'value', 'value', V(1)]], relevant: relevantScript },
 	};
 
-	// the rows of the lists some nodes have: a dialogue's lines
+	// the rows of the lists some nodes have: a dialogue's lines; a script's settings (a name, what kind it is, its value) and exits
 	const LIST_ROWS = {
 		lines: [['text', 'text', '', ''], ['seconds', 'number', 'seconds', 5]],
+		args: [['name', 'text', '', 'value'], ['type', 'choice', '', 'value', [['value', 'number'], ['bool', 'yes / no'], ['text', 'text'], ['area', 'area'], ['team', 'team']]], ['value', 'value', '', V(0)]],
+		outs: [['name', 'text', '', 'done']],
 	};
 
 	const CATEGORIES = [['event', 'Events', 'How a chain begins'], ['stage', 'Stages', 'Goals, one after another'], ['point', 'Capture points', 'Places teams take and take back'], ['flow', 'Flow', 'Decide and gate'], ['action', 'Actions', 'What happens']];
@@ -279,6 +289,10 @@ window.MS = window.MS || {};
 	const stacks = (kind, key) => STACKS[kind] === key;
 	// A list setting's ids: a list, or one id (as a single-choice setting it once was), or none.
 	const idsOf = (v) => (Array.isArray(v) ? v.filter(Boolean) : v ? [v] : []);
+	const exitsOf = (n) => {
+		const spec = n && KINDS[n.kind];
+		return !spec ? [] : spec.dynamicExits ? spec.dynamicExits(n) : spec.exits;
+	};
 	const isStage = (k) => !!KINDS[k] && KINDS[k].category === 'stage';
 	const isCodeStage = (v) => typeof v === 'string' && v.startsWith('code:');
 	const defaults = (params) => Object.assign({}, ...params.map(([key, , , def]) => ({ [key]: def })));
@@ -348,7 +362,7 @@ window.MS = window.MS || {};
 			return 'That node is not there.';
 		}
 		const spec = KINDS[from.kind];
-		if (!spec || !spec.exits.includes(pin)) {
+		if (!spec || !exitsOf(from).includes(pin)) {
 			return 'That exit does not exist on this node.';
 		}
 		if (fromId === toId) {
@@ -430,7 +444,7 @@ window.MS = window.MS || {};
 			}
 			seen.add(at);
 			chain.push(n);
-			at = KINDS[n.kind] && KINDS[n.kind].exits.length === 1 && KINDS[n.kind].exits[0] === 'then' ? (n.out || {}).then : null;
+			at = KINDS[n.kind] && exitsOf(n).length === 1 && exitsOf(n)[0] === 'then' ? (n.out || {}).then : null;
 		}
 		return chain;
 	}
@@ -534,7 +548,7 @@ window.MS = window.MS || {};
 					}
 				}
 			}
-			for (const pin of spec.exits) {
+			for (const pin of exitsOf(n)) {
 				const to = (n.out || {})[pin];
 				if (to && !find(g, to)) {
 					add(n.id, 'error', 'The ' + pin + ' wire goes to a node that is not there.');
@@ -583,7 +597,7 @@ window.MS = window.MS || {};
 		const conds = ((n.lists && n.lists.conds) || []).reduce((h, c) => h + 26 * (1 + ((CONDS[c.kind] || { params: [] }).params.length)), 0);
 		const rows = ((n.lists && n.lists.lines) || []).length * 30;
 		const lists = spec.lists ? 34 : 0;
-		return 34 + shown * 23 + conds + rows + lists + spec.exits.length * 18 + 14;
+		return 34 + shown * 23 + conds + rows + lists + exitsOf(n).length * 18 + 14;
 	}
 
 	// Lays the graph out as trees, left to right: each beginning (the stages in their order, then capture points, then events) starts a band at
@@ -611,7 +625,7 @@ window.MS = window.MS || {};
 			let bottom = y + height(n);
 			let next = y;
 			const spec = KINDS[n.kind];
-			for (const pin of spec ? spec.exits : []) {
+			for (const pin of exitsOf(n)) {
 				const to = (n.out || {})[pin];
 				if (!to || pin === 'next' || placed.has(to)) {
 					continue;
@@ -787,6 +801,6 @@ window.MS = window.MS || {};
 	MS.flow = Object.assign(MS.flow || {}, {
 		KINDS, ORDER, CONDS, CATEGORIES, BATTLE_MODES, PIE_ICONS, SHADES, OPS, merge, LIST_ROWS, AI_MODES, VAR_OPS, relevant, V,
 		create, addNode, find, incoming, whyNot, connect, disconnect, removeNode, clone, addCondition, condDefaults,
-		chainFrom, entries, stages, firstStage, isStage, isCodeStage, problems, layout, migrate, reaches, idsOf, stacks,
+		chainFrom, entries, stages, firstStage, isStage, isCodeStage, problems, layout, migrate, reaches, idsOf, stacks, exitsOf,
 	});
 })();

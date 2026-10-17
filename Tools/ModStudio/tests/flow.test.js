@@ -689,6 +689,44 @@ test('a capture point that is switched off does nothing until it is switched on;
 	assert.deepEqual(lines(m.step(0.5, 4)), ['msg Stage done'], 'switched on at 2 s, taken a second later');
 });
 
+// ---- script nodes ----
+
+test('a script node: its settings in args, the mission variables in vars, and the exit its code returns', () => {
+	const g = graph([
+		['start', {}, { then: 1 }],
+		['script', { label: 'Pick', code: 'vars.count = (vars.count or 0) + args.step\nif args.open and vars.count > 2 then return "true" end\nreturn "false"' }],
+		['message', { text: 'Open' }],
+		['message', { text: 'Shut' }],
+	]);
+	const s = g.nodes[1];
+	s.lists = { args: [{ name: 'open', type: 'bool', value: true }, { name: 'step', type: 'value', value: { k: 'num', n: 3 } }], outs: [{ name: 'true' }, { name: 'false' }] };
+	assert.deepEqual(F.exitsOf(s), ['true', 'false']);
+	assert.equal(F.connect(g, s.id, 'true', g.nodes[2].id), '');
+	assert.equal(F.connect(g, s.id, 'false', g.nodes[3].id), '');
+	assert.match(F.connect(g, s.id, 'then', g.nodes[3].id), /does not exist/, 'no then once it has exits of its own');
+	const m = game(g);
+	assert.deepEqual(lines(m.step()), ['msg Open'], 'open, and the count is past 2');
+	assert.equal(m.run('return tostring(Test.StudioState.vars.count)'), '3');
+	s.lists.args[0].value = false;
+	const m2 = game(g);
+	assert.deepEqual(lines(m2.step()), ['msg Shut']);
+});
+
+test('a script with no exits of its own goes on through then; an error is reported and goes nowhere', () => {
+	const g = graph([
+		['start', {}, { then: 1 }],
+		['script', { label: 'Count', code: 'vars.n = 7' }, { then: 2 }],
+		['message', { text: 'After' }],
+	]);
+	assert.deepEqual(F.exitsOf(g.nodes[1]), ['then']);
+	const m = game(g);
+	assert.deepEqual(lines(m.step()), ['msg After']);
+	assert.equal(m.run('return tostring(Test.StudioState.vars.n)'), '7');
+	const bad = graph([['start', {}, { then: 1 }], ['script', { label: 'Oops', code: 'error("no")' }]]);
+	bad.nodes[1].lists = { args: [], outs: [{ name: 'done' }] };
+	assert.match(lines(game(bad).step())[0], /^console Studio script \(Oops\): .*no/);
+});
+
 // ---- what is on the screen ----
 
 test('a stage keeps its objective at the top of the screen; a message shows over it for its seconds, then the objective comes back', () => {
