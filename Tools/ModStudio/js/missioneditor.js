@@ -457,7 +457,31 @@ window.MS = window.MS || {};
 
 	// ---- the editor tab ----
 
-	function render(key) {
+	// The maps open for each scenario, to redraw when its mission changes: a tab can show the map, the graph or both, and the map and the graph
+	// can be in different tabs or windows. key -> Map(tab -> { root, draw, stage, lit, pick }).
+	const maps = new Map();
+	function eachMap(key, fn) {
+		for (const m of (maps.get(key) || new Map()).values()) {
+			if (m.root.isConnected) {
+				fn(m);
+			}
+		}
+	}
+	const redrawMaps = (key) => eachMap(key, (m) => m.draw());
+	// what the graph picks lights up on the map, and what the map picks lights up in the graph, whichever windows they are in
+	MS.news = MS.news || {};
+	MS.news['mission-lit'] = (m) => eachMap(m.key, (x) => x.lit(m.names || []));
+	MS.news['mission-area'] = (m) => MS.missionLogic && MS.missionLogic.areaPicked(m.name);
+	MS.news['mission-node'] = (m) => {
+		const scenario = scenarioByKey(m.key);
+		if (scenario && MS.missionLogic) {
+			MS.missionLogic.focusNode(scenario, m.id);
+		}
+	};
+	const tell = (type, body) => MS.popout && MS.popout.announce && MS.popout.announce(type, body);
+
+	// part: 'both' (the map and the graph side by side), 'map' or 'logic' (the graph), each its own tab
+	function render(key, part) {
 		return (host, tab) => {
 			const a = app();
 			if (!a.lib || !a.lib.presets.length) {
@@ -470,6 +494,14 @@ window.MS = window.MS || {};
 				return;
 			}
 			const s = tab.state || (tab.state = { map: {}, split: 0.58 });
+			if (part === 'map' && MS.missionLogic && MS.missionLogic.docFor) {
+				// the mission read here too, for what the map shows of it (what uses each area, the stage picked); a window just opened reads the
+				// scripts first, then draws again
+				if (MS.missionLogic.docFor(scenario).text === null && !s.readingScripts) {
+					s.readingScripts = true;
+					MS.ide.ensureScripts().then(() => MS.ide.refreshForm()).catch(() => {});
+				}
+			}
 			// Ctrl+Z on this tab: the mission graph's history when it changed last, else Studio's (areas drawn on the map)
 			tab.undo = () => !!(MS.missionLogic && MS.missionLogic.historyStep(scenarioByKey(key), false));
 			tab.redo = () => !!(MS.missionLogic && MS.missionLogic.historyStep(scenarioByKey(key), true));
@@ -602,6 +634,7 @@ window.MS = window.MS || {};
 					if (MS.missionLogic && MS.missionLogic.areaPicked) {
 						MS.missionLogic.areaPicked(name);
 					}
+					tell('mission-area', { key, name });
 					drawSide();
 				},
 			};
@@ -628,11 +661,33 @@ window.MS = window.MS || {};
 					: el('span', { className: 'ed-note', textContent: 'Drag on the map to draw an area. Shift and drag adds a box to the area picked. Right-click an area for more. Wheel zooms, right-drag moves, F fits.' }));
 			};
 			drawSide();
+			// the map or the graph in a window of its own (the other stays here, in its own tab), or the two back in one tab
+			const apart = (popped) => {
+				const scenarioNow = scenarioByKey(key);
+				MS.ide.closeTab(tab, true);
+				open(scenarioNow, popped === 'map' ? 'logic' : 'map');
+				const other = open(scenarioNow, popped);
+				if (other && MS.popout && MS.popout.pop) {
+					MS.popout.pop(other);
+				}
+			};
+			const together = () => {
+				const scenarioNow = scenarioByKey(key);
+				for (const t of MS.ide.tabs.filter((x) => x.kind === 'form' && x.editor && x.editor.module === key && /^mission(Map|Graph)$/.test(x.editor.id))) {
+					MS.ide.closeTab(t, true);
+				}
+				open(scenarioNow, 'both');
+			};
+			const partButtons = part === 'both'
+				? [el('button', { className: 'tb', textContent: '⧉ Graph in a window', title: 'The graph in a window of its own, the map staying here (they keep in step)', onclick: () => apart('logic') }),
+					el('button', { className: 'tb', textContent: '⧉ Map in a window', title: 'The map in a window of its own, the graph staying here (they keep in step)', onclick: () => apart('map') })]
+				: [el('button', { className: 'tb', textContent: part === 'map' ? 'Map and graph together' : 'Graph and map together', title: 'Back in one tab, side by side (a map or graph in another window can be closed there)', onclick: together })];
 			const head = el('div', { className: 'me-head' },
-				el('h2', { textContent: scenario.name }),
-				el('label', { className: 'ed-check' }, 'Scene', sceneSelect),
+				el('h2', { textContent: scenario.name + (part === 'map' ? ': map' : part === 'logic' ? ': graph' : '') }),
+				part !== 'logic' ? el('label', { className: 'ed-check' }, 'Scene', sceneSelect) : null,
 				el('span', { className: 'spacer' }),
-				el('button', { className: 'tb', textContent: 'Fit the map', onclick: () => view.fit() }),
+				...partButtons,
+				part !== 'logic' ? el('button', { className: 'tb', textContent: 'Fit the map', onclick: () => view.fit() }) : null,
 				scriptPath ? el('button', { className: 'tb', textContent: 'Open the script', onclick: () => MS.ide.openFile(scriptPath, 1) }) : null,
 				el('button', { className: 'tb primary', textContent: '▶ Play in the game', title: 'Starts it in a game running from Studio', onclick: () => {
 					MS.ide.runLua('ActivityMan:StartActivity(' + JSON.stringify(scenario.cls) + ', ' + JSON.stringify(scenario.name) + ')');
@@ -671,6 +726,7 @@ window.MS = window.MS || {};
 						if (MS.missionLogic) {
 							MS.missionLogic.areaPicked(r.name);
 						}
+						tell('mission-area', { key, name: r.name });
 						drawSide();
 						drawList();
 					} },
@@ -681,7 +737,10 @@ window.MS = window.MS || {};
 					if (r.name === picked) {
 						const uses = el('div', { className: 'me-uses' });
 						for (const n of nodes) {
-							uses.append(el('button', { className: 'me-use', title: 'Show this node in the graph', onclick: () => MS.missionLogic.focusNode(scenarioByKey(key), n.id) }, el('span', { className: 'me-use-kind', textContent: '⚑' }), n.title));
+							uses.append(el('button', { className: 'me-use', title: 'Show this node in the graph', onclick: () => {
+								MS.missionLogic.focusNode(scenarioByKey(key), n.id);
+								tell('mission-node', { key, id: n.id });
+							} }, el('span', { className: 'me-use-kind', textContent: '⚑' }), n.title));
 						}
 						for (const c of code) {
 							uses.append(el('button', { className: 'me-use', title: c.path + ', line ' + c.line + ': open it there', onclick: () => MS.ide.openFile(c.path, c.line) }, el('span', { className: 'me-use-kind code', textContent: c.path.split('/').pop() + ':' + c.line }), el('code', { textContent: c.text.slice(0, 90) })));
@@ -701,24 +760,47 @@ window.MS = window.MS || {};
 			};
 			Object.assign(view.hooks, { picked: hooks.picked });
 			const mapPane = el('div', { className: 'me-left' }, side, el('div', { className: 'me-mapwrap' }, list, view.root));
+			// this tab's map, for the graph (here, in another tab or in another window) to redraw
+			if (part !== 'logic') {
+				if (!maps.has(key)) {
+					maps.set(key, new Map());
+				}
+				maps.get(key).set(tab, {
+					root: view.root,
+					draw: () => {
+						view.draw();
+						drawSide();
+						drawList();
+					},
+					stage: () => {
+						view.draw();
+						drawList();
+					},
+					lit: (names) => {
+						s.map.lit = names;
+						view.draw();
+					},
+					pick: (name) => {
+						s.map.area = name;
+						s.map.box = 0;
+						view.draw();
+						drawSide();
+					},
+				});
+			} else {
+				maps.get(key) && maps.get(key).delete(tab);
+			}
 			const logic = el('div', { className: 'me-right' });
-			if (MS.missionLogic && MS.missionLogic.render) {
-				MS.missionLogic.render(logic, scenario, { areas: () => areas().map((r) => r.name), changed: () => {
-					view.draw();
-					drawSide();
-					drawList();
-				}, stageChanged: () => {
-					view.draw();
-					drawList();
-				}, highlight: (names) => {
-					s.map.lit = names;
-					view.draw();
-				}, pickArea: (name) => {
-					s.map.area = name;
-					s.map.box = 0;
-					view.draw();
-					drawSide();
-				} });
+			if (part !== 'map' && MS.missionLogic && MS.missionLogic.render) {
+				MS.missionLogic.render(logic, scenario, { areas: () => areas().map((r) => r.name), changed: () => eachMap(key, (m) => m.draw()), stageChanged: () => eachMap(key, (m) => m.stage()), highlight: (names) => {
+					eachMap(key, (m) => m.lit(names));
+					tell('mission-lit', { key, names });
+				}, pickArea: (name) => eachMap(key, (m) => m.pick(name)) });
+			}
+			if (part !== 'both') {
+				host.replaceChildren(el('div', { className: 'me me-' + part }, head, part === 'map' ? mapPane : logic));
+				requestAnimationFrame(() => view.draw());
+				return;
 			}
 			const splitter = el('div', { className: 'me-splitter', title: 'Drag to share the room between the map and the logic' });
 			const body = el('div', { className: 'me-body' }, mapPane, splitter, logic);
@@ -740,9 +822,13 @@ window.MS = window.MS || {};
 		};
 	}
 
-	function open(scenario) {
+	// part: 'both' (default), 'map' or 'logic', each its own tab (so each can go in a window of its own)
+	function open(scenario, part) {
 		const key = keyOf(scenario);
-		MS.ide.openForm('mission:' + key, 'Mission · ' + scenario.name, '⚑', render(key), { id: 'mission', module: key });
+		const p = part === 'map' || part === 'logic' ? part : 'both';
+		const id = p === 'map' ? 'missionMap' : p === 'logic' ? 'missionGraph' : 'mission';
+		const title = (p === 'map' ? 'Map · ' : p === 'logic' ? 'Graph · ' : 'Mission · ') + scenario.name;
+		return MS.ide.openForm(id + ':' + key, title, p === 'map' ? '▦' : '⚑', render(key, p), { id, module: key });
 	}
 
 	// The Missions button: your scenarios to pick from, or a new one.
@@ -778,7 +864,7 @@ window.MS = window.MS || {};
 		], true);
 	}
 
-	MS.missionEditor = { open, choose, areasOf, sceneOf, writeArea, editableScene };
+	MS.missionEditor = { open, redrawMaps, choose, areasOf, sceneOf, writeArea, editableScene };
 
 	const button = document.getElementById('btnMissions');
 	if (button) {

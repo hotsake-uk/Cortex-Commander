@@ -1483,3 +1483,6 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 /* each box as wide as what it shows (a list as wide as its pick, not its longest choice) */
 .fv-node select.ed-input, .fv-node input[type="text"].ed-input { field-sizing: content; min-width: 64px; max-width: 420px; }
 .fv-conds { max-width: 520px; }
+/* the Mission Editor's map or graph in a tab of its own */
+.me-map > .me-left, .me-logic > .me-right { flex: 1; min-height: 0; }
+.me-logic > .me-right { border-left: 0; }

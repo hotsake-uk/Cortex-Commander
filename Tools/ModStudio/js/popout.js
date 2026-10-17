@@ -84,6 +84,8 @@ window.MS = window.MS || {};
 				MS.ide.gameTakenElsewhere();
 			} else if (m.type === 'dragging') {
 				lastDrag = { win: m.from, tab: m.tab, at: Date.now() };
+			} else if (m.from !== winId && MS.news && typeof MS.news[m.type] === 'function') {
+				MS.news[m.type](m); // a kind of news another part of Studio listens for (MS.news[type] = fn, set when it loads)
 			}
 		};
 	} catch (e) {

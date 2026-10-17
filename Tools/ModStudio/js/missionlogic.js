@@ -59,6 +59,7 @@ window.MS = window.MS || {};
 			doc = { undo: [], redo: [], text: null, path, cls, state: {}, saving: 0 };
 			docs.set(key, doc);
 		}
+		doc.key = key;
 		doc.path = path;
 		doc.cls = cls;
 		if (text !== doc.text || !doc.g) {
@@ -143,7 +144,47 @@ window.MS = window.MS || {};
 			doc.ctx.changed();
 		}
 		save(doc);
+		share(doc);
 	}
+
+	// The graph shown in other windows too (its map or graph can be in a window of its own): each change goes to them as it is made.
+	function share(doc) {
+		if (MS.popout && MS.popout.announce && doc.key) {
+			MS.popout.announce('mission-graph', { key: doc.key, g: doc.g, stageSel: doc.stageSel ? { id: doc.stageSel.id, code: doc.stageSel.code, seen: doc.stageSel.seen } : null });
+		}
+	}
+	// Another window's change: the graph as it is there (it saves the script; here the script's text is brought up to date to match).
+	function shared(m) {
+		const doc = docs.get(m.key);
+		if (!doc || !m.g) {
+			return;
+		}
+		doc.g = m.g;
+		doc.stageSel = m.stageSel || null;
+		const text = scriptText(doc.path);
+		if (text !== null) {
+			doc.text = F().apply(text, doc.cls, doc.g, doc.path);
+			MS.ide.lua.updateScript(doc.path, doc.text);
+		}
+		if (doc.view) {
+			doc.view.only = focusIds(doc);
+			doc.view.render();
+		}
+		if (doc.refreshBar) {
+			doc.refreshBar();
+		}
+		if (doc.refreshStages) {
+			doc.refreshStages();
+		}
+		if (doc.ctx && doc.ctx.changed) {
+			doc.ctx.changed();
+		}
+		if (MS.missionEditor && MS.missionEditor.redrawMaps) {
+			MS.missionEditor.redrawMaps(m.key);
+		}
+	}
+	MS.news = MS.news || {}; // what other windows tell this one (popout.js hands each kind of message to its listener here)
+	MS.news['mission-graph'] = shared;
 
 	function undo(doc) {
 		if (!doc.undo.length) {
@@ -927,6 +968,7 @@ window.MS = window.MS || {};
 			if (ctx.stageChanged) {
 				ctx.stageChanged();
 			}
+			share(doc);
 			draw();
 		};
 		const draw = () => {
