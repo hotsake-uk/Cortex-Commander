@@ -76,6 +76,40 @@ pub fn start(game_dir: PathBuf, watch: bool, port: u16) -> Result<String, String
 	Ok(format!("http://localhost:{port}/?token={token}"))
 }
 
+// The page's preferences (its theme, settings, what it last showed). The page gets a new address each time Studio starts, and the browser
+// keeps what a page saves per address, so they are kept here too: GET gives them, PUT replaces them (a JSON object of strings). A test copy
+// started with --no-bridge reads them but never writes them, so it can't change the real Studio's.
+fn prefs_path() -> Option<PathBuf> {
+	crate::launcher::config_dir().map(|d| d.join("prefs.json"))
+}
+
+fn prefs_api(studio: &Studio, request: &mut Request) -> Response<std::io::Cursor<Vec<u8>>> {
+	let Some(path) = prefs_path() else {
+		return text(500, "No folder for Studio's settings.");
+	};
+	if request.method() == &tiny_http::Method::Put {
+		if !studio.watch {
+			return bytes(br#"{"saved":false}"#.to_vec(), "application/json");
+		}
+		let mut raw = String::new();
+		let _ = request.as_reader().take(4 * 1024 * 1024).read_to_string(&mut raw);
+		let Ok(serde_json::Value::Object(map)) = serde_json::from_str::<serde_json::Value>(&raw) else {
+			return text(400, "Preferences are a JSON object.");
+		};
+		if let Some(dir) = path.parent() {
+			let _ = std::fs::create_dir_all(dir);
+		}
+		// written beside and renamed over, so a crash never leaves half a file
+		let temp = path.with_extension("json.tmp");
+		let body = serde_json::to_string_pretty(&serde_json::Value::Object(map)).unwrap_or_else(|_| "{}".into());
+		return match std::fs::write(&temp, body).and_then(|_| std::fs::rename(&temp, &path)) {
+			Ok(()) => bytes(br#"{"saved":true}"#.to_vec(), "application/json"),
+			Err(e) => text(500, format!("Couldn't save the preferences: {e}")),
+		};
+	}
+	bytes(std::fs::read(&path).unwrap_or_else(|_| b"{}".to_vec()), "application/json")
+}
+
 fn new_token() -> String {
 	let mut bytes = [0u8; 16];
 	getrandom::getrandom(&mut bytes).expect("no random numbers from the system");
@@ -354,6 +388,9 @@ fn api(studio: &Studio, request: &mut Request, action: &str, query: &str) -> Res
 	}
 	if let Some(what) = action.strip_prefix("launcher/") {
 		return launcher_api(studio, request, what, query);
+	}
+	if action == "prefs" {
+		return prefs_api(studio, request);
 	}
 	let root = &studio.game_dir();
 	let relative = query_value(query, "path").unwrap_or_default();
