@@ -1498,3 +1498,11 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .ml-grip:hover, .ml-grip:active { background: var(--accent, #f2b63d); opacity: .5; }
 .ml-side.closed + .ml-grip { pointer-events: none; }
 .ml-side.closed { width: 26px !important; }
+/* the map's layers: eye (show or hide), S (solo), name, how many */
+.me-layer { display: flex; align-items: center; gap: 4px; padding: 2px 4px; border-radius: 4px; font-size: 12px; }
+.me-layer.off .me-layername { color: var(--faint); }
+.me-layername { flex: 1; }
+.me-layer small { color: var(--faint); font-size: 10.5px; }
+.me-eye, .me-solo { width: 20px; height: 18px; padding: 0; border: 1px solid var(--line); border-radius: 3px; background: var(--panel2); color: var(--dim); font-size: 10px; font-weight: 700; cursor: pointer; line-height: 1; }
+.me-eye.hidden { color: var(--faint); }
+.me-solo.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
