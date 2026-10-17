@@ -47,6 +47,20 @@ std::chrono::steady_clock::time_point ModStudioPreview::s_LastInspect = {};
 bool ModStudioPreview::s_Inspecting = false;
 long ModStudioPreview::s_InspectSelected = 0;
 long ModStudioPreview::s_InspectFollow = 0;
+
+namespace {
+	/// One hit on a unit by another side, for the Inspector's combat log.
+	struct HitRecord {
+		long Seq = 0;
+		long Victim = 0;
+		long Shooter = 0; //!< The unit that fired or swung it, 0 when that can't be told.
+		int ShooterTeam = -1;
+		std::string Weapon; //!< The gun or blade, when it can be told.
+		std::string Projectile; //!< What hit: the shot's preset.
+	};
+	std::deque<HitRecord> s_Hits;
+	long s_HitSeq = 0;
+} // namespace
 bool ModStudioPreview::s_InspectPaused = false;
 long ModStudioPreview::s_InspectSteps = -1;
 ModStudioPreview::Request ModStudioPreview::s_LastRequest = {};
@@ -544,6 +558,10 @@ void ModStudioPreview::UpdateFrame() {
 		world << "Actor = " << actor->GetUniqueID() << '\t' << Clean(actor->GetPresetName()) << '\t' << actor->GetClassName() << '\t' << actor->GetTeam() << '\t'
 		      << actor->GetPos().GetX() << '\t' << actor->GetPos().GetY() << '\t' << actor->GetHealth() << '\t' << actor->GetMaxHealth() << '\t' << StatusName(actor->GetStatus()) << '\n';
 	}
+	// Who hit whom, newest last: "Hit = seq, victim, shooter (0 if unknown), shooter's team, weapon, what hit". Studio keeps the ones it has not seen.
+	for (const HitRecord& hit: s_Hits) {
+		world << "Hit = " << hit.Seq << '\t' << hit.Victim << '\t' << hit.Shooter << '\t' << hit.ShooterTeam << '\t' << Clean(hit.Weapon) << '\t' << Clean(hit.Projectile) << '\n';
+	}
 	// What each unit's AI is doing (the scripts write it into their values while Studio's Inspector is open, see Actor::s_StudioWantsAIState):
 	// id, behaviour, target id (0 for none), 1 if the target is in sight, why it took cover, its squad leader's id (0 for none).
 	for (const Actor* mind: g_MovableMan.GetActorList()) {
@@ -614,6 +632,37 @@ void ModStudioPreview::UpdateFrame() {
 		if (part) {
 			world << "Part = " << Clean(part->GetPresetName()) << '\t' << part->GetClassName() << '\t' << part->GetWoundCount() << '\t' << part->GetGibWoundLimit() << '\n';
 		}
+	}
+}
+
+void ModStudioPreview::RecordHit(const Actor* victim, const MovableObject* hitor) {
+	if (!victim || !hitor) {
+		return;
+	}
+	HitRecord hit;
+	hit.Seq = ++s_HitSeq;
+	hit.Victim = victim->GetUniqueID();
+	const MovableObject* root = hitor->GetRootParent();
+	hit.ShooterTeam = root ? root->GetTeam() : -1;
+	hit.Projectile = hitor->GetPresetName();
+	// A shot knows the gun it left (it is told not to hit it), and the gun knows who holds it.
+	const MovableObject* source = hitor->GetWhichMOToNotHit();
+	if (source && g_MovableMan.ValidMO(source)) {
+		hit.Weapon = source->GetPresetName();
+		if (const Actor* shooter = dynamic_cast<const Actor*>(source->GetRootParent())) {
+			hit.Shooter = shooter->GetUniqueID();
+			hit.ShooterTeam = shooter->GetTeam();
+		}
+	} else if (const Actor* shooter = dynamic_cast<const Actor*>(root)) {
+		hit.Shooter = shooter->GetUniqueID();
+		const Actor* holder = shooter;
+		if (const AHuman* human = dynamic_cast<const AHuman*>(holder)) {
+			hit.Weapon = human->GetEquippedItem() ? human->GetEquippedItem()->GetPresetName() : "fists";
+		}
+	}
+	s_Hits.push_back(hit);
+	while (s_Hits.size() > 96) {
+		s_Hits.pop_front();
 	}
 }
 

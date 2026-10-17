@@ -47,12 +47,20 @@ window.MS = window.MS || {};
 		hist: new Map(), // id -> { runs: [{t, b}] what the unit's AI did, newest last; totals: Map behaviour -> ms; target }
 		damage: [], // {t, team, amount}: health lost, for the battle summary
 		lastTrack: 0,
+		view: 'actors', // actors | combat | charts
+		hitSeq: 0, // the newest hit already logged
+		hits: [], // {time, shooterId, shooterName, victimName, team, weapon, dmg}, newest first
+		bySource: new Map(), // weapon -> {hits, damage}
+		byShooter: new Map(), // shooter name -> {hits, damage, id, team}
+		series: [], // {t, teams: Map team -> {health, units, dmg}} once a second
+		lastSample: 0,
+		sampleDamage: new Map(), // team -> damage since the last sample
 	};
 	const AUTO_KEY = 'ms.inspectorAuto'; // open the Inspector when Test in game or Sandbox starts from Studio
 	const PENDING_KEY = 'ms.inspectorPending'; // set by a launch, taken by the page that loads after it
 
 	function parse(text) {
-		const w = { actors: [], mind: new Map(), state: [], values: [], inventory: [], parts: [], scripts: [], selected: 0, controlled: 0, following: 0, camera: null, paused: false };
+		const w = { actors: [], hits: [], mind: new Map(), state: [], values: [], inventory: [], parts: [], scripts: [], selected: 0, controlled: 0, following: 0, camera: null, paused: false };
 		for (const line of text.split(/\r?\n/)) {
 			const at = line.indexOf(' = ');
 			if (at < 0 || line.startsWith('//')) {
@@ -63,6 +71,8 @@ window.MS = window.MS || {};
 			const f = v.split('\t');
 			if (key === 'Actor') {
 				w.actors.push({ id: Number(f[0]), preset: f[1], cls: f[2], team: Number(f[3]), x: Number(f[4]), y: Number(f[5]), health: Number(f[6]), max: Number(f[7]), status: f[8] });
+			} else if (key === 'Hit') {
+				w.hits.push({ seq: Number(f[0]), victim: Number(f[1]), shooter: Number(f[2]), team: Number(f[3]), weapon: f[4] || '', projectile: f[5] || '' });
 			} else if (key === 'Mind') {
 				w.mind.set(Number(f[0]), { behavior: f[1], target: Number(f[2]), seen: f[3] === '1', why: f[4] || '', leader: Number(f[5]) || 0 });
 			} else if (key === 'State') {
@@ -124,6 +134,7 @@ window.MS = window.MS || {};
 					trackDamage(I.world);
 					noteChanges(I.world);
 					trackMinds(I.world);
+					sampleSeries(I.world);
 					render();
 				}
 			}
@@ -193,24 +204,92 @@ window.MS = window.MS || {};
 		I.events.length = Math.min(I.events.length, 60);
 	}
 
-	// Health lost since the last look (before noteChanges updates what was seen), for the battle summary and the feed.
+	// Health lost since the last look (before noteChanges updates what was seen), for the battle summary, the combat log and the charts.
+	// Each unit's loss is shared among the hits on it since the last look; a loss with no hit (a fall, an explosion's blast) is "other".
 	function trackDamage(w) {
 		const now = Date.now();
-		if (!I.lastLive || now - I.lastLive > 5000) {
+		const fresh = I.lastLive && now - I.lastLive <= 5000;
+		const newHits = w.hits.filter((h) => h.seq > I.hitSeq);
+		if (w.hits.length) {
+			I.hitSeq = Math.max(I.hitSeq, ...w.hits.map((h) => h.seq));
+		}
+		if (!fresh) {
 			I.damage = [];
 			return;
 		}
+		const nameOf = (id) => {
+			const a = w.actors.find((x) => x.id === id) || (I.seen.get(id));
+			return a ? a.preset : '';
+		};
+		const note = (victim, shooter, shooterTeam, weapon, amount) => {
+			const key = weapon || 'other (falls, blasts, fire)';
+			const src = I.bySource.get(key) || { hits: 0, damage: 0 };
+			src.hits++;
+			src.damage += amount;
+			I.bySource.set(key, src);
+			const who = shooter ? nameOf(shooter) + ' #' + shooter : (shooterTeam >= 0 ? teamName(shooterTeam) : 'unknown');
+			const sh = I.byShooter.get(who) || { hits: 0, damage: 0, id: shooter, team: shooterTeam };
+			sh.hits++;
+			sh.damage += amount;
+			I.byShooter.set(who, sh);
+			I.hits.unshift({ time: clockNow(), shooter, shooterName: who, victimName: victim.preset + ' #' + victim.id, team: shooterTeam, weapon: key, dmg: amount });
+			I.hits.length = Math.min(I.hits.length, 80);
+		};
 		for (const a of w.actors) {
 			const before = I.seen.get(a.id);
-			if (before && before.health - a.health >= 1 && a.health > 0) {
-				const lost = before.health - a.health;
+			if (!before) {
+				continue;
+			}
+			const lost = before.health - a.health;
+			const mine = newHits.filter((h) => h.victim === a.id);
+			if (lost >= 1 && a.health > 0) {
 				I.damage.push({ t: now, team: a.team, amount: lost });
+				I.sampleDamage.set(a.team, (I.sampleDamage.get(a.team) || 0) + lost);
+				if (mine.length) {
+					for (const h of mine) {
+						note(a, h.shooter, h.team, h.weapon || cleanShot(h.projectile), lost / mine.length);
+					}
+				} else {
+					note(a, 0, -1, '', lost);
+				}
 				if (lost >= 5 || (a.id === I.selected && lost >= 2)) {
-					logEvent('Hurt: ' + a.preset + ' (' + teamName(a.team) + ') lost ' + Math.round(lost) + ', ' + Math.round(a.health) + ' left', 'hurt');
+					const by = mine.length ? ' by ' + (mine[0].weapon || cleanShot(mine[0].projectile)) : '';
+					logEvent('Hurt: ' + a.preset + ' (' + teamName(a.team) + ') lost ' + Math.round(lost) + by + ', ' + Math.round(a.health) + ' left', 'hurt');
 				}
 			}
 		}
 		I.damage = I.damage.filter((d) => now - d.t < DAMAGE_MS);
+	}
+
+	// A shot's preset reads "Particle SMG" or "Particle SMG Tracer": the gun is what is left.
+	const cleanShot = (name) => name.replace(/^Particle /, '').replace(/ Tracer$/, '') || name;
+
+	// Once a second: each team's health, units and damage, for the charts.
+	function sampleSeries(w) {
+		const now = Date.now();
+		if (now - I.lastSample < 1000) {
+			return;
+		}
+		const dt = I.lastSample ? (now - I.lastSample) / 1000 : 1;
+		I.lastSample = now;
+		const teams = new Map();
+		for (const a of w.actors) {
+			const t = teams.get(a.team) || { health: 0, max: 0, units: 0, dmg: 0 };
+			t.health += Math.max(0, a.health);
+			t.max += a.max;
+			t.units++;
+			teams.set(a.team, t);
+		}
+		for (const [team, amount] of I.sampleDamage) {
+			if (teams.has(team)) {
+				teams.get(team).dmg = amount / dt;
+			}
+		}
+		I.sampleDamage.clear();
+		I.series.push({ t: now, teams });
+		if (I.series.length > 600) {
+			I.series.shift();
+		}
 	}
 
 	// What each AI unit is doing, as a history: when its behaviour changed, how long it has spent in each, and who it has been after.
@@ -297,6 +376,103 @@ window.MS = window.MS || {};
 				el('span', { textContent: r.max ? Math.round((100 * r.health) / r.max) + '% health' : '' }), el('span', { className: r.lost > 0 ? 'insp-lost' : '', title: 'Health lost in the last 30 seconds', textContent: r.lost > 0 ? '−' + Math.round(r.lost) + ' in 30 s' : 'no damage' })),
 			r.modes.size ? el('div', { className: 'insp-modes' }, ...[...r.modes].sort((x, y) => y[1] - x[1]).map(([b, n]) => el('span', { className: 'insp-mode', style: 'border-color:' + behaviorColor(b), title: n + ' unit' + (n === 1 ? '' : 's') + ' doing ' + b, textContent: n + ' ' + b }))) : null)));
 		V.overview.hidden = rows.length === 0;
+	}
+
+	const TEAM_COLORS = ['#4fa3ff', '#ff6b5f', '#5fd07a', '#e5c24a', '#b283ff'];
+	const teamColor = (t) => (t >= 0 ? TEAM_COLORS[t % TEAM_COLORS.length] : '#888');
+
+	// Who hit whom: damage by weapon, by shooter, and the latest hits.
+	function updateCombat(w) {
+		const key = JSON.stringify([I.hits.length && I.hits[0], I.bySource.size, I.byShooter.size, [...I.bySource.values()].map((x) => Math.round(x.damage))]);
+		if (key === V.combatKey) {
+			return;
+		}
+		V.combatKey = key;
+		const bar = (value, max) => el('span', { className: 'insp-bar' }, el('i', { style: 'width:' + Math.round((100 * value) / (max || 1)) + '%' }));
+		const table = (title, map, withLink) => {
+			const rows = [...map].sort((x, y) => y[1].damage - x[1].damage).slice(0, 12);
+			const max = rows.length ? rows[0][1].damage : 1;
+			return el('div', {}, el('div', { className: 'prof-list-head', textContent: title }),
+				rows.length ? el('table', { className: 'watch-table' }, el('tr', {}, el('th', { textContent: 'Who' }), el('th', { textContent: 'Hits' }), el('th', { textContent: 'Damage' }), el('th')),
+					...rows.map(([name, r]) => el('tr', {}, el('td', {}, withLink && r.id ? el('button', { className: 'insp-link', textContent: name, onclick: () => { I.view = 'actors'; select(r.id); } }) : name), el('td', { textContent: r.hits }), el('td', { textContent: Math.round(r.damage) }), el('td', {}, bar(r.damage, max)))))
+					: el('p', { className: 'pempty', textContent: 'Nothing yet. Damage shows here as units get hurt.' }));
+		};
+		V.combat.replaceChildren(
+			el('div', { className: 'insp-pane-head' }, el('b', { textContent: 'Combat' }), el('span', { className: 'spacer' }), el('button', { className: 'ico-btn', textContent: 'Clear', onclick: () => { I.bySource.clear(); I.byShooter.clear(); I.hits = []; V.combatKey = ''; render(); } })),
+			table('Damage by weapon', I.bySource, false),
+			table('Damage by shooter', I.byShooter, true),
+			el('div', {}, el('div', { className: 'prof-list-head', textContent: 'Latest hits' }),
+				...I.hits.slice(0, 30).map((h) => el('div', { className: 'insp-event hurt' }, el('small', { textContent: h.time }), h.shooterName + ' → ' + h.victimName + ' · ' + h.weapon + ' · ' + Math.round(h.dmg)))));
+	}
+
+	// Health, damage and units over time, one line a team.
+	function drawChart(cv, title, pick, unit, fixedMax) {
+		const width = cv.clientWidth || 400;
+		if (cv.width !== width) {
+			cv.width = width;
+		}
+		const h = cv.height;
+		const ctx = cv.getContext('2d');
+		ctx.clearRect(0, 0, width, h);
+		const series = I.series;
+		const teams = new Set();
+		series.forEach((p) => p.teams.forEach((_, t) => teams.add(t)));
+		let max = fixedMax || 1;
+		if (!fixedMax) {
+			series.forEach((p) => p.teams.forEach((t) => { max = Math.max(max, pick(t)); }));
+		}
+		ctx.strokeStyle = 'rgba(255,255,255,.08)';
+		ctx.fillStyle = '#8b93a1';
+		ctx.font = '10px sans-serif';
+		for (let i = 0; i <= 2; i++) {
+			const y = 4 + ((h - 18) * i) / 2;
+			ctx.beginPath();
+			ctx.moveTo(26, y);
+			ctx.lineTo(width, y);
+			ctx.stroke();
+			ctx.fillText(String(Math.round(max * (1 - i / 2))), 0, y + 3);
+		}
+		if (series.length < 2) {
+			return;
+		}
+		const t0 = series[0].t;
+		const span = Math.max(10000, series[series.length - 1].t - t0);
+		for (const team of teams) {
+			ctx.strokeStyle = teamColor(team);
+			ctx.lineWidth = 1.5;
+			ctx.beginPath();
+			let started = false;
+			for (const p of series) {
+				const t = p.teams.get(team);
+				const x = 26 + ((p.t - t0) / span) * (width - 30);
+				const y = 4 + (h - 18) * (1 - (t ? pick(t) : 0) / max);
+				if (started) {
+					ctx.lineTo(x, y);
+				} else {
+					ctx.moveTo(x, y);
+					started = true;
+				}
+			}
+			ctx.stroke();
+		}
+		ctx.fillStyle = '#8b93a1';
+		ctx.fillText(Math.round(span / 1000) + ' s of this watch  ·  ' + unit, 26, h - 3);
+	}
+
+	function updateCharts() {
+		if (!V.chartList) {
+			V.chartList = [
+				['Team health', (t) => (t.max ? (100 * t.health) / t.max : 0), '% of full', 100],
+				['Damage per second', (t) => t.dmg, 'health lost a second', 0],
+				['Units', (t) => t.units, 'units', 0],
+			].map(([title, pick, unit, fixed]) => ({ title, pick, unit, fixed, cv: el('canvas', { className: 'insp-chart', height: 110 }) }));
+			V.charts.replaceChildren(el('div', { className: 'insp-pane-head' }, el('b', { textContent: 'Charts' }), el('span', { className: 'insp-legend' }), el('span', { className: 'spacer' }), el('button', { className: 'ico-btn', textContent: 'Clear', onclick: () => { I.series = []; I.sampleDamage.clear(); updateCharts(); } })),
+				...V.chartList.map((c) => el('div', {}, el('div', { className: 'prof-list-head', textContent: c.title }), c.cv)));
+		}
+		const teams = new Set();
+		I.series.forEach((p) => p.teams.forEach((_, t) => teams.add(t)));
+		V.charts.querySelector('.insp-legend').replaceChildren(...[...teams].sort().map((t) => el('span', { className: 'insp-mode', style: 'border-color:' + teamColor(t), textContent: teamName(t) })));
+		V.chartList.forEach((c) => drawChart(c.cv, c.title, c.pick, c.unit, c.fixed));
 	}
 
 	// The selected unit's mind: what it is doing, after whom, why it took cover, its orders and route; and a strip of what it has done lately.
@@ -457,14 +633,18 @@ window.MS = window.MS || {};
 			render();
 		};
 		V.camera = el('button', { className: 'ico-btn on', hidden: true, title: 'The game\'s camera is following this unit. Click to let go.', onclick: () => stopCamera() });
-		V.head = el('div', { className: 'prof-head' }, V.state, V.hint, el('span', { className: 'spacer' }), V.camera, auto, V.follow, V.pause, V.step, V.filter);
+		V.tabs = ['actors', 'combat', 'charts'].map((id) => el('button', { className: 'ico-btn', textContent: { actors: 'Actors', combat: 'Combat', charts: 'Charts' }[id], title: { actors: 'Pick an actor and see its values and mind', combat: 'Who hit whom, with what: damage by weapon and by shooter', charts: 'Health, damage and units over time, by team' }[id], onclick: () => { I.view = id; render(); } }));
+		V.head = el('div', { className: 'prof-head' }, V.state, el('span', { className: 'insp-tabs' }, ...V.tabs), V.hint, el('span', { className: 'spacer' }), V.camera, auto, V.follow, V.pause, V.step, V.filter);
 		V.overview = el('div', { className: 'insp-overview', hidden: true });
 		V.overviewKey = '';
 		V.list = el('div', { className: 'insp-list' });
 		V.feed = el('div', { className: 'insp-feed' });
 		V.note = el('p', { className: 'pempty' });
 		V.detail = el('div', { className: 'insp-detail' }, V.note);
-		V.cols = el('div', { className: 'insp-cols', hidden: true }, el('div', { className: 'insp-left' }, V.overview, V.list, el('div', { className: 'prof-list-head', textContent: 'What happened' }), V.feed), V.detail);
+		V.combat = el('div', { className: 'insp-pane', hidden: true });
+		V.charts = el('div', { className: 'insp-pane', hidden: true });
+		V.combatKey = '';
+		V.cols = el('div', { className: 'insp-cols', hidden: true }, el('div', { className: 'insp-left' }, V.overview, V.list, el('div', { className: 'prof-list-head', textContent: 'What happened' }), V.feed), V.detail, V.combat, V.charts);
 		body.replaceChildren(V.head, V.cols);
 	}
 
@@ -491,10 +671,20 @@ window.MS = window.MS || {};
 		if (!showing) {
 			return;
 		}
+		V.tabs.forEach((b, i) => b.classList.toggle('on', ['actors', 'combat', 'charts'][i] === I.view));
+		V.detail.hidden = I.view !== 'actors';
+		V.combat.hidden = I.view !== 'combat';
+		V.charts.hidden = I.view !== 'charts';
 		updateOverview(w);
 		updateList(w);
 		updateFeed();
-		updateDetail(w);
+		if (I.view === 'combat') {
+			updateCombat(w);
+		} else if (I.view === 'charts') {
+			updateCharts();
+		} else {
+			updateDetail(w);
+		}
 	}
 
 	const freshActor = (id) => I.arrived.has(id) && Date.now() - I.arrived.get(id) < 8000;
