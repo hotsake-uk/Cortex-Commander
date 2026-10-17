@@ -134,6 +134,52 @@ window.MS = window.MS || {};
 
 	// ---- the map ----
 
+	// A preset's picture for the map ("Name|Module"): a terrain object's foreground (or background), placed as the game places it (its
+	// BitmapOffset, or centred when it is over 24 pixels), or a particle's first frame (its SpriteOffset, or centred). Read once; onLoad is
+	// called when it comes in. Returns { img, offset } or null while it is being read (or if there is none).
+	const pictures = new Map();
+	function pictureOf(ref, kind, onLoad) {
+		const k = kind + '|' + ref;
+		if (pictures.has(k)) {
+			const known = pictures.get(k);
+			if (!known.img && known.waiting) {
+				known.waiting.add(onLoad);
+			}
+			return known.img ? known : null;
+		}
+		const entry = { img: null, offset: { x: 0, y: 0 }, waiting: new Set([onLoad]) };
+		pictures.set(k, entry);
+		const a = app();
+		const [name, module] = String(ref).split('|');
+		const preset = a.lib && a.lib.find(name, kind === 'sprite' ? null : 'TerrainObject', module || null);
+		if (!preset) {
+			entry.waiting = null;
+			return null;
+		}
+		const r = a.lib.resolve(preset.node);
+		const file = kind === 'sprite' ? r.file('SpriteFile') : r.file('FGColorFile') || r.file('BGColorFile');
+		if (!file) {
+			entry.waiting = null;
+			return null;
+		}
+		const path = kind === 'sprite' ? MS.Images.framePaths(file, Math.max(1, Math.round(r.num('FrameCount', 1))))[0] : file;
+		a.images.get(path).then((img) => {
+			if (img) {
+				const given = r.last(kind === 'sprite' ? 'SpriteOffset' : 'BitmapOffset');
+				entry.offset = given ? r.vec(kind === 'sprite' ? 'SpriteOffset' : 'BitmapOffset') : kind === 'sprite'
+					? { x: -img.width / 2, y: -img.height / 2 }
+					: { x: img.width > 24 ? -Math.floor(img.width / 2) : 0, y: img.height > 24 ? -Math.floor(img.height / 2) : 0 };
+				entry.img = img;
+			}
+			const waiting = entry.waiting;
+			entry.waiting = null;
+			(waiting || []).forEach((fn) => fn && fn());
+		}, () => {
+			entry.waiting = null;
+		});
+		return null;
+	}
+
 	class MapView {
 		constructor(state, hooks) {
 			this.state = state; // kept on the tab: zoom, pan, picked area and box, tool
@@ -244,10 +290,23 @@ window.MS = window.MS || {};
 				ctx.imageSmoothingEnabled = this.zoom < 1;
 				ctx.drawImage(frame.canvas, o.x, o.y, w.w * this.zoom, w.h * this.zoom);
 			}
+			// what the mission puts on the map (objects placed, screens, terminals), as they will look, under the areas
+			ctx.font = '12px system-ui, sans-serif';
+			for (const m of this.marks().filter((x) => x.img)) {
+				const a = this.toScreen(m.x, m.y);
+				ctx.globalAlpha = m.picked ? 1 : 0.85;
+				ctx.imageSmoothingEnabled = this.zoom < 1;
+				ctx.drawImage(m.img.canvas, a.x, a.y, m.img.width * this.zoom, m.img.height * this.zoom);
+				ctx.globalAlpha = 1;
+				if (m.picked) {
+					ctx.strokeStyle = '#fff';
+					ctx.lineWidth = 2;
+					ctx.strokeRect(a.x, a.y, m.img.width * this.zoom, m.img.height * this.zoom);
+				}
+			}
 			const areas = this.shown();
 			const names = areas.map((x) => x.name);
 			const lit = new Set(this.state.lit || []);
-			ctx.font = '12px system-ui, sans-serif';
 			for (const area of areas) {
 				const color = colorOf(area.name, names);
 				const picked = area.name === this.state.area;
@@ -274,6 +333,27 @@ window.MS = window.MS || {};
 					}
 				});
 			}
+			// the mission's camera lines, over everything: a dashed line down the map, with what moves it at the top of the view
+			for (const m of this.marks().filter((x) => x.kind === 'line')) {
+				const x = this.drag && this.drag.kind === 'line' && this.drag.id === m.id ? this.drag.x : m.x;
+				const sx = Math.round(this.toScreen(x, 0).x) + 0.5;
+				const top = Math.max(o.y, 0);
+				const bottom = Math.min(o.y + w.h * this.zoom, r.height);
+				ctx.strokeStyle = m.picked ? '#fff' : '#ff6b9a';
+				ctx.lineWidth = m.picked ? 2.5 : 1.5;
+				ctx.setLineDash([8, 5]);
+				ctx.beginPath();
+				ctx.moveTo(sx, top);
+				ctx.lineTo(sx, bottom);
+				ctx.stroke();
+				ctx.setLineDash([]);
+				const text = m.label + ' (x ' + Math.round(x) + ')';
+				const tw = ctx.measureText(text).width;
+				ctx.fillStyle = 'rgba(0,0,0,.7)';
+				ctx.fillRect(sx + 3, top + 4, tw + 10, 17);
+				ctx.fillStyle = '#ff6b9a';
+				ctx.fillText(text, sx + 8, top + 17);
+			}
 			const p = this.pickedBox();
 			if (p) {
 				ctx.fillStyle = '#fff';
@@ -285,6 +365,22 @@ window.MS = window.MS || {};
 				ctx.fillStyle = '#fff';
 				ctx.fillText('Adding a box to ' + this.drag.preview.name, 10, r.height - 10);
 			}
+		}
+
+		// the mission's things to draw ([] when the map's "Lines and objects" is off)
+		marks() {
+			return this.state.marks === false || !this.hooks.marks ? [] : this.hooks.marks();
+		}
+
+		// a camera line near a point on the screen, or an object's picture under it
+		markAt(sx, sy) {
+			const marks = this.marks();
+			const line = marks.find((m) => m.kind === 'line' && Math.abs(this.toScreen(m.x, 0).x - sx) < 6);
+			if (line) {
+				return line;
+			}
+			const p = this.toWorld(sx, sy);
+			return marks.slice().reverse().find((m) => m.img && p.x >= m.x && p.x <= m.x + m.img.width && p.y >= m.y && p.y <= m.y + m.img.height) || null;
 		}
 
 		bind() {
@@ -327,7 +423,17 @@ window.MS = window.MS || {};
 				c.setPointerCapture(e.pointerId);
 				const at = { x: e.offsetX, y: e.offsetY };
 				if (e.button === 1 || e.button === 2 && !this.hit(at.x, at.y) || (e.button === 0 && this.space)) {
-					this.drag = { kind: 'pan', start: at, panX: this.state.panX || 0, panY: this.state.panY || 0 };
+					this.drag = { kind: 'pan', start: at, panX: this.state.panX || 0, panY: this.state.panY || 0, button: e.button, client: { x: e.clientX, y: e.clientY } };
+					return;
+				}
+				// a camera line: dragged sideways (or picked); an object, screen or terminal: its node picked
+				const mark = e.button === 0 ? this.markAt(at.x, at.y) : null;
+				if (mark && mark.kind === 'line') {
+					this.drag = { kind: 'line', id: mark.id, x: mark.x, from: mark.x, startWorld: this.toWorld(at.x, at.y) };
+					return;
+				}
+				if (mark && !this.hit(at.x, at.y)) {
+					this.hooks.pickMark && this.hooks.pickMark(mark);
 					return;
 				}
 				if (e.button === 2) {
@@ -366,6 +472,13 @@ window.MS = window.MS || {};
 			c.addEventListener('pointermove', (e) => {
 				const d = this.drag;
 				if (!d) {
+					const mark = this.markAt(e.offsetX, e.offsetY);
+					if (mark) {
+						c.style.cursor = mark.kind === 'line' ? 'ew-resize' : 'pointer';
+						c.title = mark.label + (mark.kind === 'line' ? ': drag it sideways, or click for its node' : ': click for its node');
+						return;
+					}
+					c.title = '';
 					const p = this.pickedBox();
 					const over = p && this.handles(p.box).find(([, hx, hy]) => Math.abs(hx - e.offsetX) < 7 && Math.abs(hy - e.offsetY) < 7);
 					c.style.cursor = over ? ({ n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize' })[over[0]] : this.hit(e.offsetX, e.offsetY) ? 'move' : 'crosshair';
@@ -376,6 +489,10 @@ window.MS = window.MS || {};
 				if (d.kind === 'pan') {
 					this.state.panX = d.panX - (e.offsetX - d.start.x) / this.zoom;
 					this.state.panY = d.panY - (e.offsetY - d.start.y) / this.zoom;
+					d.moved = d.moved || Math.abs(e.offsetX - d.start.x) + Math.abs(e.offsetY - d.start.y) > 3;
+				} else if (d.kind === 'line') {
+					d.x = Math.max(0, Math.round(d.from + now.x - d.startWorld.x));
+					d.moved = d.moved || d.x !== d.from;
 				} else if (d.kind === 'move') {
 					const dx = snap(now.x - d.startWorld.x);
 					const dy = snap(now.y - d.startWorld.y);
@@ -412,6 +529,20 @@ window.MS = window.MS || {};
 			c.addEventListener('pointerup', () => {
 				const d = this.drag;
 				this.drag = null;
+				// a right-click on the map itself (not dragged): what can be made there
+				if (d && d.kind === 'pan' && d.button === 2 && !d.moved && this.hooks.emptyMenu) {
+					this.hooks.emptyMenu(this.toWorld(d.start.x, d.start.y), d.client.x, d.client.y);
+					return;
+				}
+				if (d && d.kind === 'line') {
+					if (d.moved) {
+						this.hooks.moveMark && this.hooks.moveMark(d.id, d.x);
+					} else {
+						this.hooks.pickMark && this.hooks.pickMark({ id: d.id, kind: 'line' });
+					}
+					this.draw();
+					return;
+				}
 				if (!d || d.kind === 'pan' || !d.moved || !d.preview) {
 					this.draw();
 					return;
@@ -627,7 +758,108 @@ window.MS = window.MS || {};
 					return used && roles.get(r.name).has(f);
 				});
 			};
+			// the mission's things on the map, where the game will put them: objects at their area (snapped to the game's 12 pixel grid, centred as the
+			// game centres a terrain object), screens in the middle of each box of their area, a capture point's terminal on its middle (the Left or
+			// Right one, as the game picks), and camera lines
+			// one redraw for every picture that comes in about now (the same function each time, so a picture waits on it once)
+			const redrawSoon = s.redrawSoon || (s.redrawSoon = () => {
+				if (!s.redrawQueued) {
+					s.redrawQueued = true;
+					setTimeout(() => {
+						s.redrawQueued = false;
+						if (s.view) {
+							s.view.draw();
+						}
+					}, 40);
+				}
+			});
+			const marks = () => {
+				const scenarioNow = scenarioByKey(key);
+				const list = MS.missionLogic && MS.missionLogic.mapMarks ? MS.missionLogic.mapMarks(scenarioNow) : [];
+				const all = areas();
+				const areaOf = (name) => all.find((x) => x.name === name);
+				const snap = (v) => Math.floor(v / 12 + 0.5) * 12;
+				const picked = s.map.markId;
+				const out = [];
+				for (const m of list) {
+					const here = Object.assign({}, m, { picked: m.id === picked });
+					if (m.kind === 'line') {
+						out.push(here);
+						continue;
+					}
+					const zone = areaOf(m.area);
+					if (!zone || !zone.boxes.length) {
+						continue;
+					}
+					const centre = (b) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
+					let ref = m.ref;
+					if (m.kind === 'terminal') {
+						const around = areaOf(m.region) || zone;
+						const mid = (z) => {
+							const xs = z.boxes.map((b) => [b.x, b.x + b.w]).flat();
+							return (Math.min(...xs) + Math.max(...xs)) / 2;
+						};
+						ref = ref.replace('{side}', mid(zone) >= mid(around) ? 'Left' : 'Right');
+					}
+					const pic = pictureOf(ref, m.kind === 'screen' ? 'sprite' : 'terrain', redrawSoon);
+					if (!pic || !pic.img) {
+						continue;
+					}
+					const spots = m.kind === 'screen' ? zone.boxes.map(centre)
+						: m.kind === 'terminal' ? [centre(zone.boxes[0])].map((c) => ({ x: snap(c.x), y: snap(c.y) }))
+						: (m.at === 'every' ? zone.boxes : zone.boxes.slice(0, 1)).map((b) => (m.at === 'centre' ? centre(b) : { x: b.x, y: b.y })).map((c) => ({ x: snap(c.x), y: snap(c.y) }));
+					for (const at of spots) {
+						out.push(Object.assign({}, here, { img: pic.img, x: at.x + pic.offset.x, y: at.y + pic.offset.y }));
+					}
+				}
+				return out;
+			};
+			const pickMark = (m) => {
+				s.map.markId = m.id;
+				MS.missionLogic.focusNode(scenarioByKey(key), m.id);
+				tell('mission-node', { key, id: m.id });
+				view.draw();
+			};
+			const moveMark = (id, x) => MS.missionLogic.setFromMap(scenarioByKey(key), id, 'x', x, 'move the camera line');
+			// a right-click on the map: a camera line there, or an object placed there (in a small area of its own)
+			const emptyMenu = (at, cx, cy) => {
+				const scenarioNow = scenarioByKey(key);
+				const x = Math.round(at.x);
+				const items = [
+					['Camera line here (x ' + x + ')', () => MS.missionLogic.addFromMap(scenarioNow, 'cameraLimit', { x }, 'add a camera line')],
+					['Place an object here…', async () => {
+						const target = await editableScene(scenarioNow);
+						if (!target) {
+							return;
+						}
+						const taken = new Set(areas().map((r) => r.name));
+						let k = 1;
+						while (taken.has('Object ' + k)) {
+							k++;
+						}
+						const name = 'Object ' + k;
+						writeArea(target, name, [{ x: Math.round(at.x), y: Math.round(at.y), w: 24, h: 24 }]);
+						MS.missionLogic.addFromMap(scenarioNow, 'placeObject', { object: '', area: name, at: 'corner' }, 'place an object');
+						a.toast('Pick the object in the new node, and wire it in where it should appear.', 'ok');
+					}],
+				];
+				const box = el('div', { className: 'ed-menu' }, ...items.map(([label, run]) => el('button', { className: 'ed-menu-item', onclick: () => {
+					box.remove();
+					run();
+				} }, el('b', { textContent: label }))));
+				box.style.left = cx + 'px';
+				box.style.top = cy + 'px';
+				document.body.append(box);
+				const close = (ev) => {
+					if (!box.contains(ev.target)) {
+						box.remove();
+						document.removeEventListener('pointerdown', close, true);
+					}
+				};
+				setTimeout(() => document.addEventListener('pointerdown', close, true), 0);
+			};
 			const hooks = {
+				marks, pickMark, moveMark, emptyMenu,
 				areas: shown, terrain: () => terrain(), usage, freshName, menu,
 				change: (name, boxes) => change(name, boxes),
 				picked: (name) => {
@@ -710,7 +942,13 @@ window.MS = window.MS || {};
 					drawList();
 				};
 				const focus = MS.missionLogic ? MS.missionLogic.stageFocus(scenarioByKey(key)) : null;
+				const showMarks = el('input', { type: 'checkbox', checked: s.map.marks !== false });
+				showMarks.onchange = () => {
+					s.map.marks = showMarks.checked;
+					view.draw();
+				};
 				list.replaceChildren(el('div', { className: 'me-listhead' }, el('span', { textContent: 'Areas (' + (all.length === every.length ? every.length : all.length + ' of ' + every.length) + ')' }), filter,
+					el('label', { className: 'me-marks', title: 'Camera lines, objects placed, capture points\' screens and terminals' }, showMarks, 'Lines and objects'),
 					focus ? el('div', { className: 'me-stagefocus' }, el('span', { textContent: 'Only ' + focus.name, title: 'A stage is picked beside the graph: only its areas are shown' }),
 						el('button', { className: 'tb', textContent: 'Show all', onclick: () => MS.missionLogic.clearStage(scenarioByKey(key)) })) : null));
 				if (!all.length) {
@@ -759,7 +997,7 @@ window.MS = window.MS || {};
 				drawList();
 			};
 			Object.assign(view.hooks, { picked: hooks.picked });
-			const mapPane = el('div', { className: 'me-left' }, side, el('div', { className: 'me-mapwrap' }, list, view.root));
+			const mapPane = el('div', { className: 'me-left' }, side, el('div', { className: 'me-mapwrap' }, list, MS.missionLogic.sideGrip(list, s.map, 'listWidth', () => view.draw()), view.root));
 			// this tab's map, for the graph (here, in another tab or in another window) to redraw
 			if (part !== 'logic') {
 				if (!maps.has(key)) {

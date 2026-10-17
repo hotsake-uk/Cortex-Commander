@@ -463,7 +463,7 @@ window.MS = window.MS || {};
 			'Drag from a node\'s exit (the dots on its right) to wire what happens next. Or start from a ready-made mission.');
 		const stages = stagesPanel(doc, scenario, ctx, path, locked);
 		host.replaceChildren(...[locked ? el('div', { className: 'ed-banner', textContent: 'This scenario belongs to ' + scenario.module + ': its mission can be looked at, not changed.' }) : null, bar,
-			el('div', { className: 'ml-body' }, stages, el('div', { className: 'ml-main' }, ...[help, view.root].filter(Boolean)))].filter(Boolean));
+			el('div', { className: 'ml-body' }, stages, sideGrip(stages, doc.state, 'stagesWidth', () => view.wires()), el('div', { className: 'ml-main' }, ...[help, view.root].filter(Boolean)))].filter(Boolean));
 		doc.hint = help;
 		view.only = focusIds(doc);
 		view.render();
@@ -1229,5 +1229,118 @@ window.MS = window.MS || {};
 		view.place();
 	}
 
-	MS.missionLogic = { AREA_ROLES, areaRoles, stageFocus, clearStage, historyStep, render, areaActions, areaPicked, renameArea, usage, docFor, areaUses, focusNode };
+	// A handle on a side panel's right edge to make it wider or narrower (the stages beside the graph, the areas beside the map): the width is
+	// kept in state[key]. moved() is told as it changes.
+	function sideGrip(panel, state, key, moved) {
+		if (state[key]) {
+			panel.style.width = state[key] + 'px';
+		}
+		const grip = el('div', { className: 'ml-grip', title: 'Drag to make it wider or narrower' });
+		grip.onpointerdown = (e) => {
+			if (panel.classList.contains('closed')) {
+				return;
+			}
+			grip.setPointerCapture(e.pointerId);
+			const start = e.clientX;
+			const from = panel.getBoundingClientRect().width;
+			grip.onpointermove = (ev) => {
+				state[key] = Math.round(Math.max(140, Math.min(640, from + ev.clientX - start)));
+				panel.style.width = state[key] + 'px';
+				if (moved) {
+					moved();
+				}
+			};
+			grip.onpointerup = () => {
+				grip.onpointermove = null;
+			};
+		};
+		return grip;
+	}
+
+	// ---- what the map shows of the mission ----
+
+	// What sets a node off, in words, for its label on the map: the stage or event at the start of its chain ("Deploy your brain starts").
+	function startOf(g, id) {
+		const seen = new Set();
+		let at = id;
+		let pin = '';
+		for (let i = 0; i < 200 && at && !seen.has(at); i++) {
+			seen.add(at);
+			// back to the nearest stage, capture point or event (not on past it to the stage before)
+			const here = F().find(g, at);
+			const kind = here && F().KINDS[here.kind];
+			if (at !== id && kind && (kind.category === 'stage' || here.kind === 'capture' || kind.entrance === false)) {
+				break;
+			}
+			const before = F().incoming(g, at).find((x) => x.pin !== 'next');
+			if (!before) {
+				break;
+			}
+			at = before.from;
+			pin = before.pin;
+		}
+		const n = F().find(g, at);
+		if (!n || at === id) {
+			return 'not wired in yet';
+		}
+		const spec = F().KINDS[n.kind];
+		const name = (n.p && n.p.name) || (spec ? spec.title : n.kind);
+		const when = { started: 'starts', done: 'done', timeout: 'runs out of time', taken: 'taken', retaken: 'taken back' }[pin];
+		return when ? name + ' ' + when : name;
+	}
+
+	// The mission's things for the map: camera lines ({ kind: 'line', id, x, label }), objects placed ({ kind: 'object', id, ref, area, at, label }),
+	// and each capture point's screens and terminals ({ kind: 'screen' | 'terminal', id, ref, area, region, label }).
+	function mapMarks(scenario) {
+		const doc = docs.get(keyOf(scenario));
+		const out = [];
+		for (const n of doc ? doc.g.nodes : []) {
+			const p = n.p || {};
+			if (n.kind === 'cameraLimit' && Number(p.x) > 0) {
+				out.push({ kind: 'line', id: n.id, x: Number(p.x), label: 'Camera line · ' + startOf(doc.g, n.id) });
+			} else if (n.kind === 'placeObject' && p.object && p.area) {
+				out.push({ kind: 'object', id: n.id, ref: p.object, area: p.area, at: p.at || 'corner', label: String(p.object).split('|')[0] + ' · ' + startOf(doc.g, n.id) });
+			} else if (n.kind === 'capture' && p.area) {
+				if (p.progressDisplay && p.progressScreen) {
+					out.push({ kind: 'screen', id: n.id, ref: p.progressScreen, area: p.progressDisplay, label: (p.name || 'Capture point') + ': progress screen' });
+				}
+				if (p.idleDisplay && p.idleScreen) {
+					out.push({ kind: 'screen', id: n.id, ref: p.idleScreen, area: p.idleDisplay, label: (p.name || 'Capture point') + ': screen while held' });
+				}
+				if (p.terminalOff) {
+					out.push({ kind: 'terminal', id: n.id, ref: p.terminalOff, area: p.area, region: p.region || '', label: (p.name || 'Capture point') + ': terminal' });
+				}
+			}
+		}
+		return out;
+	}
+
+	// A node made from the map (a camera line, an object placed): below the rest of the graph, picked and shown, to wire in where it should happen.
+	function addFromMap(scenario, kind, p, label) {
+		const doc = docs.get(keyOf(scenario)) || docFor(scenario);
+		let made = null;
+		change(doc, label, (g) => {
+			const bottom = g.nodes.reduce((y, n) => Math.max(y, (n.y || 0) + 200), 0);
+			made = F().addNode(g, kind, 0, bottom, p);
+		});
+		if (made) {
+			focusNode(scenario, made.id);
+		}
+		return made;
+	}
+
+	// One setting of a node, changed from the map (a camera line dragged).
+	function setFromMap(scenario, id, key, value, label) {
+		const doc = docs.get(keyOf(scenario));
+		if (doc) {
+			change(doc, label, (g) => {
+				const n = F().find(g, id);
+				if (n) {
+					n.p[key] = value;
+				}
+			});
+		}
+	}
+
+	MS.missionLogic = { AREA_ROLES, areaRoles, stageFocus, clearStage, historyStep, render, areaActions, areaPicked, renameArea, usage, docFor, areaUses, focusNode, mapMarks, addFromMap, setFromMap, sideGrip };
 })();
