@@ -972,8 +972,8 @@ window.MS = window.MS || {};
 			}
 		};
 		if (tab) {
-			if (canvas.parentNode !== $('g2View')) {
-				$('g2View').append(canvas);
+			if (canvas.parentNode !== $('g2Canvas')) {
+				$('g2Canvas').append(canvas);
 			}
 			canvas.hidden = false;
 			$('viewWrap').classList.remove('split');

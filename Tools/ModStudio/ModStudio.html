@@ -223,7 +223,16 @@
 		<div id="g2Grip" title="Drag to share the room between the two groups of tabs"></div>
 		<div id="tabbar2"></div>
 		<div id="g2Host">
-			<div id="g2View" hidden></div>
+			<div id="g2View" hidden>
+				<div id="g2Canvas"></div>
+				<!-- the right group's designer has its own parts and properties, as the main one has -->
+				<aside id="g2Panels" class="panel">
+					<div class="panel-head"><span>Parts</span><span class="tree-tools"><button class="ico-btn" id="g2-btnShowParts" title="Show every part again" hidden></button><button class="ico-btn" id="g2-btnFoldParts" title="Fold every part's children away, or open them all again">Fold all</button></span></div>
+					<div id="g2-tree" class="tree"></div>
+					<div class="panel-head" id="g2-inspHead">Properties</div>
+					<div id="g2-inspector" class="inspector"></div>
+				</aside>
+			</div>
 			<div id="g2Code" hidden></div>
 			<div id="g2Image" hidden></div>
 			<div id="g2Form" hidden></div>
