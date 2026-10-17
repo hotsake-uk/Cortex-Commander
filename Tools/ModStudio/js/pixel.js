@@ -48,6 +48,8 @@ window.MS = window.MS || {};
 
 	// ---- a sprite as editable palette numbers ----
 
+	const MAX_SIDE = 1024;
+
 	async function loadFrames(file, frameCount) {
 		const a = app();
 		const toFrame = (loaded) => {
@@ -548,19 +550,64 @@ window.MS = window.MS || {};
 		});
 	}
 
-	// Every frame is cropped, or given see-through room, on the right and the bottom.
+	// Every frame is cropped, or given see-through room, so the picture stays where the anchor says: E.anchor is [0..2, 0..2] (left/middle/right, top/middle/bottom).
 	function resize(width, height) {
-		width = Math.max(1, Math.min(256, Math.floor(width) || 1));
-		height = Math.max(1, Math.min(256, Math.floor(height) || 1));
+		width = Math.max(1, Math.min(MAX_SIDE, Math.floor(width) || 1));
+		height = Math.max(1, Math.min(MAX_SIDE, Math.floor(height) || 1));
 		if (width === frame().w && height === frame().h) {
 			return;
 		}
 		edit(() => {
 			E.frames = E.frames.map((f) => {
 				const out = blank(width, height);
-				for (let y = 0; y < Math.min(height, f.h); y++) {
-					for (let x = 0; x < Math.min(width, f.w); x++) {
-						out.indices[y * width + x] = f.indices[y * f.w + x];
+				// where the old picture's top left goes in the new one (negative when cropping from the left or top)
+				const dx = Math.round(((width - f.w) * E.anchor[0]) / 2);
+				const dy = Math.round(((height - f.h) * E.anchor[1]) / 2);
+				for (let y = 0; y < f.h; y++) {
+					for (let x = 0; x < f.w; x++) {
+						const nx = x + dx;
+						const ny = y + dy;
+						if (nx >= 0 && ny >= 0 && nx < width && ny < height) {
+							out.indices[ny * width + nx] = f.indices[y * f.w + x];
+						}
+					}
+				}
+				return out;
+			});
+		});
+		fit();
+		renderAll();
+	}
+
+	// Shrinks every frame to the smallest box that holds the art in any of them (the see-through border goes).
+	function trim() {
+		let x0 = Infinity;
+		let y0 = Infinity;
+		let x1 = -1;
+		let y1 = -1;
+		for (const f of E.frames) {
+			for (let y = 0; y < f.h; y++) {
+				for (let x = 0; x < f.w; x++) {
+					if (f.indices[y * f.w + x] !== 0) {
+						x0 = Math.min(x0, x);
+						y0 = Math.min(y0, y);
+						x1 = Math.max(x1, x);
+						y1 = Math.max(y1, y);
+					}
+				}
+			}
+		}
+		if (x1 < 0 || (x0 === 0 && y0 === 0 && x1 === frame().w - 1 && y1 === frame().h - 1)) {
+			return;
+		}
+		const width = x1 - x0 + 1;
+		const height = y1 - y0 + 1;
+		edit(() => {
+			E.frames = E.frames.map((f) => {
+				const out = blank(width, height);
+				for (let y = 0; y < height; y++) {
+					for (let x = 0; x < width; x++) {
+						out.indices[y * width + x] = f.indices[(y + y0) * f.w + x + x0];
 					}
 				}
 				return out;
@@ -718,8 +765,19 @@ window.MS = window.MS || {};
 		E.rightBtn = small('▶', 'Move the frame later', () => moveFrame(1));
 		E.delBtn = small('Delete', 'Delete this frame', deleteFrame);
 		E.previewCv = el('canvas', { className: 'px-preview' });
-		E.sizeW = el('input', { type: 'number', min: 1, max: 256, className: 'px-size' });
-		E.sizeH = el('input', { type: 'number', min: 1, max: 256, className: 'px-size' });
+		E.sizeW = el('input', { type: 'number', min: 1, max: MAX_SIDE, className: 'px-size' });
+		E.anchor = [0, 0];
+		E.anchorBtns = [];
+		const anchorGrid = el('div', { className: 'px-anchor', title: 'Where the picture stays when the canvas grows or shrinks' });
+		for (let ay = 0; ay < 3; ay++) {
+			for (let ax = 0; ax < 3; ax++) {
+				const b = el('button', { className: 'px-anchor-cell', onclick: () => { E.anchor = [ax, ay]; E.anchorBtns.forEach((c) => c.b.classList.toggle('on', c.ax === ax && c.ay === ay)); } });
+				b.classList.toggle('on', ax === 0 && ay === 0);
+				E.anchorBtns.push({ b, ax, ay });
+				anchorGrid.append(b);
+			}
+		}
+		E.sizeH = el('input', { type: 'number', min: 1, max: MAX_SIDE, className: 'px-size' });
 		const side = el('div', { className: 'px-side' },
 			el('div', { className: 'px-h' }, 'Colour'),
 			el('div', { className: 'px-colour' }, E.swatch, E.swatchText),
@@ -731,8 +789,9 @@ window.MS = window.MS || {};
 			E.previewCv,
 			el('div', { className: 'px-h' }, 'This frame'),
 			el('div', { className: 'px-row' }, small('Flip ⇄', 'Flip left to right', () => flip(true)), small('Flip ⇅', 'Flip top to bottom', () => flip(false)), small('Clear', 'Make it all see-through', clearFrame)),
-			el('div', { className: 'px-h' }, 'Size (all frames)'),
-			el('div', { className: 'px-row' }, E.sizeW, '×', E.sizeH, small('Apply', 'Crop or add see-through room on the right and bottom', () => resize(Number(E.sizeW.value), Number(E.sizeH.value)))));
+			el('div', { className: 'px-h' }, 'Canvas size (all frames)'),
+			el('div', { className: 'px-row' }, E.sizeW, '×', E.sizeH, small('Apply', 'Make the canvas this size: bigger adds see-through room, smaller crops. The picture stays where the square points.', () => resize(Number(E.sizeW.value), Number(E.sizeH.value)))),
+			el('div', { className: 'px-row' }, anchorGrid, el('span', { className: 'px-note', textContent: 'Picture stays here' }), small('Trim', 'Cut away the see-through border, so the canvas is just big enough for the art', trim)));
 
 		// saving
 		E.copyBox = el('div', { className: 'px-copy', hidden: true });
