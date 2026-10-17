@@ -374,8 +374,18 @@ window.MS = window.MS || {};
 	app.updateScopeButton = updateScopeButton;
 
 	// opts.newTab: open it in a designer tab of its own (Ctrl/Cmd+click); otherwise units and craft share one tab, items another, the rest a third.
+	// What goes to the game (Preview in game, Live, Spawn): the thing in the design tab linked to the game (the game-link mark on a design tab),
+	// or, with none linked, the thing on show. { actor, device }.
+	app.gameThing = function () {
+		const t = MS.ide && MS.ide.gameTab;
+		if (t && MS.ide.tabs.includes(t) && t !== MS.ide.currentDesigner && t.state && t.state.actor) {
+			return { actor: t.state.actor, device: t.state.device || null };
+		}
+		return { actor: app.actor, device: app.device };
+	};
+
 	app.openActor = function (preset, opts) {
-		const tab = MS.ide.designerFor(preset.cls, !!(opts && opts.newTab));
+		const tab = MS.ide.designerFor(preset.cls, !!(opts && opts.newTab), preset);
 		MS.ide.currentDesigner = tab;
 		app.selectedPiece = null;
 		app.actor = { path: preset.doc.path, name: preset.name, cls: preset.cls };
@@ -415,25 +425,26 @@ window.MS = window.MS || {};
 	// Spawn (or Give) the open thing in the game running from Studio: it appears beside the unit you control (or in view), on its team. The game must
 	// have loaded it already (a brand new mod needs one restart); Live and saving then show later changes.
 	app.spawnInGame = async function (give) {
-		const kind = spawnKind(app.actor && app.actor.cls);
+		const actor = app.gameThing().actor;
+		const kind = spawnKind(actor && actor.cls);
 		if (!kind) {
 			return;
 		}
-		const module = app.actor.path.split('/')[0];
+		const module = actor.path.split('/')[0];
 		const q = (s) => JSON.stringify(String(s));
 		const add = kind === 'actor' ? 'o.Team = ctl and ctl.Team or 0\n\tMovableMan:AddActor(o)' : kind === 'item' ? (give ? 'if ctl then ctl:AddInventoryItem(o) else MovableMan:AddItem(o) end' : 'MovableMan:AddItem(o)') : 'MovableMan:AddParticle(o)';
 		const lua = [
 			'local act = ActivityMan:GetActivity()',
 			'local ctl = act and act:GetControlledActor(0)',
-			'local made, o = pcall(Create' + app.actor.cls + ', ' + q(app.actor.name) + ', ' + q(module) + ')',
+			'local made, o = pcall(Create' + actor.cls + ', ' + q(actor.name) + ', ' + q(module) + ')',
 			'if not made or not o then',
-			'\tConsoleMan:PrintString("Studio: the game has not loaded ' + app.actor.name.replace(/["\\]/g, '') + ' (' + module + '). Check the console in Studio: the mod may have failed to load, or it is new since the game started.")',
+			'\tConsoleMan:PrintString("Studio: the game has not loaded ' + actor.name.replace(/["\\]/g, '') + ' (' + module + '). Check the console in Studio: the mod may have failed to load, or it is new since the game started.")',
 			'\treturn',
 			'end',
 			'local ok, where = pcall(function() return CameraMan:GetScrollTarget(0) end)',
 			'o.Pos = ctl and (ctl.Pos + Vector(ctl.HFlipped and -40 or 40, -20)) or (ok and where or Vector(0, 0))',
 			add,
-			'ConsoleMan:PrintString("Studio: put ' + app.actor.name.replace(/["\\]/g, '') + ' in the game.")',
+			'ConsoleMan:PrintString("Studio: put ' + actor.name.replace(/["\\]/g, '') + ' in the game.")',
 		].join('\n');
 		// What has been saved goes to disk first, so the game is not a step behind.
 		try {
@@ -442,7 +453,7 @@ window.MS = window.MS || {};
 			// the spawn still goes
 		}
 		MS.ide.runLua(lua);
-		app.status((give ? 'Gave ' : 'Spawned ') + app.actor.name + ' to the game (sent). It only works in a game started from Studio (Test in game, Sandbox).');
+		app.status((give ? 'Gave ' : 'Spawned ') + actor.name + ' to the game (sent). It only works in a game started from Studio (Test in game, Sandbox).');
 	};
 
 	// Material number -> [r, g, b], from the Materials the game loads (a material map picture's pixels are these numbers).
@@ -783,6 +794,7 @@ window.MS = window.MS || {};
 		return ground !== null ? Math.round(ground) : poses.ground !== undefined ? Math.round(poses.ground) + 3 : null;
 	}
 
+	app.updateTitle = () => updateTitle();
 	function updateTitle() {
 		const t = $('docTitle');
 		if (!app.actor) {
@@ -815,6 +827,20 @@ window.MS = window.MS || {};
 		// Dimmed, not hidden: say what would make them work.
 		$('btnPreview').title = locked ? 'Make your own copy of this unit first, then you can see it in the game.' : 'Save, then show this unit in the game\'s Actor Editor';
 		$('btnLive').title = locked ? 'Make your own copy of this unit first, then every change can show in the game as you make it.' : 'Live: send every change to the game as you make it (a drag is sent when you let go)';
+		// another design tab is linked to the game: the game buttons are about its thing
+		const game = app.gameThing().actor;
+		if (game && game !== app.actor) {
+			const gameLocked = !!app.lib.lockKind(app.lib.docFor(game.path));
+			const gameSpawn = spawnKind(game.cls);
+			$('btnPreview').disabled = gameLocked;
+			$('btnLive').disabled = gameLocked || !app.fs || !app.fs.writable;
+			$('btnSpawn').disabled = !gameSpawn;
+			$('btnGive').hidden = gameSpawn !== 'item';
+			$('btnGive').disabled = gameSpawn !== 'item';
+			$('btnPreview').title = 'Save, then show ' + game.name + ' (the tab linked to the game) in the game';
+			$('btnLive').title = 'Live: send every change to ' + game.name + ' (the tab linked to the game) as you make it';
+			$('btnSpawn').title = 'Put ' + game.name + ' (the tab linked to the game) in the running game';
+		}
 	}
 
 	// A part is hidden when it, or a part it hangs from, has its eye off.
@@ -1295,25 +1321,26 @@ window.MS = window.MS || {};
 	// nothing to show.
 	function previewLines() {
 		// Only units and items can be shown in the game this way (not building pieces, assemblies, gibs...).
-		const kind = app.actor && spawnKind(app.actor.cls);
+		const { actor, device: heldDevice } = app.gameThing();
+		const kind = actor && spawnKind(actor.cls);
 		if (kind !== 'actor' && kind !== 'item') {
 			return null;
 		}
 		const files = new Set(app.savedSinceLastPreview);
-		files.add(app.actor.path);
+		files.add(actor.path);
 		// An item designed on its own goes to the game in the hands of the last unit opened (or a soldier of the game's).
-		const itemAlone = app.rig && app.rig.isDevice;
-		let holder = app.actor;
+		const itemAlone = DEVICE_CLASSES.has(actor.cls);
+		let holder = actor;
 		if (itemAlone) {
 			const last = readLocal('ms.lastHolder');
 			const found = (last && app.lib.presets.find((p) => p.cls === 'AHuman' && p.doc.path === last.path && p.name === last.name)) || app.lib.find('Soldier Light', 'AHuman', null) || app.lib.presets.find((p) => p.cls === 'AHuman' && p.topLevel);
 			if (!found) {
-				app.toast('Studio needs a unit to hold ' + app.actor.name + ' in the game, and found none.', 'bad');
+				app.toast('Studio needs a unit to hold ' + actor.name + ' in the game, and found none.', 'bad');
 				return null;
 			}
 			holder = { path: found.doc.path, name: found.name, cls: 'AHuman' };
 		}
-		const device = app.device && !app.fs.isOfficial(app.device.path) ? app.device.path : null;
+		const device = heldDevice && !app.fs.isOfficial(heldDevice.path) ? heldDevice.path : null;
 		if (device) {
 			files.add(device);
 		}
@@ -1330,7 +1357,7 @@ window.MS = window.MS || {};
 			}
 		}
 		// The held item picked in Studio goes in the unit's hands in game.
-		const heldRef = itemAlone ? app.actor : app.device;
+		const heldRef = itemAlone ? actor : heldDevice;
 		const held = heldRef && app.lib.presets.find((p) => p.doc.path === heldRef.path && p.name === heldRef.name);
 		if (held) {
 			lines.push('DeviceClass = ' + held.cls, 'DevicePreset = ' + held.name, 'DeviceModule = ' + held.module);
@@ -1346,7 +1373,8 @@ window.MS = window.MS || {};
 	};
 
 	app.preview = async function (quiet) {
-		if (!app.actor) {
+		const actor = app.gameThing().actor;
+		if (!actor) {
 			return;
 		}
 		await app.save(quiet);
@@ -1362,7 +1390,7 @@ window.MS = window.MS || {};
 		}
 		app.savedSinceLastPreview.clear();
 		if (quiet) {
-			app.status('Live: sent ' + app.actor.name + ' to the game at ' + new Date().toLocaleTimeString() + '.');
+			app.status('Live: sent ' + actor.name + ' to the game at ' + new Date().toLocaleTimeString() + '.');
 		} else if (!readLocal('ms.previewExplained')) {
 			MS.dialogs.previewHelp();
 			writeLocal('ms.previewExplained', true);
@@ -1379,7 +1407,7 @@ window.MS = window.MS || {};
 	let liveBusy = false;
 	let liveAgain = false;
 	app.liveChanged = function () {
-		if (!app.live || !app.actor || !app.fs || !app.fs.writable) {
+		if (!app.live || !app.gameThing().actor || !app.fs || !app.fs.writable) {
 			return;
 		}
 		clearTimeout(liveTimer);
@@ -1405,12 +1433,16 @@ window.MS = window.MS || {};
 			}
 		}
 	}
+	app.setLive = (on, quiet) => setLive(on, quiet);
 	function setLive(on, quiet) {
 		app.live = on;
 		const btn = $('btnLive');
 		btn.classList.toggle('live-on', on);
 		btn.textContent = on ? '● Live on' : '● Live';
 		writeLocal('ms.live', on);
+		if (on && MS.popout && MS.popout.announce) {
+			MS.popout.announce('game-link');
+		}
 		if (quiet) {
 			return;
 		}

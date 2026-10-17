@@ -120,7 +120,7 @@ window.MS = window.MS || {};
 		app.openActor = function (...args) {
 			const result = openActor.apply(this, args);
 			if (ide.mode === 'deep') {
-				ide.activate(designerTab());
+				ide.activate(ide.currentDesigner || designerTab());
 			}
 			return result;
 		};
@@ -724,15 +724,17 @@ window.MS = window.MS || {};
 
 	const familyOf = (cls) => (MS.Rig.DEVICE_CLASSES.has(cls) ? 'item' : cls === 'AHuman' || cls === 'ACrab' || cls === 'ACDropShip' || cls === 'ACRocket' ? 'unit' : 'other');
 
-	// The designer tab a thing opens in: one for units and craft, one for items, one for the rest, unless a new tab is asked for (Ctrl/Cmd+click).
-	// Picks it (and brings it to the front); openActor then puts the thing in it.
-	ide.designerFor = function (cls, newTab) {
-		const family = familyOf(cls);
+	// The design tab a thing opens in: its own, as files have theirs. One already showing it comes to the front; otherwise an empty one is used,
+	// or a new one made. Picks it (and brings it to the front); openActor then puts the thing in it.
+	ide.designerFor = function (cls, newTab, preset) {
 		const designers = ide.tabs.filter((t) => t.kind === 'designer');
-		const stateOf = (t) => (t === ide.currentDesigner ? { actor: app.actor } : t.state);
-		let tab = newTab ? null : designers.find((t) => stateOf(t) && stateOf(t).actor && familyOf(stateOf(t).actor.cls) === family);
+		const actorOf = (t) => (t === ide.currentDesigner ? app.actor : t.state && t.state.actor);
+		let tab = !newTab && preset ? designers.find((t) => {
+			const a = actorOf(t);
+			return a && a.path === preset.doc.path && a.name === preset.name;
+		}) : null;
 		if (!tab && !newTab) {
-			tab = designers.find((t) => !stateOf(t) || !stateOf(t).actor);
+			tab = designers.find((t) => !actorOf(t));
 		}
 		if (!tab) {
 			tab = { id: nextTabId++, kind: 'designer', state: null };
@@ -845,6 +847,17 @@ window.MS = window.MS || {};
 				e.stopPropagation();
 				MS.popout.drop(e, after ? ide.tabs[ide.tabs.indexOf(tab) + 1] || null : tab);
 			};
+			if (tab.kind === 'designer' && (tab === ide.currentDesigner ? app.actor : tab.state && tab.state.actor)) {
+				// the game link: what goes to the game (Preview, Live, Spawn) is this tab's thing, whichever tab is on show
+				const linked = ide.gameTab === tab;
+				const game = el('button', { className: 'tab-game' + (linked ? ' on' : ''), textContent: linked ? '◉' : '○', title: linked ? 'Linked to the game: Preview in game, Live and Spawn use this tab. Click to unlink (they then use the tab on show).' : 'Link this tab to the game: Preview in game, Live and Spawn use it, whichever tab is on show' });
+				game.onclick = (e) => {
+					e.stopPropagation();
+					ide.linkGame(linked ? null : tab);
+				};
+				item.append(game);
+				item.classList.toggle('game-linked', linked);
+			}
 			if (MS.popout.canMove(tab)) {
 				const pop = el('button', { className: 'tab-pop', textContent: '⧉', title: 'Open in its own window (or drag the tab out of the window, or into another one)' });
 				pop.onclick = (e) => {
@@ -892,6 +905,32 @@ window.MS = window.MS || {};
 	};
 
 	ide.renderTabs = renderTabs;
+
+	// Links a design tab to the game (or none, null: the tab on show goes). One window at a time has the game: linking here unlinks the others,
+	// and their Live goes off.
+	ide.gameTab = null;
+	ide.linkGame = function (tab) {
+		ide.gameTab = tab;
+		if (tab && MS.popout.announce) {
+			MS.popout.announce('game-link');
+		}
+		renderTabs();
+		app.updateTitle();
+		if (tab) {
+			const actor = tab === ide.currentDesigner ? app.actor : tab.state && tab.state.actor;
+			app.status((actor ? actor.name : 'This tab') + ' is linked to the game: Preview in game, Live and Spawn use it.');
+			app.liveChanged();
+		}
+	};
+	// Another window took the game.
+	ide.gameTakenElsewhere = function () {
+		ide.gameTab = null;
+		if (app.live) {
+			app.setLive(false, true);
+			app.status('Another Studio window is linked to the game now, so Live is off here.');
+		}
+		renderTabs();
+	};
 	ide.currentDesigner = null;
 	ide.tabIsDirty = (tab) => tabDirty(tab) || !!(tab.sprite && tab.px && tab.px.dirty);
 
@@ -1032,6 +1071,9 @@ window.MS = window.MS || {};
 		}
 		const index = ide.tabs.indexOf(tab);
 		ide.tabs.splice(index, 1);
+		if (ide.gameTab === tab) {
+			ide.gameTab = null;
+		}
 		if (tab.kind === 'designer' && ide.currentDesigner === tab) {
 			ide.currentDesigner = null;
 		}
