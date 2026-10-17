@@ -647,6 +647,7 @@ window.MS = window.MS || {};
 		menu.append(
 			item('Add attachment…', reason || 'Search everything and add it to ' + part.name + ' (a copy goes into your project)', () => MS.dialogs.attach(null, part), !!reason),
 			item('Edit sprite…', part.sprite && part.sprite.file ? 'Draw on ' + part.name + '\'s picture' : 'This part has no picture', () => MS.pixel.open({ part }), !(part.sprite && part.sprite.file)),
+			item('Resize sprite…', reason || 'Make the picture bigger or smaller on the grid, to the scale of the unit', () => MS.resize.open(part), !(part.sprite && part.sprite.file) || !!reason),
 			item('Swap sprite…', reason || 'Put a different picture in ' + part.name, () => MS.dialogs.importSprite(part), !!reason),
 			item(app.hidden.has(part.id) ? 'Show layer' : 'Hide layer', 'Show or hide it in the view only', () => toggleEye(part, false)),
 			item('Its lines', 'Open its INI in the code editor', () => MS.ide.openFile(part.ent.node.doc.path, part.ent.node.line)));
@@ -1267,7 +1268,13 @@ window.MS = window.MS || {};
 			b.title = 'Use a different picture or sprite sheet for this part';
 			b.disabled = !!locked;
 			b.onclick = () => MS.dialogs.importSprite(part);
-			wrap.append(edit, ' ', b);
+			const resize = document.createElement('button');
+			resize.className = 'small-btn';
+			resize.textContent = 'Resize…';
+			resize.title = 'Make this picture bigger or smaller on the grid, in the scale of the whole unit';
+			resize.disabled = !part.sprite.file;
+			resize.onclick = () => MS.resize.open(part);
+			wrap.append(edit, ' ', resize, ' ', b);
 			return wrap;
 		})());
 		const s = part.sprite;
