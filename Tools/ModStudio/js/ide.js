@@ -722,6 +722,22 @@ window.MS = window.MS || {};
 		return baseName(tab.path);
 	}
 
+	// What a tab's tooltip says: its full name (cut short on the tab) and where it comes from.
+	function tabTooltip(tab) {
+		if (tab.kind === 'designer') {
+			const actor = tab.designer && tab.designer.actor;
+			if (!actor) {
+				return 'The designer: open something from the list on the left';
+			}
+			const held = tab.designer.device && actor.cls === 'AHuman' ? '\nHolding ' + tab.designer.device.name : '';
+			return actor.name + ' (' + actor.cls + ')\n' + actor.path + held + (ide.gameTab === tab ? '\nLinked to the game' : '');
+		}
+		if (tab.kind === 'form') {
+			return tab.title + (tab.sprite && tab.px && tab.px.file ? '\n' + tab.px.file : '');
+		}
+		return tab.path || tabTitle(tab);
+	}
+
 	function tabDirty(tab) {
 		if (tab.kind !== 'code') {
 			return false;
@@ -790,7 +806,7 @@ window.MS = window.MS || {};
 		for (const tab of shown) {
 			const dirty = tabDirty(tab) || !!(tab.sprite && tab.px && tab.px.dirty);
 			const icon = el('span', { className: 'tab-icon ' + (tab.kind === 'designer' ? 'designer' : tab.kind === 'form' ? 'form' : extOf(tab.path)), textContent: tab.kind === 'designer' ? '◆' : tab.kind === 'form' ? tab.icon || '▦' : extOf(tab.path) });
-			const item = el('div', { className: 'tab' + (tab === ide.active ? ' sel' : '') + (dirty ? ' dirty' : '') + (tab.readOnly ? ' ro' : ''), title: tab.path || (tab.kind === 'form' ? tab.title : 'The unit designer') }, icon, el('span', { className: 'tab-name', textContent: tabTitle(tab) }));
+			const item = el('div', { className: 'tab' + (tab === ide.active ? ' sel' : '') + (dirty ? ' dirty' : '') + (tab.readOnly ? ' ro' : ''), title: tabTooltip(tab) }, icon, el('span', { className: 'tab-name', textContent: tabTitle(tab) }));
 			// tabs drag along the bar, into another Studio window's bar, or out of the window into one of their own
 			if (tab.kind === 'designer' && app.split && app.panes.some((p) => p.tab === tab)) {
 				item.classList.add('on-screen'); // shown side by side
