@@ -136,6 +136,36 @@ window.MS = window.MS || {};
 		return true;
 	}
 
+	// One missing file named in a mod's list is enough to stop the game loading the whole mod ("123.rte was NOT loaded"), after which none of its units
+	// are there. For the project's mod (yours) the lines that name files that aren't there are taken out as soon as it is chosen and before a game starts.
+	async function repairProject(module) {
+		const a = app();
+		if (!a.lib || !module) {
+			return 0;
+		}
+		const found = (a.lib.problems || []).filter((p) => p.missing && p.module.toLowerCase() === module.toLowerCase());
+		const names = [];
+		for (const p of found) {
+			const doc = a.lib.docFor(p.module + '/Index.ini');
+			if (doc && a.lib.isProtected(doc)) {
+				continue;
+			}
+			const quiet = a.toast;
+			a.toast = () => {}; // one summary below instead of one message each
+			try {
+				if (await removeFromList(p)) {
+					names.push(p.path.split('/').pop());
+				}
+			} finally {
+				a.toast = quiet;
+			}
+		}
+		if (names.length) {
+			a.toast('Took ' + names.length + ' file' + (names.length > 1 ? 's' : '') + ' that no longer exist (' + names.slice(0, 3).join(', ') + (names.length > 3 ? '…' : '') + ') out of ' + module + ' list. With them listed the game would not load ' + module + ' at all.', 'good');
+		}
+		return names.length;
+	}
+
 	function showProblems() {
 		const a = app();
 		const list = el('div', { className: 'prob-list' });
@@ -308,7 +338,7 @@ window.MS = window.MS || {};
 		}
 	}
 
-	MS.friendly = { say, showProblems, afterLoad, afterSave, update, updateBadge, decorate };
+	MS.friendly = { say, showProblems, afterLoad, afterSave, update, updateBadge, decorate, repairProject };
 	const badge = $('statusProblems');
 	if (badge) {
 		badge.onclick = showProblems;

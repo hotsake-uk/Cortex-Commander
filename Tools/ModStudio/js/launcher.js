@@ -612,6 +612,10 @@ window.MS = window.MS || {};
 		const body = run
 			? { mode: run.mode || 'play', map: run.map || L.state.config.map || '', module: run.module || '', timeScale: run.timeScale || '', resolution: run.resolution || '' }
 			: { mode, map: L.state.config.map || '' };
+		// Files that no longer exist would stop the game loading the whole project mod: they come out of its list first.
+		if (app().project) {
+			await MS.friendly.repairProject(app().project);
+		}
 		// A test, sandbox or Actor Editor game starts with the unit that is open in the designer.
 		if (['test', 'sandbox', 'editor'].includes(body.mode) && app().actor) {
 			try {
