@@ -946,7 +946,7 @@ window.MS = window.MS || {};
 		if (!docs.length) {
 			return;
 		}
-		app.undo.push({ label: txn.label, docs });
+		app.undo.push({ label: txn.label, docs, at: Date.now() });
 		if (app.undo.length > 200) {
 			app.undo.shift();
 		}

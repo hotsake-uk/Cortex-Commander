@@ -196,6 +196,131 @@ fn resolve(root: &Path, relative: &str) -> Option<PathBuf> {
 	Some(full)
 }
 
+/// Opens a file in a program: "default" is the system's own choice for the file; anything else must be the full path of a program file that is
+/// there. The program runs on its own (Studio does not wait for it). Programs with ways of their own are used that way: Aseprite gets a
+/// sprite's frames (Name000.png, Name001.png...) as one animation, through a script, named after the first frame so saving writes the frames
+/// back; Visual Studio Code and Notepad++ open a script at its line.
+fn open_with(program: &str, file: &Path, frames: &[PathBuf], line: Option<u64>) -> Result<(), String> {
+	let exe_name = Path::new(program).file_stem().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+	if program != "default" && exe_name == "aseprite" && frames.len() > 1 {
+		return open_frames_in_aseprite(program, frames);
+	}
+	if program != "default" && line.is_some() && (exe_name == "code" || exe_name == "notepad++") {
+		let exe = PathBuf::from(program);
+		if !exe.is_absolute() || !exe.is_file() {
+			return Err(format!("{program} is not a program Studio can find. Pick it again in Settings."));
+		}
+		let line = line.unwrap_or(1);
+		let mut command = std::process::Command::new(&exe);
+		if exe_name == "code" {
+			command.arg("--goto").arg(format!("{}:{line}", file.to_string_lossy()));
+		} else {
+			command.arg(format!("-n{line}")).arg(file);
+		}
+		return command.spawn().map(|_| ()).map_err(|e| format!("Couldn't start {program}: {e}"));
+	}
+	let started = if program == "default" {
+		if cfg!(windows) {
+			std::process::Command::new("cmd").args(["/C", "start", ""]).arg(file).spawn()
+		} else if cfg!(target_os = "macos") {
+			std::process::Command::new("open").arg(file).spawn()
+		} else {
+			std::process::Command::new("xdg-open").arg(file).spawn()
+		}
+	} else {
+		let exe = PathBuf::from(program);
+		let app_bundle = cfg!(target_os = "macos") && exe.is_dir() && exe.extension().is_some_and(|e| e == "app");
+		if !exe.is_absolute() || !(exe.is_file() || app_bundle) {
+			return Err(format!("{program} is not a program Studio can find. Pick it again in Settings."));
+		}
+		if app_bundle {
+			std::process::Command::new("open").arg("-a").arg(&exe).arg(file).spawn()
+		} else {
+			std::process::Command::new(&exe).arg(file).spawn()
+		}
+	};
+	started.map(|_| ()).map_err(|e| format!("Couldn't start {program}: {e}"))
+}
+
+/// A sprite's frames into Aseprite as one animation: a small script (in the temp folder) makes a sprite from the first frame, adds the others
+/// as frames, and names it after the first frame, so Aseprite's Save writes Name000.png, Name001.png... back where they were.
+fn open_frames_in_aseprite(program: &str, frames: &[PathBuf]) -> Result<(), String> {
+	let exe = PathBuf::from(program);
+	if !exe.is_absolute() || !exe.is_file() {
+		return Err(format!("{program} is not a program Studio can find. Pick it again in Settings."));
+	}
+	let lua = |p: &PathBuf| format!("\"{}\"", p.to_string_lossy().replace('\\', "/").replace('"', "\\\""));
+	let list = frames.iter().map(lua).collect::<Vec<_>>().join(",\n\t");
+	let script = format!(
+		"-- Written by Cortex Studio: opens a sprite's frames as one animation. Saving writes the frames back.\n\
+		 local files = {{\n\t{list}\n}}\n\
+		 local spr = Sprite{{ fromFile = files[1] }}\n\
+		 -- Aseprite may read the numbered frames itself: only the ones it didn't are added\n\
+		 for i = #spr.frames + 1, #files do\n\
+		 \tlocal img = Image{{ fromFile = files[i] }}\n\
+		 \tlocal frame = spr:newEmptyFrame()\n\
+		 \tspr:newCel(spr.layers[1], frame, img, Point(0, 0))\n\
+		 end\n\
+		 spr.filename = files[1]\n\
+		 app.frame = spr.frames[1]\n"
+	);
+	static COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+	let path = std::env::temp_dir().join(format!("cortex-studio-aseprite-{}-{}.lua", std::process::id(), COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst)));
+	fs::write(&path, script).map_err(|e| format!("Couldn't write the script for Aseprite: {e}"))?;
+	std::process::Command::new(&exe).arg("--script").arg(&path).spawn().map(|_| ()).map_err(|e| format!("Couldn't start {program}: {e}"))
+}
+
+/// Picture, script and sound editors installed in the usual places, as [{ name, kinds, path }].
+fn find_programs() -> serde_json::Value {
+	let env = |k: &str| std::env::var(k).ok().map(PathBuf::from);
+	let mut roots: Vec<PathBuf> = Vec::new();
+	for k in ["ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"] {
+		if let Some(p) = env(k) {
+			if !roots.contains(&p) {
+				roots.push(p);
+			}
+		}
+	}
+	let local = env("LOCALAPPDATA").map(|p| p.join("Programs"));
+	let steam: Vec<PathBuf> = roots.iter().map(|r| r.join("Steam").join("steamapps").join("common")).collect();
+	let under = |parts: &[&str]| -> Vec<PathBuf> {
+		roots.iter().map(|r| parts.iter().fold(r.clone(), |p, part| p.join(part))).collect()
+	};
+	let mut candidates: Vec<(&str, Vec<&str>, Vec<PathBuf>)> = vec![
+		("Aseprite", vec!["image"], under(&["Aseprite", "Aseprite.exe"]).into_iter().chain(steam.iter().map(|s| s.join("Aseprite").join("Aseprite.exe"))).collect()),
+		("Krita", vec!["image"], under(&["Krita (x64)", "bin", "krita.exe"])),
+		("Paint.NET", vec!["image"], under(&["paint.net", "paintdotnet.exe"])),
+		("Pyxel Edit", vec!["image"], under(&["PyxelEdit", "PyxelEdit.exe"])),
+		("Visual Studio Code", vec!["script", "ini"], local.iter().map(|l| l.join("Microsoft VS Code").join("Code.exe")).chain(under(&["Microsoft VS Code", "Code.exe"])).collect()),
+		("Notepad++", vec!["script", "ini"], under(&["Notepad++", "notepad++.exe"])),
+		("Audacity", vec!["sound"], under(&["Audacity", "Audacity.exe"])),
+	];
+	// GIMP puts its version in its folder and file names
+	let mut gimp = Vec::new();
+	for r in &roots {
+		let Ok(dirs) = fs::read_dir(r) else { continue };
+		for d in dirs.filter_map(|e| e.ok()).filter(|e| e.file_name().to_string_lossy().starts_with("GIMP")) {
+			let Ok(bins) = fs::read_dir(d.path().join("bin")) else { continue };
+			gimp.extend(bins.filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| {
+				let n = p.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+				n.starts_with("gimp-") && n.ends_with(".exe") && !n.contains("console")
+			}));
+		}
+	}
+	candidates.push(("GIMP", vec!["image"], gimp));
+	if cfg!(target_os = "macos") {
+		candidates.push(("Aseprite", vec!["image"], vec![PathBuf::from("/Applications/Aseprite.app")]));
+		candidates.push(("Visual Studio Code", vec!["script", "ini"], vec![PathBuf::from("/Applications/Visual Studio Code.app")]));
+	}
+	let mut found = Vec::new();
+	for (name, kinds, paths) in candidates {
+		if let Some(path) = paths.into_iter().find(|p| p.exists()) {
+			found.push(serde_json::json!({ "name": name, "kinds": kinds, "path": path.to_string_lossy() }));
+		}
+	}
+	serde_json::Value::Array(found)
+}
+
 fn disk_path(root: &Path, full: &Path) -> String {
 	full.strip_prefix(root).unwrap_or(full).to_string_lossy().replace('\\', "/")
 }
@@ -255,6 +380,33 @@ fn api(studio: &Studio, request: &mut Request, action: &str, query: &str) -> Res
 			let closed = crate::close_popout(&label);
 			bytes(format!("{{\"closed\":{closed}}}").into_bytes(), "application/json")
 		}
+		// A game file opened in another program (the External programs setting): the program the page names, which must be a program file
+		// that is there, or "default" for the system's own choice. The file must be in the game folder (resolve checks that).
+		"open-with" => {
+			let mut raw = String::new();
+			let _ = request.as_reader().read_to_string(&mut raw);
+			let body = serde_json::from_str::<serde_json::Value>(&raw).unwrap_or_default();
+			let program = body.get("program").and_then(|p| p.as_str()).unwrap_or_default().to_string();
+			let line = body.get("line").and_then(|l| l.as_u64());
+			// a sprite's other frames (in the game folder too), for a program that takes them as one animation
+			let mut frames = Vec::new();
+			for f in body.get("frames").and_then(|f| f.as_array()).map(|a| a.as_slice()).unwrap_or(&[]) {
+				match f.as_str().and_then(|f| resolve(root, f)) {
+					Some(p) if p.is_file() => frames.push(p),
+					Some(_) => {} // a frame the sprite says it has but that is not there: left out
+					None => return text(400, "A frame is outside the game folder."),
+				}
+			}
+			if !full.is_file() {
+				return text(404, "That file is not there.");
+			}
+			match open_with(&program, &full, &frames, line) {
+				Ok(()) => bytes(br#"{"ok":true}"#.to_vec(), "application/json"),
+				Err(e) => text(400, e),
+			}
+		}
+		// Editors already on this computer, for the External programs setting to offer.
+		"find-programs" => bytes(find_programs().to_string().into_bytes(), "application/json"),
 		// The window's zoom, kept between runs. Only in the app (a window to zoom); the page asks, and follows the answer.
 		"zoom" => {
 			if !crate::has_zoom_hook() {
