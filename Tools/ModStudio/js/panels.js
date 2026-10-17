@@ -55,6 +55,8 @@ window.MS = window.MS || {};
 		craft: new Set(['ACDropShip', 'ACRocket']),
 		attachments: new Set(['Attachable', 'AEmitter', 'AEJetpack', 'PEmitter']),
 		items: new Set(['HDFirearm', 'HeldDevice', 'TDExplosive', 'ThrownDevice']),
+		// Everything else with a picture: open it, edit its settings and its sprite like any other.
+		more: new Set(['MOSRotating', 'MOSParticle', 'Magazine', 'Turret', 'ADoor', 'Arm', 'Leg']),
 	};
 
 	// ---- drawing small pictures ----
@@ -353,25 +355,26 @@ window.MS = window.MS || {};
 				row.onclick = () => app.openActor(p);
 				row.title = 'Open ' + p.name;
 			} else if (tab === 'items') {
-				// With a unit open, an item goes in its hand; Design opens the item itself.
-				const design = document.createElement('button');
-				design.className = 'small-btn add';
-				design.textContent = 'Design';
-				design.title = 'Open ' + p.name + ' in the designer: its grip, muzzle, magazine and settings';
-				design.onclick = (e) => {
+				// A click opens the item in the designer (its grip, muzzle, magazine, settings and sprite); with a unit open, Hold puts it in the unit's hand.
+				const hold = document.createElement('button');
+				hold.className = 'small-btn add';
+				hold.textContent = 'Hold';
+				hold.title = 'Put ' + p.name + ' in the open unit\'s front hand';
+				hold.onclick = (e) => {
 					e.stopPropagation();
-					app.openActor(p);
-				};
-				row.append(design);
-				row.onclick = () => {
 					if (app.rig && app.rig.cls === 'AHuman') {
 						app.setDevice(p);
 						app.toast(p.name + ' is now in the front hand.');
 					} else {
-						app.openActor(p);
+						app.toast('Open a unit first, then Hold puts this in its hand.', 'bad');
 					}
 				};
-				row.title = 'Put ' + p.name + ' in the unit\'s hand (Design opens the item itself)';
+				row.append(hold);
+				row.onclick = () => app.openActor(p);
+				row.title = 'Open ' + p.name + ' in the designer';
+			} else if (tab === 'more') {
+				row.onclick = () => app.openActor(p);
+				row.title = 'Open ' + p.name + ' in the designer';
 			} else {
 				const add = document.createElement('button');
 				add.className = 'small-btn add';
@@ -554,7 +557,7 @@ window.MS = window.MS || {};
 		for (const row of document.querySelectorAll('.lib-row')) {
 			const p = row._preset;
 			const isActor = app.actor && p.doc.path === app.actor.path && p.name === app.actor.name;
-			const selected = tab === 'units' || tab === 'craft' ? isActor : tab === 'items' ? isActor || (app.device && p.doc.path === app.device.path && p.name === app.device.name) : false;
+			const selected = tab === 'units' || tab === 'craft' || tab === 'more' ? isActor : tab === 'items' ? isActor || (app.device && p.doc.path === app.device.path && p.name === app.device.name) : false;
 			row.classList.toggle('sel', !!selected);
 		}
 	}
