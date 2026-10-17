@@ -363,12 +363,13 @@ pre.diff .del { color: var(--bad); }
 }
 
 /* The unit view hidden (◧, V): the parts list and the properties take the whole width, laid out as on wide screens. */
-/* Design mode has a tab bar too, only when a sprite editor is open: the designer, then each picture. */
-#app:not(.deep) { grid-template-rows: 46px auto minmax(0, 1fr) 26px; grid-template-areas: "top top top" "tabs tabs tabs" "left center right" "status status status"; }
+/* Design mode has a tab bar too, only when a sprite editor is open, laid out as in Script mode: above the editor area, 34px, the library beside it. */
+#app:not(.deep) { grid-template-rows: 46px 0 minmax(0, 1fr) 26px; grid-template-areas: "top top top" "left tabs tabs" "left center right" "status status status"; }
+#app:not(.deep).has-tabs { grid-template-rows: 46px 34px minmax(0, 1fr) 26px; }
 #app:not(.deep):not(.has-tabs) #tabbar { display: none; }
 #app:not(.deep).sprite-tab #center, #app:not(.deep).sprite-tab #right { display: none; }
 #app:not(.deep).sprite-tab #codeWrap { display: flex; grid-area: 3 / 2 / 4 / -1; }
-#app.no-view:not(.deep) { grid-template-areas: "top top" "tabs tabs" "left right" "status status"; }
+#app.no-view:not(.deep) { grid-template-areas: "top top" "left tabs" "left right" "status status"; }
 #app.no-view { grid-template-columns: minmax(var(--lib-min, 160px), var(--lib-w, var(--lib-size, 260px))) minmax(0, 1fr); grid-template-areas: "top top" "left right" "status status"; }
 #app.no-view #center { display: none; }
 #app.no-view #right { display: grid; grid-template-columns: var(--tree-w, minmax(200px, 26%)) minmax(0, 1fr); grid-template-rows: auto 1fr; }
